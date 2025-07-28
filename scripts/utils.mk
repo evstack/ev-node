@@ -45,3 +45,8 @@ mock-gen:
 	@echo "-> Generating mocks"
 	go run github.com/vektra/mockery/v3@latest
 .PHONY: mock-gen
+
+# Note: The test-docker-compose-e2e target is defined in test.mk
+# Usage: make test-docker-compose-e2e
+# Prerequisites: Docker Compose services must be running
+# Start services first with: cd apps/evm/single && docker compose up -d

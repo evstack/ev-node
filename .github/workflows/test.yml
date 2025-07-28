@@ -90,6 +90,8 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       packages: read
+    # Skip for merge groups since images aren't built for them
+    if: github.event_name != 'merge_group'
     steps:
       - uses: actions/checkout@v4
 
@@ -105,16 +107,52 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Verify required image exists
+        run: |
+          echo "Checking if PR-specific image exists..."
+          if docker manifest inspect ghcr.io/${{ github.repository_owner }}/ev-node-evm-single:${{ inputs.image-tag }} >/dev/null 2>&1; then
+            echo "✅ PR image exists: ghcr.io/${{ github.repository_owner }}/ev-node-evm-single:${{ inputs.image-tag }}"
+          else
+            echo "⚠️  PR image not found, will fallback to main image during pull"
+          fi
+
       - name: Update docker-compose.yml to use PR image
         run: |
           cd apps/evm/single
           # Replace the main image tag with PR-specific tag
           sed -i 's|ghcr.io/evstack/ev-node-evm-single:main|ghcr.io/${{ github.repository_owner }}/ev-node-evm-single:${{ inputs.image-tag }}|g' docker-compose.yml
           echo "Updated docker-compose.yml to use image: ghcr.io/${{ github.repository_owner }}/ev-node-evm-single:${{ inputs.image-tag }}"
+          # Display the updated compose file for debugging
+          echo "=== Updated docker-compose.yml ==="
+          grep -A 2 -B 2 "ghcr.io.*ev-node-evm-single" docker-compose.yml || echo "Image reference not found"
+
       - name: Pull required images
         run: |
           cd apps/evm/single
-          docker compose pull
+          echo "Attempting to pull images..."
+          
+          # Try to pull all images, but don't fail if PR image doesn't exist
+          docker compose pull --ignore-pull-failures || {
+            echo "⚠️  Some images failed to pull, trying individual pulls..."
+            
+            # Pull base images that should always exist
+            docker pull ghcr.io/evstack/lumen:latest || echo "Failed to pull lumen image"
+            docker pull ghcr.io/rollkit/local-da:v0.1.0 || echo "Failed to pull local-da image"
+            
+            # Try to pull the PR-specific image, fallback to main if it fails
+            if ! docker pull ghcr.io/${{ github.repository_owner }}/ev-node-evm-single:${{ inputs.image-tag }}; then
+              echo "⚠️  PR image not found, falling back to main image"
+              # Revert docker-compose.yml to use main image
+              sed -i 's|ghcr.io/${{ github.repository_owner }}/ev-node-evm-single:${{ inputs.image-tag }}|ghcr.io/evstack/ev-node-evm-single:main|g' docker-compose.yml
+              docker pull ghcr.io/evstack/ev-node-evm-single:main || {
+                echo "❌ Failed to pull fallback image, this is critical"
+                exit 1
+              }
+            fi
+          }
+          
+          echo "=== Final docker-compose.yml ==="
+          grep -A 2 -B 2 "ghcr.io.*ev-node-evm-single" docker-compose.yml || echo "Image reference not found"
 
       - name: Start Docker Compose services
         run: |
