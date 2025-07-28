@@ -55,12 +55,13 @@ type FullNode struct {
 
 	da coreda.DA
 
-	p2pClient    *p2p.Client
-	hSyncService *rollkitsync.HeaderSyncService
-	dSyncService *rollkitsync.DataSyncService
-	Store        store.Store
-	blockManager *block.Manager
-	reaper       *block.Reaper
+	p2pClient      *p2p.Client
+	hSyncService   *rollkitsync.HeaderSyncService
+	dSyncService   *rollkitsync.DataSyncService
+	Store          store.Store
+	blockManager   *block.Manager
+	execTXReaper   *block.Reaper
+	directTXReaper *block.DirectTxReaper
 
 	prometheusSrv *http.Server
 	pprofSrv      *http.Server
@@ -76,7 +77,7 @@ func newFullNode(
 	genesis genesispkg.Genesis,
 	database ds.Batching,
 	exec coreexecutor.Executor,
-	sequencer coresequencer.Sequencer,
+	sequencer coresequencer.DirectTxSequencer,
 	da coreda.DA,
 	metricsProvider MetricsProvider,
 	logger logging.EventLogger,
@@ -96,6 +97,8 @@ func newFullNode(
 	}
 
 	rktStore := store.New(mainKV)
+
+	// Use the decorated sequencer for all components
 
 	blockManager, err := initBlockManager(
 		ctx,
@@ -118,29 +121,43 @@ func newFullNode(
 		return nil, err
 	}
 
-	reaper := block.NewReaper(
+	execTXReaper := block.NewReaper(
 		ctx,
 		exec,
 		sequencer,
 		genesis.ChainID,
 		nodeConfig.Node.BlockTime.Duration,
-		logging.Logger("Reaper"), // Get Reaper's own logger
+		logging.Logger("Reaper"),
 		mainKV,
 	)
 
-	// Connect the reaper to the manager for transaction notifications
-	reaper.SetManager(blockManager)
+	// Connect the execTXReaper to the manager for transaction notifications
+	execTXReaper.SetManager(blockManager)
+
+	// Initialize the DirectTxReaper to fetch direct transactions from the DA layer
+	directTXReaper := block.NewDirectTxReaper(
+		ctx,
+		da,
+		sequencer,
+		blockManager,
+		genesis.ChainID,
+		nodeConfig.Node.BlockTime.Duration,
+		logging.Logger("DirectTxReaper"),
+		mainKV,
+		[]byte(genesis.ChainID), // Use chain ID as namespace
+	)
 
 	node := &FullNode{
-		genesis:      genesis,
-		nodeConfig:   nodeConfig,
-		p2pClient:    p2pClient,
-		blockManager: blockManager,
-		reaper:       reaper,
-		da:           da,
-		Store:        rktStore,
-		hSyncService: headerSyncService,
-		dSyncService: dataSyncService,
+		genesis:        genesis,
+		nodeConfig:     nodeConfig,
+		p2pClient:      p2pClient,
+		blockManager:   blockManager,
+		execTXReaper:   execTXReaper,
+		directTXReaper: directTXReaper,
+		da:             da,
+		Store:          rktStore,
+		hSyncService:   headerSyncService,
+		dSyncService:   dataSyncService,
 	}
 
 	node.BaseService = *service.NewBaseService(logger, "Node", node)
@@ -383,7 +400,8 @@ func (n *FullNode) Run(parentCtx context.Context) error {
 	if n.nodeConfig.Node.Aggregator {
 		n.Logger.Info("working in aggregator mode, block time:", n.nodeConfig.Node.BlockTime)
 		spawnWorker(func() { n.blockManager.AggregationLoop(ctx, errCh) })
-		spawnWorker(func() { n.reaper.Start(ctx) })
+		spawnWorker(func() { n.execTXReaper.Start(ctx) })
+		spawnWorker(func() { n.directTXReaper.Start(ctx) })
 		spawnWorker(func() { n.blockManager.HeaderSubmissionLoop(ctx) })
 		spawnWorker(func() { n.blockManager.DataSubmissionLoop(ctx) })
 		spawnWorker(func() { n.blockManager.DAIncluderLoop(ctx, errCh) })
@@ -392,6 +410,7 @@ func (n *FullNode) Run(parentCtx context.Context) error {
 		spawnWorker(func() { n.blockManager.HeaderStoreRetrieveLoop(ctx) })
 		spawnWorker(func() { n.blockManager.DataStoreRetrieveLoop(ctx) })
 		spawnWorker(func() { n.blockManager.SyncLoop(ctx, errCh) })
+		spawnWorker(func() { n.directTXReaper.Start(ctx) })
 		spawnWorker(func() { n.blockManager.DAIncluderLoop(ctx, errCh) })
 	}
 

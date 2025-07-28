@@ -168,6 +168,8 @@ type Manager struct {
 	// validatorHasherProvider is used to provide the validator hash for the header.
 	// It is used to set the validator hash in the header.
 	validatorHasherProvider types.ValidatorHasherProvider
+
+	directTXTracker DirectTxTracker
 }
 
 // getInitialState tries to load lastState from Store, and if it's not available it reads genesis.
@@ -400,6 +402,7 @@ func NewManager(
 		txNotifyCh:               make(chan struct{}, 1), // Non-blocking channel
 		signaturePayloadProvider: managerOpts.SignaturePayloadProvider,
 		validatorHasherProvider:  managerOpts.ValidatorHasherProvider,
+		directTXTracker:          DirectTxTracker{txs: make([]DirectTransaction, 0)},
 	}
 
 	// initialize da included height

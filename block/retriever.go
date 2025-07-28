@@ -64,7 +64,7 @@ func (m *Manager) processNextDAHeaderAndData(ctx context.Context) error {
 
 	var err error
 	m.logger.Debug("trying to retrieve data from DA", "daHeight", daHeight)
-	for r := 0; r < dAFetcherRetries; r++ {
+	for range dAFetcherRetries {
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
@@ -88,7 +88,10 @@ func (m *Manager) processNextDAHeaderAndData(ctx context.Context) error {
 				if m.handlePotentialHeader(ctx, bz, daHeight) {
 					continue
 				}
-				m.handlePotentialData(ctx, bz, daHeight)
+				if m.handlePotentialData(ctx, bz, daHeight) {
+					continue
+				}
+				m.handlePotentialDirectTXs(ctx, bz, daHeight)
 			}
 			return nil
 		} else if strings.Contains(fetchErr.Error(), coreda.ErrHeightFromFuture.Error()) {
@@ -157,22 +160,22 @@ func (m *Manager) handlePotentialHeader(ctx context.Context, bz []byte, daHeight
 }
 
 // handlePotentialData tries to decode and process a data. No return value.
-func (m *Manager) handlePotentialData(ctx context.Context, bz []byte, daHeight uint64) {
+func (m *Manager) handlePotentialData(ctx context.Context, bz []byte, daHeight uint64) bool {
 	var signedData types.SignedData
 	err := signedData.UnmarshalBinary(bz)
 	if err != nil {
 		m.logger.Debug("failed to unmarshal signed data, error", err)
-		return
+		return false
 	}
 	if len(signedData.Txs) == 0 {
 		m.logger.Debug("ignoring empty signed data, daHeight: ", daHeight)
-		return
+		return false
 	}
 
 	// Early validation to reject junk data
 	if !m.isValidSignedData(&signedData) {
 		m.logger.Debug("invalid data signature, daHeight: ", daHeight)
-		return
+		return false
 	}
 
 	dataHashStr := signedData.Data.DACommitment().String()
@@ -182,12 +185,13 @@ func (m *Manager) handlePotentialData(ctx context.Context, bz []byte, daHeight u
 	if !m.dataCache.IsSeen(dataHashStr) {
 		select {
 		case <-ctx.Done():
-			return
+			return false
 		default:
 			m.logger.Warn("dataInCh backlog full, dropping signed data", "daHeight", daHeight)
 		}
 		m.dataInCh <- NewDataEvent{&signedData.Data, daHeight}
 	}
+	return true
 }
 
 // areAllErrorsHeightFromFuture checks if all errors in a joined error are ErrHeightFromFutureStr

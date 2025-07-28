@@ -85,7 +85,7 @@ func StartNode(
 	logger logging.EventLogger,
 	cmd *cobra.Command,
 	executor coreexecutor.Executor,
-	sequencer coresequencer.Sequencer,
+	sequencer coresequencer.DirectTxSequencer,
 	da coreda.DA,
 	p2pClient *p2p.Client,
 	datastore datastore.Batching,
