@@ -227,6 +227,61 @@ func (s *DefaultStore) GetMetadata(ctx context.Context, key string) ([]byte, err
 	return data, nil
 }
 
+// Rollback rolls back block data until the given height from the store.
+// NOTE: this function does not rollback metadata. Those should be handled separately.
+// NOTE: this function does not rollback state. Those should be handled separately.
+func (s *DefaultStore) Rollback(ctx context.Context, height uint64) error {
+	batch, err := s.db.Batch(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to create a new batch: %w", err)
+	}
+
+	currentHeight, err := s.Height(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to get current height: %w", err)
+	}
+
+	if currentHeight <= height {
+		return nil
+	}
+
+	for currentHeight > height {
+		header, err := s.GetHeader(ctx, currentHeight)
+		if err != nil {
+			return fmt.Errorf("failed to get header at height %d: %w", currentHeight, err)
+		}
+
+		if err := batch.Delete(ctx, ds.NewKey(getHeaderKey(currentHeight))); err != nil {
+			return fmt.Errorf("failed to delete header blob in batch: %w", err)
+		}
+
+		if err := batch.Delete(ctx, ds.NewKey(getDataKey(currentHeight))); err != nil {
+			return fmt.Errorf("failed to delete data blob in batch: %w", err)
+		}
+
+		if err := batch.Delete(ctx, ds.NewKey(getSignatureKey(currentHeight))); err != nil {
+			return fmt.Errorf("failed to delete signature of block blob in batch: %w", err)
+		}
+
+		hash := header.Hash()
+		if err := batch.Delete(ctx, ds.NewKey(getIndexKey(hash))); err != nil {
+			return fmt.Errorf("failed to delete index key in batch: %w", err)
+		}
+
+		currentHeight--
+	}
+
+	if err := s.SetHeight(ctx, height); err != nil {
+		return fmt.Errorf("failed to set height: %w", err)
+	}
+
+	if err := batch.Commit(ctx); err != nil {
+		return fmt.Errorf("failed to commit batch: %w", err)
+	}
+
+	return nil
+}
+
 const heightLength = 8
 
 func encodeHeight(height uint64) []byte {
