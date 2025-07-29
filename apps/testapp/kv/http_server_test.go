@@ -277,3 +277,40 @@ func TestHTTPServerContextCancellation(t *testing.T) {
 		t.Fatal("Expected connection error after shutdown, but got none")
 	}
 }
+
+func TestHTTPIntegration_GetKVWithMultipleHeights(t *testing.T) {
+	exec, err := NewKVExecutor(t.TempDir(), "testdb")
+	if err != nil {
+		t.Fatalf("Failed to create KVExecutor: %v", err)
+	}
+	ctx := context.Background()
+
+	// Execute transactions at different heights for the same key
+	txsHeight1 := [][]byte{[]byte("testkey=original_value")}
+	_, _, err = exec.ExecuteTxs(ctx, txsHeight1, 1, time.Now(), []byte(""))
+	if err != nil {
+		t.Fatalf("ExecuteTxs failed for height 1: %v", err)
+	}
+
+	txsHeight2 := [][]byte{[]byte("testkey=updated_value")}
+	_, _, err = exec.ExecuteTxs(ctx, txsHeight2, 2, time.Now(), []byte(""))
+	if err != nil {
+		t.Fatalf("ExecuteTxs failed for height 2: %v", err)
+	}
+
+	server := NewHTTPServer(exec, ":0")
+
+	// Test GET request - should return the latest value
+	req := httptest.NewRequest(http.MethodGet, "/kv?key=testkey", nil)
+	rr := httptest.NewRecorder()
+
+	server.handleKV(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Errorf("expected status 200, got %d", rr.Code)
+	}
+
+	if rr.Body.String() != "updated_value" {
+		t.Errorf("expected body 'updated_value', got %q", rr.Body.String())
+	}
+}

@@ -43,18 +43,56 @@ func NewKVExecutor(rootdir, dbpath string) (*KVExecutor, error) {
 }
 
 // GetStoreValue is a helper for the HTTP interface to retrieve the value for a key from the database.
+// It searches across all block heights to find the latest value for the given key.
 func (k *KVExecutor) GetStoreValue(ctx context.Context, key string) (string, bool) {
-	dsKey := ds.NewKey(key)
-	valueBytes, err := k.db.Get(ctx, dsKey)
-	if errors.Is(err, ds.ErrNotFound) {
-		return "", false
-	}
+	// Query all keys to find height-prefixed versions of this key
+	q := query.Query{}
+	results, err := k.db.Query(ctx, q)
 	if err != nil {
-		// Log the error or handle it appropriately
-		fmt.Printf("Error getting value from DB: %v\n", err)
+		fmt.Printf("Error querying DB for key '%s': %v\n", key, err)
 		return "", false
 	}
-	return string(valueBytes), true
+	defer results.Close()
+
+	heightPrefix := heightKeyPrefix.String()
+	var latestValue string
+	var latestHeight uint64
+	found := false
+
+	for result := range results.Next() {
+		if result.Error != nil {
+			fmt.Printf("Error iterating query results for key '%s': %v\n", key, result.Error)
+			return "", false
+		}
+
+		resultKey := result.Key
+		// Check if this is a height-prefixed key that matches our target key
+		if strings.HasPrefix(resultKey, heightPrefix+"/") {
+			// Extract height and actual key: /height/{height}/{actual_key}
+			parts := strings.Split(strings.TrimPrefix(resultKey, heightPrefix+"/"), "/")
+			if len(parts) >= 2 {
+				var keyHeight uint64
+				if _, err := fmt.Sscanf(parts[0], "%d", &keyHeight); err == nil {
+					// Reconstruct the actual key by joining all parts after the height
+					actualKey := strings.Join(parts[1:], "/")
+					if actualKey == key {
+						// This key matches - check if it's the latest height
+						if !found || keyHeight > latestHeight {
+							latestHeight = keyHeight
+							latestValue = string(result.Value)
+							found = true
+						}
+					}
+				}
+			}
+		}
+	}
+
+	if !found {
+		return "", false
+	}
+
+	return latestValue, true
 }
 
 // computeStateRoot computes a deterministic state root by querying all keys, sorting them,

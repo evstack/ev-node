@@ -212,13 +212,13 @@ func TestRollback_Success(t *testing.T) {
 	}
 
 	// Verify all keys exist before rollback
-	if value, exists := exec.GetStoreValue(ctx, "/height/1/key1"); !exists || value != "value1" {
+	if value, exists := exec.GetStoreValue(ctx, "key1"); !exists || value != "value1" {
 		t.Errorf("Expected key1=value1 at height 1, got exists=%v, value=%s", exists, value)
 	}
-	if value, exists := exec.GetStoreValue(ctx, "/height/2/key3"); !exists || value != "value3" {
+	if value, exists := exec.GetStoreValue(ctx, "key3"); !exists || value != "value3" {
 		t.Errorf("Expected key3=value3 at height 2, got exists=%v, value=%s", exists, value)
 	}
-	if value, exists := exec.GetStoreValue(ctx, "/height/3/key5"); !exists || value != "value5" {
+	if value, exists := exec.GetStoreValue(ctx, "key5"); !exists || value != "value5" {
 		t.Errorf("Expected key5=value5 at height 3, got exists=%v, value=%s", exists, value)
 	}
 
@@ -229,15 +229,15 @@ func TestRollback_Success(t *testing.T) {
 	}
 
 	// Verify keys at height 1 and 2 still exist
-	if value, exists := exec.GetStoreValue(ctx, "/height/1/key1"); !exists || value != "value1" {
+	if value, exists := exec.GetStoreValue(ctx, "key1"); !exists || value != "value1" {
 		t.Errorf("Expected key1=value1 at height 1 after rollback, got exists=%v, value=%s", exists, value)
 	}
-	if value, exists := exec.GetStoreValue(ctx, "/height/2/key3"); !exists || value != "value3" {
+	if value, exists := exec.GetStoreValue(ctx, "key3"); !exists || value != "value3" {
 		t.Errorf("Expected key3=value3 at height 2 after rollback, got exists=%v, value=%s", exists, value)
 	}
 
 	// Verify keys at height 3 are removed
-	if value, exists := exec.GetStoreValue(ctx, "/height/3/key5"); exists {
+	if value, exists := exec.GetStoreValue(ctx, "key5"); exists {
 		t.Errorf("Expected key5 at height 3 to be removed after rollback, but got value=%s", value)
 	}
 }
@@ -285,7 +285,7 @@ func TestRollback_MultipleHeights(t *testing.T) {
 
 	// Verify keys at heights 1-2 still exist
 	for height := uint64(1); height <= 2; height++ {
-		key := fmt.Sprintf("/height/%d/key%d", height, height)
+		key := fmt.Sprintf("key%d", height)
 		expectedValue := fmt.Sprintf("value%d", height)
 		if value, exists := exec.GetStoreValue(ctx, key); !exists || value != expectedValue {
 			t.Errorf("Expected %s=%s after rollback, got exists=%v, value=%s", key, expectedValue, exists, value)
@@ -294,7 +294,7 @@ func TestRollback_MultipleHeights(t *testing.T) {
 
 	// Verify keys at heights 3-5 are removed
 	for height := uint64(3); height <= 5; height++ {
-		key := fmt.Sprintf("/height/%d/key%d", height, height)
+		key := fmt.Sprintf("key%d", height)
 		if value, exists := exec.GetStoreValue(ctx, key); exists {
 			t.Errorf("Expected key at %s to be removed after rollback, but got value=%s", key, value)
 		}
@@ -430,5 +430,57 @@ func TestRollback_StateRootAfterRollback(t *testing.T) {
 	// Verify height 1 keys are still in state root
 	if !strings.Contains(rootStr, "key1:value1;") || !strings.Contains(rootStr, "key2:value2;") {
 		t.Error("State root should still contain height 1 transactions after rollback")
+	}
+}
+
+func TestGetStoreValue_MultipleVersions(t *testing.T) {
+	exec, err := NewKVExecutor(t.TempDir(), "testdb")
+	if err != nil {
+		t.Fatalf("Failed to create KVExecutor: %v", err)
+	}
+	ctx := context.Background()
+
+	// Execute transactions that update the same key at different heights
+	// Height 1: key1=value1
+	txsHeight1 := [][]byte{
+		[]byte("key1=value1"),
+		[]byte("key2=old_value"),
+	}
+	_, _, err = exec.ExecuteTxs(ctx, txsHeight1, 1, time.Now(), []byte(""))
+	if err != nil {
+		t.Fatalf("ExecuteTxs failed for height 1: %v", err)
+	}
+
+	// Height 2: key1=value1_updated
+	txsHeight2 := [][]byte{
+		[]byte("key1=value1_updated"),
+	}
+	_, _, err = exec.ExecuteTxs(ctx, txsHeight2, 2, time.Now(), []byte(""))
+	if err != nil {
+		t.Fatalf("ExecuteTxs failed for height 2: %v", err)
+	}
+
+	// Height 3: key1=latest_value
+	txsHeight3 := [][]byte{
+		[]byte("key1=latest_value"),
+	}
+	_, _, err = exec.ExecuteTxs(ctx, txsHeight3, 3, time.Now(), []byte(""))
+	if err != nil {
+		t.Fatalf("ExecuteTxs failed for height 3: %v", err)
+	}
+
+	// GetStoreValue should return the latest version (from height 3)
+	if value, exists := exec.GetStoreValue(ctx, "key1"); !exists || value != "latest_value" {
+		t.Errorf("Expected key1=latest_value (from height 3), got exists=%v, value=%s", exists, value)
+	}
+
+	// key2 should still return the value from height 1
+	if value, exists := exec.GetStoreValue(ctx, "key2"); !exists || value != "old_value" {
+		t.Errorf("Expected key2=old_value, got exists=%v, value=%s", exists, value)
+	}
+
+	// Non-existent key should return false
+	if value, exists := exec.GetStoreValue(ctx, "nonexistent"); exists {
+		t.Errorf("Expected nonexistent key to return false, got exists=%v, value=%s", exists, value)
 	}
 }
