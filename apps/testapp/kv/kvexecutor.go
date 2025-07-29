@@ -262,8 +262,6 @@ func (k *KVExecutor) InjectTx(tx []byte) {
 }
 
 // Rollback reverts the state to the previous block height.
-// For the KV executor, this removes any state changes at the current height.
-// Note: This implementation assumes that state changes are tracked by height keys.
 func (k *KVExecutor) Rollback(ctx context.Context, height uint64) error {
 	select {
 	case <-ctx.Done():
@@ -272,8 +270,81 @@ func (k *KVExecutor) Rollback(ctx context.Context, height uint64) error {
 	}
 
 	// Validate height constraints
-	if height <= 1 {
-		return fmt.Errorf("cannot rollback from height %d: must be > 1", height)
+	if height == 0 {
+		return fmt.Errorf("cannot rollback to height 0: invalid height")
+	}
+
+	// Create a batch for atomic rollback operation
+	batch, err := k.db.Batch(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to create batch for rollback: %w", err)
+	}
+
+	// Query all keys to find those with height > target height
+	q := query.Query{}
+	results, err := k.db.Query(ctx, q)
+	if err != nil {
+		return fmt.Errorf("failed to query keys for rollback: %w", err)
+	}
+	defer results.Close()
+
+	keysToDelete := make([]ds.Key, 0)
+	heightPrefix := heightKeyPrefix.String()
+
+	for result := range results.Next() {
+		if result.Error != nil {
+			return fmt.Errorf("error iterating query results during rollback: %w", result.Error)
+		}
+
+		key := result.Key
+		// Check if this is a height-prefixed key
+		if strings.HasPrefix(key, heightPrefix+"/") {
+			// Extract height from key: /height/{height}/{actual_key} (see getTxKey)
+			parts := strings.Split(strings.TrimPrefix(key, heightPrefix+"/"), "/")
+			if len(parts) > 0 {
+				var keyHeight uint64
+				if _, err := fmt.Sscanf(parts[0], "%d", &keyHeight); err == nil {
+					// If this key's height is greater than target, mark for deletion
+					if keyHeight > height {
+						keysToDelete = append(keysToDelete, ds.NewKey(key))
+					}
+				}
+			}
+		}
+	}
+
+	// Delete all keys with height > target height
+	for _, key := range keysToDelete {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
+		}
+
+		err = batch.Delete(ctx, key)
+		if err != nil {
+			return fmt.Errorf("failed to stage delete operation for key '%s' during rollback: %w", key.String(), err)
+		}
+	}
+
+	// Update finalized height if necessary - it should not exceed rollback height
+	finalizedHeightKey := ds.NewKey("/finalizedHeight")
+	if finalizedHeightBytes, err := k.db.Get(ctx, finalizedHeightKey); err == nil {
+		var finalizedHeight uint64
+		if _, err := fmt.Sscanf(string(finalizedHeightBytes), "%d", &finalizedHeight); err == nil {
+			if finalizedHeight > height {
+				err = batch.Put(ctx, finalizedHeightKey, fmt.Appendf([]byte{}, "%d", height))
+				if err != nil {
+					return fmt.Errorf("failed to update finalized height during rollback: %w", err)
+				}
+			}
+		}
+	}
+
+	// Commit the batch atomically
+	err = batch.Commit(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to commit rollback batch: %w", err)
 	}
 
 	return nil

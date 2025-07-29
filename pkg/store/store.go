@@ -307,7 +307,7 @@ func (s *DefaultStore) Rollback(ctx context.Context, height uint64) error {
 	// set height -- using set height checks the current height
 	// so we cannot use that
 	heightBytes := encodeHeight(height)
-	if err := s.db.Put(ctx, ds.NewKey(getHeightKey()), heightBytes); err != nil {
+	if err := batch.Put(ctx, ds.NewKey(getHeightKey()), heightBytes); err != nil {
 		return fmt.Errorf("failed to set height: %w", err)
 	}
 
@@ -316,8 +316,19 @@ func (s *DefaultStore) Rollback(ctx context.Context, height uint64) error {
 		return fmt.Errorf("failed to get state at height %d: %w", height, err)
 	}
 
-	if err := s.UpdateState(ctx, targetState); err != nil {
-		return fmt.Errorf("failed to update state: %w", err)
+	// update state manually to keep using the batch
+	pbState, err := targetState.ToProto()
+	if err != nil {
+		return fmt.Errorf("failed to convert type state to protobuf type: %w", err)
+	}
+
+	data, err := proto.Marshal(pbState)
+	if err != nil {
+		return fmt.Errorf("failed to marshal state to protobuf: %w", err)
+	}
+
+	if err := batch.Put(ctx, ds.NewKey(getStateAtHeightKey(height)), data); err != nil {
+		return fmt.Errorf("failed to set state at height %d: %w", height, err)
 	}
 
 	if err := batch.Commit(ctx); err != nil {
