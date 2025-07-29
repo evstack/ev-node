@@ -10,9 +10,7 @@ import (
 	"time"
 )
 
-//---------------------
-// DummyExecutor
-//---------------------
+var _ Executor = (*DummyExecutor)(nil)
 
 // DummyExecutor is a dummy implementation of the DummyExecutor interface for testing
 type DummyExecutor struct {
