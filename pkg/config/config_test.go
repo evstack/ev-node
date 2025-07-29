@@ -166,10 +166,10 @@ signer:
 	// Set some flags that should override YAML values
 	flagArgs := []string{
 		"--home", tempDir,
-		"--rollkit.node.block_time", "10s",
-		"--rollkit.da.address", "http://flag-da:26657",
-		"--rollkit.node.light", "true", // This is not in YAML, should be set from flag
-		"--rollkit.rpc.address", "127.0.0.1:7332",
+		"--evnode.node.block_time", "10s",
+		"--evnode.da.address", "http://flag-da:26657",
+		"--evnode.node.light", "true", // This is not in YAML, should be set from flag
+		"--evnode.rpc.address", "127.0.0.1:7332",
 	}
 	cmd.SetArgs(flagArgs)
 	err = cmd.ParseFlags(flagArgs)
@@ -231,8 +231,8 @@ signer:
 	// Set some flags through the command line
 	cmd.SetArgs([]string{
 		"--home=" + tempDir,
-		"--rollkit.da.gas_price=0.5",
-		"--rollkit.node.lazy_mode=true",
+		"--evnode.da.gas_price=0.5",
+		"--evnode.node.lazy_mode=true",
 	})
 	err = cmd.Execute()
 	require.NoError(t, err)
@@ -244,8 +244,8 @@ signer:
 	// Now create a Viper instance with the same flags
 	v := viper.New()
 	v.Set(FlagRootDir, tempDir)
-	v.Set("rollkit.da.gas_price", "0.5")
-	v.Set("rollkit.node.lazy_mode", true)
+	v.Set("evnode.da.gas_price", "0.5")
+	v.Set("evnode.node.lazy_mode", true)
 
 	// Load configuration using the new LoadFromViper method
 	cfgFromViper, err := LoadFromViper(v)

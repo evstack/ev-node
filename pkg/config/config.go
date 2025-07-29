@@ -22,96 +22,96 @@ const (
 	// FlagRootDir is a flag for specifying the root directory
 	FlagRootDir = "home"
 	// FlagDBPath is a flag for specifying the database path
-	FlagDBPath = "rollkit.db_path"
+	FlagDBPath = "evnode.db_path"
 	// FlagChainID is a flag for specifying the chain ID
 	FlagChainID = "chain_id"
 
 	// Node configuration flags
 
 	// FlagAggregator is a flag for running node in aggregator mode
-	FlagAggregator = "rollkit.node.aggregator"
+	FlagAggregator = "evnode.node.aggregator"
 	// FlagLight is a flag for running the node in light mode
-	FlagLight = "rollkit.node.light"
+	FlagLight = "evnode.node.light"
 	// FlagBlockTime is a flag for specifying the block time
-	FlagBlockTime = "rollkit.node.block_time"
+	FlagBlockTime = "evnode.node.block_time"
 	// FlagTrustedHash is a flag for specifying the trusted hash
-	FlagTrustedHash = "rollkit.node.trusted_hash"
+	FlagTrustedHash = "evnode.node.trusted_hash"
 	// FlagLazyAggregator is a flag for enabling lazy aggregation mode that only produces blocks when transactions are available
-	FlagLazyAggregator = "rollkit.node.lazy_mode"
+	FlagLazyAggregator = "evnode.node.lazy_mode"
 	// FlagMaxPendingHeadersAndData is a flag to limit and pause block production when too many headers or data are waiting for DA confirmation
-	FlagMaxPendingHeadersAndData = "rollkit.node.max_pending_headers_and_data"
+	FlagMaxPendingHeadersAndData = "evnode.node.max_pending_headers_and_data"
 	// FlagLazyBlockTime is a flag for specifying the maximum interval between blocks in lazy aggregation mode
-	FlagLazyBlockTime = "rollkit.node.lazy_block_interval"
+	FlagLazyBlockTime = "evnode.node.lazy_block_interval"
 
 	// Data Availability configuration flags
 
 	// FlagDAAddress is a flag for specifying the data availability layer address
-	FlagDAAddress = "rollkit.da.address"
+	FlagDAAddress = "evnode.da.address"
 	// FlagDAAuthToken is a flag for specifying the data availability layer auth token
-	FlagDAAuthToken = "rollkit.da.auth_token" // #nosec G101
+	FlagDAAuthToken = "evnode.da.auth_token" // #nosec G101
 	// FlagDABlockTime is a flag for specifying the data availability layer block time
-	FlagDABlockTime = "rollkit.da.block_time"
+	FlagDABlockTime = "evnode.da.block_time"
 	// FlagDAGasPrice is a flag for specifying the data availability layer gas price
-	FlagDAGasPrice = "rollkit.da.gas_price"
+	FlagDAGasPrice = "evnode.da.gas_price"
 	// FlagDAGasMultiplier is a flag for specifying the data availability layer gas price retry multiplier
-	FlagDAGasMultiplier = "rollkit.da.gas_multiplier"
+	FlagDAGasMultiplier = "evnode.da.gas_multiplier"
 	// FlagDAStartHeight is a flag for specifying the data availability layer start height
-	FlagDAStartHeight = "rollkit.da.start_height"
+	FlagDAStartHeight = "evnode.da.start_height"
 	// FlagDANamespace is a flag for specifying the DA namespace ID
-	FlagDANamespace = "rollkit.da.namespace"
+	FlagDANamespace = "evnode.da.namespace"
 	// FlagDASubmitOptions is a flag for data availability submit options
-	FlagDASubmitOptions = "rollkit.da.submit_options"
+	FlagDASubmitOptions = "evnode.da.submit_options"
 	// FlagDAMempoolTTL is a flag for specifying the DA mempool TTL
-	FlagDAMempoolTTL = "rollkit.da.mempool_ttl"
+	FlagDAMempoolTTL = "evnode.da.mempool_ttl"
 
 	// P2P configuration flags
 
 	// FlagP2PListenAddress is a flag for specifying the P2P listen address
-	FlagP2PListenAddress = "rollkit.p2p.listen_address"
+	FlagP2PListenAddress = "evnode.p2p.listen_address"
 	// FlagP2PPeers is a flag for specifying the P2P peers
-	FlagP2PPeers = "rollkit.p2p.peers"
+	FlagP2PPeers = "evnode.p2p.peers"
 	// FlagP2PBlockedPeers is a flag for specifying the P2P blocked peers
-	FlagP2PBlockedPeers = "rollkit.p2p.blocked_peers"
+	FlagP2PBlockedPeers = "evnode.p2p.blocked_peers"
 	// FlagP2PAllowedPeers is a flag for specifying the P2P allowed peers
-	FlagP2PAllowedPeers = "rollkit.p2p.allowed_peers"
+	FlagP2PAllowedPeers = "evnode.p2p.allowed_peers"
 
 	// Instrumentation configuration flags
 
 	// FlagPrometheus is a flag for enabling Prometheus metrics
-	FlagPrometheus = "rollkit.instrumentation.prometheus"
+	FlagPrometheus = "evnode.instrumentation.prometheus"
 	// FlagPrometheusListenAddr is a flag for specifying the Prometheus listen address
-	FlagPrometheusListenAddr = "rollkit.instrumentation.prometheus_listen_addr"
+	FlagPrometheusListenAddr = "evnode.instrumentation.prometheus_listen_addr"
 	// FlagMaxOpenConnections is a flag for specifying the maximum number of open connections
-	FlagMaxOpenConnections = "rollkit.instrumentation.max_open_connections"
+	FlagMaxOpenConnections = "evnode.instrumentation.max_open_connections"
 	// FlagPprof is a flag for enabling pprof profiling endpoints for runtime debugging
-	FlagPprof = "rollkit.instrumentation.pprof"
+	FlagPprof = "evnode.instrumentation.pprof"
 	// FlagPprofListenAddr is a flag for specifying the pprof listen address
-	FlagPprofListenAddr = "rollkit.instrumentation.pprof_listen_addr"
+	FlagPprofListenAddr = "evnode.instrumentation.pprof_listen_addr"
 
 	// Logging configuration flags
 
 	// FlagLogLevel is a flag for specifying the log level
-	FlagLogLevel = "rollkit.log.level"
+	FlagLogLevel = "evnode.log.level"
 	// FlagLogFormat is a flag for specifying the log format
-	FlagLogFormat = "rollkit.log.format"
+	FlagLogFormat = "evnode.log.format"
 	// FlagLogTrace is a flag for enabling stack traces in error logs
-	FlagLogTrace = "rollkit.log.trace"
+	FlagLogTrace = "evnode.log.trace"
 
 	// Signer configuration flags
 
 	// FlagSignerType is a flag for specifying the signer type
-	FlagSignerType = "rollkit.signer.type"
+	FlagSignerType = "evnode.signer.type"
 	// FlagSignerPath is a flag for specifying the signer path
-	FlagSignerPath = "rollkit.signer.path"
+	FlagSignerPath = "evnode.signer.path"
 
 	// FlagSignerPassphrase is a flag for specifying the signer passphrase
 	//nolint:gosec
-	FlagSignerPassphrase = "rollkit.signer.passphrase"
+	FlagSignerPassphrase = "evnode.signer.passphrase"
 
 	// RPC configuration flags
 
 	// FlagRPCAddress is a flag for specifying the RPC server address
-	FlagRPCAddress = "rollkit.rpc.address"
+	FlagRPCAddress = "evnode.rpc.address"
 )
 
 // Config stores Rollkit configuration.
@@ -352,7 +352,7 @@ func LoadFromViper(inputViper *viper.Viper) (Config, error) {
 	// then override with settings from input viper (higher precedence)
 	for _, key := range inputViper.AllKeys() {
 		// Handle special case for prefixed keys
-		if after, ok := strings.CutPrefix(key, "rollkit."); ok {
+		if after, ok := strings.CutPrefix(key, "evnode."); ok {
 			// Strip the prefix for the merged viper
 			strippedKey := after
 			mergedViper.Set(strippedKey, inputViper.Get(key))
@@ -409,7 +409,7 @@ func bindFlags(basename string, cmd *cobra.Command, v *viper.Viper) (err error) 
 	}()
 
 	cmd.Flags().VisitAll(func(f *pflag.Flag) {
-		flagName := strings.TrimPrefix(f.Name, "rollkit.") // trimm the prefix from the flag name
+		flagName := strings.TrimPrefix(f.Name, "evnode.") // trimm the prefix from the flag name
 
 		// Environment variables can't have dashes in them, so bind them to their equivalent
 		// keys with underscores, e.g. --favorite-color to STING_FAVORITE_COLOR

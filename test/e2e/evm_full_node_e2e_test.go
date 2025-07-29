@@ -724,7 +724,7 @@ func setupSequencerWithFullNodeLazy(t *testing.T, sut *SystemUnderTest, sequence
 // - Block hashes and transaction data are consistent across both nodes
 //
 // Key Technical Details:
-// - Uses lazy mode flag (--rollkit.node.lazy_mode=true)
+// - Uses lazy mode flag (--evnode.node.lazy_mode=true)
 // - Sets lazy block interval to 60 seconds to avoid timer-based block production
 // - Monitors nodes for 2 seconds to verify no automatic block production
 // - Submits transactions at different intervals to test various scenarios
@@ -950,13 +950,13 @@ func restartSequencerAndFullNode(t *testing.T, sut *SystemUnderTest, sequencerHo
 		"--home", fullNodeHome,
 		"--evm.jwt-secret", fullNodeJwtSecret,
 		"--evm.genesis-hash", genesisHash,
-		"--rollkit.rpc.address", "127.0.0.1:"+FullNodeRPCPort,
-		"--rollkit.p2p.listen_address", "/ip4/127.0.0.1/tcp/"+FullNodeP2PPort,
-		"--rollkit.p2p.peers", sequencerP2PAddress,
+		"--evnode.rpc.address", "127.0.0.1:"+FullNodeRPCPort,
+		"--evnode.p2p.listen_address", "/ip4/127.0.0.1/tcp/"+FullNodeP2PPort,
+		"--evnode.p2p.peers", sequencerP2PAddress,
 		"--evm.engine-url", FullNodeEngineURL,
 		"--evm.eth-url", FullNodeEthURL,
-		"--rollkit.da.address", DAAddress,
-		"--rollkit.da.block_time", DefaultDABlockTime,
+		"--evnode.da.address", DAAddress,
+		"--evnode.da.block_time", DefaultDABlockTime,
 	)
 
 	// Give both nodes time to establish P2P connections

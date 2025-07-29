@@ -48,35 +48,35 @@ func createTestComponents(_ context.Context, t *testing.T) (coreexecutor.Executo
 func TestParseFlags(t *testing.T) {
 	flags := []string{
 		"--home", "custom/root/dir",
-		"--rollkit.db_path", "custom/db/path",
+		"--evnode.db_path", "custom/db/path",
 
 		// P2P flags
-		"--rollkit.p2p.listen_address", "tcp://127.0.0.1:27000",
-		"--rollkit.p2p.peers", "node1@127.0.0.1:27001,node2@127.0.0.1:27002",
-		"--rollkit.p2p.blocked_peers", "node3@127.0.0.1:27003,node4@127.0.0.1:27004",
-		"--rollkit.p2p.allowed_peers", "node5@127.0.0.1:27005,node6@127.0.0.1:27006",
+		"--evnode.p2p.listen_address", "tcp://127.0.0.1:27000",
+		"--evnode.p2p.peers", "node1@127.0.0.1:27001,node2@127.0.0.1:27002",
+		"--evnode.p2p.blocked_peers", "node3@127.0.0.1:27003,node4@127.0.0.1:27004",
+		"--evnode.p2p.allowed_peers", "node5@127.0.0.1:27005,node6@127.0.0.1:27006",
 
 		// Node flags
-		"--rollkit.node.aggregator=false",
-		"--rollkit.node.block_time", "2s",
-		"--rollkit.da.address", "http://127.0.0.1:27005",
-		"--rollkit.da.auth_token", "token",
-		"--rollkit.da.block_time", "20s",
-		"--rollkit.da.gas_multiplier", "1.5",
-		"--rollkit.da.gas_price", "1.5",
-		"--rollkit.da.mempool_ttl", "10",
-		"--rollkit.da.namespace", "namespace",
-		"--rollkit.da.start_height", "100",
-		"--rollkit.node.lazy_mode",
-		"--rollkit.node.lazy_block_interval", "2m",
-		"--rollkit.node.light",
-		"--rollkit.node.max_pending_headers_and_data", "100",
-		"--rollkit.node.trusted_hash", "abcdef1234567890",
-		"--rollkit.da.submit_options", "custom-options",
+		"--evnode.node.aggregator=false",
+		"--evnode.node.block_time", "2s",
+		"--evnode.da.address", "http://127.0.0.1:27005",
+		"--evnode.da.auth_token", "token",
+		"--evnode.da.block_time", "20s",
+		"--evnode.da.gas_multiplier", "1.5",
+		"--evnode.da.gas_price", "1.5",
+		"--evnode.da.mempool_ttl", "10",
+		"--evnode.da.namespace", "namespace",
+		"--evnode.da.start_height", "100",
+		"--evnode.node.lazy_mode",
+		"--evnode.node.lazy_block_interval", "2m",
+		"--evnode.node.light",
+		"--evnode.node.max_pending_headers_and_data", "100",
+		"--evnode.node.trusted_hash", "abcdef1234567890",
+		"--evnode.da.submit_options", "custom-options",
 		// Instrumentation flags
-		"--rollkit.instrumentation.prometheus", "true",
-		"--rollkit.instrumentation.prometheus_listen_addr", ":26665",
-		"--rollkit.instrumentation.max_open_connections", "1",
+		"--evnode.instrumentation.prometheus", "true",
+		"--evnode.instrumentation.prometheus_listen_addr", ":26665",
+		"--evnode.instrumentation.max_open_connections", "1",
 	}
 
 	args := append([]string{"start"}, flags...)
@@ -145,11 +145,11 @@ func TestParseFlags(t *testing.T) {
 
 func TestAggregatorFlagInvariants(t *testing.T) {
 	flagVariants := [][]string{{
-		"--rollkit.node.aggregator=false",
+		"--evnode.node.aggregator=false",
 	}, {
-		"--rollkit.node.aggregator=true",
+		"--evnode.node.aggregator=true",
 	}, {
-		"--rollkit.node.aggregator",
+		"--evnode.node.aggregator",
 	}}
 
 	validValues := []bool{false, true, true}
@@ -204,9 +204,9 @@ func TestDefaultAggregatorValue(t *testing.T) {
 			// Create a new command without specifying any flags
 			var args []string
 			if tc.expected {
-				args = []string{"start", "--rollkit.node.aggregator"}
+				args = []string{"start", "--evnode.node.aggregator"}
 			} else {
-				args = []string{"start", "--rollkit.node.aggregator=false"}
+				args = []string{"start", "--evnode.node.aggregator=false"}
 			}
 
 			if err := newRunNodeCmd.ParseFlags(args); err != nil {
@@ -270,7 +270,7 @@ func TestCentralizedAddresses(t *testing.T) {
 
 	args := []string{
 		"start",
-		"--rollkit.da.address=http://central-da:26657",
+		"--evnode.da.address=http://central-da:26657",
 	}
 
 	executor, sequencer, dac, keyProvider, p2pClient, ds, stopDAHeightTicker := createTestComponents(context.Background(), t)

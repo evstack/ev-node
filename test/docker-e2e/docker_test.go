@@ -221,17 +221,17 @@ func (s *DockerTestSuite) StartRollkitNode(ctx context.Context, bridgeNode tasto
 
 	daAddress := fmt.Sprintf("http://%s:26658", bridgeNodeHostName)
 	err = rollkitNode.Start(ctx,
-		"--rollkit.da.address", daAddress,
-		"--rollkit.da.gas_price", "0.025",
-		"--rollkit.da.auth_token", authToken,
-		"--rollkit.rpc.address", "0.0.0.0:7331", // bind to 0.0.0.0 so rpc is reachable from test host.
-		"--rollkit.da.namespace", generateValidNamespaceHex(),
+		"--evnode.da.address", daAddress,
+		"--evnode.da.gas_price", "0.025",
+		"--evnode.da.auth_token", authToken,
+		"--evnode.rpc.address", "0.0.0.0:7331", // bind to 0.0.0.0 so rpc is reachable from test host.
+		"--evnode.da.namespace", generateValidNamespaceHex(),
 		"--kv-endpoint", "0.0.0.0:8080",
 	)
 	s.Require().NoError(err)
 }
 
-// getRollkitImage returns the Docker image configuration for Rollkit
+// getRollkitImage returns the Docker image configuration for ev-node
 // Uses ROLLKIT_IMAGE_REPO and ROLLKIT_IMAGE_TAG environment variables if set
 // Defaults to locally built image using a unique tag to avoid registry conflicts
 func getRollkitImage() tastoradocker.DockerImage {
