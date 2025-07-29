@@ -520,7 +520,7 @@ func TestGetStateError(t *testing.T) {
 	sUnmarshal := New(mockBatchingDsUnmarshal)
 
 	// Put some data that will cause unmarshal error
-	err = mockBatchingDsUnmarshal.Put(t.Context(), ds.NewKey(getStateKey()), []byte("invalid state proto"))
+	err = mockBatchingDsUnmarshal.Put(t.Context(), ds.NewKey(getStateAtHeightKey(1)), []byte("invalid state proto"))
 	require.NoError(err)
 
 	_, err = sUnmarshal.GetState(t.Context())

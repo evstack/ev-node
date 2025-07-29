@@ -24,7 +24,5 @@ func (m *Manager) Rollback(ctx context.Context, height uint64) error {
 		return fmt.Errorf("failed to delete block data until height %d: %w", height, err)
 	}
 
-	// set rollback metadata
-
 	return nil
 }
