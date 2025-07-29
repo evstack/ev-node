@@ -304,7 +304,10 @@ func (s *DefaultStore) Rollback(ctx context.Context, height uint64) error {
 		currentHeight--
 	}
 
-	if err := s.SetHeight(ctx, height); err != nil {
+	// set height -- using set height checks the current height
+	// so we cannot use that
+	heightBytes := encodeHeight(height)
+	if err := s.db.Put(ctx, ds.NewKey(getHeightKey()), heightBytes); err != nil {
 		return fmt.Errorf("failed to set height: %w", err)
 	}
 

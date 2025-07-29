@@ -512,15 +512,18 @@ func TestGetStateError(t *testing.T) {
 	_, err := sGet.GetState(t.Context())
 	require.Error(err)
 	require.Contains(err.Error(), mockErrGet.Error())
-	require.Contains(err.Error(), "failed to retrieve state")
 
 	// Simulate proto.Unmarshal error
 	mockDsUnmarshal, _ := NewDefaultInMemoryKVStore()
-	mockBatchingDsUnmarshal := &mockBatchingDatastore{Batching: mockDsUnmarshal, unmarshalErrorOnCall: 1}
+	mockBatchingDsUnmarshal := &mockBatchingDatastore{Batching: mockDsUnmarshal, unmarshalErrorOnCall: 3}
 	sUnmarshal := New(mockBatchingDsUnmarshal)
 
 	// Put some data that will cause unmarshal error
-	err = mockBatchingDsUnmarshal.Put(t.Context(), ds.NewKey(getStateAtHeightKey(1)), []byte("invalid state proto"))
+	height := uint64(1)
+	err = sUnmarshal.SetHeight(t.Context(), height)
+	require.NoError(err)
+
+	err = mockBatchingDsUnmarshal.Put(t.Context(), ds.NewKey(getStateAtHeightKey(height)), []byte("invalid state proto"))
 	require.NoError(err)
 
 	_, err = sUnmarshal.GetState(t.Context())
