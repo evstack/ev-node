@@ -138,6 +138,7 @@ var RollbackCmd = &cobra.Command{
 			}
 		}
 
+		// rollback ev-node store
 		if err := blockManager.Rollback(ctx, targetHeight); err != nil {
 			return fmt.Errorf("rollback failed: %w", err)
 		}

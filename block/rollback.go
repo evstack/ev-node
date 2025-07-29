@@ -6,7 +6,6 @@ import (
 )
 
 // Rollback rolls back to given height on the ev-node side.
-// The execution environment should roll back its state to the given height on its own.
 func (m *Manager) Rollback(ctx context.Context, height uint64) error {
 	if height == 0 {
 		return fmt.Errorf("cannot rollback, already at genesis block")
@@ -21,6 +20,12 @@ func (m *Manager) Rollback(ctx context.Context, height uint64) error {
 		return fmt.Errorf("cannot rollback to height %d, current height is %d", height, currentHeight)
 	}
 
+	// rollback execution environment state
+	if err := m.exec.Rollback(ctx, height); err != nil {
+		return fmt.Errorf("failed to rollback execution environment to height %d: %w", height, err)
+	}
+
+	// rollback ev-node store
 	if err := m.store.Rollback(ctx, height); err != nil {
 		return fmt.Errorf("failed to delete block data until height %d: %w", height, err)
 	}

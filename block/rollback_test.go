@@ -64,9 +64,12 @@ func TestRollback_Success(t *testing.T) {
 
 	// Create real store with dummy data
 	store := setupStoreWithBlocks(t, chainID, currentHeight)
+	mockExecutor := mocks.NewMockExecutor(t)
+	mockExecutor.On("Rollback", ctx, rollbackToHeight).Return(nil)
 
 	m := &Manager{
 		store: store,
+		exec:  mockExecutor,
 	}
 
 	// Verify current height
@@ -184,8 +187,11 @@ func TestRollback_StoreRollbackError(t *testing.T) {
 	require := require.New(t)
 
 	mockStore := mocks.NewMockStore(t)
+	mockExecutor := mocks.NewMockExecutor(t)
+
 	m := &Manager{
 		store: mockStore,
+		exec:  mockExecutor,
 	}
 
 	ctx := context.Background()
@@ -195,6 +201,7 @@ func TestRollback_StoreRollbackError(t *testing.T) {
 
 	mockStore.On("Height", ctx).Return(currentHeight, nil).Once()
 	mockStore.On("Rollback", ctx, rollbackToHeight).Return(expectedErr).Once()
+	mockExecutor.On("Rollback", ctx, rollbackToHeight).Return(nil)
 
 	err := m.Rollback(ctx, rollbackToHeight)
 	require.Error(err)
@@ -215,9 +222,12 @@ func TestRollback_MultipleBlocks(t *testing.T) {
 
 	// Create real store with dummy data
 	store := setupStoreWithBlocks(t, chainID, currentHeight)
+	mockExecutor := mocks.NewMockExecutor(t)
+	mockExecutor.On("Rollback", ctx, rollbackToHeight).Return(nil)
 
 	m := &Manager{
 		store: store,
+		exec:  mockExecutor,
 	}
 
 	// Verify current height

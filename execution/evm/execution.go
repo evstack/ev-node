@@ -287,6 +287,11 @@ func (c *EngineClient) getBlockInfo(ctx context.Context, height uint64) (common.
 	return header.Hash(), header.Root, header.GasLimit, header.Time, nil
 }
 
+// Rollback rolls back the state to the specified height.
+func (c *EngineClient) Rollback(ctx context.Context, height uint64) error {
+	panic("unimplemented yet")
+}
+
 // decodeSecret decodes a hex-encoded JWT secret string into a byte slice.
 func decodeSecret(jwtSecret string) ([]byte, error) {
 	secret, err := hex.DecodeString(strings.TrimPrefix(jwtSecret, "0x"))

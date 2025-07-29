@@ -46,7 +46,7 @@ type Store interface {
 	// GetMetadata returns values stored for given key with SetMetadata.
 	GetMetadata(ctx context.Context, key string) ([]byte, error)
 
-	// Rollback deletes x height from the store.
+	// Rollback deletes x height from the ev-node store.
 	Rollback(ctx context.Context, height uint64) error
 
 	// Close safely closes underlying data storage, to ensure that data is actually saved.

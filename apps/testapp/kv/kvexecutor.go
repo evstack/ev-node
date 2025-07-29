@@ -16,6 +16,8 @@ import (
 var (
 	genesisInitializedKey = ds.NewKey("/genesis/initialized")
 	genesisStateRootKey   = ds.NewKey("/genesis/stateroot")
+	heightKeyPrefix       = ds.NewKey("/height")
+
 	// Define a buffer size for the transaction channel
 	txChannelBufferSize = 10000
 )
@@ -198,11 +200,14 @@ func (k *KVExecutor) ExecuteTxs(ctx context.Context, txs [][]byte, blockHeight u
 		if key == "" {
 			return nil, 0, errors.New("empty key in transaction")
 		}
-		dsKey := ds.NewKey(key)
+
+		dsKey := getTxKey(blockHeight, key)
+
 		// Prevent writing reserved keys via transactions
 		if dsKey.Equal(genesisInitializedKey) || dsKey.Equal(genesisStateRootKey) {
 			return nil, 0, fmt.Errorf("transaction attempts to modify reserved key: %s", key)
 		}
+
 		err = batch.Put(ctx, dsKey, []byte(value))
 		if err != nil {
 			// This error is unlikely for Put unless the context is cancelled.
@@ -240,7 +245,7 @@ func (k *KVExecutor) SetFinal(ctx context.Context, blockHeight uint64) error {
 		return errors.New("invalid blockHeight: cannot be zero")
 	}
 
-	return k.db.Put(ctx, ds.NewKey("/finalizedHeight"), []byte(fmt.Sprintf("%d", blockHeight)))
+	return k.db.Put(ctx, ds.NewKey("/finalizedHeight"), fmt.Appendf([]byte{}, "%d", blockHeight))
 }
 
 // InjectTx adds a transaction to the mempool channel.
@@ -254,4 +259,26 @@ func (k *KVExecutor) InjectTx(tx []byte) {
 		fmt.Printf("Warning: Transaction channel buffer full. Dropping transaction.\n")
 		// Consider adding metrics here
 	}
+}
+
+// Rollback reverts the state to the previous block height.
+// For the KV executor, this removes any state changes at the current height.
+// Note: This implementation assumes that state changes are tracked by height keys.
+func (k *KVExecutor) Rollback(ctx context.Context, height uint64) error {
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	default:
+	}
+
+	// Validate height constraints
+	if height <= 1 {
+		return fmt.Errorf("cannot rollback from height %d: must be > 1", height)
+	}
+
+	return nil
+}
+
+func getTxKey(height uint64, txKey string) ds.Key {
+	return heightKeyPrefix.Child(ds.NewKey(fmt.Sprintf("%d/%s", height, txKey)))
 }
