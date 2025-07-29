@@ -1,6 +1,6 @@
-# Rollkit Client Libraries
+# ev-node Client Libraries
 
-This directory contains client libraries for interacting with Rollkit nodes in various programming languages.
+This directory contains client libraries for interacting with ev-node nodes in various programming languages.
 
 ## Structure
 

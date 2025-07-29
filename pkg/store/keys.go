@@ -7,9 +7,9 @@ import (
 )
 
 const (
-	// RollkitHeightToDAHeightKey is the key prefix used for persisting the mapping from a Rollkit height
+	// RollkitHeightToDAHeightKey is the key prefix used for persisting the mapping from an ev-node height
 	// to the DA height where the block's header/data was included.
-	// Full keys are like: rhb/<rollkit_height>/h and rhb/<rollkit_height>/d
+	// Full keys are like: rhb/<ev_node_height>/h and rhb/<ev_node_height>/d
 	RollkitHeightToDAHeightKey = "rhb"
 
 	// DAIncludedHeightKey is the key used for persisting the da included height in store.

@@ -114,7 +114,7 @@ const (
 	FlagRPCAddress = "evnode.rpc.address"
 )
 
-// Config stores Rollkit configuration.
+// Config stores ev-node configuration.
 type Config struct {
 	// Base configuration
 	RootDir string `mapstructure:"-" yaml:"-" comment:"Root directory where rollkit files are located"`

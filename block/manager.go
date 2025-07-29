@@ -43,7 +43,7 @@ const (
 	// defaultMempoolTTL is the number of blocks until transaction is dropped from mempool
 	defaultMempoolTTL = 25
 
-	// maxSubmitAttempts defines how many times Rollkit will re-try to publish block to DA layer.
+	// maxSubmitAttempts defines how many times ev-node will re-try to publish block to DA layer.
 	// This is temporary solution. It will be removed in future versions.
 	maxSubmitAttempts = 30
 
@@ -144,7 +144,7 @@ type Manager struct {
 
 	exec coreexecutor.Executor
 
-	// daIncludedHeight is rollkit height at which all blocks have been included
+	// daIncludedHeight is ev-node height at which all blocks have been included
 	// in the DA
 	daIncludedHeight atomic.Uint64
 	da               coreda.DA
@@ -495,10 +495,10 @@ func (m *Manager) IsDAIncluded(ctx context.Context, height uint64) (bool, error)
 	return isIncluded, nil
 }
 
-// SetRollkitHeightToDAHeight stores the mapping from a Rollkit block height to the corresponding
+// SetRollkitHeightToDAHeight stores the mapping from an ev-node block height to the corresponding
 // DA (Data Availability) layer heights where the block's header and data were included.
 // This mapping is persisted in the store metadata and is used to track which DA heights
-// contain the block components for a given Rollkit height.
+// contain the block components for a given ev-node height.
 //
 // For blocks with empty transactions, both header and data use the same DA height since
 // empty transaction data is not actually published to the DA layer.
