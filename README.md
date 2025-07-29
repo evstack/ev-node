@@ -8,16 +8,16 @@ Ev-node is the basis of the Evolve Stack. For more in-depth information about Ev
 [![GoDoc](https://godoc.org/github.com/evstack/ev-node?status.svg)](https://godoc.org/github.com/evstack/ev-node)
 <!-- markdownlint-enable MD013 -->
 
-## Using ev-node
+## Using Rollkit
 
 ### Example Implementation: TestApp CLI
 
-The easiest way to understand how to use ev-node is by exploring our example implementation, TestApp.
+The easiest way to understand how to use Rollkit is by exploring our example implementation, TestApp.
 
 Requires Go version >= 1.22.
 
-TestApp is a CLI tool that demonstrates how to run different kinds of nodes using the ev-node framework.
-It serves as a reference implementation and helps you understand how to build your own ev-node-based blockchain.
+TestApp is a CLI tool that demonstrates how to run different kinds of nodes using the Rollkit framework.
+It serves as a reference implementation and helps you understand how to build your own Rollkit-based blockchain.
 
 #### Install
 
@@ -36,17 +36,17 @@ testapp version
 
 #### Quick Start
 
-You can spin up a local TestApp network (powered by ev-node) with the following command:
+You can spin up a local TestApp network (powered by Rollkit) with the following command:
 
 ```bash
 testapp start
 ```
 
-## Building with ev-node
+## Building with Rollkit
 
-ev-node is the first sovereign application framework that allows you to launch
+Rollkit is the first sovereign application framework that allows you to launch
 a sovereign, customizable blockchain as easily as a smart contract.
-TestApp serves as a reference implementation to help you get started with your own ev-node-based blockchain.
+TestApp serves as a reference implementation to help you get started with your own Rollkit-based blockchain.
 
 Check out our tutorials on our [website][docs].
 
