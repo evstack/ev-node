@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"path/filepath"
+	"strconv"
 
 	kvexecutor "github.com/evstack/ev-node/apps/testapp/kv"
 	"github.com/evstack/ev-node/block"
@@ -12,7 +13,7 @@ import (
 	genesispkg "github.com/evstack/ev-node/pkg/genesis"
 	"github.com/evstack/ev-node/pkg/p2p"
 	"github.com/evstack/ev-node/pkg/p2p/key"
-	"github.com/evstack/ev-node/pkg/signer/file"
+	"github.com/evstack/ev-node/pkg/signer"
 	"github.com/evstack/ev-node/pkg/store"
 	rollkitsync "github.com/evstack/ev-node/pkg/sync"
 	"github.com/evstack/ev-node/sequencers/single"
@@ -20,8 +21,9 @@ import (
 )
 
 var RollbackCmd = &cobra.Command{
-	Use:   "rollback",
+	Use:   "rollback <height>",
 	Short: "Rollback the testapp node",
+	Args:  cobra.RangeArgs(0, 1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		nodeConfig, err := rollcmd.ParseConfig(cmd)
 		if err != nil {
@@ -29,12 +31,6 @@ var RollbackCmd = &cobra.Command{
 		}
 
 		logger := rollcmd.SetupLogger(nodeConfig.Log)
-
-		// Get KV endpoint flag
-		kvEndpoint, _ := cmd.Flags().GetString(flagKVEndpoint)
-		if kvEndpoint == "" {
-			logger.Info("KV endpoint flag not set, using default from http_server")
-		}
 
 		// Create test implementations
 		executor, err := kvexecutor.NewKVExecutor(nodeConfig.RootDir, nodeConfig.DBPath)
@@ -84,20 +80,12 @@ var RollbackCmd = &cobra.Command{
 			return err
 		}
 
-		// Load genesis
 		genesisPath := filepath.Join(filepath.Dir(nodeConfig.ConfigPath()), "genesis.json")
 		gen, err := genesispkg.LoadGenesis(genesisPath)
 		if err != nil {
 			return fmt.Errorf("failed to load genesis: %w", err)
 		}
 
-		// Create signer - use empty passphrase for simplicity in rollback
-		signerInstance, err := file.LoadFileSystemSigner(nodeConfig.Signer.SignerPath, []byte(""))
-		if err != nil {
-			return fmt.Errorf("failed to create signer: %w", err)
-		}
-
-		// Create sync services
 		headerSyncService, err := rollkitsync.NewHeaderSyncService(datastore, nodeConfig, gen, p2pClient, logger)
 		if err != nil {
 			return fmt.Errorf("failed to create header sync service: %w", err)
@@ -108,16 +96,14 @@ var RollbackCmd = &cobra.Command{
 			return fmt.Errorf("failed to create data sync service: %w", err)
 		}
 
-		// Create block manager metrics
-		seqMetrics := block.NopMetrics()
+		// empty signer, as not needed for rollback
+		var signer signer.Signer
 
-		// Create store wrapper
 		storeWrapper := store.New(datastore)
 
-		// Create block manager
 		blockManager, err := block.NewManager(
 			ctx,
-			signerInstance,
+			signer,
 			nodeConfig,
 			gen,
 			storeWrapper,
@@ -129,7 +115,7 @@ var RollbackCmd = &cobra.Command{
 			dataSyncService.Store(),
 			headerSyncService,
 			dataSyncService,
-			seqMetrics,
+			block.NopMetrics(),
 			1.0, // gasPrice
 			1.0, // gasMultiplier
 			block.DefaultManagerOptions(),
@@ -138,13 +124,25 @@ var RollbackCmd = &cobra.Command{
 			return fmt.Errorf("failed to create block manager: %w", err)
 		}
 
-		// Perform rollback
-		logger.Info("Starting rollback operation")
-		if err := blockManager.RollbackOneBlock(ctx); err != nil {
+		cmd.Println("Starting rollback operation")
+		currentHeight, err := storeWrapper.Height(ctx)
+		if err != nil {
+			return fmt.Errorf("failed to get current height: %w", err)
+		}
+
+		var targetHeight uint64 = currentHeight - 1
+		if len(args) > 0 {
+			targetHeight, err = strconv.ParseUint(args[0], 10, 64)
+			if err != nil {
+				return fmt.Errorf("failed to parse target height: %w", err)
+			}
+		}
+
+		if err := blockManager.Rollback(ctx, targetHeight); err != nil {
 			return fmt.Errorf("rollback failed: %w", err)
 		}
 
-		logger.Info("Rollback completed successfully")
+		cmd.Println("Rollback completed successfully")
 		return nil
 	},
 }

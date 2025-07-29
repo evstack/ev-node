@@ -179,6 +179,11 @@ func (s *DefaultStore) GetSignature(ctx context.Context, height uint64) (*types.
 // UpdateState updates state saved in Store. Only one State is stored.
 // If there is no State in Store, state will be saved.
 func (s *DefaultStore) UpdateState(ctx context.Context, state types.State) error {
+	currentHeight, err := s.Height(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to get current height: %w", err)
+	}
+
 	pbState, err := state.ToProto()
 	if err != nil {
 		return fmt.Errorf("failed to convert type state to protobuf type: %w", err)
@@ -187,12 +192,17 @@ func (s *DefaultStore) UpdateState(ctx context.Context, state types.State) error
 	if err != nil {
 		return fmt.Errorf("failed to marshal state to protobuf: %w", err)
 	}
-	return s.db.Put(ctx, ds.NewKey(getStateKey()), data)
+	return s.db.Put(ctx, ds.NewKey(getStateAtHeightKey(currentHeight)), data)
 }
 
 // GetState returns last state saved with UpdateState.
 func (s *DefaultStore) GetState(ctx context.Context) (types.State, error) {
-	blob, err := s.db.Get(ctx, ds.NewKey(getStateKey()))
+	currentHeight, err := s.Height(ctx)
+	if err != nil {
+		return types.State{}, fmt.Errorf("failed to get current height: %w", err)
+	}
+
+	blob, err := s.db.Get(ctx, ds.NewKey(getStateAtHeightKey(currentHeight)))
 	if err != nil {
 		return types.State{}, fmt.Errorf("failed to retrieve state: %w", err)
 	}
@@ -205,6 +215,30 @@ func (s *DefaultStore) GetState(ctx context.Context) (types.State, error) {
 	var state types.State
 	err = state.FromProto(&pbState)
 	return state, err
+}
+
+// GetStateAtHeight returns the state at the given height.
+// If no state is stored at that height, it returns an error.
+func (s *DefaultStore) GetStateAtHeight(ctx context.Context, height uint64) (types.State, error) {
+	blob, err := s.db.Get(ctx, ds.NewKey(getStateAtHeightKey(height)))
+	if err != nil {
+		if errors.Is(err, ds.ErrNotFound) {
+			return types.State{}, fmt.Errorf("no state found at height %d", height)
+		}
+		return types.State{}, fmt.Errorf("failed to retrieve state at height %d: %w", height, err)
+	}
+
+	var pbState pb.State
+	if err := proto.Unmarshal(blob, &pbState); err != nil {
+		return types.State{}, fmt.Errorf("failed to unmarshal state from protobuf at height %d: %w", height, err)
+	}
+
+	var state types.State
+	if err := state.FromProto(&pbState); err != nil {
+		return types.State{}, fmt.Errorf("failed to convert protobuf to state at height %d: %w", height, err)
+	}
+
+	return state, nil
 }
 
 // SetMetadata saves arbitrary value in the store.
@@ -229,7 +263,6 @@ func (s *DefaultStore) GetMetadata(ctx context.Context, key string) ([]byte, err
 
 // Rollback rolls back block data until the given height from the store.
 // NOTE: this function does not rollback metadata. Those should be handled separately.
-// NOTE: this function does not rollback state. Those should be handled separately.
 func (s *DefaultStore) Rollback(ctx context.Context, height uint64) error {
 	batch, err := s.db.Batch(ctx)
 	if err != nil {
@@ -273,6 +306,15 @@ func (s *DefaultStore) Rollback(ctx context.Context, height uint64) error {
 
 	if err := s.SetHeight(ctx, height); err != nil {
 		return fmt.Errorf("failed to set height: %w", err)
+	}
+
+	targetState, err := s.GetStateAtHeight(ctx, height)
+	if err != nil {
+		return fmt.Errorf("failed to get state at height %d: %w", height, err)
+	}
+
+	if err := s.UpdateState(ctx, targetState); err != nil {
+		return fmt.Errorf("failed to update state: %w", err)
 	}
 
 	if err := batch.Commit(ctx); err != nil {
