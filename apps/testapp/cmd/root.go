@@ -25,5 +25,5 @@ func init() {
 // RootCmd is the root command for Rollkit
 var RootCmd = &cobra.Command{
 	Use:   AppName,
-	Short: "Testapp is a test application for Rollkit, it consists of a simple key-value store and a single sequencer.",
+	Short: "Testapp is a test application for ev-node, it consists of a simple key-value store and a single sequencer.",
 }

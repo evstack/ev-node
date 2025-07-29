@@ -84,7 +84,7 @@ func TestNetInfoCmd_Success(t *testing.T) {
 	httpServer := httptest.NewServer(mux)
 	defer httpServer.Close()
 
-	tempDir, err := os.MkdirTemp("", "rollkit-test-home-*")
+	tempDir, err := os.MkdirTemp("", "evnode-test-home-*")
 	require.NoError(err)
 	defer os.RemoveAll(tempDir)
 
@@ -161,7 +161,7 @@ func TestNetInfoCmd_NoPeers(t *testing.T) {
 	httpServer := httptest.NewServer(mux)
 	defer httpServer.Close()
 
-	tempDir, err := os.MkdirTemp("", "rollkit-test-home-nopeer-*")
+	tempDir, err := os.MkdirTemp("", "evnode-test-home-nopeer-*")
 	require.NoError(err)
 	defer os.RemoveAll(tempDir)
 

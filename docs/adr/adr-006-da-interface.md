@@ -10,7 +10,7 @@
 
 ## Context
 
-Rollkit requires data availability layer. Different implementations are expected.
+ev-node requires data availability layer. Different implementations are expected.
 
 ## Alternative Approaches
 

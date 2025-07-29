@@ -39,7 +39,7 @@ func DefaultRootDirWithName(appName string) string {
 var DefaultConfig = Config{
 	RootDir: DefaultRootDir,
 	DBPath:  "data",
-	ChainID: "rollkit-test",
+	ChainID: "evnode-test",
 	P2P: P2PConfig{
 		ListenAddress: "/ip4/0.0.0.0/tcp/7676",
 		Peers:         "",

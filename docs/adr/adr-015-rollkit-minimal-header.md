@@ -1,18 +1,18 @@
-# Rollkit Minimal Header
+# ev-node Minimal Header
 
 ## Abstract
 
-This document specifies a minimal header format for Rollkit, designed to eliminate the dependency on CometBFT's header format. This new format can then be used to produce an execution layer tailored header if needed. For example, the new ABCI Execution layer can have an ABCI-specific header for IBC compatibility. This allows Rollkit to define its own header structure while maintaining backward compatibility where necessary.
+This document specifies a minimal header format for ev-node, designed to eliminate the dependency on CometBFT's header format. This new format can then be used to produce an execution layer tailored header if needed. For example, the new ABCI Execution layer can have an ABCI-specific header for IBC compatibility. This allows ev-node to define its own header structure while maintaining backward compatibility where necessary.
 
 ## Protocol/Component Description
 
-The Rollkit minimal header is a streamlined version of the traditional header, focusing on essential information required for block processing and state management for nodes. This header format is designed to be lightweight and efficient, facilitating faster processing and reduced overhead.
+The ev-node minimal header is a streamlined version of the traditional header, focusing on essential information required for block processing and state management for nodes. This header format is designed to be lightweight and efficient, facilitating faster processing and reduced overhead.
 
-### Rollkit Minimal Header Structure
+### ev-node Minimal Header Structure
 
 ```ascii
 ┌─────────────────────────────────────────────┐
-│             Rollkit Minimal Header          │
+│             ev-node Minimal Header          │
 ├─────────────────────┬───────────────────────┤
 │ ParentHash          │ Hash of previous block│
 ├─────────────────────┼───────────────────────┤
@@ -58,11 +58,11 @@ type Header struct {
 
 In case the chain has a specific designated proposer or a proposer set, that information can be put in the `extraData` field. So in single sequencer mode, the `sequencerAddress` can live in `extraData`. For base sequencer mode, this information is not relevant.
 
-This minimal Rollkit header can be transformed to be tailored to a specific execution layer as well by inserting additional information typically needed.
+This minimal ev-node header can be transformed to be tailored to a specific execution layer as well by inserting additional information typically needed.
 
 ### EVM execution client
 
-- `transactionsRoot`: Merkle root of all transactions in the block. Can be constructed from unpacking the `DataCommitment` in Rollkit Header.
+- `transactionsRoot`: Merkle root of all transactions in the block. Can be constructed from unpacking the `DataCommitment` in ev-node Header.
 - `receiptsRoot`: Merkle root of all transaction receipts, which store the results of transaction execution. This can be inserted by the EVM execution client.
 - `Gas Limit`: Max gas allowed in the block.
 - `Gas Used`: Total gas consumed in this block.
@@ -71,25 +71,25 @@ This minimal Rollkit header can be transformed to be tailored to a specific exec
 
 ```ascii
 ┌─────────────────────────────────────────────┐
-│             Rollkit Minimal Header          │
+│             ev-node Minimal Header          │
 └───────────────────┬─────────────────────────┘
                     │
                     ▼ Transform
 ┌─────────────────────────────────────────────┐
 │               EVM Header                    │
 ├─────────────────────┬───────────────────────┤
-│ ParentHash          │ From Rollkit Header   │
+│ ParentHash          │ From ev-node Header   │
 ├─────────────────────┼───────────────────────┤
-│ Height/Number       │ From Rollkit Header   │
+│ Height/Number       │ From ev-node Header   │
 ├─────────────────────┼───────────────────────┤
-│ Timestamp           │ From Rollkit Header   │
+│ Timestamp           │ From ev-node Header   │
 ├─────────────────────┼───────────────────────┤
-│ ChainID             │ From Rollkit Header   │
+│ ChainID             │ From ev-node Header   │
 ├─────────────────────┼───────────────────────┤
 │ TransactionsRoot    │ Derived from          │
 │                     │ DataCommitment        │
 ├─────────────────────┼───────────────────────┤
-│ StateRoot           │ From Rollkit Header   │
+│ StateRoot           │ From ev-node Header   │
 ├─────────────────────┼───────────────────────┤
 │ ReceiptsRoot        │ Added by EVM client   │
 ├─────────────────────┼───────────────────────┤
@@ -97,7 +97,7 @@ This minimal Rollkit header can be transformed to be tailored to a specific exec
 ├─────────────────────┼───────────────────────┤
 │ GasUsed             │ Added by EVM client   │
 ├─────────────────────┼───────────────────────┤
-│ ExtraData           │ From Rollkit Header   │
+│ ExtraData           │ From ev-node Header   │
 └─────────────────────┴───────────────────────┘
 ```
 
@@ -111,27 +111,27 @@ This header can be transformed into an ABCI-specific header for IBC compatibilit
 - `ValidatorHash`: Current validator set's hash, which IBC clients use to verify that the block was validated by the correct set of validators. This can be the IBC attester set of the chain for backward compatibility with the IBC Tendermint client, if needed.
 - `NextValidatorsHash`: The hash of the next validator set, allowing IBC clients to anticipate and verify upcoming validators.
 - `ConsensusHash`: Denotes the hash of the consensus parameters, ensuring that IBC clients are aligned with the consensus rules of the blockchain.
-- `AppHash`: Same as the `StateRoot` in the Rollkit Header.
+- `AppHash`: Same as the `StateRoot` in the ev-node Header.
 - `EvidenceHash`: A hash of evidence of any misbehavior by validators, which IBC clients use to assess the trustworthiness of the validator set.
 - `LastResultsHash`: Root hash of all results from the transactions from the previous block.
-- `ProposerAddress`: The address of the block proposer, allowing IBC clients to track and verify the entities proposing new blocks. Can be constructed from the `extraData` field in the Rollkit Header.
+- `ProposerAddress`: The address of the block proposer, allowing IBC clients to track and verify the entities proposing new blocks. Can be constructed from the `extraData` field in the ev-node Header.
 
 #### Transformation to ABCI Header
 
 ```ascii
 ┌─────────────────────────────────────────────┐
-│             Rollkit Minimal Header          │
+│             ev-node Minimal Header          │
 └───────────────────┬─────────────────────────┘
                     │
                     ▼ Transform
 ┌─────────────────────────────────────────────┐
 │               ABCI Header                   │
 ├─────────────────────┬───────────────────────┤
-│ Height              │ From Rollkit Header   │
+│ Height              │ From ev-node Header   │
 ├─────────────────────┼───────────────────────┤
-│ Time                │ From Rollkit Header   │
+│ Time                │ From ev-node Header   │
 ├─────────────────────┼───────────────────────┤
-│ ChainID             │ From Rollkit Header   │
+│ ChainID             │ From ev-node Header   │
 ├─────────────────────┼───────────────────────┤
 │ AppHash             │ From StateRoot        │
 ├─────────────────────┼───────────────────────┤
@@ -157,7 +157,7 @@ This header can be transformed into an ABCI-specific header for IBC compatibilit
 
 ## Assumptions and Considerations
 
-- The Rollkit minimal header is designed to be flexible and adaptable, allowing for integration with various execution layers such as EVM and ABCI, without being constrained by CometBFT's header format.
+- The ev-node minimal header is designed to be flexible and adaptable, allowing for integration with various execution layers such as EVM and ABCI, without being constrained by CometBFT's header format.
 - The `extraData` field provides a mechanism for including additional metadata, such as sequencer information, which can be crucial for certain chain configurations.
 - The transformation of the Rollkit header into execution layer-specific headers should be done carefully to ensure compatibility and correctness, especially for IBC and any other cross-chain communication protocols.
 
@@ -165,7 +165,7 @@ This header can be transformed into an ABCI-specific header for IBC compatibilit
 
 ```ascii
 ┌─────────────────────────────────────────────┐
-│             Rollkit Minimal Header          │
+│             ev-node Minimal Header          │
 │                                             │
 │  A lightweight, flexible header format      │
 │  with essential fields for block processing │

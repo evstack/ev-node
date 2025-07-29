@@ -29,7 +29,7 @@ Where such tradeoffs are made, we explicitly comment on them.
 
 ### Transactions
 
-In Rollkit, like in Tendermint, Transactions are just an opaque slice of bytes:
+In ev-node, like in Tendermint, Transactions are just an opaque slice of bytes:
 
 ```go
 type Tx []byte
@@ -131,7 +131,7 @@ This could be seen as a state transition and the ConsensusHash in the header wou
 That said, none of the existing default Cosmos-SDK modules actually make use of this functionality though.
 Hence, we can treat the ConsensusParams as constants (for the same app version).
 We clearly need to communicate this to optimistic application chain developers.
-Ideally, we should ensure this programmatically to guarantee that this assumption always holds inside Rollkit.
+Ideally, we should ensure this programmatically to guarantee that this assumption always holds inside ev-node.
 
 The ConsensusParams have the exact same structure as in Tendermint. For the sake of self-containedness we still list them here:
 

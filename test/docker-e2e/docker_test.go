@@ -110,7 +110,7 @@ func (s *DockerTestSuite) CreateDockerProvider(opts ...ConfigOption) tastoratype
 			},
 		},
 		RollkitChainConfig: &tastoradocker.RollkitChainConfig{
-			ChainID:              "rollkit-test",
+			ChainID:              "evnode-test",
 			Bin:                  "testapp",
 			AggregatorPassphrase: "12345678",
 			NumNodes:             1,
