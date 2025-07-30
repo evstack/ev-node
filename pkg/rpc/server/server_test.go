@@ -52,8 +52,8 @@ func TestGetBlock(t *testing.T) {
 	t.Run("by height with DA heights", func(t *testing.T) {
 		// Setup mock expectations
 		mockStore.On("GetBlockData", mock.Anything, height).Return(header, data, nil).Once()
-		mockStore.On("GetMetadata", mock.Anything, fmt.Sprintf("%s/%d/h", store.RollkitHeightToDAHeightKey, height)).Return(headerDAHeightBytes, nil).Once()
-		mockStore.On("GetMetadata", mock.Anything, fmt.Sprintf("%s/%d/d", store.RollkitHeightToDAHeightKey, height)).Return(dataDAHeightBytes, nil).Once()
+		mockStore.On("GetMetadata", mock.Anything, fmt.Sprintf("%s/%d/h", store.EvolveNodeHeightToDAHeightKey, height)).Return(headerDAHeightBytes, nil).Once()
+		mockStore.On("GetMetadata", mock.Anything, fmt.Sprintf("%s/%d/d", store.EvolveNodeHeightToDAHeightKey, height)).Return(dataDAHeightBytes, nil).Once()
 
 		req := connect.NewRequest(&pb.GetBlockRequest{
 			Identifier: &pb.GetBlockRequest_Height{
@@ -73,8 +73,8 @@ func TestGetBlock(t *testing.T) {
 	// Test GetBlock with height - metadata not found
 	t.Run("by height DA heights not found", func(t *testing.T) {
 		mockStore.On("GetBlockData", mock.Anything, height).Return(header, data, nil).Once()
-		mockStore.On("GetMetadata", mock.Anything, fmt.Sprintf("%s/%d/h", store.RollkitHeightToDAHeightKey, height)).Return(nil, ds.ErrNotFound).Once()
-		mockStore.On("GetMetadata", mock.Anything, fmt.Sprintf("%s/%d/d", store.RollkitHeightToDAHeightKey, height)).Return(nil, ds.ErrNotFound).Once()
+		mockStore.On("GetMetadata", mock.Anything, fmt.Sprintf("%s/%d/h", store.EvolveNodeHeightToDAHeightKey, height)).Return(nil, ds.ErrNotFound).Once()
+		mockStore.On("GetMetadata", mock.Anything, fmt.Sprintf("%s/%d/d", store.EvolveNodeHeightToDAHeightKey, height)).Return(nil, ds.ErrNotFound).Once()
 
 		req := connect.NewRequest(&pb.GetBlockRequest{
 			Identifier: &pb.GetBlockRequest_Height{
@@ -95,8 +95,8 @@ func TestGetBlock(t *testing.T) {
 		// Important: The header returned by GetBlockByHash must also have its height set for DA height lookup
 		headerForHash := &types.SignedHeader{Header: types.Header{BaseHeader: types.BaseHeader{Height: height}}}
 		mockStore.On("GetBlockByHash", mock.Anything, hashBytes).Return(headerForHash, data, nil).Once()
-		mockStore.On("GetMetadata", mock.Anything, fmt.Sprintf("%s/%d/h", store.RollkitHeightToDAHeightKey, height)).Return(headerDAHeightBytes, nil).Once()
-		mockStore.On("GetMetadata", mock.Anything, fmt.Sprintf("%s/%d/d", store.RollkitHeightToDAHeightKey, height)).Return(dataDAHeightBytes, nil).Once()
+		mockStore.On("GetMetadata", mock.Anything, fmt.Sprintf("%s/%d/h", store.EvolveNodeHeightToDAHeightKey, height)).Return(headerDAHeightBytes, nil).Once()
+		mockStore.On("GetMetadata", mock.Anything, fmt.Sprintf("%s/%d/d", store.EvolveNodeHeightToDAHeightKey, height)).Return(dataDAHeightBytes, nil).Once()
 
 		req := connect.NewRequest(&pb.GetBlockRequest{
 			Identifier: &pb.GetBlockRequest_Hash{
@@ -157,8 +157,8 @@ func TestGetBlock_Latest(t *testing.T) {
 	// Expectation for GetBlockData with the latest height
 	mockStore.On("GetBlockData", context.Background(), latestHeight).Return(header, data, nil).Once()
 	// Expectation for DA height metadata
-	mockStore.On("GetMetadata", mock.Anything, fmt.Sprintf("%s/%d/h", store.RollkitHeightToDAHeightKey, latestHeight)).Return(headerDAHeightBytes, nil).Once()
-	mockStore.On("GetMetadata", mock.Anything, fmt.Sprintf("%s/%d/d", store.RollkitHeightToDAHeightKey, latestHeight)).Return(dataDAHeightBytes, nil).Once()
+	mockStore.On("GetMetadata", mock.Anything, fmt.Sprintf("%s/%d/h", store.EvolveNodeHeightToDAHeightKey, latestHeight)).Return(headerDAHeightBytes, nil).Once()
+	mockStore.On("GetMetadata", mock.Anything, fmt.Sprintf("%s/%d/d", store.EvolveNodeHeightToDAHeightKey, latestHeight)).Return(dataDAHeightBytes, nil).Once()
 
 	req := connect.NewRequest(&pb.GetBlockRequest{
 		Identifier: &pb.GetBlockRequest_Height{

@@ -185,8 +185,8 @@ func setupBlockManager(t *testing.T, ctx context.Context, workDir string, mainKV
 	err = p2pClient.Start(ctx)
 	require.NoError(t, err)
 
-	const RollkitPrefix = "0"
-	ktds.Wrap(mainKV, ktds.PrefixTransform{Prefix: ds.NewKey(RollkitPrefix)})
+	const evNodePrefix = "0"
+	ktds.Wrap(mainKV, ktds.PrefixTransform{Prefix: ds.NewKey(evNodePrefix)})
 	// Get subsystem loggers. The With("module", ...) pattern from cosmossdk.io/log
 	// is replaced by getting a named logger from ipfs/go-log.
 	headerSyncLogger := logging.Logger("HeaderSyncService")

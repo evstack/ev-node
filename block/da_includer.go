@@ -30,7 +30,7 @@ func (m *Manager) DAIncluderLoop(ctx context.Context, errCh chan<- error) {
 			}
 			if daIncluded {
 				m.logger.Debug("both header and data are DA-included, advancing height: ", nextHeight)
-				if err := m.SetRollkitHeightToDAHeight(ctx, nextHeight); err != nil {
+				if err := m.SetEvolveNodeHeightToDAHeight(ctx, nextHeight); err != nil {
 					errCh <- fmt.Errorf("failed to set ev-node height to DA height: %w", err)
 					return
 				}

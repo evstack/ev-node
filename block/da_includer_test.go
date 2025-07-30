@@ -71,13 +71,13 @@ func TestDAIncluderLoop_AdvancesHeightWhenBothDAIncluded(t *testing.T) {
 
 	store.On("GetBlockData", mock.Anything, uint64(5)).Return(header, data, nil).Times(2)
 	store.On("GetBlockData", mock.Anything, uint64(6)).Return(nil, nil, assert.AnError).Once()
-	// Mock expectations for SetRollkitHeightToDAHeight method
+	// Mock expectations for SetEvolveNodeHeightToDAHeight method
 	headerHeightBytes := make([]byte, 8)
 	binary.LittleEndian.PutUint64(headerHeightBytes, uint64(1))
-	store.On("SetMetadata", mock.Anything, fmt.Sprintf("%s/%d/h", storepkg.RollkitHeightToDAHeightKey, uint64(5)), headerHeightBytes).Return(nil).Once()
+	store.On("SetMetadata", mock.Anything, fmt.Sprintf("%s/%d/h", storepkg.EvolveNodeHeightToDAHeightKey, uint64(5)), headerHeightBytes).Return(nil).Once()
 	dataHeightBytes := make([]byte, 8)
 	binary.LittleEndian.PutUint64(dataHeightBytes, uint64(1))
-	store.On("SetMetadata", mock.Anything, fmt.Sprintf("%s/%d/d", storepkg.RollkitHeightToDAHeightKey, uint64(5)), dataHeightBytes).Return(nil).Once()
+	store.On("SetMetadata", mock.Anything, fmt.Sprintf("%s/%d/d", storepkg.EvolveNodeHeightToDAHeightKey, uint64(5)), dataHeightBytes).Return(nil).Once()
 	// Mock expectations for incrementDAIncludedHeight method
 	heightBytes := make([]byte, 8)
 	binary.LittleEndian.PutUint64(heightBytes, expectedDAIncludedHeight)
@@ -286,19 +286,19 @@ func TestDAIncluderLoop_MultipleConsecutiveHeightsDAIncluded(t *testing.T) {
 		dataHash := dataBlocks[i].DACommitment().String()
 		m.headerCache.SetDAIncluded(headerHash, uint64(i+1))
 		m.dataCache.SetDAIncluded(dataHash, uint64(i+1))
-		store.On("GetBlockData", mock.Anything, height).Return(headers[i], dataBlocks[i], nil).Times(2) // Called by IsDAIncluded and SetRollkitHeightToDAHeight
+		store.On("GetBlockData", mock.Anything, height).Return(headers[i], dataBlocks[i], nil).Times(2) // Called by IsDAIncluded and SetEvolveNodeHeightToDAHeight
 	}
 	// Next height returns error
 	store.On("GetBlockData", mock.Anything, startDAIncludedHeight+uint64(numConsecutive+1)).Return(nil, nil, assert.AnError).Once()
-	// Mock expectations for SetRollkitHeightToDAHeight method calls
+	// Mock expectations for SetEvolveNodeHeightToDAHeight method calls
 	for i := 0; i < numConsecutive; i++ {
 		height := startDAIncludedHeight + uint64(i+1)
 		headerHeightBytes := make([]byte, 8)
 		binary.LittleEndian.PutUint64(headerHeightBytes, uint64(i+1))
-		store.On("SetMetadata", mock.Anything, fmt.Sprintf("%s/%d/h", storepkg.RollkitHeightToDAHeightKey, height), headerHeightBytes).Return(nil).Once()
+		store.On("SetMetadata", mock.Anything, fmt.Sprintf("%s/%d/h", storepkg.EvolveNodeHeightToDAHeightKey, height), headerHeightBytes).Return(nil).Once()
 		dataHeightBytes := make([]byte, 8)
 		binary.LittleEndian.PutUint64(dataHeightBytes, uint64(i+1))
-		store.On("SetMetadata", mock.Anything, fmt.Sprintf("%s/%d/d", storepkg.RollkitHeightToDAHeightKey, height), dataHeightBytes).Return(nil).Once()
+		store.On("SetMetadata", mock.Anything, fmt.Sprintf("%s/%d/d", storepkg.EvolveNodeHeightToDAHeightKey, height), dataHeightBytes).Return(nil).Once()
 	}
 	store.On("SetMetadata", mock.Anything, storepkg.DAIncludedHeightKey, mock.Anything).Return(nil).Times(numConsecutive)
 	exec.On("SetFinal", mock.Anything, mock.Anything).Return(nil).Times(numConsecutive)
@@ -337,21 +337,21 @@ func TestDAIncluderLoop_AdvancesHeightWhenDataHashIsEmptyAndHeaderDAIncluded(t *
 	m.headerCache.SetDAIncluded(headerHash, uint64(1))
 	// Do NOT set data as DA-included
 
-	store.On("GetBlockData", mock.Anything, uint64(5)).Return(header, data, nil).Times(2) // Called by IsDAIncluded and SetRollkitHeightToDAHeight
+	store.On("GetBlockData", mock.Anything, uint64(5)).Return(header, data, nil).Times(2) // Called by IsDAIncluded and SetEvolveNodeHeightToDAHeight
 	store.On("GetBlockData", mock.Anything, uint64(6)).Return(nil, nil, assert.AnError).Once()
-	// Mock expectations for SetRollkitHeightToDAHeight method
+	// Mock expectations for SetEvolveNodeHeightToDAHeight method
 	headerHeightBytes := make([]byte, 8)
 	binary.LittleEndian.PutUint64(headerHeightBytes, uint64(1))
-	store.On("SetMetadata", mock.Anything, fmt.Sprintf("%s/%d/h", storepkg.RollkitHeightToDAHeightKey, uint64(5)), headerHeightBytes).Return(nil).Once()
+	store.On("SetMetadata", mock.Anything, fmt.Sprintf("%s/%d/h", storepkg.EvolveNodeHeightToDAHeightKey, uint64(5)), headerHeightBytes).Return(nil).Once()
 	// Note: For empty data, data SetMetadata call should still be made but data won't be marked as DA-included in cache,
-	// so SetRollkitHeightToDAHeight will fail when trying to get the DA height for data
+	// so SetEvolveNodeHeightToDAHeight will fail when trying to get the DA height for data
 	// Actually, let's check if this case is handled differently for empty txs
 	// Let me check what happens with empty txs by adding the data cache entry as well
 	dataHash := data.DACommitment().String()
 	m.dataCache.SetDAIncluded(dataHash, uint64(1))
 	dataHeightBytes := make([]byte, 8)
 	binary.LittleEndian.PutUint64(dataHeightBytes, uint64(1))
-	store.On("SetMetadata", mock.Anything, fmt.Sprintf("%s/%d/d", storepkg.RollkitHeightToDAHeightKey, uint64(5)), dataHeightBytes).Return(nil).Once()
+	store.On("SetMetadata", mock.Anything, fmt.Sprintf("%s/%d/d", storepkg.EvolveNodeHeightToDAHeightKey, uint64(5)), dataHeightBytes).Return(nil).Once()
 	// Mock expectations for incrementDAIncludedHeight method
 	heightBytes := make([]byte, 8)
 	binary.LittleEndian.PutUint64(heightBytes, expectedDAIncludedHeight)
