@@ -55,8 +55,8 @@ const (
 	FullNodeEthPort     = "8555"
 	FullNodeEnginePort  = "8561"
 	DAPort              = "7980"
-	RollkitRPCPort      = "7331"
-	RollkitP2PPort      = "7676"
+	EvolveRPCPort       = "7331"
+	EvolveP2PPort       = "7676"
 	FullNodeP2PPort     = "7677"
 	FullNodeRPCPort     = "46657"
 
@@ -66,7 +66,7 @@ const (
 	FullNodeEthURL     = "http://localhost:" + FullNodeEthPort
 	FullNodeEngineURL  = "http://localhost:" + FullNodeEnginePort
 	DAAddress          = "http://localhost:" + DAPort
-	RollkitRPCAddress  = "http://127.0.0.1:" + RollkitRPCPort
+	EvolveRPCAddress   = "http://127.0.0.1:" + EvolveRPCPort
 
 	// Test configuration
 	DefaultBlockTime   = "150ms"
@@ -266,7 +266,7 @@ func setupSequencerNode(t *testing.T, sut *SystemUnderTest, sequencerHome, jwtSe
 		"--evnode.da.address", DAAddress,
 		"--evnode.da.block_time", DefaultDABlockTime,
 	)
-	sut.AwaitNodeUp(t, RollkitRPCAddress, NodeStartupTimeout)
+	sut.AwaitNodeUp(t, EvolveRPCAddress, NodeStartupTimeout)
 }
 
 // setupSequencerNodeLazy initializes and starts the sequencer node in lazy mode.
@@ -298,7 +298,7 @@ func setupSequencerNodeLazy(t *testing.T, sut *SystemUnderTest, sequencerHome, j
 		"--evnode.da.address", DAAddress,
 		"--evnode.da.block_time", DefaultDABlockTime,
 	)
-	sut.AwaitNodeUp(t, RollkitRPCAddress, NodeStartupTimeout)
+	sut.AwaitNodeUp(t, EvolveRPCAddress, NodeStartupTimeout)
 }
 
 // setupFullNode initializes and starts the full node with P2P connection to sequencer.
@@ -545,7 +545,7 @@ func restartDAAndSequencer(t *testing.T, sut *SystemUnderTest, sequencerHome, jw
 
 	time.Sleep(SlowPollingInterval)
 
-	sut.AwaitNodeUp(t, RollkitRPCAddress, NodeStartupTimeout)
+	sut.AwaitNodeUp(t, EvolveRPCAddress, NodeStartupTimeout)
 }
 
 // restartDAAndSequencerLazy restarts both the local DA and sequencer node in lazy mode.
@@ -587,7 +587,7 @@ func restartDAAndSequencerLazy(t *testing.T, sut *SystemUnderTest, sequencerHome
 
 	time.Sleep(SlowPollingInterval)
 
-	sut.AwaitNodeUp(t, RollkitRPCAddress, NodeStartupTimeout)
+	sut.AwaitNodeUp(t, EvolveRPCAddress, NodeStartupTimeout)
 }
 
 // restartSequencerNode starts an existing sequencer node without initialization.
@@ -616,7 +616,7 @@ func restartSequencerNode(t *testing.T, sut *SystemUnderTest, sequencerHome, jwt
 
 	time.Sleep(SlowPollingInterval)
 
-	sut.AwaitNodeUp(t, RollkitRPCAddress, NodeStartupTimeout)
+	sut.AwaitNodeUp(t, EvolveRPCAddress, NodeStartupTimeout)
 }
 
 // verifyNoBlockProduction verifies that no new blocks are being produced over a specified duration.

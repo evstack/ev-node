@@ -2,7 +2,7 @@
 
 ## Abstract
 
-A Full Node is a top-level service that encapsulates different components of Rollkit and initializes/manages them.
+A Full Node is a top-level service that encapsulates different components of Evolve Node and initializes/manages them.
 
 ## Details
 

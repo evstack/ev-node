@@ -1,10 +1,10 @@
-# Rollkit Sync Service
+# Evolve Node Sync Service
 
-This document explains how the Rollkit Sync Service works, its dependencies, and its architecture.
+This document explains how the Evolve Node Sync Service works, its dependencies, and its architecture.
 
 ## Overview
 
-Rollkit's Sync Service is responsible for synchronizing block headers and data across nodes in the Rollkit network. It's a critical component that allows nodes to maintain a consistent view of the blockchain state.
+Evolve Node's Sync Service is responsible for synchronizing block headers and data across nodes in the Evolve network. It's a critical component that allows nodes to maintain a consistent view of the blockchain state.
 
 The sync mechanism consists of two main components:
 

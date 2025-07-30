@@ -27,7 +27,7 @@ import (
 	"github.com/evstack/ev-node/pkg/signer"
 	"github.com/evstack/ev-node/pkg/signer/noop"
 	"github.com/evstack/ev-node/pkg/store"
-	rollkitSync "github.com/evstack/ev-node/pkg/sync"
+	evnodeSync "github.com/evstack/ev-node/pkg/sync"
 	"github.com/evstack/ev-node/types"
 )
 
@@ -160,7 +160,7 @@ func (b broadcasterFn[T]) WriteToStoreAndBroadcast(ctx context.Context, payload 
 	return b(ctx, payload)
 }
 
-func setupBlockManager(t *testing.T, ctx context.Context, workDir string, mainKV ds.Batching, blockTime time.Duration, signer signer.Signer) (*Manager, *rollkitSync.HeaderSyncService, *rollkitSync.DataSyncService) {
+func setupBlockManager(t *testing.T, ctx context.Context, workDir string, mainKV ds.Batching, blockTime time.Duration, signer signer.Signer) (*Manager, *evnodeSync.HeaderSyncService, *evnodeSync.DataSyncService) {
 	t.Helper()
 	nodeConfig := config.DefaultConfig
 	nodeConfig.Node.BlockTime = config.DurationWrapper{Duration: blockTime}
@@ -193,10 +193,10 @@ func setupBlockManager(t *testing.T, ctx context.Context, workDir string, mainKV
 	dataSyncLogger := logging.Logger("DataSyncService")
 	blockManagerLogger := logging.Logger("BlockManager")
 
-	headerSyncService, err := rollkitSync.NewHeaderSyncService(mainKV, nodeConfig, genesisDoc, p2pClient, headerSyncLogger) // Pass headerSyncLogger
+	headerSyncService, err := evnodeSync.NewHeaderSyncService(mainKV, nodeConfig, genesisDoc, p2pClient, headerSyncLogger) // Pass headerSyncLogger
 	require.NoError(t, err)
 	require.NoError(t, headerSyncService.Start(ctx))
-	dataSyncService, err := rollkitSync.NewDataSyncService(mainKV, nodeConfig, genesisDoc, p2pClient, dataSyncLogger)
+	dataSyncService, err := evnodeSync.NewDataSyncService(mainKV, nodeConfig, genesisDoc, p2pClient, dataSyncLogger)
 	require.NoError(t, err)
 	require.NoError(t, dataSyncService.Start(ctx))
 

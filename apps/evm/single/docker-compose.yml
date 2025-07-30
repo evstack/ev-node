@@ -44,7 +44,7 @@ services:
       - ev-node-network
 
   local-da:
-    image: ghcr.io/rollkit/local-da:v0.1.0
+    image: ghcr.io/evstack/local-da:v0.1.0
     ports:
       - "7980:7980"
     command: ["-listen-all"]

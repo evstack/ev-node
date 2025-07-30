@@ -28,11 +28,11 @@ import (
 	"github.com/evstack/ev-node/pkg/service"
 	"github.com/evstack/ev-node/pkg/signer"
 	"github.com/evstack/ev-node/pkg/store"
-	rollkitsync "github.com/evstack/ev-node/pkg/sync"
+	evnodesync "github.com/evstack/ev-node/pkg/sync"
 )
 
-// prefixes used in KV store to separate rollkit data from execution environment data (if the same data base is reused)
-var RollkitPrefix = "0"
+// prefixes used in KV store to separate ev-node data from execution environment data (if the same data base is reused)
+var EvolvePrefix = "0"
 
 const (
 	// genesisChunkSize is the maximum size, in bytes, of each
@@ -42,7 +42,7 @@ const (
 
 var _ Node = &FullNode{}
 
-// FullNode represents a client node in Rollkit network.
+// FullNode represents a client node in Evolve network.
 // It connects all the components and orchestrates their work.
 type FullNode struct {
 	service.BaseService
@@ -56,8 +56,8 @@ type FullNode struct {
 	da coreda.DA
 
 	p2pClient    *p2p.Client
-	hSyncService *rollkitsync.HeaderSyncService
-	dSyncService *rollkitsync.DataSyncService
+	hSyncService *evnodesync.HeaderSyncService
+	dSyncService *evnodesync.DataSyncService
 	Store        store.Store
 	blockManager *block.Manager
 	reaper       *block.Reaper
@@ -67,7 +67,7 @@ type FullNode struct {
 	rpcServer     *http.Server
 }
 
-// newFullNode creates a new Rollkit full node.
+// newFullNode creates a new ev-node full node.
 func newFullNode(
 	ctx context.Context,
 	nodeConfig config.Config,
@@ -84,7 +84,7 @@ func newFullNode(
 ) (fn *FullNode, err error) {
 	seqMetrics, _ := metricsProvider(genesis.ChainID)
 
-	mainKV := newPrefixKV(database, RollkitPrefix)
+	mainKV := newPrefixKV(database, EvolvePrefix)
 	headerSyncService, err := initHeaderSyncService(mainKV, nodeConfig, genesis, p2pClient, logger)
 	if err != nil {
 		return nil, err
@@ -154,8 +154,8 @@ func initHeaderSyncService(
 	genesis genesispkg.Genesis,
 	p2pClient *p2p.Client,
 	logger logging.EventLogger,
-) (*rollkitsync.HeaderSyncService, error) {
-	headerSyncService, err := rollkitsync.NewHeaderSyncService(mainKV, nodeConfig, genesis, p2pClient, logging.Logger("HeaderSyncService"))
+) (*evnodesync.HeaderSyncService, error) {
+	headerSyncService, err := evnodesync.NewHeaderSyncService(mainKV, nodeConfig, genesis, p2pClient, logging.Logger("HeaderSyncService"))
 	if err != nil {
 		return nil, fmt.Errorf("error while initializing HeaderSyncService: %w", err)
 	}
@@ -168,8 +168,8 @@ func initDataSyncService(
 	genesis genesispkg.Genesis,
 	p2pClient *p2p.Client,
 	logger logging.EventLogger,
-) (*rollkitsync.DataSyncService, error) {
-	dataSyncService, err := rollkitsync.NewDataSyncService(mainKV, nodeConfig, genesis, p2pClient, logging.Logger("DataSyncService"))
+) (*evnodesync.DataSyncService, error) {
+	dataSyncService, err := evnodesync.NewDataSyncService(mainKV, nodeConfig, genesis, p2pClient, logging.Logger("DataSyncService"))
 	if err != nil {
 		return nil, fmt.Errorf("error while initializing DataSyncService: %w", err)
 	}
@@ -194,8 +194,8 @@ func initBlockManager(
 	sequencer coresequencer.Sequencer,
 	da coreda.DA,
 	logger logging.EventLogger,
-	headerSyncService *rollkitsync.HeaderSyncService,
-	dataSyncService *rollkitsync.DataSyncService,
+	headerSyncService *evnodesync.HeaderSyncService,
+	dataSyncService *evnodesync.DataSyncService,
 	seqMetrics *block.Metrics,
 	gasPrice float64,
 	gasMultiplier float64,

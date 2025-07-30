@@ -37,7 +37,7 @@ if [ ! -f "$CONFIG_HOME/config/node_key.json" ]; then
 
   # Add required flags if environment variables are set
   if [ -n "$EVM_SIGNER_PASSPHRASE" ]; then
-    init_flags="$init_flags --rollkit.node.aggregator=true --rollkit.signer.passphrase $EVM_SIGNER_PASSPHRASE"
+    init_flags="$init_flags --evnode.node.aggregator=true --evnode.signer.passphrase $EVM_SIGNER_PASSPHRASE"
   fi
 
   INIT_COMMAND="evm-single init $init_flags"
@@ -68,24 +68,24 @@ if [ -n "$EVM_ETH_URL" ]; then
 fi
 
 if [ -n "$EVM_BLOCK_TIME" ]; then
-  default_flags="$default_flags --rollkit.node.block_time $EVM_BLOCK_TIME"
+  default_flags="$default_flags --evnode.node.block_time $EVM_BLOCK_TIME"
 fi
 
 if [ -n "$EVM_SIGNER_PASSPHRASE" ]; then
-  default_flags="$default_flags --rollkit.node.aggregator=true --rollkit.signer.passphrase $EVM_SIGNER_PASSPHRASE"
+  default_flags="$default_flags --evnode.node.aggregator=true --evnode.signer.passphrase $EVM_SIGNER_PASSPHRASE"
 fi
 
 # Conditionally add DA-related flags
 if [ -n "$DA_ADDRESS" ]; then
-  default_flags="$default_flags --rollkit.da.address $DA_ADDRESS"
+  default_flags="$default_flags --evnode.da.address $DA_ADDRESS"
 fi
 
 if [ -n "$DA_AUTH_TOKEN" ]; then
-  default_flags="$default_flags --rollkit.da.auth_token $DA_AUTH_TOKEN"
+  default_flags="$default_flags --evnode.da.auth_token $DA_AUTH_TOKEN"
 fi
 
 if [ -n "$DA_NAMESPACE" ]; then
-  default_flags="$default_flags --rollkit.da.namespace $DA_NAMESPACE"
+  default_flags="$default_flags --evnode.da.namespace $DA_NAMESPACE"
 fi
 
 # If no arguments passed, show help

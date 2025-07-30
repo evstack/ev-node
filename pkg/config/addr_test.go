@@ -13,7 +13,7 @@ func TestTranslateAddresses(t *testing.T) {
 
 	invalidCosmos := "foobar"
 	validCosmos := "127.0.0.1:1234"
-	validRollkit := "/ip4/127.0.0.1/tcp/1234"
+	validEvolve := "/ip4/127.0.0.1/tcp/1234"
 
 	cases := []struct {
 		name        string
@@ -25,13 +25,13 @@ func TestTranslateAddresses(t *testing.T) {
 		{
 			"valid listen address",
 			Config{P2P: P2PConfig{ListenAddress: validCosmos}},
-			Config{P2P: P2PConfig{ListenAddress: validRollkit}},
+			Config{P2P: P2PConfig{ListenAddress: validEvolve}},
 			"",
 		},
 		{
 			"valid seed address",
 			Config{P2P: P2PConfig{Peers: validCosmos + "," + validCosmos}},
-			Config{P2P: P2PConfig{Peers: validRollkit + "," + validRollkit}},
+			Config{P2P: P2PConfig{Peers: validEvolve + "," + validEvolve}},
 			"",
 		},
 		{

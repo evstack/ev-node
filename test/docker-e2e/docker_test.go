@@ -46,10 +46,10 @@ func TestDockerSuite(t *testing.T) {
 
 type DockerTestSuite struct {
 	suite.Suite
-	provider     tastoratypes.Provider
-	celestia     tastoratypes.Chain
-	daNetwork    tastoratypes.DataAvailabilityNetwork
-	rollkitChain tastoratypes.RollkitChain
+	provider    tastoratypes.Provider
+	celestia    tastoratypes.Chain
+	daNetwork   tastoratypes.DataAvailabilityNetwork
+	evolveChain tastoratypes.EvolveChain
 }
 
 // ConfigOption is a function type for modifying tastoradocker.Config
@@ -109,12 +109,12 @@ func (s *DockerTestSuite) CreateDockerProvider(opts ...ConfigOption) tastoratype
 				UIDGID:     "10001:10001",
 			},
 		},
-		RollkitChainConfig: &tastoradocker.RollkitChainConfig{
+		EvolveChainConfig: &tastoradocker.EvolveChainConfig{
 			ChainID:              "evnode-test",
 			Bin:                  "testapp",
 			AggregatorPassphrase: "12345678",
 			NumNodes:             1,
-			Image:                getRollkitImage(),
+			Image:                getEvolveNodeImage(),
 		},
 	}
 
@@ -146,7 +146,7 @@ func (s *DockerTestSuite) SetupDockerResources(opts ...ConfigOption) {
 	s.provider = s.CreateDockerProvider(opts...)
 	s.celestia = s.CreateChain()
 	s.daNetwork = s.CreateDANetwork()
-	s.rollkitChain = s.CreateRollkitChain()
+	s.evolveChain = s.CreateEvolveChain()
 }
 
 // CreateChain creates a chain using the provider.
@@ -169,14 +169,14 @@ func (s *DockerTestSuite) CreateDANetwork() tastoratypes.DataAvailabilityNetwork
 	return daNetwork
 }
 
-// CreateRollkitChain creates a Rollkit chain using the provider
-func (s *DockerTestSuite) CreateRollkitChain() tastoratypes.RollkitChain {
+// CreateEvolveChain creates a Evolve chain using the provider
+func (s *DockerTestSuite) CreateEvolveChain() tastoratypes.EvolveChain {
 	ctx := context.Background()
 
-	rollkitChain, err := s.provider.GetRollkitChain(ctx)
+	evolveChain, err := s.provider.GetEvolveChain(ctx)
 	s.Require().NoError(err)
 
-	return rollkitChain
+	return evolveChain
 }
 
 // StartBridgeNode initializes and starts a bridge node within the data availability network using the given parameters.
@@ -208,9 +208,9 @@ func (s *DockerTestSuite) FundWallet(ctx context.Context, wallet tastoratypes.Wa
 	s.Require().NoError(err)
 }
 
-// StartRollkitNode initializes and starts a Rollkit node.
-func (s *DockerTestSuite) StartRollkitNode(ctx context.Context, bridgeNode tastoratypes.DANode, rollkitNode tastoratypes.RollkitNode) {
-	err := rollkitNode.Init(ctx)
+// StartEvolveNode initializes and starts a Evolve Node.
+func (s *DockerTestSuite) StartEvolveNode(ctx context.Context, bridgeNode tastoratypes.DANode, evolveNode tastoratypes.EvolveNode) {
+	err := evolveNode.Init(ctx)
 	s.Require().NoError(err)
 
 	bridgeNodeHostName, err := bridgeNode.GetInternalHostName()
@@ -220,7 +220,7 @@ func (s *DockerTestSuite) StartRollkitNode(ctx context.Context, bridgeNode tasto
 	s.Require().NoError(err)
 
 	daAddress := fmt.Sprintf("http://%s:26658", bridgeNodeHostName)
-	err = rollkitNode.Start(ctx,
+	err = evolveNode.Start(ctx,
 		"--evnode.da.address", daAddress,
 		"--evnode.da.gas_price", "0.025",
 		"--evnode.da.auth_token", authToken,
@@ -231,10 +231,10 @@ func (s *DockerTestSuite) StartRollkitNode(ctx context.Context, bridgeNode tasto
 	s.Require().NoError(err)
 }
 
-// getRollkitImage returns the Docker image configuration for ev-node
+// getEvolveNodeImage returns the Docker image configuration for ev-node
 // Uses EV_NODE_IMAGE_REPO and EV_NODE_IMAGE_TAG environment variables if set
 // Defaults to locally built image using a unique tag to avoid registry conflicts
-func getRollkitImage() tastoradocker.DockerImage {
+func getEvolveNodeImage() tastoradocker.DockerImage {
 	repo := strings.TrimSpace(os.Getenv("EV_NODE_IMAGE_REPO"))
 	if repo == "" {
 		repo = "evstack"

@@ -288,7 +288,7 @@ func TestCentralizedAddresses(t *testing.T) {
 	}
 
 	if nodeConfig.DA.Address != "http://central-da:26657" {
-		t.Errorf("Expected nodeConfig.Rollkit.DAAddress to be 'http://central-da:26657', got '%s'", nodeConfig.DA.Address)
+		t.Errorf("Expected nodeConfig.evnode.DAAddress to be 'http://central-da:26657', got '%s'", nodeConfig.DA.Address)
 	}
 }
 
@@ -431,7 +431,7 @@ func newRunNodeCmd(
 	cmd := &cobra.Command{
 		Use:     "start",
 		Aliases: []string{"node", "run"},
-		Short:   "Run the rollkit node",
+		Short:   "Run the evolve node",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			runNodeLogger := logging.Logger("runNodeCmd")
 			_ = logging.SetLogLevel("runNodeCmd", "FATAL")

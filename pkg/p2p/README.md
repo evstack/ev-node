@@ -1,6 +1,6 @@
 # P2P Package
 
-This document provides an overview of the P2P (peer-to-peer) networking system used in Rollkit. The P2P package leverages [go-libp2p](https://github.com/libp2p/go-libp2p) stack for establishing peer connections, gossiping transactions, and synchronizing headers and blocks across the network.
+This document provides an overview of the P2P (peer-to-peer) networking system used in Evolve Node. The P2P package leverages [go-libp2p](https://github.com/libp2p/go-libp2p) stack for establishing peer connections, gossiping transactions, and synchronizing headers and blocks across the network.
 
 ## Overview
 
@@ -15,7 +15,7 @@ Every node (both full and light) runs a P2P client for participating in the P2P 
 
 ```mermaid
 graph TB
-    subgraph "Rollkit Node"
+    subgraph "Evolve Node"
         P2PClient["P2P Client"]
         TxValidator["Transaction Validator"]
         Mempool["Mempool"]
@@ -214,7 +214,7 @@ ds := datastore.NewMapDatastore()
 logger := log.NewTMLogger(log.NewSyncWriter(os.Stdout))
 
 // Create metrics
-metrics := p2p.PrometheusMetrics("rollkit")
+metrics := p2p.PrometheusMetrics("ev-node")
 
 // Create client
 client, err := p2p.NewClient(conf, "mychain-1", ds, logger, metrics)

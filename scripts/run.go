@@ -179,9 +179,9 @@ func main() {
 		initArgs := []string{
 			"init",
 			fmt.Sprintf("--home=%s", nodeHome),
-			fmt.Sprintf("--rollkit.node.aggregator=%t", isAggregator),
-			"--rollkit.signer.passphrase=12345678",
-			fmt.Sprintf("--rollkit.rpc.address=0.0.0.0:%d", rpcPort),
+			fmt.Sprintf("--evnode.node.aggregator=%t", isAggregator),
+			"--evnode.signer.passphrase=12345678",
+			fmt.Sprintf("--evnode.rpc.address=0.0.0.0:%d", rpcPort),
 		}
 
 		initCmd := exec.CommandContext(ctx, appPath, initArgs...)
@@ -224,16 +224,16 @@ func main() {
 		runArgs := []string{
 			"run",
 			fmt.Sprintf("--home=%s", nodeHome),
-			"--rollkit.da.address=http://localhost:7980",
-			fmt.Sprintf("--rollkit.node.aggregator=%t", isAggregator),
-			"--rollkit.signer.passphrase=12345678",
-			fmt.Sprintf("--rollkit.p2p.listen_address=/ip4/0.0.0.0/tcp/%d", p2pPort),
-			fmt.Sprintf("--rollkit.rpc.address=0.0.0.0:%d", rpcPort),
+			"--evnode.da.address=http://localhost:7980",
+			fmt.Sprintf("--evnode.node.aggregator=%t", isAggregator),
+			"--evnode.signer.passphrase=12345678",
+			fmt.Sprintf("--evnode.p2p.listen_address=/ip4/0.0.0.0/tcp/%d", p2pPort),
+			fmt.Sprintf("--evnode.rpc.address=0.0.0.0:%d", rpcPort),
 		}
 
 		// Add peer list for non-aggregator nodes
 		if i > 0 && aggregatorAddress != "" {
-			runArgs = append(runArgs, fmt.Sprintf("--rollkit.p2p.peers=%s", aggregatorAddress))
+			runArgs = append(runArgs, fmt.Sprintf("--evnode.p2p.peers=%s", aggregatorAddress))
 		}
 
 		log.Printf("Starting node %d with P2P port %d and RPC port %d...", i, p2pPort, rpcPort)

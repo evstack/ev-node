@@ -7,7 +7,7 @@ import (
 	"github.com/spf13/cobra"
 
 	rollcmd "github.com/evstack/ev-node/pkg/cmd"
-	rollkitconfig "github.com/evstack/ev-node/pkg/config"
+	evnodeconfig "github.com/evstack/ev-node/pkg/config"
 
 	"github.com/evstack/ev-node/apps/evm/single/cmd"
 )
@@ -16,10 +16,10 @@ func main() {
 	// Initiate the root command
 	rootCmd := &cobra.Command{
 		Use:   "evm-single",
-		Short: "Rollkit with EVM; single sequencer",
+		Short: "Evolve Node with EVM; single sequencer",
 	}
 
-	rollkitconfig.AddGlobalFlags(rootCmd, "evm-single")
+	evnodeconfig.AddGlobalFlags(rootCmd, "evm-single")
 
 	rootCmd.AddCommand(
 		cmd.InitCmd(),
