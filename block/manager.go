@@ -15,8 +15,8 @@ import (
 
 	goheader "github.com/celestiaorg/go-header"
 	ds "github.com/ipfs/go-datastore"
-	logging "github.com/ipfs/go-log/v2"
 	"github.com/libp2p/go-libp2p/core/crypto"
+	"go.uber.org/zap"
 	"golang.org/x/sync/errgroup"
 
 	coreda "github.com/evstack/ev-node/core/da"
@@ -131,7 +131,7 @@ type Manager struct {
 	// daIncluderCh is used to notify sync goroutine (DAIncluderLoop) that it needs to set DA included height
 	daIncluderCh chan struct{}
 
-	logger logging.EventLogger
+	logger *zap.Logger
 
 	// For usage by Lazy Aggregator mode
 	txsAvailable bool
@@ -171,7 +171,7 @@ type Manager struct {
 }
 
 // getInitialState tries to load lastState from Store, and if it's not available it reads genesis.
-func getInitialState(ctx context.Context, genesis genesis.Genesis, signer signer.Signer, store storepkg.Store, exec coreexecutor.Executor, logger logging.EventLogger, managerOpts ManagerOptions) (types.State, error) {
+func getInitialState(ctx context.Context, genesis genesis.Genesis, signer signer.Signer, store storepkg.Store, exec coreexecutor.Executor, logger *zap.Logger, managerOpts ManagerOptions) (types.State, error) {
 	// Load the state from store.
 	s, err := store.GetState(ctx)
 
@@ -248,7 +248,7 @@ func getInitialState(ctx context.Context, genesis genesis.Genesis, signer signer
 		}
 		return s, nil
 	} else if err != nil {
-		logger.Error("error while getting state", "error", err)
+		logger.Error("error while getting state", zap.Error(err))
 		return types.State{}, err
 	} else {
 		// Perform a sanity-check to stop the user from
@@ -297,7 +297,7 @@ func NewManager(
 	exec coreexecutor.Executor,
 	sequencer coresequencer.Sequencer,
 	da coreda.DA,
-	logger logging.EventLogger,
+	logger *zap.Logger,
 	headerStore goheader.Store[*types.SignedHeader],
 	dataStore goheader.Store[*types.Data],
 	headerBroadcaster broadcaster[*types.SignedHeader],
@@ -322,22 +322,22 @@ func NewManager(
 	}
 
 	if config.DA.BlockTime.Duration == 0 {
-		logger.Info("using default DA block time, DABlockTime:", defaultDABlockTime)
+		logger.Info("using default DA block time", zap.Duration("DABlockTime", defaultDABlockTime))
 		config.DA.BlockTime.Duration = defaultDABlockTime
 	}
 
 	if config.Node.BlockTime.Duration == 0 {
-		logger.Info("using default block time, BlockTime:", defaultBlockTime)
+		logger.Info("using default block time", zap.Duration("BlockTime", defaultBlockTime))
 		config.Node.BlockTime.Duration = defaultBlockTime
 	}
 
 	if config.Node.LazyBlockInterval.Duration == 0 {
-		logger.Info("using default lazy block time, LazyBlockTime:", defaultLazyBlockTime)
+		logger.Info("using default lazy block time", zap.Duration("LazyBlockTime", defaultLazyBlockTime))
 		config.Node.LazyBlockInterval.Duration = defaultLazyBlockTime
 	}
 
 	if config.DA.MempoolTTL == 0 {
-		logger.Info("using default mempool ttl, MempoolTTL:", defaultMempoolTTL)
+		logger.Info("using default mempool ttl", zap.Int("MempoolTTL", defaultMempoolTTL))
 		config.DA.MempoolTTL = defaultMempoolTTL
 	}
 
@@ -354,12 +354,12 @@ func NewManager(
 	// If lastBatchHash is not set, retrieve the last batch hash from store
 	lastBatchDataBytes, err := store.GetMetadata(ctx, storepkg.LastBatchDataKey)
 	if err != nil && s.LastBlockHeight > 0 {
-		logger.Error("error while retrieving last batch hash", "error", err)
+		logger.Error("error while retrieving last batch hash", zap.Error(err))
 	}
 
 	lastBatchData, err := bytesToBatchData(lastBatchDataBytes)
 	if err != nil {
-		logger.Error("error while converting last batch hash", "error", err)
+		logger.Error("error while converting last batch hash", zap.Error(err))
 	}
 
 	daH := atomic.Uint64{}
@@ -545,8 +545,8 @@ func (m *Manager) GetExecutor() coreexecutor.Executor {
 
 func (m *Manager) retrieveBatch(ctx context.Context) (*BatchData, error) {
 	m.logger.Debug("Attempting to retrieve next batch",
-		"chainID", m.genesis.ChainID,
-		"lastBatchData", m.lastBatchData)
+		zap.String("chainID", m.genesis.ChainID),
+		zap.Any("lastBatchData", m.lastBatchData))
 
 	req := coresequencer.GetNextBatchRequest{
 		Id:            []byte(m.genesis.ChainID),
@@ -560,8 +560,8 @@ func (m *Manager) retrieveBatch(ctx context.Context) (*BatchData, error) {
 
 	if res != nil && res.Batch != nil {
 		m.logger.Debug("Retrieved batch",
-			"txCount", len(res.Batch.Transactions),
-			"timestamp", res.Timestamp)
+			zap.Int("txCount", len(res.Batch.Transactions)),
+			zap.Time("timestamp", res.Timestamp))
 
 		var errRetrieveBatch error
 		// Even if there are no transactions, return the batch with timestamp
@@ -572,7 +572,7 @@ func (m *Manager) retrieveBatch(ctx context.Context) (*BatchData, error) {
 		// Even if there are no transactions, update lastBatchData so we don't
 		// repeatedly emit the same empty batch, and persist it to metadata.
 		if err := m.store.SetMetadata(ctx, storepkg.LastBatchDataKey, convertBatchDataToBytes(res.BatchData)); err != nil {
-			m.logger.Error("error while setting last batch hash", "error", err)
+			m.logger.Error("error while setting last batch hash", zap.Error(err))
 		}
 		m.lastBatchData = res.BatchData
 		return &BatchData{Batch: res.Batch, Time: res.Timestamp, Data: res.BatchData}, errRetrieveBatch
@@ -599,7 +599,10 @@ func (m *Manager) publishBlockInternal(ctx context.Context) error {
 	}
 
 	if m.config.Node.MaxPendingHeadersAndData != 0 && (m.pendingHeaders.numPendingHeaders() >= m.config.Node.MaxPendingHeadersAndData || m.pendingData.numPendingData() >= m.config.Node.MaxPendingHeadersAndData) {
-		m.logger.Warn(fmt.Sprintf("refusing to create block: pending headers [%d] or data [%d] reached limit [%d]", m.pendingHeaders.numPendingHeaders(), m.pendingData.numPendingData(), m.config.Node.MaxPendingHeadersAndData))
+		m.logger.Warn("refusing to create block: pending limit reached",
+			zap.Uint64("pendingHeaders", m.pendingHeaders.numPendingHeaders()),
+			zap.Uint64("pendingData", m.pendingData.numPendingData()),
+			zap.Uint64("limit", m.config.Node.MaxPendingHeadersAndData))
 		return nil
 	}
 
@@ -645,7 +648,8 @@ func (m *Manager) publishBlockInternal(ctx context.Context) error {
 	// If there is use that instead of creating a new block
 	pendingHeader, pendingData, err := m.store.GetBlockData(ctx, newHeight)
 	if err == nil {
-		m.logger.Info("using pending block, height:", newHeight)
+		m.logger.Info("using pending block",
+			zap.Int64("height", int64(newHeight)))
 		header = pendingHeader
 		data = pendingData
 	} else {
@@ -656,16 +660,19 @@ func (m *Manager) publishBlockInternal(ctx context.Context) error {
 					m.logger.Info("no batch retrieved from sequencer, skipping block production")
 					return nil
 				}
-				m.logger.Info("creating empty block, height: ", newHeight)
+				m.logger.Info("creating empty block, height: ",
+					zap.Int64("height", int64(newHeight)))
 			} else {
-				m.logger.Warn("failed to get transactions from batch", "error", err)
+				m.logger.Warn("failed to get transactions from batch", zap.Error(err))
 				return nil
 			}
 		} else {
 			if batchData.Before(lastHeaderTime) {
 				return fmt.Errorf("timestamp is not monotonically increasing: %s < %s", batchData.Time, m.getLastBlockTime())
 			}
-			m.logger.Info("creating and publishing block", "height", newHeight, "num_tx", len(batchData.Transactions))
+			m.logger.Info("creating and publishing block",
+				zap.Int64("height", int64(newHeight)),
+				zap.Int("num_tx", len(batchData.Transactions)))
 		}
 
 		header, data, err = m.createBlock(ctx, newHeight, lastSignature, lastHeaderHash, batchData)
@@ -744,7 +751,9 @@ func (m *Manager) publishBlockInternal(ctx context.Context) error {
 		return err
 	}
 
-	m.logger.Debug("successfully proposed header", "proposer", hex.EncodeToString(header.ProposerAddress), "height", headerHeight)
+	m.logger.Debug("successfully proposed header",
+		zap.String("proposer", hex.EncodeToString(header.ProposerAddress)),
+		zap.Int64("height", int64(headerHeight)))
 	return nil
 }
 

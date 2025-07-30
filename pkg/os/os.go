@@ -20,7 +20,7 @@ func TrapSignal(logger logger, cb func()) {
 	signal.Notify(c, os.Interrupt, syscall.SIGTERM)
 	go func() {
 		for sig := range c {
-			logger.Info(fmt.Sprintf("signal trapped, msg: captured %v, exiting...", sig))
+			logger.Info("signal trapped", "signal", sig, "message", "captured signal, exiting...")
 			if cb != nil {
 				cb()
 			}

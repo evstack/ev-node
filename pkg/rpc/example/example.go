@@ -11,11 +11,11 @@ import (
 	"github.com/evstack/ev-node/pkg/rpc/client"
 	"github.com/evstack/ev-node/pkg/rpc/server"
 	"github.com/evstack/ev-node/pkg/store"
-	logging "github.com/ipfs/go-log/v2"
+	"go.uber.org/zap"
 )
 
 // StartStoreServer starts a Store RPC server with the provided store instance
-func StartStoreServer(s store.Store, address string, logger logging.EventLogger) {
+func StartStoreServer(s store.Store, address string, logger *zap.Logger) {
 	// Create and start the server
 	// Start RPC server
 	rpcAddr := fmt.Sprintf("%s:%d", "localhost", 8080)
@@ -35,7 +35,7 @@ func StartStoreServer(s store.Store, address string, logger logging.EventLogger)
 	// Start the server in a separate goroutine
 	go func() {
 		if err := rpcServer.ListenAndServe(); err != http.ErrServerClosed {
-			logger.Error("RPC server error", err)
+			logger.Error("RPC server error", zap.Error(err))
 			os.Exit(1)
 		}
 	}()
@@ -74,8 +74,7 @@ func ExampleClient() {
 
 // ExampleServer demonstrates how to create and start a Store RPC server
 func ExampleServer(s store.Store) {
-	logger := logging.Logger("exampleServer")
-	_ = logging.SetLogLevel("exampleServer", "FATAL")
+	logger := zap.NewExample()
 
 	// Start RPC server
 	rpcAddr := fmt.Sprintf("%s:%d", "localhost", 8080)

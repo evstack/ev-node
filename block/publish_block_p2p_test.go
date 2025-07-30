@@ -14,10 +14,10 @@ import (
 	ds "github.com/ipfs/go-datastore"
 	ktds "github.com/ipfs/go-datastore/keytransform"
 	syncdb "github.com/ipfs/go-datastore/sync"
-	logging "github.com/ipfs/go-log/v2"
 	"github.com/libp2p/go-libp2p/core/crypto"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/zap"
 
 	coresequencer "github.com/evstack/ev-node/core/sequencer"
 	"github.com/evstack/ev-node/pkg/config"
@@ -32,7 +32,6 @@ import (
 )
 
 func TestSlowConsumers(t *testing.T) {
-	logging.SetDebugLogging()
 	blockTime := 100 * time.Millisecond
 	specs := map[string]struct {
 		headerConsumerDelay time.Duration
@@ -177,7 +176,7 @@ func setupBlockManager(t *testing.T, ctx context.Context, workDir string, mainKV
 		ProposerAddress:    proposerAddr,
 	}
 
-	logger := logging.Logger("test")
+	logger := zap.NewNop()
 	p2pClient, err := p2p.NewClient(nodeConfig, nodeKey, mainKV, logger, p2p.NopMetrics())
 	require.NoError(t, err)
 
@@ -187,11 +186,10 @@ func setupBlockManager(t *testing.T, ctx context.Context, workDir string, mainKV
 
 	const RollkitPrefix = "0"
 	ktds.Wrap(mainKV, ktds.PrefixTransform{Prefix: ds.NewKey(RollkitPrefix)})
-	// Get subsystem loggers. The With("module", ...) pattern from cosmossdk.io/log
-	// is replaced by getting a named logger from ipfs/go-log.
-	headerSyncLogger := logging.Logger("HeaderSyncService")
-	dataSyncLogger := logging.Logger("DataSyncService")
-	blockManagerLogger := logging.Logger("BlockManager")
+	// Get subsystem loggers using zap
+	headerSyncLogger := zap.NewNop()
+	dataSyncLogger := zap.NewNop()
+	blockManagerLogger := zap.NewNop()
 
 	headerSyncService, err := rollkitSync.NewHeaderSyncService(mainKV, nodeConfig, genesisDoc, p2pClient, headerSyncLogger) // Pass headerSyncLogger
 	require.NoError(t, err)

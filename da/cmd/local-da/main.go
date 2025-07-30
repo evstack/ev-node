@@ -8,7 +8,7 @@ import (
 	"os/signal"
 	"syscall"
 
-	logging "github.com/ipfs/go-log/v2"
+	"go.uber.org/zap"
 
 	proxy "github.com/evstack/ev-node/da/jsonrpc"
 )
@@ -36,8 +36,8 @@ func main() {
 	}
 
 	// create logger
-	logging.SetupLogging(logging.Config{Stderr: true, Level: logging.LevelInfo}) // Basic setup
-	logger := logging.Logger("da")
+	logger, _ := zap.NewDevelopment()
+	defer logger.Sync()
 
 	// Create LocalDA instance with custom maxBlobSize if provided
 	var opts []func(*LocalDA) *LocalDA
@@ -47,9 +47,9 @@ func main() {
 	da := NewLocalDA(logger, opts...)
 
 	srv := proxy.NewServer(logger, host, port, da)
-	logger.Info(fmt.Sprintf("Listening on, host: %s, port: %s, maxBlobSize: %d", host, port, maxBlobSize))
+	logger.Info("Listening on", zap.String("host", host), zap.String("port", port), zap.Uint64("maxBlobSize", maxBlobSize))
 	if err := srv.Start(context.Background()); err != nil {
-		logger.Error(fmt.Sprintf("error while serving, error: %v", err))
+		logger.Error("error while serving", zap.Error(err))
 	}
 
 	interrupt := make(chan os.Signal, 1)

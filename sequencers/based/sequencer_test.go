@@ -8,7 +8,7 @@ import (
 	coreda "github.com/evstack/ev-node/core/da"
 	coresequencer "github.com/evstack/ev-node/core/sequencer"
 	ds "github.com/ipfs/go-datastore"
-	logging "github.com/ipfs/go-log/v2"
+	"go.uber.org/zap"
 
 	"github.com/evstack/ev-node/sequencers/based"
 	"github.com/stretchr/testify/assert"
@@ -22,8 +22,7 @@ func newTestSequencer(t *testing.T) *based.Sequencer {
 	dummyDA := coreda.NewDummyDA(100_000_000, 1.0, 1.5, getTestDABlockTime())
 	dummyDA.StartHeightTicker()
 	store := ds.NewMapDatastore()
-	logger := logging.Logger("test")
-	_ = logging.SetLogLevel("test", "FATAL")
+	logger := zap.NewNop()
 	seq, err := based.NewSequencer(logger, dummyDA, []byte("test1"), 0, 2, store)
 	assert.NoError(t, err)
 	return seq
@@ -96,8 +95,7 @@ func TestSequencer_GetNextBatch_Invalid(t *testing.T) {
 func TestSequencer_GetNextBatch_ExceedsMaxDrift(t *testing.T) {
 	dummyDA := coreda.NewDummyDA(100_000_000, 1.0, 1.5, 10*time.Second)
 	store := ds.NewMapDatastore()
-	logger := logging.Logger("test")
-	_ = logging.SetLogLevel("test", "FATAL")
+	logger := zap.NewNop()
 	sequencer, err := based.NewSequencer(logger, dummyDA, []byte("test1"), 0, 0, store)
 	assert.NoError(t, err)
 

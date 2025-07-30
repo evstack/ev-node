@@ -5,6 +5,8 @@ import (
 	"encoding/binary"
 	"fmt"
 
+	"go.uber.org/zap"
+
 	coreda "github.com/evstack/ev-node/core/da"
 	storepkg "github.com/evstack/ev-node/pkg/store"
 )
@@ -25,11 +27,11 @@ func (m *Manager) DAIncluderLoop(ctx context.Context, errCh chan<- error) {
 			daIncluded, err := m.IsDAIncluded(ctx, nextHeight)
 			if err != nil {
 				// No more blocks to check at this time
-				m.logger.Debug("no more blocks to check at this time, height: ", nextHeight, "error: ", err)
+				m.logger.Debug("no more blocks to check at this time", zap.Uint64("height", nextHeight), zap.Error(err))
 				break
 			}
 			if daIncluded {
-				m.logger.Debug("both header and data are DA-included, advancing height: ", nextHeight)
+				m.logger.Debug("both header and data are DA-included, advancing height", zap.Uint64("height", nextHeight))
 				if err := m.SetRollkitHeightToDAHeight(ctx, nextHeight); err != nil {
 					errCh <- fmt.Errorf("failed to set rollkit height to DA height: %w", err)
 					return
@@ -54,18 +56,18 @@ func (m *Manager) DAIncluderLoop(ctx context.Context, errCh chan<- error) {
 func (m *Manager) incrementDAIncludedHeight(ctx context.Context) error {
 	currentHeight := m.GetDAIncludedHeight()
 	newHeight := currentHeight + 1
-	m.logger.Debug("setting final height: ", newHeight)
+	m.logger.Debug("setting final height", zap.Uint64("height", newHeight))
 	err := m.exec.SetFinal(ctx, newHeight)
 	if err != nil {
-		m.logger.Error("failed to set final height: ", newHeight, "error: ", err)
+		m.logger.Error("failed to set final height", zap.Uint64("height", newHeight), zap.Error(err))
 		return err
 	}
 	heightBytes := make([]byte, 8)
 	binary.LittleEndian.PutUint64(heightBytes, newHeight)
-	m.logger.Debug("setting DA included height: ", newHeight)
+	m.logger.Debug("setting DA included height", zap.Uint64("height", newHeight))
 	err = m.store.SetMetadata(ctx, storepkg.DAIncludedHeightKey, heightBytes)
 	if err != nil {
-		m.logger.Error("failed to set DA included height: ", newHeight, "error: ", err)
+		m.logger.Error("failed to set DA included height", zap.Uint64("height", newHeight), zap.Error(err))
 		return err
 	}
 	if !m.daIncludedHeight.CompareAndSwap(currentHeight, newHeight) {

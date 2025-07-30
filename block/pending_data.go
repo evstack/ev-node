@@ -3,9 +3,9 @@ package block
 import (
 	"context"
 
-	logging "github.com/ipfs/go-log/v2"
+	"go.uber.org/zap"
 
-	"github.com/evstack/ev-node/pkg/store"
+	storepkg "github.com/evstack/ev-node/pkg/store"
 	"github.com/evstack/ev-node/types"
 )
 
@@ -28,13 +28,13 @@ type PendingData struct {
 	base *pendingBase[*types.Data]
 }
 
-func fetchData(ctx context.Context, store store.Store, height uint64) (*types.Data, error) {
+func fetchData(ctx context.Context, store storepkg.Store, height uint64) (*types.Data, error) {
 	_, data, err := store.GetBlockData(ctx, height)
 	return data, err
 }
 
 // NewPendingData returns a new PendingData struct
-func NewPendingData(store store.Store, logger logging.EventLogger) (*PendingData, error) {
+func NewPendingData(store storepkg.Store, logger *zap.Logger) (*PendingData, error) {
 	base, err := newPendingBase(store, logger, LastSubmittedDataHeightKey, fetchData)
 	if err != nil {
 		return nil, err

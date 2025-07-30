@@ -7,7 +7,7 @@ import (
 	"time"
 
 	ds "github.com/ipfs/go-datastore"
-	logging "github.com/ipfs/go-log/v2"
+	"go.uber.org/zap"
 
 	coreexecutor "github.com/evstack/ev-node/core/execution"
 	coresequencer "github.com/evstack/ev-node/core/sequencer"
@@ -22,14 +22,14 @@ type Reaper struct {
 	sequencer coresequencer.Sequencer
 	chainID   string
 	interval  time.Duration
-	logger    logging.EventLogger
+	logger    *zap.Logger
 	ctx       context.Context
 	seenStore ds.Batching
 	manager   *Manager
 }
 
 // NewReaper creates a new Reaper instance with persistent seenTx storage.
-func NewReaper(ctx context.Context, exec coreexecutor.Executor, sequencer coresequencer.Sequencer, chainID string, interval time.Duration, logger logging.EventLogger, store ds.Batching) *Reaper {
+func NewReaper(ctx context.Context, exec coreexecutor.Executor, sequencer coresequencer.Sequencer, chainID string, interval time.Duration, logger *zap.Logger, store ds.Batching) *Reaper {
 	if interval <= 0 {
 		interval = DefaultInterval
 	}
@@ -55,7 +55,7 @@ func (r *Reaper) Start(ctx context.Context) {
 	ticker := time.NewTicker(r.interval)
 	defer ticker.Stop()
 
-	r.logger.Info("Reaper started, interval:", r.interval)
+	r.logger.Info("Reaper started", zap.Duration("interval", r.interval))
 
 	for {
 		select {
@@ -72,7 +72,7 @@ func (r *Reaper) Start(ctx context.Context) {
 func (r *Reaper) SubmitTxs() {
 	txs, err := r.exec.GetTxs(r.ctx)
 	if err != nil {
-		r.logger.Error("Reaper failed to get txs from executor", "error", err)
+		r.logger.Error("Reaper failed to get txs from executor", zap.Error(err))
 		return
 	}
 
@@ -82,7 +82,7 @@ func (r *Reaper) SubmitTxs() {
 		key := ds.NewKey(txHash)
 		has, err := r.seenStore.Has(r.ctx, key)
 		if err != nil {
-			r.logger.Error("Failed to check seenStore", "error", err)
+			r.logger.Error("Failed to check seenStore", zap.Error(err))
 			continue
 		}
 		if !has {
@@ -95,14 +95,14 @@ func (r *Reaper) SubmitTxs() {
 		return
 	}
 
-	r.logger.Debug("Reaper submitting txs to sequencer", "txCount", len(newTxs))
+	r.logger.Debug("Reaper submitting txs to sequencer", zap.Int("txCount", len(newTxs)))
 
 	_, err = r.sequencer.SubmitBatchTxs(r.ctx, coresequencer.SubmitBatchTxsRequest{
 		Id:    []byte(r.chainID),
 		Batch: &coresequencer.Batch{Transactions: newTxs},
 	})
 	if err != nil {
-		r.logger.Error("Reaper failed to submit txs to sequencer", "error", err)
+		r.logger.Error("Reaper failed to submit txs to sequencer", zap.Error(err))
 		return
 	}
 
@@ -110,7 +110,7 @@ func (r *Reaper) SubmitTxs() {
 		txHash := hashTx(tx)
 		key := ds.NewKey(txHash)
 		if err := r.seenStore.Put(r.ctx, key, []byte{1}); err != nil {
-			r.logger.Error("Failed to persist seen tx", "txHash", txHash, "error", err)
+			r.logger.Error("Failed to persist seen tx", zap.String("txHash", txHash), zap.Error(err))
 		}
 	}
 

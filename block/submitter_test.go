@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	logging "github.com/ipfs/go-log/v2"
+	"go.uber.org/zap"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
@@ -28,8 +28,7 @@ const numItemsToSubmit = 3
 
 // newTestManagerWithDA creates a Manager instance with a mocked DA layer for testing.
 func newTestManagerWithDA(t *testing.T, da *mocks.MockDA) (m *Manager) {
-	logger := logging.Logger("test")
-	_ = logging.SetLogLevel("test", "FATAL")
+	logger := zap.NewNop()
 	nodeConf := config.DefaultConfig
 
 	privKey, _, err := crypto.GenerateKeyPair(crypto.Ed25519, 256)
@@ -248,9 +247,8 @@ func runRetryPartialFailuresCase[T any](t *testing.T, tc retryPartialFailuresCas
 	m := newTestManagerWithDA(t, nil)
 	mockStore := mocks.NewMockStore(t)
 	m.store = mockStore
-	m.logger = logging.Logger("test")
+	m.logger = zap.NewNop()
 
-	_ = logging.SetLogLevel("test", "debug")
 	da := &mocks.MockDA{}
 	m.da = da
 	m.gasPrice = 1.0
@@ -393,8 +391,7 @@ func TestCreateSignedDataToSubmit(t *testing.T) {
 	t.Run("getPendingData returns error", func(t *testing.T) {
 		m := newTestManagerWithDA(t, nil)
 		mockStore := mocks.NewMockStore(t)
-		logger := logging.Logger("test")
-		_ = logging.SetLogLevel("test", "FATAL")
+		logger := zap.NewNop()
 		mockStore.On("GetMetadata", mock.Anything, "last-submitted-data-height").Return(nil, ds.ErrNotFound).Once()
 		mockStore.On("Height", mock.Anything).Return(uint64(1), nil).Once()
 		mockStore.On("GetBlockData", mock.Anything, uint64(1)).Return(nil, nil, fmt.Errorf("mock error")).Once()
@@ -467,9 +464,8 @@ func fillPendingData(ctx context.Context, t *testing.T, pendingData *PendingData
 func newPendingHeaders(t *testing.T) *PendingHeaders {
 	kv, err := store.NewDefaultInMemoryKVStore()
 	require.NoError(t, err)
-	logger := logging.Logger("test")
+	logger := zap.NewNop()
 
-	_ = logging.SetLogLevel("test", "debug")
 	pendingHeaders, err := NewPendingHeaders(store.New(kv), logger)
 	require.NoError(t, err)
 	return pendingHeaders
@@ -478,8 +474,7 @@ func newPendingHeaders(t *testing.T) *PendingHeaders {
 func newPendingData(t *testing.T) *PendingData {
 	kv, err := store.NewDefaultInMemoryKVStore()
 	require.NoError(t, err)
-	logger := logging.Logger("test")
-	_ = logging.SetLogLevel("test", "debug")
+	logger := zap.NewNop()
 	pendingData, err := NewPendingData(store.New(kv), logger)
 	require.NoError(t, err)
 	return pendingData

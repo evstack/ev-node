@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/ipfs/go-datastore"
-	logging "github.com/ipfs/go-log/v2"
 	libp2p "github.com/libp2p/go-libp2p"
 	dht "github.com/libp2p/go-libp2p-kad-dht"
 	pubsub "github.com/libp2p/go-libp2p-pubsub"
@@ -23,6 +22,7 @@ import (
 	routedhost "github.com/libp2p/go-libp2p/p2p/host/routed"
 	"github.com/libp2p/go-libp2p/p2p/net/conngater"
 	"github.com/multiformats/go-multiaddr"
+	"go.uber.org/zap"
 
 	"github.com/evstack/ev-node/pkg/config"
 	rollhash "github.com/evstack/ev-node/pkg/hash"
@@ -44,7 +44,7 @@ const (
 // Those seed nodes serve Kademlia DHT protocol, and are agnostic to ORU chain. Using DHT
 // peer routing and discovery clients find other peers within ORU network.
 type Client struct {
-	logger logging.EventLogger
+	logger *zap.Logger
 
 	conf    config.P2PConfig
 	chainID string
@@ -66,7 +66,7 @@ func NewClient(
 	conf config.Config,
 	nodeKey *key.NodeKey,
 	ds datastore.Datastore,
-	logger logging.EventLogger,
+	logger *zap.Logger,
 	metrics *Metrics,
 ) (*Client, error) {
 	if conf.RootDir == "" {
@@ -96,7 +96,7 @@ func NewClientWithHost(
 	conf config.Config,
 	nodeKey *key.NodeKey,
 	ds datastore.Datastore,
-	logger logging.EventLogger,
+	logger *zap.Logger,
 	metrics *Metrics,
 	h host.Host, // injected host (mocknet or custom)
 ) (*Client, error) {
@@ -143,15 +143,15 @@ func (c *Client) Start(ctx context.Context) error {
 func (c *Client) startWithHost(ctx context.Context, h host.Host) error {
 	c.host = h
 	for _, a := range c.host.Addrs() {
-		c.logger.Info(fmt.Sprintf("listening on address, address: %s/p2p/%s", a, c.host.ID()))
+		c.logger.Info("listening on address", zap.String("address", a.String()), zap.String("peer_id", c.host.ID().String()))
 	}
 
-	c.logger.Debug(fmt.Sprintf("blocking blacklisted peers blacklist, blacklist: %s", c.conf.BlockedPeers))
+	c.logger.Debug("blocking blacklisted peers", zap.String("blacklist", c.conf.BlockedPeers))
 	if err := c.setupBlockedPeers(c.parseAddrInfoList(c.conf.BlockedPeers)); err != nil {
 		return err
 	}
 
-	c.logger.Debug("allowing whitelisted peers whitelist ", c.conf.AllowedPeers)
+	c.logger.Debug("allowing whitelisted peers", zap.String("whitelist", c.conf.AllowedPeers))
 	if err := c.setupAllowedPeers(c.parseAddrInfoList(c.conf.AllowedPeers)); err != nil {
 		return err
 	}
@@ -261,7 +261,7 @@ func (c *Client) setupDHT(ctx context.Context) error {
 	}
 
 	for _, sa := range peers {
-		c.logger.Debug("peer", "addr", sa)
+		c.logger.Debug("peer", zap.Any("addr", sa))
 	}
 
 	var err error
@@ -354,7 +354,7 @@ func (c *Client) tryConnect(ctx context.Context, peer peer.AddrInfo) {
 
 	err := c.host.Connect(ctx, peer)
 	if err != nil && ctx.Err() == nil {
-		c.logger.Error("failed to connect to peer", "peer", peer, "error", err)
+		c.logger.Error("failed to connect to peer", zap.Any("peer", peer), zap.Error(err))
 	}
 }
 
@@ -377,12 +377,12 @@ func (c *Client) parseAddrInfoList(addrInfoStr string) []peer.AddrInfo {
 	for _, p := range peers {
 		maddr, err := multiaddr.NewMultiaddr(p)
 		if err != nil {
-			c.logger.Error("failed to parse peer, address: ", p, "error: ", err)
+			c.logger.Error("failed to parse peer", zap.String("address", p), zap.Error(err))
 			continue
 		}
 		addrInfo, err := peer.AddrInfoFromP2pAddr(maddr)
 		if err != nil {
-			c.logger.Error("failed to create addr info for peer, address: ", maddr, "error: ", err)
+			c.logger.Error("failed to create addr info for peer", zap.String("address", maddr.String()), zap.Error(err))
 			continue
 		}
 		addrs = append(addrs, *addrInfo)

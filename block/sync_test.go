@@ -10,7 +10,7 @@ import (
 	"time"
 
 	goheaderstore "github.com/celestiaorg/go-header/store"
-	logging "github.com/ipfs/go-log/v2"
+	"go.uber.org/zap"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
@@ -59,7 +59,7 @@ func setupManagerForSyncLoopTest(t *testing.T, initialState types.State) (
 		genesis:                  *genesisDoc,
 		lastState:                initialState,
 		lastStateMtx:             new(sync.RWMutex),
-		logger:                   logging.Logger("test"),
+		logger:                   zap.NewNop(),
 		headerCache:              cache.NewCache[types.SignedHeader](),
 		dataCache:                cache.NewCache[types.Data](),
 		headerInCh:               headerInCh,
@@ -867,7 +867,7 @@ func TestSyncLoop_MultipleHeadersArriveFirst_ThenData(t *testing.T) {
 		genesis:                  genesis.Genesis{ChainID: initialState.ChainID},
 		lastState:                initialState,
 		lastStateMtx:             new(sync.RWMutex),
-		logger:                   logging.Logger("test"),
+		logger:                   zap.NewNop(),
 		headerCache:              cache.NewCache[types.SignedHeader](),
 		dataCache:                cache.NewCache[types.Data](),
 		headerInCh:               headerInCh,

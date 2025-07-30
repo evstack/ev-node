@@ -4,9 +4,9 @@ import (
 	"testing"
 	"time"
 
-	logging "github.com/ipfs/go-log/v2"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/zap"
 )
 
 func TestMetrics(t *testing.T) {
@@ -104,7 +104,7 @@ func TestMetricsHelpers(t *testing.T) {
 	// Create a test manager with extended metrics
 	m := &Manager{
 		metrics:       NopMetrics(),
-		logger:        logging.Logger("test"),
+		logger:        zap.NewExample(),
 		headerInCh:    make(chan NewHeaderEvent, 10),
 		dataInCh:      make(chan NewDataEvent, 10),
 		headerStoreCh: make(chan struct{}, 1),

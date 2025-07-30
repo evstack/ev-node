@@ -12,10 +12,10 @@ import (
 
 	"github.com/evstack/ev-node/da/internal/mocks"
 	proxy "github.com/evstack/ev-node/da/jsonrpc"
-	logging "github.com/ipfs/go-log/v2"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/zap"
 
 	coreda "github.com/evstack/ev-node/core/da"
 )
@@ -45,8 +45,7 @@ func getTestDABlockTime() time.Duration {
 func TestProxy(t *testing.T) {
 	dummy := coreda.NewDummyDA(100_000, 0, 0, getTestDABlockTime())
 	dummy.StartHeightTicker()
-	logger := logging.Logger("test")
-	_ = logging.SetLogLevel("test", "debug")
+	logger := zap.NewExample()
 	server := proxy.NewServer(logger, ServerHost, ServerPort, dummy)
 	err := server.Start(context.Background())
 	require.NoError(t, err)
@@ -242,8 +241,7 @@ func TestSubmitWithOptions(t *testing.T) {
 		client.DA.Internal.SubmitWithOptions = internalAPI.SubmitWithOptions
 		client.DA.Namespace = testNamespace
 		client.DA.MaxBlobSize = testMaxBlobSize
-		client.DA.Logger = logging.Logger("test")
-		_ = logging.SetLogLevel("test", "debug") // For test verbosity
+		client.DA.Logger = zap.NewExample()
 		return client
 	}
 

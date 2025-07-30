@@ -6,9 +6,9 @@ import (
 	"testing"
 	"time"
 
-	logging "github.com/ipfs/go-log/v2"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
+	"go.uber.org/zap"
 
 	coreda "github.com/evstack/ev-node/core/da"
 	"github.com/evstack/ev-node/test/mocks"
@@ -16,8 +16,7 @@ import (
 )
 
 func TestSubmitWithHelpers(t *testing.T) {
-	logger := logging.Logger("test")
-	_ = logging.SetLogLevel("test", "FATAL")
+	logger := zap.NewNop()
 
 	testCases := []struct {
 		name           string
@@ -138,8 +137,7 @@ func TestSubmitWithHelpers(t *testing.T) {
 }
 
 func TestRetrieveWithHelpers(t *testing.T) {
-	logger := logging.Logger("test")
-	_ = logging.SetLogLevel("test", "FATAL")
+	logger := zap.NewNop()
 	dataLayerHeight := uint64(100)
 	mockIDs := [][]byte{[]byte("id1"), []byte("id2")}
 	mockBlobs := [][]byte{[]byte("blobA"), []byte("blobB")}

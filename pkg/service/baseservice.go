@@ -2,9 +2,8 @@ package service
 
 import (
 	"context"
-	"fmt"
 
-	logging "github.com/ipfs/go-log/v2"
+	"go.uber.org/zap"
 )
 
 /*
@@ -12,7 +11,7 @@ type FooService struct {
 	BaseService
 	// extra fields for FooService
 }
-func NewFooService(logger log.Logger) *FooService {
+func NewFooService(logger *zap.Logger) *FooService {
 	fs := &FooService{}
 	fs.BaseService = *NewBaseService(logger, "FooService", fs)
 	return fs
@@ -43,18 +42,16 @@ type Service interface {
 
 // BaseService provides a basic implementation of the Service interface.
 type BaseService struct {
-	Logger logging.EventLogger
+	Logger *zap.Logger
 	name   string
 	impl   Service // Implementation that can override Run behavior
 }
 
 // NewBaseService creates a new BaseService.
 // The provided implementation (impl) should be the "subclass" that implements Run.
-func NewBaseService(logger logging.EventLogger, name string, impl Service) *BaseService {
+func NewBaseService(logger *zap.Logger, name string, impl Service) *BaseService {
 	if logger == nil {
-		nopLogger := logging.Logger("nop")
-		_ = logging.SetLogLevel("nop", "FATAL")
-		logger = nopLogger
+		logger = zap.NewNop()
 	}
 	return &BaseService{
 		Logger: logger,
@@ -64,7 +61,7 @@ func NewBaseService(logger logging.EventLogger, name string, impl Service) *Base
 }
 
 // SetLogger sets the logger.
-func (bs *BaseService) SetLogger(l logging.EventLogger) {
+func (bs *BaseService) SetLogger(l *zap.Logger) {
 	bs.Logger = l
 }
 
@@ -72,13 +69,13 @@ func (bs *BaseService) SetLogger(l logging.EventLogger) {
 // then defers to the implementation's Run method to do the actual work.
 // If impl is nil or the same as bs, it uses the default implementation.
 func (bs *BaseService) Run(ctx context.Context) error {
-	bs.Logger.Info(fmt.Sprintf("service start, msg: Starting %v service, impl: %s", bs.name, bs.name))
+	bs.Logger.Info("service start", zap.String("service", bs.name), zap.String("impl", bs.name))
 
 	// If the implementation is nil or is the BaseService itself,
 	// use the default implementation which just waits for context cancellation
 	if bs.impl == nil || bs.impl == bs {
 		<-ctx.Done()
-		bs.Logger.Info(fmt.Sprintf("service stop, msg: Stopping %v service, impl: %s", bs.name, bs.name))
+		bs.Logger.Info("service stop", zap.String("service", bs.name), zap.String("impl", bs.name))
 		return ctx.Err()
 	}
 

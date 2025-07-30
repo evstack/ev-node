@@ -8,10 +8,10 @@ import (
 	"time"
 
 	ds "github.com/ipfs/go-datastore"
-	logging "github.com/ipfs/go-log/v2"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/zap"
 
 	coreda "github.com/evstack/ev-node/core/da"
 	coresequencer "github.com/evstack/ev-node/core/sequencer"
@@ -25,8 +25,7 @@ func TestNewSequencer(t *testing.T) {
 	db := ds.NewMapDatastore()
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
-	logger := logging.Logger("test")
-	_ = logging.SetLogLevel("test", "FATAL")
+	logger := zap.NewNop()
 	seq, err := NewSequencer(ctx, logger, db, dummyDA, []byte("test1"), 10*time.Second, metrics, false)
 	if err != nil {
 		t.Fatalf("Failed to create sequencer: %v", err)
@@ -59,8 +58,8 @@ func TestSequencer_SubmitBatchTxs(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
 	Id := []byte("test1")
-	logger := logging.Logger("test")
-	_ = logging.SetLogLevel("test", "FATAL")
+	logger := zap.NewExample()
+	
 	seq, err := NewSequencer(ctx, logger, db, dummyDA, Id, 10*time.Second, metrics, false)
 	if err != nil {
 		t.Fatalf("Failed to create sequencer: %v", err)
@@ -113,8 +112,8 @@ func TestSequencer_SubmitBatchTxs_EmptyBatch(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
 	Id := []byte("test1")
-	logger := logging.Logger("test")
-	_ = logging.SetLogLevel("test", "FATAL")
+	logger := zap.NewExample()
+	
 	seq, err := NewSequencer(ctx, logger, db, dummyDA, Id, 10*time.Second, metrics, false)
 	require.NoError(t, err, "Failed to create sequencer")
 	defer func() {
@@ -153,8 +152,8 @@ func TestSequencer_SubmitBatchTxs_EmptyBatch(t *testing.T) {
 
 func TestSequencer_GetNextBatch_NoLastBatch(t *testing.T) {
 	db := ds.NewMapDatastore()
-	logger := logging.Logger("test")
-	_ = logging.SetLogLevel("test", "FATAL")
+	logger := zap.NewExample()
+	
 
 	seq := &Sequencer{
 		logger: logger,
@@ -190,8 +189,8 @@ func TestSequencer_GetNextBatch_Success(t *testing.T) {
 	mockBatch := &coresequencer.Batch{Transactions: [][]byte{[]byte("tx1"), []byte("tx2")}}
 
 	db := ds.NewMapDatastore()
-	logger := logging.Logger("test")
-	_ = logging.SetLogLevel("test", "FATAL")
+	logger := zap.NewExample()
+	
 
 	seq := &Sequencer{
 		logger: logger,
@@ -251,8 +250,8 @@ func TestSequencer_VerifyBatch(t *testing.T) {
 
 	t.Run("Proposer Mode", func(t *testing.T) {
 		mockDA := damocks.NewMockDA(t)
-		logger := logging.Logger("test")
-		_ = logging.SetLogLevel("test", "FATAL")
+		logger := zap.NewExample()
+		
 
 		seq := &Sequencer{
 			logger:   logger,
@@ -274,8 +273,8 @@ func TestSequencer_VerifyBatch(t *testing.T) {
 	t.Run("Non-Proposer Mode", func(t *testing.T) {
 		t.Run("Valid Proofs", func(t *testing.T) {
 			mockDA := damocks.NewMockDA(t)
-			logger := logging.Logger("test")
-			_ = logging.SetLogLevel("test", "FATAL")
+			logger := zap.NewExample()
+			
 			seq := &Sequencer{
 				logger:   logger,
 				Id:       Id,
@@ -296,8 +295,8 @@ func TestSequencer_VerifyBatch(t *testing.T) {
 
 		t.Run("Invalid Proof", func(t *testing.T) {
 			mockDA := damocks.NewMockDA(t)
-			logger := logging.Logger("test")
-			_ = logging.SetLogLevel("test", "FATAL")
+			logger := zap.NewExample()
+			
 			seq := &Sequencer{
 				logger:   logger,
 				Id:       Id,
@@ -318,8 +317,8 @@ func TestSequencer_VerifyBatch(t *testing.T) {
 
 		t.Run("GetProofs Error", func(t *testing.T) {
 			mockDA := damocks.NewMockDA(t)
-			logger := logging.Logger("test")
-			_ = logging.SetLogLevel("test", "FATAL")
+			logger := zap.NewExample()
+			
 			seq := &Sequencer{
 				logger:   logger,
 				Id:       Id,
@@ -341,8 +340,8 @@ func TestSequencer_VerifyBatch(t *testing.T) {
 
 		t.Run("Validate Error", func(t *testing.T) {
 			mockDA := damocks.NewMockDA(t)
-			logger := logging.Logger("test")
-			_ = logging.SetLogLevel("test", "FATAL")
+			logger := zap.NewExample()
+			
 			seq := &Sequencer{
 				logger:   logger,
 				Id:       Id,
@@ -364,8 +363,8 @@ func TestSequencer_VerifyBatch(t *testing.T) {
 
 		t.Run("Invalid ID", func(t *testing.T) {
 			mockDA := damocks.NewMockDA(t)
-			logger := logging.Logger("test")
-			_ = logging.SetLogLevel("test", "FATAL")
+			logger := zap.NewExample()
+			
 
 			seq := &Sequencer{
 				logger:   logger,
@@ -395,8 +394,8 @@ func TestSequencer_GetNextBatch_BeforeDASubmission(t *testing.T) {
 	db := ds.NewMapDatastore()
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	logger := logging.Logger("test")
-	_ = logging.SetLogLevel("test", "FATAL")
+	logger := zap.NewExample()
+	
 	seq, err := NewSequencer(ctx, logger, db, mockDA, []byte("test1"), 1*time.Second, metrics, false)
 	if err != nil {
 		t.Fatalf("Failed to create sequencer: %v", err)
@@ -451,8 +450,8 @@ func TestSequencer_RecordMetrics(t *testing.T) {
 		// Create a sequencer with metrics enabled
 		metrics, err := NopMetrics()
 		require.NoError(t, err)
-		logger := logging.Logger("test")
-		_ = logging.SetLogLevel("test", "FATAL")
+		logger := zap.NewExample()
+		
 
 		seq := &Sequencer{
 			logger:  logger,
@@ -476,8 +475,8 @@ func TestSequencer_RecordMetrics(t *testing.T) {
 
 	t.Run("Without Metrics", func(t *testing.T) {
 		// Create a sequencer without metrics
-		logger := logging.Logger("test")
-		_ = logging.SetLogLevel("test", "FATAL")
+		logger := zap.NewExample()
+		
 		seq := &Sequencer{
 			logger:  logger,
 			metrics: nil, // No metrics
@@ -501,8 +500,8 @@ func TestSequencer_RecordMetrics(t *testing.T) {
 		// Create a sequencer with metrics
 		metrics, err := NopMetrics()
 		require.NoError(t, err)
-		logger := logging.Logger("test")
-		_ = logging.SetLogLevel("test", "FATAL")
+		logger := zap.NewExample()
+		
 
 		seq := &Sequencer{
 			logger:  logger,
@@ -542,8 +541,8 @@ func TestSequencer_QueueLimit_Integration(t *testing.T) {
 	mockDA := &damocks.MockDA{}
 
 	// Create a sequencer with a small queue limit for testing
-	logger := logging.Logger("test")
-	_ = logging.SetLogLevel("test", "FATAL")
+	logger := zap.NewExample()
+	
 	seq := &Sequencer{
 		logger:    logger,
 		da:        mockDA,
@@ -658,8 +657,8 @@ func TestSequencer_DAFailureAndQueueThrottling_Integration(t *testing.T) {
 
 	// Create sequencer with small queue size to trigger throttling quickly
 	queueSize := 3 // Small for testing
-	logger := logging.Logger("test")
-	_ = logging.SetLogLevel("test", "FATAL")
+	logger := zap.NewExample()
+	
 	seq, err := NewSequencerWithQueueSize(
 		context.Background(),
 		logger,

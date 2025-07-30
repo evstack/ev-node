@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	logging "github.com/ipfs/go-log/v2"
+	"go.uber.org/zap"
 )
 
 // dummyService is a simple implementation of the Service interface for testing purposes.
@@ -22,8 +22,7 @@ func newDummyService(name string, runError error) *dummyService {
 	d := &dummyService{
 		runError: runError,
 	}
-	nopLogger := logging.Logger("test-nop")
-	_ = logging.SetLogLevel("test-nop", "FATAL")
+	nopLogger := zap.NewNop()
 	d.BaseService = NewBaseService(nopLogger, name, d)
 	return d
 }
@@ -73,8 +72,7 @@ func TestBaseService_Run(t *testing.T) {
 				ds = newDummyService("dummy", tc.runError)
 				bs = ds.BaseService
 			} else {
-				nopLogger := logging.Logger("test-nop")
-				_ = logging.SetLogLevel("test-nop", "FATAL")
+				nopLogger := zap.NewNop()
 				bs = NewBaseService(nopLogger, "dummy", nil)
 			}
 
@@ -105,8 +103,7 @@ func TestBaseService_Run(t *testing.T) {
 
 func TestBaseService_String(t *testing.T) {
 	serviceName := "test-service"
-	nopLogger := logging.Logger("test-nop")
-	_ = logging.SetLogLevel("test-nop", "FATAL")
+	nopLogger := zap.NewNop()
 	bs := NewBaseService(nopLogger, serviceName, nil)
 
 	if bs.String() != serviceName {
@@ -115,12 +112,10 @@ func TestBaseService_String(t *testing.T) {
 }
 
 func TestBaseService_SetLogger(t *testing.T) {
-	nopLogger1 := logging.Logger("test-nop1")
-	_ = logging.SetLogLevel("test-nop1", "FATAL")
+	nopLogger1 := zap.NewNop()
 	bs := NewBaseService(nopLogger1, "test", nil)
 
-	nopLogger2 := logging.Logger("test-nop2")
-	_ = logging.SetLogLevel("test-nop2", "FATAL")
+	nopLogger2 := zap.NewNop()
 	newLogger := nopLogger2
 
 	bs.SetLogger(newLogger)

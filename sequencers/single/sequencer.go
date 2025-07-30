@@ -8,7 +8,7 @@ import (
 	"time"
 
 	ds "github.com/ipfs/go-datastore"
-	logging "github.com/ipfs/go-log/v2"
+	"go.uber.org/zap"
 
 	coreda "github.com/evstack/ev-node/core/da"
 	coresequencer "github.com/evstack/ev-node/core/sequencer"
@@ -23,7 +23,7 @@ var _ coresequencer.Sequencer = &Sequencer{}
 
 // Sequencer implements core sequencing interface
 type Sequencer struct {
-	logger logging.EventLogger
+	logger *zap.Logger
 
 	proposer bool
 
@@ -40,7 +40,7 @@ type Sequencer struct {
 // NewSequencer creates a new Single Sequencer
 func NewSequencer(
 	ctx context.Context,
-	logger logging.EventLogger,
+	logger *zap.Logger,
 	db ds.Batching,
 	da coreda.DA,
 	id []byte,
@@ -54,7 +54,7 @@ func NewSequencer(
 // NewSequencerWithQueueSize creates a new Single Sequencer with configurable queue size
 func NewSequencerWithQueueSize(
 	ctx context.Context,
-	logger logging.EventLogger,
+	logger *zap.Logger,
 	db ds.Batching,
 	da coreda.DA,
 	id []byte,
@@ -90,7 +90,7 @@ func (c *Sequencer) SubmitBatchTxs(ctx context.Context, req coresequencer.Submit
 	}
 
 	if req.Batch == nil || len(req.Batch.Transactions) == 0 {
-		c.logger.Info(fmt.Sprintf("Skipping submission of empty batch, Id: %s", string(req.Id)))
+		c.logger.Info("Skipping submission of empty batch", zap.String("Id", string(req.Id)))
 		return &coresequencer.SubmitBatchTxsResponse{}, nil
 	}
 
@@ -100,8 +100,8 @@ func (c *Sequencer) SubmitBatchTxs(ctx context.Context, req coresequencer.Submit
 	if err != nil {
 		if errors.Is(err, ErrQueueFull) {
 			c.logger.Warn("Batch queue is full, rejecting batch submission",
-				"txCount", len(batch.Transactions),
-				"chainId", string(req.Id))
+				zap.Int("txCount", len(batch.Transactions)),
+				zap.String("chainId", string(req.Id)))
 			return nil, fmt.Errorf("batch queue is full, cannot accept more batches: %w", err)
 		}
 		return nil, fmt.Errorf("failed to add batch: %w", err)

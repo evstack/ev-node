@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/evstack/ev-node/types"
+	"go.uber.org/zap"
 )
 
 // HeaderStoreRetrieveLoop is responsible for retrieving headers from the Header Store.
@@ -12,7 +13,7 @@ func (m *Manager) HeaderStoreRetrieveLoop(ctx context.Context) {
 	// height is always > 0
 	initialHeight, err := m.store.Height(ctx)
 	if err != nil {
-		m.logger.Error("failed to get initial store height for DataStoreRetrieveLoop", "error", err)
+		m.logger.Error("failed to get initial store height for DataStoreRetrieveLoop", zap.Error(err))
 		return
 	}
 	lastHeaderStoreHeight := initialHeight
@@ -26,7 +27,7 @@ func (m *Manager) HeaderStoreRetrieveLoop(ctx context.Context) {
 		if headerStoreHeight > lastHeaderStoreHeight {
 			headers, err := m.getHeadersFromHeaderStore(ctx, lastHeaderStoreHeight+1, headerStoreHeight)
 			if err != nil {
-				m.logger.Error("failed to get headers from Header Store", "lastHeaderHeight", lastHeaderStoreHeight, "headerStoreHeight", headerStoreHeight, "errors", err.Error())
+				m.logger.Error("failed to get headers from Header Store", zap.Uint64("lastHeaderHeight", lastHeaderStoreHeight), zap.Uint64("headerStoreHeight", headerStoreHeight), zap.Error(err))
 				continue
 			}
 			daHeight := m.daHeight.Load()
@@ -50,7 +51,7 @@ func (m *Manager) HeaderStoreRetrieveLoop(ctx context.Context) {
 				if !m.isUsingExpectedSingleSequencer(header) {
 					continue
 				}
-				m.logger.Debug("header retrieved from p2p header sync", "headerHeight", header.Height(), "daHeight", daHeight)
+				m.logger.Debug("header retrieved from p2p header sync", zap.Uint64("headerHeight", header.Height()), zap.Uint64("daHeight", daHeight))
 				m.headerInCh <- NewHeaderEvent{header, daHeight}
 			}
 		}
@@ -63,7 +64,7 @@ func (m *Manager) DataStoreRetrieveLoop(ctx context.Context) {
 	// height is always > 0
 	initialHeight, err := m.store.Height(ctx)
 	if err != nil {
-		m.logger.Error("failed to get initial store height for DataStoreRetrieveLoop", "error", err)
+		m.logger.Error("failed to get initial store height for DataStoreRetrieveLoop", zap.Error(err))
 		return
 	}
 	lastDataStoreHeight := initialHeight
@@ -77,7 +78,7 @@ func (m *Manager) DataStoreRetrieveLoop(ctx context.Context) {
 		if dataStoreHeight > lastDataStoreHeight {
 			data, err := m.getDataFromDataStore(ctx, lastDataStoreHeight+1, dataStoreHeight)
 			if err != nil {
-				m.logger.Error("failed to get data from Data Store", "lastDataStoreHeight", lastDataStoreHeight, "dataStoreHeight", dataStoreHeight, "errors", err.Error())
+				m.logger.Error("failed to get data from Data Store", zap.Uint64("lastDataStoreHeight", lastDataStoreHeight), zap.Uint64("dataStoreHeight", dataStoreHeight), zap.Error(err))
 				continue
 			}
 			daHeight := m.daHeight.Load()
@@ -94,7 +95,7 @@ func (m *Manager) DataStoreRetrieveLoop(ctx context.Context) {
 				default:
 				}
 				// TODO: remove junk if possible
-				m.logger.Debug("data retrieved from p2p data sync", "dataHeight", d.Metadata.Height, "daHeight", daHeight)
+				m.logger.Debug("data retrieved from p2p data sync", zap.Uint64("dataHeight", d.Metadata.Height), zap.Uint64("daHeight", daHeight))
 				m.dataInCh <- NewDataEvent{d, daHeight}
 			}
 		}

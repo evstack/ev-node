@@ -7,6 +7,7 @@ import (
 
 	coreda "github.com/evstack/ev-node/core/da"
 	"github.com/evstack/ev-node/types"
+	"go.uber.org/zap"
 	"google.golang.org/protobuf/proto"
 )
 
@@ -26,7 +27,7 @@ func (m *Manager) HeaderSubmissionLoop(ctx context.Context) {
 		}
 		headersToSubmit, err := m.pendingHeaders.getPendingHeaders(ctx)
 		if err != nil {
-			m.logger.Error("error while fetching headers pending DA", "err", err)
+			m.logger.Error("error while fetching headers pending DA", zap.Error(err))
 			continue
 		}
 		if len(headersToSubmit) == 0 {
@@ -34,7 +35,7 @@ func (m *Manager) HeaderSubmissionLoop(ctx context.Context) {
 		}
 		err = m.submitHeadersToDA(ctx, headersToSubmit)
 		if err != nil {
-			m.logger.Error("error while submitting header to DA", "error", err)
+			m.logger.Error("error while submitting header to DA", zap.Error(err))
 		}
 	}
 }
@@ -56,7 +57,7 @@ func (m *Manager) DataSubmissionLoop(ctx context.Context) {
 
 		signedDataToSubmit, err := m.createSignedDataToSubmit(ctx)
 		if err != nil {
-			m.logger.Error("failed to create signed data to submit", "error", err)
+			m.logger.Error("failed to create signed data to submit", zap.Error(err))
 			continue
 		}
 		if len(signedDataToSubmit) == 0 {
@@ -65,7 +66,7 @@ func (m *Manager) DataSubmissionLoop(ctx context.Context) {
 
 		err = m.submitDataToDA(ctx, signedDataToSubmit)
 		if err != nil {
-			m.logger.Error("failed to submit data to DA", "error", err)
+			m.logger.Error("failed to submit data to DA", zap.Error(err))
 		}
 	}
 }
@@ -125,7 +126,7 @@ func submitToDA[T any](
 			// Record successful DA submission
 			m.recordDAMetrics("submission", DAModeSuccess)
 
-			m.logger.Info(fmt.Sprintf("successfully submitted %s to DA layer with gasPrice %v and count %d", itemType, gasPrice, res.SubmittedCount))
+			m.logger.Info("successfully submitted to DA layer", zap.String("type", itemType), zap.Float64("gasPrice", gasPrice), zap.Int("count", int(res.SubmittedCount)))
 			if res.SubmittedCount == uint64(remLen) {
 				submittedAll = true
 			}
@@ -141,23 +142,23 @@ func submitToDA[T any](
 				gasPrice = gasPrice / m.gasMultiplier
 				gasPrice = max(gasPrice, initialGasPrice)
 			}
-			m.logger.Debug("resetting DA layer submission options", "backoff", backoff, "gasPrice", gasPrice)
+			m.logger.Debug("resetting DA layer submission options", zap.Duration("backoff", backoff), zap.Float64("gasPrice", gasPrice))
 		case coreda.StatusNotIncludedInBlock, coreda.StatusAlreadyInMempool:
-			m.logger.Error("DA layer submission failed", "error", res.Message, "attempt", attempt)
+			m.logger.Error("DA layer submission failed", zap.String("error", res.Message), zap.Int("attempt", attempt))
 			// Record failed DA submission (will retry)
 			m.recordDAMetrics("submission", DAModeFail)
 			backoff = m.config.DA.BlockTime.Duration * time.Duration(m.config.DA.MempoolTTL)
 			if m.gasMultiplier > 0 && gasPrice != -1 {
 				gasPrice = gasPrice * m.gasMultiplier
 			}
-			m.logger.Info(fmt.Sprintf("retrying DA layer submission with, backoff: %s, gasPrice: %v", backoff, gasPrice))
+			m.logger.Info("retrying DA layer submission", zap.Duration("backoff", backoff), zap.Float64("gasPrice", gasPrice))
 		case coreda.StatusContextCanceled:
-			m.logger.Info(fmt.Sprintf("DA layer submission canceled due to context cancellation, attempt: %d", attempt))
+			m.logger.Info("DA layer submission canceled due to context cancellation", zap.Int("attempt", attempt))
 			return nil
 		case coreda.StatusTooBig:
 			fallthrough
 		default:
-			m.logger.Error(fmt.Sprintf("DA layer submission failed, error: %s, attempt: %d", res.Message, attempt))
+			m.logger.Error("DA layer submission failed", zap.String("error", res.Message), zap.Int("attempt", attempt))
 			// Record failed DA submission (will retry)
 			m.recordDAMetrics("submission", DAModeFail)
 			backoff = m.exponentialBackoff(backoff)

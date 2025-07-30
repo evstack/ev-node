@@ -5,10 +5,10 @@ import (
 	"encoding/binary"
 	"testing"
 
-	logging "github.com/ipfs/go-log/v2"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
-	"go.uber.org/zap" // Needed for potential With behavior
+	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
 )
 
 // GenerateHeaderHash creates a deterministic hash for a test header based on height and proposer.
@@ -30,37 +30,59 @@ func GenerateHeaderHash(t *testing.T, height uint64, proposer []byte) []byte {
 	return hasher.Sum(nil)
 }
 
-type MockLogger struct {
+// MockZapLogger is a mock implementation of *zap.Logger for testing
+type MockZapLogger struct {
 	mock.Mock
 }
 
-// Ensure MockLogger implements the ipfs/go-log/v2 EventLogger (StandardLogger) interface
-var _ logging.StandardLogger = &MockLogger{}
-
-// For non-f methods, the first arg is typically the message string, others are keyvals.
-func (m *MockLogger) Debug(args ...interface{})                 { m.Called(args...) }
-func (m *MockLogger) Debugf(format string, args ...interface{}) { m.Called(format, args) } // Note: testify mock doesn't directly support (format, ...any) well for matching, usually match format string exactly.
-func (m *MockLogger) Error(args ...interface{})                 { m.Called(args...) }
-func (m *MockLogger) Errorf(format string, args ...interface{}) { m.Called(format, args) }
-func (m *MockLogger) Fatal(args ...interface{})                 { m.Called(args...); panic("fatal error logged") }
-func (m *MockLogger) Fatalf(format string, args ...interface{}) {
-	m.Called(format, args)
+// Mock the core zap.Logger methods
+func (m *MockZapLogger) Debug(msg string, fields ...zap.Field) { m.Called(msg, fields) }
+func (m *MockZapLogger) Info(msg string, fields ...zap.Field)  { m.Called(msg, fields) }
+func (m *MockZapLogger) Warn(msg string, fields ...zap.Field)  { m.Called(msg, fields) }
+func (m *MockZapLogger) Error(msg string, fields ...zap.Field) { m.Called(msg, fields) }
+func (m *MockZapLogger) Fatal(msg string, fields ...zap.Field) {
+	m.Called(msg, fields)
 	panic("fatal error logged")
 }
-func (m *MockLogger) Info(args ...interface{})                 { m.Called(args...) }
-func (m *MockLogger) Infof(format string, args ...interface{}) { m.Called(format, args) }
-func (m *MockLogger) Panic(args ...interface{})                { m.Called(args...); panic("panic error logged") }
-func (m *MockLogger) Panicf(format string, args ...interface{}) {
-	m.Called(format, args)
+func (m *MockZapLogger) Panic(msg string, fields ...zap.Field) {
+	m.Called(msg, fields)
 	panic("panic error logged")
 }
-func (m *MockLogger) Warn(args ...interface{})                 { m.Called(args...) }
-func (m *MockLogger) Warnf(format string, args ...interface{}) { m.Called(format, args) }
 
-func (m *MockLogger) With(keyvals ...interface{}) *zap.SugaredLogger {
-	args := m.Called(append([]interface{}{"With"}, keyvals...)...)
-	if logger, ok := args.Get(0).(*zap.SugaredLogger); ok {
+// Mock additional methods that might be used
+func (m *MockZapLogger) With(fields ...zap.Field) *zap.Logger {
+	args := m.Called(fields)
+	if logger, ok := args.Get(0).(*zap.Logger); ok {
 		return logger
 	}
-	return nil
+	return zap.NewNop() // Return a no-op logger as fallback
+}
+
+func (m *MockZapLogger) Named(name string) *zap.Logger {
+	args := m.Called(name)
+	if logger, ok := args.Get(0).(*zap.Logger); ok {
+		return logger
+	}
+	return zap.NewNop()
+}
+
+func (m *MockZapLogger) WithOptions(opts ...zap.Option) *zap.Logger {
+	args := m.Called(opts)
+	if logger, ok := args.Get(0).(*zap.Logger); ok {
+		return logger
+	}
+	return zap.NewNop()
+}
+
+func (m *MockZapLogger) Core() zapcore.Core {
+	args := m.Called()
+	if core, ok := args.Get(0).(zapcore.Core); ok {
+		return core
+	}
+	return zapcore.NewNopCore()
+}
+
+func (m *MockZapLogger) Sync() error {
+	args := m.Called()
+	return args.Error(0)
 }

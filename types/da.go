@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"strings"
 
-	logging "github.com/ipfs/go-log/v2"
+	"go.uber.org/zap"
 
 	coreda "github.com/evstack/ev-node/core/da"
 )
@@ -20,7 +20,7 @@ var placeholder = []byte("placeholder")
 func SubmitWithHelpers(
 	ctx context.Context,
 	da coreda.DA, // Use the core DA interface
-	logger logging.EventLogger,
+	logger *zap.Logger,
 	data [][]byte,
 	gasPrice float64,
 	options []byte,
@@ -52,7 +52,7 @@ func SubmitWithHelpers(
 		case errors.Is(err, coreda.ErrContextDeadline):
 			status = coreda.StatusContextDeadline
 		}
-		logger.Error("DA submission failed via helper", "error", err, "status", status)
+		logger.Error("DA submission failed via helper", zap.Error(err), zap.Uint64("status", uint64(status)))
 		return coreda.ResultSubmit{
 			BaseResult: coreda.BaseResult{
 				Code:           status,
@@ -79,11 +79,11 @@ func SubmitWithHelpers(
 	if len(ids) > 0 {
 		height, _, err = coreda.SplitID(ids[0])
 		if err != nil {
-			logger.Error("failed to split ID", "error", err)
+			logger.Error("failed to split ID", zap.Error(err))
 		}
 	}
 
-	logger.Debug("DA submission successful via helper", "num_ids", len(ids))
+	logger.Debug("DA submission successful via helper", zap.Int("num_ids", len(ids)))
 	return coreda.ResultSubmit{
 		BaseResult: coreda.BaseResult{
 			Code:           coreda.StatusSuccess,
@@ -101,7 +101,7 @@ func SubmitWithHelpers(
 func RetrieveWithHelpers(
 	ctx context.Context,
 	da coreda.DA,
-	logger logging.EventLogger,
+	logger *zap.Logger,
 	dataLayerHeight uint64,
 	namespace []byte,
 ) coreda.ResultRetrieve {
@@ -111,7 +111,7 @@ func RetrieveWithHelpers(
 	if err != nil {
 		// Handle specific "not found" error
 		if strings.Contains(err.Error(), coreda.ErrBlobNotFound.Error()) {
-			logger.Debug("Retrieve helper: Blobs not found at height", "height", dataLayerHeight)
+			logger.Debug("Retrieve helper: Blobs not found at height", zap.Uint64("height", dataLayerHeight))
 			return coreda.ResultRetrieve{
 				BaseResult: coreda.BaseResult{
 					Code:    coreda.StatusNotFound,
@@ -121,7 +121,7 @@ func RetrieveWithHelpers(
 			}
 		}
 		if strings.Contains(err.Error(), coreda.ErrHeightFromFuture.Error()) {
-			logger.Debug("Retrieve helper: Blobs not found at height", "height", dataLayerHeight)
+			logger.Debug("Retrieve helper: Blobs not found at height", zap.Uint64("height", dataLayerHeight))
 			return coreda.ResultRetrieve{
 				BaseResult: coreda.BaseResult{
 					Code:    coreda.StatusHeightFromFuture,
@@ -131,7 +131,7 @@ func RetrieveWithHelpers(
 			}
 		}
 		// Handle other errors during GetIDs
-		logger.Error("Retrieve helper: Failed to get IDs", "height", dataLayerHeight, "error", err)
+		logger.Error("Retrieve helper: Failed to get IDs", zap.Uint64("height", dataLayerHeight), zap.Error(err))
 		return coreda.ResultRetrieve{
 			BaseResult: coreda.BaseResult{
 				Code:    coreda.StatusError,
@@ -143,7 +143,7 @@ func RetrieveWithHelpers(
 
 	// This check should technically be redundant if GetIDs correctly returns ErrBlobNotFound
 	if idsResult == nil || len(idsResult.IDs) == 0 {
-		logger.Debug("Retrieve helper: No IDs found at height", "height", dataLayerHeight)
+		logger.Debug("Retrieve helper: No IDs found at height", zap.Uint64("height", dataLayerHeight))
 		return coreda.ResultRetrieve{
 			BaseResult: coreda.BaseResult{
 				Code:    coreda.StatusNotFound,
@@ -161,7 +161,7 @@ func RetrieveWithHelpers(
 		batchBlobs, err := da.Get(ctx, idsResult.IDs[i:end], namespace)
 		if err != nil {
 			// Handle errors during Get
-			logger.Error("Retrieve helper: Failed to get blobs", "height", dataLayerHeight, "num_ids", len(idsResult.IDs), "error", err)
+			logger.Error("Retrieve helper: Failed to get blobs", zap.Uint64("height", dataLayerHeight), zap.Int("num_ids", len(idsResult.IDs)), zap.Error(err))
 			return coreda.ResultRetrieve{
 				BaseResult: coreda.BaseResult{
 					Code:    coreda.StatusError,
@@ -173,7 +173,7 @@ func RetrieveWithHelpers(
 		blobs = append(blobs, batchBlobs...)
 	}
 	// Success
-	logger.Debug("Retrieve helper: Successfully retrieved blobs", "height", dataLayerHeight, "num_blobs", len(blobs))
+	logger.Debug("Retrieve helper: Successfully retrieved blobs", zap.Uint64("height", dataLayerHeight), zap.Int("num_blobs", len(blobs)))
 	return coreda.ResultRetrieve{
 		BaseResult: coreda.BaseResult{
 			Code:      coreda.StatusSuccess,

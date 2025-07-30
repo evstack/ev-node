@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"time"
+
+	"go.uber.org/zap"
 )
 
 // AggregationLoop is responsible for aggregating transactions into blocks.
@@ -11,7 +13,7 @@ func (m *Manager) AggregationLoop(ctx context.Context, errCh chan<- error) {
 	initialHeight := m.genesis.InitialHeight //nolint:gosec
 	height, err := m.store.Height(ctx)
 	if err != nil {
-		m.logger.Error("error while getting store height", "error", err)
+		m.logger.Error("error while getting store height", zap.Error(err))
 		return
 	}
 	var delay time.Duration
@@ -24,7 +26,7 @@ func (m *Manager) AggregationLoop(ctx context.Context, errCh chan<- error) {
 	}
 
 	if delay > 0 {
-		m.logger.Info("waiting to produce block, delay:", delay)
+		m.logger.Info("waiting to produce block", zap.Duration("delay", delay))
 		time.Sleep(delay)
 	}
 
@@ -74,7 +76,7 @@ func (m *Manager) lazyAggregationLoop(ctx context.Context, blockTimer *time.Time
 				m.txsAvailable = false
 			} else {
 				// Ensure we keep ticking even when there are no txs
-				blockTimer.Reset(m.config.Node.BlockTime.Duration)
+				blockTimer.Reset(getRemainingSleep(time.Now(), m.config.Node.BlockTime.Duration))
 			}
 		case <-m.txNotifyCh:
 			m.txsAvailable = true
@@ -91,7 +93,7 @@ func (m *Manager) produceBlock(ctx context.Context, mode string, lazyTimer, bloc
 		return fmt.Errorf("error while publishing block: %w", err)
 	}
 
-	m.logger.Debug("Successfully published block", "mode", mode)
+	m.logger.Debug("Successfully published block", zap.String("mode", mode))
 
 	// Reset both timers for the next aggregation window
 	lazyTimer.Reset(getRemainingSleep(start, m.config.Node.LazyBlockInterval.Duration))

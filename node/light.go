@@ -8,7 +8,7 @@ import (
 	"time"
 
 	ds "github.com/ipfs/go-datastore"
-	logging "github.com/ipfs/go-log/v2"
+	"go.uber.org/zap"
 
 	"github.com/evstack/ev-node/pkg/config"
 	"github.com/evstack/ev-node/pkg/genesis"
@@ -40,9 +40,9 @@ func newLightNode(
 	genesis genesis.Genesis,
 	p2pClient *p2p.Client,
 	database ds.Batching,
-	logger logging.EventLogger,
+	logger *zap.Logger,
 ) (ln *LightNode, err error) {
-	headerSyncService, err := sync.NewHeaderSyncService(database, conf, genesis, p2pClient, logging.Logger("HeaderSyncService"))
+	headerSyncService, err := sync.NewHeaderSyncService(database, conf, genesis, p2pClient, logger)
 	if err != nil {
 		return nil, fmt.Errorf("error while initializing HeaderSyncService: %w", err)
 	}
@@ -91,9 +91,9 @@ func (ln *LightNode) Run(parentCtx context.Context) error {
 	}
 
 	go func() {
-		ln.Logger.Info("started RPC server, addr:", ln.nodeConfig.RPC.Address)
+		ln.Logger.Info("started RPC server", zap.String("addr", ln.nodeConfig.RPC.Address))
 		if err := ln.rpcServer.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			ln.Logger.Error("RPC server error", "err", err)
+			ln.Logger.Error("RPC server error", zap.Error(err))
 		}
 	}()
 
@@ -105,6 +105,7 @@ func (ln *LightNode) Run(parentCtx context.Context) error {
 		return fmt.Errorf("error while starting header sync service: %w", err)
 	}
 
+	// Wait for the context to be canceled
 	<-parentCtx.Done()
 	ln.Logger.Info("context canceled, stopping node")
 	cancelNode()
@@ -116,33 +117,33 @@ func (ln *LightNode) Run(parentCtx context.Context) error {
 
 	var multiErr error
 
-	// Stop Header Sync Service
-	err = ln.hSyncService.Stop(shutdownCtx)
-	if err != nil {
-		if !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
+	// Stop header sync service
+	if ln.hSyncService != nil {
+		if err := ln.hSyncService.Stop(shutdownCtx); err != nil && !errors.Is(err, context.Canceled) {
 			multiErr = errors.Join(multiErr, fmt.Errorf("stopping header sync service: %w", err))
 		} else {
-			ln.Logger.Debug("header sync service stop context ended", "reason", err)
+			ln.Logger.Debug("header sync service stop context ended", zap.Error(err))
 		}
 	}
 
-	// Shutdown RPC Server
+	// Shutdown RPC server
 	if ln.rpcServer != nil {
-		err = ln.rpcServer.Shutdown(shutdownCtx)
-		if err != nil && !errors.Is(err, http.ErrServerClosed) {
+		if err := ln.rpcServer.Shutdown(shutdownCtx); err != nil && !errors.Is(err, context.Canceled) {
 			multiErr = errors.Join(multiErr, fmt.Errorf("shutting down RPC server: %w", err))
 		} else {
-			ln.Logger.Debug("RPC server shutdown context ended", "reason", err)
+			ln.Logger.Debug("RPC server shutdown context ended", zap.Error(err))
 		}
 	}
 
-	// Stop P2P Client
-	err = ln.P2P.Close()
-	if err != nil {
-		multiErr = errors.Join(multiErr, fmt.Errorf("closing P2P client: %w", err))
+	// Close P2P client
+	if ln.P2P != nil {
+		if err := ln.P2P.Close(); err != nil {
+			multiErr = errors.Join(multiErr, fmt.Errorf("closing P2P client: %w", err))
+		}
 	}
 
-	if err = ln.Store.Close(); err != nil {
+	// Close store
+	if err := ln.Store.Close(); err != nil {
 		multiErr = errors.Join(multiErr, fmt.Errorf("closing store: %w", err))
 	} else {
 		ln.Logger.Debug("store closed")
@@ -151,12 +152,12 @@ func (ln *LightNode) Run(parentCtx context.Context) error {
 	if multiErr != nil {
 		if unwrapper, ok := multiErr.(interface{ Unwrap() []error }); ok {
 			for _, err := range unwrapper.Unwrap() {
-				ln.Logger.Error("error during shutdown", "error", err)
+				ln.Logger.Error("error during shutdown", zap.Error(err))
 			}
 		} else {
-			ln.Logger.Error("error during shutdown", "error", multiErr)
+			ln.Logger.Error("error during shutdown", zap.Error(multiErr))
 		}
-		ln.Logger.Error("error during shutdown", "error", err)
+		ln.Logger.Error("error during shutdown", zap.Error(err))
 	}
 
 	if ctx.Err() != nil {

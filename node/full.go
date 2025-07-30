@@ -13,9 +13,9 @@ import (
 
 	ds "github.com/ipfs/go-datastore"
 	ktds "github.com/ipfs/go-datastore/keytransform"
-	logging "github.com/ipfs/go-log/v2"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
+	"go.uber.org/zap"
 
 	"github.com/evstack/ev-node/block"
 	coreda "github.com/evstack/ev-node/core/da"
@@ -79,7 +79,7 @@ func newFullNode(
 	sequencer coresequencer.Sequencer,
 	da coreda.DA,
 	metricsProvider MetricsProvider,
-	logger logging.EventLogger,
+	logger *zap.Logger,
 	nodeOpts NodeOptions,
 ) (fn *FullNode, err error) {
 	seqMetrics, _ := metricsProvider(genesis.ChainID)
@@ -124,7 +124,7 @@ func newFullNode(
 		sequencer,
 		genesis.ChainID,
 		nodeConfig.Node.BlockTime.Duration,
-		logging.Logger("Reaper"), // Get Reaper's own logger
+		logger, // Use passed zap logger
 		mainKV,
 	)
 
@@ -153,9 +153,9 @@ func initHeaderSyncService(
 	nodeConfig config.Config,
 	genesis genesispkg.Genesis,
 	p2pClient *p2p.Client,
-	logger logging.EventLogger,
+	logger *zap.Logger,
 ) (*rollkitsync.HeaderSyncService, error) {
-	headerSyncService, err := rollkitsync.NewHeaderSyncService(mainKV, nodeConfig, genesis, p2pClient, logging.Logger("HeaderSyncService"))
+	headerSyncService, err := rollkitsync.NewHeaderSyncService(mainKV, nodeConfig, genesis, p2pClient, logger)
 	if err != nil {
 		return nil, fmt.Errorf("error while initializing HeaderSyncService: %w", err)
 	}
@@ -167,9 +167,9 @@ func initDataSyncService(
 	nodeConfig config.Config,
 	genesis genesispkg.Genesis,
 	p2pClient *p2p.Client,
-	logger logging.EventLogger,
+	logger *zap.Logger,
 ) (*rollkitsync.DataSyncService, error) {
-	dataSyncService, err := rollkitsync.NewDataSyncService(mainKV, nodeConfig, genesis, p2pClient, logging.Logger("DataSyncService"))
+	dataSyncService, err := rollkitsync.NewDataSyncService(mainKV, nodeConfig, genesis, p2pClient, logger)
 	if err != nil {
 		return nil, fmt.Errorf("error while initializing DataSyncService: %w", err)
 	}
@@ -193,7 +193,7 @@ func initBlockManager(
 	store store.Store,
 	sequencer coresequencer.Sequencer,
 	da coreda.DA,
-	logger logging.EventLogger,
+	logger *zap.Logger,
 	headerSyncService *rollkitsync.HeaderSyncService,
 	dataSyncService *rollkitsync.DataSyncService,
 	seqMetrics *block.Metrics,
@@ -201,7 +201,9 @@ func initBlockManager(
 	gasMultiplier float64,
 	managerOpts block.ManagerOptions,
 ) (*block.Manager, error) {
-	logger.Debug("Proposer address", "address", genesis.ProposerAddress)
+	// Create a zap logger for the block manager
+	zapLogger, _ := zap.NewDevelopment()
+	zapLogger.Debug("Proposer address", zap.ByteString("address", genesis.ProposerAddress))
 
 	blockManager, err := block.NewManager(
 		ctx,
@@ -212,7 +214,7 @@ func initBlockManager(
 		exec,
 		sequencer,
 		da,
-		logging.Logger("BlockManager"), // Get BlockManager's own logger
+		zapLogger, // Use zap logger for block manager
 		headerSyncService.Store(),
 		dataSyncService.Store(),
 		headerSyncService,
@@ -274,11 +276,11 @@ func (n *FullNode) startInstrumentationServer() (*http.Server, *http.Server) {
 
 		go func() {
 			if err := prometheusServer.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-				n.Logger.Error("Prometheus HTTP server ListenAndServe", "err", err)
+				n.Logger.Error("Prometheus HTTP server ListenAndServe", zap.Error(err))
 			}
 		}()
 
-		n.Logger.Info("Started Prometheus HTTP server, addr:", n.nodeConfig.Instrumentation.PrometheusListenAddr)
+		n.Logger.Info("Started Prometheus HTTP server", zap.String("addr", n.nodeConfig.Instrumentation.PrometheusListenAddr))
 	}
 
 	// Check if pprof is enabled
@@ -307,11 +309,11 @@ func (n *FullNode) startInstrumentationServer() (*http.Server, *http.Server) {
 
 		go func() {
 			if err := pprofServer.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-				n.Logger.Error("pprof HTTP server ListenAndServe", "err", err)
+				n.Logger.Error("pprof HTTP server ListenAndServe", zap.Error(err))
 			}
 		}()
 
-		n.Logger.Info("Started pprof HTTP server, addr:", n.nodeConfig.Instrumentation.GetPprofListenAddr())
+		n.Logger.Info("Started pprof HTTP server", zap.String("addr", n.nodeConfig.Instrumentation.GetPprofListenAddr()))
 	}
 
 	// Return the primary server (for backward compatibility) and the secondary server
@@ -348,9 +350,9 @@ func (n *FullNode) Run(parentCtx context.Context) error {
 	}
 
 	go func() {
-		n.Logger.Info("started RPC server, addr:", n.nodeConfig.RPC.Address)
+		n.Logger.Info("started RPC server", zap.String("addr", n.nodeConfig.RPC.Address))
 		if err := n.rpcServer.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			n.Logger.Error("RPC server error", "err", err)
+			n.Logger.Error("RPC server error", zap.Error(err))
 		}
 	}()
 
@@ -381,7 +383,7 @@ func (n *FullNode) Run(parentCtx context.Context) error {
 		}()
 	}
 	if n.nodeConfig.Node.Aggregator {
-		n.Logger.Info("working in aggregator mode, block time:", n.nodeConfig.Node.BlockTime)
+		n.Logger.Info("working in aggregator mode", zap.Duration("block_time", n.nodeConfig.Node.BlockTime.Duration))
 		spawnWorker(func() { n.blockManager.AggregationLoop(ctx, errCh) })
 		spawnWorker(func() { n.reaper.Start(ctx) })
 		spawnWorker(func() { n.blockManager.HeaderSubmissionLoop(ctx) })
@@ -398,7 +400,7 @@ func (n *FullNode) Run(parentCtx context.Context) error {
 	select {
 	case err := <-errCh:
 		if err != nil {
-			n.Logger.Error("unrecoverable error in one of the go routines...", "error", err)
+			n.Logger.Error("unrecoverable error in one of the go routines...", zap.Error(err))
 			cancelNode() // propagate shutdown to all child goroutines
 		}
 	case <-parentCtx.Done():
@@ -424,10 +426,10 @@ func (n *FullNode) Run(parentCtx context.Context) error {
 	if err != nil {
 		// Log context canceled errors at a lower level if desired, or handle specific non-cancel errors
 		if !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
-			n.Logger.Error("error stopping header sync service", "error", err)
+			n.Logger.Error("error stopping header sync service", zap.Error(err))
 			multiErr = errors.Join(multiErr, fmt.Errorf("stopping header sync service: %w", err))
 		} else {
-			n.Logger.Debug("header sync service stop context ended", "reason", err) // Log cancellation as debug
+			n.Logger.Debug("header sync service stop context ended", zap.Error(err)) // Log cancellation as debug
 		}
 	}
 
@@ -436,10 +438,10 @@ func (n *FullNode) Run(parentCtx context.Context) error {
 	if err != nil {
 		// Log context canceled errors at a lower level if desired, or handle specific non-cancel errors
 		if !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
-			n.Logger.Error("error stopping data sync service", "error", err)
+			n.Logger.Error("error stopping data sync service", zap.Error(err))
 			multiErr = errors.Join(multiErr, fmt.Errorf("stopping data sync service: %w", err))
 		} else {
-			n.Logger.Debug("data sync service stop context ended", "reason", err) // Log cancellation as debug
+			n.Logger.Debug("data sync service stop context ended", zap.Error(err)) // Log cancellation as debug
 		}
 	}
 
@@ -456,7 +458,7 @@ func (n *FullNode) Run(parentCtx context.Context) error {
 		if err != nil && !errors.Is(err, http.ErrServerClosed) {
 			multiErr = errors.Join(multiErr, fmt.Errorf("shutting down Prometheus server: %w", err))
 		} else {
-			n.Logger.Debug("Prometheus server shutdown context ended", "reason", err)
+			n.Logger.Debug("Prometheus server shutdown context ended", zap.Error(err))
 		}
 	}
 
@@ -466,7 +468,7 @@ func (n *FullNode) Run(parentCtx context.Context) error {
 		if err != nil && !errors.Is(err, http.ErrServerClosed) {
 			multiErr = errors.Join(multiErr, fmt.Errorf("shutting down pprof server: %w", err))
 		} else {
-			n.Logger.Debug("pprof server shutdown context ended", "reason", err)
+			n.Logger.Debug("pprof server shutdown context ended", zap.Error(err))
 		}
 	}
 
@@ -476,7 +478,7 @@ func (n *FullNode) Run(parentCtx context.Context) error {
 		if err != nil && !errors.Is(err, http.ErrServerClosed) {
 			multiErr = errors.Join(multiErr, fmt.Errorf("shutting down RPC server: %w", err))
 		} else {
-			n.Logger.Debug("RPC server shutdown context ended", "reason", err)
+			n.Logger.Debug("RPC server shutdown context ended", zap.Error(err))
 		}
 	}
 
@@ -497,7 +499,7 @@ func (n *FullNode) Run(parentCtx context.Context) error {
 	// Log final status
 	if multiErr != nil {
 		for _, err := range multiErr.(interface{ Unwrap() []error }).Unwrap() {
-			n.Logger.Error("error during shutdown", "error", err)
+			n.Logger.Error("error during shutdown", zap.Error(err))
 		}
 	} else {
 		n.Logger.Info("full node halted successfully")
@@ -532,12 +534,12 @@ func (n *FullNode) IsRunning() bool {
 }
 
 // SetLogger sets the logger used by node.
-func (n *FullNode) SetLogger(logger logging.EventLogger) {
+func (n *FullNode) SetLogger(logger *zap.Logger) {
 	n.Logger = logger
 }
 
 // GetLogger returns logger.
-func (n *FullNode) GetLogger() logging.EventLogger {
+func (n *FullNode) GetLogger() *zap.Logger {
 	return n.Logger
 }
 

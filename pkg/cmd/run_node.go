@@ -11,8 +11,9 @@ import (
 	"time"
 
 	"github.com/ipfs/go-datastore"
-	logging "github.com/ipfs/go-log/v2"
 	"github.com/spf13/cobra"
+	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
 
 	coreda "github.com/evstack/ev-node/core/da"
 	coreexecutor "github.com/evstack/ev-node/core/execution"
@@ -39,50 +40,69 @@ func ParseConfig(cmd *cobra.Command) (rollconf.Config, error) {
 	return nodeConfig, nil
 }
 
-// SetupLogger configures and returns a logger based on the provided configuration.
-// It applies the following settings from the config:
-//   - Log format (text or JSON)
+// SetupLogger creates and configures a zap logger based on the provided configuration.
+//
+// Configuration options:
+//   - Output format (console or JSON)
 //   - Log level (debug, info, warn, error)
 //   - Stack traces for error logs
 //
-// The returned logger is already configured with the "module" field set to "main".
-func SetupLogger(config rollconf.LogConfig) logging.EventLogger {
-	logCfg := logging.Config{
-		Stderr: true, // Default to stderr
-	}
-
-	// Configure logger format
+// The returned logger is production-ready and optimized for performance.
+func SetupLogger(config rollconf.LogConfig) (*zap.Logger, error) {
+	// Configure encoder
+	var encoderConfig zapcore.EncoderConfig
 	if config.Format == "json" {
-		logCfg.Format = logging.JSONOutput
-	}
-
-	// Configure logger level
-	level, err := logging.LevelFromString(config.Level)
-	if err == nil {
-		logCfg.Level = level
+		encoderConfig = zap.NewProductionEncoderConfig()
 	} else {
-		// Default to info if parsing fails
-		logCfg.Level = logging.LevelInfo
+		encoderConfig = zap.NewDevelopmentEncoderConfig()
+		encoderConfig.EncodeLevel = zapcore.CapitalColorLevelEncoder
 	}
 
-	logging.SetupLogging(logCfg)
-
-	// Suppress noisy external component logs by default, unless debug logging is enabled
-	if logCfg.Level != logging.LevelDebug {
-		_ = logging.SetLogLevel("header/store", "FATAL")
-		_ = logging.SetLogLevel("header/sync", "FATAL")
-		_ = logging.SetLogLevel("header/p2p", "FATAL")
-		_ = logging.SetLogLevel("pubsub", "FATAL")
-		_ = logging.SetLogLevel("badger4", "FATAL")
+	// Configure log level
+	var level zapcore.Level
+	switch config.Level {
+	case "debug":
+		level = zapcore.DebugLevel
+	case "info":
+		level = zapcore.InfoLevel
+	case "warn":
+		level = zapcore.WarnLevel
+	case "error":
+		level = zapcore.ErrorLevel
+	default:
+		level = zapcore.InfoLevel // Default to info
 	}
 
-	// Return a logger instance for the "main" subsystem
-	return logging.Logger("main")
+	// Build logger configuration
+	zapConfig := zap.Config{
+		Level:            zap.NewAtomicLevelAt(level),
+		Development:      config.Format != "json",
+		Encoding:         "console",
+		EncoderConfig:    encoderConfig,
+		OutputPaths:      []string{"stderr"},
+		ErrorOutputPaths: []string{"stderr"},
+		Sampling: &zap.SamplingConfig{
+			Initial:    100,
+			Thereafter: 100,
+		},
+	}
+
+	if config.Format == "json" {
+		zapConfig.Encoding = "json"
+	}
+
+	// Build the logger
+	logger, err := zapConfig.Build()
+	if err != nil {
+		return nil, fmt.Errorf("failed to build logger: %w", err)
+	}
+
+	return logger, nil
 }
 
 // StartNode handles the node startup logic
 func StartNode(
-	logger logging.EventLogger,
+	logger *zap.Logger,
 	cmd *cobra.Command,
 	executor coreexecutor.Executor,
 	sequencer coresequencer.Sequencer,
@@ -147,11 +167,11 @@ func StartNode(
 		defer func() {
 			if r := recover(); r != nil {
 				err := fmt.Errorf("node panicked: %v", r)
-				logger.Error("Recovered from panic in node", "panic", r)
+				logger.Error("Recovered from panic in node", zap.Any("panic", r))
 				select {
 				case errCh <- err:
 				default:
-					logger.Error("Error channel full", "error", err)
+					logger.Error("Error channel full", zap.Error(err))
 				}
 			}
 		}()
@@ -160,7 +180,7 @@ func StartNode(
 		select {
 		case errCh <- err:
 		default:
-			logger.Error("Error channel full", "error", err)
+			logger.Error("Error channel full", zap.Error(err))
 		}
 	}()
 
@@ -173,7 +193,7 @@ func StartNode(
 		logger.Info("shutting down node...")
 		cancel()
 	case err := <-errCh:
-		logger.Error("node error", "error", err)
+		logger.Error("node error", zap.Error(err))
 		cancel()
 		return err
 	}
@@ -184,7 +204,7 @@ func StartNode(
 		logger.Info("Node shutdown timed out")
 	case err := <-errCh:
 		if err != nil && !errors.Is(err, context.Canceled) {
-			logger.Error("Error during shutdown", "error", err)
+			logger.Error("Error during shutdown", zap.Error(err))
 			return err
 		}
 	}

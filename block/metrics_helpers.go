@@ -3,6 +3,8 @@ package block
 import (
 	"runtime"
 	"time"
+
+	"go.uber.org/zap"
 )
 
 // DA metric modes
@@ -43,7 +45,7 @@ func (m *Manager) sendNonBlockingSignalWithMetrics(ch chan<- struct{}, channelNa
 		return true
 	default:
 		m.metrics.DroppedSignals.Add(1)
-		m.logger.Debug("dropped signal", "channel", channelName)
+		m.logger.Debug("Starting metrics pusher", zap.String("channel", channelName))
 		return false
 	}
 }

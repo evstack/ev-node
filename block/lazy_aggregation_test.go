@@ -7,9 +7,9 @@ import (
 	"testing"
 	"time"
 
-	logging "github.com/ipfs/go-log/v2"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/zap"
 
 	"github.com/evstack/ev-node/pkg/config"
 )
@@ -54,7 +54,7 @@ func setupTestManager(t *testing.T, blockTime, lazyTime time.Duration) (*Manager
 	pubMock := &mockPublishBlock{
 		calls: make(chan struct{}, 10), // Buffer to avoid blocking in tests
 	}
-	logger := logging.Logger("test")
+	logger := zap.NewNop() // Use a no-op logger for tests
 	m := &Manager{
 		logger: logger,
 		config: config.Config{
