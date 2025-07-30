@@ -281,7 +281,7 @@ func (nm *nodeManager) startEVMDocker(name string, rpcPort, enginePort, wsPort i
 		"--engine.persistence-threshold", "0",
 		"--engine.memory-block-buffer-target", "0",
 		"--disable-discovery",
-		"--rollkit.enable",
+		"--ev-reth.enable",
 	}
 
 	cmd := exec.Command("docker", args...)
