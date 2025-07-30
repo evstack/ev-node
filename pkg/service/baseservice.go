@@ -72,17 +72,13 @@ func (bs *BaseService) SetLogger(l logging.EventLogger) {
 // then defers to the implementation's Run method to do the actual work.
 // If impl is nil or the same as bs, it uses the default implementation.
 func (bs *BaseService) Run(ctx context.Context) error {
-	bs.Logger.Info("service start",
-		"msg", fmt.Sprintf("Starting %v service", bs.name),
-		"impl", bs.name)
+	bs.Logger.Info(fmt.Sprintf("service start, msg: Starting %v service, impl: %s", bs.name, bs.name))
 
 	// If the implementation is nil or is the BaseService itself,
 	// use the default implementation which just waits for context cancellation
 	if bs.impl == nil || bs.impl == bs {
 		<-ctx.Done()
-		bs.Logger.Info("service stop",
-			"msg", fmt.Sprintf("Stopping %v service", bs.name),
-			"impl", bs.name)
+		bs.Logger.Info(fmt.Sprintf("service stop, msg: Stopping %v service, impl: %s", bs.name, bs.name))
 		return ctx.Err()
 	}
 

@@ -91,7 +91,7 @@ func (ln *LightNode) Run(parentCtx context.Context) error {
 	}
 
 	go func() {
-		ln.Logger.Info("started RPC server", "addr", ln.nodeConfig.RPC.Address)
+		ln.Logger.Info("started RPC server, addr:", ln.nodeConfig.RPC.Address)
 		if err := ln.rpcServer.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			ln.Logger.Error("RPC server error", "err", err)
 		}

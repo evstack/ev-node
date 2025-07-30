@@ -47,9 +47,9 @@ func main() {
 	da := NewLocalDA(logger, opts...)
 
 	srv := proxy.NewServer(logger, host, port, da)
-	logger.Info("Listening on", "host", host, "port", port, "maxBlobSize", maxBlobSize)
+	logger.Info(fmt.Sprintf("Listening on, host: %s, port: %s, maxBlobSize: %d", host, port, maxBlobSize))
 	if err := srv.Start(context.Background()); err != nil {
-		logger.Error("error while serving", "error", err)
+		logger.Error(fmt.Sprintf("error while serving, error: %v", err))
 	}
 
 	interrupt := make(chan os.Signal, 1)

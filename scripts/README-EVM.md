@@ -45,7 +45,7 @@ go build -tags run_evm -o run-evm-nodes scripts/run-evm-nodes.go
 
 2. **Infrastructure**:
    - Starts Local DA service on port 7980
-   - Launches two Lumen (Reth) instances via Docker:
+   - Launches two ev-reth instances via Docker:
      - Sequencer EVM: ports 8545 (RPC), 8551 (Engine), 8546 (WS)
      - Full Node EVM: ports 8555 (RPC), 8561 (Engine), 8556 (WS)
 
@@ -76,7 +76,7 @@ go build -tags run_evm -o run-evm-nodes scripts/run-evm-nodes.go
          │ Engine API            │ Engine API
          │                       │
 ┌────────▼────────┐     ┌────────▼────────┐
-│   Lumen EVM     │     │   Lumen EVM     │
+│   EV-Reth       │     │   EV-Reth       │
 │  (Sequencer)    │     │  (Full Node)    │
 └────────┬────────┘     └────────┬────────┘
          │                       │

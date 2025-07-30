@@ -158,7 +158,7 @@ func (api *API) SubmitWithOptions(ctx context.Context, inputBlobs []da.Blob, gas
 			continue
 		}
 		if currentSize+blobLen > maxBlobSize {
-			api.Logger.Info("Blob size limit reached for batch", "maxBlobSize", maxBlobSize, "index", i, "currentSize", currentSize, "nextBlobSize", blobLen)
+			api.Logger.Info(fmt.Sprintf("Blob size limit reached for batch, maxBlobSize: %d, index: %d, currentSize: %d, nextBlobSize: %d", maxBlobSize, i, currentSize, blobLen))
 			break
 		}
 		currentSize += blobLen
@@ -260,7 +260,7 @@ func newClient(ctx context.Context, logger logging.EventLogger, addr string, aut
 		return nil, fmt.Errorf("failed to decode namespace: %w", err)
 	}
 	client.DA.Namespace = namespaceBytes
-	logger.Info("creating new client", "namespace", namespace)
+	logger.Info("creating new client, namepsace: ", namespace)
 	errs := getKnownErrorsMapping()
 	for name, module := range moduleMap(&client) {
 		closer, err := jsonrpc.NewMergeClient(ctx, addr, name, []interface{}{module}, authHeader, jsonrpc.WithErrors(errs))

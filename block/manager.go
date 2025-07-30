@@ -322,22 +322,22 @@ func NewManager(
 	}
 
 	if config.DA.BlockTime.Duration == 0 {
-		logger.Info("using default DA block time", "DABlockTime", defaultDABlockTime)
+		logger.Info("using default DA block time, DABlockTime:", defaultDABlockTime)
 		config.DA.BlockTime.Duration = defaultDABlockTime
 	}
 
 	if config.Node.BlockTime.Duration == 0 {
-		logger.Info("using default block time", "BlockTime", defaultBlockTime)
+		logger.Info("using default block time, BlockTime:", defaultBlockTime)
 		config.Node.BlockTime.Duration = defaultBlockTime
 	}
 
 	if config.Node.LazyBlockInterval.Duration == 0 {
-		logger.Info("using default lazy block time", "LazyBlockTime", defaultLazyBlockTime)
+		logger.Info("using default lazy block time, LazyBlockTime:", defaultLazyBlockTime)
 		config.Node.LazyBlockInterval.Duration = defaultLazyBlockTime
 	}
 
 	if config.DA.MempoolTTL == 0 {
-		logger.Info("using default mempool ttl", "MempoolTTL", defaultMempoolTTL)
+		logger.Info("using default mempool ttl, MempoolTTL:", defaultMempoolTTL)
 		config.DA.MempoolTTL = defaultMempoolTTL
 	}
 
@@ -645,7 +645,7 @@ func (m *Manager) publishBlockInternal(ctx context.Context) error {
 	// If there is use that instead of creating a new block
 	pendingHeader, pendingData, err := m.store.GetBlockData(ctx, newHeight)
 	if err == nil {
-		m.logger.Info("using pending block", "height", newHeight)
+		m.logger.Info("using pending block, height:", newHeight)
 		header = pendingHeader
 		data = pendingData
 	} else {

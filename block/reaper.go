@@ -55,7 +55,7 @@ func (r *Reaper) Start(ctx context.Context) {
 	ticker := time.NewTicker(r.interval)
 	defer ticker.Stop()
 
-	r.logger.Info("Reaper started", "interval", r.interval)
+	r.logger.Info("Reaper started, interval:", r.interval)
 
 	for {
 		select {

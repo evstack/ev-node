@@ -278,7 +278,7 @@ func (n *FullNode) startInstrumentationServer() (*http.Server, *http.Server) {
 			}
 		}()
 
-		n.Logger.Info("Started Prometheus HTTP server", "addr", n.nodeConfig.Instrumentation.PrometheusListenAddr)
+		n.Logger.Info("Started Prometheus HTTP server, addr:", n.nodeConfig.Instrumentation.PrometheusListenAddr)
 	}
 
 	// Check if pprof is enabled
@@ -311,7 +311,7 @@ func (n *FullNode) startInstrumentationServer() (*http.Server, *http.Server) {
 			}
 		}()
 
-		n.Logger.Info("Started pprof HTTP server", "addr", n.nodeConfig.Instrumentation.GetPprofListenAddr())
+		n.Logger.Info("Started pprof HTTP server, addr:", n.nodeConfig.Instrumentation.GetPprofListenAddr())
 	}
 
 	// Return the primary server (for backward compatibility) and the secondary server
@@ -348,7 +348,7 @@ func (n *FullNode) Run(parentCtx context.Context) error {
 	}
 
 	go func() {
-		n.Logger.Info("started RPC server", "addr", n.nodeConfig.RPC.Address)
+		n.Logger.Info("started RPC server, addr:", n.nodeConfig.RPC.Address)
 		if err := n.rpcServer.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			n.Logger.Error("RPC server error", "err", err)
 		}
@@ -381,7 +381,7 @@ func (n *FullNode) Run(parentCtx context.Context) error {
 		}()
 	}
 	if n.nodeConfig.Node.Aggregator {
-		n.Logger.Info("working in aggregator mode", "block time", n.nodeConfig.Node.BlockTime)
+		n.Logger.Info("working in aggregator mode, block time:", n.nodeConfig.Node.BlockTime)
 		spawnWorker(func() { n.blockManager.AggregationLoop(ctx, errCh) })
 		spawnWorker(func() { n.reaper.Start(ctx) })
 		spawnWorker(func() { n.blockManager.HeaderSubmissionLoop(ctx) })

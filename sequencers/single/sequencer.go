@@ -90,7 +90,7 @@ func (c *Sequencer) SubmitBatchTxs(ctx context.Context, req coresequencer.Submit
 	}
 
 	if req.Batch == nil || len(req.Batch.Transactions) == 0 {
-		c.logger.Info("Skipping submission of empty batch", "Id", string(req.Id))
+		c.logger.Info(fmt.Sprintf("Skipping submission of empty batch, Id: %s", string(req.Id)))
 		return &coresequencer.SubmitBatchTxsResponse{}, nil
 	}
 

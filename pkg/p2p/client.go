@@ -143,10 +143,10 @@ func (c *Client) Start(ctx context.Context) error {
 func (c *Client) startWithHost(ctx context.Context, h host.Host) error {
 	c.host = h
 	for _, a := range c.host.Addrs() {
-		c.logger.Info("listening on address ", fmt.Sprintf("%s/p2p/%s", a, c.host.ID()))
+		c.logger.Info(fmt.Sprintf("listening on address, address: %s/p2p/%s", a, c.host.ID()))
 	}
 
-	c.logger.Debug("blocking blacklisted peers blacklist ", c.conf.BlockedPeers)
+	c.logger.Debug(fmt.Sprintf("blocking blacklisted peers blacklist, blacklist: %s", c.conf.BlockedPeers))
 	if err := c.setupBlockedPeers(c.parseAddrInfoList(c.conf.BlockedPeers)); err != nil {
 		return err
 	}

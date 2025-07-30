@@ -143,7 +143,7 @@ func (m *Manager) handlePotentialHeader(ctx context.Context, bz []byte, daHeight
 	headerHash := header.Hash().String()
 	m.headerCache.SetDAIncluded(headerHash, daHeight)
 	m.sendNonBlockingSignalToDAIncluderCh()
-	m.logger.Info("header marked as DA included, headerHeight: ", header.Height(), "headerHash: ", headerHash)
+	m.logger.Info(fmt.Sprintf("header marked as DA included, headerHeight: %d, headerHash: %s", header.Height(), headerHash))
 	if !m.headerCache.IsSeen(headerHash) {
 		select {
 		case <-ctx.Done():
@@ -178,7 +178,7 @@ func (m *Manager) handlePotentialData(ctx context.Context, bz []byte, daHeight u
 	dataHashStr := signedData.Data.DACommitment().String()
 	m.dataCache.SetDAIncluded(dataHashStr, daHeight)
 	m.sendNonBlockingSignalToDAIncluderCh()
-	m.logger.Info("signed data marked as DA included, dataHash: ", dataHashStr, "daHeight: ", daHeight, "height: ", signedData.Height())
+	m.logger.Info(fmt.Sprintf("signed data marked as DA included, dataHash: %s, daHeight: %d, height: %d", dataHashStr, daHeight, signedData.Height()))
 	if !m.dataCache.IsSeen(dataHashStr) {
 		select {
 		case <-ctx.Done():

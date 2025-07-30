@@ -161,7 +161,7 @@ func (d *LocalDA) Commit(ctx context.Context, blobs []coreda.Blob, _ []byte) ([]
 
 // SubmitWithOptions stores blobs in DA layer (options are ignored).
 func (d *LocalDA) SubmitWithOptions(ctx context.Context, blobs []coreda.Blob, gasPrice float64, _ []byte, _ []byte) ([]coreda.ID, error) {
-	d.logger.Info("SubmitWithOptions called, numBlobs: ", len(blobs), "gasPrice: ", gasPrice)
+	d.logger.Info(fmt.Sprintf("SubmitWithOptions called, numBlobs: %d, gasPrice: %f", len(blobs), gasPrice))
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	ids := make([]coreda.ID, len(blobs))
@@ -172,13 +172,13 @@ func (d *LocalDA) SubmitWithOptions(ctx context.Context, blobs []coreda.Blob, ga
 
 		d.data[d.height] = append(d.data[d.height], kvp{ids[i], blob})
 	}
-	d.logger.Info("SubmitWithOptions successful, newHeight: ", d.height, "count: ", len(ids))
+	d.logger.Info(fmt.Sprintf("SubmitWithOptions successful, newHeight: %d, count: %d", d.height, len(ids)))
 	return ids, nil
 }
 
 // Submit stores blobs in DA layer (options are ignored).
 func (d *LocalDA) Submit(ctx context.Context, blobs []coreda.Blob, gasPrice float64, _ []byte) ([]coreda.ID, error) {
-	d.logger.Info("Submit called, numBlobs: ", len(blobs), "gasPrice: ", gasPrice)
+	d.logger.Info(fmt.Sprintf("Submit called, numBlobs: %d, gasPrice: %f", len(blobs), gasPrice))
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	ids := make([]coreda.ID, len(blobs))
@@ -189,7 +189,7 @@ func (d *LocalDA) Submit(ctx context.Context, blobs []coreda.Blob, gasPrice floa
 
 		d.data[d.height] = append(d.data[d.height], kvp{ids[i], blob})
 	}
-	d.logger.Info("Submit successful, newHeight: ", d.height, "count: ", len(ids))
+	d.logger.Info(fmt.Sprintf("Submit successful, newHeight: %d, count: %d", d.height, len(ids)))
 	return ids, nil
 }
 

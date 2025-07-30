@@ -150,14 +150,14 @@ func submitToDA[T any](
 			if m.gasMultiplier > 0 && gasPrice != -1 {
 				gasPrice = gasPrice * m.gasMultiplier
 			}
-			m.logger.Info("retrying DA layer submission with", "backoff", backoff, "gasPrice", gasPrice)
+			m.logger.Info(fmt.Sprintf("retrying DA layer submission with, backoff: %s, gasPrice: %v", backoff, gasPrice))
 		case coreda.StatusContextCanceled:
-			m.logger.Info("DA layer submission canceled due to context cancellation", "attempt", attempt)
+			m.logger.Info(fmt.Sprintf("DA layer submission canceled due to context cancellation, attempt: %d", attempt))
 			return nil
 		case coreda.StatusTooBig:
 			fallthrough
 		default:
-			m.logger.Error("DA layer submission failed", "error", res.Message, "attempt", attempt)
+			m.logger.Error(fmt.Sprintf("DA layer submission failed, error: %s, attempt: %d", res.Message, attempt))
 			// Record failed DA submission (will retry)
 			m.recordDAMetrics("submission", DAModeFail)
 			backoff = m.exponentialBackoff(backoff)

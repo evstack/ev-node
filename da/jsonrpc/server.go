@@ -2,6 +2,7 @@ package jsonrpc
 
 import (
 	"context"
+	"fmt"
 	"net"
 	"net/http"
 	"sync/atomic"
@@ -122,7 +123,7 @@ func (s *Server) Start(context.Context) error {
 		return err
 	}
 	s.listener = listener
-	s.logger.Info("server started", "listening on", s.srv.Addr)
+	s.logger.Info(fmt.Sprintf("server started, listening on: %s", s.srv.Addr))
 	//nolint:errcheck
 	go s.srv.Serve(listener)
 	return nil
