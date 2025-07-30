@@ -1,3 +1,4 @@
+name: "Evolve EVM"
 
 services:
   ev-reth:

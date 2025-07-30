@@ -1,4 +1,4 @@
-name: "ev-reth"
+name: "ev-reth-sequencer"
 
 services:
   jwt-init:

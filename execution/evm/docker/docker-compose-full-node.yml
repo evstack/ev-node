@@ -18,7 +18,7 @@ services:
         openssl rand -hex 32 | tr -d '\n' > /jwt/jwt.hex;
       fi"
 
-  ev-node-reth-full-node:
+  ev-reth-full-node:
     container_name: ev-reth-full-node
     restart: unless-stopped
     image: ghcr.io/evstack/ev-reth:latest
