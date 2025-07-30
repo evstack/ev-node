@@ -4,7 +4,7 @@ services:
   ev-node-reth:
     container_name: ev-node-reth
     restart: unless-stopped
-    image: ghcr.io/evstack/lumen:latest
+    image: ghcr.io/evstack/ev-reth:latest
     ports:
       - "9001:9001" # metrics
       - "30303:30303" # eth/66 peering
@@ -18,7 +18,7 @@ services:
     entrypoint: /bin/sh -c
     command:
       - |
-          lumen node \
+          ev-reth node \
             --chain /root/chain/genesis.json \
             --datadir /home/reth/eth-home \
             --metrics 0.0.0.0:9001 \
@@ -39,7 +39,7 @@ services:
             --txpool.max-account-slots 2048 \
             --txpool.max-new-txns 2048 \
             --txpool.additional-validation-tasks 16 \
-            --evnode.enable
+            --ev-reth.enable
     networks:
       - ev-node-network
 
