@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"testing"
 
@@ -615,4 +616,180 @@ func TestGetHeader(t *testing.T) {
 			assert.Equal(t, header, gotHeader)
 		})
 	}
+}
+
+// TestRollback verifies that rollback successfully removes blocks and updates height
+func TestRollback(t *testing.T) {
+	t.Parallel()
+	require := require.New(t)
+
+	ctx := context.Background()
+	store := New(mustNewInMem())
+
+	// Setup: create and save multiple blocks
+	chainID := "test-rollback"
+	maxHeight := uint64(10)
+
+	for h := uint64(1); h <= maxHeight; h++ {
+		header, data := types.GetRandomBlock(h, 2, chainID)
+		sig := &header.Signature
+
+		err := store.SaveBlockData(ctx, header, data, sig)
+		require.NoError(err)
+
+		err = store.SetHeight(ctx, h)
+		require.NoError(err)
+
+		// Create and update state for this height
+		state := types.State{
+			ChainID:         chainID,
+			InitialHeight:   1,
+			LastBlockHeight: h,
+			LastBlockTime:   header.Time(),
+			AppHash:         header.AppHash,
+		}
+		err = store.UpdateState(ctx, state)
+		require.NoError(err)
+	}
+
+	// Verify initial state
+	height, err := store.Height(ctx)
+	require.NoError(err)
+	require.Equal(maxHeight, height)
+
+	// Verify all blocks exist
+	for h := uint64(1); h <= maxHeight; h++ {
+		_, _, err := store.GetBlockData(ctx, h)
+		require.NoError(err, "block at height %d should exist", h)
+	}
+
+	// Execute rollback to height 7
+	rollbackToHeight := uint64(7)
+	err = store.Rollback(ctx, rollbackToHeight)
+	require.NoError(err)
+
+	// Verify new height
+	newHeight, err := store.Height(ctx)
+	require.NoError(err)
+	require.Equal(rollbackToHeight, newHeight)
+
+	// Verify blocks exist only up to rollback height
+	for h := uint64(1); h <= rollbackToHeight; h++ {
+		_, _, err := store.GetBlockData(ctx, h)
+		require.NoError(err, "block at height %d should still exist after rollback", h)
+	}
+
+	// Verify blocks above rollback height are removed
+	for h := rollbackToHeight + 1; h <= maxHeight; h++ {
+		_, _, err := store.GetBlockData(ctx, h)
+		require.Error(err, "block at height %d should be removed after rollback", h)
+	}
+
+	// Verify state is rolled back
+	state, err := store.GetState(ctx)
+	require.NoError(err)
+	require.Equal(rollbackToHeight, state.LastBlockHeight)
+}
+
+// TestRollbackToSameHeight verifies that rollback to same height is a no-op
+func TestRollbackToSameHeight(t *testing.T) {
+	t.Parallel()
+	require := require.New(t)
+
+	ctx := context.Background()
+	store := New(mustNewInMem())
+
+	// Setup: create one block
+	chainID := "test-rollback-same"
+	height := uint64(5)
+	header, data := types.GetRandomBlock(height, 2, chainID)
+	sig := &header.Signature
+
+	err := store.SaveBlockData(ctx, header, data, sig)
+	require.NoError(err)
+
+	err = store.SetHeight(ctx, height)
+	require.NoError(err)
+
+	// Execute rollback to same height
+	err = store.Rollback(ctx, height)
+	require.NoError(err)
+
+	// Verify height unchanged
+	newHeight, err := store.Height(ctx)
+	require.NoError(err)
+	require.Equal(height, newHeight)
+
+	// Verify block still exists
+	_, _, err = store.GetBlockData(ctx, height)
+	require.NoError(err)
+}
+
+// TestRollbackToHigherHeight verifies that rollback to higher height is a no-op
+func TestRollbackToHigherHeight(t *testing.T) {
+	t.Parallel()
+	require := require.New(t)
+
+	ctx := context.Background()
+	store := New(mustNewInMem())
+
+	// Setup: create one block
+	chainID := "test-rollback-higher"
+	currentHeight := uint64(5)
+	header, data := types.GetRandomBlock(currentHeight, 2, chainID)
+	sig := &header.Signature
+
+	err := store.SaveBlockData(ctx, header, data, sig)
+	require.NoError(err)
+
+	err = store.SetHeight(ctx, currentHeight)
+	require.NoError(err)
+
+	// Execute rollback to higher height
+	rollbackToHeight := uint64(10)
+	err = store.Rollback(ctx, rollbackToHeight)
+	require.NoError(err)
+
+	// Verify height unchanged
+	newHeight, err := store.Height(ctx)
+	require.NoError(err)
+	require.Equal(currentHeight, newHeight)
+
+	// Verify block still exists
+	_, _, err = store.GetBlockData(ctx, currentHeight)
+	require.NoError(err)
+}
+
+// TestRollbackBatchError verifies that rollback handles batch creation errors
+func TestRollbackBatchError(t *testing.T) {
+	t.Parallel()
+	require := require.New(t)
+
+	ctx := context.Background()
+	mock := &mockBatchingDatastore{
+		Batching:   mustNewInMem(),
+		batchError: errors.New("batch creation failed"),
+	}
+	store := New(mock)
+
+	err := store.Rollback(ctx, uint64(5))
+	require.Error(err)
+	require.Contains(err.Error(), "failed to create a new batch")
+}
+
+// TestRollbackHeightError verifies that rollback handles height retrieval errors
+func TestRollbackHeightError(t *testing.T) {
+	t.Parallel()
+	require := require.New(t)
+
+	ctx := context.Background()
+	mock := &mockBatchingDatastore{
+		Batching: mustNewInMem(),
+		getError: errors.New("height retrieval failed"),
+	}
+	store := New(mock)
+
+	err := store.Rollback(ctx, uint64(5))
+	require.Error(err)
+	require.Contains(err.Error(), "failed to get current height")
 }

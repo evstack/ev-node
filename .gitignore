@@ -15,4 +15,4 @@ build
 coverage.out
 execution/evm/jwttoken
 target
-testapp
+apps/testapp/testapp
