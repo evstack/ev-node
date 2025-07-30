@@ -15,7 +15,7 @@ import (
 func InitCmd() *cobra.Command {
 	initCmd := &cobra.Command{
 		Use:   "init",
-		Short: "Initialize rollkit config",
+		Short: "Initialize ev-node config",
 		Long:  fmt.Sprintf("This command initializes a new %s file in the specified directory (or current directory if not specified).", rollconf.ConfigName),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			homePath, err := cmd.Flags().GetString(rollconf.FlagRootDir)
@@ -57,7 +57,7 @@ func InitCmd() *cobra.Command {
 			// get chain ID or use default
 			chainID, _ := cmd.Flags().GetString(rollconf.FlagChainID)
 			if chainID == "" {
-				chainID = "rollkit-test"
+				chainID = "evnode-test"
 			}
 
 			// Initialize genesis without app state

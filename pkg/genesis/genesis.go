@@ -6,7 +6,7 @@ import (
 )
 
 // Genesis represents the genesis state of the blockchain.
-// This genesis struct only contains the fields required by rollkit.
+// This genesis struct only contains the fields required by ev-node.
 // The app state or other fields are not included here.
 type Genesis struct {
 	ChainID            string    `json:"chain_id"`

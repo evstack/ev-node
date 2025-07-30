@@ -6,13 +6,13 @@ async fn main() -> Result<(), Box<dyn Error>> {
     // Initialize tracing for better debugging
     tracing_subscriber::fmt::init();
 
-    // Connect to a Rollkit node
+    // Connect to a Evolve node
     let endpoint =
         std::env::var("ROLLKIT_ENDPOINT").unwrap_or_else(|_| "http://localhost:50051".to_string());
-    println!("Connecting to Rollkit node at: {endpoint}");
+    println!("Connecting to Evolve node at: {endpoint}");
 
     let client = Client::connect(&endpoint).await?;
-    println!("Successfully connected to Rollkit node");
+    println!("Successfully connected to Evolve node");
 
     // Check health status
     println!("\n=== Health Check ===");

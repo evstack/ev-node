@@ -36,7 +36,7 @@ use ev_client::{Client, HealthClient};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // Connect to a Rollkit node
+    // Connect to a Evolve node
     let client = Client::connect("http://localhost:50051").await?;
 
     // Check health

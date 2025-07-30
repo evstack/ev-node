@@ -166,7 +166,7 @@ func (nm *nodeManager) run() error {
 
 func (nm *nodeManager) setupJWT() error {
 	// Create temporary directory for JWT
-	tmpDir, err := os.MkdirTemp("", "rollkit-evm-jwt-*")
+	tmpDir, err := os.MkdirTemp("", "ev-node-evm-jwt-*")
 	if err != nil {
 		return fmt.Errorf("failed to create temp dir: %w", err)
 	}
@@ -247,7 +247,7 @@ func (nm *nodeManager) startEVMExecutionLayer(node *nodeConfig) error {
 }
 
 func (nm *nodeManager) startEVMDocker(name string, rpcPort, enginePort, wsPort int) error {
-	containerName := fmt.Sprintf("rollkit-evm-%s", name)
+	containerName := fmt.Sprintf("ev-node-evm-%s", name)
 
 	// Stop any existing container
 	stopCmd := exec.Command("docker", "stop", containerName)
@@ -268,7 +268,7 @@ func (nm *nodeManager) startEVMDocker(name string, rpcPort, enginePort, wsPort i
 		"-p", fmt.Sprintf("%d:8546", wsPort),
 		"-v", fmt.Sprintf("%s:/jwt/jwt.hex:ro", nm.jwtPath),
 		"-v", fmt.Sprintf("%s:/chain/genesis.json:ro", chainPath),
-		"ghcr.io/evstack/lumen:latest",
+		"ghcr.io/evstack/ev-reth:latest",
 		"node",
 		"--chain", "/chain/genesis.json",
 		"--authrpc.addr", "0.0.0.0",
@@ -281,7 +281,7 @@ func (nm *nodeManager) startEVMDocker(name string, rpcPort, enginePort, wsPort i
 		"--engine.persistence-threshold", "0",
 		"--engine.memory-block-buffer-target", "0",
 		"--disable-discovery",
-		"--rollkit.enable",
+		"--ev-reth.enable",
 	}
 
 	cmd := exec.Command("docker", args...)
@@ -314,8 +314,8 @@ func (nm *nodeManager) startNode(node *nodeConfig, sequencerP2PAddr string) (str
 
 	if node.isSequencer {
 		initArgs = append(initArgs,
-			"--rollkit.node.aggregator=true",
-			"--rollkit.signer.passphrase=secret",
+			"--evnode.node.aggregator=true",
+			"--evnode.signer.passphrase=secret",
 		)
 	}
 
@@ -362,23 +362,23 @@ func (nm *nodeManager) startNode(node *nodeConfig, sequencerP2PAddr string) (str
 		fmt.Sprintf("--home=%s", node.homeDir),
 		fmt.Sprintf("--evm.jwt-secret=%s", string(jwtContent)),
 		fmt.Sprintf("--evm.genesis-hash=%s", genesisHash),
-		fmt.Sprintf("--rollkit.rpc.address=127.0.0.1:%d", node.rpcPort),
-		fmt.Sprintf("--rollkit.p2p.listen_address=/ip4/127.0.0.1/tcp/%d", node.p2pPort),
-		fmt.Sprintf("--rollkit.da.address=http://localhost:%d", daPort),
+		fmt.Sprintf("--evnode.rpc.address=127.0.0.1:%d", node.rpcPort),
+		fmt.Sprintf("--evnode.p2p.listen_address=/ip4/127.0.0.1/tcp/%d", node.p2pPort),
+		fmt.Sprintf("--evnode.da.address=http://localhost:%d", daPort),
 		fmt.Sprintf("--evm.eth-url=http://localhost:%d", node.evmRPC),
 		fmt.Sprintf("--evm.engine-url=http://localhost:%d", node.evmEngine),
 	}
 
 	if node.isSequencer {
 		runArgs = append(runArgs,
-			"--rollkit.node.block_time=1s",
-			"--rollkit.node.aggregator=true",
-			"--rollkit.signer.passphrase=secret",
+			"--evnode.node.block_time=1s",
+			"--evnode.node.aggregator=true",
+			"--evnode.signer.passphrase=secret",
 		)
 	} else {
 		// Full node needs to connect to sequencer
 		runArgs = append(runArgs,
-			fmt.Sprintf("--rollkit.p2p.peers=%s", sequencerP2PAddr),
+			fmt.Sprintf("--evnode.p2p.peers=%s", sequencerP2PAddr),
 		)
 	}
 

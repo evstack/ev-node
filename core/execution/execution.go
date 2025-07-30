@@ -5,7 +5,7 @@ import (
 	"time"
 )
 
-// Executor defines the interface that execution clients must implement to be compatible with Rollkit.
+// Executor defines the interface that execution clients must implement to be compatible with Evolve Node.
 // This interface enables the separation between consensus and execution layers, allowing for modular
 // and pluggable execution environments.
 type Executor interface {

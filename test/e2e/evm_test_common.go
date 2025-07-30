@@ -55,8 +55,8 @@ const (
 	FullNodeEthPort     = "8555"
 	FullNodeEnginePort  = "8561"
 	DAPort              = "7980"
-	RollkitRPCPort      = "7331"
-	RollkitP2PPort      = "7676"
+	EvolveRPCPort       = "7331"
+	EvolveP2PPort       = "7676"
 	FullNodeP2PPort     = "7677"
 	FullNodeRPCPort     = "46657"
 
@@ -66,7 +66,7 @@ const (
 	FullNodeEthURL     = "http://localhost:" + FullNodeEthPort
 	FullNodeEngineURL  = "http://localhost:" + FullNodeEnginePort
 	DAAddress          = "http://localhost:" + DAPort
-	RollkitRPCAddress  = "http://127.0.0.1:" + RollkitRPCPort
+	EvolveRPCAddress   = "http://127.0.0.1:" + EvolveRPCPort
 
 	// Test configuration
 	DefaultBlockTime   = "150ms"
@@ -248,8 +248,8 @@ func setupSequencerNode(t *testing.T, sut *SystemUnderTest, sequencerHome, jwtSe
 	// Initialize sequencer node
 	output, err := sut.RunCmd(evmSingleBinaryPath,
 		"init",
-		"--rollkit.node.aggregator=true",
-		"--rollkit.signer.passphrase", TestPassphrase,
+		"--evnode.node.aggregator=true",
+		"--evnode.signer.passphrase", TestPassphrase,
 		"--home", sequencerHome,
 	)
 	require.NoError(t, err, "failed to init sequencer", output)
@@ -259,14 +259,14 @@ func setupSequencerNode(t *testing.T, sut *SystemUnderTest, sequencerHome, jwtSe
 		"start",
 		"--evm.jwt-secret", jwtSecret,
 		"--evm.genesis-hash", genesisHash,
-		"--rollkit.node.block_time", DefaultBlockTime,
-		"--rollkit.node.aggregator=true",
-		"--rollkit.signer.passphrase", TestPassphrase,
+		"--evnode.node.block_time", DefaultBlockTime,
+		"--evnode.node.aggregator=true",
+		"--evnode.signer.passphrase", TestPassphrase,
 		"--home", sequencerHome,
-		"--rollkit.da.address", DAAddress,
-		"--rollkit.da.block_time", DefaultDABlockTime,
+		"--evnode.da.address", DAAddress,
+		"--evnode.da.block_time", DefaultDABlockTime,
 	)
-	sut.AwaitNodeUp(t, RollkitRPCAddress, NodeStartupTimeout)
+	sut.AwaitNodeUp(t, EvolveRPCAddress, NodeStartupTimeout)
 }
 
 // setupSequencerNodeLazy initializes and starts the sequencer node in lazy mode.
@@ -278,8 +278,8 @@ func setupSequencerNodeLazy(t *testing.T, sut *SystemUnderTest, sequencerHome, j
 	// Initialize sequencer node
 	output, err := sut.RunCmd(evmSingleBinaryPath,
 		"init",
-		"--rollkit.node.aggregator=true",
-		"--rollkit.signer.passphrase", TestPassphrase,
+		"--evnode.node.aggregator=true",
+		"--evnode.signer.passphrase", TestPassphrase,
 		"--home", sequencerHome,
 	)
 	require.NoError(t, err, "failed to init sequencer", output)
@@ -289,16 +289,16 @@ func setupSequencerNodeLazy(t *testing.T, sut *SystemUnderTest, sequencerHome, j
 		"start",
 		"--evm.jwt-secret", jwtSecret,
 		"--evm.genesis-hash", genesisHash,
-		"--rollkit.node.block_time", DefaultBlockTime,
-		"--rollkit.node.aggregator=true",
-		"--rollkit.node.lazy_mode=true",          // Enable lazy mode
-		"--rollkit.node.lazy_block_interval=60s", // Set lazy block interval to 60 seconds to prevent timer-based block production during test
-		"--rollkit.signer.passphrase", TestPassphrase,
+		"--evnode.node.block_time", DefaultBlockTime,
+		"--evnode.node.aggregator=true",
+		"--evnode.node.lazy_mode=true",          // Enable lazy mode
+		"--evnode.node.lazy_block_interval=60s", // Set lazy block interval to 60 seconds to prevent timer-based block production during test
+		"--evnode.signer.passphrase", TestPassphrase,
 		"--home", sequencerHome,
-		"--rollkit.da.address", DAAddress,
-		"--rollkit.da.block_time", DefaultDABlockTime,
+		"--evnode.da.address", DAAddress,
+		"--evnode.da.block_time", DefaultDABlockTime,
 	)
-	sut.AwaitNodeUp(t, RollkitRPCAddress, NodeStartupTimeout)
+	sut.AwaitNodeUp(t, EvolveRPCAddress, NodeStartupTimeout)
 }
 
 // setupFullNode initializes and starts the full node with P2P connection to sequencer.
@@ -339,13 +339,13 @@ func setupFullNode(t *testing.T, sut *SystemUnderTest, fullNodeHome, sequencerHo
 		"--home", fullNodeHome,
 		"--evm.jwt-secret", fullNodeJwtSecret,
 		"--evm.genesis-hash", genesisHash,
-		"--rollkit.rpc.address", "127.0.0.1:"+FullNodeRPCPort,
-		"--rollkit.p2p.listen_address", "/ip4/127.0.0.1/tcp/"+FullNodeP2PPort,
-		"--rollkit.p2p.peers", sequencerP2PAddress,
+		"--evnode.rpc.address", "127.0.0.1:"+FullNodeRPCPort,
+		"--evnode.p2p.listen_address", "/ip4/127.0.0.1/tcp/"+FullNodeP2PPort,
+		"--evnode.p2p.peers", sequencerP2PAddress,
 		"--evm.engine-url", FullNodeEngineURL,
 		"--evm.eth-url", FullNodeEthURL,
-		"--rollkit.da.address", DAAddress,
-		"--rollkit.da.block_time", DefaultDABlockTime,
+		"--evnode.da.address", DAAddress,
+		"--evnode.da.block_time", DefaultDABlockTime,
 	)
 	sut.AwaitNodeUp(t, "http://127.0.0.1:"+FullNodeRPCPort, NodeStartupTimeout)
 }
@@ -535,17 +535,17 @@ func restartDAAndSequencer(t *testing.T, sut *SystemUnderTest, sequencerHome, jw
 		"start",
 		"--evm.jwt-secret", jwtSecret,
 		"--evm.genesis-hash", genesisHash,
-		"--rollkit.node.block_time", DefaultBlockTime,
-		"--rollkit.node.aggregator=true",
-		"--rollkit.signer.passphrase", TestPassphrase,
+		"--evnode.node.block_time", DefaultBlockTime,
+		"--evnode.node.aggregator=true",
+		"--evnode.signer.passphrase", TestPassphrase,
 		"--home", sequencerHome,
-		"--rollkit.da.address", DAAddress,
-		"--rollkit.da.block_time", DefaultDABlockTime,
+		"--evnode.da.address", DAAddress,
+		"--evnode.da.block_time", DefaultDABlockTime,
 	)
 
 	time.Sleep(SlowPollingInterval)
 
-	sut.AwaitNodeUp(t, RollkitRPCAddress, NodeStartupTimeout)
+	sut.AwaitNodeUp(t, EvolveRPCAddress, NodeStartupTimeout)
 }
 
 // restartDAAndSequencerLazy restarts both the local DA and sequencer node in lazy mode.
@@ -575,19 +575,19 @@ func restartDAAndSequencerLazy(t *testing.T, sut *SystemUnderTest, sequencerHome
 		"start",
 		"--evm.jwt-secret", jwtSecret,
 		"--evm.genesis-hash", genesisHash,
-		"--rollkit.node.block_time", DefaultBlockTime,
-		"--rollkit.node.aggregator=true",
-		"--rollkit.node.lazy_mode=true",          // Enable lazy mode
-		"--rollkit.node.lazy_block_interval=60s", // Set lazy block interval to 60 seconds to prevent timer-based block production during test
-		"--rollkit.signer.passphrase", TestPassphrase,
+		"--evnode.node.block_time", DefaultBlockTime,
+		"--evnode.node.aggregator=true",
+		"--evnode.node.lazy_mode=true",          // Enable lazy mode
+		"--evnode.node.lazy_block_interval=60s", // Set lazy block interval to 60 seconds to prevent timer-based block production during test
+		"--evnode.signer.passphrase", TestPassphrase,
 		"--home", sequencerHome,
-		"--rollkit.da.address", DAAddress,
-		"--rollkit.da.block_time", DefaultDABlockTime,
+		"--evnode.da.address", DAAddress,
+		"--evnode.da.block_time", DefaultDABlockTime,
 	)
 
 	time.Sleep(SlowPollingInterval)
 
-	sut.AwaitNodeUp(t, RollkitRPCAddress, NodeStartupTimeout)
+	sut.AwaitNodeUp(t, EvolveRPCAddress, NodeStartupTimeout)
 }
 
 // restartSequencerNode starts an existing sequencer node without initialization.
@@ -606,17 +606,17 @@ func restartSequencerNode(t *testing.T, sut *SystemUnderTest, sequencerHome, jwt
 		"start",
 		"--evm.jwt-secret", jwtSecret,
 		"--evm.genesis-hash", genesisHash,
-		"--rollkit.node.block_time", DefaultBlockTime,
-		"--rollkit.node.aggregator=true",
-		"--rollkit.signer.passphrase", TestPassphrase,
+		"--evnode.node.block_time", DefaultBlockTime,
+		"--evnode.node.aggregator=true",
+		"--evnode.signer.passphrase", TestPassphrase,
 		"--home", sequencerHome,
-		"--rollkit.da.address", DAAddress,
-		"--rollkit.da.block_time", DefaultDABlockTime,
+		"--evnode.da.address", DAAddress,
+		"--evnode.da.block_time", DefaultDABlockTime,
 	)
 
 	time.Sleep(SlowPollingInterval)
 
-	sut.AwaitNodeUp(t, RollkitRPCAddress, NodeStartupTimeout)
+	sut.AwaitNodeUp(t, EvolveRPCAddress, NodeStartupTimeout)
 }
 
 // verifyNoBlockProduction verifies that no new blocks are being produced over a specified duration.

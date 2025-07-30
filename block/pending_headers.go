@@ -19,7 +19,7 @@ import (
 // lastSubmittedHeaderHeight is updated only after receiving confirmation from DA.
 // Worst case scenario is when headers was successfully submitted to DA, but confirmation was not received (e.g. node was
 // restarted, networking issue occurred). In this case headers are re-submitted to DA (it's extra cost).
-// rollkit is able to skip duplicate headers so this shouldn't affect full nodes.
+// ev-node is able to skip duplicate headers so this shouldn't affect full nodes.
 // TODO(tzdybal): we shouldn't try to push all pending headers at once; this should depend on max blob size
 type PendingHeaders struct {
 	base *pendingBase[*types.SignedHeader]

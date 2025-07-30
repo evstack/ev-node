@@ -1,7 +1,7 @@
 //go:build evm
 // +build evm
 
-// Package e2e contains end-to-end tests for Rollkit's EVM integration.
+// Package e2e contains end-to-end tests for Evolve Node's EVM integration.
 //
 // This file specifically tests the EVM sequencer (aggregator) functionality including:
 // - Basic sequencer operation and transaction processing

@@ -1,6 +1,6 @@
 # Single Sequencer
 
-The single sequencer is a component of the Rollkit framework that handles transaction ordering and batch submission to a Data Availability (DA) layer. It provides a reliable way to sequence transactions for applications via a designed node called the sequencer.
+The single sequencer is a component of the Evolve framework that handles transaction ordering and batch submission to a Data Availability (DA) layer. It provides a reliable way to sequence transactions for applications via a designed node called the sequencer.
 
 ## Overview
 

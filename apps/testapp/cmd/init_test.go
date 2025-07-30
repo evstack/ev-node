@@ -26,7 +26,7 @@ func TestInitCommand(t *testing.T) {
 	// Change to the temporary directory
 	require.NoError(t, os.Chdir(dir))
 
-	// Remove any existing rollkit.yaml files in the test directory
+	// Remove any existing ev-node.yaml files in the test directory
 	configPath := filepath.Join(dir, "config", rollconf.ConfigName)
 	_ = os.Remove(configPath) // Ignore error if file doesn't exist
 
@@ -43,7 +43,7 @@ func TestInitCommand(t *testing.T) {
 	rollconf.AddGlobalFlags(cmd, "testapp")
 
 	// Set home flag to the test directory
-	cmd.SetArgs([]string{"init", "--home", dir, "--rollkit.node.aggregator", "--rollkit.signer.passphrase", "test"})
+	cmd.SetArgs([]string{"init", "--home", dir, "--evnode.node.aggregator", "--evnode.signer.passphrase", "test"})
 
 	// Execute the command
 	err = cmd.Execute()
