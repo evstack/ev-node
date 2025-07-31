@@ -72,6 +72,8 @@ func SetupLogger(config rollconf.LogConfig) logging.EventLogger {
 		_ = logging.SetLogLevel("header/store", "FATAL")
 		_ = logging.SetLogLevel("header/sync", "FATAL")
 		_ = logging.SetLogLevel("header/p2p", "FATAL")
+		_ = logging.SetLogLevel("pubsub", "FATAL")
+		_ = logging.SetLogLevel("badger4", "FATAL")
 	}
 
 	// Return a logger instance for the "main" subsystem
