@@ -7,6 +7,14 @@ import (
 	"go.uber.org/zap"
 )
 
+// IsStructuredLoggingAvailable checks if the logger supports structured zap logging
+func IsStructuredLoggingAvailable(logger golog.EventLogger) bool {
+	if zapLogger, ok := logger.(*golog.ZapEventLogger); ok {
+		return zapLogger.Desugar() != nil
+	}
+	return false
+}
+
 // InfoWithKV logs an info message with key-value pairs, using structured zap logging when available,
 // falling back to sprintf-style logging otherwise.
 func InfoWithKV(logger golog.EventLogger, msg string, kvPairs ...interface{}) {
