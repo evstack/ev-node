@@ -6,6 +6,7 @@ replace (
 	github.com/evstack/ev-node => ../../.
 	github.com/evstack/ev-node/core => ../../core
 	github.com/evstack/ev-node/da => ../../da
+	github.com/evstack/ev-node/pkg/logging => ../../pkg/logging
 	github.com/evstack/ev-node/sequencers/single => ../../sequencers/single
 )
 
@@ -38,6 +39,7 @@ require (
 	github.com/dustin/go-humanize v1.0.1 // indirect
 	github.com/elastic/gosigar v0.14.3 // indirect
 	github.com/evstack/ev-node/core v0.0.0-20250312114929-104787ba1a4c // indirect
+	github.com/evstack/ev-node/pkg/logging v0.0.0-00010101000000-000000000000 // indirect
 	github.com/filecoin-project/go-jsonrpc v0.7.1 // indirect
 	github.com/flynn/noise v1.1.0 // indirect
 	github.com/francoispqt/gojay v1.2.13 // indirect
