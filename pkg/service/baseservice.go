@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	logutil "github.com/evstack/ev-node/pkg/logging"
 	logging "github.com/ipfs/go-log/v2"
 )
 
@@ -72,17 +73,13 @@ func (bs *BaseService) SetLogger(l logging.EventLogger) {
 // then defers to the implementation's Run method to do the actual work.
 // If impl is nil or the same as bs, it uses the default implementation.
 func (bs *BaseService) Run(ctx context.Context) error {
-	bs.Logger.Info("service start",
-		"msg", fmt.Sprintf("Starting %v service", bs.name),
-		"impl", bs.name)
+	logutil.InfoWithKV(bs.Logger, "service start", "msg", fmt.Sprintf("Starting %v service", bs.name), "impl", bs.name)
 
 	// If the implementation is nil or is the BaseService itself,
 	// use the default implementation which just waits for context cancellation
 	if bs.impl == nil || bs.impl == bs {
 		<-ctx.Done()
-		bs.Logger.Info("service stop",
-			"msg", fmt.Sprintf("Stopping %v service", bs.name),
-			"impl", bs.name)
+		logutil.InfoWithKV(bs.Logger, "service stop", "msg", fmt.Sprintf("Stopping %v service", bs.name), "impl", bs.name)
 		return ctx.Err()
 	}
 

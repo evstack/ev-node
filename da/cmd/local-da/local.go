@@ -13,6 +13,7 @@ import (
 	"time"
 
 	coreda "github.com/evstack/ev-node/core/da"
+	logutil "github.com/evstack/ev-node/pkg/logging"
 	logging "github.com/ipfs/go-log/v2"
 )
 
@@ -161,7 +162,8 @@ func (d *LocalDA) Commit(ctx context.Context, blobs []coreda.Blob, _ []byte) ([]
 
 // SubmitWithOptions stores blobs in DA layer (options are ignored).
 func (d *LocalDA) SubmitWithOptions(ctx context.Context, blobs []coreda.Blob, gasPrice float64, _ []byte, _ []byte) ([]coreda.ID, error) {
-	d.logger.Info("SubmitWithOptions called, numBlobs: ", len(blobs), "gasPrice: ", gasPrice)
+	logutil.InfoWithKV(d.logger, "SubmitWithOptions called", "numBlobs", len(blobs), "gasPrice", gasPrice)
+
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	ids := make([]coreda.ID, len(blobs))
@@ -172,13 +174,14 @@ func (d *LocalDA) SubmitWithOptions(ctx context.Context, blobs []coreda.Blob, ga
 
 		d.data[d.height] = append(d.data[d.height], kvp{ids[i], blob})
 	}
-	d.logger.Info("SubmitWithOptions successful, newHeight: ", d.height, "count: ", len(ids))
+	logutil.InfoWithKV(d.logger, "SubmitWithOptions successful", "newHeight", d.height, "count", len(ids))
 	return ids, nil
 }
 
 // Submit stores blobs in DA layer (options are ignored).
 func (d *LocalDA) Submit(ctx context.Context, blobs []coreda.Blob, gasPrice float64, _ []byte) ([]coreda.ID, error) {
-	d.logger.Info("Submit called, numBlobs: ", len(blobs), "gasPrice: ", gasPrice)
+	logutil.InfoWithKV(d.logger, "Submit called", "numBlobs", len(blobs), "gasPrice", gasPrice)
+
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	ids := make([]coreda.ID, len(blobs))
@@ -189,7 +192,7 @@ func (d *LocalDA) Submit(ctx context.Context, blobs []coreda.Blob, gasPrice floa
 
 		d.data[d.height] = append(d.data[d.height], kvp{ids[i], blob})
 	}
-	d.logger.Info("Submit successful, newHeight: ", d.height, "count: ", len(ids))
+	logutil.InfoWithKV(d.logger, "Submit successful", "newHeight", d.height, "count", len(ids))
 	return ids, nil
 }
 
