@@ -19,6 +19,8 @@ import (
 	"github.com/libp2p/go-libp2p/core/crypto"
 	"golang.org/x/sync/errgroup"
 
+	logutil "github.com/evstack/ev-node/pkg/logging"
+
 	coreda "github.com/evstack/ev-node/core/da"
 	coreexecutor "github.com/evstack/ev-node/core/execution"
 	coresequencer "github.com/evstack/ev-node/core/sequencer"
@@ -599,7 +601,7 @@ func (m *Manager) publishBlockInternal(ctx context.Context) error {
 	}
 
 	if m.config.Node.MaxPendingHeadersAndData != 0 && (m.pendingHeaders.numPendingHeaders() >= m.config.Node.MaxPendingHeadersAndData || m.pendingData.numPendingData() >= m.config.Node.MaxPendingHeadersAndData) {
-		m.logger.Warn(fmt.Sprintf("refusing to create block: pending headers [%d] or data [%d] reached limit [%d]", m.pendingHeaders.numPendingHeaders(), m.pendingData.numPendingData(), m.config.Node.MaxPendingHeadersAndData))
+		logutil.WarnWithKV(m.logger, "refusing to create block: pending headers or data reached limit", "pendingHeaders", m.pendingHeaders.numPendingHeaders(), "pendingData", m.pendingData.numPendingData(), "limit", m.config.Node.MaxPendingHeadersAndData)
 		return nil
 	}
 

@@ -27,6 +27,8 @@ import (
 	"github.com/evstack/ev-node/pkg/config"
 	rollhash "github.com/evstack/ev-node/pkg/hash"
 	"github.com/evstack/ev-node/pkg/p2p/key"
+
+	logutil "github.com/evstack/ev-node/pkg/logging"
 )
 
 // TODO(tzdybal): refactor to configuration parameters
@@ -143,15 +145,15 @@ func (c *Client) Start(ctx context.Context) error {
 func (c *Client) startWithHost(ctx context.Context, h host.Host) error {
 	c.host = h
 	for _, a := range c.host.Addrs() {
-		c.logger.Info(fmt.Sprintf("listening on address, address: %s/p2p/%s", a, c.host.ID()))
+		logutil.InfoWithKV(c.logger, "listening on address", "address", fmt.Sprintf("%s/p2p/%s", a, c.host.ID()))
 	}
 
-	c.logger.Debug(fmt.Sprintf("blocking blacklisted peers blacklist, blacklist: %s", c.conf.BlockedPeers))
+	logutil.DebugWithKV(c.logger, "blocking blacklisted peers blacklist", "blacklist", c.conf.BlockedPeers)
 	if err := c.setupBlockedPeers(c.parseAddrInfoList(c.conf.BlockedPeers)); err != nil {
 		return err
 	}
 
-	c.logger.Debug("allowing whitelisted peers whitelist ", c.conf.AllowedPeers)
+	logutil.DebugWithKV(c.logger, "allowing whitelisted peers whitelist ", "whitelist", c.conf.AllowedPeers)
 	if err := c.setupAllowedPeers(c.parseAddrInfoList(c.conf.AllowedPeers)); err != nil {
 		return err
 	}

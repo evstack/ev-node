@@ -2,7 +2,6 @@ package jsonrpc
 
 import (
 	"context"
-	"fmt"
 	"net"
 	"net/http"
 	"sync/atomic"
@@ -12,6 +11,7 @@ import (
 	logging "github.com/ipfs/go-log/v2"
 
 	"github.com/evstack/ev-node/core/da"
+	logutil "github.com/evstack/ev-node/pkg/logging"
 )
 
 // Server is a jsonrpc service that can serve the DA interface
@@ -123,7 +123,7 @@ func (s *Server) Start(context.Context) error {
 		return err
 	}
 	s.listener = listener
-	s.logger.Info(fmt.Sprintf("server started, listening on: %s", s.srv.Addr))
+	logutil.InfoWithKV(s.logger, "server started, listening on", "address", s.srv.Addr)
 	//nolint:errcheck
 	go s.srv.Serve(listener)
 	return nil

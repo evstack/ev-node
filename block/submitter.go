@@ -6,6 +6,7 @@ import (
 	"time"
 
 	coreda "github.com/evstack/ev-node/core/da"
+	logutil "github.com/evstack/ev-node/pkg/logging"
 	"github.com/evstack/ev-node/types"
 	"google.golang.org/protobuf/proto"
 )
@@ -125,7 +126,7 @@ func submitToDA[T any](
 			// Record successful DA submission
 			m.recordDAMetrics("submission", DAModeSuccess)
 
-			m.logger.Info(fmt.Sprintf("successfully submitted %s to DA layer with gasPrice %v and count %d", itemType, gasPrice, res.SubmittedCount))
+			logutil.InfoWithKV(m.logger, "successfully submitted to DA layer", "itemType", itemType, "gasPrice", gasPrice, "count", res.SubmittedCount)
 			if res.SubmittedCount == uint64(remLen) {
 				submittedAll = true
 			}
@@ -150,14 +151,14 @@ func submitToDA[T any](
 			if m.gasMultiplier > 0 && gasPrice != -1 {
 				gasPrice = gasPrice * m.gasMultiplier
 			}
-			m.logger.Info(fmt.Sprintf("retrying DA layer submission with, backoff: %s, gasPrice: %v", backoff, gasPrice))
+			logutil.InfoWithKV(m.logger, "retrying DA layer submission", "backoff", backoff, "gasPrice", gasPrice)
 		case coreda.StatusContextCanceled:
-			m.logger.Info(fmt.Sprintf("DA layer submission canceled due to context cancellation, attempt: %d", attempt))
+			logutil.InfoWithKV(m.logger, "DA layer submission canceled due to context cancellation", "attempt", attempt)
 			return nil
 		case coreda.StatusTooBig:
 			fallthrough
 		default:
-			m.logger.Error(fmt.Sprintf("DA layer submission failed, error: %s, attempt: %d", res.Message, attempt))
+			logutil.ErrorWithKV(m.logger, "DA layer submission failed", "error", res.Message, "attempt", attempt)
 			// Record failed DA submission (will retry)
 			m.recordDAMetrics("submission", DAModeFail)
 			backoff = m.exponentialBackoff(backoff)

@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"strings"
 
+	logutil "github.com/evstack/ev-node/pkg/logging"
 	"github.com/filecoin-project/go-jsonrpc"
 	logging "github.com/ipfs/go-log/v2"
 
@@ -158,7 +159,7 @@ func (api *API) SubmitWithOptions(ctx context.Context, inputBlobs []da.Blob, gas
 			continue
 		}
 		if currentSize+blobLen > maxBlobSize {
-			api.Logger.Info(fmt.Sprintf("Blob size limit reached for batch, maxBlobSize: %d, index: %d, currentSize: %d, nextBlobSize: %d", maxBlobSize, i, currentSize, blobLen))
+			logutil.InfoWithKV(api.Logger, "Blob size limit reached for batch", "maxBlobSize", maxBlobSize, "index", i, "currentSize", currentSize, "nextBlobSize", blobLen)
 			break
 		}
 		currentSize += blobLen

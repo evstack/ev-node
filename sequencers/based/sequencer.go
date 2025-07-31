@@ -14,6 +14,7 @@ import (
 
 	coreda "github.com/evstack/ev-node/core/da"
 	coresequencer "github.com/evstack/ev-node/core/sequencer"
+	logutil "github.com/evstack/ev-node/pkg/logging"
 	"github.com/evstack/ev-node/types"
 )
 
@@ -297,7 +298,7 @@ daSubmitRetryLoop:
 		case coreda.StatusSuccess:
 			// Count submitted transactions for this attempt
 			submittedTxs := int(res.SubmittedCount)
-			s.logger.Info(fmt.Sprintf("[based] successfully submitted transactions to DA layer, gasPrice: %f, height: %d, submittedTxs: %d, remainingTxs: %d", gasPrice, res.Height, submittedTxs, len(currentBatch.Transactions)-submittedTxs))
+			logutil.InfoWithKV(s.logger, "[based] successfully submitted transactions to DA layer", "gasPrice", gasPrice, "height", res.Height, "submittedTxs", submittedTxs, "remainingTxs", len(currentBatch.Transactions)-submittedTxs)
 
 			// Update overall progress
 			submittedTxCount += submittedTxs
@@ -331,7 +332,7 @@ daSubmitRetryLoop:
 			if gasMultiplier > 0 && gasPrice != 0 {
 				gasPrice = gasPrice * gasMultiplier
 			}
-			s.logger.Info(fmt.Sprintf("retrying DA layer submission with, backoff: %s, gasPrice: %f", backoff, gasPrice))
+			logutil.InfoWithKV(s.logger, "retrying DA layer submission", "backoff", backoff, "gasPrice", gasPrice)
 
 		default:
 			// For other errors, use exponential backoff
