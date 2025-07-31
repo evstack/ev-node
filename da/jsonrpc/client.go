@@ -140,46 +140,34 @@ func (api *API) Submit(ctx context.Context, blobs []da.Blob, gasPrice float64, _
 }
 
 // SubmitWithOptions submits the Blobs to Data Availability layer with additional options.
-// It checks blobs against MaxBlobSize and submits only those that fit.
+// It validates the entire batch against MaxBlobSize before submission.
+// If any blob or the total batch size exceeds limits, it returns ErrBlobSizeOverLimit.
 func (api *API) SubmitWithOptions(ctx context.Context, inputBlobs []da.Blob, gasPrice float64, _ []byte, options []byte) ([]da.ID, error) {
 	maxBlobSize := api.MaxBlobSize
 
-	var (
-		blobsToSubmit [][]byte = make([][]byte, 0, len(inputBlobs))
-		currentSize   uint64
-		oversizeBlobs int
-	)
-
-	for i, blob := range inputBlobs {
-		blobLen := uint64(len(blob))
-		if blobLen > maxBlobSize {
-			api.Logger.Warn("Individual blob exceeds MaxBlobSize, cannot submit", "index", i, "blobSize", blobLen, "maxBlobSize", maxBlobSize)
-			oversizeBlobs++
-			continue
-		}
-		if currentSize+blobLen > maxBlobSize {
-			api.Logger.Info("Blob size limit reached for batch", "maxBlobSize", maxBlobSize, "index", i, "currentSize", currentSize, "nextBlobSize", blobLen)
-			break
-		}
-		currentSize += blobLen
-		blobsToSubmit = append(blobsToSubmit, blob)
-	}
-
-	if oversizeBlobs > 0 {
-		api.Logger.Error("Blobs exceeded size limit", "oversize_count", oversizeBlobs, "total_blobs", len(inputBlobs))
-		return nil, da.ErrBlobSizeOverLimit
-	}
-
-	if len(blobsToSubmit) == 0 {
-		api.Logger.Info("No blobs to submit after filtering by size")
-		if len(inputBlobs) > 0 {
-			return nil, da.ErrBlobSizeOverLimit
-		}
+	if len(inputBlobs) == 0 {
 		return []da.ID{}, nil
 	}
 
-	api.Logger.Debug("Making RPC call", "method", "SubmitWithOptions", "num_blobs_original", len(inputBlobs), "num_blobs_to_submit", len(blobsToSubmit), "gas_price", gasPrice, "namespace", string(api.Namespace))
-	res, err := api.Internal.SubmitWithOptions(ctx, blobsToSubmit, gasPrice, api.Namespace, options)
+	// Validate each blob individually and calculate total size
+	var totalSize uint64
+	for i, blob := range inputBlobs {
+		blobLen := uint64(len(blob))
+		if blobLen > maxBlobSize {
+			api.Logger.Warn("Individual blob exceeds MaxBlobSize", "index", i, "blobSize", blobLen, "maxBlobSize", maxBlobSize)
+			return nil, da.ErrBlobSizeOverLimit
+		}
+		totalSize += blobLen
+	}
+
+	// Validate total batch size
+	if totalSize > maxBlobSize {
+		api.Logger.Warn("Total batch size exceeds MaxBlobSize", "totalSize", totalSize, "maxBlobSize", maxBlobSize, "numBlobs", len(inputBlobs))
+		return nil, da.ErrBlobSizeOverLimit
+	}
+
+	api.Logger.Debug("Making RPC call", "method", "SubmitWithOptions", "num_blobs", len(inputBlobs), "total_size", totalSize, "gas_price", gasPrice, "namespace", string(api.Namespace))
+	res, err := api.Internal.SubmitWithOptions(ctx, inputBlobs, gasPrice, api.Namespace, options)
 	if err != nil {
 		if strings.Contains(err.Error(), context.Canceled.Error()) {
 			api.Logger.Debug("RPC call canceled due to context cancellation", "method", "SubmitWithOptions")

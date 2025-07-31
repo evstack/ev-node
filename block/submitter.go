@@ -155,7 +155,28 @@ func submitToDA[T any](
 			m.logger.Info("DA layer submission canceled due to context cancellation", "attempt", attempt)
 			return nil
 		case coreda.StatusTooBig:
-			fallthrough
+			m.logger.Warn("DA layer submission failed due to blob size limit", "error", res.Message, "attempt", attempt, "batchSize", len(remaining))
+			// Record failed DA submission (will retry)
+			m.recordDAMetrics("submission", DAModeFail)
+
+			// Implement batch splitting when blob is too big
+			if len(remaining) > 1 {
+				// Split the batch in half to reduce size
+				splitPoint := len(remaining) / 2
+				m.logger.Info("splitting batch due to size limit", "originalSize", len(remaining), "newSize", splitPoint)
+
+				// Keep only the first half for this attempt
+				remaining = remaining[:splitPoint]
+				marshaled = marshaled[:splitPoint]
+				remLen = len(remaining)
+
+				// Reset backoff since we're trying with a smaller batch
+				backoff = 0
+			} else {
+				// If we have only 1 item and it's still too big, we can't split further
+				m.logger.Error("single item exceeds DA blob size limit", "itemType", itemType, "attempt", attempt)
+				backoff = m.exponentialBackoff(backoff)
+			}
 		default:
 			m.logger.Error("DA layer submission failed", "error", res.Message, "attempt", attempt)
 			// Record failed DA submission (will retry)

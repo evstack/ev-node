@@ -432,21 +432,21 @@ func TestCreateSignedDataToSubmit(t *testing.T) {
 func fillPendingHeaders(ctx context.Context, t *testing.T, pendingHeaders *PendingHeaders, chainID string, numBlocks uint64) {
 	t.Helper()
 
-	store := pendingHeaders.base.store
+	s := pendingHeaders.base.store
 	for i := uint64(0); i < numBlocks; i++ {
 		height := i + 1
 		header, data := types.GetRandomBlock(height, 0, chainID)
 		sig := &header.Signature
-		err := store.SaveBlockData(ctx, header, data, sig)
+		err := s.SaveBlockData(ctx, header, data, sig)
 		require.NoError(t, err, "failed to save block data for header at height %d", height)
-		err = store.SetHeight(ctx, height)
+		err = s.SetHeight(ctx, height)
 		require.NoError(t, err, "failed to set store height for header at height %d", height)
 	}
 }
 
 func fillPendingData(ctx context.Context, t *testing.T, pendingData *PendingData, chainID string, numBlocks uint64) {
 	t.Helper()
-	store := pendingData.base.store
+	s := pendingData.base.store
 	txNum := 1
 	for i := uint64(0); i < numBlocks; i++ {
 		height := i + 1
@@ -457,9 +457,9 @@ func fillPendingData(ctx context.Context, t *testing.T, pendingData *PendingData
 			txNum++
 		}
 		sig := &header.Signature
-		err := store.SaveBlockData(ctx, header, data, sig)
+		err := s.SaveBlockData(ctx, header, data, sig)
 		require.NoError(t, err, "failed to save block data for data at height %d", height)
-		err = store.SetHeight(ctx, height)
+		err = s.SetHeight(ctx, height)
 		require.NoError(t, err, "failed to set store height for data at height %d", height)
 	}
 }
@@ -563,6 +563,102 @@ func TestSubmitDataToDA_WithMetricsRecorder(t *testing.T) {
 
 	// Verify that RecordMetrics was called
 	mockSequencer.AssertExpectations(t)
+}
+
+// TestSubmitToDA_ItChunksBatchWhenSizeExceedsLimit verifies that when DA submission
+// fails with StatusTooBig, the submitter automatically splits the batch in half and
+// retries until successful. This prevents infinite retry loops when batches exceed
+// DA layer size limits.
+func TestSubmitToDA_ItChunksBatchWhenSizeExceedsLimit(t *testing.T) {
+
+	da := &mocks.MockDA{}
+	m := newTestManagerWithDA(t, da)
+	ctx := context.Background()
+
+	// Fill with items that would be too big as a single batch
+	largeItemCount := uint64(10)
+	fillPendingHeaders(ctx, t, m.pendingHeaders, "TestFix", largeItemCount)
+
+	headers, err := m.pendingHeaders.getPendingHeaders(ctx)
+	require.NoError(t, err)
+	require.Len(t, headers, int(largeItemCount))
+
+	var submitAttempts int
+	var batchSizes []int
+
+	// Mock DA behavior:
+	// - First call: full batch (10 items) -> StatusTooBig
+	// - Second call: split batch (5 items) -> Success
+	da.On("SubmitWithOptions", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		Run(func(args mock.Arguments) {
+			submitAttempts++
+			blobs := args.Get(1).([]coreda.Blob)
+			batchSizes = append(batchSizes, len(blobs))
+			t.Logf("DA Submit attempt %d: batch size %d", submitAttempts, len(blobs))
+		}).
+		Return(nil, coreda.ErrBlobSizeOverLimit).Once() // First attempt fails
+
+	da.On("SubmitWithOptions", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		Run(func(args mock.Arguments) {
+			submitAttempts++
+			blobs := args.Get(1).([]coreda.Blob)
+			batchSizes = append(batchSizes, len(blobs))
+			t.Logf("DA Submit attempt %d: batch size %d", submitAttempts, len(blobs))
+		}).
+		Return([]coreda.ID{getDummyID(1, []byte("id1")), getDummyID(1, []byte("id2")), getDummyID(1, []byte("id3")), getDummyID(1, []byte("id4")), getDummyID(1, []byte("id5"))}, nil).Once() // Second attempt succeeds
+
+	err = m.submitHeadersToDA(ctx, headers)
+
+	assert.NoError(t, err, "Should succeed by splitting large batch")
+	assert.Equal(t, 2, submitAttempts, "Should make 2 attempts: 1 large batch + 1 split batch")
+	assert.Equal(t, []int{10, 5}, batchSizes, "Should try full batch, then split in half")
+
+	// The first 5 items should be successfully submitted
+	// Note: Our current implementation only handles one split cycle per call
+	// The remaining 5 items would be handled in the next submission loop iteration
+}
+
+// TestSubmitToDA_SingleItemTooLarge verifies behavior when even a single item
+// exceeds DA size limits and cannot be split further. This should result in
+// exponential backoff and eventual failure after maxSubmitAttempts.
+func TestSubmitToDA_SingleItemTooLarge(t *testing.T) {
+	// Skip this test normally to avoid long wait times, but keep it for manual testing
+	t.Skip("Skipping long-running test. Uncomment to test single item too large scenario manually.")
+
+	da := &mocks.MockDA{}
+	m := newTestManagerWithDA(t, da)
+	ctx := context.Background()
+
+	// Create a single header that will always be "too big"
+	fillPendingHeaders(ctx, t, m.pendingHeaders, "TestSingleLarge", 1)
+
+	headers, err := m.pendingHeaders.getPendingHeaders(ctx)
+	require.NoError(t, err)
+	require.Len(t, headers, 1)
+
+	var submitAttempts int
+
+	// Mock DA to always return "too big" for this single item
+	da.On("SubmitWithOptions", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		Run(func(args mock.Arguments) {
+			submitAttempts++
+			blobs := args.Get(1).([]coreda.Blob)
+			t.Logf("DA Submit attempt %d: batch size %d (single item too large)", submitAttempts, len(blobs))
+		}).
+		Return(nil, coreda.ErrBlobSizeOverLimit) // Always fails
+
+	// This should fail after maxSubmitAttempts (30) attempts
+	err = m.submitHeadersToDA(ctx, headers)
+
+	// Expected behavior: Should fail after exhausting all attempts
+	assert.Error(t, err, "Should fail when single item is too large")
+	assert.Contains(t, err.Error(), "failed to submit all header(s) to DA layer")
+	assert.Contains(t, err.Error(), "after 30 attempts") // maxSubmitAttempts
+
+	// Should have made exactly maxSubmitAttempts (30) attempts
+	assert.Equal(t, 30, submitAttempts, "Should make exactly maxSubmitAttempts before giving up")
+
+	da.AssertExpectations(t)
 }
 
 func getDummyID(height uint64, commitment []byte) coreda.ID {
