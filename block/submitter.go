@@ -10,10 +10,189 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
-// chunk represents a batch of items with their marshaled data for DA submission
-type chunk[T any] struct {
-	items     []T
-	marshaled [][]byte
+const (
+	submissionTimeout = 60 * time.Second
+	noGasPrice        = -1
+)
+
+
+type RetryStrategy struct {
+	attempt         int
+	backoff         time.Duration
+	gasPrice        float64
+	initialGasPrice float64
+	maxAttempts     int
+}
+
+func NewRetryStrategy(initialGasPrice float64) *RetryStrategy {
+	return &RetryStrategy{
+		attempt:         0,
+		backoff:         0,
+		gasPrice:        initialGasPrice,
+		initialGasPrice: initialGasPrice,
+		maxAttempts:     maxSubmitAttempts,
+	}
+}
+
+func (r *RetryStrategy) ShouldContinue() bool {
+	return r.attempt < r.maxAttempts
+}
+
+func (r *RetryStrategy) NextAttempt() {
+	r.attempt++
+}
+
+func (r *RetryStrategy) ResetOnSuccess(gasMultiplier float64) {
+	r.backoff = 0
+	if gasMultiplier > 0 && r.gasPrice != noGasPrice {
+		r.gasPrice = r.gasPrice / gasMultiplier
+		r.gasPrice = max(r.gasPrice, r.initialGasPrice)
+	}
+}
+
+func (r *RetryStrategy) BackoffOnFailure(m *Manager) {
+	r.backoff = m.exponentialBackoff(r.backoff)
+}
+
+func (r *RetryStrategy) BackoffOnMempool(mempoolTTL int, blockTime time.Duration, gasMultiplier float64) {
+	r.backoff = blockTime * time.Duration(mempoolTTL)
+	if gasMultiplier > 0 && r.gasPrice != noGasPrice {
+		r.gasPrice = r.gasPrice * gasMultiplier
+	}
+}
+
+type SubmissionOutcome[T any] struct {
+	SubmittedItems   []T
+	RemainingItems   []T
+	RemainingMarshal [][]byte
+	NumSubmitted     int
+	AllSubmitted     bool
+}
+
+func handleSuccessfulSubmission[T any](
+	m *Manager,
+	remaining []T,
+	marshaled [][]byte,
+	res *coreda.ResultSubmit,
+	postSubmit func([]T, *coreda.ResultSubmit, float64),
+	retryStrategy *RetryStrategy,
+	itemType string,
+) SubmissionOutcome[T] {
+	m.recordDAMetrics("submission", DAModeSuccess)
+
+	remLen := len(remaining)
+	allSubmitted := res.SubmittedCount == uint64(remLen)
+
+	m.logger.Info("successfully submitted items to DA layer",
+		"itemType", itemType,
+		"gasPrice", retryStrategy.gasPrice,
+		"count", res.SubmittedCount)
+
+	submitted := remaining[:res.SubmittedCount]
+	notSubmitted := remaining[res.SubmittedCount:]
+	notSubmittedMarshaled := marshaled[res.SubmittedCount:]
+
+	postSubmit(submitted, res, retryStrategy.gasPrice)
+	retryStrategy.ResetOnSuccess(m.gasMultiplier)
+
+	m.logger.Debug("resetting DA layer submission options",
+		"backoff", retryStrategy.backoff,
+		"gasPrice", retryStrategy.gasPrice)
+
+	return SubmissionOutcome[T]{
+		SubmittedItems:   submitted,
+		RemainingItems:   notSubmitted,
+		RemainingMarshal: notSubmittedMarshaled,
+		NumSubmitted:     int(res.SubmittedCount),
+		AllSubmitted:     allSubmitted,
+	}
+}
+
+func handleMempoolFailure(
+	m *Manager,
+	res *coreda.ResultSubmit,
+	retryStrategy *RetryStrategy,
+	attempt int,
+) {
+	m.logger.Error("DA layer submission failed",
+		"error", res.Message,
+		"attempt", attempt)
+
+	m.recordDAMetrics("submission", DAModeFail)
+	retryStrategy.BackoffOnMempool(int(m.config.DA.MempoolTTL), m.config.DA.BlockTime.Duration, m.gasMultiplier)
+
+	m.logger.Info("retrying DA layer submission with",
+		"backoff", retryStrategy.backoff,
+		"gasPrice", retryStrategy.gasPrice)
+}
+
+func handleTooBigError[T any](
+	m *Manager,
+	ctx context.Context,
+	remaining []T,
+	marshaled [][]byte,
+	retryStrategy *RetryStrategy,
+	postSubmit func([]T, *coreda.ResultSubmit, float64),
+	itemType string,
+	attempt int,
+) SubmissionOutcome[T] {
+	m.logger.Warn("DA layer submission failed due to blob size limit",
+		"error", "blob too big",
+		"attempt", attempt,
+		"batchSize", len(remaining))
+
+	m.recordDAMetrics("submission", DAModeFail)
+
+	if len(remaining) > 1 {
+		totalSubmitted := submitWithRecursiveSplitting(m, ctx, remaining, marshaled, retryStrategy.gasPrice, postSubmit, itemType)
+
+		if totalSubmitted > 0 {
+			newRemaining := remaining[totalSubmitted:]
+			newMarshaled := marshaled[totalSubmitted:]
+			retryStrategy.ResetOnSuccess(m.gasMultiplier)
+
+			return SubmissionOutcome[T]{
+				RemainingItems:   newRemaining,
+				RemainingMarshal: newMarshaled,
+				NumSubmitted:     totalSubmitted,
+				AllSubmitted:     len(newRemaining) == 0,
+			}
+		} else {
+			retryStrategy.BackoffOnFailure(m)
+		}
+	} else {
+		m.logger.Error("single item exceeds DA blob size limit",
+			"itemType", itemType,
+			"attempt", attempt)
+		retryStrategy.BackoffOnFailure(m)
+	}
+
+	return SubmissionOutcome[T]{
+		RemainingItems:   remaining,
+		RemainingMarshal: marshaled,
+		NumSubmitted:     0,
+		AllSubmitted:     false,
+	}
+}
+
+func handleGenericFailure(
+	m *Manager,
+	res *coreda.ResultSubmit,
+	retryStrategy *RetryStrategy,
+	attempt int,
+) {
+	m.logger.Error("DA layer submission failed",
+		"error", res.Message,
+		"attempt", attempt)
+
+	m.recordDAMetrics("submission", DAModeFail)
+	retryStrategy.BackoffOnFailure(m)
+}
+
+// SubmissionBatch represents a batch of items with their marshaled data for DA submission
+type SubmissionBatch[Item any] struct {
+	Items     []Item
+	Marshaled [][]byte
 }
 
 // HeaderSubmissionLoop is responsible for submitting headers to the DA layer.
@@ -77,8 +256,6 @@ func (m *Manager) DataSubmissionLoop(ctx context.Context) {
 }
 
 // submitToDA is a generic helper for submitting items to the DA layer with retry, backoff, and gas price logic.
-// marshalFn marshals an item to []byte.
-// postSubmit is called after a successful submission to update caches, pending lists, etc.
 func submitToDA[T any](
 	m *Manager,
 	ctx context.Context,
@@ -87,123 +264,119 @@ func submitToDA[T any](
 	postSubmit func([]T, *coreda.ResultSubmit, float64),
 	itemType string,
 ) error {
-	submittedAll := false
-	var backoff time.Duration
-	attempt := 0
-	initialGasPrice := m.gasPrice
-	gasPrice := initialGasPrice
+	marshaled, err := marshalItems(items, marshalFn, itemType)
+	if err != nil {
+		return err
+	}
+
+	retryStrategy := NewRetryStrategy(m.gasPrice)
 	remaining := items
 	numSubmitted := 0
 
-	// Marshal all items once before the loop
+	// Start the retry loop
+	for retryStrategy.ShouldContinue() {
+		if err := waitForBackoffOrContext(ctx, retryStrategy.backoff); err != nil {
+			return err
+		}
+
+		res := attemptSubmission(ctx, m, marshaled, retryStrategy.gasPrice)
+		outcome := handleSubmissionResult(m, ctx, res, remaining, marshaled, retryStrategy, postSubmit, itemType)
+
+		remaining = outcome.RemainingItems
+		marshaled = outcome.RemainingMarshal
+		numSubmitted += outcome.NumSubmitted
+
+		if outcome.AllSubmitted {
+			return nil
+		}
+
+		retryStrategy.NextAttempt()
+	}
+
+	return createFailureError(itemType, numSubmitted, len(remaining), retryStrategy.attempt)
+}
+
+func marshalItems[T any](
+	items []T,
+	marshalFn func(T) ([]byte, error),
+	itemType string,
+) ([][]byte, error) {
 	marshaled := make([][]byte, len(items))
 	for i, item := range items {
 		bz, err := marshalFn(item)
 		if err != nil {
-			return fmt.Errorf("failed to marshal item: %w", err)
+			return nil, fmt.Errorf("failed to marshal %s item: %w", itemType, err)
 		}
 		marshaled[i] = bz
 	}
-	remLen := len(items)
 
-	for !submittedAll && attempt < maxSubmitAttempts {
-		select {
-		case <-ctx.Done():
-			m.logger.Info("context done, stopping submission loop")
-			return nil
-		case <-time.After(backoff):
+	return marshaled, nil
+}
+
+func waitForBackoffOrContext(ctx context.Context, backoff time.Duration) error {
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-time.After(backoff):
+		return nil
+	}
+}
+
+func attemptSubmission(
+	ctx context.Context,
+	m *Manager,
+	marshaled [][]byte,
+	gasPrice float64,
+) coreda.ResultSubmit {
+	submitCtx, cancel := context.WithTimeout(ctx, submissionTimeout)
+	defer cancel()
+
+	m.recordDAMetrics("submission", DAModeRetry)
+	return types.SubmitWithHelpers(submitCtx, m.da, m.logger, marshaled, gasPrice, nil)
+}
+
+func handleSubmissionResult[T any](
+	m *Manager,
+	ctx context.Context,
+	res coreda.ResultSubmit,
+	remaining []T,
+	marshaled [][]byte,
+	retryStrategy *RetryStrategy,
+	postSubmit func([]T, *coreda.ResultSubmit, float64),
+	itemType string,
+) SubmissionOutcome[T] {
+	switch res.Code {
+	case coreda.StatusSuccess:
+		return handleSuccessfulSubmission(m, remaining, marshaled, &res, postSubmit, retryStrategy, itemType)
+
+	case coreda.StatusNotIncludedInBlock, coreda.StatusAlreadyInMempool:
+		handleMempoolFailure(m, &res, retryStrategy, retryStrategy.attempt)
+		return SubmissionOutcome[T]{
+			RemainingItems:   remaining,
+			RemainingMarshal: marshaled,
+			AllSubmitted:     false,
 		}
 
-		// Use the current remaining items and marshaled bytes
-		currMarshaled := marshaled
-		remLen = len(remaining)
+	case coreda.StatusContextCanceled:
+		m.logger.Info("DA layer submission canceled due to context cancellation", "attempt", retryStrategy.attempt)
+		return SubmissionOutcome[T]{AllSubmitted: true}
 
-		submitctx, submitCtxCancel := context.WithTimeout(ctx, 60*time.Second)
+	case coreda.StatusTooBig:
+		return handleTooBigError(m, ctx, remaining, marshaled, retryStrategy, postSubmit, itemType, retryStrategy.attempt)
 
-		// Record DA submission retry attempt
-		m.recordDAMetrics("submission", DAModeRetry)
-
-		res := types.SubmitWithHelpers(submitctx, m.da, m.logger, currMarshaled, gasPrice, nil)
-		submitCtxCancel()
-
-		switch res.Code {
-		case coreda.StatusSuccess:
-			// Record successful DA submission
-			m.recordDAMetrics("submission", DAModeSuccess)
-
-			m.logger.Info(fmt.Sprintf("successfully submitted %s to DA layer with gasPrice %v and count %d", itemType, gasPrice, res.SubmittedCount))
-			if res.SubmittedCount == uint64(remLen) {
-				submittedAll = true
-			}
-			submitted := remaining[:res.SubmittedCount]
-			notSubmitted := remaining[res.SubmittedCount:]
-			notSubmittedMarshaled := currMarshaled[res.SubmittedCount:]
-			numSubmitted += int(res.SubmittedCount)
-			postSubmit(submitted, &res, gasPrice)
-			remaining = notSubmitted
-			marshaled = notSubmittedMarshaled
-			backoff = 0
-			if m.gasMultiplier > 0 && gasPrice != -1 {
-				gasPrice = gasPrice / m.gasMultiplier
-				gasPrice = max(gasPrice, initialGasPrice)
-			}
-			m.logger.Debug("resetting DA layer submission options", "backoff", backoff, "gasPrice", gasPrice)
-		case coreda.StatusNotIncludedInBlock, coreda.StatusAlreadyInMempool:
-			m.logger.Error("DA layer submission failed", "error", res.Message, "attempt", attempt)
-			// Record failed DA submission (will retry)
-			m.recordDAMetrics("submission", DAModeFail)
-			backoff = m.config.DA.BlockTime.Duration * time.Duration(m.config.DA.MempoolTTL)
-			if m.gasMultiplier > 0 && gasPrice != -1 {
-				gasPrice = gasPrice * m.gasMultiplier
-			}
-			m.logger.Info("retrying DA layer submission with", "backoff", backoff, "gasPrice", gasPrice)
-		case coreda.StatusContextCanceled:
-			m.logger.Info("DA layer submission canceled due to context cancellation", "attempt", attempt)
-			return nil
-		case coreda.StatusTooBig:
-			m.logger.Warn("DA layer submission failed due to blob size limit", "error", res.Message, "attempt", attempt, "batchSize", len(remaining))
-			// Record failed DA submission (will retry)
-			m.recordDAMetrics("submission", DAModeFail)
-
-			// Handle batch splitting when blob is too big
-			if len(remaining) > 1 {
-				totalSubmitted := submitWithRecursiveSplitting(m, ctx, remaining, marshaled, gasPrice, postSubmit, itemType)
-
-				// Update remaining items and continue main loop
-				if totalSubmitted > 0 {
-					// Remove submitted items from remaining
-					remaining = remaining[totalSubmitted:]
-					marshaled = marshaled[totalSubmitted:]
-					numSubmitted += totalSubmitted
-
-					if len(remaining) == 0 {
-						submittedAll = true
-					}
-					backoff = 0 // Reset backoff on partial success
-				} else {
-					// No items were submitted - apply backoff
-					backoff = m.exponentialBackoff(backoff)
-				}
-			} else {
-				// If we have only 1 item and it's still too big, we can't split further
-				m.logger.Error("single item exceeds DA blob size limit", "itemType", itemType, "attempt", attempt)
-				backoff = m.exponentialBackoff(backoff)
-			}
-		default:
-			m.logger.Error("DA layer submission failed", "error", res.Message, "attempt", attempt)
-			// Record failed DA submission (will retry)
-			m.recordDAMetrics("submission", DAModeFail)
-			backoff = m.exponentialBackoff(backoff)
+	default:
+		handleGenericFailure(m, &res, retryStrategy, retryStrategy.attempt)
+		return SubmissionOutcome[T]{
+			RemainingItems:   remaining,
+			RemainingMarshal: marshaled,
+			AllSubmitted:     false,
 		}
-		attempt++
 	}
-	if !submittedAll {
-		// Record final failure after all retries are exhausted
-		m.recordDAMetrics("submission", DAModeFail)
-		// If not all items are submitted, the remaining items will be retried in the next submission loop.
-		return fmt.Errorf("failed to submit all %s(s) to DA layer, submitted %d items (%d left) after %d attempts", itemType, numSubmitted, remLen, attempt)
-	}
-	return nil
+}
+
+func createFailureError(itemType string, numSubmitted, numRemaining, attempts int) error {
+	return fmt.Errorf("failed to submit all %s(s) to DA layer, submitted %d items (%d left) after %d attempts",
+		itemType, numSubmitted, numRemaining, attempts)
 }
 
 // submitHeadersToDA submits a list of headers to the DA layer using the generic submitToDA helper.
@@ -324,37 +497,37 @@ func submitWithRecursiveSplitting[T any](
 	m.logger.Info("initial split for recursive processing", "originalSize", len(items), "firstHalf", len(firstHalf), "secondHalf", len(secondHalf))
 
 	// Start processing with both halves
-	chunks := []chunk[T]{
+	batches := []SubmissionBatch[T]{
 		{firstHalf, firstHalfMarshaled},
 		{secondHalf, secondHalfMarshaled},
 	}
 
 	var totalSubmitted int
 
-	// Process chunks until all are either submitted or fail
-	for len(chunks) > 0 {
-		currentChunk := chunks[0]
-		chunks = chunks[1:]
+	// Process batches until all are either submitted or fail
+	for len(batches) > 0 {
+		currentBatch := batches[0]
+		batches = batches[1:]
 
-		result := processChunk(m, ctx, currentChunk, gasPrice, postSubmit, itemType)
+		result := processBatch(m, ctx, currentBatch, gasPrice, postSubmit, itemType)
 
 		switch result.action {
-		case chunkActionSubmitted:
+		case batchActionSubmitted:
 			totalSubmitted += result.submittedCount
 
-			// Handle partial submission within chunk
-			if result.submittedCount < len(currentChunk.items) {
-				remainingItems := currentChunk.items[result.submittedCount:]
-				remainingMarshaled := currentChunk.marshaled[result.submittedCount:]
-				chunks = append(chunks, chunk[T]{remainingItems, remainingMarshaled})
+			// Handle partial submission within batch
+			if result.submittedCount < len(currentBatch.Items) {
+				remainingItems := currentBatch.Items[result.submittedCount:]
+				remainingMarshaled := currentBatch.Marshaled[result.submittedCount:]
+				batches = append(batches, SubmissionBatch[T]{remainingItems, remainingMarshaled})
 			}
-		case chunkActionSplit:
-			// Add split chunks to the front of the queue to preserve order
-			chunks = append(result.splitChunks, chunks...)
-		case chunkActionSkip:
+		case batchActionSplit:
+			// Add split batches to the front of the queue to preserve order
+			batches = append(result.splitBatches, batches...)
+		case batchActionSkip:
 			// Single item too big - skip it
 			continue
-		case chunkActionFail:
+		case batchActionFail:
 			// Unrecoverable error - stop processing
 			break
 		}
@@ -363,79 +536,79 @@ func submitWithRecursiveSplitting[T any](
 	return totalSubmitted
 }
 
-// chunkAction represents the action to take after processing a chunk
-type chunkAction int
+// BatchAction represents the action to take after processing a batch
+type BatchAction int
 
 const (
-	chunkActionSubmitted chunkAction = iota // Chunk was successfully submitted
-	chunkActionSplit                        // Chunk needs to be split
-	chunkActionSkip                         // Chunk should be skipped (single item too big)
-	chunkActionFail                         // Unrecoverable error
+	batchActionSubmitted BatchAction = iota // Batch was successfully submitted
+	batchActionSplit                        // Batch needs to be split
+	batchActionSkip                         // Batch should be skipped (single item too big)
+	batchActionFail                         // Unrecoverable error
 )
 
-// chunkResult contains the result of processing a chunk
-type chunkResult[T any] struct {
-	action         chunkAction
+// BatchResult contains the result of processing a batch
+type BatchResult[T any] struct {
+	action         BatchAction
 	submittedCount int
-	splitChunks    []chunk[T]
+	splitBatches   []SubmissionBatch[T]
 }
 
-// processChunk processes a single chunk and returns the result.
+// processBatch processes a single batch and returns the result.
 //
-// Returns chunkResult with one of the following actions:
-// - chunkActionSubmitted: Chunk was successfully submitted (partial or complete)
-// - chunkActionSplit: Chunk is too big and needs to be split into smaller chunks
-// - chunkActionSkip: Single item is too big and cannot be split further
-// - chunkActionFail: Unrecoverable error occurred (context timeout, network failure, etc.)
-func processChunk[T any](
+// Returns BatchResult with one of the following actions:
+// - batchActionSubmitted: Batch was successfully submitted (partial or complete)
+// - batchActionSplit: Batch is too big and needs to be split into smaller batches
+// - batchActionSkip: Single item is too big and cannot be split further
+// - batchActionFail: Unrecoverable error occurred (context timeout, network failure, etc.)
+func processBatch[T any](
 	m *Manager,
 	ctx context.Context,
-	ch chunk[T],
+	batch SubmissionBatch[T],
 	gasPrice float64,
 	postSubmit func([]T, *coreda.ResultSubmit, float64),
 	itemType string,
-) chunkResult[T] {
-	chunkCtx, chunkCtxCancel := context.WithTimeout(ctx, 60*time.Second)
-	defer chunkCtxCancel()
+) BatchResult[T] {
+	batchCtx, batchCtxCancel := context.WithTimeout(ctx, submissionTimeout)
+	defer batchCtxCancel()
 
-	chunkRes := types.SubmitWithHelpers(chunkCtx, m.da, m.logger, ch.marshaled, gasPrice, nil)
+	batchRes := types.SubmitWithHelpers(batchCtx, m.da, m.logger, batch.Marshaled, gasPrice, nil)
 
-	if chunkRes.Code == coreda.StatusSuccess {
-		// Successfully submitted this chunk
-		submitted := ch.items[:chunkRes.SubmittedCount]
-		postSubmit(submitted, &chunkRes, gasPrice)
-		m.logger.Info("successfully submitted chunk to DA layer", "chunkSize", len(ch.items), "submittedCount", chunkRes.SubmittedCount)
+	if batchRes.Code == coreda.StatusSuccess {
+		// Successfully submitted this batch
+		submitted := batch.Items[:batchRes.SubmittedCount]
+		postSubmit(submitted, &batchRes, gasPrice)
+		m.logger.Info("successfully submitted batch to DA layer", "batchSize", len(batch.Items), "submittedCount", batchRes.SubmittedCount)
 
-		return chunkResult[T]{
-			action:         chunkActionSubmitted,
-			submittedCount: int(chunkRes.SubmittedCount),
+		return BatchResult[T]{
+			action:         batchActionSubmitted,
+			submittedCount: int(batchRes.SubmittedCount),
 		}
 	}
 
-	if chunkRes.Code == coreda.StatusTooBig && len(ch.items) > 1 {
-		// Split this chunk in half and add both halves to the queue
-		splitPoint := len(ch.items) / 2
-		firstHalf := ch.items[:splitPoint]
-		secondHalf := ch.items[splitPoint:]
-		firstHalfMarshaled := ch.marshaled[:splitPoint]
-		secondHalfMarshaled := ch.marshaled[splitPoint:]
+	if batchRes.Code == coreda.StatusTooBig && len(batch.Items) > 1 {
+		// Split this batch in half and add both halves to the queue
+		splitPoint := len(batch.Items) / 2
+		firstHalf := batch.Items[:splitPoint]
+		secondHalf := batch.Items[splitPoint:]
+		firstHalfMarshaled := batch.Marshaled[:splitPoint]
+		secondHalfMarshaled := batch.Marshaled[splitPoint:]
 
-		m.logger.Info("splitting chunk", "originalSize", len(ch.items), "firstHalf", len(firstHalf), "secondHalf", len(secondHalf))
+		m.logger.Info("splitting batch", "originalSize", len(batch.Items), "firstHalf", len(firstHalf), "secondHalf", len(secondHalf))
 
-		return chunkResult[T]{
-			action: chunkActionSplit,
-			splitChunks: []chunk[T]{
+		return BatchResult[T]{
+			action: batchActionSplit,
+			splitBatches: []SubmissionBatch[T]{
 				{firstHalf, firstHalfMarshaled},
 				{secondHalf, secondHalfMarshaled},
 			},
 		}
 	}
 
-	if len(ch.items) == 1 && chunkRes.Code == coreda.StatusTooBig {
+	if len(batch.Items) == 1 && batchRes.Code == coreda.StatusTooBig {
 		m.logger.Error("single item exceeds DA blob size limit", "itemType", itemType)
-		return chunkResult[T]{action: chunkActionSkip}
+		return BatchResult[T]{action: batchActionSkip}
 	}
 
-	// Other error - cannot continue with this chunk
-	return chunkResult[T]{action: chunkActionFail}
+	// Other error - cannot continue with this batch
+	return BatchResult[T]{action: batchActionFail}
 }
