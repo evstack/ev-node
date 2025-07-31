@@ -586,9 +586,10 @@ func TestSubmitToDA_ItChunksBatchWhenSizeExceedsLimit(t *testing.T) {
 	var submitAttempts int
 	var batchSizes []int
 
-	// Mock DA behavior:
+	// Mock DA behavior for recursive splitting:
 	// - First call: full batch (10 items) -> StatusTooBig
-	// - Second call: split batch (5 items) -> Success
+	// - Second call: first half (5 items) -> Success
+	// - Third call: second half (5 items) -> Success
 	da.On("SubmitWithOptions", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 		Run(func(args mock.Arguments) {
 			submitAttempts++
@@ -596,7 +597,7 @@ func TestSubmitToDA_ItChunksBatchWhenSizeExceedsLimit(t *testing.T) {
 			batchSizes = append(batchSizes, len(blobs))
 			t.Logf("DA Submit attempt %d: batch size %d", submitAttempts, len(blobs))
 		}).
-		Return(nil, coreda.ErrBlobSizeOverLimit).Once() // First attempt fails
+		Return(nil, coreda.ErrBlobSizeOverLimit).Once() // First attempt fails (full batch)
 
 	da.On("SubmitWithOptions", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 		Run(func(args mock.Arguments) {
@@ -605,17 +606,24 @@ func TestSubmitToDA_ItChunksBatchWhenSizeExceedsLimit(t *testing.T) {
 			batchSizes = append(batchSizes, len(blobs))
 			t.Logf("DA Submit attempt %d: batch size %d", submitAttempts, len(blobs))
 		}).
-		Return([]coreda.ID{getDummyID(1, []byte("id1")), getDummyID(1, []byte("id2")), getDummyID(1, []byte("id3")), getDummyID(1, []byte("id4")), getDummyID(1, []byte("id5"))}, nil).Once() // Second attempt succeeds
+		Return([]coreda.ID{getDummyID(1, []byte("id1")), getDummyID(1, []byte("id2")), getDummyID(1, []byte("id3")), getDummyID(1, []byte("id4")), getDummyID(1, []byte("id5"))}, nil).Once() // Second attempt succeeds (first half)
+
+	da.On("SubmitWithOptions", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		Run(func(args mock.Arguments) {
+			submitAttempts++
+			blobs := args.Get(1).([]coreda.Blob)
+			batchSizes = append(batchSizes, len(blobs))
+			t.Logf("DA Submit attempt %d: batch size %d", submitAttempts, len(blobs))
+		}).
+		Return([]coreda.ID{getDummyID(1, []byte("id6")), getDummyID(1, []byte("id7")), getDummyID(1, []byte("id8")), getDummyID(1, []byte("id9")), getDummyID(1, []byte("id10"))}, nil).Once() // Third attempt succeeds (second half)
 
 	err = m.submitHeadersToDA(ctx, headers)
 
-	assert.NoError(t, err, "Should succeed by splitting large batch")
-	assert.Equal(t, 2, submitAttempts, "Should make 2 attempts: 1 large batch + 1 split batch")
-	assert.Equal(t, []int{10, 5}, batchSizes, "Should try full batch, then split in half")
+	assert.NoError(t, err, "Should succeed by recursively splitting and submitting all chunks")
+	assert.Equal(t, 3, submitAttempts, "Should make 3 attempts: 1 large batch + 2 split chunks")
+	assert.Equal(t, []int{10, 5, 5}, batchSizes, "Should try full batch, then both halves")
 
-	// The first 5 items should be successfully submitted
-	// Note: Our current implementation only handles one split cycle per call
-	// The remaining 5 items would be handled in the next submission loop iteration
+	// All 10 items should be successfully submitted in a single submitHeadersToDA call
 }
 
 // TestSubmitToDA_SingleItemTooLarge verifies behavior when even a single item
@@ -659,6 +667,129 @@ func TestSubmitToDA_SingleItemTooLarge(t *testing.T) {
 	assert.Equal(t, 30, submitAttempts, "Should make exactly maxSubmitAttempts before giving up")
 
 	da.AssertExpectations(t)
+}
+
+// TestProcessChunk tests the processChunk function with different scenarios
+func TestProcessChunk(t *testing.T) {
+	da := &mocks.MockDA{}
+	m := newTestManagerWithDA(t, da)
+	ctx := context.Background()
+
+	// Test data setup
+	testItems := []string{"item1", "item2", "item3"}
+	testMarshaled := [][]byte{[]byte("marshaled1"), []byte("marshaled2"), []byte("marshaled3")}
+	testChunk := chunk[string]{
+		items:     testItems,
+		marshaled: testMarshaled,
+	}
+
+	var postSubmitCalled bool
+	postSubmit := func(submitted []string, res *coreda.ResultSubmit, gasPrice float64) {
+		postSubmitCalled = true
+		assert.Equal(t, testItems, submitted)
+		assert.Equal(t, float64(1.0), gasPrice)
+	}
+
+	t.Run("chunkActionSubmitted - full chunk success", func(t *testing.T) {
+		postSubmitCalled = false
+		da.ExpectedCalls = nil
+
+		// Mock successful submission of all items
+		da.On("SubmitWithOptions", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+			Return([]coreda.ID{getDummyID(1, []byte("id1")), getDummyID(1, []byte("id2")), getDummyID(1, []byte("id3"))}, nil).Once()
+
+		result := processChunk(m, ctx, testChunk, 1.0, postSubmit, "test")
+
+		assert.Equal(t, chunkActionSubmitted, result.action)
+		assert.Equal(t, 3, result.submittedCount)
+		assert.True(t, postSubmitCalled)
+		da.AssertExpectations(t)
+	})
+
+	t.Run("chunkActionSubmitted - partial chunk success", func(t *testing.T) {
+		postSubmitCalled = false
+		da.ExpectedCalls = nil
+
+		// Create a separate postSubmit function for partial success test
+		var partialPostSubmitCalled bool
+		partialPostSubmit := func(submitted []string, res *coreda.ResultSubmit, gasPrice float64) {
+			partialPostSubmitCalled = true
+			// Only the first 2 items should be submitted
+			assert.Equal(t, []string{"item1", "item2"}, submitted)
+			assert.Equal(t, float64(1.0), gasPrice)
+		}
+
+		// Mock partial submission (only 2 out of 3 items)
+		da.On("SubmitWithOptions", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+			Return([]coreda.ID{getDummyID(1, []byte("id1")), getDummyID(1, []byte("id2"))}, nil).Once()
+
+		result := processChunk(m, ctx, testChunk, 1.0, partialPostSubmit, "test")
+
+		assert.Equal(t, chunkActionSubmitted, result.action)
+		assert.Equal(t, 2, result.submittedCount)
+		assert.True(t, partialPostSubmitCalled)
+		da.AssertExpectations(t)
+	})
+
+	t.Run("chunkActionSplit - chunk too big", func(t *testing.T) {
+		da.ExpectedCalls = nil
+
+		// Mock "too big" error for multi-item chunk
+		da.On("SubmitWithOptions", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+			Return(nil, coreda.ErrBlobSizeOverLimit).Once()
+
+		result := processChunk(m, ctx, testChunk, 1.0, postSubmit, "test")
+
+		assert.Equal(t, chunkActionSplit, result.action)
+		assert.Equal(t, 0, result.submittedCount)
+		assert.Len(t, result.splitChunks, 2)
+
+		// Verify first half
+		assert.Equal(t, []string{"item1"}, result.splitChunks[0].items)
+		assert.Equal(t, [][]byte{[]byte("marshaled1")}, result.splitChunks[0].marshaled)
+
+		// Verify second half
+		assert.Equal(t, []string{"item2", "item3"}, result.splitChunks[1].items)
+		assert.Equal(t, [][]byte{[]byte("marshaled2"), []byte("marshaled3")}, result.splitChunks[1].marshaled)
+
+		da.AssertExpectations(t)
+	})
+
+	t.Run("chunkActionSkip - single item too big", func(t *testing.T) {
+		da.ExpectedCalls = nil
+
+		// Create single-item chunk
+		singleChunk := chunk[string]{
+			items:     []string{"large_item"},
+			marshaled: [][]byte{[]byte("large_marshaled")},
+		}
+
+		// Mock "too big" error for single item
+		da.On("SubmitWithOptions", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+			Return(nil, coreda.ErrBlobSizeOverLimit).Once()
+
+		result := processChunk(m, ctx, singleChunk, 1.0, postSubmit, "test")
+
+		assert.Equal(t, chunkActionSkip, result.action)
+		assert.Equal(t, 0, result.submittedCount)
+		assert.Empty(t, result.splitChunks)
+		da.AssertExpectations(t)
+	})
+
+	t.Run("chunkActionFail - unrecoverable error", func(t *testing.T) {
+		da.ExpectedCalls = nil
+
+		// Mock network error or other unrecoverable failure
+		da.On("SubmitWithOptions", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+			Return(nil, fmt.Errorf("network error")).Once()
+
+		result := processChunk(m, ctx, testChunk, 1.0, postSubmit, "test")
+
+		assert.Equal(t, chunkActionFail, result.action)
+		assert.Equal(t, 0, result.submittedCount)
+		assert.Empty(t, result.splitChunks)
+		da.AssertExpectations(t)
+	})
 }
 
 func getDummyID(height uint64, commitment []byte) coreda.ID {

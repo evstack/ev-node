@@ -10,6 +10,12 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
+// chunk represents a batch of items with their marshaled data for DA submission
+type chunk[T any] struct {
+	items     []T
+	marshaled [][]byte
+}
+
 // HeaderSubmissionLoop is responsible for submitting headers to the DA layer.
 func (m *Manager) HeaderSubmissionLoop(ctx context.Context) {
 	timer := time.NewTicker(m.config.DA.BlockTime.Duration)
@@ -159,19 +165,25 @@ func submitToDA[T any](
 			// Record failed DA submission (will retry)
 			m.recordDAMetrics("submission", DAModeFail)
 
-			// Implement batch splitting when blob is too big
+			// Handle batch splitting when blob is too big
 			if len(remaining) > 1 {
-				// Split the batch in half to reduce size
-				splitPoint := len(remaining) / 2
-				m.logger.Info("splitting batch due to size limit", "originalSize", len(remaining), "newSize", splitPoint)
+				totalSubmitted := submitWithRecursiveSplitting(m, ctx, remaining, marshaled, gasPrice, postSubmit, itemType)
 
-				// Keep only the first half for this attempt
-				remaining = remaining[:splitPoint]
-				marshaled = marshaled[:splitPoint]
-				remLen = len(remaining)
+				// Update remaining items and continue main loop
+				if totalSubmitted > 0 {
+					// Remove submitted items from remaining
+					remaining = remaining[totalSubmitted:]
+					marshaled = marshaled[totalSubmitted:]
+					numSubmitted += totalSubmitted
 
-				// Reset backoff since we're trying with a smaller batch
-				backoff = 0
+					if len(remaining) == 0 {
+						submittedAll = true
+					}
+					backoff = 0 // Reset backoff on partial success
+				} else {
+					// No items were submitted - apply backoff
+					backoff = m.exponentialBackoff(backoff)
+				}
 			} else {
 				// If we have only 1 item and it's still too big, we can't split further
 				m.logger.Error("single item exceeds DA blob size limit", "itemType", itemType, "attempt", attempt)
@@ -287,4 +299,143 @@ func (m *Manager) createSignedDataToSubmit(ctx context.Context) ([]*types.Signed
 	}
 
 	return signedDataToSubmit, nil
+}
+
+// submitWithRecursiveSplitting handles recursive batch splitting when items are too big for DA submission.
+// It returns the total number of items successfully submitted.
+func submitWithRecursiveSplitting[T any](
+	m *Manager,
+	ctx context.Context,
+	items []T,
+	marshaled [][]byte,
+	gasPrice float64,
+	postSubmit func([]T, *coreda.ResultSubmit, float64),
+	itemType string,
+) int {
+	m.logger.Info("starting recursive batch splitting", "originalSize", len(items))
+
+	// Split the original batch immediately and start with the two halves
+	splitPoint := len(items) / 2
+	firstHalf := items[:splitPoint]
+	secondHalf := items[splitPoint:]
+	firstHalfMarshaled := marshaled[:splitPoint]
+	secondHalfMarshaled := marshaled[splitPoint:]
+
+	m.logger.Info("initial split for recursive processing", "originalSize", len(items), "firstHalf", len(firstHalf), "secondHalf", len(secondHalf))
+
+	// Start processing with both halves
+	chunks := []chunk[T]{
+		{firstHalf, firstHalfMarshaled},
+		{secondHalf, secondHalfMarshaled},
+	}
+
+	var totalSubmitted int
+
+	// Process chunks until all are either submitted or fail
+	for len(chunks) > 0 {
+		currentChunk := chunks[0]
+		chunks = chunks[1:]
+
+		result := processChunk(m, ctx, currentChunk, gasPrice, postSubmit, itemType)
+
+		switch result.action {
+		case chunkActionSubmitted:
+			totalSubmitted += result.submittedCount
+
+			// Handle partial submission within chunk
+			if result.submittedCount < len(currentChunk.items) {
+				remainingItems := currentChunk.items[result.submittedCount:]
+				remainingMarshaled := currentChunk.marshaled[result.submittedCount:]
+				chunks = append(chunks, chunk[T]{remainingItems, remainingMarshaled})
+			}
+		case chunkActionSplit:
+			// Add split chunks to the front of the queue to preserve order
+			chunks = append(result.splitChunks, chunks...)
+		case chunkActionSkip:
+			// Single item too big - skip it
+			continue
+		case chunkActionFail:
+			// Unrecoverable error - stop processing
+			break
+		}
+	}
+
+	return totalSubmitted
+}
+
+// chunkAction represents the action to take after processing a chunk
+type chunkAction int
+
+const (
+	chunkActionSubmitted chunkAction = iota // Chunk was successfully submitted
+	chunkActionSplit                        // Chunk needs to be split
+	chunkActionSkip                         // Chunk should be skipped (single item too big)
+	chunkActionFail                         // Unrecoverable error
+)
+
+// chunkResult contains the result of processing a chunk
+type chunkResult[T any] struct {
+	action         chunkAction
+	submittedCount int
+	splitChunks    []chunk[T]
+}
+
+// processChunk processes a single chunk and returns the result.
+//
+// Returns chunkResult with one of the following actions:
+// - chunkActionSubmitted: Chunk was successfully submitted (partial or complete)
+// - chunkActionSplit: Chunk is too big and needs to be split into smaller chunks
+// - chunkActionSkip: Single item is too big and cannot be split further
+// - chunkActionFail: Unrecoverable error occurred (context timeout, network failure, etc.)
+func processChunk[T any](
+	m *Manager,
+	ctx context.Context,
+	ch chunk[T],
+	gasPrice float64,
+	postSubmit func([]T, *coreda.ResultSubmit, float64),
+	itemType string,
+) chunkResult[T] {
+	chunkCtx, chunkCtxCancel := context.WithTimeout(ctx, 60*time.Second)
+	defer chunkCtxCancel()
+
+	chunkRes := types.SubmitWithHelpers(chunkCtx, m.da, m.logger, ch.marshaled, gasPrice, nil)
+
+	if chunkRes.Code == coreda.StatusSuccess {
+		// Successfully submitted this chunk
+		submitted := ch.items[:chunkRes.SubmittedCount]
+		postSubmit(submitted, &chunkRes, gasPrice)
+		m.logger.Info("successfully submitted chunk to DA layer", "chunkSize", len(ch.items), "submittedCount", chunkRes.SubmittedCount)
+
+		return chunkResult[T]{
+			action:         chunkActionSubmitted,
+			submittedCount: int(chunkRes.SubmittedCount),
+		}
+	}
+
+	if chunkRes.Code == coreda.StatusTooBig && len(ch.items) > 1 {
+		// Split this chunk in half and add both halves to the queue
+		splitPoint := len(ch.items) / 2
+		firstHalf := ch.items[:splitPoint]
+		secondHalf := ch.items[splitPoint:]
+		firstHalfMarshaled := ch.marshaled[:splitPoint]
+		secondHalfMarshaled := ch.marshaled[splitPoint:]
+
+		m.logger.Info("splitting chunk", "originalSize", len(ch.items), "firstHalf", len(firstHalf), "secondHalf", len(secondHalf))
+
+		return chunkResult[T]{
+			action: chunkActionSplit,
+			splitChunks: []chunk[T]{
+				{firstHalf, firstHalfMarshaled},
+				{secondHalf, secondHalfMarshaled},
+			},
+		}
+	}
+
+	if len(ch.items) == 1 && chunkRes.Code == coreda.StatusTooBig {
+		m.logger.Error("single item exceeds DA blob size limit", "itemType", itemType)
+		return chunkResult[T]{action: chunkActionSkip}
+	}
+
+	// Other error - cannot continue with this chunk
+	return chunkResult[T]{action: chunkActionFail}
 }
