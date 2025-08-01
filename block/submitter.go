@@ -228,7 +228,12 @@ func submitToDA[T any](
 			return err
 		}
 
-		res := attemptSubmission(ctx, m, marshaled, retryStrategy.gasPrice)
+		submitCtx, cancel := context.WithTimeout(ctx, submissionTimeout)
+		m.recordDAMetrics("submission", DAModeRetry)
+
+		res := types.SubmitWithHelpers(submitCtx, m.da, m.logger, marshaled, retryStrategy.gasPrice, nil)
+		cancel()
+
 		outcome := handleSubmissionResult(m, ctx, res, remaining, marshaled, retryStrategy, postSubmit, itemType)
 
 		remaining = outcome.RemainingItems
@@ -272,19 +277,6 @@ func waitForBackoffOrContext(ctx context.Context, backoff time.Duration) error {
 	}
 }
 
-func attemptSubmission(
-	ctx context.Context,
-	m *Manager,
-	marshaled [][]byte,
-	gasPrice float64,
-) coreda.ResultSubmit {
-	submitCtx, cancel := context.WithTimeout(ctx, submissionTimeout)
-	defer cancel()
-
-	m.recordDAMetrics("submission", DAModeRetry)
-	return types.SubmitWithHelpers(submitCtx, m.da, m.logger, marshaled, gasPrice, nil)
-}
-
 func handleSubmissionResult[T any](
 	m *Manager,
 	ctx context.Context,
@@ -300,12 +292,7 @@ func handleSubmissionResult[T any](
 		return handleSuccessfulSubmission(m, remaining, marshaled, &res, postSubmit, retryStrategy, itemType)
 
 	case coreda.StatusNotIncludedInBlock, coreda.StatusAlreadyInMempool:
-		handleMempoolFailure(m, &res, retryStrategy, retryStrategy.attempt)
-		return SubmissionOutcome[T]{
-			RemainingItems:   remaining,
-			RemainingMarshal: marshaled,
-			AllSubmitted:     false,
-		}
+		return handleMempoolFailure(m, &res, retryStrategy, retryStrategy.attempt, remaining, marshaled)
 
 	case coreda.StatusContextCanceled:
 		m.logger.Info("DA layer submission canceled due to context cancellation", "attempt", retryStrategy.attempt)
@@ -315,12 +302,7 @@ func handleSubmissionResult[T any](
 		return handleTooBigError(m, ctx, remaining, marshaled, retryStrategy, postSubmit, itemType, retryStrategy.attempt)
 
 	default:
-		handleGenericFailure(m, &res, retryStrategy, retryStrategy.attempt)
-		return SubmissionOutcome[T]{
-			RemainingItems:   remaining,
-			RemainingMarshal: marshaled,
-			AllSubmitted:     false,
-		}
+		return handleGenericFailure(m, &res, retryStrategy, retryStrategy.attempt, remaining, marshaled)
 	}
 }
 
@@ -363,12 +345,14 @@ func handleSuccessfulSubmission[T any](
 	}
 }
 
-func handleMempoolFailure(
+func handleMempoolFailure[T any](
 	m *Manager,
 	res *coreda.ResultSubmit,
 	retryStrategy *retryStrategy,
 	attempt int,
-) {
+	remaining []T,
+	marshaled [][]byte,
+) SubmissionOutcome[T] {
 	m.logger.Error("DA layer submission failed",
 		"error", res.Message,
 		"attempt", attempt)
@@ -379,6 +363,12 @@ func handleMempoolFailure(
 	m.logger.Info("retrying DA layer submission with",
 		"backoff", retryStrategy.backoff,
 		"gasPrice", retryStrategy.gasPrice)
+
+	return SubmissionOutcome[T]{
+		RemainingItems:   remaining,
+		RemainingMarshal: marshaled,
+		AllSubmitted:     false,
+	}
 }
 
 func handleTooBigError[T any](
@@ -430,18 +420,26 @@ func handleTooBigError[T any](
 	}
 }
 
-func handleGenericFailure(
+func handleGenericFailure[T any](
 	m *Manager,
 	res *coreda.ResultSubmit,
 	retryStrategy *retryStrategy,
 	attempt int,
-) {
+	remaining []T,
+	marshaled [][]byte,
+) SubmissionOutcome[T] {
 	m.logger.Error("DA layer submission failed",
 		"error", res.Message,
 		"attempt", attempt)
 
 	m.recordDAMetrics("submission", DAModeFail)
 	retryStrategy.BackoffOnFailure()
+
+	return SubmissionOutcome[T]{
+		RemainingItems:   remaining,
+		RemainingMarshal: marshaled,
+		AllSubmitted:     false,
+	}
 }
 
 // createSignedDataToSubmit converts the list of pending data to a list of SignedData.
