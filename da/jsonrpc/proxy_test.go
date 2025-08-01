@@ -32,7 +32,6 @@ const (
 )
 
 var testNamespace = []byte("test")
-var emptyOptions = []byte{}
 
 // TestProxy runs the go-da DA test suite against the JSONRPC service
 // NOTE: This test requires a test JSONRPC service to run on the port
@@ -212,7 +211,7 @@ func ConcurrentReadWriteTest(t *testing.T, d coreda.DA) {
 			case <-writeDone:
 				return
 			default:
-				d.GetIDs(ctx, 0, []byte("test"))
+				_, _ = d.GetIDs(ctx, 0, []byte("test"))
 			}
 		}
 	}()
@@ -285,14 +284,14 @@ func TestSubmitWithOptions(t *testing.T) {
 
 		blobs := []coreda.Blob{blobsizes, blobsizes, blobsizesOver}
 
-		expectedSubmitBlobs := []coreda.Blob{blobs[0], blobs[1]}
-		expectedIDs := []coreda.ID{[]byte("idA"), []byte("idB")}
-		mockAPI.On("SubmitWithOptions", ctx, expectedSubmitBlobs, gasPrice, testNamespace, testOptions).Return(expectedIDs, nil).Once()
-
 		ids, err := client.DA.SubmitWithOptions(ctx, blobs, gasPrice, testNamespace, testOptions)
 
-		require.NoError(t, err)
-		assert.Equal(t, expectedIDs, ids)
+		require.Error(t, err)
+		assert.ErrorIs(t, err, coreda.ErrBlobSizeOverLimit)
+		assert.Nil(t, ids)
+
+		// Should not call internal RPC when validation fails
+		mockAPI.AssertNotCalled(t, "SubmitWithOptions", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything)
 		mockAPI.AssertExpectations(t)
 	})
 

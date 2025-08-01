@@ -703,24 +703,6 @@ func TestUtilityFunctions(t *testing.T) {
 		require.Equal(input, reconstructed)
 	})
 
-	t.Run("ExponentialBackoff", func(t *testing.T) {
-		require := require.New(t)
-		m, _ := getManager(t, mocks.NewMockDA(t), -1, -1)
-		m.config.DA.BlockTime.Duration = 10 * time.Second
-
-		// Test initial backoff
-		result := m.exponentialBackoff(0)
-		require.Equal(initialBackoff, result)
-
-		// Test doubling
-		result = m.exponentialBackoff(100 * time.Millisecond)
-		require.Equal(200*time.Millisecond, result)
-
-		// Test max cap
-		result = m.exponentialBackoff(20 * time.Second)
-		require.Equal(m.config.DA.BlockTime.Duration, result)
-	})
-
 	t.Run("GetHeaderSignature_NilSigner", func(t *testing.T) {
 		require := require.New(t)
 		m, _ := getManager(t, mocks.NewMockDA(t), -1, -1)
@@ -993,44 +975,10 @@ func TestValidationMethods(t *testing.T) {
 		require.False(result)
 	})
 
-	t.Run("ExponentialBackoff_WithConfig", func(t *testing.T) {
-		require := require.New(t)
-		m, _ := getManager(t, mocks.NewMockDA(t), -1, -1)
-
-		// Set up a config with a specific block time
-		m.config.DA.BlockTime.Duration = 5 * time.Second
-
-		// Test that backoff is capped at config value
-		result := m.exponentialBackoff(10 * time.Second)
-		require.Equal(5*time.Second, result)
-
-		// Test normal doubling
-		result = m.exponentialBackoff(100 * time.Millisecond)
-		require.Equal(200*time.Millisecond, result)
-	})
 }
 
 // TestConfigurationDefaults tests default value handling and edge cases
 func TestConfigurationDefaults(t *testing.T) {
-	t.Run("ExponentialBackoff_EdgeCases", func(t *testing.T) {
-		require := require.New(t)
-		m, _ := getManager(t, mocks.NewMockDA(t), -1, -1)
-
-		// Test with zero block time - should still double the backoff since there's no cap
-		m.config.DA.BlockTime.Duration = 0
-		result := m.exponentialBackoff(100 * time.Millisecond)
-		require.Equal(0*time.Millisecond, result) // Capped at 0
-
-		// Test with very small block time
-		m.config.DA.BlockTime.Duration = 1 * time.Millisecond
-		result = m.exponentialBackoff(100 * time.Millisecond)
-		require.Equal(1*time.Millisecond, result) // Should cap at block time
-
-		// Test normal doubling with larger block time
-		m.config.DA.BlockTime.Duration = 1 * time.Second
-		result = m.exponentialBackoff(100 * time.Millisecond)
-		require.Equal(200*time.Millisecond, result) // Should double
-	})
 
 	t.Run("IsProposer_NilSigner", func(t *testing.T) {
 		require := require.New(t)

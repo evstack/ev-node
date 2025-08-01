@@ -71,6 +71,7 @@ func TestAddFlags(t *testing.T) {
 	assertFlagValue(t, flags, FlagDANamespace, DefaultConfig.DA.Namespace)
 	assertFlagValue(t, flags, FlagDASubmitOptions, DefaultConfig.DA.SubmitOptions)
 	assertFlagValue(t, flags, FlagDAMempoolTTL, DefaultConfig.DA.MempoolTTL)
+	assertFlagValue(t, flags, FlagDAMaxSubmitAttempts, DefaultConfig.DA.MaxSubmitAttempts)
 
 	// P2P flags
 	assertFlagValue(t, flags, FlagP2PListenAddress, DefaultConfig.P2P.ListenAddress)
@@ -100,7 +101,7 @@ func TestAddFlags(t *testing.T) {
 	assertFlagValue(t, flags, FlagRPCAddress, DefaultConfig.RPC.Address)
 
 	// Count the number of flags we're explicitly checking
-	expectedFlagCount := 35 // Update this number if you add more flag checks above
+	expectedFlagCount := 36 // Update this number if you add more flag checks above
 
 	// Get the actual number of flags (both regular and persistent)
 	actualFlagCount := 0

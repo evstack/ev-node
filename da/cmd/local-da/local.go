@@ -162,6 +162,15 @@ func (d *LocalDA) Commit(ctx context.Context, blobs []coreda.Blob, _ []byte) ([]
 // SubmitWithOptions stores blobs in DA layer (options are ignored).
 func (d *LocalDA) SubmitWithOptions(ctx context.Context, blobs []coreda.Blob, gasPrice float64, _ []byte, _ []byte) ([]coreda.ID, error) {
 	d.logger.Info("SubmitWithOptions called, numBlobs: ", len(blobs), "gasPrice: ", gasPrice)
+	
+	// Validate blob sizes before processing
+	for i, blob := range blobs {
+		if uint64(len(blob)) > d.maxBlobSize {
+			d.logger.Error("SubmitWithOptions: blob size exceeds limit", "blobIndex", i, "blobSize", len(blob), "maxBlobSize", d.maxBlobSize)
+			return nil, coreda.ErrBlobSizeOverLimit
+		}
+	}
+	
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	ids := make([]coreda.ID, len(blobs))
@@ -179,6 +188,15 @@ func (d *LocalDA) SubmitWithOptions(ctx context.Context, blobs []coreda.Blob, ga
 // Submit stores blobs in DA layer (options are ignored).
 func (d *LocalDA) Submit(ctx context.Context, blobs []coreda.Blob, gasPrice float64, _ []byte) ([]coreda.ID, error) {
 	d.logger.Info("Submit called, numBlobs: ", len(blobs), "gasPrice: ", gasPrice)
+	
+	// Validate blob sizes before processing
+	for i, blob := range blobs {
+		if uint64(len(blob)) > d.maxBlobSize {
+			d.logger.Error("Submit: blob size exceeds limit", "blobIndex", i, "blobSize", len(blob), "maxBlobSize", d.maxBlobSize)
+			return nil, coreda.ErrBlobSizeOverLimit
+		}
+	}
+	
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	ids := make([]coreda.ID, len(blobs))
