@@ -10,7 +10,7 @@ on:
 
 jobs:
   build-ev-node-image:
-    name: Build Rollkit Docker Image
+    name: Build ev-node Docker Image
     # skip building images for merge groups as they are already built on PRs and main
     if: github.event_name != 'merge_group'
     runs-on: ubuntu-latest
@@ -36,7 +36,7 @@ jobs:
           context: .
           push: true
           platforms: linux/amd64,linux/arm64
-          tags: ghcr.io/${{ github.repository_owner }}/evstack:${{ inputs.image-tag }}
+          tags: ghcr.io/${{ github.repository_owner }}/ev-node:${{ inputs.image-tag }}
 
   build-ev-node-evm-single-image:
     name: Build ev-node EVM Single Docker Image
