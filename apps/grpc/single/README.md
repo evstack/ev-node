@@ -152,5 +152,5 @@ If you have issues connecting to the DA layer:
 ## See Also
 
 - [Rollkit Documentation](https://rollkit.dev)
-- [gRPC Execution Interface](../../execution/grpc/README.md)
-- [Single Sequencer Documentation](../../sequencers/single/README.md)
+- [gRPC Execution Interface](../../../execution/grpc/README.md)
+- [Single Sequencer Documentation](../../../sequencers/single/README.md)
