@@ -8,6 +8,7 @@ import (
 	"os/signal"
 	"syscall"
 
+	logutil "github.com/evstack/ev-node/pkg/logging"
 	logging "github.com/ipfs/go-log/v2"
 
 	proxy "github.com/evstack/ev-node/da/jsonrpc"
@@ -47,9 +48,10 @@ func main() {
 	da := NewLocalDA(logger, opts...)
 
 	srv := proxy.NewServer(logger, host, port, da)
-	logger.Info("Listening on", "host", host, "port", port, "maxBlobSize", maxBlobSize)
+	logutil.InfoWithKV(logger, "Listening on", "host", host, "port", port, "maxBlobSize", maxBlobSize)
 	if err := srv.Start(context.Background()); err != nil {
-		logger.Error("error while serving", "error", err)
+		logutil.ErrorWithKV(logger, "error while serving", "error", err)
+		os.Exit(1)
 	}
 
 	interrupt := make(chan os.Signal, 1)

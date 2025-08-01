@@ -9,6 +9,7 @@ replace (
 	github.com/evstack/ev-node/core => ../../../core
 	github.com/evstack/ev-node/da => ../../../da
 	github.com/evstack/ev-node/execution/evm => ../../../execution/evm
+	github.com/evstack/ev-node/pkg/logging => ../../../pkg/logging
 	github.com/evstack/ev-node/sequencers/based => ../../../sequencers/based
 )
 
@@ -100,6 +101,7 @@ require (
 	github.com/emicklei/go-restful/v3 v3.11.0 // indirect
 	github.com/ethereum/c-kzg-4844 v1.0.3 // indirect
 	github.com/ethereum/go-verkle v0.2.2 // indirect
+	github.com/evstack/ev-node/pkg/logging v0.0.0-00010101000000-000000000000 // indirect
 	github.com/felixge/httpsnoop v1.0.4 // indirect
 	github.com/filecoin-project/go-jsonrpc v0.7.1 // indirect
 	github.com/flynn/noise v1.1.0 // indirect

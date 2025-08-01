@@ -12,6 +12,7 @@ import (
 
 	coreda "github.com/evstack/ev-node/core/da"
 	coresequencer "github.com/evstack/ev-node/core/sequencer"
+	logutil "github.com/evstack/ev-node/pkg/logging"
 )
 
 // ErrInvalidId is returned when the chain id is invalid
@@ -90,7 +91,7 @@ func (c *Sequencer) SubmitBatchTxs(ctx context.Context, req coresequencer.Submit
 	}
 
 	if req.Batch == nil || len(req.Batch.Transactions) == 0 {
-		c.logger.Info("Skipping submission of empty batch", "Id", string(req.Id))
+		logutil.InfoWithKV(c.logger, "Skipping submission of empty batch", "Id", string(req.Id))
 		return &coresequencer.SubmitBatchTxsResponse{}, nil
 	}
 

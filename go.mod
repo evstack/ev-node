@@ -6,12 +6,15 @@ retract v0.12.0 // Published by accident
 
 replace github.com/evstack/ev-node/core => ./core
 
+replace github.com/evstack/ev-node/pkg/logging => ./pkg/logging
+
 require (
 	connectrpc.com/connect v1.18.1
 	connectrpc.com/grpcreflect v1.3.0
 	github.com/celestiaorg/go-header v0.6.6
 	github.com/celestiaorg/utils v0.1.0
 	github.com/evstack/ev-node/core v0.0.0-00010101000000-000000000000
+	github.com/evstack/ev-node/pkg/logging v0.0.0-00010101000000-000000000000
 	github.com/go-kit/kit v0.13.0
 	github.com/goccy/go-yaml v1.18.0
 	github.com/ipfs/go-datastore v0.8.2

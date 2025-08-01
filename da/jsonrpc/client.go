@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"strings"
 
+	logutil "github.com/evstack/ev-node/pkg/logging"
 	"github.com/filecoin-project/go-jsonrpc"
 	logging "github.com/ipfs/go-log/v2"
 
@@ -158,7 +159,7 @@ func (api *API) SubmitWithOptions(ctx context.Context, inputBlobs []da.Blob, gas
 			continue
 		}
 		if currentSize+blobLen > maxBlobSize {
-			api.Logger.Info("Blob size limit reached for batch", "maxBlobSize", maxBlobSize, "index", i, "currentSize", currentSize, "nextBlobSize", blobLen)
+			logutil.InfoWithKV(api.Logger, "Blob size limit reached for batch", "maxBlobSize", maxBlobSize, "index", i, "currentSize", currentSize, "nextBlobSize", blobLen)
 			break
 		}
 		currentSize += blobLen
@@ -260,7 +261,7 @@ func newClient(ctx context.Context, logger logging.EventLogger, addr string, aut
 		return nil, fmt.Errorf("failed to decode namespace: %w", err)
 	}
 	client.DA.Namespace = namespaceBytes
-	logger.Info("creating new client", "namespace", namespace)
+	logger.Info("creating new client, namespace: ", namespace)
 	errs := getKnownErrorsMapping()
 	for name, module := range moduleMap(&client) {
 		closer, err := jsonrpc.NewMergeClient(ctx, addr, name, []interface{}{module}, authHeader, jsonrpc.WithErrors(errs))
