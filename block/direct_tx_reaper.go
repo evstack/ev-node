@@ -2,12 +2,22 @@ package block
 
 import (
 	"context"
+	"fmt"
+	"strings"
+	"sync/atomic"
+	"time"
+
 	"github.com/evstack/ev-node/core/da"
+	coreda "github.com/evstack/ev-node/core/da"
 	"github.com/evstack/ev-node/core/sequencer"
 	"github.com/evstack/ev-node/types"
-	"github.com/ipfs/go-datastore"
+	ds "github.com/ipfs/go-datastore"
+	kt "github.com/ipfs/go-datastore/keytransform"
 	"github.com/ipfs/go-log/v2"
-	"time"
+)
+
+const (
+	keyPrefixDirTXSeen = "dTX"
 )
 
 // DirectTxReaper is responsible for periodically retrieving direct transactions from the DA layer,
@@ -19,16 +29,27 @@ type DirectTxReaper struct {
 	interval  time.Duration
 	logger    log.EventLogger
 	ctx       context.Context
-	seenStore datastore.Batching
+	seenStore ds.Batching
 	manager   *Manager
-	namespace []byte
+	daHeight  *atomic.Uint64
 }
 
 // NewDirectTxReaper creates a new DirectTxReaper instance with persistent seenTx storage.
-func NewDirectTxReaper(ctx context.Context, da da.DA, sequencer sequencer.DirectTxSequencer, manager *Manager, chainID string, interval time.Duration, logger log.EventLogger, store datastore.Batching, namespace []byte, ) *DirectTxReaper {
+func NewDirectTxReaper(
+	ctx context.Context,
+	da coreda.DA,
+	sequencer sequencer.DirectTxSequencer,
+	manager *Manager,
+	chainID string,
+	interval time.Duration,
+	logger log.EventLogger,
+	store ds.Batching,
+) *DirectTxReaper {
 	if interval <= 0 {
-		interval = DefaultInterval
+		interval = 100 * time.Millisecond
 	}
+	daHeight := new(atomic.Uint64)
+	daHeight.Store(1)
 	return &DirectTxReaper{
 		da:        da,
 		sequencer: sequencer,
@@ -36,9 +57,11 @@ func NewDirectTxReaper(ctx context.Context, da da.DA, sequencer sequencer.Direct
 		interval:  interval,
 		logger:    logger,
 		ctx:       ctx,
-		seenStore: store,
-		namespace: namespace,
-		manager:   manager,
+		seenStore: kt.Wrap(store, &kt.PrefixTransform{
+			Prefix: ds.NewKey(keyPrefixDirTXSeen),
+		}),
+		manager:  manager,
+		daHeight: daHeight,
 	}
 }
 
@@ -56,100 +79,92 @@ func (r *DirectTxReaper) Start(ctx context.Context) {
 			r.logger.Info("DirectTxReaper stopped")
 			return
 		case <-ticker.C:
-			r.SubmitTxs()
+			daHeight := r.daHeight.Load()
+			if err := r.SubmitTxs(daHeight); err != nil {
+				if strings.Contains(err.Error(), coreda.ErrHeightFromFuture.Error()) {
+					r.logger.Debug("IDs not found at height", "height", daHeight)
+				} else {
+					r.logger.Error("Submit direct txs to sequencer", "error", err)
+				}
+				continue
+			}
+			r.daHeight.Store(daHeight + 1)
+
 		}
 	}
 }
 
 // SubmitTxs retrieves direct transactions from the DA layer and submits them to the sequencer.
-func (r *DirectTxReaper) SubmitTxs() {
+func (r *DirectTxReaper) SubmitTxs(daHeight uint64) error {
 	// Get the latest DA height
-	daHeight := uint64(0)
-	if r.manager != nil {
-		daHeight = r.manager.GetDAIncludedHeight()
-	}
-
-	if daHeight == 0 {
-		r.logger.Debug("DirectTxReaper: No DA height available yet")
-		return
-	}
-
 	// Get all blob IDs at the current DA height
-	result, err := r.da.GetIDs(r.ctx, daHeight, r.namespace)
+	result, err := r.da.GetIDs(r.ctx, daHeight, nil)
 	if err != nil {
-		r.logger.Error("DirectTxReaper failed to get IDs from DA", "error", err)
-		return
+		return fmt.Errorf("get IDs from DA: %w", err)
 	}
-
-	if len(result.IDs) == 0 {
-		r.logger.Debug("DirectTxReaper found no blobs at current DA height", "height", daHeight)
-		return
+	if result == nil || len(result.IDs) == 0 {
+		r.logger.Debug("No blobs at current DA height", "height", daHeight)
+		return nil
 	}
+	r.logger.Debug("IDs at current DA height", "height", daHeight, "count", len(result.IDs))
 
 	// Get the blobs for all IDs
-	blobs, err := r.da.Get(r.ctx, result.IDs, r.namespace)
+	blobs, err := r.da.Get(r.ctx, result.IDs, nil)
 	if err != nil {
-		r.logger.Error("DirectTxReaper failed to get blobs from DA", "error", err)
-		return
+		return fmt.Errorf("get blobs from DA: %w", err)
 	}
+	r.logger.Debug("Blobs found at height", "height", daHeight, "count", len(blobs))
 
 	var newTxs [][]byte
 	for _, blob := range blobs {
+		r.logger.Debug("Processing blob data")
+
 		// Process each blob to extract direct transactions
 		var data types.Data
 		err := data.UnmarshalBinary(blob)
 		if err != nil {
-			r.logger.Debug("DirectTxReaper failed to unmarshal blob data", "error", err)
+			r.logger.Debug("Unexpected payload skipping ", "error", err)
 			continue
 		}
 
 		// Skip blobs from different chains
 		if data.Metadata.ChainID != r.chainID {
-			r.logger.Debug("DirectTxReaper ignoring data from different chain", "chainID", data.Metadata.ChainID)
+			r.logger.Debug("Ignoring data from different chain", "chainID", data.Metadata.ChainID, "expectedChainID", r.chainID)
 			continue
 		}
 
 		// Process each transaction in the blob
 		for _, tx := range data.Txs {
 			txHash := hashTx(tx)
-			key := datastore.NewKey(txHash)
-			has, err := r.seenStore.Has(r.ctx, key)
+			has, err := r.seenStore.Has(r.ctx, ds.NewKey(txHash))
 			if err != nil {
-				r.logger.Error("DirectTxReaper failed to check seenStore", "error", err)
-				continue
+				return fmt.Errorf("check seenStore: %w", err)
 			}
 			if !has {
 				newTxs = append(newTxs, tx)
 			}
 		}
+		// todo: apply checks"
+		// DA header time: result.Timestamp
 	}
 
 	if len(newTxs) == 0 {
-		r.logger.Debug("DirectTxReaper found no new direct txs to submit")
-		return
+		r.logger.Debug("No new direct txs to submit")
+		return nil
 	}
 
-	r.logger.Debug("DirectTxReaper submitting direct txs to sequencer", "txCount", len(newTxs))
+	r.logger.Debug("Submitting direct txs to sequencer", "txCount", len(newTxs))
 	err = r.sequencer.SubmitDirectTxs(r.ctx, newTxs)
 	if err != nil {
-		r.logger.Error("DirectTxReaper failed to submit direct txs to sequencer", "error", err)
-		return
+		return fmt.Errorf("submit direct txs to sequencer: %w", err)
 	}
-
 	// Mark the transactions as seen
 	for _, tx := range newTxs {
 		txHash := hashTx(tx)
-		key := datastore.NewKey(txHash)
-		if err := r.seenStore.Put(r.ctx, key, []byte{1}); err != nil {
-			r.logger.Error("DirectTxReaper failed to persist seen tx", "txHash", txHash, "error", err)
+		if err := r.seenStore.Put(r.ctx, ds.NewKey(txHash), []byte{1}); err != nil {
+			return fmt.Errorf("persist seen tx: %w", err)
 		}
 	}
-
-	// Notify the manager that new transactions are available
-	if r.manager != nil && len(newTxs) > 0 {
-		r.logger.Debug("DirectTxReaper notifying manager of new transactions")
-		r.manager.NotifyNewTransactions()
-	}
-
-	r.logger.Debug("DirectTxReaper successfully submitted direct txs")
+	r.logger.Debug("Successfully submitted direct txs")
+	return nil
 }

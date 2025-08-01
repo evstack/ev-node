@@ -144,7 +144,6 @@ func newFullNode(
 		nodeConfig.Node.BlockTime.Duration,
 		logging.Logger("DirectTxReaper"),
 		mainKV,
-		[]byte(genesis.ChainID), // Use chain ID as namespace
 	)
 
 	node := &FullNode{

@@ -29,7 +29,15 @@ type Reaper struct {
 }
 
 // NewReaper creates a new Reaper instance with persistent seenTx storage.
-func NewReaper(ctx context.Context, exec coreexecutor.Executor, sequencer coresequencer.Sequencer, chainID string, interval time.Duration, logger logging.EventLogger, store ds.Batching) *Reaper {
+func NewReaper(
+	ctx context.Context,
+	exec coreexecutor.Executor,
+	sequencer coresequencer.Sequencer,
+	chainID string,
+	interval time.Duration,
+	logger logging.EventLogger,
+	store ds.Batching,
+) *Reaper {
 	if interval <= 0 {
 		interval = DefaultInterval
 	}

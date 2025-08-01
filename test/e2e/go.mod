@@ -5,15 +5,20 @@ go 1.24.2
 require (
 	github.com/ethereum/go-ethereum v1.15.0
 	github.com/evstack/ev-node v0.0.0-00010101000000-000000000000
+	github.com/evstack/ev-node/core v0.0.0-20250312114929-104787ba1a4c
+	github.com/evstack/ev-node/da v0.0.0-00010101000000-000000000000
 	github.com/evstack/ev-node/execution/evm v0.0.0-20250602130019-2a732cf903a5
 	github.com/golang-jwt/jwt/v5 v5.2.2
+	github.com/ipfs/go-log/v2 v2.6.0
 	github.com/libp2p/go-libp2p v0.41.1
 	github.com/stretchr/testify v1.10.0
+	google.golang.org/protobuf v1.36.6
 )
 
 replace (
 	github.com/evstack/ev-node => ../../
 	github.com/evstack/ev-node/core => ../../core
+	github.com/evstack/ev-node/da => ../../da
 	github.com/evstack/ev-node/execution/evm => ../../execution/evm
 )
 
@@ -46,6 +51,7 @@ require (
 	github.com/bits-and-blooms/bitset v1.17.0 // indirect
 	github.com/buger/goterm v1.0.4 // indirect
 	github.com/celestiaorg/go-header v0.6.6 // indirect
+	github.com/celestiaorg/go-square/v2 v2.2.0 // indirect
 	github.com/cenkalti/backoff/v4 v4.3.0 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/compose-spec/compose-go/v2 v2.6.0 // indirect
@@ -87,8 +93,8 @@ require (
 	github.com/emicklei/go-restful/v3 v3.11.0 // indirect
 	github.com/ethereum/c-kzg-4844 v1.0.3 // indirect
 	github.com/ethereum/go-verkle v0.2.2 // indirect
-	github.com/evstack/ev-node/core v0.0.0-20250312114929-104787ba1a4c // indirect
 	github.com/felixge/httpsnoop v1.0.4 // indirect
+	github.com/filecoin-project/go-jsonrpc v0.7.1 // indirect
 	github.com/fsnotify/fsevents v0.2.0 // indirect
 	github.com/fvbommel/sortorder v1.1.0 // indirect
 	github.com/fxamacker/cbor/v2 v2.7.0 // indirect
@@ -126,7 +132,6 @@ require (
 	github.com/ipfs/go-cid v0.5.0 // indirect
 	github.com/ipfs/go-datastore v0.8.2 // indirect
 	github.com/ipfs/go-ds-badger4 v0.1.8 // indirect
-	github.com/ipfs/go-log/v2 v2.6.0 // indirect
 	github.com/jonboulle/clockwork v0.5.0 // indirect
 	github.com/josharian/intern v1.0.0 // indirect
 	github.com/json-iterator/go v1.1.12 // indirect
@@ -249,10 +254,10 @@ require (
 	golang.org/x/term v0.33.0 // indirect
 	golang.org/x/text v0.27.0 // indirect
 	golang.org/x/time v0.9.0 // indirect
+	golang.org/x/xerrors v0.0.0-20240903120638-7835f813f4da // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20250106144421-5f5ef82da422 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20250115164207-1a7da9e5054f // indirect
 	google.golang.org/grpc v1.71.0 // indirect
-	google.golang.org/protobuf v1.36.6 // indirect
 	gopkg.in/cenkalti/backoff.v1 v1.1.0 // indirect
 	gopkg.in/inf.v0 v0.9.1 // indirect
 	gopkg.in/ini.v1 v1.67.0 // indirect
