@@ -872,7 +872,7 @@ func TestRetryStrategy(t *testing.T) {
 				strategy := newRetryStrategy(1.0, tt.maxBackoff)
 				strategy.backoff = tt.initialBackoff
 				
-				strategy.exponentialBackoff()
+				strategy.BackoffOnFailure()
 				
 				assert.Equal(t, tt.expectedBackoff, strategy.backoff, tt.description)
 			})
@@ -949,15 +949,4 @@ func TestRetryStrategy(t *testing.T) {
 		require.Equal(t, expectedGasPrice, strategy.gasPrice)
 	})
 
-	t.Run("BackoffOnFailure", func(t *testing.T) {
-		strategy := newRetryStrategy(1.0, 10*time.Second)
-
-		// Set initial backoff
-		strategy.backoff = 100 * time.Millisecond
-
-		strategy.BackoffOnFailure()
-
-		// Should double the backoff (exponential backoff)
-		require.Equal(t, 200*time.Millisecond, strategy.backoff)
-	})
 }

@@ -57,8 +57,8 @@ func (r *retryStrategy) ResetOnSuccess(gasMultiplier float64) {
 	}
 }
 
-// exponentialBackoff calculates the next backoff duration using exponential backoff strategy
-func (r *retryStrategy) exponentialBackoff() {
+// BackoffOnFailure applies exponential backoff after a submission failure
+func (r *retryStrategy) BackoffOnFailure() {
 	r.backoff *= 2
 	if r.backoff == 0 {
 		r.backoff = initialBackoff // initialBackoff value
@@ -66,11 +66,6 @@ func (r *retryStrategy) exponentialBackoff() {
 	if r.backoff > r.maxBackoff {
 		r.backoff = r.maxBackoff
 	}
-}
-
-// BackoffOnFailure applies exponential backoff after a submission failure
-func (r *retryStrategy) BackoffOnFailure() {
-	r.exponentialBackoff()
 }
 
 // BackoffOnMempool applies mempool-specific backoff and increases gas price when transaction is stuck in mempool

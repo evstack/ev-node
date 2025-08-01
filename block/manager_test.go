@@ -979,27 +979,6 @@ func TestValidationMethods(t *testing.T) {
 
 // TestConfigurationDefaults tests default value handling and edge cases
 func TestConfigurationDefaults(t *testing.T) {
-	t.Run("ExponentialBackoff_EdgeCases", func(t *testing.T) {
-		require := require.New(t)
-
-		// Test with zero max backoff - should cap at 0
-		strategy := newRetryStrategy(1.0, 0)
-		strategy.backoff = 100 * time.Millisecond
-		strategy.exponentialBackoff()
-		require.Equal(0*time.Millisecond, strategy.backoff) // Capped at 0
-
-		// Test with very small max backoff
-		strategy = newRetryStrategy(1.0, 1*time.Millisecond)
-		strategy.backoff = 100 * time.Millisecond
-		strategy.exponentialBackoff()
-		require.Equal(1*time.Millisecond, strategy.backoff) // Should cap at max backoff
-
-		// Test normal doubling with larger max backoff
-		strategy = newRetryStrategy(1.0, 1*time.Second)
-		strategy.backoff = 100 * time.Millisecond
-		strategy.exponentialBackoff()
-		require.Equal(200*time.Millisecond, strategy.backoff) // Should double
-	})
 
 	t.Run("IsProposer_NilSigner", func(t *testing.T) {
 		require := require.New(t)
