@@ -17,6 +17,7 @@ import (
 	logging "github.com/ipfs/go-log/v2"
 	"github.com/libp2p/go-libp2p/core/crypto"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 
 	coresequencer "github.com/evstack/ev-node/core/sequencer"
@@ -28,6 +29,7 @@ import (
 	"github.com/evstack/ev-node/pkg/signer/noop"
 	"github.com/evstack/ev-node/pkg/store"
 	rollkitSync "github.com/evstack/ev-node/pkg/sync"
+	"github.com/evstack/ev-node/test/mocks"
 	"github.com/evstack/ev-node/types"
 )
 
@@ -200,13 +202,18 @@ func setupBlockManager(t *testing.T, ctx context.Context, workDir string, mainKV
 	require.NoError(t, err)
 	require.NoError(t, dataSyncService.Start(ctx))
 
+	mockExecutor := mocks.NewMockExecutor(t)
+	mockExecutor.On("InitChain", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(bytesN(32), uint64(10_000), nil).Maybe()
+	mockExecutor.On("ExecuteTxs", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(bytesN(32), uint64(10_000), nil).Maybe()
+	mockExecutor.On("SetFinal", mock.Anything, mock.Anything).Return(nil).Maybe()
+
 	result, err := NewManager(
 		ctx,
 		signer,
 		nodeConfig,
 		genesisDoc,
 		store.New(mainKV),
-		&mockExecutor{},
+		mockExecutor,
 		coresequencer.NewDummySequencer(),
 		nil,
 		blockManagerLogger,
@@ -221,24 +228,6 @@ func setupBlockManager(t *testing.T, ctx context.Context, workDir string, mainKV
 	)
 	require.NoError(t, err)
 	return result, headerSyncService, dataSyncService
-}
-
-type mockExecutor struct{}
-
-func (m mockExecutor) InitChain(ctx context.Context, genesisTime time.Time, initialHeight uint64, chainID string) (stateRoot []byte, maxBytes uint64, err error) {
-	return bytesN(32), 10_000, nil
-}
-
-func (m mockExecutor) GetTxs(ctx context.Context) ([][]byte, error) {
-	panic("implement me")
-}
-
-func (m mockExecutor) ExecuteTxs(ctx context.Context, txs [][]byte, blockHeight uint64, timestamp time.Time, prevStateRoot []byte) (updatedStateRoot []byte, maxBytes uint64, err error) {
-	return bytesN(32), 10_000, nil
-}
-
-func (m mockExecutor) SetFinal(ctx context.Context, blockHeight uint64) error {
-	return nil
 }
 
 var rnd = rand.New(rand.NewSource(1)) //nolint:gosec // test code only
