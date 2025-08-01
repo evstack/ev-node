@@ -485,6 +485,7 @@ func (m *Manager) createSignedDataToSubmit(ctx context.Context) ([]*types.Signed
 
 // submitWithRecursiveSplitting handles recursive batch splitting when items are too big for DA submission.
 // It returns the total number of items successfully submitted.
+// Note: This function is called when we already know the batch is too big, so we split immediately.
 func submitWithRecursiveSplitting[T any](
 	m *Manager,
 	ctx context.Context,
@@ -494,55 +495,90 @@ func submitWithRecursiveSplitting[T any](
 	postSubmit func([]T, *coreda.ResultSubmit, float64),
 	itemType string,
 ) int {
-	m.logger.Info("starting recursive batch splitting", "originalSize", len(items))
+	// Base case: no items to process
+	if len(items) == 0 {
+		return 0
+	}
 
-	// Split the original batch immediately and start with the two halves
+	// Base case: single item that's too big - skip it
+	if len(items) == 1 {
+		m.logger.Error("single item exceeds DA blob size limit", "itemType", itemType)
+		return 0
+	}
+
+	m.logger.Info("splitting batch for recursive submission", "batchSize", len(items))
+
+	// Split the batch and submit recursively
 	splitPoint := len(items) / 2
+
+	// Ensure we actually split (avoid infinite recursion)
+	if splitPoint == 0 {
+		splitPoint = 1
+	}
 	firstHalf := items[:splitPoint]
 	secondHalf := items[splitPoint:]
 	firstHalfMarshaled := marshaled[:splitPoint]
 	secondHalfMarshaled := marshaled[splitPoint:]
 
-	m.logger.Info("initial split for recursive processing", "originalSize", len(items), "firstHalf", len(firstHalf), "secondHalf", len(secondHalf))
+	m.logger.Info("splitting batch for recursion", "originalSize", len(items), "firstHalf", len(firstHalf), "secondHalf", len(secondHalf))
 
-	// Start processing with both halves
-	batches := []SubmissionBatch[T]{
-		{firstHalf, firstHalfMarshaled},
-		{secondHalf, secondHalfMarshaled},
+	// Try to submit the first half
+	firstSubmitted := submitWithRecursiveSplittingHelper[T](m, ctx, firstHalf, firstHalfMarshaled, gasPrice, postSubmit, itemType)
+
+	// Try to submit the second half
+	secondSubmitted := submitWithRecursiveSplittingHelper[T](m, ctx, secondHalf, secondHalfMarshaled, gasPrice, postSubmit, itemType)
+
+	return firstSubmitted + secondSubmitted
+}
+
+// submitWithRecursiveSplittingHelper attempts to submit a batch, with recursive splitting if needed
+func submitWithRecursiveSplittingHelper[T any](
+	m *Manager,
+	ctx context.Context,
+	items []T,
+	marshaled [][]byte,
+	gasPrice float64,
+	postSubmit func([]T, *coreda.ResultSubmit, float64),
+	itemType string,
+) int {
+	// Base case: no items to process
+	if len(items) == 0 {
+		return 0
 	}
 
-	var totalSubmitted int
+	// Try to submit the batch as-is first
+	batch := SubmissionBatch[T]{Items: items, Marshaled: marshaled}
+	result := processBatch(m, ctx, batch, gasPrice, postSubmit, itemType)
 
-	// Process batches until all are either submitted or fail
-	for len(batches) > 0 {
-		currentBatch := batches[0]
-		batches = batches[1:]
-
-		result := processBatch(m, ctx, currentBatch, gasPrice, postSubmit, itemType)
-
-		switch result.action {
-		case batchActionSubmitted:
-			totalSubmitted += result.submittedCount
-
-			// Handle partial submission within batch
-			if result.submittedCount < len(currentBatch.Items) {
-				remainingItems := currentBatch.Items[result.submittedCount:]
-				remainingMarshaled := currentBatch.Marshaled[result.submittedCount:]
-				batches = append(batches, SubmissionBatch[T]{remainingItems, remainingMarshaled})
-			}
-		case batchActionSplit:
-			// Add split batches to the front of the queue to preserve order
-			batches = append(result.splitBatches, batches...)
-		case batchActionSkip:
-			// Single item too big - skip it
-			continue
-		case batchActionFail:
-			// Unrecoverable error - stop processing
-			break
+	switch result.action {
+	case batchActionSubmitted:
+		// Success! Handle potential partial submission
+		if result.submittedCount < len(items) {
+			// Some items were submitted, recursively handle the rest
+			remainingItems := items[result.submittedCount:]
+			remainingMarshaled := marshaled[result.submittedCount:]
+			remainingSubmitted := submitWithRecursiveSplittingHelper[T](m, ctx, remainingItems, remainingMarshaled, gasPrice, postSubmit, itemType)
+			return result.submittedCount + remainingSubmitted
 		}
+		// All items submitted
+		return result.submittedCount
+
+	case batchActionTooBig:
+		// Batch too big - split recursively
+		return submitWithRecursiveSplitting[T](m, ctx, items, marshaled, gasPrice, postSubmit, itemType)
+
+	case batchActionSkip:
+		// Single item too big - skip it
+		m.logger.Error("skipping item that exceeds DA blob size limit", "itemType", itemType)
+		return 0
+
+	case batchActionFail:
+		// Unrecoverable error - stop processing
+		m.logger.Error("unrecoverable error during batch submission", "itemType", itemType)
+		return 0
 	}
 
-	return totalSubmitted
+	return 0
 }
 
 // BatchAction represents the action to take after processing a batch
@@ -550,7 +586,7 @@ type BatchAction int
 
 const (
 	batchActionSubmitted BatchAction = iota // Batch was successfully submitted
-	batchActionSplit                        // Batch needs to be split
+	batchActionTooBig                       // Batch is too big and needs to be handled by caller
 	batchActionSkip                         // Batch should be skipped (single item too big)
 	batchActionFail                         // Unrecoverable error
 )
@@ -566,7 +602,7 @@ type BatchResult[T any] struct {
 //
 // Returns BatchResult with one of the following actions:
 // - batchActionSubmitted: Batch was successfully submitted (partial or complete)
-// - batchActionSplit: Batch is too big and needs to be split into smaller batches
+// - batchActionTooBig: Batch is too big and needs to be handled by caller
 // - batchActionSkip: Single item is too big and cannot be split further
 // - batchActionFail: Unrecoverable error occurred (context timeout, network failure, etc.)
 func processBatch[T any](
@@ -595,22 +631,9 @@ func processBatch[T any](
 	}
 
 	if batchRes.Code == coreda.StatusTooBig && len(batch.Items) > 1 {
-		// Split this batch in half and add both halves to the queue
-		splitPoint := len(batch.Items) / 2
-		firstHalf := batch.Items[:splitPoint]
-		secondHalf := batch.Items[splitPoint:]
-		firstHalfMarshaled := batch.Marshaled[:splitPoint]
-		secondHalfMarshaled := batch.Marshaled[splitPoint:]
-
-		m.logger.Info("splitting batch", "originalSize", len(batch.Items), "firstHalf", len(firstHalf), "secondHalf", len(secondHalf))
-
-		return BatchResult[T]{
-			action: batchActionSplit,
-			splitBatches: []SubmissionBatch[T]{
-				{firstHalf, firstHalfMarshaled},
-				{secondHalf, secondHalfMarshaled},
-			},
-		}
+		// Batch is too big - let the caller handle splitting
+		m.logger.Info("batch too big, returning to caller for splitting", "batchSize", len(batch.Items))
+		return BatchResult[T]{action: batchActionTooBig}
 	}
 
 	if len(batch.Items) == 1 && batchRes.Code == coreda.StatusTooBig {

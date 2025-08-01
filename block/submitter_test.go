@@ -731,7 +731,7 @@ func TestProcessBatch(t *testing.T) {
 		da.AssertExpectations(t)
 	})
 
-	t.Run("batchActionSplit - chunk too big", func(t *testing.T) {
+	t.Run("batchActionTooBig - chunk too big", func(t *testing.T) {
 		da.ExpectedCalls = nil
 
 		// Mock "too big" error for multi-item chunk
@@ -740,17 +740,9 @@ func TestProcessBatch(t *testing.T) {
 
 		result := processBatch(m, ctx, testBatch, 1.0, postSubmit, "test")
 
-		assert.Equal(t, batchActionSplit, result.action)
+		assert.Equal(t, batchActionTooBig, result.action)
 		assert.Equal(t, 0, result.submittedCount)
-		assert.Len(t, result.splitBatches, 2)
-
-		// Verify first half
-		assert.Equal(t, []string{"item1"}, result.splitBatches[0].Items)
-		assert.Equal(t, [][]byte{[]byte("marshaled1")}, result.splitBatches[0].Marshaled)
-
-		// Verify second half
-		assert.Equal(t, []string{"item2", "item3"}, result.splitBatches[1].Items)
-		assert.Equal(t, [][]byte{[]byte("marshaled2"), []byte("marshaled3")}, result.splitBatches[1].Marshaled)
+		assert.Empty(t, result.splitBatches)
 
 		da.AssertExpectations(t)
 	})
