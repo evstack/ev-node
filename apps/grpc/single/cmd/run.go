@@ -1,7 +1,6 @@
 package cmd
 
 import (
-	"context"
 	"fmt"
 	"path/filepath"
 
@@ -65,7 +64,7 @@ The execution client must implement the Rollkit execution gRPC interface.`,
 
 		// Create sequencer
 		sequencer, err := single.NewSequencer(
-			context.Background(),
+			cmd.Context(),
 			logger,
 			datastore,
 			&daJrpc.DA,

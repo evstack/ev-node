@@ -92,15 +92,15 @@ func (s *Server) ExecuteTxs(
 	req *connect.Request[pb.ExecuteTxsRequest],
 ) (*connect.Response[pb.ExecuteTxsResponse], error) {
 	if req.Msg.BlockHeight == 0 {
-		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("block_height must be > 0"))
+		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("block_height must be > 0"))
 	}
 
 	if req.Msg.Timestamp == nil {
-		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("timestamp is required"))
+		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("timestamp is required"))
 	}
 
 	if len(req.Msg.PrevStateRoot) == 0 {
-		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("prev_state_root is required"))
+		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("prev_state_root is required"))
 	}
 
 	updatedStateRoot, maxBytes, err := s.executor.ExecuteTxs(
