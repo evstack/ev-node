@@ -232,15 +232,15 @@ func (s *DockerTestSuite) StartRollkitNode(ctx context.Context, bridgeNode tasto
 }
 
 // getRollkitImage returns the Docker image configuration for Rollkit
-// Uses ROLLKIT_IMAGE_REPO and ROLLKIT_IMAGE_TAG environment variables if set
+// Uses EV_NODE_IMAGE_REPO and EV_NODE_IMAGE_TAG environment variables if set
 // Defaults to locally built image using a unique tag to avoid registry conflicts
 func getRollkitImage() tastoradocker.DockerImage {
-	repo := strings.TrimSpace(os.Getenv("ROLLKIT_IMAGE_REPO"))
+	repo := strings.TrimSpace(os.Getenv("EV_NODE_IMAGE_REPO"))
 	if repo == "" {
 		repo = "evstack"
 	}
 
-	tag := strings.TrimSpace(os.Getenv("ROLLKIT_IMAGE_TAG"))
+	tag := strings.TrimSpace(os.Getenv("EV_NODE_IMAGE_TAG"))
 	if tag == "" {
 		tag = "local-dev"
 	}

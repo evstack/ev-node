@@ -86,7 +86,7 @@ func TestAggregationLoop_Normal_BasicInterval(t *testing.T) {
 		m.logger.Info("AggregationLoop exited")
 	}()
 
-	m.logger.Info("Waiting for blocks...", "duration", waitTime)
+	m.logger.Info("Waiting for blocks..., duration:", waitTime)
 	time.Sleep(waitTime)
 
 	m.logger.Info("Cancelling context")
@@ -98,7 +98,7 @@ func TestAggregationLoop_Normal_BasicInterval(t *testing.T) {
 	publishLock.Lock()
 	defer publishLock.Unlock()
 
-	m.logger.Info("Recorded publish times", "count", len(publishTimes), "times", publishTimes)
+	m.logger.Info("Recorded publish times, count:", len(publishTimes), "times:", publishTimes)
 
 	expectedCallsLow := int(waitTime/blockTime) - 1
 	expectedCallsHigh := int(waitTime/blockTime) + 1
