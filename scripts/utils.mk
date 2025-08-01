@@ -31,7 +31,7 @@ lint-fix:
 	@echo "--> Formatting go"
 	@golangci-lint run --fix
 	@echo "--> Formatting markdownlint"
-	@markdownlint --config .markdownlint.yaml --ignore './docs/src/specs/**.md' '**/*.md' -f
+	@markdownlint --config .markdownlint.yaml --ignore './changelog.md' '**/*.md' -f
 .PHONY: lint-fix
 
 ## vet: Run go vet

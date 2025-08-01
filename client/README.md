@@ -30,7 +30,7 @@ A high-level client library that provides:
 - Comprehensive error handling
 - Example usage code
 
-See the [ev-client README](crates/ev-client/README.md) for detailed usage instructions.
+See the [ev-client README](crates/client/README.md) for detailed usage instructions.
 
 ## Future Client Libraries
 
