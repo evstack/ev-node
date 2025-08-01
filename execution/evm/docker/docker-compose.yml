@@ -1,4 +1,4 @@
-name: "rollkit-reth"
+name: "ev-reth-sequencer"
 
 services:
   jwt-init:
@@ -18,10 +18,10 @@ services:
         openssl rand -hex 32 | tr -d '\n' > /jwt/jwt.hex;
       fi"
 
-  rollkit-reth:
-    container_name: rollkit-reth
+  ev-reth:
+    container_name: ev-reth
     restart: unless-stopped
-    image: ghcr.io/evstack/lumen:latest
+    image: ghcr.io/evstack/ev-reth:latest
     depends_on:
       jwt-init:
         condition: service_completed_successfully
@@ -36,11 +36,11 @@ services:
       - ./jwttoken:/root/jwt:ro
       - reth:/home/reth/eth-home
     environment:
-      - RUST_LOG=info,lumen_rollkit=info
+      - RUST_LOG=info
     entrypoint: /bin/sh -c
     command:
       - |
-          lumen node \
+          ev-reth node \
             --chain /root/chain/genesis.json \
             --datadir /home/reth/eth-home \
             --metrics 0.0.0.0:9001 \
@@ -61,7 +61,7 @@ services:
             --txpool.max-account-slots 2048 \
             --txpool.max-new-txns 2048 \
             --txpool.additional-validation-tasks 16 \
-            --rollkit.enable
+            --ev-reth.enable
 
 volumes:
   reth:
