@@ -119,6 +119,35 @@ func (m *Manager) HeaderSubmissionLoop(ctx context.Context) {
 	}
 }
 
+// submitHeadersToDA submits a list of headers to the DA layer using the generic submitToDA helper.
+func (m *Manager) submitHeadersToDA(ctx context.Context, headersToSubmit []*types.SignedHeader) error {
+	return submitToDA(m, ctx, headersToSubmit,
+		func(header *types.SignedHeader) ([]byte, error) {
+			headerPb, err := header.ToProto()
+			if err != nil {
+				return nil, fmt.Errorf("failed to transform header to proto: %w", err)
+			}
+			return proto.Marshal(headerPb)
+		},
+		func(submitted []*types.SignedHeader, res *coreda.ResultSubmit, gasPrice float64) {
+			for _, header := range submitted {
+				m.headerCache.SetDAIncluded(header.Hash().String(), res.Height)
+			}
+			lastSubmittedHeaderHeight := uint64(0)
+			if l := len(submitted); l > 0 {
+				lastSubmittedHeaderHeight = submitted[l-1].Height()
+			}
+			m.pendingHeaders.setLastSubmittedHeaderHeight(ctx, lastSubmittedHeaderHeight)
+			// Update sequencer metrics if the sequencer supports it
+			if seq, ok := m.sequencer.(MetricsRecorder); ok {
+				seq.RecordMetrics(gasPrice, res.BlobSize, res.Code, m.pendingHeaders.numPendingHeaders(), lastSubmittedHeaderHeight)
+			}
+			m.sendNonBlockingSignalToDAIncluderCh()
+		},
+		"header",
+	)
+}
+
 // DataSubmissionLoop is responsible for submitting data to the DA layer.
 func (m *Manager) DataSubmissionLoop(ctx context.Context) {
 	timer := time.NewTicker(m.config.DA.BlockTime.Duration)
@@ -148,6 +177,31 @@ func (m *Manager) DataSubmissionLoop(ctx context.Context) {
 			m.logger.Error("failed to submit data to DA", "error", err)
 		}
 	}
+}
+
+// submitDataToDA submits a list of signed data to the DA layer using the generic submitToDA helper.
+func (m *Manager) submitDataToDA(ctx context.Context, signedDataToSubmit []*types.SignedData) error {
+	return submitToDA(m, ctx, signedDataToSubmit,
+		func(signedData *types.SignedData) ([]byte, error) {
+			return signedData.MarshalBinary()
+		},
+		func(submitted []*types.SignedData, res *coreda.ResultSubmit, gasPrice float64) {
+			for _, signedData := range submitted {
+				m.dataCache.SetDAIncluded(signedData.Data.DACommitment().String(), res.Height)
+			}
+			lastSubmittedDataHeight := uint64(0)
+			if l := len(submitted); l > 0 {
+				lastSubmittedDataHeight = submitted[l-1].Height()
+			}
+			m.pendingData.setLastSubmittedDataHeight(ctx, lastSubmittedDataHeight)
+			// Update sequencer metrics if the sequencer supports it
+			if seq, ok := m.sequencer.(MetricsRecorder); ok {
+				seq.RecordMetrics(gasPrice, res.BlobSize, res.Code, m.pendingData.numPendingData(), lastSubmittedDataHeight)
+			}
+			m.sendNonBlockingSignalToDAIncluderCh()
+		},
+		"data",
+	)
 }
 
 // submitToDA is a generic helper for submitting items to the DA layer with retry, backoff, and gas price logic.
@@ -388,60 +442,6 @@ func handleGenericFailure(
 
 	m.recordDAMetrics("submission", DAModeFail)
 	retryStrategy.BackoffOnFailure()
-}
-
-// submitHeadersToDA submits a list of headers to the DA layer using the generic submitToDA helper.
-func (m *Manager) submitHeadersToDA(ctx context.Context, headersToSubmit []*types.SignedHeader) error {
-	return submitToDA(m, ctx, headersToSubmit,
-		func(header *types.SignedHeader) ([]byte, error) {
-			headerPb, err := header.ToProto()
-			if err != nil {
-				return nil, fmt.Errorf("failed to transform header to proto: %w", err)
-			}
-			return proto.Marshal(headerPb)
-		},
-		func(submitted []*types.SignedHeader, res *coreda.ResultSubmit, gasPrice float64) {
-			for _, header := range submitted {
-				m.headerCache.SetDAIncluded(header.Hash().String(), res.Height)
-			}
-			lastSubmittedHeaderHeight := uint64(0)
-			if l := len(submitted); l > 0 {
-				lastSubmittedHeaderHeight = submitted[l-1].Height()
-			}
-			m.pendingHeaders.setLastSubmittedHeaderHeight(ctx, lastSubmittedHeaderHeight)
-			// Update sequencer metrics if the sequencer supports it
-			if seq, ok := m.sequencer.(MetricsRecorder); ok {
-				seq.RecordMetrics(gasPrice, res.BlobSize, res.Code, m.pendingHeaders.numPendingHeaders(), lastSubmittedHeaderHeight)
-			}
-			m.sendNonBlockingSignalToDAIncluderCh()
-		},
-		"header",
-	)
-}
-
-// submitDataToDA submits a list of signed data to the DA layer using the generic submitToDA helper.
-func (m *Manager) submitDataToDA(ctx context.Context, signedDataToSubmit []*types.SignedData) error {
-	return submitToDA(m, ctx, signedDataToSubmit,
-		func(signedData *types.SignedData) ([]byte, error) {
-			return signedData.MarshalBinary()
-		},
-		func(submitted []*types.SignedData, res *coreda.ResultSubmit, gasPrice float64) {
-			for _, signedData := range submitted {
-				m.dataCache.SetDAIncluded(signedData.Data.DACommitment().String(), res.Height)
-			}
-			lastSubmittedDataHeight := uint64(0)
-			if l := len(submitted); l > 0 {
-				lastSubmittedDataHeight = submitted[l-1].Height()
-			}
-			m.pendingData.setLastSubmittedDataHeight(ctx, lastSubmittedDataHeight)
-			// Update sequencer metrics if the sequencer supports it
-			if seq, ok := m.sequencer.(MetricsRecorder); ok {
-				seq.RecordMetrics(gasPrice, res.BlobSize, res.Code, m.pendingData.numPendingData(), lastSubmittedDataHeight)
-			}
-			m.sendNonBlockingSignalToDAIncluderCh()
-		},
-		"data",
-	)
 }
 
 // createSignedDataToSubmit converts the list of pending data to a list of SignedData.
