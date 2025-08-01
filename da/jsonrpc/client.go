@@ -162,7 +162,6 @@ func (api *API) SubmitWithOptions(ctx context.Context, inputBlobs []da.Blob, gas
 
 	// Validate total batch size
 	if totalSize > maxBlobSize {
-		api.Logger.Warn("Total batch size exceeds MaxBlobSize", "totalSize", totalSize, "maxBlobSize", maxBlobSize, "numBlobs", len(inputBlobs))
 		return nil, da.ErrBlobSizeOverLimit
 	}
 
