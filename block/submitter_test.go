@@ -795,67 +795,67 @@ func getDummyID(height uint64, commitment []byte) coreda.ID {
 func TestRetryStrategy(t *testing.T) {
 	t.Run("ExponentialBackoff", func(t *testing.T) {
 		tests := []struct {
-			name           string
-			maxBackoff     time.Duration
-			initialBackoff time.Duration
+			name            string
+			maxBackoff      time.Duration
+			initialBackoff  time.Duration
 			expectedBackoff time.Duration
-			description    string
+			description     string
 		}{
 			{
-				name:           "initial_backoff_from_zero",
-				maxBackoff:     10 * time.Second,
-				initialBackoff: 0,
+				name:            "initial_backoff_from_zero",
+				maxBackoff:      10 * time.Second,
+				initialBackoff:  0,
 				expectedBackoff: 100 * time.Millisecond,
-				description:    "should start at 100ms when backoff is 0",
+				description:     "should start at 100ms when backoff is 0",
 			},
 			{
-				name:           "doubling_from_100ms",
-				maxBackoff:     10 * time.Second,
-				initialBackoff: 100 * time.Millisecond,
+				name:            "doubling_from_100ms",
+				maxBackoff:      10 * time.Second,
+				initialBackoff:  100 * time.Millisecond,
 				expectedBackoff: 200 * time.Millisecond,
-				description:    "should double from 100ms to 200ms",
+				description:     "should double from 100ms to 200ms",
 			},
 			{
-				name:           "doubling_from_500ms",
-				maxBackoff:     10 * time.Second,
-				initialBackoff: 500 * time.Millisecond,
+				name:            "doubling_from_500ms",
+				maxBackoff:      10 * time.Second,
+				initialBackoff:  500 * time.Millisecond,
 				expectedBackoff: 1 * time.Second,
-				description:    "should double from 500ms to 1s",
+				description:     "should double from 500ms to 1s",
 			},
 			{
-				name:           "capped_at_max_backoff",
-				maxBackoff:     5 * time.Second,
-				initialBackoff: 20 * time.Second,
+				name:            "capped_at_max_backoff",
+				maxBackoff:      5 * time.Second,
+				initialBackoff:  20 * time.Second,
 				expectedBackoff: 5 * time.Second,
-				description:    "should cap at max backoff when exceeding limit",
+				description:     "should cap at max backoff when exceeding limit",
 			},
 			{
-				name:           "zero_max_backoff",
-				maxBackoff:     0,
-				initialBackoff: 100 * time.Millisecond,
+				name:            "zero_max_backoff",
+				maxBackoff:      0,
+				initialBackoff:  100 * time.Millisecond,
 				expectedBackoff: 0,
-				description:    "should cap at 0 when max backoff is 0",
+				description:     "should cap at 0 when max backoff is 0",
 			},
 			{
-				name:           "small_max_backoff",
-				maxBackoff:     1 * time.Millisecond,
-				initialBackoff: 100 * time.Millisecond,
+				name:            "small_max_backoff",
+				maxBackoff:      1 * time.Millisecond,
+				initialBackoff:  100 * time.Millisecond,
 				expectedBackoff: 1 * time.Millisecond,
-				description:    "should cap at very small max backoff",
+				description:     "should cap at very small max backoff",
 			},
 			{
-				name:           "normal_progression_1s",
-				maxBackoff:     1 * time.Hour,
-				initialBackoff: 1 * time.Second,
+				name:            "normal_progression_1s",
+				maxBackoff:      1 * time.Hour,
+				initialBackoff:  1 * time.Second,
 				expectedBackoff: 2 * time.Second,
-				description:    "should double from 1s to 2s with large max",
+				description:     "should double from 1s to 2s with large max",
 			},
 			{
-				name:           "normal_progression_2s",
-				maxBackoff:     1 * time.Hour,
-				initialBackoff: 2 * time.Second,
+				name:            "normal_progression_2s",
+				maxBackoff:      1 * time.Hour,
+				initialBackoff:  2 * time.Second,
 				expectedBackoff: 4 * time.Second,
-				description:    "should double from 2s to 4s with large max",
+				description:     "should double from 2s to 4s with large max",
 			},
 		}
 
@@ -863,9 +863,9 @@ func TestRetryStrategy(t *testing.T) {
 			t.Run(tt.name, func(t *testing.T) {
 				strategy := newRetryStrategy(1.0, tt.maxBackoff)
 				strategy.backoff = tt.initialBackoff
-				
+
 				strategy.BackoffOnFailure()
-				
+
 				assert.Equal(t, tt.expectedBackoff, strategy.backoff, tt.description)
 			})
 		}

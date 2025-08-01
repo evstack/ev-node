@@ -485,7 +485,6 @@ func (m *Manager) createSignedDataToSubmit(ctx context.Context) ([]*types.Signed
 
 // submitWithRecursiveSplitting handles recursive batch splitting when items are too big for DA submission.
 // It returns the total number of items successfully submitted.
-// Note: This function is called when we already know the batch is too big, so we split immediately.
 func submitWithRecursiveSplitting[T any](
 	m *Manager,
 	ctx context.Context,
@@ -506,11 +505,10 @@ func submitWithRecursiveSplitting[T any](
 		return 0
 	}
 
+	// Split and submit recursively - we know the batch is too big
 	m.logger.Info("splitting batch for recursive submission", "batchSize", len(items))
 
-	// Split the batch and submit recursively
 	splitPoint := len(items) / 2
-
 	// Ensure we actually split (avoid infinite recursion)
 	if splitPoint == 0 {
 		splitPoint = 1
@@ -522,17 +520,15 @@ func submitWithRecursiveSplitting[T any](
 
 	m.logger.Info("splitting batch for recursion", "originalSize", len(items), "firstHalf", len(firstHalf), "secondHalf", len(secondHalf))
 
-	// Try to submit the first half
-	firstSubmitted := submitWithRecursiveSplittingHelper[T](m, ctx, firstHalf, firstHalfMarshaled, gasPrice, postSubmit, itemType)
-
-	// Try to submit the second half
-	secondSubmitted := submitWithRecursiveSplittingHelper[T](m, ctx, secondHalf, secondHalfMarshaled, gasPrice, postSubmit, itemType)
+	// Recursively submit both halves using processBatch directly
+	firstSubmitted := submitHalfBatch[T](m, ctx, firstHalf, firstHalfMarshaled, gasPrice, postSubmit, itemType)
+	secondSubmitted := submitHalfBatch[T](m, ctx, secondHalf, secondHalfMarshaled, gasPrice, postSubmit, itemType)
 
 	return firstSubmitted + secondSubmitted
 }
 
-// submitWithRecursiveSplittingHelper attempts to submit a batch, with recursive splitting if needed
-func submitWithRecursiveSplittingHelper[T any](
+// submitHalfBatch handles submission of a half batch, including recursive splitting if needed
+func submitHalfBatch[T any](
 	m *Manager,
 	ctx context.Context,
 	items []T,
@@ -557,14 +553,14 @@ func submitWithRecursiveSplittingHelper[T any](
 			// Some items were submitted, recursively handle the rest
 			remainingItems := items[result.submittedCount:]
 			remainingMarshaled := marshaled[result.submittedCount:]
-			remainingSubmitted := submitWithRecursiveSplittingHelper[T](m, ctx, remainingItems, remainingMarshaled, gasPrice, postSubmit, itemType)
+			remainingSubmitted := submitHalfBatch[T](m, ctx, remainingItems, remainingMarshaled, gasPrice, postSubmit, itemType)
 			return result.submittedCount + remainingSubmitted
 		}
 		// All items submitted
 		return result.submittedCount
 
 	case batchActionTooBig:
-		// Batch too big - split recursively
+		// Batch too big - need to split further
 		return submitWithRecursiveSplitting[T](m, ctx, items, marshaled, gasPrice, postSubmit, itemType)
 
 	case batchActionSkip:
