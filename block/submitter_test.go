@@ -798,3 +798,166 @@ func getDummyID(height uint64, commitment []byte) coreda.ID {
 	copy(id[8:], commitment)
 	return id
 }
+
+// TestRetryStrategy tests all retry strategy functionality using table-driven tests
+func TestRetryStrategy(t *testing.T) {
+	t.Run("ExponentialBackoff", func(t *testing.T) {
+		tests := []struct {
+			name           string
+			maxBackoff     time.Duration
+			initialBackoff time.Duration
+			expectedBackoff time.Duration
+			description    string
+		}{
+			{
+				name:           "initial_backoff_from_zero",
+				maxBackoff:     10 * time.Second,
+				initialBackoff: 0,
+				expectedBackoff: 100 * time.Millisecond,
+				description:    "should start at 100ms when backoff is 0",
+			},
+			{
+				name:           "doubling_from_100ms",
+				maxBackoff:     10 * time.Second,
+				initialBackoff: 100 * time.Millisecond,
+				expectedBackoff: 200 * time.Millisecond,
+				description:    "should double from 100ms to 200ms",
+			},
+			{
+				name:           "doubling_from_500ms",
+				maxBackoff:     10 * time.Second,
+				initialBackoff: 500 * time.Millisecond,
+				expectedBackoff: 1 * time.Second,
+				description:    "should double from 500ms to 1s",
+			},
+			{
+				name:           "capped_at_max_backoff",
+				maxBackoff:     5 * time.Second,
+				initialBackoff: 20 * time.Second,
+				expectedBackoff: 5 * time.Second,
+				description:    "should cap at max backoff when exceeding limit",
+			},
+			{
+				name:           "zero_max_backoff",
+				maxBackoff:     0,
+				initialBackoff: 100 * time.Millisecond,
+				expectedBackoff: 0,
+				description:    "should cap at 0 when max backoff is 0",
+			},
+			{
+				name:           "small_max_backoff",
+				maxBackoff:     1 * time.Millisecond,
+				initialBackoff: 100 * time.Millisecond,
+				expectedBackoff: 1 * time.Millisecond,
+				description:    "should cap at very small max backoff",
+			},
+			{
+				name:           "normal_progression_1s",
+				maxBackoff:     1 * time.Hour,
+				initialBackoff: 1 * time.Second,
+				expectedBackoff: 2 * time.Second,
+				description:    "should double from 1s to 2s with large max",
+			},
+			{
+				name:           "normal_progression_2s",
+				maxBackoff:     1 * time.Hour,
+				initialBackoff: 2 * time.Second,
+				expectedBackoff: 4 * time.Second,
+				description:    "should double from 2s to 4s with large max",
+			},
+		}
+
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				strategy := newRetryStrategy(1.0, tt.maxBackoff)
+				strategy.backoff = tt.initialBackoff
+				
+				strategy.exponentialBackoff()
+				
+				assert.Equal(t, tt.expectedBackoff, strategy.backoff, tt.description)
+			})
+		}
+	})
+
+	t.Run("ShouldContinue", func(t *testing.T) {
+		strategy := newRetryStrategy(1.0, 1*time.Second)
+
+		// Should continue when attempts are below max
+		require.True(t, strategy.ShouldContinue())
+
+		// Simulate reaching max attempts
+		strategy.attempt = maxSubmitAttempts
+		require.False(t, strategy.ShouldContinue())
+	})
+
+	t.Run("NextAttempt", func(t *testing.T) {
+		strategy := newRetryStrategy(1.0, 1*time.Second)
+
+		initialAttempt := strategy.attempt
+		strategy.NextAttempt()
+		require.Equal(t, initialAttempt+1, strategy.attempt)
+	})
+
+	t.Run("ResetOnSuccess", func(t *testing.T) {
+		initialGasPrice := 2.0
+		strategy := newRetryStrategy(initialGasPrice, 1*time.Second)
+
+		// Set some backoff and higher gas price
+		strategy.backoff = 500 * time.Millisecond
+		strategy.gasPrice = 4.0
+		gasMultiplier := 2.0
+
+		strategy.ResetOnSuccess(gasMultiplier)
+
+		// Backoff should be reset to 0
+		require.Equal(t, 0*time.Duration(0), strategy.backoff)
+
+		// Gas price should be reduced but not below initial
+		expectedGasPrice := 4.0 / gasMultiplier // 2.0
+		require.Equal(t, expectedGasPrice, strategy.gasPrice)
+	})
+
+	t.Run("ResetOnSuccess_GasPriceFloor", func(t *testing.T) {
+		initialGasPrice := 2.0
+		strategy := newRetryStrategy(initialGasPrice, 1*time.Second)
+
+		// Set gas price below what would be the reduced amount
+		strategy.gasPrice = 1.0 // Lower than initial
+		gasMultiplier := 2.0
+
+		strategy.ResetOnSuccess(gasMultiplier)
+
+		// Gas price should be reset to initial, not go lower
+		require.Equal(t, initialGasPrice, strategy.gasPrice)
+	})
+
+	t.Run("BackoffOnMempool", func(t *testing.T) {
+		strategy := newRetryStrategy(1.0, 10*time.Second)
+
+		mempoolTTL := 25
+		blockTime := 1 * time.Second
+		gasMultiplier := 1.5
+
+		strategy.BackoffOnMempool(mempoolTTL, blockTime, gasMultiplier)
+
+		// Should set backoff to blockTime * mempoolTTL
+		expectedBackoff := blockTime * time.Duration(mempoolTTL)
+		require.Equal(t, expectedBackoff, strategy.backoff)
+
+		// Should increase gas price
+		expectedGasPrice := 1.0 * gasMultiplier
+		require.Equal(t, expectedGasPrice, strategy.gasPrice)
+	})
+
+	t.Run("BackoffOnFailure", func(t *testing.T) {
+		strategy := newRetryStrategy(1.0, 10*time.Second)
+
+		// Set initial backoff
+		strategy.backoff = 100 * time.Millisecond
+
+		strategy.BackoffOnFailure()
+
+		// Should double the backoff (exponential backoff)
+		require.Equal(t, 200*time.Millisecond, strategy.backoff)
+	})
+}

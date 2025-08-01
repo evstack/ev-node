@@ -13,6 +13,7 @@ import (
 const (
 	submissionTimeout = 60 * time.Second
 	noGasPrice        = -1
+	initialBackoff    = 100 * time.Millisecond
 )
 
 // retryStrategy manages retry logic with backoff and gas price adjustments for DA submissions
@@ -22,16 +23,18 @@ type retryStrategy struct {
 	gasPrice        float64
 	initialGasPrice float64
 	maxAttempts     int
+	maxBackoff      time.Duration
 }
 
-// newRetryStrategy creates a new retryStrategy with the given initial gas price
-func newRetryStrategy(initialGasPrice float64) *retryStrategy {
+// newRetryStrategy creates a new retryStrategy with the given initial gas price and max backoff duration
+func newRetryStrategy(initialGasPrice float64, maxBackoff time.Duration) *retryStrategy {
 	return &retryStrategy{
 		attempt:         0,
 		backoff:         0,
 		gasPrice:        initialGasPrice,
 		initialGasPrice: initialGasPrice,
 		maxAttempts:     maxSubmitAttempts,
+		maxBackoff:      maxBackoff,
 	}
 }
 
@@ -54,9 +57,20 @@ func (r *retryStrategy) ResetOnSuccess(gasMultiplier float64) {
 	}
 }
 
+// exponentialBackoff calculates the next backoff duration using exponential backoff strategy
+func (r *retryStrategy) exponentialBackoff() {
+	r.backoff *= 2
+	if r.backoff == 0 {
+		r.backoff = initialBackoff // initialBackoff value
+	}
+	if r.backoff > r.maxBackoff {
+		r.backoff = r.maxBackoff
+	}
+}
+
 // BackoffOnFailure applies exponential backoff after a submission failure
-func (r *retryStrategy) BackoffOnFailure(m *Manager) {
-	r.backoff = m.exponentialBackoff(r.backoff)
+func (r *retryStrategy) BackoffOnFailure() {
+	r.exponentialBackoff()
 }
 
 // BackoffOnMempool applies mempool-specific backoff and increases gas price when transaction is stuck in mempool
@@ -164,13 +178,13 @@ func handleTooBigError[T any](
 				AllSubmitted:     len(newRemaining) == 0,
 			}
 		} else {
-			retryStrategy.BackoffOnFailure(m)
+			retryStrategy.BackoffOnFailure()
 		}
 	} else {
 		m.logger.Error("single item exceeds DA blob size limit",
 			"itemType", itemType,
 			"attempt", attempt)
-		retryStrategy.BackoffOnFailure(m)
+		retryStrategy.BackoffOnFailure()
 	}
 
 	return SubmissionOutcome[T]{
@@ -192,7 +206,7 @@ func handleGenericFailure(
 		"attempt", attempt)
 
 	m.recordDAMetrics("submission", DAModeFail)
-	retryStrategy.BackoffOnFailure(m)
+	retryStrategy.BackoffOnFailure()
 }
 
 // SubmissionBatch represents a batch of items with their marshaled data for DA submission
@@ -275,7 +289,7 @@ func submitToDA[T any](
 		return err
 	}
 
-	retryStrategy := newRetryStrategy(m.gasPrice)
+	retryStrategy := newRetryStrategy(m.gasPrice, m.config.DA.BlockTime.Duration)
 	remaining := items
 	numSubmitted := 0
 
