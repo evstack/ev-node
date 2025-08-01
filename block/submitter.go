@@ -84,6 +84,192 @@ type SubmissionOutcome[T any] struct {
 	AllSubmitted     bool
 }
 
+// SubmissionBatch represents a batch of items with their marshaled data for DA submission
+type SubmissionBatch[Item any] struct {
+	Items     []Item
+	Marshaled [][]byte
+}
+
+// HeaderSubmissionLoop is responsible for submitting headers to the DA layer.
+func (m *Manager) HeaderSubmissionLoop(ctx context.Context) {
+	timer := time.NewTicker(m.config.DA.BlockTime.Duration)
+	defer timer.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			m.logger.Info("header submission loop stopped")
+			return
+		case <-timer.C:
+		}
+		if m.pendingHeaders.isEmpty() {
+			continue
+		}
+		headersToSubmit, err := m.pendingHeaders.getPendingHeaders(ctx)
+		if err != nil {
+			m.logger.Error("error while fetching headers pending DA", "err", err)
+			continue
+		}
+		if len(headersToSubmit) == 0 {
+			continue
+		}
+		err = m.submitHeadersToDA(ctx, headersToSubmit)
+		if err != nil {
+			m.logger.Error("error while submitting header to DA", "error", err)
+		}
+	}
+}
+
+// DataSubmissionLoop is responsible for submitting data to the DA layer.
+func (m *Manager) DataSubmissionLoop(ctx context.Context) {
+	timer := time.NewTicker(m.config.DA.BlockTime.Duration)
+	defer timer.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			m.logger.Info("data submission loop stopped")
+			return
+		case <-timer.C:
+		}
+		if m.pendingData.isEmpty() {
+			continue
+		}
+
+		signedDataToSubmit, err := m.createSignedDataToSubmit(ctx)
+		if err != nil {
+			m.logger.Error("failed to create signed data to submit", "error", err)
+			continue
+		}
+		if len(signedDataToSubmit) == 0 {
+			continue
+		}
+
+		err = m.submitDataToDA(ctx, signedDataToSubmit)
+		if err != nil {
+			m.logger.Error("failed to submit data to DA", "error", err)
+		}
+	}
+}
+
+// submitToDA is a generic helper for submitting items to the DA layer with retry, backoff, and gas price logic.
+func submitToDA[T any](
+	m *Manager,
+	ctx context.Context,
+	items []T,
+	marshalFn func(T) ([]byte, error),
+	postSubmit func([]T, *coreda.ResultSubmit, float64),
+	itemType string,
+) error {
+	marshaled, err := marshalItems(items, marshalFn, itemType)
+	if err != nil {
+		return err
+	}
+
+	retryStrategy := newRetryStrategy(m.gasPrice, m.config.DA.BlockTime.Duration)
+	remaining := items
+	numSubmitted := 0
+
+	// Start the retry loop
+	for retryStrategy.ShouldContinue() {
+		if err := waitForBackoffOrContext(ctx, retryStrategy.backoff); err != nil {
+			return err
+		}
+
+		res := attemptSubmission(ctx, m, marshaled, retryStrategy.gasPrice)
+		outcome := handleSubmissionResult(m, ctx, res, remaining, marshaled, retryStrategy, postSubmit, itemType)
+
+		remaining = outcome.RemainingItems
+		marshaled = outcome.RemainingMarshal
+		numSubmitted += outcome.NumSubmitted
+
+		if outcome.AllSubmitted {
+			return nil
+		}
+
+		retryStrategy.NextAttempt()
+	}
+
+	return fmt.Errorf("failed to submit all %s(s) to DA layer, submitted %d items (%d left) after %d attempts",
+		itemType, numSubmitted, len(remaining), retryStrategy.attempt)
+}
+
+func marshalItems[T any](
+	items []T,
+	marshalFn func(T) ([]byte, error),
+	itemType string,
+) ([][]byte, error) {
+	marshaled := make([][]byte, len(items))
+	for i, item := range items {
+		bz, err := marshalFn(item)
+		if err != nil {
+			return nil, fmt.Errorf("failed to marshal %s item: %w", itemType, err)
+		}
+		marshaled[i] = bz
+	}
+
+	return marshaled, nil
+}
+
+func waitForBackoffOrContext(ctx context.Context, backoff time.Duration) error {
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-time.After(backoff):
+		return nil
+	}
+}
+
+func attemptSubmission(
+	ctx context.Context,
+	m *Manager,
+	marshaled [][]byte,
+	gasPrice float64,
+) coreda.ResultSubmit {
+	submitCtx, cancel := context.WithTimeout(ctx, submissionTimeout)
+	defer cancel()
+
+	m.recordDAMetrics("submission", DAModeRetry)
+	return types.SubmitWithHelpers(submitCtx, m.da, m.logger, marshaled, gasPrice, nil)
+}
+
+func handleSubmissionResult[T any](
+	m *Manager,
+	ctx context.Context,
+	res coreda.ResultSubmit,
+	remaining []T,
+	marshaled [][]byte,
+	retryStrategy *retryStrategy,
+	postSubmit func([]T, *coreda.ResultSubmit, float64),
+	itemType string,
+) SubmissionOutcome[T] {
+	switch res.Code {
+	case coreda.StatusSuccess:
+		return handleSuccessfulSubmission(m, remaining, marshaled, &res, postSubmit, retryStrategy, itemType)
+
+	case coreda.StatusNotIncludedInBlock, coreda.StatusAlreadyInMempool:
+		handleMempoolFailure(m, &res, retryStrategy, retryStrategy.attempt)
+		return SubmissionOutcome[T]{
+			RemainingItems:   remaining,
+			RemainingMarshal: marshaled,
+			AllSubmitted:     false,
+		}
+
+	case coreda.StatusContextCanceled:
+		m.logger.Info("DA layer submission canceled due to context cancellation", "attempt", retryStrategy.attempt)
+		return SubmissionOutcome[T]{AllSubmitted: true}
+
+	case coreda.StatusTooBig:
+		return handleTooBigError(m, ctx, remaining, marshaled, retryStrategy, postSubmit, itemType, retryStrategy.attempt)
+
+	default:
+		handleGenericFailure(m, &res, retryStrategy, retryStrategy.attempt)
+		return SubmissionOutcome[T]{
+			RemainingItems:   remaining,
+			RemainingMarshal: marshaled,
+			AllSubmitted:     false,
+		}
+	}
+}
+
 func handleSuccessfulSubmission[T any](
 	m *Manager,
 	remaining []T,
@@ -202,196 +388,6 @@ func handleGenericFailure(
 
 	m.recordDAMetrics("submission", DAModeFail)
 	retryStrategy.BackoffOnFailure()
-}
-
-// SubmissionBatch represents a batch of items with their marshaled data for DA submission
-type SubmissionBatch[Item any] struct {
-	Items     []Item
-	Marshaled [][]byte
-}
-
-// HeaderSubmissionLoop is responsible for submitting headers to the DA layer.
-func (m *Manager) HeaderSubmissionLoop(ctx context.Context) {
-	timer := time.NewTicker(m.config.DA.BlockTime.Duration)
-	defer timer.Stop()
-	for {
-		select {
-		case <-ctx.Done():
-			m.logger.Info("header submission loop stopped")
-			return
-		case <-timer.C:
-		}
-		if m.pendingHeaders.isEmpty() {
-			continue
-		}
-		headersToSubmit, err := m.pendingHeaders.getPendingHeaders(ctx)
-		if err != nil {
-			m.logger.Error("error while fetching headers pending DA", "err", err)
-			continue
-		}
-		if len(headersToSubmit) == 0 {
-			continue
-		}
-		err = m.submitHeadersToDA(ctx, headersToSubmit)
-		if err != nil {
-			m.logger.Error("error while submitting header to DA", "error", err)
-		}
-	}
-}
-
-// DataSubmissionLoop is responsible for submitting data to the DA layer.
-func (m *Manager) DataSubmissionLoop(ctx context.Context) {
-	timer := time.NewTicker(m.config.DA.BlockTime.Duration)
-	defer timer.Stop()
-	for {
-		select {
-		case <-ctx.Done():
-			m.logger.Info("data submission loop stopped")
-			return
-		case <-timer.C:
-		}
-		if m.pendingData.isEmpty() {
-			continue
-		}
-
-		signedDataToSubmit, err := m.createSignedDataToSubmit(ctx)
-		if err != nil {
-			m.logger.Error("failed to create signed data to submit", "error", err)
-			continue
-		}
-		if len(signedDataToSubmit) == 0 {
-			continue
-		}
-
-		err = m.submitDataToDA(ctx, signedDataToSubmit)
-		if err != nil {
-			m.logger.Error("failed to submit data to DA", "error", err)
-		}
-	}
-}
-
-// submitToDA is a generic helper for submitting items to the DA layer with retry, backoff, and gas price logic.
-func submitToDA[T any](
-	m *Manager,
-	ctx context.Context,
-	items []T,
-	marshalFn func(T) ([]byte, error),
-	postSubmit func([]T, *coreda.ResultSubmit, float64),
-	itemType string,
-) error {
-	marshaled, err := marshalItems(items, marshalFn, itemType)
-	if err != nil {
-		return err
-	}
-
-	retryStrategy := newRetryStrategy(m.gasPrice, m.config.DA.BlockTime.Duration)
-	remaining := items
-	numSubmitted := 0
-
-	// Start the retry loop
-	for retryStrategy.ShouldContinue() {
-		if err := waitForBackoffOrContext(ctx, retryStrategy.backoff); err != nil {
-			return err
-		}
-
-		res := attemptSubmission(ctx, m, marshaled, retryStrategy.gasPrice)
-		outcome := handleSubmissionResult(m, ctx, res, remaining, marshaled, retryStrategy, postSubmit, itemType)
-
-		remaining = outcome.RemainingItems
-		marshaled = outcome.RemainingMarshal
-		numSubmitted += outcome.NumSubmitted
-
-		if outcome.AllSubmitted {
-			return nil
-		}
-
-		retryStrategy.NextAttempt()
-	}
-
-	return createFailureError(itemType, numSubmitted, len(remaining), retryStrategy.attempt)
-}
-
-func marshalItems[T any](
-	items []T,
-	marshalFn func(T) ([]byte, error),
-	itemType string,
-) ([][]byte, error) {
-	marshaled := make([][]byte, len(items))
-	for i, item := range items {
-		bz, err := marshalFn(item)
-		if err != nil {
-			return nil, fmt.Errorf("failed to marshal %s item: %w", itemType, err)
-		}
-		marshaled[i] = bz
-	}
-
-	return marshaled, nil
-}
-
-func waitForBackoffOrContext(ctx context.Context, backoff time.Duration) error {
-	select {
-	case <-ctx.Done():
-		return ctx.Err()
-	case <-time.After(backoff):
-		return nil
-	}
-}
-
-func attemptSubmission(
-	ctx context.Context,
-	m *Manager,
-	marshaled [][]byte,
-	gasPrice float64,
-) coreda.ResultSubmit {
-	submitCtx, cancel := context.WithTimeout(ctx, submissionTimeout)
-	defer cancel()
-
-	m.recordDAMetrics("submission", DAModeRetry)
-	return types.SubmitWithHelpers(submitCtx, m.da, m.logger, marshaled, gasPrice, nil)
-}
-
-func handleSubmissionResult[T any](
-	m *Manager,
-	ctx context.Context,
-	res coreda.ResultSubmit,
-	remaining []T,
-	marshaled [][]byte,
-	retryStrategy *retryStrategy,
-	postSubmit func([]T, *coreda.ResultSubmit, float64),
-	itemType string,
-) SubmissionOutcome[T] {
-	switch res.Code {
-	case coreda.StatusSuccess:
-		return handleSuccessfulSubmission(m, remaining, marshaled, &res, postSubmit, retryStrategy, itemType)
-
-	case coreda.StatusNotIncludedInBlock, coreda.StatusAlreadyInMempool:
-		handleMempoolFailure(m, &res, retryStrategy, retryStrategy.attempt)
-		return SubmissionOutcome[T]{
-			RemainingItems:   remaining,
-			RemainingMarshal: marshaled,
-			AllSubmitted:     false,
-		}
-
-	case coreda.StatusContextCanceled:
-		m.logger.Info("DA layer submission canceled due to context cancellation", "attempt", retryStrategy.attempt)
-		return SubmissionOutcome[T]{AllSubmitted: true}
-
-	case coreda.StatusTooBig:
-		return handleTooBigError(m, ctx, remaining, marshaled, retryStrategy, postSubmit, itemType, retryStrategy.attempt)
-
-	default:
-		handleGenericFailure(m, &res, retryStrategy, retryStrategy.attempt)
-		return SubmissionOutcome[T]{
-			RemainingItems:   remaining,
-			RemainingMarshal: marshaled,
-			AllSubmitted:     false,
-		}
-	}
-}
-
-func createFailureError(itemType string, numSubmitted, numRemaining, attempts int) error {
-	return fmt.Errorf("failed to submit all %s(s) to DA layer, submitted %d items (%d left) after %d attempts",
-		itemType, numSubmitted, numRemaining, attempts)
 }
 
 // submitHeadersToDA submits a list of headers to the DA layer using the generic submitToDA helper.
