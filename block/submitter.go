@@ -15,8 +15,8 @@ const (
 	noGasPrice        = -1
 )
 
-
-type RetryStrategy struct {
+// retryStrategy manages retry logic with backoff and gas price adjustments for DA submissions
+type retryStrategy struct {
 	attempt         int
 	backoff         time.Duration
 	gasPrice        float64
@@ -24,8 +24,9 @@ type RetryStrategy struct {
 	maxAttempts     int
 }
 
-func NewRetryStrategy(initialGasPrice float64) *RetryStrategy {
-	return &RetryStrategy{
+// newRetryStrategy creates a new retryStrategy with the given initial gas price
+func newRetryStrategy(initialGasPrice float64) *retryStrategy {
+	return &retryStrategy{
 		attempt:         0,
 		backoff:         0,
 		gasPrice:        initialGasPrice,
@@ -34,15 +35,18 @@ func NewRetryStrategy(initialGasPrice float64) *RetryStrategy {
 	}
 }
 
-func (r *RetryStrategy) ShouldContinue() bool {
+// ShouldContinue returns true if the retry strategy should continue attempting submissions
+func (r *retryStrategy) ShouldContinue() bool {
 	return r.attempt < r.maxAttempts
 }
 
-func (r *RetryStrategy) NextAttempt() {
+// NextAttempt increments the attempt counter
+func (r *retryStrategy) NextAttempt() {
 	r.attempt++
 }
 
-func (r *RetryStrategy) ResetOnSuccess(gasMultiplier float64) {
+// ResetOnSuccess resets backoff and adjusts gas price downward after a successful submission
+func (r *retryStrategy) ResetOnSuccess(gasMultiplier float64) {
 	r.backoff = 0
 	if gasMultiplier > 0 && r.gasPrice != noGasPrice {
 		r.gasPrice = r.gasPrice / gasMultiplier
@@ -50,11 +54,13 @@ func (r *RetryStrategy) ResetOnSuccess(gasMultiplier float64) {
 	}
 }
 
-func (r *RetryStrategy) BackoffOnFailure(m *Manager) {
+// BackoffOnFailure applies exponential backoff after a submission failure
+func (r *retryStrategy) BackoffOnFailure(m *Manager) {
 	r.backoff = m.exponentialBackoff(r.backoff)
 }
 
-func (r *RetryStrategy) BackoffOnMempool(mempoolTTL int, blockTime time.Duration, gasMultiplier float64) {
+// BackoffOnMempool applies mempool-specific backoff and increases gas price when transaction is stuck in mempool
+func (r *retryStrategy) BackoffOnMempool(mempoolTTL int, blockTime time.Duration, gasMultiplier float64) {
 	r.backoff = blockTime * time.Duration(mempoolTTL)
 	if gasMultiplier > 0 && r.gasPrice != noGasPrice {
 		r.gasPrice = r.gasPrice * gasMultiplier
@@ -75,7 +81,7 @@ func handleSuccessfulSubmission[T any](
 	marshaled [][]byte,
 	res *coreda.ResultSubmit,
 	postSubmit func([]T, *coreda.ResultSubmit, float64),
-	retryStrategy *RetryStrategy,
+	retryStrategy *retryStrategy,
 	itemType string,
 ) SubmissionOutcome[T] {
 	m.recordDAMetrics("submission", DAModeSuccess)
@@ -111,7 +117,7 @@ func handleSuccessfulSubmission[T any](
 func handleMempoolFailure(
 	m *Manager,
 	res *coreda.ResultSubmit,
-	retryStrategy *RetryStrategy,
+	retryStrategy *retryStrategy,
 	attempt int,
 ) {
 	m.logger.Error("DA layer submission failed",
@@ -131,7 +137,7 @@ func handleTooBigError[T any](
 	ctx context.Context,
 	remaining []T,
 	marshaled [][]byte,
-	retryStrategy *RetryStrategy,
+	retryStrategy *retryStrategy,
 	postSubmit func([]T, *coreda.ResultSubmit, float64),
 	itemType string,
 	attempt int,
@@ -178,7 +184,7 @@ func handleTooBigError[T any](
 func handleGenericFailure(
 	m *Manager,
 	res *coreda.ResultSubmit,
-	retryStrategy *RetryStrategy,
+	retryStrategy *retryStrategy,
 	attempt int,
 ) {
 	m.logger.Error("DA layer submission failed",
@@ -269,7 +275,7 @@ func submitToDA[T any](
 		return err
 	}
 
-	retryStrategy := NewRetryStrategy(m.gasPrice)
+	retryStrategy := newRetryStrategy(m.gasPrice)
 	remaining := items
 	numSubmitted := 0
 
@@ -341,7 +347,7 @@ func handleSubmissionResult[T any](
 	res coreda.ResultSubmit,
 	remaining []T,
 	marshaled [][]byte,
-	retryStrategy *RetryStrategy,
+	retryStrategy *retryStrategy,
 	postSubmit func([]T, *coreda.ResultSubmit, float64),
 	itemType string,
 ) SubmissionOutcome[T] {

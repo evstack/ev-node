@@ -11,11 +11,11 @@
 //
 // Test Coverage:
 // TestEvmDARestartWithPendingBlocksE2E - Tests the scenario where:
-//   1. Blocks are created and published to DA
-//   2. DA layer is killed
-//   3. More blocks are created until pending blocks exceed max blob size
-//   4. DA layer is restarted
-//   5. Verification that pending blocks are submitted correctly without infinite loops
+//  1. Blocks are created and published to DA
+//  2. DA layer is killed
+//  3. More blocks are created until pending blocks exceed max blob size
+//  4. DA layer is restarted
+//  5. Verification that pending blocks are submitted correctly without infinite loops
 package e2e
 
 import (
@@ -135,7 +135,7 @@ func TestEvmDARestartWithPendingBlocksE2E(t *testing.T) {
 			currentHeader, err := client.HeaderByNumber(ctx, nil)
 			if err == nil {
 				currentHeight := currentHeader.Number.Uint64()
-				t.Logf("Progress: Block batch %d/%d completed. Current height: %d, Pending txs: %d", 
+				t.Logf("Progress: Block batch %d/%d completed. Current height: %d, Pending txs: %d",
 					block+1, targetBlocks, currentHeight, len(pendingTxHashes))
 			}
 		}
@@ -166,7 +166,7 @@ func TestEvmDARestartWithPendingBlocksE2E(t *testing.T) {
 	// Use an extremely small max blob size (100 bytes) to guarantee StatusTooBig with our large batch
 	sut.ExecCmd(localDABinary, "-max-blob-size", "100")
 	t.Log("✅ DA layer restarted")
-	
+
 	// Wait for DA to be ready
 	time.Sleep(2 * time.Second)
 
@@ -176,8 +176,8 @@ func TestEvmDARestartWithPendingBlocksE2E(t *testing.T) {
 	// Monitor the recovery process for a reasonable amount of time
 	recoveryStart := time.Now()
 	recoveryTimeout := 30 * time.Second // Reduced to 30 seconds to quickly detect infinite loop
-	checkInterval := 2 * time.Second // Check more frequently
-	
+	checkInterval := 2 * time.Second    // Check more frequently
+
 	var recoverySuccess bool
 	var finalTxCount int
 
@@ -194,7 +194,7 @@ func TestEvmDARestartWithPendingBlocksE2E(t *testing.T) {
 		finalTxCount = includedCount
 		progressPct := float64(includedCount) / float64(len(pendingTxHashes)) * 100
 
-		t.Logf("Recovery progress: %d/%d transactions included (%.1f%%) - Elapsed: %v", 
+		t.Logf("Recovery progress: %d/%d transactions included (%.1f%%) - Elapsed: %v",
 			includedCount, len(pendingTxHashes), progressPct, elapsed)
 
 		// Check if all transactions are included
@@ -212,15 +212,15 @@ func TestEvmDARestartWithPendingBlocksE2E(t *testing.T) {
 
 	// Verify that the recovery process completed successfully
 	if !recoverySuccess {
-		t.Logf("⚠️  Recovery incomplete after %v: %d/%d transactions included", 
+		t.Logf("⚠️  Recovery incomplete after %v: %d/%d transactions included",
 			recoveryTimeout, finalTxCount, len(pendingTxHashes))
-		
+
 		// Even if not all transactions are included, let's verify there's no infinite loop
 		// by checking that some progress was made
-		require.Greater(t, finalTxCount, 0, 
+		require.Greater(t, finalTxCount, 0,
 			"At least some pending transactions should be included after DA restart")
-		require.Greater(t, float64(finalTxCount)/float64(len(pendingTxHashes)), 0.5, 
-			"At least 50%% of pending transactions should be included to prove recovery is working")
+		require.Greater(t, float64(finalTxCount)/float64(len(pendingTxHashes)), 0.5,
+			"At least 50% of pending transactions should be included to prove recovery is working")
 	}
 
 	// Verify final block height increased appropriately
