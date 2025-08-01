@@ -385,9 +385,9 @@ func getPeers(seeds string, logger logging.EventLogger) []peer.ID {
 	if seeds == "" {
 		return peerIDs
 	}
-	sl := strings.Split(seeds, ",")
+	sl := strings.SplitSeq(seeds, ",")
 
-	for _, seed := range sl {
+	for seed := range sl {
 		maddr, err := multiaddr.NewMultiaddr(seed)
 		if err != nil {
 			logger.Error("failed to parse peer", "address", seed, "error", err)
