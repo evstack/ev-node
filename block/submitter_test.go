@@ -630,11 +630,12 @@ func TestSubmitToDA_ItChunksBatchWhenSizeExceedsLimit(t *testing.T) {
 // exceeds DA size limits and cannot be split further. This should result in
 // exponential backoff and eventual failure after maxSubmitAttempts.
 func TestSubmitToDA_SingleItemTooLarge(t *testing.T) {
-	// Skip this test normally to avoid long wait times, but keep it for manual testing
-	t.Skip("Skipping long-running test. Uncomment to test single item too large scenario manually.")
-
 	da := &mocks.MockDA{}
 	m := newTestManagerWithDA(t, da)
+
+	// Set a small MaxSubmitAttempts for fast testing
+	m.config.DA.MaxSubmitAttempts = 3
+
 	ctx := context.Background()
 
 	// Create a single header that will always be "too big"
@@ -655,16 +656,16 @@ func TestSubmitToDA_SingleItemTooLarge(t *testing.T) {
 		}).
 		Return(nil, coreda.ErrBlobSizeOverLimit) // Always fails
 
-	// This should fail after maxSubmitAttempts (30) attempts
+	// This should fail after MaxSubmitAttempts (3) attempts
 	err = m.submitHeadersToDA(ctx, headers)
 
 	// Expected behavior: Should fail after exhausting all attempts
 	assert.Error(t, err, "Should fail when single item is too large")
 	assert.Contains(t, err.Error(), "failed to submit all header(s) to DA layer")
-	assert.Contains(t, err.Error(), "after 30 attempts") // maxSubmitAttempts
+	assert.Contains(t, err.Error(), "after 3 attempts") // MaxSubmitAttempts
 
-	// Should have made exactly maxSubmitAttempts (30) attempts
-	assert.Equal(t, 30, submitAttempts, "Should make exactly maxSubmitAttempts before giving up")
+	// Should have made exactly MaxSubmitAttempts (3) attempts
+	assert.Equal(t, 3, submitAttempts, "Should make exactly MaxSubmitAttempts before giving up")
 
 	da.AssertExpectations(t)
 }
@@ -861,7 +862,7 @@ func TestRetryStrategy(t *testing.T) {
 
 		for _, tt := range tests {
 			t.Run(tt.name, func(t *testing.T) {
-				strategy := newRetryStrategy(1.0, tt.maxBackoff)
+				strategy := newRetryStrategy(1.0, tt.maxBackoff, 30)
 				strategy.backoff = tt.initialBackoff
 
 				strategy.BackoffOnFailure()
@@ -872,18 +873,18 @@ func TestRetryStrategy(t *testing.T) {
 	})
 
 	t.Run("ShouldContinue", func(t *testing.T) {
-		strategy := newRetryStrategy(1.0, 1*time.Second)
+		strategy := newRetryStrategy(1.0, 1*time.Second, 30)
 
 		// Should continue when attempts are below max
 		require.True(t, strategy.ShouldContinue())
 
 		// Simulate reaching max attempts
-		strategy.attempt = maxSubmitAttempts
+		strategy.attempt = 30
 		require.False(t, strategy.ShouldContinue())
 	})
 
 	t.Run("NextAttempt", func(t *testing.T) {
-		strategy := newRetryStrategy(1.0, 1*time.Second)
+		strategy := newRetryStrategy(1.0, 1*time.Second, 30)
 
 		initialAttempt := strategy.attempt
 		strategy.NextAttempt()
@@ -892,7 +893,7 @@ func TestRetryStrategy(t *testing.T) {
 
 	t.Run("ResetOnSuccess", func(t *testing.T) {
 		initialGasPrice := 2.0
-		strategy := newRetryStrategy(initialGasPrice, 1*time.Second)
+		strategy := newRetryStrategy(initialGasPrice, 1*time.Second, 30)
 
 		// Set some backoff and higher gas price
 		strategy.backoff = 500 * time.Millisecond
@@ -911,7 +912,7 @@ func TestRetryStrategy(t *testing.T) {
 
 	t.Run("ResetOnSuccess_GasPriceFloor", func(t *testing.T) {
 		initialGasPrice := 2.0
-		strategy := newRetryStrategy(initialGasPrice, 1*time.Second)
+		strategy := newRetryStrategy(initialGasPrice, 1*time.Second, 30)
 
 		// Set gas price below what would be the reduced amount
 		strategy.gasPrice = 1.0 // Lower than initial
@@ -924,7 +925,7 @@ func TestRetryStrategy(t *testing.T) {
 	})
 
 	t.Run("BackoffOnMempool", func(t *testing.T) {
-		strategy := newRetryStrategy(1.0, 10*time.Second)
+		strategy := newRetryStrategy(1.0, 10*time.Second, 30)
 
 		mempoolTTL := 25
 		blockTime := 1 * time.Second

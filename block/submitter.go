@@ -26,14 +26,14 @@ type retryStrategy struct {
 	maxBackoff      time.Duration
 }
 
-// newRetryStrategy creates a new retryStrategy with the given initial gas price and max backoff duration
-func newRetryStrategy(initialGasPrice float64, maxBackoff time.Duration) *retryStrategy {
+// newRetryStrategy creates a new retryStrategy with the given initial gas price, max backoff duration and max attempts
+func newRetryStrategy(initialGasPrice float64, maxBackoff time.Duration, maxAttempts int) *retryStrategy {
 	return &retryStrategy{
 		attempt:         0,
 		backoff:         0,
 		gasPrice:        initialGasPrice,
 		initialGasPrice: initialGasPrice,
-		maxAttempts:     maxSubmitAttempts,
+		maxAttempts:     maxAttempts,
 		maxBackoff:      maxBackoff,
 	}
 }
@@ -218,7 +218,7 @@ func submitToDA[T any](
 		return err
 	}
 
-	retryStrategy := newRetryStrategy(m.gasPrice, m.config.DA.BlockTime.Duration)
+	retryStrategy := newRetryStrategy(m.gasPrice, m.config.DA.BlockTime.Duration, m.config.DA.MaxSubmitAttempts)
 	remaining := items
 	numSubmitted := 0
 

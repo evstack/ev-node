@@ -43,10 +43,6 @@ const (
 	// defaultMempoolTTL is the number of blocks until transaction is dropped from mempool
 	defaultMempoolTTL = 25
 
-	// maxSubmitAttempts defines how many times Rollkit will re-try to publish block to DA layer.
-	// This is temporary solution. It will be removed in future versions.
-	maxSubmitAttempts = 30
-
 	// Applies to the headerInCh and dataInCh, 10000 is a large enough number for headers per DA block.
 	eventInChLength = 10000
 )
