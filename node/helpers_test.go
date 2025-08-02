@@ -61,7 +61,7 @@ func createTestComponents(t *testing.T, config rollkitconfig.Config) (coreexecut
 	}
 	logger := logging.Logger("test")
 	_ = logging.SetLogLevel("test", "FATAL")
-	p2pClient, err := p2p.NewClient(config, p2pKey, dssync.MutexWrap(datastore.NewMapDatastore()), logger, p2p.NopMetrics())
+	p2pClient, err := p2p.NewClient(config.P2P, p2pKey.PrivKey, dssync.MutexWrap(datastore.NewMapDatastore()), "test-chain", logger, p2p.NopMetrics())
 	require.NoError(t, err)
 	require.NotNil(t, p2pClient)
 	ds := dssync.MutexWrap(datastore.NewMapDatastore())
@@ -91,7 +91,6 @@ func getTestConfig(t *testing.T, n int) rollkitconfig.Config {
 		RPC: rollkitconfig.RPCConfig{
 			Address: fmt.Sprintf("127.0.0.1:%d", 8000+n),
 		},
-		ChainID:         "test-chain",
 		Instrumentation: &rollkitconfig.InstrumentationConfig{},
 	}
 }
@@ -110,7 +109,7 @@ func newTestNode(
 	ctx, cancel := context.WithCancel(context.Background())
 
 	// Generate genesis and keys
-	genesis, genesisValidatorKey, _ := types.GetGenesisWithPrivkey(config.ChainID)
+	genesis, genesisValidatorKey, _ := types.GetGenesisWithPrivkey("test-chain")
 	remoteSigner, err := remote_signer.NewNoopSigner(genesisValidatorKey)
 	require.NoError(t, err)
 
@@ -169,7 +168,7 @@ func createNodesWithCleanup(t *testing.T, num int, config rollkitconfig.Config) 
 	aggCtx, aggCancel := context.WithCancel(context.Background())
 
 	// Generate genesis and keys
-	genesis, genesisValidatorKey, _ := types.GetGenesisWithPrivkey(config.ChainID)
+	genesis, genesisValidatorKey, _ := types.GetGenesisWithPrivkey("test-chain")
 	remoteSigner, err := remote_signer.NewNoopSigner(genesisValidatorKey)
 	require.NoError(err)
 
