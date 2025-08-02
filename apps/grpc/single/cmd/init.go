@@ -57,7 +57,7 @@ This will create the necessary configuration structure in the specified root dir
 			}
 
 			// get chain ID or use default
-			chainID, _ := cmd.Flags().GetString("chain-id")
+			chainID, _ := cmd.Flags().GetString(rollgenesis.ChainIDFlag)
 			if chainID == "" {
 				chainID = "grpc-test-chain"
 			}
@@ -87,7 +87,7 @@ This will create the necessary configuration structure in the specified root dir
 
 	// Add configuration flags
 	rollconf.AddFlags(initCmd)
-	initCmd.Flags().String("chain-id", "grpc-test-chain", "chain ID")
+	initCmd.Flags().String(rollgenesis.ChainIDFlag, "grpc-test-chain", "chain ID")
 
 	return initCmd
 }

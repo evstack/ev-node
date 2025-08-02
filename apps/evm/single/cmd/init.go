@@ -55,7 +55,7 @@ func InitCmd() *cobra.Command {
 			}
 
 			// get chain ID or use default
-			chainID, _ := cmd.Flags().GetString("chain-id")
+			chainID, _ := cmd.Flags().GetString(rollgenesis.ChainIDFlag)
 			if chainID == "" {
 				chainID = "rollkit-test"
 			}
@@ -85,7 +85,7 @@ func InitCmd() *cobra.Command {
 
 	// Add flags to the command
 	rollconf.AddFlags(initCmd)
-	initCmd.Flags().String("chain-id", "rollkit-test", "chain ID")
+	initCmd.Flags().String(rollgenesis.ChainIDFlag, "rollkit-test", "chain ID")
 
 	return initCmd
 }
