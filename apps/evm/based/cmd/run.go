@@ -15,6 +15,7 @@ import (
 	"github.com/evstack/ev-node/da/jsonrpc"
 	rollcmd "github.com/evstack/ev-node/pkg/cmd"
 	rollconf "github.com/evstack/ev-node/pkg/config"
+	genesispkg "github.com/evstack/ev-node/pkg/genesis"
 	"github.com/evstack/ev-node/pkg/p2p"
 	"github.com/evstack/ev-node/pkg/p2p/key"
 	"github.com/evstack/ev-node/pkg/store"
@@ -138,11 +139,16 @@ func NewExtendedRunNodeCmd(ctx context.Context) *cobra.Command {
 				return fmt.Errorf("failed to create datastore: %w", err)
 			}
 
+			genesisPath := filepath.Join(filepath.Dir(nodeConfig.ConfigPath()), "genesis.json")
+			genesis, err := genesispkg.LoadGenesis(genesisPath)
+			if err != nil {
+				return fmt.Errorf("failed to load genesis: %w", err)
+			}
 			// Pass raw DA implementation and namespace to NewSequencer
 			sequencer, err := based.NewSequencer(
 				logger,
 				basedDA,
-				[]byte(nodeConfig.ChainID),
+				[]byte(genesis.ChainID),
 				basedStartHeight,
 				basedMaxHeightDrift,
 				datastore,
@@ -164,7 +170,7 @@ func NewExtendedRunNodeCmd(ctx context.Context) *cobra.Command {
 				return fmt.Errorf("failed to load node key: %w", err)
 			}
 
-			p2pClient, err := p2p.NewClient(nodeConfig, nodeKey, datastore, logger, p2p.NopMetrics())
+			p2pClient, err := p2p.NewClient(nodeConfig.P2P, nodeKey.PrivKey, datastore, genesis.ChainID, logger, p2p.NopMetrics())
 			if err != nil {
 				return fmt.Errorf("failed to create P2P client: %w", err)
 			}
@@ -173,7 +179,7 @@ func NewExtendedRunNodeCmd(ctx context.Context) *cobra.Command {
 			// StartNode might need adjustment if it strictly requires coreda.Client methods.
 			// For now, assume it can work with coreda.DA or will be adjusted later.
 			// We also need to pass the namespace config for rollDA.
-			return rollcmd.StartNode(logger, cmd, executor, sequencer, rollDA, p2pClient, datastore, nodeConfig, node.NodeOptions{})
+			return rollcmd.StartNode(logger, cmd, executor, sequencer, rollDA, p2pClient, datastore, nodeConfig, genesis, node.NodeOptions{})
 		},
 	}
 

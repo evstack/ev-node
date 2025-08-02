@@ -421,7 +421,6 @@ func testTwoChainsInOneNamespace(t *testing.T, chainID1 string, chainID2 string)
 
 	// Set up nodes for the first chain
 	configChain1 := getTestConfig(t, 1)
-	configChain1.ChainID = chainID1
 
 	nodes1, cleanups := createNodesWithCleanup(t, 1, configChain1)
 	for _, cleanup := range cleanups {
@@ -430,7 +429,6 @@ func testTwoChainsInOneNamespace(t *testing.T, chainID1 string, chainID2 string)
 
 	// Set up nodes for the second chain
 	configChain2 := getTestConfig(t, 1000)
-	configChain2.ChainID = chainID2
 
 	nodes2, cleanups := createNodesWithCleanup(t, 1, configChain2)
 	for _, cleanup := range cleanups {

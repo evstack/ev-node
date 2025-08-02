@@ -43,7 +43,7 @@ func TestLightNodeLifecycle(t *testing.T) {
 
 	db := ds_sync.MutexWrap(ds.NewMapDatastore())
 
-	p2pClient, err := p2p.NewClient(conf, p2pKey, db, logger, p2pMetrics)
+	p2pClient, err := p2p.NewClient(conf.P2P, p2pKey.PrivKey, db, gen.ChainID, logger, p2pMetrics)
 	require.NoError(err)
 
 	ln, err := newLightNode(conf, gen, p2pClient, db, logger)
