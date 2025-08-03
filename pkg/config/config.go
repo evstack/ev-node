@@ -127,7 +127,8 @@ type Config struct {
 	Node NodeConfig `mapstructure:"node" yaml:"node"`
 
 	// Data availability configuration
-	DA DAConfig `mapstructure:"da" yaml:"da"`
+	DA              DAConfig              `mapstructure:"da" yaml:"da"`
+	ForcedInclusion ForcedInclusionConfig `mapstructure:"forced_inclusion" yaml:"forced_inclusion"`
 
 	// RPC configuration
 	RPC RPCConfig `mapstructure:"rpc" yaml:"rpc"`
@@ -153,6 +154,11 @@ type DAConfig struct {
 	BlockTime     DurationWrapper `mapstructure:"block_time" yaml:"block_time" comment:"Average block time of the DA chain (duration). Determines frequency of DA layer syncing, maximum backoff time for retries, and is multiplied by MempoolTTL to calculate transaction expiration. Examples: \"15s\", \"30s\", \"1m\", \"2m30s\", \"10m\"."`
 	StartHeight   uint64          `mapstructure:"start_height" yaml:"start_height" comment:"Starting block height on the DA layer from which to begin syncing. Useful when deploying a new chain on an existing DA chain."`
 	MempoolTTL    uint64          `mapstructure:"mempool_ttl" yaml:"mempool_ttl" comment:"Number of DA blocks after which a transaction is considered expired and dropped from the mempool. Controls retry backoff timing."`
+}
+
+type ForcedInclusionConfig struct {
+	MaxInclusionDelay time.Duration `mapstructure:"max_inclusion_delay" yaml:"max_inclusion_delay" comment:"Time window within direct transactions must be included"`
+	MinDADelay        uint64        `mapstructure:"min_da_delay" yaml:"min_da_delay" comment:"Minimum number of DA blocks before including a direct tx"`
 }
 
 // NodeConfig contains all Rollkit specific configuration parameters

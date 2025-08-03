@@ -76,9 +76,11 @@ type SubmitBatchTxsResponse struct {
 
 // GetNextBatchRequest is a request to get the next batch of transactions from sequencer to chain
 type GetNextBatchRequest struct {
-	Id            []byte
-	LastBatchData [][]byte
-	MaxBytes      uint64
+	// TODO (Alex): refactor to chainID string ?
+	Id               []byte
+	LastBatchData    [][]byte
+	MaxBytes         uint64
+	DAIncludedHeight uint64
 }
 
 // GetNextBatchResponse is a response to getting the next batch of transactions from sequencer to chain

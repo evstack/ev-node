@@ -44,12 +44,16 @@ func NewDirectTxReaper(
 	interval time.Duration,
 	logger log.EventLogger,
 	store ds.Batching,
+	daStartHeight uint64,
 ) *DirectTxReaper {
+	if daStartHeight == 0 {
+		daStartHeight = 1
+	}
 	if interval <= 0 {
 		interval = 100 * time.Millisecond
 	}
 	daHeight := new(atomic.Uint64)
-	daHeight.Store(1)
+	daHeight.Store(daStartHeight)
 	return &DirectTxReaper{
 		da:        da,
 		sequencer: sequencer,
@@ -80,7 +84,7 @@ func (r *DirectTxReaper) Start(ctx context.Context) {
 			return
 		case <-ticker.C:
 			daHeight := r.daHeight.Load()
-			if err := r.SubmitTxs(daHeight); err != nil {
+			if err := r.retrieveDirectTXs(daHeight); err != nil {
 				if strings.Contains(err.Error(), coreda.ErrHeightFromFuture.Error()) {
 					r.logger.Debug("IDs not found at height", "height", daHeight)
 				} else {
@@ -94,8 +98,8 @@ func (r *DirectTxReaper) Start(ctx context.Context) {
 	}
 }
 
-// SubmitTxs retrieves direct transactions from the DA layer and submits them to the sequencer.
-func (r *DirectTxReaper) SubmitTxs(daHeight uint64) error {
+// retrieveDirectTXs retrieves direct transactions from the DA layer and submits them to the sequencer.
+func (r *DirectTxReaper) retrieveDirectTXs(daHeight uint64) error {
 	// Get the latest DA height
 	// Get all blob IDs at the current DA height
 	result, err := r.da.GetIDs(r.ctx, daHeight, nil)
@@ -115,7 +119,7 @@ func (r *DirectTxReaper) SubmitTxs(daHeight uint64) error {
 	}
 	r.logger.Debug("Blobs found at height", "height", daHeight, "count", len(blobs))
 
-	var newTxs [][]byte
+	var newTxs []sequencer.DirectTX
 	for _, blob := range blobs {
 		r.logger.Debug("Processing blob data")
 
@@ -134,18 +138,21 @@ func (r *DirectTxReaper) SubmitTxs(daHeight uint64) error {
 		}
 
 		// Process each transaction in the blob
-		for _, tx := range data.Txs {
+		for i, tx := range data.Txs {
 			txHash := hashTx(tx)
 			has, err := r.seenStore.Has(r.ctx, ds.NewKey(txHash))
 			if err != nil {
 				return fmt.Errorf("check seenStore: %w", err)
 			}
 			if !has {
-				newTxs = append(newTxs, tx)
+				newTxs = append(newTxs, sequencer.DirectTX{
+					TX:              tx,
+					ID:              result.IDs[i],
+					FirstSeenHeight: daHeight,
+					FirstSeenTime:   result.Timestamp.Unix(),
+				})
 			}
 		}
-		// todo: apply checks"
-		// DA header time: result.Timestamp
 	}
 
 	if len(newTxs) == 0 {
@@ -154,13 +161,13 @@ func (r *DirectTxReaper) SubmitTxs(daHeight uint64) error {
 	}
 
 	r.logger.Debug("Submitting direct txs to sequencer", "txCount", len(newTxs))
-	err = r.sequencer.SubmitDirectTxs(r.ctx, newTxs)
+	err = r.sequencer.SubmitDirectTxs(r.ctx, newTxs...)
 	if err != nil {
 		return fmt.Errorf("submit direct txs to sequencer: %w", err)
 	}
 	// Mark the transactions as seen
-	for _, tx := range newTxs {
-		txHash := hashTx(tx)
+	for _, v := range newTxs {
+		txHash := hashTx(v.TX)
 		if err := r.seenStore.Put(r.ctx, ds.NewKey(txHash), []byte{1}); err != nil {
 			return fmt.Errorf("persist seen tx: %w", err)
 		}

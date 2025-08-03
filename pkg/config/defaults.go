@@ -58,6 +58,10 @@ var DefaultConfig = Config{
 		GasPrice:      -1,
 		GasMultiplier: 0,
 	},
+	ForcedInclusion: ForcedInclusionConfig{ // todo (Alex): what are good defaults?
+		MaxInclusionDelay: 12 * time.Hour,
+		MinDADelay:        3,
+	},
 	Instrumentation: DefaultInstrumentationConfig(),
 	Log: LogConfig{
 		Level:  "info",

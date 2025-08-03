@@ -5,13 +5,7 @@ import (
 	"crypto/sha256"
 	"errors"
 	"github.com/evstack/ev-node/types"
-	"sync"
 )
-
-type ForcedInclusionConfig struct {
-	MaxInclusionDelay uint64 // Max inclusion time in DA block time units
-	MinDADelay        uint64 // Minimum number of DA blocks before including a direct tx
-}
 
 type DirectTransaction struct {
 	TxHash            types.Hash
@@ -19,15 +13,6 @@ type DirectTransaction struct {
 	Included          bool   // Whether it has been included in a block
 	IncludedAt        uint64 // Height at which it was included
 	TX                []byte
-}
-
-type DirectTxTracker struct {
-	config ForcedInclusionConfig
-	mu     sync.RWMutex
-	//txs                   map[string]DirectTransaction // hash -> tx
-	txs                   []DirectTransaction // ordered by da height and position in blob
-	latestSeenDABlockTime uint64
-	latestDAHeight        uint64
 }
 
 func (m *Manager) handlePotentialDirectTXs(ctx context.Context, bz []byte, daHeight uint64) bool {
@@ -65,40 +50,9 @@ func (m *Manager) handlePotentialDirectTXs(ctx context.Context, bz []byte, daHei
 			Included:          false,
 			IncludedAt:        0,
 		}
-		m.directTXTracker.mu.Lock()
-		m.directTXTracker.txs = append(m.directTXTracker.txs, d)
-		m.directTXTracker.mu.Unlock()
+		_ = d
 	}
 	return true
 }
 
 var ErrMissingDirectTx = errors.New("missing direct tx")
-
-func (m *Manager) getPendingDirectTXs(_ context.Context, maxBytes int) ([][]byte, error) {
-	remaining := maxBytes
-	currBlockTime := m.directTXTracker.latestSeenDABlockTime
-	var res [][]byte
-
-	m.directTXTracker.mu.Lock()
-	defer m.directTXTracker.mu.Unlock()
-	for _, tx := range m.directTXTracker.txs {
-		if tx.Included {
-			continue
-		}
-
-		if currBlockTime-tx.FirstSeenDAHeight > m.directTXTracker.config.MaxInclusionDelay {
-			// should have been forced included already.
-			// what should we do now? stop the world
-			return nil, ErrMissingDirectTx
-		}
-		if m.directTXTracker.latestDAHeight-tx.FirstSeenDAHeight < m.directTXTracker.config.MinDADelay {
-			// we can stop here as following tx are newer
-			break
-		}
-		if len(tx.TX) > remaining {
-			break
-		}
-		res = append(res, tx.TX)
-	}
-	return res, nil
-}

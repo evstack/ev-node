@@ -153,7 +153,7 @@ func TestSubmitTxs(t *testing.T) {
 			reaper := createTestDirectTxReaper(t, mockDA, mockSequencer, chainID)
 			tt.setupMocks(mockDA, mockSequencer, reaper)
 
-			err := reaper.SubmitTxs(1)
+			err := reaper.retrieveDirectTXs(1)
 
 			if tt.expectedError {
 				assert.Error(t, err)
@@ -208,7 +208,7 @@ func createTestDirectTxReaper(
 		ctx,
 		mockDA,
 		mockSequencer,
-		nil, // Manager is not used in SubmitTxs
+		nil, // Manager is not used in retrieveDirectTXs
 		chainID,
 		time.Second,
 		logger,

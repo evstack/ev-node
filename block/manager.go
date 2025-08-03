@@ -8,6 +8,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"github.com/celestiaorg/go-square/v2/share"
 	"path/filepath"
 	"sync"
 	"sync/atomic"
@@ -168,8 +169,6 @@ type Manager struct {
 	// validatorHasherProvider is used to provide the validator hash for the header.
 	// It is used to set the validator hash in the header.
 	validatorHasherProvider types.ValidatorHasherProvider
-
-	directTXTracker DirectTxTracker
 }
 
 // getInitialState tries to load lastState from Store, and if it's not available it reads genesis.
@@ -402,7 +401,6 @@ func NewManager(
 		txNotifyCh:               make(chan struct{}, 1), // Non-blocking channel
 		signaturePayloadProvider: managerOpts.SignaturePayloadProvider,
 		validatorHasherProvider:  managerOpts.ValidatorHasherProvider,
-		directTXTracker:          DirectTxTracker{txs: make([]DirectTransaction, 0)},
 	}
 
 	// initialize da included height
@@ -546,14 +544,21 @@ func (m *Manager) GetExecutor() coreexecutor.Executor {
 	return m.exec
 }
 
+const ( // copied from da/jsonclient/internal
+	defaultGovMaxSquareSize = 64
+	defaultMaxBytes         = defaultGovMaxSquareSize * defaultGovMaxSquareSize * share.ContinuationSparseShareContentSize
+)
+
 func (m *Manager) retrieveBatch(ctx context.Context) (*BatchData, error) {
 	m.logger.Debug("Attempting to retrieve next batch",
 		"chainID", m.genesis.ChainID,
 		"lastBatchData", m.lastBatchData)
 
 	req := coresequencer.GetNextBatchRequest{
-		Id:            []byte(m.genesis.ChainID),
-		LastBatchData: m.lastBatchData,
+		DAIncludedHeight: m.daIncludedHeight.Load(),
+		Id:               []byte(m.genesis.ChainID),
+		LastBatchData:    m.lastBatchData,
+		MaxBytes:         defaultMaxBytes, // todo (Alex): do we need to reserve some space for headers and other data?
 	}
 
 	res, err := m.sequencer.GetNextBatch(ctx, req)

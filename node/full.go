@@ -144,6 +144,7 @@ func newFullNode(
 		nodeConfig.Node.BlockTime.Duration,
 		logging.Logger("DirectTxReaper"),
 		mainKV,
+		nodeConfig.DA.StartHeight,
 	)
 
 	node := &FullNode{

@@ -72,6 +72,7 @@ var RunCmd = &cobra.Command{
 			logger,
 			datastore,
 			100, // todo (Alex): what is a good value?
+			nodeConfig.ForcedInclusion,
 		)
 
 		nodeKey, err := key.LoadNodeKey(filepath.Dir(nodeConfig.ConfigPath()))

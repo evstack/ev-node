@@ -20,7 +20,7 @@ type DummySequencer struct {
 }
 
 // SubmitDirectTxs implements DirectTxSequencer.
-func (s *DummySequencer) SubmitDirectTxs(ctx context.Context, txs [][]byte) error {
+func (s *DummySequencer) SubmitDirectTxs(ctx context.Context, txs ...DirectTX) error {
 	panic("unimplemented")
 }
 
