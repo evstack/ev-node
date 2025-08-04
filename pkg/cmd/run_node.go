@@ -139,11 +139,11 @@ func StartNode(
 		defer func() {
 			if r := recover(); r != nil {
 				err := fmt.Errorf("node panicked: %v", r)
-				logger.Error("Recovered from panic in node", "panic", r)
+				logger.Error().Interface("panic", r).Msg("Recovered from panic in node")
 				select {
 				case errCh <- err:
 				default:
-					logger.Error("Error channel full", "error", err)
+					logger.Error().Err(err).Msg("Error channel full")
 				}
 			}
 		}()
@@ -152,7 +152,7 @@ func StartNode(
 		select {
 		case errCh <- err:
 		default:
-			logger.Error("Error channel full", "error", err)
+			logger.Error().Err(err).Msg("Error channel full")
 		}
 	}()
 
@@ -162,10 +162,10 @@ func StartNode(
 
 	select {
 	case <-quit:
-		logger.Info("shutting down node...")
+		logger.Info().Msg("shutting down node...")
 		cancel()
 	case err := <-errCh:
-		logger.Error("node error", "error", err)
+		logger.Error().Err(err).Msg("node error")
 		cancel()
 		return err
 	}
@@ -173,10 +173,10 @@ func StartNode(
 	// Wait for node to finish shutting down
 	select {
 	case <-time.After(5 * time.Second):
-		logger.Info("Node shutdown timed out")
+		logger.Info().Msg("Node shutdown timed out")
 	case err := <-errCh:
 		if err != nil && !errors.Is(err, context.Canceled) {
-			logger.Error("Error during shutdown", "error", err)
+			logger.Error().Err(err).Msg("Error during shutdown")
 			return err
 		}
 	}

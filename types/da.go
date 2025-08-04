@@ -52,7 +52,7 @@ func SubmitWithHelpers(
 		case errors.Is(err, coreda.ErrContextDeadline):
 			status = coreda.StatusContextDeadline
 		}
-		logger.Error().Err(err).Str("status", string(status)).Msg("DA submission failed via helper")
+		logger.Error().Err(err).Uint64("status", uint64(status)).Msg("DA submission failed via helper")
 		return coreda.ResultSubmit{
 			BaseResult: coreda.BaseResult{
 				Code:           status,

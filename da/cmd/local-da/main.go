@@ -9,7 +9,6 @@ import (
 	"syscall"
 
 	"github.com/rs/zerolog"
-	"github.com/rs/zerolog/log"
 
 	proxy "github.com/evstack/ev-node/da/jsonrpc"
 )

@@ -3,7 +3,7 @@ deps:
 	@echo "--> Installing dependencies"
 	@go mod download
 	@go mod tidy
-	@go run scripts/go-mod-tidy-all.go
+	@go run scripts/tidy.go
 .PHONY: deps
 
 tidy-all:

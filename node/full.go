@@ -201,7 +201,7 @@ func initBlockManager(
 	gasMultiplier float64,
 	managerOpts block.ManagerOptions,
 ) (*block.Manager, error) {
-	logger.Debug().Str("address", genesis.ProposerAddress).Msg("Proposer address")
+	logger.Debug().Bytes("address", genesis.ProposerAddress).Msg("Proposer address")
 
 	blockManager, err := block.NewManager(
 		ctx,

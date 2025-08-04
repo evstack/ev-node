@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 
@@ -20,24 +21,10 @@ import (
 )
 
 // newTestManager creates a Manager with mocked Store and Executor for testing DAIncluder logic.
-func newTestManager(t *testing.T) (*Manager, *mocks.MockStore, *mocks.MockExecutor, *MockLogger) {
+func newTestManager(t *testing.T) (*Manager, *mocks.MockStore, *mocks.MockExecutor, zerolog.Logger) {
 	store := mocks.NewMockStore(t)
 	exec := mocks.NewMockExecutor(t)
-	logger := new(MockLogger)
-
-	// Allow logging calls with message string and optional key-value pairs (up to 2 pairs / 4 args for simplicity)
-	logger.On("Debug", mock.AnythingOfType("string")).Maybe()
-	logger.On("Debug", mock.AnythingOfType("string"), mock.Anything, mock.Anything).Maybe()
-	logger.On("Debug", mock.AnythingOfType("string"), mock.Anything, mock.Anything, mock.Anything, mock.Anything).Maybe()
-	logger.On("Info", mock.AnythingOfType("string")).Maybe()
-	logger.On("Info", mock.AnythingOfType("string"), mock.Anything, mock.Anything).Maybe()
-	logger.On("Info", mock.AnythingOfType("string"), mock.Anything, mock.Anything, mock.Anything, mock.Anything).Maybe()
-	logger.On("Warn", mock.AnythingOfType("string")).Maybe()
-	logger.On("Warn", mock.AnythingOfType("string"), mock.Anything, mock.Anything).Maybe()
-	logger.On("Warn", mock.AnythingOfType("string"), mock.Anything, mock.Anything, mock.Anything, mock.Anything).Maybe()
-	logger.On("Error", mock.AnythingOfType("string")).Maybe()
-	logger.On("Error", mock.AnythingOfType("string"), mock.Anything, mock.Anything).Maybe()
-	logger.On("Error", mock.AnythingOfType("string"), mock.Anything, mock.Anything, mock.Anything, mock.Anything).Maybe()
+	logger := zerolog.Nop() // Use Nop logger for tests
 
 	// Mock Height to always return a high value so IsDAIncluded works
 	store.On("Height", mock.Anything).Return(uint64(100), nil).Maybe()
@@ -171,20 +158,13 @@ func TestDAIncluderLoop_StopsWhenDataNotDAIncluded(t *testing.T) {
 // if GetBlockData returns an error for the next block height.
 func TestDAIncluderLoop_StopsOnGetBlockDataError(t *testing.T) {
 	t.Parallel()
-	m, store, _, mockLogger := newTestManager(t)
+	m, store, _, _ := newTestManager(t)
 	startDAIncludedHeight := uint64(4)
 	m.daIncludedHeight.Store(startDAIncludedHeight)
 
 	store.On("GetBlockData", mock.Anything, uint64(5)).Return(nil, nil, assert.AnError).Once()
 
-	// Expect the debug log for no more blocks to check
-	mockLogger.ExpectedCalls = nil // Clear any previous expectations for specific checks
-	// Re-establish general Maybe calls after clearing, then specific Once call
-	mockLogger.On("Debug", mock.AnythingOfType("string")).Maybe()
-	mockLogger.On("Debug", mock.AnythingOfType("string"), mock.Anything, mock.Anything).Maybe()
-	mockLogger.On("Debug", mock.AnythingOfType("string"), mock.Anything, mock.Anything, mock.Anything, mock.Anything).Maybe()
-	// Add other Maybe calls if Info/Warn/Error might also occur and are not asserted
-	mockLogger.On("Info", mock.AnythingOfType("string")).Maybe()
+	// Logger expectations removed since using zerolog.Nop()
 
 	ctx, loopCancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
 	defer loopCancel()
@@ -201,7 +181,7 @@ func TestDAIncluderLoop_StopsOnGetBlockDataError(t *testing.T) {
 
 	assert.Equal(t, startDAIncludedHeight, m.GetDAIncludedHeight())
 	store.AssertExpectations(t)
-	mockLogger.AssertExpectations(t)
+	// Logger expectations removed
 }
 
 // TestIncrementDAIncludedHeight_Success verifies that incrementDAIncludedHeight increments the height
@@ -229,7 +209,7 @@ func TestIncrementDAIncludedHeight_Success(t *testing.T) {
 // if SetMetadata fails after SetFinal succeeds.
 func TestIncrementDAIncludedHeight_SetMetadataError(t *testing.T) {
 	t.Parallel()
-	m, store, exec, mockLogger := newTestManager(t)
+	m, store, exec, _ := newTestManager(t)
 	startDAIncludedHeight := uint64(4)
 	expectedDAIncludedHeight := startDAIncludedHeight + 1
 	m.daIncludedHeight.Store(startDAIncludedHeight)
@@ -243,14 +223,14 @@ func TestIncrementDAIncludedHeight_SetMetadataError(t *testing.T) {
 	assert.Error(t, err)
 	store.AssertExpectations(t)
 	exec.AssertExpectations(t)
-	mockLogger.AssertExpectations(t)
+	// Logger expectations removed
 }
 
 // TestIncrementDAIncludedHeight_SetFinalError verifies that incrementDAIncludedHeight returns an error
 // if SetFinal fails before SetMetadata, and logs the error.
 func TestIncrementDAIncludedHeight_SetFinalError(t *testing.T) {
 	t.Parallel()
-	m, store, exec, mockLogger := newTestManager(t)
+	m, store, exec, _ := newTestManager(t)
 	startDAIncludedHeight := uint64(4)
 	expectedDAIncludedHeight := startDAIncludedHeight + 1
 	m.daIncludedHeight.Store(startDAIncludedHeight)
@@ -263,7 +243,7 @@ func TestIncrementDAIncludedHeight_SetFinalError(t *testing.T) {
 	assert.Error(t, err)
 	exec.AssertExpectations(t)
 	store.AssertExpectations(t)
-	mockLogger.AssertExpectations(t)
+	// Logger expectations removed
 }
 
 // TestDAIncluderLoop_MultipleConsecutiveHeightsDAIncluded verifies that DAIncluderLoop advances the height

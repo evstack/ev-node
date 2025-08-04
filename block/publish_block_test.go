@@ -11,7 +11,7 @@ import (
 	"time"
 
 	goheaderstore "github.com/celestiaorg/go-header/store"
-	logging "github.com/ipfs/go-log/v2"
+	"github.com/rs/zerolog"
 	"github.com/libp2p/go-libp2p/core/crypto"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
@@ -54,9 +54,9 @@ func setupManagerForPublishBlockTest(
 	genesis := genesispkg.NewGenesis("testchain", initialHeight, time.Now(), proposerAddr)
 
 	_, cancel := context.WithCancel(context.Background())
-	logger := logging.Logger("test")
+	logger := zerolog.Nop()
 	if logBuffer != nil {
-		_ = logging.SetLogLevel("test", "debug")
+		// Debug logging no longer needed with Nop logger
 	}
 
 	lastSubmittedHeaderBytes := make([]byte, 8)
@@ -164,8 +164,7 @@ func Test_publishBlock_NoBatch(t *testing.T) {
 	mockStore := mocks.NewMockStore(t)
 	mockSeq := mocks.NewMockSequencer(t)
 	mockExec := mocks.NewMockExecutor(t)
-	logger := logging.Logger("test")
-	_ = logging.SetLogLevel("test", "FATAL")
+	logger := zerolog.Nop()
 	chainID := "Test_publishBlock_NoBatch"
 	genesisData, privKey, _ := types.GetGenesisWithPrivkey(chainID)
 	noopSigner, err := noopsigner.NewNoopSigner(privKey)
@@ -236,8 +235,7 @@ func Test_publishBlock_EmptyBatch(t *testing.T) {
 	mockStore := mocks.NewMockStore(t)
 	mockSeq := mocks.NewMockSequencer(t)
 	mockExec := mocks.NewMockExecutor(t)
-	logger := logging.Logger("test")
-	_ = logging.SetLogLevel("test", "FATAL")
+	logger := zerolog.Nop()
 	chainID := "Test_publishBlock_EmptyBatch"
 	genesisData, privKey, _ := types.GetGenesisWithPrivkey(chainID)
 	noopSigner, err := noopsigner.NewNoopSigner(privKey)

@@ -10,7 +10,7 @@ import (
 
 	"github.com/ipfs/go-datastore"
 	dssync "github.com/ipfs/go-datastore/sync"
-	logging "github.com/ipfs/go-log/v2"
+	"github.com/rs/zerolog"
 	libp2p "github.com/libp2p/go-libp2p"
 	"github.com/libp2p/go-libp2p/core/host"
 	"github.com/libp2p/go-libp2p/core/peer"
@@ -34,8 +34,7 @@ func TestNewClientWithHost(t *testing.T) {
 	nodeKey, err := key.LoadOrGenNodeKey(filepath.Join(conf.RootDir, "config", "node_key.json"))
 	require.NoError(err)
 	ds := dssync.MutexWrap(datastore.NewMapDatastore())
-	logger := logging.Logger("test")
-	_ = logging.SetLogLevel("test", "debug")
+	logger := zerolog.Nop()
 	metrics := NopMetrics()
 
 	// Ensure config directory exists for nodeKey loading
@@ -127,8 +126,7 @@ func TestClientStartup(t *testing.T) {
 
 	for _, testCase := range testCases {
 		t.Run(testCase.desc, func(t *testing.T) {
-			testLogger := logging.Logger(testCase.desc) // Use specific logger for test case
-			_ = logging.SetLogLevel(testCase.desc, "debug")
+			testLogger := zerolog.Nop() // Use specific logger for test case
 			client, err := NewClient(testCase.conf, nodeKey,
 				dssync.MutexWrap(datastore.NewMapDatastore()), testLogger, NopMetrics())
 			assert.NoError(err)
@@ -147,8 +145,7 @@ func TestClientStartup(t *testing.T) {
 
 func TestBootstrapping(t *testing.T) {
 	assert := assert.New(t)
-	logger := logging.Logger("TestBootstrapping")
-	_ = logging.SetLogLevel("TestBootstrapping", "debug")
+	logger := zerolog.Nop()
 
 	clients := startTestNetwork(t.Context(), t, 4, map[int]hostDescr{
 		1: {conns: []int{0}},
@@ -169,8 +166,7 @@ func TestBootstrapping(t *testing.T) {
 
 func TestDiscovery(t *testing.T) {
 	assert := assert.New(t)
-	logger := logging.Logger("TestDiscovery")
-	_ = logging.SetLogLevel("TestDiscovery", "debug")
+	logger := zerolog.Nop()
 
 	clients := startTestNetwork(t.Context(), t, 5, map[int]hostDescr{
 		1: {conns: []int{0}, chainID: "ORU2"},
@@ -223,8 +219,7 @@ func TestSeedStringParsing(t *testing.T) {
 		t.Run(c.name, func(t *testing.T) {
 			assert := assert.New(t)
 			require := require.New(t)
-			logger := logging.Logger("TestSeedStringParsing")
-			_ = logging.SetLogLevel("TestSeedStringParsing", "FATAL")
+			logger := zerolog.Nop()
 			tempDir := t.TempDir()
 			ClientInitFiles(t, tempDir)
 
@@ -288,8 +283,7 @@ func waitForCondition(timeout time.Duration, conditionFunc func() bool) error {
 func TestClientInfoMethods(t *testing.T) {
 	require := require.New(t)
 	assert := assert.New(t)
-	logger := logging.Logger("TestClientInfoMethods")
-	_ = logging.SetLogLevel("TestClientInfoMethods", "debug")
+	logger := zerolog.Nop()
 
 	tempDir := t.TempDir()
 	ClientInitFiles(t, tempDir)

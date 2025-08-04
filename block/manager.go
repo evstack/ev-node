@@ -595,7 +595,7 @@ func (m *Manager) publishBlockInternal(ctx context.Context) error {
 	}
 
 	if m.config.Node.MaxPendingHeadersAndData != 0 && (m.pendingHeaders.numPendingHeaders() >= m.config.Node.MaxPendingHeadersAndData || m.pendingData.numPendingData() >= m.config.Node.MaxPendingHeadersAndData) {
-		m.logger.Warn().Int("pending_headers", m.pendingHeaders.numPendingHeaders()).Int("pending_data", m.pendingData.numPendingData()).Int("limit", m.config.Node.MaxPendingHeadersAndData).Msg("refusing to create block: pending headers or data reached limit")
+		m.logger.Warn().Uint64("pending_headers", m.pendingHeaders.numPendingHeaders()).Uint64("pending_data", m.pendingData.numPendingData()).Uint64("limit", m.config.Node.MaxPendingHeadersAndData).Msg("refusing to create block: pending headers or data reached limit")
 		return nil
 	}
 

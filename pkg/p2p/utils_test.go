@@ -12,7 +12,7 @@ import (
 
 	"github.com/ipfs/go-datastore"
 	"github.com/ipfs/go-datastore/sync"
-	logging "github.com/ipfs/go-log/v2"
+	"github.com/rs/zerolog"
 	"github.com/libp2p/go-libp2p/core/crypto"
 	"github.com/libp2p/go-libp2p/core/peer"
 	mocknet "github.com/libp2p/go-libp2p/p2p/net/mock"
@@ -67,7 +67,7 @@ func getAddr(sk crypto.PrivKey) (multiaddr.Multiaddr, error) {
 	return a, nil
 }
 
-func startTestNetwork(ctx context.Context, t *testing.T, n int, conf map[int]hostDescr, logger logging.EventLogger) testNet {
+func startTestNetwork(ctx context.Context, t *testing.T, n int, conf map[int]hostDescr, logger zerolog.Logger) testNet {
 	t.Helper()
 	require := require.New(t)
 

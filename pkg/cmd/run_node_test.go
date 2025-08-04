@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/ipfs/go-datastore"
-	logging "github.com/ipfs/go-log/v2"
+	"github.com/rs/zerolog"
 	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
 
@@ -256,7 +256,7 @@ func TestSetupLogger(t *testing.T) {
 					logger := SetupLogger(tc.config)
 					assert.NotNil(t, logger)
 					// Basic check to ensure logger works
-					logger.Info("Test log message")
+					logger.Info().Msg("Test log message")
 				})
 			}
 		})
@@ -377,11 +377,10 @@ func TestStartNodeErrors(t *testing.T) {
 			if tc.cmdModifier != nil {
 				tc.cmdModifier(cmd)
 			}
-			_ = logging.SetLogLevel("test", "FATAL")
+			// Log level no longer needed with Nop logger
 
 			runFunc := func() {
-				currentTestLogger := logging.Logger("TestStartNodeErrors")
-				_ = logging.SetLogLevel("TestStartNodeErrors", "FATAL")
+				currentTestLogger := zerolog.Nop()
 				err := StartNode(currentTestLogger, cmd, executor, sequencer, dac, p2pClient, ds, nodeConfig, node.NodeOptions{})
 				if tc.expectedError != "" {
 					assert.ErrorContains(t, err, tc.expectedError)
@@ -396,8 +395,7 @@ func TestStartNodeErrors(t *testing.T) {
 				assert.Panics(t, runFunc)
 			} else {
 				assert.NotPanics(t, runFunc)
-				checkLogger := logging.Logger("TestStartNodeErrors-check")
-				_ = logging.SetLogLevel("TestStartNodeErrors-check", "FATAL")
+				checkLogger := zerolog.Nop()
 				err := StartNode(checkLogger, cmd, executor, sequencer, dac, p2pClient, ds, nodeConfig, node.NodeOptions{})
 				if tc.expectedError != "" {
 					assert.ErrorContains(t, err, tc.expectedError)
@@ -433,8 +431,7 @@ func newRunNodeCmd(
 		Aliases: []string{"node", "run"},
 		Short:   "Run the rollkit node",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			runNodeLogger := logging.Logger("runNodeCmd")
-			_ = logging.SetLogLevel("runNodeCmd", "FATAL")
+			runNodeLogger := zerolog.Nop()
 			return StartNode(runNodeLogger, cmd, executor, sequencer, dac, p2pClient, datastore, nodeConfig, node.NodeOptions{})
 		},
 	}
