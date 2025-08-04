@@ -132,7 +132,7 @@ func (ln *LightNode) Run(parentCtx context.Context) error {
 		if err != nil && !errors.Is(err, http.ErrServerClosed) {
 			multiErr = errors.Join(multiErr, fmt.Errorf("shutting down RPC server: %w", err))
 		} else {
-			ln.Logger.Debug().Err(err).Msg("RPC server shutdown context ended")
+			ln.Logger.Debug().Msg("RPC server shutdown completed")
 		}
 	}
 
