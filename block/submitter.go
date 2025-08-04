@@ -228,6 +228,8 @@ func submitToDA[T any](
 			return err
 		}
 
+		retryStrategy.NextAttempt()
+
 		submitCtx, cancel := context.WithTimeout(ctx, submissionTimeout)
 		m.recordDAMetrics("submission", DAModeRetry)
 
@@ -243,8 +245,6 @@ func submitToDA[T any](
 		if outcome.AllSubmitted {
 			return nil
 		}
-
-		retryStrategy.NextAttempt()
 	}
 
 	return fmt.Errorf("failed to submit all %s(s) to DA layer, submitted %d items (%d left) after %d attempts",
@@ -296,7 +296,11 @@ func handleSubmissionResult[T any](
 
 	case coreda.StatusContextCanceled:
 		m.logger.Info("DA layer submission canceled due to context cancellation", "attempt", retryStrategy.attempt)
-		return SubmissionOutcome[T]{AllSubmitted: true}
+		return SubmissionOutcome[T]{
+			RemainingItems:   remaining,
+			RemainingMarshal: marshaled,
+			AllSubmitted:     false,
+		}
 
 	case coreda.StatusTooBig:
 		return handleTooBigError(m, ctx, remaining, marshaled, retryStrategy, postSubmit, itemType, retryStrategy.attempt)

@@ -81,9 +81,10 @@ func getTestConfig(t *testing.T, n int) rollkitconfig.Config {
 			LazyBlockInterval:        rollkitconfig.DurationWrapper{Duration: 5 * time.Second},
 		},
 		DA: rollkitconfig.DAConfig{
-			BlockTime: rollkitconfig.DurationWrapper{Duration: 200 * time.Millisecond},
-			Address:   MockDAAddress,
-			Namespace: MockDANamespace,
+			BlockTime:         rollkitconfig.DurationWrapper{Duration: 200 * time.Millisecond},
+			Address:           MockDAAddress,
+			Namespace:         MockDANamespace,
+			MaxSubmitAttempts: 30,
 		},
 		P2P: rollkitconfig.P2PConfig{
 			ListenAddress: fmt.Sprintf("/ip4/127.0.0.1/tcp/%d", startPort+n),
