@@ -32,10 +32,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 return Ok(());
             }
             // Otherwise, this is a real error
-            return Err(format!(
-                "Proto files not found and no pre-generated files available: {e}"
-            )
-            .into());
+            return Err(
+                format!("Proto files not found and no pre-generated files available: {e}").into(),
+            );
         }
     };
 
