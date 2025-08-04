@@ -101,14 +101,15 @@ bq.head++
 	// Only compact when we have significant waste (more than half processed)
 	// and when we have a reasonable number of processed items to avoid
 	// frequent compactions on small queues
-	if bq.head > len(bq.queue)/2 && bq.head > 100 {
-		// Move remaining elements to the beginning
-		copy(bq.queue, bq.queue[bq.head:])
-		// Shrink the slice
-		bq.queue = bq.queue[:len(bq.queue)-bq.head]
-		// Reset head to 0
-		bq.head = 0
-	}
+remaining := copy(bq.queue, bq.queue[bq.head:])
+// Zero out the rest of the slice to allow GC to reclaim memory
+for i := remaining; i < len(bq.queue); i++ {
+	bq.queue[i] = coresequencer.Batch{}
+}
+// Shrink the slice
+bq.queue = bq.queue[:remaining]
+// Reset head to 0
+bq.head = 0
 
 	hash, err := batch.Hash()
 	if err != nil {
