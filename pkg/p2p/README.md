@@ -53,8 +53,8 @@ type P2PConfig struct {
 
 | Parameter | Description | Default | Example |
 |-----------|-------------|---------|---------|
-| ListenAddress | The address where the node listens for incoming P2P connections | `/ip4/0.0.0.0/tcp/26656` | `/ip4/0.0.0.0/tcp/26656` |
-| Seeds | Comma-separated list of seed nodes (bootstrap nodes) | "" | `/ip4/1.2.3.4/tcp/26656/p2p/12D3KooWA8EXV3KjBxEU...,/ip4/5.6.7.8/tcp/26656/p2p/12D3KooWJN9ByvD...` |
+| ListenAddress | The address where the node listens for incoming P2P connections | `/ip4/0.0.0.0/tcp/7676` | `/ip4/0.0.0.0/tcp/7676` |
+| Seeds | Comma-separated list of seed nodes (bootstrap nodes) | "" | `/ip4/1.2.3.4/tcp/7676/p2p/12D3KooWA8EXV3KjBxEU...,/ip4/5.6.7.8/tcp/7676/p2p/12D3KooWJN9ByvD...` |
 | BlockedPeers | Comma-separated list of peer IDs to block | "" | `12D3KooWA8EXV3KjBxEU...,12D3KooWJN9ByvD...` |
 | AllowedPeers | Comma-separated list of peer IDs to explicitly allow | "" | `12D3KooWA8EXV3KjBxEU...,12D3KooWJN9ByvD...` |
 
@@ -202,8 +202,8 @@ These metrics can be exposed via Prometheus for monitoring and alerting.
 conf := config.Config{
     RootDir: "/path/to/root",
     P2P: config.P2PConfig{
-        ListenAddress: "/ip4/0.0.0.0/tcp/26656",
-        Seeds: "/ip4/1.2.3.4/tcp/26656/p2p/12D3KooWXYZ...,/ip4/5.6.7.8/tcp/26656/p2p/12D3KooWABC...",
+        ListenAddress: "/ip4/0.0.0.0/tcp/7676",
+        Seeds: "/ip4/1.2.3.4/tcp/7676/p2p/12D3KooWXYZ...,/ip4/5.6.7.8/tcp/7676/p2p/12D3KooWABC...",
     },
 }
 

@@ -43,7 +43,7 @@ func (m *Manager) sendNonBlockingSignalWithMetrics(ch chan<- struct{}, channelNa
 		return true
 	default:
 		m.metrics.DroppedSignals.Add(1)
-		m.logger.Debug("dropped signal", "channel", channelName)
+		m.logger.Debug().Str("channel", channelName).Msg("dropped signal")
 		return false
 	}
 }

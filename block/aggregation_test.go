@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	logging "github.com/ipfs/go-log/v2"
+	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
@@ -36,7 +36,7 @@ func TestAggregationLoop_Normal_BasicInterval(t *testing.T) {
 	mockExec := mocks.NewMockExecutor(t)
 	mockSeq := mocks.NewMockSequencer(t)
 	mockDAC := mocks.NewMockDA(t)
-	logger := logging.Logger("test")
+	logger := zerolog.Nop()
 
 	m := &Manager{
 		store:     mockStore,
@@ -71,7 +71,7 @@ func TestAggregationLoop_Normal_BasicInterval(t *testing.T) {
 		publishLock.Lock()
 		defer publishLock.Unlock()
 		publishTimes = append(publishTimes, time.Now())
-		m.logger.Debug("Mock publishBlock called", "time", publishTimes[len(publishTimes)-1])
+		m.logger.Debug().Time("time", publishTimes[len(publishTimes)-1]).Msg("Mock publishBlock called")
 		return nil
 	}
 	m.publishBlock = mockPublishBlock
@@ -83,22 +83,22 @@ func TestAggregationLoop_Normal_BasicInterval(t *testing.T) {
 	go func() {
 		defer wg.Done()
 		m.AggregationLoop(ctx, make(chan<- error))
-		m.logger.Info("AggregationLoop exited")
+		m.logger.Info().Msg("AggregationLoop exited")
 	}()
 
-	m.logger.Info("Waiting for blocks..., duration:", waitTime)
+	m.logger.Info().Dur("duration", waitTime).Msg("Waiting for blocks...")
 	time.Sleep(waitTime)
 
-	m.logger.Info("Cancelling context")
+	m.logger.Info().Msg("Cancelling context")
 	cancel()
-	m.logger.Info("Waiting for WaitGroup")
+	m.logger.Info().Msg("Waiting for WaitGroup")
 	wg.Wait()
-	m.logger.Info("WaitGroup finished")
+	m.logger.Info().Msg("WaitGroup finished")
 
 	publishLock.Lock()
 	defer publishLock.Unlock()
 
-	m.logger.Info("Recorded publish times, count:", len(publishTimes), "times:", publishTimes)
+	m.logger.Info().Int("count", len(publishTimes)).Any("times", publishTimes).Msg("Recorded publish times")
 
 	expectedCallsLow := int(waitTime/blockTime) - 1
 	expectedCallsHigh := int(waitTime/blockTime) + 1
@@ -108,7 +108,7 @@ func TestAggregationLoop_Normal_BasicInterval(t *testing.T) {
 	if len(publishTimes) > 1 {
 		for i := 1; i < len(publishTimes); i++ {
 			interval := publishTimes[i].Sub(publishTimes[i-1])
-			m.logger.Debug("Checking interval", "index", i, "interval", interval)
+			m.logger.Debug().Int("index", i).Dur("interval", interval).Msg("Checking interval")
 			tolerance := blockTime / 2
 			assert.True(WithinDuration(t, blockTime, interval, tolerance), "Interval %d (%v) not within tolerance (%v) of blockTime (%v)", i, interval, tolerance, blockTime)
 		}
@@ -131,7 +131,7 @@ func TestAggregationLoop_Normal_PublishBlockError(t *testing.T) {
 	mockSeq := mocks.NewMockSequencer(t)
 	mockDAC := mocks.NewMockDA(t)
 
-	logger := logging.Logger("test")
+	logger := zerolog.Nop()
 
 	// Create a basic Manager instance
 	m := &Manager{
@@ -173,10 +173,10 @@ func TestAggregationLoop_Normal_PublishBlockError(t *testing.T) {
 		publishLock.Unlock()
 
 		if callNum == 1 {
-			m.logger.Debug("Mock publishBlock returning error", "call", callNum)
+			m.logger.Debug().Int64("call", callNum).Msg("Mock publishBlock returning error")
 			return expectedErr
 		}
-		m.logger.Debug("Mock publishBlock returning nil", "call", callNum)
+		m.logger.Debug().Int64("call", callNum).Msg("Mock publishBlock returning nil")
 		return nil
 	}
 	m.publishBlock = mockPublishBlock
@@ -189,7 +189,7 @@ func TestAggregationLoop_Normal_PublishBlockError(t *testing.T) {
 	go func() {
 		defer wg.Done()
 		m.AggregationLoop(ctx, errCh)
-		m.logger.Info("AggregationLoop exited")
+		m.logger.Info().Msg("AggregationLoop exited")
 	}()
 
 	time.Sleep(waitTime)

@@ -12,7 +12,7 @@ func (m *Manager) HeaderStoreRetrieveLoop(ctx context.Context) {
 	// height is always > 0
 	initialHeight, err := m.store.Height(ctx)
 	if err != nil {
-		m.logger.Error("failed to get initial store height for DataStoreRetrieveLoop", "error", err)
+		m.logger.Error().Err(err).Msg("failed to get initial store height for DataStoreRetrieveLoop")
 		return
 	}
 	lastHeaderStoreHeight := initialHeight
@@ -26,7 +26,7 @@ func (m *Manager) HeaderStoreRetrieveLoop(ctx context.Context) {
 		if headerStoreHeight > lastHeaderStoreHeight {
 			headers, err := m.getHeadersFromHeaderStore(ctx, lastHeaderStoreHeight+1, headerStoreHeight)
 			if err != nil {
-				m.logger.Error("failed to get headers from Header Store", "lastHeaderHeight", lastHeaderStoreHeight, "headerStoreHeight", headerStoreHeight, "errors", err.Error())
+				m.logger.Error().Uint64("lastHeaderHeight", lastHeaderStoreHeight).Uint64("headerStoreHeight", headerStoreHeight).Str("errors", err.Error()).Msg("failed to get headers from Header Store")
 				continue
 			}
 			daHeight := m.daHeight.Load()
@@ -50,7 +50,7 @@ func (m *Manager) HeaderStoreRetrieveLoop(ctx context.Context) {
 				if !m.isUsingExpectedSingleSequencer(header) {
 					continue
 				}
-				m.logger.Debug("header retrieved from p2p header sync", "headerHeight", header.Height(), "daHeight", daHeight)
+				m.logger.Debug().Uint64("headerHeight", header.Height()).Uint64("daHeight", daHeight).Msg("header retrieved from p2p header sync")
 				m.headerInCh <- NewHeaderEvent{header, daHeight}
 			}
 		}
@@ -63,7 +63,7 @@ func (m *Manager) DataStoreRetrieveLoop(ctx context.Context) {
 	// height is always > 0
 	initialHeight, err := m.store.Height(ctx)
 	if err != nil {
-		m.logger.Error("failed to get initial store height for DataStoreRetrieveLoop", "error", err)
+		m.logger.Error().Err(err).Msg("failed to get initial store height for DataStoreRetrieveLoop")
 		return
 	}
 	lastDataStoreHeight := initialHeight
@@ -77,7 +77,7 @@ func (m *Manager) DataStoreRetrieveLoop(ctx context.Context) {
 		if dataStoreHeight > lastDataStoreHeight {
 			data, err := m.getDataFromDataStore(ctx, lastDataStoreHeight+1, dataStoreHeight)
 			if err != nil {
-				m.logger.Error("failed to get data from Data Store", "lastDataStoreHeight", lastDataStoreHeight, "dataStoreHeight", dataStoreHeight, "errors", err.Error())
+				m.logger.Error().Uint64("lastDataStoreHeight", lastDataStoreHeight).Uint64("dataStoreHeight", dataStoreHeight).Str("errors", err.Error()).Msg("failed to get data from Data Store")
 				continue
 			}
 			daHeight := m.daHeight.Load()
@@ -94,7 +94,7 @@ func (m *Manager) DataStoreRetrieveLoop(ctx context.Context) {
 				default:
 				}
 				// TODO: remove junk if possible
-				m.logger.Debug("data retrieved from p2p data sync", "dataHeight", d.Metadata.Height, "daHeight", daHeight)
+				m.logger.Debug().Uint64("dataHeight", d.Metadata.Height).Uint64("daHeight", daHeight).Msg("data retrieved from p2p data sync")
 				m.dataInCh <- NewDataEvent{d, daHeight}
 			}
 		}

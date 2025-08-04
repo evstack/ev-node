@@ -3,7 +3,7 @@ package block
 import (
 	"context"
 
-	logging "github.com/ipfs/go-log/v2"
+	"github.com/rs/zerolog"
 
 	"github.com/evstack/ev-node/pkg/store"
 	"github.com/evstack/ev-node/types"
@@ -34,7 +34,7 @@ func fetchData(ctx context.Context, store store.Store, height uint64) (*types.Da
 }
 
 // NewPendingData returns a new PendingData struct
-func NewPendingData(store store.Store, logger logging.EventLogger) (*PendingData, error) {
+func NewPendingData(store store.Store, logger zerolog.Logger) (*PendingData, error) {
 	base, err := newPendingBase(store, logger, LastSubmittedDataHeightKey, fetchData)
 	if err != nil {
 		return nil, err

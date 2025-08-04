@@ -7,7 +7,7 @@ import (
 	"testing"
 
 	ds "github.com/ipfs/go-datastore"
-	logging "github.com/ipfs/go-log/v2"
+	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
@@ -30,8 +30,7 @@ type pendingBaseTestCase[T any] struct {
 func runPendingBase_InitAndGetLastSubmittedHeight[T any](t *testing.T, tc pendingBaseTestCase[T]) {
 	t.Run(tc.name+"/InitAndGetLastSubmittedHeight", func(t *testing.T) {
 		mockStore := mocksStore.NewMockStore(t)
-		logger := logging.Logger("test")
-		_ = logging.SetLogLevel("test", "FATAL")
+		logger := zerolog.Nop()
 		mockStore.On("GetMetadata", mock.Anything, tc.key).Return(nil, ds.ErrNotFound).Once()
 		pb, err := newPendingBase(mockStore, logger, tc.key, tc.fetch)
 		assert.NoError(t, err)
@@ -43,8 +42,7 @@ func runPendingBase_InitAndGetLastSubmittedHeight[T any](t *testing.T, tc pendin
 func runPendingBase_GetPending_AllCases[T any](t *testing.T, tc pendingBaseTestCase[T]) {
 	t.Run(tc.name+"/GetPending_AllCases", func(t *testing.T) {
 		mockStore := mocksStore.NewMockStore(t)
-		logger := logging.Logger("test")
-		_ = logging.SetLogLevel("test", "FATAL")
+		logger := zerolog.Nop()
 		mockStore.On("GetMetadata", mock.Anything, tc.key).Return(nil, ds.ErrNotFound).Once()
 		pb, err := newPendingBase(mockStore, logger, tc.key, tc.fetch)
 		require.NoError(t, err)
@@ -101,8 +99,7 @@ func runPendingBase_GetPending_AllCases[T any](t *testing.T, tc pendingBaseTestC
 func runPendingBase_isEmpty_numPending[T any](t *testing.T, tc pendingBaseTestCase[T]) {
 	t.Run(tc.name+"/isEmpty_numPending", func(t *testing.T) {
 		mockStore := mocksStore.NewMockStore(t)
-		logger := logging.Logger("test")
-		_ = logging.SetLogLevel("test", "FATAL")
+		logger := zerolog.Nop()
 		mockStore.On("GetMetadata", mock.Anything, tc.key).Return(nil, ds.ErrNotFound).Once()
 		pb, err := newPendingBase(mockStore, logger, tc.key, tc.fetch)
 		require.NoError(t, err)
@@ -127,8 +124,7 @@ func runPendingBase_isEmpty_numPending[T any](t *testing.T, tc pendingBaseTestCa
 func runPendingBase_setLastSubmittedHeight[T any](t *testing.T, tc pendingBaseTestCase[T]) {
 	t.Run(tc.name+"/setLastSubmittedHeight", func(t *testing.T) {
 		mockStore := mocksStore.NewMockStore(t)
-		logger := logging.Logger("test")
-		_ = logging.SetLogLevel("test", "FATAL")
+		logger := zerolog.Nop()
 		mockStore.On("GetMetadata", mock.Anything, tc.key).Return(nil, ds.ErrNotFound).Once()
 		pb, err := newPendingBase(mockStore, logger, tc.key, tc.fetch)
 		require.NoError(t, err)
@@ -181,8 +177,7 @@ func runPendingBase_init_cases[T any](t *testing.T, tc pendingBaseTestCase[T]) {
 		for _, c := range cases {
 			t.Run(c.name, func(t *testing.T) {
 				mockStore := mocksStore.NewMockStore(t)
-				logger := logging.Logger("test")
-				_ = logging.SetLogLevel("test", "FATAL")
+				logger := zerolog.Nop()
 				mockStore.On("GetMetadata", mock.Anything, tc.key).Return(c.metaValue, c.metaErr).Once()
 				pb := &pendingBase[T]{store: mockStore, logger: logger, metaKey: tc.key, fetch: tc.fetch}
 				err := pb.init()
@@ -222,11 +217,10 @@ func runPendingBase_Fetch[T any](t *testing.T, tc pendingBaseTestCase[T]) {
 	})
 }
 
-func runPendingBase_NewPending[T any](t *testing.T, tc pendingBaseTestCase[T], newPending func(storepkg.Store, logging.EventLogger) (any, error)) {
+func runPendingBase_NewPending[T any](t *testing.T, tc pendingBaseTestCase[T], newPending func(storepkg.Store, zerolog.Logger) (any, error)) {
 	t.Run(tc.name+"/new_pending", func(t *testing.T) {
 		mockStore := mocksStore.NewMockStore(t)
-		logger := logging.Logger("test")
-		_ = logging.SetLogLevel("test", "FATAL")
+		logger := zerolog.Nop()
 		mockStore.On("GetMetadata", mock.Anything, tc.key).Return(nil, ds.ErrNotFound).Once()
 		pending, err := newPending(mockStore, logger)
 		assert.NoError(t, err)
@@ -235,8 +229,7 @@ func runPendingBase_NewPending[T any](t *testing.T, tc pendingBaseTestCase[T], n
 
 	t.Run(tc.name+"/new_pending_error", func(t *testing.T) {
 		mockStore := mocksStore.NewMockStore(t)
-		logger := logging.Logger("test")
-		_ = logging.SetLogLevel("test", "FATAL")
+		logger := zerolog.Nop()
 		simErr := errors.New("simulated error")
 		mockStore.On("GetMetadata", mock.Anything, tc.key).Return(nil, simErr).Once()
 		pending, err := newPending(mockStore, logger)
@@ -282,7 +275,7 @@ func TestPendingBase_Generic(t *testing.T) {
 			runPendingBase_setLastSubmittedHeight(t, tc)
 			runPendingBase_init_cases(t, tc)
 			runPendingBase_Fetch(t, tc)
-			runPendingBase_NewPending(t, tc, func(store storepkg.Store, logger logging.EventLogger) (any, error) {
+			runPendingBase_NewPending(t, tc, func(store storepkg.Store, logger zerolog.Logger) (any, error) {
 				return NewPendingData(store, logger)
 			})
 		case pendingBaseTestCase[*types.SignedHeader]:
@@ -292,7 +285,7 @@ func TestPendingBase_Generic(t *testing.T) {
 			runPendingBase_setLastSubmittedHeight(t, tc)
 			runPendingBase_init_cases(t, tc)
 			runPendingBase_Fetch(t, tc)
-			runPendingBase_NewPending(t, tc, func(store storepkg.Store, logger logging.EventLogger) (any, error) {
+			runPendingBase_NewPending(t, tc, func(store storepkg.Store, logger zerolog.Logger) (any, error) {
 				return NewPendingHeaders(store, logger)
 			})
 		}

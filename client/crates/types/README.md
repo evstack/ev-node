@@ -1,6 +1,6 @@
-# rollkit-types
+# ev-types
 
-Proto-generated types for Rollkit.
+Proto-generated types for Ev-node.
 
 ## Features
 
@@ -13,7 +13,7 @@ Proto-generated types for Rollkit.
 
 ```toml
 [dependencies]
-rollkit-types = "0.1"
+ev-types = "0.0.1"
 ```
 
 ### Types only (without gRPC)
@@ -22,12 +22,12 @@ If you only need the message types without gRPC client/server code:
 
 ```toml
 [dependencies]
-rollkit-types = { version = "0.1", default-features = false }
+ev-types = { version = "0.0.1", default-features = false }
 ```
 
 This is useful when:
 
-- You only need to serialize/deserialize Rollkit messages
+- You only need to serialize/deserialize Ev-node messages
 - You're using a different RPC framework
 - You want to minimize dependencies
 - You're building for environments where gRPC is not needed
@@ -36,33 +36,41 @@ This is useful when:
 
 This crate generates two versions of the protobuf code:
 
-1. **`rollkit.v1.messages.rs`** - Contains only the message types (structs/enums) with no gRPC dependencies
-2. **`rollkit.v1.services.rs`** - Contains everything including gRPC client/server code
+1. **`evnode.v1.messages.rs`** - Contains only the message types (structs/enums) with no gRPC dependencies
+2. **`evnode.v1.services.rs`** - Contains everything including gRPC client/server code
 
 Both files are pre-generated and checked into the repository, so users don't need `protoc` installed or need to regenerate based on their feature selection.
 
 ## Building
 
-The proto files are automatically generated during the build process:
+The crate uses pre-generated proto files that are checked into version control. This ensures that the crate can be built from crates.io without requiring access to the original `.proto` files.
 
 ```bash
 cargo build
 ```
+
+The build script will:
+1. Check if pre-generated files exist (`src/proto/evnode.v1.*.rs`)
+2. If they exist, use them (this is the default behavior)
+3. If they don't exist, attempt to generate them from source proto files
 
 ## Proto Generation
 
 The generated code is committed to the repository. If you modify the proto files, you need to regenerate:
 
 ```bash
-# From the repository root
-make rust-proto-gen
+# Force regeneration by setting the environment variable
+EV_TYPES_FORCE_PROTO_GEN=1 cargo build
 
-# Or directly
-cd client/crates/rollkit-types
-cargo build
+# Or from the repository root (if a make target exists)
+make rust-proto-gen
 ```
 
-**Important**: The build process generates both `rollkit.v1.messages.rs` and `rollkit.v1.services.rs`. Both files should be committed to ensure users can use the crate without needing to regenerate based on their feature selection.
+**Important**: 
+- The build process generates both `evnode.v1.messages.rs` and `evnode.v1.services.rs`
+- Both files should be committed to ensure users can use the crate without needing to regenerate
+- When publishing to crates.io, the pre-generated files are included in the package
+- Users installing from crates.io will use the pre-generated files automatically
 
 ## Version Consistency
 
