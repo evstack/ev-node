@@ -283,10 +283,12 @@ func TestLoad_WithMixedData(t *testing.T) {
 	require.Equal(2, bq.Size(), "Queue should contain only the 2 valid batches")
 	// Check hashes to be sure (order might vary depending on datastore query)
 	loadedHashes := make(map[string]bool)
-	for i := bq.head; i < len(bq.queue); i++ {
-		h, _ := bq.queue[i].Hash()
-		loadedHashes[hex.EncodeToString(h)] = true
-	}
+bq.mu.Lock()
+for i := bq.head; i < len(bq.queue); i++ {
+	h, _ := bq.queue[i].Hash()
+	loadedHashes[hex.EncodeToString(h)] = true
+}
+bq.mu.Unlock()
 	require.True(loadedHashes[hexHash1], "Valid batch 1 not found in queue")
 	require.True(loadedHashes[hexHash2], "Valid batch 2 not found in queue")
 
