@@ -12,7 +12,7 @@ require (
 	github.com/evstack/ev-node/core v0.0.0-20250312114929-104787ba1a4c
 	github.com/go-kit/kit v0.13.0
 	github.com/ipfs/go-datastore v0.8.2
-	github.com/ipfs/go-log/v2 v2.6.0
+	github.com/rs/zerolog v1.33.0
 	github.com/prometheus/client_golang v1.22.0
 	github.com/stretchr/testify v1.10.0
 	google.golang.org/protobuf v1.36.6

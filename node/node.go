@@ -4,7 +4,7 @@ import (
 	"context"
 
 	ds "github.com/ipfs/go-datastore"
-	logging "github.com/ipfs/go-log/v2"
+	"github.com/rs/zerolog"
 
 	"github.com/evstack/ev-node/block"
 	coreda "github.com/evstack/ev-node/core/da"
@@ -42,7 +42,7 @@ func NewNode(
 	genesis genesis.Genesis,
 	database ds.Batching,
 	metricsProvider MetricsProvider,
-	logger logging.EventLogger,
+	logger zerolog.Logger,
 	nodeOptions NodeOptions,
 ) (Node, error) {
 	if conf.Node.Light {

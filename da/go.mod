@@ -8,7 +8,7 @@ require (
 	github.com/celestiaorg/go-square/v2 v2.2.0
 	github.com/evstack/ev-node/core v0.0.0-20250312114929-104787ba1a4c
 	github.com/filecoin-project/go-jsonrpc v0.7.1
-	github.com/ipfs/go-log/v2 v2.5.1
+	github.com/rs/zerolog v1.33.0
 	github.com/stretchr/testify v1.10.0
 )
 
