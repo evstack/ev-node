@@ -72,7 +72,7 @@ Start the Rollkit node with:
 - `--da.address`: Data availability layer address
 - `--da.auth-token`: Authentication token for DA layer
 - `--da.namespace`: Namespace for DA layer (optional)
-- `--p2p.listen-address`: P2P listen address (default: `/ip4/0.0.0.0/tcp/26656`)
+- `--p2p.listen-address`: P2P listen address (default: `/ip4/0.0.0.0/tcp/7676`)
 - `--block-time`: Time between blocks (default: `1s`)
 
 ## Example: Running with Local DA

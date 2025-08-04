@@ -36,7 +36,7 @@ func main() {
     myStore := store.NewKVStore(...)
 
     // Start the RPC server
-    log.Fatal(server.StartServer(myStore, "localhost:8080"))
+    log.Fatal(server.StartServer(myStore, "localhost:7331"))
 }
 ```
 
@@ -54,7 +54,7 @@ import (
 
 func main() {
     // Create a client
-    storeClient := client.NewStoreClient("http://localhost:8080")
+    storeClient := client.NewStoreClient("http://localhost:7331")
 
     // Use the client to interact with the store
     ctx := context.Background()
