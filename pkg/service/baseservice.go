@@ -2,7 +2,6 @@ package service
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/rs/zerolog"
 )
@@ -67,13 +66,13 @@ func (bs *BaseService) SetLogger(l zerolog.Logger) {
 // then defers to the implementation's Run method to do the actual work.
 // If impl is nil or the same as bs, it uses the default implementation.
 func (bs *BaseService) Run(ctx context.Context) error {
-	bs.Logger.Info().Str("msg", fmt.Sprintf("Starting %v service", bs.name)).Str("impl", bs.name).Msg("service start")
+	bs.Logger.Info().Str("Starting service", bs.name).Str("impl", bs.name).Msg("service start")
 
 	// If the implementation is nil or is the BaseService itself,
 	// use the default implementation which just waits for context cancellation
 	if bs.impl == nil || bs.impl == bs {
 		<-ctx.Done()
-		bs.Logger.Info().Str("msg", fmt.Sprintf("Stopping %v service", bs.name)).Str("impl", bs.name).Msg("service stop")
+		bs.Logger.Info().Str("Stopping service", bs.name).Str("impl", bs.name).Msg("service stop")
 		return ctx.Err()
 	}
 
