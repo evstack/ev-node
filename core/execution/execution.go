@@ -8,6 +8,8 @@ import (
 // Executor defines the interface that execution clients must implement to be compatible with Rollkit.
 // This interface enables the separation between consensus and execution layers, allowing for modular
 // and pluggable execution environments.
+//
+// Note: if you are modifying this interface, ensure that all implementations are compatible (evm, abci, protobuf/grpc, etc..
 type Executor interface {
 	// InitChain initializes a new blockchain instance with genesis parameters.
 	// Requirements:
