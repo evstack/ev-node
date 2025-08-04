@@ -4,8 +4,37 @@ use walkdir::WalkDir;
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let manifest_dir_str = env::var("CARGO_MANIFEST_DIR")?;
     let manifest_dir = Path::new(&manifest_dir_str);
+    
+    // Create output directories
+    let proto_dir = manifest_dir.join("src/proto");
+    fs::create_dir_all(&proto_dir)?;
+    
+    // Check if generated files already exist
+    let messages_file = proto_dir.join("evnode.v1.messages.rs");
+    let services_file = proto_dir.join("evnode.v1.services.rs");
+    
+    // Check for environment variable to force regeneration
+    let force_regen = env::var("EV_TYPES_FORCE_PROTO_GEN").is_ok();
+    
+    // If files exist and we're not forcing regeneration, skip generation
+    if !force_regen && messages_file.exists() && services_file.exists() {
+        println!("cargo:warning=Using pre-generated proto files. Set EV_TYPES_FORCE_PROTO_GEN=1 to regenerate.");
+        return Ok(());
+    }
+    
     // Make the include dir absolute and resolved (no "..", symlinks, etc.)
-    let proto_root = manifest_dir.join("../../../proto").canonicalize()?;
+    let proto_root = match manifest_dir.join("../../../proto").canonicalize() {
+        Ok(path) => path,
+        Err(e) => {
+            // If proto files don't exist but generated files do, that's ok
+            if messages_file.exists() && services_file.exists() {
+                println!("cargo:warning=Proto source files not found at ../../../proto, using pre-generated files");
+                return Ok(());
+            }
+            // Otherwise, this is a real error
+            return Err(format!("Proto files not found and no pre-generated files available: {}", e).into());
+        }
+    };
 
     // Collect the .proto files
     let proto_files: Vec<_> = WalkDir::new(&proto_root)
@@ -15,10 +44,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             (p.extension()?.to_str()? == "proto").then_some(p)
         })
         .collect();
-
-    // Create output directories
-    let proto_dir = manifest_dir.join("src/proto");
-    fs::create_dir_all(&proto_dir)?;
 
     // Always generate both versions and keep them checked in
     // This way users don't need to regenerate based on features
