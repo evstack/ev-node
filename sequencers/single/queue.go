@@ -93,8 +93,9 @@ func (bq *BatchQueue) Next(ctx context.Context) (*coresequencer.Batch, error) {
 		return &coresequencer.Batch{Transactions: nil}, nil
 	}
 
-	batch := bq.queue[bq.head]
-	bq.head++
+batch := bq.queue[bq.head]
+bq.queue[bq.head] = coresequencer.Batch{} // Release memory for the dequeued element
+bq.head++
 
 	// Compact when head gets too large to prevent memory leaks
 	// Only compact when we have significant waste (more than half processed)
