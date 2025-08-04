@@ -19,6 +19,7 @@ import (
 	"github.com/evstack/ev-node/pkg/p2p/key"
 	"github.com/evstack/ev-node/pkg/store"
 	"github.com/evstack/ev-node/sequencers/based"
+	"github.com/evstack/ev-node/sequencers/single"
 
 	"github.com/spf13/cobra"
 )
@@ -169,11 +170,13 @@ func NewExtendedRunNodeCmd(ctx context.Context) *cobra.Command {
 				return fmt.Errorf("failed to create P2P client: %w", err)
 			}
 
+			directTXSeq := single.NewDirectTxSequencer(sequencer, logger, datastore, 100) // todo (Alex): what is a good max value
+
 			// Pass the raw rollDA implementation to StartNode.
 			// StartNode might need adjustment if it strictly requires coreda.Client methods.
 			// For now, assume it can work with coreda.DA or will be adjusted later.
 			// We also need to pass the namespace config for rollDA.
-			return rollcmd.StartNode(logger, cmd, executor, sequencer, rollDA, p2pClient, datastore, nodeConfig, node.NodeOptions{})
+			return rollcmd.StartNode(logger, cmd, executor, directTXSeq, rollDA, p2pClient, datastore, nodeConfig, node.NodeOptions{})
 		},
 	}
 

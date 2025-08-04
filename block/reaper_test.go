@@ -33,7 +33,7 @@ func TestReaper_SubmitTxs_Success(t *testing.T) {
 	// Prepare transaction and its hash
 	tx := []byte("tx1")
 
-	// Mock interactions for the first SubmitTxs call
+	// Mock interactions for the first retrieveDirectTXs call
 	mockExec.On("GetTxs", mock.Anything).Return([][]byte{tx}, nil).Once()
 	submitReqMatcher := mock.MatchedBy(func(req coresequencer.SubmitBatchTxsRequest) bool {
 		return string(req.Id) == chainID && len(req.Batch.Transactions) == 1 && string(req.Batch.Transactions[0]) == string(tx)

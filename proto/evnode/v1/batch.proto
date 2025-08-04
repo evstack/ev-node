@@ -7,3 +7,11 @@ option go_package = "github.com/evstack/ev-node/types/pb/evnode/v1";
 message Batch {
   repeated bytes txs = 1;
 }
+
+// DirectTX a TX that submitted directly to the DA
+message DirectTX {
+  bytes tx = 1;
+  bytes id = 2;
+  uint64  first_seen_height = 3;
+  int64 first_seen_time = 4;
+}
