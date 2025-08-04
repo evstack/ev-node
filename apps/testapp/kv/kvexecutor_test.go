@@ -172,3 +172,128 @@ func TestSetFinal(t *testing.T) {
 		t.Error("Expected error for blockHeight 0, got nil")
 	}
 }
+
+func TestSetFinalDoesNotAffectAppHash(t *testing.T) {
+	exec, err := NewKVExecutor(t.TempDir(), "testdb")
+	if err != nil {
+		t.Fatalf("Failed to create KVExecutor: %v", err)
+	}
+	ctx := context.Background()
+
+	// Initialize chain to set up genesis state
+	_, _, err = exec.InitChain(ctx, time.Now(), 1, "test-chain")
+	if err != nil {
+		t.Fatalf("Failed to initialize chain: %v", err)
+	}
+
+	// Add some application data via transactions
+	txs := [][]byte{
+		[]byte("app/key1=value1"),
+		[]byte("app/key2=value2"),
+	}
+	_, _, err = exec.ExecuteTxs(ctx, txs, 1, time.Now(), []byte(""))
+	if err != nil {
+		t.Fatalf("Failed to execute transactions: %v", err)
+	}
+
+	// Compute state root before SetFinal
+	stateRootBefore, err := exec.computeStateRoot(ctx)
+	if err != nil {
+		t.Fatalf("Failed to compute state root before SetFinal: %v", err)
+	}
+
+	// Call SetFinal to write /finalizedHeight
+	err = exec.SetFinal(ctx, 5)
+	if err != nil {
+		t.Fatalf("Failed to set final height: %v", err)
+	}
+
+	// Verify that /finalizedHeight was actually written to the database
+	finalizedHeightExists, err := exec.db.Has(ctx, finalizedHeightKey)
+	if err != nil {
+		t.Fatalf("Failed to check if finalizedHeight exists: %v", err)
+	}
+	if !finalizedHeightExists {
+		t.Error("Expected /finalizedHeight to exist in database after SetFinal")
+	}
+
+	// Verify the stored value
+	storedValue, err := exec.db.Get(ctx, finalizedHeightKey)
+	if err != nil {
+		t.Fatalf("Failed to get finalizedHeight value: %v", err)
+	}
+	if string(storedValue) != "5" {
+		t.Errorf("Expected finalizedHeight value '5', got '%s'", string(storedValue))
+	}
+
+	// Compute state root after SetFinal
+	stateRootAfter, err := exec.computeStateRoot(ctx)
+	if err != nil {
+		t.Fatalf("Failed to compute state root after SetFinal: %v", err)
+	}
+
+	// State root should be identical (finalizedHeight should not affect it)
+	if string(stateRootBefore) != string(stateRootAfter) {
+		t.Errorf("State root changed after SetFinal:\nBefore: %s\nAfter:  %s",
+			string(stateRootBefore), string(stateRootAfter))
+	}
+
+	// Call SetFinal with different height
+	err = exec.SetFinal(ctx, 10)
+	if err != nil {
+		t.Fatalf("Failed to set final height to 10: %v", err)
+	}
+
+	// State root should still be the same
+	stateRootAfterUpdate, err := exec.computeStateRoot(ctx)
+	if err != nil {
+		t.Fatalf("Failed to compute state root after SetFinal update: %v", err)
+	}
+
+	if string(stateRootBefore) != string(stateRootAfterUpdate) {
+		t.Errorf("State root changed after SetFinal update:\nOriginal: %s\nAfter update: %s",
+			string(stateRootBefore), string(stateRootAfterUpdate))
+	}
+
+	// Verify the updated value
+	updatedValue, err := exec.db.Get(ctx, finalizedHeightKey)
+	if err != nil {
+		t.Fatalf("Failed to get updated finalizedHeight value: %v", err)
+	}
+	if string(updatedValue) != "10" {
+		t.Errorf("Expected updated finalizedHeight value '10', got '%s'", string(updatedValue))
+	}
+
+	// Add more application data and verify state root changes only due to app data
+	moreTxs := [][]byte{
+		[]byte("app/key3=value3"),
+	}
+	_, _, err = exec.ExecuteTxs(ctx, moreTxs, 2, time.Now(), stateRootAfterUpdate)
+	if err != nil {
+		t.Fatalf("Failed to execute more transactions: %v", err)
+	}
+
+	finalStateRoot, err := exec.computeStateRoot(ctx)
+	if err != nil {
+		t.Fatalf("Failed to compute final state root: %v", err)
+	}
+
+	// This time state root should be different (due to new app data)
+	if string(stateRootBefore) == string(finalStateRoot) {
+		t.Error("Expected state root to change after adding new application data")
+	}
+
+	// But finalizedHeight should still not be included in the state root calculation
+	// We can verify this by checking that the state root contains our app data
+	stateRootStr := string(finalStateRoot)
+	if !strings.Contains(stateRootStr, "app/key1:value1") ||
+		!strings.Contains(stateRootStr, "app/key2:value2") ||
+		!strings.Contains(stateRootStr, "app/key3:value3") {
+		t.Errorf("State root should contain application data: %s", stateRootStr)
+	}
+
+	// But should NOT contain finalizedHeight
+	if strings.Contains(stateRootStr, "finalizedHeight") {
+		t.Errorf("State root should NOT contain finalizedHeight data: %s", stateRootStr)
+	}
+}

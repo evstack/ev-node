@@ -16,6 +16,7 @@ import (
 var (
 	genesisInitializedKey = ds.NewKey("/genesis/initialized")
 	genesisStateRootKey   = ds.NewKey("/genesis/stateroot")
+	finalizedHeightKey    = ds.NewKey("/finalizedHeight")
 	// Define a buffer size for the transaction channel
 	txChannelBufferSize = 10000
 )
@@ -70,9 +71,9 @@ func (k *KVExecutor) computeStateRoot(ctx context.Context) ([]byte, error) {
 		if result.Error != nil {
 			return nil, fmt.Errorf("error iterating query results: %w", result.Error)
 		}
-		// Exclude reserved genesis keys from the state root calculation
+		// Exclude reserved keys from the state root calculation
 		dsKey := ds.NewKey(result.Key)
-		if dsKey.Equal(genesisInitializedKey) || dsKey.Equal(genesisStateRootKey) {
+		if dsKey.Equal(genesisInitializedKey) || dsKey.Equal(genesisStateRootKey) || dsKey.Equal(finalizedHeightKey) {
 			continue
 		}
 		keys = append(keys, result.Key)
@@ -200,7 +201,7 @@ func (k *KVExecutor) ExecuteTxs(ctx context.Context, txs [][]byte, blockHeight u
 		}
 		dsKey := ds.NewKey(key)
 		// Prevent writing reserved keys via transactions
-		if dsKey.Equal(genesisInitializedKey) || dsKey.Equal(genesisStateRootKey) {
+		if dsKey.Equal(genesisInitializedKey) || dsKey.Equal(genesisStateRootKey) || dsKey.Equal(finalizedHeightKey) {
 			return nil, 0, fmt.Errorf("transaction attempts to modify reserved key: %s", key)
 		}
 		err = batch.Put(ctx, dsKey, []byte(value))
@@ -240,7 +241,7 @@ func (k *KVExecutor) SetFinal(ctx context.Context, blockHeight uint64) error {
 		return errors.New("invalid blockHeight: cannot be zero")
 	}
 
-	return k.db.Put(ctx, ds.NewKey("/finalizedHeight"), []byte(fmt.Sprintf("%d", blockHeight)))
+	return k.db.Put(ctx, finalizedHeightKey, []byte(fmt.Sprintf("%d", blockHeight)))
 }
 
 // InjectTx adds a transaction to the mempool channel.
