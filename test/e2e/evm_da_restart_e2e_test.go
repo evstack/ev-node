@@ -210,18 +210,10 @@ func TestEvmDARestartWithPendingBlocksE2E(t *testing.T) {
 	// ===== PHASE 6: Final Validation =====
 	t.Log("🔄 PHASE 6: Final validation of recovery")
 
-	// Verify that the recovery process completed successfully
-	if !recoverySuccess {
-		t.Logf("⚠️  Recovery incomplete after %v: %d/%d transactions included",
-			recoveryTimeout, finalTxCount, len(pendingTxHashes))
-
-		// Even if not all transactions are included, let's verify there's no infinite loop
-		// by checking that some progress was made
-		require.Greater(t, finalTxCount, 0,
-			"At least some pending transactions should be included after DA restart")
-		require.Greater(t, float64(finalTxCount)/float64(len(pendingTxHashes)), 0.5,
-			"At least 50% of pending transactions should be included to prove recovery is working")
-	}
+	// Verify that ALL transactions were recovered successfully
+	require.True(t, recoverySuccess,
+		"Recovery failed: only %d/%d transactions included after %v. All transactions must be included for data integrity.",
+		finalTxCount, len(pendingTxHashes), recoveryTimeout)
 
 	// Verify final block height increased appropriately
 	finalHeader, err := client.HeaderByNumber(ctx, nil)
