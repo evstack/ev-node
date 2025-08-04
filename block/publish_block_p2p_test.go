@@ -14,8 +14,8 @@ import (
 	ds "github.com/ipfs/go-datastore"
 	ktds "github.com/ipfs/go-datastore/keytransform"
 	syncdb "github.com/ipfs/go-datastore/sync"
-	"github.com/rs/zerolog"
 	"github.com/libp2p/go-libp2p/core/crypto"
+	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 

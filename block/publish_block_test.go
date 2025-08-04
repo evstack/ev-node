@@ -11,8 +11,8 @@ import (
 	"time"
 
 	goheaderstore "github.com/celestiaorg/go-header/store"
-	"github.com/rs/zerolog"
 	"github.com/libp2p/go-libp2p/core/crypto"
+	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
@@ -55,9 +55,6 @@ func setupManagerForPublishBlockTest(
 
 	_, cancel := context.WithCancel(context.Background())
 	logger := zerolog.Nop()
-	if logBuffer != nil {
-		// Debug logging no longer needed with Nop logger
-	}
 
 	lastSubmittedHeaderBytes := make([]byte, 8)
 	binary.LittleEndian.PutUint64(lastSubmittedHeaderBytes, lastSubmittedHeaderHeight)

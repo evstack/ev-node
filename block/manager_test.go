@@ -9,8 +9,8 @@ import (
 	"time"
 
 	ds "github.com/ipfs/go-datastore"
-	"github.com/rs/zerolog"
 	"github.com/libp2p/go-libp2p/core/crypto"
+	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"

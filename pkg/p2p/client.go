@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/ipfs/go-datastore"
-	"github.com/rs/zerolog"
 	libp2p "github.com/libp2p/go-libp2p"
 	dht "github.com/libp2p/go-libp2p-kad-dht"
 	pubsub "github.com/libp2p/go-libp2p-pubsub"
@@ -23,6 +22,7 @@ import (
 	routedhost "github.com/libp2p/go-libp2p/p2p/host/routed"
 	"github.com/libp2p/go-libp2p/p2p/net/conngater"
 	"github.com/multiformats/go-multiaddr"
+	"github.com/rs/zerolog"
 
 	"github.com/evstack/ev-node/pkg/config"
 	rollhash "github.com/evstack/ev-node/pkg/hash"

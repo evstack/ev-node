@@ -26,4 +26,3 @@ func GenerateHeaderHash(t *testing.T, height uint64, proposer []byte) []byte {
 
 	return hasher.Sum(nil)
 }
-

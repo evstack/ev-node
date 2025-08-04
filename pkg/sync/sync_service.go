@@ -12,12 +12,12 @@ import (
 	goheaderstore "github.com/celestiaorg/go-header/store"
 	goheadersync "github.com/celestiaorg/go-header/sync"
 	ds "github.com/ipfs/go-datastore"
-	"github.com/rs/zerolog"
 	pubsub "github.com/libp2p/go-libp2p-pubsub"
 	"github.com/libp2p/go-libp2p/core/host"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-libp2p/p2p/net/conngater"
 	"github.com/multiformats/go-multiaddr"
+	"github.com/rs/zerolog"
 
 	"github.com/evstack/ev-node/pkg/config"
 	"github.com/evstack/ev-node/pkg/genesis"

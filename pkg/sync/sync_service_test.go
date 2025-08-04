@@ -17,9 +17,9 @@ import (
 	"github.com/evstack/ev-node/types"
 	"github.com/ipfs/go-datastore"
 	"github.com/ipfs/go-datastore/sync"
-	"github.com/rs/zerolog"
 	"github.com/libp2p/go-libp2p/core/crypto"
 	mocknet "github.com/libp2p/go-libp2p/p2p/net/mock"
+	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/require"
 )
 

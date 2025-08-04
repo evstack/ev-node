@@ -13,9 +13,9 @@ import (
 
 	ds "github.com/ipfs/go-datastore"
 	ktds "github.com/ipfs/go-datastore/keytransform"
-	"github.com/rs/zerolog"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
+	"github.com/rs/zerolog"
 
 	"github.com/evstack/ev-node/block"
 	coreda "github.com/evstack/ev-node/core/da"

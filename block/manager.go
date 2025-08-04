@@ -15,8 +15,8 @@ import (
 
 	goheader "github.com/celestiaorg/go-header"
 	ds "github.com/ipfs/go-datastore"
-	"github.com/rs/zerolog"
 	"github.com/libp2p/go-libp2p/core/crypto"
+	"github.com/rs/zerolog"
 	"golang.org/x/sync/errgroup"
 
 	coreda "github.com/evstack/ev-node/core/da"

@@ -13,8 +13,8 @@ import (
 	testutils "github.com/celestiaorg/utils/test"
 	"github.com/ipfs/go-datastore"
 	dssync "github.com/ipfs/go-datastore/sync"
-	"github.com/rs/zerolog"
 	"github.com/libp2p/go-libp2p/core/peer"
+	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/require"
 
 	coreda "github.com/evstack/ev-node/core/da"
