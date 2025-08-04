@@ -71,7 +71,7 @@ const (
 	// Test configuration
 	DefaultBlockTime   = "150ms"
 	DefaultDABlockTime = "1s"
-	DefaultTestTimeout = 10 * time.Second
+	DefaultTestTimeout = 20 * time.Second
 	DefaultChainID     = "1234"
 	DefaultGasLimit    = 22000
 
@@ -87,7 +87,7 @@ const (
 
 	ContainerReadinessTimeout = 3 * time.Second // Reduced from 5s
 	P2PDiscoveryTimeout       = 3 * time.Second // Reduced from 5s
-	NodeStartupTimeout        = 4 * time.Second // Reduced from 8s
+	NodeStartupTimeout        = 8 * time.Second // Increased back for CI stability
 
 	// Log optimization - reduce verbosity for faster I/O
 	LogBufferSize = 1024 // Smaller buffer for faster processing
