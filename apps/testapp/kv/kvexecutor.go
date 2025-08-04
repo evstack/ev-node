@@ -19,6 +19,13 @@ var (
 	finalizedHeightKey    = ds.NewKey("/finalizedHeight")
 	// Define a buffer size for the transaction channel
 	txChannelBufferSize = 10000
+	// reservedKeys defines the set of keys that should be excluded from state root calculation
+	// and protected from transaction modifications
+	reservedKeys = map[ds.Key]bool{
+		genesisInitializedKey: true,
+		genesisStateRootKey:   true,
+		finalizedHeightKey:    true,
+	}
 )
 
 // KVExecutor is a simple key-value store backed by go-datastore that implements the Executor interface
@@ -73,7 +80,7 @@ func (k *KVExecutor) computeStateRoot(ctx context.Context) ([]byte, error) {
 		}
 		// Exclude reserved keys from the state root calculation
 		dsKey := ds.NewKey(result.Key)
-		if dsKey.Equal(genesisInitializedKey) || dsKey.Equal(genesisStateRootKey) || dsKey.Equal(finalizedHeightKey) {
+		if reservedKeys[dsKey] {
 			continue
 		}
 		keys = append(keys, result.Key)
@@ -201,7 +208,7 @@ func (k *KVExecutor) ExecuteTxs(ctx context.Context, txs [][]byte, blockHeight u
 		}
 		dsKey := ds.NewKey(key)
 		// Prevent writing reserved keys via transactions
-		if dsKey.Equal(genesisInitializedKey) || dsKey.Equal(genesisStateRootKey) || dsKey.Equal(finalizedHeightKey) {
+		if reservedKeys[dsKey] {
 			return nil, 0, fmt.Errorf("transaction attempts to modify reserved key: %s", key)
 		}
 		err = batch.Put(ctx, dsKey, []byte(value))
