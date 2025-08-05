@@ -11,7 +11,7 @@ require (
 	github.com/evstack/ev-node v0.0.0-00010101000000-000000000000
 	github.com/evstack/ev-node/core v0.0.0-20250312114929-104787ba1a4c
 	github.com/ipfs/go-datastore v0.8.2
-	github.com/rs/zerolog v1.33.0
+	github.com/rs/zerolog v1.34.0
 	github.com/stretchr/testify v1.10.0
 )
 
