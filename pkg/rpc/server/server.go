@@ -95,22 +95,22 @@ func (s *StoreServer) GetBlock(
 	}
 
 	// Fetch and set DA heights
-	rollkitBlockHeight := header.Height()
-	if rollkitBlockHeight > 0 { // DA heights are not stored for genesis/height 0 in the current impl
-		headerDAHeightKey := fmt.Sprintf("%s/%d/h", store.RollkitHeightToDAHeightKey, rollkitBlockHeight)
+	blockHeight := header.Height()
+	if blockHeight > 0 { // DA heights are not stored for genesis/height 0 in the current impl
+		headerDAHeightKey := fmt.Sprintf("%s/%d/h", store.HeightToDAHeightKey, blockHeight)
 		headerDAHeightBytes, err := s.store.GetMetadata(ctx, headerDAHeightKey)
 		if err == nil && len(headerDAHeightBytes) == 8 {
 			resp.HeaderDaHeight = binary.LittleEndian.Uint64(headerDAHeightBytes)
 		} else if err != nil && !errors.Is(err, ds.ErrNotFound) {
-			s.logger.Error().Uint64("height", rollkitBlockHeight).Err(err).Msg("Error fetching header DA height for block")
+			s.logger.Error().Uint64("height", blockHeight).Err(err).Msg("Error fetching header DA height for block")
 		}
 
-		dataDAHeightKey := fmt.Sprintf("%s/%d/d", store.RollkitHeightToDAHeightKey, rollkitBlockHeight)
+		dataDAHeightKey := fmt.Sprintf("%s/%d/d", store.HeightToDAHeightKey, blockHeight)
 		dataDAHeightBytes, err := s.store.GetMetadata(ctx, dataDAHeightKey)
 		if err == nil && len(dataDAHeightBytes) == 8 {
 			resp.DataDaHeight = binary.LittleEndian.Uint64(dataDAHeightBytes)
 		} else if err != nil && !errors.Is(err, ds.ErrNotFound) {
-			s.logger.Error().Uint64("height", rollkitBlockHeight).Err(err).Msg("Error fetching data DA height for block")
+			s.logger.Error().Uint64("height", blockHeight).Err(err).Msg("Error fetching data DA height for block")
 		}
 	}
 
