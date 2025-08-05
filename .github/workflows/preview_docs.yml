@@ -1,0 +1,45 @@
+name: Deploy PR previews
+
+on:
+  # This workflow requires pull_request and won't work with pull_request_target
+  # due to github permissions
+  pull_request:
+    types:
+      - opened
+      - reopened
+      - synchronize
+      - closed
+    paths:
+      - "./docs"
+
+concurrency: preview-${{ github.ref }}
+
+jobs:
+  deploy-preview:
+    if: github.actor != 'dependabot[bot]'
+    runs-on: ubuntu-latest
+    permissions: write-all
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: yarn
+
+      - name: Install dependencies
+        run: yarn install --frozen-lockfile
+
+      - name: Build with Base URL
+        run: BASE='/docs-preview/pr-${{ github.event.number }}/' yarn build
+
+      - name: Deploy preview
+        uses: rossjrw/pr-preview-action@v1
+        with:
+          source-dir: .vitepress/dist
+          deploy-repository: evstack/docs-preview
+          token: ${{ secrets.PREVIEW_DEPLOY }}
+          preview-branch: main
+          umbrella-dir: .

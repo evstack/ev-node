@@ -1,0 +1,899 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Rollkit API",
+    "description": "This API provides access to Signer, Store, P2P, and Health services.\n\n## Services\n\n* **Signer Service** - Sign messages and retrieve public keys\n* **Store Service** - Access blocks, state, and metadata\n* **P2P Service** - Network and peer information\n* **Health Service** - Node health checks and simple HTTP endpoints\n\n## Protocols\n\n### gRPC-Web Protocol\n\nMost endpoints use gRPC-Web protocol over HTTP/1.1 with JSON encoding. Requests are made via POST with `Content-Type: application/json`.\n\n### Simple HTTP Endpoints\n\nSome endpoints (like `/health/live`) are simple HTTP GET requests that return plain text responses for basic monitoring and health checks.",
+    "version": "1.0.0",
+    "contact": {
+      "name": "Rollkit Team",
+      "url": "https://rollkit.dev"
+    }
+  },
+  "servers": [
+    {
+      "url": "http://localhost:7331",
+      "description": "A local Rollkit instance configured to provide a remote procedure call (RPC) endpoint, actively listening for connections on TCP port 7331."
+    }
+  ],
+  "tags": [
+    {
+      "name": "Signer Service",
+      "description": "Sign messages and retrieve public keys"
+    },
+    {
+      "name": "Store Service",
+      "description": "Access blocks, state, and metadata from the chain store"
+    },
+    {
+      "name": "P2P Service",
+      "description": "Network and peer information"
+    },
+    {
+      "name": "Health Service",
+      "description": "Node health and liveness checks"
+    }
+  ],
+  "paths": {
+    "/rollkit.v1.SignerService/Sign": {
+      "post": {
+        "tags": ["Signer Service"],
+        "summary": "Sign a message",
+        "description": "Sign the given message bytes and return the signature.",
+        "operationId": "sign",
+        "requestBody": {
+          "description": "Message to sign",
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SignRequest"
+              },
+              "examples": {
+                "default": {
+                  "summary": "Sign a message",
+                  "value": {
+                    "message": "SGVsbG8gV29ybGQ="
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Message signed successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SignResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      }
+    },
+    "/rollkit.v1.SignerService/GetPublic": {
+      "post": {
+        "tags": ["Signer Service"],
+        "summary": "Get public key",
+        "description": "Retrieve the public key of the signer.",
+        "operationId": "getPublic",
+        "requestBody": {
+          "description": "Get public key request (empty)",
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GetPublicRequest"
+              },
+              "examples": {
+                "default": {
+                  "summary": "Get public key",
+                  "value": {}
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Public key retrieved successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GetPublicResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      }
+    },
+    "/rollkit.v1.StoreService/GetBlock": {
+      "post": {
+        "tags": ["Store Service"],
+        "summary": "Get a block",
+        "description": "Retrieve a block by height or hash from the chain store.",
+        "operationId": "getBlock",
+        "requestBody": {
+          "description": "Block request parameters",
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GetBlockRequest"
+              },
+              "examples": {
+                "by_height": {
+                  "summary": "Get block by height",
+                  "value": {
+                    "height": 1
+                  }
+                },
+                "by_hash": {
+                  "summary": "Get block by hash",
+                  "value": {
+                    "hash": "SGVsbG8gV29ybGQ="
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Block retrieved successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GetBlockResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      }
+    },
+    "/rollkit.v1.StoreService/GetState": {
+      "post": {
+        "tags": ["Store Service"],
+        "summary": "Get current state",
+        "description": "Retrieve the current state of the chain.",
+        "operationId": "getState",
+        "requestBody": {
+          "description": "State request (empty)",
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GetStateRequest"
+              },
+              "examples": {
+                "default": {
+                  "summary": "Get current state",
+                  "value": {}
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "State retrieved successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GetStateResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      }
+    },
+    "/rollkit.v1.StoreService/GetMetadata": {
+      "post": {
+        "tags": ["Store Service"],
+        "summary": "Get metadata",
+        "description": "Retrieve metadata by key from the chain store.",
+        "operationId": "getMetadata",
+        "requestBody": {
+          "description": "Metadata request with key",
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GetMetadataRequest"
+              },
+              "examples": {
+                "default": {
+                  "summary": "Get metadata by key",
+                  "value": {
+                    "key": "example_key"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Metadata retrieved successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GetMetadataResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      }
+    },
+    "/rollkit.v1.P2PService/GetPeerInfo": {
+      "post": {
+        "tags": ["P2P Service"],
+        "summary": "Get peer information",
+        "description": "Retrieve information about connected peers.",
+        "operationId": "getPeerInfo",
+        "requestBody": {
+          "description": "Peer info request (empty)",
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GetPeerInfoRequest"
+              },
+              "examples": {
+                "default": {
+                  "summary": "Get peer information",
+                  "value": {}
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Peer information retrieved successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GetPeerInfoResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      }
+    },
+    "/rollkit.v1.P2PService/GetNetInfo": {
+      "post": {
+        "tags": ["P2P Service"],
+        "summary": "Get network information",
+        "description": "Retrieve network information and statistics.",
+        "operationId": "getNetInfo",
+        "requestBody": {
+          "description": "Network info request (empty)",
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GetNetInfoRequest"
+              },
+              "examples": {
+                "default": {
+                  "summary": "Get network information",
+                  "value": {}
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Network information retrieved successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GetNetInfoResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      }
+    },
+    "/rollkit.v1.HealthService/Livez": {
+      "post": {
+        "tags": ["Health Service"],
+        "summary": "Check node health",
+        "description": "Check if the node is alive and healthy.",
+        "operationId": "livez",
+        "requestBody": {
+          "description": "Health check request (empty)",
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LivezRequest"
+              },
+              "examples": {
+                "default": {
+                  "summary": "Check node health",
+                  "value": {}
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Node is healthy",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GetHealthResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Node is unhealthy",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/health/live": {
+      "get": {
+        "tags": ["Health Service"],
+        "summary": "Simple liveness check",
+        "description": "Simple HTTP endpoint to check if the node is alive. Returns plain text 'OK' response.",
+        "operationId": "healthLive",
+        "responses": {
+          "200": {
+            "description": "Node is alive",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string",
+                  "example": "OK"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "responses": {
+      "BadRequest": {
+        "description": "Bad Request",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
+      },
+      "NotFound": {
+        "description": "Not Found",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
+      },
+      "InternalError": {
+        "description": "Internal Server Error",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
+      }
+    },
+    "schemas": {
+      "SignRequest": {
+        "type": "object",
+        "description": "Request to sign a message",
+        "required": ["message"],
+        "properties": {
+          "message": {
+            "type": "string",
+            "format": "byte",
+            "description": "The bytes we want to sign (base64-encoded)",
+            "example": "SGVsbG8gV29ybGQ="
+          }
+        }
+      },
+      "SignResponse": {
+        "type": "object",
+        "description": "Response containing signature",
+        "required": ["signature"],
+        "properties": {
+          "signature": {
+            "type": "string",
+            "format": "byte",
+            "description": "The signature bytes (base64-encoded)",
+            "example": "c2lnbmF0dXJl"
+          }
+        }
+      },
+      "GetPublicRequest": {
+        "type": "object",
+        "description": "Request to get public key (empty)",
+        "properties": {}
+      },
+      "GetPublicResponse": {
+        "type": "object",
+        "description": "Response containing public key",
+        "required": ["public_key"],
+        "properties": {
+          "public_key": {
+            "type": "string",
+            "format": "byte",
+            "description": "The public key (base64-encoded)",
+            "example": "cHVibGljX2tleQ=="
+          }
+        }
+      },
+      "GetBlockRequest": {
+        "type": "object",
+        "description": "Request to get a block by height or hash",
+        "properties": {
+          "height": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Block height to retrieve",
+            "example": 1
+          },
+          "hash": {
+            "type": "string",
+            "format": "byte",
+            "description": "Block hash to retrieve (base64-encoded)",
+            "example": "SGVsbG8gV29ybGQ="
+          }
+        }
+      },
+      "GetBlockResponse": {
+        "type": "object",
+        "description": "Response containing block data",
+        "properties": {
+          "block": {
+            "$ref": "#/components/schemas/Block"
+          },
+          "header_da_height": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Data availability height for header"
+          },
+          "data_da_height": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Data availability height for data"
+          }
+        }
+      },
+      "GetStateRequest": {
+        "type": "object",
+        "description": "Request to get current state (empty)",
+        "properties": {}
+      },
+      "GetStateResponse": {
+        "type": "object",
+        "description": "Response containing current state",
+        "properties": {
+          "state": {
+            "$ref": "#/components/schemas/State"
+          }
+        }
+      },
+      "GetMetadataRequest": {
+        "type": "object",
+        "description": "Request to get metadata by key",
+        "required": ["key"],
+        "properties": {
+          "key": {
+            "type": "string",
+            "description": "Metadata key to retrieve",
+            "example": "example_key"
+          }
+        }
+      },
+      "GetMetadataResponse": {
+        "type": "object",
+        "description": "Response containing metadata",
+        "required": ["value"],
+        "properties": {
+          "value": {
+            "type": "string",
+            "format": "byte",
+            "description": "Metadata value (base64-encoded)",
+            "example": "dGVzdCB2YWx1ZQ=="
+          }
+        }
+      },
+      "GetPeerInfoRequest": {
+        "type": "object",
+        "description": "Request to get peer information (empty)",
+        "properties": {}
+      },
+      "GetPeerInfoResponse": {
+        "type": "object",
+        "description": "Response containing peer information",
+        "required": ["peers"],
+        "properties": {
+          "peers": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PeerInfo"
+            },
+            "description": "List of connected peers"
+          }
+        }
+      },
+      "GetNetInfoRequest": {
+        "type": "object",
+        "description": "Request to get network information (empty)",
+        "properties": {}
+      },
+      "GetNetInfoResponse": {
+        "type": "object",
+        "description": "Response containing network information",
+        "properties": {
+          "net_info": {
+            "$ref": "#/components/schemas/NetInfo"
+          }
+        }
+      },
+      "LivezRequest": {
+        "type": "object",
+        "description": "Request to check node health (empty)",
+        "properties": {}
+      },
+      "GetHealthResponse": {
+        "type": "object",
+        "description": "Response indicating node health status",
+        "required": ["status"],
+        "properties": {
+          "status": {
+            "$ref": "#/components/schemas/HealthStatus"
+          }
+        }
+      },
+      "HealthStatus": {
+        "type": "string",
+        "enum": ["UNKNOWN", "PASS", "WARN", "FAIL"],
+        "description": "Health status of the node"
+      },
+      "Block": {
+        "type": "object",
+        "description": "Chain block data",
+        "properties": {
+          "header": {
+            "$ref": "#/components/schemas/SignedHeader"
+          },
+          "data": {
+            "$ref": "#/components/schemas/Data"
+          }
+        }
+      },
+      "SignedHeader": {
+        "type": "object",
+        "description": "Signed block header",
+        "properties": {
+          "header": {
+            "$ref": "#/components/schemas/Header"
+          },
+          "signature": {
+            "type": "string",
+            "format": "byte",
+            "description": "Header signature (base64-encoded)"
+          },
+          "signer": {
+            "$ref": "#/components/schemas/Signer"
+          }
+        }
+      },
+      "Header": {
+        "type": "object",
+        "description": "Block header information",
+        "required": ["height", "time", "chain_id"],
+        "properties": {
+          "version": {
+            "$ref": "#/components/schemas/Version"
+          },
+          "height": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Block height"
+          },
+          "time": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Block creation time"
+          },
+          "last_header_hash": {
+            "type": "string",
+            "format": "byte",
+            "description": "Previous block info (base64-encoded)"
+          },
+          "last_commit_hash": {
+            "type": "string",
+            "format": "byte",
+            "description": "Commit from aggregator(s) from the last block (base64-encoded)"
+          },
+          "data_hash": {
+            "type": "string",
+            "format": "byte",
+            "description": "Block.Data root aka Transactions (base64-encoded)"
+          },
+          "consensus_hash": {
+            "type": "string",
+            "format": "byte",
+            "description": "Consensus params for current block (base64-encoded)"
+          },
+          "app_hash": {
+            "type": "string",
+            "format": "byte",
+            "description": "State after applying txs from the current block (base64-encoded)"
+          },
+          "last_results_hash": {
+            "type": "string",
+            "format": "byte",
+            "description": "Root hash of all results from the txs from the previous block (base64-encoded)"
+          },
+          "proposer_address": {
+            "type": "string",
+            "format": "byte",
+            "description": "Original proposer of the block (base64-encoded)"
+          },
+          "validator_hash": {
+            "type": "string",
+            "format": "byte",
+            "description": "validatorhash for compatibility with tendermint light client (base64-encoded)"
+          },
+          "chain_id": {
+            "type": "string",
+            "description": "Chain ID the block belongs to"
+          }
+        }
+      },
+      "Version": {
+        "type": "object",
+        "description": "Version captures the consensus rules for processing a block",
+        "required": ["block", "app"],
+        "properties": {
+          "block": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Block version"
+          },
+          "app": {
+            "type": "integer",
+            "format": "int64",
+            "description": "App version"
+          }
+        }
+      },
+      "Signer": {
+        "type": "object",
+        "description": "Signer of a block",
+        "required": ["address", "pub_key"],
+        "properties": {
+          "address": {
+            "type": "string",
+            "format": "byte",
+            "description": "Address of the signer (base64-encoded)"
+          },
+          "pub_key": {
+            "type": "string",
+            "format": "byte",
+            "description": "Public key of the signer (base64-encoded)"
+          }
+        }
+      },
+      "Data": {
+        "type": "object",
+        "description": "Block transaction data",
+        "required": ["txs"],
+        "properties": {
+          "metadata": {
+            "$ref": "#/components/schemas/Metadata"
+          },
+          "txs": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "byte"
+            },
+            "description": "List of transactions (base64-encoded)"
+          }
+        }
+      },
+      "Metadata": {
+        "type": "object",
+        "description": "Metadata of a block",
+        "required": ["chain_id", "height", "time"],
+        "properties": {
+          "chain_id": {
+            "type": "string",
+            "description": "Chain ID"
+          },
+          "height": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Block height"
+          },
+          "time": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Block creation time"
+          },
+          "last_data_hash": {
+            "type": "string",
+            "format": "byte",
+            "description": "Previous block info (base64-encoded)"
+          }
+        }
+      },
+      "State": {
+        "type": "object",
+        "description": "Current chain state",
+        "required": ["chain_id", "initial_height", "last_block_height", "da_height"],
+        "properties": {
+          "version": {
+            "$ref": "#/components/schemas/Version"
+          },
+          "chain_id": {
+            "type": "string",
+            "description": "Chain ID"
+          },
+          "initial_height": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Initial height"
+          },
+          "last_block_height": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Last block height"
+          },
+          "last_block_time": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Last block time"
+          },
+          "da_height": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Data availability height"
+          },
+          "last_results_hash": {
+            "type": "string",
+            "format": "byte",
+            "description": "Last results hash (base64-encoded)"
+          },
+          "app_hash": {
+            "type": "string",
+            "format": "byte",
+            "description": "Application state hash (base64-encoded)"
+          }
+        }
+      },
+      "PeerInfo": {
+        "type": "object",
+        "description": "Information about a connected peer",
+        "required": ["id", "address"],
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Peer ID"
+          },
+          "address": {
+            "type": "string",
+            "description": "Peer network address"
+          }
+        }
+      },
+      "NetInfo": {
+        "type": "object",
+        "description": "Network information",
+        "required": ["id", "listen_addresses", "connected_peers"],
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Network ID"
+          },
+          "listen_addresses": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Listen addresses"
+          },
+          "connected_peers": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "List of connected peers"
+          }
+        }
+      },
+      "Error": {
+        "type": "object",
+        "description": "Error response",
+        "required": ["code", "message"],
+        "properties": {
+          "code": {
+            "type": "integer",
+            "description": "Error code"
+          },
+          "message": {
+            "type": "string",
+            "description": "Error message"
+          },
+          "details": {
+            "type": "array",
+            "items": {
+              "type": "object"
+            },
+            "description": "Additional error details"
+          }
+        }
+      }
+    }
+  }
+}
