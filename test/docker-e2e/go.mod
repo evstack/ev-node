@@ -4,6 +4,10 @@ go 1.24.2
 
 require github.com/celestiaorg/tastora v0.0.4
 
+require github.com/containerd/errdefs/pkg v0.3.0 // indirect
+
+replace github.com/celestiaorg/tastora => ../../../tastora
+
 require (
 	github.com/golang/mock v1.6.0 // indirect
 	github.com/google/orderedcode v0.0.1 // indirect
@@ -86,7 +90,7 @@ require (
 	github.com/dgraph-io/badger/v4 v4.2.0 // indirect
 	github.com/dgraph-io/ristretto v0.1.1 // indirect
 	github.com/distribution/reference v0.6.0 // indirect
-	github.com/docker/docker v28.3.3+incompatible // indirect
+	github.com/docker/docker v28.3.3+incompatible
 	github.com/docker/go-connections v0.5.0 // indirect
 	github.com/docker/go-units v0.5.0 // indirect
 	github.com/dustin/go-humanize v1.0.1 // indirect
