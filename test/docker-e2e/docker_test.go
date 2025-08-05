@@ -13,6 +13,7 @@ import (
 	"cosmossdk.io/math"
 	"github.com/celestiaorg/go-square/v2/share"
 	tastoradocker "github.com/celestiaorg/tastora/framework/docker"
+	"github.com/celestiaorg/tastora/framework/docker/container"
 	"github.com/celestiaorg/tastora/framework/testutil/sdkacc"
 	"github.com/celestiaorg/tastora/framework/testutil/toml"
 	tastoratypes "github.com/celestiaorg/tastora/framework/types"
@@ -79,11 +80,7 @@ func (s *DockerTestSuite) CreateDockerProvider(opts ...ConfigOption) tastoratype
 			NumValidators: &numValidators,
 			NumFullNodes:  &numFullNodes,
 			ChainID:       testChainID,
-			Image: tastoradocker.DockerImage{
-				Repository: "ghcr.io/celestiaorg/celestia-app",
-				Version:    "v4.0.0-rc6",
-				UIDGID:     "10001:10001",
-			},
+			Image: container.NewImage("ghcr.io/celestiaorg/celestia-app", "v4.0.0-rc6", "10001:10001"),
 			Bin:            "celestia-appd",
 			Bech32Prefix:   "celestia",
 			Denom:          "utia",
@@ -102,11 +99,7 @@ func (s *DockerTestSuite) CreateDockerProvider(opts ...ConfigOption) tastoratype
 		},
 		DataAvailabilityNetworkConfig: &tastoradocker.DataAvailabilityNetworkConfig{
 			BridgeNodeCount: 1,
-			Image: tastoradocker.DockerImage{
-				Repository: "ghcr.io/celestiaorg/celestia-node",
-				Version:    "pr-4283",
-				UIDGID:     "10001:10001",
-			},
+			Image: container.NewImage("ghcr.io/celestiaorg/celestia-node", "pr-4283", "10001:10001"),
 		},
 		RollkitChainConfig: &tastoradocker.RollkitChainConfig{
 			ChainID:              "rollkit-test",
@@ -165,11 +158,7 @@ func (s *DockerTestSuite) CreateChain() tastoratypes.Chain {
 		WithGasPrices("0.025utia").
 		WithGasAdjustment(1.3).
 		WithEncodingConfig(&encConfig).
-		WithImage(tastoradocker.DockerImage{
-			Repository: "ghcr.io/celestiaorg/celestia-app",
-			Version:    "v4.0.0-rc6",
-			UIDGID:     "10001:10001",
-		}).
+		WithImage(container.NewImage("ghcr.io/celestiaorg/celestia-app", "v4.0.0-rc6", "10001:10001")).
 		WithAdditionalStartArgs(
 			"--force-no-bbr",
 			"--grpc.enable",
@@ -264,7 +253,7 @@ func (s *DockerTestSuite) StartRollkitNode(ctx context.Context, bridgeNode tasto
 // getRollkitImage returns the Docker image configuration for Rollkit
 // Uses EV_NODE_IMAGE_REPO and EV_NODE_IMAGE_TAG environment variables if set
 // Defaults to locally built image using a unique tag to avoid registry conflicts
-func getRollkitImage() tastoradocker.DockerImage {
+func getRollkitImage() container.Image {
 	repo := strings.TrimSpace(os.Getenv("EV_NODE_IMAGE_REPO"))
 	if repo == "" {
 		repo = "evstack"
@@ -275,11 +264,7 @@ func getRollkitImage() tastoradocker.DockerImage {
 		tag = "local-dev"
 	}
 
-	return tastoradocker.DockerImage{
-		Repository: repo,
-		Version:    tag,
-		UIDGID:     "10001:10001",
-	}
+	return container.NewImage(repo, tag, "10001:10001")
 }
 
 func generateValidNamespaceHex() string {
