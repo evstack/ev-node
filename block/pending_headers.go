@@ -3,7 +3,7 @@ package block
 import (
 	"context"
 
-	logging "github.com/ipfs/go-log/v2"
+	"github.com/rs/zerolog"
 
 	storepkg "github.com/evstack/ev-node/pkg/store"
 	"github.com/evstack/ev-node/types"
@@ -31,7 +31,7 @@ func fetchSignedHeader(ctx context.Context, store storepkg.Store, height uint64)
 }
 
 // NewPendingHeaders returns a new PendingHeaders struct
-func NewPendingHeaders(store storepkg.Store, logger logging.EventLogger) (*PendingHeaders, error) {
+func NewPendingHeaders(store storepkg.Store, logger zerolog.Logger) (*PendingHeaders, error) {
 	base, err := newPendingBase(store, logger, storepkg.LastSubmittedHeaderHeightKey, fetchSignedHeader)
 	if err != nil {
 		return nil, err

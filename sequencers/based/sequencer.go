@@ -8,7 +8,7 @@ import (
 	"fmt"
 	"time"
 
-	logging "github.com/ipfs/go-log/v2"
+	"github.com/rs/zerolog"
 
 	datastore "github.com/ipfs/go-datastore"
 
@@ -47,7 +47,7 @@ var _ coresequencer.Sequencer = &Sequencer{}
 // and interacting with the Data Availability (DA) layer.
 type Sequencer struct {
 	// logger is used for logging messages and events within the Sequencer.
-	logger logging.EventLogger
+	logger zerolog.Logger
 
 	// maxHeightDrift defines the maximum allowable difference between the current
 	// block height and the DA layer's block height.
@@ -73,7 +73,7 @@ type Sequencer struct {
 
 // NewSequencer creates a new Sequencer instance.
 func NewSequencer(
-	logger logging.EventLogger,
+	logger zerolog.Logger,
 	daImpl coreda.DA,
 	Id []byte,
 	daStartHeight uint64,
@@ -164,19 +164,19 @@ OuterLoop:
 	for size < maxBytes {
 		// if we have exceeded maxHeightDrift, stop fetching more transactions
 		if nextDAHeight > lastDAHeight+s.maxHeightDrift {
-			s.logger.Debug("exceeded max height drift, stopping fetching more transactions")
+			s.logger.Debug().Msg("exceeded max height drift, stopping fetching more transactions")
 			break OuterLoop
 		}
 		// fetch the next batch of transactions from DA using the helper
 		res := types.RetrieveWithHelpers(ctx, s.DA, s.logger, nextDAHeight, s.Id)
 		if res.Code == coreda.StatusError {
 			// stop fetching more transactions and return the current batch
-			s.logger.Warn("failed to retrieve transactions from DA layer via helper", "error", res.Message)
+			s.logger.Warn().Str("error", res.Message).Msg("failed to retrieve transactions from DA layer via helper")
 			break OuterLoop
 		}
 		if len(res.Data) == 0 { // TODO: some heights may not have  blobs, find a better way to handle this
 			// stop fetching more transactions and return the current batch
-			s.logger.Debug("no transactions to retrieve from DA layer via helper for", "height", nextDAHeight)
+			s.logger.Debug().Uint64("height", nextDAHeight).Msg("no transactions to retrieve from DA layer via helper for")
 			// don't break yet, wait for maxHeightDrift to elapse
 		} else if res.Code == coreda.StatusSuccess {
 			for i, tx := range res.Data {
@@ -196,12 +196,12 @@ OuterLoop:
 		nextDAHeight++
 	}
 
-	s.logger.Debug("retrieved transactions from DA layer",
-		"txs", len(resp.Batch.Transactions),
-		"ids", len(resp.BatchData),
-		"size", size,
-		"timestamp", resp.Timestamp,
-	)
+	s.logger.Debug().
+		Int("txs", len(resp.Batch.Transactions)).
+		Int("ids", len(resp.BatchData)).
+		Uint64("size", size).
+		Time("timestamp", resp.Timestamp).
+		Msg("retrieved transactions from DA layer")
 
 	// Persist last scanned height
 	s.store.Put(ctx, datastore.NewKey(dsLastScannedHeightKey), []byte(fmt.Sprintf("%d", nextDAHeight)))
@@ -297,11 +297,12 @@ daSubmitRetryLoop:
 		case coreda.StatusSuccess:
 			// Count submitted transactions for this attempt
 			submittedTxs := int(res.SubmittedCount)
-			s.logger.Info("[based] successfully submitted transactions to DA layer",
-				"gasPrice", gasPrice,
-				"height", res.Height,
-				"submittedTxs", submittedTxs,
-				"remainingTxs", len(currentBatch.Transactions)-submittedTxs)
+			s.logger.Info().
+				Float64("gasPrice", gasPrice).
+				Uint64("height", res.Height).
+				Int("submittedTxs", submittedTxs).
+				Int("remainingTxs", len(currentBatch.Transactions)-submittedTxs).
+				Msg("[based] successfully submitted transactions to DA layer")
 
 			// Update overall progress
 			submittedTxCount += submittedTxs
@@ -324,22 +325,34 @@ daSubmitRetryLoop:
 					gasPrice = initialGasPrice
 				}
 			}
-			s.logger.Debug("resetting DA layer submission options", "backoff", backoff, "gasPrice", gasPrice)
+			s.logger.Debug().
+				Dur("backoff", backoff).
+				Float64("gasPrice", gasPrice).
+				Msg("resetting DA layer submission options")
 
 		case coreda.StatusNotIncludedInBlock, coreda.StatusAlreadyInMempool:
 			// For mempool-related issues, use a longer backoff and increase gas price
-			s.logger.Error("DA layer submission failed", "error", res.Message, "attempt", attempt)
+			s.logger.Error().
+				Str("error", res.Message).
+				Int("attempt", attempt).
+				Msg("DA layer submission failed")
 			backoff = batchTime * time.Duration(defaultMempoolTTL)
 
 			// Increase gas price to prioritize the transaction
 			if gasMultiplier > 0 && gasPrice != 0 {
 				gasPrice = gasPrice * gasMultiplier
 			}
-			s.logger.Info("retrying DA layer submission with", "backoff", backoff, "gasPrice", gasPrice)
+			s.logger.Info().
+				Dur("backoff", backoff).
+				Float64("gasPrice", gasPrice).
+				Msg("retrying DA layer submission with")
 
 		default:
 			// For other errors, use exponential backoff
-			s.logger.Error("DA layer submission failed", "error", res.Message, "attempt", attempt)
+			s.logger.Error().
+				Str("error", res.Message).
+				Int("attempt", attempt).
+				Msg("DA layer submission failed")
 			backoff = s.exponentialBackoff(backoff)
 		}
 

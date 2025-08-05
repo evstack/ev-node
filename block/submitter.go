@@ -97,7 +97,7 @@ func (m *Manager) HeaderSubmissionLoop(ctx context.Context) {
 	for {
 		select {
 		case <-ctx.Done():
-			m.logger.Info("header submission loop stopped")
+			m.logger.Info().Msg("header submission loop stopped")
 			return
 		case <-timer.C:
 		}
@@ -106,7 +106,7 @@ func (m *Manager) HeaderSubmissionLoop(ctx context.Context) {
 		}
 		headersToSubmit, err := m.pendingHeaders.getPendingHeaders(ctx)
 		if err != nil {
-			m.logger.Error("error while fetching headers pending DA", "err", err)
+			m.logger.Error().Err(err).Msg("error while fetching headers pending DA")
 			continue
 		}
 		if len(headersToSubmit) == 0 {
@@ -114,7 +114,7 @@ func (m *Manager) HeaderSubmissionLoop(ctx context.Context) {
 		}
 		err = m.submitHeadersToDA(ctx, headersToSubmit)
 		if err != nil {
-			m.logger.Error("error while submitting header to DA", "error", err)
+			m.logger.Error().Err(err).Msg("error while submitting header to DA")
 		}
 	}
 }
@@ -155,7 +155,7 @@ func (m *Manager) DataSubmissionLoop(ctx context.Context) {
 	for {
 		select {
 		case <-ctx.Done():
-			m.logger.Info("data submission loop stopped")
+			m.logger.Info().Msg("data submission loop stopped")
 			return
 		case <-timer.C:
 		}
@@ -165,7 +165,7 @@ func (m *Manager) DataSubmissionLoop(ctx context.Context) {
 
 		signedDataToSubmit, err := m.createSignedDataToSubmit(ctx)
 		if err != nil {
-			m.logger.Error("failed to create signed data to submit", "error", err)
+			m.logger.Error().Err(err).Msg("failed to create signed data to submit")
 			continue
 		}
 		if len(signedDataToSubmit) == 0 {
@@ -174,7 +174,7 @@ func (m *Manager) DataSubmissionLoop(ctx context.Context) {
 
 		err = m.submitDataToDA(ctx, signedDataToSubmit)
 		if err != nil {
-			m.logger.Error("failed to submit data to DA", "error", err)
+			m.logger.Error().Err(err).Msg("failed to submit data to DA")
 		}
 	}
 }
@@ -295,7 +295,7 @@ func handleSubmissionResult[T any](
 		return handleMempoolFailure(m, &res, retryStrategy, retryStrategy.attempt, remaining, marshaled)
 
 	case coreda.StatusContextCanceled:
-		m.logger.Info("DA layer submission canceled due to context cancellation", "attempt", retryStrategy.attempt)
+		m.logger.Info().Int("attempt", retryStrategy.attempt).Msg("DA layer submission canceled due to context cancellation")
 		return SubmissionOutcome[T]{
 			RemainingItems:   remaining,
 			RemainingMarshal: marshaled,
@@ -324,10 +324,7 @@ func handleSuccessfulSubmission[T any](
 	remLen := len(remaining)
 	allSubmitted := res.SubmittedCount == uint64(remLen)
 
-	m.logger.Info("successfully submitted items to DA layer",
-		"itemType", itemType,
-		"gasPrice", retryStrategy.gasPrice,
-		"count", res.SubmittedCount)
+	m.logger.Info().Str("itemType", itemType).Float64("gasPrice", retryStrategy.gasPrice).Uint64("count", res.SubmittedCount).Msg("successfully submitted items to DA layer")
 
 	submitted := remaining[:res.SubmittedCount]
 	notSubmitted := remaining[res.SubmittedCount:]
@@ -336,9 +333,7 @@ func handleSuccessfulSubmission[T any](
 	postSubmit(submitted, res, retryStrategy.gasPrice)
 	retryStrategy.ResetOnSuccess(m.gasMultiplier)
 
-	m.logger.Debug("resetting DA layer submission options",
-		"backoff", retryStrategy.backoff,
-		"gasPrice", retryStrategy.gasPrice)
+	m.logger.Debug().Dur("backoff", retryStrategy.backoff).Float64("gasPrice", retryStrategy.gasPrice).Msg("resetting DA layer submission options")
 
 	return SubmissionOutcome[T]{
 		SubmittedItems:   submitted,
@@ -357,16 +352,12 @@ func handleMempoolFailure[T any](
 	remaining []T,
 	marshaled [][]byte,
 ) SubmissionOutcome[T] {
-	m.logger.Error("DA layer submission failed",
-		"error", res.Message,
-		"attempt", attempt)
+	m.logger.Error().Str("error", res.Message).Int("attempt", attempt).Msg("DA layer submission failed")
 
 	m.recordDAMetrics("submission", DAModeFail)
 	retryStrategy.BackoffOnMempool(int(m.config.DA.MempoolTTL), m.config.DA.BlockTime.Duration, m.gasMultiplier)
 
-	m.logger.Info("retrying DA layer submission with",
-		"backoff", retryStrategy.backoff,
-		"gasPrice", retryStrategy.gasPrice)
+	m.logger.Info().Dur("backoff", retryStrategy.backoff).Float64("gasPrice", retryStrategy.gasPrice).Msg("retrying DA layer submission with")
 
 	return SubmissionOutcome[T]{
 		RemainingItems:   remaining,
@@ -385,10 +376,7 @@ func handleTooBigError[T any](
 	itemType string,
 	attempt int,
 ) SubmissionOutcome[T] {
-	m.logger.Warn("DA layer submission failed due to blob size limit",
-		"error", "blob too big",
-		"attempt", attempt,
-		"batchSize", len(remaining))
+	m.logger.Warn().Str("error", "blob too big").Int("attempt", attempt).Int("batchSize", len(remaining)).Msg("DA layer submission failed due to blob size limit")
 
 	m.recordDAMetrics("submission", DAModeFail)
 
@@ -410,9 +398,7 @@ func handleTooBigError[T any](
 			retryStrategy.BackoffOnFailure()
 		}
 	} else {
-		m.logger.Error("single item exceeds DA blob size limit",
-			"itemType", itemType,
-			"attempt", attempt)
+		m.logger.Error().Str("itemType", itemType).Int("attempt", attempt).Msg("single item exceeds DA blob size limit")
 		retryStrategy.BackoffOnFailure()
 	}
 
@@ -432,9 +418,7 @@ func handleGenericFailure[T any](
 	remaining []T,
 	marshaled [][]byte,
 ) SubmissionOutcome[T] {
-	m.logger.Error("DA layer submission failed",
-		"error", res.Message,
-		"attempt", attempt)
+	m.logger.Error().Str("error", res.Message).Int("attempt", attempt).Msg("DA layer submission failed")
 
 	m.recordDAMetrics("submission", DAModeFail)
 	retryStrategy.BackoffOnFailure()
@@ -505,12 +489,12 @@ func submitWithRecursiveSplitting[T any](
 
 	// Base case: single item that's too big - skip it
 	if len(items) == 1 {
-		m.logger.Error("single item exceeds DA blob size limit", "itemType", itemType)
+		m.logger.Error().Str("itemType", itemType).Msg("single item exceeds DA blob size limit")
 		return 0
 	}
 
 	// Split and submit recursively - we know the batch is too big
-	m.logger.Info("splitting batch for recursive submission", "batchSize", len(items))
+	m.logger.Info().Int("batchSize", len(items)).Msg("splitting batch for recursive submission")
 
 	splitPoint := len(items) / 2
 	// Ensure we actually split (avoid infinite recursion)
@@ -522,7 +506,7 @@ func submitWithRecursiveSplitting[T any](
 	firstHalfMarshaled := marshaled[:splitPoint]
 	secondHalfMarshaled := marshaled[splitPoint:]
 
-	m.logger.Info("splitting batch for recursion", "originalSize", len(items), "firstHalf", len(firstHalf), "secondHalf", len(secondHalf))
+	m.logger.Info().Int("originalSize", len(items)).Int("firstHalf", len(firstHalf)).Int("secondHalf", len(secondHalf)).Msg("splitting batch for recursion")
 
 	// Recursively submit both halves using processBatch directly
 	firstSubmitted := submitHalfBatch[T](m, ctx, firstHalf, firstHalfMarshaled, gasPrice, postSubmit, itemType)
@@ -569,12 +553,12 @@ func submitHalfBatch[T any](
 
 	case batchActionSkip:
 		// Single item too big - skip it
-		m.logger.Error("skipping item that exceeds DA blob size limit", "itemType", itemType)
+		m.logger.Error().Str("itemType", itemType).Msg("skipping item that exceeds DA blob size limit")
 		return 0
 
 	case batchActionFail:
 		// Unrecoverable error - stop processing
-		m.logger.Error("unrecoverable error during batch submission", "itemType", itemType)
+		m.logger.Error().Str("itemType", itemType).Msg("unrecoverable error during batch submission")
 		return 0
 	}
 
@@ -622,7 +606,7 @@ func processBatch[T any](
 		// Successfully submitted this batch
 		submitted := batch.Items[:batchRes.SubmittedCount]
 		postSubmit(submitted, &batchRes, gasPrice)
-		m.logger.Info("successfully submitted batch to DA layer", "batchSize", len(batch.Items), "submittedCount", batchRes.SubmittedCount)
+		m.logger.Info().Int("batchSize", len(batch.Items)).Uint64("submittedCount", batchRes.SubmittedCount).Msg("successfully submitted batch to DA layer")
 
 		return BatchResult[T]{
 			action:         batchActionSubmitted,
@@ -632,12 +616,12 @@ func processBatch[T any](
 
 	if batchRes.Code == coreda.StatusTooBig && len(batch.Items) > 1 {
 		// Batch is too big - let the caller handle splitting
-		m.logger.Info("batch too big, returning to caller for splitting", "batchSize", len(batch.Items))
+		m.logger.Info().Int("batchSize", len(batch.Items)).Msg("batch too big, returning to caller for splitting")
 		return BatchResult[T]{action: batchActionTooBig}
 	}
 
 	if len(batch.Items) == 1 && batchRes.Code == coreda.StatusTooBig {
-		m.logger.Error("single item exceeds DA blob size limit", "itemType", itemType)
+		m.logger.Error().Str("itemType", itemType).Msg("single item exceeds DA blob size limit")
 		return BatchResult[T]{action: batchActionSkip}
 	}
 

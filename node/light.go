@@ -8,7 +8,7 @@ import (
 	"time"
 
 	ds "github.com/ipfs/go-datastore"
-	logging "github.com/ipfs/go-log/v2"
+	"github.com/rs/zerolog"
 
 	"github.com/evstack/ev-node/pkg/config"
 	"github.com/evstack/ev-node/pkg/genesis"
@@ -40,9 +40,9 @@ func newLightNode(
 	genesis genesis.Genesis,
 	p2pClient *p2p.Client,
 	database ds.Batching,
-	logger logging.EventLogger,
+	logger zerolog.Logger,
 ) (ln *LightNode, err error) {
-	headerSyncService, err := sync.NewHeaderSyncService(database, conf, genesis, p2pClient, logging.Logger("HeaderSyncService"))
+	headerSyncService, err := sync.NewHeaderSyncService(database, conf, genesis, p2pClient, logger.With().Str("component", "HeaderSyncService").Logger())
 	if err != nil {
 		return nil, fmt.Errorf("error while initializing HeaderSyncService: %w", err)
 	}
@@ -91,9 +91,9 @@ func (ln *LightNode) Run(parentCtx context.Context) error {
 	}
 
 	go func() {
-		ln.Logger.Info("started RPC server, addr:", ln.nodeConfig.RPC.Address)
+		ln.Logger.Info().Str("addr", ln.nodeConfig.RPC.Address).Msg("started RPC server")
 		if err := ln.rpcServer.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			ln.Logger.Error("RPC server error", "err", err)
+			ln.Logger.Error().Err(err).Msg("RPC server error")
 		}
 	}()
 
@@ -106,10 +106,10 @@ func (ln *LightNode) Run(parentCtx context.Context) error {
 	}
 
 	<-parentCtx.Done()
-	ln.Logger.Info("context canceled, stopping node")
+	ln.Logger.Info().Msg("context canceled, stopping node")
 	cancelNode()
 
-	ln.Logger.Info("halting light node and its sub services...")
+	ln.Logger.Info().Msg("halting light node and its sub services...")
 
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
@@ -122,7 +122,7 @@ func (ln *LightNode) Run(parentCtx context.Context) error {
 		if !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
 			multiErr = errors.Join(multiErr, fmt.Errorf("stopping header sync service: %w", err))
 		} else {
-			ln.Logger.Debug("header sync service stop context ended", "reason", err)
+			ln.Logger.Debug().Err(err).Msg("header sync service stop context ended")
 		}
 	}
 
@@ -132,7 +132,7 @@ func (ln *LightNode) Run(parentCtx context.Context) error {
 		if err != nil && !errors.Is(err, http.ErrServerClosed) {
 			multiErr = errors.Join(multiErr, fmt.Errorf("shutting down RPC server: %w", err))
 		} else {
-			ln.Logger.Debug("RPC server shutdown context ended", "reason", err)
+			ln.Logger.Debug().Msg("RPC server shutdown completed")
 		}
 	}
 
@@ -145,18 +145,18 @@ func (ln *LightNode) Run(parentCtx context.Context) error {
 	if err = ln.Store.Close(); err != nil {
 		multiErr = errors.Join(multiErr, fmt.Errorf("closing store: %w", err))
 	} else {
-		ln.Logger.Debug("store closed")
+		ln.Logger.Debug().Msg("store closed")
 	}
 
 	if multiErr != nil {
 		if unwrapper, ok := multiErr.(interface{ Unwrap() []error }); ok {
 			for _, err := range unwrapper.Unwrap() {
-				ln.Logger.Error("error during shutdown", "error", err)
+				ln.Logger.Error().Err(err).Msg("error during shutdown")
 			}
 		} else {
-			ln.Logger.Error("error during shutdown", "error", multiErr)
+			ln.Logger.Error().Err(multiErr).Msg("error during shutdown")
 		}
-		ln.Logger.Error("error during shutdown", "error", err)
+		ln.Logger.Error().Err(err).Msg("error during shutdown")
 	}
 
 	if ctx.Err() != nil {

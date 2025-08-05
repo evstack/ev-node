@@ -13,8 +13,8 @@ import (
 	testutils "github.com/celestiaorg/utils/test"
 	"github.com/ipfs/go-datastore"
 	dssync "github.com/ipfs/go-datastore/sync"
-	logging "github.com/ipfs/go-log/v2"
 	"github.com/libp2p/go-libp2p/core/peer"
+	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/require"
 
 	coreda "github.com/evstack/ev-node/core/da"
@@ -59,8 +59,7 @@ func createTestComponents(t *testing.T, config rollkitconfig.Config) (coreexecut
 		PrivKey: genesisValidatorKey,
 		PubKey:  genesisValidatorKey.GetPublic(),
 	}
-	logger := logging.Logger("test")
-	_ = logging.SetLogLevel("test", "FATAL")
+	logger := zerolog.Nop()
 	p2pClient, err := p2p.NewClient(config, p2pKey, dssync.MutexWrap(datastore.NewMapDatastore()), logger, p2p.NopMetrics())
 	require.NoError(t, err)
 	require.NotNil(t, p2pClient)
@@ -126,7 +125,7 @@ func newTestNode(
 		genesis,
 		ds,
 		DefaultMetricsProvider(rollkitconfig.DefaultInstrumentationConfig()),
-		logging.Logger("test"),
+		zerolog.Nop(),
 		NodeOptions{},
 	)
 	require.NoError(t, err)
@@ -191,7 +190,7 @@ func createNodesWithCleanup(t *testing.T, num int, config rollkitconfig.Config) 
 		genesis,
 		ds,
 		DefaultMetricsProvider(rollkitconfig.DefaultInstrumentationConfig()),
-		logging.Logger("test"),
+		zerolog.Nop(),
 		NodeOptions{},
 	)
 	require.NoError(err)
@@ -229,7 +228,7 @@ func createNodesWithCleanup(t *testing.T, num int, config rollkitconfig.Config) 
 			genesis,
 			dssync.MutexWrap(datastore.NewMapDatastore()),
 			DefaultMetricsProvider(rollkitconfig.DefaultInstrumentationConfig()),
-			logging.Logger("test"),
+			zerolog.Nop(),
 			NodeOptions{},
 		)
 		require.NoError(err)

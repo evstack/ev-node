@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	logging "github.com/ipfs/go-log/v2"
+	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/assert"
 
 	"github.com/evstack/ev-node/core/da"
@@ -14,7 +14,7 @@ import (
 // where it validates the entire batch before submission and returns ErrBlobSizeOverLimit
 // if the batch is too large, instead of silently dropping blobs.
 func TestSubmitWithOptions_SizeValidation(t *testing.T) {
-	logger := logging.Logger("test")
+	logger := zerolog.Nop()
 
 	testCases := []struct {
 		name          string
