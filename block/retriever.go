@@ -224,6 +224,37 @@ func (m *Manager) fetchBlobs(ctx context.Context, daHeight uint64) (coreda.Resul
 	// Record DA retrieval retry attempt
 	m.recordDAMetrics("retrieval", DAModeRetry)
 
+	// TODO: Remove this once XO resets their testnet
+	// Check if we should still try the old namespace for backward compatibility
+	if !m.namespaceMigrationCompleted.Load() {
+		// First, try the legacy namespace if we haven't completed migration
+		legacyNamespace := []byte(m.config.DA.Namespace)
+		if legacyNamespace != nil && len(legacyNamespace) > 0 {
+			legacyRes := types.RetrieveWithHelpers(ctx, m.da, m.logger, daHeight, legacyNamespace)
+			
+			// Handle legacy namespace errors
+			if legacyRes.Code == coreda.StatusError {
+				m.recordDAMetrics("retrieval", DAModeFail)
+				err = fmt.Errorf("failed to retrieve from legacy namespace: %s", legacyRes.Message)
+				return legacyRes, err
+			}
+			
+			if legacyRes.Code == coreda.StatusHeightFromFuture {
+				err = fmt.Errorf("%w: height from future", coreda.ErrHeightFromFuture)
+				return coreda.ResultRetrieve{BaseResult: coreda.BaseResult{Code: coreda.StatusHeightFromFuture}}, err
+			}
+			
+			// If legacy namespace has data, use it and return
+			if legacyRes.Code == coreda.StatusSuccess {
+				m.logger.Debug().Uint64("daHeight", daHeight).Msg("found data in legacy namespace")
+				return legacyRes, nil
+			}
+			
+			// Legacy namespace returned not found, so try new namespaces
+			m.logger.Debug().Uint64("daHeight", daHeight).Msg("no data in legacy namespace, trying new namespaces")
+		}
+	}
+
 	// Try to retrieve from both header and data namespaces
 	headerNamespace := []byte(m.config.DA.GetHeaderNamespace())
 	dataNamespace := []byte(m.config.DA.GetDataNamespace())
@@ -273,10 +304,27 @@ func (m *Manager) fetchBlobs(ctx context.Context, daHeight uint64) (coreda.Resul
 		}
 	}
 	
-	// If both returned not found, return not found
+	// Handle not found cases and migration completion
 	if headerRes.Code == coreda.StatusNotFound && dataRes.Code == coreda.StatusNotFound {
 		combinedResult.Code = coreda.StatusNotFound
 		combinedResult.Message = "no blobs found in either namespace"
+		
+		// If we haven't completed migration and found no data in new namespaces,
+		// mark migration as complete to avoid future legacy namespace checks
+		if !m.namespaceMigrationCompleted.Load() {
+			if err := m.setNamespaceMigrationCompleted(ctx); err != nil {
+				m.logger.Error().Err(err).Msg("failed to mark namespace migration as completed")
+			} else {
+				m.logger.Info().Uint64("daHeight", daHeight).Msg("marked namespace migration as completed - no more legacy namespace checks")
+			}
+		}
+	} else if (headerRes.Code == coreda.StatusSuccess || dataRes.Code == coreda.StatusSuccess) && !m.namespaceMigrationCompleted.Load() {
+		// Found data in new namespaces, mark migration as complete
+		if err := m.setNamespaceMigrationCompleted(ctx); err != nil {
+			m.logger.Error().Err(err).Msg("failed to mark namespace migration as completed")
+		} else {
+			m.logger.Info().Uint64("daHeight", daHeight).Msg("found data in new namespaces - marked migration as completed")
+		}
 	}
 	
 	return combinedResult, err
