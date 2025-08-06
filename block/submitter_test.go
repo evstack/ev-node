@@ -672,7 +672,7 @@ func TestProcessBatch(t *testing.T) {
 	// Test data setup
 	testItems := []string{"item1", "item2", "item3"}
 	testMarshaled := [][]byte{[]byte("marshaled1"), []byte("marshaled2"), []byte("marshaled3")}
-	testBatch := SubmissionBatch[string]{
+	testBatch := submissionBatch[string]{
 		Items:     testItems,
 		Marshaled: testMarshaled,
 	}
@@ -745,7 +745,7 @@ func TestProcessBatch(t *testing.T) {
 		da.ExpectedCalls = nil
 
 		// Create single-item batch
-		singleBatch := SubmissionBatch[string]{
+		singleBatch := submissionBatch[string]{
 			Items:     []string{"large_item"},
 			Marshaled: [][]byte{[]byte("large_marshaled")},
 		}
