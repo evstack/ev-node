@@ -15,8 +15,8 @@ import (
 func InitCmd() *cobra.Command {
 	initCmd := &cobra.Command{
 		Use:   "init",
-		Short: "Initialize rollkit configuration files",
-		Long: `Initialize configuration files for a Rollkit node with gRPC execution client.
+		Short: "Initialize evolve configuration files",
+		Long: `Initialize configuration files for a Evolve node with gRPC execution client.
 This will create the necessary configuration structure in the specified root directory.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -49,7 +49,7 @@ This will create the necessary configuration structure in the specified root dir
 			}
 
 			if err := cfg.SaveAsYaml(); err != nil {
-				return fmt.Errorf("error writing rollkit.yaml file: %w", err)
+				return fmt.Errorf("error writing evolve.yaml file: %w", err)
 			}
 
 			if err := rollcmd.LoadOrGenNodeKey(homePath); err != nil {
