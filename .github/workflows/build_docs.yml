@@ -1,0 +1,28 @@
+name: Build VitePress Site
+permissions:
+  contents: read
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "./docs"
+  pull_request:
+    paths:
+      - "./docs"
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: yarn # or pnpm / npm
+      - name: Install dependencies
+        run: yarn install # or pnpm install / npm ci
+      - name: Build with VitePress
+        run: yarn build # or pnpm build / npm build

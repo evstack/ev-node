@@ -61,10 +61,10 @@ func TestDAIncluderLoop_AdvancesHeightWhenBothDAIncluded(t *testing.T) {
 	// Mock expectations for SetRollkitHeightToDAHeight method
 	headerHeightBytes := make([]byte, 8)
 	binary.LittleEndian.PutUint64(headerHeightBytes, uint64(1))
-	store.On("SetMetadata", mock.Anything, fmt.Sprintf("%s/%d/h", storepkg.RollkitHeightToDAHeightKey, uint64(5)), headerHeightBytes).Return(nil).Once()
+	store.On("SetMetadata", mock.Anything, fmt.Sprintf("%s/%d/h", storepkg.HeightToDAHeightKey, uint64(5)), headerHeightBytes).Return(nil).Once()
 	dataHeightBytes := make([]byte, 8)
 	binary.LittleEndian.PutUint64(dataHeightBytes, uint64(1))
-	store.On("SetMetadata", mock.Anything, fmt.Sprintf("%s/%d/d", storepkg.RollkitHeightToDAHeightKey, uint64(5)), dataHeightBytes).Return(nil).Once()
+	store.On("SetMetadata", mock.Anything, fmt.Sprintf("%s/%d/d", storepkg.HeightToDAHeightKey, uint64(5)), dataHeightBytes).Return(nil).Once()
 	// Mock expectations for incrementDAIncludedHeight method
 	heightBytes := make([]byte, 8)
 	binary.LittleEndian.PutUint64(heightBytes, expectedDAIncludedHeight)
@@ -275,10 +275,10 @@ func TestDAIncluderLoop_MultipleConsecutiveHeightsDAIncluded(t *testing.T) {
 		height := startDAIncludedHeight + uint64(i+1)
 		headerHeightBytes := make([]byte, 8)
 		binary.LittleEndian.PutUint64(headerHeightBytes, uint64(i+1))
-		store.On("SetMetadata", mock.Anything, fmt.Sprintf("%s/%d/h", storepkg.RollkitHeightToDAHeightKey, height), headerHeightBytes).Return(nil).Once()
+		store.On("SetMetadata", mock.Anything, fmt.Sprintf("%s/%d/h", storepkg.HeightToDAHeightKey, height), headerHeightBytes).Return(nil).Once()
 		dataHeightBytes := make([]byte, 8)
 		binary.LittleEndian.PutUint64(dataHeightBytes, uint64(i+1))
-		store.On("SetMetadata", mock.Anything, fmt.Sprintf("%s/%d/d", storepkg.RollkitHeightToDAHeightKey, height), dataHeightBytes).Return(nil).Once()
+		store.On("SetMetadata", mock.Anything, fmt.Sprintf("%s/%d/d", storepkg.HeightToDAHeightKey, height), dataHeightBytes).Return(nil).Once()
 	}
 	store.On("SetMetadata", mock.Anything, storepkg.DAIncludedHeightKey, mock.Anything).Return(nil).Times(numConsecutive)
 	exec.On("SetFinal", mock.Anything, mock.Anything).Return(nil).Times(numConsecutive)
@@ -322,7 +322,7 @@ func TestDAIncluderLoop_AdvancesHeightWhenDataHashIsEmptyAndHeaderDAIncluded(t *
 	// Mock expectations for SetRollkitHeightToDAHeight method
 	headerHeightBytes := make([]byte, 8)
 	binary.LittleEndian.PutUint64(headerHeightBytes, uint64(1))
-	store.On("SetMetadata", mock.Anything, fmt.Sprintf("%s/%d/h", storepkg.RollkitHeightToDAHeightKey, uint64(5)), headerHeightBytes).Return(nil).Once()
+	store.On("SetMetadata", mock.Anything, fmt.Sprintf("%s/%d/h", storepkg.HeightToDAHeightKey, uint64(5)), headerHeightBytes).Return(nil).Once()
 	// Note: For empty data, data SetMetadata call should still be made but data won't be marked as DA-included in cache,
 	// so SetRollkitHeightToDAHeight will fail when trying to get the DA height for data
 	// Actually, let's check if this case is handled differently for empty txs
@@ -331,7 +331,7 @@ func TestDAIncluderLoop_AdvancesHeightWhenDataHashIsEmptyAndHeaderDAIncluded(t *
 	m.dataCache.SetDAIncluded(dataHash, uint64(1))
 	dataHeightBytes := make([]byte, 8)
 	binary.LittleEndian.PutUint64(dataHeightBytes, uint64(1))
-	store.On("SetMetadata", mock.Anything, fmt.Sprintf("%s/%d/d", storepkg.RollkitHeightToDAHeightKey, uint64(5)), dataHeightBytes).Return(nil).Once()
+	store.On("SetMetadata", mock.Anything, fmt.Sprintf("%s/%d/d", storepkg.HeightToDAHeightKey, uint64(5)), dataHeightBytes).Return(nil).Once()
 	// Mock expectations for incrementDAIncludedHeight method
 	heightBytes := make([]byte, 8)
 	binary.LittleEndian.PutUint64(heightBytes, expectedDAIncludedHeight)

@@ -1089,13 +1089,13 @@ func TestSetRollkitHeightToDAHeight(t *testing.T) {
 		m.dataCache.SetDAIncluded(data.DACommitment().String(), dataHeight)
 
 		// Mock metadata storage
-		headerKey := fmt.Sprintf("%s/%d/h", storepkg.RollkitHeightToDAHeightKey, height)
-		dataKey := fmt.Sprintf("%s/%d/d", storepkg.RollkitHeightToDAHeightKey, height)
+		headerKey := fmt.Sprintf("%s/%d/h", storepkg.HeightToDAHeightKey, height)
+		dataKey := fmt.Sprintf("%s/%d/d", storepkg.HeightToDAHeightKey, height)
 		mockStore.On("SetMetadata", mock.Anything, headerKey, mock.Anything).Return(nil)
 		mockStore.On("SetMetadata", mock.Anything, dataKey, mock.Anything).Return(nil)
 
 		// Call the method
-		err := m.SetRollkitHeightToDAHeight(ctx, height)
+		err := m.SetSequencerHeightToDAHeight(ctx, height)
 		require.NoError(err)
 
 		mockStore.AssertExpectations(t)
@@ -1119,13 +1119,13 @@ func TestSetRollkitHeightToDAHeight(t *testing.T) {
 		// Note: we don't set data in cache for empty transactions
 
 		// Mock metadata storage - both should use header height for empty transactions
-		headerKey := fmt.Sprintf("%s/%d/h", storepkg.RollkitHeightToDAHeightKey, height)
-		dataKey := fmt.Sprintf("%s/%d/d", storepkg.RollkitHeightToDAHeightKey, height)
+		headerKey := fmt.Sprintf("%s/%d/h", storepkg.HeightToDAHeightKey, height)
+		dataKey := fmt.Sprintf("%s/%d/d", storepkg.HeightToDAHeightKey, height)
 		mockStore.On("SetMetadata", mock.Anything, headerKey, mock.Anything).Return(nil)
 		mockStore.On("SetMetadata", mock.Anything, dataKey, mock.Anything).Return(nil)
 
 		// Call the method
-		err := m.SetRollkitHeightToDAHeight(ctx, height)
+		err := m.SetSequencerHeightToDAHeight(ctx, height)
 		require.NoError(err)
 
 		mockStore.AssertExpectations(t)
@@ -1147,7 +1147,7 @@ func TestSetRollkitHeightToDAHeight(t *testing.T) {
 		m.dataCache.SetDAIncluded(data.DACommitment().String(), uint64(11))
 
 		// Call the method - should fail
-		err := m.SetRollkitHeightToDAHeight(ctx, height)
+		err := m.SetSequencerHeightToDAHeight(ctx, height)
 		require.Error(err)
 		require.Contains(err.Error(), "header hash")
 		require.Contains(err.Error(), "not found in cache")
@@ -1171,11 +1171,11 @@ func TestSetRollkitHeightToDAHeight(t *testing.T) {
 		m.headerCache.SetDAIncluded(header.Hash().String(), uint64(10))
 
 		// Mock metadata storage for header (should succeed)
-		headerKey := fmt.Sprintf("%s/%d/h", storepkg.RollkitHeightToDAHeightKey, height)
+		headerKey := fmt.Sprintf("%s/%d/h", storepkg.HeightToDAHeightKey, height)
 		mockStore.On("SetMetadata", mock.Anything, headerKey, mock.Anything).Return(nil)
 
 		// Call the method - should fail on data lookup
-		err := m.SetRollkitHeightToDAHeight(ctx, height)
+		err := m.SetSequencerHeightToDAHeight(ctx, height)
 		require.Error(err)
 		require.Contains(err.Error(), "data hash")
 		require.Contains(err.Error(), "not found in cache")
@@ -1194,7 +1194,7 @@ func TestSetRollkitHeightToDAHeight(t *testing.T) {
 		mockStore.On("GetBlockData", mock.Anything, height).Return(nil, nil, errors.New("block not found"))
 
 		// Call the method - should fail
-		err := m.SetRollkitHeightToDAHeight(ctx, height)
+		err := m.SetSequencerHeightToDAHeight(ctx, height)
 		require.Error(err)
 
 		mockStore.AssertExpectations(t)

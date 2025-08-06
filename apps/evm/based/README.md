@@ -1,6 +1,6 @@
-# Rollkit EVM Based Sequencer
+# Evolve EVM Based Sequencer
 
-This directory contains the implementation of a based EVM sequencer using Rollkit.
+This directory contains the implementation of a based EVM sequencer using Evolve.
 
 ## Prerequisites
 
@@ -12,7 +12,7 @@ This directory contains the implementation of a based EVM sequencer using Rollki
 
 1. Both EVM and DA layers must be running before starting the aggregator
    1. For the EVM layer, Reth can be conveniently run using `docker compose` from the go-execution-evm repository.
-   2. For the DA layer, local-da can be built and run from the `rollkit/da/cmd/local-da` directory.
+   2. For the DA layer, local-da can be built and run from the `ev-node/da/cmd/local-da` directory.
 
 2. Build the sequencer:
 

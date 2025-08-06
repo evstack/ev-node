@@ -255,7 +255,7 @@ func AddGlobalFlags(cmd *cobra.Command, defaultHome string) {
 	cmd.PersistentFlags().String(FlagRootDir, DefaultRootDirWithName(defaultHome), "Root directory for application data")
 }
 
-// AddFlags adds Rollkit specific configuration options to cobra Command.
+// AddFlags adds Evolve specific configuration options to cobra Command.
 func AddFlags(cmd *cobra.Command) {
 	def := DefaultConfig
 

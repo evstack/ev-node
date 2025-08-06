@@ -1,10 +1,10 @@
 # KV Executor
 
-This is a simple key-value store executor implementation for testing Rollkit nodes.
+This is a simple key-value store executor implementation for testing Evolve nodes.
 
 ## Server Lifecycle
 
-The HTTP server starts when the Rollkit node starts and is automatically shut down when the node stops (including when receiving CTRL+C or other termination signals). The server is context-aware, meaning:
+The HTTP server starts when the Evolve node starts and is automatically shut down when the node stops (including when receiving CTRL+C or other termination signals). The server is context-aware, meaning:
 
 1. It gracefully handles in-progress requests during shutdown
 2. It automatically shuts down when the node's context is cancelled

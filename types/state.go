@@ -28,7 +28,7 @@ type State struct {
 	LastBlockHeight uint64
 	LastBlockTime   time.Time
 
-	// DAHeight identifies DA block containing the latest applied Rollkit block.
+	// DAHeight identifies DA block containing the latest applied Evolve block.
 	DAHeight uint64
 
 	// Merkle root of the results from executing prev block

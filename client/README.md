@@ -1,10 +1,10 @@
-# Rollkit Client Libraries
+# Evolve Client Libraries
 
-This directory contains client libraries for interacting with Rollkit nodes in various programming languages.
+This directory contains client libraries for interacting with Evolve nodes in various programming languages.
 
 ## Structure
 
-```ascii
+```txt
 client/
 ├── crates/           # Rust client libraries
 │   ├── types/    # Generated protobuf types for Rust
