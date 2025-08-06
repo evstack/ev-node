@@ -33,11 +33,10 @@ services:
             --engine.memory-block-buffer-target 0 \
             --disable-discovery \
             --txpool.pending-max-count 200000 \
-            --txpool.pending-max-size 200 \
+            --txpool.pending-max-size 2000 \
             --txpool.queued-max-count 200000 \
-            --txpool.queued-max-size 200 \
+            --txpool.queued-max-size 2000 \
             --txpool.max-account-slots 2048 \
-            --txpool.max-new-txns 2048 \
             --txpool.additional-validation-tasks 16 \
             --ev-reth.enable
     networks:
