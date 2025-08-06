@@ -10,6 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	coreexecutor "github.com/evstack/ev-node/core/execution"
+	evconfig "github.com/evstack/ev-node/pkg/config"
 )
 
 // TestTxGossipingMultipleNodesNoDA tests that transactions are gossiped and blocks are sequenced and synced across multiple nodes without the DA layer over P2P.
@@ -18,7 +19,7 @@ func TestTxGossipingMultipleNodesNoDA(t *testing.T) {
 	require := require.New(t)
 	config := getTestConfig(t, 1)
 	// Set the DA block time to a very large value to ensure that the DA layer is not used
-	config.DA.BlockTime = config.DurationWrapper{Duration: 100 * time.Second}
+	config.DA.BlockTime = evconfig.DurationWrapper{Duration: 100 * time.Second}
 	numNodes := 3
 	nodes, cleanups := createNodesWithCleanup(t, numNodes, config)
 	for _, cleanup := range cleanups {
@@ -123,8 +124,8 @@ func TestFastDASync(t *testing.T) {
 	config := getTestConfig(t, 1)
 	// Set the block time to 2 seconds and the DA block time to 1 second
 	// Note: these are large values to avoid test failures due to slow CI machines
-	config.Node.BlockTime = config.DurationWrapper{Duration: 2 * time.Second}
-	config.DA.BlockTime = config.DurationWrapper{Duration: 1 * time.Second}
+	config.Node.BlockTime = evconfig.DurationWrapper{Duration: 2 * time.Second}
+	config.DA.BlockTime = evconfig.DurationWrapper{Duration: 1 * time.Second}
 
 	nodes, cleanups := createNodesWithCleanup(t, 2, config)
 	for _, cleanup := range cleanups {
@@ -167,8 +168,8 @@ func TestSingleSequencerTwoFullNodesBlockSyncSpeed(t *testing.T) {
 
 	// Set up three nodes: 1 sequencer, 2 full nodes
 	config := getTestConfig(t, 1)
-	config.Node.BlockTime = config.DurationWrapper{Duration: 100 * time.Millisecond} // fast block time
-	config.DA.BlockTime = config.DurationWrapper{Duration: 10 * time.Second}         // slow DA block time
+	config.Node.BlockTime = evconfig.DurationWrapper{Duration: 100 * time.Millisecond} // fast block time
+	config.DA.BlockTime = evconfig.DurationWrapper{Duration: 10 * time.Second}         // slow DA block time
 
 	numNodes := 3
 	nodes, cleanups := createNodesWithCleanup(t, numNodes, config)
