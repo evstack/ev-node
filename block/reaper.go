@@ -75,6 +75,7 @@ func (r *Reaper) SubmitTxs() {
 		r.logger.Error().Err(err).Msg("Reaper failed to get txs from executor")
 		return
 	}
+	r.logger.Info().Int("txCount", len(txs)).Msg("Reaper received txs from executor")
 
 	var newTxs [][]byte
 	for _, tx := range txs {
