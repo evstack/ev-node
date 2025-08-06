@@ -66,7 +66,7 @@ go build -tags run_evm -o run-evm-nodes scripts/run-evm-nodes.go
 
 ### Architecture
 
-```ascii
+```txt
 ┌─────────────────┐     ┌─────────────────┐
 │   Sequencer     │     │   Full Node     │
 │  (Aggregator)   │◄────┤                 │

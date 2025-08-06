@@ -4,7 +4,7 @@ This directory contains client libraries for interacting with Evolve nodes in va
 
 ## Structure
 
-```ascii
+```txt
 client/
 ├── crates/           # Rust client libraries
 │   ├── types/    # Generated protobuf types for Rust

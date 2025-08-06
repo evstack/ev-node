@@ -68,7 +68,7 @@ service StoreService {
 
 ### Implementation Structure
 
-```tree
+```txt
 pkg/
     rpc/
       server/

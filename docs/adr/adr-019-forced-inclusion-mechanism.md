@@ -189,7 +189,7 @@ func (n *Node) ValidateBlockTimeWindow(ctx context.Context, block *types.Block) 
 
 The following diagram illustrates the operation flow for the sequencer with forced inclusion:
 
-```ascii
+```txt
 ┌─────────────────────────────────────────────────────────────────────────────────┐
 │                           Sequencer Operation Flow                              │
 └─────────────────┬───────────────────────────────────────────────────────────────┘
@@ -235,7 +235,7 @@ The following diagram illustrates the operation flow for the sequencer with forc
 
 The following diagram illustrates the operation flow for full nodes with forced inclusion support:
 
-```ascii
+```txt
 ┌─────────────────────────────────────────────────────────────────────────────────┐
 │                           Full Node Operation Flow                              │
 └─────────────────────────────────────────────────────────────────────────────────┘

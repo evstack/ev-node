@@ -8,7 +8,7 @@ The RPC implementation uses [Connect-Go](https://connectrpc.com/docs/go/getting-
 
 ## Directory Structure
 
-```tree
+```txt
 pkg/rpc/
   ├── client/       # Client implementation
   │   └── client.go

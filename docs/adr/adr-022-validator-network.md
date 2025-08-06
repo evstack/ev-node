@@ -93,7 +93,7 @@ Missing participation at the epoch boundary x/network evaluates participation:
 
 Solidity Contract
 
-```sol
+```txt
 contract StakeManager {
     struct Validator { uint96 power; bytes32 edKey; bytes blsKey; }
     mapping(address => Validator) public validators;
