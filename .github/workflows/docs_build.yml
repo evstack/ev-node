@@ -6,10 +6,10 @@ on:
   push:
     branches: [main]
     paths:
-      - "./docs"
+      - "docs/**"
   pull_request:
     paths:
-      - "./docs"
+      - "docs/**"
 
 jobs:
   build:
@@ -22,7 +22,10 @@ jobs:
         with:
           node-version: 20
           cache: yarn # or pnpm / npm
+          cache-dependency-path: docs/yarn.lock
       - name: Install dependencies
         run: yarn install # or pnpm install / npm ci
+        working-directory: docs
       - name: Build with VitePress
         run: yarn build # or pnpm build / npm build
+        working-directory: docs

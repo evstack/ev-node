@@ -23,7 +23,7 @@ This is a **VitePress-based documentation site** for Evolve. Key architectural e
 
 ### Content Organization
 
-```
+```txt
 docs/
 ├── .vitepress/config.ts    # Site configuration, navigation, theme
 ├── blog/                   # Blog posts and announcements

@@ -10,7 +10,7 @@ on:
       - synchronize
       - closed
     paths:
-      - "./docs"
+      - "docs/**"
 
 concurrency: preview-${{ github.ref }}
 
@@ -28,17 +28,20 @@ jobs:
         with:
           node-version: 20
           cache: yarn
+          cache-dependency-path: docs/yarn.lock
 
       - name: Install dependencies
         run: yarn install --frozen-lockfile
+        working-directory: docs
 
       - name: Build with Base URL
         run: BASE='/docs-preview/pr-${{ github.event.number }}/' yarn build
+        working-directory: docs
 
       - name: Deploy preview
         uses: rossjrw/pr-preview-action@v1
         with:
-          source-dir: .vitepress/dist
+          source-dir: docs/.vitepress/dist
           deploy-repository: evstack/docs-preview
           token: ${{ secrets.PREVIEW_DEPLOY }}
           preview-branch: main
