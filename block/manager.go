@@ -437,6 +437,18 @@ func (m *Manager) setNamespaceMigrationCompleted(ctx context.Context) error {
 	return m.store.SetMetadata(ctx, namespaceMigrationKey, []byte{1})
 }
 
+// loadNamespaceMigrationState loads the namespace migration state from persistent storage
+func (m *Manager) loadNamespaceMigrationState(ctx context.Context) (bool, error) {
+	migrationData, err := m.store.GetMetadata(ctx, namespaceMigrationKey)
+	if err != nil {
+		if errors.Is(err, ds.ErrNotFound) {
+			return false, nil // Migration not completed
+		}
+		return false, fmt.Errorf("failed to load migration state: %w", err)
+	}
+	return len(migrationData) > 0 && migrationData[0] == 1, nil
+}
+
 // PendingHeaders returns the pending headers.
 func (m *Manager) PendingHeaders() *PendingHeaders {
 	return m.pendingHeaders
