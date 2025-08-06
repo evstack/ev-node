@@ -80,6 +80,7 @@ func submitToDA[T any](
 	marshalFn func(T) ([]byte, error),
 	postSubmit func([]T, *coreda.ResultSubmit, float64),
 	itemType string,
+	namespace []byte,
 ) error {
 	submittedAll := false
 	var backoff time.Duration
@@ -117,7 +118,7 @@ func submitToDA[T any](
 		// Record DA submission retry attempt
 		m.recordDAMetrics("submission", DAModeRetry)
 
-		res := types.SubmitWithHelpers(submitctx, m.da, m.logger, currMarshaled, gasPrice, nil)
+		res := types.SubmitWithHelpers(submitctx, m.da, m.logger, currMarshaled, gasPrice, namespace, nil)
 		submitCtxCancel()
 
 		switch res.Code {
@@ -199,6 +200,7 @@ func (m *Manager) submitHeadersToDA(ctx context.Context, headersToSubmit []*type
 			m.sendNonBlockingSignalToDAIncluderCh()
 		},
 		"header",
+		[]byte(m.config.DA.GetHeaderNamespace()),
 	)
 }
 
@@ -224,6 +226,7 @@ func (m *Manager) submitDataToDA(ctx context.Context, signedDataToSubmit []*type
 			m.sendNonBlockingSignalToDAIncluderCh()
 		},
 		"data",
+		[]byte(m.config.DA.GetDataNamespace()),
 	)
 }
 

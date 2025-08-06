@@ -224,16 +224,60 @@ func (m *Manager) fetchBlobs(ctx context.Context, daHeight uint64) (coreda.Resul
 	// Record DA retrieval retry attempt
 	m.recordDAMetrics("retrieval", DAModeRetry)
 
-	// TODO: we should maintain the original error instead of creating a new one as we lose context by creating a new error.
-	blobsRes := types.RetrieveWithHelpers(ctx, m.da, m.logger, daHeight, []byte(m.genesis.ChainID))
-	switch blobsRes.Code {
-	case coreda.StatusError:
-		// Record failed DA retrieval
+	// Try to retrieve from both header and data namespaces
+	headerNamespace := []byte(m.config.DA.GetHeaderNamespace())
+	dataNamespace := []byte(m.config.DA.GetDataNamespace())
+	
+	// Retrieve headers
+	headerRes := types.RetrieveWithHelpers(ctx, m.da, m.logger, daHeight, headerNamespace)
+	
+	// Retrieve data
+	dataRes := types.RetrieveWithHelpers(ctx, m.da, m.logger, daHeight, dataNamespace)
+	
+	// Combine results or handle errors appropriately
+	if headerRes.Code == coreda.StatusError && dataRes.Code == coreda.StatusError {
+		// Both failed
 		m.recordDAMetrics("retrieval", DAModeFail)
-		err = fmt.Errorf("failed to retrieve block: %s", blobsRes.Message)
-	case coreda.StatusHeightFromFuture:
-		// Keep the root cause intact for callers that may rely on errors.Is/As.
-		err = fmt.Errorf("%w: %s", coreda.ErrHeightFromFuture, blobsRes.Message)
+		err = fmt.Errorf("failed to retrieve from both namespaces - headers: %s, data: %s", headerRes.Message, dataRes.Message)
+		return headerRes, err
 	}
-	return blobsRes, err
+	
+	if headerRes.Code == coreda.StatusHeightFromFuture || dataRes.Code == coreda.StatusHeightFromFuture {
+		// At least one is from future
+		err = fmt.Errorf("%w: height from future", coreda.ErrHeightFromFuture)
+		return coreda.ResultRetrieve{BaseResult: coreda.BaseResult{Code: coreda.StatusHeightFromFuture}}, err
+	}
+	
+	// Combine successful results
+	combinedResult := coreda.ResultRetrieve{
+		BaseResult: coreda.BaseResult{
+			Code:   coreda.StatusSuccess,
+			Height: daHeight,
+		},
+		Data: make([][]byte, 0),
+	}
+	
+	// Add header data if successful
+	if headerRes.Code == coreda.StatusSuccess {
+		combinedResult.Data = append(combinedResult.Data, headerRes.Data...)
+		if len(headerRes.IDs) > 0 {
+			combinedResult.IDs = append(combinedResult.IDs, headerRes.IDs...)
+		}
+	}
+	
+	// Add data blobs if successful  
+	if dataRes.Code == coreda.StatusSuccess {
+		combinedResult.Data = append(combinedResult.Data, dataRes.Data...)
+		if len(dataRes.IDs) > 0 {
+			combinedResult.IDs = append(combinedResult.IDs, dataRes.IDs...)
+		}
+	}
+	
+	// If both returned not found, return not found
+	if headerRes.Code == coreda.StatusNotFound && dataRes.Code == coreda.StatusNotFound {
+		combinedResult.Code = coreda.StatusNotFound
+		combinedResult.Message = "no blobs found in either namespace"
+	}
+	
+	return combinedResult, err
 }
