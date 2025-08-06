@@ -236,7 +236,7 @@ func submitToDA[T any](
 		res := types.SubmitWithHelpers(submitCtx, m.da, m.logger, marshaled, retryStrategy.gasPrice, nil)
 		cancel()
 
-		outcome := handleSubmissionResult(m, ctx, res, remaining, marshaled, retryStrategy, postSubmit, itemType)
+		outcome := handleSubmissionResult(ctx, m, res, remaining, marshaled, retryStrategy, postSubmit, itemType)
 
 		remaining = outcome.RemainingItems
 		marshaled = outcome.RemainingMarshal
@@ -278,8 +278,8 @@ func waitForBackoffOrContext(ctx context.Context, backoff time.Duration) error {
 }
 
 func handleSubmissionResult[T any](
-	m *Manager,
 	ctx context.Context,
+	m *Manager,
 	res coreda.ResultSubmit,
 	remaining []T,
 	marshaled [][]byte,
