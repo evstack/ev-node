@@ -13,7 +13,7 @@ The gRPC single sequencer app provides:
 
 ## Prerequisites
 
-1. A running execution client that implements the Evovle gRPC execution interface
+1. A running execution client that implements the Evolve gRPC execution interface
 2. Access to a data availability layer (e.g., local DA, Celestia)
 3. Go 1.22 or higher
 
