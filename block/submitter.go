@@ -586,11 +586,11 @@ func submitHalfBatch[T any](
 	return 0, nil
 }
 
-// BatchAction represents the action to take after processing a batch
-type BatchAction int
+// batchAction represents the action to take after processing a batch
+type batchAction int
 
 const (
-	batchActionSubmitted BatchAction = iota // Batch was successfully submitted
+	batchActionSubmitted batchAction = iota // Batch was successfully submitted
 	batchActionTooBig                       // Batch is too big and needs to be handled by caller
 	batchActionSkip                         // Batch should be skipped (single item too big)
 	batchActionFail                         // Unrecoverable error
@@ -598,7 +598,7 @@ const (
 
 // batchResult contains the result of processing a batch
 type batchResult[T any] struct {
-	action         BatchAction
+	action         batchAction
 	submittedCount int
 	splitBatches   []submissionBatch[T]
 }
