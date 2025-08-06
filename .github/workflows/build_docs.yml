@@ -1,4 +1,6 @@
 name: Build VitePress Site
+permissions:
+  contents: read
 
 on:
   push:
