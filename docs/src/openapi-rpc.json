@@ -34,9 +34,11 @@
     }
   ],
   "paths": {
-    "/rollkit.v1.SignerService/Sign": {
+    "/evnode.v1.SignerService/Sign": {
       "post": {
-        "tags": ["Signer Service"],
+        "tags": [
+          "Signer Service"
+        ],
         "summary": "Sign a message",
         "description": "Sign the given message bytes and return the signature.",
         "operationId": "sign",
@@ -79,9 +81,11 @@
         }
       }
     },
-    "/rollkit.v1.SignerService/GetPublic": {
+    "/evnode.v1.SignerService/GetPublic": {
       "post": {
-        "tags": ["Signer Service"],
+        "tags": [
+          "Signer Service"
+        ],
         "summary": "Get public key",
         "description": "Retrieve the public key of the signer.",
         "operationId": "getPublic",
@@ -119,9 +123,11 @@
         }
       }
     },
-    "/rollkit.v1.StoreService/GetBlock": {
+    "/evnode.v1.StoreService/GetBlock": {
       "post": {
-        "tags": ["Store Service"],
+        "tags": [
+          "Store Service"
+        ],
         "summary": "Get a block",
         "description": "Retrieve a block by height or hash from the chain store.",
         "operationId": "getBlock",
@@ -173,9 +179,11 @@
         }
       }
     },
-    "/rollkit.v1.StoreService/GetState": {
+    "/evnode.v1.StoreService/GetState": {
       "post": {
-        "tags": ["Store Service"],
+        "tags": [
+          "Store Service"
+        ],
         "summary": "Get current state",
         "description": "Retrieve the current state of the chain.",
         "operationId": "getState",
@@ -213,9 +221,11 @@
         }
       }
     },
-    "/rollkit.v1.StoreService/GetMetadata": {
+    "/evnode.v1.StoreService/GetMetadata": {
       "post": {
-        "tags": ["Store Service"],
+        "tags": [
+          "Store Service"
+        ],
         "summary": "Get metadata",
         "description": "Retrieve metadata by key from the chain store.",
         "operationId": "getMetadata",
@@ -261,9 +271,11 @@
         }
       }
     },
-    "/rollkit.v1.P2PService/GetPeerInfo": {
+    "/evnode.v1.P2PService/GetPeerInfo": {
       "post": {
-        "tags": ["P2P Service"],
+        "tags": [
+          "P2P Service"
+        ],
         "summary": "Get peer information",
         "description": "Retrieve information about connected peers.",
         "operationId": "getPeerInfo",
@@ -301,9 +313,11 @@
         }
       }
     },
-    "/rollkit.v1.P2PService/GetNetInfo": {
+    "/evnode.v1.P2PService/GetNetInfo": {
       "post": {
-        "tags": ["P2P Service"],
+        "tags": [
+          "P2P Service"
+        ],
         "summary": "Get network information",
         "description": "Retrieve network information and statistics.",
         "operationId": "getNetInfo",
@@ -341,9 +355,11 @@
         }
       }
     },
-    "/rollkit.v1.HealthService/Livez": {
+    "/evnode.v1.HealthService/Livez": {
       "post": {
-        "tags": ["Health Service"],
+        "tags": [
+          "Health Service"
+        ],
         "summary": "Check node health",
         "description": "Check if the node is alive and healthy.",
         "operationId": "livez",
@@ -390,7 +406,9 @@
     },
     "/health/live": {
       "get": {
-        "tags": ["Health Service"],
+        "tags": [
+          "Health Service"
+        ],
         "summary": "Simple liveness check",
         "description": "Simple HTTP endpoint to check if the node is alive. Returns plain text 'OK' response.",
         "operationId": "healthLive",
@@ -447,7 +465,9 @@
       "SignRequest": {
         "type": "object",
         "description": "Request to sign a message",
-        "required": ["message"],
+        "required": [
+          "message"
+        ],
         "properties": {
           "message": {
             "type": "string",
@@ -460,7 +480,9 @@
       "SignResponse": {
         "type": "object",
         "description": "Response containing signature",
-        "required": ["signature"],
+        "required": [
+          "signature"
+        ],
         "properties": {
           "signature": {
             "type": "string",
@@ -478,7 +500,9 @@
       "GetPublicResponse": {
         "type": "object",
         "description": "Response containing public key",
-        "required": ["public_key"],
+        "required": [
+          "public_key"
+        ],
         "properties": {
           "public_key": {
             "type": "string",
@@ -542,7 +566,9 @@
       "GetMetadataRequest": {
         "type": "object",
         "description": "Request to get metadata by key",
-        "required": ["key"],
+        "required": [
+          "key"
+        ],
         "properties": {
           "key": {
             "type": "string",
@@ -554,7 +580,9 @@
       "GetMetadataResponse": {
         "type": "object",
         "description": "Response containing metadata",
-        "required": ["value"],
+        "required": [
+          "value"
+        ],
         "properties": {
           "value": {
             "type": "string",
@@ -572,7 +600,9 @@
       "GetPeerInfoResponse": {
         "type": "object",
         "description": "Response containing peer information",
-        "required": ["peers"],
+        "required": [
+          "peers"
+        ],
         "properties": {
           "peers": {
             "type": "array",
@@ -605,7 +635,9 @@
       "GetHealthResponse": {
         "type": "object",
         "description": "Response indicating node health status",
-        "required": ["status"],
+        "required": [
+          "status"
+        ],
         "properties": {
           "status": {
             "$ref": "#/components/schemas/HealthStatus"
@@ -614,7 +646,12 @@
       },
       "HealthStatus": {
         "type": "string",
-        "enum": ["UNKNOWN", "PASS", "WARN", "FAIL"],
+        "enum": [
+          "UNKNOWN",
+          "PASS",
+          "WARN",
+          "FAIL"
+        ],
         "description": "Health status of the node"
       },
       "Block": {
@@ -649,7 +686,11 @@
       "Header": {
         "type": "object",
         "description": "Block header information",
-        "required": ["height", "time", "chain_id"],
+        "required": [
+          "height",
+          "time",
+          "chain_id"
+        ],
         "properties": {
           "version": {
             "$ref": "#/components/schemas/Version"
@@ -713,7 +754,10 @@
       "Version": {
         "type": "object",
         "description": "Version captures the consensus rules for processing a block",
-        "required": ["block", "app"],
+        "required": [
+          "block",
+          "app"
+        ],
         "properties": {
           "block": {
             "type": "integer",
@@ -730,7 +774,10 @@
       "Signer": {
         "type": "object",
         "description": "Signer of a block",
-        "required": ["address", "pub_key"],
+        "required": [
+          "address",
+          "pub_key"
+        ],
         "properties": {
           "address": {
             "type": "string",
@@ -747,7 +794,9 @@
       "Data": {
         "type": "object",
         "description": "Block transaction data",
-        "required": ["txs"],
+        "required": [
+          "txs"
+        ],
         "properties": {
           "metadata": {
             "$ref": "#/components/schemas/Metadata"
@@ -765,7 +814,11 @@
       "Metadata": {
         "type": "object",
         "description": "Metadata of a block",
-        "required": ["chain_id", "height", "time"],
+        "required": [
+          "chain_id",
+          "height",
+          "time"
+        ],
         "properties": {
           "chain_id": {
             "type": "string",
@@ -791,7 +844,12 @@
       "State": {
         "type": "object",
         "description": "Current chain state",
-        "required": ["chain_id", "initial_height", "last_block_height", "da_height"],
+        "required": [
+          "chain_id",
+          "initial_height",
+          "last_block_height",
+          "da_height"
+        ],
         "properties": {
           "version": {
             "$ref": "#/components/schemas/Version"
@@ -835,7 +893,10 @@
       "PeerInfo": {
         "type": "object",
         "description": "Information about a connected peer",
-        "required": ["id", "address"],
+        "required": [
+          "id",
+          "address"
+        ],
         "properties": {
           "id": {
             "type": "string",
@@ -850,7 +911,11 @@
       "NetInfo": {
         "type": "object",
         "description": "Network information",
-        "required": ["id", "listen_addresses", "connected_peers"],
+        "required": [
+          "id",
+          "listen_addresses",
+          "connected_peers"
+        ],
         "properties": {
           "id": {
             "type": "string",
@@ -875,7 +940,10 @@
       "Error": {
         "type": "object",
         "description": "Error response",
-        "required": ["code", "message"],
+        "required": [
+          "code",
+          "message"
+        ],
         "properties": {
           "code": {
             "type": "integer",
