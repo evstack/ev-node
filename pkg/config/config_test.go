@@ -100,7 +100,7 @@ func TestAddFlags(t *testing.T) {
 	assertFlagValue(t, flags, FlagRPCAddress, DefaultConfig.RPC.Address)
 
 	// Count the number of flags we're explicitly checking
-	expectedFlagCount := 35 // Update this number if you add more flag checks above
+	expectedFlagCount := 37 // Update this number if you add more flag checks above
 
 	// Get the actual number of flags (both regular and persistent)
 	actualFlagCount := 0
@@ -278,10 +278,10 @@ signer:
 
 func TestDAConfig_GetHeaderNamespace(t *testing.T) {
 	tests := []struct {
-		name               string
-		headerNamespace    string
-		legacyNamespace    string
-		expectedNamespace  string
+		name              string
+		headerNamespace   string
+		legacyNamespace   string
+		expectedNamespace string
 	}{
 		{
 			name:              "HeaderNamespace set",
@@ -307,9 +307,9 @@ func TestDAConfig_GetHeaderNamespace(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			daConfig := &DAConfig{
 				HeaderNamespace: tt.headerNamespace,
-				Namespace:      tt.legacyNamespace,
+				Namespace:       tt.legacyNamespace,
 			}
-			
+
 			result := daConfig.GetHeaderNamespace()
 			assert.Equal(t, tt.expectedNamespace, result)
 		})
@@ -318,10 +318,10 @@ func TestDAConfig_GetHeaderNamespace(t *testing.T) {
 
 func TestDAConfig_GetDataNamespace(t *testing.T) {
 	tests := []struct {
-		name               string
-		dataNamespace      string
-		legacyNamespace    string
-		expectedNamespace  string
+		name              string
+		dataNamespace     string
+		legacyNamespace   string
+		expectedNamespace string
 	}{
 		{
 			name:              "DataNamespace set",
@@ -347,9 +347,9 @@ func TestDAConfig_GetDataNamespace(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			daConfig := &DAConfig{
 				DataNamespace: tt.dataNamespace,
-				Namespace:    tt.legacyNamespace,
+				Namespace:     tt.legacyNamespace,
 			}
-			
+
 			result := daConfig.GetDataNamespace()
 			assert.Equal(t, tt.expectedNamespace, result)
 		})

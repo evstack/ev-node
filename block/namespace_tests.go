@@ -4,7 +4,6 @@ import (
 	"context"
 	"crypto/rand"
 	"fmt"
-	"os"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -86,12 +85,12 @@ func setupManagerForNamespaceTest(t *testing.T, daConfig config.DAConfig) (*Mana
 
 	manager.daHeight.Store(100)
 	manager.daIncludedHeight.Store(0)
-	
+
 	// Initialize the namespace migration state from store
 	if migrationData, err := mockStore.GetMetadata(context.Background(), namespaceMigrationKey); err == nil && len(migrationData) > 0 {
 		manager.namespaceMigrationCompleted.Store(migrationData[0] == 1)
 	}
-	
+
 	t.Cleanup(cancel)
 
 	return manager, mockDAClient, mockStore, cancel
@@ -100,15 +99,15 @@ func setupManagerForNamespaceTest(t *testing.T, daConfig config.DAConfig) (*Mana
 // TestProcessNextDAHeaderAndData_MixedResults tests scenarios where header retrieval succeeds but data fails, and vice versa
 func TestProcessNextDAHeaderAndData_MixedResults(t *testing.T) {
 	t.Parallel()
-	
+
 	tests := []struct {
-		name           string
-		headerError    bool
-		headerMessage  string
-		dataError      bool
-		dataMessage    string
-		expectError    bool
-		errorContains  string
+		name          string
+		headerError   bool
+		headerMessage string
+		dataError     bool
+		dataMessage   string
+		expectError   bool
+		errorContains string
 	}{
 		{
 			name:          "header succeeds, data fails",
@@ -143,7 +142,7 @@ func TestProcessNextDAHeaderAndData_MixedResults(t *testing.T) {
 		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			
+
 			daConfig := config.DAConfig{
 				HeaderNamespace: "test-headers",
 				DataNamespace:   "test-data",
@@ -162,7 +161,7 @@ func TestProcessNextDAHeaderAndData_MixedResults(t *testing.T) {
 						fmt.Errorf("wrapped: %w", coreda.ErrHeightFromFuture)).Once()
 				} else {
 					mockDA.On("GetIDs", mock.Anything, uint64(100), []byte("test-headers")).Return(nil,
-						fmt.Errorf(tt.headerMessage)).Once()
+						fmt.Errorf("%s", tt.headerMessage)).Once()
 				}
 			} else {
 				// Header namespace succeeds but returns no data (simulating success but not a valid blob)
@@ -172,9 +171,9 @@ func TestProcessNextDAHeaderAndData_MixedResults(t *testing.T) {
 			}
 
 			if tt.dataError {
-				// Data namespace fails  
+				// Data namespace fails
 				mockDA.On("GetIDs", mock.Anything, uint64(100), []byte("test-data")).Return(nil,
-					fmt.Errorf(tt.dataMessage)).Once()
+					fmt.Errorf("%s", tt.dataMessage)).Once()
 			} else {
 				// Data namespace succeeds but returns no data
 				mockDA.On("GetIDs", mock.Anything, uint64(100), []byte("test-data")).Return(&coreda.GetIDsResult{
@@ -204,42 +203,42 @@ func TestNamespaceMigration_Completion(t *testing.T) {
 	tests := []struct {
 		name                    string
 		initialMigrationState   bool
-		legacyHasData          bool
-		newNamespaceHasData    bool
+		legacyHasData           bool
+		newNamespaceHasData     bool
 		expectMigrationComplete bool
-		expectLegacyCall       bool
+		expectLegacyCall        bool
 	}{
 		{
 			name:                    "migration not started, legacy has data",
 			initialMigrationState:   false,
-			legacyHasData:          true,
-			newNamespaceHasData:    false,
+			legacyHasData:           true,
+			newNamespaceHasData:     false,
 			expectMigrationComplete: false,
-			expectLegacyCall:       true,
+			expectLegacyCall:        true,
 		},
 		{
 			name:                    "migration not started, no legacy data, new namespace has data",
 			initialMigrationState:   false,
-			legacyHasData:          false,
-			newNamespaceHasData:    true,
+			legacyHasData:           false,
+			newNamespaceHasData:     true,
 			expectMigrationComplete: true,
-			expectLegacyCall:       true,
+			expectLegacyCall:        true,
 		},
 		{
 			name:                    "migration not started, no data anywhere",
 			initialMigrationState:   false,
-			legacyHasData:          false,
-			newNamespaceHasData:    false,
+			legacyHasData:           false,
+			newNamespaceHasData:     false,
 			expectMigrationComplete: true,
-			expectLegacyCall:       true,
+			expectLegacyCall:        true,
 		},
 		{
 			name:                    "migration already completed",
 			initialMigrationState:   true,
-			legacyHasData:          true, // shouldn't matter
-			newNamespaceHasData:    true,
+			legacyHasData:           true, // shouldn't matter
+			newNamespaceHasData:     true,
 			expectMigrationComplete: true,
-			expectLegacyCall:       false, // should skip legacy check
+			expectLegacyCall:        false, // should skip legacy check
 		},
 	}
 
@@ -263,7 +262,7 @@ func TestNamespaceMigration_Completion(t *testing.T) {
 				// Mock legacy namespace call
 				if tt.legacyHasData {
 					mockDA.On("GetIDs", mock.Anything, uint64(100), []byte("legacy-namespace")).Return(&coreda.GetIDsResult{
-						IDs: []coreda.ID{[]byte("legacy-id")},
+						IDs:       []coreda.ID{[]byte("legacy-id")},
 						Timestamp: time.Now(),
 					}, nil).Once()
 					mockDA.On("Get", mock.Anything, []coreda.ID{[]byte("legacy-id")}, []byte("legacy-namespace")).Return(
@@ -281,7 +280,7 @@ func TestNamespaceMigration_Completion(t *testing.T) {
 				if tt.newNamespaceHasData {
 					// Header namespace
 					mockDA.On("GetIDs", mock.Anything, uint64(100), []byte("test-headers")).Return(&coreda.GetIDsResult{
-						IDs: []coreda.ID{[]byte("header-id")},
+						IDs:       []coreda.ID{[]byte("header-id")},
 						Timestamp: time.Now(),
 					}, nil).Once()
 					mockDA.On("Get", mock.Anything, []coreda.ID{[]byte("header-id")}, []byte("test-headers")).Return(
@@ -290,7 +289,7 @@ func TestNamespaceMigration_Completion(t *testing.T) {
 
 					// Data namespace
 					mockDA.On("GetIDs", mock.Anything, uint64(100), []byte("test-data")).Return(&coreda.GetIDsResult{
-						IDs: []coreda.ID{[]byte("data-id")},
+						IDs:       []coreda.ID{[]byte("data-id")},
 						Timestamp: time.Now(),
 					}, nil).Once()
 					mockDA.On("Get", mock.Anything, []coreda.ID{[]byte("data-id")}, []byte("test-data")).Return(
@@ -308,7 +307,7 @@ func TestNamespaceMigration_Completion(t *testing.T) {
 			} else if !tt.expectLegacyCall {
 				// Migration already completed, should only call new namespaces
 				mockDA.On("GetIDs", mock.Anything, uint64(100), []byte("test-headers")).Return(&coreda.GetIDsResult{
-					IDs: []coreda.ID{[]byte("header-id")},
+					IDs:       []coreda.ID{[]byte("header-id")},
 					Timestamp: time.Now(),
 				}, nil).Once()
 				mockDA.On("Get", mock.Anything, []coreda.ID{[]byte("header-id")}, []byte("test-headers")).Return(
@@ -316,7 +315,7 @@ func TestNamespaceMigration_Completion(t *testing.T) {
 				).Once()
 
 				mockDA.On("GetIDs", mock.Anything, uint64(100), []byte("test-data")).Return(&coreda.GetIDsResult{
-					IDs: []coreda.ID{[]byte("data-id")},
+					IDs:       []coreda.ID{[]byte("data-id")},
 					Timestamp: time.Now(),
 				}, nil).Once()
 				mockDA.On("Get", mock.Anything, []coreda.ID{[]byte("data-id")}, []byte("test-data")).Return(
@@ -354,7 +353,7 @@ func TestNamespaceMigration_PersistenceReload(t *testing.T) {
 
 	daConfig := config.DAConfig{
 		Namespace:       "legacy-namespace",
-		HeaderNamespace: "test-headers", 
+		HeaderNamespace: "test-headers",
 		DataNamespace:   "test-data",
 	}
 
@@ -376,16 +375,16 @@ func TestNamespaceMigration_PersistenceReload(t *testing.T) {
 	require.NoError(t, err)
 
 	manager := &Manager{
-		store:         mockStore,
-		config:        config.Config{DA: daConfig},
-		genesis:       genesis.Genesis{ProposerAddress: addr},
-		daHeight:      &atomic.Uint64{},
-		headerStore:   headerStore,
-		dataStore:     dataStore,
-		headerCache:   cache.NewCache[types.SignedHeader](),
-		dataCache:     cache.NewCache[types.Data](),
-		logger:        zerolog.Nop(),
-		signer:        noopSigner,
+		store:                       mockStore,
+		config:                      config.Config{DA: daConfig},
+		genesis:                     genesis.Genesis{ProposerAddress: addr},
+		daHeight:                    &atomic.Uint64{},
+		headerStore:                 headerStore,
+		dataStore:                   dataStore,
+		headerCache:                 cache.NewCache[types.SignedHeader](),
+		dataCache:                   cache.NewCache[types.Data](),
+		logger:                      zerolog.Nop(),
+		signer:                      noopSigner,
 		namespaceMigrationCompleted: &atomic.Bool{},
 	}
 
@@ -406,36 +405,36 @@ func TestLegacyNamespaceDetection(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name               string
-		legacyNamespace    string
-		headerNamespace    string
-		dataNamespace      string
+		name                 string
+		legacyNamespace      string
+		headerNamespace      string
+		dataNamespace        string
 		expectLegacyFallback bool
-		description        string
+		description          string
 	}{
 		{
-			name:               "only legacy namespace configured",
-			legacyNamespace:    "old-namespace",
-			headerNamespace:    "",
-			dataNamespace:      "",
+			name:                 "only legacy namespace configured",
+			legacyNamespace:      "old-namespace",
+			headerNamespace:      "",
+			dataNamespace:        "",
 			expectLegacyFallback: false, // Should use defaults
-			description:        "When only legacy namespace is set, should use default new namespaces",
+			description:          "When only legacy namespace is set, should use default new namespaces",
 		},
 		{
-			name:               "all namespaces configured",
-			legacyNamespace:    "old-namespace",
-			headerNamespace:    "new-headers",
-			dataNamespace:      "new-data",
+			name:                 "all namespaces configured",
+			legacyNamespace:      "old-namespace",
+			headerNamespace:      "new-headers",
+			dataNamespace:        "new-data",
 			expectLegacyFallback: true,
-			description:        "Should check legacy first, then try new namespaces",
+			description:          "Should check legacy first, then try new namespaces",
 		},
 		{
-			name:               "no namespaces configured",
-			legacyNamespace:    "",
-			headerNamespace:    "",
-			dataNamespace:      "",
+			name:                 "no namespaces configured",
+			legacyNamespace:      "",
+			headerNamespace:      "",
+			dataNamespace:        "",
 			expectLegacyFallback: false,
-			description:        "Should use default namespaces only",
+			description:          "Should use default namespaces only",
 		},
 	}
 

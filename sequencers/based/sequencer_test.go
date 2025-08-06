@@ -70,7 +70,7 @@ func TestSequencer_GetNextBatch_FromDALayer(t *testing.T) {
 	ctx := context.Background()
 
 	blobs := []coreda.Blob{[]byte("tx2"), []byte("tx3")}
-	_, err := sequencer.DA.Submit(ctx, blobs, 1.0, []byte("ns"))
+	_, err := sequencer.DA.Submit(ctx, blobs, 1.0, []byte("test-namespace"))
 	assert.NoError(t, err)
 	time.Sleep(getTestDABlockTime())
 
@@ -78,8 +78,11 @@ func TestSequencer_GetNextBatch_FromDALayer(t *testing.T) {
 		Id: []byte("test1"),
 	})
 	assert.NoError(t, err)
-	assert.GreaterOrEqual(t, len(resp.Batch.Transactions), 1)
-	assert.GreaterOrEqual(t, len(resp.BatchData), 1)
+	assert.NotNil(t, resp)
+	if resp != nil {
+		assert.GreaterOrEqual(t, len(resp.Batch.Transactions), 1)
+		assert.GreaterOrEqual(t, len(resp.BatchData), 1)
+	}
 }
 
 func TestSequencer_GetNextBatch_Invalid(t *testing.T) {
