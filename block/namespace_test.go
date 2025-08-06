@@ -464,27 +464,73 @@ func TestLegacyNamespaceDetection(t *testing.T) {
 			manager.namespaceMigrationCompleted.Store(false)
 
 			// Check if we should expect a legacy namespace check
-			// This happens when legacy namespace is different from header/data namespaces
-			expectLegacyCheck := tt.legacyNamespace != "" &&
-				tt.legacyNamespace != headerNS &&
-				tt.legacyNamespace != dataNS
-
-			if expectLegacyCheck {
-				// Should try legacy namespace first
-				mockDA.On("GetIDs", mock.Anything, uint64(100), []byte(tt.legacyNamespace)).Return(&coreda.GetIDsResult{
-					IDs: []coreda.ID{},
-				}, coreda.ErrBlobNotFound).Once()
-			}
-
-			// Then should try new namespaces
-			mockDA.On("GetIDs", mock.Anything, uint64(100), []byte(headerNS)).Return(&coreda.GetIDsResult{
-				IDs: []coreda.ID{},
-			}, coreda.ErrBlobNotFound).Once()
-
-			if dataNS != headerNS {
-				mockDA.On("GetIDs", mock.Anything, uint64(100), []byte(dataNS)).Return(&coreda.GetIDsResult{
-					IDs: []coreda.ID{},
-				}, coreda.ErrBlobNotFound).Once()
+			// Legacy check happens when migration is not completed and legacy namespace is configured
+			if tt.legacyNamespace != "" {
+				// When legacy namespace is the same as header/data namespaces,
+				// the legacy check still happens first (it's a separate call)
+				if tt.legacyNamespace == headerNS && headerNS == dataNS {
+					// All three namespaces are the same, so we'll get 3 calls total:
+					// 1 for legacy check + 1 for header + 1 for data
+					mockDA.On("GetIDs", mock.Anything, uint64(100), []byte(tt.legacyNamespace)).Return(&coreda.GetIDsResult{
+						IDs: []coreda.ID{},
+					}, coreda.ErrBlobNotFound).Times(3)
+				} else if tt.legacyNamespace == headerNS || tt.legacyNamespace == dataNS {
+					// Legacy matches one of the new namespaces
+					// We'll get the legacy call plus one or two more depending on whether header == data
+					totalCalls := 1 // legacy call
+					if headerNS == dataNS {
+						totalCalls += 2 // header and data are same
+					} else {
+						totalCalls += 1 // the one that matches legacy
+					}
+					mockDA.On("GetIDs", mock.Anything, uint64(100), []byte(tt.legacyNamespace)).Return(&coreda.GetIDsResult{
+						IDs: []coreda.ID{},
+					}, coreda.ErrBlobNotFound).Times(totalCalls)
+					
+					// Mock the non-matching namespace if header != data
+					if headerNS != dataNS {
+						nonMatchingNS := headerNS
+						if tt.legacyNamespace == headerNS {
+							nonMatchingNS = dataNS
+						}
+						mockDA.On("GetIDs", mock.Anything, uint64(100), []byte(nonMatchingNS)).Return(&coreda.GetIDsResult{
+							IDs: []coreda.ID{},
+						}, coreda.ErrBlobNotFound).Once()
+					}
+				} else {
+					// Legacy is different from both header and data
+					mockDA.On("GetIDs", mock.Anything, uint64(100), []byte(tt.legacyNamespace)).Return(&coreda.GetIDsResult{
+						IDs: []coreda.ID{},
+					}, coreda.ErrBlobNotFound).Once()
+					
+					// Mock header and data calls
+					if headerNS == dataNS {
+						mockDA.On("GetIDs", mock.Anything, uint64(100), []byte(headerNS)).Return(&coreda.GetIDsResult{
+							IDs: []coreda.ID{},
+						}, coreda.ErrBlobNotFound).Twice()
+					} else {
+						mockDA.On("GetIDs", mock.Anything, uint64(100), []byte(headerNS)).Return(&coreda.GetIDsResult{
+							IDs: []coreda.ID{},
+						}, coreda.ErrBlobNotFound).Once()
+						mockDA.On("GetIDs", mock.Anything, uint64(100), []byte(dataNS)).Return(&coreda.GetIDsResult{
+							IDs: []coreda.ID{},
+						}, coreda.ErrBlobNotFound).Once()
+					}
+				}
+			} else {
+				// No legacy namespace configured, just mock the new namespace calls
+				if headerNS == dataNS {
+					mockDA.On("GetIDs", mock.Anything, uint64(100), []byte(headerNS)).Return(&coreda.GetIDsResult{
+						IDs: []coreda.ID{},
+					}, coreda.ErrBlobNotFound).Twice()
+				} else {
+					mockDA.On("GetIDs", mock.Anything, uint64(100), []byte(headerNS)).Return(&coreda.GetIDsResult{
+						IDs: []coreda.ID{},
+					}, coreda.ErrBlobNotFound).Once()
+					mockDA.On("GetIDs", mock.Anything, uint64(100), []byte(dataNS)).Return(&coreda.GetIDsResult{
+						IDs: []coreda.ID{},
+					}, coreda.ErrBlobNotFound).Once()
+				}
 			}
 
 			ctx := context.Background()
