@@ -90,8 +90,8 @@ db_path: "data"
 ```
 
 **Command-line Flag:**
-`--evolve.db_path <path>`
-*Example:* `--evolve.db_path "node_db"`
+`--rollkit.db_path <path>`
+*Example:* `--rollkit.db_path "node_db"`
 *Default:* `"data"`
 *Constant:* `FlagDBPath`
 
@@ -137,8 +137,8 @@ node:
 ```
 
 **Command-line Flag:**
-`--evolve.node.aggregator` (boolean, presence enables it)
-*Example:* `--evolve.node.aggregator`
+`--rollkit.node.aggregator` (boolean, presence enables it)
+*Example:* `--rollkit.node.aggregator`
 *Default:* `false`
 *Constant:* `FlagAggregator`
 
@@ -155,8 +155,8 @@ node:
 ```
 
 **Command-line Flag:**
-`--evolve.node.light` (boolean, presence enables it)
-*Example:* `--evolve.node.light`
+`--rollkit.node.light` (boolean, presence enables it)
+*Example:* `--rollkit.node.light`
 *Default:* `false`
 *Constant:* `FlagLight`
 
@@ -173,8 +173,8 @@ node:
 ```
 
 **Command-line Flag:**
-`--evolve.node.block_time <duration>`
-*Example:* `--evolve.node.block_time 2s`
+`--rollkit.node.block_time <duration>`
+*Example:* `--rollkit.node.block_time 2s`
 *Default:* `"1s"`
 *Constant:* `FlagBlockTime`
 
@@ -191,8 +191,8 @@ node:
 ```
 
 **Command-line Flag:**
-`--evolve.node.max_pending_blocks <uint64>`
-*Example:* `--evolve.node.max_pending_blocks 50`
+`--rollkit.node.max_pending_blocks <uint64>`
+*Example:* `--rollkit.node.max_pending_blocks 50`
 *Default:* `0` (no limit)
 *Constant:* `FlagMaxPendingBlocks`
 
@@ -209,8 +209,8 @@ node:
 ```
 
 **Command-line Flag:**
-`--evolve.node.lazy_mode` (boolean, presence enables it)
-*Example:* `--evolve.node.lazy_mode`
+`--rollkit.node.lazy_mode` (boolean, presence enables it)
+*Example:* `--rollkit.node.lazy_mode`
 *Default:* `false`
 *Constant:* `FlagLazyAggregator`
 
@@ -227,8 +227,8 @@ node:
 ```
 
 **Command-line Flag:**
-`--evolve.node.lazy_block_interval <duration>`
-*Example:* `--evolve.node.lazy_block_interval 1m`
+`--rollkit.node.lazy_block_interval <duration>`
+*Example:* `--rollkit.node.lazy_block_interval 1m`
 *Default:* `"30s"`
 *Constant:* `FlagLazyBlockTime`
 
@@ -245,8 +245,8 @@ node:
 ```
 
 **Command-line Flag:**
-`--evolve.node.trusted_hash <string>`
-*Example:* `--evolve.node.trusted_hash ABCDEF012345...`
+`--rollkit.node.trusted_hash <string>`
+*Example:* `--rollkit.node.trusted_hash ABCDEF012345...`
 *Default:* `""` (empty, sync from genesis)
 *Constant:* `FlagTrustedHash`
 
@@ -274,8 +274,8 @@ da:
 ```
 
 **Command-line Flag:**
-`--evolve.da.address <string>`
-*Example:* `--evolve.da.address 192.168.1.100:26659`
+`--rollkit.da.address <string>`
+*Example:* `--rollkit.da.address 192.168.1.100:26659`
 *Default:* `""` (empty, must be configured if DA is used)
 *Constant:* `FlagDAAddress`
 
@@ -292,8 +292,8 @@ da:
 ```
 
 **Command-line Flag:**
-`--evolve.da.auth_token <string>`
-*Example:* `--evolve.da.auth_token mysecrettoken`
+`--rollkit.da.auth_token <string>`
+*Example:* `--rollkit.da.auth_token mysecrettoken`
 *Default:* `""` (empty)
 *Constant:* `FlagDAAuthToken`
 
@@ -310,8 +310,8 @@ da:
 ```
 
 **Command-line Flag:**
-`--evolve.da.gas_price <float64>`
-*Example:* `--evolve.da.gas_price 0.05`
+`--rollkit.da.gas_price <float64>`
+*Example:* `--rollkit.da.gas_price 0.05`
 *Default:* `-1` (automatic)
 *Constant:* `FlagDAGasPrice`
 
@@ -328,8 +328,8 @@ da:
 ```
 
 **Command-line Flag:**
-`--evolve.da.gas_multiplier <float64>`
-*Example:* `--evolve.da.gas_multiplier 1.5`
+`--rollkit.da.gas_multiplier <float64>`
+*Example:* `--rollkit.da.gas_multiplier 1.5`
 *Default:* `1.0` (no multiplication)
 *Constant:* `FlagDAGasMultiplier`
 
@@ -346,8 +346,8 @@ da:
 ```
 
 **Command-line Flag:**
-`--evolve.da.submit_options <string>`
-*Example:* `--evolve.da.submit_options '{"custom_param":true}'`
+`--rollkit.da.submit_options <string>`
+*Example:* `--rollkit.da.submit_options '{"custom_param":true}'`
 *Default:* `""` (empty)
 *Constant:* `FlagDASubmitOptions`
 
@@ -364,8 +364,8 @@ da:
 ```
 
 **Command-line Flag:**
-`--evolve.da.namespace <string>`
-*Example:* `--evolve.da.namespace 0x1234567890abcdef`
+`--rollkit.da.namespace <string>`
+*Example:* `--rollkit.da.namespace 0x1234567890abcdef`
 *Default:* `""` (empty, must be configured)
 *Constant:* `FlagDANamespace`
 
@@ -386,8 +386,8 @@ da:
 ```
 
 **Command-line Flag:**
-`--evolve.da.block_time <duration>`
-*Example:* `--evolve.da.block_time 12s`
+`--rollkit.da.block_time <duration>`
+*Example:* `--rollkit.da.block_time 12s`
 *Default:* `"6s"`
 *Constant:* `FlagDABlockTime`
 
@@ -404,8 +404,8 @@ da:
 ```
 
 **Command-line Flag:**
-`--evolve.da.start_height <uint64>`
-*Example:* `--evolve.da.start_height 500000`
+`--rollkit.da.start_height <uint64>`
+*Example:* `--rollkit.da.start_height 500000`
 *Default:* `0` (sync from the beginning)
 *Constant:* `FlagDAStartHeight`
 
@@ -422,8 +422,8 @@ da:
 ```
 
 **Command-line Flag:**
-`--evolve.da.mempool_ttl <uint64>`
-*Example:* `--evolve.da.mempool_ttl 30`
+`--rollkit.da.mempool_ttl <uint64>`
+*Example:* `--rollkit.da.mempool_ttl 30`
 *Default:* `20`
 *Constant:* `FlagDAMempoolTTL`
 
@@ -451,8 +451,8 @@ p2p:
 ```
 
 **Command-line Flag:**
-`--evolve.p2p.listen_address <string>`
-*Example:* `--evolve.p2p.listen_address /ip4/127.0.0.1/tcp/26656`
+`--rollkit.p2p.listen_address <string>`
+*Example:* `--rollkit.p2p.listen_address /ip4/127.0.0.1/tcp/26656`
 *Default:* `"/ip4/0.0.0.0/tcp/7676"`
 *Constant:* `FlagP2PListenAddress`
 
@@ -469,8 +469,8 @@ p2p:
 ```
 
 **Command-line Flag:**
-`--evolve.p2p.peers <string>`
-*Example:* `--evolve.p2p.peers /dns4/seed.example.com/tcp/26656/p2p/12D3KooW...`
+`--rollkit.p2p.peers <string>`
+*Example:* `--rollkit.p2p.peers /dns4/seed.example.com/tcp/26656/p2p/12D3KooW...`
 *Default:* `""` (empty)
 *Constant:* `FlagP2PPeers`
 
@@ -487,8 +487,8 @@ p2p:
 ```
 
 **Command-line Flag:**
-`--evolve.p2p.blocked_peers <string>`
-*Example:* `--evolve.p2p.blocked_peers 12D3KooW...,12D3KooX...`
+`--rollkit.p2p.blocked_peers <string>`
+*Example:* `--rollkit.p2p.blocked_peers 12D3KooW...,12D3KooX...`
 *Default:* `""` (empty)
 *Constant:* `FlagP2PBlockedPeers`
 
@@ -505,8 +505,8 @@ p2p:
 ```
 
 **Command-line Flag:**
-`--evolve.p2p.allowed_peers <string>`
-*Example:* `--evolve.p2p.allowed_peers 12D3KooY...,12D3KooZ...`
+`--rollkit.p2p.allowed_peers <string>`
+*Example:* `--rollkit.p2p.allowed_peers 12D3KooY...,12D3KooZ...`
 *Default:* `""` (empty, allow all unless blocked)
 *Constant:* `FlagP2PAllowedPeers`
 
@@ -534,8 +534,8 @@ rpc:
 ```
 
 **Command-line Flag:**
-`--evolve.rpc.address <string>`
-*Example:* `--evolve.rpc.address 0.0.0.0:26657`
+`--rollkit.rpc.address <string>`
+*Example:* `--rollkit.rpc.address 0.0.0.0:26657`
 *Default:* `"127.0.0.1:7331"`
 *Constant:* `FlagRPCAddress`
 
@@ -563,8 +563,8 @@ instrumentation:
 ```
 
 **Command-line Flag:**
-`--evolve.instrumentation.prometheus` (boolean, presence enables it)
-*Example:* `--evolve.instrumentation.prometheus`
+`--rollkit.instrumentation.prometheus` (boolean, presence enables it)
+*Example:* `--rollkit.instrumentation.prometheus`
 *Default:* `false`
 *Constant:* `FlagPrometheus`
 
@@ -583,8 +583,8 @@ instrumentation:
 ```
 
 **Command-line Flag:**
-`--evolve.instrumentation.prometheus_listen_addr <string>`
-*Example:* `--evolve.instrumentation.prometheus_listen_addr 0.0.0.0:9090`
+`--rollkit.instrumentation.prometheus_listen_addr <string>`
+*Example:* `--rollkit.instrumentation.prometheus_listen_addr 0.0.0.0:9090`
 *Default:* `":2112"`
 *Constant:* `FlagPrometheusListenAddr`
 
@@ -601,8 +601,8 @@ instrumentation:
 ```
 
 **Command-line Flag:**
-`--evolve.instrumentation.max_open_connections <int>`
-*Example:* `--evolve.instrumentation.max_open_connections 50`
+`--rollkit.instrumentation.max_open_connections <int>`
+*Example:* `--rollkit.instrumentation.max_open_connections 50`
 *Default:* (Refer to `DefaultInstrumentationConfig()` in code, typically a reasonable number like 100)
 *Constant:* `FlagMaxOpenConnections`
 
@@ -619,8 +619,8 @@ instrumentation:
 ```
 
 **Command-line Flag:**
-`--evolve.instrumentation.pprof` (boolean, presence enables it)
-*Example:* `--evolve.instrumentation.pprof`
+`--rollkit.instrumentation.pprof` (boolean, presence enables it)
+*Example:* `--rollkit.instrumentation.pprof`
 *Default:* `false`
 *Constant:* `FlagPprof`
 
@@ -637,8 +637,8 @@ instrumentation:
 ```
 
 **Command-line Flag:**
-`--evolve.instrumentation.pprof_listen_addr <string>`
-*Example:* `--evolve.instrumentation.pprof_listen_addr 0.0.0.0:6061`
+`--rollkit.instrumentation.pprof_listen_addr <string>`
+*Example:* `--rollkit.instrumentation.pprof_listen_addr 0.0.0.0:6061`
 *Default:* `"localhost:6060"`
 *Constant:* `FlagPprofListenAddr`
 
@@ -731,8 +731,8 @@ signer:
 ```
 
 **Command-line Flag:**
-`--evolve.signer.type <string>`
-*Example:* `--evolve.signer.type grpc`
+`--rollkit.signer.type <string>`
+*Example:* `--rollkit.signer.type grpc`
 *Default:* (Depends on application, often "file" or none if not an aggregator)
 *Constant:* `FlagSignerType`
 
@@ -750,8 +750,8 @@ signer:
 ```
 
 **Command-line Flag:**
-`--evolve.signer.path <string>`
-*Example:* `--evolve.signer.path ./keys/mykey.pem`
+`--rollkit.signer.path <string>`
+*Example:* `--rollkit.signer.path ./keys/mykey.pem`
 *Default:* (Depends on application)
 *Constant:* `FlagSignerPath`
 
@@ -764,8 +764,8 @@ The passphrase required to decrypt or access the signer key, particularly if usi
 This is typically not stored in the YAML file for security reasons but provided via flag or environment variable.
 
 **Command-line Flag:**
-`--evolve.signer.passphrase <string>`
-*Example:* `--evolve.signer.passphrase "mysecretpassphrase"`
+`--rollkit.signer.passphrase <string>`
+*Example:* `--rollkit.signer.passphrase "mysecretpassphrase"`
 *Default:* `""` (empty)
 *Constant:* `FlagSignerPassphrase`
 *Note:* Be cautious with providing passphrases directly on the command line in shared environments due to history logging. Environment variables or secure input methods are often preferred.
