@@ -10,7 +10,7 @@ on:
       - synchronize
       - closed
     paths:
-      - "./docs"
+      - "docs/**"
 
 concurrency: preview-${{ github.ref }}
 

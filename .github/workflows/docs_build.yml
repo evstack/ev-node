@@ -6,10 +6,10 @@ on:
   push:
     branches: [main]
     paths:
-      - "./docs"
+      - "docs/**"
   pull_request:
     paths:
-      - "./docs"
+      - "docs/**"
 
 jobs:
   build:
