@@ -70,17 +70,17 @@ use ev_client::{Client, ClientTlsConfig};
 
 // Enable TLS with default configuration
 let client = Client::builder()
-    .endpoint("https://secure-node.evolve.dev")
+    .endpoint("https://secure-node.ev.xyz")
     .tls()
     .build()
     .await?;
 
 // Or with custom TLS configuration
 let tls_config = ClientTlsConfig::new()
-    .domain_name("secure-node.evolve.dev");
+    .domain_name("secure-node.ev.xyz");
 
 let client = Client::builder()
-    .endpoint("https://secure-node.evolve.dev")
+    .endpoint("https://secure-node.ev.xyz")
     .tls_config(tls_config)
     .build()
     .await?;

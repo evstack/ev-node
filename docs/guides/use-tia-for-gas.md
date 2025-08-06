@@ -27,7 +27,7 @@ import constants from '../.vitepress/constants/constants.js'
 Your local DA network is already running if you followed the [quick start guide](/guides/quick-start.md) or the [build a chain](/guides/gm-world.md). If not, you can start it with the following command:
 
 ```bash
-curl -sSL https://evolve.dev/install-local-da.sh | bash -s {{constants.evolveLatestTag}}
+curl -sSL https://ev.xyz/install-local-da.sh | bash -s {{constants.evolveLatestTag}}
 ```
 
 ## 🚀 Starting your chain {#start-your-chain}

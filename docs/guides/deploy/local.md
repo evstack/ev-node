@@ -61,7 +61,7 @@ RUN apt update && \
  ca-certificates \
  curl
 
-RUN curl -sSL https://evolve.dev/install.sh | bash
+RUN curl -sSL https://ev.xyz/install.sh | bash
 # Install evolve
 
 # Install ignite

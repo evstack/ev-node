@@ -55,8 +55,8 @@ export default withMermaid({
     ["meta", { httpEquiv: "Content-Language", content: "en" }],
     ["meta", { name: "twitter:card", content: "summary_large_image" }],
     ["meta", { name: "twitter:image", content: "/img/Evolve-cover.jpg" }],
-    ["meta", { name: "twitter:site:domain", content: "evolve.dev" }],
-    ["meta", { name: "twitter:url", content: "https://evolve.dev" }],
+    ["meta", { name: "twitter:site:domain", content: "ev.xyz" }],
+    ["meta", { name: "twitter:url", content: "https://ev.xyz" }],
     ["meta", { name: "og:image", content: "/img/Evolve-cover.jpg" }],
     ["meta", { name: "apple-mobile-web-app-title", content: "Evolve" }],
     [

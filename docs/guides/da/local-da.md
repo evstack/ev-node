@@ -16,7 +16,7 @@ Before proceeding, ensure that you have completed the [build a chain](/guides/gm
 To set up a local DA network node on your machine, run the following script to install and start the local DA node:
 
 ```bash-vue
-curl -sSL https://evolve.dev/install-local-da.sh | bash -s {{constants.localDALatestTag}}
+curl -sSL https://ev.xyz/install-local-da.sh | bash -s {{constants.localDALatestTag}}
 ```
 
 This script will build and run the node, which will then listen on port `7980`.

@@ -104,7 +104,7 @@ Now that we have our gm app generated and installed, we can launch our GM chain 
 First lets start the local DA network:
 
 ```bash
-curl -sSL https://evolve.dev/install-local-da.sh | bash -s {{constants.evolveLatestTag}}
+curl -sSL https://ev.xyz/install-local-da.sh | bash -s {{constants.evolveLatestTag}}
 ```
 
 you should see logs like:
