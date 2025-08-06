@@ -69,6 +69,9 @@ type Sequencer struct {
 
 	// store is a batching datastore used for storing and retrieving data.
 	store datastore.Batching
+
+	// namespace is the data namespace used for submitting and retrieving transactions
+	namespace []byte
 }
 
 // NewSequencer creates a new Sequencer instance.
@@ -79,6 +82,7 @@ func NewSequencer(
 	daStartHeight uint64,
 	maxHeightDrift uint64,
 	ds datastore.Batching,
+	namespace []byte,
 ) (*Sequencer, error) {
 	pending, err := NewPersistentPendingTxs(ds)
 	if err != nil {
@@ -92,6 +96,7 @@ func NewSequencer(
 		daStartHeight:  daStartHeight,
 		pendingTxs:     pending,
 		store:          ds,
+		namespace:      namespace,
 	}, nil
 }
 
@@ -168,7 +173,7 @@ OuterLoop:
 			break OuterLoop
 		}
 		// fetch the next batch of transactions from DA using the helper
-		res := types.RetrieveWithHelpers(ctx, s.DA, s.logger, nextDAHeight, s.Id)
+		res := types.RetrieveWithHelpers(ctx, s.DA, s.logger, nextDAHeight, s.namespace)
 		if res.Code == coreda.StatusError {
 			// stop fetching more transactions and return the current batch
 			s.logger.Warn().Str("error", res.Message).Msg("failed to retrieve transactions from DA layer via helper")
@@ -286,7 +291,7 @@ daSubmitRetryLoop:
 		}
 
 		// Attempt to submit the batch to the DA layer
-		res := types.SubmitWithHelpers(ctx, s.DA, s.logger, currentBatch.Transactions, gasPrice, s.Id)
+		res := types.SubmitWithHelpers(ctx, s.DA, s.logger, currentBatch.Transactions, gasPrice, s.namespace, nil)
 
 		gasMultiplier, err := s.DA.GasMultiplier(ctx)
 		if err != nil {

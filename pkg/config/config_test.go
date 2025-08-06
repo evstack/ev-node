@@ -276,6 +276,86 @@ signer:
 	require.Equal(t, "something/config", cfgFromViper.Signer.SignerPath, "Signer.SignerPath should match YAML")
 }
 
+func TestDAConfig_GetHeaderNamespace(t *testing.T) {
+	tests := []struct {
+		name               string
+		headerNamespace    string
+		legacyNamespace    string
+		expectedNamespace  string
+	}{
+		{
+			name:              "HeaderNamespace set",
+			headerNamespace:   "custom-headers",
+			legacyNamespace:   "legacy-namespace",
+			expectedNamespace: "custom-headers",
+		},
+		{
+			name:              "HeaderNamespace empty, fallback to legacy",
+			headerNamespace:   "",
+			legacyNamespace:   "legacy-namespace",
+			expectedNamespace: "legacy-namespace",
+		},
+		{
+			name:              "Both empty, use default",
+			headerNamespace:   "",
+			legacyNamespace:   "",
+			expectedNamespace: "rollkit-headers",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			daConfig := &DAConfig{
+				HeaderNamespace: tt.headerNamespace,
+				Namespace:      tt.legacyNamespace,
+			}
+			
+			result := daConfig.GetHeaderNamespace()
+			assert.Equal(t, tt.expectedNamespace, result)
+		})
+	}
+}
+
+func TestDAConfig_GetDataNamespace(t *testing.T) {
+	tests := []struct {
+		name               string
+		dataNamespace      string
+		legacyNamespace    string
+		expectedNamespace  string
+	}{
+		{
+			name:              "DataNamespace set",
+			dataNamespace:     "custom-data",
+			legacyNamespace:   "legacy-namespace",
+			expectedNamespace: "custom-data",
+		},
+		{
+			name:              "DataNamespace empty, fallback to legacy",
+			dataNamespace:     "",
+			legacyNamespace:   "legacy-namespace",
+			expectedNamespace: "legacy-namespace",
+		},
+		{
+			name:              "Both empty, use default",
+			dataNamespace:     "",
+			legacyNamespace:   "",
+			expectedNamespace: "rollkit-data",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			daConfig := &DAConfig{
+				DataNamespace: tt.dataNamespace,
+				Namespace:    tt.legacyNamespace,
+			}
+			
+			result := daConfig.GetDataNamespace()
+			assert.Equal(t, tt.expectedNamespace, result)
+		})
+	}
+}
+
 func assertFlagValue(t *testing.T, flags *pflag.FlagSet, name string, expectedValue any) {
 	flag := flags.Lookup(name)
 	assert.NotNil(t, flag, "Flag %s should exist", name)

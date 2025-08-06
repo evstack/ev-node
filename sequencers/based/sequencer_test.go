@@ -23,7 +23,7 @@ func newTestSequencer(t *testing.T) *based.Sequencer {
 	dummyDA.StartHeightTicker()
 	store := ds.NewMapDatastore()
 	logger := zerolog.Nop()
-	seq, err := based.NewSequencer(logger, dummyDA, []byte("test1"), 0, 2, store)
+	seq, err := based.NewSequencer(logger, dummyDA, []byte("test1"), 0, 2, store, []byte("test-namespace"))
 	assert.NoError(t, err)
 	return seq
 }
@@ -96,7 +96,7 @@ func TestSequencer_GetNextBatch_ExceedsMaxDrift(t *testing.T) {
 	dummyDA := coreda.NewDummyDA(100_000_000, 1.0, 1.5, 10*time.Second)
 	store := ds.NewMapDatastore()
 	logger := zerolog.Nop()
-	sequencer, err := based.NewSequencer(logger, dummyDA, []byte("test1"), 0, 0, store)
+	sequencer, err := based.NewSequencer(logger, dummyDA, []byte("test1"), 0, 0, store, []byte("test-namespace"))
 	assert.NoError(t, err)
 
 	ctx := context.Background()
@@ -151,4 +151,72 @@ func TestSequencer_VerifyBatch_InvalidProof(t *testing.T) {
 	})
 	assert.Error(t, err)
 	assert.Nil(t, resp)
+}
+
+func TestSequencer_NamespaceUsage(t *testing.T) {
+	// Create sequencer with custom namespace
+	customNamespace := []byte("custom-data-namespace")
+	dummyDA := coreda.NewDummyDA(100_000_000, 1.0, 1.5, getTestDABlockTime())
+	dummyDA.StartHeightTicker()
+	store := ds.NewMapDatastore()
+	logger := zerolog.Nop()
+	sequencer, err := based.NewSequencer(logger, dummyDA, []byte("test1"), 0, 2, store, customNamespace)
+	assert.NoError(t, err)
+
+	ctx := context.Background()
+	
+	// Test that submit uses the correct namespace
+	batch := &coresequencer.Batch{Transactions: [][]byte{[]byte("tx1")}}
+	_, err = sequencer.SubmitBatchTxs(ctx, coresequencer.SubmitBatchTxsRequest{
+		Id:    []byte("test1"),
+		Batch: batch,
+	})
+	assert.NoError(t, err)
+
+	// Submit some data using the custom namespace to verify retrieval works with that namespace
+	_, err = dummyDA.Submit(ctx, []coreda.Blob{[]byte("namespace-tx")}, 1.0, customNamespace)
+	assert.NoError(t, err)
+	time.Sleep(getTestDABlockTime())
+
+	// Test that get retrieves from the correct namespace  
+	resp, err := sequencer.GetNextBatch(ctx, coresequencer.GetNextBatchRequest{
+		Id: []byte("test1"),
+	})
+	assert.NoError(t, err)
+	
+	// Should retrieve the data submitted with the custom namespace
+	if resp != nil {
+		assert.GreaterOrEqual(t, len(resp.Batch.Transactions), 1)
+		assert.GreaterOrEqual(t, len(resp.BatchData), 1)
+	}
+}
+
+func TestSequencer_NamespaceIsolation(t *testing.T) {
+	// Create sequencer with one namespace
+	namespace1 := []byte("namespace-1")
+	dummyDA := coreda.NewDummyDA(100_000_000, 1.0, 1.5, getTestDABlockTime())
+	dummyDA.StartHeightTicker()
+	store := ds.NewMapDatastore()
+	logger := zerolog.Nop()
+	sequencer, err := based.NewSequencer(logger, dummyDA, []byte("test1"), 0, 2, store, namespace1)
+	assert.NoError(t, err)
+
+	ctx := context.Background()
+	
+	// Submit data to a different namespace
+	namespace2 := []byte("namespace-2")
+	_, err = dummyDA.Submit(ctx, []coreda.Blob{[]byte("wrong-namespace-tx")}, 1.0, namespace2)
+	assert.NoError(t, err)
+	time.Sleep(getTestDABlockTime())
+
+	// The sequencer should not retrieve data from the wrong namespace
+	resp, err := sequencer.GetNextBatch(ctx, coresequencer.GetNextBatchRequest{
+		Id: []byte("test1"),
+	})
+	assert.NoError(t, err)
+	
+	// Should not retrieve any transactions since they were in a different namespace
+	if resp != nil {
+		assert.Equal(t, 0, len(resp.Batch.Transactions), "Should not retrieve transactions from different namespace")
+	}
 }

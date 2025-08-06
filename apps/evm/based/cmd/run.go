@@ -138,6 +138,16 @@ func NewExtendedRunNodeCmd(ctx context.Context) *cobra.Command {
 				return fmt.Errorf("failed to create datastore: %w", err)
 			}
 
+			// Determine namespace for based sequencer (transactions should go to data namespace)
+			var sequencerNamespace []byte
+			if nodeConfig.DA.DataNamespace != "" {
+				sequencerNamespace = []byte(nodeConfig.DA.DataNamespace)
+			} else if basedNamespace != "" {
+				sequencerNamespace = []byte(basedNamespace)
+			} else {
+				sequencerNamespace = []byte("rollkit-data") // Default data namespace
+			}
+
 			// Pass raw DA implementation and namespace to NewSequencer
 			sequencer, err := based.NewSequencer(
 				logger,
@@ -146,6 +156,7 @@ func NewExtendedRunNodeCmd(ctx context.Context) *cobra.Command {
 				basedStartHeight,
 				basedMaxHeightDrift,
 				datastore,
+				sequencerNamespace,
 			)
 			if err != nil {
 				return fmt.Errorf("failed to create based sequencer: %w", err)
