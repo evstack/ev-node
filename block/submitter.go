@@ -498,10 +498,10 @@ func submitWithRecursiveSplitting[T any](
 		return 0, nil
 	}
 
-	// Base case: single item that's too big - skip it
+	// Base case: single item that's too big - return error
 	if len(items) == 1 {
 		m.logger.Error().Str("itemType", itemType).Msg("single item exceeds DA blob size limit")
-		return 0, nil
+		return 0, fmt.Errorf("single %s item exceeds DA blob size limit", itemType)
 	}
 
 	// Split and submit recursively - we know the batch is too big
@@ -573,9 +573,9 @@ func submitHalfBatch[T any](
 		return submitWithRecursiveSplitting[T](m, ctx, items, marshaled, gasPrice, postSubmit, itemType)
 
 	case batchActionSkip:
-		// Single item too big - skip it
-		m.logger.Error().Str("itemType", itemType).Msg("skipping item that exceeds DA blob size limit")
-		return 0, nil
+		// Single item too big - return error
+		m.logger.Error().Str("itemType", itemType).Msg("single item exceeds DA blob size limit")
+		return 0, fmt.Errorf("single %s item exceeds DA blob size limit", itemType)
 
 	case batchActionFail:
 		// Unrecoverable error - stop processing
