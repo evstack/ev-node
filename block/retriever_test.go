@@ -140,12 +140,12 @@ func TestProcessNextDAHeader_Success_SingleHeaderAndData(t *testing.T) {
 	mockDAClient.On("GetIDs", mock.Anything, daHeight, mock.Anything).Return(&coreda.GetIDsResult{
 		IDs:       []coreda.ID{[]byte("dummy-id")},
 		Timestamp: time.Now(),
-	}, nil).Times(2) // Now expects 2 calls - one for headers, one for data
+	}, nil).Times(2) // one for headers, one for data
 
 	// Mock Get for both namespaces
 	mockDAClient.On("Get", mock.Anything, []coreda.ID{[]byte("dummy-id")}, mock.Anything).Return(
 		[]coreda.Blob{headerBytes, blockDataBytes}, nil,
-	).Times(2) // Now expects 2 calls - one for headers, one for data
+	).Times(2) // one for headers, one for data
 
 	ctx := context.Background()
 	err = manager.processNextDAHeaderAndData(ctx)
@@ -255,12 +255,12 @@ func TestProcessNextDAHeader_MultipleHeadersAndData(t *testing.T) {
 	mockDAClient.On("GetIDs", mock.Anything, daHeight, mock.Anything).Return(&coreda.GetIDsResult{
 		IDs:       []coreda.ID{[]byte("dummy-id")},
 		Timestamp: time.Now(),
-	}, nil).Times(2) // Now expects 2 calls - one for headers, one for data
+	}, nil).Times(2) // one for headers, one for data
 
 	// Mock Get for both namespaces
 	mockDAClient.On("Get", mock.Anything, []coreda.ID{[]byte("dummy-id")}, mock.Anything).Return(
 		blobs, nil,
-	).Times(2) // Now expects 2 calls - one for headers, one for data
+	).Times(2) // one for headers, one for data
 
 	ctx := context.Background()
 	err := manager.processNextDAHeaderAndData(ctx)
@@ -321,7 +321,7 @@ func TestProcessNextDAHeaderAndData_NotFound(t *testing.T) {
 	mockDAClient.On("GetIDs", mock.Anything, daHeight, mock.Anything).Return(&coreda.GetIDsResult{
 		IDs:       []coreda.ID{},
 		Timestamp: time.Now(),
-	}, coreda.ErrBlobNotFound).Times(2) // Now expects 2 calls - one for headers, one for data
+	}, coreda.ErrBlobNotFound).Times(2) // one for headers, one for data
 	ctx := context.Background()
 	err := manager.processNextDAHeaderAndData(ctx)
 	require.NoError(t, err)
@@ -354,12 +354,12 @@ func TestProcessNextDAHeaderAndData_UnmarshalHeaderError(t *testing.T) {
 	mockDAClient.On("GetIDs", mock.Anything, daHeight, mock.Anything).Return(&coreda.GetIDsResult{
 		IDs:       []coreda.ID{[]byte("dummy-id")},
 		Timestamp: time.Now(),
-	}, nil).Times(2) // Now expects 2 calls - one for headers, one for data
+	}, nil).Times(2) // one for headers, one for data
 
 	// Mock Get to return invalid bytes for both namespaces
 	mockDAClient.On("Get", mock.Anything, []coreda.ID{[]byte("dummy-id")}, mock.Anything).Return(
 		[]coreda.Blob{invalidBytes}, nil,
-	).Times(2) // Now expects 2 calls - one for headers, one for data
+	).Times(2) // one for headers, one for data
 
 	// Logger expectations removed since using zerolog.Nop()
 
@@ -410,12 +410,12 @@ func TestProcessNextDAHeader_UnexpectedSequencer(t *testing.T) {
 	mockDAClient.On("GetIDs", mock.Anything, daHeight, mock.Anything).Return(&coreda.GetIDsResult{
 		IDs:       []coreda.ID{[]byte("dummy-id")},
 		Timestamp: time.Now(),
-	}, nil).Times(2) // Now expects 2 calls - one for headers, one for data
+	}, nil).Times(2) // one for headers, one for data
 
 	// Mock Get to return header bytes for both namespaces
 	mockDAClient.On("Get", mock.Anything, []coreda.ID{[]byte("dummy-id")}, mock.Anything).Return(
 		[]coreda.Blob{headerBytes}, nil,
-	).Times(2) // Now expects 2 calls - one for headers, one for data
+	).Times(2) // one for headers, one for data
 
 	// Logger expectations removed since using zerolog.Nop()
 
@@ -537,12 +537,12 @@ func TestProcessNextDAHeader_HeaderAndDataAlreadySeen(t *testing.T) {
 	mockDAClient.On("GetIDs", mock.Anything, daHeight, mock.Anything).Return(&coreda.GetIDsResult{
 		IDs:       []coreda.ID{[]byte("dummy-id")},
 		Timestamp: time.Now(),
-	}, nil).Times(2) // Now expects 2 calls - one for headers, one for data
+	}, nil).Times(2) // one for headers, one for data
 
 	// Mock Get for both namespaces
 	mockDAClient.On("Get", mock.Anything, []coreda.ID{[]byte("dummy-id")}, mock.Anything).Return(
 		[]coreda.Blob{headerBytes, blockDataBytes}, nil,
-	).Times(2) // Now expects 2 calls - one for headers, one for data
+	).Times(2) // one for headers, one for data
 
 	// Logger expectations removed since using zerolog.Nop()
 
@@ -579,7 +579,7 @@ func TestRetrieveLoop_ProcessError_HeightFromFuture(t *testing.T) {
 	// Mock GetIDs to return future error for both header and data namespaces
 	mockDAClient.On("GetIDs", mock.Anything, startDAHeight, mock.Anything).Return(
 		nil, futureErr,
-	).Times(2) // Now expects 2 calls - one for headers, one for data
+	).Times(2) // one for headers, one for data
 
 	// Optional: Mock for the next height if needed
 	mockDAClient.On("GetIDs", mock.Anything, startDAHeight+1, mock.Anything).Return(
@@ -690,12 +690,12 @@ func TestProcessNextDAHeader_WithNoTxs(t *testing.T) {
 	mockDAClient.On("GetIDs", mock.Anything, daHeight, mock.Anything).Return(&coreda.GetIDsResult{
 		IDs:       []coreda.ID{[]byte("dummy-id")},
 		Timestamp: time.Now(),
-	}, nil).Times(2) // Now expects 2 calls - one for headers, one for data
+	}, nil).Times(2) // one for headers, one for data
 
 	// Mock Get for both namespaces
 	mockDAClient.On("Get", mock.Anything, []coreda.ID{[]byte("dummy-id")}, mock.Anything).Return(
 		[]coreda.Blob{headerBytes, emptyDataBytes}, nil,
-	).Times(2) // Now expects 2 calls - one for headers, one for data
+	).Times(2) // one for headers, one for data
 
 	ctx := context.Background()
 	err = manager.processNextDAHeaderAndData(ctx)
