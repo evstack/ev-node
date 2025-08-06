@@ -16,7 +16,7 @@ const (
 
 var RootCmd = &cobra.Command{
 	Use:   AppName,
-	Short: "evm-based is a based evm execution environment for rollkit, out of the box it works with reth",
+	Short: "evm-based is a based evm execution environment for ev-node, out of the box it works with reth",
 }
 
 func main() {

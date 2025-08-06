@@ -27,7 +27,7 @@ import (
 	"github.com/evstack/ev-node/pkg/signer"
 	"github.com/evstack/ev-node/pkg/signer/noop"
 	"github.com/evstack/ev-node/pkg/store"
-	rollkitSync "github.com/evstack/ev-node/pkg/sync"
+	evSync "github.com/evstack/ev-node/pkg/sync"
 	"github.com/evstack/ev-node/types"
 )
 
@@ -160,7 +160,7 @@ func (b broadcasterFn[T]) WriteToStoreAndBroadcast(ctx context.Context, payload 
 	return b(ctx, payload)
 }
 
-func setupBlockManager(t *testing.T, ctx context.Context, workDir string, mainKV ds.Batching, blockTime time.Duration, signer signer.Signer) (*Manager, *rollkitSync.HeaderSyncService, *rollkitSync.DataSyncService) {
+func setupBlockManager(t *testing.T, ctx context.Context, workDir string, mainKV ds.Batching, blockTime time.Duration, signer signer.Signer) (*Manager, *evSync.HeaderSyncService, *evSync.DataSyncService) {
 	t.Helper()
 	nodeConfig := config.DefaultConfig
 	nodeConfig.Node.BlockTime = config.DurationWrapper{Duration: blockTime}
@@ -185,18 +185,18 @@ func setupBlockManager(t *testing.T, ctx context.Context, workDir string, mainKV
 	err = p2pClient.Start(ctx)
 	require.NoError(t, err)
 
-	const RollkitPrefix = "0"
-	ktds.Wrap(mainKV, ktds.PrefixTransform{Prefix: ds.NewKey(RollkitPrefix)})
+	const evPrefix = "0"
+	ktds.Wrap(mainKV, ktds.PrefixTransform{Prefix: ds.NewKey(evPrefix)})
 	// Get subsystem loggers. The With("module", ...) pattern from cosmossdk.io/log
 	// is replaced by getting a named logger from ipfs/go-log.
 	headerSyncLogger := zerolog.Nop()
 	dataSyncLogger := zerolog.Nop()
 	blockManagerLogger := zerolog.Nop()
 
-	headerSyncService, err := rollkitSync.NewHeaderSyncService(mainKV, nodeConfig, genesisDoc, p2pClient, headerSyncLogger) // Pass headerSyncLogger
+	headerSyncService, err := evSync.NewHeaderSyncService(mainKV, nodeConfig, genesisDoc, p2pClient, headerSyncLogger) // Pass headerSyncLogger
 	require.NoError(t, err)
 	require.NoError(t, headerSyncService.Start(ctx))
-	dataSyncService, err := rollkitSync.NewDataSyncService(mainKV, nodeConfig, genesisDoc, p2pClient, dataSyncLogger)
+	dataSyncService, err := evSync.NewDataSyncService(mainKV, nodeConfig, genesisDoc, p2pClient, dataSyncLogger)
 	require.NoError(t, err)
 	require.NoError(t, dataSyncService.Start(ctx))
 

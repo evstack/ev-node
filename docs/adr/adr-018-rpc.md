@@ -7,7 +7,7 @@
 
 ## Context
 
-The Rollkit store package provides a critical interface for storing and retrieving blocks, commits, and state data. Currently, this functionality is only available locally through direct Go package imports. To enable remote access to this data and improve the system's scalability and interoperability, we need to implement a remote procedure call (RPC) layer.
+The Evolve store package provides a critical interface for storing and retrieving blocks, commits, and state data. Currently, this functionality is only available locally through direct Go package imports. To enable remote access to this data and improve the system's scalability and interoperability, we need to implement a remote procedure call (RPC) layer.
 
 Connect-Go has been chosen as the RPC framework due to its modern features, excellent developer experience, and compatibility with both gRPC and HTTP/1.1 protocols.
 
@@ -36,7 +36,7 @@ Implement a Connect-Go service layer that exposes the Store interface functional
 ```protobuf
 syntax = "proto3";
 
-package rollkit.store.v1;
+package evnode.store.v1;
 
 message Block {
   SignedHeader header = 1;
@@ -68,7 +68,7 @@ service StoreService {
 
 ### Implementation Structure
 
-```tree
+```txt
 pkg/
     rpc/
       server/

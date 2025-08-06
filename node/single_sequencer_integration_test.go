@@ -15,7 +15,7 @@ import (
 
 	coreda "github.com/evstack/ev-node/core/da"
 	coreexecutor "github.com/evstack/ev-node/core/execution"
-	rollkitconfig "github.com/evstack/ev-node/pkg/config"
+	evconfig "github.com/evstack/ev-node/pkg/config"
 
 	testutils "github.com/celestiaorg/utils/test"
 )
@@ -267,7 +267,7 @@ func TestMaxPendingHeadersAndData(t *testing.T) {
 	config.Node.MaxPendingHeadersAndData = 2
 
 	// Set DA block time large enough to avoid header submission to DA layer
-	config.DA.BlockTime = rollkitconfig.DurationWrapper{Duration: 100 * time.Second}
+	config.DA.BlockTime = evconfig.DurationWrapper{Duration: 100 * time.Second}
 
 	node, cleanup := createNodeWithCleanup(t, config)
 	defer cleanup()
@@ -301,8 +301,8 @@ func TestBatchQueueThrottlingWithDAFailure(t *testing.T) {
 	// Set up configuration with low limits to trigger throttling quickly
 	config := getTestConfig(t, 1)
 	config.Node.MaxPendingHeadersAndData = 3 // Low limit to quickly reach pending limit after DA failure
-	config.Node.BlockTime = rollkitconfig.DurationWrapper{Duration: 100 * time.Millisecond}
-	config.DA.BlockTime = rollkitconfig.DurationWrapper{Duration: 1 * time.Second} // Longer DA time to ensure blocks are produced first
+	config.Node.BlockTime = evconfig.DurationWrapper{Duration: 100 * time.Millisecond}
+	config.DA.BlockTime = evconfig.DurationWrapper{Duration: 1 * time.Second} // Longer DA time to ensure blocks are produced first
 
 	// Create test components
 	executor, sequencer, dummyDA, p2pClient, ds, _, stopDAHeightTicker := createTestComponents(t, config)

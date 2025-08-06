@@ -7,17 +7,17 @@ import (
 )
 
 const (
-	// ConfigFileName is the base name of the rollkit configuration file without extension.
+	// ConfigFileName is the base name of the evolve configuration file without extension.
 	ConfigFileName = "evnode"
 	// ConfigExtension is the file extension for the configuration file without the leading dot.
 	ConfigExtension = "yaml"
-	// ConfigPath is the filename for the rollkit configuration file.
+	// ConfigPath is the filename for the evolve configuration file.
 	ConfigName = ConfigFileName + "." + ConfigExtension
 	// AppConfigDir is the directory name for the app configuration.
 	AppConfigDir = "config"
 )
 
-// DefaultRootDir returns the default root directory for rollkit
+// DefaultRootDir returns the default root directory for evolve
 var DefaultRootDir = DefaultRootDirWithName(ConfigFileName)
 
 // DefaultRootDirWithName returns the default root directory for an application,

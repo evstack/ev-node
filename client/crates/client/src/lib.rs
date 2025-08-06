@@ -1,6 +1,6 @@
-//! Rollkit Rust Client Library
+//! Evolve Rust Client Library
 //!
-//! This library provides a Rust client for interacting with Rollkit nodes via gRPC.
+//! This library provides a Rust client for interacting with Evolve nodes via gRPC.
 //!
 //! # Example
 //!
@@ -9,7 +9,7 @@
 //!
 //! #[tokio::main]
 //! async fn main() -> Result<(), Box<dyn std::error::Error>> {
-//!     // Connect to a Rollkit node
+//!     // Connect to a Evolve node
 //!     let client = Client::connect("http://localhost:50051").await?;
 //!     
 //!     // Check health
@@ -51,17 +51,17 @@
 //! async fn main() -> Result<(), Box<dyn std::error::Error>> {
 //!     // Create a client with TLS enabled
 //!     let client = Client::builder()
-//!         .endpoint("https://secure-node.rollkit.dev")
+//!         .endpoint("https://secure-node.ev.xyz")
 //!         .tls()  // Enable TLS with default configuration
 //!         .build()
 //!         .await?;
 //!     
 //!     // Or with custom TLS configuration
 //!     let tls_config = ClientTlsConfig::new()
-//!         .domain_name("secure-node.rollkit.dev");
+//!         .domain_name("secure-node.ev.xyz");
 //!     
 //!     let client = Client::builder()
-//!         .endpoint("https://secure-node.rollkit.dev")
+//!         .endpoint("https://secure-node.ev.xyz")
 //!         .tls_config(tls_config)
 //!         .build()
 //!         .await?;
@@ -85,7 +85,7 @@ pub use p2p::P2PClient;
 pub use signer::SignerClient;
 pub use store::StoreClient;
 
-// Re-export types from rollkit-types for convenience
+// Re-export types from evolve-types for convenience
 pub use ev_types::v1;
 
 // Re-export tonic transport types for convenience

@@ -1,7 +1,7 @@
 //go:build evm
 // +build evm
 
-// Package e2e contains end-to-end tests for Rollkit's EVM integration.
+// Package e2e contains end-to-end tests for Evolve's EVM integration.
 //
 // This file specifically tests the EVM full node functionality including:
 // - Full node synchronization via P2P with sequencer
@@ -291,7 +291,7 @@ func setupSequencerWithFullNode(t *testing.T, sut *SystemUnderTest, sequencerHom
 // - Ensures EVM state consistency between sequencer and full node on the Reth side
 //
 // This test demonstrates that full nodes can sync with sequencers in real-time,
-// validates the P2P block propagation mechanism in Rollkit, ensures that
+// validates the P2P block propagation mechanism in Evolve, ensures that
 // the underlying EVM execution state remains consistent across all nodes, and
 // verifies that DA (Data Availability) inclusion processes blocks within expected
 // timeframes after allowing sufficient time for DA layer synchronization.
@@ -474,7 +474,7 @@ func TestEvmSequencerWithFullNodeE2E(t *testing.T) {
 	t.Logf("      • DA (Data Availability) inclusion processing within expected timeframes")
 	t.Logf("      • EVM execution state consistency")
 	t.Logf("")
-	t.Logf("   🏆 All validation criteria met - distributed rollkit network is functioning correctly!")
+	t.Logf("   🏆 All validation criteria met - distributed evolve network is functioning correctly!")
 }
 
 // TestEvmFullNodeBlockPropagationE2E tests that blocks produced by the aggregator
@@ -1009,7 +1009,7 @@ func restartSequencerAndFullNode(t *testing.T, sut *SystemUnderTest, sequencerHo
 // - Comprehensive state synchronization validation between nodes
 // - Tests lazy mode behavior during initial setup and after restart
 //
-// This test demonstrates that the distributed rollkit network maintains
+// This test demonstrates that the distributed evolve network maintains
 // consistency and continues to function correctly even when all nodes
 // are restarted simultaneously, including mode changes.
 func TestEvmSequencerFullNodeRestartE2E(t *testing.T) {

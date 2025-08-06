@@ -27,9 +27,9 @@ const (
 var RunCmd = &cobra.Command{
 	Use:     "start",
 	Aliases: []string{"node", "run"},
-	Short:   "Run the rollkit node with gRPC execution client",
-	Long: `Start a Rollkit node that connects to a remote execution client via gRPC.
-The execution client must implement the Rollkit execution gRPC interface.`,
+	Short:   "Run the evolve node with gRPC execution client",
+	Long: `Start a Evolve node that connects to a remote execution client via gRPC.
+The execution client must implement the Evolve execution gRPC interface.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		// Create gRPC execution client
 		executor, err := createGRPCExecutionClient(cmd)
@@ -102,7 +102,7 @@ The execution client must implement the Rollkit execution gRPC interface.`,
 }
 
 func init() {
-	// Add rollkit configuration flags
+	// Add evolve configuration flags
 	config.AddFlags(RunCmd)
 
 	// Add gRPC-specific flags

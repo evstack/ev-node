@@ -21,7 +21,7 @@ import (
 	coreexecutor "github.com/evstack/ev-node/core/execution"
 	coresequencer "github.com/evstack/ev-node/core/sequencer"
 
-	rollkitconfig "github.com/evstack/ev-node/pkg/config"
+	evconfig "github.com/evstack/ev-node/pkg/config"
 	"github.com/evstack/ev-node/pkg/p2p"
 	"github.com/evstack/ev-node/pkg/p2p/key"
 	remote_signer "github.com/evstack/ev-node/pkg/signer/noop"
@@ -43,7 +43,7 @@ const (
 )
 
 // createTestComponents creates test components for node initialization
-func createTestComponents(t *testing.T, config rollkitconfig.Config) (coreexecutor.Executor, coresequencer.Sequencer, coreda.DA, *p2p.Client, datastore.Batching, *key.NodeKey, func()) {
+func createTestComponents(t *testing.T, config evconfig.Config) (coreexecutor.Executor, coresequencer.Sequencer, coreda.DA, *p2p.Client, datastore.Batching, *key.NodeKey, func()) {
 	executor := coreexecutor.NewDummyExecutor()
 	sequencer := coresequencer.NewDummySequencer()
 	dummyDA := coreda.NewDummyDA(100_000, 0, 0, config.DA.BlockTime.Duration)
@@ -68,36 +68,36 @@ func createTestComponents(t *testing.T, config rollkitconfig.Config) (coreexecut
 	return executor, sequencer, dummyDA, p2pClient, ds, p2pKey, stopDAHeightTicker
 }
 
-func getTestConfig(t *testing.T, n int) rollkitconfig.Config {
+func getTestConfig(t *testing.T, n int) evconfig.Config {
 	// Use a higher base port to reduce chances of conflicts with system services
 	startPort := 40000 // Spread port ranges further apart
-	return rollkitconfig.Config{
+	return evconfig.Config{
 		RootDir: t.TempDir(),
-		Node: rollkitconfig.NodeConfig{
+		Node: evconfig.NodeConfig{
 			Aggregator:               true,
-			BlockTime:                rollkitconfig.DurationWrapper{Duration: 100 * time.Millisecond},
+			BlockTime:                evconfig.DurationWrapper{Duration: 100 * time.Millisecond},
 			MaxPendingHeadersAndData: 1000,
-			LazyBlockInterval:        rollkitconfig.DurationWrapper{Duration: 5 * time.Second},
+			LazyBlockInterval:        evconfig.DurationWrapper{Duration: 5 * time.Second},
 		},
-		DA: rollkitconfig.DAConfig{
-			BlockTime: rollkitconfig.DurationWrapper{Duration: 200 * time.Millisecond},
+		DA: evconfig.DAConfig{
+			BlockTime: evconfig.DurationWrapper{Duration: 200 * time.Millisecond},
 			Address:   MockDAAddress,
 			Namespace: MockDANamespace,
 		},
-		P2P: rollkitconfig.P2PConfig{
+		P2P: evconfig.P2PConfig{
 			ListenAddress: fmt.Sprintf("/ip4/127.0.0.1/tcp/%d", startPort+n),
 		},
-		RPC: rollkitconfig.RPCConfig{
+		RPC: evconfig.RPCConfig{
 			Address: fmt.Sprintf("127.0.0.1:%d", 8000+n),
 		},
-		Instrumentation: &rollkitconfig.InstrumentationConfig{},
+		Instrumentation: &evconfig.InstrumentationConfig{},
 	}
 }
 
 // newTestNode is a private helper that creates a node and returns it with a unified cleanup function.
 func newTestNode(
 	t *testing.T,
-	config rollkitconfig.Config,
+	config evconfig.Config,
 	executor coreexecutor.Executor,
 	sequencer coresequencer.Sequencer,
 	dac coreda.DA,
@@ -122,7 +122,7 @@ func newTestNode(
 		p2pClient,
 		genesis,
 		ds,
-		DefaultMetricsProvider(rollkitconfig.DefaultInstrumentationConfig()),
+		DefaultMetricsProvider(evconfig.DefaultInstrumentationConfig()),
 		zerolog.Nop(),
 		NodeOptions{},
 	)
@@ -138,14 +138,14 @@ func newTestNode(
 	return node.(*FullNode), cleanup
 }
 
-func createNodeWithCleanup(t *testing.T, config rollkitconfig.Config) (*FullNode, func()) {
+func createNodeWithCleanup(t *testing.T, config evconfig.Config) (*FullNode, func()) {
 	executor, sequencer, dac, p2pClient, ds, _, stopDAHeightTicker := createTestComponents(t, config)
 	return newTestNode(t, config, executor, sequencer, dac, p2pClient, ds, stopDAHeightTicker)
 }
 
 func createNodeWithCustomComponents(
 	t *testing.T,
-	config rollkitconfig.Config,
+	config evconfig.Config,
 	executor coreexecutor.Executor,
 	sequencer coresequencer.Sequencer,
 	dac coreda.DA,
@@ -157,7 +157,7 @@ func createNodeWithCustomComponents(
 }
 
 // Creates the given number of nodes the given nodes using the given wait group to synchronize them
-func createNodesWithCleanup(t *testing.T, num int, config rollkitconfig.Config) ([]*FullNode, []func()) {
+func createNodesWithCleanup(t *testing.T, num int, config evconfig.Config) ([]*FullNode, []func()) {
 	t.Helper()
 	require := require.New(t)
 
@@ -187,7 +187,7 @@ func createNodesWithCleanup(t *testing.T, num int, config rollkitconfig.Config) 
 		p2pClient,
 		genesis,
 		ds,
-		DefaultMetricsProvider(rollkitconfig.DefaultInstrumentationConfig()),
+		DefaultMetricsProvider(evconfig.DefaultInstrumentationConfig()),
 		zerolog.Nop(),
 		NodeOptions{},
 	)
@@ -225,7 +225,7 @@ func createNodesWithCleanup(t *testing.T, num int, config rollkitconfig.Config) 
 			p2pClient,
 			genesis,
 			dssync.MutexWrap(datastore.NewMapDatastore()),
-			DefaultMetricsProvider(rollkitconfig.DefaultInstrumentationConfig()),
+			DefaultMetricsProvider(evconfig.DefaultInstrumentationConfig()),
 			zerolog.Nop(),
 			NodeOptions{},
 		)

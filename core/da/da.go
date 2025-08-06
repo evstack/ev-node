@@ -76,7 +76,7 @@ type ResultRetrieve struct {
 
 // StatusCode is a type for DA layer return status.
 // TODO: define an enum of different non-happy-path cases
-// that might need to be handled by Rollkit independent of
+// that might need to be handled by Evolve independent of
 // the underlying DA chain.
 type StatusCode uint64
 

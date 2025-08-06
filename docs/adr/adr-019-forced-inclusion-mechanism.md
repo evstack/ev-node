@@ -7,11 +7,11 @@
 
 ## Context
 
-Rollkit currently supports a single sequencer implementation as described in ADR-013. While this approach provides a simple and efficient solution, it introduces a single point of failure that can impact the liveness of the network. If the sequencer goes down or becomes unresponsive, the chain cannot progress.
+Evolve currently supports a single sequencer implementation as described in ADR-013. While this approach provides a simple and efficient solution, it introduces a single point of failure that can impact the liveness of the network. If the sequencer goes down or becomes unresponsive, the chain cannot progress.
 
-To address this limitation and improve the liveness properties of applications built with Rollkit, we propose implementing a forced inclusion mechanism. This mechanism will allow transactions to be included directly from the Data Availability (DA) layer when the sequencer is unresponsive, creating an "unstoppable" property for Rollkit-based chains.
+To address this limitation and improve the liveness properties of applications built with Evolve, we propose implementing a forced inclusion mechanism. This mechanism will allow transactions to be included directly from the Data Availability (DA) layer when the sequencer is unresponsive, creating an "unstoppable" property for Evolve-based chains.
 
-This enhancement aligns with the requirements defined in the [L2 Beat framework](https://forum.l2beat.com/t/the-stages-framework/291#p-516-stage-1-requirements-3) for Stage 1 L2s, advancing Rollkit's capabilities as a robust sequencer library.
+This enhancement aligns with the requirements defined in the [L2 Beat framework](https://forum.l2beat.com/t/the-stages-framework/291#p-516-stage-1-requirements-3) for Stage 1 L2s, advancing Evolve's capabilities as a robust sequencer library.
 
 ## Alternative Approaches
 
@@ -25,13 +25,13 @@ Another approach would be to implement an automatic failover mechanism where bac
 
 ## Decision
 
-We will implement a forced inclusion mechanism for the Rollkit single sequencer architecture that uses a time-based inclusion delay approach. This approach will:
+We will implement a forced inclusion mechanism for the Evolve single sequencer architecture that uses a time-based inclusion delay approach. This approach will:
 
 1. Track when transactions are first seen in terms of DA block time
 2. Require a minimum number of DA blocks to pass before including a direct transaction
 3. Let full nodes enforce inclusion within a fixed period of time window
 
-The mechanism will be designed to maintain backward compatibility with existing Rollkit deployments while providing enhanced liveness guarantees.
+The mechanism will be designed to maintain backward compatibility with existing Evolve deployments while providing enhanced liveness guarantees.
 
 ### High-Level Architecture
 
@@ -85,7 +85,7 @@ flowchart TB
 
 ### Systems Affected
 
-The implementation of the forced inclusion mechanism will affect several components of the Rollkit framework:
+The implementation of the forced inclusion mechanism will affect several components of the Evolve framework:
 
 1. **Single Sequencer**: Must be modified to track and include direct transactions from the DA layer within the time window and after minimum DA block delay
 2. **Full Node**: Must be updated to recognize and validate blocks with forced inclusions
@@ -189,7 +189,7 @@ func (n *Node) ValidateBlockTimeWindow(ctx context.Context, block *types.Block) 
 
 The following diagram illustrates the operation flow for the sequencer with forced inclusion:
 
-```ascii
+```txt
 ┌─────────────────────────────────────────────────────────────────────────────────┐
 │                           Sequencer Operation Flow                              │
 └─────────────────┬───────────────────────────────────────────────────────────────┘
@@ -235,7 +235,7 @@ The following diagram illustrates the operation flow for the sequencer with forc
 
 The following diagram illustrates the operation flow for full nodes with forced inclusion support:
 
-```ascii
+```txt
 ┌─────────────────────────────────────────────────────────────────────────────────┐
 │                           Full Node Operation Flow                              │
 └─────────────────────────────────────────────────────────────────────────────────┘
@@ -410,8 +410,8 @@ Proposed
 
 ### Positive
 
-- Improves the liveness guarantees of Rollkit-based chains
-- Provides a path for Rollkit to meet Stage 1 L2 requirements per the L2 Beat framework
+- Improves the liveness guarantees of Evolve-based chains
+- Provides a path for Evolve to meet Stage 1 L2 requirements per the L2 Beat framework
 - Creates an "unstoppable" property for applications, enhancing their reliability
 - Maintains a deterministic chain state regardless of sequencer availability
 - More predictable deadlines in DA time
@@ -436,7 +436,7 @@ Proposed
 
 ## References
 
-- [Rollkit Single Sequencer ADR-013](https://github.com/evstack/ev-node/blob/main/docs/adr/adr-013-single-sequencer.md)
-- [Rollkit Minimal Header ADR-015](https://github.com/evstack/ev-node/blob/main/docs/adr/adr-015-rollkit-minimal-header.md)
+- [Evolve Single Sequencer ADR-013](https://github.com/evstack/ev-node/blob/main/docs/adr/adr-013-single-sequencer.md)
+- [Evolve Minimal Header ADR-015](https://github.com/evstack/ev-node/blob/main/docs/adr/adr-015-rollkit-minimal-header.md)
 - [L2 Beat Stages Framework](https://forum.l2beat.com/t/the-stages-framework/291#p-516-stage-1-requirements-3)
 - [GitHub Issue #1914: Add Forced Inclusion Mechanism from the DA layer](https://github.com/evstack/ev-node/issues/1914)

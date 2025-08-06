@@ -26,7 +26,7 @@ import (
 var RunCmd = &cobra.Command{
 	Use:     "start",
 	Aliases: []string{"node", "run"},
-	Short:   "Run the rollkit node with EVM execution client",
+	Short:   "Run the evolve node with EVM execution client",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		executor, err := createExecutionClient(cmd)
 		if err != nil {
