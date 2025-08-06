@@ -31,7 +31,7 @@ func (m *Manager) DAIncluderLoop(ctx context.Context, errCh chan<- error) {
 			if daIncluded {
 				m.logger.Debug().Uint64("height", nextHeight).Msg("both header and data are DA-included, advancing height")
 				if err := m.SetSequencerHeightToDAHeight(ctx, nextHeight); err != nil {
-					errCh <- fmt.Errorf("failed to set evolve height to DA height: %w", err)
+					errCh <- fmt.Errorf("failed to set sequencer height to DA height: %w", err)
 					return
 				}
 				// Both header and data are DA-included, so we can advance the height

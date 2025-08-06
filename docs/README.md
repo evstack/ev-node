@@ -1,4 +1,4 @@
-[![Deploy](https://github.com/evstack/docs/actions/workflows/deploy.yml/badge.svg)](https://github.com/evstack/docs/actions/workflows/deploy.yml)
+[![Deploy](https://github.com/evstack/ev-node/actions/workflows/deploy.yml/badge.svg)](https://github.com/evstack/docs/actions/workflows/deploy.yml)
 
 # Evolve Documentation Site
 

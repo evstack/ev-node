@@ -21,7 +21,6 @@ node_modules
 docs/.vitepress/cache
 *.log
 *.tgz
-.DS_Store
 .idea
 .temp
 .vite_opt_cache

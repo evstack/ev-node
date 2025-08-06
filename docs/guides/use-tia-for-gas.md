@@ -179,7 +179,7 @@ Note: These accounts should always be the same because of the hardcoded mnemonic
 Fund the relayer on our chain:
 
 ```bash
-evolve tx bank send gm-key-2 gm1jqevcsld0dqpjp3csfg7alkv3lehvn8uswknrc 10000000stake --keyring-backend test --chain-id gm --fees 5000stake -y
+gmd tx bank send gm-key-2 gm1jqevcsld0dqpjp3csfg7alkv3lehvn8uswknrc 10000000stake --keyring-backend test --chain-id gm --fees 5000stake -y
 ```
 
 Fund the relayer on the Celestia Mocha testnet:
@@ -252,7 +252,7 @@ ACCOUNT_ON_CHAIN="$(evolve keys show -a --keyring-backend test gm-key-2)"
 TX_HASH=$(evolve tx bank send "$ACCOUNT_ON_CHAIN" "$ACCOUNT_ON_CHAIN" 1stake --keyring-backend test --chain-id gm --gas-prices 0.02ibc/C3E53D20BC7A4CC993B17C7971F8ECD06A433C10B6A96F4C4C3714F0624C56DA -y --output json | jq -r .txhash)
 
 # Verify success
-evolve q tx "$TX_HASH" --output json | jq .code # => 0
+gmd q tx "$TX_HASH" --output json | jq .code # => 0
 ```
 
 ## 🎉 Next steps

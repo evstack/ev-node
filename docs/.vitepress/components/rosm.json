@@ -2,7 +2,7 @@
   "rpc": "https://rpc.rosm.ev.xyz",
   "rest": "https://api.rosm.ev.xyz",
   "chainId": "rosm",
-  "chainName": "Rollkit Cosmwasm Testnet",
+  "chainName": "Evolve Cosmwasm Testnet",
   "stakeCurrency": {
     "coinDenom": "ROSM",
     "coinMinimalDenom": "urosm",
@@ -38,5 +38,9 @@
     "average": 0.125,
     "high": 0.2
   },
-  "features": ["stargate", "no-legacy-stdTx", "ibc-transfer"]
+  "features": [
+    "stargate",
+    "no-legacy-stdTx",
+    "ibc-transfer"
+  ]
 }

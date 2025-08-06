@@ -25,7 +25,7 @@ export default withMermaid({
   ignoreDeadLinks: true,
   base: base,
   sitemap: {
-    hostname: "https://evolve.dev",
+    hostname: "https://ev.xyz",
   },
 
   head: [
