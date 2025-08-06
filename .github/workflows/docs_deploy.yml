@@ -37,15 +37,18 @@ jobs:
         with:
           node-version: 20
           cache: yarn # or pnpm / npm
+          cache-dependency-path: docs/yarn.lock
       - name: Setup Pages
         uses: actions/configure-pages@v5
       - name: Install dependencies
         run: yarn install # or pnpm install / npm ci
+        working-directory: docs
       - name: Build with VitePress
         run: yarn build # or pnpm build / npm build
+        working-directory: docs
       - name: Deploy to GitHub Pages
         uses: peaceiris/actions-gh-pages@v4
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: ./.vitepress/dist
+          publish_dir: ./docs/.vitepress/dist
           cname: ev.xyz
