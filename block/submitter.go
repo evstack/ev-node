@@ -381,7 +381,18 @@ func handleTooBigError[T any](
 	m.recordDAMetrics("submission", DAModeFail)
 
 	if len(remaining) > 1 {
-		totalSubmitted := submitWithRecursiveSplitting(m, ctx, remaining, marshaled, retryStrategy.gasPrice, postSubmit, itemType)
+		totalSubmitted, err := submitWithRecursiveSplitting(m, ctx, remaining, marshaled, retryStrategy.gasPrice, postSubmit, itemType)
+		if err != nil {
+			// If splitting failed, we cannot continue with this batch
+			m.logger.Error().Err(err).Str("itemType", itemType).Msg("recursive splitting failed")
+			retryStrategy.BackoffOnFailure()
+			return submissionOutcome[T]{
+				RemainingItems:   remaining,
+				RemainingMarshal: marshaled,
+				NumSubmitted:     0,
+				AllSubmitted:     false,
+			}
+		}
 
 		if totalSubmitted > 0 {
 			newRemaining := remaining[totalSubmitted:]
@@ -481,16 +492,16 @@ func submitWithRecursiveSplitting[T any](
 	gasPrice float64,
 	postSubmit func([]T, *coreda.ResultSubmit, float64),
 	itemType string,
-) int {
+) (int, error) {
 	// Base case: no items to process
 	if len(items) == 0 {
-		return 0
+		return 0, nil
 	}
 
 	// Base case: single item that's too big - skip it
 	if len(items) == 1 {
 		m.logger.Error().Str("itemType", itemType).Msg("single item exceeds DA blob size limit")
-		return 0
+		return 0, nil
 	}
 
 	// Split and submit recursively - we know the batch is too big
@@ -509,10 +520,17 @@ func submitWithRecursiveSplitting[T any](
 	m.logger.Info().Int("originalSize", len(items)).Int("firstHalf", len(firstHalf)).Int("secondHalf", len(secondHalf)).Msg("splitting batch for recursion")
 
 	// Recursively submit both halves using processBatch directly
-	firstSubmitted := submitHalfBatch[T](m, ctx, firstHalf, firstHalfMarshaled, gasPrice, postSubmit, itemType)
-	secondSubmitted := submitHalfBatch[T](m, ctx, secondHalf, secondHalfMarshaled, gasPrice, postSubmit, itemType)
+	firstSubmitted, err := submitHalfBatch[T](m, ctx, firstHalf, firstHalfMarshaled, gasPrice, postSubmit, itemType)
+	if err != nil {
+		return firstSubmitted, fmt.Errorf("first half submission failed: %w", err)
+	}
 
-	return firstSubmitted + secondSubmitted
+	secondSubmitted, err := submitHalfBatch[T](m, ctx, secondHalf, secondHalfMarshaled, gasPrice, postSubmit, itemType)
+	if err != nil {
+		return firstSubmitted, fmt.Errorf("second half submission failed: %w", err)
+	}
+
+	return firstSubmitted + secondSubmitted, nil
 }
 
 // submitHalfBatch handles submission of a half batch, including recursive splitting if needed
@@ -524,10 +542,10 @@ func submitHalfBatch[T any](
 	gasPrice float64,
 	postSubmit func([]T, *coreda.ResultSubmit, float64),
 	itemType string,
-) int {
+) (int, error) {
 	// Base case: no items to process
 	if len(items) == 0 {
-		return 0
+		return 0, nil
 	}
 
 	// Try to submit the batch as-is first
@@ -541,11 +559,14 @@ func submitHalfBatch[T any](
 			// Some items were submitted, recursively handle the rest
 			remainingItems := items[result.submittedCount:]
 			remainingMarshaled := marshaled[result.submittedCount:]
-			remainingSubmitted := submitHalfBatch[T](m, ctx, remainingItems, remainingMarshaled, gasPrice, postSubmit, itemType)
-			return result.submittedCount + remainingSubmitted
+			remainingSubmitted, err := submitHalfBatch[T](m, ctx, remainingItems, remainingMarshaled, gasPrice, postSubmit, itemType)
+			if err != nil {
+				return result.submittedCount, err
+			}
+			return result.submittedCount + remainingSubmitted, nil
 		}
 		// All items submitted
-		return result.submittedCount
+		return result.submittedCount, nil
 
 	case batchActionTooBig:
 		// Batch too big - need to split further
@@ -554,15 +575,15 @@ func submitHalfBatch[T any](
 	case batchActionSkip:
 		// Single item too big - skip it
 		m.logger.Error().Str("itemType", itemType).Msg("skipping item that exceeds DA blob size limit")
-		return 0
+		return 0, nil
 
 	case batchActionFail:
 		// Unrecoverable error - stop processing
 		m.logger.Error().Str("itemType", itemType).Msg("unrecoverable error during batch submission")
-		return 0
+		return 0, fmt.Errorf("unrecoverable error during %s batch submission", itemType)
 	}
 
-	return 0
+	return 0, nil
 }
 
 // BatchAction represents the action to take after processing a batch
