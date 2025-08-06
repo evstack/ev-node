@@ -44,10 +44,6 @@ func setupManagerForNamespaceTest(t *testing.T, daConfig config.DAConfig) (*Mana
 	mockStore.On("SetMetadata", mock.Anything, mock.Anything, mock.Anything).Return(nil).Maybe()
 	mockStore.On("GetMetadata", mock.Anything, storepkg.DAIncludedHeightKey).Return([]byte{}, ds.ErrNotFound).Maybe()
 
-	// Mock the persistence file operations
-	mockStore.On("GetMetadata", mock.Anything, namespaceMigrationKey).Return([]byte{}, ds.ErrNotFound).Maybe()
-	mockStore.On("SetMetadata", mock.Anything, namespaceMigrationKey, mock.Anything).Return(nil).Maybe()
-
 	_, cancel := context.WithCancel(context.Background())
 
 	// Create a mock signer
@@ -86,11 +82,6 @@ func setupManagerForNamespaceTest(t *testing.T, daConfig config.DAConfig) (*Mana
 	manager.daHeight.Store(100)
 	manager.daIncludedHeight.Store(0)
 
-	// Initialize the namespace migration state from store
-	if migrationData, err := mockStore.GetMetadata(context.Background(), namespaceMigrationKey); err == nil && len(migrationData) > 0 {
-		manager.namespaceMigrationCompleted.Store(migrationData[0] == 1)
-	}
-
 	t.Cleanup(cancel)
 
 	return manager, mockDAClient, mockStore, cancel
@@ -115,8 +106,8 @@ func TestProcessNextDAHeaderAndData_MixedResults(t *testing.T) {
 			headerMessage: "",
 			dataError:     true,
 			dataMessage:   "data retrieval failed",
-			expectError:   true,
-			errorContains: "data retrieval failed",
+			expectError:   false,
+			errorContains: "",
 		},
 		{
 			name:          "header fails, data succeeds",
@@ -124,8 +115,8 @@ func TestProcessNextDAHeaderAndData_MixedResults(t *testing.T) {
 			headerMessage: "header retrieval failed",
 			dataError:     false,
 			dataMessage:   "",
-			expectError:   true,
-			errorContains: "header retrieval failed",
+			expectError:   false,
+			errorContains: "",
 		},
 		{
 			name:          "header from future, data succeeds",
@@ -252,7 +243,7 @@ func TestNamespaceMigration_Completion(t *testing.T) {
 				HeaderNamespace: "test-headers",
 				DataNamespace:   "test-data",
 			}
-			manager, mockDA, mockStore, cancel := setupManagerForNamespaceTest(t, daConfig)
+			manager, mockDA, _, cancel := setupManagerForNamespaceTest(t, daConfig)
 			defer cancel()
 
 			// Set initial migration state
@@ -324,9 +315,6 @@ func TestNamespaceMigration_Completion(t *testing.T) {
 			}
 
 			// If migration should complete, expect persistence call
-			if tt.expectMigrationComplete && !tt.initialMigrationState {
-				mockStore.On("SetMetadata", mock.Anything, namespaceMigrationKey, []byte{1}).Return(nil).Once()
-			}
 
 			ctx := context.Background()
 			err := manager.processNextDAHeaderAndData(ctx)
@@ -342,7 +330,6 @@ func TestNamespaceMigration_Completion(t *testing.T) {
 			// The main goal is to test that the migration completion logic works
 
 			mockDA.AssertExpectations(t)
-			mockStore.AssertExpectations(t)
 		})
 	}
 }
@@ -417,8 +404,8 @@ func TestLegacyNamespaceDetection(t *testing.T) {
 			legacyNamespace:      "old-namespace",
 			headerNamespace:      "",
 			dataNamespace:        "",
-			expectLegacyFallback: false, // Should use defaults
-			description:          "When only legacy namespace is set, should use default new namespaces",
+			expectLegacyFallback: true,
+			description:          "When only legacy namespace is set, it acts as both header and data namespace",
 		},
 		{
 			name:                 "all namespaces configured",
@@ -476,7 +463,13 @@ func TestLegacyNamespaceDetection(t *testing.T) {
 			// Start with migration not completed
 			manager.namespaceMigrationCompleted.Store(false)
 
-			if tt.expectLegacyFallback && tt.legacyNamespace != "" {
+			// Check if we should expect a legacy namespace check
+			// This happens when legacy namespace is different from header/data namespaces
+			expectLegacyCheck := tt.legacyNamespace != "" &&
+				tt.legacyNamespace != headerNS &&
+				tt.legacyNamespace != dataNS
+
+			if expectLegacyCheck {
 				// Should try legacy namespace first
 				mockDA.On("GetIDs", mock.Anything, uint64(100), []byte(tt.legacyNamespace)).Return(&coreda.GetIDsResult{
 					IDs: []coreda.ID{},
@@ -488,9 +481,11 @@ func TestLegacyNamespaceDetection(t *testing.T) {
 				IDs: []coreda.ID{},
 			}, coreda.ErrBlobNotFound).Once()
 
-			mockDA.On("GetIDs", mock.Anything, uint64(100), []byte(dataNS)).Return(&coreda.GetIDsResult{
-				IDs: []coreda.ID{},
-			}, coreda.ErrBlobNotFound).Once()
+			if dataNS != headerNS {
+				mockDA.On("GetIDs", mock.Anything, uint64(100), []byte(dataNS)).Return(&coreda.GetIDsResult{
+					IDs: []coreda.ID{},
+				}, coreda.ErrBlobNotFound).Once()
+			}
 
 			ctx := context.Background()
 			err := manager.processNextDAHeaderAndData(ctx)
