@@ -2,7 +2,7 @@
 
 This tutorial is going to show you how to deploy a Evolve testnet, focusing on the architecture choices and components that make up a complete EVM-based chain deployment.
 
-You can learn more about Evolve EVM architecture [here](/learn/execution.md).
+You can learn more about Evolve EVM architecture [here](/docs/learn/execution.md).
 
 <!-- markdownlint-disable MD033 -->
 <script setup>
@@ -89,7 +89,7 @@ graph TB
 
 ## 💻 Pre-requisites {#prerequisites}
 
-Make sure you understand the sequencing topology you want to use by reading the [Sequencing Overview](/learn/sequencing/overview.md).
+Make sure you understand the sequencing topology you want to use by reading the [Sequencing Overview](/docs/learn/sequencing/overview.md).
 
 ## 🛠️ Dependencies {#dependencies}
 
@@ -105,7 +105,7 @@ Currently, Evolve supports one sequencing implementation:
 - **Advantages**: Easy setup, fast block production, independence from DA block time
 - **Requirements**: One sequencer node, multiple optional full nodes
 
-For detailed information about sequencing topologies, see the [Sequencing Overview](/learn/sequencing/overview.md) and [Single Sequencer](/learn/sequencing/single.md) documentation.
+For detailed information about sequencing topologies, see the [Sequencing Overview](/docs/learn/sequencing/overview.md) and [Single Sequencer](/docs/learn/sequencing/single.md) documentation.
 
 ## 🏗️ Deployment Architecture {#deployment-architecture}
 
@@ -281,8 +281,8 @@ This deployment approach is suitable for testnets and development environments, 
 Congratulations again! You now know how to deploy Evolve EVM chains and understand the architecture and components needed.
 
 For detailed setup instructions, see:
-- [Single Sequencer Setup Guide](/guides/evm/single.md) - Step-by-step deployment instructions
-- [RETH Backup Guide](/guides/evm/reth-backup.md) - Data protection and backup procedures
-- [Celestia DA Guide](/guides/da/celestia-da.md) - Connecting to Celestia networks
+- [Single Sequencer Setup Guide](/docs/guides/evm/single.md) - Step-by-step deployment instructions
+- [RETH Backup Guide](/docs/guides/evm/reth-backup.md) - Data protection and backup procedures
+- [Celestia DA Guide](/docs/guides/da/celestia-da.md) - Connecting to Celestia networks
 
-You can also learn more about local deployments in our [Docker Compose guide](/guides/deploy/local.md).
+You can also learn more about local deployments in our [Docker Compose guide](/docs/guides/deploy/local.md).

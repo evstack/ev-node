@@ -1,6 +1,6 @@
 # 🏠 Local
 
-This tutorial is going to show you how to deploy the [gm-world chain](/guides/gm-world.md) using Docker Compose.
+This tutorial is going to show you how to deploy the [gm-world chain](/docs/guides/gm-world.md) using Docker Compose.
 
 You can learn more about Docker Compose [here](https://docs.docker.com/compose/).
 
@@ -17,7 +17,7 @@ import constants from '../../.vitepress/constants/constants.js'
 
 ## 💻 Pre-requisites {#prerequisites}
 
-Make sure you have your gm-world chain ready by completing [the Build your chain tutorial](/guides/gm-world.md).
+Make sure you have your gm-world chain ready by completing [the Build your chain tutorial](/docs/guides/gm-world.md).
 
 ## 🛠️ Dependencies {#dependencies}
 
@@ -216,7 +216,7 @@ Since our chain is running in a docker container, we want to enter the docker co
 docker exec -it gm-world sh
 ```
 
-Now that you are in the docker container, you can interact with the chain using the `gmd` command and the example you used in the [gm-world tutorial](/guides/gm-world.md).
+Now that you are in the docker container, you can interact with the chain using the `gmd` command and the example you used in the [gm-world tutorial](/docs/guides/gm-world.md).
 
 Once you are done interacting with your chain, you can exit out of your docker container with:
 

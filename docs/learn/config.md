@@ -573,7 +573,7 @@ instrumentation:
 **Description:**
 The network address (host:port) where the Prometheus metrics server will listen for scraping requests.
 
-See [Metrics](/guides/metrics.md) for more details on what metrics are exposed.
+See [Metrics](/docs/guides/metrics.md) for more details on what metrics are exposed.
 
 **YAML:**
 

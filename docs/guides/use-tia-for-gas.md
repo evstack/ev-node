@@ -2,13 +2,13 @@
 
 ## 🌞 Introduction {#introduction}
 
-This tutorial will guide you through building a sovereign `gm-world` chain using Evolve, with TIA as the gas token. Unlike the [quick start guide](/guides/quick-start.md), which uses a native chain token for gas, this tutorial demonstrates how to integrate an IBC-enabled token, TIA, as the gas token within the chain, providing a deeper exploration of sovereign chain development.
+This tutorial will guide you through building a sovereign `gm-world` chain using Evolve, with TIA as the gas token. Unlike the [quick start guide](/docs/guides/quick-start.md), which uses a native chain token for gas, this tutorial demonstrates how to integrate an IBC-enabled token, TIA, as the gas token within the chain, providing a deeper exploration of sovereign chain development.
 
 No prior understanding of the build process is required, just that it utilizes the [Cosmos SDK](https://github.com/cosmos/cosmos-sdk) for blockchain applications.
 
 ## Requirements {#requirements}
 
-Before proceeding, ensure that you have completed the [build a chain](/guides/gm-world.md) tutorial, which covers setting-up, building and running your chain.
+Before proceeding, ensure that you have completed the [build a chain](/docs/guides/gm-world.md) tutorial, which covers setting-up, building and running your chain.
 
 <!-- markdownlint-disable MD033 -->
 <script setup>
@@ -24,7 +24,7 @@ import constants from '../.vitepress/constants/constants.js'
 
 ## Setup your local DA network {#setup-local-da}
 
-Your local DA network is already running if you followed the [quick start guide](/guides/quick-start.md) or the [build a chain](/guides/gm-world.md). If not, you can start it with the following command:
+Your local DA network is already running if you followed the [quick start guide](/docs/guides/quick-start.md) or the [build a chain](/docs/guides/gm-world.md). If not, you can start it with the following command:
 
 ```bash
 curl -sSL https://ev.xyz/install-local-da.sh | bash -s {{constants.evolveLatestTag}}

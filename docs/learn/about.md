@@ -90,6 +90,6 @@ As of today, Evolve provides a single sequencer, an execution interface (Engine 
 
 We're currently working on implementing many new and exciting features such as light nodes and state fraud proofs.
 
-Head down to the next section to learn more about what's coming for Evolve. If you're ready to start building, you can skip to the [Guides](/guides/quick-start.md) section.
+Head down to the next section to learn more about what's coming for Evolve. If you're ready to start building, you can skip to the [Guides](/docs/guides/quick-start.md) section.
 
 Spoiler alert, whichever you choose, it's going to be a great rabbit hole\!
