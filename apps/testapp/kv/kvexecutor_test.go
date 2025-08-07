@@ -172,3 +172,92 @@ func TestSetFinal(t *testing.T) {
 		t.Error("Expected error for blockHeight 0, got nil")
 	}
 }
+
+func TestReservedKeysExcludedFromAppHash(t *testing.T) {
+	exec, err := NewKVExecutor(t.TempDir(), "testdb")
+	if err != nil {
+		t.Fatalf("Failed to create KVExecutor: %v", err)
+	}
+	ctx := context.Background()
+
+	// Initialize chain to set up genesis state (this writes genesis reserved keys)
+	_, _, err = exec.InitChain(ctx, time.Now(), 1, "test-chain")
+	if err != nil {
+		t.Fatalf("Failed to initialize chain: %v", err)
+	}
+
+	// Add some application data
+	txs := [][]byte{
+		[]byte("user/key1=value1"),
+		[]byte("user/key2=value2"),
+	}
+	_, _, err = exec.ExecuteTxs(ctx, txs, 1, time.Now(), []byte(""))
+	if err != nil {
+		t.Fatalf("Failed to execute transactions: %v", err)
+	}
+
+	// Compute baseline state root
+	baselineStateRoot, err := exec.computeStateRoot(ctx)
+	if err != nil {
+		t.Fatalf("Failed to compute baseline state root: %v", err)
+	}
+
+	// Write to finalizedHeight (a reserved key)
+	err = exec.SetFinal(ctx, 5)
+	if err != nil {
+		t.Fatalf("Failed to set final height: %v", err)
+	}
+
+	// Verify finalizedHeight was written
+	finalizedHeightExists, err := exec.db.Has(ctx, finalizedHeightKey)
+	if err != nil {
+		t.Fatalf("Failed to check if finalizedHeight exists: %v", err)
+	}
+	if !finalizedHeightExists {
+		t.Error("Expected finalizedHeight to exist in database")
+	}
+
+	// State root should be unchanged (reserved keys excluded from calculation)
+	stateRootAfterReservedKeyWrite, err := exec.computeStateRoot(ctx)
+	if err != nil {
+		t.Fatalf("Failed to compute state root after writing reserved key: %v", err)
+	}
+
+	if string(baselineStateRoot) != string(stateRootAfterReservedKeyWrite) {
+		t.Errorf("State root changed after writing reserved key:\nBefore: %s\nAfter:  %s",
+			string(baselineStateRoot), string(stateRootAfterReservedKeyWrite))
+	}
+
+	// Verify state root contains only user data, not reserved keys
+	stateRootStr := string(stateRootAfterReservedKeyWrite)
+	if !strings.Contains(stateRootStr, "user/key1:value1") ||
+		!strings.Contains(stateRootStr, "user/key2:value2") {
+		t.Errorf("State root should contain user data: %s", stateRootStr)
+	}
+
+	// Verify reserved keys are NOT in state root
+	for key := range reservedKeys {
+		keyStr := key.String()
+		if strings.Contains(stateRootStr, keyStr) {
+			t.Errorf("State root should NOT contain reserved key %s: %s", keyStr, stateRootStr)
+		}
+	}
+
+	// Verify that adding user data DOES change the state root
+	moreTxs := [][]byte{
+		[]byte("user/key3=value3"),
+	}
+	_, _, err = exec.ExecuteTxs(ctx, moreTxs, 2, time.Now(), stateRootAfterReservedKeyWrite)
+	if err != nil {
+		t.Fatalf("Failed to execute more transactions: %v", err)
+	}
+
+	finalStateRoot, err := exec.computeStateRoot(ctx)
+	if err != nil {
+		t.Fatalf("Failed to compute final state root: %v", err)
+	}
+
+	if string(baselineStateRoot) == string(finalStateRoot) {
+		t.Error("Expected state root to change after adding user data")
+	}
+}

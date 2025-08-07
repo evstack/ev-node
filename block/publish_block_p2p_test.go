@@ -178,7 +178,7 @@ func setupBlockManager(t *testing.T, ctx context.Context, workDir string, mainKV
 	}
 
 	logger := zerolog.Nop()
-	p2pClient, err := p2p.NewClient(nodeConfig, nodeKey, mainKV, logger, p2p.NopMetrics())
+	p2pClient, err := p2p.NewClient(nodeConfig.P2P, nodeKey.PrivKey, mainKV, genesisDoc.ChainID, logger, p2p.NopMetrics())
 	require.NoError(t, err)
 
 	// Start p2p client before creating sync service

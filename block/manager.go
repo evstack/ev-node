@@ -800,7 +800,7 @@ func (m *Manager) execValidate(lastState types.State, header *types.SignedHeader
 
 	// AppHash should match the last state's AppHash
 	if !bytes.Equal(header.AppHash, lastState.AppHash) {
-		return fmt.Errorf("appHash mismatch in delayed execution mode: expected %x, got %x", lastState.AppHash, header.AppHash)
+		return fmt.Errorf("appHash mismatch in delayed execution mode: expected %x, got %x at height %d", lastState.AppHash, header.AppHash, header.Height())
 	}
 
 	return nil

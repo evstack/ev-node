@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
-	"path/filepath"
 	"syscall"
 	"time"
 
@@ -82,6 +81,7 @@ func StartNode(
 	p2pClient *p2p.Client,
 	datastore datastore.Batching,
 	nodeConfig rollconf.Config,
+	genesis genesispkg.Genesis,
 	nodeOptions node.NodeOptions,
 ) error {
 	ctx, cancel := context.WithCancel(cmd.Context())
@@ -106,12 +106,6 @@ func StartNode(
 	}
 
 	metrics := node.DefaultMetricsProvider(nodeConfig.Instrumentation)
-
-	genesisPath := filepath.Join(filepath.Dir(nodeConfig.ConfigPath()), "genesis.json")
-	genesis, err := genesispkg.LoadGenesis(genesisPath)
-	if err != nil {
-		return fmt.Errorf("failed to load genesis: %w", err)
-	}
 
 	// Create and start the node
 	rollnode, err := node.NewNode(
