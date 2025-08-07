@@ -199,7 +199,6 @@ func setupBlockManager(t *testing.T, ctx context.Context, workDir string, mainKV
 	dataSyncService, err := rollkitSync.NewDataSyncService(mainKV, nodeConfig, genesisDoc, p2pClient, dataSyncLogger)
 	require.NoError(t, err)
 	require.NoError(t, dataSyncService.Start(ctx))
-
 	result, err := NewManager(
 		ctx,
 		signer,
@@ -212,6 +211,7 @@ func setupBlockManager(t *testing.T, ctx context.Context, workDir string, mainKV
 		blockManagerLogger,
 		headerSyncService.Store(),
 		dataSyncService.Store(),
+		nil,
 		nil,
 		nil,
 		NopMetrics(),

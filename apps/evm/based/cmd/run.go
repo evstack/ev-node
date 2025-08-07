@@ -9,6 +9,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 
 	coreda "github.com/evstack/ev-node/core/da"
+	coresequencer "github.com/evstack/ev-node/core/sequencer"
 	"github.com/evstack/ev-node/execution/evm" // Import the evm flags package
 	"github.com/evstack/ev-node/node"
 
@@ -170,7 +171,18 @@ func NewExtendedRunNodeCmd(ctx context.Context) *cobra.Command {
 				return fmt.Errorf("failed to create P2P client: %w", err)
 			}
 
-			directTXSeq := single.NewDirectTxSequencer(sequencer, logger, datastore, 100) // todo (Alex): what is a good max value
+			// Create appropriate DirectTxSequencer based on node type
+			var directTXSeq coresequencer.DirectTxSequencer
+			if nodeConfig.Node.Aggregator {
+				// Aggregator nodes use the full DirectTxSequencer that can sequence direct transactions
+				directTXSeq = single.NewDirectTxSequencer(sequencer, logger, datastore, 100, nodeConfig.ForcedInclusion) // todo (Alex): what is a good max value
+				if err := directTXSeq.Load(ctx); err != nil {
+					return fmt.Errorf("failed to load direct tx sequencer: %w", err)
+				}
+			} else {
+				// Full nodes use a specialized DirectTxSequencer that stores direct transactions but doesn't sequence
+				directTXSeq = single.NewFullNodeDirectTxSequencer(sequencer, logger, datastore, 100, nodeConfig.ForcedInclusion)
+			}
 
 			// Pass the raw rollDA implementation to StartNode.
 			// StartNode might need adjustment if it strictly requires coreda.Client methods.

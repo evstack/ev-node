@@ -88,12 +88,12 @@ var RunCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		directTXSeq := single.NewDirectTxSequencer(sequencer, logger, datastore, 100) // todo (Alex): find a good default
+		// Create appropriate DirectTxSequencer based on node type
 		p2pClient, err := p2p.NewClient(nodeConfig, nodeKey, datastore, logger, p2p.NopMetrics())
 		if err != nil {
 			return err
 		}
 
-		return rollcmd.StartNode(logger, cmd, executor, directTXSeq, &daJrpc.DA, p2pClient, datastore, nodeConfig, node.NodeOptions{})
+		return rollcmd.StartNode(logger, cmd, executor, sequencer, &daJrpc.DA, p2pClient, datastore, nodeConfig, node.NodeOptions{})
 	},
 }

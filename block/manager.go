@@ -8,13 +8,13 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
-	"github.com/celestiaorg/go-square/v2/share"
 	"path/filepath"
 	"sync"
 	"sync/atomic"
 	"time"
 
 	goheader "github.com/celestiaorg/go-header"
+	"github.com/celestiaorg/go-square/v2/share"
 	ds "github.com/ipfs/go-datastore"
 	logging "github.com/ipfs/go-log/v2"
 	"github.com/libp2p/go-libp2p/core/crypto"
@@ -25,6 +25,7 @@ import (
 	coresequencer "github.com/evstack/ev-node/core/sequencer"
 	"github.com/evstack/ev-node/pkg/cache"
 	"github.com/evstack/ev-node/pkg/config"
+	"github.com/evstack/ev-node/pkg/directtx"
 	"github.com/evstack/ev-node/pkg/genesis"
 	"github.com/evstack/ev-node/pkg/signer"
 	storepkg "github.com/evstack/ev-node/pkg/store"
@@ -117,8 +118,9 @@ type Manager struct {
 	dataInCh  chan NewDataEvent
 	dataStore goheader.Store[*types.Data]
 
-	headerCache *cache.Cache[types.SignedHeader]
-	dataCache   *cache.Cache[types.Data]
+	headerCache       *cache.Cache[types.SignedHeader]
+	dataCache         *cache.Cache[types.Data]
+	directTXExtractor *directtx.Extractor
 
 	// headerStoreCh is used to notify sync goroutine (HeaderStoreRetrieveLoop) that it needs to retrieve headers from headerStore
 	headerStoreCh chan struct{}
@@ -169,6 +171,7 @@ type Manager struct {
 	// validatorHasherProvider is used to provide the validator hash for the header.
 	// It is used to set the validator hash in the header.
 	validatorHasherProvider types.ValidatorHasherProvider
+	fallbackMode            bool
 }
 
 // getInitialState tries to load lastState from Store, and if it's not available it reads genesis.
@@ -303,6 +306,7 @@ func NewManager(
 	dataStore goheader.Store[*types.Data],
 	headerBroadcaster broadcaster[*types.SignedHeader],
 	dataBroadcaster broadcaster[*types.Data],
+	directTXExtractor *directtx.Extractor,
 	seqMetrics *Metrics,
 	gasPrice float64,
 	gasMultiplier float64,
@@ -386,6 +390,7 @@ func NewManager(
 		lastBatchData:            lastBatchData,
 		headerCache:              cache.NewCache[types.SignedHeader](),
 		dataCache:                cache.NewCache[types.Data](),
+		directTXExtractor:        directTXExtractor,
 		retrieveCh:               make(chan struct{}, 1),
 		daIncluderCh:             make(chan struct{}, 1),
 		logger:                   logger,
@@ -555,10 +560,9 @@ func (m *Manager) retrieveBatch(ctx context.Context) (*BatchData, error) {
 		"lastBatchData", m.lastBatchData)
 
 	req := coresequencer.GetNextBatchRequest{
-		DAIncludedHeight: m.daIncludedHeight.Load(),
-		Id:               []byte(m.genesis.ChainID),
-		LastBatchData:    m.lastBatchData,
-		MaxBytes:         defaultMaxBytes, // todo (Alex): do we need to reserve some space for headers and other data?
+		Id:            []byte(m.genesis.ChainID),
+		LastBatchData: m.lastBatchData,
+		MaxBytes:      defaultMaxBytes, // todo (Alex): do we need to reserve some space for headers and other data?
 	}
 
 	res, err := m.sequencer.GetNextBatch(ctx, req)
@@ -918,8 +922,17 @@ func (m *Manager) execApplyBlock(ctx context.Context, lastState types.State, hea
 	}
 
 	ctx = context.WithValue(ctx, types.HeaderContextKey, header)
+	if m.fallbackMode {
+		ctx = directtx.WithFallbackMode(ctx)
+	}
 	newStateRoot, _, err := m.exec.ExecuteTxs(ctx, rawTxs, header.Height(), header.Time(), lastState.AppHash)
+
 	if err != nil {
+		if errors.Is(err, directtx.ErrDirectTXWindowMissed) {
+			// the sequencer has missed to include a direct TX. Either by censoring or downtime
+			m.fallbackMode = true
+			return types.State{}, err
+		}
 		return types.State{}, fmt.Errorf("failed to execute transactions: %w", err)
 	}
 

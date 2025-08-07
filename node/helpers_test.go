@@ -43,7 +43,7 @@ const (
 )
 
 // createTestComponents creates test components for node initialization
-func createTestComponents(t *testing.T, config rollkitconfig.Config) (coreexecutor.Executor, coresequencer.DirectTxSequencer, coreda.DA, *p2p.Client, datastore.Batching, *key.NodeKey, func()) {
+func createTestComponents(t *testing.T, config rollkitconfig.Config) (coreexecutor.Executor, coresequencer.Sequencer, coreda.DA, *p2p.Client, datastore.Batching, *key.NodeKey, func()) {
 	executor := coreexecutor.NewDummyExecutor()
 	sequencer := coresequencer.NewDummySequencer()
 	dummyDA := coreda.NewDummyDA(100_000, 0, 0, config.DA.BlockTime.Duration)
@@ -101,7 +101,7 @@ func newTestNode(
 	t *testing.T,
 	config rollkitconfig.Config,
 	executor coreexecutor.Executor,
-	sequencer coresequencer.DirectTxSequencer,
+	sequencer coresequencer.Sequencer,
 	dac coreda.DA,
 	p2pClient *p2p.Client,
 	ds datastore.Batching,
@@ -149,7 +149,7 @@ func createNodeWithCustomComponents(
 	t *testing.T,
 	config rollkitconfig.Config,
 	executor coreexecutor.Executor,
-	sequencer coresequencer.DirectTxSequencer,
+	sequencer coresequencer.Sequencer,
 	dac coreda.DA,
 	p2pClient *p2p.Client,
 	ds datastore.Batching,

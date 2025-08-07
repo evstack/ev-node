@@ -11,17 +11,11 @@ import (
 //---------------------
 
 var _ Sequencer = (*DummySequencer)(nil)
-var _ DirectTxSequencer = (*DummySequencer)(nil)
 
 // DummySequencer is a dummy implementation of the Sequencer interface for testing
 type DummySequencer struct {
 	mu      sync.RWMutex
 	batches map[string][]*Batch
-}
-
-// SubmitDirectTxs implements DirectTxSequencer.
-func (s *DummySequencer) SubmitDirectTxs(ctx context.Context, txs ...DirectTX) error {
-	panic("unimplemented")
 }
 
 // NewDummySequencer creates a new dummy Sequencer instance

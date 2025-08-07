@@ -80,7 +80,7 @@ func (m *Manager) processNextDAHeaderAndData(ctx context.Context) error {
 				return nil
 			}
 			m.logger.Debug("retrieved potential blob data", "n", len(blobsResp.Data), "daHeight", daHeight)
-			for _, bz := range blobsResp.Data {
+			for blobIdx, bz := range blobsResp.Data {
 				if len(bz) == 0 {
 					m.logger.Debug("ignoring nil or empty blob", "daHeight", daHeight)
 					continue
@@ -91,7 +91,15 @@ func (m *Manager) processNextDAHeaderAndData(ctx context.Context) error {
 				if m.handlePotentialData(ctx, bz, daHeight) {
 					continue
 				}
-				m.handlePotentialDirectTXs(ctx, bz, daHeight)
+				if _, err := m.directTXExtractor.Handle(
+					ctx,
+					daHeight,
+					blobsResp.IDs[blobIdx],
+					bz,
+					blobsResp.Timestamp,
+				); err != nil {
+					return err
+				}
 			}
 			return nil
 		} else if strings.Contains(fetchErr.Error(), coreda.ErrHeightFromFuture.Error()) {

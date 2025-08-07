@@ -67,14 +67,6 @@ var RunCmd = &cobra.Command{
 			return err
 		}
 
-		directTXSequencer := single.NewDirectTxSequencer(
-			sequencer,
-			logger,
-			datastore,
-			100, // todo (Alex): what is a good value?
-			nodeConfig.ForcedInclusion,
-		)
-
 		nodeKey, err := key.LoadNodeKey(filepath.Dir(nodeConfig.ConfigPath()))
 		if err != nil {
 			return err
@@ -85,7 +77,7 @@ var RunCmd = &cobra.Command{
 			return err
 		}
 
-		return rollcmd.StartNode(logger, cmd, executor, directTXSequencer, &daJrpc.DA, p2pClient, datastore, nodeConfig, node.NodeOptions{})
+		return rollcmd.StartNode(logger, cmd, executor, sequencer, &daJrpc.DA, p2pClient, datastore, nodeConfig, node.NodeOptions{})
 	},
 }
 

@@ -25,7 +25,7 @@ import (
 
 const MockDANamespace = "test"
 
-func createTestComponents(_ context.Context, t *testing.T) (coreexecutor.Executor, coresequencer.DirectTxSequencer, coreda.DA, signer.Signer, *p2p.Client, datastore.Batching, func()) {
+func createTestComponents(_ context.Context, t *testing.T) (coreexecutor.Executor, coresequencer.Sequencer, coreda.DA, signer.Signer, *p2p.Client, datastore.Batching, func()) {
 	executor := coreexecutor.NewDummyExecutor()
 	sequencer := coresequencer.NewDummySequencer()
 	dummyDA := coreda.NewDummyDA(100_000, 0, 0, 10*time.Second)
@@ -411,7 +411,7 @@ func TestStartNodeErrors(t *testing.T) {
 func newRunNodeCmd(
 	ctx context.Context,
 	executor coreexecutor.Executor,
-	sequencer coresequencer.DirectTxSequencer,
+	sequencer coresequencer.Sequencer,
 	dac coreda.DA,
 	remoteSigner signer.Signer,
 	p2pClient *p2p.Client,

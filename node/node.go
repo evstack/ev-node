@@ -35,7 +35,7 @@ func NewNode(
 	ctx context.Context,
 	conf config.Config,
 	exec coreexecutor.Executor,
-	sequencer coresequencer.DirectTxSequencer,
+	sequencer coresequencer.Sequencer,
 	da coreda.DA,
 	signer signer.Signer,
 	p2pClient *p2p.Client,

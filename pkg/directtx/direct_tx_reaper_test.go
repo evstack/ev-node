@@ -1,22 +1,72 @@
-package block
+package directtx
 
 import (
 	"context"
-	"github.com/evstack/ev-node/test/mocks"
 	"testing"
 	"time"
 
 	"github.com/evstack/ev-node/core/da"
-	"github.com/evstack/ev-node/core/sequencer"
 	"github.com/evstack/ev-node/types"
 	"github.com/ipfs/go-datastore"
 	"github.com/ipfs/go-datastore/sync"
 	"github.com/ipfs/go-log/v2"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
+	"github.com/stretchr/testify/require"
 )
 
-type MockDA = mocks.MockDA
+// MockDA is a simple mock implementation for testing
+type MockDA struct {
+	mock.Mock
+}
+
+func (m *MockDA) GetIDs(ctx context.Context, height uint64, namespace []byte) (*da.GetIDsResult, error) {
+	args := m.Called(ctx, height, namespace)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*da.GetIDsResult), args.Error(1)
+}
+
+func (m *MockDA) Get(ctx context.Context, ids []da.ID, namespace []byte) ([]da.Blob, error) {
+	args := m.Called(ctx, ids, namespace)
+	return args.Get(0).([]da.Blob), args.Error(1)
+}
+
+func (m *MockDA) GetProofs(ctx context.Context, ids []da.ID, namespace []byte) ([]da.Proof, error) {
+	args := m.Called(ctx, ids, namespace)
+	return args.Get(0).([]da.Proof), args.Error(1)
+}
+
+func (m *MockDA) Commit(ctx context.Context, blobs []da.Blob, namespace []byte) ([]da.Commitment, error) {
+	args := m.Called(ctx, blobs, namespace)
+	return args.Get(0).([]da.Commitment), args.Error(1)
+}
+
+func (m *MockDA) Submit(ctx context.Context, blobs []da.Blob, gasPrice float64, namespace []byte) ([]da.ID, error) {
+	args := m.Called(ctx, blobs, gasPrice, namespace)
+	return args.Get(0).([]da.ID), args.Error(1)
+}
+
+func (m *MockDA) SubmitWithOptions(ctx context.Context, blobs []da.Blob, gasPrice float64, namespace []byte, options []byte) ([]da.ID, error) {
+	args := m.Called(ctx, blobs, gasPrice, namespace, options)
+	return args.Get(0).([]da.ID), args.Error(1)
+}
+
+func (m *MockDA) Validate(ctx context.Context, ids []da.ID, proofs []da.Proof, namespace []byte) ([]bool, error) {
+	args := m.Called(ctx, ids, proofs, namespace)
+	return args.Get(0).([]bool), args.Error(1)
+}
+
+func (m *MockDA) GasPrice(ctx context.Context) (float64, error) {
+	args := m.Called(ctx)
+	return args.Get(0).(float64), args.Error(1)
+}
+
+func (m *MockDA) GasMultiplier(ctx context.Context) (float64, error) {
+	args := m.Called(ctx)
+	return args.Get(0).(float64), args.Error(1)
+}
 
 func TestSubmitTxs(t *testing.T) {
 	tests := map[string]struct {
@@ -57,7 +107,9 @@ func TestSubmitTxs(t *testing.T) {
 					[]da.Blob{blob},
 					nil,
 				)
-				mockSequencer.On("SubmitDirectTxs", mock.Anything, [][]byte{tx1, tx2}).Return(nil)
+				mockSequencer.On("SubmitDirectTxs", mock.Anything, mock.MatchedBy(func(txs []DirectTX) bool {
+					return len(txs) == 2 && string(txs[0].TX) == string(tx1) && string(txs[1].TX) == string(tx2)
+				})).Return(nil)
 			},
 			expectedError: false,
 			verifyMocks: func(t *testing.T, mockDA *MockDA, mockSequencer *MockDirectTxSequencer) {
@@ -82,9 +134,19 @@ func TestSubmitTxs(t *testing.T) {
 					[]da.Blob{blob},
 					nil,
 				)
-				key := datastore.NewKey(hashTx(tx1))
-				reaper.seenStore.Put(context.Background(), key, []byte{1})
-				mockSequencer.On("SubmitDirectTxs", mock.Anything, [][]byte{tx2}).Return(nil)
+				// Pre-populate the extractor's seenStore with tx1
+				dTx1 := DirectTX{
+					TX:              tx1,
+					ID:              []byte("id1"),
+					FirstSeenHeight: 1,
+					FirstSeenTime:   time.Now().Unix(),
+				}
+				key := buildStoreKey(dTx1)
+				err := reaper.directTXExtractor.seenStore.Put(context.Background(), key, []byte{1})
+				require.NoError(t, err)
+				mockSequencer.On("SubmitDirectTxs", mock.Anything, mock.MatchedBy(func(txs []DirectTX) bool {
+					return len(txs) == 1 && string(txs[0].TX) == string(tx2)
+				})).Return(nil)
 			},
 			expectedError: false,
 			verifyMocks: func(t *testing.T, mockDA *MockDA, mockSequencer *MockDirectTxSequencer) {
@@ -123,7 +185,7 @@ func TestSubmitTxs(t *testing.T) {
 					da.ErrHeightFromFuture,
 				)
 			},
-			expectedError: false,
+			expectedError: true,
 			verifyMocks: func(t *testing.T, mockDA *MockDA, mockSequencer *MockDirectTxSequencer) {
 				mockDA.AssertExpectations(t)
 				mockSequencer.AssertNotCalled(t, "SubmitDirectTxs")
@@ -171,25 +233,9 @@ type MockDirectTxSequencer struct {
 	mock.Mock
 }
 
-func (m *MockDirectTxSequencer) SubmitDirectTxs(ctx context.Context, txs [][]byte) error {
+func (m *MockDirectTxSequencer) SubmitDirectTxs(ctx context.Context, txs ...DirectTX) error {
 	args := m.Called(ctx, txs)
 	return args.Error(0)
-}
-
-// We need to implement the Sequencer interface methods as well since DirectTxSequencer extends Sequencer
-func (m *MockDirectTxSequencer) SubmitBatchTxs(ctx context.Context, req sequencer.SubmitBatchTxsRequest) (*sequencer.SubmitBatchTxsResponse, error) {
-	args := m.Called(ctx, req)
-	return args.Get(0).(*sequencer.SubmitBatchTxsResponse), args.Error(1)
-}
-
-func (m *MockDirectTxSequencer) GetNextBatch(ctx context.Context, req sequencer.GetNextBatchRequest) (*sequencer.GetNextBatchResponse, error) {
-	args := m.Called(ctx, req)
-	return args.Get(0).(*sequencer.GetNextBatchResponse), args.Error(1)
-}
-
-func (m *MockDirectTxSequencer) VerifyBatch(ctx context.Context, req sequencer.VerifyBatchRequest) (*sequencer.VerifyBatchResponse, error) {
-	args := m.Called(ctx, req)
-	return args.Get(0).(*sequencer.VerifyBatchResponse), args.Error(1)
 }
 
 // Helper function to create a test DirectTxReaper
@@ -204,16 +250,8 @@ func createTestDirectTxReaper(
 	logger := log.Logger("test-direct-tx-reaper")
 	ds := sync.MutexWrap(datastore.NewMapDatastore()) // In-memory thread-safe datastore
 
-	return NewDirectTxReaper(
-		ctx,
-		mockDA,
-		mockSequencer,
-		nil, // Manager is not used in retrieveDirectTXs
-		chainID,
-		time.Second,
-		logger,
-		ds,
-	)
+	extractor := NewExtractor(mockSequencer, chainID, logger, ds)
+	return NewDirectTxReaper(ctx, mockDA, extractor, time.Second, logger, 1)
 }
 
 // Helper function to create a test Data object

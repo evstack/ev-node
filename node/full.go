@@ -11,6 +11,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/evstack/ev-node/pkg/directtx"
 	ds "github.com/ipfs/go-datastore"
 	ktds "github.com/ipfs/go-datastore/keytransform"
 	logging "github.com/ipfs/go-log/v2"
@@ -61,7 +62,7 @@ type FullNode struct {
 	Store          store.Store
 	blockManager   *block.Manager
 	execTXReaper   *block.Reaper
-	directTXReaper *block.DirectTxReaper
+	directTXReaper *directtx.DirectTxReaper
 
 	prometheusSrv *http.Server
 	pprofSrv      *http.Server
@@ -77,7 +78,7 @@ func newFullNode(
 	genesis genesispkg.Genesis,
 	database ds.Batching,
 	exec coreexecutor.Executor,
-	sequencer coresequencer.DirectTxSequencer,
+	sequencer coresequencer.Sequencer,
 	da coreda.DA,
 	metricsProvider MetricsProvider,
 	logger logging.EventLogger,
@@ -98,7 +99,17 @@ func newFullNode(
 
 	rktStore := store.New(mainKV)
 
-	// Use the decorated sequencer for all components
+	sink, err := directtx.NewSink(ctx, nodeConfig.ForcedInclusion, mainKV, logging.Logger("direct-tx-sink"))
+	if err != nil {
+		return nil, fmt.Errorf("initializing direct-tx-sink: %w", err)
+	}
+
+	directTXExtractor := directtx.NewExtractor(
+		sink,
+		nodeConfig.ChainID,
+		logging.Logger("direct-tx-extractor"),
+		database,
+	)
 
 	blockManager, err := initBlockManager(
 		ctx,
@@ -112,6 +123,7 @@ func newFullNode(
 		logger,
 		headerSyncService,
 		dataSyncService,
+		directTXExtractor,
 		seqMetrics,
 		nodeConfig.DA.GasPrice,
 		nodeConfig.DA.GasMultiplier,
@@ -120,6 +132,9 @@ func newFullNode(
 	if err != nil {
 		return nil, err
 	}
+
+	const maxBlockBytes = 1024 * 1024 // todo (Alex): what is a good default? make configurable
+	exec = directtx.NewExecutionAdapter(exec, sink, blockManager, maxBlockBytes)
 
 	execTXReaper := block.NewReaper(
 		ctx,
@@ -135,17 +150,7 @@ func newFullNode(
 	execTXReaper.SetManager(blockManager)
 
 	// Initialize the DirectTxReaper to fetch direct transactions from the DA layer
-	directTXReaper := block.NewDirectTxReaper(
-		ctx,
-		da,
-		sequencer,
-		blockManager,
-		genesis.ChainID,
-		nodeConfig.Node.BlockTime.Duration,
-		logging.Logger("DirectTxReaper"),
-		mainKV,
-		nodeConfig.DA.StartHeight,
-	)
+	directTXReaper := directtx.NewDirectTxReaper(ctx, da, directTXExtractor, nodeConfig.Node.BlockTime.Duration, logging.Logger("DirectTxReaper"), nodeConfig.DA.StartHeight)
 
 	node := &FullNode{
 		genesis:        genesis,
@@ -213,6 +218,7 @@ func initBlockManager(
 	logger logging.EventLogger,
 	headerSyncService *rollkitsync.HeaderSyncService,
 	dataSyncService *rollkitsync.DataSyncService,
+	directTXExtractor *directtx.Extractor,
 	seqMetrics *block.Metrics,
 	gasPrice float64,
 	gasMultiplier float64,
@@ -234,6 +240,7 @@ func initBlockManager(
 		dataSyncService.Store(),
 		headerSyncService,
 		dataSyncService,
+		directTXExtractor,
 		seqMetrics,
 		gasPrice,
 		gasMultiplier,

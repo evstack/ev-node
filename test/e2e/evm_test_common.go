@@ -421,11 +421,6 @@ func setupCommonEVMTest(t *testing.T, sut *SystemUnderTest, needsFullNode bool) 
 	genesisHash := evm.GetGenesisHash(t)
 	t.Logf("Genesis hash: %s", genesisHash)
 
-	t.Cleanup(func() {
-		if t.Failed() {
-			sut.PrintBuffer()
-		}
-	})
 	return jwtSecret, fullNodeJwtSecret, genesisHash
 }
 
