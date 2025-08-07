@@ -31,8 +31,6 @@ build-all:
 	@cd apps/testapp && go build -ldflags "$(LDFLAGS)" -o $(CURDIR)/build/testapp .
 	@echo "--> Building evm-single"
 	@cd apps/evm/single && go build -ldflags "$(LDFLAGS)" -o $(CURDIR)/build/evm-single .
-	@echo "--> Building evm-based"
-	@cd apps/evm/based && go build -ldflags "$(LDFLAGS)" -o $(CURDIR)/build/evm-based .
 	@echo "--> Building local-da"
 	@cd da && go build -ldflags "$(LDFLAGS)" -o $(CURDIR)/build/local-da ./cmd/local-da
 	@echo "--> All ev-node binaries built!"
@@ -51,13 +49,6 @@ build-evm-single:
 	@mkdir -p $(CURDIR)/build
 	@cd apps/evm/single && go build -ldflags "$(LDFLAGS)" -o $(CURDIR)/build/evm-single .
         @echo "    Check the binary with: $(CURDIR)/build/evm-single"
-
-## build-evm-based: build evm based
-build-evm-based:
-	@echo "--> Building EVM based"
-	@mkdir -p $(CURDIR)/build
-	@cd apps/evm/based && go build -ldflags "$(LDFLAGS)" -o $(CURDIR)/build/evm-based .
-        @echo "    Check the binary with: $(CURDIR)/build/evm-based"
 
 build-da:
 	@echo "--> Building local-da"
