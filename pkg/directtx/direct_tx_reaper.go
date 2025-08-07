@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/evstack/ev-node/core/da"
-	"github.com/ipfs/go-log/v2"
+	zerolog "github.com/rs/zerolog"
 )
 
 // DirectTxReaper is responsible for periodically retrieving direct transactions from the DA layer,
@@ -16,7 +16,7 @@ import (
 type DirectTxReaper struct {
 	da                da.DA
 	interval          time.Duration
-	logger            log.EventLogger
+	logger            zerolog.Logger
 	ctx               context.Context
 	directTXExtractor *Extractor
 	daHeight          *atomic.Uint64
@@ -28,7 +28,7 @@ func NewDirectTxReaper(
 	da da.DA,
 	extractor *Extractor,
 	interval time.Duration,
-	logger log.EventLogger,
+	logger zerolog.Logger,
 	daStartHeight uint64,
 ) *DirectTxReaper {
 	if daStartHeight == 0 {
@@ -55,20 +55,20 @@ func (r *DirectTxReaper) Start(ctx context.Context) {
 	ticker := time.NewTicker(r.interval)
 	defer ticker.Stop()
 
-	r.logger.Info("DirectTxReaper started", "interval", r.interval)
+	r.logger.Info().Dur("interval", r.interval).Msg("DirectTxReaper started")
 
 	for {
 		select {
 		case <-ctx.Done():
-			r.logger.Info("DirectTxReaper stopped")
+			r.logger.Info().Msg("DirectTxReaper stopped")
 			return
 		case <-ticker.C:
 			daHeight := r.daHeight.Load()
 			if err := r.retrieveDirectTXs(daHeight); err != nil {
 				if strings.Contains(err.Error(), da.ErrHeightFromFuture.Error()) {
-					r.logger.Debug("IDs not found at height", "height", daHeight)
+					r.logger.Debug().Uint64("height", daHeight).Msg("IDs not found at height")
 				} else {
-					r.logger.Error("Submit direct txs to sequencer", "error", err)
+					r.logger.Error().Err(err).Msg("Submit direct txs to sequencer")
 				}
 				continue
 			}
@@ -87,17 +87,17 @@ func (r *DirectTxReaper) retrieveDirectTXs(daHeight uint64) error {
 		return fmt.Errorf("get IDs from DA: %w", err)
 	}
 	if result == nil || len(result.IDs) == 0 {
-		r.logger.Debug("No blobs at current DA height", "height", daHeight)
+		r.logger.Debug().Uint64("height", daHeight).Msg("No blobs at current DA height")
 		return nil
 	}
-	r.logger.Debug("IDs at current DA height", "height", daHeight, "count", len(result.IDs))
+	r.logger.Debug().Uint64("height", daHeight).Int("count", len(result.IDs)).Msg("IDs at current DA height")
 
 	// Get the blobs for all IDs
 	blobs, err := r.da.Get(r.ctx, result.IDs, nil)
 	if err != nil {
 		return fmt.Errorf("get blobs from DA: %w", err)
 	}
-	r.logger.Debug("Blobs found at height", "height", daHeight, "count", len(blobs))
+	r.logger.Debug().Uint64("height", daHeight).Int("count", len(blobs)).Msg("Blobs found at height")
 
 	if len(blobs) != len(result.IDs) {
 		return fmt.Errorf("number of blobs and IDs do not match")

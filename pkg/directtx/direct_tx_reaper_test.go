@@ -9,7 +9,7 @@ import (
 	"github.com/evstack/ev-node/types"
 	"github.com/ipfs/go-datastore"
 	"github.com/ipfs/go-datastore/sync"
-	"github.com/ipfs/go-log/v2"
+	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
@@ -247,7 +247,7 @@ func createTestDirectTxReaper(
 ) *DirectTxReaper {
 	t.Helper()
 	ctx := context.Background()
-	logger := log.Logger("test-direct-tx-reaper")
+	logger := zerolog.New(zerolog.NewTestWriter(t)).With().Timestamp().Logger()
 	ds := sync.MutexWrap(datastore.NewMapDatastore()) // In-memory thread-safe datastore
 
 	extractor := NewExtractor(mockSequencer, chainID, logger, ds)

@@ -6,12 +6,13 @@ package e2e
 import (
 	"context"
 	"flag"
-	"github.com/evstack/ev-node/core/da"
-	"github.com/evstack/ev-node/da/jsonrpc"
-	logging "github.com/ipfs/go-log/v2"
 	"path/filepath"
 	"testing"
 	"time"
+
+	"github.com/evstack/ev-node/core/da"
+	"github.com/evstack/ev-node/da/jsonrpc"
+	"github.com/rs/zerolog"
 
 	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/stretchr/testify/require"
@@ -51,7 +52,7 @@ func TestDirectTxToDAForceInclusion(t *testing.T) {
 	// Create a Data struct with the transaction
 	data := types.Data{
 		Metadata: &types.Metadata{
-			ChainID: "rollkit-test", // sequencer chain-id
+			ChainID: "evolve-test", // sequencer chain-id
 		},
 		Txs: []types.Tx{txBytes},
 	}
@@ -61,7 +62,7 @@ func TestDirectTxToDAForceInclusion(t *testing.T) {
 	require.NoError(t, err, "Should be able to marshal Data struct")
 	// Marshal the request to JSON
 	// Send the request to the DA layer
-	logger := logging.Logger("test")
+	logger := zerolog.New(zerolog.NewTestWriter(t)).Level(zerolog.WarnLevel).With().Str("module", "test").Logger()
 	const defaultNamespace = ""
 	daClient, err := jsonrpc.NewClient(t.Context(), logger, DAAddress, "", defaultNamespace)
 	require.NoError(t, err)
@@ -73,7 +74,11 @@ func TestDirectTxToDAForceInclusion(t *testing.T) {
 	require.NoError(t, err)
 	require.NotEmpty(t, blobs)
 	t.Logf("Transaction landed on DA layer...: %X\n", ids)
-
+	t.Cleanup(func() {
+		if t.Failed() {
+			sut.PrintBuffer()
+		}
+	})
 	// Wait for the transaction to be included in a block
 	// The DirectTxReaper should pick up the transaction from the DA layer and submit it to the sequencer
 	t.Log("Waiting for transaction to be included in a block...")

@@ -10,7 +10,7 @@ import (
 
 	rollconf "github.com/evstack/ev-node/pkg/config"
 	ds "github.com/ipfs/go-datastore"
-	logging "github.com/ipfs/go-log/v2"
+	"github.com/rs/zerolog"
 )
 
 var ErrDirectTXWindowMissed = errors.New("direct tx window missed")
@@ -22,7 +22,7 @@ const (
 
 type Sink struct {
 	config rollconf.ForcedInclusionConfig
-	logger logging.EventLogger
+	logger zerolog.Logger
 
 	directTxQueue  *TXQueue
 	directTxMu     sync.Mutex
@@ -33,7 +33,7 @@ func NewSink(
 	ctx context.Context,
 	config rollconf.ForcedInclusionConfig,
 	db ds.Batching,
-	logger logging.EventLogger,
+	logger zerolog.Logger,
 ) (*Sink, error) {
 	r := Sink{config: config,
 		logger:         logger,
@@ -61,7 +61,7 @@ func (d *Sink) SubmitDirectTxs(ctx context.Context, txs ...DirectTX) error {
 			return fmt.Errorf("tx %d: %w", i, err)
 		}
 	}
-	d.logger.Debug("Adding direct transactions to queue", "txCount", len(txs))
+	d.logger.Debug().Int("txCount", len(txs)).Msg("Adding direct transactions to queue")
 
 	d.directTxMu.Lock()
 	defer d.directTxMu.Unlock()
@@ -75,7 +75,8 @@ func (d *Sink) SubmitDirectTxs(ctx context.Context, txs ...DirectTX) error {
 }
 
 func (d *Sink) GetPendingDirectTXs(ctx context.Context, daIncludedHeight uint64, maxBytes uint64) ([][]byte, error) {
-	d.logger.Debug("GetNextBatch", "currentHeight", daIncludedHeight, "maxBytes", maxBytes)
+	d.logger.Debug().Uint64("currentHeight", daIncludedHeight).
+		Uint64("maxBytes", maxBytes).Msg("GetNextBatch")
 
 	var transactions [][]byte
 	remainingBytes := int(maxBytes)
@@ -127,7 +128,7 @@ func (d *Sink) MarkTXIncluded(ctx context.Context, txs [][]byte, blockHeight uin
 				return err
 			}
 			delete(d.directTXByHash, ck)
-			d.logger.Debug("Removed direct tx from queue", "txHash", ck)
+			d.logger.Debug().Hex("cacheKey", []byte(ck)).Msg("Removed direct tx from queue")
 		}
 	}
 	return nil

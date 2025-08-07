@@ -82,6 +82,7 @@ graph TB
 ```
 
 **Key Interactions:**
+
 - **Engine API**: RETH ↔ EVOLVE communication within each stack
 - **P2P Network**: EVOLVE nodes sync blocks and share chain state
 - **Data Availability**: Sequencer posts blobs, full nodes retrieve blobs from Celestia
@@ -100,6 +101,7 @@ First, you need to choose a sequencing topology for your Evolve EVM chain. The s
 Currently, Evolve supports one sequencing implementation:
 
 ### 🔄 Single Sequencer
+
 - **Description**: The simplest sequencing architecture where one node is responsible for ordering transactions and producing blocks
 - **Use Cases**: Development, testing, and production deployments requiring simplicity and low latency
 - **Advantages**: Easy setup, fast block production, independence from DA block time
@@ -133,6 +135,7 @@ We will use a combination of RETH and EVOLVE services for this tutorial and run 
 Each node in your Evolve EVM deployment (whether sequencer or full node) consists of two primary services working together:
 
 ### ⚡ RETH Service
+
 - **Purpose**: Provides the Ethereum Virtual Machine (EVM) execution environment
 - **Technology**: Rust-based Ethereum client (Reth) that handles transaction execution
 - **Responsibilities**:
@@ -142,6 +145,7 @@ Each node in your Evolve EVM deployment (whether sequencer or full node) consist
   - Managing the execution layer consensus
 
 ### 🔗 EVOLVE Service
+
 - **Purpose**: Handles chain-specific functionality and consensus
 - **Technology**: Evolve node implementation
 - **Responsibilities**:
@@ -162,13 +166,17 @@ The two services work together through well-defined interfaces:
 ## ⚙️ Node Configurations {#node-configurations}
 
 ### 🎯 Sequencer Node Configuration
+
 The single sequencer node runs both RETH and EVOLVE services with specific settings:
+
 - **RETH**: Configured to accept blocks from the Evolve sequencer
 - **EVOLVE**: Configured with `--evolve.node.aggregator=true` to enable block production
 - **Role**: Produces blocks, orders transactions, posts to DA layer
 
 ### 📡 Full Node Configuration
+
 Each full node also runs both RETH and EVOLVE services but in sync mode:
+
 - **RETH**: Configured to process blocks received from the network
 - **EVOLVE**: Configured with `--evolve.node.aggregator=false` to sync from the sequencer
 - **Role**: Syncs blocks, serves queries, provides redundancy
@@ -176,6 +184,7 @@ Each full node also runs both RETH and EVOLVE services but in sync mode:
 ### 🔑 Key Integration Points
 
 All nodes require:
+
 - Shared JWT secret for Engine API authentication
 - Matching genesis configuration between EVOLVE nodes
 - Proper network configuration for service communication
@@ -186,12 +195,14 @@ All nodes require:
 You can customize timing parameters for your chain. While there are many configuration arguments available for the Evolve binary, two important timing-related flags are:
 
 #### 🎯 Sequencer Block Time
+
 - **Flag**: `--evolve.node.block_time`
 - **Default**: 1s (1 block per second)
 - **Purpose**: Controls how frequently the sequencer produces new blocks
 - **Customization**: Can be adjusted based on throughput requirements and latency preferences
 
 #### 📊 Data Availability Block Time
+
 - **Flag**: `--evolve.da.block_time`
 - **Default**: 6s
 - **Purpose**: Controls how frequently blobs are posted to the Celestia chain
@@ -202,6 +213,7 @@ You can customize timing parameters for your chain. While there are many configu
 Your Evolve EVM chain connects to Celestia as the Data Availability (DA) layer. The Evolve EVM Celestia DA stack consists of two key services:
 
 ### 🏛️ Celestia-App Service
+
 - **Purpose**: Provides the consensus layer for the Celestia network
 - **Responsibilities**:
   - Processing and ordering transactions on the Celestia network
@@ -209,6 +221,7 @@ Your Evolve EVM chain connects to Celestia as the Data Availability (DA) layer. 
   - Participating in Tendermint consensus
 
 ### 🌐 Celestia-Node Service
+
 - **Purpose**: Provides data availability sampling and networking
 - **Responsibilities**:
   - Data availability sampling (DAS) to verify data availability
@@ -221,16 +234,19 @@ Your Evolve EVM chain connects to Celestia as the Data Availability (DA) layer. 
 Both sequencer and full node Evolve services need to communicate with the celestia-node service, but for different purposes:
 
 #### 📤 Sequencer Node Communication
+
 - **Purpose**: Batch posting of block data (blobs) to Celestia
 - **Operation**: The sequencer Evolve service submits batched block data to Celestia via the celestia-node API
 - **Frequency**: Occurs regularly as new blocks are produced and need to be made available
 
 #### 📥 Full Node Communication
+
 - **Purpose**: Retrieving block data (blobs) from Celestia
 - **Operation**: Full node Evolve services query and download historical block data via the celestia-node API
 - **Frequency**: Occurs during initial sync and ongoing block validation
 
 #### 🔑 Common Integration Points
+
 1. **Authentication**: Evolve requires an auth token generated by the celestia-node so that Evolve can send transactions on its behalf. Both sequencer and full node types use these JWT tokens for secure communication with celestia-node
 2. **Namespace Isolation**: Data is organized using Celestia namespaces
 3. **API Endpoints**: Both sequencer and full nodes use the same celestia-node API interface
@@ -239,6 +255,7 @@ Both sequencer and full node Evolve services need to communicate with the celest
 ### 🛠️ Deployment Considerations
 
 When deploying with Celestia DA:
+
 - **Light Node**: Most chains run a celestia-node in light mode for cost efficiency
 - **Network Selection**: Choose between Arabica (devnet), Mocha (testnet), or Mainnet Beta
 - **Funding**: Ensure your celestia-node wallet has sufficient TIA tokens for data submission
@@ -266,6 +283,7 @@ To save time, we can use ready-to-use Docker Compose stacks that can be customiz
 To make this deployment process easy and painless for node operators, you can use the example implementation available at: [https://github.com/evstack/ev-toolbox/tree/main/ev-stacks](https://github.com/evstack/ev-toolbox/tree/main/ev-stacks/)
 
 This solution provides:
+
 - Pre-configured Docker Compose files for sequencer and full node deployments
 - Automated handling of JWT secrets and genesis file distribution
 - Simplified configuration through environment variables
@@ -281,6 +299,7 @@ This deployment approach is suitable for testnets and development environments, 
 Congratulations again! You now know how to deploy Evolve EVM chains and understand the architecture and components needed.
 
 For detailed setup instructions, see:
+
 - [Single Sequencer Setup Guide](/guides/evm/single.md) - Step-by-step deployment instructions
 - [RETH Backup Guide](/guides/evm/reth-backup.md) - Data protection and backup procedures
 - [Celestia DA Guide](/guides/da/celestia-da.md) - Connecting to Celestia networks

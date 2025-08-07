@@ -99,7 +99,8 @@ func newFullNode(
 
 	rktStore := store.New(mainKV)
 
-	sink, err := directtx.NewSink(ctx, nodeConfig.ForcedInclusion, mainKV, logging.Logger("direct-tx-sink"))
+	sink, err := directtx.NewSink(ctx, nodeConfig.ForcedInclusion, database,
+		logger.With().Str("component", "DirTX-sink").Logger())
 	if err != nil {
 		return nil, fmt.Errorf("initializing direct-tx-sink: %w", err)
 	}
@@ -150,7 +151,8 @@ func newFullNode(
 	execTXReaper.SetManager(blockManager)
 
 	// Initialize the DirectTxReaper to fetch direct transactions from the DA layer
-	directTXReaper := directtx.NewDirectTxReaper(ctx, da, directTXExtractor, nodeConfig.Node.BlockTime.Duration, logging.Logger("DirectTxReaper"), nodeConfig.DA.StartHeight)
+	directTXReaper := directtx.NewDirectTxReaper(ctx, da, directTXExtractor, nodeConfig.Node.BlockTime.Duration,
+		logger.With().Str("component", "DirTX-reaper").Logger(), nodeConfig.DA.StartHeight)
 
 	node := &FullNode{
 		genesis:        genesis,

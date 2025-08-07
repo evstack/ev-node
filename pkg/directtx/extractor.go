@@ -9,7 +9,7 @@ import (
 	"github.com/evstack/ev-node/types"
 	"github.com/ipfs/go-datastore"
 	"github.com/ipfs/go-datastore/keytransform"
-	"github.com/ipfs/go-log/v2"
+	"github.com/rs/zerolog"
 )
 
 const (
@@ -25,11 +25,11 @@ type DirectTXSubmitter interface {
 type Extractor struct {
 	dTxSink   DirectTXSubmitter
 	chainID   string
-	logger    log.EventLogger
+	logger    zerolog.Logger
 	seenStore datastore.Batching
 }
 
-func NewExtractor(dTxSink DirectTXSubmitter, chainID string, logger log.EventLogger, store datastore.Batching) *Extractor {
+func NewExtractor(dTxSink DirectTXSubmitter, chainID string, logger zerolog.Logger, store datastore.Batching) *Extractor {
 	return &Extractor{
 		dTxSink: dTxSink,
 		chainID: chainID,
@@ -41,20 +41,21 @@ func NewExtractor(dTxSink DirectTXSubmitter, chainID string, logger log.EventLog
 }
 
 func (d *Extractor) Handle(ctx context.Context, daHeight uint64, id da.ID, blob da.Blob, daBlockTimestamp time.Time) ([]DirectTX, error) {
-	d.logger.Debug("Processing blob data")
+	d.logger.Debug().Msg("Processing blob data")
 	var newTxs []DirectTX
 
 	// Process each blob to extract direct transactions
 	var data types.Data
 	err := data.UnmarshalBinary(blob)
 	if err != nil {
-		d.logger.Debug("Unexpected payload skipping ", "error", err)
+		d.logger.Debug().Err(err).Msg("Unexpected payload skipping ")
 		return nil, nil
 	}
 
 	// Skip blobs from different chains
 	if data.Metadata.ChainID != d.chainID {
-		d.logger.Debug("Ignoring data from different chain", "chainID", data.Metadata.ChainID, "expectedChainID", d.chainID)
+		d.logger.Debug().Str("chainID", data.Metadata.ChainID).Str("expectedChainID", d.chainID).
+			Msg("Ignoring data from different chain")
 		return nil, nil
 	}
 
@@ -74,7 +75,7 @@ func (d *Extractor) Handle(ctx context.Context, daHeight uint64, id da.ID, blob 
 			newTxs = append(newTxs, dTx)
 		}
 	}
-	d.logger.Debug("Submitting direct txs to sequencer", "txCount", len(newTxs))
+	d.logger.Debug().Int("txCount", len(newTxs)).Msg("Submitting direct txs to sequencer")
 	err = d.dTxSink.SubmitDirectTxs(ctx, newTxs...)
 	if err != nil {
 		return nil, fmt.Errorf("submit direct txs to sequencer: %w", err)
