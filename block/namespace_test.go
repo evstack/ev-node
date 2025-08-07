@@ -486,7 +486,7 @@ func TestLegacyNamespaceDetection(t *testing.T) {
 					mockDA.On("GetIDs", mock.Anything, uint64(100), []byte(tt.legacyNamespace)).Return(&coreda.GetIDsResult{
 						IDs: []coreda.ID{},
 					}, coreda.ErrBlobNotFound).Times(totalCalls)
-					
+
 					// Mock the non-matching namespace if header != data
 					if headerNS != dataNS {
 						nonMatchingNS := headerNS
@@ -502,7 +502,7 @@ func TestLegacyNamespaceDetection(t *testing.T) {
 					mockDA.On("GetIDs", mock.Anything, uint64(100), []byte(tt.legacyNamespace)).Return(&coreda.GetIDsResult{
 						IDs: []coreda.ID{},
 					}, coreda.ErrBlobNotFound).Once()
-					
+
 					// Mock header and data calls
 					if headerNS == dataNS {
 						mockDA.On("GetIDs", mock.Anything, uint64(100), []byte(headerNS)).Return(&coreda.GetIDsResult{

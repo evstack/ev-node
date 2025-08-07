@@ -50,7 +50,7 @@ You should see an output like this:
 
 ```bash
 INFO[2024-07-02T11:15:43-04:00] Creating a new enclave for Starlark to run inside...
-INFO[2024-07-11T11:53:13-04:00] Enclave 'forgotten-fen' created successfully 
+INFO[2024-07-11T11:53:13-04:00] Enclave 'forgotten-fen' created successfully
 
 Container images used in this run:
 > ghcr.io/evolve/local-da:v0.2.1 - remotely downloaded
@@ -74,14 +74,14 @@ CosmWasm service is available at http://172.16.0.6:36657
 Starlark code successfully run. No output was returned.
 
 ⭐ us on GitHub - https://github.com/kurtosis-tech/kurtosis
-INFO[2024-07-11T11:53:27-04:00] ====================================================== 
-INFO[2024-07-11T11:53:27-04:00] ||          Created enclave: forgotten-fen          || 
-INFO[2024-07-11T11:53:27-04:00] ====================================================== 
+INFO[2024-07-11T11:53:27-04:00] ======================================================
+INFO[2024-07-11T11:53:27-04:00] ||          Created enclave: forgotten-fen          ||
+INFO[2024-07-11T11:53:27-04:00] ======================================================
 Name:            forgotten-fen
 UUID:            8cd936e91ada
 Status:          RUNNING
 Creation Time:   Thu, 11 Jul 2024 11:53:00 EDT
-Flags:           
+Flags:
 
 ========================================= Files Artifacts =========================================
 UUID   Name
@@ -90,8 +90,8 @@ UUID   Name
 UUID           Name       Ports                                            Status
 96d04bc472c9   local-da   jsonrpc: 7980/tcp -> http://127.0.0.1:7980       RUNNING
 c71b0308616d   wasm       grpc-addr: 9290/tcp -> http://127.0.0.1:9290     RUNNING
-                          p2p-laddr: 36656/tcp -> http://127.0.0.1:36656   
-                          rpc-laddr: 36657/tcp -> http://127.0.0.1:36657   
+                          p2p-laddr: 36656/tcp -> http://127.0.0.1:36656
+                          rpc-laddr: 36657/tcp -> http://127.0.0.1:36657
 ```
 
 Kurtosis has successfully launched the CosmWasm chain and the local DA network. You can see the services running in docker as well:

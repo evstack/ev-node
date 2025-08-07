@@ -19,6 +19,7 @@ Before starting, ensure you have:
 ## Installing Dependencies
 
 For Ubuntu/Debian-based Linux distributions, install the required dependencies:
+
 ```bash
 # Update package list
 sudo apt update
@@ -62,6 +63,7 @@ curl -sX POST \
 You will need to stop both evolve and reth-evolve on the fullnode stack, according to your setup.
 
 Example for docker-compose based setup:
+
 ```bash
 # Stop services in correct order
 docker compose stop fullnode
@@ -96,6 +98,7 @@ sha256sum "${BACKUP_BASE_DIR}/reth_state_${BACKUP_DATE}.tar.zst" > "${BACKUP_BAS
 You will need to restart both evolve and reth-evolve on the fullnode stack, according to your setup.
 
 Example for docker-compose based setup:
+
 ```bash
 # Start services
 docker compose up -d
@@ -111,6 +114,7 @@ docker compose logs -f
 ```bash
 sudo nano /usr/local/bin/evolve-backup.sh
 ```
+
 Add the following content
 
 ```bash
