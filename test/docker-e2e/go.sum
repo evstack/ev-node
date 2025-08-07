@@ -152,8 +152,6 @@ github.com/celestiaorg/go-square/v2 v2.2.0 h1:zJnUxCYc65S8FgUfVpyG/osDcsnjzo/JSX
 github.com/celestiaorg/go-square/v2 v2.2.0/go.mod h1:j8kQUqJLYtcvCQMQV6QjEhUdaF7rBTXF74g8LbkR0Co=
 github.com/celestiaorg/nmt v0.23.0 h1:cfYy//hL1HeDSH0ub3CPlJuox5U5xzgg4JGZrw23I/I=
 github.com/celestiaorg/nmt v0.23.0/go.mod h1:kYfIjRq5rmA2mJnv41GLWkxn5KyLNPlma3v5Q68rHdI=
-github.com/celestiaorg/tastora v0.2.0 h1:C3pfPCW25HQC73Hmq9xFoyFQ3qgAcCc4InZ0ITTWnY4=
-github.com/celestiaorg/tastora v0.2.0/go.mod h1:D0/syL4Jo2i2S6VCCNhDz8BGTzOxtopOoWYgcgHnkVc=
 github.com/celestiaorg/tastora v0.2.1-0.20250807132956-fe0615643d88 h1:mfHsM4J1DyJnW7hhcHwF2qGQVRoO9eXd58oqhjSdg3Y=
 github.com/celestiaorg/tastora v0.2.1-0.20250807132956-fe0615643d88/go.mod h1:D0/syL4Jo2i2S6VCCNhDz8BGTzOxtopOoWYgcgHnkVc=
 github.com/cenkalti/backoff v2.2.1+incompatible h1:tNowT99t7UNflLxfYYSlKYsBpXdEet03Pg2g16Swow4=
