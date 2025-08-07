@@ -58,7 +58,7 @@ func (d *ExecutionAdapter) GetTxs(ctx context.Context) (otherTx [][]byte, err er
 }
 
 func (d *ExecutionAdapter) ExecuteTxs(ctx context.Context, txs [][]byte, blockHeight uint64, timestamp time.Time, prevStateRoot []byte) (updatedStateRoot []byte, maxBytes uint64, err error) {
-	if d.directTXProvider.MarkTXIncluded(ctx, txs, blockHeight, timestamp) != nil {
+	if err := d.directTXProvider.MarkTXIncluded(ctx, txs, blockHeight, timestamp); err != nil {
 		return nil, 0, err
 	}
 	if !IsInFallbackMode(ctx) && // bypass check in fallback mode
