@@ -49,7 +49,7 @@ This document provides a comprehensive reference for all configuration options a
   - [Signer Path](#signer-path)
   - [Signer Passphrase](#signer-passphrase)
 
-## Configs
+## Introduction to Configurations
 
 Evolve configurations can be managed through a YAML file (typically `evolve.yaml` located in `~/.evolve/config/` or `<your_home_dir>/config/`) and command-line flags. The system prioritizes configurations in the following order (highest priority first):
 
