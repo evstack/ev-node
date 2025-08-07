@@ -112,6 +112,13 @@ const (
 
 	// FlagRPCAddress is a flag for specifying the RPC server address
 	FlagRPCAddress = "rollkit.rpc.address"
+
+	// Forced Inclusion configuration flags
+
+	// FlagMaxInclusionDelay is a flag for specifying the maximum transaction inclusion delay
+	FlagMaxInclusionDelay = "rollkit.forced_inclusion.max_inclusion_delay"
+	// FlagMinDADelay is a flag for specifying minimum DA blocks before including direct tx
+	FlagMinDADelay = "rollkit.forced_inclusion.min_da_delay"
 )
 
 // Config stores Rollkit configuration.
@@ -157,7 +164,7 @@ type DAConfig struct {
 }
 
 type ForcedInclusionConfig struct {
-	MaxInclusionDelay time.Duration `mapstructure:"max_inclusion_delay" yaml:"max_inclusion_delay" comment:"Time window within direct transactions must be included"`
+	MaxInclusionDelay time.Duration `mapstructure:"max_inclusion_delay" yaml:"max_inclusion_delay" comment:"Maximum time window for transaction inclusion"`
 	MinDADelay        uint64        `mapstructure:"min_da_delay" yaml:"min_da_delay" comment:"Minimum number of DA blocks before including a direct tx"`
 }
 
@@ -282,6 +289,10 @@ func AddFlags(cmd *cobra.Command) {
 	cmd.Flags().String(FlagSignerType, def.Signer.SignerType, "type of signer to use (file, grpc)")
 	cmd.Flags().String(FlagSignerPath, def.Signer.SignerPath, "path to the signer file or address")
 	cmd.Flags().String(FlagSignerPassphrase, "", "passphrase for the signer (required for file signer and if aggregator is enabled)")
+
+	// Forced inclusion configuration flags
+	cmd.Flags().Uint64(FlagMinDADelay, 3, "number of DA blocks after which a transaction can be added")
+	cmd.Flags().Duration(FlagMaxInclusionDelay, 12*time.Hour, "time window within direct transactions must be included")
 }
 
 // Load loads the node configuration in the following order of precedence:

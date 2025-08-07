@@ -69,11 +69,13 @@ const (
 	RollkitRPCAddress  = "http://127.0.0.1:" + RollkitRPCPort
 
 	// Test configuration
-	DefaultBlockTime   = "150ms"
-	DefaultDABlockTime = "1s"
-	DefaultTestTimeout = 10 * time.Second
-	DefaultChainID     = "1234"
-	DefaultGasLimit    = 22000
+	DefaultBlockTime         = "150ms"
+	DefaultDABlockTime       = "1s"
+	DefaultTestTimeout       = 10 * time.Second
+	DefaultChainID           = "1234"
+	DefaultGasLimit          = 22000
+	DefaultMinDADelay        = "0"
+	DefaultMaxInclusionDelay = "5s"
 
 	// Test account configuration
 	TestPrivateKey = "cece4f25ac74deb1468965160c7185e07dff413f23fcadb611b05ca37ab0a52e"
@@ -265,6 +267,8 @@ func setupSequencerNode(t *testing.T, sut *SystemUnderTest, sequencerHome, jwtSe
 		"--home", sequencerHome,
 		"--rollkit.da.address", DAAddress,
 		"--rollkit.da.block_time", DefaultDABlockTime,
+		"--rollkit.forced_inclusion.max_inclusion_delay", DefaultMaxInclusionDelay,
+		"--rollkit.forced_inclusion.min_da_delay", DefaultMinDADelay,
 	)
 	sut.AwaitNodeUp(t, RollkitRPCAddress, NodeStartupTimeout)
 }
@@ -297,6 +301,8 @@ func setupSequencerNodeLazy(t *testing.T, sut *SystemUnderTest, sequencerHome, j
 		"--home", sequencerHome,
 		"--rollkit.da.address", DAAddress,
 		"--rollkit.da.block_time", DefaultDABlockTime,
+		"--rollkit.forced_inclusion.max_inclusion_delay", DefaultMaxInclusionDelay,
+		"--rollkit.forced_inclusion.min_da_delay", DefaultMinDADelay,
 	)
 	sut.AwaitNodeUp(t, RollkitRPCAddress, NodeStartupTimeout)
 }
@@ -346,6 +352,8 @@ func setupFullNode(t *testing.T, sut *SystemUnderTest, fullNodeHome, sequencerHo
 		"--evm.eth-url", FullNodeEthURL,
 		"--rollkit.da.address", DAAddress,
 		"--rollkit.da.block_time", DefaultDABlockTime,
+		"--rollkit.forced_inclusion.max_inclusion_delay", DefaultMaxInclusionDelay,
+		"--rollkit.forced_inclusion.min_da_delay", DefaultMinDADelay,
 	)
 	sut.AwaitNodeUp(t, "http://127.0.0.1:"+FullNodeRPCPort, NodeStartupTimeout)
 }
@@ -541,6 +549,8 @@ func restartDAAndSequencer(t *testing.T, sut *SystemUnderTest, sequencerHome, jw
 		"--home", sequencerHome,
 		"--rollkit.da.address", DAAddress,
 		"--rollkit.da.block_time", DefaultDABlockTime,
+		"--rollkit.forced_inclusion.max_inclusion_delay", DefaultMaxInclusionDelay,
+		"--rollkit.forced_inclusion.min_da_delay", DefaultMinDADelay,
 	)
 
 	time.Sleep(SlowPollingInterval)
@@ -583,6 +593,8 @@ func restartDAAndSequencerLazy(t *testing.T, sut *SystemUnderTest, sequencerHome
 		"--home", sequencerHome,
 		"--rollkit.da.address", DAAddress,
 		"--rollkit.da.block_time", DefaultDABlockTime,
+		"--rollkit.forced_inclusion.max_inclusion_delay", DefaultMaxInclusionDelay,
+		"--rollkit.forced_inclusion.min_da_delay", DefaultMinDADelay,
 	)
 
 	time.Sleep(SlowPollingInterval)
@@ -612,6 +624,8 @@ func restartSequencerNode(t *testing.T, sut *SystemUnderTest, sequencerHome, jwt
 		"--home", sequencerHome,
 		"--rollkit.da.address", DAAddress,
 		"--rollkit.da.block_time", DefaultDABlockTime,
+		"--rollkit.forced_inclusion.max_inclusion_delay", DefaultMaxInclusionDelay,
+		"--rollkit.forced_inclusion.min_da_delay", DefaultMinDADelay,
 	)
 
 	time.Sleep(SlowPollingInterval)

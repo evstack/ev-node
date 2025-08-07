@@ -50,7 +50,7 @@ func NewSystemUnderTest(t *testing.T) *SystemUnderTest {
 		pids:      make(map[int]struct{}),
 		cmdToPids: make(map[string][]int),
 		outBuff:   ring.New(100),
-		errBuff:   ring.New(200),
+		errBuff:   ring.New(150),
 	}
 	t.Cleanup(r.ShutdownAll)
 	t.Cleanup(func() {

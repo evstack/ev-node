@@ -83,7 +83,6 @@ func (d *Sink) GetPendingDirectTXs(ctx context.Context, daIncludedHeight uint64,
 	d.directTxMu.Lock()
 	defer d.directTxMu.Unlock()
 
-	// First get direct transactions up to max size
 	for remainingBytes > 0 {
 		peekedTx, err := d.directTxQueue.Peek(ctx)
 		if err != nil {
@@ -92,16 +91,13 @@ func (d *Sink) GetPendingDirectTXs(ctx context.Context, daIncludedHeight uint64,
 		if peekedTx == nil || len(peekedTx.TX) > remainingBytes {
 			break
 		}
-		if false { // todo Alex: need some blocks in test to get past this da height
-			// Require a minimum number of DA blocks to pass before including a direct transaction
-			if daIncludedHeight < peekedTx.FirstSeenHeight+d.config.MinDADelay {
-				break
-			}
-			// Let full nodes enforce inclusion within a fixed period of time window
-			if time.Since(time.Unix(peekedTx.FirstSeenTime, 0)) > d.config.MaxInclusionDelay {
-				// todo (Alex): what to do in this case? the sequencer may be down for unknown reasons.
-				return nil, ErrDirectTXWindowMissed
-			}
+		// Require a minimum number of DA blocks to pass before including a direct transaction
+		if daIncludedHeight < peekedTx.FirstSeenHeight+d.config.MinDADelay {
+			break
+		}
+		// Let full nodes enforce inclusion within a fixed period of time window
+		if time.Since(time.Unix(peekedTx.FirstSeenTime, 0)) > d.config.MaxInclusionDelay {
+			return nil, ErrDirectTXWindowMissed
 		}
 
 		// pop from the queue

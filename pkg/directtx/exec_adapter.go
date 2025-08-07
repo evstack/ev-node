@@ -13,7 +13,7 @@ var _ execution.Executor = &ExecutionAdapter{}
 type DAHeightSource interface {
 	GetDAIncludedHeight() uint64
 }
-type DirectTXProvider interface {
+type Provider interface {
 	GetPendingDirectTXs(ctx context.Context, daIncludedHeight uint64, maxBytes uint64) ([][]byte, error)
 	MarkTXIncluded(ctx context.Context, txs [][]byte, blockHeight uint64, timestamp time.Time) error
 	HasMissedDirectTX(ctx context.Context, blockHeight uint64, timestamp time.Time) error
@@ -21,14 +21,14 @@ type DirectTXProvider interface {
 
 type ExecutionAdapter struct {
 	nested           execution.Executor
-	directTXProvider DirectTXProvider
+	directTXProvider Provider
 	daHeightSource   DAHeightSource
 	maxBlockBytes    uint64
 }
 
 func NewExecutionAdapter(
 	nested execution.Executor,
-	directTXProvider DirectTXProvider,
+	directTXProvider Provider,
 	daHeightSource DAHeightSource,
 	maxBlockBytes uint64,
 ) *ExecutionAdapter {
@@ -39,9 +39,10 @@ func (d *ExecutionAdapter) InitChain(ctx context.Context, genesisTime time.Time,
 	return d.nested.InitChain(ctx, genesisTime, initialHeight, chainID)
 }
 
-func (d *ExecutionAdapter) GetTxs(ctx context.Context) ([][]byte, error) {
-	var otherTx [][]byte
-	var err error
+func (d *ExecutionAdapter) GetTxs(ctx context.Context) (otherTx [][]byte, err error) {
+	// in normal mode, the sequencer fetches TX from the mempool and direct-TXs from the DA
+	// when in fallback mode, the sequencer fetches TX from the DA only
+	// TODO (Alex): this is an odd scenario as the sequencer must have missed to include a direct-TX. How can we recover from this
 	if !IsInFallbackMode(ctx) {
 		otherTx, err = d.nested.GetTxs(ctx)
 		if err != nil {
