@@ -57,9 +57,9 @@ This will create the necessary configuration structure in the specified root dir
 			}
 
 			// get chain ID or use default
-			chainID, _ := cmd.Flags().GetString(rollconf.FlagChainID)
-			if chainID == "" {
-				chainID = "grpc-test-chain"
+			chainID, err := cmd.Flags().GetString(rollgenesis.ChainIDFlag)
+			if err != nil {
+				return err
 			}
 
 			// Initialize genesis without app state
@@ -87,6 +87,7 @@ This will create the necessary configuration structure in the specified root dir
 
 	// Add configuration flags
 	rollconf.AddFlags(initCmd)
+	initCmd.Flags().String(rollgenesis.ChainIDFlag, "grpc-test-chain", "chain ID")
 
 	return initCmd
 }

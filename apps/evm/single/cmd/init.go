@@ -55,11 +55,10 @@ func InitCmd() *cobra.Command {
 			}
 
 			// get chain ID or use default
-			chainID, _ := cmd.Flags().GetString(rollconf.FlagChainID)
-			if chainID == "" {
-				chainID = "evolve-test"
+			chainID, err := cmd.Flags().GetString(rollgenesis.ChainIDFlag)
+			if err != nil {
+				return fmt.Errorf("error reading chain ID flag: %w", err)
 			}
-
 			// Initialize genesis without app state
 			err = rollgenesis.CreateGenesis(homePath, chainID, 1, proposerAddress)
 			genesisPath := rollgenesis.GenesisPath(homePath)
@@ -85,6 +84,7 @@ func InitCmd() *cobra.Command {
 
 	// Add flags to the command
 	rollconf.AddFlags(initCmd)
+	initCmd.Flags().String(rollgenesis.ChainIDFlag, "rollkit-test", "chain ID")
 
 	return initCmd
 }

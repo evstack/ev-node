@@ -26,7 +26,6 @@ import (
 
 	"github.com/evstack/ev-node/pkg/config"
 	rollhash "github.com/evstack/ev-node/pkg/hash"
-	"github.com/evstack/ev-node/pkg/p2p/key"
 )
 
 // TODO(tzdybal): refactor to configuration parameters
@@ -63,50 +62,45 @@ type Client struct {
 //
 // Basic checks on parameters are done, and default parameters are provided for unset-configuration
 func NewClient(
-	conf config.Config,
-	nodeKey *key.NodeKey,
+	conf config.P2PConfig,
+	privKey crypto.PrivKey,
 	ds datastore.Datastore,
+	chainID string,
 	logger zerolog.Logger,
 	metrics *Metrics,
 ) (*Client, error) {
-	if conf.RootDir == "" {
-		return nil, fmt.Errorf("rootDir is required")
-	}
 
 	gater, err := conngater.NewBasicConnectionGater(ds)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create connection gater: %w", err)
 	}
 
-	if nodeKey == nil {
-		return nil, fmt.Errorf("node key is required")
-	}
-
 	return &Client{
-		conf:    conf.P2P,
+		conf:    conf,
 		gater:   gater,
-		privKey: nodeKey.PrivKey,
-		chainID: conf.ChainID,
+		privKey: privKey,
+		chainID: chainID,
 		logger:  logger,
 		metrics: metrics,
 	}, nil
 }
 
 func NewClientWithHost(
-	conf config.Config,
-	nodeKey *key.NodeKey,
+	conf config.P2PConfig,
+	privKey crypto.PrivKey,
 	ds datastore.Datastore,
+	chainID string,
 	logger zerolog.Logger,
 	metrics *Metrics,
 	h host.Host, // injected host (mocknet or custom)
 ) (*Client, error) {
-	c, err := NewClient(conf, nodeKey, ds, logger, metrics)
+	c, err := NewClient(conf, privKey, ds, chainID, logger, metrics)
 	if err != nil {
 		return nil, err
 	}
 
 	// Reject hosts whose identity does not match the supplied node key
-	expectedID, _ := peer.IDFromPrivateKey(nodeKey.PrivKey)
+	expectedID, _ := peer.IDFromPrivateKey(privKey)
 	if h.ID() != expectedID {
 		return nil, fmt.Errorf(
 			"injected host ID %s does not match node key ID %s",

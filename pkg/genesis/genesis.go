@@ -5,6 +5,8 @@ import (
 	"time"
 )
 
+const ChainIDFlag = "chain_id"
+
 // Genesis represents the genesis state of the blockchain.
 // This genesis struct only contains the fields required by evolve.
 // The app state or other fields are not included here.

@@ -23,8 +23,6 @@ const (
 	FlagRootDir = "home"
 	// FlagDBPath is a flag for specifying the database path
 	FlagDBPath = "rollkit.db_path"
-	// FlagChainID is a flag for specifying the chain ID
-	FlagChainID = "chain_id"
 
 	// Node configuration flags
 
@@ -123,7 +121,6 @@ type Config struct {
 	// Base configuration
 	RootDir string `mapstructure:"-" yaml:"-" comment:"Root directory where rollkit files are located"`
 	DBPath  string `mapstructure:"db_path" yaml:"db_path" comment:"Path inside the root directory where the database is located"`
-	ChainID string `mapstructure:"chain_id" yaml:"chain_id" comment:"Chain ID for your chain"`
 	// P2P configuration
 	P2P P2PConfig `mapstructure:"p2p" yaml:"p2p"`
 
@@ -261,7 +258,6 @@ func AddFlags(cmd *cobra.Command) {
 
 	// Add base flags
 	cmd.Flags().String(FlagDBPath, def.DBPath, "path for the node database")
-	cmd.Flags().String(FlagChainID, def.ChainID, "chain ID")
 
 	// Node configuration flags
 	cmd.Flags().Bool(FlagAggregator, def.Node.Aggregator, "run node in aggregator mode")

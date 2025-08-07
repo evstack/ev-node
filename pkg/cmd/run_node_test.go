@@ -18,6 +18,7 @@ import (
 	coresequencer "github.com/evstack/ev-node/core/sequencer"
 	"github.com/evstack/ev-node/node"
 	rollconf "github.com/evstack/ev-node/pkg/config"
+	genesis "github.com/evstack/ev-node/pkg/genesis"
 	"github.com/evstack/ev-node/pkg/p2p"
 	"github.com/evstack/ev-node/pkg/signer"
 	filesigner "github.com/evstack/ev-node/pkg/signer/file"
@@ -307,6 +308,9 @@ func TestStartNodeErrors(t *testing.T) {
 	err = os.WriteFile(dummyGenesisPath, []byte(`{"chain_id":"test","initial_height":"1"}`), 0o600)
 	assert.NoError(t, err)
 
+	// Create a test genesis
+	testGenesis := genesis.NewGenesis("test", 1, time.Now(), []byte{})
+
 	// Create a dummy signer file path
 	dummySignerPath := filepath.Join(tmpDir, "signer")
 	_, err = filesigner.CreateFileSystemSigner(dummySignerPath, []byte("password"))
@@ -336,15 +340,6 @@ func TestStartNodeErrors(t *testing.T) {
 				cfg.Node.Aggregator = true
 			},
 			expectedError: "unknown remote signer type: unknown",
-		},
-		{
-			name: "LoadGenesisError",
-			configModifier: func(cfg *rollconf.Config) {
-				cfg.RootDir = filepath.Join(tmpDir, "nonexistent_root")
-				err := os.MkdirAll(filepath.Join(cfg.RootDir, "config"), 0o755)
-				assert.NoError(t, err)
-			},
-			expectedError: "failed to load genesis:",
 		},
 		{
 			name: "LoadFileSystemSignerError",
@@ -381,7 +376,7 @@ func TestStartNodeErrors(t *testing.T) {
 
 			runFunc := func() {
 				currentTestLogger := zerolog.Nop()
-				err := StartNode(currentTestLogger, cmd, executor, sequencer, dac, p2pClient, ds, nodeConfig, node.NodeOptions{})
+				err := StartNode(currentTestLogger, cmd, executor, sequencer, dac, p2pClient, ds, nodeConfig, testGenesis, node.NodeOptions{})
 				if tc.expectedError != "" {
 					assert.ErrorContains(t, err, tc.expectedError)
 				} else {
@@ -396,7 +391,7 @@ func TestStartNodeErrors(t *testing.T) {
 			} else {
 				assert.NotPanics(t, runFunc)
 				checkLogger := zerolog.Nop()
-				err := StartNode(checkLogger, cmd, executor, sequencer, dac, p2pClient, ds, nodeConfig, node.NodeOptions{})
+				err := StartNode(checkLogger, cmd, executor, sequencer, dac, p2pClient, ds, nodeConfig, testGenesis, node.NodeOptions{})
 				if tc.expectedError != "" {
 					assert.ErrorContains(t, err, tc.expectedError)
 				}
@@ -426,13 +421,16 @@ func newRunNodeCmd(
 		panic("da client cannot be nil")
 	}
 
+	// Create a test genesis
+	testGenesis := genesis.NewGenesis("test", 1, time.Now(), []byte{})
+
 	cmd := &cobra.Command{
 		Use:     "start",
 		Aliases: []string{"node", "run"},
 		Short:   "Run the rollkit node",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			runNodeLogger := zerolog.Nop()
-			return StartNode(runNodeLogger, cmd, executor, sequencer, dac, p2pClient, datastore, nodeConfig, node.NodeOptions{})
+			return StartNode(runNodeLogger, cmd, executor, sequencer, dac, p2pClient, datastore, nodeConfig, testGenesis, node.NodeOptions{})
 		},
 	}
 

@@ -12,6 +12,7 @@ import (
 	"github.com/evstack/ev-node/node"
 	rollcmd "github.com/evstack/ev-node/pkg/cmd"
 	"github.com/evstack/ev-node/pkg/config"
+	rollgenesis "github.com/evstack/ev-node/pkg/genesis"
 	"github.com/evstack/ev-node/pkg/p2p"
 	"github.com/evstack/ev-node/pkg/p2p/key"
 	"github.com/evstack/ev-node/pkg/store"
@@ -56,8 +57,14 @@ The execution client must implement the Evolve execution gRPC interface.`,
 			return err
 		}
 
+		// Load genesis
+		genesis, err := rollgenesis.LoadGenesis(rollgenesis.GenesisPath(nodeConfig.RootDir))
+		if err != nil {
+			return err
+		}
+
 		// Create metrics provider
-		singleMetrics, err := single.DefaultMetricsProvider(nodeConfig.Instrumentation.IsPrometheusEnabled())(nodeConfig.ChainID)
+		singleMetrics, err := single.DefaultMetricsProvider(nodeConfig.Instrumentation.IsPrometheusEnabled())(genesis.ChainID)
 		if err != nil {
 			return err
 		}
@@ -68,7 +75,7 @@ The execution client must implement the Evolve execution gRPC interface.`,
 			logger,
 			datastore,
 			&daJrpc.DA,
-			[]byte(nodeConfig.ChainID),
+			[]byte(genesis.ChainID),
 			nodeConfig.Node.BlockTime.Duration,
 			singleMetrics,
 			nodeConfig.Node.Aggregator,
@@ -84,13 +91,13 @@ The execution client must implement the Evolve execution gRPC interface.`,
 		}
 
 		// Create P2P client
-		p2pClient, err := p2p.NewClient(nodeConfig, nodeKey, datastore, logger, nil)
+		p2pClient, err := p2p.NewClient(nodeConfig.P2P, nodeKey.PrivKey, datastore, genesis.ChainID, logger, nil)
 		if err != nil {
 			return err
 		}
 
 		// Start the node
-		return rollcmd.StartNode(logger, cmd, executor, sequencer, &daJrpc.DA, p2pClient, datastore, nodeConfig, node.NodeOptions{})
+		return rollcmd.StartNode(logger, cmd, executor, sequencer, &daJrpc.DA, p2pClient, datastore, nodeConfig, genesis, node.NodeOptions{})
 	},
 }
 
