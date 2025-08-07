@@ -2,7 +2,7 @@ module github.com/evstack/ev-node/test/docker-e2e
 
 go 1.24.2
 
-require github.com/celestiaorg/tastora v0.0.4
+require github.com/celestiaorg/tastora v0.2.0
 
 require (
 	cosmossdk.io/x/upgrade v0.1.4 // indirect
@@ -11,8 +11,6 @@ require (
 	github.com/cosmos/ibc-go/v8 v8.7.0 // indirect
 	github.com/manifoldco/promptui v0.9.0 // indirect
 )
-
-replace github.com/celestiaorg/tastora => ../../../tastora
 
 require (
 	github.com/golang/mock v1.6.0 // indirect
