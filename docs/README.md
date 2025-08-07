@@ -1,6 +1,6 @@
-[![Deploy](https://github.com/evstack/ev-node/actions/workflows/deploy.yml/badge.svg)](https://github.com/evstack/ev-node/actions/workflows/deploy.yml)
-
 # Evolve Documentation Site
+
+[![Deploy](https://github.com/evstack/ev-node/actions/workflows/deploy.yml/badge.svg)](https://github.com/evstack/ev-node/actions/workflows/deploy.yml)
 
 Welcome to the official documentation repository for Evolve.
 

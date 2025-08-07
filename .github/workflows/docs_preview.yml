@@ -41,7 +41,7 @@ jobs:
       - name: Deploy preview
         uses: rossjrw/pr-preview-action@v1
         with:
-          source-dir: docs/.vitepress/dist
+          source-dir: ./docs/.vitepress/dist
           deploy-repository: evstack/docs-preview
           token: ${{ secrets.PREVIEW_DEPLOY }}
           preview-branch: main
