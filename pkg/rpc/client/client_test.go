@@ -7,9 +7,9 @@ import (
 	"testing"
 	"time"
 
-	logging "github.com/ipfs/go-log/v2"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/multiformats/go-multiaddr"
+	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/net/http2"
@@ -28,8 +28,7 @@ func setupTestServer(t *testing.T, mockStore *mocks.MockStore, mockP2P *mocks.Mo
 	mux := http.NewServeMux()
 
 	// Create the servers
-	logger := logging.Logger("test")
-	_ = logging.SetLogLevel("test", "debug")
+	logger := zerolog.Nop()
 	storeServer := server.NewStoreServer(mockStore, logger)
 	p2pServer := server.NewP2PServer(mockP2P)
 

@@ -38,7 +38,7 @@ func (m *Manager) RetrieveLoop(ctx context.Context) {
 		if err != nil && ctx.Err() == nil {
 			// if the requested da height is not yet available, wait silently, otherwise log the error and wait
 			if !m.areAllErrorsHeightFromFuture(err) {
-				m.logger.Error("failed to retrieve data from DALC", "daHeight", daHeight, "errors", err.Error())
+				m.logger.Error().Uint64("daHeight", daHeight).Str("errors", err.Error()).Msg("failed to retrieve data from DALC")
 			}
 			continue
 		}
@@ -63,8 +63,8 @@ func (m *Manager) processNextDAHeaderAndData(ctx context.Context) error {
 	daHeight := m.daHeight.Load()
 
 	var err error
-	m.logger.Debug("trying to retrieve data from DA", "daHeight", daHeight)
-	for range dAFetcherRetries {
+	m.logger.Debug().Uint64("daHeight", daHeight).Msg("trying to retrieve data from DA")
+	for r := 0; r < dAFetcherRetries; r++ {
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
@@ -76,13 +76,13 @@ func (m *Manager) processNextDAHeaderAndData(ctx context.Context) error {
 			m.recordDAMetrics("retrieval", DAModeSuccess)
 
 			if blobsResp.Code == coreda.StatusNotFound {
-				m.logger.Debug("no blob data found", "daHeight", daHeight, "reason", blobsResp.Message)
+				m.logger.Debug().Uint64("daHeight", daHeight).Str("reason", blobsResp.Message).Msg("no blob data found")
 				return nil
 			}
-			m.logger.Debug("retrieved potential blob data", "n", len(blobsResp.Data), "daHeight", daHeight)
+			m.logger.Debug().Int("n", len(blobsResp.Data)).Uint64("daHeight", daHeight).Msg("retrieved potential blob data")
 			for blobIdx, bz := range blobsResp.Data {
 				if len(bz) == 0 {
-					m.logger.Debug("ignoring nil or empty blob", "daHeight", daHeight)
+					m.logger.Debug().Uint64("daHeight", daHeight).Msg("ignoring nil or empty blob")
 					continue
 				}
 				if m.handlePotentialHeader(ctx, bz, daHeight) {
@@ -103,7 +103,7 @@ func (m *Manager) processNextDAHeaderAndData(ctx context.Context) error {
 			}
 			return nil
 		} else if strings.Contains(fetchErr.Error(), coreda.ErrHeightFromFuture.Error()) {
-			m.logger.Debug("height from future", "daHeight", daHeight, "reason", fetchErr.Error())
+			m.logger.Debug().Uint64("daHeight", daHeight).Str("reason", fetchErr.Error()).Msg("height from future")
 			return fetchErr
 		}
 
@@ -125,13 +125,13 @@ func (m *Manager) handlePotentialHeader(ctx context.Context, bz []byte, daHeight
 	var headerPb pb.SignedHeader
 
 	if err := proto.Unmarshal(bz, &headerPb); err != nil {
-		m.logger.Debug("failed to unmarshal header, error", err)
+		m.logger.Debug().Err(err).Msg("failed to unmarshal header")
 		return false
 	}
 
 	if err := header.FromProto(&headerPb); err != nil {
 		// treat as handled, but not valid
-		m.logger.Debug("failed to decode unmarshalled header, error", err)
+		m.logger.Debug().Err(err).Msg("failed to decode unmarshalled header")
 		return true
 	}
 
@@ -140,27 +140,28 @@ func (m *Manager) handlePotentialHeader(ctx context.Context, bz []byte, daHeight
 
 	// Stronger validation: check for obviously invalid headers using ValidateBasic
 	if err := header.ValidateBasic(); err != nil {
-		m.logger.Debug("blob does not look like a valid header, daHeight: ", daHeight, "error", err)
+		m.logger.Debug().Uint64("daHeight", daHeight).Err(err).Msg("blob does not look like a valid header")
 		return false
 	}
 
 	// early validation to reject junk headers
 	if !m.isUsingExpectedSingleSequencer(header) {
-		m.logger.Debug("skipping header from unexpected sequencer",
-			"headerHeight", header.Height(),
-			"headerHash", header.Hash().String())
+		m.logger.Debug().
+			Uint64("headerHeight", header.Height()).
+			Str("headerHash", header.Hash().String()).
+			Msg("skipping header from unexpected sequencer")
 		return true
 	}
 	headerHash := header.Hash().String()
 	m.headerCache.SetDAIncluded(headerHash, daHeight)
 	m.sendNonBlockingSignalToDAIncluderCh()
-	m.logger.Info("header marked as DA included, headerHeight: ", header.Height(), "headerHash: ", headerHash)
+	m.logger.Info().Uint64("headerHeight", header.Height()).Str("headerHash", headerHash).Msg("header marked as DA included")
 	if !m.headerCache.IsSeen(headerHash) {
 		select {
 		case <-ctx.Done():
 			return true
 		default:
-			m.logger.Warn("headerInCh backlog full, dropping header: daHeight ", daHeight)
+			m.logger.Warn().Uint64("daHeight", daHeight).Msg("headerInCh backlog full, dropping header")
 		}
 		m.headerInCh <- NewHeaderEvent{header, daHeight}
 	}
@@ -172,30 +173,30 @@ func (m *Manager) handlePotentialData(ctx context.Context, bz []byte, daHeight u
 	var signedData types.SignedData
 	err := signedData.UnmarshalBinary(bz)
 	if err != nil {
-		m.logger.Debug("failed to unmarshal signed data, error", err)
+		m.logger.Debug().Err(err).Msg("failed to unmarshal signed data")
 		return false
 	}
 	if len(signedData.Txs) == 0 {
-		m.logger.Debug("ignoring empty signed data, daHeight: ", daHeight)
+		m.logger.Debug().Uint64("daHeight", daHeight).Msg("ignoring empty signed data")
 		return false
 	}
 
 	// Early validation to reject junk data
 	if !m.isValidSignedData(&signedData) {
-		m.logger.Debug("invalid data signature, daHeight: ", daHeight)
+		m.logger.Debug().Uint64("daHeight", daHeight).Msg("invalid data signature")
 		return false
 	}
 
 	dataHashStr := signedData.Data.DACommitment().String()
 	m.dataCache.SetDAIncluded(dataHashStr, daHeight)
 	m.sendNonBlockingSignalToDAIncluderCh()
-	m.logger.Info("signed data marked as DA included, dataHash: ", dataHashStr, "daHeight: ", daHeight, "height: ", signedData.Height())
+	m.logger.Info().Str("dataHash", dataHashStr).Uint64("daHeight", daHeight).Uint64("height", signedData.Height()).Msg("signed data marked as DA included")
 	if !m.dataCache.IsSeen(dataHashStr) {
 		select {
 		case <-ctx.Done():
 			return false
 		default:
-			m.logger.Warn("dataInCh backlog full, dropping signed data", "daHeight", daHeight)
+			m.logger.Warn().Uint64("daHeight", daHeight).Msg("dataInCh backlog full, dropping signed data")
 		}
 		m.dataInCh <- NewDataEvent{&signedData.Data, daHeight}
 	}

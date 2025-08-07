@@ -1,10 +1,10 @@
-# Using Rollkit `Node` as replacement of Tendermint `Node`
+# Using Evolve `Node` as replacement of Tendermint `Node`
 
 ## Changelog
 
 - 26.02.2021: Initial Draft
 - 29.09.2022: Rename Optimint to rollmint
-- 22.01.2023: Rename rollmint to Rollkit
+- 22.01.2023: Rename rollmint to Evolve
 
 Replacing on the `Node` level gives much flexibility. Still, significant amount of code can be reused, and there is no need to refactor lazyledger-core.
 Cosmos SDK is tightly coupled with Tendermint with regards to node creation, RPC, app initialization, etc. De-coupling requires big refactoring of cosmos-sdk.
@@ -34,7 +34,7 @@ We don't need to introduce common interface `Node`s, because the plan is to use 
 
 - Pros:
   - May be possible to avoid Tendermint issues
-  - Should be possible to avoid dependency on Tendermint in Rollkit
+  - Should be possible to avoid dependency on Tendermint in Evolve
   - Changes probably limited to cosmos-sdk (not required in tendermint/lazyledger-core)
 - Cons:
   - Reinventing the wheel
@@ -52,4 +52,4 @@ easier.
 
 ## Development
 
-`cosmos-sdk-rollmit` is a repository dedicated for maintenance of Rollkit-enabled version of Cosmos SDK.
+`cosmos-sdk-rollmit` is a repository dedicated for maintenance of Evolve-enabled version of Cosmos SDK.

@@ -261,7 +261,9 @@ Proposed
 ## References
 
 - [EthResearch: Based Chains](https://ethresear.ch/t/based-rollups-superpowers-from-l1-sequencing/15016)
+<!-- markdown-link-check-disable -->
 - [Taiko](https://taiko.mirror.xyz/7dfMydX1FqEx9_sOvhRt3V8hJksKSIWjzhCVu7FyMZU)
+<!-- markdown-link-check-enable -->
 - [Surge](https://www.surge.wtf/)
 - [Spire](https://www.spire.dev/)
 - [Unifi from Puffer](https://www.puffer.fi/unifi)

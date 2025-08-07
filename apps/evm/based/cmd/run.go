@@ -43,7 +43,7 @@ func NewExtendedRunNodeCmd(ctx context.Context) *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:   "start",
-		Short: "Run the rollkit node in based mode",
+		Short: "Run the evolve node in based mode",
 		PreRunE: func(cmd *cobra.Command, args []string) error {
 			var err error
 

@@ -4,7 +4,7 @@ This document outlines the release process for all Go packages in the ev-node re
 
 ## Package Dependency Graph
 
-```ascii
+```txt
                         ┌──────────┐
                         │   core   │ (zero dependencies)
                         └────┬─────┘

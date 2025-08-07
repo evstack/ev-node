@@ -14,9 +14,9 @@ import (
 	"github.com/evstack/ev-node/pkg/directtx"
 	ds "github.com/ipfs/go-datastore"
 	ktds "github.com/ipfs/go-datastore/keytransform"
-	logging "github.com/ipfs/go-log/v2"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
+	"github.com/rs/zerolog"
 
 	"github.com/evstack/ev-node/block"
 	coreda "github.com/evstack/ev-node/core/da"
@@ -29,11 +29,11 @@ import (
 	"github.com/evstack/ev-node/pkg/service"
 	"github.com/evstack/ev-node/pkg/signer"
 	"github.com/evstack/ev-node/pkg/store"
-	rollkitsync "github.com/evstack/ev-node/pkg/sync"
+	evsync "github.com/evstack/ev-node/pkg/sync"
 )
 
 // prefixes used in KV store to separate rollkit data from execution environment data (if the same data base is reused)
-var RollkitPrefix = "0"
+var EvPrefix = "0"
 
 const (
 	// genesisChunkSize is the maximum size, in bytes, of each
@@ -57,8 +57,8 @@ type FullNode struct {
 	da coreda.DA
 
 	p2pClient      *p2p.Client
-	hSyncService   *rollkitsync.HeaderSyncService
-	dSyncService   *rollkitsync.DataSyncService
+	hSyncService   *evsync.HeaderSyncService
+	dSyncService   *evsync.DataSyncService
 	Store          store.Store
 	blockManager   *block.Manager
 	execTXReaper   *block.Reaper
@@ -81,12 +81,12 @@ func newFullNode(
 	sequencer coresequencer.Sequencer,
 	da coreda.DA,
 	metricsProvider MetricsProvider,
-	logger logging.EventLogger,
+	logger zerolog.Logger,
 	nodeOpts NodeOptions,
 ) (fn *FullNode, err error) {
 	seqMetrics, _ := metricsProvider(genesis.ChainID)
 
-	mainKV := newPrefixKV(database, RollkitPrefix)
+	mainKV := newPrefixKV(database, EvPrefix)
 	headerSyncService, err := initHeaderSyncService(mainKV, nodeConfig, genesis, p2pClient, logger)
 	if err != nil {
 		return nil, err
@@ -107,7 +107,7 @@ func newFullNode(
 	directTXExtractor := directtx.NewExtractor(
 		sink,
 		nodeConfig.ChainID,
-		logging.Logger("direct-tx-extractor"),
+		logger.With().Str("component", "DirTX-extractor").Logger(),
 		database,
 	)
 
@@ -142,7 +142,7 @@ func newFullNode(
 		sequencer,
 		genesis.ChainID,
 		nodeConfig.Node.BlockTime.Duration,
-		logging.Logger("Reaper"),
+		logger.With().Str("component", "Reaper").Logger(), // Get Reaper's own logger
 		mainKV,
 	)
 
@@ -175,9 +175,9 @@ func initHeaderSyncService(
 	nodeConfig config.Config,
 	genesis genesispkg.Genesis,
 	p2pClient *p2p.Client,
-	logger logging.EventLogger,
-) (*rollkitsync.HeaderSyncService, error) {
-	headerSyncService, err := rollkitsync.NewHeaderSyncService(mainKV, nodeConfig, genesis, p2pClient, logging.Logger("HeaderSyncService"))
+	logger zerolog.Logger,
+) (*evsync.HeaderSyncService, error) {
+	headerSyncService, err := evsync.NewHeaderSyncService(mainKV, nodeConfig, genesis, p2pClient, logger.With().Str("component", "HeaderSyncService").Logger())
 	if err != nil {
 		return nil, fmt.Errorf("error while initializing HeaderSyncService: %w", err)
 	}
@@ -189,9 +189,9 @@ func initDataSyncService(
 	nodeConfig config.Config,
 	genesis genesispkg.Genesis,
 	p2pClient *p2p.Client,
-	logger logging.EventLogger,
-) (*rollkitsync.DataSyncService, error) {
-	dataSyncService, err := rollkitsync.NewDataSyncService(mainKV, nodeConfig, genesis, p2pClient, logging.Logger("DataSyncService"))
+	logger zerolog.Logger,
+) (*evsync.DataSyncService, error) {
+	dataSyncService, err := evsync.NewDataSyncService(mainKV, nodeConfig, genesis, p2pClient, logger.With().Str("component", "DataSyncService").Logger())
 	if err != nil {
 		return nil, fmt.Errorf("error while initializing DataSyncService: %w", err)
 	}
@@ -215,16 +215,16 @@ func initBlockManager(
 	store store.Store,
 	sequencer coresequencer.Sequencer,
 	da coreda.DA,
-	logger logging.EventLogger,
-	headerSyncService *rollkitsync.HeaderSyncService,
-	dataSyncService *rollkitsync.DataSyncService,
+	logger zerolog.Logger,
+	headerSyncService *evsync.HeaderSyncService,
+	dataSyncService *evsync.DataSyncService,
 	directTXExtractor *directtx.Extractor,
 	seqMetrics *block.Metrics,
 	gasPrice float64,
 	gasMultiplier float64,
 	managerOpts block.ManagerOptions,
 ) (*block.Manager, error) {
-	logger.Debug("Proposer address", "address", genesis.ProposerAddress)
+	logger.Debug().Bytes("address", genesis.ProposerAddress).Msg("Proposer address")
 
 	blockManager, err := block.NewManager(
 		ctx,
@@ -235,7 +235,7 @@ func initBlockManager(
 		exec,
 		sequencer,
 		da,
-		logging.Logger("BlockManager"), // Get BlockManager's own logger
+		logger.With().Str("component", "BlockManager").Logger(), // Get BlockManager's own logger
 		headerSyncService.Store(),
 		dataSyncService.Store(),
 		headerSyncService,
@@ -298,11 +298,11 @@ func (n *FullNode) startInstrumentationServer() (*http.Server, *http.Server) {
 
 		go func() {
 			if err := prometheusServer.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-				n.Logger.Error("Prometheus HTTP server ListenAndServe", "err", err)
+				n.Logger.Error().Err(err).Msg("Prometheus HTTP server ListenAndServe")
 			}
 		}()
 
-		n.Logger.Info("Started Prometheus HTTP server, addr:", n.nodeConfig.Instrumentation.PrometheusListenAddr)
+		n.Logger.Info().Str("addr", n.nodeConfig.Instrumentation.PrometheusListenAddr).Msg("Started Prometheus HTTP server")
 	}
 
 	// Check if pprof is enabled
@@ -331,11 +331,11 @@ func (n *FullNode) startInstrumentationServer() (*http.Server, *http.Server) {
 
 		go func() {
 			if err := pprofServer.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-				n.Logger.Error("pprof HTTP server ListenAndServe", "err", err)
+				n.Logger.Error().Err(err).Msg("pprof HTTP server ListenAndServe")
 			}
 		}()
 
-		n.Logger.Info("Started pprof HTTP server, addr:", n.nodeConfig.Instrumentation.GetPprofListenAddr())
+		n.Logger.Info().Str("addr", n.nodeConfig.Instrumentation.GetPprofListenAddr()).Msg("Started pprof HTTP server")
 	}
 
 	// Return the primary server (for backward compatibility) and the secondary server
@@ -372,13 +372,13 @@ func (n *FullNode) Run(parentCtx context.Context) error {
 	}
 
 	go func() {
-		n.Logger.Info("started RPC server, addr:", n.nodeConfig.RPC.Address)
+		n.Logger.Info().Str("addr", n.nodeConfig.RPC.Address).Msg("started RPC server")
 		if err := n.rpcServer.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			n.Logger.Error("RPC server error", "err", err)
+			n.Logger.Error().Err(err).Msg("RPC server error")
 		}
 	}()
 
-	n.Logger.Info("starting P2P client")
+	n.Logger.Info().Msg("starting P2P client")
 	err = n.p2pClient.Start(ctx)
 	if err != nil {
 		return fmt.Errorf("error while starting P2P client: %w", err)
@@ -405,7 +405,7 @@ func (n *FullNode) Run(parentCtx context.Context) error {
 		}()
 	}
 	if n.nodeConfig.Node.Aggregator {
-		n.Logger.Info("working in aggregator mode, block time:", n.nodeConfig.Node.BlockTime)
+		n.Logger.Info().Dur("block_time", n.nodeConfig.Node.BlockTime.Duration).Msg("working in aggregator mode")
 		spawnWorker(func() { n.blockManager.AggregationLoop(ctx, errCh) })
 		spawnWorker(func() { n.execTXReaper.Start(ctx) })
 		spawnWorker(func() { n.directTXReaper.Start(ctx) })
@@ -424,17 +424,17 @@ func (n *FullNode) Run(parentCtx context.Context) error {
 	select {
 	case err := <-errCh:
 		if err != nil {
-			n.Logger.Error("unrecoverable error in one of the go routines...", "error", err)
+			n.Logger.Error().Err(err).Msg("unrecoverable error in one of the go routines")
 			cancelNode() // propagate shutdown to all child goroutines
 		}
 	case <-parentCtx.Done():
 		// Block until parent context is canceled
-		n.Logger.Info("context canceled, stopping node")
+		n.Logger.Info().Msg("context canceled, stopping node")
 		cancelNode() // propagate shutdown to all child goroutines
 	}
 
 	// Perform cleanup
-	n.Logger.Info("halting full node and its sub services...")
+	n.Logger.Info().Msg("halting full node and its sub services...")
 	// wait for all worker Go routines to finish so that we have
 	// no in-flight tasks while shutting down
 	wg.Wait()
@@ -450,10 +450,10 @@ func (n *FullNode) Run(parentCtx context.Context) error {
 	if err != nil {
 		// Log context canceled errors at a lower level if desired, or handle specific non-cancel errors
 		if !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
-			n.Logger.Error("error stopping header sync service", "error", err)
+			n.Logger.Error().Err(err).Msg("error stopping header sync service")
 			multiErr = errors.Join(multiErr, fmt.Errorf("stopping header sync service: %w", err))
 		} else {
-			n.Logger.Debug("header sync service stop context ended", "reason", err) // Log cancellation as debug
+			n.Logger.Debug().Err(err).Msg("header sync service stop context ended") // Log cancellation as debug
 		}
 	}
 
@@ -462,10 +462,10 @@ func (n *FullNode) Run(parentCtx context.Context) error {
 	if err != nil {
 		// Log context canceled errors at a lower level if desired, or handle specific non-cancel errors
 		if !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
-			n.Logger.Error("error stopping data sync service", "error", err)
+			n.Logger.Error().Err(err).Msg("error stopping data sync service")
 			multiErr = errors.Join(multiErr, fmt.Errorf("stopping data sync service: %w", err))
 		} else {
-			n.Logger.Debug("data sync service stop context ended", "reason", err) // Log cancellation as debug
+			n.Logger.Debug().Err(err).Msg("data sync service stop context ended") // Log cancellation as debug
 		}
 	}
 
@@ -482,7 +482,7 @@ func (n *FullNode) Run(parentCtx context.Context) error {
 		if err != nil && !errors.Is(err, http.ErrServerClosed) {
 			multiErr = errors.Join(multiErr, fmt.Errorf("shutting down Prometheus server: %w", err))
 		} else {
-			n.Logger.Debug("Prometheus server shutdown context ended", "reason", err)
+			n.Logger.Debug().Err(err).Msg("Prometheus server shutdown context ended")
 		}
 	}
 
@@ -492,7 +492,7 @@ func (n *FullNode) Run(parentCtx context.Context) error {
 		if err != nil && !errors.Is(err, http.ErrServerClosed) {
 			multiErr = errors.Join(multiErr, fmt.Errorf("shutting down pprof server: %w", err))
 		} else {
-			n.Logger.Debug("pprof server shutdown context ended", "reason", err)
+			n.Logger.Debug().Err(err).Msg("pprof server shutdown context ended")
 		}
 	}
 
@@ -502,7 +502,7 @@ func (n *FullNode) Run(parentCtx context.Context) error {
 		if err != nil && !errors.Is(err, http.ErrServerClosed) {
 			multiErr = errors.Join(multiErr, fmt.Errorf("shutting down RPC server: %w", err))
 		} else {
-			n.Logger.Debug("RPC server shutdown context ended", "reason", err)
+			n.Logger.Debug().Err(err).Msg("RPC server shutdown context ended")
 		}
 	}
 
@@ -510,23 +510,23 @@ func (n *FullNode) Run(parentCtx context.Context) error {
 	if err = n.Store.Close(); err != nil {
 		multiErr = errors.Join(multiErr, fmt.Errorf("closing store: %w", err))
 	} else {
-		n.Logger.Debug("store closed")
+		n.Logger.Debug().Msg("store closed")
 	}
 
 	// Save caches if needed
 	if err := n.blockManager.SaveCache(); err != nil {
 		multiErr = errors.Join(multiErr, fmt.Errorf("saving caches: %w", err))
 	} else {
-		n.Logger.Debug("caches saved")
+		n.Logger.Debug().Msg("caches saved")
 	}
 
 	// Log final status
 	if multiErr != nil {
 		for _, err := range multiErr.(interface{ Unwrap() []error }).Unwrap() {
-			n.Logger.Error("error during shutdown", "error", err)
+			n.Logger.Error().Err(err).Msg("error during shutdown")
 		}
 	} else {
-		n.Logger.Info("full node halted successfully")
+		n.Logger.Info().Msg("full node halted successfully")
 	}
 
 	// Return the original context error if it exists (e.g., context cancelled)
@@ -558,12 +558,12 @@ func (n *FullNode) IsRunning() bool {
 }
 
 // SetLogger sets the logger used by node.
-func (n *FullNode) SetLogger(logger logging.EventLogger) {
+func (n *FullNode) SetLogger(logger zerolog.Logger) {
 	n.Logger = logger
 }
 
 // GetLogger returns logger.
-func (n *FullNode) GetLogger() logging.EventLogger {
+func (n *FullNode) GetLogger() zerolog.Logger {
 	return n.Logger
 }
 

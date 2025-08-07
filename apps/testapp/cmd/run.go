@@ -32,7 +32,7 @@ var RunCmd = &cobra.Command{
 		// Get KV endpoint flag
 		kvEndpoint, _ := cmd.Flags().GetString(flagKVEndpoint)
 		if kvEndpoint == "" {
-			logger.Info("KV endpoint flag not set, using default from http_server")
+			logger.Info().Msg("KV endpoint flag not set, using default from http_server")
 		}
 
 		// Create test implementations
@@ -71,7 +71,7 @@ var RunCmd = &cobra.Command{
 			if err != nil {
 				return fmt.Errorf("failed to start KV executor HTTP server: %w", err)
 			} else {
-				logger.Info("KV executor HTTP server started", "endpoint", kvEndpoint)
+				logger.Info().Str("endpoint", kvEndpoint).Msg("KV executor HTTP server started")
 			}
 		}
 

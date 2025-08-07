@@ -58,6 +58,9 @@ services:
         condition: service_started
       local-da:
         condition: service_started
+    ports:
+      - "7676:7676" # p2p
+      - "7331:7331" # rpc
     volumes:
       - evm-single-data:/root/.evm-single/
     restart: always

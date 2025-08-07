@@ -35,18 +35,18 @@ func (m *Manager) SyncLoop(ctx context.Context, errCh chan<- error) {
 			daHeight := headerEvent.DAHeight
 			headerHash := header.Hash().String()
 			headerHeight := header.Height()
-			m.logger.Debug("header retrieved",
-				"height", headerHeight,
-				"daHeight", daHeight,
-				"hash", headerHash,
-			)
+			m.logger.Debug().
+				Uint64("height", headerHeight).
+				Uint64("daHeight", daHeight).
+				Str("hash", headerHash).
+				Msg("header retrieved")
 			height, err := m.store.Height(ctx)
 			if err != nil {
-				m.logger.Error("error while getting store height", "error", err)
+				m.logger.Error().Err(err).Msg("error while getting store height")
 				continue
 			}
 			if headerHeight <= height || m.headerCache.IsSeen(headerHash) {
-				m.logger.Debug("header already seen", "height", headerHeight, "block hash", headerHash)
+				m.logger.Debug().Uint64("height", headerHeight).Str("block_hash", headerHash).Msg("header already seen")
 				continue
 			}
 			m.headerCache.SetItem(headerHeight, header)
@@ -74,24 +74,24 @@ func (m *Manager) SyncLoop(ctx context.Context, errCh chan<- error) {
 			daHeight := dataEvent.DAHeight
 			dataHash := data.DACommitment().String()
 			dataHeight := data.Metadata.Height
-			m.logger.Debug("data retrieved",
-				"daHeight", daHeight,
-				"hash", dataHash,
-				"height", dataHeight,
-				"txs", len(data.Txs),
-			)
+			m.logger.Debug().
+				Uint64("daHeight", daHeight).
+				Str("hash", dataHash).
+				Uint64("height", dataHeight).
+				Int("txs", len(data.Txs)).
+				Msg("data retrieved")
 
 			if m.dataCache.IsSeen(dataHash) {
-				m.logger.Debug("data already seen", "data hash", dataHash)
+				m.logger.Debug().Str("data_hash", dataHash).Msg("data already seen")
 				continue
 			}
 			height, err := m.store.Height(ctx)
 			if err != nil {
-				m.logger.Error("error while getting store height", "error", err)
+				m.logger.Error().Err(err).Msg("error while getting store height")
 				continue
 			}
 			if dataHeight <= height {
-				m.logger.Debug("data already seen", "height", dataHeight, "data hash", dataHash)
+				m.logger.Debug().Uint64("height", dataHeight).Str("data_hash", dataHash).Msg("data already seen")
 				continue
 			}
 			m.dataCache.SetItem(dataHeight, data)
@@ -134,17 +134,17 @@ func (m *Manager) trySyncNextBlock(ctx context.Context, daHeight uint64) error {
 		}
 		h := m.headerCache.GetItem(currentHeight + 1)
 		if h == nil {
-			m.logger.Debug("header not found in cache, height:", currentHeight+1)
+			m.logger.Debug().Uint64("height", currentHeight+1).Msg("header not found in cache")
 			return nil
 		}
 		d := m.dataCache.GetItem(currentHeight + 1)
 		if d == nil {
-			m.logger.Debug("data not found in cache, height:", currentHeight+1)
+			m.logger.Debug().Uint64("height", currentHeight+1).Msg("data not found in cache")
 			return nil
 		}
 
 		hHeight := h.Height()
-		m.logger.Info("syncing header and data, height: ", hHeight)
+		m.logger.Info().Uint64("height", hHeight).Msg("syncing header and data")
 
 		// set the custom verifier to ensure proper signature validation
 		h.SetCustomVerifier(m.signaturePayloadProvider)
@@ -195,7 +195,7 @@ func (m *Manager) handleEmptyDataHash(ctx context.Context, header *types.Header)
 		if headerHeight > 1 {
 			_, lastData, err := m.store.GetBlockData(ctx, headerHeight-1)
 			if err != nil {
-				m.logger.Debug("previous block not applied yet", "current height", headerHeight, "previous height", headerHeight-1, "error", err)
+				m.logger.Debug().Uint64("current_height", headerHeight).Uint64("previous_height", headerHeight-1).Err(err).Msg("previous block not applied yet")
 			}
 			if lastData != nil {
 				lastDataHash = lastData.Hash()
@@ -232,7 +232,7 @@ func (m *Manager) sendNonBlockingSignalToDAIncluderCh() {
 
 // Updates the state stored in manager's store along the manager's lastState
 func (m *Manager) updateState(ctx context.Context, s types.State) error {
-	m.logger.Debug("updating state", "newState", s)
+	m.logger.Debug().Interface("newState", s).Msg("updating state")
 	m.lastStateMtx.Lock()
 	defer m.lastStateMtx.Unlock()
 	err := m.store.UpdateState(ctx, s)

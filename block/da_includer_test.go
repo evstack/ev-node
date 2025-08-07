@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 
@@ -20,24 +21,10 @@ import (
 )
 
 // newTestManager creates a Manager with mocked Store and Executor for testing DAIncluder logic.
-func newTestManager(t *testing.T) (*Manager, *mocks.MockStore, *mocks.MockExecutor, *MockLogger) {
+func newTestManager(t *testing.T) (*Manager, *mocks.MockStore, *mocks.MockExecutor, zerolog.Logger) {
 	store := mocks.NewMockStore(t)
 	exec := mocks.NewMockExecutor(t)
-	logger := new(MockLogger)
-
-	// Allow logging calls with message string and optional key-value pairs (up to 2 pairs / 4 args for simplicity)
-	logger.On("Debug", mock.AnythingOfType("string")).Maybe()
-	logger.On("Debug", mock.AnythingOfType("string"), mock.Anything, mock.Anything).Maybe()
-	logger.On("Debug", mock.AnythingOfType("string"), mock.Anything, mock.Anything, mock.Anything, mock.Anything).Maybe()
-	logger.On("Info", mock.AnythingOfType("string")).Maybe()
-	logger.On("Info", mock.AnythingOfType("string"), mock.Anything, mock.Anything).Maybe()
-	logger.On("Info", mock.AnythingOfType("string"), mock.Anything, mock.Anything, mock.Anything, mock.Anything).Maybe()
-	logger.On("Warn", mock.AnythingOfType("string")).Maybe()
-	logger.On("Warn", mock.AnythingOfType("string"), mock.Anything, mock.Anything).Maybe()
-	logger.On("Warn", mock.AnythingOfType("string"), mock.Anything, mock.Anything, mock.Anything, mock.Anything).Maybe()
-	logger.On("Error", mock.AnythingOfType("string")).Maybe()
-	logger.On("Error", mock.AnythingOfType("string"), mock.Anything, mock.Anything).Maybe()
-	logger.On("Error", mock.AnythingOfType("string"), mock.Anything, mock.Anything, mock.Anything, mock.Anything).Maybe()
+	logger := zerolog.Nop() // Use Nop logger for tests
 
 	// Mock Height to always return a high value so IsDAIncluded works
 	store.On("Height", mock.Anything).Return(uint64(100), nil).Maybe()
@@ -74,10 +61,10 @@ func TestDAIncluderLoop_AdvancesHeightWhenBothDAIncluded(t *testing.T) {
 	// Mock expectations for SetRollkitHeightToDAHeight method
 	headerHeightBytes := make([]byte, 8)
 	binary.LittleEndian.PutUint64(headerHeightBytes, uint64(1))
-	store.On("SetMetadata", mock.Anything, fmt.Sprintf("%s/%d/h", storepkg.RollkitHeightToDAHeightKey, uint64(5)), headerHeightBytes).Return(nil).Once()
+	store.On("SetMetadata", mock.Anything, fmt.Sprintf("%s/%d/h", storepkg.HeightToDAHeightKey, uint64(5)), headerHeightBytes).Return(nil).Once()
 	dataHeightBytes := make([]byte, 8)
 	binary.LittleEndian.PutUint64(dataHeightBytes, uint64(1))
-	store.On("SetMetadata", mock.Anything, fmt.Sprintf("%s/%d/d", storepkg.RollkitHeightToDAHeightKey, uint64(5)), dataHeightBytes).Return(nil).Once()
+	store.On("SetMetadata", mock.Anything, fmt.Sprintf("%s/%d/d", storepkg.HeightToDAHeightKey, uint64(5)), dataHeightBytes).Return(nil).Once()
 	// Mock expectations for incrementDAIncludedHeight method
 	heightBytes := make([]byte, 8)
 	binary.LittleEndian.PutUint64(heightBytes, expectedDAIncludedHeight)
@@ -171,20 +158,13 @@ func TestDAIncluderLoop_StopsWhenDataNotDAIncluded(t *testing.T) {
 // if GetBlockData returns an error for the next block height.
 func TestDAIncluderLoop_StopsOnGetBlockDataError(t *testing.T) {
 	t.Parallel()
-	m, store, _, mockLogger := newTestManager(t)
+	m, store, _, _ := newTestManager(t)
 	startDAIncludedHeight := uint64(4)
 	m.daIncludedHeight.Store(startDAIncludedHeight)
 
 	store.On("GetBlockData", mock.Anything, uint64(5)).Return(nil, nil, assert.AnError).Once()
 
-	// Expect the debug log for no more blocks to check
-	mockLogger.ExpectedCalls = nil // Clear any previous expectations for specific checks
-	// Re-establish general Maybe calls after clearing, then specific Once call
-	mockLogger.On("Debug", mock.AnythingOfType("string")).Maybe()
-	mockLogger.On("Debug", mock.AnythingOfType("string"), mock.Anything, mock.Anything).Maybe()
-	mockLogger.On("Debug", mock.AnythingOfType("string"), mock.Anything, mock.Anything, mock.Anything, mock.Anything).Maybe()
-	// Add other Maybe calls if Info/Warn/Error might also occur and are not asserted
-	mockLogger.On("Info", mock.AnythingOfType("string")).Maybe()
+	// Logger expectations removed since using zerolog.Nop()
 
 	ctx, loopCancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
 	defer loopCancel()
@@ -201,7 +181,7 @@ func TestDAIncluderLoop_StopsOnGetBlockDataError(t *testing.T) {
 
 	assert.Equal(t, startDAIncludedHeight, m.GetDAIncludedHeight())
 	store.AssertExpectations(t)
-	mockLogger.AssertExpectations(t)
+	// Logger expectations removed
 }
 
 // TestIncrementDAIncludedHeight_Success verifies that incrementDAIncludedHeight increments the height
@@ -229,7 +209,7 @@ func TestIncrementDAIncludedHeight_Success(t *testing.T) {
 // if SetMetadata fails after SetFinal succeeds.
 func TestIncrementDAIncludedHeight_SetMetadataError(t *testing.T) {
 	t.Parallel()
-	m, store, exec, mockLogger := newTestManager(t)
+	m, store, exec, _ := newTestManager(t)
 	startDAIncludedHeight := uint64(4)
 	expectedDAIncludedHeight := startDAIncludedHeight + 1
 	m.daIncludedHeight.Store(startDAIncludedHeight)
@@ -243,14 +223,14 @@ func TestIncrementDAIncludedHeight_SetMetadataError(t *testing.T) {
 	assert.Error(t, err)
 	store.AssertExpectations(t)
 	exec.AssertExpectations(t)
-	mockLogger.AssertExpectations(t)
+	// Logger expectations removed
 }
 
 // TestIncrementDAIncludedHeight_SetFinalError verifies that incrementDAIncludedHeight returns an error
 // if SetFinal fails before SetMetadata, and logs the error.
 func TestIncrementDAIncludedHeight_SetFinalError(t *testing.T) {
 	t.Parallel()
-	m, store, exec, mockLogger := newTestManager(t)
+	m, store, exec, _ := newTestManager(t)
 	startDAIncludedHeight := uint64(4)
 	expectedDAIncludedHeight := startDAIncludedHeight + 1
 	m.daIncludedHeight.Store(startDAIncludedHeight)
@@ -263,7 +243,7 @@ func TestIncrementDAIncludedHeight_SetFinalError(t *testing.T) {
 	assert.Error(t, err)
 	exec.AssertExpectations(t)
 	store.AssertExpectations(t)
-	mockLogger.AssertExpectations(t)
+	// Logger expectations removed
 }
 
 // TestDAIncluderLoop_MultipleConsecutiveHeightsDAIncluded verifies that DAIncluderLoop advances the height
@@ -295,10 +275,10 @@ func TestDAIncluderLoop_MultipleConsecutiveHeightsDAIncluded(t *testing.T) {
 		height := startDAIncludedHeight + uint64(i+1)
 		headerHeightBytes := make([]byte, 8)
 		binary.LittleEndian.PutUint64(headerHeightBytes, uint64(i+1))
-		store.On("SetMetadata", mock.Anything, fmt.Sprintf("%s/%d/h", storepkg.RollkitHeightToDAHeightKey, height), headerHeightBytes).Return(nil).Once()
+		store.On("SetMetadata", mock.Anything, fmt.Sprintf("%s/%d/h", storepkg.HeightToDAHeightKey, height), headerHeightBytes).Return(nil).Once()
 		dataHeightBytes := make([]byte, 8)
 		binary.LittleEndian.PutUint64(dataHeightBytes, uint64(i+1))
-		store.On("SetMetadata", mock.Anything, fmt.Sprintf("%s/%d/d", storepkg.RollkitHeightToDAHeightKey, height), dataHeightBytes).Return(nil).Once()
+		store.On("SetMetadata", mock.Anything, fmt.Sprintf("%s/%d/d", storepkg.HeightToDAHeightKey, height), dataHeightBytes).Return(nil).Once()
 	}
 	store.On("SetMetadata", mock.Anything, storepkg.DAIncludedHeightKey, mock.Anything).Return(nil).Times(numConsecutive)
 	exec.On("SetFinal", mock.Anything, mock.Anything).Return(nil).Times(numConsecutive)
@@ -342,7 +322,7 @@ func TestDAIncluderLoop_AdvancesHeightWhenDataHashIsEmptyAndHeaderDAIncluded(t *
 	// Mock expectations for SetRollkitHeightToDAHeight method
 	headerHeightBytes := make([]byte, 8)
 	binary.LittleEndian.PutUint64(headerHeightBytes, uint64(1))
-	store.On("SetMetadata", mock.Anything, fmt.Sprintf("%s/%d/h", storepkg.RollkitHeightToDAHeightKey, uint64(5)), headerHeightBytes).Return(nil).Once()
+	store.On("SetMetadata", mock.Anything, fmt.Sprintf("%s/%d/h", storepkg.HeightToDAHeightKey, uint64(5)), headerHeightBytes).Return(nil).Once()
 	// Note: For empty data, data SetMetadata call should still be made but data won't be marked as DA-included in cache,
 	// so SetRollkitHeightToDAHeight will fail when trying to get the DA height for data
 	// Actually, let's check if this case is handled differently for empty txs
@@ -351,7 +331,7 @@ func TestDAIncluderLoop_AdvancesHeightWhenDataHashIsEmptyAndHeaderDAIncluded(t *
 	m.dataCache.SetDAIncluded(dataHash, uint64(1))
 	dataHeightBytes := make([]byte, 8)
 	binary.LittleEndian.PutUint64(dataHeightBytes, uint64(1))
-	store.On("SetMetadata", mock.Anything, fmt.Sprintf("%s/%d/d", storepkg.RollkitHeightToDAHeightKey, uint64(5)), dataHeightBytes).Return(nil).Once()
+	store.On("SetMetadata", mock.Anything, fmt.Sprintf("%s/%d/d", storepkg.HeightToDAHeightKey, uint64(5)), dataHeightBytes).Return(nil).Once()
 	// Mock expectations for incrementDAIncludedHeight method
 	heightBytes := make([]byte, 8)
 	binary.LittleEndian.PutUint64(heightBytes, expectedDAIncludedHeight)
