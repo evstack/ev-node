@@ -16,7 +16,7 @@ To install Evolve, clone the repository and build the binary:
 
 ```bash
 # Clone the repository
-git clone https://github.com/evolve/ev-node.git
+git clone https://github.com/evstack/ev-node.git
 cd ev-node
 
 # Build the testapp binary
