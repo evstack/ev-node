@@ -113,7 +113,7 @@ Finally, start the chain with your start command.
 For example, start the simple ignite chain with the following command:
 
 ```sh
-gmd start --evolve.node.aggregator --chain_id $CHAIN_ID
+gmd start --evolve.node.aggregator
 ```
 
 ## Summary
