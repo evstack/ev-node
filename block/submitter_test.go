@@ -46,8 +46,10 @@ func newTestManagerWithDA(t *testing.T, da *mocks.MockDA) (m *Manager) {
 	)
 
 	// Set up DA mock to return gas parameters
-	da.On("GasPrice", mock.Anything).Return(1.0, nil).Maybe()
-	da.On("GasMultiplier", mock.Anything).Return(2.0, nil).Maybe()
+	if da != nil {
+		da.On("GasPrice", mock.Anything).Return(1.0, nil).Maybe()
+		da.On("GasMultiplier", mock.Anything).Return(2.0, nil).Maybe()
+	}
 
 	return &Manager{
 		da:             da,
@@ -192,6 +194,8 @@ func TestSubmitDataToDA_Failure(t *testing.T) {
 				daError:  tc.daError,
 				mockDASetup: func(da *mocks.MockDA, gasPriceHistory *[]float64, daError error) {
 					da.ExpectedCalls = nil
+					da.On("GasPrice", mock.Anything).Return(1.0, nil).Maybe()
+					da.On("GasMultiplier", mock.Anything).Return(2.0, nil).Maybe()
 					da.On("SubmitWithOptions", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 						Run(func(args mock.Arguments) { *gasPriceHistory = append(*gasPriceHistory, args.Get(2).(float64)) }).
 						Return(nil, daError)
@@ -227,6 +231,8 @@ func TestSubmitHeadersToDA_Failure(t *testing.T) {
 				daError:  tc.daError,
 				mockDASetup: func(da *mocks.MockDA, gasPriceHistory *[]float64, daError error) {
 					da.ExpectedCalls = nil
+					da.On("GasPrice", mock.Anything).Return(1.0, nil).Maybe()
+					da.On("GasMultiplier", mock.Anything).Return(2.0, nil).Maybe()
 					da.On("SubmitWithOptions", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 						Run(func(args mock.Arguments) { *gasPriceHistory = append(*gasPriceHistory, args.Get(2).(float64)) }).
 						Return(nil, daError)

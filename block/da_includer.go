@@ -74,7 +74,12 @@ func (m *Manager) incrementDAIncludedHeight(ctx context.Context) error {
 
 	// Update sequencer metrics if the sequencer supports it
 	if seq, ok := m.sequencer.(MetricsRecorder); ok {
-		seq.RecordMetrics(m.gasPrice, 0, coreda.StatusSuccess, m.pendingHeaders.numPendingHeaders(), newHeight)
+		gasPrice, err := m.da.GasPrice(ctx)
+		if err != nil {
+			m.logger.Error().Err(err).Msg("failed to get gas price")
+			return err
+		}
+		seq.RecordMetrics(gasPrice, 0, coreda.StatusSuccess, m.pendingHeaders.numPendingHeaders(), newHeight)
 	}
 
 	return nil

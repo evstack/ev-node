@@ -85,7 +85,7 @@ func submitToDA[T any](
 	submittedAll := false
 	var backoff time.Duration
 	attempt := 0
-	
+
 	// Get gas price from DA layer
 	initialGasPrice, err := m.da.GasPrice(ctx)
 	if err != nil {
@@ -144,7 +144,7 @@ func submitToDA[T any](
 			remaining = notSubmitted
 			marshaled = notSubmittedMarshaled
 			backoff = 0
-			
+
 			// Get gas multiplier from DA layer and adjust price
 			gasMultiplier, multErr := m.da.GasMultiplier(ctx)
 			if multErr != nil {
@@ -161,7 +161,7 @@ func submitToDA[T any](
 			// Record failed DA submission (will retry)
 			m.recordDAMetrics("submission", DAModeFail)
 			backoff = m.config.DA.BlockTime.Duration * time.Duration(m.config.DA.MempoolTTL)
-			
+
 			// Get gas multiplier from DA layer and increase price for retry
 			gasMultiplier, multErr := m.da.GasMultiplier(ctx)
 			if multErr != nil {
