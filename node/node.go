@@ -49,6 +49,10 @@ func NewNode(
 		return newLightNode(conf, genesis, p2pClient, database, logger)
 	}
 
+	if conf.Node.RPCOnly {
+		return newRPCOnlyNode(conf, genesis, p2pClient, database, logger)
+	}
+
 	if err := nodeOptions.ManagerOptions.Validate(); err != nil {
 		nodeOptions.ManagerOptions = block.DefaultManagerOptions()
 	}

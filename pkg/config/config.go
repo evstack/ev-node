@@ -30,6 +30,8 @@ const (
 	FlagAggregator = "rollkit.node.aggregator"
 	// FlagLight is a flag for running the node in light mode
 	FlagLight = "rollkit.node.light"
+	// FlagRPCOnly is a flag for running the node in RPC-only mode
+	FlagRPCOnly = "rollkit.node.rpc_only"
 	// FlagBlockTime is a flag for specifying the block time
 	FlagBlockTime = "rollkit.node.block_time"
 	// FlagTrustedHash is a flag for specifying the trusted hash
@@ -185,6 +187,7 @@ type NodeConfig struct {
 	// Node mode configuration
 	Aggregator bool `yaml:"aggregator" comment:"Run node in aggregator mode"`
 	Light      bool `yaml:"light" comment:"Run node in light mode"`
+	RPCOnly    bool `yaml:"rpc_only" comment:"Run node in RPC-only mode (RPC server active, but no block production or syncing)"`
 
 	// Block management configuration
 	BlockTime                DurationWrapper `mapstructure:"block_time" yaml:"block_time" comment:"Block time (duration). Examples: \"500ms\", \"1s\", \"5s\", \"1m\", \"2m30s\", \"10m\"."`
@@ -229,6 +232,18 @@ func (c *Config) Validate() error {
 		return fmt.Errorf("root directory cannot be empty")
 	}
 
+	// Validate node mode conflicts
+	modes := []bool{c.Node.Light, c.Node.RPCOnly, c.Node.Aggregator}
+	modeCount := 0
+	for _, mode := range modes {
+		if mode {
+			modeCount++
+		}
+	}
+	if modeCount > 1 {
+		return fmt.Errorf("cannot enable multiple node modes simultaneously: light, rpc_only, and aggregator are mutually exclusive")
+	}
+
 	fullDir := filepath.Dir(c.ConfigPath())
 	if err := os.MkdirAll(fullDir, 0o750); err != nil {
 		return fmt.Errorf("could not create directory %q: %w", fullDir, err)
@@ -262,6 +277,7 @@ func AddFlags(cmd *cobra.Command) {
 	// Node configuration flags
 	cmd.Flags().Bool(FlagAggregator, def.Node.Aggregator, "run node in aggregator mode")
 	cmd.Flags().Bool(FlagLight, def.Node.Light, "run light client")
+	cmd.Flags().Bool(FlagRPCOnly, def.Node.RPCOnly, "run node in RPC-only mode (RPC server active, but no block production or syncing)")
 	cmd.Flags().Duration(FlagBlockTime, def.Node.BlockTime.Duration, "block time (for aggregator mode)")
 	cmd.Flags().String(FlagTrustedHash, def.Node.TrustedHash, "initial trusted hash to start the header exchange service")
 	cmd.Flags().Bool(FlagLazyAggregator, def.Node.LazyMode, "produce blocks only when transactions are available or after lazy block time")

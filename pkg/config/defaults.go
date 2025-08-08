@@ -49,6 +49,7 @@ var DefaultConfig = Config{
 		LazyMode:          false,
 		LazyBlockInterval: DurationWrapper{60 * time.Second},
 		Light:             false,
+		RPCOnly:           false,
 		TrustedHash:       "",
 	},
 	DA: DAConfig{
