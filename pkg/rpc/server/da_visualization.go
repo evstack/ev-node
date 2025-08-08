@@ -506,7 +506,7 @@ func (s *DAVisualizationServer) handleDAVisualizationHTML(w http.ResponseWriter,
         <div class="api-endpoint">
             <h4><span class="method method-get">GET</span> /da/submissions</h4>
             <p>Returns a JSON array of the most recent DA submissions (up to 100) with metadata.</p>
-            <p><strong>Note:</strong> Only aggregator nodes submit to the DA layer. Non-aggregator nodes will show empty results.</p>
+            <p><strong>Note:</strong> Only aggregator nodes submit to the DA layer.</p>
             <p><strong>Example:</strong> <code>curl http://localhost:8080/da/submissions</code></p>
             <div class="api-response">
                 <strong>Response:</strong>
