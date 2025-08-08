@@ -53,7 +53,7 @@ func TestRecordSubmission(t *testing.T) {
 	assert.Equal(t, uint64(1024), submission.BlobSize)
 	assert.Equal(t, 0.5, submission.GasPrice)
 	assert.Equal(t, "Success", submission.StatusCode)
-	assert.Equal(t, 2, submission.NumBlobs)
+	assert.Equal(t, uint64(2), submission.NumBlobs)
 	assert.Equal(t, 2, len(submission.BlobIDs))
 	assert.Equal(t, hex.EncodeToString([]byte("test-id-1")), submission.BlobIDs[0])
 	assert.Equal(t, hex.EncodeToString([]byte("test-id-2")), submission.BlobIDs[1])
