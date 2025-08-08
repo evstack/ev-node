@@ -431,7 +431,7 @@ func NewManager(
 
 	// Initialize DA visualization server if enabled
 	if config.RPC.EnableDAVisualization {
-		daVisualizationServer := server.NewDAVisualizationServer(da, logger.With().Str("module", "da_visualization").Logger())
+		daVisualizationServer := server.NewDAVisualizationServer(da, logger.With().Str("module", "da_visualization").Logger(), config.Node.Aggregator)
 		server.SetDAVisualizationServer(daVisualizationServer)
 		logger.Info().Msg("DA visualization server enabled")
 	} else {

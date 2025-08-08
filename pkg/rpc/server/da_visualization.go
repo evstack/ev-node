@@ -29,18 +29,20 @@ type DASubmissionInfo struct {
 
 // DAVisualizationServer provides DA layer visualization endpoints
 type DAVisualizationServer struct {
-	da          coreda.DA
-	logger      zerolog.Logger
-	submissions []DASubmissionInfo
-	mutex       sync.RWMutex
+	da           coreda.DA
+	logger       zerolog.Logger
+	submissions  []DASubmissionInfo
+	mutex        sync.RWMutex
+	isAggregator bool
 }
 
 // NewDAVisualizationServer creates a new DA visualization server
-func NewDAVisualizationServer(da coreda.DA, logger zerolog.Logger) *DAVisualizationServer {
+func NewDAVisualizationServer(da coreda.DA, logger zerolog.Logger, isAggregator bool) *DAVisualizationServer {
 	return &DAVisualizationServer{
-		da:          da,
-		logger:      logger,
-		submissions: make([]DASubmissionInfo, 0),
+		da:           da,
+		logger:       logger,
+		submissions:  make([]DASubmissionInfo, 0),
+		isAggregator: isAggregator,
 	}
 }
 
@@ -109,6 +111,22 @@ func (s *DAVisualizationServer) getStatusCodeString(code coreda.StatusCode) stri
 func (s *DAVisualizationServer) handleDASubmissions(w http.ResponseWriter, r *http.Request) {
 	s.mutex.RLock()
 	defer s.mutex.RUnlock()
+
+	// If not an aggregator, return empty submissions with a message
+	if !s.isAggregator {
+		response := map[string]interface{}{
+			"is_aggregator": false,
+			"submissions":   []DASubmissionInfo{},
+			"total":         0,
+			"message":       "This node is not an aggregator and does not submit to the DA layer",
+		}
+		w.Header().Set("Content-Type", "application/json")
+		if err := json.NewEncoder(w).Encode(response); err != nil {
+			s.logger.Error().Err(err).Msg("Failed to encode DA submissions response")
+			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		}
+		return
+	}
 
 	// Reverse the slice to show newest first
 	reversed := make([]DASubmissionInfo, len(s.submissions))
@@ -191,6 +209,21 @@ func (s *DAVisualizationServer) handleDAStats(w http.ResponseWriter, r *http.Req
 	s.mutex.RLock()
 	defer s.mutex.RUnlock()
 
+	// If not an aggregator, return empty stats
+	if !s.isAggregator {
+		stats := map[string]interface{}{
+			"is_aggregator":     false,
+			"total_submissions": 0,
+			"message":           "This node is not an aggregator and does not submit to the DA layer",
+		}
+		w.Header().Set("Content-Type", "application/json")
+		if err := json.NewEncoder(w).Encode(stats); err != nil {
+			s.logger.Error().Err(err).Msg("Failed to encode DA stats response")
+			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		}
+		return
+	}
+
 	// Calculate statistics
 	var (
 		totalSubmissions = len(s.submissions)
@@ -252,6 +285,23 @@ func (s *DAVisualizationServer) handleDAStats(w http.ResponseWriter, r *http.Req
 func (s *DAVisualizationServer) handleDAHealth(w http.ResponseWriter, r *http.Request) {
 	s.mutex.RLock()
 	defer s.mutex.RUnlock()
+
+	// If not an aggregator, return simplified health status
+	if !s.isAggregator {
+		health := map[string]interface{}{
+			"is_aggregator":     false,
+			"status":            "n/a",
+			"message":           "This node is not an aggregator and does not submit to the DA layer",
+			"connection_status": "n/a",
+			"timestamp":         time.Now(),
+		}
+		w.Header().Set("Content-Type", "application/json")
+		if err := json.NewEncoder(w).Encode(health); err != nil {
+			s.logger.Error().Err(err).Msg("Failed to encode DA health response")
+			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		}
+		return
+	}
 
 	// Calculate health metrics
 	var (
@@ -432,13 +482,18 @@ func (s *DAVisualizationServer) handleDAVisualizationHTML(w http.ResponseWriter,
     <div class="header">
         <h1>DA Layer Visualization</h1>
         <p>Real-time view of blob submissions from the sequencer node to the Data Availability layer.</p>
-        {{if .Submissions}}
-        <p><strong>Recent Submissions:</strong> {{len .Submissions}} (last 100) | <strong>Last Update:</strong> {{.LastUpdate}}</p>
+        {{if .IsAggregator}}
+            {{if .Submissions}}
+            <p><strong>Recent Submissions:</strong> {{len .Submissions}} (last 100) | <strong>Last Update:</strong> {{.LastUpdate}}</p>
+            {{else}}
+            <p><strong>Node Type:</strong> Aggregator | <strong>Recent Submissions:</strong> 0 | <strong>Last Update:</strong> {{.LastUpdate}}</p>
+            {{end}}
         {{else}}
-        <p><strong>Node Type:</strong> This appears to be a non-aggregator node. Only aggregator nodes submit data to the DA layer.</p>
+        <p><strong>Node Type:</strong> Non-aggregator | This node does not submit data to the DA layer.</p>
         {{end}}
     </div>
 
+    {{if .IsAggregator}}
     <div class="api-section">
         <h2>Available API Endpoints</h2>
 
@@ -548,7 +603,9 @@ func (s *DAVisualizationServer) handleDAVisualizationHTML(w http.ResponseWriter,
             </ul>
         </div>
     </div>
+    {{end}}
 
+    {{if .IsAggregator}}
     <h2>Recent Submissions</h2>
     {{if .Submissions}}
     <table>
@@ -583,7 +640,12 @@ func (s *DAVisualizationServer) handleDAVisualizationHTML(w http.ResponseWriter,
         {{end}}
     </table>
     {{else}}
-    <p>No submissions recorded yet. This node is not currently submitting to the DA layer. Only aggregator nodes that are actively submitting data to the DA layer will show submissions here.</p>
+    <p>No submissions recorded yet. This aggregator node has not submitted any data to the DA layer yet.</p>
+    {{end}}
+    {{else}}
+    <h2>Node Information</h2>
+    <p>This is a non-aggregator node. Non-aggregator nodes do not submit data to the DA layer and therefore do not have submission statistics, health metrics, or DA-related API endpoints available.</p>
+    <p>Only aggregator nodes that actively produce blocks and submit data to the DA layer will display this information.</p>
     {{end}}
 
     <div style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #ddd; color: #666;">
@@ -619,8 +681,9 @@ func (s *DAVisualizationServer) handleDAVisualizationHTML(w http.ResponseWriter,
 			case []DASubmissionInfo:
 				return len(v)
 			case struct {
-				Submissions []DASubmissionInfo
-				LastUpdate  string
+				Submissions  []DASubmissionInfo
+				LastUpdate   string
+				IsAggregator bool
 			}:
 				return len(v.Submissions)
 			default:
@@ -637,11 +700,13 @@ func (s *DAVisualizationServer) handleDAVisualizationHTML(w http.ResponseWriter,
 
 	// Create template data with LastUpdate
 	data := struct {
-		Submissions []DASubmissionInfo
-		LastUpdate  string
+		Submissions  []DASubmissionInfo
+		LastUpdate   string
+		IsAggregator bool
 	}{
-		Submissions: submissions,
-		LastUpdate:  time.Now().Format("15:04:05"),
+		Submissions:  submissions,
+		LastUpdate:   time.Now().Format("15:04:05"),
+		IsAggregator: s.isAggregator,
 	}
 
 	w.Header().Set("Content-Type", "text/html")

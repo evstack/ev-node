@@ -20,7 +20,7 @@ func TestNewDAVisualizationServer(t *testing.T) {
 	da := &mocks.MockDA{}
 	logger := zerolog.New(nil)
 
-	server := NewDAVisualizationServer(da, logger)
+	server := NewDAVisualizationServer(da, logger, true)
 
 	assert.NotNil(t, server)
 	assert.Equal(t, da, server.da)
@@ -30,7 +30,7 @@ func TestNewDAVisualizationServer(t *testing.T) {
 func TestRecordSubmission(t *testing.T) {
 	da := &mocks.MockDA{}
 	logger := zerolog.New(nil)
-	server := NewDAVisualizationServer(da, logger)
+	server := NewDAVisualizationServer(da, logger, true)
 
 	// Test recording a successful submission
 	result := &coreda.ResultSubmit{
@@ -62,7 +62,7 @@ func TestRecordSubmission(t *testing.T) {
 func TestRecordSubmissionMemoryLimit(t *testing.T) {
 	da := &mocks.MockDA{}
 	logger := zerolog.New(nil)
-	server := NewDAVisualizationServer(da, logger)
+	server := NewDAVisualizationServer(da, logger, true)
 
 	// Add 101 submissions (more than the limit of 100)
 	for i := 0; i < 101; i++ {
@@ -88,7 +88,7 @@ func TestRecordSubmissionMemoryLimit(t *testing.T) {
 func TestGetStatusCodeString(t *testing.T) {
 	da := &mocks.MockDA{}
 	logger := zerolog.New(nil)
-	server := NewDAVisualizationServer(da, logger)
+	server := NewDAVisualizationServer(da, logger, true)
 
 	tests := []struct {
 		code     coreda.StatusCode
@@ -111,7 +111,7 @@ func TestGetStatusCodeString(t *testing.T) {
 func TestHandleDASubmissions(t *testing.T) {
 	da := &mocks.MockDA{}
 	logger := zerolog.New(nil)
-	server := NewDAVisualizationServer(da, logger)
+	server := NewDAVisualizationServer(da, logger, true)
 
 	// Add a test submission
 	result := &coreda.ResultSubmit{
@@ -154,7 +154,7 @@ func TestHandleDASubmissions(t *testing.T) {
 func TestHandleDABlobDetailsMissingID(t *testing.T) {
 	da := &mocks.MockDA{}
 	logger := zerolog.New(nil)
-	server := NewDAVisualizationServer(da, logger)
+	server := NewDAVisualizationServer(da, logger, true)
 
 	req, err := http.NewRequest("GET", "/da/blob", nil)
 	require.NoError(t, err)
@@ -169,7 +169,7 @@ func TestHandleDABlobDetailsMissingID(t *testing.T) {
 func TestHandleDABlobDetailsInvalidID(t *testing.T) {
 	da := &mocks.MockDA{}
 	logger := zerolog.New(nil)
-	server := NewDAVisualizationServer(da, logger)
+	server := NewDAVisualizationServer(da, logger, true)
 
 	req, err := http.NewRequest("GET", "/da/blob?id=invalid-hex", nil)
 	require.NoError(t, err)
@@ -184,7 +184,7 @@ func TestHandleDABlobDetailsInvalidID(t *testing.T) {
 func TestHandleDAVisualizationHTML(t *testing.T) {
 	da := &mocks.MockDA{}
 	logger := zerolog.New(nil)
-	server := NewDAVisualizationServer(da, logger)
+	server := NewDAVisualizationServer(da, logger, true)
 
 	// Add a test submission
 	result := &coreda.ResultSubmit{
@@ -218,7 +218,7 @@ func TestHandleDAVisualizationHTML(t *testing.T) {
 func TestGlobalDAVisualizationServer(t *testing.T) {
 	da := &mocks.MockDA{}
 	logger := zerolog.New(nil)
-	server := NewDAVisualizationServer(da, logger)
+	server := NewDAVisualizationServer(da, logger, true)
 
 	// Initially should be nil
 	assert.Nil(t, GetDAVisualizationServer())
@@ -235,7 +235,7 @@ func TestGlobalDAVisualizationServer(t *testing.T) {
 func TestRegisterCustomHTTPEndpointsDAVisualization(t *testing.T) {
 	da := &mocks.MockDA{}
 	logger := zerolog.New(nil)
-	server := NewDAVisualizationServer(da, logger)
+	server := NewDAVisualizationServer(da, logger, true)
 
 	// Add test submission
 	result := &coreda.ResultSubmit{
