@@ -212,6 +212,7 @@ func submitToDA[T any](
 	marshalFn func(T) ([]byte, error),
 	postSubmit func([]T, *coreda.ResultSubmit, float64),
 	itemType string,
+	namespace []byte,
 ) error {
 	marshaled, err := marshalItems(items, marshalFn, itemType)
 	if err != nil {

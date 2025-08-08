@@ -11,8 +11,6 @@ import (
 	coreda "github.com/evstack/ev-node/core/da"
 )
 
-var placeholder = []byte("placeholder")
-
 // SubmitWithHelpers performs blob submission using the underlying DA layer,
 // handling error mapping to produce a ResultSubmit.
 // It assumes blob size filtering is handled within the DA implementation's Submit.
@@ -23,9 +21,10 @@ func SubmitWithHelpers(
 	logger zerolog.Logger,
 	data [][]byte,
 	gasPrice float64,
+	namespace []byte, // New namespace parameter
 	options []byte,
 ) coreda.ResultSubmit { // Return core ResultSubmit type
-	ids, err := da.SubmitWithOptions(ctx, data, gasPrice, placeholder, options)
+	ids, err := da.SubmitWithOptions(ctx, data, gasPrice, namespace, options)
 
 	// Handle errors returned by Submit
 	if err != nil {

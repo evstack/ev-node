@@ -41,7 +41,6 @@ Run the following command to initialize Evolve:
 ignite evolve init
 ```
 
-
 <!-- TODO: update
 
 ## Initialize Evolve CLI Configuration {#initialize-evolve-cli-configuration}

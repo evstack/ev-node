@@ -14,7 +14,7 @@ sequenceDiagram
     participant User
     participant LightNode
     participant FullNode
-    
+
     User->>LightNode: Submit Transaction
     LightNode->>FullNode: Gossip Transaction
     FullNode-->>User: Refuse (if invalid)

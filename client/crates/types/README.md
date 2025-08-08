@@ -50,6 +50,7 @@ cargo build
 ```
 
 The build script will:
+
 1. Check if pre-generated files exist (`src/proto/evnode.v1.*.rs`)
 2. If they exist, use them (this is the default behavior)
 3. If they don't exist, attempt to generate them from source proto files
@@ -66,7 +67,8 @@ EV_TYPES_FORCE_PROTO_GEN=1 cargo build
 make rust-proto-gen
 ```
 
-**Important**: 
+**Important**:
+
 - The build process generates both `evnode.v1.messages.rs` and `evnode.v1.services.rs`
 - Both files should be committed to ensure users can use the crate without needing to regenerate
 - When publishing to crates.io, the pre-generated files are included in the package
