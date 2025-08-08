@@ -33,16 +33,12 @@ updates:
     # Scan the root and any submodules (apps, execution, sequencers, etc.)
     directories:
       - "/"
-      - "/apps/evm/single"
-      - "/apps/grpc/single"
-      - "/apps/testapp"
-      - "/da"
+      - "/apps/**"
       - "/core"
-      - "/execution/evm"
-      - "/execution/grpc"
-      - "/sequencers/single"
-      - "/test/docker-e2e"
-      - "/test/e2e"
+      - "/da"
+      - "/execution/**"
+      - "/sequencers/**"
+      - "/test/**"
     schedule:
       interval: weekly
     open-pull-requests-limit: 10
