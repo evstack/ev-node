@@ -6,7 +6,7 @@ This guide covers how to set up a full node to run alongside a sequencer node in
 
 ## Prerequisites
 
-Before proceeding, ensure that you have completed the [build a chain](/guides/gm-world.md) tutorial, which covers setting-up, building and running your chain.
+Before proceeding, ensure that you have completed the [build a chain](/docs/guides/gm-world.md) tutorial, which covers setting-up, building and running your chain.
 
 Ensure that you have:
 

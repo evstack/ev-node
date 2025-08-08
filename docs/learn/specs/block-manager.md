@@ -116,6 +116,8 @@ Block manager configuration options:
 |LazyBlockInterval|time.Duration|time interval used for block production in lazy aggregator mode even when there are no transactions ([`defaultLazyBlockTime`][defaultLazyBlockTime])|
 |LazyMode|bool|when set to true, enables lazy aggregation mode which produces blocks only when transactions are available or at LazyBlockInterval intervals|
 |MaxPendingHeadersAndData|uint64|maximum number of pending headers and data blocks before pausing block production (default: 100)|
+|MaxSubmitAttempts|int|maximum number of retry attempts for DA submissions (default: 30)|
+|MempoolTTL|int|number of blocks to wait when transaction is stuck in DA mempool (default: 25)|
 |GasPrice|float64|gas price for DA submissions (-1 for automatic/default)|
 |GasMultiplier|float64|multiplier for gas price on DA submission retries (default: 1.3)|
 |Namespace|da.Namespace|DA namespace ID for block submissions (deprecated, use HeaderNamespace and DataNamespace instead)|
@@ -245,11 +247,68 @@ The `DataSubmissionLoop` manages the submission of signed data to the DA network
 Both loops use a shared `submitToDA` function that provides:
 
 * Namespace-specific submission based on header or data type
-* Retry logic with [`maxSubmitAttempts`][maxSubmitAttempts] attempts
-* Exponential backoff starting at [`initialBackoff`][initialBackoff], doubling each attempt, capped at `DABlockTime`
-* Gas price management with `GasMultiplier` applied on retries
+* Retry logic with configurable maximum attempts via `MaxSubmitAttempts` configuration
+* Exponential backoff starting at `initialBackoff` (100ms), doubling each attempt, capped at `DABlockTime`
+* Gas price management with `GasMultiplier` applied on retries using a centralized `retryStrategy`
+* Recursive batch splitting for handling "too big" DA submissions that exceed blob size limits
+* Comprehensive error handling for different DA submission failure types (mempool issues, context cancellation, blob size limits)
 * Comprehensive metrics tracking for attempts, successes, and failures
 * Context-aware cancellation support
+
+#### Retry Strategy and Error Handling
+
+The DA submission system implements sophisticated retry logic using a centralized `retryStrategy` struct to handle various failure scenarios:
+
+```mermaid
+flowchart TD
+    A[Submit to DA] --> B{Submission Result}
+    B -->|Success| C[Reset Backoff & Adjust Gas Price Down]
+    B -->|Too Big| D{Batch Size > 1?}
+    B -->|Mempool/Not Included| E[Mempool Backoff Strategy]
+    B -->|Context Canceled| F[Stop Submission]
+    B -->|Other Error| G[Exponential Backoff]
+    
+    D -->|Yes| H[Recursive Batch Splitting]
+    D -->|No| I[Skip Single Item - Cannot Split]
+    
+    E --> J[Set Backoff = MempoolTTL * BlockTime]
+    E --> K[Multiply Gas Price by GasMultiplier]
+    
+    G --> L[Double Backoff Time]
+    G --> M[Cap at MaxBackoff - BlockTime]
+    
+    H --> N[Split into Two Halves]
+    N --> O[Submit First Half]
+    O --> P[Submit Second Half]
+    P --> Q{Both Halves Processed?}
+    Q -->|Yes| R[Combine Results]
+    Q -->|No| S[Handle Partial Success]
+    
+    C --> T[Update Pending Queues]
+    T --> U[Post-Submit Actions]
+```
+
+##### Retry Strategy Features
+
+* **Centralized State Management**: The `retryStrategy` struct manages attempt counts, backoff timing, and gas price adjustments
+* **Multiple Backoff Types**:
+  * Exponential backoff for general failures (doubles each attempt, capped at `BlockTime`)
+  * Mempool-specific backoff (waits `MempoolTTL * BlockTime` for stuck transactions)
+  * Success-based backoff reset with gas price reduction
+* **Gas Price Management**: 
+  * Increases gas price by `GasMultiplier` on mempool failures
+  * Decreases gas price after successful submissions (bounded by initial price)
+  * Supports automatic gas price detection (`-1` value)
+* **Intelligent Batch Splitting**:
+  * Recursively splits batches that exceed DA blob size limits
+  * Handles partial submissions within split batches
+  * Prevents infinite recursion with proper base cases
+* **Comprehensive Error Classification**:
+  * `StatusSuccess`: Full or partial successful submission
+  * `StatusTooBig`: Triggers batch splitting logic
+  * `StatusNotIncludedInBlock`/`StatusAlreadyInMempool`: Mempool-specific handling
+  * `StatusContextCanceled`: Graceful shutdown support
+  * Other errors: Standard exponential backoff
 
 The manager enforces a limit on pending headers and data through `MaxPendingHeadersAndData` configuration. When this limit is reached, block production pauses to prevent unbounded growth of the pending queues.
 
@@ -603,11 +662,9 @@ See [tutorial] for running a multi-node network with both sequencer and non-sequ
 
 [9] [Lazy Aggregation with DA Layer Consistency ADR](../../lazy-adr/adr-021-lazy-aggregation.md)
 
-[maxSubmitAttempts]: https://github.com/evstack/ev-node/blob/main/block/manager.go#L50
 [defaultBlockTime]: https://github.com/evstack/ev-node/blob/main/block/manager.go#L36
 [defaultDABlockTime]: https://github.com/evstack/ev-node/blob/main/block/manager.go#L33
 [defaultLazyBlockTime]: https://github.com/evstack/ev-node/blob/main/block/manager.go#L39
-[initialBackoff]: https://github.com/evstack/ev-node/blob/main/block/manager.go#L59
 [go-header]: https://github.com/celestiaorg/go-header
 [block-sync]: https://github.com/evstack/ev-node/blob/main/pkg/sync/sync_service.go
 [full-node]: https://github.com/evstack/ev-node/blob/main/node/full.go

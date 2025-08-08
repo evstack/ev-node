@@ -439,21 +439,21 @@ func TestCreateSignedDataToSubmit(t *testing.T) {
 func fillPendingHeaders(ctx context.Context, t *testing.T, pendingHeaders *PendingHeaders, chainID string, numBlocks uint64) {
 	t.Helper()
 
-	store := pendingHeaders.base.store
+	s := pendingHeaders.base.store
 	for i := uint64(0); i < numBlocks; i++ {
 		height := i + 1
 		header, data := types.GetRandomBlock(height, 0, chainID)
 		sig := &header.Signature
-		err := store.SaveBlockData(ctx, header, data, sig)
+		err := s.SaveBlockData(ctx, header, data, sig)
 		require.NoError(t, err, "failed to save block data for header at height %d", height)
-		err = store.SetHeight(ctx, height)
+		err = s.SetHeight(ctx, height)
 		require.NoError(t, err, "failed to set store height for header at height %d", height)
 	}
 }
 
 func fillPendingData(ctx context.Context, t *testing.T, pendingData *PendingData, chainID string, numBlocks uint64) {
 	t.Helper()
-	store := pendingData.base.store
+	s := pendingData.base.store
 	txNum := 1
 	for i := uint64(0); i < numBlocks; i++ {
 		height := i + 1
@@ -464,9 +464,9 @@ func fillPendingData(ctx context.Context, t *testing.T, pendingData *PendingData
 			txNum++
 		}
 		sig := &header.Signature
-		err := store.SaveBlockData(ctx, header, data, sig)
+		err := s.SaveBlockData(ctx, header, data, sig)
 		require.NoError(t, err, "failed to save block data for data at height %d", height)
-		err = store.SetHeight(ctx, height)
+		err = s.SetHeight(ctx, height)
 		require.NoError(t, err, "failed to set store height for data at height %d", height)
 	}
 }
@@ -569,9 +569,532 @@ func TestSubmitDataToDA_WithMetricsRecorder(t *testing.T) {
 	mockSequencer.AssertExpectations(t)
 }
 
+// TestSubmitToDA_ItChunksBatchWhenSizeExceedsLimit verifies that when DA submission
+// fails with StatusTooBig, the submitter automatically splits the batch in half and
+// retries until successful. This prevents infinite retry loops when batches exceed
+// DA layer size limits.
+func TestSubmitToDA_ItChunksBatchWhenSizeExceedsLimit(t *testing.T) {
+
+	da := &mocks.MockDA{}
+	m := newTestManagerWithDA(t, da)
+	ctx := context.Background()
+
+	// Fill with items that would be too big as a single batch
+	largeItemCount := uint64(10)
+	fillPendingHeaders(ctx, t, m.pendingHeaders, "TestFix", largeItemCount)
+
+	headers, err := m.pendingHeaders.getPendingHeaders(ctx)
+	require.NoError(t, err)
+	require.Len(t, headers, int(largeItemCount))
+
+	var submitAttempts int
+	var batchSizes []int
+
+	// Mock DA behavior for recursive splitting:
+	// - First call: full batch (10 items) -> StatusTooBig
+	// - Second call: first half (5 items) -> Success
+	// - Third call: second half (5 items) -> Success
+	da.On("SubmitWithOptions", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		Run(func(args mock.Arguments) {
+			submitAttempts++
+			blobs := args.Get(1).([]coreda.Blob)
+			batchSizes = append(batchSizes, len(blobs))
+			t.Logf("DA Submit attempt %d: batch size %d", submitAttempts, len(blobs))
+		}).
+		Return(nil, coreda.ErrBlobSizeOverLimit).Once() // First attempt fails (full batch)
+
+	da.On("SubmitWithOptions", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		Run(func(args mock.Arguments) {
+			submitAttempts++
+			blobs := args.Get(1).([]coreda.Blob)
+			batchSizes = append(batchSizes, len(blobs))
+			t.Logf("DA Submit attempt %d: batch size %d", submitAttempts, len(blobs))
+		}).
+		Return([]coreda.ID{getDummyID(1, []byte("id1")), getDummyID(1, []byte("id2")), getDummyID(1, []byte("id3")), getDummyID(1, []byte("id4")), getDummyID(1, []byte("id5"))}, nil).Once() // Second attempt succeeds (first half)
+
+	da.On("SubmitWithOptions", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		Run(func(args mock.Arguments) {
+			submitAttempts++
+			blobs := args.Get(1).([]coreda.Blob)
+			batchSizes = append(batchSizes, len(blobs))
+			t.Logf("DA Submit attempt %d: batch size %d", submitAttempts, len(blobs))
+		}).
+		Return([]coreda.ID{getDummyID(1, []byte("id6")), getDummyID(1, []byte("id7")), getDummyID(1, []byte("id8")), getDummyID(1, []byte("id9")), getDummyID(1, []byte("id10"))}, nil).Once() // Third attempt succeeds (second half)
+
+	err = m.submitHeadersToDA(ctx, headers)
+
+	assert.NoError(t, err, "Should succeed by recursively splitting and submitting all chunks")
+	assert.Equal(t, 3, submitAttempts, "Should make 3 attempts: 1 large batch + 2 split chunks")
+	assert.Equal(t, []int{10, 5, 5}, batchSizes, "Should try full batch, then both halves")
+
+	// All 10 items should be successfully submitted in a single submitHeadersToDA call
+}
+
+// TestSubmitToDA_SingleItemTooLarge verifies behavior when even a single item
+// exceeds DA size limits and cannot be split further. This should result in
+// exponential backoff and eventual failure after maxSubmitAttempts.
+func TestSubmitToDA_SingleItemTooLarge(t *testing.T) {
+	da := &mocks.MockDA{}
+	m := newTestManagerWithDA(t, da)
+
+	// Set a small MaxSubmitAttempts for fast testing
+	m.config.DA.MaxSubmitAttempts = 3
+
+	ctx := context.Background()
+
+	// Create a single header that will always be "too big"
+	fillPendingHeaders(ctx, t, m.pendingHeaders, "TestSingleLarge", 1)
+
+	headers, err := m.pendingHeaders.getPendingHeaders(ctx)
+	require.NoError(t, err)
+	require.Len(t, headers, 1)
+
+	var submitAttempts int
+
+	// Mock DA to always return "too big" for this single item
+	da.On("SubmitWithOptions", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		Run(func(args mock.Arguments) {
+			submitAttempts++
+			blobs := args.Get(1).([]coreda.Blob)
+			t.Logf("DA Submit attempt %d: batch size %d (single item too large)", submitAttempts, len(blobs))
+		}).
+		Return(nil, coreda.ErrBlobSizeOverLimit) // Always fails
+
+	// This should fail after MaxSubmitAttempts (3) attempts
+	err = m.submitHeadersToDA(ctx, headers)
+
+	// Expected behavior: Should fail after exhausting all attempts
+	assert.Error(t, err, "Should fail when single item is too large")
+	assert.Contains(t, err.Error(), "failed to submit all header(s) to DA layer")
+	assert.Contains(t, err.Error(), "after 3 attempts") // MaxSubmitAttempts
+
+	// Should have made exactly MaxSubmitAttempts (3) attempts
+	assert.Equal(t, 3, submitAttempts, "Should make exactly MaxSubmitAttempts before giving up")
+
+	da.AssertExpectations(t)
+}
+
+// TestProcessBatch tests the processBatch function with different scenarios
+func TestProcessBatch(t *testing.T) {
+	da := &mocks.MockDA{}
+	m := newTestManagerWithDA(t, da)
+	ctx := context.Background()
+
+	// Test data setup
+	testItems := []string{"item1", "item2", "item3"}
+	testMarshaled := [][]byte{[]byte("marshaled1"), []byte("marshaled2"), []byte("marshaled3")}
+	testBatch := submissionBatch[string]{
+		Items:     testItems,
+		Marshaled: testMarshaled,
+	}
+
+	var postSubmitCalled bool
+	postSubmit := func(submitted []string, res *coreda.ResultSubmit, gasPrice float64) {
+		postSubmitCalled = true
+		assert.Equal(t, testItems, submitted)
+		assert.Equal(t, float64(1.0), gasPrice)
+	}
+
+	t.Run("batchActionSubmitted - full chunk success", func(t *testing.T) {
+		postSubmitCalled = false
+		da.ExpectedCalls = nil
+
+		// Mock successful submission of all items
+		da.On("SubmitWithOptions", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+			Return([]coreda.ID{getDummyID(1, []byte("id1")), getDummyID(1, []byte("id2")), getDummyID(1, []byte("id3"))}, nil).Once()
+
+		result := processBatch(m, ctx, testBatch, 1.0, postSubmit, "test", []byte("test-namespace"))
+
+		assert.Equal(t, batchActionSubmitted, result.action)
+		assert.Equal(t, 3, result.submittedCount)
+		assert.True(t, postSubmitCalled)
+		da.AssertExpectations(t)
+	})
+
+	t.Run("batchActionSubmitted - partial chunk success", func(t *testing.T) {
+		postSubmitCalled = false
+		da.ExpectedCalls = nil
+
+		// Create a separate postSubmit function for partial success test
+		var partialPostSubmitCalled bool
+		partialPostSubmit := func(submitted []string, res *coreda.ResultSubmit, gasPrice float64) {
+			partialPostSubmitCalled = true
+			// Only the first 2 items should be submitted
+			assert.Equal(t, []string{"item1", "item2"}, submitted)
+			assert.Equal(t, float64(1.0), gasPrice)
+		}
+
+		// Mock partial submission (only 2 out of 3 items)
+		da.On("SubmitWithOptions", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+			Return([]coreda.ID{getDummyID(1, []byte("id1")), getDummyID(1, []byte("id2"))}, nil).Once()
+
+		result := processBatch(m, ctx, testBatch, 1.0, partialPostSubmit, "test", []byte("test-namespace"))
+
+		assert.Equal(t, batchActionSubmitted, result.action)
+		assert.Equal(t, 2, result.submittedCount)
+		assert.True(t, partialPostSubmitCalled)
+		da.AssertExpectations(t)
+	})
+
+	t.Run("batchActionTooBig - chunk too big", func(t *testing.T) {
+		da.ExpectedCalls = nil
+
+		// Mock "too big" error for multi-item chunk
+		da.On("SubmitWithOptions", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+			Return(nil, coreda.ErrBlobSizeOverLimit).Once()
+
+		result := processBatch(m, ctx, testBatch, 1.0, postSubmit, "test", []byte("test-namespace"))
+
+		assert.Equal(t, batchActionTooBig, result.action)
+		assert.Equal(t, 0, result.submittedCount)
+		assert.Empty(t, result.splitBatches)
+
+		da.AssertExpectations(t)
+	})
+
+	t.Run("batchActionSkip - single item too big", func(t *testing.T) {
+		da.ExpectedCalls = nil
+
+		// Create single-item batch
+		singleBatch := submissionBatch[string]{
+			Items:     []string{"large_item"},
+			Marshaled: [][]byte{[]byte("large_marshaled")},
+		}
+
+		// Mock "too big" error for single item
+		da.On("SubmitWithOptions", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+			Return(nil, coreda.ErrBlobSizeOverLimit).Once()
+
+		result := processBatch(m, ctx, singleBatch, 1.0, postSubmit, "test", []byte("test-namespace"))
+
+		assert.Equal(t, batchActionSkip, result.action)
+		assert.Equal(t, 0, result.submittedCount)
+		assert.Empty(t, result.splitBatches)
+		da.AssertExpectations(t)
+	})
+
+	t.Run("batchActionFail - unrecoverable error", func(t *testing.T) {
+		da.ExpectedCalls = nil
+
+		// Mock network error or other unrecoverable failure
+		da.On("SubmitWithOptions", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+			Return(nil, fmt.Errorf("network error")).Once()
+
+		result := processBatch(m, ctx, testBatch, 1.0, postSubmit, "test", []byte("test-namespace"))
+
+		assert.Equal(t, batchActionFail, result.action)
+		assert.Equal(t, 0, result.submittedCount)
+		assert.Empty(t, result.splitBatches)
+		da.AssertExpectations(t)
+	})
+}
+
 func getDummyID(height uint64, commitment []byte) coreda.ID {
 	id := make([]byte, len(commitment)+8)
 	binary.LittleEndian.PutUint64(id, height)
 	copy(id[8:], commitment)
 	return id
+}
+
+// TestRetryStrategy tests all retry strategy functionality using table-driven tests
+func TestRetryStrategy(t *testing.T) {
+	t.Run("ExponentialBackoff", func(t *testing.T) {
+		tests := []struct {
+			name            string
+			maxBackoff      time.Duration
+			initialBackoff  time.Duration
+			expectedBackoff time.Duration
+			description     string
+		}{
+			{
+				name:            "initial_backoff_from_zero",
+				maxBackoff:      10 * time.Second,
+				initialBackoff:  0,
+				expectedBackoff: 100 * time.Millisecond,
+				description:     "should start at 100ms when backoff is 0",
+			},
+			{
+				name:            "doubling_from_100ms",
+				maxBackoff:      10 * time.Second,
+				initialBackoff:  100 * time.Millisecond,
+				expectedBackoff: 200 * time.Millisecond,
+				description:     "should double from 100ms to 200ms",
+			},
+			{
+				name:            "doubling_from_500ms",
+				maxBackoff:      10 * time.Second,
+				initialBackoff:  500 * time.Millisecond,
+				expectedBackoff: 1 * time.Second,
+				description:     "should double from 500ms to 1s",
+			},
+			{
+				name:            "capped_at_max_backoff",
+				maxBackoff:      5 * time.Second,
+				initialBackoff:  20 * time.Second,
+				expectedBackoff: 5 * time.Second,
+				description:     "should cap at max backoff when exceeding limit",
+			},
+			{
+				name:            "zero_max_backoff",
+				maxBackoff:      0,
+				initialBackoff:  100 * time.Millisecond,
+				expectedBackoff: 0,
+				description:     "should cap at 0 when max backoff is 0",
+			},
+			{
+				name:            "small_max_backoff",
+				maxBackoff:      1 * time.Millisecond,
+				initialBackoff:  100 * time.Millisecond,
+				expectedBackoff: 1 * time.Millisecond,
+				description:     "should cap at very small max backoff",
+			},
+			{
+				name:            "normal_progression_1s",
+				maxBackoff:      1 * time.Hour,
+				initialBackoff:  1 * time.Second,
+				expectedBackoff: 2 * time.Second,
+				description:     "should double from 1s to 2s with large max",
+			},
+			{
+				name:            "normal_progression_2s",
+				maxBackoff:      1 * time.Hour,
+				initialBackoff:  2 * time.Second,
+				expectedBackoff: 4 * time.Second,
+				description:     "should double from 2s to 4s with large max",
+			},
+		}
+
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				strategy := newRetryStrategy(1.0, tt.maxBackoff, 30)
+				strategy.backoff = tt.initialBackoff
+
+				strategy.BackoffOnFailure()
+
+				assert.Equal(t, tt.expectedBackoff, strategy.backoff, tt.description)
+			})
+		}
+	})
+
+	t.Run("ShouldContinue", func(t *testing.T) {
+		strategy := newRetryStrategy(1.0, 1*time.Second, 30)
+
+		// Should continue when attempts are below max
+		require.True(t, strategy.ShouldContinue())
+
+		// Simulate reaching max attempts
+		strategy.attempt = 30
+		require.False(t, strategy.ShouldContinue())
+	})
+
+	t.Run("NextAttempt", func(t *testing.T) {
+		strategy := newRetryStrategy(1.0, 1*time.Second, 30)
+
+		initialAttempt := strategy.attempt
+		strategy.NextAttempt()
+		require.Equal(t, initialAttempt+1, strategy.attempt)
+	})
+
+	t.Run("ResetOnSuccess", func(t *testing.T) {
+		initialGasPrice := 2.0
+		strategy := newRetryStrategy(initialGasPrice, 1*time.Second, 30)
+
+		// Set some backoff and higher gas price
+		strategy.backoff = 500 * time.Millisecond
+		strategy.gasPrice = 4.0
+		gasMultiplier := 2.0
+
+		strategy.ResetOnSuccess(gasMultiplier)
+
+		// Backoff should be reset to 0
+		require.Equal(t, 0*time.Duration(0), strategy.backoff)
+
+		// Gas price should be reduced but not below initial
+		expectedGasPrice := 4.0 / gasMultiplier // 2.0
+		require.Equal(t, expectedGasPrice, strategy.gasPrice)
+	})
+
+	t.Run("ResetOnSuccess_GasPriceFloor", func(t *testing.T) {
+		initialGasPrice := 2.0
+		strategy := newRetryStrategy(initialGasPrice, 1*time.Second, 30)
+
+		// Set gas price below what would be the reduced amount
+		strategy.gasPrice = 1.0 // Lower than initial
+		gasMultiplier := 2.0
+
+		strategy.ResetOnSuccess(gasMultiplier)
+
+		// Gas price should be reset to initial, not go lower
+		require.Equal(t, initialGasPrice, strategy.gasPrice)
+	})
+
+	t.Run("BackoffOnMempool", func(t *testing.T) {
+		strategy := newRetryStrategy(1.0, 10*time.Second, 30)
+
+		mempoolTTL := 25
+		blockTime := 1 * time.Second
+		gasMultiplier := 1.5
+
+		strategy.BackoffOnMempool(mempoolTTL, blockTime, gasMultiplier)
+
+		// Should set backoff to blockTime * mempoolTTL
+		expectedBackoff := blockTime * time.Duration(mempoolTTL)
+		require.Equal(t, expectedBackoff, strategy.backoff)
+
+		// Should increase gas price
+		expectedGasPrice := 1.0 * gasMultiplier
+		require.Equal(t, expectedGasPrice, strategy.gasPrice)
+	})
+
+}
+
+// TestSubmitHalfBatch tests all scenarios for submitHalfBatch function using table-driven tests
+func TestSubmitHalfBatch(t *testing.T) {
+	tests := []struct {
+		name                string
+		items               []string
+		marshaled           [][]byte
+		mockSetup           func(*mocks.MockDA)
+		expectedSubmitted   int
+		expectError         bool
+		expectedErrorMsg    string
+		postSubmitValidator func(*testing.T, [][]string) // validates postSubmit calls
+	}{
+		{
+			name:              "EmptyItems",
+			items:             []string{},
+			marshaled:         [][]byte{},
+			mockSetup:         func(da *mocks.MockDA) {}, // no DA calls expected
+			expectedSubmitted: 0,
+			expectError:       false,
+			postSubmitValidator: func(t *testing.T, calls [][]string) {
+				assert.Empty(t, calls, "postSubmit should not be called for empty items")
+			},
+		},
+		{
+			name:      "FullSuccess",
+			items:     []string{"item1", "item2", "item3"},
+			marshaled: [][]byte{[]byte("m1"), []byte("m2"), []byte("m3")},
+			mockSetup: func(da *mocks.MockDA) {
+				da.On("SubmitWithOptions", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+					Return([]coreda.ID{getDummyID(1, []byte("id1")), getDummyID(1, []byte("id2")), getDummyID(1, []byte("id3"))}, nil).Once()
+			},
+			expectedSubmitted: 3,
+			expectError:       false,
+			postSubmitValidator: func(t *testing.T, calls [][]string) {
+				require.Len(t, calls, 1, "postSubmit should be called once")
+				assert.Equal(t, []string{"item1", "item2", "item3"}, calls[0])
+			},
+		},
+		{
+			name:      "PartialSuccess",
+			items:     []string{"item1", "item2", "item3"},
+			marshaled: [][]byte{[]byte("m1"), []byte("m2"), []byte("m3")},
+			mockSetup: func(da *mocks.MockDA) {
+				// First call: submit 2 out of 3 items
+				da.On("SubmitWithOptions", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+					Return([]coreda.ID{getDummyID(1, []byte("id1")), getDummyID(1, []byte("id2"))}, nil).Once()
+				// Second call (recursive): submit remaining 1 item
+				da.On("SubmitWithOptions", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+					Return([]coreda.ID{getDummyID(1, []byte("id3"))}, nil).Once()
+			},
+			expectedSubmitted: 3,
+			expectError:       false,
+			postSubmitValidator: func(t *testing.T, calls [][]string) {
+				require.Len(t, calls, 2, "postSubmit should be called twice")
+				assert.Equal(t, []string{"item1", "item2"}, calls[0])
+				assert.Equal(t, []string{"item3"}, calls[1])
+			},
+		},
+		{
+			name:      "PartialSuccessWithRecursionError",
+			items:     []string{"item1", "item2", "item3"},
+			marshaled: [][]byte{[]byte("m1"), []byte("m2"), []byte("m3")},
+			mockSetup: func(da *mocks.MockDA) {
+				// First call: submit 2 out of 3 items successfully
+				da.On("SubmitWithOptions", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+					Return([]coreda.ID{getDummyID(1, []byte("id1")), getDummyID(1, []byte("id2"))}, nil).Once()
+				// Second call (recursive): remaining item is too big
+				da.On("SubmitWithOptions", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+					Return(nil, coreda.ErrBlobSizeOverLimit).Once()
+			},
+			expectedSubmitted: 2,
+			expectError:       true,
+			expectedErrorMsg:  "single test item exceeds DA blob size limit",
+			postSubmitValidator: func(t *testing.T, calls [][]string) {
+				require.Len(t, calls, 1, "postSubmit should be called once for successful part")
+				assert.Equal(t, []string{"item1", "item2"}, calls[0])
+			},
+		},
+		{
+			name:      "SingleItemTooLarge",
+			items:     []string{"large_item"},
+			marshaled: [][]byte{[]byte("large_marshaled_data")},
+			mockSetup: func(da *mocks.MockDA) {
+				da.On("SubmitWithOptions", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+					Return(nil, coreda.ErrBlobSizeOverLimit).Once()
+			},
+			expectedSubmitted: 0,
+			expectError:       true,
+			expectedErrorMsg:  "single test item exceeds DA blob size limit",
+			postSubmitValidator: func(t *testing.T, calls [][]string) {
+				assert.Empty(t, calls, "postSubmit should not be called on error")
+			},
+		},
+		{
+			name:      "UnrecoverableError",
+			items:     []string{"item1", "item2"},
+			marshaled: [][]byte{[]byte("m1"), []byte("m2")},
+			mockSetup: func(da *mocks.MockDA) {
+				da.On("SubmitWithOptions", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+					Return(nil, fmt.Errorf("network timeout")).Once()
+			},
+			expectedSubmitted: 0,
+			expectError:       true,
+			expectedErrorMsg:  "unrecoverable error during test batch submission",
+			postSubmitValidator: func(t *testing.T, calls [][]string) {
+				assert.Empty(t, calls, "postSubmit should not be called on failure")
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			da := &mocks.MockDA{}
+			m := newTestManagerWithDA(t, da)
+			ctx := context.Background()
+
+			// Track postSubmit calls
+			var postSubmitCalls [][]string
+			postSubmit := func(submitted []string, res *coreda.ResultSubmit, gasPrice float64) {
+				postSubmitCalls = append(postSubmitCalls, submitted)
+				assert.Equal(t, float64(1.0), gasPrice, "gasPrice should be 1.0")
+			}
+
+			// Setup DA mock
+			tt.mockSetup(da)
+
+			// Call submitHalfBatch
+			submitted, err := submitHalfBatch(m, ctx, tt.items, tt.marshaled, 1.0, postSubmit, "test", []byte("test-namespace"))
+
+			// Validate results
+			if tt.expectError {
+				assert.Error(t, err, "Expected error for test case %s", tt.name)
+				if tt.expectedErrorMsg != "" {
+					assert.Contains(t, err.Error(), tt.expectedErrorMsg, "Error message should contain expected text")
+				}
+			} else {
+				assert.NoError(t, err, "Expected no error for test case %s", tt.name)
+			}
+
+			assert.Equal(t, tt.expectedSubmitted, submitted, "Submitted count should match expected")
+
+			// Validate postSubmit calls
+			if tt.postSubmitValidator != nil {
+				tt.postSubmitValidator(t, postSubmitCalls)
+			}
+
+			da.AssertExpectations(t)
+		})
+	}
 }
