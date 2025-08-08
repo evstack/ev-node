@@ -102,6 +102,8 @@ type Manager struct {
 	signer signer.Signer
 
 	daHeight *atomic.Uint64
+	// lastPersistedDAHeight tracks the last DA height that was persisted to disk
+	lastPersistedDAHeight *atomic.Uint64
 
 	headerBroadcaster broadcaster[*types.SignedHeader]
 	dataBroadcaster   broadcaster[*types.Data]
@@ -367,6 +369,10 @@ func NewManager(
 	daH := atomic.Uint64{}
 	daH.Store(s.DAHeight)
 
+	// Initialize last persisted DA height to match current DA height
+	lastPersistedDAH := atomic.Uint64{}
+	lastPersistedDAH.Store(s.DAHeight)
+
 	m := &Manager{
 		signer:            signer,
 		config:            config,
@@ -374,6 +380,7 @@ func NewManager(
 		lastState:         s,
 		store:             store,
 		daHeight:          &daH,
+		lastPersistedDAHeight: &lastPersistedDAH,
 		headerBroadcaster: headerBroadcaster,
 		dataBroadcaster:   dataBroadcaster,
 		// channels are buffered to avoid blocking on input/output operations, buffer sizes are arbitrary
@@ -461,6 +468,21 @@ func (m *Manager) GetLastState() types.State {
 	return m.lastState
 }
 
+// shouldPersistDAHeight determines if we should persist the DA height based on the configured interval.
+// Returns true if we should persist, false otherwise.
+func (m *Manager) shouldPersistDAHeight(newDAHeight uint64) bool {
+	lastPersisted := m.lastPersistedDAHeight.Load()
+	interval := m.config.DA.PersistInterval
+	
+	// Always persist if interval is 0 (backward compatibility) or 1 (persist every block)
+	if interval <= 1 {
+		return true
+	}
+	
+	// Persist if we've reached the interval threshold
+	return newDAHeight-lastPersisted >= interval
+}
+
 // persistDAHeight updates the DAHeight in the persistent state.
 // This ensures that the last queried DA height is preserved across restarts.
 func (m *Manager) persistDAHeight(ctx context.Context, newDAHeight uint64) error {
@@ -477,9 +499,20 @@ func (m *Manager) persistDAHeight(ctx context.Context, newDAHeight uint64) error
 		return fmt.Errorf("failed to update state with new DA height %d: %w", newDAHeight, err)
 	}
 	
-	// Update the in-memory state
+	// Update the in-memory state and last persisted height
 	m.lastState = updatedState
+	m.lastPersistedDAHeight.Store(newDAHeight)
 	return nil
+}
+
+// maybePersistDAHeight persists the DA height only if the configured interval has been reached.
+// This reduces disk writes while maintaining reasonable restart recovery.
+func (m *Manager) maybePersistDAHeight(ctx context.Context, newDAHeight uint64) {
+	if m.shouldPersistDAHeight(newDAHeight) {
+		if err := m.persistDAHeight(ctx, newDAHeight); err != nil {
+			m.logger.Error().Err(err).Uint64("newDAHeight", newDAHeight).Msg("failed to persist DA height")
+		}
+	}
 }
 
 // GetDAIncludedHeight returns the height at which all blocks have been

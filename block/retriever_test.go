@@ -61,6 +61,7 @@ func setupManagerForRetrieverTest(t *testing.T, initialDAHeight uint64) (*Manage
 		config:                      config.Config{DA: config.DAConfig{BlockTime: config.DurationWrapper{Duration: 1 * time.Second}}},
 		genesis:                     genesis.Genesis{ProposerAddress: addr},
 		daHeight:                    &atomic.Uint64{},
+		lastPersistedDAHeight:       &atomic.Uint64{},
 		daIncludedHeight:            atomic.Uint64{},
 		headerInCh:                  make(chan NewHeaderEvent, eventInChLength),
 		headerStore:                 headerStore,
@@ -81,6 +82,7 @@ func setupManagerForRetrieverTest(t *testing.T, initialDAHeight uint64) (*Manage
 	}
 	manager.daIncludedHeight.Store(0)
 	manager.daHeight.Store(initialDAHeight)
+	manager.lastPersistedDAHeight.Store(initialDAHeight)
 
 	t.Cleanup(cancel)
 

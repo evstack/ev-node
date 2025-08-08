@@ -68,6 +68,7 @@ func setupManagerForSyncLoopTest(t *testing.T, initialState types.State) (
 		dataStoreCh:              dataStoreCh,
 		retrieveCh:               retrieveCh,
 		daHeight:                 &atomic.Uint64{},
+		lastPersistedDAHeight:    &atomic.Uint64{},
 		metrics:                  NopMetrics(),
 		headerStore:              &goheaderstore.Store[*types.SignedHeader]{},
 		dataStore:                &goheaderstore.Store[*types.Data]{},
@@ -75,6 +76,7 @@ func setupManagerForSyncLoopTest(t *testing.T, initialState types.State) (
 		validatorHasherProvider:  types.DefaultValidatorHasherProvider,
 	}
 	m.daHeight.Store(initialState.DAHeight)
+	m.lastPersistedDAHeight.Store(initialState.DAHeight)
 
 	ctx, cancel := context.WithCancel(context.Background())
 
@@ -873,11 +875,13 @@ func TestSyncLoop_MultipleHeadersArriveFirst_ThenData(t *testing.T) {
 		headerInCh:               headerInCh,
 		dataInCh:                 dataInCh,
 		daHeight:                 &atomic.Uint64{},
+		lastPersistedDAHeight:    &atomic.Uint64{},
 		metrics:                  NopMetrics(),
 		signaturePayloadProvider: types.DefaultSignaturePayloadProvider,
 		validatorHasherProvider:  types.DefaultValidatorHasherProvider,
 	}
 	m.daHeight.Store(initialState.DAHeight)
+	m.lastPersistedDAHeight.Store(initialState.DAHeight)
 
 	ctx, loopCancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer loopCancel()
