@@ -1,4 +1,4 @@
-name: Deploy PR previews
+name: Docs Deploy Preview
 
 on:
   # This workflow requires pull_request and won't work with pull_request_target

@@ -180,12 +180,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Download unit test coverage report
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v5
         with:
           name: unit-test-coverage-report-${{ github.sha }}
           path: ./unit-coverage
       - name: Download integration test coverage report
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v5
         with:
           name: integration-test-coverage-report-${{ github.sha }}
           path: ./integration-coverage
