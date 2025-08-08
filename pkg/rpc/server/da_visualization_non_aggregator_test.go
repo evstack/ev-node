@@ -168,4 +168,3 @@ func TestAggregatorWithNoSubmissionsHTML(t *testing.T) {
 	assert.NotContains(t, body, "Non-aggregator")
 	assert.NotContains(t, strings.ToLower(body), "non-aggregator nodes do not submit")
 }
-

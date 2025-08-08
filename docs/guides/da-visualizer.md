@@ -7,6 +7,7 @@ The Data Availability (DA) Visualizer is a built-in monitoring tool in Evolve th
 ## Overview
 
 The DA Visualizer provides:
+
 - Real-time monitoring of blob submissions (last 100 submissions)
 - Success/failure statistics and trends
 - Gas price tracking and cost analysis
@@ -74,6 +75,7 @@ GET /da/stats
 ```
 
 Returns aggregated statistics including:
+
 - Total submissions count
 - Success/failure rates
 - Average gas price
@@ -88,6 +90,7 @@ GET /da/health
 ```
 
 Returns the current health status of the DA layer including:
+
 - Connection status
 - Recent error rates
 - Performance metrics
@@ -98,6 +101,7 @@ Returns the current health status of the DA layer including:
 ### Real-time Monitoring
 
 The dashboard automatically updates every 30 seconds, displaying:
+
 - Recent submission feed with status indicators (last 100 submissions)
 - Success rate percentage
 - Current gas price trends
@@ -106,6 +110,7 @@ The dashboard automatically updates every 30 seconds, displaying:
 ### Submission Details
 
 Each submission entry shows:
+
 - Timestamp
 - Blob ID with link to detailed view
 - Number of blobs in the batch
@@ -116,6 +121,7 @@ Each submission entry shows:
 ### Statistics Dashboard
 
 The statistics section provides:
+
 - **Performance Metrics**: Success rate, average submission time
 - **Cost Analysis**: Total gas spent, average gas price over time
 - **Volume Metrics**: Total blobs submitted, average blob size
@@ -124,6 +130,7 @@ The statistics section provides:
 ### Health Monitoring
 
 The health status indicator shows:
+
 - 🟢 **Healthy**: DA layer responding normally
 - 🟡 **Warning**: Some failures but overall functional
 - 🔴 **Critical**: High failure rate or connection issues
