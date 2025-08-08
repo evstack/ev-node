@@ -71,6 +71,7 @@ func TestAddFlags(t *testing.T) {
 	assertFlagValue(t, flags, FlagDANamespace, DefaultConfig.DA.Namespace)
 	assertFlagValue(t, flags, FlagDASubmitOptions, DefaultConfig.DA.SubmitOptions)
 	assertFlagValue(t, flags, FlagDAMempoolTTL, DefaultConfig.DA.MempoolTTL)
+	assertFlagValue(t, flags, FlagDAMaxSubmitAttempts, DefaultConfig.DA.MaxSubmitAttempts)
 
 	// P2P flags
 	assertFlagValue(t, flags, FlagP2PListenAddress, DefaultConfig.P2P.ListenAddress)

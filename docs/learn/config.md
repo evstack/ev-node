@@ -4,6 +4,7 @@ This document provides a comprehensive reference for all configuration options a
 
 ## Table of Contents
 
+- [DA-Only Sync Mode](#da-only-sync-mode)
 - [Introduction to Configurations](#introduction-to-configurations)
 - [Base Configuration](#base-configuration)
   - [Root Directory](#root-directory)
@@ -49,6 +50,41 @@ This document provides a comprehensive reference for all configuration options a
   - [Signer Type](#signer-type)
   - [Signer Path](#signer-path)
   - [Signer Passphrase](#signer-passphrase)
+
+## DA-Only Sync Mode
+
+Evolve supports running nodes that sync exclusively from the Data Availability (DA) layer without participating in P2P networking. This mode is useful for:
+
+- **Pure DA followers**: Nodes that only need the canonical chain data from DA
+- **Resource optimization**: Reducing network overhead by avoiding P2P gossip
+- **Simplified deployment**: No need to configure or maintain P2P peer connections
+- **Isolated environments**: Nodes that should not participate in P2P communication
+
+**To enable DA-only sync mode:**
+
+1. **Leave P2P peers empty** (default behavior):
+   ```yaml
+   p2p:
+     peers: ""  # Empty or omit this field entirely
+   ```
+   
+2. **Configure DA connection** (required):
+   ```yaml
+   da:
+     address: "your-da-service:port"
+     namespace: "your-namespace"
+     # ... other DA configuration
+   ```
+
+3. **Optional**: You can still configure P2P listen address for potential future connections, but without peers, no P2P networking will occur.
+
+When running in DA-only mode, the node will:
+- ✅ Sync blocks and headers from the DA layer
+- ✅ Validate transactions and maintain state
+- ✅ Serve RPC requests
+- ❌ Not participate in P2P gossip or peer discovery
+- ❌ Not share blocks with other nodes via P2P
+- ❌ Not receive transactions via P2P (only from direct RPC submission)
 
 ## Configs
 
@@ -462,17 +498,21 @@ p2p:
 **Description:**
 A comma-separated list of peer addresses (e.g., multiaddresses) that the node will attempt to connect to for bootstrapping its P2P connections. These are often referred to as seed nodes.
 
+**For DA-only sync mode:** Leave this field empty (default) to disable P2P networking entirely. When no peers are configured, the node will sync exclusively from the Data Availability layer without participating in P2P gossip, peer discovery, or block sharing. This is useful for nodes that only need to follow the canonical chain data from DA.
+
 **YAML:**
 
 ```yaml
 p2p:
   peers: "/ip4/some_peer_ip/tcp/7676/p2p/PEER_ID1,/ip4/another_peer_ip/tcp/7676/p2p/PEER_ID2"
+  # For DA-only sync, leave peers empty:
+  # peers: ""
 ```
 
 **Command-line Flag:**
 `--rollkit.p2p.peers <string>`
 *Example:* `--rollkit.p2p.peers /dns4/seed.example.com/tcp/26656/p2p/12D3KooW...`
-*Default:* `""` (empty)
+*Default:* `""` (empty - enables DA-only sync mode)
 *Constant:* `FlagP2PPeers`
 
 ### P2P Blocked Peers
@@ -594,7 +634,7 @@ instrumentation:
 **Description:**
 The network address (host:port) where the Prometheus metrics server will listen for scraping requests.
 
-See [Metrics](/guides/metrics.md) for more details on what metrics are exposed.
+See [Metrics](/docs/guides/metrics.md) for more details on what metrics are exposed.
 
 **YAML:**
 

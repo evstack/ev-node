@@ -80,9 +80,10 @@ func getTestConfig(t *testing.T, n int) evconfig.Config {
 			LazyBlockInterval:        evconfig.DurationWrapper{Duration: 5 * time.Second},
 		},
 		DA: evconfig.DAConfig{
-			BlockTime: evconfig.DurationWrapper{Duration: 200 * time.Millisecond},
-			Address:   MockDAAddress,
-			Namespace: MockDANamespace,
+			BlockTime:         evconfig.DurationWrapper{Duration: 200 * time.Millisecond},
+			Address:           MockDAAddress,
+			Namespace:         MockDANamespace,
+			MaxSubmitAttempts: 30,
 		},
 		P2P: evconfig.P2PConfig{
 			ListenAddress: fmt.Sprintf("/ip4/127.0.0.1/tcp/%d", startPort+n),

@@ -16,4 +16,4 @@ In this section, you'll see a few examples of how you can deploy your chain envi
 These examples are for educational purposes only. Before deploying your chain for production use you should fully understand the services you are deploying and your choice in deployment method.
 :::
 
-* [Deploy with Docker Compose](/guides/deploy/local.md)
+* [Deploy with Docker Compose](/docs/guides/deploy/local.md)

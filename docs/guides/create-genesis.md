@@ -6,7 +6,7 @@ This guide will walk you through the process of setting up a genesis for your ch
 
 For this guide you need to have a chain directory where you have created and built your chain.
 
-If you don't have a chain directory yet, you can initialize a simple ignite chain by following [this tutorial](/guides/gm-world.md)
+If you don't have a chain directory yet, you can initialize a simple ignite chain by following [this tutorial](/docs/guides/gm-world.md)
 
 :::tip
 This guide will use the simple ignite chain created in linked guide. Make sure to update any relevant variables to match your chain.
@@ -27,7 +27,7 @@ STAKING_AMOUNT="1000000000stake"
 
 ## Rebuild your chain
 
-Ensure that `.gm` folder is present at `/Users/you/.gm` (if not, follow a [Guide](/guides/gm-world.md) to set it up) and run the following command to (re)generate an entrypoint binary out of the code:
+Ensure that `.gm` folder is present at `/Users/you/.gm` (if not, follow a [Guide](/docs/guides/gm-world.md) to set it up) and run the following command to (re)generate an entrypoint binary out of the code:
 
 ```sh
 make install
@@ -113,7 +113,7 @@ Finally, start the chain with your start command.
 For example, start the simple ignite chain with the following command:
 
 ```sh
-gmd start --evolve.node.aggregator --chain_id $CHAIN_ID
+gmd start --evolve.node.aggregator
 ```
 
 ## Summary

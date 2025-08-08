@@ -44,10 +44,6 @@ const (
 	// defaultMempoolTTL is the number of blocks until transaction is dropped from mempool
 	defaultMempoolTTL = 25
 
-	// maxSubmitAttempts defines how many times evolve will re-try to publish block to DA layer.
-	// This is temporary solution. It will be removed in future versions.
-	maxSubmitAttempts = 30
-
 	// Key for storing namespace migration state in the store
 	namespaceMigrationKey = "namespace_migration_completed"
 
@@ -58,9 +54,6 @@ const (
 var (
 	// dataHashForEmptyTxs to be used while only syncing headers from DA and no p2p to get the Data for no txs scenarios, the syncing can proceed without getting stuck forever.
 	dataHashForEmptyTxs = []byte{110, 52, 11, 156, 255, 179, 122, 152, 156, 165, 68, 230, 187, 120, 10, 44, 120, 144, 29, 63, 179, 55, 56, 118, 133, 17, 163, 6, 23, 175, 160, 29}
-
-	// initialBackoff defines initial value for block submission backoff
-	initialBackoff = 100 * time.Millisecond
 )
 
 // publishBlockFunc defines the function signature for publishing a block.
@@ -791,17 +784,6 @@ func (m *Manager) recordMetrics(data *types.Data) {
 	m.metrics.TotalTxs.Add(float64(len(data.Txs)))
 	m.metrics.BlockSizeBytes.Set(float64(data.Size()))
 	m.metrics.CommittedHeight.Set(float64(data.Metadata.Height))
-}
-
-func (m *Manager) exponentialBackoff(backoff time.Duration) time.Duration {
-	backoff *= 2
-	if backoff == 0 {
-		backoff = initialBackoff
-	}
-	if backoff > m.config.DA.BlockTime.Duration {
-		backoff = m.config.DA.BlockTime.Duration
-	}
-	return backoff
 }
 
 func (m *Manager) getLastBlockTime() time.Time {
