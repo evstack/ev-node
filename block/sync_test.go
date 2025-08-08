@@ -133,7 +133,7 @@ func TestSyncLoop_ProcessSingleBlock_HeaderFirst(t *testing.T) {
 	mockStore.On("UpdateState", mock.Anything, expectedNewState).Return(nil).Run(func(args mock.Arguments) { close(syncChan) }).Once()
 
 	mockStore.On("SetHeight", mock.Anything, newHeight).Return(nil).Once()
-	
+
 	// Add expectations for DA inclusion metadata storage
 	// These calls happen in storeDAInclusionMetadata when syncing blocks
 	headerKey := fmt.Sprintf("%s/%d/h", store.HeightToDAHeightKey, newHeight)
@@ -225,7 +225,7 @@ func TestSyncLoop_ProcessSingleBlock_DataFirst(t *testing.T) {
 	mockStore.On("SaveBlockData", mock.Anything, header, data, &header.Signature).Return(nil).Once()
 	mockStore.On("UpdateState", mock.Anything, expectedNewState).Return(nil).Run(func(args mock.Arguments) { close(syncChan) }).Once()
 	mockStore.On("SetHeight", mock.Anything, newHeight).Return(nil).Once()
-	
+
 	// Add expectations for DA inclusion metadata storage
 	// These calls happen in storeDAInclusionMetadata when syncing blocks
 	headerKey := fmt.Sprintf("%s/%d/h", store.HeightToDAHeightKey, newHeight)
@@ -343,7 +343,7 @@ func TestSyncLoop_ProcessMultipleBlocks_Sequentially(t *testing.T) {
 			t.Logf("Mock SetHeight called for H+1, updated mock height to %d", newHeight)
 		}).
 		Once()
-	
+
 	// Add expectations for DA inclusion metadata storage for H+1
 	headerKeyH1 := fmt.Sprintf("%s/%d/h", store.HeightToDAHeightKey, heightH1)
 	dataKeyH1 := fmt.Sprintf("%s/%d/d", store.HeightToDAHeightKey, heightH1)
@@ -362,7 +362,7 @@ func TestSyncLoop_ProcessMultipleBlocks_Sequentially(t *testing.T) {
 			t.Logf("Mock SetHeight called for H+2, updated mock height to %d", newHeight)
 		}).
 		Once()
-	
+
 	// Add expectations for DA inclusion metadata storage for H+2
 	headerKeyH2 := fmt.Sprintf("%s/%d/h", store.HeightToDAHeightKey, heightH2)
 	dataKeyH2 := fmt.Sprintf("%s/%d/d", store.HeightToDAHeightKey, heightH2)
@@ -496,7 +496,7 @@ func TestSyncLoop_ProcessBlocks_OutOfOrderArrival(t *testing.T) {
 			t.Logf("Mock SetHeight called for H+1, updated mock height to %d", newHeight)
 		}).
 		Once()
-	
+
 	// Add expectations for DA inclusion metadata storage for H+1
 	headerKeyH1 := fmt.Sprintf("%s/%d/h", store.HeightToDAHeightKey, heightH1)
 	dataKeyH1 := fmt.Sprintf("%s/%d/d", store.HeightToDAHeightKey, heightH1)
@@ -519,7 +519,7 @@ func TestSyncLoop_ProcessBlocks_OutOfOrderArrival(t *testing.T) {
 	mockStore.On("UpdateState", mock.Anything, expectedStateH2).Return(nil).
 		Run(func(args mock.Arguments) { close(syncChanH2) }).
 		Once()
-	
+
 	// Add expectations for DA inclusion metadata storage for H+2
 	headerKeyH2 := fmt.Sprintf("%s/%d/h", store.HeightToDAHeightKey, heightH2)
 	dataKeyH2 := fmt.Sprintf("%s/%d/d", store.HeightToDAHeightKey, heightH2)
@@ -634,7 +634,7 @@ func TestSyncLoop_IgnoreDuplicateEvents(t *testing.T) {
 	mockStore.On("UpdateState", mock.Anything, expectedStateH1).Return(nil).
 		Run(func(args mock.Arguments) { close(syncChanH1) }).
 		Once()
-	
+
 	// Add expectations for DA inclusion metadata storage
 	// These calls happen in storeDAInclusionMetadata when syncing blocks
 	headerKey := fmt.Sprintf("%s/%d/h", store.HeightToDAHeightKey, heightH1)
