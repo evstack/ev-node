@@ -329,10 +329,10 @@ func handleSuccessfulSubmission[T any](
 	remLen := len(remaining)
 	allSubmitted := res.SubmittedCount == uint64(remLen)
 
-		// Record submission in DA visualization server
-		if daVisualizationServer := server.GetDAVisualizationServer(); daVisualizationServer != nil {
-			daVisualizationServer.RecordSubmission(&res, gasPrice, len(currMarshaled))
-		}
+	// Record submission in DA visualization server
+	if daVisualizationServer := server.GetDAVisualizationServer(); daVisualizationServer != nil {
+		daVisualizationServer.RecordSubmission(res, retryStrategy.gasPrice, res.SubmittedCount)
+	}
 
 	m.logger.Info().Str("itemType", itemType).Float64("gasPrice", retryStrategy.gasPrice).Uint64("count", res.SubmittedCount).Msg("successfully submitted items to DA layer")
 

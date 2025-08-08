@@ -23,7 +23,7 @@ type DASubmissionInfo struct {
 	GasPrice   float64   `json:"gas_price"`
 	StatusCode string    `json:"status_code"`
 	Message    string    `json:"message,omitempty"`
-	NumBlobs   int       `json:"num_blobs"`
+	NumBlobs   uint64    `json:"num_blobs"`
 	BlobIDs    []string  `json:"blob_ids,omitempty"`
 }
 
@@ -48,7 +48,7 @@ func NewDAVisualizationServer(da coreda.DA, logger zerolog.Logger, isAggregator 
 
 // RecordSubmission records a DA submission for visualization
 // Only keeps the last 100 submissions in memory for the dashboard display
-func (s *DAVisualizationServer) RecordSubmission(result *coreda.ResultSubmit, gasPrice float64, numBlobs int) {
+func (s *DAVisualizationServer) RecordSubmission(result *coreda.ResultSubmit, gasPrice float64, numBlobs uint64) {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
 

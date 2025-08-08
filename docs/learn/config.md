@@ -63,12 +63,14 @@ Evolve supports running nodes that sync exclusively from the Data Availability (
 **To enable DA-only sync mode:**
 
 1. **Leave P2P peers empty** (default behavior):
+
    ```yaml
    p2p:
      peers: ""  # Empty or omit this field entirely
    ```
-   
+
 2. **Configure DA connection** (required):
+
    ```yaml
    da:
      address: "your-da-service:port"
@@ -79,6 +81,7 @@ Evolve supports running nodes that sync exclusively from the Data Availability (
 3. **Optional**: You can still configure P2P listen address for potential future connections, but without peers, no P2P networking will occur.
 
 When running in DA-only mode, the node will:
+
 - ✅ Sync blocks and headers from the DA layer
 - ✅ Validate transactions and maintain state
 - ✅ Serve RPC requests
