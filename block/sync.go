@@ -172,6 +172,16 @@ func (m *Manager) trySyncNextBlock(ctx context.Context, daHeight uint64) error {
 			return err
 		}
 
+		// Store the DA inclusion metadata for this block
+		// This is crucial for non-aggregator nodes to resume from the correct DA height on restart
+		if err = m.storeDAInclusionMetadata(ctx, hHeight, daHeight); err != nil {
+			m.logger.Error().Err(err).
+				Uint64("blockHeight", hHeight).
+				Uint64("daHeight", daHeight).
+				Msg("failed to store DA inclusion metadata during sync")
+			// Don't fail the sync, just log the error
+		}
+
 		// Record sync metrics
 		m.recordSyncMetrics("block_applied")
 

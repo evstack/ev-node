@@ -317,7 +317,28 @@ func NewManager(
 		return nil, err
 	}
 
-	if s.DAHeight < config.DA.StartHeight {
+	// Determine the DA height to start from based on the last applied block's DA inclusion
+	if s.LastBlockHeight > 0 {
+		// Try to find where the last applied block was included in DA
+		headerKey := fmt.Sprintf("%s/%d/h", storepkg.HeightToDAHeightKey, s.LastBlockHeight)
+		if daHeightBytes, err := store.GetMetadata(ctx, headerKey); err == nil && len(daHeightBytes) == 8 {
+			lastBlockDAHeight := binary.LittleEndian.Uint64(daHeightBytes)
+			// Start scanning from the next DA height after the last included block
+			s.DAHeight = lastBlockDAHeight + 1
+			logger.Info().
+				Uint64("lastBlockHeight", s.LastBlockHeight).
+				Uint64("lastBlockDAHeight", lastBlockDAHeight).
+				Uint64("startingDAHeight", s.DAHeight).
+				Msg("resuming DA scan from last applied block's DA inclusion height")
+		} else {
+			// Fallback: if we can't find DA inclusion info, use the persisted DA height
+			logger.Info().
+				Uint64("lastBlockHeight", s.LastBlockHeight).
+				Uint64("daHeight", s.DAHeight).
+				Msg("no DA inclusion metadata found for last block, using persisted DA height")
+		}
+	} else if s.DAHeight < config.DA.StartHeight {
+		// For fresh chains, use the configured start height
 		s.DAHeight = config.DA.StartHeight
 	}
 
@@ -517,6 +538,27 @@ func (m *Manager) IsDAIncluded(ctx context.Context, height uint64) (bool, error)
 	headerHash, dataHash := header.Hash(), data.DACommitment()
 	isIncluded := m.headerCache.IsDAIncluded(headerHash.String()) && (bytes.Equal(dataHash, dataHashForEmptyTxs) || m.dataCache.IsDAIncluded(dataHash.String()))
 	return isIncluded, nil
+}
+
+// storeDAInclusionMetadata stores the DA height where a block was included.
+// This is used by both aggregators (via SetSequencerHeightToDAHeight) and
+// non-aggregator nodes during sync to track where blocks came from in DA.
+func (m *Manager) storeDAInclusionMetadata(ctx context.Context, blockHeight uint64, daHeight uint64) error {
+	// Store header DA height
+	headerHeightBytes := make([]byte, 8)
+	binary.LittleEndian.PutUint64(headerHeightBytes, daHeight)
+	headerKey := fmt.Sprintf("%s/%d/h", storepkg.HeightToDAHeightKey, blockHeight)
+	if err := m.store.SetMetadata(ctx, headerKey, headerHeightBytes); err != nil {
+		return fmt.Errorf("failed to store header DA height: %w", err)
+	}
+
+	// Store data DA height (same as header for synced blocks)
+	dataKey := fmt.Sprintf("%s/%d/d", storepkg.HeightToDAHeightKey, blockHeight)
+	if err := m.store.SetMetadata(ctx, dataKey, headerHeightBytes); err != nil {
+		return fmt.Errorf("failed to store data DA height: %w", err)
+	}
+
+	return nil
 }
 
 // SetSequencerHeightToDAHeight stores the mapping from a Evolve block height to the corresponding

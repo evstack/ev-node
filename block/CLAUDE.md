@@ -9,6 +9,7 @@ The block package is the core of ev-node's block management system. It handles b
 ## Core Components
 
 ### Manager (`manager.go`)
+
 - **Purpose**: Central orchestrator for all block operations
 - **Key Responsibilities**:
   - Transaction aggregation into blocks
@@ -18,6 +19,7 @@ The block package is the core of ev-node's block management system. It handles b
   - P2P block/header gossiping
 
 ### Aggregation (`aggregation.go`, `lazy_aggregation_test.go`)
+
 - **Purpose**: Collects transactions from mempool and creates blocks
 - **Modes**:
   - **Normal Mode**: Produces blocks at regular intervals (BlockTime)
@@ -28,6 +30,7 @@ The block package is the core of ev-node's block management system. It handles b
   - `normalAggregationLoop`: Regular block production
 
 ### Synchronization (`sync.go`, `sync_test.go`)
+
 - **Purpose**: Keeps the node synchronized with the network
 - **Key Functions**:
   - `SyncLoop`: Main synchronization loop
@@ -36,6 +39,7 @@ The block package is the core of ev-node's block management system. It handles b
   - Handles header and data caching
 
 ### Data Availability (`da_includer.go`, `submitter.go`, `retriever.go`)
+
 - **DA Includer**: Manages DA blob inclusion proofs and validation
 - **Submitter**: Handles block submission to the DA layer with retry logic
 - **Retriever**: Fetches blocks from the DA layer
@@ -45,6 +49,7 @@ The block package is the core of ev-node's block management system. It handles b
   - Batch submission optimization
 
 ### Storage (`store.go`, `store_test.go`)
+
 - **Purpose**: Persistent storage for blocks and state
 - **Key Features**:
   - Block height tracking
@@ -53,6 +58,7 @@ The block package is the core of ev-node's block management system. It handles b
   - Migration support for namespace changes
 
 ### Pending Blocks (`pending_base.go`, `pending_headers.go`, `pending_data.go`)
+
 - **Purpose**: Manages blocks awaiting DA inclusion or validation
 - **Components**:
   - **PendingBase**: Base structure for pending blocks
@@ -64,6 +70,7 @@ The block package is the core of ev-node's block management system. It handles b
   - Memory-efficient caching
 
 ### Metrics (`metrics.go`, `metrics_helpers.go`)
+
 - **Purpose**: Performance monitoring and observability
 - **Key Metrics**:
   - Block production times
@@ -74,6 +81,7 @@ The block package is the core of ev-node's block management system. It handles b
 ## Key Workflows
 
 ### Block Production Flow
+
 1. Transactions collected from mempool
 2. Block created with proper header and data
 3. Block executed through executor
@@ -81,6 +89,7 @@ The block package is the core of ev-node's block management system. It handles b
 5. Block gossiped to P2P network
 
 ### Synchronization Flow
+
 1. Headers received from P2P network
 2. Headers validated and cached
 3. Block data retrieved from DA layer
@@ -88,6 +97,7 @@ The block package is the core of ev-node's block management system. It handles b
 5. Sync progress updated
 
 ### DA Submission Flow
+
 1. Block prepared for submission
 2. Blob created with block data
 3. Submission attempted with retries
@@ -97,27 +107,32 @@ The block package is the core of ev-node's block management system. It handles b
 ## Configuration
 
 ### Time Parameters
+
 - `BlockTime`: Target time between blocks (default: 1s)
 - `DABlockTime`: DA layer block time (default: 6s)
 - `LazyBlockTime`: Max time between blocks in lazy mode (default: 60s)
 
 ### Limits
+
 - `maxSubmitAttempts`: Max DA submission retries (30)
 - `defaultMempoolTTL`: Blocks until tx dropped (25)
 
 ## Testing Strategy
 
 ### Unit Tests
+
 - Test individual components in isolation
 - Mock external dependencies (DA, executor, sequencer)
 - Focus on edge cases and error conditions
 
 ### Integration Tests
+
 - Test component interactions
 - Verify block flow from creation to storage
 - Test synchronization scenarios
 
 ### Performance Tests (`da_speed_test.go`)
+
 - Measure DA submission performance
 - Test batch processing efficiency
 - Validate metrics accuracy
@@ -125,6 +140,7 @@ The block package is the core of ev-node's block management system. It handles b
 ## Common Development Tasks
 
 ### Adding a New DA Feature
+
 1. Update DA interfaces in `core/da`
 2. Modify `da_includer.go` for inclusion logic
 3. Update `submitter.go` for submission flow
@@ -132,12 +148,14 @@ The block package is the core of ev-node's block management system. It handles b
 5. Update tests and metrics
 
 ### Modifying Block Production
+
 1. Update aggregation logic in `aggregation.go`
 2. Adjust timing in Manager configuration
 3. Update metrics collection
 4. Test both normal and lazy modes
 
 ### Implementing New Sync Strategy
+
 1. Modify `SyncLoop` in `sync.go`
 2. Update pending block handling
 3. Adjust cache strategies
