@@ -11,10 +11,22 @@ import (
 )
 
 const (
-	submissionTimeout = 60 * time.Second
-	noGasPrice        = -1
-	initialBackoff    = 100 * time.Millisecond
+	submissionTimeout    = 60 * time.Second
+	noGasPrice           = -1
+	initialBackoff       = 100 * time.Millisecond
+	defaultGasPrice      = 0.0
+	defaultGasMultiplier = 1.0
 )
+
+// getGasMultiplier fetches the gas multiplier from DA layer with fallback to default value
+func (m *Manager) getGasMultiplier(ctx context.Context) float64 {
+	gasMultiplier, err := m.da.GasMultiplier(ctx)
+	if err != nil {
+		m.logger.Warn().Err(err).Msg("failed to get gas multiplier from DA layer, using default")
+		return defaultGasMultiplier
+	}
+	return gasMultiplier
+}
 
 // retryStrategy manages retry logic with backoff and gas price adjustments for DA submissions
 type retryStrategy struct {
@@ -223,7 +235,8 @@ func submitToDA[T any](
 
 	gasPrice, err := m.da.GasPrice(ctx)
 	if err != nil {
-		return err
+		m.logger.Warn().Err(err).Msg("failed to get gas price from DA layer, using default")
+		gasPrice = defaultGasPrice
 	}
 
 	retryStrategy := newRetryStrategy(gasPrice, m.config.DA.BlockTime.Duration, m.config.DA.MaxSubmitAttempts)
@@ -342,17 +355,7 @@ func handleSuccessfulSubmission[T any](
 
 	postSubmit(submitted, res, retryStrategy.gasPrice)
 
-	gasMultiplier, err := m.da.GasMultiplier(ctx)
-	if err != nil {
-		m.logger.Error().Err(err).Str("itemType", itemType).Msg("failed to get gas multiplier")
-		retryStrategy.BackoffOnFailure()
-		return submissionOutcome[T]{
-			RemainingItems:   notSubmitted,
-			RemainingMarshal: notSubmittedMarshaled,
-			NumSubmitted:     int(res.SubmittedCount),
-			AllSubmitted:     allSubmitted,
-		}
-	}
+	gasMultiplier := m.getGasMultiplier(ctx)
 
 	retryStrategy.ResetOnSuccess(gasMultiplier)
 
@@ -380,15 +383,7 @@ func handleMempoolFailure[T any](
 
 	m.recordDAMetrics("submission", DAModeFail)
 
-	gasMultiplier, err := m.da.GasMultiplier(ctx)
-	if err != nil {
-		m.logger.Error().Err(err).Msg("failed to get gas multiplier")
-		return submissionOutcome[T]{
-			RemainingItems:   remaining,
-			RemainingMarshal: marshaled,
-			AllSubmitted:     false,
-		}
-	}
+	gasMultiplier := m.getGasMultiplier(ctx)
 	retryStrategy.BackoffOnMempool(int(m.config.DA.MempoolTTL), m.config.DA.BlockTime.Duration, gasMultiplier)
 	m.logger.Info().Dur("backoff", retryStrategy.backoff).Float64("gasPrice", retryStrategy.gasPrice).Msg("retrying DA layer submission with")
 
@@ -431,17 +426,7 @@ func handleTooBigError[T any](
 		if totalSubmitted > 0 {
 			newRemaining := remaining[totalSubmitted:]
 			newMarshaled := marshaled[totalSubmitted:]
-			gasMultiplier, err := m.da.GasMultiplier(ctx)
-			if err != nil {
-				m.logger.Error().Err(err).Str("itemType", itemType).Msg("failed to get gas multiplier")
-				retryStrategy.BackoffOnFailure()
-				return submissionOutcome[T]{
-					RemainingItems:   newRemaining,
-					RemainingMarshal: newMarshaled,
-					NumSubmitted:     totalSubmitted,
-					AllSubmitted:     len(newRemaining) == 0,
-				}
-			}
+			gasMultiplier := m.getGasMultiplier(ctx)
 			retryStrategy.ResetOnSuccess(gasMultiplier)
 
 			return submissionOutcome[T]{
