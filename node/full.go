@@ -110,8 +110,6 @@ func newFullNode(
 		headerSyncService,
 		dataSyncService,
 		seqMetrics,
-		nodeConfig.DA.GasPrice,
-		nodeConfig.DA.GasMultiplier,
 		nodeOpts.ManagerOptions,
 	)
 	if err != nil {
@@ -197,8 +195,6 @@ func initBlockManager(
 	headerSyncService *evsync.HeaderSyncService,
 	dataSyncService *evsync.DataSyncService,
 	seqMetrics *block.Metrics,
-	gasPrice float64,
-	gasMultiplier float64,
 	managerOpts block.ManagerOptions,
 ) (*block.Manager, error) {
 	logger.Debug().Bytes("address", genesis.ProposerAddress).Msg("Proposer address")
@@ -218,8 +214,6 @@ func initBlockManager(
 		headerSyncService,
 		dataSyncService,
 		seqMetrics,
-		gasPrice,
-		gasMultiplier,
 		managerOpts,
 	)
 	if err != nil {

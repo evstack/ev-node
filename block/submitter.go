@@ -85,7 +85,13 @@ func submitToDA[T any](
 	submittedAll := false
 	var backoff time.Duration
 	attempt := 0
-	initialGasPrice := m.gasPrice
+	
+	// Get gas price from DA layer
+	initialGasPrice, err := m.da.GasPrice(ctx)
+	if err != nil {
+		m.logger.Warn().Err(err).Msg("failed to get gas price from DA layer, using default")
+		initialGasPrice = 0.0 // fallback default
+	}
 	gasPrice := initialGasPrice
 	remaining := items
 	numSubmitted := 0
@@ -138,8 +144,15 @@ func submitToDA[T any](
 			remaining = notSubmitted
 			marshaled = notSubmittedMarshaled
 			backoff = 0
-			if m.gasMultiplier > 0 && gasPrice != -1 {
-				gasPrice = gasPrice / m.gasMultiplier
+			
+			// Get gas multiplier from DA layer and adjust price
+			gasMultiplier, multErr := m.da.GasMultiplier(ctx)
+			if multErr != nil {
+				m.logger.Warn().Err(multErr).Msg("failed to get gas multiplier from DA layer, using default")
+				gasMultiplier = 1.0 // fallback default
+			}
+			if gasMultiplier > 0 && gasPrice != -1 {
+				gasPrice = gasPrice / gasMultiplier
 				gasPrice = max(gasPrice, initialGasPrice)
 			}
 			m.logger.Debug().Dur("backoff", backoff).Float64("gasPrice", gasPrice).Msg("resetting DA layer submission options")
@@ -148,8 +161,15 @@ func submitToDA[T any](
 			// Record failed DA submission (will retry)
 			m.recordDAMetrics("submission", DAModeFail)
 			backoff = m.config.DA.BlockTime.Duration * time.Duration(m.config.DA.MempoolTTL)
-			if m.gasMultiplier > 0 && gasPrice != -1 {
-				gasPrice = gasPrice * m.gasMultiplier
+			
+			// Get gas multiplier from DA layer and increase price for retry
+			gasMultiplier, multErr := m.da.GasMultiplier(ctx)
+			if multErr != nil {
+				m.logger.Warn().Err(multErr).Msg("failed to get gas multiplier from DA layer, using default")
+				gasMultiplier = 1.0 // fallback default
+			}
+			if gasMultiplier > 0 && gasPrice != -1 {
+				gasPrice = gasPrice * gasMultiplier
 			}
 			m.logger.Info().Dur("backoff", backoff).Float64("gasPrice", gasPrice).Msg("retrying DA layer submission")
 		case coreda.StatusContextCanceled:

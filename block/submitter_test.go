@@ -45,12 +45,14 @@ func newTestManagerWithDA(t *testing.T, da *mocks.MockDA) (m *Manager) {
 		proposerAddr,
 	)
 
+	// Set up DA mock to return gas parameters
+	da.On("GasPrice", mock.Anything).Return(1.0, nil).Maybe()
+	da.On("GasMultiplier", mock.Anything).Return(2.0, nil).Maybe()
+
 	return &Manager{
 		da:             da,
 		logger:         logger,
 		config:         nodeConf,
-		gasPrice:       1.0,
-		gasMultiplier:  2.0,
 		headerCache:    cache.NewCache[types.SignedHeader](),
 		dataCache:      cache.NewCache[types.Data](),
 		signer:         testSigner,
@@ -154,10 +156,12 @@ func runSubmitToDAFailureCase[T any](t *testing.T, tc submitToDAFailureCase[T]) 
 	assert.Contains(t, err.Error(), tc.errorMsg)
 
 	// Validate that gas price increased according to gas multiplier
-	previousGasPrice := m.gasPrice
-	assert.Equal(t, gasPriceHistory[0], m.gasPrice) // verify that the first call is done with the right price
+	expectedInitialGasPrice := 1.0
+	expectedGasMultiplier := 2.0
+	assert.Equal(t, gasPriceHistory[0], expectedInitialGasPrice) // verify that the first call is done with the right price
+	previousGasPrice := expectedInitialGasPrice
 	for _, gasPrice := range gasPriceHistory[1:] {
-		assert.Equal(t, gasPrice, previousGasPrice*m.gasMultiplier)
+		assert.Equal(t, gasPrice, previousGasPrice*expectedGasMultiplier)
 		previousGasPrice = gasPrice
 	}
 }
@@ -250,8 +254,9 @@ func runRetryPartialFailuresCase[T any](t *testing.T, tc retryPartialFailuresCas
 	m.logger = zerolog.Nop()
 	da := &mocks.MockDA{}
 	m.da = da
-	m.gasPrice = 1.0
-	m.gasMultiplier = 2.0
+	// Set up DA mock to return gas parameters
+	da.On("GasPrice", mock.Anything).Return(1.0, nil).Maybe()
+	da.On("GasMultiplier", mock.Anything).Return(2.0, nil).Maybe()
 	tc.setupStoreAndDA(m, mockStore, da)
 	ctx := t.Context()
 	tc.fillPending(ctx, t, m)
