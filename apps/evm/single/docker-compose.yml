@@ -1,10 +1,10 @@
-version: "3.8"
+name: "Evolve EVM"
 
 services:
-  rollkit-reth:
-    container_name: rollkit-reth
+  ev-reth:
+    container_name: ev-reth
     restart: unless-stopped
-    image: ghcr.io/rollkit/lumen:latest
+    image: ghcr.io/evstack/ev-reth:latest
     ports:
       - "9001:9001" # metrics
       - "30303:30303" # eth/66 peering
@@ -18,7 +18,7 @@ services:
     entrypoint: /bin/sh -c
     command:
       - |
-          lumen node \
+          ev-reth node \
             --chain /root/chain/genesis.json \
             --datadir /home/reth/eth-home \
             --metrics 0.0.0.0:9001 \
@@ -39,33 +39,36 @@ services:
             --txpool.max-account-slots 2048 \
             --txpool.max-new-txns 2048 \
             --txpool.additional-validation-tasks 16 \
-            --rollkit.enable
+            --ev-reth.enable
     networks:
-      - rollkit-network
+      - evolve-network
 
   local-da:
-    image: ghcr.io/rollkit/local-da:v0.1.0
+    image: ghcr.io/evstack/local-da:v0.1.0
     ports:
       - "7980:7980"
     command: ["-listen-all"]
     networks:
-      - rollkit-network
+      - evolve-network
 
-  rollkit-evm-single:
-    image: ghcr.io/rollkit/rollkit-evm-single:main
+  ev-node-evm-single:
+    image: ghcr.io/evstack/ev-node-evm-single:main
     depends_on:
-      rollkit-reth:
+      ev-reth:
         condition: service_started
       local-da:
         condition: service_started
+    ports:
+      - "7676:7676" # p2p
+      - "7331:7331" # rpc
     volumes:
       - evm-single-data:/root/.evm-single/
     restart: always
     entrypoint: /usr/bin/entrypoint.sh
     command: start
     environment:
-      - EVM_ENGINE_URL=http://rollkit-reth:8551
-      - EVM_ETH_URL=http://rollkit-reth:8545
+      - EVM_ENGINE_URL=http://ev-reth:8551
+      - EVM_ETH_URL=http://ev-reth:8545
       - EVM_JWT_SECRET=f747494bb0fb338a0d71f5f9fe5b5034c17cc988c229b59fd71e005ee692e9bf
       - EVM_GENESIS_HASH=0x2b8bbb1ea1e04f9c9809b4b278a8687806edc061a356c7dbc491930d8e922503
       - EVM_BLOCK_TIME=1s
@@ -74,14 +77,14 @@ services:
       # - DA_AUTH_TOKEN=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJBbGxvdyI6WyJwdWJsaWMiLCJyZWFkIiwid3JpdGUiXSwiTm9uY2UiOiJQcEswTmhyWi9IY05NWkVtUG9sSXNpRTRDcUpMdE9mbWtBMW0zMWFUaEswPSIsIkV4cGlyZXNBdCI6IjAwMDEtMDEtMDFUMDA6MDA6MDBaIn0.gaWh6tS6Rel1XFYclDkapNnZlaZVjrikCRNBxSDkCGk
       # - DA_NAMESPACE=00000000000000000000000000000000000000000008e5f679bf7116c1
     networks:
-      - rollkit-network
+      - evolve-network
 
 volumes:
   evm-single-data:
   reth:
 
 networks:
-  rollkit-network:
+  evolve-network:
     driver: bridge
     ipam:
       config:

@@ -1,6 +1,6 @@
 # EVM Node Scripts
 
-This directory contains Go scripts for running Rollkit EVM nodes.
+This directory contains Go scripts for running Evolve EVM nodes.
 
 ## run-evm-nodes.go
 
@@ -45,11 +45,11 @@ go build -tags run_evm -o run-evm-nodes scripts/run-evm-nodes.go
 
 2. **Infrastructure**:
    - Starts Local DA service on port 7980
-   - Launches two Lumen (Reth) instances via Docker:
+   - Launches two ev-reth instances via Docker:
      - Sequencer EVM: ports 8545 (RPC), 8551 (Engine), 8546 (WS)
      - Full Node EVM: ports 8555 (RPC), 8561 (Engine), 8556 (WS)
 
-3. **Rollkit Nodes**:
+3. **Evolve Nodes**:
    <!-- markdown-link-check-disable -->
    - Initializes and starts the sequencer node:
      - RPC: <http://localhost:36657>
@@ -66,7 +66,7 @@ go build -tags run_evm -o run-evm-nodes scripts/run-evm-nodes.go
 
 ### Architecture
 
-```ascii
+```txt
 ┌─────────────────┐     ┌─────────────────┐
 │   Sequencer     │     │   Full Node     │
 │  (Aggregator)   │◄────┤                 │
@@ -76,7 +76,7 @@ go build -tags run_evm -o run-evm-nodes scripts/run-evm-nodes.go
          │ Engine API            │ Engine API
          │                       │
 ┌────────▼────────┐     ┌────────▼────────┐
-│   Lumen EVM     │     │   Lumen EVM     │
+│   EV-Reth       │     │   EV-Reth       │
 │  (Sequencer)    │     │  (Full Node)    │
 └────────┬────────┘     └────────┬────────┘
          │                       │
@@ -104,7 +104,7 @@ The script performs comprehensive cleanup on exit:
    - 7676-7677 (P2P)
    - 8545, 8551, 8546 (Sequencer EVM)
    - 8555, 8561, 8556 (Full Node EVM)
-   - 36657, 46657 (Rollkit RPC)
+   - 36657, 46657 (Evolve RPC)
 
 2. **Docker issues**: Make sure Docker daemon is running and you have permissions
 
@@ -114,7 +114,7 @@ The script performs comprehensive cleanup on exit:
 
 ### Development
 
-The script follows Rollkit's patterns:
+The script follows Evolve's patterns:
 
 - Uses build tags for conditional compilation
 - Implements comprehensive process management

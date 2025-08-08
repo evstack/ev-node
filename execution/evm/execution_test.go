@@ -59,7 +59,7 @@ func TestEngineExecution(t *testing.T) {
 	genesisHash := common.HexToHash(GENESIS_HASH)
 	genesisTime := time.Now().UTC().Truncate(time.Second)
 	genesisStateRoot := common.HexToHash(GENESIS_STATEROOT)
-	rollkitGenesisStateRoot := genesisStateRoot[:]
+	GenesisStateRoot := genesisStateRoot[:]
 
 	t.Run("Build chain", func(tt *testing.T) {
 		jwtSecret := SetupTestRethEngine(tt, DOCKER_PATH, JWT_FILENAME)
@@ -77,10 +77,10 @@ func TestEngineExecution(t *testing.T) {
 		defer cancel()
 		stateRoot, gasLimit, err := executionClient.InitChain(ctx, genesisTime, initialHeight, CHAIN_ID)
 		require.NoError(t, err)
-		require.Equal(t, rollkitGenesisStateRoot, stateRoot)
+		require.Equal(t, GenesisStateRoot, stateRoot)
 		require.NotZero(t, gasLimit)
 
-		prevStateRoot := rollkitGenesisStateRoot
+		prevStateRoot := GenesisStateRoot
 		lastHeight, lastHash, lastTxs := checkLatestBlock(tt, ctx)
 		lastNonce := uint64(0)
 
@@ -167,10 +167,10 @@ func TestEngineExecution(t *testing.T) {
 		defer cancel()
 		stateRoot, gasLimit, err := executionClient.InitChain(ctx, genesisTime, initialHeight, CHAIN_ID)
 		require.NoError(t, err)
-		require.Equal(t, rollkitGenesisStateRoot, stateRoot)
+		require.Equal(t, GenesisStateRoot, stateRoot)
 		require.NotZero(t, gasLimit)
 
-		prevStateRoot := rollkitGenesisStateRoot
+		prevStateRoot := GenesisStateRoot
 		lastHeight, lastHash, lastTxs := checkLatestBlock(tt, ctx)
 
 		for blockHeight := initialHeight; blockHeight <= 10; blockHeight++ {

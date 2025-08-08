@@ -6,28 +6,19 @@ import (
 	"path/filepath"
 	"testing"
 	"time"
+
+	"github.com/rs/zerolog"
 )
-
-type mockLogger struct {
-	lastMsg string
-	lastKV  []any
-}
-
-func (m *mockLogger) Info(msg string, keyvals ...any) {
-	m.lastMsg = msg
-	m.lastKV = keyvals
-}
 
 // Note: TrapSignal is difficult to test completely because it calls os.Exit
 // In a production environment, you might want to make the exit behavior injectable
 // for better testability. This test only verifies the signal handling setup.
 func TestTrapSignal(t *testing.T) {
-	logger := &mockLogger{}
 	cb := func() {}
 
 	done := make(chan bool)
 	go func() {
-		TrapSignal(logger, cb)
+		TrapSignal(zerolog.Nop(), cb)
 		done <- true
 	}()
 

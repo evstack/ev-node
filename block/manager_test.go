@@ -9,21 +9,21 @@ import (
 	"time"
 
 	ds "github.com/ipfs/go-datastore"
-	logging "github.com/ipfs/go-log/v2"
 	"github.com/libp2p/go-libp2p/core/crypto"
+	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 
-	"github.com/rollkit/rollkit/core/da"
-	"github.com/rollkit/rollkit/pkg/cache"
-	genesispkg "github.com/rollkit/rollkit/pkg/genesis"
-	"github.com/rollkit/rollkit/pkg/signer"
-	noopsigner "github.com/rollkit/rollkit/pkg/signer/noop"
+	"github.com/evstack/ev-node/core/da"
+	"github.com/evstack/ev-node/pkg/cache"
+	genesispkg "github.com/evstack/ev-node/pkg/genesis"
+	"github.com/evstack/ev-node/pkg/signer"
+	noopsigner "github.com/evstack/ev-node/pkg/signer/noop"
 
-	storepkg "github.com/rollkit/rollkit/pkg/store"
-	"github.com/rollkit/rollkit/test/mocks"
-	"github.com/rollkit/rollkit/types"
+	storepkg "github.com/evstack/ev-node/pkg/store"
+	"github.com/evstack/ev-node/test/mocks"
+	"github.com/evstack/ev-node/types"
 )
 
 // WithinDuration asserts that the two durations are within the specified tolerance of each other.
@@ -40,7 +40,7 @@ func WithinDuration(t *testing.T, expected, actual, tolerance time.Duration) boo
 
 // Returns a minimalistic block manager using a mock DA Client
 func getManager(t *testing.T, da da.DA, gasPrice float64, gasMultiplier float64) (*Manager, *mocks.MockStore) {
-	logger := logging.Logger("test")
+	logger := zerolog.Nop()
 	mockStore := mocks.NewMockStore(t)
 	m := &Manager{
 		da:                       da,
@@ -53,7 +53,8 @@ func getManager(t *testing.T, da da.DA, gasPrice float64, gasMultiplier float64)
 		metrics:                  NopMetrics(),
 		store:                    mockStore,
 		txNotifyCh:               make(chan struct{}, 1),
-		signaturePayloadProvider: defaultSignaturePayloadProvider,
+		signaturePayloadProvider: types.DefaultSignaturePayloadProvider,
+		validatorHasherProvider:  types.DefaultValidatorHasherProvider,
 	}
 
 	m.publishBlock = m.publishBlockInternal
@@ -68,7 +69,7 @@ func TestInitialStateClean(t *testing.T) {
 
 	// Create genesis document
 	genesisData, _, _ := types.GetGenesisWithPrivkey("TestInitialStateClean")
-	logger := logging.Logger("test")
+	logger := zerolog.Nop()
 	es, _ := storepkg.NewDefaultInMemoryKVStore()
 	emptyStore := storepkg.New(es)
 	mockExecutor := mocks.NewMockExecutor(t)
@@ -77,7 +78,7 @@ func TestInitialStateClean(t *testing.T) {
 	mockExecutor.On("InitChain", ctx, genesisData.GenesisDAStartTime, genesisData.InitialHeight, genesisData.ChainID).
 		Return([]byte("mockAppHash"), uint64(1000), nil).Once()
 
-	s, err := getInitialState(ctx, genesisData, nil, emptyStore, mockExecutor, logger, nil /* uses default signature verification */)
+	s, err := getInitialState(ctx, genesisData, nil, emptyStore, mockExecutor, logger, DefaultManagerOptions())
 	require.NoError(err)
 	initialHeight := genesisData.InitialHeight
 	require.Equal(initialHeight-1, s.LastBlockHeight)
@@ -104,11 +105,11 @@ func TestInitialStateStored(t *testing.T) {
 	store := storepkg.New(es)
 	err := store.UpdateState(ctx, sampleState)
 	require.NoError(err)
-	logger := logging.Logger("test")
+	logger := zerolog.Nop()
 	mockExecutor := mocks.NewMockExecutor(t)
 
 	// getInitialState should not call InitChain if state exists
-	s, err := getInitialState(ctx, genesisData, nil, store, mockExecutor, logger, nil /* uses default signature verification */)
+	s, err := getInitialState(ctx, genesisData, nil, store, mockExecutor, logger, DefaultManagerOptions())
 	require.NoError(err)
 	require.Equal(s.LastBlockHeight, uint64(100))
 	require.Equal(s.InitialHeight, uint64(1))
@@ -120,7 +121,7 @@ func TestInitialStateStored(t *testing.T) {
 // TestInitialStateUnexpectedHigherGenesis verifies that getInitialState returns an error if the genesis initial height is higher than the stored state's last block height.
 func TestInitialStateUnexpectedHigherGenesis(t *testing.T) {
 	require := require.New(t)
-	logger := logging.Logger("test")
+	logger := zerolog.Nop()
 	ctx := context.Background()
 
 	// Create genesis document with initial height 2
@@ -143,7 +144,7 @@ func TestInitialStateUnexpectedHigherGenesis(t *testing.T) {
 	require.NoError(err)
 	mockExecutor := mocks.NewMockExecutor(t)
 
-	_, err = getInitialState(ctx, genesis, nil, store, mockExecutor, logger, nil /* uses default signature verification */)
+	_, err = getInitialState(ctx, genesis, nil, store, mockExecutor, logger, DefaultManagerOptions())
 	require.EqualError(err, "genesis.InitialHeight (2) is greater than last stored state's LastBlockHeight (0)")
 
 	// Assert mock expectations (InitChain should not have been called)
@@ -1088,13 +1089,13 @@ func TestSetRollkitHeightToDAHeight(t *testing.T) {
 		m.dataCache.SetDAIncluded(data.DACommitment().String(), dataHeight)
 
 		// Mock metadata storage
-		headerKey := fmt.Sprintf("%s/%d/h", storepkg.RollkitHeightToDAHeightKey, height)
-		dataKey := fmt.Sprintf("%s/%d/d", storepkg.RollkitHeightToDAHeightKey, height)
+		headerKey := fmt.Sprintf("%s/%d/h", storepkg.HeightToDAHeightKey, height)
+		dataKey := fmt.Sprintf("%s/%d/d", storepkg.HeightToDAHeightKey, height)
 		mockStore.On("SetMetadata", mock.Anything, headerKey, mock.Anything).Return(nil)
 		mockStore.On("SetMetadata", mock.Anything, dataKey, mock.Anything).Return(nil)
 
 		// Call the method
-		err := m.SetRollkitHeightToDAHeight(ctx, height)
+		err := m.SetSequencerHeightToDAHeight(ctx, height)
 		require.NoError(err)
 
 		mockStore.AssertExpectations(t)
@@ -1118,13 +1119,13 @@ func TestSetRollkitHeightToDAHeight(t *testing.T) {
 		// Note: we don't set data in cache for empty transactions
 
 		// Mock metadata storage - both should use header height for empty transactions
-		headerKey := fmt.Sprintf("%s/%d/h", storepkg.RollkitHeightToDAHeightKey, height)
-		dataKey := fmt.Sprintf("%s/%d/d", storepkg.RollkitHeightToDAHeightKey, height)
+		headerKey := fmt.Sprintf("%s/%d/h", storepkg.HeightToDAHeightKey, height)
+		dataKey := fmt.Sprintf("%s/%d/d", storepkg.HeightToDAHeightKey, height)
 		mockStore.On("SetMetadata", mock.Anything, headerKey, mock.Anything).Return(nil)
 		mockStore.On("SetMetadata", mock.Anything, dataKey, mock.Anything).Return(nil)
 
 		// Call the method
-		err := m.SetRollkitHeightToDAHeight(ctx, height)
+		err := m.SetSequencerHeightToDAHeight(ctx, height)
 		require.NoError(err)
 
 		mockStore.AssertExpectations(t)
@@ -1146,7 +1147,7 @@ func TestSetRollkitHeightToDAHeight(t *testing.T) {
 		m.dataCache.SetDAIncluded(data.DACommitment().String(), uint64(11))
 
 		// Call the method - should fail
-		err := m.SetRollkitHeightToDAHeight(ctx, height)
+		err := m.SetSequencerHeightToDAHeight(ctx, height)
 		require.Error(err)
 		require.Contains(err.Error(), "header hash")
 		require.Contains(err.Error(), "not found in cache")
@@ -1170,11 +1171,11 @@ func TestSetRollkitHeightToDAHeight(t *testing.T) {
 		m.headerCache.SetDAIncluded(header.Hash().String(), uint64(10))
 
 		// Mock metadata storage for header (should succeed)
-		headerKey := fmt.Sprintf("%s/%d/h", storepkg.RollkitHeightToDAHeightKey, height)
+		headerKey := fmt.Sprintf("%s/%d/h", storepkg.HeightToDAHeightKey, height)
 		mockStore.On("SetMetadata", mock.Anything, headerKey, mock.Anything).Return(nil)
 
 		// Call the method - should fail on data lookup
-		err := m.SetRollkitHeightToDAHeight(ctx, height)
+		err := m.SetSequencerHeightToDAHeight(ctx, height)
 		require.Error(err)
 		require.Contains(err.Error(), "data hash")
 		require.Contains(err.Error(), "not found in cache")
@@ -1193,7 +1194,7 @@ func TestSetRollkitHeightToDAHeight(t *testing.T) {
 		mockStore.On("GetBlockData", mock.Anything, height).Return(nil, nil, errors.New("block not found"))
 
 		// Call the method - should fail
-		err := m.SetRollkitHeightToDAHeight(ctx, height)
+		err := m.SetSequencerHeightToDAHeight(ctx, height)
 		require.Error(err)
 
 		mockStore.AssertExpectations(t)

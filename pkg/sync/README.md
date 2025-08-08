@@ -1,10 +1,10 @@
-# Rollkit Sync Service
+# Evolve Sync Service
 
-This document explains how the Rollkit Sync Service works, its dependencies, and its architecture.
+This document explains how the Evolve Sync Service works, its dependencies, and its architecture.
 
 ## Overview
 
-Rollkit's Sync Service is responsible for synchronizing block headers and data across nodes in the Rollkit network. It's a critical component that allows nodes to maintain a consistent view of the blockchain state.
+Evolve's Sync Service is responsible for synchronizing block headers and data across nodes in the Evolve network. It's a critical component that allows nodes to maintain a consistent view of the blockchain state.
 
 The sync mechanism consists of two main components:
 
@@ -147,7 +147,7 @@ The Block Manager uses several channels for communication between its components
 - `github.com/ipfs/go-datastore/sync` - Thread-safe datastore wrapper
 - `github.com/celestiaorg/go-header` - Header synchronization library
 - `github.com/libp2p/go-libp2p` - P2P networking stack
-- `github.com/rollkit/rollkit/core/da` - Data Availability client interface
+- `github.com/evstack/ev-node/core/da` - Data Availability client interface
 
 ## Data Flow
 

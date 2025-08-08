@@ -3,7 +3,7 @@ deps:
 	@echo "--> Installing dependencies"
 	@go mod download
 	@go mod tidy
-	@go run scripts/go-mod-tidy-all.go
+	@go run scripts/tidy.go
 .PHONY: deps
 
 tidy-all:
@@ -15,7 +15,7 @@ lint: vet
 	@echo "--> Running golangci-lint"
 	@golangci-lint run
 	@echo "--> Running markdownlint"
-	@markdownlint --config .markdownlint.yaml --ignore './specs/src/specs/**.md' '**/*.md'
+	@markdownlint --config .markdownlint.yaml '**/*.md'
 	@echo "--> Running hadolint"
 	@hadolint test/docker/mockserv.Dockerfile
 	@echo "--> Running yamllint"
@@ -31,7 +31,7 @@ lint-fix:
 	@echo "--> Formatting go"
 	@golangci-lint run --fix
 	@echo "--> Formatting markdownlint"
-	@markdownlint --config .markdownlint.yaml --ignore './specs/src/specs/**.md' '**/*.md' -f
+	@markdownlint --config .markdownlint.yaml --ignore './changelog.md' '**/*.md' -f
 .PHONY: lint-fix
 
 ## vet: Run go vet

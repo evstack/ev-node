@@ -43,14 +43,14 @@ func (s *DockerTestSuite) TestBasicDockerE2E() {
 		s.FundWallet(ctx, daWallet, 100_000_000_00)
 	})
 
-	s.T().Run("start rollkit chain node", func(t *testing.T) {
+	s.T().Run("start evolve chain node", func(t *testing.T) {
 		s.StartRollkitNode(ctx, bridgeNode, s.rollkitChain.GetNodes()[0])
 	})
 
-	s.T().Run("submit a transaction to the rollkit chain", func(t *testing.T) {
+	s.T().Run("submit a transaction to the evolve chain", func(t *testing.T) {
 		rollkitNode := s.rollkitChain.GetNodes()[0]
 
-// The http port resolvable by the test runner.
+		// The http port resolvable by the test runner.
 		httpPort := rollkitNode.GetHostHTTPPort()
 
 		client, err := NewClient("localhost", httpPort)

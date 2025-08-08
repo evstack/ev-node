@@ -4,7 +4,7 @@ import (
 	"errors"
 	"time"
 
-	"github.com/rollkit/rollkit/pkg/genesis"
+	"github.com/evstack/ev-node/pkg/genesis"
 )
 
 // InitStateVersion sets the Consensus.Block and Software versions,
@@ -28,7 +28,7 @@ type State struct {
 	LastBlockHeight uint64
 	LastBlockTime   time.Time
 
-	// DAHeight identifies DA block containing the latest applied Rollkit block.
+	// DAHeight identifies DA block containing the latest applied Evolve block.
 	DAHeight uint64
 
 	// Merkle root of the results from executing prev block
@@ -57,7 +57,7 @@ func NewFromGenesisDoc(genDoc genesis.Genesis) (State, error) {
 	return s, nil
 }
 
-func (s *State) NextState(header *SignedHeader, stateRoot []byte) (State, error) {
+func (s *State) NextState(header Header, stateRoot []byte) (State, error) {
 	height := header.Height()
 
 	return State{

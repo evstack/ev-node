@@ -267,9 +267,9 @@ func main() {
 			lines := strings.Split(nodeInfoStr, "\n")
 
 			for _, line := range lines {
-				if strings.Contains(line, "🔗 Full Address:") {
+				if strings.Contains(line, "Full:") {
 					// Extract the address part (after the color code)
-					parts := strings.Split(line, "Full Address:")
+					parts := strings.Split(line, "Full:")
 					if len(parts) >= 2 {
 						// Clean up ANSI color codes and whitespace
 						cleanAddr := strings.TrimSpace(parts[1])

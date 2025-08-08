@@ -10,20 +10,20 @@ import (
 
 	goheaderstore "github.com/celestiaorg/go-header/store"
 	ds "github.com/ipfs/go-datastore"
-	logging "github.com/ipfs/go-log/v2"
 	"github.com/libp2p/go-libp2p/core/crypto"
+	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/proto"
 
-	coreda "github.com/rollkit/rollkit/core/da"
-	"github.com/rollkit/rollkit/pkg/cache"
-	"github.com/rollkit/rollkit/pkg/config"
-	"github.com/rollkit/rollkit/pkg/genesis"
-	"github.com/rollkit/rollkit/pkg/signer/noop"
-	rollmocks "github.com/rollkit/rollkit/test/mocks"
-	"github.com/rollkit/rollkit/types"
+	coreda "github.com/evstack/ev-node/core/da"
+	"github.com/evstack/ev-node/pkg/cache"
+	"github.com/evstack/ev-node/pkg/config"
+	"github.com/evstack/ev-node/pkg/genesis"
+	"github.com/evstack/ev-node/pkg/signer/noop"
+	rollmocks "github.com/evstack/ev-node/test/mocks"
+	"github.com/evstack/ev-node/types"
 )
 
 func TestDASpeed(t *testing.T) {
@@ -92,8 +92,7 @@ func TestDASpeed(t *testing.T) {
 func setupManagerForTest(t *testing.T, initialDAHeight uint64) (*Manager, *rollmocks.MockDA) {
 	mockDAClient := rollmocks.NewMockDA(t)
 	mockStore := rollmocks.NewMockStore(t)
-	logger := logging.Logger("test")
-	_ = logging.SetLogLevel("test", "FATAL")
+	logger := zerolog.Nop()
 
 	headerStore, _ := goheaderstore.NewStore[*types.SignedHeader](ds.NewMapDatastore())
 	dataStore, _ := goheaderstore.NewStore[*types.Data](ds.NewMapDatastore())
@@ -119,22 +118,23 @@ func setupManagerForTest(t *testing.T, initialDAHeight uint64) (*Manager, *rollm
 			Node: config.NodeConfig{BlockTime: config.DurationWrapper{Duration: blockTime}},
 			DA:   config.DAConfig{BlockTime: config.DurationWrapper{Duration: blockTime}},
 		},
-		genesis:       genesis.Genesis{ProposerAddress: addr},
-		daHeight:      new(atomic.Uint64),
-		headerInCh:    make(chan NewHeaderEvent),
-		headerStore:   headerStore,
-		dataInCh:      make(chan NewDataEvent),
-		dataStore:     dataStore,
-		headerCache:   cache.NewCache[types.SignedHeader](),
-		dataCache:     cache.NewCache[types.Data](),
-		headerStoreCh: make(chan struct{}),
-		dataStoreCh:   make(chan struct{}),
-		retrieveCh:    make(chan struct{}),
-		logger:        logger,
-		lastStateMtx:  new(sync.RWMutex),
-		da:            mockDAClient,
-		signer:        noopSigner,
-		metrics:       NopMetrics(),
+		genesis:                     genesis.Genesis{ProposerAddress: addr},
+		daHeight:                    new(atomic.Uint64),
+		headerInCh:                  make(chan NewHeaderEvent),
+		headerStore:                 headerStore,
+		dataInCh:                    make(chan NewDataEvent),
+		dataStore:                   dataStore,
+		headerCache:                 cache.NewCache[types.SignedHeader](),
+		dataCache:                   cache.NewCache[types.Data](),
+		headerStoreCh:               make(chan struct{}),
+		dataStoreCh:                 make(chan struct{}),
+		retrieveCh:                  make(chan struct{}),
+		logger:                      logger,
+		lastStateMtx:                new(sync.RWMutex),
+		da:                          mockDAClient,
+		namespaceMigrationCompleted: &atomic.Bool{},
+		signer:                      noopSigner,
+		metrics:                     NopMetrics(),
 	}
 	manager.daIncludedHeight.Store(0)
 	manager.daHeight.Store(initialDAHeight)

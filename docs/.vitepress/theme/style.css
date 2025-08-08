@@ -1,0 +1,413 @@
+/**
+ * Customize default theme styling by overriding CSS variables:
+ * https://github.com/vuejs/vitepress/blob/main/src/client/theme-default/styles/vars.css
+ */
+
+/* Import Evolve brand fonts */
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap");
+
+/**
+ * Colors
+ * -------------------------------------------------------------------------- */
+
+:root {
+    --vp-c-brand: #ff0033;
+    --vp-c-brand-light: #ff3355;
+    --vp-c-brand-lighter: #ff6677;
+    --vp-c-brand-lightest: #ffccdd;
+    --vp-c-brand-dark: #cc0029;
+    --vp-c-brand-darker: #990020;
+    --vp-c-brand-dimm: rgba(255, 0, 51, 0.08);
+
+    /* Additional Evolve brand colors */
+    --vp-c-bg: #0a0a0a;
+    --vp-c-bg-soft: #141414;
+    --vp-c-bg-mute: #1a1a1a;
+    --vp-c-slate: #475569;
+    --vp-c-violet: #4c1d95;
+    --vp-c-violet-light: #6d28d9;
+}
+
+/**
+ * Component: Button
+ * -------------------------------------------------------------------------- */
+
+:root {
+    --vp-button-brand-border: var(--vp-c-brand-light);
+    --vp-button-brand-text: var(--vp-c-white);
+    --vp-button-brand-bg: var(--vp-c-brand);
+    --vp-button-brand-hover-border: var(--vp-c-brand-light);
+    --vp-button-brand-hover-text: var(--vp-c-white);
+    --vp-button-brand-hover-bg: var(--vp-c-brand-light);
+    --vp-button-brand-active-border: var(--vp-c-brand-light);
+    --vp-button-brand-active-text: var(--vp-c-white);
+    --vp-button-brand-active-bg: var(--vp-button-brand-bg);
+}
+
+/**
+ * Component: Home
+ * -------------------------------------------------------------------------- */
+
+:root {
+    --vp-home-hero-name-color: transparent;
+    --vp-home-hero-name-background: -webkit-linear-gradient(
+        120deg,
+        #ff0033 30%,
+        #6d28d9
+    );
+
+    /* Remove gradient background for hero image */
+    --vp-home-hero-image-background-image: none;
+    --vp-home-hero-image-filter: none;
+}
+
+@media (min-width: 640px) {
+    :root {
+        --vp-home-hero-image-filter: none;
+    }
+}
+
+@media (min-width: 960px) {
+    :root {
+        --vp-home-hero-image-filter: none;
+    }
+}
+
+/**
+ * Component: Custom Block
+ * -------------------------------------------------------------------------- */
+
+:root {
+    --vp-custom-block-tip-border: var(--vp-c-brand);
+    --vp-custom-block-tip-text: var(--vp-c-brand-darker);
+    --vp-custom-block-tip-bg: var(--vp-c-brand-dimm);
+}
+
+.dark {
+    --vp-custom-block-tip-border: var(--vp-c-brand);
+    --vp-custom-block-tip-text: var(--vp-c-brand-lightest);
+    --vp-custom-block-tip-bg: var(--vp-c-brand-dimm);
+}
+
+/**
+ * Component: Algolia
+ * -------------------------------------------------------------------------- */
+
+.DocSearch {
+    --docsearch-primary-color: var(--vp-c-brand) !important;
+}
+
+/**
+ * Typography
+ * -------------------------------------------------------------------------- */
+
+:root {
+    --vp-font-family-base:
+        "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen,
+        Ubuntu, Cantarell, "Fira Sans", "Droid Sans", "Helvetica Neue",
+        sans-serif;
+    --vp-font-family-mono:
+        "IBM Plex Mono", source-code-pro, Menlo, Monaco, Consolas,
+        "Courier New", monospace;
+}
+
+/**
+ * Dark Mode Adjustments
+ * -------------------------------------------------------------------------- */
+
+.dark {
+    --vp-c-bg: #000000;
+    --vp-c-bg-soft: #0a0a0a;
+    --vp-c-bg-mute: #141414;
+    --vp-c-bg-alt: #000000;
+}
+
+/**
+ * Homepage Customizations
+ * -------------------------------------------------------------------------- */
+
+/* Center align hero text and buttons */
+.VPHero .VPHomeHero {
+    text-align: center;
+}
+
+.VPHero .name,
+.VPHero .text,
+.VPHero .tagline {
+    text-align: center !important;
+    margin-left: auto;
+    margin-right: auto;
+}
+
+/* Center the action buttons */
+.VPHero .actions {
+    justify-content: center !important;
+    display: flex !important;
+    gap: 16px;
+}
+
+.VPHero .VPButton {
+    margin: 0 !important;
+}
+
+/* Simple grid background - applied to body only */
+body {
+    background-color: #ffffff;
+    background-image:
+        linear-gradient(#ff0033 1px, transparent 1px),
+        linear-gradient(90deg, #ff0033 1px, transparent 1px);
+    background-size: 60px 60px;
+    background-attachment: fixed;
+}
+
+.dark body {
+    background-color: #000000;
+}
+
+/* Adjust grid opacity for light/dark modes with thicker lines */
+body {
+    background-image:
+        linear-gradient(rgba(255, 0, 51, 0.12) 3px, transparent 3px),
+        linear-gradient(90deg, rgba(255, 0, 51, 0.12) 3px, transparent 3px);
+}
+
+.dark body {
+    background-image:
+        linear-gradient(rgba(255, 0, 51, 0.15) 3px, transparent 3px),
+        linear-gradient(90deg, rgba(255, 0, 51, 0.15) 3px, transparent 3px);
+}
+
+/* Style the hero image (logo) */
+.VPHero .VPImage {
+    display: block;
+    margin: 0 auto;
+}
+
+/* Make the hero logo bigger */
+.VPHero .VPImage img {
+    height: 120px !important;
+    width: auto !important;
+    max-width: none !important;
+}
+
+/* Make all layout components transparent to show body background */
+.Layout,
+.VPContent,
+.VPDoc,
+.VPHome {
+    background-color: transparent !important;
+}
+
+/* Make content areas transparent by default to show body grid background */
+.VPContent,
+.VPHome,
+.Layout > * {
+    background-color: transparent !important;
+    background: transparent !important;
+}
+
+/* Documentation pages - solid background for readability */
+.VPDoc {
+    background-color: #ffffff !important;
+    min-height: 100vh;
+}
+
+.dark .VPDoc {
+    background-color: #0a0a0a !important;
+}
+
+/* Documentation content area */
+.VPDoc .container,
+.VPDoc .content,
+.VPDocContent {
+    background-color: #ffffff !important;
+}
+
+.dark .VPDoc .container,
+.dark .VPDoc .content,
+.dark .VPDocContent {
+    background-color: #0a0a0a !important;
+}
+
+/* Add padding to doc content for better readability */
+.VPDoc .VPDocOutlineDropdown,
+.VPDoc .content-container {
+    padding: 1rem;
+}
+
+/* Sidebar background for documentation pages */
+.VPSidebar {
+    background-color: rgba(255, 255, 255, 0.95) !important;
+    backdrop-filter: blur(8px);
+}
+
+.dark .VPSidebar {
+    background-color: rgba(10, 10, 10, 0.95) !important;
+    backdrop-filter: blur(8px);
+}
+
+/* Feature boxes - ensure proper backgrounds in light/dark modes */
+.VPFeature {
+    background-color: #ffffff !important;
+    border-color: #e5e5e5 !important;
+}
+
+.dark .VPFeature {
+    background-color: #0a0a0a !important;
+    border-color: #2a2a2a !important;
+}
+
+/* Ensure all VitePress components respect light/dark backgrounds */
+:root {
+    --vp-c-bg: #ffffff;
+    --vp-c-bg-soft: #f6f6f6;
+    --vp-c-bg-mute: #f0f0f0;
+}
+
+/* Fix navbar backgrounds - more specific targeting including scroll states */
+.VPNav,
+.VPNav .VPNavBar,
+.VPNavBar,
+header.VPNav,
+.VPNav.scrolled,
+.VPNavBar.scrolled,
+.VPNav.filled,
+.VPNavBar.filled {
+    background-color: rgba(255, 255, 255, 0.8) !important;
+    backdrop-filter: blur(12px);
+    border-bottom: 1px solid rgba(0, 0, 0, 0.1) !important;
+}
+
+.dark .VPNav,
+.dark .VPNav .VPNavBar,
+.dark .VPNavBar,
+.dark header.VPNav,
+.dark .VPNav.scrolled,
+.dark .VPNavBar.scrolled,
+.dark .VPNav.filled,
+.dark .VPNavBar.filled {
+    background-color: rgba(0, 0, 0, 0.8) !important;
+    backdrop-filter: blur(12px);
+    border-bottom: 1px solid rgba(255, 0, 51, 0.2) !important;
+}
+
+/* Target the main nav container */
+.VPNavBar.has-sidebar,
+.VPNavBar.no-sidebar {
+    background-color: inherit !important;
+}
+
+.VPLocalNav {
+    background-color: rgba(255, 255, 255, 0.8) !important;
+    backdrop-filter: blur(12px);
+    border-bottom: 1px solid rgba(0, 0, 0, 0.1) !important;
+}
+
+.dark .VPLocalNav {
+    background-color: rgba(0, 0, 0, 0.8) !important;
+    backdrop-filter: blur(12px);
+    border-bottom: 1px solid rgba(255, 0, 51, 0.2) !important;
+}
+
+/* Footer styling with grid background */
+.VPFooter {
+    background-color: #ffffff !important;
+    border-top: 1px solid rgba(0, 0, 0, 0.1) !important;
+    position: relative;
+}
+
+.dark .VPFooter {
+    background-color: #000000 !important;
+    border-top: 1px solid rgba(255, 0, 51, 0.2) !important;
+}
+
+/* Footer also transparent to show body grid background */
+.VPFooter .VPFooterCopyright {
+    background-color: transparent;
+    padding: 8px 16px;
+}
+
+/* Ensure nav screen (mobile menu) also has correct background */
+.VPNavScreen {
+    background-color: #ffffff !important;
+}
+
+.dark .VPNavScreen {
+    background-color: #000000 !important;
+}
+
+/* Override VitePress default nav styles completely */
+html.dark {
+    --vp-nav-bg-color: rgba(0, 0, 0, 0.8) !important;
+    --vp-c-bg: #000000 !important;
+    --vp-c-bg-soft: #000000 !important;
+}
+
+html:not(.dark) {
+    --vp-nav-bg-color: rgba(255, 255, 255, 0.8) !important;
+    --vp-c-bg: #ffffff !important;
+    --vp-c-bg-soft: #ffffff !important;
+}
+
+/* Force nav background using CSS variables */
+:root {
+    --vp-nav-bg-color: rgba(255, 255, 255, 0.8);
+    --vp-nav-height: 55px;
+}
+
+.dark {
+    --vp-nav-bg-color: rgba(0, 0, 0, 0.8);
+}
+
+/* Apply the variable to nav elements (excluding children to preserve theme toggle) */
+.VPNav,
+.VPNavBar,
+html .VPNav,
+html .VPNavBar,
+html.dark .VPNav,
+html.dark .VPNavBar {
+    background: var(--vp-nav-bg-color) !important;
+}
+
+/* Ensure nav stays consistent during scroll transitions */
+.VPNav[data-scrolled="true"],
+.VPNavBar[data-scrolled="true"] {
+    background: var(--vp-nav-bg-color) !important;
+}
+
+/**
+ * Custom Logo Styling
+ * -------------------------------------------------------------------------- */
+
+/* Make the logo bigger */
+.VPNavBarTitle .VPImage {
+    height: 55px !important;
+    width: auto !important;
+}
+
+/* Adjust logo container */
+.VPNavBarTitle {
+    display: flex;
+    align-items: center;
+}
+
+/* Remove any max width constraints on the logo */
+.VPNavBarTitle .logo {
+    max-width: none !important;
+    height: 55px !important;
+}
+
+/* Ensure the logo link takes full height */
+.VPNavBarTitle a {
+    display: flex;
+    align-items: center;
+    height: 100%;
+}
+
+/* Make sure the image inside logo takes full size */
+.VPNavBarTitle img {
+    height: 55px !important;
+    width: auto !important;
+    max-height: 55px !important;
+}
+

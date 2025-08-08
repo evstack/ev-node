@@ -12,15 +12,15 @@ import (
 
 	"github.com/ipfs/go-datastore"
 	"github.com/ipfs/go-datastore/sync"
-	logging "github.com/ipfs/go-log/v2"
 	"github.com/libp2p/go-libp2p/core/crypto"
 	"github.com/libp2p/go-libp2p/core/peer"
 	mocknet "github.com/libp2p/go-libp2p/p2p/net/mock"
 	"github.com/multiformats/go-multiaddr"
+	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/require"
 
-	"github.com/rollkit/rollkit/pkg/config"
-	"github.com/rollkit/rollkit/pkg/p2p/key"
+	"github.com/evstack/ev-node/pkg/config"
+	"github.com/evstack/ev-node/pkg/p2p/key"
 )
 
 type testNet []*Client
@@ -67,7 +67,7 @@ func getAddr(sk crypto.PrivKey) (multiaddr.Multiaddr, error) {
 	return a, nil
 }
 
-func startTestNetwork(ctx context.Context, t *testing.T, n int, conf map[int]hostDescr, logger logging.EventLogger) testNet {
+func startTestNetwork(ctx context.Context, t *testing.T, n int, conf map[int]hostDescr, logger zerolog.Logger) testNet {
 	t.Helper()
 	require := require.New(t)
 
@@ -114,16 +114,12 @@ func startTestNetwork(ctx context.Context, t *testing.T, n int, conf map[int]hos
 		require.NoError(err)
 
 		client, err := NewClient(
-			config.Config{
-				ChainID: conf[i].chainID,
-				RootDir: tempDir,
-				P2P: config.P2PConfig{
-					Peers: seeds[i],
-				},
+			config.P2PConfig{
+				Peers: seeds[i],
 			},
-
-			nodeKey,
+			nodeKey.PrivKey,
 			sync.MutexWrap(datastore.NewMapDatastore()),
+			"test-chain",
 			logger,
 			NopMetrics(),
 		)

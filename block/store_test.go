@@ -11,19 +11,19 @@ import (
 	"time"
 
 	ds "github.com/ipfs/go-datastore"
-	logging "github.com/ipfs/go-log/v2"
+	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 
-	"github.com/rollkit/rollkit/pkg/config"
-	"github.com/rollkit/rollkit/pkg/signer/noop"
-	storepkg "github.com/rollkit/rollkit/pkg/store"
+	"github.com/evstack/ev-node/pkg/config"
+	"github.com/evstack/ev-node/pkg/signer/noop"
+	storepkg "github.com/evstack/ev-node/pkg/store"
 
 	// Use existing store mock if available, or define one
-	mocksStore "github.com/rollkit/rollkit/test/mocks"
-	extmocks "github.com/rollkit/rollkit/test/mocks/external"
-	"github.com/rollkit/rollkit/types"
+	mocksStore "github.com/evstack/ev-node/test/mocks"
+	extmocks "github.com/evstack/ev-node/test/mocks/external"
+	"github.com/evstack/ev-node/types"
 )
 
 func setupManagerForStoreRetrieveTest(t *testing.T) (
@@ -55,8 +55,7 @@ func setupManagerForStoreRetrieveTest(t *testing.T) (
 	nodeConf := config.DefaultConfig
 	genDoc, pk, _ := types.GetGenesisWithPrivkey("test") // Use test helper
 
-	logger := logging.Logger("test")
-	_ = logging.SetLogLevel("test", "FATAL")
+	logger := zerolog.Nop()
 	ctx, cancel = context.WithCancel(context.Background())
 
 	// Mock initial metadata reads during manager creation if necessary

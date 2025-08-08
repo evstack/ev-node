@@ -1,6 +1,7 @@
 package da
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"errors"
@@ -19,6 +20,7 @@ type DummyDA struct {
 	proofs             map[string]Proof
 	blobsByHeight      map[uint64][]ID
 	timestampsByHeight map[uint64]time.Time
+	namespaceByID      map[string][]byte // Track namespace for each blob ID
 	maxBlobSize        uint64
 	gasPrice           float64
 	gasMultiplier      float64
@@ -42,6 +44,7 @@ func NewDummyDA(maxBlobSize uint64, gasPrice float64, gasMultiplier float64, blo
 		proofs:             make(map[string]Proof),
 		blobsByHeight:      make(map[uint64][]ID),
 		timestampsByHeight: make(map[uint64]time.Time),
+		namespaceByID:      make(map[string][]byte),
 		maxBlobSize:        maxBlobSize,
 		gasPrice:           gasPrice,
 		gasMultiplier:      gasMultiplier,
@@ -117,8 +120,17 @@ func (d *DummyDA) GetIDs(ctx context.Context, height uint64, namespace []byte) (
 		}, nil
 	}
 
+	// Filter IDs by namespace
+	filteredIDs := make([]ID, 0)
+	for _, id := range ids {
+		idStr := string(id)
+		if ns, exists := d.namespaceByID[idStr]; exists && bytes.Equal(ns, namespace) {
+			filteredIDs = append(filteredIDs, id)
+		}
+	}
+
 	return &GetIDsResult{
-		IDs:       ids,
+		IDs:       filteredIDs,
 		Timestamp: d.timestampsByHeight[height],
 	}, nil
 }
@@ -210,6 +222,7 @@ func (d *DummyDA) SubmitWithOptions(ctx context.Context, blobs []Blob, gasPrice 
 		d.blobs[idStr] = blob
 		d.commitments[idStr] = commitment
 		d.proofs[idStr] = commitment // Simple proof
+		d.namespaceByID[idStr] = namespace // Store namespace for this blob
 
 		ids = append(ids, id)
 	}

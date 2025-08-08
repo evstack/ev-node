@@ -22,9 +22,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/rollkit/rollkit/pkg/p2p/key"
-	"github.com/rollkit/rollkit/pkg/rpc/client"
-	pb "github.com/rollkit/rollkit/types/pb/rollkit/v1"
+	"github.com/evstack/ev-node/pkg/p2p/key"
+	"github.com/evstack/ev-node/pkg/rpc/client"
+	pb "github.com/evstack/ev-node/types/pb/evnode/v1"
 )
 
 // WorkDir defines the default working directory for spawned processes.
@@ -100,6 +100,8 @@ func (s *SystemUnderTest) AwaitNodeUp(t *testing.T, rpcAddr string, timeout time
 		require.NoError(t, err)
 	}, timeout, timeout/10, "node is not up")
 }
+
+// AwaitNBlocks waits until the node has produced at least `n` blocks.
 func (s *SystemUnderTest) AwaitNBlocks(t *testing.T, n uint64, rpcAddr string, timeout time.Duration) {
 	t.Helper()
 	ctx, done := context.WithTimeout(context.Background(), timeout)

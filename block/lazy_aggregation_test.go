@@ -7,11 +7,11 @@ import (
 	"testing"
 	"time"
 
-	logging "github.com/ipfs/go-log/v2"
+	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/rollkit/rollkit/pkg/config"
+	"github.com/evstack/ev-node/pkg/config"
 )
 
 // mockPublishBlock is used to control the behavior of publishBlock during tests
@@ -54,7 +54,7 @@ func setupTestManager(t *testing.T, blockTime, lazyTime time.Duration) (*Manager
 	pubMock := &mockPublishBlock{
 		calls: make(chan struct{}, 10), // Buffer to avoid blocking in tests
 	}
-	logger := logging.Logger("test")
+	logger := zerolog.Nop()
 	m := &Manager{
 		logger: logger,
 		config: config.Config{

@@ -7,13 +7,15 @@ import (
 
 	"github.com/spf13/cobra"
 
-	kvexecutor "github.com/rollkit/rollkit/apps/testapp/kv"
-	"github.com/rollkit/rollkit/da/jsonrpc"
-	rollcmd "github.com/rollkit/rollkit/pkg/cmd"
-	"github.com/rollkit/rollkit/pkg/p2p"
-	"github.com/rollkit/rollkit/pkg/p2p/key"
-	"github.com/rollkit/rollkit/pkg/store"
-	"github.com/rollkit/rollkit/sequencers/single"
+	kvexecutor "github.com/evstack/ev-node/apps/testapp/kv"
+	"github.com/evstack/ev-node/da/jsonrpc"
+	"github.com/evstack/ev-node/node"
+	rollcmd "github.com/evstack/ev-node/pkg/cmd"
+	genesispkg "github.com/evstack/ev-node/pkg/genesis"
+	"github.com/evstack/ev-node/pkg/p2p"
+	"github.com/evstack/ev-node/pkg/p2p/key"
+	"github.com/evstack/ev-node/pkg/store"
+	"github.com/evstack/ev-node/sequencers/single"
 )
 
 var RunCmd = &cobra.Command{
@@ -31,7 +33,7 @@ var RunCmd = &cobra.Command{
 		// Get KV endpoint flag
 		kvEndpoint, _ := cmd.Flags().GetString(flagKVEndpoint)
 		if kvEndpoint == "" {
-			logger.Info("KV endpoint flag not set, using default from http_server")
+			logger.Info().Msg("KV endpoint flag not set, using default from http_server")
 		}
 
 		// Create test implementations
@@ -70,8 +72,14 @@ var RunCmd = &cobra.Command{
 			if err != nil {
 				return fmt.Errorf("failed to start KV executor HTTP server: %w", err)
 			} else {
-				logger.Info("KV executor HTTP server started", "endpoint", kvEndpoint)
+				logger.Info().Str("endpoint", kvEndpoint).Msg("KV executor HTTP server started")
 			}
+		}
+
+		genesisPath := filepath.Join(filepath.Dir(nodeConfig.ConfigPath()), "genesis.json")
+		genesis, err := genesispkg.LoadGenesis(genesisPath)
+		if err != nil {
+			return fmt.Errorf("failed to load genesis: %w", err)
 		}
 
 		sequencer, err := single.NewSequencer(
@@ -79,7 +87,7 @@ var RunCmd = &cobra.Command{
 			logger,
 			datastore,
 			&daJrpc.DA,
-			[]byte(nodeConfig.ChainID),
+			[]byte(genesis.ChainID),
 			nodeConfig.Node.BlockTime.Duration,
 			singleMetrics,
 			nodeConfig.Node.Aggregator,
@@ -88,11 +96,11 @@ var RunCmd = &cobra.Command{
 			return err
 		}
 
-		p2pClient, err := p2p.NewClient(nodeConfig, nodeKey, datastore, logger, p2p.NopMetrics())
+		p2pClient, err := p2p.NewClient(nodeConfig.P2P, nodeKey.PrivKey, datastore, genesis.ChainID, logger, p2p.NopMetrics())
 		if err != nil {
 			return err
 		}
 
-		return rollcmd.StartNode(logger, cmd, executor, sequencer, &daJrpc.DA, p2pClient, datastore, nodeConfig, nil)
+		return rollcmd.StartNode(logger, cmd, executor, sequencer, &daJrpc.DA, p2pClient, datastore, nodeConfig, genesis, node.NodeOptions{})
 	},
 }

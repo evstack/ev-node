@@ -1,24 +1,24 @@
-module github.com/rollkit/rollkit/apps/evm/single
+module github.com/evstack/ev-node/apps/evm/single
 
 go 1.24.1
 
 toolchain go1.24.2
 
 replace (
-	github.com/rollkit/rollkit => ../../../
-	github.com/rollkit/rollkit/core => ../../../core
-	github.com/rollkit/rollkit/da => ../../../da
-	github.com/rollkit/rollkit/execution/evm => ../../../execution/evm
-	github.com/rollkit/rollkit/sequencers/single => ../../../sequencers/single
+	github.com/evstack/ev-node => ../../../
+	github.com/evstack/ev-node/core => ../../../core
+	github.com/evstack/ev-node/da => ../../../da
+	github.com/evstack/ev-node/execution/evm => ../../../execution/evm
+	github.com/evstack/ev-node/sequencers/single => ../../../sequencers/single
 )
 
 require (
 	github.com/ethereum/go-ethereum v1.15.0
-	github.com/rollkit/rollkit v0.14.2-0.20250317130407-e9e0a1b0485e
-	github.com/rollkit/rollkit/core v0.0.0-20250317130407-e9e0a1b0485e
-	github.com/rollkit/rollkit/da v0.0.0-20250317130407-e9e0a1b0485e
-	github.com/rollkit/rollkit/execution/evm v0.0.0-00010101000000-000000000000
-	github.com/rollkit/rollkit/sequencers/single v0.0.0-00010101000000-000000000000
+	github.com/evstack/ev-node v0.14.2-0.20250317130407-e9e0a1b0485e
+	github.com/evstack/ev-node/core v0.0.0-20250317130407-e9e0a1b0485e
+	github.com/evstack/ev-node/da v0.0.0-20250317130407-e9e0a1b0485e
+	github.com/evstack/ev-node/execution/evm v0.0.0-00010101000000-000000000000
+	github.com/evstack/ev-node/sequencers/single v0.0.0-00010101000000-000000000000
 	github.com/spf13/cobra v1.9.1
 )
 
@@ -267,6 +267,7 @@ require (
 	github.com/raulk/go-watchdog v1.3.0 // indirect
 	github.com/rivo/uniseg v0.2.0 // indirect
 	github.com/rs/cors v1.11.1 // indirect
+	github.com/rs/zerolog v1.34.0 // indirect
 	github.com/sagikazarmark/locafero v0.7.0 // indirect
 	github.com/secure-systems-lab/go-securesystemslib v0.4.0 // indirect
 	github.com/serialx/hashring v0.0.0-20200727003509-22c0c7ab6b1b // indirect
@@ -281,7 +282,6 @@ require (
 	github.com/spf13/cast v1.7.1 // indirect
 	github.com/spf13/pflag v1.0.6 // indirect
 	github.com/spf13/viper v1.20.1 // indirect
-	github.com/stretchr/objx v0.5.2 // indirect
 	github.com/stretchr/testify v1.10.0 // indirect
 	github.com/subosito/gotenv v1.6.0 // indirect
 	github.com/supranational/blst v0.3.14 // indirect
@@ -326,17 +326,17 @@ require (
 	go.uber.org/mock v0.5.0 // indirect
 	go.uber.org/multierr v1.11.0 // indirect
 	go.uber.org/zap v1.27.0 // indirect
-	golang.org/x/crypto v0.39.0 // indirect
+	golang.org/x/crypto v0.40.0 // indirect
 	golang.org/x/exp v0.0.0-20250506013437-ce4c2cf36ca6 // indirect
 	golang.org/x/mod v0.25.0 // indirect
-	golang.org/x/net v0.41.0 // indirect
+	golang.org/x/net v0.42.0 // indirect
 	golang.org/x/oauth2 v0.28.0 // indirect
-	golang.org/x/sync v0.15.0 // indirect
-	golang.org/x/sys v0.33.0 // indirect
-	golang.org/x/term v0.32.0 // indirect
-	golang.org/x/text v0.26.0 // indirect
+	golang.org/x/sync v0.16.0 // indirect
+	golang.org/x/sys v0.34.0 // indirect
+	golang.org/x/term v0.33.0 // indirect
+	golang.org/x/text v0.27.0 // indirect
 	golang.org/x/time v0.9.0 // indirect
-	golang.org/x/tools v0.33.0 // indirect
+	golang.org/x/tools v0.34.0 // indirect
 	golang.org/x/xerrors v0.0.0-20240903120638-7835f813f4da // indirect
 	gonum.org/v1/gonum v0.16.0 // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20250106144421-5f5ef82da422 // indirect

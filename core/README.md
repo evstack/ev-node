@@ -1,14 +1,14 @@
-# Rollkit Core Package
+# Evolve Core Package
 
-The `core` package is the zero-dependency foundation of Rollkit. It provides the essential interfaces and types that enable modular builds of different application formats (e.g., sequencer, full node, light client) while preventing circular dependencies.
+The `core` package is the zero-dependency foundation of Evolve. It provides the essential interfaces and types that enable modular builds of different application formats (e.g., sequencer, full node, light client) while preventing circular dependencies.
 
 ## Purpose
 
-The primary goal of the `core` package is to define common contracts (interfaces) for key components within Rollkit, such as execution, sequencing, and data availability (DA). By having all other Rollkit modules depend solely on `core`, we decouple their implementations. This allows each component to be compiled independently and avoids circular import issues, which can arise when components directly depend on each other.
+The primary goal of the `core` package is to define common contracts (interfaces) for key components within Evolve, such as execution, sequencing, and data availability (DA). By having all other Evolve modules depend solely on `core`, we decouple their implementations. This allows each component to be compiled independently and avoids circular import issues, which can arise when components directly depend on each other.
 
 ## Key Interfaces
 
-The `core` package defines several crucial interfaces that standardize interactions between different parts of a Rollkit node. Here are the main ones:
+The `core` package defines several crucial interfaces that standardize interactions between different parts of a Evolve node. Here are the main ones:
 
 ### Execution
 
@@ -103,7 +103,7 @@ type Client interface {
 
 ## Contributing
 
-The `core` package is central to Rollkit's architecture. Modifications here can have wide-ranging effects. Please adhere to the following guidelines when contributing:
+The `core` package is central to Evolve's architecture. Modifications here can have wide-ranging effects. Please adhere to the following guidelines when contributing:
 
 - **Compatibility:** Prioritize backward compatibility. Changes to existing interfaces should be made carefully.
 - **ADRs for Significant Changes:** For substantial changes, especially to interfaces, please propose them via an Architecture Decision Record (ADR). The ADR should detail the proposed changes and the reasoning behind them.

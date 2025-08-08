@@ -11,21 +11,21 @@ import (
 	"time"
 
 	goheaderstore "github.com/celestiaorg/go-header/store"
-	logging "github.com/ipfs/go-log/v2"
 	"github.com/libp2p/go-libp2p/core/crypto"
+	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 
-	coresequencer "github.com/rollkit/rollkit/core/sequencer"
-	"github.com/rollkit/rollkit/pkg/cache"
-	"github.com/rollkit/rollkit/pkg/config"
-	genesispkg "github.com/rollkit/rollkit/pkg/genesis"
-	"github.com/rollkit/rollkit/pkg/signer"
-	noopsigner "github.com/rollkit/rollkit/pkg/signer/noop"
-	storepkg "github.com/rollkit/rollkit/pkg/store"
-	"github.com/rollkit/rollkit/test/mocks"
-	"github.com/rollkit/rollkit/types"
+	coresequencer "github.com/evstack/ev-node/core/sequencer"
+	"github.com/evstack/ev-node/pkg/cache"
+	"github.com/evstack/ev-node/pkg/config"
+	genesispkg "github.com/evstack/ev-node/pkg/genesis"
+	"github.com/evstack/ev-node/pkg/signer"
+	noopsigner "github.com/evstack/ev-node/pkg/signer/noop"
+	storepkg "github.com/evstack/ev-node/pkg/store"
+	"github.com/evstack/ev-node/test/mocks"
+	"github.com/evstack/ev-node/types"
 )
 
 // setupManagerForPublishBlockTest creates a Manager instance with mocks for testing publishBlockInternal.
@@ -54,10 +54,7 @@ func setupManagerForPublishBlockTest(
 	genesis := genesispkg.NewGenesis("testchain", initialHeight, time.Now(), proposerAddr)
 
 	_, cancel := context.WithCancel(context.Background())
-	logger := logging.Logger("test")
-	if logBuffer != nil {
-		_ = logging.SetLogLevel("test", "debug")
-	}
+	logger := zerolog.Nop()
 
 	lastSubmittedHeaderBytes := make([]byte, 8)
 	binary.LittleEndian.PutUint64(lastSubmittedHeaderBytes, lastSubmittedHeaderHeight)
@@ -92,7 +89,8 @@ func setupManagerForPublishBlockTest(
 		metrics:                  NopMetrics(),
 		pendingHeaders:           nil,
 		pendingData:              nil,
-		signaturePayloadProvider: defaultSignaturePayloadProvider,
+		signaturePayloadProvider: types.DefaultSignaturePayloadProvider,
+		validatorHasherProvider:  types.DefaultValidatorHasherProvider,
 	}
 	manager.publishBlock = manager.publishBlockInternal
 
@@ -163,8 +161,7 @@ func Test_publishBlock_NoBatch(t *testing.T) {
 	mockStore := mocks.NewMockStore(t)
 	mockSeq := mocks.NewMockSequencer(t)
 	mockExec := mocks.NewMockExecutor(t)
-	logger := logging.Logger("test")
-	_ = logging.SetLogLevel("test", "FATAL")
+	logger := zerolog.Nop()
 	chainID := "Test_publishBlock_NoBatch"
 	genesisData, privKey, _ := types.GetGenesisWithPrivkey(chainID)
 	noopSigner, err := noopsigner.NewNoopSigner(privKey)
@@ -184,7 +181,8 @@ func Test_publishBlock_NoBatch(t *testing.T) {
 		},
 		lastStateMtx:             &sync.RWMutex{},
 		metrics:                  NopMetrics(),
-		signaturePayloadProvider: defaultSignaturePayloadProvider,
+		signaturePayloadProvider: types.DefaultSignaturePayloadProvider,
+		validatorHasherProvider:  types.DefaultValidatorHasherProvider,
 	}
 
 	m.publishBlock = m.publishBlockInternal
@@ -234,8 +232,7 @@ func Test_publishBlock_EmptyBatch(t *testing.T) {
 	mockStore := mocks.NewMockStore(t)
 	mockSeq := mocks.NewMockSequencer(t)
 	mockExec := mocks.NewMockExecutor(t)
-	logger := logging.Logger("test")
-	_ = logging.SetLogLevel("test", "FATAL")
+	logger := zerolog.Nop()
 	chainID := "Test_publishBlock_EmptyBatch"
 	genesisData, privKey, _ := types.GetGenesisWithPrivkey(chainID)
 	noopSigner, err := noopsigner.NewNoopSigner(privKey)
@@ -274,7 +271,8 @@ func Test_publishBlock_EmptyBatch(t *testing.T) {
 			return nil
 		}),
 		daHeight:                 &daH,
-		signaturePayloadProvider: defaultSignaturePayloadProvider,
+		signaturePayloadProvider: types.DefaultSignaturePayloadProvider,
+		validatorHasherProvider:  types.DefaultValidatorHasherProvider,
 	}
 
 	m.publishBlock = m.publishBlockInternal

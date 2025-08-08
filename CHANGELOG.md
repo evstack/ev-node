@@ -13,12 +13,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 <!-- New features or capabilities -->
--
+- Added gRPC execution client implementation for remote execution services using Connect-RPC protocol ([#2490](https://github.com/evstack/ev-node/pull/2490))
+- Added `ExecutorService` protobuf definition with InitChain, GetTxs, ExecuteTxs, and SetFinal RPCs ([#2490](https://github.com/evstack/ev-node/pull/2490))
+- Added new `grpc` app for running EVNode with a remote execution layer via gRPC ([#2490](https://github.com/evstack/ev-node/pull/2490))
 
 ### Changed
 
 <!-- Changes to existing functionality -->
--
+- Updated EVM execution client to use new `txpoolExt_getTxs` RPC API for retrieving pending transactions as RLP-encoded bytes
 
 ### Deprecated
 
@@ -109,4 +111,4 @@ Pre-release versions: 0.x.y (anything may change)
 -->
 
 <!-- Links -->
-[Unreleased]: https://github.com/rollkit/rollkit/compare/v1.0.0-beta.1...HEAD
+[Unreleased]: https://github.com/evstack/ev-node/compare/v1.0.0-beta.1...HEAD

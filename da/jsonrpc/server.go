@@ -8,14 +8,14 @@ import (
 	"time"
 
 	"github.com/filecoin-project/go-jsonrpc"
-	logging "github.com/ipfs/go-log/v2"
+	"github.com/rs/zerolog"
 
-	"github.com/rollkit/rollkit/core/da"
+	"github.com/evstack/ev-node/core/da"
 )
 
 // Server is a jsonrpc service that can serve the DA interface
 type Server struct {
-	logger   logging.EventLogger
+	logger   zerolog.Logger
 	srv      *http.Server
 	rpc      *jsonrpc.RPCServer
 	listener net.Listener
@@ -26,66 +26,66 @@ type Server struct {
 
 // serverInternalAPI provides the actual RPC methods.
 type serverInternalAPI struct {
-	logger logging.EventLogger
+	logger zerolog.Logger
 	daImpl da.DA
 }
 
 // Get implements the RPC method.
 func (s *serverInternalAPI) Get(ctx context.Context, ids []da.ID, ns []byte) ([]da.Blob, error) {
-	s.logger.Debug("RPC server: Get called", "num_ids", len(ids), "namespace", string(ns))
+	s.logger.Debug().Int("num_ids", len(ids)).Str("namespace", string(ns)).Msg("RPC server: Get called")
 	return s.daImpl.Get(ctx, ids, ns)
 }
 
 // GetIDs implements the RPC method.
 func (s *serverInternalAPI) GetIDs(ctx context.Context, height uint64, ns []byte) (*da.GetIDsResult, error) {
-	s.logger.Debug("RPC server: GetIDs called", "height", height, "namespace", string(ns))
+	s.logger.Debug().Uint64("height", height).Str("namespace", string(ns)).Msg("RPC server: GetIDs called")
 	return s.daImpl.GetIDs(ctx, height, ns)
 }
 
 // GetProofs implements the RPC method.
 func (s *serverInternalAPI) GetProofs(ctx context.Context, ids []da.ID, ns []byte) ([]da.Proof, error) {
-	s.logger.Debug("RPC server: GetProofs called", "num_ids", len(ids), "namespace", string(ns))
+	s.logger.Debug().Int("num_ids", len(ids)).Str("namespace", string(ns)).Msg("RPC server: GetProofs called")
 	return s.daImpl.GetProofs(ctx, ids, ns)
 }
 
 // Commit implements the RPC method.
 func (s *serverInternalAPI) Commit(ctx context.Context, blobs []da.Blob, ns []byte) ([]da.Commitment, error) {
-	s.logger.Debug("RPC server: Commit called", "num_blobs", len(blobs), "namespace", string(ns))
+	s.logger.Debug().Int("num_blobs", len(blobs)).Str("namespace", string(ns)).Msg("RPC server: Commit called")
 	return s.daImpl.Commit(ctx, blobs, ns)
 }
 
 // Validate implements the RPC method.
 func (s *serverInternalAPI) Validate(ctx context.Context, ids []da.ID, proofs []da.Proof, ns []byte) ([]bool, error) {
-	s.logger.Debug("RPC server: Validate called", "num_ids", len(ids), "num_proofs", len(proofs), "namespace", string(ns))
+	s.logger.Debug().Int("num_ids", len(ids)).Int("num_proofs", len(proofs)).Str("namespace", string(ns)).Msg("RPC server: Validate called")
 	return s.daImpl.Validate(ctx, ids, proofs, ns)
 }
 
 // Submit implements the RPC method. This is the primary submit method which includes options.
 func (s *serverInternalAPI) Submit(ctx context.Context, blobs []da.Blob, gasPrice float64, ns []byte) ([]da.ID, error) {
-	s.logger.Debug("RPC server: Submit called", "num_blobs", len(blobs), "gas_price", gasPrice, "namespace", string(ns))
+	s.logger.Debug().Int("num_blobs", len(blobs)).Float64("gas_price", gasPrice).Str("namespace", string(ns)).Msg("RPC server: Submit called")
 	return s.daImpl.Submit(ctx, blobs, gasPrice, ns)
 }
 
 // SubmitWithOptions implements the RPC method.
 func (s *serverInternalAPI) SubmitWithOptions(ctx context.Context, blobs []da.Blob, gasPrice float64, ns []byte, options []byte) ([]da.ID, error) {
-	s.logger.Debug("RPC server: SubmitWithOptions called", "num_blobs", len(blobs), "gas_price", gasPrice, "namespace", string(ns), "options", string(options))
+	s.logger.Debug().Int("num_blobs", len(blobs)).Float64("gas_price", gasPrice).Str("namespace", string(ns)).Str("options", string(options)).Msg("RPC server: SubmitWithOptions called")
 	return s.daImpl.SubmitWithOptions(ctx, blobs, gasPrice, ns, options)
 }
 
 // GasPrice implements the RPC method.
 func (s *serverInternalAPI) GasPrice(ctx context.Context) (float64, error) {
-	s.logger.Debug("RPC server: GasPrice called")
+	s.logger.Debug().Msg("RPC server: GasPrice called")
 	return s.daImpl.GasPrice(ctx)
 }
 
 // GasMultiplier implements the RPC method.
 func (s *serverInternalAPI) GasMultiplier(ctx context.Context) (float64, error) {
-	s.logger.Debug("RPC server: GasMultiplier called")
+	s.logger.Debug().Msg("RPC server: GasMultiplier called")
 	return s.daImpl.GasMultiplier(ctx)
 }
 
 // NewServer accepts the host address port and the DA implementation to serve as a jsonrpc service
-func NewServer(logger logging.EventLogger, address, port string, daImplementation da.DA) *Server {
+func NewServer(logger zerolog.Logger, address, port string, daImplementation da.DA) *Server {
 	rpc := jsonrpc.NewServer(jsonrpc.WithServerErrors(getKnownErrorsMapping()))
 	srv := &Server{
 		rpc:    rpc,
@@ -114,7 +114,7 @@ func (s *Server) Start(context.Context) error {
 	couldStart := s.started.CompareAndSwap(false, true)
 
 	if !couldStart {
-		s.logger.Warn("cannot start server: already started")
+		s.logger.Warn().Msg("cannot start server: already started")
 		return nil
 	}
 	listener, err := net.Listen("tcp", s.srv.Addr)
@@ -122,7 +122,7 @@ func (s *Server) Start(context.Context) error {
 		return err
 	}
 	s.listener = listener
-	s.logger.Info("server started", "listening on", s.srv.Addr)
+	s.logger.Info().Str("listening_on", s.srv.Addr).Msg("server started")
 	//nolint:errcheck
 	go s.srv.Serve(listener)
 	return nil
@@ -134,7 +134,7 @@ func (s *Server) Start(context.Context) error {
 func (s *Server) Stop(ctx context.Context) error {
 	couldStop := s.started.CompareAndSwap(true, false)
 	if !couldStop {
-		s.logger.Warn("cannot stop server: already stopped")
+		s.logger.Warn().Msg("cannot stop server: already stopped")
 		return nil
 	}
 	err := s.srv.Shutdown(ctx)
@@ -142,6 +142,6 @@ func (s *Server) Stop(ctx context.Context) error {
 		return err
 	}
 	s.listener = nil
-	s.logger.Info("server stopped")
+	s.logger.Info().Msg("server stopped")
 	return nil
 }

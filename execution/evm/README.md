@@ -1,6 +1,6 @@
 # Go Execution EVM
 
-This repository implements the `execution.Executor` interface from `github.com/rollkit/rollkit/core/execution` (currently on feature branch `feature/exec_api`). It provides a pure Engine API-based execution client for Rollkit.
+This repository implements the `execution.Executor` interface from `github.com/evstack/ev-node/core/execution` (currently on feature branch `feature/exec_api`). It provides a pure Engine API-based execution client for Evolve.
 
 ## EngineClient Implementation
 
@@ -9,9 +9,9 @@ The `EngineClient` is a 100% Engine API compatible implementation of the `execut
 ### Genesis and initial height
 
 In the context of the EVM, the genesis block is designated as a unique block with the block number `0`.
-To ensure compatibility with both rollkit and the EVM, the only permissible initial height is `1`.
+To ensure compatibility with both evolve and the EVM, the only permissible initial height is `1`.
 During `InitChain` EVM genesis block is acknowledged (at height 0), and empty block is created (at height 1).
-This approach ensures that the block numbers between the EVM and rollkit remain consistent and synchronized.
+This approach ensures that the block numbers between the EVM and evolve remain consistent and synchronized.
 
 ### Genesis Requirements
 
@@ -89,13 +89,13 @@ This allows the client to interact with the execution layer for read operations 
 
 ```mermaid
 graph LR
-    subgraph Rollkit Binary
-        RollkitCore[Rollkit Core]
+    subgraph Evolve Binary
+        EvolveCore[Evolve Core]
         PureEngineClient[PureEngineClient]
     end
 
     %% Connections
-    RollkitCore --> PureEngineClient
+    EvolveCore --> PureEngineClient
     PureEngineClient -->|Engine API| Reth
     PureEngineClient -->|Eth API| Reth
 

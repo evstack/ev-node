@@ -10,14 +10,14 @@ import (
 	"testing"
 	"time"
 
-	logging "github.com/ipfs/go-log/v2"
-	"github.com/rollkit/rollkit/da/internal/mocks"
-	proxy "github.com/rollkit/rollkit/da/jsonrpc"
+	"github.com/evstack/ev-node/da/internal/mocks"
+	proxy "github.com/evstack/ev-node/da/jsonrpc"
+	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 
-	coreda "github.com/rollkit/rollkit/core/da"
+	coreda "github.com/evstack/ev-node/core/da"
 )
 
 const (
@@ -45,8 +45,7 @@ func getTestDABlockTime() time.Duration {
 func TestProxy(t *testing.T) {
 	dummy := coreda.NewDummyDA(100_000, 0, 0, getTestDABlockTime())
 	dummy.StartHeightTicker()
-	logger := logging.Logger("test")
-	_ = logging.SetLogLevel("test", "debug")
+	logger := zerolog.Nop()
 	server := proxy.NewServer(logger, ServerHost, ServerPort, dummy)
 	err := server.Start(context.Background())
 	require.NoError(t, err)
@@ -242,8 +241,8 @@ func TestSubmitWithOptions(t *testing.T) {
 		client.DA.Internal.SubmitWithOptions = internalAPI.SubmitWithOptions
 		client.DA.Namespace = testNamespace
 		client.DA.MaxBlobSize = testMaxBlobSize
-		client.DA.Logger = logging.Logger("test")
-		_ = logging.SetLogLevel("test", "debug") // For test verbosity
+		client.DA.Logger = zerolog.Nop()
+		// Test verbosity no longer needed with Nop logger
 		return client
 	}
 

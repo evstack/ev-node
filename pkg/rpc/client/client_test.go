@@ -7,19 +7,19 @@ import (
 	"testing"
 	"time"
 
-	logging "github.com/ipfs/go-log/v2"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/multiformats/go-multiaddr"
+	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/net/http2"
 	"golang.org/x/net/http2/h2c"
 
-	"github.com/rollkit/rollkit/pkg/p2p"
-	"github.com/rollkit/rollkit/pkg/rpc/server"
-	"github.com/rollkit/rollkit/test/mocks"
-	"github.com/rollkit/rollkit/types"
-	rpc "github.com/rollkit/rollkit/types/pb/rollkit/v1/v1connect"
+	"github.com/evstack/ev-node/pkg/p2p"
+	"github.com/evstack/ev-node/pkg/rpc/server"
+	"github.com/evstack/ev-node/test/mocks"
+	"github.com/evstack/ev-node/types"
+	rpc "github.com/evstack/ev-node/types/pb/evnode/v1/v1connect"
 )
 
 // setupTestServer creates a test server with mock store and mock p2p manager
@@ -28,8 +28,7 @@ func setupTestServer(t *testing.T, mockStore *mocks.MockStore, mockP2P *mocks.Mo
 	mux := http.NewServeMux()
 
 	// Create the servers
-	logger := logging.Logger("test")
-	_ = logging.SetLogLevel("test", "debug")
+	logger := zerolog.Nop()
 	storeServer := server.NewStoreServer(mockStore, logger)
 	p2pServer := server.NewP2PServer(mockP2P)
 

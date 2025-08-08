@@ -2,7 +2,7 @@
 
 ## Finding an issue
 
-GitHub issues are used to track the work associated with Rollkit. That's where you can find things to work on.
+GitHub issues are used to track the work associated with Evolve. That's where you can find things to work on.
 
 Issue labels have been used to help designate the priority, status and beginner-friendliness of various issues. Here are some of the ones that are most relevant to finding a good issue to work on:
 
@@ -11,7 +11,7 @@ Issue labels have been used to help designate the priority, status and beginner-
 
 No explicit permission is needed to work on these issues but it would be a good idea to tag the user who opened the issue and request that the issue be assigned to yourself.
 
-All issue labels can be [found here](https://github.com/rollkit/rollkit/labels) for you to explore and see what peaks your interest.
+All issue labels can be [found here](https://github.com/evstack/ev-node/labels) for you to explore and see what peaks your interest.
 
 ## Contribution process
 

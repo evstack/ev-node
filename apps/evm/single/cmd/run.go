@@ -5,26 +5,28 @@ import (
 	"fmt"
 	"path/filepath"
 
-	"github.com/rollkit/rollkit/da/jsonrpc"
-	"github.com/rollkit/rollkit/sequencers/single"
+	"github.com/evstack/ev-node/da/jsonrpc"
+	"github.com/evstack/ev-node/node"
+	"github.com/evstack/ev-node/sequencers/single"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/spf13/cobra"
 
-	"github.com/rollkit/rollkit/execution/evm"
+	"github.com/evstack/ev-node/execution/evm"
 
-	"github.com/rollkit/rollkit/core/execution"
-	rollcmd "github.com/rollkit/rollkit/pkg/cmd"
-	"github.com/rollkit/rollkit/pkg/config"
-	"github.com/rollkit/rollkit/pkg/p2p"
-	"github.com/rollkit/rollkit/pkg/p2p/key"
-	"github.com/rollkit/rollkit/pkg/store"
+	"github.com/evstack/ev-node/core/execution"
+	rollcmd "github.com/evstack/ev-node/pkg/cmd"
+	"github.com/evstack/ev-node/pkg/config"
+	genesispkg "github.com/evstack/ev-node/pkg/genesis"
+	"github.com/evstack/ev-node/pkg/p2p"
+	"github.com/evstack/ev-node/pkg/p2p/key"
+	"github.com/evstack/ev-node/pkg/store"
 )
 
 var RunCmd = &cobra.Command{
 	Use:     "start",
 	Aliases: []string{"node", "run"},
-	Short:   "Run the rollkit node with EVM execution client",
+	Short:   "Run the evolve node with EVM execution client",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		executor, err := createExecutionClient(cmd)
 		if err != nil {
@@ -48,7 +50,13 @@ var RunCmd = &cobra.Command{
 			return err
 		}
 
-		singleMetrics, err := single.DefaultMetricsProvider(nodeConfig.Instrumentation.IsPrometheusEnabled())(nodeConfig.ChainID)
+		genesisPath := filepath.Join(filepath.Dir(nodeConfig.ConfigPath()), "genesis.json")
+		genesis, err := genesispkg.LoadGenesis(genesisPath)
+		if err != nil {
+			return fmt.Errorf("failed to load genesis: %w", err)
+		}
+
+		singleMetrics, err := single.DefaultMetricsProvider(nodeConfig.Instrumentation.IsPrometheusEnabled())(genesis.ChainID)
 		if err != nil {
 			return err
 		}
@@ -58,7 +66,7 @@ var RunCmd = &cobra.Command{
 			logger,
 			datastore,
 			&daJrpc.DA,
-			[]byte(nodeConfig.ChainID),
+			[]byte(genesis.ChainID),
 			nodeConfig.Node.BlockTime.Duration,
 			singleMetrics,
 			nodeConfig.Node.Aggregator,
@@ -72,12 +80,12 @@ var RunCmd = &cobra.Command{
 			return err
 		}
 
-		p2pClient, err := p2p.NewClient(nodeConfig, nodeKey, datastore, logger, nil)
+		p2pClient, err := p2p.NewClient(nodeConfig.P2P, nodeKey.PrivKey, datastore, genesis.ChainID, logger, nil)
 		if err != nil {
 			return err
 		}
 
-		return rollcmd.StartNode(logger, cmd, executor, sequencer, &daJrpc.DA, p2pClient, datastore, nodeConfig, nil)
+		return rollcmd.StartNode(logger, cmd, executor, sequencer, &daJrpc.DA, p2pClient, datastore, nodeConfig, genesis, node.NodeOptions{})
 	},
 }
 

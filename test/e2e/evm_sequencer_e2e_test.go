@@ -1,7 +1,7 @@
 //go:build evm
 // +build evm
 
-// Package e2e contains end-to-end tests for Rollkit's EVM integration.
+// Package e2e contains end-to-end tests for Evolve's EVM integration.
 //
 // This file specifically tests the EVM sequencer (aggregator) functionality including:
 // - Basic sequencer operation and transaction processing
@@ -29,7 +29,7 @@ import (
 	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/stretchr/testify/require"
 
-	"github.com/rollkit/rollkit/execution/evm"
+	"github.com/evstack/ev-node/execution/evm"
 )
 
 // TestEvmSequencerComprehensiveE2E runs a comprehensive test suite that combines

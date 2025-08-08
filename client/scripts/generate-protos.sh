@@ -27,10 +27,10 @@ if [ "$CURRENT_VERSION" != "$PROTOC_VERSION" ]; then
 fi
 
 echo "Cleaning existing generated files..."
-rm -f "$PROJECT_ROOT/client/crates/rollkit-types/src/proto/"*.rs
+rm -f "$PROJECT_ROOT/client/crates/types/src/proto/"*.rs
 
 echo "Generating proto files..."
-cd "$PROJECT_ROOT/client/crates/rollkit-types"
+cd "$PROJECT_ROOT/client/crates/types"
 cargo build
 
 echo "Proto generation complete!"

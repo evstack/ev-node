@@ -17,11 +17,11 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/rollkit/rollkit/pkg/config"
-	"github.com/rollkit/rollkit/pkg/p2p"
-	"github.com/rollkit/rollkit/pkg/rpc/server"
-	testmocks "github.com/rollkit/rollkit/test/mocks"
-	"github.com/rollkit/rollkit/types/pb/rollkit/v1/v1connect"
+	"github.com/evstack/ev-node/pkg/config"
+	"github.com/evstack/ev-node/pkg/p2p"
+	"github.com/evstack/ev-node/pkg/rpc/server"
+	testmocks "github.com/evstack/ev-node/test/mocks"
+	"github.com/evstack/ev-node/types/pb/evnode/v1/v1connect"
 )
 
 type contextKey string
@@ -84,7 +84,7 @@ func TestNetInfoCmd_Success(t *testing.T) {
 	httpServer := httptest.NewServer(mux)
 	defer httpServer.Close()
 
-	tempDir, err := os.MkdirTemp("", "rollkit-test-home-*")
+	tempDir, err := os.MkdirTemp("", "evolve-test-home-*")
 	require.NoError(err)
 	defer os.RemoveAll(tempDir)
 
@@ -161,7 +161,7 @@ func TestNetInfoCmd_NoPeers(t *testing.T) {
 	httpServer := httptest.NewServer(mux)
 	defer httpServer.Close()
 
-	tempDir, err := os.MkdirTemp("", "rollkit-test-home-nopeer-*")
+	tempDir, err := os.MkdirTemp("", "evolve-test-home-nopeer-*")
 	require.NoError(err)
 	defer os.RemoveAll(tempDir)
 
