@@ -35,6 +35,7 @@ This document provides a comprehensive reference for all configuration options a
   - [P2P Allowed Peers](#p2p-allowed-peers)
 - [RPC Configuration (`rpc`)](#rpc-configuration-rpc)
   - [RPC Server Address](#rpc-server-address)
+  - [Enable DA Visualization](#enable-da-visualization)
 - [Instrumentation Configuration (`instrumentation`)](#instrumentation-configuration-instrumentation)
   - [Enable Prometheus Metrics](#enable-prometheus-metrics)
   - [Prometheus Listen Address](#prometheus-listen-address)
@@ -62,12 +63,14 @@ Evolve supports running nodes that sync exclusively from the Data Availability (
 **To enable DA-only sync mode:**
 
 1. **Leave P2P peers empty** (default behavior):
+
    ```yaml
    p2p:
      peers: ""  # Empty or omit this field entirely
    ```
-   
+
 2. **Configure DA connection** (required):
+
    ```yaml
    da:
      address: "your-da-service:port"
@@ -78,6 +81,7 @@ Evolve supports running nodes that sync exclusively from the Data Availability (
 3. **Optional**: You can still configure P2P listen address for potential future connections, but without peers, no P2P networking will occur.
 
 When running in DA-only mode, the node will:
+
 - ✅ Sync blocks and headers from the DA layer
 - ✅ Validate transactions and maintain state
 - ✅ Serve RPC requests
@@ -578,6 +582,26 @@ rpc:
 *Example:* `--rollkit.rpc.address 0.0.0.0:26657`
 *Default:* `"127.0.0.1:7331"`
 *Constant:* `FlagRPCAddress`
+
+### Enable DA Visualization
+
+**Description:**
+If true, enables the Data Availability (DA) visualization endpoints that provide real-time monitoring of blob submissions to the DA layer. This includes a web-based dashboard and REST API endpoints for tracking submission statistics, monitoring DA health, and analyzing blob details. Only aggregator nodes submit data to the DA layer, so this feature is most useful when running in aggregator mode.
+
+**YAML:**
+
+```yaml
+rpc:
+  enable_da_visualization: true
+```
+
+**Command-line Flag:**
+`--rollkit.rpc.enable_da_visualization` (boolean, presence enables it)
+*Example:* `--rollkit.rpc.enable_da_visualization`
+*Default:* `false`
+*Constant:* `FlagRPCEnableDAVisualization`
+
+See the [DA Visualizer Guide](/guides/da-visualizer.md) for detailed information on using this feature.
 
 ## Instrumentation Configuration (`instrumentation`)
 

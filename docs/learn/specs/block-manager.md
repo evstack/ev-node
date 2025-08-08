@@ -267,23 +267,23 @@ flowchart TD
     B -->|Mempool/Not Included| E[Mempool Backoff Strategy]
     B -->|Context Canceled| F[Stop Submission]
     B -->|Other Error| G[Exponential Backoff]
-    
+
     D -->|Yes| H[Recursive Batch Splitting]
     D -->|No| I[Skip Single Item - Cannot Split]
-    
+
     E --> J[Set Backoff = MempoolTTL * BlockTime]
     E --> K[Multiply Gas Price by GasMultiplier]
-    
+
     G --> L[Double Backoff Time]
     G --> M[Cap at MaxBackoff - BlockTime]
-    
+
     H --> N[Split into Two Halves]
     N --> O[Submit First Half]
     O --> P[Submit Second Half]
     P --> Q{Both Halves Processed?}
     Q -->|Yes| R[Combine Results]
     Q -->|No| S[Handle Partial Success]
-    
+
     C --> T[Update Pending Queues]
     T --> U[Post-Submit Actions]
 ```
@@ -295,7 +295,7 @@ flowchart TD
   * Exponential backoff for general failures (doubles each attempt, capped at `BlockTime`)
   * Mempool-specific backoff (waits `MempoolTTL * BlockTime` for stuck transactions)
   * Success-based backoff reset with gas price reduction
-* **Gas Price Management**: 
+* **Gas Price Management**:
   * Increases gas price by `GasMultiplier` on mempool failures
   * Decreases gas price after successful submissions (bounded by initial price)
   * Supports automatic gas price detection (`-1` value)

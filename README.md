@@ -11,6 +11,7 @@ Ev-node is the basis of the Evolve Stack. For more in-depth information about Ev
 ## Using Evolve
 
 Evolve supports multiple sync modes:
+
 - **Hybrid sync**: Sync from both DA layer and P2P network (default when peers are configured)
 - **DA-only sync**: Sync exclusively from DA layer by leaving P2P peers empty (see [Configuration Guide](docs/learn/config.md#da-only-sync-mode))
 - **P2P-priority sync**: Prioritize P2P with DA as fallback
