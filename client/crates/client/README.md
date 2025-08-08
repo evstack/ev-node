@@ -36,7 +36,7 @@ use ev_client::{Client, HealthClient};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // Connect to a Rollkit node
+    // Connect to a evolve node
     let client = Client::connect("http://localhost:50051").await?;
 
     // Check health
@@ -70,17 +70,17 @@ use ev_client::{Client, ClientTlsConfig};
 
 // Enable TLS with default configuration
 let client = Client::builder()
-    .endpoint("https://secure-node.rollkit.dev")
+    .endpoint("https://secure-node.ev.xyz")
     .tls()
     .build()
     .await?;
 
 // Or with custom TLS configuration
 let tls_config = ClientTlsConfig::new()
-    .domain_name("secure-node.rollkit.dev");
+    .domain_name("secure-node.ev.xyz");
 
 let client = Client::builder()
-    .endpoint("https://secure-node.rollkit.dev")
+    .endpoint("https://secure-node.ev.xyz")
     .tls_config(tls_config)
     .build()
     .await?;
@@ -106,7 +106,7 @@ let client = Client::connect_with_config(
 
 ## Services
 
-The client provides wrappers for all Rollkit gRPC services. All service methods are now thread-safe and can be called concurrently:
+The client provides wrappers for all evolve gRPC services. All service methods are now thread-safe and can be called concurrently:
 
 ### Health Service
 

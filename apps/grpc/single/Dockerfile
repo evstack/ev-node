@@ -5,7 +5,7 @@ FROM golang:1.24-alpine AS builder
 RUN apk add --no-cache git make gcc musl-dev linux-headers
 
 # Set working directory
-WORKDIR /rollkit
+WORKDIR /ev-node
 
 # Copy go mod files
 COPY go.mod go.sum ./
@@ -22,7 +22,7 @@ RUN go mod download
 COPY . .
 
 # Build the application
-WORKDIR /rollkit/apps/grpc/single
+WORKDIR /ev-node/apps/grpc/single
 RUN go build -o grpc-single .
 
 # Runtime stage
@@ -32,21 +32,21 @@ FROM alpine:3.19
 RUN apk add --no-cache ca-certificates
 
 # Create non-root user
-RUN addgroup -g 1000 rollkit && \
-    adduser -u 1000 -G rollkit -s /bin/sh -D rollkit
+RUN addgroup -g 1000 ev-node && \
+    adduser -u 1000 -G ev-node -s /bin/sh -D ev-node
 
 # Set working directory
-WORKDIR /home/rollkit
+WORKDIR /home/ev-node
 
 # Copy binary from builder
-COPY --from=builder /rollkit/apps/grpc/single/grpc-single /usr/local/bin/
+COPY --from=builder /ev-node/apps/grpc/single/grpc-single /usr/local/bin/
 
 # Create necessary directories
-RUN mkdir -p /home/rollkit/.grpc-single && \
-    chown -R rollkit:rollkit /home/rollkit
+RUN mkdir -p /home/ev-node/.grpc-single && \
+    chown -R ev-node:ev-node /home/ev-node
 
 # Switch to non-root user
-USER rollkit
+USER ev-node
 
 # Expose ports
 # P2P port

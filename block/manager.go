@@ -43,7 +43,7 @@ const (
 	// defaultMempoolTTL is the number of blocks until transaction is dropped from mempool
 	defaultMempoolTTL = 25
 
-	// maxSubmitAttempts defines how many times Rollkit will re-try to publish block to DA layer.
+	// maxSubmitAttempts defines how many times evolve will re-try to publish block to DA layer.
 	// This is temporary solution. It will be removed in future versions.
 	maxSubmitAttempts = 30
 
@@ -144,7 +144,7 @@ type Manager struct {
 
 	exec coreexecutor.Executor
 
-	// daIncludedHeight is rollkit height at which all blocks have been included
+	// daIncludedHeight is evolve height at which all blocks have been included
 	// in the DA
 	daIncludedHeight atomic.Uint64
 	da               coreda.DA
@@ -495,14 +495,14 @@ func (m *Manager) IsDAIncluded(ctx context.Context, height uint64) (bool, error)
 	return isIncluded, nil
 }
 
-// SetRollkitHeightToDAHeight stores the mapping from a Rollkit block height to the corresponding
+// SetSequencerHeightToDAHeight stores the mapping from a Evolve block height to the corresponding
 // DA (Data Availability) layer heights where the block's header and data were included.
 // This mapping is persisted in the store metadata and is used to track which DA heights
-// contain the block components for a given Rollkit height.
+// contain the block components for a given Evolve height.
 //
 // For blocks with empty transactions, both header and data use the same DA height since
 // empty transaction data is not actually published to the DA layer.
-func (m *Manager) SetRollkitHeightToDAHeight(ctx context.Context, height uint64) error {
+func (m *Manager) SetSequencerHeightToDAHeight(ctx context.Context, height uint64) error {
 	header, data, err := m.store.GetBlockData(ctx, height)
 	if err != nil {
 		return err
@@ -514,7 +514,7 @@ func (m *Manager) SetRollkitHeightToDAHeight(ctx context.Context, height uint64)
 		return fmt.Errorf("header hash %s not found in cache", headerHash)
 	}
 	binary.LittleEndian.PutUint64(headerHeightBytes, daHeightForHeader)
-	if err := m.store.SetMetadata(ctx, fmt.Sprintf("%s/%d/h", storepkg.RollkitHeightToDAHeightKey, height), headerHeightBytes); err != nil {
+	if err := m.store.SetMetadata(ctx, fmt.Sprintf("%s/%d/h", storepkg.HeightToDAHeightKey, height), headerHeightBytes); err != nil {
 		return err
 	}
 	dataHeightBytes := make([]byte, 8)
@@ -528,7 +528,7 @@ func (m *Manager) SetRollkitHeightToDAHeight(ctx context.Context, height uint64)
 		}
 		binary.LittleEndian.PutUint64(dataHeightBytes, daHeightForData)
 	}
-	if err := m.store.SetMetadata(ctx, fmt.Sprintf("%s/%d/d", storepkg.RollkitHeightToDAHeightKey, height), dataHeightBytes); err != nil {
+	if err := m.store.SetMetadata(ctx, fmt.Sprintf("%s/%d/d", storepkg.HeightToDAHeightKey, height), dataHeightBytes); err != nil {
 		return err
 	}
 	return nil
@@ -818,7 +818,7 @@ func (m *Manager) execValidate(lastState types.State, header *types.SignedHeader
 
 	// AppHash should match the last state's AppHash
 	if !bytes.Equal(header.AppHash, lastState.AppHash) {
-		return fmt.Errorf("appHash mismatch in delayed execution mode: expected %x, got %x", lastState.AppHash, header.AppHash)
+		return fmt.Errorf("appHash mismatch in delayed execution mode: expected %x, got %x at height %d", lastState.AppHash, header.AppHash, header.Height())
 	}
 
 	return nil

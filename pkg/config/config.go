@@ -23,8 +23,6 @@ const (
 	FlagRootDir = "home"
 	// FlagDBPath is a flag for specifying the database path
 	FlagDBPath = "rollkit.db_path"
-	// FlagChainID is a flag for specifying the chain ID
-	FlagChainID = "chain_id"
 
 	// Node configuration flags
 
@@ -119,7 +117,6 @@ type Config struct {
 	// Base configuration
 	RootDir string `mapstructure:"-" yaml:"-" comment:"Root directory where rollkit files are located"`
 	DBPath  string `mapstructure:"db_path" yaml:"db_path" comment:"Path inside the root directory where the database is located"`
-	ChainID string `mapstructure:"chain_id" yaml:"chain_id" comment:"Chain ID for your chain"`
 	// P2P configuration
 	P2P P2PConfig `mapstructure:"p2p" yaml:"p2p"`
 
@@ -144,7 +141,7 @@ type Config struct {
 
 // DAConfig contains all Data Availability configuration parameters
 type DAConfig struct {
-	Address       string          `mapstructure:"address" yaml:"address" comment:"Address of the data availability layer service (host:port). This is the endpoint where Rollkit will connect to submit and retrieve data."`
+	Address       string          `mapstructure:"address" yaml:"address" comment:"Address of the data availability layer service (host:port). This is the endpoint where Evolve will connect to submit and retrieve data."`
 	AuthToken     string          `mapstructure:"auth_token" yaml:"auth_token" comment:"Authentication token for the data availability layer service. Required if the DA service needs authentication."`
 	GasPrice      float64         `mapstructure:"gas_price" yaml:"gas_price" comment:"Gas price for data availability transactions. Use -1 for automatic gas price determination. Higher values may result in faster inclusion."`
 	GasMultiplier float64         `mapstructure:"gas_multiplier" yaml:"gas_multiplier" comment:"Multiplier applied to gas price when retrying failed DA submissions. Values > 1 increase gas price on retries to improve chances of inclusion."`
@@ -227,13 +224,12 @@ func AddGlobalFlags(cmd *cobra.Command, defaultHome string) {
 	cmd.PersistentFlags().String(FlagRootDir, DefaultRootDirWithName(defaultHome), "Root directory for application data")
 }
 
-// AddFlags adds Rollkit specific configuration options to cobra Command.
+// AddFlags adds Evolve specific configuration options to cobra Command.
 func AddFlags(cmd *cobra.Command) {
 	def := DefaultConfig
 
 	// Add base flags
 	cmd.Flags().String(FlagDBPath, def.DBPath, "path for the node database")
-	cmd.Flags().String(FlagChainID, def.ChainID, "chain ID")
 
 	// Node configuration flags
 	cmd.Flags().Bool(FlagAggregator, def.Node.Aggregator, "run node in aggregator mode")

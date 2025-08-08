@@ -1,10 +1,10 @@
 # gRPC Execution Client
 
-This package provides a gRPC-based implementation of the Rollkit execution interface. It allows Rollkit to communicate with remote execution clients via gRPC using the Connect-RPC framework.
+This package provides a gRPC-based implementation of the Evolve execution interface. It allows Evolve to communicate with remote execution clients via gRPC using the Connect-RPC framework.
 
 ## Overview
 
-The gRPC execution client enables separation between the consensus layer (Rollkit) and the execution layer by providing a network interface for communication. This allows execution clients to run in separate processes or even on different machines.
+The gRPC execution client enables separation between the consensus layer (Evolve) and the execution layer by providing a network interface for communication. This allows execution clients to run in separate processes or even on different machines.
 
 ## Usage
 
@@ -44,7 +44,7 @@ http.ListenAndServe(":50051", handler)
 
 ## Protocol
 
-The gRPC service is defined in `proto/rollkit/v1/execution.proto` and provides the following methods:
+The gRPC service is defined in `proto/evnode/v1/execution.proto` and provides the following methods:
 
 - `InitChain`: Initialize the blockchain with genesis parameters
 - `GetTxs`: Fetch transactions from the mempool

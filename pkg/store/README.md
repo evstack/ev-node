@@ -1,6 +1,6 @@
-# Rollkit Storage System
+# Evolve Storage System
 
-The `store` package provides a persistent storage solution for Rollkit, designed to efficiently store and retrieve blockchain data such as blocks, signatures, state, and metadata.
+The `store` package provides a persistent storage solution for Evolve, designed to efficiently store and retrieve blockchain data such as blocks, signatures, state, and metadata.
 
 ## Overview
 
@@ -124,7 +124,7 @@ if err != nil {
 myStore := store.New(kvStore)
 
 // Persistent store
-kvStore, err := store.NewDefaultKVStore("/path/to/root", "data", "rollkit-db")
+kvStore, err := store.NewDefaultKVStore("/path/to/root", "data", "ev-db")
 if err != nil {
     // handle error
 }

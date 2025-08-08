@@ -11,11 +11,11 @@ import (
 	rollgenesis "github.com/evstack/ev-node/pkg/genesis"
 )
 
-// InitCmd initializes a new rollkit.yaml file in the current directory
+// InitCmd initializes a new evolve.yaml file in the current directory
 func InitCmd() *cobra.Command {
 	initCmd := &cobra.Command{
 		Use:   "init",
-		Short: "Initialize rollkit config",
+		Short: "Initialize evolve config",
 		Long:  fmt.Sprintf("This command initializes a new %s file in the specified directory (or current directory if not specified).", rollconf.ConfigName),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			homePath, err := cmd.Flags().GetString(rollconf.FlagRootDir)
@@ -47,7 +47,7 @@ func InitCmd() *cobra.Command {
 			}
 
 			if err := cfg.SaveAsYaml(); err != nil {
-				return fmt.Errorf("error writing rollkit.yaml file: %w", err)
+				return fmt.Errorf("error writing evolve.yaml file: %w", err)
 			}
 
 			if err := rollcmd.LoadOrGenNodeKey(homePath); err != nil {
@@ -55,11 +55,10 @@ func InitCmd() *cobra.Command {
 			}
 
 			// get chain ID or use default
-			chainID, _ := cmd.Flags().GetString(rollconf.FlagChainID)
-			if chainID == "" {
-				chainID = "rollkit-test"
+			chainID, err := cmd.Flags().GetString(rollgenesis.ChainIDFlag)
+			if err != nil {
+				return fmt.Errorf("error reading chain ID flag: %w", err)
 			}
-
 			// Initialize genesis without app state
 			err = rollgenesis.CreateGenesis(homePath, chainID, 1, proposerAddress)
 			genesisPath := rollgenesis.GenesisPath(homePath)
@@ -85,6 +84,7 @@ func InitCmd() *cobra.Command {
 
 	// Add flags to the command
 	rollconf.AddFlags(initCmd)
+	initCmd.Flags().String(rollgenesis.ChainIDFlag, "rollkit-test", "chain ID")
 
 	return initCmd
 }

@@ -47,7 +47,7 @@ type BaseHeader struct {
 	ChainID string
 }
 
-// Header defines the structure of Rollkit block header.
+// Header defines the structure of Evolve block header.
 type Header struct {
 	BaseHeader
 	// Block and App version
