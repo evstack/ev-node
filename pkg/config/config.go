@@ -32,6 +32,8 @@ const (
 	FlagLight = "rollkit.node.light"
 	// FlagBlockTime is a flag for specifying the block time
 	FlagBlockTime = "rollkit.node.block_time"
+	// FlagBatchRetrievalInterval is a flag for specifying the batch retrieval interval
+	FlagBatchRetrievalInterval = "rollkit.node.batch_retrieval_interval"
 	// FlagTrustedHash is a flag for specifying the trusted hash
 	FlagTrustedHash = "rollkit.node.trusted_hash"
 	// FlagLazyAggregator is a flag for enabling lazy aggregation mode that only produces blocks when transactions are available
@@ -188,6 +190,7 @@ type NodeConfig struct {
 
 	// Block management configuration
 	BlockTime                DurationWrapper `mapstructure:"block_time" yaml:"block_time" comment:"Block time (duration). Examples: \"500ms\", \"1s\", \"5s\", \"1m\", \"2m30s\", \"10m\"."`
+	BatchRetrievalInterval   DurationWrapper `mapstructure:"batch_retrieval_interval" yaml:"batch_retrieval_interval" comment:"Interval for retrieving batches from the sequencer (duration). If not set, defaults to BlockTime. Examples: \"500ms\", \"1s\", \"5s\", \"1m\", \"2m30s\", \"10m\"."`
 	MaxPendingHeadersAndData uint64          `mapstructure:"max_pending_headers_and_data" yaml:"max_pending_headers_and_data" comment:"Maximum number of headers or data pending DA submission. When this limit is reached, the aggregator pauses block production until some headers or data are confirmed. Use 0 for no limit."`
 	LazyMode                 bool            `mapstructure:"lazy_mode" yaml:"lazy_mode" comment:"Enables lazy aggregation mode, where blocks are only produced when transactions are available or after LazyBlockTime. Optimizes resources by avoiding empty block creation during periods of inactivity."`
 	LazyBlockInterval        DurationWrapper `mapstructure:"lazy_block_interval" yaml:"lazy_block_interval" comment:"Maximum interval between blocks in lazy aggregation mode (LazyAggregator). Ensures blocks are produced periodically even without transactions to keep the chain active. Generally larger than BlockTime."`
@@ -263,6 +266,7 @@ func AddFlags(cmd *cobra.Command) {
 	cmd.Flags().Bool(FlagAggregator, def.Node.Aggregator, "run node in aggregator mode")
 	cmd.Flags().Bool(FlagLight, def.Node.Light, "run light client")
 	cmd.Flags().Duration(FlagBlockTime, def.Node.BlockTime.Duration, "block time (for aggregator mode)")
+	cmd.Flags().Duration(FlagBatchRetrievalInterval, def.Node.BatchRetrievalInterval.Duration, "batch retrieval interval (for aggregator mode)")
 	cmd.Flags().String(FlagTrustedHash, def.Node.TrustedHash, "initial trusted hash to start the header exchange service")
 	cmd.Flags().Bool(FlagLazyAggregator, def.Node.LazyMode, "produce blocks only when transactions are available or after lazy block time")
 	cmd.Flags().Uint64(FlagMaxPendingHeadersAndData, def.Node.MaxPendingHeadersAndData, "maximum headers or data pending DA confirmation before pausing block production (0 for no limit)")

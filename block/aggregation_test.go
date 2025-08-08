@@ -26,12 +26,12 @@ func TestAggregationLoop_Normal_BasicInterval(t *testing.T) {
 	assert := assert.New(t)
 	require := require.New(t)
 
-	blockTime := 50 * time.Millisecond
-	waitTime := blockTime*4 + blockTime/2
+	batchRetrievalInterval := 50 * time.Millisecond
+	waitTime := batchRetrievalInterval*4 + batchRetrievalInterval/2
 
 	mockStore := mocks.NewMockStore(t)
 	mockStore.On("Height", mock.Anything).Return(uint64(1), nil).Maybe()
-	mockStore.On("GetState", mock.Anything).Return(types.State{LastBlockTime: time.Now().Add(-blockTime)}, nil).Maybe()
+	mockStore.On("GetState", mock.Anything).Return(types.State{LastBlockTime: time.Now().Add(-batchRetrievalInterval)}, nil).Maybe()
 
 	mockExec := mocks.NewMockExecutor(t)
 	mockSeq := mocks.NewMockSequencer(t)
@@ -46,8 +46,9 @@ func TestAggregationLoop_Normal_BasicInterval(t *testing.T) {
 		logger:    logger,
 		config: config.Config{
 			Node: config.NodeConfig{
-				BlockTime: config.DurationWrapper{Duration: blockTime},
-				LazyMode:  false,
+				BlockTime:              config.DurationWrapper{Duration: batchRetrievalInterval},
+				BatchRetrievalInterval: config.DurationWrapper{Duration: batchRetrievalInterval},
+				LazyMode:               false,
 			},
 			DA: config.DAConfig{
 				BlockTime: config.DurationWrapper{Duration: 1 * time.Second},
@@ -57,7 +58,7 @@ func TestAggregationLoop_Normal_BasicInterval(t *testing.T) {
 			InitialHeight: 1,
 		},
 		lastState: types.State{
-			LastBlockTime: time.Now().Add(-blockTime),
+			LastBlockTime: time.Now().Add(-batchRetrievalInterval),
 		},
 		lastStateMtx: &sync.RWMutex{},
 		metrics:      NopMetrics(),
@@ -100,8 +101,8 @@ func TestAggregationLoop_Normal_BasicInterval(t *testing.T) {
 
 	m.logger.Info().Int("count", len(publishTimes)).Any("times", publishTimes).Msg("Recorded publish times")
 
-	expectedCallsLow := int(waitTime/blockTime) - 1
-	expectedCallsHigh := int(waitTime/blockTime) + 1
+	expectedCallsLow := int(waitTime/batchRetrievalInterval) - 1
+	expectedCallsHigh := int(waitTime/batchRetrievalInterval) + 1
 	require.GreaterOrEqualf(len(publishTimes), expectedCallsLow, "Expected at least %d calls, got %d", expectedCallsLow, len(publishTimes))
 	require.LessOrEqualf(len(publishTimes), expectedCallsHigh, "Expected at most %d calls, got %d", expectedCallsHigh, len(publishTimes))
 
@@ -109,8 +110,8 @@ func TestAggregationLoop_Normal_BasicInterval(t *testing.T) {
 		for i := 1; i < len(publishTimes); i++ {
 			interval := publishTimes[i].Sub(publishTimes[i-1])
 			m.logger.Debug().Int("index", i).Dur("interval", interval).Msg("Checking interval")
-			tolerance := blockTime / 2
-			assert.True(WithinDuration(t, blockTime, interval, tolerance), "Interval %d (%v) not within tolerance (%v) of blockTime (%v)", i, interval, tolerance, blockTime)
+			tolerance := batchRetrievalInterval / 2
+			assert.True(WithinDuration(t, batchRetrievalInterval, interval, tolerance), "Interval %d (%v) not within tolerance (%v) of batchRetrievalInterval (%v)", i, interval, tolerance, batchRetrievalInterval)
 		}
 	}
 }
@@ -120,12 +121,12 @@ func TestAggregationLoop_Normal_PublishBlockError(t *testing.T) {
 	t.Parallel()
 	require := require.New(t)
 
-	blockTime := 50 * time.Millisecond
-	waitTime := blockTime*4 + blockTime/2
+	batchRetrievalInterval := 50 * time.Millisecond
+	waitTime := batchRetrievalInterval*4 + batchRetrievalInterval/2
 
 	mockStore := mocks.NewMockStore(t)
 	mockStore.On("Height", mock.Anything).Return(uint64(1), nil).Maybe()
-	mockStore.On("GetState", mock.Anything).Return(types.State{LastBlockTime: time.Now().Add(-blockTime)}, nil).Maybe()
+	mockStore.On("GetState", mock.Anything).Return(types.State{LastBlockTime: time.Now().Add(-batchRetrievalInterval)}, nil).Maybe()
 
 	mockExec := mocks.NewMockExecutor(t)
 	mockSeq := mocks.NewMockSequencer(t)
@@ -142,8 +143,9 @@ func TestAggregationLoop_Normal_PublishBlockError(t *testing.T) {
 		logger:    logger,
 		config: config.Config{
 			Node: config.NodeConfig{
-				BlockTime: config.DurationWrapper{Duration: blockTime},
-				LazyMode:  false,
+				BlockTime:              config.DurationWrapper{Duration: batchRetrievalInterval},
+				BatchRetrievalInterval: config.DurationWrapper{Duration: batchRetrievalInterval},
+				LazyMode:               false,
 			},
 			DA: config.DAConfig{
 				BlockTime: config.DurationWrapper{Duration: 1 * time.Second},
@@ -153,7 +155,7 @@ func TestAggregationLoop_Normal_PublishBlockError(t *testing.T) {
 			InitialHeight: 1,
 		},
 		lastState: types.State{
-			LastBlockTime: time.Now().Add(-blockTime),
+			LastBlockTime: time.Now().Add(-batchRetrievalInterval),
 		},
 		lastStateMtx: &sync.RWMutex{},
 		metrics:      NopMetrics(),

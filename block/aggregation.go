@@ -17,10 +17,10 @@ func (m *Manager) AggregationLoop(ctx context.Context, errCh chan<- error) {
 	var delay time.Duration
 
 	if height < initialHeight {
-		delay = time.Until(m.genesis.GenesisDAStartTime.Add(m.config.Node.BlockTime.Duration))
+		delay = time.Until(m.genesis.GenesisDAStartTime.Add(m.config.Node.BatchRetrievalInterval.Duration))
 	} else {
 		lastBlockTime := m.getLastBlockTime()
-		delay = time.Until(lastBlockTime.Add(m.config.Node.BlockTime.Duration))
+		delay = time.Until(lastBlockTime.Add(m.config.Node.BatchRetrievalInterval.Duration))
 	}
 
 	if delay > 0 {
@@ -28,28 +28,27 @@ func (m *Manager) AggregationLoop(ctx context.Context, errCh chan<- error) {
 		time.Sleep(delay)
 	}
 
-	// blockTimer is used to signal when to build a block based on the
-	// chain block time. A timer is used so that the time to build a block
-	// can be taken into account.
-	blockTimer := time.NewTimer(0)
-	defer blockTimer.Stop()
+	// batchTimer is used to signal when to retrieve batches from the sequencer
+	// based on the batch retrieval interval. This drives the block production cycle.
+	batchTimer := time.NewTimer(0)
+	defer batchTimer.Stop()
 
 	// Lazy Sequencer mode.
 	// In Lazy Sequencer mode, blocks are built only when there are
 	// transactions or every LazyBlockTime.
 	if m.config.Node.LazyMode {
-		if err := m.lazyAggregationLoop(ctx, blockTimer); err != nil {
+		if err := m.lazyAggregationLoop(ctx, batchTimer); err != nil {
 			errCh <- fmt.Errorf("error in lazy aggregation loop: %w", err)
 		}
 		return
 	}
 
-	if err := m.normalAggregationLoop(ctx, blockTimer); err != nil {
+	if err := m.normalAggregationLoop(ctx, batchTimer); err != nil {
 		errCh <- fmt.Errorf("error in normal aggregation loop: %w", err)
 	}
 }
 
-func (m *Manager) lazyAggregationLoop(ctx context.Context, blockTimer *time.Timer) error {
+func (m *Manager) lazyAggregationLoop(ctx context.Context, batchTimer *time.Timer) error {
 	// lazyTimer triggers block publication even during inactivity
 	lazyTimer := time.NewTimer(0)
 	defer lazyTimer.Stop()
@@ -62,50 +61,43 @@ func (m *Manager) lazyAggregationLoop(ctx context.Context, blockTimer *time.Time
 		case <-lazyTimer.C:
 			m.logger.Debug().Msg("Lazy timer triggered block production")
 
-			if err := m.produceBlock(ctx, "lazy_timer", lazyTimer, blockTimer); err != nil {
-				return err
+			start := time.Now()
+			if err := m.publishBlock(ctx); err != nil && ctx.Err() == nil {
+				return fmt.Errorf("error while publishing block: %w", err)
 			}
-		case <-blockTimer.C:
+			lazyTimer.Reset(getRemainingSleep(start, m.config.Node.LazyBlockInterval.Duration))
+
+		case <-batchTimer.C:
 			if m.txsAvailable {
-				if err := m.produceBlock(ctx, "block_timer", lazyTimer, blockTimer); err != nil {
-					return err
+				m.logger.Debug().Msg("Batch timer triggered block production (lazy mode)")
+
+				start := time.Now()
+				if err := m.publishBlock(ctx); err != nil && ctx.Err() == nil {
+					return fmt.Errorf("error while publishing block: %w", err)
 				}
 
 				m.txsAvailable = false
 			} else {
-				// Ensure we keep ticking even when there are no txs
-				blockTimer.Reset(m.config.Node.BlockTime.Duration)
+				m.logger.Debug().Msg("Batch timer fired but no transactions available")
 			}
+			// Reset timer for next batch retrieval attempt
+			batchTimer.Reset(m.config.Node.BatchRetrievalInterval.Duration)
+
 		case <-m.txNotifyCh:
 			m.txsAvailable = true
 		}
 	}
 }
 
-// produceBlock handles the common logic for producing a block and resetting timers
-func (m *Manager) produceBlock(ctx context.Context, mode string, lazyTimer, blockTimer *time.Timer) error {
-	start := time.Now()
 
-	// Attempt to publish the block
-	if err := m.publishBlock(ctx); err != nil && ctx.Err() == nil {
-		return fmt.Errorf("error while publishing block: %w", err)
-	}
-
-	m.logger.Debug().Str("mode", mode).Msg("Successfully published block")
-
-	// Reset both timers for the next aggregation window
-	lazyTimer.Reset(getRemainingSleep(start, m.config.Node.LazyBlockInterval.Duration))
-	blockTimer.Reset(getRemainingSleep(start, m.config.Node.BlockTime.Duration))
-
-	return nil
-}
-
-func (m *Manager) normalAggregationLoop(ctx context.Context, blockTimer *time.Timer) error {
+func (m *Manager) normalAggregationLoop(ctx context.Context, batchTimer *time.Timer) error {
 	for {
 		select {
 		case <-ctx.Done():
 			return nil
-		case <-blockTimer.C:
+		case <-batchTimer.C:
+			m.logger.Debug().Msg("Batch timer triggered block production")
+
 			// Define the start time for the block production period
 			start := time.Now()
 
@@ -113,9 +105,9 @@ func (m *Manager) normalAggregationLoop(ctx context.Context, blockTimer *time.Ti
 				return fmt.Errorf("error while publishing block: %w", err)
 			}
 
-			// Reset the blockTimer to signal the next block production
-			// period based on the block time.
-			blockTimer.Reset(getRemainingSleep(start, m.config.Node.BlockTime.Duration))
+			// Reset the batchTimer to signal the next batch retrieval
+			// period based on the batch retrieval interval.
+			batchTimer.Reset(getRemainingSleep(start, m.config.Node.BatchRetrievalInterval.Duration))
 
 		case <-m.txNotifyCh:
 			// Transaction notifications are intentionally ignored in normal mode

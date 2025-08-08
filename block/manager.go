@@ -338,6 +338,11 @@ func NewManager(
 		config.Node.BlockTime.Duration = defaultBlockTime
 	}
 
+	if config.Node.BatchRetrievalInterval.Duration == 0 {
+		logger.Info().Dur("BatchRetrievalInterval", config.Node.BlockTime.Duration).Msg("using block time as default batch retrieval interval")
+		config.Node.BatchRetrievalInterval.Duration = config.Node.BlockTime.Duration
+	}
+
 	if config.Node.LazyBlockInterval.Duration == 0 {
 		logger.Info().Dur("LazyBlockTime", defaultLazyBlockTime).Msg("using default lazy block time")
 		config.Node.LazyBlockInterval.Duration = defaultLazyBlockTime
