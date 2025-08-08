@@ -145,6 +145,7 @@ func (m *Manager) submitHeadersToDA(ctx context.Context, headersToSubmit []*type
 			m.sendNonBlockingSignalToDAIncluderCh()
 		},
 		"header",
+		[]byte(m.config.DA.GetHeaderNamespace()),
 	)
 }
 
@@ -201,6 +202,7 @@ func (m *Manager) submitDataToDA(ctx context.Context, signedDataToSubmit []*type
 			m.sendNonBlockingSignalToDAIncluderCh()
 		},
 		"data",
+		[]byte(m.config.DA.GetDataNamespace()),
 	)
 }
 
@@ -234,10 +236,10 @@ func submitToDA[T any](
 		submitCtx, cancel := context.WithTimeout(ctx, submissionTimeout)
 		m.recordDAMetrics("submission", DAModeRetry)
 
-		res := types.SubmitWithHelpers(submitCtx, m.da, m.logger, marshaled, retryStrategy.gasPrice, nil)
+		res := types.SubmitWithHelpers(submitCtx, m.da, m.logger, marshaled, retryStrategy.gasPrice, namespace, nil)
 		cancel()
 
-		outcome := handleSubmissionResult(ctx, m, res, remaining, marshaled, retryStrategy, postSubmit, itemType)
+		outcome := handleSubmissionResult(ctx, m, res, remaining, marshaled, retryStrategy, postSubmit, itemType, namespace)
 
 		remaining = outcome.RemainingItems
 		marshaled = outcome.RemainingMarshal
@@ -287,6 +289,7 @@ func handleSubmissionResult[T any](
 	retryStrategy *retryStrategy,
 	postSubmit func([]T, *coreda.ResultSubmit, float64),
 	itemType string,
+	namespace []byte,
 ) submissionOutcome[T] {
 	switch res.Code {
 	case coreda.StatusSuccess:
@@ -304,7 +307,7 @@ func handleSubmissionResult[T any](
 		}
 
 	case coreda.StatusTooBig:
-		return handleTooBigError(m, ctx, remaining, marshaled, retryStrategy, postSubmit, itemType, retryStrategy.attempt)
+		return handleTooBigError(m, ctx, remaining, marshaled, retryStrategy, postSubmit, itemType, retryStrategy.attempt, namespace)
 
 	default:
 		return handleGenericFailure(m, &res, retryStrategy, retryStrategy.attempt, remaining, marshaled)
@@ -376,13 +379,14 @@ func handleTooBigError[T any](
 	postSubmit func([]T, *coreda.ResultSubmit, float64),
 	itemType string,
 	attempt int,
+	namespace []byte,
 ) submissionOutcome[T] {
 	m.logger.Warn().Str("error", "blob too big").Int("attempt", attempt).Int("batchSize", len(remaining)).Msg("DA layer submission failed due to blob size limit")
 
 	m.recordDAMetrics("submission", DAModeFail)
 
 	if len(remaining) > 1 {
-		totalSubmitted, err := submitWithRecursiveSplitting(m, ctx, remaining, marshaled, retryStrategy.gasPrice, postSubmit, itemType)
+		totalSubmitted, err := submitWithRecursiveSplitting(m, ctx, remaining, marshaled, retryStrategy.gasPrice, postSubmit, itemType, namespace)
 		if err != nil {
 			// If splitting failed, we cannot continue with this batch
 			m.logger.Error().Err(err).Str("itemType", itemType).Msg("recursive splitting failed")
@@ -493,6 +497,7 @@ func submitWithRecursiveSplitting[T any](
 	gasPrice float64,
 	postSubmit func([]T, *coreda.ResultSubmit, float64),
 	itemType string,
+	namespace []byte,
 ) (int, error) {
 	// Base case: no items to process
 	if len(items) == 0 {
@@ -521,12 +526,12 @@ func submitWithRecursiveSplitting[T any](
 	m.logger.Info().Int("originalSize", len(items)).Int("firstHalf", len(firstHalf)).Int("secondHalf", len(secondHalf)).Msg("splitting batch for recursion")
 
 	// Recursively submit both halves using processBatch directly
-	firstSubmitted, err := submitHalfBatch[T](m, ctx, firstHalf, firstHalfMarshaled, gasPrice, postSubmit, itemType)
+	firstSubmitted, err := submitHalfBatch[T](m, ctx, firstHalf, firstHalfMarshaled, gasPrice, postSubmit, itemType, namespace)
 	if err != nil {
 		return firstSubmitted, fmt.Errorf("first half submission failed: %w", err)
 	}
 
-	secondSubmitted, err := submitHalfBatch[T](m, ctx, secondHalf, secondHalfMarshaled, gasPrice, postSubmit, itemType)
+	secondSubmitted, err := submitHalfBatch[T](m, ctx, secondHalf, secondHalfMarshaled, gasPrice, postSubmit, itemType, namespace)
 	if err != nil {
 		return firstSubmitted, fmt.Errorf("second half submission failed: %w", err)
 	}
@@ -543,6 +548,7 @@ func submitHalfBatch[T any](
 	gasPrice float64,
 	postSubmit func([]T, *coreda.ResultSubmit, float64),
 	itemType string,
+	namespace []byte,
 ) (int, error) {
 	// Base case: no items to process
 	if len(items) == 0 {
@@ -551,7 +557,7 @@ func submitHalfBatch[T any](
 
 	// Try to submit the batch as-is first
 	batch := submissionBatch[T]{Items: items, Marshaled: marshaled}
-	result := processBatch(m, ctx, batch, gasPrice, postSubmit, itemType)
+	result := processBatch(m, ctx, batch, gasPrice, postSubmit, itemType, namespace)
 
 	switch result.action {
 	case batchActionSubmitted:
@@ -560,7 +566,7 @@ func submitHalfBatch[T any](
 			// Some items were submitted, recursively handle the rest
 			remainingItems := items[result.submittedCount:]
 			remainingMarshaled := marshaled[result.submittedCount:]
-			remainingSubmitted, err := submitHalfBatch[T](m, ctx, remainingItems, remainingMarshaled, gasPrice, postSubmit, itemType)
+			remainingSubmitted, err := submitHalfBatch[T](m, ctx, remainingItems, remainingMarshaled, gasPrice, postSubmit, itemType, namespace)
 			if err != nil {
 				return result.submittedCount, err
 			}
@@ -571,7 +577,7 @@ func submitHalfBatch[T any](
 
 	case batchActionTooBig:
 		// Batch too big - need to split further
-		return submitWithRecursiveSplitting[T](m, ctx, items, marshaled, gasPrice, postSubmit, itemType)
+		return submitWithRecursiveSplitting[T](m, ctx, items, marshaled, gasPrice, postSubmit, itemType, namespace)
 
 	case batchActionSkip:
 		// Single item too big - return error
@@ -618,11 +624,12 @@ func processBatch[T any](
 	gasPrice float64,
 	postSubmit func([]T, *coreda.ResultSubmit, float64),
 	itemType string,
+	namespace []byte,
 ) batchResult[T] {
 	batchCtx, batchCtxCancel := context.WithTimeout(ctx, submissionTimeout)
 	defer batchCtxCancel()
 
-	batchRes := types.SubmitWithHelpers(batchCtx, m.da, m.logger, batch.Marshaled, gasPrice, nil)
+	batchRes := types.SubmitWithHelpers(batchCtx, m.da, m.logger, batch.Marshaled, gasPrice, namespace, nil)
 
 	if batchRes.Code == coreda.StatusSuccess {
 		// Successfully submitted this batch

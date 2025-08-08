@@ -692,7 +692,7 @@ func TestProcessBatch(t *testing.T) {
 		da.On("SubmitWithOptions", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 			Return([]coreda.ID{getDummyID(1, []byte("id1")), getDummyID(1, []byte("id2")), getDummyID(1, []byte("id3"))}, nil).Once()
 
-		result := processBatch(m, ctx, testBatch, 1.0, postSubmit, "test")
+		result := processBatch(m, ctx, testBatch, 1.0, postSubmit, "test", []byte("test-namespace"))
 
 		assert.Equal(t, batchActionSubmitted, result.action)
 		assert.Equal(t, 3, result.submittedCount)
@@ -717,7 +717,7 @@ func TestProcessBatch(t *testing.T) {
 		da.On("SubmitWithOptions", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 			Return([]coreda.ID{getDummyID(1, []byte("id1")), getDummyID(1, []byte("id2"))}, nil).Once()
 
-		result := processBatch(m, ctx, testBatch, 1.0, partialPostSubmit, "test")
+		result := processBatch(m, ctx, testBatch, 1.0, partialPostSubmit, "test", []byte("test-namespace"))
 
 		assert.Equal(t, batchActionSubmitted, result.action)
 		assert.Equal(t, 2, result.submittedCount)
@@ -732,7 +732,7 @@ func TestProcessBatch(t *testing.T) {
 		da.On("SubmitWithOptions", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 			Return(nil, coreda.ErrBlobSizeOverLimit).Once()
 
-		result := processBatch(m, ctx, testBatch, 1.0, postSubmit, "test")
+		result := processBatch(m, ctx, testBatch, 1.0, postSubmit, "test", []byte("test-namespace"))
 
 		assert.Equal(t, batchActionTooBig, result.action)
 		assert.Equal(t, 0, result.submittedCount)
@@ -754,7 +754,7 @@ func TestProcessBatch(t *testing.T) {
 		da.On("SubmitWithOptions", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 			Return(nil, coreda.ErrBlobSizeOverLimit).Once()
 
-		result := processBatch(m, ctx, singleBatch, 1.0, postSubmit, "test")
+		result := processBatch(m, ctx, singleBatch, 1.0, postSubmit, "test", []byte("test-namespace"))
 
 		assert.Equal(t, batchActionSkip, result.action)
 		assert.Equal(t, 0, result.submittedCount)
@@ -769,7 +769,7 @@ func TestProcessBatch(t *testing.T) {
 		da.On("SubmitWithOptions", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 			Return(nil, fmt.Errorf("network error")).Once()
 
-		result := processBatch(m, ctx, testBatch, 1.0, postSubmit, "test")
+		result := processBatch(m, ctx, testBatch, 1.0, postSubmit, "test", []byte("test-namespace"))
 
 		assert.Equal(t, batchActionFail, result.action)
 		assert.Equal(t, 0, result.submittedCount)
@@ -1064,7 +1064,7 @@ func TestSubmitHalfBatch(t *testing.T) {
 			tt.mockSetup(da)
 
 			// Call submitHalfBatch
-			submitted, err := submitHalfBatch(m, ctx, tt.items, tt.marshaled, 1.0, postSubmit, "test")
+			submitted, err := submitHalfBatch(m, ctx, tt.items, tt.marshaled, 1.0, postSubmit, "test", []byte("test-namespace"))
 
 			// Validate results
 			if tt.expectError {
