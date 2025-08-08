@@ -57,9 +57,9 @@ var DefaultConfig = Config{
 		GasPrice:          -1,
 		GasMultiplier:     0,
 		MaxSubmitAttempts: 30,
-		Namespace:       "",
-		HeaderNamespace: "rollkit-headers",
-		DataNamespace:   "rollkit-data",
+		Namespace:         "",
+		HeaderNamespace:   "rollkit-headers",
+		DataNamespace:     "rollkit-data",
 	},
 	Instrumentation: DefaultInstrumentationConfig(),
 	Log: LogConfig{

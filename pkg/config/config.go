@@ -153,8 +153,8 @@ type DAConfig struct {
 	GasMultiplier     float64         `mapstructure:"gas_multiplier" yaml:"gas_multiplier" comment:"Multiplier applied to gas price when retrying failed DA submissions. Values > 1 increase gas price on retries to improve chances of inclusion."`
 	SubmitOptions     string          `mapstructure:"submit_options" yaml:"submit_options" comment:"Additional options passed to the DA layer when submitting data. Format depends on the specific DA implementation being used."`
 	Namespace         string          `mapstructure:"namespace" yaml:"namespace" comment:"Namespace ID used when submitting blobs to the DA layer (deprecated, use HeaderNamespace and DataNamespace instead)."`
-	HeaderNamespace string          `mapstructure:"header_namespace" yaml:"header_namespace" comment:"Namespace ID for submitting headers to DA layer."`
-	DataNamespace   string          `mapstructure:"data_namespace" yaml:"data_namespace" comment:"Namespace ID for submitting data toDA layer."`
+	HeaderNamespace   string          `mapstructure:"header_namespace" yaml:"header_namespace" comment:"Namespace ID for submitting headers to DA layer."`
+	DataNamespace     string          `mapstructure:"data_namespace" yaml:"data_namespace" comment:"Namespace ID for submitting data toDA layer."`
 	BlockTime         DurationWrapper `mapstructure:"block_time" yaml:"block_time" comment:"Average block time of the DA chain (duration). Determines frequency of DA layer syncing, maximum backoff time for retries, and is multiplied by MempoolTTL to calculate transaction expiration. Examples: \"15s\", \"30s\", \"1m\", \"2m30s\", \"10m\"."`
 	StartHeight       uint64          `mapstructure:"start_height" yaml:"start_height" comment:"Starting block height on the DA layer from which to begin syncing. Useful when deploying a new chain on an existing DA chain."`
 	MempoolTTL        uint64          `mapstructure:"mempool_ttl" yaml:"mempool_ttl" comment:"Number of DA blocks after which a transaction is considered expired and dropped from the mempool. Controls retry backoff timing."`
