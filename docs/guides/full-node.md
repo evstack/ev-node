@@ -73,7 +73,6 @@ gmd start \
   --grpc.address 127.0.0.1:9390 \
   --p2p.laddr "0.0.0.0:46656" \
   --api.address tcp://localhost:1318 \
-  --chain_id $CHAIN_ID \
   --home $HOME/.${CHAIN_ID}_fn
 ```
 
