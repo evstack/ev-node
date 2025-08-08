@@ -76,8 +76,8 @@ func (m *Manager) incrementDAIncludedHeight(ctx context.Context) error {
 	if seq, ok := m.sequencer.(MetricsRecorder); ok {
 		gasPrice, err := m.da.GasPrice(ctx)
 		if err != nil {
-			m.logger.Error().Err(err).Msg("failed to get gas price")
-			return err
+			m.logger.Warn().Err(err).Msg("failed to get gas price from DA layer, using default for metrics")
+			gasPrice = 0.0 // Use default gas price for metrics
 		}
 		seq.RecordMetrics(gasPrice, 0, coreda.StatusSuccess, m.pendingHeaders.numPendingHeaders(), newHeight)
 	}
