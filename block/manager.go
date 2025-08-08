@@ -43,6 +43,9 @@ const (
 	// defaultMempoolTTL is the number of blocks until transaction is dropped from mempool
 	defaultMempoolTTL = 25
 
+	// Key for storing namespace migration state in the store
+	namespaceMigrationKey = "namespace_migration_completed"
+
 	// Applies to the headerInCh and dataInCh, 10000 is a large enough number for headers per DA block.
 	eventInChLength = 10000
 )
@@ -137,7 +140,7 @@ type Manager struct {
 
 	exec coreexecutor.Executor
 
-	// daIncludedHeight is rollkit height at which all blocks have been included
+	// daIncludedHeight is evolve height at which all blocks have been included
 	// in the DA
 	daIncludedHeight atomic.Uint64
 	da               coreda.DA
@@ -161,6 +164,10 @@ type Manager struct {
 	// validatorHasherProvider is used to provide the validator hash for the header.
 	// It is used to set the validator hash in the header.
 	validatorHasherProvider types.ValidatorHasherProvider
+
+	// namespaceMigrationCompleted tracks whether we have completed the migration
+	// from legacy namespace to separate header/data namespaces
+	namespaceMigrationCompleted *atomic.Bool
 }
 
 // getInitialState tries to load lastState from Store, and if it's not available it reads genesis.
@@ -368,36 +375,42 @@ func NewManager(
 		headerBroadcaster: headerBroadcaster,
 		dataBroadcaster:   dataBroadcaster,
 		// channels are buffered to avoid blocking on input/output operations, buffer sizes are arbitrary
-		headerInCh:               make(chan NewHeaderEvent, eventInChLength),
-		dataInCh:                 make(chan NewDataEvent, eventInChLength),
-		headerStoreCh:            make(chan struct{}, 1),
-		dataStoreCh:              make(chan struct{}, 1),
-		headerStore:              headerStore,
-		dataStore:                dataStore,
-		lastStateMtx:             new(sync.RWMutex),
-		lastBatchData:            lastBatchData,
-		headerCache:              cache.NewCache[types.SignedHeader](),
-		dataCache:                cache.NewCache[types.Data](),
-		retrieveCh:               make(chan struct{}, 1),
-		daIncluderCh:             make(chan struct{}, 1),
-		logger:                   logger,
-		txsAvailable:             false,
-		pendingHeaders:           pendingHeaders,
-		pendingData:              pendingData,
-		metrics:                  seqMetrics,
-		sequencer:                sequencer,
-		exec:                     exec,
-		da:                       da,
-		gasPrice:                 gasPrice,
-		gasMultiplier:            gasMultiplier,
-		txNotifyCh:               make(chan struct{}, 1), // Non-blocking channel
-		signaturePayloadProvider: managerOpts.SignaturePayloadProvider,
-		validatorHasherProvider:  managerOpts.ValidatorHasherProvider,
+		headerInCh:                  make(chan NewHeaderEvent, eventInChLength),
+		dataInCh:                    make(chan NewDataEvent, eventInChLength),
+		headerStoreCh:               make(chan struct{}, 1),
+		dataStoreCh:                 make(chan struct{}, 1),
+		headerStore:                 headerStore,
+		dataStore:                   dataStore,
+		lastStateMtx:                new(sync.RWMutex),
+		lastBatchData:               lastBatchData,
+		headerCache:                 cache.NewCache[types.SignedHeader](),
+		dataCache:                   cache.NewCache[types.Data](),
+		retrieveCh:                  make(chan struct{}, 1),
+		daIncluderCh:                make(chan struct{}, 1),
+		logger:                      logger,
+		txsAvailable:                false,
+		pendingHeaders:              pendingHeaders,
+		pendingData:                 pendingData,
+		metrics:                     seqMetrics,
+		sequencer:                   sequencer,
+		exec:                        exec,
+		da:                          da,
+		gasPrice:                    gasPrice,
+		gasMultiplier:               gasMultiplier,
+		txNotifyCh:                  make(chan struct{}, 1), // Non-blocking channel
+		signaturePayloadProvider:    managerOpts.SignaturePayloadProvider,
+		validatorHasherProvider:     managerOpts.ValidatorHasherProvider,
+		namespaceMigrationCompleted: &atomic.Bool{},
 	}
 
 	// initialize da included height
 	if height, err := m.store.GetMetadata(ctx, storepkg.DAIncludedHeightKey); err == nil && len(height) == 8 {
 		m.daIncludedHeight.Store(binary.LittleEndian.Uint64(height))
+	}
+
+	// initialize namespace migration state
+	if migrationData, err := m.store.GetMetadata(ctx, namespaceMigrationKey); err == nil && len(migrationData) > 0 {
+		m.namespaceMigrationCompleted.Store(migrationData[0] == 1)
 	}
 
 	// Set the default publishBlock implementation
@@ -409,6 +422,24 @@ func NewManager(
 	}
 
 	return m, nil
+}
+
+// setNamespaceMigrationCompleted marks the namespace migration as completed and persists it to disk
+func (m *Manager) setNamespaceMigrationCompleted(ctx context.Context) error {
+	m.namespaceMigrationCompleted.Store(true)
+	return m.store.SetMetadata(ctx, namespaceMigrationKey, []byte{1})
+}
+
+// loadNamespaceMigrationState loads the namespace migration state from persistent storage
+func (m *Manager) loadNamespaceMigrationState(ctx context.Context) (bool, error) {
+	migrationData, err := m.store.GetMetadata(ctx, namespaceMigrationKey)
+	if err != nil {
+		if errors.Is(err, ds.ErrNotFound) {
+			return false, nil // Migration not completed
+		}
+		return false, fmt.Errorf("failed to load migration state: %w", err)
+	}
+	return len(migrationData) > 0 && migrationData[0] == 1, nil
 }
 
 // PendingHeaders returns the pending headers.
@@ -488,14 +519,14 @@ func (m *Manager) IsDAIncluded(ctx context.Context, height uint64) (bool, error)
 	return isIncluded, nil
 }
 
-// SetRollkitHeightToDAHeight stores the mapping from a Rollkit block height to the corresponding
+// SetSequencerHeightToDAHeight stores the mapping from a Evolve block height to the corresponding
 // DA (Data Availability) layer heights where the block's header and data were included.
 // This mapping is persisted in the store metadata and is used to track which DA heights
-// contain the block components for a given Rollkit height.
+// contain the block components for a given Evolve height.
 //
 // For blocks with empty transactions, both header and data use the same DA height since
 // empty transaction data is not actually published to the DA layer.
-func (m *Manager) SetRollkitHeightToDAHeight(ctx context.Context, height uint64) error {
+func (m *Manager) SetSequencerHeightToDAHeight(ctx context.Context, height uint64) error {
 	header, data, err := m.store.GetBlockData(ctx, height)
 	if err != nil {
 		return err
@@ -507,7 +538,7 @@ func (m *Manager) SetRollkitHeightToDAHeight(ctx context.Context, height uint64)
 		return fmt.Errorf("header hash %s not found in cache", headerHash)
 	}
 	binary.LittleEndian.PutUint64(headerHeightBytes, daHeightForHeader)
-	if err := m.store.SetMetadata(ctx, fmt.Sprintf("%s/%d/h", storepkg.RollkitHeightToDAHeightKey, height), headerHeightBytes); err != nil {
+	if err := m.store.SetMetadata(ctx, fmt.Sprintf("%s/%d/h", storepkg.HeightToDAHeightKey, height), headerHeightBytes); err != nil {
 		return err
 	}
 	dataHeightBytes := make([]byte, 8)
@@ -521,7 +552,7 @@ func (m *Manager) SetRollkitHeightToDAHeight(ctx context.Context, height uint64)
 		}
 		binary.LittleEndian.PutUint64(dataHeightBytes, daHeightForData)
 	}
-	if err := m.store.SetMetadata(ctx, fmt.Sprintf("%s/%d/d", storepkg.RollkitHeightToDAHeightKey, height), dataHeightBytes); err != nil {
+	if err := m.store.SetMetadata(ctx, fmt.Sprintf("%s/%d/d", storepkg.HeightToDAHeightKey, height), dataHeightBytes); err != nil {
 		return err
 	}
 	return nil
@@ -800,7 +831,7 @@ func (m *Manager) execValidate(lastState types.State, header *types.SignedHeader
 
 	// AppHash should match the last state's AppHash
 	if !bytes.Equal(header.AppHash, lastState.AppHash) {
-		return fmt.Errorf("appHash mismatch in delayed execution mode: expected %x, got %x", lastState.AppHash, header.AppHash)
+		return fmt.Errorf("appHash mismatch in delayed execution mode: expected %x, got %x at height %d", lastState.AppHash, header.AppHash, header.Height())
 	}
 
 	return nil

@@ -10,7 +10,7 @@ Libp2p provides multiple ways to discover peers (DHT, mDNS, PubSub peer exchange
 
 ## Proposed network architecture
 
-1. There will be a set of well-known, application-agnostic seed nodes. Every Rollkit client will be able to connect to such node, addresses will be saved in configuration.
+1. There will be a set of well-known, application-agnostic seed nodes. Every Evolve client will be able to connect to such node, addresses will be saved in configuration.
     - This does not limit applications as they can still create independent networks with separate set of seed nodes.
 2. Nodes in the network will serve DHT. It will be used for active peer discovery. Client of each optimistic network will be able to find other peers in this particular network.
     - All nodes will cooperate on the same DHT.

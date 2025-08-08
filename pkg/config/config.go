@@ -23,8 +23,6 @@ const (
 	FlagRootDir = "home"
 	// FlagDBPath is a flag for specifying the database path
 	FlagDBPath = "rollkit.db_path"
-	// FlagChainID is a flag for specifying the chain ID
-	FlagChainID = "chain_id"
 
 	// Node configuration flags
 
@@ -59,6 +57,10 @@ const (
 	FlagDAStartHeight = "rollkit.da.start_height"
 	// FlagDANamespace is a flag for specifying the DA namespace ID
 	FlagDANamespace = "rollkit.da.namespace"
+	// FlagDAHeaderNamespace is a flag for specifying the DA header namespace ID
+	FlagDAHeaderNamespace = "rollkit.da.header_namespace"
+	// FlagDADataNamespace is a flag for specifying the DA data namespace ID
+	FlagDADataNamespace = "rollkit.da.data_namespace"
 	// FlagDASubmitOptions is a flag for data availability submit options
 	FlagDASubmitOptions = "rollkit.da.submit_options"
 	// FlagDAMempoolTTL is a flag for specifying the DA mempool TTL
@@ -121,7 +123,6 @@ type Config struct {
 	// Base configuration
 	RootDir string `mapstructure:"-" yaml:"-" comment:"Root directory where rollkit files are located"`
 	DBPath  string `mapstructure:"db_path" yaml:"db_path" comment:"Path inside the root directory where the database is located"`
-	ChainID string `mapstructure:"chain_id" yaml:"chain_id" comment:"Chain ID for your chain"`
 	// P2P configuration
 	P2P P2PConfig `mapstructure:"p2p" yaml:"p2p"`
 
@@ -151,11 +152,35 @@ type DAConfig struct {
 	GasPrice          float64         `mapstructure:"gas_price" yaml:"gas_price" comment:"Gas price for data availability transactions. Use -1 for automatic gas price determination. Higher values may result in faster inclusion."`
 	GasMultiplier     float64         `mapstructure:"gas_multiplier" yaml:"gas_multiplier" comment:"Multiplier applied to gas price when retrying failed DA submissions. Values > 1 increase gas price on retries to improve chances of inclusion."`
 	SubmitOptions     string          `mapstructure:"submit_options" yaml:"submit_options" comment:"Additional options passed to the DA layer when submitting data. Format depends on the specific DA implementation being used."`
-	Namespace         string          `mapstructure:"namespace" yaml:"namespace" comment:"Namespace ID used when submitting blobs to the DA layer."`
+	Namespace         string          `mapstructure:"namespace" yaml:"namespace" comment:"Namespace ID used when submitting blobs to the DA layer (deprecated, use HeaderNamespace and DataNamespace instead)."`
+	HeaderNamespace   string          `mapstructure:"header_namespace" yaml:"header_namespace" comment:"Namespace ID for submitting headers to DA layer."`
+	DataNamespace     string          `mapstructure:"data_namespace" yaml:"data_namespace" comment:"Namespace ID for submitting data toDA layer."`
 	BlockTime         DurationWrapper `mapstructure:"block_time" yaml:"block_time" comment:"Average block time of the DA chain (duration). Determines frequency of DA layer syncing, maximum backoff time for retries, and is multiplied by MempoolTTL to calculate transaction expiration. Examples: \"15s\", \"30s\", \"1m\", \"2m30s\", \"10m\"."`
 	StartHeight       uint64          `mapstructure:"start_height" yaml:"start_height" comment:"Starting block height on the DA layer from which to begin syncing. Useful when deploying a new chain on an existing DA chain."`
 	MempoolTTL        uint64          `mapstructure:"mempool_ttl" yaml:"mempool_ttl" comment:"Number of DA blocks after which a transaction is considered expired and dropped from the mempool. Controls retry backoff timing."`
 	MaxSubmitAttempts int             `mapstructure:"max_submit_attempts" yaml:"max_submit_attempts" comment:"Maximum number of attempts to submit data to the DA layer before giving up. Higher values provide more resilience but can delay error reporting."`
+}
+
+// GetHeaderNamespace returns the namespace for header submissions, falling back to the legacy namespace if not set
+func (d *DAConfig) GetHeaderNamespace() string {
+	if d.HeaderNamespace != "" {
+		return d.HeaderNamespace
+	}
+	if d.Namespace != "" {
+		return d.Namespace
+	}
+	return "rollkit-headers" // Default value
+}
+
+// GetDataNamespace returns the namespace for data submissions, falling back to the legacy namespace if not set
+func (d *DAConfig) GetDataNamespace() string {
+	if d.DataNamespace != "" {
+		return d.DataNamespace
+	}
+	if d.Namespace != "" {
+		return d.Namespace
+	}
+	return "rollkit-data" // Default value
 }
 
 // NodeConfig contains all Rollkit specific configuration parameters
@@ -230,13 +255,12 @@ func AddGlobalFlags(cmd *cobra.Command, defaultHome string) {
 	cmd.PersistentFlags().String(FlagRootDir, DefaultRootDirWithName(defaultHome), "Root directory for application data")
 }
 
-// AddFlags adds Rollkit specific configuration options to cobra Command.
+// AddFlags adds Evolve specific configuration options to cobra Command.
 func AddFlags(cmd *cobra.Command) {
 	def := DefaultConfig
 
 	// Add base flags
 	cmd.Flags().String(FlagDBPath, def.DBPath, "path for the node database")
-	cmd.Flags().String(FlagChainID, def.ChainID, "chain ID")
 
 	// Node configuration flags
 	cmd.Flags().Bool(FlagAggregator, def.Node.Aggregator, "run node in aggregator mode")
@@ -254,7 +278,9 @@ func AddFlags(cmd *cobra.Command) {
 	cmd.Flags().Float64(FlagDAGasPrice, def.DA.GasPrice, "DA gas price for blob transactions")
 	cmd.Flags().Float64(FlagDAGasMultiplier, def.DA.GasMultiplier, "DA gas price multiplier for retrying blob transactions")
 	cmd.Flags().Uint64(FlagDAStartHeight, def.DA.StartHeight, "starting DA block height (for syncing)")
-	cmd.Flags().String(FlagDANamespace, def.DA.Namespace, "DA namespace to submit blob transactions")
+	cmd.Flags().String(FlagDANamespace, def.DA.Namespace, "DA namespace to submit blob transactions (deprecated, use header-namespace and data-namespace)")
+	cmd.Flags().String(FlagDAHeaderNamespace, def.DA.HeaderNamespace, "DA namespace for header submissions")
+	cmd.Flags().String(FlagDADataNamespace, def.DA.DataNamespace, "DA namespace for data submissions")
 	cmd.Flags().String(FlagDASubmitOptions, def.DA.SubmitOptions, "DA submit options")
 	cmd.Flags().Uint64(FlagDAMempoolTTL, def.DA.MempoolTTL, "number of DA blocks until transaction is dropped from the mempool")
 	cmd.Flags().Int(FlagDAMaxSubmitAttempts, def.DA.MaxSubmitAttempts, "maximum number of attempts to submit data to the DA layer before giving up")

@@ -37,7 +37,7 @@ func main() {
 
 	// create logger
 	zerolog.SetGlobalLevel(zerolog.InfoLevel)
-	logger := zerolog.New(os.Stderr).With().Timestamp().Str("component", "da").Logger()
+	logger := zerolog.New(zerolog.ConsoleWriter{Out: os.Stderr}).With().Timestamp().Str("component", "da").Logger()
 
 	// Create LocalDA instance with custom maxBlobSize if provided
 	var opts []func(*LocalDA) *LocalDA

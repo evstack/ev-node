@@ -7,7 +7,7 @@ import (
 	"github.com/spf13/cobra"
 
 	rollcmd "github.com/evstack/ev-node/pkg/cmd"
-	rollkitconfig "github.com/evstack/ev-node/pkg/config"
+	"github.com/evstack/ev-node/pkg/config"
 
 	"github.com/evstack/ev-node/apps/evm/single/cmd"
 )
@@ -16,10 +16,13 @@ func main() {
 	// Initiate the root command
 	rootCmd := &cobra.Command{
 		Use:   "evm-single",
-		Short: "Rollkit with EVM; single sequencer",
+		Short: "Evolve with EVM; single sequencer",
 	}
 
-	rollkitconfig.AddGlobalFlags(rootCmd, "evm-single")
+	config.AddGlobalFlags(rootCmd, "evm-single")
+
+	// Add configuration flags to NetInfoCmd so it can read RPC address
+	config.AddFlags(rollcmd.NetInfoCmd)
 
 	rootCmd.AddCommand(
 		cmd.InitCmd(),

@@ -672,7 +672,7 @@ func TestProcessBatch(t *testing.T) {
 	// Test data setup
 	testItems := []string{"item1", "item2", "item3"}
 	testMarshaled := [][]byte{[]byte("marshaled1"), []byte("marshaled2"), []byte("marshaled3")}
-	testBatch := SubmissionBatch[string]{
+	testBatch := submissionBatch[string]{
 		Items:     testItems,
 		Marshaled: testMarshaled,
 	}
@@ -692,7 +692,7 @@ func TestProcessBatch(t *testing.T) {
 		da.On("SubmitWithOptions", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 			Return([]coreda.ID{getDummyID(1, []byte("id1")), getDummyID(1, []byte("id2")), getDummyID(1, []byte("id3"))}, nil).Once()
 
-		result := processBatch(m, ctx, testBatch, 1.0, postSubmit, "test")
+		result := processBatch(m, ctx, testBatch, 1.0, postSubmit, "test", []byte("test-namespace"))
 
 		assert.Equal(t, batchActionSubmitted, result.action)
 		assert.Equal(t, 3, result.submittedCount)
@@ -717,7 +717,7 @@ func TestProcessBatch(t *testing.T) {
 		da.On("SubmitWithOptions", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 			Return([]coreda.ID{getDummyID(1, []byte("id1")), getDummyID(1, []byte("id2"))}, nil).Once()
 
-		result := processBatch(m, ctx, testBatch, 1.0, partialPostSubmit, "test")
+		result := processBatch(m, ctx, testBatch, 1.0, partialPostSubmit, "test", []byte("test-namespace"))
 
 		assert.Equal(t, batchActionSubmitted, result.action)
 		assert.Equal(t, 2, result.submittedCount)
@@ -732,7 +732,7 @@ func TestProcessBatch(t *testing.T) {
 		da.On("SubmitWithOptions", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 			Return(nil, coreda.ErrBlobSizeOverLimit).Once()
 
-		result := processBatch(m, ctx, testBatch, 1.0, postSubmit, "test")
+		result := processBatch(m, ctx, testBatch, 1.0, postSubmit, "test", []byte("test-namespace"))
 
 		assert.Equal(t, batchActionTooBig, result.action)
 		assert.Equal(t, 0, result.submittedCount)
@@ -745,7 +745,7 @@ func TestProcessBatch(t *testing.T) {
 		da.ExpectedCalls = nil
 
 		// Create single-item batch
-		singleBatch := SubmissionBatch[string]{
+		singleBatch := submissionBatch[string]{
 			Items:     []string{"large_item"},
 			Marshaled: [][]byte{[]byte("large_marshaled")},
 		}
@@ -754,7 +754,7 @@ func TestProcessBatch(t *testing.T) {
 		da.On("SubmitWithOptions", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 			Return(nil, coreda.ErrBlobSizeOverLimit).Once()
 
-		result := processBatch(m, ctx, singleBatch, 1.0, postSubmit, "test")
+		result := processBatch(m, ctx, singleBatch, 1.0, postSubmit, "test", []byte("test-namespace"))
 
 		assert.Equal(t, batchActionSkip, result.action)
 		assert.Equal(t, 0, result.submittedCount)
@@ -769,7 +769,7 @@ func TestProcessBatch(t *testing.T) {
 		da.On("SubmitWithOptions", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 			Return(nil, fmt.Errorf("network error")).Once()
 
-		result := processBatch(m, ctx, testBatch, 1.0, postSubmit, "test")
+		result := processBatch(m, ctx, testBatch, 1.0, postSubmit, "test", []byte("test-namespace"))
 
 		assert.Equal(t, batchActionFail, result.action)
 		assert.Equal(t, 0, result.submittedCount)
@@ -935,4 +935,155 @@ func TestRetryStrategy(t *testing.T) {
 		require.Equal(t, expectedGasPrice, strategy.gasPrice)
 	})
 
+}
+
+// TestSubmitHalfBatch tests all scenarios for submitHalfBatch function using table-driven tests
+func TestSubmitHalfBatch(t *testing.T) {
+	tests := []struct {
+		name                string
+		items               []string
+		marshaled           [][]byte
+		mockSetup           func(*mocks.MockDA)
+		expectedSubmitted   int
+		expectError         bool
+		expectedErrorMsg    string
+		postSubmitValidator func(*testing.T, [][]string) // validates postSubmit calls
+	}{
+		{
+			name:              "EmptyItems",
+			items:             []string{},
+			marshaled:         [][]byte{},
+			mockSetup:         func(da *mocks.MockDA) {}, // no DA calls expected
+			expectedSubmitted: 0,
+			expectError:       false,
+			postSubmitValidator: func(t *testing.T, calls [][]string) {
+				assert.Empty(t, calls, "postSubmit should not be called for empty items")
+			},
+		},
+		{
+			name:      "FullSuccess",
+			items:     []string{"item1", "item2", "item3"},
+			marshaled: [][]byte{[]byte("m1"), []byte("m2"), []byte("m3")},
+			mockSetup: func(da *mocks.MockDA) {
+				da.On("SubmitWithOptions", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+					Return([]coreda.ID{getDummyID(1, []byte("id1")), getDummyID(1, []byte("id2")), getDummyID(1, []byte("id3"))}, nil).Once()
+			},
+			expectedSubmitted: 3,
+			expectError:       false,
+			postSubmitValidator: func(t *testing.T, calls [][]string) {
+				require.Len(t, calls, 1, "postSubmit should be called once")
+				assert.Equal(t, []string{"item1", "item2", "item3"}, calls[0])
+			},
+		},
+		{
+			name:      "PartialSuccess",
+			items:     []string{"item1", "item2", "item3"},
+			marshaled: [][]byte{[]byte("m1"), []byte("m2"), []byte("m3")},
+			mockSetup: func(da *mocks.MockDA) {
+				// First call: submit 2 out of 3 items
+				da.On("SubmitWithOptions", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+					Return([]coreda.ID{getDummyID(1, []byte("id1")), getDummyID(1, []byte("id2"))}, nil).Once()
+				// Second call (recursive): submit remaining 1 item
+				da.On("SubmitWithOptions", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+					Return([]coreda.ID{getDummyID(1, []byte("id3"))}, nil).Once()
+			},
+			expectedSubmitted: 3,
+			expectError:       false,
+			postSubmitValidator: func(t *testing.T, calls [][]string) {
+				require.Len(t, calls, 2, "postSubmit should be called twice")
+				assert.Equal(t, []string{"item1", "item2"}, calls[0])
+				assert.Equal(t, []string{"item3"}, calls[1])
+			},
+		},
+		{
+			name:      "PartialSuccessWithRecursionError",
+			items:     []string{"item1", "item2", "item3"},
+			marshaled: [][]byte{[]byte("m1"), []byte("m2"), []byte("m3")},
+			mockSetup: func(da *mocks.MockDA) {
+				// First call: submit 2 out of 3 items successfully
+				da.On("SubmitWithOptions", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+					Return([]coreda.ID{getDummyID(1, []byte("id1")), getDummyID(1, []byte("id2"))}, nil).Once()
+				// Second call (recursive): remaining item is too big
+				da.On("SubmitWithOptions", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+					Return(nil, coreda.ErrBlobSizeOverLimit).Once()
+			},
+			expectedSubmitted: 2,
+			expectError:       true,
+			expectedErrorMsg:  "single test item exceeds DA blob size limit",
+			postSubmitValidator: func(t *testing.T, calls [][]string) {
+				require.Len(t, calls, 1, "postSubmit should be called once for successful part")
+				assert.Equal(t, []string{"item1", "item2"}, calls[0])
+			},
+		},
+		{
+			name:      "SingleItemTooLarge",
+			items:     []string{"large_item"},
+			marshaled: [][]byte{[]byte("large_marshaled_data")},
+			mockSetup: func(da *mocks.MockDA) {
+				da.On("SubmitWithOptions", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+					Return(nil, coreda.ErrBlobSizeOverLimit).Once()
+			},
+			expectedSubmitted: 0,
+			expectError:       true,
+			expectedErrorMsg:  "single test item exceeds DA blob size limit",
+			postSubmitValidator: func(t *testing.T, calls [][]string) {
+				assert.Empty(t, calls, "postSubmit should not be called on error")
+			},
+		},
+		{
+			name:      "UnrecoverableError",
+			items:     []string{"item1", "item2"},
+			marshaled: [][]byte{[]byte("m1"), []byte("m2")},
+			mockSetup: func(da *mocks.MockDA) {
+				da.On("SubmitWithOptions", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+					Return(nil, fmt.Errorf("network timeout")).Once()
+			},
+			expectedSubmitted: 0,
+			expectError:       true,
+			expectedErrorMsg:  "unrecoverable error during test batch submission",
+			postSubmitValidator: func(t *testing.T, calls [][]string) {
+				assert.Empty(t, calls, "postSubmit should not be called on failure")
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			da := &mocks.MockDA{}
+			m := newTestManagerWithDA(t, da)
+			ctx := context.Background()
+
+			// Track postSubmit calls
+			var postSubmitCalls [][]string
+			postSubmit := func(submitted []string, res *coreda.ResultSubmit, gasPrice float64) {
+				postSubmitCalls = append(postSubmitCalls, submitted)
+				assert.Equal(t, float64(1.0), gasPrice, "gasPrice should be 1.0")
+			}
+
+			// Setup DA mock
+			tt.mockSetup(da)
+
+			// Call submitHalfBatch
+			submitted, err := submitHalfBatch(m, ctx, tt.items, tt.marshaled, 1.0, postSubmit, "test", []byte("test-namespace"))
+
+			// Validate results
+			if tt.expectError {
+				assert.Error(t, err, "Expected error for test case %s", tt.name)
+				if tt.expectedErrorMsg != "" {
+					assert.Contains(t, err.Error(), tt.expectedErrorMsg, "Error message should contain expected text")
+				}
+			} else {
+				assert.NoError(t, err, "Expected no error for test case %s", tt.name)
+			}
+
+			assert.Equal(t, tt.expectedSubmitted, submitted, "Submitted count should match expected")
+
+			// Validate postSubmit calls
+			if tt.postSubmitValidator != nil {
+				tt.postSubmitValidator(t, postSubmitCalls)
+			}
+
+			da.AssertExpectations(t)
+		})
+	}
 }

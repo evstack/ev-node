@@ -1,19 +1,19 @@
 # gRPC Single Sequencer App
 
-This application runs a Rollkit node with a single sequencer that connects to a remote execution client via gRPC. It allows you to use any execution layer that implements the Rollkit execution gRPC interface.
+This application runs a Evolve node with a single sequencer that connects to a remote execution client via gRPC. It allows you to use any execution layer that implements the Evolve execution gRPC interface.
 
 ## Overview
 
 The gRPC single sequencer app provides:
 
-- A Rollkit consensus node with single sequencer
+- A Evolve consensus node with single sequencer
 - Connection to remote execution clients via gRPC
 - Full data availability layer integration
 - P2P networking capabilities
 
 ## Prerequisites
 
-1. A running execution client that implements the Rollkit gRPC execution interface
+1. A running execution client that implements the Evolve gRPC execution interface
 2. Access to a data availability layer (e.g., local DA, Celestia)
 3. Go 1.22 or higher
 
@@ -44,11 +44,11 @@ Edit the configuration file at `~/.grpc-single/config/config.toml` to set your p
 
 ### 3. Start the Execution Service
 
-Before starting the Rollkit node, ensure your gRPC execution service is running.
+Before starting the Evolve node, ensure your gRPC execution service is running.
 
 ### 4. Run the Node
 
-Start the Rollkit node with:
+Start the Evolve node with:
 
 ```bash
 ./grpc-single start \
@@ -65,7 +65,7 @@ Start the Rollkit node with:
 
 - `--grpc-executor-url`: URL of the gRPC execution service (default: `http://localhost:50051`)
 
-### Common Rollkit Flags
+### Common Evolve Flags
 
 - `--root-dir`: Root directory for config and data (default: `~/.grpc-single`)
 - `--chain-id`: The chain ID for your rollup
@@ -105,7 +105,7 @@ Start the Rollkit node with:
 
 ```text
 ┌─────────────────┐     ┌──────────────────┐     ┌─────────────┐
-│   Rollkit Node  │────▶│ gRPC Execution   │────▶│  Execution  │
+│   Evolve Node   │────▶│ gRPC Execution   │────▶│  Execution  │
 │ (Single Seqr)   │◀────│     Client       │◀────│   Service   │
 └─────────────────┘     └──────────────────┘     └─────────────┘
          │                                                │
@@ -151,6 +151,6 @@ If you have issues connecting to the DA layer:
 
 ## See Also
 
-- [Rollkit Documentation](https://rollkit.dev)
+- [Evolve Documentation](https://ev.xyz)
 - [gRPC Execution Interface](../../../execution/grpc/README.md)
 - [Single Sequencer Documentation](../../../sequencers/single/README.md)

@@ -29,8 +29,8 @@ services:
   #     timeout: 3s
   #     retries: 5
 
-  # Rollkit node with gRPC execution client
-  rollkit-grpc:
+  # Evolve node with gRPC execution client
+  evolve-grpc:
     build:
       context: ../../../
       dockerfile: apps/grpc/single/Dockerfile
@@ -44,16 +44,14 @@ services:
       - "26657:26657"  # RPC
       - "26660:26660"  # Prometheus metrics
     environment:
-      - CHAIN_ID=grpc-test-chain
       - DA_ADDRESS=http://local-da:7980
       - DA_NAMESPACE=00000000000000000000000000000000000000000000000000deadbeef
       - GRPC_EXECUTOR_URL=http://host.docker.internal:50051  # Change to your execution service
     volumes:
-      - rollkit-data:/home/rollkit/.grpc-single
+      - evolve-data:/home/evolve/.grpc-single
     command:
       - start
-      - --root-dir=/home/rollkit/.grpc-single
-      - --chain-id=${CHAIN_ID:-grpc-test-chain}
+      - --root-dir=/home/evolve/.grpc-single
       - --da.address=${DA_ADDRESS:-http://local-da:7980}
       - --da.namespace=${DA_NAMESPACE}
       - --grpc-executor-url=${GRPC_EXECUTOR_URL:-http://host.docker.internal:50051}
@@ -63,4 +61,4 @@ services:
       - --instrumentation.prometheus-listen-addr=0.0.0.0:26660
 
 volumes:
-  rollkit-data:
+  evolve-data:
