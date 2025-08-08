@@ -47,7 +47,13 @@ func (m *Manager) RetrieveLoop(ctx context.Context) {
 		case blobsFoundCh <- struct{}{}:
 		default:
 		}
-		m.daHeight.Store(daHeight + 1)
+		newDAHeight := daHeight + 1
+		m.daHeight.Store(newDAHeight)
+		
+		// Persist the updated DA height in the state to survive restarts
+		if err := m.persistDAHeight(ctx, newDAHeight); err != nil {
+			m.logger.Error().Err(err).Uint64("newDAHeight", newDAHeight).Msg("failed to persist DA height")
+		}
 	}
 }
 

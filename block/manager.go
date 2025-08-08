@@ -317,7 +317,9 @@ func NewManager(
 		return nil, err
 	}
 
-	if s.DAHeight < config.DA.StartHeight {
+	// Only use config.DA.StartHeight for fresh initialization (when DAHeight is 0)
+	// This allows resuming from the last queried DA height on restart
+	if s.DAHeight == 0 && config.DA.StartHeight > 0 {
 		s.DAHeight = config.DA.StartHeight
 	}
 
@@ -457,6 +459,27 @@ func (m *Manager) GetLastState() types.State {
 	m.lastStateMtx.RLock()
 	defer m.lastStateMtx.RUnlock()
 	return m.lastState
+}
+
+// persistDAHeight updates the DAHeight in the persistent state.
+// This ensures that the last queried DA height is preserved across restarts.
+func (m *Manager) persistDAHeight(ctx context.Context, newDAHeight uint64) error {
+	m.lastStateMtx.Lock()
+	defer m.lastStateMtx.Unlock()
+	
+	// Create an updated state with the new DA height
+	updatedState := m.lastState
+	updatedState.DAHeight = newDAHeight
+	
+	// Persist the updated state
+	err := m.store.UpdateState(ctx, updatedState)
+	if err != nil {
+		return fmt.Errorf("failed to update state with new DA height %d: %w", newDAHeight, err)
+	}
+	
+	// Update the in-memory state
+	m.lastState = updatedState
+	return nil
 }
 
 // GetDAIncludedHeight returns the height at which all blocks have been
