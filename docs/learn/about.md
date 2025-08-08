@@ -8,7 +8,7 @@ This isn't a toolkit. It's a launch stack.
 
 No fees. No middlemen. No revenue share.
 
-## What is Evolve?
+## What is Evolve
 
 Evolve is a launch stack for L1s. It gives you full control over execution — without CometBFT, validator ops, or lock-in.
 
@@ -32,7 +32,7 @@ With Evolve, you get:
 
 Powered by Celestia — toward 1GB blocks, multi-VM freedom, and execution without compromising flexibility or cost.
 
-## What problems is Evolve solving?
+## What problems is Evolve solving
 
 ### 1\. Scalability and customizability
 
@@ -50,7 +50,7 @@ In order to secure the network, developers must bootstrap a sufficiently secure 
 
 In a potential future with millions of chains, it's unlikely all of those chains will be able to sustainably attract a sufficiently secure and decentralized validator set.
 
-## Why Evolve?
+## Why Evolve
 
 Evolve solves the challenges encountered during the deployment of a smart contract or a new layer 1, by minimizing these tradeoffs through the implementation of evolve chains.
 
@@ -66,7 +66,7 @@ With Evolve, developers can benefit from:
 
 - **Sovereignty**: Evolve also enables developers to deploy chains for cases where communities require sovereignty.
 
-## How can you use Evolve?
+## How can you use Evolve
 
 As briefly mentioned above, Evolve could be used in many different ways. From chains, to settlement layers, and in the future even to L3s.
 
@@ -84,7 +84,7 @@ Another possibility is taking an existing layer 1 built with the Cosmos SDK and 
 
 [Settlement layers](https://celestia.org/learn/modular-settlement-layers/settlement-in-the-modular-stack/) are ideal for developers who want to avoid deploying chains. They provide a platform for chains to verify proofs and resolve disputes. Additionally, they act as a hub for chains to facilitate trust-minimized token transfers and liquidity sharing between chains that share the same settlement layer. Think of settlement layers as a special type of execution layer.
 
-## When can you use Evolve?
+## When can you use Evolve
 
 As of today, Evolve provides a single sequencer, an execution interface (Engine API or ABCI), and a connection to Celestia.
 

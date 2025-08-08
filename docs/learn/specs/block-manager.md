@@ -118,7 +118,9 @@ Block manager configuration options:
 |MaxPendingHeadersAndData|uint64|maximum number of pending headers and data blocks before pausing block production (default: 100)|
 |GasPrice|float64|gas price for DA submissions (-1 for automatic/default)|
 |GasMultiplier|float64|multiplier for gas price on DA submission retries (default: 1.3)|
-|Namespace|da.Namespace|DA namespace ID for block submissions|
+|Namespace|da.Namespace|DA namespace ID for block submissions (deprecated, use HeaderNamespace and DataNamespace instead)|
+|HeaderNamespace|string|namespace ID for submitting headers to DA layer|
+|DataNamespace|string|namespace ID for submitting data to DA layer|
 
 ### Block Production
 
@@ -194,7 +196,7 @@ Note: When no transactions are available, the block manager creates blocks with 
 
 ### Block Publication to DA Network
 
-The block manager of the sequencer full nodes implements separate submission loops for headers and data, both operating at `DABlockTime` intervals:
+The block manager of the sequencer full nodes implements separate submission loops for headers and data, both operating at `DABlockTime` intervals. Headers and data are submitted to different namespaces to improve scalability and allow for more flexible data availability strategies:
 
 ```mermaid
 flowchart LR
@@ -224,7 +226,7 @@ The `HeaderSubmissionLoop` manages the submission of signed headers to the DA ne
 
 * Retrieves pending headers from the `pendingHeaders` queue
 * Marshals headers to protobuf format
-* Submits to DA using the generic `submitToDA` helper
+* Submits to DA using the generic `submitToDA` helper with the configured `HeaderNamespace`
 * On success, removes submitted headers from the pending queue
 * On failure, headers remain in the queue for retry
 
@@ -234,7 +236,7 @@ The `DataSubmissionLoop` manages the submission of signed data to the DA network
 
 * Retrieves pending data from the `pendingData` queue
 * Marshals data to protobuf format
-* Submits to DA using the generic `submitToDA` helper
+* Submits to DA using the generic `submitToDA` helper with the configured `DataNamespace`
 * On success, removes submitted data from the pending queue
 * On failure, data remains in the queue for retry
 
@@ -242,6 +244,7 @@ The `DataSubmissionLoop` manages the submission of signed data to the DA network
 
 Both loops use a shared `submitToDA` function that provides:
 
+* Namespace-specific submission based on header or data type
 * Retry logic with [`maxSubmitAttempts`][maxSubmitAttempts] attempts
 * Exponential backoff starting at [`initialBackoff`][initialBackoff], doubling each attempt, capped at `DABlockTime`
 * Gas price management with `GasMultiplier` applied on retries
@@ -252,7 +255,7 @@ The manager enforces a limit on pending headers and data through `MaxPendingHead
 
 ### Block Retrieval from DA Network
 
-The block manager implements a `RetrieveLoop` that regularly pulls headers and data from the DA network:
+The block manager implements a `RetrieveLoop` that regularly pulls headers and data from the DA network. The retrieval process supports both legacy single-namespace mode (for backward compatibility) and the new separate namespace mode:
 
 ```mermaid
 flowchart TD
@@ -287,9 +290,16 @@ flowchart TD
 
 2. **Retrieval Mechanism**:
    * Executes at `DABlockTime` intervals
-   * Makes `GetHeightPair(daHeight)` request to get both header and data
+   * Implements namespace migration support:
+     * First attempts legacy namespace retrieval if migration not completed
+     * Falls back to separate header and data namespace retrieval
+     * Tracks migration status to optimize future retrievals
+   * Retrieves from separate namespaces:
+     * Headers from `HeaderNamespace`
+     * Data from `DataNamespace`
+   * Combines results from both namespaces
    * Handles three possible outcomes:
-     * `Success`: Process retrieved header and data
+     * `Success`: Process retrieved header and/or data
      * `NotFound`: No chain block at this DA height (normal case)
      * `Error`: Retry with backoff
 
@@ -304,6 +314,9 @@ flowchart TD
    * Marks blocks as DA included in caches
    * Sends to sync goroutine for state update
    * Successful processing triggers immediate next retrieval without waiting for timer
+   * Updates namespace migration status when appropriate:
+     * Marks migration complete when data found in new namespaces
+     * Persists migration state to avoid future legacy checks
 
 #### Header and Data Caching
 
@@ -313,6 +326,7 @@ The retrieval system uses persistent caches for both headers and data:
 * Tracks DA inclusion status
 * Supports out-of-order block arrival
 * Enables efficient sync from P2P and DA sources
+* Maintains namespace migration state for optimized retrieval
 
 For more details on DA integration, see the [Data Availability specification](./da.md).
 
@@ -505,8 +519,10 @@ The communication with DA layer:
 * Empty batches are handled differently in lazy mode - instead of discarding them, they are returned with the `ErrNoBatch` error, allowing the caller to create empty blocks with proper timestamps.
 * Transaction notifications from the `Reaper` to the `Manager` are handled via a non-blocking notification channel (`txNotifyCh`) to prevent backpressure.
 * The block manager enforces `MaxPendingHeadersAndData` limit to prevent unbounded growth of pending queues during DA submission issues.
-* Headers and data are submitted separately to the DA layer, supporting the header/data separation architecture.
+* Headers and data are submitted separately to the DA layer using different namespaces, supporting the header/data separation architecture.
 * The block manager uses persistent caches for headers and data to track seen items and DA inclusion status.
+* Namespace migration is handled transparently, with automatic detection and state persistence to optimize future operations.
+* The system supports backward compatibility with legacy single-namespace deployments while transitioning to separate namespaces.
 * Gas price management includes automatic adjustment with `GasMultiplier` on DA submission retries.
 * The block manager uses persistent storage (disk) when the `root_dir` and `db_path` configuration parameters are specified in `config.yaml` file under the app directory. If these configuration parameters are not specified, the in-memory storage is used, which will not be persistent if the node stops.
 * The block manager does not re-apply blocks when they transition from soft confirmed to DA included status. The block is only marked DA included in the caches.

@@ -843,7 +843,7 @@ func TestSyncLoop_MultipleHeadersArriveFirst_ThenData(t *testing.T) {
 			txs[i] = append(txs[i], tx)
 		}
 
-		expectedAppHashes[i] = []byte(fmt.Sprintf("app_hash_h%d", i+1))
+		expectedAppHashes[i] = fmt.Appendf(nil, "app_hash_h%d", i+1)
 		var err error
 		expectedStates[i], err = prevState.NextState(headers[i].Header, expectedAppHashes[i])
 		require.NoError(err)

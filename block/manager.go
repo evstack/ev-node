@@ -47,6 +47,9 @@ const (
 	// This is temporary solution. It will be removed in future versions.
 	maxSubmitAttempts = 30
 
+	// Key for storing namespace migration state in the store
+	namespaceMigrationKey = "namespace_migration_completed"
+
 	// Applies to the headerInCh and dataInCh, 10000 is a large enough number for headers per DA block.
 	eventInChLength = 10000
 )
@@ -168,6 +171,10 @@ type Manager struct {
 	// validatorHasherProvider is used to provide the validator hash for the header.
 	// It is used to set the validator hash in the header.
 	validatorHasherProvider types.ValidatorHasherProvider
+
+	// namespaceMigrationCompleted tracks whether we have completed the migration
+	// from legacy namespace to separate header/data namespaces
+	namespaceMigrationCompleted *atomic.Bool
 }
 
 // getInitialState tries to load lastState from Store, and if it's not available it reads genesis.
@@ -375,36 +382,42 @@ func NewManager(
 		headerBroadcaster: headerBroadcaster,
 		dataBroadcaster:   dataBroadcaster,
 		// channels are buffered to avoid blocking on input/output operations, buffer sizes are arbitrary
-		headerInCh:               make(chan NewHeaderEvent, eventInChLength),
-		dataInCh:                 make(chan NewDataEvent, eventInChLength),
-		headerStoreCh:            make(chan struct{}, 1),
-		dataStoreCh:              make(chan struct{}, 1),
-		headerStore:              headerStore,
-		dataStore:                dataStore,
-		lastStateMtx:             new(sync.RWMutex),
-		lastBatchData:            lastBatchData,
-		headerCache:              cache.NewCache[types.SignedHeader](),
-		dataCache:                cache.NewCache[types.Data](),
-		retrieveCh:               make(chan struct{}, 1),
-		daIncluderCh:             make(chan struct{}, 1),
-		logger:                   logger,
-		txsAvailable:             false,
-		pendingHeaders:           pendingHeaders,
-		pendingData:              pendingData,
-		metrics:                  seqMetrics,
-		sequencer:                sequencer,
-		exec:                     exec,
-		da:                       da,
-		gasPrice:                 gasPrice,
-		gasMultiplier:            gasMultiplier,
-		txNotifyCh:               make(chan struct{}, 1), // Non-blocking channel
-		signaturePayloadProvider: managerOpts.SignaturePayloadProvider,
-		validatorHasherProvider:  managerOpts.ValidatorHasherProvider,
+		headerInCh:                  make(chan NewHeaderEvent, eventInChLength),
+		dataInCh:                    make(chan NewDataEvent, eventInChLength),
+		headerStoreCh:               make(chan struct{}, 1),
+		dataStoreCh:                 make(chan struct{}, 1),
+		headerStore:                 headerStore,
+		dataStore:                   dataStore,
+		lastStateMtx:                new(sync.RWMutex),
+		lastBatchData:               lastBatchData,
+		headerCache:                 cache.NewCache[types.SignedHeader](),
+		dataCache:                   cache.NewCache[types.Data](),
+		retrieveCh:                  make(chan struct{}, 1),
+		daIncluderCh:                make(chan struct{}, 1),
+		logger:                      logger,
+		txsAvailable:                false,
+		pendingHeaders:              pendingHeaders,
+		pendingData:                 pendingData,
+		metrics:                     seqMetrics,
+		sequencer:                   sequencer,
+		exec:                        exec,
+		da:                          da,
+		gasPrice:                    gasPrice,
+		gasMultiplier:               gasMultiplier,
+		txNotifyCh:                  make(chan struct{}, 1), // Non-blocking channel
+		signaturePayloadProvider:    managerOpts.SignaturePayloadProvider,
+		validatorHasherProvider:     managerOpts.ValidatorHasherProvider,
+		namespaceMigrationCompleted: &atomic.Bool{},
 	}
 
 	// initialize da included height
 	if height, err := m.store.GetMetadata(ctx, storepkg.DAIncludedHeightKey); err == nil && len(height) == 8 {
 		m.daIncludedHeight.Store(binary.LittleEndian.Uint64(height))
+	}
+
+	// initialize namespace migration state
+	if migrationData, err := m.store.GetMetadata(ctx, namespaceMigrationKey); err == nil && len(migrationData) > 0 {
+		m.namespaceMigrationCompleted.Store(migrationData[0] == 1)
 	}
 
 	// Set the default publishBlock implementation
@@ -416,6 +429,24 @@ func NewManager(
 	}
 
 	return m, nil
+}
+
+// setNamespaceMigrationCompleted marks the namespace migration as completed and persists it to disk
+func (m *Manager) setNamespaceMigrationCompleted(ctx context.Context) error {
+	m.namespaceMigrationCompleted.Store(true)
+	return m.store.SetMetadata(ctx, namespaceMigrationKey, []byte{1})
+}
+
+// loadNamespaceMigrationState loads the namespace migration state from persistent storage
+func (m *Manager) loadNamespaceMigrationState(ctx context.Context) (bool, error) {
+	migrationData, err := m.store.GetMetadata(ctx, namespaceMigrationKey)
+	if err != nil {
+		if errors.Is(err, ds.ErrNotFound) {
+			return false, nil // Migration not completed
+		}
+		return false, fmt.Errorf("failed to load migration state: %w", err)
+	}
+	return len(migrationData) > 0 && migrationData[0] == 1, nil
 }
 
 // PendingHeaders returns the pending headers.
