@@ -209,9 +209,9 @@ func TestHandleDAVisualizationHTML(t *testing.T) {
 
 	body := rr.Body.String()
 	assert.Contains(t, body, "DA Layer Visualization")
-	assert.Contains(t, body, "100") // Height
-	assert.Contains(t, body, "Success") // Status
-	assert.Contains(t, body, "1024") // Size
+	assert.Contains(t, body, "100")             // Height
+	assert.Contains(t, body, "Success")         // Status
+	assert.Contains(t, body, "1024")            // Size
 	assert.Contains(t, body, "Test submission") // Message
 }
 

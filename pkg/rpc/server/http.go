@@ -42,6 +42,24 @@ func RegisterCustomHTTPEndpoints(mux *http.ServeMux) {
 		server.handleDABlobDetails(w, r)
 	})
 
+	mux.HandleFunc("/da/stats", func(w http.ResponseWriter, r *http.Request) {
+		server := GetDAVisualizationServer()
+		if server == nil {
+			http.Error(w, "DA visualization not available", http.StatusServiceUnavailable)
+			return
+		}
+		server.handleDAStats(w, r)
+	})
+
+	mux.HandleFunc("/da/health", func(w http.ResponseWriter, r *http.Request) {
+		server := GetDAVisualizationServer()
+		if server == nil {
+			http.Error(w, "DA visualization not available", http.StatusServiceUnavailable)
+			return
+		}
+		server.handleDAHealth(w, r)
+	})
+
 	// Example for adding more custom endpoints:
 	// mux.HandleFunc("/custom/myendpoint", func(w http.ResponseWriter, r *http.Request) {
 	//     // Your handler logic here
