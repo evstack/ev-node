@@ -60,7 +60,6 @@ var DefaultConfig = Config{
 		Namespace:         "",
 		HeaderNamespace:   "rollkit-headers",
 		DataNamespace:     "rollkit-data",
-		PersistInterval:   100, // Persist DA height every 100 blocks
 	},
 	Instrumentation: DefaultInstrumentationConfig(),
 	Log: LogConfig{

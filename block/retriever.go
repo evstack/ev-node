@@ -29,13 +29,6 @@ func (m *Manager) RetrieveLoop(ctx context.Context) {
 	for {
 		select {
 		case <-ctx.Done():
-			// On shutdown, persist the current DA height to minimize data loss on restart
-			currentDAHeight := m.daHeight.Load()
-			if currentDAHeight > m.lastPersistedDAHeight.Load() {
-				if err := m.persistDAHeight(context.Background(), currentDAHeight); err != nil {
-					m.logger.Error().Err(err).Uint64("currentDAHeight", currentDAHeight).Msg("failed to persist DA height on shutdown")
-				}
-			}
 			return
 		case <-m.retrieveCh:
 		case <-blobsFoundCh:
@@ -54,11 +47,7 @@ func (m *Manager) RetrieveLoop(ctx context.Context) {
 		case blobsFoundCh <- struct{}{}:
 		default:
 		}
-		newDAHeight := daHeight + 1
-		m.daHeight.Store(newDAHeight)
-		
-		// Persist the updated DA height based on configured interval
-		m.maybePersistDAHeight(ctx, newDAHeight)
+		m.daHeight.Store(daHeight + 1)
 	}
 }
 

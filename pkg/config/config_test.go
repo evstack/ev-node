@@ -30,7 +30,6 @@ func TestDefaultConfig(t *testing.T) {
 	assert.Equal(t, 6*time.Second, def.DA.BlockTime.Duration)
 	assert.Equal(t, uint64(0), def.DA.StartHeight)
 	assert.Equal(t, uint64(0), def.DA.MempoolTTL)
-	assert.Equal(t, uint64(100), def.DA.PersistInterval)
 	assert.Equal(t, uint64(0), def.Node.MaxPendingHeadersAndData)
 	assert.Equal(t, false, def.Node.LazyMode)
 	assert.Equal(t, 60*time.Second, def.Node.LazyBlockInterval.Duration)
@@ -73,7 +72,6 @@ func TestAddFlags(t *testing.T) {
 	assertFlagValue(t, flags, FlagDASubmitOptions, DefaultConfig.DA.SubmitOptions)
 	assertFlagValue(t, flags, FlagDAMempoolTTL, DefaultConfig.DA.MempoolTTL)
 	assertFlagValue(t, flags, FlagDAMaxSubmitAttempts, DefaultConfig.DA.MaxSubmitAttempts)
-	assertFlagValue(t, flags, FlagDAPersistInterval, DefaultConfig.DA.PersistInterval)
 
 	// P2P flags
 	assertFlagValue(t, flags, FlagP2PListenAddress, DefaultConfig.P2P.ListenAddress)

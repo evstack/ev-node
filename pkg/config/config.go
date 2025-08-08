@@ -67,8 +67,6 @@ const (
 	FlagDAMempoolTTL = "rollkit.da.mempool_ttl"
 	// FlagDAMaxSubmitAttempts is a flag for specifying the maximum DA submit attempts
 	FlagDAMaxSubmitAttempts = "rollkit.da.max_submit_attempts"
-	// FlagDAPersistInterval is a flag for specifying how often to persist DA height to disk
-	FlagDAPersistInterval = "rollkit.da.persist_interval"
 
 	// P2P configuration flags
 
@@ -161,7 +159,6 @@ type DAConfig struct {
 	StartHeight       uint64          `mapstructure:"start_height" yaml:"start_height" comment:"Starting block height on the DA layer from which to begin syncing. Useful when deploying a new chain on an existing DA chain."`
 	MempoolTTL        uint64          `mapstructure:"mempool_ttl" yaml:"mempool_ttl" comment:"Number of DA blocks after which a transaction is considered expired and dropped from the mempool. Controls retry backoff timing."`
 	MaxSubmitAttempts int             `mapstructure:"max_submit_attempts" yaml:"max_submit_attempts" comment:"Maximum number of attempts to submit data to the DA layer before giving up. Higher values provide more resilience but can delay error reporting."`
-	PersistInterval   uint64          `mapstructure:"persist_interval" yaml:"persist_interval" comment:"Number of DA blocks after which to persist DA height to disk. Higher values reduce disk writes but increase potential rollback on restart. Recommended: 50-100."`
 }
 
 // GetHeaderNamespace returns the namespace for header submissions, falling back to the legacy namespace if not set
@@ -287,7 +284,6 @@ func AddFlags(cmd *cobra.Command) {
 	cmd.Flags().String(FlagDASubmitOptions, def.DA.SubmitOptions, "DA submit options")
 	cmd.Flags().Uint64(FlagDAMempoolTTL, def.DA.MempoolTTL, "number of DA blocks until transaction is dropped from the mempool")
 	cmd.Flags().Int(FlagDAMaxSubmitAttempts, def.DA.MaxSubmitAttempts, "maximum number of attempts to submit data to the DA layer before giving up")
-	cmd.Flags().Uint64(FlagDAPersistInterval, def.DA.PersistInterval, "number of DA blocks after which to persist DA height to disk")
 
 	// P2P configuration flags
 	cmd.Flags().String(FlagP2PListenAddress, def.P2P.ListenAddress, "P2P listen address (host:port)")

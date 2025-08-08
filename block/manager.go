@@ -102,8 +102,6 @@ type Manager struct {
 	signer signer.Signer
 
 	daHeight *atomic.Uint64
-	// lastPersistedDAHeight tracks the last DA height that was persisted to disk
-	lastPersistedDAHeight *atomic.Uint64
 
 	headerBroadcaster broadcaster[*types.SignedHeader]
 	dataBroadcaster   broadcaster[*types.Data]
@@ -319,9 +317,28 @@ func NewManager(
 		return nil, err
 	}
 
-	// Only use config.DA.StartHeight for fresh initialization (when DAHeight is 0)
-	// This allows resuming from the last queried DA height on restart
-	if s.DAHeight == 0 && config.DA.StartHeight > 0 {
+	// Determine the DA height to start from based on the last applied block's DA inclusion
+	if s.LastBlockHeight > 0 {
+		// Try to find where the last applied block was included in DA
+		headerKey := fmt.Sprintf("%s/%d/h", storepkg.HeightToDAHeightKey, s.LastBlockHeight)
+		if daHeightBytes, err := store.GetMetadata(ctx, headerKey); err == nil && len(daHeightBytes) == 8 {
+			lastBlockDAHeight := binary.LittleEndian.Uint64(daHeightBytes)
+			// Start scanning from the next DA height after the last included block
+			s.DAHeight = lastBlockDAHeight + 1
+			logger.Info().
+				Uint64("lastBlockHeight", s.LastBlockHeight).
+				Uint64("lastBlockDAHeight", lastBlockDAHeight).
+				Uint64("startingDAHeight", s.DAHeight).
+				Msg("resuming DA scan from last applied block's DA inclusion height")
+		} else {
+			// Fallback: if we can't find DA inclusion info, use the persisted DA height
+			logger.Info().
+				Uint64("lastBlockHeight", s.LastBlockHeight).
+				Uint64("daHeight", s.DAHeight).
+				Msg("no DA inclusion metadata found for last block, using persisted DA height")
+		}
+	} else if s.DAHeight < config.DA.StartHeight {
+		// For fresh chains, use the configured start height
 		s.DAHeight = config.DA.StartHeight
 	}
 
@@ -369,10 +386,6 @@ func NewManager(
 	daH := atomic.Uint64{}
 	daH.Store(s.DAHeight)
 
-	// Initialize last persisted DA height to match current DA height
-	lastPersistedDAH := atomic.Uint64{}
-	lastPersistedDAH.Store(s.DAHeight)
-
 	m := &Manager{
 		signer:            signer,
 		config:            config,
@@ -380,7 +393,6 @@ func NewManager(
 		lastState:         s,
 		store:             store,
 		daHeight:          &daH,
-		lastPersistedDAHeight: &lastPersistedDAH,
 		headerBroadcaster: headerBroadcaster,
 		dataBroadcaster:   dataBroadcaster,
 		// channels are buffered to avoid blocking on input/output operations, buffer sizes are arbitrary
@@ -468,53 +480,6 @@ func (m *Manager) GetLastState() types.State {
 	return m.lastState
 }
 
-// shouldPersistDAHeight determines if we should persist the DA height based on the configured interval.
-// Returns true if we should persist, false otherwise.
-func (m *Manager) shouldPersistDAHeight(newDAHeight uint64) bool {
-	lastPersisted := m.lastPersistedDAHeight.Load()
-	interval := m.config.DA.PersistInterval
-	
-	// Always persist if interval is 0 (backward compatibility) or 1 (persist every block)
-	if interval <= 1 {
-		return true
-	}
-	
-	// Persist if we've reached the interval threshold
-	return newDAHeight-lastPersisted >= interval
-}
-
-// persistDAHeight updates the DAHeight in the persistent state.
-// This ensures that the last queried DA height is preserved across restarts.
-func (m *Manager) persistDAHeight(ctx context.Context, newDAHeight uint64) error {
-	m.lastStateMtx.Lock()
-	defer m.lastStateMtx.Unlock()
-	
-	// Create an updated state with the new DA height
-	updatedState := m.lastState
-	updatedState.DAHeight = newDAHeight
-	
-	// Persist the updated state
-	err := m.store.UpdateState(ctx, updatedState)
-	if err != nil {
-		return fmt.Errorf("failed to update state with new DA height %d: %w", newDAHeight, err)
-	}
-	
-	// Update the in-memory state and last persisted height
-	m.lastState = updatedState
-	m.lastPersistedDAHeight.Store(newDAHeight)
-	return nil
-}
-
-// maybePersistDAHeight persists the DA height only if the configured interval has been reached.
-// This reduces disk writes while maintaining reasonable restart recovery.
-func (m *Manager) maybePersistDAHeight(ctx context.Context, newDAHeight uint64) {
-	if m.shouldPersistDAHeight(newDAHeight) {
-		if err := m.persistDAHeight(ctx, newDAHeight); err != nil {
-			m.logger.Error().Err(err).Uint64("newDAHeight", newDAHeight).Msg("failed to persist DA height")
-		}
-	}
-}
-
 // GetDAIncludedHeight returns the height at which all blocks have been
 // included in the DA
 func (m *Manager) GetDAIncludedHeight() uint64 {
@@ -573,6 +538,27 @@ func (m *Manager) IsDAIncluded(ctx context.Context, height uint64) (bool, error)
 	headerHash, dataHash := header.Hash(), data.DACommitment()
 	isIncluded := m.headerCache.IsDAIncluded(headerHash.String()) && (bytes.Equal(dataHash, dataHashForEmptyTxs) || m.dataCache.IsDAIncluded(dataHash.String()))
 	return isIncluded, nil
+}
+
+// storeDAInclusionMetadata stores the DA height where a block was included.
+// This is used by both aggregators (via SetSequencerHeightToDAHeight) and
+// non-aggregator nodes during sync to track where blocks came from in DA.
+func (m *Manager) storeDAInclusionMetadata(ctx context.Context, blockHeight uint64, daHeight uint64) error {
+	// Store header DA height
+	headerHeightBytes := make([]byte, 8)
+	binary.LittleEndian.PutUint64(headerHeightBytes, daHeight)
+	headerKey := fmt.Sprintf("%s/%d/h", storepkg.HeightToDAHeightKey, blockHeight)
+	if err := m.store.SetMetadata(ctx, headerKey, headerHeightBytes); err != nil {
+		return fmt.Errorf("failed to store header DA height: %w", err)
+	}
+
+	// Store data DA height (same as header for synced blocks)
+	dataKey := fmt.Sprintf("%s/%d/d", storepkg.HeightToDAHeightKey, blockHeight)
+	if err := m.store.SetMetadata(ctx, dataKey, headerHeightBytes); err != nil {
+		return fmt.Errorf("failed to store data DA height: %w", err)
+	}
+
+	return nil
 }
 
 // SetSequencerHeightToDAHeight stores the mapping from a Evolve block height to the corresponding

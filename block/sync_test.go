@@ -68,7 +68,6 @@ func setupManagerForSyncLoopTest(t *testing.T, initialState types.State) (
 		dataStoreCh:              dataStoreCh,
 		retrieveCh:               retrieveCh,
 		daHeight:                 &atomic.Uint64{},
-		lastPersistedDAHeight:    &atomic.Uint64{},
 		metrics:                  NopMetrics(),
 		headerStore:              &goheaderstore.Store[*types.SignedHeader]{},
 		dataStore:                &goheaderstore.Store[*types.Data]{},
@@ -76,7 +75,6 @@ func setupManagerForSyncLoopTest(t *testing.T, initialState types.State) (
 		validatorHasherProvider:  types.DefaultValidatorHasherProvider,
 	}
 	m.daHeight.Store(initialState.DAHeight)
-	m.lastPersistedDAHeight.Store(initialState.DAHeight)
 
 	ctx, cancel := context.WithCancel(context.Background())
 
@@ -135,6 +133,13 @@ func TestSyncLoop_ProcessSingleBlock_HeaderFirst(t *testing.T) {
 	mockStore.On("UpdateState", mock.Anything, expectedNewState).Return(nil).Run(func(args mock.Arguments) { close(syncChan) }).Once()
 
 	mockStore.On("SetHeight", mock.Anything, newHeight).Return(nil).Once()
+	
+	// Add expectations for DA inclusion metadata storage
+	// These calls happen in storeDAInclusionMetadata when syncing blocks
+	headerKey := fmt.Sprintf("%s/%d/h", store.HeightToDAHeightKey, newHeight)
+	dataKey := fmt.Sprintf("%s/%d/d", store.HeightToDAHeightKey, newHeight)
+	mockStore.On("SetMetadata", mock.Anything, headerKey, mock.Anything).Return(nil).Once()
+	mockStore.On("SetMetadata", mock.Anything, dataKey, mock.Anything).Return(nil).Once()
 
 	ctx, loopCancel := context.WithTimeout(context.Background(), 1*time.Second)
 	defer loopCancel()
@@ -220,6 +225,13 @@ func TestSyncLoop_ProcessSingleBlock_DataFirst(t *testing.T) {
 	mockStore.On("SaveBlockData", mock.Anything, header, data, &header.Signature).Return(nil).Once()
 	mockStore.On("UpdateState", mock.Anything, expectedNewState).Return(nil).Run(func(args mock.Arguments) { close(syncChan) }).Once()
 	mockStore.On("SetHeight", mock.Anything, newHeight).Return(nil).Once()
+	
+	// Add expectations for DA inclusion metadata storage
+	// These calls happen in storeDAInclusionMetadata when syncing blocks
+	headerKey := fmt.Sprintf("%s/%d/h", store.HeightToDAHeightKey, newHeight)
+	dataKey := fmt.Sprintf("%s/%d/d", store.HeightToDAHeightKey, newHeight)
+	mockStore.On("SetMetadata", mock.Anything, headerKey, mock.Anything).Return(nil).Once()
+	mockStore.On("SetMetadata", mock.Anything, dataKey, mock.Anything).Return(nil).Once()
 
 	ctx, loopCancel := context.WithTimeout(context.Background(), 1*time.Second)
 	defer loopCancel()
@@ -331,6 +343,12 @@ func TestSyncLoop_ProcessMultipleBlocks_Sequentially(t *testing.T) {
 			t.Logf("Mock SetHeight called for H+1, updated mock height to %d", newHeight)
 		}).
 		Once()
+	
+	// Add expectations for DA inclusion metadata storage for H+1
+	headerKeyH1 := fmt.Sprintf("%s/%d/h", store.HeightToDAHeightKey, heightH1)
+	dataKeyH1 := fmt.Sprintf("%s/%d/d", store.HeightToDAHeightKey, heightH1)
+	mockStore.On("SetMetadata", mock.Anything, headerKeyH1, mock.Anything).Return(nil).Once()
+	mockStore.On("SetMetadata", mock.Anything, dataKeyH1, mock.Anything).Return(nil).Once()
 
 	// --- Mock Expectations for H+2 ---
 	mockExec.On("ExecuteTxs", mock.Anything, txsH2, heightH2, headerH2.Time(), expectedNewAppHashH1).
@@ -344,6 +362,12 @@ func TestSyncLoop_ProcessMultipleBlocks_Sequentially(t *testing.T) {
 			t.Logf("Mock SetHeight called for H+2, updated mock height to %d", newHeight)
 		}).
 		Once()
+	
+	// Add expectations for DA inclusion metadata storage for H+2
+	headerKeyH2 := fmt.Sprintf("%s/%d/h", store.HeightToDAHeightKey, heightH2)
+	dataKeyH2 := fmt.Sprintf("%s/%d/d", store.HeightToDAHeightKey, heightH2)
+	mockStore.On("SetMetadata", mock.Anything, headerKeyH2, mock.Anything).Return(nil).Once()
+	mockStore.On("SetMetadata", mock.Anything, dataKeyH2, mock.Anything).Return(nil).Once()
 
 	ctx, loopCancel := context.WithTimeout(context.Background(), 1*time.Second)
 	defer loopCancel()
@@ -469,9 +493,15 @@ func TestSyncLoop_ProcessBlocks_OutOfOrderArrival(t *testing.T) {
 		Run(func(args mock.Arguments) {
 			newHeight := args.Get(1).(uint64)
 			*heightPtr = newHeight // Update the mocked height
-			t.Logf("Mock SetHeight called for H+2, updated mock height to %d", newHeight)
+			t.Logf("Mock SetHeight called for H+1, updated mock height to %d", newHeight)
 		}).
 		Once()
+	
+	// Add expectations for DA inclusion metadata storage for H+1
+	headerKeyH1 := fmt.Sprintf("%s/%d/h", store.HeightToDAHeightKey, heightH1)
+	dataKeyH1 := fmt.Sprintf("%s/%d/d", store.HeightToDAHeightKey, heightH1)
+	mockStore.On("SetMetadata", mock.Anything, headerKeyH1, mock.Anything).Return(nil).Once()
+	mockStore.On("SetMetadata", mock.Anything, dataKeyH1, mock.Anything).Return(nil).Once()
 
 	// --- Mock Expectations for H+2 (will be called second) ---
 	mockStore.On("Height", mock.Anything).Return(heightH1, nil).Maybe()
@@ -489,6 +519,12 @@ func TestSyncLoop_ProcessBlocks_OutOfOrderArrival(t *testing.T) {
 	mockStore.On("UpdateState", mock.Anything, expectedStateH2).Return(nil).
 		Run(func(args mock.Arguments) { close(syncChanH2) }).
 		Once()
+	
+	// Add expectations for DA inclusion metadata storage for H+2
+	headerKeyH2 := fmt.Sprintf("%s/%d/h", store.HeightToDAHeightKey, heightH2)
+	dataKeyH2 := fmt.Sprintf("%s/%d/d", store.HeightToDAHeightKey, heightH2)
+	mockStore.On("SetMetadata", mock.Anything, headerKeyH2, mock.Anything).Return(nil).Once()
+	mockStore.On("SetMetadata", mock.Anything, dataKeyH2, mock.Anything).Return(nil).Once()
 
 	ctx, loopCancel := context.WithTimeout(context.Background(), 1*time.Second)
 	defer loopCancel()
@@ -598,6 +634,13 @@ func TestSyncLoop_IgnoreDuplicateEvents(t *testing.T) {
 	mockStore.On("UpdateState", mock.Anything, expectedStateH1).Return(nil).
 		Run(func(args mock.Arguments) { close(syncChanH1) }).
 		Once()
+	
+	// Add expectations for DA inclusion metadata storage
+	// These calls happen in storeDAInclusionMetadata when syncing blocks
+	headerKey := fmt.Sprintf("%s/%d/h", store.HeightToDAHeightKey, heightH1)
+	dataKey := fmt.Sprintf("%s/%d/d", store.HeightToDAHeightKey, heightH1)
+	mockStore.On("SetMetadata", mock.Anything, headerKey, mock.Anything).Return(nil).Once()
+	mockStore.On("SetMetadata", mock.Anything, dataKey, mock.Anything).Return(nil).Once()
 
 	ctx, loopCancel := context.WithTimeout(context.Background(), 1*time.Second)
 	defer loopCancel()
@@ -875,13 +918,11 @@ func TestSyncLoop_MultipleHeadersArriveFirst_ThenData(t *testing.T) {
 		headerInCh:               headerInCh,
 		dataInCh:                 dataInCh,
 		daHeight:                 &atomic.Uint64{},
-		lastPersistedDAHeight:    &atomic.Uint64{},
 		metrics:                  NopMetrics(),
 		signaturePayloadProvider: types.DefaultSignaturePayloadProvider,
 		validatorHasherProvider:  types.DefaultValidatorHasherProvider,
 	}
 	m.daHeight.Store(initialState.DAHeight)
-	m.lastPersistedDAHeight.Store(initialState.DAHeight)
 
 	ctx, loopCancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer loopCancel()
