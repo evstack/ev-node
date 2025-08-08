@@ -6,6 +6,7 @@ import (
 	"time"
 
 	coreda "github.com/evstack/ev-node/core/da"
+	"github.com/evstack/ev-node/pkg/rpc/server"
 	"github.com/evstack/ev-node/types"
 	"google.golang.org/protobuf/proto"
 )
@@ -120,6 +121,11 @@ func submitToDA[T any](
 
 		res := types.SubmitWithHelpers(submitctx, m.da, m.logger, currMarshaled, gasPrice, namespace, nil)
 		submitCtxCancel()
+
+		// Record submission in DA visualization server
+		if daVisualizationServer := server.GetDAVisualizationServer(); daVisualizationServer != nil {
+			daVisualizationServer.RecordSubmission(&res, gasPrice, len(currMarshaled))
+		}
 
 		switch res.Code {
 		case coreda.StatusSuccess:
