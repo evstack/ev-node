@@ -45,6 +45,7 @@ func NewDAVisualizationServer(da coreda.DA, logger zerolog.Logger) *DAVisualizat
 }
 
 // RecordSubmission records a DA submission for visualization
+// Only keeps the last 100 submissions in memory for the dashboard display
 func (s *DAVisualizationServer) RecordSubmission(result *coreda.ResultSubmit, gasPrice float64, numBlobs int) {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
@@ -67,7 +68,8 @@ func (s *DAVisualizationServer) RecordSubmission(result *coreda.ResultSubmit, ga
 		BlobIDs:    blobIDs,
 	}
 
-	// Keep only the last 100 submissions to avoid memory growth
+	// Keep only the last 100 submissions in memory to avoid memory growth
+	// The HTML dashboard shows these recent submissions only
 	s.submissions = append(s.submissions, submission)
 	if len(s.submissions) > 100 {
 		s.submissions = s.submissions[1:]
@@ -103,15 +105,25 @@ func (s *DAVisualizationServer) getStatusCodeString(code coreda.StatusCode) stri
 }
 
 // handleDASubmissions returns JSON list of recent DA submissions
+// Note: This returns only the most recent submissions kept in memory (max 100)
 func (s *DAVisualizationServer) handleDASubmissions(w http.ResponseWriter, r *http.Request) {
 	s.mutex.RLock()
 	defer s.mutex.RUnlock()
 
+	// Reverse the slice to show newest first
+	reversed := make([]DASubmissionInfo, len(s.submissions))
+	for i, j := 0, len(s.submissions)-1; j >= 0; i, j = i+1, j-1 {
+		reversed[i] = s.submissions[j]
+	}
+
+	// Build response
+	response := map[string]interface{}{
+		"submissions": reversed,
+		"total":       len(reversed),
+	}
+
 	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(map[string]interface{}{
-		"submissions": s.submissions,
-		"total":       len(s.submissions),
-	}); err != nil {
+	if err := json.NewEncoder(w).Encode(response); err != nil {
 		s.logger.Error().Err(err).Msg("Failed to encode DA submissions response")
 		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 		return
@@ -388,7 +400,7 @@ func (s *DAVisualizationServer) handleDAVisualizationHTML(w http.ResponseWriter,
 <!DOCTYPE html>
 <html>
 <head>
-    <title>DA Layer Visualization</title>
+    <title>Evolve DA Layer Visualization</title>
     <style>
         body { font-family: Arial, sans-serif; margin: 20px; }
         .header { background-color: #f5f5f5; padding: 20px; border-radius: 5px; margin-bottom: 20px; }
@@ -420,12 +432,16 @@ func (s *DAVisualizationServer) handleDAVisualizationHTML(w http.ResponseWriter,
     <div class="header">
         <h1>DA Layer Visualization</h1>
         <p>Real-time view of blob submissions from the sequencer node to the Data Availability layer.</p>
-        <p><strong>Total Submissions:</strong> {{len .Submissions}} | <strong>Last Update:</strong> {{.LastUpdate}}</p>
+        {{if .Submissions}}
+        <p><strong>Recent Submissions:</strong> {{len .Submissions}} (last 100) | <strong>Last Update:</strong> {{.LastUpdate}}</p>
+        {{else}}
+        <p><strong>Node Type:</strong> This appears to be a non-aggregator node. Only aggregator nodes submit data to the DA layer.</p>
+        {{end}}
     </div>
 
     <div class="api-section">
         <h2>Available API Endpoints</h2>
-        
+
         <div class="api-endpoint">
             <h4><span class="method method-get">GET</span> /da</h4>
             <p>Returns this HTML visualization dashboard with real-time DA submission data.</p>
@@ -434,7 +450,8 @@ func (s *DAVisualizationServer) handleDAVisualizationHTML(w http.ResponseWriter,
 
         <div class="api-endpoint">
             <h4><span class="method method-get">GET</span> /da/submissions</h4>
-            <p>Returns a JSON array of recent DA submissions with metadata.</p>
+            <p>Returns a JSON array of the most recent DA submissions (up to 100) with metadata.</p>
+            <p><strong>Note:</strong> Only aggregator nodes submit to the DA layer. Non-aggregator nodes will show empty results.</p>
             <p><strong>Example:</strong> <code>curl http://localhost:8080/da/submissions</code></p>
             <div class="api-response">
                 <strong>Response:</strong>
@@ -566,7 +583,7 @@ func (s *DAVisualizationServer) handleDAVisualizationHTML(w http.ResponseWriter,
         {{end}}
     </table>
     {{else}}
-    <p>No submissions recorded yet. Start your sequencer node to see DA submissions appear here.</p>
+    <p>No submissions recorded yet. This node is not currently submitting to the DA layer. Only aggregator nodes that are actively submitting data to the DA layer will show submissions here.</p>
     {{end}}
 
     <div style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #ddd; color: #666;">

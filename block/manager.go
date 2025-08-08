@@ -429,9 +429,15 @@ func NewManager(
 		return nil, fmt.Errorf("failed to load cache: %w", err)
 	}
 
-	// Initialize DA visualization server
-	daVisualizationServer := server.NewDAVisualizationServer(da, logger.With().Str("module", "da_visualization").Logger())
-	server.SetDAVisualizationServer(daVisualizationServer)
+	// Initialize DA visualization server if enabled
+	if config.RPC.EnableDAVisualization {
+		daVisualizationServer := server.NewDAVisualizationServer(da, logger.With().Str("module", "da_visualization").Logger())
+		server.SetDAVisualizationServer(daVisualizationServer)
+		logger.Info().Msg("DA visualization server enabled")
+	} else {
+		// Ensure the global server is nil when disabled
+		server.SetDAVisualizationServer(nil)
+	}
 
 	return m, nil
 }

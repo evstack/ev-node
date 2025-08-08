@@ -114,6 +114,8 @@ const (
 
 	// FlagRPCAddress is a flag for specifying the RPC server address
 	FlagRPCAddress = "rollkit.rpc.address"
+	// FlagRPCEnableDAVisualization is a flag for enabling DA visualization endpoints
+	FlagRPCEnableDAVisualization = "rollkit.rpc.enable_da_visualization"
 )
 
 // Config stores Rollkit configuration.
@@ -219,7 +221,8 @@ type SignerConfig struct {
 
 // RPCConfig contains all RPC server configuration parameters
 type RPCConfig struct {
-	Address string `mapstructure:"address" yaml:"address" comment:"Address to bind the RPC server to (host:port). Default: 127.0.0.1:7331"`
+	Address               string `mapstructure:"address" yaml:"address" comment:"Address to bind the RPC server to (host:port). Default: 127.0.0.1:7331"`
+	EnableDAVisualization bool   `mapstructure:"enable_da_visualization" yaml:"enable_da_visualization" comment:"Enable DA visualization endpoints for monitoring blob submissions. Default: false"`
 }
 
 // Validate ensures that the root directory exists.
@@ -289,6 +292,7 @@ func AddFlags(cmd *cobra.Command) {
 
 	// RPC configuration flags
 	cmd.Flags().String(FlagRPCAddress, def.RPC.Address, "RPC server address (host:port)")
+	cmd.Flags().Bool(FlagRPCEnableDAVisualization, def.RPC.EnableDAVisualization, "enable DA visualization endpoints for monitoring blob submissions")
 
 	// Instrumentation configuration flags
 	instrDef := DefaultInstrumentationConfig()
