@@ -63,6 +63,12 @@ type Metrics struct {
 	// State transition metrics
 	StateTransitions   map[string]metrics.Counter
 	InvalidTransitions metrics.Counter
+
+	// Parallel retrieval metrics
+	ParallelRetrievalWorkers     metrics.Gauge
+	ParallelRetrievalBufferSize  metrics.Gauge
+	ParallelRetrievalPendingJobs metrics.Gauge
+	ParallelRetrievalLatency     metrics.Histogram
 }
 
 // PrometheusMetrics returns Metrics built using Prometheus client library
@@ -349,6 +355,36 @@ func PrometheusMetrics(namespace string, labelsAndValues ...string) *Metrics {
 		}, labels).With(labelsAndValues...)
 	}
 
+	// Parallel retrieval metrics
+	m.ParallelRetrievalWorkers = prometheus.NewGaugeFrom(stdprometheus.GaugeOpts{
+		Namespace: namespace,
+		Subsystem: MetricsSubsystem,
+		Name:      "parallel_retrieval_workers",
+		Help:      "Number of active parallel retrieval workers",
+	}, labels).With(labelsAndValues...)
+
+	m.ParallelRetrievalBufferSize = prometheus.NewGaugeFrom(stdprometheus.GaugeOpts{
+		Namespace: namespace,
+		Subsystem: MetricsSubsystem,
+		Name:      "parallel_retrieval_buffer_size",
+		Help:      "Current size of the parallel retrieval result buffer",
+	}, labels).With(labelsAndValues...)
+
+	m.ParallelRetrievalPendingJobs = prometheus.NewGaugeFrom(stdprometheus.GaugeOpts{
+		Namespace: namespace,
+		Subsystem: MetricsSubsystem,
+		Name:      "parallel_retrieval_pending_jobs",
+		Help:      "Number of pending parallel retrieval jobs",
+	}, labels).With(labelsAndValues...)
+
+	m.ParallelRetrievalLatency = prometheus.NewHistogramFrom(stdprometheus.HistogramOpts{
+		Namespace: namespace,
+		Subsystem: MetricsSubsystem,
+		Name:      "parallel_retrieval_latency_seconds",
+		Help:      "Latency of parallel retrieval operations",
+		Buckets:   []float64{.01, .05, .1, .25, .5, 1, 2.5, 5, 10, 30},
+	}, labels).With(labelsAndValues...)
+
 	return m
 }
 
@@ -384,13 +420,17 @@ func NopMetrics() *Metrics {
 		HeadersSynced:         discard.NewCounter(),
 		DataSynced:            discard.NewCounter(),
 		BlocksApplied:         discard.NewCounter(),
-		InvalidHeadersCount:   discard.NewCounter(),
-		BlockProductionTime:   discard.NewHistogram(),
-		EmptyBlocksProduced:   discard.NewCounter(),
-		LazyBlocksProduced:    discard.NewCounter(),
-		NormalBlocksProduced:  discard.NewCounter(),
-		TxsPerBlock:           discard.NewHistogram(),
-		InvalidTransitions:    discard.NewCounter(),
+		InvalidHeadersCount:          discard.NewCounter(),
+		BlockProductionTime:          discard.NewHistogram(),
+		EmptyBlocksProduced:          discard.NewCounter(),
+		LazyBlocksProduced:           discard.NewCounter(),
+		NormalBlocksProduced:         discard.NewCounter(),
+		TxsPerBlock:                  discard.NewHistogram(),
+		InvalidTransitions:           discard.NewCounter(),
+		ParallelRetrievalWorkers:     discard.NewGauge(),
+		ParallelRetrievalBufferSize:  discard.NewGauge(),
+		ParallelRetrievalPendingJobs: discard.NewGauge(),
+		ParallelRetrievalLatency:     discard.NewHistogram(),
 	}
 
 	// Initialize maps with no-op metrics

@@ -13,6 +13,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 <!-- New features or capabilities -->
+- Added parallel block retrieval system for DA operations, achieving up to 5x improvement in sync performance ([#381](https://github.com/evstack/ev-node/issues/381))
+  - Implemented concurrent worker pool (5 workers by default) for parallel DA height processing
+  - Added intelligent prefetching that retrieves up to 50 heights ahead
+  - Introduced concurrent namespace fetching for headers and data
+  - Added comprehensive metrics for monitoring parallel retrieval performance
 - Added gRPC execution client implementation for remote execution services using Connect-RPC protocol ([#2490](https://github.com/evstack/ev-node/pull/2490))
 - Added `ExecutorService` protobuf definition with InitChain, GetTxs, ExecuteTxs, and SetFinal RPCs ([#2490](https://github.com/evstack/ev-node/pull/2490))
 - Added new `grpc` app for running EVNode with a remote execution layer via gRPC ([#2490](https://github.com/evstack/ev-node/pull/2490))

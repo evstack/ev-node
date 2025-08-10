@@ -22,7 +22,7 @@ Evolve implements two separate sync services:
 - Used by all node types (sequencer, full, and light)
 - Essential for maintaining the canonical view of the chain
 
-### Data Sync Service  
+### Data Sync Service
 
 - Synchronizes `Data` structures containing transaction data
 - Used only by full nodes and sequencers
@@ -90,6 +90,10 @@ The block manager integrates with both services through:
 - `HeaderStoreRetrieveLoop()` for retrieving headers from P2P
 - `DataStoreRetrieveLoop()` for retrieving data from P2P
 - Separate broadcast channels for publishing headers and data
+- DA retrieval system that works alongside P2P sync:
+  - P2P provides fast soft confirmations
+  - DA provides final inclusion guarantees
+  - Both sources feed into the same sync loop for state updates
 
 ## References
 

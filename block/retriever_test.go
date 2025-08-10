@@ -570,6 +570,11 @@ func TestProcessNextDAHeader_HeaderAndDataAlreadySeen(t *testing.T) {
 // TestRetrieveLoop_ProcessError_HeightFromFuture verifies that the loop continues without logging error if error is height from future.
 func TestRetrieveLoop_ProcessError_HeightFromFuture(t *testing.T) {
 	t.Parallel()
+	// Set smaller prefetch window for tests to avoid breaking mock expectations
+	oldPrefetch := TestPrefetchWindow
+	TestPrefetchWindow = 1  // Only fetch one height at a time in tests
+	defer func() { TestPrefetchWindow = oldPrefetch }()
+	
 	startDAHeight := uint64(10)
 	manager, mockDAClient, _, _, _, cancel := setupManagerForRetrieverTest(t, startDAHeight)
 	defer cancel()
@@ -612,6 +617,11 @@ func TestRetrieveLoop_ProcessError_HeightFromFuture(t *testing.T) {
 // TestRetrieveLoop_ProcessError_Other verifies that the loop logs error and does not increment DA height on generic errors.
 func TestRetrieveLoop_ProcessError_Other(t *testing.T) {
 	t.Parallel()
+	// Set smaller prefetch window for tests to avoid breaking mock expectations
+	oldPrefetch := TestPrefetchWindow
+	TestPrefetchWindow = 1  // Only fetch one height at a time in tests
+	defer func() { TestPrefetchWindow = oldPrefetch }()
+	
 	startDAHeight := uint64(15)
 	manager, mockDAClient, _, _, _, cancel := setupManagerForRetrieverTest(t, startDAHeight)
 	defer cancel()
@@ -726,6 +736,11 @@ func TestProcessNextDAHeader_WithNoTxs(t *testing.T) {
 // TestRetrieveLoop_DAHeightIncrementsOnlyOnSuccess verifies that DA height is incremented only after a successful retrieval or NotFound, and not after an error.
 func TestRetrieveLoop_DAHeightIncrementsOnlyOnSuccess(t *testing.T) {
 	t.Parallel()
+	// Set smaller prefetch window for tests to avoid breaking mock expectations
+	oldPrefetch := TestPrefetchWindow
+	TestPrefetchWindow = 1  // Only fetch one height at a time in tests
+	defer func() { TestPrefetchWindow = oldPrefetch }()
+	
 	startDAHeight := uint64(60)
 	manager, mockDAClient, _, _, _, cancel := setupManagerForRetrieverTest(t, startDAHeight)
 	defer cancel()

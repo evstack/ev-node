@@ -314,78 +314,90 @@ The manager enforces a limit on pending headers and data through `MaxPendingHead
 
 ### Block Retrieval from DA Network
 
-The block manager implements a `RetrieveLoop` that regularly pulls headers and data from the DA network. The retrieval process supports both legacy single-namespace mode (for backward compatibility) and the new separate namespace mode:
+The block manager implements a parallel `RetrieveLoop` that efficiently pulls headers and data from the DA network using concurrent workers. The retrieval process supports both legacy single-namespace mode (for backward compatibility) and the new separate namespace mode:
 
 ```mermaid
 flowchart TD
-    A[Start RetrieveLoop] --> B[Get DA Height]
-    B --> C{DABlockTime Timer}
-    C --> D[GetHeightPair from DA]
-    D --> E{Result?}
-    E -->|Success| F[Validate Signatures]
-    E -->|NotFound| G[Increment Height]
-    E -->|Error| H[Retry Logic]
-
-    F --> I[Check Sequencer Info]
-    I --> J[Mark DA Included]
-    J --> K[Send to Sync]
-    K --> L[Increment Height]
-    L --> M[Immediate Next Retrieval]
-
-    G --> C
-    H --> N{Retries < 10?}
-    N -->|Yes| O[Wait 100ms]
-    N -->|No| P[Log Error & Stall]
-    O --> D
-    M --> D
+    A[Start RetrieveLoop] --> B[Create ParallelRetriever]
+    B --> C[Start Worker Pool]
+    C --> D[Start Dispatcher]
+    D --> E[Start Result Processor]
+    
+    subgraph Parallel Processing
+        F[Height Dispatcher] --> G{Prefetch Window}
+        G --> H[Dispatch Heights 0-49]
+        H --> I[Worker 1]
+        H --> J[Worker 2]
+        H --> K[Worker 3]
+        H --> L[Worker 4]
+        H --> M[Worker 5]
+        
+        I --> N[Concurrent Namespace Fetch]
+        J --> O[Concurrent Namespace Fetch]
+        K --> P[Concurrent Namespace Fetch]
+        L --> Q[Concurrent Namespace Fetch]
+        M --> R[Concurrent Namespace Fetch]
+        
+        N --> S[Result Channel]
+        O --> S
+        P --> S
+        Q --> S
+        R --> S
+        
+        S --> T[Result Buffer]
+        T --> U[Ordered Processing]
+        U --> V{Complete Block?}
+        V -->|Yes| W[Mark DA Included]
+        V -->|No| X[Wait for Pair]
+        W --> Y[Send to Sync]
+        Y --> Z[Increment Height]
+        Z --> F
+    end
 ```
 
 #### Retrieval Process
 
-1. **Height Management**: Starts from the latest of:
-   * DA height from the last state in local store
-   * `DAStartHeight` configuration parameter
-   * Maintains and increments `daHeight` counter after successful retrievals
+1. **Height Management**: 
+   * Starts from the latest of:
+     * DA height from the last state in local store
+     * `DAStartHeight` configuration parameter
+   * Maintains `daHeight` counter with atomic operations for thread safety
+   * Increments only after successful ordered processing
 
-2. **Retrieval Mechanism**:
-   * Executes at `DABlockTime` intervals
-   * Implements namespace migration support:
-     * First attempts legacy namespace retrieval if migration not completed
-     * Falls back to separate header and data namespace retrieval
-     * Tracks migration status to optimize future retrievals
-   * Retrieves from separate namespaces:
-     * Headers from `HeaderNamespace`
-     * Data from `DataNamespace`
-   * Combines results from both namespaces
-   * Handles three possible outcomes:
-     * `Success`: Process retrieved header and/or data
-     * `NotFound`: No chain block at this DA height (normal case)
-     * `Error`: Retry with backoff
+2. **Parallel Worker Operation**:
+   * Each worker:
+     * Receives height from work channel
+     * Fetches header namespace concurrently with data namespace
+     * Implements retry logic with exponential backoff
+     * Sends results to result channel
+   * Error handling per worker:
+     * 10 retries with 100ms initial delay
+     * Exponential backoff capped at 30 seconds
+     * Height-from-future errors handled gracefully
 
-3. **Error Handling**:
-   * Implements retry logic with 100ms delay between attempts
-   * After 10 retries, logs error and stalls retrieval
-   * Does not increment `daHeight` on persistent errors
+3. **Result Processing**:
+   * **Buffering**: Results stored in map by height
+   * **Ordering**: Processes results in strict height order
+   * **Gap Handling**: Waits for missing heights before proceeding
+   * **Memory Management**: Buffer size limited to 200 results
 
 4. **Processing Retrieved Blocks**:
    * Validates header and data signatures
    * Checks sequencer information
    * Marks blocks as DA included in caches
    * Sends to sync goroutine for state update
-   * Successful processing triggers immediate next retrieval without waiting for timer
-   * Updates namespace migration status when appropriate:
-     * Marks migration complete when data found in new namespaces
-     * Persists migration state to avoid future legacy checks
+   * Updates namespace migration status when appropriate
 
 #### Header and Data Caching
 
 The retrieval system uses persistent caches for both headers and data:
 
-* Prevents duplicate processing
-* Tracks DA inclusion status
-* Supports out-of-order block arrival
+* Prevents duplicate processing across parallel workers
+* Tracks DA inclusion status with thread-safe operations
+* Supports out-of-order block arrival from parallel retrieval
 * Enables efficient sync from P2P and DA sources
 * Maintains namespace migration state for optimized retrieval
+* Cache operations are synchronized for concurrent access
 
 For more details on DA integration, see the [Data Availability specification](./da.md).
 
@@ -631,6 +643,10 @@ The block manager exposes comprehensive metrics for monitoring:
 * `da_submission_time`: Time to submit to DA
 * `state_update_time`: Time to apply block and update state
 * `channel_buffer_usage`: Usage of internal channels
+* `parallel_retrieval_workers`: Number of active parallel retrieval workers
+* `parallel_retrieval_buffer_size`: Current size of the parallel retrieval result buffer
+* `parallel_retrieval_pending_jobs`: Number of pending parallel retrieval jobs
+* `parallel_retrieval_latency`: Latency distribution of parallel retrieval operations
 
 ### Error Metrics
 
