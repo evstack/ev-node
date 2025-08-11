@@ -51,7 +51,13 @@ func SubmitWithHelpers(
 		case errors.Is(err, coreda.ErrContextDeadline):
 			status = coreda.StatusContextDeadline
 		}
-		logger.Error().Err(err).Uint64("status", uint64(status)).Msg("DA submission failed via helper")
+
+		// Use debug level for StatusTooBig as it gets handled later in submitToDA through recursive splitting
+		if status == coreda.StatusTooBig {
+			logger.Debug().Err(err).Uint64("status", uint64(status)).Msg("DA submission failed via helper")
+		} else {
+			logger.Error().Err(err).Uint64("status", uint64(status)).Msg("DA submission failed via helper")
+		}
 		return coreda.ResultSubmit{
 			BaseResult: coreda.BaseResult{
 				Code:           status,
