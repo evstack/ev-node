@@ -381,7 +381,7 @@ func handleTooBigError[T any](
 	attempt int,
 	namespace []byte,
 ) submissionOutcome[T] {
-	m.logger.Warn().Str("error", "blob too big").Int("attempt", attempt).Int("batchSize", len(remaining)).Msg("DA layer submission failed due to blob size limit")
+	m.logger.Debug().Str("error", "blob too big").Int("attempt", attempt).Int("batchSize", len(remaining)).Msg("DA layer submission failed due to blob size limit")
 
 	m.recordDAMetrics("submission", DAModeFail)
 
@@ -511,7 +511,7 @@ func submitWithRecursiveSplitting[T any](
 	}
 
 	// Split and submit recursively - we know the batch is too big
-	m.logger.Info().Int("batchSize", len(items)).Msg("splitting batch for recursive submission")
+	m.logger.Debug().Int("batchSize", len(items)).Msg("splitting batch for recursive submission")
 
 	splitPoint := len(items) / 2
 	// Ensure we actually split (avoid infinite recursion)
@@ -523,7 +523,7 @@ func submitWithRecursiveSplitting[T any](
 	firstHalfMarshaled := marshaled[:splitPoint]
 	secondHalfMarshaled := marshaled[splitPoint:]
 
-	m.logger.Info().Int("originalSize", len(items)).Int("firstHalf", len(firstHalf)).Int("secondHalf", len(secondHalf)).Msg("splitting batch for recursion")
+	m.logger.Debug().Int("originalSize", len(items)).Int("firstHalf", len(firstHalf)).Int("secondHalf", len(secondHalf)).Msg("splitting batch for recursion")
 
 	// Recursively submit both halves using processBatch directly
 	firstSubmitted, err := submitHalfBatch[T](m, ctx, firstHalf, firstHalfMarshaled, gasPrice, postSubmit, itemType, namespace)
@@ -645,7 +645,7 @@ func processBatch[T any](
 
 	if batchRes.Code == coreda.StatusTooBig && len(batch.Items) > 1 {
 		// Batch is too big - let the caller handle splitting
-		m.logger.Info().Int("batchSize", len(batch.Items)).Msg("batch too big, returning to caller for splitting")
+		m.logger.Debug().Int("batchSize", len(batch.Items)).Msg("batch too big, returning to caller for splitting")
 		return batchResult[T]{action: batchActionTooBig}
 	}
 
