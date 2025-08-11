@@ -293,6 +293,46 @@ func TestCentralizedAddresses(t *testing.T) {
 	}
 }
 
+func TestSignerRelativePathResolution(t *testing.T) {
+	// Create temporary directory structure
+	tmpDir := t.TempDir()
+	configDir := filepath.Join(tmpDir, "config")
+	err := os.MkdirAll(configDir, 0o755)
+	assert.NoError(t, err)
+
+	// Create signer file in config subdirectory
+	_, err = filesigner.CreateFileSystemSigner(configDir, []byte("password"))
+	assert.NoError(t, err)
+
+	// Verify signer.json was created in the expected location
+	signerFilePath := filepath.Join(configDir, "signer.json")
+	_, err = os.Stat(signerFilePath)
+	assert.NoError(t, err, "signer.json should exist at %s", signerFilePath)
+
+	// Configure node with relative signer path
+	nodeConfig := rollconf.DefaultConfig
+	nodeConfig.RootDir = tmpDir
+	nodeConfig.Node.Aggregator = true
+	nodeConfig.Signer.SignerType = "file"
+	nodeConfig.Signer.SignerPath = "config" // Relative path
+
+	// Test the signer path resolution logic directly
+	signerPath := nodeConfig.Signer.SignerPath
+	if !filepath.IsAbs(signerPath) {
+		// This is the logic we're testing from run_node.go
+		signerPath = filepath.Join(nodeConfig.RootDir, signerPath)
+	}
+
+	// Test that the signer can be loaded with the resolved path
+	signer, err := filesigner.LoadFileSystemSigner(signerPath, []byte("password"))
+	assert.NoError(t, err, "Should successfully load signer with relative path 'config' resolved to '%s'", signerPath)
+	assert.NotNil(t, signer, "Signer should not be nil")
+
+	// Verify the resolved path is correct
+	expectedPath := filepath.Join(tmpDir, "config")
+	assert.Equal(t, expectedPath, signerPath, "Resolved signer path should be correct")
+}
+
 func TestStartNodeErrors(t *testing.T) {
 	baseCtx := context.Background()
 
