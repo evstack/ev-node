@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"syscall"
 	"time"
 
@@ -95,7 +96,12 @@ func StartNode(
 			return err
 		}
 
-		signer, err = file.LoadFileSystemSigner(nodeConfig.Signer.SignerPath, []byte(passphrase))
+		signerPath := nodeConfig.Signer.SignerPath
+		if !filepath.IsAbs(signerPath) {
+			// Resolve relative signer path relative to config directory
+			signerPath = filepath.Join(filepath.Dir(nodeConfig.ConfigPath()), signerPath)
+		}
+		signer, err = file.LoadFileSystemSigner(signerPath, []byte(passphrase))
 		if err != nil {
 			return err
 		}
