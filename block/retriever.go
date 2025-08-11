@@ -46,6 +46,7 @@ type ParallelRetriever struct {
 	resultChan       chan *RetrievalResult
 	workers          sync.WaitGroup
 	processors       sync.WaitGroup // Track result processor goroutine
+	dispatcher       sync.WaitGroup // Track dispatcher goroutine
 	ctx              context.Context
 	cancel           context.CancelFunc
 
@@ -61,13 +62,13 @@ type ParallelRetriever struct {
 // NewParallelRetriever creates a new parallel retriever instance
 func NewParallelRetriever(manager *Manager, parentCtx context.Context) *ParallelRetriever {
 	ctx, cancel := context.WithCancel(parentCtx)
-	
+
 	// Use test override if set, otherwise use default
 	prefetchWindow := defaultPrefetchWindow
 	if TestPrefetchWindow > 0 {
 		prefetchWindow = TestPrefetchWindow
 	}
-	
+
 	return &ParallelRetriever{
 		manager:          manager,
 		concurrencyLimit: defaultConcurrencyLimit,
@@ -109,6 +110,7 @@ func (pr *ParallelRetriever) Start() {
 	}
 
 	// Start height dispatcher goroutine
+	pr.dispatcher.Add(1)
 	go pr.dispatchHeights()
 
 	// Start result processor goroutine (non-blocking)
@@ -124,6 +126,9 @@ func (pr *ParallelRetriever) Stop() {
 	// Cancel context to signal all goroutines to stop
 	pr.cancel()
 
+	// Wait for dispatcher to exit before closing channels
+	// This prevents the race condition where dispatchHeights tries to send to a closed channel
+	pr.dispatcher.Wait()
 	// Close work channel to signal workers to exit
 	close(pr.workChan)
 
@@ -139,6 +144,7 @@ func (pr *ParallelRetriever) Stop() {
 
 // dispatchHeights manages the work distribution to workers
 func (pr *ParallelRetriever) dispatchHeights() {
+	defer pr.dispatcher.Done()
 	blobsFoundCh := make(chan struct{}, 1)
 	defer close(blobsFoundCh)
 
@@ -186,7 +192,7 @@ func (pr *ParallelRetriever) dispatchHeights() {
 				pr.pendingHeightsMux.Lock()
 				pr.pendingHeights[height] = true
 				pr.pendingHeightsMux.Unlock()
-				
+
 				// Update pending jobs metric
 				if pr.manager.metrics != nil {
 					pr.manager.metrics.ParallelRetrievalPendingJobs.Add(1)
@@ -225,7 +231,7 @@ func (pr *ParallelRetriever) worker() {
 			pr.pendingHeightsMux.Lock()
 			delete(pr.pendingHeights, height)
 			pr.pendingHeightsMux.Unlock()
-			
+
 			// Update pending jobs metric
 			if pr.manager.metrics != nil {
 				pr.manager.metrics.ParallelRetrievalPendingJobs.Add(-1)
@@ -310,7 +316,7 @@ func (pr *ParallelRetriever) fetchHeightConcurrently(ctx context.Context, height
 	start := time.Now()
 	fetchCtx, cancel := context.WithTimeout(ctx, dAefetcherTimeout)
 	defer cancel()
-	
+
 	// Record latency metric at the end
 	defer func() {
 		if pr.manager.metrics != nil {
@@ -404,7 +410,11 @@ func (pr *ParallelRetriever) fetchBlobsConcurrently(ctx context.Context, daHeigh
 		if res.Code == coreda.StatusError {
 			err = fmt.Errorf("header namespace error: %s", res.Message)
 		}
-		headerCh <- namespaceResult{res: res, err: err}
+		select {
+		case headerCh <- namespaceResult{res: res, err: err}:
+		case <-ctx.Done():
+			return
+		}
 	}()
 
 	// Retrieve from data namespace concurrently
@@ -415,12 +425,25 @@ func (pr *ParallelRetriever) fetchBlobsConcurrently(ctx context.Context, daHeigh
 		if res.Code == coreda.StatusError {
 			err = fmt.Errorf("data namespace error: %s", res.Message)
 		}
-		dataCh <- namespaceResult{res: res, err: err}
+		select {
+		case dataCh <- namespaceResult{res: res, err: err}:
+		case <-ctx.Done():
+			return
+		}
 	}()
 
-	// Wait for both calls to complete
-	headerResult := <-headerCh
-	dataResult := <-dataCh
+	// Wait for both calls to complete with context cancellation support
+	var headerResult, dataResult namespaceResult
+	for i := 0; i < 2; i++ {
+		select {
+		case result := <-headerCh:
+			headerResult = result
+		case result := <-dataCh:
+			dataResult = result
+		case <-ctx.Done():
+			return coreda.ResultRetrieve{}, ctx.Err()
+		}
+	}
 
 	headerRes := headerResult.res
 	headerErr := headerResult.err
@@ -496,7 +519,7 @@ func (pr *ParallelRetriever) fetchBlobsConcurrently(ctx context.Context, daHeigh
 func (pr *ParallelRetriever) updateMetrics() {
 	ticker := time.NewTicker(5 * time.Second)
 	defer ticker.Stop()
-	
+
 	for {
 		select {
 		case <-pr.ctx.Done():
