@@ -267,23 +267,23 @@ flowchart TD
     B -->|Mempool/Not Included| E[Mempool Backoff Strategy]
     B -->|Context Canceled| F[Stop Submission]
     B -->|Other Error| G[Exponential Backoff]
-    
+
     D -->|Yes| H[Recursive Batch Splitting]
     D -->|No| I[Skip Single Item - Cannot Split]
-    
+
     E --> J[Set Backoff = MempoolTTL * BlockTime]
     E --> K[Multiply Gas Price by GasMultiplier]
-    
+
     G --> L[Double Backoff Time]
     G --> M[Cap at MaxBackoff - BlockTime]
-    
+
     H --> N[Split into Two Halves]
     N --> O[Submit First Half]
     O --> P[Submit Second Half]
     P --> Q{Both Halves Processed?}
     Q -->|Yes| R[Combine Results]
     Q -->|No| S[Handle Partial Success]
-    
+
     C --> T[Update Pending Queues]
     T --> U[Post-Submit Actions]
 ```
@@ -295,7 +295,7 @@ flowchart TD
   * Exponential backoff for general failures (doubles each attempt, capped at `BlockTime`)
   * Mempool-specific backoff (waits `MempoolTTL * BlockTime` for stuck transactions)
   * Success-based backoff reset with gas price reduction
-* **Gas Price Management**: 
+* **Gas Price Management**:
   * Increases gas price by `GasMultiplier` on mempool failures
   * Decreases gas price after successful submissions (bounded by initial price)
   * Supports automatic gas price detection (`-1` value)
@@ -322,7 +322,7 @@ flowchart TD
     B --> C[Start Worker Pool]
     C --> D[Start Dispatcher]
     D --> E[Start Result Processor]
-    
+
     subgraph Parallel Processing
         F[Height Dispatcher] --> G{Prefetch Window}
         G --> H[Dispatch Heights 0-49]
@@ -331,19 +331,19 @@ flowchart TD
         H --> K[Worker 3]
         H --> L[Worker 4]
         H --> M[Worker 5]
-        
+
         I --> N[Concurrent Namespace Fetch]
         J --> O[Concurrent Namespace Fetch]
         K --> P[Concurrent Namespace Fetch]
         L --> Q[Concurrent Namespace Fetch]
         M --> R[Concurrent Namespace Fetch]
-        
+
         N --> S[Result Channel]
         O --> S
         P --> S
         Q --> S
         R --> S
-        
+
         S --> T[Result Buffer]
         T --> U[Ordered Processing]
         U --> V{Complete Block?}
@@ -357,7 +357,7 @@ flowchart TD
 
 #### Retrieval Process
 
-1. **Height Management**: 
+1. **Height Management**:
    * Starts from the latest of:
      * DA height from the last state in local store
      * `DAStartHeight` configuration parameter

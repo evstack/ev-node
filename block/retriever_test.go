@@ -572,9 +572,9 @@ func TestRetrieveLoop_ProcessError_HeightFromFuture(t *testing.T) {
 	// Cannot run in parallel due to global TestPrefetchWindow variable
 	// Set smaller prefetch window for tests to avoid breaking mock expectations
 	oldPrefetch := TestPrefetchWindow
-	TestPrefetchWindow = 1  // Only fetch one height at a time in tests
+	TestPrefetchWindow = 1 // Only fetch one height at a time in tests
 	defer func() { TestPrefetchWindow = oldPrefetch }()
-	
+
 	startDAHeight := uint64(10)
 	manager, mockDAClient, _, _, _, cancel := setupManagerForRetrieverTest(t, startDAHeight)
 	defer cancel()
@@ -620,9 +620,9 @@ func TestRetrieveLoop_ProcessError_Other(t *testing.T) {
 	// Cannot run in parallel due to global TestPrefetchWindow variable
 	// Set smaller prefetch window for tests to avoid breaking mock expectations
 	oldPrefetch := TestPrefetchWindow
-	TestPrefetchWindow = 1  // Only fetch one height at a time in tests
+	TestPrefetchWindow = 1 // Only fetch one height at a time in tests
 	defer func() { TestPrefetchWindow = oldPrefetch }()
-	
+
 	startDAHeight := uint64(15)
 	manager, mockDAClient, _, _, _, cancel := setupManagerForRetrieverTest(t, startDAHeight)
 	defer cancel()
@@ -740,9 +740,9 @@ func TestRetrieveLoop_DAHeightIncrementsOnlyOnSuccess(t *testing.T) {
 	// Cannot run in parallel due to global TestPrefetchWindow variable
 	// Set smaller prefetch window for tests to avoid breaking mock expectations
 	oldPrefetch := TestPrefetchWindow
-	TestPrefetchWindow = 1  // Only fetch one height at a time in tests
+	TestPrefetchWindow = 1 // Only fetch one height at a time in tests
 	defer func() { TestPrefetchWindow = oldPrefetch }()
-	
+
 	startDAHeight := uint64(60)
 	manager, mockDAClient, _, _, _, cancel := setupManagerForRetrieverTest(t, startDAHeight)
 	defer cancel()

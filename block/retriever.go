@@ -454,7 +454,7 @@ func (pr *ParallelRetriever) fetchBlobsConcurrently(ctx context.Context, daHeigh
 	if headerErr != nil && dataErr != nil {
 		// Both failed
 		pr.manager.recordDAMetrics("retrieval", DAModeFail)
-		err = fmt.Errorf("failed to retrieve from both namespaces - %v, %v", headerErr, dataErr)
+		err = fmt.Errorf("failed to retrieve from both namespaces - %w, %w", headerErr, dataErr)
 		return headerRes, err
 	}
 
