@@ -1,18 +1,18 @@
 {
   "openapi": "3.1.0",
   "info": {
-    "title": "Rollkit API",
+    "title": "Evolve API",
     "description": "This API provides access to Signer, Store, P2P, and Health services.\n\n## Services\n\n* **Signer Service** - Sign messages and retrieve public keys\n* **Store Service** - Access blocks, state, and metadata\n* **P2P Service** - Network and peer information\n* **Health Service** - Node health checks and simple HTTP endpoints\n\n## Protocols\n\n### gRPC-Web Protocol\n\nMost endpoints use gRPC-Web protocol over HTTP/1.1 with JSON encoding. Requests are made via POST with `Content-Type: application/json`.\n\n### Simple HTTP Endpoints\n\nSome endpoints (like `/health/live`) are simple HTTP GET requests that return plain text responses for basic monitoring and health checks.",
     "version": "1.0.0",
     "contact": {
-      "name": "Rollkit Team",
-      "url": "https://rollkit.dev"
+      "name": "Evolve Team",
+      "url": "https://ev.xyz"
     }
   },
   "servers": [
     {
       "url": "http://localhost:7331",
-      "description": "A local Rollkit instance configured to provide a remote procedure call (RPC) endpoint, actively listening for connections on TCP port 7331."
+      "description": "A local Evolve instance configured to provide a remote procedure call (RPC) endpoint, actively listening for connections on TCP port 7331."
     }
   ],
   "tags": [
