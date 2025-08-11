@@ -294,43 +294,131 @@ func TestCentralizedAddresses(t *testing.T) {
 }
 
 func TestSignerRelativePathResolution(t *testing.T) {
-	// Create temporary directory structure
-	tmpDir := t.TempDir()
-	configDir := filepath.Join(tmpDir, "config")
-	err := os.MkdirAll(configDir, 0o755)
-	assert.NoError(t, err)
+	testCases := []struct {
+		name          string
+		setupFunc     func(t *testing.T) (string, rollconf.Config)
+		expectError   bool
+		errorContains string
+	}{
+		{
+			name: "SuccessfulRelativePathResolution",
+			setupFunc: func(t *testing.T) (string, rollconf.Config) {
+				// Create temporary directory structure
+				tmpDir := t.TempDir()
+				configDir := filepath.Join(tmpDir, "config")
+				err := os.MkdirAll(configDir, 0o755)
+				assert.NoError(t, err)
 
-	// Create signer file in config subdirectory
-	_, err = filesigner.CreateFileSystemSigner(configDir, []byte("password"))
-	assert.NoError(t, err)
+				// Create signer file in config subdirectory
+				_, err = filesigner.CreateFileSystemSigner(configDir, []byte("password"))
+				assert.NoError(t, err)
 
-	// Verify signer.json was created in the expected location
-	signerFilePath := filepath.Join(configDir, "signer.json")
-	_, err = os.Stat(signerFilePath)
-	assert.NoError(t, err, "signer.json should exist at %s", signerFilePath)
+				// Configure node with relative signer path
+				nodeConfig := rollconf.DefaultConfig
+				nodeConfig.RootDir = tmpDir
+				nodeConfig.Node.Aggregator = true
+				nodeConfig.Signer.SignerType = "file"
+				nodeConfig.Signer.SignerPath = "config" // Relative path
 
-	// Configure node with relative signer path
-	nodeConfig := rollconf.DefaultConfig
-	nodeConfig.RootDir = tmpDir
-	nodeConfig.Node.Aggregator = true
-	nodeConfig.Signer.SignerType = "file"
-	nodeConfig.Signer.SignerPath = "config" // Relative path
+				return tmpDir, nodeConfig
+			},
+			expectError: false,
+		},
+		{
+			name: "AbsolutePathResolution",
+			setupFunc: func(t *testing.T) (string, rollconf.Config) {
+				// Create temporary directory structure
+				tmpDir := t.TempDir()
+				configDir := filepath.Join(tmpDir, "config")
+				err := os.MkdirAll(configDir, 0o755)
+				assert.NoError(t, err)
 
-	// Test the signer path resolution logic directly
-	signerPath := nodeConfig.Signer.SignerPath
-	if !filepath.IsAbs(signerPath) {
-		// This is the logic we're testing from run_node.go
-		signerPath = filepath.Join(nodeConfig.RootDir, signerPath)
+				// Create signer file in config subdirectory
+				_, err = filesigner.CreateFileSystemSigner(configDir, []byte("password"))
+				assert.NoError(t, err)
+
+				// Configure node with absolute signer path
+				nodeConfig := rollconf.DefaultConfig
+				nodeConfig.RootDir = tmpDir
+				nodeConfig.Node.Aggregator = true
+				nodeConfig.Signer.SignerType = "file"
+				nodeConfig.Signer.SignerPath = configDir // Absolute path
+
+				return tmpDir, nodeConfig
+			},
+			expectError: false,
+		},
+		{
+			name: "NonExistentRelativePath",
+			setupFunc: func(t *testing.T) (string, rollconf.Config) {
+				// Create temporary directory structure but no signer file
+				tmpDir := t.TempDir()
+
+				// Configure node with relative signer path that doesn't exist
+				nodeConfig := rollconf.DefaultConfig
+				nodeConfig.RootDir = tmpDir
+				nodeConfig.Node.Aggregator = true
+				nodeConfig.Signer.SignerType = "file"
+				nodeConfig.Signer.SignerPath = "nonexistent" // Relative path to non-existent directory
+
+				return tmpDir, nodeConfig
+			},
+			expectError:   true,
+			errorContains: "no such file or directory",
+		},
+		{
+			name: "NonExistentAbsolutePath",
+			setupFunc: func(t *testing.T) (string, rollconf.Config) {
+				// Create temporary directory structure but no signer file
+				tmpDir := t.TempDir()
+				nonExistentPath := filepath.Join(tmpDir, "nonexistent")
+
+				// Configure node with absolute signer path that doesn't exist
+				nodeConfig := rollconf.DefaultConfig
+				nodeConfig.RootDir = tmpDir
+				nodeConfig.Node.Aggregator = true
+				nodeConfig.Signer.SignerType = "file"
+				nodeConfig.Signer.SignerPath = nonExistentPath // Absolute path to non-existent directory
+
+				return tmpDir, nodeConfig
+			},
+			expectError:   true,
+			errorContains: "no such file or directory",
+		},
 	}
 
-	// Test that the signer can be loaded with the resolved path
-	signer, err := filesigner.LoadFileSystemSigner(signerPath, []byte("password"))
-	assert.NoError(t, err, "Should successfully load signer with relative path 'config' resolved to '%s'", signerPath)
-	assert.NotNil(t, signer, "Signer should not be nil")
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			tmpDir, nodeConfig := tc.setupFunc(t)
 
-	// Verify the resolved path is correct
-	expectedPath := filepath.Join(tmpDir, "config")
-	assert.Equal(t, expectedPath, signerPath, "Resolved signer path should be correct")
+			// Test the signer path resolution logic directly
+			signerPath := nodeConfig.Signer.SignerPath
+			if !filepath.IsAbs(signerPath) {
+				// This is the logic we're testing from run_node.go
+				signerPath = filepath.Join(nodeConfig.RootDir, signerPath)
+			}
+
+			// Test that the signer loading behaves as expected
+			signer, err := filesigner.LoadFileSystemSigner(signerPath, []byte("password"))
+
+			if tc.expectError {
+				assert.Error(t, err, "Should get error when loading signer from path '%s'", signerPath)
+				if tc.errorContains != "" {
+					assert.ErrorContains(t, err, tc.errorContains)
+				}
+				assert.Nil(t, signer, "Signer should be nil on error")
+			} else {
+				assert.NoError(t, err, "Should successfully load signer with path '%s'", signerPath)
+				assert.NotNil(t, signer, "Signer should not be nil")
+
+				// For successful cases, verify the resolved path is correct
+				if !filepath.IsAbs(nodeConfig.Signer.SignerPath) {
+					expectedPath := filepath.Join(tmpDir, nodeConfig.Signer.SignerPath)
+					assert.Equal(t, expectedPath, signerPath, "Resolved signer path should be correct")
+				}
+			}
+		})
+	}
 }
 
 func TestStartNodeErrors(t *testing.T) {
