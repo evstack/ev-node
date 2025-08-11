@@ -1,6 +1,6 @@
 ---
 title: GM World tutorial
-description: Learn how to build and deploy a CosmWasm-based "gm" (good morning) application using Evolve.
+description: Learn how to build and deploy a "gm" (good morning) application using Evolve.
 ---
 
 # GM world chain
