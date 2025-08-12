@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/evstack/ev-node/da"
 	"github.com/evstack/ev-node/da/internal/mocks"
 	proxy "github.com/evstack/ev-node/da/jsonrpc"
 	"github.com/rs/zerolog"
@@ -232,9 +233,9 @@ func HeightFromFutureTest(t *testing.T, d coreda.DA) {
 func TestSubmitWithOptions(t *testing.T) {
 	ctx := context.Background()
 	testNamespace := []byte("options_test")
-	// The client will hex encode testNamespace and pad/truncate to 29 bytes
-	// "options_test" hex encoded is "6f7074696f6e735f74657374" (24 chars), padded to 29 with zeros
-	encodedNamespace := []byte("6f7074696f6e735f7465737400000")
+	// The client will convert the namespace string to a proper Celestia namespace
+	// using SHA256 hashing and version 0 format (1 version byte + 28 ID bytes)
+	encodedNamespace := da.PrepareNamespace(testNamespace)
 	testOptions := []byte("test_options")
 	gasPrice := 0.0
 
