@@ -2,9 +2,11 @@ package cmd
 
 import (
 	"context"
+	"encoding/hex"
 	"fmt"
 	"path/filepath"
 
+	"github.com/evstack/ev-node/da"
 	"github.com/evstack/ev-node/da/jsonrpc"
 	"github.com/evstack/ev-node/node"
 	"github.com/evstack/ev-node/sequencers/single"
@@ -39,6 +41,11 @@ var RunCmd = &cobra.Command{
 		}
 
 		logger := rollcmd.SetupLogger(nodeConfig.Log)
+
+		headerNamespace := da.PrepareNamespace([]byte(nodeConfig.DA.HeaderNamespace))
+		dataNamespace := da.PrepareNamespace([]byte(nodeConfig.DA.DataNamespace))
+
+		logger.Info().Str("headerNamespace", hex.EncodeToString(headerNamespace)).Str("dataNamespace", hex.EncodeToString(dataNamespace)).Msg("namespaces")
 
 		daJrpc, err := jsonrpc.NewClient(context.Background(), logger, nodeConfig.DA.Address, nodeConfig.DA.AuthToken, nodeConfig.DA.GasPrice, nodeConfig.DA.GasMultiplier)
 		if err != nil {

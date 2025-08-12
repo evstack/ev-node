@@ -2,12 +2,14 @@ package cmd
 
 import (
 	"context"
+	"encoding/hex"
 	"fmt"
 	"path/filepath"
 
 	"github.com/spf13/cobra"
 
 	kvexecutor "github.com/evstack/ev-node/apps/testapp/kv"
+	"github.com/evstack/ev-node/da"
 	"github.com/evstack/ev-node/da/jsonrpc"
 	"github.com/evstack/ev-node/node"
 	rollcmd "github.com/evstack/ev-node/pkg/cmd"
@@ -44,6 +46,11 @@ var RunCmd = &cobra.Command{
 
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
+
+		headerNamespace := da.PrepareNamespace([]byte(nodeConfig.DA.HeaderNamespace))
+		dataNamespace := da.PrepareNamespace([]byte(nodeConfig.DA.DataNamespace))
+
+		logger.Info().Str("headerNamespace", hex.EncodeToString(headerNamespace)).Str("dataNamespace", hex.EncodeToString(dataNamespace)).Msg("namespaces")
 
 		daJrpc, err := jsonrpc.NewClient(ctx, logger, nodeConfig.DA.Address, nodeConfig.DA.AuthToken, nodeConfig.DA.GasPrice, nodeConfig.DA.GasMultiplier)
 		if err != nil {
