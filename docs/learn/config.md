@@ -25,6 +25,8 @@ This document provides a comprehensive reference for all configuration options a
   - [DA Gas Multiplier](#da-gas-multiplier)
   - [DA Submit Options](#da-submit-options)
   - [DA Namespace](#da-namespace)
+  - [DA Header Namespace](#da-header-namespace)
+  - [DA Data Namespace](#da-data-namespace)
   - [DA Block Time](#da-block-time)
   - [DA Start Height](#da-start-height)
   - [DA Mempool TTL](#da-mempool-ttl)
@@ -395,18 +397,56 @@ da:
 **Description:**
 The namespace ID used when submitting blobs (block data) to the DA layer. This helps segregate data from different chains or applications on a shared DA layer.
 
+**Note:** This configuration is deprecated in favor of separate header and data namespaces (see below). If only `namespace` is provided, it will be used for both headers and data for backward compatibility.
+
 **YAML:**
 
 ```yaml
 da:
-  namespace: "MY_UNIQUE_NAMESPACE_ID"
+  namespace: "MY_UNIQUE_NAMESPACE_ID"  # Deprecated - use header_namespace and data_namespace instead
 ```
 
 **Command-line Flag:**
 `--rollkit.da.namespace <string>`
 *Example:* `--rollkit.da.namespace 0x1234567890abcdef`
-*Default:* `""` (empty, must be configured)
+*Default:* `""` (empty)
 *Constant:* `FlagDANamespace`
+
+### DA Header Namespace
+
+**Description:**
+The namespace ID specifically for submitting block headers to the DA layer. Headers are submitted separately from transaction data. The namespace value is encoded by the node to ensure proper formatting and compatibility with the DA layer.
+
+**YAML:**
+
+```yaml
+da:
+  header_namespace: "HEADER_NAMESPACE_ID"
+```
+
+**Command-line Flag:**
+`--rollkit.da.header_namespace <string>`
+*Example:* `--rollkit.da.header_namespace my_header_namespace`
+*Default:* Falls back to `namespace` if not set
+*Constant:* `FlagDAHeaderNamespace`
+
+### DA Data Namespace
+
+**Description:**
+The namespace ID specifically for submitting transaction data to the DA layer. Transaction data is submitted separately from headers, enabling nodes to sync only the data they need. The namespace value is encoded by the node to ensure proper formatting and compatibility with the DA layer.
+
+**YAML:**
+
+```yaml
+da:
+  data_namespace: "DATA_NAMESPACE_ID"
+```
+
+**Command-line Flag:**
+`--rollkit.da.data_namespace <string>`
+*Example:* `--rollkit.da.data_namespace my_data_namespace`
+*Default:* Falls back to `namespace` if not set
+*Constant:* `FlagDADataNamespace`
 
 ### DA Block Time
 

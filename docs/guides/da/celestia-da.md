@@ -102,20 +102,18 @@ The output of the command above will look similar to this:
  Your DA AUTH_TOKEN is eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJBbGxvdyI6WyJwdWJsaWMiLCJyZWFkIiwid3JpdGUiXX0.cSrJjpfUdTNFtzGho69V0D_8kyECn9Mzv8ghJSpKRDE
 ```
 
-Next, let's set up the namespace to be used for posting data on Celestia:
+Next, let's set up the namespace to be used for posting data on Celestia. Evolve supports separate namespaces for headers and data, but for simplicity, we'll use a single namespace for both:
 
 ```bash
-DA_NAMESPACE=00000000000000000000000000000000000000000008e5f679bf7116cb
+DA_NAMESPACE="fancy_namespace"
 ```
 
-:::tip
-`00000000000000000000000000000000000000000008e5f679bf7116cb` is a default namespace for Mocha testnet. You can set your own by using a command similar to this (or, you could get creative 😎):
 
-```bash
-openssl rand -hex 10
-```
+**Advanced Configuration:** For production deployments, you can use separate namespaces for headers and data to optimize syncing:
+- `--evolve.da.header_namespace` for block headers
+- `--evolve.da.data_namespace` for transaction data
 
-Replace the last 20 characters (10 bytes) in `00000000000000000000000000000000000000000008e5f679bf7116cb` with the newly generated 10 bytes.
+The namespace values are automatically encoded by the node to ensure compatibility with Celestia.
 
 [Learn more about namespaces](https://docs.celestia.org/tutorials/node-tutorial#namespaces).
 :::
@@ -135,7 +133,8 @@ Finally, let's initiate the chain node with all the flags:
 gmd start \
     --evolve.node.aggregator \
     --evolve.da.auth_token $AUTH_TOKEN \
-    --evolve.da.namespace $DA_NAMESPACE \
+    --evolve.da.header_namespace $DA_NAMESPACE \
+    --evolve.da.data_namespace $DA_NAMESPACE \
     --evolve.da.start_height $DA_BLOCK_HEIGHT \
     --evolve.da.address $DA_ADDRESS
 ```

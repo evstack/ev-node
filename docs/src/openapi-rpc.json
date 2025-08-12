@@ -680,7 +680,7 @@
       },
       "GetNamespaceResponse": {
         "type": "object",
-        "description": "Response containing namespace configuration",
+        "description": "Response containing namespace configuration. Namespaces are encoded by the node to ensure proper formatting and compatibility with the DA layer.",
         "required": [
           "header_namespace",
           "data_namespace"
@@ -688,12 +688,12 @@
         "properties": {
           "header_namespace": {
             "type": "string",
-            "description": "The namespace identifier for block headers",
+            "description": "The namespace identifier for block headers. This namespace is used exclusively for storing and retrieving block header data on the DA layer. The value is pre-encoded by the node.",
             "example": "0x01234567890abcdef"
           },
           "data_namespace": {
             "type": "string",
-            "description": "The namespace identifier for block data",
+            "description": "The namespace identifier for block data (transactions). This namespace is used exclusively for storing and retrieving transaction data on the DA layer, separate from headers. The value is pre-encoded by the node.",
             "example": "0xfedcba9876543210"
           }
         }
