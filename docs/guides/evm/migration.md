@@ -70,9 +70,9 @@ It does not accept a --block flag, so to capture a specific migration height you
 ⸻
 
 Option 1 — Stop at the target height before dumping
-	•	Sync your Evolve/reth node to the agreed migration height.
-	•	Disable block production or stop the sequencer so no new blocks are added.
-	•	Run dump-genesis while the DB is exactly at the migration height.
+- Sync your Evolve/reth node to the agreed migration height.
+- Disable block production or stop the sequencer so no new blocks are added.
+- Run dump-genesis while the DB is exactly at the migration height.
 
 # Stop node at migration height
 systemctl stop evolve-node
