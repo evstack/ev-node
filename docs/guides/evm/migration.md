@@ -123,8 +123,6 @@ If staying in the same stack (only chain ID / forks change)
 
 Use jq to adjust the config:
 
-cp genesis-export.json genesis-new.json
-
 ```bash
 jq '.config.chainId = <NEW_CHAIN_ID> |
     .config.homesteadBlock = 0 |
@@ -398,7 +396,7 @@ Here's a recommended timeline for chain migration:
 ```bash
 # If export fails due to memory, increase heap size
 export RETH_HEAP_SIZE=8g
-reth dump-genesis --datadir /path/to/datadir --block <HEIGHT>
+reth dump-genesis --datadir /path/to/datadir
 ```
 
 **Genesis Initialization Errors**:
