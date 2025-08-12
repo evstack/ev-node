@@ -320,6 +320,13 @@ func Load(cmd *cobra.Command) (Config, error) {
 	home, _ := cmd.Flags().GetString(FlagRootDir)
 	if home == "" {
 		home = DefaultRootDir
+	} else if !filepath.IsAbs(home) {
+		// Convert relative path to absolute path
+		absHome, err := filepath.Abs(home)
+		if err != nil {
+			return Config{}, fmt.Errorf("failed to resolve home directory: %w", err)
+		}
+		home = absHome
 	}
 
 	v := viper.New()
@@ -360,6 +367,13 @@ func LoadFromViper(inputViper *viper.Viper) (Config, error) {
 	home := inputViper.GetString(FlagRootDir)
 	if home == "" {
 		home = DefaultRootDir
+	} else if !filepath.IsAbs(home) {
+		// Convert relative path to absolute path
+		absHome, err := filepath.Abs(home)
+		if err != nil {
+			return Config{}, fmt.Errorf("failed to resolve home directory: %w", err)
+		}
+		home = absHome
 	}
 
 	// create a new viper instance for reading the config file
