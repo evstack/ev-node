@@ -47,8 +47,6 @@ func getManager(t *testing.T, da da.DA, gasPrice float64, gasMultiplier float64)
 		headerCache:              cache.NewCache[types.SignedHeader](),
 		dataCache:                cache.NewCache[types.Data](),
 		logger:                   logger,
-		gasPrice:                 gasPrice,
-		gasMultiplier:            gasMultiplier,
 		lastStateMtx:             &sync.RWMutex{},
 		metrics:                  NopMetrics(),
 		store:                    mockStore,
@@ -212,6 +210,7 @@ func Test_submitBlocksToDA_BlockMarshalErrorCase1(t *testing.T) {
 	ctx := context.Background()
 
 	mockDA := mocks.NewMockDA(t)
+	mockDA.On("GasPrice", mock.Anything).Return(1.0, nil).Maybe()
 	m, _ := getManager(t, mockDA, -1, -1)
 
 	header1, data1 := types.GetRandomBlock(uint64(1), 5, chainID)
@@ -250,6 +249,7 @@ func Test_submitBlocksToDA_BlockMarshalErrorCase2(t *testing.T) {
 	ctx := context.Background()
 
 	mockDA := mocks.NewMockDA(t)
+	mockDA.On("GasPrice", mock.Anything).Return(1.0, nil).Maybe()
 	m, _ := getManager(t, mockDA, -1, -1)
 
 	header1, data1 := types.GetRandomBlock(uint64(1), 5, chainID)

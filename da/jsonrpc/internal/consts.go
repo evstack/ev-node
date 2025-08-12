@@ -14,8 +14,8 @@ const (
 	DefaultGovMaxSquareSize = 64
 
 	// DefaultMaxBytes is the default value for the governance modifiable
-	// maximum number of bytes allowed in a valid block.
-	DefaultMaxBytes = DefaultGovMaxSquareSize * DefaultGovMaxSquareSize * share.ContinuationSparseShareContentSize
+	// maximum number of bytes allowed in a valid block. We subtract 1 to have some extra buffer.
+	DefaultMaxBytes = DefaultGovMaxSquareSize * DefaultGovMaxSquareSize * (share.ContinuationSparseShareContentSize - 1)
 
 	// DefaultMinGasPrice is the default min gas price that gets set in the app.toml file.
 	// The min gas price acts as a filter. Transactions below that limit will not pass

@@ -17,7 +17,7 @@ import (
 )
 
 // DefaultMaxBlobSize is the default max blob size
-const DefaultMaxBlobSize = 64 * 64 * 482
+const DefaultMaxBlobSize uint64 = 64 * 64 * 481 // 1970176
 
 // LocalDA is a simple implementation of in-memory DA. Not production ready! Intended only for testing!
 //
