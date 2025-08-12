@@ -108,9 +108,9 @@ jq '.alloc | length' genesis-export.json
 jq '.config' genesis-export.json
 
 The exported genesis will contain:
-	•	All account balances and nonces
-	•	Contract bytecode and storage
-	•	Current chain configuration
+- All account balances and nonces
+- Contract bytecode and storage
+- Current chain configuration
 
 
 ### 5. Prepare New Genesis Configuration
