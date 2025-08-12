@@ -697,10 +697,6 @@ func (m *Manager) publishBlockInternal(ctx context.Context) error {
 		if err != nil {
 			return err
 		}
-
-		if err = m.store.SaveBlockData(ctx, header, data, &signature); err != nil { // saved early for crash recovery, will be overwritten later with the final signature
-			return fmt.Errorf("failed to save block: %w", err)
-		}
 	}
 
 	newState, err := m.applyBlock(ctx, header.Header, data)
