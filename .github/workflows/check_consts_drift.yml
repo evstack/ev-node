@@ -17,7 +17,7 @@ jobs:
       - name: Fetch Celestia App Consts
         id: fetch_celestia_consts
         run: |
-          curl -sSL https://raw.githubusercontent.com/celestiaorg/celestia-app/main/pkg/appconsts/initial_consts.go -o /tmp/celestia_initial_consts.go
+          curl -sSL https://raw.githubusercontent.com/celestiaorg/celestia-app/refs/tags/v5.0.1/pkg/appconsts/app_consts.go -o /tmp/celestia_initial_consts.go
           if [ $? -ne 0 ]; then
             echo "Failed to download Celestia app consts file."
             exit 1
@@ -60,29 +60,30 @@ jobs:
 
           # Perform the diff and handle its exit code robustly
           diff_command_output=""
-          if ! diff_command_output=$(diff -u "$LOCAL_FILE_TMP" "$CELESTIA_FILE_TMP"); then
-            # diff exited with non-zero status
-            diff_exit_code=$?
-            if [ $diff_exit_code -eq 1 ]; then
-              # Exit code 1 means files are different
-              echo "Files are different (excluding last line)."
-              echo "diff_output<<EOF" >> $GITHUB_OUTPUT
-              echo "$diff_command_output" >> $GITHUB_OUTPUT
-              echo "EOF" >> $GITHUB_OUTPUT
-              echo "files_differ=true" >> $GITHUB_OUTPUT
-              exit 1 # Fail the step
-            else
-              # Exit code > 1 means diff encountered an error
-              echo "Error: diff command failed with exit code $diff_exit_code."
-              echo "Diff command output/error: $diff_command_output"
-              # Output error information for the issue
-              echo "diff_output<<EOF" >> $GITHUB_OUTPUT
-              echo "Diff command error (exit code $diff_exit_code):" >> $GITHUB_OUTPUT
-              echo "$diff_command_output" >> $GITHUB_OUTPUT
-              echo "EOF" >> $GITHUB_OUTPUT
-              echo "files_differ=true" >> $GITHUB_OUTPUT # Treat as a difference to create an issue
-              exit $diff_exit_code
-            fi
+          diff_exit_code=0
+          diff_command_output=$(diff -u "$LOCAL_FILE_TMP" "$CELESTIA_FILE_TMP") || diff_exit_code=$?
+          
+          if [ $diff_exit_code -eq 1 ]; then
+            # Exit code 1 means files are different
+            echo "Files are different (excluding last line)."
+            echo "diff_output<<EOF" >> $GITHUB_OUTPUT
+            echo "$diff_command_output" >> $GITHUB_OUTPUT
+            echo "EOF" >> $GITHUB_OUTPUT
+            echo "files_differ=true" >> $GITHUB_OUTPUT
+            echo "::error::Celestia app consts have drifted. Please update da/jsonrpc/internal/consts.go"
+            exit 1 # Fail the step
+          elif [ $diff_exit_code -gt 1 ]; then
+            # Exit code > 1 means diff encountered an error
+            echo "Error: diff command failed with exit code $diff_exit_code."
+            echo "Diff command output/error: $diff_command_output"
+            # Output error information for the issue
+            echo "diff_output<<EOF" >> $GITHUB_OUTPUT
+            echo "Diff command error (exit code $diff_exit_code):" >> $GITHUB_OUTPUT
+            echo "$diff_command_output" >> $GITHUB_OUTPUT
+            echo "EOF" >> $GITHUB_OUTPUT
+            echo "files_differ=true" >> $GITHUB_OUTPUT # Treat as a difference to create an issue
+            echo "::error::Failed to compare files due to diff error"
+            exit $diff_exit_code
           else
             # diff exited with 0, files are identical
             echo "Files are identical (excluding last line)."
