@@ -108,8 +108,8 @@ Next, let's set up the namespace to be used for posting data on Celestia. Evolve
 DA_NAMESPACE="fancy_namespace"
 ```
 
-
 **Advanced Configuration:** For production deployments, you can use separate namespaces for headers and data to optimize syncing:
+
 - `--evolve.da.header_namespace` for block headers
 - `--evolve.da.data_namespace` for transaction data
 

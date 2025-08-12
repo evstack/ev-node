@@ -33,7 +33,7 @@ func setupTestServer(t *testing.T, mockStore *mocks.MockStore, mockP2P *mocks.Mo
 	storeServer := server.NewStoreServer(mockStore, logger)
 	p2pServer := server.NewP2PServer(mockP2P)
 	healthServer := server.NewHealthServer()
-	
+
 	// Create config server with test config
 	testConfig := config.DefaultConfig
 	testConfig.DA.Namespace = "test-headers"
@@ -46,11 +46,11 @@ func setupTestServer(t *testing.T, mockStore *mocks.MockStore, mockP2P *mocks.Mo
 	// Register the p2p service
 	p2pPath, p2pHandler := rpc.NewP2PServiceHandler(p2pServer)
 	mux.Handle(p2pPath, p2pHandler)
-	
+
 	// Register the health service
 	healthPath, healthHandler := rpc.NewHealthServiceHandler(healthServer)
 	mux.Handle(healthPath, healthHandler)
-	
+
 	// Register the config service
 	configPath, configHandler := rpc.NewConfigServiceHandler(configServer)
 	mux.Handle(configPath, configHandler)
