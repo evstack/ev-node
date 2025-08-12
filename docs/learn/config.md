@@ -37,6 +37,7 @@ This document provides a comprehensive reference for all configuration options a
   - [P2P Allowed Peers](#p2p-allowed-peers)
 - [RPC Configuration (`rpc`)](#rpc-configuration-rpc)
   - [RPC Server Address](#rpc-server-address)
+  - [Enable DA Visualization](#enable-da-visualization)
 - [Instrumentation Configuration (`instrumentation`)](#instrumentation-configuration-instrumentation)
   - [Enable Prometheus Metrics](#enable-prometheus-metrics)
   - [Prometheus Listen Address](#prometheus-listen-address)
@@ -621,6 +622,26 @@ rpc:
 *Example:* `--rollkit.rpc.address 0.0.0.0:26657`
 *Default:* `"127.0.0.1:7331"`
 *Constant:* `FlagRPCAddress`
+
+### Enable DA Visualization
+
+**Description:**
+If true, enables the Data Availability (DA) visualization endpoints that provide real-time monitoring of blob submissions to the DA layer. This includes a web-based dashboard and REST API endpoints for tracking submission statistics, monitoring DA health, and analyzing blob details. Only aggregator nodes submit data to the DA layer, so this feature is most useful when running in aggregator mode.
+
+**YAML:**
+
+```yaml
+rpc:
+  enable_da_visualization: true
+```
+
+**Command-line Flag:**
+`--rollkit.rpc.enable_da_visualization` (boolean, presence enables it)
+*Example:* `--rollkit.rpc.enable_da_visualization`
+*Default:* `false`
+*Constant:* `FlagRPCEnableDAVisualization`
+
+See the [DA Visualizer Guide](/guides/da-visualizer.md) for detailed information on using this feature.
 
 ## Instrumentation Configuration (`instrumentation`)
 
