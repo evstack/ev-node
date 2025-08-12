@@ -11,6 +11,7 @@ replace (
 
 require (
 	github.com/evstack/ev-node v0.0.0-00010101000000-000000000000
+	github.com/evstack/ev-node/core v0.0.0-20250312114929-104787ba1a4c
 	github.com/evstack/ev-node/da v0.0.0-00010101000000-000000000000
 	github.com/evstack/ev-node/sequencers/single v0.0.0-00010101000000-000000000000
 	github.com/ipfs/go-datastore v0.8.2
@@ -25,7 +26,6 @@ require (
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/celestiaorg/go-header v0.6.6 // indirect
 	github.com/celestiaorg/go-libp2p-messenger v0.2.2 // indirect
-	github.com/celestiaorg/go-square/v2 v2.2.0 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/containerd/cgroups v1.1.0 // indirect
 	github.com/coreos/go-systemd/v22 v22.5.0 // indirect
@@ -37,7 +37,6 @@ require (
 	github.com/docker/go-units v0.5.0 // indirect
 	github.com/dustin/go-humanize v1.0.1 // indirect
 	github.com/elastic/gosigar v0.14.3 // indirect
-	github.com/evstack/ev-node/core v0.0.0-20250312114929-104787ba1a4c // indirect
 	github.com/filecoin-project/go-jsonrpc v0.7.1 // indirect
 	github.com/flynn/noise v1.1.0 // indirect
 	github.com/francoispqt/gojay v1.2.13 // indirect

@@ -1,34 +1,41 @@
 package appconsts
 
-import (
-	"time"
+import "time"
 
-	"github.com/celestiaorg/go-square/v2/share"
-)
-
-// The following defaults correspond to initial parameters of the network that can be changed, not via app versions
-// but other means such as on-chain governance, or the node's local config
 const (
-	// DefaultGovMaxSquareSize is the default value for the governance modifiable
-	// max square size.
-	DefaultGovMaxSquareSize = 64
+	Version uint64 = 5
+	// SquareSizeUpperBound imposes an upper bound on the max effective square size.
+	SquareSizeUpperBound int = 128
+	// SubtreeRootThreshold works as a target upper bound for the number of subtree
+	// roots in the share commitment. If a blob contains more shares than this
+	// number, then the height of the subtree roots will increase by one so that the
+	// number of subtree roots in the share commitment decreases by a factor of two.
+	// This step is repeated until the number of subtree roots is less than the
+	// SubtreeRootThreshold.
+	//
+	// The rationale for this value is described in more detail in ADR-013.
+	SubtreeRootThreshold int    = 64
+	TxSizeCostPerByte    uint64 = 10
+	GasPerBlobByte       uint32 = 8
+	MaxTxSize            int    = 2097152 // 2 MiB in bytes
+	TimeoutPropose              = time.Millisecond * 3500
+	TimeoutCommit               = time.Millisecond * 4200
 
-	// DefaultMaxBytes is the default value for the governance modifiable
-	// maximum number of bytes allowed in a valid block. We subtract 1 to have some extra buffer.
-	DefaultMaxBytes = DefaultGovMaxSquareSize * DefaultGovMaxSquareSize * (share.ContinuationSparseShareContentSize - 1)
-
-	// DefaultMinGasPrice is the default min gas price that gets set in the app.toml file.
-	// The min gas price acts as a filter. Transactions below that limit will not pass
-	// a node's `CheckTx` and thus not be proposed by that node.
-	DefaultMinGasPrice = 0.002 // utia
-
-	// DefaultUnbondingTime is the default time a validator must wait
-	// to unbond in a proof of stake system. Any validator within this
-	// time can be subject to slashing under conditions of misbehavior.
-	DefaultUnbondingTime = 3 * 7 * 24 * time.Hour
-
-	// DefaultNetworkMinGasPrice is used by x/minfee to prevent transactions from being
-	// included in a block if they specify a gas price lower than this.
-	// Only applies to app version >= 2
-	DefaultNetworkMinGasPrice = 0.000001 // utia
+	// TestUpgradeHeightDelay is the number of blocks that chain-id "test" waits
+	// after a MsgTryUpgrade to activate the next version.
+	TestUpgradeHeightDelay = int64(3)
+	// ArabicaUpgradeHeightDelay is the number of blocks that Arabica waits
+	// after a MsgTryUpgrade to activate the next version. Assuming a block
+	// interval of 6 seconds, this is 1 day.
+	ArabicaUpgradeHeightDelay = int64(14_400)
+	// MochaUpgradeHeightDelay is the number of blocks that Mocha waits
+	// after a MsgTryUpgrade to activate the next version. Assuming a block
+	// interval of 6 seconds, this is 2 days.
+	MochaUpgradeHeightDelay = int64(28_800)
+	// MainnetUpgradeHeightDelay is the number of blocks that Mainnet waits
+	// after a MsgTryUpgrade to activate the next version. Assuming a block
+	// interval of 6 seconds, this is 7 day.
+	MainnetUpgradeHeightDelay = int64(100_800)
+	// Deprecated: Use MainnetUpgradeHeightDelay instead.
+	UpgradeHeightDelay = MainnetUpgradeHeightDelay
 )
