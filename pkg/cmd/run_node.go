@@ -96,9 +96,9 @@ func StartNode(
 			return err
 		}
 
+		// Resolve signer path relative to root directory if it's not an absolute path
 		signerPath := nodeConfig.Signer.SignerPath
 		if !filepath.IsAbs(signerPath) {
-			// Resolve relative signer path relative to root directory
 			signerPath = filepath.Join(nodeConfig.RootDir, signerPath)
 		}
 		signer, err = file.LoadFileSystemSigner(signerPath, []byte(passphrase))

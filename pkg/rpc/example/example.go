@@ -8,6 +8,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/evstack/ev-node/pkg/config"
 	"github.com/evstack/ev-node/pkg/rpc/client"
 	"github.com/evstack/ev-node/pkg/rpc/server"
 	"github.com/evstack/ev-node/pkg/store"
@@ -19,7 +20,8 @@ func StartStoreServer(s store.Store, address string, logger zerolog.Logger) {
 	// Create and start the server
 	// Start RPC server
 	rpcAddr := fmt.Sprintf("%s:%d", "localhost", 8080)
-	handler, err := server.NewServiceHandler(s, nil, logger)
+	cfg := config.DefaultConfig
+	handler, err := server.NewServiceHandler(s, nil, logger, cfg)
 	if err != nil {
 		panic(err)
 	}
@@ -78,7 +80,8 @@ func ExampleServer(s store.Store) {
 
 	// Start RPC server
 	rpcAddr := fmt.Sprintf("%s:%d", "localhost", 8080)
-	handler, err := server.NewServiceHandler(s, nil, logger)
+	cfg := config.DefaultConfig
+	handler, err := server.NewServiceHandler(s, nil, logger, cfg)
 	if err != nil {
 		panic(err)
 	}

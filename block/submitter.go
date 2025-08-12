@@ -6,6 +6,7 @@ import (
 	"time"
 
 	coreda "github.com/evstack/ev-node/core/da"
+	"github.com/evstack/ev-node/pkg/rpc/server"
 	"github.com/evstack/ev-node/types"
 	"google.golang.org/protobuf/proto"
 )
@@ -318,6 +319,12 @@ func handleSubmissionResult[T any](
 
 	case coreda.StatusContextCanceled:
 		m.logger.Info().Int("attempt", retryStrategy.attempt).Msg("DA layer submission canceled due to context cancellation")
+
+		// Record canceled submission in DA visualization server
+		if daVisualizationServer := server.GetDAVisualizationServer(); daVisualizationServer != nil {
+			daVisualizationServer.RecordSubmission(&res, retryStrategy.gasPrice, uint64(len(remaining)))
+		}
+
 		return submissionOutcome[T]{
 			RemainingItems:   remaining,
 			RemainingMarshal: marshaled,
@@ -346,6 +353,11 @@ func handleSuccessfulSubmission[T any](
 
 	remLen := len(remaining)
 	allSubmitted := res.SubmittedCount == uint64(remLen)
+
+	// Record submission in DA visualization server
+	if daVisualizationServer := server.GetDAVisualizationServer(); daVisualizationServer != nil {
+		daVisualizationServer.RecordSubmission(res, retryStrategy.gasPrice, res.SubmittedCount)
+	}
 
 	m.logger.Info().Str("itemType", itemType).Float64("gasPrice", retryStrategy.gasPrice).Uint64("count", res.SubmittedCount).Msg("successfully submitted items to DA layer")
 
@@ -383,6 +395,11 @@ func handleMempoolFailure[T any](
 
 	m.recordDAMetrics("submission", DAModeFail)
 
+	// Record failed submission in DA visualization server
+	if daVisualizationServer := server.GetDAVisualizationServer(); daVisualizationServer != nil {
+		daVisualizationServer.RecordSubmission(res, retryStrategy.gasPrice, uint64(len(remaining)))
+	}
+
 	gasMultiplier := m.getGasMultiplier(ctx)
 	retryStrategy.BackoffOnMempool(int(m.config.DA.MempoolTTL), m.config.DA.BlockTime.Duration, gasMultiplier)
 	m.logger.Info().Dur("backoff", retryStrategy.backoff).Float64("gasPrice", retryStrategy.gasPrice).Msg("retrying DA layer submission with")
@@ -408,6 +425,17 @@ func handleTooBigError[T any](
 	m.logger.Debug().Str("error", "blob too big").Int("attempt", attempt).Int("batchSize", len(remaining)).Msg("DA layer submission failed due to blob size limit")
 
 	m.recordDAMetrics("submission", DAModeFail)
+
+	// Record failed submission in DA visualization server (create a result for TooBig error)
+	if daVisualizationServer := server.GetDAVisualizationServer(); daVisualizationServer != nil {
+		tooBigResult := &coreda.ResultSubmit{
+			BaseResult: coreda.BaseResult{
+				Code:    coreda.StatusTooBig,
+				Message: "blob too big",
+			},
+		}
+		daVisualizationServer.RecordSubmission(tooBigResult, retryStrategy.gasPrice, uint64(len(remaining)))
+	}
 
 	if len(remaining) > 1 {
 		totalSubmitted, err := submitWithRecursiveSplitting(m, ctx, remaining, marshaled, retryStrategy.gasPrice, postSubmit, itemType, namespace)
@@ -462,6 +490,12 @@ func handleGenericFailure[T any](
 	m.logger.Error().Str("error", res.Message).Int("attempt", attempt).Msg("DA layer submission failed")
 
 	m.recordDAMetrics("submission", DAModeFail)
+
+	// Record failed submission in DA visualization server
+	if daVisualizationServer := server.GetDAVisualizationServer(); daVisualizationServer != nil {
+		daVisualizationServer.RecordSubmission(res, retryStrategy.gasPrice, uint64(len(remaining)))
+	}
+
 	retryStrategy.BackoffOnFailure()
 
 	return submissionOutcome[T]{
@@ -662,10 +696,20 @@ func processBatch[T any](
 		postSubmit(submitted, &batchRes, gasPrice)
 		m.logger.Info().Int("batchSize", len(batch.Items)).Uint64("submittedCount", batchRes.SubmittedCount).Msg("successfully submitted batch to DA layer")
 
+		// Record successful submission in DA visualization server
+		if daVisualizationServer := server.GetDAVisualizationServer(); daVisualizationServer != nil {
+			daVisualizationServer.RecordSubmission(&batchRes, gasPrice, batchRes.SubmittedCount)
+		}
+
 		return batchResult[T]{
 			action:         batchActionSubmitted,
 			submittedCount: int(batchRes.SubmittedCount),
 		}
+	}
+
+	// Record failed submission in DA visualization server for all error cases
+	if daVisualizationServer := server.GetDAVisualizationServer(); daVisualizationServer != nil {
+		daVisualizationServer.RecordSubmission(&batchRes, gasPrice, uint64(len(batch.Items)))
 	}
 
 	if batchRes.Code == coreda.StatusTooBig && len(batch.Items) > 1 {

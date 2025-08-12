@@ -1,0 +1,21 @@
+syntax = "proto3";
+package evnode.v1;
+
+import "google/protobuf/empty.proto";
+import "evnode/v1/evnode.proto";
+import "evnode/v1/state.proto";
+
+option go_package = "github.com/evstack/ev-node/types/pb/evnode/v1";
+
+// StoreService defines the RPC service for the store package
+service ConfigService {
+
+  // GetNamespace returns the namespace for this network
+  rpc GetNamespace(google.protobuf.Empty) returns (GetNamespaceResponse) {}
+}
+
+// GetNamespaceResponse returns the namespace for this network
+message GetNamespaceResponse {
+  string header_namespace = 1;
+  string data_namespace   = 2;
+}

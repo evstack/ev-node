@@ -25,6 +25,7 @@ import (
 	"github.com/evstack/ev-node/pkg/cache"
 	"github.com/evstack/ev-node/pkg/config"
 	"github.com/evstack/ev-node/pkg/genesis"
+	"github.com/evstack/ev-node/pkg/rpc/server"
 	"github.com/evstack/ev-node/pkg/signer"
 	storepkg "github.com/evstack/ev-node/pkg/store"
 	"github.com/evstack/ev-node/types"
@@ -413,6 +414,16 @@ func NewManager(
 	// fetch caches from disks
 	if err := m.LoadCache(); err != nil {
 		return nil, fmt.Errorf("failed to load cache: %w", err)
+	}
+
+	// Initialize DA visualization server if enabled
+	if config.RPC.EnableDAVisualization {
+		daVisualizationServer := server.NewDAVisualizationServer(da, logger.With().Str("module", "da_visualization").Logger(), config.Node.Aggregator)
+		server.SetDAVisualizationServer(daVisualizationServer)
+		logger.Info().Msg("DA visualization server enabled")
+	} else {
+		// Ensure the global server is nil when disabled
+		server.SetDAVisualizationServer(nil)
 	}
 
 	return m, nil

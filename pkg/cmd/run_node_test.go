@@ -99,12 +99,15 @@ func TestParseFlags(t *testing.T) {
 		t.Errorf("Error: %v", err)
 	}
 
+	// Convert relative path to absolute for comparison
+	expectedRootDir, _ := filepath.Abs("custom/root/dir")
+
 	testCases := []struct {
 		name     string
 		got      any
 		expected any
 	}{
-		{"RootDir", nodeConfig.RootDir, "custom/root/dir"},
+		{"RootDir", nodeConfig.RootDir, expectedRootDir},
 		{"DBPath", nodeConfig.DBPath, "custom/db/path"},
 
 		// P2P fields
