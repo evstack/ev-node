@@ -56,7 +56,7 @@ func TestProxy(t *testing.T) {
 		}
 	}()
 
-	client, err := proxy.NewClient(context.Background(), logger, ClientURL, "74657374")
+	client, err := proxy.NewClient(context.Background(), logger, ClientURL, "74657374", 0, 1)
 	require.NoError(t, err)
 
 	t.Run("Basic DA test", func(t *testing.T) {

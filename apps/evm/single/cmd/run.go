@@ -40,7 +40,7 @@ var RunCmd = &cobra.Command{
 
 		logger := rollcmd.SetupLogger(nodeConfig.Log)
 
-		daJrpc, err := jsonrpc.NewClient(context.Background(), logger, nodeConfig.DA.Address, nodeConfig.DA.AuthToken)
+		daJrpc, err := jsonrpc.NewClient(context.Background(), logger, nodeConfig.DA.Address, nodeConfig.DA.AuthToken, nodeConfig.DA.GasPrice, nodeConfig.DA.GasMultiplier)
 		if err != nil {
 			return err
 		}
