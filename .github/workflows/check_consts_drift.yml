@@ -62,7 +62,7 @@ jobs:
           diff_command_output=""
           diff_exit_code=0
           diff_command_output=$(diff -u "$LOCAL_FILE_TMP" "$CELESTIA_FILE_TMP") || diff_exit_code=$?
-          
+
           if [ $diff_exit_code -eq 1 ]; then
             # Exit code 1 means files are different
             echo "Files are different (excluding last line)."
