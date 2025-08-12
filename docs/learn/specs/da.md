@@ -26,21 +26,69 @@ The `Submit` call may result in an error (`StatusError`) based on the underlying
 * the total blobs size exceeds the underlying DA's limits (includes empty blobs)
 * the implementation specific failures, e.g., for [celestia-da-json-rpc][jsonrpc], invalid namespace, unable to create the commitment or proof, setting low gas price, etc, could return error.
 
-The retrieval process now supports both legacy single-namespace mode and separate namespace mode:
+The retrieval process now supports with both legacy single-namespace mode and separate namespace mode:
+
+### Retrieval Modes
 
 1. **Legacy Mode Support**: For backward compatibility, the system first attempts to retrieve from the legacy namespace if migration has not been completed.
 
-2. **Separate Namespace Retrieval**: The system retrieves headers and data separately:
-   * Headers are retrieved from the `HeaderNamespace`
-   * Data is retrieved from the `DataNamespace`
-   * Results from both namespaces are combined
+2. **Separate Namespace Retrieval**: The system retrieves headers and data concurrently:
+   * Headers are retrieved from the `HeaderNamespace` in parallel with data
+   * Data is retrieved from the `DataNamespace` in parallel with headers
+   * Each worker processes both namespaces concurrently
+   * Results from both namespaces are combined atomically
 
 3. **Namespace Migration**: The system automatically detects and tracks namespace migration:
    * When data is found in new namespaces, migration is marked as complete
    * Migration state is persisted to optimize future retrievals
    * Once migration is complete, legacy namespace checks are skipped
+   * Thread-safe migration tracking across parallel workers
 
 If there are no blocks available for a given DA height in any namespace, `StatusNotFound` is returned (which is not an error case). The retrieved blobs are converted back to headers and data, then combined into complete blocks for processing.
+
+### Parallel Retrieval Flow
+
+```mermaid
+sequenceDiagram
+    participant D as Dispatcher
+    participant W1 as Worker 1
+    participant W2 as Worker 2
+    participant W3 as Worker 3
+    participant DA as DA Layer
+    participant B as Result Buffer
+    participant P as Processor
+
+    D->>W1: Height 100
+    D->>W2: Height 101
+    D->>W3: Height 102
+
+    par Parallel Fetching
+        W1->>DA: Get Headers(100)
+        W1->>DA: Get Data(100)
+    and
+        W2->>DA: Get Headers(101)
+        W2->>DA: Get Data(101)
+    and
+        W3->>DA: Get Headers(102)
+        W3->>DA: Get Data(102)
+    end
+
+    W2-->>B: Result(101)
+    W3-->>B: Result(102)
+    W1-->>B: Result(100)
+
+    B->>P: Ordered: 100, 101, 102
+    P->>P: Process in sequence
+```
+
+### Configuration
+
+The parallel retrieval system can be tuned through the following parameters:
+
+* **Worker Count**: Number of concurrent workers (default: 5)
+* **Prefetch Window**: Heights to fetch ahead (default: 50)
+* **Buffer Size**: Maximum buffered results (default: 200)
+* **Retry Strategy**: Exponential backoff with configurable limits
 
 Both header/data submission and retrieval operations may be unsuccessful if the DA node and the DA blockchain that the DA implementation is using have failures. For example, failures such as, DA mempool is full, DA submit transaction is nonce clashing with other transaction from the DA submitter account, DA node is not synced, etc.
 
