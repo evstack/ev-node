@@ -343,18 +343,18 @@ func TestClientInfoMethods(t *testing.T) {
 	t.Run("GetPeers", func(t *testing.T) {
 		// Wait for peer discovery to find the peers
 		expectedPeerIDs := []peer.ID{client1.host.ID(), client2.host.ID()}
-		
+
 		err := waitForCondition(2*time.Second, func() bool {
 			peers, err := client0.GetPeers()
 			if err != nil {
 				return false
 			}
-			
+
 			actualPeerIDs := make(map[peer.ID]bool)
 			for _, p := range peers {
 				actualPeerIDs[p.ID] = true
 			}
-			
+
 			// Check if all expected peers are found
 			for _, expectedID := range expectedPeerIDs {
 				if !actualPeerIDs[expectedID] {
@@ -363,9 +363,9 @@ func TestClientInfoMethods(t *testing.T) {
 			}
 			return true
 		})
-		
+
 		require.NoError(err, "Timed out waiting for GetPeers to discover all peers")
-		
+
 		// Now verify the peers are as expected
 		peers, err := client0.GetPeers()
 		assert.NoError(err)
