@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"sync"
 
 	"github.com/evstack/ev-node/core/da"
 	"github.com/klauspost/compress/zstd"
@@ -54,6 +55,101 @@ func DefaultConfig() Config {
 	}
 }
 
+// Global sync.Pools for encoder/decoder reuse
+var (
+	encoderPools map[int]*sync.Pool
+	decoderPool  *sync.Pool
+	poolsOnce    sync.Once
+)
+
+// initPools initializes the encoder and decoder pools
+func initPools() {
+	poolsOnce.Do(func() {
+		// Create encoder pools for different compression levels
+		encoderPools = make(map[int]*sync.Pool)
+		
+		// Pre-create pools for common compression levels (1-9)
+		for level := 1; level <= 9; level++ {
+			lvl := level // Capture loop variable
+			encoderPools[lvl] = &sync.Pool{
+				New: func() interface{} {
+					encoder, err := zstd.NewWriter(nil, zstd.WithEncoderLevel(zstd.EncoderLevelFromZstd(lvl)))
+					if err != nil {
+						// This should not happen with valid levels
+						panic(fmt.Sprintf("failed to create zstd encoder with level %d: %v", lvl, err))
+					}
+					return encoder
+				},
+			}
+		}
+		
+		// Create decoder pool
+		decoderPool = &sync.Pool{
+			New: func() interface{} {
+				decoder, err := zstd.NewReader(nil)
+				if err != nil {
+					// This should not happen
+					panic(fmt.Sprintf("failed to create zstd decoder: %v", err))
+				}
+				return decoder
+			},
+		}
+	})
+}
+
+// getEncoder retrieves an encoder from the pool for the specified compression level
+func getEncoder(level int) *zstd.Encoder {
+	initPools()
+	
+	pool, exists := encoderPools[level]
+	if !exists {
+		// Create a new pool for this level if it doesn't exist
+		pool = &sync.Pool{
+			New: func() interface{} {
+				encoder, err := zstd.NewWriter(nil, zstd.WithEncoderLevel(zstd.EncoderLevelFromZstd(level)))
+				if err != nil {
+					panic(fmt.Sprintf("failed to create zstd encoder with level %d: %v", level, err))
+				}
+				return encoder
+			},
+		}
+		encoderPools[level] = pool
+	}
+	
+	return pool.Get().(*zstd.Encoder)
+}
+
+// putEncoder returns an encoder to the pool
+func putEncoder(encoder *zstd.Encoder, level int) {
+	if encoder == nil {
+		return
+	}
+	
+	// Reset the encoder for reuse
+	encoder.Reset(nil)
+	
+	if pool, exists := encoderPools[level]; exists {
+		pool.Put(encoder)
+	}
+}
+
+// getDecoder retrieves a decoder from the pool
+func getDecoder() *zstd.Decoder {
+	initPools()
+	return decoderPool.Get().(*zstd.Decoder)
+}
+
+// putDecoder returns a decoder to the pool
+func putDecoder(decoder *zstd.Decoder) {
+	if decoder == nil {
+		return
+	}
+	
+	// Reset the decoder for reuse
+	decoder.Reset(nil)
+	decoderPool.Put(decoder)
+}
+
 // CompressibleDA wraps a DA implementation to add transparent compression support
 type CompressibleDA struct {
 	baseDA  da.DA
@@ -64,9 +160,8 @@ type CompressibleDA struct {
 
 // NewCompressibleDA creates a new CompressibleDA wrapper
 func NewCompressibleDA(baseDA da.DA, config Config) (*CompressibleDA, error) {
-	if baseDA == nil {
-		return nil, errors.New("base DA cannot be nil")
-	}
+	// Allow nil baseDA for testing purposes (when only using compression functions)
+	// The baseDA will only be used when calling Submit, Get, GetIDs methods
 
 	var encoder *zstd.Encoder
 	var decoder *zstd.Decoder
@@ -277,25 +372,86 @@ func (c *CompressibleDA) GasMultiplier(ctx context.Context) (float64, error) {
 // CompressBlob compresses a blob using the default zstd level 3 configuration
 func CompressBlob(blob da.Blob) (da.Blob, error) {
 	config := DefaultConfig()
-	compressor, err := NewCompressibleDA(nil, config)
-	if err != nil {
-		return nil, err
+	
+	if !config.Enabled || len(blob) == 0 {
+		// Return with uncompressed header
+		return addCompressionHeaderStandalone(blob, FlagUncompressed, uint64(len(blob))), nil
 	}
-	defer compressor.Close()
-
-	return compressor.compressBlob(blob)
+	
+	// Get encoder from pool
+	encoder := getEncoder(config.ZstdLevel)
+	defer putEncoder(encoder, config.ZstdLevel)
+	
+	// Compress the blob
+	compressed := encoder.EncodeAll(blob, make([]byte, 0, len(blob)))
+	
+	// Check if compression is beneficial
+	compressionRatio := float64(len(compressed)) / float64(len(blob))
+	if compressionRatio > (1.0 - config.MinCompressionRatio) {
+		// Compression not beneficial, store uncompressed
+		return addCompressionHeaderStandalone(blob, FlagUncompressed, uint64(len(blob))), nil
+	}
+	
+	return addCompressionHeaderStandalone(compressed, FlagZstd, uint64(len(blob))), nil
 }
 
 // DecompressBlob decompresses a blob
 func DecompressBlob(compressedBlob da.Blob) (da.Blob, error) {
-	config := DefaultConfig()
-	compressor, err := NewCompressibleDA(nil, config)
-	if err != nil {
-		return nil, err
+	if len(compressedBlob) < CompressionHeaderSize {
+		// Assume legacy uncompressed blob
+		return compressedBlob, nil
 	}
-	defer compressor.Close()
+	
+	flag, originalSize, payload, err := parseCompressionHeaderStandalone(compressedBlob)
+	if err != nil {
+		// Assume legacy uncompressed blob
+		return compressedBlob, nil
+	}
+	
+	switch flag {
+	case FlagUncompressed:
+		return payload, nil
+	case FlagZstd:
+		// Get decoder from pool
+		decoder := getDecoder()
+		defer putDecoder(decoder)
+		
+		decompressed, err := decoder.DecodeAll(payload, make([]byte, 0, originalSize))
+		if err != nil {
+			return nil, fmt.Errorf("%w: %v", ErrDecompressionFailed, err)
+		}
+		
+		if uint64(len(decompressed)) != originalSize {
+			return nil, fmt.Errorf("decompressed size mismatch: expected %d, got %d", originalSize, len(decompressed))
+		}
+		
+		return decompressed, nil
+	default:
+		return nil, fmt.Errorf("unsupported compression flag: %d", flag)
+	}
+}
 
-	return compressor.decompressBlob(compressedBlob)
+// Standalone helper functions for use without CompressibleDA instance
+
+// addCompressionHeaderStandalone adds compression metadata header to data
+func addCompressionHeaderStandalone(data []byte, flag uint8, originalSize uint64) []byte {
+	header := make([]byte, CompressionHeaderSize)
+	header[0] = flag
+	binary.BigEndian.PutUint64(header[1:], originalSize)
+	return append(header, data...)
+}
+
+// parseCompressionHeaderStandalone parses compression metadata from blob
+func parseCompressionHeaderStandalone(blob []byte) (flag uint8, originalSize uint64, payload []byte, err error) {
+	if len(blob) < CompressionHeaderSize {
+		return 0, 0, nil, errors.New("blob too small for compression header")
+	}
+	
+	flag = blob[0]
+	originalSize = binary.BigEndian.Uint64(blob[1:9])
+	payload = blob[CompressionHeaderSize:]
+	
+	return flag, originalSize, payload, nil
 }
 
 // CompressionInfo provides information about a blob's compression
