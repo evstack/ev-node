@@ -4,9 +4,6 @@ import (
 	"bytes"
 	"encoding/hex"
 	"testing"
-
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 )
 
 func TestNamespaceV0Creation(t *testing.T) {
@@ -47,31 +44,49 @@ func TestNamespaceV0Creation(t *testing.T) {
 			ns, err := NewNamespaceV0(tt.data)
 			
 			if tt.expectError {
-				assert.Error(t, err, tt.description)
-				assert.Nil(t, ns)
+				if err == nil {
+					t.Errorf("%s: expected error but got nil", tt.description)
+				}
+				if ns != nil {
+					t.Errorf("expected nil namespace but got %v", ns)
+				}
 			} else {
-				require.NoError(t, err, tt.description)
-				require.NotNil(t, ns)
+				if err != nil {
+					t.Fatalf("%s: unexpected error: %v", tt.description, err)
+				}
+				if ns == nil {
+					t.Fatal("expected non-nil namespace but got nil")
+				}
 				
 				// Verify version is 0
-				assert.Equal(t, NamespaceVersionZero, ns.Version, "Version should be 0")
+				if ns.Version != NamespaceVersionZero {
+					t.Errorf("Version should be 0, got %d", ns.Version)
+				}
 				
 				// Verify first 18 bytes of ID are zeros
 				for i := 0; i < NamespaceVersionZeroPrefixSize; i++ {
-					assert.Equal(t, byte(0), ns.ID[i], "First 18 bytes should be zero")
+					if ns.ID[i] != byte(0) {
+						t.Errorf("First 18 bytes should be zero, but byte %d is %d", i, ns.ID[i])
+					}
 				}
 				
 				// Verify data is in the last 10 bytes
 				expectedData := make([]byte, NamespaceVersionZeroDataSize)
 				copy(expectedData, tt.data)
 				actualData := ns.ID[NamespaceVersionZeroPrefixSize:]
-				assert.Equal(t, expectedData, actualData, "Data should match in last 10 bytes")
+				if !bytes.Equal(expectedData, actualData) {
+					t.Errorf("Data should match in last 10 bytes, expected %v, got %v", expectedData, actualData)
+				}
 				
 				// Verify total size
-				assert.Equal(t, NamespaceSize, len(ns.Bytes()), "Total namespace size should be 29 bytes")
+				if len(ns.Bytes()) != NamespaceSize {
+					t.Errorf("Total namespace size should be 29 bytes, got %d", len(ns.Bytes()))
+				}
 				
 				// Verify it's valid for version 0
-				assert.True(t, ns.IsValidForVersion0(), "Should be valid for version 0")
+				if !ns.IsValidForVersion0() {
+					t.Error("Should be valid for version 0")
+				}
 			}
 		})
 	}
@@ -115,12 +130,22 @@ func TestNamespaceFromBytes(t *testing.T) {
 			ns, err := NamespaceFromBytes(tt.input)
 			
 			if tt.expectError {
-				assert.Error(t, err, tt.description)
-				assert.Nil(t, ns)
+				if err == nil {
+					t.Errorf("%s: expected error but got nil", tt.description)
+				}
+				if ns != nil {
+					t.Errorf("expected nil namespace but got %v", ns)
+				}
 			} else {
-				require.NoError(t, err, tt.description)
-				require.NotNil(t, ns)
-				assert.Equal(t, tt.input, ns.Bytes(), "Should round-trip correctly")
+				if err != nil {
+					t.Fatalf("%s: unexpected error: %v", tt.description, err)
+				}
+				if ns == nil {
+					t.Fatal("expected non-nil namespace but got nil")
+				}
+				if !bytes.Equal(tt.input, ns.Bytes()) {
+					t.Errorf("Should round-trip correctly, expected %v, got %v", tt.input, ns.Bytes())
+				}
 			}
 		})
 	}
@@ -136,35 +161,57 @@ func TestNamespaceFromString(t *testing.T) {
 			name:  "rollkit-headers",
 			input: "rollkit-headers",
 			verify: func(t *testing.T, ns *Namespace) {
-				assert.Equal(t, NamespaceVersionZero, ns.Version)
-				assert.True(t, ns.IsValidForVersion0())
-				assert.Equal(t, NamespaceSize, len(ns.Bytes()))
+				if ns.Version != NamespaceVersionZero {
+					t.Errorf("expected version %d, got %d", NamespaceVersionZero, ns.Version)
+				}
+				if !ns.IsValidForVersion0() {
+					t.Error("namespace should be valid for version 0")
+				}
+				if len(ns.Bytes()) != NamespaceSize {
+					t.Errorf("expected namespace size %d, got %d", NamespaceSize, len(ns.Bytes()))
+				}
 				
 				// The hash should be deterministic
 				ns2 := NamespaceFromString("rollkit-headers")
-				assert.Equal(t, ns.Bytes(), ns2.Bytes(), "Same string should produce same namespace")
+				if !bytes.Equal(ns.Bytes(), ns2.Bytes()) {
+					t.Error("Same string should produce same namespace")
+				}
 			},
 		},
 		{
 			name:  "rollkit-data",
 			input: "rollkit-data",
 			verify: func(t *testing.T, ns *Namespace) {
-				assert.Equal(t, NamespaceVersionZero, ns.Version)
-				assert.True(t, ns.IsValidForVersion0())
-				assert.Equal(t, NamespaceSize, len(ns.Bytes()))
+				if ns.Version != NamespaceVersionZero {
+					t.Errorf("expected version %d, got %d", NamespaceVersionZero, ns.Version)
+				}
+				if !ns.IsValidForVersion0() {
+					t.Error("namespace should be valid for version 0")
+				}
+				if len(ns.Bytes()) != NamespaceSize {
+					t.Errorf("expected namespace size %d, got %d", NamespaceSize, len(ns.Bytes()))
+				}
 				
 				// Different strings should produce different namespaces
 				ns2 := NamespaceFromString("rollkit-headers")
-				assert.NotEqual(t, ns.Bytes(), ns2.Bytes(), "Different strings should produce different namespaces")
+				if bytes.Equal(ns.Bytes(), ns2.Bytes()) {
+					t.Error("Different strings should produce different namespaces")
+				}
 			},
 		},
 		{
 			name:  "empty string",
 			input: "",
 			verify: func(t *testing.T, ns *Namespace) {
-				assert.Equal(t, NamespaceVersionZero, ns.Version)
-				assert.True(t, ns.IsValidForVersion0())
-				assert.Equal(t, NamespaceSize, len(ns.Bytes()))
+				if ns.Version != NamespaceVersionZero {
+					t.Errorf("expected version %d, got %d", NamespaceVersionZero, ns.Version)
+				}
+				if !ns.IsValidForVersion0() {
+					t.Error("namespace should be valid for version 0")
+				}
+				if len(ns.Bytes()) != NamespaceSize {
+					t.Errorf("expected namespace size %d, got %d", NamespaceSize, len(ns.Bytes()))
+				}
 			},
 		},
 	}
@@ -172,7 +219,9 @@ func TestNamespaceFromString(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			ns := NamespaceFromString(tt.input)
-			require.NotNil(t, ns)
+			if ns == nil {
+				t.Fatal("expected non-nil namespace but got nil")
+			}
 			tt.verify(t, ns)
 		})
 	}
@@ -190,12 +239,18 @@ func TestPrepareNamespace(t *testing.T) {
 			input:       []byte("rollkit-headers"),
 			description: "Should convert string to valid namespace",
 			verify: func(t *testing.T, result []byte) {
-				assert.Equal(t, NamespaceSize, len(result))
-				assert.Equal(t, byte(0), result[0], "Should be version 0")
+				if len(result) != NamespaceSize {
+					t.Errorf("expected result size %d, got %d", NamespaceSize, len(result))
+				}
+				if result[0] != byte(0) {
+					t.Errorf("Should be version 0, got %d", result[0])
+				}
 				
 				// Verify first 18 bytes of ID are zeros
 				for i := 1; i <= 18; i++ {
-					assert.Equal(t, byte(0), result[i], "First 18 bytes of ID should be zero")
+					if result[i] != byte(0) {
+						t.Errorf("First 18 bytes of ID should be zero, but byte %d is %d", i, result[i])
+					}
 				}
 			},
 		},
@@ -204,11 +259,17 @@ func TestPrepareNamespace(t *testing.T) {
 			input:       append([]byte{0}, append(make([]byte, 18), []byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 10}...)...),
 			description: "Should return already valid namespace unchanged",
 			verify: func(t *testing.T, result []byte) {
-				assert.Equal(t, NamespaceSize, len(result))
-				assert.Equal(t, byte(0), result[0])
+				if len(result) != NamespaceSize {
+					t.Errorf("expected result size %d, got %d", NamespaceSize, len(result))
+				}
+				if result[0] != byte(0) {
+					t.Errorf("expected version 0, got %d", result[0])
+				}
 				// Should pass through unchanged
 				expected := append([]byte{0}, append(make([]byte, 18), []byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 10}...)...)
-				assert.Equal(t, expected, result)
+				if !bytes.Equal(expected, result) {
+					t.Errorf("Should pass through unchanged, expected %v, got %v", expected, result)
+				}
 			},
 		},
 		{
@@ -216,12 +277,18 @@ func TestPrepareNamespace(t *testing.T) {
 			input:       append([]byte{0}, append([]byte{1}, make([]byte, 27)...)...), // Invalid: non-zero in prefix
 			description: "Should treat invalid 29-byte input as string and hash it",
 			verify: func(t *testing.T, result []byte) {
-				assert.Equal(t, NamespaceSize, len(result))
-				assert.Equal(t, byte(0), result[0])
+				if len(result) != NamespaceSize {
+					t.Errorf("expected result size %d, got %d", NamespaceSize, len(result))
+				}
+				if result[0] != byte(0) {
+					t.Errorf("expected version 0, got %d", result[0])
+				}
 				
 				// Should be hashed, not passed through
 				invalidNs := append([]byte{0}, append([]byte{1}, make([]byte, 27)...)...)
-				assert.NotEqual(t, invalidNs, result, "Should not pass through invalid namespace")
+				if bytes.Equal(invalidNs, result) {
+					t.Error("Should not pass through invalid namespace")
+				}
 			},
 		},
 	}
@@ -229,7 +296,9 @@ func TestPrepareNamespace(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			result := PrepareNamespace(tt.input)
-			require.NotNil(t, result)
+			if result == nil {
+				t.Fatal("expected non-nil result but got nil")
+			}
 			tt.verify(t, result)
 		})
 	}
@@ -237,30 +306,48 @@ func TestPrepareNamespace(t *testing.T) {
 
 func TestHexStringConversion(t *testing.T) {
 	ns, err := NewNamespaceV0([]byte{1, 2, 3, 4, 5})
-	require.NoError(t, err)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
 	
 	// Test HexString
 	hexStr := ns.HexString()
-	assert.True(t, len(hexStr) > 2, "Hex string should not be empty")
-	assert.Equal(t, "0x", hexStr[:2], "Should have 0x prefix")
+	if len(hexStr) <= 2 {
+		t.Error("Hex string should not be empty")
+	}
+	if hexStr[:2] != "0x" {
+		t.Errorf("Should have 0x prefix, got %s", hexStr[:2])
+	}
 	
 	// Test ParseHexNamespace
 	parsed, err := ParseHexNamespace(hexStr)
-	require.NoError(t, err)
-	assert.Equal(t, ns.Bytes(), parsed.Bytes(), "Should round-trip through hex")
+	if err != nil {
+		t.Fatalf("unexpected error parsing hex: %v", err)
+	}
+	if !bytes.Equal(ns.Bytes(), parsed.Bytes()) {
+		t.Error("Should round-trip through hex")
+	}
 	
 	// Test without 0x prefix
 	parsed2, err := ParseHexNamespace(hexStr[2:])
-	require.NoError(t, err)
-	assert.Equal(t, ns.Bytes(), parsed2.Bytes(), "Should work without 0x prefix")
+	if err != nil {
+		t.Fatalf("unexpected error parsing hex without prefix: %v", err)
+	}
+	if !bytes.Equal(ns.Bytes(), parsed2.Bytes()) {
+		t.Error("Should work without 0x prefix")
+	}
 	
 	// Test invalid hex
 	_, err = ParseHexNamespace("invalid-hex")
-	assert.Error(t, err, "Should fail with invalid hex")
+	if err == nil {
+		t.Error("Should fail with invalid hex")
+	}
 	
 	// Test wrong size hex
 	_, err = ParseHexNamespace("0x0011")
-	assert.Error(t, err, "Should fail with wrong size")
+	if err == nil {
+		t.Error("Should fail with wrong size")
+	}
 }
 
 func TestCelestiaSpecCompliance(t *testing.T) {
@@ -268,50 +355,70 @@ func TestCelestiaSpecCompliance(t *testing.T) {
 	
 	t.Run("namespace structure", func(t *testing.T) {
 		ns, err := NewNamespaceV0([]byte{0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0A})
-		require.NoError(t, err)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
 		
 		nsBytes := ns.Bytes()
 		
 		// Check total size is 29 bytes (1 version + 28 ID)
-		assert.Equal(t, 29, len(nsBytes), "Total namespace size should be 29 bytes")
+		if len(nsBytes) != 29 {
+			t.Errorf("Total namespace size should be 29 bytes, got %d", len(nsBytes))
+		}
 		
 		// Check version byte is at position 0
-		assert.Equal(t, byte(0), nsBytes[0], "Version byte should be 0")
+		if nsBytes[0] != byte(0) {
+			t.Errorf("Version byte should be 0, got %d", nsBytes[0])
+		}
 		
 		// Check ID is 28 bytes starting at position 1
-		assert.Equal(t, 28, len(nsBytes[1:]), "ID should be 28 bytes")
+		if len(nsBytes[1:]) != 28 {
+			t.Errorf("ID should be 28 bytes, got %d", len(nsBytes[1:]))
+		}
 	})
 	
 	t.Run("version 0 requirements", func(t *testing.T) {
 		ns, err := NewNamespaceV0([]byte{0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF})
-		require.NoError(t, err)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
 		
 		nsBytes := ns.Bytes()
 		
 		// For version 0, first 18 bytes of ID must be zero
 		for i := 1; i <= 18; i++ {
-			assert.Equal(t, byte(0), nsBytes[i], "Bytes 1-18 should be zero for version 0")
+			if nsBytes[i] != byte(0) {
+				t.Errorf("Bytes 1-18 should be zero for version 0, but byte %d is %d", i, nsBytes[i])
+			}
 		}
 		
 		// Last 10 bytes should contain our data
 		expectedData := []byte{0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF}
 		actualData := nsBytes[19:29]
-		assert.Equal(t, expectedData, actualData, "Last 10 bytes should contain user data")
+		if !bytes.Equal(expectedData, actualData) {
+			t.Errorf("Last 10 bytes should contain user data, expected %v, got %v", expectedData, actualData)
+		}
 	})
 	
 	t.Run("example from spec", func(t *testing.T) {
 		// Create a namespace similar to the example in the spec
 		ns, err := NewNamespaceV0([]byte{0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01})
-		require.NoError(t, err)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
 		
 		hexStr := ns.HexString()
 		t.Logf("Example namespace: %s", hexStr)
 		
 		// Verify it matches the expected format
-		assert.Equal(t, 60, len(hexStr), "Hex string should be 60 chars (0x + 58 hex chars)")
+		if len(hexStr) != 60 {
+			t.Errorf("Hex string should be 60 chars (0x + 58 hex chars), got %d", len(hexStr))
+		}
 		// The prefix should be: 0x (2 chars) + version byte 00 (2 chars) + 18 zero bytes (36 chars) = 40 chars total
 		expectedPrefix := "0x00000000000000000000000000000000000000"
-		assert.Equal(t, expectedPrefix, hexStr[:40], "Should have correct zero prefix")
+		if hexStr[:40] != expectedPrefix {
+			t.Errorf("Should have correct zero prefix, expected %s, got %s", expectedPrefix, hexStr[:40])
+		}
 	})
 }
 
@@ -334,17 +441,25 @@ func TestRealWorldNamespaces(t *testing.T) {
 			
 			// Verify it's valid
 			ns, err := NamespaceFromBytes(nsBytes)
-			require.NoError(t, err)
-			assert.True(t, ns.IsValidForVersion0())
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if !ns.IsValidForVersion0() {
+				t.Error("namespace should be valid for version 0")
+			}
 			
 			// Verify uniqueness
 			hexStr := hex.EncodeToString(nsBytes)
-			assert.False(t, seen[hexStr], "Namespace should be unique")
+			if seen[hexStr] {
+				t.Errorf("Namespace should be unique, but %s was already seen", hexStr)
+			}
 			seen[hexStr] = true
 			
 			// Verify deterministic
 			nsBytes2 := PrepareNamespace([]byte(nsStr))
-			assert.True(t, bytes.Equal(nsBytes, nsBytes2), "Should be deterministic")
+			if !bytes.Equal(nsBytes, nsBytes2) {
+				t.Error("Should be deterministic")
+			}
 			
 			t.Logf("Namespace for '%s': %s", nsStr, hex.EncodeToString(nsBytes))
 		})

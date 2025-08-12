@@ -10,7 +10,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/evstack/ev-node/da"
 	"github.com/evstack/ev-node/da/internal/mocks"
 	proxy "github.com/evstack/ev-node/da/jsonrpc"
 	"github.com/rs/zerolog"
@@ -235,7 +234,7 @@ func TestSubmitWithOptions(t *testing.T) {
 	testNamespace := []byte("options_test")
 	// The client will convert the namespace string to a proper Celestia namespace
 	// using SHA256 hashing and version 0 format (1 version byte + 28 ID bytes)
-	encodedNamespace := da.PrepareNamespace(testNamespace)
+	encodedNamespace := coreda.PrepareNamespace(testNamespace)
 	testOptions := []byte("test_options")
 	gasPrice := 0.0
 

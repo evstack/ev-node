@@ -11,7 +11,6 @@ import (
 	"github.com/rs/zerolog"
 
 	"github.com/evstack/ev-node/core/da"
-	dautils "github.com/evstack/ev-node/da"
 	internal "github.com/evstack/ev-node/da/jsonrpc/internal"
 )
 
@@ -41,7 +40,7 @@ type API struct {
 
 // Get returns Blob for each given ID, or an error.
 func (api *API) Get(ctx context.Context, ids []da.ID, ns []byte) ([]da.Blob, error) {
-	preparedNs := dautils.PrepareNamespace(ns)
+	preparedNs := da.PrepareNamespace(ns)
 	api.Logger.Debug().Str("method", "Get").Int("num_ids", len(ids)).Str("namespace", hex.EncodeToString(preparedNs)).Msg("Making RPC call")
 	res, err := api.Internal.Get(ctx, ids, preparedNs)
 	if err != nil {
@@ -59,7 +58,7 @@ func (api *API) Get(ctx context.Context, ids []da.ID, ns []byte) ([]da.Blob, err
 
 // GetIDs returns IDs of all Blobs located in DA at given height.
 func (api *API) GetIDs(ctx context.Context, height uint64, ns []byte) (*da.GetIDsResult, error) {
-	preparedNs := dautils.PrepareNamespace(ns)
+	preparedNs := da.PrepareNamespace(ns)
 	api.Logger.Debug().Str("method", "GetIDs").Uint64("height", height).Str("namespace", hex.EncodeToString(preparedNs)).Msg("Making RPC call")
 	res, err := api.Internal.GetIDs(ctx, height, preparedNs)
 	if err != nil {
@@ -93,7 +92,7 @@ func (api *API) GetIDs(ctx context.Context, height uint64, ns []byte) (*da.GetID
 
 // GetProofs returns inclusion Proofs for Blobs specified by their IDs.
 func (api *API) GetProofs(ctx context.Context, ids []da.ID, ns []byte) ([]da.Proof, error) {
-	preparedNs := dautils.PrepareNamespace(ns)
+	preparedNs := da.PrepareNamespace(ns)
 	api.Logger.Debug().Str("method", "GetProofs").Int("num_ids", len(ids)).Str("namespace", hex.EncodeToString(preparedNs)).Msg("Making RPC call")
 	res, err := api.Internal.GetProofs(ctx, ids, preparedNs)
 	if err != nil {
@@ -106,7 +105,7 @@ func (api *API) GetProofs(ctx context.Context, ids []da.ID, ns []byte) ([]da.Pro
 
 // Commit creates a Commitment for each given Blob.
 func (api *API) Commit(ctx context.Context, blobs []da.Blob, ns []byte) ([]da.Commitment, error) {
-	preparedNs := dautils.PrepareNamespace(ns)
+	preparedNs := da.PrepareNamespace(ns)
 	api.Logger.Debug().Str("method", "Commit").Int("num_blobs", len(blobs)).Str("namespace", hex.EncodeToString(preparedNs)).Msg("Making RPC call")
 	res, err := api.Internal.Commit(ctx, blobs, preparedNs)
 	if err != nil {
@@ -119,7 +118,7 @@ func (api *API) Commit(ctx context.Context, blobs []da.Blob, ns []byte) ([]da.Co
 
 // Validate validates Commitments against the corresponding Proofs. This should be possible without retrieving the Blobs.
 func (api *API) Validate(ctx context.Context, ids []da.ID, proofs []da.Proof, ns []byte) ([]bool, error) {
-	preparedNs := dautils.PrepareNamespace(ns)
+	preparedNs := da.PrepareNamespace(ns)
 	api.Logger.Debug().Str("method", "Validate").Int("num_ids", len(ids)).Int("num_proofs", len(proofs)).Str("namespace", hex.EncodeToString(preparedNs)).Msg("Making RPC call")
 	res, err := api.Internal.Validate(ctx, ids, proofs, preparedNs)
 	if err != nil {
@@ -132,7 +131,7 @@ func (api *API) Validate(ctx context.Context, ids []da.ID, proofs []da.Proof, ns
 
 // Submit submits the Blobs to Data Availability layer.
 func (api *API) Submit(ctx context.Context, blobs []da.Blob, gasPrice float64, ns []byte) ([]da.ID, error) {
-	preparedNs := dautils.PrepareNamespace(ns)
+	preparedNs := da.PrepareNamespace(ns)
 	api.Logger.Debug().Str("method", "Submit").Int("num_blobs", len(blobs)).Float64("gas_price", gasPrice).Str("namespace", hex.EncodeToString(preparedNs)).Msg("Making RPC call")
 	res, err := api.Internal.Submit(ctx, blobs, gasPrice, preparedNs)
 	if err != nil {
@@ -173,7 +172,7 @@ func (api *API) SubmitWithOptions(ctx context.Context, inputBlobs []da.Blob, gas
 		return nil, da.ErrBlobSizeOverLimit
 	}
 
-	preparedNs := dautils.PrepareNamespace(ns)
+	preparedNs := da.PrepareNamespace(ns)
 	api.Logger.Debug().Str("method", "SubmitWithOptions").Int("num_blobs", len(inputBlobs)).Uint64("total_size", totalSize).Float64("gas_price", gasPrice).Str("namespace", hex.EncodeToString(preparedNs)).Msg("Making RPC call")
 	res, err := api.Internal.SubmitWithOptions(ctx, inputBlobs, gasPrice, preparedNs, options)
 	if err != nil {

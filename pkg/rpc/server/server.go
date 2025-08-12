@@ -8,10 +8,12 @@ import (
 	"time"
 
 	"encoding/binary"
+	"encoding/hex"
 	"errors"
 
 	"connectrpc.com/connect"
 	"connectrpc.com/grpcreflect"
+	coreda "github.com/evstack/ev-node/core/da"
 	ds "github.com/ipfs/go-datastore"
 	"github.com/rs/zerolog"
 	"golang.org/x/net/http2"
@@ -19,6 +21,7 @@ import (
 	"google.golang.org/protobuf/types/known/emptypb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
+	"github.com/evstack/ev-node/pkg/config"
 	"github.com/evstack/ev-node/pkg/p2p"
 	"github.com/evstack/ev-node/pkg/store"
 	"github.com/evstack/ev-node/types"
@@ -162,6 +165,32 @@ func (s *StoreServer) GetMetadata(
 	}), nil
 }
 
+type ConfigServer struct {
+	config config.Config
+	logger zerolog.Logger
+}
+
+func NewConfigServer(config config.Config, logger zerolog.Logger) *ConfigServer {
+	return &ConfigServer{
+		config: config,
+		logger: logger,
+	}
+}
+
+func (cs *ConfigServer) GetNamespace(
+	ctx context.Context,
+	req *connect.Request[emptypb.Empty],
+) (*connect.Response[pb.GetNamespaceResponse], error) {
+
+	hns := coreda.PrepareNamespace([]byte(cs.config.DA.HeaderNamespace))
+	dns := coreda.PrepareNamespace([]byte(cs.config.DA.DataNamespace))
+
+	return connect.NewResponse(&pb.GetNamespaceResponse{
+		HeaderNamespace: hex.EncodeToString(hns),
+		DataNamespace:   hex.EncodeToString(dns),
+	}), nil
+}
+
 // P2PServer implements the P2PService defined in the proto file
 type P2PServer struct {
 	// Add dependencies needed for P2P functionality
@@ -239,10 +268,11 @@ func (h *HealthServer) Livez(
 }
 
 // NewServiceHandler creates a new HTTP handler for Store, P2P and Health services
-func NewServiceHandler(store store.Store, peerManager p2p.P2PRPC, logger zerolog.Logger) (http.Handler, error) {
+func NewServiceHandler(store store.Store, peerManager p2p.P2PRPC, logger zerolog.Logger, config config.Config) (http.Handler, error) {
 	storeServer := NewStoreServer(store, logger)
 	p2pServer := NewP2PServer(peerManager)
 	healthServer := NewHealthServer()
+	configServer := NewConfigServer(config, logger)
 
 	mux := http.NewServeMux()
 
@@ -253,6 +283,7 @@ func NewServiceHandler(store store.Store, peerManager p2p.P2PRPC, logger zerolog
 		rpc.StoreServiceName,
 		rpc.P2PServiceName,
 		rpc.HealthServiceName,
+		rpc.ConfigServiceName,
 	)
 	mux.Handle(grpcreflect.NewHandlerV1(reflector, compress1KB))
 	mux.Handle(grpcreflect.NewHandlerV1Alpha(reflector, compress1KB))
@@ -268,6 +299,9 @@ func NewServiceHandler(store store.Store, peerManager p2p.P2PRPC, logger zerolog
 	// Register HealthService
 	healthPath, healthHandler := rpc.NewHealthServiceHandler(healthServer)
 	mux.Handle(healthPath, healthHandler)
+
+	configPath, configHandler := rpc.NewConfigServiceHandler(configServer)
+	mux.Handle(configPath, configHandler)
 
 	// Register custom HTTP endpoints
 	RegisterCustomHTTPEndpoints(mux)

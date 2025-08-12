@@ -11,6 +11,7 @@ replace (
 
 require (
 	github.com/evstack/ev-node v0.0.0-00010101000000-000000000000
+	github.com/evstack/ev-node/core v0.0.0-20250312114929-104787ba1a4c
 	github.com/evstack/ev-node/da v0.0.0-00010101000000-000000000000
 	github.com/evstack/ev-node/sequencers/single v0.0.0-00010101000000-000000000000
 	github.com/ipfs/go-datastore v0.8.2
@@ -36,7 +37,6 @@ require (
 	github.com/docker/go-units v0.5.0 // indirect
 	github.com/dustin/go-humanize v1.0.1 // indirect
 	github.com/elastic/gosigar v0.14.3 // indirect
-	github.com/evstack/ev-node/core v0.0.0-20250312114929-104787ba1a4c // indirect
 	github.com/filecoin-project/go-jsonrpc v0.7.1 // indirect
 	github.com/flynn/noise v1.1.0 // indirect
 	github.com/francoispqt/gojay v1.2.13 // indirect
