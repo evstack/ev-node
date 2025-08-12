@@ -115,7 +115,8 @@ The types package defines the core data structures and types used throughout ev-
 ## Protobuf Definitions (`pb/`)
 
 ### Directory Structure
-```
+
+```txt
 pb/evnode/v1/
 ├── batch.pb.go         # Batch processing messages
 ├── evnode.pb.go        # Core ev-node messages
