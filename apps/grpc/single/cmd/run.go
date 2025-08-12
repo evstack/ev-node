@@ -46,7 +46,7 @@ The execution client must implement the Evolve execution gRPC interface.`,
 		logger := rollcmd.SetupLogger(nodeConfig.Log)
 
 		// Create DA client
-		daJrpc, err := jsonrpc.NewClient(cmd.Context(), logger, nodeConfig.DA.Address, nodeConfig.DA.AuthToken, nodeConfig.DA.Namespace)
+		daJrpc, err := jsonrpc.NewClient(cmd.Context(), logger, nodeConfig.DA.Address, nodeConfig.DA.AuthToken)
 		if err != nil {
 			return err
 		}

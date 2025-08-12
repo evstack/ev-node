@@ -31,7 +31,8 @@ const (
 	testMaxBlobSize = 100
 )
 
-var testNamespace = []byte("test")
+// testNamespace is a 15-byte namespace that will be hex encoded to 30 chars and truncated to 29
+var testNamespace = []byte("test-namespace1")
 
 // TestProxy runs the go-da DA test suite against the JSONRPC service
 // NOTE: This test requires a test JSONRPC service to run on the port
@@ -54,7 +55,7 @@ func TestProxy(t *testing.T) {
 		}
 	}()
 
-	client, err := proxy.NewClient(context.Background(), logger, ClientURL, "", "74657374")
+	client, err := proxy.NewClient(context.Background(), logger, ClientURL, "74657374")
 	require.NoError(t, err)
 
 	t.Run("Basic DA test", func(t *testing.T) {
@@ -147,7 +148,7 @@ func GetIDsTest(t *testing.T, d coreda.DA) {
 	// As we're the only user, we don't need to handle external data (that could be submitted in real world).
 	// There is no notion of height, so we need to scan the DA to get test data back.
 	for i := uint64(1); !found && !time.Now().After(end); i++ {
-		ret, err := d.GetIDs(ctx, i, []byte{})
+		ret, err := d.GetIDs(ctx, i, testNamespace)
 		if err != nil {
 			if strings.Contains(err.Error(), coreda.ErrHeightFromFuture.Error()) {
 				break
@@ -231,6 +232,9 @@ func HeightFromFutureTest(t *testing.T, d coreda.DA) {
 func TestSubmitWithOptions(t *testing.T) {
 	ctx := context.Background()
 	testNamespace := []byte("options_test")
+	// The client will hex encode testNamespace and pad/truncate to 29 bytes
+	// "options_test" hex encoded is "6f7074696f6e735f74657374" (24 chars), padded to 29 with zeros
+	encodedNamespace := []byte("6f7074696f6e735f7465737400000")
 	testOptions := []byte("test_options")
 	gasPrice := 0.0
 
@@ -238,7 +242,6 @@ func TestSubmitWithOptions(t *testing.T) {
 	createMockedClient := func(internalAPI *mocks.MockDA) *proxy.Client {
 		client := &proxy.Client{}
 		client.DA.Internal.SubmitWithOptions = internalAPI.SubmitWithOptions
-		client.DA.Namespace = testNamespace
 		client.DA.MaxBlobSize = testMaxBlobSize
 		client.DA.Logger = zerolog.Nop()
 		// Test verbosity no longer needed with Nop logger
@@ -252,7 +255,7 @@ func TestSubmitWithOptions(t *testing.T) {
 		blobs := []coreda.Blob{[]byte("blob1"), []byte("blob2")}
 		expectedIDs := []coreda.ID{[]byte("id1"), []byte("id2")}
 
-		mockAPI.On("SubmitWithOptions", ctx, blobs, gasPrice, testNamespace, testOptions).Return(expectedIDs, nil).Once()
+		mockAPI.On("SubmitWithOptions", ctx, blobs, gasPrice, encodedNamespace, testOptions).Return(expectedIDs, nil).Once()
 
 		ids, err := client.DA.SubmitWithOptions(ctx, blobs, gasPrice, testNamespace, testOptions)
 
@@ -333,7 +336,7 @@ func TestSubmitWithOptions(t *testing.T) {
 		blobs := []coreda.Blob{[]byte("blob1")}
 		expectedError := errors.New("rpc submit failed")
 
-		mockAPI.On("SubmitWithOptions", ctx, blobs, gasPrice, testNamespace, testOptions).Return(nil, expectedError).Once()
+		mockAPI.On("SubmitWithOptions", ctx, blobs, gasPrice, encodedNamespace, testOptions).Return(nil, expectedError).Once()
 
 		ids, err := client.DA.SubmitWithOptions(ctx, blobs, gasPrice, testNamespace, testOptions)
 
