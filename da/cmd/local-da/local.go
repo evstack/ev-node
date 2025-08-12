@@ -17,7 +17,7 @@ import (
 )
 
 // DefaultMaxBlobSize is the default max blob size
-const DefaultMaxBlobSize = 64 * 64 * 482
+const DefaultMaxBlobSize uint64 = 64 * 64 * 481 // 1970176
 
 // LocalDA is a simple implementation of in-memory DA. Not production ready! Intended only for testing!
 //
@@ -162,6 +162,15 @@ func (d *LocalDA) Commit(ctx context.Context, blobs []coreda.Blob, _ []byte) ([]
 // SubmitWithOptions stores blobs in DA layer (options are ignored).
 func (d *LocalDA) SubmitWithOptions(ctx context.Context, blobs []coreda.Blob, gasPrice float64, _ []byte, _ []byte) ([]coreda.ID, error) {
 	d.logger.Info().Int("numBlobs", len(blobs)).Float64("gasPrice", gasPrice).Msg("SubmitWithOptions called")
+
+	// Validate blob sizes before processing
+	for i, blob := range blobs {
+		if uint64(len(blob)) > d.maxBlobSize {
+			d.logger.Error().Int("blobIndex", i).Int("blobSize", len(blob)).Uint64("maxBlobSize", d.maxBlobSize).Msg("SubmitWithOptions: blob size exceeds limit")
+			return nil, coreda.ErrBlobSizeOverLimit
+		}
+	}
+
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	ids := make([]coreda.ID, len(blobs))
@@ -179,6 +188,15 @@ func (d *LocalDA) SubmitWithOptions(ctx context.Context, blobs []coreda.Blob, ga
 // Submit stores blobs in DA layer (options are ignored).
 func (d *LocalDA) Submit(ctx context.Context, blobs []coreda.Blob, gasPrice float64, _ []byte) ([]coreda.ID, error) {
 	d.logger.Info().Int("numBlobs", len(blobs)).Float64("gasPrice", gasPrice).Msg("Submit called")
+
+	// Validate blob sizes before processing
+	for i, blob := range blobs {
+		if uint64(len(blob)) > d.maxBlobSize {
+			d.logger.Error().Int("blobIndex", i).Int("blobSize", len(blob)).Uint64("maxBlobSize", d.maxBlobSize).Msg("Submit: blob size exceeds limit")
+			return nil, coreda.ErrBlobSizeOverLimit
+		}
+	}
+
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	ids := make([]coreda.ID, len(blobs))

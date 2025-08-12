@@ -215,8 +215,6 @@ func setupBlockManager(t *testing.T, ctx context.Context, workDir string, mainKV
 		nil,
 		nil,
 		NopMetrics(),
-		1.,
-		1.,
 		DefaultManagerOptions(),
 	)
 	require.NoError(t, err)
