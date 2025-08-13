@@ -9,6 +9,7 @@ The types package defines the core data structures and types used throughout ev-
 ## Core Data Structures
 
 ### Header (`header.go`)
+
 - **Purpose**: Defines the block header structure and validation
 - **Key Types**:
   - `Header`: Complete block header with all metadata
@@ -22,6 +23,7 @@ The types package defines the core data structures and types used throughout ev-
 - **Context Usage**: Headers can be stored in context for execution access
 
 ### Data (`data.go`)
+
 - **Purpose**: Defines block data structures and validation
 - **Key Types**:
   - `Data`: Block data containing transactions
@@ -36,6 +38,7 @@ The types package defines the core data structures and types used throughout ev-
   - Transaction organization
 
 ### State (`state.go`)
+
 - **Purpose**: Manages blockchain state and transitions
 - **Key Types**:
   - `State`: Current blockchain state
@@ -49,6 +52,7 @@ The types package defines the core data structures and types used throughout ev-
 - **Important**: Block version is set to 11 for CometBFT/IBC compatibility
 
 ### Transactions (`tx.go`)
+
 - **Purpose**: Transaction representation
 - **Key Types**:
   - `Tx`: Individual transaction as byte slice
@@ -56,6 +60,7 @@ The types package defines the core data structures and types used throughout ev-
 - **Design**: Transactions are opaque byte arrays, allowing flexibility for different transaction formats
 
 ### SignedHeader (`signed_header.go`)
+
 - **Purpose**: Headers with signatures for authentication
 - **Key Features**:
   - Header signing and verification
@@ -64,6 +69,7 @@ The types package defines the core data structures and types used throughout ev-
   - P2P header exchange
 
 ### Signer (`signer.go`, `signer_test.go`)
+
 - **Purpose**: Identity and signature management
 - **Key Types**:
   - `Signer`: Represents a block signer/validator
@@ -73,6 +79,7 @@ The types package defines the core data structures and types used throughout ev-
   - Identity validation
 
 ### DA Integration (`da.go`, `da_test.go`)
+
 - **Purpose**: Data Availability layer helpers
 - **Key Functions**:
   - `SubmitWithHelpers`: DA submission with error handling
@@ -90,6 +97,7 @@ The types package defines the core data structures and types used throughout ev-
   - `StatusContextDeadline`: Deadline exceeded
 
 ### Serialization (`serialization.go`, `serialization_test.go`)
+
 - **Purpose**: Binary serialization for network and storage
 - **Key Features**:
   - Protobuf integration
@@ -98,6 +106,7 @@ The types package defines the core data structures and types used throughout ev-
   - Efficient encoding
 
 ### Hashing (`hashing.go`, `hasher.go`, `hashing_test.go`)
+
 - **Purpose**: Cryptographic hashing utilities
 - **Key Features**:
   - Merkle tree operations
@@ -106,6 +115,7 @@ The types package defines the core data structures and types used throughout ev-
   - Hash verification
 
 ### Utilities (`utils.go`, `utils_test.go`)
+
 - **Purpose**: Common utility functions
 - **Key Features**:
   - Type conversions
@@ -115,7 +125,8 @@ The types package defines the core data structures and types used throughout ev-
 ## Protobuf Definitions (`pb/`)
 
 ### Directory Structure
-```
+
+```txt
 pb/evnode/v1/
 ├── batch.pb.go         # Batch processing messages
 ├── evnode.pb.go        # Core ev-node messages
@@ -129,6 +140,7 @@ pb/evnode/v1/
 ```
 
 ### Connect RPC Services
+
 - **Execution Service**: Transaction execution RPC
 - **Health Service**: Node health monitoring
 - **P2P RPC Service**: Peer-to-peer communication
@@ -138,21 +150,25 @@ pb/evnode/v1/
 ## Type System Design Principles
 
 ### Immutability
+
 - Core types should be immutable where possible
 - Use value semantics for small types
 - Deep copy when modification is needed
 
 ### Validation
+
 - All types should have `ValidateBasic()` methods
 - Validation should be fail-fast
 - Return descriptive errors
 
 ### Serialization
+
 - All network types must be serializable
 - Use protobuf for cross-language compatibility
 - Maintain backward compatibility
 
 ### Zero Dependencies
+
 - Types package should not import other ev-node packages
 - Exception: core package for interfaces
 - Keep external dependencies minimal
@@ -160,6 +176,7 @@ pb/evnode/v1/
 ## Common Development Tasks
 
 ### Adding a New Type
+
 1. Define the type structure
 2. Implement validation methods
 3. Add serialization support
@@ -168,6 +185,7 @@ pb/evnode/v1/
 6. Update related types if necessary
 
 ### Modifying Existing Types
+
 1. Consider backward compatibility
 2. Update protobuf definitions
 3. Regenerate protobuf code
@@ -176,6 +194,7 @@ pb/evnode/v1/
 6. Update tests
 
 ### Adding Protobuf Messages
+
 1. Create/modify `.proto` files
 2. Run protobuf generation
 3. Implement type conversions
@@ -185,12 +204,14 @@ pb/evnode/v1/
 ## Testing Guidelines
 
 ### Unit Tests
+
 - Test all validation paths
 - Test serialization round-trips
 - Test edge cases and error conditions
 - Use table-driven tests
 
 ### Property-Based Testing
+
 - Test invariants hold
 - Test serialization properties
 - Test hash consistency
@@ -222,6 +243,7 @@ pb/evnode/v1/
 ## Common Patterns
 
 ### Validation Pattern
+
 ```go
 func (t *Type) ValidateBasic() error {
     // Check required fields
@@ -232,12 +254,14 @@ func (t *Type) ValidateBasic() error {
 ```
 
 ### Serialization Pattern
+
 ```go
 func (t *Type) MarshalBinary() ([]byte, error)
 func (t *Type) UnmarshalBinary(data []byte) error
 ```
 
 ### Hash Pattern
+
 ```go
 func (t *Type) Hash() Hash {
     // Compute and cache hash

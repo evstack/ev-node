@@ -6,15 +6,28 @@ import (
 	"time"
 
 	coreda "github.com/evstack/ev-node/core/da"
+	"github.com/evstack/ev-node/pkg/rpc/server"
 	"github.com/evstack/ev-node/types"
 	"google.golang.org/protobuf/proto"
 )
 
 const (
-	submissionTimeout = 60 * time.Second
-	noGasPrice        = -1
-	initialBackoff    = 100 * time.Millisecond
+	submissionTimeout    = 60 * time.Second
+	noGasPrice           = -1
+	initialBackoff       = 100 * time.Millisecond
+	defaultGasPrice      = 0.0
+	defaultGasMultiplier = 1.0
 )
+
+// getGasMultiplier fetches the gas multiplier from DA layer with fallback to default value
+func (m *Manager) getGasMultiplier(ctx context.Context) float64 {
+	gasMultiplier, err := m.da.GasMultiplier(ctx)
+	if err != nil {
+		m.logger.Warn().Err(err).Msg("failed to get gas multiplier from DA layer, using default")
+		return defaultGasMultiplier
+	}
+	return gasMultiplier
+}
 
 // retryStrategy manages retry logic with backoff and gas price adjustments for DA submissions
 type retryStrategy struct {
@@ -221,7 +234,13 @@ func submitToDA[T any](
 		return err
 	}
 
-	retryStrategy := newRetryStrategy(m.gasPrice, m.config.DA.BlockTime.Duration, m.config.DA.MaxSubmitAttempts)
+	gasPrice, err := m.da.GasPrice(ctx)
+	if err != nil {
+		m.logger.Warn().Err(err).Msg("failed to get gas price from DA layer, using default")
+		gasPrice = defaultGasPrice
+	}
+
+	retryStrategy := newRetryStrategy(gasPrice, m.config.DA.BlockTime.Duration, m.config.DA.MaxSubmitAttempts)
 	remaining := items
 	numSubmitted := 0
 
@@ -293,13 +312,19 @@ func handleSubmissionResult[T any](
 ) submissionOutcome[T] {
 	switch res.Code {
 	case coreda.StatusSuccess:
-		return handleSuccessfulSubmission(m, remaining, marshaled, &res, postSubmit, retryStrategy, itemType)
+		return handleSuccessfulSubmission(ctx, m, remaining, marshaled, &res, postSubmit, retryStrategy, itemType)
 
 	case coreda.StatusNotIncludedInBlock, coreda.StatusAlreadyInMempool:
-		return handleMempoolFailure(m, &res, retryStrategy, retryStrategy.attempt, remaining, marshaled)
+		return handleMempoolFailure(ctx, m, &res, retryStrategy, retryStrategy.attempt, remaining, marshaled)
 
 	case coreda.StatusContextCanceled:
 		m.logger.Info().Int("attempt", retryStrategy.attempt).Msg("DA layer submission canceled due to context cancellation")
+
+		// Record canceled submission in DA visualization server
+		if daVisualizationServer := server.GetDAVisualizationServer(); daVisualizationServer != nil {
+			daVisualizationServer.RecordSubmission(&res, retryStrategy.gasPrice, uint64(len(remaining)))
+		}
+
 		return submissionOutcome[T]{
 			RemainingItems:   remaining,
 			RemainingMarshal: marshaled,
@@ -315,6 +340,7 @@ func handleSubmissionResult[T any](
 }
 
 func handleSuccessfulSubmission[T any](
+	ctx context.Context,
 	m *Manager,
 	remaining []T,
 	marshaled [][]byte,
@@ -328,6 +354,11 @@ func handleSuccessfulSubmission[T any](
 	remLen := len(remaining)
 	allSubmitted := res.SubmittedCount == uint64(remLen)
 
+	// Record submission in DA visualization server
+	if daVisualizationServer := server.GetDAVisualizationServer(); daVisualizationServer != nil {
+		daVisualizationServer.RecordSubmission(res, retryStrategy.gasPrice, res.SubmittedCount)
+	}
+
 	m.logger.Info().Str("itemType", itemType).Float64("gasPrice", retryStrategy.gasPrice).Uint64("count", res.SubmittedCount).Msg("successfully submitted items to DA layer")
 
 	submitted := remaining[:res.SubmittedCount]
@@ -335,7 +366,10 @@ func handleSuccessfulSubmission[T any](
 	notSubmittedMarshaled := marshaled[res.SubmittedCount:]
 
 	postSubmit(submitted, res, retryStrategy.gasPrice)
-	retryStrategy.ResetOnSuccess(m.gasMultiplier)
+
+	gasMultiplier := m.getGasMultiplier(ctx)
+
+	retryStrategy.ResetOnSuccess(gasMultiplier)
 
 	m.logger.Debug().Dur("backoff", retryStrategy.backoff).Float64("gasPrice", retryStrategy.gasPrice).Msg("resetting DA layer submission options")
 
@@ -349,6 +383,7 @@ func handleSuccessfulSubmission[T any](
 }
 
 func handleMempoolFailure[T any](
+	ctx context.Context,
 	m *Manager,
 	res *coreda.ResultSubmit,
 	retryStrategy *retryStrategy,
@@ -359,8 +394,14 @@ func handleMempoolFailure[T any](
 	m.logger.Error().Str("error", res.Message).Int("attempt", attempt).Msg("DA layer submission failed")
 
 	m.recordDAMetrics("submission", DAModeFail)
-	retryStrategy.BackoffOnMempool(int(m.config.DA.MempoolTTL), m.config.DA.BlockTime.Duration, m.gasMultiplier)
 
+	// Record failed submission in DA visualization server
+	if daVisualizationServer := server.GetDAVisualizationServer(); daVisualizationServer != nil {
+		daVisualizationServer.RecordSubmission(res, retryStrategy.gasPrice, uint64(len(remaining)))
+	}
+
+	gasMultiplier := m.getGasMultiplier(ctx)
+	retryStrategy.BackoffOnMempool(int(m.config.DA.MempoolTTL), m.config.DA.BlockTime.Duration, gasMultiplier)
 	m.logger.Info().Dur("backoff", retryStrategy.backoff).Float64("gasPrice", retryStrategy.gasPrice).Msg("retrying DA layer submission with")
 
 	return submissionOutcome[T]{
@@ -385,6 +426,17 @@ func handleTooBigError[T any](
 
 	m.recordDAMetrics("submission", DAModeFail)
 
+	// Record failed submission in DA visualization server (create a result for TooBig error)
+	if daVisualizationServer := server.GetDAVisualizationServer(); daVisualizationServer != nil {
+		tooBigResult := &coreda.ResultSubmit{
+			BaseResult: coreda.BaseResult{
+				Code:    coreda.StatusTooBig,
+				Message: "blob too big",
+			},
+		}
+		daVisualizationServer.RecordSubmission(tooBigResult, retryStrategy.gasPrice, uint64(len(remaining)))
+	}
+
 	if len(remaining) > 1 {
 		totalSubmitted, err := submitWithRecursiveSplitting(m, ctx, remaining, marshaled, retryStrategy.gasPrice, postSubmit, itemType, namespace)
 		if err != nil {
@@ -402,7 +454,8 @@ func handleTooBigError[T any](
 		if totalSubmitted > 0 {
 			newRemaining := remaining[totalSubmitted:]
 			newMarshaled := marshaled[totalSubmitted:]
-			retryStrategy.ResetOnSuccess(m.gasMultiplier)
+			gasMultiplier := m.getGasMultiplier(ctx)
+			retryStrategy.ResetOnSuccess(gasMultiplier)
 
 			return submissionOutcome[T]{
 				RemainingItems:   newRemaining,
@@ -437,6 +490,12 @@ func handleGenericFailure[T any](
 	m.logger.Error().Str("error", res.Message).Int("attempt", attempt).Msg("DA layer submission failed")
 
 	m.recordDAMetrics("submission", DAModeFail)
+
+	// Record failed submission in DA visualization server
+	if daVisualizationServer := server.GetDAVisualizationServer(); daVisualizationServer != nil {
+		daVisualizationServer.RecordSubmission(res, retryStrategy.gasPrice, uint64(len(remaining)))
+	}
+
 	retryStrategy.BackoffOnFailure()
 
 	return submissionOutcome[T]{
@@ -637,10 +696,20 @@ func processBatch[T any](
 		postSubmit(submitted, &batchRes, gasPrice)
 		m.logger.Info().Int("batchSize", len(batch.Items)).Uint64("submittedCount", batchRes.SubmittedCount).Msg("successfully submitted batch to DA layer")
 
+		// Record successful submission in DA visualization server
+		if daVisualizationServer := server.GetDAVisualizationServer(); daVisualizationServer != nil {
+			daVisualizationServer.RecordSubmission(&batchRes, gasPrice, batchRes.SubmittedCount)
+		}
+
 		return batchResult[T]{
 			action:         batchActionSubmitted,
 			submittedCount: int(batchRes.SubmittedCount),
 		}
+	}
+
+	// Record failed submission in DA visualization server for all error cases
+	if daVisualizationServer := server.GetDAVisualizationServer(); daVisualizationServer != nil {
+		daVisualizationServer.RecordSubmission(&batchRes, gasPrice, uint64(len(batch.Items)))
 	}
 
 	if batchRes.Code == coreda.StatusTooBig && len(batch.Items) > 1 {

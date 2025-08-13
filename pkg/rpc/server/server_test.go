@@ -19,6 +19,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/types/known/emptypb"
 
+	"github.com/evstack/ev-node/pkg/config"
 	"github.com/evstack/ev-node/pkg/p2p"
 	"github.com/evstack/ev-node/pkg/store"
 	"github.com/evstack/ev-node/test/mocks"
@@ -314,7 +315,8 @@ func TestHealthLiveEndpoint(t *testing.T) {
 
 	// Create the service handler
 	logger := zerolog.Nop()
-	handler, err := NewServiceHandler(mockStore, mockP2PManager, logger)
+	testConfig := config.DefaultConfig
+	handler, err := NewServiceHandler(mockStore, mockP2PManager, logger, testConfig)
 	assert.NoError(err)
 	assert.NotNil(handler)
 
