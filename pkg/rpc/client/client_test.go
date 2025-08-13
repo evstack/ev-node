@@ -15,6 +15,7 @@ import (
 	"golang.org/x/net/http2"
 	"golang.org/x/net/http2/h2c"
 
+	"github.com/evstack/ev-node/pkg/config"
 	"github.com/evstack/ev-node/pkg/p2p"
 	"github.com/evstack/ev-node/pkg/rpc/server"
 	"github.com/evstack/ev-node/test/mocks"
@@ -31,6 +32,12 @@ func setupTestServer(t *testing.T, mockStore *mocks.MockStore, mockP2P *mocks.Mo
 	logger := zerolog.Nop()
 	storeServer := server.NewStoreServer(mockStore, logger)
 	p2pServer := server.NewP2PServer(mockP2P)
+	healthServer := server.NewHealthServer()
+
+	// Create config server with test config
+	testConfig := config.DefaultConfig
+	testConfig.DA.Namespace = "test-headers"
+	configServer := server.NewConfigServer(testConfig, logger)
 
 	// Register the store service
 	storePath, storeHandler := rpc.NewStoreServiceHandler(storeServer)
@@ -39,6 +46,14 @@ func setupTestServer(t *testing.T, mockStore *mocks.MockStore, mockP2P *mocks.Mo
 	// Register the p2p service
 	p2pPath, p2pHandler := rpc.NewP2PServiceHandler(p2pServer)
 	mux.Handle(p2pPath, p2pHandler)
+
+	// Register the health service
+	healthPath, healthHandler := rpc.NewHealthServiceHandler(healthServer)
+	mux.Handle(healthPath, healthHandler)
+
+	// Register the config service
+	configPath, configHandler := rpc.NewConfigServiceHandler(configServer)
+	mux.Handle(configPath, configHandler)
 
 	// Create an HTTP server with h2c for HTTP/2 support
 	testServer := httptest.NewServer(h2c.NewHandler(mux, &http2.Server{}))
@@ -224,4 +239,42 @@ func TestClientGetNetInfo(t *testing.T) {
 	require.Equal(t, "node1", resultNetInfo.Id)
 	require.Equal(t, "0.0.0.0:26656", resultNetInfo.ListenAddresses[0])
 	mockP2P.AssertExpectations(t)
+}
+
+func TestClientGetHealth(t *testing.T) {
+	// Create mocks
+	mockStore := mocks.NewMockStore(t)
+	mockP2P := mocks.NewMockP2PRPC(t)
+
+	// Setup test server and client
+	testServer, client := setupTestServer(t, mockStore, mockP2P)
+	defer testServer.Close()
+
+	// Call GetHealth
+	healthStatus, err := client.GetHealth(context.Background())
+
+	// Assert expectations
+	require.NoError(t, err)
+	// Health server always returns PASS in Livez
+	require.NotEqual(t, healthStatus.String(), "UNKNOWN")
+}
+
+func TestClientGetNamespace(t *testing.T) {
+	// Create mocks
+	mockStore := mocks.NewMockStore(t)
+	mockP2P := mocks.NewMockP2PRPC(t)
+
+	// Setup test server and client
+	testServer, client := setupTestServer(t, mockStore, mockP2P)
+	defer testServer.Close()
+
+	// Call GetNamespace
+	namespaceResp, err := client.GetNamespace(context.Background())
+
+	// Assert expectations
+	require.NoError(t, err)
+	require.NotNil(t, namespaceResp)
+	// The namespace should be derived from the config we set in setupTestServer
+	require.NotEmpty(t, namespaceResp.HeaderNamespace)
+	require.NotEmpty(t, namespaceResp.DataNamespace)
 }

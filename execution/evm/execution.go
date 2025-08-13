@@ -194,9 +194,6 @@ func (c *EngineClient) ExecuteTxs(ctx context.Context, txs [][]byte, blockHeight
 		return nil, 0, ErrNilPayloadStatus
 	}
 
-	// Small delay to allow payload building to complete
-	time.Sleep(10 * time.Millisecond)
-
 	// get payload
 	var payloadResult engine.ExecutionPayloadEnvelope
 	err = c.engineClient.CallContext(ctx, &payloadResult, "engine_getPayloadV4", *forkchoiceResult.PayloadID)

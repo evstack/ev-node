@@ -421,10 +421,14 @@ func TestIncrementDAIncludedHeight_WithMetricsRecorder(t *testing.T) {
 	expectedDAIncludedHeight := startDAIncludedHeight + 1
 	m.daIncludedHeight.Store(startDAIncludedHeight)
 
+	// Set up mock DA
+	mockDA := mocks.NewMockDA(t)
+	mockDA.On("GasPrice", mock.Anything).Return(1.5, nil).Once()
+	m.da = mockDA
+
 	// Set up mock sequencer with metrics
 	mockSequencer := new(MockSequencerWithMetrics)
 	m.sequencer = mockSequencer
-	m.gasPrice = 1.5 // Set a test gas price
 
 	// Mock the store calls needed for PendingHeaders initialization
 	// First, clear the existing Height mock from newTestManager
@@ -462,6 +466,7 @@ func TestIncrementDAIncludedHeight_WithMetricsRecorder(t *testing.T) {
 	store.AssertExpectations(t)
 	exec.AssertExpectations(t)
 	mockSequencer.AssertExpectations(t)
+	mockDA.AssertExpectations(t)
 }
 
 // Note: It is not practical to unit test a CompareAndSwap failure for incrementDAIncludedHeight

@@ -116,6 +116,8 @@ const (
 
 	// FlagRPCAddress is a flag for specifying the RPC server address
 	FlagRPCAddress = "rollkit.rpc.address"
+	// FlagRPCEnableDAVisualization is a flag for enabling DA visualization endpoints
+	FlagRPCEnableDAVisualization = "rollkit.rpc.enable_da_visualization"
 )
 
 // Config stores Rollkit configuration.
@@ -222,7 +224,8 @@ type SignerConfig struct {
 
 // RPCConfig contains all RPC server configuration parameters
 type RPCConfig struct {
-	Address string `mapstructure:"address" yaml:"address" comment:"Address to bind the RPC server to (host:port). Default: 127.0.0.1:7331"`
+	Address               string `mapstructure:"address" yaml:"address" comment:"Address to bind the RPC server to (host:port). Default: 127.0.0.1:7331"`
+	EnableDAVisualization bool   `mapstructure:"enable_da_visualization" yaml:"enable_da_visualization" comment:"Enable DA visualization endpoints for monitoring blob submissions. Default: false"`
 }
 
 // Validate ensures that the root directory exists.
@@ -293,6 +296,7 @@ func AddFlags(cmd *cobra.Command) {
 
 	// RPC configuration flags
 	cmd.Flags().String(FlagRPCAddress, def.RPC.Address, "RPC server address (host:port)")
+	cmd.Flags().Bool(FlagRPCEnableDAVisualization, def.RPC.EnableDAVisualization, "enable DA visualization endpoints for monitoring blob submissions")
 
 	// Instrumentation configuration flags
 	instrDef := DefaultInstrumentationConfig()
@@ -316,6 +320,13 @@ func Load(cmd *cobra.Command) (Config, error) {
 	home, _ := cmd.Flags().GetString(FlagRootDir)
 	if home == "" {
 		home = DefaultRootDir
+	} else if !filepath.IsAbs(home) {
+		// Convert relative path to absolute path
+		absHome, err := filepath.Abs(home)
+		if err != nil {
+			return Config{}, fmt.Errorf("failed to resolve home directory: %w", err)
+		}
+		home = absHome
 	}
 
 	v := viper.New()
@@ -356,6 +367,13 @@ func LoadFromViper(inputViper *viper.Viper) (Config, error) {
 	home := inputViper.GetString(FlagRootDir)
 	if home == "" {
 		home = DefaultRootDir
+	} else if !filepath.IsAbs(home) {
+		// Convert relative path to absolute path
+		absHome, err := filepath.Abs(home)
+		if err != nil {
+			return Config{}, fmt.Errorf("failed to resolve home directory: %w", err)
+		}
+		home = absHome
 	}
 
 	// create a new viper instance for reading the config file

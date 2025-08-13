@@ -15,6 +15,7 @@ import (
 	tastoradocker "github.com/celestiaorg/tastora/framework/docker"
 	"github.com/celestiaorg/tastora/framework/docker/container"
 	"github.com/celestiaorg/tastora/framework/testutil/sdkacc"
+	"github.com/celestiaorg/tastora/framework/testutil/toml"
 	tastoratypes "github.com/celestiaorg/tastora/framework/types"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	"github.com/cosmos/cosmos-sdk/types/module/testutil"
@@ -135,13 +136,13 @@ func (s *DockerTestSuite) getGenesisHash(ctx context.Context) string {
 // none of the resources are started.
 func (s *DockerTestSuite) SetupDockerResources(opts ...ConfigOption) {
 	s.provider = s.CreateDockerProvider(opts...)
-	s.celestia = s.CreateCelestiaChain()
+	s.celestia = s.CreateChain()
 	s.daNetwork = s.CreateDANetwork()
 	s.rollkitChain = s.CreateRollkitChain()
 }
 
-// CreateCelestiaChain creates a chain using the ChainBuilder pattern.
-func (s *DockerTestSuite) CreateCelestiaChain() tastoratypes.Chain {
+// CreateChain creates a chain using the ChainBuilder pattern.
+func (s *DockerTestSuite) CreateChain() tastoratypes.Chain {
 	ctx := context.Background()
 	t := s.T()
 	encConfig := testutil.MakeTestEncodingConfig(auth.AppModuleBasic{}, bank.AppModuleBasic{})
@@ -228,11 +229,6 @@ func (s *DockerTestSuite) FundWallet(ctx context.Context, wallet tastoratypes.Wa
 
 // StartRollkitNode initializes and starts a Rollkit node.
 func (s *DockerTestSuite) StartRollkitNode(ctx context.Context, bridgeNode tastoratypes.DANode, rollkitNode tastoratypes.RollkitNode) {
-	s.StartRollkitNodeWithNamespace(ctx, bridgeNode, rollkitNode, generateValidNamespaceHex())
-}
-
-// StartRollkitNodeWithNamespace initializes and starts a Rollkit node with a specific namespace.
-func (s *DockerTestSuite) StartRollkitNodeWithNamespace(ctx context.Context, bridgeNode tastoratypes.DANode, rollkitNode tastoratypes.RollkitNode, namespace string) {
 	err := rollkitNode.Init(ctx)
 	s.Require().NoError(err)
 
@@ -248,7 +244,7 @@ func (s *DockerTestSuite) StartRollkitNodeWithNamespace(ctx context.Context, bri
 		"--rollkit.da.gas_price", "0.025",
 		"--rollkit.da.auth_token", authToken,
 		"--rollkit.rpc.address", "0.0.0.0:7331", // bind to 0.0.0.0 so rpc is reachable from test host.
-		"--rollkit.da.namespace", namespace,
+		"--rollkit.da.namespace", generateValidNamespaceHex(),
 		"--kv-endpoint", "0.0.0.0:8080",
 	)
 	s.Require().NoError(err)
@@ -275,3 +271,20 @@ func generateValidNamespaceHex() string {
 	return hex.EncodeToString(share.RandomBlobNamespace().Bytes())
 }
 
+// appOverrides enables indexing of transactions so Broadcasting of transactions works
+func appOverrides() toml.Toml {
+	return toml.Toml{
+		"tx-index": toml.Toml{
+			"indexer": "kv",
+		},
+	}
+}
+
+// configOverrides enables indexing of transactions so Broadcasting of transactions works
+func configOverrides() toml.Toml {
+	return toml.Toml{
+		"tx_index": toml.Toml{
+			"indexer": "kv",
+		},
+	}
+}

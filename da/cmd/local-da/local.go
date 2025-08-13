@@ -17,7 +17,7 @@ import (
 )
 
 // DefaultMaxBlobSize is the default max blob size
-const DefaultMaxBlobSize = 64 * 64 * 482
+const DefaultMaxBlobSize uint64 = 64 * 64 * 481 // 1970176
 
 // LocalDA is a simple implementation of in-memory DA. Not production ready! Intended only for testing!
 //
@@ -58,6 +58,14 @@ func NewLocalDA(logger zerolog.Logger, opts ...func(*LocalDA) *LocalDA) *LocalDA
 
 var _ coreda.DA = &LocalDA{}
 
+// validateNamespace checks that namespace is exactly 29 bytes
+func validateNamespace(ns []byte) error {
+	if len(ns) != 29 {
+		return fmt.Errorf("namespace must be exactly 29 bytes, got %d", len(ns))
+	}
+	return nil
+}
+
 // MaxBlobSize returns the max blob size in bytes.
 func (d *LocalDA) MaxBlobSize(ctx context.Context) (uint64, error) {
 	d.logger.Debug().Uint64("maxBlobSize", d.maxBlobSize).Msg("MaxBlobSize called")
@@ -77,7 +85,11 @@ func (d *LocalDA) GasPrice(ctx context.Context) (float64, error) {
 }
 
 // Get returns Blobs for given IDs.
-func (d *LocalDA) Get(ctx context.Context, ids []coreda.ID, _ []byte) ([]coreda.Blob, error) {
+func (d *LocalDA) Get(ctx context.Context, ids []coreda.ID, ns []byte) ([]coreda.Blob, error) {
+	if err := validateNamespace(ns); err != nil {
+		d.logger.Error().Err(err).Msg("Get: invalid namespace")
+		return nil, err
+	}
 	d.logger.Debug().Interface("ids", ids).Msg("Get called")
 	d.mu.Lock()
 	defer d.mu.Unlock()
@@ -105,7 +117,11 @@ func (d *LocalDA) Get(ctx context.Context, ids []coreda.ID, _ []byte) ([]coreda.
 }
 
 // GetIDs returns IDs of Blobs at given DA height.
-func (d *LocalDA) GetIDs(ctx context.Context, height uint64, _ []byte) (*coreda.GetIDsResult, error) {
+func (d *LocalDA) GetIDs(ctx context.Context, height uint64, ns []byte) (*coreda.GetIDsResult, error) {
+	if err := validateNamespace(ns); err != nil {
+		d.logger.Error().Err(err).Msg("GetIDs: invalid namespace")
+		return nil, err
+	}
 	d.logger.Debug().Uint64("height", height).Msg("GetIDs called")
 	d.mu.Lock()
 	defer d.mu.Unlock()
@@ -130,9 +146,13 @@ func (d *LocalDA) GetIDs(ctx context.Context, height uint64, _ []byte) (*coreda.
 }
 
 // GetProofs returns inclusion Proofs for all Blobs located in DA at given height.
-func (d *LocalDA) GetProofs(ctx context.Context, ids []coreda.ID, _ []byte) ([]coreda.Proof, error) {
+func (d *LocalDA) GetProofs(ctx context.Context, ids []coreda.ID, ns []byte) ([]coreda.Proof, error) {
+	if err := validateNamespace(ns); err != nil {
+		d.logger.Error().Err(err).Msg("GetProofs: invalid namespace")
+		return nil, err
+	}
 	d.logger.Debug().Interface("ids", ids).Msg("GetProofs called")
-	blobs, err := d.Get(ctx, ids, nil)
+	blobs, err := d.Get(ctx, ids, ns)
 	if err != nil {
 		d.logger.Error().Err(err).Msg("GetProofs: failed to get blobs")
 		return nil, err
@@ -149,7 +169,11 @@ func (d *LocalDA) GetProofs(ctx context.Context, ids []coreda.ID, _ []byte) ([]c
 }
 
 // Commit returns cryptographic Commitments for given blobs.
-func (d *LocalDA) Commit(ctx context.Context, blobs []coreda.Blob, _ []byte) ([]coreda.Commitment, error) {
+func (d *LocalDA) Commit(ctx context.Context, blobs []coreda.Blob, ns []byte) ([]coreda.Commitment, error) {
+	if err := validateNamespace(ns); err != nil {
+		d.logger.Error().Err(err).Msg("Commit: invalid namespace")
+		return nil, err
+	}
 	d.logger.Debug().Int("numBlobs", len(blobs)).Msg("Commit called")
 	commits := make([]coreda.Commitment, len(blobs))
 	for i, blob := range blobs {
@@ -160,8 +184,12 @@ func (d *LocalDA) Commit(ctx context.Context, blobs []coreda.Blob, _ []byte) ([]
 }
 
 // SubmitWithOptions stores blobs in DA layer (options are ignored).
-func (d *LocalDA) SubmitWithOptions(ctx context.Context, blobs []coreda.Blob, gasPrice float64, _ []byte, _ []byte) ([]coreda.ID, error) {
-	d.logger.Info().Int("numBlobs", len(blobs)).Float64("gasPrice", gasPrice).Msg("SubmitWithOptions called")
+func (d *LocalDA) SubmitWithOptions(ctx context.Context, blobs []coreda.Blob, gasPrice float64, ns []byte, _ []byte) ([]coreda.ID, error) {
+	if err := validateNamespace(ns); err != nil {
+		d.logger.Error().Err(err).Msg("SubmitWithOptions: invalid namespace")
+		return nil, err
+	}
+	d.logger.Info().Int("numBlobs", len(blobs)).Float64("gasPrice", gasPrice).Str("namespace", string(ns)).Msg("SubmitWithOptions called")
 
 	// Validate blob sizes before processing
 	for i, blob := range blobs {
@@ -186,8 +214,12 @@ func (d *LocalDA) SubmitWithOptions(ctx context.Context, blobs []coreda.Blob, ga
 }
 
 // Submit stores blobs in DA layer (options are ignored).
-func (d *LocalDA) Submit(ctx context.Context, blobs []coreda.Blob, gasPrice float64, _ []byte) ([]coreda.ID, error) {
-	d.logger.Info().Int("numBlobs", len(blobs)).Float64("gasPrice", gasPrice).Msg("Submit called")
+func (d *LocalDA) Submit(ctx context.Context, blobs []coreda.Blob, gasPrice float64, ns []byte) ([]coreda.ID, error) {
+	if err := validateNamespace(ns); err != nil {
+		d.logger.Error().Err(err).Msg("Submit: invalid namespace")
+		return nil, err
+	}
+	d.logger.Info().Int("numBlobs", len(blobs)).Float64("gasPrice", gasPrice).Str("namespace", string(ns)).Msg("Submit called")
 
 	// Validate blob sizes before processing
 	for i, blob := range blobs {
@@ -212,7 +244,11 @@ func (d *LocalDA) Submit(ctx context.Context, blobs []coreda.Blob, gasPrice floa
 }
 
 // Validate checks the Proofs for given IDs.
-func (d *LocalDA) Validate(ctx context.Context, ids []coreda.ID, proofs []coreda.Proof, _ []byte) ([]bool, error) {
+func (d *LocalDA) Validate(ctx context.Context, ids []coreda.ID, proofs []coreda.Proof, ns []byte) ([]bool, error) {
+	if err := validateNamespace(ns); err != nil {
+		d.logger.Error().Err(err).Msg("Validate: invalid namespace")
+		return nil, err
+	}
 	d.logger.Debug().Int("numIDs", len(ids)).Int("numProofs", len(proofs)).Msg("Validate called")
 	if len(ids) != len(proofs) {
 		d.logger.Error().Int("ids", len(ids)).Int("proofs", len(proofs)).Msg("Validate: id/proof count mismatch")
