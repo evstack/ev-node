@@ -250,6 +250,29 @@ func (s *DockerTestSuite) StartRollkitNode(ctx context.Context, bridgeNode tasto
 	s.Require().NoError(err)
 }
 
+// StartRollkitNodeWithNamespace initializes and starts a Rollkit node with a specific namespace.
+func (s *DockerTestSuite) StartRollkitNodeWithNamespace(ctx context.Context, bridgeNode tastoratypes.DANode, rollkitNode tastoratypes.RollkitNode, namespace string) {
+	err := rollkitNode.Init(ctx)
+	s.Require().NoError(err)
+
+	bridgeNodeHostName, err := bridgeNode.GetInternalHostName()
+	s.Require().NoError(err)
+
+	authToken, err := bridgeNode.GetAuthToken()
+	s.Require().NoError(err)
+
+	daAddress := fmt.Sprintf("http://%s:26658", bridgeNodeHostName)
+	err = rollkitNode.Start(ctx,
+		"--rollkit.da.address", daAddress,
+		"--rollkit.da.gas_price", "0.025",
+		"--rollkit.da.auth_token", authToken,
+		"--rollkit.rpc.address", "0.0.0.0:7331", // bind to 0.0.0.0 so rpc is reachable from test host.
+		"--rollkit.da.namespace", namespace,
+		"--kv-endpoint", "0.0.0.0:8080",
+	)
+	s.Require().NoError(err)
+}
+
 // getRollkitImage returns the Docker image configuration for Rollkit
 // Uses EV_NODE_IMAGE_REPO and EV_NODE_IMAGE_TAG environment variables if set
 // Defaults to locally built image using a unique tag to avoid registry conflicts
