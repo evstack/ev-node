@@ -41,7 +41,7 @@ func main() {
 			} else {
 				fmt.Printf("--> Running full tests in: %s\n", modDir)
 			}
-			
+
 			cmd := exec.Command("go", testArgs...)
 			cmd.Dir = modDir // Set the working directory for the command
 			cmd.Stdout = os.Stdout
