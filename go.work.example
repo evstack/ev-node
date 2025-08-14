@@ -9,6 +9,5 @@ use (
 	./execution/evm
 	./execution/grpc
 	./da/
-	./da/compression
 	./sequencers/single
 )
