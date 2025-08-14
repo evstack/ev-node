@@ -1,10 +1,12 @@
-//! Blob compression and decompression module
+//! Blob decompression module
 //!
-//! This module provides compression and decompression functionality for blobs,
+//! This module provides decompression functionality for blobs,
 //! matching the Go implementation in the ev-node DA layer.
+//! Uses ruzstd for pure Rust zstd decompression without C dependencies.
 
-use bytes::{Bytes, BytesMut};
-use std::io;
+use bytes::Bytes;
+use ruzstd::decoding::StreamingDecoder;
+use std::io::Read;
 use thiserror::Error;
 
 /// Size of the compression header in bytes (1 byte flag + 8 bytes original size)
@@ -15,9 +17,6 @@ const FLAG_UNCOMPRESSED: u8 = 0x00;
 
 /// Compression flag for zstd compressed data
 const FLAG_ZSTD: u8 = 0x01;
-
-/// Default zstd compression level
-const DEFAULT_ZSTD_LEVEL: i32 = 3;
 
 /// Compression-related errors
 #[derive(Debug, Error)]
@@ -30,9 +29,6 @@ pub enum CompressionError {
 
     #[error("decompression failed: {0}")]
     DecompressionFailed(String),
-
-    #[error("zstd error: {0}")]
-    ZstdError(#[from] io::Error),
 }
 
 /// Result type for compression operations
@@ -53,220 +49,147 @@ pub struct CompressionInfo {
     pub compression_ratio: f64,
 }
 
-/// Blob compressor/decompressor
-pub struct BlobCompressor {
-    /// Zstd compression level
-    compression_level: i32,
+/// Parse compression header from blob
+fn parse_compression_header(blob: &[u8]) -> Result<(u8, u64, &[u8])> {
+    if blob.len() < COMPRESSION_HEADER_SIZE {
+        return Err(CompressionError::InvalidHeader);
+    }
+
+    let flag = blob[0];
+    let original_size = u64::from_le_bytes(
+        blob[1..9]
+            .try_into()
+            .map_err(|_| CompressionError::InvalidHeader)?,
+    );
+    let payload = &blob[COMPRESSION_HEADER_SIZE..];
+
+    // Validate the compression flag
+    if flag != FLAG_UNCOMPRESSED && flag != FLAG_ZSTD {
+        return Err(CompressionError::InvalidCompressionFlag(flag));
+    }
+
+    Ok((flag, original_size, payload))
 }
 
-impl BlobCompressor {
-    /// Create a new blob compressor with default settings
-    pub fn new() -> Self {
-        Self {
-            compression_level: DEFAULT_ZSTD_LEVEL,
-        }
+/// Decompress a blob
+pub fn decompress_blob(compressed_blob: &[u8]) -> Result<Bytes> {
+    // Check if blob is too small to have a header
+    if compressed_blob.len() < COMPRESSION_HEADER_SIZE {
+        // Assume legacy uncompressed blob
+        return Ok(Bytes::copy_from_slice(compressed_blob));
     }
 
-    /// Create a new blob compressor with custom compression level
-    pub fn with_level(compression_level: i32) -> Self {
-        Self { compression_level }
-    }
+    // Check the compression flag
+    let flag = compressed_blob[0];
 
-    /// Compress a blob
-    pub fn compress(&self, blob: &[u8]) -> Result<Bytes> {
-        // For empty blobs, just add uncompressed header
-        if blob.is_empty() {
-            return Ok(self.add_compression_header(blob, FLAG_UNCOMPRESSED, 0));
-        }
+    // Handle invalid flags with legacy blob heuristics
+    if flag != FLAG_UNCOMPRESSED && flag != FLAG_ZSTD {
+        // This could be either a legacy blob or a corrupted header
+        // Use heuristics to determine which
 
-        // Try to compress with zstd
-        let compressed = zstd::encode_all(blob, self.compression_level)?;
+        let original_size =
+            u64::from_le_bytes(compressed_blob[1..9].try_into().unwrap_or([0; 8]));
 
-        // Check if compression is beneficial (at least 10% savings)
-        let compression_ratio = compressed.len() as f64 / blob.len() as f64;
-        if compression_ratio > 0.9 {
-            // Compression not beneficial, store uncompressed
-            Ok(self.add_compression_header(blob, FLAG_UNCOMPRESSED, blob.len() as u64))
-        } else {
-            // Compression beneficial
-            Ok(self.add_compression_header(&compressed, FLAG_ZSTD, blob.len() as u64))
-        }
-    }
-
-    /// Decompress a blob
-    pub fn decompress(&self, compressed_blob: &[u8]) -> Result<Bytes> {
-        // Check if blob is too small to have a header
-        if compressed_blob.len() < COMPRESSION_HEADER_SIZE {
-            // Assume legacy uncompressed blob
+        // If flag is in printable ASCII range (32-126) and size is unreasonable,
+        // it's likely a legacy text blob
+        if (32..=126).contains(&flag)
+            && (original_size == 0 || original_size > (compressed_blob.len() as u64 * 100))
+        {
+            // Likely a legacy blob
             return Ok(Bytes::copy_from_slice(compressed_blob));
         }
 
-        // Check the compression flag
-        let flag = compressed_blob[0];
-
-        // Handle invalid flags with legacy blob heuristics
-        if flag != FLAG_UNCOMPRESSED && flag != FLAG_ZSTD {
-            // This could be either a legacy blob or a corrupted header
-            // Use heuristics to determine which
-
-            let original_size =
-                u64::from_le_bytes(compressed_blob[1..9].try_into().unwrap_or([0; 8]));
-
-            // If flag is in printable ASCII range (32-126) and size is unreasonable,
-            // it's likely a legacy text blob
-            if (32..=126).contains(&flag)
-                && (original_size == 0 || original_size > (compressed_blob.len() as u64 * 100))
-            {
-                // Likely a legacy blob
-                return Ok(Bytes::copy_from_slice(compressed_blob));
-            }
-
-            // Otherwise, it's likely a corrupted compressed blob
-            return Err(CompressionError::InvalidCompressionFlag(flag));
-        }
-
-        // Parse the header
-        let (flag, original_size, payload) = self.parse_compression_header(compressed_blob)?;
-
-        match flag {
-            FLAG_UNCOMPRESSED => {
-                // Data is uncompressed, just return the payload
-                Ok(Bytes::copy_from_slice(payload))
-            }
-            FLAG_ZSTD => {
-                // Decompress with zstd
-                let decompressed = zstd::decode_all(payload)
-                    .map_err(|e| CompressionError::DecompressionFailed(e.to_string()))?;
-
-                // Verify the decompressed size matches
-                if decompressed.len() as u64 != original_size {
-                    return Err(CompressionError::DecompressionFailed(format!(
-                        "size mismatch: expected {}, got {}",
-                        original_size,
-                        decompressed.len()
-                    )));
-                }
-
-                Ok(Bytes::from(decompressed))
-            }
-            _ => {
-                // Should not happen as we validated the flag earlier
-                Err(CompressionError::InvalidCompressionFlag(flag))
-            }
-        }
+        // Otherwise, it's likely a corrupted compressed blob
+        return Err(CompressionError::InvalidCompressionFlag(flag));
     }
 
-    /// Get compression information about a blob
-    pub fn get_compression_info(&self, blob: &[u8]) -> CompressionInfo {
-        if blob.len() < COMPRESSION_HEADER_SIZE {
-            return CompressionInfo {
-                is_compressed: false,
-                algorithm: "none".to_string(),
-                original_size: blob.len() as u64,
-                compressed_size: blob.len(),
-                compression_ratio: 1.0,
-            };
+    // Parse the header
+    let (flag, original_size, payload) = parse_compression_header(compressed_blob)?;
+
+    match flag {
+        FLAG_UNCOMPRESSED => {
+            // Data is uncompressed, just return the payload
+            Ok(Bytes::copy_from_slice(payload))
         }
+        FLAG_ZSTD => {
+            // Decompress with ruzstd
+            let mut decoder = StreamingDecoder::new(payload)
+                .map_err(|e| CompressionError::DecompressionFailed(e.to_string()))?;
+            
+            let mut decompressed = Vec::new();
+            decoder
+                .read_to_end(&mut decompressed)
+                .map_err(|e| CompressionError::DecompressionFailed(e.to_string()))?;
 
-        let flag = blob[0];
-        if flag != FLAG_UNCOMPRESSED && flag != FLAG_ZSTD {
-            // Legacy or invalid blob
-            return CompressionInfo {
-                is_compressed: false,
-                algorithm: "none".to_string(),
-                original_size: blob.len() as u64,
-                compressed_size: blob.len(),
-                compression_ratio: 1.0,
-            };
-        }
-
-        if let Ok((flag, original_size, _)) = self.parse_compression_header(blob) {
-            let algorithm = match flag {
-                FLAG_UNCOMPRESSED => "none",
-                FLAG_ZSTD => "zstd",
-                _ => "unknown",
-            };
-
-            CompressionInfo {
-                is_compressed: flag == FLAG_ZSTD,
-                algorithm: algorithm.to_string(),
-                original_size,
-                compressed_size: blob.len(),
-                compression_ratio: if original_size > 0 {
-                    blob.len() as f64 / original_size as f64
-                } else {
-                    1.0
-                },
+            // Verify the decompressed size matches
+            if decompressed.len() as u64 != original_size {
+                return Err(CompressionError::DecompressionFailed(format!(
+                    "size mismatch: expected {}, got {}",
+                    original_size,
+                    decompressed.len()
+                )));
             }
-        } else {
-            CompressionInfo {
-                is_compressed: false,
-                algorithm: "none".to_string(),
-                original_size: blob.len() as u64,
-                compressed_size: blob.len(),
-                compression_ratio: 1.0,
-            }
+
+            Ok(Bytes::from(decompressed))
         }
-    }
-
-    /// Add compression header to payload
-    fn add_compression_header(&self, payload: &[u8], flag: u8, original_size: u64) -> Bytes {
-        let mut result = BytesMut::with_capacity(COMPRESSION_HEADER_SIZE + payload.len());
-
-        // Write flag
-        result.extend_from_slice(&[flag]);
-
-        // Write original size (little-endian)
-        result.extend_from_slice(&original_size.to_le_bytes());
-
-        // Write payload
-        result.extend_from_slice(payload);
-
-        result.freeze()
-    }
-
-    /// Parse compression header from blob
-    fn parse_compression_header<'a>(&self, blob: &'a [u8]) -> Result<(u8, u64, &'a [u8])> {
-        if blob.len() < COMPRESSION_HEADER_SIZE {
-            return Err(CompressionError::InvalidHeader);
+        _ => {
+            // Should not happen as we validated the flag earlier
+            Err(CompressionError::InvalidCompressionFlag(flag))
         }
-
-        let flag = blob[0];
-        let original_size = u64::from_le_bytes(
-            blob[1..9]
-                .try_into()
-                .map_err(|_| CompressionError::InvalidHeader)?,
-        );
-        let payload = &blob[COMPRESSION_HEADER_SIZE..];
-
-        // Validate the compression flag
-        if flag != FLAG_UNCOMPRESSED && flag != FLAG_ZSTD {
-            return Err(CompressionError::InvalidCompressionFlag(flag));
-        }
-
-        Ok((flag, original_size, payload))
     }
 }
 
-impl Default for BlobCompressor {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-/// Convenience function to compress a blob with default settings
-pub fn compress_blob(blob: &[u8]) -> Result<Bytes> {
-    BlobCompressor::new().compress(blob)
-}
-
-/// Convenience function to decompress a blob
-pub fn decompress_blob(compressed_blob: &[u8]) -> Result<Bytes> {
-    BlobCompressor::new().decompress(compressed_blob)
-}
-
-/// Convenience function to get compression info about a blob
+/// Get compression information about a blob
 pub fn get_compression_info(blob: &[u8]) -> CompressionInfo {
-    BlobCompressor::new().get_compression_info(blob)
+    if blob.len() < COMPRESSION_HEADER_SIZE {
+        return CompressionInfo {
+            is_compressed: false,
+            algorithm: "none".to_string(),
+            original_size: blob.len() as u64,
+            compressed_size: blob.len(),
+            compression_ratio: 1.0,
+        };
+    }
+
+    let flag = blob[0];
+    if flag != FLAG_UNCOMPRESSED && flag != FLAG_ZSTD {
+        // Legacy or invalid blob
+        return CompressionInfo {
+            is_compressed: false,
+            algorithm: "none".to_string(),
+            original_size: blob.len() as u64,
+            compressed_size: blob.len(),
+            compression_ratio: 1.0,
+        };
+    }
+
+    if let Ok((flag, original_size, _)) = parse_compression_header(blob) {
+        let algorithm = match flag {
+            FLAG_UNCOMPRESSED => "none",
+            FLAG_ZSTD => "zstd",
+            _ => "unknown",
+        };
+
+        CompressionInfo {
+            is_compressed: flag == FLAG_ZSTD,
+            algorithm: algorithm.to_string(),
+            original_size,
+            compressed_size: blob.len(),
+            compression_ratio: if original_size > 0 {
+                blob.len() as f64 / original_size as f64
+            } else {
+                1.0
+            },
+        }
+    } else {
+        CompressionInfo {
+            is_compressed: false,
+            algorithm: "none".to_string(),
+            original_size: blob.len() as u64,
+            compressed_size: blob.len(),
+            compression_ratio: 1.0,
+        }
+    }
 }
 
 #[cfg(test)]
@@ -274,66 +197,23 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_compress_decompress_roundtrip() {
-        let compressor = BlobCompressor::new();
-
-        // Test with compressible data
-        let original = b"hello world ".repeat(100);
-        let compressed = compressor.compress(&original).unwrap();
-        let decompressed = compressor.decompress(&compressed).unwrap();
-
-        assert_eq!(original, decompressed.as_ref());
-
-        // Verify it was actually compressed
-        let info = compressor.get_compression_info(&compressed);
-        assert!(info.is_compressed);
-        assert_eq!(info.algorithm, "zstd");
-        assert!(info.compression_ratio < 0.5); // Should compress well
-    }
-
-    #[test]
-    fn test_uncompressed_fallback() {
-        let compressor = BlobCompressor::new();
-
-        // Random data that won't compress well
-        let mut random_data = vec![0u8; 100];
-        for (i, item) in random_data.iter_mut().enumerate().take(100) {
-            *item = (i * 7 + 13) as u8; // Pseudo-random
-        }
-
-        let compressed = compressor.compress(&random_data).unwrap();
-        let decompressed = compressor.decompress(&compressed).unwrap();
-
-        assert_eq!(random_data, decompressed.as_ref());
-
-        // Verify it was stored uncompressed
-        let info = compressor.get_compression_info(&compressed);
-        assert!(!info.is_compressed);
-        assert_eq!(info.algorithm, "none");
-    }
-
-    #[test]
     fn test_legacy_blob() {
-        let compressor = BlobCompressor::new();
-
         // Test with legacy blob (no compression header)
         let legacy_blob = b"legacy data without header";
 
         // Should return as-is
-        let decompressed = compressor.decompress(legacy_blob).unwrap();
+        let decompressed = decompress_blob(legacy_blob).unwrap();
         assert_eq!(legacy_blob, decompressed.as_ref());
     }
 
     #[test]
     fn test_invalid_compression_flag() {
-        let compressor = BlobCompressor::new();
-
         // Create blob with invalid flag
         let mut invalid_blob = vec![0u8; COMPRESSION_HEADER_SIZE + 10];
         invalid_blob[0] = 0xFF; // Invalid flag
 
         // Should return error
-        let result = compressor.decompress(&invalid_blob);
+        let result = decompress_blob(&invalid_blob);
         assert!(result.is_err());
 
         match result.unwrap_err() {
@@ -345,28 +225,38 @@ mod tests {
     }
 
     #[test]
-    fn test_empty_blob() {
-        let compressor = BlobCompressor::new();
-
-        let empty = vec![];
-        let compressed = compressor.compress(&empty).unwrap();
-        let decompressed = compressor.decompress(&compressed).unwrap();
-
-        assert_eq!(empty, decompressed.as_ref());
+    fn test_uncompressed_with_header() {
+        // Create a blob with uncompressed header
+        let original_data = b"test data";
+        let mut blob = Vec::with_capacity(COMPRESSION_HEADER_SIZE + original_data.len());
+        
+        // Add header
+        blob.push(FLAG_UNCOMPRESSED);
+        blob.extend_from_slice(&(original_data.len() as u64).to_le_bytes());
+        blob.extend_from_slice(original_data);
+        
+        // Decompress
+        let decompressed = decompress_blob(&blob).unwrap();
+        assert_eq!(original_data, decompressed.as_ref());
+        
+        // Check info
+        let info = get_compression_info(&blob);
+        assert!(!info.is_compressed);
+        assert_eq!(info.algorithm, "none");
+        assert_eq!(info.original_size, original_data.len() as u64);
     }
 
     #[test]
     fn test_compression_info() {
-        let compressor = BlobCompressor::new();
+        // Test with uncompressed data
+        let mut blob = Vec::new();
+        blob.push(FLAG_UNCOMPRESSED);
+        blob.extend_from_slice(&100u64.to_le_bytes());
+        blob.extend_from_slice(&vec![0u8; 100]);
 
-        let original = b"compress me ".repeat(100);
-        let compressed = compressor.compress(&original).unwrap();
-
-        let info = compressor.get_compression_info(&compressed);
-        assert!(info.is_compressed);
-        assert_eq!(info.algorithm, "zstd");
-        assert_eq!(info.original_size, original.len() as u64);
-        assert!(info.compression_ratio < 1.0);
-        assert!(info.compression_ratio > 0.0);
+        let info = get_compression_info(&blob);
+        assert!(!info.is_compressed);
+        assert_eq!(info.algorithm, "none");
+        assert_eq!(info.original_size, 100);
     }
 }

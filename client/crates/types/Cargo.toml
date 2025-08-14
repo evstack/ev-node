@@ -27,4 +27,4 @@ prost-types = { workspace = true }
 tonic = { workspace = true, optional = true, features = ["transport"] }
 bytes = "1.5"
 thiserror = "1.0"
-zstd = "0.13"
+ruzstd = "0.8.1"

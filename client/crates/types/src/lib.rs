@@ -12,6 +12,5 @@ pub mod v1 {
 
 // Re-export compression types for convenience
 pub use compression::{
-    compress_blob, decompress_blob, get_compression_info, BlobCompressor, CompressionError,
-    CompressionInfo,
+    decompress_blob, get_compression_info, CompressionError, CompressionInfo,
 };
