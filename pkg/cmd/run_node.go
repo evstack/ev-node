@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
-	"path/filepath"
 	"syscall"
 	"time"
 
@@ -98,9 +97,6 @@ func StartNode(
 
 		// Resolve signer path relative to root directory if it's not an absolute path
 		signerPath := nodeConfig.Signer.SignerPath
-		if !filepath.IsAbs(signerPath) {
-			signerPath = filepath.Join(nodeConfig.RootDir, signerPath)
-		}
 		signer, err = file.LoadFileSystemSigner(signerPath, []byte(passphrase))
 		if err != nil {
 			return err

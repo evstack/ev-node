@@ -7,6 +7,7 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/binary"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"sync"
@@ -189,7 +190,7 @@ func (d *LocalDA) SubmitWithOptions(ctx context.Context, blobs []coreda.Blob, ga
 		d.logger.Error().Err(err).Msg("SubmitWithOptions: invalid namespace")
 		return nil, err
 	}
-	d.logger.Info().Int("numBlobs", len(blobs)).Float64("gasPrice", gasPrice).Str("namespace", string(ns)).Msg("SubmitWithOptions called")
+	d.logger.Info().Int("numBlobs", len(blobs)).Float64("gasPrice", gasPrice).Str("namespace", hex.EncodeToString(ns)).Msg("SubmitWithOptions called")
 
 	// Validate blob sizes before processing
 	for i, blob := range blobs {
@@ -219,7 +220,7 @@ func (d *LocalDA) Submit(ctx context.Context, blobs []coreda.Blob, gasPrice floa
 		d.logger.Error().Err(err).Msg("Submit: invalid namespace")
 		return nil, err
 	}
-	d.logger.Info().Int("numBlobs", len(blobs)).Float64("gasPrice", gasPrice).Str("namespace", string(ns)).Msg("Submit called")
+	d.logger.Info().Int("numBlobs", len(blobs)).Float64("gasPrice", gasPrice).Str("namespace", hex.EncodeToString(ns)).Msg("Submit called")
 
 	// Validate blob sizes before processing
 	for i, blob := range blobs {

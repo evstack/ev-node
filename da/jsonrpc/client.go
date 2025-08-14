@@ -200,7 +200,7 @@ func (api *API) Submit(ctx context.Context, blobs []da.Blob, gasPrice float64, n
 
 		if totalOriginal > 0 {
 			savings := float64(totalOriginal-totalCompressed) / float64(totalOriginal) * 100
-			api.Logger.Info().
+			api.Logger.Debug().
 				Uint64("total_original", totalOriginal).
 				Uint64("total_compressed", totalCompressed).
 				Float64("savings_percent", savings).
@@ -261,7 +261,7 @@ func (api *API) SubmitWithOptions(ctx context.Context, inputBlobs []da.Blob, gas
 
 		if totalOriginal > 0 {
 			savings := float64(totalOriginal-totalCompressed) / float64(totalOriginal) * 100
-			api.Logger.Info().
+			api.Logger.Debug().
 				Uint64("total_original", totalOriginal).
 				Uint64("total_compressed", totalCompressed).
 				Float64("savings_percent", savings).
