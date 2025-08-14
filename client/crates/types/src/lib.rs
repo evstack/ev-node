@@ -1,3 +1,5 @@
+pub mod compression;
+
 pub mod v1 {
     // Always include the pure message types (no tonic dependencies)
     #[cfg(not(feature = "grpc"))]
@@ -7,3 +9,8 @@ pub mod v1 {
     #[cfg(feature = "grpc")]
     include!("proto/evnode.v1.services.rs");
 }
+
+// Re-export compression types for convenience
+pub use compression::{
+    decompress_blob, get_compression_info, CompressionError, CompressionInfo,
+};

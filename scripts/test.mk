@@ -4,11 +4,17 @@ clean-testcache:
 	@go clean --testcache
 .PHONY: clean-testcache
 
-## test: Running unit tests for all go.mods
+## test: Running unit tests for all go.mods (fast mode with -short flag)
 test:
-	@echo "--> Running unit tests"
-	@go run -tags='run integration' scripts/test.go
+	@echo "--> Running unit tests (fast mode)"
+	@go run -tags='run integration' scripts/test.go -short
 .PHONY: test
+
+## test-full: Running full unit tests for all go.mods (includes long-running tests)
+test-full:
+	@echo "--> Running full unit tests (including long-running tests)"
+	@go run -tags='run integration' scripts/test.go -short=false
+.PHONY: test-full
 
 ## test-all: Running all tests including Docker E2E
 test-all: test test-docker-e2e
@@ -33,11 +39,17 @@ test-integration-cover:
 	@cd node && go test -mod=readonly -failfast -timeout=15m -tags='integration' -coverprofile=coverage.txt -covermode=atomic ./...
 .PHONY: test-integration-cover
 
-## test-cover: generate code coverage report.
+## test-cover: generate code coverage report (fast mode with -short flag).
 test-cover:
-	@echo "--> Running unit tests"
-	@go run -tags=cover scripts/test_cover.go
+	@echo "--> Running unit tests with coverage (fast mode)"
+	@go run -tags=cover scripts/test_cover.go -short
 .PHONY: test-cover
+
+## test-cover-full: generate code coverage report with all tests.
+test-cover-full:
+	@echo "--> Running full unit tests with coverage"
+	@go run -tags=cover scripts/test_cover.go -short=false
+.PHONY: test-cover-full
 
 ## test-evm: Running EVM tests
 test-evm:
