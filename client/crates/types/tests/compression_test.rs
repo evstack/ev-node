@@ -1,8 +1,8 @@
 //! Comprehensive tests for blob compression/decompression
 //! These tests match the behavior of the Go implementation
 
-use ev_client::compression::*;
-use ev_client::{compress_blob, decompress_blob, get_compression_info};
+use ev_types::compression::*;
+use ev_types::{compress_blob, decompress_blob, get_compression_info};
 
 #[test]
 fn test_zstd_compression() {

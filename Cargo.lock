@@ -205,7 +205,6 @@ name = "ev-client"
 version = "0.0.1"
 dependencies = [
  "async-trait",
- "bytes",
  "ev-types",
  "futures",
  "thiserror",
@@ -215,19 +214,21 @@ dependencies = [
  "tower",
  "tracing",
  "tracing-subscriber",
- "zstd",
 ]
 
 [[package]]
 name = "ev-types"
 version = "0.0.1"
 dependencies = [
+ "bytes",
  "prost",
  "prost-build",
  "prost-types",
+ "thiserror",
  "tonic",
  "tonic-build",
  "walkdir",
+ "zstd",
 ]
 
 [[package]]
