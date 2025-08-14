@@ -278,6 +278,10 @@ function sidebarHome() {
               text: "Reth State Backup",
               link: "/guides/evm/reth-backup",
             },
+            {
+              text: "Chain Migration",
+              link: "/guides/evm/migration",
+            },
           ],
         },
         {
