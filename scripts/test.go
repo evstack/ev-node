@@ -1,6 +1,7 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"log"
 	"os"
@@ -10,6 +11,10 @@ import (
 )
 
 func main() {
+	// Parse command line flags
+	shortMode := flag.Bool("short", true, "Run tests in short mode (skip long-running tests)")
+	flag.Parse()
+
 	rootDir := "." // Start from the current directory
 	var testFailures bool
 	err := filepath.WalkDir(rootDir, func(path string, d os.DirEntry, err error) error {
@@ -28,8 +33,16 @@ func main() {
 			// or adjust logic if root tests are also desired.
 			// For this example, we'll run tests in all directories with go.mod.
 
-			fmt.Printf("--> Running tests in: %s\n", modDir)
-			cmd := exec.Command("go", "test", "./...", "-cover")
+			// Build test command with optional -short flag
+			testArgs := []string{"test", "./...", "-cover"}
+			if *shortMode {
+				testArgs = append([]string{"test", "./...", "-short", "-cover"}, testArgs[3:]...)
+				fmt.Printf("--> Running tests in short mode in: %s\n", modDir)
+			} else {
+				fmt.Printf("--> Running full tests in: %s\n", modDir)
+			}
+			
+			cmd := exec.Command("go", testArgs...)
 			cmd.Dir = modDir // Set the working directory for the command
 			cmd.Stdout = os.Stdout
 			cmd.Stderr = os.Stderr

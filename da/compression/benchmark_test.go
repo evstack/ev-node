@@ -12,6 +12,10 @@ import (
 
 // TestLargeBlobCompressionEfficiency tests compression efficiency for blob sizes from 20KB to 2MB
 func TestLargeBlobCompressionEfficiency(t *testing.T) {
+	if testing.Short() {
+		t.Skip("Skipping large blob compression test in short mode")
+	}
+	
 	config := DefaultConfig()
 	compressor, err := NewCompressibleDA(nil, config)
 	require.NoError(t, err)
@@ -54,7 +58,7 @@ func TestLargeBlobCompressionEfficiency(t *testing.T) {
 		},
 	}
 
-	fmt.Printf("\n=== Large Blob Compression Efficiency Test ===\n")
+	fmt.Printf("\n=== Blob Compression Efficiency Test ===\n")
 	fmt.Printf("%-15s %-10s %-12s %-12s %-10s %-15s\n",
 		"Data Type", "Size", "Compressed", "Saved", "Ratio", "Compression")
 	fmt.Printf("%-15s %-10s %-12s %-12s %-10s %-15s\n",

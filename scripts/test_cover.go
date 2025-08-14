@@ -5,6 +5,7 @@ package main
 
 import (
 	"bufio"
+	"flag"
 	"fmt"
 	"log"
 	"os"
@@ -14,6 +15,10 @@ import (
 )
 
 func main() {
+	// Parse command line flags
+	shortMode := flag.Bool("short", true, "Run tests in short mode (skip long-running tests)")
+	flag.Parse()
+	
 	rootDir := "."
 
 	var coverFiles []string
@@ -38,8 +43,16 @@ func main() {
 			fullCoverProfilePath := filepath.Join(modDir, "cover.out")
 			relativeCoverProfileArg := "cover.out"
 
-			fmt.Printf("--> Running tests with coverage in: %s (profile: %s)\n", modDir, relativeCoverProfileArg)
-			cmd := exec.Command("go", "test", "./...", "-race", "-coverprofile="+relativeCoverProfileArg, "-covermode=atomic")
+			// Build test command with optional -short flag
+			testArgs := []string{"test", "./...", "-race", "-coverprofile=" + relativeCoverProfileArg, "-covermode=atomic"}
+			if *shortMode {
+				testArgs = []string{"test", "./...", "-short", "-race", "-coverprofile=" + relativeCoverProfileArg, "-covermode=atomic"}
+				fmt.Printf("--> Running tests with coverage in short mode in: %s (profile: %s)\n", modDir, relativeCoverProfileArg)
+			} else {
+				fmt.Printf("--> Running full tests with coverage in: %s (profile: %s)\n", modDir, relativeCoverProfileArg)
+			}
+			
+			cmd := exec.Command("go", testArgs...)
 			cmd.Dir = modDir
 			cmd.Stdout = os.Stdout
 			cmd.Stderr = os.Stderr
