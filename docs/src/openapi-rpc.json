@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Evolve API",
-    "description": "This API provides access to Signer, Store, P2P, and Health services.\n\n## Services\n\n* **Signer Service** - Sign messages and retrieve public keys\n* **Store Service** - Access blocks, state, and metadata\n* **P2P Service** - Network and peer information\n* **Health Service** - Node health checks and simple HTTP endpoints\n\n## Protocols\n\n### gRPC-Web Protocol\n\nMost endpoints use gRPC-Web protocol over HTTP/1.1 with JSON encoding. Requests are made via POST with `Content-Type: application/json`.\n\n### Simple HTTP Endpoints\n\nSome endpoints (like `/health/live`) are simple HTTP GET requests that return plain text responses for basic monitoring and health checks.",
+    "description": "This API provides access to Signer, Store, P2P, Config, and Health services.\n\n## Services\n\n* **Signer Service** - Sign messages and retrieve public keys\n* **Store Service** - Access blocks, state, and metadata\n* **P2P Service** - Network and peer information\n* **Config Service** - Network configuration and namespace information\n* **Health Service** - Node health checks and simple HTTP endpoints\n\n## Protocols\n\n### gRPC-Web Protocol\n\nMost endpoints use gRPC-Web protocol over HTTP/1.1 with JSON encoding. Requests are made via POST with `Content-Type: application/json`.\n\n### Simple HTTP Endpoints\n\nSome endpoints (like `/health/live`) are simple HTTP GET requests that return plain text responses for basic monitoring and health checks.",
     "version": "1.0.0",
     "contact": {
       "name": "Evolve Team",
@@ -27,6 +27,10 @@
     {
       "name": "P2P Service",
       "description": "Network and peer information"
+    },
+    {
+      "name": "Config Service",
+      "description": "Network configuration and namespace information"
     },
     {
       "name": "Health Service",
@@ -355,6 +359,48 @@
         }
       }
     },
+    "/evnode.v1.ConfigService/GetNamespace": {
+      "post": {
+        "tags": [
+          "Config Service"
+        ],
+        "summary": "Get namespace configuration",
+        "description": "Retrieve the header and data namespace configuration for this network.",
+        "operationId": "getNamespace",
+        "requestBody": {
+          "description": "Get namespace request (empty)",
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GetNamespaceRequest"
+              },
+              "examples": {
+                "default": {
+                  "summary": "Get namespace configuration",
+                  "value": {}
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Namespace configuration retrieved successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GetNamespaceResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      }
+    },
     "/evnode.v1.HealthService/Livez": {
       "post": {
         "tags": [
@@ -624,6 +670,31 @@
         "properties": {
           "net_info": {
             "$ref": "#/components/schemas/NetInfo"
+          }
+        }
+      },
+      "GetNamespaceRequest": {
+        "type": "object",
+        "description": "Request to get namespace configuration (empty)",
+        "properties": {}
+      },
+      "GetNamespaceResponse": {
+        "type": "object",
+        "description": "Response containing namespace configuration. Namespaces are encoded by the node to ensure proper formatting and compatibility with the DA layer.",
+        "required": [
+          "header_namespace",
+          "data_namespace"
+        ],
+        "properties": {
+          "header_namespace": {
+            "type": "string",
+            "description": "The namespace identifier for block headers. This namespace is used exclusively for storing and retrieving block header data on the DA layer. The value is pre-encoded by the node.",
+            "example": "0x01234567890abcdef"
+          },
+          "data_namespace": {
+            "type": "string",
+            "description": "The namespace identifier for block data (transactions). This namespace is used exclusively for storing and retrieving transaction data on the DA layer, separate from headers. The value is pre-encoded by the node.",
+            "example": "0xfedcba9876543210"
           }
         }
       },

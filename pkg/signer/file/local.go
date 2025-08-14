@@ -436,9 +436,7 @@ func fallbackDeriveKey(passphrase []byte, keyLen int) []byte {
 
 // zeroBytes overwrites a byte slice with zeros
 func zeroBytes(b []byte) {
-	for i := range b {
-		b[i] = 0
-	}
+	clear(b)
 }
 
 // getAddress returns the Ed25519 address of the signer.

@@ -85,7 +85,6 @@ func TestSubmitWithOptions_SizeValidation(t *testing.T) {
 			api := &API{
 				Logger:      logger,
 				MaxBlobSize: tc.maxBlobSize,
-				Namespace:   []byte("test"),
 			}
 
 			// Mock the Internal.SubmitWithOptions to always succeed if called
@@ -103,7 +102,7 @@ func TestSubmitWithOptions_SizeValidation(t *testing.T) {
 
 			// Call SubmitWithOptions
 			ctx := context.Background()
-			result, err := api.SubmitWithOptions(ctx, tc.inputBlobs, 1.0, nil, nil)
+			result, err := api.SubmitWithOptions(ctx, tc.inputBlobs, 1.0, []byte("test"), nil)
 
 			// Verify expectations
 			if tc.expectError {

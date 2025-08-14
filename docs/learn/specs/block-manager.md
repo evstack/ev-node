@@ -121,8 +121,8 @@ Block manager configuration options:
 |GasPrice|float64|gas price for DA submissions (-1 for automatic/default)|
 |GasMultiplier|float64|multiplier for gas price on DA submission retries (default: 1.3)|
 |Namespace|da.Namespace|DA namespace ID for block submissions (deprecated, use HeaderNamespace and DataNamespace instead)|
-|HeaderNamespace|string|namespace ID for submitting headers to DA layer|
-|DataNamespace|string|namespace ID for submitting data to DA layer|
+|HeaderNamespace|string|namespace ID for submitting headers to DA layer (automatically encoded by the node)|
+|DataNamespace|string|namespace ID for submitting data to DA layer (automatically encoded by the node)|
 
 ### Block Production
 
