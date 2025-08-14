@@ -22,13 +22,13 @@ type Module interface {
 
 // API defines the jsonrpc service module API
 type API struct {
-	Logger               zerolog.Logger
-	MaxBlobSize          uint64
-	gasPrice             float64
-	gasMultiplier        float64
-	compressionEnabled   bool
-	compressionConfig    compression.Config
-	Internal      struct {
+	Logger             zerolog.Logger
+	MaxBlobSize        uint64
+	gasPrice           float64
+	gasMultiplier      float64
+	compressionEnabled bool
+	compressionConfig  compression.Config
+	Internal           struct {
 		Get               func(ctx context.Context, ids []da.ID, ns []byte) ([]da.Blob, error)           `perm:"read"`
 		GetIDs            func(ctx context.Context, height uint64, ns []byte) (*da.GetIDsResult, error)  `perm:"read"`
 		GetProofs         func(ctx context.Context, ids []da.ID, ns []byte) ([]da.Proof, error)          `perm:"read"`
@@ -56,7 +56,7 @@ func (api *API) Get(ctx context.Context, ids []da.ID, ns []byte) ([]da.Blob, err
 		return nil, fmt.Errorf("failed to get blobs: %w", err)
 	}
 	api.Logger.Debug().Str("method", "Get").Int("num_blobs_returned", len(res)).Msg("RPC call successful")
-	
+
 	// Decompress blobs if compression is enabled
 	if api.compressionEnabled && len(res) > 0 {
 		decompressed, err := compression.DecompressBatch(res)
@@ -64,7 +64,7 @@ func (api *API) Get(ctx context.Context, ids []da.ID, ns []byte) ([]da.Blob, err
 			api.Logger.Error().Err(err).Msg("Failed to decompress blobs")
 			return nil, fmt.Errorf("failed to decompress blobs: %w", err)
 		}
-		
+
 		// Log decompression stats
 		for i, blob := range res {
 			info := compression.GetCompressionInfo(blob)
@@ -77,10 +77,10 @@ func (api *API) Get(ctx context.Context, ids []da.ID, ns []byte) ([]da.Blob, err
 					Msg("Blob decompression stats")
 			}
 		}
-		
+
 		return decompressed, nil
 	}
-	
+
 	return res, nil
 }
 
@@ -134,7 +134,7 @@ func (api *API) GetProofs(ctx context.Context, ids []da.ID, ns []byte) ([]da.Pro
 // Commit creates a Commitment for each given Blob.
 func (api *API) Commit(ctx context.Context, blobs []da.Blob, ns []byte) ([]da.Commitment, error) {
 	preparedNs := da.PrepareNamespace(ns)
-	
+
 	// Compress blobs if compression is enabled
 	blobsToCommit := blobs
 	if api.compressionEnabled && len(blobs) > 0 {
@@ -145,7 +145,7 @@ func (api *API) Commit(ctx context.Context, blobs []da.Blob, ns []byte) ([]da.Co
 		}
 		blobsToCommit = compressed
 	}
-	
+
 	api.Logger.Debug().Str("method", "Commit").Int("num_blobs", len(blobsToCommit)).Str("namespace", hex.EncodeToString(preparedNs)).Msg("Making RPC call")
 	res, err := api.Internal.Commit(ctx, blobsToCommit, preparedNs)
 	if err != nil {
@@ -172,7 +172,7 @@ func (api *API) Validate(ctx context.Context, ids []da.ID, proofs []da.Proof, ns
 // Submit submits the Blobs to Data Availability layer.
 func (api *API) Submit(ctx context.Context, blobs []da.Blob, gasPrice float64, ns []byte) ([]da.ID, error) {
 	preparedNs := da.PrepareNamespace(ns)
-	
+
 	// Compress blobs if compression is enabled
 	blobsToSubmit := blobs
 	if api.compressionEnabled && len(blobs) > 0 {
@@ -181,7 +181,7 @@ func (api *API) Submit(ctx context.Context, blobs []da.Blob, gasPrice float64, n
 			api.Logger.Error().Err(err).Msg("Failed to compress blobs")
 			return nil, fmt.Errorf("failed to compress blobs: %w", err)
 		}
-		
+
 		// Log compression stats
 		var totalOriginal, totalCompressed uint64
 		for i, blob := range compressed {
@@ -197,7 +197,7 @@ func (api *API) Submit(ctx context.Context, blobs []da.Blob, gasPrice float64, n
 					Msg("Blob compression stats")
 			}
 		}
-		
+
 		if totalOriginal > 0 {
 			savings := float64(totalOriginal-totalCompressed) / float64(totalOriginal) * 100
 			api.Logger.Info().
@@ -206,10 +206,10 @@ func (api *API) Submit(ctx context.Context, blobs []da.Blob, gasPrice float64, n
 				Float64("savings_percent", savings).
 				Msg("Compression summary")
 		}
-		
+
 		blobsToSubmit = compressed
 	}
-	
+
 	api.Logger.Debug().Str("method", "Submit").Int("num_blobs", len(blobsToSubmit)).Float64("gas_price", gasPrice).Str("namespace", hex.EncodeToString(preparedNs)).Msg("Making RPC call")
 	res, err := api.Internal.Submit(ctx, blobsToSubmit, gasPrice, preparedNs)
 	if err != nil {
@@ -242,7 +242,7 @@ func (api *API) SubmitWithOptions(ctx context.Context, inputBlobs []da.Blob, gas
 			api.Logger.Error().Err(err).Msg("Failed to compress blobs")
 			return nil, fmt.Errorf("failed to compress blobs: %w", err)
 		}
-		
+
 		// Log compression stats
 		var totalOriginal, totalCompressed uint64
 		for i, blob := range compressed {
@@ -258,7 +258,7 @@ func (api *API) SubmitWithOptions(ctx context.Context, inputBlobs []da.Blob, gas
 					Msg("Blob compression stats")
 			}
 		}
-		
+
 		if totalOriginal > 0 {
 			savings := float64(totalOriginal-totalCompressed) / float64(totalOriginal) * 100
 			api.Logger.Info().
@@ -267,7 +267,7 @@ func (api *API) SubmitWithOptions(ctx context.Context, inputBlobs []da.Blob, gas
 				Float64("savings_percent", savings).
 				Msg("Compression summary")
 		}
-		
+
 		blobsToSubmit = compressed
 	}
 
@@ -380,7 +380,7 @@ func newClient(ctx context.Context, logger zerolog.Logger, addr string, authHead
 	client.DA.MaxBlobSize = uint64(internal.MaxTxSize)
 	client.DA.gasPrice = gasPrice
 	client.DA.gasMultiplier = gasMultiplier
-	
+
 	// Set compression configuration
 	client.DA.compressionEnabled = opts.CompressionEnabled
 	client.DA.compressionConfig = compression.Config{
@@ -388,7 +388,7 @@ func newClient(ctx context.Context, logger zerolog.Logger, addr string, authHead
 		ZstdLevel:           opts.CompressionLevel,
 		MinCompressionRatio: opts.MinCompressionRatio,
 	}
-	
+
 	if opts.CompressionEnabled {
 		logger.Info().
 			Bool("compression", opts.CompressionEnabled).
