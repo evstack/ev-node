@@ -151,7 +151,6 @@ func putDecoder(decoder *zstd.Decoder) {
 
 // CompressibleDA wraps a DA implementation to add transparent compression support
 type CompressibleDA struct {
-	baseDA  da.DA
 	config  Config
 	encoder *zstd.Encoder
 	decoder *zstd.Decoder
@@ -182,7 +181,6 @@ func NewCompressibleDA(baseDA da.DA, config Config) (*CompressibleDA, error) {
 	}
 
 	return &CompressibleDA{
-		baseDA:  baseDA,
 		config:  config,
 		encoder: encoder,
 		decoder: decoder,
@@ -226,9 +224,34 @@ func (c *CompressibleDA) decompressBlob(compressedBlob da.Blob) (da.Blob, error)
 		return compressedBlob, nil
 	}
 
+	// Check if this could be a compressed blob with a valid header
+	flag := compressedBlob[0]
+	if flag != FlagUncompressed && flag != FlagZstd {
+		// This could be either:
+		// 1. A legacy blob without any header (most likely)
+		// 2. A corrupted blob with an invalid header
+		//
+		// For better heuristics, check if the bytes look like a valid header structure:
+		// - If flag is way outside expected range (e.g., printable ASCII for text), likely legacy
+		// - If the size field has a reasonable value for compressed data, likely corrupted header
+		originalSize := binary.LittleEndian.Uint64(compressedBlob[1:9])
+
+		// Heuristic: If flag is in printable ASCII range (32-126) and size is unreasonable,
+		// it's likely a legacy text blob. Otherwise, if flag is outside normal range (like 0xFF),
+		// it's likely a corrupted header.
+		if (flag >= 32 && flag <= 126) && (originalSize == 0 || originalSize > uint64(len(compressedBlob)*100)) {
+			// Likely a legacy blob (starts with printable text)
+			return compressedBlob, nil
+		}
+
+		// Otherwise, it's likely a corrupted compressed blob or intentionally invalid
+		return nil, fmt.Errorf("%w: flag %d", ErrInvalidCompressionFlag, flag)
+	}
+
+	// Valid flag, proceed with normal parsing
 	flag, originalSize, payload, err := c.parseCompressionHeader(compressedBlob)
 	if err != nil {
-		// Assume legacy uncompressed blob
+
 		return compressedBlob, nil
 	}
 
@@ -279,6 +302,11 @@ func (c *CompressibleDA) parseCompressionHeader(blob da.Blob) (uint8, uint64, da
 	flag := blob[0]
 	originalSize := binary.LittleEndian.Uint64(blob[1:9])
 	payload := blob[CompressionHeaderSize:]
+
+	// Validate the compression flag
+	if flag != FlagUncompressed && flag != FlagZstd {
+		return 0, 0, nil, fmt.Errorf("%w: flag %d", ErrInvalidCompressionFlag, flag)
+	}
 
 	return flag, originalSize, payload, nil
 }

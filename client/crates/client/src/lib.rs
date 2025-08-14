@@ -77,6 +77,7 @@
 //! ```
 
 pub mod client;
+pub mod compression;
 pub mod config;
 pub mod error;
 pub mod health;
@@ -86,6 +87,7 @@ pub mod store;
 
 // Re-export main types for convenience
 pub use client::{Client, ClientBuilder};
+pub use compression::{BlobCompressor, CompressionInfo, compress_blob, decompress_blob, get_compression_info};
 pub use config::ConfigClient;
 pub use error::{ClientError, Result};
 pub use health::HealthClient;

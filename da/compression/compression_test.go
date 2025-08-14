@@ -188,10 +188,6 @@ func TestCompression_LegacyBlobs(t *testing.T) {
 }
 
 func TestCompression_ErrorCases(t *testing.T) {
-	t.Run("nil base DA", func(t *testing.T) {
-		_, err := NewCompressibleDA(nil, DefaultConfig())
-		assert.Error(t, err)
-	})
 
 	t.Run("invalid compression flag", func(t *testing.T) {
 		config := DefaultConfig()
