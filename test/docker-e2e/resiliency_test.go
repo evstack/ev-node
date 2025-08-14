@@ -6,6 +6,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"net"
 	"strings"
 	"testing"
 	"time"
@@ -57,7 +58,7 @@ func (s *DockerTestSuite) TestRollkitNodeRestart() {
 		httpPortStr := rollkitNode.GetHostHTTPPort()
 		s.Require().NotEmpty(httpPortStr, "HTTP port should not be empty")
 
-		httpPort := strings.Split(httpPortStr, ":")[len(strings.Split(httpPortStr, ":"))-1]
+		_, httpPort, err := net.SplitHostPort(httpPortStr)
 		client, err = NewClient("localhost", httpPort)
 		s.Require().NoError(err)
 	})
