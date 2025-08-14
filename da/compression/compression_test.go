@@ -88,37 +88,6 @@ func (m *mockDA) GasMultiplier(ctx context.Context) (float64, error) {
 	return 1.0, nil
 }
 
-func TestCompressibleDA_BasicFunctionality(t *testing.T) {
-	mockDA := newMockDA()
-	config := DefaultConfig()
-
-	compressibleDA, err := NewCompressibleDA(mockDA, config)
-	require.NoError(t, err)
-	defer compressibleDA.Close()
-
-	ctx := context.Background()
-	namespace := []byte("test")
-
-	// Test data - should compress well
-	testBlob := make([]byte, 1024)
-	for i := range testBlob {
-		testBlob[i] = byte(i % 10) // Repetitive data compresses well
-	}
-
-	// Submit blob
-	ids, err := compressibleDA.Submit(ctx, []da.Blob{testBlob}, 1.0, namespace)
-	require.NoError(t, err)
-	require.Len(t, ids, 1)
-
-	// Retrieve blob
-	retrievedBlobs, err := compressibleDA.Get(ctx, ids, namespace)
-	require.NoError(t, err)
-	require.Len(t, retrievedBlobs, 1)
-
-	// Verify data integrity
-	assert.Equal(t, testBlob, retrievedBlobs[0])
-}
-
 func TestCompression_ZstdLevel3(t *testing.T) {
 	config := Config{
 		Enabled:             true,
@@ -271,67 +240,4 @@ func TestHelperFunctions(t *testing.T) {
 	require.NoError(t, err)
 
 	assert.Equal(t, originalData, decompressed)
-}
-
-func TestCompressibleDA_EndToEnd(t *testing.T) {
-	mockDA := newMockDA()
-	config := DefaultConfig()
-
-	compressibleDA, err := NewCompressibleDA(mockDA, config)
-	require.NoError(t, err)
-	defer compressibleDA.Close()
-
-	ctx := context.Background()
-	namespace := []byte("test-namespace")
-
-	// Create test blobs with different characteristics
-	testBlobs := []da.Blob{
-		bytes.Repeat([]byte("compressible data "), 50), // Should compress
-		make([]byte, 50),                // Random data, may not compress well
-		[]byte("small"),                 // Small blob
-		bytes.Repeat([]byte("a"), 1000), // Highly compressible
-	}
-
-	// Fill random data blob
-	_, err = rand.Read(testBlobs[1])
-	require.NoError(t, err)
-
-	// Submit blobs
-	ids, err := compressibleDA.Submit(ctx, testBlobs, 1.0, namespace)
-	require.NoError(t, err)
-	require.Len(t, ids, len(testBlobs))
-
-	// Retrieve blobs
-	retrievedBlobs, err := compressibleDA.Get(ctx, ids, namespace)
-	require.NoError(t, err)
-	require.Len(t, retrievedBlobs, len(testBlobs))
-
-	// Verify all blobs match
-	for i, original := range testBlobs {
-		assert.Equal(t, original, retrievedBlobs[i], "Blob %d mismatch", i)
-	}
-
-	// Test other DA methods
-	commitments, err := compressibleDA.Commit(ctx, testBlobs, namespace)
-	require.NoError(t, err)
-	require.Len(t, commitments, len(testBlobs))
-
-	proofs, err := compressibleDA.GetProofs(ctx, ids, namespace)
-	require.NoError(t, err)
-	require.Len(t, proofs, len(ids))
-
-	validations, err := compressibleDA.Validate(ctx, ids, proofs, namespace)
-	require.NoError(t, err)
-	require.Len(t, validations, len(ids))
-	for _, valid := range validations {
-		assert.True(t, valid)
-	}
-
-	gasPrice, err := compressibleDA.GasPrice(ctx)
-	require.NoError(t, err)
-	assert.Equal(t, 1.0, gasPrice)
-
-	gasMultiplier, err := compressibleDA.GasMultiplier(ctx)
-	require.NoError(t, err)
-	assert.Equal(t, 1.0, gasMultiplier)
 }
