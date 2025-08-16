@@ -321,10 +321,7 @@ func (s *DAVisualizationServer) handleDAHealth(w http.ResponseWriter, r *http.Re
 	)
 
 	// Look at recent submissions (last 10 or all if less)
-	recentCount := 10
-	if len(s.submissions) < recentCount {
-		recentCount = len(s.submissions)
-	}
+	recentCount := min(len(s.submissions), 10)
 
 	// Analyze recent submissions
 	for i := len(s.submissions) - recentCount; i < len(s.submissions); i++ {
