@@ -9,7 +9,11 @@ use ruzstd::decoding::StreamingDecoder;
 use snafu::Snafu;
 
 #[cfg(not(feature = "std"))]
-use alloc::{format, string::{String, ToString}, vec::Vec};
+use alloc::{
+    format,
+    string::{String, ToString},
+    vec::Vec,
+};
 
 #[cfg(not(feature = "std"))]
 use ruzstd::io::Read;
