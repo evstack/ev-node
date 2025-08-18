@@ -6,8 +6,16 @@
 
 use bytes::Bytes;
 use ruzstd::decoding::StreamingDecoder;
+use snafu::Snafu;
+
+#[cfg(not(feature = "std"))]
+use alloc::{format, string::{String, ToString}, vec::Vec};
+
+#[cfg(not(feature = "std"))]
+use ruzstd::io::Read;
+
+#[cfg(feature = "std")]
 use std::io::Read;
-use thiserror::Error;
 
 /// Size of the compression header in bytes (1 byte flag + 8 bytes original size)
 const COMPRESSION_HEADER_SIZE: usize = 9;
@@ -19,20 +27,20 @@ const FLAG_UNCOMPRESSED: u8 = 0x00;
 const FLAG_ZSTD: u8 = 0x01;
 
 /// Compression-related errors
-#[derive(Debug, Error)]
+#[derive(Debug, Snafu)]
 pub enum CompressionError {
-    #[error("invalid compression header")]
+    #[snafu(display("invalid compression header"))]
     InvalidHeader,
 
-    #[error("invalid compression flag: {0}")]
-    InvalidCompressionFlag(u8),
+    #[snafu(display("invalid compression flag: {flag}"))]
+    InvalidCompressionFlag { flag: u8 },
 
-    #[error("decompression failed: {0}")]
-    DecompressionFailed(String),
+    #[snafu(display("decompression failed: {message}"))]
+    DecompressionFailed { message: String },
 }
 
 /// Result type for compression operations
-pub type Result<T> = std::result::Result<T, CompressionError>;
+pub type Result<T> = core::result::Result<T, CompressionError>;
 
 /// Information about a compressed blob
 #[derive(Debug, Clone)]
@@ -65,7 +73,7 @@ fn parse_compression_header(blob: &[u8]) -> Result<(u8, u64, &[u8])> {
 
     // Validate the compression flag
     if flag != FLAG_UNCOMPRESSED && flag != FLAG_ZSTD {
-        return Err(CompressionError::InvalidCompressionFlag(flag));
+        return Err(CompressionError::InvalidCompressionFlag { flag });
     }
 
     Ok((flag, original_size, payload))
@@ -99,7 +107,7 @@ pub fn decompress_blob(compressed_blob: &[u8]) -> Result<Bytes> {
         }
 
         // Otherwise, it's likely a corrupted compressed blob
-        return Err(CompressionError::InvalidCompressionFlag(flag));
+        return Err(CompressionError::InvalidCompressionFlag { flag });
     }
 
     // Parse the header
@@ -112,28 +120,35 @@ pub fn decompress_blob(compressed_blob: &[u8]) -> Result<Bytes> {
         }
         FLAG_ZSTD => {
             // Decompress with ruzstd
-            let mut decoder = StreamingDecoder::new(payload)
-                .map_err(|e| CompressionError::DecompressionFailed(e.to_string()))?;
+            let mut decoder = StreamingDecoder::new(payload).map_err(|e| {
+                CompressionError::DecompressionFailed {
+                    message: format!("{}", e),
+                }
+            })?;
 
             let mut decompressed = Vec::new();
-            decoder
-                .read_to_end(&mut decompressed)
-                .map_err(|e| CompressionError::DecompressionFailed(e.to_string()))?;
+            decoder.read_to_end(&mut decompressed).map_err(|e| {
+                CompressionError::DecompressionFailed {
+                    message: format!("{}", e),
+                }
+            })?;
 
             // Verify the decompressed size matches
             if decompressed.len() as u64 != original_size {
-                return Err(CompressionError::DecompressionFailed(format!(
-                    "size mismatch: expected {}, got {}",
-                    original_size,
-                    decompressed.len()
-                )));
+                return Err(CompressionError::DecompressionFailed {
+                    message: format!(
+                        "size mismatch: expected {}, got {}",
+                        original_size,
+                        decompressed.len()
+                    ),
+                });
             }
 
             Ok(Bytes::from(decompressed))
         }
         _ => {
             // Should not happen as we validated the flag earlier
-            Err(CompressionError::InvalidCompressionFlag(flag))
+            Err(CompressionError::InvalidCompressionFlag { flag })
         }
     }
 }
@@ -216,7 +231,7 @@ mod tests {
         assert!(result.is_err());
 
         match result.unwrap_err() {
-            CompressionError::InvalidCompressionFlag(flag) => {
+            CompressionError::InvalidCompressionFlag { flag } => {
                 assert_eq!(flag, 0xFF);
             }
             _ => panic!("Expected InvalidCompressionFlag error"),

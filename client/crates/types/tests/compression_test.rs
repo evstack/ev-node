@@ -23,7 +23,7 @@ fn test_invalid_compression_flag() {
     let result = decompress_blob(&invalid_blob);
     assert!(result.is_err());
 
-    if let Err(CompressionError::InvalidCompressionFlag(flag)) = result {
+    if let Err(CompressionError::InvalidCompressionFlag { flag }) = result {
         assert_eq!(flag, 0xFF);
     } else {
         panic!("Expected InvalidCompressionFlag error");
