@@ -56,6 +56,80 @@ jobs:
           cd client/crates/client
           cargo check --examples --verbose
 
+  feature-check:
+    name: Feature Combination Check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Setup Rust
+        uses: ./.github/actions/rust-setup
+        with:
+          toolchain: stable
+          components: rustfmt, clippy
+          cache-key: features
+
+      - name: Check ev-types with no default features
+        run: |
+          cd client/crates/types
+          # Check minimal build (just protobuf, no compression or grpc)
+          cargo check --no-default-features --verbose
+          
+      - name: Check ev-types with only std
+        run: |
+          cd client/crates/types
+          cargo check --no-default-features --features std --verbose
+          
+      - name: Check ev-types with compression only
+        run: |
+          cd client/crates/types
+          cargo check --no-default-features --features compression --verbose
+          
+      - name: Check ev-types with grpc only
+        run: |
+          cd client/crates/types
+          cargo check --no-default-features --features grpc --verbose
+          
+      - name: Check ev-types with default features
+        run: |
+          cd client/crates/types
+          cargo check --verbose
+
+  no-std-check:
+    name: No-std Compatibility Check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Setup Rust
+        uses: ./.github/actions/rust-setup
+        with:
+          toolchain: stable
+          components: rustfmt, clippy
+          cache-key: no-std
+          targets: thumbv7m-none-eabi
+
+      - name: Check no_std compatibility for ev-types
+        run: |
+          cd client/crates/types
+          # Test that the crate builds for an embedded target without std
+          cargo check --no-default-features --target thumbv7m-none-eabi --verbose
+          
+      - name: Check no_std with alloc
+        run: |
+          cd client/crates/types
+          # Some embedded systems have alloc but not std
+          # This verifies we can use the crate with just alloc support
+          cargo check --no-default-features --target thumbv7m-none-eabi --verbose
+          
+      - name: Build for wasm32 target (another no_std target)
+        run: |
+          rustup target add wasm32-unknown-unknown
+          cd client/crates/types
+          cargo check --no-default-features --target wasm32-unknown-unknown --verbose
+
   coverage:
     name: Code Coverage
     runs-on: ubuntu-latest

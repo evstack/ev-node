@@ -9,15 +9,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let proto_dir = manifest_dir.join("src/proto");
     fs::create_dir_all(&proto_dir)?;
 
-    // Check if generated files already exist
-    let messages_file = proto_dir.join("evnode.v1.messages.rs");
-    let services_file = proto_dir.join("evnode.v1.services.rs");
+    // Check if generated file already exists
+    let generated_file = proto_dir.join("evnode.v1.rs");
 
     // Check for environment variable to force regeneration
     let force_regen = env::var("EV_TYPES_FORCE_PROTO_GEN").is_ok();
 
-    // If files exist and we're not forcing regeneration, skip generation
-    if !force_regen && messages_file.exists() && services_file.exists() {
+    // If file exists and we're not forcing regeneration, skip generation
+    if !force_regen && generated_file.exists() {
         println!("cargo:warning=Using pre-generated proto files. Set EV_TYPES_FORCE_PROTO_GEN=1 to regenerate.");
         return Ok(());
     }
@@ -26,8 +25,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let proto_root = match manifest_dir.join("../../../proto").canonicalize() {
         Ok(path) => path,
         Err(e) => {
-            // If proto files don't exist but generated files do, that's ok
-            if messages_file.exists() && services_file.exists() {
+            // If proto files don't exist but generated file does, that's ok
+            if generated_file.exists() {
                 println!("cargo:warning=Proto source files not found at ../../../proto, using pre-generated files");
                 return Ok(());
             }
@@ -47,35 +46,18 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         })
         .collect();
 
-    // Always generate both versions and keep them checked in
-    // This way users don't need to regenerate based on features
-
-    // 1. Generate pure message types (no tonic dependencies)
-    let mut prost_config = prost_build::Config::new();
-    prost_config.out_dir(&proto_dir);
-    // Important: we need to rename the output to avoid conflicts
-    prost_config.compile_protos(&proto_files, &[proto_root.as_path()])?;
-
-    // Rename the generated file to messages.rs
-    let generated_file = proto_dir.join("evnode.v1.rs");
-    let messages_file = proto_dir.join("evnode.v1.messages.rs");
-    if generated_file.exists() {
-        fs::rename(&generated_file, &messages_file)?;
-    }
-
-    // 2. Generate full code with gRPC services (always generate, conditionally include)
-    tonic_build::configure()
+    // Generate a single file with proper feature gates for server and client code
+    tonic_prost_build::configure()
         .build_server(true)
         .build_client(true)
+        // Add cfg attributes to gate both server and client code behind the "grpc" feature
+        .server_mod_attribute(".", "#[cfg(feature = \"grpc\")]")
+        .client_mod_attribute(".", "#[cfg(feature = \"grpc\")]")
+        // Use BTreeMap instead of HashMap for no_std compatibility
+        .btree_map(".")
+        // Generate to our output directory
         .out_dir(&proto_dir)
-        .compile(&proto_files, &[proto_root.as_path()])?;
-
-    // Rename to services.rs
-    let generated_file_2 = proto_dir.join("evnode.v1.rs");
-    let services_file = proto_dir.join("evnode.v1.services.rs");
-    if generated_file_2.exists() {
-        fs::rename(&generated_file_2, &services_file)?;
-    }
+        .compile_protos(&proto_files, &[proto_root.clone()])?;
 
     println!("cargo:rerun-if-changed={}", proto_root.display());
     Ok(())
