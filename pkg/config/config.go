@@ -17,105 +17,110 @@ import (
 )
 
 const (
+	FlagPrefixRollkit = "rollkit."
+	FlagPrefixEvnode  = "evnode."
+
 	// Base configuration flags
 
 	// FlagRootDir is a flag for specifying the root directory
 	FlagRootDir = "home"
 	// FlagDBPath is a flag for specifying the database path
-	FlagDBPath = "rollkit.db_path"
+	FlagDBPath = FlagPrefixEvnode + "db_path"
 
 	// Node configuration flags
 
 	// FlagAggregator is a flag for running node in aggregator mode
-	FlagAggregator = "rollkit.node.aggregator"
+	FlagAggregator = FlagPrefixEvnode + "node.aggregator"
 	// FlagLight is a flag for running the node in light mode
-	FlagLight = "rollkit.node.light"
+	FlagLight = FlagPrefixEvnode + "node.light"
 	// FlagBlockTime is a flag for specifying the block time
-	FlagBlockTime = "rollkit.node.block_time"
+	FlagBlockTime = FlagPrefixEvnode + "node.block_time"
 	// FlagTrustedHash is a flag for specifying the trusted hash
-	FlagTrustedHash = "rollkit.node.trusted_hash"
+	FlagTrustedHash = FlagPrefixEvnode + "node.trusted_hash"
 	// FlagLazyAggregator is a flag for enabling lazy aggregation mode that only produces blocks when transactions are available
-	FlagLazyAggregator = "rollkit.node.lazy_mode"
+	FlagLazyAggregator = FlagPrefixEvnode + "node.lazy_mode"
 	// FlagMaxPendingHeadersAndData is a flag to limit and pause block production when too many headers or data are waiting for DA confirmation
-	FlagMaxPendingHeadersAndData = "rollkit.node.max_pending_headers_and_data"
+	FlagMaxPendingHeadersAndData = FlagPrefixEvnode + "node.max_pending_headers_and_data"
 	// FlagLazyBlockTime is a flag for specifying the maximum interval between blocks in lazy aggregation mode
-	FlagLazyBlockTime = "rollkit.node.lazy_block_interval"
+	FlagLazyBlockTime = FlagPrefixEvnode + "node.lazy_block_interval"
 
 	// Data Availability configuration flags
 
 	// FlagDAAddress is a flag for specifying the data availability layer address
-	FlagDAAddress = "rollkit.da.address"
+	FlagDAAddress = FlagPrefixEvnode + "da.address"
 	// FlagDAAuthToken is a flag for specifying the data availability layer auth token
-	FlagDAAuthToken = "rollkit.da.auth_token" // #nosec G101
+	FlagDAAuthToken = FlagPrefixEvnode + "da.auth_token" // #nosec G101
 	// FlagDABlockTime is a flag for specifying the data availability layer block time
-	FlagDABlockTime = "rollkit.da.block_time"
+	FlagDABlockTime = FlagPrefixEvnode + "da.block_time"
 	// FlagDAGasPrice is a flag for specifying the data availability layer gas price
-	FlagDAGasPrice = "rollkit.da.gas_price"
+	FlagDAGasPrice = FlagPrefixEvnode + "da.gas_price"
 	// FlagDAGasMultiplier is a flag for specifying the data availability layer gas price retry multiplier
-	FlagDAGasMultiplier = "rollkit.da.gas_multiplier"
+	FlagDAGasMultiplier = FlagPrefixEvnode + "da.gas_multiplier"
 	// FlagDAStartHeight is a flag for specifying the data availability layer start height
-	FlagDAStartHeight = "rollkit.da.start_height"
+	FlagDAStartHeight = FlagPrefixEvnode + "da.start_height"
 	// FlagDANamespace is a flag for specifying the DA namespace ID
-	FlagDANamespace = "rollkit.da.namespace"
+	FlagDANamespace = FlagPrefixEvnode + "da.namespace"
 	// FlagDAHeaderNamespace is a flag for specifying the DA header namespace ID
-	FlagDAHeaderNamespace = "rollkit.da.header_namespace"
+	FlagDAHeaderNamespace = FlagPrefixEvnode + "da.header_namespace"
 	// FlagDADataNamespace is a flag for specifying the DA data namespace ID
-	FlagDADataNamespace = "rollkit.da.data_namespace"
+	FlagDADataNamespace = FlagPrefixEvnode + "da.data_namespace"
 	// FlagDASubmitOptions is a flag for data availability submit options
-	FlagDASubmitOptions = "rollkit.da.submit_options"
+	FlagDASubmitOptions = FlagPrefixEvnode + "da.submit_options"
 	// FlagDAMempoolTTL is a flag for specifying the DA mempool TTL
-	FlagDAMempoolTTL = "rollkit.da.mempool_ttl"
+	FlagDAMempoolTTL = FlagPrefixEvnode + "da.mempool_ttl"
 	// FlagDAMaxSubmitAttempts is a flag for specifying the maximum DA submit attempts
-	FlagDAMaxSubmitAttempts = "rollkit.da.max_submit_attempts"
+	FlagDAMaxSubmitAttempts = FlagPrefixEvnode + "da.max_submit_attempts"
 
 	// P2P configuration flags
 
 	// FlagP2PListenAddress is a flag for specifying the P2P listen address
-	FlagP2PListenAddress = "rollkit.p2p.listen_address"
+	FlagP2PListenAddress = FlagPrefixEvnode + "p2p.listen_address"
 	// FlagP2PPeers is a flag for specifying the P2P peers
-	FlagP2PPeers = "rollkit.p2p.peers"
+	FlagP2PPeers = FlagPrefixEvnode + "p2p.peers"
 	// FlagP2PBlockedPeers is a flag for specifying the P2P blocked peers
-	FlagP2PBlockedPeers = "rollkit.p2p.blocked_peers"
+	FlagP2PBlockedPeers = FlagPrefixEvnode + "p2p.blocked_peers"
 	// FlagP2PAllowedPeers is a flag for specifying the P2P allowed peers
-	FlagP2PAllowedPeers = "rollkit.p2p.allowed_peers"
+	FlagP2PAllowedPeers = FlagPrefixEvnode + "p2p.allowed_peers"
 
 	// Instrumentation configuration flags
 
 	// FlagPrometheus is a flag for enabling Prometheus metrics
-	FlagPrometheus = "rollkit.instrumentation.prometheus"
+	FlagPrometheus = FlagPrefixEvnode + "instrumentation.prometheus"
 	// FlagPrometheusListenAddr is a flag for specifying the Prometheus listen address
-	FlagPrometheusListenAddr = "rollkit.instrumentation.prometheus_listen_addr"
+	FlagPrometheusListenAddr = FlagPrefixEvnode + "instrumentation.prometheus_listen_addr"
 	// FlagMaxOpenConnections is a flag for specifying the maximum number of open connections
-	FlagMaxOpenConnections = "rollkit.instrumentation.max_open_connections"
+	FlagMaxOpenConnections = FlagPrefixEvnode + "instrumentation.max_open_connections"
 	// FlagPprof is a flag for enabling pprof profiling endpoints for runtime debugging
-	FlagPprof = "rollkit.instrumentation.pprof"
+	FlagPprof = FlagPrefixEvnode + "instrumentation.pprof"
 	// FlagPprofListenAddr is a flag for specifying the pprof listen address
-	FlagPprofListenAddr = "rollkit.instrumentation.pprof_listen_addr"
+	FlagPprofListenAddr = FlagPrefixEvnode + "instrumentation.pprof_listen_addr"
 
 	// Logging configuration flags
 
 	// FlagLogLevel is a flag for specifying the log level
-	FlagLogLevel = "rollkit.log.level"
+	FlagLogLevel = FlagPrefixEvnode + "log.level"
 	// FlagLogFormat is a flag for specifying the log format
-	FlagLogFormat = "rollkit.log.format"
+	FlagLogFormat = FlagPrefixEvnode + "log.format"
 	// FlagLogTrace is a flag for enabling stack traces in error logs
-	FlagLogTrace = "rollkit.log.trace"
+	FlagLogTrace = FlagPrefixEvnode + "log.trace"
 
 	// Signer configuration flags
 
 	// FlagSignerType is a flag for specifying the signer type
-	FlagSignerType = "rollkit.signer.type"
+	FlagSignerType = FlagPrefixEvnode + "signer.type"
 	// FlagSignerPath is a flag for specifying the signer path
-	FlagSignerPath = "rollkit.signer.path"
+	FlagSignerPath = FlagPrefixEvnode + "signer.path"
 
 	// FlagSignerPassphrase is a flag for specifying the signer passphrase
 	//nolint:gosec
-	FlagSignerPassphrase = "rollkit.signer.passphrase"
+	FlagSignerPassphrase = FlagPrefixEvnode + "signer.passphrase"
 
 	// RPC configuration flags
 
 	// FlagRPCAddress is a flag for specifying the RPC server address
-	FlagRPCAddress = "rollkit.rpc.address"
+	FlagRPCAddress = FlagPrefixEvnode + "rpc.address"
+	// FlagRPCEnableDAVisualization is a flag for enabling DA visualization endpoints
+	FlagRPCEnableDAVisualization = FlagPrefixEvnode + "rpc.enable_da_visualization"
 )
 
 // Config stores Rollkit configuration.
@@ -222,7 +227,8 @@ type SignerConfig struct {
 
 // RPCConfig contains all RPC server configuration parameters
 type RPCConfig struct {
-	Address string `mapstructure:"address" yaml:"address" comment:"Address to bind the RPC server to (host:port). Default: 127.0.0.1:7331"`
+	Address               string `mapstructure:"address" yaml:"address" comment:"Address to bind the RPC server to (host:port). Default: 127.0.0.1:7331"`
+	EnableDAVisualization bool   `mapstructure:"enable_da_visualization" yaml:"enable_da_visualization" comment:"Enable DA visualization endpoints for monitoring blob submissions. Default: false"`
 }
 
 // Validate ensures that the root directory exists.
@@ -259,6 +265,15 @@ func AddGlobalFlags(cmd *cobra.Command, defaultHome string) {
 func AddFlags(cmd *cobra.Command) {
 	def := DefaultConfig
 
+	// Set normalization function to support both flag prefixes
+	cmd.Flags().SetNormalizeFunc(func(f *pflag.FlagSet, name string) pflag.NormalizedName {
+		if strings.HasPrefix(name, FlagPrefixRollkit) {
+			return pflag.NormalizedName(strings.Replace(name, FlagPrefixRollkit, FlagPrefixEvnode, 1))
+		}
+
+		return pflag.NormalizedName(name)
+	})
+
 	// Add base flags
 	cmd.Flags().String(FlagDBPath, def.DBPath, "path for the node database")
 
@@ -293,6 +308,7 @@ func AddFlags(cmd *cobra.Command) {
 
 	// RPC configuration flags
 	cmd.Flags().String(FlagRPCAddress, def.RPC.Address, "RPC server address (host:port)")
+	cmd.Flags().Bool(FlagRPCEnableDAVisualization, def.RPC.EnableDAVisualization, "enable DA visualization endpoints for monitoring blob submissions")
 
 	// Instrumentation configuration flags
 	instrDef := DefaultInstrumentationConfig()
@@ -316,6 +332,13 @@ func Load(cmd *cobra.Command) (Config, error) {
 	home, _ := cmd.Flags().GetString(FlagRootDir)
 	if home == "" {
 		home = DefaultRootDir
+	} else if !filepath.IsAbs(home) {
+		// Convert relative path to absolute path
+		absHome, err := filepath.Abs(home)
+		if err != nil {
+			return Config{}, fmt.Errorf("failed to resolve home directory: %w", err)
+		}
+		home = absHome
 	}
 
 	v := viper.New()
@@ -356,6 +379,13 @@ func LoadFromViper(inputViper *viper.Viper) (Config, error) {
 	home := inputViper.GetString(FlagRootDir)
 	if home == "" {
 		home = DefaultRootDir
+	} else if !filepath.IsAbs(home) {
+		// Convert relative path to absolute path
+		absHome, err := filepath.Abs(home)
+		if err != nil {
+			return Config{}, fmt.Errorf("failed to resolve home directory: %w", err)
+		}
+		home = absHome
 	}
 
 	// create a new viper instance for reading the config file
@@ -382,7 +412,11 @@ func LoadFromViper(inputViper *viper.Viper) (Config, error) {
 	// then override with settings from input viper (higher precedence)
 	for _, key := range inputViper.AllKeys() {
 		// Handle special case for prefixed keys
-		if after, ok := strings.CutPrefix(key, "rollkit."); ok {
+		if after, ok := strings.CutPrefix(key, FlagPrefixEvnode); ok {
+			// Strip the prefix for the merged viper
+			strippedKey := after
+			mergedViper.Set(strippedKey, inputViper.Get(key))
+		} else if after, ok := strings.CutPrefix(key, FlagPrefixRollkit); ok {
 			// Strip the prefix for the merged viper
 			strippedKey := after
 			mergedViper.Set(strippedKey, inputViper.Get(key))
@@ -439,7 +473,9 @@ func bindFlags(basename string, cmd *cobra.Command, v *viper.Viper) (err error) 
 	}()
 
 	cmd.Flags().VisitAll(func(f *pflag.Flag) {
-		flagName := strings.TrimPrefix(f.Name, "rollkit.") // trimm the prefix from the flag name
+		// trimm possible prefixes from the flag name
+		flagName := strings.TrimPrefix(f.Name, FlagPrefixEvnode)
+		flagName = strings.TrimPrefix(flagName, FlagPrefixRollkit)
 
 		// Environment variables can't have dashes in them, so bind them to their equivalent
 		// keys with underscores, e.g. --favorite-color to STING_FAVORITE_COLOR

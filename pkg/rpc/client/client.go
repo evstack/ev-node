@@ -11,11 +11,12 @@ import (
 	rpc "github.com/evstack/ev-node/types/pb/evnode/v1/v1connect"
 )
 
-// Client is the client for StoreService, P2PService, and HealthService
+// Client is the client for StoreService, P2PService, HealthService, and ConfigService
 type Client struct {
 	storeClient  rpc.StoreServiceClient
 	p2pClient    rpc.P2PServiceClient
 	healthClient rpc.HealthServiceClient
+	configClient rpc.ConfigServiceClient
 }
 
 // NewClient creates a new RPC client
@@ -24,11 +25,13 @@ func NewClient(baseURL string) *Client {
 	storeClient := rpc.NewStoreServiceClient(httpClient, baseURL, connect.WithGRPC())
 	p2pClient := rpc.NewP2PServiceClient(httpClient, baseURL, connect.WithGRPC())
 	healthClient := rpc.NewHealthServiceClient(httpClient, baseURL, connect.WithGRPC())
+	configClient := rpc.NewConfigServiceClient(httpClient, baseURL, connect.WithGRPC())
 
 	return &Client{
 		storeClient:  storeClient,
 		p2pClient:    p2pClient,
 		healthClient: healthClient,
+		configClient: configClient,
 	}
 }
 
@@ -119,4 +122,14 @@ func (c *Client) GetHealth(ctx context.Context) (pb.HealthStatus, error) {
 		return pb.HealthStatus_UNKNOWN, err
 	}
 	return resp.Msg.Status, nil
+}
+
+// GetNamespace returns the namespace configuration for this network
+func (c *Client) GetNamespace(ctx context.Context) (*pb.GetNamespaceResponse, error) {
+	req := connect.NewRequest(&emptypb.Empty{})
+	resp, err := c.configClient.GetNamespace(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+	return resp.Msg, nil
 }

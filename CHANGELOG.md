@@ -40,7 +40,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 <!-- Bug fixes -->
--
+- Pass correct namespaces for header and data to the da layer for posting ([#2560](https://github.com/evstack/ev-node/pull/2560))
 
 ### Security
 

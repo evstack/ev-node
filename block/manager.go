@@ -25,6 +25,7 @@ import (
 	"github.com/evstack/ev-node/pkg/cache"
 	"github.com/evstack/ev-node/pkg/config"
 	"github.com/evstack/ev-node/pkg/genesis"
+	"github.com/evstack/ev-node/pkg/rpc/server"
 	"github.com/evstack/ev-node/pkg/signer"
 	storepkg "github.com/evstack/ev-node/pkg/store"
 	"github.com/evstack/ev-node/types"
@@ -144,8 +145,6 @@ type Manager struct {
 	// in the DA
 	daIncludedHeight atomic.Uint64
 	da               coreda.DA
-	gasPrice         float64
-	gasMultiplier    float64
 
 	sequencer     coresequencer.Sequencer
 	lastBatchData [][]byte
@@ -303,8 +302,6 @@ func NewManager(
 	headerBroadcaster broadcaster[*types.SignedHeader],
 	dataBroadcaster broadcaster[*types.Data],
 	seqMetrics *Metrics,
-	gasPrice float64,
-	gasMultiplier float64,
 	managerOpts ManagerOptions,
 ) (*Manager, error) {
 	s, err := getInitialState(ctx, genesis, signer, store, exec, logger, managerOpts)
@@ -395,8 +392,6 @@ func NewManager(
 		sequencer:                   sequencer,
 		exec:                        exec,
 		da:                          da,
-		gasPrice:                    gasPrice,
-		gasMultiplier:               gasMultiplier,
 		txNotifyCh:                  make(chan struct{}, 1), // Non-blocking channel
 		signaturePayloadProvider:    managerOpts.SignaturePayloadProvider,
 		validatorHasherProvider:     managerOpts.ValidatorHasherProvider,
@@ -419,6 +414,16 @@ func NewManager(
 	// fetch caches from disks
 	if err := m.LoadCache(); err != nil {
 		return nil, fmt.Errorf("failed to load cache: %w", err)
+	}
+
+	// Initialize DA visualization server if enabled
+	if config.RPC.EnableDAVisualization {
+		daVisualizationServer := server.NewDAVisualizationServer(da, logger.With().Str("module", "da_visualization").Logger(), config.Node.Aggregator)
+		server.SetDAVisualizationServer(daVisualizationServer)
+		logger.Info().Msg("DA visualization server enabled")
+	} else {
+		// Ensure the global server is nil when disabled
+		server.SetDAVisualizationServer(nil)
 	}
 
 	return m, nil

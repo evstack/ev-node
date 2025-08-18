@@ -110,8 +110,6 @@ func newFullNode(
 		headerSyncService,
 		dataSyncService,
 		seqMetrics,
-		nodeConfig.DA.GasPrice,
-		nodeConfig.DA.GasMultiplier,
 		nodeOpts.ManagerOptions,
 	)
 	if err != nil {
@@ -197,8 +195,6 @@ func initBlockManager(
 	headerSyncService *evsync.HeaderSyncService,
 	dataSyncService *evsync.DataSyncService,
 	seqMetrics *block.Metrics,
-	gasPrice float64,
-	gasMultiplier float64,
 	managerOpts block.ManagerOptions,
 ) (*block.Manager, error) {
 	logger.Debug().Bytes("address", genesis.ProposerAddress).Msg("Proposer address")
@@ -218,8 +214,6 @@ func initBlockManager(
 		headerSyncService,
 		dataSyncService,
 		seqMetrics,
-		gasPrice,
-		gasMultiplier,
 		managerOpts,
 	)
 	if err != nil {
@@ -334,7 +328,7 @@ func (n *FullNode) Run(parentCtx context.Context) error {
 	}
 
 	// Start RPC server
-	handler, err := rpcserver.NewServiceHandler(n.Store, n.p2pClient, n.Logger)
+	handler, err := rpcserver.NewServiceHandler(n.Store, n.p2pClient, n.Logger, n.nodeConfig)
 	if err != nil {
 		return fmt.Errorf("error creating RPC handler: %w", err)
 	}
