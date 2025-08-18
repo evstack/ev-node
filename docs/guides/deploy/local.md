@@ -216,7 +216,7 @@ Since our chain is running in a docker container, we want to enter the docker co
 docker exec -it gm-world sh
 ```
 
-Now that you are in the docker container, you can interact with the chain using the `gmd` command and the example you used in the [gm-world tutorial](/docs/guides/gm-world.md).
+Now that you are in the docker container, you can interact with the chain using the `gmd` command and the example you used in the [gm-world tutorial](/guides/gm-world.md).
 
 Once you are done interacting with your chain, you can exit out of your docker container with:
 
