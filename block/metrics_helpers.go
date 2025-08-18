@@ -43,14 +43,14 @@ func (m *Manager) sendNonBlockingSignalWithMetrics(ch chan<- struct{}, channelNa
 		return true
 	default:
 		m.metrics.DroppedSignals.Add(1)
-		m.logger.Debug("dropped signal", "channel", channelName)
+		m.logger.Debug().Str("channel", channelName).Msg("dropped signal")
 		return false
 	}
 }
 
 // updateChannelMetrics updates the buffer usage metrics for all channels
 func (m *Manager) updateChannelMetrics() {
-	// Update channel buffer usage	if m.metrics.ChannelBufferUsage["header_in"] != nil {
+	// Update channel buffer usage
 	m.metrics.ChannelBufferUsage["header_in"].Set(float64(len(m.headerInCh)))
 
 	m.metrics.ChannelBufferUsage["data_in"].Set(float64(len(m.dataInCh)))

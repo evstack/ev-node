@@ -3,14 +3,10 @@ package executor
 import (
 	"bytes"
 	"context"
-	"errors"
-	"fmt"
 	"reflect"
 	"strings"
 	"testing"
 	"time"
-
-	ds "github.com/ipfs/go-datastore"
 )
 
 func TestInitChain_Idempotency(t *testing.T) {
@@ -177,310 +173,91 @@ func TestSetFinal(t *testing.T) {
 	}
 }
 
-func TestRollback_Success(t *testing.T) {
+func TestReservedKeysExcludedFromAppHash(t *testing.T) {
 	exec, err := NewKVExecutor(t.TempDir(), "testdb")
 	if err != nil {
 		t.Fatalf("Failed to create KVExecutor: %v", err)
 	}
 	ctx := context.Background()
 
-	// Execute transactions at different heights
-	txsHeight1 := [][]byte{
-		[]byte("key1=value1"),
-		[]byte("key2=value2"),
-	}
-	_, _, err = exec.ExecuteTxs(ctx, txsHeight1, 1, time.Now(), []byte(""))
+	// Initialize chain to set up genesis state (this writes genesis reserved keys)
+	_, _, err = exec.InitChain(ctx, time.Now(), 1, "test-chain")
 	if err != nil {
-		t.Fatalf("ExecuteTxs failed for height 1: %v", err)
+		t.Fatalf("Failed to initialize chain: %v", err)
 	}
 
-	txsHeight2 := [][]byte{
-		[]byte("key3=value3"),
-		[]byte("key4=value4"),
+	// Add some application data
+	txs := [][]byte{
+		[]byte("user/key1=value1"),
+		[]byte("user/key2=value2"),
 	}
-	_, _, err = exec.ExecuteTxs(ctx, txsHeight2, 2, time.Now(), []byte(""))
+	_, _, err = exec.ExecuteTxs(ctx, txs, 1, time.Now(), []byte(""))
 	if err != nil {
-		t.Fatalf("ExecuteTxs failed for height 2: %v", err)
+		t.Fatalf("Failed to execute transactions: %v", err)
 	}
 
-	txsHeight3 := [][]byte{
-		[]byte("key5=value5"),
-	}
-	_, _, err = exec.ExecuteTxs(ctx, txsHeight3, 3, time.Now(), []byte(""))
+	// Compute baseline state root
+	baselineStateRoot, err := exec.computeStateRoot(ctx)
 	if err != nil {
-		t.Fatalf("ExecuteTxs failed for height 3: %v", err)
+		t.Fatalf("Failed to compute baseline state root: %v", err)
 	}
 
-	// Verify all keys exist before rollback
-	if value, exists := exec.GetStoreValue(ctx, "key1"); !exists || value != "value1" {
-		t.Errorf("Expected key1=value1 at height 1, got exists=%v, value=%s", exists, value)
-	}
-	if value, exists := exec.GetStoreValue(ctx, "key3"); !exists || value != "value3" {
-		t.Errorf("Expected key3=value3 at height 2, got exists=%v, value=%s", exists, value)
-	}
-	if value, exists := exec.GetStoreValue(ctx, "key5"); !exists || value != "value5" {
-		t.Errorf("Expected key5=value5 at height 3, got exists=%v, value=%s", exists, value)
-	}
-
-	// Rollback to height 2
-	err = exec.Rollback(ctx, 2)
+	// Write to finalizedHeight (a reserved key)
+	err = exec.SetFinal(ctx, 5)
 	if err != nil {
-		t.Fatalf("Rollback failed: %v", err)
+		t.Fatalf("Failed to set final height: %v", err)
 	}
 
-	// Verify keys at height 1 and 2 still exist
-	if value, exists := exec.GetStoreValue(ctx, "key1"); !exists || value != "value1" {
-		t.Errorf("Expected key1=value1 at height 1 after rollback, got exists=%v, value=%s", exists, value)
-	}
-	if value, exists := exec.GetStoreValue(ctx, "key3"); !exists || value != "value3" {
-		t.Errorf("Expected key3=value3 at height 2 after rollback, got exists=%v, value=%s", exists, value)
-	}
-
-	// Verify keys at height 3 are removed
-	if value, exists := exec.GetStoreValue(ctx, "key5"); exists {
-		t.Errorf("Expected key5 at height 3 to be removed after rollback, but got value=%s", value)
-	}
-}
-
-func TestRollback_InvalidHeight(t *testing.T) {
-	exec, err := NewKVExecutor(t.TempDir(), "testdb")
+	// Verify finalizedHeight was written
+	finalizedHeightExists, err := exec.db.Has(ctx, finalizedHeightKey)
 	if err != nil {
-		t.Fatalf("Failed to create KVExecutor: %v", err)
+		t.Fatalf("Failed to check if finalizedHeight exists: %v", err)
 	}
-	ctx := context.Background()
+	if !finalizedHeightExists {
+		t.Error("Expected finalizedHeight to exist in database")
+	}
 
-	// Test rollback to height 0
-	err = exec.Rollback(ctx, 0)
-	if err == nil {
-		t.Error("Expected error for rollback to height 0, got nil")
-	}
-	if !strings.Contains(err.Error(), "cannot rollback to height 0") {
-		t.Errorf("Expected error message about invalid height 0, got: %v", err)
-	}
-}
-
-func TestRollback_MultipleHeights(t *testing.T) {
-	exec, err := NewKVExecutor(t.TempDir(), "testdb")
+	// State root should be unchanged (reserved keys excluded from calculation)
+	stateRootAfterReservedKeyWrite, err := exec.computeStateRoot(ctx)
 	if err != nil {
-		t.Fatalf("Failed to create KVExecutor: %v", err)
+		t.Fatalf("Failed to compute state root after writing reserved key: %v", err)
 	}
-	ctx := context.Background()
 
-	// Execute transactions at heights 1-5
-	for height := uint64(1); height <= 5; height++ {
-		txs := [][]byte{
-			[]byte(fmt.Sprintf("key%d=value%d", height, height)),
-		}
-		_, _, err = exec.ExecuteTxs(ctx, txs, height, time.Now(), []byte(""))
-		if err != nil {
-			t.Fatalf("ExecuteTxs failed for height %d: %v", height, err)
+	if string(baselineStateRoot) != string(stateRootAfterReservedKeyWrite) {
+		t.Errorf("State root changed after writing reserved key:\nBefore: %s\nAfter:  %s",
+			string(baselineStateRoot), string(stateRootAfterReservedKeyWrite))
+	}
+
+	// Verify state root contains only user data, not reserved keys
+	stateRootStr := string(stateRootAfterReservedKeyWrite)
+	if !strings.Contains(stateRootStr, "user/key1:value1") ||
+		!strings.Contains(stateRootStr, "user/key2:value2") {
+		t.Errorf("State root should contain user data: %s", stateRootStr)
+	}
+
+	// Verify reserved keys are NOT in state root
+	for key := range reservedKeys {
+		keyStr := key.String()
+		if strings.Contains(stateRootStr, keyStr) {
+			t.Errorf("State root should NOT contain reserved key %s: %s", keyStr, stateRootStr)
 		}
 	}
 
-	// Rollback to height 2
-	err = exec.Rollback(ctx, 2)
+	// Verify that adding user data DOES change the state root
+	moreTxs := [][]byte{
+		[]byte("user/key3=value3"),
+	}
+	_, _, err = exec.ExecuteTxs(ctx, moreTxs, 2, time.Now(), stateRootAfterReservedKeyWrite)
 	if err != nil {
-		t.Fatalf("Rollback failed: %v", err)
+		t.Fatalf("Failed to execute more transactions: %v", err)
 	}
 
-	// Verify keys at heights 1-2 still exist
-	for height := uint64(1); height <= 2; height++ {
-		key := fmt.Sprintf("key%d", height)
-		expectedValue := fmt.Sprintf("value%d", height)
-		if value, exists := exec.GetStoreValue(ctx, key); !exists || value != expectedValue {
-			t.Errorf("Expected %s=%s after rollback, got exists=%v, value=%s", key, expectedValue, exists, value)
-		}
-	}
-
-	// Verify keys at heights 3-5 are removed
-	for height := uint64(3); height <= 5; height++ {
-		key := fmt.Sprintf("key%d", height)
-		if value, exists := exec.GetStoreValue(ctx, key); exists {
-			t.Errorf("Expected key at %s to be removed after rollback, but got value=%s", key, value)
-		}
-	}
-}
-
-func TestRollback_WithFinalizedHeight(t *testing.T) {
-	exec, err := NewKVExecutor(t.TempDir(), "testdb")
+	finalStateRoot, err := exec.computeStateRoot(ctx)
 	if err != nil {
-		t.Fatalf("Failed to create KVExecutor: %v", err)
-	}
-	ctx := context.Background()
-
-	// Execute transactions at heights 1-3
-	for height := uint64(1); height <= 3; height++ {
-		txs := [][]byte{
-			[]byte(fmt.Sprintf("key%d=value%d", height, height)),
-		}
-		_, _, err = exec.ExecuteTxs(ctx, txs, height, time.Now(), []byte(""))
-		if err != nil {
-			t.Fatalf("ExecuteTxs failed for height %d: %v", height, err)
-		}
+		t.Fatalf("Failed to compute final state root: %v", err)
 	}
 
-	// Set finalized height to 3
-	err = exec.SetFinal(ctx, 3)
-	if err != nil {
-		t.Fatalf("SetFinal failed: %v", err)
-	}
-
-	// Rollback to height 1
-	err = exec.Rollback(ctx, 1)
-	if err != nil {
-		t.Fatalf("Rollback failed: %v", err)
-	}
-
-	// Verify finalized height was updated to rollback height
-	finalizedHeightBytes, err := exec.db.Get(ctx, ds.NewKey("/finalizedHeight"))
-	if err != nil {
-		t.Fatalf("Failed to get finalized height: %v", err)
-	}
-	finalizedHeight := string(finalizedHeightBytes)
-	if finalizedHeight != "1" {
-		t.Errorf("Expected finalized height to be updated to 1, got %s", finalizedHeight)
-	}
-}
-
-func TestRollback_EmptyState(t *testing.T) {
-	exec, err := NewKVExecutor(t.TempDir(), "testdb")
-	if err != nil {
-		t.Fatalf("Failed to create KVExecutor: %v", err)
-	}
-	ctx := context.Background()
-
-	// Rollback on empty state should succeed
-	err = exec.Rollback(ctx, 1)
-	if err != nil {
-		t.Errorf("Rollback on empty state should succeed, got error: %v", err)
-	}
-}
-
-func TestRollback_ContextCancellation(t *testing.T) {
-	exec, err := NewKVExecutor(t.TempDir(), "testdb")
-	if err != nil {
-		t.Fatalf("Failed to create KVExecutor: %v", err)
-	}
-
-	// Create a cancelled context
-	ctx, cancel := context.WithCancel(context.Background())
-	cancel()
-
-	// Rollback should respect context cancellation
-	err = exec.Rollback(ctx, 1)
-	if err == nil || !errors.Is(err, context.Canceled) {
-		t.Errorf("Expected context.Canceled error, got: %v", err)
-	}
-}
-
-func TestRollback_StateRootAfterRollback(t *testing.T) {
-	exec, err := NewKVExecutor(t.TempDir(), "testdb")
-	if err != nil {
-		t.Fatalf("Failed to create KVExecutor: %v", err)
-	}
-	ctx := context.Background()
-
-	// Execute transactions at height 1
-	txsHeight1 := [][]byte{
-		[]byte("key1=value1"),
-		[]byte("key2=value2"),
-	}
-	stateRoot1, _, err := exec.ExecuteTxs(ctx, txsHeight1, 1, time.Now(), []byte(""))
-	if err != nil {
-		t.Fatalf("ExecuteTxs failed for height 1: %v", err)
-	}
-
-	// Execute transactions at height 2
-	txsHeight2 := [][]byte{
-		[]byte("key3=value3"),
-	}
-	stateRoot2, _, err := exec.ExecuteTxs(ctx, txsHeight2, 2, time.Now(), stateRoot1)
-	if err != nil {
-		t.Fatalf("ExecuteTxs failed for height 2: %v", err)
-	}
-
-	// Verify state root changed after height 2
-	if bytes.Equal(stateRoot1, stateRoot2) {
-		t.Error("State root should change after executing transactions at height 2")
-	}
-
-	// Rollback to height 1
-	err = exec.Rollback(ctx, 1)
-	if err != nil {
-		t.Fatalf("Rollback failed: %v", err)
-	}
-
-	// Compute state root after rollback - should match height 1 state
-	newStateRoot, err := exec.computeStateRoot(ctx)
-	if err != nil {
-		t.Fatalf("Failed to compute state root after rollback: %v", err)
-	}
-
-	// State root after rollback should match original height 1 state
-	if !bytes.Equal(stateRoot1, newStateRoot) {
-		t.Errorf("State root after rollback should match height 1 state, got different roots")
-	}
-
-	// Verify height 2 key is no longer in state root
-	rootStr := string(newStateRoot)
-	if strings.Contains(rootStr, "key3:value3;") {
-		t.Error("State root should not contain height 2 transactions after rollback")
-	}
-
-	// Verify height 1 keys are still in state root
-	if !strings.Contains(rootStr, "key1:value1;") || !strings.Contains(rootStr, "key2:value2;") {
-		t.Error("State root should still contain height 1 transactions after rollback")
-	}
-}
-
-func TestGetStoreValue_MultipleVersions(t *testing.T) {
-	exec, err := NewKVExecutor(t.TempDir(), "testdb")
-	if err != nil {
-		t.Fatalf("Failed to create KVExecutor: %v", err)
-	}
-	ctx := context.Background()
-
-	// Execute transactions that update the same key at different heights
-	// Height 1: key1=value1
-	txsHeight1 := [][]byte{
-		[]byte("key1=value1"),
-		[]byte("key2=old_value"),
-	}
-	_, _, err = exec.ExecuteTxs(ctx, txsHeight1, 1, time.Now(), []byte(""))
-	if err != nil {
-		t.Fatalf("ExecuteTxs failed for height 1: %v", err)
-	}
-
-	// Height 2: key1=value1_updated
-	txsHeight2 := [][]byte{
-		[]byte("key1=value1_updated"),
-	}
-	_, _, err = exec.ExecuteTxs(ctx, txsHeight2, 2, time.Now(), []byte(""))
-	if err != nil {
-		t.Fatalf("ExecuteTxs failed for height 2: %v", err)
-	}
-
-	// Height 3: key1=latest_value
-	txsHeight3 := [][]byte{
-		[]byte("key1=latest_value"),
-	}
-	_, _, err = exec.ExecuteTxs(ctx, txsHeight3, 3, time.Now(), []byte(""))
-	if err != nil {
-		t.Fatalf("ExecuteTxs failed for height 3: %v", err)
-	}
-
-	// GetStoreValue should return the latest version (from height 3)
-	if value, exists := exec.GetStoreValue(ctx, "key1"); !exists || value != "latest_value" {
-		t.Errorf("Expected key1=latest_value (from height 3), got exists=%v, value=%s", exists, value)
-	}
-
-	// key2 should still return the value from height 1
-	if value, exists := exec.GetStoreValue(ctx, "key2"); !exists || value != "old_value" {
-		t.Errorf("Expected key2=old_value, got exists=%v, value=%s", exists, value)
-	}
-
-	// Non-existent key should return false
-	if value, exists := exec.GetStoreValue(ctx, "nonexistent"); exists {
-		t.Errorf("Expected nonexistent key to return false, got exists=%v, value=%s", exists, value)
+	if string(baselineStateRoot) == string(finalStateRoot) {
+		t.Error("Expected state root to change after adding user data")
 	}
 }

@@ -21,7 +21,7 @@ import (
 // setupRootCmd creates a new root command and adds the keys command to it.
 // This is necessary because the keys commands rely on global flags defined on the root.
 func setupRootCmd() *cobra.Command {
-	root := &cobra.Command{Use: "rollkit-test"}
+	root := &cobra.Command{Use: "evolve-test"}
 	// Prevent cobra from printing errors, so we can assert on them
 	root.SilenceErrors = true
 	// Prevent cobra from printing usage, so we can assert on output

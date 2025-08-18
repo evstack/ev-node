@@ -10,6 +10,12 @@ Ev-node is the basis of the Evolve Stack. For more in-depth information about Ev
 
 ## Using Evolve
 
+Evolve supports multiple sync modes:
+
+- **Hybrid sync**: Sync from both DA layer and P2P network (default when peers are configured)
+- **DA-only sync**: Sync exclusively from DA layer by leaving P2P peers empty (see [Configuration Guide](docs/learn/config.md#da-only-sync-mode))
+- **P2P-priority sync**: Prioritize P2P with DA as fallback
+
 ### Example Implementation: TestApp CLI
 
 The easiest way to understand how to use Evolve is by exploring our example implementation, TestApp.
@@ -100,4 +106,4 @@ make proto-lint
 | 2024/01/12 | [Informal Systems](https://informal.systems/) | [eccdd...bcb9d](https://github.com/evstack/ev-node/commit/eccdd0f1793a5ac532011ef4d896de9e0d8bcb9d) | [informal-systems.pdf](docs/audit/informal-systems.pdf) |
 | 2024/01/10 | [Binary Builders](https://binary.builders/)   | [eccdd...bcb9d](https://github.com/evstack/ev-node/commit/eccdd0f1793a5ac532011ef4d896de9e0d8bcb9d) | [binary-builders.pdf](docs/audit/binary-builders.pdf)   |
 
-[docs]: <https://rollkit.dev> <!-- todo rename once we have the domain-->
+[docs]: <https://ev.xyz>

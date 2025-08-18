@@ -8,17 +8,20 @@ import (
 	"time"
 
 	"encoding/binary"
+	"encoding/hex"
 	"errors"
 
 	"connectrpc.com/connect"
 	"connectrpc.com/grpcreflect"
+	coreda "github.com/evstack/ev-node/core/da"
 	ds "github.com/ipfs/go-datastore"
-	logging "github.com/ipfs/go-log/v2"
+	"github.com/rs/zerolog"
 	"golang.org/x/net/http2"
 	"golang.org/x/net/http2/h2c"
 	"google.golang.org/protobuf/types/known/emptypb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
+	"github.com/evstack/ev-node/pkg/config"
 	"github.com/evstack/ev-node/pkg/p2p"
 	"github.com/evstack/ev-node/pkg/store"
 	"github.com/evstack/ev-node/types"
@@ -29,11 +32,11 @@ import (
 // StoreServer implements the StoreService defined in the proto file
 type StoreServer struct {
 	store  store.Store
-	logger logging.EventLogger
+	logger zerolog.Logger
 }
 
 // NewStoreServer creates a new StoreServer instance
-func NewStoreServer(store store.Store, logger logging.EventLogger) *StoreServer {
+func NewStoreServer(store store.Store, logger zerolog.Logger) *StoreServer {
 	return &StoreServer{
 		store:  store,
 		logger: logger,
@@ -95,22 +98,22 @@ func (s *StoreServer) GetBlock(
 	}
 
 	// Fetch and set DA heights
-	rollkitBlockHeight := header.Height()
-	if rollkitBlockHeight > 0 { // DA heights are not stored for genesis/height 0 in the current impl
-		headerDAHeightKey := fmt.Sprintf("%s/%d/h", store.RollkitHeightToDAHeightKey, rollkitBlockHeight)
+	blockHeight := header.Height()
+	if blockHeight > 0 { // DA heights are not stored for genesis/height 0 in the current impl
+		headerDAHeightKey := fmt.Sprintf("%s/%d/h", store.HeightToDAHeightKey, blockHeight)
 		headerDAHeightBytes, err := s.store.GetMetadata(ctx, headerDAHeightKey)
 		if err == nil && len(headerDAHeightBytes) == 8 {
 			resp.HeaderDaHeight = binary.LittleEndian.Uint64(headerDAHeightBytes)
 		} else if err != nil && !errors.Is(err, ds.ErrNotFound) {
-			s.logger.Error("Error fetching header DA height for block", "height", rollkitBlockHeight, "err", err)
+			s.logger.Error().Uint64("height", blockHeight).Err(err).Msg("Error fetching header DA height for block")
 		}
 
-		dataDAHeightKey := fmt.Sprintf("%s/%d/d", store.RollkitHeightToDAHeightKey, rollkitBlockHeight)
+		dataDAHeightKey := fmt.Sprintf("%s/%d/d", store.HeightToDAHeightKey, blockHeight)
 		dataDAHeightBytes, err := s.store.GetMetadata(ctx, dataDAHeightKey)
 		if err == nil && len(dataDAHeightBytes) == 8 {
 			resp.DataDaHeight = binary.LittleEndian.Uint64(dataDAHeightBytes)
 		} else if err != nil && !errors.Is(err, ds.ErrNotFound) {
-			s.logger.Error("Error fetching data DA height for block", "height", rollkitBlockHeight, "err", err)
+			s.logger.Error().Uint64("height", blockHeight).Err(err).Msg("Error fetching data DA height for block")
 		}
 	}
 
@@ -159,6 +162,32 @@ func (s *StoreServer) GetMetadata(
 
 	return connect.NewResponse(&pb.GetMetadataResponse{
 		Value: value,
+	}), nil
+}
+
+type ConfigServer struct {
+	config config.Config
+	logger zerolog.Logger
+}
+
+func NewConfigServer(config config.Config, logger zerolog.Logger) *ConfigServer {
+	return &ConfigServer{
+		config: config,
+		logger: logger,
+	}
+}
+
+func (cs *ConfigServer) GetNamespace(
+	ctx context.Context,
+	req *connect.Request[emptypb.Empty],
+) (*connect.Response[pb.GetNamespaceResponse], error) {
+
+	hns := coreda.PrepareNamespace([]byte(cs.config.DA.HeaderNamespace))
+	dns := coreda.PrepareNamespace([]byte(cs.config.DA.DataNamespace))
+
+	return connect.NewResponse(&pb.GetNamespaceResponse{
+		HeaderNamespace: hex.EncodeToString(hns),
+		DataNamespace:   hex.EncodeToString(dns),
 	}), nil
 }
 
@@ -239,18 +268,22 @@ func (h *HealthServer) Livez(
 }
 
 // NewServiceHandler creates a new HTTP handler for Store, P2P and Health services
-func NewServiceHandler(store store.Store, peerManager p2p.P2PRPC, logger logging.EventLogger) (http.Handler, error) {
+func NewServiceHandler(store store.Store, peerManager p2p.P2PRPC, logger zerolog.Logger, config config.Config) (http.Handler, error) {
 	storeServer := NewStoreServer(store, logger)
 	p2pServer := NewP2PServer(peerManager)
 	healthServer := NewHealthServer()
+	configServer := NewConfigServer(config, logger)
 
 	mux := http.NewServeMux()
+
+	fmt.Println("Registering gRPC reflection service...")
 
 	compress1KB := connect.WithCompressMinBytes(1024)
 	reflector := grpcreflect.NewStaticReflector(
 		rpc.StoreServiceName,
 		rpc.P2PServiceName,
 		rpc.HealthServiceName,
+		rpc.ConfigServiceName,
 	)
 	mux.Handle(grpcreflect.NewHandlerV1(reflector, compress1KB))
 	mux.Handle(grpcreflect.NewHandlerV1Alpha(reflector, compress1KB))
@@ -266,6 +299,9 @@ func NewServiceHandler(store store.Store, peerManager p2p.P2PRPC, logger logging
 	// Register HealthService
 	healthPath, healthHandler := rpc.NewHealthServiceHandler(healthServer)
 	mux.Handle(healthPath, healthHandler)
+
+	configPath, configHandler := rpc.NewConfigServiceHandler(configServer)
+	mux.Handle(configPath, configHandler)
 
 	// Register custom HTTP endpoints
 	RegisterCustomHTTPEndpoints(mux)

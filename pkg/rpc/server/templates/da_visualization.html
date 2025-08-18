@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Evolve DA Layer Visualization</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .header { background-color: #f5f5f5; padding: 20px; border-radius: 5px; margin-bottom: 20px; }
+        .api-section { background-color: #e8f4f8; padding: 20px; border-radius: 5px; margin-bottom: 20px; border: 1px solid #b3d9e6; }
+        .api-endpoint { background-color: #fff; padding: 15px; margin: 10px 0; border-radius: 5px; border: 1px solid #ddd; }
+        .api-endpoint h4 { margin: 0 0 10px 0; color: #007cba; }
+        .api-endpoint code { background-color: #f4f4f4; padding: 4px 8px; border-radius: 3px; font-size: 14px; }
+        .api-response { background-color: #f9f9f9; padding: 10px; margin-top: 10px; border-radius: 3px; border-left: 3px solid #007cba; }
+        .submission { border: 1px solid #ddd; margin: 10px 0; padding: 15px; border-radius: 5px; }
+        .success { border-left: 4px solid #4CAF50; }
+        .error { border-left: 4px solid #f44336; }
+        .pending { border-left: 4px solid #ff9800; }
+        .blob-ids { margin-top: 10px; }
+        .blob-id { background-color: #f0f0f0; padding: 2px 6px; margin: 2px; border-radius: 3px; font-family: monospace; font-size: 12px; }
+        .meta { color: #666; font-size: 14px; }
+        table { border-collapse: collapse; width: 100%; }
+        th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+        th { background-color: #f2f2f2; }
+        .blob-link { color: #007cba; text-decoration: none; }
+        .blob-link:hover { text-decoration: underline; }
+        .method { display: inline-block; padding: 2px 6px; border-radius: 3px; font-weight: bold; font-size: 12px; margin-right: 8px; }
+        .method-get { background-color: #61b5ff; color: white; }
+        .method-post { background-color: #49cc90; color: white; }
+        .example-link { color: #007cba; text-decoration: none; font-size: 13px; }
+        .example-link:hover { text-decoration: underline; }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>DA Layer Visualization</h1>
+        <p>Real-time view of blob submissions from the sequencer node to the Data Availability layer.</p>
+        {{if .IsAggregator}}
+            {{if .Submissions}}
+            <p><strong>Recent Submissions:</strong> {{len .Submissions}} (last 100) | <strong>Last Update:</strong> {{.LastUpdate}}</p>
+            {{else}}
+            <p><strong>Node Type:</strong> Aggregator | <strong>Recent Submissions:</strong> 0 | <strong>Last Update:</strong> {{.LastUpdate}}</p>
+            {{end}}
+        {{else}}
+        <p><strong>Node Type:</strong> Non-aggregator | This node does not submit data to the DA layer.</p>
+        {{end}}
+    </div>
+
+    {{if .IsAggregator}}
+    <div class="api-section">
+        <h2>Available API Endpoints</h2>
+
+        <div class="api-endpoint">
+            <h4><span class="method method-get">GET</span> /da</h4>
+            <p>Returns this HTML visualization dashboard with real-time DA submission data.</p>
+            <p><strong>Example:</strong> <a href="/da" class="example-link">View Dashboard</a></p>
+        </div>
+
+        <div class="api-endpoint">
+            <h4><span class="method method-get">GET</span> /da/submissions</h4>
+            <p>Returns a JSON array of the most recent DA submissions (up to 100) with metadata.</p>
+            <p><strong>Note:</strong> Only aggregator nodes submit to the DA layer.</p>
+            <p><strong>Example:</strong> <code>curl http://localhost:8080/da/submissions</code></p>
+            <div class="api-response">
+                <strong>Response:</strong>
+                <pre>{
+  "submissions": [
+    {
+      "id": "submission_1234_1699999999",
+      "height": 1234,
+      "blob_size": 2048,
+      "timestamp": "2023-11-15T10:30:00Z",
+      "gas_price": 0.000001,
+      "status_code": "Success",
+      "num_blobs": 1,
+      "blob_ids": ["a1b2c3d4..."]
+    }
+  ],
+  "total": 42
+}</pre>
+            </div>
+        </div>
+
+        <div class="api-endpoint">
+            <h4><span class="method method-get">GET</span> /da/blob?id={blob_id}</h4>
+            <p>Returns detailed information about a specific blob including its content.</p>
+            <p><strong>Parameters:</strong> <code>id</code> - Hexadecimal blob ID</p>
+            <p><strong>Example:</strong> <code>curl http://localhost:8080/da/blob?id=a1b2c3d4...</code></p>
+            <div class="api-response">
+                <strong>Response:</strong>
+                <pre>{
+  "id": "a1b2c3d4...",
+  "height": 1234,
+  "commitment": "deadbeef...",
+  "size": 2048,
+  "content": "0x1234...",
+  "content_preview": "..."
+}</pre>
+            </div>
+        </div>
+
+        <div class="api-endpoint">
+            <h4><span class="method method-get">GET</span> /da/stats</h4>
+            <p>Returns aggregated statistics about DA submissions.</p>
+            <p><strong>Example:</strong> <code>curl http://localhost:8080/da/stats</code></p>
+            <div class="api-response">
+                <strong>Response:</strong>
+                <pre>{
+  "total_submissions": 42,
+  "success_count": 40,
+  "error_count": 2,
+  "success_rate": "95.24%",
+  "total_blob_size": 86016,
+  "avg_blob_size": 2048,
+  "avg_gas_price": 0.000001,
+  "time_range": {
+    "first": "2023-11-15T10:00:00Z",
+    "last": "2023-11-15T10:30:00Z"
+  }
+}</pre>
+            </div>
+        </div>
+
+        <div class="api-endpoint">
+            <h4><span class="method method-get">GET</span> /da/health</h4>
+            <p>Returns health status of the DA layer connection.</p>
+            <p><strong>Example:</strong> <code>curl http://localhost:8080/da/health</code></p>
+            <div class="api-response">
+                <strong>Response:</strong>
+                <pre>{
+  "status": "healthy",
+  "is_healthy": true,
+  "connection_status": "connected",
+  "connection_healthy": true,
+  "metrics": {
+    "recent_error_rate": "10.0%",
+    "recent_errors": 1,
+    "recent_successes": 9,
+    "recent_sample_size": 10,
+    "total_submissions": 42,
+    "last_submission_time": "2023-11-15T10:30:00Z",
+    "last_success_time": "2023-11-15T10:29:45Z",
+    "last_error_time": "2023-11-15T10:25:00Z"
+  },
+  "issues": [],
+  "timestamp": "2023-11-15T10:30:15Z"
+}</pre>
+            </div>
+            <p style="margin-top: 15px;"><strong>Health Status Values:</strong></p>
+            <ul style="margin-left: 20px; font-size: 13px; line-height: 1.8;">
+                <li><code>healthy</code> - System operating normally</li>
+                <li><code>degraded</code> - Elevated error rate but still functional</li>
+                <li><code>unhealthy</code> - Critical issues detected</li>
+                <li><code>warning</code> - Potential issues that need attention</li>
+                <li><code>unknown</code> - Insufficient data to determine health</li>
+            </ul>
+        </div>
+    </div>
+    {{end}}
+
+    {{if .IsAggregator}}
+    <h2>Recent Submissions</h2>
+    {{if .Submissions}}
+    <table>
+        <tr>
+            <th>Timestamp</th>
+            <th>Height</th>
+            <th>Status</th>
+            <th>Blobs</th>
+            <th>Size (bytes)</th>
+            <th>Gas Price</th>
+            <th>Message</th>
+        </tr>
+        {{range .Submissions}}
+        <tr class="{{if eq .StatusCode "Success"}}success{{else if eq .StatusCode "Error"}}error{{else}}pending{{end}}">
+            <td>{{if not .Timestamp.IsZero}}{{.Timestamp.Format "15:04:05"}}{{else}}--:--:--{{end}}</td>
+            <td>{{.Height}}</td>
+            <td>{{.StatusCode}}</td>
+            <td>
+                {{.NumBlobs}}
+                {{if .BlobIDs}}
+                <div class="blob-ids">
+                    {{range .BlobIDs}}
+                    <a href="/da/blob?id={{.}}" class="blob-link blob-id" title="Click to view blob details">{{slice . 0 8}}...</a>
+                    {{end}}
+                </div>
+                {{end}}
+            </td>
+            <td>{{.BlobSize}}</td>
+            <td>{{printf "%.6f" .GasPrice}}</td>
+            <td>{{.Message}}</td>
+        </tr>
+        {{end}}
+    </table>
+    {{else}}
+    <p>No submissions recorded yet. This aggregator node has not submitted any data to the DA layer yet.</p>
+    {{end}}
+    {{else}}
+    <h2>Node Information</h2>
+    <p>This is a non-aggregator node. Non-aggregator nodes do not submit data to the DA layer and therefore do not have submission statistics, health metrics, or DA-related API endpoints available.</p>
+    <p>Only aggregator nodes that actively produce blocks and submit data to the DA layer will display this information.</p>
+    {{end}}
+
+    <div style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #ddd; color: #666;">
+        <p><em>Auto-refresh: <span id="countdown">30</span>s</em> | <a href="javascript:location.reload()" style="color: #007cba;">Refresh Now</a></p>
+    </div>
+
+    <script>
+        // Auto-refresh page every 30 seconds
+        let countdown = 30;
+        const countdownEl = document.getElementById('countdown');
+        setInterval(() => {
+            countdown--;
+            countdownEl.textContent = countdown;
+            if (countdown <= 0) {
+                location.reload();
+            }
+        }, 1000);
+    </script>
+</body>
+</html>

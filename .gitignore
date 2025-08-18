@@ -15,4 +15,15 @@ build
 coverage.out
 execution/evm/jwttoken
 target
-apps/testapp/testapp
+/.claude/settings.local.json
+
+
+docs/.vitepress/dist
+node_modules
+docs/.vitepress/cache
+*.log
+*.tgz
+.idea
+.temp
+.vite_opt_cache
+.vscode

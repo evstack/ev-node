@@ -10,7 +10,7 @@ import (
 	"time"
 
 	goheaderstore "github.com/celestiaorg/go-header/store"
-	logging "github.com/ipfs/go-log/v2"
+	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
@@ -59,7 +59,7 @@ func setupManagerForSyncLoopTest(t *testing.T, initialState types.State) (
 		genesis:                  *genesisDoc,
 		lastState:                initialState,
 		lastStateMtx:             new(sync.RWMutex),
-		logger:                   logging.Logger("test"),
+		logger:                   zerolog.Nop(),
 		headerCache:              cache.NewCache[types.SignedHeader](),
 		dataCache:                cache.NewCache[types.Data](),
 		headerInCh:               headerInCh,
@@ -843,7 +843,7 @@ func TestSyncLoop_MultipleHeadersArriveFirst_ThenData(t *testing.T) {
 			txs[i] = append(txs[i], tx)
 		}
 
-		expectedAppHashes[i] = []byte(fmt.Sprintf("app_hash_h%d", i+1))
+		expectedAppHashes[i] = fmt.Appendf(nil, "app_hash_h%d", i+1)
 		var err error
 		expectedStates[i], err = prevState.NextState(headers[i].Header, expectedAppHashes[i])
 		require.NoError(err)
@@ -867,7 +867,7 @@ func TestSyncLoop_MultipleHeadersArriveFirst_ThenData(t *testing.T) {
 		genesis:                  genesis.Genesis{ChainID: initialState.ChainID},
 		lastState:                initialState,
 		lastStateMtx:             new(sync.RWMutex),
-		logger:                   logging.Logger("test"),
+		logger:                   zerolog.Nop(),
 		headerCache:              cache.NewCache[types.SignedHeader](),
 		dataCache:                cache.NewCache[types.Data](),
 		headerInCh:               headerInCh,

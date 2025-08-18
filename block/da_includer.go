@@ -25,13 +25,13 @@ func (m *Manager) DAIncluderLoop(ctx context.Context, errCh chan<- error) {
 			daIncluded, err := m.IsDAIncluded(ctx, nextHeight)
 			if err != nil {
 				// No more blocks to check at this time
-				m.logger.Debug("no more blocks to check at this time, height: ", nextHeight, "error: ", err)
+				m.logger.Debug().Uint64("height", nextHeight).Err(err).Msg("no more blocks to check at this time")
 				break
 			}
 			if daIncluded {
-				m.logger.Debug("both header and data are DA-included, advancing height: ", nextHeight)
-				if err := m.SetRollkitHeightToDAHeight(ctx, nextHeight); err != nil {
-					errCh <- fmt.Errorf("failed to set rollkit height to DA height: %w", err)
+				m.logger.Debug().Uint64("height", nextHeight).Msg("both header and data are DA-included, advancing height")
+				if err := m.SetSequencerHeightToDAHeight(ctx, nextHeight); err != nil {
+					errCh <- fmt.Errorf("failed to set sequencer height to DA height: %w", err)
 					return
 				}
 				// Both header and data are DA-included, so we can advance the height
@@ -54,18 +54,18 @@ func (m *Manager) DAIncluderLoop(ctx context.Context, errCh chan<- error) {
 func (m *Manager) incrementDAIncludedHeight(ctx context.Context) error {
 	currentHeight := m.GetDAIncludedHeight()
 	newHeight := currentHeight + 1
-	m.logger.Debug("setting final height: ", newHeight)
+	m.logger.Debug().Uint64("height", newHeight).Msg("setting final height")
 	err := m.exec.SetFinal(ctx, newHeight)
 	if err != nil {
-		m.logger.Error("failed to set final height: ", newHeight, "error: ", err)
+		m.logger.Error().Uint64("height", newHeight).Err(err).Msg("failed to set final height")
 		return err
 	}
 	heightBytes := make([]byte, 8)
 	binary.LittleEndian.PutUint64(heightBytes, newHeight)
-	m.logger.Debug("setting DA included height: ", newHeight)
+	m.logger.Debug().Uint64("height", newHeight).Msg("setting DA included height")
 	err = m.store.SetMetadata(ctx, storepkg.DAIncludedHeightKey, heightBytes)
 	if err != nil {
-		m.logger.Error("failed to set DA included height: ", newHeight, "error: ", err)
+		m.logger.Error().Uint64("height", newHeight).Err(err).Msg("failed to set DA included height")
 		return err
 	}
 	if !m.daIncludedHeight.CompareAndSwap(currentHeight, newHeight) {
@@ -74,7 +74,12 @@ func (m *Manager) incrementDAIncludedHeight(ctx context.Context) error {
 
 	// Update sequencer metrics if the sequencer supports it
 	if seq, ok := m.sequencer.(MetricsRecorder); ok {
-		seq.RecordMetrics(m.gasPrice, 0, coreda.StatusSuccess, m.pendingHeaders.numPendingHeaders(), newHeight)
+		gasPrice, err := m.da.GasPrice(ctx)
+		if err != nil {
+			m.logger.Warn().Err(err).Msg("failed to get gas price from DA layer, using default for metrics")
+			gasPrice = 0.0 // Use default gas price for metrics
+		}
+		seq.RecordMetrics(gasPrice, 0, coreda.StatusSuccess, m.pendingHeaders.numPendingHeaders(), newHeight)
 	}
 
 	return nil

@@ -24,7 +24,7 @@ test-integration:
 ## test-e2e: Running e2e tests
 test-e2e: build build-da build-evm-single
 	@echo "--> Running e2e tests"
-	@cd test/e2e && go test -mod=readonly -failfast -timeout=15m -tags='e2e evm' ./... --binary=$(CURDIR)/build/testapp --evm-binary=$(CURDIR)/build/evm-single
+	@cd test/e2e && go test -mod=readonly -failfast -timeout=15m -tags='e2e evm' ./... --binary=../../build/testapp --evm-binary=../../build/evm-single
 .PHONY: test-e2e
 
 ## test-integration-cover: generate code coverage report for integration tests.
@@ -48,7 +48,7 @@ test-evm:
 test-docker-e2e: docker-build-if-local
 	@echo "--> Running Docker E2E tests"
 	@echo "--> Verifying Docker image exists locally..."
-	@if [ -z "$(ROLLKIT_IMAGE_REPO)" ] || [ "$(ROLLKIT_IMAGE_REPO)" = "ev-node" ]; then \
+	@if [ -z "$(EV_NODE_IMAGE_REPO)" ] || [ "$(EV_NODE_IMAGE_REPO)" = "ev-node" ]; then \
 		echo "--> Verifying Docker image exists locally..."; \
 		docker image inspect evstack:local-dev >/dev/null 2>&1 || (echo "ERROR: evstack:local-dev image not found. Run 'make docker-build' first." && exit 1); \
 	fi
@@ -57,17 +57,17 @@ test-docker-e2e: docker-build-if-local
 
 ## docker-build-if-local: Build Docker image if using local repository
 docker-build-if-local:
-	@if [ -z "$(ROLLKIT_IMAGE_REPO)" ] || [ "$(ROLLKIT_IMAGE_REPO)" = "evstack" ]; then \
+	@if [ -z "$(EV_NODE_IMAGE_REPO)" ] || [ "$(EV_NODE_IMAGE_REPO)" = "evstack" ]; then \
 		echo "--> Local repository detected, building Docker image..."; \
 		$(MAKE) docker-build; \
 	else \
-		echo "--> Using remote repository: $(ROLLKIT_IMAGE_REPO)"; \
+		echo "--> Using remote repository: $(EV_NODE_IMAGE_REPO)"; \
 	fi
 .PHONY: docker-build-if-local
 
 ## docker-cleanup-if-local: Clean up local Docker image if using local repository
 docker-cleanup-if-local:
-	@if [ -z "$(ROLLKIT_IMAGE_REPO)" ] || [ "$(ROLLKIT_IMAGE_REPO)" = "evstack" ]; then \
+	@if [ -z "$(EV_NODE_IMAGE_REPO)" ] || [ "$(EV_NODE_IMAGE_REPO)" = "evstack" ]; then \
 		echo "--> Untagging local Docker image (preserving layers for faster rebuilds)..."; \
 		docker rmi evstack:local-dev --no-prune 2>/dev/null || echo "Image evstack:local-dev not found or already removed"; \
 	else \

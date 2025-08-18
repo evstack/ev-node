@@ -40,7 +40,7 @@ type Store interface {
 
 	// SetMetadata saves arbitrary value in the store.
 	//
-	// This method enables rollkit to safely persist any information.
+	// This method enables evolve to safely persist any information.
 	SetMetadata(ctx context.Context, key string, value []byte) error
 
 	// GetMetadata returns values stored for given key with SetMetadata.

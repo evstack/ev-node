@@ -147,7 +147,7 @@ func (c *EngineClient) GetTxs(ctx context.Context) ([][]byte, error) {
 
 // ExecuteTxs executes the given transactions at the specified block height and timestamp
 func (c *EngineClient) ExecuteTxs(ctx context.Context, txs [][]byte, blockHeight uint64, timestamp time.Time, prevStateRoot []byte) (updatedStateRoot []byte, maxBytes uint64, err error) {
-	// convert rollkit tx to hex strings for rollkit-reth
+	// convert evolve tx to hex strings for ev-reth
 	txsPayload := make([]string, len(txs))
 	for i, tx := range txs {
 		// Use the raw transaction bytes directly instead of re-encoding
@@ -168,23 +168,23 @@ func (c *EngineClient) ExecuteTxs(ctx context.Context, txs [][]byte, blockHeight
 	// update forkchoice to get the next payload id
 	var forkchoiceResult engine.ForkChoiceResponse
 
-	// Create rollkit-compatible payload attributes with flattened structure
-	rollkitPayloadAttrs := map[string]interface{}{
+	// Create evolve-compatible payload attributes with flattened structure
+	evPayloadAttrs := map[string]interface{}{
 		// Standard Ethereum payload attributes (flattened) - using camelCase as expected by JSON
 		"timestamp":             timestamp.Unix(),
 		"prevRandao":            c.derivePrevRandao(blockHeight),
 		"suggestedFeeRecipient": c.feeRecipient,
 		"withdrawals":           []*types.Withdrawal{},
 		// V3 requires parentBeaconBlockRoot
-		"parentBeaconBlockRoot": common.Hash{}.Hex(), // Use zero hash for rollkit
-		// Rollkit-specific fields
+		"parentBeaconBlockRoot": common.Hash{}.Hex(), // Use zero hash for evolve
+		// evolve-specific fields
 		"transactions": txsPayload,
 		"gasLimit":     prevGasLimit, // Use camelCase to match JSON conventions
 	}
 
 	err = c.engineClient.CallContext(ctx, &forkchoiceResult, "engine_forkchoiceUpdatedV3",
 		args,
-		rollkitPayloadAttrs,
+		evPayloadAttrs,
 	)
 	if err != nil {
 		return nil, 0, fmt.Errorf("forkchoice update failed: %w", err)
@@ -193,9 +193,6 @@ func (c *EngineClient) ExecuteTxs(ctx context.Context, txs [][]byte, blockHeight
 	if forkchoiceResult.PayloadID == nil {
 		return nil, 0, ErrNilPayloadStatus
 	}
-
-	// Small delay to allow payload building to complete
-	time.Sleep(10 * time.Millisecond)
 
 	// get payload
 	var payloadResult engine.ExecutionPayloadEnvelope

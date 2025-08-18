@@ -7,17 +7,17 @@ import (
 )
 
 const (
-	// ConfigFileName is the base name of the rollkit configuration file without extension.
+	// ConfigFileName is the base name of the evolve configuration file without extension.
 	ConfigFileName = "evnode"
 	// ConfigExtension is the file extension for the configuration file without the leading dot.
 	ConfigExtension = "yaml"
-	// ConfigPath is the filename for the rollkit configuration file.
+	// ConfigPath is the filename for the evolve configuration file.
 	ConfigName = ConfigFileName + "." + ConfigExtension
 	// AppConfigDir is the directory name for the app configuration.
 	AppConfigDir = "config"
 )
 
-// DefaultRootDir returns the default root directory for rollkit
+// DefaultRootDir returns the default root directory for evolve
 var DefaultRootDir = DefaultRootDirWithName(ConfigFileName)
 
 // DefaultRootDirWithName returns the default root directory for an application,
@@ -39,7 +39,6 @@ func DefaultRootDirWithName(appName string) string {
 var DefaultConfig = Config{
 	RootDir: DefaultRootDir,
 	DBPath:  "data",
-	ChainID: "rollkit-test",
 	P2P: P2PConfig{
 		ListenAddress: "/ip4/0.0.0.0/tcp/7676",
 		Peers:         "",
@@ -53,10 +52,14 @@ var DefaultConfig = Config{
 		TrustedHash:       "",
 	},
 	DA: DAConfig{
-		Address:       "http://localhost:7980",
-		BlockTime:     DurationWrapper{6 * time.Second},
-		GasPrice:      -1,
-		GasMultiplier: 0,
+		Address:           "http://localhost:7980",
+		BlockTime:         DurationWrapper{6 * time.Second},
+		GasPrice:          -1,
+		GasMultiplier:     0,
+		MaxSubmitAttempts: 30,
+		Namespace:         "",
+		HeaderNamespace:   "rollkit-headers",
+		DataNamespace:     "rollkit-data",
 	},
 	Instrumentation: DefaultInstrumentationConfig(),
 	Log: LogConfig{

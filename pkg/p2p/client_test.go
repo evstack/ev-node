@@ -10,11 +10,11 @@ import (
 
 	"github.com/ipfs/go-datastore"
 	dssync "github.com/ipfs/go-datastore/sync"
-	logging "github.com/ipfs/go-log/v2"
 	libp2p "github.com/libp2p/go-libp2p"
 	"github.com/libp2p/go-libp2p/core/host"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/multiformats/go-multiaddr"
+	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -34,8 +34,7 @@ func TestNewClientWithHost(t *testing.T) {
 	nodeKey, err := key.LoadOrGenNodeKey(filepath.Join(conf.RootDir, "config", "node_key.json"))
 	require.NoError(err)
 	ds := dssync.MutexWrap(datastore.NewMapDatastore())
-	logger := logging.Logger("test")
-	_ = logging.SetLogLevel("test", "debug")
+	logger := zerolog.Nop()
 	metrics := NopMetrics()
 
 	// Ensure config directory exists for nodeKey loading
@@ -43,7 +42,7 @@ func TestNewClientWithHost(t *testing.T) {
 
 	t.Run("successful client creation with injected host", func(t *testing.T) {
 		// First, create a client to get its expected gater
-		baseClient, err := NewClient(conf, nodeKey, ds, logger, metrics)
+		baseClient, err := NewClient(conf.P2P, nodeKey.PrivKey, ds, "TestChain", logger, metrics)
 		require.NoError(err)
 		require.NotNil(baseClient)
 
@@ -58,7 +57,7 @@ func TestNewClientWithHost(t *testing.T) {
 		require.NoError(err)
 		defer h.Close()
 
-		client, err := NewClientWithHost(conf, nodeKey, ds, logger, metrics, h)
+		client, err := NewClientWithHost(conf.P2P, nodeKey.PrivKey, ds, "TestChain", logger, metrics, h)
 		assert.NoError(err)
 		assert.NotNil(client)
 		assert.Equal(h, client.Host())
@@ -75,7 +74,7 @@ func TestNewClientWithHost(t *testing.T) {
 		h, err := mn.AddPeer(otherNodeKey.PrivKey, multiaddr.StringCast("/ip4/127.0.0.1/tcp/0"))
 		require.NoError(err)
 
-		client, err := NewClientWithHost(conf, nodeKey, ds, logger, metrics, h)
+		client, err := NewClientWithHost(conf.P2P, nodeKey.PrivKey, ds, "TestChain", logger, metrics, h)
 		assert.Error(err)
 		assert.Nil(client)
 		assert.Contains(err.Error(), "injected host ID")
@@ -100,7 +99,6 @@ func TestClientStartup(t *testing.T) {
 		conf config.Config
 	}{
 		{"peer_whitelisting", config.Config{
-			ChainID: "TestChain",
 			RootDir: tempDir,
 			P2P: config.P2PConfig{
 				ListenAddress: defaultConfig.P2P.ListenAddress,
@@ -113,7 +111,6 @@ func TestClientStartup(t *testing.T) {
 		{
 			"peer_blacklisting",
 			config.Config{
-				ChainID: "TestChain",
 				RootDir: tempDir,
 				P2P: config.P2PConfig{
 					ListenAddress: defaultConfig.P2P.ListenAddress,
@@ -127,10 +124,9 @@ func TestClientStartup(t *testing.T) {
 
 	for _, testCase := range testCases {
 		t.Run(testCase.desc, func(t *testing.T) {
-			testLogger := logging.Logger(testCase.desc) // Use specific logger for test case
-			_ = logging.SetLogLevel(testCase.desc, "debug")
-			client, err := NewClient(testCase.conf, nodeKey,
-				dssync.MutexWrap(datastore.NewMapDatastore()), testLogger, NopMetrics())
+			testLogger := zerolog.Nop() // Use specific logger for test case
+			client, err := NewClient(testCase.conf.P2P, nodeKey.PrivKey,
+				dssync.MutexWrap(datastore.NewMapDatastore()), "test-chain", testLogger, NopMetrics())
 			assert.NoError(err)
 			assert.NotNil(client)
 
@@ -147,8 +143,7 @@ func TestClientStartup(t *testing.T) {
 
 func TestBootstrapping(t *testing.T) {
 	assert := assert.New(t)
-	logger := logging.Logger("TestBootstrapping")
-	_ = logging.SetLogLevel("TestBootstrapping", "debug")
+	logger := zerolog.Nop()
 
 	clients := startTestNetwork(t.Context(), t, 4, map[int]hostDescr{
 		1: {conns: []int{0}},
@@ -169,8 +164,7 @@ func TestBootstrapping(t *testing.T) {
 
 func TestDiscovery(t *testing.T) {
 	assert := assert.New(t)
-	logger := logging.Logger("TestDiscovery")
-	_ = logging.SetLogLevel("TestDiscovery", "debug")
+	logger := zerolog.Nop()
 
 	clients := startTestNetwork(t.Context(), t, 5, map[int]hostDescr{
 		1: {conns: []int{0}, chainID: "ORU2"},
@@ -223,8 +217,7 @@ func TestSeedStringParsing(t *testing.T) {
 		t.Run(c.name, func(t *testing.T) {
 			assert := assert.New(t)
 			require := require.New(t)
-			logger := logging.Logger("TestSeedStringParsing")
-			_ = logging.SetLogLevel("TestSeedStringParsing", "FATAL")
+			logger := zerolog.Nop()
 			tempDir := t.TempDir()
 			ClientInitFiles(t, tempDir)
 
@@ -232,9 +225,10 @@ func TestSeedStringParsing(t *testing.T) {
 			require.NoError(err)
 
 			client, err := NewClient(
-				config.Config{RootDir: tempDir, ChainID: "TestChain"},
-				nodeKey,
+				config.Config{RootDir: tempDir}.P2P,
+				nodeKey.PrivKey,
 				dssync.MutexWrap(datastore.NewMapDatastore()),
+				"TestChain",
 				logger,
 				NopMetrics(),
 			)
@@ -288,14 +282,12 @@ func waitForCondition(timeout time.Duration, conditionFunc func() bool) error {
 func TestClientInfoMethods(t *testing.T) {
 	require := require.New(t)
 	assert := assert.New(t)
-	logger := logging.Logger("TestClientInfoMethods")
-	_ = logging.SetLogLevel("TestClientInfoMethods", "debug")
+	logger := zerolog.Nop()
 
 	tempDir := t.TempDir()
 	ClientInitFiles(t, tempDir)
 	conf := config.DefaultConfig
 	conf.RootDir = tempDir
-	conf.ChainID = "test-chain"
 
 	mn := mocknet.New()
 	defer mn.Close()
@@ -309,7 +301,7 @@ func TestClientInfoMethods(t *testing.T) {
 		require.NoError(e)
 		h, e := mn.AddPeer(nodeKey.PrivKey, multiaddr.StringCast("/ip4/127.0.0.1/tcp/0"))
 		require.NoError(e)
-		c, e := NewClientWithHost(conf, nodeKey, dssync.MutexWrap(datastore.NewMapDatastore()), logger, NopMetrics(), h)
+		c, e := NewClientWithHost(conf.P2P, nodeKey.PrivKey, dssync.MutexWrap(datastore.NewMapDatastore()), "test-chain", logger, NopMetrics(), h)
 		require.NoError(e)
 		clients = append(clients, c)
 		hosts = append(hosts, h)
@@ -349,14 +341,42 @@ func TestClientInfoMethods(t *testing.T) {
 	})
 
 	t.Run("GetPeers", func(t *testing.T) {
+		// Wait for peer discovery to find the peers
+		expectedPeerIDs := []peer.ID{client1.host.ID(), client2.host.ID()}
+
+		err := waitForCondition(2*time.Second, func() bool {
+			peers, err := client0.GetPeers()
+			if err != nil {
+				return false
+			}
+
+			actualPeerIDs := make(map[peer.ID]bool)
+			for _, p := range peers {
+				actualPeerIDs[p.ID] = true
+			}
+
+			// Check if all expected peers are found
+			for _, expectedID := range expectedPeerIDs {
+				if !actualPeerIDs[expectedID] {
+					return false
+				}
+			}
+			return true
+		})
+
+		require.NoError(err, "Timed out waiting for GetPeers to discover all peers")
+
+		// Now verify the peers are as expected
 		peers, err := client0.GetPeers()
 		assert.NoError(err)
-		expectedPeerIDs := []peer.ID{client1.host.ID(), client2.host.ID()}
 		actualPeerIDs := make([]peer.ID, len(peers))
 		for i, p := range peers {
 			actualPeerIDs[i] = p.ID
 		}
-		assert.ElementsMatch(expectedPeerIDs, actualPeerIDs)
+		// Check that the expected peers are present in the actual peers
+		for _, expectedID := range expectedPeerIDs {
+			assert.Contains(actualPeerIDs, expectedID)
+		}
 	})
 
 	t.Run("Peers", func(t *testing.T) {

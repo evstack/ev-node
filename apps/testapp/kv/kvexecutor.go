@@ -17,9 +17,16 @@ var (
 	genesisInitializedKey = ds.NewKey("/genesis/initialized")
 	genesisStateRootKey   = ds.NewKey("/genesis/stateroot")
 	heightKeyPrefix       = ds.NewKey("/height")
-
+	finalizedHeightKey    = ds.NewKey("/finalizedHeight")
 	// Define a buffer size for the transaction channel
 	txChannelBufferSize = 10000
+	// reservedKeys defines the set of keys that should be excluded from state root calculation
+	// and protected from transaction modifications
+	reservedKeys = map[ds.Key]bool{
+		genesisInitializedKey: true,
+		genesisStateRootKey:   true,
+		finalizedHeightKey:    true,
+	}
 )
 
 // KVExecutor is a simple key-value store backed by go-datastore that implements the Executor interface
@@ -110,9 +117,9 @@ func (k *KVExecutor) computeStateRoot(ctx context.Context) ([]byte, error) {
 		if result.Error != nil {
 			return nil, fmt.Errorf("error iterating query results: %w", result.Error)
 		}
-		// Exclude reserved genesis keys from the state root calculation
+		// Exclude reserved keys from the state root calculation
 		dsKey := ds.NewKey(result.Key)
-		if dsKey.Equal(genesisInitializedKey) || dsKey.Equal(genesisStateRootKey) {
+		if reservedKeys[dsKey] {
 			continue
 		}
 		keys = append(keys, result.Key)
@@ -242,7 +249,7 @@ func (k *KVExecutor) ExecuteTxs(ctx context.Context, txs [][]byte, blockHeight u
 		dsKey := getTxKey(blockHeight, key)
 
 		// Prevent writing reserved keys via transactions
-		if dsKey.Equal(genesisInitializedKey) || dsKey.Equal(genesisStateRootKey) {
+		if reservedKeys[dsKey] {
 			return nil, 0, fmt.Errorf("transaction attempts to modify reserved key: %s", key)
 		}
 
@@ -283,7 +290,7 @@ func (k *KVExecutor) SetFinal(ctx context.Context, blockHeight uint64) error {
 		return errors.New("invalid blockHeight: cannot be zero")
 	}
 
-	return k.db.Put(ctx, ds.NewKey("/finalizedHeight"), fmt.Appendf([]byte{}, "%d", blockHeight))
+	return k.db.Put(ctx, finalizedHeightKey, []byte(fmt.Sprintf("%d", blockHeight)))
 }
 
 // InjectTx adds a transaction to the mempool channel.

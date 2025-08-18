@@ -273,7 +273,6 @@ func TestHeightErrors(t *testing.T) {
 	_ = cases[1].mock.Put(context.Background(), ds.NewKey(getHeightKey()), badHeightBytes)
 
 	for _, tc := range cases {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			s := New(tc.mock)
