@@ -57,7 +57,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .btree_map(".")
         // Generate to our output directory
         .out_dir(&proto_dir)
-        .compile_protos(&proto_files, &[proto_root.clone()])?;
+        .compile_protos(&proto_files, std::slice::from_ref(&proto_root.clone()))?;
 
     println!("cargo:rerun-if-changed={}", proto_root.display());
     Ok(())

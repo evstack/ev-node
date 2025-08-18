@@ -87,8 +87,7 @@ pub fn decompress_blob(compressed_blob: &[u8]) -> Result<Bytes> {
         // This could be either a legacy blob or a corrupted header
         // Use heuristics to determine which
 
-        let original_size =
-            u64::from_le_bytes(compressed_blob[1..9].try_into().unwrap_or([0; 8]));
+        let original_size = u64::from_le_bytes(compressed_blob[1..9].try_into().unwrap_or([0; 8]));
 
         // If flag is in printable ASCII range (32-126) and size is unreasonable,
         // it's likely a legacy text blob
@@ -115,7 +114,7 @@ pub fn decompress_blob(compressed_blob: &[u8]) -> Result<Bytes> {
             // Decompress with ruzstd
             let mut decoder = StreamingDecoder::new(payload)
                 .map_err(|e| CompressionError::DecompressionFailed(e.to_string()))?;
-            
+
             let mut decompressed = Vec::new();
             decoder
                 .read_to_end(&mut decompressed)
@@ -229,16 +228,16 @@ mod tests {
         // Create a blob with uncompressed header
         let original_data = b"test data";
         let mut blob = Vec::with_capacity(COMPRESSION_HEADER_SIZE + original_data.len());
-        
+
         // Add header
         blob.push(FLAG_UNCOMPRESSED);
         blob.extend_from_slice(&(original_data.len() as u64).to_le_bytes());
         blob.extend_from_slice(original_data);
-        
+
         // Decompress
         let decompressed = decompress_blob(&blob).unwrap();
         assert_eq!(original_data, decompressed.as_ref());
-        
+
         // Check info
         let info = get_compression_info(&blob);
         assert!(!info.is_compressed);
@@ -252,7 +251,7 @@ mod tests {
         let mut blob = Vec::new();
         blob.push(FLAG_UNCOMPRESSED);
         blob.extend_from_slice(&100u64.to_le_bytes());
-        blob.extend_from_slice(&vec![0u8; 100]);
+        blob.extend_from_slice(&[0u8; 100]);
 
         let info = get_compression_info(&blob);
         assert!(!info.is_compressed);

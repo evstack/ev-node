@@ -35,12 +35,12 @@ fn test_uncompressed_with_header() {
     // Create a blob with uncompressed header
     let original_data = b"test data";
     let mut blob = Vec::with_capacity(9 + original_data.len());
-    
+
     // Add header (flag + 8 bytes for size)
     blob.push(0x00); // FLAG_UNCOMPRESSED
     blob.extend_from_slice(&(original_data.len() as u64).to_le_bytes());
     blob.extend_from_slice(original_data);
-    
+
     // Decompress
     let decompressed = decompress_blob(&blob).unwrap();
     assert_eq!(original_data, decompressed.as_ref());
@@ -64,7 +64,7 @@ fn test_compression_info() {
 #[test]
 fn test_empty_blob() {
     let empty = vec![];
-    
+
     // Should handle empty blob gracefully
     let decompressed = decompress_blob(&empty).unwrap();
     assert_eq!(empty, decompressed.as_ref());
@@ -96,7 +96,7 @@ fn test_corrupted_blob_detection() {
     // Create a blob that looks like it has a header but is corrupted
     let mut corrupted = vec![0u8; 20];
     corrupted[0] = 0xAB; // Invalid flag that's not ASCII
-    // Set a reasonable size that suggests this was meant to be compressed
+                         // Set a reasonable size that suggests this was meant to be compressed
     let size_bytes = 1000u64.to_le_bytes();
     corrupted[1..9].copy_from_slice(&size_bytes);
 

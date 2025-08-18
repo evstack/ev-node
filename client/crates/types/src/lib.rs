@@ -15,6 +15,4 @@ pub mod v1 {
 
 // Re-export compression types for convenience when compression is enabled
 #[cfg(feature = "compression")]
-pub use compression::{
-    decompress_blob, get_compression_info, CompressionError, CompressionInfo,
-};
+pub use compression::{decompress_blob, get_compression_info, CompressionError, CompressionInfo};
