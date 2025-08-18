@@ -7,7 +7,7 @@ require (
 	github.com/evstack/ev-node v0.0.0-00010101000000-000000000000
 	github.com/evstack/ev-node/execution/evm v0.0.0-20250602130019-2a732cf903a5
 	github.com/golang-jwt/jwt/v5 v5.3.0
-	github.com/libp2p/go-libp2p v0.42.0
+	github.com/libp2p/go-libp2p v0.43.0
 	github.com/stretchr/testify v1.10.0
 )
 
@@ -45,7 +45,7 @@ require (
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/bits-and-blooms/bitset v1.20.0 // indirect
 	github.com/buger/goterm v1.0.4 // indirect
-	github.com/celestiaorg/go-header v0.7.0 // indirect
+	github.com/celestiaorg/go-header v0.6.6 // indirect
 	github.com/cenkalti/backoff/v4 v4.3.0 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/compose-spec/compose-go/v2 v2.6.0 // indirect
@@ -127,13 +127,13 @@ require (
 	github.com/ipfs/go-cid v0.5.0 // indirect
 	github.com/ipfs/go-datastore v0.8.3 // indirect
 	github.com/ipfs/go-ds-badger4 v0.1.8 // indirect
-	github.com/ipfs/go-log/v2 v2.6.0 // indirect
+	github.com/ipfs/go-log/v2 v2.8.0 // indirect
 	github.com/jonboulle/clockwork v0.5.0 // indirect
 	github.com/josharian/intern v1.0.0 // indirect
 	github.com/json-iterator/go v1.1.12 // indirect
 	github.com/kballard/go-shellquote v0.0.0-20180428030007-95032a82bc51 // indirect
 	github.com/klauspost/compress v1.18.0 // indirect
-	github.com/klauspost/cpuid/v2 v2.2.10 // indirect
+	github.com/klauspost/cpuid/v2 v2.3.0 // indirect
 	github.com/libp2p/go-buffer-pool v0.1.0 // indirect
 	github.com/libp2p/go-libp2p-pubsub v0.14.2 // indirect
 	github.com/libp2p/go-msgio v0.3.0 // indirect
@@ -173,7 +173,7 @@ require (
 	github.com/multiformats/go-multiaddr v0.16.1 // indirect
 	github.com/multiformats/go-multiaddr-fmt v0.1.0 // indirect
 	github.com/multiformats/go-multibase v0.2.0 // indirect
-	github.com/multiformats/go-multicodec v0.9.1 // indirect
+	github.com/multiformats/go-multicodec v0.9.2 // indirect
 	github.com/multiformats/go-multihash v0.2.3 // indirect
 	github.com/multiformats/go-multistream v0.6.1 // indirect
 	github.com/multiformats/go-varint v0.0.7 // indirect
@@ -190,7 +190,7 @@ require (
 	github.com/prometheus/client_golang v1.23.0 // indirect
 	github.com/prometheus/client_model v0.6.2 // indirect
 	github.com/prometheus/common v0.65.0 // indirect
-	github.com/prometheus/procfs v0.16.1 // indirect
+	github.com/prometheus/procfs v0.17.0 // indirect
 	github.com/r3labs/sse v0.0.0-20210224172625-26fe804710bc // indirect
 	github.com/rivo/uniseg v0.2.0 // indirect
 	github.com/rs/zerolog v1.34.0 // indirect
@@ -243,7 +243,7 @@ require (
 	go.uber.org/multierr v1.11.0 // indirect
 	go.uber.org/zap v1.27.0 // indirect
 	golang.org/x/crypto v0.41.0 // indirect
-	golang.org/x/exp v0.0.0-20250606033433-dcc06ee1d476 // indirect
+	golang.org/x/exp v0.0.0-20250811191247-51f88131bc50 // indirect
 	golang.org/x/net v0.43.0 // indirect
 	golang.org/x/oauth2 v0.30.0 // indirect
 	golang.org/x/sync v0.16.0 // indirect

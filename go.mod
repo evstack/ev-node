@@ -9,12 +9,12 @@ replace github.com/evstack/ev-node/core => ./core
 require (
 	connectrpc.com/connect v1.18.1
 	connectrpc.com/grpcreflect v1.3.0
-	github.com/celestiaorg/go-header v0.7.0
+	github.com/celestiaorg/go-header v0.6.6
 	github.com/celestiaorg/utils v0.1.0
 	github.com/evstack/ev-node/core v0.0.0-00010101000000-000000000000
 	github.com/go-kit/kit v0.13.0
 	github.com/goccy/go-yaml v1.18.0
-	github.com/ipfs/go-datastore v0.8.3
+	github.com/ipfs/go-datastore v0.8.2
 	github.com/ipfs/go-ds-badger4 v0.1.8
 	github.com/libp2p/go-libp2p v0.43.0
 	github.com/libp2p/go-libp2p-kad-dht v0.34.0
