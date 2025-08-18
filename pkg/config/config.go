@@ -474,7 +474,7 @@ func bindFlags(basename string, cmd *cobra.Command, v *viper.Viper) (err error) 
 
 	cmd.Flags().VisitAll(func(f *pflag.Flag) {
 		// trimm possible prefixes from the flag name
-		flagName := strings.TrimPrefix(f.Name, FlagPrefixRollkit)
+		flagName := strings.TrimPrefix(f.Name, FlagPrefixEvnode)
 		flagName = strings.TrimPrefix(flagName, FlagPrefixRollkit)
 
 		// Environment variables can't have dashes in them, so bind them to their equivalent
