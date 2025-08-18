@@ -1,11 +1,13 @@
 package block
 
 import (
+	"container/heap"
 	"context"
 	"errors"
 	"fmt"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"google.golang.org/protobuf/proto"
@@ -20,9 +22,16 @@ const (
 	dAFetcherRetries  = 10
 
 	// Parallel retrieval configuration
+	minWorkers              = 1
+	maxWorkers              = 10
 	defaultConcurrencyLimit = 5
 	defaultPrefetchWindow   = 50
 	defaultResultBufferSize = 100
+
+	// Worker scaling thresholds
+	scaleUpThreshold   = 10 // Queue depth to trigger scale up
+	scaleDownThreshold = 2  // Queue depth to trigger scale down
+	scaleInterval      = 5 * time.Second
 )
 
 var (
@@ -37,22 +46,45 @@ type RetrievalResult struct {
 	Error  error
 }
 
+// ResultHeap implements a min-heap for ordered result processing
+type ResultHeap []*RetrievalResult
+
+func (h ResultHeap) Len() int           { return len(h) }
+func (h ResultHeap) Less(i, j int) bool { return h[i].Height < h[j].Height }
+func (h ResultHeap) Swap(i, j int)      { h[i], h[j] = h[j], h[i] }
+
+func (h *ResultHeap) Push(x interface{}) {
+	*h = append(*h, x.(*RetrievalResult))
+}
+
+func (h *ResultHeap) Pop() interface{} {
+	old := *h
+	n := len(old)
+	item := old[n-1]
+	*h = old[0 : n-1]
+	return item
+}
+
 // ParallelRetriever manages parallel retrieval of blocks from DA layer
 type ParallelRetriever struct {
-	manager          *Manager
-	concurrencyLimit int
-	prefetchWindow   int
-	workChan         chan uint64
-	resultChan       chan *RetrievalResult
-	workers          sync.WaitGroup
-	processors       sync.WaitGroup // Track result processor goroutine
-	dispatcher       sync.WaitGroup // Track dispatcher goroutine
-	ctx              context.Context
-	cancel           context.CancelFunc
+	manager        *Manager
+	prefetchWindow int
+	workChan       chan uint64
+	resultChan     chan *RetrievalResult
+	workers        sync.WaitGroup
+	processors     sync.WaitGroup // Track result processor goroutine
+	dispatcher     sync.WaitGroup // Track dispatcher goroutine
+	scaler         sync.WaitGroup // Track scaler goroutine
+	ctx            context.Context
+	cancel         context.CancelFunc
 
-	// Result ordering and buffering
-	resultBuffer      map[uint64]*RetrievalResult
-	resultMutex       sync.RWMutex
+	// Dynamic worker management
+	activeWorkers  int32 // Atomic counter for active workers
+	workerStopChan chan struct{}
+
+	// Result ordering using priority queue
+	resultHeap        ResultHeap
+	resultHeapMutex   sync.Mutex
 	nextHeight        uint64
 	maxBufferSize     int             // Prevent unbounded growth
 	pendingHeights    map[uint64]bool // Track dispatched heights
@@ -70,17 +102,18 @@ func NewParallelRetriever(manager *Manager, parentCtx context.Context) *Parallel
 	}
 
 	return &ParallelRetriever{
-		manager:          manager,
-		concurrencyLimit: defaultConcurrencyLimit,
-		prefetchWindow:   prefetchWindow,
-		workChan:         make(chan uint64, defaultResultBufferSize),
-		resultChan:       make(chan *RetrievalResult, defaultResultBufferSize),
-		ctx:              ctx,
-		cancel:           cancel,
-		resultBuffer:     make(map[uint64]*RetrievalResult),
-		nextHeight:       manager.daHeight.Load(),
-		maxBufferSize:    defaultResultBufferSize * 2, // Allow some buffering but prevent unbounded growth
-		pendingHeights:   make(map[uint64]bool),
+		manager:        manager,
+		prefetchWindow: prefetchWindow,
+		workChan:       make(chan uint64, defaultResultBufferSize),
+		resultChan:     make(chan *RetrievalResult, defaultResultBufferSize),
+		ctx:            ctx,
+		cancel:         cancel,
+		resultHeap:     make(ResultHeap, 0),
+		nextHeight:     manager.daHeight.Load(),
+		maxBufferSize:  defaultResultBufferSize * 2, // Allow some buffering but prevent unbounded growth
+		pendingHeights: make(map[uint64]bool),
+		workerStopChan: make(chan struct{}, maxWorkers),
+		activeWorkers:  0,
 	}
 }
 
@@ -98,15 +131,9 @@ func (m *Manager) RetrieveLoop(ctx context.Context) {
 
 // Start begins the parallel retrieval process
 func (pr *ParallelRetriever) Start() {
-	// Start worker pool
-	for i := 0; i < pr.concurrencyLimit; i++ {
-		pr.workers.Add(1)
-		go pr.worker()
-	}
-
-	// Update worker count metric
-	if pr.manager.metrics != nil {
-		pr.manager.metrics.ParallelRetrievalWorkers.Set(float64(pr.concurrencyLimit))
+	// Start with minimum workers
+	for i := 0; i < minWorkers; i++ {
+		pr.startWorker()
 	}
 
 	// Start height dispatcher goroutine
@@ -117,6 +144,10 @@ func (pr *ParallelRetriever) Start() {
 	pr.processors.Add(1)
 	go pr.processResults()
 
+	// Start worker scaler goroutine
+	pr.scaler.Add(1)
+	go pr.scaleWorkers()
+
 	// Start metrics updater goroutine
 	go pr.updateMetrics()
 }
@@ -126,9 +157,22 @@ func (pr *ParallelRetriever) Stop() {
 	// Cancel context to signal all goroutines to stop
 	pr.cancel()
 
+	// Wait for scaler to exit
+	pr.scaler.Wait()
+
 	// Wait for dispatcher to exit before closing channels
 	// This prevents the race condition where dispatchHeights tries to send to a closed channel
 	pr.dispatcher.Wait()
+
+	// Signal all workers to stop
+	currentWorkers := atomic.LoadInt32(&pr.activeWorkers)
+	for i := int32(0); i < currentWorkers; i++ {
+		select {
+		case pr.workerStopChan <- struct{}{}:
+		default:
+		}
+	}
+
 	// Close work channel to signal workers to exit
 	close(pr.workChan)
 
@@ -142,24 +186,108 @@ func (pr *ParallelRetriever) Stop() {
 	pr.processors.Wait()
 }
 
+// startWorker starts a new worker goroutine
+func (pr *ParallelRetriever) startWorker() {
+	atomic.AddInt32(&pr.activeWorkers, 1)
+	pr.workers.Add(1)
+	go pr.worker()
+
+	// Update metric
+	if pr.manager.metrics != nil {
+		pr.manager.metrics.ParallelRetrievalWorkers.Set(float64(atomic.LoadInt32(&pr.activeWorkers)))
+	}
+}
+
+// stopWorker signals a worker to stop
+func (pr *ParallelRetriever) stopWorker() bool {
+	current := atomic.LoadInt32(&pr.activeWorkers)
+	if current <= minWorkers {
+		return false
+	}
+
+	select {
+	case pr.workerStopChan <- struct{}{}:
+		return true
+	default:
+		return false
+	}
+}
+
+// scaleWorkers dynamically adjusts the number of workers based on queue depth
+func (pr *ParallelRetriever) scaleWorkers() {
+	defer pr.scaler.Done()
+	ticker := time.NewTicker(scaleInterval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-pr.ctx.Done():
+			return
+		case <-ticker.C:
+			pr.adjustWorkerCount()
+		}
+	}
+}
+
+// adjustWorkerCount scales workers up or down based on queue depth
+func (pr *ParallelRetriever) adjustWorkerCount() {
+	queueDepth := len(pr.workChan)
+	currentWorkers := atomic.LoadInt32(&pr.activeWorkers)
+
+	// Calculate pending work including dispatched but not completed
+	pr.pendingHeightsMux.RLock()
+	totalPending := queueDepth + len(pr.pendingHeights)
+	pr.pendingHeightsMux.RUnlock()
+
+	// Scale up if queue is deep and we haven't hit max
+	if totalPending > scaleUpThreshold && currentWorkers < maxWorkers {
+		// Add workers proportional to load
+		workersToAdd := min((totalPending-scaleUpThreshold)/5+1, int(maxWorkers-currentWorkers))
+		for i := 0; i < workersToAdd; i++ {
+			pr.startWorker()
+		}
+		pr.manager.logger.Debug().
+			Int32("workers", atomic.LoadInt32(&pr.activeWorkers)).
+			Int("queue", queueDepth).
+			Msg("scaled up workers")
+	} else if totalPending < scaleDownThreshold && currentWorkers > minWorkers {
+		// Scale down gradually
+		workersToRemove := min(int(currentWorkers-minWorkers), 2)
+		removed := 0
+		for i := 0; i < workersToRemove; i++ {
+			if pr.stopWorker() {
+				removed++
+			}
+		}
+		if removed > 0 {
+			pr.manager.logger.Debug().
+				Int32("workers", atomic.LoadInt32(&pr.activeWorkers)).
+				Int("queue", queueDepth).
+				Msg("scaled down workers")
+		}
+	}
+}
+
 // dispatchHeights manages the work distribution to workers
 func (pr *ParallelRetriever) dispatchHeights() {
 	defer pr.dispatcher.Done()
-	blobsFoundCh := make(chan struct{}, 1)
-	defer close(blobsFoundCh)
+	ticker := time.NewTicker(100 * time.Millisecond)
+	defer ticker.Stop()
 
 	for {
 		select {
 		case <-pr.ctx.Done():
 			return
 		case <-pr.manager.retrieveCh:
-		case <-blobsFoundCh:
+			// Explicit trigger from manager
+		case <-ticker.C:
+			// Regular check for new work
 		}
 
 		// Check buffer size before dispatching more work
-		pr.resultMutex.RLock()
-		bufferSize := len(pr.resultBuffer)
-		pr.resultMutex.RUnlock()
+		pr.resultHeapMutex.Lock()
+		bufferSize := pr.resultHeap.Len()
+		pr.resultHeapMutex.Unlock()
 
 		if bufferSize >= pr.maxBufferSize {
 			// Buffer is full, wait before dispatching more
@@ -204,21 +332,25 @@ func (pr *ParallelRetriever) dispatchHeights() {
 				break
 			}
 		}
-
-		// Signal to continue dispatching
-		select {
-		case blobsFoundCh <- struct{}{}:
-		default:
-		}
 	}
 }
 
 // worker processes DA height retrieval tasks
 func (pr *ParallelRetriever) worker() {
 	defer pr.workers.Done()
+	defer func() {
+		atomic.AddInt32(&pr.activeWorkers, -1)
+		// Update metric
+		if pr.manager.metrics != nil {
+			pr.manager.metrics.ParallelRetrievalWorkers.Set(float64(atomic.LoadInt32(&pr.activeWorkers)))
+		}
+	}()
 
 	for {
 		select {
+		case <-pr.workerStopChan:
+			// Graceful shutdown requested
+			return
 		case height, ok := <-pr.workChan:
 			if !ok {
 				return
@@ -266,10 +398,10 @@ func (pr *ParallelRetriever) processResults() {
 				continue
 			}
 
-			// Buffer the result
-			pr.resultMutex.Lock()
-			pr.resultBuffer[result.Height] = result
-			pr.resultMutex.Unlock()
+			// Add to heap
+			pr.resultHeapMutex.Lock()
+			heap.Push(&pr.resultHeap, result)
+			pr.resultHeapMutex.Unlock()
 
 			// Process results in order
 			pr.processOrderedResults()
@@ -277,21 +409,21 @@ func (pr *ParallelRetriever) processResults() {
 	}
 }
 
-// processOrderedResults processes buffered results in height order
+// processOrderedResults processes buffered results in height order using the priority queue
 func (pr *ParallelRetriever) processOrderedResults() {
 	for {
-		// Get and remove the next result while holding the lock
-		pr.resultMutex.Lock()
-		result, exists := pr.resultBuffer[pr.nextHeight]
-		if !exists {
-			pr.resultMutex.Unlock()
+		pr.resultHeapMutex.Lock()
+
+		// Check if we have the next expected height
+		if pr.resultHeap.Len() == 0 || pr.resultHeap[0].Height != pr.nextHeight {
+			pr.resultHeapMutex.Unlock()
 			break
 		}
 
-		// Remove from buffer and advance height while still holding lock
-		delete(pr.resultBuffer, pr.nextHeight)
+		// Pop the next result from the heap
+		result := heap.Pop(&pr.resultHeap).(*RetrievalResult)
 		pr.nextHeight++
-		pr.resultMutex.Unlock()
+		pr.resultHeapMutex.Unlock()
 
 		// Process the result without holding the lock to avoid blocking other operations
 		if result.Error != nil && pr.ctx.Err() == nil {
@@ -302,9 +434,15 @@ func (pr *ParallelRetriever) processOrderedResults() {
 					Str("errors", result.Error.Error()).
 					Msg("failed to retrieve data from DALC")
 			}
-		} else if result.Error == nil {
-			// Process successful retrieval
-			pr.manager.processRetrievedData(pr.ctx, result.Data, result.Height)
+			// Don't increment height on error (unless it's height from future)
+		} else {
+			// Process successful retrieval or NotFound
+			if len(result.Data) > 0 {
+				pr.manager.processRetrievedData(pr.ctx, result.Data, result.Height)
+			} else {
+				pr.manager.logger.Debug().Uint64("daHeight", result.Height).Msg("no blob data found (NotFound)")
+			}
+			// Increment height on success or NotFound
 			pr.manager.daHeight.Store(result.Height + 1)
 		}
 	}
@@ -527,9 +665,9 @@ func (pr *ParallelRetriever) updateMetrics() {
 		case <-ticker.C:
 			if pr.manager.metrics != nil {
 				// Update buffer size metric
-				pr.resultMutex.RLock()
-				bufferSize := len(pr.resultBuffer)
-				pr.resultMutex.RUnlock()
+				pr.resultHeapMutex.Lock()
+				bufferSize := pr.resultHeap.Len()
+				pr.resultHeapMutex.Unlock()
 				pr.manager.metrics.ParallelRetrievalBufferSize.Set(float64(bufferSize))
 			}
 		}
