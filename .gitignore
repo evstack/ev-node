@@ -16,7 +16,7 @@ coverage.out
 execution/evm/jwttoken
 target
 /.claude/settings.local.json
-
+apps/testapp/testapp
 
 docs/.vitepress/dist
 node_modules
