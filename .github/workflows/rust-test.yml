@@ -5,21 +5,21 @@ permissions:
 on:
   pull_request:
     paths:
-      - 'client/**'
-      - 'proto/**'
-      - 'Cargo.toml'
-      - 'Cargo.lock'
-      - '.github/workflows/rust-*.yml'
+      - "client/**"
+      - "proto/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - ".github/workflows/rust-*.yml"
   push:
     branches:
       - main
       - release/*
     paths:
-      - 'client/**'
-      - 'proto/**'
-      - 'Cargo.toml'
-      - 'Cargo.lock'
-      - '.github/workflows/rust-*.yml'
+      - "client/**"
+      - "proto/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - ".github/workflows/rust-*.yml"
 
 jobs:
   test:
@@ -75,22 +75,22 @@ jobs:
           cd client/crates/types
           # Check minimal build (just protobuf, no compression or grpc)
           cargo check --no-default-features --verbose
-          
+
       - name: Check ev-types with only std
         run: |
           cd client/crates/types
           cargo check --no-default-features --features std --verbose
-          
+
       - name: Check ev-types with compression only
         run: |
           cd client/crates/types
           cargo check --no-default-features --features compression --verbose
-          
+
       - name: Check ev-types with grpc only
         run: |
           cd client/crates/types
           cargo check --no-default-features --features grpc --verbose
-          
+
       - name: Check ev-types with default features
         run: |
           cd client/crates/types
@@ -116,14 +116,14 @@ jobs:
           cd client/crates/types
           # Test that the crate builds for an embedded target without std
           cargo check --no-default-features --target thumbv7m-none-eabi --verbose
-          
+
       - name: Check no_std with alloc
         run: |
           cd client/crates/types
           # Some embedded systems have alloc but not std
           # This verifies we can use the crate with just alloc support
           cargo check --no-default-features --target thumbv7m-none-eabi --verbose
-          
+
       - name: Build for wasm32 target (another no_std target)
         run: |
           rustup target add wasm32-unknown-unknown
