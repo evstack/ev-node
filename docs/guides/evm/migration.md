@@ -78,20 +78,22 @@ It does not accept a --block flag, so to capture a specific migration height you
 ⸻
 
 Option 1 — Stop at the target height before dumping
+
 - Sync your Evolve/reth node to the agreed migration height.
 - Disable block production or stop the sequencer so no new blocks are added.
 - Run dump-genesis while the DB is exactly at the migration height.
 
-#### Stop node at migration height
+```bash
+# Stop node at migration height
 
 systemctl stop evolve-node
 
-#### Export state at current head (must be migration height)
+# Export state at current head (must be migration height)
 
 ev-reth dump-genesis \
   --datadir /path/to/reth/datadir \
   --output genesis-export.json
-
+```
 
 ⸻
 
@@ -99,25 +101,27 @@ Option 2 — Rewind DB to migration height
 
 If your node has already synced past the migration block:
 
+```bash
 reth db revert-to-block <MIGRATION_BLOCK_HEIGHT> --datadir /path/to/reth/datadir
 
-#### Then dump the state
-
+# Then dump the state
 reth dump-genesis \
   --datadir /path/to/reth/datadir \
   --output genesis-export.json
+```
 
 ⸻
 
 Verification after export:
 
-#### Number of accounts in alloc
+```bash
+# Number of accounts in alloc
 
 jq '.alloc | length' genesis-export.json
 
-#### Review chain configuration
-
+# Review chain configuration
 jq '.config' genesis-export.json
+```
 
 The exported genesis will contain:
 
@@ -155,7 +159,6 @@ jq '.config.chainId = <NEW_CHAIN_ID> |
     genesis-export.json > genesis-new.json
 ```
 
-
 ### 6. Initialize New Chain with reth init
 
 Initialize the new chain using the modified genesis:
@@ -189,6 +192,7 @@ rm -rf $HOME_DIR/data
 ```
 
 **Important Notes**:
+
 - The `$HOME_DIR/config` directory contains critical sequencer node identity and private keys
 - **Never delete the config directory** - this would result in loss of node identity
 - Only the `data` directory should be purged to start fresh with the new chain
@@ -224,6 +228,7 @@ Bridge operators must be notified well in advance to:
 - **Map balances**: Ensure locked tokens match bridged tokens on new chain
 
 Coordination checklist:
+
 ```markdown
 - [ ] Notify bridge operators 2 weeks before migration
 - [ ] Pause bridge operations at block height - 100
@@ -243,6 +248,7 @@ Explorer operators need to:
 - **Redirect users**: Implement proper redirects and notifications
 
 Explorer coordination:
+
 ```bash
 # Provide explorer operators with:
 - New genesis file
@@ -264,6 +270,7 @@ Exchange integration requires careful coordination:
 - **Resume operations**: Gradual reopening after validation
 
 Exchange checklist:
+
 ```markdown
 - [ ] 30-day advance notice to exchanges
 - [ ] Provide technical migration guide
@@ -380,26 +387,31 @@ Here's a recommended timeline for chain migration:
 
 ```markdown
 ### T-30 days
+
 - [ ] Initial migration announcement
 - [ ] Technical documentation published
 - [ ] Begin coordination with service providers
 
 ### T-14 days
+
 - [ ] Finalize migration block height
 - [ ] Confirm participation from all validators
 - [ ] Service providers confirm readiness
 
 ### T-7 days
+
 - [ ] Final migration parameters locked
 - [ ] Test migration on testnet
 - [ ] Public reminder announcements
 
 ### T-24 hours
+
 - [ ] Final coordination call
 - [ ] Service suspension notifications
 - [ ] Last-chance backups
 
 ### T-0 (Migration)
+
 - [ ] Stop nodes at target height
 - [ ] Export state
 - [ ] Generate new genesis
@@ -408,11 +420,13 @@ Here's a recommended timeline for chain migration:
 - [ ] Initial validation
 
 ### T+6 hours
+
 - [ ] Service providers begin reconnection
 - [ ] Initial functionality tests
 - [ ] Public progress updates
 
 ### T+24 hours
+
 - [ ] Full service restoration
 - [ ] Post-migration report
 - [ ] Address any issues
@@ -423,6 +437,7 @@ Here's a recommended timeline for chain migration:
 ### Common Issues and Solutions
 
 **State Export Failures**:
+
 ```bash
 # If export fails due to memory, increase heap size
 export RETH_HEAP_SIZE=8g
@@ -430,6 +445,7 @@ reth dump-genesis --datadir /path/to/datadir
 ```
 
 **Genesis Initialization Errors**:
+
 ```bash
 # Verify genesis file format
 jq empty genesis-new.json  # Should return nothing if valid
@@ -439,6 +455,7 @@ jq '.config.chainId, .alloc, .timestamp' genesis-new.json
 ```
 
 **Node Sync Issues**:
+
 ```bash
 # Clear peer database and reconnect
 rm -rf /path/to/datadir/nodes
