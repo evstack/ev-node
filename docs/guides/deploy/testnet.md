@@ -170,7 +170,7 @@ The two services work together through well-defined interfaces:
 The single sequencer node runs both RETH and EVOLVE services with specific settings:
 
 - **RETH**: Configured to accept blocks from the Evolve sequencer
-- **EVOLVE**: Configured with `--evolve.node.aggregator=true` to enable block production
+- **EVOLVE**: Configured with `--evnode.node.aggregator=true` to enable block production
 - **Role**: Produces blocks, orders transactions, posts to DA layer
 
 ### 📡 Full Node Configuration
@@ -178,7 +178,7 @@ The single sequencer node runs both RETH and EVOLVE services with specific setti
 Each full node also runs both RETH and EVOLVE services but in sync mode:
 
 - **RETH**: Configured to process blocks received from the network
-- **EVOLVE**: Configured with `--evolve.node.aggregator=false` to sync from the sequencer
+- **EVOLVE**: Configured with `--evnode.node.aggregator=false` to sync from the sequencer
 - **Role**: Syncs blocks, serves queries, provides redundancy
 
 ### 🔑 Key Integration Points
@@ -196,14 +196,14 @@ You can customize timing parameters for your chain. While there are many configu
 
 #### 🎯 Sequencer Block Time
 
-- **Flag**: `--evolve.node.block_time`
+- **Flag**: `--evnode.node.block_time`
 - **Default**: 1s (1 block per second)
 - **Purpose**: Controls how frequently the sequencer produces new blocks
 - **Customization**: Can be adjusted based on throughput requirements and latency preferences
 
 #### 📊 Data Availability Block Time
 
-- **Flag**: `--evolve.da.block_time`
+- **Flag**: `--evnode.da.block_time`
 - **Default**: 6s
 - **Purpose**: Controls how frequently blobs are posted to the Celestia chain
 - **Function**: Each 6 seconds (by default), batched block data is submitted to Celestia for data availability

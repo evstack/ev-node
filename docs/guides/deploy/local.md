@@ -106,7 +106,7 @@ COPY --from=base /root/.gm /root/.gm
 # CMD tail -f /dev/null
 
 ENTRYPOINT ["gmd"]
-CMD ["start","--evolve.node.aggregator"]
+CMD ["start","--evnode.node.aggregator"]
 ```
 
 This Dockerfile sets up the environment to build the chain and run the gm-world node. It then sets up the runtime environment to run the chain. This allows you as the developer to modify any files, and then simply rebuild the Docker image to run the new chain.
@@ -156,8 +156,8 @@ services:
     command:
       [
         "start",
-        "--evolve.node.aggregator",
-        "--evolve.da.address",
+        "--evnode.node.aggregator",
+        "--evnode.da.address",
         "http://0.0.0.0:7980",
       ]
     # Ensures the local-da service is up and running before starting the chain
