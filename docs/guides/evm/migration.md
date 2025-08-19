@@ -135,6 +135,10 @@ jq '.config.chainId = <NEW_CHAIN_ID> |
     .config.istanbulBlock = 0 |
     .config.berlinBlock = 0 |
     .config.londonBlock = 0 |
+    .config.shanghaiTime = 0 |
+    .config.cancunTime = 0 |
+    .config.pragueTime = 0 |
+    .config.osakaTime = 0 |
     .timestamp = <NEW_GENESIS_TIMESTAMP>' \
     genesis-export.json > genesis-new.json
 ```
