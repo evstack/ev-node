@@ -39,7 +39,7 @@ I[2024-10-17|14:52:13.845] executed block                               module=B
 I[2024-10-17|14:52:13.845] indexed block events                         module=txindex height=8
 ```
 
-It is important to include any additional flags that you used when you first started your chain. For example, if you used the `--evolve.da.namespace` flag, you will need to include that flag when restarting your chain to ensure your chain continues to publish blobs to the same namespace.
+It is important to include any additional flags that you used when you first started your chain. For example, if you used the `--evnode.da.namespace` flag, you will need to include that flag when restarting your chain to ensure your chain continues to publish blobs to the same namespace.
 
 ## Restart chain after running out of funds
 
