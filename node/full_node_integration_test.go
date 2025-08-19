@@ -39,9 +39,16 @@ func TestTxGossipingMultipleNodesNoDA(t *testing.T) {
 	// Verify block manager is properly initialized
 	require.NotNil(nodes[0].blockManager, "Block manager should be initialized")
 
+	// Add a small delay to ensure P2P services are fully ready
+	time.Sleep(500 * time.Millisecond)
+
 	// Start the other nodes
 	for i := 1; i < numNodes; i++ {
 		startNodeInBackground(t, nodes, ctxs, &runningWg, i)
+		// Add a small delay between starting nodes to avoid connection race
+		if i < numNodes-1 {
+			time.Sleep(100 * time.Millisecond)
+		}
 	}
 
 	// Inject a transaction into the sequencer's executor
@@ -88,9 +95,16 @@ func TestTxGossipingMultipleNodesDAIncluded(t *testing.T) {
 	// Verify block manager is properly initialized
 	require.NotNil(nodes[0].blockManager, "Block manager should be initialized")
 
+	// Add a small delay to ensure P2P services are fully ready
+	time.Sleep(500 * time.Millisecond)
+
 	// Start the other nodes
 	for i := 1; i < numNodes; i++ {
 		startNodeInBackground(t, nodes, ctxs, &runningWg, i)
+		// Add a small delay between starting nodes to avoid connection race
+		if i < numNodes-1 {
+			time.Sleep(100 * time.Millisecond)
+		}
 	}
 
 	// Inject a transaction into the sequencer's executor
@@ -142,6 +156,9 @@ func TestFastDASync(t *testing.T) {
 	blocksToWaitFor := uint64(2)
 	require.NoError(waitForAtLeastNDAIncludedHeight(nodes[0], blocksToWaitFor))
 
+	// Add a small delay to ensure P2P services are fully ready
+	time.Sleep(500 * time.Millisecond)
+
 	// Now start the second node and time its sync
 	startNodeInBackground(t, nodes, ctxs, &runningWg, 1)
 	start := time.Now()
@@ -186,9 +203,16 @@ func TestSingleSequencerTwoFullNodesBlockSyncSpeed(t *testing.T) {
 	// Wait for the sequencer to produce at first block
 	require.NoError(waitForFirstBlock(nodes[0], Store))
 
+	// Add a small delay to ensure P2P services are fully ready
+	time.Sleep(500 * time.Millisecond)
+
 	// Now start the other nodes
 	for i := 1; i < numNodes; i++ {
 		startNodeInBackground(t, nodes, ctxs, &runningWg, i)
+		// Add a small delay between starting nodes to avoid connection race
+		if i < numNodes-1 {
+			time.Sleep(100 * time.Millisecond)
+		}
 	}
 
 	blocksToWaitFor := uint64(10)
