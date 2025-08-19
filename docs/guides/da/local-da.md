@@ -26,7 +26,7 @@ This script will build and run the node, which will then listen on port `7980`.
 
 ## Configuring your chain to connect to the local DA network
 
-To connect your chain to the local DA network, you need to pass the `--evolve.da.address` flag with the local DA node address.
+To connect your chain to the local DA network, you need to pass the `--evnode.da.address` flag with the local DA node address.
 
 ## Run your chain
 
