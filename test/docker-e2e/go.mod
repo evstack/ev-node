@@ -7,7 +7,6 @@ require github.com/celestiaorg/tastora v0.2.2
 require (
 	cosmossdk.io/x/upgrade v0.1.4 // indirect
 	github.com/chzyer/readline v1.5.1 // indirect
-	github.com/containerd/errdefs/pkg v0.3.0 // indirect
 	github.com/cosmos/ibc-go/modules/capability v1.0.1 // indirect
 	github.com/cosmos/ibc-go/v8 v8.7.0 // indirect
 	github.com/go-viper/mapstructure/v2 v2.2.1 // indirect
@@ -96,7 +95,7 @@ require (
 	github.com/dgraph-io/badger/v4 v4.2.0 // indirect
 	github.com/dgraph-io/ristretto v0.1.1 // indirect
 	github.com/distribution/reference v0.6.0 // indirect
-	github.com/docker/docker v28.3.3+incompatible // indirect
+	github.com/docker/docker v28.2.2+incompatible // indirect
 	github.com/docker/go-connections v0.5.0 // indirect
 	github.com/docker/go-units v0.5.0 // indirect
 	github.com/dustin/go-humanize v1.0.1 // indirect
@@ -148,7 +147,7 @@ require (
 	github.com/mitchellh/go-testing-interface v1.14.1 // indirect
 	github.com/mitchellh/mapstructure v1.5.0 // indirect
 	github.com/moby/docker-image-spec v1.3.1 // indirect
-	github.com/moby/moby v28.3.3+incompatible
+	github.com/moby/moby v27.5.1+incompatible
 	github.com/moby/sys/sequential v0.6.0 // indirect
 	github.com/mtibben/percent v0.2.1 // indirect
 	github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822 // indirect

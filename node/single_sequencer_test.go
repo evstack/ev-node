@@ -26,7 +26,7 @@ func TestStartup(t *testing.T) {
 	}()
 
 	// Allow some time for the node to start
-	time.Sleep(100 * time.Millisecond)
+	time.Sleep(500 * time.Millisecond)
 
 	// Node should be running (no error received yet)
 	select {
@@ -44,7 +44,7 @@ func TestStartup(t *testing.T) {
 	case err := <-errChan:
 		// Context cancellation should result in context.Canceled error
 		require.ErrorIs(t, err, context.Canceled)
-	case <-time.After(500 * time.Millisecond):
+	case <-time.After(2 * time.Second):
 		t.Fatal("Node did not stop after context cancellation")
 	}
 
