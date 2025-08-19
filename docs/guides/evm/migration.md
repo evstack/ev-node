@@ -52,15 +52,23 @@ All network participants must agree on:
 
 ### 3. Stop the Node at Target Height
 
-Configure your node to stop at the agreed-upon migration height:
+Configure your node to stop at the agreed-upon migration height. Both the Evolve node and ev-reth must be stopped to properly export the genesis state:
 
 ```bash
 # Stop the Evolve node gracefully
-docker stop evolve-node
+docker stop ev-node
 
 # Or if running as a service
-systemctl stop evolve-node
+systemctl stop ev-node
+
+# Stop ev-reth
+docker stop ev-reth
+
+# Or if running as a service
+systemctl stop ev-reth
 ```
+
+**Important**: ev-reth must be completely shutdown before running `dump-genesis` as the export process requires exclusive access to the database.
 
 ### 4. Export Current State Using reth dump-genesis
 
@@ -74,11 +82,13 @@ Option 1 — Stop at the target height before dumping
 - Disable block production or stop the sequencer so no new blocks are added.
 - Run dump-genesis while the DB is exactly at the migration height.
 
-# Stop node at migration height
+#### Stop node at migration height
+
 systemctl stop evolve-node
 
-# Export state at current head (must be migration height)
-reth dump-genesis \
+#### Export state at current head (must be migration height)
+
+ev-reth dump-genesis \
   --datadir /path/to/reth/datadir \
   --output genesis-export.json
 
@@ -91,27 +101,29 @@ If your node has already synced past the migration block:
 
 reth db revert-to-block <MIGRATION_BLOCK_HEIGHT> --datadir /path/to/reth/datadir
 
-# Then dump the state
+#### Then dump the state
+
 reth dump-genesis \
   --datadir /path/to/reth/datadir \
   --output genesis-export.json
-
 
 ⸻
 
 Verification after export:
 
-# Number of accounts in alloc
+#### Number of accounts in alloc
+
 jq '.alloc | length' genesis-export.json
 
-# Review chain configuration
+#### Review chain configuration
+
 jq '.config' genesis-export.json
 
 The exported genesis will contain:
+
 - All account balances and nonces
 - Contract bytecode and storage
 - Current chain configuration
-
 
 ### 5. Prepare New Genesis Configuration
 
@@ -161,18 +173,26 @@ reth init \
 reth db stats --datadir /path/to/new/reth/datadir
 ```
 
-### 7. Update Node Configuration
+### 7. Update Node Configuration and Purge Data
 
-Update your Evolve node configuration for the new chain:
+Update your Evolve node configuration for the new chain and purge the data directory:
 
-```yaml
-# evolve.yml
-chain_id: <NEW_CHAIN_ID>
-genesis_file: /path/to/genesis-new.json
-reth:
-  datadir: /path/to/new/reth/datadir
-  network_id: <NEW_NETWORK_ID>
+**CRITICAL**: Always preserve the `$HOME_DIR/config` directory as it contains essential sequencer node ID and private keys.
+
+```bash
+# Update the configuration file with new chain ID
+# Edit $HOME_DIR/config/evolve.yaml
+sed -i 's/chain_id: .*/chain_id: <NEW_CHAIN_ID>/' $HOME_DIR/config/evolve.yaml
+
+# Purge the data directory
+rm -rf $HOME_DIR/data
 ```
+
+**Important Notes**:
+- The `$HOME_DIR/config` directory contains critical sequencer node identity and private keys
+- **Never delete the config directory** - this would result in loss of node identity
+- Only the `data` directory should be purged to start fresh with the new chain
+- Backup your config directory before migration as an additional safety measure
 
 ### 8. Start the New Chain
 
@@ -180,10 +200,16 @@ Start your node with the new configuration:
 
 ```bash
 # Start Evolve node with new configuration
-evolve start --config evolve.yml
+docker start ev-reth
+
+# Or if running as a service
+systemctl start ev-reth
 
 # Monitor logs for successful startup
-tail -f /var/log/evolve/node.log
+docker logs ev-reth
+
+# Or if running as a service
+journalctl -xeu ev-reth
 ```
 
 ## External Services Coordination
