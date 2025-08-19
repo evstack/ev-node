@@ -35,7 +35,7 @@ curl -sSL https://ev.xyz/install-local-da.sh | bash -s {{constants.evolveLatestT
 Start the chain, posting to the local DA network:
 
 ```bash
-gmd start --evolve.node.aggregator --evolve.da.address http://localhost:7980 --minimum-gas-prices="0.02ibc/C3E53D20BC7A4CC993B17C7971F8ECD06A433C10B6A96F4C4C3714F0624C56DA,0.025stake"
+gmd start --evnode.node.aggregator --evnode.da.address http://localhost:7980 --minimum-gas-prices="0.02ibc/C3E53D20BC7A4CC993B17C7971F8ECD06A433C10B6A96F4C4C3714F0624C56DA,0.025stake"
 ```
 
 Note that we specified the gas token to be IBC TIA. We still haven't made an IBC connection to Celestia's Mocha testnet, however, if we assume our first channel will be an ICS-20 transfer channel to Celestia, we can already calculate the token denom using this formula:
