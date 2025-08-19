@@ -2,7 +2,7 @@ module github.com/evstack/ev-node/test/docker-e2e
 
 go 1.24.2
 
-require github.com/celestiaorg/tastora v0.2.2
+require github.com/celestiaorg/tastora v0.2.3
 
 require (
 	cosmossdk.io/x/upgrade v0.1.4 // indirect

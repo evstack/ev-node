@@ -66,7 +66,7 @@ func (s *DockerTestSuite) CreateDockerProvider(opts ...ConfigOption) tastoratype
 	numValidators := 1
 	numFullNodes := 0
 	client, network := tastoradocker.DockerSetup(t)
-	
+
 	// Store client and network ID in the suite for later use
 	s.dockerClient = client
 	s.dockerNetworkID = network
@@ -76,11 +76,11 @@ func (s *DockerTestSuite) CreateDockerProvider(opts ...ConfigOption) tastoratype
 		DockerClient:    client,
 		DockerNetworkID: network,
 		ChainConfig: &tastoradocker.ChainConfig{
-			Name:          "celestia",
-			NumValidators: &numValidators,
-			NumFullNodes:  &numFullNodes,
-			ChainID:       testChainID,
-			Image: container.NewImage("ghcr.io/celestiaorg/celestia-app", "v4.0.0-rc6", "10001:10001"),
+			Name:           "celestia",
+			NumValidators:  &numValidators,
+			NumFullNodes:   &numFullNodes,
+			ChainID:        testChainID,
+			Image:          container.NewImage("ghcr.io/celestiaorg/celestia-app", "v4.0.0-rc6", "10001:10001"),
 			Bin:            "celestia-appd",
 			Bech32Prefix:   "celestia",
 			Denom:          "utia",
@@ -99,7 +99,7 @@ func (s *DockerTestSuite) CreateDockerProvider(opts ...ConfigOption) tastoratype
 		},
 		DataAvailabilityNetworkConfig: &tastoradocker.DataAvailabilityNetworkConfig{
 			BridgeNodeCount: 1,
-			Image: container.NewImage("ghcr.io/celestiaorg/celestia-node", "pr-4283", "10001:10001"),
+			Image:           container.NewImage("ghcr.io/celestiaorg/celestia-node", "pr-4283", "10001:10001"),
 		},
 		RollkitChainConfig: &tastoradocker.RollkitChainConfig{
 			ChainID:              "rollkit-test",
@@ -170,7 +170,7 @@ func (s *DockerTestSuite) CreateChain() tastoratypes.Chain {
 		WithDockerClient(s.dockerClient).
 		WithDockerNetworkID(s.dockerNetworkID).
 		WithNode(tastoradocker.NewChainNodeConfigBuilder().
-			WithNodeType(tastoradocker.ValidatorNodeType).
+			WithNodeType(tastoratypes.NodeTypeValidator).
 			Build()).
 		Build(ctx)
 
