@@ -274,6 +274,9 @@ func testSingleSequencerSingleFullNode(t *testing.T, source Source) {
 	// Wait for the sequencer to produce at first block
 	require.NoError(waitForFirstBlock(nodes[0], source))
 
+	// Add a small delay to ensure P2P services are fully ready
+	time.Sleep(500 * time.Millisecond)
+
 	// Start the full node
 	startNodeInBackground(t, nodes, ctxs, &runningWg, 1)
 
@@ -312,9 +315,16 @@ func testSingleSequencerTwoFullNodes(t *testing.T, source Source) {
 	// Wait for the sequencer to produce at first block
 	require.NoError(waitForFirstBlock(nodes[0], source))
 
+	// Add a small delay to ensure P2P services are fully ready
+	time.Sleep(500 * time.Millisecond)
+
 	// Start the full nodes
 	for i := 1; i < numNodes; i++ {
 		startNodeInBackground(t, nodes, ctxs, &runningWg, i)
+		// Add a small delay between starting nodes to avoid connection race
+		if i < numNodes-1 {
+			time.Sleep(100 * time.Millisecond)
+		}
 	}
 
 	blocksToWaitFor := uint64(3)
@@ -371,6 +381,9 @@ func testSingleSequencerSingleFullNodeTrustedHash(t *testing.T, source Source) {
 
 	// Set the trusted hash in the full node
 	nodes[1].nodeConfig.Node.TrustedHash = trustedHash
+
+	// Add a small delay to ensure P2P services are fully ready
+	time.Sleep(500 * time.Millisecond)
 
 	// Start the full node
 	startNodeInBackground(t, nodes, ctxs, &runningWg, 1)

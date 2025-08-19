@@ -27,3 +27,4 @@ docs/.vitepress/cache
 .temp
 .vite_opt_cache
 .vscode
+.claude
