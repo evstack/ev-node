@@ -72,7 +72,7 @@ The JWT secret is typically located at `ev-node/execution/evm/docker/jwttoken/jw
 
 ```bash
 cd build
-./evm-single init --evolve.node.aggregator=true --evolve.signer.passphrase secret
+./evm-single init --evnode.node.aggregator=true --evnode.signer.passphrase secret
 ```
 
 ### 2. Start the Sequencer
@@ -81,9 +81,9 @@ cd build
 ./evm-single start \
   --evm.jwt-secret $(cat /path/to/ev-node/execution/evm/docker/jwttoken/jwt.hex) \
   --evm.genesis-hash 0x0a962a0d163416829894c89cb604ae422323bcdf02d7ea08b94d68d3e026a380 \
-  --evolve.node.block_time 1s \
-  --evolve.node.aggregator=true \
-  --evolve.signer.passphrase secret
+  --evnode.node.block_time 1s \
+  --evnode.node.aggregator=true \
+  --evnode.signer.passphrase secret
 ```
 
 Replace `/path/to/` with the actual path to your ev-node repository.
@@ -121,9 +121,9 @@ INF listening on address=/ip4/127.0.0.1/tcp/26659/p2p/12D3KooWXXXXXXXXXXXXXXXXXX
   --home ~/.evolve/evm-single-fullnode \
   --evm.jwt-secret $(cat /path/to/ev-node/execution/evm/docker/jwttoken/jwt.hex) \
   --evm.genesis-hash 0x0a962a0d163416829894c89cb604ae422323bcdf02d7ea08b94d68d3e026a380 \
-  --evolve.node.block_time 1s \
-  --evolve.node.aggregator=false \
-  --evolve.p2p.peers <SEQUENCER_P2P_ID>@127.0.0.1:26659
+  --evnode.node.block_time 1s \
+  --evnode.node.aggregator=false \
+  --evnode.p2p.peers <SEQUENCER_P2P_ID>@127.0.0.1:26659
 ```
 
 Replace `<SEQUENCER_P2P_ID>` with the actual P2P ID from your sequencer's logs.
@@ -142,9 +142,9 @@ INF block marked as DA included blockHash=XXXX blockHeight=XX module=BlockManage
 
 | Flag | Description |
 |------|-------------|
-| `--evolve.node.aggregator` | Set to true for sequencer mode, false for full node |
-| `--evolve.signer.passphrase` | Passphrase for the signer |
-| `--evolve.node.block_time` | Block time for the Evolve node |
+| `--evnode.node.aggregator` | Set to true for sequencer mode, false for full node |
+| `--evnode.signer.passphrase` | Passphrase for the signer |
+| `--evnode.node.block_time` | Block time for the Evolve node |
 
 ### EVM Flags
 

@@ -66,7 +66,7 @@ Run your full node with the following command:
 
 ```bash
 gmd start \
-  --evolve.da.address http://127.0.0.1:7980 \
+  --evnode.da.address http://127.0.0.1:7980 \
   --p2p.seeds $P2P_ID@127.0.0.1:7676 \
   --minimum-gas-prices 0stake \
   --rpc.laddr tcp://127.0.0.1:46657 \
