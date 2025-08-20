@@ -70,6 +70,7 @@ func (m *Manager) processNextDAHeaderAndData(ctx context.Context) error {
 			return ctx.Err()
 		default:
 		}
+
 		blobsResp, fetchErr := m.fetchBlobs(ctx, daHeight)
 		if fetchErr == nil {
 			// Record successful DA retrieval
@@ -124,15 +125,6 @@ func (m *Manager) handlePotentialHeader(ctx context.Context, bz []byte, daHeight
 		return true
 	}
 
-	// set custom verifier to do correct header verification
-	header.SetCustomVerifier(m.signaturePayloadProvider)
-
-	// Stronger validation: check for obviously invalid headers using ValidateBasic
-	if err := header.ValidateBasic(); err != nil {
-		m.logger.Debug().Uint64("daHeight", daHeight).Err(err).Msg("blob does not look like a valid header")
-		return false
-	}
-
 	// early validation to reject junk headers
 	if !m.isUsingExpectedSingleSequencer(header) {
 		m.logger.Debug().
@@ -141,6 +133,16 @@ func (m *Manager) handlePotentialHeader(ctx context.Context, bz []byte, daHeight
 			Msg("skipping header from unexpected sequencer")
 		return true
 	}
+
+	// set custom verifier to do correct header verification
+	header.SetCustomVerifier(m.signaturePayloadProvider)
+
+	// validate header and its signature validity
+	if err := header.ValidateBasic(); err != nil {
+		m.logger.Debug().Uint64("daHeight", daHeight).Err(err).Msg("blob does not look like a valid header")
+		return false
+	}
+
 	headerHash := header.Hash().String()
 	m.headerCache.SetDAIncluded(headerHash, daHeight)
 	m.sendNonBlockingSignalToDAIncluderCh()

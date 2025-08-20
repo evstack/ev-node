@@ -43,13 +43,19 @@ func (m *Manager) HeaderStoreRetrieveLoop(ctx context.Context) {
 				default:
 				}
 
-				// set custom verifier to do correct header verification
-				header.SetCustomVerifier(m.signaturePayloadProvider)
-
 				// early validation to reject junk headers
 				if !m.isUsingExpectedSingleSequencer(header) {
 					continue
 				}
+
+				// set custom verifier to do correct header verification
+				header.SetCustomVerifier(m.signaturePayloadProvider)
+
+				// validate header and its signature validity
+				if err := header.ValidateBasic(); err != nil {
+					continue
+				}
+
 				m.logger.Debug().Uint64("headerHeight", header.Height()).Uint64("daHeight", daHeight).Msg("header retrieved from p2p header sync")
 				m.headerInCh <- NewHeaderEvent{header, daHeight}
 			}

@@ -129,7 +129,7 @@ func (sh *SignedHeader) ValidateBasic() error {
 	} else {
 		bz, err = sh.signatureProvider(&sh.Header)
 		if err != nil {
-			return fmt.Errorf("custom signature verification failed: %w", err)
+			return fmt.Errorf("custom signature payload provider failed: %w", err)
 		}
 	}
 

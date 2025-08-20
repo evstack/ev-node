@@ -605,8 +605,9 @@ func (m *Manager) retrieveBatch(ctx context.Context) (*BatchData, error) {
 	return nil, ErrNoBatch
 }
 
+// isUsingExpectedSingleSequencer checks if the header is using the expected single sequencer.
 func (m *Manager) isUsingExpectedSingleSequencer(header *types.SignedHeader) bool {
-	return bytes.Equal(header.ProposerAddress, m.genesis.ProposerAddress) && header.ValidateBasic() == nil
+	return bytes.Equal(header.ProposerAddress, m.genesis.ProposerAddress)
 }
 
 // publishBlockInternal is the internal implementation for publishing a block.
