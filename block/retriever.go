@@ -17,8 +17,8 @@ import (
 )
 
 const (
-	dAefetcherTimeout = 30 * time.Second
-	dAFetcherRetries  = 10
+	daFetcherTimeout = 30 * time.Second
+	dAFetcherRetries = 10
 
 	// Parallel retrieval configuration
 	defaultConcurrencyLimit = 5
@@ -59,28 +59,29 @@ type Retriever struct {
 	concurrencyLimit *semaphore.Weighted
 
 	// Processing state
-	scheduledUntil uint64     // Last height scheduled for retrieval
+	scheduledUntil uint64     // Next height to schedule for retrieval
 	nextToProcess  uint64     // Next height to process in order
 	mu             sync.Mutex // Protects scheduledUntil and nextToProcess
 
-	// In-flight tracking
-	inFlight   map[uint64]*RetrievalResult
+	// In-flight tracking (heights currently being fetched)
+	inFlight   map[uint64]struct{}
 	inFlightMu sync.RWMutex
+
+	// Buffered results awaiting in-order processing (owned by processor goroutine)
+	resultsCh     chan *RetrievalResult
+	resultsBuffer map[uint64]*RetrievalResult
 
 	// Retry tracking - persistent across attempts
 	retryInfo   map[uint64]*RetryInfo
 	retryInfoMu sync.RWMutex
 
-	// Processing synchronization - prevents concurrent processing races
-	processingMu sync.Mutex
-
 	// Work notification - efficient signaling without CPU spinning
-	workAvailable *sync.Cond
-	workSignal    chan struct{} // Buffered channel for work notifications
+	workSignal chan struct{} // Buffered channel for work notifications
 
 	// Goroutine lifecycle
 	dispatcher sync.WaitGroup
 	processor  sync.WaitGroup
+	metrics    sync.WaitGroup
 }
 
 // NewRetriever creates a new parallel retriever instance
@@ -94,21 +95,20 @@ func NewRetriever(manager *Manager, parentCtx context.Context) *Retriever {
 	}
 
 	startHeight := manager.daHeight.Load()
-
-	mu := &sync.Mutex{}
 	retriever := &Retriever{
 		manager:          manager,
 		prefetchWindow:   prefetchWindow,
 		ctx:              ctx,
 		cancel:           cancel,
 		concurrencyLimit: semaphore.NewWeighted(int64(defaultConcurrencyLimit)),
-		scheduledUntil:   startHeight - 1, // Will start scheduling from startHeight
+		scheduledUntil:   startHeight, // Next height to schedule
 		nextToProcess:    startHeight,
-		inFlight:         make(map[uint64]*RetrievalResult),
+		inFlight:         make(map[uint64]struct{}),
 		retryInfo:        make(map[uint64]*RetryInfo),
 		workSignal:       make(chan struct{}, 1), // Buffered to avoid blocking
+		resultsCh:        make(chan *RetrievalResult, 2*defaultConcurrencyLimit),
+		resultsBuffer:    make(map[uint64]*RetrievalResult),
 	}
-	retriever.workAvailable = sync.NewCond(mu)
 	return retriever
 }
 
@@ -135,6 +135,7 @@ func (pr *Retriever) Start() {
 	go pr.processResults()
 
 	// Start metrics updater goroutine
+	pr.metrics.Add(1)
 	go pr.updateMetrics()
 }
 
@@ -146,12 +147,13 @@ func (pr *Retriever) Stop() {
 	// Wait for goroutines to finish
 	pr.dispatcher.Wait()
 	pr.processor.Wait()
+	pr.metrics.Wait()
 }
 
 // dispatchHeights manages height scheduling based on processing state
 func (pr *Retriever) dispatchHeights() {
 	defer pr.dispatcher.Done()
-	
+
 	// Use a timer for retry checks instead of constant ticker
 	retryTimer := time.NewTimer(500 * time.Millisecond)
 	defer retryTimer.Stop()
@@ -206,6 +208,11 @@ func (pr *Retriever) dispatchHeights() {
 				break
 			}
 
+			// Mark as in-flight
+			pr.inFlightMu.Lock()
+			pr.inFlight[height] = struct{}{}
+			pr.inFlightMu.Unlock()
+
 			// Launch retrieval goroutine for this height
 			go pr.retrieveHeight(height)
 
@@ -217,7 +224,7 @@ func (pr *Retriever) dispatchHeights() {
 
 		// Schedule any unscheduled heights within the window
 		hasMoreWork := false
-		for height := scheduledUntil + 1; height <= targetHeight; height++ {
+		for height := scheduledUntil; height <= targetHeight; height++ {
 			// Check if already in flight
 			pr.inFlightMu.RLock()
 			_, exists := pr.inFlight[height]
@@ -243,10 +250,15 @@ func (pr *Retriever) dispatchHeights() {
 				break
 			}
 
-			// Update scheduledUntil
+			// Update scheduledUntil to next height to schedule
 			pr.mu.Lock()
-			pr.scheduledUntil = height
+			pr.scheduledUntil = height + 1
 			pr.mu.Unlock()
+
+			// Mark as in-flight
+			pr.inFlightMu.Lock()
+			pr.inFlight[height] = struct{}{}
+			pr.inFlightMu.Unlock()
 
 			// Launch retrieval goroutine for this height
 			go pr.retrieveHeight(height)
@@ -256,7 +268,7 @@ func (pr *Retriever) dispatchHeights() {
 				pr.manager.metrics.ParallelRetrievalPendingJobs.Add(1)
 			}
 		}
-		
+
 		// If we have more work but hit concurrency limit, ensure we check again soon
 		if hasMoreWork {
 			select {
@@ -275,201 +287,155 @@ func (pr *Retriever) retrieveHeight(height uint64) {
 		if pr.manager.metrics != nil {
 			pr.manager.metrics.ParallelRetrievalPendingJobs.Add(-1)
 		}
-		// Signal that a worker slot is available for more work
-		select {
-		case pr.workSignal <- struct{}{}:
-		default:
-		}
 	}()
 
-	// Get or create retry info for this height
+	// Get or create retry info for this height and increment attempt
 	pr.retryInfoMu.Lock()
 	info, exists := pr.retryInfo[height]
 	if !exists {
-		info = &RetryInfo{
-			RetryCount:  0,
-			LastAttempt: time.Now(),
-		}
+		info = &RetryInfo{}
 		pr.retryInfo[height] = info
 	}
+	info.RetryCount++
+	info.LastAttempt = time.Now()
 	pr.retryInfoMu.Unlock()
 
 	// Fetch the height with concurrent namespace calls
 	result := pr.fetchHeightConcurrently(pr.ctx, height)
 
-	// Update result with persistent retry count
+	// Update result with persistent retry count (reflecting this attempt)
 	result.RetryCount = info.RetryCount
 	result.LastAttempt = time.Now()
 
-	// Store result in in-flight map
-	pr.inFlightMu.Lock()
-	pr.inFlight[height] = result
-	pr.inFlightMu.Unlock()
-
-	// Trigger processing check
-	pr.checkAndProcessResults()
-
-	// Handle errors and schedule retries
-	if result.Error != nil && pr.ctx.Err() == nil {
-		isHeightFromFuture := pr.manager.areAllErrorsHeightFromFuture(result.Error)
-
-		// Update retry info
-		pr.retryInfoMu.Lock()
-		info.RetryCount++
-		info.LastAttempt = time.Now()
-		info.IsHeightFromFuture = isHeightFromFuture
-
-		if isHeightFromFuture {
-			// For height-from-future, use a longer backoff
-			backoff := 2 * time.Second
-			info.NextRetryTime = time.Now().Add(backoff)
-		} else if info.RetryCount < dAFetcherRetries {
-			// For other errors, use exponential backoff
-			backoff := time.Duration(info.RetryCount) * time.Second
-			if backoff > maxRetryBackoff {
-				backoff = maxRetryBackoff
-			}
-			info.NextRetryTime = time.Now().Add(backoff)
-		}
-		pr.retryInfoMu.Unlock()
-
-		// Schedule retry removal from in-flight
-		if isHeightFromFuture || info.RetryCount < dAFetcherRetries {
-			// Remove from in-flight after a short delay to allow processing to complete
-			time.AfterFunc(100*time.Millisecond, func() {
-				pr.inFlightMu.Lock()
-				delete(pr.inFlight, height)
-				pr.inFlightMu.Unlock()
-			})
-		}
-	} else if result.Error == nil {
-		// Success - clean up retry info
-		pr.retryInfoMu.Lock()
-		delete(pr.retryInfo, height)
-		pr.retryInfoMu.Unlock()
+	// Deliver result to processor
+	select {
+	case <-pr.ctx.Done():
+		return
+	case pr.resultsCh <- result:
 	}
+
+	// Error/success handling and retry scheduling are owned by the processor
 }
 
 // processResults monitors for results to process in order
 func (pr *Retriever) processResults() {
 	defer pr.processor.Done()
 
-	ticker := time.NewTicker(50 * time.Millisecond)
-	defer ticker.Stop()
-
 	for {
 		select {
 		case <-pr.ctx.Done():
 			return
-		case <-ticker.C:
-			pr.checkAndProcessResults()
-		}
-	}
-}
-
-// checkAndProcessResults processes available results in order
-func (pr *Retriever) checkAndProcessResults() {
-	// Use processingMu to prevent concurrent execution races
-	pr.processingMu.Lock()
-	defer pr.processingMu.Unlock()
-
-	for {
-		pr.mu.Lock()
-		nextToProcess := pr.nextToProcess
-		pr.mu.Unlock()
-
-		// Check if we have the next height ready
-		pr.inFlightMu.RLock()
-		result, exists := pr.inFlight[nextToProcess]
-		pr.inFlightMu.RUnlock()
-
-		if !exists || result == nil {
-			// Next height not ready yet
-			break
-		}
-
-		// Get retry info for this height
-		pr.retryInfoMu.RLock()
-		retryInfo, hasRetryInfo := pr.retryInfo[nextToProcess]
-		pr.retryInfoMu.RUnlock()
-
-		// Process based on result status
-		shouldAdvance := false
-		shouldRetry := false
-
-		if result.Error != nil && pr.ctx.Err() == nil {
-			// Use persistent retry count if available
-			retryCount := result.RetryCount
-			if hasRetryInfo {
-				retryCount = retryInfo.RetryCount
-			}
-
-			// Check if it's a height-from-future error
-			if pr.manager.areAllErrorsHeightFromFuture(result.Error) {
-				// Don't advance for height-from-future errors, but do retry
-				pr.manager.logger.Debug().
-					Uint64("daHeight", result.Height).
-					Int("retries", retryCount).
-					Msg("height from future, will retry")
-				shouldRetry = true
-			} else if retryCount >= dAFetcherRetries {
-				// Max retries reached, log error but advance
-				pr.manager.logger.Error().
-					Uint64("daHeight", result.Height).
-					Str("errors", result.Error.Error()).
-					Int("retries", retryCount).
-					Msg("failed to retrieve data from DALC after max retries")
-				shouldAdvance = true
-			} else {
-				// Still have retries left, will retry
-				pr.manager.logger.Debug().
-					Uint64("daHeight", result.Height).
-					Int("retries", retryCount).
-					Int("maxRetries", dAFetcherRetries).
-					Msg("retrieval failed, will retry")
-				shouldRetry = true
-			}
-		} else if result.Error == nil {
-			// Success - process and advance
-			if len(result.Data) > 0 {
-				pr.manager.processRetrievedData(pr.ctx, result.Data, result.Height)
-			} else {
-				pr.manager.logger.Debug().Uint64("daHeight", result.Height).Msg("no blob data found (NotFound)")
-			}
-			shouldAdvance = true
-		}
-
-		if shouldAdvance {
-			// Remove from in-flight map
+		case res := <-pr.resultsCh:
+			// Mark height as no longer in-flight
 			pr.inFlightMu.Lock()
-			delete(pr.inFlight, nextToProcess)
+			delete(pr.inFlight, res.Height)
 			pr.inFlightMu.Unlock()
 
-			// Clean up retry info
-			pr.retryInfoMu.Lock()
-			delete(pr.retryInfo, nextToProcess)
-			pr.retryInfoMu.Unlock()
+			// Buffer the result for ordered processing
+			pr.resultsBuffer[res.Height] = res
 
-			// Advance both pointers
-			pr.mu.Lock()
-			pr.nextToProcess++
-			pr.mu.Unlock()
+			// Try to process in-order as far as possible
+			for {
+				pr.mu.Lock()
+				next := pr.nextToProcess
+				pr.mu.Unlock()
 
-			// Update manager's DA height
-			pr.manager.daHeight.Store(nextToProcess + 1)
-			
-			// Signal that progress was made and new heights can be scheduled
-			select {
-			case pr.workSignal <- struct{}{}:
-			default:
+				r, ok := pr.resultsBuffer[next]
+				if !ok {
+					break
+				}
+
+				// Decide based on result
+				if r.Error == nil {
+					// Success -> process data and advance
+					if len(r.Data) > 0 {
+						pr.manager.processRetrievedData(pr.ctx, r.Data, r.Height)
+					} else {
+						pr.manager.logger.Debug().Uint64("daHeight", r.Height).Msg("no blob data found (NotFound)")
+					}
+
+					// Cleanup and advance
+					delete(pr.resultsBuffer, next)
+					pr.retryInfoMu.Lock()
+					delete(pr.retryInfo, next)
+					pr.retryInfoMu.Unlock()
+
+					pr.mu.Lock()
+					pr.nextToProcess++
+					pr.mu.Unlock()
+					pr.manager.daHeight.Store(next + 1)
+
+					// Allow dispatcher to schedule more work
+					select {
+					case pr.workSignal <- struct{}{}:
+					default:
+					}
+					continue
+				}
+
+				// Error case
+				// Pull current retry info
+				pr.retryInfoMu.Lock()
+				info, exists := pr.retryInfo[next]
+				if !exists {
+					info = &RetryInfo{RetryCount: r.RetryCount}
+					pr.retryInfo[next] = info
+				}
+				retryCount := info.RetryCount
+				isFuture := pr.manager.areAllErrorsHeightFromFuture(r.Error)
+
+				// Logging and backoff setup
+				if isFuture {
+					pr.manager.logger.Debug().Uint64("daHeight", r.Height).Int("retries", retryCount).Msg("height from future, will retry")
+					info.IsHeightFromFuture = true
+					info.LastAttempt = time.Now()
+					info.NextRetryTime = time.Now().Add(2 * time.Second)
+					pr.retryInfoMu.Unlock()
+
+					// Remove from buffer, let dispatcher retry later
+					delete(pr.resultsBuffer, next)
+					select {
+					case pr.workSignal <- struct{}{}:
+					default:
+					}
+					break
+				}
+
+				if retryCount >= dAFetcherRetries {
+					pr.manager.logger.Error().Uint64("daHeight", r.Height).Str("errors", r.Error.Error()).Int("retries", retryCount).Msg("failed to retrieve data from DALC after max retries")
+					// Give up on this height and advance
+					delete(pr.resultsBuffer, next)
+					delete(pr.retryInfo, next)
+					pr.retryInfoMu.Unlock()
+
+					pr.mu.Lock()
+					pr.nextToProcess++
+					pr.mu.Unlock()
+					pr.manager.daHeight.Store(next + 1)
+					select {
+					case pr.workSignal <- struct{}{}:
+					default:
+					}
+					continue
+				}
+
+				// Schedule retry with backoff based on current attempt count
+				info.LastAttempt = time.Now()
+				backoff := time.Duration(retryCount) * time.Second
+				if backoff > maxRetryBackoff {
+					backoff = maxRetryBackoff
+				}
+				info.NextRetryTime = time.Now().Add(backoff)
+				pr.retryInfoMu.Unlock()
+
+				// Remove from buffer, do not advance
+				delete(pr.resultsBuffer, next)
+				select {
+				case pr.workSignal <- struct{}{}:
+				default:
+				}
+				break
 			}
-		} else if shouldRetry {
-			// Can't advance yet, but ensure retry is scheduled
-			// The retry scheduling is already handled in retrieveHeight
-			break
-		} else {
-			// Can't advance yet, stop processing
-			break
 		}
 	}
 }
@@ -477,7 +443,7 @@ func (pr *Retriever) checkAndProcessResults() {
 // fetchHeightConcurrently retrieves blobs from a specific DA height using concurrent namespace calls
 func (pr *Retriever) fetchHeightConcurrently(ctx context.Context, height uint64) *RetrievalResult {
 	start := time.Now()
-	fetchCtx, cancel := context.WithTimeout(ctx, dAefetcherTimeout)
+	fetchCtx, cancel := context.WithTimeout(ctx, daFetcherTimeout)
 	defer cancel()
 
 	// Record latency metric at the end
@@ -669,6 +635,7 @@ func (m *Manager) fetchBlobsConcurrently(ctx context.Context, daHeight uint64) (
 
 // updateMetrics periodically updates metrics for parallel retrieval
 func (pr *Retriever) updateMetrics() {
+	defer pr.metrics.Done()
 	ticker := time.NewTicker(5 * time.Second)
 	defer ticker.Stop()
 
@@ -813,10 +780,11 @@ func (m *Manager) handlePotentialHeader(ctx context.Context, bz []byte, daHeight
 		select {
 		case <-ctx.Done():
 			return true
+		case m.headerInCh <- NewHeaderEvent{header, daHeight}:
+			// sent
 		default:
 			m.logger.Warn().Uint64("daHeight", daHeight).Msg("headerInCh backlog full, dropping header")
 		}
-		m.headerInCh <- NewHeaderEvent{header, daHeight}
 	}
 	return true
 }
@@ -848,10 +816,11 @@ func (m *Manager) handlePotentialData(ctx context.Context, bz []byte, daHeight u
 		select {
 		case <-ctx.Done():
 			return
+		case m.dataInCh <- NewDataEvent{&signedData.Data, daHeight}:
+			// sent
 		default:
 			m.logger.Warn().Uint64("daHeight", daHeight).Msg("dataInCh backlog full, dropping signed data")
 		}
-		m.dataInCh <- NewDataEvent{&signedData.Data, daHeight}
 	}
 }
 
@@ -861,8 +830,8 @@ func (m *Manager) areAllErrorsHeightFromFuture(err error) bool {
 		return false
 	}
 
-	// Check if the error itself is ErrHeightFromFutureStr
-	if strings.Contains(err.Error(), ErrHeightFromFutureStr.Error()) {
+	// Prefer robust sentinel checks over string matching
+	if errors.Is(err, ErrHeightFromFutureStr) || errors.Is(err, coreda.ErrHeightFromFuture) {
 		return true
 	}
 
