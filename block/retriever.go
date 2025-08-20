@@ -74,6 +74,10 @@ type Retriever struct {
 	// Processing synchronization - prevents concurrent processing races
 	processingMu sync.Mutex
 
+	// Work notification - efficient signaling without CPU spinning
+	workAvailable *sync.Cond
+	workSignal    chan struct{} // Buffered channel for work notifications
+
 	// Goroutine lifecycle
 	dispatcher sync.WaitGroup
 	processor  sync.WaitGroup
@@ -91,7 +95,8 @@ func NewRetriever(manager *Manager, parentCtx context.Context) *Retriever {
 
 	startHeight := manager.daHeight.Load()
 
-	return &Retriever{
+	mu := &sync.Mutex{}
+	retriever := &Retriever{
 		manager:          manager,
 		prefetchWindow:   prefetchWindow,
 		ctx:              ctx,
@@ -101,7 +106,10 @@ func NewRetriever(manager *Manager, parentCtx context.Context) *Retriever {
 		nextToProcess:    startHeight,
 		inFlight:         make(map[uint64]*RetrievalResult),
 		retryInfo:        make(map[uint64]*RetryInfo),
+		workSignal:       make(chan struct{}, 1), // Buffered to avoid blocking
 	}
+	retriever.workAvailable = sync.NewCond(mu)
+	return retriever
 }
 
 // RetrieveLoop is responsible for interacting with DA layer using parallel retrieval.
@@ -143,17 +151,26 @@ func (pr *Retriever) Stop() {
 // dispatchHeights manages height scheduling based on processing state
 func (pr *Retriever) dispatchHeights() {
 	defer pr.dispatcher.Done()
-	ticker := time.NewTicker(100 * time.Millisecond)
-	defer ticker.Stop()
+	
+	// Use a timer for retry checks instead of constant ticker
+	retryTimer := time.NewTimer(500 * time.Millisecond)
+	defer retryTimer.Stop()
 
 	for {
 		select {
 		case <-pr.ctx.Done():
 			return
 		case <-pr.manager.retrieveCh:
-			// Explicit trigger from manager
-		case <-ticker.C:
-			// Regular check for new work
+			// Explicit trigger from manager - process immediately
+		case <-pr.workSignal:
+			// Work available notification - drain the channel
+			select {
+			case <-pr.workSignal:
+			default:
+			}
+		case <-retryTimer.C:
+			// Periodic check for retries
+			retryTimer.Reset(500 * time.Millisecond)
 		}
 
 		// Schedule heights up to prefetch window from nextToProcess
@@ -199,6 +216,7 @@ func (pr *Retriever) dispatchHeights() {
 		}
 
 		// Schedule any unscheduled heights within the window
+		hasMoreWork := false
 		for height := scheduledUntil + 1; height <= targetHeight; height++ {
 			// Check if already in flight
 			pr.inFlightMu.RLock()
@@ -218,9 +236,10 @@ func (pr *Retriever) dispatchHeights() {
 				continue
 			}
 
-			// Try to acquire concurrency permit
+			// Try to acquire concurrency permit with backpressure handling
 			if !pr.concurrencyLimit.TryAcquire(1) {
-				// Concurrency limit reached, try again later
+				// Concurrency limit reached, signal that more work is available
+				hasMoreWork = true
 				break
 			}
 
@@ -237,6 +256,14 @@ func (pr *Retriever) dispatchHeights() {
 				pr.manager.metrics.ParallelRetrievalPendingJobs.Add(1)
 			}
 		}
+		
+		// If we have more work but hit concurrency limit, ensure we check again soon
+		if hasMoreWork {
+			select {
+			case pr.workSignal <- struct{}{}:
+			default:
+			}
+		}
 	}
 }
 
@@ -247,6 +274,11 @@ func (pr *Retriever) retrieveHeight(height uint64) {
 		// Update pending jobs metric
 		if pr.manager.metrics != nil {
 			pr.manager.metrics.ParallelRetrievalPendingJobs.Add(-1)
+		}
+		// Signal that a worker slot is available for more work
+		select {
+		case pr.workSignal <- struct{}{}:
+		default:
 		}
 	}()
 
@@ -425,6 +457,12 @@ func (pr *Retriever) checkAndProcessResults() {
 
 			// Update manager's DA height
 			pr.manager.daHeight.Store(nextToProcess + 1)
+			
+			// Signal that progress was made and new heights can be scheduled
+			select {
+			case pr.workSignal <- struct{}{}:
+			default:
+			}
 		} else if shouldRetry {
 			// Can't advance yet, but ensure retry is scheduled
 			// The retry scheduling is already handled in retrieveHeight
