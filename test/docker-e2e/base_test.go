@@ -45,18 +45,18 @@ func (s *DockerTestSuite) TestBasicDockerE2E() {
 	})
 
 	s.T().Run("start evolve chain node", func(t *testing.T) {
-		s.StartRollkitNode(ctx, bridgeNode, s.rollkitChain.GetNodes()[0])
+		s.StartEvNode(ctx, bridgeNode, s.evNodeChain.GetNodes()[0])
 	})
 
 	s.T().Run("submit a transaction to the evolve chain", func(t *testing.T) {
-		rollkitNode := s.rollkitChain.GetNodes()[0]
+		rollkitNode := s.evNodeChain.GetNodes()[0]
 
 		// Debug: Check if the node is running and all ports
 		t.Logf("Rollkit node RPC port: %s", rollkitNode.GetHostRPCPort())
 		t.Logf("Rollkit node GRPC port: %s", rollkitNode.GetHostGRPCPort())
 		t.Logf("Rollkit node P2P port: %s", rollkitNode.GetHostP2PPort())
 
-// The http port resolvable by the test runner.
+		// The http port resolvable by the test runner.
 		httpPortStr := rollkitNode.GetHostHTTPPort()
 		t.Logf("Rollkit node HTTP port: %s", httpPortStr)
 
