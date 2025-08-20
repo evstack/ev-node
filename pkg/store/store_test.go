@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"testing"
@@ -24,6 +25,7 @@ type mockBatchingDatastore struct {
 	unmarshalErrorOnCall int     // New field: 0 for no unmarshal error, 1 for first Get, 2 for second Get, etc.
 	getCallCount         int     // Tracks number of Get calls
 	getErrors            []error // Specific errors for sequential Get calls
+	getMetadataError     error   // Specific error for GetMetadata calls
 }
 
 // mockBatch is a mock implementation of ds.Batch for testing error cases.
@@ -41,6 +43,11 @@ func (m *mockBatchingDatastore) Put(ctx context.Context, key ds.Key, value []byt
 }
 
 func (m *mockBatchingDatastore) Get(ctx context.Context, key ds.Key) ([]byte, error) {
+	// Check for specific metadata error for DA included height key
+	if m.getMetadataError != nil && key.String() == "/m/d" {
+		return nil, m.getMetadataError
+	}
+
 	m.getCallCount++
 	if len(m.getErrors) >= m.getCallCount && m.getErrors[m.getCallCount-1] != nil {
 		return nil, m.getErrors[m.getCallCount-1]
@@ -791,4 +798,284 @@ func TestRollbackHeightError(t *testing.T) {
 	err := store.Rollback(ctx, uint64(5))
 	require.Error(err)
 	require.Contains(err.Error(), "failed to get current height")
+}
+
+// TestRollbackDAIncludedHeightValidation verifies DA included height validation during rollback
+func TestRollbackDAIncludedHeightValidation(t *testing.T) {
+	t.Parallel()
+	require := require.New(t)
+
+	// Test case 1: Rollback to height below DA included height should fail
+	t.Run("rollback below DA included height fails", func(t *testing.T) {
+		ctx := context.Background()
+		store := New(mustNewInMem())
+
+		// Setup: create and save multiple blocks
+		chainID := "test-rollback-da-fail"
+		maxHeight := uint64(10)
+
+		for h := uint64(1); h <= maxHeight; h++ {
+			header, data := types.GetRandomBlock(h, 2, chainID)
+			sig := &header.Signature
+
+			err := store.SaveBlockData(ctx, header, data, sig)
+			require.NoError(err)
+
+			err = store.SetHeight(ctx, h)
+			require.NoError(err)
+
+			// Create and update state for this height
+			state := types.State{
+				ChainID:         chainID,
+				InitialHeight:   1,
+				LastBlockHeight: h,
+				LastBlockTime:   header.Time(),
+				AppHash:         header.AppHash,
+			}
+			err = store.UpdateState(ctx, state)
+			require.NoError(err)
+		}
+
+		// Set DA included height to 8
+		daIncludedHeight := uint64(8)
+		heightBytes := make([]byte, 8)
+		binary.LittleEndian.PutUint64(heightBytes, daIncludedHeight)
+		err := store.SetMetadata(ctx, DAIncludedHeightKey, heightBytes)
+		require.NoError(err)
+
+		// Rollback to height below DA included height should fail
+		err = store.Rollback(ctx, uint64(6))
+		require.Error(err)
+		require.Contains(err.Error(), "DA included height is greater than the rollback height: cannot rollback a finalized height.")
+	})
+
+	// Test case 2: Rollback to height equal to DA included height should succeed
+	t.Run("rollback to DA included height succeeds", func(t *testing.T) {
+		ctx := context.Background()
+		store := New(mustNewInMem())
+
+		// Setup: create and save multiple blocks
+		chainID := "test-rollback-da-equal"
+		maxHeight := uint64(10)
+
+		for h := uint64(1); h <= maxHeight; h++ {
+			header, data := types.GetRandomBlock(h, 2, chainID)
+			sig := &header.Signature
+
+			err := store.SaveBlockData(ctx, header, data, sig)
+			require.NoError(err)
+
+			err = store.SetHeight(ctx, h)
+			require.NoError(err)
+
+			// Create and update state for this height
+			state := types.State{
+				ChainID:         chainID,
+				InitialHeight:   1,
+				LastBlockHeight: h,
+				LastBlockTime:   header.Time(),
+				AppHash:         header.AppHash,
+			}
+			err = store.UpdateState(ctx, state)
+			require.NoError(err)
+		}
+
+		// Set DA included height to 8
+		daIncludedHeight := uint64(8)
+		heightBytes := make([]byte, 8)
+		binary.LittleEndian.PutUint64(heightBytes, daIncludedHeight)
+		err := store.SetMetadata(ctx, DAIncludedHeightKey, heightBytes)
+		require.NoError(err)
+
+		// Rollback to height equal to DA included height should succeed
+		err = store.Rollback(ctx, uint64(8))
+		require.NoError(err)
+
+		// Verify height was rolled back to 8
+		currentHeight, err := store.Height(ctx)
+		require.NoError(err)
+		require.Equal(uint64(8), currentHeight)
+	})
+
+	// Test case 3: Rollback to height above DA included height should succeed
+	t.Run("rollback above DA included height succeeds", func(t *testing.T) {
+		ctx := context.Background()
+		store := New(mustNewInMem())
+
+		// Setup: create and save multiple blocks
+		chainID := "test-rollback-da-above"
+		maxHeight := uint64(10)
+
+		for h := uint64(1); h <= maxHeight; h++ {
+			header, data := types.GetRandomBlock(h, 2, chainID)
+			sig := &header.Signature
+
+			err := store.SaveBlockData(ctx, header, data, sig)
+			require.NoError(err)
+
+			err = store.SetHeight(ctx, h)
+			require.NoError(err)
+
+			// Create and update state for this height
+			state := types.State{
+				ChainID:         chainID,
+				InitialHeight:   1,
+				LastBlockHeight: h,
+				LastBlockTime:   header.Time(),
+				AppHash:         header.AppHash,
+			}
+			err = store.UpdateState(ctx, state)
+			require.NoError(err)
+		}
+
+		// Set DA included height to 8
+		daIncludedHeight := uint64(8)
+		heightBytes := make([]byte, 8)
+		binary.LittleEndian.PutUint64(heightBytes, daIncludedHeight)
+		err := store.SetMetadata(ctx, DAIncludedHeightKey, heightBytes)
+		require.NoError(err)
+
+		// Rollback to height above DA included height should succeed
+		err = store.Rollback(ctx, uint64(9))
+		require.NoError(err)
+
+		// Verify height was rolled back to 9
+		currentHeight, err := store.Height(ctx)
+		require.NoError(err)
+		require.Equal(uint64(9), currentHeight)
+	})
+}
+
+// TestRollbackDAIncludedHeightNotSet verifies rollback works when DA included height is not set
+func TestRollbackDAIncludedHeightNotSet(t *testing.T) {
+	t.Parallel()
+	require := require.New(t)
+
+	ctx := context.Background()
+	store := New(mustNewInMem())
+
+	// Setup: create and save multiple blocks
+	chainID := "test-rollback-da-notset"
+	maxHeight := uint64(5)
+
+	for h := uint64(1); h <= maxHeight; h++ {
+		header, data := types.GetRandomBlock(h, 2, chainID)
+		sig := &header.Signature
+
+		err := store.SaveBlockData(ctx, header, data, sig)
+		require.NoError(err)
+
+		err = store.SetHeight(ctx, h)
+		require.NoError(err)
+
+		// Create and update state for this height
+		state := types.State{
+			ChainID:         chainID,
+			InitialHeight:   1,
+			LastBlockHeight: h,
+			LastBlockTime:   header.Time(),
+			AppHash:         header.AppHash,
+		}
+		err = store.UpdateState(ctx, state)
+		require.NoError(err)
+	}
+
+	// Don't set DA included height - it should not exist
+	// Rollback should succeed since no DA included height is set
+	err := store.Rollback(ctx, uint64(3))
+	require.NoError(err)
+
+	// Verify height was rolled back to 3
+	currentHeight, err := store.Height(ctx)
+	require.NoError(err)
+	require.Equal(uint64(3), currentHeight)
+}
+
+// TestRollbackDAIncludedHeightInvalidLength verifies rollback works with invalid DA included height data
+func TestRollbackDAIncludedHeightInvalidLength(t *testing.T) {
+	t.Parallel()
+	require := require.New(t)
+
+	ctx := context.Background()
+	store := New(mustNewInMem())
+
+	// Setup: create and save multiple blocks
+	chainID := "test-rollback-da-invalid"
+	maxHeight := uint64(5)
+
+	for h := uint64(1); h <= maxHeight; h++ {
+		header, data := types.GetRandomBlock(h, 2, chainID)
+		sig := &header.Signature
+
+		err := store.SaveBlockData(ctx, header, data, sig)
+		require.NoError(err)
+
+		err = store.SetHeight(ctx, h)
+		require.NoError(err)
+
+		// Create and update state for this height
+		state := types.State{
+			ChainID:         chainID,
+			InitialHeight:   1,
+			LastBlockHeight: h,
+			LastBlockTime:   header.Time(),
+			AppHash:         header.AppHash,
+		}
+		err = store.UpdateState(ctx, state)
+		require.NoError(err)
+	}
+
+	// Set DA included height with invalid length (not 8 bytes)
+	invalidHeightData := []byte{1, 2, 3, 4} // only 4 bytes
+	err := store.SetMetadata(ctx, DAIncludedHeightKey, invalidHeightData)
+	require.NoError(err)
+
+	// Rollback should succeed since invalid length data is ignored
+	err = store.Rollback(ctx, uint64(3))
+	require.NoError(err)
+
+	// Verify height was rolled back to 3
+	currentHeight, err := store.Height(ctx)
+	require.NoError(err)
+	require.Equal(uint64(3), currentHeight)
+}
+
+// TestRollbackDAIncludedHeightGetMetadataError verifies rollback handles GetMetadata errors for DA included height
+func TestRollbackDAIncludedHeightGetMetadataError(t *testing.T) {
+	t.Parallel()
+	require := require.New(t)
+
+	ctx := context.Background()
+	mock := &mockBatchingDatastore{
+		Batching: mustNewInMem(),
+	}
+	store := New(mock)
+
+	// Setup: create one block to ensure height > rollback target
+	header, data := types.GetRandomBlock(uint64(2), 2, "test-chain")
+	sig := &header.Signature
+	err := store.SaveBlockData(ctx, header, data, sig)
+	require.NoError(err)
+	err = store.SetHeight(ctx, uint64(2))
+	require.NoError(err)
+
+	// Create and update state for this height
+	state := types.State{
+		ChainID:         "test-chain",
+		InitialHeight:   1,
+		LastBlockHeight: 2,
+		LastBlockTime:   header.Time(),
+		AppHash:         header.AppHash,
+	}
+	err = store.UpdateState(ctx, state)
+	require.NoError(err)
+
+	// Configure mock to return error when getting DA included height metadata
+	mock.getMetadataError = errors.New("metadata retrieval failed")
+
+	// Rollback should fail due to GetMetadata error
+	err = store.Rollback(ctx, uint64(1))
+	require.Error(err)
+	require.Contains(err.Error(), "failed to get DA included height")
+	require.Contains(err.Error(), "metadata retrieval failed")
 }

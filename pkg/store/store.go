@@ -278,6 +278,16 @@ func (s *DefaultStore) Rollback(ctx context.Context, height uint64) error {
 		return nil
 	}
 
+	daIncludedHeightBz, err := s.GetMetadata(ctx, DAIncludedHeightKey)
+	if err != nil && !errors.Is(err, ds.ErrNotFound) {
+		return fmt.Errorf("failed to get DA included height: %w", err)
+	} else if len(daIncludedHeightBz) == 8 { // valid height stored, so able to check
+		daIncludedHeight := binary.LittleEndian.Uint64(daIncludedHeightBz)
+		if daIncludedHeight > height {
+			return fmt.Errorf("DA included height is greater than the rollback height: cannot rollback a finalized height.")
+		}
+	}
+
 	for currentHeight > height {
 		header, err := s.GetHeader(ctx, currentHeight)
 		if err != nil {
