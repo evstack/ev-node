@@ -1,15 +1,14 @@
 package block
 
 import (
-	"container/heap"
 	"context"
 	"errors"
 	"fmt"
 	"strings"
 	"sync"
-	"sync/atomic"
 	"time"
 
+	"golang.org/x/sync/semaphore"
 	"google.golang.org/protobuf/proto"
 
 	coreda "github.com/evstack/ev-node/core/da"
@@ -22,16 +21,9 @@ const (
 	dAFetcherRetries  = 10
 
 	// Parallel retrieval configuration
-	minWorkers              = 1
-	maxWorkers              = 10
 	defaultConcurrencyLimit = 5
 	defaultPrefetchWindow   = 50
-	defaultResultBufferSize = 100
-
-	// Worker scaling thresholds
-	scaleUpThreshold   = 10 // Queue depth to trigger scale up
-	scaleDownThreshold = 2  // Queue depth to trigger scale down
-	scaleInterval      = 5 * time.Second
+	maxRetryBackoff         = 5 * time.Second
 )
 
 var (
@@ -41,54 +33,35 @@ var (
 
 // RetrievalResult holds the result of retrieving blobs from a specific DA height
 type RetrievalResult struct {
-	Height uint64
-	Data   [][]byte
-	Error  error
+	Height      uint64
+	Data        [][]byte
+	Error       error
+	RetryCount  int
+	LastAttempt time.Time
 }
 
-// ResultHeap implements a min-heap for ordered result processing
-type ResultHeap []*RetrievalResult
-
-func (h ResultHeap) Len() int           { return len(h) }
-func (h ResultHeap) Less(i, j int) bool { return h[i].Height < h[j].Height }
-func (h ResultHeap) Swap(i, j int)      { h[i], h[j] = h[j], h[i] }
-
-func (h *ResultHeap) Push(x interface{}) {
-	*h = append(*h, x.(*RetrievalResult))
-}
-
-func (h *ResultHeap) Pop() interface{} {
-	old := *h
-	n := len(old)
-	item := old[n-1]
-	*h = old[0 : n-1]
-	return item
-}
-
-// ParallelRetriever manages parallel retrieval of blocks from DA layer
+// ParallelRetriever manages parallel retrieval of blocks from DA layer with simplified design
 type ParallelRetriever struct {
 	manager        *Manager
 	prefetchWindow int
-	workChan       chan uint64
-	resultChan     chan *RetrievalResult
-	workers        sync.WaitGroup
-	processors     sync.WaitGroup // Track result processor goroutine
-	dispatcher     sync.WaitGroup // Track dispatcher goroutine
-	scaler         sync.WaitGroup // Track scaler goroutine
 	ctx            context.Context
 	cancel         context.CancelFunc
 
-	// Dynamic worker management
-	activeWorkers  int32 // Atomic counter for active workers
-	workerStopChan chan struct{}
+	// Fixed concurrency control
+	concurrencyLimit *semaphore.Weighted
 
-	// Result ordering using priority queue
-	resultHeap        ResultHeap
-	resultHeapMutex   sync.Mutex
-	nextHeight        uint64
-	maxBufferSize     int             // Prevent unbounded growth
-	pendingHeights    map[uint64]bool // Track dispatched heights
-	pendingHeightsMux sync.RWMutex
+	// Processing state
+	scheduledUntil uint64     // Last height scheduled for retrieval
+	nextToProcess  uint64     // Next height to process in order
+	mu             sync.Mutex // Protects scheduledUntil and nextToProcess
+
+	// In-flight tracking
+	inFlight   map[uint64]*RetrievalResult
+	inFlightMu sync.RWMutex
+
+	// Goroutine lifecycle
+	dispatcher sync.WaitGroup
+	processor  sync.WaitGroup
 }
 
 // NewParallelRetriever creates a new parallel retriever instance
@@ -101,19 +74,17 @@ func NewParallelRetriever(manager *Manager, parentCtx context.Context) *Parallel
 		prefetchWindow = TestPrefetchWindow
 	}
 
+	startHeight := manager.daHeight.Load()
+
 	return &ParallelRetriever{
-		manager:        manager,
-		prefetchWindow: prefetchWindow,
-		workChan:       make(chan uint64, defaultResultBufferSize),
-		resultChan:     make(chan *RetrievalResult, defaultResultBufferSize),
-		ctx:            ctx,
-		cancel:         cancel,
-		resultHeap:     make(ResultHeap, 0),
-		nextHeight:     manager.daHeight.Load(),
-		maxBufferSize:  defaultResultBufferSize * 2, // Allow some buffering but prevent unbounded growth
-		pendingHeights: make(map[uint64]bool),
-		workerStopChan: make(chan struct{}, maxWorkers),
-		activeWorkers:  0,
+		manager:          manager,
+		prefetchWindow:   prefetchWindow,
+		ctx:              ctx,
+		cancel:           cancel,
+		concurrencyLimit: semaphore.NewWeighted(int64(defaultConcurrencyLimit)),
+		scheduledUntil:   startHeight - 1, // Will start scheduling from startHeight
+		nextToProcess:    startHeight,
+		inFlight:         make(map[uint64]*RetrievalResult),
 	}
 }
 
@@ -131,22 +102,13 @@ func (m *Manager) RetrieveLoop(ctx context.Context) {
 
 // Start begins the parallel retrieval process
 func (pr *ParallelRetriever) Start() {
-	// Start with minimum workers
-	for i := 0; i < minWorkers; i++ {
-		pr.startWorker()
-	}
-
-	// Start height dispatcher goroutine
+	// Start dispatcher goroutine to schedule heights
 	pr.dispatcher.Add(1)
 	go pr.dispatchHeights()
 
-	// Start result processor goroutine (non-blocking)
-	pr.processors.Add(1)
+	// Start processor goroutine to handle results
+	pr.processor.Add(1)
 	go pr.processResults()
-
-	// Start worker scaler goroutine
-	pr.scaler.Add(1)
-	go pr.scaleWorkers()
 
 	// Start metrics updater goroutine
 	go pr.updateMetrics()
@@ -157,118 +119,12 @@ func (pr *ParallelRetriever) Stop() {
 	// Cancel context to signal all goroutines to stop
 	pr.cancel()
 
-	// Wait for scaler to exit
-	pr.scaler.Wait()
-
-	// Wait for dispatcher to exit before closing channels
-	// This prevents the race condition where dispatchHeights tries to send to a closed channel
+	// Wait for goroutines to finish
 	pr.dispatcher.Wait()
-
-	// Signal all workers to stop
-	currentWorkers := atomic.LoadInt32(&pr.activeWorkers)
-	for i := int32(0); i < currentWorkers; i++ {
-		select {
-		case pr.workerStopChan <- struct{}{}:
-		default:
-		}
-	}
-
-	// Close work channel to signal workers to exit
-	close(pr.workChan)
-
-	// Wait for all workers to finish
-	pr.workers.Wait()
-
-	// Close result channel after workers are done
-	close(pr.resultChan)
-
-	// Wait for result processor to finish
-	pr.processors.Wait()
+	pr.processor.Wait()
 }
 
-// startWorker starts a new worker goroutine
-func (pr *ParallelRetriever) startWorker() {
-	atomic.AddInt32(&pr.activeWorkers, 1)
-	pr.workers.Add(1)
-	go pr.worker()
-
-	// Update metric
-	if pr.manager.metrics != nil {
-		pr.manager.metrics.ParallelRetrievalWorkers.Set(float64(atomic.LoadInt32(&pr.activeWorkers)))
-	}
-}
-
-// stopWorker signals a worker to stop
-func (pr *ParallelRetriever) stopWorker() bool {
-	current := atomic.LoadInt32(&pr.activeWorkers)
-	if current <= minWorkers {
-		return false
-	}
-
-	select {
-	case pr.workerStopChan <- struct{}{}:
-		return true
-	default:
-		return false
-	}
-}
-
-// scaleWorkers dynamically adjusts the number of workers based on queue depth
-func (pr *ParallelRetriever) scaleWorkers() {
-	defer pr.scaler.Done()
-	ticker := time.NewTicker(scaleInterval)
-	defer ticker.Stop()
-
-	for {
-		select {
-		case <-pr.ctx.Done():
-			return
-		case <-ticker.C:
-			pr.adjustWorkerCount()
-		}
-	}
-}
-
-// adjustWorkerCount scales workers up or down based on queue depth
-func (pr *ParallelRetriever) adjustWorkerCount() {
-	queueDepth := len(pr.workChan)
-	currentWorkers := atomic.LoadInt32(&pr.activeWorkers)
-
-	// Calculate pending work including dispatched but not completed
-	pr.pendingHeightsMux.RLock()
-	totalPending := queueDepth + len(pr.pendingHeights)
-	pr.pendingHeightsMux.RUnlock()
-
-	// Scale up if queue is deep and we haven't hit max
-	if totalPending > scaleUpThreshold && currentWorkers < maxWorkers {
-		// Add workers proportional to load
-		workersToAdd := min((totalPending-scaleUpThreshold)/5+1, int(maxWorkers-currentWorkers))
-		for i := 0; i < workersToAdd; i++ {
-			pr.startWorker()
-		}
-		pr.manager.logger.Debug().
-			Int32("workers", atomic.LoadInt32(&pr.activeWorkers)).
-			Int("queue", queueDepth).
-			Msg("scaled up workers")
-	} else if totalPending < scaleDownThreshold && currentWorkers > minWorkers {
-		// Scale down gradually
-		workersToRemove := min(int(currentWorkers-minWorkers), 2)
-		removed := 0
-		for i := 0; i < workersToRemove; i++ {
-			if pr.stopWorker() {
-				removed++
-			}
-		}
-		if removed > 0 {
-			pr.manager.logger.Debug().
-				Int32("workers", atomic.LoadInt32(&pr.activeWorkers)).
-				Int("queue", queueDepth).
-				Msg("scaled down workers")
-		}
-	}
-}
-
-// dispatchHeights manages the work distribution to workers
+// dispatchHeights manages height scheduling based on processing state
 func (pr *ParallelRetriever) dispatchHeights() {
 	defer pr.dispatcher.Done()
 	ticker := time.NewTicker(100 * time.Millisecond)
@@ -284,173 +140,181 @@ func (pr *ParallelRetriever) dispatchHeights() {
 			// Regular check for new work
 		}
 
-		// Check buffer size before dispatching more work
-		pr.resultHeapMutex.Lock()
-		bufferSize := pr.resultHeap.Len()
-		pr.resultHeapMutex.Unlock()
+		// Schedule heights up to prefetch window from nextToProcess
+		pr.mu.Lock()
+		nextToProcess := pr.nextToProcess
+		scheduledUntil := pr.scheduledUntil
+		targetHeight := nextToProcess + uint64(pr.prefetchWindow) - 1
+		pr.mu.Unlock()
 
-		if bufferSize >= pr.maxBufferSize {
-			// Buffer is full, wait before dispatching more
-			select {
-			case <-pr.ctx.Done():
-				return
-			case <-time.After(100 * time.Millisecond):
-				continue
-			}
-		}
+		// Schedule any unscheduled heights within the window
+		for height := scheduledUntil + 1; height <= targetHeight; height++ {
+			// Check if already in flight
+			pr.inFlightMu.RLock()
+			_, exists := pr.inFlight[height]
+			pr.inFlightMu.RUnlock()
 
-		// Dispatch work for current height and prefetch window
-		currentHeight := pr.manager.daHeight.Load()
-		for i := uint64(0); i < uint64(pr.prefetchWindow); i++ {
-			height := currentHeight + i
-
-			// Check if height is already being processed
-			pr.pendingHeightsMux.RLock()
-			alreadyPending := pr.pendingHeights[height]
-			pr.pendingHeightsMux.RUnlock()
-
-			if alreadyPending {
+			if exists {
 				continue
 			}
 
-			// Try to dispatch the height
-			select {
-			case pr.workChan <- height:
-				// Mark height as pending
-				pr.pendingHeightsMux.Lock()
-				pr.pendingHeights[height] = true
-				pr.pendingHeightsMux.Unlock()
-
-				// Update pending jobs metric
-				if pr.manager.metrics != nil {
-					pr.manager.metrics.ParallelRetrievalPendingJobs.Add(1)
-				}
-			case <-pr.ctx.Done():
-				return
-			default:
-				// Channel full, will retry in next iteration
+			// Try to acquire concurrency permit
+			if !pr.concurrencyLimit.TryAcquire(1) {
+				// Concurrency limit reached, try again later
 				break
 			}
-		}
-	}
-}
 
-// worker processes DA height retrieval tasks
-func (pr *ParallelRetriever) worker() {
-	defer pr.workers.Done()
-	defer func() {
-		atomic.AddInt32(&pr.activeWorkers, -1)
-		// Update metric
-		if pr.manager.metrics != nil {
-			pr.manager.metrics.ParallelRetrievalWorkers.Set(float64(atomic.LoadInt32(&pr.activeWorkers)))
-		}
-	}()
+			// Update scheduledUntil
+			pr.mu.Lock()
+			pr.scheduledUntil = height
+			pr.mu.Unlock()
 
-	for {
-		select {
-		case <-pr.workerStopChan:
-			// Graceful shutdown requested
-			return
-		case height, ok := <-pr.workChan:
-			if !ok {
-				return
-			}
-
-			// Fetch the height
-			result := pr.fetchHeightConcurrently(pr.ctx, height)
-
-			// Remove from pending heights
-			pr.pendingHeightsMux.Lock()
-			delete(pr.pendingHeights, height)
-			pr.pendingHeightsMux.Unlock()
+			// Launch retrieval goroutine for this height
+			go pr.retrieveHeight(height)
 
 			// Update pending jobs metric
 			if pr.manager.metrics != nil {
-				pr.manager.metrics.ParallelRetrievalPendingJobs.Add(-1)
+				pr.manager.metrics.ParallelRetrievalPendingJobs.Add(1)
 			}
-
-			// Send result
-			select {
-			case pr.resultChan <- result:
-			case <-pr.ctx.Done():
-				return
-			}
-		case <-pr.ctx.Done():
-			return
 		}
 	}
 }
 
-// processResults handles retrieved results in order
+// retrieveHeight retrieves data for a specific height with retry logic
+func (pr *ParallelRetriever) retrieveHeight(height uint64) {
+	defer pr.concurrencyLimit.Release(1)
+	defer func() {
+		// Update pending jobs metric
+		if pr.manager.metrics != nil {
+			pr.manager.metrics.ParallelRetrievalPendingJobs.Add(-1)
+		}
+	}()
+
+	// Fetch the height with concurrent namespace calls
+	result := pr.fetchHeightConcurrently(pr.ctx, height)
+
+	// Store result in in-flight map
+	pr.inFlightMu.Lock()
+	pr.inFlight[height] = result
+	pr.inFlightMu.Unlock()
+
+	// Trigger processing check
+	pr.checkAndProcessResults()
+
+	// If error (except height-from-future), schedule retry with backoff
+	if result.Error != nil && !pr.manager.areAllErrorsHeightFromFuture(result.Error) {
+		result.RetryCount++
+		result.LastAttempt = time.Now()
+
+		// Calculate backoff duration
+		backoff := time.Duration(result.RetryCount) * time.Second
+		if backoff > maxRetryBackoff {
+			backoff = maxRetryBackoff
+		}
+
+		// Schedule retry after backoff
+		time.AfterFunc(backoff, func() {
+			// Check if still needed and context not done
+			pr.mu.Lock()
+			stillNeeded := height >= pr.nextToProcess
+			pr.mu.Unlock()
+
+			if stillNeeded && pr.ctx.Err() == nil {
+				// Remove from in-flight to allow re-scheduling
+				pr.inFlightMu.Lock()
+				delete(pr.inFlight, height)
+				pr.inFlightMu.Unlock()
+			}
+		})
+	}
+}
+
+// processResults monitors for results to process in order
 func (pr *ParallelRetriever) processResults() {
-	defer pr.processors.Done()
+	defer pr.processor.Done()
+
+	ticker := time.NewTicker(50 * time.Millisecond)
+	defer ticker.Stop()
 
 	for {
 		select {
 		case <-pr.ctx.Done():
 			return
-		case result, ok := <-pr.resultChan:
-			if !ok {
-				// Channel closed, exit
-				return
-			}
-			if result == nil {
-				continue
-			}
-
-			// Add to heap
-			pr.resultHeapMutex.Lock()
-			heap.Push(&pr.resultHeap, result)
-			pr.resultHeapMutex.Unlock()
-
-			// Process results in order
-			pr.processOrderedResults()
+		case <-ticker.C:
+			pr.checkAndProcessResults()
 		}
 	}
 }
 
-// processOrderedResults processes buffered results in height order using the priority queue
-func (pr *ParallelRetriever) processOrderedResults() {
+// checkAndProcessResults processes available results in order
+func (pr *ParallelRetriever) checkAndProcessResults() {
 	for {
-		pr.resultHeapMutex.Lock()
+		pr.mu.Lock()
+		nextToProcess := pr.nextToProcess
+		pr.mu.Unlock()
 
-		// Check if we have the next expected height
-		if pr.resultHeap.Len() == 0 || pr.resultHeap[0].Height != pr.nextHeight {
-			pr.resultHeapMutex.Unlock()
+		// Check if we have the next height ready
+		pr.inFlightMu.RLock()
+		result, exists := pr.inFlight[nextToProcess]
+		pr.inFlightMu.RUnlock()
+
+		if !exists || result == nil {
+			// Next height not ready yet
 			break
 		}
 
-		// Pop the next result from the heap
-		result := heap.Pop(&pr.resultHeap).(*RetrievalResult)
-		pr.nextHeight++
-		pr.resultHeapMutex.Unlock()
+		// Process based on result status
+		shouldAdvance := false
 
-		// Process the result without holding the lock to avoid blocking other operations
 		if result.Error != nil && pr.ctx.Err() == nil {
-			// if the requested da height is not yet available, wait silently, otherwise log the error
-			if !pr.manager.areAllErrorsHeightFromFuture(result.Error) {
+			// Check if it's a height-from-future error
+			if pr.manager.areAllErrorsHeightFromFuture(result.Error) {
+				// Don't advance for height-from-future errors
+				pr.manager.logger.Debug().
+					Uint64("daHeight", result.Height).
+					Msg("height from future, will retry")
+			} else if result.RetryCount >= dAFetcherRetries {
+				// Max retries reached, log error but advance
 				pr.manager.logger.Error().
 					Uint64("daHeight", result.Height).
 					Str("errors", result.Error.Error()).
-					Msg("failed to retrieve data from DALC")
+					Int("retries", result.RetryCount).
+					Msg("failed to retrieve data from DALC after max retries")
+				shouldAdvance = true
 			}
-			// Don't increment height on error (unless it's height from future)
+			// Otherwise, let retry logic handle it
 		} else {
-			// Process successful retrieval or NotFound
+			// Success or NotFound - process and advance
 			if len(result.Data) > 0 {
 				pr.manager.processRetrievedData(pr.ctx, result.Data, result.Height)
 			} else {
 				pr.manager.logger.Debug().Uint64("daHeight", result.Height).Msg("no blob data found (NotFound)")
 			}
-			// Increment height on success or NotFound
-			pr.manager.daHeight.Store(result.Height + 1)
+			shouldAdvance = true
+		}
+
+		if shouldAdvance {
+			// Remove from in-flight map
+			pr.inFlightMu.Lock()
+			delete(pr.inFlight, nextToProcess)
+			pr.inFlightMu.Unlock()
+
+			// Advance both pointers
+			pr.mu.Lock()
+			pr.nextToProcess++
+			pr.mu.Unlock()
+
+			// Update manager's DA height
+			pr.manager.daHeight.Store(nextToProcess + 1)
+		} else {
+			// Can't advance yet, stop processing
+			break
 		}
 	}
 }
 
 // fetchHeightConcurrently retrieves blobs from a specific DA height using concurrent namespace calls
 func (pr *ParallelRetriever) fetchHeightConcurrently(ctx context.Context, height uint64) *RetrievalResult {
-	var err error
 	start := time.Now()
 	fetchCtx, cancel := context.WithTimeout(ctx, dAefetcherTimeout)
 	defer cancel()
@@ -465,52 +329,41 @@ func (pr *ParallelRetriever) fetchHeightConcurrently(ctx context.Context, height
 	// Record DA retrieval attempt
 	pr.manager.recordDAMetrics("retrieval", DAModeRetry)
 
-	// Retry logic for the entire height
-	for r := 0; r < dAFetcherRetries; r++ {
-		select {
-		case <-ctx.Done():
-			return &RetrievalResult{Height: height, Error: ctx.Err()}
-		case <-fetchCtx.Done():
-			return &RetrievalResult{Height: height, Error: fetchCtx.Err()}
-		default:
-		}
-
-		combinedResult, fetchErr := pr.fetchBlobsConcurrently(fetchCtx, height)
-		if fetchErr == nil {
-			// Record successful DA retrieval
-			pr.manager.recordDAMetrics("retrieval", DAModeSuccess)
-			return &RetrievalResult{Height: height, Data: combinedResult.Data, Error: nil}
-		} else if strings.Contains(fetchErr.Error(), coreda.ErrHeightFromFuture.Error()) {
-			return &RetrievalResult{Height: height, Error: fetchErr}
-		}
-
-		// Track the error and retry
-		err = errors.Join(err, fetchErr)
-		select {
-		case <-ctx.Done():
-			return &RetrievalResult{Height: height, Error: err}
-		case <-time.After(100 * time.Millisecond):
-		}
+	// Single attempt (retry is handled at higher level now)
+	select {
+	case <-ctx.Done():
+		return &RetrievalResult{Height: height, Error: ctx.Err()}
+	case <-fetchCtx.Done():
+		return &RetrievalResult{Height: height, Error: fetchCtx.Err()}
+	default:
 	}
 
-	return &RetrievalResult{Height: height, Error: err}
+	combinedResult, fetchErr := pr.manager.fetchBlobsConcurrently(fetchCtx, height)
+	if fetchErr == nil {
+		// Record successful DA retrieval
+		pr.manager.recordDAMetrics("retrieval", DAModeSuccess)
+		return &RetrievalResult{Height: height, Data: combinedResult.Data, Error: nil}
+	}
+
+	// Return error (retry logic is handled in retrieveHeight)
+	return &RetrievalResult{Height: height, Error: fetchErr}
 }
 
 // fetchBlobsConcurrently retrieves blobs using concurrent calls to header and data namespaces
-func (pr *ParallelRetriever) fetchBlobsConcurrently(ctx context.Context, daHeight uint64) (coreda.ResultRetrieve, error) {
+func (m *Manager) fetchBlobsConcurrently(ctx context.Context, daHeight uint64) (coreda.ResultRetrieve, error) {
 	var err error
 
 	// TODO: Remove this once XO resets their testnet
 	// Check if we should still try the old namespace for backward compatibility
-	if !pr.manager.namespaceMigrationCompleted.Load() {
+	if !m.namespaceMigrationCompleted.Load() {
 		// First, try the legacy namespace if we haven't completed migration
-		legacyNamespace := []byte(pr.manager.config.DA.Namespace)
+		legacyNamespace := []byte(m.config.DA.Namespace)
 		if len(legacyNamespace) > 0 {
-			legacyRes := types.RetrieveWithHelpers(ctx, pr.manager.da, pr.manager.logger, daHeight, legacyNamespace)
+			legacyRes := types.RetrieveWithHelpers(ctx, m.da, m.logger, daHeight, legacyNamespace)
 
 			// Handle legacy namespace errors
 			if legacyRes.Code == coreda.StatusError {
-				pr.manager.recordDAMetrics("retrieval", DAModeFail)
+				m.recordDAMetrics("retrieval", DAModeFail)
 				err = fmt.Errorf("failed to retrieve from legacy namespace: %s", legacyRes.Message)
 				return legacyRes, err
 			}
@@ -522,12 +375,12 @@ func (pr *ParallelRetriever) fetchBlobsConcurrently(ctx context.Context, daHeigh
 
 			// If legacy namespace has data, use it and return
 			if legacyRes.Code == coreda.StatusSuccess {
-				pr.manager.logger.Debug().Uint64("daHeight", daHeight).Msg("found data in legacy namespace")
+				m.logger.Debug().Uint64("daHeight", daHeight).Msg("found data in legacy namespace")
 				return legacyRes, nil
 			}
 
 			// Legacy namespace returned not found, so try new namespaces
-			pr.manager.logger.Debug().Uint64("daHeight", daHeight).Msg("no data in legacy namespace, trying new namespaces")
+			m.logger.Debug().Uint64("daHeight", daHeight).Msg("no data in legacy namespace, trying new namespaces")
 		}
 	}
 
@@ -542,8 +395,8 @@ func (pr *ParallelRetriever) fetchBlobsConcurrently(ctx context.Context, daHeigh
 
 	// Retrieve from header namespace concurrently
 	go func() {
-		headerNamespace := []byte(pr.manager.config.DA.GetHeaderNamespace())
-		res := types.RetrieveWithHelpers(ctx, pr.manager.da, pr.manager.logger, daHeight, headerNamespace)
+		headerNamespace := []byte(m.config.DA.GetHeaderNamespace())
+		res := types.RetrieveWithHelpers(ctx, m.da, m.logger, daHeight, headerNamespace)
 		var err error
 		if res.Code == coreda.StatusError {
 			err = fmt.Errorf("header namespace error: %s", res.Message)
@@ -557,8 +410,8 @@ func (pr *ParallelRetriever) fetchBlobsConcurrently(ctx context.Context, daHeigh
 
 	// Retrieve from data namespace concurrently
 	go func() {
-		dataNamespace := []byte(pr.manager.config.DA.GetDataNamespace())
-		res := types.RetrieveWithHelpers(ctx, pr.manager.da, pr.manager.logger, daHeight, dataNamespace)
+		dataNamespace := []byte(m.config.DA.GetDataNamespace())
+		res := types.RetrieveWithHelpers(ctx, m.da, m.logger, daHeight, dataNamespace)
 		var err error
 		if res.Code == coreda.StatusError {
 			err = fmt.Errorf("data namespace error: %s", res.Message)
@@ -591,7 +444,7 @@ func (pr *ParallelRetriever) fetchBlobsConcurrently(ctx context.Context, daHeigh
 	// Handle errors
 	if headerErr != nil && dataErr != nil {
 		// Both failed
-		pr.manager.recordDAMetrics("retrieval", DAModeFail)
+		m.recordDAMetrics("retrieval", DAModeFail)
 		err = fmt.Errorf("failed to retrieve from both namespaces - %w, %w", headerErr, dataErr)
 		return headerRes, err
 	}
@@ -634,19 +487,19 @@ func (pr *ParallelRetriever) fetchBlobsConcurrently(ctx context.Context, daHeigh
 
 		// If we haven't completed migration and found no data in new namespaces,
 		// mark migration as complete to avoid future legacy namespace checks
-		if !pr.manager.namespaceMigrationCompleted.Load() {
-			if err := pr.manager.setNamespaceMigrationCompleted(ctx); err != nil {
-				pr.manager.logger.Error().Err(err).Msg("failed to mark namespace migration as completed")
+		if !m.namespaceMigrationCompleted.Load() {
+			if err := m.setNamespaceMigrationCompleted(ctx); err != nil {
+				m.logger.Error().Err(err).Msg("failed to mark namespace migration as completed")
 			} else {
-				pr.manager.logger.Info().Uint64("daHeight", daHeight).Msg("marked namespace migration as completed - no more legacy namespace checks")
+				m.logger.Info().Uint64("daHeight", daHeight).Msg("marked namespace migration as completed - no more legacy namespace checks")
 			}
 		}
-	} else if (headerRes.Code == coreda.StatusSuccess || dataRes.Code == coreda.StatusSuccess) && !pr.manager.namespaceMigrationCompleted.Load() {
+	} else if (headerRes.Code == coreda.StatusSuccess || dataRes.Code == coreda.StatusSuccess) && !m.namespaceMigrationCompleted.Load() {
 		// Found data in new namespaces, mark migration as complete
-		if err := pr.manager.setNamespaceMigrationCompleted(ctx); err != nil {
-			pr.manager.logger.Error().Err(err).Msg("failed to mark namespace migration as completed")
+		if err := m.setNamespaceMigrationCompleted(ctx); err != nil {
+			m.logger.Error().Err(err).Msg("failed to mark namespace migration as completed")
 		} else {
-			pr.manager.logger.Info().Uint64("daHeight", daHeight).Msg("found data in new namespaces - marked migration as completed")
+			m.logger.Info().Uint64("daHeight", daHeight).Msg("found data in new namespaces - marked migration as completed")
 		}
 	}
 
@@ -664,11 +517,14 @@ func (pr *ParallelRetriever) updateMetrics() {
 			return
 		case <-ticker.C:
 			if pr.manager.metrics != nil {
-				// Update buffer size metric
-				pr.resultHeapMutex.Lock()
-				bufferSize := pr.resultHeap.Len()
-				pr.resultHeapMutex.Unlock()
-				pr.manager.metrics.ParallelRetrievalBufferSize.Set(float64(bufferSize))
+				// Update in-flight size metric
+				pr.inFlightMu.RLock()
+				inFlightSize := len(pr.inFlight)
+				pr.inFlightMu.RUnlock()
+				pr.manager.metrics.ParallelRetrievalBufferSize.Set(float64(inFlightSize))
+
+				// Update concurrency metric
+				pr.manager.metrics.ParallelRetrievalWorkers.Set(float64(defaultConcurrencyLimit))
 			}
 		}
 	}
@@ -697,6 +553,7 @@ func (m *Manager) processRetrievedData(ctx context.Context, data [][]byte, daHei
 
 // processNextDAHeaderAndData is responsible for retrieving a header and data from the DA layer.
 // It returns an error if the context is done or if the DA layer returns an error.
+// This method is used for sequential retrieval mode (e.g., in tests).
 func (m *Manager) processNextDAHeaderAndData(ctx context.Context) error {
 	select {
 	case <-ctx.Done():
@@ -714,7 +571,9 @@ func (m *Manager) processNextDAHeaderAndData(ctx context.Context) error {
 			return ctx.Err()
 		default:
 		}
-		blobsResp, fetchErr := m.fetchBlobs(ctx, daHeight)
+
+		// Use the unified concurrent fetch method
+		blobsResp, fetchErr := m.fetchBlobsConcurrently(ctx, daHeight)
 		if fetchErr == nil {
 			// Record successful DA retrieval
 			m.recordDAMetrics("retrieval", DAModeSuccess)
@@ -857,119 +716,4 @@ func (m *Manager) areAllErrorsHeightFromFuture(err error) bool {
 	}
 
 	return false
-}
-
-// fetchBlobs retrieves blobs from the DA layer
-func (m *Manager) fetchBlobs(ctx context.Context, daHeight uint64) (coreda.ResultRetrieve, error) {
-	var err error
-	ctx, cancel := context.WithTimeout(ctx, dAefetcherTimeout)
-	defer cancel()
-
-	// Record DA retrieval retry attempt
-	m.recordDAMetrics("retrieval", DAModeRetry)
-
-	// TODO: Remove this once XO resets their testnet
-	// Check if we should still try the old namespace for backward compatibility
-	if !m.namespaceMigrationCompleted.Load() {
-		// First, try the legacy namespace if we haven't completed migration
-		legacyNamespace := []byte(m.config.DA.Namespace)
-		if len(legacyNamespace) > 0 {
-			legacyRes := types.RetrieveWithHelpers(ctx, m.da, m.logger, daHeight, legacyNamespace)
-
-			// Handle legacy namespace errors
-			if legacyRes.Code == coreda.StatusError {
-				m.recordDAMetrics("retrieval", DAModeFail)
-				err = fmt.Errorf("failed to retrieve from legacy namespace: %s", legacyRes.Message)
-				return legacyRes, err
-			}
-
-			if legacyRes.Code == coreda.StatusHeightFromFuture {
-				err = fmt.Errorf("%w: height from future", coreda.ErrHeightFromFuture)
-				return coreda.ResultRetrieve{BaseResult: coreda.BaseResult{Code: coreda.StatusHeightFromFuture}}, err
-			}
-
-			// If legacy namespace has data, use it and return
-			if legacyRes.Code == coreda.StatusSuccess {
-				m.logger.Debug().Uint64("daHeight", daHeight).Msg("found data in legacy namespace")
-				return legacyRes, nil
-			}
-
-			// Legacy namespace returned not found, so try new namespaces
-			m.logger.Debug().Uint64("daHeight", daHeight).Msg("no data in legacy namespace, trying new namespaces")
-		}
-	}
-
-	// Try to retrieve from both header and data namespaces
-	headerNamespace := []byte(m.config.DA.GetHeaderNamespace())
-	dataNamespace := []byte(m.config.DA.GetDataNamespace())
-
-	// Retrieve headers
-	headerRes := types.RetrieveWithHelpers(ctx, m.da, m.logger, daHeight, headerNamespace)
-
-	// Retrieve data
-	dataRes := types.RetrieveWithHelpers(ctx, m.da, m.logger, daHeight, dataNamespace)
-
-	// Combine results or handle errors appropriately
-	if headerRes.Code == coreda.StatusError && dataRes.Code == coreda.StatusError {
-		// Both failed
-		m.recordDAMetrics("retrieval", DAModeFail)
-		err = fmt.Errorf("failed to retrieve from both namespaces - headers: %s, data: %s", headerRes.Message, dataRes.Message)
-		return headerRes, err
-	}
-
-	if headerRes.Code == coreda.StatusHeightFromFuture || dataRes.Code == coreda.StatusHeightFromFuture {
-		// At least one is from future
-		err = fmt.Errorf("%w: height from future", coreda.ErrHeightFromFuture)
-		return coreda.ResultRetrieve{BaseResult: coreda.BaseResult{Code: coreda.StatusHeightFromFuture}}, err
-	}
-
-	// Combine successful results
-	combinedResult := coreda.ResultRetrieve{
-		BaseResult: coreda.BaseResult{
-			Code:   coreda.StatusSuccess,
-			Height: daHeight,
-		},
-		Data: make([][]byte, 0),
-	}
-
-	// Add header data if successful
-	if headerRes.Code == coreda.StatusSuccess {
-		combinedResult.Data = append(combinedResult.Data, headerRes.Data...)
-		if len(headerRes.IDs) > 0 {
-			combinedResult.IDs = append(combinedResult.IDs, headerRes.IDs...)
-		}
-	}
-
-	// Add data blobs if successful
-	if dataRes.Code == coreda.StatusSuccess {
-		combinedResult.Data = append(combinedResult.Data, dataRes.Data...)
-		if len(dataRes.IDs) > 0 {
-			combinedResult.IDs = append(combinedResult.IDs, dataRes.IDs...)
-		}
-	}
-
-	// Handle not found cases and migration completion
-	if headerRes.Code == coreda.StatusNotFound && dataRes.Code == coreda.StatusNotFound {
-		combinedResult.Code = coreda.StatusNotFound
-		combinedResult.Message = "no blobs found in either namespace"
-
-		// If we haven't completed migration and found no data in new namespaces,
-		// mark migration as complete to avoid future legacy namespace checks
-		if !m.namespaceMigrationCompleted.Load() {
-			if err := m.setNamespaceMigrationCompleted(ctx); err != nil {
-				m.logger.Error().Err(err).Msg("failed to mark namespace migration as completed")
-			} else {
-				m.logger.Info().Uint64("daHeight", daHeight).Msg("marked namespace migration as completed - no more legacy namespace checks")
-			}
-		}
-	} else if (headerRes.Code == coreda.StatusSuccess || dataRes.Code == coreda.StatusSuccess) && !m.namespaceMigrationCompleted.Load() {
-		// Found data in new namespaces, mark migration as complete
-		if err := m.setNamespaceMigrationCompleted(ctx); err != nil {
-			m.logger.Error().Err(err).Msg("failed to mark namespace migration as completed")
-		} else {
-			m.logger.Info().Uint64("daHeight", daHeight).Msg("found data in new namespaces - marked migration as completed")
-		}
-	}
-
-	return combinedResult, err
 }
