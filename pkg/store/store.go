@@ -284,7 +284,7 @@ func (s *DefaultStore) Rollback(ctx context.Context, height uint64) error {
 	} else if len(daIncludedHeightBz) == 8 { // valid height stored, so able to check
 		daIncludedHeight := binary.LittleEndian.Uint64(daIncludedHeightBz)
 		if daIncludedHeight > height {
-			return fmt.Errorf("DA included height is greater than the rollback height: cannot rollback a finalized height.")
+			return fmt.Errorf("DA included height is greater than the rollback height: cannot rollback a finalized height")
 		}
 	}
 
