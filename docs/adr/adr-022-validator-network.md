@@ -133,7 +133,7 @@ graph TD
 
  1. basic header checks;
  2. produce signature;
- 3. async submit transaction with signautres
+ 3. async submit transaction with signatures
 
 ## Security considerations
 
