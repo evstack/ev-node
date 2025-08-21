@@ -606,8 +606,12 @@ func (m *Manager) retrieveBatch(ctx context.Context) (*BatchData, error) {
 }
 
 // isUsingExpectedSingleSequencer checks if the header is using the expected single sequencer.
-func (m *Manager) isUsingExpectedSingleSequencer(header *types.SignedHeader) bool {
-	return bytes.Equal(header.ProposerAddress, m.genesis.ProposerAddress)
+func (m *Manager) isUsingExpectedSingleSequencer(proposerAddress []byte) (bool, error) {
+	if !bytes.Equal(m.genesis.ProposerAddress, proposerAddress) {
+		return false, fmt.Errorf("proposer address is not the same as the genesis proposer address %x != %x", proposerAddress, m.genesis.ProposerAddress)
+	}
+
+	return true, nil
 }
 
 // publishBlockInternal is the internal implementation for publishing a block.
@@ -861,8 +865,9 @@ func (m *Manager) execCreateBlock(_ context.Context, height uint64, lastSignatur
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to get proposer address: %w", err)
 	}
-	if !bytes.Equal(m.genesis.ProposerAddress, address) {
-		return nil, nil, fmt.Errorf("proposer address is not the same as the genesis proposer address %x != %x", address, m.genesis.ProposerAddress)
+
+	if _, err := m.isUsingExpectedSingleSequencer(address); err != nil {
+		return nil, nil, err
 	}
 
 	// determine if this is an empty block
@@ -1098,9 +1103,11 @@ func (m *Manager) isValidSignedData(signedData *types.SignedData) bool {
 	if signedData == nil || signedData.Txs == nil {
 		return false
 	}
-	if !bytes.Equal(signedData.Signer.Address, m.genesis.ProposerAddress) {
+
+	if ok, _ := m.isUsingExpectedSingleSequencer(signedData.Signer.Address); !ok {
 		return false
 	}
+
 	dataBytes, err := signedData.Data.MarshalBinary()
 	if err != nil {
 		return false

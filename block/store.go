@@ -44,7 +44,7 @@ func (m *Manager) HeaderStoreRetrieveLoop(ctx context.Context) {
 				}
 
 				// early validation to reject junk headers
-				if !m.isUsingExpectedSingleSequencer(header) {
+				if ok, _ := m.isUsingExpectedSingleSequencer(header.ProposerAddress); !ok {
 					continue
 				}
 

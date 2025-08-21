@@ -126,11 +126,11 @@ func (m *Manager) handlePotentialHeader(ctx context.Context, bz []byte, daHeight
 	}
 
 	// early validation to reject junk headers
-	if !m.isUsingExpectedSingleSequencer(header) {
+	if ok, err := m.isUsingExpectedSingleSequencer(header.ProposerAddress); !ok {
 		m.logger.Debug().
 			Uint64("headerHeight", header.Height()).
 			Str("headerHash", header.Hash().String()).
-			Msg("skipping header from unexpected sequencer")
+			Msg("invalid header: " + err.Error())
 		return true
 	}
 
@@ -140,13 +140,14 @@ func (m *Manager) handlePotentialHeader(ctx context.Context, bz []byte, daHeight
 	// validate header and its signature validity
 	if err := header.ValidateBasic(); err != nil {
 		m.logger.Debug().Uint64("daHeight", daHeight).Err(err).Msg("blob does not look like a valid header")
-		return false
+		return true
 	}
 
 	headerHash := header.Hash().String()
 	m.headerCache.SetDAIncluded(headerHash, daHeight)
 	m.sendNonBlockingSignalToDAIncluderCh()
 	m.logger.Info().Uint64("headerHeight", header.Height()).Str("headerHash", headerHash).Msg("header marked as DA included")
+
 	if !m.headerCache.IsSeen(headerHash) {
 		select {
 		case <-ctx.Done():
@@ -156,6 +157,7 @@ func (m *Manager) handlePotentialHeader(ctx context.Context, bz []byte, daHeight
 		}
 		m.headerInCh <- NewHeaderEvent{header, daHeight}
 	}
+
 	return true
 }
 
@@ -167,6 +169,7 @@ func (m *Manager) handlePotentialData(ctx context.Context, bz []byte, daHeight u
 		m.logger.Debug().Err(err).Msg("failed to unmarshal signed data")
 		return
 	}
+
 	if len(signedData.Txs) == 0 {
 		m.logger.Debug().Uint64("daHeight", daHeight).Msg("ignoring empty signed data")
 		return

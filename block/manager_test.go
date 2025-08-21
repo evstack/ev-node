@@ -751,11 +751,15 @@ func TestUtilityFunctions(t *testing.T) {
 		header.Signature = signature
 
 		// Should return true for valid header with correct proposer
-		require.True(m.isUsingExpectedSingleSequencer(header))
+		ok, err := m.isUsingExpectedSingleSequencer(header.ProposerAddress)
+		require.NoError(err)
+		require.True(ok)
 
 		// Should return false for header with wrong proposer address
 		header.ProposerAddress = []byte("wrong-proposer")
-		require.False(m.isUsingExpectedSingleSequencer(header))
+		ok, err = m.isUsingExpectedSingleSequencer(header.ProposerAddress)
+		require.Error(err)
+		require.False(ok)
 	})
 }
 
