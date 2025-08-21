@@ -94,11 +94,18 @@ func (m *Manager) processHeaderStoreRange(ctx context.Context, startHeight, endH
 			data = retrievedData
 		}
 
+		// we need to wait until the previous height has been executed in order to continue syncing
+		if err := m.waitForHeight(ctx, header.Height()-1); err != nil {
+			m.logger.Error().Err(err).Msg("failed to wait for previous height")
+			return
+		}
+
 		// validate header and its signature validity with data
 		if err := header.ValidateBasicWithData(data); err != nil {
 			m.logger.Debug().Uint64("height", header.Height()).Err(err).Msg("header validation with data failed")
 			continue
 		}
+
 		m.sendCompleteHeightEvent(ctx, header, data, daHeight, "p2p header sync")
 	}
 }
@@ -132,6 +139,12 @@ func (m *Manager) processDataStoreRange(ctx context.Context, startHeight, endHei
 
 		// set custom verifier to do correct header verification
 		header.SetCustomVerifierForSyncNode(m.syncNodeSignaturePayloadProvider)
+
+		// we need to wait until the previous height has been executed in order to continue syncing
+		if err := m.waitForHeight(ctx, header.Height()-1); err != nil {
+			m.logger.Error().Err(err).Msg("failed to wait for previous height")
+			return
+		}
 
 		// validate header and its signature validity with data
 		if err := header.ValidateBasicWithData(d); err != nil {

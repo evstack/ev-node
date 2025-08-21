@@ -176,9 +176,6 @@ func (m *Manager) tryDecodeHeader(bz []byte, daHeight uint64) *types.SignedHeade
 		return nil
 	}
 
-	// set custom verifier to do correct header verification
-	header.SetCustomVerifierForSyncNode(m.syncNodeSignaturePayloadProvider)
-
 	// validate basic header structure only (without data)
 	if err := header.Header.ValidateBasic(); err != nil {
 		m.logger.Debug().Uint64("daHeight", daHeight).Err(err).Msg("blob does not look like a valid header")
@@ -252,10 +249,31 @@ func (m *Manager) createEmptyData(header *types.SignedHeader) *types.Data {
 	}
 }
 
+func (m *Manager) waitForHeight(ctx context.Context, height uint64) error {
+	for {
+		currentHeight, err := m.GetStoreHeight(ctx)
+		if err != nil {
+			m.logger.Error().Err(err).Msg("failed to get store height")
+			return err
+		}
+		if currentHeight >= height {
+			return nil
+		}
+
+		time.Sleep(time.Second)
+	}
+}
+
 // sendHeightEventIfValid sends a height event if both header and data are valid and not seen before
 func (m *Manager) sendHeightEventIfValid(ctx context.Context, header *types.SignedHeader, data *types.Data, daHeight uint64) {
 	headerHash := header.Hash().String()
 	dataHashStr := data.DACommitment().String()
+
+	// we need to wait until the previous height has been executed in order to continue syncing
+	if err := m.waitForHeight(ctx, header.Height()-1); err != nil {
+		m.logger.Error().Err(err).Msg("failed to wait for previous height")
+		return
+	}
 
 	// Validate header with its data before proceeding
 	if err := header.ValidateBasicWithData(data); err != nil {
