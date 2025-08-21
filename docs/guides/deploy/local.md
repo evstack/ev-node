@@ -224,7 +224,7 @@ Once you are done interacting with your chain, you can exit out of your docker c
 exit
 ```
 
-Then you can shut down your chain environment by running `CRTL+C` in your terminal.
+Then you can shut down your chain environment by running `CTRL+C` in your terminal.
 
 If you want to stop the docker containers without shutting down your terminal, you can run:
 

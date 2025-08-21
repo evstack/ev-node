@@ -9,7 +9,7 @@
 ```go
 // Sequencer is a generic interface for a sequencer
 type Sequencer interface {
- // SubmitBatchTxs submits a batch of transactions from  to sequencer
+ // SubmitBatchTxs submits a batch of transactions  to sequencer
  // Id is the unique identifier for the  chain
  // Batch is the batch of transactions to submit
  // returns an error if any from the sequencer
