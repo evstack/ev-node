@@ -30,6 +30,10 @@ FROM base
 
 COPY --from=builder /go/bin/testapp /usr/bin
 
+RUN apt-get update && \
+	curl \
+	&& rm -rf /var/lib/apt/lists/*
+
 WORKDIR /apps
 
 ENTRYPOINT ["testapp"]
