@@ -3,7 +3,7 @@
 Chain users use a light node to communicate with the chain P2P network for two primary reasons:
 
 - submitting transactions
-- gossipping headers and fraud proofs
+- gossiping headers and fraud proofs
 
 Here's what the typical transaction flow looks like:
 
