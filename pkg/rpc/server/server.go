@@ -276,8 +276,6 @@ func NewServiceHandler(store store.Store, peerManager p2p.P2PRPC, logger zerolog
 
 	mux := http.NewServeMux()
 
-	fmt.Println("Registering gRPC reflection service...")
-
 	compress1KB := connect.WithCompressMinBytes(1024)
 	reflector := grpcreflect.NewStaticReflector(
 		rpc.StoreServiceName,

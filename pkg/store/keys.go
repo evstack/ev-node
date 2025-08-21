@@ -42,8 +42,8 @@ func getSignatureKey(height uint64) string {
 	return GenerateKey([]string{signaturePrefix, strconv.FormatUint(height, 10)})
 }
 
-func getStateKey() string {
-	return statePrefix
+func getStateAtHeightKey(height uint64) string {
+	return GenerateKey([]string{statePrefix, strconv.FormatUint(height, 10)})
 }
 
 func getMetaKey(key string) string {

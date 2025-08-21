@@ -566,6 +566,72 @@ func (_c *MockStore_GetState_Call) RunAndReturn(run func(ctx context.Context) (t
 	return _c
 }
 
+// GetStateAtHeight provides a mock function for the type MockStore
+func (_mock *MockStore) GetStateAtHeight(ctx context.Context, height uint64) (types.State, error) {
+	ret := _mock.Called(ctx, height)
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetStateAtHeight")
+	}
+
+	var r0 types.State
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, uint64) (types.State, error)); ok {
+		return returnFunc(ctx, height)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, uint64) types.State); ok {
+		r0 = returnFunc(ctx, height)
+	} else {
+		r0 = ret.Get(0).(types.State)
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, uint64) error); ok {
+		r1 = returnFunc(ctx, height)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}
+
+// MockStore_GetStateAtHeight_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetStateAtHeight'
+type MockStore_GetStateAtHeight_Call struct {
+	*mock.Call
+}
+
+// GetStateAtHeight is a helper method to define mock.On call
+//   - ctx context.Context
+//   - height uint64
+func (_e *MockStore_Expecter) GetStateAtHeight(ctx interface{}, height interface{}) *MockStore_GetStateAtHeight_Call {
+	return &MockStore_GetStateAtHeight_Call{Call: _e.mock.On("GetStateAtHeight", ctx, height)}
+}
+
+func (_c *MockStore_GetStateAtHeight_Call) Run(run func(ctx context.Context, height uint64)) *MockStore_GetStateAtHeight_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 uint64
+		if args[1] != nil {
+			arg1 = args[1].(uint64)
+		}
+		run(
+			arg0,
+			arg1,
+		)
+	})
+	return _c
+}
+
+func (_c *MockStore_GetStateAtHeight_Call) Return(state types.State, err error) *MockStore_GetStateAtHeight_Call {
+	_c.Call.Return(state, err)
+	return _c
+}
+
+func (_c *MockStore_GetStateAtHeight_Call) RunAndReturn(run func(ctx context.Context, height uint64) (types.State, error)) *MockStore_GetStateAtHeight_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // Height provides a mock function for the type MockStore
 func (_mock *MockStore) Height(ctx context.Context) (uint64, error) {
 	ret := _mock.Called(ctx)
@@ -622,6 +688,63 @@ func (_c *MockStore_Height_Call) Return(v uint64, err error) *MockStore_Height_C
 }
 
 func (_c *MockStore_Height_Call) RunAndReturn(run func(ctx context.Context) (uint64, error)) *MockStore_Height_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// Rollback provides a mock function for the type MockStore
+func (_mock *MockStore) Rollback(ctx context.Context, height uint64) error {
+	ret := _mock.Called(ctx, height)
+
+	if len(ret) == 0 {
+		panic("no return value specified for Rollback")
+	}
+
+	var r0 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, uint64) error); ok {
+		r0 = returnFunc(ctx, height)
+	} else {
+		r0 = ret.Error(0)
+	}
+	return r0
+}
+
+// MockStore_Rollback_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'Rollback'
+type MockStore_Rollback_Call struct {
+	*mock.Call
+}
+
+// Rollback is a helper method to define mock.On call
+//   - ctx context.Context
+//   - height uint64
+func (_e *MockStore_Expecter) Rollback(ctx interface{}, height interface{}) *MockStore_Rollback_Call {
+	return &MockStore_Rollback_Call{Call: _e.mock.On("Rollback", ctx, height)}
+}
+
+func (_c *MockStore_Rollback_Call) Run(run func(ctx context.Context, height uint64)) *MockStore_Rollback_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 uint64
+		if args[1] != nil {
+			arg1 = args[1].(uint64)
+		}
+		run(
+			arg0,
+			arg1,
+		)
+	})
+	return _c
+}
+
+func (_c *MockStore_Rollback_Call) Return(err error) *MockStore_Rollback_Call {
+	_c.Call.Return(err)
+	return _c
+}
+
+func (_c *MockStore_Rollback_Call) RunAndReturn(run func(ctx context.Context, height uint64) error) *MockStore_Rollback_Call {
 	_c.Call.Return(run)
 	return _c
 }
