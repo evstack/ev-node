@@ -9,7 +9,7 @@ require (
 	github.com/chzyer/readline v1.5.1 // indirect
 	github.com/cosmos/ibc-go/modules/capability v1.0.1 // indirect
 	github.com/cosmos/ibc-go/v8 v8.7.0 // indirect
-	github.com/go-viper/mapstructure/v2 v2.3.0 // indirect
+	github.com/go-viper/mapstructure/v2 v2.4.0 // indirect
 	github.com/manifoldco/promptui v0.9.0 // indirect
 )
 
