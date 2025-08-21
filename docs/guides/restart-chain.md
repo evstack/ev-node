@@ -15,7 +15,7 @@ For example, if you ran the [quick start](/docs/guides/quick-start.md) tutorial,
 testapp start
 ```
 
-You would have see output similar to:
+You would have seen output similar to:
 
 ```bash
 I[2024-10-17|14:52:12.845] Creating and publishing block                module=BlockManager height=7
