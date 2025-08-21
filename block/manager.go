@@ -47,8 +47,8 @@ const (
 	// Key for storing namespace migration state in the store
 	namespaceMigrationKey = "namespace_migration_completed"
 
-	// Applies to the headerInCh and dataInCh, 10000 is a large enough number for headers per DA block.
-	eventInChLength = 10000
+	// Applies to the headerInCh and dataInCh, 20000 is a large enough number for headers per DA block.
+	eventInChLength = 20000
 )
 
 var (
@@ -67,16 +67,11 @@ type MetricsRecorder interface {
 	RecordMetrics(gasPrice float64, blobSize uint64, statusCode coreda.StatusCode, numPendingBlocks uint64, includedBlockHeight uint64)
 }
 
-// NewHeaderEvent is used to pass header and DA height to headerInCh
-type NewHeaderEvent struct {
+// NewHeightEvent is used to pass an header, data and its DA height to heightInCh
+type NewHeightEvent struct {
+	DAHeight uint64
 	Header   *types.SignedHeader
-	DAHeight uint64
-}
-
-// NewDataEvent is used to pass header and DA height to headerInCh
-type NewDataEvent struct {
 	Data     *types.Data
-	DAHeight uint64
 }
 
 // BatchData is used to pass batch, time and data (da.IDs) to BatchQueue
@@ -107,11 +102,9 @@ type Manager struct {
 	headerBroadcaster broadcaster[*types.SignedHeader]
 	dataBroadcaster   broadcaster[*types.Data]
 
-	headerInCh  chan NewHeaderEvent
+	heightInCh  chan NewHeightEvent
 	headerStore goheader.Store[*types.SignedHeader]
-
-	dataInCh  chan NewDataEvent
-	dataStore goheader.Store[*types.Data]
+	dataStore   goheader.Store[*types.Data]
 
 	headerCache *cache.Cache[types.SignedHeader]
 	dataCache   *cache.Cache[types.Data]
@@ -156,9 +149,13 @@ type Manager struct {
 	// txNotifyCh is used to signal when new transactions are available
 	txNotifyCh chan struct{}
 
-	// signaturePayloadProvider is used to provide a signature payload for the header.
+	// aggregatorSignaturePayloadProvider is used to provide a signature payload for the header.
 	// It is used to sign the header with the provided signer.
-	signaturePayloadProvider types.SignaturePayloadProvider
+	aggregatorSignaturePayloadProvider types.AggregatorNodeSignatureBytesProvider
+
+	// syncNodeSignaturePayloadProvider is used to provide a signature payload for the header.
+	// It is used to sign the header with the provided signer.
+	syncNodeSignaturePayloadProvider types.SyncNodeSignatureBytesProvider
 
 	// validatorHasherProvider is used to provide the validator hash for the header.
 	// It is used to set the validator hash in the header.
@@ -211,7 +208,7 @@ func getInitialState(ctx context.Context, genesis genesis.Genesis, signer signer
 				return types.State{}, fmt.Errorf("failed to get public key: %w", err)
 			}
 
-			bz, err := managerOpts.SignaturePayloadProvider(&header)
+			bz, err := managerOpts.AggregatorNodeSignatureBytesProvider(&header)
 			if err != nil {
 				return types.State{}, fmt.Errorf("failed to get signature payload: %w", err)
 			}
@@ -263,14 +260,20 @@ func getInitialState(ctx context.Context, genesis genesis.Genesis, signer signer
 
 // ManagerOptions defines the options for creating a new block Manager.
 type ManagerOptions struct {
-	SignaturePayloadProvider types.SignaturePayloadProvider
-	ValidatorHasherProvider  types.ValidatorHasherProvider
+	AggregatorNodeSignatureBytesProvider types.AggregatorNodeSignatureBytesProvider
+	SyncNodeSignatureBytesProvider       types.SyncNodeSignatureBytesProvider
+	ValidatorHasherProvider              types.ValidatorHasherProvider
 }
 
 func (opts *ManagerOptions) Validate() error {
-	if opts.SignaturePayloadProvider == nil {
-		return fmt.Errorf("signature payload provider cannot be nil")
+	if opts.AggregatorNodeSignatureBytesProvider == nil {
+		return fmt.Errorf("aggregator node signature bytes provider cannot be nil")
 	}
+
+	if opts.SyncNodeSignatureBytesProvider == nil {
+		return fmt.Errorf("sync node signature bytes provider cannot be nil")
+	}
+
 	if opts.ValidatorHasherProvider == nil {
 		return fmt.Errorf("validator hasher provider cannot be nil")
 	}
@@ -281,8 +284,9 @@ func (opts *ManagerOptions) Validate() error {
 // DefaultManagerOptions returns the default options for creating a new block Manager.
 func DefaultManagerOptions() ManagerOptions {
 	return ManagerOptions{
-		SignaturePayloadProvider: types.DefaultSignaturePayloadProvider,
-		ValidatorHasherProvider:  types.DefaultValidatorHasherProvider,
+		AggregatorNodeSignatureBytesProvider: types.DefaultAggregatorNodeSignatureBytesProvider,
+		SyncNodeSignatureBytesProvider:       types.DefaultSyncNodeSignatureBytesProvider,
+		ValidatorHasherProvider:              types.DefaultValidatorHasherProvider,
 	}
 }
 
@@ -372,30 +376,30 @@ func NewManager(
 		headerBroadcaster: headerBroadcaster,
 		dataBroadcaster:   dataBroadcaster,
 		// channels are buffered to avoid blocking on input/output operations, buffer sizes are arbitrary
-		headerInCh:                  make(chan NewHeaderEvent, eventInChLength),
-		dataInCh:                    make(chan NewDataEvent, eventInChLength),
-		headerStoreCh:               make(chan struct{}, 1),
-		dataStoreCh:                 make(chan struct{}, 1),
-		headerStore:                 headerStore,
-		dataStore:                   dataStore,
-		lastStateMtx:                new(sync.RWMutex),
-		lastBatchData:               lastBatchData,
-		headerCache:                 cache.NewCache[types.SignedHeader](),
-		dataCache:                   cache.NewCache[types.Data](),
-		retrieveCh:                  make(chan struct{}, 1),
-		daIncluderCh:                make(chan struct{}, 1),
-		logger:                      logger,
-		txsAvailable:                false,
-		pendingHeaders:              pendingHeaders,
-		pendingData:                 pendingData,
-		metrics:                     seqMetrics,
-		sequencer:                   sequencer,
-		exec:                        exec,
-		da:                          da,
-		txNotifyCh:                  make(chan struct{}, 1), // Non-blocking channel
-		signaturePayloadProvider:    managerOpts.SignaturePayloadProvider,
-		validatorHasherProvider:     managerOpts.ValidatorHasherProvider,
-		namespaceMigrationCompleted: &atomic.Bool{},
+		heightInCh:                         make(chan NewHeightEvent, eventInChLength),
+		headerStoreCh:                      make(chan struct{}, 1),
+		dataStoreCh:                        make(chan struct{}, 1),
+		headerStore:                        headerStore,
+		dataStore:                          dataStore,
+		lastStateMtx:                       new(sync.RWMutex),
+		lastBatchData:                      lastBatchData,
+		headerCache:                        cache.NewCache[types.SignedHeader](),
+		dataCache:                          cache.NewCache[types.Data](),
+		retrieveCh:                         make(chan struct{}, 1),
+		daIncluderCh:                       make(chan struct{}, 1),
+		logger:                             logger,
+		txsAvailable:                       false,
+		pendingHeaders:                     pendingHeaders,
+		pendingData:                        pendingData,
+		metrics:                            seqMetrics,
+		sequencer:                          sequencer,
+		exec:                               exec,
+		da:                                 da,
+		txNotifyCh:                         make(chan struct{}, 1), // Non-blocking channel
+		aggregatorSignaturePayloadProvider: managerOpts.AggregatorNodeSignatureBytesProvider,
+		syncNodeSignaturePayloadProvider:   managerOpts.SyncNodeSignatureBytesProvider,
+		validatorHasherProvider:            managerOpts.ValidatorHasherProvider,
+		namespaceMigrationCompleted:        &atomic.Bool{},
 	}
 
 	// initialize da included height
@@ -722,7 +726,7 @@ func (m *Manager) publishBlockInternal(ctx context.Context) error {
 	}
 
 	// we sign the header after executing the block, as a signature payload provider could depend on the block's data
-	signature, err = m.getHeaderSignature(header.Header)
+	signature, err = m.signHeader(header.Header)
 	if err != nil {
 		return err
 	}
@@ -731,7 +735,7 @@ func (m *Manager) publishBlockInternal(ctx context.Context) error {
 	header.Signature = signature
 
 	// set the custom verifier to ensure proper signature validation
-	header.SetCustomVerifier(m.signaturePayloadProvider)
+	header.SetCustomVerifierForAggregator(m.aggregatorSignaturePayloadProvider)
 
 	// Validate the created block before storing
 	if err := m.Validate(ctx, header, data); err != nil {
@@ -1012,8 +1016,8 @@ func bytesToBatchData(data []byte) ([][]byte, error) {
 	return result, nil
 }
 
-func (m *Manager) getHeaderSignature(header types.Header) (types.Signature, error) {
-	b, err := m.signaturePayloadProvider(&header)
+func (m *Manager) signHeader(header types.Header) (types.Signature, error) {
+	b, err := m.aggregatorSignaturePayloadProvider(&header)
 	if err != nil {
 		return nil, err
 	}

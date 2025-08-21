@@ -29,35 +29,73 @@ func (m *Manager) SyncLoop(ctx context.Context, errCh chan<- error) {
 		case <-blockTicker.C:
 			m.sendNonBlockingSignalToHeaderStoreCh()
 			m.sendNonBlockingSignalToDataStoreCh()
-		case headerEvent := <-m.headerInCh:
-			// Only validated headers are sent to headerInCh, so we can safely assume that headerEvent.header is valid
-			header := headerEvent.Header
-			daHeight := headerEvent.DAHeight
+		case heightEvent := <-m.heightInCh:
+			// Only validated headers and data are sent to heightEvent
+			// we can safely assume that headerEvent.header is valid
+			header := heightEvent.Header
+			daHeight := heightEvent.DAHeight
 			headerHash := header.Hash().String()
 			headerHeight := header.Height()
+
 			m.logger.Debug().
 				Uint64("height", headerHeight).
 				Uint64("daHeight", daHeight).
 				Str("hash", headerHash).
 				Msg("header retrieved")
+
 			height, err := m.store.Height(ctx)
 			if err != nil {
 				m.logger.Error().Err(err).Msg("error while getting store height")
 				continue
 			}
+
 			if headerHeight <= height || m.headerCache.IsSeen(headerHash) {
 				m.logger.Debug().Uint64("height", headerHeight).Str("block_hash", headerHash).Msg("header already seen")
 				continue
 			}
-			m.headerCache.SetItem(headerHeight, header)
 
+			m.headerCache.SetItem(headerHeight, header)
 			// Record header synced metric
 			m.recordSyncMetrics("header_synced")
 
 			// check if the dataHash is dataHashForEmptyTxs
-			// no need to wait for syncing Data, instead prepare now and set
-			// so that trySyncNextBlock can progress
-			m.handleEmptyDataHash(ctx, &header.Header)
+			// if not, proceed to retrieve the data
+			// otherwise, handle empty data for try next block to succeed
+			var dataHash string
+			if !bytes.Equal(header.DataHash, dataHashForEmptyTxs) {
+				data := heightEvent.Data
+				if len(data.Txs) == 0 || data.Metadata == nil {
+					break
+				}
+
+				daHeight := heightEvent.DAHeight
+				dataHash = data.DACommitment().String()
+				dataHeight := data.Metadata.Height
+
+				m.logger.Debug().
+					Uint64("daHeight", daHeight).
+					Str("hash", dataHash).
+					Uint64("height", dataHeight).
+					Int("txs", len(data.Txs)).
+					Msg("data retrieved")
+
+				if m.dataCache.IsSeen(dataHash) {
+					m.logger.Debug().Str("data_hash", dataHash).Msg("data already seen")
+					continue
+				}
+
+				if dataHeight <= height {
+					m.logger.Debug().Uint64("height", dataHeight).Str("data_hash", dataHash).Msg("data already seen")
+					continue
+				}
+
+				m.dataCache.SetItem(dataHeight, data)
+
+				// Record data synced metric
+				m.recordSyncMetrics("data_synced")
+			} else {
+				m.handleEmptyDataHash(ctx, &header.Header)
+			}
 
 			if err = m.trySyncNextBlock(ctx, daHeight); err != nil {
 				errCh <- fmt.Errorf("failed to sync next block: %w", err)
@@ -65,45 +103,6 @@ func (m *Manager) SyncLoop(ctx context.Context, errCh chan<- error) {
 			}
 
 			m.headerCache.SetSeen(headerHash)
-		case dataEvent := <-m.dataInCh:
-			data := dataEvent.Data
-			if len(data.Txs) == 0 || data.Metadata == nil {
-				continue
-			}
-
-			daHeight := dataEvent.DAHeight
-			dataHash := data.DACommitment().String()
-			dataHeight := data.Metadata.Height
-			m.logger.Debug().
-				Uint64("daHeight", daHeight).
-				Str("hash", dataHash).
-				Uint64("height", dataHeight).
-				Int("txs", len(data.Txs)).
-				Msg("data retrieved")
-
-			if m.dataCache.IsSeen(dataHash) {
-				m.logger.Debug().Str("data_hash", dataHash).Msg("data already seen")
-				continue
-			}
-			height, err := m.store.Height(ctx)
-			if err != nil {
-				m.logger.Error().Err(err).Msg("error while getting store height")
-				continue
-			}
-			if dataHeight <= height {
-				m.logger.Debug().Uint64("height", dataHeight).Str("data_hash", dataHash).Msg("data already seen")
-				continue
-			}
-			m.dataCache.SetItem(dataHeight, data)
-
-			// Record data synced metric
-			m.recordSyncMetrics("data_synced")
-
-			err = m.trySyncNextBlock(ctx, daHeight)
-			if err != nil {
-				errCh <- fmt.Errorf("failed to sync next block: %w", err)
-				return
-			}
 			m.dataCache.SetSeen(dataHash)
 		case <-metricsTicker.C:
 			// Update channel metrics periodically
@@ -147,7 +146,7 @@ func (m *Manager) trySyncNextBlock(ctx context.Context, daHeight uint64) error {
 		m.logger.Info().Uint64("height", hHeight).Msg("syncing header and data")
 
 		// set the custom verifier to ensure proper signature validation
-		h.SetCustomVerifier(m.signaturePayloadProvider)
+		h.SetCustomVerifierForSyncNode(m.syncNodeSignaturePayloadProvider)
 
 		newState, err := m.applyBlock(ctx, h.Header, d)
 		if err != nil {
@@ -191,28 +190,26 @@ func (m *Manager) trySyncNextBlock(ctx context.Context, daHeight uint64) error {
 
 func (m *Manager) handleEmptyDataHash(ctx context.Context, header *types.Header) {
 	headerHeight := header.Height()
-	if bytes.Equal(header.DataHash, dataHashForEmptyTxs) {
-		var lastDataHash types.Hash
-		if headerHeight > 1 {
-			_, lastData, err := m.store.GetBlockData(ctx, headerHeight-1)
-			if err != nil {
-				m.logger.Debug().Uint64("current_height", headerHeight).Uint64("previous_height", headerHeight-1).Err(err).Msg("previous block not applied yet")
-			}
-			if lastData != nil {
-				lastDataHash = lastData.Hash()
-			}
+	var lastDataHash types.Hash
+	if headerHeight > 1 {
+		_, lastData, err := m.store.GetBlockData(ctx, headerHeight-1)
+		if err != nil {
+			m.logger.Debug().Uint64("current_height", headerHeight).Uint64("previous_height", headerHeight-1).Err(err).Msg("previous block not applied yet")
 		}
-		metadata := &types.Metadata{
-			ChainID:      header.ChainID(),
-			Height:       headerHeight,
-			Time:         header.BaseHeader.Time,
-			LastDataHash: lastDataHash,
+		if lastData != nil {
+			lastDataHash = lastData.Hash()
 		}
-		d := &types.Data{
-			Metadata: metadata,
-		}
-		m.dataCache.SetItem(headerHeight, d)
 	}
+	metadata := &types.Metadata{
+		ChainID:      header.ChainID(),
+		Height:       headerHeight,
+		Time:         header.BaseHeader.Time,
+		LastDataHash: lastDataHash,
+	}
+	d := &types.Data{
+		Metadata: metadata,
+	}
+	m.dataCache.SetItem(headerHeight, d)
 }
 
 func (m *Manager) sendNonBlockingSignalToHeaderStoreCh() {

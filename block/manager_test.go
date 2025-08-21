@@ -43,16 +43,16 @@ func getManager(t *testing.T, da da.DA, gasPrice float64, gasMultiplier float64)
 	logger := zerolog.Nop()
 	mockStore := mocks.NewMockStore(t)
 	m := &Manager{
-		da:                       da,
-		headerCache:              cache.NewCache[types.SignedHeader](),
-		dataCache:                cache.NewCache[types.Data](),
-		logger:                   logger,
-		lastStateMtx:             &sync.RWMutex{},
-		metrics:                  NopMetrics(),
-		store:                    mockStore,
-		txNotifyCh:               make(chan struct{}, 1),
-		signaturePayloadProvider: types.DefaultSignaturePayloadProvider,
-		validatorHasherProvider:  types.DefaultValidatorHasherProvider,
+		da:                                 da,
+		headerCache:                        cache.NewCache[types.SignedHeader](),
+		dataCache:                          cache.NewCache[types.Data](),
+		logger:                             logger,
+		lastStateMtx:                       &sync.RWMutex{},
+		metrics:                            NopMetrics(),
+		store:                              mockStore,
+		txNotifyCh:                         make(chan struct{}, 1),
+		aggregatorSignaturePayloadProvider: types.DefaultAggregatorNodeSignatureBytesProvider,
+		validatorHasherProvider:            types.DefaultValidatorHasherProvider,
 	}
 
 	m.publishBlock = m.publishBlockInternal
@@ -709,7 +709,7 @@ func TestUtilityFunctions(t *testing.T) {
 		m.signer = nil
 
 		header := types.Header{}
-		_, err := m.getHeaderSignature(header)
+		_, err := m.signHeader(header)
 		require.ErrorContains(err, "signer is nil; cannot sign header")
 	})
 

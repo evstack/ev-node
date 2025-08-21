@@ -74,7 +74,7 @@ func TestDASpeed(t *testing.T) {
 			ctx := t.Context()
 
 			// when
-			go manager.RetrieveLoop(ctx)
+			go manager.DARetrieveLoop(ctx)
 			go manager.HeaderStoreRetrieveLoop(ctx)
 			go manager.DataStoreRetrieveLoop(ctx)
 			go manager.SyncLoop(ctx, make(chan<- error))
@@ -120,9 +120,8 @@ func setupManagerForTest(t *testing.T, initialDAHeight uint64) (*Manager, *rollm
 		},
 		genesis:                     genesis.Genesis{ProposerAddress: addr},
 		daHeight:                    new(atomic.Uint64),
-		headerInCh:                  make(chan NewHeaderEvent),
+		heightInCh:                  make(chan NewHeightEvent),
 		headerStore:                 headerStore,
-		dataInCh:                    make(chan NewDataEvent),
 		dataStore:                   dataStore,
 		headerCache:                 cache.NewCache[types.SignedHeader](),
 		dataCache:                   cache.NewCache[types.Data](),

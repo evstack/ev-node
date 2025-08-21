@@ -49,10 +49,10 @@ func (m *Manager) HeaderStoreRetrieveLoop(ctx context.Context) {
 				}
 
 				// set custom verifier to do correct header verification
-				header.SetCustomVerifier(m.signaturePayloadProvider)
+				header.SetCustomVerifierForSyncNode(m.syncNodeSignaturePayloadProvider)
 
 				// validate header and its signature validity
-				if err := header.ValidateBasic(); err != nil {
+				if err := header.ValidateBasicWithData(nil /* TODO */); err != nil {
 					continue
 				}
 

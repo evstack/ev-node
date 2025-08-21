@@ -62,9 +62,8 @@ func setupManagerForRetrieverTest(t *testing.T, initialDAHeight uint64) (*Manage
 		genesis:                     genesis.Genesis{ProposerAddress: addr},
 		daHeight:                    &atomic.Uint64{},
 		daIncludedHeight:            atomic.Uint64{},
-		headerInCh:                  make(chan NewHeaderEvent, eventInChLength),
+		heightInCh:                  make(chan NewHeightEvent, eventInChLength),
 		headerStore:                 headerStore,
-		dataInCh:                    make(chan NewDataEvent, eventInChLength),
 		dataStore:                   dataStore,
 		headerCache:                 cache.NewCache[types.SignedHeader](),
 		dataCache:                   cache.NewCache[types.Data](),
@@ -596,7 +595,7 @@ func TestRetrieveLoop_ProcessError_HeightFromFuture(t *testing.T) {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		manager.RetrieveLoop(ctx)
+		manager.DARetrieveLoop(ctx)
 	}()
 
 	manager.retrieveCh <- struct{}{}
@@ -634,7 +633,7 @@ func TestRetrieveLoop_ProcessError_Other(t *testing.T) {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		manager.RetrieveLoop(ctx)
+		manager.DARetrieveLoop(ctx)
 	}()
 
 	// Give the goroutine time to start
@@ -786,7 +785,7 @@ func TestRetrieveLoop_DAHeightIncrementsOnlyOnSuccess(t *testing.T) {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		manager.RetrieveLoop(ctx)
+		manager.DARetrieveLoop(ctx)
 	}()
 
 	manager.retrieveCh <- struct{}{}

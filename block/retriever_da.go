@@ -19,8 +19,8 @@ const (
 	dAFetcherRetries  = 10
 )
 
-// RetrieveLoop is responsible for interacting with DA layer.
-func (m *Manager) RetrieveLoop(ctx context.Context) {
+// DARetrieveLoop is responsible for interacting with DA layer.
+func (m *Manager) DARetrieveLoop(ctx context.Context) {
 	// blobsFoundCh is used to track when we successfully found a header so
 	// that we can continue to try and find headers that are in the next DA height.
 	// This enables syncing faster than the DA block time.
@@ -135,10 +135,10 @@ func (m *Manager) handlePotentialHeader(ctx context.Context, bz []byte, daHeight
 	}
 
 	// set custom verifier to do correct header verification
-	header.SetCustomVerifier(m.signaturePayloadProvider)
+	header.SetCustomVerifierForSyncNode(m.syncNodeSignaturePayloadProvider)
 
 	// validate header and its signature validity
-	if err := header.ValidateBasic(); err != nil {
+	if err := header.ValidateBasicWithData(nil /* TODO */); err != nil {
 		m.logger.Debug().Uint64("daHeight", daHeight).Err(err).Msg("blob does not look like a valid header")
 		return true
 	}

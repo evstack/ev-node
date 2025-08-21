@@ -30,8 +30,7 @@ func setupManagerForSyncLoopTest(t *testing.T, initialState types.State) (
 	*mocks.MockExecutor,
 	context.Context,
 	context.CancelFunc,
-	chan NewHeaderEvent,
-	chan NewDataEvent,
+	chan NewHeightEvent,
 	*uint64,
 ) {
 	t.Helper()
@@ -39,8 +38,7 @@ func setupManagerForSyncLoopTest(t *testing.T, initialState types.State) (
 	mockStore := mocks.NewMockStore(t)
 	mockExec := mocks.NewMockExecutor(t)
 
-	headerInCh := make(chan NewHeaderEvent, 10)
-	dataInCh := make(chan NewDataEvent, 10)
+	heightInCh := make(chan NewHeightEvent, 10)
 
 	headerStoreCh := make(chan struct{}, 1)
 	dataStoreCh := make(chan struct{}, 1)
@@ -53,26 +51,25 @@ func setupManagerForSyncLoopTest(t *testing.T, initialState types.State) (
 
 	// Manager setup
 	m := &Manager{
-		store:                    mockStore,
-		exec:                     mockExec,
-		config:                   cfg,
-		genesis:                  *genesisDoc,
-		lastState:                initialState,
-		lastStateMtx:             new(sync.RWMutex),
-		logger:                   zerolog.Nop(),
-		headerCache:              cache.NewCache[types.SignedHeader](),
-		dataCache:                cache.NewCache[types.Data](),
-		headerInCh:               headerInCh,
-		dataInCh:                 dataInCh,
-		headerStoreCh:            headerStoreCh,
-		dataStoreCh:              dataStoreCh,
-		retrieveCh:               retrieveCh,
-		daHeight:                 &atomic.Uint64{},
-		metrics:                  NopMetrics(),
-		headerStore:              &goheaderstore.Store[*types.SignedHeader]{},
-		dataStore:                &goheaderstore.Store[*types.Data]{},
-		signaturePayloadProvider: types.DefaultSignaturePayloadProvider,
-		validatorHasherProvider:  types.DefaultValidatorHasherProvider,
+		store:                            mockStore,
+		exec:                             mockExec,
+		config:                           cfg,
+		genesis:                          *genesisDoc,
+		lastState:                        initialState,
+		lastStateMtx:                     new(sync.RWMutex),
+		logger:                           zerolog.Nop(),
+		headerCache:                      cache.NewCache[types.SignedHeader](),
+		dataCache:                        cache.NewCache[types.Data](),
+		heightInCh:                       heightInCh,
+		headerStoreCh:                    headerStoreCh,
+		dataStoreCh:                      dataStoreCh,
+		retrieveCh:                       retrieveCh,
+		daHeight:                         &atomic.Uint64{},
+		metrics:                          NopMetrics(),
+		headerStore:                      &goheaderstore.Store[*types.SignedHeader]{},
+		dataStore:                        &goheaderstore.Store[*types.Data]{},
+		syncNodeSignaturePayloadProvider: types.DefaultSyncNodeSignatureBytesProvider,
+		validatorHasherProvider:          types.DefaultValidatorHasherProvider,
 	}
 	m.daHeight.Store(initialState.DAHeight)
 
@@ -85,7 +82,7 @@ func setupManagerForSyncLoopTest(t *testing.T, initialState types.State) (
 		return *heightPtr
 	}, nil).Maybe()
 
-	return m, mockStore, mockExec, ctx, cancel, headerInCh, dataInCh, heightPtr
+	return m, mockStore, mockExec, ctx, cancel, heightInCh, heightPtr
 }
 
 // TestSyncLoop_ProcessSingleBlock_HeaderFirst verifies that the sync loop processes a single block when the header arrives before the data.
@@ -108,7 +105,7 @@ func TestSyncLoop_ProcessSingleBlock_HeaderFirst(t *testing.T) {
 	newHeight := initialHeight + 1
 	daHeight := initialState.DAHeight
 
-	m, mockStore, mockExec, ctx, cancel, headerInCh, dataInCh, _ := setupManagerForSyncLoopTest(t, initialState)
+	m, mockStore, mockExec, ctx, cancel, heightInCh, _ := setupManagerForSyncLoopTest(t, initialState)
 	defer cancel()
 
 	// Create test block data
@@ -144,11 +141,8 @@ func TestSyncLoop_ProcessSingleBlock_HeaderFirst(t *testing.T) {
 		m.SyncLoop(ctx, make(chan<- error))
 	}()
 
-	t.Logf("Sending header event for height %d", newHeight)
-	headerInCh <- NewHeaderEvent{Header: header, DAHeight: daHeight}
-
-	t.Logf("Sending data event for height %d", newHeight)
-	dataInCh <- NewDataEvent{Data: data, DAHeight: daHeight}
+	t.Logf("Sending height event for height %d", newHeight)
+	heightInCh <- NewHeightEvent{Header: header, Data: data, DAHeight: daHeight}
 
 	t.Log("Waiting for sync to complete...")
 	wg.Wait()
@@ -194,7 +188,7 @@ func TestSyncLoop_ProcessSingleBlock_DataFirst(t *testing.T) {
 	newHeight := initialHeight + 1
 	daHeight := initialState.DAHeight
 
-	m, mockStore, mockExec, ctx, cancel, headerInCh, dataInCh, _ := setupManagerForSyncLoopTest(t, initialState)
+	m, mockStore, mockExec, ctx, cancel, heightInCh, _ := setupManagerForSyncLoopTest(t, initialState)
 	defer cancel()
 
 	// Create test block data
@@ -229,10 +223,8 @@ func TestSyncLoop_ProcessSingleBlock_DataFirst(t *testing.T) {
 		m.SyncLoop(ctx, make(chan<- error))
 	}()
 
-	t.Logf("Sending data event for height %d", newHeight)
-	dataInCh <- NewDataEvent{Data: data, DAHeight: daHeight}
-	t.Logf("Sending header event for height %d", newHeight)
-	headerInCh <- NewHeaderEvent{Header: header, DAHeight: daHeight}
+	t.Logf("Sending height event for height %d", newHeight)
+	heightInCh <- NewHeightEvent{Header: header, Data: data, DAHeight: daHeight}
 
 	t.Log("Waiting for sync to complete...")
 
@@ -280,7 +272,7 @@ func TestSyncLoop_ProcessMultipleBlocks_Sequentially(t *testing.T) {
 	heightH2 := initialHeight + 2
 	daHeight := initialState.DAHeight
 
-	m, mockStore, mockExec, ctx, cancel, headerInCh, dataInCh, heightPtr := setupManagerForSyncLoopTest(t, initialState)
+	m, mockStore, mockExec, ctx, cancel, heightInCh, heightPtr := setupManagerForSyncLoopTest(t, initialState)
 	defer cancel()
 
 	// --- Block H+1 Data ---
@@ -355,9 +347,7 @@ func TestSyncLoop_ProcessMultipleBlocks_Sequentially(t *testing.T) {
 	}()
 
 	// --- Process H+1 ---
-	headerInCh <- NewHeaderEvent{Header: headerH1, DAHeight: daHeight}
-	dataInCh <- NewDataEvent{Data: dataH1, DAHeight: daHeight}
-
+	heightInCh <- NewHeightEvent{Header: headerH1, Data: dataH1, DAHeight: daHeight}
 	t.Log("Waiting for Sync H+1 to complete...")
 
 	select {
@@ -368,8 +358,7 @@ func TestSyncLoop_ProcessMultipleBlocks_Sequentially(t *testing.T) {
 	}
 
 	// --- Process H+2 ---
-	headerInCh <- NewHeaderEvent{Header: headerH2, DAHeight: daHeight}
-	dataInCh <- NewDataEvent{Data: dataH2, DAHeight: daHeight}
+	heightInCh <- NewHeightEvent{Header: headerH2, Data: dataH2, DAHeight: daHeight}
 
 	select {
 	case <-syncChanH2:
@@ -861,21 +850,21 @@ func TestSyncLoop_MultipleHeadersArriveFirst_ThenData(t *testing.T) {
 	}
 
 	m := &Manager{
-		store:                    store,
-		exec:                     mockExec,
-		config:                   config.DefaultConfig,
-		genesis:                  genesis.Genesis{ChainID: initialState.ChainID},
-		lastState:                initialState,
-		lastStateMtx:             new(sync.RWMutex),
-		logger:                   zerolog.Nop(),
-		headerCache:              cache.NewCache[types.SignedHeader](),
-		dataCache:                cache.NewCache[types.Data](),
-		headerInCh:               headerInCh,
-		dataInCh:                 dataInCh,
-		daHeight:                 &atomic.Uint64{},
-		metrics:                  NopMetrics(),
-		signaturePayloadProvider: types.DefaultSignaturePayloadProvider,
-		validatorHasherProvider:  types.DefaultValidatorHasherProvider,
+		store:                            store,
+		exec:                             mockExec,
+		config:                           config.DefaultConfig,
+		genesis:                          genesis.Genesis{ChainID: initialState.ChainID},
+		lastState:                        initialState,
+		lastStateMtx:                     new(sync.RWMutex),
+		logger:                           zerolog.Nop(),
+		headerCache:                      cache.NewCache[types.SignedHeader](),
+		dataCache:                        cache.NewCache[types.Data](),
+		headerInCh:                       headerInCh,
+		dataInCh:                         dataInCh,
+		daHeight:                         &atomic.Uint64{},
+		metrics:                          NopMetrics(),
+		syncNodeSignaturePayloadProvider: types.DefaultSyncNodeSignatureBytesProvider,
+		validatorHasherProvider:          types.DefaultValidatorHasherProvider,
 	}
 	m.daHeight.Store(initialState.DAHeight)
 
