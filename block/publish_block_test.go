@@ -270,9 +270,10 @@ func Test_publishBlock_EmptyBatch(t *testing.T) {
 		dataBroadcaster: broadcasterFn[*types.Data](func(ctx context.Context, payload *types.Data) error {
 			return nil
 		}),
-		daHeight:                         &daH,
-		syncNodeSignaturePayloadProvider: types.DefaultSyncNodeSignatureBytesProvider,
-		validatorHasherProvider:          types.DefaultValidatorHasherProvider,
+		daHeight:                           &daH,
+		syncNodeSignaturePayloadProvider:   types.DefaultSyncNodeSignatureBytesProvider,
+		aggregatorSignaturePayloadProvider: types.DefaultAggregatorNodeSignatureBytesProvider,
+		validatorHasherProvider:            types.DefaultValidatorHasherProvider,
 	}
 
 	m.publishBlock = m.publishBlockInternal

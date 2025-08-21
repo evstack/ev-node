@@ -1,6 +1,7 @@
 package block
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 
@@ -8,11 +9,12 @@ import (
 )
 
 // HeaderStoreRetrieveLoop is responsible for retrieving headers from the Header Store.
+// It retrieves both header and corresponding data before sending to heightInCh for validation.
 func (m *Manager) HeaderStoreRetrieveLoop(ctx context.Context) {
 	// height is always > 0
 	initialHeight, err := m.store.Height(ctx)
 	if err != nil {
-		m.logger.Error().Err(err).Msg("failed to get initial store height for DataStoreRetrieveLoop")
+		m.logger.Error().Err(err).Msg("failed to get initial store height for HeaderStoreRetrieveLoop")
 		return
 	}
 	lastHeaderStoreHeight := initialHeight
@@ -24,47 +26,14 @@ func (m *Manager) HeaderStoreRetrieveLoop(ctx context.Context) {
 		}
 		headerStoreHeight := m.headerStore.Height()
 		if headerStoreHeight > lastHeaderStoreHeight {
-			headers, err := m.getHeadersFromHeaderStore(ctx, lastHeaderStoreHeight+1, headerStoreHeight)
-			if err != nil {
-				m.logger.Error().Uint64("lastHeaderHeight", lastHeaderStoreHeight).Uint64("headerStoreHeight", headerStoreHeight).Str("errors", err.Error()).Msg("failed to get headers from Header Store")
-				continue
-			}
-			daHeight := m.daHeight.Load()
-			for _, header := range headers {
-				// Check for shut down event prior to logging
-				// and sending header to headerInCh. The reason
-				// for checking for the shutdown event
-				// separately is due to the inconsistent nature
-				// of the select statement when multiple cases
-				// are satisfied.
-				select {
-				case <-ctx.Done():
-					return
-				default:
-				}
-
-				// early validation to reject junk headers
-				if ok, _ := m.isUsingExpectedSingleSequencer(header.ProposerAddress); !ok {
-					continue
-				}
-
-				// set custom verifier to do correct header verification
-				header.SetCustomVerifierForSyncNode(m.syncNodeSignaturePayloadProvider)
-
-				// validate header and its signature validity
-				if err := header.ValidateBasicWithData(nil /* TODO */); err != nil {
-					continue
-				}
-
-				m.logger.Debug().Uint64("headerHeight", header.Height()).Uint64("daHeight", daHeight).Msg("header retrieved from p2p header sync")
-				m.headerInCh <- NewHeaderEvent{header, daHeight}
-			}
+			m.processHeaderStoreRange(ctx, lastHeaderStoreHeight+1, headerStoreHeight)
 		}
 		lastHeaderStoreHeight = headerStoreHeight
 	}
 }
 
 // DataStoreRetrieveLoop is responsible for retrieving data from the Data Store.
+// It retrieves both data and corresponding header before sending to heightInCh for validation.
 func (m *Manager) DataStoreRetrieveLoop(ctx context.Context) {
 	// height is always > 0
 	initialHeight, err := m.store.Height(ctx)
@@ -81,30 +50,149 @@ func (m *Manager) DataStoreRetrieveLoop(ctx context.Context) {
 		}
 		dataStoreHeight := m.dataStore.Height()
 		if dataStoreHeight > lastDataStoreHeight {
-			data, err := m.getDataFromDataStore(ctx, lastDataStoreHeight+1, dataStoreHeight)
-			if err != nil {
-				m.logger.Error().Uint64("lastDataStoreHeight", lastDataStoreHeight).Uint64("dataStoreHeight", dataStoreHeight).Str("errors", err.Error()).Msg("failed to get data from Data Store")
-				continue
-			}
-			daHeight := m.daHeight.Load()
-			for _, d := range data {
-				// Check for shut down event prior to logging
-				// and sending header to dataInCh. The reason
-				// for checking for the shutdown event
-				// separately is due to the inconsistent nature
-				// of the select statement when multiple cases
-				// are satisfied.
-				select {
-				case <-ctx.Done():
-					return
-				default:
-				}
-				// TODO: remove junk if possible
-				m.logger.Debug().Uint64("dataHeight", d.Metadata.Height).Uint64("daHeight", daHeight).Msg("data retrieved from p2p data sync")
-				m.dataInCh <- NewDataEvent{d, daHeight}
-			}
+			m.processDataStoreRange(ctx, lastDataStoreHeight+1, dataStoreHeight)
 		}
 		lastDataStoreHeight = dataStoreHeight
+	}
+}
+
+// processHeaderStoreRange processes headers from header store and retrieves corresponding data
+func (m *Manager) processHeaderStoreRange(ctx context.Context, startHeight, endHeight uint64) {
+	headers, err := m.getHeadersFromHeaderStore(ctx, startHeight, endHeight)
+	if err != nil {
+		m.logger.Error().Uint64("startHeight", startHeight).Uint64("endHeight", endHeight).Str("errors", err.Error()).Msg("failed to get headers from Header Store")
+		return
+	}
+	daHeight := m.daHeight.Load()
+	for _, header := range headers {
+		select {
+		case <-ctx.Done():
+			return
+		default:
+		}
+
+		// early validation to reject junk headers
+		if ok, _ := m.isUsingExpectedSingleSequencer(header.ProposerAddress); !ok {
+			continue
+		}
+
+		// set custom verifier to do correct header verification
+		header.SetCustomVerifierForSyncNode(m.syncNodeSignaturePayloadProvider)
+
+		// Get corresponding data for this header
+		var data *types.Data
+		if bytes.Equal(header.DataHash, dataHashForEmptyTxs) {
+			// Create empty data for headers with empty data hash
+			data = m.createEmptyDataForHeader(ctx, header)
+		} else {
+			// Try to get data from data store
+			retrievedData, err := m.dataStore.GetByHeight(ctx, header.Height())
+			if err != nil {
+				m.logger.Debug().Uint64("height", header.Height()).Err(err).Msg("could not retrieve data for header from data store")
+				continue
+			}
+			data = retrievedData
+		}
+
+		// validate header and its signature validity with data
+		if err := header.ValidateBasicWithData(data); err != nil {
+			m.logger.Debug().Uint64("height", header.Height()).Err(err).Msg("header validation with data failed")
+			continue
+		}
+		m.sendCompleteHeightEvent(ctx, header, data, daHeight, "p2p header sync")
+	}
+}
+
+// processDataStoreRange processes data from data store and retrieves corresponding headers
+func (m *Manager) processDataStoreRange(ctx context.Context, startHeight, endHeight uint64) {
+	data, err := m.getDataFromDataStore(ctx, startHeight, endHeight)
+	if err != nil {
+		m.logger.Error().Uint64("startHeight", startHeight).Uint64("endHeight", endHeight).Str("errors", err.Error()).Msg("failed to get data from Data Store")
+		return
+	}
+	daHeight := m.daHeight.Load()
+	for _, d := range data {
+		select {
+		case <-ctx.Done():
+			return
+		default:
+		}
+
+		// Get corresponding header for this data
+		header, err := m.headerStore.GetByHeight(ctx, d.Metadata.Height)
+		if err != nil {
+			m.logger.Debug().Uint64("height", d.Metadata.Height).Err(err).Msg("could not retrieve header for data from header store")
+			continue
+		}
+
+		// early validation to reject junk headers
+		if ok, _ := m.isUsingExpectedSingleSequencer(header.ProposerAddress); !ok {
+			continue
+		}
+
+		// set custom verifier to do correct header verification
+		header.SetCustomVerifierForSyncNode(m.syncNodeSignaturePayloadProvider)
+
+		// validate header and its signature validity with data
+		if err := header.ValidateBasicWithData(d); err != nil {
+			m.logger.Debug().Uint64("height", d.Metadata.Height).Err(err).Msg("header validation with data failed")
+			continue
+		}
+
+		m.sendCompleteHeightEvent(ctx, header, d, daHeight, "p2p data sync")
+	}
+}
+
+// sendCompleteHeightEvent sends a complete height event with both header and data
+func (m *Manager) sendCompleteHeightEvent(ctx context.Context, header *types.SignedHeader, data *types.Data, daHeight uint64, source string) {
+	heightEvent := NewHeightEvent{
+		Header:   header,
+		Data:     data,
+		DAHeight: daHeight,
+	}
+
+	select {
+	case <-ctx.Done():
+		return
+	case m.heightInCh <- heightEvent:
+		m.logger.Debug().
+			Uint64("height", header.Height()).
+			Uint64("daHeight", daHeight).
+			Str("source", source).
+			Msg("sent complete height event with header and data")
+	default:
+		m.logger.Warn().
+			Uint64("height", header.Height()).
+			Uint64("daHeight", daHeight).
+			Str("source", source).
+			Msg("heightInCh backlog full, dropping complete event")
+	}
+}
+
+// createEmptyDataForHeader creates empty data for headers with empty data hash
+func (m *Manager) createEmptyDataForHeader(ctx context.Context, header *types.SignedHeader) *types.Data {
+	headerHeight := header.Height()
+	var lastDataHash types.Hash
+
+	if headerHeight > 1 {
+		_, lastData, err := m.store.GetBlockData(ctx, headerHeight-1)
+		if err != nil {
+			m.logger.Debug().Uint64("current_height", headerHeight).Uint64("previous_height", headerHeight-1).Err(err).Msg("previous block not applied yet")
+		}
+		if lastData != nil {
+			lastDataHash = lastData.Hash()
+		}
+	}
+
+	metadata := &types.Metadata{
+		ChainID:      header.ChainID(),
+		Height:       headerHeight,
+		Time:         header.BaseHeader.Time,
+		LastDataHash: lastDataHash,
+	}
+
+	return &types.Data{
+		Metadata: metadata,
 	}
 }
 

@@ -1,6 +1,7 @@
 package block
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -81,16 +82,8 @@ func (m *Manager) processNextDAHeaderAndData(ctx context.Context) error {
 				return nil
 			}
 			m.logger.Debug().Int("n", len(blobsResp.Data)).Uint64("daHeight", daHeight).Msg("retrieved potential blob data")
-			for _, bz := range blobsResp.Data {
-				if len(bz) == 0 {
-					m.logger.Debug().Uint64("daHeight", daHeight).Msg("ignoring nil or empty blob")
-					continue
-				}
-				if m.handlePotentialHeader(ctx, bz, daHeight) {
-					continue
-				}
-				m.handlePotentialData(ctx, bz, daHeight)
-			}
+
+			m.processBlobs(ctx, blobsResp.Data, daHeight)
 			return nil
 		} else if strings.Contains(fetchErr.Error(), coreda.ErrHeightFromFuture.Error()) {
 			m.logger.Debug().Uint64("daHeight", daHeight).Str("reason", fetchErr.Error()).Msg("height from future")
@@ -109,20 +102,69 @@ func (m *Manager) processNextDAHeaderAndData(ctx context.Context) error {
 	return err
 }
 
-// handlePotentialHeader tries to decode and process a header. Returns true if successful or skipped, false if not a header.
-func (m *Manager) handlePotentialHeader(ctx context.Context, bz []byte, daHeight uint64) bool {
+// processBlobs processes all blobs to find headers and their corresponding data, then sends complete height events
+func (m *Manager) processBlobs(ctx context.Context, blobs [][]byte, daHeight uint64) {
+	// collect all headers and data
+	headers := make(map[uint64]*types.SignedHeader)
+	dataMap := make(map[uint64]*types.Data)
+
+	for _, bz := range blobs {
+		if len(bz) == 0 {
+			m.logger.Debug().Uint64("daHeight", daHeight).Msg("ignoring nil or empty blob")
+			continue
+		}
+
+		if header := m.tryDecodeHeader(bz, daHeight); header != nil {
+			headers[header.Height()] = header
+			continue
+		}
+
+		if data := m.tryDecodeData(bz, daHeight); data != nil {
+			dataMap[data.Height()] = data
+		}
+	}
+
+	// match headers with data and send complete height events
+	for height, header := range headers {
+		data := dataMap[height]
+
+		// If no data found, check if header expects empty data or create empty data
+		if data == nil {
+			if bytes.Equal(header.DataHash, dataHashForEmptyTxs) || len(header.DataHash) == 0 {
+				// Header expects empty data, create it
+				data = m.createEmptyData(header)
+			} else {
+				// Check if header's DataHash matches the hash of empty data
+				emptyData := m.createEmptyData(header)
+				emptyDataHash := emptyData.Hash()
+				if bytes.Equal(header.DataHash, emptyDataHash) {
+					data = emptyData
+				} else {
+					// Header expects data but no data found - skip for now
+					m.logger.Debug().Uint64("height", height).Uint64("daHeight", daHeight).Msg("header found but no matching data")
+					continue
+				}
+			}
+		}
+
+		m.sendHeightEventIfValid(ctx, header, data, daHeight)
+	}
+}
+
+// tryDecodeHeader attempts to decode a blob as a header, returns nil if not a valid header
+func (m *Manager) tryDecodeHeader(bz []byte, daHeight uint64) *types.SignedHeader {
 	header := new(types.SignedHeader)
 	var headerPb pb.SignedHeader
 
 	if err := proto.Unmarshal(bz, &headerPb); err != nil {
 		m.logger.Debug().Err(err).Msg("failed to unmarshal header")
-		return false
+		return nil
 	}
 
 	if err := header.FromProto(&headerPb); err != nil {
 		// treat as handled, but not valid
 		m.logger.Debug().Err(err).Msg("failed to decode unmarshalled header")
-		return true
+		return nil
 	}
 
 	// early validation to reject junk headers
@@ -131,68 +173,132 @@ func (m *Manager) handlePotentialHeader(ctx context.Context, bz []byte, daHeight
 			Uint64("headerHeight", header.Height()).
 			Str("headerHash", header.Hash().String()).
 			Msg("invalid header: " + err.Error())
-		return true
+		return nil
 	}
 
 	// set custom verifier to do correct header verification
 	header.SetCustomVerifierForSyncNode(m.syncNodeSignaturePayloadProvider)
 
-	// validate header and its signature validity
-	if err := header.ValidateBasicWithData(nil /* TODO */); err != nil {
+	// validate basic header structure only (without data)
+	if err := header.Header.ValidateBasic(); err != nil {
 		m.logger.Debug().Uint64("daHeight", daHeight).Err(err).Msg("blob does not look like a valid header")
-		return true
+		return nil
 	}
 
-	headerHash := header.Hash().String()
-	m.headerCache.SetDAIncluded(headerHash, daHeight)
-	m.sendNonBlockingSignalToDAIncluderCh()
-	m.logger.Info().Uint64("headerHeight", header.Height()).Str("headerHash", headerHash).Msg("header marked as DA included")
-
-	if !m.headerCache.IsSeen(headerHash) {
-		select {
-		case <-ctx.Done():
-			return true
-		default:
-			m.logger.Warn().Uint64("daHeight", daHeight).Msg("headerInCh backlog full, dropping header")
-		}
-		m.headerInCh <- NewHeaderEvent{header, daHeight}
+	if err := header.Signature.ValidateBasic(); err != nil {
+		m.logger.Debug().Uint64("daHeight", daHeight).Err(err).Msg("header signature validation failed")
+		return nil
 	}
 
-	return true
+	// Header is valid for basic structure, will be fully validated with data later
+
+	return header
 }
 
-// handlePotentialData tries to decode and process a data. No return value.
-func (m *Manager) handlePotentialData(ctx context.Context, bz []byte, daHeight uint64) {
+// tryDecodeData attempts to decode a blob as data, returns nil if not valid data
+func (m *Manager) tryDecodeData(bz []byte, daHeight uint64) *types.Data {
 	var signedData types.SignedData
 	err := signedData.UnmarshalBinary(bz)
 	if err != nil {
 		m.logger.Debug().Err(err).Msg("failed to unmarshal signed data")
-		return
+		return nil
 	}
 
-	if len(signedData.Txs) == 0 {
-		m.logger.Debug().Uint64("daHeight", daHeight).Msg("ignoring empty signed data")
-		return
+	// Allow empty signed data with valid signatures, but ignore completely empty blobs
+	if len(signedData.Txs) == 0 && len(signedData.Signature) == 0 {
+		m.logger.Debug().Uint64("daHeight", daHeight).Msg("ignoring empty signed data with no signature")
+		return nil
 	}
 
 	// Early validation to reject junk data
 	if !m.isValidSignedData(&signedData) {
 		m.logger.Debug().Uint64("daHeight", daHeight).Msg("invalid data signature")
-		return
+		return nil
 	}
 
 	dataHashStr := signedData.Data.DACommitment().String()
 	m.dataCache.SetDAIncluded(dataHashStr, daHeight)
 	m.sendNonBlockingSignalToDAIncluderCh()
 	m.logger.Info().Str("dataHash", dataHashStr).Uint64("daHeight", daHeight).Uint64("height", signedData.Height()).Msg("signed data marked as DA included")
-	if !m.dataCache.IsSeen(dataHashStr) {
-		select {
-		case <-ctx.Done():
-			return
-		default:
-			m.logger.Warn().Uint64("daHeight", daHeight).Msg("dataInCh backlog full, dropping signed data")
+
+	return &signedData.Data
+}
+
+// createEmptyData creates empty data for headers with empty data hash
+func (m *Manager) createEmptyData(header *types.SignedHeader) *types.Data {
+	headerHeight := header.Height()
+	var lastDataHash types.Hash
+
+	if headerHeight > 1 {
+		ctx := context.Background()
+		_, lastData, err := m.store.GetBlockData(ctx, headerHeight-1)
+		if err != nil {
+			// This is expected in tests and when syncing - just use empty hash
+			m.logger.Debug().Uint64("current_height", headerHeight).Uint64("previous_height", headerHeight-1).Err(err).Msg("previous block not available, using empty last data hash")
+		} else if lastData != nil {
+			lastDataHash = lastData.Hash()
 		}
-		m.dataInCh <- NewDataEvent{&signedData.Data, daHeight}
+	}
+
+	metadata := &types.Metadata{
+		ChainID:      header.ChainID(),
+		Height:       headerHeight,
+		Time:         header.BaseHeader.Time,
+		LastDataHash: lastDataHash,
+	}
+
+	return &types.Data{
+		Metadata: metadata,
+	}
+}
+
+// sendHeightEventIfValid sends a height event if both header and data are valid and not seen before
+func (m *Manager) sendHeightEventIfValid(ctx context.Context, header *types.SignedHeader, data *types.Data, daHeight uint64) {
+	headerHash := header.Hash().String()
+	dataHashStr := data.DACommitment().String()
+
+	// Validate header with its data before proceeding
+	if err := header.ValidateBasicWithData(data); err != nil {
+		m.logger.Debug().Uint64("height", header.Height()).Err(err).Msg("header validation with data failed")
+		return
+	}
+
+	// Mark as DA included since validation passed
+	m.headerCache.SetDAIncluded(headerHash, daHeight)
+	m.sendNonBlockingSignalToDAIncluderCh()
+	m.logger.Info().Uint64("headerHeight", header.Height()).Str("headerHash", headerHash).Msg("header marked as DA included")
+
+	// Check if already seen
+	if m.headerCache.IsSeen(headerHash) {
+		m.logger.Debug().Str("headerHash", headerHash).Msg("header already seen, skipping")
+		return
+	}
+
+	if !bytes.Equal(header.DataHash, dataHashForEmptyTxs) && m.dataCache.IsSeen(dataHashStr) {
+		m.logger.Debug().Str("dataHash", dataHashStr).Msg("data already seen, skipping")
+		return
+	}
+
+	// Send complete height event with both header and data
+	heightEvent := NewHeightEvent{
+		Header:   header,
+		Data:     data,
+		DAHeight: daHeight,
+	}
+
+	select {
+	case <-ctx.Done():
+		return
+	case m.heightInCh <- heightEvent:
+		m.logger.Debug().
+			Uint64("height", header.Height()).
+			Uint64("daHeight", daHeight).
+			Msg("sent complete height event with header and data")
+	default:
+		m.logger.Warn().
+			Uint64("height", header.Height()).
+			Uint64("daHeight", daHeight).
+			Msg("heightInCh backlog full, dropping complete event")
 	}
 }
 

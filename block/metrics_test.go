@@ -74,7 +74,7 @@ func TestMetrics(t *testing.T) {
 		assert.NotNil(t, em.NonRecoverableErrors)
 
 		// Test maps are initialized
-		assert.Len(t, em.ChannelBufferUsage, 7)
+		assert.Len(t, em.ChannelBufferUsage, 6)
 		assert.Len(t, em.ErrorsByType, 5)
 		assert.Len(t, em.OperationDuration, 5)
 		assert.Len(t, em.StateTransitions, 3)

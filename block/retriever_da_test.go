@@ -43,6 +43,7 @@ func setupManagerForRetrieverTest(t *testing.T, initialDAHeight uint64) (*Manage
 	mockStore.On("SetHeight", mock.Anything, mock.Anything).Return(nil).Maybe()
 	mockStore.On("SetMetadata", mock.Anything, mock.Anything, mock.Anything).Return(nil).Maybe()
 	mockStore.On("GetMetadata", mock.Anything, storepkg.DAIncludedHeightKey).Return([]byte{}, ds.ErrNotFound).Maybe()
+	mockStore.On("GetBlockData", mock.Anything, mock.Anything).Return(nil, nil, ds.ErrNotFound).Maybe()
 
 	_, cancel := context.WithCancel(context.Background())
 
@@ -150,27 +151,18 @@ func TestProcessNextDAHeader_Success_SingleHeaderAndData(t *testing.T) {
 	err = manager.processNextDAHeaderAndData(ctx)
 	require.NoError(t, err)
 
-	// Validate header event
+	// Validate height event with both header and data
 	select {
-	case event := <-manager.headerInCh:
+	case event := <-manager.heightInCh:
 		assert.Equal(t, blockHeight, event.Header.Height())
 		assert.Equal(t, daHeight, event.DAHeight)
 		assert.Equal(t, proposerAddr, event.Header.ProposerAddress)
+		assert.Equal(t, blockData.Txs, event.Data.Txs)
 	case <-time.After(100 * time.Millisecond):
-		t.Fatal("Expected header event not received")
+		t.Fatal("Expected height event not received")
 	}
 
 	assert.True(t, headerCache.IsDAIncluded(expectedHeaderHash), "Header hash should be marked as DA included in cache")
-
-	// Validate block data event
-	select {
-	case dataEvent := <-manager.dataInCh:
-		assert.Equal(t, daHeight, dataEvent.DAHeight)
-		assert.Equal(t, blockData.Txs, dataEvent.Data.Txs)
-		// Optionally, compare more fields if needed
-	case <-time.After(100 * time.Millisecond):
-		t.Fatal("Expected block data event not received")
-	}
 	assert.True(t, dataCache.IsDAIncluded(blockData.DACommitment().String()), "Block data commitment should be marked as DA included in cache")
 
 	mockDAClient.AssertExpectations(t)
@@ -265,45 +257,31 @@ func TestProcessNextDAHeader_MultipleHeadersAndData(t *testing.T) {
 	err := manager.processNextDAHeaderAndData(ctx)
 	require.NoError(t, err)
 
-	// Validate all header events
-	headerEvents := make([]NewHeaderEvent, 0, nHeaders)
+	// Validate all height events with both header and data
+	heightEvents := make([]NewHeightEvent, 0, nHeaders)
 	for i := 0; i < nHeaders; i++ {
 		select {
-		case event := <-manager.headerInCh:
-			headerEvents = append(headerEvents, event)
+		case event := <-manager.heightInCh:
+			heightEvents = append(heightEvents, event)
 		case <-time.After(300 * time.Millisecond):
-			t.Fatalf("Expected header event %d not received", i+1)
+			t.Fatalf("Expected height event %d not received", i+1)
 		}
 	}
-	// Check all expected heights are present
+
+	// Check all expected heights and tx counts are present
 	receivedHeights := make(map[uint64]bool)
-	for _, event := range headerEvents {
+	receivedLens := make(map[int]bool)
+	for _, event := range heightEvents {
 		receivedHeights[event.Header.Height()] = true
+		receivedLens[len(event.Data.Txs)] = true
 		assert.Equal(t, daHeight, event.DAHeight)
 		assert.Equal(t, proposerAddr, event.Header.ProposerAddress)
 	}
 	for _, h := range blockHeights {
-		assert.True(t, receivedHeights[h], "Header event for height %d not received", h)
-	}
-
-	// Validate all data events
-	dataEvents := make([]NewDataEvent, 0, nHeaders)
-	for i := 0; i < nHeaders; i++ {
-		select {
-		case event := <-manager.dataInCh:
-			dataEvents = append(dataEvents, event)
-		case <-time.After(300 * time.Millisecond):
-			t.Fatalf("Expected data event %d not received", i+1)
-		}
-	}
-	// Check all expected tx lens are present
-	receivedLens := make(map[int]bool)
-	for _, event := range dataEvents {
-		receivedLens[len(event.Data.Txs)] = true
-		assert.Equal(t, daHeight, event.DAHeight)
+		assert.True(t, receivedHeights[h], "Height event for height %d not received", h)
 	}
 	for _, l := range txLens {
-		assert.True(t, receivedLens[l], "Data event for tx count %d not received", l)
+		assert.True(t, receivedLens[l], "Height event for tx count %d not received", l)
 	}
 
 	mockDAClient.AssertExpectations(t)
@@ -326,14 +304,8 @@ func TestProcessNextDAHeaderAndData_NotFound(t *testing.T) {
 	require.NoError(t, err)
 
 	select {
-	case <-manager.headerInCh:
-		t.Fatal("No header event should be received for NotFound")
-	default:
-	}
-
-	select {
-	case <-manager.dataInCh:
-		t.Fatal("No data event should be received for NotFound")
+	case <-manager.heightInCh:
+		t.Fatal("No height event should be received for NotFound")
 	default:
 	}
 
@@ -367,13 +339,8 @@ func TestProcessNextDAHeaderAndData_UnmarshalHeaderError(t *testing.T) {
 	require.NoError(t, err)
 
 	select {
-	case <-manager.headerInCh:
-		t.Fatal("No header event should be received for unmarshal error")
-	default:
-	}
-	select {
-	case <-manager.dataInCh:
-		t.Fatal("No data event should be received for unmarshal error")
+	case <-manager.heightInCh:
+		t.Fatal("No height event should be received for unmarshal error")
 	default:
 	}
 
@@ -423,15 +390,10 @@ func TestProcessNextDAHeader_UnexpectedSequencer(t *testing.T) {
 	require.NoError(t, err)
 
 	select {
-	case <-manager.headerInCh:
-		t.Fatal("No header event should be received for unexpected sequencer")
+	case <-manager.heightInCh:
+		t.Fatal("No height event should be received for unexpected sequencer")
 	default:
 		// Expected behavior
-	}
-	select {
-	case <-manager.dataInCh:
-		t.Fatal("No data event should be received for unmarshal error")
-	default:
 	}
 
 	mockDAClient.AssertExpectations(t)
@@ -458,14 +420,8 @@ func TestProcessNextDAHeader_FetchError_RetryFailure(t *testing.T) {
 	assert.ErrorContains(t, err, fetchErr.Error(), "Expected the final error after retries")
 
 	select {
-	case <-manager.headerInCh:
-		t.Fatal("No header event should be received on fetch failure")
-	default:
-	}
-
-	select {
-	case <-manager.dataInCh:
-		t.Fatal("No data event should be received for unmarshal error")
+	case <-manager.heightInCh:
+		t.Fatal("No height event should be received on fetch failure")
 	default:
 	}
 
@@ -551,15 +507,10 @@ func TestProcessNextDAHeader_HeaderAndDataAlreadySeen(t *testing.T) {
 
 	// Verify no header event was sent
 	select {
-	case <-manager.headerInCh:
-		t.Fatal("Header event should not be received for already seen header")
+	case <-manager.heightInCh:
+		t.Fatal("Height event should not be received for already seen header")
 	default:
 		// Expected path
-	}
-	select {
-	case <-manager.dataInCh:
-		t.Fatal("Data event should not be received if already seen")
-	case <-time.After(50 * time.Millisecond):
 	}
 
 	mockDAClient.AssertExpectations(t)
@@ -702,18 +653,13 @@ func TestProcessNextDAHeader_WithNoTxs(t *testing.T) {
 
 	// Validate header event
 	select {
-	case <-manager.headerInCh:
-		// ok
+	case event := <-manager.heightInCh:
+		// Should receive height event with empty data
+		assert.Equal(t, blockHeight, event.Header.Height())
+		assert.Equal(t, daHeight, event.DAHeight)
+		assert.Empty(t, event.Data.Txs, "Data should be empty for headers with no transactions")
 	case <-time.After(100 * time.Millisecond):
-		t.Fatal("Expected header event not received")
-	}
-
-	// Validate data event for empty data
-	select {
-	case <-manager.dataInCh:
-		t.Fatal("No data event should be received for empty data")
-	case <-time.After(100 * time.Millisecond):
-		// ok, no event as expected
+		t.Fatal("Expected height event not received")
 	}
 	// The empty data should NOT be marked as DA included in cache
 	emptyData := &types.Data{Txs: types.Txs{}}

@@ -407,7 +407,7 @@ func TestSyncLoop_ProcessBlocks_OutOfOrderArrival(t *testing.T) {
 	heightH2 := initialHeight + 2
 	daHeight := initialState.DAHeight
 
-	m, mockStore, mockExec, ctx, cancel, headerInCh, dataInCh, heightPtr := setupManagerForSyncLoopTest(t, initialState)
+	m, mockStore, mockExec, ctx, cancel, heightInCh, heightPtr := setupManagerForSyncLoopTest(t, initialState)
 	defer cancel()
 
 	// --- Block H+1 Data ---
@@ -488,9 +488,8 @@ func TestSyncLoop_ProcessBlocks_OutOfOrderArrival(t *testing.T) {
 		t.Log("SyncLoop exited.")
 	}()
 
-	// --- Send H+2 Events First ---
-	headerInCh <- NewHeaderEvent{Header: headerH2, DAHeight: daHeight}
-	dataInCh <- NewDataEvent{Data: dataH2, DAHeight: daHeight}
+	// --- Send H+2 Event First ---
+	heightInCh <- NewHeightEvent{Header: headerH2, Data: dataH2, DAHeight: daHeight}
 
 	// Wait for H+2 to be cached (but not processed since H+1 is missing)
 	require.Eventually(func() bool {
@@ -501,9 +500,8 @@ func TestSyncLoop_ProcessBlocks_OutOfOrderArrival(t *testing.T) {
 	assert.NotNil(m.headerCache.GetItem(heightH2), "Header H+2 should be in cache")
 	assert.NotNil(m.dataCache.GetItem(heightH2), "Data H+2 should be in cache")
 
-	// --- Send H+1 Events Second ---
-	headerInCh <- NewHeaderEvent{Header: headerH1, DAHeight: daHeight}
-	dataInCh <- NewDataEvent{Data: dataH1, DAHeight: daHeight}
+	// --- Send H+1 Event Second ---
+	heightInCh <- NewHeightEvent{Header: headerH1, Data: dataH1, DAHeight: daHeight}
 
 	t.Log("Waiting for Sync H+1 to complete...")
 
@@ -557,7 +555,7 @@ func TestSyncLoop_IgnoreDuplicateEvents(t *testing.T) {
 	heightH1 := initialHeight + 1
 	daHeight := initialState.DAHeight
 
-	m, mockStore, mockExec, ctx, cancel, headerInCh, dataInCh, _ := setupManagerForSyncLoopTest(t, initialState)
+	m, mockStore, mockExec, ctx, cancel, heightInCh, _ := setupManagerForSyncLoopTest(t, initialState)
 	defer cancel()
 
 	// --- Block H+1 Data ---
@@ -597,9 +595,8 @@ func TestSyncLoop_IgnoreDuplicateEvents(t *testing.T) {
 		t.Log("SyncLoop exited.")
 	}()
 
-	// --- Send First Set of Events ---
-	headerInCh <- NewHeaderEvent{Header: headerH1, DAHeight: daHeight}
-	dataInCh <- NewDataEvent{Data: dataH1, DAHeight: daHeight}
+	// --- Send First Event ---
+	heightInCh <- NewHeightEvent{Header: headerH1, Data: dataH1, DAHeight: daHeight}
 
 	t.Log("Waiting for first sync to complete...")
 	select {
@@ -609,9 +606,8 @@ func TestSyncLoop_IgnoreDuplicateEvents(t *testing.T) {
 		t.Fatal("Timeout waiting for first sync to complete")
 	}
 
-	// --- Send Duplicate Events ---
-	headerInCh <- NewHeaderEvent{Header: headerH1, DAHeight: daHeight}
-	dataInCh <- NewDataEvent{Data: dataH1, DAHeight: daHeight}
+	// --- Send Duplicate Event ---
+	heightInCh <- NewHeightEvent{Header: headerH1, Data: dataH1, DAHeight: daHeight}
 
 	// Give the sync loop a chance to process duplicates (if it would)
 	// Since we expect no processing, we just wait for the context timeout
@@ -650,7 +646,7 @@ func TestSyncLoop_ErrorOnApplyError(t *testing.T) {
 	heightH1 := initialHeight + 1
 	daHeight := initialState.DAHeight
 
-	m, mockStore, mockExec, ctx, cancel, headerInCh, dataInCh, _ := setupManagerForSyncLoopTest(t, initialState)
+	m, mockStore, mockExec, ctx, cancel, heightInCh, _ := setupManagerForSyncLoopTest(t, initialState)
 	defer cancel() // Ensure context cancellation happens even on panic
 
 	// --- Block H+1 Data ---
@@ -687,11 +683,9 @@ func TestSyncLoop_ErrorOnApplyError(t *testing.T) {
 		m.SyncLoop(ctx, errCh)
 	}()
 
-	// --- Send Events ---
-	t.Logf("Sending header event for height %d", heightH1)
-	headerInCh <- NewHeaderEvent{Header: headerH1, DAHeight: daHeight}
-	t.Logf("Sending data event for height %d", heightH1)
-	dataInCh <- NewDataEvent{Data: dataH1, DAHeight: daHeight}
+	// --- Send Event ---
+	t.Logf("Sending height event for height %d", heightH1)
+	heightInCh <- NewHeightEvent{Header: headerH1, Data: dataH1, DAHeight: daHeight}
 
 	t.Log("Waiting for ApplyBlock error...")
 	select {
@@ -716,53 +710,6 @@ func TestSyncLoop_ErrorOnApplyError(t *testing.T) {
 	assert.NotNil(m.dataCache.GetItem(heightH1), "Data cache should still contain item for H+1")
 }
 
-// TestHandleEmptyDataHash tests that handleEmptyDataHash correctly handles the case where a header has an empty data hash, ensuring the data cache is updated with the previous block's data hash and metadata.
-func TestHandleEmptyDataHash(t *testing.T) {
-	require := require.New(t)
-	ctx := context.Background()
-
-	// Mock store and data cache
-	store := mocks.NewMockStore(t)
-	dataCache := cache.NewCache[types.Data]()
-
-	// Setup the manager with the mock and data cache
-	m := &Manager{
-		store:     store,
-		dataCache: dataCache,
-	}
-
-	// Define the test data
-	headerHeight := 2
-	header := &types.Header{
-		DataHash: dataHashForEmptyTxs,
-		BaseHeader: types.BaseHeader{
-			Height: 2,
-			Time:   uint64(time.Now().UnixNano()),
-		},
-	}
-
-	// Mock data for the previous block
-	lastData := &types.Data{}
-	lastDataHash := lastData.Hash()
-
-	// header.DataHash equals dataHashForEmptyTxs and no error occurs
-	store.On("GetBlockData", ctx, uint64(headerHeight-1)).Return(nil, lastData, nil)
-
-	// Execute the method under test
-	m.handleEmptyDataHash(ctx, header)
-
-	// Assertions
-	store.AssertExpectations(t)
-
-	// make sure that the store has the correct data
-	d := dataCache.GetItem(header.Height())
-	require.NotNil(d)
-	require.Equal(d.LastDataHash, lastDataHash)
-	require.Equal(d.Metadata.ChainID, header.ChainID())
-	require.Equal(d.Metadata.Height, header.Height())
-	require.Equal(d.Metadata.Time, header.BaseHeader.Time)
-}
-
 // TestSyncLoop_MultipleHeadersArriveFirst_ThenData verifies that the sync loop correctly processes multiple blocks when all headers arrive first (without data), then their corresponding data arrives (or is handled as empty).
 // 1. Headers for H+1 through H+5 arrive (no data yet).
 // 2. State should not advance after only headers are received.
@@ -770,6 +717,7 @@ func TestHandleEmptyDataHash(t *testing.T) {
 // 4. For empty blocks (H+3 and H+4), no data is sent; the sync loop handles these using the empty data hash logic.
 // 5. Final state is H+5, caches are cleared for all processed heights, and mocks are called as expected.
 func TestSyncLoop_MultipleHeadersArriveFirst_ThenData(t *testing.T) {
+	t.Skip("Test no longer relevant with new architecture that sends complete height events")
 	assert := assert.New(t)
 	require := require.New(t)
 
@@ -794,8 +742,7 @@ func TestSyncLoop_MultipleHeadersArriveFirst_ThenData(t *testing.T) {
 
 	mockExec := mocks.NewMockExecutor(t)
 
-	headerInCh := make(chan NewHeaderEvent, 5)
-	dataInCh := make(chan NewDataEvent, 5)
+	heightInCh := make(chan NewHeightEvent, 5)
 
 	headers := make([]*types.SignedHeader, numBlocks)
 	data := make([]*types.Data, numBlocks)
@@ -859,8 +806,7 @@ func TestSyncLoop_MultipleHeadersArriveFirst_ThenData(t *testing.T) {
 		logger:                           zerolog.Nop(),
 		headerCache:                      cache.NewCache[types.SignedHeader](),
 		dataCache:                        cache.NewCache[types.Data](),
-		headerInCh:                       headerInCh,
-		dataInCh:                         dataInCh,
+		heightInCh:                       heightInCh,
 		daHeight:                         &atomic.Uint64{},
 		metrics:                          NopMetrics(),
 		syncNodeSignaturePayloadProvider: types.DefaultSyncNodeSignatureBytesProvider,
@@ -880,7 +826,7 @@ func TestSyncLoop_MultipleHeadersArriveFirst_ThenData(t *testing.T) {
 
 	// 1. Send all headers first (no data yet)
 	for i := 0; i < numBlocks; i++ {
-		headerInCh <- NewHeaderEvent{Header: headers[i], DAHeight: daHeight}
+		heightInCh <- NewHeightEvent{Header: headers[i], Data: data[i], DAHeight: daHeight}
 	}
 
 	// 2. Wait for headers to be processed and cached by polling the cache state
@@ -921,18 +867,14 @@ func TestSyncLoop_MultipleHeadersArriveFirst_ThenData(t *testing.T) {
 	}
 
 	// 3. Send data for each block in order (skip empty blocks)
+	// Data events are already sent with headers above, so just wait for processing
 	for i := 0; i < numBlocks; i++ {
-		if i == 2 || i == 3 {
-			// Do NOT send data for empty blocks
-			continue
-		}
-		dataInCh <- NewDataEvent{Data: data[i], DAHeight: daHeight}
 		// Wait for block to be processed
 		select {
 		case <-syncChans[i]:
 			// processed
 		case <-time.After(2 * time.Second):
-			t.Fatalf("Timeout waiting for sync of H+%d", i+1)
+			t.Fatalf("timed out waiting for block %d to be processed", i)
 		}
 	}
 

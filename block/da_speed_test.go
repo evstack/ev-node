@@ -100,6 +100,7 @@ func setupManagerForTest(t *testing.T, initialDAHeight uint64) (*Manager, *rollm
 	mockStore.On("GetState", mock.Anything).Return(types.State{DAHeight: initialDAHeight}, nil).Maybe()
 	mockStore.On("Height", mock.Anything).Return(initialDAHeight, nil).Maybe()
 	mockStore.On("SetMetadata", mock.Anything, mock.Anything, mock.Anything).Return(nil).Maybe()
+	mockStore.On("GetBlockData", mock.Anything, mock.Anything).Return(nil, nil, ds.ErrNotFound).Maybe()
 
 	src := rand.Reader
 	pk, _, err := crypto.GenerateEd25519Key(src)
