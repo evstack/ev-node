@@ -224,7 +224,7 @@ the variables in the command with the variables in the `init.sh` script.
 ## 🌟 Contract interaction on CosmWasm {#contract-interaction-on-local-da}
 <!-- markdownlint-disable MD013 -->
 
-In the previous steps, we have stored out contract's tx hash in an
+In the previous steps, we have stored our contract's tx hash in an
 environment variable for later use.
 
 The following guide will show you how to deploy and interact with a contract using CLI.
