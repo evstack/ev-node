@@ -4,7 +4,7 @@
 
 - 2025-04-09: Initial draft
 - 2025-04-09: Added optional UX optimization where full nodes can relay user transactions to base layer
-- 2025-04-09: Added rationale for VerifyBatch utility in abased setup
+- 2025-04-09: Added rationale for VerifyBatch utility in a based setup
 - 2025-04-09: Reworded forkchoice rule to use maxHeightDrift instead of time-based maxLatency
 - 2025-04-10: Added Relaying Costs and Fee Compensation via EVM
 
