@@ -12,6 +12,6 @@ Each file in this folder covers a specific aspect of the system, from block mana
 - [Block Validity](/docs/learn/specs/block-validity.md): Details the rules and checks for block validity within the protocol.
 - [Data Availability (DA)](/docs/learn/specs/da.md): Describes how Evolve ensures data availability and integrates with DA layers.
 - [Full Node](/docs/learn/specs/full_node.md): Outlines the architecture and operation of a full node in Evolve.
-- [Header Sync](/docs/learn/specs/header-sync.md): Covers the process and protocol for synchronizing block headers.
+- [Header Sync](/docs/learn/specs/header-sync.md): Covers the process and protocol for synchronizing block headers and data.
 - [P2P](/docs/learn/specs/p2p.md): Documents the peer-to-peer networking layer and its protocols.
 - [Store](/docs/learn/specs/store.md): Provides information about the storage subsystem and data management.
