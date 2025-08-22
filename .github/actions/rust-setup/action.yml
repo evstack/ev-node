@@ -13,6 +13,10 @@ inputs:
     description: "Additional cache key for dependencies"
     required: false
     default: "default"
+  targets:
+    description: "Additional targets to install (e.g., thumbv7m-none-eabi)"
+    required: false
+    default: ""
 
 runs:
   using: "composite"
@@ -22,6 +26,7 @@ runs:
       with:
         toolchain: ${{ inputs.toolchain }}
         components: ${{ inputs.components }}
+        targets: ${{ inputs.targets }}
 
     - name: Install protoc
       uses: arduino/setup-protoc@v3
