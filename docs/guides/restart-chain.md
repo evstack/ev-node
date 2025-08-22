@@ -88,7 +88,7 @@ You can stop your chain by using `Control + C` in your terminal where the node i
 
 ### ⛽ Increase the gas fee {#increase-gas-fee}
 
-To reiterate, before restarting the chain, you will need to increase the gas fee in order to avoid a `Code: 19` error. See the [How to configure gas price](/docs/learn/config.md#da-gas-price) guide for more information.
+To reiterate, before restarting the chain, you will need to increase the gas fee in order to avoid a `Code: 19` error. See the [How to configure gas price](../learn/config.md#da-gas-price) guide for more information.
 
 ### 🔁 Restarting your chain {#restarting-your-chain}
 
