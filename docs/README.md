@@ -1,7 +1,5 @@
 # Evolve Documentation Site
 
-[![Deploy](https://github.com/evstack/ev-node/actions/workflows/deploy.yml/badge.svg)](https://github.com/evstack/ev-node/actions/workflows/deploy.yml)
-
 Welcome to the official documentation repository for Evolve.
 
 Here you'll find comprehensive guides, and reference materials to help you make the most out of Evolve.
