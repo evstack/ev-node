@@ -132,16 +132,16 @@ func (m *Manager) processBlobs(ctx context.Context, blobs [][]byte, daHeight uin
 		if data == nil {
 			if bytes.Equal(header.DataHash, dataHashForEmptyTxs) || len(header.DataHash) == 0 {
 				// Header expects empty data, create it
-				data = m.createEmptyData(header)
+				data = m.createEmptyDataForHeader(ctx, header)
 			} else {
 				// Check if header's DataHash matches the hash of empty data
-				emptyData := m.createEmptyData(header)
+				emptyData := m.createEmptyDataForHeader(ctx, header)
 				emptyDataHash := emptyData.Hash()
 				if bytes.Equal(header.DataHash, emptyDataHash) {
 					data = emptyData
 				} else {
 					// Header expects data but no data found - skip for now
-					m.logger.Debug().Uint64("height", height).Uint64("daHeight", daHeight).Msg("header found but no matching data")
+					m.logger.Debug().Uint64("height", height).Uint64("daHeight", daHeight).Msg("header found but no matching data yet")
 					continue
 				}
 			}
@@ -219,34 +219,6 @@ func (m *Manager) tryDecodeData(bz []byte, daHeight uint64) *types.Data {
 	m.logger.Info().Str("dataHash", dataHashStr).Uint64("daHeight", daHeight).Uint64("height", signedData.Height()).Msg("signed data marked as DA included")
 
 	return &signedData.Data
-}
-
-// createEmptyData creates empty data for headers with empty data hash
-func (m *Manager) createEmptyData(header *types.SignedHeader) *types.Data {
-	headerHeight := header.Height()
-	var lastDataHash types.Hash
-
-	if headerHeight > 1 {
-		ctx := context.Background()
-		_, lastData, err := m.store.GetBlockData(ctx, headerHeight-1)
-		if err != nil {
-			// This is expected in tests and when syncing - just use empty hash
-			m.logger.Debug().Uint64("current_height", headerHeight).Uint64("previous_height", headerHeight-1).Err(err).Msg("previous block not available, using empty last data hash")
-		} else if lastData != nil {
-			lastDataHash = lastData.Hash()
-		}
-	}
-
-	metadata := &types.Metadata{
-		ChainID:      header.ChainID(),
-		Height:       headerHeight,
-		Time:         header.BaseHeader.Time,
-		LastDataHash: lastDataHash,
-	}
-
-	return &types.Data{
-		Metadata: metadata,
-	}
 }
 
 func (m *Manager) waitForHeight(ctx context.Context, height uint64) error {

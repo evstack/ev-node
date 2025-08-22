@@ -190,7 +190,7 @@ func (m *Manager) createEmptyDataForHeader(ctx context.Context, header *types.Si
 	if headerHeight > 1 {
 		_, lastData, err := m.store.GetBlockData(ctx, headerHeight-1)
 		if err != nil {
-			m.logger.Debug().Uint64("current_height", headerHeight).Uint64("previous_height", headerHeight-1).Err(err).Msg("previous block not applied yet")
+			m.logger.Debug().Uint64("current_height", headerHeight).Uint64("previous_height", headerHeight-1).Msg(fmt.Sprintf("previous block not available, using empty last data hash: %s", err.Error()))
 		}
 		if lastData != nil {
 			lastDataHash = lastData.Hash()
