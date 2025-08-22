@@ -394,7 +394,7 @@ func NopMetrics() *Metrics {
 	}
 
 	// Initialize maps with no-op metrics
-	channelNames := []string{"header_in", "data_in", "header_store", "data_store", "retrieve", "da_includer", "tx_notify"}
+	channelNames := []string{"height_in", "header_store", "data_store", "retrieve", "da_includer", "tx_notify"}
 	for _, name := range channelNames {
 		m.ChannelBufferUsage[name] = discard.NewGauge()
 	}

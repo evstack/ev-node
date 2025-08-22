@@ -134,12 +134,12 @@ func TestTxGossipingMultipleNodesDAIncluded(t *testing.T) {
 func TestFastDASync(t *testing.T) {
 	require := require.New(t)
 
-	// Set up two nodes with different block and DA block times
+	// Set up two nodes where DA is faster than block production
 	config := getTestConfig(t, 1)
-	// Set the block time to 2 seconds and the DA block time to 1 second
-	// Note: these are large values to avoid test failures due to slow CI machines
-	config.Node.BlockTime = evconfig.DurationWrapper{Duration: 2 * time.Second}
-	config.DA.BlockTime = evconfig.DurationWrapper{Duration: 1 * time.Second}
+	// Slow block production (sequencer takes 1s per block)
+	config.Node.BlockTime = evconfig.DurationWrapper{Duration: 1 * time.Second}
+	// Fast DA availability (DA makes blocks available every 200ms)
+	config.DA.BlockTime = evconfig.DurationWrapper{Duration: 200 * time.Millisecond}
 
 	nodes, cleanups := createNodesWithCleanup(t, 2, config)
 	for _, cleanup := range cleanups {
@@ -165,10 +165,15 @@ func TestFastDASync(t *testing.T) {
 	// Wait for the second node to catch up to the first node
 	require.NoError(waitForAtLeastNBlocks(nodes[1], blocksToWaitFor, Store))
 	syncDuration := time.Since(start)
+	// The key test: sync should be much faster than sequential block production time
+	// Since DA provides blocks faster than sequencer block time, sync should complete
+	// in significantly less time than it took the sequencer to produce them sequentially
+	expectedSequentialTime := time.Duration(blocksToWaitFor) * config.Node.BlockTime.Duration
+	maxReasonableSyncTime := expectedSequentialTime / 3 // Should be at least 3x faster than sequential
 
-	// Ensure node syncs within a small delta of DA block time
-	delta := 250 * time.Millisecond
-	require.Less(syncDuration, config.DA.BlockTime.Duration+delta, "Block sync should be faster than DA block time")
+	require.Less(syncDuration, maxReasonableSyncTime,
+		"DA fast sync took %v, should be much faster than sequential block time %v (max reasonable: %v). ",
+		syncDuration, expectedSequentialTime, maxReasonableSyncTime)
 
 	// Verify both nodes are synced and that the synced block is DA-included
 	assertAllNodesSynced(t, nodes, blocksToWaitFor)

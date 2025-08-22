@@ -80,17 +80,17 @@ func setupManagerForPublishBlockTest(
 		dataBroadcaster: broadcasterFn[*types.Data](func(ctx context.Context, payload *types.Data) error {
 			return nil
 		}),
-		headerStore:              headerStore,
-		daHeight:                 &atomic.Uint64{},
-		dataStore:                dataStore,
-		headerCache:              cache.NewCache[types.SignedHeader](),
-		dataCache:                cache.NewCache[types.Data](),
-		lastStateMtx:             &sync.RWMutex{},
-		metrics:                  NopMetrics(),
-		pendingHeaders:           nil,
-		pendingData:              nil,
-		signaturePayloadProvider: types.DefaultSignaturePayloadProvider,
-		validatorHasherProvider:  types.DefaultValidatorHasherProvider,
+		headerStore:                        headerStore,
+		daHeight:                           &atomic.Uint64{},
+		dataStore:                          dataStore,
+		headerCache:                        cache.NewCache[types.SignedHeader](),
+		dataCache:                          cache.NewCache[types.Data](),
+		lastStateMtx:                       &sync.RWMutex{},
+		metrics:                            NopMetrics(),
+		pendingHeaders:                     nil,
+		pendingData:                        nil,
+		aggregatorSignaturePayloadProvider: types.DefaultAggregatorNodeSignatureBytesProvider,
+		validatorHasherProvider:            types.DefaultValidatorHasherProvider,
 	}
 	manager.publishBlock = manager.publishBlockInternal
 
@@ -179,10 +179,10 @@ func Test_publishBlock_NoBatch(t *testing.T) {
 				MaxPendingHeadersAndData: 0,
 			},
 		},
-		lastStateMtx:             &sync.RWMutex{},
-		metrics:                  NopMetrics(),
-		signaturePayloadProvider: types.DefaultSignaturePayloadProvider,
-		validatorHasherProvider:  types.DefaultValidatorHasherProvider,
+		lastStateMtx:                       &sync.RWMutex{},
+		metrics:                            NopMetrics(),
+		aggregatorSignaturePayloadProvider: types.DefaultAggregatorNodeSignatureBytesProvider,
+		validatorHasherProvider:            types.DefaultValidatorHasherProvider,
 	}
 
 	m.publishBlock = m.publishBlockInternal
@@ -270,9 +270,10 @@ func Test_publishBlock_EmptyBatch(t *testing.T) {
 		dataBroadcaster: broadcasterFn[*types.Data](func(ctx context.Context, payload *types.Data) error {
 			return nil
 		}),
-		daHeight:                 &daH,
-		signaturePayloadProvider: types.DefaultSignaturePayloadProvider,
-		validatorHasherProvider:  types.DefaultValidatorHasherProvider,
+		daHeight:                           &daH,
+		syncNodeSignaturePayloadProvider:   types.DefaultSyncNodeSignatureBytesProvider,
+		aggregatorSignaturePayloadProvider: types.DefaultAggregatorNodeSignatureBytesProvider,
+		validatorHasherProvider:            types.DefaultValidatorHasherProvider,
 	}
 
 	m.publishBlock = m.publishBlockInternal
