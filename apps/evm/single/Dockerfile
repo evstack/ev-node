@@ -14,7 +14,7 @@ RUN go mod tidy && CGO_ENABLED=0 GOOS=linux go build -o evm-single .
 
 FROM alpine:3.18.3
 
-RUN apk --no-cache add ca-certificates
+RUN apk --no-cache add ca-certificates curl
 
 WORKDIR /root
 
