@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 
 	"google.golang.org/protobuf/proto"
@@ -20,8 +21,36 @@ const (
 	dAFetcherRetries  = 10
 )
 
+// daRetriever encapsulates DA retrieval with pending events management
+type daRetriever struct {
+	manager       *Manager
+	pendingEvents map[uint64][]pendingDAEvent
+	mutex         sync.RWMutex
+}
+
+// pendingDAEvent represents a DA event waiting for processing
+type pendingDAEvent struct {
+	header   *types.SignedHeader
+	data     *types.Data
+	daHeight uint64
+}
+
+// newDARetriever creates a new DA retriever
+func newDARetriever(manager *Manager) *daRetriever {
+	return &daRetriever{
+		manager:       manager,
+		pendingEvents: make(map[uint64][]pendingDAEvent),
+	}
+}
+
 // DARetrieveLoop is responsible for interacting with DA layer.
 func (m *Manager) DARetrieveLoop(ctx context.Context) {
+	retriever := newDARetriever(m)
+	retriever.run(ctx)
+}
+
+// run executes the main DA retrieval loop
+func (dr *daRetriever) run(ctx context.Context) {
 	// blobsFoundCh is used to track when we successfully found a header so
 	// that we can continue to try and find headers that are in the next DA height.
 	// This enables syncing faster than the DA block time.
@@ -31,15 +60,15 @@ func (m *Manager) DARetrieveLoop(ctx context.Context) {
 		select {
 		case <-ctx.Done():
 			return
-		case <-m.retrieveCh:
+		case <-dr.manager.retrieveCh:
 		case <-blobsFoundCh:
 		}
-		daHeight := m.daHeight.Load()
-		err := m.processNextDAHeaderAndData(ctx)
+		daHeight := dr.manager.daHeight.Load()
+		err := dr.processNextDAHeaderAndData(ctx)
 		if err != nil && ctx.Err() == nil {
 			// if the requested da height is not yet available, wait silently, otherwise log the error and wait
-			if !m.areAllErrorsHeightFromFuture(err) {
-				m.logger.Error().Uint64("daHeight", daHeight).Str("errors", err.Error()).Msg("failed to retrieve data from DALC")
+			if !dr.manager.areAllErrorsHeightFromFuture(err) {
+				dr.manager.logger.Error().Uint64("daHeight", daHeight).Str("errors", err.Error()).Msg("failed to retrieve data from DALC")
 			}
 			continue
 		}
@@ -48,26 +77,26 @@ func (m *Manager) DARetrieveLoop(ctx context.Context) {
 		case blobsFoundCh <- struct{}{}:
 		default:
 		}
-		m.daHeight.Store(daHeight + 1)
+		dr.manager.daHeight.Store(daHeight + 1)
 
 		// Try to process any pending DA events that might now be ready
-		m.processPendingDAEvents(ctx)
+		dr.processPendingEvents(ctx)
 	}
 }
 
 // processNextDAHeaderAndData is responsible for retrieving a header and data from the DA layer.
 // It returns an error if the context is done or if the DA layer returns an error.
-func (m *Manager) processNextDAHeaderAndData(ctx context.Context) error {
+func (dr *daRetriever) processNextDAHeaderAndData(ctx context.Context) error {
 	select {
 	case <-ctx.Done():
 		return ctx.Err()
 	default:
 	}
 
-	daHeight := m.daHeight.Load()
+	daHeight := dr.manager.daHeight.Load()
 
 	var err error
-	m.logger.Debug().Uint64("daHeight", daHeight).Msg("trying to retrieve data from DA")
+	dr.manager.logger.Debug().Uint64("daHeight", daHeight).Msg("trying to retrieve data from DA")
 	for r := 0; r < dAFetcherRetries; r++ {
 		select {
 		case <-ctx.Done():
@@ -75,21 +104,21 @@ func (m *Manager) processNextDAHeaderAndData(ctx context.Context) error {
 		default:
 		}
 
-		blobsResp, fetchErr := m.fetchBlobs(ctx, daHeight)
+		blobsResp, fetchErr := dr.manager.fetchBlobs(ctx, daHeight)
 		if fetchErr == nil {
 			// Record successful DA retrieval
-			m.recordDAMetrics("retrieval", DAModeSuccess)
+			dr.manager.recordDAMetrics("retrieval", DAModeSuccess)
 
 			if blobsResp.Code == coreda.StatusNotFound {
-				m.logger.Debug().Uint64("daHeight", daHeight).Str("reason", blobsResp.Message).Msg("no blob data found")
+				dr.manager.logger.Debug().Uint64("daHeight", daHeight).Str("reason", blobsResp.Message).Msg("no blob data found")
 				return nil
 			}
-			m.logger.Debug().Int("n", len(blobsResp.Data)).Uint64("daHeight", daHeight).Msg("retrieved potential blob data")
+			dr.manager.logger.Debug().Int("n", len(blobsResp.Data)).Uint64("daHeight", daHeight).Msg("retrieved potential blob data")
 
-			m.processBlobs(ctx, blobsResp.Data, daHeight)
+			dr.processBlobs(ctx, blobsResp.Data, daHeight)
 			return nil
 		} else if strings.Contains(fetchErr.Error(), coreda.ErrHeightFromFuture.Error()) {
-			m.logger.Debug().Uint64("daHeight", daHeight).Str("reason", fetchErr.Error()).Msg("height from future")
+			dr.manager.logger.Debug().Uint64("daHeight", daHeight).Str("reason", fetchErr.Error()).Msg("height from future")
 			return fetchErr
 		}
 
@@ -106,23 +135,23 @@ func (m *Manager) processNextDAHeaderAndData(ctx context.Context) error {
 }
 
 // processBlobs processes all blobs to find headers and their corresponding data, then sends complete height events
-func (m *Manager) processBlobs(ctx context.Context, blobs [][]byte, daHeight uint64) {
+func (dr *daRetriever) processBlobs(ctx context.Context, blobs [][]byte, daHeight uint64) {
 	// collect all headers and data
 	headers := make(map[uint64]*types.SignedHeader)
 	dataMap := make(map[uint64]*types.Data)
 
 	for _, bz := range blobs {
 		if len(bz) == 0 {
-			m.logger.Debug().Uint64("daHeight", daHeight).Msg("ignoring nil or empty blob")
+			dr.manager.logger.Debug().Uint64("daHeight", daHeight).Msg("ignoring nil or empty blob")
 			continue
 		}
 
-		if header := m.tryDecodeHeader(bz, daHeight); header != nil {
+		if header := dr.manager.tryDecodeHeader(bz, daHeight); header != nil {
 			headers[header.Height()] = header
 			continue
 		}
 
-		if data := m.tryDecodeData(bz, daHeight); data != nil {
+		if data := dr.manager.tryDecodeData(bz, daHeight); data != nil {
 			dataMap[data.Height()] = data
 		}
 	}
@@ -135,22 +164,22 @@ func (m *Manager) processBlobs(ctx context.Context, blobs [][]byte, daHeight uin
 		if data == nil {
 			if bytes.Equal(header.DataHash, dataHashForEmptyTxs) || len(header.DataHash) == 0 {
 				// Header expects empty data, create it
-				data = m.createEmptyDataForHeader(ctx, header)
+				data = dr.manager.createEmptyDataForHeader(ctx, header)
 			} else {
 				// Check if header's DataHash matches the hash of empty data
-				emptyData := m.createEmptyDataForHeader(ctx, header)
+				emptyData := dr.manager.createEmptyDataForHeader(ctx, header)
 				emptyDataHash := emptyData.Hash()
 				if bytes.Equal(header.DataHash, emptyDataHash) {
 					data = emptyData
 				} else {
 					// Header expects data but no data found - skip for now
-					m.logger.Debug().Uint64("height", height).Uint64("daHeight", daHeight).Msg("header found but no matching data yet")
+					dr.manager.logger.Debug().Uint64("height", height).Uint64("daHeight", daHeight).Msg("header found but no matching data yet")
 					continue
 				}
 			}
 		}
 
-		m.sendHeightEventIfValid(ctx, header, data, daHeight)
+		dr.sendHeightEventIfValid(ctx, header, data, daHeight)
 	}
 }
 
@@ -225,7 +254,8 @@ func (m *Manager) tryDecodeData(bz []byte, daHeight uint64) *types.Data {
 }
 
 // isAtHeight checks if a height is available without blocking
-func (m *Manager) isAtHeight(ctx context.Context, height uint64) error {
+// waitForHeightNonBlocking checks if a height is available without blocking
+func (m *Manager) waitForHeightNonBlocking(ctx context.Context, height uint64) error {
 	currentHeight, err := m.GetStoreHeight(ctx)
 	if err != nil {
 		return err
@@ -237,66 +267,65 @@ func (m *Manager) isAtHeight(ctx context.Context, height uint64) error {
 }
 
 // sendHeightEventIfValid sends a height event if both header and data are valid and not seen before
-func (m *Manager) sendHeightEventIfValid(ctx context.Context, header *types.SignedHeader, data *types.Data, daHeight uint64) {
+func (dr *daRetriever) sendHeightEventIfValid(ctx context.Context, header *types.SignedHeader, data *types.Data, daHeight uint64) {
 	headerHash := header.Hash().String()
 	dataHashStr := data.DACommitment().String()
 
 	// Check if already seen before doing expensive validation
-	if m.headerCache.IsSeen(headerHash) {
-		m.logger.Debug().Str("headerHash", headerHash).Msg("header already seen, skipping")
+	if dr.manager.headerCache.IsSeen(headerHash) {
+		dr.manager.logger.Debug().Str("headerHash", headerHash).Msg("header already seen, skipping")
 		return
 	}
 
-	if !bytes.Equal(header.DataHash, dataHashForEmptyTxs) && m.dataCache.IsSeen(dataHashStr) {
-		m.logger.Debug().Str("dataHash", dataHashStr).Msg("data already seen, skipping")
+	if !bytes.Equal(header.DataHash, dataHashForEmptyTxs) && dr.manager.dataCache.IsSeen(dataHashStr) {
+		dr.manager.logger.Debug().Str("dataHash", dataHashStr).Msg("data already seen, skipping")
 		return
 	}
 
 	// Check if we can validate this height immediately (non-blocking check)
-	if err := m.isAtHeight(ctx, header.Height()-1); err != nil {
+	if err := dr.manager.waitForHeightNonBlocking(ctx, header.Height()-1); err != nil {
 		// Queue this event for later processing when the prerequisite height is available
-		m.queuePendingDAEvent(ctx, header, data, daHeight)
+		dr.queuePendingEvent(header, data, daHeight)
 		return
 	}
 
 	// Process immediately since prerequisite height is available
-	m.processDAEvent(ctx, header, data, daHeight)
+	dr.processEvent(ctx, header, data, daHeight)
 }
 
-// queuePendingDAEvent queues a DA event that cannot be processed immediately
-func (m *Manager) queuePendingDAEvent(ctx context.Context, header *types.SignedHeader, data *types.Data, daHeight uint64) {
-	heightEvent := NewHeightEvent{
-		Header:   header,
-		Data:     data,
-		DAHeight: daHeight,
-	}
-
-	m.pendingMutex.Lock()
-	defer m.pendingMutex.Unlock()
+// queuePendingEvent queues a DA event that cannot be processed immediately
+func (dr *daRetriever) queuePendingEvent(header *types.SignedHeader, data *types.Data, daHeight uint64) {
+	dr.mutex.Lock()
+	defer dr.mutex.Unlock()
 
 	height := header.Height()
-	m.pendingSyncEvents[height] = append(m.pendingSyncEvents[height], heightEvent)
+	event := pendingDAEvent{
+		header:   header,
+		data:     data,
+		daHeight: daHeight,
+	}
+	dr.pendingEvents[height] = append(dr.pendingEvents[height], event)
 
-	m.logger.Debug().
+	dr.manager.logger.Debug().
 		Uint64("height", height).
 		Uint64("daHeight", daHeight).
 		Msg("queued DA event for later processing")
 }
 
-// processDAEvent processes a DA event that is ready for validation
-func (m *Manager) processDAEvent(ctx context.Context, header *types.SignedHeader, data *types.Data, daHeight uint64) {
+// processEvent processes a DA event that is ready for validation
+func (dr *daRetriever) processEvent(ctx context.Context, header *types.SignedHeader, data *types.Data, daHeight uint64) {
 	headerHash := header.Hash().String()
 
 	// Validate header with its data - this requires previous height to be stored
 	if err := header.ValidateBasicWithData(data); err != nil {
-		m.logger.Debug().Uint64("height", header.Height()).Err(err).Msg("header validation with data failed")
+		dr.manager.logger.Debug().Uint64("height", header.Height()).Err(err).Msg("header validation with data failed")
 		return
 	}
 
 	// Mark as DA included since validation passed
-	m.headerCache.SetDAIncluded(headerHash, daHeight)
-	m.sendNonBlockingSignalToDAIncluderCh()
-	m.logger.Info().Uint64("headerHeight", header.Height()).Str("headerHash", headerHash).Msg("header marked as DA included")
+	dr.manager.headerCache.SetDAIncluded(headerHash, daHeight)
+	dr.manager.sendNonBlockingSignalToDAIncluderCh()
+	dr.manager.logger.Info().Uint64("headerHeight", header.Height()).Str("headerHash", headerHash).Msg("header marked as DA included")
 
 	// Send complete height event with both header and data
 	heightEvent := NewHeightEvent{
@@ -308,48 +337,43 @@ func (m *Manager) processDAEvent(ctx context.Context, header *types.SignedHeader
 	select {
 	case <-ctx.Done():
 		return
-	case m.heightInCh <- heightEvent:
-		m.logger.Debug().
+	case dr.manager.heightInCh <- heightEvent:
+		dr.manager.logger.Debug().
 			Uint64("height", header.Height()).
 			Uint64("daHeight", daHeight).
 			Msg("sent complete height event with header and data")
 	default:
-		m.logger.Warn().
+		dr.manager.logger.Warn().
 			Uint64("height", header.Height()).
 			Uint64("daHeight", daHeight).
 			Msg("heightInCh backlog full, dropping complete event")
 	}
 
 	// Try to process any pending events that might now be ready
-	m.processPendingDAEvents(ctx)
+	dr.processPendingEvents(ctx)
 }
 
-// processPendingDAEvents tries to process queued DA events that might now be ready
-func (m *Manager) processPendingDAEvents(ctx context.Context) {
-	m.pendingMutex.Lock()
-	defer m.pendingMutex.Unlock()
-
-	if m.pendingSyncEvents == nil {
-		return
-	}
-
-	currentHeight, err := m.GetStoreHeight(ctx)
+// processPendingEvents tries to process queued DA events that might now be ready
+func (dr *daRetriever) processPendingEvents(ctx context.Context) {
+	currentHeight, err := dr.manager.GetStoreHeight(ctx)
 	if err != nil {
-		m.logger.Debug().Err(err).Msg("failed to get store height for pending DA events")
+		dr.manager.logger.Debug().Err(err).Msg("failed to get store height for pending DA events")
 		return
 	}
 
-	// Process events that are now ready (height - 1 <= currentHeight)
-	for height, events := range m.pendingSyncEvents {
+	dr.mutex.Lock()
+	defer dr.mutex.Unlock()
+
+	for height, events := range dr.pendingEvents {
 		if height-1 <= currentHeight {
 			for _, event := range events {
-				m.logger.Debug().
+				dr.manager.logger.Debug().
 					Uint64("height", height).
-					Uint64("daHeight", event.DAHeight).
+					Uint64("daHeight", event.daHeight).
 					Msg("processing previously queued DA event")
-				go m.processDAEvent(ctx, event.Header, event.Data, event.DAHeight)
+				go dr.processEvent(ctx, event.header, event.data, event.daHeight)
 			}
-			delete(m.pendingSyncEvents, height)
+			delete(dr.pendingEvents, height)
 		}
 	}
 }

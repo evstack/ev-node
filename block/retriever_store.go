@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"time"
 
 	"github.com/evstack/ev-node/types"
 )
@@ -57,22 +56,6 @@ func (m *Manager) DataStoreRetrieveLoop(ctx context.Context) {
 	}
 }
 
-// waitForHeight waits for the store height to reach the specified height
-func (m *Manager) waitForHeight(ctx context.Context, height uint64) error {
-	for {
-		currentHeight, err := m.GetStoreHeight(ctx)
-		if err != nil {
-			m.logger.Error().Err(err).Msg("failed to get store height")
-			return err
-		}
-		if currentHeight >= height {
-			return nil
-		}
-
-		time.Sleep(m.config.Node.BlockTime.Duration)
-	}
-}
-
 // processHeaderStoreRange processes headers from header store and retrieves corresponding data
 func (m *Manager) processHeaderStoreRange(ctx context.Context, startHeight, endHeight uint64) {
 	headers, err := m.getHeadersFromHeaderStore(ctx, startHeight, endHeight)
@@ -109,12 +92,6 @@ func (m *Manager) processHeaderStoreRange(ctx context.Context, startHeight, endH
 				continue
 			}
 			data = retrievedData
-		}
-
-		// we need to wait until the previous height has been executed in order to continue syncing
-		if err := m.waitForHeight(ctx, header.Height()-1); err != nil {
-			m.logger.Error().Err(err).Msg("failed to wait for previous height")
-			return
 		}
 
 		// validate header and its signature validity with data
@@ -156,12 +133,6 @@ func (m *Manager) processDataStoreRange(ctx context.Context, startHeight, endHei
 
 		// set custom verifier to do correct header verification
 		header.SetCustomVerifierForSyncNode(m.syncNodeSignaturePayloadProvider)
-
-		// we need to wait until the previous height has been executed in order to continue syncing
-		if err := m.waitForHeight(ctx, header.Height()-1); err != nil {
-			m.logger.Error().Err(err).Msg("failed to wait for previous height")
-			return
-		}
 
 		// validate header and its signature validity with data
 		if err := header.ValidateBasicWithData(d); err != nil {

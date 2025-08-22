@@ -93,7 +93,7 @@ func TestDataStoreRetrieveLoop_RetrievesNewData(t *testing.T) {
 	defer cancel()
 
 	initialHeight := uint64(5)
-	mockStore.On("Height", ctx).Return(initialHeight, nil).Once()
+	mockStore.On("Height", ctx).Return(initialHeight, nil).Maybe()
 
 	var wg sync.WaitGroup
 	wg.Add(1)
@@ -160,7 +160,7 @@ func TestDataStoreRetrieveLoop_RetrievesMultipleData(t *testing.T) {
 	defer cancel()
 
 	initialHeight := uint64(5)
-	mockStore.On("Height", ctx).Return(initialHeight, nil).Once()
+	mockStore.On("Height", ctx).Return(initialHeight, nil).Maybe()
 	var wg sync.WaitGroup
 	wg.Add(1)
 	go func() {
@@ -320,7 +320,7 @@ func TestHeaderStoreRetrieveLoop_RetrievesNewHeader(t *testing.T) {
 	initialHeight := uint64(0)
 	newHeight := uint64(1)
 
-	mockStore.On("Height", ctx).Return(initialHeight, nil).Once()
+	mockStore.On("Height", ctx).Return(initialHeight, nil).Maybe()
 
 	validHeader, err := types.GetFirstSignedHeader(m.signer, m.genesis.ChainID)
 	require.NoError(err)
@@ -406,7 +406,7 @@ func TestHeaderStoreRetrieveLoop_RetrievesMultipleHeaders(t *testing.T) {
 
 	mockHeaderStore.On("Height").Return(finalHeight).Once()
 
-	mockStore.On("Height", ctx).Return(initialHeight, nil).Once()
+	mockStore.On("Height", ctx).Return(initialHeight, nil).Maybe()
 	var wg sync.WaitGroup
 	wg.Add(1)
 	go func() {

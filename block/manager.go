@@ -164,11 +164,6 @@ type Manager struct {
 	// namespaceMigrationCompleted tracks whether we have completed the migration
 	// from legacy namespace to separate header/data namespaces
 	namespaceMigrationCompleted *atomic.Bool
-
-	// pendingSyncEvents stores height events that are waiting for their prerequisite height
-	pendingSyncEvents map[uint64][]NewHeightEvent
-	// pendingMutex protects access to pendingEvents
-	pendingMutex sync.RWMutex
 }
 
 // getInitialState tries to load lastState from Store, and if it's not available it reads genesis.
@@ -405,7 +400,6 @@ func NewManager(
 		syncNodeSignaturePayloadProvider:   managerOpts.SyncNodeSignatureBytesProvider,
 		validatorHasherProvider:            managerOpts.ValidatorHasherProvider,
 		namespaceMigrationCompleted:        &atomic.Bool{},
-		pendingSyncEvents:                  make(map[uint64][]NewHeightEvent),
 	}
 
 	// initialize da included height

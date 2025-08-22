@@ -30,7 +30,7 @@ import (
 )
 
 // setupManagerForRetrieverTest initializes a Manager with mocked dependencies.
-func setupManagerForRetrieverTest(t *testing.T, initialDAHeight uint64) (*Manager, *rollmocks.MockDA, *rollmocks.MockStore, *cache.Cache[types.SignedHeader], *cache.Cache[types.Data], context.CancelFunc) {
+func setupManagerForRetrieverTest(t *testing.T, initialDAHeight uint64) (*daRetriever, *Manager, *rollmocks.MockDA, *rollmocks.MockStore, *cache.Cache[types.SignedHeader], *cache.Cache[types.Data], context.CancelFunc) {
 	t.Helper()
 	mockDAClient := rollmocks.NewMockDA(t)
 	mockStore := rollmocks.NewMockStore(t)
@@ -85,7 +85,7 @@ func setupManagerForRetrieverTest(t *testing.T, initialDAHeight uint64) (*Manage
 
 	t.Cleanup(cancel)
 
-	return manager, mockDAClient, mockStore, manager.headerCache, manager.dataCache, cancel
+	return newDARetriever(manager), manager, mockDAClient, mockStore, manager.headerCache, manager.dataCache, cancel
 }
 
 // TestProcessNextDAHeader_Success_SingleHeaderAndData verifies that a single header and data are correctly processed and events are emitted.
@@ -93,7 +93,8 @@ func TestProcessNextDAHeader_Success_SingleHeaderAndData(t *testing.T) {
 	t.Parallel()
 	daHeight := uint64(20)
 	blockHeight := uint64(100)
-	manager, mockDAClient, mockStore, headerCache, dataCache, cancel := setupManagerForRetrieverTest(t, daHeight)
+	daManager, manager, mockDAClient, mockStore, headerCache, dataCache, cancel := setupManagerForRetrieverTest(t, daHeight)
+
 	defer cancel()
 
 	proposerAddr := manager.genesis.ProposerAddress
@@ -149,7 +150,7 @@ func TestProcessNextDAHeader_Success_SingleHeaderAndData(t *testing.T) {
 	).Times(2) // one for headers, one for data
 
 	ctx := context.Background()
-	err = manager.processNextDAHeaderAndData(ctx)
+	err = daManager.processNextDAHeaderAndData(ctx)
 	require.NoError(t, err)
 
 	// Validate height event with both header and data
@@ -176,7 +177,7 @@ func TestProcessNextDAHeader_MultipleHeadersAndData(t *testing.T) {
 	daHeight := uint64(50)
 	startBlockHeight := uint64(130)
 	nHeaders := 50
-	manager, mockDAClient, _, _, _, cancel := setupManagerForRetrieverTest(t, daHeight)
+	daManager, manager, mockDAClient, _, _, _, cancel := setupManagerForRetrieverTest(t, daHeight)
 	defer cancel()
 
 	proposerAddr := manager.genesis.ProposerAddress
@@ -255,7 +256,7 @@ func TestProcessNextDAHeader_MultipleHeadersAndData(t *testing.T) {
 	).Times(2) // one for headers, one for data
 
 	ctx := context.Background()
-	err := manager.processNextDAHeaderAndData(ctx)
+	err := daManager.processNextDAHeaderAndData(ctx)
 	require.NoError(t, err)
 
 	// Validate all height events with both header and data
@@ -292,7 +293,7 @@ func TestProcessNextDAHeader_MultipleHeadersAndData(t *testing.T) {
 func TestProcessNextDAHeaderAndData_NotFound(t *testing.T) {
 	t.Parallel()
 	daHeight := uint64(25)
-	manager, mockDAClient, _, _, _, cancel := setupManagerForRetrieverTest(t, daHeight)
+	daManager, manager, mockDAClient, _, _, _, cancel := setupManagerForRetrieverTest(t, daHeight)
 	defer cancel()
 
 	// Mock GetIDs to return empty IDs to simulate "not found" scenario for both namespaces
@@ -301,7 +302,7 @@ func TestProcessNextDAHeaderAndData_NotFound(t *testing.T) {
 		Timestamp: time.Now(),
 	}, coreda.ErrBlobNotFound).Times(2) // one for headers, one for data
 	ctx := context.Background()
-	err := manager.processNextDAHeaderAndData(ctx)
+	err := daManager.processNextDAHeaderAndData(ctx)
 	require.NoError(t, err)
 
 	select {
@@ -317,7 +318,7 @@ func TestProcessNextDAHeaderAndData_NotFound(t *testing.T) {
 func TestProcessNextDAHeaderAndData_UnmarshalHeaderError(t *testing.T) {
 	t.Parallel()
 	daHeight := uint64(30)
-	manager, mockDAClient, _, _, _, cancel := setupManagerForRetrieverTest(t, daHeight)
+	daManager, manager, mockDAClient, _, _, _, cancel := setupManagerForRetrieverTest(t, daHeight)
 	defer cancel()
 
 	invalidBytes := []byte("this is not a valid protobuf message")
@@ -336,7 +337,7 @@ func TestProcessNextDAHeaderAndData_UnmarshalHeaderError(t *testing.T) {
 	// Logger expectations removed since using zerolog.Nop()
 
 	ctx := context.Background()
-	err := manager.processNextDAHeaderAndData(ctx)
+	err := daManager.processNextDAHeaderAndData(ctx)
 	require.NoError(t, err)
 
 	select {
@@ -354,7 +355,7 @@ func TestProcessNextDAHeader_UnexpectedSequencer(t *testing.T) {
 	t.Parallel()
 	daHeight := uint64(35)
 	blockHeight := uint64(110)
-	manager, mockDAClient, _, _, _, cancel := setupManagerForRetrieverTest(t, daHeight)
+	daManager, manager, mockDAClient, _, _, _, cancel := setupManagerForRetrieverTest(t, daHeight)
 	defer cancel()
 
 	src := rand.Reader
@@ -384,10 +385,8 @@ func TestProcessNextDAHeader_UnexpectedSequencer(t *testing.T) {
 		[]coreda.Blob{headerBytes}, nil,
 	).Times(2) // one for headers, one for data
 
-	// Logger expectations removed since using zerolog.Nop()
-
 	ctx := context.Background()
-	err = manager.processNextDAHeaderAndData(ctx)
+	err = daManager.processNextDAHeaderAndData(ctx)
 	require.NoError(t, err)
 
 	select {
@@ -398,14 +397,13 @@ func TestProcessNextDAHeader_UnexpectedSequencer(t *testing.T) {
 	}
 
 	mockDAClient.AssertExpectations(t)
-	// Logger expectations removed
 }
 
 // TestProcessNextDAHeader_FetchError_RetryFailure verifies that persistent fetch errors are retried and eventually returned.
 func TestProcessNextDAHeader_FetchError_RetryFailure(t *testing.T) {
 	t.Parallel()
 	daHeight := uint64(40)
-	manager, mockDAClient, _, _, _, cancel := setupManagerForRetrieverTest(t, daHeight)
+	daManager, manager, mockDAClient, _, _, _, cancel := setupManagerForRetrieverTest(t, daHeight)
 	defer cancel()
 
 	fetchErr := errors.New("persistent DA connection error")
@@ -416,7 +414,7 @@ func TestProcessNextDAHeader_FetchError_RetryFailure(t *testing.T) {
 	).Times(dAFetcherRetries * 2) // Multiply by 2 for both namespaces
 
 	ctx := context.Background()
-	err := manager.processNextDAHeaderAndData(ctx)
+	err := daManager.processNextDAHeaderAndData(ctx)
 	require.Error(t, err)
 	assert.ErrorContains(t, err, fetchErr.Error(), "Expected the final error after retries")
 
@@ -435,7 +433,7 @@ func TestProcessNextDAHeader_HeaderAndDataAlreadySeen(t *testing.T) {
 	daHeight := uint64(45)
 	blockHeight := uint64(120)
 
-	manager, mockDAClient, _, headerCache, dataCache, cancel := setupManagerForRetrieverTest(t, daHeight)
+	daManager, manager, mockDAClient, _, headerCache, dataCache, cancel := setupManagerForRetrieverTest(t, daHeight)
 	defer cancel()
 
 	// Initialize heights properly
@@ -500,10 +498,8 @@ func TestProcessNextDAHeader_HeaderAndDataAlreadySeen(t *testing.T) {
 		[]coreda.Blob{headerBytes, blockDataBytes}, nil,
 	).Times(2) // one for headers, one for data
 
-	// Logger expectations removed since using zerolog.Nop()
-
 	ctx := context.Background()
-	err = manager.processNextDAHeaderAndData(ctx)
+	err = daManager.processNextDAHeaderAndData(ctx)
 	require.NoError(t, err)
 
 	// Verify no header event was sent
@@ -515,14 +511,13 @@ func TestProcessNextDAHeader_HeaderAndDataAlreadySeen(t *testing.T) {
 	}
 
 	mockDAClient.AssertExpectations(t)
-	// Logger expectations removed
 }
 
 // TestRetrieveLoop_ProcessError_HeightFromFuture verifies that the loop continues without logging error if error is height from future.
 func TestRetrieveLoop_ProcessError_HeightFromFuture(t *testing.T) {
 	t.Parallel()
 	startDAHeight := uint64(10)
-	manager, mockDAClient, _, _, _, cancel := setupManagerForRetrieverTest(t, startDAHeight)
+	_, manager, mockDAClient, _, _, _, cancel := setupManagerForRetrieverTest(t, startDAHeight)
 	defer cancel()
 
 	futureErr := fmt.Errorf("some error wrapping: %w", ErrHeightFromFutureStr)
@@ -536,9 +531,6 @@ func TestRetrieveLoop_ProcessError_HeightFromFuture(t *testing.T) {
 	mockDAClient.On("GetIDs", mock.Anything, startDAHeight+1, mock.Anything).Return(
 		&coreda.GetIDsResult{IDs: []coreda.ID{}}, coreda.ErrBlobNotFound,
 	).Maybe()
-
-	// Logger expectations removed since using zerolog.Nop()
-	// Logger expectations removed since using zerolog.Nop()
 
 	ctx, loopCancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer loopCancel()
@@ -564,7 +556,7 @@ func TestRetrieveLoop_ProcessError_HeightFromFuture(t *testing.T) {
 func TestRetrieveLoop_ProcessError_Other(t *testing.T) {
 	t.Parallel()
 	startDAHeight := uint64(15)
-	manager, mockDAClient, _, _, _, cancel := setupManagerForRetrieverTest(t, startDAHeight)
+	_, manager, mockDAClient, _, _, _, cancel := setupManagerForRetrieverTest(t, startDAHeight)
 	defer cancel()
 
 	otherErr := errors.New("some other DA error")
@@ -573,10 +565,6 @@ func TestRetrieveLoop_ProcessError_Other(t *testing.T) {
 	mockDAClient.On("GetIDs", mock.Anything, startDAHeight, mock.Anything).Return(
 		nil, otherErr,
 	).Times(dAFetcherRetries * 2) // Multiply by 2 for both namespaces
-
-	// Logger expectations removed since using zerolog.Nop()
-
-	// Logger expectations removed since using zerolog.Nop()
 
 	ctx, loopCancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer loopCancel()
@@ -596,10 +584,7 @@ func TestRetrieveLoop_ProcessError_Other(t *testing.T) {
 	// Wait for the context to timeout or the goroutine to finish
 	wg.Wait()
 
-	// Check if the error was logged
-
 	mockDAClient.AssertExpectations(t)
-	// Logger expectations removed
 }
 
 // TestProcessNextDAHeader_WithNoTxs verifies that a data with no transactions is ignored and does not emit events or mark as DA included.
@@ -607,7 +592,7 @@ func TestProcessNextDAHeader_WithNoTxs(t *testing.T) {
 	t.Parallel()
 	daHeight := uint64(55)
 	blockHeight := uint64(140)
-	manager, mockDAClient, _, _, dataCache, cancel := setupManagerForRetrieverTest(t, daHeight)
+	daManager, manager, mockDAClient, _, _, dataCache, cancel := setupManagerForRetrieverTest(t, daHeight)
 	defer cancel()
 
 	// Create a valid header
@@ -649,7 +634,7 @@ func TestProcessNextDAHeader_WithNoTxs(t *testing.T) {
 	).Times(2) // one for headers, one for data
 
 	ctx := context.Background()
-	err = manager.processNextDAHeaderAndData(ctx)
+	err = daManager.processNextDAHeaderAndData(ctx)
 	require.NoError(t, err)
 
 	// Validate header event
@@ -673,7 +658,7 @@ func TestProcessNextDAHeader_WithNoTxs(t *testing.T) {
 func TestRetrieveLoop_DAHeightIncrementsOnlyOnSuccess(t *testing.T) {
 	t.Parallel()
 	startDAHeight := uint64(60)
-	manager, mockDAClient, _, _, _, cancel := setupManagerForRetrieverTest(t, startDAHeight)
+	_, manager, mockDAClient, _, _, _, cancel := setupManagerForRetrieverTest(t, startDAHeight)
 	defer cancel()
 
 	blockHeight := uint64(150)

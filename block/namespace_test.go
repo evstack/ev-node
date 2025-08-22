@@ -137,6 +137,7 @@ func TestProcessNextDAHeaderAndData_MixedResults(t *testing.T) {
 				DataNamespace:   "test-data",
 			}
 			manager, mockDA, _, cancel := setupManagerForNamespaceTest(t, daConfig)
+			daManager := newDARetriever(manager)
 			defer cancel()
 
 			// Mark migration as completed to skip legacy namespace check
@@ -171,7 +172,7 @@ func TestProcessNextDAHeaderAndData_MixedResults(t *testing.T) {
 			}
 
 			ctx := context.Background()
-			err := manager.processNextDAHeaderAndData(ctx)
+			err := daManager.processNextDAHeaderAndData(ctx)
 
 			if tt.expectError {
 				require.Error(t, err, "Expected error but got none")
@@ -241,6 +242,7 @@ func TestNamespaceMigration_Completion(t *testing.T) {
 				DataNamespace:   "test-data",
 			}
 			manager, mockDA, _, cancel := setupManagerForNamespaceTest(t, daConfig)
+			daManager := newDARetriever(manager)
 			defer cancel()
 
 			// Set initial migration state
@@ -314,7 +316,7 @@ func TestNamespaceMigration_Completion(t *testing.T) {
 			// If migration should complete, expect persistence call
 
 			ctx := context.Background()
-			err := manager.processNextDAHeaderAndData(ctx)
+			err := daManager.processNextDAHeaderAndData(ctx)
 
 			require.NoError(t, err, "processNextDAHeaderAndData should not return error")
 
@@ -454,6 +456,7 @@ func TestLegacyNamespaceDetection(t *testing.T) {
 
 			// Test actual behavior in fetchBlobs
 			manager, mockDA, _, cancel := setupManagerForNamespaceTest(t, daConfig)
+			daManager := newDARetriever(manager)
 			defer cancel()
 
 			// Start with migration not completed
@@ -530,7 +533,7 @@ func TestLegacyNamespaceDetection(t *testing.T) {
 			}
 
 			ctx := context.Background()
-			err := manager.processNextDAHeaderAndData(ctx)
+			err := daManager.processNextDAHeaderAndData(ctx)
 
 			// Should succeed with no data found (returns nil on StatusNotFound)
 			require.NoError(t, err)
