@@ -590,8 +590,8 @@ The communication with DA layer:
 * Block sync over the P2P network works only when a full node is connected to the P2P network by specifying the initial seeds to connect to via `P2PConfig.Seeds` configuration parameter when starting the full node.
 * Node's context is passed down to all components to support graceful shutdown and cancellation.
 * The block manager supports custom signature payload providers for headers, enabling flexible signing schemes.
-* The block manager supports the separation of header and data structures in Evolve. This allows for expanding the sequencing scheme beyond single sequencing and enables the use of a decentralized sequencer mode. For detailed information on this architecture, see the [Header and Data Separation ADR](../../lazy-adr/adr-014-header-and-data-separation.md).
-* The block manager processes blocks with a minimal header format, which is designed to eliminate dependency on CometBFT's header format and can be used to produce an execution layer tailored header if needed. For details on this header structure, see the [Evolve Minimal Header](../../lazy-adr/adr-015-evolve-minimal-header.md) specification.
+* The block manager supports the separation of header and data structures in Evolve. This allows for expanding the sequencing scheme beyond single sequencing and enables the use of a decentralized sequencer mode. For detailed information on this architecture, see the [Header and Data Separation ADR](../../adr/adr-014-header-and-data-separation.md).
+* The block manager processes blocks with a minimal header format, which is designed to eliminate dependency on CometBFT's header format and can be used to produce an execution layer tailored header if needed. For details on this header structure, see the [Evolve Minimal Header](../../adr/adr-015-evolve-minimal-header.md) specification.
 
 ## Metrics
 
@@ -654,13 +654,13 @@ See [tutorial] for running a multi-node network with both sequencer and non-sequ
 
 [5] [Tutorial][tutorial]
 
-[6] [Header and Data Separation ADR](../../lazy-adr/adr-014-header-and-data-separation.md)
+[6] [Header and Data Separation ADR](../../adr/adr-014-header-and-data-separation.md)
 
-[7] [Evolve Minimal Header](../../lazy-adr/adr-015-evolve-minimal-header.md)
+[7] [Evolve Minimal Header](../../adr/adr-015-evolve-minimal-header.md)
 
 [8] [Data Availability](./da.md)
 
-[9] [Lazy Aggregation with DA Layer Consistency ADR](../../lazy-adr/adr-021-lazy-aggregation.md)
+[9] [Lazy Aggregation with DA Layer Consistency ADR](../../adr/adr-021-lazy-aggregation.md)
 
 [defaultBlockTime]: https://github.com/evstack/ev-node/blob/main/block/manager.go#L36
 [defaultDABlockTime]: https://github.com/evstack/ev-node/blob/main/block/manager.go#L33

@@ -8,7 +8,7 @@ No prior understanding of the build process is required, just that it utilizes t
 
 ## Requirements {#requirements}
 
-Before proceeding, ensure that you have completed the [build a chain](/docs/guides/gm-world.md) tutorial, which covers setting-up, building and running your chain.
+Before proceeding, ensure that you have completed the [build a chain](./gm-world.md) tutorial, which covers setting-up, building and running your chain.
 
 <!-- markdownlint-disable MD033 -->
 <script setup>
@@ -24,7 +24,7 @@ import constants from '../.vitepress/constants/constants.js'
 
 ## Setup your local DA network {#setup-local-da}
 
-Your local DA network is already running if you followed the [quick start guide](/docs/guides/quick-start.md) or the [build a chain](/docs/guides/gm-world.md). If not, you can start it with the following command:
+Your local DA network is already running if you followed the [quick start guide](/docs/guides/quick-start.md) or the [build a chain](./gm-world.md). If not, you can start it with the following command:
 
 ```bash
 curl -sSL https://ev.xyz/install-local-da.sh | bash -s {{constants.evolveLatestTag}}

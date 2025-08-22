@@ -14,7 +14,7 @@ Some reason you might need to reset the state of your chain are:
 
 ## Prerequisites
 
-In order to complete this guide, you will need to have completed either the [quick start tutorial](/docs/guides/quick-start.md) or the [build our chain tutorial](/docs/guides/gm-world.md).
+In order to complete this guide, you will need to have completed either the [quick start tutorial](./quick-start.md) or the [build our chain tutorial](./gm-world.md).
 
 ## Quick Start
 
@@ -74,7 +74,7 @@ When you launch your chain again with `testapp start` your `data` directory will
 
 ## gm-world
 
-When you ran your gm-world chain in the [build your chain tutorial](/docs/guides/gm-world.md), it created a `.gm` directory in your `$HOME` directory.
+When you ran your gm-world chain in the [build your chain tutorial](./gm-world.md), it created a `.gm` directory in your `$HOME` directory.
 
 This directory will look like the following:
 
