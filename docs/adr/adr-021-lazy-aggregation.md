@@ -8,7 +8,7 @@
 
 ## Context
 
-Rollkit's lazy aggregation mechanism currently produces blocks at set intervals when no transactions are present, and immediately when transactions are available. However, this approach creates inconsistency with the DA layer (Celestia) as empty blocks are not posted to the DA layer. This breaks the expected 1:1 mapping between DA layer blocks and execution layer blocks in EVM environments.
+Evolve's lazy aggregation mechanism currently produces blocks at set intervals when no transactions are present, and immediately when transactions are available. However, this approach creates inconsistency with the DA layer (Celestia) as empty blocks are not posted to the DA layer. This breaks the expected 1:1 mapping between DA layer blocks and execution layer blocks in EVM environments.
 
 ## Decision
 
@@ -65,7 +65,7 @@ Leverage the existing empty batch mechanism and `dataHashForEmptyTxs` to maintai
 					m.logger.Info("No batch retrieved from sequencer, skipping block production")
 					return nil
 				}
-				m.logger.Info("Creating empty block. height", newHeight)
+				m.logger.Info("Creating empty block, height: ", newHeight)
 			} else {
 				return fmt.Errorf("failed to get transactions from batch: %w", err)
 			}
@@ -200,7 +200,7 @@ Implemented
 ### Neutral
 
 - Requires careful handling of batch timestamps
-- Maintains backward compatibility with existing Rollkit deployments
+- Maintains backward compatibility with existing Evolve deployments
 
 ## References
 

@@ -9,8 +9,8 @@ import (
 	"time"
 
 	ds "github.com/ipfs/go-datastore"
-	logging "github.com/ipfs/go-log/v2"
 	"github.com/libp2p/go-libp2p/core/crypto"
+	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
@@ -40,15 +40,13 @@ func WithinDuration(t *testing.T, expected, actual, tolerance time.Duration) boo
 
 // Returns a minimalistic block manager using a mock DA Client
 func getManager(t *testing.T, da da.DA, gasPrice float64, gasMultiplier float64) (*Manager, *mocks.MockStore) {
-	logger := logging.Logger("test")
+	logger := zerolog.Nop()
 	mockStore := mocks.NewMockStore(t)
 	m := &Manager{
 		da:                       da,
 		headerCache:              cache.NewCache[types.SignedHeader](),
 		dataCache:                cache.NewCache[types.Data](),
 		logger:                   logger,
-		gasPrice:                 gasPrice,
-		gasMultiplier:            gasMultiplier,
 		lastStateMtx:             &sync.RWMutex{},
 		metrics:                  NopMetrics(),
 		store:                    mockStore,
@@ -69,7 +67,7 @@ func TestInitialStateClean(t *testing.T) {
 
 	// Create genesis document
 	genesisData, _, _ := types.GetGenesisWithPrivkey("TestInitialStateClean")
-	logger := logging.Logger("test")
+	logger := zerolog.Nop()
 	es, _ := storepkg.NewDefaultInMemoryKVStore()
 	emptyStore := storepkg.New(es)
 	mockExecutor := mocks.NewMockExecutor(t)
@@ -105,7 +103,7 @@ func TestInitialStateStored(t *testing.T) {
 	store := storepkg.New(es)
 	err := store.UpdateState(ctx, sampleState)
 	require.NoError(err)
-	logger := logging.Logger("test")
+	logger := zerolog.Nop()
 	mockExecutor := mocks.NewMockExecutor(t)
 
 	// getInitialState should not call InitChain if state exists
@@ -121,7 +119,7 @@ func TestInitialStateStored(t *testing.T) {
 // TestInitialStateUnexpectedHigherGenesis verifies that getInitialState returns an error if the genesis initial height is higher than the stored state's last block height.
 func TestInitialStateUnexpectedHigherGenesis(t *testing.T) {
 	require := require.New(t)
-	logger := logging.Logger("test")
+	logger := zerolog.Nop()
 	ctx := context.Background()
 
 	// Create genesis document with initial height 2
@@ -212,6 +210,7 @@ func Test_submitBlocksToDA_BlockMarshalErrorCase1(t *testing.T) {
 	ctx := context.Background()
 
 	mockDA := mocks.NewMockDA(t)
+	mockDA.On("GasPrice", mock.Anything).Return(1.0, nil).Maybe()
 	m, _ := getManager(t, mockDA, -1, -1)
 
 	header1, data1 := types.GetRandomBlock(uint64(1), 5, chainID)
@@ -250,6 +249,7 @@ func Test_submitBlocksToDA_BlockMarshalErrorCase2(t *testing.T) {
 	ctx := context.Background()
 
 	mockDA := mocks.NewMockDA(t)
+	mockDA.On("GasPrice", mock.Anything).Return(1.0, nil).Maybe()
 	m, _ := getManager(t, mockDA, -1, -1)
 
 	header1, data1 := types.GetRandomBlock(uint64(1), 5, chainID)
@@ -703,24 +703,6 @@ func TestUtilityFunctions(t *testing.T) {
 		require.Equal(input, reconstructed)
 	})
 
-	t.Run("ExponentialBackoff", func(t *testing.T) {
-		require := require.New(t)
-		m, _ := getManager(t, mocks.NewMockDA(t), -1, -1)
-		m.config.DA.BlockTime.Duration = 10 * time.Second
-
-		// Test initial backoff
-		result := m.exponentialBackoff(0)
-		require.Equal(initialBackoff, result)
-
-		// Test doubling
-		result = m.exponentialBackoff(100 * time.Millisecond)
-		require.Equal(200*time.Millisecond, result)
-
-		// Test max cap
-		result = m.exponentialBackoff(20 * time.Second)
-		require.Equal(m.config.DA.BlockTime.Duration, result)
-	})
-
 	t.Run("GetHeaderSignature_NilSigner", func(t *testing.T) {
 		require := require.New(t)
 		m, _ := getManager(t, mocks.NewMockDA(t), -1, -1)
@@ -993,44 +975,10 @@ func TestValidationMethods(t *testing.T) {
 		require.False(result)
 	})
 
-	t.Run("ExponentialBackoff_WithConfig", func(t *testing.T) {
-		require := require.New(t)
-		m, _ := getManager(t, mocks.NewMockDA(t), -1, -1)
-
-		// Set up a config with a specific block time
-		m.config.DA.BlockTime.Duration = 5 * time.Second
-
-		// Test that backoff is capped at config value
-		result := m.exponentialBackoff(10 * time.Second)
-		require.Equal(5*time.Second, result)
-
-		// Test normal doubling
-		result = m.exponentialBackoff(100 * time.Millisecond)
-		require.Equal(200*time.Millisecond, result)
-	})
 }
 
 // TestConfigurationDefaults tests default value handling and edge cases
 func TestConfigurationDefaults(t *testing.T) {
-	t.Run("ExponentialBackoff_EdgeCases", func(t *testing.T) {
-		require := require.New(t)
-		m, _ := getManager(t, mocks.NewMockDA(t), -1, -1)
-
-		// Test with zero block time - should still double the backoff since there's no cap
-		m.config.DA.BlockTime.Duration = 0
-		result := m.exponentialBackoff(100 * time.Millisecond)
-		require.Equal(0*time.Millisecond, result) // Capped at 0
-
-		// Test with very small block time
-		m.config.DA.BlockTime.Duration = 1 * time.Millisecond
-		result = m.exponentialBackoff(100 * time.Millisecond)
-		require.Equal(1*time.Millisecond, result) // Should cap at block time
-
-		// Test normal doubling with larger block time
-		m.config.DA.BlockTime.Duration = 1 * time.Second
-		result = m.exponentialBackoff(100 * time.Millisecond)
-		require.Equal(200*time.Millisecond, result) // Should double
-	})
 
 	t.Run("IsProposer_NilSigner", func(t *testing.T) {
 		require := require.New(t)
@@ -1089,13 +1037,13 @@ func TestSetRollkitHeightToDAHeight(t *testing.T) {
 		m.dataCache.SetDAIncluded(data.DACommitment().String(), dataHeight)
 
 		// Mock metadata storage
-		headerKey := fmt.Sprintf("%s/%d/h", storepkg.RollkitHeightToDAHeightKey, height)
-		dataKey := fmt.Sprintf("%s/%d/d", storepkg.RollkitHeightToDAHeightKey, height)
+		headerKey := fmt.Sprintf("%s/%d/h", storepkg.HeightToDAHeightKey, height)
+		dataKey := fmt.Sprintf("%s/%d/d", storepkg.HeightToDAHeightKey, height)
 		mockStore.On("SetMetadata", mock.Anything, headerKey, mock.Anything).Return(nil)
 		mockStore.On("SetMetadata", mock.Anything, dataKey, mock.Anything).Return(nil)
 
 		// Call the method
-		err := m.SetRollkitHeightToDAHeight(ctx, height)
+		err := m.SetSequencerHeightToDAHeight(ctx, height)
 		require.NoError(err)
 
 		mockStore.AssertExpectations(t)
@@ -1119,13 +1067,13 @@ func TestSetRollkitHeightToDAHeight(t *testing.T) {
 		// Note: we don't set data in cache for empty transactions
 
 		// Mock metadata storage - both should use header height for empty transactions
-		headerKey := fmt.Sprintf("%s/%d/h", storepkg.RollkitHeightToDAHeightKey, height)
-		dataKey := fmt.Sprintf("%s/%d/d", storepkg.RollkitHeightToDAHeightKey, height)
+		headerKey := fmt.Sprintf("%s/%d/h", storepkg.HeightToDAHeightKey, height)
+		dataKey := fmt.Sprintf("%s/%d/d", storepkg.HeightToDAHeightKey, height)
 		mockStore.On("SetMetadata", mock.Anything, headerKey, mock.Anything).Return(nil)
 		mockStore.On("SetMetadata", mock.Anything, dataKey, mock.Anything).Return(nil)
 
 		// Call the method
-		err := m.SetRollkitHeightToDAHeight(ctx, height)
+		err := m.SetSequencerHeightToDAHeight(ctx, height)
 		require.NoError(err)
 
 		mockStore.AssertExpectations(t)
@@ -1147,7 +1095,7 @@ func TestSetRollkitHeightToDAHeight(t *testing.T) {
 		m.dataCache.SetDAIncluded(data.DACommitment().String(), uint64(11))
 
 		// Call the method - should fail
-		err := m.SetRollkitHeightToDAHeight(ctx, height)
+		err := m.SetSequencerHeightToDAHeight(ctx, height)
 		require.Error(err)
 		require.Contains(err.Error(), "header hash")
 		require.Contains(err.Error(), "not found in cache")
@@ -1171,11 +1119,11 @@ func TestSetRollkitHeightToDAHeight(t *testing.T) {
 		m.headerCache.SetDAIncluded(header.Hash().String(), uint64(10))
 
 		// Mock metadata storage for header (should succeed)
-		headerKey := fmt.Sprintf("%s/%d/h", storepkg.RollkitHeightToDAHeightKey, height)
+		headerKey := fmt.Sprintf("%s/%d/h", storepkg.HeightToDAHeightKey, height)
 		mockStore.On("SetMetadata", mock.Anything, headerKey, mock.Anything).Return(nil)
 
 		// Call the method - should fail on data lookup
-		err := m.SetRollkitHeightToDAHeight(ctx, height)
+		err := m.SetSequencerHeightToDAHeight(ctx, height)
 		require.Error(err)
 		require.Contains(err.Error(), "data hash")
 		require.Contains(err.Error(), "not found in cache")
@@ -1194,7 +1142,7 @@ func TestSetRollkitHeightToDAHeight(t *testing.T) {
 		mockStore.On("GetBlockData", mock.Anything, height).Return(nil, nil, errors.New("block not found"))
 
 		// Call the method - should fail
-		err := m.SetRollkitHeightToDAHeight(ctx, height)
+		err := m.SetSequencerHeightToDAHeight(ctx, height)
 		require.Error(err)
 
 		mockStore.AssertExpectations(t)

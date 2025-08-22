@@ -7,7 +7,7 @@ import (
 
 	ds "github.com/ipfs/go-datastore"
 	ds_sync "github.com/ipfs/go-datastore/sync"
-	logging "github.com/ipfs/go-log/v2"
+	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -37,13 +37,12 @@ func TestLightNodeLifecycle(t *testing.T) {
 	p2pKey, err := p2p_key.GenerateNodeKey()
 	require.NoError(err)
 
-	logger := logging.Logger("test")
-	_ = logging.SetLogLevel("test", "FATAL")
+	logger := zerolog.Nop()
 	p2pMetrics := p2p.NopMetrics()
 
 	db := ds_sync.MutexWrap(ds.NewMapDatastore())
 
-	p2pClient, err := p2p.NewClient(conf, p2pKey, db, logger, p2pMetrics)
+	p2pClient, err := p2p.NewClient(conf.P2P, p2pKey.PrivKey, db, gen.ChainID, logger, p2pMetrics)
 	require.NoError(err)
 
 	ln, err := newLightNode(conf, gen, p2pClient, db, logger)

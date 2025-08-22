@@ -71,6 +71,7 @@ func TestAddFlags(t *testing.T) {
 	assertFlagValue(t, flags, FlagDANamespace, DefaultConfig.DA.Namespace)
 	assertFlagValue(t, flags, FlagDASubmitOptions, DefaultConfig.DA.SubmitOptions)
 	assertFlagValue(t, flags, FlagDAMempoolTTL, DefaultConfig.DA.MempoolTTL)
+	assertFlagValue(t, flags, FlagDAMaxSubmitAttempts, DefaultConfig.DA.MaxSubmitAttempts)
 
 	// P2P flags
 	assertFlagValue(t, flags, FlagP2PListenAddress, DefaultConfig.P2P.ListenAddress)
@@ -100,7 +101,7 @@ func TestAddFlags(t *testing.T) {
 	assertFlagValue(t, flags, FlagRPCAddress, DefaultConfig.RPC.Address)
 
 	// Count the number of flags we're explicitly checking
-	expectedFlagCount := 35 // Update this number if you add more flag checks above
+	expectedFlagCount := 38 // Update this number if you add more flag checks above
 
 	// Get the actual number of flags (both regular and persistent)
 	actualFlagCount := 0
@@ -274,6 +275,86 @@ signer:
 	require.Equal(t, "http://yaml-da:26657", cfgFromViper.DA.Address, "DA.Address should match YAML")
 	require.Equal(t, "file", cfgFromViper.Signer.SignerType, "Signer.SignerType should match YAML")
 	require.Equal(t, "something/config", cfgFromViper.Signer.SignerPath, "Signer.SignerPath should match YAML")
+}
+
+func TestDAConfig_GetHeaderNamespace(t *testing.T) {
+	tests := []struct {
+		name              string
+		headerNamespace   string
+		legacyNamespace   string
+		expectedNamespace string
+	}{
+		{
+			name:              "HeaderNamespace set",
+			headerNamespace:   "custom-headers",
+			legacyNamespace:   "legacy-namespace",
+			expectedNamespace: "custom-headers",
+		},
+		{
+			name:              "HeaderNamespace empty, fallback to legacy",
+			headerNamespace:   "",
+			legacyNamespace:   "legacy-namespace",
+			expectedNamespace: "legacy-namespace",
+		},
+		{
+			name:              "Both empty, use default",
+			headerNamespace:   "",
+			legacyNamespace:   "",
+			expectedNamespace: "rollkit-headers",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			daConfig := &DAConfig{
+				HeaderNamespace: tt.headerNamespace,
+				Namespace:       tt.legacyNamespace,
+			}
+
+			result := daConfig.GetHeaderNamespace()
+			assert.Equal(t, tt.expectedNamespace, result)
+		})
+	}
+}
+
+func TestDAConfig_GetDataNamespace(t *testing.T) {
+	tests := []struct {
+		name              string
+		dataNamespace     string
+		legacyNamespace   string
+		expectedNamespace string
+	}{
+		{
+			name:              "DataNamespace set",
+			dataNamespace:     "custom-data",
+			legacyNamespace:   "legacy-namespace",
+			expectedNamespace: "custom-data",
+		},
+		{
+			name:              "DataNamespace empty, fallback to legacy",
+			dataNamespace:     "",
+			legacyNamespace:   "legacy-namespace",
+			expectedNamespace: "legacy-namespace",
+		},
+		{
+			name:              "Both empty, use default",
+			dataNamespace:     "",
+			legacyNamespace:   "",
+			expectedNamespace: "rollkit-data",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			daConfig := &DAConfig{
+				DataNamespace: tt.dataNamespace,
+				Namespace:     tt.legacyNamespace,
+			}
+
+			result := daConfig.GetDataNamespace()
+			assert.Equal(t, tt.expectedNamespace, result)
+		})
+	}
 }
 
 func assertFlagValue(t *testing.T, flags *pflag.FlagSet, name string, expectedValue any) {

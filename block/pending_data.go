@@ -3,7 +3,7 @@ package block
 import (
 	"context"
 
-	logging "github.com/ipfs/go-log/v2"
+	"github.com/rs/zerolog"
 
 	"github.com/evstack/ev-node/pkg/store"
 	"github.com/evstack/ev-node/types"
@@ -22,7 +22,7 @@ const LastSubmittedDataHeightKey = "last-submitted-data-height"
 // lastSubmittedDataHeight is updated only after receiving confirmation from DA.
 // Worst case scenario is when data was successfully submitted to DA, but confirmation was not received (e.g. node was
 // restarted, networking issue occurred). In this case data is re-submitted to DA (it's extra cost).
-// rollkit is able to skip duplicate data so this shouldn't affect full nodes.
+// evolve is able to skip duplicate data so this shouldn't affect full nodes.
 // Note: Submission of pending data to DA should account for the DA max blob size.
 type PendingData struct {
 	base *pendingBase[*types.Data]
@@ -34,7 +34,7 @@ func fetchData(ctx context.Context, store store.Store, height uint64) (*types.Da
 }
 
 // NewPendingData returns a new PendingData struct
-func NewPendingData(store store.Store, logger logging.EventLogger) (*PendingData, error) {
+func NewPendingData(store store.Store, logger zerolog.Logger) (*PendingData, error) {
 	base, err := newPendingBase(store, logger, LastSubmittedDataHeightKey, fetchData)
 	if err != nil {
 		return nil, err

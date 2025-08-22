@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	logging "github.com/ipfs/go-log/v2"
+	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 
@@ -16,8 +16,7 @@ import (
 )
 
 func TestSubmitWithHelpers(t *testing.T) {
-	logger := logging.Logger("test")
-	_ = logging.SetLogLevel("test", "FATAL")
+	logger := zerolog.Nop()
 
 	testCases := []struct {
 		name           string
@@ -118,9 +117,10 @@ func TestSubmitWithHelpers(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			mockDA := mocks.NewMockDA(t)
-			mockDA.On("SubmitWithOptions", mock.Anything, tc.data, tc.gasPrice, mock.Anything, tc.options).Return(tc.submitIDs, tc.submitErr)
+			namespace := []byte("test-namespace")
+			mockDA.On("SubmitWithOptions", mock.Anything, tc.data, tc.gasPrice, namespace, tc.options).Return(tc.submitIDs, tc.submitErr)
 
-			result := types.SubmitWithHelpers(context.Background(), mockDA, logger, tc.data, tc.gasPrice, tc.options)
+			result := types.SubmitWithHelpers(context.Background(), mockDA, logger, tc.data, tc.gasPrice, namespace, tc.options)
 
 			assert.Equal(t, tc.expectedCode, result.Code)
 			if tc.expectedErrMsg != "" {
@@ -138,8 +138,7 @@ func TestSubmitWithHelpers(t *testing.T) {
 }
 
 func TestRetrieveWithHelpers(t *testing.T) {
-	logger := logging.Logger("test")
-	_ = logging.SetLogLevel("test", "FATAL")
+	logger := zerolog.Nop()
 	dataLayerHeight := uint64(100)
 	mockIDs := [][]byte{[]byte("id1"), []byte("id2")}
 	mockBlobs := [][]byte{[]byte("blobA"), []byte("blobB")}

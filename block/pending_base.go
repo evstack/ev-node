@@ -8,7 +8,7 @@ import (
 	"sync/atomic"
 
 	ds "github.com/ipfs/go-datastore"
-	logging "github.com/ipfs/go-log/v2"
+	"github.com/rs/zerolog"
 
 	"github.com/evstack/ev-node/pkg/store"
 )
@@ -17,7 +17,7 @@ import (
 // that need to be published to the DA layer in order. It handles persistence
 // of the last submitted height and provides methods for retrieving pending items.
 type pendingBase[T any] struct {
-	logger     logging.EventLogger
+	logger     zerolog.Logger
 	store      store.Store
 	metaKey    string
 	fetch      func(ctx context.Context, store store.Store, height uint64) (T, error)
@@ -25,7 +25,7 @@ type pendingBase[T any] struct {
 }
 
 // newPendingBase constructs a new pendingBase for a given type.
-func newPendingBase[T any](store store.Store, logger logging.EventLogger, metaKey string, fetch func(ctx context.Context, store store.Store, height uint64) (T, error)) (*pendingBase[T], error) {
+func newPendingBase[T any](store store.Store, logger zerolog.Logger, metaKey string, fetch func(ctx context.Context, store store.Store, height uint64) (T, error)) (*pendingBase[T], error) {
 	pb := &pendingBase[T]{
 		store:   store,
 		logger:  logger,
@@ -65,7 +65,7 @@ func (pb *pendingBase[T]) getPending(ctx context.Context) ([]T, error) {
 func (pb *pendingBase[T]) isEmpty() bool {
 	height, err := pb.store.Height(context.Background())
 	if err != nil {
-		pb.logger.Error("failed to get height in isEmpty", "err", err)
+		pb.logger.Error().Err(err).Msg("failed to get height in isEmpty")
 		return false
 	}
 	return height == pb.lastHeight.Load()
@@ -74,7 +74,7 @@ func (pb *pendingBase[T]) isEmpty() bool {
 func (pb *pendingBase[T]) numPending() uint64 {
 	height, err := pb.store.Height(context.Background())
 	if err != nil {
-		pb.logger.Error("failed to get height in numPending", "err", err)
+		pb.logger.Error().Err(err).Msg("failed to get height in numPending")
 		return 0
 	}
 	return height - pb.lastHeight.Load()
@@ -87,7 +87,7 @@ func (pb *pendingBase[T]) setLastSubmittedHeight(ctx context.Context, newLastSub
 		binary.LittleEndian.PutUint64(bz, newLastSubmittedHeight)
 		err := pb.store.SetMetadata(ctx, pb.metaKey, bz)
 		if err != nil {
-			pb.logger.Error("failed to store height of latest item submitted to DA", "err", err)
+			pb.logger.Error().Err(err).Msg("failed to store height of latest item submitted to DA")
 		}
 	}
 }

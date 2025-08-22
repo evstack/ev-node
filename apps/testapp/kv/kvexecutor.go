@@ -16,8 +16,17 @@ import (
 var (
 	genesisInitializedKey = ds.NewKey("/genesis/initialized")
 	genesisStateRootKey   = ds.NewKey("/genesis/stateroot")
+	heightKeyPrefix       = ds.NewKey("/height")
+	finalizedHeightKey    = ds.NewKey("/finalizedHeight")
 	// Define a buffer size for the transaction channel
 	txChannelBufferSize = 10000
+	// reservedKeys defines the set of keys that should be excluded from state root calculation
+	// and protected from transaction modifications
+	reservedKeys = map[ds.Key]bool{
+		genesisInitializedKey: true,
+		genesisStateRootKey:   true,
+		finalizedHeightKey:    true,
+	}
 )
 
 // KVExecutor is a simple key-value store backed by go-datastore that implements the Executor interface
@@ -41,18 +50,56 @@ func NewKVExecutor(rootdir, dbpath string) (*KVExecutor, error) {
 }
 
 // GetStoreValue is a helper for the HTTP interface to retrieve the value for a key from the database.
+// It searches across all block heights to find the latest value for the given key.
 func (k *KVExecutor) GetStoreValue(ctx context.Context, key string) (string, bool) {
-	dsKey := ds.NewKey(key)
-	valueBytes, err := k.db.Get(ctx, dsKey)
-	if errors.Is(err, ds.ErrNotFound) {
-		return "", false
-	}
+	// Query all keys to find height-prefixed versions of this key
+	q := query.Query{}
+	results, err := k.db.Query(ctx, q)
 	if err != nil {
-		// Log the error or handle it appropriately
-		fmt.Printf("Error getting value from DB: %v\n", err)
+		fmt.Printf("Error querying DB for key '%s': %v\n", key, err)
 		return "", false
 	}
-	return string(valueBytes), true
+	defer results.Close()
+
+	heightPrefix := heightKeyPrefix.String()
+	var latestValue string
+	var latestHeight uint64
+	found := false
+
+	for result := range results.Next() {
+		if result.Error != nil {
+			fmt.Printf("Error iterating query results for key '%s': %v\n", key, result.Error)
+			return "", false
+		}
+
+		resultKey := result.Key
+		// Check if this is a height-prefixed key that matches our target key
+		if strings.HasPrefix(resultKey, heightPrefix+"/") {
+			// Extract height and actual key: /height/{height}/{actual_key}
+			parts := strings.Split(strings.TrimPrefix(resultKey, heightPrefix+"/"), "/")
+			if len(parts) >= 2 {
+				var keyHeight uint64
+				if _, err := fmt.Sscanf(parts[0], "%d", &keyHeight); err == nil {
+					// Reconstruct the actual key by joining all parts after the height
+					actualKey := strings.Join(parts[1:], "/")
+					if actualKey == key {
+						// This key matches - check if it's the latest height
+						if !found || keyHeight > latestHeight {
+							latestHeight = keyHeight
+							latestValue = string(result.Value)
+							found = true
+						}
+					}
+				}
+			}
+		}
+	}
+
+	if !found {
+		return "", false
+	}
+
+	return latestValue, true
 }
 
 // computeStateRoot computes a deterministic state root by querying all keys, sorting them,
@@ -70,9 +117,9 @@ func (k *KVExecutor) computeStateRoot(ctx context.Context) ([]byte, error) {
 		if result.Error != nil {
 			return nil, fmt.Errorf("error iterating query results: %w", result.Error)
 		}
-		// Exclude reserved genesis keys from the state root calculation
+		// Exclude reserved keys from the state root calculation
 		dsKey := ds.NewKey(result.Key)
-		if dsKey.Equal(genesisInitializedKey) || dsKey.Equal(genesisStateRootKey) {
+		if reservedKeys[dsKey] {
 			continue
 		}
 		keys = append(keys, result.Key)
@@ -198,11 +245,14 @@ func (k *KVExecutor) ExecuteTxs(ctx context.Context, txs [][]byte, blockHeight u
 		if key == "" {
 			return nil, 0, errors.New("empty key in transaction")
 		}
-		dsKey := ds.NewKey(key)
+
+		dsKey := getTxKey(blockHeight, key)
+
 		// Prevent writing reserved keys via transactions
-		if dsKey.Equal(genesisInitializedKey) || dsKey.Equal(genesisStateRootKey) {
+		if reservedKeys[dsKey] {
 			return nil, 0, fmt.Errorf("transaction attempts to modify reserved key: %s", key)
 		}
+
 		err = batch.Put(ctx, dsKey, []byte(value))
 		if err != nil {
 			// This error is unlikely for Put unless the context is cancelled.
@@ -240,7 +290,7 @@ func (k *KVExecutor) SetFinal(ctx context.Context, blockHeight uint64) error {
 		return errors.New("invalid blockHeight: cannot be zero")
 	}
 
-	return k.db.Put(ctx, ds.NewKey("/finalizedHeight"), []byte(fmt.Sprintf("%d", blockHeight)))
+	return k.db.Put(ctx, finalizedHeightKey, []byte(fmt.Sprintf("%d", blockHeight)))
 }
 
 // InjectTx adds a transaction to the mempool channel.
@@ -254,4 +304,97 @@ func (k *KVExecutor) InjectTx(tx []byte) {
 		fmt.Printf("Warning: Transaction channel buffer full. Dropping transaction.\n")
 		// Consider adding metrics here
 	}
+}
+
+// Rollback reverts the state to the previous block height.
+func (k *KVExecutor) Rollback(ctx context.Context, height uint64) error {
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	default:
+	}
+
+	// Validate height constraints
+	if height == 0 {
+		return fmt.Errorf("cannot rollback to height 0: invalid height")
+	}
+
+	// Create a batch for atomic rollback operation
+	batch, err := k.db.Batch(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to create batch for rollback: %w", err)
+	}
+
+	// Query all keys to find those with height > target height
+	q := query.Query{}
+	results, err := k.db.Query(ctx, q)
+	if err != nil {
+		return fmt.Errorf("failed to query keys for rollback: %w", err)
+	}
+	defer results.Close()
+
+	keysToDelete := make([]ds.Key, 0)
+	heightPrefix := heightKeyPrefix.String()
+
+	for result := range results.Next() {
+		if result.Error != nil {
+			return fmt.Errorf("error iterating query results during rollback: %w", result.Error)
+		}
+
+		key := result.Key
+		// Check if this is a height-prefixed key
+		if strings.HasPrefix(key, heightPrefix+"/") {
+			// Extract height from key: /height/{height}/{actual_key} (see getTxKey)
+			parts := strings.Split(strings.TrimPrefix(key, heightPrefix+"/"), "/")
+			if len(parts) > 0 {
+				var keyHeight uint64
+				if _, err := fmt.Sscanf(parts[0], "%d", &keyHeight); err == nil {
+					// If this key's height is greater than target, mark for deletion
+					if keyHeight > height {
+						keysToDelete = append(keysToDelete, ds.NewKey(key))
+					}
+				}
+			}
+		}
+	}
+
+	// Delete all keys with height > target height
+	for _, key := range keysToDelete {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
+		}
+
+		err = batch.Delete(ctx, key)
+		if err != nil {
+			return fmt.Errorf("failed to stage delete operation for key '%s' during rollback: %w", key.String(), err)
+		}
+	}
+
+	// Update finalized height if necessary - it should not exceed rollback height
+	finalizedHeightKey := ds.NewKey("/finalizedHeight")
+	if finalizedHeightBytes, err := k.db.Get(ctx, finalizedHeightKey); err == nil {
+		var finalizedHeight uint64
+		if _, err := fmt.Sscanf(string(finalizedHeightBytes), "%d", &finalizedHeight); err == nil {
+			if finalizedHeight > height {
+				err = batch.Put(ctx, finalizedHeightKey, fmt.Appendf([]byte{}, "%d", height))
+				if err != nil {
+					return fmt.Errorf("failed to update finalized height during rollback: %w", err)
+				}
+			}
+		}
+	}
+
+	// Commit the batch atomically
+	err = batch.Commit(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to commit rollback batch: %w", err)
+	}
+
+	return nil
+}
+
+func getTxKey(height uint64, txKey string) ds.Key {
+	return heightKeyPrefix.Child(ds.NewKey(fmt.Sprintf("%d/%s", height, txKey)))
 }

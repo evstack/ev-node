@@ -5,13 +5,12 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
-	logging "github.com/ipfs/go-log/v2"
+	"github.com/rs/zerolog"
 
 	coreda "github.com/evstack/ev-node/core/da"
 )
-
-var placeholder = []byte("placeholder")
 
 // SubmitWithHelpers performs blob submission using the underlying DA layer,
 // handling error mapping to produce a ResultSubmit.
@@ -20,17 +19,18 @@ var placeholder = []byte("placeholder")
 func SubmitWithHelpers(
 	ctx context.Context,
 	da coreda.DA, // Use the core DA interface
-	logger logging.EventLogger,
+	logger zerolog.Logger,
 	data [][]byte,
 	gasPrice float64,
+	namespace []byte, // New namespace parameter
 	options []byte,
 ) coreda.ResultSubmit { // Return core ResultSubmit type
-	ids, err := da.SubmitWithOptions(ctx, data, gasPrice, placeholder, options)
+	ids, err := da.SubmitWithOptions(ctx, data, gasPrice, namespace, options)
 
 	// Handle errors returned by Submit
 	if err != nil {
 		if errors.Is(err, context.Canceled) {
-			logger.Debug("DA submission canceled via helper due to context cancellation")
+			logger.Debug().Msg("DA submission canceled via helper due to context cancellation")
 			return coreda.ResultSubmit{
 				BaseResult: coreda.BaseResult{
 					Code:    coreda.StatusContextCanceled,
@@ -52,7 +52,13 @@ func SubmitWithHelpers(
 		case errors.Is(err, coreda.ErrContextDeadline):
 			status = coreda.StatusContextDeadline
 		}
-		logger.Error("DA submission failed via helper", "error", err, "status", status)
+
+		// Use debug level for StatusTooBig as it gets handled later in submitToDA through recursive splitting
+		if status == coreda.StatusTooBig {
+			logger.Debug().Err(err).Uint64("status", uint64(status)).Msg("DA submission failed via helper")
+		} else {
+			logger.Error().Err(err).Uint64("status", uint64(status)).Msg("DA submission failed via helper")
+		}
 		return coreda.ResultSubmit{
 			BaseResult: coreda.BaseResult{
 				Code:           status,
@@ -60,12 +66,13 @@ func SubmitWithHelpers(
 				IDs:            ids,
 				SubmittedCount: uint64(len(ids)),
 				Height:         0,
+				Timestamp:      time.Now(),
 			},
 		}
 	}
 
 	if len(ids) == 0 && len(data) > 0 {
-		logger.Warn("DA submission via helper returned no IDs for non-empty input data")
+		logger.Warn().Msg("DA submission via helper returned no IDs for non-empty input data")
 		return coreda.ResultSubmit{
 			BaseResult: coreda.BaseResult{
 				Code:    coreda.StatusError,
@@ -79,11 +86,11 @@ func SubmitWithHelpers(
 	if len(ids) > 0 {
 		height, _, err = coreda.SplitID(ids[0])
 		if err != nil {
-			logger.Error("failed to split ID", "error", err)
+			logger.Error().Err(err).Msg("failed to split ID")
 		}
 	}
 
-	logger.Debug("DA submission successful via helper", "num_ids", len(ids))
+	logger.Debug().Int("num_ids", len(ids)).Msg("DA submission successful via helper")
 	return coreda.ResultSubmit{
 		BaseResult: coreda.BaseResult{
 			Code:           coreda.StatusSuccess,
@@ -91,6 +98,7 @@ func SubmitWithHelpers(
 			SubmittedCount: uint64(len(ids)),
 			Height:         height,
 			BlobSize:       0,
+			Timestamp:      time.Now(),
 		},
 	}
 }
@@ -101,7 +109,7 @@ func SubmitWithHelpers(
 func RetrieveWithHelpers(
 	ctx context.Context,
 	da coreda.DA,
-	logger logging.EventLogger,
+	logger zerolog.Logger,
 	dataLayerHeight uint64,
 	namespace []byte,
 ) coreda.ResultRetrieve {
@@ -111,44 +119,48 @@ func RetrieveWithHelpers(
 	if err != nil {
 		// Handle specific "not found" error
 		if strings.Contains(err.Error(), coreda.ErrBlobNotFound.Error()) {
-			logger.Debug("Retrieve helper: Blobs not found at height", "height", dataLayerHeight)
+			logger.Debug().Uint64("height", dataLayerHeight).Msg("Retrieve helper: Blobs not found at height")
 			return coreda.ResultRetrieve{
 				BaseResult: coreda.BaseResult{
-					Code:    coreda.StatusNotFound,
-					Message: coreda.ErrBlobNotFound.Error(),
-					Height:  dataLayerHeight,
+					Code:      coreda.StatusNotFound,
+					Message:   coreda.ErrBlobNotFound.Error(),
+					Height:    dataLayerHeight,
+					Timestamp: time.Now(),
 				},
 			}
 		}
 		if strings.Contains(err.Error(), coreda.ErrHeightFromFuture.Error()) {
-			logger.Debug("Retrieve helper: Blobs not found at height", "height", dataLayerHeight)
+			logger.Debug().Uint64("height", dataLayerHeight).Msg("Retrieve helper: Blobs not found at height")
 			return coreda.ResultRetrieve{
 				BaseResult: coreda.BaseResult{
-					Code:    coreda.StatusHeightFromFuture,
-					Message: coreda.ErrHeightFromFuture.Error(),
-					Height:  dataLayerHeight,
+					Code:      coreda.StatusHeightFromFuture,
+					Message:   coreda.ErrHeightFromFuture.Error(),
+					Height:    dataLayerHeight,
+					Timestamp: time.Now(),
 				},
 			}
 		}
 		// Handle other errors during GetIDs
-		logger.Error("Retrieve helper: Failed to get IDs", "height", dataLayerHeight, "error", err)
+		logger.Error().Uint64("height", dataLayerHeight).Err(err).Msg("Retrieve helper: Failed to get IDs")
 		return coreda.ResultRetrieve{
 			BaseResult: coreda.BaseResult{
-				Code:    coreda.StatusError,
-				Message: fmt.Sprintf("failed to get IDs: %s", err.Error()),
-				Height:  dataLayerHeight,
+				Code:      coreda.StatusError,
+				Message:   fmt.Sprintf("failed to get IDs: %s", err.Error()),
+				Height:    dataLayerHeight,
+				Timestamp: time.Now(),
 			},
 		}
 	}
 
 	// This check should technically be redundant if GetIDs correctly returns ErrBlobNotFound
 	if idsResult == nil || len(idsResult.IDs) == 0 {
-		logger.Debug("Retrieve helper: No IDs found at height", "height", dataLayerHeight)
+		logger.Debug().Uint64("height", dataLayerHeight).Msg("Retrieve helper: No IDs found at height")
 		return coreda.ResultRetrieve{
 			BaseResult: coreda.BaseResult{
-				Code:    coreda.StatusNotFound,
-				Message: coreda.ErrBlobNotFound.Error(),
-				Height:  dataLayerHeight,
+				Code:      coreda.StatusNotFound,
+				Message:   coreda.ErrBlobNotFound.Error(),
+				Height:    dataLayerHeight,
+				Timestamp: time.Now(),
 			},
 		}
 	}
@@ -161,19 +173,20 @@ func RetrieveWithHelpers(
 		batchBlobs, err := da.Get(ctx, idsResult.IDs[i:end], namespace)
 		if err != nil {
 			// Handle errors during Get
-			logger.Error("Retrieve helper: Failed to get blobs", "height", dataLayerHeight, "num_ids", len(idsResult.IDs), "error", err)
+			logger.Error().Uint64("height", dataLayerHeight).Int("num_ids", len(idsResult.IDs)).Err(err).Msg("Retrieve helper: Failed to get blobs")
 			return coreda.ResultRetrieve{
 				BaseResult: coreda.BaseResult{
-					Code:    coreda.StatusError,
-					Message: fmt.Sprintf("failed to get blobs for batch %d-%d: %s", i, end-1, err.Error()),
-					Height:  dataLayerHeight,
+					Code:      coreda.StatusError,
+					Message:   fmt.Sprintf("failed to get blobs for batch %d-%d: %s", i, end-1, err.Error()),
+					Height:    dataLayerHeight,
+					Timestamp: time.Now(),
 				},
 			}
 		}
 		blobs = append(blobs, batchBlobs...)
 	}
 	// Success
-	logger.Debug("Retrieve helper: Successfully retrieved blobs", "height", dataLayerHeight, "num_blobs", len(blobs))
+	logger.Debug().Uint64("height", dataLayerHeight).Int("num_blobs", len(blobs)).Msg("Retrieve helper: Successfully retrieved blobs")
 	return coreda.ResultRetrieve{
 		BaseResult: coreda.BaseResult{
 			Code:      coreda.StatusSuccess,

@@ -1,6 +1,6 @@
 # P2P Package
 
-This document provides an overview of the P2P (peer-to-peer) networking system used in Rollkit. The P2P package leverages [go-libp2p](https://github.com/libp2p/go-libp2p) stack for establishing peer connections, gossiping transactions, and synchronizing headers and blocks across the network.
+This document provides an overview of the P2P (peer-to-peer) networking system used in Evolve. The P2P package leverages [go-libp2p](https://github.com/libp2p/go-libp2p) stack for establishing peer connections, gossiping transactions, and synchronizing headers and blocks across the network.
 
 ## Overview
 
@@ -15,7 +15,7 @@ Every node (both full and light) runs a P2P client for participating in the P2P 
 
 ```mermaid
 graph TB
-    subgraph "Rollkit Node"
+    subgraph "Evolve Node"
         P2PClient["P2P Client"]
         TxValidator["Transaction Validator"]
         Mempool["Mempool"]
@@ -53,8 +53,8 @@ type P2PConfig struct {
 
 | Parameter | Description | Default | Example |
 |-----------|-------------|---------|---------|
-| ListenAddress | The address where the node listens for incoming P2P connections | `/ip4/0.0.0.0/tcp/26656` | `/ip4/0.0.0.0/tcp/26656` |
-| Seeds | Comma-separated list of seed nodes (bootstrap nodes) | "" | `/ip4/1.2.3.4/tcp/26656/p2p/12D3KooWA8EXV3KjBxEU...,/ip4/5.6.7.8/tcp/26656/p2p/12D3KooWJN9ByvD...` |
+| ListenAddress | The address where the node listens for incoming P2P connections | `/ip4/0.0.0.0/tcp/7676` | `/ip4/0.0.0.0/tcp/7676` |
+| Seeds | Comma-separated list of seed nodes (bootstrap nodes) | "" | `/ip4/1.2.3.4/tcp/7676/p2p/12D3KooWA8EXV3KjBxEU...,/ip4/5.6.7.8/tcp/7676/p2p/12D3KooWJN9ByvD...` |
 | BlockedPeers | Comma-separated list of peer IDs to block | "" | `12D3KooWA8EXV3KjBxEU...,12D3KooWJN9ByvD...` |
 | AllowedPeers | Comma-separated list of peer IDs to explicitly allow | "" | `12D3KooWA8EXV3KjBxEU...,12D3KooWJN9ByvD...` |
 
@@ -177,7 +177,7 @@ This namespace approach ensures that messages only propagate within the intended
 ## Key Functions
 
 - `NewClient`: Creates a new P2P client with the provided configuration
-- `Start`: Establishes P2P connectivity (sets up host, gossipping, DHT, and peer discovery)
+- `Start`: Establishes P2P connectivity (sets up host, gossiping, DHT, and peer discovery)
 - `Close`: Gracefully stops the client
 - `Peers`: Returns a list of connected peers
 - `BroadcastTx`: Broadcasts a transaction to the P2P network
@@ -202,8 +202,8 @@ These metrics can be exposed via Prometheus for monitoring and alerting.
 conf := config.Config{
     RootDir: "/path/to/root",
     P2P: config.P2PConfig{
-        ListenAddress: "/ip4/0.0.0.0/tcp/26656",
-        Seeds: "/ip4/1.2.3.4/tcp/26656/p2p/12D3KooWXYZ...,/ip4/5.6.7.8/tcp/26656/p2p/12D3KooWABC...",
+        ListenAddress: "/ip4/0.0.0.0/tcp/7676",
+        Seeds: "/ip4/1.2.3.4/tcp/7676/p2p/12D3KooWXYZ...,/ip4/5.6.7.8/tcp/7676/p2p/12D3KooWABC...",
     },
 }
 
@@ -214,7 +214,7 @@ ds := datastore.NewMapDatastore()
 logger := log.NewTMLogger(log.NewSyncWriter(os.Stdout))
 
 // Create metrics
-metrics := p2p.PrometheusMetrics("rollkit")
+metrics := p2p.PrometheusMetrics("evolve")
 
 // Create client
 client, err := p2p.NewClient(conf, "mychain-1", ds, logger, metrics)

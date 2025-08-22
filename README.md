@@ -8,16 +8,22 @@ Ev-node is the basis of the Evolve Stack. For more in-depth information about Ev
 [![GoDoc](https://godoc.org/github.com/evstack/ev-node?status.svg)](https://godoc.org/github.com/evstack/ev-node)
 <!-- markdownlint-enable MD013 -->
 
-## Using Rollkit
+## Using Evolve
+
+Evolve supports multiple sync modes:
+
+- **Hybrid sync**: Sync from both DA layer and P2P network (default when peers are configured)
+- **DA-only sync**: Sync exclusively from DA layer by leaving P2P peers empty (see [Configuration Guide](docs/learn/config.md#da-only-sync-mode))
+- **P2P-priority sync**: Prioritize P2P with DA as fallback
 
 ### Example Implementation: TestApp CLI
 
-The easiest way to understand how to use Rollkit is by exploring our example implementation, TestApp.
+The easiest way to understand how to use Evolve is by exploring our example implementation, TestApp.
 
 Requires Go version >= 1.22.
 
-TestApp is a CLI tool that demonstrates how to run different kinds of nodes using the Rollkit framework.
-It serves as a reference implementation and helps you understand how to build your own Rollkit-based blockchain.
+TestApp is a CLI tool that demonstrates how to run different kinds of nodes using the Evolve framework.
+It serves as a reference implementation and helps you understand how to build your own Evolve-based blockchain.
 
 #### Install
 
@@ -36,17 +42,17 @@ testapp version
 
 #### Quick Start
 
-You can spin up a local TestApp network (powered by Rollkit) with the following command:
+You can spin up a local TestApp network (powered by Evolve) with the following command:
 
 ```bash
 testapp start
 ```
 
-## Building with Rollkit
+## Building with Evolve
 
-Rollkit is the first sovereign application framework that allows you to launch
+Evolve is the first sovereign application framework that allows you to launch
 a sovereign, customizable blockchain as easily as a smart contract.
-TestApp serves as a reference implementation to help you get started with your own Rollkit-based blockchain.
+TestApp serves as a reference implementation to help you get started with your own Evolve-based blockchain.
 
 Check out our tutorials on our [website][docs].
 
@@ -100,4 +106,4 @@ make proto-lint
 | 2024/01/12 | [Informal Systems](https://informal.systems/) | [eccdd...bcb9d](https://github.com/evstack/ev-node/commit/eccdd0f1793a5ac532011ef4d896de9e0d8bcb9d) | [informal-systems.pdf](docs/audit/informal-systems.pdf) |
 | 2024/01/10 | [Binary Builders](https://binary.builders/)   | [eccdd...bcb9d](https://github.com/evstack/ev-node/commit/eccdd0f1793a5ac532011ef4d896de9e0d8bcb9d) | [binary-builders.pdf](docs/audit/binary-builders.pdf)   |
 
-[docs]: <https://rollkit.dev> <!-- todo rename once we have the domain-->
+[docs]: <https://ev.xyz>

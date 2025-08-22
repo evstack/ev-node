@@ -100,6 +100,8 @@ func (s *SystemUnderTest) AwaitNodeUp(t *testing.T, rpcAddr string, timeout time
 		require.NoError(t, err)
 	}, timeout, timeout/10, "node is not up")
 }
+
+// AwaitNBlocks waits until the node has produced at least `n` blocks.
 func (s *SystemUnderTest) AwaitNBlocks(t *testing.T, n uint64, rpcAddr string, timeout time.Duration) {
 	t.Helper()
 	ctx, done := context.WithTimeout(context.Background(), timeout)

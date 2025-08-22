@@ -10,7 +10,7 @@ on:
 
 jobs:
   build-ev-node-image:
-    name: Build Rollkit Docker Image
+    name: Build ev-node Docker Image
     # skip building images for merge groups as they are already built on PRs and main
     if: github.event_name != 'merge_group'
     runs-on: ubuntu-latest
@@ -18,7 +18,7 @@ jobs:
       packages: write
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -36,7 +36,7 @@ jobs:
           context: .
           push: true
           platforms: linux/amd64,linux/arm64
-          tags: ghcr.io/${{ github.repository_owner }}/evstack:${{ inputs.image-tag }}
+          tags: ghcr.io/${{ github.repository_owner }}/ev-node:${{ inputs.image-tag }}
 
   build-ev-node-evm-single-image:
     name: Build ev-node EVM Single Docker Image
@@ -47,7 +47,7 @@ jobs:
       packages: write
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -68,12 +68,42 @@ jobs:
           platforms: linux/amd64,linux/arm64
           tags: ghcr.io/${{ github.repository_owner }}/ev-node-evm-single:${{ inputs.image-tag }}
 
+  build-local-da-image:
+    name: Build local-da Docker Image
+    # skip building images for merge groups as they are already built on PRs and main
+    if: github.event_name != 'merge_group'
+    runs-on: ubuntu-latest
+    permissions:
+      packages: write
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push local-da Docker image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: da/cmd/local-da/Dockerfile
+          push: true
+          platforms: linux/amd64,linux/arm64
+          tags: ghcr.io/${{ github.repository_owner }}/local-da:${{ inputs.image-tag }}
+
   docker-tests:
     name: Docker E2E Tests
     needs: build-ev-node-image
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: set up go
         uses: actions/setup-go@v5
         with:
@@ -88,7 +118,7 @@ jobs:
     name: Build All ev-node Binaries
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: set up go
         uses: actions/setup-go@v5
         with:
@@ -100,7 +130,7 @@ jobs:
     name: Go Mod Tidy Check
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: actions/setup-go@v5
         with:
           go-version-file: ./go.mod
@@ -112,7 +142,7 @@ jobs:
     name: Run Unit Tests
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: set up go
         uses: actions/setup-go@v5
         with:
@@ -131,7 +161,7 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: set up go
         uses: actions/setup-go@v5
         with:
@@ -149,7 +179,7 @@ jobs:
     needs: build_all-apps
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: set up go
         uses: actions/setup-go@v5
         with:
@@ -162,7 +192,7 @@ jobs:
     needs: build_all-apps
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: set up go
         uses: actions/setup-go@v5
         with:
@@ -178,14 +208,14 @@ jobs:
       contents: read
       actions: read
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Download unit test coverage report
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v5
         with:
           name: unit-test-coverage-report-${{ github.sha }}
           path: ./unit-coverage
       - name: Download integration test coverage report
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v5
         with:
           name: integration-test-coverage-report-${{ github.sha }}
           path: ./integration-coverage

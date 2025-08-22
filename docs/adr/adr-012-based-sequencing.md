@@ -4,7 +4,7 @@
 
 - 2025-04-09: Initial draft
 - 2025-04-09: Added optional UX optimization where full nodes can relay user transactions to base layer
-- 2025-04-09: Added rationale for VerifyBatch utility in abased setup
+- 2025-04-09: Added rationale for VerifyBatch utility in a based setup
 - 2025-04-09: Reworded forkchoice rule to use maxHeightDrift instead of time-based maxLatency
 - 2025-04-10: Added Relaying Costs and Fee Compensation via EVM
 
@@ -261,7 +261,9 @@ Proposed
 ## References
 
 - [EthResearch: Based Chains](https://ethresear.ch/t/based-rollups-superpowers-from-l1-sequencing/15016)
+<!-- markdown-link-check-disable -->
 - [Taiko](https://taiko.mirror.xyz/7dfMydX1FqEx9_sOvhRt3V8hJksKSIWjzhCVu7FyMZU)
+<!-- markdown-link-check-enable -->
 - [Surge](https://www.surge.wtf/)
 - [Spire](https://www.spire.dev/)
 - [Unifi from Puffer](https://www.puffer.fi/unifi)

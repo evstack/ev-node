@@ -12,7 +12,7 @@ import (
 
 	"github.com/evstack/ev-node/da/internal/mocks"
 	proxy "github.com/evstack/ev-node/da/jsonrpc"
-	logging "github.com/ipfs/go-log/v2"
+	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
@@ -31,8 +31,8 @@ const (
 	testMaxBlobSize = 100
 )
 
-var testNamespace = []byte("test")
-var emptyOptions = []byte{}
+// testNamespace is a 15-byte namespace that will be hex encoded to 30 chars and truncated to 29
+var testNamespace = []byte("test-namespace1")
 
 // TestProxy runs the go-da DA test suite against the JSONRPC service
 // NOTE: This test requires a test JSONRPC service to run on the port
@@ -45,8 +45,7 @@ func getTestDABlockTime() time.Duration {
 func TestProxy(t *testing.T) {
 	dummy := coreda.NewDummyDA(100_000, 0, 0, getTestDABlockTime())
 	dummy.StartHeightTicker()
-	logger := logging.Logger("test")
-	_ = logging.SetLogLevel("test", "debug")
+	logger := zerolog.Nop()
 	server := proxy.NewServer(logger, ServerHost, ServerPort, dummy)
 	err := server.Start(context.Background())
 	require.NoError(t, err)
@@ -56,7 +55,7 @@ func TestProxy(t *testing.T) {
 		}
 	}()
 
-	client, err := proxy.NewClient(context.Background(), logger, ClientURL, "", "74657374")
+	client, err := proxy.NewClient(context.Background(), logger, ClientURL, "74657374", 0, 1)
 	require.NoError(t, err)
 
 	t.Run("Basic DA test", func(t *testing.T) {
@@ -149,7 +148,7 @@ func GetIDsTest(t *testing.T, d coreda.DA) {
 	// As we're the only user, we don't need to handle external data (that could be submitted in real world).
 	// There is no notion of height, so we need to scan the DA to get test data back.
 	for i := uint64(1); !found && !time.Now().After(end); i++ {
-		ret, err := d.GetIDs(ctx, i, []byte{})
+		ret, err := d.GetIDs(ctx, i, testNamespace)
 		if err != nil {
 			if strings.Contains(err.Error(), coreda.ErrHeightFromFuture.Error()) {
 				break
@@ -212,7 +211,7 @@ func ConcurrentReadWriteTest(t *testing.T, d coreda.DA) {
 			case <-writeDone:
 				return
 			default:
-				d.GetIDs(ctx, 0, []byte("test"))
+				_, _ = d.GetIDs(ctx, 0, []byte("test"))
 			}
 		}
 	}()
@@ -233,6 +232,9 @@ func HeightFromFutureTest(t *testing.T, d coreda.DA) {
 func TestSubmitWithOptions(t *testing.T) {
 	ctx := context.Background()
 	testNamespace := []byte("options_test")
+	// The client will convert the namespace string to a proper Celestia namespace
+	// using SHA256 hashing and version 0 format (1 version byte + 28 ID bytes)
+	encodedNamespace := coreda.PrepareNamespace(testNamespace)
 	testOptions := []byte("test_options")
 	gasPrice := 0.0
 
@@ -240,10 +242,9 @@ func TestSubmitWithOptions(t *testing.T) {
 	createMockedClient := func(internalAPI *mocks.MockDA) *proxy.Client {
 		client := &proxy.Client{}
 		client.DA.Internal.SubmitWithOptions = internalAPI.SubmitWithOptions
-		client.DA.Namespace = testNamespace
 		client.DA.MaxBlobSize = testMaxBlobSize
-		client.DA.Logger = logging.Logger("test")
-		_ = logging.SetLogLevel("test", "debug") // For test verbosity
+		client.DA.Logger = zerolog.Nop()
+		// Test verbosity no longer needed with Nop logger
 		return client
 	}
 
@@ -254,7 +255,7 @@ func TestSubmitWithOptions(t *testing.T) {
 		blobs := []coreda.Blob{[]byte("blob1"), []byte("blob2")}
 		expectedIDs := []coreda.ID{[]byte("id1"), []byte("id2")}
 
-		mockAPI.On("SubmitWithOptions", ctx, blobs, gasPrice, testNamespace, testOptions).Return(expectedIDs, nil).Once()
+		mockAPI.On("SubmitWithOptions", ctx, blobs, gasPrice, encodedNamespace, testOptions).Return(expectedIDs, nil).Once()
 
 		ids, err := client.DA.SubmitWithOptions(ctx, blobs, gasPrice, testNamespace, testOptions)
 
@@ -285,14 +286,14 @@ func TestSubmitWithOptions(t *testing.T) {
 
 		blobs := []coreda.Blob{blobsizes, blobsizes, blobsizesOver}
 
-		expectedSubmitBlobs := []coreda.Blob{blobs[0], blobs[1]}
-		expectedIDs := []coreda.ID{[]byte("idA"), []byte("idB")}
-		mockAPI.On("SubmitWithOptions", ctx, expectedSubmitBlobs, gasPrice, testNamespace, testOptions).Return(expectedIDs, nil).Once()
-
 		ids, err := client.DA.SubmitWithOptions(ctx, blobs, gasPrice, testNamespace, testOptions)
 
-		require.NoError(t, err)
-		assert.Equal(t, expectedIDs, ids)
+		require.Error(t, err)
+		assert.ErrorIs(t, err, coreda.ErrBlobSizeOverLimit)
+		assert.Nil(t, ids)
+
+		// Should not call internal RPC when validation fails
+		mockAPI.AssertNotCalled(t, "SubmitWithOptions", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything)
 		mockAPI.AssertExpectations(t)
 	})
 
@@ -335,7 +336,7 @@ func TestSubmitWithOptions(t *testing.T) {
 		blobs := []coreda.Blob{[]byte("blob1")}
 		expectedError := errors.New("rpc submit failed")
 
-		mockAPI.On("SubmitWithOptions", ctx, blobs, gasPrice, testNamespace, testOptions).Return(nil, expectedError).Once()
+		mockAPI.On("SubmitWithOptions", ctx, blobs, gasPrice, encodedNamespace, testOptions).Return(nil, expectedError).Once()
 
 		ids, err := client.DA.SubmitWithOptions(ctx, blobs, gasPrice, testNamespace, testOptions)
 

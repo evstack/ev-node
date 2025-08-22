@@ -84,7 +84,7 @@ func TestNetInfoCmd_Success(t *testing.T) {
 	httpServer := httptest.NewServer(mux)
 	defer httpServer.Close()
 
-	tempDir, err := os.MkdirTemp("", "rollkit-test-home-*")
+	tempDir, err := os.MkdirTemp("", "evolve-test-home-*")
 	require.NoError(err)
 	defer os.RemoveAll(tempDir)
 
@@ -105,7 +105,7 @@ func TestNetInfoCmd_Success(t *testing.T) {
 	NetInfoCmd.SetContext(context.WithValue(context.Background(), viperKey, v))
 	rootCmd.AddCommand(NetInfoCmd)
 
-	output, err := executeCommandC(rootCmd, "net-info", "--rollkit.rpc.address="+rpcAddr)
+	output, err := executeCommandC(rootCmd, "net-info", "--evnode.rpc.address="+rpcAddr)
 
 	require.NoError(err, "Command execution failed: %s", output)
 	t.Log("Command Output:\n", output)
@@ -161,7 +161,7 @@ func TestNetInfoCmd_NoPeers(t *testing.T) {
 	httpServer := httptest.NewServer(mux)
 	defer httpServer.Close()
 
-	tempDir, err := os.MkdirTemp("", "rollkit-test-home-nopeer-*")
+	tempDir, err := os.MkdirTemp("", "evolve-test-home-nopeer-*")
 	require.NoError(err)
 	defer os.RemoveAll(tempDir)
 
@@ -183,7 +183,7 @@ func TestNetInfoCmd_NoPeers(t *testing.T) {
 	NetInfoCmd.SetContext(context.WithValue(context.Background(), viperKey, v))
 	rootCmd.AddCommand(NetInfoCmd)
 
-	output, err := executeCommandC(rootCmd, "net-info", "--rollkit.rpc.address="+rpcAddr)
+	output, err := executeCommandC(rootCmd, "net-info", "--evnode.rpc.address="+rpcAddr)
 
 	require.NoError(err, "Command execution failed: %s", output)
 	t.Log("Command Output:\n", output)

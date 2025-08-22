@@ -37,14 +37,19 @@ type Store interface {
 	UpdateState(ctx context.Context, state types.State) error
 	// GetState returns last state saved with UpdateState.
 	GetState(ctx context.Context) (types.State, error)
+	// GetStateAtHeight returns state saved at given height, or error if it's not found in Store.
+	GetStateAtHeight(ctx context.Context, height uint64) (types.State, error)
 
 	// SetMetadata saves arbitrary value in the store.
 	//
-	// This method enables rollkit to safely persist any information.
+	// This method enables evolve to safely persist any information.
 	SetMetadata(ctx context.Context, key string, value []byte) error
 
 	// GetMetadata returns values stored for given key with SetMetadata.
 	GetMetadata(ctx context.Context, key string) ([]byte, error)
+
+	// Rollback deletes x height from the ev-node store.
+	Rollback(ctx context.Context, height uint64) error
 
 	// Close safely closes underlying data storage, to ensure that data is actually saved.
 	Close() error

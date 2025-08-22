@@ -11,7 +11,7 @@ func (m *Manager) AggregationLoop(ctx context.Context, errCh chan<- error) {
 	initialHeight := m.genesis.InitialHeight //nolint:gosec
 	height, err := m.store.Height(ctx)
 	if err != nil {
-		m.logger.Error("error while getting store height", "error", err)
+		m.logger.Error().Err(err).Msg("error while getting store height")
 		return
 	}
 	var delay time.Duration
@@ -24,7 +24,7 @@ func (m *Manager) AggregationLoop(ctx context.Context, errCh chan<- error) {
 	}
 
 	if delay > 0 {
-		m.logger.Info("waiting to produce block", "delay", delay)
+		m.logger.Info().Dur("delay", delay).Msg("waiting to produce block")
 		time.Sleep(delay)
 	}
 
@@ -60,7 +60,7 @@ func (m *Manager) lazyAggregationLoop(ctx context.Context, blockTimer *time.Time
 			return nil
 
 		case <-lazyTimer.C:
-			m.logger.Debug("Lazy timer triggered block production")
+			m.logger.Debug().Msg("Lazy timer triggered block production")
 
 			if err := m.produceBlock(ctx, "lazy_timer", lazyTimer, blockTimer); err != nil {
 				return err
@@ -91,7 +91,7 @@ func (m *Manager) produceBlock(ctx context.Context, mode string, lazyTimer, bloc
 		return fmt.Errorf("error while publishing block: %w", err)
 	}
 
-	m.logger.Debug("Successfully published block", "mode", mode)
+	m.logger.Debug().Str("mode", mode).Msg("Successfully published block")
 
 	// Reset both timers for the next aggregation window
 	lazyTimer.Reset(getRemainingSleep(start, m.config.Node.LazyBlockInterval.Duration))

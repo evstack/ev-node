@@ -13,7 +13,7 @@ The original design and implementation was centered around IBC and adding an ext
 
 ## Decision
 
-Rollkit will introduce a validator network in which there will be a set of validators verifying execution and construction.
+Evolve will introduce a validator network in which there will be a set of validators verifying execution and construction.
 
 Validators sign **one Attestation per epoch** that covers every block proposed inside that
 epoch.  The Attestation must be broadcast as a transaction within a configurable
@@ -46,7 +46,7 @@ obtaining soft-finality from a multi-party validator set.
 
 ### Signing schemes
 
-Different signature schemes can be doused in conjunction with the validator network. To start we will support ED25519 and later one we plan on adding other signature schemes based on how user demand requires.
+Different signature schemes can be used in conjunction with the validator network. To start we will support ED25519 and later one we plan on adding other signature schemes based on how user demand requires.
 
 Some potential future additions could be BLS12-381 aggregate and/or a BLS threshold signature.
 
@@ -56,11 +56,11 @@ The attester layer can plug into different validator‑set providers. Below we o
 
 #### Cosmos‑SDK
 
-Introduce a dedicated x/network module that completely owns the CommitHash and ValidatorHash that appear in every block‑header. Rollkit remains untouched; the logic lives entirely in the ABCI application.
+Introduce a dedicated x/network module that completely owns the CommitHash and ValidatorHash that appear in every block‑header. Evolve remains untouched; the logic lives entirely in the ABCI application.
 
 Hashes produced in‑app During EndBlock, x/network gathers the attestation bitmap for height h, computes and returns them in ResponseEndBlock.
 
-When a relayer queries /block or /header, the application serves the canonical valset hash and commit hash from its KV‑store, ensuring external clients see the attested header even though rollkit itself never verified the signatures.
+When a relayer queries /block or /header, the application serves the canonical valset hash and commit hash from its KV‑store, ensuring external clients see the attested header even though Evolve itself never verified the signatures.
 
 Validatorset updates from the staking module (x/staking) remains the single source of truth for bonded power. Every block it emits a ValidatorSetUpdate event. x/network subscribes and mirrors
 the active validator bitmap. On a set‑change (say at height 100) the EndBlock hook updates x/network's bitmap before computing the hashes for the next height.
@@ -71,7 +71,7 @@ the active validator bitmap. On a set‑change (say at height 100) the EndBlock 
 sequenceDiagram
   participant Val as Validator
   participant App as x/network
-  participant R as Rollkit
+  participant R as Evolve
   Val->>App: MsgAttest{h, sig}
   loop within epoch
       App->>App: store sig, update bitmap
@@ -93,7 +93,7 @@ Missing participation at the epoch boundary x/network evaluates participation:
 
 Solidity Contract
 
-```sol
+```txt
 contract StakeManager {
     struct Validator { uint96 power; bytes32 edKey; bytes blsKey; }
     mapping(address => Validator) public validators;
@@ -133,7 +133,7 @@ graph TD
 
  1. basic header checks;
  2. produce signature;
- 3. async submit transaction with signautres
+ 3. async submit transaction with signatures
 
 ## Security considerations
 

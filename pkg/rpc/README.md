@@ -1,14 +1,14 @@
-# Rollkit RPC
+# Evolve RPC
 
-This package provides a Remote Procedure Call (RPC) interface for the Rollkit store package, implementing ADR-017.
+This package provides a Remote Procedure Call (RPC) interface for the Evolve store package, implementing ADR-017.
 
 ## Overview
 
-The RPC implementation uses [Connect-Go](https://connectrpc.com/docs/go/getting-started/) to create a modern, lightweight RPC layer that supports both gRPC and HTTP/1.1 protocols. This allows clients to interact with a Rollkit node's store remotely.
+The RPC implementation uses [Connect-Go](https://connectrpc.com/docs/go/getting-started/) to create a modern, lightweight RPC layer that supports both gRPC and HTTP/1.1 protocols. This allows clients to interact with a Evolve node's store remotely.
 
 ## Directory Structure
 
-```tree
+```txt
 pkg/rpc/
   ├── client/       # Client implementation
   │   └── client.go
@@ -36,7 +36,7 @@ func main() {
     myStore := store.NewKVStore(...)
 
     // Start the RPC server
-    log.Fatal(server.StartServer(myStore, "localhost:8080"))
+    log.Fatal(server.StartServer(myStore, "localhost:7331"))
 }
 ```
 
@@ -54,7 +54,7 @@ import (
 
 func main() {
     // Create a client
-    storeClient := client.NewStoreClient("http://localhost:8080")
+    storeClient := client.NewStoreClient("http://localhost:7331")
 
     // Use the client to interact with the store
     ctx := context.Background()
@@ -87,4 +87,4 @@ The RPC service provides the following methods:
 
 ## Protocol Buffers
 
-The service is defined in `proto/rollkit/v1/rpc.proto`. The protocol buffer definitions are compiled using the standard Rollkit build process.
+The service is defined in `proto/evolve/v1/rpc.proto`. The protocol buffer definitions are compiled using the standard evolve build process.

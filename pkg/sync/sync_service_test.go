@@ -17,9 +17,9 @@ import (
 	"github.com/evstack/ev-node/types"
 	"github.com/ipfs/go-datastore"
 	"github.com/ipfs/go-datastore/sync"
-	logging "github.com/ipfs/go-log/v2"
 	"github.com/libp2p/go-libp2p/core/crypto"
 	mocknet "github.com/libp2p/go-libp2p/p2p/net/mock"
+	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/require"
 )
 
@@ -32,9 +32,11 @@ func TestHeaderSyncServiceRestart(t *testing.T) {
 	rnd := rand.New(rand.NewSource(1)) // nolint:gosec // test code only
 	mn := mocknet.New()
 
+	chainId := "test-chain-id"
+
 	proposerAddr := []byte("test")
 	genesisDoc := genesispkg.Genesis{
-		ChainID:            "test-chain-id",
+		ChainID:            chainId,
 		GenesisDAStartTime: time.Now(),
 		InitialHeight:      1,
 		ProposerAddress:    proposerAddr,
@@ -43,13 +45,12 @@ func TestHeaderSyncServiceRestart(t *testing.T) {
 	conf.RootDir = t.TempDir()
 	nodeKey, err := key.LoadOrGenNodeKey(filepath.Dir(conf.ConfigPath()))
 	require.NoError(t, err)
-	logger := logging.Logger("test")
-	_ = logging.SetLogLevel("test", "debug")
+	logger := zerolog.Nop()
 	priv := nodeKey.PrivKey
 	h, err := mn.AddPeer(priv, nil)
 	require.NoError(t, err)
 
-	p2pClient, err := p2p.NewClientWithHost(conf, nodeKey, mainKV, logger, p2p.NopMetrics(), h)
+	p2pClient, err := p2p.NewClientWithHost(conf.P2P, nodeKey.PrivKey, mainKV, chainId, logger, p2p.NopMetrics(), h)
 	require.NoError(t, err)
 
 	// Start p2p client before creating sync service
@@ -87,7 +88,7 @@ func TestHeaderSyncServiceRestart(t *testing.T) {
 
 	h2, err := mn.AddPeer(priv, nil)
 	require.NoError(t, err)
-	p2pClient, err = p2p.NewClientWithHost(conf, nodeKey, mainKV, logger, p2p.NopMetrics(), h2)
+	p2pClient, err = p2p.NewClientWithHost(conf.P2P, nodeKey.PrivKey, mainKV, chainId, logger, p2p.NopMetrics(), h2)
 	require.NoError(t, err)
 
 	// Start p2p client again

@@ -1,0 +1,46 @@
+{
+  "rpc": "https://rpc.rosm.ev.xyz",
+  "rest": "https://api.rosm.ev.xyz",
+  "chainId": "rosm",
+  "chainName": "Evolve Cosmwasm Testnet",
+  "stakeCurrency": {
+    "coinDenom": "ROSM",
+    "coinMinimalDenom": "urosm",
+    "coinDecimals": 6
+  },
+  "bech32Config": {
+    "bech32PrefixAccAddr": "wasm",
+    "bech32PrefixAccPub": "wasmpub",
+    "bech32PrefixValAddr": "wasmvaloper",
+    "bech32PrefixValPub": "wasmvaloperpub",
+    "bech32PrefixConsAddr": "wasmvalcons",
+    "bech32PrefixConsPub": "wasmvalconspub"
+  },
+  "bip44": {
+    "coinType": 118
+  },
+  "currencies": [
+    {
+      "coinDenom": "ROSM",
+      "coinMinimalDenom": "urosm",
+      "coinDecimals": 6
+    }
+  ],
+  "feeCurrencies": [
+    {
+      "coinDenom": "ROSM",
+      "coinMinimalDenom": "urosm",
+      "coinDecimals": 6
+    }
+  ],
+  "gasPriceStep": {
+    "low": 0.05,
+    "average": 0.125,
+    "high": 0.2
+  },
+  "features": [
+    "stargate",
+    "no-legacy-stdTx",
+    "ibc-transfer"
+  ]
+}

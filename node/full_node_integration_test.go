@@ -10,7 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	coreexecutor "github.com/evstack/ev-node/core/execution"
-	rollkitconfig "github.com/evstack/ev-node/pkg/config"
+	evconfig "github.com/evstack/ev-node/pkg/config"
 )
 
 // TestTxGossipingMultipleNodesNoDA tests that transactions are gossiped and blocks are sequenced and synced across multiple nodes without the DA layer over P2P.
@@ -19,7 +19,7 @@ func TestTxGossipingMultipleNodesNoDA(t *testing.T) {
 	require := require.New(t)
 	config := getTestConfig(t, 1)
 	// Set the DA block time to a very large value to ensure that the DA layer is not used
-	config.DA.BlockTime = rollkitconfig.DurationWrapper{Duration: 100 * time.Second}
+	config.DA.BlockTime = evconfig.DurationWrapper{Duration: 100 * time.Second}
 	numNodes := 3
 	nodes, cleanups := createNodesWithCleanup(t, numNodes, config)
 	for _, cleanup := range cleanups {
@@ -39,9 +39,16 @@ func TestTxGossipingMultipleNodesNoDA(t *testing.T) {
 	// Verify block manager is properly initialized
 	require.NotNil(nodes[0].blockManager, "Block manager should be initialized")
 
+	// Add a small delay to ensure P2P services are fully ready
+	time.Sleep(500 * time.Millisecond)
+
 	// Start the other nodes
 	for i := 1; i < numNodes; i++ {
 		startNodeInBackground(t, nodes, ctxs, &runningWg, i)
+		// Add a small delay between starting nodes to avoid connection race
+		if i < numNodes-1 {
+			time.Sleep(100 * time.Millisecond)
+		}
 	}
 
 	// Inject a transaction into the sequencer's executor
@@ -88,9 +95,16 @@ func TestTxGossipingMultipleNodesDAIncluded(t *testing.T) {
 	// Verify block manager is properly initialized
 	require.NotNil(nodes[0].blockManager, "Block manager should be initialized")
 
+	// Add a small delay to ensure P2P services are fully ready
+	time.Sleep(500 * time.Millisecond)
+
 	// Start the other nodes
 	for i := 1; i < numNodes; i++ {
 		startNodeInBackground(t, nodes, ctxs, &runningWg, i)
+		// Add a small delay between starting nodes to avoid connection race
+		if i < numNodes-1 {
+			time.Sleep(100 * time.Millisecond)
+		}
 	}
 
 	// Inject a transaction into the sequencer's executor
@@ -124,8 +138,8 @@ func TestFastDASync(t *testing.T) {
 	config := getTestConfig(t, 1)
 	// Set the block time to 2 seconds and the DA block time to 1 second
 	// Note: these are large values to avoid test failures due to slow CI machines
-	config.Node.BlockTime = rollkitconfig.DurationWrapper{Duration: 2 * time.Second}
-	config.DA.BlockTime = rollkitconfig.DurationWrapper{Duration: 1 * time.Second}
+	config.Node.BlockTime = evconfig.DurationWrapper{Duration: 2 * time.Second}
+	config.DA.BlockTime = evconfig.DurationWrapper{Duration: 1 * time.Second}
 
 	nodes, cleanups := createNodesWithCleanup(t, 2, config)
 	for _, cleanup := range cleanups {
@@ -141,6 +155,9 @@ func TestFastDASync(t *testing.T) {
 	// Wait for the first node to produce a few blocks
 	blocksToWaitFor := uint64(2)
 	require.NoError(waitForAtLeastNDAIncludedHeight(nodes[0], blocksToWaitFor))
+
+	// Add a small delay to ensure P2P services are fully ready
+	time.Sleep(500 * time.Millisecond)
 
 	// Now start the second node and time its sync
 	startNodeInBackground(t, nodes, ctxs, &runningWg, 1)
@@ -168,8 +185,8 @@ func TestSingleSequencerTwoFullNodesBlockSyncSpeed(t *testing.T) {
 
 	// Set up three nodes: 1 sequencer, 2 full nodes
 	config := getTestConfig(t, 1)
-	config.Node.BlockTime = rollkitconfig.DurationWrapper{Duration: 100 * time.Millisecond} // fast block time
-	config.DA.BlockTime = rollkitconfig.DurationWrapper{Duration: 10 * time.Second}         // slow DA block time
+	config.Node.BlockTime = evconfig.DurationWrapper{Duration: 100 * time.Millisecond} // fast block time
+	config.DA.BlockTime = evconfig.DurationWrapper{Duration: 10 * time.Second}         // slow DA block time
 
 	numNodes := 3
 	nodes, cleanups := createNodesWithCleanup(t, numNodes, config)
@@ -186,9 +203,16 @@ func TestSingleSequencerTwoFullNodesBlockSyncSpeed(t *testing.T) {
 	// Wait for the sequencer to produce at first block
 	require.NoError(waitForFirstBlock(nodes[0], Store))
 
+	// Add a small delay to ensure P2P services are fully ready
+	time.Sleep(500 * time.Millisecond)
+
 	// Now start the other nodes
 	for i := 1; i < numNodes; i++ {
 		startNodeInBackground(t, nodes, ctxs, &runningWg, i)
+		// Add a small delay between starting nodes to avoid connection race
+		if i < numNodes-1 {
+			time.Sleep(100 * time.Millisecond)
+		}
 	}
 
 	blocksToWaitFor := uint64(10)
@@ -274,6 +298,9 @@ func testSingleSequencerSingleFullNode(t *testing.T, source Source) {
 	// Wait for the sequencer to produce at first block
 	require.NoError(waitForFirstBlock(nodes[0], source))
 
+	// Add a small delay to ensure P2P services are fully ready
+	time.Sleep(500 * time.Millisecond)
+
 	// Start the full node
 	startNodeInBackground(t, nodes, ctxs, &runningWg, 1)
 
@@ -312,9 +339,16 @@ func testSingleSequencerTwoFullNodes(t *testing.T, source Source) {
 	// Wait for the sequencer to produce at first block
 	require.NoError(waitForFirstBlock(nodes[0], source))
 
+	// Add a small delay to ensure P2P services are fully ready
+	time.Sleep(500 * time.Millisecond)
+
 	// Start the full nodes
 	for i := 1; i < numNodes; i++ {
 		startNodeInBackground(t, nodes, ctxs, &runningWg, i)
+		// Add a small delay between starting nodes to avoid connection race
+		if i < numNodes-1 {
+			time.Sleep(100 * time.Millisecond)
+		}
 	}
 
 	blocksToWaitFor := uint64(3)
@@ -372,6 +406,9 @@ func testSingleSequencerSingleFullNodeTrustedHash(t *testing.T, source Source) {
 	// Set the trusted hash in the full node
 	nodes[1].nodeConfig.Node.TrustedHash = trustedHash
 
+	// Add a small delay to ensure P2P services are fully ready
+	time.Sleep(500 * time.Millisecond)
+
 	// Start the full node
 	startNodeInBackground(t, nodes, ctxs, &runningWg, 1)
 
@@ -421,7 +458,6 @@ func testTwoChainsInOneNamespace(t *testing.T, chainID1 string, chainID2 string)
 
 	// Set up nodes for the first chain
 	configChain1 := getTestConfig(t, 1)
-	configChain1.ChainID = chainID1
 
 	nodes1, cleanups := createNodesWithCleanup(t, 1, configChain1)
 	for _, cleanup := range cleanups {
@@ -430,7 +466,6 @@ func testTwoChainsInOneNamespace(t *testing.T, chainID1 string, chainID2 string)
 
 	// Set up nodes for the second chain
 	configChain2 := getTestConfig(t, 1000)
-	configChain2.ChainID = chainID2
 
 	nodes2, cleanups := createNodesWithCleanup(t, 1, configChain2)
 	for _, cleanup := range cleanups {

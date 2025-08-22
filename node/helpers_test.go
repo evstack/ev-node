@@ -13,15 +13,15 @@ import (
 	testutils "github.com/celestiaorg/utils/test"
 	"github.com/ipfs/go-datastore"
 	dssync "github.com/ipfs/go-datastore/sync"
-	logging "github.com/ipfs/go-log/v2"
 	"github.com/libp2p/go-libp2p/core/peer"
+	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/require"
 
 	coreda "github.com/evstack/ev-node/core/da"
 	coreexecutor "github.com/evstack/ev-node/core/execution"
 	coresequencer "github.com/evstack/ev-node/core/sequencer"
 
-	rollkitconfig "github.com/evstack/ev-node/pkg/config"
+	evconfig "github.com/evstack/ev-node/pkg/config"
 	"github.com/evstack/ev-node/pkg/p2p"
 	"github.com/evstack/ev-node/pkg/p2p/key"
 	remote_signer "github.com/evstack/ev-node/pkg/signer/noop"
@@ -43,7 +43,7 @@ const (
 )
 
 // createTestComponents creates test components for node initialization
-func createTestComponents(t *testing.T, config rollkitconfig.Config) (coreexecutor.Executor, coresequencer.Sequencer, coreda.DA, *p2p.Client, datastore.Batching, *key.NodeKey, func()) {
+func createTestComponents(t *testing.T, config evconfig.Config) (coreexecutor.Executor, coresequencer.Sequencer, coreda.DA, *p2p.Client, datastore.Batching, *key.NodeKey, func()) {
 	executor := coreexecutor.NewDummyExecutor()
 	sequencer := coresequencer.NewDummySequencer()
 	dummyDA := coreda.NewDummyDA(100_000, 0, 0, config.DA.BlockTime.Duration)
@@ -59,9 +59,8 @@ func createTestComponents(t *testing.T, config rollkitconfig.Config) (coreexecut
 		PrivKey: genesisValidatorKey,
 		PubKey:  genesisValidatorKey.GetPublic(),
 	}
-	logger := logging.Logger("test")
-	_ = logging.SetLogLevel("test", "FATAL")
-	p2pClient, err := p2p.NewClient(config, p2pKey, dssync.MutexWrap(datastore.NewMapDatastore()), logger, p2p.NopMetrics())
+	logger := zerolog.Nop()
+	p2pClient, err := p2p.NewClient(config.P2P, p2pKey.PrivKey, dssync.MutexWrap(datastore.NewMapDatastore()), "test-chain", logger, p2p.NopMetrics())
 	require.NoError(t, err)
 	require.NotNil(t, p2pClient)
 	ds := dssync.MutexWrap(datastore.NewMapDatastore())
@@ -69,37 +68,37 @@ func createTestComponents(t *testing.T, config rollkitconfig.Config) (coreexecut
 	return executor, sequencer, dummyDA, p2pClient, ds, p2pKey, stopDAHeightTicker
 }
 
-func getTestConfig(t *testing.T, n int) rollkitconfig.Config {
+func getTestConfig(t *testing.T, n int) evconfig.Config {
 	// Use a higher base port to reduce chances of conflicts with system services
 	startPort := 40000 // Spread port ranges further apart
-	return rollkitconfig.Config{
+	return evconfig.Config{
 		RootDir: t.TempDir(),
-		Node: rollkitconfig.NodeConfig{
+		Node: evconfig.NodeConfig{
 			Aggregator:               true,
-			BlockTime:                rollkitconfig.DurationWrapper{Duration: 100 * time.Millisecond},
+			BlockTime:                evconfig.DurationWrapper{Duration: 100 * time.Millisecond},
 			MaxPendingHeadersAndData: 1000,
-			LazyBlockInterval:        rollkitconfig.DurationWrapper{Duration: 5 * time.Second},
+			LazyBlockInterval:        evconfig.DurationWrapper{Duration: 5 * time.Second},
 		},
-		DA: rollkitconfig.DAConfig{
-			BlockTime: rollkitconfig.DurationWrapper{Duration: 200 * time.Millisecond},
-			Address:   MockDAAddress,
-			Namespace: MockDANamespace,
+		DA: evconfig.DAConfig{
+			BlockTime:         evconfig.DurationWrapper{Duration: 200 * time.Millisecond},
+			Address:           MockDAAddress,
+			Namespace:         MockDANamespace,
+			MaxSubmitAttempts: 30,
 		},
-		P2P: rollkitconfig.P2PConfig{
+		P2P: evconfig.P2PConfig{
 			ListenAddress: fmt.Sprintf("/ip4/127.0.0.1/tcp/%d", startPort+n),
 		},
-		RPC: rollkitconfig.RPCConfig{
+		RPC: evconfig.RPCConfig{
 			Address: fmt.Sprintf("127.0.0.1:%d", 8000+n),
 		},
-		ChainID:         "test-chain",
-		Instrumentation: &rollkitconfig.InstrumentationConfig{},
+		Instrumentation: &evconfig.InstrumentationConfig{},
 	}
 }
 
 // newTestNode is a private helper that creates a node and returns it with a unified cleanup function.
 func newTestNode(
 	t *testing.T,
-	config rollkitconfig.Config,
+	config evconfig.Config,
 	executor coreexecutor.Executor,
 	sequencer coresequencer.Sequencer,
 	dac coreda.DA,
@@ -110,7 +109,7 @@ func newTestNode(
 	ctx, cancel := context.WithCancel(context.Background())
 
 	// Generate genesis and keys
-	genesis, genesisValidatorKey, _ := types.GetGenesisWithPrivkey(config.ChainID)
+	genesis, genesisValidatorKey, _ := types.GetGenesisWithPrivkey("test-chain")
 	remoteSigner, err := remote_signer.NewNoopSigner(genesisValidatorKey)
 	require.NoError(t, err)
 
@@ -124,8 +123,8 @@ func newTestNode(
 		p2pClient,
 		genesis,
 		ds,
-		DefaultMetricsProvider(rollkitconfig.DefaultInstrumentationConfig()),
-		logging.Logger("test"),
+		DefaultMetricsProvider(evconfig.DefaultInstrumentationConfig()),
+		zerolog.Nop(),
 		NodeOptions{},
 	)
 	require.NoError(t, err)
@@ -140,14 +139,14 @@ func newTestNode(
 	return node.(*FullNode), cleanup
 }
 
-func createNodeWithCleanup(t *testing.T, config rollkitconfig.Config) (*FullNode, func()) {
+func createNodeWithCleanup(t *testing.T, config evconfig.Config) (*FullNode, func()) {
 	executor, sequencer, dac, p2pClient, ds, _, stopDAHeightTicker := createTestComponents(t, config)
 	return newTestNode(t, config, executor, sequencer, dac, p2pClient, ds, stopDAHeightTicker)
 }
 
 func createNodeWithCustomComponents(
 	t *testing.T,
-	config rollkitconfig.Config,
+	config evconfig.Config,
 	executor coreexecutor.Executor,
 	sequencer coresequencer.Sequencer,
 	dac coreda.DA,
@@ -159,7 +158,7 @@ func createNodeWithCustomComponents(
 }
 
 // Creates the given number of nodes the given nodes using the given wait group to synchronize them
-func createNodesWithCleanup(t *testing.T, num int, config rollkitconfig.Config) ([]*FullNode, []func()) {
+func createNodesWithCleanup(t *testing.T, num int, config evconfig.Config) ([]*FullNode, []func()) {
 	t.Helper()
 	require := require.New(t)
 
@@ -169,7 +168,7 @@ func createNodesWithCleanup(t *testing.T, num int, config rollkitconfig.Config) 
 	aggCtx, aggCancel := context.WithCancel(context.Background())
 
 	// Generate genesis and keys
-	genesis, genesisValidatorKey, _ := types.GetGenesisWithPrivkey(config.ChainID)
+	genesis, genesisValidatorKey, _ := types.GetGenesisWithPrivkey("test-chain")
 	remoteSigner, err := remote_signer.NewNoopSigner(genesisValidatorKey)
 	require.NoError(err)
 
@@ -189,8 +188,8 @@ func createNodesWithCleanup(t *testing.T, num int, config rollkitconfig.Config) 
 		p2pClient,
 		genesis,
 		ds,
-		DefaultMetricsProvider(rollkitconfig.DefaultInstrumentationConfig()),
-		logging.Logger("test"),
+		DefaultMetricsProvider(evconfig.DefaultInstrumentationConfig()),
+		zerolog.Nop(),
 		NodeOptions{},
 	)
 	require.NoError(err)
@@ -227,8 +226,8 @@ func createNodesWithCleanup(t *testing.T, num int, config rollkitconfig.Config) 
 			p2pClient,
 			genesis,
 			dssync.MutexWrap(datastore.NewMapDatastore()),
-			DefaultMetricsProvider(rollkitconfig.DefaultInstrumentationConfig()),
-			logging.Logger("test"),
+			DefaultMetricsProvider(evconfig.DefaultInstrumentationConfig()),
+			zerolog.Nop(),
 			NodeOptions{},
 		)
 		require.NoError(err)
