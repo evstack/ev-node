@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/evstack/ev-node/types"
 )
@@ -53,6 +54,22 @@ func (m *Manager) DataStoreRetrieveLoop(ctx context.Context) {
 			m.processDataStoreRange(ctx, lastDataStoreHeight+1, dataStoreHeight)
 		}
 		lastDataStoreHeight = dataStoreHeight
+	}
+}
+
+// waitForHeight waits for the store height to reach the specified height
+func (m *Manager) waitForHeight(ctx context.Context, height uint64) error {
+	for {
+		currentHeight, err := m.GetStoreHeight(ctx)
+		if err != nil {
+			m.logger.Error().Err(err).Msg("failed to get store height")
+			return err
+		}
+		if currentHeight >= height {
+			return nil
+		}
+
+		time.Sleep(m.config.Node.BlockTime.Duration)
 	}
 }
 

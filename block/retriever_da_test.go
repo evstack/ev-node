@@ -44,6 +44,7 @@ func setupManagerForRetrieverTest(t *testing.T, initialDAHeight uint64) (*Manage
 	mockStore.On("SetMetadata", mock.Anything, mock.Anything, mock.Anything).Return(nil).Maybe()
 	mockStore.On("GetMetadata", mock.Anything, storepkg.DAIncludedHeightKey).Return([]byte{}, ds.ErrNotFound).Maybe()
 	mockStore.On("GetBlockData", mock.Anything, mock.Anything).Return(nil, nil, ds.ErrNotFound).Maybe()
+	mockStore.On("Height", mock.Anything).Return(uint64(1000), nil).Maybe()
 
 	_, cancel := context.WithCancel(context.Background())
 

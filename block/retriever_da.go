@@ -49,6 +49,9 @@ func (m *Manager) DARetrieveLoop(ctx context.Context) {
 		default:
 		}
 		m.daHeight.Store(daHeight + 1)
+
+		// Try to process any pending DA events that might now be ready
+		m.processPendingDAEvents(ctx)
 	}
 }
 
@@ -221,19 +224,16 @@ func (m *Manager) tryDecodeData(bz []byte, daHeight uint64) *types.Data {
 	return &signedData.Data
 }
 
-func (m *Manager) waitForHeight(ctx context.Context, height uint64) error {
-	for {
-		currentHeight, err := m.GetStoreHeight(ctx)
-		if err != nil {
-			m.logger.Error().Err(err).Msg("failed to get store height")
-			return err
-		}
-		if currentHeight >= height {
-			return nil
-		}
-
-		time.Sleep(time.Second)
+// isAtHeight checks if a height is available without blocking
+func (m *Manager) isAtHeight(ctx context.Context, height uint64) error {
+	currentHeight, err := m.GetStoreHeight(ctx)
+	if err != nil {
+		return err
 	}
+	if currentHeight >= height {
+		return nil
+	}
+	return fmt.Errorf("height %d not yet available (current: %d)", height, currentHeight)
 }
 
 // sendHeightEventIfValid sends a height event if both header and data are valid and not seen before
@@ -241,24 +241,7 @@ func (m *Manager) sendHeightEventIfValid(ctx context.Context, header *types.Sign
 	headerHash := header.Hash().String()
 	dataHashStr := data.DACommitment().String()
 
-	// we need to wait until the previous height has been executed in order to continue syncing
-	if err := m.waitForHeight(ctx, header.Height()-1); err != nil {
-		m.logger.Error().Err(err).Msg("failed to wait for previous height")
-		return
-	}
-
-	// Validate header with its data before proceeding
-	if err := header.ValidateBasicWithData(data); err != nil {
-		m.logger.Debug().Uint64("height", header.Height()).Err(err).Msg("header validation with data failed")
-		return
-	}
-
-	// Mark as DA included since validation passed
-	m.headerCache.SetDAIncluded(headerHash, daHeight)
-	m.sendNonBlockingSignalToDAIncluderCh()
-	m.logger.Info().Uint64("headerHeight", header.Height()).Str("headerHash", headerHash).Msg("header marked as DA included")
-
-	// Check if already seen
+	// Check if already seen before doing expensive validation
 	if m.headerCache.IsSeen(headerHash) {
 		m.logger.Debug().Str("headerHash", headerHash).Msg("header already seen, skipping")
 		return
@@ -268,6 +251,52 @@ func (m *Manager) sendHeightEventIfValid(ctx context.Context, header *types.Sign
 		m.logger.Debug().Str("dataHash", dataHashStr).Msg("data already seen, skipping")
 		return
 	}
+
+	// Check if we can validate this height immediately (non-blocking check)
+	if err := m.isAtHeight(ctx, header.Height()-1); err != nil {
+		// Queue this event for later processing when the prerequisite height is available
+		m.queuePendingDAEvent(ctx, header, data, daHeight)
+		return
+	}
+
+	// Process immediately since prerequisite height is available
+	m.processDAEvent(ctx, header, data, daHeight)
+}
+
+// queuePendingDAEvent queues a DA event that cannot be processed immediately
+func (m *Manager) queuePendingDAEvent(ctx context.Context, header *types.SignedHeader, data *types.Data, daHeight uint64) {
+	heightEvent := NewHeightEvent{
+		Header:   header,
+		Data:     data,
+		DAHeight: daHeight,
+	}
+
+	m.pendingMutex.Lock()
+	defer m.pendingMutex.Unlock()
+
+	height := header.Height()
+	m.pendingSyncEvents[height] = append(m.pendingSyncEvents[height], heightEvent)
+
+	m.logger.Debug().
+		Uint64("height", height).
+		Uint64("daHeight", daHeight).
+		Msg("queued DA event for later processing")
+}
+
+// processDAEvent processes a DA event that is ready for validation
+func (m *Manager) processDAEvent(ctx context.Context, header *types.SignedHeader, data *types.Data, daHeight uint64) {
+	headerHash := header.Hash().String()
+
+	// Validate header with its data - this requires previous height to be stored
+	if err := header.ValidateBasicWithData(data); err != nil {
+		m.logger.Debug().Uint64("height", header.Height()).Err(err).Msg("header validation with data failed")
+		return
+	}
+
+	// Mark as DA included since validation passed
+	m.headerCache.SetDAIncluded(headerHash, daHeight)
+	m.sendNonBlockingSignalToDAIncluderCh()
+	m.logger.Info().Uint64("headerHeight", header.Height()).Str("headerHash", headerHash).Msg("header marked as DA included")
 
 	// Send complete height event with both header and data
 	heightEvent := NewHeightEvent{
@@ -289,6 +318,39 @@ func (m *Manager) sendHeightEventIfValid(ctx context.Context, header *types.Sign
 			Uint64("height", header.Height()).
 			Uint64("daHeight", daHeight).
 			Msg("heightInCh backlog full, dropping complete event")
+	}
+
+	// Try to process any pending events that might now be ready
+	m.processPendingDAEvents(ctx)
+}
+
+// processPendingDAEvents tries to process queued DA events that might now be ready
+func (m *Manager) processPendingDAEvents(ctx context.Context) {
+	m.pendingMutex.Lock()
+	defer m.pendingMutex.Unlock()
+
+	if m.pendingSyncEvents == nil {
+		return
+	}
+
+	currentHeight, err := m.GetStoreHeight(ctx)
+	if err != nil {
+		m.logger.Debug().Err(err).Msg("failed to get store height for pending DA events")
+		return
+	}
+
+	// Process events that are now ready (height - 1 <= currentHeight)
+	for height, events := range m.pendingSyncEvents {
+		if height-1 <= currentHeight {
+			for _, event := range events {
+				m.logger.Debug().
+					Uint64("height", height).
+					Uint64("daHeight", event.DAHeight).
+					Msg("processing previously queued DA event")
+				go m.processDAEvent(ctx, event.Header, event.Data, event.DAHeight)
+			}
+			delete(m.pendingSyncEvents, height)
+		}
 	}
 }
 

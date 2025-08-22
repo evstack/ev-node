@@ -30,68 +30,9 @@ func (m *Manager) SyncLoop(ctx context.Context, errCh chan<- error) {
 			m.sendNonBlockingSignalToHeaderStoreCh()
 			m.sendNonBlockingSignalToDataStoreCh()
 		case heightEvent := <-m.heightInCh:
-			// Only validated headers and data are sent to heightEvent
-			// we can safely assume that headerEvent.header is valid
-			header := heightEvent.Header
-			daHeight := heightEvent.DAHeight
-			headerHash := header.Hash().String()
-			headerHeight := header.Height()
-
-			m.logger.Debug().
-				Uint64("height", headerHeight).
-				Uint64("daHeight", daHeight).
-				Str("hash", headerHash).
-				Msg("header retrieved")
-
-			height, err := m.store.Height(ctx)
-			if err != nil {
-				m.logger.Error().Err(err).Msg("error while getting store height")
-				continue
-			}
-
-			if headerHeight <= height || m.headerCache.IsSeen(headerHash) {
-				m.logger.Debug().Uint64("height", headerHeight).Str("block_hash", headerHash).Msg("header already seen")
-				continue
-			}
-
-			m.headerCache.SetItem(headerHeight, header)
-			// Record header synced metric
-			m.recordSyncMetrics("header_synced")
-
-			// Process the data from heightEvent (always populated by retrieval loops)
-			data := heightEvent.Data
-			dataHash := data.DACommitment().String()
-			dataHeight := data.Metadata.Height
-
-			m.logger.Debug().
-				Uint64("daHeight", daHeight).
-				Str("hash", dataHash).
-				Uint64("height", dataHeight).
-				Int("txs", len(data.Txs)).
-				Msg("data retrieved")
-
-			if !bytes.Equal(header.DataHash, dataHashForEmptyTxs) && m.dataCache.IsSeen(dataHash) {
-				m.logger.Debug().Str("data_hash", dataHash).Msg("data already seen")
-				continue
-			}
-
-			if dataHeight <= height {
-				m.logger.Debug().Uint64("height", dataHeight).Str("data_hash", dataHash).Msg("data already seen")
-				continue
-			}
-
-			m.dataCache.SetItem(dataHeight, data)
-
-			// Record data synced metric
-			m.recordSyncMetrics("data_synced")
-
-			if err = m.trySyncNextBlock(ctx, daHeight); err != nil {
-				errCh <- fmt.Errorf("failed to sync next block: %w", err)
-				return
-			}
-
-			m.headerCache.SetSeen(headerHash)
-			m.dataCache.SetSeen(dataHash)
+			// DA events are already validated and ready for processing
+			// Store events just need basic processing
+			m.processHeightEvent(ctx, &heightEvent, errCh)
 		case <-metricsTicker.C:
 			// Update channel metrics periodically
 			m.updateChannelMetrics()
@@ -100,6 +41,70 @@ func (m *Manager) SyncLoop(ctx context.Context, errCh chan<- error) {
 			return
 		}
 	}
+}
+
+// processHeightEvent processes a height event that is ready
+func (m *Manager) processHeightEvent(ctx context.Context, heightEvent *NewHeightEvent, errCh chan<- error) {
+	header := heightEvent.Header
+	daHeight := heightEvent.DAHeight
+	headerHash := header.Hash().String()
+	headerHeight := header.Height()
+
+	m.logger.Debug().
+		Uint64("height", headerHeight).
+		Uint64("daHeight", daHeight).
+		Str("hash", headerHash).
+		Msg("header retrieved")
+
+	height, err := m.store.Height(ctx)
+	if err != nil {
+		m.logger.Error().Err(err).Msg("error while getting store height")
+		return
+	}
+
+	if headerHeight <= height || m.headerCache.IsSeen(headerHash) {
+		m.logger.Debug().Uint64("height", headerHeight).Str("block_hash", headerHash).Msg("header already seen")
+		return
+	}
+
+	m.headerCache.SetItem(headerHeight, header)
+	// Record header synced metric
+	m.recordSyncMetrics("header_synced")
+
+	// Process the data from heightEvent (always populated by retrieval loops)
+	data := heightEvent.Data
+	dataHash := data.DACommitment().String()
+	dataHeight := data.Metadata.Height
+
+	m.logger.Debug().
+		Uint64("daHeight", daHeight).
+		Str("hash", dataHash).
+		Uint64("height", dataHeight).
+		Int("txs", len(data.Txs)).
+		Msg("data retrieved")
+
+	if !bytes.Equal(header.DataHash, dataHashForEmptyTxs) && m.dataCache.IsSeen(dataHash) {
+		m.logger.Debug().Str("data_hash", dataHash).Msg("data already seen")
+		return
+	}
+
+	if dataHeight <= height {
+		m.logger.Debug().Uint64("height", dataHeight).Str("data_hash", dataHash).Msg("data already seen")
+		return
+	}
+
+	m.dataCache.SetItem(dataHeight, data)
+
+	// Record data synced metric
+	m.recordSyncMetrics("data_synced")
+
+	if err = m.trySyncNextBlock(ctx, daHeight); err != nil {
+		errCh <- fmt.Errorf("failed to sync next block: %w", err)
+		return
+	}
+
+	m.headerCache.SetSeen(headerHash)
+	m.dataCache.SetSeen(dataHash)
 }
 
 // trySyncNextBlock tries to execute as many blocks as possible from the blockCache.
