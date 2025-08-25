@@ -77,13 +77,6 @@ func (d *DummyDA) StopHeightTicker() {
 	close(d.stopCh)
 }
 
-// GetCurrentHeight returns the current DA height
-func (d *DummyDA) GetCurrentHeight() uint64 {
-	d.mu.RLock()
-	defer d.mu.RUnlock()
-	return d.currentHeight
-}
-
 // GasPrice returns the gas price for the DA layer.
 func (d *DummyDA) GasPrice(ctx context.Context) (float64, error) {
 	return d.gasPrice, nil

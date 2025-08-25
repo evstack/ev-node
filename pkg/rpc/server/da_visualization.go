@@ -285,33 +285,6 @@ func (s *DAVisualizationServer) handleDAStats(w http.ResponseWriter, r *http.Req
 	}
 }
 
-// handleDAHeight returns the current DA height if available
-func (s *DAVisualizationServer) handleDAHeight(w http.ResponseWriter, r *http.Request) {
-	// DA height is only available on aggregator nodes
-	if !s.isAggregator {
-		http.Error(w, "DA height is only available on aggregator nodes", http.StatusServiceUnavailable)
-		return
-	}
-
-	// For DummyDA, try to get current height if available
-	if dummyDA, ok := s.da.(interface{ GetCurrentHeight() uint64 }); ok {
-		height := dummyDA.GetCurrentHeight()
-		response := map[string]interface{}{
-			"height": height,
-			"timestamp": time.Now(),
-		}
-		w.Header().Set("Content-Type", "application/json")
-		if err := json.NewEncoder(w).Encode(response); err != nil {
-			s.logger.Error().Err(err).Msg("Failed to encode DA height response")
-			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
-		}
-		return
-	}
-
-	// If we're an aggregator but don't have a DA with GetCurrentHeight, return an error
-	http.Error(w, "DA height not available for this DA implementation", http.StatusNotImplemented)
-}
-
 // handleDAHealth returns health status of the DA layer connection
 func (s *DAVisualizationServer) handleDAHealth(w http.ResponseWriter, r *http.Request) {
 	s.mutex.RLock()

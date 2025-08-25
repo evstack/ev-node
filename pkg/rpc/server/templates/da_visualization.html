@@ -153,24 +153,6 @@
                 <li><code>unknown</code> - Insufficient data to determine health</li>
             </ul>
         </div>
-
-        <div class="api-endpoint">
-            <h4><span class="method method-get">GET</span> /da/height</h4>
-            <p>Returns the current DA layer height. Used by non-aggregator nodes for genesis polling.</p>
-            <p><strong>Note:</strong> Only available on aggregator nodes.</p>
-            <p><strong>Example:</strong> <code>curl http://localhost:8080/da/height</code></p>
-            <div class="api-response">
-                <strong>Response:</strong>
-                <pre>{
-  "height": 1234,
-  "timestamp": "2023-11-15T10:30:15Z"
-}</pre>
-            </div>
-            <p style="margin-top: 10px; font-size: 13px; color: #666;">
-                This endpoint is used during genesis initialization when non-aggregator nodes need to poll 
-                the DA height from an aggregator node (when <code>genesis_da_start_height</code> is zero).
-            </p>
-        </div>
     </div>
     {{end}}
 
