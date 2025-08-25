@@ -1,0 +1,110 @@
+syntax = "proto3";
+
+package evnode.admin.v1;
+
+option go_package = "github.com/evstack/ev-node/types/pb/evnode/admin/v1;adminv1";
+
+// ControlService governs sequencer lifecycle and health surfaces.
+// All operations must be authenticated via mTLS and authorized via RBAC.
+service ControlService {
+  // StartSequencer starts sequencing if and only if the caller holds leadership/fencing.
+  rpc StartSequencer(StartSequencerRequest) returns (StartSequencerResponse);
+
+  // StopSequencer stops sequencing. If force=true, cancels in-flight loops ASAP.
+  rpc StopSequencer(StopSequencerRequest) returns (StopSequencerResponse);
+
+  // PrepareHandoff transitions current leader to a safe ready-to-yield state
+  // and issues a handoff ticket bound to the current term/unsafe head.
+  rpc PrepareHandoff(PrepareHandoffRequest) returns (PrepareHandoffResponse);
+
+  // CompleteHandoff is called by the target node to atomically assume leadership
+  // using the handoff ticket. Enforces fencing and continuity from UnsafeHead.
+  rpc CompleteHandoff(CompleteHandoffRequest) returns (CompleteHandoffResponse);
+
+  // Health returns node-local liveness and recent errors.
+  rpc Health(HealthRequest) returns (HealthResponse);
+
+  // Status returns leader/term, active/standby, and build info.
+  rpc Status(StatusRequest) returns (StatusResponse);
+}
+
+message UnsafeHead {
+  uint64 l2_number = 1;
+  bytes  l2_hash   = 2; // 32 bytes
+  string l1_origin = 3; // opaque or hash/height string
+  int64  timestamp = 4; // unix seconds
+}
+
+message LeadershipTerm {
+  uint64 term      = 1; // monotonic term/epoch for fencing
+  string leader_id = 2; // conductor/node ID
+}
+
+message StartSequencerRequest {
+  bool   from_unsafe_head = 1;  // if false, uses safe head per policy
+  bytes  lease_token      = 2;  // opaque, issued by control plane (Raft/Lease)
+  string reason           = 3;  // audit string
+  string idempotency_key  = 4;  // optional, de-duplicate retries
+  string requester        = 5;  // principal for audit
+}
+message StartSequencerResponse {
+  bool            activated = 1;
+  LeadershipTerm  term      = 2;
+  UnsafeHead      unsafe    = 3;
+}
+
+message StopSequencerRequest {
+  bytes  lease_token     = 1;
+  bool   force           = 2;
+  string reason          = 3;
+  string idempotency_key = 4;
+  string requester       = 5;
+}
+message StopSequencerResponse {
+  bool stopped = 1;
+}
+
+message PrepareHandoffRequest {
+  bytes  lease_token     = 1;
+  string target_id       = 2; // logical target node ID
+  string reason          = 3;
+  string idempotency_key = 4;
+  string requester       = 5;
+}
+message PrepareHandoffResponse {
+  bytes           handoff_ticket = 1; // opaque, bound to term+unsafe head
+  LeadershipTerm  term           = 2;
+  UnsafeHead      unsafe         = 3;
+}
+
+message CompleteHandoffRequest {
+  bytes  handoff_ticket  = 1;
+  string requester       = 2;
+  string idempotency_key = 3;
+}
+message CompleteHandoffResponse {
+  bool           activated = 1;
+  LeadershipTerm term      = 2;
+  UnsafeHead     unsafe    = 3;
+}
+
+message HealthRequest {}
+message HealthResponse {
+  bool   healthy     = 1;
+  uint64 l2_number   = 2;
+  bytes  l2_hash     = 3;
+  string l1_origin   = 4;
+  uint64 peer_count  = 5;
+  uint64 da_height   = 6;
+  string last_err    = 7;
+}
+
+message StatusRequest {}
+message StatusResponse {
+  bool   sequencer_active = 1;
+  string build_version    = 2;
+  string leader_hint      = 3; // optional, human-readable
+  string last_err         = 4;
+  LeadershipTerm term     = 5;
+}
+
