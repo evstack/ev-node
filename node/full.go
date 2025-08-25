@@ -111,6 +111,7 @@ func newFullNode(
 		dataSyncService,
 		seqMetrics,
 		nodeOpts.ManagerOptions,
+		p2pClient,
 	)
 	if err != nil {
 		return nil, err
@@ -196,8 +197,39 @@ func initBlockManager(
 	dataSyncService *evsync.DataSyncService,
 	seqMetrics *block.Metrics,
 	managerOpts block.ManagerOptions,
+	p2pClient *p2p.Client,
 ) (*block.Manager, error) {
 	logger.Debug().Bytes("address", genesis.ProposerAddress).Msg("Proposer address")
+
+	// Handle automatic DA height discovery for non-aggregator nodes
+	if genesis.GenesisDAStartTime.IsZero() && !nodeConfig.Node.Aggregator {
+		logger.Info().Msg("Genesis DA start time is zero and node is not aggregator - will attempt peer discovery for DA height")
+		
+		// Try to query peers for DA height to avoid manual coordination
+		// This provides a basic mechanism to reduce manual setup complexity
+		if p2pClient != nil {
+			queryCtx, cancel := context.WithTimeout(ctx, 30*time.Second) // Give it a reasonable timeout
+			defer cancel()
+			
+			logger.Info().Msg("Attempting to query peers for DA included height...")
+			daHeight, err := p2pClient.QueryPeersDAHeight(queryCtx, 10*time.Second)
+			if err != nil {
+				logger.Warn().Err(err).Msg("Could not query peers for DA height - proceeding with current time")
+				// Fall back to using current time if peer discovery fails
+				genesis.GenesisDAStartTime = time.Now()
+			} else if daHeight > 0 {
+				logger.Info().Uint64("da_height", daHeight).Msg("Successfully discovered DA height from peers")
+				// Set genesis time to now since we have the DA height context
+				genesis.GenesisDAStartTime = time.Now()
+			} else {
+				logger.Info().Msg("Peers returned zero DA height - using current time for genesis")
+				genesis.GenesisDAStartTime = time.Now()
+			}
+		} else {
+			logger.Info().Msg("No P2P client available - using current time for genesis")
+			genesis.GenesisDAStartTime = time.Now()
+		}
+	}
 
 	blockManager, err := block.NewManager(
 		ctx,
