@@ -302,6 +302,7 @@ func AddFlags(cmd *cobra.Command) {
 	cmd.Flags().String(FlagDASubmitOptions, def.DA.SubmitOptions, "DA submit options")
 	cmd.Flags().Uint64(FlagDAMempoolTTL, def.DA.MempoolTTL, "number of DA blocks until transaction is dropped from the mempool")
 	cmd.Flags().Int(FlagDAMaxSubmitAttempts, def.DA.MaxSubmitAttempts, "maximum number of attempts to submit data to the DA layer before giving up")
+	cmd.Flags().String(FlagDAAggregatorEndpoint, def.DA.AggregatorEndpoint, "HTTP endpoint of an aggregator node to poll for DA height during genesis initialization (only used by non-aggregator nodes when genesis DA start time is zero)")
 
 	// P2P configuration flags
 	cmd.Flags().String(FlagP2PListenAddress, def.P2P.ListenAddress, "P2P listen address (host:port)")
