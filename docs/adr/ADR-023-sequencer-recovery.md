@@ -22,7 +22,7 @@ Considered but not chosen for this iteration:
 
 > We will operate **1 active + 1 failover** sequencer at all times, regardless of control plane. Two implementation options are approved:
 
-- **Design A — Rafted Conductor (CFT)**: A sidecar *conductor* runs next to each `ev-node`. Conductors form a **Raft** cluster to elect a single leader and **gate** sequencing so only the leader may produce blocks. For quorum while running 1‑active/2‑failover semantics, we will run **1 sequencer nodes + 2 failover** (no sequencer) as the third Raft voter.
+- **Design A — Rafted Conductor (CFT)**: A sidecar *conductor* runs next to each `ev-node`. Conductors form a **Raft** cluster to elect a single leader and **gate** sequencing so only the Raft leader may produce blocks via the Admin Control API. Applicability: use Raft only when there are **≥ 3 sequencers** (prefer odd N: 3, 5, …). Do not use Raft for two-node 1‑active/1‑failover clusters; use Design B in that case.
   *Note:* OP Stack uses a very similar pattern for its sequencer; see `op-conductor` in References.
 
 - **Design B — 1‑Active / 1‑Failover (Lease/Lock)**: One hot standby promotes itself when the active fails by acquiring a **lease/lock** (e.g., Kubernetes Lease or external KV). Strong **fencing** ensures the old leader cannot keep producing after lease loss.
@@ -51,15 +51,140 @@ Status of this decision: **Proposed** for implementation and test hardening.
 - **Design A (Raft)**: replicated **Raft log** entries for `UnsafeHead`, `LeadershipTerm`, and optional `CommitMeta` (batch/DA pointers); periodic snapshots.
 - **Design B (Lease)**: a single **Lease** record (Kubernetes Lease or external KV entry) plus a monotonic **lease token** for fencing.
 
-### New/changed APIs
-Introduce an **Admin RPC** (gRPC/HTTP) on `ev-node` (or a thin shim) used by either control plane:
+### Admin Control API (Protobuf)
 
-- `StartSequencer(from_unsafe_head: bool)` — start sequencing, optionally pinning to the last persisted UnsafeHead.
-- `StopSequencer()` — hard stop; no more block production.
-- `SequencerHealthy()` → `{ healthy, l2_number, l2_hash, l1_origin, peer_count, da_height, last_err }`
-- `Status()` → `{ sequencer_active, build_height, leader_hint?, last_err }`
+We introduce a separate, authenticated Admin Control API dedicated to sequencing control. This API is not exposed on the public RPC endpoint and binds to a distinct listener (port/interface, e.g., `:8443` on an internal network or loopback-only in single-host deployments). It is used exclusively by the conductor/lease-manager and by privileged operator automation for break-glass procedures.
 
-These are additive and should not break existing RPCs.
+Service overview:
+- StartSequencer: Arms/starts sequencing subject to fencing (valid lease/term) and optionally pins to last persisted UnsafeHead.
+- StopSequencer: Hard stop with optional “force” semantics.
+- PrepareHandoff / CompleteHandoff: Explicit, auditable, two-phase, blue/green leadership transfer.
+- Health / Status: Health probes and machine-readable node + leader state.
+
+Endpoint separation:
+- Public JSON-RPC and P2P endpoints remain unchanged.
+- Admin Control API is out-of-band and must not be routed through public ingress. It sits behind mTLS and strict network policy.
+
+Protobuf schema (proposed file: `proto/evnode/admin/v1/control.proto`):
+
+```
+syntax = "proto3";
+
+package evnode.admin.v1;
+
+option go_package = "github.com/evstack/ev-node/types/pb/evnode/admin/v1;adminv1";
+
+// ControlService governs sequencer lifecycle and health surfaces.
+// All operations must be authenticated via mTLS and authorized via RBAC.
+service ControlService {
+  // StartSequencer starts sequencing if and only if the caller holds leadership/fencing.
+  rpc StartSequencer(StartSequencerRequest) returns (StartSequencerResponse);
+
+  // StopSequencer stops sequencing. If force=true, cancels in-flight loops ASAP.
+  rpc StopSequencer(StopSequencerRequest) returns (StopSequencerResponse);
+
+  // PrepareHandoff transitions current leader to a safe ready-to-yield state
+  // and issues a handoff ticket bound to the current term/unsafe head.
+  rpc PrepareHandoff(PrepareHandoffRequest) returns (PrepareHandoffResponse);
+
+  // CompleteHandoff is called by the target node to atomically assume leadership
+  // using the handoff ticket. Enforces fencing and continuity from UnsafeHead.
+  rpc CompleteHandoff(CompleteHandoffRequest) returns (CompleteHandoffResponse);
+
+  // Health returns node-local liveness and recent errors.
+  rpc Health(HealthRequest) returns (HealthResponse);
+
+  // Status returns leader/term, active/standby, and build info.
+  rpc Status(StatusRequest) returns (StatusResponse);
+}
+
+message UnsafeHead {
+  uint64 l2_number = 1;
+  bytes  l2_hash   = 2; // 32 bytes
+  string l1_origin = 3; // opaque or hash/height string
+  int64  timestamp = 4; // unix seconds
+}
+
+message LeadershipTerm {
+  uint64 term      = 1; // monotonic term/epoch for fencing
+  string leader_id = 2; // conductor/node ID
+}
+
+message StartSequencerRequest {
+  bool   from_unsafe_head = 1;  // if false, uses safe head per policy
+  bytes  lease_token      = 2;  // opaque, issued by control plane (Raft/Lease)
+  string reason           = 3;  // audit string
+  string idempotency_key  = 4;  // optional, de-duplicate retries
+  string requester        = 5;  // principal for audit
+}
+message StartSequencerResponse {
+  bool            activated = 1;
+  LeadershipTerm  term      = 2;
+  UnsafeHead      unsafe    = 3;
+}
+
+message StopSequencerRequest {
+  bytes  lease_token     = 1;
+  bool   force           = 2;
+  string reason          = 3;
+  string idempotency_key = 4;
+  string requester       = 5;
+}
+message StopSequencerResponse {
+  bool stopped = 1;
+}
+
+message PrepareHandoffRequest {
+  bytes  lease_token     = 1;
+  string target_id       = 2; // logical target node ID
+  string reason          = 3;
+  string idempotency_key = 4;
+  string requester       = 5;
+}
+message PrepareHandoffResponse {
+  bytes           handoff_ticket = 1; // opaque, bound to term+unsafe head
+  LeadershipTerm  term           = 2;
+  UnsafeHead      unsafe         = 3;
+}
+
+message CompleteHandoffRequest {
+  bytes  handoff_ticket  = 1;
+  string requester       = 2;
+  string idempotency_key = 3;
+}
+message CompleteHandoffResponse {
+  bool           activated = 1;
+  LeadershipTerm term      = 2;
+  UnsafeHead     unsafe    = 3;
+}
+
+message HealthRequest {}
+message HealthResponse {
+  bool   healthy     = 1;
+  uint64 l2_number   = 2;
+  bytes  l2_hash     = 3;
+  string l1_origin   = 4;
+  uint64 peer_count  = 5;
+  uint64 da_height   = 6;
+  string last_err    = 7;
+}
+
+message StatusRequest {}
+message StatusResponse {
+  bool   sequencer_active = 1;
+  string build_version    = 2;
+  string leader_hint      = 3; // optional, human-readable
+  string last_err         = 4;
+  LeadershipTerm term     = 5;
+}
+```
+
+Error semantics:
+- PERMISSION_DENIED: AuthN/AuthZ failure, missing or invalid mTLS identity.
+- FAILED_PRECONDITION: Missing/expired lease or fencing violation; handoff ticket invalid.
+- ABORTED: Lost leadership mid-flight; TOCTOU fencing triggered self-stop.
+- ALREADY_EXISTS: Start requested but sequencer already active with same term.
+- UNAVAILABLE: Local dependencies not ready (DA client, exec engine).
 
 ### Efficiency considerations
 - **Design A:** Raft heartbeats and snapshotting add small steady‑state overhead; no impact on throughput when healthy.
