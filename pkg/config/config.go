@@ -70,6 +70,8 @@ const (
 	FlagDAMempoolTTL = FlagPrefixEvnode + "da.mempool_ttl"
 	// FlagDAMaxSubmitAttempts is a flag for specifying the maximum DA submit attempts
 	FlagDAMaxSubmitAttempts = FlagPrefixEvnode + "da.max_submit_attempts"
+	// FlagDAAggregatorEndpoint is a flag for specifying the aggregator endpoint to poll for DA height
+	FlagDAAggregatorEndpoint = FlagPrefixEvnode + "da.aggregator_endpoint"
 
 	// P2P configuration flags
 
@@ -164,6 +166,7 @@ type DAConfig struct {
 	StartHeight       uint64          `mapstructure:"start_height" yaml:"start_height" comment:"Starting block height on the DA layer from which to begin syncing. Useful when deploying a new chain on an existing DA chain."`
 	MempoolTTL        uint64          `mapstructure:"mempool_ttl" yaml:"mempool_ttl" comment:"Number of DA blocks after which a transaction is considered expired and dropped from the mempool. Controls retry backoff timing."`
 	MaxSubmitAttempts int             `mapstructure:"max_submit_attempts" yaml:"max_submit_attempts" comment:"Maximum number of attempts to submit data to the DA layer before giving up. Higher values provide more resilience but can delay error reporting."`
+	AggregatorEndpoint string         `mapstructure:"aggregator_endpoint" yaml:"aggregator_endpoint" comment:"HTTP endpoint of an aggregator node to poll for DA height during genesis initialization (only used by non-aggregator nodes when genesis DA start time is zero)."`
 }
 
 // GetHeaderNamespace returns the namespace for header submissions, falling back to the legacy namespace if not set

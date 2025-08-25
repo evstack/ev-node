@@ -22,6 +22,7 @@ import (
 	coreexecutor "github.com/evstack/ev-node/core/execution"
 	coresequencer "github.com/evstack/ev-node/core/sequencer"
 	"github.com/evstack/ev-node/pkg/config"
+	"github.com/evstack/ev-node/pkg/da_client"
 	genesispkg "github.com/evstack/ev-node/pkg/genesis"
 	"github.com/evstack/ev-node/pkg/p2p"
 	rpcserver "github.com/evstack/ev-node/pkg/rpc/server"
@@ -198,6 +199,37 @@ func initBlockManager(
 	managerOpts block.ManagerOptions,
 ) (*block.Manager, error) {
 	logger.Debug().Bytes("address", genesis.ProposerAddress).Msg("Proposer address")
+
+	// Handle DA height polling for genesis initialization when DA start time is zero
+	// and node is not an aggregator
+	if genesis.GenesisDAStartTime.IsZero() && !nodeConfig.Node.Aggregator {
+		if nodeConfig.DA.AggregatorEndpoint != "" {
+			logger.Info().Str("aggregator_endpoint", nodeConfig.DA.AggregatorEndpoint).Msg("Genesis DA start time is zero, polling aggregator for DA height")
+			
+			// Create DA client to poll aggregator endpoint
+			daClient := da_client.NewClient()
+			
+			// Poll with a reasonable timeout and interval
+			pollCtx, cancel := context.WithTimeout(ctx, 5*time.Minute)
+			defer cancel()
+			
+			pollInterval := 5 * time.Second
+			daHeight, err := daClient.PollDAHeight(pollCtx, nodeConfig.DA.AggregatorEndpoint, pollInterval)
+			if err != nil {
+				return nil, fmt.Errorf("failed to poll DA height from aggregator: %w", err)
+			}
+			
+			logger.Info().Uint64("da_height", daHeight).Msg("Successfully polled DA height from aggregator")
+			
+			// Update genesis with current time (the actual DA height will be used via DA.StartHeight config)
+			// We set the time to now since the exact time doesn't matter for initialization
+			genesis.GenesisDAStartTime = time.Now()
+			
+		} else {
+			logger.Warn().Msg("Genesis DA start time is zero but no aggregator endpoint configured - using current time")
+			genesis.GenesisDAStartTime = time.Now()
+		}
+	}
 
 	blockManager, err := block.NewManager(
 		ctx,

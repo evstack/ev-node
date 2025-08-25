@@ -60,6 +60,15 @@ func RegisterCustomHTTPEndpoints(mux *http.ServeMux) {
 		server.handleDAHealth(w, r)
 	})
 
+	mux.HandleFunc("/da/height", func(w http.ResponseWriter, r *http.Request) {
+		server := GetDAVisualizationServer()
+		if server == nil {
+			http.Error(w, "DA visualization not available", http.StatusServiceUnavailable)
+			return
+		}
+		server.handleDAHeight(w, r)
+	})
+
 	// Example for adding more custom endpoints:
 	// mux.HandleFunc("/custom/myendpoint", func(w http.ResponseWriter, r *http.Request) {
 	//     // Your handler logic here
