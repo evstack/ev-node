@@ -22,12 +22,12 @@ Considered but not chosen for this iteration:
 
 > We will operate **1 active + 1 failover** sequencer at all times, regardless of control plane. Two implementation options are approved:
 
-- **Design A — Rafted Conductor (CFT)**: A sidecar *conductor* runs next to each `ev-node`. Conductors form a **Raft** cluster to elect a single leader and **gate** sequencing so only the leader may produce blocks. For quorum while preserving 1‑active/1‑failover semantics, we will run **2 sequencer nodes + 1 conductor‑only witness** (no sequencer) as the third Raft voter.
+- **Design A — Rafted Conductor (CFT)**: A sidecar *conductor* runs next to each `ev-node`. Conductors form a **Raft** cluster to elect a single leader and **gate** sequencing so only the leader may produce blocks. For quorum while running 1‑active/2‑failover semantics, we will run **1 sequencer nodes + 2 failover** (no sequencer) as the third Raft voter.
   *Note:* OP Stack uses a very similar pattern for its sequencer; see `op-conductor` in References.
 
 - **Design B — 1‑Active / 1‑Failover (Lease/Lock)**: One hot standby promotes itself when the active fails by acquiring a **lease/lock** (e.g., Kubernetes Lease or external KV). Strong **fencing** ensures the old leader cannot keep producing after lease loss.
 
-**Why both assume 1A/1F:** Even with Raft, we intentionally keep only **one** hot standby capable of immediate promotion; additional nodes may exist as **read‑only** or **witness** roles to strengthen quorum without enabling extra leaders.
+**Why both assume 1A/1F:** Even with Raft, we intentionally keep **n** nodes on hot standby capable of immediate promotion; additional nodes may exist as **read‑only** or **witness** roles to strengthen quorum without enabling extra leaders.
 
 Status of this decision: **Proposed** for implementation and test hardening.
 
@@ -70,7 +70,7 @@ These are additive and should not break existing RPCs.
 
 ### Logging/Monitoring/Observability
 - Metrics: `leader_id`, `raft_term` (A), `lease_owner` (B), `unsafe_head_advance`, `peer_count`, `rpc_error_rate`, `da_publish_latency`, `backlog`.
-- Alerts: no unsafe advance > 3× block time; unexpected leader churn; lease lost but sequencer still active (fencing breach); witness down (A).
+- Alerts: no unsafe advance > 3× block time; unexpected leader churn; lease lost but sequencer still active (fencing breach).
 - Logs: audit all **Start/Stop** decisions and override operations.
 
 ### Security considerations
@@ -90,13 +90,12 @@ These are additive and should not break existing RPCs.
 
 ### Change breakdown
 - Phase 1: Implement Admin RPC + health surface in `ev-node`; add sidecar skeletons.
-- Phase 2: Integrate Design A (Raft) in a 2 sequencer + 1 witness topology; build dashboards/runbooks.
+- Phase 2: Integrate Design A (Raft) in a 1 sequencer + 2 failover; build dashboards/runbooks.
 - Phase 3: Add Design B (Lease) profile for small/test clusters; share common health logic.
 - Phase 4: Game days and SLO validation; finalize SRE playbooks.
 
 ### Release/compatibility
 - **Breaking release?** No — Admin RPCs are additive.
-- **Coordination with LazyLedger fork / lazyledger-app?** Not required; DA posting interfaces are unchanged.
 
 ## Status
 
@@ -110,7 +109,7 @@ Proposed
 - Choice of control plane allows right‑sizing ops: Raft for prod; Lease for small/test.
 
 ### Negative
-- Design A adds Raft operational overhead (quorum management, snapshots, witness requirement).
+- Design A adds Raft operational overhead (quorum management, snapshots).
 - Design B has a smaller blast radius but does not generalize to N replicas; stricter reliance on correct fencing.
 - Additional components (sidecars, proxies) increase deployment surface.
 
