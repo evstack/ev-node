@@ -194,7 +194,7 @@ Error semantics:
 - Reads (RPC, state) should work on all nodes; **writes/sequence endpoints** only on the active leader. If a leader‑aware proxy is deployed, it enforces this automatically.
 
 ### Logging/Monitoring/Observability
-- Metrics: `leader_id`, `raft_term` (A), `lease_owner` (B), `unsafe_head_advance`, `peer_count`, `rpc_error_rate`, `da_publish_latency`, `backlog`.
+- Metrics: `leader_id`, `raft_term` (A), `lease_owner` (B), `unsafe_head_advance`, `peer_count`, `rpc_error_rate`, `da_publish_latency`, `backlog`, `leader_election_epoch`, `leader_election_leader_last_seen_ts`, `leader_election_heartbeat_timeout_total`, `leader_election_leader_uptime_ms`.
 - Alerts: no unsafe advance > 3× block time; unexpected leader churn; lease lost but sequencer still active (fencing breach).
 - Logs: audit all **Start/Stop** decisions and override operations.
 
