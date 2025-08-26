@@ -78,8 +78,7 @@ func (x *GetNamespaceResponse) GetDataNamespace() string {
 // GetSequencerInfoResponse returns information about the sequencer
 type GetSignerInfoResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	PublicKey     []byte                 `protobuf:"bytes,1,opt,name=public_key,json=publicKey,proto3" json:"public_key,omitempty"`
-	Address       []byte                 `protobuf:"bytes,2,opt,name=address,proto3" json:"address,omitempty"`
+	Address       []byte                 `protobuf:"bytes,1,opt,name=address,proto3" json:"address,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -114,13 +113,6 @@ func (*GetSignerInfoResponse) Descriptor() ([]byte, []int) {
 	return file_evnode_v1_config_proto_rawDescGZIP(), []int{1}
 }
 
-func (x *GetSignerInfoResponse) GetPublicKey() []byte {
-	if x != nil {
-		return x.PublicKey
-	}
-	return nil
-}
-
 func (x *GetSignerInfoResponse) GetAddress() []byte {
 	if x != nil {
 		return x.Address
@@ -135,11 +127,9 @@ const file_evnode_v1_config_proto_rawDesc = "" +
 	"\x16evnode/v1/config.proto\x12\tevnode.v1\x1a\x1bgoogle/protobuf/empty.proto\x1a\x16evnode/v1/evnode.proto\x1a\x15evnode/v1/state.proto\"h\n" +
 	"\x14GetNamespaceResponse\x12)\n" +
 	"\x10header_namespace\x18\x01 \x01(\tR\x0fheaderNamespace\x12%\n" +
-	"\x0edata_namespace\x18\x02 \x01(\tR\rdataNamespace\"P\n" +
-	"\x15GetSignerInfoResponse\x12\x1d\n" +
-	"\n" +
-	"public_key\x18\x01 \x01(\fR\tpublicKey\x12\x18\n" +
-	"\aaddress\x18\x02 \x01(\fR\aaddress2\xa7\x01\n" +
+	"\x0edata_namespace\x18\x02 \x01(\tR\rdataNamespace\"1\n" +
+	"\x15GetSignerInfoResponse\x12\x18\n" +
+	"\aaddress\x18\x01 \x01(\fR\aaddress2\xa7\x01\n" +
 	"\rConfigService\x12I\n" +
 	"\fGetNamespace\x12\x16.google.protobuf.Empty\x1a\x1f.evnode.v1.GetNamespaceResponse\"\x00\x12K\n" +
 	"\rGetSignerInfo\x12\x16.google.protobuf.Empty\x1a .evnode.v1.GetSignerInfoResponse\"\x00B/Z-github.com/evstack/ev-node/types/pb/evnode/v1b\x06proto3"

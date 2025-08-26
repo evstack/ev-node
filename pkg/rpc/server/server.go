@@ -23,7 +23,6 @@ import (
 
 	"github.com/evstack/ev-node/pkg/config"
 	"github.com/evstack/ev-node/pkg/p2p"
-	"github.com/evstack/ev-node/pkg/signer"
 	"github.com/evstack/ev-node/pkg/store"
 	"github.com/evstack/ev-node/types"
 	pb "github.com/evstack/ev-node/types/pb/evnode/v1"
@@ -168,14 +167,14 @@ func (s *StoreServer) GetMetadata(
 
 type ConfigServer struct {
 	config config.Config
-	signer signer.Signer
+	signer []byte
 	logger zerolog.Logger
 }
 
-func NewConfigServer(config config.Config, signer signer.Signer, logger zerolog.Logger) *ConfigServer {
+func NewConfigServer(config config.Config, proposerAddress []byte, logger zerolog.Logger) *ConfigServer {
 	return &ConfigServer{
 		config: config,
-		signer: signer,
+		signer: proposerAddress,
 		logger: logger,
 	}
 }
@@ -204,27 +203,8 @@ func (cs *ConfigServer) GetSignerInfo(
 		return nil, connect.NewError(connect.CodeUnavailable, fmt.Errorf("sequencer signer not available"))
 	}
 
-	// Get the public key from the signer
-	pubKey, err := cs.signer.GetPublic()
-	if err != nil {
-		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to get sequencer public key: %w", err))
-	}
-
-	// Get the address from the signer
-	address, err := cs.signer.GetAddress()
-	if err != nil {
-		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to get sequencer address: %w", err))
-	}
-
-	// Get raw bytes from the public key
-	pubKeyBytes, err := pubKey.Raw()
-	if err != nil {
-		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to serialize public key: %w", err))
-	}
-
 	return connect.NewResponse(&pb.GetSignerInfoResponse{
-		PublicKey: pubKeyBytes,
-		Address:   address,
+		Address: cs.signer,
 	}), nil
 }
 
@@ -305,11 +285,11 @@ func (h *HealthServer) Livez(
 }
 
 // NewServiceHandler creates a new HTTP handler for Store, P2P and Health services
-func NewServiceHandler(store store.Store, peerManager p2p.P2PRPC, signer signer.Signer, logger zerolog.Logger, config config.Config) (http.Handler, error) {
+func NewServiceHandler(store store.Store, peerManager p2p.P2PRPC, proposerAddress []byte, logger zerolog.Logger, config config.Config) (http.Handler, error) {
 	storeServer := NewStoreServer(store, logger)
 	p2pServer := NewP2PServer(peerManager)
 	healthServer := NewHealthServer()
-	configServer := NewConfigServer(config, signer, logger)
+	configServer := NewConfigServer(config, proposerAddress, logger)
 
 	mux := http.NewServeMux()
 

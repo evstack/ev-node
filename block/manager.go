@@ -573,8 +573,8 @@ func (m *Manager) GetExecutor() coreexecutor.Executor {
 }
 
 // GetSigner returns the signer instance used by this manager
-func (m *Manager) GetSigner() signer.Signer {
-	return m.signer
+func (m *Manager) GetSigner() (address []byte) {
+	return m.genesis.ProposerAddress
 }
 
 func (m *Manager) retrieveBatch(ctx context.Context) (*BatchData, error) {

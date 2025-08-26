@@ -25,6 +25,5 @@ message GetNamespaceResponse {
 
 // GetSequencerInfoResponse returns information about the sequencer
 message GetSignerInfoResponse {
-  bytes public_key = 1;
-  bytes address = 2;
+  bytes address = 1;
 }

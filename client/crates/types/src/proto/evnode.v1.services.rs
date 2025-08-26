@@ -2444,8 +2444,6 @@ pub struct GetNamespaceResponse {
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct GetSignerInfoResponse {
     #[prost(bytes = "vec", tag = "1")]
-    pub public_key: ::prost::alloc::vec::Vec<u8>,
-    #[prost(bytes = "vec", tag = "2")]
     pub address: ::prost::alloc::vec::Vec<u8>,
 }
 /// Generated client implementations.
