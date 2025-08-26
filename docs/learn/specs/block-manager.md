@@ -4,13 +4,13 @@
 
 The block manager is a key component of full nodes and is responsible for block production or block syncing depending on the node type: sequencer or non-sequencer. Block syncing in this context includes retrieving the published blocks from the network (P2P network or DA network), validating them to raise fraud proofs upon validation failure, updating the state, and storing the validated blocks. A full node invokes multiple block manager functionalities in parallel, such as:
 
-* Block Production (only for sequencer full nodes)
-* Block Publication to DA network
-* Block Retrieval from DA network
-* Block Sync Service
-* Block Publication to P2P network
-* Block Retrieval from P2P network
-* State Update after Block Retrieval
+- Block Production (only for sequencer full nodes)
+- Block Publication to DA network
+- Block Retrieval from DA network
+- Block Sync Service
+- Block Publication to P2P network
+- Block Retrieval from P2P network
+- State Update after Block Retrieval
 
 ```mermaid
 sequenceDiagram
@@ -92,37 +92,37 @@ flowchart TB
 
 The block manager is initialized using several parameters as defined below:
 
-**Name**|**Type**|**Description**
-|-----|-----|-----|
-signing key|crypto.PrivKey|used for signing blocks and data after creation
-config|config.BlockManagerConfig|block manager configurations (see config options below)
-genesis|*cmtypes.GenesisDoc|initialize the block manager with genesis state (genesis configuration defined in `config/genesis.json` file under the app directory)
-store|store.Store|local datastore for storing chain blocks and states (default local store path is `$db_dir/evolve` and `db_dir` specified in the `config.yaml` file under the app directory)
-mempool, proxyapp, eventbus|mempool.Mempool, proxy.AppConnConsensus, *cmtypes.EventBus|for initializing the executor (state transition function). mempool is also used in the manager to check for availability of transactions for lazy block production
-dalc|da.DAClient|the data availability light client used to submit and retrieve blocks to DA network
-headerStore|*goheaderstore.Store[*types.SignedHeader]|to store and retrieve block headers gossiped over the P2P network
-dataStore|*goheaderstore.Store[*types.SignedData]|to store and retrieve block data gossiped over the P2P network
-signaturePayloadProvider|types.SignaturePayloadProvider|optional custom provider for header signature payloads
-sequencer|core.Sequencer|used to retrieve batches of transactions from the sequencing layer
-reaper|*Reaper|component that periodically retrieves transactions from the executor and submits them to the sequencer
+| **Name**                    | **Type**                                                    | **Description**                                                                                                                                                             |
+| --------------------------- | ----------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| signing key                 | crypto.PrivKey                                              | used for signing blocks and data after creation                                                                                                                             |
+| config                      | config.BlockManagerConfig                                   | block manager configurations (see config options below)                                                                                                                     |
+| genesis                     | \*cmtypes.GenesisDoc                                        | initialize the block manager with genesis state (genesis configuration defined in `config/genesis.json` file under the app directory)                                       |
+| store                       | store.Store                                                 | local datastore for storing chain blocks and states (default local store path is `$db_dir/evolve` and `db_dir` specified in the `config.yaml` file under the app directory) |
+| mempool, proxyapp, eventbus | mempool.Mempool, proxy.AppConnConsensus, \*cmtypes.EventBus | for initializing the executor (state transition function). mempool is also used in the manager to check for availability of transactions for lazy block production          |
+| dalc                        | da.DAClient                                                 | the data availability light client used to submit and retrieve blocks to DA network                                                                                         |
+| headerStore                 | *goheaderstore.Store[*types.SignedHeader]                   | to store and retrieve block headers gossiped over the P2P network                                                                                                           |
+| dataStore                   | *goheaderstore.Store[*types.SignedData]                     | to store and retrieve block data gossiped over the P2P network                                                                                                              |
+| signaturePayloadProvider    | types.SignaturePayloadProvider                              | optional custom provider for header signature payloads                                                                                                                      |
+| sequencer                   | core.Sequencer                                              | used to retrieve batches of transactions from the sequencing layer                                                                                                          |
+| reaper                      | \*Reaper                                                    | component that periodically retrieves transactions from the executor and submits them to the sequencer                                                                      |
 
 Block manager configuration options:
 
-|Name|Type|Description|
-|-----|-----|-----|
-|BlockTime|time.Duration|time interval used for block production and block retrieval from block store ([`defaultBlockTime`][defaultBlockTime])|
-|DABlockTime|time.Duration|time interval used for both block publication to DA network and block retrieval from DA network ([`defaultDABlockTime`][defaultDABlockTime])|
-|DAStartHeight|uint64|block retrieval from DA network starts from this height|
-|LazyBlockInterval|time.Duration|time interval used for block production in lazy aggregator mode even when there are no transactions ([`defaultLazyBlockTime`][defaultLazyBlockTime])|
-|LazyMode|bool|when set to true, enables lazy aggregation mode which produces blocks only when transactions are available or at LazyBlockInterval intervals|
-|MaxPendingHeadersAndData|uint64|maximum number of pending headers and data blocks before pausing block production (default: 100)|
-|MaxSubmitAttempts|int|maximum number of retry attempts for DA submissions (default: 30)|
-|MempoolTTL|int|number of blocks to wait when transaction is stuck in DA mempool (default: 25)|
-|GasPrice|float64|gas price for DA submissions (-1 for automatic/default)|
-|GasMultiplier|float64|multiplier for gas price on DA submission retries (default: 1.3)|
-|Namespace|da.Namespace|DA namespace ID for block submissions (deprecated, use HeaderNamespace and DataNamespace instead)|
-|HeaderNamespace|string|namespace ID for submitting headers to DA layer (automatically encoded by the node)|
-|DataNamespace|string|namespace ID for submitting data to DA layer (automatically encoded by the node)|
+| Name                     | Type          | Description                                                                                                                                          |
+| ------------------------ | ------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| BlockTime                | time.Duration | time interval used for block production and block retrieval from block store ([`defaultBlockTime`][defaultBlockTime])                                |
+| DABlockTime              | time.Duration | time interval used for both block publication to DA network and block retrieval from DA network ([`defaultDABlockTime`][defaultDABlockTime])         |
+| DAStartHeight            | uint64        | block retrieval from DA network starts from this height                                                                                              |
+| LazyBlockInterval        | time.Duration | time interval used for block production in lazy aggregator mode even when there are no transactions ([`defaultLazyBlockTime`][defaultLazyBlockTime]) |
+| LazyMode                 | bool          | when set to true, enables lazy aggregation mode which produces blocks only when transactions are available or at LazyBlockInterval intervals         |
+| MaxPendingHeadersAndData | uint64        | maximum number of pending headers and data blocks before pausing block production (default: 100)                                                     |
+| MaxSubmitAttempts        | int           | maximum number of retry attempts for DA submissions (default: 30)                                                                                    |
+| MempoolTTL               | int           | number of blocks to wait when transaction is stuck in DA mempool (default: 25)                                                                       |
+| GasPrice                 | float64       | gas price for DA submissions (-1 for automatic/default)                                                                                              |
+| GasMultiplier            | float64       | multiplier for gas price on DA submission retries (default: 1.3)                                                                                     |
+| Namespace                | da.Namespace  | DA namespace ID for block submissions (deprecated, use HeaderNamespace and DataNamespace instead)                                                    |
+| HeaderNamespace          | string        | namespace ID for submitting headers to DA layer (automatically encoded by the node)                                                                  |
+| DataNamespace            | string        | namespace ID for submitting data to DA layer (automatically encoded by the node)                                                                     |
 
 ### Block Production
 
@@ -183,16 +183,16 @@ flowchart TD
     M --> O[Broadcast Data to P2P]
 ```
 
-* Retrieve a batch of transactions using `retrieveBatch()` which interfaces with the sequencer
-* Call `CreateBlock` using executor with the retrieved transactions
-* Create separate header and data structures from the block
-* Sign the header using `signing key` to generate `SignedHeader`
-* Sign the data using `signing key` to generate `SignedData` (if transactions exist)
-* Call `ApplyBlock` using executor to generate an updated state
-* Save the block, validators, and updated state to local store
-* Add the newly generated header to `pendingHeaders` queue
-* Add the newly generated data to `pendingData` queue (if not empty)
-* Publish the newly generated header and data to channels to notify other components of the sequencer node (such as block and header gossip)
+- Retrieve a batch of transactions using `retrieveBatch()` which interfaces with the sequencer
+- Call `CreateBlock` using executor with the retrieved transactions
+- Create separate header and data structures from the block
+- Sign the header using `signing key` to generate `SignedHeader`
+- Sign the data using `signing key` to generate `SignedData` (if transactions exist)
+- Call `ApplyBlock` using executor to generate an updated state
+- Save the block, validators, and updated state to local store
+- Add the newly generated header to `pendingHeaders` queue
+- Add the newly generated data to `pendingData` queue (if not empty)
+- Publish the newly generated header and data to channels to notify other components of the sequencer node (such as block and header gossip)
 
 Note: When no transactions are available, the block manager creates blocks with empty data using a special `dataHashForEmptyTxs` marker. The header and data separation architecture allows headers and data to be submitted and retrieved independently from the DA layer.
 
@@ -226,34 +226,34 @@ flowchart LR
 
 The `HeaderSubmissionLoop` manages the submission of signed headers to the DA network:
 
-* Retrieves pending headers from the `pendingHeaders` queue
-* Marshals headers to protobuf format
-* Submits to DA using the generic `submitToDA` helper with the configured `HeaderNamespace`
-* On success, removes submitted headers from the pending queue
-* On failure, headers remain in the queue for retry
+- Retrieves pending headers from the `pendingHeaders` queue
+- Marshals headers to protobuf format
+- Submits to DA using the generic `submitToDA` helper with the configured `HeaderNamespace`
+- On success, removes submitted headers from the pending queue
+- On failure, headers remain in the queue for retry
 
 #### Data Submission Loop
 
 The `DataSubmissionLoop` manages the submission of signed data to the DA network:
 
-* Retrieves pending data from the `pendingData` queue
-* Marshals data to protobuf format
-* Submits to DA using the generic `submitToDA` helper with the configured `DataNamespace`
-* On success, removes submitted data from the pending queue
-* On failure, data remains in the queue for retry
+- Retrieves pending data from the `pendingData` queue
+- Marshals data to protobuf format
+- Submits to DA using the generic `submitToDA` helper with the configured `DataNamespace`
+- On success, removes submitted data from the pending queue
+- On failure, data remains in the queue for retry
 
 #### Generic Submission Logic
 
 Both loops use a shared `submitToDA` function that provides:
 
-* Namespace-specific submission based on header or data type
-* Retry logic with configurable maximum attempts via `MaxSubmitAttempts` configuration
-* Exponential backoff starting at `initialBackoff` (100ms), doubling each attempt, capped at `DABlockTime`
-* Gas price management with `GasMultiplier` applied on retries using a centralized `retryStrategy`
-* Recursive batch splitting for handling "too big" DA submissions that exceed blob size limits
-* Comprehensive error handling for different DA submission failure types (mempool issues, context cancellation, blob size limits)
-* Comprehensive metrics tracking for attempts, successes, and failures
-* Context-aware cancellation support
+- Namespace-specific submission based on header or data type
+- Retry logic with configurable maximum attempts via `MaxSubmitAttempts` configuration
+- Exponential backoff starting at `initialBackoff` (100ms), doubling each attempt, capped at `DABlockTime`
+- Gas price management with `GasMultiplier` applied on retries using a centralized `retryStrategy`
+- Recursive batch splitting for handling "too big" DA submissions that exceed blob size limits
+- Comprehensive error handling for different DA submission failure types (mempool issues, context cancellation, blob size limits)
+- Comprehensive metrics tracking for attempts, successes, and failures
+- Context-aware cancellation support
 
 #### Retry Strategy and Error Handling
 
@@ -290,25 +290,25 @@ flowchart TD
 
 ##### Retry Strategy Features
 
-* **Centralized State Management**: The `retryStrategy` struct manages attempt counts, backoff timing, and gas price adjustments
-* **Multiple Backoff Types**:
-  * Exponential backoff for general failures (doubles each attempt, capped at `BlockTime`)
-  * Mempool-specific backoff (waits `MempoolTTL * BlockTime` for stuck transactions)
-  * Success-based backoff reset with gas price reduction
-* **Gas Price Management**:
-  * Increases gas price by `GasMultiplier` on mempool failures
-  * Decreases gas price after successful submissions (bounded by initial price)
-  * Supports automatic gas price detection (`-1` value)
-* **Intelligent Batch Splitting**:
-  * Recursively splits batches that exceed DA blob size limits
-  * Handles partial submissions within split batches
-  * Prevents infinite recursion with proper base cases
-* **Comprehensive Error Classification**:
-  * `StatusSuccess`: Full or partial successful submission
-  * `StatusTooBig`: Triggers batch splitting logic
-  * `StatusNotIncludedInBlock`/`StatusAlreadyInMempool`: Mempool-specific handling
-  * `StatusContextCanceled`: Graceful shutdown support
-  * Other errors: Standard exponential backoff
+- **Centralized State Management**: The `retryStrategy` struct manages attempt counts, backoff timing, and gas price adjustments
+- **Multiple Backoff Types**:
+  - Exponential backoff for general failures (doubles each attempt, capped at `BlockTime`)
+  - Mempool-specific backoff (waits `MempoolTTL * BlockTime` for stuck transactions)
+  - Success-based backoff reset with gas price reduction
+- **Gas Price Management**:
+  - Increases gas price by `GasMultiplier` on mempool failures
+  - Decreases gas price after successful submissions (bounded by initial price)
+  - Supports automatic gas price detection (`-1` value)
+- **Intelligent Batch Splitting**:
+  - Recursively splits batches that exceed DA blob size limits
+  - Handles partial submissions within split batches
+  - Prevents infinite recursion with proper base cases
+- **Comprehensive Error Classification**:
+  - `StatusSuccess`: Full or partial successful submission
+  - `StatusTooBig`: Triggers batch splitting logic
+  - `StatusNotIncludedInBlock`/`StatusAlreadyInMempool`: Mempool-specific handling
+  - `StatusContextCanceled`: Graceful shutdown support
+  - Other errors: Standard exponential backoff
 
 The manager enforces a limit on pending headers and data through `MaxPendingHeadersAndData` configuration. When this limit is reached, block production pauses to prevent unbounded growth of the pending queues.
 
@@ -343,49 +343,49 @@ flowchart TD
 #### Retrieval Process
 
 1. **Height Management**: Starts from the latest of:
-   * DA height from the last state in local store
-   * `DAStartHeight` configuration parameter
-   * Maintains and increments `daHeight` counter after successful retrievals
+   - DA height from the last state in local store
+   - `DAStartHeight` configuration parameter
+   - Maintains and increments `daHeight` counter after successful retrievals
 
 2. **Retrieval Mechanism**:
-   * Executes at `DABlockTime` intervals
-   * Implements namespace migration support:
-     * First attempts legacy namespace retrieval if migration not completed
-     * Falls back to separate header and data namespace retrieval
-     * Tracks migration status to optimize future retrievals
-   * Retrieves from separate namespaces:
-     * Headers from `HeaderNamespace`
-     * Data from `DataNamespace`
-   * Combines results from both namespaces
-   * Handles three possible outcomes:
-     * `Success`: Process retrieved header and/or data
-     * `NotFound`: No chain block at this DA height (normal case)
-     * `Error`: Retry with backoff
+   - Executes at `DABlockTime` intervals
+   - Implements namespace migration support:
+     - First attempts legacy namespace retrieval if migration not completed
+     - Falls back to separate header and data namespace retrieval
+     - Tracks migration status to optimize future retrievals
+   - Retrieves from separate namespaces:
+     - Headers from `HeaderNamespace`
+     - Data from `DataNamespace`
+   - Combines results from both namespaces
+   - Handles three possible outcomes:
+     - `Success`: Process retrieved header and/or data
+     - `NotFound`: No chain block at this DA height (normal case)
+     - `Error`: Retry with backoff
 
 3. **Error Handling**:
-   * Implements retry logic with 100ms delay between attempts
-   * After 10 retries, logs error and stalls retrieval
-   * Does not increment `daHeight` on persistent errors
+   - Implements retry logic with 100ms delay between attempts
+   - After 10 retries, logs error and stalls retrieval
+   - Does not increment `daHeight` on persistent errors
 
 4. **Processing Retrieved Blocks**:
-   * Validates header and data signatures
-   * Checks sequencer information
-   * Marks blocks as DA included in caches
-   * Sends to sync goroutine for state update
-   * Successful processing triggers immediate next retrieval without waiting for timer
-   * Updates namespace migration status when appropriate:
-     * Marks migration complete when data found in new namespaces
-     * Persists migration state to avoid future legacy checks
+   - Validates header and data signatures
+   - Checks sequencer information
+   - Marks blocks as DA included in caches
+   - Sends to sync goroutine for state update
+   - Successful processing triggers immediate next retrieval without waiting for timer
+   - Updates namespace migration status when appropriate:
+     - Marks migration complete when data found in new namespaces
+     - Persists migration state to avoid future legacy checks
 
 #### Header and Data Caching
 
 The retrieval system uses persistent caches for both headers and data:
 
-* Prevents duplicate processing
-* Tracks DA inclusion status
-* Supports out-of-order block arrival
-* Enables efficient sync from P2P and DA sources
-* Maintains namespace migration state for optimized retrieval
+- Prevents duplicate processing
+- Tracks DA inclusion status
+- Supports out-of-order block arrival
+- Enables efficient sync from P2P and DA sources
+- Maintains namespace migration state for optimized retrieval
 
 For more details on DA integration, see the [Data Availability specification](./da.md).
 
@@ -405,9 +405,9 @@ The block sync service manages the synchronization of headers and data through s
 
 #### Architecture
 
-* **Header Store**: Uses `goheader.Store[*types.SignedHeader]` for header management
-* **Data Store**: Uses `goheader.Store[*types.SignedData]` for data management
-* **Separation of Concerns**: Headers and data are handled independently, supporting the header/data separation architecture
+- **Header Store**: Uses `goheader.Store[*types.SignedHeader]` for header management
+- **Data Store**: Uses `goheader.Store[*types.SignedData]` for data management
+- **Separation of Concerns**: Headers and data are handled independently, supporting the header/data separation architecture
 
 #### Synchronization Flow
 
@@ -422,15 +422,15 @@ The sequencer publishes headers and data separately to the P2P network:
 
 #### Header Publication
 
-* Headers are sent through the header broadcast channel
-* Written to the header store for P2P gossip
-* Broadcast to network peers via header sync service
+- Headers are sent through the header broadcast channel
+- Written to the header store for P2P gossip
+- Broadcast to network peers via header sync service
 
 #### Data Publication
 
-* Data blocks are sent through the data broadcast channel
-* Written to the data store for P2P gossip
-* Broadcast to network peers via data sync service
+- Data blocks are sent through the data broadcast channel
+- Written to the data store for P2P gossip
+- Broadcast to network peers via data sync service
 
 Non-sequencer full nodes receive headers and data through the P2P sync service and do not publish blocks themselves.
 
@@ -442,23 +442,23 @@ Non-sequencer full nodes retrieve headers and data separately from P2P stores:
 
 The `HeaderStoreRetrieveLoop`:
 
-* Operates at `BlockTime` intervals via `headerStoreCh` signals
-* Tracks `headerStoreHeight` for the last retrieved header
-* Retrieves all headers between last height and current store height
-* Validates sequencer information using `isUsingExpectedSingleSequencer`
-* Marks headers as "seen" in the header cache
-* Sends headers to sync goroutine via `headerInCh`
+- Operates at `BlockTime` intervals via `headerStoreCh` signals
+- Tracks `headerStoreHeight` for the last retrieved header
+- Retrieves all headers between last height and current store height
+- Validates sequencer information using `assertUsingExpectedSingleSequencer`
+- Marks headers as "seen" in the header cache
+- Sends headers to sync goroutine via `headerInCh`
 
 #### Data Store Retrieval Loop
 
 The `DataStoreRetrieveLoop`:
 
-* Operates at `BlockTime` intervals via `dataStoreCh` signals
-* Tracks `dataStoreHeight` for the last retrieved data
-* Retrieves all data blocks between last height and current store height
-* Validates data signatures using `isValidSignedData`
-* Marks data as "seen" in the data cache
-* Sends data to sync goroutine via `dataInCh`
+- Operates at `BlockTime` intervals via `dataStoreCh` signals
+- Tracks `dataStoreHeight` for the last retrieved data
+- Retrieves all data blocks between last height and current store height
+- Validates data signatures using `isValidSignedData`
+- Marks data as "seen" in the data cache
+- Sends data to sync goroutine via `dataInCh`
 
 #### Soft Confirmations
 
@@ -478,11 +478,11 @@ DA-included blocks are considered to have a higher level of finality.
 **DAIncluderLoop**:
 The `DAIncluderLoop` is responsible for advancing the `DAIncludedHeight` by:
 
-* Checking if blocks after the current height have both header and data marked as DA-included in caches
-* Stopping advancement if either header or data is missing for a height
-* Calling `SetFinal` on the executor when a block becomes DA-included
-* Storing the Evolve height to DA height mapping for tracking
-* Ensuring only blocks with both header and data present are considered DA-included
+- Checking if blocks after the current height have both header and data marked as DA-included in caches
+- Stopping advancement if either header or data is missing for a height
+- Calling `SetFinal` on the executor when a block becomes DA-included
+- Storing the Evolve height to DA height mapping for tracking
+- Ensuring only blocks with both header and data present are considered DA-included
 
 ### State Update after Block Retrieval
 
@@ -518,10 +518,10 @@ flowchart TD
 
 The `SyncLoop` processes headers and data from multiple sources:
 
-* Headers from `headerInCh` (P2P and DA sources)
-* Data from `dataInCh` (P2P and DA sources)
-* Maintains caches to track processed items
-* Ensures ordered processing by height
+- Headers from `headerInCh` (P2P and DA sources)
+- Data from `dataInCh` (P2P and DA sources)
+- Maintains caches to track processed items
+- Ensures ordered processing by height
 
 #### State Update Process
 
@@ -530,68 +530,68 @@ When both header and data are available for a height:
 1. **Block Reconstruction**: Combines header and data into a complete block
 2. **Validation**: Verifies header and data signatures match expectations
 3. **ApplyBlock**:
-   * Validates the block against current state
-   * Executes transactions
-   * Captures validator updates
-   * Returns updated state
+   - Validates the block against current state
+   - Executes transactions
+   - Captures validator updates
+   - Returns updated state
 4. **Commit**:
-   * Persists execution results
-   * Updates mempool by removing included transactions
-   * Publishes block events
+   - Persists execution results
+   - Updates mempool by removing included transactions
+   - Publishes block events
 5. **Storage**:
-   * Stores the block, validators, and updated state
-   * Updates last state in manager
+   - Stores the block, validators, and updated state
+   - Updates last state in manager
 6. **Finalization**:
-   * When block is DA-included, calls `SetFinal` on executor
-   * Updates DA included height
+   - When block is DA-included, calls `SetFinal` on executor
+   - Updates DA included height
 
 ## Message Structure/Communication Format
 
 The communication between the block manager and executor:
 
-* `InitChain`: initializes the chain state with the given genesis time, initial height, and chain ID using `InitChainSync` on the executor to obtain initial `appHash` and initialize the state.
-* `CreateBlock`: prepares a block with transactions from the provided batch data.
-* `ApplyBlock`: validates the block, executes the block (apply transactions), captures validator updates, and returns updated state.
-* `SetFinal`: marks the block as final when both its header and data are confirmed on the DA layer.
-* `GetTxs`: retrieves transactions from the application (used by Reaper component).
+- `InitChain`: initializes the chain state with the given genesis time, initial height, and chain ID using `InitChainSync` on the executor to obtain initial `appHash` and initialize the state.
+- `CreateBlock`: prepares a block with transactions from the provided batch data.
+- `ApplyBlock`: validates the block, executes the block (apply transactions), captures validator updates, and returns updated state.
+- `SetFinal`: marks the block as final when both its header and data are confirmed on the DA layer.
+- `GetTxs`: retrieves transactions from the application (used by Reaper component).
 
 The communication with the sequencer:
 
-* `GetNextBatch`: retrieves the next batch of transactions to include in a block.
-* `VerifyBatch`: validates that a batch came from the expected sequencer.
+- `GetNextBatch`: retrieves the next batch of transactions to include in a block.
+- `VerifyBatch`: validates that a batch came from the expected sequencer.
 
 The communication with DA layer:
 
-* `Submit`: submits headers or data blobs to the DA network.
-* `Get`: retrieves headers or data blobs from the DA network.
-* `GetHeightPair`: retrieves both header and data at a specific DA height.
+- `Submit`: submits headers or data blobs to the DA network.
+- `Get`: retrieves headers or data blobs from the DA network.
+- `GetHeightPair`: retrieves both header and data at a specific DA height.
 
 ## Assumptions and Considerations
 
-* The block manager loads the initial state from the local store and uses genesis if not found in the local store, when the node (re)starts.
-* The default mode for sequencer nodes is normal (not lazy).
-* The sequencer can produce empty blocks.
-* In lazy aggregation mode, the block manager maintains consistency with the DA layer by producing empty blocks at regular intervals, ensuring a 1:1 mapping between DA layer blocks and execution layer blocks.
-* The lazy aggregation mechanism uses a dual timer approach:
-  * A `blockTimer` that triggers block production when transactions are available
-  * A `lazyTimer` that ensures blocks are produced even during periods of inactivity
-* Empty batches are handled differently in lazy mode - instead of discarding them, they are returned with the `ErrNoBatch` error, allowing the caller to create empty blocks with proper timestamps.
-* Transaction notifications from the `Reaper` to the `Manager` are handled via a non-blocking notification channel (`txNotifyCh`) to prevent backpressure.
-* The block manager enforces `MaxPendingHeadersAndData` limit to prevent unbounded growth of pending queues during DA submission issues.
-* Headers and data are submitted separately to the DA layer using different namespaces, supporting the header/data separation architecture.
-* The block manager uses persistent caches for headers and data to track seen items and DA inclusion status.
-* Namespace migration is handled transparently, with automatic detection and state persistence to optimize future operations.
-* The system supports backward compatibility with legacy single-namespace deployments while transitioning to separate namespaces.
-* Gas price management includes automatic adjustment with `GasMultiplier` on DA submission retries.
-* The block manager uses persistent storage (disk) when the `root_dir` and `db_path` configuration parameters are specified in `config.yaml` file under the app directory. If these configuration parameters are not specified, the in-memory storage is used, which will not be persistent if the node stops.
-* The block manager does not re-apply blocks when they transition from soft confirmed to DA included status. The block is only marked DA included in the caches.
-* Header and data stores use separate prefixes for isolation in the underlying database.
-* The genesis `ChainID` is used to create separate `PubSubTopID`s for headers and data in go-header.
-* Block sync over the P2P network works only when a full node is connected to the P2P network by specifying the initial seeds to connect to via `P2PConfig.Seeds` configuration parameter when starting the full node.
-* Node's context is passed down to all components to support graceful shutdown and cancellation.
-* The block manager supports custom signature payload providers for headers, enabling flexible signing schemes.
-* The block manager supports the separation of header and data structures in Evolve. This allows for expanding the sequencing scheme beyond single sequencing and enables the use of a decentralized sequencer mode. For detailed information on this architecture, see the [Header and Data Separation ADR](../../lazy-adr/adr-014-header-and-data-separation.md).
-* The block manager processes blocks with a minimal header format, which is designed to eliminate dependency on CometBFT's header format and can be used to produce an execution layer tailored header if needed. For details on this header structure, see the [Evolve Minimal Header](../../lazy-adr/adr-015-evolve-minimal-header.md) specification.
+- The block manager loads the initial state from the local store and uses genesis if not found in the local store, when the node (re)starts.
+- The default mode for sequencer nodes is normal (not lazy).
+- The sequencer can produce empty blocks.
+- In lazy aggregation mode, the block manager maintains consistency with the DA layer by producing empty blocks at regular intervals, ensuring a 1:1 mapping between DA layer blocks and execution layer blocks.
+- The lazy aggregation mechanism uses a dual timer approach:
+  - A `blockTimer` that triggers block production when transactions are available
+  - A `lazyTimer` that ensures blocks are produced even during periods of inactivity
+- Empty batches are handled differently in lazy mode - instead of discarding them, they are returned with the `ErrNoBatch` error, allowing the caller to create empty blocks with proper timestamps.
+- Transaction notifications from the `Reaper` to the `Manager` are handled via a non-blocking notification channel (`txNotifyCh`) to prevent backpressure.
+- The block manager enforces `MaxPendingHeadersAndData` limit to prevent unbounded growth of pending queues during DA submission issues.
+- Headers and data are submitted separately to the DA layer using different namespaces, supporting the header/data separation architecture.
+- The block manager uses persistent caches for headers and data to track seen items and DA inclusion status.
+- Namespace migration is handled transparently, with automatic detection and state persistence to optimize future operations.
+- The system supports backward compatibility with legacy single-namespace deployments while transitioning to separate namespaces.
+- Gas price management includes automatic adjustment with `GasMultiplier` on DA submission retries.
+- The block manager uses persistent storage (disk) when the `root_dir` and `db_path` configuration parameters are specified in `config.yaml` file under the app directory. If these configuration parameters are not specified, the in-memory storage is used, which will not be persistent if the node stops.
+- The block manager does not re-apply blocks when they transition from soft confirmed to DA included status. The block is only marked DA included in the caches.
+- Header and data stores use separate prefixes for isolation in the underlying database.
+- The genesis `ChainID` is used to create separate `PubSubTopID`s for headers and data in go-header.
+- Block sync over the P2P network works only when a full node is connected to the P2P network by specifying the initial seeds to connect to via `P2PConfig.Seeds` configuration parameter when starting the full node.
+- Node's context is passed down to all components to support graceful shutdown and cancellation.
+- The block manager supports custom signature payload providers for headers, enabling flexible signing schemes.
+- The block manager supports the separation of header and data structures in Evolve. This allows for expanding the sequencing scheme beyond single sequencing and enables the use of a decentralized sequencer mode. For detailed information on this architecture, see the [Header and Data Separation ADR](../../lazy-adr/adr-014-header-and-data-separation.md).
+- The block manager processes blocks with a minimal header format, which is designed to eliminate dependency on CometBFT's header format and can be used to produce an execution layer tailored header if needed. For details on this header structure, see the [Evolve Minimal Header](../../lazy-adr/adr-015-evolve-minimal-header.md) specification.
 
 ## Metrics
 
@@ -599,42 +599,42 @@ The block manager exposes comprehensive metrics for monitoring:
 
 ### Block Production Metrics
 
-* `last_block_produced_height`: Height of the last produced block
-* `last_block_produced_time`: Timestamp of the last produced block
-* `aggregation_type`: Current aggregation mode (normal/lazy)
-* `block_size_bytes`: Size distribution of produced blocks
-* `produced_empty_blocks_total`: Count of empty blocks produced
+- `last_block_produced_height`: Height of the last produced block
+- `last_block_produced_time`: Timestamp of the last produced block
+- `aggregation_type`: Current aggregation mode (normal/lazy)
+- `block_size_bytes`: Size distribution of produced blocks
+- `produced_empty_blocks_total`: Count of empty blocks produced
 
 ### DA Metrics
 
-* `da_submission_attempts_total`: Total DA submission attempts
-* `da_submission_success_total`: Successful DA submissions
-* `da_submission_failure_total`: Failed DA submissions
-* `da_retrieval_attempts_total`: Total DA retrieval attempts
-* `da_retrieval_success_total`: Successful DA retrievals
-* `da_retrieval_failure_total`: Failed DA retrievals
-* `da_height`: Current DA retrieval height
-* `pending_headers_count`: Number of headers pending DA submission
-* `pending_data_count`: Number of data blocks pending DA submission
+- `da_submission_attempts_total`: Total DA submission attempts
+- `da_submission_success_total`: Successful DA submissions
+- `da_submission_failure_total`: Failed DA submissions
+- `da_retrieval_attempts_total`: Total DA retrieval attempts
+- `da_retrieval_success_total`: Successful DA retrievals
+- `da_retrieval_failure_total`: Failed DA retrievals
+- `da_height`: Current DA retrieval height
+- `pending_headers_count`: Number of headers pending DA submission
+- `pending_data_count`: Number of data blocks pending DA submission
 
 ### Sync Metrics
 
-* `sync_height`: Current sync height
-* `da_included_height`: Height of last DA-included block
-* `soft_confirmed_height`: Height of last soft confirmed block
-* `header_store_height`: Current header store height
-* `data_store_height`: Current data store height
+- `sync_height`: Current sync height
+- `da_included_height`: Height of last DA-included block
+- `soft_confirmed_height`: Height of last soft confirmed block
+- `header_store_height`: Current header store height
+- `data_store_height`: Current data store height
 
 ### Performance Metrics
 
-* `block_production_time`: Time to produce a block
-* `da_submission_time`: Time to submit to DA
-* `state_update_time`: Time to apply block and update state
-* `channel_buffer_usage`: Usage of internal channels
+- `block_production_time`: Time to produce a block
+- `da_submission_time`: Time to submit to DA
+- `state_update_time`: Time to apply block and update state
+- `channel_buffer_usage`: Usage of internal channels
 
 ### Error Metrics
 
-* `errors_total`: Total errors by type and operation
+- `errors_total`: Total errors by type and operation
 
 ## Implementation
 

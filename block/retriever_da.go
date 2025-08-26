@@ -24,8 +24,8 @@ const (
 // daRetriever encapsulates DA retrieval with pending events management
 type daRetriever struct {
 	manager       *Manager
+	mutex         sync.RWMutex // mutex for pendingEvents
 	pendingEvents map[uint64][]pendingDAEvent
-	mutex         sync.RWMutex
 }
 
 // pendingDAEvent represents a DA event waiting for processing
@@ -200,7 +200,7 @@ func (m *Manager) tryDecodeHeader(bz []byte, daHeight uint64) *types.SignedHeade
 	}
 
 	// early validation to reject junk headers
-	if ok, err := m.isUsingExpectedSingleSequencer(header.ProposerAddress); !ok {
+	if err := m.assertUsingExpectedSingleSequencer(header.ProposerAddress); err != nil {
 		m.logger.Debug().
 			Uint64("headerHeight", header.Height()).
 			Str("headerHash", header.Hash().String()).
@@ -253,9 +253,8 @@ func (m *Manager) tryDecodeData(bz []byte, daHeight uint64) *types.Data {
 	return &signedData.Data
 }
 
-// isAtHeight checks if a height is available without blocking
-// waitForHeightNonBlocking checks if a height is available without blocking
-func (m *Manager) waitForHeightNonBlocking(ctx context.Context, height uint64) error {
+// isAtHeight checks if a height is available.
+func (m *Manager) isAtHeight(ctx context.Context, height uint64) error {
 	currentHeight, err := m.GetStoreHeight(ctx)
 	if err != nil {
 		return err
@@ -282,8 +281,8 @@ func (dr *daRetriever) sendHeightEventIfValid(ctx context.Context, header *types
 		return
 	}
 
-	// Check if we can validate this height immediately (non-blocking check)
-	if err := dr.manager.waitForHeightNonBlocking(ctx, header.Height()-1); err != nil {
+	// Check if we can validate this height immediately
+	if err := dr.manager.isAtHeight(ctx, header.Height()-1); err != nil {
 		// Queue this event for later processing when the prerequisite height is available
 		dr.queuePendingEvent(header, data, daHeight)
 		return
@@ -316,7 +315,7 @@ func (dr *daRetriever) queuePendingEvent(header *types.SignedHeader, data *types
 func (dr *daRetriever) processEvent(ctx context.Context, header *types.SignedHeader, data *types.Data, daHeight uint64) {
 	headerHash := header.Hash().String()
 
-	// Validate header with its data - this requires previous height to be stored
+	// Validate header with its data - some execution environment may require previous height to be stored
 	if err := header.ValidateBasicWithData(data); err != nil {
 		dr.manager.logger.Debug().Uint64("height", header.Height()).Err(err).Msg("header validation with data failed")
 		return
@@ -365,7 +364,7 @@ func (dr *daRetriever) processPendingEvents(ctx context.Context) {
 	defer dr.mutex.Unlock()
 
 	for height, events := range dr.pendingEvents {
-		if height-1 <= currentHeight {
+		if height <= currentHeight+1 {
 			for _, event := range events {
 				dr.manager.logger.Debug().
 					Uint64("height", height).

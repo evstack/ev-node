@@ -72,7 +72,7 @@ func (m *Manager) processHeaderStoreRange(ctx context.Context, startHeight, endH
 		}
 
 		// early validation to reject junk headers
-		if ok, _ := m.isUsingExpectedSingleSequencer(header.ProposerAddress); !ok {
+		if err := m.assertUsingExpectedSingleSequencer(header.ProposerAddress); err != nil {
 			continue
 		}
 
@@ -127,7 +127,7 @@ func (m *Manager) processDataStoreRange(ctx context.Context, startHeight, endHei
 		}
 
 		// early validation to reject junk headers
-		if ok, _ := m.isUsingExpectedSingleSequencer(header.ProposerAddress); !ok {
+		if err := m.assertUsingExpectedSingleSequencer(header.ProposerAddress); err != nil {
 			continue
 		}
 

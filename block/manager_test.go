@@ -713,12 +713,12 @@ func TestUtilityFunctions(t *testing.T) {
 		require.ErrorContains(err, "signer is nil; cannot sign header")
 	})
 
-	t.Run("IsUsingExpectedSingleSequencer", func(t *testing.T) {
+	t.Run("AssertUsingExpectedSingleSequencer", func(t *testing.T) {
 		require := require.New(t)
 		m, _ := getManager(t, mocks.NewMockDA(t), -1, -1)
 
 		// Create genesis data for the test
-		genesisData, privKey, _ := types.GetGenesisWithPrivkey("TestIsUsingExpectedSingleSequencer")
+		genesisData, privKey, _ := types.GetGenesisWithPrivkey("TestAssertUsingExpectedSingleSequencer")
 		m.genesis = genesisData
 
 		// Create a signer
@@ -751,15 +751,13 @@ func TestUtilityFunctions(t *testing.T) {
 		header.Signature = signature
 
 		// Should return true for valid header with correct proposer
-		ok, err := m.isUsingExpectedSingleSequencer(header.ProposerAddress)
+		err = m.assertUsingExpectedSingleSequencer(header.ProposerAddress)
 		require.NoError(err)
-		require.True(ok)
 
 		// Should return false for header with wrong proposer address
 		header.ProposerAddress = []byte("wrong-proposer")
-		ok, err = m.isUsingExpectedSingleSequencer(header.ProposerAddress)
+		err = m.assertUsingExpectedSingleSequencer(header.ProposerAddress)
 		require.Error(err)
-		require.False(ok)
 	})
 }
 

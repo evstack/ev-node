@@ -48,7 +48,7 @@ const (
 	namespaceMigrationKey = "namespace_migration_completed"
 
 	// Applies to the headerInCh and dataInCh, 20000 is a large enough number for headers per DA block.
-	eventInChLength = 20000
+	eventInChLength = 10000
 )
 
 var (
@@ -609,13 +609,13 @@ func (m *Manager) retrieveBatch(ctx context.Context) (*BatchData, error) {
 	return nil, ErrNoBatch
 }
 
-// isUsingExpectedSingleSequencer checks if the header is using the expected single sequencer.
-func (m *Manager) isUsingExpectedSingleSequencer(proposerAddress []byte) (bool, error) {
+// assertUsingExpectedSingleSequencer checks if the header is using the expected single sequencer.
+func (m *Manager) assertUsingExpectedSingleSequencer(proposerAddress []byte) error {
 	if !bytes.Equal(m.genesis.ProposerAddress, proposerAddress) {
-		return false, fmt.Errorf("proposer address is not the same as the genesis proposer address %x != %x", proposerAddress, m.genesis.ProposerAddress)
+		return fmt.Errorf("proposer address is not the same as the genesis proposer address %x != %x", proposerAddress, m.genesis.ProposerAddress)
 	}
 
-	return true, nil
+	return nil
 }
 
 // publishBlockInternal is the internal implementation for publishing a block.
@@ -870,7 +870,7 @@ func (m *Manager) execCreateBlock(_ context.Context, height uint64, lastSignatur
 		return nil, nil, fmt.Errorf("failed to get proposer address: %w", err)
 	}
 
-	if _, err := m.isUsingExpectedSingleSequencer(address); err != nil {
+	if err := m.assertUsingExpectedSingleSequencer(address); err != nil {
 		return nil, nil, err
 	}
 
@@ -1108,7 +1108,7 @@ func (m *Manager) isValidSignedData(signedData *types.SignedData) bool {
 		return false
 	}
 
-	if ok, _ := m.isUsingExpectedSingleSequencer(signedData.Signer.Address); !ok {
+	if err := m.assertUsingExpectedSingleSequencer(signedData.Signer.Address); err != nil {
 		return false
 	}
 
