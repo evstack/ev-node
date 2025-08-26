@@ -118,4 +118,4 @@ gmd start --evnode.node.aggregator
 
 ## Summary
 
-By following these steps, you will set up the genesis for your chain, initialize the validator, add a genesis account, and started the chain. This guide provides a basic framework for configuring and starting your chain using the gm-world binary. Make sure you initialized your chain correctly, and use the `gmd` command for all operations.
+By following these steps, you will set up the genesis for your chain, initialize the validator, add a genesis account, and start the chain. This guide provides a basic framework for configuring and starting your chain using the gm-world binary. Make sure you initialized your chain correctly, and use the `gmd` command for all operations.
