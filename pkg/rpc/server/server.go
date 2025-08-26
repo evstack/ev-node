@@ -15,7 +15,6 @@ import (
 	"connectrpc.com/grpcreflect"
 	coreda "github.com/evstack/ev-node/core/da"
 	ds "github.com/ipfs/go-datastore"
-	"github.com/libp2p/go-libp2p/core/crypto"
 	"github.com/rs/zerolog"
 	"golang.org/x/net/http2"
 	"golang.org/x/net/http2/h2c"
@@ -195,41 +194,35 @@ func (cs *ConfigServer) GetNamespace(
 	}), nil
 }
 
-// Temporary struct until protobuf is regenerated
-type GetSequencerInfoResponse struct {
-	PublicKey []byte `json:"public_key"`
-	Address   []byte `json:"address"`
-}
-
 func (cs *ConfigServer) GetSequencerInfo(
 	ctx context.Context,
 	req *connect.Request[emptypb.Empty],
-) (*connect.Response[*GetSequencerInfoResponse], error) {
-	
+) (*connect.Response[pb.GetSequencerInfoResponse], error) {
+
 	// If no signer is available, return an error
 	if cs.signer == nil {
 		return nil, connect.NewError(connect.CodeUnavailable, fmt.Errorf("sequencer signer not available"))
 	}
-	
+
 	// Get the public key from the signer
 	pubKey, err := cs.signer.GetPublic()
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to get sequencer public key: %w", err))
 	}
-	
+
 	// Get the address from the signer
 	address, err := cs.signer.GetAddress()
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to get sequencer address: %w", err))
 	}
-	
+
 	// Get raw bytes from the public key
 	pubKeyBytes, err := pubKey.Raw()
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to serialize public key: %w", err))
 	}
-	
-	return connect.NewResponse(&GetSequencerInfoResponse{
+
+	return connect.NewResponse(&pb.GetSequencerInfoResponse{
 		PublicKey: pubKeyBytes,
 		Address:   address,
 	}), nil

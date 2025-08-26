@@ -37,12 +37,17 @@ const (
 	// ConfigServiceGetNamespaceProcedure is the fully-qualified name of the ConfigService's
 	// GetNamespace RPC.
 	ConfigServiceGetNamespaceProcedure = "/evnode.v1.ConfigService/GetNamespace"
+	// ConfigServiceGetSequencerInfoProcedure is the fully-qualified name of the ConfigService's
+	// GetSequencerInfo RPC.
+	ConfigServiceGetSequencerInfoProcedure = "/evnode.v1.ConfigService/GetSequencerInfo"
 )
 
 // ConfigServiceClient is a client for the evnode.v1.ConfigService service.
 type ConfigServiceClient interface {
 	// GetNamespace returns the namespace for this network
 	GetNamespace(context.Context, *connect.Request[emptypb.Empty]) (*connect.Response[v1.GetNamespaceResponse], error)
+	// GetSequencerInfo returns information about the sequencer
+	GetSequencerInfo(context.Context, *connect.Request[emptypb.Empty]) (*connect.Response[v1.GetSequencerInfoResponse], error)
 }
 
 // NewConfigServiceClient constructs a client for the evnode.v1.ConfigService service. By default,
@@ -62,12 +67,19 @@ func NewConfigServiceClient(httpClient connect.HTTPClient, baseURL string, opts 
 			connect.WithSchema(configServiceMethods.ByName("GetNamespace")),
 			connect.WithClientOptions(opts...),
 		),
+		getSequencerInfo: connect.NewClient[emptypb.Empty, v1.GetSequencerInfoResponse](
+			httpClient,
+			baseURL+ConfigServiceGetSequencerInfoProcedure,
+			connect.WithSchema(configServiceMethods.ByName("GetSequencerInfo")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
 // configServiceClient implements ConfigServiceClient.
 type configServiceClient struct {
-	getNamespace *connect.Client[emptypb.Empty, v1.GetNamespaceResponse]
+	getNamespace     *connect.Client[emptypb.Empty, v1.GetNamespaceResponse]
+	getSequencerInfo *connect.Client[emptypb.Empty, v1.GetSequencerInfoResponse]
 }
 
 // GetNamespace calls evnode.v1.ConfigService.GetNamespace.
@@ -75,10 +87,17 @@ func (c *configServiceClient) GetNamespace(ctx context.Context, req *connect.Req
 	return c.getNamespace.CallUnary(ctx, req)
 }
 
+// GetSequencerInfo calls evnode.v1.ConfigService.GetSequencerInfo.
+func (c *configServiceClient) GetSequencerInfo(ctx context.Context, req *connect.Request[emptypb.Empty]) (*connect.Response[v1.GetSequencerInfoResponse], error) {
+	return c.getSequencerInfo.CallUnary(ctx, req)
+}
+
 // ConfigServiceHandler is an implementation of the evnode.v1.ConfigService service.
 type ConfigServiceHandler interface {
 	// GetNamespace returns the namespace for this network
 	GetNamespace(context.Context, *connect.Request[emptypb.Empty]) (*connect.Response[v1.GetNamespaceResponse], error)
+	// GetSequencerInfo returns information about the sequencer
+	GetSequencerInfo(context.Context, *connect.Request[emptypb.Empty]) (*connect.Response[v1.GetSequencerInfoResponse], error)
 }
 
 // NewConfigServiceHandler builds an HTTP handler from the service implementation. It returns the
@@ -94,10 +113,18 @@ func NewConfigServiceHandler(svc ConfigServiceHandler, opts ...connect.HandlerOp
 		connect.WithSchema(configServiceMethods.ByName("GetNamespace")),
 		connect.WithHandlerOptions(opts...),
 	)
+	configServiceGetSequencerInfoHandler := connect.NewUnaryHandler(
+		ConfigServiceGetSequencerInfoProcedure,
+		svc.GetSequencerInfo,
+		connect.WithSchema(configServiceMethods.ByName("GetSequencerInfo")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/evnode.v1.ConfigService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case ConfigServiceGetNamespaceProcedure:
 			configServiceGetNamespaceHandler.ServeHTTP(w, r)
+		case ConfigServiceGetSequencerInfoProcedure:
+			configServiceGetSequencerInfoHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -109,4 +136,8 @@ type UnimplementedConfigServiceHandler struct{}
 
 func (UnimplementedConfigServiceHandler) GetNamespace(context.Context, *connect.Request[emptypb.Empty]) (*connect.Response[v1.GetNamespaceResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("evnode.v1.ConfigService.GetNamespace is not implemented"))
+}
+
+func (UnimplementedConfigServiceHandler) GetSequencerInfo(context.Context, *connect.Request[emptypb.Empty]) (*connect.Response[v1.GetSequencerInfoResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("evnode.v1.ConfigService.GetSequencerInfo is not implemented"))
 }

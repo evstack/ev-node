@@ -1,5 +1,7 @@
 use crate::{client::Client, error::Result};
-use ev_types::v1::{config_service_client::ConfigServiceClient, GetNamespaceResponse};
+use ev_types::v1::{
+    config_service_client::ConfigServiceClient, GetNamespaceResponse, GetSequencerInfoResponse,
+};
 use tonic::Request;
 
 pub struct ConfigClient {
@@ -17,6 +19,14 @@ impl ConfigClient {
     pub async fn get_namespace(&self) -> Result<GetNamespaceResponse> {
         let request = Request::new(());
         let response = self.inner.clone().get_namespace(request).await?;
+
+        Ok(response.into_inner())
+    }
+
+    /// Get SequencerInfo
+    pub async fn get_sequencer_info(&self) -> Result<GetSequencerInfoResponse> {
+        let request = Request::new(());
+        let response = self.inner.clone().get_sequencer_info(request).await?;
 
         Ok(response.into_inner())
     }
