@@ -316,7 +316,7 @@ func TestHealthLiveEndpoint(t *testing.T) {
 	// Create the service handler
 	logger := zerolog.Nop()
 	testConfig := config.DefaultConfig
-	handler, err := NewServiceHandler(mockStore, mockP2PManager, logger, testConfig)
+	handler, err := NewServiceHandler(mockStore, mockP2PManager, nil, logger, testConfig)
 	assert.NoError(err)
 	assert.NotNil(handler)
 

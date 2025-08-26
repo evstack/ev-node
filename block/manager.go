@@ -572,6 +572,11 @@ func (m *Manager) GetExecutor() coreexecutor.Executor {
 	return m.exec
 }
 
+// GetSigner returns the signer instance used by this manager
+func (m *Manager) GetSigner() signer.Signer {
+	return m.signer
+}
+
 func (m *Manager) retrieveBatch(ctx context.Context) (*BatchData, error) {
 	m.logger.Debug().Str("chainID", m.genesis.ChainID).Interface("lastBatchData", m.lastBatchData).Msg("Attempting to retrieve next batch")
 

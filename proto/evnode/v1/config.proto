@@ -7,15 +7,24 @@ import "evnode/v1/state.proto";
 
 option go_package = "github.com/evstack/ev-node/types/pb/evnode/v1";
 
-// StoreService defines the RPC service for the store package
+// ConfigService defines the RPC service for configuration queries
 service ConfigService {
 
   // GetNamespace returns the namespace for this network
   rpc GetNamespace(google.protobuf.Empty) returns (GetNamespaceResponse) {}
+  
+  // GetSequencerInfo returns information about the sequencer
+  rpc GetSequencerInfo(google.protobuf.Empty) returns (GetSequencerInfoResponse) {}
 }
 
 // GetNamespaceResponse returns the namespace for this network
 message GetNamespaceResponse {
   string header_namespace = 1;
   string data_namespace   = 2;
+}
+
+// GetSequencerInfoResponse returns information about the sequencer
+message GetSequencerInfoResponse {
+  bytes public_key = 1;
+  bytes address = 2;
 }

@@ -15,6 +15,7 @@ import (
 	"connectrpc.com/grpcreflect"
 	coreda "github.com/evstack/ev-node/core/da"
 	ds "github.com/ipfs/go-datastore"
+	"github.com/libp2p/go-libp2p/core/crypto"
 	"github.com/rs/zerolog"
 	"golang.org/x/net/http2"
 	"golang.org/x/net/http2/h2c"
@@ -23,6 +24,7 @@ import (
 
 	"github.com/evstack/ev-node/pkg/config"
 	"github.com/evstack/ev-node/pkg/p2p"
+	"github.com/evstack/ev-node/pkg/signer"
 	"github.com/evstack/ev-node/pkg/store"
 	"github.com/evstack/ev-node/types"
 	pb "github.com/evstack/ev-node/types/pb/evnode/v1"
@@ -167,12 +169,14 @@ func (s *StoreServer) GetMetadata(
 
 type ConfigServer struct {
 	config config.Config
+	signer signer.Signer
 	logger zerolog.Logger
 }
 
-func NewConfigServer(config config.Config, logger zerolog.Logger) *ConfigServer {
+func NewConfigServer(config config.Config, signer signer.Signer, logger zerolog.Logger) *ConfigServer {
 	return &ConfigServer{
 		config: config,
+		signer: signer,
 		logger: logger,
 	}
 }
@@ -188,6 +192,46 @@ func (cs *ConfigServer) GetNamespace(
 	return connect.NewResponse(&pb.GetNamespaceResponse{
 		HeaderNamespace: hex.EncodeToString(hns),
 		DataNamespace:   hex.EncodeToString(dns),
+	}), nil
+}
+
+// Temporary struct until protobuf is regenerated
+type GetSequencerInfoResponse struct {
+	PublicKey []byte `json:"public_key"`
+	Address   []byte `json:"address"`
+}
+
+func (cs *ConfigServer) GetSequencerInfo(
+	ctx context.Context,
+	req *connect.Request[emptypb.Empty],
+) (*connect.Response[*GetSequencerInfoResponse], error) {
+	
+	// If no signer is available, return an error
+	if cs.signer == nil {
+		return nil, connect.NewError(connect.CodeUnavailable, fmt.Errorf("sequencer signer not available"))
+	}
+	
+	// Get the public key from the signer
+	pubKey, err := cs.signer.GetPublic()
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to get sequencer public key: %w", err))
+	}
+	
+	// Get the address from the signer
+	address, err := cs.signer.GetAddress()
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to get sequencer address: %w", err))
+	}
+	
+	// Get raw bytes from the public key
+	pubKeyBytes, err := pubKey.Raw()
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to serialize public key: %w", err))
+	}
+	
+	return connect.NewResponse(&GetSequencerInfoResponse{
+		PublicKey: pubKeyBytes,
+		Address:   address,
 	}), nil
 }
 
@@ -268,11 +312,11 @@ func (h *HealthServer) Livez(
 }
 
 // NewServiceHandler creates a new HTTP handler for Store, P2P and Health services
-func NewServiceHandler(store store.Store, peerManager p2p.P2PRPC, logger zerolog.Logger, config config.Config) (http.Handler, error) {
+func NewServiceHandler(store store.Store, peerManager p2p.P2PRPC, signer signer.Signer, logger zerolog.Logger, config config.Config) (http.Handler, error) {
 	storeServer := NewStoreServer(store, logger)
 	p2pServer := NewP2PServer(peerManager)
 	healthServer := NewHealthServer()
-	configServer := NewConfigServer(config, logger)
+	configServer := NewConfigServer(config, signer, logger)
 
 	mux := http.NewServeMux()
 
