@@ -7,7 +7,7 @@ description: Learn how to build and deploy a CosmWasm-based "gm" (good morning) 
 
 ## 🌞 Introduction {#introduction}
 
-This tutorial will guide you through building a evolve `gm-world` chain (`gm` stands for "good morning") using Evolve. Unlike the [quick start guide](/docs/guides/quick-start.md), this tutorial provides a more practical approach to understanding evolve chain development.
+This tutorial will guide you through building a evolve `gm-world` chain (`gm` stands for "good morning") using Evolve. Unlike the [quick start guide](./quick-start.md), this tutorial provides a more practical approach to understanding evolve chain development.
 
 We will cover:
 
@@ -105,7 +105,7 @@ First lets start the local DA network:
 
 ```bash
 git clone  --depth=1 --branch v1.0.0-beta.2 https://github.com/evstack/ev-node.git
-cd ev-node 
+cd ev-node
 make build-da
 ./build/local-da
 ```

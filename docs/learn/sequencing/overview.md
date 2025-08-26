@@ -41,4 +41,4 @@ It mainly consists of:
 An implementation of the sequencing interface mainly acts as a middleware that connects Evolve chain and the sequencing layer. It implements the sequencing interface functions described above.
 There are several implementations of the sequencer but for now only one is available in Evolve.
 
-* [single-sequencer](/docs/learn/sequencing/single.md) - The simplest and most widely used sequencing model, where a single node (the sequencer) is responsible for ordering transactions and producing blocks.
+* [single-sequencer](./single.md) - The simplest and most widely used sequencing model, where a single node (the sequencer) is responsible for ordering transactions and producing blocks.
