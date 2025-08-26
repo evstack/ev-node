@@ -12,9 +12,9 @@ service ConfigService {
 
   // GetNamespace returns the namespace for this network
   rpc GetNamespace(google.protobuf.Empty) returns (GetNamespaceResponse) {}
-  
+
   // GetSequencerInfo returns information about the sequencer
-  rpc GetSequencerInfo(google.protobuf.Empty) returns (GetSequencerInfoResponse) {}
+  rpc GetSignerInfo(google.protobuf.Empty) returns (GetSignerInfoResponse) {}
 }
 
 // GetNamespaceResponse returns the namespace for this network
@@ -24,7 +24,7 @@ message GetNamespaceResponse {
 }
 
 // GetSequencerInfoResponse returns information about the sequencer
-message GetSequencerInfoResponse {
+message GetSignerInfoResponse {
   bytes public_key = 1;
   bytes address = 2;
 }

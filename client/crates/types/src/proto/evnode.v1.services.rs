@@ -2442,7 +2442,7 @@ pub struct GetNamespaceResponse {
 /// GetSequencerInfoResponse returns information about the sequencer
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
-pub struct GetSequencerInfoResponse {
+pub struct GetSignerInfoResponse {
     #[prost(bytes = "vec", tag = "1")]
     pub public_key: ::prost::alloc::vec::Vec<u8>,
     #[prost(bytes = "vec", tag = "2")]
@@ -2561,11 +2561,11 @@ pub mod config_service_client {
             self.inner.unary(req, path, codec).await
         }
         /// GetSequencerInfo returns information about the sequencer
-        pub async fn get_sequencer_info(
+        pub async fn get_signer_info(
             &mut self,
             request: impl tonic::IntoRequest<()>,
         ) -> std::result::Result<
-            tonic::Response<super::GetSequencerInfoResponse>,
+            tonic::Response<super::GetSignerInfoResponse>,
             tonic::Status,
         > {
             self.inner
@@ -2579,11 +2579,11 @@ pub mod config_service_client {
                 })?;
             let codec = tonic::codec::ProstCodec::default();
             let path = http::uri::PathAndQuery::from_static(
-                "/evnode.v1.ConfigService/GetSequencerInfo",
+                "/evnode.v1.ConfigService/GetSignerInfo",
             );
             let mut req = request.into_request();
             req.extensions_mut()
-                .insert(GrpcMethod::new("evnode.v1.ConfigService", "GetSequencerInfo"));
+                .insert(GrpcMethod::new("evnode.v1.ConfigService", "GetSignerInfo"));
             self.inner.unary(req, path, codec).await
         }
     }
@@ -2604,11 +2604,11 @@ pub mod config_service_server {
             tonic::Status,
         >;
         /// GetSequencerInfo returns information about the sequencer
-        async fn get_sequencer_info(
+        async fn get_signer_info(
             &self,
             request: tonic::Request<()>,
         ) -> std::result::Result<
-            tonic::Response<super::GetSequencerInfoResponse>,
+            tonic::Response<super::GetSignerInfoResponse>,
             tonic::Status,
         >;
     }
@@ -2733,12 +2733,12 @@ pub mod config_service_server {
                     };
                     Box::pin(fut)
                 }
-                "/evnode.v1.ConfigService/GetSequencerInfo" => {
+                "/evnode.v1.ConfigService/GetSignerInfo" => {
                     #[allow(non_camel_case_types)]
-                    struct GetSequencerInfoSvc<T: ConfigService>(pub Arc<T>);
+                    struct GetSignerInfoSvc<T: ConfigService>(pub Arc<T>);
                     impl<T: ConfigService> tonic::server::UnaryService<()>
-                    for GetSequencerInfoSvc<T> {
-                        type Response = super::GetSequencerInfoResponse;
+                    for GetSignerInfoSvc<T> {
+                        type Response = super::GetSignerInfoResponse;
                         type Future = BoxFuture<
                             tonic::Response<Self::Response>,
                             tonic::Status,
@@ -2746,8 +2746,7 @@ pub mod config_service_server {
                         fn call(&mut self, request: tonic::Request<()>) -> Self::Future {
                             let inner = Arc::clone(&self.0);
                             let fut = async move {
-                                <T as ConfigService>::get_sequencer_info(&inner, request)
-                                    .await
+                                <T as ConfigService>::get_signer_info(&inner, request).await
                             };
                             Box::pin(fut)
                         }
@@ -2759,7 +2758,7 @@ pub mod config_service_server {
                     let inner = self.inner.clone();
                     let fut = async move {
                         let inner = inner.0;
-                        let method = GetSequencerInfoSvc(inner);
+                        let method = GetSignerInfoSvc(inner);
                         let codec = tonic::codec::ProstCodec::default();
                         let mut grpc = tonic::server::Grpc::new(codec)
                             .apply_compression_config(

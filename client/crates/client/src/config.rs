@@ -1,6 +1,6 @@
 use crate::{client::Client, error::Result};
 use ev_types::v1::{
-    config_service_client::ConfigServiceClient, GetNamespaceResponse, GetSequencerInfoResponse,
+    config_service_client::ConfigServiceClient, GetNamespaceResponse, GetSignerInfoResponse,
 };
 use tonic::Request;
 
@@ -24,9 +24,9 @@ impl ConfigClient {
     }
 
     /// Get SequencerInfo
-    pub async fn get_sequencer_info(&self) -> Result<GetSequencerInfoResponse> {
+    pub async fn get_signer_info(&self) -> Result<GetSignerInfoResponse> {
         let request = Request::new(());
-        let response = self.inner.clone().get_sequencer_info(request).await?;
+        let response = self.inner.clone().get_signer_info(request).await?;
 
         Ok(response.into_inner())
     }

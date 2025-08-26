@@ -76,7 +76,7 @@ func (x *GetNamespaceResponse) GetDataNamespace() string {
 }
 
 // GetSequencerInfoResponse returns information about the sequencer
-type GetSequencerInfoResponse struct {
+type GetSignerInfoResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	PublicKey     []byte                 `protobuf:"bytes,1,opt,name=public_key,json=publicKey,proto3" json:"public_key,omitempty"`
 	Address       []byte                 `protobuf:"bytes,2,opt,name=address,proto3" json:"address,omitempty"`
@@ -84,20 +84,20 @@ type GetSequencerInfoResponse struct {
 	sizeCache     protoimpl.SizeCache
 }
 
-func (x *GetSequencerInfoResponse) Reset() {
-	*x = GetSequencerInfoResponse{}
+func (x *GetSignerInfoResponse) Reset() {
+	*x = GetSignerInfoResponse{}
 	mi := &file_evnode_v1_config_proto_msgTypes[1]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *GetSequencerInfoResponse) String() string {
+func (x *GetSignerInfoResponse) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*GetSequencerInfoResponse) ProtoMessage() {}
+func (*GetSignerInfoResponse) ProtoMessage() {}
 
-func (x *GetSequencerInfoResponse) ProtoReflect() protoreflect.Message {
+func (x *GetSignerInfoResponse) ProtoReflect() protoreflect.Message {
 	mi := &file_evnode_v1_config_proto_msgTypes[1]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -109,19 +109,19 @@ func (x *GetSequencerInfoResponse) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use GetSequencerInfoResponse.ProtoReflect.Descriptor instead.
-func (*GetSequencerInfoResponse) Descriptor() ([]byte, []int) {
+// Deprecated: Use GetSignerInfoResponse.ProtoReflect.Descriptor instead.
+func (*GetSignerInfoResponse) Descriptor() ([]byte, []int) {
 	return file_evnode_v1_config_proto_rawDescGZIP(), []int{1}
 }
 
-func (x *GetSequencerInfoResponse) GetPublicKey() []byte {
+func (x *GetSignerInfoResponse) GetPublicKey() []byte {
 	if x != nil {
 		return x.PublicKey
 	}
 	return nil
 }
 
-func (x *GetSequencerInfoResponse) GetAddress() []byte {
+func (x *GetSignerInfoResponse) GetAddress() []byte {
 	if x != nil {
 		return x.Address
 	}
@@ -135,14 +135,14 @@ const file_evnode_v1_config_proto_rawDesc = "" +
 	"\x16evnode/v1/config.proto\x12\tevnode.v1\x1a\x1bgoogle/protobuf/empty.proto\x1a\x16evnode/v1/evnode.proto\x1a\x15evnode/v1/state.proto\"h\n" +
 	"\x14GetNamespaceResponse\x12)\n" +
 	"\x10header_namespace\x18\x01 \x01(\tR\x0fheaderNamespace\x12%\n" +
-	"\x0edata_namespace\x18\x02 \x01(\tR\rdataNamespace\"S\n" +
-	"\x18GetSequencerInfoResponse\x12\x1d\n" +
+	"\x0edata_namespace\x18\x02 \x01(\tR\rdataNamespace\"P\n" +
+	"\x15GetSignerInfoResponse\x12\x1d\n" +
 	"\n" +
 	"public_key\x18\x01 \x01(\fR\tpublicKey\x12\x18\n" +
-	"\aaddress\x18\x02 \x01(\fR\aaddress2\xad\x01\n" +
+	"\aaddress\x18\x02 \x01(\fR\aaddress2\xa7\x01\n" +
 	"\rConfigService\x12I\n" +
-	"\fGetNamespace\x12\x16.google.protobuf.Empty\x1a\x1f.evnode.v1.GetNamespaceResponse\"\x00\x12Q\n" +
-	"\x10GetSequencerInfo\x12\x16.google.protobuf.Empty\x1a#.evnode.v1.GetSequencerInfoResponse\"\x00B/Z-github.com/evstack/ev-node/types/pb/evnode/v1b\x06proto3"
+	"\fGetNamespace\x12\x16.google.protobuf.Empty\x1a\x1f.evnode.v1.GetNamespaceResponse\"\x00\x12K\n" +
+	"\rGetSignerInfo\x12\x16.google.protobuf.Empty\x1a .evnode.v1.GetSignerInfoResponse\"\x00B/Z-github.com/evstack/ev-node/types/pb/evnode/v1b\x06proto3"
 
 var (
 	file_evnode_v1_config_proto_rawDescOnce sync.Once
@@ -158,15 +158,15 @@ func file_evnode_v1_config_proto_rawDescGZIP() []byte {
 
 var file_evnode_v1_config_proto_msgTypes = make([]protoimpl.MessageInfo, 2)
 var file_evnode_v1_config_proto_goTypes = []any{
-	(*GetNamespaceResponse)(nil),     // 0: evnode.v1.GetNamespaceResponse
-	(*GetSequencerInfoResponse)(nil), // 1: evnode.v1.GetSequencerInfoResponse
-	(*emptypb.Empty)(nil),            // 2: google.protobuf.Empty
+	(*GetNamespaceResponse)(nil),  // 0: evnode.v1.GetNamespaceResponse
+	(*GetSignerInfoResponse)(nil), // 1: evnode.v1.GetSignerInfoResponse
+	(*emptypb.Empty)(nil),         // 2: google.protobuf.Empty
 }
 var file_evnode_v1_config_proto_depIdxs = []int32{
 	2, // 0: evnode.v1.ConfigService.GetNamespace:input_type -> google.protobuf.Empty
-	2, // 1: evnode.v1.ConfigService.GetSequencerInfo:input_type -> google.protobuf.Empty
+	2, // 1: evnode.v1.ConfigService.GetSignerInfo:input_type -> google.protobuf.Empty
 	0, // 2: evnode.v1.ConfigService.GetNamespace:output_type -> evnode.v1.GetNamespaceResponse
-	1, // 3: evnode.v1.ConfigService.GetSequencerInfo:output_type -> evnode.v1.GetSequencerInfoResponse
+	1, // 3: evnode.v1.ConfigService.GetSignerInfo:output_type -> evnode.v1.GetSignerInfoResponse
 	2, // [2:4] is the sub-list for method output_type
 	0, // [0:2] is the sub-list for method input_type
 	0, // [0:0] is the sub-list for extension type_name

@@ -194,10 +194,10 @@ func (cs *ConfigServer) GetNamespace(
 	}), nil
 }
 
-func (cs *ConfigServer) GetSequencerInfo(
+func (cs *ConfigServer) GetSignerInfo(
 	ctx context.Context,
 	req *connect.Request[emptypb.Empty],
-) (*connect.Response[pb.GetSequencerInfoResponse], error) {
+) (*connect.Response[pb.GetSignerInfoResponse], error) {
 
 	// If no signer is available, return an error
 	if cs.signer == nil {
@@ -222,7 +222,7 @@ func (cs *ConfigServer) GetSequencerInfo(
 		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to serialize public key: %w", err))
 	}
 
-	return connect.NewResponse(&pb.GetSequencerInfoResponse{
+	return connect.NewResponse(&pb.GetSignerInfoResponse{
 		PublicKey: pubKeyBytes,
 		Address:   address,
 	}), nil
