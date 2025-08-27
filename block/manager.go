@@ -47,7 +47,7 @@ const (
 	// Key for storing namespace migration state in the store
 	namespaceMigrationKey = "namespace_migration_completed"
 
-	// Applies to the headerInCh and dataInCh, 20000 is a large enough number for headers per DA block.
+	// Applies to the headerInCh and dataInCh, 10000 is a large enough number for headers per DA block.
 	eventInChLength = 10000
 )
 
