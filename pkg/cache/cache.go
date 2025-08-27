@@ -44,6 +44,23 @@ func (c *Cache[T]) DeleteItem(height uint64) {
 	c.items.Delete(height)
 }
 
+// RangeByHeight iterates over all items keyed by uint64 height and calls fn for each.
+// If fn returns false, iteration stops early.
+// Non-uint64 keys (e.g. string hash entries) are ignored.
+func (c *Cache[T]) RangeByHeight(fn func(height uint64, item *T) bool) {
+	c.items.Range(func(k, v interface{}) bool {
+		height, ok := k.(uint64)
+		if !ok {
+			return true
+		}
+		item, ok := v.(*T)
+		if !ok {
+			return true
+		}
+		return fn(height, item)
+	})
+}
+
 // IsSeen returns true if the hash has been seen
 func (c *Cache[T]) IsSeen(hash string) bool {
 	seen, ok := c.hashes.Load(hash)

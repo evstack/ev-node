@@ -21,11 +21,11 @@ const (
 	dAFetcherRetries  = 10
 )
 
-// daRetriever encapsulates DA retrieval with pending events management
+// daRetriever encapsulates DA retrieval with pending events management.
+// Pending events are persisted via Manager.pendingEventsCache to avoid data loss on retries or restarts.
 type daRetriever struct {
-	manager       *Manager
-	mutex         sync.RWMutex // mutex for pendingEvents
-	pendingEvents map[uint64]pendingDAEvent
+	manager *Manager
+	mutex   sync.RWMutex // mutex for pendingEvents
 }
 
 // pendingDAEvent represents a DA event waiting for processing
@@ -38,8 +38,7 @@ type pendingDAEvent struct {
 // newDARetriever creates a new DA retriever
 func newDARetriever(manager *Manager) *daRetriever {
 	return &daRetriever{
-		manager:       manager,
-		pendingEvents: make(map[uint64]pendingDAEvent),
+		manager: manager,
 	}
 }
 
@@ -51,6 +50,9 @@ func (m *Manager) DARetrieveLoop(ctx context.Context) {
 
 // run executes the main DA retrieval loop
 func (dr *daRetriever) run(ctx context.Context) {
+	// attempt to process any pending events loaded from disk before starting retrieval loop.
+	dr.processPendingEvents(ctx)
+
 	// blobsFoundCh is used to track when we successfully found a header so
 	// that we can continue to try and find headers that are in the next DA height.
 	// This enables syncing faster than the DA block time.
@@ -292,17 +294,23 @@ func (dr *daRetriever) sendHeightEventIfValid(ctx context.Context, header *types
 	dr.processEvent(ctx, header, data, daHeight)
 }
 
-// queuePendingEvent queues a DA event that cannot be processed immediately
+// queuePendingEvent queues a DA event that cannot be processed immediately.
+// The event is persisted via pendingEventsCache to survive restarts.
 func (dr *daRetriever) queuePendingEvent(header *types.SignedHeader, data *types.Data, daHeight uint64) {
 	dr.mutex.Lock()
 	defer dr.mutex.Unlock()
 
+	if dr.manager.pendingEventsCache == nil {
+		return
+	}
+
 	height := header.Height()
-	dr.pendingEvents[height] = pendingDAEvent{
+	event := pendingDAEvent{
 		header:   header,
 		data:     data,
 		daHeight: daHeight,
 	}
+	dr.manager.pendingEventsCache.SetItem(height, &event)
 
 	dr.manager.logger.Debug().
 		Uint64("height", height).
@@ -341,10 +349,12 @@ func (dr *daRetriever) processEvent(ctx context.Context, header *types.SignedHea
 			Uint64("daHeight", daHeight).
 			Msg("sent complete height event with header and data")
 	default:
+		// Channel full: keep event in pending cache for retry
+		dr.queuePendingEvent(header, data, daHeight)
 		dr.manager.logger.Warn().
 			Uint64("height", header.Height()).
 			Uint64("daHeight", daHeight).
-			Msg("heightInCh backlog full, dropping complete event")
+			Msg("heightInCh backlog full, re-queued event to pending cache")
 	}
 
 	// Try to process any pending events that might now be ready
@@ -353,6 +363,10 @@ func (dr *daRetriever) processEvent(ctx context.Context, header *types.SignedHea
 
 // processPendingEvents tries to process queued DA events that might now be ready
 func (dr *daRetriever) processPendingEvents(ctx context.Context) {
+	if dr.manager.pendingEventsCache == nil {
+		return
+	}
+
 	currentHeight, err := dr.manager.GetStoreHeight(ctx)
 	if err != nil {
 		dr.manager.logger.Debug().Err(err).Msg("failed to get store height for pending DA events")
@@ -362,15 +376,21 @@ func (dr *daRetriever) processPendingEvents(ctx context.Context) {
 	dr.mutex.Lock()
 	defer dr.mutex.Unlock()
 
-	for height, event := range dr.pendingEvents {
+	toDelete := make([]uint64, 0)
+	dr.manager.pendingEventsCache.RangeByHeight(func(height uint64, event *pendingDAEvent) bool {
 		if height <= currentHeight+1 {
 			dr.manager.logger.Debug().
 				Uint64("height", height).
 				Uint64("daHeight", event.daHeight).
 				Msg("processing previously queued DA event")
 			go dr.processEvent(ctx, event.header, event.data, event.daHeight)
-			delete(dr.pendingEvents, height)
+			toDelete = append(toDelete, height)
 		}
+		return true
+	})
+
+	for _, h := range toDelete {
+		dr.manager.pendingEventsCache.DeleteItem(h)
 	}
 }
 

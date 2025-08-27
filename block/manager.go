@@ -106,8 +106,9 @@ type Manager struct {
 	headerStore goheader.Store[*types.SignedHeader]
 	dataStore   goheader.Store[*types.Data]
 
-	headerCache *cache.Cache[types.SignedHeader]
-	dataCache   *cache.Cache[types.Data]
+	headerCache        *cache.Cache[types.SignedHeader]
+	dataCache          *cache.Cache[types.Data]
+	pendingEventsCache *cache.Cache[pendingDAEvent]
 
 	// headerStoreCh is used to notify sync goroutine (HeaderStoreRetrieveLoop) that it needs to retrieve headers from headerStore
 	headerStoreCh chan struct{}
@@ -385,6 +386,7 @@ func NewManager(
 		lastBatchData:                      lastBatchData,
 		headerCache:                        cache.NewCache[types.SignedHeader](),
 		dataCache:                          cache.NewCache[types.Data](),
+		pendingEventsCache:                 cache.NewCache[pendingDAEvent](),
 		retrieveCh:                         make(chan struct{}, 1),
 		daIncluderCh:                       make(chan struct{}, 1),
 		logger:                             logger,
@@ -1060,9 +1062,10 @@ func (m *Manager) NotifyNewTransactions() {
 }
 
 var (
-	cacheDir       = "cache"
-	headerCacheDir = filepath.Join(cacheDir, "header")
-	dataCacheDir   = filepath.Join(cacheDir, "data")
+	cacheDir              = "cache"
+	headerCacheDir        = filepath.Join(cacheDir, "header")
+	dataCacheDir          = filepath.Join(cacheDir, "data")
+	pendingEventsCacheDir = filepath.Join(cacheDir, "pending_da_events")
 )
 
 // HeaderCache returns the headerCache used by the manager.
@@ -1079,6 +1082,7 @@ func (m *Manager) DataCache() *cache.Cache[types.Data] {
 func (m *Manager) LoadCache() error {
 	gob.Register(&types.SignedHeader{})
 	gob.Register(&types.Data{})
+	gob.Register(&pendingDAEvent{})
 
 	cfgDir := filepath.Join(m.config.RootDir, "data")
 
@@ -1088,6 +1092,10 @@ func (m *Manager) LoadCache() error {
 
 	if err := m.dataCache.LoadFromDisk(filepath.Join(cfgDir, dataCacheDir)); err != nil {
 		return fmt.Errorf("failed to load data cache from disk: %w", err)
+	}
+
+	if err := m.pendingEventsCache.LoadFromDisk(filepath.Join(cfgDir, pendingEventsCacheDir)); err != nil {
+		return fmt.Errorf("failed to load pending events cache from disk")
 	}
 
 	return nil
@@ -1104,6 +1112,11 @@ func (m *Manager) SaveCache() error {
 	if err := m.dataCache.SaveToDisk(filepath.Join(cfgDir, dataCacheDir)); err != nil {
 		return fmt.Errorf("failed to save data cache to disk: %w", err)
 	}
+
+	if err := m.pendingEventsCache.SaveToDisk(filepath.Join(cfgDir, pendingEventsCacheDir)); err != nil {
+		return fmt.Errorf("failed to save pending events cache to disk: %w", err)
+	}
+
 	return nil
 }
 
