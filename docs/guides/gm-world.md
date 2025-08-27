@@ -291,4 +291,4 @@ If you run into any issues, make sure your Keplr wallet is updated and set to co
 
 ## 🎉 Next steps
 
-Congratulations! You've experienced connecting to a chain from the user side — simple and straightforward. Now, you might consider exploring how to add more application logic to your chain using the Cosmos SDK, as demonstrated in our Wordle App tutorial.
+Congratulations! You've experienced connecting to a chain from the user side — simple and straightforward. Now, you might consider exploring how to add more application logic to your chain using the Cosmos SDK, as demonstrated in our World App tutorial.

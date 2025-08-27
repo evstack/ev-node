@@ -2439,12 +2439,19 @@ pub struct GetNamespaceResponse {
     #[prost(string, tag = "2")]
     pub data_namespace: ::prost::alloc::string::String,
 }
+/// GetSequencerInfoResponse returns information about the sequencer
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct GetSignerInfoResponse {
+    #[prost(bytes = "vec", tag = "1")]
+    pub address: ::prost::alloc::vec::Vec<u8>,
+}
 /// Generated client implementations.
 pub mod config_service_client {
     #![allow(unused_variables, dead_code, missing_docs, clippy::let_unit_value)]
     use tonic::codegen::*;
     use tonic::codegen::http::Uri;
-    /// StoreService defines the RPC service for the store package
+    /// ConfigService defines the RPC service for configuration queries
     #[derive(Debug, Clone)]
     pub struct ConfigServiceClient<T> {
         inner: tonic::client::Grpc<T>,
@@ -2551,6 +2558,32 @@ pub mod config_service_client {
                 .insert(GrpcMethod::new("evnode.v1.ConfigService", "GetNamespace"));
             self.inner.unary(req, path, codec).await
         }
+        /// GetSequencerInfo returns information about the sequencer
+        pub async fn get_signer_info(
+            &mut self,
+            request: impl tonic::IntoRequest<()>,
+        ) -> std::result::Result<
+            tonic::Response<super::GetSignerInfoResponse>,
+            tonic::Status,
+        > {
+            self.inner
+                .ready()
+                .await
+                .map_err(|e| {
+                    tonic::Status::new(
+                        tonic::Code::Unknown,
+                        format!("Service was not ready: {}", e.into()),
+                    )
+                })?;
+            let codec = tonic::codec::ProstCodec::default();
+            let path = http::uri::PathAndQuery::from_static(
+                "/evnode.v1.ConfigService/GetSignerInfo",
+            );
+            let mut req = request.into_request();
+            req.extensions_mut()
+                .insert(GrpcMethod::new("evnode.v1.ConfigService", "GetSignerInfo"));
+            self.inner.unary(req, path, codec).await
+        }
     }
 }
 /// Generated server implementations.
@@ -2568,8 +2601,16 @@ pub mod config_service_server {
             tonic::Response<super::GetNamespaceResponse>,
             tonic::Status,
         >;
+        /// GetSequencerInfo returns information about the sequencer
+        async fn get_signer_info(
+            &self,
+            request: tonic::Request<()>,
+        ) -> std::result::Result<
+            tonic::Response<super::GetSignerInfoResponse>,
+            tonic::Status,
+        >;
     }
-    /// StoreService defines the RPC service for the store package
+    /// ConfigService defines the RPC service for configuration queries
     #[derive(Debug)]
     pub struct ConfigServiceServer<T: ConfigService> {
         inner: _Inner<T>,
@@ -2675,6 +2716,47 @@ pub mod config_service_server {
                     let fut = async move {
                         let inner = inner.0;
                         let method = GetNamespaceSvc(inner);
+                        let codec = tonic::codec::ProstCodec::default();
+                        let mut grpc = tonic::server::Grpc::new(codec)
+                            .apply_compression_config(
+                                accept_compression_encodings,
+                                send_compression_encodings,
+                            )
+                            .apply_max_message_size_config(
+                                max_decoding_message_size,
+                                max_encoding_message_size,
+                            );
+                        let res = grpc.unary(method, req).await;
+                        Ok(res)
+                    };
+                    Box::pin(fut)
+                }
+                "/evnode.v1.ConfigService/GetSignerInfo" => {
+                    #[allow(non_camel_case_types)]
+                    struct GetSignerInfoSvc<T: ConfigService>(pub Arc<T>);
+                    impl<T: ConfigService> tonic::server::UnaryService<()>
+                    for GetSignerInfoSvc<T> {
+                        type Response = super::GetSignerInfoResponse;
+                        type Future = BoxFuture<
+                            tonic::Response<Self::Response>,
+                            tonic::Status,
+                        >;
+                        fn call(&mut self, request: tonic::Request<()>) -> Self::Future {
+                            let inner = Arc::clone(&self.0);
+                            let fut = async move {
+                                <T as ConfigService>::get_signer_info(&inner, request).await
+                            };
+                            Box::pin(fut)
+                        }
+                    }
+                    let accept_compression_encodings = self.accept_compression_encodings;
+                    let send_compression_encodings = self.send_compression_encodings;
+                    let max_decoding_message_size = self.max_decoding_message_size;
+                    let max_encoding_message_size = self.max_encoding_message_size;
+                    let inner = self.inner.clone();
+                    let fut = async move {
+                        let inner = inner.0;
+                        let method = GetSignerInfoSvc(inner);
                         let codec = tonic::codec::ProstCodec::default();
                         let mut grpc = tonic::server::Grpc::new(codec)
                             .apply_compression_config(

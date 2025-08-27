@@ -374,7 +374,7 @@ flowchart TD
    - Sends to sync goroutine for state update
    - Successful processing triggers immediate next retrieval without waiting for timer
    - Updates namespace migration status when appropriate:
-     - Marks migration complete when data found in new namespaces
+     - Marks migration complete when data is found in new namespaces
      - Persists migration state to avoid future legacy checks
 
 #### Header and Data Caching
