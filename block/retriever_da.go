@@ -25,7 +25,7 @@ const (
 type daRetriever struct {
 	manager       *Manager
 	mutex         sync.RWMutex // mutex for pendingEvents
-	pendingEvents map[uint64][]pendingDAEvent
+	pendingEvents map[uint64]pendingDAEvent
 }
 
 // pendingDAEvent represents a DA event waiting for processing
@@ -39,7 +39,7 @@ type pendingDAEvent struct {
 func newDARetriever(manager *Manager) *daRetriever {
 	return &daRetriever{
 		manager:       manager,
-		pendingEvents: make(map[uint64][]pendingDAEvent),
+		pendingEvents: make(map[uint64]pendingDAEvent),
 	}
 }
 
@@ -298,12 +298,11 @@ func (dr *daRetriever) queuePendingEvent(header *types.SignedHeader, data *types
 	defer dr.mutex.Unlock()
 
 	height := header.Height()
-	event := pendingDAEvent{
+	dr.pendingEvents[height] = pendingDAEvent{
 		header:   header,
 		data:     data,
 		daHeight: daHeight,
 	}
-	dr.pendingEvents[height] = append(dr.pendingEvents[height], event)
 
 	dr.manager.logger.Debug().
 		Uint64("height", height).
@@ -363,15 +362,13 @@ func (dr *daRetriever) processPendingEvents(ctx context.Context) {
 	dr.mutex.Lock()
 	defer dr.mutex.Unlock()
 
-	for height, events := range dr.pendingEvents {
+	for height, event := range dr.pendingEvents {
 		if height <= currentHeight+1 {
-			for _, event := range events {
-				dr.manager.logger.Debug().
-					Uint64("height", height).
-					Uint64("daHeight", event.daHeight).
-					Msg("processing previously queued DA event")
-				go dr.processEvent(ctx, event.header, event.data, event.daHeight)
-			}
+			dr.manager.logger.Debug().
+				Uint64("height", height).
+				Uint64("daHeight", event.daHeight).
+				Msg("processing previously queued DA event")
+			go dr.processEvent(ctx, event.header, event.data, event.daHeight)
 			delete(dr.pendingEvents, height)
 		}
 	}
