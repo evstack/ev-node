@@ -121,7 +121,7 @@ func setupManagerForTest(t *testing.T, initialDAHeight uint64) (*Manager, *rollm
 		},
 		genesis:                     genesis.Genesis{ProposerAddress: addr},
 		daHeight:                    new(atomic.Uint64),
-		heightInCh:                  make(chan NewHeightEvent),
+		heightInCh:                  make(chan daHeightEvent),
 		headerStore:                 headerStore,
 		dataStore:                   dataStore,
 		headerCache:                 cache.NewCache[types.SignedHeader](),

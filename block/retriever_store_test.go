@@ -33,7 +33,7 @@ func setupManagerForStoreRetrieveTest(t *testing.T) (
 	mockDataStore *extmocks.MockStore[*types.Data],
 	headerStoreCh chan struct{},
 	dataStoreCh chan struct{},
-	heightInCh chan NewHeightEvent,
+	heightInCh chan daHeightEvent,
 	ctx context.Context,
 	cancel context.CancelFunc,
 ) {
@@ -47,7 +47,7 @@ func setupManagerForStoreRetrieveTest(t *testing.T) (
 	// Channels (buffered to prevent deadlocks in simple test cases)
 	headerStoreCh = make(chan struct{}, 1)
 	dataStoreCh = make(chan struct{}, 1)
-	heightInCh = make(chan NewHeightEvent, 10)
+	heightInCh = make(chan daHeightEvent, 10)
 
 	// Config & Genesis
 	nodeConf := config.DefaultConfig

@@ -67,13 +67,6 @@ type MetricsRecorder interface {
 	RecordMetrics(gasPrice float64, blobSize uint64, statusCode coreda.StatusCode, numPendingBlocks uint64, includedBlockHeight uint64)
 }
 
-// NewHeightEvent is used to pass an header, data and its DA height to heightInCh
-type NewHeightEvent struct {
-	DAHeight uint64
-	Header   *types.SignedHeader
-	Data     *types.Data
-}
-
 // BatchData is used to pass batch, time and data (da.IDs) to BatchQueue
 type BatchData struct {
 	*coresequencer.Batch
@@ -102,13 +95,13 @@ type Manager struct {
 	headerBroadcaster broadcaster[*types.SignedHeader]
 	dataBroadcaster   broadcaster[*types.Data]
 
-	heightInCh  chan NewHeightEvent
+	heightInCh  chan daHeightEvent
 	headerStore goheader.Store[*types.SignedHeader]
 	dataStore   goheader.Store[*types.Data]
 
 	headerCache        *cache.Cache[types.SignedHeader]
 	dataCache          *cache.Cache[types.Data]
-	pendingEventsCache *cache.Cache[pendingDAEvent]
+	pendingEventsCache *cache.Cache[daHeightEvent]
 
 	// headerStoreCh is used to notify sync goroutine (HeaderStoreRetrieveLoop) that it needs to retrieve headers from headerStore
 	headerStoreCh chan struct{}
@@ -377,7 +370,7 @@ func NewManager(
 		headerBroadcaster: headerBroadcaster,
 		dataBroadcaster:   dataBroadcaster,
 		// channels are buffered to avoid blocking on input/output operations, buffer sizes are arbitrary
-		heightInCh:                         make(chan NewHeightEvent, eventInChLength),
+		heightInCh:                         make(chan daHeightEvent, eventInChLength),
 		headerStoreCh:                      make(chan struct{}, 1),
 		dataStoreCh:                        make(chan struct{}, 1),
 		headerStore:                        headerStore,
@@ -386,7 +379,7 @@ func NewManager(
 		lastBatchData:                      lastBatchData,
 		headerCache:                        cache.NewCache[types.SignedHeader](),
 		dataCache:                          cache.NewCache[types.Data](),
-		pendingEventsCache:                 cache.NewCache[pendingDAEvent](),
+		pendingEventsCache:                 cache.NewCache[daHeightEvent](),
 		retrieveCh:                         make(chan struct{}, 1),
 		daIncluderCh:                       make(chan struct{}, 1),
 		logger:                             logger,
@@ -1082,7 +1075,7 @@ func (m *Manager) DataCache() *cache.Cache[types.Data] {
 func (m *Manager) LoadCache() error {
 	gob.Register(&types.SignedHeader{})
 	gob.Register(&types.Data{})
-	gob.Register(&pendingDAEvent{})
+	gob.Register(&daHeightEvent{})
 
 	cfgDir := filepath.Join(m.config.RootDir, "data")
 

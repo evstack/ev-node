@@ -146,10 +146,10 @@ func (m *Manager) processDataStoreRange(ctx context.Context, startHeight, endHei
 
 // sendCompleteHeightEvent sends a complete height event with both header and data
 func (m *Manager) sendCompleteHeightEvent(ctx context.Context, header *types.SignedHeader, data *types.Data, daHeight uint64, source string) {
-	heightEvent := NewHeightEvent{
+	heightEvent := daHeightEvent{
 		Header:   header,
 		Data:     data,
-		DAHeight: daHeight,
+		DaHeight: daHeight,
 	}
 
 	select {

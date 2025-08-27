@@ -44,9 +44,9 @@ func (m *Manager) SyncLoop(ctx context.Context, errCh chan<- error) {
 }
 
 // processHeightEvent processes a height event that is ready
-func (m *Manager) processHeightEvent(ctx context.Context, heightEvent *NewHeightEvent, errCh chan<- error) {
+func (m *Manager) processHeightEvent(ctx context.Context, heightEvent *daHeightEvent, errCh chan<- error) {
 	header := heightEvent.Header
-	daHeight := heightEvent.DAHeight
+	daHeight := heightEvent.DaHeight
 	headerHash := header.Hash().String()
 	headerHeight := header.Height()
 

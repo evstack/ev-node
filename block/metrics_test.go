@@ -105,7 +105,7 @@ func TestMetricsHelpers(t *testing.T) {
 	m := &Manager{
 		metrics:       NopMetrics(),
 		logger:        zerolog.Nop(),
-		heightInCh:    make(chan NewHeightEvent, 10),
+		heightInCh:    make(chan daHeightEvent, 10),
 		headerStoreCh: make(chan struct{}, 1),
 		dataStoreCh:   make(chan struct{}, 1),
 		retrieveCh:    make(chan struct{}, 1),
@@ -126,7 +126,7 @@ func TestMetricsHelpers(t *testing.T) {
 
 	t.Run("updateChannelMetrics", func(t *testing.T) {
 		// Add some data to channels
-		m.heightInCh <- NewHeightEvent{}
+		m.heightInCh <- daHeightEvent{}
 
 		// Should not panic
 		m.updateChannelMetrics()

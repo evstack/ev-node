@@ -28,7 +28,7 @@ func setupManagerForSyncLoopTest(t *testing.T, initialState types.State) (
 	*mocks.MockExecutor,
 	context.Context,
 	context.CancelFunc,
-	chan NewHeightEvent,
+	chan daHeightEvent,
 	*uint64,
 ) {
 	t.Helper()
@@ -36,7 +36,7 @@ func setupManagerForSyncLoopTest(t *testing.T, initialState types.State) (
 	mockStore := mocks.NewMockStore(t)
 	mockExec := mocks.NewMockExecutor(t)
 
-	heightInCh := make(chan NewHeightEvent, 10)
+	heightInCh := make(chan daHeightEvent, 10)
 
 	headerStoreCh := make(chan struct{}, 1)
 	dataStoreCh := make(chan struct{}, 1)
@@ -140,7 +140,7 @@ func TestSyncLoop_ProcessSingleBlock_HeaderFirst(t *testing.T) {
 	}()
 
 	t.Logf("Sending height event for height %d", newHeight)
-	heightInCh <- NewHeightEvent{Header: header, Data: data, DAHeight: daHeight}
+	heightInCh <- daHeightEvent{Header: header, Data: data, DaHeight: daHeight}
 
 	t.Log("Waiting for sync to complete...")
 	wg.Wait()
@@ -222,7 +222,7 @@ func TestSyncLoop_ProcessSingleBlock_DataFirst(t *testing.T) {
 	}()
 
 	t.Logf("Sending height event for height %d", newHeight)
-	heightInCh <- NewHeightEvent{Header: header, Data: data, DAHeight: daHeight}
+	heightInCh <- daHeightEvent{Header: header, Data: data, DaHeight: daHeight}
 
 	t.Log("Waiting for sync to complete...")
 
@@ -345,7 +345,7 @@ func TestSyncLoop_ProcessMultipleBlocks_Sequentially(t *testing.T) {
 	}()
 
 	// --- Process H+1 ---
-	heightInCh <- NewHeightEvent{Header: headerH1, Data: dataH1, DAHeight: daHeight}
+	heightInCh <- daHeightEvent{Header: headerH1, Data: dataH1, DaHeight: daHeight}
 	t.Log("Waiting for Sync H+1 to complete...")
 
 	select {
@@ -356,7 +356,7 @@ func TestSyncLoop_ProcessMultipleBlocks_Sequentially(t *testing.T) {
 	}
 
 	// --- Process H+2 ---
-	heightInCh <- NewHeightEvent{Header: headerH2, Data: dataH2, DAHeight: daHeight}
+	heightInCh <- daHeightEvent{Header: headerH2, Data: dataH2, DaHeight: daHeight}
 
 	select {
 	case <-syncChanH2:
@@ -487,7 +487,7 @@ func TestSyncLoop_ProcessBlocks_OutOfOrderArrival(t *testing.T) {
 	}()
 
 	// --- Send H+2 Event First ---
-	heightInCh <- NewHeightEvent{Header: headerH2, Data: dataH2, DAHeight: daHeight}
+	heightInCh <- daHeightEvent{Header: headerH2, Data: dataH2, DaHeight: daHeight}
 
 	// Wait for H+2 to be cached (but not processed since H+1 is missing)
 	require.Eventually(func() bool {
@@ -499,7 +499,7 @@ func TestSyncLoop_ProcessBlocks_OutOfOrderArrival(t *testing.T) {
 	assert.NotNil(m.dataCache.GetItem(heightH2), "Data H+2 should be in cache")
 
 	// --- Send H+1 Event Second ---
-	heightInCh <- NewHeightEvent{Header: headerH1, Data: dataH1, DAHeight: daHeight}
+	heightInCh <- daHeightEvent{Header: headerH1, Data: dataH1, DaHeight: daHeight}
 
 	t.Log("Waiting for Sync H+1 to complete...")
 
@@ -594,7 +594,7 @@ func TestSyncLoop_IgnoreDuplicateEvents(t *testing.T) {
 	}()
 
 	// --- Send First Event ---
-	heightInCh <- NewHeightEvent{Header: headerH1, Data: dataH1, DAHeight: daHeight}
+	heightInCh <- daHeightEvent{Header: headerH1, Data: dataH1, DaHeight: daHeight}
 
 	t.Log("Waiting for first sync to complete...")
 	select {
@@ -605,7 +605,7 @@ func TestSyncLoop_IgnoreDuplicateEvents(t *testing.T) {
 	}
 
 	// --- Send Duplicate Event ---
-	heightInCh <- NewHeightEvent{Header: headerH1, Data: dataH1, DAHeight: daHeight}
+	heightInCh <- daHeightEvent{Header: headerH1, Data: dataH1, DaHeight: daHeight}
 
 	// Give the sync loop a chance to process duplicates (if it would)
 	// Since we expect no processing, we just wait for the context timeout
@@ -683,7 +683,7 @@ func TestSyncLoop_ErrorOnApplyError(t *testing.T) {
 
 	// --- Send Event ---
 	t.Logf("Sending height event for height %d", heightH1)
-	heightInCh <- NewHeightEvent{Header: headerH1, Data: dataH1, DAHeight: daHeight}
+	heightInCh <- daHeightEvent{Header: headerH1, Data: dataH1, DaHeight: daHeight}
 
 	t.Log("Waiting for ApplyBlock error...")
 	select {

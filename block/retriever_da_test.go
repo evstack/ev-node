@@ -64,7 +64,7 @@ func setupManagerForRetrieverTest(t *testing.T, initialDAHeight uint64) (*daRetr
 		genesis:                     genesis.Genesis{ProposerAddress: addr},
 		daHeight:                    &atomic.Uint64{},
 		daIncludedHeight:            atomic.Uint64{},
-		heightInCh:                  make(chan NewHeightEvent, eventInChLength),
+		heightInCh:                  make(chan daHeightEvent, eventInChLength),
 		headerStore:                 headerStore,
 		dataStore:                   dataStore,
 		headerCache:                 cache.NewCache[types.SignedHeader](),
@@ -157,7 +157,7 @@ func TestProcessNextDAHeader_Success_SingleHeaderAndData(t *testing.T) {
 	select {
 	case event := <-manager.heightInCh:
 		assert.Equal(t, blockHeight, event.Header.Height())
-		assert.Equal(t, daHeight, event.DAHeight)
+		assert.Equal(t, daHeight, event.DaHeight)
 		assert.Equal(t, proposerAddr, event.Header.ProposerAddress)
 		assert.Equal(t, blockData.Txs, event.Data.Txs)
 	case <-time.After(100 * time.Millisecond):
@@ -260,7 +260,7 @@ func TestProcessNextDAHeader_MultipleHeadersAndData(t *testing.T) {
 	require.NoError(t, err)
 
 	// Validate all height events with both header and data
-	heightEvents := make([]NewHeightEvent, 0, nHeaders)
+	heightEvents := make([]daHeightEvent, 0, nHeaders)
 	for i := 0; i < nHeaders; i++ {
 		select {
 		case event := <-manager.heightInCh:
@@ -276,7 +276,7 @@ func TestProcessNextDAHeader_MultipleHeadersAndData(t *testing.T) {
 	for _, event := range heightEvents {
 		receivedHeights[event.Header.Height()] = true
 		receivedLens[len(event.Data.Txs)] = true
-		assert.Equal(t, daHeight, event.DAHeight)
+		assert.Equal(t, daHeight, event.DaHeight)
 		assert.Equal(t, proposerAddr, event.Header.ProposerAddress)
 	}
 	for _, h := range blockHeights {
@@ -642,7 +642,7 @@ func TestProcessNextDAHeader_WithNoTxs(t *testing.T) {
 	case event := <-manager.heightInCh:
 		// Should receive height event with empty data
 		assert.Equal(t, blockHeight, event.Header.Height())
-		assert.Equal(t, daHeight, event.DAHeight)
+		assert.Equal(t, daHeight, event.DaHeight)
 		assert.Empty(t, event.Data.Txs, "Data should be empty for headers with no transactions")
 	case <-time.After(100 * time.Millisecond):
 		t.Fatal("Expected height event not received")

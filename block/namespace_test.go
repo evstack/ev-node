@@ -61,7 +61,7 @@ func setupManagerForNamespaceTest(t *testing.T, daConfig config.DAConfig) (*Mana
 		config:                      config.Config{DA: daConfig},
 		genesis:                     genesis.Genesis{ProposerAddress: addr},
 		daHeight:                    &atomic.Uint64{},
-		heightInCh:                  make(chan NewHeightEvent, eventInChLength),
+		heightInCh:                  make(chan daHeightEvent, eventInChLength),
 		headerStore:                 headerStore,
 		dataStore:                   dataStore,
 		headerCache:                 cache.NewCache[types.SignedHeader](),

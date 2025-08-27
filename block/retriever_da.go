@@ -28,8 +28,8 @@ type daRetriever struct {
 	mutex   sync.RWMutex // mutex for pendingEvents
 }
 
-// pendingDAEvent represents a DA event waiting for processing
-type pendingDAEvent struct {
+// daHeightEvent represents a DA event
+type daHeightEvent struct {
 	Header   *types.SignedHeader
 	Data     *types.Data
 	DaHeight uint64
@@ -181,7 +181,12 @@ func (dr *daRetriever) processBlobs(ctx context.Context, blobs [][]byte, daHeigh
 			}
 		}
 
-		dr.sendHeightEventIfValid(ctx, header, data, daHeight)
+		// both available, proceed with complete event
+		dr.sendHeightEventIfValid(ctx, daHeightEvent{
+			Header:   header,
+			Data:     data,
+			DaHeight: daHeight,
+		})
 	}
 }
 
@@ -268,9 +273,9 @@ func (m *Manager) isAtHeight(ctx context.Context, height uint64) error {
 }
 
 // sendHeightEventIfValid sends a height event if both header and data are valid and not seen before
-func (dr *daRetriever) sendHeightEventIfValid(ctx context.Context, header *types.SignedHeader, data *types.Data, daHeight uint64) {
-	headerHash := header.Hash().String()
-	dataHashStr := data.DACommitment().String()
+func (dr *daRetriever) sendHeightEventIfValid(ctx context.Context, heightEvent daHeightEvent) {
+	headerHash := heightEvent.Header.Hash().String()
+	dataHashStr := heightEvent.Data.DACommitment().String()
 
 	// Check if already seen before doing expensive validation
 	if dr.manager.headerCache.IsSeen(headerHash) {
@@ -278,25 +283,25 @@ func (dr *daRetriever) sendHeightEventIfValid(ctx context.Context, header *types
 		return
 	}
 
-	if !bytes.Equal(header.DataHash, dataHashForEmptyTxs) && dr.manager.dataCache.IsSeen(dataHashStr) {
+	if !bytes.Equal(heightEvent.Header.DataHash, dataHashForEmptyTxs) && dr.manager.dataCache.IsSeen(dataHashStr) {
 		dr.manager.logger.Debug().Str("dataHash", dataHashStr).Msg("data already seen, skipping")
 		return
 	}
 
 	// Check if we can validate this height immediately
-	if err := dr.manager.isAtHeight(ctx, header.Height()-1); err != nil {
+	if err := dr.manager.isAtHeight(ctx, heightEvent.Header.Height()-1); err != nil {
 		// Queue this event for later processing when the prerequisite height is available
-		dr.queuePendingEvent(header, data, daHeight)
+		dr.queuePendingEvent(heightEvent)
 		return
 	}
 
 	// Process immediately since prerequisite height is available
-	dr.processEvent(ctx, header, data, daHeight)
+	dr.processEvent(ctx, heightEvent)
 }
 
 // queuePendingEvent queues a DA event that cannot be processed immediately.
 // The event is persisted via pendingEventsCache to survive restarts.
-func (dr *daRetriever) queuePendingEvent(header *types.SignedHeader, data *types.Data, daHeight uint64) {
+func (dr *daRetriever) queuePendingEvent(heightEvent daHeightEvent) {
 	dr.mutex.Lock()
 	defer dr.mutex.Unlock()
 
@@ -304,56 +309,44 @@ func (dr *daRetriever) queuePendingEvent(header *types.SignedHeader, data *types
 		return
 	}
 
-	height := header.Height()
-	event := pendingDAEvent{
-		Header:   header,
-		Data:     data,
-		DaHeight: daHeight,
-	}
-	dr.manager.pendingEventsCache.SetItem(height, &event)
+	height := heightEvent.Header.Height()
+	dr.manager.pendingEventsCache.SetItem(height, &heightEvent)
 
 	dr.manager.logger.Debug().
 		Uint64("height", height).
-		Uint64("daHeight", daHeight).
+		Uint64("daHeight", heightEvent.DaHeight).
 		Msg("queued DA event for later processing")
 }
 
 // processEvent processes a DA event that is ready for validation
-func (dr *daRetriever) processEvent(ctx context.Context, header *types.SignedHeader, data *types.Data, daHeight uint64) {
-	headerHash := header.Hash().String()
+func (dr *daRetriever) processEvent(ctx context.Context, heightEvent daHeightEvent) {
+	headerHash := heightEvent.Header.Hash().String()
 
 	// Validate header with its data - some execution environment may require previous height to be stored
-	if err := header.ValidateBasicWithData(data); err != nil {
-		dr.manager.logger.Debug().Uint64("height", header.Height()).Err(err).Msg("header validation with data failed")
+	if err := heightEvent.Header.ValidateBasicWithData(heightEvent.Data); err != nil {
+		dr.manager.logger.Debug().Uint64("height", heightEvent.Header.Height()).Err(err).Msg("header validation with data failed")
 		return
 	}
 
 	// Mark as DA included since validation passed
-	dr.manager.headerCache.SetDAIncluded(headerHash, daHeight)
+	dr.manager.headerCache.SetDAIncluded(headerHash, heightEvent.DaHeight)
 	dr.manager.sendNonBlockingSignalToDAIncluderCh()
-	dr.manager.logger.Info().Uint64("headerHeight", header.Height()).Str("headerHash", headerHash).Msg("header marked as DA included")
-
-	// Send complete height event with both header and data
-	heightEvent := NewHeightEvent{
-		Header:   header,
-		Data:     data,
-		DAHeight: daHeight,
-	}
+	dr.manager.logger.Info().Uint64("headerHeight", heightEvent.Header.Height()).Str("headerHash", headerHash).Msg("header marked as DA included")
 
 	select {
 	case <-ctx.Done():
 		return
 	case dr.manager.heightInCh <- heightEvent:
 		dr.manager.logger.Debug().
-			Uint64("height", header.Height()).
-			Uint64("daHeight", daHeight).
+			Uint64("height", heightEvent.Header.Height()).
+			Uint64("daHeight", heightEvent.DaHeight).
 			Msg("sent complete height event with header and data")
 	default:
 		// Channel full: keep event in pending cache for retry
-		dr.queuePendingEvent(header, data, daHeight)
+		dr.queuePendingEvent(heightEvent)
 		dr.manager.logger.Warn().
-			Uint64("height", header.Height()).
-			Uint64("daHeight", daHeight).
+			Uint64("height", heightEvent.Header.Height()).
+			Uint64("daHeight", heightEvent.DaHeight).
 			Msg("heightInCh backlog full, re-queued event to pending cache")
 	}
 
@@ -377,13 +370,13 @@ func (dr *daRetriever) processPendingEvents(ctx context.Context) {
 	defer dr.mutex.Unlock()
 
 	toDelete := make([]uint64, 0)
-	dr.manager.pendingEventsCache.RangeByHeight(func(height uint64, event *pendingDAEvent) bool {
+	dr.manager.pendingEventsCache.RangeByHeight(func(height uint64, event *daHeightEvent) bool {
 		if height <= currentHeight+1 {
 			dr.manager.logger.Debug().
 				Uint64("height", height).
 				Uint64("daHeight", event.DaHeight).
 				Msg("processing previously queued DA event")
-			go dr.processEvent(ctx, event.Header, event.Data, event.DaHeight)
+			go dr.processEvent(ctx, *event)
 			toDelete = append(toDelete, height)
 		}
 		return true
