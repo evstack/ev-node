@@ -30,9 +30,9 @@ type daRetriever struct {
 
 // pendingDAEvent represents a DA event waiting for processing
 type pendingDAEvent struct {
-	header   *types.SignedHeader
-	data     *types.Data
-	daHeight uint64
+	Header   *types.SignedHeader
+	Data     *types.Data
+	DaHeight uint64
 }
 
 // newDARetriever creates a new DA retriever
@@ -306,9 +306,9 @@ func (dr *daRetriever) queuePendingEvent(header *types.SignedHeader, data *types
 
 	height := header.Height()
 	event := pendingDAEvent{
-		header:   header,
-		data:     data,
-		daHeight: daHeight,
+		Header:   header,
+		Data:     data,
+		DaHeight: daHeight,
 	}
 	dr.manager.pendingEventsCache.SetItem(height, &event)
 
@@ -381,9 +381,9 @@ func (dr *daRetriever) processPendingEvents(ctx context.Context) {
 		if height <= currentHeight+1 {
 			dr.manager.logger.Debug().
 				Uint64("height", height).
-				Uint64("daHeight", event.daHeight).
+				Uint64("daHeight", event.DaHeight).
 				Msg("processing previously queued DA event")
-			go dr.processEvent(ctx, event.header, event.data, event.daHeight)
+			go dr.processEvent(ctx, event.Header, event.Data, event.DaHeight)
 			toDelete = append(toDelete, height)
 		}
 		return true
