@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/celestiaorg/go-header"
 	goheaderp2p "github.com/celestiaorg/go-header/p2p"
@@ -122,9 +123,17 @@ func (syncService *SyncService[H]) initStoreAndStartSyncer(ctx context.Context, 
 		return errors.New("failed to initialize the store and start syncer")
 	}
 
+	if err := syncService.store.Append(ctx, initial); err != nil {
+		return err
+	}
+
+	// Add sleep as recommended in go-header v0.7.0 tests to allow async operations to complete
+	time.Sleep(100 * time.Millisecond)
+
 	if err := syncService.StartSyncer(ctx); err != nil {
 		return err
 	}
+
 	return nil
 }
 
@@ -136,12 +145,12 @@ func (syncService *SyncService[H]) WriteToStoreAndBroadcast(ctx context.Context,
 	}
 	isGenesis := headerOrData.Height() == syncService.genesis.InitialHeight
 
-	firstStart := false
-	if !syncService.syncerStatus.started.Load() {
-		firstStart = true
-		if err := syncService.StartSyncer(ctx); err != nil {
-			return fmt.Errorf("failed to start syncer after initializing the store: %w", err)
+	if isGenesis {
+		if err := syncService.store.Append(ctx, headerOrData); err != nil {
+			return errors.New("failed to initialize the store")
 		}
+		// Add sleep as recommended in go-header v0.7.0 tests to allow async operations to complete
+		time.Sleep(100 * time.Millisecond)
 	}
 
 	// Broadcast for subscribers
@@ -149,7 +158,7 @@ func (syncService *SyncService[H]) WriteToStoreAndBroadcast(ctx context.Context,
 		// for the first block when starting the app, broadcast error is expected
 		// as we have already initialized the store for starting the syncer.
 		// Hence, we ignore the error. Exact reason: validation ignored
-		if (firstStart && errors.Is(err, pubsub.ValidationError{Reason: pubsub.RejectValidationIgnored})) ||
+		if errors.Is(err, pubsub.ValidationError{Reason: pubsub.RejectValidationIgnored}) ||
 			// for the genesis header, broadcast error is expected as we have already initialized the store
 			// for starting the syncer. Hence, we ignore the error.
 			// exact reason: validation failed, err header verification failed: known header: '1' <= current '1'
