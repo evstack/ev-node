@@ -383,8 +383,8 @@ func (n *FullNode) Run(parentCtx context.Context) error {
 		spawnWorker(func() { n.blockManager.DAIncluderLoop(ctx, errCh) })
 	} else {
 		spawnWorker(func() { n.blockManager.DARetrieveLoop(ctx) })
-		spawnWorker(func() { n.blockManager.HeaderStoreRetrieveLoop(ctx) })
-		spawnWorker(func() { n.blockManager.DataStoreRetrieveLoop(ctx) })
+		spawnWorker(func() { n.blockManager.HeaderStoreRetrieveLoop(ctx, errCh) })
+		spawnWorker(func() { n.blockManager.DataStoreRetrieveLoop(ctx, errCh) })
 		spawnWorker(func() { n.blockManager.SyncLoop(ctx, errCh) })
 		spawnWorker(func() { n.blockManager.DAIncluderLoop(ctx, errCh) })
 	}

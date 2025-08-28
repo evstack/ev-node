@@ -75,8 +75,8 @@ func TestDASpeed(t *testing.T) {
 
 			// when
 			go manager.DARetrieveLoop(ctx)
-			go manager.HeaderStoreRetrieveLoop(ctx)
-			go manager.DataStoreRetrieveLoop(ctx)
+			go manager.HeaderStoreRetrieveLoop(ctx, make(chan<- error))
+			go manager.DataStoreRetrieveLoop(ctx, make(chan<- error))
 			go manager.SyncLoop(ctx, make(chan<- error))
 
 			// then

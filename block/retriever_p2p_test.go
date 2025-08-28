@@ -99,7 +99,7 @@ func TestDataStoreRetrieveLoop_RetrievesNewData(t *testing.T) {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		m.DataStoreRetrieveLoop(ctx)
+		m.DataStoreRetrieveLoop(ctx, make(chan<- error))
 	}()
 
 	// Configure mock
@@ -165,7 +165,7 @@ func TestDataStoreRetrieveLoop_RetrievesMultipleData(t *testing.T) {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		m.DataStoreRetrieveLoop(ctx)
+		m.DataStoreRetrieveLoop(ctx, make(chan<- error))
 	}()
 
 	// Configure mock
@@ -253,7 +253,7 @@ func TestDataStoreRetrieveLoop_NoNewData(t *testing.T) {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		m.DataStoreRetrieveLoop(ctx)
+		m.DataStoreRetrieveLoop(ctx, make(chan<- error))
 	}()
 
 	mockDataStore.On("Height").Return(currentHeight).Once()
@@ -284,7 +284,7 @@ func TestDataStoreRetrieveLoop_HandlesFetchError(t *testing.T) {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		m.DataStoreRetrieveLoop(ctx)
+		m.DataStoreRetrieveLoop(ctx, make(chan<- error))
 	}()
 
 	newHeight := uint64(6)
@@ -336,7 +336,7 @@ func TestHeaderStoreRetrieveLoop_RetrievesNewHeader(t *testing.T) {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		m.HeaderStoreRetrieveLoop(ctx)
+		m.HeaderStoreRetrieveLoop(ctx, make(chan<- error))
 	}()
 
 	headerStoreCh <- struct{}{}
@@ -411,7 +411,7 @@ func TestHeaderStoreRetrieveLoop_RetrievesMultipleHeaders(t *testing.T) {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		m.HeaderStoreRetrieveLoop(ctx)
+		m.HeaderStoreRetrieveLoop(ctx, make(chan<- error))
 	}()
 
 	headerStoreCh <- struct{}{}
@@ -464,7 +464,7 @@ func TestHeaderStoreRetrieveLoop_NoNewHeaders(t *testing.T) {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		m.HeaderStoreRetrieveLoop(ctx)
+		m.HeaderStoreRetrieveLoop(ctx, make(chan<- error))
 	}()
 
 	// Trigger the loop

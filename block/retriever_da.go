@@ -108,9 +108,6 @@ func (dr *daRetriever) processNextDAHeaderAndData(ctx context.Context) error {
 
 		blobsResp, fetchErr := dr.manager.fetchBlobs(ctx, daHeight)
 		if fetchErr == nil {
-			// Record successful DA retrieval
-			dr.manager.recordDAMetrics("retrieval", DAModeSuccess)
-
 			if blobsResp.Code == coreda.StatusNotFound {
 				dr.manager.logger.Debug().Uint64("daHeight", daHeight).Str("reason", blobsResp.Message).Msg("no blob data found")
 				return nil
@@ -327,6 +324,9 @@ func (dr *daRetriever) processEvent(ctx context.Context, heightEvent daHeightEve
 		dr.manager.logger.Debug().Uint64("height", heightEvent.Header.Height()).Err(err).Msg("header validation with data failed")
 		return
 	}
+
+	// Record successful DA retrieval
+	dr.manager.recordDAMetrics("retrieval", DAModeSuccess)
 
 	// Mark as DA included since validation passed
 	dr.manager.headerCache.SetDAIncluded(headerHash, heightEvent.DaHeight)

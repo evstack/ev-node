@@ -10,11 +10,11 @@ import (
 
 // HeaderStoreRetrieveLoop is responsible for retrieving headers from the Header Store.
 // It retrieves both header and corresponding data before sending to heightInCh for validation.
-func (m *Manager) HeaderStoreRetrieveLoop(ctx context.Context) {
+func (m *Manager) HeaderStoreRetrieveLoop(ctx context.Context, errCh chan<- error) {
 	// height is always > 0
 	initialHeight, err := m.store.Height(ctx)
 	if err != nil {
-		m.logger.Error().Err(err).Msg("failed to get initial store height for HeaderStoreRetrieveLoop")
+		errCh <- fmt.Errorf("failed to get initial store height for HeaderStoreRetrieveLoop: %w", err)
 		return
 	}
 	lastHeaderStoreHeight := initialHeight
@@ -34,11 +34,11 @@ func (m *Manager) HeaderStoreRetrieveLoop(ctx context.Context) {
 
 // DataStoreRetrieveLoop is responsible for retrieving data from the Data Store.
 // It retrieves both data and corresponding header before sending to heightInCh for validation.
-func (m *Manager) DataStoreRetrieveLoop(ctx context.Context) {
+func (m *Manager) DataStoreRetrieveLoop(ctx context.Context, errCh chan<- error) {
 	// height is always > 0
 	initialHeight, err := m.store.Height(ctx)
 	if err != nil {
-		m.logger.Error().Err(err).Msg("failed to get initial store height for DataStoreRetrieveLoop")
+		errCh <- fmt.Errorf("failed to get initial store height for DataStoreRetrieveLoop: %w", err)
 		return
 	}
 	lastDataStoreHeight := initialHeight
