@@ -75,7 +75,7 @@ func (s *DockerTestSuite) CreateDockerProvider(opts ...ConfigOption) tastoratype
 		DockerNetworkID: network,
 		DataAvailabilityNetworkConfig: &tastoradocker.DataAvailabilityNetworkConfig{
 			BridgeNodeCount: 1,
-			Image:           container.NewImage("ghcr.io/celestiaorg/celestia-node", "pr-4283", "10001:10001"),
+			Image:           container.NewImage("ghcr.io/celestiaorg/celestia-node", "v0.24.1", "10001:10001"),
 		},
 		RollkitChainConfig: &tastoradocker.RollkitChainConfig{
 			ChainID:              "rollkit-test",
