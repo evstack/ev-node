@@ -9,7 +9,7 @@ replace github.com/evstack/ev-node/core => ./core
 require (
 	connectrpc.com/connect v1.18.1
 	connectrpc.com/grpcreflect v1.3.0
-	github.com/celestiaorg/go-header v0.6.6
+	github.com/celestiaorg/go-header v0.7.0
 	github.com/celestiaorg/utils v0.1.0
 	github.com/evstack/ev-node/core v0.0.0-00010101000000-000000000000
 	github.com/go-kit/kit v0.13.0
@@ -26,11 +26,11 @@ require (
 	github.com/spf13/cobra v1.9.1
 	github.com/spf13/pflag v1.0.7
 	github.com/spf13/viper v1.20.1
-	github.com/stretchr/testify v1.10.0
+	github.com/stretchr/testify v1.11.0
 	golang.org/x/crypto v0.41.0
 	golang.org/x/net v0.43.0
 	golang.org/x/sync v0.16.0
-	google.golang.org/protobuf v1.36.7
+	google.golang.org/protobuf v1.36.8
 )
 
 require (
@@ -159,3 +159,5 @@ require (
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 	lukechampine.com/blake3 v1.4.1 // indirect
 )
+
+replace github.com/ipfs/go-datastore => github.com/celestiaorg/go-datastore v0.0.0-20250801131506-48a63ae531e4

@@ -108,6 +108,63 @@ func (_c *MockStore_Append_Call[H]) RunAndReturn(run func(context1 context.Conte
 	return _c
 }
 
+// DeleteTo provides a mock function for the type MockStore
+func (_mock *MockStore[H]) DeleteTo(ctx context.Context, to uint64) error {
+	ret := _mock.Called(ctx, to)
+
+	if len(ret) == 0 {
+		panic("no return value specified for DeleteTo")
+	}
+
+	var r0 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, uint64) error); ok {
+		r0 = returnFunc(ctx, to)
+	} else {
+		r0 = ret.Error(0)
+	}
+	return r0
+}
+
+// MockStore_DeleteTo_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'DeleteTo'
+type MockStore_DeleteTo_Call[H header.Header[H]] struct {
+	*mock.Call
+}
+
+// DeleteTo is a helper method to define mock.On call
+//   - ctx context.Context
+//   - to uint64
+func (_e *MockStore_Expecter[H]) DeleteTo(ctx interface{}, to interface{}) *MockStore_DeleteTo_Call[H] {
+	return &MockStore_DeleteTo_Call[H]{Call: _e.mock.On("DeleteTo", ctx, to)}
+}
+
+func (_c *MockStore_DeleteTo_Call[H]) Run(run func(ctx context.Context, to uint64)) *MockStore_DeleteTo_Call[H] {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 uint64
+		if args[1] != nil {
+			arg1 = args[1].(uint64)
+		}
+		run(
+			arg0,
+			arg1,
+		)
+	})
+	return _c
+}
+
+func (_c *MockStore_DeleteTo_Call[H]) Return(err error) *MockStore_DeleteTo_Call[H] {
+	_c.Call.Return(err)
+	return _c
+}
+
+func (_c *MockStore_DeleteTo_Call[H]) RunAndReturn(run func(ctx context.Context, to uint64) error) *MockStore_DeleteTo_Call[H] {
+	_c.Call.Return(run)
+	return _c
+}
+
 // Get provides a mock function for the type MockStore
 func (_mock *MockStore[H]) Get(context1 context.Context, hash header.Hash) (H, error) {
 	ret := _mock.Called(context1, hash)
@@ -640,59 +697,104 @@ func (_c *MockStore_Height_Call[H]) RunAndReturn(run func() uint64) *MockStore_H
 	return _c
 }
 
-// Init provides a mock function for the type MockStore
-func (_mock *MockStore[H]) Init(context1 context.Context, v H) error {
-	ret := _mock.Called(context1, v)
-
-	if len(ret) == 0 {
-		panic("no return value specified for Init")
-	}
-
-	var r0 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, H) error); ok {
-		r0 = returnFunc(context1, v)
-	} else {
-		r0 = ret.Error(0)
-	}
-	return r0
+// OnDelete provides a mock function for the type MockStore
+func (_mock *MockStore[H]) OnDelete(handler func(ctx context.Context, height uint64) error) {
+	_mock.Called(handler)
+	return
 }
 
-// MockStore_Init_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'Init'
-type MockStore_Init_Call[H header.Header[H]] struct {
+// MockStore_OnDelete_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'OnDelete'
+type MockStore_OnDelete_Call[H header.Header[H]] struct {
 	*mock.Call
 }
 
-// Init is a helper method to define mock.On call
-//   - context1 context.Context
-//   - v H
-func (_e *MockStore_Expecter[H]) Init(context1 interface{}, v interface{}) *MockStore_Init_Call[H] {
-	return &MockStore_Init_Call[H]{Call: _e.mock.On("Init", context1, v)}
+// OnDelete is a helper method to define mock.On call
+//   - handler func(ctx context.Context, height uint64) error
+func (_e *MockStore_Expecter[H]) OnDelete(handler interface{}) *MockStore_OnDelete_Call[H] {
+	return &MockStore_OnDelete_Call[H]{Call: _e.mock.On("OnDelete", handler)}
 }
 
-func (_c *MockStore_Init_Call[H]) Run(run func(context1 context.Context, v H)) *MockStore_Init_Call[H] {
+func (_c *MockStore_OnDelete_Call[H]) Run(run func(handler func(ctx context.Context, height uint64) error)) *MockStore_OnDelete_Call[H] {
 	_c.Call.Run(func(args mock.Arguments) {
-		var arg0 context.Context
+		var arg0 func(ctx context.Context, height uint64) error
 		if args[0] != nil {
-			arg0 = args[0].(context.Context)
-		}
-		var arg1 H
-		if args[1] != nil {
-			arg1 = args[1].(H)
+			arg0 = args[0].(func(ctx context.Context, height uint64) error)
 		}
 		run(
 			arg0,
-			arg1,
 		)
 	})
 	return _c
 }
 
-func (_c *MockStore_Init_Call[H]) Return(err error) *MockStore_Init_Call[H] {
-	_c.Call.Return(err)
+func (_c *MockStore_OnDelete_Call[H]) Return() *MockStore_OnDelete_Call[H] {
+	_c.Call.Return()
 	return _c
 }
 
-func (_c *MockStore_Init_Call[H]) RunAndReturn(run func(context1 context.Context, v H) error) *MockStore_Init_Call[H] {
+func (_c *MockStore_OnDelete_Call[H]) RunAndReturn(run func(handler func(ctx context.Context, height uint64) error)) *MockStore_OnDelete_Call[H] {
+	_c.Run(run)
+	return _c
+}
+
+// Tail provides a mock function for the type MockStore
+func (_mock *MockStore[H]) Tail(context1 context.Context) (H, error) {
+	ret := _mock.Called(context1)
+
+	if len(ret) == 0 {
+		panic("no return value specified for Tail")
+	}
+
+	var r0 H
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context) (H, error)); ok {
+		return returnFunc(context1)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context) H); ok {
+		r0 = returnFunc(context1)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(H)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context) error); ok {
+		r1 = returnFunc(context1)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}
+
+// MockStore_Tail_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'Tail'
+type MockStore_Tail_Call[H header.Header[H]] struct {
+	*mock.Call
+}
+
+// Tail is a helper method to define mock.On call
+//   - context1 context.Context
+func (_e *MockStore_Expecter[H]) Tail(context1 interface{}) *MockStore_Tail_Call[H] {
+	return &MockStore_Tail_Call[H]{Call: _e.mock.On("Tail", context1)}
+}
+
+func (_c *MockStore_Tail_Call[H]) Run(run func(context1 context.Context)) *MockStore_Tail_Call[H] {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		run(
+			arg0,
+		)
+	})
+	return _c
+}
+
+func (_c *MockStore_Tail_Call[H]) Return(v H, err error) *MockStore_Tail_Call[H] {
+	_c.Call.Return(v, err)
+	return _c
+}
+
+func (_c *MockStore_Tail_Call[H]) RunAndReturn(run func(context1 context.Context) (H, error)) *MockStore_Tail_Call[H] {
 	_c.Call.Return(run)
 	return _c
 }
