@@ -74,7 +74,7 @@ func TestMetrics(t *testing.T) {
 		assert.NotNil(t, em.NonRecoverableErrors)
 
 		// Test maps are initialized
-		assert.Len(t, em.ChannelBufferUsage, 7)
+		assert.Len(t, em.ChannelBufferUsage, 6)
 		assert.Len(t, em.ErrorsByType, 5)
 		assert.Len(t, em.OperationDuration, 5)
 		assert.Len(t, em.StateTransitions, 3)
@@ -105,8 +105,7 @@ func TestMetricsHelpers(t *testing.T) {
 	m := &Manager{
 		metrics:       NopMetrics(),
 		logger:        zerolog.Nop(),
-		headerInCh:    make(chan NewHeaderEvent, 10),
-		dataInCh:      make(chan NewDataEvent, 10),
+		heightInCh:    make(chan daHeightEvent, 10),
 		headerStoreCh: make(chan struct{}, 1),
 		dataStoreCh:   make(chan struct{}, 1),
 		retrieveCh:    make(chan struct{}, 1),
@@ -127,8 +126,7 @@ func TestMetricsHelpers(t *testing.T) {
 
 	t.Run("updateChannelMetrics", func(t *testing.T) {
 		// Add some data to channels
-		m.headerInCh <- NewHeaderEvent{}
-		m.dataInCh <- NewDataEvent{}
+		m.heightInCh <- daHeightEvent{}
 
 		// Should not panic
 		m.updateChannelMetrics()

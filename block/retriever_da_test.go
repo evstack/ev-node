@@ -30,7 +30,7 @@ import (
 )
 
 // setupManagerForRetrieverTest initializes a Manager with mocked dependencies.
-func setupManagerForRetrieverTest(t *testing.T, initialDAHeight uint64) (*Manager, *rollmocks.MockDA, *rollmocks.MockStore, *cache.Cache[types.SignedHeader], *cache.Cache[types.Data], context.CancelFunc) {
+func setupManagerForRetrieverTest(t *testing.T, initialDAHeight uint64) (*daRetriever, *Manager, *rollmocks.MockDA, *rollmocks.MockStore, *cache.Cache[types.SignedHeader], *cache.Cache[types.Data], context.CancelFunc) {
 	t.Helper()
 	mockDAClient := rollmocks.NewMockDA(t)
 	mockStore := rollmocks.NewMockStore(t)
@@ -43,6 +43,8 @@ func setupManagerForRetrieverTest(t *testing.T, initialDAHeight uint64) (*Manage
 	mockStore.On("SetHeight", mock.Anything, mock.Anything).Return(nil).Maybe()
 	mockStore.On("SetMetadata", mock.Anything, mock.Anything, mock.Anything).Return(nil).Maybe()
 	mockStore.On("GetMetadata", mock.Anything, storepkg.DAIncludedHeightKey).Return([]byte{}, ds.ErrNotFound).Maybe()
+	mockStore.On("GetBlockData", mock.Anything, mock.Anything).Return(nil, nil, ds.ErrNotFound).Maybe()
+	mockStore.On("Height", mock.Anything).Return(uint64(1000), nil).Maybe()
 
 	_, cancel := context.WithCancel(context.Background())
 
@@ -62,9 +64,8 @@ func setupManagerForRetrieverTest(t *testing.T, initialDAHeight uint64) (*Manage
 		genesis:                     genesis.Genesis{ProposerAddress: addr},
 		daHeight:                    &atomic.Uint64{},
 		daIncludedHeight:            atomic.Uint64{},
-		headerInCh:                  make(chan NewHeaderEvent, eventInChLength),
+		heightInCh:                  make(chan daHeightEvent, eventInChLength),
 		headerStore:                 headerStore,
-		dataInCh:                    make(chan NewDataEvent, eventInChLength),
 		dataStore:                   dataStore,
 		headerCache:                 cache.NewCache[types.SignedHeader](),
 		dataCache:                   cache.NewCache[types.Data](),
@@ -84,7 +85,7 @@ func setupManagerForRetrieverTest(t *testing.T, initialDAHeight uint64) (*Manage
 
 	t.Cleanup(cancel)
 
-	return manager, mockDAClient, mockStore, manager.headerCache, manager.dataCache, cancel
+	return newDARetriever(manager), manager, mockDAClient, mockStore, manager.headerCache, manager.dataCache, cancel
 }
 
 // TestProcessNextDAHeader_Success_SingleHeaderAndData verifies that a single header and data are correctly processed and events are emitted.
@@ -92,7 +93,8 @@ func TestProcessNextDAHeader_Success_SingleHeaderAndData(t *testing.T) {
 	t.Parallel()
 	daHeight := uint64(20)
 	blockHeight := uint64(100)
-	manager, mockDAClient, mockStore, headerCache, dataCache, cancel := setupManagerForRetrieverTest(t, daHeight)
+	daManager, manager, mockDAClient, mockStore, headerCache, dataCache, cancel := setupManagerForRetrieverTest(t, daHeight)
+
 	defer cancel()
 
 	proposerAddr := manager.genesis.ProposerAddress
@@ -148,30 +150,21 @@ func TestProcessNextDAHeader_Success_SingleHeaderAndData(t *testing.T) {
 	).Times(2) // one for headers, one for data
 
 	ctx := context.Background()
-	err = manager.processNextDAHeaderAndData(ctx)
+	err = daManager.processNextDAHeaderAndData(ctx)
 	require.NoError(t, err)
 
-	// Validate header event
+	// Validate height event with both header and data
 	select {
-	case event := <-manager.headerInCh:
+	case event := <-manager.heightInCh:
 		assert.Equal(t, blockHeight, event.Header.Height())
-		assert.Equal(t, daHeight, event.DAHeight)
+		assert.Equal(t, daHeight, event.DaHeight)
 		assert.Equal(t, proposerAddr, event.Header.ProposerAddress)
+		assert.Equal(t, blockData.Txs, event.Data.Txs)
 	case <-time.After(100 * time.Millisecond):
-		t.Fatal("Expected header event not received")
+		t.Fatal("Expected height event not received")
 	}
 
 	assert.True(t, headerCache.IsDAIncluded(expectedHeaderHash), "Header hash should be marked as DA included in cache")
-
-	// Validate block data event
-	select {
-	case dataEvent := <-manager.dataInCh:
-		assert.Equal(t, daHeight, dataEvent.DAHeight)
-		assert.Equal(t, blockData.Txs, dataEvent.Data.Txs)
-		// Optionally, compare more fields if needed
-	case <-time.After(100 * time.Millisecond):
-		t.Fatal("Expected block data event not received")
-	}
 	assert.True(t, dataCache.IsDAIncluded(blockData.DACommitment().String()), "Block data commitment should be marked as DA included in cache")
 
 	mockDAClient.AssertExpectations(t)
@@ -184,7 +177,7 @@ func TestProcessNextDAHeader_MultipleHeadersAndData(t *testing.T) {
 	daHeight := uint64(50)
 	startBlockHeight := uint64(130)
 	nHeaders := 50
-	manager, mockDAClient, _, _, _, cancel := setupManagerForRetrieverTest(t, daHeight)
+	daManager, manager, mockDAClient, _, _, _, cancel := setupManagerForRetrieverTest(t, daHeight)
 	defer cancel()
 
 	proposerAddr := manager.genesis.ProposerAddress
@@ -263,48 +256,34 @@ func TestProcessNextDAHeader_MultipleHeadersAndData(t *testing.T) {
 	).Times(2) // one for headers, one for data
 
 	ctx := context.Background()
-	err := manager.processNextDAHeaderAndData(ctx)
+	err := daManager.processNextDAHeaderAndData(ctx)
 	require.NoError(t, err)
 
-	// Validate all header events
-	headerEvents := make([]NewHeaderEvent, 0, nHeaders)
+	// Validate all height events with both header and data
+	heightEvents := make([]daHeightEvent, 0, nHeaders)
 	for i := 0; i < nHeaders; i++ {
 		select {
-		case event := <-manager.headerInCh:
-			headerEvents = append(headerEvents, event)
+		case event := <-manager.heightInCh:
+			heightEvents = append(heightEvents, event)
 		case <-time.After(300 * time.Millisecond):
-			t.Fatalf("Expected header event %d not received", i+1)
+			t.Fatalf("Expected height event %d not received", i+1)
 		}
 	}
-	// Check all expected heights are present
+
+	// Check all expected heights and tx counts are present
 	receivedHeights := make(map[uint64]bool)
-	for _, event := range headerEvents {
+	receivedLens := make(map[int]bool)
+	for _, event := range heightEvents {
 		receivedHeights[event.Header.Height()] = true
-		assert.Equal(t, daHeight, event.DAHeight)
+		receivedLens[len(event.Data.Txs)] = true
+		assert.Equal(t, daHeight, event.DaHeight)
 		assert.Equal(t, proposerAddr, event.Header.ProposerAddress)
 	}
 	for _, h := range blockHeights {
-		assert.True(t, receivedHeights[h], "Header event for height %d not received", h)
-	}
-
-	// Validate all data events
-	dataEvents := make([]NewDataEvent, 0, nHeaders)
-	for i := 0; i < nHeaders; i++ {
-		select {
-		case event := <-manager.dataInCh:
-			dataEvents = append(dataEvents, event)
-		case <-time.After(300 * time.Millisecond):
-			t.Fatalf("Expected data event %d not received", i+1)
-		}
-	}
-	// Check all expected tx lens are present
-	receivedLens := make(map[int]bool)
-	for _, event := range dataEvents {
-		receivedLens[len(event.Data.Txs)] = true
-		assert.Equal(t, daHeight, event.DAHeight)
+		assert.True(t, receivedHeights[h], "Height event for height %d not received", h)
 	}
 	for _, l := range txLens {
-		assert.True(t, receivedLens[l], "Data event for tx count %d not received", l)
+		assert.True(t, receivedLens[l], "Height event for tx count %d not received", l)
 	}
 
 	mockDAClient.AssertExpectations(t)
@@ -314,7 +293,7 @@ func TestProcessNextDAHeader_MultipleHeadersAndData(t *testing.T) {
 func TestProcessNextDAHeaderAndData_NotFound(t *testing.T) {
 	t.Parallel()
 	daHeight := uint64(25)
-	manager, mockDAClient, _, _, _, cancel := setupManagerForRetrieverTest(t, daHeight)
+	daManager, manager, mockDAClient, _, _, _, cancel := setupManagerForRetrieverTest(t, daHeight)
 	defer cancel()
 
 	// Mock GetIDs to return empty IDs to simulate "not found" scenario for both namespaces
@@ -323,18 +302,12 @@ func TestProcessNextDAHeaderAndData_NotFound(t *testing.T) {
 		Timestamp: time.Now(),
 	}, coreda.ErrBlobNotFound).Times(2) // one for headers, one for data
 	ctx := context.Background()
-	err := manager.processNextDAHeaderAndData(ctx)
+	err := daManager.processNextDAHeaderAndData(ctx)
 	require.NoError(t, err)
 
 	select {
-	case <-manager.headerInCh:
-		t.Fatal("No header event should be received for NotFound")
-	default:
-	}
-
-	select {
-	case <-manager.dataInCh:
-		t.Fatal("No data event should be received for NotFound")
+	case <-manager.heightInCh:
+		t.Fatal("No height event should be received for NotFound")
 	default:
 	}
 
@@ -345,7 +318,7 @@ func TestProcessNextDAHeaderAndData_NotFound(t *testing.T) {
 func TestProcessNextDAHeaderAndData_UnmarshalHeaderError(t *testing.T) {
 	t.Parallel()
 	daHeight := uint64(30)
-	manager, mockDAClient, _, _, _, cancel := setupManagerForRetrieverTest(t, daHeight)
+	daManager, manager, mockDAClient, _, _, _, cancel := setupManagerForRetrieverTest(t, daHeight)
 	defer cancel()
 
 	invalidBytes := []byte("this is not a valid protobuf message")
@@ -364,17 +337,12 @@ func TestProcessNextDAHeaderAndData_UnmarshalHeaderError(t *testing.T) {
 	// Logger expectations removed since using zerolog.Nop()
 
 	ctx := context.Background()
-	err := manager.processNextDAHeaderAndData(ctx)
+	err := daManager.processNextDAHeaderAndData(ctx)
 	require.NoError(t, err)
 
 	select {
-	case <-manager.headerInCh:
-		t.Fatal("No header event should be received for unmarshal error")
-	default:
-	}
-	select {
-	case <-manager.dataInCh:
-		t.Fatal("No data event should be received for unmarshal error")
+	case <-manager.heightInCh:
+		t.Fatal("No height event should be received for unmarshal error")
 	default:
 	}
 
@@ -387,7 +355,7 @@ func TestProcessNextDAHeader_UnexpectedSequencer(t *testing.T) {
 	t.Parallel()
 	daHeight := uint64(35)
 	blockHeight := uint64(110)
-	manager, mockDAClient, _, _, _, cancel := setupManagerForRetrieverTest(t, daHeight)
+	daManager, manager, mockDAClient, _, _, _, cancel := setupManagerForRetrieverTest(t, daHeight)
 	defer cancel()
 
 	src := rand.Reader
@@ -417,33 +385,25 @@ func TestProcessNextDAHeader_UnexpectedSequencer(t *testing.T) {
 		[]coreda.Blob{headerBytes}, nil,
 	).Times(2) // one for headers, one for data
 
-	// Logger expectations removed since using zerolog.Nop()
-
 	ctx := context.Background()
-	err = manager.processNextDAHeaderAndData(ctx)
+	err = daManager.processNextDAHeaderAndData(ctx)
 	require.NoError(t, err)
 
 	select {
-	case <-manager.headerInCh:
-		t.Fatal("No header event should be received for unexpected sequencer")
+	case <-manager.heightInCh:
+		t.Fatal("No height event should be received for unexpected sequencer")
 	default:
 		// Expected behavior
 	}
-	select {
-	case <-manager.dataInCh:
-		t.Fatal("No data event should be received for unmarshal error")
-	default:
-	}
 
 	mockDAClient.AssertExpectations(t)
-	// Logger expectations removed
 }
 
 // TestProcessNextDAHeader_FetchError_RetryFailure verifies that persistent fetch errors are retried and eventually returned.
 func TestProcessNextDAHeader_FetchError_RetryFailure(t *testing.T) {
 	t.Parallel()
 	daHeight := uint64(40)
-	manager, mockDAClient, _, _, _, cancel := setupManagerForRetrieverTest(t, daHeight)
+	daManager, manager, mockDAClient, _, _, _, cancel := setupManagerForRetrieverTest(t, daHeight)
 	defer cancel()
 
 	fetchErr := errors.New("persistent DA connection error")
@@ -454,19 +414,13 @@ func TestProcessNextDAHeader_FetchError_RetryFailure(t *testing.T) {
 	).Times(dAFetcherRetries * 2) // Multiply by 2 for both namespaces
 
 	ctx := context.Background()
-	err := manager.processNextDAHeaderAndData(ctx)
+	err := daManager.processNextDAHeaderAndData(ctx)
 	require.Error(t, err)
 	assert.ErrorContains(t, err, fetchErr.Error(), "Expected the final error after retries")
 
 	select {
-	case <-manager.headerInCh:
-		t.Fatal("No header event should be received on fetch failure")
-	default:
-	}
-
-	select {
-	case <-manager.dataInCh:
-		t.Fatal("No data event should be received for unmarshal error")
+	case <-manager.heightInCh:
+		t.Fatal("No height event should be received on fetch failure")
 	default:
 	}
 
@@ -479,7 +433,7 @@ func TestProcessNextDAHeader_HeaderAndDataAlreadySeen(t *testing.T) {
 	daHeight := uint64(45)
 	blockHeight := uint64(120)
 
-	manager, mockDAClient, _, headerCache, dataCache, cancel := setupManagerForRetrieverTest(t, daHeight)
+	daManager, manager, mockDAClient, _, headerCache, dataCache, cancel := setupManagerForRetrieverTest(t, daHeight)
 	defer cancel()
 
 	// Initialize heights properly
@@ -544,34 +498,26 @@ func TestProcessNextDAHeader_HeaderAndDataAlreadySeen(t *testing.T) {
 		[]coreda.Blob{headerBytes, blockDataBytes}, nil,
 	).Times(2) // one for headers, one for data
 
-	// Logger expectations removed since using zerolog.Nop()
-
 	ctx := context.Background()
-	err = manager.processNextDAHeaderAndData(ctx)
+	err = daManager.processNextDAHeaderAndData(ctx)
 	require.NoError(t, err)
 
 	// Verify no header event was sent
 	select {
-	case <-manager.headerInCh:
-		t.Fatal("Header event should not be received for already seen header")
+	case <-manager.heightInCh:
+		t.Fatal("Height event should not be received for already seen header")
 	default:
 		// Expected path
 	}
-	select {
-	case <-manager.dataInCh:
-		t.Fatal("Data event should not be received if already seen")
-	case <-time.After(50 * time.Millisecond):
-	}
 
 	mockDAClient.AssertExpectations(t)
-	// Logger expectations removed
 }
 
 // TestRetrieveLoop_ProcessError_HeightFromFuture verifies that the loop continues without logging error if error is height from future.
 func TestRetrieveLoop_ProcessError_HeightFromFuture(t *testing.T) {
 	t.Parallel()
 	startDAHeight := uint64(10)
-	manager, mockDAClient, _, _, _, cancel := setupManagerForRetrieverTest(t, startDAHeight)
+	_, manager, mockDAClient, _, _, _, cancel := setupManagerForRetrieverTest(t, startDAHeight)
 	defer cancel()
 
 	futureErr := fmt.Errorf("some error wrapping: %w", ErrHeightFromFutureStr)
@@ -586,9 +532,6 @@ func TestRetrieveLoop_ProcessError_HeightFromFuture(t *testing.T) {
 		&coreda.GetIDsResult{IDs: []coreda.ID{}}, coreda.ErrBlobNotFound,
 	).Maybe()
 
-	// Logger expectations removed since using zerolog.Nop()
-	// Logger expectations removed since using zerolog.Nop()
-
 	ctx, loopCancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer loopCancel()
 
@@ -596,7 +539,7 @@ func TestRetrieveLoop_ProcessError_HeightFromFuture(t *testing.T) {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		manager.RetrieveLoop(ctx)
+		manager.DARetrieveLoop(ctx)
 	}()
 
 	manager.retrieveCh <- struct{}{}
@@ -613,7 +556,7 @@ func TestRetrieveLoop_ProcessError_HeightFromFuture(t *testing.T) {
 func TestRetrieveLoop_ProcessError_Other(t *testing.T) {
 	t.Parallel()
 	startDAHeight := uint64(15)
-	manager, mockDAClient, _, _, _, cancel := setupManagerForRetrieverTest(t, startDAHeight)
+	_, manager, mockDAClient, _, _, _, cancel := setupManagerForRetrieverTest(t, startDAHeight)
 	defer cancel()
 
 	otherErr := errors.New("some other DA error")
@@ -623,10 +566,6 @@ func TestRetrieveLoop_ProcessError_Other(t *testing.T) {
 		nil, otherErr,
 	).Times(dAFetcherRetries * 2) // Multiply by 2 for both namespaces
 
-	// Logger expectations removed since using zerolog.Nop()
-
-	// Logger expectations removed since using zerolog.Nop()
-
 	ctx, loopCancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer loopCancel()
 
@@ -634,7 +573,7 @@ func TestRetrieveLoop_ProcessError_Other(t *testing.T) {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		manager.RetrieveLoop(ctx)
+		manager.DARetrieveLoop(ctx)
 	}()
 
 	// Give the goroutine time to start
@@ -645,10 +584,7 @@ func TestRetrieveLoop_ProcessError_Other(t *testing.T) {
 	// Wait for the context to timeout or the goroutine to finish
 	wg.Wait()
 
-	// Check if the error was logged
-
 	mockDAClient.AssertExpectations(t)
-	// Logger expectations removed
 }
 
 // TestProcessNextDAHeader_WithNoTxs verifies that a data with no transactions is ignored and does not emit events or mark as DA included.
@@ -656,7 +592,7 @@ func TestProcessNextDAHeader_WithNoTxs(t *testing.T) {
 	t.Parallel()
 	daHeight := uint64(55)
 	blockHeight := uint64(140)
-	manager, mockDAClient, _, _, dataCache, cancel := setupManagerForRetrieverTest(t, daHeight)
+	daManager, manager, mockDAClient, _, _, dataCache, cancel := setupManagerForRetrieverTest(t, daHeight)
 	defer cancel()
 
 	// Create a valid header
@@ -698,23 +634,18 @@ func TestProcessNextDAHeader_WithNoTxs(t *testing.T) {
 	).Times(2) // one for headers, one for data
 
 	ctx := context.Background()
-	err = manager.processNextDAHeaderAndData(ctx)
+	err = daManager.processNextDAHeaderAndData(ctx)
 	require.NoError(t, err)
 
 	// Validate header event
 	select {
-	case <-manager.headerInCh:
-		// ok
+	case event := <-manager.heightInCh:
+		// Should receive height event with empty data
+		assert.Equal(t, blockHeight, event.Header.Height())
+		assert.Equal(t, daHeight, event.DaHeight)
+		assert.Empty(t, event.Data.Txs, "Data should be empty for headers with no transactions")
 	case <-time.After(100 * time.Millisecond):
-		t.Fatal("Expected header event not received")
-	}
-
-	// Validate data event for empty data
-	select {
-	case <-manager.dataInCh:
-		t.Fatal("No data event should be received for empty data")
-	case <-time.After(100 * time.Millisecond):
-		// ok, no event as expected
+		t.Fatal("Expected height event not received")
 	}
 	// The empty data should NOT be marked as DA included in cache
 	emptyData := &types.Data{Txs: types.Txs{}}
@@ -727,7 +658,7 @@ func TestProcessNextDAHeader_WithNoTxs(t *testing.T) {
 func TestRetrieveLoop_DAHeightIncrementsOnlyOnSuccess(t *testing.T) {
 	t.Parallel()
 	startDAHeight := uint64(60)
-	manager, mockDAClient, _, _, _, cancel := setupManagerForRetrieverTest(t, startDAHeight)
+	_, manager, mockDAClient, _, _, _, cancel := setupManagerForRetrieverTest(t, startDAHeight)
 	defer cancel()
 
 	blockHeight := uint64(150)
@@ -786,7 +717,7 @@ func TestRetrieveLoop_DAHeightIncrementsOnlyOnSuccess(t *testing.T) {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		manager.RetrieveLoop(ctx)
+		manager.DARetrieveLoop(ctx)
 	}()
 
 	manager.retrieveCh <- struct{}{}

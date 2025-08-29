@@ -201,6 +201,7 @@ func TestDefaultAggregatorValue(t *testing.T) {
 			defer stopDAHeightTicker()
 
 			nodeConfig := rollconf.DefaultConfig
+			nodeConfig.RootDir = t.TempDir()
 
 			newRunNodeCmd := newRunNodeCmd(t.Context(), executor, sequencer, dac, keyProvider, p2pClient, ds, nodeConfig)
 			_ = newRunNodeCmd.Flags().Set(rollconf.FlagRootDir, "custom/root/dir")
@@ -271,6 +272,7 @@ func TestSetupLogger(t *testing.T) {
 // the configuration fields in nodeConfig are updated accordingly, ensuring that mocks are skipped.
 func TestCentralizedAddresses(t *testing.T) {
 	nodeConfig := rollconf.DefaultConfig
+	nodeConfig.RootDir = t.TempDir()
 
 	args := []string{
 		"start",
@@ -573,7 +575,6 @@ func TestStartNodeErrors(t *testing.T) {
 		{
 			name: "GRPCSignerPanic",
 			configModifier: func(cfg *rollconf.Config) {
-				cfg.RootDir = tmpDir
 				cfg.Signer.SignerType = "grpc"
 				cfg.Node.Aggregator = true
 			},
@@ -582,7 +583,6 @@ func TestStartNodeErrors(t *testing.T) {
 		{
 			name: "UnknownSignerError",
 			configModifier: func(cfg *rollconf.Config) {
-				cfg.RootDir = tmpDir
 				cfg.Signer.SignerType = "unknown"
 				cfg.Node.Aggregator = true
 			},
@@ -591,7 +591,6 @@ func TestStartNodeErrors(t *testing.T) {
 		{
 			name: "LoadFileSystemSignerError",
 			configModifier: func(cfg *rollconf.Config) {
-				cfg.RootDir = tmpDir
 				cfg.Node.Aggregator = true
 				cfg.Signer.SignerType = "file"
 				cfg.Signer.SignerPath = filepath.Join(tmpDir, "nonexistent_signer")
@@ -602,7 +601,6 @@ func TestStartNodeErrors(t *testing.T) {
 		{
 			name: "RelativeSignerPathSuccess",
 			configModifier: func(cfg *rollconf.Config) {
-				cfg.RootDir = tmpDir
 				cfg.Node.Aggregator = true
 				cfg.Signer.SignerType = "file"
 				cfg.Signer.SignerPath = "signer" // Relative path that exists
@@ -616,7 +614,6 @@ func TestStartNodeErrors(t *testing.T) {
 		{
 			name: "RelativeSignerPathNotFound",
 			configModifier: func(cfg *rollconf.Config) {
-				cfg.RootDir = tmpDir
 				cfg.Node.Aggregator = true
 				cfg.Signer.SignerType = "file"
 				cfg.Signer.SignerPath = "nonexistent" // Relative path that doesn't exist
@@ -633,6 +630,7 @@ func TestStartNodeErrors(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			nodeConfig := rollconf.DefaultConfig
+			nodeConfig.RootDir = tmpDir
 
 			if tc.configModifier != nil {
 				tc.configModifier(&nodeConfig)
@@ -706,8 +704,7 @@ func newRunNodeCmd(
 		Aliases: []string{"node", "run"},
 		Short:   "Run the rollkit node",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			runNodeLogger := zerolog.Nop()
-			return StartNode(runNodeLogger, cmd, executor, sequencer, dac, p2pClient, datastore, nodeConfig, testGenesis, node.NodeOptions{})
+			return StartNode(zerolog.Nop(), cmd, executor, sequencer, dac, p2pClient, datastore, nodeConfig, testGenesis, node.NodeOptions{})
 		},
 	}
 

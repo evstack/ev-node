@@ -43,16 +43,16 @@ func getManager(t *testing.T, da da.DA, gasPrice float64, gasMultiplier float64)
 	logger := zerolog.Nop()
 	mockStore := mocks.NewMockStore(t)
 	m := &Manager{
-		da:                       da,
-		headerCache:              cache.NewCache[types.SignedHeader](),
-		dataCache:                cache.NewCache[types.Data](),
-		logger:                   logger,
-		lastStateMtx:             &sync.RWMutex{},
-		metrics:                  NopMetrics(),
-		store:                    mockStore,
-		txNotifyCh:               make(chan struct{}, 1),
-		signaturePayloadProvider: types.DefaultSignaturePayloadProvider,
-		validatorHasherProvider:  types.DefaultValidatorHasherProvider,
+		da:                                 da,
+		headerCache:                        cache.NewCache[types.SignedHeader](),
+		dataCache:                          cache.NewCache[types.Data](),
+		logger:                             logger,
+		lastStateMtx:                       &sync.RWMutex{},
+		metrics:                            NopMetrics(),
+		store:                              mockStore,
+		txNotifyCh:                         make(chan struct{}, 1),
+		aggregatorSignaturePayloadProvider: types.DefaultAggregatorNodeSignatureBytesProvider,
+		validatorHasherProvider:            types.DefaultValidatorHasherProvider,
 	}
 
 	m.publishBlock = m.publishBlockInternal
@@ -659,19 +659,6 @@ func TestCacheMethods(t *testing.T) {
 		require.NotNil(cache)
 		require.Equal(m.dataCache, cache)
 	})
-
-	t.Run("IsBlockHashSeen", func(t *testing.T) {
-		require := require.New(t)
-		m, _ := getManager(t, mocks.NewMockDA(t), -1, -1)
-		hash := "test-hash"
-
-		// Initially not seen
-		require.False(m.IsBlockHashSeen(hash))
-
-		// Mark as seen
-		m.headerCache.SetSeen(hash)
-		require.True(m.IsBlockHashSeen(hash))
-	})
 }
 
 // TestUtilityFunctions tests standalone utility functions in the Manager
@@ -709,16 +696,16 @@ func TestUtilityFunctions(t *testing.T) {
 		m.signer = nil
 
 		header := types.Header{}
-		_, err := m.getHeaderSignature(header)
+		_, err := m.signHeader(header)
 		require.ErrorContains(err, "signer is nil; cannot sign header")
 	})
 
-	t.Run("IsUsingExpectedSingleSequencer", func(t *testing.T) {
+	t.Run("AssertUsingExpectedSingleSequencer", func(t *testing.T) {
 		require := require.New(t)
 		m, _ := getManager(t, mocks.NewMockDA(t), -1, -1)
 
 		// Create genesis data for the test
-		genesisData, privKey, _ := types.GetGenesisWithPrivkey("TestIsUsingExpectedSingleSequencer")
+		genesisData, privKey, _ := types.GetGenesisWithPrivkey("TestAssertUsingExpectedSingleSequencer")
 		m.genesis = genesisData
 
 		// Create a signer
@@ -751,11 +738,13 @@ func TestUtilityFunctions(t *testing.T) {
 		header.Signature = signature
 
 		// Should return true for valid header with correct proposer
-		require.True(m.isUsingExpectedSingleSequencer(header))
+		err = m.assertUsingExpectedSingleSequencer(header.ProposerAddress)
+		require.NoError(err)
 
 		// Should return false for header with wrong proposer address
 		header.ProposerAddress = []byte("wrong-proposer")
-		require.False(m.isUsingExpectedSingleSequencer(header))
+		err = m.assertUsingExpectedSingleSequencer(header.ProposerAddress)
+		require.Error(err)
 	})
 }
 
@@ -954,32 +943,10 @@ func TestValidationMethods(t *testing.T) {
 		require.Equal(expectedHeight, height)
 	})
 
-	t.Run("IsBlockHashSeen_True", func(t *testing.T) {
-		require := require.New(t)
-		m, _ := getManager(t, mocks.NewMockDA(t), -1, -1)
-		hash := "test-hash"
-
-		// Mark as seen first
-		m.headerCache.SetSeen(hash)
-
-		result := m.IsBlockHashSeen(hash)
-		require.True(result)
-	})
-
-	t.Run("IsBlockHashSeen_False", func(t *testing.T) {
-		require := require.New(t)
-		m, _ := getManager(t, mocks.NewMockDA(t), -1, -1)
-		hash := "unseen-hash"
-
-		result := m.IsBlockHashSeen(hash)
-		require.False(result)
-	})
-
 }
 
 // TestConfigurationDefaults tests default value handling and edge cases
 func TestConfigurationDefaults(t *testing.T) {
-
 	t.Run("IsProposer_NilSigner", func(t *testing.T) {
 		require := require.New(t)
 		privKey, _, err := crypto.GenerateKeyPair(crypto.Ed25519, 256)
