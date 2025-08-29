@@ -48,7 +48,7 @@ func (c *Cache[T]) DeleteItem(height uint64) {
 // If fn returns false, iteration stops early.
 // Non-uint64 keys (e.g. string hash entries) are ignored.
 func (c *Cache[T]) RangeByHeight(fn func(height uint64, item *T) bool) {
-	c.items.Range(func(k, v interface{}) bool {
+	c.items.Range(func(k, v any) bool {
 		height, ok := k.(uint64)
 		if !ok {
 			return true
@@ -149,7 +149,7 @@ func (c *Cache[T]) SaveToDisk(folderPath string) error {
 	itemsByHashMap := make(map[string]*T)
 
 	var invalidItemsErr error
-	c.items.Range(func(k, v interface{}) bool {
+	c.items.Range(func(k, v any) bool {
 		itemVal, ok := v.(*T)
 		if !ok {
 			invalidItemsErr = fmt.Errorf("invalid item type: %T", v)
@@ -177,7 +177,7 @@ func (c *Cache[T]) SaveToDisk(folderPath string) error {
 
 	// prepare hashes map
 	hashesToSave := make(map[string]bool)
-	c.hashes.Range(func(k, v interface{}) bool {
+	c.hashes.Range(func(k, v any) bool {
 		keyStr, okKey := k.(string)
 		valBool, okVal := v.(bool)
 		if okKey && okVal {
@@ -191,7 +191,7 @@ func (c *Cache[T]) SaveToDisk(folderPath string) error {
 
 	// prepare daIncluded map
 	daIncludedToSave := make(map[string]uint64)
-	c.daIncluded.Range(func(k, v interface{}) bool {
+	c.daIncluded.Range(func(k, v any) bool {
 		keyStr, okKey := k.(string)
 		valUint64, okVal := v.(uint64)
 		if okKey && okVal {

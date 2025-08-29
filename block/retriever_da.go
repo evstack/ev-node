@@ -30,9 +30,15 @@ type daRetriever struct {
 
 // daHeightEvent represents a DA event
 type daHeightEvent struct {
-	Header   *types.SignedHeader
-	Data     *types.Data
+	Header *types.SignedHeader
+	Data   *types.Data
+	// DaHeight corresponds to the highest DA included height between the Header and Data.
+	// It is used when setting the evolve last DA height.
 	DaHeight uint64
+
+	// HeaderDaIncludedHeight corresponds to the DA height at which the Header was included.
+	// Saving such is not necessary for the data, as the da included height can be set immediately after fetching because there is low verification required.
+	HeaderDaIncludedHeight uint64
 }
 
 // newDARetriever creates a new DA retriever
@@ -136,7 +142,11 @@ func (dr *daRetriever) processNextDAHeaderAndData(ctx context.Context) error {
 // processBlobs processes all blobs to find headers and their corresponding data, then sends complete height events
 func (dr *daRetriever) processBlobs(ctx context.Context, blobs [][]byte, daHeight uint64) {
 	// collect all headers and data
-	headers := make(map[uint64]*types.SignedHeader)
+	type headerWithDaHeight struct {
+		*types.SignedHeader
+		daHeight uint64
+	}
+	headers := make(map[uint64]headerWithDaHeight)
 	dataMap := make(map[uint64]*types.Data)
 
 	for _, bz := range blobs {
@@ -146,7 +156,7 @@ func (dr *daRetriever) processBlobs(ctx context.Context, blobs [][]byte, daHeigh
 		}
 
 		if header := dr.manager.tryDecodeHeader(bz, daHeight); header != nil {
-			headers[header.Height()] = header
+			headers[header.Height()] = headerWithDaHeight{header, daHeight}
 			continue
 		}
 
@@ -163,10 +173,10 @@ func (dr *daRetriever) processBlobs(ctx context.Context, blobs [][]byte, daHeigh
 		if data == nil {
 			if bytes.Equal(header.DataHash, dataHashForEmptyTxs) || len(header.DataHash) == 0 {
 				// Header expects empty data, create it
-				data = dr.manager.createEmptyDataForHeader(ctx, header)
+				data = dr.manager.createEmptyDataForHeader(ctx, header.SignedHeader)
 			} else {
 				// Check if header's DataHash matches the hash of empty data
-				emptyData := dr.manager.createEmptyDataForHeader(ctx, header)
+				emptyData := dr.manager.createEmptyDataForHeader(ctx, header.SignedHeader)
 				emptyDataHash := emptyData.Hash()
 				if bytes.Equal(header.DataHash, emptyDataHash) {
 					data = emptyData
@@ -180,9 +190,10 @@ func (dr *daRetriever) processBlobs(ctx context.Context, blobs [][]byte, daHeigh
 
 		// both available, proceed with complete event
 		dr.sendHeightEventIfValid(ctx, daHeightEvent{
-			Header:   header,
-			Data:     data,
-			DaHeight: daHeight,
+			Header:                 header.SignedHeader,
+			HeaderDaIncludedHeight: header.daHeight,
+			Data:                   data,
+			DaHeight:               daHeight,
 		})
 	}
 }
@@ -317,8 +328,6 @@ func (dr *daRetriever) queuePendingEvent(heightEvent daHeightEvent) {
 
 // processEvent processes a DA event that is ready for validation
 func (dr *daRetriever) processEvent(ctx context.Context, heightEvent daHeightEvent) {
-	headerHash := heightEvent.Header.Hash().String()
-
 	// Validate header with its data - some execution environment may require previous height to be stored
 	if err := heightEvent.Header.ValidateBasicWithData(heightEvent.Data); err != nil {
 		dr.manager.logger.Debug().Uint64("height", heightEvent.Header.Height()).Err(err).Msg("header validation with data failed")
@@ -329,7 +338,8 @@ func (dr *daRetriever) processEvent(ctx context.Context, heightEvent daHeightEve
 	dr.manager.recordDAMetrics("retrieval", DAModeSuccess)
 
 	// Mark as DA included since validation passed
-	dr.manager.headerCache.SetDAIncluded(headerHash, heightEvent.DaHeight)
+	headerHash := heightEvent.Header.Hash().String()
+	dr.manager.headerCache.SetDAIncluded(headerHash, heightEvent.HeaderDaIncludedHeight)
 	dr.manager.sendNonBlockingSignalToDAIncluderCh()
 	dr.manager.logger.Info().Uint64("headerHeight", heightEvent.Header.Height()).Str("headerHash", headerHash).Msg("header marked as DA included")
 
@@ -340,6 +350,7 @@ func (dr *daRetriever) processEvent(ctx context.Context, heightEvent daHeightEve
 		dr.manager.logger.Debug().
 			Uint64("height", heightEvent.Header.Height()).
 			Uint64("daHeight", heightEvent.DaHeight).
+			Str("source", "da data sync").
 			Msg("sent complete height event with header and data")
 	default:
 		// Channel full: keep event in pending cache for retry
@@ -347,6 +358,7 @@ func (dr *daRetriever) processEvent(ctx context.Context, heightEvent daHeightEve
 		dr.manager.logger.Warn().
 			Uint64("height", heightEvent.Header.Height()).
 			Uint64("daHeight", heightEvent.DaHeight).
+			Str("source", "da data sync").
 			Msg("heightInCh backlog full, re-queued event to pending cache")
 	}
 

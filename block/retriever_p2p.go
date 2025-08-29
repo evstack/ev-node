@@ -63,7 +63,7 @@ func (m *Manager) processHeaderStoreRange(ctx context.Context, startHeight, endH
 		m.logger.Error().Uint64("startHeight", startHeight).Uint64("endHeight", endHeight).Str("errors", err.Error()).Msg("failed to get headers from Header Store")
 		return
 	}
-	daHeight := m.daHeight.Load()
+
 	for _, header := range headers {
 		select {
 		case <-ctx.Done():
@@ -100,7 +100,7 @@ func (m *Manager) processHeaderStoreRange(ctx context.Context, startHeight, endH
 			continue
 		}
 
-		m.sendCompleteHeightEvent(ctx, header, data, daHeight, "p2p header sync")
+		m.sendCompleteHeightEventFromP2P(ctx, header, data)
 	}
 }
 
@@ -111,7 +111,7 @@ func (m *Manager) processDataStoreRange(ctx context.Context, startHeight, endHei
 		m.logger.Error().Uint64("startHeight", startHeight).Uint64("endHeight", endHeight).Str("errors", err.Error()).Msg("failed to get data from Data Store")
 		return
 	}
-	daHeight := m.daHeight.Load()
+
 	for _, d := range data {
 		select {
 		case <-ctx.Done():
@@ -140,12 +140,14 @@ func (m *Manager) processDataStoreRange(ctx context.Context, startHeight, endHei
 			continue
 		}
 
-		m.sendCompleteHeightEvent(ctx, header, d, daHeight, "p2p data sync")
+		m.sendCompleteHeightEventFromP2P(ctx, header, d)
 	}
 }
 
-// sendCompleteHeightEvent sends a complete height event with both header and data
-func (m *Manager) sendCompleteHeightEvent(ctx context.Context, header *types.SignedHeader, data *types.Data, daHeight uint64, source string) {
+// sendCompleteHeightEventFromP2P sends a complete height event with both header and data
+func (m *Manager) sendCompleteHeightEventFromP2P(ctx context.Context, header *types.SignedHeader, data *types.Data) {
+	daHeight := m.daHeight.Load()
+
 	heightEvent := daHeightEvent{
 		Header:   header,
 		Data:     data,
@@ -159,13 +161,13 @@ func (m *Manager) sendCompleteHeightEvent(ctx context.Context, header *types.Sig
 		m.logger.Debug().
 			Uint64("height", header.Height()).
 			Uint64("daHeight", daHeight).
-			Str("source", source).
+			Str("source", "p2p data sync").
 			Msg("sent complete height event with header and data")
 	default:
 		m.logger.Warn().
 			Uint64("height", header.Height()).
 			Uint64("daHeight", daHeight).
-			Str("source", source).
+			Str("source", "p2p data sync").
 			Msg("heightInCh backlog full, dropping complete event")
 	}
 }

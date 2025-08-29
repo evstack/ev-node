@@ -659,19 +659,6 @@ func TestCacheMethods(t *testing.T) {
 		require.NotNil(cache)
 		require.Equal(m.dataCache, cache)
 	})
-
-	t.Run("IsBlockHashSeen", func(t *testing.T) {
-		require := require.New(t)
-		m, _ := getManager(t, mocks.NewMockDA(t), -1, -1)
-		hash := "test-hash"
-
-		// Initially not seen
-		require.False(m.IsBlockHashSeen(hash))
-
-		// Mark as seen
-		m.headerCache.SetSeen(hash)
-		require.True(m.IsBlockHashSeen(hash))
-	})
 }
 
 // TestUtilityFunctions tests standalone utility functions in the Manager
@@ -956,32 +943,10 @@ func TestValidationMethods(t *testing.T) {
 		require.Equal(expectedHeight, height)
 	})
 
-	t.Run("IsBlockHashSeen_True", func(t *testing.T) {
-		require := require.New(t)
-		m, _ := getManager(t, mocks.NewMockDA(t), -1, -1)
-		hash := "test-hash"
-
-		// Mark as seen first
-		m.headerCache.SetSeen(hash)
-
-		result := m.IsBlockHashSeen(hash)
-		require.True(result)
-	})
-
-	t.Run("IsBlockHashSeen_False", func(t *testing.T) {
-		require := require.New(t)
-		m, _ := getManager(t, mocks.NewMockDA(t), -1, -1)
-		hash := "unseen-hash"
-
-		result := m.IsBlockHashSeen(hash)
-		require.False(result)
-	})
-
 }
 
 // TestConfigurationDefaults tests default value handling and edge cases
 func TestConfigurationDefaults(t *testing.T) {
-
 	t.Run("IsProposer_NilSigner", func(t *testing.T) {
 		require := require.New(t)
 		privKey, _, err := crypto.GenerateKeyPair(crypto.Ed25519, 256)

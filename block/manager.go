@@ -499,13 +499,8 @@ func (m *Manager) GetStoreHeight(ctx context.Context) (uint64, error) {
 	return m.store.Height(ctx)
 }
 
-// IsBlockHashSeen returns true if the block with the given hash has been seen.
-func (m *Manager) IsBlockHashSeen(blockHash string) bool {
-	return m.headerCache.IsSeen(blockHash)
-}
-
-// IsDAIncluded returns true if the block with the given hash has been seen on DA.
-// TODO(tac0turtle): should we use this for pending header system to verify how far ahead a chain is?
+// IsDAIncluded returns true if both the header and the data with the given hashes
+// have been seen on DA.
 func (m *Manager) IsDAIncluded(ctx context.Context, height uint64) (bool, error) {
 	syncedHeight, err := m.store.Height(ctx)
 	if err != nil {
