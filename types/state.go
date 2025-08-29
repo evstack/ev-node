@@ -1,10 +1,7 @@
 package types
 
 import (
-	"errors"
 	"time"
-
-	"github.com/evstack/ev-node/pkg/genesis"
 )
 
 // InitStateVersion sets the Consensus.Block and Software versions,
@@ -36,25 +33,6 @@ type State struct {
 
 	// the latest AppHash we've received from calling abci.Commit()
 	AppHash []byte
-}
-
-// NewFromGenesisDoc reads blockchain State from genesis.
-func NewFromGenesisDoc(genDoc genesis.Genesis) (State, error) {
-	if genDoc.InitialHeight == 0 {
-		return State{}, errors.New("initial height must be 1 when starting a new app")
-	}
-	s := State{
-		Version:       InitStateVersion,
-		ChainID:       genDoc.ChainID,
-		InitialHeight: genDoc.InitialHeight,
-
-		DAHeight: 1,
-
-		LastBlockHeight: genDoc.InitialHeight - 1,
-		LastBlockTime:   genDoc.GenesisDAStartTime,
-	}
-
-	return s, nil
 }
 
 func (s *State) NextState(header Header, stateRoot []byte) (State, error) {

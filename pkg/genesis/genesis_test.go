@@ -21,7 +21,7 @@ func TestNewGenesis(t *testing.T) {
 
 	assert.Equal(t, "test-chain", genesis.ChainID)
 	assert.Equal(t, uint64(1), genesis.InitialHeight)
-	assert.Equal(t, validTime, genesis.GenesisDAStartTime)
+	assert.Equal(t, validTime, genesis.StartTime)
 	assert.Equal(t, proposerAddress, genesis.ProposerAddress)
 
 	// Test that NewGenesis validates and panics on invalid input
@@ -72,50 +72,50 @@ func TestGenesis_Validate(t *testing.T) {
 		{
 			name: "valid genesis - chain ID can contain any character",
 			genesis: Genesis{
-				ChainID:            "test@chain#123!",
-				GenesisDAStartTime: validTime,
-				InitialHeight:      1,
-				ProposerAddress:    []byte("proposer"),
+				ChainID:         "test@chain#123!",
+				StartTime:       validTime,
+				InitialHeight:   1,
+				ProposerAddress: []byte("proposer"),
 			},
 			wantErr: false,
 		},
 		{
 			name: "invalid - empty chain_id",
 			genesis: Genesis{
-				ChainID:            "",
-				GenesisDAStartTime: validTime,
-				InitialHeight:      1,
-				ProposerAddress:    []byte("proposer"),
+				ChainID:         "",
+				StartTime:       validTime,
+				InitialHeight:   1,
+				ProposerAddress: []byte("proposer"),
 			},
 			wantErr: true,
 		},
 		{
 			name: "invalid - zero initial height",
 			genesis: Genesis{
-				ChainID:            "test-chain",
-				GenesisDAStartTime: validTime,
-				InitialHeight:      0,
-				ProposerAddress:    []byte("proposer"),
+				ChainID:         "test-chain",
+				StartTime:       validTime,
+				InitialHeight:   0,
+				ProposerAddress: []byte("proposer"),
 			},
 			wantErr: true,
 		},
 		{
 			name: "invalid - zero time DA start height",
 			genesis: Genesis{
-				ChainID:            "test-chain",
-				GenesisDAStartTime: time.Time{},
-				InitialHeight:      1,
-				ProposerAddress:    []byte("proposer"),
+				ChainID:         "test-chain",
+				StartTime:       time.Time{},
+				InitialHeight:   1,
+				ProposerAddress: []byte("proposer"),
 			},
 			wantErr: true,
 		},
 		{
 			name: "invalid - nil proposer address",
 			genesis: Genesis{
-				ChainID:            "test-chain",
-				GenesisDAStartTime: validTime,
-				InitialHeight:      1,
-				ProposerAddress:    nil,
+				ChainID:         "test-chain",
+				StartTime:       validTime,
+				InitialHeight:   1,
+				ProposerAddress: nil,
 			},
 			wantErr: true,
 		},

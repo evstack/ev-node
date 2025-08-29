@@ -10,6 +10,7 @@ import (
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 	emptypb "google.golang.org/protobuf/types/known/emptypb"
+	_ "google.golang.org/protobuf/types/known/timestamppb"
 	reflect "reflect"
 	sync "sync"
 	unsafe "unsafe"
@@ -356,11 +357,56 @@ func (x *GetMetadataResponse) GetValue() []byte {
 	return nil
 }
 
+// GetGenesisDaHeightResponse defines the DA height at which the first Evolve block was included.
+type GetGenesisDaHeightResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Height        uint64                 `protobuf:"varint,3,opt,name=height,proto3" json:"height,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetGenesisDaHeightResponse) Reset() {
+	*x = GetGenesisDaHeightResponse{}
+	mi := &file_evnode_v1_state_rpc_proto_msgTypes[6]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetGenesisDaHeightResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetGenesisDaHeightResponse) ProtoMessage() {}
+
+func (x *GetGenesisDaHeightResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_evnode_v1_state_rpc_proto_msgTypes[6]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetGenesisDaHeightResponse.ProtoReflect.Descriptor instead.
+func (*GetGenesisDaHeightResponse) Descriptor() ([]byte, []int) {
+	return file_evnode_v1_state_rpc_proto_rawDescGZIP(), []int{6}
+}
+
+func (x *GetGenesisDaHeightResponse) GetHeight() uint64 {
+	if x != nil {
+		return x.Height
+	}
+	return 0
+}
+
 var File_evnode_v1_state_rpc_proto protoreflect.FileDescriptor
 
 const file_evnode_v1_state_rpc_proto_rawDesc = "" +
 	"\n" +
-	"\x19evnode/v1/state_rpc.proto\x12\tevnode.v1\x1a\x1bgoogle/protobuf/empty.proto\x1a\x16evnode/v1/evnode.proto\x1a\x15evnode/v1/state.proto\"]\n" +
+	"\x19evnode/v1/state_rpc.proto\x12\tevnode.v1\x1a\x1bgoogle/protobuf/empty.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x16evnode/v1/evnode.proto\x1a\x15evnode/v1/state.proto\"]\n" +
 	"\x05Block\x12/\n" +
 	"\x06header\x18\x01 \x01(\v2\x17.evnode.v1.SignedHeaderR\x06header\x12#\n" +
 	"\x04data\x18\x02 \x01(\v2\x0f.evnode.v1.DataR\x04data\"O\n" +
@@ -378,11 +424,14 @@ const file_evnode_v1_state_rpc_proto_rawDesc = "" +
 	"\x12GetMetadataRequest\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\"+\n" +
 	"\x13GetMetadataResponse\x12\x14\n" +
-	"\x05value\x18\x01 \x01(\fR\x05value2\xe8\x01\n" +
+	"\x05value\x18\x01 \x01(\fR\x05value\"4\n" +
+	"\x1aGetGenesisDaHeightResponse\x12\x16\n" +
+	"\x06height\x18\x03 \x01(\x04R\x06height2\xbf\x02\n" +
 	"\fStoreService\x12E\n" +
 	"\bGetBlock\x12\x1a.evnode.v1.GetBlockRequest\x1a\x1b.evnode.v1.GetBlockResponse\"\x00\x12A\n" +
 	"\bGetState\x12\x16.google.protobuf.Empty\x1a\x1b.evnode.v1.GetStateResponse\"\x00\x12N\n" +
-	"\vGetMetadata\x12\x1d.evnode.v1.GetMetadataRequest\x1a\x1e.evnode.v1.GetMetadataResponse\"\x00B/Z-github.com/evstack/ev-node/types/pb/evnode/v1b\x06proto3"
+	"\vGetMetadata\x12\x1d.evnode.v1.GetMetadataRequest\x1a\x1e.evnode.v1.GetMetadataResponse\"\x00\x12U\n" +
+	"\x12GetGenesisDaHeight\x12\x16.google.protobuf.Empty\x1a%.evnode.v1.GetGenesisDaHeightResponse\"\x00B/Z-github.com/evstack/ev-node/types/pb/evnode/v1b\x06proto3"
 
 var (
 	file_evnode_v1_state_rpc_proto_rawDescOnce sync.Once
@@ -396,35 +445,38 @@ func file_evnode_v1_state_rpc_proto_rawDescGZIP() []byte {
 	return file_evnode_v1_state_rpc_proto_rawDescData
 }
 
-var file_evnode_v1_state_rpc_proto_msgTypes = make([]protoimpl.MessageInfo, 6)
+var file_evnode_v1_state_rpc_proto_msgTypes = make([]protoimpl.MessageInfo, 7)
 var file_evnode_v1_state_rpc_proto_goTypes = []any{
-	(*Block)(nil),               // 0: evnode.v1.Block
-	(*GetBlockRequest)(nil),     // 1: evnode.v1.GetBlockRequest
-	(*GetBlockResponse)(nil),    // 2: evnode.v1.GetBlockResponse
-	(*GetStateResponse)(nil),    // 3: evnode.v1.GetStateResponse
-	(*GetMetadataRequest)(nil),  // 4: evnode.v1.GetMetadataRequest
-	(*GetMetadataResponse)(nil), // 5: evnode.v1.GetMetadataResponse
-	(*SignedHeader)(nil),        // 6: evnode.v1.SignedHeader
-	(*Data)(nil),                // 7: evnode.v1.Data
-	(*State)(nil),               // 8: evnode.v1.State
-	(*emptypb.Empty)(nil),       // 9: google.protobuf.Empty
+	(*Block)(nil),                      // 0: evnode.v1.Block
+	(*GetBlockRequest)(nil),            // 1: evnode.v1.GetBlockRequest
+	(*GetBlockResponse)(nil),           // 2: evnode.v1.GetBlockResponse
+	(*GetStateResponse)(nil),           // 3: evnode.v1.GetStateResponse
+	(*GetMetadataRequest)(nil),         // 4: evnode.v1.GetMetadataRequest
+	(*GetMetadataResponse)(nil),        // 5: evnode.v1.GetMetadataResponse
+	(*GetGenesisDaHeightResponse)(nil), // 6: evnode.v1.GetGenesisDaHeightResponse
+	(*SignedHeader)(nil),               // 7: evnode.v1.SignedHeader
+	(*Data)(nil),                       // 8: evnode.v1.Data
+	(*State)(nil),                      // 9: evnode.v1.State
+	(*emptypb.Empty)(nil),              // 10: google.protobuf.Empty
 }
 var file_evnode_v1_state_rpc_proto_depIdxs = []int32{
-	6, // 0: evnode.v1.Block.header:type_name -> evnode.v1.SignedHeader
-	7, // 1: evnode.v1.Block.data:type_name -> evnode.v1.Data
-	0, // 2: evnode.v1.GetBlockResponse.block:type_name -> evnode.v1.Block
-	8, // 3: evnode.v1.GetStateResponse.state:type_name -> evnode.v1.State
-	1, // 4: evnode.v1.StoreService.GetBlock:input_type -> evnode.v1.GetBlockRequest
-	9, // 5: evnode.v1.StoreService.GetState:input_type -> google.protobuf.Empty
-	4, // 6: evnode.v1.StoreService.GetMetadata:input_type -> evnode.v1.GetMetadataRequest
-	2, // 7: evnode.v1.StoreService.GetBlock:output_type -> evnode.v1.GetBlockResponse
-	3, // 8: evnode.v1.StoreService.GetState:output_type -> evnode.v1.GetStateResponse
-	5, // 9: evnode.v1.StoreService.GetMetadata:output_type -> evnode.v1.GetMetadataResponse
-	7, // [7:10] is the sub-list for method output_type
-	4, // [4:7] is the sub-list for method input_type
-	4, // [4:4] is the sub-list for extension type_name
-	4, // [4:4] is the sub-list for extension extendee
-	0, // [0:4] is the sub-list for field type_name
+	7,  // 0: evnode.v1.Block.header:type_name -> evnode.v1.SignedHeader
+	8,  // 1: evnode.v1.Block.data:type_name -> evnode.v1.Data
+	0,  // 2: evnode.v1.GetBlockResponse.block:type_name -> evnode.v1.Block
+	9,  // 3: evnode.v1.GetStateResponse.state:type_name -> evnode.v1.State
+	1,  // 4: evnode.v1.StoreService.GetBlock:input_type -> evnode.v1.GetBlockRequest
+	10, // 5: evnode.v1.StoreService.GetState:input_type -> google.protobuf.Empty
+	4,  // 6: evnode.v1.StoreService.GetMetadata:input_type -> evnode.v1.GetMetadataRequest
+	10, // 7: evnode.v1.StoreService.GetGenesisDaHeight:input_type -> google.protobuf.Empty
+	2,  // 8: evnode.v1.StoreService.GetBlock:output_type -> evnode.v1.GetBlockResponse
+	3,  // 9: evnode.v1.StoreService.GetState:output_type -> evnode.v1.GetStateResponse
+	5,  // 10: evnode.v1.StoreService.GetMetadata:output_type -> evnode.v1.GetMetadataResponse
+	6,  // 11: evnode.v1.StoreService.GetGenesisDaHeight:output_type -> evnode.v1.GetGenesisDaHeightResponse
+	8,  // [8:12] is the sub-list for method output_type
+	4,  // [4:8] is the sub-list for method input_type
+	4,  // [4:4] is the sub-list for extension type_name
+	4,  // [4:4] is the sub-list for extension extendee
+	0,  // [0:4] is the sub-list for field type_name
 }
 
 func init() { file_evnode_v1_state_rpc_proto_init() }
@@ -444,7 +496,7 @@ func file_evnode_v1_state_rpc_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_evnode_v1_state_rpc_proto_rawDesc), len(file_evnode_v1_state_rpc_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   6,
+			NumMessages:   7,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

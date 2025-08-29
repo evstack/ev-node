@@ -173,10 +173,10 @@ func setupBlockManager(t *testing.T, ctx context.Context, workDir string, mainKV
 	proposerAddr, err := signer.GetAddress()
 	require.NoError(t, err)
 	genesisDoc := genesispkg.Genesis{
-		ChainID:            "test-chain-id",
-		GenesisDAStartTime: time.Now(),
-		InitialHeight:      1,
-		ProposerAddress:    proposerAddr,
+		ChainID:         "test-chain-id",
+		StartTime:       time.Now(),
+		InitialHeight:   1,
+		ProposerAddress: proposerAddr,
 	}
 
 	logger := zerolog.Nop()

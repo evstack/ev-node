@@ -41,6 +41,9 @@ const (
 	// StoreServiceGetMetadataProcedure is the fully-qualified name of the StoreService's GetMetadata
 	// RPC.
 	StoreServiceGetMetadataProcedure = "/evnode.v1.StoreService/GetMetadata"
+	// StoreServiceGetGenesisDaHeightProcedure is the fully-qualified name of the StoreService's
+	// GetGenesisDaHeight RPC.
+	StoreServiceGetGenesisDaHeightProcedure = "/evnode.v1.StoreService/GetGenesisDaHeight"
 )
 
 // StoreServiceClient is a client for the evnode.v1.StoreService service.
@@ -51,6 +54,8 @@ type StoreServiceClient interface {
 	GetState(context.Context, *connect.Request[emptypb.Empty]) (*connect.Response[v1.GetStateResponse], error)
 	// GetMetadata returns metadata for a specific key
 	GetMetadata(context.Context, *connect.Request[v1.GetMetadataRequest]) (*connect.Response[v1.GetMetadataResponse], error)
+	// GetGenesisDaHeight returns the DA height at which the first Evolve block was included.
+	GetGenesisDaHeight(context.Context, *connect.Request[emptypb.Empty]) (*connect.Response[v1.GetGenesisDaHeightResponse], error)
 }
 
 // NewStoreServiceClient constructs a client for the evnode.v1.StoreService service. By default, it
@@ -82,14 +87,21 @@ func NewStoreServiceClient(httpClient connect.HTTPClient, baseURL string, opts .
 			connect.WithSchema(storeServiceMethods.ByName("GetMetadata")),
 			connect.WithClientOptions(opts...),
 		),
+		getGenesisDaHeight: connect.NewClient[emptypb.Empty, v1.GetGenesisDaHeightResponse](
+			httpClient,
+			baseURL+StoreServiceGetGenesisDaHeightProcedure,
+			connect.WithSchema(storeServiceMethods.ByName("GetGenesisDaHeight")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
 // storeServiceClient implements StoreServiceClient.
 type storeServiceClient struct {
-	getBlock    *connect.Client[v1.GetBlockRequest, v1.GetBlockResponse]
-	getState    *connect.Client[emptypb.Empty, v1.GetStateResponse]
-	getMetadata *connect.Client[v1.GetMetadataRequest, v1.GetMetadataResponse]
+	getBlock           *connect.Client[v1.GetBlockRequest, v1.GetBlockResponse]
+	getState           *connect.Client[emptypb.Empty, v1.GetStateResponse]
+	getMetadata        *connect.Client[v1.GetMetadataRequest, v1.GetMetadataResponse]
+	getGenesisDaHeight *connect.Client[emptypb.Empty, v1.GetGenesisDaHeightResponse]
 }
 
 // GetBlock calls evnode.v1.StoreService.GetBlock.
@@ -107,6 +119,11 @@ func (c *storeServiceClient) GetMetadata(ctx context.Context, req *connect.Reque
 	return c.getMetadata.CallUnary(ctx, req)
 }
 
+// GetGenesisDaHeight calls evnode.v1.StoreService.GetGenesisDaHeight.
+func (c *storeServiceClient) GetGenesisDaHeight(ctx context.Context, req *connect.Request[emptypb.Empty]) (*connect.Response[v1.GetGenesisDaHeightResponse], error) {
+	return c.getGenesisDaHeight.CallUnary(ctx, req)
+}
+
 // StoreServiceHandler is an implementation of the evnode.v1.StoreService service.
 type StoreServiceHandler interface {
 	// GetBlock returns a block by height or hash
@@ -115,6 +132,8 @@ type StoreServiceHandler interface {
 	GetState(context.Context, *connect.Request[emptypb.Empty]) (*connect.Response[v1.GetStateResponse], error)
 	// GetMetadata returns metadata for a specific key
 	GetMetadata(context.Context, *connect.Request[v1.GetMetadataRequest]) (*connect.Response[v1.GetMetadataResponse], error)
+	// GetGenesisDaHeight returns the DA height at which the first Evolve block was included.
+	GetGenesisDaHeight(context.Context, *connect.Request[emptypb.Empty]) (*connect.Response[v1.GetGenesisDaHeightResponse], error)
 }
 
 // NewStoreServiceHandler builds an HTTP handler from the service implementation. It returns the
@@ -142,6 +161,12 @@ func NewStoreServiceHandler(svc StoreServiceHandler, opts ...connect.HandlerOpti
 		connect.WithSchema(storeServiceMethods.ByName("GetMetadata")),
 		connect.WithHandlerOptions(opts...),
 	)
+	storeServiceGetGenesisDaHeightHandler := connect.NewUnaryHandler(
+		StoreServiceGetGenesisDaHeightProcedure,
+		svc.GetGenesisDaHeight,
+		connect.WithSchema(storeServiceMethods.ByName("GetGenesisDaHeight")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/evnode.v1.StoreService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case StoreServiceGetBlockProcedure:
@@ -150,6 +175,8 @@ func NewStoreServiceHandler(svc StoreServiceHandler, opts ...connect.HandlerOpti
 			storeServiceGetStateHandler.ServeHTTP(w, r)
 		case StoreServiceGetMetadataProcedure:
 			storeServiceGetMetadataHandler.ServeHTTP(w, r)
+		case StoreServiceGetGenesisDaHeightProcedure:
+			storeServiceGetGenesisDaHeightHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -169,4 +196,8 @@ func (UnimplementedStoreServiceHandler) GetState(context.Context, *connect.Reque
 
 func (UnimplementedStoreServiceHandler) GetMetadata(context.Context, *connect.Request[v1.GetMetadataRequest]) (*connect.Response[v1.GetMetadataResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("evnode.v1.StoreService.GetMetadata is not implemented"))
+}
+
+func (UnimplementedStoreServiceHandler) GetGenesisDaHeight(context.Context, *connect.Request[emptypb.Empty]) (*connect.Response[v1.GetGenesisDaHeightResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("evnode.v1.StoreService.GetGenesisDaHeight is not implemented"))
 }

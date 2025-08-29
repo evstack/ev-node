@@ -36,10 +36,10 @@ func TestHeaderSyncServiceRestart(t *testing.T) {
 
 	proposerAddr := []byte("test")
 	genesisDoc := genesispkg.Genesis{
-		ChainID:            chainId,
-		GenesisDAStartTime: time.Now(),
-		InitialHeight:      1,
-		ProposerAddress:    proposerAddr,
+		ChainID:         chainId,
+		StartTime:       time.Now(),
+		InitialHeight:   1,
+		ProposerAddress: proposerAddr,
 	}
 	conf := config.DefaultConfig
 	conf.RootDir = t.TempDir()

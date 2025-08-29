@@ -29,6 +29,8 @@ import (
 	rpc "github.com/evstack/ev-node/types/pb/evnode/v1/v1connect"
 )
 
+var _ rpc.StoreServiceHandler = (*StoreServer)(nil)
+
 // StoreServer implements the StoreService defined in the proto file
 type StoreServer struct {
 	store  store.Store
@@ -148,6 +150,28 @@ func (s *StoreServer) GetState(
 	return connect.NewResponse(&pb.GetStateResponse{
 		State: pbState,
 	}), nil
+}
+
+// GetGenesisDaHeight implements the GetGenesisDaHeight RPC method
+func (s *StoreServer) GetGenesisDaHeight(
+	ctx context.Context,
+	_ *connect.Request[emptypb.Empty],
+) (*connect.Response[pb.GetGenesisDaHeightResponse], error) {
+	resp, err := s.GetMetadata(ctx, connect.NewRequest(&pb.GetMetadataRequest{
+		Key: store.GenesisDAHeightKey,
+	}))
+	if err != nil {
+		return nil, err
+	}
+
+	if len(resp.Msg.GetValue()) != 8 {
+		return nil, connect.NewError(connect.CodeNotFound, errors.New("invalid metadata value"))
+	}
+
+	return connect.NewResponse(&pb.GetGenesisDaHeightResponse{
+		Height: binary.LittleEndian.Uint64(resp.Msg.GetValue()),
+	}), nil
+
 }
 
 // GetMetadata implements the GetMetadata RPC method
