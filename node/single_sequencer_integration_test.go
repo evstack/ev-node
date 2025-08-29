@@ -184,7 +184,7 @@ func (s *FullNodeTestSuite) TestSubmitBlocksToDA() {
 	s.NoError(err, "Failed to get DA inclusion")
 	// Verify that all blocks are DA included
 	for height := uint64(1); height <= n; height++ {
-		ok, err := s.node.blockManager.IsDAIncluded(s.ctx, height)
+		ok, err := s.node.blockManager.IsHeightDAIncluded(s.ctx, height)
 		require.NoError(s.T(), err)
 		require.True(s.T(), ok, "Block at height %d is not DA included", height)
 	}
