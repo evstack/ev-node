@@ -47,7 +47,7 @@ Status of this decision: **Proposed** for implementation and test hardening.
 - CI/CD & SRE runbooks, dashboards, alerts.
 
 ### New/changed data structures
-- **UnsafeHead** record persisted by control plane: `(l2_number, l2_hash, l1_origin, timestamp)`.
+- **UnsafeHead** record persisted by control plane: `(block_height, bloch_hash, timestamp)`.
 - **Design A (Raft)**: replicated **Raft log** entries for `UnsafeHead`, `LeadershipTerm`, and optional `CommitMeta` (batch/DA pointers); periodic snapshots.
 - **Design B (Lease)**: a single **Lease** record (Kubernetes Lease or external KV entry) plus a monotonic **lease token** for fencing.
 
@@ -65,119 +65,8 @@ Endpoint separation:
 - Public JSON-RPC and P2P endpoints remain unchanged.
 - Admin Control API is out-of-band and must not be routed through public ingress. It sits behind mTLS and strict network policy.
 
-Protobuf schema (proposed file: `proto/evnode/admin/v1/control.proto`):
+The protobuf file is located in `proto/evnode/admin/v1/control.proto`.
 
-```
-syntax = "proto3";
-
-package evnode.admin.v1;
-
-option go_package = "github.com/evstack/ev-node/types/pb/evnode/admin/v1;adminv1";
-
-// ControlService governs sequencer lifecycle and health surfaces.
-// All operations must be authenticated via mTLS and authorized via RBAC.
-service ControlService {
-  // StartSequencer starts sequencing if and only if the caller holds leadership/fencing.
-  rpc StartSequencer(StartSequencerRequest) returns (StartSequencerResponse);
-
-  // StopSequencer stops sequencing. If force=true, cancels in-flight loops ASAP.
-  rpc StopSequencer(StopSequencerRequest) returns (StopSequencerResponse);
-
-  // PrepareHandoff transitions current leader to a safe ready-to-yield state
-  // and issues a handoff ticket bound to the current term/unsafe head.
-  rpc PrepareHandoff(PrepareHandoffRequest) returns (PrepareHandoffResponse);
-
-  // CompleteHandoff is called by the target node to atomically assume leadership
-  // using the handoff ticket. Enforces fencing and continuity from UnsafeHead.
-  rpc CompleteHandoff(CompleteHandoffRequest) returns (CompleteHandoffResponse);
-
-  // Health returns node-local liveness and recent errors.
-  rpc Health(HealthRequest) returns (HealthResponse);
-
-  // Status returns leader/term, active/standby, and build info.
-  rpc Status(StatusRequest) returns (StatusResponse);
-}
-
-message UnsafeHead {
-  uint64 l2_number = 1;
-  bytes  l2_hash   = 2; // 32 bytes
-  string l1_origin = 3; // opaque or hash/height string
-  int64  timestamp = 4; // unix seconds
-}
-
-message LeadershipTerm {
-  uint64 term      = 1; // monotonic term/epoch for fencing
-  string leader_id = 2; // conductor/node ID
-}
-
-message StartSequencerRequest {
-  bool   from_unsafe_head = 1;  // if false, uses safe head per policy
-  bytes  lease_token      = 2;  // opaque, issued by control plane (Raft/Lease)
-  string reason           = 3;  // audit string
-  string idempotency_key  = 4;  // optional, de-duplicate retries
-  string requester        = 5;  // principal for audit
-}
-message StartSequencerResponse {
-  bool            activated = 1;
-  LeadershipTerm  term      = 2;
-  UnsafeHead      unsafe    = 3;
-}
-
-message StopSequencerRequest {
-  bytes  lease_token     = 1;
-  bool   force           = 2;
-  string reason          = 3;
-  string idempotency_key = 4;
-  string requester       = 5;
-}
-message StopSequencerResponse {
-  bool stopped = 1;
-}
-
-message PrepareHandoffRequest {
-  bytes  lease_token     = 1;
-  string target_id       = 2; // logical target node ID
-  string reason          = 3;
-  string idempotency_key = 4;
-  string requester       = 5;
-}
-message PrepareHandoffResponse {
-  bytes           handoff_ticket = 1; // opaque, bound to term+unsafe head
-  LeadershipTerm  term           = 2;
-  UnsafeHead      unsafe         = 3;
-}
-
-message CompleteHandoffRequest {
-  bytes  handoff_ticket  = 1;
-  string requester       = 2;
-  string idempotency_key = 3;
-}
-message CompleteHandoffResponse {
-  bool           activated = 1;
-  LeadershipTerm term      = 2;
-  UnsafeHead     unsafe    = 3;
-}
-
-message HealthRequest {}
-message HealthResponse {
-  bool   healthy     = 1;
-  uint64 l2_number   = 2;
-  bytes  l2_hash     = 3;
-  string l1_origin   = 4;
-  uint64 peer_count  = 5;
-  uint64 da_height   = 6;
-  string last_err    = 7;
-}
-
-message StatusRequest {}
-message StatusResponse {
-  bool   sequencer_active = 1;
-  string build_version    = 2;
-  string leader_hint      = 3; // optional, human-readable
-  string last_err         = 4;
-  LeadershipTerm term     = 5;
-}
-```
 
 Error semantics:
 - PERMISSION_DENIED: AuthN/AuthZ failure, missing or invalid mTLS identity.
@@ -197,6 +86,86 @@ Error semantics:
 - Metrics: `leader_id`, `raft_term` (A), `lease_owner` (B), `unsafe_head_advance`, `peer_count`, `rpc_error_rate`, `da_publish_latency`, `backlog`, `leader_election_epoch`, `leader_election_leader_last_seen_ts`, `leader_election_heartbeat_timeout_total`, `leader_election_leader_uptime_ms`.
 - Alerts: no unsafe advance > 3× block time; unexpected leader churn; lease lost but sequencer still active (fencing breach).
 - Logs: audit all **Start/Stop** decisions and override operations.
+
+## Diagrams
+
+This section illustrates the nominal handoff, crash handover, and node join flows. Diagrams use Mermaid for clarity.
+
+### Planned Leadership Handoff (Prepare → Complete)
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant Op as Operator/Automation
+    participant L as Leader Node (A)
+    participant CA as Conductor A
+    participant F as Target Node (B)
+    participant CB as Conductor B
+
+    Op->>CA: PrepareHandoff(lease_token, target_id=B)
+    CA->>L: Quiesce sequencing, persist UnsafeHead
+    L-->>CA: Ack ready, return UnsafeHead, term
+    CA-->>Op: handoff_ticket(term, UnsafeHead, target=B)
+
+    note over L,F: Ticket binds term + UnsafeHead + target_id
+
+    Op->>CB: Deliver handoff_ticket to target (B)
+    CB->>F: CompleteHandoff(handoff_ticket)
+    CB->>F: StartSequencer(from_unsafe_head=true, lease_token')
+    F-->>CB: activated=true, term, unsafe
+    CA->>L: StopSequencer(force=false)
+```
+
+Key properties:
+- Ticket is audience-bound (target_id) and term-bound; replay-safe.
+- New leader must resume from the provided `UnsafeHead` to ensure continuity.
+- Old leader performs orderly stop after the new leader activates.
+
+### Crash Handover (Leader loss)
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant A as Old Leader (A)
+    participant CP as Control Plane (Raft/Lease)
+    participant B as Candidate Node (B)
+
+    A-x CP: Heartbeats/lease renewals stop
+    CP->>CP: Term++ (Raft) or Lease expires
+    B->>CP: Campaign / Acquire Lease
+    CP-->>B: Leadership granted (term/epoch), mint token
+    B->>B: Eligibility gate checks (sync, DA/exec ready)
+    alt Behind or cannot advance
+        B-->>CP: Decline leadership, remain follower
+    else Eligible
+        B->>B: StartSequencer(from_unsafe_head=true, lease_token)
+        B-->>CP: Becomes active leader for new term
+    end
+```
+
+Notes:
+- If no candidate passes eligibility, control plane keeps searching or alerts; no split-brain occurs.
+- `UnsafeHead` continuity is enforced by token/ticket claims or persisted state.
+
+### Joining Node Flow (Follower by default)
+
+```mermaid
+flowchart LR
+    J[Node joins cluster] --> D[Discover term via Raft/Lease; fetch UnsafeHead]
+    D --> G{Within lag threshold and\nDA/exec readiness met?}
+    G -- No --> F[Remain follower; replicate state; no sequencing]
+    F --> O[Observe term; health; catch up]
+    G -- Yes --> E[Eligible for promotion]
+    E --> H[Receive handoff_ticket or acquire lease]
+    H --> S["StartSequencer(from_unsafe_head=true)"]
+```
+
+Eligibility gate (No-Advance = No-Leader):
+- Must be within configurable lag threshold (height/time) relative to `UnsafeHead` or cluster head.
+- DA client reachable and healthy; execution engine synced and ready.
+- Local error budget acceptable (no recent critical faults).
+- If any check fails, node remains a follower and is not allowed to assume leadership.
+
 
 ### Security considerations
 - Lock down **Admin RPC** with mTLS + RBAC; only the sidecar/process account may call Start/Stop.
