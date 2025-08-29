@@ -292,7 +292,7 @@ func AddFlags(cmd *cobra.Command) {
 	cmd.Flags().Duration(FlagDABlockTime, def.DA.BlockTime.Duration, "DA chain block time (for syncing)")
 	cmd.Flags().Float64(FlagDAGasPrice, def.DA.GasPrice, "DA gas price for blob transactions")
 	cmd.Flags().Float64(FlagDAGasMultiplier, def.DA.GasMultiplier, "DA gas price multiplier for retrying blob transactions")
-	cmd.Flags().Uint64(FlagDAStartHeight, def.DA.StartHeight, "starting DA block height (for syncing)")
+	cmd.Flags().Uint64(FlagDAStartHeight, def.DA.StartHeight, "starting DA block height (for syncing). If unknown, it is recommended to fetch a node's API to get it")
 	cmd.Flags().String(FlagDANamespace, def.DA.Namespace, "DA namespace to submit blob transactions (deprecated, use header-namespace and data-namespace)")
 	cmd.Flags().String(FlagDAHeaderNamespace, def.DA.HeaderNamespace, "DA namespace for header submissions")
 	cmd.Flags().String(FlagDADataNamespace, def.DA.DataNamespace, "DA namespace for data submissions")
