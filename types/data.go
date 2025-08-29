@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding"
 	"errors"
+	"sync"
 	"time"
 
 	"google.golang.org/protobuf/proto"
@@ -33,6 +34,11 @@ type Metadata struct {
 type Data struct {
 	*Metadata
 	Txs Txs
+	
+	// cachedHash stores the computed hash to avoid recalculation
+	cachedHash Hash
+	// hashMutex protects cachedHash for thread safety
+	hashMutex sync.RWMutex
 }
 
 // SignedData combines Data and its signature.
