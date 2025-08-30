@@ -4,7 +4,11 @@
       "Bash(gh run view:*)",
       "Bash(git merge:*)",
       "Bash(git fetch:*)",
-      "Bash(git add:*)"
+      "Bash(git add:*)",
+      "Bash(grep:*)",
+      "Bash(git commit:*)",
+      "Bash(make test:*)",
+      "Bash(make lint:*)"
     ],
     "deny": [],
     "ask": []

@@ -195,41 +195,26 @@ func (m *Manager) DataSubmissionLoop(ctx context.Context) {
 
 // submitDataToDA submits a list of signed data to the DA layer using the generic submitToDA helper.
 func (m *Manager) submitDataToDA(ctx context.Context, signedDataToSubmit []*types.SignedData) error {
-	if len(signedDataToSubmit) == 0 {
-		return nil
-	}
-	marshaledSignedDataToSubmit := make([][]byte, len(signedDataToSubmit))
-	for i, signedData := range signedDataToSubmit {
-		marshaled, err := signedData.MarshalBinary()
-		if err != nil {
-			return fmt.Errorf("failed to marshal signed data: %w", err)
-		}
-		marshaledSignedDataToSubmit[i] = marshaled
-	}
-
-	// Track submission offset to maintain correspondence with original data
-	submissionOffset := 0
-
-	return submitToDA(m, ctx, marshaledSignedDataToSubmit,
-		func(submittedCount int, res *coreda.ResultSubmit, currentGasPrice float64) {
-			for i := 0; i < submittedCount; i++ {
-				dataIdx := submissionOffset + i
-				if dataIdx < len(signedDataToSubmit) {
-					m.dataCache.SetDAIncluded(signedDataToSubmit[dataIdx].Data.DACommitment().String(), res.Height)
-				}
+	return submitToDA(m, ctx, signedDataToSubmit,
+		func(signedData *types.SignedData) ([]byte, error) {
+			marshaled, err := signedData.MarshalBinary()
+			if err != nil {
+				return nil, fmt.Errorf("failed to marshal signed data: %w", err)
 			}
-
-			// Update submission offset for next potential retry
-			submissionOffset += submittedCount
-
+			return marshaled, nil
+		},
+		func(submitted []*types.SignedData, res *coreda.ResultSubmit, gasPrice float64) {
+			for _, signedData := range submitted {
+				m.dataCache.SetDAIncluded(signedData.Data.DACommitment().String(), res.Height)
+			}
 			lastSubmittedDataHeight := uint64(0)
-			if submissionOffset > 0 && submissionOffset <= len(signedDataToSubmit) {
-				lastSubmittedDataHeight = signedDataToSubmit[submissionOffset-1].Height()
+			if l := len(submitted); l > 0 {
+				lastSubmittedDataHeight = submitted[l-1].Height()
 			}
 			m.pendingData.setLastSubmittedDataHeight(ctx, lastSubmittedDataHeight)
 			// Update sequencer metrics if the sequencer supports it
 			if seq, ok := m.sequencer.(MetricsRecorder); ok {
-				seq.RecordMetrics(currentGasPrice, res.BlobSize, res.Code, m.pendingData.numPendingData(), lastSubmittedDataHeight)
+				seq.RecordMetrics(gasPrice, res.BlobSize, res.Code, m.pendingData.numPendingData(), lastSubmittedDataHeight)
 			}
 			m.sendNonBlockingSignalToDAIncluderCh()
 		},
