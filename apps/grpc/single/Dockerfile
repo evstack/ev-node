@@ -29,7 +29,7 @@ RUN go build -o grpc-single .
 FROM alpine:3.19
 
 # Install runtime dependencies
-RUN apk add --no-cache ca-certificates
+RUN apk add --no-cache ca-certificates curl
 
 # Create non-root user
 RUN addgroup -g 1000 ev-node && \

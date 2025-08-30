@@ -39,8 +39,8 @@ testapp version
 A successful installation will display the version number and its associated git commit hash.
 
 ```bash
-evolve version:  execution/evm/v1.0.0-beta.1
-evolve git sha:  cd1970de
+evolve version:  v1.0.0-beta.2
+evolve git sha:  d096a24e
 ```
 
 ## 🗂️ Initialize a evolve network node
@@ -48,7 +48,7 @@ evolve git sha:  cd1970de
 To initialize a evolve network node, execute the following command:
 
 ```bash
-testapp init --evolve.node.aggregator --evolve.signer.passphrase secret
+testapp init --evnode.node.aggregator --evnode.signer.passphrase secret
 ```
 
 ## 🚀 Run your evolve network node
@@ -61,8 +61,10 @@ First lets start the local DA network:
 # If you're not already in the ev-node directory
 cd ev-node
 
+# Build the local DA binary
+make build-da
 # Start the local DA network using the built binary
-./build/testapp da start
+./build/local-da
 ```
 
 You should see logs like:
@@ -76,7 +78,7 @@ You should see logs like:
 To start a basic evolve network node, execute:
 
 ```bash
-testapp start --evolve.signer.passphrase secret
+testapp start --evnode.signer.passphrase secret
 ```
 
 Upon execution, the CLI will output log entries that provide insights into the node's initialization and operation:

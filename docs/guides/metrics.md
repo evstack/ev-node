@@ -12,7 +12,7 @@ Metrics will be served under `/metrics` on port 26660 by default. The listening 
 
 ## List of available metrics
 
-You can find the full list of available metrics in the [Technical Specifications](../learn/specs/block-manager.html#metrics).
+You can find the full list of available metrics in the [Technical Specifications](../learn/specs/block-manager.md#metrics).
 
 ## Viewing Metrics
 

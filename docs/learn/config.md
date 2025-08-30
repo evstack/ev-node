@@ -4,7 +4,8 @@ This document provides a comprehensive reference for all configuration options a
 
 ## Table of Contents
 
-- [Introduction to Configurations](#introduction-to-configurations)
+- [DA-Only Sync Mode](#da-only-sync-mode)
+- [Introduction to Configurations](#configs)
 - [Base Configuration](#base-configuration)
   - [Root Directory](#root-directory)
   - [Database Path](#database-path)
@@ -24,6 +25,8 @@ This document provides a comprehensive reference for all configuration options a
   - [DA Gas Multiplier](#da-gas-multiplier)
   - [DA Submit Options](#da-submit-options)
   - [DA Namespace](#da-namespace)
+  - [DA Header Namespace](#da-header-namespace)
+  - [DA Data Namespace](#da-data-namespace)
   - [DA Block Time](#da-block-time)
   - [DA Start Height](#da-start-height)
   - [DA Mempool TTL](#da-mempool-ttl)
@@ -34,6 +37,7 @@ This document provides a comprehensive reference for all configuration options a
   - [P2P Allowed Peers](#p2p-allowed-peers)
 - [RPC Configuration (`rpc`)](#rpc-configuration-rpc)
   - [RPC Server Address](#rpc-server-address)
+  - [Enable DA Visualization](#enable-da-visualization)
 - [Instrumentation Configuration (`instrumentation`)](#instrumentation-configuration-instrumentation)
   - [Enable Prometheus Metrics](#enable-prometheus-metrics)
   - [Prometheus Listen Address](#prometheus-listen-address)
@@ -48,6 +52,44 @@ This document provides a comprehensive reference for all configuration options a
   - [Signer Type](#signer-type)
   - [Signer Path](#signer-path)
   - [Signer Passphrase](#signer-passphrase)
+
+## DA-Only Sync Mode
+
+Evolve supports running nodes that sync exclusively from the Data Availability (DA) layer without participating in P2P networking. This mode is useful for:
+
+- **Pure DA followers**: Nodes that only need the canonical chain data from DA
+- **Resource optimization**: Reducing network overhead by avoiding P2P gossip
+- **Simplified deployment**: No need to configure or maintain P2P peer connections
+- **Isolated environments**: Nodes that should not participate in P2P communication
+
+**To enable DA-only sync mode:**
+
+1. **Leave P2P peers empty** (default behavior):
+
+   ```yaml
+   p2p:
+     peers: ""  # Empty or omit this field entirely
+   ```
+
+2. **Configure DA connection** (required):
+
+   ```yaml
+   da:
+     address: "your-da-service:port"
+     namespace: "your-namespace"
+     # ... other DA configuration
+   ```
+
+3. **Optional**: You can still configure P2P listen address for potential future connections, but without peers, no P2P networking will occur.
+
+When running in DA-only mode, the node will:
+
+- ✅ Sync blocks and headers from the DA layer
+- ✅ Validate transactions and maintain state
+- ✅ Serve RPC requests
+- ❌ Not participate in P2P gossip or peer discovery
+- ❌ Not share blocks with other nodes via P2P
+- ❌ Not receive transactions via P2P (only from direct RPC submission)
 
 ## Configs
 
@@ -356,18 +398,56 @@ da:
 **Description:**
 The namespace ID used when submitting blobs (block data) to the DA layer. This helps segregate data from different chains or applications on a shared DA layer.
 
+**Note:** This configuration is deprecated in favor of separate header and data namespaces (see below). If only `namespace` is provided, it will be used for both headers and data for backward compatibility.
+
 **YAML:**
 
 ```yaml
 da:
-  namespace: "MY_UNIQUE_NAMESPACE_ID"
+  namespace: "MY_UNIQUE_NAMESPACE_ID"  # Deprecated - use header_namespace and data_namespace instead
 ```
 
 **Command-line Flag:**
 `--rollkit.da.namespace <string>`
 *Example:* `--rollkit.da.namespace 0x1234567890abcdef`
-*Default:* `""` (empty, must be configured)
+*Default:* `""` (empty)
 *Constant:* `FlagDANamespace`
+
+### DA Header Namespace
+
+**Description:**
+The namespace ID specifically for submitting block headers to the DA layer. Headers are submitted separately from transaction data. The namespace value is encoded by the node to ensure proper formatting and compatibility with the DA layer.
+
+**YAML:**
+
+```yaml
+da:
+  header_namespace: "HEADER_NAMESPACE_ID"
+```
+
+**Command-line Flag:**
+`--rollkit.da.header_namespace <string>`
+*Example:* `--rollkit.da.header_namespace my_header_namespace`
+*Default:* Falls back to `namespace` if not set
+*Constant:* `FlagDAHeaderNamespace`
+
+### DA Data Namespace
+
+**Description:**
+The namespace ID specifically for submitting transaction data to the DA layer. Transaction data is submitted separately from headers, enabling nodes to sync only the data they need. The namespace value is encoded by the node to ensure proper formatting and compatibility with the DA layer.
+
+**YAML:**
+
+```yaml
+da:
+  data_namespace: "DATA_NAMESPACE_ID"
+```
+
+**Command-line Flag:**
+`--rollkit.da.data_namespace <string>`
+*Example:* `--rollkit.da.data_namespace my_data_namespace`
+*Default:* Falls back to `namespace` if not set
+*Constant:* `FlagDADataNamespace`
 
 ### DA Block Time
 
@@ -461,17 +541,21 @@ p2p:
 **Description:**
 A comma-separated list of peer addresses (e.g., multiaddresses) that the node will attempt to connect to for bootstrapping its P2P connections. These are often referred to as seed nodes.
 
+**For DA-only sync mode:** Leave this field empty (default) to disable P2P networking entirely. When no peers are configured, the node will sync exclusively from the Data Availability layer without participating in P2P gossip, peer discovery, or block sharing. This is useful for nodes that only need to follow the canonical chain data from DA.
+
 **YAML:**
 
 ```yaml
 p2p:
   peers: "/ip4/some_peer_ip/tcp/7676/p2p/PEER_ID1,/ip4/another_peer_ip/tcp/7676/p2p/PEER_ID2"
+  # For DA-only sync, leave peers empty:
+  # peers: ""
 ```
 
 **Command-line Flag:**
 `--rollkit.p2p.peers <string>`
 *Example:* `--rollkit.p2p.peers /dns4/seed.example.com/tcp/26656/p2p/12D3KooW...`
-*Default:* `""` (empty)
+*Default:* `""` (empty - enables DA-only sync mode)
 *Constant:* `FlagP2PPeers`
 
 ### P2P Blocked Peers
@@ -539,6 +623,26 @@ rpc:
 *Default:* `"127.0.0.1:7331"`
 *Constant:* `FlagRPCAddress`
 
+### Enable DA Visualization
+
+**Description:**
+If true, enables the Data Availability (DA) visualization endpoints that provide real-time monitoring of blob submissions to the DA layer. This includes a web-based dashboard and REST API endpoints for tracking submission statistics, monitoring DA health, and analyzing blob details. Only aggregator nodes submit data to the DA layer, so this feature is most useful when running in aggregator mode.
+
+**YAML:**
+
+```yaml
+rpc:
+  enable_da_visualization: true
+```
+
+**Command-line Flag:**
+`--rollkit.rpc.enable_da_visualization` (boolean, presence enables it)
+*Example:* `--rollkit.rpc.enable_da_visualization`
+*Default:* `false`
+*Constant:* `FlagRPCEnableDAVisualization`
+
+See the [DA Visualizer Guide](../guides/da/da-visualizer.md) for detailed information on using this feature.
+
 ## Instrumentation Configuration (`instrumentation`)
 
 Settings for enabling and configuring metrics and profiling endpoints, useful for monitoring node performance and debugging.
@@ -573,7 +677,7 @@ instrumentation:
 **Description:**
 The network address (host:port) where the Prometheus metrics server will listen for scraping requests.
 
-See [Metrics](/guides/metrics.md) for more details on what metrics are exposed.
+See [Metrics](../guides/metrics.md) for more details on what metrics are exposed.
 
 **YAML:**
 

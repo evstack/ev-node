@@ -1,4 +1,4 @@
-name: Build VitePress Site
+name: Docs Build
 permissions:
   contents: read
 
@@ -12,11 +12,11 @@ on:
       - "docs/**"
 
 jobs:
-  build:
+  docs_build:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
       - name: Setup Node
         uses: actions/setup-node@v4
         with:

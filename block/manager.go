@@ -25,6 +25,7 @@ import (
 	"github.com/evstack/ev-node/pkg/cache"
 	"github.com/evstack/ev-node/pkg/config"
 	"github.com/evstack/ev-node/pkg/genesis"
+	"github.com/evstack/ev-node/pkg/rpc/server"
 	"github.com/evstack/ev-node/pkg/signer"
 	storepkg "github.com/evstack/ev-node/pkg/store"
 	"github.com/evstack/ev-node/types"
@@ -43,10 +44,6 @@ const (
 	// defaultMempoolTTL is the number of blocks until transaction is dropped from mempool
 	defaultMempoolTTL = 25
 
-	// maxSubmitAttempts defines how many times evolve will re-try to publish block to DA layer.
-	// This is temporary solution. It will be removed in future versions.
-	maxSubmitAttempts = 30
-
 	// Key for storing namespace migration state in the store
 	namespaceMigrationKey = "namespace_migration_completed"
 
@@ -57,9 +54,6 @@ const (
 var (
 	// dataHashForEmptyTxs to be used while only syncing headers from DA and no p2p to get the Data for no txs scenarios, the syncing can proceed without getting stuck forever.
 	dataHashForEmptyTxs = []byte{110, 52, 11, 156, 255, 179, 122, 152, 156, 165, 68, 230, 187, 120, 10, 44, 120, 144, 29, 63, 179, 55, 56, 118, 133, 17, 163, 6, 23, 175, 160, 29}
-
-	// initialBackoff defines initial value for block submission backoff
-	initialBackoff = 100 * time.Millisecond
 )
 
 // publishBlockFunc defines the function signature for publishing a block.
@@ -151,8 +145,6 @@ type Manager struct {
 	// in the DA
 	daIncludedHeight atomic.Uint64
 	da               coreda.DA
-	gasPrice         float64
-	gasMultiplier    float64
 
 	sequencer     coresequencer.Sequencer
 	lastBatchData [][]byte
@@ -310,8 +302,6 @@ func NewManager(
 	headerBroadcaster broadcaster[*types.SignedHeader],
 	dataBroadcaster broadcaster[*types.Data],
 	seqMetrics *Metrics,
-	gasPrice float64,
-	gasMultiplier float64,
 	managerOpts ManagerOptions,
 ) (*Manager, error) {
 	s, err := getInitialState(ctx, genesis, signer, store, exec, logger, managerOpts)
@@ -402,8 +392,6 @@ func NewManager(
 		sequencer:                   sequencer,
 		exec:                        exec,
 		da:                          da,
-		gasPrice:                    gasPrice,
-		gasMultiplier:               gasMultiplier,
 		txNotifyCh:                  make(chan struct{}, 1), // Non-blocking channel
 		signaturePayloadProvider:    managerOpts.SignaturePayloadProvider,
 		validatorHasherProvider:     managerOpts.ValidatorHasherProvider,
@@ -426,6 +414,16 @@ func NewManager(
 	// fetch caches from disks
 	if err := m.LoadCache(); err != nil {
 		return nil, fmt.Errorf("failed to load cache: %w", err)
+	}
+
+	// Initialize DA visualization server if enabled
+	if config.RPC.EnableDAVisualization {
+		daVisualizationServer := server.NewDAVisualizationServer(da, logger.With().Str("module", "da_visualization").Logger(), config.Node.Aggregator)
+		server.SetDAVisualizationServer(daVisualizationServer)
+		logger.Info().Msg("DA visualization server enabled")
+	} else {
+		// Ensure the global server is nil when disabled
+		server.SetDAVisualizationServer(nil)
 	}
 
 	return m, nil
@@ -572,6 +570,11 @@ func (m *Manager) SetSequencerHeightToDAHeight(ctx context.Context, height uint6
 // TODO(tac0turtle): remove
 func (m *Manager) GetExecutor() coreexecutor.Executor {
 	return m.exec
+}
+
+// GetSigner returns the signer instance used by this manager
+func (m *Manager) GetSigner() (address []byte) {
+	return m.genesis.ProposerAddress
 }
 
 func (m *Manager) retrieveBatch(ctx context.Context) (*BatchData, error) {
@@ -780,17 +783,6 @@ func (m *Manager) recordMetrics(data *types.Data) {
 	m.metrics.TotalTxs.Add(float64(len(data.Txs)))
 	m.metrics.BlockSizeBytes.Set(float64(data.Size()))
 	m.metrics.CommittedHeight.Set(float64(data.Metadata.Height))
-}
-
-func (m *Manager) exponentialBackoff(backoff time.Duration) time.Duration {
-	backoff *= 2
-	if backoff == 0 {
-		backoff = initialBackoff
-	}
-	if backoff > m.config.DA.BlockTime.Duration {
-		backoff = m.config.DA.BlockTime.Duration
-	}
-	return backoff
 }
 
 func (m *Manager) getLastBlockTime() time.Time {

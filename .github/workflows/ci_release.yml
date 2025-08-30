@@ -54,7 +54,7 @@ jobs:
     if: ${{ github.event_name == 'workflow_dispatch' }}
     permissions: "write-all"
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Remove existing files
         run: |
           rm -rf /opt/homebrew/bin/gtar

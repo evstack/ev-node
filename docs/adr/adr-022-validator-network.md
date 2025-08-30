@@ -46,7 +46,7 @@ obtaining soft-finality from a multi-party validator set.
 
 ### Signing schemes
 
-Different signature schemes can be doused in conjunction with the validator network. To start we will support ED25519 and later one we plan on adding other signature schemes based on how user demand requires.
+Different signature schemes can be used in conjunction with the validator network. To start we will support ED25519 and later one we plan on adding other signature schemes based on how user demand requires.
 
 Some potential future additions could be BLS12-381 aggregate and/or a BLS threshold signature.
 
@@ -133,7 +133,7 @@ graph TD
 
  1. basic header checks;
  2. produce signature;
- 3. async submit transaction with signautres
+ 3. async submit transaction with signatures
 
 ## Security considerations
 

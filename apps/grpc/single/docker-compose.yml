@@ -44,7 +44,6 @@ services:
       - "26657:26657"  # RPC
       - "26660:26660"  # Prometheus metrics
     environment:
-      - CHAIN_ID=grpc-test-chain
       - DA_ADDRESS=http://local-da:7980
       - DA_NAMESPACE=00000000000000000000000000000000000000000000000000deadbeef
       - GRPC_EXECUTOR_URL=http://host.docker.internal:50051  # Change to your execution service
@@ -53,7 +52,6 @@ services:
     command:
       - start
       - --root-dir=/home/evolve/.grpc-single
-      - --chain-id=${CHAIN_ID:-grpc-test-chain}
       - --da.address=${DA_ADDRESS:-http://local-da:7980}
       - --da.namespace=${DA_NAMESPACE}
       - --grpc-executor-url=${GRPC_EXECUTOR_URL:-http://host.docker.internal:50051}

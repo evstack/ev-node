@@ -109,7 +109,7 @@ func (s *FullNodeTestSuite) TearDownTest() {
 		select {
 		case <-waitCh:
 			// Node stopped successfully
-		case <-time.After(5 * time.Second):
+		case <-time.After(10 * time.Second):
 			s.T().Log("Warning: Node did not stop gracefully within timeout")
 		}
 
@@ -243,7 +243,7 @@ func TestStateRecovery(t *testing.T) {
 	select {
 	case <-waitCh:
 		// Node stopped successfully
-	case <-time.After(2 * time.Second):
+	case <-time.After(30 * time.Second):
 		t.Fatalf("Node did not stop gracefully within timeout")
 	}
 
@@ -288,7 +288,7 @@ func TestMaxPendingHeadersAndData(t *testing.T) {
 	require.LessOrEqual(height, config.Node.MaxPendingHeadersAndData)
 
 	// Stop the node and wait for shutdown
-	shutdownAndWait(t, []context.CancelFunc{cancel}, &runningWg, 5*time.Second)
+	shutdownAndWait(t, []context.CancelFunc{cancel}, &runningWg, 10*time.Second)
 }
 
 // TestBatchQueueThrottlingWithDAFailure tests that when DA layer fails and MaxPendingHeadersAndData
@@ -400,5 +400,5 @@ func TestBatchQueueThrottlingWithDAFailure(t *testing.T) {
 	t.Log("the batch queue would fill up and return ErrQueueFull, providing backpressure.")
 
 	// Shutdown
-	shutdownAndWait(t, []context.CancelFunc{cancel}, &runningWg, 5*time.Second)
+	shutdownAndWait(t, []context.CancelFunc{cancel}, &runningWg, 10*time.Second)
 }

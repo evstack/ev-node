@@ -149,14 +149,15 @@ func (m *Manager) trySyncNextBlock(ctx context.Context, daHeight uint64) error {
 		// set the custom verifier to ensure proper signature validation
 		h.SetCustomVerifier(m.signaturePayloadProvider)
 
-		// validate the received block before applying
-		if err := m.Validate(ctx, h, d); err != nil {
-			return fmt.Errorf("failed to validate block: %w", err)
-		}
-
 		newState, err := m.applyBlock(ctx, h.Header, d)
 		if err != nil {
 			return fmt.Errorf("failed to apply block: %w", err)
+		}
+
+		// validate the received block after applying
+		// a custom verification function can depend on the state of the blockchain
+		if err := m.Validate(ctx, h, d); err != nil {
+			return fmt.Errorf("failed to validate block: %w", err)
 		}
 
 		if err = m.updateState(ctx, newState); err != nil {

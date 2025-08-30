@@ -21,6 +21,9 @@ func main() {
 
 	config.AddGlobalFlags(rootCmd, "evm-single")
 
+	// Add configuration flags to NetInfoCmd so it can read RPC address
+	config.AddFlags(rollcmd.NetInfoCmd)
+
 	rootCmd.AddCommand(
 		cmd.InitCmd(),
 		cmd.RunCmd,

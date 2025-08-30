@@ -50,7 +50,7 @@ func (m *Manager) sendNonBlockingSignalWithMetrics(ch chan<- struct{}, channelNa
 
 // updateChannelMetrics updates the buffer usage metrics for all channels
 func (m *Manager) updateChannelMetrics() {
-	// Update channel buffer usage	if m.metrics.ChannelBufferUsage["header_in"] != nil {
+	// Update channel buffer usage
 	m.metrics.ChannelBufferUsage["header_in"].Set(float64(len(m.headerInCh)))
 
 	m.metrics.ChannelBufferUsage["data_in"].Set(float64(len(m.dataInCh)))

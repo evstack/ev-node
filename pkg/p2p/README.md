@@ -177,7 +177,7 @@ This namespace approach ensures that messages only propagate within the intended
 ## Key Functions
 
 - `NewClient`: Creates a new P2P client with the provided configuration
-- `Start`: Establishes P2P connectivity (sets up host, gossipping, DHT, and peer discovery)
+- `Start`: Establishes P2P connectivity (sets up host, gossiping, DHT, and peer discovery)
 - `Close`: Gracefully stops the client
 - `Peers`: Returns a list of connected peers
 - `BroadcastTx`: Broadcasts a transaction to the P2P network

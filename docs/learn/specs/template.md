@@ -91,7 +91,7 @@ At the bottom of the document in the [References](#references) section, you can 
 Then at the bottom add the actual links that will not be visible in the markdown document:
 
 [grammarly]: https://www.grammarly.com/
-[documentation]: ../README.md
+[documentation]: ../../README.md
 [external links]: https://github.com/celestiaorg/go-header
 
 ### Use of tables

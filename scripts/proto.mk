@@ -17,7 +17,7 @@ proto-lint:
 ## rust-proto-gen: Generate Rust protobuf files
 rust-proto-gen:
 	@echo "--> Generating Rust protobuf files"
-	@cd client/crates/types && cargo build
+	@cd client/crates/types && EV_TYPES_FORCE_PROTO_GEN=1 cargo build
 .PHONY: rust-proto-gen
 
 ## rust-proto-check: Check if Rust protobuf files are up to date

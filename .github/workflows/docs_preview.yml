@@ -1,4 +1,4 @@
-name: Deploy PR previews
+name: Docs Deploy Preview
 
 on:
   # This workflow requires pull_request and won't work with pull_request_target
@@ -21,7 +21,7 @@ jobs:
     permissions: write-all
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Setup Node
         uses: actions/setup-node@v4

@@ -55,8 +55,7 @@ Start the Evolve node with:
   --root-dir ~/.grpc-single \
   --grpc-executor-url http://localhost:50051 \
   --da.address http://localhost:7980 \
-  --da.auth-token your-da-token \
-  --chain-id your-chain-id
+  --da.auth-token your-da-token
 ```
 
 ## Command-Line Flags
@@ -93,12 +92,11 @@ Start the Evolve node with:
 3. Initialize and run the node:
 
     ```bash
-    ./grpc-single init --root-dir ~/.grpc-single
+    ./grpc-single init --root-dir ~/.grpc-single --chain-id test-chain
     ./grpc-single start \
       --root-dir ~/.grpc-single \
       --grpc-executor-url http://localhost:50051 \
-      --da.address http://localhost:7980 \
-      --chain-id test-chain
+      --da.address http://localhost:7980
     ```
 
 ## Architecture

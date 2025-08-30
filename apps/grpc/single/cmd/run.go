@@ -1,11 +1,13 @@
 package cmd
 
 import (
+	"encoding/hex"
 	"fmt"
 	"path/filepath"
 
 	"github.com/spf13/cobra"
 
+	coreda "github.com/evstack/ev-node/core/da"
 	"github.com/evstack/ev-node/core/execution"
 	"github.com/evstack/ev-node/da/jsonrpc"
 	executiongrpc "github.com/evstack/ev-node/execution/grpc"
@@ -45,8 +47,13 @@ The execution client must implement the Evolve execution gRPC interface.`,
 
 		logger := rollcmd.SetupLogger(nodeConfig.Log)
 
+		headerNamespace := coreda.PrepareNamespace([]byte(nodeConfig.DA.HeaderNamespace))
+		dataNamespace := coreda.PrepareNamespace([]byte(nodeConfig.DA.DataNamespace))
+
+		logger.Info().Str("headerNamespace", hex.EncodeToString(headerNamespace)).Str("dataNamespace", hex.EncodeToString(dataNamespace)).Msg("namespaces")
+
 		// Create DA client
-		daJrpc, err := jsonrpc.NewClient(cmd.Context(), logger, nodeConfig.DA.Address, nodeConfig.DA.AuthToken, nodeConfig.DA.Namespace)
+		daJrpc, err := jsonrpc.NewClient(cmd.Context(), logger, nodeConfig.DA.Address, nodeConfig.DA.AuthToken, nodeConfig.DA.GasPrice, nodeConfig.DA.GasMultiplier)
 		if err != nil {
 			return err
 		}
