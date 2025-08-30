@@ -197,7 +197,11 @@ func (m *Manager) DataSubmissionLoop(ctx context.Context) {
 func (m *Manager) submitDataToDA(ctx context.Context, signedDataToSubmit []*types.SignedData) error {
 	return submitToDA(m, ctx, signedDataToSubmit,
 		func(signedData *types.SignedData) ([]byte, error) {
-			return signedData.MarshalBinary()
+			marshaled, err := signedData.MarshalBinary()
+			if err != nil {
+				return nil, fmt.Errorf("failed to marshal signed data: %w", err)
+			}
+			return marshaled, nil
 		},
 		func(submitted []*types.SignedData, res *coreda.ResultSubmit, gasPrice float64) {
 			for _, signedData := range submitted {
