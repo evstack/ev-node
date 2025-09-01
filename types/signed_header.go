@@ -2,6 +2,7 @@ package types
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"fmt"
 
@@ -27,7 +28,8 @@ type SignedHeader struct {
 	Signature Signature
 	Signer    Signer
 
-	signatureProvider SignaturePayloadProvider
+	aggregatorSignatureProvider    AggregatorNodeSignatureBytesProvider
+	syncNodeSignatureBytesProvider SyncNodeSignatureBytesProvider
 }
 
 // New creates a new SignedHeader.
@@ -40,10 +42,16 @@ func (sh *SignedHeader) IsZero() bool {
 	return sh == nil
 }
 
-// SetCustomVerifier sets a custom signature provider for the SignedHeader.
+// SetCustomVerifierForAggregator sets a custom signature provider for the SignedHeader.
 // If set, ValidateBasic will use this function to verify the signature.
-func (sh *SignedHeader) SetCustomVerifier(provider SignaturePayloadProvider) {
-	sh.signatureProvider = provider
+func (sh *SignedHeader) SetCustomVerifierForAggregator(provider AggregatorNodeSignatureBytesProvider) {
+	sh.aggregatorSignatureProvider = provider
+}
+
+// SetCustomVerifierForSyncNode sets a custom signature provider for the SignedHeader.
+// If set, ValidateBasic will use this function to verify the signature.
+func (sh *SignedHeader) SetCustomVerifierForSyncNode(provider SyncNodeSignatureBytesProvider) {
+	sh.syncNodeSignatureBytesProvider = provider
 }
 
 // Verify verifies the signed header.
@@ -101,7 +109,7 @@ var (
 	ErrSignatureEmpty = errors.New("signature is empty")
 )
 
-// ValidateBasic performs basic validation of a signed header.
+// Validate performs basic validation of a signed header for the aggregator node.
 func (sh *SignedHeader) ValidateBasic() error {
 	if err := sh.Header.ValidateBasic(); err != nil {
 		return err
@@ -121,15 +129,57 @@ func (sh *SignedHeader) ValidateBasic() error {
 		err error
 	)
 
-	if sh.signatureProvider == nil {
-		bz, err = DefaultSignaturePayloadProvider(&sh.Header)
+	if sh.aggregatorSignatureProvider == nil {
+		bz, err = DefaultAggregatorNodeSignatureBytesProvider(&sh.Header)
 		if err != nil {
 			return fmt.Errorf("default signature payload provider failed: %w", err)
 		}
 	} else {
-		bz, err = sh.signatureProvider(&sh.Header)
+		bz, err = sh.aggregatorSignatureProvider(&sh.Header)
 		if err != nil {
-			return fmt.Errorf("custom signature verification failed: %w", err)
+			return fmt.Errorf("custom signature payload provider failed: %w", err)
+		}
+	}
+
+	verified, err := sh.Signer.PubKey.Verify(bz, sh.Signature)
+	if err != nil {
+		return err
+	}
+	if !verified {
+		return ErrSignatureVerificationFailed
+	}
+	return nil
+}
+
+// ValidateBasicWithData performs basic validator of a signed header, granted data for syncing node.
+func (sh *SignedHeader) ValidateBasicWithData(data *Data) error {
+	if err := sh.Header.ValidateBasic(); err != nil {
+		return err
+	}
+
+	if err := sh.Signature.ValidateBasic(); err != nil {
+		return err
+	}
+
+	// Check that the proposer address in the signed header matches the proposer address in the validator set
+	if !bytes.Equal(sh.ProposerAddress, sh.Signer.Address) {
+		return ErrProposerAddressMismatch
+	}
+
+	var (
+		bz  []byte
+		err error
+	)
+
+	if sh.syncNodeSignatureBytesProvider == nil {
+		bz, err = DefaultSyncNodeSignatureBytesProvider(context.Background(), &sh.Header, nil)
+		if err != nil {
+			return fmt.Errorf("default signature payload provider failed: %w", err)
+		}
+	} else {
+		bz, err = sh.syncNodeSignatureBytesProvider(context.Background(), &sh.Header, data)
+		if err != nil {
+			return fmt.Errorf("custom signature payload provider failed: %w", err)
 		}
 	}
 
