@@ -287,7 +287,6 @@ func submitToDA(
 		itemType, numSubmitted, len(remaining), retryStrategy.attempt)
 }
 
-
 func waitForBackoffOrContext(ctx context.Context, backoff time.Duration) error {
 	select {
 	case <-ctx.Done():
