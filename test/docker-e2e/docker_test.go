@@ -114,7 +114,7 @@ func (s *DockerTestSuite) SetupDockerResources(opts ...ConfigOption) {
 	s.provider = s.CreateDockerProvider(opts...)
 	s.celestia = s.CreateChain()
 	s.daNetwork = s.CreateDANetwork()
-	s.evNodeChain = s.CreateRollkitChain()
+	s.evNodeChain = s.CreateEvolveChain()
 }
 
 // CreateChain creates a chain using the ChainBuilder pattern.
@@ -164,8 +164,8 @@ func (s *DockerTestSuite) CreateDANetwork() tastoratypes.DataAvailabilityNetwork
 	return daNetwork
 }
 
-// CreateRollkitChain creates a Rollkit chain using the provider
-func (s *DockerTestSuite) CreateRollkitChain() tastoratypes.RollkitChain {
+// CreateEvolveChain creates a Rollkit chain using the provider
+func (s *DockerTestSuite) CreateEvolveChain() tastoratypes.RollkitChain {
 	ctx := context.Background()
 
 	rollkitChain, err := s.provider.GetRollkitChain(ctx)
