@@ -226,7 +226,6 @@ func (s *DockerTestSuite) StartEvNode(ctx context.Context, bridgeNode tastoratyp
 	s.Require().NoError(err)
 }
 
-
 // StartRollkitNodeWithNamespace initializes and starts a Rollkit node with a specific namespace.
 func (s *DockerTestSuite) StartRollkitNodeWithNamespace(ctx context.Context, bridgeNode tastoratypes.DANode, rollkitNode tastoratypes.RollkitNode, namespace string) {
 	err := rollkitNode.Init(ctx)
