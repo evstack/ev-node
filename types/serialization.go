@@ -47,6 +47,11 @@ func (d *Data) MarshalBinary() ([]byte, error) {
 	return proto.Marshal(d.ToProto())
 }
 
+// MarshalBinaryWithoutCache encodes Data without cached hash for hash calculation
+func (d *Data) MarshalBinaryWithoutCache() ([]byte, error) {
+	return proto.Marshal(d.ToProtoWithoutCache())
+}
+
 // UnmarshalBinary decodes binary form of Data into object.
 func (d *Data) UnmarshalBinary(data []byte) error {
 	var pData pb.Data
@@ -249,8 +254,23 @@ func (d *Data) ToProto() *pb.Data {
 		mProto = d.Metadata.ToProto()
 	}
 	return &pb.Data{
+		Metadata:   mProto,
+		Txs:        txsToByteSlices(d.Txs),
+		CachedHash: d.cachedHash,
+	}
+}
+
+// ToProtoWithoutCache converts Data to protobuf without the cached hash
+// This is used for hash calculation to avoid circular dependency
+func (d *Data) ToProtoWithoutCache() *pb.Data {
+	var mProto *pb.Metadata
+	if d.Metadata != nil {
+		mProto = d.Metadata.ToProto()
+	}
+	return &pb.Data{
 		Metadata: mProto,
 		Txs:      txsToByteSlices(d.Txs),
+		// CachedHash is intentionally omitted for hash calculation
 	}
 }
 
@@ -271,7 +291,12 @@ func (d *Data) FromProto(other *pb.Data) error {
 	}
 	d.Txs = byteSlicesToTxs(other.GetTxs())
 
-	d.cachedHash = nil
+	// Restore cached hash from protobuf if available
+	if other.CachedHash != nil {
+		d.cachedHash = other.CachedHash
+	} else {
+		d.cachedHash = nil
+	}
 	return nil
 }
 

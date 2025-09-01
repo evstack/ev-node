@@ -48,7 +48,8 @@ func TestDataHash(t *testing.T) {
 
 	hash1 := data.Hash()
 
-	dataBytes, err := data.MarshalBinary()
+	// Use MarshalBinaryWithoutCache for consistent hash calculation
+	dataBytes, err := data.MarshalBinaryWithoutCache()
 	require.NoError(t, err)
 
 	hasher := sha256.New()

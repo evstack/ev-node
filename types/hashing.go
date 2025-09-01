@@ -29,7 +29,8 @@ func (d *Data) Hash() Hash {
 	// Compute hash if not cached
 	// Ignoring the marshal error for now to satisfy the go-header interface
 	// Later on the usage of Hash should be replaced with DA commitment
-	dBytes, _ := d.MarshalBinary()
+	// Use MarshalBinaryWithoutCache to avoid circular dependency with cached hash
+	dBytes, _ := d.MarshalBinaryWithoutCache()
 	hash := leafHashOpt(sha256.New(), dBytes)
 
 	// Cache the result - no synchronization needed since hash computation is idempotent
