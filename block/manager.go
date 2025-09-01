@@ -67,18 +67,6 @@ type MetricsRecorder interface {
 	RecordMetrics(gasPrice float64, blobSize uint64, statusCode coreda.StatusCode, numPendingBlocks uint64, includedBlockHeight uint64)
 }
 
-// NewHeaderEvent is used to pass header and DA height to headerInCh
-type NewHeaderEvent struct {
-	Header   *types.SignedHeader
-	DAHeight uint64
-}
-
-// NewDataEvent is used to pass header and DA height to headerInCh
-type NewDataEvent struct {
-	Data     *types.Data
-	DAHeight uint64
-}
-
 // BatchData is used to pass batch, time and data (da.IDs) to BatchQueue
 type BatchData struct {
 	*coresequencer.Batch
@@ -107,14 +95,13 @@ type Manager struct {
 	headerBroadcaster broadcaster[*types.SignedHeader]
 	dataBroadcaster   broadcaster[*types.Data]
 
-	headerInCh  chan NewHeaderEvent
+	heightInCh  chan daHeightEvent
 	headerStore goheader.Store[*types.SignedHeader]
+	dataStore   goheader.Store[*types.Data]
 
-	dataInCh  chan NewDataEvent
-	dataStore goheader.Store[*types.Data]
-
-	headerCache *cache.Cache[types.SignedHeader]
-	dataCache   *cache.Cache[types.Data]
+	headerCache        *cache.Cache[types.SignedHeader]
+	dataCache          *cache.Cache[types.Data]
+	pendingEventsCache *cache.Cache[daHeightEvent]
 
 	// headerStoreCh is used to notify sync goroutine (HeaderStoreRetrieveLoop) that it needs to retrieve headers from headerStore
 	headerStoreCh chan struct{}
@@ -156,9 +143,13 @@ type Manager struct {
 	// txNotifyCh is used to signal when new transactions are available
 	txNotifyCh chan struct{}
 
-	// signaturePayloadProvider is used to provide a signature payload for the header.
+	// aggregatorSignaturePayloadProvider is used to provide a signature payload for the header.
 	// It is used to sign the header with the provided signer.
-	signaturePayloadProvider types.SignaturePayloadProvider
+	aggregatorSignaturePayloadProvider types.AggregatorNodeSignatureBytesProvider
+
+	// syncNodeSignaturePayloadProvider is used to provide a signature payload for the header.
+	// It is used to sign the header with the provided signer.
+	syncNodeSignaturePayloadProvider types.SyncNodeSignatureBytesProvider
 
 	// validatorHasherProvider is used to provide the validator hash for the header.
 	// It is used to set the validator hash in the header.
@@ -211,7 +202,7 @@ func getInitialState(ctx context.Context, genesis genesis.Genesis, signer signer
 				return types.State{}, fmt.Errorf("failed to get public key: %w", err)
 			}
 
-			bz, err := managerOpts.SignaturePayloadProvider(&header)
+			bz, err := managerOpts.AggregatorNodeSignatureBytesProvider(&header)
 			if err != nil {
 				return types.State{}, fmt.Errorf("failed to get signature payload: %w", err)
 			}
@@ -263,14 +254,20 @@ func getInitialState(ctx context.Context, genesis genesis.Genesis, signer signer
 
 // ManagerOptions defines the options for creating a new block Manager.
 type ManagerOptions struct {
-	SignaturePayloadProvider types.SignaturePayloadProvider
-	ValidatorHasherProvider  types.ValidatorHasherProvider
+	AggregatorNodeSignatureBytesProvider types.AggregatorNodeSignatureBytesProvider
+	SyncNodeSignatureBytesProvider       types.SyncNodeSignatureBytesProvider
+	ValidatorHasherProvider              types.ValidatorHasherProvider
 }
 
 func (opts *ManagerOptions) Validate() error {
-	if opts.SignaturePayloadProvider == nil {
-		return fmt.Errorf("signature payload provider cannot be nil")
+	if opts.AggregatorNodeSignatureBytesProvider == nil {
+		return fmt.Errorf("aggregator node signature bytes provider cannot be nil")
 	}
+
+	if opts.SyncNodeSignatureBytesProvider == nil {
+		return fmt.Errorf("sync node signature bytes provider cannot be nil")
+	}
+
 	if opts.ValidatorHasherProvider == nil {
 		return fmt.Errorf("validator hasher provider cannot be nil")
 	}
@@ -281,8 +278,9 @@ func (opts *ManagerOptions) Validate() error {
 // DefaultManagerOptions returns the default options for creating a new block Manager.
 func DefaultManagerOptions() ManagerOptions {
 	return ManagerOptions{
-		SignaturePayloadProvider: types.DefaultSignaturePayloadProvider,
-		ValidatorHasherProvider:  types.DefaultValidatorHasherProvider,
+		AggregatorNodeSignatureBytesProvider: types.DefaultAggregatorNodeSignatureBytesProvider,
+		SyncNodeSignatureBytesProvider:       types.DefaultSyncNodeSignatureBytesProvider,
+		ValidatorHasherProvider:              types.DefaultValidatorHasherProvider,
 	}
 }
 
@@ -372,30 +370,31 @@ func NewManager(
 		headerBroadcaster: headerBroadcaster,
 		dataBroadcaster:   dataBroadcaster,
 		// channels are buffered to avoid blocking on input/output operations, buffer sizes are arbitrary
-		headerInCh:                  make(chan NewHeaderEvent, eventInChLength),
-		dataInCh:                    make(chan NewDataEvent, eventInChLength),
-		headerStoreCh:               make(chan struct{}, 1),
-		dataStoreCh:                 make(chan struct{}, 1),
-		headerStore:                 headerStore,
-		dataStore:                   dataStore,
-		lastStateMtx:                new(sync.RWMutex),
-		lastBatchData:               lastBatchData,
-		headerCache:                 cache.NewCache[types.SignedHeader](),
-		dataCache:                   cache.NewCache[types.Data](),
-		retrieveCh:                  make(chan struct{}, 1),
-		daIncluderCh:                make(chan struct{}, 1),
-		logger:                      logger,
-		txsAvailable:                false,
-		pendingHeaders:              pendingHeaders,
-		pendingData:                 pendingData,
-		metrics:                     seqMetrics,
-		sequencer:                   sequencer,
-		exec:                        exec,
-		da:                          da,
-		txNotifyCh:                  make(chan struct{}, 1), // Non-blocking channel
-		signaturePayloadProvider:    managerOpts.SignaturePayloadProvider,
-		validatorHasherProvider:     managerOpts.ValidatorHasherProvider,
-		namespaceMigrationCompleted: &atomic.Bool{},
+		heightInCh:                         make(chan daHeightEvent, eventInChLength),
+		headerStoreCh:                      make(chan struct{}, 1),
+		dataStoreCh:                        make(chan struct{}, 1),
+		headerStore:                        headerStore,
+		dataStore:                          dataStore,
+		lastStateMtx:                       new(sync.RWMutex),
+		lastBatchData:                      lastBatchData,
+		headerCache:                        cache.NewCache[types.SignedHeader](),
+		dataCache:                          cache.NewCache[types.Data](),
+		pendingEventsCache:                 cache.NewCache[daHeightEvent](),
+		retrieveCh:                         make(chan struct{}, 1),
+		daIncluderCh:                       make(chan struct{}, 1),
+		logger:                             logger,
+		txsAvailable:                       false,
+		pendingHeaders:                     pendingHeaders,
+		pendingData:                        pendingData,
+		metrics:                            seqMetrics,
+		sequencer:                          sequencer,
+		exec:                               exec,
+		da:                                 da,
+		txNotifyCh:                         make(chan struct{}, 1), // Non-blocking channel
+		aggregatorSignaturePayloadProvider: managerOpts.AggregatorNodeSignatureBytesProvider,
+		syncNodeSignaturePayloadProvider:   managerOpts.SyncNodeSignatureBytesProvider,
+		validatorHasherProvider:            managerOpts.ValidatorHasherProvider,
+		namespaceMigrationCompleted:        &atomic.Bool{},
 	}
 
 	// initialize da included height
@@ -500,13 +499,8 @@ func (m *Manager) GetStoreHeight(ctx context.Context) (uint64, error) {
 	return m.store.Height(ctx)
 }
 
-// IsBlockHashSeen returns true if the block with the given hash has been seen.
-func (m *Manager) IsBlockHashSeen(blockHash string) bool {
-	return m.headerCache.IsSeen(blockHash)
-}
-
-// IsDAIncluded returns true if the block with the given hash has been seen on DA.
-// TODO(tac0turtle): should we use this for pending header system to verify how far ahead a chain is?
+// IsDAIncluded returns true if both the header and the data with the given hashes
+// have been seen on DA.
 func (m *Manager) IsDAIncluded(ctx context.Context, height uint64) (bool, error) {
 	syncedHeight, err := m.store.Height(ctx)
 	if err != nil {
@@ -610,8 +604,13 @@ func (m *Manager) retrieveBatch(ctx context.Context) (*BatchData, error) {
 	return nil, ErrNoBatch
 }
 
-func (m *Manager) isUsingExpectedSingleSequencer(header *types.SignedHeader) bool {
-	return bytes.Equal(header.ProposerAddress, m.genesis.ProposerAddress) && header.ValidateBasic() == nil
+// assertUsingExpectedSingleSequencer checks if the header is using the expected single sequencer.
+func (m *Manager) assertUsingExpectedSingleSequencer(proposerAddress []byte) error {
+	if !bytes.Equal(m.genesis.ProposerAddress, proposerAddress) {
+		return fmt.Errorf("proposer address is not the same as the genesis proposer address %x != %x", proposerAddress, m.genesis.ProposerAddress)
+	}
+
+	return nil
 }
 
 // publishBlockInternal is the internal implementation for publishing a block.
@@ -722,7 +721,7 @@ func (m *Manager) publishBlockInternal(ctx context.Context) error {
 	}
 
 	// we sign the header after executing the block, as a signature payload provider could depend on the block's data
-	signature, err = m.getHeaderSignature(header.Header)
+	signature, err = m.signHeader(header.Header)
 	if err != nil {
 		return err
 	}
@@ -731,7 +730,7 @@ func (m *Manager) publishBlockInternal(ctx context.Context) error {
 	header.Signature = signature
 
 	// set the custom verifier to ensure proper signature validation
-	header.SetCustomVerifier(m.signaturePayloadProvider)
+	header.SetCustomVerifierForAggregator(m.aggregatorSignaturePayloadProvider)
 
 	// Validate the created block before storing
 	if err := m.Validate(ctx, header, data); err != nil {
@@ -865,8 +864,9 @@ func (m *Manager) execCreateBlock(_ context.Context, height uint64, lastSignatur
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to get proposer address: %w", err)
 	}
-	if !bytes.Equal(m.genesis.ProposerAddress, address) {
-		return nil, nil, fmt.Errorf("proposer address is not the same as the genesis proposer address %x != %x", address, m.genesis.ProposerAddress)
+
+	if err := m.assertUsingExpectedSingleSequencer(address); err != nil {
+		return nil, nil, err
 	}
 
 	// determine if this is an empty block
@@ -1011,8 +1011,8 @@ func bytesToBatchData(data []byte) ([][]byte, error) {
 	return result, nil
 }
 
-func (m *Manager) getHeaderSignature(header types.Header) (types.Signature, error) {
-	b, err := m.signaturePayloadProvider(&header)
+func (m *Manager) signHeader(header types.Header) (types.Signature, error) {
+	b, err := m.aggregatorSignaturePayloadProvider(&header)
 	if err != nil {
 		return nil, err
 	}
@@ -1050,9 +1050,10 @@ func (m *Manager) NotifyNewTransactions() {
 }
 
 var (
-	cacheDir       = "cache"
-	headerCacheDir = filepath.Join(cacheDir, "header")
-	dataCacheDir   = filepath.Join(cacheDir, "data")
+	cacheDir              = "cache"
+	headerCacheDir        = filepath.Join(cacheDir, "header")
+	dataCacheDir          = filepath.Join(cacheDir, "data")
+	pendingEventsCacheDir = filepath.Join(cacheDir, "pending_da_events")
 )
 
 // HeaderCache returns the headerCache used by the manager.
@@ -1069,6 +1070,7 @@ func (m *Manager) DataCache() *cache.Cache[types.Data] {
 func (m *Manager) LoadCache() error {
 	gob.Register(&types.SignedHeader{})
 	gob.Register(&types.Data{})
+	gob.Register(&daHeightEvent{})
 
 	cfgDir := filepath.Join(m.config.RootDir, "data")
 
@@ -1078,6 +1080,10 @@ func (m *Manager) LoadCache() error {
 
 	if err := m.dataCache.LoadFromDisk(filepath.Join(cfgDir, dataCacheDir)); err != nil {
 		return fmt.Errorf("failed to load data cache from disk: %w", err)
+	}
+
+	if err := m.pendingEventsCache.LoadFromDisk(filepath.Join(cfgDir, pendingEventsCacheDir)); err != nil {
+		return fmt.Errorf("failed to load pending events cache from disk")
 	}
 
 	return nil
@@ -1094,6 +1100,11 @@ func (m *Manager) SaveCache() error {
 	if err := m.dataCache.SaveToDisk(filepath.Join(cfgDir, dataCacheDir)); err != nil {
 		return fmt.Errorf("failed to save data cache to disk: %w", err)
 	}
+
+	if err := m.pendingEventsCache.SaveToDisk(filepath.Join(cfgDir, pendingEventsCacheDir)); err != nil {
+		return fmt.Errorf("failed to save pending events cache to disk: %w", err)
+	}
+
 	return nil
 }
 
@@ -1102,9 +1113,11 @@ func (m *Manager) isValidSignedData(signedData *types.SignedData) bool {
 	if signedData == nil || signedData.Txs == nil {
 		return false
 	}
-	if !bytes.Equal(signedData.Signer.Address, m.genesis.ProposerAddress) {
+
+	if err := m.assertUsingExpectedSingleSequencer(signedData.Signer.Address); err != nil {
 		return false
 	}
+
 	dataBytes, err := signedData.Data.MarshalBinary()
 	if err != nil {
 		return false

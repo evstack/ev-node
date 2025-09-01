@@ -230,22 +230,8 @@ func TestStateRecovery(t *testing.T) {
 	require.NoError(err)
 	require.GreaterOrEqual(originalHeight, blocksToWaitFor)
 
-	// Stop the current node
-	cancel()
-
-	// Wait for the node to stop
-	waitCh := make(chan struct{})
-	go func() {
-		runningWg.Wait()
-		close(waitCh)
-	}()
-
-	select {
-	case <-waitCh:
-		// Node stopped successfully
-	case <-time.After(30 * time.Second):
-		t.Fatalf("Node did not stop gracefully within timeout")
-	}
+	// Stop the current node and wait for shutdown with a timeout
+	shutdownAndWait(t, []context.CancelFunc{cancel}, &runningWg, 60*time.Second)
 
 	// Create a new node instance using the same components
 	executor, sequencer, dac, p2pClient, _, _, stopDAHeightTicker = createTestComponents(t, config)

@@ -74,9 +74,9 @@ func TestDASpeed(t *testing.T) {
 			ctx := t.Context()
 
 			// when
-			go manager.RetrieveLoop(ctx)
-			go manager.HeaderStoreRetrieveLoop(ctx)
-			go manager.DataStoreRetrieveLoop(ctx)
+			go manager.DARetrieveLoop(ctx)
+			go manager.HeaderStoreRetrieveLoop(ctx, make(chan<- error))
+			go manager.DataStoreRetrieveLoop(ctx, make(chan<- error))
 			go manager.SyncLoop(ctx, make(chan<- error))
 
 			// then
@@ -100,6 +100,7 @@ func setupManagerForTest(t *testing.T, initialDAHeight uint64) (*Manager, *rollm
 	mockStore.On("GetState", mock.Anything).Return(types.State{DAHeight: initialDAHeight}, nil).Maybe()
 	mockStore.On("Height", mock.Anything).Return(initialDAHeight, nil).Maybe()
 	mockStore.On("SetMetadata", mock.Anything, mock.Anything, mock.Anything).Return(nil).Maybe()
+	mockStore.On("GetBlockData", mock.Anything, mock.Anything).Return(nil, nil, ds.ErrNotFound).Maybe()
 
 	src := rand.Reader
 	pk, _, err := crypto.GenerateEd25519Key(src)
@@ -120,9 +121,8 @@ func setupManagerForTest(t *testing.T, initialDAHeight uint64) (*Manager, *rollm
 		},
 		genesis:                     genesis.Genesis{ProposerAddress: addr},
 		daHeight:                    new(atomic.Uint64),
-		headerInCh:                  make(chan NewHeaderEvent),
+		heightInCh:                  make(chan daHeightEvent),
 		headerStore:                 headerStore,
-		dataInCh:                    make(chan NewDataEvent),
 		dataStore:                   dataStore,
 		headerCache:                 cache.NewCache[types.SignedHeader](),
 		dataCache:                   cache.NewCache[types.Data](),
