@@ -43,16 +43,16 @@ func getManager(t *testing.T, da da.DA, gasPrice float64, gasMultiplier float64)
 	logger := zerolog.Nop()
 	mockStore := mocks.NewMockStore(t)
 	m := &Manager{
-		da:                       da,
-		headerCache:              cache.NewCache[types.SignedHeader](),
-		dataCache:                cache.NewCache[types.Data](),
-		logger:                   logger,
-		lastStateMtx:             &sync.RWMutex{},
-		metrics:                  NopMetrics(),
-		store:                    mockStore,
-		txNotifyCh:               make(chan struct{}, 1),
-		signaturePayloadProvider: types.DefaultSignaturePayloadProvider,
-		validatorHasherProvider:  types.DefaultValidatorHasherProvider,
+		da:                                 da,
+		headerCache:                        cache.NewCache[types.SignedHeader](),
+		dataCache:                          cache.NewCache[types.Data](),
+		logger:                             logger,
+		lastStateMtx:                       &sync.RWMutex{},
+		metrics:                            NopMetrics(),
+		store:                              mockStore,
+		txNotifyCh:                         make(chan struct{}, 1),
+		aggregatorSignaturePayloadProvider: types.DefaultAggregatorNodeSignatureBytesProvider,
+		validatorHasherProvider:            types.DefaultValidatorHasherProvider,
 	}
 
 	m.publishBlock = m.publishBlockInternal
@@ -73,7 +73,7 @@ func TestInitialStateClean(t *testing.T) {
 	mockExecutor := mocks.NewMockExecutor(t)
 
 	// Set expectation for InitChain call within getInitialState
-	mockExecutor.On("InitChain", ctx, genesisData.GenesisDAStartTime, genesisData.InitialHeight, genesisData.ChainID).
+	mockExecutor.On("InitChain", ctx, genesisData.StartTime, genesisData.InitialHeight, genesisData.ChainID).
 		Return([]byte("mockAppHash"), uint64(1000), nil).Once()
 
 	s, err := getInitialState(ctx, genesisData, nil, emptyStore, mockExecutor, logger, DefaultManagerOptions())
@@ -128,7 +128,7 @@ func TestInitialStateUnexpectedHigherGenesis(t *testing.T) {
 	genesis := genesispkg.NewGenesis(
 		genesisData.ChainID,
 		uint64(2), // Set initial height to 2
-		genesisData.GenesisDAStartTime,
+		genesisData.StartTime,
 		genesisData.ProposerAddress,
 	)
 	sampleState := types.State{
@@ -179,27 +179,27 @@ func TestSignVerifySignature(t *testing.T) {
 	}
 }
 
-func TestIsDAIncluded(t *testing.T) {
+func TestIsHeightDAIncluded(t *testing.T) {
 	require := require.New(t)
 	mockDAC := mocks.NewMockDA(t)
 
 	// Create a minimalistic block manager
 	m, mockStore := getManager(t, mockDAC, -1, -1)
 	height := uint64(1)
-	header, data := types.GetRandomBlock(height, 5, "TestIsDAIncluded")
+	header, data := types.GetRandomBlock(height, 5, "TestIsHeightDAIncluded")
 	mockStore.On("GetBlockData", mock.Anything, height).Return(header, data, nil).Times(3)
 	mockStore.On("Height", mock.Anything).Return(uint64(100), nil).Maybe()
 	ctx := context.Background()
-	// IsDAIncluded should return false for unseen hash
-	require.False(m.IsDAIncluded(ctx, height))
+	// IsHeightDAIncluded should return false for unseen hash
+	require.False(m.IsHeightDAIncluded(ctx, height))
 
-	// Set the hash as DAIncluded and verify IsDAIncluded returns true
+	// Set the hash as DAIncluded and verify IsHeightDAIncluded returns true
 	m.headerCache.SetDAIncluded(header.Hash().String(), uint64(1))
-	require.False(m.IsDAIncluded(ctx, height))
+	require.False(m.IsHeightDAIncluded(ctx, height))
 
-	// Set the data as DAIncluded and verify IsDAIncluded returns true
+	// Set the data as DAIncluded and verify IsHeightDAIncluded returns true
 	m.dataCache.SetDAIncluded(data.DACommitment().String(), uint64(1))
-	require.True(m.IsDAIncluded(ctx, height))
+	require.True(m.IsHeightDAIncluded(ctx, height))
 }
 
 // Test_submitBlocksToDA_BlockMarshalErrorCase1 verifies that a marshalling error in the first block prevents all blocks from being submitted.
@@ -659,19 +659,6 @@ func TestCacheMethods(t *testing.T) {
 		require.NotNil(cache)
 		require.Equal(m.dataCache, cache)
 	})
-
-	t.Run("IsBlockHashSeen", func(t *testing.T) {
-		require := require.New(t)
-		m, _ := getManager(t, mocks.NewMockDA(t), -1, -1)
-		hash := "test-hash"
-
-		// Initially not seen
-		require.False(m.IsBlockHashSeen(hash))
-
-		// Mark as seen
-		m.headerCache.SetSeen(hash)
-		require.True(m.IsBlockHashSeen(hash))
-	})
 }
 
 // TestUtilityFunctions tests standalone utility functions in the Manager
@@ -709,16 +696,16 @@ func TestUtilityFunctions(t *testing.T) {
 		m.signer = nil
 
 		header := types.Header{}
-		_, err := m.getHeaderSignature(header)
+		_, err := m.signHeader(header)
 		require.ErrorContains(err, "signer is nil; cannot sign header")
 	})
 
-	t.Run("IsUsingExpectedSingleSequencer", func(t *testing.T) {
+	t.Run("AssertUsingExpectedSingleSequencer", func(t *testing.T) {
 		require := require.New(t)
 		m, _ := getManager(t, mocks.NewMockDA(t), -1, -1)
 
 		// Create genesis data for the test
-		genesisData, privKey, _ := types.GetGenesisWithPrivkey("TestIsUsingExpectedSingleSequencer")
+		genesisData, privKey, _ := types.GetGenesisWithPrivkey("TestAssertUsingExpectedSingleSequencer")
 		m.genesis = genesisData
 
 		// Create a signer
@@ -732,7 +719,7 @@ func TestUtilityFunctions(t *testing.T) {
 				BaseHeader: types.BaseHeader{
 					ChainID: genesisData.ChainID,
 					Height:  1,
-					Time:    uint64(genesisData.GenesisDAStartTime.UnixNano()),
+					Time:    uint64(genesisData.StartTime.UnixNano()),
 				},
 				DataHash: make([]byte, 32), // Add proper data hash
 				AppHash:  make([]byte, 32), // Add proper app hash
@@ -751,11 +738,13 @@ func TestUtilityFunctions(t *testing.T) {
 		header.Signature = signature
 
 		// Should return true for valid header with correct proposer
-		require.True(m.isUsingExpectedSingleSequencer(header))
+		err = m.assertUsingExpectedSingleSequencer(header.ProposerAddress)
+		require.NoError(err)
 
 		// Should return false for header with wrong proposer address
 		header.ProposerAddress = []byte("wrong-proposer")
-		require.False(m.isUsingExpectedSingleSequencer(header))
+		err = m.assertUsingExpectedSingleSequencer(header.ProposerAddress)
+		require.Error(err)
 	})
 }
 
@@ -778,7 +767,7 @@ func TestErrorHandling(t *testing.T) {
 		expectedErr := errors.New("store height error")
 		mockStore.On("Height", mock.Anything).Return(uint64(0), expectedErr)
 
-		result, err := m.IsDAIncluded(context.Background(), height)
+		result, err := m.IsHeightDAIncluded(context.Background(), height)
 		require.False(result)
 		require.True(errors.Is(err, expectedErr))
 	})
@@ -788,7 +777,7 @@ func TestErrorHandling(t *testing.T) {
 		height := uint64(10)
 		mockStore.On("Height", mock.Anything).Return(uint64(5), nil)
 
-		result, err := m.IsDAIncluded(context.Background(), height)
+		result, err := m.IsHeightDAIncluded(context.Background(), height)
 		assert.False(t, result)
 		assert.NoError(t, err)
 	})
@@ -801,7 +790,7 @@ func TestErrorHandling(t *testing.T) {
 		mockStore.On("Height", mock.Anything).Return(uint64(10), nil)
 		mockStore.On("GetBlockData", mock.Anything, height).Return(nil, nil, expectedErr)
 
-		result, err := m.IsDAIncluded(context.Background(), height)
+		result, err := m.IsHeightDAIncluded(context.Background(), height)
 		require.False(result)
 		require.True(errors.Is(err, expectedErr))
 	})
@@ -954,32 +943,10 @@ func TestValidationMethods(t *testing.T) {
 		require.Equal(expectedHeight, height)
 	})
 
-	t.Run("IsBlockHashSeen_True", func(t *testing.T) {
-		require := require.New(t)
-		m, _ := getManager(t, mocks.NewMockDA(t), -1, -1)
-		hash := "test-hash"
-
-		// Mark as seen first
-		m.headerCache.SetSeen(hash)
-
-		result := m.IsBlockHashSeen(hash)
-		require.True(result)
-	})
-
-	t.Run("IsBlockHashSeen_False", func(t *testing.T) {
-		require := require.New(t)
-		m, _ := getManager(t, mocks.NewMockDA(t), -1, -1)
-		hash := "unseen-hash"
-
-		result := m.IsBlockHashSeen(hash)
-		require.False(result)
-	})
-
 }
 
 // TestConfigurationDefaults tests default value handling and edge cases
 func TestConfigurationDefaults(t *testing.T) {
-
 	t.Run("IsProposer_NilSigner", func(t *testing.T) {
 		require := require.New(t)
 		privKey, _, err := crypto.GenerateKeyPair(crypto.Ed25519, 256)
@@ -1043,7 +1010,7 @@ func TestSetRollkitHeightToDAHeight(t *testing.T) {
 		mockStore.On("SetMetadata", mock.Anything, dataKey, mock.Anything).Return(nil)
 
 		// Call the method
-		err := m.SetSequencerHeightToDAHeight(ctx, height)
+		err := m.SetSequencerHeightToDAHeight(ctx, height, headerHeight == 0)
 		require.NoError(err)
 
 		mockStore.AssertExpectations(t)
@@ -1073,7 +1040,7 @@ func TestSetRollkitHeightToDAHeight(t *testing.T) {
 		mockStore.On("SetMetadata", mock.Anything, dataKey, mock.Anything).Return(nil)
 
 		// Call the method
-		err := m.SetSequencerHeightToDAHeight(ctx, height)
+		err := m.SetSequencerHeightToDAHeight(ctx, height, headerHeight == 0)
 		require.NoError(err)
 
 		mockStore.AssertExpectations(t)
@@ -1095,7 +1062,7 @@ func TestSetRollkitHeightToDAHeight(t *testing.T) {
 		m.dataCache.SetDAIncluded(data.DACommitment().String(), uint64(11))
 
 		// Call the method - should fail
-		err := m.SetSequencerHeightToDAHeight(ctx, height)
+		err := m.SetSequencerHeightToDAHeight(ctx, height, false)
 		require.Error(err)
 		require.Contains(err.Error(), "header hash")
 		require.Contains(err.Error(), "not found in cache")
@@ -1123,7 +1090,7 @@ func TestSetRollkitHeightToDAHeight(t *testing.T) {
 		mockStore.On("SetMetadata", mock.Anything, headerKey, mock.Anything).Return(nil)
 
 		// Call the method - should fail on data lookup
-		err := m.SetSequencerHeightToDAHeight(ctx, height)
+		err := m.SetSequencerHeightToDAHeight(ctx, height, false)
 		require.Error(err)
 		require.Contains(err.Error(), "data hash")
 		require.Contains(err.Error(), "not found in cache")
@@ -1142,7 +1109,7 @@ func TestSetRollkitHeightToDAHeight(t *testing.T) {
 		mockStore.On("GetBlockData", mock.Anything, height).Return(nil, nil, errors.New("block not found"))
 
 		// Call the method - should fail
-		err := m.SetSequencerHeightToDAHeight(ctx, height)
+		err := m.SetSequencerHeightToDAHeight(ctx, height, false)
 		require.Error(err)
 
 		mockStore.AssertExpectations(t)

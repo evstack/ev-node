@@ -16,7 +16,7 @@ coverage.out
 execution/evm/jwttoken
 target
 /.claude/settings.local.json
-
+apps/testapp/testapp
 
 docs/.vitepress/dist
 node_modules
@@ -27,3 +27,4 @@ docs/.vitepress/cache
 .temp
 .vite_opt_cache
 .vscode
+.claude

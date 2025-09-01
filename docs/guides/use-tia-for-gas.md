@@ -2,13 +2,13 @@
 
 ## 🌞 Introduction {#introduction}
 
-This tutorial will guide you through building a sovereign `gm-world` chain using Evolve, with TIA as the gas token. Unlike the [quick start guide](/docs/guides/quick-start.md), which uses a native chain token for gas, this tutorial demonstrates how to integrate an IBC-enabled token, TIA, as the gas token within the chain, providing a deeper exploration of sovereign chain development.
+This tutorial will guide you through building a sovereign `gm-world` chain using Evolve, with TIA as the gas token. Unlike the [quick start guide](./quick-start.md), which uses a native chain token for gas, this tutorial demonstrates how to integrate an IBC-enabled token, TIA, as the gas token within the chain, providing a deeper exploration of sovereign chain development.
 
 No prior understanding of the build process is required, just that it utilizes the [Cosmos SDK](https://github.com/cosmos/cosmos-sdk) for blockchain applications.
 
 ## Requirements {#requirements}
 
-Before proceeding, ensure that you have completed the [build a chain](/docs/guides/gm-world.md) tutorial, which covers setting-up, building and running your chain.
+Before proceeding, ensure that you have completed the [build a chain](./gm-world.md) tutorial, which covers setting-up, building and running your chain.
 
 <!-- markdownlint-disable MD033 -->
 <script setup>
@@ -24,7 +24,7 @@ import constants from '../.vitepress/constants/constants.js'
 
 ## Setup your local DA network {#setup-local-da}
 
-Your local DA network is already running if you followed the [quick start guide](/docs/guides/quick-start.md) or the [build a chain](/docs/guides/gm-world.md). If not, you can start it with the following command:
+Your local DA network is already running if you followed the [quick start guide](./quick-start.md) or the [build a chain](./gm-world.md). If not, you can start it with the following command:
 
 ```bash
 curl -sSL https://ev.xyz/install-local-da.sh | bash -s {{constants.evolveLatestTag}}
@@ -35,7 +35,7 @@ curl -sSL https://ev.xyz/install-local-da.sh | bash -s {{constants.evolveLatestT
 Start the chain, posting to the local DA network:
 
 ```bash
-gmd start --evolve.node.aggregator --evolve.da.address http://localhost:7980 --minimum-gas-prices="0.02ibc/C3E53D20BC7A4CC993B17C7971F8ECD06A433C10B6A96F4C4C3714F0624C56DA,0.025stake"
+gmd start --evnode.node.aggregator --evnode.da.address http://localhost:7980 --minimum-gas-prices="0.02ibc/C3E53D20BC7A4CC993B17C7971F8ECD06A433C10B6A96F4C4C3714F0624C56DA,0.025stake"
 ```
 
 Note that we specified the gas token to be IBC TIA. We still haven't made an IBC connection to Celestia's Mocha testnet, however, if we assume our first channel will be an ICS-20 transfer channel to Celestia, we can already calculate the token denom using this formula:

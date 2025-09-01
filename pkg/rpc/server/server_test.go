@@ -260,6 +260,67 @@ func TestGetMetadata_Error(t *testing.T) {
 	require.Nil(t, resp)
 }
 
+func TestGetGenesisDaHeight(t *testing.T) {
+	expectedHeight := uint64(123)
+	heightBytes := make([]byte, 8)
+	binary.LittleEndian.PutUint64(heightBytes, expectedHeight)
+
+	mockStore := mocks.NewMockStore(t)
+	mockStore.On("GetMetadata", mock.Anything, store.GenesisDAHeightKey).Return(heightBytes, nil).Once()
+
+	logger := zerolog.Nop()
+	server := NewStoreServer(mockStore, logger)
+
+	t.Run("success", func(t *testing.T) {
+		req := connect.NewRequest(&emptypb.Empty{})
+		resp, err := server.GetGenesisDaHeight(context.Background(), req)
+
+		require.NoError(t, err)
+		require.NotNil(t, resp)
+		require.Equal(t, expectedHeight, resp.Msg.Height)
+		mockStore.AssertExpectations(t)
+	})
+}
+
+func TestGetGenesisDaHeight_NotFound(t *testing.T) {
+	mockStore := mocks.NewMockStore(t)
+	mockStore.On("GetMetadata", mock.Anything, store.GenesisDAHeightKey).Return(nil, fmt.Errorf("genesis DA height not found")).Once()
+
+	logger := zerolog.Nop()
+	server := NewStoreServer(mockStore, logger)
+
+	req := connect.NewRequest(&emptypb.Empty{})
+	resp, err := server.GetGenesisDaHeight(context.Background(), req)
+
+	require.Error(t, err)
+	require.Nil(t, resp)
+	var connectErr *connect.Error
+	require.ErrorAs(t, err, &connectErr)
+	require.Equal(t, connect.CodeNotFound, connectErr.Code())
+	mockStore.AssertExpectations(t)
+}
+
+func TestGetGenesisDaHeight_InvalidLength(t *testing.T) {
+	mockStore := mocks.NewMockStore(t)
+	// Return invalid length bytes (not 8 bytes)
+	invalidBytes := []byte{1, 2, 3, 4} // Only 4 bytes
+	mockStore.On("GetMetadata", mock.Anything, store.GenesisDAHeightKey).Return(invalidBytes, nil).Once()
+
+	logger := zerolog.Nop()
+	server := NewStoreServer(mockStore, logger)
+
+	req := connect.NewRequest(&emptypb.Empty{})
+	resp, err := server.GetGenesisDaHeight(context.Background(), req)
+
+	require.Error(t, err)
+	require.Nil(t, resp)
+	var connectErr *connect.Error
+	require.ErrorAs(t, err, &connectErr)
+	require.Equal(t, connect.CodeNotFound, connectErr.Code())
+	require.Contains(t, connectErr.Message(), "invalid metadata value")
+	mockStore.AssertExpectations(t)
+}
+
 func TestP2PServer_GetPeerInfo(t *testing.T) {
 	mockP2P := &mocks.MockP2PRPC{}
 	addr, err := multiaddr.NewMultiaddr("/ip4/127.0.0.1/tcp/4001")
@@ -316,7 +377,7 @@ func TestHealthLiveEndpoint(t *testing.T) {
 	// Create the service handler
 	logger := zerolog.Nop()
 	testConfig := config.DefaultConfig
-	handler, err := NewServiceHandler(mockStore, mockP2PManager, logger, testConfig)
+	handler, err := NewServiceHandler(mockStore, mockP2PManager, nil, logger, testConfig)
 	assert.NoError(err)
 	assert.NotNil(handler)
 

@@ -9,7 +9,7 @@ import constants from '../../.vitepress/constants/constants.js'
 
 This tutorial serves as a comprehensive guide for deploying your chain on Celestia's data availability (DA) network. From the Evolve perspective, there's no difference in posting blocks to Celestia's testnets or Mainnet Beta.
 
-Before proceeding, ensure that you have completed the [gm-world](/docs/guides/gm-world.md) tutorial, which covers installing the Testapp CLI and running a chain against a local DA network.
+Before proceeding, ensure that you have completed the [gm-world](./gm-world.md) tutorial, which covers installing the Testapp CLI and running a chain against a local DA network.
 
 ## 🪶 Running a Celestia light node
 
@@ -46,18 +46,18 @@ After successfully starting a light node, it's time to start posting the batches
 
 ## 🏗️ Prerequisites {#prerequisites}
 
-- `gmd` CLI installed from the [gm-world](/docs/guides/gm-world.md) tutorial.
+- `gmd` CLI installed from the [gm-world](./gm-world.md) tutorial.
 
 ## 🛠️ Configuring flags for DA
 
 Now that we are posting to the Celestia DA instead of the local DA, the `evolve start` command requires three DA configuration flags:
 
-- `--evolve.da.start_height`
-- `--evolve.da.auth_token`
-- `--evolve.da.namespace`
+- `--evnode.da.start_height`
+- `--evnode.da.auth_token`
+- `--evnode.da.namespace`
 
 :::tip
-Optionally, you could also set the `--evolve.da.block_time` flag. This should be set to the finality time of the DA layer, not its actual block time, as Evolve does not handle reorganization logic. The default value is 15 seconds.
+Optionally, you could also set the `--evnode.da.block_time` flag. This should be set to the finality time of the DA layer, not its actual block time, as Evolve does not handle reorganization logic. The default value is 15 seconds.
 :::
 
 Let's determine which values to provide for each of them.
@@ -110,8 +110,8 @@ DA_NAMESPACE="fancy_namespace"
 
 **Advanced Configuration:** For production deployments, you can use separate namespaces for headers and data to optimize syncing:
 
-- `--evolve.da.header_namespace` for block headers
-- `--evolve.da.data_namespace` for transaction data
+- `--evnode.da.header_namespace` for block headers
+- `--evnode.da.data_namespace` for transaction data
 
 The namespace values are automatically encoded by the node to ensure compatibility with Celestia.
 
@@ -131,12 +131,12 @@ Finally, let's initiate the chain node with all the flags:
 
 ```bash
 gmd start \
-    --evolve.node.aggregator \
-    --evolve.da.auth_token $AUTH_TOKEN \
-    --evolve.da.header_namespace $DA_NAMESPACE \
-    --evolve.da.data_namespace $DA_NAMESPACE \
-    --evolve.da.start_height $DA_BLOCK_HEIGHT \
-    --evolve.da.address $DA_ADDRESS
+    --evnode.node.aggregator \
+    --evnode.da.auth_token $AUTH_TOKEN \
+    --evnode.da.header_namespace $DA_NAMESPACE \
+    --evnode.da.data_namespace $DA_NAMESPACE \
+    --evnode.da.start_height $DA_BLOCK_HEIGHT \
+    --evnode.da.address $DA_ADDRESS
 ```
 
 Now, the chain is running and posting blocks (aggregated in batches) to Celestia. You can view your chain by using your namespace or account on one of Celestia's block explorers.

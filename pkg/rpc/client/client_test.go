@@ -37,7 +37,7 @@ func setupTestServer(t *testing.T, mockStore *mocks.MockStore, mockP2P *mocks.Mo
 	// Create config server with test config
 	testConfig := config.DefaultConfig
 	testConfig.DA.Namespace = "test-headers"
-	configServer := server.NewConfigServer(testConfig, logger)
+	configServer := server.NewConfigServer(testConfig, nil, logger)
 
 	// Register the store service
 	storePath, storeHandler := rpc.NewStoreServiceHandler(storeServer)

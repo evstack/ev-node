@@ -2,15 +2,14 @@ module github.com/evstack/ev-node/test/docker-e2e
 
 go 1.24.2
 
-require github.com/celestiaorg/tastora v0.2.2
+require github.com/celestiaorg/tastora v0.2.3
 
 require (
 	cosmossdk.io/x/upgrade v0.1.4 // indirect
 	github.com/chzyer/readline v1.5.1 // indirect
-	github.com/containerd/errdefs/pkg v0.3.0 // indirect
 	github.com/cosmos/ibc-go/modules/capability v1.0.1 // indirect
 	github.com/cosmos/ibc-go/v8 v8.7.0 // indirect
-	github.com/go-viper/mapstructure/v2 v2.2.1 // indirect
+	github.com/go-viper/mapstructure/v2 v2.4.0 // indirect
 	github.com/manifoldco/promptui v0.9.0 // indirect
 )
 
@@ -223,4 +222,5 @@ replace (
 	github.com/cometbft/cometbft => github.com/celestiaorg/celestia-core v1.53.0-tm-v0.38.17
 	github.com/cosmos/cosmos-sdk => github.com/celestiaorg/cosmos-sdk v1.29.1-sdk-v0.50.12
 	github.com/gogo/protobuf => github.com/gogo/protobuf v1.3.2
+	github.com/moby/moby => github.com/moby/moby v27.5.1+incompatible
 )

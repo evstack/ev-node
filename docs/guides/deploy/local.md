@@ -1,6 +1,6 @@
 # 🏠 Local
 
-This tutorial is going to show you how to deploy the [gm-world chain](/docs/guides/gm-world.md) using Docker Compose.
+This tutorial is going to show you how to deploy the [gm-world chain](./gm-world.md) using Docker Compose.
 
 You can learn more about Docker Compose [here](https://docs.docker.com/compose/).
 
@@ -17,7 +17,7 @@ import constants from '../../.vitepress/constants/constants.js'
 
 ## 💻 Pre-requisites {#prerequisites}
 
-Make sure you have your gm-world chain ready by completing [the Build your chain tutorial](/docs/guides/gm-world.md).
+Make sure you have your gm-world chain ready by completing [the Build your chain tutorial](./gm-world.md).
 
 ## 🛠️ Dependencies {#dependencies}
 
@@ -106,7 +106,7 @@ COPY --from=base /root/.gm /root/.gm
 # CMD tail -f /dev/null
 
 ENTRYPOINT ["gmd"]
-CMD ["start","--evolve.node.aggregator"]
+CMD ["start","--evnode.node.aggregator"]
 ```
 
 This Dockerfile sets up the environment to build the chain and run the gm-world node. It then sets up the runtime environment to run the chain. This allows you as the developer to modify any files, and then simply rebuild the Docker image to run the new chain.
@@ -156,8 +156,8 @@ services:
     command:
       [
         "start",
-        "--evolve.node.aggregator",
-        "--evolve.da.address",
+        "--evnode.node.aggregator",
+        "--evnode.da.address",
         "http://0.0.0.0:7980",
       ]
     # Ensures the local-da service is up and running before starting the chain
@@ -224,7 +224,7 @@ Once you are done interacting with your chain, you can exit out of your docker c
 exit
 ```
 
-Then you can shut down your chain environment by running `CRTL+C` in your terminal.
+Then you can shut down your chain environment by running `CTRL+C` in your terminal.
 
 If you want to stop the docker containers without shutting down your terminal, you can run:
 

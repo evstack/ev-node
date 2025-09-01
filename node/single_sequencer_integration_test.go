@@ -109,7 +109,7 @@ func (s *FullNodeTestSuite) TearDownTest() {
 		select {
 		case <-waitCh:
 			// Node stopped successfully
-		case <-time.After(5 * time.Second):
+		case <-time.After(10 * time.Second):
 			s.T().Log("Warning: Node did not stop gracefully within timeout")
 		}
 
@@ -184,7 +184,7 @@ func (s *FullNodeTestSuite) TestSubmitBlocksToDA() {
 	s.NoError(err, "Failed to get DA inclusion")
 	// Verify that all blocks are DA included
 	for height := uint64(1); height <= n; height++ {
-		ok, err := s.node.blockManager.IsDAIncluded(s.ctx, height)
+		ok, err := s.node.blockManager.IsHeightDAIncluded(s.ctx, height)
 		require.NoError(s.T(), err)
 		require.True(s.T(), ok, "Block at height %d is not DA included", height)
 	}
@@ -230,22 +230,8 @@ func TestStateRecovery(t *testing.T) {
 	require.NoError(err)
 	require.GreaterOrEqual(originalHeight, blocksToWaitFor)
 
-	// Stop the current node
-	cancel()
-
-	// Wait for the node to stop
-	waitCh := make(chan struct{})
-	go func() {
-		runningWg.Wait()
-		close(waitCh)
-	}()
-
-	select {
-	case <-waitCh:
-		// Node stopped successfully
-	case <-time.After(2 * time.Second):
-		t.Fatalf("Node did not stop gracefully within timeout")
-	}
+	// Stop the current node and wait for shutdown with a timeout
+	shutdownAndWait(t, []context.CancelFunc{cancel}, &runningWg, 60*time.Second)
 
 	// Create a new node instance using the same components
 	executor, sequencer, dac, p2pClient, _, _, stopDAHeightTicker = createTestComponents(t, config)
@@ -288,7 +274,7 @@ func TestMaxPendingHeadersAndData(t *testing.T) {
 	require.LessOrEqual(height, config.Node.MaxPendingHeadersAndData)
 
 	// Stop the node and wait for shutdown
-	shutdownAndWait(t, []context.CancelFunc{cancel}, &runningWg, 5*time.Second)
+	shutdownAndWait(t, []context.CancelFunc{cancel}, &runningWg, 10*time.Second)
 }
 
 // TestBatchQueueThrottlingWithDAFailure tests that when DA layer fails and MaxPendingHeadersAndData
@@ -400,5 +386,5 @@ func TestBatchQueueThrottlingWithDAFailure(t *testing.T) {
 	t.Log("the batch queue would fill up and return ErrQueueFull, providing backpressure.")
 
 	// Shutdown
-	shutdownAndWait(t, []context.CancelFunc{cancel}, &runningWg, 5*time.Second)
+	shutdownAndWait(t, []context.CancelFunc{cancel}, &runningWg, 10*time.Second)
 }

@@ -7,6 +7,10 @@ import (
 )
 
 const (
+	// GenesisDAHeightKey is the key used for persisting the first DA included height in store.
+	// It avoids to walk over the HeightToDAHeightKey to find the first DA included height.
+	GenesisDAHeightKey = "gdh"
+
 	// HeightToDAHeightKey is the key prefix used for persisting the mapping from a Evolve height
 	// to the DA height where the block's header/data was included.
 	// Full keys are like: rhb/<evolve_height>/h and rhb/<evolve_height>/d
@@ -42,8 +46,8 @@ func getSignatureKey(height uint64) string {
 	return GenerateKey([]string{signaturePrefix, strconv.FormatUint(height, 10)})
 }
 
-func getStateKey() string {
-	return statePrefix
+func getStateAtHeightKey(height uint64) string {
+	return GenerateKey([]string{statePrefix, strconv.FormatUint(height, 10)})
 }
 
 func getMetaKey(key string) string {

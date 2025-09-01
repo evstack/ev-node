@@ -9,13 +9,13 @@ This section covers the case where you need to restart your chain.
 In order to restart your chain, you simply need to run the `<your-binary>d start [...args]`
 command for your chain.
 
-For example, if you ran the [quick start](/docs/guides/quick-start.md) tutorial, you started your chain with:
+For example, if you ran the [quick start](./quick-start.md) tutorial, you started your chain with:
 
 ```bash
 testapp start
 ```
 
-You would have see output similar to:
+You would have seen output similar to:
 
 ```bash
 I[2024-10-17|14:52:12.845] Creating and publishing block                module=BlockManager height=7
@@ -39,7 +39,7 @@ I[2024-10-17|14:52:13.845] executed block                               module=B
 I[2024-10-17|14:52:13.845] indexed block events                         module=txindex height=8
 ```
 
-It is important to include any additional flags that you used when you first started your chain. For example, if you used the `--evolve.da.namespace` flag, you will need to include that flag when restarting your chain to ensure your chain continues to publish blobs to the same namespace.
+It is important to include any additional flags that you used when you first started your chain. For example, if you used the `--evnode.da.namespace` flag, you will need to include that flag when restarting your chain to ensure your chain continues to publish blobs to the same namespace.
 
 ## Restart chain after running out of funds
 
@@ -48,7 +48,7 @@ you are using to post blocks to your DA and consensus layer runs out of funds (t
 and you need to restart your chain.
 
 In this example, we're using Celestia's [Mocha testnet](https://docs.celestia.org/how-to-guides/mocha-testnet/)
-and running the [quick start](/docs/guides/quick-start.md). In this example, our Celestia DA light node
+and running the [quick start](./quick-start.md). In this example, our Celestia DA light node
 ran out of Mocha testnet TIA and we are unable to post new blocks to Celestia due to a
 [`Code: 19`](https://github.com/cosmos/cosmos-sdk/blob/main/types/errors/errors.go#L95)
 error. This error is defined by Cosmos SDK as:
@@ -88,7 +88,7 @@ You can stop your chain by using `Control + C` in your terminal where the node i
 
 ### ⛽ Increase the gas fee {#increase-gas-fee}
 
-To reiterate, before restarting the chain, you will need to increase the gas fee in order to avoid a `Code: 19` error. See the [How to configure gas price](/docs/learn/config.md#da-gas-price) guide for more information.
+To reiterate, before restarting the chain, you will need to increase the gas fee in order to avoid a `Code: 19` error. See the [How to configure gas price](../learn/config.md#da-gas-price) guide for more information.
 
 ### 🔁 Restarting your chain {#restarting-your-chain}
 

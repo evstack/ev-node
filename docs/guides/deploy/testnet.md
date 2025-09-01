@@ -2,7 +2,7 @@
 
 This tutorial is going to show you how to deploy a Evolve testnet, focusing on the architecture choices and components that make up a complete EVM-based chain deployment.
 
-You can learn more about Evolve EVM architecture [here](/learn/execution.md).
+You can learn more about Evolve EVM architecture [here](../../learn/execution.md).
 
 <!-- markdownlint-disable MD033 -->
 <script setup>
@@ -90,7 +90,7 @@ graph TB
 
 ## 💻 Pre-requisites {#prerequisites}
 
-Make sure you understand the sequencing topology you want to use by reading the [Sequencing Overview](/learn/sequencing/overview.md).
+Make sure you understand the sequencing topology you want to use by reading the [Sequencing Overview](../..//learn/sequencing/overview.md).
 
 ## 🛠️ Dependencies {#dependencies}
 
@@ -107,7 +107,7 @@ Currently, Evolve supports one sequencing implementation:
 - **Advantages**: Easy setup, fast block production, independence from DA block time
 - **Requirements**: One sequencer node, multiple optional full nodes
 
-For detailed information about sequencing topologies, see the [Sequencing Overview](/learn/sequencing/overview.md) and [Single Sequencer](/learn/sequencing/single.md) documentation.
+For detailed information about sequencing topologies, see the [Sequencing Overview](../../learn/sequencing/overview.md) and [Single Sequencer](../../learn/sequencing/single.md) documentation.
 
 ## 🏗️ Deployment Architecture {#deployment-architecture}
 
@@ -170,7 +170,7 @@ The two services work together through well-defined interfaces:
 The single sequencer node runs both RETH and EVOLVE services with specific settings:
 
 - **RETH**: Configured to accept blocks from the Evolve sequencer
-- **EVOLVE**: Configured with `--evolve.node.aggregator=true` to enable block production
+- **EVOLVE**: Configured with `--evnode.node.aggregator=true` to enable block production
 - **Role**: Produces blocks, orders transactions, posts to DA layer
 
 ### 📡 Full Node Configuration
@@ -178,7 +178,7 @@ The single sequencer node runs both RETH and EVOLVE services with specific setti
 Each full node also runs both RETH and EVOLVE services but in sync mode:
 
 - **RETH**: Configured to process blocks received from the network
-- **EVOLVE**: Configured with `--evolve.node.aggregator=false` to sync from the sequencer
+- **EVOLVE**: Configured with `--evnode.node.aggregator=false` to sync from the sequencer
 - **Role**: Syncs blocks, serves queries, provides redundancy
 
 ### 🔑 Key Integration Points
@@ -196,14 +196,14 @@ You can customize timing parameters for your chain. While there are many configu
 
 #### 🎯 Sequencer Block Time
 
-- **Flag**: `--evolve.node.block_time`
+- **Flag**: `--evnode.node.block_time`
 - **Default**: 1s (1 block per second)
 - **Purpose**: Controls how frequently the sequencer produces new blocks
 - **Customization**: Can be adjusted based on throughput requirements and latency preferences
 
 #### 📊 Data Availability Block Time
 
-- **Flag**: `--evolve.da.block_time`
+- **Flag**: `--evnode.da.block_time`
 - **Default**: 6s
 - **Purpose**: Controls how frequently blobs are posted to the Celestia chain
 - **Function**: Each 6 seconds (by default), batched block data is submitted to Celestia for data availability
@@ -300,8 +300,8 @@ Congratulations again! You now know how to deploy Evolve EVM chains and understa
 
 For detailed setup instructions, see:
 
-- [Single Sequencer Setup Guide](/guides/evm/single.md) - Step-by-step deployment instructions
-- [RETH Backup Guide](/guides/evm/reth-backup.md) - Data protection and backup procedures
-- [Celestia DA Guide](/guides/da/celestia-da.md) - Connecting to Celestia networks
+- [Single Sequencer Setup Guide](../evm/single.md) - Step-by-step deployment instructions
+- [RETH Backup Guide](../evm/reth-backup.md) - Data protection and backup procedures
+- [Celestia DA Guide](../da/celestia-da.md) - Connecting to Celestia networks
 
-You can also learn more about local deployments in our [Docker Compose guide](/docs/guides/deploy/local.md).
+You can also learn more about local deployments in our [Docker Compose guide](../deploy/local.md).

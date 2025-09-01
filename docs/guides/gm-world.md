@@ -7,7 +7,7 @@ description: Learn how to build and deploy a CosmWasm-based "gm" (good morning) 
 
 ## 🌞 Introduction {#introduction}
 
-This tutorial will guide you through building a evolve `gm-world` chain (`gm` stands for "good morning") using Evolve. Unlike the [quick start guide](/docs/guides/quick-start.md), this tutorial provides a more practical approach to understanding evolve chain development.
+This tutorial will guide you through building a evolve `gm-world` chain (`gm` stands for "good morning") using Evolve. Unlike the [quick start guide](./quick-start.md), this tutorial provides a more practical approach to understanding evolve chain development.
 
 We will cover:
 
@@ -39,15 +39,15 @@ ignite version
 ```
 
 ```bash
-Ignite CLI version:             v29.2.0-dev
+Ignite CLI version:             v29.3.1-dev
 Ignite CLI build date:          undefined
 Ignite CLI source hash:         undefined
 Ignite CLI config version:      v1
-Cosmos SDK version:             v0.53.0
+Cosmos SDK version:             v0.53.3
 Buf.build version:              undefined
 Your OS:                        darwin
 Your arch:                      arm64
-Your go version:                go version go1.24.3 darwin/arm64
+Your go version:                go version go1.25.0 darwin/arm64
 ```
 
 ## Generate your App {#generate-your-app}
@@ -104,7 +104,10 @@ Now that we have our gm app generated and installed, we can launch our GM chain 
 First lets start the local DA network:
 
 ```bash
-curl -sSL https://ev.xyz/install-local-da.sh | bash -s {{constants.evolveLatestTag}}
+git clone  --depth=1 --branch v1.0.0-beta.2 https://github.com/evstack/ev-node.git
+cd ev-node
+make build-da
+./build/local-da
 ```
 
 you should see logs like:
@@ -118,7 +121,7 @@ you should see logs like:
 After which we can start the app:
 
 ```bash
-gmd start --evolve.node.aggregator
+gmd start --evnode.node.aggregator
 ```
 
 You should see an output like this:
@@ -288,4 +291,4 @@ If you run into any issues, make sure your Keplr wallet is updated and set to co
 
 ## 🎉 Next steps
 
-Congratulations! You've experienced connecting to a chain from the user side — simple and straightforward. Now, you might consider exploring how to add more application logic to your chain using the Cosmos SDK, as demonstrated in our Wordle App tutorial.
+Congratulations! You've experienced connecting to a chain from the user side — simple and straightforward. Now, you might consider exploring how to add more application logic to your chain using the Cosmos SDK, as demonstrated in our World App tutorial.

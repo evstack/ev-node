@@ -39,9 +39,16 @@ func TestTxGossipingMultipleNodesNoDA(t *testing.T) {
 	// Verify block manager is properly initialized
 	require.NotNil(nodes[0].blockManager, "Block manager should be initialized")
 
+	// Add a small delay to ensure P2P services are fully ready
+	time.Sleep(500 * time.Millisecond)
+
 	// Start the other nodes
 	for i := 1; i < numNodes; i++ {
 		startNodeInBackground(t, nodes, ctxs, &runningWg, i)
+		// Add a small delay between starting nodes to avoid connection race
+		if i < numNodes-1 {
+			time.Sleep(100 * time.Millisecond)
+		}
 	}
 
 	// Inject a transaction into the sequencer's executor
@@ -88,9 +95,16 @@ func TestTxGossipingMultipleNodesDAIncluded(t *testing.T) {
 	// Verify block manager is properly initialized
 	require.NotNil(nodes[0].blockManager, "Block manager should be initialized")
 
+	// Add a small delay to ensure P2P services are fully ready
+	time.Sleep(500 * time.Millisecond)
+
 	// Start the other nodes
 	for i := 1; i < numNodes; i++ {
 		startNodeInBackground(t, nodes, ctxs, &runningWg, i)
+		// Add a small delay between starting nodes to avoid connection race
+		if i < numNodes-1 {
+			time.Sleep(100 * time.Millisecond)
+		}
 	}
 
 	// Inject a transaction into the sequencer's executor
@@ -120,12 +134,12 @@ func TestTxGossipingMultipleNodesDAIncluded(t *testing.T) {
 func TestFastDASync(t *testing.T) {
 	require := require.New(t)
 
-	// Set up two nodes with different block and DA block times
+	// Set up two nodes where DA is faster than block production
 	config := getTestConfig(t, 1)
-	// Set the block time to 2 seconds and the DA block time to 1 second
-	// Note: these are large values to avoid test failures due to slow CI machines
-	config.Node.BlockTime = evconfig.DurationWrapper{Duration: 2 * time.Second}
-	config.DA.BlockTime = evconfig.DurationWrapper{Duration: 1 * time.Second}
+	// Slow block production (sequencer takes 1s per block)
+	config.Node.BlockTime = evconfig.DurationWrapper{Duration: 1 * time.Second}
+	// Fast DA availability (DA makes blocks available every 200ms)
+	config.DA.BlockTime = evconfig.DurationWrapper{Duration: 200 * time.Millisecond}
 
 	nodes, cleanups := createNodesWithCleanup(t, 2, config)
 	for _, cleanup := range cleanups {
@@ -142,16 +156,24 @@ func TestFastDASync(t *testing.T) {
 	blocksToWaitFor := uint64(2)
 	require.NoError(waitForAtLeastNDAIncludedHeight(nodes[0], blocksToWaitFor))
 
+	// Add a small delay to ensure P2P services are fully ready
+	time.Sleep(500 * time.Millisecond)
+
 	// Now start the second node and time its sync
 	startNodeInBackground(t, nodes, ctxs, &runningWg, 1)
 	start := time.Now()
 	// Wait for the second node to catch up to the first node
 	require.NoError(waitForAtLeastNBlocks(nodes[1], blocksToWaitFor, Store))
 	syncDuration := time.Since(start)
+	// The key test: sync should be much faster than sequential block production time
+	// Since DA provides blocks faster than sequencer block time, sync should complete
+	// in significantly less time than it took the sequencer to produce them sequentially
+	expectedSequentialTime := time.Duration(blocksToWaitFor) * config.Node.BlockTime.Duration
+	maxReasonableSyncTime := expectedSequentialTime / 3 // Should be at least 3x faster than sequential
 
-	// Ensure node syncs within a small delta of DA block time
-	delta := 250 * time.Millisecond
-	require.Less(syncDuration, config.DA.BlockTime.Duration+delta, "Block sync should be faster than DA block time")
+	require.Less(syncDuration, maxReasonableSyncTime,
+		"DA fast sync took %v, should be much faster than sequential block time %v (max reasonable: %v). ",
+		syncDuration, expectedSequentialTime, maxReasonableSyncTime)
 
 	// Verify both nodes are synced and that the synced block is DA-included
 	assertAllNodesSynced(t, nodes, blocksToWaitFor)
@@ -186,9 +208,16 @@ func TestSingleSequencerTwoFullNodesBlockSyncSpeed(t *testing.T) {
 	// Wait for the sequencer to produce at first block
 	require.NoError(waitForFirstBlock(nodes[0], Store))
 
+	// Add a small delay to ensure P2P services are fully ready
+	time.Sleep(500 * time.Millisecond)
+
 	// Now start the other nodes
 	for i := 1; i < numNodes; i++ {
 		startNodeInBackground(t, nodes, ctxs, &runningWg, i)
+		// Add a small delay between starting nodes to avoid connection race
+		if i < numNodes-1 {
+			time.Sleep(100 * time.Millisecond)
+		}
 	}
 
 	blocksToWaitFor := uint64(10)
@@ -274,6 +303,9 @@ func testSingleSequencerSingleFullNode(t *testing.T, source Source) {
 	// Wait for the sequencer to produce at first block
 	require.NoError(waitForFirstBlock(nodes[0], source))
 
+	// Add a small delay to ensure P2P services are fully ready
+	time.Sleep(500 * time.Millisecond)
+
 	// Start the full node
 	startNodeInBackground(t, nodes, ctxs, &runningWg, 1)
 
@@ -312,9 +344,16 @@ func testSingleSequencerTwoFullNodes(t *testing.T, source Source) {
 	// Wait for the sequencer to produce at first block
 	require.NoError(waitForFirstBlock(nodes[0], source))
 
+	// Add a small delay to ensure P2P services are fully ready
+	time.Sleep(500 * time.Millisecond)
+
 	// Start the full nodes
 	for i := 1; i < numNodes; i++ {
 		startNodeInBackground(t, nodes, ctxs, &runningWg, i)
+		// Add a small delay between starting nodes to avoid connection race
+		if i < numNodes-1 {
+			time.Sleep(100 * time.Millisecond)
+		}
 	}
 
 	blocksToWaitFor := uint64(3)
@@ -371,6 +410,9 @@ func testSingleSequencerSingleFullNodeTrustedHash(t *testing.T, source Source) {
 
 	// Set the trusted hash in the full node
 	nodes[1].nodeConfig.Node.TrustedHash = trustedHash
+
+	// Add a small delay to ensure P2P services are fully ready
+	time.Sleep(500 * time.Millisecond)
 
 	// Start the full node
 	startNodeInBackground(t, nodes, ctxs, &runningWg, 1)

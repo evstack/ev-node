@@ -6,7 +6,7 @@ This guide covers how to set up a full node to run alongside a sequencer node in
 
 ## Prerequisites
 
-Before proceeding, ensure that you have completed the [build a chain](/docs/guides/gm-world.md) tutorial, which covers setting-up, building and running your chain.
+Before proceeding, ensure that you have completed the [build a chain](./gm-world.md) tutorial, which covers setting-up, building and running your chain.
 
 Ensure that you have:
 
@@ -66,7 +66,7 @@ Run your full node with the following command:
 
 ```bash
 gmd start \
-  --evolve.da.address http://127.0.0.1:7980 \
+  --evnode.da.address http://127.0.0.1:7980 \
   --p2p.seeds $P2P_ID@127.0.0.1:7676 \
   --minimum-gas-prices 0stake \
   --rpc.laddr tcp://127.0.0.1:46657 \

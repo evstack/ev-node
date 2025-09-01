@@ -123,7 +123,7 @@ func TestGetGenesisWithPrivkey(t *testing.T) {
 			assert.NotNil(t, pubKey)
 			assert.Equal(t, tc.chainID, gen.ChainID)
 			assert.Equal(t, uint64(1), gen.InitialHeight)
-			assert.NotZero(t, gen.GenesisDAStartTime) // Corrected field name
+			assert.NotZero(t, gen.StartTime)
 
 			// Verify the proposer address in genesis
 			expectedAddress := types.KeyAddress(pubKey)

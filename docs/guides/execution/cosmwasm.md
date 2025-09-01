@@ -24,7 +24,7 @@ this tutorial.
 
 ## 💻 CosmWasm dependency {#dependencies}
 
-As with the [GM Chain](/docs/guides/gm-world.md), we use [kurtosis](https://docs.kurtosis.com/) to help with managing all the services we need to run. You can [install kurtosis here](https://docs.kurtosis.com/install).
+As with the [GM Chain](./gm-world.md), we use [kurtosis](https://docs.kurtosis.com/) to help with managing all the services we need to run. You can [install kurtosis here](https://docs.kurtosis.com/install).
 
 Once installed, you can verify the installation by running:
 
@@ -224,7 +224,7 @@ the variables in the command with the variables in the `init.sh` script.
 ## 🌟 Contract interaction on CosmWasm {#contract-interaction-on-local-da}
 <!-- markdownlint-disable MD013 -->
 
-In the previous steps, we have stored out contract's tx hash in an
+In the previous steps, we have stored our contract's tx hash in an
 environment variable for later use.
 
 The following guide will show you how to deploy and interact with a contract using CLI.
