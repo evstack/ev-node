@@ -112,7 +112,7 @@ func setupManagerForPublishBlockTest(
 		ChainID:         genesis.ChainID,
 		InitialHeight:   genesis.InitialHeight,
 		LastBlockHeight: initialHeight - 1,
-		LastBlockTime:   genesis.GenesisDAStartTime,
+		LastBlockTime:   genesis.StartTime,
 		AppHash:         []byte("initialAppHash"),
 	}
 	if initialHeight == 0 {

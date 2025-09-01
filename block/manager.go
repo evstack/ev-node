@@ -170,7 +170,7 @@ func getInitialState(ctx context.Context, genesis genesis.Genesis, signer signer
 
 		// If the user is starting a fresh chain (or hard-forking), we assume the stored state is empty.
 		// TODO(tzdybal): handle max bytes
-		stateRoot, _, err := exec.InitChain(ctx, genesis.GenesisDAStartTime, genesis.InitialHeight, genesis.ChainID)
+		stateRoot, _, err := exec.InitChain(ctx, genesis.StartTime, genesis.InitialHeight, genesis.ChainID)
 		if err != nil {
 			return types.State{}, fmt.Errorf("failed to initialize chain: %w", err)
 		}
@@ -183,7 +183,7 @@ func getInitialState(ctx context.Context, genesis genesis.Genesis, signer signer
 			BaseHeader: types.BaseHeader{
 				ChainID: genesis.ChainID,
 				Height:  genesis.InitialHeight,
-				Time:    uint64(genesis.GenesisDAStartTime.UnixNano()),
+				Time:    uint64(genesis.StartTime.UnixNano()),
 			},
 		}
 
@@ -232,7 +232,7 @@ func getInitialState(ctx context.Context, genesis genesis.Genesis, signer signer
 			ChainID:         genesis.ChainID,
 			InitialHeight:   genesis.InitialHeight,
 			LastBlockHeight: genesis.InitialHeight - 1,
-			LastBlockTime:   genesis.GenesisDAStartTime,
+			LastBlockTime:   genesis.StartTime,
 			AppHash:         stateRoot,
 			DAHeight:        0,
 		}
@@ -464,7 +464,7 @@ func (m *Manager) GetLastState() types.State {
 }
 
 // GetDAIncludedHeight returns the height at which all blocks have been
-// included in the DA
+// included in the DA.
 func (m *Manager) GetDAIncludedHeight() uint64 {
 	return m.daIncludedHeight.Load()
 }
@@ -499,14 +499,14 @@ func (m *Manager) GetStoreHeight(ctx context.Context) (uint64, error) {
 	return m.store.Height(ctx)
 }
 
-// IsDAIncluded returns true if both the header and the data with the given hashes
-// have been seen on DA.
-func (m *Manager) IsDAIncluded(ctx context.Context, height uint64) (bool, error) {
-	syncedHeight, err := m.store.Height(ctx)
+// IsHeightDAIncluded returns true if the block with the given height has been seen on DA.
+// This means both header and (non-empty) data have been seen on DA.
+func (m *Manager) IsHeightDAIncluded(ctx context.Context, height uint64) (bool, error) {
+	currentHeight, err := m.store.Height(ctx)
 	if err != nil {
 		return false, err
 	}
-	if syncedHeight < height {
+	if currentHeight < height {
 		return false, nil
 	}
 	header, data, err := m.store.GetBlockData(ctx, height)
@@ -525,21 +525,26 @@ func (m *Manager) IsDAIncluded(ctx context.Context, height uint64) (bool, error)
 //
 // For blocks with empty transactions, both header and data use the same DA height since
 // empty transaction data is not actually published to the DA layer.
-func (m *Manager) SetSequencerHeightToDAHeight(ctx context.Context, height uint64) error {
+func (m *Manager) SetSequencerHeightToDAHeight(ctx context.Context, height uint64, genesisInclusion bool) error {
 	header, data, err := m.store.GetBlockData(ctx, height)
 	if err != nil {
 		return err
 	}
+
 	headerHash, dataHash := header.Hash(), data.DACommitment()
+
 	headerHeightBytes := make([]byte, 8)
 	daHeightForHeader, ok := m.headerCache.GetDAIncludedHeight(headerHash.String())
 	if !ok {
 		return fmt.Errorf("header hash %s not found in cache", headerHash)
 	}
 	binary.LittleEndian.PutUint64(headerHeightBytes, daHeightForHeader)
+	genesisDAIncludedHeight := daHeightForHeader
+
 	if err := m.store.SetMetadata(ctx, fmt.Sprintf("%s/%d/h", storepkg.HeightToDAHeightKey, height), headerHeightBytes); err != nil {
 		return err
 	}
+
 	dataHeightBytes := make([]byte, 8)
 	// For empty transactions, use the same DA height as the header
 	if bytes.Equal(dataHash, dataHashForEmptyTxs) {
@@ -550,10 +555,25 @@ func (m *Manager) SetSequencerHeightToDAHeight(ctx context.Context, height uint6
 			return fmt.Errorf("data hash %s not found in cache", dataHash.String())
 		}
 		binary.LittleEndian.PutUint64(dataHeightBytes, daHeightForData)
+
+		// if data posted before header, use data da included height
+		if daHeightForData < genesisDAIncludedHeight {
+			genesisDAIncludedHeight = daHeightForData
+		}
 	}
 	if err := m.store.SetMetadata(ctx, fmt.Sprintf("%s/%d/d", storepkg.HeightToDAHeightKey, height), dataHeightBytes); err != nil {
 		return err
 	}
+
+	if genesisInclusion {
+		genesisDAIncludedHeightBytes := make([]byte, 8)
+		binary.LittleEndian.PutUint64(genesisDAIncludedHeightBytes, genesisDAIncludedHeight)
+
+		if err := m.store.SetMetadata(ctx, storepkg.GenesisDAHeightKey, genesisDAIncludedHeightBytes); err != nil {
+			return err
+		}
+	}
+
 	return nil
 }
 

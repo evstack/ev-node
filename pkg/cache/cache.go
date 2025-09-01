@@ -81,6 +81,7 @@ func (c *Cache[T]) IsDAIncluded(hash string) bool {
 	return ok
 }
 
+// GetDAIncludedHeight returns the DA height at which the hash was DA included
 func (c *Cache[T]) GetDAIncludedHeight(hash string) (uint64, bool) {
 	daIncluded, ok := c.daIncluded.Load(hash)
 	if !ok {
@@ -89,9 +90,9 @@ func (c *Cache[T]) GetDAIncludedHeight(hash string) (uint64, bool) {
 	return daIncluded.(uint64), true
 }
 
-// SetDAIncluded sets the hash as DA-included with the given height
-func (c *Cache[T]) SetDAIncluded(hash string, height uint64) {
-	c.daIncluded.Store(hash, height)
+// SetDAIncluded sets the hash as DA-included with the given DA height
+func (c *Cache[T]) SetDAIncluded(hash string, daHeight uint64) {
+	c.daIncluded.Store(hash, daHeight)
 }
 
 const (
