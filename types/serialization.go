@@ -270,11 +270,8 @@ func (d *Data) FromProto(other *pb.Data) error {
 		d.Metadata = nil
 	}
 	d.Txs = byteSlicesToTxs(other.GetTxs())
-	
-	// Clear cached hash since data has changed
-	d.hashMutex.Lock()
+
 	d.cachedHash = nil
-	d.hashMutex.Unlock()
 	return nil
 }
 

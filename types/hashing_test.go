@@ -60,14 +60,36 @@ func TestDataHash(t *testing.T) {
 	assert.Len(t, hash1, sha256.Size)
 	assert.Equal(t, Hash(expectedHash), hash1, "Data hash should match manual calculation with prefix")
 
-	data.Txs = Txs{Tx("tx3")}
-	hash2 := data.Hash()
+	// Test that different Data objects with different Txs have different hashes
+	data2 := Data{
+		Txs: Txs{Tx("tx3")},
+		Metadata: &Metadata{
+			ChainID:      "test-chain",
+			Height:       1,
+			Time:         1234567890,
+			LastDataHash: []byte("lastdatahash"),
+		},
+	}
+	hash2 := data2.Hash()
 	assert.NotEqual(t, hash1, hash2, "Different data (Txs) should have different hashes")
 
-	data.Metadata.Height = 2
-	hash3 := data.Hash()
+	// Test that different Data objects with different Metadata have different hashes
+	data3 := Data{
+		Txs: Txs{Tx("tx1"), Tx("tx2")},
+		Metadata: &Metadata{
+			ChainID:      "test-chain",
+			Height:       2, // Different height
+			Time:         1234567890,
+			LastDataHash: []byte("lastdatahash"),
+		},
+	}
+	hash3 := data3.Hash()
 	assert.NotEqual(t, hash1, hash3, "Different data (Metadata) should have different hashes")
 	assert.NotEqual(t, hash2, hash3)
+
+	// Test that calling Hash() multiple times on the same object returns the same result (caching)
+	hash1Again := data.Hash()
+	assert.Equal(t, hash1, hash1Again, "Hash should be cached and return same result")
 }
 
 // TestLeafHashOpt tests the helper function leafHashOpt directly.

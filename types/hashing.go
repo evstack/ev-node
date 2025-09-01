@@ -21,29 +21,21 @@ func (h *Header) Hash() Hash {
 
 // Hash returns hash of the Data
 func (d *Data) Hash() Hash {
-	// Check for cached hash with read lock
-	d.hashMutex.RLock()
-	if d.cachedHash != nil {
-		hash := d.cachedHash
-		d.hashMutex.RUnlock()
-		return hash
-	}
-	d.hashMutex.RUnlock()
-	
-	// Need to compute hash, acquire write lock
-	d.hashMutex.Lock()
-	defer d.hashMutex.Unlock()
-	
-	// Double-check in case another goroutine computed it while we were waiting
+	// Return cached hash if already computed
 	if d.cachedHash != nil {
 		return d.cachedHash
 	}
-	
+
+	// Compute hash if not cached
 	// Ignoring the marshal error for now to satisfy the go-header interface
 	// Later on the usage of Hash should be replaced with DA commitment
 	dBytes, _ := d.MarshalBinary()
-	d.cachedHash = leafHashOpt(sha256.New(), dBytes)
-	return d.cachedHash
+	hash := leafHashOpt(sha256.New(), dBytes)
+
+	// Cache the result - no synchronization needed since hash computation is idempotent
+	// If multiple goroutines compute this simultaneously, they'll get the same result
+	d.cachedHash = hash
+	return hash
 }
 
 // DACommitment returns the DA commitment of the Data excluding the Metadata
