@@ -75,7 +75,7 @@ func (s *DockerTestSuite) CreateDockerProvider(opts ...ConfigOption) tastoratype
 		DockerNetworkID: network,
 		DataAvailabilityNetworkConfig: &tastoradocker.DataAvailabilityNetworkConfig{
 			BridgeNodeCount: 1,
-			Image:           container.NewImage("ghcr.io/celestiaorg/celestia-node", "pr-4283", "10001:10001"),
+			Image:           container.NewImage("ghcr.io/celestiaorg/celestia-node", "v0.25.3", "10001:10001"),
 		},
 		RollkitChainConfig: &tastoradocker.RollkitChainConfig{
 			ChainID:              "rollkit-test",
@@ -114,7 +114,7 @@ func (s *DockerTestSuite) SetupDockerResources(opts ...ConfigOption) {
 	s.provider = s.CreateDockerProvider(opts...)
 	s.celestia = s.CreateChain()
 	s.daNetwork = s.CreateDANetwork()
-	s.evNodeChain = s.CreateRollkitChain()
+	s.evNodeChain = s.CreateEvolveChain()
 }
 
 // CreateChain creates a chain using the ChainBuilder pattern.
@@ -164,8 +164,8 @@ func (s *DockerTestSuite) CreateDANetwork() tastoratypes.DataAvailabilityNetwork
 	return daNetwork
 }
 
-// CreateRollkitChain creates a Rollkit chain using the provider
-func (s *DockerTestSuite) CreateRollkitChain() tastoratypes.RollkitChain {
+// CreateEvolveChain creates a Rollkit chain using the provider
+func (s *DockerTestSuite) CreateEvolveChain() tastoratypes.RollkitChain {
 	ctx := context.Background()
 
 	rollkitChain, err := s.provider.GetRollkitChain(ctx)
@@ -221,6 +221,29 @@ func (s *DockerTestSuite) StartEvNode(ctx context.Context, bridgeNode tastoratyp
 		"--rollkit.da.auth_token", authToken,
 		"--rollkit.rpc.address", "0.0.0.0:7331", // bind to 0.0.0.0 so rpc is reachable from test host.
 		"--rollkit.da.namespace", generateValidNamespaceHex(),
+		"--kv-endpoint", "0.0.0.0:8080",
+	)
+	s.Require().NoError(err)
+}
+
+// StartRollkitNodeWithNamespace initializes and starts a Rollkit node with a specific namespace.
+func (s *DockerTestSuite) StartRollkitNodeWithNamespace(ctx context.Context, bridgeNode tastoratypes.DANode, rollkitNode tastoratypes.RollkitNode, namespace string) {
+	err := rollkitNode.Init(ctx)
+	s.Require().NoError(err)
+
+	bridgeNodeHostName, err := bridgeNode.GetInternalHostName()
+	s.Require().NoError(err)
+
+	authToken, err := bridgeNode.GetAuthToken()
+	s.Require().NoError(err)
+
+	daAddress := fmt.Sprintf("http://%s:26658", bridgeNodeHostName)
+	err = rollkitNode.Start(ctx,
+		"--rollkit.da.address", daAddress,
+		"--rollkit.da.gas_price", "0.025",
+		"--rollkit.da.auth_token", authToken,
+		"--rollkit.rpc.address", "0.0.0.0:7331", // bind to 0.0.0.0 so rpc is reachable from test host.
+		"--rollkit.da.namespace", namespace,
 		"--kv-endpoint", "0.0.0.0:8080",
 	)
 	s.Require().NoError(err)

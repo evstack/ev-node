@@ -427,3 +427,10 @@ pub struct GetNamespaceResponse {
     #[prost(string, tag = "2")]
     pub data_namespace: ::prost::alloc::string::String,
 }
+/// GetSequencerInfoResponse returns information about the sequencer
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct GetSignerInfoResponse {
+    #[prost(bytes = "vec", tag = "1")]
+    pub address: ::prost::alloc::vec::Vec<u8>,
+}

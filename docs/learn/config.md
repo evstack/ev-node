@@ -5,7 +5,7 @@ This document provides a comprehensive reference for all configuration options a
 ## Table of Contents
 
 - [DA-Only Sync Mode](#da-only-sync-mode)
-- [Introduction to Configurations](#introduction-to-configurations)
+- [Introduction to Configurations](#configs)
 - [Base Configuration](#base-configuration)
   - [Root Directory](#root-directory)
   - [Database Path](#database-path)
@@ -641,7 +641,7 @@ rpc:
 *Default:* `false`
 *Constant:* `FlagRPCEnableDAVisualization`
 
-See the [DA Visualizer Guide](/guides/da-visualizer.md) for detailed information on using this feature.
+See the [DA Visualizer Guide](../guides/da/da-visualizer.md) for detailed information on using this feature.
 
 ## Instrumentation Configuration (`instrumentation`)
 
@@ -677,7 +677,7 @@ instrumentation:
 **Description:**
 The network address (host:port) where the Prometheus metrics server will listen for scraping requests.
 
-See [Metrics](/docs/guides/metrics.md) for more details on what metrics are exposed.
+See [Metrics](../guides/metrics.md) for more details on what metrics are exposed.
 
 **YAML:**
 

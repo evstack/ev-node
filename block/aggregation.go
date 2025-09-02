@@ -17,7 +17,7 @@ func (m *Manager) AggregationLoop(ctx context.Context, errCh chan<- error) {
 	var delay time.Duration
 
 	if height < initialHeight {
-		delay = time.Until(m.genesis.GenesisDAStartTime.Add(m.config.Node.BlockTime.Duration))
+		delay = time.Until(m.genesis.StartTime.Add(m.config.Node.BlockTime.Duration))
 	} else {
 		lastBlockTime := m.getLastBlockTime()
 		delay = time.Until(lastBlockTime.Add(m.config.Node.BlockTime.Duration))

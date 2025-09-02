@@ -6,7 +6,7 @@ This guide will walk you through the process of setting up a genesis for your ch
 
 For this guide you need to have a chain directory where you have created and built your chain.
 
-If you don't have a chain directory yet, you can initialize a simple ignite chain by following [this tutorial](/docs/guides/gm-world.md)
+If you don't have a chain directory yet, you can initialize a simple ignite chain by following [this tutorial](./gm-world.md)
 
 :::tip
 This guide will use the simple ignite chain created in linked guide. Make sure to update any relevant variables to match your chain.
@@ -27,7 +27,7 @@ STAKING_AMOUNT="1000000000stake"
 
 ## Rebuild your chain
 
-Ensure that `.gm` folder is present at `/Users/you/.gm` (if not, follow a [Guide](/docs/guides/gm-world.md) to set it up) and run the following command to (re)generate an entrypoint binary out of the code:
+Ensure that `.gm` folder is present at `/Users/you/.gm` (if not, follow a [Guide](./gm-world.md) to set it up) and run the following command to (re)generate an entrypoint binary out of the code:
 
 ```sh
 make install
@@ -118,4 +118,4 @@ gmd start --evnode.node.aggregator
 
 ## Summary
 
-By following these steps, you will set up the genesis for your chain, initialize the validator, add a genesis account, and started the chain. This guide provides a basic framework for configuring and starting your chain using the gm-world binary. Make sure you initialized your chain correctly, and use the `gmd` command for all operations.
+By following these steps, you will set up the genesis for your chain, initialize the validator, add a genesis account, and start the chain. This guide provides a basic framework for configuring and starting your chain using the gm-world binary. Make sure you initialized your chain correctly, and use the `gmd` command for all operations.

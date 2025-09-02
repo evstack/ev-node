@@ -9,7 +9,7 @@ This section covers the case where you need to restart your chain.
 In order to restart your chain, you simply need to run the `<your-binary>d start [...args]`
 command for your chain.
 
-For example, if you ran the [quick start](/docs/guides/quick-start.md) tutorial, you started your chain with:
+For example, if you ran the [quick start](./quick-start.md) tutorial, you started your chain with:
 
 ```bash
 testapp start
@@ -48,7 +48,7 @@ you are using to post blocks to your DA and consensus layer runs out of funds (t
 and you need to restart your chain.
 
 In this example, we're using Celestia's [Mocha testnet](https://docs.celestia.org/how-to-guides/mocha-testnet/)
-and running the [quick start](/docs/guides/quick-start.md). In this example, our Celestia DA light node
+and running the [quick start](./quick-start.md). In this example, our Celestia DA light node
 ran out of Mocha testnet TIA and we are unable to post new blocks to Celestia due to a
 [`Code: 19`](https://github.com/cosmos/cosmos-sdk/blob/main/types/errors/errors.go#L95)
 error. This error is defined by Cosmos SDK as:
@@ -88,7 +88,7 @@ You can stop your chain by using `Control + C` in your terminal where the node i
 
 ### ⛽ Increase the gas fee {#increase-gas-fee}
 
-To reiterate, before restarting the chain, you will need to increase the gas fee in order to avoid a `Code: 19` error. See the [How to configure gas price](/docs/learn/config.md#da-gas-price) guide for more information.
+To reiterate, before restarting the chain, you will need to increase the gas fee in order to avoid a `Code: 19` error. See the [How to configure gas price](../learn/config.md#da-gas-price) guide for more information.
 
 ### 🔁 Restarting your chain {#restarting-your-chain}
 

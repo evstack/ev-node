@@ -24,7 +24,7 @@ this tutorial.
 
 ## 💻 CosmWasm dependency {#dependencies}
 
-As with the [GM Chain](/docs/guides/gm-world.md), we use [kurtosis](https://docs.kurtosis.com/) to help with managing all the services we need to run. You can [install kurtosis here](https://docs.kurtosis.com/install).
+As with the [GM Chain](./gm-world.md), we use [kurtosis](https://docs.kurtosis.com/) to help with managing all the services we need to run. You can [install kurtosis here](https://docs.kurtosis.com/install).
 
 Once installed, you can verify the installation by running:
 

@@ -22,18 +22,21 @@ func (m *Manager) DAIncluderLoop(ctx context.Context, errCh chan<- error) {
 		currentDAIncluded := m.GetDAIncludedHeight()
 		for {
 			nextHeight := currentDAIncluded + 1
-			daIncluded, err := m.IsDAIncluded(ctx, nextHeight)
+			daIncluded, err := m.IsHeightDAIncluded(ctx, nextHeight)
 			if err != nil {
 				// No more blocks to check at this time
 				m.logger.Debug().Uint64("height", nextHeight).Err(err).Msg("no more blocks to check at this time")
 				break
 			}
+
 			if daIncluded {
 				m.logger.Debug().Uint64("height", nextHeight).Msg("both header and data are DA-included, advancing height")
-				if err := m.SetSequencerHeightToDAHeight(ctx, nextHeight); err != nil {
+
+				if err := m.SetSequencerHeightToDAHeight(ctx, nextHeight, currentDAIncluded == 0); err != nil {
 					errCh <- fmt.Errorf("failed to set sequencer height to DA height: %w", err)
 					return
 				}
+
 				// Both header and data are DA-included, so we can advance the height
 				if err := m.incrementDAIncludedHeight(ctx); err != nil {
 					errCh <- fmt.Errorf("error while incrementing DA included height: %w", err)

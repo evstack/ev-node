@@ -76,8 +76,8 @@ func (ln *LightNode) Run(parentCtx context.Context) error {
 	}()
 
 	ln.running = true
-	// Start RPC server
-	handler, err := rpcserver.NewServiceHandler(ln.Store, ln.P2P, ln.Logger, ln.nodeConfig)
+	// Start RPC server (light node doesn't have a signer)
+	handler, err := rpcserver.NewServiceHandler(ln.Store, ln.P2P, nil, ln.Logger, ln.nodeConfig)
 	if err != nil {
 		return fmt.Errorf("error creating RPC handler: %w", err)
 	}

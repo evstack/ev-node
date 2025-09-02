@@ -29,6 +29,8 @@ import (
 	rpc "github.com/evstack/ev-node/types/pb/evnode/v1/v1connect"
 )
 
+var _ rpc.StoreServiceHandler = (*StoreServer)(nil)
+
 // StoreServer implements the StoreService defined in the proto file
 type StoreServer struct {
 	store  store.Store
@@ -150,6 +152,28 @@ func (s *StoreServer) GetState(
 	}), nil
 }
 
+// GetGenesisDaHeight implements the GetGenesisDaHeight RPC method
+func (s *StoreServer) GetGenesisDaHeight(
+	ctx context.Context,
+	_ *connect.Request[emptypb.Empty],
+) (*connect.Response[pb.GetGenesisDaHeightResponse], error) {
+	resp, err := s.GetMetadata(ctx, connect.NewRequest(&pb.GetMetadataRequest{
+		Key: store.GenesisDAHeightKey,
+	}))
+	if err != nil {
+		return nil, err
+	}
+
+	if len(resp.Msg.GetValue()) != 8 {
+		return nil, connect.NewError(connect.CodeNotFound, errors.New("invalid metadata value"))
+	}
+
+	return connect.NewResponse(&pb.GetGenesisDaHeightResponse{
+		Height: binary.LittleEndian.Uint64(resp.Msg.GetValue()),
+	}), nil
+
+}
+
 // GetMetadata implements the GetMetadata RPC method
 func (s *StoreServer) GetMetadata(
 	ctx context.Context,
@@ -167,12 +191,14 @@ func (s *StoreServer) GetMetadata(
 
 type ConfigServer struct {
 	config config.Config
+	signer []byte
 	logger zerolog.Logger
 }
 
-func NewConfigServer(config config.Config, logger zerolog.Logger) *ConfigServer {
+func NewConfigServer(config config.Config, proposerAddress []byte, logger zerolog.Logger) *ConfigServer {
 	return &ConfigServer{
 		config: config,
+		signer: proposerAddress,
 		logger: logger,
 	}
 }
@@ -188,6 +214,21 @@ func (cs *ConfigServer) GetNamespace(
 	return connect.NewResponse(&pb.GetNamespaceResponse{
 		HeaderNamespace: hex.EncodeToString(hns),
 		DataNamespace:   hex.EncodeToString(dns),
+	}), nil
+}
+
+func (cs *ConfigServer) GetSignerInfo(
+	ctx context.Context,
+	req *connect.Request[emptypb.Empty],
+) (*connect.Response[pb.GetSignerInfoResponse], error) {
+
+	// If no signer is available, return an error
+	if cs.signer == nil {
+		return nil, connect.NewError(connect.CodeUnavailable, fmt.Errorf("sequencer signer not available"))
+	}
+
+	return connect.NewResponse(&pb.GetSignerInfoResponse{
+		Address: cs.signer,
 	}), nil
 }
 
@@ -268,11 +309,11 @@ func (h *HealthServer) Livez(
 }
 
 // NewServiceHandler creates a new HTTP handler for Store, P2P and Health services
-func NewServiceHandler(store store.Store, peerManager p2p.P2PRPC, logger zerolog.Logger, config config.Config) (http.Handler, error) {
+func NewServiceHandler(store store.Store, peerManager p2p.P2PRPC, proposerAddress []byte, logger zerolog.Logger, config config.Config) (http.Handler, error) {
 	storeServer := NewStoreServer(store, logger)
 	p2pServer := NewP2PServer(peerManager)
 	healthServer := NewHealthServer()
-	configServer := NewConfigServer(config, logger)
+	configServer := NewConfigServer(config, proposerAddress, logger)
 
 	mux := http.NewServeMux()
 
