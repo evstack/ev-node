@@ -121,7 +121,7 @@ func (syncService *SyncService[H]) initStoreAndStartSyncer(ctx context.Context, 
 	if initial.IsZero() {
 		return errors.New("failed to initialize the store and start syncer")
 	}
-	if err := syncService.store.Init(ctx, initial); err != nil {
+	if err := syncService.store.Append(ctx, initial); err != nil {
 		return err
 	}
 	if err := syncService.StartSyncer(ctx); err != nil {
@@ -139,7 +139,7 @@ func (syncService *SyncService[H]) WriteToStoreAndBroadcast(ctx context.Context,
 	isGenesis := headerOrData.Height() == syncService.genesis.InitialHeight
 	// For genesis header/block initialize the store and start the syncer
 	if isGenesis {
-		if err := syncService.store.Init(ctx, headerOrData); err != nil {
+		if err := syncService.store.Append(ctx, headerOrData); err != nil {
 			return errors.New("failed to initialize the store")
 		}
 	}

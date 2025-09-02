@@ -7,7 +7,11 @@ import (
 
 	kvexecutor "github.com/evstack/ev-node/apps/testapp/kv"
 	rollcmd "github.com/evstack/ev-node/pkg/cmd"
+	"github.com/evstack/ev-node/pkg/genesis"
+	"github.com/evstack/ev-node/pkg/p2p"
 	"github.com/evstack/ev-node/pkg/store"
+	"github.com/evstack/ev-node/pkg/sync"
+	"github.com/rs/zerolog"
 	"github.com/spf13/cobra"
 )
 
@@ -35,6 +39,16 @@ var RollbackCmd = &cobra.Command{
 			return err
 		}
 
+		headerSyncService, err := sync.NewHeaderSyncService(datastore, nodeConfig, genesis.Genesis{}, &p2p.Client{}, zerolog.Nop())
+		if err != nil {
+			return err
+		}
+
+		dataSyncService, err := sync.NewDataSyncService(datastore, nodeConfig, genesis.Genesis{}, &p2p.Client{}, zerolog.Nop())
+		if err != nil {
+			return err
+		}
+
 		cmd.Println("Starting rollback operation")
 		currentHeight, err := storeWrapper.Height(ctx)
 		if err != nil {
@@ -51,6 +65,14 @@ var RollbackCmd = &cobra.Command{
 
 		// rollback ev-node store
 		if err := storeWrapper.Rollback(ctx, targetHeight); err != nil {
+			return fmt.Errorf("rollback failed: %w", err)
+		}
+
+		// rollback sync services
+		if err := headerSyncService.Store().DeleteTo(ctx, targetHeight); err != nil {
+			return fmt.Errorf("rollback failed: %w", err)
+		}
+		if err := dataSyncService.Store().DeleteTo(ctx, targetHeight); err != nil {
 			return fmt.Errorf("rollback failed: %w", err)
 		}
 

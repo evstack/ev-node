@@ -262,7 +262,8 @@ func (s *DefaultStore) GetMetadata(ctx context.Context, key string) ([]byte, err
 }
 
 // Rollback rolls back block data until the given height from the store.
-// NOTE: this function does not rollback metadata. Those should be handled separately.
+// NOTE: this function does not rollback metadata. Those should be handled separately if required.
+// Other stores are not rolled back either.
 func (s *DefaultStore) Rollback(ctx context.Context, height uint64) error {
 	batch, err := s.db.Batch(ctx)
 	if err != nil {
