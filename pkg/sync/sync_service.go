@@ -148,7 +148,7 @@ func (syncService *SyncService[H]) WriteToStoreAndBroadcast(ctx context.Context,
 	}
 
 	firstStart := false
-	if !syncService.syncerStatus.started.Load() {
+	if !syncService.syncerStatus.isStarted() {
 		firstStart = true
 		if err := syncService.StartSyncer(ctx); err != nil {
 			return fmt.Errorf("failed to start syncer after initializing the store: %w", err)

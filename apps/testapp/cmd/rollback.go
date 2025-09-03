@@ -6,6 +6,7 @@ import (
 	"strconv"
 
 	kvexecutor "github.com/evstack/ev-node/apps/testapp/kv"
+	"github.com/evstack/ev-node/node"
 	rollcmd "github.com/evstack/ev-node/pkg/cmd"
 	"github.com/evstack/ev-node/pkg/genesis"
 	"github.com/evstack/ev-node/pkg/p2p"
@@ -13,6 +14,9 @@ import (
 	"github.com/evstack/ev-node/pkg/sync"
 	"github.com/rs/zerolog"
 	"github.com/spf13/cobra"
+
+	ds "github.com/ipfs/go-datastore"
+	kt "github.com/ipfs/go-datastore/keytransform"
 )
 
 var RollbackCmd = &cobra.Command{
@@ -32,19 +36,25 @@ var RollbackCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		storeWrapper := store.New(datastore)
+
+		// prefixed evolve db
+		evolveDB := kt.Wrap(datastore, &kt.PrefixTransform{
+			Prefix: ds.NewKey(node.EvPrefix),
+		})
+
+		storeWrapper := store.New(evolveDB)
 
 		executor, err := kvexecutor.NewKVExecutor(nodeConfig.RootDir, nodeConfig.DBPath)
 		if err != nil {
 			return err
 		}
 
-		headerSyncService, err := sync.NewHeaderSyncService(datastore, nodeConfig, genesis.Genesis{}, &p2p.Client{}, zerolog.Nop())
+		headerSyncService, err := sync.NewHeaderSyncService(evolveDB, nodeConfig, genesis.Genesis{}, &p2p.Client{}, zerolog.Nop())
 		if err != nil {
 			return err
 		}
 
-		dataSyncService, err := sync.NewDataSyncService(datastore, nodeConfig, genesis.Genesis{}, &p2p.Client{}, zerolog.Nop())
+		dataSyncService, err := sync.NewDataSyncService(evolveDB, nodeConfig, genesis.Genesis{}, &p2p.Client{}, zerolog.Nop())
 		if err != nil {
 			return err
 		}
