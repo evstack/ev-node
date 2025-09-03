@@ -190,9 +190,9 @@ func (c *EngineClient) ExecuteTxs(ctx context.Context, txs [][]byte, blockHeight
 		return nil, 0, fmt.Errorf("forkchoice update failed: %w", err)
 	}
 
-	if forkchoiceResult.PayloadID == nil {
-		return nil, 0, ErrNilPayloadStatus
-	}
+	// if forkchoiceResult.PayloadID == nil {
+	// 	return nil, 0, ErrNilPayloadStatus
+	// }
 
 	// get payload
 	var payloadResult engine.ExecutionPayloadEnvelope
