@@ -184,6 +184,9 @@ func (s *DefaultStore) UpdateState(ctx context.Context, state types.State) error
 		return fmt.Errorf("failed to get current height: %w", err)
 	}
 
+	// Clean up legacy state if it exists (one-time migration)
+	_ = s.cleanupLegacyState(ctx)
+
 	pbState, err := state.ToProto()
 	if err != nil {
 		return fmt.Errorf("failed to convert type state to protobuf type: %w", err)
@@ -202,8 +205,16 @@ func (s *DefaultStore) GetState(ctx context.Context) (types.State, error) {
 		return types.State{}, fmt.Errorf("failed to get current height: %w", err)
 	}
 
+	// Try new format first
 	blob, err := s.db.Get(ctx, ds.NewKey(getStateAtHeightKey(currentHeight)))
 	if err != nil {
+		// If not found in new format, try legacy format and migrate if found
+		if errors.Is(err, ds.ErrNotFound) {
+			legacyState, migErr := s.migrateLegacyStateIfExists(ctx, currentHeight)
+			if migErr == nil {
+				return legacyState, nil
+			}
+		}
 		return types.State{}, fmt.Errorf("failed to retrieve state: %w", err)
 	}
 	var pbState pb.State
@@ -223,6 +234,15 @@ func (s *DefaultStore) GetStateAtHeight(ctx context.Context, height uint64) (typ
 	blob, err := s.db.Get(ctx, ds.NewKey(getStateAtHeightKey(height)))
 	if err != nil {
 		if errors.Is(err, ds.ErrNotFound) {
+			// For backward compatibility, if requesting height and not found,
+			// try to migrate legacy state if this is the current height
+			currentHeight, hErr := s.Height(ctx)
+			if hErr == nil && height == currentHeight {
+				legacyState, migErr := s.migrateLegacyStateIfExists(ctx, currentHeight)
+				if migErr == nil {
+					return legacyState, nil
+				}
+			}
 			return types.State{}, fmt.Errorf("no state found at height %d", height)
 		}
 		return types.State{}, fmt.Errorf("failed to retrieve state at height %d: %w", height, err)
@@ -361,4 +381,59 @@ func decodeHeight(heightBytes []byte) (uint64, error) {
 		return 0, fmt.Errorf("invalid height length: %d (expected %d)", len(heightBytes), heightLength)
 	}
 	return binary.LittleEndian.Uint64(heightBytes), nil
+}
+
+// migrateLegacyStateIfExists checks for state stored in the old format (key "s")
+// and migrates it to the new format (key "/s/{height}") if found.
+// This enables lazy migration during normal operation.
+func (s *DefaultStore) migrateLegacyStateIfExists(ctx context.Context, currentHeight uint64) (types.State, error) {
+	// Try to get state from legacy key "s"
+	legacyKey := ds.NewKey("s")
+	blob, err := s.db.Get(ctx, legacyKey)
+	if err != nil {
+		return types.State{}, fmt.Errorf("no legacy state found: %w", err)
+	}
+
+	// Found legacy state - unmarshal it
+	var pbState pb.State
+	if err := proto.Unmarshal(blob, &pbState); err != nil {
+		return types.State{}, fmt.Errorf("failed to unmarshal legacy state: %w", err)
+	}
+
+	var state types.State
+	if err := state.FromProto(&pbState); err != nil {
+		return types.State{}, fmt.Errorf("failed to convert legacy state from proto: %w", err)
+	}
+
+	// Migrate to new format at current height
+	newKey := ds.NewKey(getStateAtHeightKey(currentHeight))
+	if err := s.db.Put(ctx, newKey, blob); err != nil {
+		return types.State{}, fmt.Errorf("failed to migrate state to new format: %w", err)
+	}
+
+	// Delete the legacy key after successful migration
+	_ = s.db.Delete(ctx, legacyKey)
+
+	return state, nil
+}
+
+// cleanupLegacyState removes the old state key if it exists.
+// This is called during UpdateState to ensure cleanup happens eventually.
+func (s *DefaultStore) cleanupLegacyState(ctx context.Context) error {
+	legacyKey := ds.NewKey("s")
+
+	// Check if legacy key exists
+	if has, err := s.db.Has(ctx, legacyKey); err != nil {
+		return fmt.Errorf("failed to check for legacy state: %w", err)
+	} else if !has {
+		// No legacy state to clean up
+		return nil
+	}
+
+	// Delete the legacy key
+	if err := s.db.Delete(ctx, legacyKey); err != nil {
+		return fmt.Errorf("failed to delete legacy state key: %w", err)
+	}
+
+	return nil
 }
