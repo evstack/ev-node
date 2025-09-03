@@ -36,7 +36,7 @@ services:
       - ./jwttoken:/root/jwt:ro
       - reth:/home/reth/eth-home
     environment:
-      - RUST_LOG=debug
+      - RUST_LOG=info
     entrypoint: /bin/sh -c
     command:
       - |
