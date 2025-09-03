@@ -17,6 +17,7 @@ import (
 	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/ethereum/go-ethereum/rpc"
 	"github.com/golang-jwt/jwt/v5"
+	"github.com/rs/zerolog"
 
 	"github.com/evstack/ev-node/core/execution"
 )
@@ -45,6 +46,8 @@ type EngineClient struct {
 	currentHeadBlockHash      common.Hash // Store last non-finalized HeadBlockHash
 	currentSafeBlockHash      common.Hash // Store last non-finalized SafeBlockHash
 	currentFinalizedBlockHash common.Hash // Store last finalized block hash
+
+	logger zerolog.Logger
 }
 
 // NewEngineExecutionClient creates a new instance of EngineAPIExecutionClient
@@ -89,7 +92,13 @@ func NewEngineExecutionClient(
 		currentHeadBlockHash:      genesisHash,
 		currentSafeBlockHash:      genesisHash,
 		currentFinalizedBlockHash: genesisHash,
+		logger:                    zerolog.Nop(),
 	}, nil
+}
+
+// SetLogger allows callers to attach a structured logger.
+func (c *EngineClient) SetLogger(l zerolog.Logger) {
+	c.logger = l
 }
 
 // InitChain initializes the blockchain with the given genesis parameters
@@ -166,12 +175,11 @@ func (c *EngineClient) ExecuteTxs(ctx context.Context, txs [][]byte, blockHeight
 	}
 
 	// update forkchoice to get the next payload id
-	var forkchoiceResult engine.ForkChoiceResponse
-
 	// Create evolve-compatible payload attributes with flattened structure
+	ts := timestamp.Unix()
 	evPayloadAttrs := map[string]interface{}{
 		// Standard Ethereum payload attributes (flattened) - using camelCase as expected by JSON
-		"timestamp":             timestamp.Unix(),
+		"timestamp":             ts,
 		"prevRandao":            c.derivePrevRandao(blockHeight),
 		"suggestedFeeRecipient": c.feeRecipient,
 		"withdrawals":           []*types.Withdrawal{},
@@ -181,18 +189,18 @@ func (c *EngineClient) ExecuteTxs(ctx context.Context, txs [][]byte, blockHeight
 		"transactions": txsPayload,
 		"gasLimit":     prevGasLimit, // Use camelCase to match JSON conventions
 	}
+	// No priming/retry logic: keep flow simple and explicit
 
-	err = c.engineClient.CallContext(ctx, &forkchoiceResult, "engine_forkchoiceUpdatedV3",
-		args,
-		evPayloadAttrs,
-	)
+	// Perform forkchoiceUpdated to get a payload id
+	c.logger.Debug().Uint64("height", blockHeight).Int("tx_count", len(txs)).Msg("engine_forkchoiceUpdatedV3")
+	var forkchoiceResult engine.ForkChoiceResponse
+	err = c.engineClient.CallContext(ctx, &forkchoiceResult, "engine_forkchoiceUpdatedV3", args, evPayloadAttrs)
 	if err != nil {
 		return nil, 0, fmt.Errorf("forkchoice update failed: %w", err)
 	}
-
-	// if forkchoiceResult.PayloadID == nil {
-	// 	return nil, 0, ErrNilPayloadStatus
-	// }
+	if forkchoiceResult.PayloadID == nil {
+		return nil, 0, ErrNilPayloadStatus
+	}
 
 	// get payload
 	var payloadResult engine.ExecutionPayloadEnvelope
@@ -214,6 +222,11 @@ func (c *EngineClient) ExecuteTxs(ctx context.Context, txs [][]byte, blockHeight
 	}
 
 	if newPayloadResult.Status != engine.VALID {
+		c.logger.Warn().
+			Str("status", string(newPayloadResult.Status)).
+			Str("latestValidHash", newPayloadResult.LatestValidHash.Hex()).
+			Interface("validationError", newPayloadResult.ValidationError).
+			Msg("engine_newPayloadV4 returned non-VALID status")
 		return nil, 0, ErrInvalidPayloadStatus
 	}
 
@@ -246,15 +259,17 @@ func (c *EngineClient) setFinal(ctx context.Context, blockHash common.Hash, isFi
 	c.mu.Unlock()
 
 	var forkchoiceResult engine.ForkChoiceResponse
-	err := c.engineClient.CallContext(ctx, &forkchoiceResult, "engine_forkchoiceUpdatedV3",
-		args,
-		nil,
-	)
+	err := c.engineClient.CallContext(ctx, &forkchoiceResult, "engine_forkchoiceUpdatedV3", args, nil)
 	if err != nil {
 		return fmt.Errorf("forkchoice update failed with error: %w", err)
 	}
 
 	if forkchoiceResult.PayloadStatus.Status != engine.VALID {
+		c.logger.Warn().
+			Str("status", string(forkchoiceResult.PayloadStatus.Status)).
+			Str("latestValidHash", forkchoiceResult.PayloadStatus.LatestValidHash.Hex()).
+			Interface("validationError", forkchoiceResult.PayloadStatus.ValidationError).
+			Msg("forkchoiceUpdatedV3 returned non-VALID status")
 		return ErrInvalidPayloadStatus
 	}
 

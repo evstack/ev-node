@@ -40,28 +40,29 @@ services:
     entrypoint: /bin/sh -c
     command:
       - |
-          ev-reth node \
-            --chain /root/chain/genesis.json \
-            --datadir /home/reth/eth-home \
-            --metrics 0.0.0.0:9001 \
-            --authrpc.addr 0.0.0.0 \
-            --authrpc.port 8551 \
-            --authrpc.jwtsecret /root/jwt/jwt.hex \
-            --http --http.addr 0.0.0.0 --http.port 8545 \
-            --http.api eth,net,web3,txpool \
-            --ws --ws.addr 0.0.0.0 --ws.port 8546 \
-            --ws.api eth,net,web3 \
-            --engine.persistence-threshold 0 \
-            --engine.memory-block-buffer-target 0 \
-            --disable-discovery \
-            --txpool.pending-max-count 200000 \
-            --txpool.pending-max-size 200 \
-            --txpool.queued-max-count 200000 \
-            --txpool.queued-max-size 200 \
-            --txpool.max-account-slots 2048 \
-            --txpool.max-new-txns 2048 \
-            --txpool.additional-validation-tasks 16 \
-            --ev-reth.enable
+        ev-reth node \
+          --chain /root/chain/genesis.json \
+          --datadir /home/reth/eth-home \
+          --metrics 0.0.0.0:9001 \
+          --authrpc.addr 0.0.0.0 \
+          --authrpc.port 8551 \
+          --authrpc.jwtsecret /root/jwt/jwt.hex \
+          --http --http.addr 0.0.0.0 --http.port 8545 \
+          --http.api eth,net,web3,txpool \
+          --ws --ws.addr 0.0.0.0 --ws.port 8546 \
+          --ws.api eth,net,web3 \
+          --engine.persistence-threshold 0 \
+          --engine.memory-block-buffer-target 0 \
+          --disable-discovery \
+          --txpool.pending-max-count 200000 \
+          --txpool.pending-max-size 200 \
+          --txpool.queued-max-count 200000 \
+          --txpool.queued-max-size 200 \
+          --txpool.max-account-slots 2048 \
+          --txpool.max-new-txns 2048 \
+          --txpool.additional-validation-tasks 16 \
+          --engine.always-process-payload-attributes-on-canonical-head \
+          --ev-reth.enable
 
 volumes:
   reth:

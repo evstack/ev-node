@@ -10,6 +10,7 @@ require (
 	github.com/ethereum/go-ethereum v1.16.2
 	github.com/evstack/ev-node/core v0.0.0-20250312114929-104787ba1a4c
 	github.com/golang-jwt/jwt/v5 v5.3.0
+	github.com/rs/zerolog v1.34.0
 	github.com/stretchr/testify v1.10.0
 	github.com/testcontainers/testcontainers-go/modules/compose v0.38.0
 )
