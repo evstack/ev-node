@@ -175,11 +175,10 @@ func (c *EngineClient) ExecuteTxs(ctx context.Context, txs [][]byte, blockHeight
 	}
 
 	// update forkchoice to get the next payload id
-	// Create evolve-compatible payload attributes with flattened structure
-	ts := timestamp.Unix()
+	// Create evolve-compatible payloadtimestamp.Unix()
 	evPayloadAttrs := map[string]interface{}{
 		// Standard Ethereum payload attributes (flattened) - using camelCase as expected by JSON
-		"timestamp":             ts,
+		"timestamp":             timestamp.Unix(),
 		"prevRandao":            c.derivePrevRandao(blockHeight),
 		"suggestedFeeRecipient": c.feeRecipient,
 		"withdrawals":           []*types.Withdrawal{},
@@ -189,10 +188,12 @@ func (c *EngineClient) ExecuteTxs(ctx context.Context, txs [][]byte, blockHeight
 		"transactions": txsPayload,
 		"gasLimit":     prevGasLimit, // Use camelCase to match JSON conventions
 	}
-	// No priming/retry logic: keep flow simple and explicit
 
-	// Perform forkchoiceUpdated to get a payload id
-	c.logger.Debug().Uint64("height", blockHeight).Int("tx_count", len(txs)).Msg("engine_forkchoiceUpdatedV3")
+	c.logger.Debug().
+		Uint64("height", blockHeight).
+		Int("tx_count", len(txs)).
+		Msg("engine_forkchoiceUpdatedV3")
+
 	var forkchoiceResult engine.ForkChoiceResponse
 	err = c.engineClient.CallContext(ctx, &forkchoiceResult, "engine_forkchoiceUpdatedV3", args, evPayloadAttrs)
 	if err != nil {

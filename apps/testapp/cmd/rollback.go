@@ -5,6 +5,9 @@ import (
 	"fmt"
 	"strconv"
 
+	ds "github.com/ipfs/go-datastore"
+	ktds "github.com/ipfs/go-datastore/keytransform"
+
 	kvexecutor "github.com/evstack/ev-node/apps/testapp/kv"
 	rollcmd "github.com/evstack/ev-node/pkg/cmd"
 	"github.com/evstack/ev-node/pkg/store"
@@ -28,7 +31,8 @@ var RollbackCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		storeWrapper := store.New(datastore)
+		prefixStore := ktds.Wrap(datastore, ktds.PrefixTransform{Prefix: ds.NewKey("0")})
+		storeWrapper := store.New(prefixStore)
 
 		executor, err := kvexecutor.NewKVExecutor(nodeConfig.RootDir, nodeConfig.DBPath)
 		if err != nil {
