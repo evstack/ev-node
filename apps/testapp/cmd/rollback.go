@@ -8,15 +8,13 @@ import (
 	kvexecutor "github.com/evstack/ev-node/apps/testapp/kv"
 	"github.com/evstack/ev-node/node"
 	rollcmd "github.com/evstack/ev-node/pkg/cmd"
-	"github.com/evstack/ev-node/pkg/genesis"
-	"github.com/evstack/ev-node/pkg/p2p"
 	"github.com/evstack/ev-node/pkg/store"
-	"github.com/evstack/ev-node/pkg/sync"
-	"github.com/rs/zerolog"
-	"github.com/spf13/cobra"
+	"github.com/evstack/ev-node/types"
 
+	goheaderstore "github.com/celestiaorg/go-header/store"
 	ds "github.com/ipfs/go-datastore"
 	kt "github.com/ipfs/go-datastore/keytransform"
+	"github.com/spf13/cobra"
 )
 
 var RollbackCmd = &cobra.Command{
@@ -49,12 +47,21 @@ var RollbackCmd = &cobra.Command{
 			return err
 		}
 
-		headerSyncService, err := sync.NewHeaderSyncService(evolveDB, nodeConfig, genesis.Genesis{}, &p2p.Client{}, zerolog.Nop())
+		// rollback ev-node goheader state
+		headerStore, err := goheaderstore.NewStore[*types.SignedHeader](
+			evolveDB,
+			goheaderstore.WithStorePrefix("headerSync"),
+			goheaderstore.WithMetrics(),
+		)
 		if err != nil {
 			return err
 		}
 
-		dataSyncService, err := sync.NewDataSyncService(evolveDB, nodeConfig, genesis.Genesis{}, &p2p.Client{}, zerolog.Nop())
+		dataStore, err := goheaderstore.NewStore[*types.Data](
+			evolveDB,
+			goheaderstore.WithStorePrefix("dataSync"),
+			goheaderstore.WithMetrics(),
+		)
 		if err != nil {
 			return err
 		}
@@ -79,11 +86,12 @@ var RollbackCmd = &cobra.Command{
 		}
 
 		// rollback sync services
-		if err := headerSyncService.Store().DeleteTo(ctx, targetHeight); err != nil {
-			return fmt.Errorf("rollback failed: %w", err)
+		if err := headerStore.DeleteTo(ctx, targetHeight); err != nil {
+			return fmt.Errorf("failed to rollback header sync service state: %w", err)
 		}
-		if err := dataSyncService.Store().DeleteTo(ctx, targetHeight); err != nil {
-			return fmt.Errorf("rollback failed: %w", err)
+
+		if err := dataStore.DeleteTo(ctx, targetHeight); err != nil {
+			return fmt.Errorf("failed to rollback data sync service state: %w", err)
 		}
 
 		// rollback execution store
