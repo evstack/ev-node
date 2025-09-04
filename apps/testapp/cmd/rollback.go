@@ -66,6 +66,16 @@ var RollbackCmd = &cobra.Command{
 			return err
 		}
 
+		if err := headerStore.Start(ctx); err != nil {
+			return err
+		}
+		defer headerStore.Stop(ctx)
+
+		if err := dataStore.Start(ctx); err != nil {
+			return err
+		}
+		defer dataStore.Stop(ctx)
+
 		cmd.Println("Starting rollback operation")
 		currentHeight, err := storeWrapper.Height(ctx)
 		if err != nil {
