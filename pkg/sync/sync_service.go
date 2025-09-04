@@ -125,7 +125,7 @@ func (syncService *SyncService[H]) WriteToStoreAndBroadcast(ctx context.Context,
 	}
 
 	isGenesis := headerOrData.Height() == syncService.genesis.InitialHeight
-	if isGenesis { // when starting the syncer for the first time, we had no blocks, so setupP2P didn't initialize the genesis block.
+	if isGenesis { // when starting the syncer for the first time, we have no blocks, so initFromP2P didn't initialize the genesis block.
 		if err := syncService.initStore(ctx, headerOrData); err != nil {
 			return fmt.Errorf("failed to initialize syncer: %w", err)
 		}
@@ -179,6 +179,10 @@ func (syncService *SyncService[H]) Start(ctx context.Context) error {
 		return fmt.Errorf("failed to create syncer: %w", err)
 	}
 
+	if err := syncService.store.Start(ctx); err != nil {
+		return fmt.Errorf("error while starting store: %w", err)
+	}
+
 	if syncService.isInitialized() {
 		if err := syncService.startSyncer(ctx); err != nil {
 			return err
@@ -205,10 +209,6 @@ func (syncService *SyncService[H]) startSyncer(ctx context.Context) error {
 func (syncService *SyncService[H]) initStore(ctx context.Context, initial H) error {
 	if initial.IsZero() {
 		return errors.New("failed to initialize the store")
-	}
-
-	if err := syncService.store.Start(ctx); err != nil {
-		return fmt.Errorf("error while starting store: %w", err)
 	}
 
 	if _, err := syncService.store.Head(ctx); errors.Is(err, header.ErrNotFound) || errors.Is(err, header.ErrEmptyStore) {
@@ -272,10 +272,6 @@ func (syncService *SyncService[H]) setupP2P(ctx context.Context) ([]peer.ID, err
 // Otherwise, it tries to fetch the genesis header/block by height.
 func (syncService *SyncService[H]) initFromP2P(ctx context.Context, peerIDs []peer.ID) error {
 	if len(peerIDs) == 0 {
-		if err := syncService.store.Start(ctx); err != nil {
-			return fmt.Errorf("error while starting store: %w", err)
-		}
-
 		return nil
 	}
 
