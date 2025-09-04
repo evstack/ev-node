@@ -176,8 +176,7 @@ func TestMetricsIntegration(t *testing.T) {
 	em.GoroutineCount.Set(50)
 
 	// Test channel metrics
-	em.ChannelBufferUsage["header_in"].Set(5)
-	em.ChannelBufferUsage["data_in"].Set(3)
+	em.ChannelBufferUsage["height_in"].Set(5)
 
 	// Test error metrics
 	em.ErrorsByType["block_production"].Add(1)
