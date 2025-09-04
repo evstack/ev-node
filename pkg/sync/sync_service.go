@@ -120,28 +120,42 @@ func (syncService *SyncService[H]) Store() *goheaderstore.Store[H] {
 // WriteToStoreAndBroadcast initializes store if needed and broadcasts  provided header or block.
 // Note: Only returns an error in case store can't be initialized. Logs error if there's one while broadcasting.
 func (syncService *SyncService[H]) WriteToStoreAndBroadcast(ctx context.Context, headerOrData H) error {
-	if !syncService.syncerStatus.isStarted() {
-		return fmt.Errorf("syncer is not started")
-	}
-
 	if syncService.genesis.InitialHeight == 0 {
 		return fmt.Errorf("invalid initial height; cannot be zero")
 	}
 
 	isGenesis := headerOrData.Height() == syncService.genesis.InitialHeight
-	if isGenesis {
-		if err := syncService.initSyncer(ctx, headerOrData); err != nil {
+	if isGenesis { // when starting the syncer for the first time, we had no blocks, so setupP2P didn't initialize the genesis block.
+		if err := syncService.initStore(ctx, headerOrData); err != nil {
 			return fmt.Errorf("failed to initialize syncer: %w", err)
+		}
+	}
+
+	firstStart := false
+	if !syncService.syncerStatus.started.Load() {
+		firstStart = true
+		if err := syncService.startSyncer(ctx); err != nil {
+			return fmt.Errorf("failed to start syncer after initializing the store: %w", err)
 		}
 	}
 
 	// Broadcast for subscribers
 	if err := syncService.sub.Broadcast(ctx, headerOrData); err != nil {
-		if (isGenesis && errors.Is(err, pubsub.ValidationError{Reason: pubsub.RejectValidationFailed})) {
+		// for the first block when starting the app, broadcast error is expected
+		// as we have already initialized the store for starting the syncer.
+		// Hence, we ignore the error. Exact reason: validation ignored
+		if (firstStart && errors.Is(err, pubsub.ValidationError{Reason: pubsub.RejectValidationIgnored})) ||
+			// for the genesis header, broadcast error is expected as we have already initialized the store
+			// for starting the syncer. Hence, we ignore the error.
+			// exact reason: validation failed, err header verification failed: known header: '1' <= current '1'
+			(isGenesis && errors.Is(err, pubsub.ValidationError{Reason: pubsub.RejectValidationFailed})) {
+
 			return nil
 		}
-		return fmt.Errorf("failed to broadcast: %w", err)
+
+		syncService.logger.Error().Err(err).Msg("failed to broadcast")
 	}
+
 	return nil
 }
 
@@ -165,8 +179,10 @@ func (syncService *SyncService[H]) Start(ctx context.Context) error {
 		return fmt.Errorf("failed to create syncer: %w", err)
 	}
 
-	if err := syncService.startSyncer(ctx); err != nil {
-		return fmt.Errorf("failed to start syncer: %w", err)
+	if syncService.isInitialized() {
+		if err := syncService.startSyncer(ctx); err != nil {
+			return err
+		}
 	}
 
 	return syncService.initFromP2P(ctx, peerIDs)
@@ -186,9 +202,13 @@ func (syncService *SyncService[H]) startSyncer(ctx context.Context) error {
 	return nil
 }
 
-func (syncService *SyncService[H]) initSyncer(ctx context.Context, initial H) error {
+func (syncService *SyncService[H]) initStore(ctx context.Context, initial H) error {
 	if initial.IsZero() {
 		return errors.New("failed to initialize the store")
+	}
+
+	if err := syncService.store.Start(ctx); err != nil {
+		return fmt.Errorf("error while starting store: %w", err)
 	}
 
 	if _, err := syncService.store.Head(ctx); errors.Is(err, header.ErrNotFound) || errors.Is(err, header.ErrEmptyStore) {
@@ -225,10 +245,6 @@ func (syncService *SyncService[H]) setupP2P(ctx context.Context) ([]peer.ID, err
 	if syncService.topicSubscription, err = syncService.sub.Subscribe(); err != nil {
 		return nil, fmt.Errorf("error while subscribing: %w", err)
 	}
-	if err := syncService.store.Start(ctx); err != nil {
-		return nil, fmt.Errorf("error while starting store: %w", err)
-	}
-
 	_, _, network, err := syncService.p2p.Info()
 	if err != nil {
 		return nil, fmt.Errorf("error while fetching the network: %w", err)
@@ -241,7 +257,6 @@ func (syncService *SyncService[H]) setupP2P(ctx context.Context) ([]peer.ID, err
 	if err := syncService.p2pServer.Start(ctx); err != nil {
 		return nil, fmt.Errorf("error while starting p2p server: %w", err)
 	}
-
 	peerIDs := syncService.getPeerIDs()
 	if syncService.ex, err = newP2PExchange[H](syncService.p2p.Host(), peerIDs, networkID, syncService.genesis.ChainID, syncService.p2p.ConnectionGater()); err != nil {
 		return nil, fmt.Errorf("error while creating exchange: %w", err)
@@ -256,12 +271,19 @@ func (syncService *SyncService[H]) setupP2P(ctx context.Context) ([]peer.ID, err
 // If trusted hash is available, it fetches the trusted header/block (by hash) from peers.
 // Otherwise, it tries to fetch the genesis header/block by height.
 func (syncService *SyncService[H]) initFromP2P(ctx context.Context, peerIDs []peer.ID) error {
-	// Look to see if trusted hash is passed, if not get the genesis header/block
-	var trusted H
-
 	if len(peerIDs) == 0 {
+		if err := syncService.store.Start(ctx); err != nil {
+			return fmt.Errorf("error while starting store: %w", err)
+		}
+
 		return nil
 	}
+
+	// Look to see if trusted hash is passed, if not get the genesis header/block
+	var (
+		trusted H
+		err     error
+	)
 
 	// Try fetching the trusted header/block from peers if exists
 	if syncService.conf.Node.TrustedHash != "" {
@@ -275,7 +297,6 @@ func (syncService *SyncService[H]) initFromP2P(ctx context.Context, peerIDs []pe
 		}
 	} else {
 		// Try fetching the genesis header/block if available, otherwise fallback to block
-		var err error
 		if trusted, err = syncService.ex.GetByHeight(ctx, syncService.genesis.InitialHeight); err != nil {
 			// Full/light nodes have to wait for aggregator to publish the genesis block
 			// proposing aggregator can init the store and start the syncer when the first block is published
@@ -283,7 +304,7 @@ func (syncService *SyncService[H]) initFromP2P(ctx context.Context, peerIDs []pe
 		}
 	}
 
-	return syncService.initSyncer(ctx, trusted)
+	return syncService.initStore(ctx, trusted)
 }
 
 // Stop is a part of Service interface.
