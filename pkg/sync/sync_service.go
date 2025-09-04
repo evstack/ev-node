@@ -117,7 +117,7 @@ func (syncService *SyncService[H]) Store() *goheaderstore.Store[H] {
 	return syncService.store
 }
 
-// WriteToStoreAndBroadcast initializes store if needed and broadcasts  provided header or block.
+// WriteToStoreAndBroadcast initializes store if needed and broadcasts provided header or block.
 // Note: Only returns an error in case store can't be initialized. Logs error if there's one while broadcasting.
 func (syncService *SyncService[H]) WriteToStoreAndBroadcast(ctx context.Context, headerOrData H) error {
 	if syncService.genesis.InitialHeight == 0 {
@@ -127,7 +127,7 @@ func (syncService *SyncService[H]) WriteToStoreAndBroadcast(ctx context.Context,
 	isGenesis := headerOrData.Height() == syncService.genesis.InitialHeight
 	if isGenesis { // when starting the syncer for the first time, we have no blocks, so initFromP2P didn't initialize the genesis block.
 		if err := syncService.initStore(ctx, headerOrData); err != nil {
-			return fmt.Errorf("failed to initialize syncer: %w", err)
+			return fmt.Errorf("failed to initialize the store: %w", err)
 		}
 	}
 
@@ -159,10 +159,6 @@ func (syncService *SyncService[H]) WriteToStoreAndBroadcast(ctx context.Context,
 	return nil
 }
 
-func (syncService *SyncService[H]) isInitialized() bool {
-	return syncService.store.Height() > 0
-}
-
 // Start is a part of Service interface.
 func (syncService *SyncService[H]) Start(ctx context.Context) error {
 	peerIDs, err := syncService.setupP2P(ctx)
@@ -183,12 +179,6 @@ func (syncService *SyncService[H]) Start(ctx context.Context) error {
 		return fmt.Errorf("error while starting store: %w", err)
 	}
 
-	if syncService.isInitialized() {
-		if err := syncService.startSyncer(ctx); err != nil {
-			return err
-		}
-	}
-
 	return syncService.initFromP2P(ctx, peerIDs)
 }
 
@@ -199,13 +189,15 @@ func (syncService *SyncService[H]) startSyncer(ctx context.Context) error {
 	}
 
 	if err := syncService.syncer.Start(ctx); err != nil {
-		return err
+		return fmt.Errorf("failed to start syncer: %w", err)
 	}
 
 	syncService.syncerStatus.started.Store(true)
 	return nil
 }
 
+// initStore initializes the store with the given initial header.
+// it is a no-op if the store is already initialized.
 func (syncService *SyncService[H]) initStore(ctx context.Context, initial H) error {
 	if initial.IsZero() {
 		return errors.New("failed to initialize the store")
@@ -300,7 +292,11 @@ func (syncService *SyncService[H]) initFromP2P(ctx context.Context, peerIDs []pe
 		}
 	}
 
-	return syncService.initStore(ctx, trusted)
+	if err := syncService.initStore(ctx, trusted); err != nil {
+		return fmt.Errorf("failed to initialize the store: %w", err)
+	}
+
+	return syncService.startSyncer(ctx)
 }
 
 // Stop is a part of Service interface.
