@@ -175,10 +175,6 @@ func (syncService *SyncService[H]) Start(ctx context.Context) error {
 		return fmt.Errorf("failed to create syncer: %w", err)
 	}
 
-	if err := syncService.store.Start(ctx); err != nil {
-		return fmt.Errorf("error while starting store: %w", err)
-	}
-
 	return syncService.initFromP2P(ctx, peerIDs)
 }
 
@@ -236,6 +232,9 @@ func (syncService *SyncService[H]) setupP2P(ctx context.Context) ([]peer.ID, err
 	}
 	if syncService.topicSubscription, err = syncService.sub.Subscribe(); err != nil {
 		return nil, fmt.Errorf("error while subscribing: %w", err)
+	}
+	if err := syncService.store.Start(ctx); err != nil {
+		return nil, fmt.Errorf("error while starting store: %w", err)
 	}
 	_, _, network, err := syncService.p2p.Info()
 	if err != nil {
