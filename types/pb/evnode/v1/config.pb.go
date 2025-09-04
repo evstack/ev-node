@@ -75,7 +75,7 @@ func (x *GetNamespaceResponse) GetDataNamespace() string {
 	return ""
 }
 
-// GetSequencerInfoResponse returns information about the sequencer
+// GetSignerInfoResponse returns information about the signer
 type GetSignerInfoResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Address       []byte                 `protobuf:"bytes,1,opt,name=address,proto3" json:"address,omitempty"`
