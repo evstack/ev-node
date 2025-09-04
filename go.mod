@@ -11,7 +11,7 @@ replace github.com/ipfs/go-datastore => github.com/celestiaorg/go-datastore v0.0
 require (
 	connectrpc.com/connect v1.18.1
 	connectrpc.com/grpcreflect v1.3.0
-	github.com/celestiaorg/go-header v0.7.0
+	github.com/celestiaorg/go-header v0.7.1
 	github.com/celestiaorg/utils v0.1.0
 	github.com/evstack/ev-node/core v0.0.0-00010101000000-000000000000
 	github.com/go-kit/kit v0.13.0
