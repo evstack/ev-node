@@ -6,8 +6,14 @@ import (
 	"strconv"
 
 	kvexecutor "github.com/evstack/ev-node/apps/testapp/kv"
+	"github.com/evstack/ev-node/node"
 	rollcmd "github.com/evstack/ev-node/pkg/cmd"
 	"github.com/evstack/ev-node/pkg/store"
+	"github.com/evstack/ev-node/types"
+
+	goheaderstore "github.com/celestiaorg/go-header/store"
+	ds "github.com/ipfs/go-datastore"
+	kt "github.com/ipfs/go-datastore/keytransform"
 	"github.com/spf13/cobra"
 )
 
@@ -28,12 +34,47 @@ var RollbackCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		storeWrapper := store.New(datastore)
+
+		// prefixed evolve db
+		evolveDB := kt.Wrap(datastore, &kt.PrefixTransform{
+			Prefix: ds.NewKey(node.EvPrefix),
+		})
+
+		storeWrapper := store.New(evolveDB)
 
 		executor, err := kvexecutor.NewKVExecutor(nodeConfig.RootDir, nodeConfig.DBPath)
 		if err != nil {
 			return err
 		}
+
+		// rollback ev-node goheader state
+		headerStore, err := goheaderstore.NewStore[*types.SignedHeader](
+			evolveDB,
+			goheaderstore.WithStorePrefix("headerSync"),
+			goheaderstore.WithMetrics(),
+		)
+		if err != nil {
+			return err
+		}
+
+		dataStore, err := goheaderstore.NewStore[*types.Data](
+			evolveDB,
+			goheaderstore.WithStorePrefix("dataSync"),
+			goheaderstore.WithMetrics(),
+		)
+		if err != nil {
+			return err
+		}
+
+		if err := headerStore.Start(ctx); err != nil {
+			return err
+		}
+		defer headerStore.Stop(ctx)
+
+		if err := dataStore.Start(ctx); err != nil {
+			return err
+		}
+		defer dataStore.Stop(ctx)
 
 		cmd.Println("Starting rollback operation")
 		currentHeight, err := storeWrapper.Height(ctx)
@@ -52,6 +93,15 @@ var RollbackCmd = &cobra.Command{
 		// rollback ev-node store
 		if err := storeWrapper.Rollback(ctx, targetHeight); err != nil {
 			return fmt.Errorf("rollback failed: %w", err)
+		}
+
+		// rollback sync services
+		if err := headerStore.DeleteTo(ctx, targetHeight); err != nil {
+			return fmt.Errorf("failed to rollback header sync service state: %w", err)
+		}
+
+		if err := dataStore.DeleteTo(ctx, targetHeight); err != nil {
+			return fmt.Errorf("failed to rollback data sync service state: %w", err)
 		}
 
 		// rollback execution store
