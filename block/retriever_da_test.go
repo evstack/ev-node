@@ -23,7 +23,7 @@ import (
 	"github.com/evstack/ev-node/pkg/cache"
 	"github.com/evstack/ev-node/pkg/config"
 	"github.com/evstack/ev-node/pkg/genesis"
-	"github.com/evstack/ev-node/pkg/signer/noop"
+	noopsigner "github.com/evstack/ev-node/pkg/signer/noop"
 	storepkg "github.com/evstack/ev-node/pkg/store"
 	rollmocks "github.com/evstack/ev-node/test/mocks"
 	"github.com/evstack/ev-node/types"
@@ -52,7 +52,7 @@ func setupManagerForRetrieverTest(t *testing.T, initialDAHeight uint64) (*daRetr
 	src := rand.Reader
 	pk, _, err := crypto.GenerateEd25519Key(src)
 	require.NoError(t, err)
-	noopSigner, err := noop.NewNoopSigner(pk)
+	noopSigner, err := noopsigner.NewNoopSigner(pk)
 	require.NoError(t, err)
 
 	addr, err := noopSigner.GetAddress()
@@ -361,7 +361,7 @@ func TestProcessNextDAHeader_UnexpectedSequencer(t *testing.T) {
 	src := rand.Reader
 	pk, _, err := crypto.GenerateEd25519Key(src)
 	require.NoError(t, err)
-	signerNoop, err := noop.NewNoopSigner(pk)
+	signerNoop, err := noopsigner.NewNoopSigner(pk)
 	require.NoError(t, err)
 	hc := types.HeaderConfig{
 		Height: blockHeight,
@@ -731,4 +731,104 @@ func TestRetrieveLoop_DAHeightIncrementsOnlyOnSuccess(t *testing.T) {
 	assert.Equal(t, startDAHeight+2, finalDAHeight, "DA height should only increment on success or NotFound, not on error")
 
 	mockDAClient.AssertExpectations(t)
+}
+
+// TestAssertValidSignedData covers valid, nil, wrong proposer, and invalid signature cases for assertValidSignedData.
+func TestAssertValidSignedData(t *testing.T) {
+	require := require.New(t)
+	privKey, _, err := crypto.GenerateKeyPair(crypto.Ed25519, 256)
+	require.NoError(err)
+	testSigner, err := noopsigner.NewNoopSigner(privKey)
+	require.NoError(err)
+	proposerAddr, err := testSigner.GetAddress()
+	require.NoError(err)
+	gen := genesis.NewGenesis(
+		"testchain",
+		1,
+		time.Now(),
+		proposerAddr,
+	)
+	m := &Manager{
+		signer:  testSigner,
+		genesis: gen,
+	}
+
+	t.Run("valid signed data", func(t *testing.T) {
+		batch := &types.Data{
+			Txs: types.Txs{types.Tx("tx1"), types.Tx("tx2")},
+		}
+		sig, err := m.getDataSignature(batch)
+		require.NoError(err)
+		pubKey, err := m.signer.GetPublic()
+		require.NoError(err)
+		signedData := &types.SignedData{
+			Data:      *batch,
+			Signature: sig,
+			Signer: types.Signer{
+				PubKey:  pubKey,
+				Address: proposerAddr,
+			},
+		}
+		assert.NoError(t, m.assertValidSignedData(signedData))
+	})
+
+	t.Run("nil signed data", func(t *testing.T) {
+		assert.Error(t, m.assertValidSignedData(nil))
+	})
+
+	t.Run("nil Txs", func(t *testing.T) {
+		signedData := &types.SignedData{
+			Data: types.Data{},
+			Signer: types.Signer{
+				Address: proposerAddr,
+			},
+		}
+		signedData.Txs = nil
+		assert.Error(t, m.assertValidSignedData(signedData))
+	})
+
+	t.Run("wrong proposer address", func(t *testing.T) {
+		batch := &types.Data{
+			Txs: types.Txs{types.Tx("tx1")},
+		}
+		sig, err := m.getDataSignature(batch)
+		require.NoError(err)
+		pubKey, err := m.signer.GetPublic()
+		require.NoError(err)
+		wrongAddr := make([]byte, len(proposerAddr))
+		copy(wrongAddr, proposerAddr)
+		wrongAddr[0] ^= 0xFF // flip a bit
+		signedData := &types.SignedData{
+			Data:      *batch,
+			Signature: sig,
+			Signer: types.Signer{
+				PubKey:  pubKey,
+				Address: wrongAddr,
+			},
+		}
+		assert.Error(t, m.assertValidSignedData(signedData))
+	})
+
+	t.Run("invalid signature", func(t *testing.T) {
+		batch := &types.Data{
+			Txs: types.Txs{types.Tx("tx1")},
+		}
+		sig, err := m.getDataSignature(batch)
+		require.NoError(err)
+		pubKey, err := m.signer.GetPublic()
+		require.NoError(err)
+		// Corrupt the signature
+		badSig := make([]byte, len(sig))
+		copy(badSig, sig)
+		badSig[0] ^= 0xFF
+		signedData := &types.SignedData{
+			Data:      *batch,
+			Signature: badSig,
+			Signer: types.Signer{
+				PubKey:  pubKey,
+				Address: proposerAddr,
+			},
+		}
+		assert.Error(t, m.assertValidSignedData(signedData))
+	})
 }
