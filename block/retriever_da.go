@@ -268,7 +268,7 @@ func (m *Manager) tryDecodeData(bz []byte, daHeight uint64) *types.Data {
 	return &signedData.Data
 }
 
-// assertValidSignedData returns true if the data signature is valid for the expected sequencer.
+// assertValidSignedData validates the data signature and returns an error if it's invalid.
 func (m *Manager) assertValidSignedData(signedData *types.SignedData) error {
 	if signedData == nil || signedData.Txs == nil {
 		return errors.New("empty signed data")

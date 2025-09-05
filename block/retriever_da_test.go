@@ -24,7 +24,6 @@ import (
 	"github.com/evstack/ev-node/pkg/config"
 	"github.com/evstack/ev-node/pkg/genesis"
 	genesispkg "github.com/evstack/ev-node/pkg/genesis"
-	"github.com/evstack/ev-node/pkg/signer/noop"
 	noopsigner "github.com/evstack/ev-node/pkg/signer/noop"
 	storepkg "github.com/evstack/ev-node/pkg/store"
 	rollmocks "github.com/evstack/ev-node/test/mocks"
@@ -54,7 +53,7 @@ func setupManagerForRetrieverTest(t *testing.T, initialDAHeight uint64) (*daRetr
 	src := rand.Reader
 	pk, _, err := crypto.GenerateEd25519Key(src)
 	require.NoError(t, err)
-	noopSigner, err := noop.NewNoopSigner(pk)
+	noopSigner, err := noopsigner.NewNoopSigner(pk)
 	require.NoError(t, err)
 
 	addr, err := noopSigner.GetAddress()
@@ -363,7 +362,7 @@ func TestProcessNextDAHeader_UnexpectedSequencer(t *testing.T) {
 	src := rand.Reader
 	pk, _, err := crypto.GenerateEd25519Key(src)
 	require.NoError(t, err)
-	signerNoop, err := noop.NewNoopSigner(pk)
+	signerNoop, err := noopsigner.NewNoopSigner(pk)
 	require.NoError(t, err)
 	hc := types.HeaderConfig{
 		Height: blockHeight,
