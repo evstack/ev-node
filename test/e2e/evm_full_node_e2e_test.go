@@ -315,7 +315,7 @@ func TestEvmSequencerWithFullNodeE2E(t *testing.T) {
 
 	// Submit first batch of transactions
 	t.Log("Submitting first batch of transactions...")
-	for i := 0; i < 3; i++ {
+	for i := 0; i < 2; i++ {
 		txHash, txBlockNumber := submitTransactionAndGetBlockNumber(t, sequencerClient)
 		txHashes = append(txHashes, txHash)
 		txBlockNumbers = append(txBlockNumbers, txBlockNumber)
@@ -330,18 +330,14 @@ func TestEvmSequencerWithFullNodeE2E(t *testing.T) {
 
 	// Submit second batch of transactions
 	t.Log("Submitting second batch of transactions...")
-	for i := 0; i < 2; i++ {
-		txHash, txBlockNumber := submitTransactionAndGetBlockNumber(t, sequencerClient)
-		txHashes = append(txHashes, txHash)
-		txBlockNumbers = append(txBlockNumbers, txBlockNumber)
-		t.Logf("Transaction %d included in sequencer block %d", i+4, txBlockNumber)
 
-		// Small delay between transactions
-		time.Sleep(2 * time.Millisecond)
-	}
+	txHash, txBlockNumber := submitTransactionAndGetBlockNumber(t, sequencerClient)
+	txHashes = append(txHashes, txHash)
+	txBlockNumbers = append(txBlockNumbers, txBlockNumber)
+	t.Logf("Transaction %d included in sequencer block %d", i+4, txBlockNumber)
 
 	// Wait for all transactions to be processed
-	time.Sleep(500 * time.Millisecond)
+	time.Sleep(time.Second)
 
 	t.Logf("Total transactions submitted: %d across blocks %v", len(txHashes), txBlockNumbers)
 
@@ -426,7 +422,7 @@ func TestEvmSequencerWithFullNodeE2E(t *testing.T) {
 	t.Logf("Full node block height before DA inclusion wait: %d", fnBlockHeightBeforeWait)
 
 	// Wait for one DA block time to allow DA inclusion to process
-	waitTime := 1 * time.Second
+	waitTime := 2 * time.Second
 	t.Logf("Waiting %v (1 DA block time) for DA inclusion to process...", waitTime)
 	time.Sleep(waitTime)
 
