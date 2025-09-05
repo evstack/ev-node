@@ -4,16 +4,15 @@ import (
 	"context"
 	"fmt"
 
-	kvexecutor "github.com/evstack/ev-node/apps/testapp/kv"
+	ds "github.com/ipfs/go-datastore"
+	kt "github.com/ipfs/go-datastore/keytransform"
+	"github.com/spf13/cobra"
+
+	goheaderstore "github.com/celestiaorg/go-header/store"
 	"github.com/evstack/ev-node/node"
 	rollcmd "github.com/evstack/ev-node/pkg/cmd"
 	"github.com/evstack/ev-node/pkg/store"
 	"github.com/evstack/ev-node/types"
-
-	goheaderstore "github.com/celestiaorg/go-header/store"
-	ds "github.com/ipfs/go-datastore"
-	kt "github.com/ipfs/go-datastore/keytransform"
-	"github.com/spf13/cobra"
 )
 
 // NewRollbackCmd creates a command to rollback ev-node state by one height.
@@ -61,11 +60,6 @@ func NewRollbackCmd() *cobra.Command {
 				height = currentHeight - 1
 			}
 
-			executor, err := kvexecutor.NewKVExecutor(nodeConfig.RootDir, nodeConfig.DBPath)
-			if err != nil {
-				return err
-			}
-
 			// rollback ev-node main state
 			if err := evolveStore.Rollback(goCtx, height); err != nil {
 				return fmt.Errorf("failed to rollback ev-node state: %w", err)
@@ -106,11 +100,6 @@ func NewRollbackCmd() *cobra.Command {
 
 			if err := dataStore.DeleteTo(goCtx, height); err != nil {
 				return fmt.Errorf("failed to rollback data sync service state: %w", err)
-			}
-
-			// rollback execution store
-			if err := executor.Rollback(goCtx, height); err != nil {
-				return fmt.Errorf("rollback failed: %w", err)
 			}
 
 			fmt.Printf("Rolled back state to height %d\n", height)
