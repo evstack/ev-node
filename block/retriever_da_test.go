@@ -23,7 +23,6 @@ import (
 	"github.com/evstack/ev-node/pkg/cache"
 	"github.com/evstack/ev-node/pkg/config"
 	"github.com/evstack/ev-node/pkg/genesis"
-	genesispkg "github.com/evstack/ev-node/pkg/genesis"
 	noopsigner "github.com/evstack/ev-node/pkg/signer/noop"
 	storepkg "github.com/evstack/ev-node/pkg/store"
 	rollmocks "github.com/evstack/ev-node/test/mocks"
@@ -743,7 +742,7 @@ func TestAssertValidSignedData(t *testing.T) {
 	require.NoError(err)
 	proposerAddr, err := testSigner.GetAddress()
 	require.NoError(err)
-	gen := genesispkg.NewGenesis(
+	gen := genesis.NewGenesis(
 		"testchain",
 		1,
 		time.Now(),
