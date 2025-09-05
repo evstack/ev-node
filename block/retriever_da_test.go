@@ -31,6 +31,19 @@ import (
 
 // setupManagerForRetrieverTest initializes a Manager with mocked dependencies.
 func setupManagerForRetrieverTest(t *testing.T, initialDAHeight uint64) (*daRetriever, *Manager, *rollmocks.MockDA, *rollmocks.MockStore, *cache.Cache[types.SignedHeader], *cache.Cache[types.Data], context.CancelFunc) {
+	return setupManagerForRetrieverTestWithConfig(
+		t,
+		initialDAHeight,
+		config.Config{
+			DA: config.DAConfig{
+				BlockTime: config.DurationWrapper{Duration: 1 * time.Second},
+			},
+		},
+	)
+}
+
+// setupManagerForRetrieverTest initializes a Manager with mocked dependencies.
+func setupManagerForRetrieverTestWithConfig(t *testing.T, initialDAHeight uint64, cfg config.Config) (*daRetriever, *Manager, *rollmocks.MockDA, *rollmocks.MockStore, *cache.Cache[types.SignedHeader], *cache.Cache[types.Data], context.CancelFunc) {
 	t.Helper()
 	mockDAClient := rollmocks.NewMockDA(t)
 	mockStore := rollmocks.NewMockStore(t)
@@ -60,7 +73,7 @@ func setupManagerForRetrieverTest(t *testing.T, initialDAHeight uint64) (*daRetr
 
 	manager := &Manager{
 		store:            mockStore,
-		config:           config.Config{DA: config.DAConfig{BlockTime: config.DurationWrapper{Duration: 1 * time.Second}}},
+		config:           cfg,
 		genesis:          genesis.Genesis{ProposerAddress: addr},
 		daHeight:         &atomic.Uint64{},
 		daIncludedHeight: atomic.Uint64{},
@@ -141,12 +154,12 @@ func TestProcessNextDAHeader_Success_SingleHeaderAndData(t *testing.T) {
 	mockDAClient.On("GetIDs", mock.Anything, daHeight, mock.Anything).Return(&coreda.GetIDsResult{
 		IDs:       []coreda.ID{[]byte("dummy-id")},
 		Timestamp: time.Now(),
-	}, nil).Times(2) // one for headers, one for data
+	}, nil).Once()
 
 	// Mock Get for both namespaces
 	mockDAClient.On("Get", mock.Anything, []coreda.ID{[]byte("dummy-id")}, mock.Anything).Return(
 		[]coreda.Blob{headerBytes, blockDataBytes}, nil,
-	).Times(2) // one for headers, one for data
+	).Once()
 
 	ctx := context.Background()
 	err = daManager.processNextDAHeaderAndData(ctx)
@@ -247,12 +260,12 @@ func TestProcessNextDAHeader_MultipleHeadersAndData(t *testing.T) {
 	mockDAClient.On("GetIDs", mock.Anything, daHeight, mock.Anything).Return(&coreda.GetIDsResult{
 		IDs:       []coreda.ID{[]byte("dummy-id")},
 		Timestamp: time.Now(),
-	}, nil).Times(2) // one for headers, one for data
+	}, nil).Once() // da config not defined, header and data using same default namespace
 
 	// Mock Get for both namespaces
 	mockDAClient.On("Get", mock.Anything, []coreda.ID{[]byte("dummy-id")}, mock.Anything).Return(
 		blobs, nil,
-	).Times(2) // one for headers, one for data
+	).Once() // da config not defined, header and data using same default namespace
 
 	ctx := context.Background()
 	err := daManager.processNextDAHeaderAndData(ctx)
@@ -299,7 +312,7 @@ func TestProcessNextDAHeaderAndData_NotFound(t *testing.T) {
 	mockDAClient.On("GetIDs", mock.Anything, daHeight, mock.Anything).Return(&coreda.GetIDsResult{
 		IDs:       []coreda.ID{},
 		Timestamp: time.Now(),
-	}, coreda.ErrBlobNotFound).Times(2) // one for headers, one for data
+	}, coreda.ErrBlobNotFound).Once() // da config not defined, header and data using same default namespace
 	ctx := context.Background()
 	err := daManager.processNextDAHeaderAndData(ctx)
 	require.NoError(t, err)
@@ -326,12 +339,12 @@ func TestProcessNextDAHeaderAndData_UnmarshalHeaderError(t *testing.T) {
 	mockDAClient.On("GetIDs", mock.Anything, daHeight, mock.Anything).Return(&coreda.GetIDsResult{
 		IDs:       []coreda.ID{[]byte("dummy-id")},
 		Timestamp: time.Now(),
-	}, nil).Times(2) // one for headers, one for data
+	}, nil).Once() // da config not defined, header and data using same default namespace
 
 	// Mock Get to return invalid bytes for both namespaces
 	mockDAClient.On("Get", mock.Anything, []coreda.ID{[]byte("dummy-id")}, mock.Anything).Return(
 		[]coreda.Blob{invalidBytes}, nil,
-	).Times(2) // one for headers, one for data
+	).Once() // da config not defined, header and data using same default namespace
 
 	// Logger expectations removed since using zerolog.Nop()
 
@@ -377,12 +390,12 @@ func TestProcessNextDAHeader_UnexpectedSequencer(t *testing.T) {
 	mockDAClient.On("GetIDs", mock.Anything, daHeight, mock.Anything).Return(&coreda.GetIDsResult{
 		IDs:       []coreda.ID{[]byte("dummy-id")},
 		Timestamp: time.Now(),
-	}, nil).Times(2) // one for headers, one for data
+	}, nil).Once() // da config not defined, header and data using same default namespace
 
 	// Mock Get to return header bytes for both namespaces
 	mockDAClient.On("Get", mock.Anything, []coreda.ID{[]byte("dummy-id")}, mock.Anything).Return(
 		[]coreda.Blob{headerBytes}, nil,
-	).Times(2) // one for headers, one for data
+	).Once() // da config not defined, header and data using same default namespace
 
 	ctx := context.Background()
 	err = daManager.processNextDAHeaderAndData(ctx)
@@ -410,7 +423,7 @@ func TestProcessNextDAHeader_FetchError_RetryFailure(t *testing.T) {
 	// Mock GetIDs to return error for all retries (for both header and data namespaces)
 	mockDAClient.On("GetIDs", mock.Anything, daHeight, mock.Anything).Return(
 		nil, fetchErr,
-	).Times(dAFetcherRetries * 2) // Multiply by 2 for both namespaces
+	).Times(dAFetcherRetries)
 
 	ctx := context.Background()
 	err := daManager.processNextDAHeaderAndData(ctx)
@@ -490,12 +503,12 @@ func TestProcessNextDAHeader_HeaderAndDataAlreadySeen(t *testing.T) {
 	mockDAClient.On("GetIDs", mock.Anything, daHeight, mock.Anything).Return(&coreda.GetIDsResult{
 		IDs:       []coreda.ID{[]byte("dummy-id")},
 		Timestamp: time.Now(),
-	}, nil).Times(2) // one for headers, one for data
+	}, nil).Once() // da config not defined, header and data using same default namespace
 
 	// Mock Get for both namespaces
 	mockDAClient.On("Get", mock.Anything, []coreda.ID{[]byte("dummy-id")}, mock.Anything).Return(
 		[]coreda.Blob{headerBytes, blockDataBytes}, nil,
-	).Times(2) // one for headers, one for data
+	).Once() // da config not defined, header and data using same default namespace
 
 	ctx := context.Background()
 	err = daManager.processNextDAHeaderAndData(ctx)
@@ -524,7 +537,7 @@ func TestRetrieveLoop_ProcessError_HeightFromFuture(t *testing.T) {
 	// Mock GetIDs to return future error for both header and data namespaces
 	mockDAClient.On("GetIDs", mock.Anything, startDAHeight, mock.Anything).Return(
 		nil, futureErr,
-	).Times(2) // one for headers, one for data
+	).Once() // da config not defined, header and data using same default namespace
 
 	// Optional: Mock for the next height if needed
 	mockDAClient.On("GetIDs", mock.Anything, startDAHeight+1, mock.Anything).Return(
@@ -563,7 +576,7 @@ func TestRetrieveLoop_ProcessError_Other(t *testing.T) {
 	// Mock GetIDs to return error for all retries (for both header and data namespaces)
 	mockDAClient.On("GetIDs", mock.Anything, startDAHeight, mock.Anything).Return(
 		nil, otherErr,
-	).Times(dAFetcherRetries * 2) // Multiply by 2 for both namespaces
+	).Times(dAFetcherRetries)
 
 	ctx, loopCancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer loopCancel()
@@ -625,12 +638,12 @@ func TestProcessNextDAHeader_WithNoTxs(t *testing.T) {
 	mockDAClient.On("GetIDs", mock.Anything, daHeight, mock.Anything).Return(&coreda.GetIDsResult{
 		IDs:       []coreda.ID{[]byte("dummy-id")},
 		Timestamp: time.Now(),
-	}, nil).Times(2) // one for headers, one for data
+	}, nil).Once() // da config not defined, header and data using same default namespace
 
 	// Mock Get for both namespaces
 	mockDAClient.On("Get", mock.Anything, []coreda.ID{[]byte("dummy-id")}, mock.Anything).Return(
 		[]coreda.Blob{headerBytes, emptyDataBytes}, nil,
-	).Times(2) // one for headers, one for data
+	).Once() // da config not defined, header and data using same default namespace
 
 	ctx := context.Background()
 	err = daManager.processNextDAHeaderAndData(ctx)
@@ -657,7 +670,17 @@ func TestProcessNextDAHeader_WithNoTxs(t *testing.T) {
 func TestRetrieveLoop_DAHeightIncrementsOnlyOnSuccess(t *testing.T) {
 	t.Parallel()
 	startDAHeight := uint64(60)
-	_, manager, mockDAClient, _, _, _, cancel := setupManagerForRetrieverTest(t, startDAHeight)
+	_, manager, mockDAClient, _, _, _, cancel := setupManagerForRetrieverTestWithConfig(
+		t,
+		startDAHeight,
+		config.Config{
+			DA: config.DAConfig{
+				BlockTime:     config.DurationWrapper{Duration: 1 * time.Second},
+				Namespace:     "rollkit-headers",
+				DataNamespace: "rollkit-data",
+			},
+		},
+	)
 	defer cancel()
 
 	blockHeight := uint64(150)
