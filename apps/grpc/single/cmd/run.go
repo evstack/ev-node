@@ -47,8 +47,8 @@ The execution client must implement the Evolve execution gRPC interface.`,
 
 		logger := rollcmd.SetupLogger(nodeConfig.Log)
 
-		headerNamespace := coreda.PrepareNamespace([]byte(nodeConfig.DA.HeaderNamespace))
-		dataNamespace := coreda.PrepareNamespace([]byte(nodeConfig.DA.DataNamespace))
+		headerNamespace := coreda.PrepareNamespace([]byte(nodeConfig.DA.GetNamespace()))
+		dataNamespace := coreda.PrepareNamespace([]byte(nodeConfig.DA.GetDataNamespace()))
 
 		logger.Info().Str("headerNamespace", hex.EncodeToString(headerNamespace)).Str("dataNamespace", hex.EncodeToString(dataNamespace)).Msg("namespaces")
 

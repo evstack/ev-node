@@ -47,8 +47,8 @@ var RunCmd = &cobra.Command{
         ec.SetLogger(logger.With().Str("module", "engine_client").Logger())
     }
 
-		headerNamespace := da.PrepareNamespace([]byte(nodeConfig.DA.HeaderNamespace))
-		dataNamespace := da.PrepareNamespace([]byte(nodeConfig.DA.DataNamespace))
+		headerNamespace := da.PrepareNamespace([]byte(nodeConfig.DA.GetNamespace()))
+		dataNamespace := da.PrepareNamespace([]byte(nodeConfig.DA.GetDataNamespace()))
 
 		logger.Info().Str("headerNamespace", hex.EncodeToString(headerNamespace)).Str("dataNamespace", hex.EncodeToString(dataNamespace)).Msg("namespaces")
 
