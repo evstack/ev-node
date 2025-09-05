@@ -231,7 +231,7 @@ type RPCConfig struct {
 	EnableDAVisualization bool   `mapstructure:"enable_da_visualization" yaml:"enable_da_visualization" comment:"Enable DA visualization endpoints for monitoring blob submissions. Default: false"`
 }
 
-// Validate ensures that the root directory exists.
+// Validate ensures validates the config and ensure that the root directory exists.
 // It creates the directory if it does not exist.
 func (c *Config) Validate() error {
 	if c.RootDir == "" {
@@ -241,6 +241,13 @@ func (c *Config) Validate() error {
 	fullDir := filepath.Dir(c.ConfigPath())
 	if err := os.MkdirAll(fullDir, 0o750); err != nil {
 		return fmt.Errorf("could not create directory %q: %w", fullDir, err)
+	}
+
+	// make sure legacy namespace is at least equal to one of the new namespaces
+	if c.DA.Namespace != "" {
+		if c.DA.Namespace != c.DA.HeaderNamespace && c.DA.Namespace != c.DA.DataNamespace {
+			return fmt.Errorf("legacy namespace %q is not equal to any of the new namespaces", c.DA.Namespace)
+		}
 	}
 
 	return nil

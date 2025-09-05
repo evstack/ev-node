@@ -17,6 +17,8 @@ import (
 func TestDefaultConfig(t *testing.T) {
 	// Test that default config has expected values
 	def := DefaultConfig
+	def.RootDir = t.TempDir()
+
 	assert.Equal(t, "data", def.DBPath)
 	assert.Equal(t, false, def.Node.Aggregator)
 	assert.Equal(t, false, def.Node.Light)
@@ -37,6 +39,7 @@ func TestDefaultConfig(t *testing.T) {
 	assert.Equal(t, "file", def.Signer.SignerType)
 	assert.Equal(t, "config", def.Signer.SignerPath)
 	assert.Equal(t, "127.0.0.1:7331", def.RPC.Address)
+	assert.NoError(t, def.Validate())
 }
 
 func TestAddFlags(t *testing.T) {

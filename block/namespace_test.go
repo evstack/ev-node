@@ -186,36 +186,38 @@ func TestLegacyNamespaceDetection(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name                 string
-		legacyNamespace      string
-		headerNamespace      string
-		dataNamespace        string
-		expectLegacyFallback bool
-		description          string
+		name            string
+		legacyNamespace string
+		headerNamespace string
+		dataNamespace   string
 	}{
 		{
-			name:                 "only legacy namespace configured",
-			legacyNamespace:      "old-namespace",
-			headerNamespace:      "",
-			dataNamespace:        "",
-			expectLegacyFallback: true,
-			description:          "When only legacy namespace is set, it acts as both header and data namespace",
+			// When only legacy namespace is set, it acts as both header and data namespace
+			name:            "only legacy namespace configured",
+			legacyNamespace: "old-namespace",
+			headerNamespace: "",
+			dataNamespace:   "",
 		},
 		{
-			name:                 "all namespaces configured",
-			legacyNamespace:      "old-namespace",
-			headerNamespace:      "new-headers",
-			dataNamespace:        "new-data",
-			expectLegacyFallback: true,
-			description:          "Should check legacy first, then try new namespaces",
+			// Should check both namespaces. It will behave as legacy when data namespace is empty
+			name:            "all namespaces configured",
+			legacyNamespace: "old-namespace",
+			headerNamespace: "old-namespace",
+			dataNamespace:   "new-data",
 		},
 		{
-			name:                 "no namespaces configured",
-			legacyNamespace:      "",
-			headerNamespace:      "",
-			dataNamespace:        "",
-			expectLegacyFallback: false,
-			description:          "Should use default namespaces only",
+			// Should check both namespaces. It will behave as legacy when data namespace is empty
+			name:            "only legacy namespaces and data",
+			legacyNamespace: "old-namespace",
+			headerNamespace: "",
+			dataNamespace:   "new-data",
+		},
+		{
+			// Should use default namespaces only
+			name:            "no namespaces configured",
+			legacyNamespace: "",
+			headerNamespace: "",
+			dataNamespace:   "",
 		},
 	}
 
@@ -263,7 +265,7 @@ func TestLegacyNamespaceDetection(t *testing.T) {
 					// All three namespaces are the same, so we'll get 1 call.
 					mockDA.On("GetIDs", mock.Anything, uint64(100), []byte(tt.legacyNamespace)).Return(&coreda.GetIDsResult{
 						IDs: []coreda.ID{},
-					}, coreda.ErrBlobNotFound).Times(1)
+					}, coreda.ErrBlobNotFound).Once()
 				} else if tt.legacyNamespace == headerNS || tt.legacyNamespace == dataNS {
 					// Legacy matches one of the new namespaces
 					// Plus none or one depending on whether header == data
@@ -286,31 +288,14 @@ func TestLegacyNamespaceDetection(t *testing.T) {
 						}, coreda.ErrBlobNotFound).Once()
 					}
 				} else {
-					// Legacy is different from both header and data
-					mockDA.On("GetIDs", mock.Anything, uint64(100), []byte(tt.legacyNamespace)).Return(&coreda.GetIDsResult{
-						IDs: []coreda.ID{},
-					}, coreda.ErrBlobNotFound).Once()
-
-					// Mock header and data calls
-					if headerNS == dataNS {
-						mockDA.On("GetIDs", mock.Anything, uint64(100), []byte(headerNS)).Return(&coreda.GetIDsResult{
-							IDs: []coreda.ID{},
-						}, coreda.ErrBlobNotFound).Twice()
-					} else {
-						mockDA.On("GetIDs", mock.Anything, uint64(100), []byte(headerNS)).Return(&coreda.GetIDsResult{
-							IDs: []coreda.ID{},
-						}, coreda.ErrBlobNotFound).Once()
-						mockDA.On("GetIDs", mock.Anything, uint64(100), []byte(dataNS)).Return(&coreda.GetIDsResult{
-							IDs: []coreda.ID{},
-						}, coreda.ErrBlobNotFound).Once()
-					}
+					t.Fatalf("Should never happen, forbidden by config")
 				}
 			} else {
 				// No legacy namespace configured, just mock the new namespace calls
 				if headerNS == dataNS {
 					mockDA.On("GetIDs", mock.Anything, uint64(100), []byte(headerNS)).Return(&coreda.GetIDsResult{
 						IDs: []coreda.ID{},
-					}, coreda.ErrBlobNotFound).Twice()
+					}, coreda.ErrBlobNotFound).Once()
 				} else {
 					mockDA.On("GetIDs", mock.Anything, uint64(100), []byte(headerNS)).Return(&coreda.GetIDsResult{
 						IDs: []coreda.ID{},
