@@ -18,9 +18,8 @@ func TestMetrics(t *testing.T) {
 		assert.NotNil(t, em.NumTxs)
 
 		// Test channel metrics initialization
-		assert.Len(t, em.ChannelBufferUsage, 7)
-		assert.NotNil(t, em.ChannelBufferUsage["header_in"])
-		assert.NotNil(t, em.ChannelBufferUsage["data_in"])
+		assert.Len(t, em.ChannelBufferUsage, 6)
+		assert.NotNil(t, em.ChannelBufferUsage["height_in"])
 		assert.NotNil(t, em.DroppedSignals)
 
 		// Test error metrics initialization
@@ -75,6 +74,7 @@ func TestMetrics(t *testing.T) {
 
 		// Test maps are initialized
 		assert.Len(t, em.ChannelBufferUsage, 6)
+		assert.NotNil(t, em.ChannelBufferUsage["height_in"])
 		assert.Len(t, em.ErrorsByType, 5)
 		assert.Len(t, em.OperationDuration, 5)
 		assert.Len(t, em.StateTransitions, 3)
@@ -176,8 +176,7 @@ func TestMetricsIntegration(t *testing.T) {
 	em.GoroutineCount.Set(50)
 
 	// Test channel metrics
-	em.ChannelBufferUsage["header_in"].Set(5)
-	em.ChannelBufferUsage["data_in"].Set(3)
+	em.ChannelBufferUsage["height_in"].Set(5)
 
 	// Test error metrics
 	em.ErrorsByType["block_production"].Add(1)
