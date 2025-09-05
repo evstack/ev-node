@@ -463,6 +463,13 @@ func (m *Manager) fetchBlobs(ctx context.Context, daHeight uint64) (coreda.Resul
 	headerNamespace := []byte(m.config.DA.GetHeaderNamespace())
 	dataNamespace := []byte(m.config.DA.GetDataNamespace())
 
+	// Sanity check, enforced by the config validation earlier
+	if m.config.DA.Namespace != m.config.DA.GetHeaderNamespace() && m.config.DA.Namespace != m.config.DA.GetDataNamespace() {
+		return coreda.ResultRetrieve{
+			BaseResult: coreda.BaseResult{Code: 1337},
+		}, fmt.Errorf("invalid config, namespace mismatch")
+	}
+
 	// Retrieve headers
 	headerRes := types.RetrieveWithHelpers(ctx, m.da, m.logger, daHeight, headerNamespace)
 
