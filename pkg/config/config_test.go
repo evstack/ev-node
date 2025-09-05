@@ -283,27 +283,27 @@ signer:
 func TestDAConfig_GetDataNamespace(t *testing.T) {
 	tests := []struct {
 		name              string
+		defaultNamespace  string
 		dataNamespace     string
-		legacyNamespace   string
 		expectedNamespace string
 	}{
 		{
 			name:              "DataNamespace set",
 			dataNamespace:     "custom-data",
-			legacyNamespace:   "legacy-namespace",
+			defaultNamespace:  "namespace",
 			expectedNamespace: "custom-data",
 		},
 		{
-			name:              "DataNamespace empty, fallback to legacy",
+			name:              "DataNamespace empty, fallback to default namespace",
 			dataNamespace:     "",
-			legacyNamespace:   "legacy-namespace",
-			expectedNamespace: "legacy-namespace",
+			defaultNamespace:  "namespace",
+			expectedNamespace: "namespace",
 		},
 		{
-			name:              "Both empty, use default",
+			name:              "Both empty, use default value from default namespace",
 			dataNamespace:     "",
-			legacyNamespace:   "",
-			expectedNamespace: "rollkit-data",
+			defaultNamespace:  "",
+			expectedNamespace: "rollkit-headers",
 		},
 	}
 
@@ -311,7 +311,7 @@ func TestDAConfig_GetDataNamespace(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			daConfig := &DAConfig{
 				DataNamespace: tt.dataNamespace,
-				Namespace:     tt.legacyNamespace,
+				Namespace:     tt.defaultNamespace,
 			}
 
 			result := daConfig.GetDataNamespace()

@@ -176,10 +176,8 @@ func (d *DAConfig) GetDataNamespace() string {
 	if d.DataNamespace != "" {
 		return d.DataNamespace
 	}
-	if d.Namespace != "" {
-		return d.Namespace
-	}
-	return "rollkit-data" // Default value
+
+	return d.GetNamespace()
 }
 
 // NodeConfig contains all Rollkit specific configuration parameters
