@@ -233,7 +233,7 @@ func TestLegacyNamespaceDetection(t *testing.T) {
 			} else if tt.namespace != "" {
 				assert.Equal(t, tt.namespace, dataNS)
 			} else {
-				assert.Equal(t, "rollkit-data", dataNS) // Default
+				assert.Equal(t, "rollkit-headers", dataNS) // Falls back to default namespace
 			}
 
 			// Test actual behavior in fetchBlobs
@@ -241,41 +241,24 @@ func TestLegacyNamespaceDetection(t *testing.T) {
 			daManager := newDARetriever(manager)
 			defer cancel()
 
-			// Check if we should expect a namespace check
-			if tt.namespace != "" {
-				// When  namespace is the same as data namespaces,
-				// only one call is expected
-				if headerNS == dataNS {
-					// All 2 namespaces are the same, so we'll get 1 call.
-					mockDA.On("GetIDs", mock.Anything, uint64(100), []byte(tt.namespace)).Return(&coreda.GetIDsResult{
-						IDs: []coreda.ID{},
-					}, coreda.ErrBlobNotFound).Once()
-				} else if tt.namespace != dataNS {
-					mockDA.On("GetIDs", mock.Anything, uint64(100), []byte(tt.namespace)).Return(&coreda.GetIDsResult{
-						IDs: []coreda.ID{},
-					}, coreda.ErrBlobNotFound).Once()
-
-					mockDA.On("GetIDs", mock.Anything, uint64(100), []byte(tt.dataNamespace)).Return(&coreda.GetIDsResult{
-						IDs: []coreda.ID{},
-					}, coreda.ErrBlobNotFound).Once()
-
-				} else {
-					t.Fatalf("Should never happen, forbidden by config")
-				}
-			} else {
-				// No namespace configured, just use default
-
+			// When  namespace is the same as data namespaces,
+			// only one call is expected
+			if headerNS == dataNS {
+				// All 2 namespaces are the same, so we'll get 1 call.
 				mockDA.On("GetIDs", mock.Anything, uint64(100), []byte(headerNS)).Return(&coreda.GetIDsResult{
 					IDs: []coreda.ID{},
 				}, coreda.ErrBlobNotFound).Once()
+			} else {
+				mockDA.On("GetIDs", mock.Anything, uint64(100), []byte(headerNS)).Return(&coreda.GetIDsResult{
+					IDs: []coreda.ID{},
+				}, coreda.ErrBlobNotFound).Once()
+
 				mockDA.On("GetIDs", mock.Anything, uint64(100), []byte(dataNS)).Return(&coreda.GetIDsResult{
 					IDs: []coreda.ID{},
 				}, coreda.ErrBlobNotFound).Once()
 			}
 
-			ctx := context.Background()
-			err := daManager.processNextDAHeaderAndData(ctx)
-
+			err := daManager.processNextDAHeaderAndData(context.Background())
 			// Should succeed with no data found (returns nil on StatusNotFound)
 			require.NoError(t, err)
 
