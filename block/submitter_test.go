@@ -681,17 +681,15 @@ func TestProcessBatch(t *testing.T) {
 	ctx := context.Background()
 
 	// Test data setup
-	testItems := []string{"item1", "item2", "item3"}
 	testMarshaled := [][]byte{[]byte("marshaled1"), []byte("marshaled2"), []byte("marshaled3")}
-	testBatch := submissionBatch[string]{
-		Items:     testItems,
+	testBatch := submissionBatch{
+		Items:     testMarshaled, // Use marshaled data instead of string items
 		Marshaled: testMarshaled,
 	}
 
 	var postSubmitCalled bool
-	postSubmit := func(submitted []string, res *coreda.ResultSubmit, gasPrice float64) {
+	postSubmit := func(submittedCount int, totalSubmittedSoFar int, res *coreda.ResultSubmit, gasPrice float64) {
 		postSubmitCalled = true
-		assert.Equal(t, testItems, submitted)
 		assert.Equal(t, float64(1.0), gasPrice)
 	}
 
@@ -703,7 +701,7 @@ func TestProcessBatch(t *testing.T) {
 		da.On("SubmitWithOptions", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 			Return([]coreda.ID{getDummyID(1, []byte("id1")), getDummyID(1, []byte("id2")), getDummyID(1, []byte("id3"))}, nil).Once()
 
-		result := processBatch(m, ctx, testBatch, 1.0, postSubmit, "test", []byte("test-namespace"))
+		result := processBatch(m, ctx, testBatch, 1.0, 0, postSubmit, "test", []byte("test-namespace"))
 
 		assert.Equal(t, batchActionSubmitted, result.action)
 		assert.Equal(t, 3, result.submittedCount)
@@ -717,10 +715,10 @@ func TestProcessBatch(t *testing.T) {
 
 		// Create a separate postSubmit function for partial success test
 		var partialPostSubmitCalled bool
-		partialPostSubmit := func(submitted []string, res *coreda.ResultSubmit, gasPrice float64) {
+		partialPostSubmit := func(submittedCount int, totalSubmittedSoFar int, res *coreda.ResultSubmit, gasPrice float64) {
 			partialPostSubmitCalled = true
 			// Only the first 2 items should be submitted
-			assert.Equal(t, []string{"item1", "item2"}, submitted)
+			assert.Equal(t, 2, submittedCount)
 			assert.Equal(t, float64(1.0), gasPrice)
 		}
 
@@ -728,7 +726,7 @@ func TestProcessBatch(t *testing.T) {
 		da.On("SubmitWithOptions", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 			Return([]coreda.ID{getDummyID(1, []byte("id1")), getDummyID(1, []byte("id2"))}, nil).Once()
 
-		result := processBatch(m, ctx, testBatch, 1.0, partialPostSubmit, "test", []byte("test-namespace"))
+		result := processBatch(m, ctx, testBatch, 1.0, 0, partialPostSubmit, "test", []byte("test-namespace"))
 
 		assert.Equal(t, batchActionSubmitted, result.action)
 		assert.Equal(t, 2, result.submittedCount)
@@ -743,7 +741,7 @@ func TestProcessBatch(t *testing.T) {
 		da.On("SubmitWithOptions", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 			Return(nil, coreda.ErrBlobSizeOverLimit).Once()
 
-		result := processBatch(m, ctx, testBatch, 1.0, postSubmit, "test", []byte("test-namespace"))
+		result := processBatch(m, ctx, testBatch, 1.0, 0, postSubmit, "test", []byte("test-namespace"))
 
 		assert.Equal(t, batchActionTooBig, result.action)
 		assert.Equal(t, 0, result.submittedCount)
@@ -756,8 +754,8 @@ func TestProcessBatch(t *testing.T) {
 		da.ExpectedCalls = nil
 
 		// Create single-item batch
-		singleBatch := submissionBatch[string]{
-			Items:     []string{"large_item"},
+		singleBatch := submissionBatch{
+			Items:     [][]byte{[]byte("large_marshaled")},
 			Marshaled: [][]byte{[]byte("large_marshaled")},
 		}
 
@@ -765,7 +763,7 @@ func TestProcessBatch(t *testing.T) {
 		da.On("SubmitWithOptions", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 			Return(nil, coreda.ErrBlobSizeOverLimit).Once()
 
-		result := processBatch(m, ctx, singleBatch, 1.0, postSubmit, "test", []byte("test-namespace"))
+		result := processBatch(m, ctx, singleBatch, 1.0, 0, postSubmit, "test", []byte("test-namespace"))
 
 		assert.Equal(t, batchActionSkip, result.action)
 		assert.Equal(t, 0, result.submittedCount)
@@ -780,7 +778,7 @@ func TestProcessBatch(t *testing.T) {
 		da.On("SubmitWithOptions", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 			Return(nil, fmt.Errorf("network error")).Once()
 
-		result := processBatch(m, ctx, testBatch, 1.0, postSubmit, "test", []byte("test-namespace"))
+		result := processBatch(m, ctx, testBatch, 1.0, 0, postSubmit, "test", []byte("test-namespace"))
 
 		assert.Equal(t, batchActionFail, result.action)
 		assert.Equal(t, 0, result.submittedCount)
@@ -958,7 +956,7 @@ func TestSubmitHalfBatch(t *testing.T) {
 		expectedSubmitted   int
 		expectError         bool
 		expectedErrorMsg    string
-		postSubmitValidator func(*testing.T, [][]string) // validates postSubmit calls
+		postSubmitValidator func(*testing.T, []int) // validates postSubmit calls
 	}{
 		{
 			name:              "EmptyItems",
@@ -967,7 +965,7 @@ func TestSubmitHalfBatch(t *testing.T) {
 			mockSetup:         func(da *mocks.MockDA) {}, // no DA calls expected
 			expectedSubmitted: 0,
 			expectError:       false,
-			postSubmitValidator: func(t *testing.T, calls [][]string) {
+			postSubmitValidator: func(t *testing.T, calls []int) {
 				assert.Empty(t, calls, "postSubmit should not be called for empty items")
 			},
 		},
@@ -981,9 +979,9 @@ func TestSubmitHalfBatch(t *testing.T) {
 			},
 			expectedSubmitted: 3,
 			expectError:       false,
-			postSubmitValidator: func(t *testing.T, calls [][]string) {
+			postSubmitValidator: func(t *testing.T, calls []int) {
 				require.Len(t, calls, 1, "postSubmit should be called once")
-				assert.Equal(t, []string{"item1", "item2", "item3"}, calls[0])
+				assert.Equal(t, 3, calls[0])
 			},
 		},
 		{
@@ -1000,10 +998,10 @@ func TestSubmitHalfBatch(t *testing.T) {
 			},
 			expectedSubmitted: 3,
 			expectError:       false,
-			postSubmitValidator: func(t *testing.T, calls [][]string) {
+			postSubmitValidator: func(t *testing.T, calls []int) {
 				require.Len(t, calls, 2, "postSubmit should be called twice")
-				assert.Equal(t, []string{"item1", "item2"}, calls[0])
-				assert.Equal(t, []string{"item3"}, calls[1])
+				assert.Equal(t, 2, calls[0])
+				assert.Equal(t, 1, calls[1])
 			},
 		},
 		{
@@ -1021,9 +1019,9 @@ func TestSubmitHalfBatch(t *testing.T) {
 			expectedSubmitted: 2,
 			expectError:       true,
 			expectedErrorMsg:  "single test item exceeds DA blob size limit",
-			postSubmitValidator: func(t *testing.T, calls [][]string) {
+			postSubmitValidator: func(t *testing.T, calls []int) {
 				require.Len(t, calls, 1, "postSubmit should be called once for successful part")
-				assert.Equal(t, []string{"item1", "item2"}, calls[0])
+				assert.Equal(t, 2, calls[0])
 			},
 		},
 		{
@@ -1037,7 +1035,7 @@ func TestSubmitHalfBatch(t *testing.T) {
 			expectedSubmitted: 0,
 			expectError:       true,
 			expectedErrorMsg:  "single test item exceeds DA blob size limit",
-			postSubmitValidator: func(t *testing.T, calls [][]string) {
+			postSubmitValidator: func(t *testing.T, calls []int) {
 				assert.Empty(t, calls, "postSubmit should not be called on error")
 			},
 		},
@@ -1052,7 +1050,7 @@ func TestSubmitHalfBatch(t *testing.T) {
 			expectedSubmitted: 0,
 			expectError:       true,
 			expectedErrorMsg:  "unrecoverable error during test batch submission",
-			postSubmitValidator: func(t *testing.T, calls [][]string) {
+			postSubmitValidator: func(t *testing.T, calls []int) {
 				assert.Empty(t, calls, "postSubmit should not be called on failure")
 			},
 		},
@@ -1065,9 +1063,9 @@ func TestSubmitHalfBatch(t *testing.T) {
 			ctx := context.Background()
 
 			// Track postSubmit calls
-			var postSubmitCalls [][]string
-			postSubmit := func(submitted []string, res *coreda.ResultSubmit, gasPrice float64) {
-				postSubmitCalls = append(postSubmitCalls, submitted)
+			var postSubmitCalls []int
+			postSubmit := func(submittedCount int, totalSubmittedSoFar int, res *coreda.ResultSubmit, gasPrice float64) {
+				postSubmitCalls = append(postSubmitCalls, submittedCount)
 				assert.Equal(t, float64(1.0), gasPrice, "gasPrice should be 1.0")
 			}
 
@@ -1075,7 +1073,7 @@ func TestSubmitHalfBatch(t *testing.T) {
 			tt.mockSetup(da)
 
 			// Call submitHalfBatch
-			submitted, err := submitHalfBatch(m, ctx, tt.items, tt.marshaled, 1.0, postSubmit, "test", []byte("test-namespace"))
+			submitted, err := submitHalfBatch(m, ctx, tt.marshaled, tt.marshaled, 1.0, 0, postSubmit, "test", []byte("test-namespace"))
 
 			// Validate results
 			if tt.expectError {
