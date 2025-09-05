@@ -10,9 +10,11 @@ replace (
 	github.com/evstack/ev-node/da => ../../../da
 	github.com/evstack/ev-node/execution/evm => ../../../execution/evm
 	github.com/evstack/ev-node/sequencers/single => ../../../sequencers/single
+	github.com/ipfs/go-datastore => github.com/celestiaorg/go-datastore v0.0.0-20250801131506-48a63ae531e4
 )
 
 require (
+	github.com/celestiaorg/go-header v0.7.1
 	github.com/ethereum/go-ethereum v1.16.2
 	github.com/evstack/ev-node v0.14.2-0.20250317130407-e9e0a1b0485e
 	github.com/evstack/ev-node/core v0.0.0-20250317130407-e9e0a1b0485e
@@ -53,7 +55,6 @@ require (
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/bits-and-blooms/bitset v1.20.0 // indirect
 	github.com/buger/goterm v1.0.4 // indirect
-	github.com/celestiaorg/go-header v0.6.6 // indirect
 	github.com/celestiaorg/go-libp2p-messenger v0.2.2 // indirect
 	github.com/cenkalti/backoff/v4 v4.3.0 // indirect
 	github.com/cenkalti/backoff/v5 v5.0.2 // indirect

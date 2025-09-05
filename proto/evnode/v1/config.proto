@@ -13,7 +13,7 @@ service ConfigService {
   // GetNamespace returns the namespace for this network
   rpc GetNamespace(google.protobuf.Empty) returns (GetNamespaceResponse) {}
 
-  // GetSequencerInfo returns information about the sequencer
+  // GetSignerInfo returns information about the signer
   rpc GetSignerInfo(google.protobuf.Empty) returns (GetSignerInfoResponse) {}
 }
 
@@ -23,7 +23,7 @@ message GetNamespaceResponse {
   string data_namespace   = 2;
 }
 
-// GetSequencerInfoResponse returns information about the sequencer
+// GetSignerInfoResponse returns information about the signer
 message GetSignerInfoResponse {
   bytes address = 1;
 }

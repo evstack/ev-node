@@ -1,65 +1,112 @@
 package cmd
 
 import (
-    "context"
-    "fmt"
+	"context"
+	"fmt"
 
-    ds "github.com/ipfs/go-datastore"
-    ktds "github.com/ipfs/go-datastore/keytransform"
+	ds "github.com/ipfs/go-datastore"
+	kt "github.com/ipfs/go-datastore/keytransform"
+	"github.com/spf13/cobra"
 
-    "github.com/evstack/ev-node/node"
-    rollcmd "github.com/evstack/ev-node/pkg/cmd"
-    "github.com/evstack/ev-node/pkg/store"
-    "github.com/spf13/cobra"
+	goheaderstore "github.com/celestiaorg/go-header/store"
+	"github.com/evstack/ev-node/node"
+	rollcmd "github.com/evstack/ev-node/pkg/cmd"
+	"github.com/evstack/ev-node/pkg/store"
+	"github.com/evstack/ev-node/types"
 )
 
-// RollbackCmd rolls back ev-node's persisted state for the evm-single app.
-// It always reverts exactly one height (currentHeight - 1).
-var RollbackCmd = &cobra.Command{
-	Use:   "rollback",
-	Short: "Rollback the evm-single node by one height",
-	Args:  cobra.NoArgs,
-	RunE: func(cmd *cobra.Command, args []string) error {
-		nodeConfig, err := rollcmd.ParseConfig(cmd)
-		if err != nil {
-			return err
-		}
+// NewRollbackCmd creates a command to rollback ev-node state by one height.
+func NewRollbackCmd() *cobra.Command {
+	var height uint64
 
-		ctx, cancel := context.WithCancel(context.Background())
-		defer cancel()
+	cmd := &cobra.Command{
+		Use:   "rollback",
+		Short: "rollback ev-node state by one height. Pass --height to specify another height to rollback to.",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			nodeConfig, err := rollcmd.ParseConfig(cmd)
+			if err != nil {
+				return err
+			}
 
-        // Open the ev-node data store for evm-single
-        datastore, err := store.NewDefaultKVStore(nodeConfig.RootDir, nodeConfig.DBPath, "evm-single")
-        if err != nil {
-            return err
-        }
+			goCtx := cmd.Context()
+			if goCtx == nil {
+				goCtx = context.Background()
+			}
 
-        // Use the same namespace/prefix as the running node (see node/full.go: EvPrefix)
-        prefixStore := ktds.Wrap(datastore, ktds.PrefixTransform{Prefix: ds.NewKey(node.EvPrefix)})
+			// evolve db
+			rawEvolveDB, err := store.NewDefaultKVStore(nodeConfig.RootDir, nodeConfig.DBPath, "evm-single")
+			if err != nil {
+				return err
+			}
 
-		storeWrapper := store.New(prefixStore)
+			defer func() {
+				if closeErr := rawEvolveDB.Close(); closeErr != nil {
+					fmt.Printf("Warning: failed to close evolve database: %v\n", closeErr)
+				}
+			}()
 
-		cmd.Println("Starting rollback operation")
+			// prefixed evolve db
+			evolveDB := kt.Wrap(rawEvolveDB, &kt.PrefixTransform{
+				Prefix: ds.NewKey(node.EvPrefix),
+			})
 
-		currentHeight, err := storeWrapper.Height(ctx)
-		if err != nil {
-			return fmt.Errorf("failed to get current height: %w", err)
-		}
+			evolveStore := store.New(evolveDB)
+			if height == 0 {
+				currentHeight, err := evolveStore.Height(goCtx)
+				if err != nil {
+					return err
+				}
 
-		// Ensure there is at least one block to roll back
-		if currentHeight == 0 {
-			return fmt.Errorf("no blocks to rollback: current height is 0")
-		}
+				height = currentHeight - 1
+			}
 
-		// Always roll back exactly one height
-		targetHeight := currentHeight - 1
+			// rollback ev-node main state
+			if err := evolveStore.Rollback(goCtx, height); err != nil {
+				return fmt.Errorf("failed to rollback ev-node state: %w", err)
+			}
 
-		// Roll back ev-node store only. The EVM execution client maintains its own state.
-		if err := storeWrapper.Rollback(ctx, targetHeight); err != nil {
-			return fmt.Errorf("rollback failed: %w", err)
-		}
+			// rollback ev-node goheader state
+			headerStore, err := goheaderstore.NewStore[*types.SignedHeader](
+				evolveDB,
+				goheaderstore.WithStorePrefix("headerSync"),
+				goheaderstore.WithMetrics(),
+			)
+			if err != nil {
+				return err
+			}
 
-		cmd.Println("Rollback completed successfully")
-		return nil
-	},
+			dataStore, err := goheaderstore.NewStore[*types.Data](
+				evolveDB,
+				goheaderstore.WithStorePrefix("dataSync"),
+				goheaderstore.WithMetrics(),
+			)
+			if err != nil {
+				return err
+			}
+
+			if err := headerStore.Start(goCtx); err != nil {
+				return err
+			}
+			defer headerStore.Stop(goCtx)
+
+			if err := dataStore.Start(goCtx); err != nil {
+				return err
+			}
+			defer dataStore.Stop(goCtx)
+
+			if err := headerStore.DeleteTo(goCtx, height); err != nil {
+				return fmt.Errorf("failed to rollback header sync service state: %w", err)
+			}
+
+			if err := dataStore.DeleteTo(goCtx, height); err != nil {
+				return fmt.Errorf("failed to rollback data sync service state: %w", err)
+			}
+
+			fmt.Printf("Rolled back state to height %d\n", height)
+			return nil
+		},
+	}
+
+	cmd.Flags().Uint64Var(&height, "height", 0, "rollback to a specific height")
+	return cmd
 }
