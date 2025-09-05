@@ -423,6 +423,7 @@ type Data struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Metadata      *Metadata              `protobuf:"bytes,1,opt,name=metadata,proto3" json:"metadata,omitempty"`
 	Txs           [][]byte               `protobuf:"bytes,2,rep,name=txs,proto3" json:"txs,omitempty"`
+	CachedHash    []byte                 `protobuf:"bytes,3,opt,name=cached_hash,json=cachedHash,proto3" json:"cached_hash,omitempty"` // Optional cached hash for performance
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -467,6 +468,13 @@ func (x *Data) GetMetadata() *Metadata {
 func (x *Data) GetTxs() [][]byte {
 	if x != nil {
 		return x.Txs
+	}
+	return nil
+}
+
+func (x *Data) GetCachedHash() []byte {
+	if x != nil {
+		return x.CachedHash
 	}
 	return nil
 }
@@ -647,10 +655,12 @@ const file_evnode_v1_evnode_proto_rawDesc = "" +
 	"\bchain_id\x18\x01 \x01(\tR\achainId\x12\x16\n" +
 	"\x06height\x18\x02 \x01(\x04R\x06height\x12\x12\n" +
 	"\x04time\x18\x03 \x01(\x04R\x04time\x12$\n" +
-	"\x0elast_data_hash\x18\x04 \x01(\fR\flastDataHash\"I\n" +
+	"\x0elast_data_hash\x18\x04 \x01(\fR\flastDataHash\"j\n" +
 	"\x04Data\x12/\n" +
 	"\bmetadata\x18\x01 \x01(\v2\x13.evnode.v1.MetadataR\bmetadata\x12\x10\n" +
-	"\x03txs\x18\x02 \x03(\fR\x03txs\"z\n" +
+	"\x03txs\x18\x02 \x03(\fR\x03txs\x12\x1f\n" +
+	"\vcached_hash\x18\x03 \x01(\fR\n" +
+	"cachedHash\"z\n" +
 	"\n" +
 	"SignedData\x12#\n" +
 	"\x04data\x18\x01 \x01(\v2\x0f.evnode.v1.DataR\x04data\x12\x1c\n" +
