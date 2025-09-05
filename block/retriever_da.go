@@ -460,20 +460,13 @@ func (m *Manager) fetchBlobs(ctx context.Context, daHeight uint64) (coreda.Resul
 	m.recordDAMetrics("retrieval", DAModeRetry)
 
 	// Try to retrieve from both header and data namespaces
-	headerNamespace := []byte(m.config.DA.GetHeaderNamespace())
+	headerNamespace := []byte(m.config.DA.GetNamespace())
 	dataNamespace := []byte(m.config.DA.GetDataNamespace())
-
-	// Sanity check, enforced by the config validation earlier
-	if m.config.DA.Namespace != m.config.DA.GetHeaderNamespace() && m.config.DA.Namespace != m.config.DA.GetDataNamespace() {
-		return coreda.ResultRetrieve{
-			BaseResult: coreda.BaseResult{Code: 1337},
-		}, fmt.Errorf("invalid config, namespace mismatch")
-	}
 
 	// Retrieve headers
 	headerRes := types.RetrieveWithHelpers(ctx, m.da, m.logger, daHeight, headerNamespace)
 
-	// Both namespace are the same, so we are using the legacy flow.
+	// Both namespace are the same, so we are not fetching from data namespace
 	if bytes.Equal(headerNamespace, dataNamespace) {
 		err := m.validateBlobResponse(headerRes, daHeight)
 		return headerRes, err

@@ -280,46 +280,6 @@ signer:
 	require.Equal(t, "something/config", cfgFromViper.Signer.SignerPath, "Signer.SignerPath should match YAML")
 }
 
-func TestDAConfig_GetHeaderNamespace(t *testing.T) {
-	tests := []struct {
-		name              string
-		headerNamespace   string
-		legacyNamespace   string
-		expectedNamespace string
-	}{
-		{
-			name:              "HeaderNamespace set",
-			headerNamespace:   "custom-headers",
-			legacyNamespace:   "legacy-namespace",
-			expectedNamespace: "custom-headers",
-		},
-		{
-			name:              "HeaderNamespace empty, fallback to legacy",
-			headerNamespace:   "",
-			legacyNamespace:   "legacy-namespace",
-			expectedNamespace: "legacy-namespace",
-		},
-		{
-			name:              "Both empty, use default",
-			headerNamespace:   "",
-			legacyNamespace:   "",
-			expectedNamespace: "rollkit-headers",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			daConfig := &DAConfig{
-				HeaderNamespace: tt.headerNamespace,
-				Namespace:       tt.legacyNamespace,
-			}
-
-			result := daConfig.GetHeaderNamespace()
-			assert.Equal(t, tt.expectedNamespace, result)
-		})
-	}
-}
-
 func TestDAConfig_GetDataNamespace(t *testing.T) {
 	tests := []struct {
 		name              string

@@ -131,8 +131,8 @@ func TestProcessNextDAHeaderAndData_MixedResults(t *testing.T) {
 			t.Parallel()
 
 			daConfig := config.DAConfig{
-				HeaderNamespace: "test-headers",
-				DataNamespace:   "test-data",
+				Namespace:     "test-headers",
+				DataNamespace: "test-data",
 			}
 			manager, mockDA, _, cancel := setupManagerForNamespaceTest(t, daConfig)
 			daManager := newDARetriever(manager)
@@ -184,40 +184,28 @@ func TestProcessNextDAHeaderAndData_MixedResults(t *testing.T) {
 // TestLegacyNamespaceDetection tests the legacy namespace fallback behavior
 func TestLegacyNamespaceDetection(t *testing.T) {
 	t.Parallel()
-
 	tests := []struct {
-		name            string
-		legacyNamespace string
-		headerNamespace string
-		dataNamespace   string
+		name          string
+		namespace     string
+		dataNamespace string
 	}{
 		{
 			// When only legacy namespace is set, it acts as both header and data namespace
-			name:            "only legacy namespace configured",
-			legacyNamespace: "old-namespace",
-			headerNamespace: "",
-			dataNamespace:   "",
+			name:          "only legacy namespace configured",
+			namespace:     "namespace",
+			dataNamespace: "",
 		},
 		{
 			// Should check both namespaces. It will behave as legacy when data namespace is empty
-			name:            "all namespaces configured",
-			legacyNamespace: "old-namespace",
-			headerNamespace: "old-namespace",
-			dataNamespace:   "new-data",
-		},
-		{
-			// Should check both namespaces. It will behave as legacy when data namespace is empty
-			name:            "only legacy namespaces and data",
-			legacyNamespace: "old-namespace",
-			headerNamespace: "",
-			dataNamespace:   "new-data",
+			name:          "all namespaces configured",
+			namespace:     "old-namespace",
+			dataNamespace: "new-data",
 		},
 		{
 			// Should use default namespaces only
-			name:            "no namespaces configured",
-			legacyNamespace: "",
-			headerNamespace: "",
-			dataNamespace:   "",
+			name:          "no namespaces configured",
+			namespace:     "",
+			dataNamespace: "",
 		},
 	}
 
@@ -226,27 +214,24 @@ func TestLegacyNamespaceDetection(t *testing.T) {
 			t.Parallel()
 
 			daConfig := config.DAConfig{
-				Namespace:       tt.legacyNamespace,
-				HeaderNamespace: tt.headerNamespace,
-				DataNamespace:   tt.dataNamespace,
+				Namespace:     tt.namespace,
+				DataNamespace: tt.dataNamespace,
 			}
 
-			// Test the GetHeaderNamespace and GetDataNamespace methods
-			headerNS := daConfig.GetHeaderNamespace()
+			// Test the GetNamespace and GetDataNamespace methods
+			headerNS := daConfig.GetNamespace()
 			dataNS := daConfig.GetDataNamespace()
 
-			if tt.headerNamespace != "" {
-				assert.Equal(t, tt.headerNamespace, headerNS)
-			} else if tt.legacyNamespace != "" {
-				assert.Equal(t, tt.legacyNamespace, headerNS)
+			if tt.namespace != "" {
+				assert.Equal(t, tt.namespace, headerNS)
 			} else {
 				assert.Equal(t, "rollkit-headers", headerNS) // Default
 			}
 
 			if tt.dataNamespace != "" {
 				assert.Equal(t, tt.dataNamespace, dataNS)
-			} else if tt.legacyNamespace != "" {
-				assert.Equal(t, tt.legacyNamespace, dataNS)
+			} else if tt.namespace != "" {
+				assert.Equal(t, tt.namespace, dataNS)
 			} else {
 				assert.Equal(t, "rollkit-data", dataNS) // Default
 			}
@@ -256,54 +241,36 @@ func TestLegacyNamespaceDetection(t *testing.T) {
 			daManager := newDARetriever(manager)
 			defer cancel()
 
-			// Check if we should expect a legacy namespace check
-			// Legacy check happens when migration is not completed and legacy namespace is configured
-			if tt.legacyNamespace != "" {
-				// When legacy namespace is the same as header/data namespaces,
+			// Check if we should expect a namespace check
+			if tt.namespace != "" {
+				// When  namespace is the same as data namespaces,
 				// only one call is expected
-				if tt.legacyNamespace == headerNS && headerNS == dataNS {
-					// All three namespaces are the same, so we'll get 1 call.
-					mockDA.On("GetIDs", mock.Anything, uint64(100), []byte(tt.legacyNamespace)).Return(&coreda.GetIDsResult{
+				if headerNS == dataNS {
+					// All 2 namespaces are the same, so we'll get 1 call.
+					mockDA.On("GetIDs", mock.Anything, uint64(100), []byte(tt.namespace)).Return(&coreda.GetIDsResult{
 						IDs: []coreda.ID{},
 					}, coreda.ErrBlobNotFound).Once()
-				} else if tt.legacyNamespace == headerNS || tt.legacyNamespace == dataNS {
-					// Legacy matches one of the new namespaces
-					// Plus none or one depending on whether header == data
-					totalCalls := 1 // legacy call
-					if headerNS == dataNS {
-						totalCalls += 1 // header and data are same
-					}
-					mockDA.On("GetIDs", mock.Anything, uint64(100), []byte(tt.legacyNamespace)).Return(&coreda.GetIDsResult{
+				} else if tt.namespace != dataNS {
+					mockDA.On("GetIDs", mock.Anything, uint64(100), []byte(tt.namespace)).Return(&coreda.GetIDsResult{
 						IDs: []coreda.ID{},
-					}, coreda.ErrBlobNotFound).Times(totalCalls)
+					}, coreda.ErrBlobNotFound).Once()
 
-					// Mock the non-matching namespace if header != data
-					if headerNS != dataNS {
-						nonMatchingNS := headerNS
-						if tt.legacyNamespace == headerNS {
-							nonMatchingNS = dataNS
-						}
-						mockDA.On("GetIDs", mock.Anything, uint64(100), []byte(nonMatchingNS)).Return(&coreda.GetIDsResult{
-							IDs: []coreda.ID{},
-						}, coreda.ErrBlobNotFound).Once()
-					}
+					mockDA.On("GetIDs", mock.Anything, uint64(100), []byte(tt.dataNamespace)).Return(&coreda.GetIDsResult{
+						IDs: []coreda.ID{},
+					}, coreda.ErrBlobNotFound).Once()
+
 				} else {
 					t.Fatalf("Should never happen, forbidden by config")
 				}
 			} else {
-				// No legacy namespace configured, just mock the new namespace calls
-				if headerNS == dataNS {
-					mockDA.On("GetIDs", mock.Anything, uint64(100), []byte(headerNS)).Return(&coreda.GetIDsResult{
-						IDs: []coreda.ID{},
-					}, coreda.ErrBlobNotFound).Once()
-				} else {
-					mockDA.On("GetIDs", mock.Anything, uint64(100), []byte(headerNS)).Return(&coreda.GetIDsResult{
-						IDs: []coreda.ID{},
-					}, coreda.ErrBlobNotFound).Once()
-					mockDA.On("GetIDs", mock.Anything, uint64(100), []byte(dataNS)).Return(&coreda.GetIDsResult{
-						IDs: []coreda.ID{},
-					}, coreda.ErrBlobNotFound).Once()
-				}
+				// No namespace configured, just use default
+
+				mockDA.On("GetIDs", mock.Anything, uint64(100), []byte(headerNS)).Return(&coreda.GetIDsResult{
+					IDs: []coreda.ID{},
+				}, coreda.ErrBlobNotFound).Once()
+				mockDA.On("GetIDs", mock.Anything, uint64(100), []byte(dataNS)).Return(&coreda.GetIDsResult{
+					IDs: []coreda.ID{},
+				}, coreda.ErrBlobNotFound).Once()
 			}
 
 			ctx := context.Background()

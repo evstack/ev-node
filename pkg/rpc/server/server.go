@@ -208,8 +208,8 @@ func (cs *ConfigServer) GetNamespace(
 	req *connect.Request[emptypb.Empty],
 ) (*connect.Response[pb.GetNamespaceResponse], error) {
 
-	hns := coreda.PrepareNamespace([]byte(cs.config.DA.HeaderNamespace))
-	dns := coreda.PrepareNamespace([]byte(cs.config.DA.DataNamespace))
+	hns := coreda.PrepareNamespace([]byte(cs.config.DA.GetNamespace()))
+	dns := coreda.PrepareNamespace([]byte(cs.config.DA.GetDataNamespace()))
 
 	return connect.NewResponse(&pb.GetNamespaceResponse{
 		HeaderNamespace: hex.EncodeToString(hns),
