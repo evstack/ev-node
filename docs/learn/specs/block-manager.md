@@ -456,7 +456,7 @@ The `DataStoreRetrieveLoop`:
 - Operates at `BlockTime` intervals via `dataStoreCh` signals
 - Tracks `dataStoreHeight` for the last retrieved data
 - Retrieves all data blocks between last height and current store height
-- Validates data signatures using `isValidSignedData`
+- Validates data signatures using `assertValidSignedData`
 - Marks data as "seen" in the data cache
 - Sends data to sync goroutine via `dataInCh`
 
@@ -568,30 +568,30 @@ The communication with DA layer:
 
 ## Assumptions and Considerations
 
-* The block manager loads the initial state from the local store and uses genesis if not found in the local store, when the node (re)starts.
-* The default mode for sequencer nodes is normal (not lazy).
-* The sequencer can produce empty blocks.
-* In lazy aggregation mode, the block manager maintains consistency with the DA layer by producing empty blocks at regular intervals, ensuring a 1:1 mapping between DA layer blocks and execution layer blocks.
-* The lazy aggregation mechanism uses a dual timer approach:
-  * A `blockTimer` that triggers block production when transactions are available
-  * A `lazyTimer` that ensures blocks are produced even during periods of inactivity
-* Empty batches are handled differently in lazy mode - instead of discarding them, they are returned with the `ErrNoBatch` error, allowing the caller to create empty blocks with proper timestamps.
-* Transaction notifications from the `Reaper` to the `Manager` are handled via a non-blocking notification channel (`txNotifyCh`) to prevent backpressure.
-* The block manager enforces `MaxPendingHeadersAndData` limit to prevent unbounded growth of pending queues during DA submission issues.
-* Headers and data are submitted separately to the DA layer using different namespaces, supporting the header/data separation architecture.
-* The block manager uses persistent caches for headers and data to track seen items and DA inclusion status.
-* Namespace migration is handled transparently, with automatic detection and state persistence to optimize future operations.
-* The system supports backward compatibility with legacy single-namespace deployments while transitioning to separate namespaces.
-* Gas price management includes automatic adjustment with `GasMultiplier` on DA submission retries.
-* The block manager uses persistent storage (disk) when the `root_dir` and `db_path` configuration parameters are specified in `config.yaml` file under the app directory. If these configuration parameters are not specified, the in-memory storage is used, which will not be persistent if the node stops.
-* The block manager does not re-apply blocks when they transition from soft confirmed to DA included status. The block is only marked DA included in the caches.
-* Header and data stores use separate prefixes for isolation in the underlying database.
-* The genesis `ChainID` is used to create separate `PubSubTopID`s for headers and data in go-header.
-* Block sync over the P2P network works only when a full node is connected to the P2P network by specifying the initial seeds to connect to via `P2PConfig.Seeds` configuration parameter when starting the full node.
-* Node's context is passed down to all components to support graceful shutdown and cancellation.
-* The block manager supports custom signature payload providers for headers, enabling flexible signing schemes.
-* The block manager supports the separation of header and data structures in Evolve. This allows for expanding the sequencing scheme beyond single sequencing and enables the use of a decentralized sequencer mode. For detailed information on this architecture, see the [Header and Data Separation ADR](../../adr/adr-014-header-and-data-separation.md).
-* The block manager processes blocks with a minimal header format, which is designed to eliminate dependency on CometBFT's header format and can be used to produce an execution layer tailored header if needed. For details on this header structure, see the [Evolve Minimal Header](../../adr/adr-015-rollkit-minimal-header.md) specification.
+- The block manager loads the initial state from the local store and uses genesis if not found in the local store, when the node (re)starts.
+- The default mode for sequencer nodes is normal (not lazy).
+- The sequencer can produce empty blocks.
+- In lazy aggregation mode, the block manager maintains consistency with the DA layer by producing empty blocks at regular intervals, ensuring a 1:1 mapping between DA layer blocks and execution layer blocks.
+- The lazy aggregation mechanism uses a dual timer approach:
+  - A `blockTimer` that triggers block production when transactions are available
+  - A `lazyTimer` that ensures blocks are produced even during periods of inactivity
+- Empty batches are handled differently in lazy mode - instead of discarding them, they are returned with the `ErrNoBatch` error, allowing the caller to create empty blocks with proper timestamps.
+- Transaction notifications from the `Reaper` to the `Manager` are handled via a non-blocking notification channel (`txNotifyCh`) to prevent backpressure.
+- The block manager enforces `MaxPendingHeadersAndData` limit to prevent unbounded growth of pending queues during DA submission issues.
+- Headers and data are submitted separately to the DA layer using different namespaces, supporting the header/data separation architecture.
+- The block manager uses persistent caches for headers and data to track seen items and DA inclusion status.
+- Namespace migration is handled transparently, with automatic detection and state persistence to optimize future operations.
+- The system supports backward compatibility with legacy single-namespace deployments while transitioning to separate namespaces.
+- Gas price management includes automatic adjustment with `GasMultiplier` on DA submission retries.
+- The block manager uses persistent storage (disk) when the `root_dir` and `db_path` configuration parameters are specified in `config.yaml` file under the app directory. If these configuration parameters are not specified, the in-memory storage is used, which will not be persistent if the node stops.
+- The block manager does not re-apply blocks when they transition from soft confirmed to DA included status. The block is only marked DA included in the caches.
+- Header and data stores use separate prefixes for isolation in the underlying database.
+- The genesis `ChainID` is used to create separate `PubSubTopID`s for headers and data in go-header.
+- Block sync over the P2P network works only when a full node is connected to the P2P network by specifying the initial seeds to connect to via `P2PConfig.Seeds` configuration parameter when starting the full node.
+- Node's context is passed down to all components to support graceful shutdown and cancellation.
+- The block manager supports custom signature payload providers for headers, enabling flexible signing schemes.
+- The block manager supports the separation of header and data structures in Evolve. This allows for expanding the sequencing scheme beyond single sequencing and enables the use of a decentralized sequencer mode. For detailed information on this architecture, see the [Header and Data Separation ADR](../../adr/adr-014-header-and-data-separation.md).
+- The block manager processes blocks with a minimal header format, which is designed to eliminate dependency on CometBFT's header format and can be used to produce an execution layer tailored header if needed. For details on this header structure, see the [Evolve Minimal Header](../../adr/adr-015-rollkit-minimal-header.md) specification.
 
 ## Metrics
 

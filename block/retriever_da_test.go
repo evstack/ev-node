@@ -735,8 +735,8 @@ func TestRetrieveLoop_DAHeightIncrementsOnlyOnSuccess(t *testing.T) {
 	mockDAClient.AssertExpectations(t)
 }
 
-// TestIsValidSignedData covers valid, nil, wrong proposer, and invalid signature cases for isValidSignedData.
-func TestIsValidSignedData(t *testing.T) {
+// TestAssertValidSignedData covers valid, nil, wrong proposer, and invalid signature cases for assertValidSignedData.
+func TestAssertValidSignedData(t *testing.T) {
 	require := require.New(t)
 	privKey, _, err := crypto.GenerateKeyPair(crypto.Ed25519, 256)
 	require.NoError(err)
@@ -771,11 +771,11 @@ func TestIsValidSignedData(t *testing.T) {
 				Address: proposerAddr,
 			},
 		}
-		assert.NoError(t, m.isValidSignedData(signedData))
+		assert.NoError(t, m.assertValidSignedData(signedData))
 	})
 
 	t.Run("nil signed data", func(t *testing.T) {
-		assert.Error(t, m.isValidSignedData(nil))
+		assert.Error(t, m.assertValidSignedData(nil))
 	})
 
 	t.Run("nil Txs", func(t *testing.T) {
@@ -786,7 +786,7 @@ func TestIsValidSignedData(t *testing.T) {
 			},
 		}
 		signedData.Txs = nil
-		assert.Error(t, m.isValidSignedData(signedData))
+		assert.Error(t, m.assertValidSignedData(signedData))
 	})
 
 	t.Run("wrong proposer address", func(t *testing.T) {
@@ -808,7 +808,7 @@ func TestIsValidSignedData(t *testing.T) {
 				Address: wrongAddr,
 			},
 		}
-		assert.Error(t, m.isValidSignedData(signedData))
+		assert.Error(t, m.assertValidSignedData(signedData))
 	})
 
 	t.Run("invalid signature", func(t *testing.T) {
@@ -831,6 +831,6 @@ func TestIsValidSignedData(t *testing.T) {
 				Address: proposerAddr,
 			},
 		}
-		assert.Error(t, m.isValidSignedData(signedData))
+		assert.Error(t, m.assertValidSignedData(signedData))
 	})
 }

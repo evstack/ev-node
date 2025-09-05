@@ -255,7 +255,7 @@ func (m *Manager) tryDecodeData(bz []byte, daHeight uint64) *types.Data {
 	}
 
 	// Early validation to reject junk data
-	if err := m.isValidSignedData(&signedData); err != nil {
+	if err := m.assertValidSignedData(&signedData); err != nil {
 		m.logger.Debug().Uint64("daHeight", daHeight).Err(err).Msg("invalid data signature")
 		return nil
 	}
@@ -268,8 +268,8 @@ func (m *Manager) tryDecodeData(bz []byte, daHeight uint64) *types.Data {
 	return &signedData.Data
 }
 
-// isValidSignedData returns true if the data signature is valid for the expected sequencer.
-func (m *Manager) isValidSignedData(signedData *types.SignedData) error {
+// assertValidSignedData returns true if the data signature is valid for the expected sequencer.
+func (m *Manager) assertValidSignedData(signedData *types.SignedData) error {
 	if signedData == nil || signedData.Txs == nil {
 		return errors.New("empty signed data")
 	}
