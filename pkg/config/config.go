@@ -59,8 +59,8 @@ const (
 	// FlagDAStartHeight is a flag for specifying the data availability layer start height
 	FlagDAStartHeight = FlagPrefixEvnode + "da.start_height"
 	// FlagDANamespace is a flag for specifying the DA namespace ID
-	FlagDANamespace     = FlagPrefixEvnode + "da.namespace"
-	w                   // FlagDADataNamespace is a flag for specifying the DA data namespace ID
+	FlagDANamespace = FlagPrefixEvnode + "da.namespace"
+	// FlagDADataNamespace is a flag for specifying the DA data namespace ID
 	FlagDADataNamespace = FlagPrefixEvnode + "da.data_namespace"
 	// FlagDASubmitOptions is a flag for data availability submit options
 	FlagDASubmitOptions = FlagPrefixEvnode + "da.submit_options"
