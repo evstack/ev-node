@@ -23,8 +23,6 @@ import (
 )
 
 var (
-	// ErrNilPayloadStatus indicates that PayloadID returned by EVM was nil
-	ErrNilPayloadStatus = errors.New("nil payload status")
 	// ErrInvalidPayloadStatus indicates that EVM returned status != VALID
 	ErrInvalidPayloadStatus = errors.New("invalid payload status")
 )
@@ -200,7 +198,18 @@ func (c *EngineClient) ExecuteTxs(ctx context.Context, txs [][]byte, blockHeight
 		return nil, 0, fmt.Errorf("forkchoice update failed: %w", err)
 	}
 	if forkchoiceResult.PayloadID == nil {
-		return nil, 0, ErrNilPayloadStatus
+		c.logger.Error().
+			Str("status", string(forkchoiceResult.PayloadStatus.Status)).
+			Str("latestValidHash", forkchoiceResult.PayloadStatus.LatestValidHash.Hex()).
+			Interface("validationError", forkchoiceResult.PayloadStatus.ValidationError).
+			Interface("forkchoiceState", args).
+			Interface("payloadAttributes", evPayloadAttrs).
+			Uint64("blockHeight", blockHeight).
+			Msg("returned nil PayloadID")
+
+		return nil, 0, fmt.Errorf("returned nil PayloadID - (status: %s, latestValidHash: %s)",
+			forkchoiceResult.PayloadStatus.Status,
+			forkchoiceResult.PayloadStatus.LatestValidHash.Hex())
 	}
 
 	// get payload
