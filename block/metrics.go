@@ -124,7 +124,7 @@ func PrometheusMetrics(namespace string, labelsAndValues ...string) *Metrics {
 	}, labels).With(labelsAndValues...)
 
 	// Initialize channel buffer usage gauges
-	channelNames := []string{"header_in", "data_in", "header_store", "data_store", "retrieve", "da_includer", "tx_notify"}
+	channelNames := []string{"height_in", "header_store", "data_store", "retrieve", "da_includer", "tx_notify"}
 	for _, name := range channelNames {
 		m.ChannelBufferUsage[name] = prometheus.NewGaugeFrom(stdprometheus.GaugeOpts{
 			Namespace: namespace,
