@@ -27,7 +27,7 @@ func TestDefaultConfig(t *testing.T) {
 	assert.Equal(t, float64(-1), def.DA.GasPrice)
 	assert.Equal(t, float64(0), def.DA.GasMultiplier)
 	assert.Equal(t, "", def.DA.SubmitOptions)
-	assert.Equal(t, "", def.DA.Namespace)
+	assert.Equal(t, "rollkit-headers", def.DA.Namespace)
 	assert.Equal(t, 1*time.Second, def.Node.BlockTime.Duration)
 	assert.Equal(t, 6*time.Second, def.DA.BlockTime.Duration)
 	assert.Equal(t, uint64(0), def.DA.StartHeight)
