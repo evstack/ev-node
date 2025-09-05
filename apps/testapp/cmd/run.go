@@ -47,8 +47,8 @@ var RunCmd = &cobra.Command{
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 
-		headerNamespace := da.PrepareNamespace([]byte(nodeConfig.DA.HeaderNamespace))
-		dataNamespace := da.PrepareNamespace([]byte(nodeConfig.DA.DataNamespace))
+		headerNamespace := da.PrepareNamespace([]byte(nodeConfig.DA.GetNamespace()))
+		dataNamespace := da.PrepareNamespace([]byte(nodeConfig.DA.GetDataNamespace()))
 
 		logger.Info().Str("headerNamespace", hex.EncodeToString(headerNamespace)).Str("dataNamespace", hex.EncodeToString(dataNamespace)).Msg("namespaces")
 

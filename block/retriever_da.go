@@ -459,59 +459,34 @@ func (m *Manager) fetchBlobs(ctx context.Context, daHeight uint64) (coreda.Resul
 	// Record DA retrieval retry attempt
 	m.recordDAMetrics("retrieval", DAModeRetry)
 
-	// TODO: Remove this once XO resets their testnet
-	// Check if we should still try the old namespace for backward compatibility
-	if !m.namespaceMigrationCompleted.Load() {
-		// First, try the legacy namespace if we haven't completed migration
-		legacyNamespace := []byte(m.config.DA.Namespace)
-		if len(legacyNamespace) > 0 {
-			legacyRes := types.RetrieveWithHelpers(ctx, m.da, m.logger, daHeight, legacyNamespace)
-
-			// Handle legacy namespace errors
-			if legacyRes.Code == coreda.StatusError {
-				m.recordDAMetrics("retrieval", DAModeFail)
-				err = fmt.Errorf("failed to retrieve from legacy namespace: %s", legacyRes.Message)
-				return legacyRes, err
-			}
-
-			if legacyRes.Code == coreda.StatusHeightFromFuture {
-				err = fmt.Errorf("%w: height from future", coreda.ErrHeightFromFuture)
-				return coreda.ResultRetrieve{BaseResult: coreda.BaseResult{Code: coreda.StatusHeightFromFuture}}, err
-			}
-
-			// If legacy namespace has data, use it and return
-			if legacyRes.Code == coreda.StatusSuccess {
-				m.logger.Debug().Uint64("daHeight", daHeight).Msg("found data in legacy namespace")
-				return legacyRes, nil
-			}
-
-			// Legacy namespace returned not found, so try new namespaces
-			m.logger.Debug().Uint64("daHeight", daHeight).Msg("no data in legacy namespace, trying new namespaces")
-		}
-	}
-
 	// Try to retrieve from both header and data namespaces
-	headerNamespace := []byte(m.config.DA.GetHeaderNamespace())
+	headerNamespace := []byte(m.config.DA.GetNamespace())
 	dataNamespace := []byte(m.config.DA.GetDataNamespace())
 
 	// Retrieve headers
 	headerRes := types.RetrieveWithHelpers(ctx, m.da, m.logger, daHeight, headerNamespace)
 
+	// Both namespace are the same, so we are not fetching from data namespace
+	if bytes.Equal(headerNamespace, dataNamespace) {
+		err := m.validateBlobResponse(headerRes, daHeight)
+		return headerRes, err
+	}
+
 	// Retrieve data
 	dataRes := types.RetrieveWithHelpers(ctx, m.da, m.logger, daHeight, dataNamespace)
 
 	// Combine results or handle errors appropriately
-	if headerRes.Code == coreda.StatusError && dataRes.Code == coreda.StatusError {
-		// Both failed
-		m.recordDAMetrics("retrieval", DAModeFail)
-		err = fmt.Errorf("failed to retrieve from both namespaces - headers: %s, data: %s", headerRes.Message, dataRes.Message)
-		return headerRes, err
+	errHeader := m.validateBlobResponse(headerRes, daHeight)
+	errData := m.validateBlobResponse(dataRes, daHeight)
+
+	if errors.Is(errHeader, coreda.ErrHeightFromFuture) || errors.Is(errData, coreda.ErrHeightFromFuture) {
+		return coreda.ResultRetrieve{
+			BaseResult: coreda.BaseResult{Code: coreda.StatusHeightFromFuture},
+		}, fmt.Errorf("%w: height from future", coreda.ErrHeightFromFuture)
 	}
 
-	if headerRes.Code == coreda.StatusHeightFromFuture || dataRes.Code == coreda.StatusHeightFromFuture {
-		// At least one is from future
-		err = fmt.Errorf("%w: height from future", coreda.ErrHeightFromFuture)
-		return coreda.ResultRetrieve{BaseResult: coreda.BaseResult{Code: coreda.StatusHeightFromFuture}}, err
+	if errors.Is(errHeader, ErrRetrievalFailed) && errors.Is(errData, ErrRetrievalFailed) {
+		return headerRes, errHeader
 	}
 
 	// Combine successful results
@@ -539,28 +514,25 @@ func (m *Manager) fetchBlobs(ctx context.Context, daHeight uint64) (coreda.Resul
 		}
 	}
 
-	// Handle not found cases and migration completion
-	if headerRes.Code == coreda.StatusNotFound && dataRes.Code == coreda.StatusNotFound {
-		combinedResult.Code = coreda.StatusNotFound
-		combinedResult.Message = "no blobs found in either namespace"
+	return combinedResult, err
+}
 
-		// If we haven't completed migration and found no data in new namespaces,
-		// mark migration as complete to avoid future legacy namespace checks
-		if !m.namespaceMigrationCompleted.Load() {
-			if err := m.setNamespaceMigrationCompleted(ctx); err != nil {
-				m.logger.Error().Err(err).Msg("failed to mark namespace migration as completed")
-			} else {
-				m.logger.Info().Uint64("daHeight", daHeight).Msg("marked namespace migration as completed - no more legacy namespace checks")
-			}
-		}
-	} else if (headerRes.Code == coreda.StatusSuccess || dataRes.Code == coreda.StatusSuccess) && !m.namespaceMigrationCompleted.Load() {
-		// Found data in new namespaces, mark migration as complete
-		if err := m.setNamespaceMigrationCompleted(ctx); err != nil {
-			m.logger.Error().Err(err).Msg("failed to mark namespace migration as completed")
-		} else {
-			m.logger.Info().Uint64("daHeight", daHeight).Msg("found data in new namespaces - marked migration as completed")
-		}
+// ErrRetrievalFailed is returned when a namespace retrieval fails.
+var ErrRetrievalFailed = errors.New("failed to retrieve namespaces")
+
+func (m *Manager) validateBlobResponse(res coreda.ResultRetrieve, daHeight uint64) error {
+	if res.Code == coreda.StatusError {
+		m.recordDAMetrics("retrieval", DAModeFail)
+		return fmt.Errorf("%w: %s", ErrRetrievalFailed, res.Message)
 	}
 
-	return combinedResult, err
+	if res.Code == coreda.StatusHeightFromFuture {
+		return fmt.Errorf("%w: height from future", coreda.ErrHeightFromFuture)
+	}
+
+	if res.Code == coreda.StatusSuccess {
+		m.logger.Debug().Uint64("daHeight", daHeight).Msg("found data in namespace")
+	}
+
+	return nil
 }

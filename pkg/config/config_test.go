@@ -17,6 +17,8 @@ import (
 func TestDefaultConfig(t *testing.T) {
 	// Test that default config has expected values
 	def := DefaultConfig
+	def.RootDir = t.TempDir()
+
 	assert.Equal(t, "data", def.DBPath)
 	assert.Equal(t, false, def.Node.Aggregator)
 	assert.Equal(t, false, def.Node.Light)
@@ -25,7 +27,7 @@ func TestDefaultConfig(t *testing.T) {
 	assert.Equal(t, float64(-1), def.DA.GasPrice)
 	assert.Equal(t, float64(0), def.DA.GasMultiplier)
 	assert.Equal(t, "", def.DA.SubmitOptions)
-	assert.Equal(t, "", def.DA.Namespace)
+	assert.Equal(t, "rollkit-headers", def.DA.Namespace)
 	assert.Equal(t, 1*time.Second, def.Node.BlockTime.Duration)
 	assert.Equal(t, 6*time.Second, def.DA.BlockTime.Duration)
 	assert.Equal(t, uint64(0), def.DA.StartHeight)
@@ -37,6 +39,7 @@ func TestDefaultConfig(t *testing.T) {
 	assert.Equal(t, "file", def.Signer.SignerType)
 	assert.Equal(t, "config", def.Signer.SignerPath)
 	assert.Equal(t, "127.0.0.1:7331", def.RPC.Address)
+	assert.NoError(t, def.Validate())
 }
 
 func TestAddFlags(t *testing.T) {
@@ -101,7 +104,7 @@ func TestAddFlags(t *testing.T) {
 	assertFlagValue(t, flags, FlagRPCAddress, DefaultConfig.RPC.Address)
 
 	// Count the number of flags we're explicitly checking
-	expectedFlagCount := 38 // Update this number if you add more flag checks above
+	expectedFlagCount := 37 // Update this number if you add more flag checks above
 
 	// Get the actual number of flags (both regular and persistent)
 	actualFlagCount := 0
@@ -277,29 +280,29 @@ signer:
 	require.Equal(t, "something/config", cfgFromViper.Signer.SignerPath, "Signer.SignerPath should match YAML")
 }
 
-func TestDAConfig_GetHeaderNamespace(t *testing.T) {
+func TestDAConfig_GetDataNamespace(t *testing.T) {
 	tests := []struct {
 		name              string
-		headerNamespace   string
-		legacyNamespace   string
+		defaultNamespace  string
+		dataNamespace     string
 		expectedNamespace string
 	}{
 		{
-			name:              "HeaderNamespace set",
-			headerNamespace:   "custom-headers",
-			legacyNamespace:   "legacy-namespace",
-			expectedNamespace: "custom-headers",
+			name:              "DataNamespace set",
+			dataNamespace:     "custom-data",
+			defaultNamespace:  "namespace",
+			expectedNamespace: "custom-data",
 		},
 		{
-			name:              "HeaderNamespace empty, fallback to legacy",
-			headerNamespace:   "",
-			legacyNamespace:   "legacy-namespace",
-			expectedNamespace: "legacy-namespace",
+			name:              "DataNamespace empty, fallback to default namespace",
+			dataNamespace:     "",
+			defaultNamespace:  "namespace",
+			expectedNamespace: "namespace",
 		},
 		{
-			name:              "Both empty, use default",
-			headerNamespace:   "",
-			legacyNamespace:   "",
+			name:              "Both empty, use default value from default namespace",
+			dataNamespace:     "",
+			defaultNamespace:  "",
 			expectedNamespace: "rollkit-headers",
 		},
 	}
@@ -307,48 +310,8 @@ func TestDAConfig_GetHeaderNamespace(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			daConfig := &DAConfig{
-				HeaderNamespace: tt.headerNamespace,
-				Namespace:       tt.legacyNamespace,
-			}
-
-			result := daConfig.GetHeaderNamespace()
-			assert.Equal(t, tt.expectedNamespace, result)
-		})
-	}
-}
-
-func TestDAConfig_GetDataNamespace(t *testing.T) {
-	tests := []struct {
-		name              string
-		dataNamespace     string
-		legacyNamespace   string
-		expectedNamespace string
-	}{
-		{
-			name:              "DataNamespace set",
-			dataNamespace:     "custom-data",
-			legacyNamespace:   "legacy-namespace",
-			expectedNamespace: "custom-data",
-		},
-		{
-			name:              "DataNamespace empty, fallback to legacy",
-			dataNamespace:     "",
-			legacyNamespace:   "legacy-namespace",
-			expectedNamespace: "legacy-namespace",
-		},
-		{
-			name:              "Both empty, use default",
-			dataNamespace:     "",
-			legacyNamespace:   "",
-			expectedNamespace: "rollkit-data",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			daConfig := &DAConfig{
 				DataNamespace: tt.dataNamespace,
-				Namespace:     tt.legacyNamespace,
+				Namespace:     tt.defaultNamespace,
 			}
 
 			result := daConfig.GetDataNamespace()

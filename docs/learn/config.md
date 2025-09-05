@@ -68,7 +68,7 @@ Evolve supports running nodes that sync exclusively from the Data Availability (
 
    ```yaml
    p2p:
-     peers: ""  # Empty or omit this field entirely
+     peers: "" # Empty or omit this field entirely
    ```
 
 2. **Configure DA connection** (required):
@@ -111,13 +111,13 @@ These are fundamental settings for your Evolve node.
 The root directory where Evolve stores its data, including the database and configuration files. This is a foundational setting that dictates where all other file paths are resolved from.
 
 **YAML:**
-This option is not set within the YAML configuration file itself, as it specifies the location *of* the configuration file and other application data.
+This option is not set within the YAML configuration file itself, as it specifies the location _of_ the configuration file and other application data.
 
 **Command-line Flag:**
 `--home <path>`
-*Example:* `--home /mnt/data/evolve_node`
-*Default:* `~/.evolve` (or a directory derived from the application name if `defaultHome` is customized).
-*Constant:* `FlagRootDir`
+_Example:_ `--home /mnt/data/evolve_node`
+_Default:_ `~/.evolve` (or a directory derived from the application name if `defaultHome` is customized).
+_Constant:_ `FlagRootDir`
 
 ### Database Path
 
@@ -133,9 +133,9 @@ db_path: "data"
 
 **Command-line Flag:**
 `--rollkit.db_path <path>`
-*Example:* `--rollkit.db_path "node_db"`
-*Default:* `"data"`
-*Constant:* `FlagDBPath`
+_Example:_ `--rollkit.db_path "node_db"`
+_Default:_ `"data"`
+_Constant:_ `FlagDBPath`
 
 ### Chain ID
 
@@ -151,9 +151,9 @@ chain_id: "my-evolve-chain"
 
 **Command-line Flag:**
 `--chain_id <string>`
-*Example:* `--chain_id "super_rollup_testnet_v1"`
-*Default:* `"evolve"`
-*Constant:* `FlagChainID`
+_Example:_ `--chain_id "super_rollup_testnet_v1"`
+_Default:_ `"evolve"`
+_Constant:_ `FlagChainID`
 
 ## Node Configuration (`node`)
 
@@ -180,9 +180,9 @@ node:
 
 **Command-line Flag:**
 `--rollkit.node.aggregator` (boolean, presence enables it)
-*Example:* `--rollkit.node.aggregator`
-*Default:* `false`
-*Constant:* `FlagAggregator`
+_Example:_ `--rollkit.node.aggregator`
+_Default:_ `false`
+_Constant:_ `FlagAggregator`
 
 ### Light Client Mode
 
@@ -198,9 +198,9 @@ node:
 
 **Command-line Flag:**
 `--rollkit.node.light` (boolean, presence enables it)
-*Example:* `--rollkit.node.light`
-*Default:* `false`
-*Constant:* `FlagLight`
+_Example:_ `--rollkit.node.light`
+_Default:_ `false`
+_Constant:_ `FlagLight`
 
 ### Block Time
 
@@ -216,9 +216,9 @@ node:
 
 **Command-line Flag:**
 `--rollkit.node.block_time <duration>`
-*Example:* `--rollkit.node.block_time 2s`
-*Default:* `"1s"`
-*Constant:* `FlagBlockTime`
+_Example:_ `--rollkit.node.block_time 2s`
+_Default:_ `"1s"`
+_Constant:_ `FlagBlockTime`
 
 ### Maximum Pending Blocks
 
@@ -234,9 +234,9 @@ node:
 
 **Command-line Flag:**
 `--rollkit.node.max_pending_blocks <uint64>`
-*Example:* `--rollkit.node.max_pending_blocks 50`
-*Default:* `0` (no limit)
-*Constant:* `FlagMaxPendingBlocks`
+_Example:_ `--rollkit.node.max_pending_blocks 50`
+_Default:_ `0` (no limit)
+_Constant:_ `FlagMaxPendingBlocks`
 
 ### Lazy Mode (Lazy Aggregator)
 
@@ -252,9 +252,9 @@ node:
 
 **Command-line Flag:**
 `--rollkit.node.lazy_mode` (boolean, presence enables it)
-*Example:* `--rollkit.node.lazy_mode`
-*Default:* `false`
-*Constant:* `FlagLazyAggregator`
+_Example:_ `--rollkit.node.lazy_mode`
+_Default:_ `false`
+_Constant:_ `FlagLazyAggregator`
 
 ### Lazy Block Interval
 
@@ -270,9 +270,9 @@ node:
 
 **Command-line Flag:**
 `--rollkit.node.lazy_block_interval <duration>`
-*Example:* `--rollkit.node.lazy_block_interval 1m`
-*Default:* `"30s"`
-*Constant:* `FlagLazyBlockTime`
+_Example:_ `--rollkit.node.lazy_block_interval 1m`
+_Default:_ `"30s"`
+_Constant:_ `FlagLazyBlockTime`
 
 ### Trusted Hash
 
@@ -288,9 +288,9 @@ node:
 
 **Command-line Flag:**
 `--rollkit.node.trusted_hash <string>`
-*Example:* `--rollkit.node.trusted_hash ABCDEF012345...`
-*Default:* `""` (empty, sync from genesis)
-*Constant:* `FlagTrustedHash`
+_Example:_ `--rollkit.node.trusted_hash ABCDEF012345...`
+_Default:_ `""` (empty, sync from genesis)
+_Constant:_ `FlagTrustedHash`
 
 ## Data Availability Configuration (`da`)
 
@@ -317,9 +317,9 @@ da:
 
 **Command-line Flag:**
 `--rollkit.da.address <string>`
-*Example:* `--rollkit.da.address 192.168.1.100:26659`
-*Default:* `""` (empty, must be configured if DA is used)
-*Constant:* `FlagDAAddress`
+_Example:_ `--rollkit.da.address 192.168.1.100:26659`
+_Default:_ `""` (empty, must be configured if DA is used)
+_Constant:_ `FlagDAAddress`
 
 ### DA Authentication Token
 
@@ -335,9 +335,9 @@ da:
 
 **Command-line Flag:**
 `--rollkit.da.auth_token <string>`
-*Example:* `--rollkit.da.auth_token mysecrettoken`
-*Default:* `""` (empty)
-*Constant:* `FlagDAAuthToken`
+_Example:_ `--rollkit.da.auth_token mysecrettoken`
+_Default:_ `""` (empty)
+_Constant:_ `FlagDAAuthToken`
 
 ### DA Gas Price
 
@@ -353,9 +353,9 @@ da:
 
 **Command-line Flag:**
 `--rollkit.da.gas_price <float64>`
-*Example:* `--rollkit.da.gas_price 0.05`
-*Default:* `-1` (automatic)
-*Constant:* `FlagDAGasPrice`
+_Example:_ `--rollkit.da.gas_price 0.05`
+_Default:_ `-1` (automatic)
+_Constant:_ `FlagDAGasPrice`
 
 ### DA Gas Multiplier
 
@@ -371,9 +371,9 @@ da:
 
 **Command-line Flag:**
 `--rollkit.da.gas_multiplier <float64>`
-*Example:* `--rollkit.da.gas_multiplier 1.5`
-*Default:* `1.0` (no multiplication)
-*Constant:* `FlagDAGasMultiplier`
+_Example:_ `--rollkit.da.gas_multiplier 1.5`
+_Default:_ `1.0` (no multiplication)
+_Constant:_ `FlagDAGasMultiplier`
 
 ### DA Submit Options
 
@@ -389,47 +389,29 @@ da:
 
 **Command-line Flag:**
 `--rollkit.da.submit_options <string>`
-*Example:* `--rollkit.da.submit_options '{"custom_param":true}'`
-*Default:* `""` (empty)
-*Constant:* `FlagDASubmitOptions`
+_Example:_ `--rollkit.da.submit_options '{"custom_param":true}'`
+_Default:_ `""` (empty)
+_Constant:_ `FlagDASubmitOptions`
 
 ### DA Namespace
 
 **Description:**
 The namespace ID used when submitting blobs (block data) to the DA layer. This helps segregate data from different chains or applications on a shared DA layer.
 
-**Note:** This configuration is deprecated in favor of separate header and data namespaces (see below). If only `namespace` is provided, it will be used for both headers and data for backward compatibility.
+**Note:** If only `namespace` is provided, it will be used for both headers and data, otherwise the `data_namespace` will be used for data. Doing so allows speeding up light clients.
 
 **YAML:**
 
 ```yaml
 da:
-  namespace: "MY_UNIQUE_NAMESPACE_ID"  # Deprecated - use header_namespace and data_namespace instead
+  namespace: "MY_UNIQUE_NAMESPACE_ID"
 ```
 
 **Command-line Flag:**
 `--rollkit.da.namespace <string>`
-*Example:* `--rollkit.da.namespace 0x1234567890abcdef`
-*Default:* `""` (empty)
-*Constant:* `FlagDANamespace`
-
-### DA Header Namespace
-
-**Description:**
-The namespace ID specifically for submitting block headers to the DA layer. Headers are submitted separately from transaction data. The namespace value is encoded by the node to ensure proper formatting and compatibility with the DA layer.
-
-**YAML:**
-
-```yaml
-da:
-  header_namespace: "HEADER_NAMESPACE_ID"
-```
-
-**Command-line Flag:**
-`--rollkit.da.header_namespace <string>`
-*Example:* `--rollkit.da.header_namespace my_header_namespace`
-*Default:* Falls back to `namespace` if not set
-*Constant:* `FlagDAHeaderNamespace`
+_Example:_ `--rollkit.da.namespace 0x1234567890abcdef`
+_Default:_ `""` (empty)
+_Constant:_ `FlagDANamespace`
 
 ### DA Data Namespace
 
@@ -445,9 +427,9 @@ da:
 
 **Command-line Flag:**
 `--rollkit.da.data_namespace <string>`
-*Example:* `--rollkit.da.data_namespace my_data_namespace`
-*Default:* Falls back to `namespace` if not set
-*Constant:* `FlagDADataNamespace`
+_Example:_ `--rollkit.da.data_namespace my_data_namespace`
+_Default:_ Falls back to `namespace` if not set
+_Constant:_ `FlagDADataNamespace`
 
 ### DA Block Time
 
@@ -467,9 +449,9 @@ da:
 
 **Command-line Flag:**
 `--rollkit.da.block_time <duration>`
-*Example:* `--rollkit.da.block_time 12s`
-*Default:* `"6s"`
-*Constant:* `FlagDABlockTime`
+_Example:_ `--rollkit.da.block_time 12s`
+_Default:_ `"6s"`
+_Constant:_ `FlagDABlockTime`
 
 ### DA Start Height
 
@@ -485,9 +467,9 @@ da:
 
 **Command-line Flag:**
 `--rollkit.da.start_height <uint64>`
-*Example:* `--rollkit.da.start_height 500000`
-*Default:* `0` (sync from the beginning)
-*Constant:* `FlagDAStartHeight`
+_Example:_ `--rollkit.da.start_height 500000`
+_Default:_ `0` (sync from the beginning)
+_Constant:_ `FlagDAStartHeight`
 
 ### DA Mempool TTL
 
@@ -503,9 +485,9 @@ da:
 
 **Command-line Flag:**
 `--rollkit.da.mempool_ttl <uint64>`
-*Example:* `--rollkit.da.mempool_ttl 30`
-*Default:* `20`
-*Constant:* `FlagDAMempoolTTL`
+_Example:_ `--rollkit.da.mempool_ttl 30`
+_Default:_ `20`
+_Constant:_ `FlagDAMempoolTTL`
 
 ## P2P Configuration (`p2p`)
 
@@ -532,9 +514,9 @@ p2p:
 
 **Command-line Flag:**
 `--rollkit.p2p.listen_address <string>`
-*Example:* `--rollkit.p2p.listen_address /ip4/127.0.0.1/tcp/26656`
-*Default:* `"/ip4/0.0.0.0/tcp/7676"`
-*Constant:* `FlagP2PListenAddress`
+_Example:_ `--rollkit.p2p.listen_address /ip4/127.0.0.1/tcp/26656`
+_Default:_ `"/ip4/0.0.0.0/tcp/7676"`
+_Constant:_ `FlagP2PListenAddress`
 
 ### P2P Peers
 
@@ -554,9 +536,9 @@ p2p:
 
 **Command-line Flag:**
 `--rollkit.p2p.peers <string>`
-*Example:* `--rollkit.p2p.peers /dns4/seed.example.com/tcp/26656/p2p/12D3KooW...`
-*Default:* `""` (empty - enables DA-only sync mode)
-*Constant:* `FlagP2PPeers`
+_Example:_ `--rollkit.p2p.peers /dns4/seed.example.com/tcp/26656/p2p/12D3KooW...`
+_Default:_ `""` (empty - enables DA-only sync mode)
+_Constant:_ `FlagP2PPeers`
 
 ### P2P Blocked Peers
 
@@ -572,9 +554,9 @@ p2p:
 
 **Command-line Flag:**
 `--rollkit.p2p.blocked_peers <string>`
-*Example:* `--rollkit.p2p.blocked_peers 12D3KooW...,12D3KooX...`
-*Default:* `""` (empty)
-*Constant:* `FlagP2PBlockedPeers`
+_Example:_ `--rollkit.p2p.blocked_peers 12D3KooW...,12D3KooX...`
+_Default:_ `""` (empty)
+_Constant:_ `FlagP2PBlockedPeers`
 
 ### P2P Allowed Peers
 
@@ -590,9 +572,9 @@ p2p:
 
 **Command-line Flag:**
 `--rollkit.p2p.allowed_peers <string>`
-*Example:* `--rollkit.p2p.allowed_peers 12D3KooY...,12D3KooZ...`
-*Default:* `""` (empty, allow all unless blocked)
-*Constant:* `FlagP2PAllowedPeers`
+_Example:_ `--rollkit.p2p.allowed_peers 12D3KooY...,12D3KooZ...`
+_Default:_ `""` (empty, allow all unless blocked)
+_Constant:_ `FlagP2PAllowedPeers`
 
 ## RPC Configuration (`rpc`)
 
@@ -619,9 +601,9 @@ rpc:
 
 **Command-line Flag:**
 `--rollkit.rpc.address <string>`
-*Example:* `--rollkit.rpc.address 0.0.0.0:26657`
-*Default:* `"127.0.0.1:7331"`
-*Constant:* `FlagRPCAddress`
+_Example:_ `--rollkit.rpc.address 0.0.0.0:26657`
+_Default:_ `"127.0.0.1:7331"`
+_Constant:_ `FlagRPCAddress`
 
 ### Enable DA Visualization
 
@@ -637,9 +619,9 @@ rpc:
 
 **Command-line Flag:**
 `--rollkit.rpc.enable_da_visualization` (boolean, presence enables it)
-*Example:* `--rollkit.rpc.enable_da_visualization`
-*Default:* `false`
-*Constant:* `FlagRPCEnableDAVisualization`
+_Example:_ `--rollkit.rpc.enable_da_visualization`
+_Default:_ `false`
+_Constant:_ `FlagRPCEnableDAVisualization`
 
 See the [DA Visualizer Guide](../guides/da/da-visualizer.md) for detailed information on using this feature.
 
@@ -668,9 +650,9 @@ instrumentation:
 
 **Command-line Flag:**
 `--rollkit.instrumentation.prometheus` (boolean, presence enables it)
-*Example:* `--rollkit.instrumentation.prometheus`
-*Default:* `false`
-*Constant:* `FlagPrometheus`
+_Example:_ `--rollkit.instrumentation.prometheus`
+_Default:_ `false`
+_Constant:_ `FlagPrometheus`
 
 ### Prometheus Listen Address
 
@@ -688,9 +670,9 @@ instrumentation:
 
 **Command-line Flag:**
 `--rollkit.instrumentation.prometheus_listen_addr <string>`
-*Example:* `--rollkit.instrumentation.prometheus_listen_addr 0.0.0.0:9090`
-*Default:* `":2112"`
-*Constant:* `FlagPrometheusListenAddr`
+_Example:_ `--rollkit.instrumentation.prometheus_listen_addr 0.0.0.0:9090`
+_Default:_ `":2112"`
+_Constant:_ `FlagPrometheusListenAddr`
 
 ### Maximum Open Connections
 
@@ -706,9 +688,9 @@ instrumentation:
 
 **Command-line Flag:**
 `--rollkit.instrumentation.max_open_connections <int>`
-*Example:* `--rollkit.instrumentation.max_open_connections 50`
-*Default:* (Refer to `DefaultInstrumentationConfig()` in code, typically a reasonable number like 100)
-*Constant:* `FlagMaxOpenConnections`
+_Example:_ `--rollkit.instrumentation.max_open_connections 50`
+_Default:_ (Refer to `DefaultInstrumentationConfig()` in code, typically a reasonable number like 100)
+_Constant:_ `FlagMaxOpenConnections`
 
 ### Enable Pprof Profiling
 
@@ -724,9 +706,9 @@ instrumentation:
 
 **Command-line Flag:**
 `--rollkit.instrumentation.pprof` (boolean, presence enables it)
-*Example:* `--rollkit.instrumentation.pprof`
-*Default:* `false`
-*Constant:* `FlagPprof`
+_Example:_ `--rollkit.instrumentation.pprof`
+_Default:_ `false`
+_Constant:_ `FlagPprof`
 
 ### Pprof Listen Address
 
@@ -742,9 +724,9 @@ instrumentation:
 
 **Command-line Flag:**
 `--rollkit.instrumentation.pprof_listen_addr <string>`
-*Example:* `--rollkit.instrumentation.pprof_listen_addr 0.0.0.0:6061`
-*Default:* `"localhost:6060"`
-*Constant:* `FlagPprofListenAddr`
+_Example:_ `--rollkit.instrumentation.pprof_listen_addr 0.0.0.0:6061`
+_Default:_ `"localhost:6060"`
+_Constant:_ `FlagPprofListenAddr`
 
 ## Logging Configuration (`log`)
 
@@ -771,9 +753,9 @@ log:
 
 **Command-line Flag:**
 `--log.level <string>` (Note: some applications might use a different flag name like `--log_level`)
-*Example:* `--log.level debug`
-*Default:* `"info"`
-*Constant:* `FlagLogLevel` (value: "evolve.log.level", but often overridden by global app flags)
+_Example:_ `--log.level debug`
+_Default:_ `"info"`
+_Constant:_ `FlagLogLevel` (value: "evolve.log.level", but often overridden by global app flags)
 
 ### Log Format
 
@@ -789,9 +771,9 @@ log:
 
 **Command-line Flag:**
 `--log.format <string>` (Note: some applications might use a different flag name like `--log_format`)
-*Example:* `--log.format json`
-*Default:* `"text"`
-*Constant:* `FlagLogFormat` (value: "evolve.log.format", but often overridden by global app flags)
+_Example:_ `--log.format json`
+_Default:_ `"text"`
+_Constant:_ `FlagLogFormat` (value: "evolve.log.format", but often overridden by global app flags)
 
 ### Log Trace (Stack Traces)
 
@@ -807,9 +789,9 @@ log:
 
 **Command-line Flag:**
 `--log.trace` (boolean, presence enables it; Note: some applications might use a different flag name like `--log_trace`)
-*Example:* `--log.trace`
-*Default:* `false`
-*Constant:* `FlagLogTrace` (value: "evolve.log.trace", but often overridden by global app flags)
+_Example:_ `--log.trace`
+_Default:_ `false`
+_Constant:_ `FlagLogTrace` (value: "evolve.log.trace", but often overridden by global app flags)
 
 ## Signer Configuration (`signer`)
 
@@ -836,9 +818,9 @@ signer:
 
 **Command-line Flag:**
 `--rollkit.signer.type <string>`
-*Example:* `--rollkit.signer.type grpc`
-*Default:* (Depends on application, often "file" or none if not an aggregator)
-*Constant:* `FlagSignerType`
+_Example:_ `--rollkit.signer.type grpc`
+_Default:_ (Depends on application, often "file" or none if not an aggregator)
+_Constant:_ `FlagSignerType`
 
 ### Signer Path
 
@@ -855,9 +837,9 @@ signer:
 
 **Command-line Flag:**
 `--rollkit.signer.path <string>`
-*Example:* `--rollkit.signer.path ./keys/mykey.pem`
-*Default:* (Depends on application)
-*Constant:* `FlagSignerPath`
+_Example:_ `--rollkit.signer.path ./keys/mykey.pem`
+_Default:_ (Depends on application)
+_Constant:_ `FlagSignerPath`
 
 ### Signer Passphrase
 
@@ -869,10 +851,10 @@ This is typically not stored in the YAML file for security reasons but provided 
 
 **Command-line Flag:**
 `--rollkit.signer.passphrase <string>`
-*Example:* `--rollkit.signer.passphrase "mysecretpassphrase"`
-*Default:* `""` (empty)
-*Constant:* `FlagSignerPassphrase`
-*Note:* Be cautious with providing passphrases directly on the command line in shared environments due to history logging. Environment variables or secure input methods are often preferred.
+_Example:_ `--rollkit.signer.passphrase "mysecretpassphrase"`
+_Default:_ `""` (empty)
+_Constant:_ `FlagSignerPassphrase`
+_Note:_ Be cautious with providing passphrases directly on the command line in shared environments due to history logging. Environment variables or secure input methods are often preferred.
 
 ---
 

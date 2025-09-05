@@ -158,7 +158,7 @@ func (m *Manager) submitHeadersToDA(ctx context.Context, headersToSubmit []*type
 			m.sendNonBlockingSignalToDAIncluderCh()
 		},
 		"header",
-		[]byte(m.config.DA.GetHeaderNamespace()),
+		[]byte(m.config.DA.GetNamespace()),
 	)
 }
 
