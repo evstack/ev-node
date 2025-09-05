@@ -39,6 +39,8 @@ func TestDefaultConfig(t *testing.T) {
 	assert.Equal(t, "file", def.Signer.SignerType)
 	assert.Equal(t, "config", def.Signer.SignerPath)
 	assert.Equal(t, "127.0.0.1:7331", def.RPC.Address)
+
+	def.DA.Namespace = "test"
 	assert.NoError(t, def.Validate())
 }
 
@@ -136,6 +138,7 @@ node:
 
 da:
   address: "http://yaml-da:26657"
+  namespace: "test"
 
 signer:
   signer_type: "file"

@@ -36,10 +36,6 @@ func ParseConfig(cmd *cobra.Command) (rollconf.Config, error) {
 		return rollconf.Config{}, fmt.Errorf("failed to validate node config: %w", err)
 	}
 
-	if nodeConfig.DA.Namespace == "" {
-		return rollconf.Config{}, errors.New("namespace cannot be empty")
-	}
-
 	return nodeConfig, nil
 }
 

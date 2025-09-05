@@ -235,6 +235,10 @@ func (c *Config) Validate() error {
 		return fmt.Errorf("could not create directory %q: %w", fullDir, err)
 	}
 
+	if c.DA.Namespace == "" {
+		return errors.New("data namespace cannot be empty")
+	}
+
 	return nil
 }
 
