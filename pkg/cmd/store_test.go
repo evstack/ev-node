@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/evstack/ev-node/pkg/config"
 	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/require"
 )
@@ -60,7 +61,8 @@ func TestStoreUnsafeCleanCmd(t *testing.T) {
 
 	// Create a root command and add the subcommand
 	rootCmd := &cobra.Command{Use: "root"}
-	rootCmd.PersistentFlags().String("home", tempDir, "root directory")
+	rootCmd.PersistentFlags().String(config.FlagRootDir, tempDir, "root directory")
+	rootCmd.PersistentFlags().String(config.FlagDANamespace, "ev-namespace", "DA Namespace")
 	rootCmd.AddCommand(StoreUnsafeCleanCmd)
 
 	// Capture output

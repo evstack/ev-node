@@ -159,7 +159,7 @@ func TestAggregatorFlagInvariants(t *testing.T) {
 	validValues := []bool{false, true, true}
 
 	for i, flags := range flagVariants {
-		args := append([]string{"start"}, flags...)
+		args := append([]string{"start", "--evnode.da.namespace=ev-namespace"}, flags...)
 
 		executor, sequencer, dac, keyProvider, p2pClient, ds, stopDAHeightTicker := createTestComponents(context.Background(), t)
 		defer stopDAHeightTicker()
@@ -209,9 +209,9 @@ func TestDefaultAggregatorValue(t *testing.T) {
 			// Create a new command without specifying any flags
 			var args []string
 			if tc.expected {
-				args = []string{"start", "--rollkit.node.aggregator"}
+				args = []string{"start", "--evnode.node.aggregator", "--evnode.da.namespace=ev-namespace"}
 			} else {
-				args = []string{"start", "--rollkit.node.aggregator=false"}
+				args = []string{"start", "--evnode.da.namespace=ev-namespace"}
 			}
 
 			if err := newRunNodeCmd.ParseFlags(args); err != nil {
@@ -277,6 +277,7 @@ func TestCentralizedAddresses(t *testing.T) {
 	args := []string{
 		"start",
 		"--rollkit.da.address=http://central-da:26657",
+		"--rollkit.da.namespace=ev-namespace",
 	}
 
 	executor, sequencer, dac, keyProvider, p2pClient, ds, stopDAHeightTicker := createTestComponents(context.Background(), t)

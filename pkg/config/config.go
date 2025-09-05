@@ -168,7 +168,7 @@ func (d *DAConfig) GetNamespace() string {
 	if d.Namespace != "" {
 		return d.Namespace
 	}
-	return "rollkit-headers" // Default value
+	return "" // Default value is empty string
 }
 
 // GetDataNamespace returns the namespace for data submissions, falling back to the header namespace if not set
@@ -227,12 +227,16 @@ type RPCConfig struct {
 // It creates the directory if it does not exist.
 func (c *Config) Validate() error {
 	if c.RootDir == "" {
-		return fmt.Errorf("root directory cannot be empty")
+		return errors.New("root directory cannot be empty")
 	}
 
 	fullDir := filepath.Dir(c.ConfigPath())
 	if err := os.MkdirAll(fullDir, 0o750); err != nil {
 		return fmt.Errorf("could not create directory %q: %w", fullDir, err)
+	}
+
+	if c.DA.Namespace == "" {
+		return errors.New("data namespace cannot be empty")
 	}
 
 	return nil

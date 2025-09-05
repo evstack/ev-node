@@ -225,7 +225,7 @@ func TestLegacyNamespaceDetection(t *testing.T) {
 			if tt.namespace != "" {
 				assert.Equal(t, tt.namespace, headerNS)
 			} else {
-				assert.Equal(t, "rollkit-headers", headerNS) // Default
+				assert.Equal(t, "", headerNS) // Default
 			}
 
 			if tt.dataNamespace != "" {
@@ -233,7 +233,7 @@ func TestLegacyNamespaceDetection(t *testing.T) {
 			} else if tt.namespace != "" {
 				assert.Equal(t, tt.namespace, dataNS)
 			} else {
-				assert.Equal(t, "rollkit-headers", dataNS) // Falls back to default namespace
+				assert.Equal(t, "", dataNS) // Falls back to default namespace
 			}
 
 			// Test actual behavior in fetchBlobs

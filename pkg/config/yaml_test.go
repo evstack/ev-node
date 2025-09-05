@@ -64,6 +64,7 @@ func TestYamlConfigOperations(t *testing.T) {
 
 			cfg, err := Load(cmd)
 			require.NoError(t, err)
+			cfg.DA.Namespace = "test"
 			require.NoError(t, cfg.Validate())
 
 			// Validate the config
