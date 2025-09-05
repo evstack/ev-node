@@ -1127,22 +1127,3 @@ func (m *Manager) SaveCache() error {
 
 	return nil
 }
-
-// isValidSignedData returns true if the data signature is valid for the expected sequencer.
-func (m *Manager) isValidSignedData(signedData *types.SignedData) bool {
-	if signedData == nil || signedData.Txs == nil {
-		return false
-	}
-
-	if err := m.assertUsingExpectedSingleSequencer(signedData.Signer.Address); err != nil {
-		return false
-	}
-
-	dataBytes, err := signedData.Data.MarshalBinary()
-	if err != nil {
-		return false
-	}
-
-	valid, err := signedData.Signer.PubKey.Verify(dataBytes, signedData.Signature)
-	return err == nil && valid
-}

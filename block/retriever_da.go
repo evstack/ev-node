@@ -255,8 +255,8 @@ func (m *Manager) tryDecodeData(bz []byte, daHeight uint64) *types.Data {
 	}
 
 	// Early validation to reject junk data
-	if !m.isValidSignedData(&signedData) {
-		m.logger.Debug().Uint64("daHeight", daHeight).Msg("invalid data signature")
+	if err := m.isValidSignedData(&signedData); err != nil {
+		m.logger.Debug().Uint64("daHeight", daHeight).Err(err).Msg("invalid data signature")
 		return nil
 	}
 
@@ -266,6 +266,33 @@ func (m *Manager) tryDecodeData(bz []byte, daHeight uint64) *types.Data {
 	m.logger.Info().Str("dataHash", dataHashStr).Uint64("daHeight", daHeight).Uint64("height", signedData.Height()).Msg("signed data marked as DA included")
 
 	return &signedData.Data
+}
+
+// isValidSignedData returns true if the data signature is valid for the expected sequencer.
+func (m *Manager) isValidSignedData(signedData *types.SignedData) error {
+	if signedData == nil || signedData.Txs == nil {
+		return errors.New("empty signed data")
+	}
+
+	if err := m.assertUsingExpectedSingleSequencer(signedData.Signer.Address); err != nil {
+		return err
+	}
+
+	dataBytes, err := signedData.Data.MarshalBinary()
+	if err != nil {
+		return fmt.Errorf("failed to marshal data: %w", err)
+	}
+
+	valid, err := signedData.Signer.PubKey.Verify(dataBytes, signedData.Signature)
+	if err != nil {
+		return fmt.Errorf("failed to verify signature: %w", err)
+	}
+
+	if !valid {
+		return fmt.Errorf("invalid signature")
+	}
+
+	return nil
 }
 
 // isAtHeight checks if a height is available.
