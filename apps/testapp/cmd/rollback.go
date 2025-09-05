@@ -4,9 +4,6 @@ import (
 	"context"
 	"fmt"
 
-	ds "github.com/ipfs/go-datastore"
-	ktds "github.com/ipfs/go-datastore/keytransform"
-
 	kvexecutor "github.com/evstack/ev-node/apps/testapp/kv"
 	"github.com/evstack/ev-node/node"
 	rollcmd "github.com/evstack/ev-node/pkg/cmd"
