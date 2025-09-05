@@ -30,17 +30,22 @@ var RunCmd = &cobra.Command{
 	Aliases: []string{"node", "run"},
 	Short:   "Run the evolve node with EVM execution client",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		executor, err := createExecutionClient(cmd)
-		if err != nil {
-			return err
-		}
+    executor, err := createExecutionClient(cmd)
+    if err != nil {
+        return err
+    }
 
-		nodeConfig, err := rollcmd.ParseConfig(cmd)
-		if err != nil {
-			return err
-		}
+    nodeConfig, err := rollcmd.ParseConfig(cmd)
+    if err != nil {
+        return err
+    }
 
-		logger := rollcmd.SetupLogger(nodeConfig.Log)
+    logger := rollcmd.SetupLogger(nodeConfig.Log)
+
+    // Attach logger to the EVM engine client if available
+    if ec, ok := executor.(*evm.EngineClient); ok {
+        ec.SetLogger(logger.With().Str("module", "engine_client").Logger())
+    }
 
 		headerNamespace := da.PrepareNamespace([]byte(nodeConfig.DA.HeaderNamespace))
 		dataNamespace := da.PrepareNamespace([]byte(nodeConfig.DA.DataNamespace))

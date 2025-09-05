@@ -84,7 +84,7 @@ func InitCmd() *cobra.Command {
 
 	// Add flags to the command
 	rollconf.AddFlags(initCmd)
-	initCmd.Flags().String(rollgenesis.ChainIDFlag, "rollkit-test", "chain ID")
+	initCmd.Flags().String(rollgenesis.ChainIDFlag, "evolve-test", "chain ID")
 
 	return initCmd
 }
