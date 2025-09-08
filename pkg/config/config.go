@@ -236,7 +236,7 @@ func (c *Config) Validate() error {
 	}
 
 	if c.DA.Namespace == "" {
-		return errors.New("data namespace cannot be empty")
+		return errors.New("namespace cannot be empty")
 	}
 
 	return nil

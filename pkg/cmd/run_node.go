@@ -39,6 +39,27 @@ func ParseConfig(cmd *cobra.Command) (rollconf.Config, error) {
 	return nodeConfig, nil
 }
 
+// ParseConfigWithDefaults loads the node configuration, merges it with the provided defaults, and validates it.
+// The precedence order is: command flags > config file > provided defaults
+func ParseConfigWithDefaults(cmd *cobra.Command, defaults rollconf.Config) (rollconf.Config, error) {
+	// Load config from flags and file
+	nodeConfig, err := rollconf.Load(cmd)
+	if err != nil {
+		return rollconf.Config{}, fmt.Errorf("failed to load node config: %w", err)
+	}
+
+	// Merge with defaults - only set values that are still at their zero values
+	// This preserves the precedence: flags > file > defaults
+	if nodeConfig.DA.Namespace == "" && defaults.DA.Namespace != "" {
+		nodeConfig.DA.Namespace = defaults.DA.Namespace
+	}
+
+	if err := nodeConfig.Validate(); err != nil {
+		return rollconf.Config{}, fmt.Errorf("failed to validate node config: %w", err)
+	}
+	return nodeConfig, nil
+}
+
 // SetupLogger configures and returns a logger based on the provided configuration.
 // It applies the following settings from the config:
 //   - Log format (text or JSON)
