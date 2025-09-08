@@ -54,7 +54,16 @@ Press Ctrl+C to stop the server
 
 `, port)
 
-	log.Fatal(http.ListenAndServe(":"+port, corsMiddleware(mux)))
+	// Create server with proper timeout configuration
+	srv := &http.Server{
+		Addr:         ":" + port,
+		Handler:      corsMiddleware(mux),
+		ReadTimeout:  15 * time.Second,
+		WriteTimeout: 15 * time.Second,
+		IdleTimeout:  60 * time.Second,
+	}
+
+	log.Fatal(srv.ListenAndServe())
 }
 
 func corsMiddleware(next http.Handler) http.Handler {
@@ -74,7 +83,10 @@ func corsMiddleware(next http.Handler) http.Handler {
 
 func handleIndex(w http.ResponseWriter, r *http.Request) {
 	tmpl := template.Must(template.New("index").Parse(indexHTML))
-	tmpl.Execute(w, nil)
+	if err := tmpl.Execute(w, nil); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
 }
 
 func handleDecode(w http.ResponseWriter, r *http.Request) {
@@ -242,14 +254,14 @@ func tryDecodeSignedData(data []byte) interface{} {
 	}
 
 	// Add DACommitment hash
-	dataHash := signedData.Data.DACommitment()
+	dataHash := signedData.DACommitment()
 	result["dataHash"] = bytesToHex(dataHash[:])
 
 	return result
 }
 
 func bytesToHex(b []byte) string {
-	if b == nil || len(b) == 0 {
+	if len(b) == 0 {
 		return ""
 	}
 	return hex.EncodeToString(b)
@@ -257,7 +269,10 @@ func bytesToHex(b []byte) string {
 
 func sendJSONResponse(w http.ResponseWriter, data interface{}) {
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(data)
+	if err := json.NewEncoder(w).Encode(data); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
 }
 
 func min(a, b int) int {
