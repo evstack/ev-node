@@ -165,10 +165,7 @@ type DAConfig struct {
 
 // GetNamespace returns the namespace for header submittions.
 func (d *DAConfig) GetNamespace() string {
-	if d.Namespace != "" {
-		return d.Namespace
-	}
-	return "" // Default value is empty string
+	return d.Namespace
 }
 
 // GetDataNamespace returns the namespace for data submissions, falling back to the header namespace if not set
