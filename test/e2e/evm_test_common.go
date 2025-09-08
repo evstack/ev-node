@@ -444,7 +444,7 @@ func setupFullNode(t *testing.T, sut *SystemUnderTest, fullNodeHome, sequencerHo
 		"init",
 		"--home", fullNodeHome,
 		"--evnode.da.namespace", namespace,
-		"--evnode.chain_id", chainID,
+		"--chain_id", chainID,
 	)
 	require.NoError(t, err, "failed to init full node", output)
 

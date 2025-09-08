@@ -233,7 +233,7 @@ func TestLegacyNamespaceDetection(t *testing.T) {
 			} else if tt.namespace != "" {
 				assert.Equal(t, tt.namespace, dataNS)
 			} else {
-				assert.Equal(t, "", dataNS) // Falls back to default namespace
+				assert.Equal(t, "", dataNS)
 			}
 
 			// Test actual behavior in fetchBlobs
