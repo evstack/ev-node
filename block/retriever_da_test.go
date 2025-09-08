@@ -42,7 +42,7 @@ func setupManagerForRetrieverTest(t *testing.T, initialDAHeight uint64) (*daRetr
 	)
 }
 
-// setupManagerForRetrieverTest initializes a Manager with mocked dependencies.
+// setupManagerForRetrieverTestWithConfig initializes a Manager with mocked dependencies and custom configuration.
 func setupManagerForRetrieverTestWithConfig(t *testing.T, initialDAHeight uint64, cfg config.Config) (*daRetriever, *Manager, *rollmocks.MockDA, *rollmocks.MockStore, *cache.Cache[types.SignedHeader], *cache.Cache[types.Data], context.CancelFunc) {
 	t.Helper()
 	mockDAClient := rollmocks.NewMockDA(t)
