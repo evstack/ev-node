@@ -33,7 +33,7 @@ jobs:
           fetch-depth: 0 # Not needed if lastUpdated is not enabled
       # - uses: pnpm/action-setup@v2 # Uncomment this if you're using pnpm
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
           node-version: 20
           cache: yarn # or pnpm / npm
