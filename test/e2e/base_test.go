@@ -51,8 +51,9 @@ func TestBasic(t *testing.T) {
 		"init",
 		"--home="+node1Home,
 		"--chain_id=testing",
-		"--rollkit.node.aggregator",
-		"--rollkit.signer.passphrase="+aggregatorPass,
+		"--evnode.da.namespace=evnode",
+		"--evnode.node.aggregator",
+		"--evnode.signer.passphrase="+aggregatorPass,
 	)
 	require.NoError(t, err, "failed to init aggregator", output)
 
@@ -60,10 +61,10 @@ func TestBasic(t *testing.T) {
 	sut.ExecCmd(binaryPath,
 		"start",
 		"--home="+node1Home,
-		"--rollkit.node.aggregator",
-		"--rollkit.signer.passphrase="+aggregatorPass,
-		"--rollkit.node.block_time=5ms",
-		"--rollkit.da.block_time=15ms",
+		"--evnode.node.aggregator",
+		"--evnode.signer.passphrase="+aggregatorPass,
+		"--evnode.node.block_time=5ms",
+		"--evnode.da.block_time=15ms",
 		"--kv-endpoint=127.0.0.1:9090",
 	)
 
@@ -76,6 +77,7 @@ func TestBasic(t *testing.T) {
 	output, err = sut.RunCmd(binaryPath,
 		"init",
 		"--chain_id=testing",
+		"--evnode.da.namespace=evnode",
 		"--home="+node2Home,
 	)
 	require.NoError(t, err, "failed to init fullnode", output)
@@ -90,9 +92,9 @@ func TestBasic(t *testing.T) {
 		binaryPath,
 		"start",
 		"--home="+node2Home,
-		"--rollkit.log.level=debug",
-		"--rollkit.p2p.listen_address="+node2P2P,
-		fmt.Sprintf("--rollkit.rpc.address=%s", node2RPC),
+		"--evnode.log.level=debug",
+		"--evnode.p2p.listen_address="+node2P2P,
+		fmt.Sprintf("--evnode.rpc.address=%s", node2RPC),
 	)
 
 	sut.AwaitNodeUp(t, "http://"+node2RPC, 2*time.Second)
@@ -146,8 +148,9 @@ func TestNodeRestartPersistence(t *testing.T) {
 		"init",
 		"--home="+nodeHome,
 		"--chain_id=testing",
-		"--rollkit.node.aggregator",
-		"--rollkit.signer.passphrase=12345678",
+		"--evnode.da.namespace=evnode",
+		"--evnode.node.aggregator",
+		"--evnode.signer.passphrase=12345678",
 	)
 	require.NoError(t, err, "failed to init node", output)
 
@@ -155,10 +158,10 @@ func TestNodeRestartPersistence(t *testing.T) {
 	sut.ExecCmd(binaryPath,
 		"start",
 		"--home="+nodeHome,
-		"--rollkit.node.aggregator",
-		"--rollkit.signer.passphrase=12345678",
-		"--rollkit.node.block_time=5ms",
-		"--rollkit.da.block_time=15ms",
+		"--evnode.node.aggregator",
+		"--evnode.signer.passphrase=12345678",
+		"--evnode.node.block_time=5ms",
+		"--evnode.da.block_time=15ms",
 		"--kv-endpoint=127.0.0.1:9090",
 	)
 	sut.AwaitNodeUp(t, "http://127.0.0.1:7331", 2*time.Second)
@@ -191,10 +194,11 @@ func TestNodeRestartPersistence(t *testing.T) {
 	sut.ExecCmd(binaryPath,
 		"start",
 		"--home="+nodeHome,
-		"--rollkit.node.aggregator",
-		"--rollkit.signer.passphrase=12345678",
-		"--rollkit.node.block_time=5ms",
-		"--rollkit.da.block_time=15ms",
+		"--evnode.da.namespace=evnode",
+		"--evnode.node.aggregator",
+		"--evnode.signer.passphrase=12345678",
+		"--evnode.node.block_time=5ms",
+		"--evnode.da.block_time=15ms",
 		"--kv-endpoint=127.0.0.1:9090",
 	)
 	sut.AwaitNodeUp(t, "http://127.0.0.1:7331", 2*time.Second)

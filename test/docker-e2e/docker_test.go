@@ -216,11 +216,11 @@ func (s *DockerTestSuite) StartEvNode(ctx context.Context, bridgeNode tastoratyp
 
 	daAddress := fmt.Sprintf("http://%s:26658", bridgeNodeHostName)
 	err = evNode.Start(ctx,
-		"--rollkit.da.address", daAddress,
-		"--rollkit.da.gas_price", "0.025",
-		"--rollkit.da.auth_token", authToken,
-		"--rollkit.rpc.address", "0.0.0.0:7331", // bind to 0.0.0.0 so rpc is reachable from test host.
-		"--rollkit.da.namespace", generateValidNamespaceHex(),
+		"--evnode.da.address", daAddress,
+		"--evnode.da.gas_price", "0.025",
+		"--evnode.da.auth_token", authToken,
+		"--evnode.rpc.address", "0.0.0.0:7331", // bind to 0.0.0.0 so rpc is reachable from test host.
+		"--evnode.da.namespace", generateValidNamespaceHex(),
 		"--kv-endpoint", "0.0.0.0:8080",
 	)
 	s.Require().NoError(err)
