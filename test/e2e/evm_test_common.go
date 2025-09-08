@@ -145,6 +145,7 @@ const (
 	TestPassphrase = "secret"
 
 	namespace = "test"
+	chainID   = "test-1"
 )
 
 const (
@@ -324,6 +325,7 @@ func setupSequencerNode(t *testing.T, sut *SystemUnderTest, sequencerHome, jwtSe
 		"--evnode.node.aggregator=true",
 		"--evnode.da.namespace", namespace,
 		"--evnode.signer.passphrase", TestPassphrase,
+		"--chain_id", chainID,
 		"--home", sequencerHome,
 	)
 	require.NoError(t, err, "failed to init sequencer", output)
@@ -375,6 +377,7 @@ func setupSequencerNodeLazy(t *testing.T, sut *SystemUnderTest, sequencerHome, j
 		"--evnode.node.aggregator=true",
 		"--evnode.da.namespace", namespace,
 		"--evnode.signer.passphrase", TestPassphrase,
+		"--chain_id", chainID,
 		"--home", sequencerHome,
 	)
 	require.NoError(t, err, "failed to init sequencer", output)
@@ -441,6 +444,7 @@ func setupFullNode(t *testing.T, sut *SystemUnderTest, fullNodeHome, sequencerHo
 		"init",
 		"--home", fullNodeHome,
 		"--evnode.da.namespace", namespace,
+		"--evnode.chain_id", chainID,
 	)
 	require.NoError(t, err, "failed to init full node", output)
 
