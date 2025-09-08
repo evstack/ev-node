@@ -13,7 +13,7 @@ require (
 	google.golang.org/protobuf v1.36.8
 )
 
-require golang.org/x/text v0.28.0 // indirect
+require golang.org/x/text v0.29.0 // indirect
 
 replace (
 	github.com/evstack/ev-node => ../../
