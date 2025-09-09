@@ -27,7 +27,7 @@ testapp start --rollkit.rpc.enable_da_visualization
 
 ### Via Configuration File
 
-Add the following to your `evolve.yaml` configuration file:
+Add the following to your `evnode.yml` configuration file:
 
 ```yaml
 rpc:
@@ -164,7 +164,7 @@ When enabling the DA Visualizer, you may want to adjust related RPC settings:
 
 ```yaml
 rpc:
-  address: "0.0.0.0:7331"  # Bind to all interfaces for remote access
+  address: "0.0.0.0:7331" # Bind to all interfaces for remote access
   enable_da_visualization: true
 ```
 

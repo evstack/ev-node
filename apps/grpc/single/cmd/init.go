@@ -49,7 +49,7 @@ This will create the necessary configuration structure in the specified root dir
 			}
 
 			if err := cfg.SaveAsYaml(); err != nil {
-				return fmt.Errorf("error writing evolve.yaml file: %w", err)
+				return fmt.Errorf("error writing evnode.yml file: %w", err)
 			}
 
 			if err := rollcmd.LoadOrGenNodeKey(homePath); err != nil {

@@ -93,7 +93,7 @@ When running in DA-only mode, the node will:
 
 ## Configs
 
-Evolve configurations can be managed through a YAML file (typically `evolve.yaml` located in `~/.evolve/config/` or `<your_home_dir>/config/`) and command-line flags. The system prioritizes configurations in the following order (highest priority first):
+Evolve configurations can be managed through a YAML file (typically `evnode.yml` located in `~/.evolve/config/` or `<your_home_dir>/config/`) and command-line flags. The system prioritizes configurations in the following order (highest priority first):
 
 1. **Command-line flags:** Override all other settings.
 2. **YAML configuration file:** Values specified in the `config.yaml` file.
