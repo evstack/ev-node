@@ -26,7 +26,7 @@ func TestInitCommand(t *testing.T) {
 	// Change to the temporary directory
 	require.NoError(t, os.Chdir(dir))
 
-	// Remove any existing evolve.yaml files in the test directory
+	// Remove any existing evnode.yml files in the test directory
 	configPath := filepath.Join(dir, "config", rollconf.ConfigName)
 	_ = os.Remove(configPath) // Ignore error if file doesn't exist
 

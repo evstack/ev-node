@@ -11,7 +11,7 @@ import (
 	rollgenesis "github.com/evstack/ev-node/pkg/genesis"
 )
 
-// InitCmd initializes a new evolve.yaml file in the current directory
+// InitCmd initializes a new evnode.yml file in the current directory
 func InitCmd() *cobra.Command {
 	initCmd := &cobra.Command{
 		Use:   "init",
@@ -47,7 +47,7 @@ func InitCmd() *cobra.Command {
 			}
 
 			if err := cfg.SaveAsYaml(); err != nil {
-				return fmt.Errorf("error writing evolve.yaml file: %w", err)
+				return fmt.Errorf("error writing evnode.yml file: %w", err)
 			}
 
 			if err := rollcmd.LoadOrGenNodeKey(homePath); err != nil {

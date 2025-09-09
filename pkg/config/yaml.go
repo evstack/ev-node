@@ -28,7 +28,7 @@ func (d *DurationWrapper) UnmarshalText(text []byte) error {
 	return err
 }
 
-// ErrReadYaml is the error returned when reading the evolve.yaml file fails.
+// ErrReadYaml is the error returned when reading the evnode.yml file fails.
 var ErrReadYaml = fmt.Errorf("reading %s", ConfigName)
 
 // SaveAsYaml saves the current configuration to a YAML file.
