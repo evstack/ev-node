@@ -89,7 +89,7 @@ func InitCmd() *cobra.Command {
 	// Add flags to the command
 	rollconf.AddFlags(initCmd)
 	initCmd.Flags().String(rollgenesis.ChainIDFlag, "", "chain ID must be set. It is used in the genesis file and to identify the network (examples: ev-1. xo-1)")
-	InitCmd().MarkFlagsOneRequired(rollgenesis.ChainIDFlag)
+	initCmd.MarkFlagsOneRequired(rollgenesis.ChainIDFlag)
 
 	return initCmd
 }
