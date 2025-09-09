@@ -51,6 +51,7 @@ func NewSystemUnderTest(t *testing.T) *SystemUnderTest {
 		cmdToPids: make(map[string][]int),
 		outBuff:   ring.New(100),
 		errBuff:   ring.New(100),
+		debug:     testing.Verbose(),
 	}
 	t.Cleanup(func() {
 		if t.Failed() {
@@ -74,7 +75,7 @@ func (s *SystemUnderTest) RunCmd(cmd string, args ...string) (string, error) {
 }
 
 // ExecCmd starts a process for the given command and manages it cleanup on test end.
-func (s *SystemUnderTest) ExecCmd(cmd string, args ...string) {
+func (s *SystemUnderTest) ExecCmd(cmd string, args ...string) *os.Process {
 	executable := locateExecutable(cmd)
 	c := exec.Command( //nolint:gosec // used by tests only
 		executable,
@@ -86,10 +87,11 @@ func (s *SystemUnderTest) ExecCmd(cmd string, args ...string) {
 	err := c.Start()
 	require.NoError(s.t, err)
 	if s.debug {
-		s.logf("Exec cmd (pid: %d): %s %s", c.Process.Pid, executable, strings.Join(c.Args, " "))
+		s.logf("Exec cmd (pid: %d): %s %s", c.Process.Pid, executable, strings.Join(args, " "))
 	}
 	// cleanup when stopped
 	s.awaitProcessCleanup(c)
+	return c.Process
 }
 
 // AwaitNodeUp waits until a node is operational by validating it produces blocks.
@@ -152,18 +154,21 @@ func (s *SystemUnderTest) awaitProcessCleanup(cmd *exec.Cmd) {
 }
 
 func (s *SystemUnderTest) watchLogs(cmd *exec.Cmd) {
+	logfileName := filepath.Join("./testnet", fmt.Sprintf("exec-%s-%d.out", s.t.Name(), time.Now().UnixNano()))
+	logfile, err := os.Create(logfileName)
+
 	errReader, err := cmd.StderrPipe()
 	if err != nil {
 		panic(fmt.Sprintf("stderr reader error %#+v", err))
 	}
 	stopRingBuffer := make(chan struct{})
-	go appendToBuf(errReader, s.errBuff, stopRingBuffer)
+	go appendToBuf(io.TeeReader(errReader, logfile), s.errBuff, stopRingBuffer)
 
 	outReader, err := cmd.StdoutPipe()
 	if err != nil {
 		panic(fmt.Sprintf("stdout reader error %#+v", err))
 	}
-	go appendToBuf(outReader, s.outBuff, stopRingBuffer)
+	go appendToBuf(io.TeeReader(outReader, logfile), s.outBuff, stopRingBuffer)
 	s.t.Cleanup(func() {
 		close(stopRingBuffer)
 	})

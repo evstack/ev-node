@@ -141,11 +141,12 @@ func (e *Executor) Start(ctx context.Context) error {
 
 // Stop shuts down the execution component
 func (e *Executor) Stop() error {
-	if e.cancel != nil {
-		e.cancel()
+	if e.cancel == nil {
+		return nil
 	}
+	e.cancel()
 	e.wg.Wait()
-
+	e.cancel = nil
 	e.logger.Info().Msg("executor stopped")
 	return nil
 }
@@ -527,6 +528,7 @@ func (e *Executor) applyBlock(ctx context.Context, header types.Header, data *ty
 	}
 
 	// Execute transactions
+	e.logger.Debug().Uint64("height", header.Height()).Msg("executing transactions")
 	ctx = context.WithValue(ctx, types.HeaderContextKey, header)
 	newAppHash, _, err := e.exec.ExecuteTxs(ctx, rawTxs, header.Height(),
 		header.Time(), currentState.AppHash)

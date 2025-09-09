@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/evstack/ev-node/pkg/p2p/key"
 	ds "github.com/ipfs/go-datastore"
 	"github.com/rs/zerolog"
 
@@ -35,13 +36,12 @@ type LightNode struct {
 	running bool
 }
 
-func newLightNode(
-	conf config.Config,
-	genesis genesis.Genesis,
-	p2pClient *p2p.Client,
-	database ds.Batching,
-	logger zerolog.Logger,
-) (ln *LightNode, err error) {
+func newLightNode(conf config.Config, genesis genesis.Genesis, nodeKey *key.NodeKey, database ds.Batching, logger zerolog.Logger, ) (ln *LightNode, err error) {
+	p2pClient, err := p2p.NewClient(conf.P2P, nodeKey.PrivKey, database, genesis.ChainID, logger, nil)
+	if err != nil {
+		return nil, err
+	}
+
 	headerSyncService, err := sync.NewHeaderSyncService(database, conf, genesis, p2pClient, logger.With().Str("component", "HeaderSyncService").Logger())
 	if err != nil {
 		return nil, fmt.Errorf("error while initializing HeaderSyncService: %w", err)

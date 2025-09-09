@@ -25,9 +25,9 @@ import (
 type daRetriever interface {
 	RetrieveFromDA(ctx context.Context, daHeight uint64) ([]common.DAHeightEvent, error)
 }
-type p2pHandler interface {
-	ProcessHeaderRange(ctx context.Context, fromHeight, toHeight uint64) []common.DAHeightEvent
-	ProcessDataRange(ctx context.Context, fromHeight, toHeight uint64) []common.DAHeightEvent
+type p2pRetriever interface {
+	HeadersInRange(ctx context.Context, fromHeight, toHeight uint64) []common.DAHeightEvent
+	DataInRange(ctx context.Context, fromHeight, toHeight uint64) []common.DAHeightEvent
 }
 
 const (
@@ -70,7 +70,7 @@ type Syncer struct {
 
 	// Handlers
 	daRetriever daRetriever
-	p2pHandler  p2pHandler
+	p2pHandler  p2pRetriever
 
 	// Logging
 	logger zerolog.Logger
@@ -109,7 +109,7 @@ func NewSyncer(
 		headerStore:       headerStore,
 		dataStore:         dataStore,
 		lastStateMtx:      &sync.RWMutex{},
-		heightInCh:        make(chan common.DAHeightEvent, 10_000),
+		heightInCh:        make(chan common.DAHeightEvent),
 		errorCh:           errorCh,
 		logger:            logger.With().Str("component", "syncer").Logger(),
 		retriesBeforeHalt: make(map[uint64]uint64),
@@ -127,7 +127,7 @@ func (s *Syncer) Start(ctx context.Context) error {
 
 	// Initialize handlers
 	s.daRetriever = NewDARetriever(s.da, s.cache, s.config, s.genesis, s.options, s.logger)
-	s.p2pHandler = NewP2PHandler(s.headerStore, s.dataStore, s.genesis, s.options, s.logger)
+	s.p2pHandler = NewP2PStoreRetriever(s.headerStore, s.dataStore, s.genesis, s.options, s.logger)
 
 	// Start main processing loop
 	s.wg.Add(1)
@@ -149,11 +149,14 @@ func (s *Syncer) Start(ctx context.Context) error {
 
 // Stop shuts down the syncing component
 func (s *Syncer) Stop() error {
-	if s.cancel != nil {
-		s.cancel()
+	if s.cancel == nil {
+		return nil
 	}
+	s.cancel()
 	s.wg.Wait()
 	s.logger.Info().Msg("syncer stopped")
+	close(s.heightInCh)
+	s.cancel = nil
 	return nil
 }
 
@@ -220,8 +223,10 @@ func (s *Syncer) processLoop() {
 		select {
 		case <-s.ctx.Done():
 			return
-		case heightEvent := <-s.heightInCh:
-			s.processHeightEvent(&heightEvent)
+		case heightEvent, ok := <-s.heightInCh:
+			if ok {
+				s.processHeightEvent(&heightEvent)
+			}
 		}
 	}
 }
@@ -338,7 +343,7 @@ func (s *Syncer) tryFetchFromP2P(lastHeaderHeight, lastDataHeight *uint64, block
 		// Process headers
 		newHeaderHeight := s.headerStore.Height()
 		if newHeaderHeight > *lastHeaderHeight {
-			events := s.p2pHandler.ProcessHeaderRange(s.ctx, *lastHeaderHeight+1, newHeaderHeight)
+			events := s.p2pHandler.HeadersInRange(s.ctx, *lastHeaderHeight+1, newHeaderHeight)
 			for _, event := range events {
 				select {
 				case s.heightInCh <- event:
@@ -357,7 +362,7 @@ func (s *Syncer) tryFetchFromP2P(lastHeaderHeight, lastDataHeight *uint64, block
 		if newDataHeight == newHeaderHeight {
 			*lastDataHeight = newDataHeight
 		} else if newDataHeight > *lastDataHeight {
-			events := s.p2pHandler.ProcessDataRange(s.ctx, *lastDataHeight+1, newDataHeight)
+			events := s.p2pHandler.DataInRange(s.ctx, *lastDataHeight+1, newDataHeight)
 			for _, event := range events {
 				select {
 				case s.heightInCh <- event:
@@ -488,6 +493,7 @@ func (s *Syncer) applyBlock(header types.Header, data *types.Data, currentState 
 	}
 
 	// Execute transactions
+	s.logger.Debug().Uint64("height", header.Height()).Msg("executing transactions")
 	ctx := context.WithValue(s.ctx, types.HeaderContextKey, header)
 	newAppHash, _, err := s.exec.ExecuteTxs(ctx, rawTxs, header.Height(),
 		header.Time(), currentState.AppHash)

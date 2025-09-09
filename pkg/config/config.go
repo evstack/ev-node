@@ -125,6 +125,19 @@ const (
 	FlagRPCAddress = FlagPrefixEvnode + "rpc.address"
 	// FlagRPCEnableDAVisualization is a flag for enabling DA visualization endpoints
 	FlagRPCEnableDAVisualization = FlagPrefixEvnode + "rpc.enable_da_visualization"
+
+	// Leader election configuration flags
+
+	// FlagLeaderElectionEnabled is a flag for enabling leader election
+	FlagLeaderElectionEnabled = FlagPrefixEvnode + "leader.enabled"
+	// FlagLeaderElectionBackend is a flag for specifying the leader election backend
+	FlagLeaderElectionBackend = FlagPrefixEvnode + "leader.backend"
+	// FlagLeaderElectionLeaseTerm is a flag for specifying the leader election lease term
+	FlagLeaderElectionLeaseTerm = FlagPrefixEvnode + "leader.lease_term"
+	// FlagLeaderElectionLeaseName is a flag for specifying the leader election lease name
+	FlagLeaderElectionLeaseName = FlagPrefixEvnode + "leader.lease_name"
+	// FlagLeaderElectionBackendAddr is a flag for specifying the leader election backend address
+	FlagLeaderElectionBackendAddr = FlagPrefixEvnode + "leader.backend_addr"
 )
 
 // Config stores Rollkit configuration.
@@ -154,6 +167,9 @@ type Config struct {
 
 	// Remote signer configuration
 	Signer SignerConfig `mapstructure:"signer" yaml:"signer"`
+
+	// Leader election configuration
+	LeaderElection LeaderElectionConfig `mapstructure:"leader" yaml:"leader_election"`
 }
 
 // DAConfig contains all Data Availability configuration parameters
@@ -229,6 +245,15 @@ type SignerConfig struct {
 type RPCConfig struct {
 	Address               string `mapstructure:"address" yaml:"address" comment:"Address to bind the RPC server to (host:port). Default: 127.0.0.1:7331"`
 	EnableDAVisualization bool   `mapstructure:"enable_da_visualization" yaml:"enable_da_visualization" comment:"Enable DA visualization endpoints for monitoring blob submissions. Default: false"`
+}
+
+// LeaderElectionConfig contains all leader election configuration parameters
+type LeaderElectionConfig struct {
+	Enabled     bool            `mapstructure:"enabled" yaml:"enabled" comment:"Enable leader election for active-active failover setup. When enabled, only one node will produce blocks while others act as hot standby."`
+	Backend     string          `mapstructure:"backend" yaml:"backend" comment:"Backend type for lease storage (memory, kubernetes, etcd). Memory backend is for testing only."`
+	LeaseTerm   DurationWrapper `mapstructure:"lease_term" yaml:"lease_term" comment:"Duration for which a node holds the leader lease. Shorter terms enable faster failover but increase overhead. Examples: \"10s\", \"30s\", \"1m\"."`
+	LeaseName   string          `mapstructure:"lease_name" yaml:"lease_name" comment:"Name of the lease resource. Defaults to 'leader-{chain_id}' if not specified."`
+	BackendAddr string          `mapstructure:"backend_addr" yaml:"backend_addr" comment:"Address of the backend service (e.g., etcd endpoints). Only required for external backends like etcd."`
 }
 
 // Validate ensures validates the config and ensure that the root directory exists.
@@ -354,6 +379,14 @@ func AddFlags(cmd *cobra.Command) {
 	cmd.Flags().String(FlagSignerType, def.Signer.SignerType, "type of signer to use (file, grpc)")
 	cmd.Flags().String(FlagSignerPath, def.Signer.SignerPath, "path to the signer file or address")
 	cmd.Flags().String(FlagSignerPassphrase, "", "passphrase for the signer (required for file signer and if aggregator is enabled)")
+
+	// Leader election configuration flags
+	cmd.Flags().Bool(FlagLeaderElectionEnabled, def.LeaderElection.Enabled, "enable leader election for active-active failover setup")
+	cmd.Flags().String(FlagLeaderElectionBackend, def.LeaderElection.Backend, "backend type for lease storage (memory, kubernetes, etcd)")
+	cmd.Flags().Duration(FlagLeaderElectionLeaseTerm, def.LeaderElection.LeaseTerm.Duration, "duration for which a node holds the leader lease")
+	cmd.Flags().String(FlagLeaderElectionLeaseName, def.LeaderElection.LeaseName, "name of the lease resource")
+	cmd.Flags().String(FlagLeaderElectionBackendAddr, def.LeaderElection.BackendAddr, "address of the backend service")
+
 }
 
 // Load loads the node configuration in the following order of precedence:
