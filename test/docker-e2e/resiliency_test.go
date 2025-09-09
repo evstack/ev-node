@@ -52,7 +52,7 @@ func (s *DockerTestSuite) TestRollkitNodeRestart() {
 
 		// Start rollkit node with stored namespace
 		rollkitNode = s.evNodeChain.GetNodes()[0]
-		s.StartRollkitNodeWithNamespace(ctx, bridgeNode, rollkitNode, namespace)
+		s.StartEvNodeWithNamespace(ctx, bridgeNode, rollkitNode, namespace)
 
 		// Create HTTP client for testing
 		httpPortStr := rollkitNode.GetHostHTTPPort()
@@ -205,7 +205,7 @@ func (s *DockerTestSuite) TestCelestiaDANetworkPartitionE2E() {
 
 		// Start rollkit node with stored namespace
 		rollkitNode = s.evNodeChain.GetNodes()[0]
-		s.StartRollkitNodeWithNamespace(ctx, bridgeNode, rollkitNode, namespace)
+		s.StartEvNodeWithNamespace(ctx, bridgeNode, rollkitNode, namespace)
 		t.Log("✅ Rollkit node started")
 
 		// Create HTTP client for testing
@@ -487,7 +487,7 @@ func (s *DockerTestSuite) TestDataCorruptionRecovery() {
 
 		// Start rollkit node
 		rollkitNode = s.evNodeChain.GetNodes()[0]
-		s.StartRollkitNodeWithNamespace(ctx, bridgeNode, rollkitNode, namespace)
+		s.StartEvNodeWithNamespace(ctx, bridgeNode, rollkitNode, namespace)
 		t.Log("✅ Rollkit node started")
 
 		// Create HTTP client
