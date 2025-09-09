@@ -23,6 +23,7 @@ import (
 	coresequencer "github.com/evstack/ev-node/core/sequencer"
 	"github.com/evstack/ev-node/pkg/config"
 	genesispkg "github.com/evstack/ev-node/pkg/genesis"
+	"github.com/evstack/ev-node/pkg/lease"
 	"github.com/evstack/ev-node/pkg/p2p"
 	rpcserver "github.com/evstack/ev-node/pkg/rpc/server"
 	"github.com/evstack/ev-node/pkg/service"
@@ -31,7 +32,7 @@ import (
 	evsync "github.com/evstack/ev-node/pkg/sync"
 )
 
-// prefixes used in KV store to separate rollkit data from execution environment data (if the same data base is reused)
+// EvPrefix prefixes used in KV store to separate rollkit data from execution environment data (if the same data base is reused)
 var EvPrefix = "0"
 
 const (
@@ -60,6 +61,7 @@ type FullNode struct {
 	dSyncService    *evsync.DataSyncService
 	Store           store.Store
 	blockComponents *block.Components
+	leaderElection  lease.LeaderElector
 
 	prometheusSrv *http.Server
 	pprofSrv      *http.Server
@@ -131,6 +133,49 @@ func newFullNode(
 		return nil, err
 	}
 
+	// Initialize leader election if enabled
+	var leaderElection lease.LeaderElector
+	if nodeConfig.LeaderElection.Enabled {
+		nodeID, _, _, err := p2pClient.Info()
+		if err != nil {
+			return nil, fmt.Errorf("error getting node id from p2p client info: %w", err)
+		}
+
+		leaseName := nodeConfig.LeaderElection.LeaseName
+		if leaseName == "" {
+			leaseName = fmt.Sprintf("leader-%s", genesis.ChainID)
+		}
+
+		leaseTerm := 30 * time.Second // default
+		if nodeConfig.LeaderElection.LeaseTerm.Duration > 0 {
+			leaseTerm = nodeConfig.LeaderElection.LeaseTerm.Duration
+		}
+
+		// Create lease backend based on configuration
+		var leaseImpl lease.Lease
+		switch nodeConfig.LeaderElection.Backend {
+		case "memory", "":
+			leaseImpl = lease.NewMemoryLease(leaseName)
+		case "http":
+			if nodeConfig.LeaderElection.BackendAddr == "" {
+				return nil, fmt.Errorf("http lease backend requires backend_addr")
+			}
+			leaseImpl = lease.NewHTTPLease(nodeConfig.LeaderElection.BackendAddr, leaseName)
+		default:
+			return nil, fmt.Errorf("unsupported lease backend: %s", nodeConfig.LeaderElection.Backend)
+		}
+		logger.Info().Str("backend", nodeConfig.LeaderElection.Backend).Msg("using leader election backend")
+		leaderElection = lease.NewLeaderElection(
+			leaseImpl,
+			nodeID,
+			leaseName,
+			leaseTerm,
+			logger.With().Str("component", "leader-election").Logger(),
+		)
+	} else {
+		leaderElection = &lease.AlwaysLeaderElection{}
+	}
+
 	node := &FullNode{
 		genesis:         genesis,
 		nodeConfig:      nodeConfig,
@@ -140,6 +185,7 @@ func newFullNode(
 		Store:           rktStore,
 		hSyncService:    headerSyncService,
 		dSyncService:    dataSyncService,
+		leaderElection:  leaderElection,
 	}
 
 	node.BaseService = *service.NewBaseService(logger, "Node", node)
@@ -321,6 +367,11 @@ func (n *FullNode) Run(parentCtx context.Context) error {
 		return fmt.Errorf("error while starting data sync service: %w", err)
 	}
 
+	// Start leader election if enabled
+	if err = n.leaderElection.Start(ctx); err != nil {
+		return fmt.Errorf("error while starting leader election: %w", err)
+	}
+
 	// Start the block components (blocking)
 	if err := n.blockComponents.Start(ctx); err != nil {
 		if !errors.Is(err, context.Canceled) {
@@ -344,6 +395,13 @@ func (n *FullNode) Run(parentCtx context.Context) error {
 	if err := n.blockComponents.Stop(); err != nil {
 		n.Logger.Error().Err(err).Msg("error stopping block components")
 		multiErr = errors.Join(multiErr, fmt.Errorf("stopping block components: %w", err))
+	}
+
+	// Stop leader election
+	if err := n.leaderElection.Stop(); err != nil && !errors.Is(err, context.Canceled) {
+		multiErr = errors.Join(multiErr, fmt.Errorf("stopping leader election: %w", err))
+	} else {
+		n.Logger.Debug().Msg("leader election stopped")
 	}
 
 	// Stop Header Sync Service
