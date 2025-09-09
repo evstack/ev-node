@@ -174,6 +174,7 @@ signer:
 		"--rollkit.da.address", "http://flag-da:26657",
 		"--rollkit.node.light", "true", // This is not in YAML, should be set from flag
 		"--rollkit.rpc.address", "127.0.0.1:7332",
+		"--evnode.signer.signer_path", "/path/to/signer",
 	}
 	cmd.SetArgs(flagArgs)
 	err = cmd.ParseFlags(flagArgs)
@@ -199,8 +200,8 @@ signer:
 	assert.Equal(t, DefaultConfig.DA.BlockTime.Duration, config.DA.BlockTime.Duration, "DABlockTime should remain as default")
 
 	// 5. Signer values should be set from flags
-	assert.Equal(t, "file", config.Signer.SignerType, "SignerType should be set from flag")
-	assert.Equal(t, "something/config", config.Signer.SignerPath, "SignerPath should be set from flag")
+	assert.Equal(t, "file", config.Signer.SignerType, "SignerType should be gotten from config")
+	assert.Equal(t, "/path/to/signer", config.Signer.SignerPath, "SignerPath should be set from flag")
 
 	assert.Equal(t, "127.0.0.1:7332", config.RPC.Address, "RPCAddress should be set from flag")
 }
