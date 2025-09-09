@@ -146,6 +146,9 @@ type Config struct {
 
 	// Remote signer configuration
 	Signer SignerConfig `mapstructure:"signer" yaml:"signer"`
+
+	// Leader election configuration
+	LeaderElection LeaderElectionConfig `mapstructure:"leader_election" yaml:"leader_election"`
 }
 
 // DAConfig contains all Data Availability configuration parameters
@@ -221,6 +224,15 @@ type SignerConfig struct {
 type RPCConfig struct {
 	Address               string `mapstructure:"address" yaml:"address" comment:"Address to bind the RPC server to (host:port). Default: 127.0.0.1:7331"`
 	EnableDAVisualization bool   `mapstructure:"enable_da_visualization" yaml:"enable_da_visualization" comment:"Enable DA visualization endpoints for monitoring blob submissions. Default: false"`
+}
+
+// LeaderElectionConfig contains all leader election configuration parameters
+type LeaderElectionConfig struct {
+	Enabled     bool            `mapstructure:"enabled" yaml:"enabled" comment:"Enable leader election for active-active failover setup. When enabled, only one node will produce blocks while others act as hot standby."`
+	Backend     string          `mapstructure:"backend" yaml:"backend" comment:"Backend type for lease storage (memory, kubernetes, etcd). Memory backend is for testing only."`
+	LeaseTerm   DurationWrapper `mapstructure:"lease_term" yaml:"lease_term" comment:"Duration for which a node holds the leader lease. Shorter terms enable faster failover but increase overhead. Examples: \"10s\", \"30s\", \"1m\"."`
+	LeaseName   string          `mapstructure:"lease_name" yaml:"lease_name" comment:"Name of the lease resource. Defaults to 'leader-{chain_id}' if not specified."`
+	BackendAddr string          `mapstructure:"backend_addr" yaml:"backend_addr" comment:"Address of the backend service (e.g., etcd endpoints). Only required for external backends like etcd."`
 }
 
 // Validate ensures validates the config and ensure that the root directory exists.

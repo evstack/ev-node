@@ -23,6 +23,7 @@ import (
 	coresequencer "github.com/evstack/ev-node/core/sequencer"
 	"github.com/evstack/ev-node/pkg/config"
 	genesispkg "github.com/evstack/ev-node/pkg/genesis"
+	"github.com/evstack/ev-node/pkg/lease"
 	"github.com/evstack/ev-node/pkg/p2p"
 	rpcserver "github.com/evstack/ev-node/pkg/rpc/server"
 	"github.com/evstack/ev-node/pkg/service"
@@ -31,7 +32,7 @@ import (
 	evsync "github.com/evstack/ev-node/pkg/sync"
 )
 
-// prefixes used in KV store to separate rollkit data from execution environment data (if the same data base is reused)
+// EvPrefix prefixes used in KV store to separate rollkit data from execution environment data (if the same data base is reused)
 var EvPrefix = "0"
 
 const (
@@ -55,12 +56,13 @@ type FullNode struct {
 
 	da coreda.DA
 
-	p2pClient    *p2p.Client
-	hSyncService *evsync.HeaderSyncService
-	dSyncService *evsync.DataSyncService
-	Store        store.Store
-	blockManager *block.Manager
-	reaper       *block.Reaper
+	p2pClient      *p2p.Client
+	hSyncService   *evsync.HeaderSyncService
+	dSyncService   *evsync.DataSyncService
+	Store          store.Store
+	blockManager   *block.Manager
+	reaper         *block.Reaper
+	leaderElection *lease.LeaderElection
 
 	prometheusSrv *http.Server
 	pprofSrv      *http.Server
@@ -129,16 +131,54 @@ func newFullNode(
 	// Connect the reaper to the manager for transaction notifications
 	reaper.SetManager(blockManager)
 
+	// Initialize leader election if enabled
+	var leaderElection *lease.LeaderElection
+	if nodeConfig.LeaderElection.Enabled {
+		signerAddr, err := signer.GetAddress()
+		if err != nil {
+			return nil, fmt.Errorf("error getting signer address: %w", err)
+		}
+		nodeID := fmt.Sprintf("node-%x", signerAddr[:8])
+
+		leaseName := nodeConfig.LeaderElection.LeaseName
+		if leaseName == "" {
+			leaseName = fmt.Sprintf("leader-%s", genesis.ChainID)
+		}
+
+		leaseTerm := 30 * time.Second // default
+		if nodeConfig.LeaderElection.LeaseTerm.Duration > 0 {
+			leaseTerm = nodeConfig.LeaderElection.LeaseTerm.Duration
+		}
+
+		// Create lease backend based on configuration
+		var leaseImpl lease.Lease
+		switch nodeConfig.LeaderElection.Backend {
+		case "memory", "":
+			leaseImpl = lease.NewMemoryLease(leaseName)
+		default:
+			return nil, fmt.Errorf("unsupported lease backend: %s", nodeConfig.LeaderElection.Backend)
+		}
+
+		leaderElection = lease.NewLeaderElection(
+			leaseImpl,
+			nodeID,
+			leaseName,
+			leaseTerm,
+			logger.With().Str("component", "leader-election").Logger(),
+		)
+	}
+
 	node := &FullNode{
-		genesis:      genesis,
-		nodeConfig:   nodeConfig,
-		p2pClient:    p2pClient,
-		blockManager: blockManager,
-		reaper:       reaper,
-		da:           da,
-		Store:        rktStore,
-		hSyncService: headerSyncService,
-		dSyncService: dataSyncService,
+		genesis:        genesis,
+		nodeConfig:     nodeConfig,
+		p2pClient:      p2pClient,
+		blockManager:   blockManager,
+		reaper:         reaper,
+		da:             da,
+		Store:          rktStore,
+		hSyncService:   headerSyncService,
+		dSyncService:   dataSyncService,
+		leaderElection: leaderElection,
 	}
 
 	node.BaseService = *service.NewBaseService(logger, "Node", node)
@@ -362,6 +402,13 @@ func (n *FullNode) Run(parentCtx context.Context) error {
 		return fmt.Errorf("error while starting data sync service: %w", err)
 	}
 
+	// Start leader election if enabled
+	if n.leaderElection != nil {
+		if err = n.leaderElection.Start(ctx); err != nil {
+			return fmt.Errorf("error while starting leader election: %w", err)
+		}
+	}
+
 	// only the first error is propagated
 	// any error is an issue, so blocking is not a problem
 	errCh := make(chan error, 1)
@@ -376,12 +423,53 @@ func (n *FullNode) Run(parentCtx context.Context) error {
 	}
 	if n.nodeConfig.Node.Aggregator {
 		n.Logger.Info().Dur("block_time", n.nodeConfig.Node.BlockTime.Duration).Msg("working in aggregator mode")
-		spawnWorker(func() { n.blockManager.AggregationLoop(ctx, errCh) })
-		spawnWorker(func() { n.reaper.Start(ctx) })
-		spawnWorker(func() { n.blockManager.HeaderSubmissionLoop(ctx) })
-		spawnWorker(func() { n.blockManager.DataSubmissionLoop(ctx) })
+
+		if n.leaderElection != nil {
+			// Leader election enabled - manage leader-only operations
+			spawnWorker(func() {
+				err = n.leaderElection.DoAsLeader(ctx, func(ctx context.Context) {
+					// Start leader-only operations
+					var leaderWg sync.WaitGroup
+					leaderWg.Add(4)
+
+					go func() {
+						defer leaderWg.Done()
+						n.blockManager.AggregationLoop(ctx, errCh)
+					}()
+					go func() {
+						defer leaderWg.Done()
+						n.reaper.Start(ctx)
+					}()
+					go func() {
+						defer leaderWg.Done()
+						n.blockManager.HeaderSubmissionLoop(ctx)
+					}()
+					go func() {
+						defer leaderWg.Done()
+						n.blockManager.DataSubmissionLoop(ctx)
+					}()
+
+					leaderWg.Wait()
+				})
+			})
+			if err != nil && !errors.Is(err, context.Canceled) {
+				select {
+				case errCh <- err:
+				default: // don't block
+				}
+			}
+		} else {
+			// Leader election disabled - run normally
+			spawnWorker(func() { n.blockManager.AggregationLoop(ctx, errCh) })
+			spawnWorker(func() { n.reaper.Start(ctx) })
+			spawnWorker(func() { n.blockManager.HeaderSubmissionLoop(ctx) })
+			spawnWorker(func() { n.blockManager.DataSubmissionLoop(ctx) })
+		}
+
+		// Always run DA includer for all nodes
 		spawnWorker(func() { n.blockManager.DAIncluderLoop(ctx, errCh) })
 	} else {
+		// Non-aggregator nodes always run sync operations to maintain full state
 		spawnWorker(func() { n.blockManager.DARetrieveLoop(ctx) })
 		spawnWorker(func() { n.blockManager.HeaderStoreRetrieveLoop(ctx, errCh) })
 		spawnWorker(func() { n.blockManager.DataStoreRetrieveLoop(ctx, errCh) })
@@ -412,6 +500,16 @@ func (n *FullNode) Run(parentCtx context.Context) error {
 	defer cancel()
 
 	var multiErr error // Use a multierror variable
+
+	// Stop leader election
+	if n.leaderElection != nil {
+		err = n.leaderElection.Stop()
+		if err != nil {
+			multiErr = errors.Join(multiErr, fmt.Errorf("stopping leader election: %w", err))
+		} else {
+			n.Logger.Debug().Msg("leader election stopped")
+		}
+	}
 
 	// Stop Header Sync Service
 	err = n.hSyncService.Stop(shutdownCtx)
@@ -506,7 +604,6 @@ func (n *FullNode) Run(parentCtx context.Context) error {
 	return multiErr // Return shutdown errors if context was okay
 }
 
-// GetGenesis returns entire genesis doc.
 func (n *FullNode) GetGenesis() genesispkg.Genesis {
 	return n.genesis
 }
