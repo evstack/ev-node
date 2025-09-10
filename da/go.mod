@@ -8,7 +8,7 @@ require (
 	github.com/evstack/ev-node/core v0.0.0-20250312114929-104787ba1a4c
 	github.com/filecoin-project/go-jsonrpc v0.8.0
 	github.com/rs/zerolog v1.34.0
-	github.com/stretchr/testify v1.10.0
+	github.com/stretchr/testify v1.11.1
 )
 
 require (

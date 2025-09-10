@@ -105,7 +105,7 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - name: set up go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v6
         with:
           go-version-file: ./test/docker-e2e/go.mod
       - name: Run Docker E2E Tests
@@ -120,7 +120,7 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - name: set up go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v6
         with:
           go-version-file: ./go.mod
       - name: Build all ev-node binaries
@@ -131,7 +131,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v6
         with:
           go-version-file: ./go.mod
       - run: make tidy-all
@@ -144,7 +144,7 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - name: set up go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v6
         with:
           go-version-file: ./go.mod
       - name: Run unit test
@@ -163,7 +163,7 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - name: set up go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v6
         with:
           go-version-file: ./go.mod
       - name: Run integration test
@@ -181,7 +181,7 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - name: set up go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v6
         with:
           go-version-file: ./go.mod
       - name: E2E Tests
@@ -194,7 +194,7 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - name: set up go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v6
         with:
           go-version-file: ./go.mod
       - name: EVM Tests
