@@ -491,7 +491,7 @@ func (e *Executor) createBlock(ctx context.Context, height uint64, batchData *Ba
 			BaseHeader: types.BaseHeader{
 				ChainID: e.genesis.ChainID,
 				Height:  height,
-				Time:    uint64(batchData.Time.UnixNano()),
+				Time:    uint64(batchData.UnixNano()),
 			},
 			LastHeaderHash:  lastHeaderHash,
 			ConsensusHash:   make(types.Hash, 32),
@@ -507,7 +507,7 @@ func (e *Executor) createBlock(ctx context.Context, height uint64, batchData *Ba
 
 	// Create data
 	data := &types.Data{
-		Txs: make(types.Txs, len(batchData.Batch.Transactions)),
+		Txs: make(types.Txs, len(batchData.Transactions)),
 		Metadata: &types.Metadata{
 			ChainID:      header.ChainID(),
 			Height:       header.Height(),
@@ -516,7 +516,7 @@ func (e *Executor) createBlock(ctx context.Context, height uint64, batchData *Ba
 		},
 	}
 
-	for i, tx := range batchData.Batch.Transactions {
+	for i, tx := range batchData.Transactions {
 		data.Txs[i] = types.Tx(tx)
 	}
 

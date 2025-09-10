@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"sync"
 	"time"
@@ -631,7 +632,7 @@ func (s *Syncer) updateMetrics() {
 
 // isHeightFromFutureError checks if the error is a height from future error
 func (s *Syncer) isHeightFromFutureError(err error) bool {
-	return err != nil && (err == common.ErrHeightFromFutureStr ||
+	return err != nil && (errors.Is(err, common.ErrHeightFromFutureStr) ||
 		(err.Error() != "" && bytes.Contains([]byte(err.Error()), []byte(common.ErrHeightFromFutureStr.Error()))))
 }
 

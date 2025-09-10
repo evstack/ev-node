@@ -18,7 +18,6 @@ import (
 
 func TestBasicExecutionFlow(t *testing.T) {
 	require := require.New(t)
-	ctx := context.Background()
 
 	node, cleanup := createNodeWithCleanup(t, getTestConfig(t, 1))
 	defer cleanup()
@@ -29,7 +28,7 @@ func TestBasicExecutionFlow(t *testing.T) {
 
 	// Get the original executor to retrieve transactions
 	originalExecutor := getExecutorFromNode(t, node)
-	txs := getTransactions(t, originalExecutor, ctx)
+	txs := getTransactions(t, originalExecutor, t.Context())
 
 	// Use the generated mock executor for testing execution steps
 	mockExec := testmocks.NewMockExecutor(t)
@@ -50,15 +49,15 @@ func TestBasicExecutionFlow(t *testing.T) {
 		Return(nil).Once()
 
 	// Call helper functions with the mock executor
-	stateRoot, maxBytes := initializeChain(t, mockExec, ctx)
+	stateRoot, maxBytes := initializeChain(t, mockExec, t.Context())
 	require.Equal(expectedInitialStateRoot, stateRoot)
 	require.Equal(expectedMaxBytes, maxBytes)
 
-	newStateRoot, newMaxBytes := executeTransactions(t, mockExec, ctx, txs, stateRoot, maxBytes)
+	newStateRoot, newMaxBytes := executeTransactions(t, mockExec, t.Context(), txs, stateRoot, maxBytes)
 	require.Equal(expectedNewStateRoot, newStateRoot)
 	require.Equal(expectedMaxBytes, newMaxBytes)
 
-	finalizeExecution(t, mockExec, ctx)
+	finalizeExecution(t, mockExec, t.Context())
 
 	require.NotEmpty(newStateRoot)
 }
