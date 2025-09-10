@@ -1,6 +1,6 @@
 module github.com/evstack/ev-node/execution/evm
 
-go 1.24.2
+go 1.24.1
 
 replace github.com/evstack/ev-node/core => ../../core
 
