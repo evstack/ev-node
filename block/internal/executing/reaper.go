@@ -27,7 +27,7 @@ type Reaper struct {
 }
 
 // NewReaper creates a new Reaper instance with persistent seenTx storage.
-func NewReaper(ctx context.Context, exec coreexecutor.Executor, sequencer coresequencer.Sequencer, chainID string, interval time.Duration, logger zerolog.Logger, store ds.Batching) *Reaper {
+func NewReaper(ctx context.Context, exec coreexecutor.Executor, sequencer coresequencer.Sequencer, chainID string, interval time.Duration, logger zerolog.Logger, store ds.Batching, executor *Executor) *Reaper {
 	if interval <= 0 {
 		interval = DefaultInterval
 	}
@@ -39,12 +39,8 @@ func NewReaper(ctx context.Context, exec coreexecutor.Executor, sequencer corese
 		logger:    logger.With().Str("component", "reaper").Logger(),
 		ctx:       ctx,
 		seenStore: store,
+		executor:  executor,
 	}
-}
-
-// SetExecutor sets the Executor reference for transaction notifications
-func (r *Reaper) SetExecutor(executor *Executor) {
-	r.executor = executor
 }
 
 // Start begins the reaping process at the specified interval.

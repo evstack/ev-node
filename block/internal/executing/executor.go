@@ -87,6 +87,10 @@ func NewExecutor(
 	logger zerolog.Logger,
 	options common.BlockOptions,
 ) *Executor {
+	if signer == nil {
+		panic("signer cannot be nil")
+	}
+
 	return &Executor{
 		store:             store,
 		exec:              exec,
@@ -119,9 +123,7 @@ func (e *Executor) Start(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("failed to create reaper store: %w", err)
 	}
-	e.reaper = NewReaper(e.ctx, e.exec, e.sequencer, e.genesis.ChainID,
-		DefaultInterval, e.logger, reaperStore)
-	e.reaper.SetExecutor(e)
+	e.reaper = NewReaper(e.ctx, e.exec, e.sequencer, e.genesis.ChainID, DefaultInterval, e.logger, reaperStore, e)
 
 	// Start execution loop
 	e.wg.Add(1)
@@ -222,7 +224,7 @@ func (e *Executor) initializeState() error {
 func (e *Executor) createGenesisBlock(ctx context.Context, stateRoot []byte) error {
 	header := types.Header{
 		AppHash:         stateRoot,
-		DataHash:        new(types.Data).DACommitment(),
+		DataHash:        common.DataHashForEmptyTxs,
 		ProposerAddress: e.genesis.ProposerAddress,
 		BaseHeader: types.BaseHeader{
 			ChainID: e.genesis.ChainID,
@@ -231,43 +233,34 @@ func (e *Executor) createGenesisBlock(ctx context.Context, stateRoot []byte) err
 		},
 	}
 
-	data := &types.Data{}
-	var signature types.Signature
-
-	// Sign genesis block if signer is available
 	if e.signer != nil {
-		pubKey, err := e.signer.GetPublic()
-		if err != nil {
-			return fmt.Errorf("failed to get public key: %w", err)
-		}
-
-		bz, err := e.options.AggregatorNodeSignatureBytesProvider(&header)
-		if err != nil {
-			return fmt.Errorf("failed to get signature payload: %w", err)
-		}
-
-		sig, err := e.signer.Sign(bz)
-		if err != nil {
-			return fmt.Errorf("failed to sign header: %w", err)
-		}
-
-		signature = sig
-
-		genesisHeader := &types.SignedHeader{
-			Header: header,
-			Signer: types.Signer{
-				PubKey:  pubKey,
-				Address: e.genesis.ProposerAddress,
-			},
-			Signature: signature,
-		}
-
-		return e.store.SaveBlockData(ctx, genesisHeader, data, &signature)
+		return errors.New("signer cannot be nil")
 	}
+
+	pubKey, err := e.signer.GetPublic()
+	if err != nil {
+		return fmt.Errorf("failed to get public key: %w", err)
+	}
+
+	bz, err := e.options.AggregatorNodeSignatureBytesProvider(&header)
+	if err != nil {
+		return fmt.Errorf("failed to get signature payload: %w", err)
+	}
+
+	sig, err := e.signer.Sign(bz)
+	if err != nil {
+		return fmt.Errorf("failed to sign header: %w", err)
+	}
+
+	var signature types.Signature
+	data := &types.Data{}
+
+	signature = sig
 
 	genesisHeader := &types.SignedHeader{
 		Header: header,
 		Signer: types.Signer{
+			PubKey:  pubKey,
 			Address: e.genesis.ProposerAddress,
 		},
 		Signature: signature,

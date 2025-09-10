@@ -146,21 +146,19 @@ func TestCacheDAHeightEvent_Usage(t *testing.T) {
 // Mock cache manager for testing
 type MockCacheManager struct{}
 
-func (m *MockCacheManager) GetHeader(height uint64) *types.SignedHeader          { return nil }
-func (m *MockCacheManager) SetHeader(height uint64, header *types.SignedHeader)  {}
-func (m *MockCacheManager) IsHeaderSeen(hash string) bool                        { return false }
-func (m *MockCacheManager) SetHeaderSeen(hash string)                            {}
-func (m *MockCacheManager) IsHeaderDAIncluded(hash string) bool                  { return false }
-func (m *MockCacheManager) SetHeaderDAIncluded(hash string, daHeight uint64)     {}
-func (m *MockCacheManager) GetHeaderDAIncludedHeight(hash string) (uint64, bool) { return 0, false }
+func (m *MockCacheManager) GetHeader(height uint64) *types.SignedHeader         { return nil }
+func (m *MockCacheManager) SetHeader(height uint64, header *types.SignedHeader) {}
+func (m *MockCacheManager) IsHeaderSeen(hash string) bool                       { return false }
+func (m *MockCacheManager) SetHeaderSeen(hash string)                           {}
+func (m *MockCacheManager) IsHeaderDAIncluded(hash string) bool                 { return false }
+func (m *MockCacheManager) SetHeaderDAIncluded(hash string, daHeight uint64)    {}
 
-func (m *MockCacheManager) GetData(height uint64) *types.Data                  { return nil }
-func (m *MockCacheManager) SetData(height uint64, data *types.Data)            {}
-func (m *MockCacheManager) IsDataSeen(hash string) bool                        { return false }
-func (m *MockCacheManager) SetDataSeen(hash string)                            {}
-func (m *MockCacheManager) IsDataDAIncluded(hash string) bool                  { return false }
-func (m *MockCacheManager) SetDataDAIncluded(hash string, daHeight uint64)     {}
-func (m *MockCacheManager) GetDataDAIncludedHeight(hash string) (uint64, bool) { return 0, false }
+func (m *MockCacheManager) GetData(height uint64) *types.Data              { return nil }
+func (m *MockCacheManager) SetData(height uint64, data *types.Data)        {}
+func (m *MockCacheManager) IsDataSeen(hash string) bool                    { return false }
+func (m *MockCacheManager) SetDataSeen(hash string)                        {}
+func (m *MockCacheManager) IsDataDAIncluded(hash string) bool              { return false }
+func (m *MockCacheManager) SetDataDAIncluded(hash string, daHeight uint64) {}
 
 func (m *MockCacheManager) GetPendingHeaders(ctx context.Context) ([]*types.SignedHeader, error) {
 	return nil, nil
@@ -170,17 +168,15 @@ func (m *MockCacheManager) GetPendingData(ctx context.Context) ([]*types.SignedD
 }
 func (m *MockCacheManager) SetLastSubmittedHeaderHeight(ctx context.Context, height uint64) {}
 func (m *MockCacheManager) SetLastSubmittedDataHeight(ctx context.Context, height uint64)   {}
-func (m *MockCacheManager) GetLastSubmittedHeaderHeight() uint64                            { return 0 }
-func (m *MockCacheManager) GetLastSubmittedDataHeight() uint64                              { return 0 }
-func (m *MockCacheManager) NumPendingHeaders() uint64                                       { return 0 }
-func (m *MockCacheManager) NumPendingData() uint64                                          { return 0 }
+
+func (m *MockCacheManager) NumPendingHeaders() uint64 { return 0 }
+func (m *MockCacheManager) NumPendingData() uint64    { return 0 }
 
 func (m *MockCacheManager) SetPendingEvent(height uint64, event *cache.DAHeightEvent) {}
 func (m *MockCacheManager) GetPendingEvents() map[uint64]*cache.DAHeightEvent {
 	return make(map[uint64]*cache.DAHeightEvent)
 }
-func (m *MockCacheManager) DeletePendingEvent(height uint64)                              {}
-func (m *MockCacheManager) RangePendingEvents(fn func(uint64, *cache.DAHeightEvent) bool) {}
+func (m *MockCacheManager) DeletePendingEvent(height uint64) {}
 
 func (m *MockCacheManager) ClearProcessedHeader(height uint64) {}
 func (m *MockCacheManager) ClearProcessedData(height uint64)   {}
