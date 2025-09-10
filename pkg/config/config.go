@@ -402,6 +402,11 @@ func LoadFromViper(inputViper *viper.Viper) (Config, error) {
 
 	// then override with settings from input viper (higher precedence)
 	for _, key := range inputViper.AllKeys() {
+		// we must not override config with default flags value
+		if !inputViper.IsSet(key) {
+			continue
+		}
+
 		// Handle special case for prefixed keys
 		if after, ok := strings.CutPrefix(key, FlagPrefixEvnode); ok {
 			// Strip the prefix for the merged viper
