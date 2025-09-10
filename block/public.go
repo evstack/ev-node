@@ -2,6 +2,14 @@ package block
 
 import "github.com/evstack/ev-node/block/internal/common"
 
+// BlockOptions defines the options for creating block components
+type BlockOptions = common.BlockOptions
+
+// DefaultBlockOptions returns the default block options
+func DefaultBlockOptions() BlockOptions {
+	return common.DefaultBlockOptions()
+}
+
 // Expose Metrics for constructor
 type Metrics = common.Metrics
 

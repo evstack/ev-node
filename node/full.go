@@ -82,6 +82,8 @@ func newFullNode(
 	logger zerolog.Logger,
 	nodeOpts NodeOptions,
 ) (fn *FullNode, err error) {
+	logger.Debug().Bytes("address", genesis.ProposerAddress).Msg("Proposer address")
+
 	blockMetrics, _ := metricsProvider(genesis.ChainID)
 
 	mainKV := newPrefixKV(database, EvPrefix)
@@ -97,20 +99,38 @@ func newFullNode(
 
 	rktStore := store.New(mainKV)
 
-	blockComponents, err := initBlockComponents(
-		nodeConfig,
-		genesis,
-		rktStore,
-		exec,
-		sequencer,
-		da,
-		logger,
-		headerSyncService,
-		dataSyncService,
-		signer,
-		blockMetrics,
-		nodeOpts.BlockOptions,
-	)
+	var blockComponents *block.BlockComponents
+	if nodeConfig.Node.Aggregator {
+		blockComponents, err = block.NewFullNodeAggregator(
+			nodeConfig,
+			genesis,
+			rktStore,
+			exec,
+			sequencer,
+			da,
+			signer,
+			headerSyncService.Store(),
+			dataSyncService.Store(),
+			headerSyncService,
+			dataSyncService,
+			logger,
+			blockMetrics,
+			nodeOpts.BlockOptions,
+		)
+	} else {
+		blockComponents, err = block.NewFullNode(
+			nodeConfig,
+			genesis,
+			rktStore,
+			exec,
+			da,
+			headerSyncService.Store(),
+			dataSyncService.Store(),
+			logger,
+			blockMetrics,
+			nodeOpts.BlockOptions,
+		)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -157,76 +177,6 @@ func initDataSyncService(
 		return nil, fmt.Errorf("error while initializing DataSyncService: %w", err)
 	}
 	return dataSyncService, nil
-}
-
-// initBlockComponents initializes the block components.
-// It requires:
-// - signingKey: the private key of the validator
-// - nodeConfig: the node configuration
-// - genesis: the genesis document
-// - store: the store
-// - seqClient: the sequencing client
-// - da: the DA
-func initBlockComponents(
-	nodeConfig config.Config,
-	genesis genesispkg.Genesis,
-	store store.Store,
-	exec coreexecutor.Executor,
-	sequencer coresequencer.Sequencer,
-	da coreda.DA,
-	logger zerolog.Logger,
-	headerSyncService *evsync.HeaderSyncService,
-	dataSyncService *evsync.DataSyncService,
-	signerInstance signer.Signer,
-	blockMetrics *block.Metrics,
-	blockOpts block.BlockOptions,
-) (*block.BlockComponents, error) {
-	logger.Debug().Bytes("address", genesis.ProposerAddress).Msg("Proposer address")
-
-	if nodeConfig.Node.Light {
-		return block.NewLightNode(
-			nodeConfig,
-			genesis,
-			store,
-			exec,
-			da,
-			headerSyncService.Store(),
-			dataSyncService.Store(),
-			logger,
-			blockMetrics,
-			blockOpts,
-		)
-	} else if nodeConfig.Node.Aggregator {
-		return block.NewFullNodeAggregator(
-			nodeConfig,
-			genesis,
-			store,
-			exec,
-			sequencer,
-			da,
-			signerInstance,
-			headerSyncService.Store(),
-			dataSyncService.Store(),
-			headerSyncService,
-			dataSyncService,
-			logger,
-			blockMetrics,
-			blockOpts,
-		)
-	} else {
-		return block.NewFullNode(
-			nodeConfig,
-			genesis,
-			store,
-			exec,
-			da,
-			headerSyncService.Store(),
-			dataSyncService.Store(),
-			logger,
-			blockMetrics,
-			blockOpts,
-		)
-	}
 }
 
 // initGenesisChunks creates a chunked format of the genesis document to make it easier to
