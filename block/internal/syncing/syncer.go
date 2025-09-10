@@ -56,7 +56,6 @@ type Syncer struct {
 	heightInCh    chan HeightEvent
 	headerStoreCh chan struct{}
 	dataStoreCh   chan struct{}
-	retrieveCh    chan struct{}
 	daIncluderCh  chan struct{}
 
 	// Handlers
@@ -112,7 +111,6 @@ func NewSyncer(
 		heightInCh:    make(chan HeightEvent, 10000),
 		headerStoreCh: make(chan struct{}, 1),
 		dataStoreCh:   make(chan struct{}, 1),
-		retrieveCh:    make(chan struct{}, 1),
 		daIncluderCh:  make(chan struct{}, 1),
 		logger:        logger.With().Str("component", "syncer").Logger(),
 	}
@@ -131,26 +129,29 @@ func (s *Syncer) Start(ctx context.Context) error {
 	s.daHandler = NewDAHandler(s.da, s.cache, s.config, s.genesis, s.options, s.logger)
 	s.p2pHandler = NewP2PHandler(s.headerStore, s.dataStore, s.cache, s.genesis, s.signer, s.options, s.logger)
 
-	// Start main sync loop
+	// Start main processing loop
 	s.wg.Add(1)
 	go func() {
 		defer s.wg.Done()
-		s.syncLoop()
+		s.processLoop()
 	}()
 
-	// Start combined submission loop (headers + data)
-	s.wg.Add(1)
-	go func() {
-		defer s.wg.Done()
-		s.submissionLoop()
-	}()
+	// Start combined submission loop (headers + data) only for aggregators
+	if s.config.Node.Aggregator {
+		s.wg.Add(1)
+		go func() {
+			defer s.wg.Done()
+			s.submissionLoop()
+		}()
+	} else {
 
-	// Start combined P2P retrieval loop
-	s.wg.Add(1)
-	go func() {
-		defer s.wg.Done()
-		s.p2pRetrievalLoop()
-	}()
+		// Start sync loop (DA and P2P retrieval)
+		s.wg.Add(1)
+		go func() {
+			defer s.wg.Done()
+			s.syncLoop()
+		}()
+	}
 
 	s.logger.Info().Msg("syncer started")
 	return nil
@@ -249,51 +250,31 @@ func (s *Syncer) initializeState() error {
 	return nil
 }
 
-// syncLoop is the main coordination loop for synchronization
-func (s *Syncer) syncLoop() {
-	s.logger.Info().Msg("starting sync loop")
-	defer s.logger.Info().Msg("sync loop stopped")
+// processLoop is the main coordination loop for processing events
+func (s *Syncer) processLoop() {
+	s.logger.Info().Msg("starting process loop")
+	defer s.logger.Info().Msg("process loop stopped")
 
-	daTicker := time.NewTicker(s.config.DA.BlockTime.Duration)
-	defer daTicker.Stop()
 	blockTicker := time.NewTicker(s.config.Node.BlockTime.Duration)
 	defer blockTicker.Stop()
 	metricsTicker := time.NewTicker(30 * time.Second)
 	defer metricsTicker.Stop()
 
 	for {
+		// Process pending events from cache on every iteration
+		s.processPendingEvents()
+
 		select {
 		case <-s.ctx.Done():
 			return
-		case <-daTicker.C:
-			s.sendNonBlockingSignal(s.retrieveCh, "retrieve")
 		case <-blockTicker.C:
+			// Signal P2P stores to check for new data
 			s.sendNonBlockingSignal(s.headerStoreCh, "header_store")
 			s.sendNonBlockingSignal(s.dataStoreCh, "data_store")
-			// Process pending events from cache
-			s.processPendingEvents()
 		case heightEvent := <-s.heightInCh:
 			s.processHeightEvent(&heightEvent)
 		case <-metricsTicker.C:
 			s.updateMetrics()
-		case <-s.retrieveCh:
-			events, err := s.daHandler.RetrieveFromDA(s.ctx, s.GetDAHeight())
-			if err != nil {
-				if !s.isHeightFromFutureError(err) {
-					s.logger.Error().Err(err).Msg("failed to retrieve from DA")
-				}
-			} else {
-				// Process DA events
-				for _, event := range events {
-					select {
-					case s.heightInCh <- event:
-					default:
-						s.logger.Warn().Msg("height channel full, dropping DA event")
-					}
-				}
-				// Increment DA height on successful retrieval
-				s.SetDAHeight(s.GetDAHeight() + 1)
-			}
 		case <-s.daIncluderCh:
 			s.processDAInclusion()
 		}
@@ -330,10 +311,13 @@ func (s *Syncer) submissionLoop() {
 	}
 }
 
-// p2pRetrievalLoop handles retrieval from P2P stores
-func (s *Syncer) p2pRetrievalLoop() {
-	s.logger.Info().Msg("starting P2P retrieval loop")
-	defer s.logger.Info().Msg("P2P retrieval loop stopped")
+// syncLoop handles sync from DA and P2P sources
+func (s *Syncer) syncLoop() {
+	s.logger.Info().Msg("starting sync loop")
+	defer s.logger.Info().Msg("sync loop stopped")
+
+	daTicker := time.NewTicker(s.config.DA.BlockTime.Duration)
+	defer daTicker.Stop()
 
 	initialHeight, err := s.store.Height(s.ctx)
 	if err != nil {
@@ -348,7 +332,27 @@ func (s *Syncer) p2pRetrievalLoop() {
 		select {
 		case <-s.ctx.Done():
 			return
+		case <-daTicker.C:
+			// Retrieve from DA
+			events, err := s.daHandler.RetrieveFromDA(s.ctx, s.GetDAHeight())
+			if err != nil {
+				if !s.isHeightFromFutureError(err) {
+					s.logger.Error().Err(err).Msg("failed to retrieve from DA")
+				}
+			} else {
+				// Process DA events
+				for _, event := range events {
+					select {
+					case s.heightInCh <- event:
+					default:
+						s.logger.Warn().Msg("height channel full, dropping DA event")
+					}
+				}
+				// Increment DA height on successful retrieval
+				s.SetDAHeight(s.GetDAHeight() + 1)
+			}
 		case <-s.headerStoreCh:
+			// Check for new P2P headers
 			newHeaderHeight := s.headerStore.Height()
 			if newHeaderHeight > lastHeaderHeight {
 				events := s.p2pHandler.ProcessHeaderRange(s.ctx, lastHeaderHeight+1, newHeaderHeight)
@@ -362,6 +366,7 @@ func (s *Syncer) p2pRetrievalLoop() {
 				lastHeaderHeight = newHeaderHeight
 			}
 		case <-s.dataStoreCh:
+			// Check for new P2P data
 			newDataHeight := s.dataStore.Height()
 			if newDataHeight > lastDataHeight {
 				events := s.p2pHandler.ProcessDataRange(s.ctx, lastDataHeight+1, newDataHeight)
@@ -617,9 +622,11 @@ func (s *Syncer) sendNonBlockingSignal(ch chan struct{}, name string) {
 
 // updateMetrics updates sync-related metrics
 func (s *Syncer) updateMetrics() {
-	// Update pending counts
-	s.metrics.PendingHeadersCount.Set(float64(s.cache.NumPendingHeaders()))
-	s.metrics.PendingDataCount.Set(float64(s.cache.NumPendingData()))
+	// Update pending counts (only relevant for aggregators)
+	if s.config.Node.Aggregator {
+		s.metrics.PendingHeadersCount.Set(float64(s.cache.NumPendingHeaders()))
+		s.metrics.PendingDataCount.Set(float64(s.cache.NumPendingData()))
+	}
 	s.metrics.DAInclusionHeight.Set(float64(s.GetDAIncludedHeight()))
 }
 
