@@ -163,7 +163,7 @@ type DAConfig struct {
 	MaxSubmitAttempts int             `mapstructure:"max_submit_attempts" yaml:"max_submit_attempts" comment:"Maximum number of attempts to submit data to the DA layer before giving up. Higher values provide more resilience but can delay error reporting."`
 }
 
-// GetNamespace returns the namespace for header submittions.
+// GetNamespace returns the namespace for header submissions.
 func (d *DAConfig) GetNamespace() string {
 	if d.Namespace != "" {
 		return d.Namespace
