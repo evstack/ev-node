@@ -817,8 +817,8 @@ signer:
 ```
 
 **Command-line Flag:**
-`--rollkit.signer.type <string>`
-_Example:_ `--rollkit.signer.type grpc`
+`--rollkit.signer.signer_type <string>`
+_Example:_ `--rollkit.signer.signer_type grpc`
 _Default:_ (Depends on application, often "file" or none if not an aggregator)
 _Constant:_ `FlagSignerType`
 
@@ -836,8 +836,8 @@ signer:
 ```
 
 **Command-line Flag:**
-`--rollkit.signer.path <string>`
-_Example:_ `--rollkit.signer.path ./keys/mykey.pem`
+`--rollkit.signer.signer_path <string>`
+_Example:_ `--rollkit.signer.signer_path ./keys/mykey.pem`
 _Default:_ (Depends on application)
 _Constant:_ `FlagSignerPath`
 

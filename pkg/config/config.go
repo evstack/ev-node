@@ -105,9 +105,9 @@ const (
 	// Signer configuration flags
 
 	// FlagSignerType is a flag for specifying the signer type
-	FlagSignerType = FlagPrefixEvnode + "signer.type"
+	FlagSignerType = FlagPrefixEvnode + "signer.signer_type"
 	// FlagSignerPath is a flag for specifying the signer path
-	FlagSignerPath = FlagPrefixEvnode + "signer.path"
+	FlagSignerPath = FlagPrefixEvnode + "signer.signer_path"
 
 	// FlagSignerPassphrase is a flag for specifying the signer passphrase
 	//nolint:gosec
