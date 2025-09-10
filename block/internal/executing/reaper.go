@@ -1,4 +1,4 @@
-package block
+package executing
 
 import (
 	"context"
@@ -13,8 +13,6 @@ import (
 	coresequencer "github.com/evstack/ev-node/core/sequencer"
 )
 
-const DefaultInterval = 1 * time.Second
-
 // Reaper is responsible for periodically retrieving transactions from the executor,
 // filtering out already seen transactions, and submitting new transactions to the sequencer.
 type Reaper struct {
@@ -25,7 +23,7 @@ type Reaper struct {
 	logger    zerolog.Logger
 	ctx       context.Context
 	seenStore ds.Batching
-	manager   *Manager
+	executor  *Executor
 }
 
 // NewReaper creates a new Reaper instance with persistent seenTx storage.
@@ -38,15 +36,15 @@ func NewReaper(ctx context.Context, exec coreexecutor.Executor, sequencer corese
 		sequencer: sequencer,
 		chainID:   chainID,
 		interval:  interval,
-		logger:    logger,
+		logger:    logger.With().Str("component", "reaper").Logger(),
 		ctx:       ctx,
 		seenStore: store,
 	}
 }
 
-// SetManager sets the Manager reference for transaction notifications
-func (r *Reaper) SetManager(manager *Manager) {
-	r.manager = manager
+// SetExecutor sets the Executor reference for transaction notifications
+func (r *Reaper) SetExecutor(executor *Executor) {
+	r.executor = executor
 }
 
 // Start begins the reaping process at the specified interval.
@@ -55,12 +53,12 @@ func (r *Reaper) Start(ctx context.Context) {
 	ticker := time.NewTicker(r.interval)
 	defer ticker.Stop()
 
-	r.logger.Info().Dur("interval", r.interval).Msg("Reaper started")
+	r.logger.Info().Dur("interval", r.interval).Msg("reaper started")
 
 	for {
 		select {
 		case <-ctx.Done():
-			r.logger.Info().Msg("Reaper stopped")
+			r.logger.Info().Msg("reaper stopped")
 			return
 		case <-ticker.C:
 			r.SubmitTxs()
@@ -72,7 +70,7 @@ func (r *Reaper) Start(ctx context.Context) {
 func (r *Reaper) SubmitTxs() {
 	txs, err := r.exec.GetTxs(r.ctx)
 	if err != nil {
-		r.logger.Error().Err(err).Msg("Reaper failed to get txs from executor")
+		r.logger.Error().Err(err).Msg("failed to get txs from executor")
 		return
 	}
 
@@ -82,7 +80,7 @@ func (r *Reaper) SubmitTxs() {
 		key := ds.NewKey(txHash)
 		has, err := r.seenStore.Has(r.ctx, key)
 		if err != nil {
-			r.logger.Error().Err(err).Msg("Failed to check seenStore")
+			r.logger.Error().Err(err).Msg("failed to check seenStore")
 			continue
 		}
 		if !has {
@@ -91,18 +89,18 @@ func (r *Reaper) SubmitTxs() {
 	}
 
 	if len(newTxs) == 0 {
-		r.logger.Debug().Msg("Reaper found no new txs to submit")
+		r.logger.Debug().Msg("no new txs to submit")
 		return
 	}
 
-	r.logger.Debug().Int("txCount", len(newTxs)).Msg("Reaper submitting txs to sequencer")
+	r.logger.Debug().Int("txCount", len(newTxs)).Msg("submitting txs to sequencer")
 
 	_, err = r.sequencer.SubmitBatchTxs(r.ctx, coresequencer.SubmitBatchTxsRequest{
 		Id:    []byte(r.chainID),
 		Batch: &coresequencer.Batch{Transactions: newTxs},
 	})
 	if err != nil {
-		r.logger.Error().Err(err).Msg("Reaper failed to submit txs to sequencer")
+		r.logger.Error().Err(err).Msg("failed to submit txs to sequencer")
 		return
 	}
 
@@ -110,17 +108,17 @@ func (r *Reaper) SubmitTxs() {
 		txHash := hashTx(tx)
 		key := ds.NewKey(txHash)
 		if err := r.seenStore.Put(r.ctx, key, []byte{1}); err != nil {
-			r.logger.Error().Err(err).Str("txHash", txHash).Msg("Failed to persist seen tx")
+			r.logger.Error().Err(err).Str("txHash", txHash).Msg("failed to persist seen tx")
 		}
 	}
 
-	// Notify the manager that new transactions are available
-	if r.manager != nil && len(newTxs) > 0 {
-		r.logger.Debug().Msg("Notifying manager of new transactions")
-		r.manager.NotifyNewTransactions()
+	// Notify the executor that new transactions are available
+	if r.executor != nil && len(newTxs) > 0 {
+		r.logger.Debug().Msg("notifying executor of new transactions")
+		r.executor.NotifyNewTransactions()
 	}
 
-	r.logger.Debug().Msg("Reaper successfully submitted txs")
+	r.logger.Debug().Msg("successfully submitted txs")
 }
 
 func hashTx(tx []byte) string {

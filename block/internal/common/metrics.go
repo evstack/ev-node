@@ -1,4 +1,4 @@
-package block
+package common
 
 import (
 	"github.com/go-kit/kit/metrics"
