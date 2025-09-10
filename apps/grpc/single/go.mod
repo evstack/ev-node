@@ -1,8 +1,6 @@
 module github.com/evstack/ev-node/apps/grpc/single
 
-go 1.24.1
-
-toolchain go1.24.5
+go 1.24.2
 
 require (
 	github.com/evstack/ev-node v0.0.0

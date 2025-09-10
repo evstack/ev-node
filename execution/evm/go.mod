@@ -2,8 +2,6 @@ module github.com/evstack/ev-node/execution/evm
 
 go 1.24.1
 
-toolchain go1.24.5
-
 replace github.com/evstack/ev-node/core => ../../core
 
 require (

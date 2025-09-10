@@ -1,6 +1,6 @@
 module github.com/evstack/ev-node/sequencers/single
 
-go 1.24.1
+go 1.24.2
 
 replace (
 	github.com/evstack/ev-node => ../../

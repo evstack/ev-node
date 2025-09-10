@@ -8,9 +8,9 @@ By definition, resetting the state is deleting your chain's data. Make sure you 
 
 Some reason you might need to reset the state of your chain are:
 
-* During testing and development
-* During upgrades with breaking changes
-* Hardforks
+- During testing and development
+- During upgrades with breaking changes
+- Hardforks
 
 ## Prerequisites
 
@@ -28,7 +28,7 @@ tree $HOME/.testapp
 ├── config
 │   ├── genesis.json
 │   ├── node_key.json
-│   ├── evolve.yaml
+│   ├── evnode.yml
 │   └── signer.json
 └── data
     ├── cache
@@ -90,7 +90,7 @@ tree $HOME/.gm
 │   │   └── gentx-418077c64f0cf5824c24487c9cce38241de677cd.json
 │   ├── node_key.json
 │   ├── priv_validator_key.json
-│   └── evolve.yaml
+│   └── evnode.yml
 ├── data
 │   ├── application.db
 │   │   ├── 000001.log
