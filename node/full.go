@@ -62,7 +62,7 @@ type FullNode struct {
 	Store          store.Store
 	blockManager   *block.Manager
 	reaper         *block.Reaper
-	leaderElection *lease.LeaderElection
+	leaderElection lease.LeaderElectionX
 
 	prometheusSrv *http.Server
 	pprofSrv      *http.Server
@@ -132,7 +132,7 @@ func newFullNode(
 	reaper.SetManager(blockManager)
 
 	// Initialize leader election if enabled
-	var leaderElection *lease.LeaderElection
+	var leaderElection lease.LeaderElectionX
 	if nodeConfig.LeaderElection.Enabled {
 		signerAddr, err := signer.GetAddress()
 		if err != nil {
@@ -166,6 +166,8 @@ func newFullNode(
 			leaseTerm,
 			logger.With().Str("component", "leader-election").Logger(),
 		)
+	} else {
+		leaderElection = &lease.AlwaysLeaderElection{}
 	}
 
 	node := &FullNode{
@@ -421,36 +423,31 @@ func (n *FullNode) Run(parentCtx context.Context) error {
 			f()
 		}()
 	}
+	leaderFn := func(spawnWorker func(func()), ctx context.Context) {
+		spawnWorker(func() { n.blockManager.AggregationLoop(ctx, errCh) })
+		spawnWorker(func() { n.reaper.Start(ctx) })
+		spawnWorker(func() { n.blockManager.HeaderSubmissionLoop(ctx) })
+		spawnWorker(func() { n.blockManager.DataSubmissionLoop(ctx) })
+	}
+	followerFn := func(spawnWorker func(func()), ctx context.Context) {
+		// Non-aggregator nodes always run sync operations to maintain full state
+		spawnWorker(func() { n.blockManager.DARetrieveLoop(ctx) })
+		spawnWorker(func() { n.blockManager.HeaderStoreRetrieveLoop(ctx, errCh) })
+		spawnWorker(func() { n.blockManager.DataStoreRetrieveLoop(ctx, errCh) })
+		spawnWorker(func() { n.blockManager.SyncLoop(ctx, errCh) })
+	}
+
 	if n.nodeConfig.Node.Aggregator {
 		n.Logger.Info().Dur("block_time", n.nodeConfig.Node.BlockTime.Duration).Msg("working in aggregator mode")
-
-		if n.leaderElection != nil {
-			// Leader election enabled - manage leader-only operations
-			spawnWorker(func() {
-				err = n.leaderElection.DoAsLeader(ctx, func(ctx context.Context) {
-					// Start leader-only operations
-					var leaderWg sync.WaitGroup
-					leaderWg.Add(4)
-
-					go func() {
-						defer leaderWg.Done()
-						n.blockManager.AggregationLoop(ctx, errCh)
-					}()
-					go func() {
-						defer leaderWg.Done()
-						n.reaper.Start(ctx)
-					}()
-					go func() {
-						defer leaderWg.Done()
-						n.blockManager.HeaderSubmissionLoop(ctx)
-					}()
-					go func() {
-						defer leaderWg.Done()
-						n.blockManager.DataSubmissionLoop(ctx)
-					}()
-
-					leaderWg.Wait()
-				})
+		spawnWorker(func() {
+			err = n.leaderElection.SwitchAsLeader(ctx, func(ctx context.Context) {
+				cSpawnWorker, waitFn := wgLauncher()
+				leaderFn(cSpawnWorker, ctx)
+				waitFn()
+			}, func(ctx context.Context) {
+				cSpawnWorker, waitFn := wgLauncher()
+				followerFn(cSpawnWorker, ctx)
+				waitFn()
 			})
 			if err != nil && !errors.Is(err, context.Canceled) {
 				select {
@@ -458,24 +455,13 @@ func (n *FullNode) Run(parentCtx context.Context) error {
 				default: // don't block
 				}
 			}
-		} else {
-			// Leader election disabled - run normally
-			spawnWorker(func() { n.blockManager.AggregationLoop(ctx, errCh) })
-			spawnWorker(func() { n.reaper.Start(ctx) })
-			spawnWorker(func() { n.blockManager.HeaderSubmissionLoop(ctx) })
-			spawnWorker(func() { n.blockManager.DataSubmissionLoop(ctx) })
-		}
-
-		// Always run DA includer for all nodes
-		spawnWorker(func() { n.blockManager.DAIncluderLoop(ctx, errCh) })
+		})
 	} else {
-		// Non-aggregator nodes always run sync operations to maintain full state
-		spawnWorker(func() { n.blockManager.DARetrieveLoop(ctx) })
-		spawnWorker(func() { n.blockManager.HeaderStoreRetrieveLoop(ctx, errCh) })
-		spawnWorker(func() { n.blockManager.DataStoreRetrieveLoop(ctx, errCh) })
-		spawnWorker(func() { n.blockManager.SyncLoop(ctx, errCh) })
-		spawnWorker(func() { n.blockManager.DAIncluderLoop(ctx, errCh) })
+		followerFn(spawnWorker, ctx)
 	}
+
+	// Always run DA includer for all nodes
+	spawnWorker(func() { n.blockManager.DAIncluderLoop(ctx, errCh) })
 
 	select {
 	case err := <-errCh:
@@ -604,6 +590,20 @@ func (n *FullNode) Run(parentCtx context.Context) error {
 	return multiErr // Return shutdown errors if context was okay
 }
 
+// wgLauncher returns two functions: one to spawn workers and one to wait for all spawned workers to complete.
+func wgLauncher() (spawnFn func(f func()), waitFn func()) {
+	var wg sync.WaitGroup
+	cSpawnWorker := func(f func()) {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			f()
+		}()
+	}
+	return cSpawnWorker, wg.Wait
+}
+
+// GetGenesis returns entire genesis doc.
 func (n *FullNode) GetGenesis() genesispkg.Genesis {
 	return n.genesis
 }

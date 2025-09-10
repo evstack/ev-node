@@ -9,9 +9,9 @@ import (
 // MemoryLease provides an in-memory implementation of the Lease interface
 // This is primarily for testing and single-process scenarios
 type MemoryLease struct {
-	mu       sync.RWMutex
-	leases   map[string]*LeaseInfo
-	name     string
+	mu     sync.RWMutex
+	leases map[string]*LeaseInfo
+	name   string
 }
 
 // NewMemoryLease creates a new memory-based lease
@@ -85,7 +85,7 @@ func (ml *MemoryLease) Renew(ctx context.Context, nodeID string, duration time.D
 
 	lease.Expiry = now.Add(duration)
 	lease.Version++
-	
+
 	return nil
 }
 

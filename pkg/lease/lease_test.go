@@ -24,7 +24,7 @@ func TestMemoryLease(t *testing.T) {
 				acquired, err := lease.Acquire(ctx, "node1", 10*time.Second)
 				require.NoError(t, err)
 				assert.True(t, acquired)
-				
+
 				holder, err := lease.GetHolder(ctx)
 				require.NoError(t, err)
 				assert.Equal(t, "node1", holder)
@@ -42,7 +42,7 @@ func TestMemoryLease(t *testing.T) {
 				acquired, err := lease.Acquire(ctx, "node2", 10*time.Second)
 				require.NoError(t, err)
 				assert.False(t, acquired)
-				
+
 				holder, err := lease.GetHolder(ctx)
 				require.NoError(t, err)
 				assert.Equal(t, "node1", holder)
@@ -59,7 +59,7 @@ func TestMemoryLease(t *testing.T) {
 				ctx := context.Background()
 				err := lease.Renew(ctx, "node1", 10*time.Second)
 				require.NoError(t, err)
-				
+
 				expiry, err := lease.GetExpiry(ctx)
 				require.NoError(t, err)
 				assert.True(t, expiry.After(time.Now().Add(5*time.Second)))
@@ -89,7 +89,7 @@ func TestMemoryLease(t *testing.T) {
 				ctx := context.Background()
 				err := lease.Release(ctx, "node1")
 				require.NoError(t, err)
-				
+
 				holder, err := lease.GetHolder(ctx)
 				require.NoError(t, err)
 				assert.Empty(t, holder)
@@ -108,7 +108,7 @@ func TestMemoryLease(t *testing.T) {
 				acquired, err := lease.Acquire(ctx, "node2", 10*time.Second)
 				require.NoError(t, err)
 				assert.True(t, acquired)
-				
+
 				holder, err := lease.GetHolder(ctx)
 				require.NoError(t, err)
 				assert.Equal(t, "node2", holder)

@@ -104,17 +104,17 @@ func TestLeaderElectionGracefulShutdown(t *testing.T) {
 	// Start leader election
 	err := leaderElection.Start(ctx)
 	require.NoError(err)
-	defer leaderElection.Stop()
+	defer leaderElection.Stop() // nolint: errcheck
 
 	// Create error channel to capture shutdown signal
 	errCh := make(chan error, 1)
 
 	// Start leader election loop in background
 	go func() {
-		_ = node.leaderElection.DoAsLeader(ctx, func(ctx2 context.Context) {
+		_ = node.leaderElection.SwitchAsLeader(ctx, func(ctx2 context.Context) {
 			// Mock leader function - just wait for context cancellation
 			<-ctx.Done()
-		})
+		}, nil)
 	}()
 
 	// Wait for node to become leader
@@ -129,7 +129,7 @@ func TestLeaderElectionGracefulShutdown(t *testing.T) {
 	leaderElection2 := lease.NewLeaderElection(memoryLease, "node2", "test-leader", 50*time.Millisecond, logger)
 	err = leaderElection2.Start(ctx)
 	require.NoError(err)
-	defer leaderElection2.Stop()
+	defer leaderElection2.Stop() // nolint: errcheck
 
 	// Wait for the second node to acquire leadership, causing the first to lose it
 	var leadershipLost bool
@@ -146,7 +146,7 @@ func TestLeaderElectionGracefulShutdown(t *testing.T) {
 	}
 
 	if !leadershipLost {
-		// If we didn't detect leadership loss through the channel, 
+		// If we didn't detect leadership loss through the channel,
 		// we can still test by forcing a lease renewal failure
 		t.Skip("Leadership loss not detected through natural means, implementation may need adjustment")
 	}
