@@ -233,7 +233,7 @@ func (e *Executor) createGenesisBlock(ctx context.Context, stateRoot []byte) err
 		},
 	}
 
-	if e.signer != nil {
+	if e.signer == nil {
 		return errors.New("signer cannot be nil")
 	}
 

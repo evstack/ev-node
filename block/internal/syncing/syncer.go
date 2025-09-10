@@ -144,7 +144,6 @@ func (s *Syncer) Start(ctx context.Context) error {
 			s.submissionLoop()
 		}()
 	} else {
-
 		// Start sync loop (DA and P2P retrieval)
 		s.wg.Add(1)
 		go func() {

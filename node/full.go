@@ -18,6 +18,7 @@ import (
 	"github.com/rs/zerolog"
 
 	"github.com/evstack/ev-node/block"
+
 	coreda "github.com/evstack/ev-node/core/da"
 	coreexecutor "github.com/evstack/ev-node/core/execution"
 	coresequencer "github.com/evstack/ev-node/core/sequencer"
@@ -81,7 +82,7 @@ func newFullNode(
 	logger zerolog.Logger,
 	nodeOpts NodeOptions,
 ) (fn *FullNode, err error) {
-	_ = metricsProvider(genesis.ChainID)
+	blockMetrics, _ := metricsProvider(genesis.ChainID)
 
 	mainKV := newPrefixKV(database, EvPrefix)
 	headerSyncService, err := initHeaderSyncService(mainKV, nodeConfig, genesis, p2pClient, logger)
@@ -107,6 +108,7 @@ func newFullNode(
 		headerSyncService,
 		dataSyncService,
 		signer,
+		blockMetrics,
 		nodeOpts.BlockOptions,
 	)
 	if err != nil {
@@ -175,37 +177,56 @@ func initBlockComponents(
 	logger zerolog.Logger,
 	headerSyncService *evsync.HeaderSyncService,
 	dataSyncService *evsync.DataSyncService,
-	signer signer.Signer,
+	signerInstance signer.Signer,
+	blockMetrics *block.Metrics,
 	blockOpts block.BlockOptions,
 ) (*block.BlockComponents, error) {
 	logger.Debug().Bytes("address", genesis.ProposerAddress).Msg("Proposer address")
 
-	deps := block.Dependencies{
-		Store:             store,
-		Executor:          exec,
-		Sequencer:         sequencer,
-		DA:                da,
-		HeaderStore:       headerSyncService.Store(),
-		DataStore:         dataSyncService.Store(),
-		HeaderBroadcaster: headerSyncService,
-		DataBroadcaster:   dataSyncService,
-		Signer:            signer,
-	}
-
-	var components *block.BlockComponents
-	var err error
-
 	if nodeConfig.Node.Light {
-		components, err = block.NewLightNodeComponents(nodeConfig, genesis, deps, logger)
+		return block.NewLightNode(
+			nodeConfig,
+			genesis,
+			store,
+			exec,
+			da,
+			headerSyncService.Store(),
+			dataSyncService.Store(),
+			logger,
+			blockMetrics,
+			blockOpts,
+		)
+	} else if nodeConfig.Node.Aggregator {
+		return block.NewFullNodeAggregator(
+			nodeConfig,
+			genesis,
+			store,
+			exec,
+			sequencer,
+			da,
+			signerInstance,
+			headerSyncService.Store(),
+			dataSyncService.Store(),
+			headerSyncService,
+			dataSyncService,
+			logger,
+			blockMetrics,
+			blockOpts,
+		)
 	} else {
-		components, err = block.NewFullNodeComponents(nodeConfig, genesis, deps, logger, blockOpts)
+		return block.NewFullNode(
+			nodeConfig,
+			genesis,
+			store,
+			exec,
+			da,
+			headerSyncService.Store(),
+			dataSyncService.Store(),
+			logger,
+			blockMetrics,
+			blockOpts,
+		)
 	}
-
-	if err != nil {
-		return nil, fmt.Errorf("error while initializing block components: %w", err)
-	}
-
-	return components, nil
 }
 
 // initGenesisChunks creates a chunked format of the genesis document to make it easier to
@@ -501,11 +522,6 @@ func (n *FullNode) GetGenesisChunks() ([]string, error) {
 // IsRunning returns true if the node is running.
 func (n *FullNode) IsRunning() bool {
 	return n.blockComponents != nil
-}
-
-// SetLogger sets the logger used by node.
-func (n *FullNode) SetLogger(logger zerolog.Logger) {
-	n.Logger = logger
 }
 
 // startBlockComponents starts the block components based on node type
