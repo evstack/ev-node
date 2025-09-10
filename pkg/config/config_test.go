@@ -27,7 +27,7 @@ func TestDefaultConfig(t *testing.T) {
 	assert.Equal(t, float64(-1), def.DA.GasPrice)
 	assert.Equal(t, float64(0), def.DA.GasMultiplier)
 	assert.Equal(t, "", def.DA.SubmitOptions)
-	assert.Equal(t, "rollkit-headers", def.DA.Namespace)
+	assert.Equal(t, "", def.DA.Namespace)
 	assert.Equal(t, 1*time.Second, def.Node.BlockTime.Duration)
 	assert.Equal(t, 6*time.Second, def.DA.BlockTime.Duration)
 	assert.Equal(t, uint64(0), def.DA.StartHeight)
@@ -39,6 +39,8 @@ func TestDefaultConfig(t *testing.T) {
 	assert.Equal(t, "file", def.Signer.SignerType)
 	assert.Equal(t, "config", def.Signer.SignerPath)
 	assert.Equal(t, "127.0.0.1:7331", def.RPC.Address)
+
+	def.DA.Namespace = "test"
 	assert.NoError(t, def.Validate())
 }
 
@@ -136,6 +138,7 @@ node:
 
 da:
   address: "http://yaml-da:26657"
+  namespace: "test"
 
 signer:
   signer_type: "file"
@@ -339,10 +342,10 @@ func TestDAConfig_GetDataNamespace(t *testing.T) {
 			expectedNamespace: "namespace",
 		},
 		{
-			name:              "Both empty, use default value from default namespace",
+			name:              "Both empty, return empty string",
 			dataNamespace:     "",
 			defaultNamespace:  "",
-			expectedNamespace: "rollkit-headers",
+			expectedNamespace: "",
 		},
 	}
 

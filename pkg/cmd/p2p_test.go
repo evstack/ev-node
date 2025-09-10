@@ -96,6 +96,7 @@ func TestNetInfoCmd_Success(t *testing.T) {
 	rootCmd := &cobra.Command{Use: "root"}
 	rootCmd.PersistentFlags().String(config.FlagRootDir, tempDir, "Root directory for config and data")
 	rootCmd.PersistentFlags().String(config.FlagRPCAddress, rpcAddr, "RPC listen address")
+	rootCmd.PersistentFlags().String(config.FlagDANamespace, "ev-namespace", "DA Namespace")
 
 	err = v.BindPFlag(config.FlagRootDir, rootCmd.PersistentFlags().Lookup(config.FlagRootDir))
 	require.NoError(err)
@@ -174,6 +175,7 @@ func TestNetInfoCmd_NoPeers(t *testing.T) {
 	rootCmd := &cobra.Command{Use: "root"}
 	rootCmd.PersistentFlags().String(config.FlagRootDir, tempDir, "Root directory for config and data")
 	rootCmd.PersistentFlags().String(config.FlagRPCAddress, rpcAddr, "RPC listen address")
+	rootCmd.PersistentFlags().String(config.FlagDANamespace, "ev-namespace", "DA Namespace")
 
 	err = v.BindPFlag(config.FlagRootDir, rootCmd.PersistentFlags().Lookup(config.FlagRootDir))
 	require.NoError(err)

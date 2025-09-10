@@ -205,7 +205,8 @@ func (s *DockerTestSuite) FundWallet(ctx context.Context, wallet tastoratypes.Wa
 
 // StartEvNode initializes and starts an Ev node.
 func (s *DockerTestSuite) StartEvNode(ctx context.Context, bridgeNode tastoratypes.DANode, evNode tastoratypes.RollkitNode) {
-	err := evNode.Init(ctx)
+	namespace := "test"
+	err := evNode.Init(ctx, "--evnode.da.namespace", namespace)
 	s.Require().NoError(err)
 
 	bridgeNodeHostName, err := bridgeNode.GetInternalHostName()
@@ -216,19 +217,19 @@ func (s *DockerTestSuite) StartEvNode(ctx context.Context, bridgeNode tastoratyp
 
 	daAddress := fmt.Sprintf("http://%s:26658", bridgeNodeHostName)
 	err = evNode.Start(ctx,
-		"--rollkit.da.address", daAddress,
-		"--rollkit.da.gas_price", "0.025",
-		"--rollkit.da.auth_token", authToken,
-		"--rollkit.rpc.address", "0.0.0.0:7331", // bind to 0.0.0.0 so rpc is reachable from test host.
-		"--rollkit.da.namespace", generateValidNamespaceHex(),
+		"--evnode.da.address", daAddress,
+		"--evnode.da.gas_price", "0.025",
+		"--evnode.da.auth_token", authToken,
+		"--evnode.da.namespace", namespace,
+		"--evnode.rpc.address", "0.0.0.0:7331", // bind to 0.0.0.0 so rpc is reachable from test host.
 		"--kv-endpoint", "0.0.0.0:8080",
 	)
 	s.Require().NoError(err)
 }
 
 // StartRollkitNodeWithNamespace initializes and starts a Rollkit node with a specific namespace.
-func (s *DockerTestSuite) StartRollkitNodeWithNamespace(ctx context.Context, bridgeNode tastoratypes.DANode, rollkitNode tastoratypes.RollkitNode, namespace string) {
-	err := rollkitNode.Init(ctx)
+func (s *DockerTestSuite) StartEvNodeWithNamespace(ctx context.Context, bridgeNode tastoratypes.DANode, rollkitNode tastoratypes.RollkitNode, namespace string) {
+	err := rollkitNode.Init(ctx, "--evnode.da.namespace", namespace)
 	s.Require().NoError(err)
 
 	bridgeNodeHostName, err := bridgeNode.GetInternalHostName()
@@ -240,10 +241,10 @@ func (s *DockerTestSuite) StartRollkitNodeWithNamespace(ctx context.Context, bri
 	daAddress := fmt.Sprintf("http://%s:26658", bridgeNodeHostName)
 	err = rollkitNode.Start(ctx,
 		"--rollkit.da.address", daAddress,
-		"--rollkit.da.gas_price", "0.025",
-		"--rollkit.da.auth_token", authToken,
-		"--rollkit.rpc.address", "0.0.0.0:7331", // bind to 0.0.0.0 so rpc is reachable from test host.
-		"--rollkit.da.namespace", namespace,
+		"--evnode.da.gas_price", "0.025",
+		"--evnode.da.auth_token", authToken,
+		"--evnode.rpc.address", "0.0.0.0:7331", // bind to 0.0.0.0 so rpc is reachable from test host.
+		"--evnode.da.namespace", namespace,
 		"--kv-endpoint", "0.0.0.0:8080",
 	)
 	s.Require().NoError(err)

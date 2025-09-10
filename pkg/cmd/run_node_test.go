@@ -150,10 +150,13 @@ func TestParseFlags(t *testing.T) {
 func TestAggregatorFlagInvariants(t *testing.T) {
 	flagVariants := [][]string{{
 		"--rollkit.node.aggregator=false",
+		"--evnode.da.namespace=test-namespace",
 	}, {
 		"--rollkit.node.aggregator=true",
+		"--evnode.da.namespace=test-namespace",
 	}, {
 		"--rollkit.node.aggregator",
+		"--evnode.da.namespace=test-namespace",
 	}}
 
 	validValues := []bool{false, true, true}
@@ -166,7 +169,6 @@ func TestAggregatorFlagInvariants(t *testing.T) {
 
 		nodeConfig := rollconf.DefaultConfig
 		nodeConfig.RootDir = t.TempDir()
-
 		newRunNodeCmd := newRunNodeCmd(t.Context(), executor, sequencer, dac, keyProvider, p2pClient, ds, nodeConfig)
 		_ = newRunNodeCmd.Flags().Set(rollconf.FlagRootDir, "custom/root/dir")
 
@@ -174,13 +176,13 @@ func TestAggregatorFlagInvariants(t *testing.T) {
 			t.Errorf("Error: %v", err)
 		}
 
-		nodeConfig, err := ParseConfig(newRunNodeCmd)
+		parsedConfig, err := ParseConfig(newRunNodeCmd)
 		if err != nil {
 			t.Errorf("Error: %v", err)
 		}
 
-		if nodeConfig.Node.Aggregator != validValues[i] {
-			t.Errorf("Expected %v, got %v", validValues[i], nodeConfig.Node.Aggregator)
+		if parsedConfig.Node.Aggregator != validValues[i] {
+			t.Errorf("Expected %v, got %v", validValues[i], parsedConfig.Node.Aggregator)
 		}
 	}
 }
@@ -209,9 +211,9 @@ func TestDefaultAggregatorValue(t *testing.T) {
 			// Create a new command without specifying any flags
 			var args []string
 			if tc.expected {
-				args = []string{"start", "--rollkit.node.aggregator"}
+				args = []string{"start", "--evnode.node.aggregator", "--evnode.da.namespace=ev-namespace"}
 			} else {
-				args = []string{"start", "--rollkit.node.aggregator=false"}
+				args = []string{"start", "--evnode.da.namespace=ev-namespace"}
 			}
 
 			if err := newRunNodeCmd.ParseFlags(args); err != nil {
@@ -277,6 +279,7 @@ func TestCentralizedAddresses(t *testing.T) {
 	args := []string{
 		"start",
 		"--rollkit.da.address=http://central-da:26657",
+		"--rollkit.da.namespace=test-namespace",
 	}
 
 	executor, sequencer, dac, keyProvider, p2pClient, ds, stopDAHeightTicker := createTestComponents(context.Background(), t)
@@ -631,6 +634,7 @@ func TestStartNodeErrors(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			nodeConfig := rollconf.DefaultConfig
 			nodeConfig.RootDir = tmpDir
+			nodeConfig.DA.Namespace = "test-namespace" // Set namespace in config
 
 			if tc.configModifier != nil {
 				tc.configModifier(&nodeConfig)
