@@ -57,15 +57,15 @@ func NewDAHandler(
 	}
 }
 
-// RetrieveFromDA retrieves blocks from the specified DA height
-func (h *DAHandler) RetrieveFromDA(ctx context.Context, daHeight uint64) error {
+// RetrieveFromDA retrieves blocks from the specified DA height and returns height events
+func (h *DAHandler) RetrieveFromDA(ctx context.Context, daHeight uint64) ([]HeightEvent, error) {
 	h.logger.Debug().Uint64("da_height", daHeight).Msg("retrieving from DA")
 
 	var err error
 	for r := 0; r < dAFetcherRetries; r++ {
 		select {
 		case <-ctx.Done():
-			return ctx.Err()
+			return nil, ctx.Err()
 		default:
 		}
 
@@ -73,15 +73,15 @@ func (h *DAHandler) RetrieveFromDA(ctx context.Context, daHeight uint64) error {
 		if fetchErr == nil {
 			if blobsResp.Code == coreda.StatusNotFound {
 				h.logger.Debug().Uint64("da_height", daHeight).Msg("no blob data found")
-				return nil
+				return nil, nil
 			}
 
 			h.logger.Debug().Int("blobs", len(blobsResp.Data)).Uint64("da_height", daHeight).Msg("retrieved blob data")
-			h.processBlobs(ctx, blobsResp.Data, daHeight)
-			return nil
+			events := h.processBlobs(ctx, blobsResp.Data, daHeight)
+			return events, nil
 
 		} else if strings.Contains(fetchErr.Error(), coreda.ErrHeightFromFuture.Error()) {
-			return fmt.Errorf("%w: height from future", coreda.ErrHeightFromFuture)
+			return nil, fmt.Errorf("%w: height from future", coreda.ErrHeightFromFuture)
 		}
 
 		err = errors.Join(err, fetchErr)
@@ -89,12 +89,12 @@ func (h *DAHandler) RetrieveFromDA(ctx context.Context, daHeight uint64) error {
 		// Delay before retrying
 		select {
 		case <-ctx.Done():
-			return err
+			return nil, err
 		case <-time.After(100 * time.Millisecond):
 		}
 	}
 
-	return err
+	return nil, err
 }
 
 // fetchBlobs retrieves blobs from the DA layer
@@ -168,10 +168,11 @@ func (h *DAHandler) validateBlobResponse(res coreda.ResultRetrieve, daHeight uin
 	}
 }
 
-// processBlobs processes retrieved blobs to extract headers and data
-func (h *DAHandler) processBlobs(ctx context.Context, blobs [][]byte, daHeight uint64) {
+// processBlobs processes retrieved blobs to extract headers and data and returns height events
+func (h *DAHandler) processBlobs(ctx context.Context, blobs [][]byte, daHeight uint64) []HeightEvent {
 	headers := make(map[uint64]*types.SignedHeader)
 	dataMap := make(map[uint64]*types.Data)
+	headerDAHeights := make(map[uint64]uint64) // Track DA height for each header
 
 	// Decode all blobs
 	for _, bz := range blobs {
@@ -181,6 +182,7 @@ func (h *DAHandler) processBlobs(ctx context.Context, blobs [][]byte, daHeight u
 
 		if header := h.tryDecodeHeader(bz, daHeight); header != nil {
 			headers[header.Height()] = header
+			headerDAHeights[header.Height()] = daHeight
 			continue
 		}
 
@@ -189,7 +191,9 @@ func (h *DAHandler) processBlobs(ctx context.Context, blobs [][]byte, daHeight u
 		}
 	}
 
-	// Match headers with data and send events
+	var events []HeightEvent
+
+	// Match headers with data and create events
 	for height, header := range headers {
 		data := dataMap[height]
 
@@ -203,10 +207,20 @@ func (h *DAHandler) processBlobs(ctx context.Context, blobs [][]byte, daHeight u
 			}
 		}
 
-		// Send to syncer for processing
-		// This would typically be done via a callback or channel
+		// Create height event
+		event := HeightEvent{
+			Header:                 header,
+			Data:                   data,
+			DaHeight:               daHeight,
+			HeaderDaIncludedHeight: headerDAHeights[height],
+		}
+
+		events = append(events, event)
+
 		h.logger.Info().Uint64("height", height).Uint64("da_height", daHeight).Msg("processed block from DA")
 	}
+
+	return events
 }
 
 // tryDecodeHeader attempts to decode a blob as a header

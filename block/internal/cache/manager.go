@@ -22,8 +22,8 @@ var (
 	pendingEventsCacheDir = filepath.Join(cacheDir, "pending_da_events")
 )
 
-// daHeightEvent represents a DA event for caching
-type daHeightEvent struct {
+// DAHeightEvent represents a DA event for caching
+type DAHeightEvent struct {
 	Header *types.SignedHeader
 	Data   *types.Data
 	// DaHeight corresponds to the highest DA included height between the Header and Data.
@@ -63,10 +63,10 @@ type Manager interface {
 	NumPendingData() uint64
 
 	// Pending events for DA coordination
-	SetPendingEvent(height uint64, event *daHeightEvent)
-	GetPendingEvents() map[uint64]*daHeightEvent
+	SetPendingEvent(height uint64, event *DAHeightEvent)
+	GetPendingEvents() map[uint64]*DAHeightEvent
 	DeletePendingEvent(height uint64)
-	RangePendingEvents(fn func(uint64, *daHeightEvent) bool)
+	RangePendingEvents(fn func(uint64, *DAHeightEvent) bool)
 
 	// Cleanup operations
 	ClearProcessedHeader(height uint64)
@@ -79,7 +79,7 @@ type Manager interface {
 type implementation struct {
 	headerCache        *cache.Cache[types.SignedHeader]
 	dataCache          *cache.Cache[types.Data]
-	pendingEventsCache *cache.Cache[daHeightEvent]
+	pendingEventsCache *cache.Cache[DAHeightEvent]
 	pendingHeaders     *PendingHeaders
 	pendingData        *PendingData
 	config             config.Config
@@ -92,7 +92,7 @@ func NewManager(cfg config.Config, store store.Store, logger zerolog.Logger) (Ma
 	// Initialize caches
 	headerCache := cache.NewCache[types.SignedHeader]()
 	dataCache := cache.NewCache[types.Data]()
-	pendingEventsCache := cache.NewCache[daHeightEvent]()
+	pendingEventsCache := cache.NewCache[DAHeightEvent]()
 
 	// Initialize pending managers
 	pendingHeaders, err := NewPendingHeaders(store, logger)
@@ -236,16 +236,16 @@ func (m *implementation) NumPendingData() uint64 {
 }
 
 // Pending events operations
-func (m *implementation) SetPendingEvent(height uint64, event *daHeightEvent) {
+func (m *implementation) SetPendingEvent(height uint64, event *DAHeightEvent) {
 	m.pendingEventsCache.SetItem(height, event)
 }
 
-func (m *implementation) GetPendingEvents() map[uint64]*daHeightEvent {
+func (m *implementation) GetPendingEvents() map[uint64]*DAHeightEvent {
 	m.mutex.RLock()
 	defer m.mutex.RUnlock()
 
-	events := make(map[uint64]*daHeightEvent)
-	m.pendingEventsCache.RangeByHeight(func(height uint64, event *daHeightEvent) bool {
+	events := make(map[uint64]*DAHeightEvent)
+	m.pendingEventsCache.RangeByHeight(func(height uint64, event *DAHeightEvent) bool {
 		events[height] = event
 		return true
 	})
@@ -256,7 +256,7 @@ func (m *implementation) DeletePendingEvent(height uint64) {
 	m.pendingEventsCache.DeleteItem(height)
 }
 
-func (m *implementation) RangePendingEvents(fn func(uint64, *daHeightEvent) bool) {
+func (m *implementation) RangePendingEvents(fn func(uint64, *DAHeightEvent) bool) {
 	m.pendingEventsCache.RangeByHeight(fn)
 }
 
@@ -291,7 +291,7 @@ func (m *implementation) LoadFromDisk() error {
 	// Register types for gob encoding
 	gob.Register(&types.SignedHeader{})
 	gob.Register(&types.Data{})
-	gob.Register(&daHeightEvent{})
+	gob.Register(&DAHeightEvent{})
 
 	cfgDir := filepath.Join(m.config.RootDir, "data")
 

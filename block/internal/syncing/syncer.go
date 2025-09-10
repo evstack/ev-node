@@ -3,6 +3,7 @@ package syncing
 import (
 	"bytes"
 	"context"
+	"encoding/binary"
 	"fmt"
 	"sync"
 	"time"
@@ -235,8 +236,7 @@ func (s *Syncer) initializeState() error {
 
 	// Load DA included height
 	if height, err := s.store.GetMetadata(ctx, store.DAIncludedHeightKey); err == nil && len(height) == 8 {
-		s.SetDAIncludedHeight(uint64(height[0]) | uint64(height[1])<<8 | uint64(height[2])<<16 | uint64(height[3])<<24 |
-			uint64(height[4])<<32 | uint64(height[5])<<40 | uint64(height[6])<<48 | uint64(height[7])<<56)
+		s.SetDAIncludedHeight(binary.LittleEndian.Uint64(height))
 	}
 
 	s.logger.Info().
@@ -270,16 +270,27 @@ func (s *Syncer) syncLoop() {
 		case <-blockTicker.C:
 			s.sendNonBlockingSignal(s.headerStoreCh, "header_store")
 			s.sendNonBlockingSignal(s.dataStoreCh, "data_store")
+			// Process pending events from cache
+			s.processPendingEvents()
 		case heightEvent := <-s.heightInCh:
 			s.processHeightEvent(&heightEvent)
 		case <-metricsTicker.C:
 			s.updateMetrics()
 		case <-s.retrieveCh:
-			if err := s.daHandler.RetrieveFromDA(s.ctx, s.GetDAHeight()); err != nil {
+			events, err := s.daHandler.RetrieveFromDA(s.ctx, s.GetDAHeight())
+			if err != nil {
 				if !s.isHeightFromFutureError(err) {
 					s.logger.Error().Err(err).Msg("failed to retrieve from DA")
 				}
 			} else {
+				// Process DA events
+				for _, event := range events {
+					select {
+					case s.heightInCh <- event:
+					default:
+						s.logger.Warn().Msg("height channel full, dropping DA event")
+					}
+				}
 				// Increment DA height on successful retrieval
 				s.SetDAHeight(s.GetDAHeight() + 1)
 			}
@@ -393,6 +404,20 @@ func (s *Syncer) processHeightEvent(event *HeightEvent) {
 	// Cache the header and data
 	s.cache.SetHeader(height, event.Header)
 	s.cache.SetData(height, event.Data)
+
+	// If this is not the next block in sequence, store as pending event
+	if height != currentHeight+1 {
+		// Create a DAHeightEvent that matches the cache interface
+		pendingEvent := &cache.DAHeightEvent{
+			Header:                 event.Header,
+			Data:                   event.Data,
+			DaHeight:               event.DaHeight,
+			HeaderDaIncludedHeight: event.HeaderDaIncludedHeight,
+		}
+		s.cache.SetPendingEvent(height, pendingEvent)
+		s.logger.Debug().Uint64("height", height).Uint64("current_height", currentHeight).Msg("stored as pending event")
+		return
+	}
 
 	// Try to sync the next block
 	if err := s.trySyncNextBlock(event.DaHeight); err != nil {
@@ -602,4 +627,40 @@ func (s *Syncer) updateMetrics() {
 func (s *Syncer) isHeightFromFutureError(err error) bool {
 	return err != nil && (err == common.ErrHeightFromFutureStr ||
 		(err.Error() != "" && bytes.Contains([]byte(err.Error()), []byte(common.ErrHeightFromFutureStr.Error()))))
+}
+
+// processPendingEvents fetches and processes pending events from cache
+func (s *Syncer) processPendingEvents() {
+	pendingEvents := s.cache.GetPendingEvents()
+
+	for height, event := range pendingEvents {
+		currentHeight, err := s.store.Height(s.ctx)
+		if err != nil {
+			s.logger.Error().Err(err).Msg("failed to get current height for pending events")
+			continue
+		}
+
+		// Only process events for blocks we haven't synced yet
+		if height > currentHeight {
+			heightEvent := HeightEvent{
+				Header:                 event.Header,
+				Data:                   event.Data,
+				DaHeight:               event.DaHeight,
+				HeaderDaIncludedHeight: event.HeaderDaIncludedHeight,
+			}
+
+			select {
+			case s.heightInCh <- heightEvent:
+				// Remove from pending events once sent
+				s.cache.DeletePendingEvent(height)
+			default:
+				s.logger.Warn().Uint64("height", height).Msg("height channel full, keeping pending event")
+				// Keep the event in cache to try again later
+				return
+			}
+		} else {
+			// Clean up events for blocks we've already processed
+			s.cache.DeletePendingEvent(height)
+		}
+	}
 }
