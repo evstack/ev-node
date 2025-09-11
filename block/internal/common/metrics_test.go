@@ -111,10 +111,11 @@ func TestMetrics(t *testing.T) {
 			assert.NotNil(t, em.OperationDuration[op])
 		}
 
-		assert.Len(t, em.StateTransitions, 3)
-		assert.NotNil(t, em.StateTransitions["pending_to_submitted"])
-		assert.NotNil(t, em.StateTransitions["submitted_to_included"])
-		assert.NotNil(t, em.StateTransitions["included_to_finalized"])
+		transitions := []string{"pending_to_submitted", "submitted_to_included", "included_to_finalized"}
+		assert.Len(t, em.StateTransitions, len(transitions))
+		for _, transition := range transitions {
+			assert.NotNil(t, em.StateTransitions[transition])
+		}
 
 		// Test DA metrics
 		assert.NotNil(t, em.DASubmissionAttempts)
