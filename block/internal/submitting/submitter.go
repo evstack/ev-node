@@ -23,9 +23,12 @@ type Submitter struct {
 	// Core components
 	store   store.Store
 	exec    coreexecutor.Executor
-	cache   cache.Manager
 	config  config.Config
 	genesis genesis.Genesis
+
+	// Shared components
+	cache   cache.Manager
+	metrics *common.Metrics
 
 	// DA submitter
 	daSubmitter *DASubmitter
@@ -51,6 +54,7 @@ func NewSubmitter(
 	store store.Store,
 	exec coreexecutor.Executor,
 	cache cache.Manager,
+	metrics *common.Metrics,
 	config config.Config,
 	genesis genesis.Genesis,
 	daSubmitter *DASubmitter,
@@ -61,6 +65,7 @@ func NewSubmitter(
 		store:       store,
 		exec:        exec,
 		cache:       cache,
+		metrics:     metrics,
 		config:      config,
 		genesis:     genesis,
 		daSubmitter: daSubmitter,
@@ -109,6 +114,11 @@ func (s *Submitter) Stop() error {
 	return nil
 }
 
+// updateMetrics updates sync-related metrics
+func (s *Submitter) updateMetrics() {
+	s.metrics.DAInclusionHeight.Set(float64(s.GetDAIncludedHeight()))
+}
+
 // daSubmissionLoop handles submission of headers and data to DA layer (aggregator nodes only)
 func (s *Submitter) daSubmissionLoop() {
 	s.logger.Info().Msg("starting DA submission loop")
@@ -116,6 +126,9 @@ func (s *Submitter) daSubmissionLoop() {
 
 	ticker := time.NewTicker(s.config.DA.BlockTime.Duration)
 	defer ticker.Stop()
+
+	metricsTicker := time.NewTicker(30 * time.Second)
+	defer metricsTicker.Stop()
 
 	for {
 		select {
@@ -135,6 +148,8 @@ func (s *Submitter) daSubmissionLoop() {
 					s.logger.Error().Err(err).Msg("failed to submit data")
 				}
 			}
+		case <-metricsTicker.C:
+			s.updateMetrics()
 		}
 	}
 }

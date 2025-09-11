@@ -217,8 +217,6 @@ func (s *Syncer) processLoop() {
 
 	blockTicker := time.NewTicker(s.config.Node.BlockTime.Duration)
 	defer blockTicker.Stop()
-	metricsTicker := time.NewTicker(30 * time.Second)
-	defer metricsTicker.Stop()
 
 	for {
 		// Process pending events from cache on every iteration
@@ -233,8 +231,6 @@ func (s *Syncer) processLoop() {
 			s.sendNonBlockingSignal(s.dataStoreCh, "data_store")
 		case heightEvent := <-s.heightInCh:
 			s.processHeightEvent(&heightEvent)
-		case <-metricsTicker.C:
-			s.updateMetrics()
 		}
 	}
 }
@@ -496,11 +492,6 @@ func (s *Syncer) sendNonBlockingSignal(ch chan struct{}, name string) {
 	default:
 		s.logger.Debug().Str("channel", name).Msg("channel full, signal dropped")
 	}
-}
-
-// updateMetrics updates sync-related metrics
-func (s *Syncer) updateMetrics() {
-	// Update sync metrics as needed
 }
 
 // isHeightFromFutureError checks if the error is a height from future error
