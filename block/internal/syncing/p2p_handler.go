@@ -9,11 +9,10 @@ import (
 	"github.com/rs/zerolog"
 
 	"github.com/evstack/ev-node/block/internal/cache"
+	"github.com/evstack/ev-node/block/internal/common"
 	"github.com/evstack/ev-node/pkg/genesis"
 	"github.com/evstack/ev-node/pkg/signer"
 	"github.com/evstack/ev-node/types"
-
-	"github.com/evstack/ev-node/block/internal/common"
 )
 
 // P2PHandler handles all P2P operations for the syncer
@@ -49,12 +48,12 @@ func NewP2PHandler(
 }
 
 // ProcessHeaderRange processes headers from the header store within the given range
-func (h *P2PHandler) ProcessHeaderRange(ctx context.Context, startHeight, endHeight uint64) []HeightEvent {
+func (h *P2PHandler) ProcessHeaderRange(ctx context.Context, startHeight, endHeight uint64) []common.HeightEvent {
 	if startHeight > endHeight {
 		return nil
 	}
 
-	var events []HeightEvent
+	var events []common.HeightEvent
 
 	for height := startHeight; height <= endHeight; height++ {
 		select {
@@ -97,7 +96,7 @@ func (h *P2PHandler) ProcessHeaderRange(ctx context.Context, startHeight, endHei
 		}
 
 		// Create height event
-		event := HeightEvent{
+		event := common.HeightEvent{
 			Header:   header,
 			Data:     data,
 			DaHeight: 0, // P2P events don't have DA height context
@@ -112,12 +111,12 @@ func (h *P2PHandler) ProcessHeaderRange(ctx context.Context, startHeight, endHei
 }
 
 // ProcessDataRange processes data from the data store within the given range
-func (h *P2PHandler) ProcessDataRange(ctx context.Context, startHeight, endHeight uint64) []HeightEvent {
+func (h *P2PHandler) ProcessDataRange(ctx context.Context, startHeight, endHeight uint64) []common.HeightEvent {
 	if startHeight > endHeight {
 		return nil
 	}
 
-	var events []HeightEvent
+	var events []common.HeightEvent
 
 	for height := startHeight; height <= endHeight; height++ {
 		select {
@@ -152,7 +151,7 @@ func (h *P2PHandler) ProcessDataRange(ctx context.Context, startHeight, endHeigh
 		}
 
 		// Create height event
-		event := HeightEvent{
+		event := common.HeightEvent{
 			Header:   header,
 			Data:     data,
 			DaHeight: 0, // P2P events don't have DA height context

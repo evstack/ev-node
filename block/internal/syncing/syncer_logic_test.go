@@ -92,7 +92,6 @@ func TestProcessHeightEvent_SyncsAndUpdatesState(t *testing.T) {
 		gen,
 		nil,
 		nil,
-		nil,
 		zerolog.Nop(),
 		common.DefaultBlockOptions(),
 	)
@@ -110,7 +109,7 @@ func TestProcessHeightEvent_SyncsAndUpdatesState(t *testing.T) {
 	mockExec.EXPECT().ExecuteTxs(mock.Anything, mock.Anything, uint64(1), mock.Anything, lastState.AppHash).
 		Return([]byte("app1"), uint64(1024), nil).Once()
 
-	evt := HeightEvent{Header: hdr, Data: data, DaHeight: 1}
+	evt := common.HeightEvent{Header: hdr, Data: data, DaHeight: 1}
 	s.processHeightEvent(&evt)
 
 	h, err := st.Height(context.Background())
@@ -143,7 +142,6 @@ func TestDAInclusion_AdvancesHeight(t *testing.T) {
 		gen,
 		nil,
 		nil,
-		nil,
 		zerolog.Nop(),
 		common.DefaultBlockOptions(),
 	)
@@ -157,7 +155,7 @@ func TestDAInclusion_AdvancesHeight(t *testing.T) {
 	// Expect ExecuteTxs call for height 1
 	mockExec.EXPECT().ExecuteTxs(mock.Anything, mock.Anything, uint64(1), mock.Anything, st0.AppHash).
 		Return([]byte("app1"), uint64(1024), nil).Once()
-	evt1 := HeightEvent{Header: hdr1, Data: data1, DaHeight: 10}
+	evt1 := common.HeightEvent{Header: hdr1, Data: data1, DaHeight: 10}
 	s.processHeightEvent(&evt1)
 
 	st1, _ := st.GetState(context.Background())
@@ -166,7 +164,7 @@ func TestDAInclusion_AdvancesHeight(t *testing.T) {
 	// Expect ExecuteTxs call for height 2
 	mockExec.EXPECT().ExecuteTxs(mock.Anything, mock.Anything, uint64(2), mock.Anything, st1.AppHash).
 		Return([]byte("app2"), uint64(1024), nil).Once()
-	evt2 := HeightEvent{Header: hdr2, Data: data2, DaHeight: 11}
+	evt2 := common.HeightEvent{Header: hdr2, Data: data2, DaHeight: 11}
 	s.processHeightEvent(&evt2)
 
 	// Mark DA inclusion in cache (as DA retrieval would)

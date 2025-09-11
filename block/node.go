@@ -43,10 +43,10 @@ type broadcaster[T any] interface {
 	WriteToStoreAndBroadcast(ctx context.Context, payload T) error
 }
 
-// NewFullNode creates components for a non-aggregator full node that can only sync blocks.
+// NewSyncNode creates components for a non-aggregator full node that can only sync blocks.
 // Non-aggregator full nodes can sync from P2P and DA but cannot produce blocks or submit to DA.
 // They have more sync capabilities than light nodes but no block production. No signer required.
-func NewFullNode(
+func NewSyncNode(
 	config config.Config,
 	genesis genesis.Genesis,
 	store store.Store,
@@ -58,13 +58,11 @@ func NewFullNode(
 	metrics *Metrics,
 	blockOpts BlockOptions,
 ) (*BlockComponents, error) {
-	// Create shared cache manager
 	cacheManager, err := cache.NewManager(config, store, logger)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create cache manager: %w", err)
 	}
 
-	// Non-aggregator full nodes have only syncer, no executor, no signer
 	syncer := syncing.NewSyncer(
 		store,
 		exec,
@@ -73,7 +71,6 @@ func NewFullNode(
 		metrics,
 		config,
 		genesis,
-		nil, // Non-aggregator nodes don't have signers
 		headerStore,
 		dataStore,
 		logger,
@@ -87,10 +84,10 @@ func NewFullNode(
 	}, nil
 }
 
-// NewFullNodeAggregator creates components for an aggregator full node that can produce and sync blocks.
+// NewAggregatorNode creates components for an aggregator full node that can produce and sync blocks.
 // Aggregator nodes have full capabilities - they can produce blocks, sync from P2P and DA,
 // and submit headers/data to DA. Requires a signer for block production and DA submission.
-func NewFullNodeAggregator(
+func NewAggregatorNode(
 	config config.Config,
 	genesis genesis.Genesis,
 	store store.Store,
@@ -106,22 +103,17 @@ func NewFullNodeAggregator(
 	metrics *Metrics,
 	blockOpts BlockOptions,
 ) (*BlockComponents, error) {
-	if signer == nil {
-		return nil, fmt.Errorf("aggregator nodes require a signer")
-	}
-
-	// Create shared cache manager
 	cacheManager, err := cache.NewManager(config, store, logger)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create cache manager: %w", err)
 	}
 
-	// Aggregator nodes have both executor and syncer with signer
 	executor := executing.NewExecutor(
 		store,
 		exec,
 		sequencer,
 		signer,
+		da,
 		cacheManager,
 		metrics,
 		config,
@@ -132,24 +124,9 @@ func NewFullNodeAggregator(
 		blockOpts,
 	)
 
-	syncer := syncing.NewSyncer(
-		store,
-		exec,
-		da,
-		cacheManager,
-		metrics,
-		config,
-		genesis,
-		signer,
-		headerStore,
-		dataStore,
-		logger,
-		blockOpts,
-	)
-
 	return &BlockComponents{
 		Executor: executor,
-		Syncer:   syncer,
+		Syncer:   nil, // Aggregator full nodes don't have syncer
 		Cache:    cacheManager,
 	}, nil
 }

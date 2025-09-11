@@ -23,7 +23,12 @@ import (
 	"github.com/evstack/ev-node/types"
 )
 
-// Syncer handles block synchronization, DA operations, and P2P coordination
+// daHandler interface defines the methods required to retrieve blocks from the DA layer.
+type daHandler interface {
+	RetrieveFromDA(ctx context.Context, daHeight uint64) ([]common.HeightEvent, error)
+}
+
+// Syncer handles block synchronization from DA and P2P sources.
 type Syncer struct {
 	// Core components
 	store store.Store
@@ -54,13 +59,13 @@ type Syncer struct {
 	dataStore   goheader.Store[*types.Data]
 
 	// Channels for coordination
-	heightInCh    chan HeightEvent
+	heightInCh    chan common.HeightEvent
 	headerStoreCh chan struct{}
 	dataStoreCh   chan struct{}
 	daIncluderCh  chan struct{}
 
 	// Handlers
-	daHandler  *DAHandler
+	daHandler  daHandler
 	p2pHandler *P2PHandler
 
 	// Logging
@@ -72,14 +77,6 @@ type Syncer struct {
 	wg     sync.WaitGroup
 }
 
-// HeightEvent represents a block height event with header and data
-type HeightEvent struct {
-	Header                 *types.SignedHeader
-	Data                   *types.Data
-	DaHeight               uint64
-	HeaderDaIncludedHeight uint64
-}
-
 // NewSyncer creates a new block syncer
 func NewSyncer(
 	store store.Store,
@@ -89,7 +86,6 @@ func NewSyncer(
 	metrics *common.Metrics,
 	config config.Config,
 	genesis genesis.Genesis,
-	signer signer.Signer,
 	headerStore goheader.Store[*types.SignedHeader],
 	dataStore goheader.Store[*types.Data],
 	logger zerolog.Logger,
@@ -103,13 +99,12 @@ func NewSyncer(
 		metrics:       metrics,
 		config:        config,
 		genesis:       genesis,
-		signer:        signer,
 		options:       options,
 		headerStore:   headerStore,
 		dataStore:     dataStore,
 		lastStateMtx:  &sync.RWMutex{},
 		daStateMtx:    &sync.RWMutex{},
-		heightInCh:    make(chan HeightEvent, 10000),
+		heightInCh:    make(chan common.HeightEvent, 10000),
 		headerStoreCh: make(chan struct{}, 1),
 		dataStoreCh:   make(chan struct{}, 1),
 		daIncluderCh:  make(chan struct{}, 1),
@@ -127,7 +122,7 @@ func (s *Syncer) Start(ctx context.Context) error {
 	}
 
 	// Initialize handlers
-	s.daHandler = NewDAHandler(s.da, s.cache, s.config, s.genesis, s.options, s.logger)
+	s.daHandler = common.NewDAHandler(s.da, s.cache, s.config, s.genesis, s.options, s.logger)
 	s.p2pHandler = NewP2PHandler(s.headerStore, s.dataStore, s.cache, s.genesis, s.signer, s.options, s.logger)
 
 	// Start main processing loop
@@ -137,21 +132,12 @@ func (s *Syncer) Start(ctx context.Context) error {
 		s.processLoop()
 	}()
 
-	// Start combined submission loop (headers + data) only for aggregators
-	if s.config.Node.Aggregator {
-		s.wg.Add(1)
-		go func() {
-			defer s.wg.Done()
-			s.submissionLoop()
-		}()
-	} else {
-		// Start sync loop (DA and P2P retrieval)
-		s.wg.Add(1)
-		go func() {
-			defer s.wg.Done()
-			s.syncLoop()
-		}()
-	}
+	// Start sync loop (DA and P2P retrieval)
+	s.wg.Add(1)
+	go func() {
+		defer s.wg.Done()
+		s.syncLoop()
+	}()
 
 	s.logger.Info().Msg("syncer started")
 	return nil
@@ -281,37 +267,7 @@ func (s *Syncer) processLoop() {
 	}
 }
 
-// submissionLoop handles submission of headers and data to DA layer
-func (s *Syncer) submissionLoop() {
-	s.logger.Info().Msg("starting submission loop")
-	defer s.logger.Info().Msg("submission loop stopped")
-
-	ticker := time.NewTicker(s.config.DA.BlockTime.Duration)
-	defer ticker.Stop()
-
-	for {
-		select {
-		case <-s.ctx.Done():
-			return
-		case <-ticker.C:
-			// Submit headers
-			if s.cache.NumPendingHeaders() != 0 {
-				if err := s.daHandler.SubmitHeaders(s.ctx, s.cache); err != nil {
-					s.logger.Error().Err(err).Msg("failed to submit headers")
-				}
-			}
-
-			// Submit data
-			if s.cache.NumPendingData() != 0 {
-				if err := s.daHandler.SubmitData(s.ctx, s.cache, s.signer, s.genesis); err != nil {
-					s.logger.Error().Err(err).Msg("failed to submit data")
-				}
-			}
-		}
-	}
-}
-
-// syncLoop handles sync from DA and P2P sources
+// syncLoop handles synchronization from DA and P2P sources.
 func (s *Syncer) syncLoop() {
 	s.logger.Info().Msg("starting sync loop")
 	defer s.logger.Info().Msg("sync loop stopped")
@@ -384,7 +340,7 @@ func (s *Syncer) syncLoop() {
 }
 
 // processHeightEvent processes a height event for synchronization
-func (s *Syncer) processHeightEvent(event *HeightEvent) {
+func (s *Syncer) processHeightEvent(event *common.HeightEvent) {
 	height := event.Header.Height()
 	headerHash := event.Header.Hash().String()
 
@@ -622,11 +578,6 @@ func (s *Syncer) sendNonBlockingSignal(ch chan struct{}, name string) {
 
 // updateMetrics updates sync-related metrics
 func (s *Syncer) updateMetrics() {
-	// Update pending counts (only relevant for aggregators)
-	if s.config.Node.Aggregator {
-		s.metrics.PendingHeadersCount.Set(float64(s.cache.NumPendingHeaders()))
-		s.metrics.PendingDataCount.Set(float64(s.cache.NumPendingData()))
-	}
 	s.metrics.DAInclusionHeight.Set(float64(s.GetDAIncludedHeight()))
 }
 
@@ -649,7 +600,7 @@ func (s *Syncer) processPendingEvents() {
 
 		// Only process events for blocks we haven't synced yet
 		if height > currentHeight {
-			heightEvent := HeightEvent{
+			heightEvent := common.HeightEvent{
 				Header:                 event.Header,
 				Data:                   event.Data,
 				DaHeight:               event.DaHeight,
