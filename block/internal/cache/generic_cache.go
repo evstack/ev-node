@@ -10,54 +10,60 @@ import (
 
 // Cache is a generic cache that maintains items that are seen and hard confirmed
 type Cache[T any] struct {
-	items      *sync.Map
-	hashes     *sync.Map
+	// itemsByHeight stores items keyed by uint64 height
+	itemsByHeight *sync.Map
+	// hashes tracks whether a given hash has been seen
+	hashes *sync.Map
+	// daIncluded tracks the DA inclusion height for a given hash
 	daIncluded *sync.Map
 }
 
 // NewCache returns a new Cache struct
 func NewCache[T any]() *Cache[T] {
 	return &Cache[T]{
-		items:      new(sync.Map),
-		hashes:     new(sync.Map),
-		daIncluded: new(sync.Map),
+		itemsByHeight: new(sync.Map),
+		hashes:        new(sync.Map),
+		daIncluded:    new(sync.Map),
 	}
 }
 
-// GetItem returns an item from the cache by height
+// GetItem returns an item from the cache by height.
+// Returns nil if not found or type mismatch.
 func (c *Cache[T]) GetItem(height uint64) *T {
-	item, ok := c.items.Load(height)
+	item, ok := c.itemsByHeight.Load(height)
 	if !ok {
 		return nil
 	}
-	val := item.(*T)
+	val, ok := item.(*T)
+	if !ok {
+		return nil
+	}
 	return val
 }
 
 // SetItem sets an item in the cache by height
 func (c *Cache[T]) SetItem(height uint64, item *T) {
-	c.items.Store(height, item)
+	c.itemsByHeight.Store(height, item)
 }
 
 // DeleteItem deletes an item from the cache by height
 func (c *Cache[T]) DeleteItem(height uint64) {
-	c.items.Delete(height)
+	c.itemsByHeight.Delete(height)
 }
 
-// RangeByHeight iterates over all items keyed by uint64 height and calls fn for each.
+// RangeByHeight iterates over items keyed by height in an unspecified order and calls fn for each.
 // If fn returns false, iteration stops early.
-// Non-uint64 keys (e.g. string hash entries) are ignored.
 func (c *Cache[T]) RangeByHeight(fn func(height uint64, item *T) bool) {
-	c.items.Range(func(k, v any) bool {
+	c.itemsByHeight.Range(func(k, v any) bool {
 		height, ok := k.(uint64)
 		if !ok {
 			return true
 		}
-		item, ok := v.(*T)
+		it, ok := v.(*T)
 		if !ok {
 			return true
 		}
-		return fn(height, item)
+		return fn(height, it)
 	})
 }
 
@@ -81,15 +87,6 @@ func (c *Cache[T]) IsDAIncluded(hash string) bool {
 	return ok
 }
 
-// GetDAIncludedHeight returns the DA height at which the hash was DA included
-func (c *Cache[T]) GetDAIncludedHeight(hash string) (uint64, bool) {
-	daIncluded, ok := c.daIncluded.Load(hash)
-	if !ok {
-		return 0, false
-	}
-	return daIncluded.(uint64), true
-}
-
 // SetDAIncluded sets the hash as DA-included with the given DA height
 func (c *Cache[T]) SetDAIncluded(hash string, daHeight uint64) {
 	c.daIncluded.Store(hash, daHeight)
@@ -97,7 +94,6 @@ func (c *Cache[T]) SetDAIncluded(hash string, daHeight uint64) {
 
 const (
 	itemsByHeightFilename = "items_by_height.gob"
-	itemsByHashFilename   = "items_by_hash.gob"
 	hashesFilename        = "hashes.gob"
 	daIncludedFilename    = "da_included.gob"
 )
@@ -147,32 +143,17 @@ func (c *Cache[T]) SaveToDisk(folderPath string) error {
 
 	// prepare items maps
 	itemsByHeightMap := make(map[uint64]*T)
-	itemsByHashMap := make(map[string]*T)
 
-	var invalidItemsErr error
-	c.items.Range(func(k, v any) bool {
-		itemVal, ok := v.(*T)
-		if !ok {
-			invalidItemsErr = fmt.Errorf("invalid item type: %T", v)
-			return false // early exit if the value is not of type *T
-		}
-		switch key := k.(type) {
-		case uint64:
-			itemsByHeightMap[key] = itemVal
-		case string:
-			itemsByHashMap[key] = itemVal
+	c.itemsByHeight.Range(func(k, v any) bool {
+		if hk, ok := k.(uint64); ok {
+			if it, ok := v.(*T); ok {
+				itemsByHeightMap[hk] = it
+			}
 		}
 		return true
 	})
 
-	if invalidItemsErr != nil {
-		return invalidItemsErr
-	}
-
 	if err := saveMapGob(filepath.Join(folderPath, itemsByHeightFilename), itemsByHeightMap); err != nil {
-		return err
-	}
-	if err := saveMapGob(filepath.Join(folderPath, itemsByHashFilename), itemsByHashMap); err != nil {
 		return err
 	}
 
@@ -214,16 +195,7 @@ func (c *Cache[T]) LoadFromDisk(folderPath string) error {
 		return fmt.Errorf("failed to load items by height: %w", err)
 	}
 	for k, v := range itemsByHeightMap {
-		c.items.Store(k, v)
-	}
-
-	// load items by hash
-	itemsByHashMap, err := loadMapGob[string, *T](filepath.Join(folderPath, itemsByHashFilename))
-	if err != nil {
-		return fmt.Errorf("failed to load items by hash: %w", err)
-	}
-	for k, v := range itemsByHashMap {
-		c.items.Store(k, v)
+		c.itemsByHeight.Store(k, v)
 	}
 
 	// load hashes
