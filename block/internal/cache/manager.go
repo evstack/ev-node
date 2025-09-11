@@ -9,7 +9,6 @@ import (
 
 	"github.com/rs/zerolog"
 
-	"github.com/evstack/ev-node/pkg/cache"
 	"github.com/evstack/ev-node/pkg/config"
 	"github.com/evstack/ev-node/pkg/store"
 	"github.com/evstack/ev-node/types"
@@ -21,6 +20,19 @@ var (
 	dataCacheDir          = filepath.Join(cacheDir, "data")
 	pendingEventsCacheDir = filepath.Join(cacheDir, "pending_da_events")
 )
+
+// gobRegisterOnce ensures gob type registration happens exactly once process-wide.
+var gobRegisterOnce sync.Once
+
+// registerGobTypes registers all concrete types that may be encoded/decoded by the cache.
+// Gob registration is global and must not be performed repeatedly to avoid conflicts.
+func registerGobTypes() {
+	gobRegisterOnce.Do(func() {
+		gob.Register(&types.SignedHeader{})
+		gob.Register(&types.Data{})
+		gob.Register(&DAHeightEvent{})
+	})
+}
 
 // DAHeightEvent represents a DA event for caching
 type DAHeightEvent struct {
@@ -73,22 +85,21 @@ type Manager interface {
 
 // implementation provides the concrete implementation of cache Manager
 type implementation struct {
-	headerCache        *cache.Cache[types.SignedHeader]
-	dataCache          *cache.Cache[types.Data]
-	pendingEventsCache *cache.Cache[DAHeightEvent]
+	headerCache        *Cache[types.SignedHeader]
+	dataCache          *Cache[types.Data]
+	pendingEventsCache *Cache[DAHeightEvent]
 	pendingHeaders     *PendingHeaders
 	pendingData        *PendingData
 	config             config.Config
 	logger             zerolog.Logger
-	mutex              sync.RWMutex
 }
 
 // NewManager creates a new cache manager instance
 func NewManager(cfg config.Config, store store.Store, logger zerolog.Logger) (Manager, error) {
 	// Initialize caches
-	headerCache := cache.NewCache[types.SignedHeader]()
-	dataCache := cache.NewCache[types.Data]()
-	pendingEventsCache := cache.NewCache[DAHeightEvent]()
+	headerCache := NewCache[types.SignedHeader]()
+	dataCache := NewCache[types.Data]()
+	pendingEventsCache := NewCache[DAHeightEvent]()
 
 	// Initialize pending managers
 	pendingHeaders, err := NewPendingHeaders(store, logger)
@@ -221,8 +232,6 @@ func (m *implementation) SetPendingEvent(height uint64, event *DAHeightEvent) {
 }
 
 func (m *implementation) GetPendingEvents() map[uint64]*DAHeightEvent {
-	m.mutex.RLock()
-	defer m.mutex.RUnlock()
 
 	events := make(map[uint64]*DAHeightEvent)
 	m.pendingEventsCache.RangeByHeight(func(height uint64, event *DAHeightEvent) bool {
@@ -248,6 +257,9 @@ func (m *implementation) ClearProcessedData(height uint64) {
 func (m *implementation) SaveToDisk() error {
 	cfgDir := filepath.Join(m.config.RootDir, "data")
 
+	// Ensure gob types are registered before encoding
+	registerGobTypes()
+
 	if err := m.headerCache.SaveToDisk(filepath.Join(cfgDir, headerCacheDir)); err != nil {
 		return fmt.Errorf("failed to save header cache to disk: %w", err)
 	}
@@ -264,10 +276,8 @@ func (m *implementation) SaveToDisk() error {
 }
 
 func (m *implementation) LoadFromDisk() error {
-	// Register types for gob encoding
-	gob.Register(&types.SignedHeader{})
-	gob.Register(&types.Data{})
-	gob.Register(&DAHeightEvent{})
+	// Ensure types are registered exactly once prior to decoding
+	registerGobTypes()
 
 	cfgDir := filepath.Join(m.config.RootDir, "data")
 
