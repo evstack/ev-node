@@ -20,19 +20,23 @@ type Cache[T any] struct {
 	// daIncluded tracks the DA inclusion height for a given hash
 	daIncluded *sync.Map
 
-	// ordered index of heights for iteration
-	heightIndexMu sync.RWMutex
-	heightKeys    []uint64 // kept in ascending order, unique
+    // ordered index of heights for iteration
+    heightIndexMu sync.RWMutex
+    heightKeys    []uint64 // kept in ascending order, unique
+
+    // pool for reusing temporary height buffers to reduce allocations
+    keysBufPool sync.Pool
 }
 
 // NewCache returns a new Cache struct
 func NewCache[T any]() *Cache[T] {
-	return &Cache[T]{
-		itemsByHeight: new(sync.Map),
-		itemsByHash:   new(sync.Map),
-		hashes:        new(sync.Map),
-		daIncluded:    new(sync.Map),
-	}
+    return &Cache[T]{
+        itemsByHeight: new(sync.Map),
+        itemsByHash:   new(sync.Map),
+        hashes:        new(sync.Map),
+        daIncluded:    new(sync.Map),
+        keysBufPool: sync.Pool{New: func() any { return make([]uint64, 0, 64) }},
+    }
 }
 
 // GetItem returns an item from the cache by height.
@@ -82,34 +86,40 @@ func (c *Cache[T]) RangeByHeight(fn func(height uint64, item *T) bool) {
 
 // RangeByHeightAsc iterates items by ascending height order.
 func (c *Cache[T]) RangeByHeightAsc(fn func(height uint64, item *T) bool) {
-	keys := c.snapshotHeightsAsc()
-	for _, h := range keys {
-		if v, ok := c.itemsByHeight.Load(h); ok {
-			it, ok := v.(*T)
-			if !ok {
-				continue
-			}
-			if !fn(h, it) {
-				return
-			}
-		}
-	}
+    // Use pooled buffer to avoid per-call allocations
+    buf := c.getKeysBuf()
+    keys := c.snapshotHeightsAscInto(buf)
+    defer c.putKeysBuf(keys)
+    for _, h := range keys {
+        if v, ok := c.itemsByHeight.Load(h); ok {
+            it, ok := v.(*T)
+            if !ok {
+                continue
+            }
+            if !fn(h, it) {
+                return
+            }
+        }
+    }
 }
 
 // RangeByHeightDesc iterates items by descending height order.
 func (c *Cache[T]) RangeByHeightDesc(fn func(height uint64, item *T) bool) {
-	keys := c.snapshotHeightsDesc()
-	for _, h := range keys {
-		if v, ok := c.itemsByHeight.Load(h); ok {
-			it, ok := v.(*T)
-			if !ok {
-				continue
-			}
-			if !fn(h, it) {
-				return
-			}
-		}
-	}
+    // Use pooled buffer to avoid per-call allocations
+    buf := c.getKeysBuf()
+    keys := c.snapshotHeightsDescInto(buf)
+    defer c.putKeysBuf(keys)
+    for _, h := range keys {
+        if v, ok := c.itemsByHeight.Load(h); ok {
+            it, ok := v.(*T)
+            if !ok {
+                continue
+            }
+            if !fn(h, it) {
+                return
+            }
+        }
+    }
 }
 
 // GetItemByHash returns an item from the cache by string hash key.
@@ -351,30 +361,59 @@ func (c *Cache[T]) insertHeight(h uint64) {
 
 // deleteHeight removes h if present.
 func (c *Cache[T]) deleteHeight(h uint64) {
-	c.heightIndexMu.Lock()
-	defer c.heightIndexMu.Unlock()
-	i := sort.Search(len(c.heightKeys), func(i int) bool { return c.heightKeys[i] >= h })
-	if i < len(c.heightKeys) && c.heightKeys[i] == h {
-		copy(c.heightKeys[i:], c.heightKeys[i+1:])
-		c.heightKeys = c.heightKeys[:len(c.heightKeys)-1]
-	}
+    c.heightIndexMu.Lock()
+    defer c.heightIndexMu.Unlock()
+    i := sort.Search(len(c.heightKeys), func(i int) bool { return c.heightKeys[i] >= h })
+    if i < len(c.heightKeys) && c.heightKeys[i] == h {
+        copy(c.heightKeys[i:], c.heightKeys[i+1:])
+        c.heightKeys = c.heightKeys[:len(c.heightKeys)-1]
+    }
 }
 
-func (c *Cache[T]) snapshotHeightsAsc() []uint64 {
-	c.heightIndexMu.RLock()
-	defer c.heightIndexMu.RUnlock()
-	out := make([]uint64, len(c.heightKeys))
-	copy(out, c.heightKeys)
-	return out
+// snapshotHeightsAscInto copies ascending heights into dst, resizing as needed.
+func (c *Cache[T]) snapshotHeightsAscInto(dst []uint64) []uint64 {
+    c.heightIndexMu.RLock()
+    defer c.heightIndexMu.RUnlock()
+    n := len(c.heightKeys)
+    if cap(dst) < n {
+        dst = make([]uint64, n)
+    } else {
+        dst = dst[:n]
+    }
+    copy(dst, c.heightKeys)
+    return dst
 }
 
-func (c *Cache[T]) snapshotHeightsDesc() []uint64 {
-	c.heightIndexMu.RLock()
-	defer c.heightIndexMu.RUnlock()
-	n := len(c.heightKeys)
-	out := make([]uint64, n)
-	for i := 0; i < n; i++ {
-		out[i] = c.heightKeys[n-1-i]
-	}
-	return out
+// snapshotHeightsDescInto copies descending heights into dst, resizing as needed.
+func (c *Cache[T]) snapshotHeightsDescInto(dst []uint64) []uint64 {
+    c.heightIndexMu.RLock()
+    defer c.heightIndexMu.RUnlock()
+    n := len(c.heightKeys)
+    if cap(dst) < n {
+        dst = make([]uint64, n)
+    } else {
+        dst = dst[:n]
+    }
+    for i := 0; i < n; i++ {
+        dst[i] = c.heightKeys[n-1-i]
+    }
+    return dst
+}
+
+// getKeysBuf fetches a reusable buffer from the pool.
+func (c *Cache[T]) getKeysBuf() []uint64 {
+    v := c.keysBufPool.Get()
+    if v == nil {
+        return make([]uint64, 0, 64)
+    }
+    return v.([]uint64)
+}
+
+// putKeysBuf returns a buffer to the pool after zeroing length.
+func (c *Cache[T]) putKeysBuf(b []uint64) {
+    const maxCap = 1 << 16 // avoid retaining extremely large backing arrays
+    if cap(b) > maxCap {
+        return
+    }
+    c.keysBufPool.Put(b[:0])
 }
