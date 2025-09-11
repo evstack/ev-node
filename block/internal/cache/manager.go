@@ -1,18 +1,17 @@
 package cache
 
 import (
-	"context"
-	"encoding/gob"
-	"fmt"
-	"path/filepath"
-	"sync"
+    "context"
+    "encoding/gob"
+    "fmt"
+    "path/filepath"
+    "sync"
 
 	"github.com/rs/zerolog"
 
-	"github.com/evstack/ev-node/pkg/cache"
-	"github.com/evstack/ev-node/pkg/config"
-	"github.com/evstack/ev-node/pkg/store"
-	"github.com/evstack/ev-node/types"
+    "github.com/evstack/ev-node/pkg/config"
+    "github.com/evstack/ev-node/pkg/store"
+    "github.com/evstack/ev-node/types"
 )
 
 var (
@@ -73,22 +72,22 @@ type Manager interface {
 
 // implementation provides the concrete implementation of cache Manager
 type implementation struct {
-	headerCache        *cache.Cache[types.SignedHeader]
-	dataCache          *cache.Cache[types.Data]
-	pendingEventsCache *cache.Cache[DAHeightEvent]
-	pendingHeaders     *PendingHeaders
-	pendingData        *PendingData
-	config             config.Config
-	logger             zerolog.Logger
-	mutex              sync.RWMutex
+    headerCache        *Cache[types.SignedHeader]
+    dataCache          *Cache[types.Data]
+    pendingEventsCache *Cache[DAHeightEvent]
+    pendingHeaders     *PendingHeaders
+    pendingData        *PendingData
+    config             config.Config
+    logger             zerolog.Logger
+    mutex              sync.RWMutex
 }
 
 // NewManager creates a new cache manager instance
 func NewManager(cfg config.Config, store store.Store, logger zerolog.Logger) (Manager, error) {
-	// Initialize caches
-	headerCache := cache.NewCache[types.SignedHeader]()
-	dataCache := cache.NewCache[types.Data]()
-	pendingEventsCache := cache.NewCache[DAHeightEvent]()
+    // Initialize caches
+    headerCache := NewCache[types.SignedHeader]()
+    dataCache := NewCache[types.Data]()
+    pendingEventsCache := NewCache[DAHeightEvent]()
 
 	// Initialize pending managers
 	pendingHeaders, err := NewPendingHeaders(store, logger)
@@ -221,8 +220,6 @@ func (m *implementation) SetPendingEvent(height uint64, event *DAHeightEvent) {
 }
 
 func (m *implementation) GetPendingEvents() map[uint64]*DAHeightEvent {
-	m.mutex.RLock()
-	defer m.mutex.RUnlock()
 
 	events := make(map[uint64]*DAHeightEvent)
 	m.pendingEventsCache.RangeByHeight(func(height uint64, event *DAHeightEvent) bool {
