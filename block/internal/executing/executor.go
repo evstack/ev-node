@@ -131,12 +131,6 @@ func NewExecutor(
 func (e *Executor) Start(ctx context.Context) error {
 	e.ctx, e.cancel = context.WithCancel(ctx)
 
-	// Validate lazy mode configuration
-	if e.config.Node.LazyMode && e.config.Node.LazyBlockInterval.Duration <= e.config.Node.BlockTime.Duration {
-		return fmt.Errorf("LazyBlockInterval (%v) must be greater than BlockTime (%v) in lazy mode",
-			e.config.Node.LazyBlockInterval.Duration, e.config.Node.BlockTime.Duration)
-	}
-
 	// Initialize state
 	if err := e.initializeState(); err != nil {
 		return fmt.Errorf("failed to initialize state: %w", err)
