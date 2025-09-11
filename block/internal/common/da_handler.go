@@ -1,4 +1,4 @@
-package syncing
+package common
 
 import (
 	"bytes"
@@ -12,7 +12,6 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	"github.com/evstack/ev-node/block/internal/cache"
-	"github.com/evstack/ev-node/block/internal/common"
 	coreda "github.com/evstack/ev-node/core/da"
 	"github.com/evstack/ev-node/pkg/config"
 	"github.com/evstack/ev-node/pkg/genesis"
@@ -28,13 +27,21 @@ const (
 	maxSubmitAttempts = 30
 )
 
+// HeightEvent represents a block height event with header and data
+type HeightEvent struct {
+	Header                 *types.SignedHeader
+	Data                   *types.Data
+	DaHeight               uint64
+	HeaderDaIncludedHeight uint64
+}
+
 // DAHandler handles all DA layer operations for the syncer
 type DAHandler struct {
 	da      coreda.DA
 	cache   cache.Manager
 	config  config.Config
 	genesis genesis.Genesis
-	options common.BlockOptions
+	options BlockOptions
 	logger  zerolog.Logger
 }
 
@@ -44,7 +51,7 @@ func NewDAHandler(
 	cache cache.Manager,
 	config config.Config,
 	genesis genesis.Genesis,
-	options common.BlockOptions,
+	options BlockOptions,
 	logger zerolog.Logger,
 ) *DAHandler {
 	return &DAHandler{
@@ -294,7 +301,7 @@ func (h *DAHandler) tryDecodeData(bz []byte, daHeight uint64) *types.Data {
 
 // isEmptyDataExpected checks if empty data is expected for a header
 func (h *DAHandler) isEmptyDataExpected(header *types.SignedHeader) bool {
-	return len(header.DataHash) == 0 || !bytes.Equal(header.DataHash, common.DataHashForEmptyTxs)
+	return len(header.DataHash) == 0 || !bytes.Equal(header.DataHash, DataHashForEmptyTxs)
 }
 
 // createEmptyDataForHeader creates empty data for a header

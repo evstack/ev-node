@@ -92,7 +92,6 @@ func TestProcessHeightEvent_SyncsAndUpdatesState(t *testing.T) {
 		gen,
 		nil,
 		nil,
-		nil,
 		zerolog.Nop(),
 		common.DefaultBlockOptions(),
 	)
@@ -141,7 +140,6 @@ func TestDAInclusion_AdvancesHeight(t *testing.T) {
 		common.NopMetrics(),
 		cfg,
 		gen,
-		nil,
 		nil,
 		nil,
 		zerolog.Nop(),
