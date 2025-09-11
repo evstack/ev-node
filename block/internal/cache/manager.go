@@ -123,52 +123,52 @@ func NewManager(cfg config.Config, store store.Store, logger zerolog.Logger) (Ma
 
 // Header operations
 func (m *implementation) GetHeader(height uint64) *types.SignedHeader {
-	return m.headerCache.GetItem(height)
+	return m.headerCache.getItem(height)
 }
 
 func (m *implementation) SetHeader(height uint64, header *types.SignedHeader) {
-	m.headerCache.SetItem(height, header)
+	m.headerCache.setItem(height, header)
 }
 
 func (m *implementation) IsHeaderSeen(hash string) bool {
-	return m.headerCache.IsSeen(hash)
+	return m.headerCache.isSeen(hash)
 }
 
 func (m *implementation) SetHeaderSeen(hash string) {
-	m.headerCache.SetSeen(hash)
+	m.headerCache.setSeen(hash)
 }
 
 func (m *implementation) GetHeaderDAIncluded(hash string) (uint64, bool) {
-	return m.headerCache.GetDAIncluded(hash)
+	return m.headerCache.getDAIncluded(hash)
 }
 
 func (m *implementation) SetHeaderDAIncluded(hash string, daHeight uint64) {
-	m.headerCache.SetDAIncluded(hash, daHeight)
+	m.headerCache.setDAIncluded(hash, daHeight)
 }
 
 // Data operations
 func (m *implementation) GetData(height uint64) *types.Data {
-	return m.dataCache.GetItem(height)
+	return m.dataCache.getItem(height)
 }
 
 func (m *implementation) SetData(height uint64, data *types.Data) {
-	m.dataCache.SetItem(height, data)
+	m.dataCache.setItem(height, data)
 }
 
 func (m *implementation) IsDataSeen(hash string) bool {
-	return m.dataCache.IsSeen(hash)
+	return m.dataCache.isSeen(hash)
 }
 
 func (m *implementation) SetDataSeen(hash string) {
-	m.dataCache.SetSeen(hash)
+	m.dataCache.setSeen(hash)
 }
 
 func (m *implementation) GetDataDAIncluded(hash string) (uint64, bool) {
-	return m.dataCache.GetDAIncluded(hash)
+	return m.dataCache.getDAIncluded(hash)
 }
 
 func (m *implementation) SetDataDAIncluded(hash string, daHeight uint64) {
-	m.dataCache.SetDAIncluded(hash, daHeight)
+	m.dataCache.setDAIncluded(hash, daHeight)
 }
 
 // Pending operations
@@ -219,13 +219,13 @@ func (m *implementation) NumPendingData() uint64 {
 
 // Pending events operations
 func (m *implementation) SetPendingEvent(height uint64, event *common.DAHeightEvent) {
-	m.pendingEventsCache.SetItem(height, event)
+	m.pendingEventsCache.setItem(height, event)
 }
 
 func (m *implementation) GetPendingEvents() map[uint64]*common.DAHeightEvent {
 
 	events := make(map[uint64]*common.DAHeightEvent)
-	m.pendingEventsCache.RangeByHeight(func(height uint64, event *common.DAHeightEvent) bool {
+	m.pendingEventsCache.rangeByHeight(func(height uint64, event *common.DAHeightEvent) bool {
 		events[height] = event
 		return true
 	})
@@ -233,16 +233,16 @@ func (m *implementation) GetPendingEvents() map[uint64]*common.DAHeightEvent {
 }
 
 func (m *implementation) DeletePendingEvent(height uint64) {
-	m.pendingEventsCache.DeleteItem(height)
+	m.pendingEventsCache.deleteItem(height)
 }
 
 // Cleanup operations
 func (m *implementation) ClearProcessedHeader(height uint64) {
-	m.headerCache.DeleteItem(height)
+	m.headerCache.deleteItem(height)
 }
 
 func (m *implementation) ClearProcessedData(height uint64) {
-	m.dataCache.DeleteItem(height)
+	m.dataCache.deleteItem(height)
 }
 
 func (m *implementation) SaveToDisk() error {

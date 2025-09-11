@@ -27,10 +27,10 @@ func TestCache_ConcurrentOperations(t *testing.T) {
 		defer wg.Done()
 		for i := start; i < N; i += 2 {
 			v := &testItem{V: i}
-			c.SetItem(uint64(i), v)
+			c.setItem(uint64(i), v)
 			if i%10 == 0 {
 				// randomly delete some keys
-				c.DeleteItem(uint64(i))
+				c.deleteItem(uint64(i))
 			}
 		}
 	}
@@ -48,13 +48,13 @@ func TestCache_TypeSafety(t *testing.T) {
 	// Inject invalid value types directly into maps (bypassing typed methods)
 	c.itemsByHeight.Store(uint64(1), "not-a-*testItem")
 
-	if got := c.GetItem(1); got != nil {
+	if got := c.getItem(1); got != nil {
 		t.Fatalf("expected nil for invalid stored type, got %#v", got)
 	}
 
 	// Range should skip invalid entries and not panic
 	ran := false
-	c.RangeByHeight(func(_ uint64, _ *testItem) bool { ran = true; return true })
+	c.rangeByHeight(func(_ uint64, _ *testItem) bool { ran = true; return true })
 	_ = ran // ensure no panic
 }
 
@@ -63,9 +63,9 @@ func TestCache_SaveLoad_ErrorPaths(t *testing.T) {
 	c := NewCache[testItem]()
 	for i := 0; i < 5; i++ {
 		v := &testItem{V: i}
-		c.SetItem(uint64(i), v)
-		c.SetSeen(fmt.Sprintf("s%d", i))
-		c.SetDAIncluded(fmt.Sprintf("d%d", i), uint64(i))
+		c.setItem(uint64(i), v)
+		c.setSeen(fmt.Sprintf("s%d", i))
+		c.setDAIncluded(fmt.Sprintf("d%d", i), uint64(i))
 	}
 
 	// Normal save/load roundtrip
@@ -78,13 +78,13 @@ func TestCache_SaveLoad_ErrorPaths(t *testing.T) {
 		t.Fatalf("LoadFromDisk failed: %v", err)
 	}
 	// Spot-check a few values
-	if got := c2.GetItem(3); got == nil || got.V != 3 {
-		t.Fatalf("roundtrip GetItem mismatch: got %#v", got)
+	if got := c2.getItem(3); got == nil || got.V != 3 {
+		t.Fatalf("roundtrip getItem mismatch: got %#v", got)
 	}
 
-	_, c2OK := c2.GetDAIncluded("d2")
+	_, c2OK := c2.getDAIncluded("d2")
 
-	if !c2.IsSeen("s1") || !c2OK {
+	if !c2.isSeen("s1") || !c2OK {
 		t.Fatalf("roundtrip auxiliary maps mismatch")
 	}
 
@@ -116,10 +116,10 @@ func TestCache_LargeDataset(t *testing.T) {
 	// Insert in descending order to exercise insert positions
 	for i := N - 1; i >= 0; i-- {
 		v := &testItem{V: i}
-		c.SetItem(uint64(i), v)
+		c.setItem(uint64(i), v)
 	}
 	// Delete a range in the middle
 	for i := 5000; i < 10000; i += 2 {
-		c.DeleteItem(uint64(i))
+		c.deleteItem(uint64(i))
 	}
 }

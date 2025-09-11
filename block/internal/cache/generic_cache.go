@@ -27,9 +27,9 @@ func NewCache[T any]() *Cache[T] {
 	}
 }
 
-// GetItem returns an item from the cache by height.
+// getItem returns an item from the cache by height.
 // Returns nil if not found or type mismatch.
-func (c *Cache[T]) GetItem(height uint64) *T {
+func (c *Cache[T]) getItem(height uint64) *T {
 	item, ok := c.itemsByHeight.Load(height)
 	if !ok {
 		return nil
@@ -41,19 +41,19 @@ func (c *Cache[T]) GetItem(height uint64) *T {
 	return val
 }
 
-// SetItem sets an item in the cache by height
-func (c *Cache[T]) SetItem(height uint64, item *T) {
+// setItem sets an item in the cache by height
+func (c *Cache[T]) setItem(height uint64, item *T) {
 	c.itemsByHeight.Store(height, item)
 }
 
-// DeleteItem deletes an item from the cache by height
-func (c *Cache[T]) DeleteItem(height uint64) {
+// deleteItem deletes an item from the cache by height
+func (c *Cache[T]) deleteItem(height uint64) {
 	c.itemsByHeight.Delete(height)
 }
 
-// RangeByHeight iterates over items keyed by height in an unspecified order and calls fn for each.
+// rangeByHeight iterates over items keyed by height in an unspecified order and calls fn for each.
 // If fn returns false, iteration stops early.
-func (c *Cache[T]) RangeByHeight(fn func(height uint64, item *T) bool) {
+func (c *Cache[T]) rangeByHeight(fn func(height uint64, item *T) bool) {
 	c.itemsByHeight.Range(func(k, v any) bool {
 		height, ok := k.(uint64)
 		if !ok {
@@ -67,8 +67,8 @@ func (c *Cache[T]) RangeByHeight(fn func(height uint64, item *T) bool) {
 	})
 }
 
-// IsSeen returns true if the hash has been seen
-func (c *Cache[T]) IsSeen(hash string) bool {
+// isSeen returns true if the hash has been seen
+func (c *Cache[T]) isSeen(hash string) bool {
 	seen, ok := c.hashes.Load(hash)
 	if !ok {
 		return false
@@ -76,13 +76,13 @@ func (c *Cache[T]) IsSeen(hash string) bool {
 	return seen.(bool)
 }
 
-// SetSeen sets the hash as seen
-func (c *Cache[T]) SetSeen(hash string) {
+// setSeen sets the hash as seen
+func (c *Cache[T]) setSeen(hash string) {
 	c.hashes.Store(hash, true)
 }
 
-// GetDAIncluded returns the DA height if the hash has been DA-included, otherwise it returns 0.
-func (c *Cache[T]) GetDAIncluded(hash string) (uint64, bool) {
+// getDAIncluded returns the DA height if the hash has been DA-included, otherwise it returns 0.
+func (c *Cache[T]) getDAIncluded(hash string) (uint64, bool) {
 	daIncluded, ok := c.daIncluded.Load(hash)
 	if !ok {
 		return 0, false
@@ -90,8 +90,8 @@ func (c *Cache[T]) GetDAIncluded(hash string) (uint64, bool) {
 	return daIncluded.(uint64), true
 }
 
-// SetDAIncluded sets the hash as DA-included with the given DA height
-func (c *Cache[T]) SetDAIncluded(hash string, daHeight uint64) {
+// setDAIncluded sets the hash as DA-included with the given DA height
+func (c *Cache[T]) setDAIncluded(hash string, daHeight uint64) {
 	c.daIncluded.Store(hash, daHeight)
 }
 

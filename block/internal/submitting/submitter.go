@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/binary"
+	"fmt"
 	"sync"
 	"time"
 
@@ -16,6 +17,7 @@ import (
 	"github.com/evstack/ev-node/pkg/genesis"
 	"github.com/evstack/ev-node/pkg/signer"
 	"github.com/evstack/ev-node/pkg/store"
+	"github.com/evstack/ev-node/types"
 )
 
 // Submitter handles DA submission and inclusion processing for both sync and aggregator nodes
@@ -180,7 +182,47 @@ func (s *Submitter) processDAInclusionLoop() {
 		case <-s.ctx.Done():
 			return
 		case <-ticker.C:
-			s.processDAInclusion()
+			currentDAIncluded := s.GetDAIncludedHeight()
+
+			for {
+				nextHeight := currentDAIncluded + 1
+
+				// Get block data first
+				header, data, err := s.store.GetBlockData(s.ctx, nextHeight)
+				if err != nil {
+					break
+				}
+
+				// Check if this height is DA included
+				if included, err := s.isHeightDAIncluded(nextHeight, header, data); err != nil || !included {
+					break
+				}
+
+				s.logger.Debug().Uint64("height", nextHeight).Msg("advancing DA included height")
+
+				// Set sequencer height to DA height mapping using already retrieved data
+				if err := s.setSequencerHeightToDAHeight(s.ctx, nextHeight, header, data, currentDAIncluded == 0); err != nil {
+					s.logger.Error().Err(err).Uint64("height", nextHeight).Msg("failed to set sequencer height to DA height mapping")
+					break
+				}
+
+				// Set final height in executor
+				if err := s.exec.SetFinal(s.ctx, nextHeight); err != nil {
+					s.logger.Error().Err(err).Uint64("height", nextHeight).Msg("failed to set final height")
+					break
+				}
+
+				// Update DA included height
+				s.SetDAIncludedHeight(nextHeight)
+				currentDAIncluded = nextHeight
+
+				// Persist DA included height
+				bz := make([]byte, 8)
+				binary.LittleEndian.PutUint64(bz, nextHeight)
+				if err := s.store.SetMetadata(s.ctx, store.DAIncludedHeightKey, bz); err != nil {
+					s.logger.Error().Err(err).Uint64("height", nextHeight).Msg("failed to persist DA included height")
+				}
+			}
 		}
 	}
 }
@@ -207,52 +249,69 @@ func (s *Submitter) initializeDAIncludedHeight(ctx context.Context) error {
 	return nil
 }
 
-// processDAInclusion processes DA inclusion tracking
-func (s *Submitter) processDAInclusion() {
-	currentDAIncluded := s.GetDAIncludedHeight()
+// setSequencerHeightToDAHeight stores the mapping from a ev-node block height to the corresponding
+// DA (Data Availability) layer heights where the block's header and data were included.
+// This mapping is persisted in the store metadata and is used to track which DA heights
+// contain the block components for a given ev-node height.
+//
+// For blocks with empty transactions, both header and data use the same DA height since
+// empty transaction data is not actually published to the DA layer.
+func (s *Submitter) setSequencerHeightToDAHeight(ctx context.Context, height uint64, header *types.SignedHeader, data *types.Data, genesisInclusion bool) error {
 
-	for {
-		nextHeight := currentDAIncluded + 1
+	headerHash, dataHash := header.Hash(), data.DACommitment()
 
-		// Check if this height is DA included
-		if included, err := s.isHeightDAIncluded(nextHeight); err != nil || !included {
-			break
+	headerHeightBytes := make([]byte, 8)
+	daHeightForHeader, ok := s.cache.GetHeaderDAIncluded(headerHash.String())
+	if !ok {
+		return fmt.Errorf("header hash %s not found in cache", headerHash)
+	}
+	binary.LittleEndian.PutUint64(headerHeightBytes, daHeightForHeader)
+	genesisDAIncludedHeight := daHeightForHeader
+
+	if err := s.store.SetMetadata(ctx, fmt.Sprintf("%s/%d/h", store.HeightToDAHeightKey, height), headerHeightBytes); err != nil {
+		return err
+	}
+
+	dataHeightBytes := make([]byte, 8)
+	// For empty transactions, use the same DA height as the header
+	if bytes.Equal(dataHash, common.DataHashForEmptyTxs) {
+		binary.LittleEndian.PutUint64(dataHeightBytes, daHeightForHeader)
+	} else {
+		daHeightForData, ok := s.cache.GetDataDAIncluded(dataHash.String())
+		if !ok {
+			return fmt.Errorf("data hash %s not found in cache", dataHash.String())
 		}
+		binary.LittleEndian.PutUint64(dataHeightBytes, daHeightForData)
 
-		s.logger.Debug().Uint64("height", nextHeight).Msg("advancing DA included height")
-
-		// Set final height in executor
-		if err := s.exec.SetFinal(s.ctx, nextHeight); err != nil {
-			s.logger.Error().Err(err).Uint64("height", nextHeight).Msg("failed to set final height")
-			break
-		}
-
-		// Update DA included height
-		s.SetDAIncludedHeight(nextHeight)
-		currentDAIncluded = nextHeight
-
-		// Persist DA included height
-		bz := make([]byte, 8)
-		binary.LittleEndian.PutUint64(bz, nextHeight)
-		if err := s.store.SetMetadata(s.ctx, store.DAIncludedHeightKey, bz); err != nil {
-			s.logger.Error().Err(err).Uint64("height", nextHeight).Msg("failed to persist DA included height")
+		// if data posted before header, use data da included height
+		if daHeightForData < genesisDAIncludedHeight {
+			genesisDAIncludedHeight = daHeightForData
 		}
 	}
+	if err := s.store.SetMetadata(ctx, fmt.Sprintf("%s/%d/d", store.HeightToDAHeightKey, height), dataHeightBytes); err != nil {
+		return err
+	}
+
+	if genesisInclusion {
+		genesisDAIncludedHeightBytes := make([]byte, 8)
+		binary.LittleEndian.PutUint64(genesisDAIncludedHeightBytes, genesisDAIncludedHeight)
+
+		if err := s.store.SetMetadata(ctx, store.GenesisDAHeightKey, genesisDAIncludedHeightBytes); err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 // isHeightDAIncluded checks if a height is included in DA
-func (s *Submitter) isHeightDAIncluded(height uint64) (bool, error) {
+func (s *Submitter) isHeightDAIncluded(height uint64, header *types.SignedHeader, data *types.Data) (bool, error) {
 	currentHeight, err := s.store.Height(s.ctx)
 	if err != nil {
 		return false, err
 	}
 	if currentHeight < height {
 		return false, nil
-	}
-
-	header, data, err := s.store.GetBlockData(s.ctx, height)
-	if err != nil {
-		return false, err
 	}
 
 	headerHash := header.Hash().String()
