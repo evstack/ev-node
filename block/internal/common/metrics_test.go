@@ -18,13 +18,11 @@ func TestMetrics(t *testing.T) {
 		assert.NotNil(t, em.CommittedHeight)
 
 		// Test channel metrics initialization
-		assert.Len(t, em.ChannelBufferUsage, 6)
-		assert.NotNil(t, em.ChannelBufferUsage["height_in"])
-		assert.NotNil(t, em.ChannelBufferUsage["header_store"])
-		assert.NotNil(t, em.ChannelBufferUsage["data_store"])
-		assert.NotNil(t, em.ChannelBufferUsage["retrieve"])
-		assert.NotNil(t, em.ChannelBufferUsage["da_includer"])
-		assert.NotNil(t, em.ChannelBufferUsage["tx_notify"])
+		channelNames := []string{"height_in", "header_store", "data_store", "retrieve", "da_includer", "tx_notify"}
+		assert.Len(t, em.ChannelBufferUsage, len(channelNames))
+		for _, name := range channelNames {
+			assert.NotNil(t, em.ChannelBufferUsage[name])
+		}
 		assert.NotNil(t, em.DroppedSignals)
 
 		// Test error metrics initialization
