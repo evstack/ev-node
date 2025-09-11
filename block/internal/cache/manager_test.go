@@ -56,8 +56,10 @@ func TestManager_HeaderDataOperations(t *testing.T) {
 
 	m.SetHeaderDAIncluded("h1", 10)
 	m.SetDataDAIncluded("d1", 11)
-	assert.True(t, m.IsHeaderDAIncluded("h1"))
-	assert.True(t, m.IsDataDAIncluded("d1"))
+	_, ok := m.GetHeaderDAIncluded("h1")
+	assert.True(t, ok)
+	_, ok = m.GetDataDAIncluded("d1")
+	assert.True(t, ok)
 
 	// cleanup of processed
 	m.ClearProcessedHeader(1)
@@ -133,8 +135,10 @@ func TestManager_SaveAndLoadFromDisk(t *testing.T) {
 	assert.NotNil(t, m2.GetData(2))
 	assert.True(t, m2.IsHeaderSeen("H2"))
 	assert.True(t, m2.IsDataSeen("D2"))
-	assert.True(t, m2.IsHeaderDAIncluded("H2"))
-	assert.True(t, m2.IsDataDAIncluded("D2"))
+	_, ok := m2.GetHeaderDAIncluded("H2")
+	assert.True(t, ok)
+	_, ok2 := m2.GetDataDAIncluded("D2")
+	assert.True(t, ok2)
 
 	events := m2.GetPendingEvents()
 	require.Len(t, events, 1)

@@ -258,8 +258,10 @@ func (s *Submitter) isHeightDAIncluded(height uint64) (bool, error) {
 	headerHash := header.Hash().String()
 	dataHash := data.DACommitment().String()
 
-	headerIncluded := s.cache.IsHeaderDAIncluded(headerHash)
-	dataIncluded := bytes.Equal(data.DACommitment(), common.DataHashForEmptyTxs) || s.cache.IsDataDAIncluded(dataHash)
+	_, headerIncluded := s.cache.GetHeaderDAIncluded(headerHash)
+	_, dataIncluded := s.cache.GetDataDAIncluded(dataHash)
+
+	dataIncluded = bytes.Equal(data.DACommitment(), common.DataHashForEmptyTxs) || dataIncluded
 
 	return headerIncluded && dataIncluded, nil
 }

@@ -154,8 +154,12 @@ func TestDASubmitter_SubmitHeaders_Success(t *testing.T) {
 	require.NoError(t, err)
 
 	// Verify headers are marked as DA included
-	assert.True(t, cm.IsHeaderDAIncluded(header1.Hash().String()))
-	assert.True(t, cm.IsHeaderDAIncluded(header2.Hash().String()))
+	hash1 := header1.Hash().String()
+	hash2 := header2.Hash().String()
+	_, ok1 := cm.GetHeaderDAIncluded(hash1)
+	assert.True(t, ok1)
+	_, ok2 := cm.GetHeaderDAIncluded(hash2)
+	assert.True(t, ok2)
 }
 
 func TestDASubmitter_SubmitHeaders_NoPendingHeaders(t *testing.T) {
@@ -236,8 +240,10 @@ func TestDASubmitter_SubmitData_Success(t *testing.T) {
 	require.NoError(t, err)
 
 	// Verify data is marked as DA included
-	assert.True(t, cm.IsDataDAIncluded(data1.DACommitment().String()))
-	assert.True(t, cm.IsDataDAIncluded(data2.DACommitment().String()))
+	_, ok := cm.GetDataDAIncluded(data1.DACommitment().String())
+	assert.True(t, ok)
+	_, ok = cm.GetDataDAIncluded(data2.DACommitment().String())
+	assert.True(t, ok)
 }
 
 func TestDASubmitter_SubmitData_SkipsEmptyData(t *testing.T) {
@@ -282,7 +288,8 @@ func TestDASubmitter_SubmitData_SkipsEmptyData(t *testing.T) {
 	require.NoError(t, err)
 
 	// Empty data should not be marked as DA included (it's implicitly included)
-	assert.False(t, cm.IsDataDAIncluded(emptyData.DACommitment().String()))
+	_, ok := cm.GetDataDAIncluded(emptyData.DACommitment().String())
+	assert.False(t, ok)
 }
 
 func TestDASubmitter_SubmitData_NoPendingData(t *testing.T) {

@@ -82,9 +82,13 @@ func TestDASubmitter_SubmitHeadersAndData_MarksInclusionAndUpdatesLastSubmitted(
 	require.NoError(t, daSubmitter.SubmitData(context.Background(), cm, n, gen))
 
 	// After submission, inclusion markers should be set
-	assert.True(t, cm.IsHeaderDAIncluded(hdr1.Hash().String()))
-	assert.True(t, cm.IsHeaderDAIncluded(hdr2.Hash().String()))
-	assert.True(t, cm.IsDataDAIncluded(data1.DACommitment().String()))
-	assert.True(t, cm.IsDataDAIncluded(data2.DACommitment().String()))
+	_, ok := cm.GetHeaderDAIncluded(hdr1.Hash().String())
+	assert.True(t, ok)
+	_, ok = cm.GetHeaderDAIncluded(hdr2.Hash().String())
+	assert.True(t, ok)
+	_, ok = cm.GetDataDAIncluded(data1.DACommitment().String())
+	assert.True(t, ok)
+	_, ok = cm.GetDataDAIncluded(data2.DACommitment().String())
+	assert.True(t, ok)
 
 }

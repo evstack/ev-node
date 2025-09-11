@@ -81,7 +81,10 @@ func TestCache_SaveLoad_ErrorPaths(t *testing.T) {
 	if got := c2.GetItem(3); got == nil || got.V != 3 {
 		t.Fatalf("roundtrip GetItem mismatch: got %#v", got)
 	}
-	if !c2.IsSeen("s1") || !c2.IsDAIncluded("d2") {
+
+	_, c2OK := c2.GetDAIncluded("d2")
+
+	if !c2.IsSeen("s1") || !c2OK {
 		t.Fatalf("roundtrip auxiliary maps mismatch")
 	}
 

@@ -42,7 +42,7 @@ type Manager interface {
 	SetHeader(height uint64, header *types.SignedHeader)
 	IsHeaderSeen(hash string) bool
 	SetHeaderSeen(hash string)
-	IsHeaderDAIncluded(hash string) bool
+	GetHeaderDAIncluded(hash string) (uint64, bool)
 	SetHeaderDAIncluded(hash string, daHeight uint64)
 
 	// Data operations
@@ -50,7 +50,7 @@ type Manager interface {
 	SetData(height uint64, data *types.Data)
 	IsDataSeen(hash string) bool
 	SetDataSeen(hash string)
-	IsDataDAIncluded(hash string) bool
+	GetDataDAIncluded(hash string) (uint64, bool)
 	SetDataDAIncluded(hash string, daHeight uint64)
 
 	// Pending operations
@@ -138,8 +138,8 @@ func (m *implementation) SetHeaderSeen(hash string) {
 	m.headerCache.SetSeen(hash)
 }
 
-func (m *implementation) IsHeaderDAIncluded(hash string) bool {
-	return m.headerCache.IsDAIncluded(hash)
+func (m *implementation) GetHeaderDAIncluded(hash string) (uint64, bool) {
+	return m.headerCache.GetDAIncluded(hash)
 }
 
 func (m *implementation) SetHeaderDAIncluded(hash string, daHeight uint64) {
@@ -163,8 +163,8 @@ func (m *implementation) SetDataSeen(hash string) {
 	m.dataCache.SetSeen(hash)
 }
 
-func (m *implementation) IsDataDAIncluded(hash string) bool {
-	return m.dataCache.IsDAIncluded(hash)
+func (m *implementation) GetDataDAIncluded(hash string) (uint64, bool) {
+	return m.dataCache.GetDAIncluded(hash)
 }
 
 func (m *implementation) SetDataDAIncluded(hash string, daHeight uint64) {
