@@ -105,12 +105,11 @@ func TestMetrics(t *testing.T) {
 			assert.NotNil(t, em.ErrorsByType[errType])
 		}
 
-		assert.Len(t, em.OperationDuration, 5)
-		assert.NotNil(t, em.OperationDuration["block_production"])
-		assert.NotNil(t, em.OperationDuration["da_submission"])
-		assert.NotNil(t, em.OperationDuration["block_retrieval"])
-		assert.NotNil(t, em.OperationDuration["block_validation"])
-		assert.NotNil(t, em.OperationDuration["state_update"])
+		operations := []string{"block_production", "da_submission", "block_retrieval", "block_validation", "state_update"}
+		assert.Len(t, em.OperationDuration, len(operations))
+		for _, op := range operations {
+			assert.NotNil(t, em.OperationDuration[op])
+		}
 
 		assert.Len(t, em.StateTransitions, 3)
 		assert.NotNil(t, em.StateTransitions["pending_to_submitted"])
