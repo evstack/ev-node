@@ -29,12 +29,6 @@ type daHandler interface {
 }
 
 // Syncer handles block synchronization from DA and P2P sources.
-// It is responsible for:
-// - Retrieving blocks from DA layer
-// - Retrieving blocks from P2P network
-// - Validating and applying blocks to update state
-// - Tracking DA inclusion for finality
-// Note: DA submission is handled by the Executor, not the Syncer
 type Syncer struct {
 	// Core components
 	store store.Store
@@ -83,10 +77,6 @@ type Syncer struct {
 	wg     sync.WaitGroup
 }
 
-// HeightEvent represents a block height event with header and data
-// This is an alias to the common.HeightEvent type for backward compatibility
-type HeightEvent = common.HeightEvent
-
 // NewSyncer creates a new block syncer
 func NewSyncer(
 	store store.Store,
@@ -114,7 +104,7 @@ func NewSyncer(
 		dataStore:     dataStore,
 		lastStateMtx:  &sync.RWMutex{},
 		daStateMtx:    &sync.RWMutex{},
-		heightInCh:    make(chan HeightEvent, 10000),
+		heightInCh:    make(chan common.HeightEvent, 10000),
 		headerStoreCh: make(chan struct{}, 1),
 		dataStoreCh:   make(chan struct{}, 1),
 		daIncluderCh:  make(chan struct{}, 1),
