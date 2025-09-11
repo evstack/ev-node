@@ -3,7 +3,6 @@ package syncing
 import (
 	"bytes"
 	"context"
-	"encoding/binary"
 	"errors"
 	"fmt"
 	"sync"
@@ -18,15 +17,9 @@ import (
 	coreexecutor "github.com/evstack/ev-node/core/execution"
 	"github.com/evstack/ev-node/pkg/config"
 	"github.com/evstack/ev-node/pkg/genesis"
-	"github.com/evstack/ev-node/pkg/signer"
 	"github.com/evstack/ev-node/pkg/store"
 	"github.com/evstack/ev-node/types"
 )
-
-// daHandler interface defines the methods required to retrieve blocks from the DA layer.
-type daHandler interface {
-	RetrieveFromDA(ctx context.Context, daHeight uint64) ([]common.HeightEvent, error)
-}
 
 // Syncer handles block synchronization from DA and P2P sources.
 type Syncer struct {
@@ -42,7 +35,6 @@ type Syncer struct {
 	// Configuration
 	config  config.Config
 	genesis genesis.Genesis
-	signer  signer.Signer
 	options common.BlockOptions
 
 	// State management
@@ -50,23 +42,21 @@ type Syncer struct {
 	lastStateMtx *sync.RWMutex
 
 	// DA state
-	daHeight         uint64
-	daIncludedHeight uint64
-	daStateMtx       *sync.RWMutex
+	daHeight   uint64
+	daStateMtx *sync.RWMutex
 
 	// P2P stores
 	headerStore goheader.Store[*types.SignedHeader]
 	dataStore   goheader.Store[*types.Data]
 
 	// Channels for coordination
-	heightInCh    chan common.HeightEvent
+	heightInCh    chan common.DAHeightEvent
 	headerStoreCh chan struct{}
 	dataStoreCh   chan struct{}
-	daIncluderCh  chan struct{}
 
 	// Handlers
-	daHandler  daHandler
-	p2pHandler *P2PHandler
+	daRetriever *DARetriever
+	p2pHandler  *P2PHandler
 
 	// Logging
 	logger zerolog.Logger
@@ -104,10 +94,9 @@ func NewSyncer(
 		dataStore:     dataStore,
 		lastStateMtx:  &sync.RWMutex{},
 		daStateMtx:    &sync.RWMutex{},
-		heightInCh:    make(chan common.HeightEvent, 10000),
+		heightInCh:    make(chan common.DAHeightEvent, 10000),
 		headerStoreCh: make(chan struct{}, 1),
 		dataStoreCh:   make(chan struct{}, 1),
-		daIncluderCh:  make(chan struct{}, 1),
 		logger:        logger.With().Str("component", "syncer").Logger(),
 	}
 }
@@ -122,8 +111,8 @@ func (s *Syncer) Start(ctx context.Context) error {
 	}
 
 	// Initialize handlers
-	s.daHandler = common.NewDAHandler(s.da, s.cache, s.config, s.genesis, s.options, s.logger)
-	s.p2pHandler = NewP2PHandler(s.headerStore, s.dataStore, s.cache, s.genesis, s.signer, s.options, s.logger)
+	s.daRetriever = NewDARetriever(s.da, s.cache, s.config, s.genesis, s.options, s.logger)
+	s.p2pHandler = NewP2PHandler(s.headerStore, s.dataStore, s.cache, s.genesis, s.options, s.logger)
 
 	// Start main processing loop
 	s.wg.Add(1)
@@ -181,20 +170,6 @@ func (s *Syncer) SetDAHeight(height uint64) {
 	s.daHeight = height
 }
 
-// GetDAIncludedHeight returns the DA included height
-func (s *Syncer) GetDAIncludedHeight() uint64 {
-	s.daStateMtx.RLock()
-	defer s.daStateMtx.RUnlock()
-	return s.daIncludedHeight
-}
-
-// SetDAIncludedHeight updates the DA included height
-func (s *Syncer) SetDAIncludedHeight(height uint64) {
-	s.daStateMtx.Lock()
-	defer s.daStateMtx.Unlock()
-	s.daIncludedHeight = height
-}
-
 // initializeState loads the current sync state
 func (s *Syncer) initializeState() error {
 	ctx := context.Background()
@@ -221,15 +196,9 @@ func (s *Syncer) initializeState() error {
 	}
 	s.SetDAHeight(daHeight)
 
-	// Load DA included height
-	if height, err := s.store.GetMetadata(ctx, store.DAIncludedHeightKey); err == nil && len(height) == 8 {
-		s.SetDAIncludedHeight(binary.LittleEndian.Uint64(height))
-	}
-
 	s.logger.Info().
 		Uint64("height", state.LastBlockHeight).
 		Uint64("da_height", s.GetDAHeight()).
-		Uint64("da_included_height", s.GetDAIncludedHeight()).
 		Str("chain_id", state.ChainID).
 		Msg("initialized syncer state")
 
@@ -243,8 +212,6 @@ func (s *Syncer) processLoop() {
 
 	blockTicker := time.NewTicker(s.config.Node.BlockTime.Duration)
 	defer blockTicker.Stop()
-	metricsTicker := time.NewTicker(30 * time.Second)
-	defer metricsTicker.Stop()
 
 	for {
 		// Process pending events from cache on every iteration
@@ -259,10 +226,6 @@ func (s *Syncer) processLoop() {
 			s.sendNonBlockingSignal(s.dataStoreCh, "data_store")
 		case heightEvent := <-s.heightInCh:
 			s.processHeightEvent(&heightEvent)
-		case <-metricsTicker.C:
-			s.updateMetrics()
-		case <-s.daIncluderCh:
-			s.processDAInclusion()
 		}
 	}
 }
@@ -290,7 +253,7 @@ func (s *Syncer) syncLoop() {
 			return
 		case <-daTicker.C:
 			// Retrieve from DA
-			events, err := s.daHandler.RetrieveFromDA(s.ctx, s.GetDAHeight())
+			events, err := s.daRetriever.RetrieveFromDA(s.ctx, s.GetDAHeight())
 			if err != nil {
 				if !s.isHeightFromFutureError(err) {
 					s.logger.Error().Err(err).Msg("failed to retrieve from DA")
@@ -340,7 +303,7 @@ func (s *Syncer) syncLoop() {
 }
 
 // processHeightEvent processes a height event for synchronization
-func (s *Syncer) processHeightEvent(event *common.HeightEvent) {
+func (s *Syncer) processHeightEvent(event *common.DAHeightEvent) {
 	height := event.Header.Height()
 	headerHash := event.Header.Hash().String()
 
@@ -369,7 +332,7 @@ func (s *Syncer) processHeightEvent(event *common.HeightEvent) {
 	// If this is not the next block in sequence, store as pending event
 	if height != currentHeight+1 {
 		// Create a DAHeightEvent that matches the cache interface
-		pendingEvent := &cache.DAHeightEvent{
+		pendingEvent := &common.DAHeightEvent{
 			Header:                 event.Header,
 			Data:                   event.Data,
 			DaHeight:               event.DaHeight,
@@ -517,56 +480,6 @@ func (s *Syncer) updateState(newState types.State) error {
 	return nil
 }
 
-// processDAInclusion processes DA inclusion tracking
-func (s *Syncer) processDAInclusion() {
-	currentDAIncluded := s.GetDAIncludedHeight()
-
-	for {
-		nextHeight := currentDAIncluded + 1
-
-		// Check if this height is DA included
-		if included, err := s.isHeightDAIncluded(nextHeight); err != nil || !included {
-			break
-		}
-
-		s.logger.Debug().Uint64("height", nextHeight).Msg("advancing DA included height")
-
-		// Set final height in executor
-		if err := s.exec.SetFinal(s.ctx, nextHeight); err != nil {
-			s.logger.Error().Err(err).Uint64("height", nextHeight).Msg("failed to set final height")
-			break
-		}
-
-		// Update DA included height
-		s.SetDAIncludedHeight(nextHeight)
-		currentDAIncluded = nextHeight
-	}
-}
-
-// isHeightDAIncluded checks if a height is included in DA
-func (s *Syncer) isHeightDAIncluded(height uint64) (bool, error) {
-	currentHeight, err := s.store.Height(s.ctx)
-	if err != nil {
-		return false, err
-	}
-	if currentHeight < height {
-		return false, nil
-	}
-
-	header, data, err := s.store.GetBlockData(s.ctx, height)
-	if err != nil {
-		return false, err
-	}
-
-	headerHash := header.Hash().String()
-	dataHash := data.DACommitment().String()
-
-	headerIncluded := s.cache.IsHeaderDAIncluded(headerHash)
-	dataIncluded := bytes.Equal(data.DACommitment(), common.DataHashForEmptyTxs) || s.cache.IsDataDAIncluded(dataHash)
-
-	return headerIncluded && dataIncluded, nil
-}
-
 // sendNonBlockingSignal sends a signal without blocking
 func (s *Syncer) sendNonBlockingSignal(ch chan struct{}, name string) {
 	select {
@@ -574,11 +487,6 @@ func (s *Syncer) sendNonBlockingSignal(ch chan struct{}, name string) {
 	default:
 		s.logger.Debug().Str("channel", name).Msg("channel full, signal dropped")
 	}
-}
-
-// updateMetrics updates sync-related metrics
-func (s *Syncer) updateMetrics() {
-	s.metrics.DAInclusionHeight.Set(float64(s.GetDAIncludedHeight()))
 }
 
 // isHeightFromFutureError checks if the error is a height from future error
@@ -600,7 +508,7 @@ func (s *Syncer) processPendingEvents() {
 
 		// Only process events for blocks we haven't synced yet
 		if height > currentHeight {
-			heightEvent := common.HeightEvent{
+			heightEvent := common.DAHeightEvent{
 				Header:                 event.Header,
 				Data:                   event.Data,
 				DaHeight:               event.DaHeight,

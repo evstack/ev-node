@@ -6,14 +6,13 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	"github.com/evstack/ev-node/block/internal/cache"
 	"github.com/evstack/ev-node/block/internal/common"
 	"github.com/evstack/ev-node/types"
 )
 
 func TestHeightEvent_Structure(t *testing.T) {
 	// Test that HeightEvent has all required fields
-	event := common.HeightEvent{
+	event := common.DAHeightEvent{
 		Header: &types.SignedHeader{
 			Header: types.Header{
 				BaseHeader: types.BaseHeader{
@@ -56,7 +55,7 @@ func TestCacheDAHeightEvent_Usage(t *testing.T) {
 		},
 	}
 
-	event := &cache.DAHeightEvent{
+	event := &common.DAHeightEvent{
 		Header:                 header,
 		Data:                   data,
 		DaHeight:               100,
@@ -99,9 +98,9 @@ func (m *MockCacheManager) SetLastSubmittedDataHeight(ctx context.Context, heigh
 func (m *MockCacheManager) NumPendingHeaders() uint64 { return 0 }
 func (m *MockCacheManager) NumPendingData() uint64    { return 0 }
 
-func (m *MockCacheManager) SetPendingEvent(height uint64, event *cache.DAHeightEvent) {}
-func (m *MockCacheManager) GetPendingEvents() map[uint64]*cache.DAHeightEvent {
-	return make(map[uint64]*cache.DAHeightEvent)
+func (m *MockCacheManager) SetPendingEvent(height uint64, event *common.DAHeightEvent) {}
+func (m *MockCacheManager) GetPendingEvents() map[uint64]*common.DAHeightEvent {
+	return make(map[uint64]*common.DAHeightEvent)
 }
 func (m *MockCacheManager) DeletePendingEvent(height uint64) {}
 

@@ -76,7 +76,6 @@ func TestProduceBlock_EmptyBatch_SetsEmptyDataHash(t *testing.T) {
 		mockExec,
 		mockSeq,
 		signerWrapper,
-		nil, // DA not needed for this test
 		cacheManager,
 		metrics,
 		cfg,
@@ -157,7 +156,6 @@ func TestPendingLimit_SkipsProduction(t *testing.T) {
 		mockExec,
 		mockSeq,
 		signerWrapper,
-		nil, // DA not needed for this test
 		cacheManager,
 		metrics,
 		cfg,
