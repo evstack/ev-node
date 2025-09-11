@@ -9,17 +9,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/evstack/ev-node/pkg/config"
 	"github.com/evstack/ev-node/pkg/store"
 	"github.com/evstack/ev-node/types"
 )
-
-// helper to make a temp config rooted at t.TempDir()
-func tempConfig(t *testing.T) config.Config {
-	cfg := config.DefaultConfig
-	cfg.RootDir = t.TempDir()
-	return cfg
-}
 
 // helper to make an in-memory store
 func memStore(t *testing.T) store.Store {

@@ -1,4 +1,4 @@
-package common
+package submitting
 
 import (
 	"context"
@@ -14,6 +14,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/evstack/ev-node/block/internal/cache"
+	"github.com/evstack/ev-node/block/internal/common"
 	coreda "github.com/evstack/ev-node/core/da"
 	"github.com/evstack/ev-node/pkg/config"
 	"github.com/evstack/ev-node/pkg/genesis"
@@ -22,7 +23,7 @@ import (
 	"github.com/evstack/ev-node/types"
 )
 
-func TestDAHandler_SubmitHeadersAndData_MarksInclusionAndUpdatesLastSubmitted(t *testing.T) {
+func TestDASubmitter_SubmitHeadersAndData_MarksInclusionAndUpdatesLastSubmitted(t *testing.T) {
 	ds := sync.MutexWrap(datastore.NewMapDatastore())
 	st := store.New(ds)
 	cm, err := cache.NewManager(config.DefaultConfig, st, zerolog.Nop())
@@ -73,11 +74,12 @@ func TestDAHandler_SubmitHeadersAndData_MarksInclusionAndUpdatesLastSubmitted(t 
 	// Dummy DA
 	dummyDA := coreda.NewDummyDA(10_000_000, 0, 0, 10*time.Millisecond)
 
-	handler := NewDAHandler(dummyDA, cm, cfg, gen, DefaultBlockOptions(), zerolog.Nop())
+	// Create DA submitter
+	daSubmitter := NewDASubmitter(dummyDA, cfg, gen, common.DefaultBlockOptions(), zerolog.Nop())
 
 	// Submit headers and data
-	require.NoError(t, handler.SubmitHeaders(context.Background(), cm))
-	require.NoError(t, handler.SubmitData(context.Background(), cm, n, gen))
+	require.NoError(t, daSubmitter.SubmitHeaders(context.Background(), cm))
+	require.NoError(t, daSubmitter.SubmitData(context.Background(), cm, n, gen))
 
 	// After submission, inclusion markers should be set
 	assert.True(t, cm.IsHeaderDAIncluded(hdr1.Hash().String()))

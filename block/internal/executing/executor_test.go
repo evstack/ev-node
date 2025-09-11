@@ -69,7 +69,6 @@ func TestExecutor_BroadcasterIntegration(t *testing.T) {
 		nil,        // nil executor (we're not testing execution)
 		nil,        // nil sequencer (we're not testing sequencing)
 		testSigner, // test signer (required for executor)
-		nil,        // nil DA (we're not testing DA operations)
 		cacheManager,
 		metrics,
 		config.DefaultConfig,
@@ -124,7 +123,6 @@ func TestExecutor_NilBroadcasters(t *testing.T) {
 		nil,        // nil executor
 		nil,        // nil sequencer
 		testSigner, // test signer (required for executor)
-		nil,        // nil DA
 		cacheManager,
 		metrics,
 		config.DefaultConfig,

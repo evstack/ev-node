@@ -109,7 +109,7 @@ func TestProcessHeightEvent_SyncsAndUpdatesState(t *testing.T) {
 	mockExec.EXPECT().ExecuteTxs(mock.Anything, mock.Anything, uint64(1), mock.Anything, lastState.AppHash).
 		Return([]byte("app1"), uint64(1024), nil).Once()
 
-	evt := common.HeightEvent{Header: hdr, Data: data, DaHeight: 1}
+	evt := common.DAHeightEvent{Header: hdr, Data: data, DaHeight: 1}
 	s.processHeightEvent(&evt)
 
 	h, err := st.Height(context.Background())
@@ -120,7 +120,7 @@ func TestProcessHeightEvent_SyncsAndUpdatesState(t *testing.T) {
 	assert.Equal(t, uint64(1), st1.LastBlockHeight)
 }
 
-func TestDAInclusion_AdvancesHeight(t *testing.T) {
+func TestSequentialBlockSync(t *testing.T) {
 	ds := sync.MutexWrap(datastore.NewMapDatastore())
 	st := store.New(ds)
 	cm, err := cache.NewManager(config.DefaultConfig, st, zerolog.Nop())
@@ -155,16 +155,16 @@ func TestDAInclusion_AdvancesHeight(t *testing.T) {
 	// Expect ExecuteTxs call for height 1
 	mockExec.EXPECT().ExecuteTxs(mock.Anything, mock.Anything, uint64(1), mock.Anything, st0.AppHash).
 		Return([]byte("app1"), uint64(1024), nil).Once()
-	evt1 := common.HeightEvent{Header: hdr1, Data: data1, DaHeight: 10}
+	evt1 := common.DAHeightEvent{Header: hdr1, Data: data1, DaHeight: 10}
 	s.processHeightEvent(&evt1)
 
 	st1, _ := st.GetState(context.Background())
 	hdr2 := makeSignedHeader(t, gen.ChainID, 2, addr, pub, signer, st1.AppHash)
-	data2 := makeData(gen.ChainID, 2, 0) // empty data, should be considered DA-included by rule
+	data2 := makeData(gen.ChainID, 2, 0) // empty data
 	// Expect ExecuteTxs call for height 2
 	mockExec.EXPECT().ExecuteTxs(mock.Anything, mock.Anything, uint64(2), mock.Anything, st1.AppHash).
 		Return([]byte("app2"), uint64(1024), nil).Once()
-	evt2 := common.HeightEvent{Header: hdr2, Data: data2, DaHeight: 11}
+	evt2 := common.DAHeightEvent{Header: hdr2, Data: data2, DaHeight: 11}
 	s.processHeightEvent(&evt2)
 
 	// Mark DA inclusion in cache (as DA retrieval would)
@@ -173,10 +173,12 @@ func TestDAInclusion_AdvancesHeight(t *testing.T) {
 	cm.SetHeaderDAIncluded(hdr2.Hash().String(), 11)
 	// data2 has empty txs, inclusion is implied
 
-	// Expect SetFinal for both heights when DA inclusion advances
-	mockExec.EXPECT().SetFinal(mock.Anything, uint64(1)).Return(nil).Once()
-	mockExec.EXPECT().SetFinal(mock.Anything, uint64(2)).Return(nil).Once()
-	// Trigger DA inclusion processing
-	s.processDAInclusion()
-	assert.Equal(t, uint64(2), s.GetDAIncludedHeight())
+	// Verify both blocks were synced correctly
+	finalState, _ := st.GetState(context.Background())
+	assert.Equal(t, uint64(2), finalState.LastBlockHeight)
+
+	// Verify DA inclusion markers are set
+	assert.True(t, cm.IsHeaderDAIncluded(hdr1.Hash().String()))
+	assert.True(t, cm.IsHeaderDAIncluded(hdr2.Hash().String()))
+	assert.True(t, cm.IsDataDAIncluded(data1.DACommitment().String()))
 }

@@ -10,6 +10,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/evstack/ev-node/block/internal/common"
 	"github.com/evstack/ev-node/pkg/config"
 	"github.com/evstack/ev-node/pkg/store"
 	"github.com/evstack/ev-node/types"
@@ -73,9 +74,9 @@ func TestManager_PendingEventsCRUD(t *testing.T) {
 	m, err := NewManager(cfg, st, zerolog.Nop())
 	require.NoError(t, err)
 
-	evt1 := &DAHeightEvent{Header: &types.SignedHeader{Header: types.Header{BaseHeader: types.BaseHeader{Height: 1}}}, DaHeight: 5}
-	evt3 := &DAHeightEvent{Header: &types.SignedHeader{Header: types.Header{BaseHeader: types.BaseHeader{Height: 3}}}, DaHeight: 7}
-	evt5 := &DAHeightEvent{Data: &types.Data{Metadata: &types.Metadata{Height: 5}}, DaHeight: 9}
+	evt1 := &common.DAHeightEvent{Header: &types.SignedHeader{Header: types.Header{BaseHeader: types.BaseHeader{Height: 1}}}, DaHeight: 5}
+	evt3 := &common.DAHeightEvent{Header: &types.SignedHeader{Header: types.Header{BaseHeader: types.BaseHeader{Height: 3}}}, DaHeight: 7}
+	evt5 := &common.DAHeightEvent{Data: &types.Data{Metadata: &types.Metadata{Height: 5}}, DaHeight: 9}
 
 	m.SetPendingEvent(5, evt5)
 	m.SetPendingEvent(1, evt1)
@@ -103,7 +104,7 @@ func TestManager_SaveAndLoadFromDisk(t *testing.T) {
 	// must register for gob before saving
 	gob.Register(&types.SignedHeader{})
 	gob.Register(&types.Data{})
-	gob.Register(&DAHeightEvent{})
+	gob.Register(&common.DAHeightEvent{})
 
 	m1, err := NewManager(cfg, st, zerolog.Nop())
 	require.NoError(t, err)
@@ -117,7 +118,7 @@ func TestManager_SaveAndLoadFromDisk(t *testing.T) {
 	m1.SetDataSeen("D2")
 	m1.SetHeaderDAIncluded("H2", 100)
 	m1.SetDataDAIncluded("D2", 101)
-	m1.SetPendingEvent(2, &DAHeightEvent{Header: hdr, Data: dat, DaHeight: 99})
+	m1.SetPendingEvent(2, &common.DAHeightEvent{Header: hdr, Data: dat, DaHeight: 99})
 
 	// persist
 	err = m1.SaveToDisk()

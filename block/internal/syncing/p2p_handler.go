@@ -11,7 +11,6 @@ import (
 	"github.com/evstack/ev-node/block/internal/cache"
 	"github.com/evstack/ev-node/block/internal/common"
 	"github.com/evstack/ev-node/pkg/genesis"
-	"github.com/evstack/ev-node/pkg/signer"
 	"github.com/evstack/ev-node/types"
 )
 
@@ -21,7 +20,6 @@ type P2PHandler struct {
 	dataStore   goheader.Store[*types.Data]
 	cache       cache.Manager
 	genesis     genesis.Genesis
-	signer      signer.Signer
 	options     common.BlockOptions
 	logger      zerolog.Logger
 }
@@ -32,7 +30,6 @@ func NewP2PHandler(
 	dataStore goheader.Store[*types.Data],
 	cache cache.Manager,
 	genesis genesis.Genesis,
-	signer signer.Signer,
 	options common.BlockOptions,
 	logger zerolog.Logger,
 ) *P2PHandler {
@@ -41,19 +38,18 @@ func NewP2PHandler(
 		dataStore:   dataStore,
 		cache:       cache,
 		genesis:     genesis,
-		signer:      signer,
 		options:     options,
 		logger:      logger.With().Str("component", "p2p_handler").Logger(),
 	}
 }
 
 // ProcessHeaderRange processes headers from the header store within the given range
-func (h *P2PHandler) ProcessHeaderRange(ctx context.Context, startHeight, endHeight uint64) []common.HeightEvent {
+func (h *P2PHandler) ProcessHeaderRange(ctx context.Context, startHeight, endHeight uint64) []common.DAHeightEvent {
 	if startHeight > endHeight {
 		return nil
 	}
 
-	var events []common.HeightEvent
+	var events []common.DAHeightEvent
 
 	for height := startHeight; height <= endHeight; height++ {
 		select {
@@ -96,7 +92,7 @@ func (h *P2PHandler) ProcessHeaderRange(ctx context.Context, startHeight, endHei
 		}
 
 		// Create height event
-		event := common.HeightEvent{
+		event := common.DAHeightEvent{
 			Header:   header,
 			Data:     data,
 			DaHeight: 0, // P2P events don't have DA height context
@@ -111,12 +107,12 @@ func (h *P2PHandler) ProcessHeaderRange(ctx context.Context, startHeight, endHei
 }
 
 // ProcessDataRange processes data from the data store within the given range
-func (h *P2PHandler) ProcessDataRange(ctx context.Context, startHeight, endHeight uint64) []common.HeightEvent {
+func (h *P2PHandler) ProcessDataRange(ctx context.Context, startHeight, endHeight uint64) []common.DAHeightEvent {
 	if startHeight > endHeight {
 		return nil
 	}
 
-	var events []common.HeightEvent
+	var events []common.DAHeightEvent
 
 	for height := startHeight; height <= endHeight; height++ {
 		select {
@@ -151,7 +147,7 @@ func (h *P2PHandler) ProcessDataRange(ctx context.Context, startHeight, endHeigh
 		}
 
 		// Create height event
-		event := common.HeightEvent{
+		event := common.DAHeightEvent{
 			Header:   header,
 			Data:     data,
 			DaHeight: 0, // P2P events don't have DA height context

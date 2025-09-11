@@ -6,6 +6,7 @@ import (
 
 	"github.com/rs/zerolog"
 
+	"github.com/evstack/ev-node/block/internal/common"
 	"github.com/evstack/ev-node/pkg/config"
 	"github.com/evstack/ev-node/pkg/store"
 	"github.com/evstack/ev-node/types"
@@ -101,7 +102,7 @@ func BenchmarkManager_PendingEventsSnapshot(b *testing.B) {
 	m := benchNewManager(b, st)
 	for i := 1; i <= 50_000; i++ {
 		h, d := types.GetRandomBlock(uint64(i), 1, "bench-events")
-		m.SetPendingEvent(uint64(i), &DAHeightEvent{Header: h, Data: d, DaHeight: uint64(i)})
+		m.SetPendingEvent(uint64(i), &common.DAHeightEvent{Header: h, Data: d, DaHeight: uint64(i)})
 	}
 	b.ReportAllocs()
 	b.ResetTimer()
