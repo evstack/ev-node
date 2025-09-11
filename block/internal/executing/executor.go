@@ -654,6 +654,11 @@ func (e *Executor) recordBlockMetrics(data *types.Data) {
 	e.metrics.CommittedHeight.Set(float64(data.Metadata.Height))
 }
 
+// GetCoreExecutor returns the underlying core executor for testing purposes
+func (e *Executor) GetCoreExecutor() coreexecutor.Executor {
+	return e.exec
+}
+
 // BatchData represents batch data from sequencer
 type BatchData struct {
 	*coresequencer.Batch
