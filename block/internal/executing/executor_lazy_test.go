@@ -47,6 +47,7 @@ func TestLazyMode_ProduceBlockLogic(t *testing.T) {
 
 	mockExec := testmocks.NewMockExecutor(t)
 	mockSeq := testmocks.NewMockSequencer(t)
+	mockDA := testmocks.NewMockDA(t)
 	hb := &mockBroadcaster[*types.SignedHeader]{}
 	db := &mockBroadcaster[*types.Data]{}
 
@@ -55,6 +56,7 @@ func TestLazyMode_ProduceBlockLogic(t *testing.T) {
 		mockExec,
 		mockSeq,
 		signerWrapper,
+		mockDA,
 		cacheManager,
 		metrics,
 		cfg,
@@ -149,6 +151,7 @@ func TestRegularMode_ProduceBlockLogic(t *testing.T) {
 
 	mockExec := testmocks.NewMockExecutor(t)
 	mockSeq := testmocks.NewMockSequencer(t)
+	mockDA := testmocks.NewMockDA(t)
 	hb := &mockBroadcaster[*types.SignedHeader]{}
 	db := &mockBroadcaster[*types.Data]{}
 
@@ -157,6 +160,7 @@ func TestRegularMode_ProduceBlockLogic(t *testing.T) {
 		mockExec,
 		mockSeq,
 		signerWrapper,
+		mockDA,
 		cacheManager,
 		metrics,
 		cfg,

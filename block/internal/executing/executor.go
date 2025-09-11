@@ -350,13 +350,16 @@ func (e *Executor) executionLoop() {
 			return
 
 		case <-blockTimer.C:
-			shouldProduce := !e.config.Node.LazyMode || txsAvailable
-			if shouldProduce {
-				if err := e.produceBlock(); err != nil {
-					e.logger.Error().Err(err).Msg("failed to produce block")
-				}
-				txsAvailable = false
+			if e.config.Node.LazyMode && !txsAvailable {
+				// In lazy mode without transactions, just continue ticking
+				blockTimer.Reset(e.config.Node.BlockTime.Duration)
+				continue
 			}
+
+			if err := e.produceBlock(); err != nil {
+				e.logger.Error().Err(err).Msg("failed to produce block")
+			}
+			txsAvailable = false
 			// Always reset block timer to keep ticking
 			blockTimer.Reset(e.config.Node.BlockTime.Duration)
 
