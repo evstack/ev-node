@@ -298,8 +298,20 @@ func (e *Executor) executionLoop() {
 		}
 	}
 
-	ticker := time.NewTicker(e.config.Node.BlockTime.Duration)
-	defer ticker.Stop()
+	blockTimer := time.NewTimer(e.config.Node.BlockTime.Duration)
+	defer blockTimer.Stop()
+
+	var lazyTimer *time.Timer
+	var lazyTimerCh <-chan time.Time
+	if e.config.Node.LazyMode {
+		// lazyTimer triggers block publication even during inactivity
+		lazyTimer = time.NewTimer(e.config.Node.LazyBlockInterval.Duration)
+		defer lazyTimer.Stop()
+		lazyTimerCh = lazyTimer.C
+	} else {
+		// Create a channel that never fires for non-lazy mode
+		lazyTimerCh = make(chan time.Time)
+	}
 
 	txsAvailable := false
 
@@ -307,18 +319,31 @@ func (e *Executor) executionLoop() {
 		select {
 		case <-e.ctx.Done():
 			return
-		case <-ticker.C:
+
+		case <-blockTimer.C:
 			if e.config.Node.LazyMode && !txsAvailable {
-				// In lazy mode, only produce blocks when transactions are available
+				// In lazy mode without transactions, just continue ticking
+				blockTimer.Reset(e.config.Node.BlockTime.Duration)
 				continue
 			}
 
 			if err := e.produceBlock(); err != nil {
 				e.logger.Error().Err(err).Msg("failed to produce block")
-				// Continue execution loop even on error
+			}
+			txsAvailable = false
+			// Always reset block timer to keep ticking
+			blockTimer.Reset(e.config.Node.BlockTime.Duration)
+
+		case <-lazyTimerCh:
+			e.logger.Debug().Msg("Lazy timer triggered block production")
+			if err := e.produceBlock(); err != nil {
+				e.logger.Error().Err(err).Msg("failed to produce block from lazy timer")
+			}
+			// Reset lazy timer
+			if lazyTimer != nil {
+				lazyTimer.Reset(e.config.Node.LazyBlockInterval.Duration)
 			}
 
-			txsAvailable = false
 		case <-e.txNotifyCh:
 			txsAvailable = true
 		}
