@@ -62,7 +62,7 @@ type FullNode struct {
 	Store          store.Store
 	blockManager   *block.Manager
 	reaper         *block.Reaper
-	leaderElection lease.LeaderElectionX
+	leaderElection lease.LeaderElector
 
 	prometheusSrv *http.Server
 	pprofSrv      *http.Server
@@ -132,13 +132,12 @@ func newFullNode(
 	reaper.SetManager(blockManager)
 
 	// Initialize leader election if enabled
-	var leaderElection lease.LeaderElectionX
+	var leaderElection lease.LeaderElector
 	if nodeConfig.LeaderElection.Enabled {
-		signerAddr, err := signer.GetAddress()
+		nodeID, _, _, err := p2pClient.Info()
 		if err != nil {
-			return nil, fmt.Errorf("error getting signer address: %w", err)
+			return nil, fmt.Errorf("error getting node id from p2p client info: %w", err)
 		}
-		nodeID := fmt.Sprintf("node-%x", signerAddr[:8])
 
 		leaseName := nodeConfig.LeaderElection.LeaseName
 		if leaseName == "" {
@@ -155,10 +154,15 @@ func newFullNode(
 		switch nodeConfig.LeaderElection.Backend {
 		case "memory", "":
 			leaseImpl = lease.NewMemoryLease(leaseName)
+		case "http":
+			if nodeConfig.LeaderElection.BackendAddr == "" {
+				return nil, fmt.Errorf("http lease backend requires backend_addr")
+			}
+			leaseImpl = lease.NewHTTPLease(nodeConfig.LeaderElection.BackendAddr, leaseName)
 		default:
 			return nil, fmt.Errorf("unsupported lease backend: %s", nodeConfig.LeaderElection.Backend)
 		}
-
+		logger.Info().Str("backend", nodeConfig.LeaderElection.Backend).Msg("using leader election backend")
 		leaderElection = lease.NewLeaderElection(
 			leaseImpl,
 			nodeID,
@@ -405,10 +409,8 @@ func (n *FullNode) Run(parentCtx context.Context) error {
 	}
 
 	// Start leader election if enabled
-	if n.leaderElection != nil {
-		if err = n.leaderElection.Start(ctx); err != nil {
-			return fmt.Errorf("error while starting leader election: %w", err)
-		}
+	if err = n.leaderElection.Start(ctx); err != nil {
+		return fmt.Errorf("error while starting leader election: %w", err)
 	}
 
 	// only the first error is propagated
@@ -488,13 +490,10 @@ func (n *FullNode) Run(parentCtx context.Context) error {
 	var multiErr error // Use a multierror variable
 
 	// Stop leader election
-	if n.leaderElection != nil {
-		err = n.leaderElection.Stop()
-		if err != nil {
-			multiErr = errors.Join(multiErr, fmt.Errorf("stopping leader election: %w", err))
-		} else {
-			n.Logger.Debug().Msg("leader election stopped")
-		}
+	if err := n.leaderElection.Stop(); err != nil && !errors.Is(err, context.Canceled) {
+		multiErr = errors.Join(multiErr, fmt.Errorf("stopping leader election: %w", err))
+	} else {
+		n.Logger.Debug().Msg("leader election stopped")
 	}
 
 	// Stop Header Sync Service

@@ -40,5 +40,5 @@ type LeaseInfo struct {
 	Holder   string    `json:"holder"`
 	Expiry   time.Time `json:"expiry"`
 	Acquired time.Time `json:"acquired"`
-	Version  int64     `json:"version"`
+	Version  uint64    `json:"version"`
 }

@@ -10,7 +10,7 @@ import (
 	"github.com/rs/zerolog"
 )
 
-type LeaderElectionX interface {
+type LeaderElector interface {
 	Start(ctx context.Context) error
 	Stop() error
 	SwitchAsLeader(ctx context.Context, leaderFunc, followerFunc func(leaderCtx context.Context)) error
@@ -85,9 +85,7 @@ func (le *LeaderElection) Stop() error {
 		le.isLeader = false
 	}
 
-	le.ctx = nil
 	le.cancel = nil
-
 	le.logger.Info().Msg("leader election stopped")
 	return nil
 }
@@ -242,7 +240,7 @@ func (le *LeaderElection) SwitchAsLeader(ctx context.Context, leaderFunc, follow
 	}
 }
 
-var _ LeaderElectionX = (*AlwaysLeaderElection)(nil)
+var _ LeaderElector = (*AlwaysLeaderElection)(nil)
 
 type AlwaysLeaderElection struct {
 }
