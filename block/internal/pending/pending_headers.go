@@ -1,4 +1,4 @@
-package cache
+package pending
 
 import (
 	"context"
@@ -40,15 +40,15 @@ func NewPendingHeaders(store storepkg.Store, logger zerolog.Logger) (*PendingHea
 }
 
 // GetPendingHeaders returns a sorted slice of pending headers.
-func (ph *PendingHeaders) getPendingHeaders(ctx context.Context) ([]*types.SignedHeader, error) {
+func (ph *PendingHeaders) GetPendingHeaders(ctx context.Context) ([]*types.SignedHeader, error) {
 	return ph.base.getPending(ctx)
 }
 
-func (ph *PendingHeaders) numPendingHeaders() uint64 {
+func (ph *PendingHeaders) NumPendingHeaders() uint64 {
 	return ph.base.numPending()
 }
 
-func (ph *PendingHeaders) setLastSubmittedHeaderHeight(ctx context.Context, newLastSubmittedHeaderHeight uint64) {
+func (ph *PendingHeaders) SetLastSubmittedHeaderHeight(ctx context.Context, newLastSubmittedHeaderHeight uint64) {
 	ph.base.setLastSubmittedHeight(ctx, newLastSubmittedHeaderHeight)
 }
 

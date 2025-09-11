@@ -9,6 +9,7 @@ import (
 
 	"github.com/rs/zerolog"
 
+	"github.com/evstack/ev-node/block/internal/pending"
 	"github.com/evstack/ev-node/pkg/config"
 	"github.com/evstack/ev-node/pkg/store"
 	"github.com/evstack/ev-node/types"
@@ -88,8 +89,8 @@ type implementation struct {
 	headerCache        *Cache[types.SignedHeader]
 	dataCache          *Cache[types.Data]
 	pendingEventsCache *Cache[DAHeightEvent]
-	pendingHeaders     *PendingHeaders
-	pendingData        *PendingData
+	pendingHeaders     *pending.PendingHeaders
+	pendingData        *pending.PendingData
 	config             config.Config
 	logger             zerolog.Logger
 }
@@ -102,12 +103,12 @@ func NewManager(cfg config.Config, store store.Store, logger zerolog.Logger) (Ma
 	pendingEventsCache := NewCache[DAHeightEvent]()
 
 	// Initialize pending managers
-	pendingHeaders, err := NewPendingHeaders(store, logger)
+	pendingHeaders, err := pending.NewPendingHeaders(store, logger)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create pending headers: %w", err)
 	}
 
-	pendingData, err := NewPendingData(store, logger)
+	pendingData, err := pending.NewPendingData(store, logger)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create pending data: %w", err)
 	}
@@ -182,12 +183,12 @@ func (m *implementation) SetDataDAIncluded(hash string, daHeight uint64) {
 
 // Pending operations
 func (m *implementation) GetPendingHeaders(ctx context.Context) ([]*types.SignedHeader, error) {
-	return m.pendingHeaders.getPendingHeaders(ctx)
+	return m.pendingHeaders.GetPendingHeaders(ctx)
 }
 
 func (m *implementation) GetPendingData(ctx context.Context) ([]*types.SignedData, error) {
 	// Get pending raw data
-	dataList, err := m.pendingData.getPendingData(ctx)
+	dataList, err := m.pendingData.GetPendingData(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -211,19 +212,19 @@ func (m *implementation) GetPendingData(ctx context.Context) ([]*types.SignedDat
 }
 
 func (m *implementation) SetLastSubmittedHeaderHeight(ctx context.Context, height uint64) {
-	m.pendingHeaders.setLastSubmittedHeaderHeight(ctx, height)
+	m.pendingHeaders.SetLastSubmittedHeaderHeight(ctx, height)
 }
 
 func (m *implementation) SetLastSubmittedDataHeight(ctx context.Context, height uint64) {
-	m.pendingData.setLastSubmittedDataHeight(ctx, height)
+	m.pendingData.SetLastSubmittedDataHeight(ctx, height)
 }
 
 func (m *implementation) NumPendingHeaders() uint64 {
-	return m.pendingHeaders.numPendingHeaders()
+	return m.pendingHeaders.NumPendingHeaders()
 }
 
 func (m *implementation) NumPendingData() uint64 {
-	return m.pendingData.numPendingData()
+	return m.pendingData.NumPendingData()
 }
 
 // Pending events operations

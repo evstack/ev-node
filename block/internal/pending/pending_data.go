@@ -1,4 +1,4 @@
-package cache
+package pending
 
 import (
 	"context"
@@ -42,19 +42,19 @@ func NewPendingData(store store.Store, logger zerolog.Logger) (*PendingData, err
 	return &PendingData{base: base}, nil
 }
 
+func (pd *PendingData) init() error {
+	return pd.base.init()
+}
+
 // GetPendingData returns a sorted slice of pending Data.
-func (pd *PendingData) getPendingData(ctx context.Context) ([]*types.Data, error) {
+func (pd *PendingData) GetPendingData(ctx context.Context) ([]*types.Data, error) {
 	return pd.base.getPending(ctx)
 }
 
-func (pd *PendingData) numPendingData() uint64 {
+func (pd *PendingData) NumPendingData() uint64 {
 	return pd.base.numPending()
 }
 
-func (pd *PendingData) setLastSubmittedDataHeight(ctx context.Context, newLastSubmittedDataHeight uint64) {
+func (pd *PendingData) SetLastSubmittedDataHeight(ctx context.Context, newLastSubmittedDataHeight uint64) {
 	pd.base.setLastSubmittedHeight(ctx, newLastSubmittedDataHeight)
-}
-
-func (pd *PendingData) init() error {
-	return pd.base.init()
 }
