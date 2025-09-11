@@ -178,7 +178,7 @@ func TestMetricsWithLabels(t *testing.T) {
 
 	t.Run("PrometheusMetricsNoLabels", func(t *testing.T) {
 		// Test with just namespace, no labels
-		em := PrometheusMetrics("test_namespace")
+		em := PrometheusMetrics("test_no_labels")
 
 		// All metrics should still be properly initialized
 		assert.NotNil(t, em.Height)
