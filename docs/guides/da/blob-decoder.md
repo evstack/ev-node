@@ -5,6 +5,7 @@ The blob decoder is a utility tool for decoding and inspecting blobs from Celest
 ## Overview
 
 The blob decoder helps developers and operators inspect the contents of blobs submitted to DA layers. It can decode:
+
 - Raw blob data (hex or base64 encoded)
 - Block data structures
 - Transaction payloads
@@ -20,6 +21,7 @@ go run tools/blob-decoder/main.go
 ```
 
 The server will start and display:
+
 - Web interface URL: `http://localhost:8080`
 - API endpoint: `http://localhost:8080/api/decode`
 
@@ -78,6 +80,7 @@ curl -X POST http://localhost:8080/api/decode \
 ### Block Data
 
 The decoder can parse ev-node block structures:
+
 - Block height
 - Timestamp
 - Parent hash
@@ -88,6 +91,7 @@ The decoder can parse ev-node block structures:
 ### Transaction Data
 
 Decodes individual transactions including:
+
 - Transaction type
 - Sender/receiver addresses
 - Value/amount
@@ -97,6 +101,7 @@ Decodes individual transactions including:
 ### Protobuf Messages
 
 Automatically detects and decodes protobuf-encoded messages used in ev-node:
+
 - Block headers
 - Transaction batches
 - State updates
@@ -117,6 +122,7 @@ curl -X POST http://localhost:8080/api/decode \
 ```
 
 Response:
+
 ```json
 {
   "success": true,

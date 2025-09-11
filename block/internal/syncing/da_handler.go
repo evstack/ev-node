@@ -482,7 +482,7 @@ func (h *DAHandler) createSignedData(dataList []*types.SignedData, signer signer
 
 	for _, data := range dataList {
 		// Skip empty data
-		if len(data.Data.Txs) == 0 {
+		if len(data.Txs) == 0 {
 			continue
 		}
 
