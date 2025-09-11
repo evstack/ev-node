@@ -3,10 +3,8 @@ package cache
 import (
 	"encoding/gob"
 	"fmt"
-	"math/rand"
 	"os"
 	"path/filepath"
-	"sort"
 	"sync"
 	"testing"
 )
@@ -41,49 +39,6 @@ func TestCache_ConcurrentOperations(t *testing.T) {
 	go writer(0)
 	go writer(1)
 	wg.Wait()
-}
-
-// TestCache_HeightIndexConsistency verifies the height index matches actual keys after concurrent modifications.
-func TestCache_HeightIndexConsistency(t *testing.T) {
-	c := NewCache[testItem]()
-	const N = 5000
-	// shuffle insert order
-	idx := rand.Perm(N)
-	for _, i := range idx {
-		v := &testItem{V: i}
-		c.SetItem(uint64(i), v)
-	}
-	// random deletions
-	for i := 0; i < N; i += 3 {
-		if i%7 == 0 {
-			c.DeleteItem(uint64(i))
-		}
-	}
-
-	// Collect actual keys from the map
-	actual := make([]uint64, 0, N)
-	c.itemsByHeight.Range(func(k, _ any) bool {
-		if h, ok := k.(uint64); ok {
-			actual = append(actual, h)
-		}
-		return true
-	})
-	sort.Slice(actual, func(i, j int) bool { return actual[i] < actual[j] })
-
-	// Compare against heightKeys under lock
-	c.heightIndexMu.RLock()
-	idxCopy := make([]uint64, len(c.heightKeys))
-	copy(idxCopy, c.heightKeys)
-	c.heightIndexMu.RUnlock()
-
-	if len(actual) != len(idxCopy) {
-		t.Fatalf("index length mismatch: got %d want %d", len(idxCopy), len(actual))
-	}
-	for i := range actual {
-		if actual[i] != idxCopy[i] {
-			t.Fatalf("index mismatch at %d: got %d want %d", i, idxCopy[i], actual[i])
-		}
-	}
 }
 
 // TestCache_TypeSafety ensures methods gracefully handle invalid underlying types.

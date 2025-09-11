@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"sort"
 	"sync"
 )
 
@@ -17,10 +16,6 @@ type Cache[T any] struct {
 	hashes *sync.Map
 	// daIncluded tracks the DA inclusion height for a given hash
 	daIncluded *sync.Map
-
-	// ordered index of heights for iteration
-	heightIndexMu sync.RWMutex
-	heightKeys    []uint64 // kept in ascending order, unique
 }
 
 // NewCache returns a new Cache struct
@@ -48,17 +43,12 @@ func (c *Cache[T]) GetItem(height uint64) *T {
 
 // SetItem sets an item in the cache by height
 func (c *Cache[T]) SetItem(height uint64, item *T) {
-	// Ensure height is present in the height index.
-	// insertHeight is idempotent and internally synchronized, avoiding races
-	// between the existence check and insertion.
-	c.insertHeight(height)
 	c.itemsByHeight.Store(height, item)
 }
 
 // DeleteItem deletes an item from the cache by height
 func (c *Cache[T]) DeleteItem(height uint64) {
 	c.itemsByHeight.Delete(height)
-	c.deleteHeight(height)
 }
 
 // RangeByHeight iterates over items keyed by height in an unspecified order and calls fn for each.
@@ -206,7 +196,6 @@ func (c *Cache[T]) LoadFromDisk(folderPath string) error {
 	}
 	for k, v := range itemsByHeightMap {
 		c.itemsByHeight.Store(k, v)
-		c.insertHeight(k)
 	}
 
 	// load hashes
@@ -228,71 +217,4 @@ func (c *Cache[T]) LoadFromDisk(folderPath string) error {
 	}
 
 	return nil
-}
-
-// insertHeight inserts h into heightKeys, keeping ascending order and uniqueness.
-func (c *Cache[T]) insertHeight(h uint64) {
-	c.heightIndexMu.Lock()
-	defer c.heightIndexMu.Unlock()
-	i := sort.Search(len(c.heightKeys), func(i int) bool { return c.heightKeys[i] >= h })
-	if i < len(c.heightKeys) && c.heightKeys[i] == h {
-		return
-	}
-	c.heightKeys = append(c.heightKeys, 0)
-	copy(c.heightKeys[i+1:], c.heightKeys[i:])
-	c.heightKeys[i] = h
-}
-
-// deleteHeight removes h if present.
-func (c *Cache[T]) deleteHeight(h uint64) {
-	c.heightIndexMu.Lock()
-	defer c.heightIndexMu.Unlock()
-	i := sort.Search(len(c.heightKeys), func(i int) bool { return c.heightKeys[i] >= h })
-	if i < len(c.heightKeys) && c.heightKeys[i] == h {
-		copy(c.heightKeys[i:], c.heightKeys[i+1:])
-		c.heightKeys = c.heightKeys[:len(c.heightKeys)-1]
-		// Opportunistically compact backing array to control memory growth
-		// when many deletions have occurred and capacity is far above length.
-		const (
-			shrinkMinCap      = 4096 // only consider shrinking if capacity is sizable
-			shrinkExcessRatio = 4    // shrink when cap is >= 4x len
-		)
-		if cap(c.heightKeys) >= shrinkMinCap && len(c.heightKeys) > 0 && cap(c.heightKeys) >= shrinkExcessRatio*len(c.heightKeys) {
-			// Allocate a new slice with a tighter capacity to release memory.
-			newCap := len(c.heightKeys)
-			tmp := make([]uint64, len(c.heightKeys), newCap)
-			copy(tmp, c.heightKeys)
-			c.heightKeys = tmp
-		}
-	}
-}
-
-// snapshotHeightsAscInto copies ascending heights into dst, resizing as needed.
-func (c *Cache[T]) snapshotHeightsAscInto(dst []uint64) []uint64 {
-	c.heightIndexMu.RLock()
-	defer c.heightIndexMu.RUnlock()
-	n := len(c.heightKeys)
-	if cap(dst) < n {
-		dst = make([]uint64, n)
-	} else {
-		dst = dst[:n]
-	}
-	copy(dst, c.heightKeys)
-	return dst
-}
-
-// snapshotHeightsDescInto copies descending heights into dst, resizing as needed.
-func (c *Cache[T]) snapshotHeightsDescInto(dst []uint64) []uint64 {
-	c.heightIndexMu.RLock()
-	defer c.heightIndexMu.RUnlock()
-	n := len(c.heightKeys)
-	if cap(dst) < n {
-		dst = make([]uint64, n)
-	} else {
-		dst = dst[:n]
-	}
-	for i := 0; i < n; i++ {
-		dst[i] = c.heightKeys[n-1-i]
-	}
-	return dst
 }
