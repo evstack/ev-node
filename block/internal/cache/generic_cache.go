@@ -24,20 +24,20 @@ type Cache[T any] struct {
 	heightIndexMu sync.RWMutex
 	heightKeys    []uint64 // kept in ascending order, unique
 
-    // pool for reusing temporary height buffers to reduce allocations
-    // store pointer-like values to avoid allocations (staticcheck SA6002)
-    keysBufPool sync.Pool
+	// pool for reusing temporary height buffers to reduce allocations
+	// store pointer-like values to avoid allocations (staticcheck SA6002)
+	keysBufPool sync.Pool
 }
 
 // NewCache returns a new Cache struct
 func NewCache[T any]() *Cache[T] {
-    return &Cache[T]{
-        itemsByHeight: new(sync.Map),
-        itemsByHash:   new(sync.Map),
-        hashes:        new(sync.Map),
-        daIncluded:    new(sync.Map),
-        keysBufPool:   sync.Pool{New: func() any { b := make([]uint64, 0, 64); return &b }},
-    }
+	return &Cache[T]{
+		itemsByHeight: new(sync.Map),
+		itemsByHash:   new(sync.Map),
+		hashes:        new(sync.Map),
+		daIncluded:    new(sync.Map),
+		keysBufPool:   sync.Pool{New: func() any { b := make([]uint64, 0, 64); return &b }},
+	}
 }
 
 // GetItem returns an item from the cache by height.
@@ -416,19 +416,19 @@ func (c *Cache[T]) snapshotHeightsDescInto(dst []uint64) []uint64 {
 
 // getKeysBuf fetches a reusable buffer from the pool.
 func (c *Cache[T]) getKeysBuf() []uint64 {
-    v := c.keysBufPool.Get()
-    if v == nil {
-        return make([]uint64, 0, 64)
-    }
-    return *(v.(*[]uint64))
+	v := c.keysBufPool.Get()
+	if v == nil {
+		return make([]uint64, 0, 64)
+	}
+	return *(v.(*[]uint64))
 }
 
 // putKeysBuf returns a buffer to the pool after zeroing length.
 func (c *Cache[T]) putKeysBuf(b []uint64) {
-    const maxCap = 1 << 16 // avoid retaining extremely large backing arrays
-    if cap(b) > maxCap {
-        return
-    }
-    b = b[:0]
-    c.keysBufPool.Put(&b)
+	const maxCap = 1 << 16 // avoid retaining extremely large backing arrays
+	if cap(b) > maxCap {
+		return
+	}
+	b = b[:0]
+	c.keysBufPool.Put(&b)
 }
