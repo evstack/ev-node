@@ -23,10 +23,6 @@ type Cache[T any] struct {
 	// ordered index of heights for iteration
 	heightIndexMu sync.RWMutex
 	heightKeys    []uint64 // kept in ascending order, unique
-
-	// pool for reusing temporary height buffers to reduce allocations
-	// store pointer-like values to avoid allocations (staticcheck SA6002)
-	keysBufPool sync.Pool
 }
 
 // NewCache returns a new Cache struct
@@ -36,7 +32,6 @@ func NewCache[T any]() *Cache[T] {
 		itemsByHash:   new(sync.Map),
 		hashes:        new(sync.Map),
 		daIncluded:    new(sync.Map),
-		keysBufPool:   sync.Pool{New: func() any { b := make([]uint64, 0, 64); return &b }},
 	}
 }
 
@@ -85,84 +80,6 @@ func (c *Cache[T]) RangeByHeight(fn func(height uint64, item *T) bool) {
 	})
 }
 
-// RangeByHeightAsc iterates items by ascending height order.
-func (c *Cache[T]) RangeByHeightAsc(fn func(height uint64, item *T) bool) {
-	// Use pooled buffer to avoid per-call allocations
-	buf := c.getKeysBuf()
-	keys := c.snapshotHeightsAscInto(buf)
-	defer c.putKeysBuf(keys)
-	for _, h := range keys {
-		if v, ok := c.itemsByHeight.Load(h); ok {
-			it, ok := v.(*T)
-			if !ok {
-				continue
-			}
-			if !fn(h, it) {
-				return
-			}
-		}
-	}
-}
-
-// RangeByHeightDesc iterates items by descending height order.
-func (c *Cache[T]) RangeByHeightDesc(fn func(height uint64, item *T) bool) {
-	// Use pooled buffer to avoid per-call allocations
-	buf := c.getKeysBuf()
-	keys := c.snapshotHeightsDescInto(buf)
-	defer c.putKeysBuf(keys)
-	for _, h := range keys {
-		if v, ok := c.itemsByHeight.Load(h); ok {
-			it, ok := v.(*T)
-			if !ok {
-				continue
-			}
-			if !fn(h, it) {
-				return
-			}
-		}
-	}
-}
-
-// GetItemByHash returns an item from the cache by string hash key.
-// Returns nil if not found or type mismatch.
-func (c *Cache[T]) GetItemByHash(hash string) *T {
-	item, ok := c.itemsByHash.Load(hash)
-	if !ok {
-		return nil
-	}
-	val, ok := item.(*T)
-	if !ok {
-		return nil
-	}
-	return val
-}
-
-// SetItemByHash sets an item in the cache by string hash key
-func (c *Cache[T]) SetItemByHash(hash string, item *T) {
-	c.itemsByHash.Store(hash, item)
-}
-
-// DeleteItemByHash deletes an item in the cache by string hash key
-func (c *Cache[T]) DeleteItemByHash(hash string) {
-	c.itemsByHash.Delete(hash)
-}
-
-// RangeByHash iterates over all items keyed by string hash and calls fn for each.
-// If fn returns false, iteration stops early.
-func (c *Cache[T]) RangeByHash(fn func(hash string, item *T) bool) {
-	c.itemsByHash.Range(func(k, v any) bool {
-		key, ok := k.(string)
-		if !ok {
-			return true
-		}
-		it, ok := v.(*T)
-		if !ok {
-			return true
-		}
-		return fn(key, it)
-	})
-}
-
 // IsSeen returns true if the hash has been seen
 func (c *Cache[T]) IsSeen(hash string) bool {
 	seen, ok := c.hashes.Load(hash)
@@ -181,15 +98,6 @@ func (c *Cache[T]) SetSeen(hash string) {
 func (c *Cache[T]) IsDAIncluded(hash string) bool {
 	_, ok := c.daIncluded.Load(hash)
 	return ok
-}
-
-// GetDAIncludedHeight returns the DA height at which the hash was DA included
-func (c *Cache[T]) GetDAIncludedHeight(hash string) (uint64, bool) {
-	daIncluded, ok := c.daIncluded.Load(hash)
-	if !ok {
-		return 0, false
-	}
-	return daIncluded.(uint64), true
 }
 
 // SetDAIncluded sets the hash as DA-included with the given DA height
@@ -412,23 +320,4 @@ func (c *Cache[T]) snapshotHeightsDescInto(dst []uint64) []uint64 {
 		dst[i] = c.heightKeys[n-1-i]
 	}
 	return dst
-}
-
-// getKeysBuf fetches a reusable buffer from the pool.
-func (c *Cache[T]) getKeysBuf() []uint64 {
-	v := c.keysBufPool.Get()
-	if v == nil {
-		return make([]uint64, 0, 64)
-	}
-	return *(v.(*[]uint64))
-}
-
-// putKeysBuf returns a buffer to the pool after zeroing length.
-func (c *Cache[T]) putKeysBuf(b []uint64) {
-	const maxCap = 1 << 16 // avoid retaining extremely large backing arrays
-	if cap(b) > maxCap {
-		return
-	}
-	b = b[:0]
-	c.keysBufPool.Put(&b)
 }

@@ -21,7 +21,6 @@ BenchmarkManager_GetPendingHeaders/N=10000-10         	      28	  40704543 ns/op
 BenchmarkManager_GetPendingData/N=1000-10             	     279	   4258291 ns/op	5869716 B/op	73824 allocs/op
 BenchmarkManager_GetPendingData/N=10000-10            	      26	  45428974 ns/op	58719067 B/op	  739926 allocs/op
 BenchmarkManager_PendingEventsSnapshot-10             	     336	   3251530 ns/op	 2365497 B/op	     285 allocs/op
-BenchmarkHeaderCache_RangeAsc-10                      	     759	   1540807 ns/op	1250025000 height_sum	  401707 B/op	       6 allocs/op
 PASS
 ok  	github.com/evstack/ev-node/block/internal/cache	25.834s
 */
@@ -111,27 +110,6 @@ func BenchmarkManager_PendingEventsSnapshot(b *testing.B) {
 		if len(ev) == 0 {
 			b.Fatal("unexpected empty events")
 		}
-	}
-}
-
-func BenchmarkHeaderCache_RangeAsc(b *testing.B) {
-	st := benchSetupStore(b, 1, 1, "bench-range")
-	m := benchNewManager(b, st)
-	impl := m.(*implementation)
-	for i := 1; i <= 50_000; i++ {
-		h, _ := types.GetRandomBlock(uint64(i), 1, "bench-range")
-		impl.SetHeader(uint64(i), h)
-	}
-	b.ReportAllocs()
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		sum := 0
-		impl.headerCache.RangeByHeightAsc(func(height uint64, sh *types.SignedHeader) bool {
-			sum += int(height)
-			return true
-		})
-		// publish a metric to ensure the compiler can't eliminate the work
-		b.ReportMetric(float64(sum), "height_sum")
 	}
 }
 
