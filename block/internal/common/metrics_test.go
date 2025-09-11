@@ -26,12 +26,11 @@ func TestMetrics(t *testing.T) {
 		assert.NotNil(t, em.DroppedSignals)
 
 		// Test error metrics initialization
-		assert.Len(t, em.ErrorsByType, 5)
-		assert.NotNil(t, em.ErrorsByType["block_production"])
-		assert.NotNil(t, em.ErrorsByType["da_submission"])
-		assert.NotNil(t, em.ErrorsByType["sync"])
-		assert.NotNil(t, em.ErrorsByType["validation"])
-		assert.NotNil(t, em.ErrorsByType["state_update"])
+		errorTypes := []string{"block_production", "da_submission", "sync", "validation", "state_update"}
+		assert.Len(t, em.ErrorsByType, len(errorTypes))
+		for _, errType := range errorTypes {
+			assert.NotNil(t, em.ErrorsByType[errType])
+		}
 		assert.NotNil(t, em.RecoverableErrors)
 		assert.NotNil(t, em.NonRecoverableErrors)
 
