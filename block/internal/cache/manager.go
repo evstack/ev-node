@@ -10,6 +10,7 @@ import (
 	"github.com/rs/zerolog"
 
 	"github.com/evstack/ev-node/block/internal/cache/pending"
+	"github.com/evstack/ev-node/block/internal/common"
 	"github.com/evstack/ev-node/pkg/config"
 	"github.com/evstack/ev-node/pkg/store"
 	"github.com/evstack/ev-node/types"
@@ -31,18 +32,8 @@ func registerGobTypes() {
 	gobRegisterOnce.Do(func() {
 		gob.Register(&types.SignedHeader{})
 		gob.Register(&types.Data{})
-		gob.Register(&DAHeightEvent{})
+		gob.Register(&common.DAHeightEvent{})
 	})
-}
-
-// DAHeightEvent represents a DA event for caching
-type DAHeightEvent struct {
-	Header *types.SignedHeader
-	Data   *types.Data
-	// DaHeight corresponds to the highest DA included height between the Header and Data.
-	DaHeight uint64
-	// HeaderDaIncludedHeight corresponds to the DA height at which the Header was included.
-	HeaderDaIncludedHeight uint64
 }
 
 // Manager provides centralized cache management for both executing and syncing components
@@ -73,8 +64,8 @@ type Manager interface {
 	NumPendingData() uint64
 
 	// Pending events for DA coordination
-	SetPendingEvent(height uint64, event *DAHeightEvent)
-	GetPendingEvents() map[uint64]*DAHeightEvent
+	SetPendingEvent(height uint64, event *common.DAHeightEvent)
+	GetPendingEvents() map[uint64]*common.DAHeightEvent
 	DeletePendingEvent(height uint64)
 
 	// Cleanup operations
@@ -88,7 +79,7 @@ type Manager interface {
 type implementation struct {
 	headerCache        *Cache[types.SignedHeader]
 	dataCache          *Cache[types.Data]
-	pendingEventsCache *Cache[DAHeightEvent]
+	pendingEventsCache *Cache[common.DAHeightEvent]
 	pendingHeaders     *pending.PendingHeaders
 	pendingData        *pending.PendingData
 	config             config.Config
@@ -100,7 +91,7 @@ func NewManager(cfg config.Config, store store.Store, logger zerolog.Logger) (Ma
 	// Initialize caches
 	headerCache := NewCache[types.SignedHeader]()
 	dataCache := NewCache[types.Data]()
-	pendingEventsCache := NewCache[DAHeightEvent]()
+	pendingEventsCache := NewCache[common.DAHeightEvent]()
 
 	// Initialize pending managers
 	pendingHeaders, err := pending.NewPendingHeaders(store, logger)
@@ -228,14 +219,14 @@ func (m *implementation) NumPendingData() uint64 {
 }
 
 // Pending events operations
-func (m *implementation) SetPendingEvent(height uint64, event *DAHeightEvent) {
+func (m *implementation) SetPendingEvent(height uint64, event *common.DAHeightEvent) {
 	m.pendingEventsCache.SetItem(height, event)
 }
 
-func (m *implementation) GetPendingEvents() map[uint64]*DAHeightEvent {
+func (m *implementation) GetPendingEvents() map[uint64]*common.DAHeightEvent {
 
-	events := make(map[uint64]*DAHeightEvent)
-	m.pendingEventsCache.RangeByHeight(func(height uint64, event *DAHeightEvent) bool {
+	events := make(map[uint64]*common.DAHeightEvent)
+	m.pendingEventsCache.RangeByHeight(func(height uint64, event *common.DAHeightEvent) bool {
 		events[height] = event
 		return true
 	})

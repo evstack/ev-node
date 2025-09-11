@@ -111,7 +111,7 @@ func waitForAtLeastNDAIncludedHeight(node Node, n uint64) error {
 	return Retry(300, 100*time.Millisecond, func() error {
 		if fn, ok := node.(*FullNode); ok {
 			if fn.blockComponents != nil && fn.blockComponents.Syncer != nil {
-				nHeight := fn.blockComponents.Syncer.GetDAIncludedHeight()
+				nHeight := fn.blockComponents.Submitter.GetDAIncludedHeight()
 				if nHeight == 0 {
 					return fmt.Errorf("waiting for DA inclusion")
 				}

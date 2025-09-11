@@ -496,6 +496,13 @@ func (n *FullNode) startBlockComponents(ctx context.Context) error {
 		}
 	}
 
+	// Start submitting component both aggregator and sync nodes
+	if n.blockComponents.Submitter != nil {
+		if err := n.blockComponents.Submitter.Start(ctx); err != nil {
+			return fmt.Errorf("failed to start submitter: %w", err)
+		}
+	}
+
 	n.Logger.Info().Msg("block components started successfully")
 	return nil
 }
@@ -508,9 +515,9 @@ func (n *FullNode) stopBlockComponents() error {
 
 	n.Logger.Info().Msg("stopping block components")
 
-	var executorErr, syncerErr error
+	var executorErr, syncerErr, submitterErr error
 
-	// Stop executor first (block production)
+	// Stop executor
 	if n.blockComponents.Executor != nil {
 		if err := n.blockComponents.Executor.Stop(); err != nil {
 			executorErr = fmt.Errorf("failed to stop executor: %w", err)
@@ -526,16 +533,17 @@ func (n *FullNode) stopBlockComponents() error {
 		}
 	}
 
-	// Return the first error encountered, if any
-	if executorErr != nil {
-		return executorErr
-	}
-	if syncerErr != nil {
-		return syncerErr
+	// Stop submitter
+	if n.blockComponents.Submitter != nil {
+		if err := n.blockComponents.Submitter.Stop(); err != nil {
+			submitterErr = fmt.Errorf("failed to stop submitter: %w", err)
+			n.Logger.Error().Err(err).Msg("error stopping submitter")
+		}
 	}
 
 	n.Logger.Info().Msg("block components stopped successfully")
-	return nil
+
+	return errors.Join(executorErr, syncerErr, submitterErr)
 }
 
 func newPrefixKV(kvStore ds.Batching, prefix string) ds.Batching {

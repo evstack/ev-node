@@ -9,6 +9,7 @@ import (
 
 	"github.com/evstack/ev-node/block/internal/cache"
 	"github.com/evstack/ev-node/block/internal/executing"
+	"github.com/evstack/ev-node/block/internal/submitting"
 	"github.com/evstack/ev-node/block/internal/syncing"
 	coreda "github.com/evstack/ev-node/core/da"
 	coreexecutor "github.com/evstack/ev-node/core/execution"
@@ -22,9 +23,10 @@ import (
 
 // BlockComponents represents the block-related components
 type BlockComponents struct {
-	Executor *executing.Executor
-	Syncer   *syncing.Syncer
-	Cache    cache.Manager
+	Executor  *executing.Executor
+	Syncer    *syncing.Syncer
+	Submitter *submitting.Submitter
+	Cache     cache.Manager
 }
 
 // GetLastState returns the current blockchain state
@@ -36,6 +38,50 @@ func (bc *BlockComponents) GetLastState() types.State {
 		return bc.Syncer.GetLastState()
 	}
 	return types.State{}
+}
+
+// Start starts all components
+func (bc *BlockComponents) Start(ctx context.Context) error {
+	if bc.Executor != nil {
+		if err := bc.Executor.Start(ctx); err != nil {
+			return fmt.Errorf("failed to start executor: %w", err)
+		}
+	}
+	if bc.Syncer != nil {
+		if err := bc.Syncer.Start(ctx); err != nil {
+			return fmt.Errorf("failed to start syncer: %w", err)
+		}
+	}
+	if bc.Submitter != nil {
+		if err := bc.Submitter.Start(ctx); err != nil {
+			return fmt.Errorf("failed to start submitter: %w", err)
+		}
+	}
+	return nil
+}
+
+// Stop stops all components
+func (bc *BlockComponents) Stop() error {
+	var errs []error
+	if bc.Executor != nil {
+		if err := bc.Executor.Stop(); err != nil {
+			errs = append(errs, fmt.Errorf("failed to stop executor: %w", err))
+		}
+	}
+	if bc.Syncer != nil {
+		if err := bc.Syncer.Stop(); err != nil {
+			errs = append(errs, fmt.Errorf("failed to stop syncer: %w", err))
+		}
+	}
+	if bc.Submitter != nil {
+		if err := bc.Submitter.Stop(); err != nil {
+			errs = append(errs, fmt.Errorf("failed to stop submitter: %w", err))
+		}
+	}
+	if len(errs) > 0 {
+		return fmt.Errorf("errors stopping components: %v", errs)
+	}
+	return nil
 }
 
 // broadcaster interface for P2P broadcasting
@@ -77,10 +123,24 @@ func NewSyncNode(
 		blockOpts,
 	)
 
+	// Create DA submitter for sync nodes (no signer, only DA inclusion processing)
+	daSubmitter := submitting.NewDASubmitter(da, config, genesis, blockOpts, logger)
+	submitter := submitting.NewSubmitter(
+		store,
+		exec,
+		cacheManager,
+		metrics,
+		config,
+		genesis,
+		daSubmitter,
+		nil, // No signer for sync nodes
+		logger,
+	)
+
 	return &BlockComponents{
-		Executor: nil, // Non-aggregator full nodes don't have executors
-		Syncer:   syncer,
-		Cache:    cacheManager,
+		Syncer:    syncer,
+		Submitter: submitter,
+		Cache:     cacheManager,
 	}, nil
 }
 
@@ -113,7 +173,6 @@ func NewAggregatorNode(
 		exec,
 		sequencer,
 		signer,
-		da,
 		cacheManager,
 		metrics,
 		config,
@@ -124,9 +183,23 @@ func NewAggregatorNode(
 		blockOpts,
 	)
 
+	// Create DA submitter for aggregator nodes (with signer for submission)
+	daSubmitter := submitting.NewDASubmitter(da, config, genesis, blockOpts, logger)
+	submitter := submitting.NewSubmitter(
+		store,
+		exec,
+		cacheManager,
+		metrics,
+		config,
+		genesis,
+		daSubmitter,
+		signer, // Signer for aggregator nodes to submit to DA
+		logger,
+	)
+
 	return &BlockComponents{
-		Executor: executor,
-		Syncer:   nil, // Aggregator full nodes don't have syncer
-		Cache:    cacheManager,
+		Executor:  executor,
+		Submitter: submitter,
+		Cache:     cacheManager,
 	}, nil
 }
