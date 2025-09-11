@@ -308,11 +308,7 @@ func (e *Executor) executionLoop() {
 		lazyTimer = time.NewTimer(e.config.Node.LazyBlockInterval.Duration)
 		defer lazyTimer.Stop()
 		lazyTimerCh = lazyTimer.C
-	} else {
-		// Create a channel that never fires for non-lazy mode
-		lazyTimerCh = make(chan time.Time)
 	}
-
 	txsAvailable := false
 
 	for {
