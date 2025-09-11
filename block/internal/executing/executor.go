@@ -657,8 +657,6 @@ func (e *Executor) recordBlockMetrics(data *types.Data) {
 }
 
 // daSubmissionLoop handles submission of headers and data to DA layer for aggregator nodes.
-// This replaces the confusing "submissionLoop" that was previously in the syncer.
-// The executor is the logical place for DA submission since it produces the blocks.
 func (e *Executor) daSubmissionLoop() {
 	e.logger.Info().Msg("starting DA submission loop")
 	defer e.logger.Info().Msg("DA submission loop stopped")
