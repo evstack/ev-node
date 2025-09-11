@@ -159,7 +159,7 @@ func (s *DockerTestSuite) CreateEvolveChain() *evstack.Chain {
 		Build()
 
 	evNodeChain, err := evstack.NewChainBuilder(t).
-		WithChainID("rollkit-test").
+		WithChainID("evchain-test").
 		WithBinaryName("testapp").
 		WithAggregatorPassphrase("12345678").
 		WithImage(getEvNodeImage()).
@@ -226,9 +226,9 @@ func (s *DockerTestSuite) StartEvNode(ctx context.Context, bridgeNode *da.Node, 
 	s.Require().NoError(err)
 }
 
-// StartRollkitNodeWithNamespace initializes and starts a Rollkit node with a specific namespace.
-func (s *DockerTestSuite) StartRollkitNodeWithNamespace(ctx context.Context, bridgeNode *da.Node, rollkitNode *evstack.Node, headerNamespace, dataNamespace string) {
-	err := rollkitNode.Init(ctx)
+// StartEvNodeWithNamespace initializes and starts an EV node with a specific namespace.
+func (s *DockerTestSuite) StartEvNodeWithNamespace(ctx context.Context, bridgeNode *da.Node, evNode *evstack.Node, headerNamespace, dataNamespace string) {
+	err := evNode.Init(ctx)
 	s.Require().NoError(err)
 
 	bridgeNetworkInfo, err := bridgeNode.GetNetworkInfo(ctx)
@@ -239,7 +239,7 @@ func (s *DockerTestSuite) StartRollkitNodeWithNamespace(ctx context.Context, bri
 
 	bridgeRPCAddress := bridgeNetworkInfo.Internal.RPCAddress()
 	daAddress := fmt.Sprintf("http://%s", bridgeRPCAddress)
-	err = rollkitNode.Start(ctx,
+	err = evNode.Start(ctx,
 		"--evnode.da.address", daAddress,
 		"--evnode.da.gas_price", "0.025",
 		"--evnode.da.auth_token", authToken,
@@ -251,7 +251,7 @@ func (s *DockerTestSuite) StartRollkitNodeWithNamespace(ctx context.Context, bri
 	s.Require().NoError(err)
 }
 
-// getEvNodeImage returns the Docker image configuration for Rollkit
+// getEvNodeImage returns the Docker image configuration for EV Node
 // Uses EV_NODE_IMAGE_REPO and EV_NODE_IMAGE_TAG environment variables if set
 // Defaults to locally built image using a unique tag to avoid registry conflicts
 func getEvNodeImage() container.Image {
