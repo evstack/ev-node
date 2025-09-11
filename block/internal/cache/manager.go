@@ -9,7 +9,6 @@ import (
 
 	"github.com/rs/zerolog"
 
-	"github.com/evstack/ev-node/block/internal/cache/pending"
 	"github.com/evstack/ev-node/block/internal/common"
 	"github.com/evstack/ev-node/pkg/config"
 	"github.com/evstack/ev-node/pkg/store"
@@ -80,8 +79,8 @@ type implementation struct {
 	headerCache        *Cache[types.SignedHeader]
 	dataCache          *Cache[types.Data]
 	pendingEventsCache *Cache[common.DAHeightEvent]
-	pendingHeaders     *pending.PendingHeaders
-	pendingData        *pending.PendingData
+	pendingHeaders     *PendingHeaders
+	pendingData        *PendingData
 	config             config.Config
 	logger             zerolog.Logger
 }
@@ -94,12 +93,12 @@ func NewManager(cfg config.Config, store store.Store, logger zerolog.Logger) (Ma
 	pendingEventsCache := NewCache[common.DAHeightEvent]()
 
 	// Initialize pending managers
-	pendingHeaders, err := pending.NewPendingHeaders(store, logger)
+	pendingHeaders, err := NewPendingHeaders(store, logger)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create pending headers: %w", err)
 	}
 
-	pendingData, err := pending.NewPendingData(store, logger)
+	pendingData, err := NewPendingData(store, logger)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create pending data: %w", err)
 	}

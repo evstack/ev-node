@@ -40,6 +40,10 @@ type Submitter struct {
 	daIncludedHeight uint64
 	daStateMtx       *sync.RWMutex
 
+	// Submission state to prevent concurrent submissions
+	headerSubmissionMtx sync.Mutex
+	dataSubmissionMtx   sync.Mutex
+
 	// Logging
 	logger zerolog.Logger
 
@@ -136,15 +140,25 @@ func (s *Submitter) daSubmissionLoop() {
 		case <-ticker.C:
 			// Submit headers
 			if s.cache.NumPendingHeaders() != 0 {
-				if err := s.daSubmitter.SubmitHeaders(s.ctx, s.cache); err != nil {
-					s.logger.Error().Err(err).Msg("failed to submit headers")
+				if s.headerSubmissionMtx.TryLock() {
+					go func() {
+						defer s.headerSubmissionMtx.Unlock()
+						if err := s.daSubmitter.SubmitHeaders(s.ctx, s.cache); err != nil {
+							s.logger.Error().Err(err).Msg("failed to submit headers")
+						}
+					}()
 				}
 			}
 
 			// Submit data
 			if s.cache.NumPendingData() != 0 {
-				if err := s.daSubmitter.SubmitData(s.ctx, s.cache, s.signer, s.genesis); err != nil {
-					s.logger.Error().Err(err).Msg("failed to submit data")
+				if s.dataSubmissionMtx.TryLock() {
+					go func() {
+						defer s.dataSubmissionMtx.Unlock()
+						if err := s.daSubmitter.SubmitData(s.ctx, s.cache, s.signer, s.genesis); err != nil {
+							s.logger.Error().Err(err).Msg("failed to submit data")
+						}
+					}()
 				}
 			}
 		case <-metricsTicker.C:

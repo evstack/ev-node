@@ -1,4 +1,4 @@
-package pending
+package cache
 
 import (
 	"context"
@@ -10,77 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/evstack/ev-node/pkg/store"
-	"github.com/evstack/ev-node/types"
 )
-
-// helper to make an in-memory store
-func memStore(t *testing.T) store.Store {
-	ds, err := store.NewDefaultInMemoryKVStore()
-	require.NoError(t, err)
-	return store.New(ds)
-}
-
-func TestPendingHeadersAndData_Flow(t *testing.T) {
-	t.Parallel()
-	st := memStore(t)
-	ctx := context.Background()
-	logger := zerolog.Nop()
-
-	// create 3 blocks, with varying number of txs to test data filtering
-	chainID := "chain-pending"
-	h1, d1 := types.GetRandomBlock(1, 0, chainID)
-	h2, d2 := types.GetRandomBlock(2, 1, chainID)
-	h3, d3 := types.GetRandomBlock(3, 2, chainID)
-
-	// persist in store and set height
-	for _, pair := range []struct {
-		h *types.SignedHeader
-		d *types.Data
-	}{{h1, d1}, {h2, d2}, {h3, d3}} {
-		err := st.SaveBlockData(ctx, pair.h, pair.d, &types.Signature{})
-		require.NoError(t, err)
-	}
-	require.NoError(t, st.SetHeight(ctx, 3))
-
-	ph, err := NewPendingHeaders(st, logger)
-	require.NoError(t, err)
-
-	pd, err := NewPendingData(st, logger)
-	require.NoError(t, err)
-
-	// headers: all 3 should be pending initially
-	headers, err := ph.GetPendingHeaders(ctx)
-	require.NoError(t, err)
-	require.Len(t, headers, 3)
-	assert.Equal(t, uint64(1), headers[0].Height())
-	assert.Equal(t, uint64(3), headers[2].Height())
-
-	// data: all 3 should be pending initially
-	// note: the cache manager filters out empty data
-	signedData, err := pd.GetPendingData(ctx)
-	require.NoError(t, err)
-	require.Len(t, signedData, 3)
-	assert.Equal(t, uint64(2), signedData[1].Height())
-	assert.Equal(t, uint64(3), signedData[2].Height())
-
-	// update last submitted heights and re-check
-	ph.SetLastSubmittedHeaderHeight(ctx, 1)
-	pd.SetLastSubmittedDataHeight(ctx, 2)
-
-	headers, err = ph.GetPendingHeaders(ctx)
-	require.NoError(t, err)
-	require.Len(t, headers, 2)
-	assert.Equal(t, uint64(2), headers[0].Height())
-
-	signedData, err = pd.GetPendingData(ctx)
-	require.NoError(t, err)
-	require.Len(t, signedData, 1)
-	assert.Equal(t, uint64(3), signedData[0].Height())
-
-	// numPending views
-	assert.Equal(t, uint64(2), ph.NumPendingHeaders())
-	assert.Equal(t, uint64(1), pd.NumPendingData())
-}
 
 func TestPendingBase_ErrorConditions(t *testing.T) {
 	t.Parallel()
