@@ -47,15 +47,6 @@ func (pd *PendingData) getPendingData(ctx context.Context) ([]*types.Data, error
 	return pd.base.getPending(ctx)
 }
 
-// GetLastSubmittedDataHeight returns the height of the last successfully submitted data.
-func (pd *PendingData) getLastSubmittedDataHeight() uint64 {
-	return pd.base.lastHeight.Load()
-}
-
-func (pd *PendingData) isEmpty() bool {
-	return pd.base.isEmpty()
-}
-
 func (pd *PendingData) numPendingData() uint64 {
 	return pd.base.numPending()
 }

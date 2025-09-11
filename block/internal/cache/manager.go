@@ -41,7 +41,6 @@ type Manager interface {
 	SetHeaderSeen(hash string)
 	IsHeaderDAIncluded(hash string) bool
 	SetHeaderDAIncluded(hash string, daHeight uint64)
-	GetHeaderDAIncludedHeight(hash string) (uint64, bool)
 
 	// Data operations
 	GetData(height uint64) *types.Data
@@ -50,15 +49,13 @@ type Manager interface {
 	SetDataSeen(hash string)
 	IsDataDAIncluded(hash string) bool
 	SetDataDAIncluded(hash string, daHeight uint64)
-	GetDataDAIncludedHeight(hash string) (uint64, bool)
 
 	// Pending operations
 	GetPendingHeaders(ctx context.Context) ([]*types.SignedHeader, error)
 	GetPendingData(ctx context.Context) ([]*types.SignedData, error)
 	SetLastSubmittedHeaderHeight(ctx context.Context, height uint64)
 	SetLastSubmittedDataHeight(ctx context.Context, height uint64)
-	GetLastSubmittedHeaderHeight() uint64
-	GetLastSubmittedDataHeight() uint64
+
 	NumPendingHeaders() uint64
 	NumPendingData() uint64
 
@@ -66,7 +63,6 @@ type Manager interface {
 	SetPendingEvent(height uint64, event *DAHeightEvent)
 	GetPendingEvents() map[uint64]*DAHeightEvent
 	DeletePendingEvent(height uint64)
-	RangePendingEvents(fn func(uint64, *DAHeightEvent) bool)
 
 	// Cleanup operations
 	ClearProcessedHeader(height uint64)
@@ -148,10 +144,6 @@ func (m *implementation) SetHeaderDAIncluded(hash string, daHeight uint64) {
 	m.headerCache.SetDAIncluded(hash, daHeight)
 }
 
-func (m *implementation) GetHeaderDAIncludedHeight(hash string) (uint64, bool) {
-	return m.headerCache.GetDAIncludedHeight(hash)
-}
-
 // Data operations
 func (m *implementation) GetData(height uint64) *types.Data {
 	return m.dataCache.GetItem(height)
@@ -175,10 +167,6 @@ func (m *implementation) IsDataDAIncluded(hash string) bool {
 
 func (m *implementation) SetDataDAIncluded(hash string, daHeight uint64) {
 	m.dataCache.SetDAIncluded(hash, daHeight)
-}
-
-func (m *implementation) GetDataDAIncludedHeight(hash string) (uint64, bool) {
-	return m.dataCache.GetDAIncludedHeight(hash)
 }
 
 // Pending operations
@@ -219,14 +207,6 @@ func (m *implementation) SetLastSubmittedDataHeight(ctx context.Context, height 
 	m.pendingData.setLastSubmittedDataHeight(ctx, height)
 }
 
-func (m *implementation) GetLastSubmittedHeaderHeight() uint64 {
-	return m.pendingHeaders.getLastSubmittedHeaderHeight()
-}
-
-func (m *implementation) GetLastSubmittedDataHeight() uint64 {
-	return m.pendingData.getLastSubmittedDataHeight()
-}
-
 func (m *implementation) NumPendingHeaders() uint64 {
 	return m.pendingHeaders.numPendingHeaders()
 }
@@ -254,10 +234,6 @@ func (m *implementation) GetPendingEvents() map[uint64]*DAHeightEvent {
 
 func (m *implementation) DeletePendingEvent(height uint64) {
 	m.pendingEventsCache.DeleteItem(height)
-}
-
-func (m *implementation) RangePendingEvents(fn func(uint64, *DAHeightEvent) bool) {
-	m.pendingEventsCache.RangeByHeight(fn)
 }
 
 // Cleanup operations

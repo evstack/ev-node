@@ -44,15 +44,6 @@ func (ph *PendingHeaders) getPendingHeaders(ctx context.Context) ([]*types.Signe
 	return ph.base.getPending(ctx)
 }
 
-// GetLastSubmittedHeaderHeight returns the height of the last successfully submitted header.
-func (ph *PendingHeaders) getLastSubmittedHeaderHeight() uint64 {
-	return ph.base.lastHeight.Load()
-}
-
-func (ph *PendingHeaders) isEmpty() bool {
-	return ph.base.isEmpty()
-}
-
 func (ph *PendingHeaders) numPendingHeaders() uint64 {
 	return ph.base.numPending()
 }

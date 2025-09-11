@@ -62,15 +62,6 @@ func (pb *pendingBase[T]) getPending(ctx context.Context) ([]T, error) {
 	return pending, nil
 }
 
-func (pb *pendingBase[T]) isEmpty() bool {
-	height, err := pb.store.Height(context.Background())
-	if err != nil {
-		pb.logger.Error().Err(err).Msg("failed to get height in isEmpty")
-		return false
-	}
-	return height == pb.lastHeight.Load()
-}
-
 func (pb *pendingBase[T]) numPending() uint64 {
 	height, err := pb.store.Height(context.Background())
 	if err != nil {
