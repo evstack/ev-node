@@ -201,33 +201,13 @@ func (s *DockerTestSuite) FundWallet(ctx context.Context, wallet *tastoratypes.W
 	s.Require().NoError(err)
 }
 
-// StartEvNode initializes and starts an Ev node.
-func (s *DockerTestSuite) StartEvNode(ctx context.Context, bridgeNode *da.Node, evNode *evstack.Node) {
-	err := evNode.Init(ctx)
-	s.Require().NoError(err)
-
-	bridgeNetworkInfo, err := bridgeNode.GetNetworkInfo(ctx)
-	s.Require().NoError(err)
-
-	authToken, err := bridgeNode.GetAuthToken()
-	s.Require().NoError(err)
-
-	bridgeRPCAddress := bridgeNetworkInfo.Internal.RPCAddress()
-	daAddress := fmt.Sprintf("http://%s", bridgeRPCAddress)
-	err = evNode.Start(ctx,
-		"--evnode.da.address", daAddress,
-		"--evnode.da.gas_price", "0.025",
-		"--evnode.da.auth_token", authToken,
-		"--evnode.rpc.address", "0.0.0.0:7331", // bind to 0.0.0.0 so rpc is reachable from test host.
-		"--evnode.da.namespace", "ev-header",
-		"--evnode.da.data_namespace", "ev-data",
-		"--kv-endpoint", "0.0.0.0:8080",
-	)
-	s.Require().NoError(err)
+// StartEVNode initializes and starts an Ev node.
+func (s *DockerTestSuite) StartEVNode(ctx context.Context, bridgeNode *da.Node, evNode *evstack.Node) {
+	s.StartEVNodeWithNamespace(ctx, bridgeNode, evNode, "ev-header", "ev-data")
 }
 
-// StartEvNodeWithNamespace initializes and starts an EV node with a specific namespace.
-func (s *DockerTestSuite) StartEvNodeWithNamespace(ctx context.Context, bridgeNode *da.Node, evNode *evstack.Node, headerNamespace, dataNamespace string) {
+// StartEVNodeWithNamespace initializes and starts an EV node with a specific namespace.
+func (s *DockerTestSuite) StartEVNodeWithNamespace(ctx context.Context, bridgeNode *da.Node, evNode *evstack.Node, headerNamespace, dataNamespace string) {
 	err := evNode.Init(ctx)
 	s.Require().NoError(err)
 

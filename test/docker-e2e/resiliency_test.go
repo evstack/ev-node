@@ -53,7 +53,7 @@ func (s *DockerTestSuite) TestEvNodeRestart() {
 
 		// Start EV node with stored namespaces
 		evNode = s.evNodeChain.GetNodes()[0]
-		s.StartEvNodeWithNamespace(ctx, bridgeNode, evNode, headerNamespace, dataNamespace)
+		s.StartEVNodeWithNamespace(ctx, bridgeNode, evNode, headerNamespace, dataNamespace)
 
 		// Create HTTP client for testing
 		networkInfo, err = evNode.GetNetworkInfo(ctx)
@@ -211,7 +211,7 @@ func (s *DockerTestSuite) TestCelestiaDANetworkPartitionE2E() {
 
 		// Start EV node with stored namespace
 		evNode = s.evNodeChain.GetNodes()[0]
-		s.StartEvNodeWithNamespace(ctx, bridgeNode, evNode, headerNamespace, dataNamespace)
+		s.StartEVNodeWithNamespace(ctx, bridgeNode, evNode, headerNamespace, dataNamespace)
 		t.Log("✅ EV node started")
 
 		// Create HTTP client for testing
@@ -504,7 +504,7 @@ func (s *DockerTestSuite) TestDataCorruptionRecovery() {
 
 		// Start EV node
 		evNode = s.evNodeChain.GetNodes()[0]
-		s.StartEvNodeWithNamespace(ctx, bridgeNode, evNode, headerNamespace, dataNamespace)
+		s.StartEVNodeWithNamespace(ctx, bridgeNode, evNode, headerNamespace, dataNamespace)
 		t.Log("✅ EV node started")
 
 		// Create HTTP client

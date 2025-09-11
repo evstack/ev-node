@@ -46,7 +46,7 @@ func (s *DockerTestSuite) TestBasicDockerE2E() {
 	})
 
 	s.T().Run("start evolve chain node", func(t *testing.T) {
-		s.StartEvNode(ctx, bridgeNode, s.evNodeChain.GetNodes()[0])
+		s.StartEVNode(ctx, bridgeNode, s.evNodeChain.GetNodes()[0])
 	})
 
 	s.T().Run("submit a transaction to the evolve chain", func(t *testing.T) {
