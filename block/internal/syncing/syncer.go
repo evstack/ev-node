@@ -660,9 +660,7 @@ func (s *Syncer) processPendingEvents() {
 			case s.heightInCh <- heightEvent:
 				// Remove from pending events once sent
 				s.cache.DeletePendingEvent(height)
-			default:
-				s.logger.Warn().Uint64("height", height).Msg("height channel full, keeping pending event")
-				// Keep the event in cache to try again later
+			case <-s.ctx.Done():
 				return
 			}
 		} else {
