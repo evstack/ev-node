@@ -51,8 +51,8 @@ func TestPendingHeadersAndData_Flow(t *testing.T) {
 	signedData, err := cm.GetPendingData(ctx)
 	require.NoError(t, err)
 	require.Len(t, signedData, 2)
-	assert.Equal(t, uint64(2), signedData[0].Data.Height())
-	assert.Equal(t, uint64(3), signedData[1].Data.Height())
+	assert.Equal(t, uint64(2), signedData[0].Height())
+	assert.Equal(t, uint64(3), signedData[1].Height())
 
 	// update last submitted heights and re-check
 	cm.SetLastSubmittedHeaderHeight(ctx, 1)
@@ -66,7 +66,7 @@ func TestPendingHeadersAndData_Flow(t *testing.T) {
 	signedData, err = cm.GetPendingData(ctx)
 	require.NoError(t, err)
 	require.Len(t, signedData, 1)
-	assert.Equal(t, uint64(3), signedData[0].Data.Height())
+	assert.Equal(t, uint64(3), signedData[0].Height())
 
 	// numPending views
 	assert.Equal(t, uint64(2), cm.NumPendingHeaders())

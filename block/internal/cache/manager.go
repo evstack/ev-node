@@ -1,17 +1,16 @@
 package cache
 
 import (
-    "context"
-    "encoding/gob"
-    "fmt"
-    "path/filepath"
-    "sync"
+	"context"
+	"encoding/gob"
+	"fmt"
+	"path/filepath"
 
 	"github.com/rs/zerolog"
 
-    "github.com/evstack/ev-node/pkg/config"
-    "github.com/evstack/ev-node/pkg/store"
-    "github.com/evstack/ev-node/types"
+	"github.com/evstack/ev-node/pkg/config"
+	"github.com/evstack/ev-node/pkg/store"
+	"github.com/evstack/ev-node/types"
 )
 
 var (
@@ -72,22 +71,21 @@ type Manager interface {
 
 // implementation provides the concrete implementation of cache Manager
 type implementation struct {
-    headerCache        *Cache[types.SignedHeader]
-    dataCache          *Cache[types.Data]
-    pendingEventsCache *Cache[DAHeightEvent]
-    pendingHeaders     *PendingHeaders
-    pendingData        *PendingData
-    config             config.Config
-    logger             zerolog.Logger
-    mutex              sync.RWMutex
+	headerCache        *Cache[types.SignedHeader]
+	dataCache          *Cache[types.Data]
+	pendingEventsCache *Cache[DAHeightEvent]
+	pendingHeaders     *PendingHeaders
+	pendingData        *PendingData
+	config             config.Config
+	logger             zerolog.Logger
 }
 
 // NewManager creates a new cache manager instance
 func NewManager(cfg config.Config, store store.Store, logger zerolog.Logger) (Manager, error) {
-    // Initialize caches
-    headerCache := NewCache[types.SignedHeader]()
-    dataCache := NewCache[types.Data]()
-    pendingEventsCache := NewCache[DAHeightEvent]()
+	// Initialize caches
+	headerCache := NewCache[types.SignedHeader]()
+	dataCache := NewCache[types.Data]()
+	pendingEventsCache := NewCache[DAHeightEvent]()
 
 	// Initialize pending managers
 	pendingHeaders, err := NewPendingHeaders(store, logger)
