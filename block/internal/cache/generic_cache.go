@@ -55,10 +55,10 @@ func (c *Cache[T]) GetItem(height uint64) *T {
 
 // SetItem sets an item in the cache by height
 func (c *Cache[T]) SetItem(height uint64, item *T) {
-	// check if key already exists to avoid duplicate index entries
-	if _, ok := c.itemsByHeight.Load(height); !ok {
-		c.insertHeight(height)
-	}
+	// Ensure height is present in the height index.
+	// insertHeight is idempotent and internally synchronized, avoiding races
+	// between the existence check and insertion.
+	c.insertHeight(height)
 	c.itemsByHeight.Store(height, item)
 }
 
@@ -367,6 +367,19 @@ func (c *Cache[T]) deleteHeight(h uint64) {
     if i < len(c.heightKeys) && c.heightKeys[i] == h {
         copy(c.heightKeys[i:], c.heightKeys[i+1:])
         c.heightKeys = c.heightKeys[:len(c.heightKeys)-1]
+        // Opportunistically compact backing array to control memory growth
+        // when many deletions have occurred and capacity is far above length.
+        const (
+            shrinkMinCap      = 4096 // only consider shrinking if capacity is sizable
+            shrinkExcessRatio = 4    // shrink when cap is >= 4x len
+        )
+        if cap(c.heightKeys) >= shrinkMinCap && len(c.heightKeys) > 0 && cap(c.heightKeys) >= shrinkExcessRatio*len(c.heightKeys) {
+            // Allocate a new slice with a tighter capacity to release memory.
+            newCap := len(c.heightKeys)
+            tmp := make([]uint64, len(c.heightKeys), newCap)
+            copy(tmp, c.heightKeys)
+            c.heightKeys = tmp
+        }
     }
 }
 
