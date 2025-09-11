@@ -332,7 +332,7 @@ func (e *Executor) executionLoop() {
 				e.logger.Error().Err(err).Msg("failed to produce block from lazy timer")
 			}
 			// Reset lazy timer
-			lazyTimer.Reset(e.config.Node.BlockTime.Duration * 2)
+			lazyTimer.Reset(e.config.Node.LazyBlockInterval.Duration)
 
 		case <-e.txNotifyCh:
 			txsAvailable = true
