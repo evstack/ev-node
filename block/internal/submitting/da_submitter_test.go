@@ -143,8 +143,8 @@ func TestDASubmitter_SubmitHeaders_Success(t *testing.T) {
 	}
 
 	// Save to store to make them pending
-	sig1 := types.Signature(header1.Signature)
-	sig2 := types.Signature(header2.Signature)
+	sig1 := header1.Signature
+	sig2 := header2.Signature
 	require.NoError(t, st.SaveBlockData(ctx, header1, data1, &sig1))
 	require.NoError(t, st.SaveBlockData(ctx, header2, data2, &sig2))
 	require.NoError(t, st.SetHeight(ctx, 2))

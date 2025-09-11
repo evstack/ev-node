@@ -21,11 +21,6 @@ import (
 	"github.com/evstack/ev-node/types"
 )
 
-// daRetriever interface defines the methods required to retrieve blocks from the DA layer.
-type daRetriever interface {
-	RetrieveFromDA(ctx context.Context, daHeight uint64) ([]common.DAHeightEvent, error)
-}
-
 // Syncer handles block synchronization from DA and P2P sources.
 type Syncer struct {
 	// Core components
