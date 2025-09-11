@@ -1,4 +1,4 @@
-package syncing
+package common
 
 import (
 	"context"
@@ -14,7 +14,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/evstack/ev-node/block/internal/cache"
-	"github.com/evstack/ev-node/block/internal/common"
 	coreda "github.com/evstack/ev-node/core/da"
 	"github.com/evstack/ev-node/pkg/config"
 	"github.com/evstack/ev-node/pkg/genesis"
@@ -74,7 +73,7 @@ func TestDAHandler_SubmitHeadersAndData_MarksInclusionAndUpdatesLastSubmitted(t 
 	// Dummy DA
 	dummyDA := coreda.NewDummyDA(10_000_000, 0, 0, 10*time.Millisecond)
 
-	handler := NewDAHandler(dummyDA, cm, cfg, gen, common.DefaultBlockOptions(), zerolog.Nop())
+	handler := NewDAHandler(dummyDA, cm, cfg, gen, DefaultBlockOptions(), zerolog.Nop())
 
 	// Submit headers and data
 	require.NoError(t, handler.SubmitHeaders(context.Background(), cm))

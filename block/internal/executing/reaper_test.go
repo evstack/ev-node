@@ -37,6 +37,7 @@ func newTestExecutor(t *testing.T) *Executor {
 		nil, // core executor (unused)
 		nil, // sequencer (unused)
 		s,   // signer (required)
+		nil, // DA (unused)
 		nil, // cache (unused)
 		nil, // metrics (unused)
 		config.DefaultConfig,

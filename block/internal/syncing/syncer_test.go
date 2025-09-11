@@ -3,90 +3,17 @@ package syncing
 import (
 	"context"
 	"testing"
-	"time"
 
-	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 
 	"github.com/evstack/ev-node/block/internal/cache"
 	"github.com/evstack/ev-node/block/internal/common"
-	"github.com/evstack/ev-node/pkg/config"
-	"github.com/evstack/ev-node/pkg/genesis"
 	"github.com/evstack/ev-node/types"
 )
 
-func TestDAHandler_ProcessBlobs_ReturnsEvents(t *testing.T) {
-	// Create a mock cache for the test
-	mockCache := &MockCacheManager{}
-
-	// Create DA handler
-	cfg := config.DefaultConfig
-	cfg.DA.Namespace = "test-namespace"
-	gen := genesis.Genesis{
-		ChainID:         "test-chain",
-		InitialHeight:   1,
-		StartTime:       time.Now(),
-		ProposerAddress: []byte("test-proposer"),
-	}
-
-	handler := NewDAHandler(
-		nil, // We're not testing DA layer interaction
-		mockCache,
-		cfg,
-		gen,
-		common.DefaultBlockOptions(),
-		zerolog.Nop(),
-	)
-
-	// Create test header and data blobs
-	header := &types.SignedHeader{
-		Header: types.Header{
-			BaseHeader: types.BaseHeader{
-				ChainID: "test-chain",
-				Height:  1,
-				Time:    uint64(time.Now().UnixNano()),
-			},
-			ProposerAddress: []byte("test-proposer"),
-		},
-	}
-
-	data := &types.Data{
-		Metadata: &types.Metadata{
-			ChainID: "test-chain",
-			Height:  1,
-			Time:    uint64(time.Now().UnixNano()),
-		},
-		Txs: []types.Tx{},
-	}
-
-	// Create blobs (this is simplified - normally would be protobuf marshaled)
-	headerBlob, err := header.MarshalBinary()
-	require.NoError(t, err)
-
-	dataBlob, err := data.MarshalBinary()
-	require.NoError(t, err)
-
-	blobs := [][]byte{headerBlob, dataBlob}
-	daHeight := uint64(100)
-
-	// Process blobs
-	ctx := context.Background()
-	events := handler.processBlobs(ctx, blobs, daHeight)
-
-	// Verify that events are returned
-	// Note: This test will fail with the current protobuf decoding logic
-	// but demonstrates the expected behavior once proper blob encoding is implemented
-	t.Logf("Processed %d blobs, got %d events", len(blobs), len(events))
-
-	// The actual assertion would depend on proper blob encoding
-	// For now, we verify the function doesn't panic and returns a slice
-	assert.NotNil(t, events)
-}
-
 func TestHeightEvent_Structure(t *testing.T) {
 	// Test that HeightEvent has all required fields
-	event := HeightEvent{
+	event := common.HeightEvent{
 		Header: &types.SignedHeader{
 			Header: types.Header{
 				BaseHeader: types.BaseHeader{

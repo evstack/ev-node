@@ -87,6 +87,8 @@ func newFullNode(
 	blockMetrics, _ := metricsProvider(genesis.ChainID)
 
 	mainKV := newPrefixKV(database, EvPrefix)
+	rktStore := store.New(mainKV)
+
 	headerSyncService, err := initHeaderSyncService(mainKV, nodeConfig, genesis, p2pClient, logger)
 	if err != nil {
 		return nil, err
@@ -97,11 +99,9 @@ func newFullNode(
 		return nil, err
 	}
 
-	rktStore := store.New(mainKV)
-
 	var blockComponents *block.BlockComponents
 	if nodeConfig.Node.Aggregator {
-		blockComponents, err = block.NewFullNodeAggregator(
+		blockComponents, err = block.NewAggregatorNode(
 			nodeConfig,
 			genesis,
 			rktStore,
@@ -118,7 +118,7 @@ func newFullNode(
 			nodeOpts.BlockOptions,
 		)
 	} else {
-		blockComponents, err = block.NewFullNode(
+		blockComponents, err = block.NewSyncNode(
 			nodeConfig,
 			genesis,
 			rktStore,
@@ -482,22 +482,16 @@ func (n *FullNode) startBlockComponents(ctx context.Context) error {
 
 	n.Logger.Info().Msg("starting block components")
 
-	// Start syncing component first (always present)
+	// Start syncing component for sync nodes
 	if n.blockComponents.Syncer != nil {
 		if err := n.blockComponents.Syncer.Start(ctx); err != nil {
 			return fmt.Errorf("failed to start syncer: %w", err)
 		}
 	}
 
-	// Start executing component for full nodes
+	// Start executing component for aggregator node
 	if n.blockComponents.Executor != nil {
 		if err := n.blockComponents.Executor.Start(ctx); err != nil {
-			// Stop syncer if executor fails to start
-			if n.blockComponents.Syncer != nil {
-				if stopErr := n.blockComponents.Syncer.Stop(); stopErr != nil {
-					n.Logger.Error().Err(stopErr).Msg("failed to stop syncer after executor start failure")
-				}
-			}
 			return fmt.Errorf("failed to start executor: %w", err)
 		}
 	}

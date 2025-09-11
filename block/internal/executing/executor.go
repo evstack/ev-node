@@ -13,6 +13,7 @@ import (
 
 	"github.com/evstack/ev-node/block/internal/cache"
 	"github.com/evstack/ev-node/block/internal/common"
+	coreda "github.com/evstack/ev-node/core/da"
 	coreexecutor "github.com/evstack/ev-node/core/execution"
 	coresequencer "github.com/evstack/ev-node/core/sequencer"
 	"github.com/evstack/ev-node/pkg/config"
@@ -32,6 +33,12 @@ type broadcaster[T any] interface {
 	WriteToStoreAndBroadcast(ctx context.Context, payload T) error
 }
 
+// daHandler is the expected interface for the DA publishing
+type daHandler interface {
+	SubmitHeaders(ctx context.Context, cache cache.Manager) error
+	SubmitData(ctx context.Context, cache cache.Manager, signer signer.Signer, genesis genesis.Genesis) error
+}
+
 // Executor handles block production, transaction processing, and state management
 type Executor struct {
 	// Core components
@@ -39,6 +46,7 @@ type Executor struct {
 	exec      coreexecutor.Executor
 	sequencer coresequencer.Sequencer
 	signer    signer.Signer
+	da        coreda.DA
 
 	// Shared components
 	cache   cache.Manager
@@ -63,6 +71,9 @@ type Executor struct {
 	// Reaper for transaction processing
 	reaper *Reaper
 
+	// DA handler for submissions
+	daHandler daHandler
+
 	// Logging
 	logger zerolog.Logger
 
@@ -72,12 +83,18 @@ type Executor struct {
 	wg     sync.WaitGroup
 }
 
-// NewExecutor creates a new block executor
+// NewExecutor creates a new block executor.
+// The executor is responsible for:
+// - Block production from sequencer batches
+// - State transitions and validation
+// - P2P broadcasting of produced blocks
+// - DA submission of headers and data
 func NewExecutor(
 	store store.Store,
 	exec coreexecutor.Executor,
 	sequencer coresequencer.Sequencer,
 	signer signer.Signer,
+	da coreda.DA,
 	cache cache.Manager,
 	metrics *common.Metrics,
 	config config.Config,
@@ -96,6 +113,7 @@ func NewExecutor(
 		exec:              exec,
 		sequencer:         sequencer,
 		signer:            signer,
+		da:                da,
 		cache:             cache,
 		metrics:           metrics,
 		config:            config,
@@ -131,6 +149,9 @@ func (e *Executor) Start(ctx context.Context) error {
 	}
 	e.reaper = NewReaper(e.ctx, e.exec, e.sequencer, e.genesis.ChainID, DefaultInterval, e.logger, reaperStore, e)
 
+	// Initialize DA handler
+	e.daHandler = common.NewDAHandler(e.da, e.cache, e.config, e.genesis, e.options, e.logger)
+
 	// Start execution loop
 	e.wg.Add(1)
 	go func() {
@@ -143,6 +164,13 @@ func (e *Executor) Start(ctx context.Context) error {
 	go func() {
 		defer e.wg.Done()
 		e.reaper.Start(e.ctx)
+	}()
+
+	// Start DA submission loop
+	e.wg.Add(1)
+	go func() {
+		defer e.wg.Done()
+		e.daSubmissionLoop()
 	}()
 
 	e.logger.Info().Msg("executor started")
@@ -654,6 +682,36 @@ func (e *Executor) recordBlockMetrics(data *types.Data) {
 	e.metrics.TotalTxs.Add(float64(len(data.Txs)))
 	e.metrics.BlockSizeBytes.Set(float64(data.Size()))
 	e.metrics.CommittedHeight.Set(float64(data.Metadata.Height))
+}
+
+// daSubmissionLoop handles submission of headers and data to DA layer for aggregator nodes.
+func (e *Executor) daSubmissionLoop() {
+	e.logger.Info().Msg("starting DA submission loop")
+	defer e.logger.Info().Msg("DA submission loop stopped")
+
+	ticker := time.NewTicker(e.config.DA.BlockTime.Duration)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-e.ctx.Done():
+			return
+		case <-ticker.C:
+			// Submit headers
+			if e.cache.NumPendingHeaders() != 0 {
+				if err := e.daHandler.SubmitHeaders(e.ctx, e.cache); err != nil {
+					e.logger.Error().Err(err).Msg("failed to submit headers")
+				}
+			}
+
+			// Submit data
+			if e.cache.NumPendingData() != 0 {
+				if err := e.daHandler.SubmitData(e.ctx, e.cache, e.signer, e.genesis); err != nil {
+					e.logger.Error().Err(err).Msg("failed to submit data")
+				}
+			}
+		}
+	}
 }
 
 // BatchData represents batch data from sequencer

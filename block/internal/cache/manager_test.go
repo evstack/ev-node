@@ -1,6 +1,7 @@
 package cache
 
 import (
+	"context"
 	"encoding/gob"
 	"path/filepath"
 	"testing"
@@ -143,4 +144,64 @@ func TestManager_SaveAndLoadFromDisk(t *testing.T) {
 	assert.DirExists(t, filepath.Join(base, "header"))
 	assert.DirExists(t, filepath.Join(base, "data"))
 	assert.DirExists(t, filepath.Join(base, "pending_da_events"))
+}
+
+func TestPendingHeadersAndData_Flow(t *testing.T) {
+	t.Parallel()
+	st := memStore(t)
+	ctx := context.Background()
+	logger := zerolog.Nop()
+
+	// create 3 blocks, with varying number of txs to test data filtering
+	chainID := "chain-pending"
+	h1, d1 := types.GetRandomBlock(1, 0, chainID) // empty data -> should be filtered out
+	h2, d2 := types.GetRandomBlock(2, 1, chainID)
+	h3, d3 := types.GetRandomBlock(3, 2, chainID)
+
+	// persist in store and set height
+	for _, pair := range []struct {
+		h *types.SignedHeader
+		d *types.Data
+	}{{h1, d1}, {h2, d2}, {h3, d3}} {
+		err := st.SaveBlockData(ctx, pair.h, pair.d, &types.Signature{})
+		require.NoError(t, err)
+	}
+	require.NoError(t, st.SetHeight(ctx, 3))
+
+	// construct manager which brings up pending managers
+	cfg := tempConfig(t)
+	cm, err := NewManager(cfg, st, logger)
+	require.NoError(t, err)
+
+	// headers: all 3 should be pending initially
+	headers, err := cm.GetPendingHeaders(ctx)
+	require.NoError(t, err)
+	require.Len(t, headers, 3)
+	assert.Equal(t, uint64(1), headers[0].Height())
+	assert.Equal(t, uint64(3), headers[2].Height())
+
+	// data: empty one filtered, so 2 and 3 only
+	signedData, err := cm.GetPendingData(ctx)
+	require.NoError(t, err)
+	require.Len(t, signedData, 2)
+	assert.Equal(t, uint64(2), signedData[0].Height())
+	assert.Equal(t, uint64(3), signedData[1].Height())
+
+	// update last submitted heights and re-check
+	cm.SetLastSubmittedHeaderHeight(ctx, 1)
+	cm.SetLastSubmittedDataHeight(ctx, 2)
+
+	headers, err = cm.GetPendingHeaders(ctx)
+	require.NoError(t, err)
+	require.Len(t, headers, 2)
+	assert.Equal(t, uint64(2), headers[0].Height())
+
+	signedData, err = cm.GetPendingData(ctx)
+	require.NoError(t, err)
+	require.Len(t, signedData, 1)
+	assert.Equal(t, uint64(3), signedData[0].Height())
+
+	// numPending views
+	assert.Equal(t, uint64(2), cm.NumPendingHeaders())
+	assert.Equal(t, uint64(1), cm.NumPendingData())
 }
