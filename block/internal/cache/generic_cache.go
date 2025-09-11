@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"sync"
 )
 
@@ -34,13 +35,17 @@ func NewCache[T any]() *Cache[T] {
 	}
 }
 
-// GetItem returns an item from the cache by height
+// GetItem returns an item from the cache by height.
+// Returns nil if not found or type mismatch.
 func (c *Cache[T]) GetItem(height uint64) *T {
 	item, ok := c.itemsByHeight.Load(height)
 	if !ok {
 		return nil
 	}
-	val := item.(*T)
+	val, ok := item.(*T)
+	if !ok {
+		return nil
+	}
 	return val
 }
 
@@ -59,13 +64,19 @@ func (c *Cache[T]) DeleteItem(height uint64) {
 	c.deleteHeight(height)
 }
 
-// RangeByHeight iterates over all items keyed by uint64 height and calls fn for each.
+// RangeByHeight iterates over items keyed by height in an unspecified order and calls fn for each.
 // If fn returns false, iteration stops early.
 func (c *Cache[T]) RangeByHeight(fn func(height uint64, item *T) bool) {
 	c.itemsByHeight.Range(func(k, v any) bool {
-		height := k.(uint64)
-		item := v.(*T)
-		return fn(height, item)
+		height, ok := k.(uint64)
+		if !ok {
+			return true
+		}
+		it, ok := v.(*T)
+		if !ok {
+			return true
+		}
+		return fn(height, it)
 	})
 }
 
@@ -74,7 +85,11 @@ func (c *Cache[T]) RangeByHeightAsc(fn func(height uint64, item *T) bool) {
 	keys := c.snapshotHeightsAsc()
 	for _, h := range keys {
 		if v, ok := c.itemsByHeight.Load(h); ok {
-			if !fn(h, v.(*T)) {
+			it, ok := v.(*T)
+			if !ok {
+				continue
+			}
+			if !fn(h, it) {
 				return
 			}
 		}
@@ -86,20 +101,28 @@ func (c *Cache[T]) RangeByHeightDesc(fn func(height uint64, item *T) bool) {
 	keys := c.snapshotHeightsDesc()
 	for _, h := range keys {
 		if v, ok := c.itemsByHeight.Load(h); ok {
-			if !fn(h, v.(*T)) {
+			it, ok := v.(*T)
+			if !ok {
+				continue
+			}
+			if !fn(h, it) {
 				return
 			}
 		}
 	}
 }
 
-// GetItemByHash returns an item from the cache by string hash key
+// GetItemByHash returns an item from the cache by string hash key.
+// Returns nil if not found or type mismatch.
 func (c *Cache[T]) GetItemByHash(hash string) *T {
 	item, ok := c.itemsByHash.Load(hash)
 	if !ok {
 		return nil
 	}
-	val := item.(*T)
+	val, ok := item.(*T)
+	if !ok {
+		return nil
+	}
 	return val
 }
 
@@ -113,13 +136,19 @@ func (c *Cache[T]) DeleteItemByHash(hash string) {
 	c.itemsByHash.Delete(hash)
 }
 
-// RangeByHash iterates over all items keyed by string hash and calls fn for each
+// RangeByHash iterates over all items keyed by string hash and calls fn for each.
 // If fn returns false, iteration stops early.
 func (c *Cache[T]) RangeByHash(fn func(hash string, item *T) bool) {
 	c.itemsByHash.Range(func(k, v any) bool {
-		key := k.(string)
-		item := v.(*T)
-		return fn(key, item)
+		key, ok := k.(string)
+		if !ok {
+			return true
+		}
+		it, ok := v.(*T)
+		if !ok {
+			return true
+		}
+		return fn(key, it)
 	})
 }
 
@@ -212,11 +241,19 @@ func (c *Cache[T]) SaveToDisk(folderPath string) error {
 	itemsByHashMap := make(map[string]*T)
 
 	c.itemsByHeight.Range(func(k, v any) bool {
-		itemsByHeightMap[k.(uint64)] = v.(*T)
+		if hk, ok := k.(uint64); ok {
+			if it, ok := v.(*T); ok {
+				itemsByHeightMap[hk] = it
+			}
+		}
 		return true
 	})
 	c.itemsByHash.Range(func(k, v any) bool {
-		itemsByHashMap[k.(string)] = v.(*T)
+		if hk, ok := k.(string); ok {
+			if it, ok := v.(*T); ok {
+				itemsByHashMap[hk] = it
+			}
+		}
 		return true
 	})
 
@@ -303,42 +340,22 @@ func (c *Cache[T]) LoadFromDisk(folderPath string) error {
 func (c *Cache[T]) insertHeight(h uint64) {
 	c.heightIndexMu.Lock()
 	defer c.heightIndexMu.Unlock()
-	// binary search for position
-	lo, hi := 0, len(c.heightKeys)
-	for lo < hi {
-		mid := (lo + hi) / 2
-		if c.heightKeys[mid] < h {
-			lo = mid + 1
-		} else {
-			hi = mid
-		}
-	}
-	// if exists at position, return
-	if lo < len(c.heightKeys) && c.heightKeys[lo] == h {
+	i := sort.Search(len(c.heightKeys), func(i int) bool { return c.heightKeys[i] >= h })
+	if i < len(c.heightKeys) && c.heightKeys[i] == h {
 		return
 	}
-	// insert at lo
 	c.heightKeys = append(c.heightKeys, 0)
-	copy(c.heightKeys[lo+1:], c.heightKeys[lo:])
-	c.heightKeys[lo] = h
+	copy(c.heightKeys[i+1:], c.heightKeys[i:])
+	c.heightKeys[i] = h
 }
 
 // deleteHeight removes h if present.
 func (c *Cache[T]) deleteHeight(h uint64) {
 	c.heightIndexMu.Lock()
 	defer c.heightIndexMu.Unlock()
-	// binary search
-	lo, hi := 0, len(c.heightKeys)
-	for lo < hi {
-		mid := (lo + hi) / 2
-		if c.heightKeys[mid] < h {
-			lo = mid + 1
-		} else {
-			hi = mid
-		}
-	}
-	if lo < len(c.heightKeys) && c.heightKeys[lo] == h {
-		copy(c.heightKeys[lo:], c.heightKeys[lo+1:])
+	i := sort.Search(len(c.heightKeys), func(i int) bool { return c.heightKeys[i] >= h })
+	if i < len(c.heightKeys) && c.heightKeys[i] == h {
+		copy(c.heightKeys[i:], c.heightKeys[i+1:])
 		c.heightKeys = c.heightKeys[:len(c.heightKeys)-1]
 	}
 }
