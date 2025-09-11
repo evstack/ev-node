@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/celestiaorg/tastora/framework/types"
+	da "github.com/celestiaorg/tastora/framework/docker/dataavailability"
 	"github.com/stretchr/testify/require"
 )
 
@@ -17,7 +17,7 @@ func (s *DockerTestSuite) TestBasicDockerE2E() {
 	s.SetupDockerResources()
 
 	var (
-		bridgeNode types.DANode
+		bridgeNode *da.Node
 	)
 
 	s.T().Run("start celestia chain", func(t *testing.T) {
@@ -28,8 +28,9 @@ func (s *DockerTestSuite) TestBasicDockerE2E() {
 	s.T().Run("start bridge node", func(t *testing.T) {
 		genesisHash := s.getGenesisHash(ctx)
 
-		celestiaNodeHostname, err := s.celestia.GetNodes()[0].GetInternalHostName(ctx)
+		networkInfo, err := s.celestia.GetNodes()[0].GetNetworkInfo(ctx)
 		s.Require().NoError(err)
+		celestiaNodeHostname := networkInfo.Internal.Hostname
 
 		bridgeNode = s.daNetwork.GetBridgeNodes()[0]
 
@@ -49,28 +50,40 @@ func (s *DockerTestSuite) TestBasicDockerE2E() {
 	})
 
 	s.T().Run("submit a transaction to the evolve chain", func(t *testing.T) {
-		rollkitNode := s.evNodeChain.GetNodes()[0]
+		evNode := s.evNodeChain.GetNodes()[0]
 
 		// Debug: Check if the node is running and all ports
-		t.Logf("Rollkit node RPC port: %s", rollkitNode.GetHostRPCPort())
-		t.Logf("Rollkit node GRPC port: %s", rollkitNode.GetHostGRPCPort())
-		t.Logf("Rollkit node P2P port: %s", rollkitNode.GetHostP2PPort())
+		networkInfo, err := evNode.GetNetworkInfo(ctx)
+		require.NoError(t, err)
+
+		t.Logf("EV node RPC port: %s", networkInfo.External.RPCAddress())
+		t.Logf("EV node HTTP port: %s", networkInfo.External.HTTPAddress())
 
 		// The http port resolvable by the test runner.
-		httpPortStr := rollkitNode.GetHostHTTPPort()
-		t.Logf("Rollkit node HTTP port: %s", httpPortStr)
+		httpPortStr := networkInfo.External.HTTPAddress()
+		t.Logf("EV node HTTP address: %s", httpPortStr)
 
 		if httpPortStr == "" {
-			t.Fatal("HTTP port is empty - this indicates the HTTP server is not running or port mapping failed")
+			t.Fatal("HTTP address is empty - this indicates the HTTP server is not running or port mapping failed")
 		}
 
-		// Extract just the port number if it includes an address
-		httpPort := strings.Split(httpPortStr, ":")[len(strings.Split(httpPortStr, ":"))-1]
-		t.Logf("Extracted port: %s", httpPort)
+		// Extract the host and port from the address
+		parts := strings.Split(httpPortStr, ":")
+		if len(parts) != 2 {
+			t.Fatalf("Invalid HTTP address format: %s", httpPortStr)
+		}
+		host, port := parts[0], parts[1]
 
-		client, err := NewClient("localhost", httpPort)
+		// Use localhost since this is the external address accessible from the test host
+		if host == "0.0.0.0" {
+			host = "localhost"
+		}
+
+		t.Logf("Extracted host: %s, port: %s", host, port)
+
+		client, err := NewClient(host, port)
 		require.NoError(t, err)
-		t.Logf("Created HTTP client with base URL: http://localhost:%s", httpPort)
+		t.Logf("Created HTTP client with base URL: http://%s:%s", host, port)
 
 		key := "key1"
 		value := "value1"
