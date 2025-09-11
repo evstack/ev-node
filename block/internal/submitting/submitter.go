@@ -100,7 +100,6 @@ func (s *Submitter) Start(ctx context.Context) error {
 		s.processDAInclusionLoop()
 	}()
 
-	s.logger.Info().Bool("has_signer", s.signer != nil).Msg("submitter started")
 	return nil
 }
 
