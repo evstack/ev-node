@@ -11,6 +11,21 @@ import (
 	"github.com/evstack/ev-node/types"
 )
 
+/*
+ goos: darwin
+ goarch: arm64
+ pkg: github.com/evstack/ev-node/block/internal/cache
+ cpu: Apple M1 Pro
+ BenchmarkManager_GetPendingHeaders/N=1000-10 	     		 285	4130414 ns/op	5059287 B/op	  70818 allocs/op
+ BenchmarkManager_GetPendingHeaders/N=10000-10         	      30	45453744 ns/op	   50646610 B/op	 709871 allocs/op
+ BenchmarkManager_GetPendingData/N=1000-10             	     267	   4444774 ns/op	5872592 B/op	   73825 allocs/op
+ BenchmarkManager_GetPendingData/N=10000-10            	      26	  45822463 ns/op	58655113 B/op	  739926 allocs/op
+ BenchmarkManager_PendingEventsSnapshot-10             	     338	   3431588 ns/op	2365527 B/op	     285 allocs/op
+ BenchmarkHeaderCache_RangeAsc-10                      	     744	   1570980 ns/op	 401714 B/op	       7 allocs/op
+ PASS
+ ok  	github.com/evstack/ev-node/block/internal/cache	26.385s
+*/
+
 func benchSetupStore(b *testing.B, n int, txsPer int, chainID string) store.Store {
 	ds, err := store.NewDefaultInMemoryKVStore()
 	if err != nil {
