@@ -92,7 +92,6 @@ func TestCache_TypeSafety(t *testing.T) {
 
 	// Inject invalid value types directly into maps (bypassing typed methods)
 	c.itemsByHeight.Store(uint64(1), "not-a-*testItem")
-	c.itemsByHash.Store("bad", 12345)
 
 	if got := c.GetItem(1); got != nil {
 		t.Fatalf("expected nil for invalid stored type, got %#v", got)

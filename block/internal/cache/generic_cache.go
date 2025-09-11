@@ -13,8 +13,6 @@ import (
 type Cache[T any] struct {
 	// itemsByHeight stores items keyed by uint64 height
 	itemsByHeight *sync.Map
-	// itemsByHash stores items keyed by string hash (optional)
-	itemsByHash *sync.Map
 	// hashes tracks whether a given hash has been seen
 	hashes *sync.Map
 	// daIncluded tracks the DA inclusion height for a given hash
@@ -29,7 +27,6 @@ type Cache[T any] struct {
 func NewCache[T any]() *Cache[T] {
 	return &Cache[T]{
 		itemsByHeight: new(sync.Map),
-		itemsByHash:   new(sync.Map),
 		hashes:        new(sync.Map),
 		daIncluded:    new(sync.Map),
 	}
@@ -107,7 +104,6 @@ func (c *Cache[T]) SetDAIncluded(hash string, daHeight uint64) {
 
 const (
 	itemsByHeightFilename = "items_by_height.gob"
-	itemsByHashFilename   = "items_by_hash.gob"
 	hashesFilename        = "hashes.gob"
 	daIncludedFilename    = "da_included.gob"
 )
@@ -157,7 +153,6 @@ func (c *Cache[T]) SaveToDisk(folderPath string) error {
 
 	// prepare items maps
 	itemsByHeightMap := make(map[uint64]*T)
-	itemsByHashMap := make(map[string]*T)
 
 	c.itemsByHeight.Range(func(k, v any) bool {
 		if hk, ok := k.(uint64); ok {
@@ -167,19 +162,8 @@ func (c *Cache[T]) SaveToDisk(folderPath string) error {
 		}
 		return true
 	})
-	c.itemsByHash.Range(func(k, v any) bool {
-		if hk, ok := k.(string); ok {
-			if it, ok := v.(*T); ok {
-				itemsByHashMap[hk] = it
-			}
-		}
-		return true
-	})
 
 	if err := saveMapGob(filepath.Join(folderPath, itemsByHeightFilename), itemsByHeightMap); err != nil {
-		return err
-	}
-	if err := saveMapGob(filepath.Join(folderPath, itemsByHashFilename), itemsByHashMap); err != nil {
 		return err
 	}
 
@@ -223,15 +207,6 @@ func (c *Cache[T]) LoadFromDisk(folderPath string) error {
 	for k, v := range itemsByHeightMap {
 		c.itemsByHeight.Store(k, v)
 		c.insertHeight(k)
-	}
-
-	// load items by hash
-	itemsByHashMap, err := loadMapGob[string, *T](filepath.Join(folderPath, itemsByHashFilename))
-	if err != nil {
-		return fmt.Errorf("failed to load items by hash: %w", err)
-	}
-	for k, v := range itemsByHashMap {
-		c.itemsByHash.Store(k, v)
 	}
 
 	// load hashes
