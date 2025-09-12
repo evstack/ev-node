@@ -100,11 +100,11 @@ func NewRollbackCmd() *cobra.Command {
 			}
 			defer dataStore.Stop(goCtx)
 
-			if err := headerStore.DeleteTo(goCtx, height); err != nil {
+			if err := headerStore.DeleteRange(goCtx, height+1, headerStore.Height()); err != nil {
 				return fmt.Errorf("failed to rollback header sync service state: %w", err)
 			}
 
-			if err := dataStore.DeleteTo(goCtx, height); err != nil {
+			if err := dataStore.DeleteRange(goCtx, height+1, dataStore.Height()); err != nil {
 				return fmt.Errorf("failed to rollback data sync service state: %w", err)
 			}
 
