@@ -184,9 +184,9 @@ func TestDARetriever_isEmptyDataExpected(t *testing.T) {
 	h := &types.SignedHeader{}
 	// when DataHash is nil/empty -> expected empty
 	assert.True(t, r.isEmptyDataExpected(h))
-	// when equals to predefined emptyTxs hash -> not expected
+	// when equals to predefined emptyTxs hash -> expected empty
 	h.DataHash = common.DataHashForEmptyTxs
-	assert.False(t, r.isEmptyDataExpected(h))
+	assert.True(t, r.isEmptyDataExpected(h))
 }
 
 func TestDARetriever_tryDecodeData_InvalidSignatureOrProposer(t *testing.T) {

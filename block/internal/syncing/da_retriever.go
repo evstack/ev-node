@@ -293,7 +293,8 @@ func (r *DARetriever) tryDecodeData(bz []byte, daHeight uint64) *types.Data {
 
 // isEmptyDataExpected checks if empty data is expected for a header
 func (r *DARetriever) isEmptyDataExpected(header *types.SignedHeader) bool {
-	return len(header.DataHash) == 0 || !bytes.Equal(header.DataHash, common.DataHashForEmptyTxs)
+
+	return len(header.DataHash) == 0 || bytes.Equal(header.DataHash, common.DataHashForEmptyTxs)
 }
 
 // createEmptyDataForHeader creates empty data for a header
