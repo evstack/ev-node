@@ -5,6 +5,7 @@ package docker_e2e
 import (
 	"context"
 	"fmt"
+	tastoratypes "github.com/celestiaorg/tastora/framework/types"
 	"io"
 	"strings"
 	"testing"
@@ -275,7 +276,7 @@ func (s *DockerTestSuite) TestCelestiaDANetworkPartitionE2E() {
 		t.Log("✅ Bridge node stopped")
 
 		// Then stop the entire Celestia chain to simulate complete network partition
-		err = s.celestia.Stop(ctx)
+		err = s.celestia.Remove(ctx, tastoratypes.WithPreserveVolumes())
 		s.Require().NoError(err, "failed to stop celestia chain")
 		t.Log("✅ Celestia chain stopped - network partition simulated")
 
