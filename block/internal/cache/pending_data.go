@@ -2,10 +2,11 @@ package cache
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/rs/zerolog"
 
-	"github.com/evstack/ev-node/pkg/store"
+	storepkg "github.com/evstack/ev-node/pkg/store"
 	"github.com/evstack/ev-node/types"
 )
 
@@ -28,14 +29,16 @@ type PendingData struct {
 	base *pendingBase[*types.Data]
 }
 
-func fetchData(ctx context.Context, store store.Store, height uint64) (*types.Data, error) {
-	_, data, err := store.GetBlockData(ctx, height)
-	return data, err
-}
-
 // NewPendingData returns a new PendingData struct
-func NewPendingData(store store.Store, logger zerolog.Logger) (*PendingData, error) {
-	base, err := newPendingBase(store, logger, LastSubmittedDataHeightKey, fetchData)
+func NewPendingData(store storepkg.Store, logger zerolog.Logger) (*PendingData, error) {
+	iter := func(ctx context.Context, s storepkg.Store, after uint64) ([]*types.Data, error) {
+		if ds, ok := s.(*storepkg.DefaultStore); ok {
+			return ds.DataAfterHeight(ctx, after)
+		}
+		return nil, fmt.Errorf("iterator not supported")
+	}
+
+	base, err := newPendingBase(store, logger, LastSubmittedDataHeightKey, iter)
 	if err != nil {
 		return nil, err
 	}

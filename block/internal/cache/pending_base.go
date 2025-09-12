@@ -20,17 +20,17 @@ type pendingBase[T any] struct {
 	logger     zerolog.Logger
 	store      store.Store
 	metaKey    string
-	fetch      func(ctx context.Context, store store.Store, height uint64) (T, error)
+	iter       func(ctx context.Context, store store.Store, afterHeight uint64) ([]T, error)
 	lastHeight atomic.Uint64
 }
 
 // newPendingBase constructs a new pendingBase for a given type.
-func newPendingBase[T any](store store.Store, logger zerolog.Logger, metaKey string, fetch func(ctx context.Context, store store.Store, height uint64) (T, error)) (*pendingBase[T], error) {
+func newPendingBase[T any](store store.Store, logger zerolog.Logger, metaKey string, iter func(ctx context.Context, store store.Store, afterHeight uint64) ([]T, error)) (*pendingBase[T], error) {
 	pb := &pendingBase[T]{
 		store:   store,
 		logger:  logger,
 		metaKey: metaKey,
-		fetch:   fetch,
+		iter:    iter,
 	}
 	if err := pb.init(); err != nil {
 		return nil, err
@@ -51,15 +51,19 @@ func (pb *pendingBase[T]) getPending(ctx context.Context) ([]T, error) {
 	if lastSubmitted > height {
 		return nil, fmt.Errorf("height of last submitted item (%d) is greater than height of last item (%d)", lastSubmitted, height)
 	}
-	pending := make([]T, 0, height-lastSubmitted)
-	for i := lastSubmitted + 1; i <= height; i++ {
-		item, err := pb.fetch(ctx, pb.store, i)
-		if err != nil {
-			return pending, err
-		}
-		pending = append(pending, item)
+	if pb.iter == nil {
+		return nil, fmt.Errorf("iterator not configured for pendingBase")
 	}
-	return pending, nil
+	items, err := pb.iter(ctx, pb.store, lastSubmitted)
+	if err != nil {
+		return nil, err
+	}
+	// Limit to current height window to preserve previous semantics
+	expected := height - lastSubmitted
+	if uint64(len(items)) > expected {
+		items = items[:expected]
+	}
+	return items, nil
 }
 
 func (pb *pendingBase[T]) numPending() uint64 {
