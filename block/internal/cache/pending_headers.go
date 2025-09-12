@@ -26,7 +26,7 @@ type PendingHeaders struct {
 }
 
 func fetchSignedHeader(ctx context.Context, store storepkg.Store, height uint64) (*types.SignedHeader, error) {
-	header, _, err := store.GetBlockData(ctx, height)
+	header, err := store.GetHeader(ctx, height)
 	return header, err
 }
 
