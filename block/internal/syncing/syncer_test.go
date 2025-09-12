@@ -2,11 +2,20 @@ package syncing
 
 import (
 	"context"
+	"errors"
 	"testing"
+	"time"
 
+	"github.com/ipfs/go-datastore"
+	dssync "github.com/ipfs/go-datastore/sync"
+	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
+	"github.com/evstack/ev-node/block/internal/cache"
 	"github.com/evstack/ev-node/block/internal/common"
+	"github.com/evstack/ev-node/pkg/config"
+	"github.com/evstack/ev-node/pkg/store"
 	"github.com/evstack/ev-node/types"
 )
 
@@ -69,42 +78,68 @@ func TestCacheDAHeightEvent_Usage(t *testing.T) {
 	assert.Equal(t, uint64(100), event.HeaderDaIncludedHeight)
 }
 
-// Mock cache manager for testing
-type MockCacheManager struct{}
-
-func (m *MockCacheManager) GetHeader(height uint64) *types.SignedHeader         { return nil }
-func (m *MockCacheManager) SetHeader(height uint64, header *types.SignedHeader) {}
-func (m *MockCacheManager) IsHeaderSeen(hash string) bool                       { return false }
-func (m *MockCacheManager) SetHeaderSeen(hash string)                           {}
-func (m *MockCacheManager) IsHeaderDAIncluded(hash string) bool                 { return false }
-func (m *MockCacheManager) SetHeaderDAIncluded(hash string, daHeight uint64)    {}
-
-func (m *MockCacheManager) GetData(height uint64) *types.Data              { return nil }
-func (m *MockCacheManager) SetData(height uint64, data *types.Data)        {}
-func (m *MockCacheManager) IsDataSeen(hash string) bool                    { return false }
-func (m *MockCacheManager) SetDataSeen(hash string)                        {}
-func (m *MockCacheManager) IsDataDAIncluded(hash string) bool              { return false }
-func (m *MockCacheManager) SetDataDAIncluded(hash string, daHeight uint64) {}
-
-func (m *MockCacheManager) GetPendingHeaders(ctx context.Context) ([]*types.SignedHeader, error) {
-	return nil, nil
+func TestSyncer_isHeightFromFutureError(t *testing.T) {
+	s := &Syncer{}
+	// exact error
+	err := common.ErrHeightFromFutureStr
+	assert.True(t, s.isHeightFromFutureError(err))
+	// string-wrapped error
+	err = errors.New("some context: " + common.ErrHeightFromFutureStr.Error())
+	assert.True(t, s.isHeightFromFutureError(err))
+	// unrelated
+	assert.False(t, s.isHeightFromFutureError(errors.New("boom")))
 }
-func (m *MockCacheManager) GetPendingData(ctx context.Context) ([]*types.SignedData, error) {
-	return nil, nil
+
+func TestSyncer_sendNonBlockingSignal(t *testing.T) {
+	s := &Syncer{logger: zerolog.Nop()}
+	ch := make(chan struct{}, 1)
+	ch <- struct{}{}
+	done := make(chan struct{})
+	go func() {
+		s.sendNonBlockingSignal(ch, "test")
+		close(done)
+	}()
+	select {
+	case <-done:
+		// ok
+	case <-time.After(200 * time.Millisecond):
+		t.Fatal("sendNonBlockingSignal blocked unexpectedly")
+	}
 }
-func (m *MockCacheManager) SetLastSubmittedHeaderHeight(ctx context.Context, height uint64) {}
-func (m *MockCacheManager) SetLastSubmittedDataHeight(ctx context.Context, height uint64)   {}
 
-func (m *MockCacheManager) NumPendingHeaders() uint64 { return 0 }
-func (m *MockCacheManager) NumPendingData() uint64    { return 0 }
+func TestSyncer_processPendingEvents(t *testing.T) {
+	ds := dssync.MutexWrap(datastore.NewMapDatastore())
+	st := store.New(ds)
+	cm, err := cache.NewManager(config.DefaultConfig, st, zerolog.Nop())
+	require.NoError(t, err)
 
-func (m *MockCacheManager) SetPendingEvent(height uint64, event *common.DAHeightEvent) {}
-func (m *MockCacheManager) GetPendingEvents() map[uint64]*common.DAHeightEvent {
-	return make(map[uint64]*common.DAHeightEvent)
+	// current height 1
+	require.NoError(t, st.SetHeight(context.Background(), 1))
+
+	s := &Syncer{
+		store:      st,
+		cache:      cm,
+		ctx:        context.Background(),
+		heightInCh: make(chan common.DAHeightEvent, 2),
+		logger:     zerolog.Nop(),
+	}
+
+	// create two pending events, one for height 2 (> current) and one for height 1 (<= current)
+	evt1 := &common.DAHeightEvent{Header: &types.SignedHeader{Header: types.Header{BaseHeader: types.BaseHeader{ChainID: "c", Height: 1}}}, Data: &types.Data{Metadata: &types.Metadata{ChainID: "c", Height: 1}}}
+	evt2 := &common.DAHeightEvent{Header: &types.SignedHeader{Header: types.Header{BaseHeader: types.BaseHeader{ChainID: "c", Height: 2}}}, Data: &types.Data{Metadata: &types.Metadata{ChainID: "c", Height: 2}}}
+	cm.SetPendingEvent(1, evt1)
+	cm.SetPendingEvent(2, evt2)
+
+	s.processPendingEvents()
+
+	// should have forwarded height 2 and removed both
+	select {
+	case got := <-s.heightInCh:
+		assert.Equal(t, uint64(2), got.Header.Height())
+	default:
+		t.Fatal("expected a forwarded pending event")
+	}
+
+	remaining := cm.GetPendingEvents()
+	assert.Len(t, remaining, 0)
 }
-func (m *MockCacheManager) DeletePendingEvent(height uint64) {}
-
-func (m *MockCacheManager) ClearProcessedHeader(height uint64) {}
-func (m *MockCacheManager) ClearProcessedData(height uint64)   {}
-func (m *MockCacheManager) SaveToDisk() error                  { return nil }
-func (m *MockCacheManager) LoadFromDisk() error                { return nil }
