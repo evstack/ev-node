@@ -1,6 +1,7 @@
 package submitting
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"time"
@@ -19,86 +20,119 @@ import (
 )
 
 const (
-	submissionTimeout    = 60 * time.Second
-	noGasPrice           = -1
-	initialBackoff       = 100 * time.Millisecond
-	defaultGasPrice      = 0.0
-	defaultGasMultiplier = 1.0
-	maxBlobSize          = 2 * 1024 * 1024 // 2MB blob size limit
+    submissionTimeout    = 60 * time.Second
+    noGasPrice           = -1
+    initialBackoff       = 100 * time.Millisecond
+    defaultGasPrice      = 0.0
+    defaultGasMultiplier = 1.0
+    defaultMaxBlobSize   = 2 * 1024 * 1024 // 2MB fallback blob size limit
+    defaultMaxGasPriceClamp      = 1000.0
+    defaultMaxGasMultiplierClamp = 3.0
 )
 
-// getGasMultiplier fetches the gas multiplier from DA layer with fallback to configured/default value
-func (s *DASubmitter) getGasMultiplier(ctx context.Context) float64 {
+// RetryPolicy defines clamped bounds for retries, backoff, and gas pricing.
+type RetryPolicy struct {
+	MaxAttempts      int
+	MinBackoff       time.Duration
+	MaxBackoff       time.Duration
+	MinGasPrice      float64
+	MaxGasPrice      float64
+	MaxBlobBytes     int
+	MaxGasMultiplier float64
+}
+
+// RetryState holds the current retry attempt, backoff, and gas price.
+type RetryState struct {
+	Attempt  int
+	Backoff  time.Duration
+	GasPrice float64
+}
+
+type retryReason int
+
+const (
+	reasonInitial retryReason = iota
+	reasonFailure
+	reasonMempool
+	reasonSuccess
+	reasonTooBig
+)
+
+func (rs *RetryState) Next(reason retryReason, pol RetryPolicy, gasMultiplier float64, sentinelNoGas bool) {
+	switch reason {
+	case reasonSuccess:
+		// Reduce gas price towards initial on success, if multiplier is available
+		if !sentinelNoGas && gasMultiplier > 0 {
+			m := clampFloat(gasMultiplier, 1/pol.MaxGasMultiplier, pol.MaxGasMultiplier)
+			rs.GasPrice = clampFloat(rs.GasPrice/m, pol.MinGasPrice, pol.MaxGasPrice)
+		}
+		rs.Backoff = pol.MinBackoff
+	case reasonMempool:
+		if !sentinelNoGas && gasMultiplier > 0 {
+			m := clampFloat(gasMultiplier, 1/pol.MaxGasMultiplier, pol.MaxGasMultiplier)
+			rs.GasPrice = clampFloat(rs.GasPrice*m, pol.MinGasPrice, pol.MaxGasPrice)
+		}
+		// Honor mempool stalling by using max backoff window
+		rs.Backoff = clampDuration(pol.MaxBackoff, pol.MinBackoff, pol.MaxBackoff)
+	case reasonFailure, reasonTooBig:
+		if rs.Backoff == 0 {
+			rs.Backoff = pol.MinBackoff
+		} else {
+			rs.Backoff *= 2
+		}
+		rs.Backoff = clampDuration(rs.Backoff, pol.MinBackoff, pol.MaxBackoff)
+	case reasonInitial:
+		rs.Backoff = 0
+	}
+	rs.Attempt++
+}
+
+func clampFloat(v, min, max float64) float64 {
+	if v < min {
+		return min
+	}
+	if v > max {
+		return max
+	}
+	return v
+}
+
+func clampDuration(v, min, max time.Duration) time.Duration {
+	if v < min {
+		return min
+	}
+	if v > max {
+		return max
+	}
+	return v
+}
+
+// getGasMultiplier fetches the gas multiplier from DA layer with fallback and clamping
+func (s *DASubmitter) getGasMultiplier(ctx context.Context, pol RetryPolicy) float64 {
 	gasMultiplier, err := s.da.GasMultiplier(ctx)
 	if err != nil || gasMultiplier <= 0 {
-		// fall back to configured multiplier if valid
 		if s.config.DA.GasMultiplier > 0 {
-			return s.config.DA.GasMultiplier
+			return clampFloat(s.config.DA.GasMultiplier, 0.1, pol.MaxGasMultiplier)
 		}
-		s.logger.Warn().Err(err).Msg("failed to get gas multiplier from DA layer, using default")
-		return defaultGasMultiplier
+		s.logger.Warn().Err(err).Msg("failed to get gas multiplier from DA layer, using default 1.0")
+		return 1.0
 	}
-	return gasMultiplier
+	return clampFloat(gasMultiplier, 0.1, pol.MaxGasMultiplier)
 }
 
-// retryStrategy manages retry logic with backoff and gas price adjustments for DA submissions
-type retryStrategy struct {
-	attempt         int
-	backoff         time.Duration
-	gasPrice        float64
-	initialGasPrice float64
-	maxAttempts     int
-	maxBackoff      time.Duration
-}
-
-// newRetryStrategy creates a new retryStrategy with the given initial gas price, max backoff duration and max attempts
-func newRetryStrategy(initialGasPrice float64, maxBackoff time.Duration, maxAttempts int) *retryStrategy {
-	return &retryStrategy{
-		attempt:         0,
-		backoff:         0,
-		gasPrice:        initialGasPrice,
-		initialGasPrice: initialGasPrice,
-		maxAttempts:     maxAttempts,
-		maxBackoff:      maxBackoff,
+// initialGasPrice determines the starting gas price with clamping and sentinel handling
+func (s *DASubmitter) initialGasPrice(ctx context.Context, pol RetryPolicy) (price float64, sentinelNoGas bool) {
+	if s.config.DA.GasPrice == noGasPrice {
+		return noGasPrice, true
 	}
-}
-
-// ShouldContinue returns true if the retry strategy should continue attempting submissions
-func (r *retryStrategy) ShouldContinue() bool {
-	return r.attempt < r.maxAttempts
-}
-
-// NextAttempt increments the attempt counter
-func (r *retryStrategy) NextAttempt() { r.attempt++ }
-
-// ResetOnSuccess resets backoff and adjusts gas price downward after a successful submission
-func (r *retryStrategy) ResetOnSuccess(gasMultiplier float64) {
-	r.backoff = 0
-	if gasMultiplier > 0 && r.gasPrice != noGasPrice {
-		r.gasPrice = r.gasPrice / gasMultiplier
-		if r.gasPrice < r.initialGasPrice {
-			r.gasPrice = r.initialGasPrice
-		}
+	if s.config.DA.GasPrice > 0 {
+		return clampFloat(s.config.DA.GasPrice, pol.MinGasPrice, pol.MaxGasPrice), false
 	}
-}
-
-// BackoffOnFailure applies exponential backoff after a submission failure
-func (r *retryStrategy) BackoffOnFailure() {
-	r.backoff *= 2
-	if r.backoff == 0 {
-		r.backoff = initialBackoff
+	if gp, err := s.da.GasPrice(ctx); err == nil {
+		return clampFloat(gp, pol.MinGasPrice, pol.MaxGasPrice), false
 	}
-	if r.backoff > r.maxBackoff {
-		r.backoff = r.maxBackoff
-	}
-}
-
-// BackoffOnMempool applies mempool-specific backoff and increases gas price when transaction is stuck in mempool
-func (r *retryStrategy) BackoffOnMempool(mempoolTTL int, blockTime time.Duration, gasMultiplier float64) {
-	r.backoff = blockTime * time.Duration(mempoolTTL)
-	if gasMultiplier > 0 && r.gasPrice != noGasPrice {
-		r.gasPrice = r.gasPrice * gasMultiplier
-	}
+	s.logger.Warn().Msg("DA gas price unavailable; using default 0.0")
+	return pol.MinGasPrice, false
 }
 
 // submissionOutcome captures the effect of a submission attempt for a batch
@@ -234,9 +268,18 @@ func (s *DASubmitter) createSignedData(dataList []*types.SignedData, signer sign
 		return nil, fmt.Errorf("failed to get public key: %w", err)
 	}
 
+	addr, err := signer.GetAddress()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get address: %w", err)
+	}
+
+	if len(genesis.ProposerAddress) > 0 && !bytes.Equal(addr, genesis.ProposerAddress) {
+		return nil, fmt.Errorf("signer address mismatch with genesis proposer")
+	}
+
 	signerInfo := types.Signer{
 		PubKey:  pubKey,
-		Address: genesis.ProposerAddress,
+		Address: addr,
 	}
 
 	signedDataList := make([]*types.SignedData, 0, len(dataList))
@@ -272,99 +315,133 @@ func (s *DASubmitter) createSignedData(dataList []*types.SignedData, signer sign
 
 // submitToDA is a generic helper for submitting items to the DA layer with retry, backoff, and gas price logic.
 func submitToDA[T any](
-    s *DASubmitter,
-    ctx context.Context,
-    items []T,
-    marshalFn func(T) ([]byte, error),
-    postSubmit func([]T, *coreda.ResultSubmit, float64),
-    itemType string,
-    namespace []byte,
-    options []byte,
-    cache cache.Manager,
+	s *DASubmitter,
+	ctx context.Context,
+	items []T,
+	marshalFn func(T) ([]byte, error),
+	postSubmit func([]T, *coreda.ResultSubmit, float64),
+	itemType string,
+	namespace []byte,
+	options []byte,
+	cache cache.Manager,
 ) error {
-    marshaled, err := marshalItems(items, marshalFn, itemType)
-    if err != nil {
-        return err
-    }
-
-    // Limit this submission to a single size-capped batch to respect DA load and avoid >2MB submissions
-    if len(marshaled) > 0 {
-        batchItems, batchMarshaled, err := limitBatchBySize(items, marshaled, maxBlobSize)
-        if err != nil {
-            return fmt.Errorf("no %s items fit within max blob size: %w", itemType, err)
-        }
-        items = batchItems
-        marshaled = batchMarshaled
-    }
-
-	// Choose initial gas price: prefer configured value when >= 0, else DA-provided or default
-	gasPrice := defaultGasPrice
-	if s.config.DA.GasPrice == noGasPrice {
-		gasPrice = noGasPrice
-	} else if s.config.DA.GasPrice > 0 {
-		gasPrice = s.config.DA.GasPrice
-	} else if gp, err := s.da.GasPrice(ctx); err == nil {
-		gasPrice = gp
-	} else {
-		s.logger.Warn().Err(err).Msg("failed to get gas price from DA layer, using default")
-		gasPrice = defaultGasPrice
+	marshaled, err := marshalItems(items, marshalFn, itemType)
+	if err != nil {
+		return err
 	}
 
-	retry := newRetryStrategy(gasPrice, s.config.DA.BlockTime.Duration, s.config.DA.MaxSubmitAttempts)
-	remaining := items
-	numSubmitted := 0
+	// Build retry policy from config with sane defaults
+    pol := RetryPolicy{
+        MaxAttempts:      s.config.DA.MaxSubmitAttempts,
+        MinBackoff:       initialBackoff,
+        MaxBackoff:       s.config.DA.BlockTime.Duration,
+        MinGasPrice:      0.0,
+        MaxGasPrice:      defaultMaxGasPriceClamp,
+        MaxBlobBytes:     defaultMaxBlobSize,
+        MaxGasMultiplier: defaultMaxGasMultiplierClamp,
+    }
+
+	// Choose initial gas price with clamp
+	gasPrice, sentinelNoGas := s.initialGasPrice(ctx, pol)
+	rs := RetryState{Attempt: 0, Backoff: 0, GasPrice: gasPrice}
+	gm := s.getGasMultiplier(ctx, pol)
+
+	// Limit this submission to a single size-capped batch
+	if len(marshaled) > 0 {
+		batchItems, batchMarshaled, err := limitBatchBySize(items, marshaled, pol.MaxBlobBytes)
+		if err != nil {
+			return fmt.Errorf("no %s items fit within max blob size: %w", itemType, err)
+		}
+		items = batchItems
+		marshaled = batchMarshaled
+	}
 
 	// Start the retry loop
-	for retry.ShouldContinue() {
-		if err := waitForBackoffOrContext(ctx, retry.backoff); err != nil {
+	for rs.Attempt < pol.MaxAttempts {
+		if err := waitForBackoffOrContext(ctx, rs.Backoff); err != nil {
 			return err
 		}
 
-		retry.NextAttempt()
-
 		submitCtx, cancel := context.WithTimeout(ctx, submissionTimeout)
 		// Perform submission
-		res := types.SubmitWithHelpers(submitCtx, s.da, s.logger, marshaled, retry.gasPrice, namespace, options)
+		res := types.SubmitWithHelpers(submitCtx, s.da, s.logger, marshaled, rs.GasPrice, namespace, options)
 		cancel()
 
-		outcome := handleSubmissionResult(ctx, s, res, remaining, marshaled, retry, postSubmit, itemType, namespace, options)
+		// Record submission result for observability
+		if daVisualizationServer := server.GetDAVisualizationServer(); daVisualizationServer != nil {
+			daVisualizationServer.RecordSubmission(&res, rs.GasPrice, uint64(len(items)))
+		}
 
-		remaining = outcome.RemainingItems
-		marshaled = outcome.RemainingMarshal
-		numSubmitted += outcome.NumSubmitted
+		switch res.Code {
+		case coreda.StatusSuccess:
+			submitted := items[:res.SubmittedCount]
+			postSubmit(submitted, &res, rs.GasPrice)
+			s.logger.Info().Str("itemType", itemType).Float64("gasPrice", rs.GasPrice).Uint64("count", res.SubmittedCount).Msg("successfully submitted items to DA layer")
+			if int(res.SubmittedCount) == len(items) {
+				rs.Next(reasonSuccess, pol, gm, sentinelNoGas)
+				return nil
+			}
+			// partial success: advance window
+			items = items[res.SubmittedCount:]
+			marshaled = marshaled[res.SubmittedCount:]
+			rs.Next(reasonSuccess, pol, gm, sentinelNoGas)
 
-		if outcome.AllSubmitted {
-			return nil
+		case coreda.StatusTooBig:
+			// Iteratively halve until it fits or single-item too big
+			if len(items) == 1 {
+				s.logger.Error().Str("itemType", itemType).Msg("single item exceeds DA blob size limit")
+				rs.Next(reasonTooBig, pol, gm, sentinelNoGas)
+				return fmt.Errorf("single %s item exceeds DA blob size limit", itemType)
+			}
+			half := len(items) / 2
+			if half == 0 {
+				half = 1
+			}
+			items = items[:half]
+			marshaled = marshaled[:half]
+			s.logger.Debug().Int("newBatchSize", half).Msg("batch too big; halving and retrying")
+			rs.Next(reasonTooBig, pol, gm, sentinelNoGas)
+
+		case coreda.StatusNotIncludedInBlock, coreda.StatusAlreadyInMempool:
+			s.logger.Info().Dur("backoff", pol.MaxBackoff).Float64("gasPrice", rs.GasPrice).Msg("retrying due to mempool state")
+			rs.Next(reasonMempool, pol, gm, sentinelNoGas)
+
+		case coreda.StatusContextCanceled:
+			s.logger.Info().Msg("DA layer submission canceled due to context cancellation")
+			return context.Canceled
+
+		default:
+			s.logger.Error().Str("error", res.Message).Int("attempt", rs.Attempt+1).Msg("DA layer submission failed")
+			rs.Next(reasonFailure, pol, gm, sentinelNoGas)
 		}
 	}
 
-	return fmt.Errorf("failed to submit all %s(s) to DA layer, submitted %d items (%d left) after %d attempts",
-		itemType, numSubmitted, len(remaining), retry.attempt)
+	return fmt.Errorf("failed to submit all %s(s) to DA layer after %d attempts", itemType, rs.Attempt)
 }
 
 // limitBatchBySize returns a prefix of items whose total marshaled size does not exceed maxBytes.
 // If the first item exceeds maxBytes, it returns an error.
 func limitBatchBySize[T any](items []T, marshaled [][]byte, maxBytes int) ([]T, [][]byte, error) {
-    total := 0
-    count := 0
-    for i := 0; i < len(items); i++ {
-        sz := len(marshaled[i])
-        if sz > maxBytes {
-            if i == 0 {
-                return nil, nil, fmt.Errorf("item size %d exceeds max %d", sz, maxBytes)
-            }
-            break
-        }
-        if total+sz > maxBytes {
-            break
-        }
-        total += sz
-        count++
-    }
-    if count == 0 {
-        return nil, nil, fmt.Errorf("no items fit within %d bytes", maxBytes)
-    }
-    return items[:count], marshaled[:count], nil
+	total := 0
+	count := 0
+	for i := 0; i < len(items); i++ {
+		sz := len(marshaled[i])
+		if sz > maxBytes {
+			if i == 0 {
+				return nil, nil, fmt.Errorf("item size %d exceeds max %d", sz, maxBytes)
+			}
+			break
+		}
+		if total+sz > maxBytes {
+			break
+		}
+		total += sz
+		count++
+	}
+	if count == 0 {
+		return nil, nil, fmt.Errorf("no items fit within %d bytes", maxBytes)
+	}
+	return items[:count], marshaled[:count], nil
 }
 
 func marshalItems[T any](
@@ -384,350 +461,20 @@ func marshalItems[T any](
 }
 
 func waitForBackoffOrContext(ctx context.Context, backoff time.Duration) error {
+	if backoff <= 0 {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
+			return nil
+		}
+	}
+	timer := time.NewTimer(backoff)
+	defer timer.Stop()
 	select {
 	case <-ctx.Done():
 		return ctx.Err()
-	case <-time.After(backoff):
+	case <-timer.C:
 		return nil
 	}
-}
-
-func handleSubmissionResult[T any](
-	ctx context.Context,
-	s *DASubmitter,
-	res coreda.ResultSubmit,
-	remaining []T,
-	marshaled [][]byte,
-	retry *retryStrategy,
-	postSubmit func([]T, *coreda.ResultSubmit, float64),
-	itemType string,
-	namespace []byte,
-	options []byte,
-) submissionOutcome[T] {
-	switch res.Code {
-	case coreda.StatusSuccess:
-		return handleSuccessfulSubmission(ctx, s, remaining, marshaled, &res, postSubmit, retry, itemType)
-
-	case coreda.StatusNotIncludedInBlock, coreda.StatusAlreadyInMempool:
-		return handleMempoolFailure(ctx, s, &res, retry, retry.attempt, remaining, marshaled)
-
-	case coreda.StatusContextCanceled:
-		s.logger.Info().Int("attempt", retry.attempt).Msg("DA layer submission canceled due to context cancellation")
-		if daVisualizationServer := server.GetDAVisualizationServer(); daVisualizationServer != nil {
-			daVisualizationServer.RecordSubmission(&res, retry.gasPrice, uint64(len(remaining)))
-		}
-		return submissionOutcome[T]{
-			RemainingItems:   remaining,
-			RemainingMarshal: marshaled,
-			AllSubmitted:     false,
-		}
-
-	case coreda.StatusTooBig:
-		return handleTooBigError(s, ctx, remaining, marshaled, retry, postSubmit, itemType, retry.attempt, namespace, options)
-
-	default:
-		return handleGenericFailure(s, &res, retry, retry.attempt, remaining, marshaled)
-	}
-}
-
-func handleSuccessfulSubmission[T any](
-	ctx context.Context,
-	s *DASubmitter,
-	remaining []T,
-	marshaled [][]byte,
-	res *coreda.ResultSubmit,
-	postSubmit func([]T, *coreda.ResultSubmit, float64),
-	retry *retryStrategy,
-	itemType string,
-) submissionOutcome[T] {
-	// Record submission in DA visualization server
-	if daVisualizationServer := server.GetDAVisualizationServer(); daVisualizationServer != nil {
-		daVisualizationServer.RecordSubmission(res, retry.gasPrice, res.SubmittedCount)
-	}
-
-	s.logger.Info().Str("itemType", itemType).Float64("gasPrice", retry.gasPrice).Uint64("count", res.SubmittedCount).Msg("successfully submitted items to DA layer")
-
-	submitted := remaining[:res.SubmittedCount]
-	notSubmitted := remaining[res.SubmittedCount:]
-	notSubmittedMarshaled := marshaled[res.SubmittedCount:]
-
-	postSubmit(submitted, res, retry.gasPrice)
-
-	gasMultiplier := s.getGasMultiplier(ctx)
-	retry.ResetOnSuccess(gasMultiplier)
-	s.logger.Debug().Dur("backoff", retry.backoff).Float64("gasPrice", retry.gasPrice).Msg("resetting DA layer submission options")
-
-	return submissionOutcome[T]{
-		SubmittedItems:   submitted,
-		RemainingItems:   notSubmitted,
-		RemainingMarshal: notSubmittedMarshaled,
-		NumSubmitted:     int(res.SubmittedCount),
-		AllSubmitted:     len(notSubmitted) == 0,
-	}
-}
-
-func handleMempoolFailure[T any](
-	ctx context.Context,
-	s *DASubmitter,
-	res *coreda.ResultSubmit,
-	retry *retryStrategy,
-	attempt int,
-	remaining []T,
-	marshaled [][]byte,
-) submissionOutcome[T] {
-	s.logger.Error().Str("error", res.Message).Int("attempt", attempt).Msg("DA layer submission failed")
-	// Record failed submission in DA visualization server
-	if daVisualizationServer := server.GetDAVisualizationServer(); daVisualizationServer != nil {
-		daVisualizationServer.RecordSubmission(res, retry.gasPrice, uint64(len(remaining)))
-	}
-
-	gasMultiplier := s.getGasMultiplier(ctx)
-	retry.BackoffOnMempool(int(s.config.DA.MempoolTTL), s.config.DA.BlockTime.Duration, gasMultiplier)
-	s.logger.Info().Dur("backoff", retry.backoff).Float64("gasPrice", retry.gasPrice).Msg("retrying DA layer submission")
-
-	return submissionOutcome[T]{
-		RemainingItems:   remaining,
-		RemainingMarshal: marshaled,
-		AllSubmitted:     false,
-	}
-}
-
-func handleTooBigError[T any](
-	s *DASubmitter,
-	ctx context.Context,
-	remaining []T,
-	marshaled [][]byte,
-	retry *retryStrategy,
-	postSubmit func([]T, *coreda.ResultSubmit, float64),
-	itemType string,
-	attempt int,
-	namespace []byte,
-	options []byte,
-) submissionOutcome[T] {
-	s.logger.Debug().Str("error", "blob too big").Int("attempt", attempt).Int("batchSize", len(remaining)).Msg("DA layer submission failed due to blob size limit")
-
-	// Record failed submission in DA visualization server (create a result for TooBig error)
-	if daVisualizationServer := server.GetDAVisualizationServer(); daVisualizationServer != nil {
-		tooBigResult := &coreda.ResultSubmit{BaseResult: coreda.BaseResult{Code: coreda.StatusTooBig, Message: "blob too big"}}
-		daVisualizationServer.RecordSubmission(tooBigResult, retry.gasPrice, uint64(len(remaining)))
-	}
-
-	if len(remaining) > 1 {
-		totalSubmitted, err := submitWithRecursiveSplitting(s, ctx, remaining, marshaled, retry.gasPrice, postSubmit, itemType, namespace, options)
-		if err != nil {
-			// If splitting failed, we cannot continue with this batch
-			s.logger.Error().Err(err).Str("itemType", itemType).Msg("recursive splitting failed")
-			retry.BackoffOnFailure()
-			return submissionOutcome[T]{
-				RemainingItems:   remaining,
-				RemainingMarshal: marshaled,
-				NumSubmitted:     0,
-				AllSubmitted:     false,
-			}
-		}
-
-		if totalSubmitted > 0 {
-			newRemaining := remaining[totalSubmitted:]
-			newMarshaled := marshaled[totalSubmitted:]
-			gasMultiplier := s.getGasMultiplier(ctx)
-			retry.ResetOnSuccess(gasMultiplier)
-
-			return submissionOutcome[T]{
-				RemainingItems:   newRemaining,
-				RemainingMarshal: newMarshaled,
-				NumSubmitted:     totalSubmitted,
-				AllSubmitted:     len(newRemaining) == 0,
-			}
-		}
-		retry.BackoffOnFailure()
-	} else {
-		s.logger.Error().Str("itemType", itemType).Int("attempt", attempt).Msg("single item exceeds DA blob size limit")
-		retry.BackoffOnFailure()
-	}
-
-	return submissionOutcome[T]{
-		RemainingItems:   remaining,
-		RemainingMarshal: marshaled,
-		NumSubmitted:     0,
-		AllSubmitted:     false,
-	}
-}
-
-func handleGenericFailure[T any](
-	s *DASubmitter,
-	res *coreda.ResultSubmit,
-	retry *retryStrategy,
-	attempt int,
-	remaining []T,
-	marshaled [][]byte,
-) submissionOutcome[T] {
-	s.logger.Error().Str("error", res.Message).Int("attempt", attempt).Msg("DA layer submission failed")
-
-	// Record failed submission in DA visualization server
-	if daVisualizationServer := server.GetDAVisualizationServer(); daVisualizationServer != nil {
-		daVisualizationServer.RecordSubmission(res, retry.gasPrice, uint64(len(remaining)))
-	}
-
-	retry.BackoffOnFailure()
-
-	return submissionOutcome[T]{
-		RemainingItems:   remaining,
-		RemainingMarshal: marshaled,
-		AllSubmitted:     false,
-	}
-}
-
-// submitWithRecursiveSplitting handles recursive batch splitting when items are too big for DA submission.
-// It returns the total number of items successfully submitted.
-func submitWithRecursiveSplitting[T any](
-	s *DASubmitter,
-	ctx context.Context,
-	items []T,
-	marshaled [][]byte,
-	gasPrice float64,
-	postSubmit func([]T, *coreda.ResultSubmit, float64),
-	itemType string,
-	namespace []byte,
-	options []byte,
-) (int, error) {
-	// Base case: no items to process
-	if len(items) == 0 {
-		return 0, nil
-	}
-	// Base case: single item that's too big - return error
-	if len(items) == 1 {
-		s.logger.Error().Str("itemType", itemType).Msg("single item exceeds DA blob size limit")
-		return 0, fmt.Errorf("single %s item exceeds DA blob size limit", itemType)
-	}
-
-	// Split and submit recursively
-	s.logger.Debug().Int("batchSize", len(items)).Msg("splitting batch for recursive submission")
-	splitPoint := len(items) / 2
-	if splitPoint == 0 {
-		splitPoint = 1
-	}
-	firstHalf := items[:splitPoint]
-	secondHalf := items[splitPoint:]
-	firstHalfMarshaled := marshaled[:splitPoint]
-	secondHalfMarshaled := marshaled[splitPoint:]
-
-	s.logger.Debug().Int("originalSize", len(items)).Int("firstHalf", len(firstHalf)).Int("secondHalf", len(secondHalf)).Msg("splitting batch for recursion")
-
-	firstSubmitted, err := submitHalfBatch[T](s, ctx, firstHalf, firstHalfMarshaled, gasPrice, postSubmit, itemType, namespace, options)
-	if err != nil {
-		return firstSubmitted, fmt.Errorf("first half submission failed: %w", err)
-	}
-	secondSubmitted, err := submitHalfBatch[T](s, ctx, secondHalf, secondHalfMarshaled, gasPrice, postSubmit, itemType, namespace, options)
-	if err != nil {
-		return firstSubmitted, fmt.Errorf("second half submission failed: %w", err)
-	}
-	return firstSubmitted + secondSubmitted, nil
-}
-
-// submitHalfBatch handles submission of a half batch, including recursive splitting if needed
-func submitHalfBatch[T any](
-	s *DASubmitter,
-	ctx context.Context,
-	items []T,
-	marshaled [][]byte,
-	gasPrice float64,
-	postSubmit func([]T, *coreda.ResultSubmit, float64),
-	itemType string,
-	namespace []byte,
-	options []byte,
-) (int, error) {
-	if len(items) == 0 {
-		return 0, nil
-	}
-
-	batch := submissionBatch[T]{Items: items, Marshaled: marshaled}
-	result := processBatch(s, ctx, batch, gasPrice, postSubmit, itemType, namespace, options)
-
-	switch result.action {
-	case batchActionSubmitted:
-		if result.submittedCount < len(items) {
-			remainingItems := items[result.submittedCount:]
-			remainingMarshaled := marshaled[result.submittedCount:]
-			remainingSubmitted, err := submitHalfBatch[T](s, ctx, remainingItems, remainingMarshaled, gasPrice, postSubmit, itemType, namespace, options)
-			if err != nil {
-				return result.submittedCount, err
-			}
-			return result.submittedCount + remainingSubmitted, nil
-		}
-		return result.submittedCount, nil
-	case batchActionTooBig:
-		return submitWithRecursiveSplitting[T](s, ctx, items, marshaled, gasPrice, postSubmit, itemType, namespace, options)
-	case batchActionSkip:
-		s.logger.Error().Str("itemType", itemType).Msg("single item exceeds DA blob size limit")
-		return 0, fmt.Errorf("single %s item exceeds DA blob size limit", itemType)
-	case batchActionFail:
-		s.logger.Error().Str("itemType", itemType).Msg("unrecoverable error during batch submission")
-		return 0, fmt.Errorf("unrecoverable error during %s batch submission", itemType)
-	}
-	return 0, nil
-}
-
-// batchAction represents the action to take after processing a batch
-type batchAction int
-
-const (
-	batchActionSubmitted batchAction = iota // Batch was successfully submitted
-	batchActionTooBig                       // Batch is too big and needs to be handled by caller
-	batchActionSkip                         // Batch should be skipped (single item too big)
-	batchActionFail                         // Unrecoverable error
-)
-
-// batchResult contains the result of processing a batch
-type batchResult[T any] struct {
-	action         batchAction
-	submittedCount int
-}
-
-// processBatch processes a single batch and returns the result.
-//
-// Returns batchResult with one of the following actions:
-// - batchActionSubmitted: Batch was successfully submitted (partial or complete)
-// - batchActionTooBig: Batch is too big and needs to be handled by caller
-// - batchActionSkip: Single item is too big and cannot be split further
-// - batchActionFail: Unrecoverable error occurred (context timeout, network failure, etc.)
-func processBatch[T any](
-	s *DASubmitter,
-	ctx context.Context,
-	batch submissionBatch[T],
-	gasPrice float64,
-	postSubmit func([]T, *coreda.ResultSubmit, float64),
-	itemType string,
-	namespace []byte,
-	options []byte,
-) batchResult[T] {
-	batchCtx, batchCtxCancel := context.WithTimeout(ctx, submissionTimeout)
-	defer batchCtxCancel()
-
-	batchRes := types.SubmitWithHelpers(batchCtx, s.da, s.logger, batch.Marshaled, gasPrice, namespace, options)
-
-	if batchRes.Code == coreda.StatusSuccess {
-		submitted := batch.Items[:batchRes.SubmittedCount]
-		postSubmit(submitted, &batchRes, gasPrice)
-		s.logger.Info().Int("batchSize", len(batch.Items)).Uint64("submittedCount", batchRes.SubmittedCount).Msg("successfully submitted batch to DA layer")
-		if daVisualizationServer := server.GetDAVisualizationServer(); daVisualizationServer != nil {
-			daVisualizationServer.RecordSubmission(&batchRes, gasPrice, batchRes.SubmittedCount)
-		}
-		return batchResult[T]{action: batchActionSubmitted, submittedCount: int(batchRes.SubmittedCount)}
-	}
-
-	if daVisualizationServer := server.GetDAVisualizationServer(); daVisualizationServer != nil {
-		daVisualizationServer.RecordSubmission(&batchRes, gasPrice, uint64(len(batch.Items)))
-	}
-
-	if batchRes.Code == coreda.StatusTooBig && len(batch.Items) > 1 {
-		s.logger.Debug().Int("batchSize", len(batch.Items)).Msg("batch too big, returning to caller for splitting")
-		return batchResult[T]{action: batchActionTooBig}
-	}
-
-	if len(batch.Items) == 1 && batchRes.Code == coreda.StatusTooBig {
-		s.logger.Error().Str("itemType", itemType).Msg("single item exceeds DA blob size limit")
-		return batchResult[T]{action: batchActionSkip}
-	}
-
-	return batchResult[T]{action: batchActionFail}
 }
