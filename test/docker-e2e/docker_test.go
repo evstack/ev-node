@@ -14,6 +14,9 @@ import (
 	"github.com/celestiaorg/go-square/v2/share"
 	tastoradocker "github.com/celestiaorg/tastora/framework/docker"
 	"github.com/celestiaorg/tastora/framework/docker/container"
+	"github.com/celestiaorg/tastora/framework/docker/cosmos"
+	da "github.com/celestiaorg/tastora/framework/docker/dataavailability"
+	"github.com/celestiaorg/tastora/framework/docker/evstack"
 	"github.com/celestiaorg/tastora/framework/testutil/sdkacc"
 	tastoratypes "github.com/celestiaorg/tastora/framework/types"
 	sdk "github.com/cosmos/cosmos-sdk/types"
@@ -23,7 +26,6 @@ import (
 	banktypes "github.com/cosmos/cosmos-sdk/x/bank/types"
 	dockerclient "github.com/moby/moby/client"
 	"github.com/stretchr/testify/suite"
-	"go.uber.org/zap/zaptest"
 )
 
 const (
@@ -49,48 +51,21 @@ func TestDockerSuite(t *testing.T) {
 
 type DockerTestSuite struct {
 	suite.Suite
-	provider        tastoratypes.Provider
-	celestia        tastoratypes.Chain
-	daNetwork       tastoratypes.DataAvailabilityNetwork
-	evNodeChain     tastoratypes.RollkitChain
+	celestia        *cosmos.Chain
+	daNetwork       *da.Network
+	evNodeChain     *evstack.Chain
 	dockerClient    *dockerclient.Client
 	dockerNetworkID string
 }
 
-// ConfigOption is a function type for modifying tastoradocker.Config
-type ConfigOption func(*tastoradocker.Config)
-
-// CreateDockerProvider creates a new tastoratypes.Provider with optional configuration modifications
-func (s *DockerTestSuite) CreateDockerProvider(opts ...ConfigOption) tastoratypes.Provider {
+// setupDockerEnvironment sets up the basic Docker environment
+func (s *DockerTestSuite) setupDockerEnvironment() {
 	t := s.T()
 	client, network := tastoradocker.DockerSetup(t)
 
 	// Store client and network ID in the suite for later use
 	s.dockerClient = client
 	s.dockerNetworkID = network
-
-	cfg := tastoradocker.Config{
-		Logger:          zaptest.NewLogger(t),
-		DockerClient:    client,
-		DockerNetworkID: network,
-		DataAvailabilityNetworkConfig: &tastoradocker.DataAvailabilityNetworkConfig{
-			BridgeNodeCount: 1,
-			Image:           container.NewImage("ghcr.io/celestiaorg/celestia-node", "v0.25.3", "10001:10001"),
-		},
-		RollkitChainConfig: &tastoradocker.RollkitChainConfig{
-			ChainID:              "rollkit-test",
-			Bin:                  "testapp",
-			AggregatorPassphrase: "12345678",
-			NumNodes:             1,
-			Image:                getEvNodeImage(),
-		},
-	}
-
-	for _, opt := range opts {
-		opt(&cfg)
-	}
-
-	return tastoradocker.NewProvider(cfg, t)
 }
 
 // getGenesisHash returns the genesis hash of the given chain node.
@@ -108,23 +83,23 @@ func (s *DockerTestSuite) getGenesisHash(ctx context.Context) string {
 	return genesisHash
 }
 
-// SetupDockerResources creates a new provider and chain using the given configuration options.
+// SetupDockerResources creates chains using the builder pattern.
 // none of the resources are started.
-func (s *DockerTestSuite) SetupDockerResources(opts ...ConfigOption) {
-	s.provider = s.CreateDockerProvider(opts...)
+func (s *DockerTestSuite) SetupDockerResources() {
+	s.setupDockerEnvironment()
 	s.celestia = s.CreateChain()
 	s.daNetwork = s.CreateDANetwork()
 	s.evNodeChain = s.CreateEvolveChain()
 }
 
 // CreateChain creates a chain using the ChainBuilder pattern.
-func (s *DockerTestSuite) CreateChain() tastoratypes.Chain {
+func (s *DockerTestSuite) CreateChain() *cosmos.Chain {
 	ctx := context.Background()
 	t := s.T()
 	encConfig := testutil.MakeTestEncodingConfig(auth.AppModuleBasic{}, bank.AppModuleBasic{})
 
 	// Create chain using ChainBuilder pattern
-	chain, err := tastoradocker.NewChainBuilder(t).
+	chain, err := cosmos.NewChainBuilder(t).
 		WithName("celestia").
 		WithChainID(testChainID).
 		WithBinaryName("celestia-appd").
@@ -145,7 +120,7 @@ func (s *DockerTestSuite) CreateChain() tastoratypes.Chain {
 		).
 		WithDockerClient(s.dockerClient).
 		WithDockerNetworkID(s.dockerNetworkID).
-		WithNode(tastoradocker.NewChainNodeConfigBuilder().
+		WithNode(cosmos.NewChainNodeConfigBuilder().
 			WithNodeType(tastoratypes.NodeTypeValidator).
 			Build()).
 		Build(ctx)
@@ -154,33 +129,56 @@ func (s *DockerTestSuite) CreateChain() tastoratypes.Chain {
 	return chain
 }
 
-// CreateDANetwork creates a DA network using the provider
-func (s *DockerTestSuite) CreateDANetwork() tastoratypes.DataAvailabilityNetwork {
+// CreateDANetwork creates a DA network using the builder pattern
+func (s *DockerTestSuite) CreateDANetwork() *da.Network {
 	ctx := context.Background()
+	t := s.T()
 
-	daNetwork, err := s.provider.GetDataAvailabilityNetwork(ctx)
+	bridgeNodeConfig := da.NewNodeBuilder().
+		WithNodeType(tastoratypes.BridgeNode).
+		Build()
+
+	daNetwork, err := da.NewNetworkBuilder(t).
+		WithDockerClient(s.dockerClient).
+		WithDockerNetworkID(s.dockerNetworkID).
+		WithImage(container.NewImage("ghcr.io/celestiaorg/celestia-node", "v0.25.3", "10001:10001")).
+		WithNode(bridgeNodeConfig).
+		Build(ctx)
 	s.Require().NoError(err)
 
 	return daNetwork
 }
 
-// CreateEvolveChain creates a Rollkit chain using the provider
-func (s *DockerTestSuite) CreateEvolveChain() tastoratypes.RollkitChain {
+// CreateEvolveChain creates an evstack chain using the builder pattern
+func (s *DockerTestSuite) CreateEvolveChain() *evstack.Chain {
 	ctx := context.Background()
+	t := s.T()
 
-	rollkitChain, err := s.provider.GetRollkitChain(ctx)
+	aggregatorNodeConfig := evstack.NewNodeBuilder().
+		WithAggregator(true).
+		Build()
+
+	evNodeChain, err := evstack.NewChainBuilder(t).
+		WithChainID("evchain-test").
+		WithBinaryName("testapp").
+		WithAggregatorPassphrase("12345678").
+		WithImage(getEvNodeImage()).
+		WithDockerClient(s.dockerClient).
+		WithDockerNetworkID(s.dockerNetworkID).
+		WithNode(aggregatorNodeConfig).
+		Build(ctx)
 	s.Require().NoError(err)
 
-	return rollkitChain
+	return evNodeChain
 }
 
 // StartBridgeNode initializes and starts a bridge node within the data availability network using the given parameters.
-func (s *DockerTestSuite) StartBridgeNode(ctx context.Context, bridgeNode tastoratypes.DANode, chainID string, genesisHash string, celestiaNodeHostname string) {
+func (s *DockerTestSuite) StartBridgeNode(ctx context.Context, bridgeNode *da.Node, chainID string, genesisHash string, celestiaNodeHostname string) {
 	s.Require().Equal(tastoratypes.BridgeNode, bridgeNode.GetType())
 	err := bridgeNode.Start(ctx,
-		tastoratypes.WithChainID(chainID),
-		tastoratypes.WithAdditionalStartArguments("--p2p.network", chainID, "--core.ip", celestiaNodeHostname, "--rpc.addr", "0.0.0.0"),
-		tastoratypes.WithEnvironmentVariables(
+		da.WithChainID(chainID),
+		da.WithAdditionalStartArguments("--p2p.network", chainID, "--core.ip", celestiaNodeHostname, "--rpc.addr", "0.0.0.0"),
+		da.WithEnvironmentVariables(
 			map[string]string{
 				"CELESTIA_CUSTOM": tastoratypes.BuildCelestiaCustomEnvVar(chainID, genesisHash, ""),
 				"P2P_NETWORK":     chainID,
@@ -191,7 +189,7 @@ func (s *DockerTestSuite) StartBridgeNode(ctx context.Context, bridgeNode tastor
 }
 
 // FundWallet transfers the specified amount of utia from the faucet wallet to the target wallet.
-func (s *DockerTestSuite) FundWallet(ctx context.Context, wallet tastoratypes.Wallet, amount int64) {
+func (s *DockerTestSuite) FundWallet(ctx context.Context, wallet *tastoratypes.Wallet, amount int64) {
 	fromAddress, err := sdkacc.AddressFromWallet(s.celestia.GetFaucetWallet())
 	s.Require().NoError(err)
 
@@ -203,53 +201,37 @@ func (s *DockerTestSuite) FundWallet(ctx context.Context, wallet tastoratypes.Wa
 	s.Require().NoError(err)
 }
 
-// StartEvNode initializes and starts an Ev node.
-func (s *DockerTestSuite) StartEvNode(ctx context.Context, bridgeNode tastoratypes.DANode, evNode tastoratypes.RollkitNode) {
+// StartEVNode initializes and starts an Ev node.
+func (s *DockerTestSuite) StartEVNode(ctx context.Context, bridgeNode *da.Node, evNode *evstack.Node) {
+	s.StartEVNodeWithNamespace(ctx, bridgeNode, evNode, "ev-header", "ev-data")
+}
+
+// StartEVNodeWithNamespace initializes and starts an EV node with a specific namespace.
+func (s *DockerTestSuite) StartEVNodeWithNamespace(ctx context.Context, bridgeNode *da.Node, evNode *evstack.Node, headerNamespace, dataNamespace string) {
 	err := evNode.Init(ctx)
 	s.Require().NoError(err)
 
-	bridgeNodeHostName, err := bridgeNode.GetInternalHostName()
+	bridgeNetworkInfo, err := bridgeNode.GetNetworkInfo(ctx)
 	s.Require().NoError(err)
 
 	authToken, err := bridgeNode.GetAuthToken()
 	s.Require().NoError(err)
 
-	daAddress := fmt.Sprintf("http://%s:26658", bridgeNodeHostName)
+	bridgeRPCAddress := bridgeNetworkInfo.Internal.RPCAddress()
+	daAddress := fmt.Sprintf("http://%s", bridgeRPCAddress)
 	err = evNode.Start(ctx,
-		"--rollkit.da.address", daAddress,
-		"--rollkit.da.gas_price", "0.025",
-		"--rollkit.da.auth_token", authToken,
-		"--rollkit.rpc.address", "0.0.0.0:7331", // bind to 0.0.0.0 so rpc is reachable from test host.
-		"--rollkit.da.namespace", generateValidNamespaceHex(),
+		"--evnode.da.address", daAddress,
+		"--evnode.da.gas_price", "0.025",
+		"--evnode.da.auth_token", authToken,
+		"--evnode.rpc.address", "0.0.0.0:7331", // bind to 0.0.0.0 so rpc is reachable from test host.
+		"--evnode.da.namespace", headerNamespace,
+		"--evnode.da.data_namespace", dataNamespace,
 		"--kv-endpoint", "0.0.0.0:8080",
 	)
 	s.Require().NoError(err)
 }
 
-// StartRollkitNodeWithNamespace initializes and starts a Rollkit node with a specific namespace.
-func (s *DockerTestSuite) StartRollkitNodeWithNamespace(ctx context.Context, bridgeNode tastoratypes.DANode, rollkitNode tastoratypes.RollkitNode, namespace string) {
-	err := rollkitNode.Init(ctx)
-	s.Require().NoError(err)
-
-	bridgeNodeHostName, err := bridgeNode.GetInternalHostName()
-	s.Require().NoError(err)
-
-	authToken, err := bridgeNode.GetAuthToken()
-	s.Require().NoError(err)
-
-	daAddress := fmt.Sprintf("http://%s:26658", bridgeNodeHostName)
-	err = rollkitNode.Start(ctx,
-		"--rollkit.da.address", daAddress,
-		"--rollkit.da.gas_price", "0.025",
-		"--rollkit.da.auth_token", authToken,
-		"--rollkit.rpc.address", "0.0.0.0:7331", // bind to 0.0.0.0 so rpc is reachable from test host.
-		"--rollkit.da.namespace", namespace,
-		"--kv-endpoint", "0.0.0.0:8080",
-	)
-	s.Require().NoError(err)
-}
-
-// getEvNodeImage returns the Docker image configuration for Rollkit
+// getEvNodeImage returns the Docker image configuration for EV Node
 // Uses EV_NODE_IMAGE_REPO and EV_NODE_IMAGE_TAG environment variables if set
 // Defaults to locally built image using a unique tag to avoid registry conflicts
 func getEvNodeImage() container.Image {
