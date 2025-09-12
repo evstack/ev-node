@@ -39,13 +39,6 @@ packages:
           dir: ./test/mocks
           pkgname: mocks
           filename: store.go
-  github.com/evstack/ev-node/block/internal/cache:
-    interfaces:
-      Manager:
-        config:
-          dir: ./block/internal/cache/mocks
-          pkgname: mocks
-          filename: manager.go
   github.com/celestiaorg/go-header:
     interfaces:
       Store:
