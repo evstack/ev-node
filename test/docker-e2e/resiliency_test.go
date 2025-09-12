@@ -5,28 +5,28 @@ package docker_e2e
 import (
 	"context"
 	"fmt"
+	tastoratypes "github.com/celestiaorg/tastora/framework/types"
 	"io"
-	"net"
 	"strings"
 	"testing"
 	"time"
 
-	tastoradocker "github.com/celestiaorg/tastora/framework/docker"
-	tastoratypes "github.com/celestiaorg/tastora/framework/types"
+	da "github.com/celestiaorg/tastora/framework/docker/dataavailability"
+	"github.com/celestiaorg/tastora/framework/docker/evstack"
 	"github.com/docker/docker/api/types/container"
 )
 
-// TestRollkitNodeRestart tests the ability to stop and restart a Rollkit node,
+// TestEvNodeRestart tests the ability to stop and restart an EV node,
 // verifying that the node can recover properly and maintain functionality.
-func (s *DockerTestSuite) TestRollkitNodeRestart() {
+func (s *DockerTestSuite) TestEvNodeRestart() {
 	ctx := context.Background()
 	s.SetupDockerResources()
 
 	var (
-		bridgeNode  tastoratypes.DANode
-		rollkitNode tastoratypes.RollkitNode
-		client      *Client
-		namespace   string // Store namespace for consistent restarts
+		bridgeNode                     *da.Node
+		evNode                         *evstack.Node
+		client                         *Client
+		headerNamespace, dataNamespace string // Store namespaces for consistent restarts
 	)
 
 	s.T().Run("setup initial infrastructure", func(t *testing.T) {
@@ -36,8 +36,9 @@ func (s *DockerTestSuite) TestRollkitNodeRestart() {
 
 		// Start bridge node
 		genesisHash := s.getGenesisHash(ctx)
-		celestiaNodeHostname, err := s.celestia.GetNodes()[0].GetInternalHostName(ctx)
+		networkInfo, err := s.celestia.GetNodes()[0].GetNetworkInfo(ctx)
 		s.Require().NoError(err)
+		celestiaNodeHostname := networkInfo.Internal.Hostname
 
 		bridgeNode = s.daNetwork.GetBridgeNodes()[0]
 		s.StartBridgeNode(ctx, bridgeNode, testChainID, genesisHash, celestiaNodeHostname)
@@ -47,19 +48,31 @@ func (s *DockerTestSuite) TestRollkitNodeRestart() {
 		s.Require().NoError(err)
 		s.FundWallet(ctx, daWallet, 100_000_000_00)
 
-		// Generate and store namespace for consistent restarts
-		namespace = generateValidNamespaceHex()
+		// Generate and store namespaces for consistent restarts
+		headerNamespace = "ev-header"
+		dataNamespace = "ev-data"
 
-		// Start rollkit node with stored namespace
-		rollkitNode = s.evNodeChain.GetNodes()[0]
-		s.StartRollkitNodeWithNamespace(ctx, bridgeNode, rollkitNode, namespace)
+		// Start EV node with stored namespaces
+		evNode = s.evNodeChain.GetNodes()[0]
+		s.StartEVNodeWithNamespace(ctx, bridgeNode, evNode, headerNamespace, dataNamespace)
 
 		// Create HTTP client for testing
-		httpPortStr := rollkitNode.GetHostHTTPPort()
-		s.Require().NotEmpty(httpPortStr, "HTTP port should not be empty")
+		networkInfo, err = evNode.GetNetworkInfo(ctx)
+		s.Require().NoError(err)
 
-		_, httpPort, err := net.SplitHostPort(httpPortStr)
-		client, err = NewClient("localhost", httpPort)
+		httpAddressStr := networkInfo.External.HTTPAddress()
+		s.Require().NotEmpty(httpAddressStr, "HTTP address should not be empty")
+
+		parts := strings.Split(httpAddressStr, ":")
+		s.Require().Len(parts, 2, "Invalid HTTP address format: %s", httpAddressStr)
+		host, port := parts[0], parts[1]
+
+		// Use localhost since this is the external address accessible from the test host
+		if host == "0.0.0.0" {
+			host = "localhost"
+		}
+
+		client, err = NewClient(host, port)
 		s.Require().NoError(err)
 	})
 
@@ -83,38 +96,30 @@ func (s *DockerTestSuite) TestRollkitNodeRestart() {
 		t.Logf("✅ Node is functional before restart")
 	})
 
-	s.T().Run("stop rollkit node", func(t *testing.T) {
-		// Cast to concrete type to access lifecycle methods
-		concreteNode, ok := rollkitNode.(*tastoradocker.RollkitNode)
-		s.Require().True(ok, "rollkit node should be convertible to concrete type")
-
+	s.T().Run("stop EV node", func(t *testing.T) {
 		// Verify node is running before stopping
-		err := concreteNode.ContainerLifecycle.Running(ctx)
-		s.Require().NoError(err, "rollkit node should be running before stop")
+		err := evNode.ContainerLifecycle.Running(ctx)
+		s.Require().NoError(err, "EV node should be running before stop")
 
-		// Stop the rollkit node
-		err = concreteNode.StopContainer(ctx)
-		s.Require().NoError(err, "failed to stop rollkit node")
+		// Stop the EV node
+		err = evNode.StopContainer(ctx)
+		s.Require().NoError(err, "failed to stop EV node")
 
 		// Verify node is stopped (Running() should return error when stopped)
-		err = concreteNode.ContainerLifecycle.Running(ctx)
-		s.Require().Error(err, "rollkit node should be stopped")
+		err = evNode.ContainerLifecycle.Running(ctx)
+		s.Require().Error(err, "EV node should be stopped")
 
 		t.Logf("✅ Node successfully stopped")
 	})
 
-	s.T().Run("restart rollkit node", func(t *testing.T) {
-		// Cast to concrete type to access lifecycle methods
-		concreteNode, ok := rollkitNode.(*tastoradocker.RollkitNode)
-		s.Require().True(ok, "rollkit node should be convertible to concrete type")
-
+	s.T().Run("restart EV node", func(t *testing.T) {
 		// Use StartContainer() instead of Start() to restart the existing stopped container
-		err := concreteNode.StartContainer(ctx)
-		s.Require().NoError(err, "failed to restart rollkit node")
+		err := evNode.StartContainer(ctx)
+		s.Require().NoError(err, "failed to restart EV node")
 
 		// Verify node is running again
-		err = concreteNode.ContainerLifecycle.Running(ctx)
-		s.Require().NoError(err, "rollkit node should be running after restart")
+		err = evNode.ContainerLifecycle.Running(ctx)
+		s.Require().NoError(err, "EV node should be running after restart")
 
 		t.Logf("✅ Node successfully restarted")
 	})
@@ -146,17 +151,17 @@ func (s *DockerTestSuite) TestRollkitNodeRestart() {
 	})
 }
 
-// TestCelestiaDANetworkPartitionE2E tests the rollkit node's ability to handle
+// TestCelestiaDANetworkPartitionE2E tests the EV node's ability to handle
 // complete network partition from Celestia DA layer and subsequent reconnection.
 //
 // Test Purpose:
-// - Validate rollkit continues block production during DA network partition
+// - Validate EV node continues block production during DA network partition
 // - Verify blocks accumulate locally when DA is unreachable
 // - Ensure proper reconnection and batch submission after DA recovery
 // - Test resilience against prolonged DA unavailability
 //
 // Test Flow:
-// 1. Setup: Start Celestia chain, bridge node, and rollkit node
+// 1. Setup: Start Celestia chain, bridge node, and EV node
 // 2. Baseline: Submit transactions and verify normal DA submission works
 // 3. Partition: Stop entire Celestia network to simulate network partition
 // 4. Local Accumulation: Continue submitting transactions while DA is down
@@ -165,17 +170,17 @@ func (s *DockerTestSuite) TestRollkitNodeRestart() {
 // 7. Recovery: Verify accumulated blocks are submitted to DA in batches
 // 8. Final Validation: Confirm system returns to normal operation
 //
-// This test validates the rollkit node's resilience to complete DA layer failures
+// This test validates the EV node's resilience to complete DA layer failures
 // and its ability to recover gracefully without data loss.
 func (s *DockerTestSuite) TestCelestiaDANetworkPartitionE2E() {
 	ctx := context.Background()
 	s.SetupDockerResources()
 
 	var (
-		bridgeNode  tastoratypes.DANode
-		rollkitNode tastoratypes.RollkitNode
-		client      *Client
-		namespace   string
+		bridgeNode                     *da.Node
+		evNode                         *evstack.Node
+		client                         *Client
+		headerNamespace, dataNamespace string
 	)
 
 	s.T().Run("setup initial infrastructure", func(t *testing.T) {
@@ -186,8 +191,9 @@ func (s *DockerTestSuite) TestCelestiaDANetworkPartitionE2E() {
 
 		// Start bridge node
 		genesisHash := s.getGenesisHash(ctx)
-		celestiaNodeHostname, err := s.celestia.GetNodes()[0].GetInternalHostName(ctx)
+		networkInfo, err := s.celestia.GetNodes()[0].GetNetworkInfo(ctx)
 		s.Require().NoError(err)
+		celestiaNodeHostname := networkInfo.Internal.Hostname
 
 		bridgeNode = s.daNetwork.GetBridgeNodes()[0]
 		s.StartBridgeNode(ctx, bridgeNode, testChainID, genesisHash, celestiaNodeHostname)
@@ -199,22 +205,34 @@ func (s *DockerTestSuite) TestCelestiaDANetworkPartitionE2E() {
 		s.FundWallet(ctx, daWallet, 100_000_000_00)
 		t.Log("✅ DA wallet funded")
 
-		// Generate and store namespace for consistent operations
-		namespace = generateValidNamespaceHex()
-		t.Logf("Using namespace: %s", namespace)
+		// Generate and store namespaces for consistent operations
+		headerNamespace = "ev-header"
+		dataNamespace = "ev-data"
+		t.Logf("Using namespaces: header=%s, data=%s", headerNamespace, dataNamespace)
 
-		// Start rollkit node with stored namespace
-		rollkitNode = s.evNodeChain.GetNodes()[0]
-		s.StartRollkitNodeWithNamespace(ctx, bridgeNode, rollkitNode, namespace)
-		t.Log("✅ Rollkit node started")
+		// Start EV node with stored namespace
+		evNode = s.evNodeChain.GetNodes()[0]
+		s.StartEVNodeWithNamespace(ctx, bridgeNode, evNode, headerNamespace, dataNamespace)
+		t.Log("✅ EV node started")
 
 		// Create HTTP client for testing
-		httpPortStr := rollkitNode.GetHostHTTPPort()
-		s.Require().NotEmpty(httpPortStr, "HTTP port should not be empty")
+		networkInfo, err = evNode.GetNetworkInfo(ctx)
+		s.Require().NoError(err)
 
-		httpPort := strings.Split(httpPortStr, ":")[len(strings.Split(httpPortStr, ":"))-1]
+		httpAddressStr := networkInfo.External.HTTPAddress()
+		s.Require().NotEmpty(httpAddressStr, "HTTP address should not be empty")
+
+		parts := strings.Split(httpAddressStr, ":")
+		s.Require().Len(parts, 2, "Invalid HTTP address format: %s", httpAddressStr)
+		host, port := parts[0], parts[1]
+
+		// Use localhost since this is the external address accessible from the test host
+		if host == "0.0.0.0" {
+			host = "localhost"
+		}
+
 		var err2 error
-		client, err2 = NewClient("localhost", httpPort)
+		client, err2 = NewClient(host, port)
 		s.Require().NoError(err2)
 		t.Log("✅ HTTP client created")
 	})
@@ -253,15 +271,12 @@ func (s *DockerTestSuite) TestCelestiaDANetworkPartitionE2E() {
 
 	s.T().Run("simulate network partition - stop celestia network", func(t *testing.T) {
 		// First stop the bridge node to simulate DA layer failure
-		concreteBridgeNode, ok := bridgeNode.(*tastoradocker.DANode)
-		s.Require().True(ok, "bridge node should be convertible to concrete type")
-
-		err := concreteBridgeNode.StopContainer(ctx)
+		err := bridgeNode.StopContainer(ctx)
 		s.Require().NoError(err, "failed to stop bridge node")
 		t.Log("✅ Bridge node stopped")
 
 		// Then stop the entire Celestia chain to simulate complete network partition
-		err = s.celestia.Stop(ctx)
+		err = s.celestia.Remove(ctx, tastoratypes.WithPreserveVolumes())
 		s.Require().NoError(err, "failed to stop celestia chain")
 		t.Log("✅ Celestia chain stopped - network partition simulated")
 
@@ -306,7 +321,7 @@ func (s *DockerTestSuite) TestCelestiaDANetworkPartitionE2E() {
 		partitionDuration := time.Since(partitionStart)
 		t.Logf("✅ Local block accumulation verified - %d transactions processed in %v",
 			partitionTxCount, partitionDuration)
-		t.Log("✅ Rollkit continues to function during DA network partition")
+		t.Log("✅ EV node continues to function during DA network partition")
 
 		// Wait additional time to ensure more blocks accumulate
 		time.Sleep(3 * time.Second)
@@ -324,14 +339,12 @@ func (s *DockerTestSuite) TestCelestiaDANetworkPartitionE2E() {
 		time.Sleep(3 * time.Second)
 
 		// Get updated celestia node hostname after restart
-		celestiaNodeHostname, err := s.celestia.GetNodes()[0].GetInternalHostName(ctx)
+		networkInfo, err := s.celestia.GetNodes()[0].GetNetworkInfo(ctx)
 		s.Require().NoError(err)
+		celestiaNodeHostname := networkInfo.Internal.Hostname
 
 		// Restart bridge node with proper connection to celestia
-		concreteBridgeNode, ok := bridgeNode.(*tastoradocker.DANode)
-		s.Require().True(ok, "bridge node should be convertible to concrete type")
-
-		err = concreteBridgeNode.StartContainer(ctx)
+		err = bridgeNode.StartContainer(ctx)
 		s.Require().NoError(err, "failed to restart bridge node")
 		t.Log("✅ Bridge node restarted")
 
@@ -427,7 +440,7 @@ func (s *DockerTestSuite) TestCelestiaDANetworkPartitionE2E() {
 	})
 }
 
-// TestDataCorruptionRecovery tests the rollkit node's ability to detect data corruption
+// TestDataCorruptionRecovery tests the EV node's ability to detect data corruption
 // in its local state and recover by re-syncing from the DA layer.
 //
 // Test Purpose:
@@ -454,10 +467,13 @@ func (s *DockerTestSuite) TestDataCorruptionRecovery() {
 	s.SetupDockerResources()
 
 	var (
-		bridgeNode  tastoratypes.DANode
-		rollkitNode tastoratypes.RollkitNode
-		client      *Client
-		namespace   string
+		bridgeNode                     *da.Node
+		evNode                         *evstack.Node
+		client                         *Client
+		headerNamespace, dataNamespace string
+		httpAddressStr                 string
+		parts                          []string
+		host, port                     string
 	)
 
 	s.T().Run("setup infrastructure and baseline data", func(t *testing.T) {
@@ -468,8 +484,9 @@ func (s *DockerTestSuite) TestDataCorruptionRecovery() {
 
 		// Start bridge node
 		genesisHash := s.getGenesisHash(ctx)
-		celestiaNodeHostname, err := s.celestia.GetNodes()[0].GetInternalHostName(ctx)
+		networkInfo, err := s.celestia.GetNodes()[0].GetNetworkInfo(ctx)
 		s.Require().NoError(err)
+		celestiaNodeHostname := networkInfo.Internal.Hostname
 
 		bridgeNode = s.daNetwork.GetBridgeNodes()[0]
 		s.StartBridgeNode(ctx, bridgeNode, testChainID, genesisHash, celestiaNodeHostname)
@@ -481,21 +498,33 @@ func (s *DockerTestSuite) TestDataCorruptionRecovery() {
 		s.FundWallet(ctx, daWallet, 100_000_000_00)
 		t.Log("✅ DA wallet funded")
 
-		// Generate namespace
-		namespace = generateValidNamespaceHex()
-		t.Logf("Using namespace: %s", namespace)
+		// Generate namespaces
+		headerNamespace = "ev-header"
+		dataNamespace = "ev-data"
+		t.Logf("Using namespaces: header=%s, data=%s", headerNamespace, dataNamespace)
 
-		// Start rollkit node
-		rollkitNode = s.evNodeChain.GetNodes()[0]
-		s.StartRollkitNodeWithNamespace(ctx, bridgeNode, rollkitNode, namespace)
-		t.Log("✅ Rollkit node started")
+		// Start EV node
+		evNode = s.evNodeChain.GetNodes()[0]
+		s.StartEVNodeWithNamespace(ctx, bridgeNode, evNode, headerNamespace, dataNamespace)
+		t.Log("✅ EV node started")
 
 		// Create HTTP client
-		httpPortStr := rollkitNode.GetHostHTTPPort()
-		s.Require().NotEmpty(httpPortStr, "HTTP port should not be empty")
+		networkInfo, err = evNode.GetNetworkInfo(ctx)
+		s.Require().NoError(err)
 
-		httpPort := strings.Split(httpPortStr, ":")[len(strings.Split(httpPortStr, ":"))-1]
-		client, err = NewClient("localhost", httpPort)
+		httpAddressStr = networkInfo.External.HTTPAddress()
+		s.Require().NotEmpty(httpAddressStr, "HTTP address should not be empty")
+
+		parts = strings.Split(httpAddressStr, ":")
+		s.Require().Len(parts, 2, "Invalid HTTP address format: %s", httpAddressStr)
+		host, port = parts[0], parts[1]
+
+		// Use localhost since this is the external address accessible from the test host
+		if host == "0.0.0.0" {
+			host = "localhost"
+		}
+
+		client, err = NewClient(host, port)
 		s.Require().NoError(err)
 		t.Log("✅ HTTP client created")
 	})
@@ -535,24 +564,18 @@ func (s *DockerTestSuite) TestDataCorruptionRecovery() {
 	s.T().Run("stop node and simulate data corruption", func(t *testing.T) {
 		// First, simulate data corruption WHILE the node is still running
 		// This is more realistic as corruption often happens during operation
-		concreteNode, ok := rollkitNode.(*tastoradocker.RollkitNode)
-		s.Require().True(ok, "rollkit node should be convertible to concrete type")
-
 		t.Log("🔄 Simulating data corruption while node is running...")
-		s.simulateDataCorruption(ctx, concreteNode, t)
+		s.simulateDataCorruption(ctx, evNode, t)
 
 		// Now stop the node - it may detect corruption during shutdown
-		err := concreteNode.StopContainer(ctx)
-		s.Require().NoError(err, "failed to stop rollkit node")
-		t.Log("✅ Rollkit node stopped after corruption simulation")
+		err := evNode.StopContainer(ctx)
+		s.Require().NoError(err, "failed to stop EV node")
+		t.Log("✅ EV node stopped after corruption simulation")
 	})
 
 	s.T().Run("attempt restart and verify corruption detection", func(t *testing.T) {
-		concreteNode, ok := rollkitNode.(*tastoradocker.RollkitNode)
-		s.Require().True(ok, "rollkit node should be convertible to concrete type")
-
 		// Restart the node - it should detect corruption and attempt recovery
-		err := concreteNode.StartContainer(ctx)
+		err := evNode.StartContainer(ctx)
 		s.Require().NoError(err, "node should restart even with corrupted data")
 		t.Log("✅ Node restarted after corruption")
 
@@ -560,10 +583,10 @@ func (s *DockerTestSuite) TestDataCorruptionRecovery() {
 		time.Sleep(10 * time.Second)
 
 		// Check logs for corruption detection messages
-		s.checkForCorruptionDetectionInLogs(ctx, concreteNode, t)
+		s.checkForCorruptionDetectionInLogs(ctx, evNode, t)
 
 		// Verify node is running (even if in recovery mode)
-		err = concreteNode.ContainerLifecycle.Running(ctx)
+		err = evNode.ContainerLifecycle.Running(ctx)
 		s.Require().NoError(err, "node should be running in recovery mode")
 		t.Log("✅ Node is running and attempting recovery")
 	})
@@ -576,7 +599,7 @@ func (s *DockerTestSuite) TestDataCorruptionRecovery() {
 		recoveryStart := time.Now()
 
 		// Monitor recovery progress by checking for DA sync indicators in logs
-		s.monitorDARecoveryInLogs(ctx, rollkitNode.(*tastoradocker.RollkitNode), t)
+		s.monitorDARecoveryInLogs(ctx, evNode, t)
 
 		// Test if HTTP endpoint is responsive (indicates node is functional)
 		var httpResponsive bool
@@ -684,7 +707,7 @@ func (s *DockerTestSuite) TestDataCorruptionRecovery() {
 }
 
 // simulateDataCorruption simulates real data corruption by modifying database files
-func (s *DockerTestSuite) simulateDataCorruption(ctx context.Context, node *tastoradocker.RollkitNode, t *testing.T) {
+func (s *DockerTestSuite) simulateDataCorruption(ctx context.Context, node *evstack.Node, t *testing.T) {
 	t.Log("🔄 Simulating real data corruption...")
 
 	// Get the container ID to execute commands inside it
@@ -693,7 +716,7 @@ func (s *DockerTestSuite) simulateDataCorruption(ctx context.Context, node *tast
 
 	// Method 1: Corrupt BadgerDB files by writing random bytes to them
 	// First, let's find the database directory structure
-	findDBCmd := []string{"find", "/home/rollkit", "-name", "*.db", "-o", "-name", "*.sst", "-o", "-name", "MANIFEST*", "-o", "-name", "*.log"}
+	findDBCmd := []string{"find", node.HomeDir(), "-name", "*.db", "-o", "-name", "*.sst", "-o", "-name", "MANIFEST*", "-o", "-name", "*.log"}
 	output, err := s.execCommandInContainer(ctx, containerID, findDBCmd)
 	if err != nil {
 		t.Logf("⚠️  Could not find DB files (this may be expected): %v", err)
@@ -702,7 +725,7 @@ func (s *DockerTestSuite) simulateDataCorruption(ctx context.Context, node *tast
 	}
 
 	// Method 2: Corrupt by truncating database files (simulates incomplete writes)
-	truncateCmd := []string{"sh", "-c", "find /home/rollkit -name '*.db' -exec truncate -s 50% {} \\; 2>/dev/null || true"}
+	truncateCmd := []string{"sh", "-c", fmt.Sprintf("find %s -name '*.db' -exec truncate -s 50%% {} \\; 2>/dev/null || true", node.HomeDir())}
 	_, err = s.execCommandInContainer(ctx, containerID, truncateCmd)
 	if err != nil {
 		t.Logf("⚠️  Could not truncate DB files: %v", err)
@@ -711,7 +734,7 @@ func (s *DockerTestSuite) simulateDataCorruption(ctx context.Context, node *tast
 	}
 
 	// Method 3: Corrupt by writing random data to the beginning of database files
-	corruptCmd := []string{"sh", "-c", "find /home/rollkit -name '*.db' -exec sh -c 'head -c 1024 /dev/urandom > \"$1\"' _ {} \\; 2>/dev/null || true"}
+	corruptCmd := []string{"sh", "-c", fmt.Sprintf("find %s -name '*.db' -exec sh -c 'head -c 1024 /dev/urandom > \"$1\"' _ {} \\; 2>/dev/null || true", node.HomeDir())}
 	_, err = s.execCommandInContainer(ctx, containerID, corruptCmd)
 	if err != nil {
 		t.Logf("⚠️  Could not corrupt DB files: %v", err)
@@ -720,7 +743,7 @@ func (s *DockerTestSuite) simulateDataCorruption(ctx context.Context, node *tast
 	}
 
 	// Method 4: Remove critical database index files (simulates partial corruption)
-	removeIndexCmd := []string{"sh", "-c", "find /home/rollkit -name 'MANIFEST*' -delete 2>/dev/null || find /home/rollkit -name '*.log' -delete 2>/dev/null || true"}
+	removeIndexCmd := []string{"sh", "-c", fmt.Sprintf("find %s -name 'MANIFEST*' -delete 2>/dev/null || find %s -name '*.log' -delete 2>/dev/null || true", node.HomeDir(), node.HomeDir())}
 	_, err = s.execCommandInContainer(ctx, containerID, removeIndexCmd)
 	if err != nil {
 		t.Logf("⚠️  Could not remove index files: %v", err)
@@ -732,7 +755,7 @@ func (s *DockerTestSuite) simulateDataCorruption(ctx context.Context, node *tast
 }
 
 // checkForCorruptionDetectionInLogs monitors container logs for corruption detection messages
-func (s *DockerTestSuite) checkForCorruptionDetectionInLogs(ctx context.Context, node *tastoradocker.RollkitNode, t *testing.T) {
+func (s *DockerTestSuite) checkForCorruptionDetectionInLogs(ctx context.Context, node *evstack.Node, t *testing.T) {
 	t.Log("🔍 Checking logs for corruption detection messages...")
 
 	containerID := node.ContainerLifecycle.ContainerID()
@@ -793,7 +816,7 @@ func (s *DockerTestSuite) checkForCorruptionDetectionInLogs(ctx context.Context,
 }
 
 // monitorDARecoveryInLogs monitors logs for indicators that the node is recovering from DA
-func (s *DockerTestSuite) monitorDARecoveryInLogs(ctx context.Context, node *tastoradocker.RollkitNode, t *testing.T) {
+func (s *DockerTestSuite) monitorDARecoveryInLogs(ctx context.Context, node *evstack.Node, t *testing.T) {
 	t.Log("🔍 Monitoring DA recovery indicators in logs...")
 
 	containerID := node.ContainerLifecycle.ContainerID()

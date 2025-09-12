@@ -172,10 +172,8 @@ func (s *Syncer) SetDAHeight(height uint64) {
 
 // initializeState loads the current sync state
 func (s *Syncer) initializeState() error {
-	ctx := context.Background()
-
 	// Load state from store
-	state, err := s.store.GetState(ctx)
+	state, err := s.store.GetState(s.ctx)
 	if err != nil {
 		// Use genesis state if no state exists
 		state = types.State{

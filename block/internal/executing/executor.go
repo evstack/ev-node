@@ -183,22 +183,20 @@ func (e *Executor) NotifyNewTransactions() {
 
 // initializeState loads or creates the initial blockchain state
 func (e *Executor) initializeState() error {
-	ctx := context.Background()
-
 	// Try to load existing state
-	state, err := e.store.GetState(ctx)
+	state, err := e.store.GetState(e.ctx)
 	if err != nil {
 		// Initialize new chain
 		e.logger.Info().Msg("initializing new blockchain state")
 
-		stateRoot, _, err := e.exec.InitChain(ctx, e.genesis.StartTime,
+		stateRoot, _, err := e.exec.InitChain(e.ctx, e.genesis.StartTime,
 			e.genesis.InitialHeight, e.genesis.ChainID)
 		if err != nil {
 			return fmt.Errorf("failed to initialize chain: %w", err)
 		}
 
 		// Create genesis block
-		if err := e.createGenesisBlock(ctx, stateRoot); err != nil {
+		if err := e.createGenesisBlock(e.ctx, stateRoot); err != nil {
 			return fmt.Errorf("failed to create genesis block: %w", err)
 		}
 
@@ -215,7 +213,7 @@ func (e *Executor) initializeState() error {
 	e.SetLastState(state)
 
 	// Set store height
-	if err := e.store.SetHeight(ctx, state.LastBlockHeight); err != nil {
+	if err := e.store.SetHeight(e.ctx, state.LastBlockHeight); err != nil {
 		return fmt.Errorf("failed to set store height: %w", err)
 	}
 
@@ -336,9 +334,7 @@ func (e *Executor) executionLoop() {
 				e.logger.Error().Err(err).Msg("failed to produce block from lazy timer")
 			}
 			// Reset lazy timer
-			if lazyTimer != nil {
-				lazyTimer.Reset(e.config.Node.LazyBlockInterval.Duration)
-			}
+			lazyTimer.Reset(e.config.Node.LazyBlockInterval.Duration)
 
 		case <-e.txNotifyCh:
 			txsAvailable = true
@@ -356,7 +352,6 @@ func (e *Executor) produceBlock() error {
 		}
 	}()
 
-	ctx := context.Background()
 	currentState := e.GetLastState()
 	newHeight := currentState.LastBlockHeight + 1
 
@@ -378,7 +373,7 @@ func (e *Executor) produceBlock() error {
 	}
 
 	// Get batch from sequencer
-	batchData, err := e.retrieveBatch(ctx)
+	batchData, err := e.retrieveBatch(e.ctx)
 	if errors.Is(err, common.ErrNoBatch) {
 		e.logger.Debug().Msg("no batch available")
 		return nil
@@ -389,13 +384,13 @@ func (e *Executor) produceBlock() error {
 	}
 
 	// Create block
-	header, data, err := e.createBlock(ctx, newHeight, batchData)
+	header, data, err := e.createBlock(e.ctx, newHeight, batchData)
 	if err != nil {
 		return fmt.Errorf("failed to create block: %w", err)
 	}
 
 	// Apply block to get new state
-	newState, err := e.applyBlock(ctx, header.Header, data)
+	newState, err := e.applyBlock(e.ctx, header.Header, data)
 	if err != nil {
 		return fmt.Errorf("failed to apply block: %w", err)
 	}
@@ -413,22 +408,22 @@ func (e *Executor) produceBlock() error {
 	}
 
 	// Save block
-	if err := e.store.SaveBlockData(ctx, header, data, &signature); err != nil {
+	if err := e.store.SaveBlockData(e.ctx, header, data, &signature); err != nil {
 		return fmt.Errorf("failed to save block: %w", err)
 	}
 
 	// Update store height
-	if err := e.store.SetHeight(ctx, newHeight); err != nil {
+	if err := e.store.SetHeight(e.ctx, newHeight); err != nil {
 		return fmt.Errorf("failed to update store height: %w", err)
 	}
 
 	// Update state
-	if err := e.updateState(ctx, newState); err != nil {
+	if err := e.updateState(e.ctx, newState); err != nil {
 		return fmt.Errorf("failed to update state: %w", err)
 	}
 
 	// Broadcast header and data to P2P network
-	g, ctx := errgroup.WithContext(ctx)
+	g, ctx := errgroup.WithContext(e.ctx)
 	g.Go(func() error { return e.headerBroadcaster.WriteToStoreAndBroadcast(ctx, header) })
 	g.Go(func() error { return e.dataBroadcaster.WriteToStoreAndBroadcast(ctx, data) })
 	if err := g.Wait(); err != nil {
