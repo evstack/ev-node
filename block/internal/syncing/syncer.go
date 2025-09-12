@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"runtime"
+	"strings"
 	"sync"
 	"time"
 
@@ -247,6 +248,7 @@ func (s *Syncer) syncLoop() {
 	var hffDelay time.Duration
 	var nextDARequestAt time.Time
 
+	//TODO: we should request to see what the head of the chain is at, then we know if we are falling behinf or in sync mode
 	for {
 		select {
 		case <-s.ctx.Done():
@@ -266,16 +268,15 @@ func (s *Syncer) syncLoop() {
 					if hffDelay <= 0 {
 						hffDelay = 2 * time.Second
 					}
+					s.logger.Debug().Dur("delay", hffDelay).Uint64("da_height", s.GetDAHeight()).Msg("height from future; backing off DA requests")
 					nextDARequestAt = now.Add(hffDelay)
 				} else {
 					// Non-HFF errors: do not backoff artificially
-					hffDelay = 0
 					nextDARequestAt = time.Time{}
 					s.logger.Error().Err(err).Msg("failed to retrieve from DA")
 				}
 			} else if len(events) > 0 {
 				// Reset backoff on success
-				hffDelay = 0
 				nextDARequestAt = time.Time{}
 				// Process DA events
 				for _, event := range events {
@@ -524,8 +525,20 @@ func (s *Syncer) sendNonBlockingSignal(ch chan struct{}, name string) {
 
 // isHeightFromFutureError checks if the error is a height from future error
 func (s *Syncer) isHeightFromFutureError(err error) bool {
-	return err != nil && (errors.Is(err, common.ErrHeightFromFutureStr) ||
-		(err.Error() != "" && bytes.Contains([]byte(err.Error()), []byte(common.ErrHeightFromFutureStr.Error()))))
+	if err == nil {
+		return false
+	}
+	if errors.Is(err, coreda.ErrHeightFromFuture) || errors.Is(err, common.ErrHeightFromFutureStr) {
+		return true
+	}
+	msg := err.Error()
+	if msg == "" {
+		return false
+	}
+	if strings.Contains(msg, coreda.ErrHeightFromFuture.Error()) || strings.Contains(msg, common.ErrHeightFromFutureStr.Error()) {
+		return true
+	}
+	return false
 }
 
 // processPendingEvents fetches and processes pending events from cache
