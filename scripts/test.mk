@@ -39,6 +39,12 @@ test-cover:
 	@go run -tags=cover scripts/test_cover.go
 .PHONY: test-cover
 
+## bench: run micro-benchmarks for internal cache
+bench:
+	@echo "--> Running internal cache benchmarks"
+	@go test -bench=. -benchmem -run=^$$ ./block/internal/cache
+.PHONY: bench
+
 ## test-evm: Running EVM tests
 test-evm:
 	@echo "--> Running EVM tests"

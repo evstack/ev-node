@@ -1,0 +1,123 @@
+package executing
+
+import (
+	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"time"
+
+	ds "github.com/ipfs/go-datastore"
+	"github.com/rs/zerolog"
+
+	coreexecutor "github.com/evstack/ev-node/core/execution"
+	coresequencer "github.com/evstack/ev-node/core/sequencer"
+)
+
+// Reaper is responsible for periodically retrieving transactions from the executor,
+// filtering out already seen transactions, and submitting new transactions to the sequencer.
+type Reaper struct {
+	exec      coreexecutor.Executor
+	sequencer coresequencer.Sequencer
+	chainID   string
+	interval  time.Duration
+	logger    zerolog.Logger
+	ctx       context.Context
+	seenStore ds.Batching
+	executor  *Executor
+}
+
+// NewReaper creates a new Reaper instance with persistent seenTx storage.
+func NewReaper(ctx context.Context, exec coreexecutor.Executor, sequencer coresequencer.Sequencer, chainID string, interval time.Duration, logger zerolog.Logger, store ds.Batching, executor *Executor) *Reaper {
+	if interval <= 0 {
+		interval = DefaultInterval
+	}
+	return &Reaper{
+		exec:      exec,
+		sequencer: sequencer,
+		chainID:   chainID,
+		interval:  interval,
+		logger:    logger.With().Str("component", "reaper").Logger(),
+		ctx:       ctx,
+		seenStore: store,
+		executor:  executor,
+	}
+}
+
+// Start begins the reaping process at the specified interval.
+func (r *Reaper) Start(ctx context.Context) {
+	r.ctx = ctx
+	ticker := time.NewTicker(r.interval)
+	defer ticker.Stop()
+
+	r.logger.Info().Dur("interval", r.interval).Msg("reaper started")
+
+	for {
+		select {
+		case <-ctx.Done():
+			r.logger.Info().Msg("reaper stopped")
+			return
+		case <-ticker.C:
+			r.SubmitTxs()
+		}
+	}
+}
+
+// SubmitTxs retrieves transactions from the executor and submits them to the sequencer.
+func (r *Reaper) SubmitTxs() {
+	txs, err := r.exec.GetTxs(r.ctx)
+	if err != nil {
+		r.logger.Error().Err(err).Msg("failed to get txs from executor")
+		return
+	}
+
+	var newTxs [][]byte
+	for _, tx := range txs {
+		txHash := hashTx(tx)
+		key := ds.NewKey(txHash)
+		has, err := r.seenStore.Has(r.ctx, key)
+		if err != nil {
+			r.logger.Error().Err(err).Msg("failed to check seenStore")
+			continue
+		}
+		if !has {
+			newTxs = append(newTxs, tx)
+		}
+	}
+
+	if len(newTxs) == 0 {
+		r.logger.Debug().Msg("no new txs to submit")
+		return
+	}
+
+	r.logger.Debug().Int("txCount", len(newTxs)).Msg("submitting txs to sequencer")
+
+	_, err = r.sequencer.SubmitBatchTxs(r.ctx, coresequencer.SubmitBatchTxsRequest{
+		Id:    []byte(r.chainID),
+		Batch: &coresequencer.Batch{Transactions: newTxs},
+	})
+	if err != nil {
+		r.logger.Error().Err(err).Msg("failed to submit txs to sequencer")
+		return
+	}
+
+	for _, tx := range newTxs {
+		txHash := hashTx(tx)
+		key := ds.NewKey(txHash)
+		if err := r.seenStore.Put(r.ctx, key, []byte{1}); err != nil {
+			r.logger.Error().Err(err).Str("txHash", txHash).Msg("failed to persist seen tx")
+		}
+	}
+
+	// Notify the executor that new transactions are available
+	if r.executor != nil && len(newTxs) > 0 {
+		r.logger.Debug().Msg("notifying executor of new transactions")
+		r.executor.NotifyNewTransactions()
+	}
+
+	r.logger.Debug().Msg("successfully submitted txs")
+}
+
+func hashTx(tx []byte) string {
+	hash := sha256.Sum256(tx)
+	return hex.EncodeToString(hash[:])
+}

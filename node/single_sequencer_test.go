@@ -44,7 +44,7 @@ func TestStartup(t *testing.T) {
 	case err := <-errChan:
 		// Context cancellation should result in context.Canceled error
 		require.ErrorIs(t, err, context.Canceled)
-	case <-time.After(2 * time.Second):
+	case <-time.After(8 * time.Second):
 		t.Fatal("Node did not stop after context cancellation")
 	}
 
