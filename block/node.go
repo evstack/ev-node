@@ -2,6 +2,7 @@ package block
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	goheader "github.com/celestiaorg/go-header"
@@ -62,26 +63,24 @@ func (bc *BlockComponents) Start(ctx context.Context) error {
 
 // Stop stops all components
 func (bc *BlockComponents) Stop() error {
-	var errs []error
+	var errs error
 	if bc.Executor != nil {
 		if err := bc.Executor.Stop(); err != nil {
-			errs = append(errs, fmt.Errorf("failed to stop executor: %w", err))
+			errs = errors.Join(errs, fmt.Errorf("failed to stop executor: %w", err))
 		}
 	}
 	if bc.Syncer != nil {
 		if err := bc.Syncer.Stop(); err != nil {
-			errs = append(errs, fmt.Errorf("failed to stop syncer: %w", err))
+			errs = errors.Join(errs, fmt.Errorf("failed to stop syncer: %w", err))
 		}
 	}
 	if bc.Submitter != nil {
 		if err := bc.Submitter.Stop(); err != nil {
-			errs = append(errs, fmt.Errorf("failed to stop submitter: %w", err))
+			errs = errors.Join(errs, fmt.Errorf("failed to stop submitter: %w", err))
 		}
 	}
-	if len(errs) > 0 {
-		return fmt.Errorf("errors stopping components: %v", errs)
-	}
-	return nil
+
+	return errs
 }
 
 // broadcaster interface for P2P broadcasting
