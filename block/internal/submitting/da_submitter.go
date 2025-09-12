@@ -63,41 +63,32 @@ func (rs *RetryState) Next(reason retryReason, pol RetryPolicy, gasMultiplier fl
 	case reasonSuccess:
 		// Reduce gas price towards initial on success, if multiplier is available
 		if !sentinelNoGas && gasMultiplier > 0 {
-			m := clampFloat(gasMultiplier, 1/pol.MaxGasMultiplier, pol.MaxGasMultiplier)
-			rs.GasPrice = clampFloat(rs.GasPrice/m, pol.MinGasPrice, pol.MaxGasPrice)
+			m := clamp(gasMultiplier, 1/pol.MaxGasMultiplier, pol.MaxGasMultiplier)
+			rs.GasPrice = clamp(rs.GasPrice/m, pol.MinGasPrice, pol.MaxGasPrice)
 		}
 		rs.Backoff = pol.MinBackoff
 	case reasonMempool:
 		if !sentinelNoGas && gasMultiplier > 0 {
-			m := clampFloat(gasMultiplier, 1/pol.MaxGasMultiplier, pol.MaxGasMultiplier)
-			rs.GasPrice = clampFloat(rs.GasPrice*m, pol.MinGasPrice, pol.MaxGasPrice)
+			m := clamp(gasMultiplier, 1/pol.MaxGasMultiplier, pol.MaxGasMultiplier)
+			rs.GasPrice = clamp(rs.GasPrice*m, pol.MinGasPrice, pol.MaxGasPrice)
 		}
 		// Honor mempool stalling by using max backoff window
-		rs.Backoff = clampDuration(pol.MaxBackoff, pol.MinBackoff, pol.MaxBackoff)
+		rs.Backoff = clamp(pol.MaxBackoff, pol.MinBackoff, pol.MaxBackoff)
 	case reasonFailure, reasonTooBig:
 		if rs.Backoff == 0 {
 			rs.Backoff = pol.MinBackoff
 		} else {
 			rs.Backoff *= 2
 		}
-		rs.Backoff = clampDuration(rs.Backoff, pol.MinBackoff, pol.MaxBackoff)
+		rs.Backoff = clamp(rs.Backoff, pol.MinBackoff, pol.MaxBackoff)
 	case reasonInitial:
 		rs.Backoff = 0
 	}
 	rs.Attempt++
 }
 
-func clampFloat(v, min, max float64) float64 {
-	if v < min {
-		return min
-	}
-	if v > max {
-		return max
-	}
-	return v
-}
-
-func clampDuration(v, min, max time.Duration) time.Duration {
+// clamp constrains a value between min and max bounds for any comparable type
+func clamp[T ~float64 | time.Duration](v, min, max T) T {
 	if v < min {
 		return min
 	}
@@ -112,12 +103,12 @@ func (s *DASubmitter) getGasMultiplier(ctx context.Context, pol RetryPolicy) flo
 	gasMultiplier, err := s.da.GasMultiplier(ctx)
 	if err != nil || gasMultiplier <= 0 {
 		if s.config.DA.GasMultiplier > 0 {
-			return clampFloat(s.config.DA.GasMultiplier, 0.1, pol.MaxGasMultiplier)
+			return clamp(s.config.DA.GasMultiplier, 0.1, pol.MaxGasMultiplier)
 		}
 		s.logger.Warn().Err(err).Msg("failed to get gas multiplier from DA layer, using default 1.0")
-		return 1.0
+		return defaultGasMultiplier
 	}
-	return clampFloat(gasMultiplier, 0.1, pol.MaxGasMultiplier)
+	return clamp(gasMultiplier, 0.1, pol.MaxGasMultiplier)
 }
 
 // initialGasPrice determines the starting gas price with clamping and sentinel handling
@@ -126,10 +117,10 @@ func (s *DASubmitter) initialGasPrice(ctx context.Context, pol RetryPolicy) (pri
 		return noGasPrice, true
 	}
 	if s.config.DA.GasPrice > 0 {
-		return clampFloat(s.config.DA.GasPrice, pol.MinGasPrice, pol.MaxGasPrice), false
+		return clamp(s.config.DA.GasPrice, pol.MinGasPrice, pol.MaxGasPrice), false
 	}
 	if gp, err := s.da.GasPrice(ctx); err == nil {
-		return clampFloat(gp, pol.MinGasPrice, pol.MaxGasPrice), false
+		return clamp(gp, pol.MinGasPrice, pol.MaxGasPrice), false
 	}
 	s.logger.Warn().Msg("DA gas price unavailable; using default 0.0")
 	return pol.MinGasPrice, false
@@ -320,7 +311,7 @@ func submitToDA[T any](
 		MaxAttempts:      s.config.DA.MaxSubmitAttempts,
 		MinBackoff:       initialBackoff,
 		MaxBackoff:       s.config.DA.BlockTime.Duration,
-		MinGasPrice:      0.0,
+		MinGasPrice:      defaultGasPrice,
 		MaxGasPrice:      defaultMaxGasPriceClamp,
 		MaxBlobBytes:     defaultMaxBlobSize,
 		MaxGasMultiplier: defaultMaxGasMultiplierClamp,
@@ -435,13 +426,30 @@ func marshalItems[T any](
 	itemType string,
 ) ([][]byte, error) {
 	marshaled := make([][]byte, len(items))
+
+	// Use a channel to collect errors from goroutines
+	errCh := make(chan error, len(items))
+
+	// Marshal items concurrently
 	for i, item := range items {
-		bz, err := marshalFn(item)
-		if err != nil {
-			return nil, fmt.Errorf("failed to marshal %s item: %w", itemType, err)
-		}
-		marshaled[i] = bz
+		go func(idx int, itm T) {
+			bz, err := marshalFn(itm)
+			if err != nil {
+				errCh <- fmt.Errorf("failed to marshal %s item at index %d: %w", itemType, idx, err)
+				return
+			}
+			marshaled[idx] = bz
+			errCh <- nil
+		}(i, item)
 	}
+
+	// Wait for all goroutines to complete and check for errors
+	for i := 0; i < len(items); i++ {
+		if err := <-errCh; err != nil {
+			return nil, err
+		}
+	}
+
 	return marshaled, nil
 }
 
