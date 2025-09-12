@@ -77,7 +77,9 @@ func (r *DARetriever) RetrieveFromDA(ctx context.Context, daHeight uint64) ([]co
 			events := r.processBlobs(ctx, blobsResp.Data, daHeight)
 			return events, nil
 
-		} else if strings.Contains(fetchErr.Error(), coreda.ErrHeightFromFuture.Error()) {
+		}
+
+		if strings.Contains(fetchErr.Error(), coreda.ErrHeightFromFuture.Error()) {
 			return nil, fmt.Errorf("%w: height from future", coreda.ErrHeightFromFuture)
 		}
 
