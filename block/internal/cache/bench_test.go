@@ -2,13 +2,14 @@ package cache
 
 import (
 	"context"
+	"fmt"
 	"testing"
 
 	"github.com/rs/zerolog"
 
 	"github.com/evstack/ev-node/block/internal/common"
 	"github.com/evstack/ev-node/pkg/config"
-	"github.com/evstack/ev-node/pkg/store"
+	storepkg "github.com/evstack/ev-node/pkg/store"
 	"github.com/evstack/ev-node/types"
 )
 
@@ -26,12 +27,12 @@ PASS
 ok  	github.com/evstack/ev-node/block/internal/cache	25.834s
 */
 
-func benchSetupStore(b *testing.B, n int, txsPer int, chainID string) store.Store {
-	ds, err := store.NewDefaultInMemoryKVStore()
+func benchSetupStore(b *testing.B, n int, txsPer int, chainID string) storepkg.Store {
+	ds, err := storepkg.NewDefaultInMemoryKVStore()
 	if err != nil {
 		b.Fatal(err)
 	}
-	st := store.New(ds)
+	st := storepkg.New(ds)
 	ctx := context.Background()
 	for i := 1; i <= n; i++ {
 		h, d := types.GetRandomBlock(uint64(i), txsPer, chainID)
@@ -45,7 +46,7 @@ func benchSetupStore(b *testing.B, n int, txsPer int, chainID string) store.Stor
 	return st
 }
 
-func benchNewManager(b *testing.B, st store.Store) Manager {
+func benchNewManager(b *testing.B, st storepkg.Store) Manager {
 	cfg := config.DefaultConfig
 	cfg.RootDir = b.TempDir()
 	m, err := NewManager(cfg, st, zerolog.Nop())
@@ -53,6 +54,82 @@ func benchNewManager(b *testing.B, st store.Store) Manager {
 		b.Fatal(err)
 	}
 	return m
+}
+
+// Helpers to create pending managers with either iterator path (using datastore query)
+// or a manual one-by-one iterator (baseline for comparison).
+func benchNewPendingData(b *testing.B, st storepkg.Store, useIter bool) *PendingData {
+	var iter func(ctx context.Context, s storepkg.Store, after uint64) ([]*types.Data, error)
+	if useIter {
+		iter = func(ctx context.Context, s storepkg.Store, after uint64) ([]*types.Data, error) {
+			if ds, ok := s.(*storepkg.DefaultStore); ok {
+				return ds.DataAfterHeight(ctx, after)
+			}
+			return nil, fmt.Errorf("iterator not supported")
+		}
+	} else {
+		iter = func(ctx context.Context, s storepkg.Store, after uint64) ([]*types.Data, error) {
+			// Manual one-by-one retrieval baseline
+			h, err := s.Height(ctx)
+			if err != nil {
+				return nil, err
+			}
+			if after >= h {
+				return nil, nil
+			}
+			out := make([]*types.Data, 0, h-after)
+			for i := after + 1; i <= h; i++ {
+				_, d, err := s.GetBlockData(ctx, i)
+				if err != nil {
+					return out, err
+				}
+				out = append(out, d)
+			}
+			return out, nil
+		}
+	}
+	base, err := newPendingBase(st, zerolog.Nop(), LastSubmittedDataHeightKey, iter)
+	if err != nil {
+		b.Fatal(err)
+	}
+	return &PendingData{base: base}
+}
+
+func benchNewPendingHeaders(b *testing.B, st storepkg.Store, useIter bool) *PendingHeaders {
+	var iter func(ctx context.Context, s storepkg.Store, after uint64) ([]*types.SignedHeader, error)
+	if useIter {
+		iter = func(ctx context.Context, s storepkg.Store, after uint64) ([]*types.SignedHeader, error) {
+			if ds, ok := s.(*storepkg.DefaultStore); ok {
+				return ds.HeadersAfterHeight(ctx, after)
+			}
+			return nil, fmt.Errorf("iterator not supported")
+		}
+	} else {
+		iter = func(ctx context.Context, s storepkg.Store, after uint64) ([]*types.SignedHeader, error) {
+			// Manual one-by-one retrieval baseline
+			h, err := s.Height(ctx)
+			if err != nil {
+				return nil, err
+			}
+			if after >= h {
+				return nil, nil
+			}
+			out := make([]*types.SignedHeader, 0, h-after)
+			for i := after + 1; i <= h; i++ {
+				hd, err := s.GetHeader(ctx, i)
+				if err != nil {
+					return out, err
+				}
+				out = append(out, hd)
+			}
+			return out, nil
+		}
+	}
+	base, err := newPendingBase(st, zerolog.Nop(), storepkg.LastSubmittedHeaderHeightKey, iter)
+	if err != nil {
+		b.Fatal(err)
+	}
+	return &PendingHeaders{base: base}
 }
 
 func BenchmarkManager_GetPendingHeaders(b *testing.B) {

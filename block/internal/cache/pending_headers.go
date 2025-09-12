@@ -2,6 +2,7 @@ package cache
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/rs/zerolog"
 
@@ -25,14 +26,17 @@ type PendingHeaders struct {
 	base *pendingBase[*types.SignedHeader]
 }
 
-func fetchSignedHeader(ctx context.Context, store storepkg.Store, height uint64) (*types.SignedHeader, error) {
-	header, err := store.GetHeader(ctx, height)
-	return header, err
-}
-
 // NewPendingHeaders returns a new PendingHeaders struct
 func NewPendingHeaders(store storepkg.Store, logger zerolog.Logger) (*PendingHeaders, error) {
-	base, err := newPendingBase(store, logger, storepkg.LastSubmittedHeaderHeightKey, fetchSignedHeader)
+	// Iterator-based retrieval closure for headers
+	iter := func(ctx context.Context, s storepkg.Store, after uint64) ([]*types.SignedHeader, error) {
+		if ds, ok := s.(*storepkg.DefaultStore); ok {
+			return ds.HeadersAfterHeight(ctx, after)
+		}
+		return nil, fmt.Errorf("iterator not supported")
+	}
+
+	base, err := newPendingBase(store, logger, storepkg.LastSubmittedHeaderHeightKey, iter)
 	if err != nil {
 		return nil, err
 	}
