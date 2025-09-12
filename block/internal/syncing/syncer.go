@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"runtime"
 	"sync"
 	"time"
 
@@ -233,9 +234,6 @@ func (s *Syncer) syncLoop() {
 	s.logger.Info().Msg("starting sync loop")
 	defer s.logger.Info().Msg("sync loop stopped")
 
-	daTicker := time.NewTicker(s.config.DA.BlockTime.Duration)
-	defer daTicker.Stop()
-
 	initialHeight, err := s.store.Height(s.ctx)
 	if err != nil {
 		s.logger.Error().Err(err).Msg("failed to get initial height")
@@ -245,18 +243,40 @@ func (s *Syncer) syncLoop() {
 	lastHeaderHeight := initialHeight
 	lastDataHeight := initialHeight
 
+	// Backoff control when DA replies with height-from-future
+	var hffDelay time.Duration
+	var nextDARequestAt time.Time
+
 	for {
 		select {
 		case <-s.ctx.Done():
 			return
-		case <-daTicker.C:
-			// Retrieve from DA
+		default:
+		}
+
+		now := time.Now()
+		// Respect backoff window if set
+		if nextDARequestAt.IsZero() || now.After(nextDARequestAt) || now.Equal(nextDARequestAt) {
+			// Retrieve from DA as fast as possible (unless throttled by HFF)
 			events, err := s.daRetriever.RetrieveFromDA(s.ctx, s.GetDAHeight())
 			if err != nil {
-				if !s.isHeightFromFutureError(err) {
+				if s.isHeightFromFutureError(err) {
+					// Back off exactly by DA block time to avoid overloading
+					hffDelay = s.config.DA.BlockTime.Duration
+					if hffDelay <= 0 {
+						hffDelay = 2 * time.Second
+					}
+					nextDARequestAt = now.Add(hffDelay)
+				} else {
+					// Non-HFF errors: do not backoff artificially
+					hffDelay = 0
+					nextDARequestAt = time.Time{}
 					s.logger.Error().Err(err).Msg("failed to retrieve from DA")
 				}
-			} else {
+			} else if len(events) > 0 {
+				// Reset backoff on success
+				hffDelay = 0
+				nextDARequestAt = time.Time{}
 				// Process DA events
 				for _, event := range events {
 					select {
@@ -265,11 +285,16 @@ func (s *Syncer) syncLoop() {
 						s.logger.Warn().Msg("height channel full, dropping DA event")
 					}
 				}
-				// Increment DA height on successful retrieval
+				// Increment DA height on successful retrieval and continue immediately
 				s.SetDAHeight(s.GetDAHeight() + 1)
+				continue
 			}
+		}
+
+		// Opportunistically process any P2P signals
+		processedP2P := false
+		select {
 		case <-s.headerStoreCh:
-			// Check for new P2P headers
 			newHeaderHeight := s.headerStore.Height()
 			if newHeaderHeight > lastHeaderHeight {
 				events := s.p2pHandler.ProcessHeaderRange(s.ctx, lastHeaderHeight+1, newHeaderHeight)
@@ -282,8 +307,12 @@ func (s *Syncer) syncLoop() {
 				}
 				lastHeaderHeight = newHeaderHeight
 			}
+			processedP2P = true
+		default:
+		}
+
+		select {
 		case <-s.dataStoreCh:
-			// Check for new P2P data
 			newDataHeight := s.dataStore.Height()
 			if newDataHeight > lastDataHeight {
 				events := s.p2pHandler.ProcessDataRange(s.ctx, lastDataHeight+1, newDataHeight)
@@ -296,11 +325,17 @@ func (s *Syncer) syncLoop() {
 				}
 				lastDataHeight = newDataHeight
 			}
+			processedP2P = true
+		default:
+		}
+
+		if !processedP2P {
+			// Yield CPU to avoid tight spin when no events are available
+			runtime.Gosched()
 		}
 	}
 }
 
-// processHeightEvent processes a height event for synchronization
 func (s *Syncer) processHeightEvent(event *common.DAHeightEvent) {
 	height := event.Header.Height()
 	headerHash := event.Header.Hash().String()
