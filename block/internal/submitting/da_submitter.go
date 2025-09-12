@@ -20,14 +20,14 @@ import (
 )
 
 const (
-    submissionTimeout    = 60 * time.Second
-    noGasPrice           = -1
-    initialBackoff       = 100 * time.Millisecond
-    defaultGasPrice      = 0.0
-    defaultGasMultiplier = 1.0
-    defaultMaxBlobSize   = 2 * 1024 * 1024 // 2MB fallback blob size limit
-    defaultMaxGasPriceClamp      = 1000.0
-    defaultMaxGasMultiplierClamp = 3.0
+	submissionTimeout            = 60 * time.Second
+	noGasPrice                   = -1
+	initialBackoff               = 100 * time.Millisecond
+	defaultGasPrice              = 0.0
+	defaultGasMultiplier         = 1.0
+	defaultMaxBlobSize           = 2 * 1024 * 1024 // 2MB fallback blob size limit
+	defaultMaxGasPriceClamp      = 1000.0
+	defaultMaxGasMultiplierClamp = 3.0
 )
 
 // RetryPolicy defines clamped bounds for retries, backoff, and gas pricing.
@@ -133,21 +133,6 @@ func (s *DASubmitter) initialGasPrice(ctx context.Context, pol RetryPolicy) (pri
 	}
 	s.logger.Warn().Msg("DA gas price unavailable; using default 0.0")
 	return pol.MinGasPrice, false
-}
-
-// submissionOutcome captures the effect of a submission attempt for a batch
-type submissionOutcome[T any] struct {
-	SubmittedItems   []T
-	RemainingItems   []T
-	RemainingMarshal [][]byte
-	NumSubmitted     int
-	AllSubmitted     bool
-}
-
-// submissionBatch represents a batch of items with their marshaled data for DA submission
-type submissionBatch[Item any] struct {
-	Items     []Item
-	Marshaled [][]byte
 }
 
 // DASubmitter handles DA submission operations
@@ -331,15 +316,15 @@ func submitToDA[T any](
 	}
 
 	// Build retry policy from config with sane defaults
-    pol := RetryPolicy{
-        MaxAttempts:      s.config.DA.MaxSubmitAttempts,
-        MinBackoff:       initialBackoff,
-        MaxBackoff:       s.config.DA.BlockTime.Duration,
-        MinGasPrice:      0.0,
-        MaxGasPrice:      defaultMaxGasPriceClamp,
-        MaxBlobBytes:     defaultMaxBlobSize,
-        MaxGasMultiplier: defaultMaxGasMultiplierClamp,
-    }
+	pol := RetryPolicy{
+		MaxAttempts:      s.config.DA.MaxSubmitAttempts,
+		MinBackoff:       initialBackoff,
+		MaxBackoff:       s.config.DA.BlockTime.Duration,
+		MinGasPrice:      0.0,
+		MaxGasPrice:      defaultMaxGasPriceClamp,
+		MaxBlobBytes:     defaultMaxBlobSize,
+		MaxGasMultiplier: defaultMaxGasMultiplierClamp,
+	}
 
 	// Choose initial gas price with clamp
 	gasPrice, sentinelNoGas := s.initialGasPrice(ctx, pol)
