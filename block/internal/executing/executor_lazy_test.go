@@ -71,6 +71,10 @@ func TestLazyMode_ProduceBlockLogic(t *testing.T) {
 		Return(initStateRoot, uint64(1024), nil).Once()
 	require.NoError(t, exec.initializeState())
 
+	// Set up context for the executor (normally done in Start method)
+	exec.ctx, exec.cancel = context.WithCancel(context.Background())
+	defer exec.cancel()
+
 	// Test 1: Lazy mode should produce blocks when called directly (simulating lazy timer)
 	mockSeq.EXPECT().GetNextBatch(mock.Anything, mock.AnythingOfType("sequencer.GetNextBatchRequest")).
 		RunAndReturn(func(ctx context.Context, req coreseq.GetNextBatchRequest) (*coreseq.GetNextBatchResponse, error) {
@@ -172,6 +176,10 @@ func TestRegularMode_ProduceBlockLogic(t *testing.T) {
 	mockExec.EXPECT().InitChain(mock.Anything, mock.AnythingOfType("time.Time"), gen.InitialHeight, gen.ChainID).
 		Return(initStateRoot, uint64(1024), nil).Once()
 	require.NoError(t, exec.initializeState())
+
+	// Set up context for the executor (normally done in Start method)
+	exec.ctx, exec.cancel = context.WithCancel(context.Background())
+	defer exec.cancel()
 
 	// Test: Regular mode should produce blocks regardless of transaction availability
 	mockSeq.EXPECT().GetNextBatch(mock.Anything, mock.AnythingOfType("sequencer.GetNextBatchRequest")).
