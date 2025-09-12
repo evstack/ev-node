@@ -78,6 +78,8 @@ func TestTxGossipingMultipleNodesDAIncluded(t *testing.T) {
 	config := getTestConfig(t, 1)
 	// Disable P2P gossiping
 	config.P2P.Peers = "none"
+	// Start DA sync from beginning
+	config.DA.StartHeight = 0
 
 	numNodes := 4
 	nodes, cleanups := createNodesWithCleanup(t, numNodes, config)
@@ -150,6 +152,8 @@ func TestFastDASync(t *testing.T) {
 	config.Node.BlockTime = evconfig.DurationWrapper{Duration: 1 * time.Second}
 	// Fast DA availability (DA makes blocks available every 200ms)
 	config.DA.BlockTime = evconfig.DurationWrapper{Duration: 200 * time.Millisecond}
+	// Start DA sync from beginning
+	config.DA.StartHeight = 0
 
 	nodes, cleanups := createNodesWithCleanup(t, 2, config)
 	for _, cleanup := range cleanups {
@@ -202,6 +206,8 @@ func TestSingleSequencerTwoFullNodesBlockSyncSpeed(t *testing.T) {
 	config := getTestConfig(t, 1)
 	config.Node.BlockTime = evconfig.DurationWrapper{Duration: 100 * time.Millisecond} // fast block time
 	config.DA.BlockTime = evconfig.DurationWrapper{Duration: 10 * time.Second}         // slow DA block time
+	// Start DA sync from beginning
+	config.DA.StartHeight = 0
 
 	numNodes := 3
 	nodes, cleanups := createNodesWithCleanup(t, numNodes, config)
@@ -298,6 +304,8 @@ func testSingleSequencerSingleFullNode(t *testing.T, source Source) {
 
 	// Set up one sequencer and one full node
 	config := getTestConfig(t, 1)
+	// Start DA sync from beginning
+	config.DA.StartHeight = 0
 	numNodes := 2
 	nodes, cleanups := createNodesWithCleanup(t, numNodes, config)
 	for _, cleanup := range cleanups {
@@ -339,6 +347,8 @@ func testSingleSequencerTwoFullNodes(t *testing.T, source Source) {
 
 	// Set up one sequencer and two full nodes
 	config := getTestConfig(t, 1)
+	// Start DA sync from beginning
+	config.DA.StartHeight = 0
 	numNodes := 3
 	nodes, cleanups := createNodesWithCleanup(t, numNodes, config)
 	for _, cleanup := range cleanups {
@@ -474,6 +484,8 @@ func testTwoChainsInOneNamespace(t *testing.T, chainID1 string, chainID2 string)
 
 	// Set up nodes for the first chain
 	configChain1 := getTestConfig(t, 1)
+	// Start DA sync from beginning
+	configChain1.DA.StartHeight = 0
 
 	nodes1, cleanups := createNodesWithCleanup(t, 1, configChain1)
 	for _, cleanup := range cleanups {
@@ -482,6 +494,8 @@ func testTwoChainsInOneNamespace(t *testing.T, chainID1 string, chainID2 string)
 
 	// Set up nodes for the second chain
 	configChain2 := getTestConfig(t, 1000)
+	// Start DA sync from beginning
+	configChain2.DA.StartHeight = 0
 
 	nodes2, cleanups := createNodesWithCleanup(t, 1, configChain2)
 	for _, cleanup := range cleanups {

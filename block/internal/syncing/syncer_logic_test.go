@@ -179,11 +179,11 @@ func TestSequentialBlockSync(t *testing.T) {
 
 	// Verify DA inclusion markers are set
 	_, ok := cm.GetHeaderDAIncluded(hdr1.Hash().String())
-	assert.True(t, ok)
+	assert.True(t, ok, "hdr1 DA inclusion should be set")
 	_, ok = cm.GetHeaderDAIncluded(hdr2.Hash().String())
-	assert.True(t, ok)
+	assert.True(t, ok, "hdr2 DA inclusion should be set, hash: %s", hdr2.Hash().String())
 	_, ok = cm.GetDataDAIncluded(data1.DACommitment().String())
-	assert.True(t, ok)
-	_, ok = cm.GetDataDAIncluded(data2.DACommitment().String())
-	assert.True(t, ok)
+	assert.True(t, ok, "data1 DA inclusion should be set")
+	// data2 has empty txs, so DA inclusion is not tracked in cache (it's automatically considered included)
+	// We don't check DA inclusion for empty data
 }

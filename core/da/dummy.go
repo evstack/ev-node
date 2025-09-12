@@ -77,6 +77,13 @@ func (d *DummyDA) StopHeightTicker() {
 	close(d.stopCh)
 }
 
+// SetCurrentHeight sets the current height for testing purposes.
+func (d *DummyDA) SetCurrentHeight(height uint64) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	d.currentHeight = height
+}
+
 // GasPrice returns the gas price for the DA layer.
 func (d *DummyDA) GasPrice(ctx context.Context) (float64, error) {
 	return d.gasPrice, nil
@@ -221,7 +228,7 @@ func (d *DummyDA) SubmitWithOptions(ctx context.Context, blobs []Blob, gasPrice 
 
 		d.blobs[idStr] = blob
 		d.commitments[idStr] = commitment
-		d.proofs[idStr] = commitment // Simple proof
+		d.proofs[idStr] = commitment       // Simple proof
 		d.namespaceByID[idStr] = namespace // Store namespace for this blob
 
 		ids = append(ids, id)

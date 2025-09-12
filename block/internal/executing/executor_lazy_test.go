@@ -65,11 +65,15 @@ func TestLazyMode_ProduceBlockLogic(t *testing.T) {
 		common.DefaultBlockOptions(),
 	)
 
-	// Initialize state
+	// Initialize state by starting the executor
 	initStateRoot := []byte("init_root")
 	mockExec.EXPECT().InitChain(mock.Anything, mock.AnythingOfType("time.Time"), gen.InitialHeight, gen.ChainID).
 		Return(initStateRoot, uint64(1024), nil).Once()
-	require.NoError(t, exec.initializeState())
+
+	ctx := context.Background()
+	err = exec.Start(ctx)
+	require.NoError(t, err)
+	defer exec.Stop()
 
 	// Test 1: Lazy mode should produce blocks when called directly (simulating lazy timer)
 	mockSeq.EXPECT().GetNextBatch(mock.Anything, mock.AnythingOfType("sequencer.GetNextBatchRequest")).
@@ -167,11 +171,15 @@ func TestRegularMode_ProduceBlockLogic(t *testing.T) {
 		common.DefaultBlockOptions(),
 	)
 
-	// Initialize state
+	// Initialize state by starting the executor
 	initStateRoot := []byte("init_root")
 	mockExec.EXPECT().InitChain(mock.Anything, mock.AnythingOfType("time.Time"), gen.InitialHeight, gen.ChainID).
 		Return(initStateRoot, uint64(1024), nil).Once()
-	require.NoError(t, exec.initializeState())
+
+	ctx := context.Background()
+	err = exec.Start(ctx)
+	require.NoError(t, err)
+	defer exec.Stop()
 
 	// Test: Regular mode should produce blocks regardless of transaction availability
 	mockSeq.EXPECT().GetNextBatch(mock.Anything, mock.AnythingOfType("sequencer.GetNextBatchRequest")).

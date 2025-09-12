@@ -47,7 +47,8 @@ func createTestComponents(t *testing.T, config evconfig.Config) (coreexecutor.Ex
 	executor := coreexecutor.NewDummyExecutor()
 	sequencer := coresequencer.NewDummySequencer()
 	dummyDA := coreda.NewDummyDA(100_000, 0, 0, config.DA.BlockTime.Duration)
-	dummyDA.StartHeightTicker()
+	// Don't start height ticker immediately to avoid race condition
+	// It will be started when all nodes are ready
 
 	stopDAHeightTicker := func() {
 		dummyDA.StopHeightTicker()
@@ -203,6 +204,8 @@ func createNodesWithCleanup(t *testing.T, num int, config evconfig.Config) ([]*F
 
 	nodes[0], cleanups[0] = aggNode.(*FullNode), cleanup
 	config.Node.Aggregator = false
+
+	// Don't start DA height ticker yet - wait until all nodes are created
 	peersList := []string{}
 	if aggPeers != "none" {
 		aggPeerAddress := fmt.Sprintf("%s/p2p/%s", aggListenAddress, aggPeerID.Loggable()["peerID"].(string))
@@ -215,7 +218,7 @@ func createNodesWithCleanup(t *testing.T, num int, config evconfig.Config) ([]*F
 		}
 		config.P2P.ListenAddress = fmt.Sprintf("/ip4/127.0.0.1/tcp/%d", 40001+i)
 		config.RPC.Address = fmt.Sprintf("127.0.0.1:%d", 8001+i)
-		executor, sequencer, _, p2pClient, _, nodeP2PKey, stopDAHeightTicker := createTestComponents(t, config)
+		executor, sequencer, _, p2pClient, _, nodeP2PKey, _ := createTestComponents(t, config)
 		node, err := NewNode(
 			ctx,
 			config,
@@ -235,12 +238,18 @@ func createNodesWithCleanup(t *testing.T, num int, config evconfig.Config) ([]*F
 		cleanup := func() {
 			// Cancel the context to stop the node
 			cancel()
-			stopDAHeightTicker()
 		}
 		nodes[i], cleanups[i] = node.(*FullNode), cleanup
 		nodePeerID, err := peer.IDFromPrivateKey(nodeP2PKey.PrivKey)
 		require.NoError(err)
 		peersList = append(peersList, fmt.Sprintf("%s/p2p/%s", config.P2P.ListenAddress, nodePeerID.Loggable()["peerID"].(string)))
+	}
+
+	// Reset DA height to 0 and start ticker after all nodes are created
+	// This ensures proper synchronization between sequencer submissions and full node retrieval
+	if dummyDA, ok := dac.(*coreda.DummyDA); ok {
+		dummyDA.SetCurrentHeight(0)
+		dummyDA.StartHeightTicker()
 	}
 
 	return nodes, cleanups

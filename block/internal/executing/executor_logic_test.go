@@ -86,13 +86,15 @@ func TestProduceBlock_EmptyBatch_SetsEmptyDataHash(t *testing.T) {
 		common.DefaultBlockOptions(),
 	)
 
-	// Expect InitChain to be called
+	// Start executor to initialize context and state
 	initStateRoot := []byte("init_root")
 	mockExec.EXPECT().InitChain(mock.Anything, mock.AnythingOfType("time.Time"), gen.InitialHeight, gen.ChainID).
 		Return(initStateRoot, uint64(1024), nil).Once()
 
-	// initialize state (creates genesis block in store and sets state)
-	require.NoError(t, exec.initializeState())
+	ctx := context.Background()
+	err = exec.Start(ctx)
+	require.NoError(t, err)
+	defer exec.Stop()
 
 	// sequencer returns empty batch
 	mockSeq.EXPECT().GetNextBatch(mock.Anything, mock.AnythingOfType("sequencer.GetNextBatchRequest")).
@@ -168,7 +170,11 @@ func TestPendingLimit_SkipsProduction(t *testing.T) {
 
 	mockExec.EXPECT().InitChain(mock.Anything, mock.AnythingOfType("time.Time"), gen.InitialHeight, gen.ChainID).
 		Return([]byte("i0"), uint64(1024), nil).Once()
-	require.NoError(t, exec.initializeState())
+
+	ctx := context.Background()
+	err = exec.Start(ctx)
+	require.NoError(t, err)
+	defer exec.Stop()
 
 	// First production should succeed
 	// Return empty batch again
