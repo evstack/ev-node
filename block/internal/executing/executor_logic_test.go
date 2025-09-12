@@ -96,6 +96,10 @@ func TestProduceBlock_EmptyBatch_SetsEmptyDataHash(t *testing.T) {
 	require.NoError(t, err)
 	defer exec.Stop()
 
+	// Set up context for the executor (normally done in Start method)
+	exec.ctx, exec.cancel = context.WithCancel(context.Background())
+	defer exec.cancel()
+
 	// sequencer returns empty batch
 	mockSeq.EXPECT().GetNextBatch(mock.Anything, mock.AnythingOfType("sequencer.GetNextBatchRequest")).
 		RunAndReturn(func(ctx context.Context, req coreseq.GetNextBatchRequest) (*coreseq.GetNextBatchResponse, error) {
@@ -175,6 +179,10 @@ func TestPendingLimit_SkipsProduction(t *testing.T) {
 	err = exec.Start(ctx)
 	require.NoError(t, err)
 	defer exec.Stop()
+
+	// Set up context for the executor (normally done in Start method)
+	exec.ctx, exec.cancel = context.WithCancel(context.Background())
+	defer exec.cancel()
 
 	// First production should succeed
 	// Return empty batch again

@@ -171,7 +171,7 @@ func TestSequentialBlockSync(t *testing.T) {
 	cm.SetHeaderDAIncluded(hdr1.Hash().String(), 10)
 	cm.SetDataDAIncluded(data1.DACommitment().String(), 10)
 	cm.SetHeaderDAIncluded(hdr2.Hash().String(), 11)
-	// data2 has empty txs, inclusion is implied
+	cm.SetDataDAIncluded(data2.DACommitment().String(), 11) // empty data still needs cache entry
 
 	// Verify both blocks were synced correctly
 	finalState, _ := st.GetState(context.Background())
