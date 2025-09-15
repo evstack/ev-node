@@ -5,6 +5,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"runtime"
+	"strings"
 	"sync"
 	"time"
 
@@ -233,9 +235,6 @@ func (s *Syncer) syncLoop() {
 	s.logger.Info().Msg("starting sync loop")
 	defer s.logger.Info().Msg("sync loop stopped")
 
-	daTicker := time.NewTicker(s.config.DA.BlockTime.Duration)
-	defer daTicker.Stop()
-
 	initialHeight, err := s.store.Height(s.ctx)
 	if err != nil {
 		s.logger.Error().Err(err).Msg("failed to get initial height")
@@ -245,18 +244,40 @@ func (s *Syncer) syncLoop() {
 	lastHeaderHeight := initialHeight
 	lastDataHeight := initialHeight
 
+	// Backoff control when DA replies with height-from-future
+	var hffDelay time.Duration
+	var nextDARequestAt time.Time
+
+	//TODO: we should request to see what the head of the chain is at, then we know if we are falling behinf or in sync mode
 	for {
 		select {
 		case <-s.ctx.Done():
 			return
-		case <-daTicker.C:
-			// Retrieve from DA
+		default:
+		}
+
+		now := time.Now()
+		// Respect backoff window if set
+		if nextDARequestAt.IsZero() || now.After(nextDARequestAt) || now.Equal(nextDARequestAt) {
+			// Retrieve from DA as fast as possible (unless throttled by HFF)
 			events, err := s.daRetriever.RetrieveFromDA(s.ctx, s.GetDAHeight())
 			if err != nil {
-				if !s.isHeightFromFutureError(err) {
+				if s.isHeightFromFutureError(err) {
+					// Back off exactly by DA block time to avoid overloading
+					hffDelay = s.config.DA.BlockTime.Duration
+					if hffDelay <= 0 {
+						hffDelay = 2 * time.Second
+					}
+					s.logger.Debug().Dur("delay", hffDelay).Uint64("da_height", s.GetDAHeight()).Msg("height from future; backing off DA requests")
+					nextDARequestAt = now.Add(hffDelay)
+				} else {
+					// Non-HFF errors: do not backoff artificially
+					nextDARequestAt = time.Time{}
 					s.logger.Error().Err(err).Msg("failed to retrieve from DA")
 				}
-			} else {
+			} else if len(events) > 0 {
+				// Reset backoff on success
+				nextDARequestAt = time.Time{}
 				// Process DA events
 				for _, event := range events {
 					select {
@@ -265,11 +286,16 @@ func (s *Syncer) syncLoop() {
 						s.logger.Warn().Msg("height channel full, dropping DA event")
 					}
 				}
-				// Increment DA height on successful retrieval
+				// Increment DA height on successful retrieval and continue immediately
 				s.SetDAHeight(s.GetDAHeight() + 1)
+				continue
 			}
+		}
+
+		// Opportunistically process any P2P signals
+		processedP2P := false
+		select {
 		case <-s.headerStoreCh:
-			// Check for new P2P headers
 			newHeaderHeight := s.headerStore.Height()
 			if newHeaderHeight > lastHeaderHeight {
 				events := s.p2pHandler.ProcessHeaderRange(s.ctx, lastHeaderHeight+1, newHeaderHeight)
@@ -282,8 +308,12 @@ func (s *Syncer) syncLoop() {
 				}
 				lastHeaderHeight = newHeaderHeight
 			}
+			processedP2P = true
+		default:
+		}
+
+		select {
 		case <-s.dataStoreCh:
-			// Check for new P2P data
 			newDataHeight := s.dataStore.Height()
 			if newDataHeight > lastDataHeight {
 				events := s.p2pHandler.ProcessDataRange(s.ctx, lastDataHeight+1, newDataHeight)
@@ -296,11 +326,17 @@ func (s *Syncer) syncLoop() {
 				}
 				lastDataHeight = newDataHeight
 			}
+			processedP2P = true
+		default:
+		}
+
+		if !processedP2P {
+			// Yield CPU to avoid tight spin when no events are available
+			runtime.Gosched()
 		}
 	}
 }
 
-// processHeightEvent processes a height event for synchronization
 func (s *Syncer) processHeightEvent(event *common.DAHeightEvent) {
 	height := event.Header.Height()
 	headerHash := event.Header.Hash().String()
@@ -489,8 +525,20 @@ func (s *Syncer) sendNonBlockingSignal(ch chan struct{}, name string) {
 
 // isHeightFromFutureError checks if the error is a height from future error
 func (s *Syncer) isHeightFromFutureError(err error) bool {
-	return err != nil && (errors.Is(err, common.ErrHeightFromFutureStr) ||
-		(err.Error() != "" && bytes.Contains([]byte(err.Error()), []byte(common.ErrHeightFromFutureStr.Error()))))
+	if err == nil {
+		return false
+	}
+	if errors.Is(err, coreda.ErrHeightFromFuture) || errors.Is(err, common.ErrHeightFromFutureStr) {
+		return true
+	}
+	msg := err.Error()
+	if msg == "" {
+		return false
+	}
+	if strings.Contains(msg, coreda.ErrHeightFromFuture.Error()) || strings.Contains(msg, common.ErrHeightFromFutureStr.Error()) {
+		return true
+	}
+	return false
 }
 
 // processPendingEvents fetches and processes pending events from cache

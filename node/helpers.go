@@ -110,7 +110,7 @@ func waitForAtLeastNBlocks(node Node, n uint64, source Source) error {
 func waitForAtLeastNDAIncludedHeight(node Node, n uint64) error {
 	return Retry(300, 100*time.Millisecond, func() error {
 		if fn, ok := node.(*FullNode); ok {
-			if fn.blockComponents != nil && fn.blockComponents.Syncer != nil {
+			if fn.blockComponents != nil && fn.blockComponents.Submitter != nil {
 				nHeight := fn.blockComponents.Submitter.GetDAIncludedHeight()
 				if nHeight == 0 {
 					return fmt.Errorf("waiting for DA inclusion")
@@ -121,7 +121,7 @@ func waitForAtLeastNDAIncludedHeight(node Node, n uint64) error {
 				return fmt.Errorf("current DA inclusion height %d, expected %d", nHeight, n)
 			}
 		}
-		return fmt.Errorf("not a full node or syncer not initialized")
+		return fmt.Errorf("not a full node or submitter not initialized")
 	})
 }
 
