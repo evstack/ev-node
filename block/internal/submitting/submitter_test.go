@@ -160,6 +160,9 @@ func TestSubmitter_processDAInclusionLoop_advances(t *testing.T) {
 	// prepare two consecutive blocks in store with DA included in cache
 	h1, d1 := newHeaderAndData("chain", 1, true)
 	h2, d2 := newHeaderAndData("chain", 2, true)
+	require.NotEqual(t, h1.Hash(), h2.Hash())
+	require.NotEqual(t, d1.DACommitment(), d2.DACommitment())
+
 	sig := types.Signature([]byte("sig"))
 	require.NoError(t, st.SaveBlockData(ctx, h1, d1, &sig))
 	require.NoError(t, st.SaveBlockData(ctx, h2, d2, &sig))
