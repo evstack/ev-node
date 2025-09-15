@@ -156,8 +156,28 @@ func TestFastDASync(t *testing.T) {
 	blocksToWaitFor := uint64(2)
 	require.NoError(waitForAtLeastNDAIncludedHeight(nodes[0], blocksToWaitFor))
 
-	// Add a small delay to ensure P2P services are fully ready
-	time.Sleep(500 * time.Millisecond)
+	// Verify the first node is healthy and P2P services are ready
+	require.Eventually(func() bool {
+		// Check that the node is running
+		if !nodes[0].IsRunning() {
+			return false
+		}
+
+		// Check that P2P client is available and has network connectivity
+		if nodes[0].p2pClient == nil || nodes[0].p2pClient.Host() == nil {
+			return false
+		}
+
+		// berify the node has listening addresses (P2P is ready to accept connections)
+		addrs := nodes[0].p2pClient.Addrs()
+		if len(addrs) == 0 {
+			return false
+		}
+
+		// check that the node has the expected DA included height
+		daHeight := nodes[0].blockManager.GetDAIncludedHeight()
+		return daHeight >= blocksToWaitFor
+	}, 15*time.Second, 200*time.Millisecond, "First node should be healthy with P2P services ready")
 
 	// Now start the second node and time its sync
 	startNodeInBackground(t, nodes, ctxs, &runningWg, 1)
