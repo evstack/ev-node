@@ -188,9 +188,7 @@ func TestFastDASync(t *testing.T) {
 			return false
 		}
 		// Verify P2P connection exists between the two nodes
-		firstNodePeers := nodes[0].p2pClient.PeerIDs()
-		secondNodePeers := nodes[1].p2pClient.PeerIDs()
-		return len(firstNodePeers) > 0 || len(secondNodePeers) > 0
+		return hasP2PConnections(nodes[0]) || hasP2PConnections(nodes[1])
 	}, 10*time.Second, 500*time.Millisecond, "P2P connection should be established between nodes")
 
 	start := time.Now()

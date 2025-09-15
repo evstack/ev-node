@@ -322,3 +322,12 @@ func verifyNodesSynced(node1, syncingNode Node, source Source) error {
 		return fmt.Errorf("nodes not synced: sequencer at height %v, syncing node at height %v", sequencerHeight, syncingHeight)
 	})
 }
+
+// hasP2PConnections safely checks if a node has any P2P peer connections
+func hasP2PConnections(node *FullNode) bool {
+	if node.p2pClient == nil || node.p2pClient.Host() == nil {
+		return false
+	}
+	peers := node.p2pClient.PeerIDs()
+	return len(peers) > 0
+}
