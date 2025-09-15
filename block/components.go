@@ -127,10 +127,10 @@ type broadcaster[T any] interface {
 	WriteToStoreAndBroadcast(ctx context.Context, payload T) error
 }
 
-// NewSyncNode creates components for a non-aggregator full node that can only sync blocks.
+// NewSyncComponents creates components for a non-aggregator full node that can only sync blocks.
 // Non-aggregator full nodes can sync from P2P and DA but cannot produce blocks or submit to DA.
 // They have more sync capabilities than light nodes but no block production. No signer required.
-func NewSyncNode(
+func NewSyncComponents(
 	config config.Config,
 	genesis genesis.Genesis,
 	store store.Store,
@@ -188,10 +188,10 @@ func NewSyncNode(
 	}, nil
 }
 
-// NewAggregatorNode creates components for an aggregator full node that can produce and sync blocks.
+// NewAggregatorComponents creates components for an aggregator full node that can produce and sync blocks.
 // Aggregator nodes have full capabilities - they can produce blocks, sync from P2P and DA,
 // and submit headers/data to DA. Requires a signer for block production and DA submission.
-func NewAggregatorNode(
+func NewAggregatorComponents(
 	config config.Config,
 	genesis genesis.Genesis,
 	store store.Store,
@@ -199,8 +199,6 @@ func NewAggregatorNode(
 	sequencer coresequencer.Sequencer,
 	da coreda.DA,
 	signer signer.Signer,
-	headerStore goheader.Store[*types.SignedHeader],
-	dataStore goheader.Store[*types.Data],
 	headerBroadcaster broadcaster[*types.SignedHeader],
 	dataBroadcaster broadcaster[*types.Data],
 	logger zerolog.Logger,

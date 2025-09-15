@@ -106,15 +106,12 @@ func newTestNode(
 	ds datastore.Batching,
 	stopDAHeightTicker func(),
 ) (*FullNode, func()) {
-	ctx, cancel := context.WithCancel(context.Background())
-
 	// Generate genesis and keys
 	genesis, genesisValidatorKey, _ := types.GetGenesisWithPrivkey("test-chain")
 	remoteSigner, err := remote_signer.NewNoopSigner(genesisValidatorKey)
 	require.NoError(t, err)
 
 	node, err := NewNode(
-		ctx,
 		config,
 		executor,
 		sequencer,
@@ -130,7 +127,6 @@ func newTestNode(
 	require.NoError(t, err)
 
 	cleanup := func() {
-		cancel()
 		if stopDAHeightTicker != nil {
 			stopDAHeightTicker()
 		}
@@ -164,8 +160,6 @@ func createNodesWithCleanup(t *testing.T, num int, config evconfig.Config) ([]*F
 
 	nodes := make([]*FullNode, num)
 	cleanups := make([]func(), num)
-	// Create a cancellable context instead of using background context
-	aggCtx, aggCancel := context.WithCancel(context.Background())
 
 	// Generate genesis and keys
 	genesis, genesisValidatorKey, _ := types.GetGenesisWithPrivkey("test-chain")
@@ -179,7 +173,6 @@ func createNodesWithCleanup(t *testing.T, num int, config evconfig.Config) ([]*F
 	require.NoError(err)
 
 	aggNode, err := NewNode(
-		aggCtx,
 		config,
 		executor,
 		sequencer,
@@ -196,8 +189,6 @@ func createNodesWithCleanup(t *testing.T, num int, config evconfig.Config) ([]*F
 
 	// Update cleanup to cancel the context instead of calling Stop
 	cleanup := func() {
-		// Cancel the context to stop the node
-		aggCancel()
 		stopDAHeightTicker()
 	}
 
@@ -209,7 +200,6 @@ func createNodesWithCleanup(t *testing.T, num int, config evconfig.Config) ([]*F
 		peersList = append(peersList, aggPeerAddress)
 	}
 	for i := 1; i < num; i++ {
-		ctx, cancel := context.WithCancel(context.Background())
 		if aggPeers != "none" {
 			config.P2P.Peers = strings.Join(peersList, ",")
 		}
@@ -217,7 +207,6 @@ func createNodesWithCleanup(t *testing.T, num int, config evconfig.Config) ([]*F
 		config.RPC.Address = fmt.Sprintf("127.0.0.1:%d", 8001+i)
 		executor, sequencer, _, p2pClient, _, nodeP2PKey, stopDAHeightTicker := createTestComponents(t, config)
 		node, err := NewNode(
-			ctx,
 			config,
 			executor,
 			sequencer,
@@ -233,8 +222,6 @@ func createNodesWithCleanup(t *testing.T, num int, config evconfig.Config) ([]*F
 		require.NoError(err)
 		// Update cleanup to cancel the context instead of calling Stop
 		cleanup := func() {
-			// Cancel the context to stop the node
-			cancel()
 			stopDAHeightTicker()
 		}
 		nodes[i], cleanups[i] = node.(*FullNode), cleanup

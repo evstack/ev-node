@@ -1,5 +1,3 @@
-//go:build integration
-
 package node
 
 import (
@@ -263,7 +261,7 @@ func TestStateRecovery(t *testing.T) {
 	// Verify state persistence
 	recoveredHeight, err := getNodeHeight(node, Store)
 	require.NoError(err)
-	require.GreaterOrEqual(recoveredHeight, originalHeight)
+	require.GreaterOrEqual(recoveredHeight, originalHeight, "recovered height should be greater than or equal to original height")
 }
 
 // TestMaxPendingHeadersAndData verifies that the sequencer will stop producing blocks when the maximum number of pending headers or data is reached.
