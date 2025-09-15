@@ -361,7 +361,7 @@ func (e *Executor) produceBlock() error {
 
 	e.logger.Debug().Uint64("height", newHeight).Msg("producing block")
 
-	// Check pending limits
+	// check pending limits
 	if e.config.Node.MaxPendingHeadersAndData > 0 {
 		pendingHeaders := e.cache.NumPendingHeaders()
 		pendingData := e.cache.NumPendingData()
@@ -376,7 +376,7 @@ func (e *Executor) produceBlock() error {
 		}
 	}
 
-	// Get batch from sequencer
+	// get batch from sequencer
 	batchData, err := e.retrieveBatch(e.ctx)
 	if errors.Is(err, common.ErrNoBatch) {
 		e.logger.Debug().Msg("no batch available")
@@ -387,55 +387,47 @@ func (e *Executor) produceBlock() error {
 		return fmt.Errorf("failed to retrieve batch: %w", err)
 	}
 
-	// Create block
 	header, data, err := e.createBlock(e.ctx, newHeight, batchData)
 	if err != nil {
 		return fmt.Errorf("failed to create block: %w", err)
 	}
 
-	// Apply block to get new state
 	newState, err := e.applyBlock(e.ctx, header.Header, data)
 	if err != nil {
 		return fmt.Errorf("failed to apply block: %w", err)
 	}
 
-	// Sign the header
 	signature, err := e.signHeader(header.Header)
 	if err != nil {
 		return fmt.Errorf("failed to sign header: %w", err)
 	}
 	header.Signature = signature
 
-	// Validate block
 	if err := e.validateBlock(currentState, header, data); err != nil {
 		return fmt.Errorf("failed to validate block: %w", err)
 	}
 
-	// Save block
 	if err := e.store.SaveBlockData(e.ctx, header, data, &signature); err != nil {
 		return fmt.Errorf("failed to save block: %w", err)
 	}
 
-	// Update store height
 	if err := e.store.SetHeight(e.ctx, newHeight); err != nil {
 		return fmt.Errorf("failed to update store height: %w", err)
 	}
 
-	// Update state
 	if err := e.updateState(e.ctx, newState); err != nil {
 		return fmt.Errorf("failed to update state: %w", err)
 	}
 
-	// Broadcast header and data to P2P network
+	// broadcast header and data to P2P network
 	g, ctx := errgroup.WithContext(e.ctx)
 	g.Go(func() error { return e.headerBroadcaster.WriteToStoreAndBroadcast(ctx, header) })
 	g.Go(func() error { return e.dataBroadcaster.WriteToStoreAndBroadcast(ctx, data) })
 	if err := g.Wait(); err != nil {
 		e.logger.Error().Err(err).Msg("failed to broadcast header and/data")
-		// Don't fail block production on broadcast error
+		// don't fail block production on broadcast error
 	}
 
-	// Record metrics
 	e.recordBlockMetrics(data)
 
 	e.logger.Info().
