@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"sync"
 	"time"
 
 	ds "github.com/ipfs/go-datastore"
@@ -37,6 +38,7 @@ type Reaper struct {
 	// Lifecycle
 	ctx    context.Context
 	cancel context.CancelFunc
+	wg     sync.WaitGroup
 }
 
 // NewReaper creates a new Reaper instance with persistent seenTx storage.
@@ -61,19 +63,28 @@ func NewReaper(exec coreexecutor.Executor, sequencer coresequencer.Sequencer, ge
 	}, nil
 }
 
-// Start begins the reaping process at the specified interval.
+// Start begins the execution component
 func (r *Reaper) Start(ctx context.Context) error {
 	r.ctx, r.cancel = context.WithCancel(ctx)
 
+	// Start repear loop
+	r.wg.Add(1)
+	go func() {
+		defer r.wg.Done()
+		r.reaperLoop()
+	}()
+
+	r.logger.Info().Dur("interval", r.interval).Msg("reaper started")
+	return nil
+}
+
+func (r *Reaper) reaperLoop() error {
 	ticker := time.NewTicker(r.interval)
 	defer ticker.Stop()
 
-	r.logger.Info().Dur("interval", r.interval).Msg("reaper started")
-
 	for {
 		select {
-		case <-ctx.Done():
-			r.logger.Info().Msg("reaper stopped")
+		case <-r.ctx.Done():
 			return nil
 		case <-ticker.C:
 			r.SubmitTxs()
@@ -86,6 +97,7 @@ func (r *Reaper) Stop() error {
 	if r.cancel != nil {
 		r.cancel()
 	}
+	r.wg.Wait()
 
 	r.logger.Info().Msg("reaper stopped")
 	return nil

@@ -62,6 +62,7 @@ type Executor struct {
 	// Lifecycle
 	ctx    context.Context
 	cancel context.CancelFunc
+	wg     sync.WaitGroup
 }
 
 // NewExecutor creates a new block executor.
@@ -117,8 +118,14 @@ func (e *Executor) Start(ctx context.Context) error {
 		return fmt.Errorf("failed to initialize state: %w", err)
 	}
 
+	// Start execution loop
+	e.wg.Add(1)
+	go func() {
+		defer e.wg.Done()
+		e.executionLoop()
+	}()
+
 	e.logger.Info().Msg("executor started")
-	e.executionLoop()
 	return nil
 }
 
@@ -127,6 +134,7 @@ func (e *Executor) Stop() error {
 	if e.cancel != nil {
 		e.cancel()
 	}
+	e.wg.Wait()
 
 	e.logger.Info().Msg("executor stopped")
 	return nil
