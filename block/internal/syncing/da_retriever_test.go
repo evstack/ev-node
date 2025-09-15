@@ -20,13 +20,14 @@ import (
 	coreda "github.com/evstack/ev-node/core/da"
 	"github.com/evstack/ev-node/pkg/config"
 	"github.com/evstack/ev-node/pkg/genesis"
-	"github.com/evstack/ev-node/pkg/store"
+    "github.com/evstack/ev-node/pkg/store"
+    signerpkg "github.com/evstack/ev-node/pkg/signer"
 	testmocks "github.com/evstack/ev-node/test/mocks"
 	"github.com/evstack/ev-node/types"
 )
 
 // makeSignedHeaderBytes builds a valid SignedHeader and returns its binary encoding and the object
-func makeSignedHeaderBytes(t *testing.T, chainID string, height uint64, proposer []byte, pub crypto.PubKey, signer interface{ Sign([]byte) ([]byte, error) }, appHash []byte) ([]byte, *types.SignedHeader) {
+func makeSignedHeaderBytes(t *testing.T, chainID string, height uint64, proposer []byte, pub crypto.PubKey, signer signerpkg.Signer, appHash []byte) ([]byte, *types.SignedHeader) {
 	hdr := &types.SignedHeader{
 		Header: types.Header{
 			BaseHeader:      types.BaseHeader{ChainID: chainID, Height: height, Time: uint64(time.Now().Add(time.Duration(height) * time.Second).UnixNano())},
@@ -46,7 +47,7 @@ func makeSignedHeaderBytes(t *testing.T, chainID string, height uint64, proposer
 }
 
 // makeSignedDataBytes builds SignedData containing the provided Data and returns its binary encoding
-func makeSignedDataBytes(t *testing.T, chainID string, height uint64, proposer []byte, pub crypto.PubKey, signer interface{ Sign([]byte) ([]byte, error) }, txs int) ([]byte, *types.SignedData) {
+func makeSignedDataBytes(t *testing.T, chainID string, height uint64, proposer []byte, pub crypto.PubKey, signer signerpkg.Signer, txs int) ([]byte, *types.SignedData) {
 	d := &types.Data{Metadata: &types.Metadata{ChainID: chainID, Height: height, Time: uint64(time.Now().UnixNano())}}
 	if txs > 0 {
 		d.Txs = make(types.Txs, txs)

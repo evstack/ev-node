@@ -18,6 +18,7 @@ import (
 	"github.com/evstack/ev-node/block/internal/common"
 	"github.com/evstack/ev-node/pkg/config"
 	"github.com/evstack/ev-node/pkg/genesis"
+	signerpkg "github.com/evstack/ev-node/pkg/signer"
 	"github.com/evstack/ev-node/pkg/signer/noop"
 	"github.com/evstack/ev-node/pkg/store"
 	testmocks "github.com/evstack/ev-node/test/mocks"
@@ -25,7 +26,7 @@ import (
 )
 
 // helper to create a signer, pubkey and address for tests
-func buildSyncTestSigner(t *testing.T) (addr []byte, pub crypto.PubKey, signer interface{ Sign([]byte) ([]byte, error) }) {
+func buildSyncTestSigner(t *testing.T) (addr []byte, pub crypto.PubKey, signer signerpkg.Signer) {
 	t.Helper()
 	priv, _, err := crypto.GenerateEd25519Key(crand.Reader)
 	require.NoError(t, err)
@@ -40,7 +41,7 @@ func buildSyncTestSigner(t *testing.T) (addr []byte, pub crypto.PubKey, signer i
 
 // (no dummies needed; tests use mocks)
 
-func makeSignedHeader(t *testing.T, chainID string, height uint64, proposer []byte, pub crypto.PubKey, signer interface{ Sign([]byte) ([]byte, error) }, appHash []byte) *types.SignedHeader {
+func makeSignedHeader(t *testing.T, chainID string, height uint64, proposer []byte, pub crypto.PubKey, signer signerpkg.Signer, appHash []byte) *types.SignedHeader {
 	hdr := &types.SignedHeader{
 		Header: types.Header{
 			BaseHeader:      types.BaseHeader{ChainID: chainID, Height: height, Time: uint64(time.Now().Add(time.Duration(height) * time.Second).UnixNano())},
