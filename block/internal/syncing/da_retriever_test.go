@@ -20,8 +20,8 @@ import (
 	coreda "github.com/evstack/ev-node/core/da"
 	"github.com/evstack/ev-node/pkg/config"
 	"github.com/evstack/ev-node/pkg/genesis"
-    "github.com/evstack/ev-node/pkg/store"
-    signerpkg "github.com/evstack/ev-node/pkg/signer"
+	signerpkg "github.com/evstack/ev-node/pkg/signer"
+	"github.com/evstack/ev-node/pkg/store"
 	testmocks "github.com/evstack/ev-node/test/mocks"
 	"github.com/evstack/ev-node/types"
 )

@@ -202,7 +202,7 @@ func TestP2PHandler_CreateEmptyDataForHeader_UsesPreviousDataHash(t *testing.T) 
 	require.Equal(t, p2pData.Genesis.ChainID, emptyData.ChainID(), "synthesized data should carry header chain ID")
 	require.Equal(t, uint64(10), emptyData.Height(), "synthesized data should carry header height")
 	require.Equal(t, signedHeader.BaseHeader.Time, emptyData.Metadata.Time, "synthesized data should carry header time")
-	require.Equal(t, previousData.Hash(), emptyData.Metadata.LastDataHash, "synthesized data should propagate previous data hash")
+	require.Equal(t, previousData.Hash(), emptyData.LastDataHash, "synthesized data should propagate previous data hash")
 }
 
 func TestP2PHandler_CreateEmptyDataForHeader_NoPreviousData(t *testing.T) {
@@ -222,7 +222,7 @@ func TestP2PHandler_CreateEmptyDataForHeader_NoPreviousData(t *testing.T) {
 	require.Equal(t, uint64(2), emptyData.Height(), "synthesized data should carry header height")
 	require.Equal(t, signedHeader.BaseHeader.Time, emptyData.Metadata.Time, "synthesized data should carry header time")
 	// When no previous data is available, LastDataHash should be zero value
-	require.Equal(t, (types.Hash)(nil), emptyData.Metadata.LastDataHash, "last data hash should be empty when previous data is not available")
+	require.Equal(t, (types.Hash)(nil), emptyData.LastDataHash, "last data hash should be empty when previous data is not available")
 }
 
 func TestP2PHandler_ProcessHeaderRange_MultipleHeightsHappyPath(t *testing.T) {
@@ -268,36 +268,36 @@ func TestP2PHandler_ProcessHeaderRange_MultipleHeightsHappyPath(t *testing.T) {
 }
 
 func TestP2PHandler_ProcessDataRange_HeaderValidateHeaderFails(t *testing.T) {
-    p2pData := setupP2P(t)
-    ctx := context.Background()
+	p2pData := setupP2P(t)
+	ctx := context.Background()
 
-    // Data exists at height 3
-    blockData := p2pMakeData(t, p2pData.Genesis.ChainID, 3, 1)
-    p2pData.DataStore.EXPECT().GetByHeight(ctx, uint64(3)).Return(blockData, nil).Once()
+	// Data exists at height 3
+	blockData := p2pMakeData(t, p2pData.Genesis.ChainID, 3, 1)
+	p2pData.DataStore.EXPECT().GetByHeight(ctx, uint64(3)).Return(blockData, nil).Once()
 
-    // Header proposer does not match genesis -> validateHeader should fail
-    badAddr, pub, signer := buildTestSigner(t)
-    require.NotEqual(t, string(p2pData.Genesis.ProposerAddress), string(badAddr), "negative test requires mismatched proposer")
-    badHeader := p2pMakeSignedHeader(t, p2pData.Genesis.ChainID, 3, badAddr, pub, signer)
-    p2pData.HeaderStore.EXPECT().GetByHeight(ctx, uint64(3)).Return(badHeader, nil).Once()
+	// Header proposer does not match genesis -> validateHeader should fail
+	badAddr, pub, signer := buildTestSigner(t)
+	require.NotEqual(t, string(p2pData.Genesis.ProposerAddress), string(badAddr), "negative test requires mismatched proposer")
+	badHeader := p2pMakeSignedHeader(t, p2pData.Genesis.ChainID, 3, badAddr, pub, signer)
+	p2pData.HeaderStore.EXPECT().GetByHeight(ctx, uint64(3)).Return(badHeader, nil).Once()
 
-    events := p2pData.Handler.ProcessDataRange(ctx, 3, 3)
-    require.Len(t, events, 0, "validateHeader failure should drop event")
+	events := p2pData.Handler.ProcessDataRange(ctx, 3, 3)
+	require.Len(t, events, 0, "validateHeader failure should drop event")
 }
 
 func TestP2PHandler_ProcessDataRange_ValidateBasicWithDataFails(t *testing.T) {
-    p2pData := setupP2P(t)
-    ctx := context.Background()
+	p2pData := setupP2P(t)
+	ctx := context.Background()
 
-    // Data exists at height 4
-    blockData := p2pMakeData(t, p2pData.Genesis.ChainID, 4, 1)
-    p2pData.DataStore.EXPECT().GetByHeight(ctx, uint64(4)).Return(blockData, nil).Once()
+	// Data exists at height 4
+	blockData := p2pMakeData(t, p2pData.Genesis.ChainID, 4, 1)
+	p2pData.DataStore.EXPECT().GetByHeight(ctx, uint64(4)).Return(blockData, nil).Once()
 
-    // Header proposer matches genesis, but signature is empty -> ValidateBasicWithData should fail
-    header := p2pMakeSignedHeader(t, p2pData.Genesis.ChainID, 4, p2pData.ProposerAddr, p2pData.ProposerPub, p2pData.Signer)
-    header.Signature = nil // force signature validation failure
-    p2pData.HeaderStore.EXPECT().GetByHeight(ctx, uint64(4)).Return(header, nil).Once()
+	// Header proposer matches genesis, but signature is empty -> ValidateBasicWithData should fail
+	header := p2pMakeSignedHeader(t, p2pData.Genesis.ChainID, 4, p2pData.ProposerAddr, p2pData.ProposerPub, p2pData.Signer)
+	header.Signature = nil // force signature validation failure
+	p2pData.HeaderStore.EXPECT().GetByHeight(ctx, uint64(4)).Return(header, nil).Once()
 
-    events := p2pData.Handler.ProcessDataRange(ctx, 4, 4)
-    require.Len(t, events, 0, "ValidateBasicWithData failure should drop event")
+	events := p2pData.Handler.ProcessDataRange(ctx, 4, 4)
+	require.Len(t, events, 0, "ValidateBasicWithData failure should drop event")
 }
