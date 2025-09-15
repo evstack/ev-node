@@ -32,7 +32,7 @@ func TestBlockComponents_ExecutionClientFailure_StopsNode(t *testing.T) {
 	criticalError := errors.New("execution client connection lost")
 
 	// Create BlockComponents with error channel
-	bc := &BlockComponents{
+	bc := &Components{
 		errorCh: errorCh,
 	}
 
@@ -57,7 +57,7 @@ func TestBlockComponents_GetLastState(t *testing.T) {
 
 	t.Run("Empty state", func(t *testing.T) {
 		// When neither is present, return empty state
-		bc := &BlockComponents{}
+		bc := &Components{}
 
 		result := bc.GetLastState()
 		assert.Equal(t, uint64(0), result.LastBlockHeight)
@@ -66,7 +66,7 @@ func TestBlockComponents_GetLastState(t *testing.T) {
 
 func TestBlockComponents_StartStop_Lifecycle(t *testing.T) {
 	// Simple lifecycle test without creating full components
-	bc := &BlockComponents{
+	bc := &Components{
 		errorCh: make(chan error, 1),
 	}
 

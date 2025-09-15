@@ -59,7 +59,7 @@ type FullNode struct {
 	hSyncService    *evsync.HeaderSyncService
 	dSyncService    *evsync.DataSyncService
 	Store           store.Store
-	blockComponents *block.BlockComponents
+	blockComponents *block.Components
 
 	prometheusSrv *http.Server
 	pprofSrv      *http.Server
@@ -97,7 +97,7 @@ func newFullNode(
 		return nil, err
 	}
 
-	var blockComponents *block.BlockComponents
+	var blockComponents *block.Components
 	if nodeConfig.Node.Aggregator {
 		blockComponents, err = block.NewAggregatorComponents(
 			nodeConfig,

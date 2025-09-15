@@ -10,6 +10,7 @@ import (
 
 	"github.com/evstack/ev-node/block/internal/cache"
 	"github.com/evstack/ev-node/block/internal/executing"
+	"github.com/evstack/ev-node/block/internal/reaping"
 	"github.com/evstack/ev-node/block/internal/submitting"
 	"github.com/evstack/ev-node/block/internal/syncing"
 	coreda "github.com/evstack/ev-node/core/da"
@@ -22,9 +23,10 @@ import (
 	"github.com/evstack/ev-node/types"
 )
 
-// BlockComponents represents the block-related components
-type BlockComponents struct {
+// Components represents the block-related components
+type Components struct {
 	Executor  *executing.Executor
+	Reaper    *reaping.Reaper
 	Syncer    *syncing.Syncer
 	Submitter *submitting.Submitter
 	Cache     cache.Manager
@@ -34,7 +36,7 @@ type BlockComponents struct {
 }
 
 // GetLastState returns the current blockchain state
-func (bc *BlockComponents) GetLastState() types.State {
+func (bc *Components) GetLastState() types.State {
 	if bc.Executor != nil {
 		return bc.Executor.GetLastState()
 	}
@@ -45,7 +47,7 @@ func (bc *BlockComponents) GetLastState() types.State {
 }
 
 // Start starts all components and monitors for critical errors
-func (bc *BlockComponents) Start(ctx context.Context) error {
+func (bc *Components) Start(ctx context.Context) error {
 	ctxWithCancel, cancel := context.WithCancel(ctx)
 
 	// error monitoring goroutine
@@ -63,6 +65,11 @@ func (bc *BlockComponents) Start(ctx context.Context) error {
 	if bc.Executor != nil {
 		if err := bc.Executor.Start(ctxWithCancel); err != nil {
 			return fmt.Errorf("failed to start executor: %w", err)
+		}
+	}
+	if bc.Reaper != nil {
+		if err := bc.Reaper.Start(ctxWithCancel); err != nil {
+			return fmt.Errorf("failed to start reaper: %w", err)
 		}
 	}
 	if bc.Syncer != nil {
@@ -89,11 +96,16 @@ func (bc *BlockComponents) Start(ctx context.Context) error {
 }
 
 // Stop stops all components
-func (bc *BlockComponents) Stop() error {
+func (bc *Components) Stop() error {
 	var errs error
 	if bc.Executor != nil {
 		if err := bc.Executor.Stop(); err != nil {
 			errs = errors.Join(errs, fmt.Errorf("failed to stop executor: %w", err))
+		}
+	}
+	if bc.Reaper != nil {
+		if err := bc.Reaper.Stop(); err != nil {
+			errs = errors.Join(errs, fmt.Errorf("failed to stop reaper: %w", err))
 		}
 	}
 	if bc.Syncer != nil {
@@ -129,7 +141,7 @@ func NewSyncComponents(
 	logger zerolog.Logger,
 	metrics *Metrics,
 	blockOpts BlockOptions,
-) (*BlockComponents, error) {
+) (*Components, error) {
 	cacheManager, err := cache.NewManager(config, store, logger)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create cache manager: %w", err)
@@ -168,7 +180,7 @@ func NewSyncComponents(
 		errorCh,
 	)
 
-	return &BlockComponents{
+	return &Components{
 		Syncer:    syncer,
 		Submitter: submitter,
 		Cache:     cacheManager,
@@ -192,7 +204,7 @@ func NewAggregatorComponents(
 	logger zerolog.Logger,
 	metrics *Metrics,
 	blockOpts BlockOptions,
-) (*BlockComponents, error) {
+) (*Components, error) {
 	cacheManager, err := cache.NewManager(config, store, logger)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create cache manager: %w", err)
@@ -220,6 +232,17 @@ func NewAggregatorComponents(
 		return nil, fmt.Errorf("failed to create executor: %w", err)
 	}
 
+	reaper, err := reaping.NewReaper(
+		exec,
+		sequencer,
+		genesis,
+		logger,
+		executor,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create reaper: %w", err)
+	}
+
 	// Create DA submitter for aggregator nodes (with signer for submission)
 	daSubmitter := submitting.NewDASubmitter(da, config, genesis, blockOpts, logger)
 	submitter := submitting.NewSubmitter(
@@ -235,8 +258,9 @@ func NewAggregatorComponents(
 		errorCh,
 	)
 
-	return &BlockComponents{
+	return &Components{
 		Executor:  executor,
+		Reaper:    reaper,
 		Submitter: submitter,
 		Cache:     cacheManager,
 		errorCh:   errorCh,
