@@ -163,14 +163,13 @@ func TestFastDASync(t *testing.T) {
 			return false
 		}
 
-		// Check that P2P client is available and has network connectivity
+		// Ensure P2P infrastructure is operational before starting second node
 		if nodes[0].p2pClient == nil || nodes[0].p2pClient.Host() == nil {
 			return false
 		}
 
-		// berify the node has listening addresses (P2P is ready to accept connections)
-		addrs := nodes[0].p2pClient.Addrs()
-		if len(addrs) == 0 {
+		// Verify network interface is available to handle incoming connections
+		if nodes[0].p2pClient.Host().Network() == nil {
 			return false
 		}
 

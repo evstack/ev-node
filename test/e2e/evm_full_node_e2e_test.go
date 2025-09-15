@@ -466,7 +466,7 @@ func TestEvmSequencerWithFullNodeE2E(t *testing.T) {
 	t.Logf("      • Final full node height: %d", fnHeight)
 	t.Logf("      • State root verification range: blocks %d-%d", startHeight, endHeight)
 	t.Logf("      • Full node block height before DA wait: %d", fnBlockHeightBeforeWait)
-	t.Logf("      • DA wait time: %v (1 DA block time)", waitTime)
+	t.Logf("      • DA inclusion waited for sync completion")
 	t.Logf("      • Full node DA included height after wait: %d", fnDAIncludedHeight)
 	t.Logf("")
 	t.Logf("   ✅ Verified Components:")
