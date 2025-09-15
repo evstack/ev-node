@@ -68,7 +68,6 @@ type FullNode struct {
 
 // newFullNode creates a new Rollkit full node.
 func newFullNode(
-	ctx context.Context,
 	nodeConfig config.Config,
 	p2pClient *p2p.Client,
 	signer signer.Signer,
@@ -100,7 +99,7 @@ func newFullNode(
 
 	var blockComponents *block.BlockComponents
 	if nodeConfig.Node.Aggregator {
-		blockComponents, err = block.NewAggregatorNode(
+		blockComponents, err = block.NewAggregatorComponents(
 			nodeConfig,
 			genesis,
 			rktStore,
@@ -115,7 +114,7 @@ func newFullNode(
 			nodeOpts.BlockOptions,
 		)
 	} else {
-		blockComponents, err = block.NewSyncNode(
+		blockComponents, err = block.NewSyncComponents(
 			nodeConfig,
 			genesis,
 			rktStore,

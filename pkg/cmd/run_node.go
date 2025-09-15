@@ -115,7 +115,6 @@ func StartNode(
 
 	// Create and start the node
 	rollnode, err := node.NewNode(
-		ctx,
 		nodeConfig,
 		executor,
 		sequencer,
