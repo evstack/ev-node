@@ -70,7 +70,7 @@ func (r *DARetriever) RetrieveFromDA(ctx context.Context, daHeight uint64) ([]co
 		if fetchErr == nil {
 			if blobsResp.Code == coreda.StatusNotFound {
 				r.logger.Debug().Uint64("da_height", daHeight).Msg("no blob data found")
-				return nil, nil
+				return nil, coreda.ErrBlobNotFound
 			}
 
 			r.logger.Debug().Int("blobs", len(blobsResp.Data)).Uint64("da_height", daHeight).Msg("retrieved blob data")

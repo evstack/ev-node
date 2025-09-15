@@ -273,6 +273,9 @@ func (s *Syncer) syncLoop() {
 					}
 					s.logger.Debug().Dur("delay", hffDelay).Uint64("da_height", s.GetDAHeight()).Msg("height from future; backing off DA requests")
 					nextDARequestAt = now.Add(hffDelay)
+				} else if errors.Is(err, coreda.ErrBlobNotFound) {
+					// no data at this height, increase DA height
+					s.SetDAHeight(s.GetDAHeight() + 1)
 				} else {
 					// Non-HFF errors: do not backoff artificially
 					nextDARequestAt = time.Time{}
@@ -289,7 +292,8 @@ func (s *Syncer) syncLoop() {
 						s.logger.Warn().Msg("height channel full, dropping DA event")
 					}
 				}
-				// Increment DA height on successful retrieval and continue immediately
+
+				// increment DA height on successful retrieval and continue immediately
 				s.SetDAHeight(s.GetDAHeight() + 1)
 				continue
 			}
@@ -312,10 +316,6 @@ func (s *Syncer) syncLoop() {
 				lastHeaderHeight = newHeaderHeight
 			}
 			processedP2P = true
-		default:
-		}
-
-		select {
 		case <-s.dataStoreCh:
 			newDataHeight := s.dataStore.Height()
 			if newDataHeight > lastDataHeight {
