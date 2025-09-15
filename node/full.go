@@ -108,8 +108,6 @@ func newFullNode(
 			sequencer,
 			da,
 			signer,
-			headerSyncService.Store(),
-			dataSyncService.Store(),
 			headerSyncService,
 			dataSyncService,
 			logger,

@@ -148,8 +148,6 @@ func TestNewAggregatorNode_Creation(t *testing.T) {
 		mockSeq,
 		dummyDA,
 		mockSigner,
-		nil, // header store
-		nil, // data store
 		nil, // header broadcaster
 		nil, // data broadcaster
 		zerolog.Nop(),
@@ -221,8 +219,6 @@ func TestExecutor_RealExecutionClientFailure_StopsNode(t *testing.T) {
 		mockSeq,
 		dummyDA,
 		testSigner,
-		nil, // header store
-		nil, // data store
 		nil, // header broadcaster
 		nil, // data broadcaster
 		zerolog.Nop(),

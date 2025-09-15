@@ -187,8 +187,6 @@ func NewAggregatorNode(
 	sequencer coresequencer.Sequencer,
 	da coreda.DA,
 	signer signer.Signer,
-	headerStore goheader.Store[*types.SignedHeader],
-	dataStore goheader.Store[*types.Data],
 	headerBroadcaster broadcaster[*types.SignedHeader],
 	dataBroadcaster broadcaster[*types.Data],
 	logger zerolog.Logger,
