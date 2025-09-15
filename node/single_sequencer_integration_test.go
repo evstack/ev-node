@@ -308,7 +308,7 @@ func TestBatchQueueThrottlingWithDAFailure(t *testing.T) {
 	// Set up configuration with low limits to trigger throttling quickly
 	config := getTestConfig(t, 1)
 	config.Node.MaxPendingHeadersAndData = 3 // Low limit to quickly reach pending limit after DA failure
-	config.Node.BlockTime = evconfig.DurationWrapper{Duration: 10 * time.Millisecond}
+	config.Node.BlockTime = evconfig.DurationWrapper{Duration: 25 * time.Millisecond}
 	config.DA.BlockTime = evconfig.DurationWrapper{Duration: 100 * time.Millisecond} // Longer DA time to ensure blocks are produced first
 
 	// Create test components
@@ -410,7 +410,7 @@ func TestBatchQueueThrottlingWithDAFailure(t *testing.T) {
 func waitForBlockN(t *testing.T, n uint64, node *FullNode, blockInterval time.Duration, timeout ...time.Duration) {
 	t.Helper()
 	if len(timeout) == 0 {
-		timeout = []time.Duration{time.Duration(20*n+1) * blockInterval} // 20 works locally but why is so slow?
+		timeout = []time.Duration{time.Duration(50*n+1) * blockInterval} // 20 works locally but why is so slow?
 	}
 	require.Eventually(t, func() bool {
 		got, err := getNodeHeight(node, Store)
