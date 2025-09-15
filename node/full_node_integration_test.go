@@ -180,6 +180,19 @@ func TestFastDASync(t *testing.T) {
 
 	// Now start the second node and time its sync
 	startNodeInBackground(t, nodes, ctxs, &runningWg, 1)
+
+	// Wait for P2P connection to be established between nodes before measuring sync
+	require.Eventually(t, func() bool {
+		// Check if second node is running
+		if !nodes[1].IsRunning() {
+			return false
+		}
+		// Verify P2P connection exists between the two nodes
+		firstNodePeers := nodes[0].p2pClient.PeerIDs()
+		secondNodePeers := nodes[1].p2pClient.PeerIDs()
+		return len(firstNodePeers) > 0 || len(secondNodePeers) > 0
+	}, 10*time.Second, 500*time.Millisecond, "P2P connection should be established between nodes")
+
 	start := time.Now()
 	// Wait for the second node to catch up to the first node
 	require.NoError(waitForAtLeastNBlocks(nodes[1], blocksToWaitFor, Store))
