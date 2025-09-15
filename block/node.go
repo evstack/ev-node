@@ -10,6 +10,7 @@ import (
 
 	"github.com/evstack/ev-node/block/internal/cache"
 	"github.com/evstack/ev-node/block/internal/executing"
+	"github.com/evstack/ev-node/block/internal/reaping"
 	"github.com/evstack/ev-node/block/internal/submitting"
 	"github.com/evstack/ev-node/block/internal/syncing"
 	coreda "github.com/evstack/ev-node/core/da"
@@ -25,6 +26,7 @@ import (
 // BlockComponents represents the block-related components
 type BlockComponents struct {
 	Executor  *executing.Executor
+	Reaper    *reaping.Reaper
 	Syncer    *syncing.Syncer
 	Submitter *submitting.Submitter
 	Cache     cache.Manager
@@ -65,6 +67,11 @@ func (bc *BlockComponents) Start(ctx context.Context) error {
 			return fmt.Errorf("failed to start executor: %w", err)
 		}
 	}
+	if bc.Reaper != nil {
+		if err := bc.Reaper.Start(ctxWithCancel); err != nil {
+			return fmt.Errorf("failed to start reaper: %w", err)
+		}
+	}
 	if bc.Syncer != nil {
 		if err := bc.Syncer.Start(ctxWithCancel); err != nil {
 			return fmt.Errorf("failed to start syncer: %w", err)
@@ -94,6 +101,11 @@ func (bc *BlockComponents) Stop() error {
 	if bc.Executor != nil {
 		if err := bc.Executor.Stop(); err != nil {
 			errs = errors.Join(errs, fmt.Errorf("failed to stop executor: %w", err))
+		}
+	}
+	if bc.Reaper != nil {
+		if err := bc.Reaper.Stop(); err != nil {
+			errs = errors.Join(errs, fmt.Errorf("failed to stop reaper: %w", err))
 		}
 	}
 	if bc.Syncer != nil {
@@ -222,6 +234,17 @@ func NewAggregatorNode(
 		return nil, fmt.Errorf("failed to create executor: %w", err)
 	}
 
+	reaper, err := reaping.NewReaper(
+		exec,
+		sequencer,
+		genesis,
+		logger,
+		executor,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create reaper: %w", err)
+	}
+
 	// Create DA submitter for aggregator nodes (with signer for submission)
 	daSubmitter := submitting.NewDASubmitter(da, config, genesis, blockOpts, logger)
 	submitter := submitting.NewSubmitter(
@@ -239,6 +262,7 @@ func NewAggregatorNode(
 
 	return &BlockComponents{
 		Executor:  executor,
+		Reaper:    reaper,
 		Submitter: submitter,
 		Cache:     cacheManager,
 		errorCh:   errorCh,

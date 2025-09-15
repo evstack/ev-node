@@ -1,17 +1,25 @@
-package executing
+package reaping
 
 import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
+	"fmt"
 	"time"
 
 	ds "github.com/ipfs/go-datastore"
 	"github.com/rs/zerolog"
 
+	"github.com/evstack/ev-node/block/internal/executing"
 	coreexecutor "github.com/evstack/ev-node/core/execution"
 	coresequencer "github.com/evstack/ev-node/core/sequencer"
+	"github.com/evstack/ev-node/pkg/genesis"
+	"github.com/evstack/ev-node/pkg/store"
 )
+
+// DefaultInterval is the default reaper interval
+const DefaultInterval = 1 * time.Second
 
 // Reaper is responsible for periodically retrieving transactions from the executor,
 // filtering out already seen transactions, and submitting new transactions to the sequencer.
@@ -20,32 +28,43 @@ type Reaper struct {
 	sequencer coresequencer.Sequencer
 	chainID   string
 	interval  time.Duration
-	logger    zerolog.Logger
-	ctx       context.Context
 	seenStore ds.Batching
-	executor  *Executor
+	executor  *executing.Executor
+
+	// shared components
+	logger zerolog.Logger
+
+	// Lifecycle
+	ctx    context.Context
+	cancel context.CancelFunc
 }
 
 // NewReaper creates a new Reaper instance with persistent seenTx storage.
-func NewReaper(ctx context.Context, exec coreexecutor.Executor, sequencer coresequencer.Sequencer, chainID string, interval time.Duration, logger zerolog.Logger, store ds.Batching, executor *Executor) *Reaper {
-	if interval <= 0 {
-		interval = DefaultInterval
+func NewReaper(exec coreexecutor.Executor, sequencer coresequencer.Sequencer, genesis genesis.Genesis, logger zerolog.Logger, executor *executing.Executor) (*Reaper, error) {
+	if executor == nil {
+		return nil, errors.New("executor cannot be nil")
 	}
+
+	store, err := store.NewDefaultInMemoryKVStore()
+	if err != nil {
+		return nil, fmt.Errorf("failed to create reaper store: %w", err)
+	}
+
 	return &Reaper{
 		exec:      exec,
 		sequencer: sequencer,
-		chainID:   chainID,
-		interval:  interval,
+		chainID:   genesis.ChainID,
+		interval:  DefaultInterval, // eventually this can be made configurable via config.Node
 		logger:    logger.With().Str("component", "reaper").Logger(),
-		ctx:       ctx,
 		seenStore: store,
 		executor:  executor,
-	}
+	}, nil
 }
 
 // Start begins the reaping process at the specified interval.
-func (r *Reaper) Start(ctx context.Context) {
-	r.ctx = ctx
+func (r *Reaper) Start(ctx context.Context) error {
+	r.ctx, r.cancel = context.WithCancel(ctx)
+
 	ticker := time.NewTicker(r.interval)
 	defer ticker.Stop()
 
@@ -55,11 +74,21 @@ func (r *Reaper) Start(ctx context.Context) {
 		select {
 		case <-ctx.Done():
 			r.logger.Info().Msg("reaper stopped")
-			return
+			return nil
 		case <-ticker.C:
 			r.SubmitTxs()
 		}
 	}
+}
+
+// Stop shuts down the reaper component
+func (r *Reaper) Stop() error {
+	if r.cancel != nil {
+		r.cancel()
+	}
+
+	r.logger.Info().Msg("reaper stopped")
+	return nil
 }
 
 // SubmitTxs retrieves transactions from the executor and submits them to the sequencer.
@@ -109,12 +138,17 @@ func (r *Reaper) SubmitTxs() {
 	}
 
 	// Notify the executor that new transactions are available
-	if r.executor != nil && len(newTxs) > 0 {
+	if len(newTxs) > 0 {
 		r.logger.Debug().Msg("notifying executor of new transactions")
 		r.executor.NotifyNewTransactions()
 	}
 
 	r.logger.Debug().Msg("successfully submitted txs")
+}
+
+// SeenStore returns the datastore used to track seen transactions.
+func (r *Reaper) SeenStore() ds.Datastore {
+	return r.seenStore
 }
 
 func hashTx(tx []byte) string {

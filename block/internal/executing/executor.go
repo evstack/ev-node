@@ -22,11 +22,6 @@ import (
 	"github.com/evstack/ev-node/types"
 )
 
-const (
-	// DefaultInterval is the default reaper interval
-	DefaultInterval = 1 * time.Second
-)
-
 // broadcaster interface for P2P broadcasting
 type broadcaster[T any] interface {
 	WriteToStoreAndBroadcast(ctx context.Context, payload T) error
@@ -61,16 +56,12 @@ type Executor struct {
 	txNotifyCh chan struct{}
 	errorCh    chan<- error // Channel to report critical execution client failures
 
-	// Reaper for transaction processing
-	reaper *Reaper
-
 	// Logging
 	logger zerolog.Logger
 
 	// Lifecycle
 	ctx    context.Context
 	cancel context.CancelFunc
-	wg     sync.WaitGroup
 }
 
 // NewExecutor creates a new block executor.
@@ -126,28 +117,8 @@ func (e *Executor) Start(ctx context.Context) error {
 		return fmt.Errorf("failed to initialize state: %w", err)
 	}
 
-	// Initialize reaper
-	reaperStore, err := store.NewDefaultInMemoryKVStore()
-	if err != nil {
-		return fmt.Errorf("failed to create reaper store: %w", err)
-	}
-	e.reaper = NewReaper(e.ctx, e.exec, e.sequencer, e.genesis.ChainID, DefaultInterval, e.logger, reaperStore, e)
-
-	// Start execution loop
-	e.wg.Add(1)
-	go func() {
-		defer e.wg.Done()
-		e.executionLoop()
-	}()
-
-	// Start reaper
-	e.wg.Add(1)
-	go func() {
-		defer e.wg.Done()
-		e.reaper.Start(e.ctx)
-	}()
-
 	e.logger.Info().Msg("executor started")
+	e.executionLoop()
 	return nil
 }
 
@@ -156,7 +127,7 @@ func (e *Executor) Stop() error {
 	if e.cancel != nil {
 		e.cancel()
 	}
-	e.wg.Wait()
+
 	e.logger.Info().Msg("executor stopped")
 	return nil
 }
@@ -663,11 +634,6 @@ func (e *Executor) recordBlockMetrics(data *types.Data) {
 	e.metrics.TotalTxs.Add(float64(len(data.Txs)))
 	e.metrics.BlockSizeBytes.Set(float64(data.Size()))
 	e.metrics.CommittedHeight.Set(float64(data.Metadata.Height))
-}
-
-// GetCoreExecutor returns the underlying core executor for testing purposes
-func (e *Executor) GetCoreExecutor() coreexecutor.Executor {
-	return e.exec
 }
 
 // BatchData represents batch data from sequencer

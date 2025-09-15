@@ -1,4 +1,4 @@
-package executing
+package reaping
 
 import (
 	"context"
@@ -7,7 +7,6 @@ import (
 	"time"
 
 	ds "github.com/ipfs/go-datastore"
-	dssync "github.com/ipfs/go-datastore/sync"
 	"github.com/libp2p/go-libp2p/core/crypto"
 	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/assert"
@@ -15,6 +14,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/evstack/ev-node/block/internal/common"
+	"github.com/evstack/ev-node/block/internal/executing"
 	coresequencer "github.com/evstack/ev-node/core/sequencer"
 	"github.com/evstack/ev-node/pkg/config"
 	"github.com/evstack/ev-node/pkg/genesis"
@@ -23,7 +23,7 @@ import (
 )
 
 // helper to create a minimal executor to capture notifications
-func newTestExecutor(t *testing.T) *Executor {
+func newTestExecutor(t *testing.T) *executing.Executor {
 	t.Helper()
 
 	// signer is required by NewExecutor
@@ -32,7 +32,7 @@ func newTestExecutor(t *testing.T) *Executor {
 	s, err := noop.NewNoopSigner(priv)
 	require.NoError(t, err)
 
-	exec, err := NewExecutor(
+	exec, err := executing.NewExecutor(
 		nil, // store (unused)
 		nil, // core executor (unused)
 		nil, // sequencer (unused)
@@ -58,11 +58,13 @@ func newTestExecutor(t *testing.T) *Executor {
 }
 
 // reaper with mocks and in-memory seen store
-func newTestReaper(t *testing.T, chainID string, execMock *testmocks.MockExecutor, seqMock *testmocks.MockSequencer, e *Executor) (*Reaper, ds.Batching) {
+func newTestReaper(t *testing.T, chainID string, execMock *testmocks.MockExecutor, seqMock *testmocks.MockSequencer, e *executing.Executor) *Reaper {
 	t.Helper()
-	store := dssync.MutexWrap(ds.NewMapDatastore())
-	r := NewReaper(context.Background(), execMock, seqMock, chainID, 10*time.Millisecond, zerolog.Nop(), store, e)
-	return r, store
+
+	r, err := NewReaper(execMock, seqMock, genesis.Genesis{ChainID: chainID}, zerolog.Nop(), e)
+	require.NoError(t, err)
+
+	return r
 }
 
 func TestReaper_SubmitTxs_NewTxs_SubmitsAndPersistsAndNotifies(t *testing.T) {
@@ -86,7 +88,8 @@ func TestReaper_SubmitTxs_NewTxs_SubmitsAndPersistsAndNotifies(t *testing.T) {
 	// Minimal executor to capture NotifyNewTransactions
 	e := newTestExecutor(t)
 
-	r, store := newTestReaper(t, "chain-A", mockExec, mockSeq, e)
+	r := newTestReaper(t, "chain-A", mockExec, mockSeq, e)
+	store := r.SeenStore()
 
 	r.SubmitTxs()
 
@@ -98,11 +101,8 @@ func TestReaper_SubmitTxs_NewTxs_SubmitsAndPersistsAndNotifies(t *testing.T) {
 	assert.True(t, has1)
 	assert.True(t, has2)
 
-	// Executor notified (non-blocking read)
-	select {
-	case <-e.txNotifyCh:
-		// ok
-	case <-time.After(100 * time.Millisecond):
+	// Executor notified - check using test helper
+	if !e.HasPendingTxNotification() {
 		t.Fatal("expected NotifyNewTransactions to signal txNotifyCh")
 	}
 }
@@ -116,7 +116,8 @@ func TestReaper_SubmitTxs_AllSeen_NoSubmit(t *testing.T) {
 
 	// Pre-populate seen store
 	e := newTestExecutor(t)
-	r, store := newTestReaper(t, "chain-B", mockExec, mockSeq, e)
+	r := newTestReaper(t, "chain-B", mockExec, mockSeq, e)
+	store := r.SeenStore()
 	require.NoError(t, store.Put(context.Background(), ds.NewKey(hashTx(tx1)), []byte{1}))
 	require.NoError(t, store.Put(context.Background(), ds.NewKey(hashTx(tx2)), []byte{1}))
 
@@ -126,11 +127,8 @@ func TestReaper_SubmitTxs_AllSeen_NoSubmit(t *testing.T) {
 	r.SubmitTxs()
 
 	// Ensure no notification occurred
-	select {
-	case <-e.txNotifyCh:
+	if e.HasPendingTxNotification() {
 		t.Fatal("did not expect notification when all txs are seen")
-	default:
-		// ok
 	}
 }
 
@@ -142,9 +140,10 @@ func TestReaper_SubmitTxs_PartialSeen_FiltersAndPersists(t *testing.T) {
 	txNew := []byte("new")
 
 	e := newTestExecutor(t)
-	r, store := newTestReaper(t, "chain-C", mockExec, mockSeq, e)
+	r := newTestReaper(t, "chain-C", mockExec, mockSeq, e)
 
 	// Mark txOld as seen
+	store := r.SeenStore()
 	require.NoError(t, store.Put(context.Background(), ds.NewKey(hashTx(txOld)), []byte{1}))
 
 	mockExec.EXPECT().GetTxs(mock.Anything).Return([][]byte{txOld, txNew}, nil).Once()
@@ -166,10 +165,7 @@ func TestReaper_SubmitTxs_PartialSeen_FiltersAndPersists(t *testing.T) {
 	assert.True(t, hasNew)
 
 	// Notification should occur since a new tx was submitted
-	select {
-	case <-e.txNotifyCh:
-		// ok
-	case <-time.After(100 * time.Millisecond):
+	if !e.HasPendingTxNotification() {
 		t.Fatal("expected notification when new tx submitted")
 	}
 }
@@ -184,20 +180,18 @@ func TestReaper_SubmitTxs_SequencerError_NoPersistence_NoNotify(t *testing.T) {
 		Return((*coresequencer.SubmitBatchTxsResponse)(nil), assert.AnError).Once()
 
 	e := newTestExecutor(t)
-	r, store := newTestReaper(t, "chain-D", mockExec, mockSeq, e)
+	r := newTestReaper(t, "chain-D", mockExec, mockSeq, e)
 
 	r.SubmitTxs()
 
 	// Should not be marked seen
+	store := r.SeenStore()
 	has, err := store.Has(context.Background(), ds.NewKey(hashTx(tx)))
 	require.NoError(t, err)
 	assert.False(t, has)
 
 	// Should not notify
-	select {
-	case <-e.txNotifyCh:
+	if e.HasPendingTxNotification() {
 		t.Fatal("did not expect notification on sequencer error")
-	default:
-		// ok
 	}
 }
