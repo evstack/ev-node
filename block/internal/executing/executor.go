@@ -59,6 +59,7 @@ type Executor struct {
 
 	// Channels for coordination
 	txNotifyCh chan struct{}
+	errorCh    chan<- error // Channel to report critical execution client failures
 
 	// Reaper for transaction processing
 	reaper *Reaper
@@ -91,6 +92,7 @@ func NewExecutor(
 	dataBroadcaster broadcaster[*types.Data],
 	logger zerolog.Logger,
 	options common.BlockOptions,
+	errorCh chan<- error,
 ) *Executor {
 	if signer == nil {
 		panic("signer cannot be nil")
@@ -110,6 +112,7 @@ func NewExecutor(
 		options:           options,
 		lastStateMtx:      &sync.RWMutex{},
 		txNotifyCh:        make(chan struct{}, 1),
+		errorCh:           errorCh,
 		logger:            logger.With().Str("component", "executor").Logger(),
 	}
 }
@@ -192,6 +195,7 @@ func (e *Executor) initializeState() error {
 		stateRoot, _, err := e.exec.InitChain(e.ctx, e.genesis.StartTime,
 			e.genesis.InitialHeight, e.genesis.ChainID)
 		if err != nil {
+			e.sendCriticalError(fmt.Errorf("failed to initialize chain: %w", err))
 			return fmt.Errorf("failed to initialize chain: %w", err)
 		}
 
@@ -566,6 +570,7 @@ func (e *Executor) applyBlock(ctx context.Context, header types.Header, data *ty
 	newAppHash, _, err := e.exec.ExecuteTxs(ctx, rawTxs, header.Height(),
 		header.Time(), currentState.AppHash)
 	if err != nil {
+		e.sendCriticalError(fmt.Errorf("failed to execute transactions: %w", err))
 		return types.State{}, fmt.Errorf("failed to execute transactions: %w", err)
 	}
 
@@ -639,6 +644,17 @@ func (e *Executor) updateState(ctx context.Context, newState types.State) error 
 	e.metrics.Height.Set(float64(newState.LastBlockHeight))
 
 	return nil
+}
+
+// sendCriticalError sends a critical error to the error channel without blocking
+func (e *Executor) sendCriticalError(err error) {
+	if e.errorCh != nil {
+		select {
+		case e.errorCh <- err:
+		default:
+			// Channel full, error already reported
+		}
+	}
 }
 
 // recordBlockMetrics records metrics for the produced block

@@ -28,6 +28,9 @@ type BlockComponents struct {
 	Syncer    *syncing.Syncer
 	Submitter *submitting.Submitter
 	Cache     cache.Manager
+
+	// Error channel for critical failures that should stop the node
+	errorCh chan error
 }
 
 // GetLastState returns the current blockchain state
@@ -41,24 +44,48 @@ func (bc *BlockComponents) GetLastState() types.State {
 	return types.State{}
 }
 
-// Start starts all components
+// Start starts all components and monitors for critical errors
 func (bc *BlockComponents) Start(ctx context.Context) error {
+	ctxWithCancel, cancel := context.WithCancel(ctx)
+
+	// error monitoring goroutine
+	criticalErrCh := make(chan error, 1)
+	go func() {
+		select {
+		case err := <-bc.errorCh:
+			criticalErrCh <- err
+			cancel()
+		case <-ctx.Done():
+			return
+		}
+	}()
+
 	if bc.Executor != nil {
-		if err := bc.Executor.Start(ctx); err != nil {
+		if err := bc.Executor.Start(ctxWithCancel); err != nil {
 			return fmt.Errorf("failed to start executor: %w", err)
 		}
 	}
 	if bc.Syncer != nil {
-		if err := bc.Syncer.Start(ctx); err != nil {
+		if err := bc.Syncer.Start(ctxWithCancel); err != nil {
 			return fmt.Errorf("failed to start syncer: %w", err)
 		}
 	}
 	if bc.Submitter != nil {
-		if err := bc.Submitter.Start(ctx); err != nil {
+		if err := bc.Submitter.Start(ctxWithCancel); err != nil {
 			return fmt.Errorf("failed to start submitter: %w", err)
 		}
 	}
-	return nil
+
+	// wait for context cancellation (either from parent or critical error)
+	<-ctxWithCancel.Done()
+
+	// if we got here due to a critical error, return that error
+	select {
+	case err := <-criticalErrCh:
+		return fmt.Errorf("node stopped due to critical execution client failure: %w", err)
+	default:
+		return ctx.Err()
+	}
 }
 
 // Stop stops all components
@@ -108,6 +135,9 @@ func NewSyncNode(
 		return nil, fmt.Errorf("failed to create cache manager: %w", err)
 	}
 
+	// error channel for critical failures
+	errorCh := make(chan error, 1)
+
 	syncer := syncing.NewSyncer(
 		store,
 		exec,
@@ -120,6 +150,7 @@ func NewSyncNode(
 		dataStore,
 		logger,
 		blockOpts,
+		errorCh,
 	)
 
 	// Create DA submitter for sync nodes (no signer, only DA inclusion processing)
@@ -134,12 +165,14 @@ func NewSyncNode(
 		daSubmitter,
 		nil, // No signer for sync nodes
 		logger,
+		errorCh,
 	)
 
 	return &BlockComponents{
 		Syncer:    syncer,
 		Submitter: submitter,
 		Cache:     cacheManager,
+		errorCh:   errorCh,
 	}, nil
 }
 
@@ -167,6 +200,9 @@ func NewAggregatorNode(
 		return nil, fmt.Errorf("failed to create cache manager: %w", err)
 	}
 
+	// error channel for critical failures
+	errorCh := make(chan error, 1)
+
 	executor := executing.NewExecutor(
 		store,
 		exec,
@@ -180,6 +216,7 @@ func NewAggregatorNode(
 		dataBroadcaster,
 		logger,
 		blockOpts,
+		errorCh,
 	)
 
 	// Create DA submitter for aggregator nodes (with signer for submission)
@@ -194,11 +231,13 @@ func NewAggregatorNode(
 		daSubmitter,
 		signer, // Signer for aggregator nodes to submit to DA
 		logger,
+		errorCh,
 	)
 
 	return &BlockComponents{
 		Executor:  executor,
 		Submitter: submitter,
 		Cache:     cacheManager,
+		errorCh:   errorCh,
 	}, nil
 }

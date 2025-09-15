@@ -326,7 +326,7 @@ func (n *FullNode) Run(parentCtx context.Context) error {
 	var wg sync.WaitGroup
 
 	// Start the block components
-	if err := n.startBlockComponents(ctx); err != nil {
+	if err := n.blockComponents.Start(ctx); err != nil {
 		return fmt.Errorf("error while starting block components: %w", err)
 	}
 
@@ -355,7 +355,7 @@ func (n *FullNode) Run(parentCtx context.Context) error {
 	var multiErr error // Use a multierror variable
 
 	// Stop block components
-	if err := n.stopBlockComponents(); err != nil {
+	if err := n.blockComponents.Stop(); err != nil {
 		n.Logger.Error().Err(err).Msg("error stopping block components")
 		multiErr = errors.Join(multiErr, fmt.Errorf("stopping block components: %w", err))
 	}
@@ -472,78 +472,6 @@ func (n *FullNode) GetGenesisChunks() ([]string, error) {
 // IsRunning returns true if the node is running.
 func (n *FullNode) IsRunning() bool {
 	return n.blockComponents != nil
-}
-
-// startBlockComponents starts the block components based on node type
-func (n *FullNode) startBlockComponents(ctx context.Context) error {
-	if n.blockComponents == nil {
-		return fmt.Errorf("block components not initialized")
-	}
-
-	n.Logger.Info().Msg("starting block components")
-
-	// Start syncing component for sync nodes
-	if n.blockComponents.Syncer != nil {
-		if err := n.blockComponents.Syncer.Start(ctx); err != nil {
-			return fmt.Errorf("failed to start syncer: %w", err)
-		}
-	}
-
-	// Start executing component for aggregator node
-	if n.blockComponents.Executor != nil {
-		if err := n.blockComponents.Executor.Start(ctx); err != nil {
-			return fmt.Errorf("failed to start executor: %w", err)
-		}
-	}
-
-	// Start submitting component both aggregator and sync nodes
-	if n.blockComponents.Submitter != nil {
-		if err := n.blockComponents.Submitter.Start(ctx); err != nil {
-			return fmt.Errorf("failed to start submitter: %w", err)
-		}
-	}
-
-	n.Logger.Info().Msg("block components started successfully")
-	return nil
-}
-
-// stopBlockComponents stops the block components
-func (n *FullNode) stopBlockComponents() error {
-	if n.blockComponents == nil {
-		return nil // Already stopped or never started
-	}
-
-	n.Logger.Info().Msg("stopping block components")
-
-	var executorErr, syncerErr, submitterErr error
-
-	// Stop executor
-	if n.blockComponents.Executor != nil {
-		if err := n.blockComponents.Executor.Stop(); err != nil {
-			executorErr = fmt.Errorf("failed to stop executor: %w", err)
-			n.Logger.Error().Err(err).Msg("error stopping executor")
-		}
-	}
-
-	// Stop syncer
-	if n.blockComponents.Syncer != nil {
-		if err := n.blockComponents.Syncer.Stop(); err != nil {
-			syncerErr = fmt.Errorf("failed to stop syncer: %w", err)
-			n.Logger.Error().Err(err).Msg("error stopping syncer")
-		}
-	}
-
-	// Stop submitter
-	if n.blockComponents.Submitter != nil {
-		if err := n.blockComponents.Submitter.Stop(); err != nil {
-			submitterErr = fmt.Errorf("failed to stop submitter: %w", err)
-			n.Logger.Error().Err(err).Msg("error stopping submitter")
-		}
-	}
-
-	n.Logger.Info().Msg("block components stopped successfully")
-
-	return errors.Join(executorErr, syncerErr, submitterErr)
 }
 
 func newPrefixKV(kvStore ds.Batching, prefix string) ds.Batching {

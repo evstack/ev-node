@@ -94,6 +94,7 @@ func TestProcessHeightEvent_SyncsAndUpdatesState(t *testing.T) {
 		nil,
 		zerolog.Nop(),
 		common.DefaultBlockOptions(),
+		make(chan error, 1),
 	)
 
 	require.NoError(t, s.initializeState())
@@ -144,6 +145,7 @@ func TestSequentialBlockSync(t *testing.T) {
 		nil,
 		zerolog.Nop(),
 		common.DefaultBlockOptions(),
+		make(chan error, 1),
 	)
 	require.NoError(t, s.initializeState())
 	s.ctx = context.Background()

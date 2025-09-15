@@ -55,6 +55,7 @@ type Syncer struct {
 	heightInCh    chan common.DAHeightEvent
 	headerStoreCh chan struct{}
 	dataStoreCh   chan struct{}
+	errorCh       chan<- error // Channel to report critical execution client failures
 
 	// Handlers
 	daRetriever *DARetriever
@@ -82,6 +83,7 @@ func NewSyncer(
 	dataStore goheader.Store[*types.Data],
 	logger zerolog.Logger,
 	options common.BlockOptions,
+	errorCh chan<- error,
 ) *Syncer {
 	return &Syncer{
 		store:         store,
@@ -99,6 +101,7 @@ func NewSyncer(
 		heightInCh:    make(chan common.DAHeightEvent, 10000),
 		headerStoreCh: make(chan struct{}, 1),
 		dataStoreCh:   make(chan struct{}, 1),
+		errorCh:       errorCh,
 		logger:        logger.With().Str("component", "syncer").Logger(),
 	}
 }
@@ -477,6 +480,7 @@ func (s *Syncer) applyBlock(header types.Header, data *types.Data, currentState 
 	newAppHash, _, err := s.exec.ExecuteTxs(ctx, rawTxs, header.Height(),
 		header.Time(), currentState.AppHash)
 	if err != nil {
+		s.sendCriticalError(fmt.Errorf("failed to execute transactions: %w", err))
 		return types.State{}, fmt.Errorf("failed to execute transactions: %w", err)
 	}
 
@@ -500,6 +504,17 @@ func (s *Syncer) validateBlock(lastState types.State, header *types.SignedHeader
 	}
 
 	return nil
+}
+
+// sendCriticalError sends a critical error to the error channel without blocking
+func (s *Syncer) sendCriticalError(err error) {
+	if s.errorCh != nil {
+		select {
+		case s.errorCh <- err:
+		default:
+			// Channel full, error already reported
+		}
+	}
 }
 
 // updateState saves the new state

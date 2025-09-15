@@ -50,6 +50,7 @@ func newTestExecutor(t *testing.T) *Executor {
 		nil, // data broadcaster
 		zerolog.Nop(),
 		common.DefaultBlockOptions(),
+		make(chan error, 1), // error channel
 	)
 	return exec
 }

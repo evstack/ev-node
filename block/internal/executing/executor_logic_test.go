@@ -84,6 +84,7 @@ func TestProduceBlock_EmptyBatch_SetsEmptyDataHash(t *testing.T) {
 		db,
 		zerolog.Nop(),
 		common.DefaultBlockOptions(),
+		make(chan error, 1),
 	)
 
 	// Expect InitChain to be called
@@ -168,6 +169,7 @@ func TestPendingLimit_SkipsProduction(t *testing.T) {
 		db,
 		zerolog.Nop(),
 		common.DefaultBlockOptions(),
+		make(chan error, 1),
 	)
 
 	mockExec.EXPECT().InitChain(mock.Anything, mock.AnythingOfType("time.Time"), gen.InitialHeight, gen.ChainID).

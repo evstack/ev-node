@@ -63,6 +63,7 @@ func TestLazyMode_ProduceBlockLogic(t *testing.T) {
 		db,
 		zerolog.Nop(),
 		common.DefaultBlockOptions(),
+		make(chan error, 1),
 	)
 
 	// Initialize state
@@ -169,6 +170,7 @@ func TestRegularMode_ProduceBlockLogic(t *testing.T) {
 		db,
 		zerolog.Nop(),
 		common.DefaultBlockOptions(),
+		make(chan error, 1),
 	)
 
 	// Initialize state

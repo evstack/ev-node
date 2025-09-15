@@ -96,7 +96,7 @@ func TestTxGossipingMultipleNodesDAIncluded(t *testing.T) {
 	require.NoError(err)
 
 	// Verify block components are properly initialized
-	require.NotNil(nodes[0].blockComponents, "Block components should be initialized")
+	require.True(nodes[0].IsRunning(), "Block components should be initialized")
 
 	// Add a small delay to ensure P2P services are fully ready
 	time.Sleep(500 * time.Millisecond)

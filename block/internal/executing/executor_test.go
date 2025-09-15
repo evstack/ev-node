@@ -77,6 +77,7 @@ func TestExecutor_BroadcasterIntegration(t *testing.T) {
 		dataBroadcaster,
 		zerolog.Nop(),
 		common.DefaultBlockOptions(),
+		make(chan error, 1),
 	)
 
 	// Verify broadcasters are set
@@ -131,6 +132,7 @@ func TestExecutor_NilBroadcasters(t *testing.T) {
 		nil, // nil data broadcaster
 		zerolog.Nop(),
 		common.DefaultBlockOptions(),
+		make(chan error, 1),
 	)
 
 	// Verify broadcasters are nil

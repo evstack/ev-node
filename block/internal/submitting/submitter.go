@@ -46,6 +46,9 @@ type Submitter struct {
 	headerSubmissionMtx sync.Mutex
 	dataSubmissionMtx   sync.Mutex
 
+	// Channels for coordination
+	errorCh chan<- error // Channel to report critical execution client failures
+
 	// Logging
 	logger zerolog.Logger
 
@@ -66,6 +69,7 @@ func NewSubmitter(
 	daSubmitter *DASubmitter,
 	signer signer.Signer, // Can be nil for sync nodes
 	logger zerolog.Logger,
+	errorCh chan<- error,
 ) *Submitter {
 	return &Submitter{
 		store:       store,
@@ -77,6 +81,7 @@ func NewSubmitter(
 		daSubmitter: daSubmitter,
 		signer:      signer,
 		daStateMtx:  &sync.RWMutex{},
+		errorCh:     errorCh,
 		logger:      logger.With().Str("component", "submitter").Logger(),
 	}
 }
@@ -208,6 +213,7 @@ func (s *Submitter) processDAInclusionLoop() {
 
 				// Set final height in executor
 				if err := s.exec.SetFinal(s.ctx, nextHeight); err != nil {
+					s.sendCriticalError(fmt.Errorf("failed to set final height: %w", err))
 					s.logger.Error().Err(err).Uint64("height", nextHeight).Msg("failed to set final height")
 					break
 				}
@@ -247,6 +253,17 @@ func (s *Submitter) initializeDAIncludedHeight(ctx context.Context) error {
 		s.SetDAIncludedHeight(binary.LittleEndian.Uint64(height))
 	}
 	return nil
+}
+
+// sendCriticalError sends a critical error to the error channel without blocking
+func (s *Submitter) sendCriticalError(err error) {
+	if s.errorCh != nil {
+		select {
+		case s.errorCh <- err:
+		default:
+			// Channel full, error already reported
+		}
+	}
 }
 
 // setSequencerHeightToDAHeight stores the mapping from a ev-node block height to the corresponding
