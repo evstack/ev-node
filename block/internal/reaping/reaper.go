@@ -78,14 +78,14 @@ func (r *Reaper) Start(ctx context.Context) error {
 	return nil
 }
 
-func (r *Reaper) reaperLoop() error {
+func (r *Reaper) reaperLoop() {
 	ticker := time.NewTicker(r.interval)
 	defer ticker.Stop()
 
 	for {
 		select {
 		case <-r.ctx.Done():
-			return nil
+			return
 		case <-ticker.C:
 			r.SubmitTxs()
 		}
