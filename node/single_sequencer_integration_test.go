@@ -226,7 +226,6 @@ func (s *FullNodeTestSuite) TestGenesisInitialization() {
 // TestStateRecovery verifies that the node can recover its state after a restart.
 // It would check that the block height after restart is at least as high as before.
 func TestStateRecovery(t *testing.T) {
-
 	require := require.New(t)
 
 	// Set up one sequencer
