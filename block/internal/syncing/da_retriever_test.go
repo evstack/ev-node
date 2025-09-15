@@ -80,8 +80,8 @@ func TestDARetriever_RetrieveFromDA_NotFound(t *testing.T) {
 		Return(nil, fmt.Errorf("%s: whatever", coreda.ErrBlobNotFound.Error())).Maybe()
 
 	r := NewDARetriever(mockDA, cm, config.DefaultConfig, genesis.Genesis{}, common.DefaultBlockOptions(), zerolog.Nop())
-	events, derr := r.RetrieveFromDA(context.Background(), 42)
-	require.NoError(t, derr)
+	events, err := r.RetrieveFromDA(context.Background(), 42)
+	require.Error(t, err, coreda.ErrBlobNotFound)
 	assert.Len(t, events, 0)
 }
 
