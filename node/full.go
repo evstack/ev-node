@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/pprof"
-	"sync"
 	"time"
 
 	ds "github.com/ipfs/go-datastore"
@@ -319,34 +318,18 @@ func (n *FullNode) Run(parentCtx context.Context) error {
 		return fmt.Errorf("error while starting data sync service: %w", err)
 	}
 
-	// only the first error is propagated
-	// any error is an issue, so blocking is not a problem
-	errCh := make(chan error, 1)
-	// prepare to join the go routines later
-	var wg sync.WaitGroup
-
-	// Start the block components
+	// Start the block components (blocking)
 	if err := n.blockComponents.Start(ctx); err != nil {
-		return fmt.Errorf("error while starting block components: %w", err)
-	}
-
-	select {
-	case err := <-errCh:
-		if err != nil {
-			n.Logger.Error().Err(err).Msg("unrecoverable error in one of the go routines")
-			cancelNode() // propagate shutdown to all child goroutines
+		if !errors.Is(err, context.Canceled) {
+			n.Logger.Error().Err(err).Msg("unrecoverable error in block components")
+		} else {
+			n.Logger.Info().Msg("context canceled, stopping node")
 		}
-	case <-parentCtx.Done():
-		// Block until parent context is canceled
-		n.Logger.Info().Msg("context canceled, stopping node")
-		cancelNode() // propagate shutdown to all child goroutines
 	}
 
-	// Perform cleanup
+	// blocking components start exited, propagate shutdown to all other processes
+	cancelNode()
 	n.Logger.Info().Msg("halting full node and its sub services...")
-	// wait for all worker Go routines to finish so that we have
-	// no in-flight tasks while shutting down
-	wg.Wait()
 
 	// Use a timeout context to ensure shutdown doesn't hang
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 9*time.Second)
