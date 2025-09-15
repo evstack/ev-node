@@ -199,7 +199,7 @@ func (s *Submitter) processDAInclusionLoop() {
 				}
 
 				// Check if this height is DA included
-				if included, err := s.isHeightDAIncluded(nextHeight, header, data); err != nil || !included {
+				if included, err := s.IsHeightDAIncluded(nextHeight, header, data); err != nil || !included {
 					break
 				}
 
@@ -321,8 +321,8 @@ func (s *Submitter) setSequencerHeightToDAHeight(ctx context.Context, height uin
 	return nil
 }
 
-// isHeightDAIncluded checks if a height is included in DA
-func (s *Submitter) isHeightDAIncluded(height uint64, header *types.SignedHeader, data *types.Data) (bool, error) {
+// IsHeightDAIncluded checks if a height is included in DA
+func (s *Submitter) IsHeightDAIncluded(height uint64, header *types.SignedHeader, data *types.Data) (bool, error) {
 	currentHeight, err := s.store.Height(s.ctx)
 	if err != nil {
 		return false, err

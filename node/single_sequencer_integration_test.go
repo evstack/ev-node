@@ -21,10 +21,10 @@ import (
 // FullNodeTestSuite is a test suite for full node integration tests
 type FullNodeTestSuite struct {
 	suite.Suite
-	ctx       context.Context
-	cancel    context.CancelFunc
-	node      *FullNode
-	executor  *coreexecutor.DummyExecutor
+	ctx    context.Context
+	cancel context.CancelFunc
+	node   *FullNode
+
 	errCh     chan error
 	runningWg sync.WaitGroup
 }
@@ -65,10 +65,6 @@ func (s *FullNodeTestSuite) SetupTest() {
 
 	s.node = node
 
-	// Note: Direct executor access not available through block components in this architecture
-	// s.executor = node.blockComponents.Executor.(*coreexecutor.DummyExecutor)
-	s.executor = nil // Will need to be restructured for new architecture
-
 	// Start the node in a goroutine using Run instead of Start
 	s.startNodeInBackground(s.node)
 
@@ -79,16 +75,6 @@ func (s *FullNodeTestSuite) SetupTest() {
 	// Wait for the first block to be DA included
 	err = waitForFirstBlockToBeDAIncluded(s.node)
 	require.NoError(err, "Failed to get DA inclusion")
-
-	// Verify sequencer client is working
-	// Note: SeqClient access not available through block components
-	// err = testutils.Retry(30, 100*time.Millisecond, func() error {
-	//	if s.node.blockComponents.SeqClient() == nil {
-	//		return fmt.Errorf("sequencer client not initialized")
-	//	}
-	//	return nil
-	// })
-	// require.NoError(err, "Sequencer client initialization failed")
 
 	// Verify block components are properly initialized
 	require.NotNil(s.node.blockComponents, "Block components should be initialized")
@@ -136,9 +122,25 @@ func TestFullNodeTestSuite(t *testing.T) {
 // It checks that blocks are produced, state is updated, and the injected transaction is included in one of the blocks.
 func (s *FullNodeTestSuite) TestBlockProduction() {
 	testTx := []byte("test transaction")
-	// Note: Direct executor access not available in new architecture
-	// s.executor.InjectTx(testTx)
-	// This test needs to be restructured for the new component model
+
+	// Inject transaction through the node's block components (same as integration tests)
+	if s.node.blockComponents != nil && s.node.blockComponents.Executor != nil {
+		// Access the core executor from the block executor
+		coreExec := s.node.blockComponents.Executor.GetCoreExecutor()
+		if dummyExec, ok := coreExec.(interface{ InjectTx([]byte) }); ok {
+			dummyExec.InjectTx(testTx)
+			// Notify the executor about new transactions
+			s.node.blockComponents.Executor.NotifyNewTransactions()
+		} else {
+			s.T().Fatalf("Could not cast core executor to DummyExecutor")
+		}
+	} else {
+		s.T().Fatalf("Block components or executor not available")
+	}
+
+	// Wait for reaper to process transactions (reaper runs every 1 second by default)
+	time.Sleep(1200 * time.Millisecond)
+
 	err := waitForAtLeastNBlocks(s.node, 5, Store)
 	s.NoError(err, "Failed to produce more than 5 blocks")
 
@@ -179,22 +181,35 @@ func (s *FullNodeTestSuite) TestBlockProduction() {
 // TestSubmitBlocksToDA verifies that blocks produced by the node are properly submitted to the Data Availability (DA) layer.
 // It injects a transaction, waits for several blocks to be produced and DA-included, and asserts that all blocks are DA included.
 func (s *FullNodeTestSuite) TestSubmitBlocksToDA() {
-	// Note: Direct executor access not available in new architecture
-	// s.executor.InjectTx([]byte("test transaction"))
-	// This test needs to be restructured for the new component model
+	// Inject transaction through the node's block components
+	if s.node.blockComponents != nil && s.node.blockComponents.Executor != nil {
+		coreExec := s.node.blockComponents.Executor.GetCoreExecutor()
+		if dummyExec, ok := coreExec.(interface{ InjectTx([]byte) }); ok {
+			dummyExec.InjectTx([]byte("test transaction"))
+			// Notify the executor about new transactions
+			s.node.blockComponents.Executor.NotifyNewTransactions()
+		} else {
+			s.T().Fatalf("Could not cast core executor to DummyExecutor")
+		}
+	} else {
+		s.T().Fatalf("Block components or executor not available")
+	}
 
+	// Wait for reaper to process transactions (reaper runs every 1 second by default)
+	time.Sleep(1200 * time.Millisecond)
 	n := uint64(5)
 	err := waitForAtLeastNBlocks(s.node, n, Store)
 	s.NoError(err, "Failed to produce second block")
 	err = waitForAtLeastNDAIncludedHeight(s.node, n)
 	s.NoError(err, "Failed to get DA inclusion")
-	// Note: IsHeightDAIncluded method not available through block components
-	// This verification needs to be restructured for the new architecture
-	// for height := uint64(1); height <= n; height++ {
-	//	ok, err := s.node.blockComponents.IsHeightDAIncluded(s.ctx, height)
-	//	require.NoError(s.T(), err)
-	//	require.True(s.T(), ok, "Block at height %d is not DA included", height)
-	// }
+	for height := uint64(1); height <= n; height++ {
+		header, data, err := s.node.Store.GetBlockData(s.ctx, height)
+		require.NoError(s.T(), err)
+
+		ok, err := s.node.blockComponents.Submitter.IsHeightDAIncluded(height, header, data)
+		require.NoError(s.T(), err)
+		require.True(s.T(), ok, "Block at height %d is not DA included", height)
+	}
 }
 
 // TestGenesisInitialization checks that the node's state is correctly initialized from the genesis document.
