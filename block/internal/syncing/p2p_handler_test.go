@@ -25,7 +25,7 @@ import (
 )
 
 // buildTestSigner returns an address, pubkey and signer suitable for tests
-func buildTestSigner(t *testing.T) (addr []byte, pub crypto.PubKey, s signerpkg.Signer) {
+func buildTestSigner(t *testing.T) ([]byte, crypto.PubKey, signerpkg.Signer) {
 	t.Helper()
 	priv, _, err := crypto.GenerateEd25519Key(crand.Reader)
 	require.NoError(t, err, "failed to generate ed25519 key for test signer")
