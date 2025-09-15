@@ -1,8 +1,6 @@
 package node
 
 import (
-	"context"
-
 	ds "github.com/ipfs/go-datastore"
 	"github.com/rs/zerolog"
 
@@ -32,7 +30,6 @@ type NodeOptions struct {
 // This is the entry point for composing a node, when compiling a node, you need to provide an executor
 // Example executors can be found in apps/
 func NewNode(
-	ctx context.Context,
 	conf config.Config,
 	exec coreexecutor.Executor,
 	sequencer coresequencer.Sequencer,
@@ -54,7 +51,6 @@ func NewNode(
 	}
 
 	return newFullNode(
-		ctx,
 		conf,
 		p2pClient,
 		signer,

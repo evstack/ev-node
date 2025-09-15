@@ -32,7 +32,7 @@ func TestBlockComponents_ExecutionClientFailure_StopsNode(t *testing.T) {
 	criticalError := errors.New("execution client connection lost")
 
 	// Create BlockComponents with error channel
-	bc := &BlockComponents{
+	bc := &Components{
 		errorCh: errorCh,
 	}
 
@@ -57,7 +57,7 @@ func TestBlockComponents_GetLastState(t *testing.T) {
 
 	t.Run("Empty state", func(t *testing.T) {
 		// When neither is present, return empty state
-		bc := &BlockComponents{}
+		bc := &Components{}
 
 		result := bc.GetLastState()
 		assert.Equal(t, uint64(0), result.LastBlockHeight)
@@ -66,7 +66,7 @@ func TestBlockComponents_GetLastState(t *testing.T) {
 
 func TestBlockComponents_StartStop_Lifecycle(t *testing.T) {
 	// Simple lifecycle test without creating full components
-	bc := &BlockComponents{
+	bc := &Components{
 		errorCh: make(chan error, 1),
 	}
 
@@ -79,7 +79,7 @@ func TestBlockComponents_StartStop_Lifecycle(t *testing.T) {
 	assert.Contains(t, err.Error(), "context")
 }
 
-func TestNewSyncNode_Creation(t *testing.T) {
+func TestNewSyncComponents_Creation(t *testing.T) {
 	ds := sync.MutexWrap(datastore.NewMapDatastore())
 	memStore := store.New(ds)
 
@@ -96,7 +96,7 @@ func TestNewSyncNode_Creation(t *testing.T) {
 
 	// Just test that the constructor doesn't panic - don't start the components
 	// to avoid P2P store dependencies
-	components, err := NewSyncNode(
+	components, err := NewSyncComponents(
 		cfg,
 		gen,
 		memStore,
@@ -118,7 +118,7 @@ func TestNewSyncNode_Creation(t *testing.T) {
 	assert.Nil(t, components.Executor) // Sync nodes don't have executors
 }
 
-func TestNewAggregatorNode_Creation(t *testing.T) {
+func TestNewAggregatorComponents_Creation(t *testing.T) {
 	ds := sync.MutexWrap(datastore.NewMapDatastore())
 	memStore := store.New(ds)
 
@@ -140,7 +140,7 @@ func TestNewAggregatorNode_Creation(t *testing.T) {
 	mockSigner, err := noop.NewNoopSigner(priv)
 	require.NoError(t, err)
 
-	components, err := NewAggregatorNode(
+	components, err := NewAggregatorComponents(
 		cfg,
 		gen,
 		memStore,
@@ -148,8 +148,6 @@ func TestNewAggregatorNode_Creation(t *testing.T) {
 		mockSeq,
 		dummyDA,
 		mockSigner,
-		nil, // header store
-		nil, // data store
 		nil, // header broadcaster
 		nil, // data broadcaster
 		zerolog.Nop(),
@@ -213,7 +211,7 @@ func TestExecutor_RealExecutionClientFailure_StopsNode(t *testing.T) {
 		Return(nil, uint64(0), criticalError).Maybe()
 
 	// Create aggregator node
-	components, err := NewAggregatorNode(
+	components, err := NewAggregatorComponents(
 		cfg,
 		gen,
 		memStore,
@@ -221,8 +219,6 @@ func TestExecutor_RealExecutionClientFailure_StopsNode(t *testing.T) {
 		mockSeq,
 		dummyDA,
 		testSigner,
-		nil, // header store
-		nil, // data store
 		nil, // header broadcaster
 		nil, // data broadcaster
 		zerolog.Nop(),

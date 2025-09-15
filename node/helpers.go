@@ -83,15 +83,6 @@ func getNodeHeightFromStore(node Node) (uint64, error) {
 	return 0, errors.New("not a full node or block components not initialized")
 }
 
-//nolint:unused
-func safeClose(ch chan struct{}) {
-	select {
-	case <-ch:
-	default:
-		close(ch)
-	}
-}
-
 // waitForAtLeastNBlocks waits for the node to have at least n blocks
 func waitForAtLeastNBlocks(node Node, n uint64, source Source) error {
 	return Retry(300, 100*time.Millisecond, func() error {

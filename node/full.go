@@ -59,7 +59,7 @@ type FullNode struct {
 	hSyncService    *evsync.HeaderSyncService
 	dSyncService    *evsync.DataSyncService
 	Store           store.Store
-	blockComponents *block.BlockComponents
+	blockComponents *block.Components
 
 	prometheusSrv *http.Server
 	pprofSrv      *http.Server
@@ -68,7 +68,6 @@ type FullNode struct {
 
 // newFullNode creates a new Rollkit full node.
 func newFullNode(
-	ctx context.Context,
 	nodeConfig config.Config,
 	p2pClient *p2p.Client,
 	signer signer.Signer,
@@ -98,9 +97,9 @@ func newFullNode(
 		return nil, err
 	}
 
-	var blockComponents *block.BlockComponents
+	var blockComponents *block.Components
 	if nodeConfig.Node.Aggregator {
-		blockComponents, err = block.NewAggregatorNode(
+		blockComponents, err = block.NewAggregatorComponents(
 			nodeConfig,
 			genesis,
 			rktStore,
@@ -108,8 +107,6 @@ func newFullNode(
 			sequencer,
 			da,
 			signer,
-			headerSyncService.Store(),
-			dataSyncService.Store(),
 			headerSyncService,
 			dataSyncService,
 			logger,
@@ -117,7 +114,7 @@ func newFullNode(
 			nodeOpts.BlockOptions,
 		)
 	} else {
-		blockComponents, err = block.NewSyncNode(
+		blockComponents, err = block.NewSyncComponents(
 			nodeConfig,
 			genesis,
 			rktStore,
