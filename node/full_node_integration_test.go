@@ -182,7 +182,7 @@ func TestFastDASync(t *testing.T) {
 	startNodeInBackground(t, nodes, ctxs, &runningWg, 1)
 
 	// Wait for P2P connection to be established between nodes before measuring sync
-	require.Eventually(t, func() bool {
+	require.Eventually(func() bool {
 		// Check if second node is running
 		if !nodes[1].IsRunning() {
 			return false
