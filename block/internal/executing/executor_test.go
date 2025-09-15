@@ -64,7 +64,7 @@ func TestExecutor_BroadcasterIntegration(t *testing.T) {
 	require.NoError(t, err)
 
 	// Create executor with broadcasters
-	executor := NewExecutor(
+	executor, err := NewExecutor(
 		memStore,
 		nil,        // nil executor (we're not testing execution)
 		nil,        // nil sequencer (we're not testing sequencing)
@@ -79,6 +79,7 @@ func TestExecutor_BroadcasterIntegration(t *testing.T) {
 		common.DefaultBlockOptions(),
 		make(chan error, 1),
 	)
+	require.NoError(t, err)
 
 	// Verify broadcasters are set
 	assert.NotNil(t, executor.headerBroadcaster)
@@ -119,7 +120,7 @@ func TestExecutor_NilBroadcasters(t *testing.T) {
 	require.NoError(t, err)
 
 	// Create executor with nil broadcasters (light node scenario)
-	executor := NewExecutor(
+	executor, err := NewExecutor(
 		memStore,
 		nil,        // nil executor
 		nil,        // nil sequencer
@@ -134,6 +135,7 @@ func TestExecutor_NilBroadcasters(t *testing.T) {
 		common.DefaultBlockOptions(),
 		make(chan error, 1),
 	)
+	require.NoError(t, err)
 
 	// Verify broadcasters are nil
 	assert.Nil(t, executor.headerBroadcaster)

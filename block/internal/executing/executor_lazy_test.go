@@ -50,7 +50,7 @@ func TestLazyMode_ProduceBlockLogic(t *testing.T) {
 	hb := &mockBroadcaster[*types.SignedHeader]{}
 	db := &mockBroadcaster[*types.Data]{}
 
-	exec := NewExecutor(
+	exec, err := NewExecutor(
 		memStore,
 		mockExec,
 		mockSeq,
@@ -65,6 +65,7 @@ func TestLazyMode_ProduceBlockLogic(t *testing.T) {
 		common.DefaultBlockOptions(),
 		make(chan error, 1),
 	)
+	require.NoError(t, err)
 
 	// Initialize state
 	initStateRoot := []byte("init_root")
@@ -157,7 +158,7 @@ func TestRegularMode_ProduceBlockLogic(t *testing.T) {
 	hb := &mockBroadcaster[*types.SignedHeader]{}
 	db := &mockBroadcaster[*types.Data]{}
 
-	exec := NewExecutor(
+	exec, err := NewExecutor(
 		memStore,
 		mockExec,
 		mockSeq,
@@ -172,6 +173,7 @@ func TestRegularMode_ProduceBlockLogic(t *testing.T) {
 		common.DefaultBlockOptions(),
 		make(chan error, 1),
 	)
+	require.NoError(t, err)
 
 	// Initialize state
 	initStateRoot := []byte("init_root")

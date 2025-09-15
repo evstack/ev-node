@@ -203,7 +203,7 @@ func NewAggregatorNode(
 	// error channel for critical failures
 	errorCh := make(chan error, 1)
 
-	executor := executing.NewExecutor(
+	executor, err := executing.NewExecutor(
 		store,
 		exec,
 		sequencer,
@@ -218,6 +218,9 @@ func NewAggregatorNode(
 		blockOpts,
 		errorCh,
 	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create executor: %w", err)
+	}
 
 	// Create DA submitter for aggregator nodes (with signer for submission)
 	daSubmitter := submitting.NewDASubmitter(da, config, genesis, blockOpts, logger)

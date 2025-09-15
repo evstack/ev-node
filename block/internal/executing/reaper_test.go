@@ -32,7 +32,7 @@ func newTestExecutor(t *testing.T) *Executor {
 	s, err := noop.NewNoopSigner(priv)
 	require.NoError(t, err)
 
-	exec := NewExecutor(
+	exec, err := NewExecutor(
 		nil, // store (unused)
 		nil, // core executor (unused)
 		nil, // sequencer (unused)
@@ -52,6 +52,8 @@ func newTestExecutor(t *testing.T) *Executor {
 		common.DefaultBlockOptions(),
 		make(chan error, 1), // error channel
 	)
+	require.NoError(t, err)
+
 	return exec
 }
 

@@ -93,9 +93,9 @@ func NewExecutor(
 	logger zerolog.Logger,
 	options common.BlockOptions,
 	errorCh chan<- error,
-) *Executor {
+) (*Executor, error) {
 	if signer == nil {
-		panic("signer cannot be nil")
+		return nil, errors.New("signer cannot be nil")
 	}
 
 	return &Executor{
@@ -114,7 +114,7 @@ func NewExecutor(
 		txNotifyCh:        make(chan struct{}, 1),
 		errorCh:           errorCh,
 		logger:            logger.With().Str("component", "executor").Logger(),
-	}
+	}, nil
 }
 
 // Start begins the execution component

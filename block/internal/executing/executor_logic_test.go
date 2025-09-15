@@ -71,7 +71,7 @@ func TestProduceBlock_EmptyBatch_SetsEmptyDataHash(t *testing.T) {
 	hb := &mockBroadcaster[*types.SignedHeader]{}
 	db := &mockBroadcaster[*types.Data]{}
 
-	exec := NewExecutor(
+	exec, err := NewExecutor(
 		memStore,
 		mockExec,
 		mockSeq,
@@ -86,6 +86,7 @@ func TestProduceBlock_EmptyBatch_SetsEmptyDataHash(t *testing.T) {
 		common.DefaultBlockOptions(),
 		make(chan error, 1),
 	)
+	require.NoError(t, err)
 
 	// Expect InitChain to be called
 	initStateRoot := []byte("init_root")
@@ -156,7 +157,7 @@ func TestPendingLimit_SkipsProduction(t *testing.T) {
 	hb := &mockBroadcaster[*types.SignedHeader]{}
 	db := &mockBroadcaster[*types.Data]{}
 
-	exec := NewExecutor(
+	exec, err := NewExecutor(
 		memStore,
 		mockExec,
 		mockSeq,
@@ -171,6 +172,7 @@ func TestPendingLimit_SkipsProduction(t *testing.T) {
 		common.DefaultBlockOptions(),
 		make(chan error, 1),
 	)
+	require.NoError(t, err)
 
 	mockExec.EXPECT().InitChain(mock.Anything, mock.AnythingOfType("time.Time"), gen.InitialHeight, gen.ChainID).
 		Return([]byte("i0"), uint64(1024), nil).Once()
