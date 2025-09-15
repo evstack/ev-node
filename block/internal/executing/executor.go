@@ -118,11 +118,11 @@ func (e *Executor) Start(ctx context.Context) error {
 		return fmt.Errorf("failed to initialize state: %w", err)
 	}
 
-	// Start execution loop
+	// Start block production
 	e.wg.Add(1)
 	go func() {
 		defer e.wg.Done()
-		e.executionLoop()
+		e.startBlockProduction()
 	}()
 
 	e.logger.Info().Msg("executor started")
@@ -255,74 +255,121 @@ func (e *Executor) createGenesisBlock(ctx context.Context, stateRoot []byte) err
 	return e.store.SaveBlockData(ctx, genesisHeader, data, &signature)
 }
 
-// executionLoop handles block production and aggregation
-func (e *Executor) executionLoop() {
-	e.logger.Info().Msg("starting execution loop")
-	defer e.logger.Info().Msg("execution loop stopped")
+// startBlockProduction manages the block production lifecycle
+func (e *Executor) startBlockProduction() {
+	e.logger.Info().Msg("starting block production")
+	defer e.logger.Info().Msg("block production stopped")
 
-	var delay time.Duration
-	initialHeight := e.genesis.InitialHeight
-	currentState := e.GetLastState()
-
-	if currentState.LastBlockHeight < initialHeight {
-		delay = time.Until(e.genesis.StartTime.Add(e.config.Node.BlockTime.Duration))
-	} else {
-		delay = time.Until(currentState.LastBlockTime.Add(e.config.Node.BlockTime.Duration))
+	// Wait until it's time to start producing blocks
+	if !e.waitUntilProductionTime() {
+		return // context cancelled
 	}
 
+	// Run the main production loop
+	e.blockProductionLoop()
+}
+
+// waitUntilProductionTime waits until it's time to produce the first block
+func (e *Executor) waitUntilProductionTime() bool {
+	state := e.GetLastState()
+	initialHeight := e.genesis.InitialHeight
+
+	var waitUntil time.Time
+	if state.LastBlockHeight < initialHeight {
+		// New chain: wait until genesis time + block time
+		waitUntil = e.genesis.StartTime.Add(e.config.Node.BlockTime.Duration)
+	} else {
+		// Existing chain: wait until last block time + block time
+		waitUntil = state.LastBlockTime.Add(e.config.Node.BlockTime.Duration)
+	}
+
+	delay := time.Until(waitUntil)
 	if delay > 0 {
-		e.logger.Info().Dur("delay", delay).Msg("waiting to start block production")
+		e.logger.Info().
+			Dur("delay", delay).
+			Time("wait_until", waitUntil).
+			Uint64("current_height", state.LastBlockHeight).
+			Msg("waiting to start block production")
+
 		select {
 		case <-e.ctx.Done():
-			return
+			return false
 		case <-time.After(delay):
+			return true
 		}
 	}
 
+	return true
+}
+
+// blockProductionLoop is the main block production loop
+func (e *Executor) blockProductionLoop() {
+	// Setup block timer
 	blockTimer := time.NewTimer(e.config.Node.BlockTime.Duration)
 	defer blockTimer.Stop()
 
+	// Setup lazy timer if needed
 	var lazyTimer *time.Timer
 	var lazyTimerCh <-chan time.Time
+
 	if e.config.Node.LazyMode {
-		// lazyTimer triggers block publication even during inactivity
 		lazyTimer = time.NewTimer(e.config.Node.LazyBlockInterval.Duration)
 		defer lazyTimer.Stop()
 		lazyTimerCh = lazyTimer.C
+		e.logger.Info().
+			Bool("lazy_mode", true).
+			Dur("lazy_interval", e.config.Node.LazyBlockInterval.Duration).
+			Msg("lazy mode enabled")
 	}
+
 	txsAvailable := false
 
+	// Main production loop
 	for {
 		select {
 		case <-e.ctx.Done():
 			return
 
 		case <-blockTimer.C:
-			if e.config.Node.LazyMode && !txsAvailable {
-				// In lazy mode without transactions, just continue ticking
-				blockTimer.Reset(e.config.Node.BlockTime.Duration)
-				continue
-			}
-
-			if err := e.produceBlock(); err != nil {
-				e.logger.Error().Err(err).Msg("failed to produce block")
-			}
-			txsAvailable = false
-			// Always reset block timer to keep ticking
-			blockTimer.Reset(e.config.Node.BlockTime.Duration)
+			e.handleBlockTimer(&txsAvailable, blockTimer)
 
 		case <-lazyTimerCh:
-			e.logger.Debug().Msg("Lazy timer triggered block production")
-			if err := e.produceBlock(); err != nil {
-				e.logger.Error().Err(err).Msg("failed to produce block from lazy timer")
-			}
-			// Reset lazy timer
-			lazyTimer.Reset(e.config.Node.LazyBlockInterval.Duration)
+			e.handleLazyTimer(lazyTimer)
 
 		case <-e.txNotifyCh:
 			txsAvailable = true
+			e.logger.Debug().Msg("new transactions available")
 		}
 	}
+}
+
+// handleBlockTimer processes regular block production timer
+func (e *Executor) handleBlockTimer(txsAvailable *bool, timer *time.Timer) {
+	// In lazy mode, skip block production if no transactions available
+	if e.config.Node.LazyMode && !*txsAvailable {
+		timer.Reset(e.config.Node.BlockTime.Duration)
+		return
+	}
+
+	// Produce block
+	if err := e.produceBlock(); err != nil {
+		e.logger.Error().Err(err).Msg("failed to produce block")
+	}
+
+	// Reset state and timer
+	*txsAvailable = false
+	timer.Reset(e.config.Node.BlockTime.Duration)
+}
+
+// handleLazyTimer processes lazy mode timer for forced block production
+func (e *Executor) handleLazyTimer(timer *time.Timer) {
+	e.logger.Debug().Msg("lazy timer triggered block production")
+
+	if err := e.produceBlock(); err != nil {
+		e.logger.Error().Err(err).Msg("failed to produce block from lazy timer")
+	}
+
+	timer.Reset(e.config.Node.LazyBlockInterval.Duration)
 }
 
 // produceBlock creates, validates, and stores a new block
