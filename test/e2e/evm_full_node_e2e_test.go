@@ -418,33 +418,38 @@ func TestEvmSequencerWithFullNodeE2E(t *testing.T) {
 	// Create RPC client for full node
 	fullNodeRPCClient := client.NewClient("http://127.0.0.1:" + FullNodeRPCPort)
 
-	targetDAHeight := uint64(0)
-	for _, h := range txBlockNumbers {
-		if h > targetDAHeight {
-			targetDAHeight = h
-		}
-	}
+	// Get the full node's current block height before waiting
+	fnHeader, err = fullNodeClient.HeaderByNumber(fnCtx, nil)
+	require.NoError(t, err, "Should get full node header for DA inclusion check")
+	fnBlockHeightBeforeWait := fnHeader.Number.Uint64()
 
-	t.Logf("Waiting for DA inclusion to reach at least height %d...", targetDAHeight)
-	require.Eventually(t, func() bool {
-		bz, err := fullNodeRPCClient.GetMetadata(fnCtx, store.DAIncludedHeightKey)
-		if err != nil || len(bz) != 8 {
-			return false
-		}
-		cur := binary.LittleEndian.Uint64(bz)
-		return cur >= targetDAHeight
-	}, 60*time.Second, 250*time.Millisecond, "DA included height should eventually reach target height %d", targetDAHeight)
+	t.Logf("Full node block height before DA inclusion wait: %d", fnBlockHeightBeforeWait)
 
-	// Log final DA included height
+	// Wait a few seconds to allow DA inclusion to process
+	waitTime := 2 * time.Second
+	t.Logf("Waiting %v 2s for DA inclusion to process...", waitTime)
+	time.Sleep(waitTime)
+
+	// Get the DA included height from full node after the wait
 	fnDAIncludedHeightBytes, err := fullNodeRPCClient.GetMetadata(fnCtx, store.DAIncludedHeightKey)
-	require.NoError(t, err, "Should re-read DA included height from full node")
+	require.NoError(t, err, "Should get DA included height from full node")
+
+	// Decode the DA included height
 	require.Equal(t, 8, len(fnDAIncludedHeightBytes), "DA included height should be 8 bytes")
 	fnDAIncludedHeight := binary.LittleEndian.Uint64(fnDAIncludedHeightBytes)
 
+	t.Logf("After waiting, full node DA included height: %d", fnDAIncludedHeight)
+
+	// Verify that the DA included height is >= the full node's block height before wait
+	// This ensures that the blocks that existed before the wait have been DA included
+	require.GreaterOrEqual(t, fnDAIncludedHeight, fnBlockHeightBeforeWait,
+		"Full node DA included height (%d) should be >= block height before wait (%d)",
+		fnDAIncludedHeight, fnBlockHeightBeforeWait)
+
 	t.Logf("✅ DA inclusion verification passed:")
-	t.Logf("   - Target height: %d (max tx block)", targetDAHeight)
-	t.Logf("   - Full node DA included height: %d", fnDAIncludedHeight)
-	t.Logf("   - DA inclusion covers all tx blocks ✓")
+	t.Logf("   - Full node block height before wait: %d", fnBlockHeightBeforeWait)
+	t.Logf("   - Full node DA included height after wait: %d", fnDAIncludedHeight)
+	t.Logf("   - DA inclusion caught up to full node's block height ✓")
 
 	// === COMPREHENSIVE TEST SUMMARY ===
 
