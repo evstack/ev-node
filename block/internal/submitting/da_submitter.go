@@ -275,27 +275,17 @@ func (s *DASubmitter) createSignedData(dataList []*types.SignedData, signer sign
 
 	signedDataList := make([]*types.SignedData, 0, len(dataList))
 
-    for _, data := range dataList {
-        // Skip empty data
-        if len(data.Txs) == 0 {
-            continue
-        }
+	for _, data := range dataList {
+		// Skip empty data
+		if len(data.Txs) == 0 {
+			continue
+		}
 
-        // Sign the data using the configured provider (defaults to data payload bytes)
-        var dataBytes []byte
-        if s.options.SignedDataBytesProvider != nil {
-            db, err := s.options.SignedDataBytesProvider(context.Background(), &data.Data)
-            if err != nil {
-                return nil, fmt.Errorf("failed to get signed data payload: %w", err)
-            }
-            dataBytes = db
-        } else {
-            var err error
-            dataBytes, err = data.Data.MarshalBinary()
-            if err != nil {
-                return nil, fmt.Errorf("failed to marshal data: %w", err)
-            }
-        }
+		// Sign the data
+		dataBytes, err := data.Data.MarshalBinary()
+		if err != nil {
+			return nil, fmt.Errorf("failed to marshal data: %w", err)
+		}
 
 		signature, err := signer.Sign(dataBytes)
 		if err != nil {
