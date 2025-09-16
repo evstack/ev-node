@@ -2,6 +2,7 @@
 package node
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"time"
@@ -75,10 +76,7 @@ func getNodeHeightFromData(node Node) (uint64, error) {
 
 func getNodeHeightFromStore(node Node) (uint64, error) {
 	if fn, ok := node.(*FullNode); ok {
-		if fn.blockComponents != nil {
-			state := fn.blockComponents.GetLastState()
-			return state.LastBlockHeight, nil
-		}
+		return fn.Store.Height(context.Background())
 	}
 	return 0, errors.New("not a full node or block components not initialized")
 }
