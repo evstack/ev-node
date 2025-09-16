@@ -8,7 +8,6 @@ import (
 	goheader "github.com/celestiaorg/go-header"
 	"github.com/rs/zerolog"
 
-	"github.com/evstack/ev-node/block/internal/cache"
 	"github.com/evstack/ev-node/block/internal/common"
 	"github.com/evstack/ev-node/pkg/genesis"
 	"github.com/evstack/ev-node/types"
@@ -18,7 +17,6 @@ import (
 type P2PHandler struct {
 	headerStore goheader.Store[*types.SignedHeader]
 	dataStore   goheader.Store[*types.Data]
-	cache       cache.Manager
 	genesis     genesis.Genesis
 	options     common.BlockOptions
 	logger      zerolog.Logger
@@ -28,7 +26,6 @@ type P2PHandler struct {
 func NewP2PHandler(
 	headerStore goheader.Store[*types.SignedHeader],
 	dataStore goheader.Store[*types.Data],
-	cache cache.Manager,
 	genesis genesis.Genesis,
 	options common.BlockOptions,
 	logger zerolog.Logger,
@@ -36,7 +33,6 @@ func NewP2PHandler(
 	return &P2PHandler{
 		headerStore: headerStore,
 		dataStore:   dataStore,
-		cache:       cache,
 		genesis:     genesis,
 		options:     options,
 		logger:      logger.With().Str("component", "p2p_handler").Logger(),

@@ -7,19 +7,14 @@ import (
 	"testing"
 	"time"
 
-	ds "github.com/ipfs/go-datastore"
-	dssync "github.com/ipfs/go-datastore/sync"
 	"github.com/libp2p/go-libp2p/core/crypto"
 	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/require"
 
-	"github.com/evstack/ev-node/block/internal/cache"
 	"github.com/evstack/ev-node/block/internal/common"
-	"github.com/evstack/ev-node/pkg/config"
 	"github.com/evstack/ev-node/pkg/genesis"
 	signerpkg "github.com/evstack/ev-node/pkg/signer"
 	"github.com/evstack/ev-node/pkg/signer/noop"
-	"github.com/evstack/ev-node/pkg/store"
 	extmocks "github.com/evstack/ev-node/test/mocks/external"
 	"github.com/evstack/ev-node/types"
 )
@@ -74,21 +69,15 @@ type P2PTestData struct {
 	Handler      *P2PHandler
 	HeaderStore  *extmocks.MockStore[*types.SignedHeader]
 	DataStore    *extmocks.MockStore[*types.Data]
-	Cache        cache.Manager
 	Genesis      genesis.Genesis
 	ProposerAddr []byte
 	ProposerPub  crypto.PubKey
 	Signer       signerpkg.Signer
 }
 
-// setupP2P constructs a P2PHandler with mocked go-header stores and in-memory cache/store
+// setupP2P constructs a P2PHandler with mocked go-header stores
 func setupP2P(t *testing.T) *P2PTestData {
 	t.Helper()
-	datastore := dssync.MutexWrap(ds.NewMapDatastore())
-	stateStore := store.New(datastore)
-	cacheManager, err := cache.NewManager(config.DefaultConfig, stateStore, zerolog.Nop())
-	require.NoError(t, err, "failed to create cache manager")
-
 	proposerAddr, proposerPub, signer := buildTestSigner(t)
 
 	gen := genesis.Genesis{ChainID: "p2p-test", InitialHeight: 1, StartTime: time.Now().Add(-time.Second), ProposerAddress: proposerAddr}
@@ -96,12 +85,11 @@ func setupP2P(t *testing.T) *P2PTestData {
 	headerStoreMock := extmocks.NewMockStore[*types.SignedHeader](t)
 	dataStoreMock := extmocks.NewMockStore[*types.Data](t)
 
-	handler := NewP2PHandler(headerStoreMock, dataStoreMock, cacheManager, gen, common.DefaultBlockOptions(), zerolog.Nop())
+	handler := NewP2PHandler(headerStoreMock, dataStoreMock, gen, common.DefaultBlockOptions(), zerolog.Nop())
 	return &P2PTestData{
 		Handler:      handler,
 		HeaderStore:  headerStoreMock,
 		DataStore:    dataStoreMock,
-		Cache:        cacheManager,
 		Genesis:      gen,
 		ProposerAddr: proposerAddr,
 		ProposerPub:  proposerPub,
