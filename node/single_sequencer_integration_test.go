@@ -341,8 +341,8 @@ func TestBatchQueueThrottlingWithDAFailure(t *testing.T) {
 		dummyExecutor.InjectTx([]byte(fmt.Sprintf("initial-tx-%d", i)))
 	}
 
-	waitForBlockN(t, 5, node, config.Node.BlockTime.Duration)
-	t.Log("Initial 5 blocks produced successfully")
+	waitForBlockN(t, 2, node, config.Node.BlockTime.Duration)
+	t.Log("Initial blocks produced successfully")
 
 	// Get the current height before DA failure
 	initialHeight, err := getNodeHeight(node, Store)
@@ -410,7 +410,7 @@ func TestBatchQueueThrottlingWithDAFailure(t *testing.T) {
 func waitForBlockN(t *testing.T, n uint64, node *FullNode, blockInterval time.Duration, timeout ...time.Duration) {
 	t.Helper()
 	if len(timeout) == 0 {
-		timeout = []time.Duration{time.Duration(50*n+1) * blockInterval} // 20 works locally but why is so slow?
+		timeout = []time.Duration{time.Duration(n+1)*blockInterval + time.Second/2}
 	}
 	require.Eventually(t, func() bool {
 		got, err := getNodeHeight(node, Store)
