@@ -284,17 +284,23 @@ func (s *Syncer) syncLoop() {
 			} else if len(events) > 0 {
 				// Reset backoff on success
 				nextDARequestAt = time.Time{}
+
+				eventDropped := false
+
 				// Process DA events
 				for _, event := range events {
 					select {
 					case s.heightInCh <- event:
 					default:
 						s.logger.Warn().Msg("height channel full, dropping DA event")
+						eventDropped = true
 					}
 				}
 
-				// increment DA height on successful retrieval and continue immediately
-				s.SetDAHeight(s.GetDAHeight() + 1)
+				if !eventDropped {
+					// increment DA height on successful retrieval and continue immediately
+					s.SetDAHeight(s.GetDAHeight() + 1)
+				}
 				continue
 			}
 		}
@@ -306,28 +312,37 @@ func (s *Syncer) syncLoop() {
 			newHeaderHeight := s.headerStore.Height()
 			if newHeaderHeight > lastHeaderHeight {
 				events := s.p2pHandler.ProcessHeaderRange(s.ctx, lastHeaderHeight+1, newHeaderHeight)
+				eventDropped := false
 				for _, event := range events {
 					select {
 					case s.heightInCh <- event:
 					default:
 						s.logger.Warn().Msg("height channel full, dropping P2P header event")
+						eventDropped = true
 					}
 				}
-				lastHeaderHeight = newHeaderHeight
+
+				if !eventDropped {
+					lastHeaderHeight = newHeaderHeight
+				}
 			}
 			processedP2P = true
 		case <-s.dataStoreCh:
 			newDataHeight := s.dataStore.Height()
 			if newDataHeight > lastDataHeight {
 				events := s.p2pHandler.ProcessDataRange(s.ctx, lastDataHeight+1, newDataHeight)
+				eventDropped := false
 				for _, event := range events {
 					select {
 					case s.heightInCh <- event:
 					default:
 						s.logger.Warn().Msg("height channel full, dropping P2P data event")
+						eventDropped = true
 					}
 				}
-				lastDataHeight = newDataHeight
+				if !eventDropped {
+					lastDataHeight = newDataHeight
+				}
 			}
 			processedP2P = true
 		default:
