@@ -282,7 +282,7 @@ syncLoop:
 					nextDARequestAt = time.Time{}
 					s.logger.Error().Err(err).Msg("failed to retrieve from DA")
 				}
-			} else if len(events) > 0 {
+			} else {
 				// Reset backoff on success
 				nextDARequestAt = time.Time{}
 

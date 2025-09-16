@@ -56,11 +56,10 @@ func makeSignedDataBytes(t *testing.T, chainID string, height uint64, proposer [
 		}
 	}
 
-	header := &types.Header{BaseHeader: types.BaseHeader{ChainID: chainID, Height: height, Time: d.Metadata.Time}}
-	// sign using the sync provider (defaults to header bytes)
-	bz, err := types.DefaultSyncNodeSignatureBytesProvider(context.Background(), header, d)
+	// For DA SignedData, sign the Data payload bytes (matches DA submission logic)
+	payload, err := d.MarshalBinary()
 	require.NoError(t, err)
-	sig, err := signer.Sign(bz)
+	sig, err := signer.Sign(payload)
 	require.NoError(t, err)
 	sd := &types.SignedData{Data: *d, Signature: sig, Signer: types.Signer{PubKey: pub, Address: proposer}}
 	bin, err := sd.MarshalBinary()

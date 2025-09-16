@@ -425,9 +425,9 @@ func TestEvmSequencerWithFullNodeE2E(t *testing.T) {
 
 	t.Logf("Full node block height before DA inclusion wait: %d", fnBlockHeightBeforeWait)
 
-	// Wait for one DA block time to allow DA inclusion to process
-	waitTime := 1 * time.Second
-	t.Logf("Waiting %v (1 DA block time) for DA inclusion to process...", waitTime)
+	// Wait a few seconds to allow DA inclusion to process
+	waitTime := 2 * time.Second
+	t.Logf("Waiting %v 2s for DA inclusion to process...", waitTime)
 	time.Sleep(waitTime)
 
 	// Get the DA included height from full node after the wait
@@ -461,8 +461,6 @@ func TestEvmSequencerWithFullNodeE2E(t *testing.T) {
 	t.Logf("      • Final sequencer height: %d", seqHeight)
 	t.Logf("      • Final full node height: %d", fnHeight)
 	t.Logf("      • State root verification range: blocks %d-%d", startHeight, endHeight)
-	t.Logf("      • Full node block height before DA wait: %d", fnBlockHeightBeforeWait)
-	t.Logf("      • DA wait time: %v (1 DA block time)", waitTime)
 	t.Logf("      • Full node DA included height after wait: %d", fnDAIncludedHeight)
 	t.Logf("")
 	t.Logf("   ✅ Verified Components:")
