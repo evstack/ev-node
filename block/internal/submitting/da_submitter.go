@@ -27,11 +27,11 @@ const (
 	defaultGasMultiplier         = 1.0
 	defaultMaxBlobSize           = 2 * 1024 * 1024 // 2MB fallback blob size limit
 	defaultMaxGasPriceClamp      = 1000.0
-	defaultMaxGasMultiplierClamp = 3.0
+	defaultMaxGasMultiplierClamp = 3.0 // must always > 0 to avoid division by zero
 )
 
-// RetryPolicy defines clamped bounds for retries, backoff, and gas pricing.
-type RetryPolicy struct {
+// retryPolicy defines clamped bounds for retries, backoff, and gas pricing.
+type retryPolicy struct {
 	MaxAttempts      int
 	MinBackoff       time.Duration
 	MaxBackoff       time.Duration
@@ -41,8 +41,20 @@ type RetryPolicy struct {
 	MaxGasMultiplier float64
 }
 
-// RetryState holds the current retry attempt, backoff, and gas price.
-type RetryState struct {
+func defaultRetryPolicy(maxAttempts int, maxDuration time.Duration) retryPolicy {
+	return retryPolicy{
+		MaxAttempts:      maxAttempts,
+		MinBackoff:       initialBackoff,
+		MaxBackoff:       maxDuration,
+		MinGasPrice:      defaultGasPrice,
+		MaxGasPrice:      defaultMaxGasPriceClamp,
+		MaxBlobBytes:     defaultMaxBlobSize,
+		MaxGasMultiplier: defaultMaxGasMultiplierClamp,
+	}
+}
+
+// retryState holds the current retry attempt, backoff, and gas price.
+type retryState struct {
 	Attempt  int
 	Backoff  time.Duration
 	GasPrice float64
@@ -51,14 +63,14 @@ type RetryState struct {
 type retryReason int
 
 const (
-	reasonInitial retryReason = iota
+	reasonUndefined retryReason = iota
 	reasonFailure
 	reasonMempool
 	reasonSuccess
 	reasonTooBig
 )
 
-func (rs *RetryState) Next(reason retryReason, pol RetryPolicy, gasMultiplier float64, sentinelNoGas bool) {
+func (rs *retryState) Next(reason retryReason, pol retryPolicy, gasMultiplier float64, sentinelNoGas bool) {
 	switch reason {
 	case reasonSuccess:
 		// Reduce gas price towards initial on success, if multiplier is available
@@ -73,7 +85,7 @@ func (rs *RetryState) Next(reason retryReason, pol RetryPolicy, gasMultiplier fl
 			rs.GasPrice = clamp(rs.GasPrice*m, pol.MinGasPrice, pol.MaxGasPrice)
 		}
 		// Honor mempool stalling by using max backoff window
-		rs.Backoff = clamp(pol.MaxBackoff, pol.MinBackoff, pol.MaxBackoff)
+		rs.Backoff = pol.MaxBackoff
 	case reasonFailure, reasonTooBig:
 		if rs.Backoff == 0 {
 			rs.Backoff = pol.MinBackoff
@@ -81,7 +93,7 @@ func (rs *RetryState) Next(reason retryReason, pol RetryPolicy, gasMultiplier fl
 			rs.Backoff *= 2
 		}
 		rs.Backoff = clamp(rs.Backoff, pol.MinBackoff, pol.MaxBackoff)
-	case reasonInitial:
+	default:
 		rs.Backoff = 0
 	}
 	rs.Attempt++
@@ -89,6 +101,9 @@ func (rs *RetryState) Next(reason retryReason, pol RetryPolicy, gasMultiplier fl
 
 // clamp constrains a value between min and max bounds for any comparable type
 func clamp[T ~float64 | time.Duration](v, min, max T) T {
+	if min > max {
+		min, max = max, min
+	}
 	if v < min {
 		return min
 	}
@@ -96,34 +111,6 @@ func clamp[T ~float64 | time.Duration](v, min, max T) T {
 		return max
 	}
 	return v
-}
-
-// getGasMultiplier fetches the gas multiplier from DA layer with fallback and clamping
-func (s *DASubmitter) getGasMultiplier(ctx context.Context, pol RetryPolicy) float64 {
-	gasMultiplier, err := s.da.GasMultiplier(ctx)
-	if err != nil || gasMultiplier <= 0 {
-		if s.config.DA.GasMultiplier > 0 {
-			return clamp(s.config.DA.GasMultiplier, 0.1, pol.MaxGasMultiplier)
-		}
-		s.logger.Warn().Err(err).Msg("failed to get gas multiplier from DA layer, using default 1.0")
-		return defaultGasMultiplier
-	}
-	return clamp(gasMultiplier, 0.1, pol.MaxGasMultiplier)
-}
-
-// initialGasPrice determines the starting gas price with clamping and sentinel handling
-func (s *DASubmitter) initialGasPrice(ctx context.Context, pol RetryPolicy) (price float64, sentinelNoGas bool) {
-	if s.config.DA.GasPrice == noGasPrice {
-		return noGasPrice, true
-	}
-	if s.config.DA.GasPrice > 0 {
-		return clamp(s.config.DA.GasPrice, pol.MinGasPrice, pol.MaxGasPrice), false
-	}
-	if gp, err := s.da.GasPrice(ctx); err == nil {
-		return clamp(gp, pol.MinGasPrice, pol.MaxGasPrice), false
-	}
-	s.logger.Warn().Msg("DA gas price unavailable; using default 0.0")
-	return pol.MinGasPrice, false
 }
 
 // DASubmitter handles DA submission operations
@@ -150,6 +137,34 @@ func NewDASubmitter(
 		options: options,
 		logger:  logger.With().Str("component", "da_submitter").Logger(),
 	}
+}
+
+// getGasMultiplier fetches the gas multiplier from DA layer with fallback and clamping
+func (s *DASubmitter) getGasMultiplier(ctx context.Context, pol retryPolicy) float64 {
+	gasMultiplier, err := s.da.GasMultiplier(ctx)
+	if err != nil || gasMultiplier <= 0 {
+		if s.config.DA.GasMultiplier > 0 {
+			return clamp(s.config.DA.GasMultiplier, 0.1, pol.MaxGasMultiplier)
+		}
+		s.logger.Warn().Err(err).Msg("failed to get gas multiplier from DA layer, using default 1.0")
+		return defaultGasMultiplier
+	}
+	return clamp(gasMultiplier, 0.1, pol.MaxGasMultiplier)
+}
+
+// initialGasPrice determines the starting gas price with clamping and sentinel handling
+func (s *DASubmitter) initialGasPrice(ctx context.Context, pol retryPolicy) (price float64, sentinelNoGas bool) {
+	if s.config.DA.GasPrice == noGasPrice {
+		return noGasPrice, true
+	}
+	if s.config.DA.GasPrice > 0 {
+		return clamp(s.config.DA.GasPrice, pol.MinGasPrice, pol.MaxGasPrice), false
+	}
+	if gp, err := s.da.GasPrice(ctx); err == nil {
+		return clamp(gp, pol.MinGasPrice, pol.MaxGasPrice), false
+	}
+	s.logger.Warn().Msg("DA gas price unavailable; using default 0.0")
+	return pol.MinGasPrice, false
 }
 
 // SubmitHeaders submits pending headers to DA layer
@@ -301,25 +316,17 @@ func submitToDA[T any](
 	options []byte,
 	cache cache.Manager,
 ) error {
-	marshaled, err := marshalItems(items, marshalFn, itemType)
+	marshaled, err := marshalItems(ctx, items, marshalFn, itemType)
 	if err != nil {
 		return err
 	}
 
 	// Build retry policy from config with sane defaults
-	pol := RetryPolicy{
-		MaxAttempts:      s.config.DA.MaxSubmitAttempts,
-		MinBackoff:       initialBackoff,
-		MaxBackoff:       s.config.DA.BlockTime.Duration,
-		MinGasPrice:      defaultGasPrice,
-		MaxGasPrice:      defaultMaxGasPriceClamp,
-		MaxBlobBytes:     defaultMaxBlobSize,
-		MaxGasMultiplier: defaultMaxGasMultiplierClamp,
-	}
+	pol := defaultRetryPolicy(s.config.DA.MaxSubmitAttempts, s.config.DA.BlockTime.Duration)
 
 	// Choose initial gas price with clamp
 	gasPrice, sentinelNoGas := s.initialGasPrice(ctx, pol)
-	rs := RetryState{Attempt: 0, Backoff: 0, GasPrice: gasPrice}
+	rs := retryState{Attempt: 0, Backoff: 0, GasPrice: gasPrice}
 	gm := s.getGasMultiplier(ctx, pol)
 
 	// Limit this submission to a single size-capped batch
@@ -421,35 +428,51 @@ func limitBatchBySize[T any](items []T, marshaled [][]byte, maxBytes int) ([]T, 
 }
 
 func marshalItems[T any](
+	parentCtx context.Context,
 	items []T,
 	marshalFn func(T) ([]byte, error),
 	itemType string,
 ) ([][]byte, error) {
+	if len(items) == 0 {
+		return nil, nil
+	}
 	marshaled := make([][]byte, len(items))
+	ctx, cancel := context.WithCancel(parentCtx)
+	defer cancel()
 
-	// Use a channel to collect errors from goroutines
-	errCh := make(chan error, len(items))
+	// Semaphore to limit concurrency to 32 workers
+	sem := make(chan struct{}, 32)
+
+	// Use a channel to collect results from goroutines
+	resultCh := make(chan error, len(items))
 
 	// Marshal items concurrently
 	for i, item := range items {
 		go func(idx int, itm T) {
-			bz, err := marshalFn(itm)
-			if err != nil {
-				errCh <- fmt.Errorf("failed to marshal %s item at index %d: %w", itemType, idx, err)
-				return
+			sem <- struct{}{}
+			defer func() { <-sem }()
+
+			select {
+			case <-ctx.Done():
+				resultCh <- ctx.Err()
+			default:
+				bz, err := marshalFn(itm)
+				if err != nil {
+					resultCh <- fmt.Errorf("failed to marshal %s item at index %d: %w", itemType, idx, err)
+					return
+				}
+				marshaled[idx] = bz
+				resultCh <- nil
 			}
-			marshaled[idx] = bz
-			errCh <- nil
 		}(i, item)
 	}
 
 	// Wait for all goroutines to complete and check for errors
 	for i := 0; i < len(items); i++ {
-		if err := <-errCh; err != nil {
+		if err := <-resultCh; err != nil {
 			return nil, err
 		}
 	}
-
 	return marshaled, nil
 }
 

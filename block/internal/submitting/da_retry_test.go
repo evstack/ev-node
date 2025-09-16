@@ -3,10 +3,12 @@ package submitting
 import (
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/assert"
 )
 
 func TestRetryStateNext_Table(t *testing.T) {
-	pol := RetryPolicy{
+	pol := retryPolicy{
 		MaxAttempts:      10,
 		MinBackoff:       100 * time.Millisecond,
 		MaxBackoff:       1 * time.Second,
@@ -16,105 +18,97 @@ func TestRetryStateNext_Table(t *testing.T) {
 		MaxGasMultiplier: 3.0,
 	}
 
-	tests := []struct {
-		name          string
+	tests := map[string]struct {
 		startGas      float64
 		startBackoff  time.Duration
 		reason        retryReason
-		gm            float64
+		gasMult       float64
 		sentinelNoGas bool
 		wantGas       float64
 		wantBackoff   time.Duration
 	}{
-		{
-			name:         "success reduces gas and resets backoff",
+		"success reduces gas and resets backoff": {
 			startGas:     9.0,
 			startBackoff: 500 * time.Millisecond,
 			reason:       reasonSuccess,
-			gm:           3.0,
+			gasMult:      3.0,
 			wantGas:      3.0, // 9 / 3
 			wantBackoff:  pol.MinBackoff,
 		},
-		{
-			name:         "success clamps very small gm to 1/Max, possibly increasing gas",
+		"success clamps very small gasMult to 1/Max, possibly increasing gas": {
 			startGas:     3.0,
 			startBackoff: 250 * time.Millisecond,
 			reason:       reasonSuccess,
-			gm:           0.01, // clamped to 1/MaxGasMultiplier = 1/3
+			gasMult:      0.01, // clamped to 1/MaxGasMultiplier = 1/3
 			wantGas:      9.0,  // 3 / (1/3)
 			wantBackoff:  pol.MinBackoff,
 		},
-		{
-			name:         "mempool increases gas and sets max backoff",
+		"mempool increases gas and sets max backoff": {
 			startGas:     2.0,
 			startBackoff: 0,
 			reason:       reasonMempool,
-			gm:           2.0,
+			gasMult:      2.0,
 			wantGas:      4.0, // 2 * 2
 			wantBackoff:  pol.MaxBackoff,
 		},
-		{
-			name:         "mempool clamps gas to max",
+		"mempool clamps gas to max": {
 			startGas:     9.5,
 			startBackoff: 0,
 			reason:       reasonMempool,
-			gm:           3.0,
+			gasMult:      3.0,
 			wantGas:      10.0, // 9.5 * 3 = 28.5 -> clamp 10
 			wantBackoff:  pol.MaxBackoff,
 		},
-		{
-			name:         "failure sets initial backoff",
+		"failure sets initial backoff": {
 			startGas:     1.0,
 			startBackoff: 0,
 			reason:       reasonFailure,
-			gm:           2.0,
+			gasMult:      2.0,
 			wantGas:      1.0, // unchanged
 			wantBackoff:  pol.MinBackoff,
 		},
-		{
-			name:         "failure doubles backoff capped at max",
+		"failure doubles backoff capped at max": {
 			startGas:     1.0,
 			startBackoff: 700 * time.Millisecond,
 			reason:       reasonFailure,
-			gm:           2.0,
+			gasMult:      2.0,
 			wantGas:      1.0,             // unchanged
 			wantBackoff:  1 * time.Second, // 700ms*2=1400ms -> clamp 1s
 		},
-		{
-			name:         "tooBig doubles backoff like failure",
+		"tooBig doubles backoff like failure": {
 			startGas:     1.0,
 			startBackoff: 100 * time.Millisecond,
 			reason:       reasonTooBig,
-			gm:           2.0,
+			gasMult:      2.0,
 			wantGas:      1.0,
 			wantBackoff:  200 * time.Millisecond,
 		},
-		{
-			name:          "sentinel no gas keeps gas unchanged on success",
+		"sentinel no gas keeps gas unchanged on success": {
 			startGas:      5.0,
 			startBackoff:  0,
 			reason:        reasonSuccess,
-			gm:            2.0,
+			gasMult:       2.0,
 			sentinelNoGas: true,
 			wantGas:       5.0,
 			wantBackoff:   pol.MinBackoff,
 		},
+		"undefined reason keeps gas unchanged and uses min backoff": {
+			startGas:     3.0,
+			startBackoff: 500 * time.Millisecond,
+			reason:       reasonUndefined,
+			gasMult:      2.0,
+			wantGas:      3.0,
+			wantBackoff:  0,
+		},
 	}
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			rs := retryState{Attempt: 0, Backoff: tc.startBackoff, GasPrice: tc.startGas}
+			rs.Next(tc.reason, pol, tc.gasMult, tc.sentinelNoGas)
 
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			rs := RetryState{Attempt: 0, Backoff: tc.startBackoff, GasPrice: tc.startGas}
-			rs.Next(tc.reason, pol, tc.gm, tc.sentinelNoGas)
-
-			if rs.GasPrice != tc.wantGas {
-				t.Fatalf("gas price: got %v, want %v", rs.GasPrice, tc.wantGas)
-			}
-			if rs.Backoff != tc.wantBackoff {
-				t.Fatalf("backoff: got %v, want %v", rs.Backoff, tc.wantBackoff)
-			}
-			if rs.Attempt != 1 {
-				t.Fatalf("attempt: got %d, want %d", rs.Attempt, 1)
-			}
+			assert.Equal(t, tc.wantGas, rs.GasPrice, "gas price")
+			assert.Equal(t, tc.wantBackoff, rs.Backoff, "backoff")
+			assert.Equal(t, 1, rs.Attempt, "attempt")
 		})
 	}
 }
