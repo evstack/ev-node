@@ -281,22 +281,29 @@ func (s *Syncer) syncLoop() {
 					nextDARequestAt = time.Time{}
 					s.logger.Error().Err(err).Msg("failed to retrieve from DA")
 				}
-			} else if len(events) > 0 {
-				// Reset backoff on success
-				nextDARequestAt = time.Time{}
-				// Process DA events
-				for _, event := range events {
-					select {
-					case s.heightInCh <- event:
-					default:
-						s.logger.Warn().Msg("height channel full, dropping DA event")
-					}
-				}
+            } else if len(events) > 0 {
+                // Reset backoff on success
+                nextDARequestAt = time.Time{}
+                // Process DA events
+                for _, event := range events {
+                    select {
+                    case s.heightInCh <- event:
+                    default:
+                        s.logger.Warn().Msg("height channel full, dropping DA event")
+                    }
+                }
 
-				// increment DA height on successful retrieval and continue immediately
-				s.SetDAHeight(s.GetDAHeight() + 1)
-				continue
-			}
+                // increment DA height on successful retrieval and continue immediately
+                s.SetDAHeight(s.GetDAHeight() + 1)
+                continue
+            } else {
+                // Success but produced no events (e.g., only header or only data at this DA height).
+                // Cache may still have been updated (header/data DA-included). Advance to next DA height
+                // to avoid stalling on heights without a complete header+data pair.
+                nextDARequestAt = time.Time{}
+                s.logger.Debug().Uint64("da_height", s.GetDAHeight()).Msg("no DA events at height; advancing")
+                s.SetDAHeight(s.GetDAHeight() + 1)
+            }
 		}
 
 		// Opportunistically process any P2P signals

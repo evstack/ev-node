@@ -329,6 +329,7 @@ func setupSequencerNode(t *testing.T, sut *SystemUnderTest, sequencerHome, jwtSe
 		// Fallback to default ports if none provided
 		sut.ExecCmd(evmSingleBinaryPath,
 			"start",
+			"--rollkit.log.level", "debug",
 			"--evm.jwt-secret", jwtSecret,
 			"--evm.genesis-hash", genesisHash,
 			"--rollkit.node.block_time", DefaultBlockTime,
@@ -343,6 +344,7 @@ func setupSequencerNode(t *testing.T, sut *SystemUnderTest, sequencerHome, jwtSe
 		// Start sequencer node with dynamic rollkit ports, fixed EVM engine ports
 		sut.ExecCmd(evmSingleBinaryPath,
 			"start",
+			"--rollkit.log.level", "debug",
 			"--evm.jwt-secret", jwtSecret,
 			"--evm.genesis-hash", genesisHash,
 			"--rollkit.node.block_time", DefaultBlockTime,
@@ -452,6 +454,7 @@ func setupFullNode(t *testing.T, sut *SystemUnderTest, fullNodeHome, sequencerHo
 		sut.ExecCmd(evmSingleBinaryPath,
 			"start",
 			"--home", fullNodeHome,
+			"--rollkit.log.level", "debug",
 			"--evm.jwt-secret", fullNodeJwtSecret,
 			"--evm.genesis-hash", genesisHash,
 			"--rollkit.rpc.address", "127.0.0.1:"+FullNodeRPCPort,
@@ -468,6 +471,7 @@ func setupFullNode(t *testing.T, sut *SystemUnderTest, fullNodeHome, sequencerHo
 		sut.ExecCmd(evmSingleBinaryPath,
 			"start",
 			"--home", fullNodeHome,
+			"--rollkit.log.level", "debug",
 			"--evm.jwt-secret", fullNodeJwtSecret,
 			"--evm.genesis-hash", genesisHash,
 			"--rollkit.rpc.address", "127.0.0.1:"+ports.FullNodeRPCPort,

@@ -17,3 +17,7 @@ type SyncNodeSignatureBytesProvider func(context.Context, *Header, *Data) ([]byt
 func DefaultSyncNodeSignatureBytesProvider(_ context.Context, header *Header, _ *Data) ([]byte, error) {
 	return DefaultAggregatorNodeSignatureBytesProvider(header)
 }
+
+// Note: Verification of SignedData retrieved from DA is configured via
+// BlockOptions.SignedDataBytesProvider (defaulting to Data.MarshalBinary()).
+// Keep SyncNodeSignatureBytesProvider for header-related verification paths.

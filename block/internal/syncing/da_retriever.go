@@ -336,10 +336,22 @@ func (r *DARetriever) assertValidSignedData(signedData *types.SignedData) error 
 		},
 	}
 
-	// Use the configured sync node signature bytes provider
-	dataBytes, err := r.options.SyncNodeSignatureBytesProvider(context.Background(), &header, &signedData.Data)
-	if err != nil {
-		return fmt.Errorf("failed to get signature payload: %w", err)
+	_ = header
+
+	// Verify SignedData using the configured SignedDataBytesProvider (data payload by default).
+	var dataBytes []byte
+	var err error
+	if r.options.SignedDataBytesProvider != nil {
+		dataBytes, err = r.options.SignedDataBytesProvider(context.Background(), &signedData.Data)
+		if err != nil {
+			return fmt.Errorf("failed to get signed data payload: %w", err)
+		}
+	} else {
+		// Fallback to data payload provider
+		dataBytes, err = signedData.Data.MarshalBinary()
+		if err != nil {
+			return fmt.Errorf("failed to marshal data for signature verification: %w", err)
+		}
 	}
 
 	valid, err := signedData.Signer.PubKey.Verify(dataBytes, signedData.Signature)
