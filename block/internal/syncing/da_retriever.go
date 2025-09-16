@@ -327,31 +327,12 @@ func (r *DARetriever) assertValidSignedData(signedData *types.SignedData) error 
 		return err
 	}
 
-	// Create a header from the signed data metadata for signature verification
-	header := types.Header{
-		BaseHeader: types.BaseHeader{
-			ChainID: signedData.ChainID(),
-			Height:  signedData.Height(),
-			Time:    uint64(signedData.Time().UnixNano()),
-		},
-	}
-
-	_ = header
-
-	// Verify SignedData using the configured SignedDataBytesProvider (data payload by default).
+	// Verify SignedData using the configured SignedDataBytesProvider
 	var dataBytes []byte
 	var err error
-	if r.options.SignedDataBytesProvider != nil {
-		dataBytes, err = r.options.SignedDataBytesProvider(context.Background(), &signedData.Data)
-		if err != nil {
-			return fmt.Errorf("failed to get signed data payload: %w", err)
-		}
-	} else {
-		// Fallback to data payload provider
-		dataBytes, err = signedData.Data.MarshalBinary()
-		if err != nil {
-			return fmt.Errorf("failed to marshal data for signature verification: %w", err)
-		}
+	dataBytes, err = r.options.SignedDataBytesProvider(context.Background(), &signedData.Data)
+	if err != nil {
+		return fmt.Errorf("failed to get signed data payload: %w", err)
 	}
 
 	valid, err := signedData.Signer.PubKey.Verify(dataBytes, signedData.Signature)
