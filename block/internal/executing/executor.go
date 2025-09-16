@@ -90,6 +90,15 @@ func NewExecutor(
 		return nil, errors.New("signer cannot be nil")
 	}
 
+	addr, err := signer.GetAddress()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get address: %w", err)
+	}
+
+	if !bytes.Equal(addr, genesis.ProposerAddress) {
+		return nil, common.ErrNotProposer
+	}
+
 	return &Executor{
 		store:             store,
 		exec:              exec,

@@ -6,9 +6,6 @@ import (
 
 // These errors are used by Manager.
 var (
-	// ErrNoValidatorsInState is used when no validators/proposers are found in state
-	ErrNoValidatorsInState = errors.New("no validators found in state")
-
 	// ErrNotProposer is used when the manager is not a proposer
 	ErrNotProposer = errors.New("not a proposer")
 
