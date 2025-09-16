@@ -61,7 +61,7 @@ func newTestExecutor(t *testing.T) *executing.Executor {
 func newTestReaper(t *testing.T, chainID string, execMock *testmocks.MockExecutor, seqMock *testmocks.MockSequencer, e *executing.Executor) *Reaper {
 	t.Helper()
 
-	r, err := NewReaper(execMock, seqMock, genesis.Genesis{ChainID: chainID}, zerolog.Nop(), e)
+	r, err := NewReaper(execMock, seqMock, genesis.Genesis{ChainID: chainID}, zerolog.Nop(), e, 100*time.Millisecond)
 	require.NoError(t, err)
 
 	return r

@@ -238,6 +238,7 @@ func NewAggregatorComponents(
 		genesis,
 		logger,
 		executor,
+		reaping.DefaultInterval,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create reaper: %w", err)
