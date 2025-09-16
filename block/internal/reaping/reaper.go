@@ -42,11 +42,20 @@ type Reaper struct {
 }
 
 // NewReaper creates a new Reaper instance with persistent seenTx storage.
-func NewReaper(exec coreexecutor.Executor, sequencer coresequencer.Sequencer, genesis genesis.Genesis, logger zerolog.Logger, executor *executing.Executor) (*Reaper, error) {
+func NewReaper(
+	exec coreexecutor.Executor,
+	sequencer coresequencer.Sequencer,
+	genesis genesis.Genesis,
+	logger zerolog.Logger,
+	executor *executing.Executor,
+	scrapeInterval time.Duration,
+) (*Reaper, error) {
 	if executor == nil {
 		return nil, errors.New("executor cannot be nil")
 	}
-
+	if scrapeInterval == 0 {
+		return nil, errors.New("scrape interval cannot be empty")
+	}
 	store, err := store.NewDefaultInMemoryKVStore()
 	if err != nil {
 		return nil, fmt.Errorf("failed to create reaper store: %w", err)
@@ -56,7 +65,7 @@ func NewReaper(exec coreexecutor.Executor, sequencer coresequencer.Sequencer, ge
 		exec:      exec,
 		sequencer: sequencer,
 		chainID:   genesis.ChainID,
-		interval:  DefaultInterval, // eventually this can be made configurable via config.Node
+		interval:  scrapeInterval,
 		logger:    logger.With().Str("component", "reaper").Logger(),
 		seenStore: store,
 		executor:  executor,
@@ -108,6 +117,10 @@ func (r *Reaper) SubmitTxs() {
 	txs, err := r.exec.GetTxs(r.ctx)
 	if err != nil {
 		r.logger.Error().Err(err).Msg("failed to get txs from executor")
+		return
+	}
+	if len(txs) == 0 {
+		r.logger.Debug().Msg("no new txs")
 		return
 	}
 

@@ -308,8 +308,8 @@ func TestBatchQueueThrottlingWithDAFailure(t *testing.T) {
 	// Set up configuration with low limits to trigger throttling quickly
 	config := getTestConfig(t, 1)
 	config.Node.MaxPendingHeadersAndData = 3 // Low limit to quickly reach pending limit after DA failure
-	config.Node.BlockTime = evconfig.DurationWrapper{Duration: 100 * time.Millisecond}
-	config.DA.BlockTime = evconfig.DurationWrapper{Duration: 1 * time.Second} // Longer DA time to ensure blocks are produced first
+	config.Node.BlockTime = evconfig.DurationWrapper{Duration: 25 * time.Millisecond}
+	config.DA.BlockTime = evconfig.DurationWrapper{Duration: 100 * time.Millisecond} // Longer DA time to ensure blocks are produced first
 
 	// Create test components
 	executor, sequencer, dummyDA, p2pClient, ds, _, stopDAHeightTicker := createTestComponents(t, config)
@@ -327,23 +327,22 @@ func TestBatchQueueThrottlingWithDAFailure(t *testing.T) {
 	node, cleanup := createNodeWithCustomComponents(t, config, executor, sequencer, dummyDAImpl, p2pClient, ds, func() {})
 	defer cleanup()
 
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 
 	var runningWg sync.WaitGroup
 	startNodeInBackground(t, []*FullNode{node}, []context.Context{ctx}, &runningWg, 0)
 
 	// Wait for the node to start producing blocks
-	require.NoError(waitForFirstBlock(node, Store))
+	waitForBlockN(t, 1, node, config.Node.BlockTime.Duration)
 
 	// Inject some initial transactions to get the system working
 	for i := 0; i < 5; i++ {
 		dummyExecutor.InjectTx([]byte(fmt.Sprintf("initial-tx-%d", i)))
 	}
 
-	// Wait for at least 5 blocks to be produced before simulating DA failure
-	require.NoError(waitForAtLeastNBlocks(node, 5, Store))
-	t.Log("Initial 5 blocks produced successfully")
+	waitForBlockN(t, 2, node, config.Node.BlockTime.Duration)
+	t.Log("Initial blocks produced successfully")
 
 	// Get the current height before DA failure
 	initialHeight, err := getNodeHeight(node, Store)
@@ -366,7 +365,7 @@ func TestBatchQueueThrottlingWithDAFailure(t *testing.T) {
 				return
 			default:
 				dummyExecutor.InjectTx([]byte(fmt.Sprintf("tx-after-da-failure-%d", i)))
-				time.Sleep(10 * time.Millisecond) // Inject faster than block time
+				time.Sleep(config.Node.BlockTime.Duration / 2) // Inject faster than block time
 			}
 		}
 	}()
@@ -405,7 +404,17 @@ func TestBatchQueueThrottlingWithDAFailure(t *testing.T) {
 
 	t.Log("NOTE: This test uses DummySequencer. In a real deployment with SingleSequencer,")
 	t.Log("the batch queue would fill up and return ErrQueueFull, providing backpressure.")
+}
 
-	// Shutdown
-	shutdownAndWait(t, []context.CancelFunc{cancel}, &runningWg, 10*time.Second)
+// waitForBlockN waits for the node to produce a block with height >= n.
+func waitForBlockN(t *testing.T, n uint64, node *FullNode, blockInterval time.Duration, timeout ...time.Duration) {
+	t.Helper()
+	if len(timeout) == 0 {
+		timeout = []time.Duration{time.Duration(n+1)*blockInterval + time.Second/2}
+	}
+	require.Eventually(t, func() bool {
+		got, err := getNodeHeight(node, Store)
+		require.NoError(t, err)
+		return got >= n
+	}, timeout[0], blockInterval/2)
 }
