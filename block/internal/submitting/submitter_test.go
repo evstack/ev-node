@@ -26,7 +26,7 @@ import (
 	"github.com/libp2p/go-libp2p/core/crypto"
 )
 
-func TestSubmitter_isHeightDAIncluded(t *testing.T) {
+func TestSubmitter_IsHeightDAIncluded(t *testing.T) {
 	t.Parallel()
 
 	ctx := t.Context()
