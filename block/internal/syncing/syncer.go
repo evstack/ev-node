@@ -252,6 +252,7 @@ func (s *Syncer) syncLoop() {
 	var nextDARequestAt time.Time
 
 	//TODO: we should request to see what the head of the chain is at, then we know if we are falling behinf or in sync mode
+syncLoop:
 	for {
 		select {
 		case <-s.ctx.Done():
@@ -285,23 +286,19 @@ func (s *Syncer) syncLoop() {
 				// Reset backoff on success
 				nextDARequestAt = time.Time{}
 
-				eventDropped := false
-
 				// Process DA events
 				for _, event := range events {
 					select {
 					case s.heightInCh <- event:
 					default:
 						s.logger.Warn().Msg("height channel full, dropping DA event")
-						eventDropped = true
-						break
+						time.Sleep(10 * time.Millisecond)
+						continue syncLoop
 					}
 				}
 
-				if !eventDropped {
-					// increment DA height on successful retrieval and continue immediately
-					s.SetDAHeight(s.GetDAHeight() + 1)
-				}
+				// increment DA height on successful retrieval and continue immediately
+				s.SetDAHeight(s.GetDAHeight() + 1)
 				continue
 			}
 		}
@@ -313,39 +310,33 @@ func (s *Syncer) syncLoop() {
 			newHeaderHeight := s.headerStore.Height()
 			if newHeaderHeight > lastHeaderHeight {
 				events := s.p2pHandler.ProcessHeaderRange(s.ctx, lastHeaderHeight+1, newHeaderHeight)
-				eventDropped := false
 				for _, event := range events {
 					select {
 					case s.heightInCh <- event:
 					default:
 						s.logger.Warn().Msg("height channel full, dropping P2P header event")
-						eventDropped = true
-						break
+						time.Sleep(10 * time.Millisecond)
+						continue syncLoop
 					}
 				}
 
-				if !eventDropped {
-					lastHeaderHeight = newHeaderHeight
-				}
+				lastHeaderHeight = newHeaderHeight
 			}
 			processedP2P = true
 		case <-s.dataStoreCh:
 			newDataHeight := s.dataStore.Height()
 			if newDataHeight > lastDataHeight {
 				events := s.p2pHandler.ProcessDataRange(s.ctx, lastDataHeight+1, newDataHeight)
-				eventDropped := false
 				for _, event := range events {
 					select {
 					case s.heightInCh <- event:
 					default:
 						s.logger.Warn().Msg("height channel full, dropping P2P data event")
-						eventDropped = true
-						break
+						time.Sleep(10 * time.Millisecond)
+						continue syncLoop
 					}
 				}
-				if !eventDropped {
-					lastDataHeight = newDataHeight
-				}
+				lastDataHeight = newDataHeight
 			}
 			processedP2P = true
 		default:
