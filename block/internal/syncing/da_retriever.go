@@ -327,10 +327,7 @@ func (r *DARetriever) assertValidSignedData(signedData *types.SignedData) error 
 		return err
 	}
 
-	// Verify SignedData using the configured SignedDataBytesProvider
-	var dataBytes []byte
-	var err error
-	dataBytes, err = r.options.SignedDataBytesProvider(context.Background(), &signedData.Data)
+	dataBytes, err := signedData.Data.MarshalBinary()
 	if err != nil {
 		return fmt.Errorf("failed to get signed data payload: %w", err)
 	}

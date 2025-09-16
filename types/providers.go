@@ -17,9 +17,3 @@ type SyncNodeSignatureBytesProvider func(context.Context, *Header, *Data) ([]byt
 func DefaultSyncNodeSignatureBytesProvider(_ context.Context, header *Header, _ *Data) ([]byte, error) {
 	return DefaultAggregatorNodeSignatureBytesProvider(header)
 }
-
-type SignedDataBytesProvider func(context.Context, *Data) ([]byte, error)
-
-func DefaultSignedDataBytesProvider(_ context.Context, d *Data) ([]byte, error) {
-	return d.MarshalBinary()
-}

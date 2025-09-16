@@ -11,7 +11,6 @@ type BlockOptions struct {
 	AggregatorNodeSignatureBytesProvider types.AggregatorNodeSignatureBytesProvider
 	SyncNodeSignatureBytesProvider       types.SyncNodeSignatureBytesProvider
 	ValidatorHasherProvider              types.ValidatorHasherProvider
-	SignedDataBytesProvider              types.SignedDataBytesProvider
 }
 
 // DefaultBlockOptions returns the default block options
@@ -20,7 +19,6 @@ func DefaultBlockOptions() BlockOptions {
 		AggregatorNodeSignatureBytesProvider: types.DefaultAggregatorNodeSignatureBytesProvider,
 		SyncNodeSignatureBytesProvider:       types.DefaultSyncNodeSignatureBytesProvider,
 		ValidatorHasherProvider:              types.DefaultValidatorHasherProvider,
-		SignedDataBytesProvider:              types.DefaultSignedDataBytesProvider,
 	}
 }
 
@@ -36,10 +34,6 @@ func (opts *BlockOptions) Validate() error {
 
 	if opts.ValidatorHasherProvider == nil {
 		return fmt.Errorf("validator hasher provider cannot be nil")
-	}
-
-	if opts.SignedDataBytesProvider == nil {
-		return fmt.Errorf("signed data bytes provider cannot be nil")
 	}
 
 	return nil
