@@ -294,6 +294,7 @@ func (s *Syncer) syncLoop() {
 					default:
 						s.logger.Warn().Msg("height channel full, dropping DA event")
 						eventDropped = true
+						break
 					}
 				}
 
@@ -319,6 +320,7 @@ func (s *Syncer) syncLoop() {
 					default:
 						s.logger.Warn().Msg("height channel full, dropping P2P header event")
 						eventDropped = true
+						break
 					}
 				}
 
@@ -338,6 +340,7 @@ func (s *Syncer) syncLoop() {
 					default:
 						s.logger.Warn().Msg("height channel full, dropping P2P data event")
 						eventDropped = true
+						break
 					}
 				}
 				if !eventDropped {
