@@ -301,8 +301,6 @@ func TestEvmSequencerWithFullNodeE2E(t *testing.T) {
 	sequencerHome := filepath.Join(workDir, "evm-sequencer")
 	fullNodeHome := filepath.Join(workDir, "evm-full-node")
 	sut := NewSystemUnderTest(t)
-	sut.debug = true
-	t.Cleanup(sut.PrintBuffer)
 
 	// Setup both sequencer and full node
 	sequencerClient, fullNodeClient := setupSequencerWithFullNode(t, sut, sequencerHome, fullNodeHome)
@@ -419,11 +417,7 @@ func TestEvmSequencerWithFullNodeE2E(t *testing.T) {
 
 	// Create RPC client for full node
 	fullNodeRPCClient := client.NewClient("http://127.0.0.1:" + FullNodeRPCPort)
-	// Also create RPC client for sequencer (to compare DA mappings)
-	sequencerRPCClient := client.NewClient(RollkitRPCAddress)
 
-	// Choose a robust target: ensure DA inclusion covers all tx-containing blocks
-	// (head may continue to advance via P2P while DA lags). Target = max(txBlockNumbers).
 	targetDAHeight := uint64(0)
 	for _, h := range txBlockNumbers {
 		if h > targetDAHeight {
@@ -431,55 +425,15 @@ func TestEvmSequencerWithFullNodeE2E(t *testing.T) {
 		}
 	}
 
-	// As a fallback (shouldn't happen here), if no txs, use the current full node height
-	if targetDAHeight == 0 {
-		fnHeader, err = fullNodeClient.HeaderByNumber(fnCtx, nil)
-		require.NoError(t, err, "Should get full node header for DA inclusion fallback target")
-		targetDAHeight = fnHeader.Number.Uint64()
-	}
-
-	// Preflight: inspect DA mapping for each tx block on both nodes
-	for _, h := range txBlockNumbers {
-		seqResp, seqErr := sequencerRPCClient.GetBlockByHeight(fnCtx, h)
-		fnResp, fnErr := fullNodeRPCClient.GetBlockByHeight(fnCtx, h)
-		if seqErr != nil {
-			t.Logf("DA mapping preflight (sequencer): height=%d: error: %v", h, seqErr)
-		} else {
-			t.Logf("DA mapping preflight (sequencer): height=%d: headerDA=%d dataDA=%d", h, seqResp.HeaderDaHeight, seqResp.DataDaHeight)
-		}
-		if fnErr != nil {
-			t.Logf("DA mapping preflight (full node): height=%d: error: %v", h, fnErr)
-		} else {
-			t.Logf("DA mapping preflight (full node): height=%d: headerDA=%d dataDA=%d", h, fnResp.HeaderDaHeight, fnResp.DataDaHeight)
-		}
-	}
-
-	// Log current DA scanning height from full node state
-	if st, err := fullNodeRPCClient.GetState(fnCtx); err == nil && st != nil {
-		t.Logf("Full node initial state: height=%d, DAHeight=%d", st.GetLastBlockHeight(), st.GetDaHeight())
-	}
-
-	// Wait until DAIncludedHeight >= targetDAHeight
 	t.Logf("Waiting for DA inclusion to reach at least height %d...", targetDAHeight)
-	var lastLogged uint64 = 0
 	require.Eventually(t, func() bool {
 		bz, err := fullNodeRPCClient.GetMetadata(fnCtx, store.DAIncludedHeightKey)
 		if err != nil || len(bz) != 8 {
 			return false
 		}
 		cur := binary.LittleEndian.Uint64(bz)
-		if cur != lastLogged {
-			lastLogged = cur
-			if st, err := fullNodeRPCClient.GetState(fnCtx); err == nil && st != nil {
-				t.Logf("Progress: DAIncludedHeight=%d (target=%d), ScanningDAHeight=%d", cur, targetDAHeight, st.GetDaHeight())
-			} else {
-				t.Logf("Progress: DAIncludedHeight=%d (target=%d)", cur, targetDAHeight)
-			}
-		}
-
-		t.Logf("current DAIncludedHeight: %d, target: %d", cur, targetDAHeight)
 		return cur >= targetDAHeight
-	}, 120*time.Second, 250*time.Millisecond, "DA included height should eventually reach target height %d", targetDAHeight)
+	}, 60*time.Second, 250*time.Millisecond, "DA included height should eventually reach target height %d", targetDAHeight)
 
 	// Log final DA included height
 	fnDAIncludedHeightBytes, err := fullNodeRPCClient.GetMetadata(fnCtx, store.DAIncludedHeightKey)
@@ -502,8 +456,6 @@ func TestEvmSequencerWithFullNodeE2E(t *testing.T) {
 	t.Logf("      • Final sequencer height: %d", seqHeight)
 	t.Logf("      • Final full node height: %d", fnHeight)
 	t.Logf("      • State root verification range: blocks %d-%d", startHeight, endHeight)
-	//t.Logf("      • Full node block height before DA wait: %d", fnBlockHeightBeforeWait)
-	//t.Logf("      • DA wait time: %v (1 DA block time)", waitTime)
 	t.Logf("      • Full node DA included height after wait: %d", fnDAIncludedHeight)
 	t.Logf("")
 	t.Logf("   ✅ Verified Components:")
