@@ -262,7 +262,6 @@ func TestStateRecovery(t *testing.T) {
 	// Verify state persistence
 	recoveredHeight, err := getNodeHeight(node, Store)
 	require.NoError(err)
-	t.Skip("Alex: skipping to fix in a new PR")
 	require.GreaterOrEqual(recoveredHeight, originalHeight, "recovered height should be greater than or equal to original height")
 }
 
@@ -304,7 +303,6 @@ func TestMaxPendingHeadersAndData(t *testing.T) {
 // This test uses the dummy sequencer but demonstrates the scenario that would occur
 // with a real single sequencer having queue limits.
 func TestBatchQueueThrottlingWithDAFailure(t *testing.T) {
-	t.Skip("Alex: skipping to fix in a new PR")
 	require := require.New(t)
 
 	// Set up configuration with low limits to trigger throttling quickly
