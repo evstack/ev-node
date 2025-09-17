@@ -23,6 +23,14 @@ import (
 	"github.com/evstack/ev-node/types"
 )
 
+type daRetriever interface {
+	RetrieveFromDA(ctx context.Context, daHeight uint64) ([]common.DAHeightEvent, error)
+}
+type p2pHandler interface {
+	ProcessHeaderRange(ctx context.Context, fromHeight, toHeight uint64) []common.DAHeightEvent
+	ProcessDataRange(ctx context.Context, fromHeight, toHeight uint64) []common.DAHeightEvent
+}
+
 // Syncer handles block synchronization from DA and P2P sources.
 type Syncer struct {
 	// Core components
@@ -58,8 +66,8 @@ type Syncer struct {
 	errorCh       chan<- error // Channel to report critical execution client failures
 
 	// Handlers
-	daRetriever *DARetriever
-	p2pHandler  *P2PHandler
+	daRetriever daRetriever
+	p2pHandler  p2pHandler
 
 	// Logging
 	logger zerolog.Logger
@@ -98,7 +106,7 @@ func NewSyncer(
 		dataStore:     dataStore,
 		lastStateMtx:  &sync.RWMutex{},
 		daStateMtx:    &sync.RWMutex{},
-		heightInCh:    make(chan common.DAHeightEvent, 10000),
+		heightInCh:    make(chan common.DAHeightEvent, 0),
 		headerStoreCh: make(chan struct{}, 1),
 		dataStoreCh:   make(chan struct{}, 1),
 		errorCh:       errorCh,
@@ -217,9 +225,6 @@ func (s *Syncer) processLoop() {
 	defer blockTicker.Stop()
 
 	for {
-		// Process pending events from cache on every iteration
-		s.processPendingEvents()
-
 		select {
 		case <-s.ctx.Done():
 			return
@@ -259,6 +264,8 @@ syncLoop:
 			return
 		default:
 		}
+		// Process pending events from cache on every iteration
+		s.processPendingEvents()
 
 		now := time.Now()
 		// Respect backoff window if set
@@ -391,7 +398,7 @@ func (s *Syncer) processHeightEvent(event *common.DAHeightEvent) {
 
 	// Try to sync the next block
 	if err := s.trySyncNextBlock(event.DaHeight); err != nil {
-		s.logger.Error().Err(err).Msg("failed to sync next block")
+		s.errorCh <- fmt.Errorf("failed to sync next block: %w", err)
 		return
 	}
 
