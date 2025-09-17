@@ -432,8 +432,11 @@ func (e *Executor) createBlock(ctx context.Context, height uint64, batchData *Ba
 	// Get last block info
 	var lastHeaderHash types.Hash
 	var lastDataHash types.Hash
+	var lastSignature types.Signature
 
 	if height > e.genesis.InitialHeight {
+		headerTime = uint64(batchData.UnixNano())
+
 		lastHeader, lastData, err := e.store.GetBlockData(ctx, height-1)
 		if err != nil {
 			return nil, nil, fmt.Errorf("failed to get last block: %w", err)
@@ -441,7 +444,11 @@ func (e *Executor) createBlock(ctx context.Context, height uint64, batchData *Ba
 		lastHeaderHash = lastHeader.Hash()
 		lastDataHash = lastData.Hash()
 
-		headerTime = uint64(batchData.UnixNano())
+		lastSignaturePtr, err := e.store.GetSignature(ctx, height-1)
+		if err != nil {
+			return nil, nil, fmt.Errorf("failed to get last signature: %w", err)
+		}
+		lastSignature = *lastSignaturePtr
 	}
 
 	// Get signer info
@@ -474,6 +481,7 @@ func (e *Executor) createBlock(ctx context.Context, height uint64, batchData *Ba
 			ProposerAddress: e.genesis.ProposerAddress,
 			ValidatorHash:   validatorHash,
 		},
+		Signature: lastSignature,
 		Signer: types.Signer{
 			PubKey:  pubKey,
 			Address: e.genesis.ProposerAddress,
