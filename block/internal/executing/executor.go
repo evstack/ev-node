@@ -187,11 +187,6 @@ func (e *Executor) initializeState() error {
 			return fmt.Errorf("failed to initialize chain: %w", err)
 		}
 
-		// Create genesis block
-		if err := e.createGenesisBlock(e.ctx, stateRoot); err != nil {
-			return fmt.Errorf("failed to create genesis block: %w", err)
-		}
-
 		state = types.State{
 			ChainID:         e.genesis.ChainID,
 			InitialHeight:   e.genesis.InitialHeight,
@@ -213,55 +208,6 @@ func (e *Executor) initializeState() error {
 		Str("chain_id", state.ChainID).Msg("initialized state")
 
 	return nil
-}
-
-// createGenesisBlock creates and stores the genesis block
-func (e *Executor) createGenesisBlock(ctx context.Context, stateRoot []byte) error {
-	header := types.Header{
-		AppHash:         stateRoot,
-		DataHash:        common.DataHashForEmptyTxs,
-		ProposerAddress: e.genesis.ProposerAddress,
-		BaseHeader: types.BaseHeader{
-			ChainID: e.genesis.ChainID,
-			Height:  e.genesis.InitialHeight,
-			Time:    uint64(e.genesis.StartTime.UnixNano()),
-		},
-	}
-
-	if e.signer == nil {
-		return errors.New("signer cannot be nil")
-	}
-
-	pubKey, err := e.signer.GetPublic()
-	if err != nil {
-		return fmt.Errorf("failed to get public key: %w", err)
-	}
-
-	bz, err := e.options.AggregatorNodeSignatureBytesProvider(&header)
-	if err != nil {
-		return fmt.Errorf("failed to get signature payload: %w", err)
-	}
-
-	sig, err := e.signer.Sign(bz)
-	if err != nil {
-		return fmt.Errorf("failed to sign header: %w", err)
-	}
-
-	var signature types.Signature
-	data := &types.Data{}
-
-	signature = sig
-
-	genesisHeader := &types.SignedHeader{
-		Header: header,
-		Signer: types.Signer{
-			PubKey:  pubKey,
-			Address: e.genesis.ProposerAddress,
-		},
-		Signature: signature,
-	}
-
-	return e.store.SaveBlockData(ctx, genesisHeader, data, &signature)
 }
 
 // executionLoop handles block production and aggregation
@@ -364,20 +310,39 @@ func (e *Executor) produceBlock() error {
 		}
 	}
 
-	// get batch from sequencer
-	batchData, err := e.retrieveBatch(e.ctx)
-	if errors.Is(err, common.ErrNoBatch) {
-		e.logger.Debug().Msg("no batch available")
-		return nil
-	} else if errors.Is(err, common.ErrNoTransactionsInBatch) {
-		e.logger.Debug().Msg("no transactions in batch")
-	} else if err != nil {
-		return fmt.Errorf("failed to retrieve batch: %w", err)
-	}
+	var (
+		header *types.SignedHeader
+		data   *types.Data
+	)
 
-	header, data, err := e.createBlock(e.ctx, newHeight, batchData)
-	if err != nil {
-		return fmt.Errorf("failed to create block: %w", err)
+	// Check if there's an already stored block at the newHeight
+	// If there is use that instead of creating a new block
+	pendingHeader, pendingData, err := e.store.GetBlockData(e.ctx, newHeight)
+	if err == nil {
+		e.logger.Info().Uint64("height", newHeight).Msg("using pending block")
+		header = pendingHeader
+		data = pendingData
+	} else {
+		// get batch from sequencer
+		batchData, err := e.retrieveBatch(e.ctx)
+		if errors.Is(err, common.ErrNoBatch) {
+			e.logger.Debug().Msg("no batch available")
+			return nil
+		} else if errors.Is(err, common.ErrNoTransactionsInBatch) {
+			e.logger.Debug().Msg("no transactions in batch")
+		} else if err != nil {
+			return fmt.Errorf("failed to retrieve batch: %w", err)
+		}
+
+		header, data, err = e.createBlock(e.ctx, newHeight, batchData)
+		if err != nil {
+			return fmt.Errorf("failed to create block: %w", err)
+		}
+
+		// saved early for crash recovery, will be overwritten later with the final signature
+		if err = e.store.SaveBlockData(e.ctx, header, data, &types.Signature{}); err != nil {
+			return fmt.Errorf("failed to save block: %w", err)
+		}
 	}
 
 	newState, err := e.applyBlock(e.ctx, header.Header, data)
@@ -459,6 +424,7 @@ func (e *Executor) retrieveBatch(ctx context.Context) (*BatchData, error) {
 // createBlock creates a new block from the given batch
 func (e *Executor) createBlock(ctx context.Context, height uint64, batchData *BatchData) (*types.SignedHeader, *types.Data, error) {
 	currentState := e.GetLastState()
+	headerTime := uint64(e.genesis.StartTime.UnixNano())
 
 	// Get last block info
 	var lastHeaderHash types.Hash
@@ -471,6 +437,8 @@ func (e *Executor) createBlock(ctx context.Context, height uint64, batchData *Ba
 		}
 		lastHeaderHash = lastHeader.Hash()
 		lastDataHash = lastData.Hash()
+
+		headerTime = uint64(batchData.UnixNano())
 	}
 
 	// Get signer info
@@ -479,7 +447,6 @@ func (e *Executor) createBlock(ctx context.Context, height uint64, batchData *Ba
 		return nil, nil, fmt.Errorf("failed to get public key: %w", err)
 	}
 
-	// Build validator hash
 	// Get validator hash
 	validatorHash, err := e.options.ValidatorHasherProvider(e.genesis.ProposerAddress, pubKey)
 	if err != nil {
@@ -496,7 +463,7 @@ func (e *Executor) createBlock(ctx context.Context, height uint64, batchData *Ba
 			BaseHeader: types.BaseHeader{
 				ChainID: e.genesis.ChainID,
 				Height:  height,
-				Time:    uint64(batchData.UnixNano()),
+				Time:    headerTime,
 			},
 			LastHeaderHash:  lastHeaderHash,
 			ConsensusHash:   make(types.Hash, 32),
@@ -639,6 +606,9 @@ func (e *Executor) sendCriticalError(err error) {
 
 // recordBlockMetrics records metrics for the produced block
 func (e *Executor) recordBlockMetrics(data *types.Data) {
+	if data == nil || data.Metadata == nil {
+		return
+	}
 	e.metrics.NumTxs.Set(float64(len(data.Txs)))
 	e.metrics.TotalTxs.Add(float64(len(data.Txs)))
 	e.metrics.BlockSizeBytes.Set(float64(data.Size()))

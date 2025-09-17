@@ -7,7 +7,6 @@ import (
 
 	"github.com/ipfs/go-datastore"
 	"github.com/ipfs/go-datastore/sync"
-	"github.com/libp2p/go-libp2p/core/crypto"
 	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -16,7 +15,6 @@ import (
 	"github.com/evstack/ev-node/block/internal/common"
 	"github.com/evstack/ev-node/pkg/config"
 	"github.com/evstack/ev-node/pkg/genesis"
-	"github.com/evstack/ev-node/pkg/signer/noop"
 	"github.com/evstack/ev-node/pkg/store"
 	"github.com/evstack/ev-node/types"
 )
@@ -42,26 +40,20 @@ func TestExecutor_BroadcasterIntegration(t *testing.T) {
 	cacheManager, err := cache.NewManager(config.DefaultConfig, memStore, zerolog.Nop())
 	require.NoError(t, err)
 
-	// Create metrics
 	metrics := common.NopMetrics()
+	signerAddr, _, testSigner := buildTestSigner(t)
 
 	// Create genesis
 	gen := genesis.Genesis{
 		ChainID:         "test-chain",
 		InitialHeight:   1,
 		StartTime:       time.Now(),
-		ProposerAddress: []byte("test-proposer"),
+		ProposerAddress: signerAddr,
 	}
 
 	// Create mock broadcasters
 	headerBroadcaster := &mockBroadcaster[*types.SignedHeader]{}
 	dataBroadcaster := &mockBroadcaster[*types.Data]{}
-
-	// Create test signer
-	privKey, _, err := crypto.GenerateEd25519Key(nil)
-	require.NoError(t, err)
-	testSigner, err := noop.NewNoopSigner(privKey)
-	require.NoError(t, err)
 
 	// Create executor with broadcasters
 	executor, err := NewExecutor(
@@ -102,22 +94,16 @@ func TestExecutor_NilBroadcasters(t *testing.T) {
 	cacheManager, err := cache.NewManager(config.DefaultConfig, memStore, zerolog.Nop())
 	require.NoError(t, err)
 
-	// Create metrics
 	metrics := common.NopMetrics()
+	signerAddr, _, testSigner := buildTestSigner(t)
 
 	// Create genesis
 	gen := genesis.Genesis{
 		ChainID:         "test-chain",
 		InitialHeight:   1,
 		StartTime:       time.Now(),
-		ProposerAddress: []byte("test-proposer"),
+		ProposerAddress: signerAddr,
 	}
-
-	// Create test signer
-	privKey, _, err := crypto.GenerateEd25519Key(nil)
-	require.NoError(t, err)
-	testSigner, err := noop.NewNoopSigner(privKey)
-	require.NoError(t, err)
 
 	// Create executor with nil broadcasters (light node scenario)
 	executor, err := NewExecutor(
