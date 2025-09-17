@@ -307,6 +307,8 @@ func (syncService *SyncService[H]) initFromP2PWithRetry(ctx context.Context, pee
 	maxBackoff := 10 * time.Second
 
 	timeoutTimer := time.NewTimer(time.Minute * 10)
+	defer timeoutTimer.Stop()
+
 	for {
 		ok, err := tryInit(ctx)
 		if ok {
