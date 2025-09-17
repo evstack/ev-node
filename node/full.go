@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/pprof"
-	"sync"
 	"time"
 
 	ds "github.com/ipfs/go-datastore"
@@ -18,6 +17,7 @@ import (
 	"github.com/rs/zerolog"
 
 	"github.com/evstack/ev-node/block"
+
 	coreda "github.com/evstack/ev-node/core/da"
 	coreexecutor "github.com/evstack/ev-node/core/execution"
 	coresequencer "github.com/evstack/ev-node/core/sequencer"
@@ -55,12 +55,11 @@ type FullNode struct {
 
 	da coreda.DA
 
-	p2pClient    *p2p.Client
-	hSyncService *evsync.HeaderSyncService
-	dSyncService *evsync.DataSyncService
-	Store        store.Store
-	blockManager *block.Manager
-	reaper       *block.Reaper
+	p2pClient       *p2p.Client
+	hSyncService    *evsync.HeaderSyncService
+	dSyncService    *evsync.DataSyncService
+	Store           store.Store
+	blockComponents *block.Components
 
 	prometheusSrv *http.Server
 	pprofSrv      *http.Server
@@ -69,7 +68,6 @@ type FullNode struct {
 
 // newFullNode creates a new Rollkit full node.
 func newFullNode(
-	ctx context.Context,
 	nodeConfig config.Config,
 	p2pClient *p2p.Client,
 	signer signer.Signer,
@@ -82,9 +80,13 @@ func newFullNode(
 	logger zerolog.Logger,
 	nodeOpts NodeOptions,
 ) (fn *FullNode, err error) {
-	seqMetrics, _ := metricsProvider(genesis.ChainID)
+	logger.Debug().Bytes("address", genesis.ProposerAddress).Msg("Proposer address")
+
+	blockMetrics, _ := metricsProvider(genesis.ChainID)
 
 	mainKV := newPrefixKV(database, EvPrefix)
+	rktStore := store.New(mainKV)
+
 	headerSyncService, err := initHeaderSyncService(mainKV, nodeConfig, genesis, p2pClient, logger)
 	if err != nil {
 		return nil, err
@@ -95,50 +97,49 @@ func newFullNode(
 		return nil, err
 	}
 
-	rktStore := store.New(mainKV)
-
-	blockManager, err := initBlockManager(
-		ctx,
-		signer,
-		exec,
-		nodeConfig,
-		genesis,
-		rktStore,
-		sequencer,
-		da,
-		logger,
-		headerSyncService,
-		dataSyncService,
-		seqMetrics,
-		nodeOpts.ManagerOptions,
-	)
+	var blockComponents *block.Components
+	if nodeConfig.Node.Aggregator {
+		blockComponents, err = block.NewAggregatorComponents(
+			nodeConfig,
+			genesis,
+			rktStore,
+			exec,
+			sequencer,
+			da,
+			signer,
+			headerSyncService,
+			dataSyncService,
+			logger,
+			blockMetrics,
+			nodeOpts.BlockOptions,
+		)
+	} else {
+		blockComponents, err = block.NewSyncComponents(
+			nodeConfig,
+			genesis,
+			rktStore,
+			exec,
+			da,
+			headerSyncService.Store(),
+			dataSyncService.Store(),
+			logger,
+			blockMetrics,
+			nodeOpts.BlockOptions,
+		)
+	}
 	if err != nil {
 		return nil, err
 	}
 
-	reaper := block.NewReaper(
-		ctx,
-		exec,
-		sequencer,
-		genesis.ChainID,
-		nodeConfig.Node.BlockTime.Duration,
-		logger.With().Str("component", "Reaper").Logger(), // Get Reaper's own logger
-		mainKV,
-	)
-
-	// Connect the reaper to the manager for transaction notifications
-	reaper.SetManager(blockManager)
-
 	node := &FullNode{
-		genesis:      genesis,
-		nodeConfig:   nodeConfig,
-		p2pClient:    p2pClient,
-		blockManager: blockManager,
-		reaper:       reaper,
-		da:           da,
-		Store:        rktStore,
-		hSyncService: headerSyncService,
-		dSyncService: dataSyncService,
+		genesis:         genesis,
+		nodeConfig:      nodeConfig,
+		p2pClient:       p2pClient,
+		blockComponents: blockComponents,
+		da:              da,
+		Store:           rktStore,
+		hSyncService:    headerSyncService,
+		dSyncService:    dataSyncService,
 	}
 
 	node.BaseService = *service.NewBaseService(logger, "Node", node)
@@ -172,54 +173,6 @@ func initDataSyncService(
 		return nil, fmt.Errorf("error while initializing DataSyncService: %w", err)
 	}
 	return dataSyncService, nil
-}
-
-// initBlockManager initializes the block manager.
-// It requires:
-// - signingKey: the private key of the validator
-// - nodeConfig: the node configuration
-// - genesis: the genesis document
-// - store: the store
-// - seqClient: the sequencing client
-// - da: the DA
-func initBlockManager(
-	ctx context.Context,
-	signer signer.Signer,
-	exec coreexecutor.Executor,
-	nodeConfig config.Config,
-	genesis genesispkg.Genesis,
-	store store.Store,
-	sequencer coresequencer.Sequencer,
-	da coreda.DA,
-	logger zerolog.Logger,
-	headerSyncService *evsync.HeaderSyncService,
-	dataSyncService *evsync.DataSyncService,
-	seqMetrics *block.Metrics,
-	managerOpts block.ManagerOptions,
-) (*block.Manager, error) {
-	logger.Debug().Bytes("address", genesis.ProposerAddress).Msg("Proposer address")
-
-	blockManager, err := block.NewManager(
-		ctx,
-		signer,
-		nodeConfig,
-		genesis,
-		store,
-		exec,
-		sequencer,
-		da,
-		logger.With().Str("component", "BlockManager").Logger(), // Get BlockManager's own logger
-		headerSyncService.Store(),
-		dataSyncService.Store(),
-		headerSyncService,
-		dataSyncService,
-		seqMetrics,
-		managerOpts,
-	)
-	if err != nil {
-		return nil, fmt.Errorf("error while initializing BlockManager: %w", err)
-	}
-	return blockManager, nil
 }
 
 // initGenesisChunks creates a chunked format of the genesis document to make it easier to
@@ -328,7 +281,7 @@ func (n *FullNode) Run(parentCtx context.Context) error {
 	}
 
 	// Start RPC server
-	handler, err := rpcserver.NewServiceHandler(n.Store, n.p2pClient, n.blockManager.GetSigner(), n.Logger, n.nodeConfig)
+	handler, err := rpcserver.NewServiceHandler(n.Store, n.p2pClient, n.genesis.ProposerAddress, n.Logger, n.nodeConfig)
 	if err != nil {
 		return fmt.Errorf("error creating RPC handler: %w", err)
 	}
@@ -362,56 +315,30 @@ func (n *FullNode) Run(parentCtx context.Context) error {
 		return fmt.Errorf("error while starting data sync service: %w", err)
 	}
 
-	// only the first error is propagated
-	// any error is an issue, so blocking is not a problem
-	errCh := make(chan error, 1)
-	// prepare to join the go routines later
-	var wg sync.WaitGroup
-	spawnWorker := func(f func()) {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			f()
-		}()
-	}
-	if n.nodeConfig.Node.Aggregator {
-		n.Logger.Info().Dur("block_time", n.nodeConfig.Node.BlockTime.Duration).Msg("working in aggregator mode")
-		spawnWorker(func() { n.blockManager.AggregationLoop(ctx, errCh) })
-		spawnWorker(func() { n.reaper.Start(ctx) })
-		spawnWorker(func() { n.blockManager.HeaderSubmissionLoop(ctx) })
-		spawnWorker(func() { n.blockManager.DataSubmissionLoop(ctx) })
-		spawnWorker(func() { n.blockManager.DAIncluderLoop(ctx, errCh) })
-	} else {
-		spawnWorker(func() { n.blockManager.DARetrieveLoop(ctx) })
-		spawnWorker(func() { n.blockManager.HeaderStoreRetrieveLoop(ctx, errCh) })
-		spawnWorker(func() { n.blockManager.DataStoreRetrieveLoop(ctx, errCh) })
-		spawnWorker(func() { n.blockManager.SyncLoop(ctx, errCh) })
-		spawnWorker(func() { n.blockManager.DAIncluderLoop(ctx, errCh) })
-	}
-
-	select {
-	case err := <-errCh:
-		if err != nil {
-			n.Logger.Error().Err(err).Msg("unrecoverable error in one of the go routines")
-			cancelNode() // propagate shutdown to all child goroutines
+	// Start the block components (blocking)
+	if err := n.blockComponents.Start(ctx); err != nil {
+		if !errors.Is(err, context.Canceled) {
+			n.Logger.Error().Err(err).Msg("unrecoverable error in block components")
+		} else {
+			n.Logger.Info().Msg("context canceled, stopping node")
 		}
-	case <-parentCtx.Done():
-		// Block until parent context is canceled
-		n.Logger.Info().Msg("context canceled, stopping node")
-		cancelNode() // propagate shutdown to all child goroutines
 	}
 
-	// Perform cleanup
+	// blocking components start exited, propagate shutdown to all other processes
+	cancelNode()
 	n.Logger.Info().Msg("halting full node and its sub services...")
-	// wait for all worker Go routines to finish so that we have
-	// no in-flight tasks while shutting down
-	wg.Wait()
 
 	// Use a timeout context to ensure shutdown doesn't hang
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 9*time.Second)
 	defer cancel()
 
 	var multiErr error // Use a multierror variable
+
+	// Stop block components
+	if err := n.blockComponents.Stop(); err != nil {
+		n.Logger.Error().Err(err).Msg("error stopping block components")
+		multiErr = errors.Join(multiErr, fmt.Errorf("stopping block components: %w", err))
+	}
 
 	// Stop Header Sync Service
 	err = n.hSyncService.Stop(shutdownCtx)
@@ -482,10 +409,12 @@ func (n *FullNode) Run(parentCtx context.Context) error {
 	}
 
 	// Save caches if needed
-	if err := n.blockManager.SaveCache(); err != nil {
-		multiErr = errors.Join(multiErr, fmt.Errorf("saving caches: %w", err))
-	} else {
-		n.Logger.Debug().Msg("caches saved")
+	if n.blockComponents != nil && n.blockComponents.Cache != nil {
+		if err := n.blockComponents.Cache.SaveToDisk(); err != nil {
+			multiErr = errors.Join(multiErr, fmt.Errorf("saving caches: %w", err))
+		} else {
+			n.Logger.Debug().Msg("caches saved")
+		}
 	}
 
 	// Log final status
@@ -522,17 +451,7 @@ func (n *FullNode) GetGenesisChunks() ([]string, error) {
 
 // IsRunning returns true if the node is running.
 func (n *FullNode) IsRunning() bool {
-	return n.blockManager != nil
-}
-
-// SetLogger sets the logger used by node.
-func (n *FullNode) SetLogger(logger zerolog.Logger) {
-	n.Logger = logger
-}
-
-// GetLogger returns logger.
-func (n *FullNode) GetLogger() zerolog.Logger {
-	return n.Logger
+	return n.blockComponents != nil
 }
 
 func newPrefixKV(kvStore ds.Batching, prefix string) ds.Batching {
