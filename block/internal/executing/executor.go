@@ -8,6 +8,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/ipfs/go-datastore"
 	"github.com/rs/zerolog"
 	"golang.org/x/sync/errgroup"
 
@@ -322,6 +323,8 @@ func (e *Executor) produceBlock() error {
 		e.logger.Info().Uint64("height", newHeight).Msg("using pending block")
 		header = pendingHeader
 		data = pendingData
+	} else if !errors.Is(err, datastore.ErrNotFound) {
+		return fmt.Errorf("failed to get block data: %w", err)
 	} else {
 		// get batch from sequencer
 		batchData, err := e.retrieveBatch(e.ctx)
