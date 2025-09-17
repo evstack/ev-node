@@ -123,22 +123,27 @@ func TestNewAggregatorComponents_Creation(t *testing.T) {
 	memStore := store.New(ds)
 
 	cfg := config.DefaultConfig
+
+	// Create a test signer first
+	priv, _, err := crypto.GenerateEd25519Key(crand.Reader)
+	require.NoError(t, err)
+	mockSigner, err := noop.NewNoopSigner(priv)
+	require.NoError(t, err)
+
+	// Get the signer's address to use as proposer
+	signerAddr, err := mockSigner.GetAddress()
+	require.NoError(t, err)
+
 	gen := genesis.Genesis{
 		ChainID:         "test-chain",
 		InitialHeight:   1,
 		StartTime:       time.Now(),
-		ProposerAddress: []byte("test-proposer"),
+		ProposerAddress: signerAddr,
 	}
 
 	mockExec := testmocks.NewMockExecutor(t)
 	mockSeq := testmocks.NewMockSequencer(t)
 	dummyDA := coreda.NewDummyDA(10_000_000, 0, 0, 10*time.Millisecond)
-
-	// Create a test signer
-	priv, _, err := crypto.GenerateEd25519Key(crand.Reader)
-	require.NoError(t, err)
-	mockSigner, err := noop.NewNoopSigner(priv)
-	require.NoError(t, err)
 
 	components, err := NewAggregatorComponents(
 		cfg,
