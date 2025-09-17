@@ -34,9 +34,9 @@ The [Mempool] is the transaction pool where all the transactions are stored befo
 
 The [Store] is initialized with `DefaultStore`, an implementation of the [store interface] which is used for storing and retrieving blocks, commits, and state. |
 
-### blockManager
+### Block components
 
-The [Block Manager] is responsible for managing the operations related to blocks such as creating and validating blocks.
+The [Block components] are responsible for managing the operations related to blocks such as creating and validating blocks.
 
 ### dalc
 

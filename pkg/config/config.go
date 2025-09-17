@@ -105,9 +105,9 @@ const (
 	// Signer configuration flags
 
 	// FlagSignerType is a flag for specifying the signer type
-	FlagSignerType = FlagPrefixEvnode + "signer.type"
+	FlagSignerType = FlagPrefixEvnode + "signer.signer_type"
 	// FlagSignerPath is a flag for specifying the signer path
-	FlagSignerPath = FlagPrefixEvnode + "signer.path"
+	FlagSignerPath = FlagPrefixEvnode + "signer.signer_path"
 
 	// FlagSignerPassphrase is a flag for specifying the signer passphrase
 	//nolint:gosec
@@ -163,7 +163,7 @@ type DAConfig struct {
 	MaxSubmitAttempts int             `mapstructure:"max_submit_attempts" yaml:"max_submit_attempts" comment:"Maximum number of attempts to submit data to the DA layer before giving up. Higher values provide more resilience but can delay error reporting."`
 }
 
-// GetNamespace returns the namespace for header submittions.
+// GetNamespace returns the namespace for header submissions.
 func (d *DAConfig) GetNamespace() string {
 	if d.Namespace != "" {
 		return d.Namespace
@@ -233,6 +233,12 @@ func (c *Config) Validate() error {
 	fullDir := filepath.Dir(c.ConfigPath())
 	if err := os.MkdirAll(fullDir, 0o750); err != nil {
 		return fmt.Errorf("could not create directory %q: %w", fullDir, err)
+	}
+
+	// Validate lazy mode configuration
+	if c.Node.LazyMode && c.Node.LazyBlockInterval.Duration <= c.Node.BlockTime.Duration {
+		return fmt.Errorf("LazyBlockInterval (%v) must be greater than BlockTime (%v) in lazy mode",
+			c.Node.LazyBlockInterval.Duration, c.Node.BlockTime.Duration)
 	}
 
 	return nil
@@ -402,6 +408,11 @@ func LoadFromViper(inputViper *viper.Viper) (Config, error) {
 
 	// then override with settings from input viper (higher precedence)
 	for _, key := range inputViper.AllKeys() {
+		// we must not override config with default flags value
+		if !inputViper.IsSet(key) {
+			continue
+		}
+
 		// Handle special case for prefixed keys
 		if after, ok := strings.CutPrefix(key, FlagPrefixEvnode); ok {
 			// Strip the prefix for the merged viper

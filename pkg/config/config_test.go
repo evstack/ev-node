@@ -174,6 +174,7 @@ signer:
 		"--rollkit.da.address", "http://flag-da:26657",
 		"--rollkit.node.light", "true", // This is not in YAML, should be set from flag
 		"--rollkit.rpc.address", "127.0.0.1:7332",
+		"--evnode.signer.signer_path", "/path/to/signer",
 	}
 	cmd.SetArgs(flagArgs)
 	err = cmd.ParseFlags(flagArgs)
@@ -199,8 +200,8 @@ signer:
 	assert.Equal(t, DefaultConfig.DA.BlockTime.Duration, config.DA.BlockTime.Duration, "DABlockTime should remain as default")
 
 	// 5. Signer values should be set from flags
-	assert.Equal(t, "file", config.Signer.SignerType, "SignerType should be set from flag")
-	assert.Equal(t, "something/config", config.Signer.SignerPath, "SignerPath should be set from flag")
+	assert.Equal(t, "file", config.Signer.SignerType, "SignerType should be gotten from config")
+	assert.Equal(t, "/path/to/signer", config.Signer.SignerPath, "SignerPath should be set from flag")
 
 	assert.Equal(t, "127.0.0.1:7332", config.RPC.Address, "RPCAddress should be set from flag")
 }
@@ -278,6 +279,44 @@ signer:
 	require.Equal(t, "http://yaml-da:26657", cfgFromViper.DA.Address, "DA.Address should match YAML")
 	require.Equal(t, "file", cfgFromViper.Signer.SignerType, "Signer.SignerType should match YAML")
 	require.Equal(t, "something/config", cfgFromViper.Signer.SignerPath, "Signer.SignerPath should match YAML")
+
+	// Test that default flag values don't override config values when not explicitly set
+	t.Run("default flag values don't override config when not explicitly set", func(t *testing.T) {
+		// Create a viper instance that simulates having default values but IsSet() returns false
+		flagViper := viper.New()
+		flagViper.Set(FlagRootDir, tempDir)
+
+		// Create a command and parse empty args to simulate flags with defaults but not explicitly set
+		cmd = &cobra.Command{Use: "test"}
+		AddFlags(cmd)
+		AddGlobalFlags(cmd, "test")
+
+		// Bind the flags to viper - this populates viper with default values
+		// but since no args were provided, IsSet() will return false for these flags
+		err = flagViper.BindPFlags(cmd.Flags())
+		require.NoError(t, err)
+		err = flagViper.BindPFlags(cmd.PersistentFlags())
+		require.NoError(t, err)
+
+		// Parse empty command line - this means all flags have default values but IsSet() = false
+		err = cmd.ParseFlags([]string{})
+		require.NoError(t, err)
+
+		// Sanity check.
+		// Verify that IsSet returns false for flag values (this is the key behavior we're testing)
+		require.False(t, flagViper.IsSet("rollkit.node.aggregator"), "Flag should not be considered 'set' when using default")
+		require.False(t, flagViper.IsSet("rollkit.node.block_time"), "Flag should not be considered 'set' when using default")
+		require.False(t, flagViper.IsSet("rollkit.da.address"), "Flag should not be considered 'set' when using default")
+
+		cfgFromViper, err = LoadFromViper(flagViper)
+		require.NoError(t, err)
+
+		// These values should come from YAML, not be overridden by flag defaults
+		require.True(t, cfgFromViper.Node.Aggregator, "Node.Aggregator should remain true from YAML, not overridden by flag default")
+		require.Equal(t, "5s", cfgFromViper.Node.BlockTime.String(), "Node.BlockTime should remain 5s from YAML, not overridden by flag default")
+		require.Equal(t, "http://yaml-da:26657", cfgFromViper.DA.Address, "DA.Address should remain from YAML, not overridden by flag default")
+		require.Equal(t, "something/config", cfgFromViper.Signer.SignerPath, "Signer.SignerPath should remain from YAML, not overridden by flag default")
+	})
 }
 
 func TestDAConfig_GetDataNamespace(t *testing.T) {

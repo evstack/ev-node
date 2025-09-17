@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/celestiaorg/go-header"
 	goheaderp2p "github.com/celestiaorg/go-header/p2p"
@@ -124,6 +125,10 @@ func (syncService *SyncService[H]) WriteToStoreAndBroadcast(ctx context.Context,
 		return fmt.Errorf("invalid initial height; cannot be zero")
 	}
 
+	if headerOrData.IsZero() {
+		return fmt.Errorf("empty header/data cannot write to store or broadcast")
+	}
+
 	isGenesis := headerOrData.Height() == syncService.genesis.InitialHeight
 	if isGenesis { // when starting the syncer for the first time, we have no blocks, so initFromP2P didn't initialize the genesis block.
 		if err := syncService.initStore(ctx, headerOrData); err != nil {
@@ -175,7 +180,9 @@ func (syncService *SyncService[H]) Start(ctx context.Context) error {
 		return fmt.Errorf("failed to create syncer: %w", err)
 	}
 
-	return syncService.initFromP2P(ctx, peerIDs)
+	// Initialize from P2P, blocking until syncing can actually start for follower nodes.
+	// Aggregators (no peers configured) return immediately and initialize on first produced block.
+	return syncService.initFromP2PWithRetry(ctx, peerIDs)
 }
 
 // startSyncer starts the SyncService's syncer
@@ -261,41 +268,68 @@ func (syncService *SyncService[H]) setupP2P(ctx context.Context) ([]peer.ID, err
 // initFromP2P looks up for the trusted hash or the genesis header/block.
 // If trusted hash is available, it fetches the trusted header/block (by hash) from peers.
 // Otherwise, it tries to fetch the genesis header/block by height.
-func (syncService *SyncService[H]) initFromP2P(ctx context.Context, peerIDs []peer.ID) error {
+func (syncService *SyncService[H]) initFromP2PWithRetry(ctx context.Context, peerIDs []peer.ID) error {
 	if len(peerIDs) == 0 {
 		return nil
 	}
 
-	// Look to see if trusted hash is passed, if not get the genesis header/block
-	var (
-		trusted H
-		err     error
-	)
+	tryInit := func(ctx context.Context) (bool, error) {
+		var (
+			trusted H
+			err     error
+		)
 
-	// Try fetching the trusted header/block from peers if exists
-	if syncService.conf.Node.TrustedHash != "" {
-		trustedHashBytes, err := hex.DecodeString(syncService.conf.Node.TrustedHash)
-		if err != nil {
-			return fmt.Errorf("failed to parse the trusted hash for initializing the store: %w", err)
+		if syncService.conf.Node.TrustedHash != "" {
+			trustedHashBytes, err := hex.DecodeString(syncService.conf.Node.TrustedHash)
+			if err != nil {
+				return false, fmt.Errorf("failed to parse the trusted hash for initializing the store: %w", err)
+			}
+			if trusted, err = syncService.ex.Get(ctx, trustedHashBytes); err != nil {
+				return false, fmt.Errorf("failed to fetch the trusted header/block for initializing the store: %w", err)
+			}
+		} else {
+			if trusted, err = syncService.ex.GetByHeight(ctx, syncService.genesis.InitialHeight); err != nil {
+				return false, fmt.Errorf("failed to fetch the genesis: %w", err)
+			}
 		}
 
-		if trusted, err = syncService.ex.Get(ctx, trustedHashBytes); err != nil {
-			return fmt.Errorf("failed to fetch the trusted header/block for initializing the store: %w", err)
+		if err := syncService.initStore(ctx, trusted); err != nil {
+			return false, fmt.Errorf("failed to initialize the store: %w", err)
 		}
-	} else {
-		// Try fetching the genesis header/block if available, otherwise fallback to block
-		if trusted, err = syncService.ex.GetByHeight(ctx, syncService.genesis.InitialHeight); err != nil {
-			// Full/light nodes have to wait for aggregator to publish the genesis block
-			// proposing aggregator can init the store and start the syncer when the first block is published
-			return fmt.Errorf("failed to fetch the genesis: %w", err)
+		if err := syncService.startSyncer(ctx); err != nil {
+			return false, err
 		}
+		return true, nil
 	}
 
-	if err := syncService.initStore(ctx, trusted); err != nil {
-		return fmt.Errorf("failed to initialize the store: %w", err)
-	}
+	// block with exponential backoff until initialization succeeds or context is canceled.
+	backoff := 1 * time.Second
+	maxBackoff := 10 * time.Second
 
-	return syncService.startSyncer(ctx)
+	timeoutTimer := time.NewTimer(time.Minute * 10)
+	defer timeoutTimer.Stop()
+
+	for {
+		ok, err := tryInit(ctx)
+		if ok {
+			return nil
+		}
+
+		syncService.logger.Info().Err(err).Dur("retry_in", backoff).Msg("headers not yet available from peers, waiting to initialize header sync")
+
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-timeoutTimer.C:
+			return fmt.Errorf("timeout reached while trying to initialize the store after 10 minutes: %w", err)
+		case <-time.After(backoff):
+		}
+
+		backoff *= 2
+		if backoff > maxBackoff {
+			backoff = maxBackoff
+		}
+	}
 }
 
 // Stop is a part of Service interface.

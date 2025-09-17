@@ -1,8 +1,6 @@
 package node
 
 import (
-	"context"
-
 	ds "github.com/ipfs/go-datastore"
 	"github.com/rs/zerolog"
 
@@ -25,14 +23,13 @@ type Node interface {
 }
 
 type NodeOptions struct {
-	ManagerOptions block.ManagerOptions
+	BlockOptions block.BlockOptions
 }
 
 // NewNode returns a new Full or Light Node based on the config
 // This is the entry point for composing a node, when compiling a node, you need to provide an executor
 // Example executors can be found in apps/
 func NewNode(
-	ctx context.Context,
 	conf config.Config,
 	exec coreexecutor.Executor,
 	sequencer coresequencer.Sequencer,
@@ -49,12 +46,11 @@ func NewNode(
 		return newLightNode(conf, genesis, p2pClient, database, logger)
 	}
 
-	if err := nodeOptions.ManagerOptions.Validate(); err != nil {
-		nodeOptions.ManagerOptions = block.DefaultManagerOptions()
+	if err := nodeOptions.BlockOptions.Validate(); err != nil {
+		nodeOptions.BlockOptions = block.DefaultBlockOptions()
 	}
 
 	return newFullNode(
-		ctx,
 		conf,
 		p2pClient,
 		signer,
