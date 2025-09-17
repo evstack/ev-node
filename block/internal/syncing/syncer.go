@@ -257,7 +257,6 @@ func (s *Syncer) syncLoop() {
 	var nextDARequestAt time.Time
 
 	//TODO: we should request to see what the head of the chain is at, then we know if we are falling behinf or in sync mode
-syncLoop:
 	for {
 		select {
 		case <-s.ctx.Done():
@@ -298,9 +297,7 @@ syncLoop:
 					select {
 					case s.heightInCh <- event:
 					default:
-						s.logger.Warn().Msg("height channel full, dropping DA event")
-						time.Sleep(10 * time.Millisecond)
-						continue syncLoop
+						s.cache.SetPendingEvent(event.Header.Height(), &event)
 					}
 				}
 
@@ -321,9 +318,7 @@ syncLoop:
 					select {
 					case s.heightInCh <- event:
 					default:
-						s.logger.Warn().Msg("height channel full, dropping P2P header event")
-						time.Sleep(10 * time.Millisecond)
-						continue syncLoop
+						s.cache.SetPendingEvent(event.Header.Height(), &event)
 					}
 				}
 
@@ -338,9 +333,7 @@ syncLoop:
 					select {
 					case s.heightInCh <- event:
 					default:
-						s.logger.Warn().Msg("height channel full, dropping P2P data event")
-						time.Sleep(10 * time.Millisecond)
-						continue syncLoop
+						s.cache.SetPendingEvent(event.Header.Height(), &event)
 					}
 				}
 				lastDataHeight = newDataHeight
