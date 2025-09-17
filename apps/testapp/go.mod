@@ -2,6 +2,8 @@ module github.com/evstack/ev-node/apps/testapp
 
 go 1.24.2
 
+replace github.com/celestiaorg/go-header => github.com/julienrbrt/go-header v0.0.0-20250909151551-cb11b091bf58 // TODO: to remove after https://github.com/celestiaorg/go-header/pull/347
+
 replace (
 	github.com/evstack/ev-node => ../../.
 	github.com/evstack/ev-node/core => ../../core
