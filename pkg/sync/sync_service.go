@@ -125,9 +125,8 @@ func (syncService *SyncService[H]) WriteToStoreAndBroadcast(ctx context.Context,
 		return fmt.Errorf("invalid initial height; cannot be zero")
 	}
 
-	// Guard against nil/zero payloads to avoid panics on Height() calls.
 	if headerOrData.IsZero() {
-		return fmt.Errorf("empty header/data; cannot write to store or broadcast")
+		return fmt.Errorf("empty header/data cannot write to store or broadcast")
 	}
 
 	isGenesis := headerOrData.Height() == syncService.genesis.InitialHeight
@@ -270,12 +269,10 @@ func (syncService *SyncService[H]) setupP2P(ctx context.Context) ([]peer.ID, err
 // If trusted hash is available, it fetches the trusted header/block (by hash) from peers.
 // Otherwise, it tries to fetch the genesis header/block by height.
 func (syncService *SyncService[H]) initFromP2PBlocking(ctx context.Context, peerIDs []peer.ID) error {
-	// Aggregators/light without peers: return; they will initialize store on first produced block.
 	if len(peerIDs) == 0 {
 		return nil
 	}
 
-	// Helper to attempt a single initialization try.
 	tryInit := func(ctx context.Context) (bool, error) {
 		var (
 			trusted H
@@ -305,16 +302,16 @@ func (syncService *SyncService[H]) initFromP2PBlocking(ctx context.Context, peer
 		return true, nil
 	}
 
-	// Block with exponential backoff until initialization succeeds or context is canceled.
+	// block with exponential backoff until initialization succeeds or context is canceled.
 	backoff := 1 * time.Second
 	maxBackoff := 10 * time.Second
 	for {
-		if ok, err := tryInit(ctx); ok {
+		ok, err := tryInit(ctx)
+		if ok {
 			return nil
-		} else if err != nil {
-			// Log at info first time, debug thereafter
-			syncService.logger.Info().Err(err).Dur("retry_in", backoff).Msg("headers not yet available from peers; waiting to initialize header sync")
 		}
+
+		syncService.logger.Info().Err(err).Dur("retry_in", backoff).Msg("headers not yet available from peers; waiting to initialize header sync")
 
 		select {
 		case <-ctx.Done():
