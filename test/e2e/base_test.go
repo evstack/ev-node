@@ -187,10 +187,10 @@ func TestNodeRestartPersistence(t *testing.T) {
 	sut.ShutdownByCmd(binaryPath)
 	t.Log("Node stopped.")
 
-	// Wait a moment to ensure shutdown
-	require.Eventually(t, func() bool {
-		return sut.HasProcess(binaryPath)
-	}, 500*time.Millisecond, 10*time.Millisecond)
+    // Wait until the process has actually exited
+    require.Eventually(t, func() bool {
+        return !sut.HasProcess(binaryPath)
+    }, 3*time.Second, 50*time.Millisecond)
 
 	// Restart node
     // Ensure ports are free before restarting
