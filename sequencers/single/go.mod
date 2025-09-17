@@ -15,13 +15,13 @@ require (
 	github.com/prometheus/client_golang v1.23.2
 	github.com/rs/zerolog v1.34.0
 	github.com/stretchr/testify v1.11.1
-	google.golang.org/protobuf v1.36.8
+	google.golang.org/protobuf v1.36.9
 )
 
 require (
 	github.com/benbjohnson/clock v1.3.5 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
-	github.com/celestiaorg/go-header v0.7.1 // indirect
+	github.com/celestiaorg/go-header v0.7.2 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
 	github.com/davidlazar/go-crypto v0.0.0-20200604182044-b73af7476f6c // indirect
@@ -58,7 +58,7 @@ require (
 	github.com/libp2p/go-libp2p-asn-util v0.4.1 // indirect
 	github.com/libp2p/go-libp2p-kad-dht v0.34.0 // indirect
 	github.com/libp2p/go-libp2p-kbucket v0.7.0 // indirect
-	github.com/libp2p/go-libp2p-pubsub v0.14.2 // indirect
+	github.com/libp2p/go-libp2p-pubsub v0.14.3 // indirect
 	github.com/libp2p/go-libp2p-record v0.3.1 // indirect
 	github.com/libp2p/go-libp2p-routing-helpers v0.7.5 // indirect
 	github.com/libp2p/go-msgio v0.3.0 // indirect
@@ -140,7 +140,7 @@ require (
 	golang.org/x/crypto v0.42.0 // indirect
 	golang.org/x/exp v0.0.0-20250811191247-51f88131bc50 // indirect
 	golang.org/x/mod v0.27.0 // indirect
-	golang.org/x/net v0.43.0 // indirect
+	golang.org/x/net v0.44.0 // indirect
 	golang.org/x/sync v0.17.0 // indirect
 	golang.org/x/sys v0.36.0 // indirect
 	golang.org/x/text v0.29.0 // indirect
