@@ -327,8 +327,6 @@ func setupSequencerNode(t *testing.T, sut *SystemUnderTest, sequencerHome, jwtSe
 
     if ports == nil {
         // Fallback to default ports if none provided
-        // Ensure RPC port is free before starting
-        sut.AwaitPortAvailable(t, RollkitRPCPort, 2*time.Second)
         sut.ExecCmd(evmSingleBinaryPath,
             "start",
             "--evm.jwt-secret", jwtSecret,
@@ -343,9 +341,6 @@ func setupSequencerNode(t *testing.T, sut *SystemUnderTest, sequencerHome, jwtSe
 		sut.AwaitNodeUp(t, RollkitRPCAddress, NodeStartupTimeout)
     } else {
         // Start sequencer node with dynamic rollkit ports, fixed EVM engine ports
-        // Ensure RPC and P2P ports are free before starting
-        sut.AwaitPortAvailable(t, ports.RollkitRPCPort, 2*time.Second)
-        sut.AwaitPortAvailable(t, ports.RollkitP2PPort, 2*time.Second)
         sut.ExecCmd(evmSingleBinaryPath,
             "start",
             "--evm.jwt-secret", jwtSecret,
@@ -382,8 +377,6 @@ func setupSequencerNodeLazy(t *testing.T, sut *SystemUnderTest, sequencerHome, j
 
     if ports == nil {
         // Fallback to default ports if none provided
-        // Ensure RPC port is free before starting
-        sut.AwaitPortAvailable(t, RollkitRPCPort, 2*time.Second)
         sut.ExecCmd(evmSingleBinaryPath,
             "start",
             "--evm.jwt-secret", jwtSecret,
@@ -400,9 +393,6 @@ func setupSequencerNodeLazy(t *testing.T, sut *SystemUnderTest, sequencerHome, j
 		sut.AwaitNodeUp(t, RollkitRPCAddress, NodeStartupTimeout)
     } else {
         // Start sequencer node in lazy mode with dynamic rollkit ports, fixed EVM engine ports
-        // Ensure RPC and P2P ports are free before starting
-        sut.AwaitPortAvailable(t, ports.RollkitRPCPort, 2*time.Second)
-        sut.AwaitPortAvailable(t, ports.RollkitP2PPort, 2*time.Second)
         sut.ExecCmd(evmSingleBinaryPath,
             "start",
             "--evm.jwt-secret", jwtSecret,
@@ -459,9 +449,6 @@ func setupFullNode(t *testing.T, sut *SystemUnderTest, fullNodeHome, sequencerHo
 
     if ports == nil {
         // Fallback to default ports if none provided
-        // Ensure RPC and P2P ports are free before starting
-        sut.AwaitPortAvailable(t, FullNodeRPCPort, 2*time.Second)
-        sut.AwaitPortAvailable(t, FullNodeP2PPort, 2*time.Second)
         sut.ExecCmd(evmSingleBinaryPath,
             "start",
             "--home", fullNodeHome,
@@ -478,9 +465,6 @@ func setupFullNode(t *testing.T, sut *SystemUnderTest, fullNodeHome, sequencerHo
 		sut.AwaitNodeUp(t, "http://127.0.0.1:"+FullNodeRPCPort, NodeStartupTimeout)
     } else {
         // Start full node with dynamic rollkit ports, fixed EVM engine ports
-        // Ensure RPC and P2P ports are free before starting
-        sut.AwaitPortAvailable(t, ports.FullNodeRPCPort, 2*time.Second)
-        sut.AwaitPortAvailable(t, ports.FullNodeP2PPort, 2*time.Second)
         sut.ExecCmd(evmSingleBinaryPath,
             "start",
             "--home", fullNodeHome,
