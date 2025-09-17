@@ -7,8 +7,8 @@ require (
 	connectrpc.com/grpcreflect v1.3.0
 	github.com/evstack/ev-node v0.0.0
 	github.com/evstack/ev-node/core v0.0.0
-	golang.org/x/net v0.43.0
-	google.golang.org/protobuf v1.36.8
+	golang.org/x/net v0.44.0
+	google.golang.org/protobuf v1.36.9
 )
 
 require golang.org/x/text v0.29.0 // indirect

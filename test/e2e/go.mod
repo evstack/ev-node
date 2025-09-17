@@ -45,7 +45,7 @@ require (
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/bits-and-blooms/bitset v1.20.0 // indirect
 	github.com/buger/goterm v1.0.4 // indirect
-	github.com/celestiaorg/go-header v0.7.1 // indirect
+	github.com/celestiaorg/go-header v0.7.2 // indirect
 	github.com/cenkalti/backoff/v4 v4.3.0 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/compose-spec/compose-go/v2 v2.6.0 // indirect
@@ -135,7 +135,7 @@ require (
 	github.com/klauspost/compress v1.18.0 // indirect
 	github.com/klauspost/cpuid/v2 v2.3.0 // indirect
 	github.com/libp2p/go-buffer-pool v0.1.0 // indirect
-	github.com/libp2p/go-libp2p-pubsub v0.14.2 // indirect
+	github.com/libp2p/go-libp2p-pubsub v0.14.3 // indirect
 	github.com/libp2p/go-msgio v0.3.0 // indirect
 	github.com/lufia/plan9stats v0.0.0-20211012122336-39d0f177ccd0 // indirect
 	github.com/magiconair/properties v1.8.10 // indirect
@@ -245,7 +245,7 @@ require (
 	go.yaml.in/yaml/v2 v2.4.2 // indirect
 	golang.org/x/crypto v0.42.0 // indirect
 	golang.org/x/exp v0.0.0-20250811191247-51f88131bc50 // indirect
-	golang.org/x/net v0.43.0 // indirect
+	golang.org/x/net v0.44.0 // indirect
 	golang.org/x/oauth2 v0.30.0 // indirect
 	golang.org/x/sync v0.17.0 // indirect
 	golang.org/x/sys v0.36.0 // indirect
@@ -255,7 +255,7 @@ require (
 	google.golang.org/genproto/googleapis/api v0.0.0-20250106144421-5f5ef82da422 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20250115164207-1a7da9e5054f // indirect
 	google.golang.org/grpc v1.71.0 // indirect
-	google.golang.org/protobuf v1.36.8 // indirect
+	google.golang.org/protobuf v1.36.9 // indirect
 	gopkg.in/cenkalti/backoff.v1 v1.1.0 // indirect
 	gopkg.in/inf.v0 v0.9.1 // indirect
 	gopkg.in/ini.v1 v1.67.0 // indirect
