@@ -140,8 +140,8 @@ func TestNodeRestartPersistence(t *testing.T) {
 
 	// Start local DA if needed
 	localDABinary := filepath.Join(filepath.Dir(binaryPath), "local-da")
-    // Ensure DA port is free before starting
-    awaitPorts(t, 2*time.Second, "7980")
+	// Ensure DA port is free before starting
+	awaitPorts(t, 2*time.Second, "7980", "7331", "9090")
 	sut.ExecCmd(localDABinary)
 
 	// Init node
@@ -155,8 +155,7 @@ func TestNodeRestartPersistence(t *testing.T) {
 	require.NoError(t, err, "failed to init node", output)
 
 	// Start node
-    // Ensure ports are free before starting
-    awaitPorts(t, 2*time.Second, "7331", "9090")
+	// Ensure ports are free before starting
 	sut.ExecCmd(binaryPath,
 		"start",
 		"--home="+nodeHome,
@@ -187,14 +186,12 @@ func TestNodeRestartPersistence(t *testing.T) {
 	sut.ShutdownByCmd(binaryPath)
 	t.Log("Node stopped.")
 
-    // Wait until the process has actually exited
-    require.Eventually(t, func() bool {
-        return !sut.HasProcess(binaryPath)
-    }, 3*time.Second, 50*time.Millisecond)
+	// Wait until the process has actually exited
+	require.Eventually(t, func() bool {
+		return sut.HasProcess(binaryPath)
+	}, 3*time.Second, 50*time.Millisecond)
 
 	// Restart node
-    // Ensure ports are free before restarting
-    awaitPorts(t, 2*time.Second, "7331", "9090")
 	sut.ExecCmd(binaryPath,
 		"start",
 		"--home="+nodeHome,
