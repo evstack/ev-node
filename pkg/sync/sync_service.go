@@ -182,7 +182,7 @@ func (syncService *SyncService[H]) Start(ctx context.Context) error {
 
 	// Initialize from P2P, blocking until syncing can actually start for follower nodes.
 	// Aggregators (no peers configured) return immediately and initialize on first produced block.
-	return syncService.initFromP2PBlocking(ctx, peerIDs)
+	return syncService.initFromP2PWithRetry(ctx, peerIDs)
 }
 
 // startSyncer starts the SyncService's syncer
@@ -268,7 +268,7 @@ func (syncService *SyncService[H]) setupP2P(ctx context.Context) ([]peer.ID, err
 // initFromP2P looks up for the trusted hash or the genesis header/block.
 // If trusted hash is available, it fetches the trusted header/block (by hash) from peers.
 // Otherwise, it tries to fetch the genesis header/block by height.
-func (syncService *SyncService[H]) initFromP2PBlocking(ctx context.Context, peerIDs []peer.ID) error {
+func (syncService *SyncService[H]) initFromP2PWithRetry(ctx context.Context, peerIDs []peer.ID) error {
 	if len(peerIDs) == 0 {
 		return nil
 	}
@@ -305,19 +305,24 @@ func (syncService *SyncService[H]) initFromP2PBlocking(ctx context.Context, peer
 	// block with exponential backoff until initialization succeeds or context is canceled.
 	backoff := 1 * time.Second
 	maxBackoff := 10 * time.Second
+
+	timeoutTimer := time.NewTimer(time.Minute * 10)
 	for {
 		ok, err := tryInit(ctx)
 		if ok {
 			return nil
 		}
 
-		syncService.logger.Info().Err(err).Dur("retry_in", backoff).Msg("headers not yet available from peers; waiting to initialize header sync")
+		syncService.logger.Info().Err(err).Dur("retry_in", backoff).Msg("headers not yet available from peers, waiting to initialize header sync")
 
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
+		case <-timeoutTimer.C:
+			return fmt.Errorf("timeout reached while trying to initialize the store after 10 minutes: %w", err)
 		case <-time.After(backoff):
 		}
+
 		backoff *= 2
 		if backoff > maxBackoff {
 			backoff = maxBackoff
