@@ -121,11 +121,16 @@ func (syncService *SyncService[H]) Store() *goheaderstore.Store[H] {
 // WriteToStoreAndBroadcast initializes store if needed and broadcasts provided header or block.
 // Note: Only returns an error in case store can't be initialized. Logs error if there's one while broadcasting.
 func (syncService *SyncService[H]) WriteToStoreAndBroadcast(ctx context.Context, headerOrData H) error {
-	if syncService.genesis.InitialHeight == 0 {
-		return fmt.Errorf("invalid initial height; cannot be zero")
-	}
+    if syncService.genesis.InitialHeight == 0 {
+        return fmt.Errorf("invalid initial height; cannot be zero")
+    }
 
-	isGenesis := headerOrData.Height() == syncService.genesis.InitialHeight
+    // Guard against nil/zero payloads to avoid panics on Height() calls.
+    if headerOrData.IsZero() {
+        return fmt.Errorf("empty header/data; cannot write to store or broadcast")
+    }
+
+    isGenesis := headerOrData.Height() == syncService.genesis.InitialHeight
 	if isGenesis { // when starting the syncer for the first time, we have no blocks, so initFromP2P didn't initialize the genesis block.
 		if err := syncService.initStore(ctx, headerOrData); err != nil {
 			return fmt.Errorf("failed to initialize the store: %w", err)
