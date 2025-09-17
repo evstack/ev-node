@@ -64,10 +64,6 @@ func SetupTestRethEngine(t *testing.T, dockerPath, jwtFilename string) string {
 		}
 	})
 	ctx := context.Background()
-
-	// remove any existing containers
-	_ = compose.Down(ctx, tc.RemoveOrphans(true), tc.RemoveVolumes(true))
-
 	err = compose.Up(ctx, tc.Wait(true))
 	require.NoError(t, err, "Failed to start docker compose")
 	err = waitForRethContainer(t, jwtSecret, "http://localhost:8545", "http://localhost:8551")
@@ -224,10 +220,6 @@ func SetupTestRethEngineFullNode(t *testing.T, dockerPath, jwtFilename string) s
 		}
 	})
 	ctx := context.Background()
-
-	// remove any existing containers
-	_ = compose.Down(ctx, tc.RemoveOrphans(true), tc.RemoveVolumes(true))
-
 	err = compose.Up(ctx, tc.Wait(true))
 	require.NoError(t, err, "Failed to start docker compose for full node")
 

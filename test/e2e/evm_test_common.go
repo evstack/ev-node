@@ -541,9 +541,11 @@ func setupCommonEVMTest(t *testing.T, sut *SystemUnderTest, needsFullNode bool, 
 	}
 
 	if len(daPort) > 0 && daPort[0] != "" {
+		// Start DA with specified port
 		sut.ExecCmd(localDABinary, "-port", daPort[0])
 		t.Logf("Started local DA on port %s", daPort[0])
 	} else {
+		// Start DA with default port
 		sut.ExecCmd(localDABinary)
 		t.Log("Started local DA")
 	}
