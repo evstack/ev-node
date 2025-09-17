@@ -32,6 +32,10 @@ func newTestExecutor(t *testing.T) *executing.Executor {
 	s, err := noop.NewNoopSigner(priv)
 	require.NoError(t, err)
 
+	// Get the signer's address to use as proposer
+	signerAddr, err := s.GetAddress()
+	require.NoError(t, err)
+
 	exec, err := executing.NewExecutor(
 		nil, // store (unused)
 		nil, // core executor (unused)
@@ -44,7 +48,7 @@ func newTestExecutor(t *testing.T) *executing.Executor {
 			ChainID:         "test-chain",
 			InitialHeight:   1,
 			StartTime:       time.Now(),
-			ProposerAddress: []byte("p"),
+			ProposerAddress: signerAddr,
 		},
 		nil, // header broadcaster
 		nil, // data broadcaster

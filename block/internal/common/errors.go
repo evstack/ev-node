@@ -4,9 +4,9 @@ import (
 	"errors"
 )
 
-// These errors are used by Manager.
+// These errors are used by block components.
 var (
-	// ErrNotProposer is used when the manager is not a proposer
+	// ErrNotProposer is used when the node is not a proposer
 	ErrNotProposer = errors.New("not a proposer")
 
 	// ErrNoBatch indicate no batch is available for creating block
