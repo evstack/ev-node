@@ -52,7 +52,12 @@ func NewSystemUnderTest(t *testing.T) *SystemUnderTest {
 		outBuff:   ring.New(100),
 		errBuff:   ring.New(100),
 	}
-	t.Cleanup(r.ShutdownAll)
+	t.Cleanup(func() {
+		if t.Failed() {
+			r.PrintBuffer()
+		}
+		r.ShutdownAll()
+	})
 	return r
 }
 

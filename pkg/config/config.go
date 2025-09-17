@@ -235,6 +235,12 @@ func (c *Config) Validate() error {
 		return fmt.Errorf("could not create directory %q: %w", fullDir, err)
 	}
 
+	// Validate lazy mode configuration
+	if c.Node.LazyMode && c.Node.LazyBlockInterval.Duration <= c.Node.BlockTime.Duration {
+		return fmt.Errorf("LazyBlockInterval (%v) must be greater than BlockTime (%v) in lazy mode",
+			c.Node.LazyBlockInterval.Duration, c.Node.BlockTime.Duration)
+	}
+
 	return nil
 }
 

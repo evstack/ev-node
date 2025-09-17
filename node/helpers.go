@@ -76,19 +76,9 @@ func getNodeHeightFromData(node Node) (uint64, error) {
 
 func getNodeHeightFromStore(node Node) (uint64, error) {
 	if fn, ok := node.(*FullNode); ok {
-		height, err := fn.blockManager.GetStoreHeight(context.Background())
-		return height, err
+		return fn.Store.Height(context.Background())
 	}
-	return 0, errors.New("not a full node")
-}
-
-//nolint:unused
-func safeClose(ch chan struct{}) {
-	select {
-	case <-ch:
-	default:
-		close(ch)
-	}
+	return 0, errors.New("not a full node or block components not initialized")
 }
 
 // waitForAtLeastNBlocks waits for the node to have at least n blocks
@@ -108,14 +98,19 @@ func waitForAtLeastNBlocks(node Node, n uint64, source Source) error {
 // waitForAtLeastNDAIncludedHeight waits for the DA included height to be at least n
 func waitForAtLeastNDAIncludedHeight(node Node, n uint64) error {
 	return Retry(300, 100*time.Millisecond, func() error {
-		nHeight := node.(*FullNode).blockManager.GetDAIncludedHeight()
-		if nHeight == 0 {
-			return fmt.Errorf("waiting for DA inclusion")
+		if fn, ok := node.(*FullNode); ok {
+			if fn.blockComponents != nil && fn.blockComponents.Submitter != nil {
+				nHeight := fn.blockComponents.Submitter.GetDAIncludedHeight()
+				if nHeight == 0 {
+					return fmt.Errorf("waiting for DA inclusion")
+				}
+				if nHeight >= n {
+					return nil
+				}
+				return fmt.Errorf("current DA inclusion height %d, expected %d", nHeight, n)
+			}
 		}
-		if nHeight >= n {
-			return nil
-		}
-		return fmt.Errorf("expected height > %v, got %v", n, nHeight)
+		return fmt.Errorf("not a full node or submitter not initialized")
 	})
 }
 
