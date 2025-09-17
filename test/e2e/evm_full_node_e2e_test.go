@@ -296,11 +296,14 @@ func setupSequencerWithFullNode(t *testing.T, sut *SystemUnderTest, sequencerHom
 // verifies that DA (Data Availability) inclusion processes blocks within expected
 // timeframes after allowing sufficient time for DA layer synchronization.
 func TestEvmSequencerWithFullNodeE2E(t *testing.T) {
-	flag.Parse()
-	workDir := t.TempDir()
-	sequencerHome := filepath.Join(workDir, "evm-sequencer")
-	fullNodeHome := filepath.Join(workDir, "evm-full-node")
-	sut := NewSystemUnderTest(t)
+    flag.Parse()
+    workDir := t.TempDir()
+    sequencerHome := filepath.Join(workDir, "evm-sequencer")
+    fullNodeHome := filepath.Join(workDir, "evm-full-node")
+    sut := NewSystemUnderTest(t)
+
+    // Ensure fixed EVM engine ports (and default DA) are free before starting engines
+    awaitPorts(t, 2*time.Second, SequencerEthPort, SequencerEnginePort, FullNodeEthPort, FullNodeEnginePort, DAPort)
 
 	// Setup both sequencer and full node
 	sequencerClient, fullNodeClient := setupSequencerWithFullNode(t, sut, sequencerHome, fullNodeHome)
@@ -501,7 +504,8 @@ func TestEvmFullNodeBlockPropagationE2E(t *testing.T) {
 	workDir := t.TempDir()
 	sequencerHome := filepath.Join(workDir, "evm-sequencer")
 	fullNodeHome := filepath.Join(workDir, "evm-full-node")
-	sut := NewSystemUnderTest(t)
+    sut := NewSystemUnderTest(t)
+    awaitPorts(t, 2*time.Second, SequencerEthPort, SequencerEnginePort, FullNodeEthPort, FullNodeEnginePort, DAPort)
 
 	// Setup both sequencer and full node
 	sequencerClient, fullNodeClient := setupSequencerWithFullNode(t, sut, sequencerHome, fullNodeHome)
@@ -743,7 +747,8 @@ func TestEvmLazyModeSequencerE2E(t *testing.T) {
 	workDir := t.TempDir()
 	sequencerHome := filepath.Join(workDir, "evm-lazy-sequencer")
 	fullNodeHome := filepath.Join(workDir, "evm-lazy-full-node")
-	sut := NewSystemUnderTest(t)
+    sut := NewSystemUnderTest(t)
+    awaitPorts(t, 2*time.Second, SequencerEthPort, SequencerEnginePort, FullNodeEthPort, FullNodeEnginePort)
 
 	// Setup sequencer in lazy mode and full node
 	sequencerClient, fullNodeClient := setupSequencerWithFullNodeLazy(t, sut, sequencerHome, fullNodeHome)

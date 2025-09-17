@@ -38,6 +38,8 @@ func TestBasic(t *testing.T) {
 	// Define and parse the binary flag locally in the test function.
 
 	sut := NewSystemUnderTest(t)
+	// Pre-requisite: ensure static ports are free for this test
+	awaitPorts(t, 2*time.Second, "7980", "7331", "7332", "9090")
 
 	// start local da
 	localDABinary := filepath.Join(filepath.Dir(binaryPath), "local-da")
@@ -138,8 +140,9 @@ func TestNodeRestartPersistence(t *testing.T) {
 
 	// Start local DA if needed
 	localDABinary := filepath.Join(filepath.Dir(binaryPath), "local-da")
+    // Ensure DA port is free before starting
+    awaitPorts(t, 2*time.Second, "7980")
 	sut.ExecCmd(localDABinary)
-	time.Sleep(500 * time.Millisecond)
 
 	// Init node
 	output, err := sut.RunCmd(binaryPath,
@@ -152,6 +155,8 @@ func TestNodeRestartPersistence(t *testing.T) {
 	require.NoError(t, err, "failed to init node", output)
 
 	// Start node
+    // Ensure ports are free before starting
+    awaitPorts(t, 2*time.Second, "7331", "9090")
 	sut.ExecCmd(binaryPath,
 		"start",
 		"--home="+nodeHome,
@@ -188,6 +193,8 @@ func TestNodeRestartPersistence(t *testing.T) {
 	}, 500*time.Millisecond, 10*time.Millisecond)
 
 	// Restart node
+    // Ensure ports are free before restarting
+    awaitPorts(t, 2*time.Second, "7331", "9090")
 	sut.ExecCmd(binaryPath,
 		"start",
 		"--home="+nodeHome,
