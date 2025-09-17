@@ -2,6 +2,8 @@ module github.com/evstack/ev-node/apps/evm/single
 
 go 1.24.2
 
+replace github.com/celestiaorg/go-header => github.com/julienrbrt/go-header v0.0.0-20250909151551-cb11b091bf58 // TODO: to remove after https://github.com/celestiaorg/go-header/pull/347
+
 replace (
 	github.com/evstack/ev-node => ../../../
 	github.com/evstack/ev-node/core => ../../../core
@@ -12,7 +14,7 @@ replace (
 )
 
 require (
-	github.com/celestiaorg/go-header v0.7.1
+	github.com/celestiaorg/go-header v0.7.2
 	github.com/ethereum/go-ethereum v1.16.3
 	github.com/evstack/ev-node v0.14.2-0.20250317130407-e9e0a1b0485e
 	github.com/evstack/ev-node/core v0.0.0-20250317130407-e9e0a1b0485e
@@ -165,7 +167,7 @@ require (
 	github.com/libp2p/go-libp2p-asn-util v0.4.1 // indirect
 	github.com/libp2p/go-libp2p-kad-dht v0.34.0 // indirect
 	github.com/libp2p/go-libp2p-kbucket v0.7.0 // indirect
-	github.com/libp2p/go-libp2p-pubsub v0.14.2 // indirect
+	github.com/libp2p/go-libp2p-pubsub v0.14.3 // indirect
 	github.com/libp2p/go-libp2p-record v0.3.1 // indirect
 	github.com/libp2p/go-libp2p-routing-helpers v0.7.5 // indirect
 	github.com/libp2p/go-msgio v0.3.0 // indirect
@@ -325,7 +327,7 @@ require (
 	golang.org/x/crypto v0.42.0 // indirect
 	golang.org/x/exp v0.0.0-20250811191247-51f88131bc50 // indirect
 	golang.org/x/mod v0.27.0 // indirect
-	golang.org/x/net v0.43.0 // indirect
+	golang.org/x/net v0.44.0 // indirect
 	golang.org/x/oauth2 v0.30.0 // indirect
 	golang.org/x/sync v0.17.0 // indirect
 	golang.org/x/sys v0.36.0 // indirect
@@ -338,7 +340,7 @@ require (
 	google.golang.org/genproto/googleapis/api v0.0.0-20250603155806-513f23925822 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20250603155806-513f23925822 // indirect
 	google.golang.org/grpc v1.73.0 // indirect
-	google.golang.org/protobuf v1.36.8 // indirect
+	google.golang.org/protobuf v1.36.9 // indirect
 	gopkg.in/cenkalti/backoff.v1 v1.1.0 // indirect
 	gopkg.in/inf.v0 v0.9.1 // indirect
 	gopkg.in/ini.v1 v1.67.0 // indirect
