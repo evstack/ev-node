@@ -325,13 +325,13 @@ func setupSequencerNode(t *testing.T, sut *SystemUnderTest, sequencerHome, jwtSe
 	)
 	require.NoError(t, err, "failed to init sequencer", output)
 
-    if ports == nil {
-        // Fallback to default ports if none provided
-        sut.ExecCmd(evmSingleBinaryPath,
-            "start",
-            "--evm.jwt-secret", jwtSecret,
-            "--evm.genesis-hash", genesisHash,
-            "--rollkit.node.block_time", DefaultBlockTime,
+	if ports == nil {
+		// Fallback to default ports if none provided
+		sut.ExecCmd(evmSingleBinaryPath,
+			"start",
+			"--evm.jwt-secret", jwtSecret,
+			"--evm.genesis-hash", genesisHash,
+			"--rollkit.node.block_time", DefaultBlockTime,
 			"--rollkit.node.aggregator=true",
 			"--rollkit.signer.passphrase", TestPassphrase,
 			"--home", sequencerHome,
@@ -339,13 +339,13 @@ func setupSequencerNode(t *testing.T, sut *SystemUnderTest, sequencerHome, jwtSe
 			"--rollkit.da.block_time", DefaultDABlockTime,
 		)
 		sut.AwaitNodeUp(t, RollkitRPCAddress, NodeStartupTimeout)
-    } else {
-        // Start sequencer node with dynamic rollkit ports, fixed EVM engine ports
-        sut.ExecCmd(evmSingleBinaryPath,
-            "start",
-            "--evm.jwt-secret", jwtSecret,
-            "--evm.genesis-hash", genesisHash,
-            "--rollkit.node.block_time", DefaultBlockTime,
+	} else {
+		// Start sequencer node with dynamic rollkit ports, fixed EVM engine ports
+		sut.ExecCmd(evmSingleBinaryPath,
+			"start",
+			"--evm.jwt-secret", jwtSecret,
+			"--evm.genesis-hash", genesisHash,
+			"--rollkit.node.block_time", DefaultBlockTime,
 			"--rollkit.node.aggregator=true",
 			"--rollkit.signer.passphrase", TestPassphrase,
 			"--home", sequencerHome,
@@ -375,13 +375,13 @@ func setupSequencerNodeLazy(t *testing.T, sut *SystemUnderTest, sequencerHome, j
 	)
 	require.NoError(t, err, "failed to init sequencer", output)
 
-    if ports == nil {
-        // Fallback to default ports if none provided
-        sut.ExecCmd(evmSingleBinaryPath,
-            "start",
-            "--evm.jwt-secret", jwtSecret,
-            "--evm.genesis-hash", genesisHash,
-            "--rollkit.node.block_time", DefaultBlockTime,
+	if ports == nil {
+		// Fallback to default ports if none provided
+		sut.ExecCmd(evmSingleBinaryPath,
+			"start",
+			"--evm.jwt-secret", jwtSecret,
+			"--evm.genesis-hash", genesisHash,
+			"--rollkit.node.block_time", DefaultBlockTime,
 			"--rollkit.node.aggregator=true",
 			"--rollkit.node.lazy_mode=true",
 			"--rollkit.node.lazy_block_interval=60s",
@@ -391,13 +391,13 @@ func setupSequencerNodeLazy(t *testing.T, sut *SystemUnderTest, sequencerHome, j
 			"--rollkit.da.block_time", DefaultDABlockTime,
 		)
 		sut.AwaitNodeUp(t, RollkitRPCAddress, NodeStartupTimeout)
-    } else {
-        // Start sequencer node in lazy mode with dynamic rollkit ports, fixed EVM engine ports
-        sut.ExecCmd(evmSingleBinaryPath,
-            "start",
-            "--evm.jwt-secret", jwtSecret,
-            "--evm.genesis-hash", genesisHash,
-            "--rollkit.node.block_time", DefaultBlockTime,
+	} else {
+		// Start sequencer node in lazy mode with dynamic rollkit ports, fixed EVM engine ports
+		sut.ExecCmd(evmSingleBinaryPath,
+			"start",
+			"--evm.jwt-secret", jwtSecret,
+			"--evm.genesis-hash", genesisHash,
+			"--rollkit.node.block_time", DefaultBlockTime,
 			"--rollkit.node.aggregator=true",
 			"--rollkit.node.lazy_mode=true",          // Enable lazy mode
 			"--rollkit.node.lazy_block_interval=60s", // Set lazy block interval to 60 seconds to prevent timer-based block production during test
@@ -447,13 +447,13 @@ func setupFullNode(t *testing.T, sut *SystemUnderTest, fullNodeHome, sequencerHo
 	err = os.WriteFile(fullNodeGenesis, genesisData, 0644)
 	require.NoError(t, err, "failed to write full node genesis file")
 
-    if ports == nil {
-        // Fallback to default ports if none provided
-        sut.ExecCmd(evmSingleBinaryPath,
-            "start",
-            "--home", fullNodeHome,
-            "--evm.jwt-secret", fullNodeJwtSecret,
-            "--evm.genesis-hash", genesisHash,
+	if ports == nil {
+		// Fallback to default ports if none provided
+		sut.ExecCmd(evmSingleBinaryPath,
+			"start",
+			"--home", fullNodeHome,
+			"--evm.jwt-secret", fullNodeJwtSecret,
+			"--evm.genesis-hash", genesisHash,
 			"--rollkit.rpc.address", "127.0.0.1:"+FullNodeRPCPort,
 			"--rollkit.p2p.listen_address", "/ip4/127.0.0.1/tcp/"+FullNodeP2PPort,
 			"--rollkit.p2p.peers", sequencerP2PAddress,
@@ -463,13 +463,13 @@ func setupFullNode(t *testing.T, sut *SystemUnderTest, fullNodeHome, sequencerHo
 			"--rollkit.da.block_time", DefaultDABlockTime,
 		)
 		sut.AwaitNodeUp(t, "http://127.0.0.1:"+FullNodeRPCPort, NodeStartupTimeout)
-    } else {
-        // Start full node with dynamic rollkit ports, fixed EVM engine ports
-        sut.ExecCmd(evmSingleBinaryPath,
-            "start",
-            "--home", fullNodeHome,
-            "--evm.jwt-secret", fullNodeJwtSecret,
-            "--evm.genesis-hash", genesisHash,
+	} else {
+		// Start full node with dynamic rollkit ports, fixed EVM engine ports
+		sut.ExecCmd(evmSingleBinaryPath,
+			"start",
+			"--home", fullNodeHome,
+			"--evm.jwt-secret", fullNodeJwtSecret,
+			"--evm.genesis-hash", genesisHash,
 			"--rollkit.rpc.address", "127.0.0.1:"+ports.FullNodeRPCPort,
 			"--rollkit.p2p.listen_address", "/ip4/127.0.0.1/tcp/"+ports.FullNodeP2PPort,
 			"--rollkit.p2p.peers", sequencerP2PAddress,
@@ -540,13 +540,13 @@ func setupCommonEVMTest(t *testing.T, sut *SystemUnderTest, needsFullNode bool, 
 		localDABinary = filepath.Join(filepath.Dir(evmSingleBinaryPath), "local-da")
 	}
 
-    if len(daPort) > 0 && daPort[0] != "" {
-        sut.ExecCmd(localDABinary, "-port", daPort[0])
-        t.Logf("Started local DA on port %s", daPort[0])
-    } else {
-        sut.ExecCmd(localDABinary)
-        t.Log("Started local DA")
-    }
+	if len(daPort) > 0 && daPort[0] != "" {
+		sut.ExecCmd(localDABinary, "-port", daPort[0])
+		t.Logf("Started local DA on port %s", daPort[0])
+	} else {
+		sut.ExecCmd(localDABinary)
+		t.Log("Started local DA")
+	}
 
 	// Start EVM engines
 	jwtSecret := setupTestRethEngineE2E(t)

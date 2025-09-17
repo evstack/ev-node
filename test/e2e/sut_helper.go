@@ -8,7 +8,6 @@ import (
 	"io"
 	"iter"
 	"maps"
-	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -53,7 +52,12 @@ func NewSystemUnderTest(t *testing.T) *SystemUnderTest {
 		outBuff:   ring.New(100),
 		errBuff:   ring.New(100),
 	}
-	t.Cleanup(r.ShutdownAll)
+	t.Cleanup(func() {
+		if t.Failed() {
+			r.PrintBuffer()
+		}
+		r.ShutdownAll()
+	})
 	return r
 }
 
@@ -100,41 +104,6 @@ func (s *SystemUnderTest) AwaitNodeUp(t *testing.T, rpcAddr string, timeout time
 		_, err := c.GetHealth(ctx)
 		require.NoError(t, err)
 	}, timeout, timeout/10, "node is not up")
-}
-
-// awaitPorts waits until all provided TCP ports are free (bindable) on localhost.
-// Pass ports as strings (e.g., "7331", "9090"). Fails only after the timeout
-// if any port remains busy.
-func awaitPorts(t *testing.T, timeout time.Duration, ports ...string) {
-    t.Helper()
-    if len(ports) == 0 {
-        return
-    }
-    remaining := make(map[string]struct{}, len(ports))
-    for _, p := range ports {
-        remaining[p] = struct{}{}
-    }
-    deadline := time.Now().Add(timeout)
-    for time.Now().Before(deadline) {
-        for p := range remaining {
-            addr := "127.0.0.1:" + p
-            ln, err := net.Listen("tcp", addr)
-            if err == nil {
-                _ = ln.Close()
-                delete(remaining, p)
-            }
-        }
-        if len(remaining) == 0 {
-            return
-        }
-        time.Sleep(50 * time.Millisecond)
-    }
-    // Timeout: report which ports are still busy
-    busy := make([]string, 0, len(remaining))
-    for p := range remaining {
-        busy = append(busy, p)
-    }
-    t.Fatalf("ports not free after %v: %v", timeout, strings.Join(busy, ", "))
 }
 
 // AwaitNBlocks waits until the node has produced at least `n` blocks.
