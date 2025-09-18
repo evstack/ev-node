@@ -4,8 +4,6 @@ go 1.24.2
 
 retract v0.12.0 // Published by accident
 
-replace github.com/evstack/ev-node/core => ./core
-
 replace github.com/ipfs/go-datastore => github.com/celestiaorg/go-datastore v0.0.0-20250801131506-48a63ae531e4
 
 require (
@@ -13,7 +11,7 @@ require (
 	connectrpc.com/grpcreflect v1.3.0
 	github.com/celestiaorg/go-header v0.7.2
 	github.com/celestiaorg/utils v0.1.0
-	github.com/evstack/ev-node/core v0.0.0-00010101000000-000000000000
+	github.com/evstack/ev-node/core v1.0.0-beta.2
 	github.com/go-kit/kit v0.13.0
 	github.com/goccy/go-yaml v1.18.0
 	github.com/ipfs/go-datastore v0.8.3
