@@ -250,7 +250,8 @@ func (s *Syncer) syncLoop() {
 	var hffDelay time.Duration
 	var nextDARequestAt time.Time
 
-	//TODO: we should request to see what the head of the chain is at, then we know if we are falling behinf or in sync mode
+	// TODO: we should request to see what the head of the chain is at
+	// then we know if we are falling behinf or in sync mode
 syncLoop:
 	for {
 		select {
@@ -361,11 +362,8 @@ func (s *Syncer) processHeightEvent(event *common.DAHeightEvent) {
 		return
 	}
 
-	// Cache the header and data
-	s.cache.SetHeader(height, event.Header)
-	s.cache.SetData(height, event.Data)
-
 	// If this is not the next block in sequence, store as pending event
+	// This check is crucial as trySyncNextBlock simply attempts to sync the next block
 	if height != currentHeight+1 {
 		// Create a DAHeightEvent that matches the cache interface
 		pendingEvent := &common.DAHeightEvent{
@@ -380,20 +378,15 @@ func (s *Syncer) processHeightEvent(event *common.DAHeightEvent) {
 	}
 
 	// Try to sync the next block
-	if err := s.trySyncNextBlock(event.DaHeight); err != nil {
+	if err := s.trySyncNextBlock(event); err != nil {
 		s.logger.Error().Err(err).Msg("failed to sync next block")
 		return
-	}
-
-	// Mark as seen
-	s.cache.SetHeaderSeen(headerHash)
-	if !bytes.Equal(event.Header.DataHash, common.DataHashForEmptyTxs) {
-		s.cache.SetDataSeen(event.Data.DACommitment().String())
 	}
 }
 
 // trySyncNextBlock attempts to sync the next available block
-func (s *Syncer) trySyncNextBlock(daHeight uint64) error {
+// the event is always the next block in sequence as processHeightEvent ensures it.
+func (s *Syncer) trySyncNextBlock(event *common.DAHeightEvent) error {
 	for {
 		select {
 		case <-s.ctx.Done():
@@ -401,28 +394,11 @@ func (s *Syncer) trySyncNextBlock(daHeight uint64) error {
 		default:
 		}
 
-		currentHeight, err := s.store.Height(s.ctx)
-		if err != nil {
-			return fmt.Errorf("failed to get current height: %w", err)
-		}
-
-		nextHeight := currentHeight + 1
-		header := s.cache.GetHeader(nextHeight)
-		if header == nil {
-			s.logger.Debug().Uint64("height", nextHeight).Msg("header not available")
-			return nil
-		}
-
-		data := s.cache.GetData(nextHeight)
-		if data == nil {
-			s.logger.Debug().Uint64("height", nextHeight).Msg("data not available")
-			return nil
-		}
+		header := event.Header
+		data := event.Data
+		nextHeight := event.Header.Height()
 
 		s.logger.Info().Uint64("height", nextHeight).Msg("syncing block")
-
-		// Set custom verifier for sync node
-		header.SetCustomVerifierForSyncNode(types.DefaultSyncNodeSignatureBytesProvider)
 
 		// Apply block
 		currentState := s.GetLastState()
@@ -432,7 +408,7 @@ func (s *Syncer) trySyncNextBlock(daHeight uint64) error {
 		}
 
 		// Validate block
-		if err := s.validateBlock(currentState, header, data); err != nil {
+		if err := s.validateBlock(currentState, header, data, event.DaHeight); err != nil {
 			return fmt.Errorf("failed to validate block: %w", err)
 		}
 
@@ -447,16 +423,12 @@ func (s *Syncer) trySyncNextBlock(daHeight uint64) error {
 		}
 
 		// Update state
-		if daHeight > newState.DAHeight {
-			newState.DAHeight = daHeight
+		if event.DaHeight > newState.DAHeight {
+			newState.DAHeight = event.DaHeight
 		}
 		if err := s.updateState(newState); err != nil {
 			return fmt.Errorf("failed to update state: %w", err)
 		}
-
-		// Clear cache
-		s.cache.ClearProcessedHeader(nextHeight)
-		s.cache.ClearProcessedData(nextHeight)
 
 		// Mark as seen
 		s.cache.SetHeaderSeen(header.Hash().String())
@@ -493,7 +465,12 @@ func (s *Syncer) applyBlock(header types.Header, data *types.Data, currentState 
 }
 
 // validateBlock validates a synced block
-func (s *Syncer) validateBlock(lastState types.State, header *types.SignedHeader, data *types.Data) error {
+func (s *Syncer) validateBlock(
+	lastState types.State,
+	header *types.SignedHeader,
+	data *types.Data,
+	daHeight uint64,
+) error {
 	// Set custom verifier for aggregator node signature
 	header.SetCustomVerifierForSyncNode(s.options.SyncNodeSignatureBytesProvider)
 
@@ -501,6 +478,16 @@ func (s *Syncer) validateBlock(lastState types.State, header *types.SignedHeader
 	if err := header.ValidateBasicWithData(data); err != nil {
 		return fmt.Errorf("header-data validation failed: %w", err)
 	}
+
+	// Mark as DA included
+	headerHash := header.Hash().String()
+	s.cache.SetHeaderDAIncluded(headerHash, daHeight)
+
+	s.logger.Info().
+		Str("header_hash", headerHash).
+		Uint64("da_height", daHeight).
+		Uint64("height", header.Height()).
+		Msg("header marked as DA included")
 
 	return nil
 }
