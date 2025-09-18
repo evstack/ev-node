@@ -60,10 +60,8 @@ type Syncer struct {
 	dataStore   goheader.Store[*types.Data]
 
 	// Channels for coordination
-	heightInCh    chan common.DAHeightEvent
-	headerStoreCh chan struct{}
-	dataStoreCh   chan struct{}
-	errorCh       chan<- error // Channel to report critical execution client failures
+	heightInCh chan common.DAHeightEvent
+	errorCh    chan<- error // Channel to report critical execution client failures
 
 	// Handlers
 	daRetriever daRetriever
@@ -94,23 +92,21 @@ func NewSyncer(
 	errorCh chan<- error,
 ) *Syncer {
 	return &Syncer{
-		store:         store,
-		exec:          exec,
-		da:            da,
-		cache:         cache,
-		metrics:       metrics,
-		config:        config,
-		genesis:       genesis,
-		options:       options,
-		headerStore:   headerStore,
-		dataStore:     dataStore,
-		lastStateMtx:  &sync.RWMutex{},
-		daStateMtx:    &sync.RWMutex{},
-		heightInCh:    make(chan common.DAHeightEvent, 0),
-		headerStoreCh: make(chan struct{}, 1),
-		dataStoreCh:   make(chan struct{}, 1),
-		errorCh:       errorCh,
-		logger:        logger.With().Str("component", "syncer").Logger(),
+		store:        store,
+		exec:         exec,
+		da:           da,
+		cache:        cache,
+		metrics:      metrics,
+		config:       config,
+		genesis:      genesis,
+		options:      options,
+		headerStore:  headerStore,
+		dataStore:    dataStore,
+		lastStateMtx: &sync.RWMutex{},
+		daStateMtx:   &sync.RWMutex{},
+		heightInCh:   make(chan common.DAHeightEvent),
+		errorCh:      errorCh,
+		logger:       logger.With().Str("component", "syncer").Logger(),
 	}
 }
 
@@ -221,17 +217,10 @@ func (s *Syncer) processLoop() {
 	s.logger.Info().Msg("starting process loop")
 	defer s.logger.Info().Msg("process loop stopped")
 
-	blockTicker := time.NewTicker(s.config.Node.BlockTime.Duration)
-	defer blockTicker.Stop()
-
 	for {
 		select {
 		case <-s.ctx.Done():
 			return
-		case <-blockTicker.C:
-			// Signal P2P stores to check for new data
-			s.sendNonBlockingSignal(s.headerStoreCh, "header_store")
-			s.sendNonBlockingSignal(s.dataStoreCh, "data_store")
 		case heightEvent := <-s.heightInCh:
 			s.processHeightEvent(&heightEvent)
 		}
@@ -255,6 +244,9 @@ func (s *Syncer) syncLoop() {
 	// Backoff control when DA replies with height-from-future
 	var hffDelay time.Duration
 	var nextDARequestAt time.Time
+
+	blockTicker := time.NewTicker(s.config.Node.BlockTime.Duration)
+	defer blockTicker.Stop()
 
 	//TODO: we should request to see what the head of the chain is at, then we know if we are falling behinf or in sync mode
 	for {
@@ -308,9 +300,8 @@ func (s *Syncer) syncLoop() {
 		}
 
 		// Opportunistically process any P2P signals
-		processedP2P := false
 		select {
-		case <-s.headerStoreCh:
+		case <-blockTicker.C:
 			newHeaderHeight := s.headerStore.Height()
 			if newHeaderHeight > lastHeaderHeight {
 				events := s.p2pHandler.ProcessHeaderRange(s.ctx, lastHeaderHeight+1, newHeaderHeight)
@@ -321,11 +312,9 @@ func (s *Syncer) syncLoop() {
 						s.cache.SetPendingEvent(event.Header.Height(), &event)
 					}
 				}
-
 				lastHeaderHeight = newHeaderHeight
 			}
-			processedP2P = true
-		case <-s.dataStoreCh:
+
 			newDataHeight := s.dataStore.Height()
 			if newDataHeight > lastDataHeight {
 				events := s.p2pHandler.ProcessDataRange(s.ctx, lastDataHeight+1, newDataHeight)
@@ -338,11 +327,7 @@ func (s *Syncer) syncLoop() {
 				}
 				lastDataHeight = newDataHeight
 			}
-			processedP2P = true
 		default:
-		}
-
-		if !processedP2P {
 			// Yield CPU to avoid tight spin when no events are available
 			runtime.Gosched()
 		}

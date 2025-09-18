@@ -10,7 +10,6 @@ import (
 	"github.com/evstack/ev-node/core/execution"
 	"github.com/evstack/ev-node/pkg/genesis"
 	"github.com/ipfs/go-datastore"
-	"github.com/ipfs/go-datastore/sync"
 	dssync "github.com/ipfs/go-datastore/sync"
 	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/assert"
@@ -150,7 +149,7 @@ func TestSyncer_processPendingEvents(t *testing.T) {
 }
 
 func TestSyncLoopPersistState(t *testing.T) {
-	ds := sync.MutexWrap(datastore.NewMapDatastore())
+	ds := dssync.MutexWrap(datastore.NewMapDatastore())
 	st := store.New(ds)
 	cm, err := cache.NewManager(config.DefaultConfig, st, zerolog.Nop())
 	require.NoError(t, err)
@@ -204,11 +203,11 @@ func TestSyncLoopPersistState(t *testing.T) {
 			DaHeight:               daHeight,
 			HeaderDaIncludedHeight: daHeight,
 		}}
-		daRtrMock.On("RetrieveFromDA", mock.Anything, uint64(daHeight)).Return(evts, nil)
+		daRtrMock.On("RetrieveFromDA", mock.Anything, daHeight).Return(evts, nil)
 	}
 
 	// stop at next height
-	daRtrMock.On("RetrieveFromDA", mock.Anything, uint64(myFutureDAHeight)).
+	daRtrMock.On("RetrieveFromDA", mock.Anything, myFutureDAHeight).
 		Run(func(_ mock.Arguments) {
 			// wait for consumer to catch up
 			require.Eventually(t, func() bool {
@@ -220,7 +219,7 @@ func TestSyncLoopPersistState(t *testing.T) {
 
 	go syncerInst1.processLoop()
 
-	// sync from DA until stop height reached
+	// dssync from DA until stop height reached
 	syncerInst1.syncLoop()
 	t.Log("syncLoop on instance1 completed")
 
