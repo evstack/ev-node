@@ -408,17 +408,17 @@ func (s *Syncer) trySyncNextBlock(event *common.DAHeightEvent) error {
 
 		s.logger.Info().Uint64("height", nextHeight).Msg("syncing block")
 
+		// Compared to the executor logic where the current block needs to be applied first,
+		// here only the previous block needs to be applied to proceed to the verification.
+		// The header validation must be done before applying the block to avoid executing gibberish
+		if err := s.validateBlock(currentState, header, data, event.HeaderDaIncludedHeight); err != nil {
+			return fmt.Errorf("failed to validate block: %w", err)
+		}
+
 		// Apply block
-		// IMPORTANT TODO: This must be done in a cache store as block validation can fail.
 		newState, err := s.applyBlock(header.Header, data, currentState)
 		if err != nil {
 			return fmt.Errorf("failed to apply block: %w", err)
-		}
-
-		// Note, validateBlock is called after applyBlock
-		// because the validation process may require state of the block in order to be verified.
-		if err := s.validateBlock(currentState, header, data, event.HeaderDaIncludedHeight); err != nil {
-			return fmt.Errorf("failed to validate block: %w", err)
 		}
 
 		// Save block
@@ -444,6 +444,8 @@ func (s *Syncer) trySyncNextBlock(event *common.DAHeightEvent) error {
 		if !bytes.Equal(header.DataHash, common.DataHashForEmptyTxs) {
 			s.cache.SetDataSeen(data.DACommitment().String())
 		}
+
+		return nil
 	}
 }
 

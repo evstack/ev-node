@@ -82,6 +82,7 @@ func (h *P2PHandler) ProcessHeaderRange(ctx context.Context, startHeight, endHei
 		}
 
 		// further header validation (signature) is done in validateBlock.
+		// we need to be sure that the previous block n-1 was executed before validating block n
 
 		// Create height event
 		event := common.DAHeightEvent{
@@ -134,6 +135,7 @@ func (h *P2PHandler) ProcessDataRange(ctx context.Context, startHeight, endHeigh
 		}
 
 		// further header validation (signature) is done in validateBlock.
+		// we need to be sure that the previous block n-1 was executed before validating block n
 
 		// Create height event
 		event := common.DAHeightEvent{
