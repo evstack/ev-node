@@ -15,7 +15,7 @@ replace (
 require (
 	github.com/celestiaorg/go-header v0.7.2
 	github.com/ethereum/go-ethereum v1.16.3
-	github.com/evstack/ev-node v0.14.2-0.20250317130407-e9e0a1b0485e
+	github.com/evstack/ev-node v1.0.0-beta.3
 	github.com/evstack/ev-node/core v1.0.0-beta.2
 	github.com/evstack/ev-node/da v0.0.0-20250317130407-e9e0a1b0485e
 	github.com/evstack/ev-node/execution/evm v0.0.0-00010101000000-000000000000
