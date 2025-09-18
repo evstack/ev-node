@@ -38,16 +38,6 @@ func TestManager_HeaderDataOperations(t *testing.T) {
 	m, err := NewManager(cfg, st, zerolog.Nop())
 	require.NoError(t, err)
 
-	// construct simple header and data
-	header := &types.SignedHeader{Header: types.Header{BaseHeader: types.BaseHeader{ChainID: "test", Height: 1}}}
-	data := &types.Data{Metadata: &types.Metadata{ChainID: "test", Height: 1}}
-
-	// set and get by height
-	m.SetHeader(1, header)
-	m.SetData(1, data)
-	assert.Equal(t, header, m.GetHeader(1))
-	assert.Equal(t, data, m.GetData(1))
-
 	// seen & DA included flags
 	m.SetHeaderSeen("h1")
 	m.SetDataSeen("d1")
@@ -60,12 +50,6 @@ func TestManager_HeaderDataOperations(t *testing.T) {
 	assert.True(t, ok)
 	_, ok = m.GetDataDAIncluded("d1")
 	assert.True(t, ok)
-
-	// cleanup of processed
-	m.ClearProcessedHeader(1)
-	m.ClearProcessedData(1)
-	assert.Nil(t, m.GetHeader(1))
-	assert.Nil(t, m.GetData(1))
 }
 
 func TestManager_PendingEventsCRUD(t *testing.T) {
@@ -114,8 +98,6 @@ func TestManager_SaveAndLoadFromDisk(t *testing.T) {
 	// populate caches
 	hdr := &types.SignedHeader{Header: types.Header{BaseHeader: types.BaseHeader{ChainID: "c", Height: 2}}}
 	dat := &types.Data{Metadata: &types.Metadata{ChainID: "c", Height: 2}}
-	m1.SetHeader(2, hdr)
-	m1.SetData(2, dat)
 	m1.SetHeaderSeen("H2")
 	m1.SetDataSeen("D2")
 	m1.SetHeaderDAIncluded("H2", 100)
@@ -131,8 +113,6 @@ func TestManager_SaveAndLoadFromDisk(t *testing.T) {
 	require.NoError(t, err)
 
 	// check loaded items
-	assert.NotNil(t, m2.GetHeader(2))
-	assert.NotNil(t, m2.GetData(2))
 	assert.True(t, m2.IsHeaderSeen("H2"))
 	assert.True(t, m2.IsDataSeen("D2"))
 	_, ok := m2.GetHeaderDAIncluded("H2")

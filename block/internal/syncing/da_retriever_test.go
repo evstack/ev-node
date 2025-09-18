@@ -118,7 +118,7 @@ func TestDARetriever_ProcessBlobs_HeaderAndData_Success(t *testing.T) {
 	_, lastState := types.State{}, types.State{}
 	_ = lastState // placeholder to keep parity with helper pattern
 
-	hdrBin, hdr := makeSignedHeaderBytes(t, gen.ChainID, 2, addr, pub, signer, nil)
+	hdrBin, _ := makeSignedHeaderBytes(t, gen.ChainID, 2, addr, pub, signer, nil)
 	dataBin, _ := makeSignedDataBytes(t, gen.ChainID, 2, addr, pub, signer, 2)
 
 	events := r.processBlobs(context.Background(), [][]byte{hdrBin, dataBin}, 77)
@@ -127,11 +127,6 @@ func TestDARetriever_ProcessBlobs_HeaderAndData_Success(t *testing.T) {
 	assert.Equal(t, uint64(2), events[0].Data.Height())
 	assert.Equal(t, uint64(77), events[0].DaHeight)
 	assert.Equal(t, uint64(77), events[0].HeaderDaIncludedHeight)
-
-	// DA included markers should be set by tryDecodeHeader/tryDecodeData
-	if hHeight, ok := cm.GetHeaderDAIncluded(hdr.Hash().String()); assert.True(t, ok) {
-		assert.Equal(t, uint64(77), hHeight)
-	}
 }
 
 func TestDARetriever_ProcessBlobs_HeaderOnly_EmptyDataExpected(t *testing.T) {

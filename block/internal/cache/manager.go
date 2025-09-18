@@ -38,16 +38,12 @@ func registerGobTypes() {
 // Manager provides centralized cache management for both executing and syncing components
 type Manager interface {
 	// Header operations
-	GetHeader(height uint64) *types.SignedHeader
-	SetHeader(height uint64, header *types.SignedHeader)
 	IsHeaderSeen(hash string) bool
 	SetHeaderSeen(hash string)
 	GetHeaderDAIncluded(hash string) (uint64, bool)
 	SetHeaderDAIncluded(hash string, daHeight uint64)
 
 	// Data operations
-	GetData(height uint64) *types.Data
-	SetData(height uint64, data *types.Data)
 	IsDataSeen(hash string) bool
 	SetDataSeen(hash string)
 	GetDataDAIncluded(hash string) (uint64, bool)
@@ -58,18 +54,15 @@ type Manager interface {
 	GetPendingData(ctx context.Context) ([]*types.SignedData, error)
 	SetLastSubmittedHeaderHeight(ctx context.Context, height uint64)
 	SetLastSubmittedDataHeight(ctx context.Context, height uint64)
-
 	NumPendingHeaders() uint64
 	NumPendingData() uint64
 
-	// Pending events for DA coordination
+	// Pending events syncing coordination
 	SetPendingEvent(height uint64, event *common.DAHeightEvent)
 	GetPendingEvents() map[uint64]*common.DAHeightEvent
 	DeletePendingEvent(height uint64)
 
 	// Cleanup operations
-	ClearProcessedHeader(height uint64)
-	ClearProcessedData(height uint64)
 	SaveToDisk() error
 	LoadFromDisk() error
 }
@@ -122,14 +115,6 @@ func NewManager(cfg config.Config, store store.Store, logger zerolog.Logger) (Ma
 }
 
 // Header operations
-func (m *implementation) GetHeader(height uint64) *types.SignedHeader {
-	return m.headerCache.getItem(height)
-}
-
-func (m *implementation) SetHeader(height uint64, header *types.SignedHeader) {
-	m.headerCache.setItem(height, header)
-}
-
 func (m *implementation) IsHeaderSeen(hash string) bool {
 	return m.headerCache.isSeen(hash)
 }
@@ -147,14 +132,6 @@ func (m *implementation) SetHeaderDAIncluded(hash string, daHeight uint64) {
 }
 
 // Data operations
-func (m *implementation) GetData(height uint64) *types.Data {
-	return m.dataCache.getItem(height)
-}
-
-func (m *implementation) SetData(height uint64, data *types.Data) {
-	m.dataCache.setItem(height, data)
-}
-
 func (m *implementation) IsDataSeen(hash string) bool {
 	return m.dataCache.isSeen(hash)
 }
@@ -234,15 +211,6 @@ func (m *implementation) GetPendingEvents() map[uint64]*common.DAHeightEvent {
 
 func (m *implementation) DeletePendingEvent(height uint64) {
 	m.pendingEventsCache.deleteItem(height)
-}
-
-// Cleanup operations
-func (m *implementation) ClearProcessedHeader(height uint64) {
-	m.headerCache.deleteItem(height)
-}
-
-func (m *implementation) ClearProcessedData(height uint64) {
-	m.dataCache.deleteItem(height)
 }
 
 func (m *implementation) SaveToDisk() error {

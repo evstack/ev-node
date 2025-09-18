@@ -76,7 +76,6 @@ func (r *DARetriever) RetrieveFromDA(ctx context.Context, daHeight uint64) ([]co
 			r.logger.Debug().Int("blobs", len(blobsResp.Data)).Uint64("da_height", daHeight).Msg("retrieved blob data")
 			events := r.processBlobs(ctx, blobsResp.Data, daHeight)
 			return events, nil
-
 		}
 
 		if strings.Contains(fetchErr.Error(), coreda.ErrHeightFromFuture.Error()) {
@@ -247,15 +246,9 @@ func (r *DARetriever) tryDecodeHeader(bz []byte, daHeight uint64) *types.SignedH
 		return nil
 	}
 
-	// Mark as DA included
-	headerHash := header.Hash().String()
-	r.cache.SetHeaderDAIncluded(headerHash, daHeight)
-
-	r.logger.Info().
-		Str("header_hash", headerHash).
-		Uint64("da_height", daHeight).
-		Uint64("height", header.Height()).
-		Msg("header marked as DA included")
+	// note, we cannot mark the header as DA included
+	// we haven't done any signature verification check here
+	// signature verification happens with data.
 
 	return header
 }
@@ -293,7 +286,6 @@ func (r *DARetriever) tryDecodeData(bz []byte, daHeight uint64) *types.Data {
 
 // isEmptyDataExpected checks if empty data is expected for a header
 func (r *DARetriever) isEmptyDataExpected(header *types.SignedHeader) bool {
-
 	return len(header.DataHash) == 0 || bytes.Equal(header.DataHash, common.DataHashForEmptyTxs)
 }
 
