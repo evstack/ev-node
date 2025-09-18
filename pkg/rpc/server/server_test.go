@@ -377,7 +377,7 @@ func TestHealthLiveEndpoint(t *testing.T) {
 	// Create the service handler
 	logger := zerolog.Nop()
 	testConfig := config.DefaultConfig
-	handler, err := NewServiceHandler(mockStore, mockP2PManager, nil, logger, testConfig)
+	handler, err := NewServiceHandler(mockStore, mockP2PManager, nil, logger, testConfig, nil)
 	assert.NoError(err)
 	assert.NotNil(handler)
 
@@ -397,4 +397,57 @@ func TestHealthLiveEndpoint(t *testing.T) {
 	body, err := io.ReadAll(resp.Body)
 	assert.NoError(err)
 	assert.Equal("OK\n", string(body)) // fmt.Fprintln adds a newline
+}
+
+func TestHealthReadyEndpoint_Ready(t *testing.T) {
+	mockStore := mocks.NewMockStore(t)
+	mockP2P := mocks.NewMockP2PRPC(t)
+
+	// local height and best-known within allowed lag
+	mockStore.On("Height", mock.Anything).Return(uint64(10), nil)
+	mockP2P.On("GetPeers").Return([]peer.AddrInfo{{}}, nil)
+
+	logger := zerolog.Nop()
+	testConfig := config.DefaultConfig
+	testConfig.Node.BlockTime.Duration = 1 * time.Second
+	testConfig.Node.Aggregator = false
+
+	// best known height provider slightly ahead
+	bestKnown := func() uint64 { return 12 }
+	handler, err := NewServiceHandler(mockStore, mockP2P, nil, logger, testConfig, bestKnown)
+	require.NoError(t, err)
+	server := httptest.NewServer(handler)
+	defer server.Close()
+
+	resp, err := http.Get(server.URL + "/health/ready")
+	require.NoError(t, err)
+	defer resp.Body.Close()
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+}
+
+func TestHealthReadyEndpoint_Unready(t *testing.T) {
+	mockStore := mocks.NewMockStore(t)
+	mockP2P := mocks.NewMockP2PRPC(t)
+
+	// Local height far behind best-known
+	mockStore.On("Height", mock.Anything).Return(uint64(5), nil)
+	// Have at least one peer to exercise height-lag path
+	mockP2P.On("GetPeers").Return([]peer.AddrInfo{{}}, nil)
+
+	logger := zerolog.Nop()
+	testConfig := config.DefaultConfig
+	testConfig.Node.BlockTime.Duration = 1 * time.Second
+	testConfig.Node.Aggregator = false
+
+	// best known height far ahead
+	bestKnown2 := func() uint64 { return 1000 }
+	handler, err := NewServiceHandler(mockStore, mockP2P, nil, logger, testConfig, bestKnown2)
+	require.NoError(t, err)
+	server := httptest.NewServer(handler)
+	defer server.Close()
+
+	resp, err := http.Get(server.URL + "/health/ready")
+	require.NoError(t, err)
+	defer resp.Body.Close()
+	require.Equal(t, http.StatusServiceUnavailable, resp.StatusCode)
 }

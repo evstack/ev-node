@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"net/http"
 	"net/http/pprof"
 	"time"
@@ -281,7 +282,17 @@ func (n *FullNode) Run(parentCtx context.Context) error {
 	}
 
 	// Start RPC server
-	handler, err := rpcserver.NewServiceHandler(n.Store, n.p2pClient, n.genesis.ProposerAddress, n.Logger, n.nodeConfig)
+	// Best-known height provider: min(header, data) heights from sync services
+	bestKnown := func() uint64 {
+		return uint64(
+			math.Min(
+				float64(n.hSyncService.Store().Height()),
+				float64(n.dSyncService.Store().Height()),
+			),
+		)
+	}
+
+	handler, err := rpcserver.NewServiceHandler(n.Store, n.p2pClient, n.genesis.ProposerAddress, n.Logger, n.nodeConfig, bestKnown)
 	if err != nil {
 		return fmt.Errorf("error creating RPC handler: %w", err)
 	}
