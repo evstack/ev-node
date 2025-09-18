@@ -353,6 +353,8 @@ func (e *Executor) produceBlock() error {
 		return fmt.Errorf("failed to apply block: %w", err)
 	}
 
+	// signing the header is done after applying the block
+	// as for signing, the state of the block may be required by the signature payload provider.
 	signature, err := e.signHeader(header.Header)
 	if err != nil {
 		return fmt.Errorf("failed to sign header: %w", err)
