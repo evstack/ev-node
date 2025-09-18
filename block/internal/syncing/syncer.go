@@ -408,7 +408,7 @@ func (s *Syncer) trySyncNextBlock(event *common.DAHeightEvent) error {
 		}
 
 		// Validate block
-		if err := s.validateBlock(currentState, header, data, event.DaHeight); err != nil {
+		if err := s.validateBlock(currentState, header, data, event.HeaderDaIncludedHeight); err != nil {
 			return fmt.Errorf("failed to validate block: %w", err)
 		}
 
@@ -469,7 +469,7 @@ func (s *Syncer) validateBlock(
 	lastState types.State,
 	header *types.SignedHeader,
 	data *types.Data,
-	daHeight uint64,
+	headerDaIncludedHeight uint64,
 ) error {
 	// Set custom verifier for aggregator node signature
 	header.SetCustomVerifierForSyncNode(s.options.SyncNodeSignatureBytesProvider)
@@ -481,11 +481,11 @@ func (s *Syncer) validateBlock(
 
 	// Mark as DA included
 	headerHash := header.Hash().String()
-	s.cache.SetHeaderDAIncluded(headerHash, daHeight)
+	s.cache.SetHeaderDAIncluded(headerHash, headerDaIncludedHeight)
 
 	s.logger.Info().
 		Str("header_hash", headerHash).
-		Uint64("da_height", daHeight).
+		Uint64("da_height", headerDaIncludedHeight).
 		Uint64("height", header.Height()).
 		Msg("header marked as DA included")
 
