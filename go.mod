@@ -4,8 +4,6 @@ go 1.24.2
 
 retract v0.12.0 // Published by accident
 
-replace github.com/celestiaorg/go-header => github.com/julienrbrt/go-header v0.0.0-20250909151551-cb11b091bf58 // TODO: to remove after https://github.com/celestiaorg/go-header/pull/347
-
 replace github.com/evstack/ev-node/core => ./core
 
 replace github.com/ipfs/go-datastore => github.com/celestiaorg/go-datastore v0.0.0-20250801131506-48a63ae531e4
