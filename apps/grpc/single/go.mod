@@ -4,7 +4,7 @@ go 1.24.2
 
 require (
 	github.com/evstack/ev-node v0.0.0
-	github.com/evstack/ev-node/core v1.0.0-beta.1
+	github.com/evstack/ev-node/core v1.0.0-beta.2
 	github.com/evstack/ev-node/da v1.0.0-beta.1
 	github.com/evstack/ev-node/execution/grpc v0.0.0
 	github.com/evstack/ev-node/sequencers/single v0.0.0
@@ -163,7 +163,6 @@ require (
 
 replace (
 	github.com/evstack/ev-node => ../../../
-	github.com/evstack/ev-node/core => ../../../core
 	github.com/evstack/ev-node/da => ../../../da
 	github.com/evstack/ev-node/execution/grpc => ../../../execution/grpc
 	github.com/evstack/ev-node/sequencers/single => ../../../sequencers/single

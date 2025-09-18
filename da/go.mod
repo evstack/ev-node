@@ -2,10 +2,8 @@ module github.com/evstack/ev-node/da
 
 go 1.24.1
 
-replace github.com/evstack/ev-node/core => ../core
-
 require (
-	github.com/evstack/ev-node/core v0.0.0-20250312114929-104787ba1a4c
+	github.com/evstack/ev-node/core v1.0.0-beta.2
 	github.com/filecoin-project/go-jsonrpc v0.8.0
 	github.com/rs/zerolog v1.34.0
 	github.com/stretchr/testify v1.11.1
