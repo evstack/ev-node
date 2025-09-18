@@ -14,7 +14,7 @@ The Store interface defines the following methods:
 - `GetBlock`: Returns a block at a given height.
 - `GetBlockByHash`: Returns a block with a given block header hash.
 
-Note: While blocks are stored as complete units in the store, the block manager handles headers and data separately during synchronization and DA layer interaction.
+Note: While blocks are stored as complete units in the store, the block components handle headers and data separately during synchronization and DA layer interaction.
 
 - `SaveBlockResponses`: Saves block responses in the Store.
 - `GetBlockResponses`: Returns block results at a given height.
@@ -50,7 +50,7 @@ For example, in a call to `GetBlockByHash` for some block hash `<block_hash>`, t
 
 Inside the key-value store, the value of these various types of data like `Block` is stored as a byte array which is encoded and decoded using the corresponding Protobuf [marshal and unmarshal methods][serialization].
 
-The store is most widely used inside the [block manager] to perform their functions correctly. Within the block manager, since it has multiple go-routines in it, it is protected by a mutex lock, `lastStateMtx`, to synchronize read/write access to it and prevent race conditions.
+The store is most widely used inside the [block components] to perform their functions correctly. Within the block components, since they have multiple go-routines, access is protected by mutex locks to synchronize read/write access and prevent race conditions.
 
 ## Message Structure/Communication Format
 
@@ -72,7 +72,7 @@ See [Store Interface][store_interface] and [Default Store][default_store] for it
 
 [3] [Full Node Store Initialization][full_node_store_initialization]
 
-[4] [Block Manager][block manager]
+[4] [Block Components][block components]
 
 [5] [Badger DB][BadgerDB]
 
@@ -85,7 +85,7 @@ See [Store Interface][store_interface] and [Default Store][default_store] for it
 [store_interface]: https://github.com/evstack/ev-node/blob/main/pkg/store/types.go#L11
 [default_store]: https://github.com/evstack/ev-node/blob/main/pkg/store/store.go
 [full_node_store_initialization]: https://github.com/evstack/ev-node/blob/main/node/full.go#L96
-[block manager]: https://github.com/evstack/ev-node/blob/main/block/manager.go
+[block components]: https://github.com/evstack/ev-node/blob/main/block/components.go
 [BadgerDB]: https://github.com/dgraph-io/badger
 [go-datastore]: https://github.com/ipfs/go-datastore
 [kv.go]: https://github.com/evstack/ev-node/blob/main/pkg/store/kv.go
