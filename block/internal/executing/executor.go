@@ -359,6 +359,8 @@ func (e *Executor) produceBlock() error {
 	}
 	header.Signature = signature
 
+	// Note, validateBlock is called after applyBlock
+	// because the validation process may required state of the block in order to be verified.
 	if err := e.validateBlock(currentState, header, data); err != nil {
 		return fmt.Errorf("failed to validate block: %w", err)
 	}

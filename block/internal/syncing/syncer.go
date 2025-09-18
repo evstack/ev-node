@@ -397,17 +397,19 @@ func (s *Syncer) trySyncNextBlock(event *common.DAHeightEvent) error {
 		header := event.Header
 		data := event.Data
 		nextHeight := event.Header.Height()
+		currentState := s.GetLastState()
 
 		s.logger.Info().Uint64("height", nextHeight).Msg("syncing block")
 
 		// Apply block
-		currentState := s.GetLastState()
 		newState, err := s.applyBlock(header.Header, data, currentState)
 		if err != nil {
 			return fmt.Errorf("failed to apply block: %w", err)
 		}
 
 		// Validate block
+		// Note, validateBlock is called after applyBlock
+		// because the validation process may required state of the block in order to be verified.
 		if err := s.validateBlock(currentState, header, data, event.HeaderDaIncludedHeight); err != nil {
 			return fmt.Errorf("failed to validate block: %w", err)
 		}

@@ -136,6 +136,9 @@ func (h *P2PHandler) ProcessDataRange(ctx context.Context, startHeight, endHeigh
 			continue
 		}
 
+		// Set custom verifier for aggregator node signature
+		header.SetCustomVerifierForSyncNode(h.options.SyncNodeSignatureBytesProvider)
+
 		// Validate header with data
 		if err := header.ValidateBasicWithData(data); err != nil {
 			h.logger.Debug().Uint64("height", height).Err(err).Msg("header validation with data failed")
@@ -144,9 +147,10 @@ func (h *P2PHandler) ProcessDataRange(ctx context.Context, startHeight, endHeigh
 
 		// Create height event
 		event := common.DAHeightEvent{
-			Header:   header,
-			Data:     data,
-			DaHeight: 0, // P2P events don't have DA height context
+			Header:                 header,
+			Data:                   data,
+			DaHeight:               0, // P2P events don't have DA height context
+			HeaderDaIncludedHeight: 0, // P2P events don't have DA height context
 		}
 
 		events = append(events, event)
