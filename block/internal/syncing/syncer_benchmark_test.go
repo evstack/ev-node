@@ -112,8 +112,10 @@ func BenchmarkSyncerIO(b *testing.B) {
 		p2pEnabled bool
 		p2pDelay   time.Duration
 	}{
-		"slow producer": {heights: 100, daDelay: 200 * time.Microsecond, execDelay: 0, p2pDelay: 150 * time.Microsecond, p2pEnabled: true},
-		"slow consumer": {heights: 100, daDelay: 0, execDelay: 200 * time.Microsecond, p2pDelay: 0, p2pEnabled: true},
+		"slow producer":       {heights: 100, daDelay: 200 * time.Microsecond, execDelay: 0, p2pDelay: 0, p2pEnabled: false},
+		"slow producer + p2p": {heights: 100, daDelay: 200 * time.Microsecond, execDelay: 0, p2pDelay: 150 * time.Microsecond, p2pEnabled: true},
+		"slow consumer":       {heights: 100, daDelay: 0, execDelay: 200 * time.Microsecond, p2pDelay: 0, p2pEnabled: false},
+		"slow consumer + p2p": {heights: 100, daDelay: 0, execDelay: 200 * time.Microsecond, p2pDelay: 0, p2pEnabled: true},
 	}
 	for name, spec := range cases {
 		b.Run(name, func(b *testing.B) {
