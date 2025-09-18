@@ -251,7 +251,7 @@ func (s *Syncer) syncLoop() {
 	var nextDARequestAt time.Time
 
 	// TODO: we should request to see what the head of the chain is at
-	// then we know if we are falling behinf or in sync mode
+	// then we know if we are falling behind or in sync mode
 syncLoop:
 	for {
 		select {
