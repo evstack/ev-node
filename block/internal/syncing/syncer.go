@@ -39,8 +39,9 @@ type Syncer struct {
 	da    coreda.DA
 
 	// Shared components
-	cache   cache.Manager
-	metrics *common.Metrics
+	cache        cache.Manager
+	pendingQueue *PendingQueue
+	metrics      *common.Metrics
 
 	// Configuration
 	config  config.Config
@@ -95,6 +96,7 @@ func NewSyncer(
 		store:        store,
 		exec:         exec,
 		da:           da,
+		pendingQueue: NewPendingQueue(),
 		cache:        cache,
 		metrics:      metrics,
 		config:       config,
@@ -120,8 +122,8 @@ func (s *Syncer) Start(ctx context.Context) error {
 	}
 
 	// Initialize handlers
-	s.daRetriever = NewDARetriever(s.da, s.cache, s.config, s.genesis, s.options, s.logger)
-	s.p2pHandler = NewP2PHandler(s.headerStore, s.dataStore, s.genesis, s.options, s.logger)
+	//s.daRetriever = NewDARetriever(s.da, s.cache, s.config, s.genesis, s.options, s.logger)
+	//s.p2pHandler = NewP2PHandler(s.headerStore, s.dataStore, s.genesis, s.options, s.logger)
 
 	// Start main processing loop
 	s.wg.Add(1)
@@ -289,7 +291,7 @@ func (s *Syncer) syncLoop() {
 					select {
 					case s.heightInCh <- event:
 					default:
-						s.cache.SetPendingEvent(event.Header.Height(), &event)
+						s.pendingQueue.AddPendingEvent(&event)
 					}
 				}
 
@@ -309,7 +311,7 @@ func (s *Syncer) syncLoop() {
 					select {
 					case s.heightInCh <- event:
 					default:
-						s.cache.SetPendingEvent(event.Header.Height(), &event)
+						s.pendingQueue.AddPendingEvent(&event)
 					}
 				}
 				lastHeaderHeight = newHeaderHeight
@@ -322,7 +324,7 @@ func (s *Syncer) syncLoop() {
 					select {
 					case s.heightInCh <- event:
 					default:
-						s.cache.SetPendingEvent(event.Header.Height(), &event)
+						s.pendingQueue.AddPendingEvent(&event)
 					}
 				}
 				lastDataHeight = newDataHeight
@@ -369,7 +371,7 @@ func (s *Syncer) processHeightEvent(event *common.DAHeightEvent) {
 			DaHeight:               event.DaHeight,
 			HeaderDaIncludedHeight: event.HeaderDaIncludedHeight,
 		}
-		s.cache.SetPendingEvent(height, pendingEvent)
+		s.pendingQueue.AddPendingEvent(pendingEvent)
 		s.logger.Debug().Uint64("height", height).Uint64("current_height", currentHeight).Msg("stored as pending event")
 		return
 	}
@@ -552,34 +554,25 @@ func (s *Syncer) isHeightFromFutureError(err error) bool {
 
 // processPendingEvents fetches and processes pending events from cache
 func (s *Syncer) processPendingEvents() {
-	pendingEvents := s.cache.GetPendingEvents()
-
-	for height, event := range pendingEvents {
+	//pendingEvents := s.cache.GetPendingEvents()
+	for event := range s.pendingQueue.Iter() {
 		currentHeight, err := s.store.Height(s.ctx)
 		if err != nil {
 			s.logger.Error().Err(err).Msg("failed to get current height for pending events")
 			continue
 		}
-
 		// Only process events for blocks we haven't synced yet
-		if height > currentHeight {
-			heightEvent := common.DAHeightEvent{
-				Header:                 event.Header,
-				Data:                   event.Data,
-				DaHeight:               event.DaHeight,
-				HeaderDaIncludedHeight: event.HeaderDaIncludedHeight,
+		if n := event.Header.Height(); n > currentHeight {
+			if n > currentHeight+2 {
+				s.pendingQueue.AddPendingEvent(event)
+				return
 			}
-
 			select {
-			case s.heightInCh <- heightEvent:
-				// Remove from pending events once sent
-				s.cache.DeletePendingEvent(height)
+			case s.heightInCh <- *event:
+				//Remove from pending events once sent
 			case <-s.ctx.Done():
 				return
 			}
-		} else {
-			// Clean up events for blocks we've already processed
-			s.cache.DeletePendingEvent(height)
 		}
 	}
 }
