@@ -76,7 +76,6 @@ func (r *DARetriever) RetrieveFromDA(ctx context.Context, daHeight uint64) ([]co
 			r.logger.Debug().Int("blobs", len(blobsResp.Data)).Uint64("da_height", daHeight).Msg("retrieved blob data")
 			events := r.processBlobs(ctx, blobsResp.Data, daHeight)
 			return events, nil
-
 		}
 
 		if strings.Contains(fetchErr.Error(), coreda.ErrHeightFromFuture.Error()) {

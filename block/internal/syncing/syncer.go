@@ -5,7 +5,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"runtime"
 	"strings"
 	"sync"
 	"time"
@@ -303,8 +302,6 @@ syncLoop:
 			}
 		}
 
-		// Opportunistically process any P2P signals
-		processedP2P := false
 		select {
 		case <-s.headerStoreCh:
 			newHeaderHeight := s.headerStore.Height()
@@ -322,7 +319,6 @@ syncLoop:
 
 				lastHeaderHeight = newHeaderHeight
 			}
-			processedP2P = true
 		case <-s.dataStoreCh:
 			newDataHeight := s.dataStore.Height()
 			if newDataHeight > lastDataHeight {
@@ -338,13 +334,7 @@ syncLoop:
 				}
 				lastDataHeight = newDataHeight
 			}
-			processedP2P = true
 		default:
-		}
-
-		if !processedP2P {
-			// Yield CPU to avoid tight spin when no events are available
-			runtime.Gosched()
 		}
 	}
 }
