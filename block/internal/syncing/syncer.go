@@ -394,69 +394,67 @@ func (s *Syncer) processHeightEvent(event *common.DAHeightEvent) {
 // trySyncNextBlock attempts to sync the next available block
 // the event is always the next block in sequence as processHeightEvent ensures it.
 func (s *Syncer) trySyncNextBlock(event *common.DAHeightEvent) error {
-	for {
-		select {
-		case <-s.ctx.Done():
-			return s.ctx.Err()
-		default:
-		}
-
-		header := event.Header
-		data := event.Data
-		nextHeight := event.Header.Height()
-		currentState := s.GetLastState()
-
-		s.logger.Info().Uint64("height", nextHeight).Msg("syncing block")
-
-		// Compared to the executor logic where the current block needs to be applied first,
-		// here only the previous block needs to be applied to proceed to the verification.
-		// The header validation must be done before applying the block to avoid executing gibberish
-		if err := s.validateBlock(currentState, header, data); err != nil {
-			return fmt.Errorf("failed to validate block: %w", err)
-		}
-
-		// Mark as DA included
-		headerHash := header.Hash().String()
-		s.cache.SetHeaderDAIncluded(headerHash, event.HeaderDaIncludedHeight)
-
-		s.logger.Info().
-			Str("header_hash", headerHash).
-			Uint64("da_height", event.HeaderDaIncludedHeight).
-			Uint64("height", header.Height()).
-			Msg("header marked as DA included")
-
-		// Apply block
-		newState, err := s.applyBlock(header.Header, data, currentState)
-		if err != nil {
-			return fmt.Errorf("failed to apply block: %w", err)
-		}
-
-		// Save block
-		if err := s.store.SaveBlockData(s.ctx, header, data, &header.Signature); err != nil {
-			return fmt.Errorf("failed to save block: %w", err)
-		}
-
-		// Update height
-		if err := s.store.SetHeight(s.ctx, nextHeight); err != nil {
-			return fmt.Errorf("failed to update height: %w", err)
-		}
-
-		// Update state
-		if event.DaHeight > newState.DAHeight {
-			newState.DAHeight = event.DaHeight
-		}
-		if err := s.updateState(newState); err != nil {
-			return fmt.Errorf("failed to update state: %w", err)
-		}
-
-		// Mark as seen
-		s.cache.SetHeaderSeen(header.Hash().String())
-		if !bytes.Equal(header.DataHash, common.DataHashForEmptyTxs) {
-			s.cache.SetDataSeen(data.DACommitment().String())
-		}
-
-		return nil
+	select {
+	case <-s.ctx.Done():
+		return s.ctx.Err()
+	default:
 	}
+
+	header := event.Header
+	data := event.Data
+	nextHeight := event.Header.Height()
+	currentState := s.GetLastState()
+
+	s.logger.Info().Uint64("height", nextHeight).Msg("syncing block")
+
+	// Compared to the executor logic where the current block needs to be applied first,
+	// here only the previous block needs to be applied to proceed to the verification.
+	// The header validation must be done before applying the block to avoid executing gibberish
+	if err := s.validateBlock(currentState, header, data); err != nil {
+		return fmt.Errorf("failed to validate block: %w", err)
+	}
+
+	// Mark as DA included
+	headerHash := header.Hash().String()
+	s.cache.SetHeaderDAIncluded(headerHash, event.HeaderDaIncludedHeight)
+
+	s.logger.Info().
+		Str("header_hash", headerHash).
+		Uint64("da_height", event.HeaderDaIncludedHeight).
+		Uint64("height", header.Height()).
+		Msg("header marked as DA included")
+
+	// Apply block
+	newState, err := s.applyBlock(header.Header, data, currentState)
+	if err != nil {
+		return fmt.Errorf("failed to apply block: %w", err)
+	}
+
+	// Save block
+	if err := s.store.SaveBlockData(s.ctx, header, data, &header.Signature); err != nil {
+		return fmt.Errorf("failed to save block: %w", err)
+	}
+
+	// Update height
+	if err := s.store.SetHeight(s.ctx, nextHeight); err != nil {
+		return fmt.Errorf("failed to update height: %w", err)
+	}
+
+	// Update state
+	if event.DaHeight > newState.DAHeight {
+		newState.DAHeight = event.DaHeight
+	}
+	if err := s.updateState(newState); err != nil {
+		return fmt.Errorf("failed to update state: %w", err)
+	}
+
+	// Mark as seen
+	s.cache.SetHeaderSeen(header.Hash().String())
+	if !bytes.Equal(header.DataHash, common.DataHashForEmptyTxs) {
+		s.cache.SetDataSeen(data.DACommitment().String())
+	}
+
+	return nil
 }
 
 // applyBlock applies a block to get the new state
