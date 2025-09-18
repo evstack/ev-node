@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"math"
 	"net/http"
 	"net/http/pprof"
 	"time"
@@ -283,12 +282,12 @@ func (n *FullNode) Run(parentCtx context.Context) error {
 
 	// Start RPC server
 	bestKnownHeightProvider := func() uint64 {
-		return uint64(
-			math.Min(
-				float64(n.hSyncService.Store().Height()),
-				float64(n.dSyncService.Store().Height()),
-			),
-		)
+		hHeight := n.hSyncService.Store().Height()
+		dHeight := n.dSyncService.Store().Height()
+		if hHeight < dHeight {
+			return hHeight
+		}
+		return dHeight
 	}
 
 	handler, err := rpcserver.NewServiceHandler(n.Store, n.p2pClient, n.genesis.ProposerAddress, n.Logger, n.nodeConfig, bestKnownHeightProvider)

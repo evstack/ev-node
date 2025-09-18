@@ -63,7 +63,7 @@ func RegisterCustomHTTPEndpoints(mux *http.ServeMux, s store.Store, pm p2p.P2PRP
 			return
 		}
 
-		const allowedBlocksBehind = 3
+		allowedBlocksBehind := cfg.Node.ReadinessMaxBlocksBehind
 		if bestKnownHeight <= localHeight {
 			// local is ahead of our observed best-known consider ready
 			w.WriteHeader(http.StatusOK)
