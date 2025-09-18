@@ -336,6 +336,13 @@ syncLoop:
 				lastDataHeight = newDataHeight
 			}
 		default:
+			// Prevent busy-waiting when no events are available.
+			waitTime := 10 * time.Millisecond
+			if waitTime > s.config.Node.BlockTime.Duration {
+				waitTime = s.config.Node.BlockTime.Duration
+			}
+
+			time.Sleep(waitTime)
 		}
 	}
 }
@@ -402,14 +409,14 @@ func (s *Syncer) trySyncNextBlock(event *common.DAHeightEvent) error {
 		s.logger.Info().Uint64("height", nextHeight).Msg("syncing block")
 
 		// Apply block
+		// IMPORTANT TODO: This must be done in a cache store as block validation can fail.
 		newState, err := s.applyBlock(header.Header, data, currentState)
 		if err != nil {
 			return fmt.Errorf("failed to apply block: %w", err)
 		}
 
-		// Validate block
 		// Note, validateBlock is called after applyBlock
-		// because the validation process may required state of the block in order to be verified.
+		// because the validation process may require state of the block in order to be verified.
 		if err := s.validateBlock(currentState, header, data, event.HeaderDaIncludedHeight); err != nil {
 			return fmt.Errorf("failed to validate block: %w", err)
 		}

@@ -60,8 +60,8 @@ func (h *P2PHandler) ProcessHeaderRange(ctx context.Context, startHeight, endHei
 			continue
 		}
 
-		// Validate header
-		if err := h.validateHeader(header); err != nil {
+		// basic header validation
+		if err := h.assertExpectedProposer(header.ProposerAddress); err != nil {
 			h.logger.Debug().Uint64("height", height).Err(err).Msg("invalid header from P2P")
 			continue
 		}
@@ -81,17 +81,14 @@ func (h *P2PHandler) ProcessHeaderRange(ctx context.Context, startHeight, endHei
 			data = retrievedData
 		}
 
-		// Validate header with data
-		if err := header.ValidateBasicWithData(data); err != nil {
-			h.logger.Debug().Uint64("height", height).Err(err).Msg("header validation with data failed")
-			continue
-		}
+		// further header validation (signature) is done in validateBlock.
 
 		// Create height event
 		event := common.DAHeightEvent{
-			Header:   header,
-			Data:     data,
-			DaHeight: 0, // P2P events don't have DA height context
+			Header:                 header,
+			Data:                   data,
+			DaHeight:               0, // P2P events don't have DA height context
+			HeaderDaIncludedHeight: 0, // P2P events don't have DA height context
 		}
 
 		events = append(events, event)
@@ -130,20 +127,13 @@ func (h *P2PHandler) ProcessDataRange(ctx context.Context, startHeight, endHeigh
 			continue
 		}
 
-		// Validate header
-		if err := h.validateHeader(header); err != nil {
+		// basic header validation
+		if err := h.assertExpectedProposer(header.ProposerAddress); err != nil {
 			h.logger.Debug().Uint64("height", height).Err(err).Msg("invalid header from P2P")
 			continue
 		}
 
-		// Set custom verifier for aggregator node signature
-		header.SetCustomVerifierForSyncNode(h.options.SyncNodeSignatureBytesProvider)
-
-		// Validate header with data
-		if err := header.ValidateBasicWithData(data); err != nil {
-			h.logger.Debug().Uint64("height", height).Err(err).Msg("header validation with data failed")
-			continue
-		}
+		// further header validation (signature) is done in validateBlock.
 
 		// Create height event
 		event := common.DAHeightEvent{
@@ -159,16 +149,6 @@ func (h *P2PHandler) ProcessDataRange(ctx context.Context, startHeight, endHeigh
 	}
 
 	return events
-}
-
-// validateHeader performs basic validation on a header from P2P
-func (h *P2PHandler) validateHeader(header *types.SignedHeader) error {
-	// Check proposer address
-	if err := h.assertExpectedProposer(header.ProposerAddress); err != nil {
-		return fmt.Errorf("unexpected proposer: %w", err)
-	}
-
-	return nil
 }
 
 // assertExpectedProposer validates the proposer address
