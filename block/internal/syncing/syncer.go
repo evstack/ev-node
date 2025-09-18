@@ -411,9 +411,19 @@ func (s *Syncer) trySyncNextBlock(event *common.DAHeightEvent) error {
 		// Compared to the executor logic where the current block needs to be applied first,
 		// here only the previous block needs to be applied to proceed to the verification.
 		// The header validation must be done before applying the block to avoid executing gibberish
-		if err := s.validateBlock(currentState, header, data, event.HeaderDaIncludedHeight); err != nil {
+		if err := s.validateBlock(currentState, header, data); err != nil {
 			return fmt.Errorf("failed to validate block: %w", err)
 		}
+
+		// Mark as DA included
+		headerHash := header.Hash().String()
+		s.cache.SetHeaderDAIncluded(headerHash, event.HeaderDaIncludedHeight)
+
+		s.logger.Info().
+			Str("header_hash", headerHash).
+			Uint64("da_height", event.HeaderDaIncludedHeight).
+			Uint64("height", header.Height()).
+			Msg("header marked as DA included")
 
 		// Apply block
 		newState, err := s.applyBlock(header.Header, data, currentState)
@@ -480,7 +490,6 @@ func (s *Syncer) validateBlock(
 	lastState types.State,
 	header *types.SignedHeader,
 	data *types.Data,
-	headerDaIncludedHeight uint64,
 ) error {
 	// Set custom verifier for aggregator node signature
 	header.SetCustomVerifierForSyncNode(s.options.SyncNodeSignatureBytesProvider)
@@ -489,16 +498,6 @@ func (s *Syncer) validateBlock(
 	if err := header.ValidateBasicWithData(data); err != nil {
 		return fmt.Errorf("header-data validation failed: %w", err)
 	}
-
-	// Mark as DA included
-	headerHash := header.Hash().String()
-	s.cache.SetHeaderDAIncluded(headerHash, headerDaIncludedHeight)
-
-	s.logger.Info().
-		Str("header_hash", headerHash).
-		Uint64("da_height", headerDaIncludedHeight).
-		Uint64("height", header.Height()).
-		Msg("header marked as DA included")
 
 	return nil
 }
