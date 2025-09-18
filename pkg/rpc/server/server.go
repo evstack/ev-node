@@ -342,7 +342,7 @@ func NewServiceHandler(store store.Store, peerManager p2p.P2PRPC, proposerAddres
 	configPath, configHandler := rpc.NewConfigServiceHandler(configServer)
 	mux.Handle(configPath, configHandler)
 
-	// Register custom HTTP endpoints (non-gRPC)
+	// Register custom HTTP endpoints
 	RegisterCustomHTTPEndpoints(mux, store, peerManager, config, bestKnown)
 
 	// Use h2c to support HTTP/2 without TLS

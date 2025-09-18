@@ -399,55 +399,54 @@ func TestHealthLiveEndpoint(t *testing.T) {
 	assert.Equal("OK\n", string(body)) // fmt.Fprintln adds a newline
 }
 
-func TestHealthReadyEndpoint_Ready(t *testing.T) {
-	mockStore := mocks.NewMockStore(t)
-	mockP2P := mocks.NewMockP2PRPC(t)
-
-	// local height and best-known within allowed lag
-	mockStore.On("Height", mock.Anything).Return(uint64(10), nil)
-	mockP2P.On("GetPeers").Return([]peer.AddrInfo{{}}, nil)
-
-	logger := zerolog.Nop()
-	testConfig := config.DefaultConfig
-	testConfig.Node.BlockTime.Duration = 1 * time.Second
-	testConfig.Node.Aggregator = false
-
-	// best known height provider slightly ahead
-	bestKnown := func() uint64 { return 12 }
-	handler, err := NewServiceHandler(mockStore, mockP2P, nil, logger, testConfig, bestKnown)
-	require.NoError(t, err)
-	server := httptest.NewServer(handler)
-	defer server.Close()
-
-	resp, err := http.Get(server.URL + "/health/ready")
-	require.NoError(t, err)
-	defer resp.Body.Close()
-	require.Equal(t, http.StatusOK, resp.StatusCode)
-}
-
-func TestHealthReadyEndpoint_Unready(t *testing.T) {
-	mockStore := mocks.NewMockStore(t)
-	mockP2P := mocks.NewMockP2PRPC(t)
-
-	// Local height far behind best-known
-	mockStore.On("Height", mock.Anything).Return(uint64(5), nil)
-	// Have at least one peer to exercise height-lag path
-	mockP2P.On("GetPeers").Return([]peer.AddrInfo{{}}, nil)
+func TestHealthReadyEndpoint(t *testing.T) {
+	cases := []struct {
+		name         string
+		local        uint64
+		bestKnown    uint64
+		peers        int
+		expectedCode int
+	}{
+		{name: "at_head", local: 100, bestKnown: 100, peers: 1, expectedCode: http.StatusOK},
+		{name: "within_1_block", local: 99, bestKnown: 100, peers: 1, expectedCode: http.StatusOK},
+		{name: "within_3_blocks", local: 97, bestKnown: 100, peers: 1, expectedCode: http.StatusOK},
+		{name: "just_over_3_blocks", local: 96, bestKnown: 100, peers: 1, expectedCode: http.StatusServiceUnavailable},
+		{name: "local_ahead", local: 101, bestKnown: 100, peers: 1, expectedCode: http.StatusOK},
+		{name: "no_blocks_yet", local: 0, bestKnown: 100, peers: 1, expectedCode: http.StatusServiceUnavailable},
+		{name: "unknown_best_known", local: 100, bestKnown: 0, peers: 1, expectedCode: http.StatusServiceUnavailable},
+		{name: "no_peers", local: 100, bestKnown: 100, peers: 0, expectedCode: http.StatusServiceUnavailable},
+	}
 
 	logger := zerolog.Nop()
 	testConfig := config.DefaultConfig
-	testConfig.Node.BlockTime.Duration = 1 * time.Second
 	testConfig.Node.Aggregator = false
 
-	// best known height far ahead
-	bestKnown2 := func() uint64 { return 1000 }
-	handler, err := NewServiceHandler(mockStore, mockP2P, nil, logger, testConfig, bestKnown2)
-	require.NoError(t, err)
-	server := httptest.NewServer(handler)
-	defer server.Close()
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			mockStore := mocks.NewMockStore(t)
+			mockP2P := mocks.NewMockP2PRPC(t)
 
-	resp, err := http.Get(server.URL + "/health/ready")
-	require.NoError(t, err)
-	defer resp.Body.Close()
-	require.Equal(t, http.StatusServiceUnavailable, resp.StatusCode)
+			// only expect Height() when peers are present handler returns early on no peers
+			if tc.peers > 0 {
+				mockStore.On("Height", mock.Anything).Return(tc.local, nil)
+			}
+
+			var peers []peer.AddrInfo
+			for i := 0; i < tc.peers; i++ {
+				peers = append(peers, peer.AddrInfo{})
+			}
+			mockP2P.On("GetPeers").Return(peers, nil)
+
+			bestKnown := func() uint64 { return tc.bestKnown }
+			handler, err := NewServiceHandler(mockStore, mockP2P, nil, logger, testConfig, bestKnown)
+			require.NoError(t, err)
+			server := httptest.NewServer(handler)
+			defer server.Close()
+
+			resp, err := http.Get(server.URL + "/health/ready")
+			require.NoError(t, err)
+			defer resp.Body.Close()
+			require.Equal(t, tc.expectedCode, resp.StatusCode)
+		})
+	}
 }
