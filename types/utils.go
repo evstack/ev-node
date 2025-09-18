@@ -300,7 +300,7 @@ func getBlockDataWith(nTxs int) *Data {
 		Txs: make(Txs, nTxs),
 	}
 
-	for i := range nTxs {
+	for i := 0; i < nTxs; i++ {
 		data.Txs[i] = GetRandomTx()
 	}
 
