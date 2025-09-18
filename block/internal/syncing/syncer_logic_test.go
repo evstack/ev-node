@@ -26,16 +26,16 @@ import (
 )
 
 // helper to create a signer, pubkey and address for tests
-func buildSyncTestSigner(t *testing.T) (addr []byte, pub crypto.PubKey, signer signerpkg.Signer) {
-	t.Helper()
+func buildSyncTestSigner(tb testing.TB) (addr []byte, pub crypto.PubKey, signer signerpkg.Signer) {
+	tb.Helper()
 	priv, _, err := crypto.GenerateEd25519Key(crand.Reader)
-	require.NoError(t, err)
+	require.NoError(tb, err)
 	n, err := noop.NewNoopSigner(priv)
-	require.NoError(t, err)
+	require.NoError(tb, err)
 	a, err := n.GetAddress()
-	require.NoError(t, err)
+	require.NoError(tb, err)
 	p, err := n.GetPublic()
-	require.NoError(t, err)
+	require.NoError(tb, err)
 	return a, p, n
 }
 
