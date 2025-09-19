@@ -29,7 +29,7 @@ func TestNewClientWithHost(t *testing.T) {
 	assert := assert.New(t)
 
 	// Common setup
-	conf := config.DefaultConfig
+	conf := config.DefaultConfig()
 	conf.RootDir = t.TempDir()
 	nodeKey, err := key.LoadOrGenNodeKey(filepath.Join(conf.RootDir, "config", "node_key.json"))
 	require.NoError(err)
@@ -92,7 +92,7 @@ func TestClientStartup(t *testing.T) {
 	nodeKey, err := key.LoadOrGenNodeKey(filepath.Join(tempDir, "config", "node_key.json"))
 	assert.NoError(err)
 
-	defaultConfig := config.DefaultConfig
+	defaultConfig := config.DefaultConfig()
 
 	testCases := []struct {
 		desc string
@@ -286,7 +286,7 @@ func TestClientInfoMethods(t *testing.T) {
 
 	tempDir := t.TempDir()
 	ClientInitFiles(t, tempDir)
-	conf := config.DefaultConfig
+	conf := config.DefaultConfig()
 	conf.RootDir = tempDir
 
 	mn := mocknet.New()

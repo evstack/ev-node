@@ -43,7 +43,7 @@ func newTestExecutor(t *testing.T) *executing.Executor {
 		s,   // signer (required)
 		nil, // cache (unused)
 		nil, // metrics (unused)
-		config.DefaultConfig,
+		config.DefaultConfig(),
 		genesis.Genesis{ // minimal genesis
 			ChainID:         "test-chain",
 			InitialHeight:   1,

@@ -37,7 +37,7 @@ func TestExecutor_BroadcasterIntegration(t *testing.T) {
 	memStore := store.New(ds)
 
 	// Create cache
-	cacheManager, err := cache.NewManager(config.DefaultConfig, memStore, zerolog.Nop())
+	cacheManager, err := cache.NewManager(config.DefaultConfig(), memStore, zerolog.Nop())
 	require.NoError(t, err)
 
 	metrics := common.NopMetrics()
@@ -63,7 +63,7 @@ func TestExecutor_BroadcasterIntegration(t *testing.T) {
 		testSigner, // test signer (required for executor)
 		cacheManager,
 		metrics,
-		config.DefaultConfig,
+		config.DefaultConfig(),
 		gen,
 		headerBroadcaster,
 		dataBroadcaster,
@@ -91,7 +91,7 @@ func TestExecutor_NilBroadcasters(t *testing.T) {
 	memStore := store.New(ds)
 
 	// Create cache
-	cacheManager, err := cache.NewManager(config.DefaultConfig, memStore, zerolog.Nop())
+	cacheManager, err := cache.NewManager(config.DefaultConfig(), memStore, zerolog.Nop())
 	require.NoError(t, err)
 
 	metrics := common.NopMetrics()
@@ -113,7 +113,7 @@ func TestExecutor_NilBroadcasters(t *testing.T) {
 		testSigner, // test signer (required for executor)
 		cacheManager,
 		metrics,
-		config.DefaultConfig,
+		config.DefaultConfig(),
 		gen,
 		nil, // nil header broadcaster
 		nil, // nil data broadcaster

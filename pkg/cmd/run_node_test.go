@@ -85,7 +85,7 @@ func TestParseFlags(t *testing.T) {
 	executor, sequencer, dac, keyProvider, p2pClient, ds, stopDAHeightTicker := createTestComponents(context.Background(), t)
 	defer stopDAHeightTicker()
 
-	nodeConfig := rollconf.DefaultConfig
+	nodeConfig := rollconf.DefaultConfig()
 	nodeConfig.RootDir = t.TempDir()
 
 	newRunNodeCmd := newRunNodeCmd(t.Context(), executor, sequencer, dac, keyProvider, p2pClient, ds, nodeConfig)
@@ -164,7 +164,7 @@ func TestAggregatorFlagInvariants(t *testing.T) {
 		executor, sequencer, dac, keyProvider, p2pClient, ds, stopDAHeightTicker := createTestComponents(context.Background(), t)
 		defer stopDAHeightTicker()
 
-		nodeConfig := rollconf.DefaultConfig
+		nodeConfig := rollconf.DefaultConfig()
 		nodeConfig.RootDir = t.TempDir()
 
 		newRunNodeCmd := newRunNodeCmd(t.Context(), executor, sequencer, dac, keyProvider, p2pClient, ds, nodeConfig)
@@ -200,7 +200,7 @@ func TestDefaultAggregatorValue(t *testing.T) {
 			executor, sequencer, dac, keyProvider, p2pClient, ds, stopDAHeightTicker := createTestComponents(context.Background(), t)
 			defer stopDAHeightTicker()
 
-			nodeConfig := rollconf.DefaultConfig
+			nodeConfig := rollconf.DefaultConfig()
 			nodeConfig.RootDir = t.TempDir()
 
 			newRunNodeCmd := newRunNodeCmd(t.Context(), executor, sequencer, dac, keyProvider, p2pClient, ds, nodeConfig)
@@ -271,7 +271,7 @@ func TestSetupLogger(t *testing.T) {
 // TestCentralizedAddresses verifies that when centralized service flags are provided,
 // the configuration fields in nodeConfig are updated accordingly, ensuring that mocks are skipped.
 func TestCentralizedAddresses(t *testing.T) {
-	nodeConfig := rollconf.DefaultConfig
+	nodeConfig := rollconf.DefaultConfig()
 	nodeConfig.RootDir = t.TempDir()
 
 	args := []string{
@@ -319,7 +319,7 @@ func TestSignerRelativePathResolution(t *testing.T) {
 				assert.NoError(t, err)
 
 				// Configure node with relative signer path
-				nodeConfig := rollconf.DefaultConfig
+				nodeConfig := rollconf.DefaultConfig()
 				nodeConfig.RootDir = tmpDir
 				nodeConfig.Node.Aggregator = true
 				nodeConfig.Signer.SignerType = "file"
@@ -343,7 +343,7 @@ func TestSignerRelativePathResolution(t *testing.T) {
 				assert.NoError(t, err)
 
 				// Configure node with absolute signer path
-				nodeConfig := rollconf.DefaultConfig
+				nodeConfig := rollconf.DefaultConfig()
 				nodeConfig.RootDir = tmpDir
 				nodeConfig.Node.Aggregator = true
 				nodeConfig.Signer.SignerType = "file"
@@ -360,7 +360,7 @@ func TestSignerRelativePathResolution(t *testing.T) {
 				tmpDir := t.TempDir()
 
 				// Configure node with relative signer path that doesn't exist
-				nodeConfig := rollconf.DefaultConfig
+				nodeConfig := rollconf.DefaultConfig()
 				nodeConfig.RootDir = tmpDir
 				nodeConfig.Node.Aggregator = true
 				nodeConfig.Signer.SignerType = "file"
@@ -379,7 +379,7 @@ func TestSignerRelativePathResolution(t *testing.T) {
 				nonExistentPath := filepath.Join(tmpDir, "nonexistent")
 
 				// Configure node with absolute signer path that doesn't exist
-				nodeConfig := rollconf.DefaultConfig
+				nodeConfig := rollconf.DefaultConfig()
 				nodeConfig.RootDir = tmpDir
 				nodeConfig.Node.Aggregator = true
 				nodeConfig.Signer.SignerType = "file"
@@ -447,7 +447,7 @@ func TestStartNodeSignerPathResolution(t *testing.T) {
 				assert.NoError(t, err)
 
 				// Configure node with relative signer path
-				nodeConfig := rollconf.DefaultConfig
+				nodeConfig := rollconf.DefaultConfig()
 				nodeConfig.RootDir = tmpDir
 				nodeConfig.Node.Aggregator = true
 				nodeConfig.Signer.SignerType = "file"
@@ -464,7 +464,7 @@ func TestStartNodeSignerPathResolution(t *testing.T) {
 				tmpDir := t.TempDir()
 
 				// Configure node with relative signer path that doesn't exist
-				nodeConfig := rollconf.DefaultConfig
+				nodeConfig := rollconf.DefaultConfig()
 				nodeConfig.RootDir = tmpDir
 				nodeConfig.Node.Aggregator = true
 				nodeConfig.Signer.SignerType = "file"
@@ -489,7 +489,7 @@ func TestStartNodeSignerPathResolution(t *testing.T) {
 				assert.NoError(t, err)
 
 				// Configure node with absolute signer path
-				nodeConfig := rollconf.DefaultConfig
+				nodeConfig := rollconf.DefaultConfig()
 				nodeConfig.RootDir = tmpDir
 				nodeConfig.Node.Aggregator = true
 				nodeConfig.Signer.SignerType = "file"
@@ -629,7 +629,7 @@ func TestStartNodeErrors(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			nodeConfig := rollconf.DefaultConfig
+			nodeConfig := rollconf.DefaultConfig()
 			nodeConfig.RootDir = tmpDir
 
 			if tc.configModifier != nil {

@@ -46,7 +46,7 @@ func benchSetupStore(b *testing.B, n int, txsPer int, chainID string) store.Stor
 }
 
 func benchNewManager(b *testing.B, st store.Store) Manager {
-	cfg := config.DefaultConfig
+	cfg := config.DefaultConfig()
 	cfg.RootDir = b.TempDir()
 	m, err := NewManager(cfg, st, zerolog.Nop())
 	if err != nil {
