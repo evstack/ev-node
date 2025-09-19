@@ -112,11 +112,11 @@ func RetrieveWithHelpers(
 	da coreda.DA,
 	logger zerolog.Logger,
 	dataLayerHeight uint64,
-	namespace []byte,
+	namespace string,
 ) coreda.ResultRetrieve {
-
+	namespaceBz := coreda.NamespaceFromString(namespace).Bytes()
 	// 1. Get IDs
-	idsResult, err := da.GetIDs(ctx, dataLayerHeight, namespace)
+	idsResult, err := da.GetIDs(ctx, dataLayerHeight, namespaceBz)
 	if err != nil {
 		// Handle specific "not found" error
 		if strings.Contains(err.Error(), coreda.ErrBlobNotFound.Error()) {
@@ -171,7 +171,7 @@ func RetrieveWithHelpers(
 	for i := 0; i < len(idsResult.IDs); i += batchSize {
 		end := min(i+batchSize, len(idsResult.IDs))
 
-		batchBlobs, err := da.Get(ctx, idsResult.IDs[i:end], namespace)
+		batchBlobs, err := da.Get(ctx, idsResult.IDs[i:end], namespaceBz)
 		if err != nil {
 			// Handle errors during Get
 			logger.Error().Uint64("height", dataLayerHeight).Int("num_ids", len(idsResult.IDs)).Err(err).Msg("Retrieve helper: Failed to get blobs")

@@ -229,7 +229,7 @@ func TestRetrieveWithHelpers(t *testing.T) {
 				mockDA.On("Get", mock.Anything, tc.getIDsResult.IDs, mock.Anything).Return(mockBlobs, tc.getBlobsErr)
 			}
 
-			result := types.RetrieveWithHelpers(context.Background(), mockDA, logger, dataLayerHeight, []byte("test-namespace"))
+			result := types.RetrieveWithHelpers(context.Background(), mockDA, logger, dataLayerHeight, "test-namespace")
 
 			assert.Equal(t, tc.expectedCode, result.Code)
 			assert.Equal(t, tc.expectedHeight, result.Height)

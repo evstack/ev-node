@@ -101,8 +101,8 @@ func (r *DARetriever) fetchBlobs(ctx context.Context, daHeight uint64) (coreda.R
 	defer cancel()
 
 	// Get namespaces
-	headerNamespace := []byte(r.config.DA.GetNamespace())
-	dataNamespace := []byte(r.config.DA.GetDataNamespace())
+	headerNamespace := r.config.DA.GetNamespace()
+	dataNamespace := r.config.DA.GetDataNamespace()
 
 	// Retrieve from both namespaces
 	headerRes := types.RetrieveWithHelpers(ctx, r.da, r.logger, daHeight, headerNamespace)
