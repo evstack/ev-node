@@ -10,6 +10,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/celestiaorg/go-square/v2/share"
+	"github.com/evstack/ev-node/core/da"
 	"github.com/mitchellh/mapstructure"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
@@ -232,9 +234,15 @@ func (c *Config) Validate() error {
 		return fmt.Errorf("could not create directory %q: %w", fullDir, err)
 	}
 
-	// Validate namespace not empty
-	if c.DA.GetNamespace() == "" {
-		return fmt.Errorf("namespace cannot be empty")
+	// Validate namespaces
+	if err := validateNamespace(c.DA.GetNamespace()); err != nil {
+		return fmt.Errorf("could not validate namespace (%s): %w", c.DA.GetNamespace(), err)
+	}
+
+	if len(c.DA.GetDataNamespace()) > 0 {
+		if err := validateNamespace(c.DA.GetDataNamespace()); err != nil {
+			return fmt.Errorf("could not validate data namespace (%s): %w", c.DA.GetDataNamespace(), err)
+		}
 	}
 
 	// Validate lazy mode configuration
@@ -243,6 +251,18 @@ func (c *Config) Validate() error {
 			c.Node.LazyBlockInterval.Duration, c.Node.BlockTime.Duration)
 	}
 
+	return nil
+}
+
+func validateNamespace(namespace string) error {
+	if namespace == "" {
+		return fmt.Errorf("namespace cannot be empty")
+	}
+
+	namespaceBz := da.PrepareNamespace([]byte(namespace))
+	if _, err := share.NewNamespaceFromBytes(namespaceBz); err != nil {
+		return fmt.Errorf("could not validate namespace (%s): %w", namespace, err)
+	}
 	return nil
 }
 
