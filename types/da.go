@@ -22,10 +22,11 @@ func SubmitWithHelpers(
 	logger zerolog.Logger,
 	data [][]byte,
 	gasPrice float64,
-	namespace []byte, // New namespace parameter
+	namespace string,
 	options []byte,
 ) coreda.ResultSubmit { // Return core ResultSubmit type
-	ids, err := da.SubmitWithOptions(ctx, data, gasPrice, namespace, options)
+	ns := coreda.NamespaceFromString(namespace)
+	ids, err := da.SubmitWithOptions(ctx, data, gasPrice, ns.Bytes(), options)
 
 	// Handle errors returned by Submit
 	if err != nil {

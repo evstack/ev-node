@@ -45,7 +45,7 @@ func TestSubmitToDA_MempoolRetry_IncreasesGasAndSucceeds(t *testing.T) {
 
 	// First attempt returns a mempool-related error (mapped to StatusNotIncludedInBlock)
 	// Expect gasPrice=1.0
-	ns := []byte("ns")
+	ns := "ns"
 	opts := []byte("opts")
 	// capture gas prices used
 	var usedGas []float64
@@ -99,7 +99,7 @@ func TestSubmitToDA_UnknownError_RetriesSameGasThenSucceeds(t *testing.T) {
 	// Initial gas price comes from config (set below), so DA.GasPrice is not called
 	mockDA.On("GasMultiplier", mock.Anything).Return(3.0, nil).Once()
 
-	ns := []byte("ns")
+	ns := "ns"
 	opts := []byte("opts")
 	var usedGas []float64
 
@@ -147,7 +147,7 @@ func TestSubmitToDA_TooBig_HalvesBatch(t *testing.T) {
 	// Use fixed gas from config to simplify
 	mockDA.On("GasMultiplier", mock.Anything).Return(2.0, nil).Once()
 
-	ns := []byte("ns")
+	ns := "ns"
 	opts := []byte("opts")
 	// record sizes of batches sent to DA
 	var batchSizes []int
@@ -202,7 +202,7 @@ func TestSubmitToDA_SentinelNoGas_PreservesGasAcrossRetries(t *testing.T) {
 	// GasMultiplier is still called once, but should not affect gas when sentinel is used
 	mockDA.On("GasMultiplier", mock.Anything).Return(10.0, nil).Once()
 
-	ns := []byte("ns")
+	ns := "ns"
 	opts := []byte("opts")
 	var usedGas []float64
 
@@ -249,7 +249,7 @@ func TestSubmitToDA_PartialSuccess_AdvancesWindow(t *testing.T) {
 	mockDA := mocks.NewMockDA(t)
 	mockDA.On("GasMultiplier", mock.Anything).Return(2.0, nil).Once()
 
-	ns := []byte("ns")
+	ns := "ns"
 	opts := []byte("opts")
 	// track how many items postSubmit sees across attempts
 	var totalSubmitted int

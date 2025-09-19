@@ -199,7 +199,7 @@ func (s *DASubmitter) SubmitHeaders(ctx context.Context, cache cache.Manager) er
 			}
 		},
 		"header",
-		[]byte(s.config.DA.GetNamespace()),
+		s.config.DA.GetNamespace(),
 		[]byte(s.config.DA.SubmitOptions),
 		cache,
 	)
@@ -242,7 +242,7 @@ func (s *DASubmitter) SubmitData(ctx context.Context, cache cache.Manager, signe
 			}
 		},
 		"data",
-		[]byte(s.config.DA.GetDataNamespace()),
+		s.config.DA.GetDataNamespace(),
 		[]byte(s.config.DA.SubmitOptions),
 		cache,
 	)
@@ -312,7 +312,7 @@ func submitToDA[T any](
 	marshalFn func(T) ([]byte, error),
 	postSubmit func([]T, *coreda.ResultSubmit, float64),
 	itemType string,
-	namespace []byte,
+	namespace string,
 	options []byte,
 	cache cache.Manager,
 ) error {
