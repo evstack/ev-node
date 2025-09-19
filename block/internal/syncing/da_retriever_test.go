@@ -1,6 +1,7 @@
 package syncing
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -227,21 +228,24 @@ func TestDARetriever_RetrieveFromDA_TwoNamespaces_Success(t *testing.T) {
 	hdrBin, _ := makeSignedHeaderBytes(t, gen.ChainID, 9, addr, pub, signer, nil)
 	dataBin, _ := makeSignedDataBytes(t, gen.ChainID, 9, addr, pub, signer, 1)
 
-	mockDA := testmocks.NewMockDA(t)
-	// Expect GetIDs for both namespaces
-	mockDA.EXPECT().GetIDs(mock.Anything, uint64(1234), mock.MatchedBy(func(ns []byte) bool { return string(ns) == "nsHdr" })).
-		Return(&coreda.GetIDsResult{IDs: [][]byte{[]byte("h1")}, Timestamp: time.Now()}, nil).Once()
-	mockDA.EXPECT().Get(mock.Anything, mock.Anything, mock.MatchedBy(func(ns []byte) bool { return string(ns) == "nsHdr" })).
-		Return([][]byte{hdrBin}, nil).Once()
-
-	mockDA.EXPECT().GetIDs(mock.Anything, uint64(1234), mock.MatchedBy(func(ns []byte) bool { return string(ns) == "nsData" })).
-		Return(&coreda.GetIDsResult{IDs: [][]byte{[]byte("d1")}, Timestamp: time.Now()}, nil).Once()
-	mockDA.EXPECT().Get(mock.Anything, mock.Anything, mock.MatchedBy(func(ns []byte) bool { return string(ns) == "nsData" })).
-		Return([][]byte{dataBin}, nil).Once()
-
 	cfg := config.DefaultConfig()
 	cfg.DA.Namespace = "nsHdr"
 	cfg.DA.DataNamespace = "nsData"
+
+	namespaceBz := coreda.NamespaceFromString(cfg.DA.GetNamespace()).Bytes()
+	namespaceDataBz := coreda.NamespaceFromString(cfg.DA.GetDataNamespace()).Bytes()
+
+	mockDA := testmocks.NewMockDA(t)
+	// Expect GetIDs for both namespaces
+	mockDA.EXPECT().GetIDs(mock.Anything, uint64(1234), mock.MatchedBy(func(ns []byte) bool { return bytes.Equal(ns, namespaceBz) })).
+		Return(&coreda.GetIDsResult{IDs: [][]byte{[]byte("h1")}, Timestamp: time.Now()}, nil).Once()
+	mockDA.EXPECT().Get(mock.Anything, mock.Anything, mock.MatchedBy(func(ns []byte) bool { return bytes.Equal(ns, namespaceBz) })).
+		Return([][]byte{hdrBin}, nil).Once()
+
+	mockDA.EXPECT().GetIDs(mock.Anything, uint64(1234), mock.MatchedBy(func(ns []byte) bool { return bytes.Equal(ns, namespaceDataBz) })).
+		Return(&coreda.GetIDsResult{IDs: [][]byte{[]byte("d1")}, Timestamp: time.Now()}, nil).Once()
+	mockDA.EXPECT().Get(mock.Anything, mock.Anything, mock.MatchedBy(func(ns []byte) bool { return bytes.Equal(ns, namespaceDataBz) })).
+		Return([][]byte{dataBin}, nil).Once()
 
 	r := NewDARetriever(mockDA, cm, cfg, gen, common.DefaultBlockOptions(), zerolog.Nop())
 

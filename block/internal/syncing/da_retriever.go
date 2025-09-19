@@ -108,7 +108,7 @@ func (r *DARetriever) fetchBlobs(ctx context.Context, daHeight uint64) (coreda.R
 	headerRes := types.RetrieveWithHelpers(ctx, r.da, r.logger, daHeight, headerNamespace)
 
 	// If namespaces are the same, return header result
-	if string(headerNamespace) == string(dataNamespace) {
+	if headerNamespace == dataNamespace {
 		return headerRes, r.validateBlobResponse(headerRes, daHeight)
 	}
 
