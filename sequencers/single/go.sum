@@ -40,8 +40,8 @@ github.com/decred/dcrd/dcrec/secp256k1/v4 v4.4.0/go.mod h1:ZXNYxsqcloTdSy/rNShjY
 github.com/dustin/go-humanize v1.0.0/go.mod h1:HtrtbFcZ19U5GC7JDqmcUSB87Iq5E25KnS6fMYU6eOk=
 github.com/evstack/ev-node v1.0.0-beta.3 h1:0s3jgawkcBexvazALF10jxzUMxKUVQHy1QjlMFSdbAs=
 github.com/evstack/ev-node v1.0.0-beta.3/go.mod h1:sidmvCeHFnDp8/GcOA2EYcRIGKetyek+RqSeRN7AloY=
-github.com/evstack/ev-node/core v1.0.0-beta.2 h1:M1QQuG/DoP1jqa49E2REv9267XN8buhsZDdSBfW2l4o=
-github.com/evstack/ev-node/core v1.0.0-beta.2/go.mod h1:n2w/LhYQTPsi48m6lMj16YiIqsaQw6gxwjyJvR+B3sY=
+github.com/evstack/ev-node/core v1.0.0-beta.3 h1:01K2Ygm3puX4m2OBxvg/HDxu+he54jeNv+KDmpgujFc=
+github.com/evstack/ev-node/core v1.0.0-beta.3/go.mod h1:n2w/LhYQTPsi48m6lMj16YiIqsaQw6gxwjyJvR+B3sY=
 github.com/filecoin-project/go-clock v0.1.0 h1:SFbYIM75M8NnFm1yMHhN9Ahy3W5bEZV9gd6MPfXbKVU=
 github.com/filecoin-project/go-clock v0.1.0/go.mod h1:4uB/O4PvOjlx1VCMdZ9MyDZXRm//gkj1ELEbxfI1AZs=
 github.com/flynn/go-shlex v0.0.0-20150515145356-3f9db97f8568/go.mod h1:xEzjJPgXI435gkrCt3MPfRiAkVrwSbHsst4LCFVfpJc=
