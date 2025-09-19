@@ -120,6 +120,10 @@ type DASubmitter struct {
 	genesis genesis.Genesis
 	options common.BlockOptions
 	logger  zerolog.Logger
+
+	// calculate namespaces bytes once and reuse them
+	namespaceBz     []byte
+	namespaceDataBz []byte
 }
 
 // NewDASubmitter creates a new DA submitter
@@ -130,12 +134,15 @@ func NewDASubmitter(
 	options common.BlockOptions,
 	logger zerolog.Logger,
 ) *DASubmitter {
+
 	return &DASubmitter{
-		da:      da,
-		config:  config,
-		genesis: genesis,
-		options: options,
-		logger:  logger.With().Str("component", "da_submitter").Logger(),
+		da:              da,
+		config:          config,
+		genesis:         genesis,
+		options:         options,
+		logger:          logger.With().Str("component", "da_submitter").Logger(),
+		namespaceBz:     coreda.NamespaceFromString(config.DA.GetNamespace()).Bytes(),
+		namespaceDataBz: coreda.NamespaceFromString(config.DA.GetDataNamespace()).Bytes(),
 	}
 }
 
@@ -199,7 +206,7 @@ func (s *DASubmitter) SubmitHeaders(ctx context.Context, cache cache.Manager) er
 			}
 		},
 		"header",
-		s.config.DA.GetNamespace(),
+		s.namespaceBz,
 		[]byte(s.config.DA.SubmitOptions),
 		cache,
 	)
@@ -242,7 +249,7 @@ func (s *DASubmitter) SubmitData(ctx context.Context, cache cache.Manager, signe
 			}
 		},
 		"data",
-		s.config.DA.GetDataNamespace(),
+		s.namespaceDataBz,
 		[]byte(s.config.DA.SubmitOptions),
 		cache,
 	)
@@ -312,7 +319,7 @@ func submitToDA[T any](
 	marshalFn func(T) ([]byte, error),
 	postSubmit func([]T, *coreda.ResultSubmit, float64),
 	itemType string,
-	namespace string,
+	namespace []byte,
 	options []byte,
 	cache cache.Manager,
 ) error {

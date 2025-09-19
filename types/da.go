@@ -22,11 +22,10 @@ func SubmitWithHelpers(
 	logger zerolog.Logger,
 	data [][]byte,
 	gasPrice float64,
-	namespace string,
+	namespace []byte,
 	options []byte,
 ) coreda.ResultSubmit { // Return core ResultSubmit type
-	ns := coreda.NamespaceFromString(namespace)
-	ids, err := da.SubmitWithOptions(ctx, data, gasPrice, ns.Bytes(), options)
+	ids, err := da.SubmitWithOptions(ctx, data, gasPrice, namespace, options)
 
 	// Handle errors returned by Submit
 	if err != nil {
@@ -112,11 +111,10 @@ func RetrieveWithHelpers(
 	da coreda.DA,
 	logger zerolog.Logger,
 	dataLayerHeight uint64,
-	namespace string,
+	namespace []byte,
 ) coreda.ResultRetrieve {
-	namespaceBz := coreda.NamespaceFromString(namespace).Bytes()
 	// 1. Get IDs
-	idsResult, err := da.GetIDs(ctx, dataLayerHeight, namespaceBz)
+	idsResult, err := da.GetIDs(ctx, dataLayerHeight, namespace)
 	if err != nil {
 		// Handle specific "not found" error
 		if strings.Contains(err.Error(), coreda.ErrBlobNotFound.Error()) {
@@ -171,7 +169,7 @@ func RetrieveWithHelpers(
 	for i := 0; i < len(idsResult.IDs); i += batchSize {
 		end := min(i+batchSize, len(idsResult.IDs))
 
-		batchBlobs, err := da.Get(ctx, idsResult.IDs[i:end], namespaceBz)
+		batchBlobs, err := da.Get(ctx, idsResult.IDs[i:end], namespace)
 		if err != nil {
 			// Handle errors during Get
 			logger.Error().Uint64("height", dataLayerHeight).Int("num_ids", len(idsResult.IDs)).Err(err).Msg("Retrieve helper: Failed to get blobs")

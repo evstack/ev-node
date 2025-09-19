@@ -117,12 +117,11 @@ func TestSubmitWithHelpers(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			mockDA := mocks.NewMockDA(t)
-			namespace := "test-namespace"
-			encodedNamespace := coreda.NamespaceFromString(namespace)
+			encodedNamespace := coreda.NamespaceFromString("test-namespace")
 
 			mockDA.On("SubmitWithOptions", mock.Anything, tc.data, tc.gasPrice, encodedNamespace.Bytes(), tc.options).Return(tc.submitIDs, tc.submitErr)
 
-			result := types.SubmitWithHelpers(context.Background(), mockDA, logger, tc.data, tc.gasPrice, namespace, tc.options)
+			result := types.SubmitWithHelpers(context.Background(), mockDA, logger, tc.data, tc.gasPrice, encodedNamespace.Bytes(), tc.options)
 
 			assert.Equal(t, tc.expectedCode, result.Code)
 			if tc.expectedErrMsg != "" {
@@ -222,6 +221,7 @@ func TestRetrieveWithHelpers(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			mockDA := mocks.NewMockDA(t)
+			encodedNamespace := coreda.NamespaceFromString("test-namespace")
 
 			mockDA.On("GetIDs", mock.Anything, dataLayerHeight, mock.Anything).Return(tc.getIDsResult, tc.getIDsErr)
 
@@ -229,7 +229,7 @@ func TestRetrieveWithHelpers(t *testing.T) {
 				mockDA.On("Get", mock.Anything, tc.getIDsResult.IDs, mock.Anything).Return(mockBlobs, tc.getBlobsErr)
 			}
 
-			result := types.RetrieveWithHelpers(context.Background(), mockDA, logger, dataLayerHeight, "test-namespace")
+			result := types.RetrieveWithHelpers(context.Background(), mockDA, logger, dataLayerHeight, encodedNamespace.Bytes())
 
 			assert.Equal(t, tc.expectedCode, result.Code)
 			assert.Equal(t, tc.expectedHeight, result.Height)
