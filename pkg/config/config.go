@@ -259,8 +259,8 @@ func validateNamespace(namespace string) error {
 		return fmt.Errorf("namespace cannot be empty")
 	}
 
-	namespaceBz := da.PrepareNamespace([]byte(namespace))
-	if _, err := share.NewNamespaceFromBytes(namespaceBz); err != nil {
+	ns := da.NamespaceFromString(namespace)
+	if _, err := share.NewNamespaceFromBytes(ns.Bytes()); err != nil {
 		return fmt.Errorf("could not validate namespace (%s): %w", namespace, err)
 	}
 	return nil

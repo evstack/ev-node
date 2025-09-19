@@ -2,7 +2,6 @@ package cmd
 
 import (
 	"context"
-	"encoding/hex"
 	"fmt"
 	"path/filepath"
 
@@ -30,27 +29,27 @@ var RunCmd = &cobra.Command{
 	Aliases: []string{"node", "run"},
 	Short:   "Run the evolve node with EVM execution client",
 	RunE: func(cmd *cobra.Command, args []string) error {
-    executor, err := createExecutionClient(cmd)
-    if err != nil {
-        return err
-    }
+		executor, err := createExecutionClient(cmd)
+		if err != nil {
+			return err
+		}
 
-    nodeConfig, err := rollcmd.ParseConfig(cmd)
-    if err != nil {
-        return err
-    }
+		nodeConfig, err := rollcmd.ParseConfig(cmd)
+		if err != nil {
+			return err
+		}
 
-    logger := rollcmd.SetupLogger(nodeConfig.Log)
+		logger := rollcmd.SetupLogger(nodeConfig.Log)
 
-    // Attach logger to the EVM engine client if available
-    if ec, ok := executor.(*evm.EngineClient); ok {
-        ec.SetLogger(logger.With().Str("module", "engine_client").Logger())
-    }
+		// Attach logger to the EVM engine client if available
+		if ec, ok := executor.(*evm.EngineClient); ok {
+			ec.SetLogger(logger.With().Str("module", "engine_client").Logger())
+		}
 
-		headerNamespace := da.PrepareNamespace([]byte(nodeConfig.DA.GetNamespace()))
-		dataNamespace := da.PrepareNamespace([]byte(nodeConfig.DA.GetDataNamespace()))
+		headerNamespace := da.NamespaceFromString(nodeConfig.DA.GetNamespace())
+		dataNamespace := da.NamespaceFromString(nodeConfig.DA.GetDataNamespace())
 
-		logger.Info().Str("headerNamespace", hex.EncodeToString(headerNamespace)).Str("dataNamespace", hex.EncodeToString(dataNamespace)).Msg("namespaces")
+		logger.Info().Str("headerNamespace", headerNamespace.HexString()).Str("dataNamespace", dataNamespace.HexString()).Msg("namespaces")
 
 		daJrpc, err := jsonrpc.NewClient(context.Background(), logger, nodeConfig.DA.Address, nodeConfig.DA.AuthToken, nodeConfig.DA.GasPrice, nodeConfig.DA.GasMultiplier)
 		if err != nil {

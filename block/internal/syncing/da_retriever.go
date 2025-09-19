@@ -29,10 +29,13 @@ const (
 type DARetriever struct {
 	da      coreda.DA
 	cache   cache.Manager
-	config  config.Config
 	genesis genesis.Genesis
 	options common.BlockOptions
 	logger  zerolog.Logger
+
+	// calculate namespaces bytes once and reuse them
+	namespaceBz     []byte
+	namespaceDataBz []byte
 }
 
 // NewDARetriever creates a new DA retriever
@@ -45,12 +48,13 @@ func NewDARetriever(
 	logger zerolog.Logger,
 ) *DARetriever {
 	return &DARetriever{
-		da:      da,
-		cache:   cache,
-		config:  config,
-		genesis: genesis,
-		options: options,
-		logger:  logger.With().Str("component", "da_retriever").Logger(),
+		da:              da,
+		cache:           cache,
+		genesis:         genesis,
+		options:         options,
+		logger:          logger.With().Str("component", "da_retriever").Logger(),
+		namespaceBz:     coreda.NamespaceFromString(config.DA.GetNamespace()).Bytes(),
+		namespaceDataBz: coreda.NamespaceFromString(config.DA.GetDataNamespace()).Bytes(),
 	}
 }
 
@@ -100,19 +104,15 @@ func (r *DARetriever) fetchBlobs(ctx context.Context, daHeight uint64) (coreda.R
 	ctx, cancel := context.WithTimeout(ctx, dAFetcherTimeout)
 	defer cancel()
 
-	// Get namespaces
-	headerNamespace := []byte(r.config.DA.GetNamespace())
-	dataNamespace := []byte(r.config.DA.GetDataNamespace())
-
 	// Retrieve from both namespaces
-	headerRes := types.RetrieveWithHelpers(ctx, r.da, r.logger, daHeight, headerNamespace)
+	headerRes := types.RetrieveWithHelpers(ctx, r.da, r.logger, daHeight, r.namespaceBz)
 
 	// If namespaces are the same, return header result
-	if string(headerNamespace) == string(dataNamespace) {
+	if bytes.Equal(r.namespaceBz, r.namespaceDataBz) {
 		return headerRes, r.validateBlobResponse(headerRes, daHeight)
 	}
 
-	dataRes := types.RetrieveWithHelpers(ctx, r.da, r.logger, daHeight, dataNamespace)
+	dataRes := types.RetrieveWithHelpers(ctx, r.da, r.logger, daHeight, r.namespaceDataBz)
 
 	// Validate responses
 	headerErr := r.validateBlobResponse(headerRes, daHeight)
