@@ -125,20 +125,3 @@ func ParseHexNamespace(hexStr string) (*Namespace, error) {
 
 	return NamespaceFromBytes(b)
 }
-
-// PrepareNamespace converts a namespace identifier (string or bytes) into a proper Celestia namespace
-// This is the main function to be used when preparing namespaces for DA operations
-func PrepareNamespace(identifier []byte) []byte {
-	// If the identifier is already a valid namespace (29 bytes), validate and return it
-	if len(identifier) == NamespaceSize {
-		ns, err := NamespaceFromBytes(identifier)
-		if err == nil {
-			return ns.Bytes()
-		}
-		// If it's not a valid namespace, treat it as a string identifier
-	}
-
-	// Convert the identifier to a string and create a namespace from it
-	ns := NamespaceFromString(string(identifier))
-	return ns.Bytes()
-}
