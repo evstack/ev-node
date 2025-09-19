@@ -64,7 +64,7 @@ func TestNamespaceV0Creation(t *testing.T) {
 				}
 
 				// Verify first 18 bytes of ID are zeros
-				for i := 0; i < NamespaceVersionZeroPrefixSize; i++ {
+				for i := range NamespaceVersionZeroPrefixSize {
 					if ns.ID[i] != byte(0) {
 						t.Errorf("First 18 bytes should be zero, but byte %d is %d", i, ns.ID[i])
 					}
