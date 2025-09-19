@@ -81,7 +81,7 @@ func DefaultConfig() Config {
 func randString(length int) string {
 	const charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
 	result := make([]byte, length)
-	rng := rand.New(rand.NewSource(time.Now().Unix()))
+	rng := rand.New(rand.NewSource(time.Now().Unix())) // notlint:gosec // even half random is good enough here.
 	for i := range result {
 		result[i] = charset[rng.Intn(len(charset))]
 	}
