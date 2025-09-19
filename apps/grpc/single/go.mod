@@ -4,7 +4,7 @@ go 1.24.2
 
 require (
 	github.com/evstack/ev-node v1.0.0-beta.3
-	github.com/evstack/ev-node/core v1.0.0-beta.2
+	github.com/evstack/ev-node/core v1.0.0-beta.3
 	github.com/evstack/ev-node/da v1.0.0-beta.1
 	github.com/evstack/ev-node/execution/grpc v0.0.0
 	github.com/evstack/ev-node/sequencers/single v0.0.0
