@@ -284,10 +284,7 @@ func (n *FullNode) Run(parentCtx context.Context) error {
 	bestKnownHeightProvider := func() uint64 {
 		hHeight := n.hSyncService.Store().Height()
 		dHeight := n.dSyncService.Store().Height()
-		if hHeight < dHeight {
-			return hHeight
-		}
-		return dHeight
+		return min(hHeight, dHeight)
 	}
 
 	handler, err := rpcserver.NewServiceHandler(n.Store, n.p2pClient, n.genesis.ProposerAddress, n.Logger, n.nodeConfig, bestKnownHeightProvider)
