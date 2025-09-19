@@ -51,7 +51,7 @@ Both services:
 
 #### Parallel Broadcasting
 
-The block manager broadcasts headers and data in parallel when publishing blocks:
+The Executor component (in aggregator nodes) broadcasts headers and data in parallel when publishing blocks:
 
 - Headers are sent through `headerBroadcaster`
 - Data is sent through `dataBroadcaster`
@@ -85,11 +85,11 @@ The sync service implementation can be found in [pkg/sync/sync_service.go][sync-
 
 Full nodes create and start both services, while light nodes only start the header sync service. The services are created in [full][fullnode] and [light][lightnode] node implementations.
 
-The block manager integrates with both services through:
+The block components integrate with both services through:
 
-- `HeaderStoreRetrieveLoop()` for retrieving headers from P2P
-- `DataStoreRetrieveLoop()` for retrieving data from P2P
-- Separate broadcast channels for publishing headers and data
+- The Syncer component's P2PHandler retrieves headers and data from P2P
+- The Executor component publishes headers and data through broadcast channels
+- Separate stores and channels manage header and data synchronization
 
 ## References
 

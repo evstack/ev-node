@@ -8,7 +8,7 @@ Each file in this folder covers a specific aspect of the system, from block mana
 
 ## Table of Contents
 
-- [Block Manager](./block-manager.md): Explains the responsibilities and logic of the block manager in Evolve.
+- [Block Components](./block-manager.md): Explains the modular component architecture for block processing in Evolve.
 - [Block Validity](./block-validity.md): Details the rules and checks for block validity within the protocol.
 - [Data Availability (DA)](./da.md): Describes how Evolve ensures data availability and integrates with DA layers.
 - [Full Node](./full_node.md): Outlines the architecture and operation of a full node in Evolve.
