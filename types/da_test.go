@@ -10,7 +10,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 
-	"github.com/evstack/ev-node/core/da"
 	coreda "github.com/evstack/ev-node/core/da"
 	"github.com/evstack/ev-node/test/mocks"
 	"github.com/evstack/ev-node/types"
@@ -119,7 +118,7 @@ func TestSubmitWithHelpers(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			mockDA := mocks.NewMockDA(t)
 			namespace := "test-namespace"
-			encodedNamespace := da.NamespaceFromString(namespace)
+			encodedNamespace := coreda.NamespaceFromString(namespace)
 
 			mockDA.On("SubmitWithOptions", mock.Anything, tc.data, tc.gasPrice, encodedNamespace.Bytes(), tc.options).Return(tc.submitIDs, tc.submitErr)
 
