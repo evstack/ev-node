@@ -26,14 +26,14 @@ func TestLazyMode_ProduceBlockLogic(t *testing.T) {
 	ds := sync.MutexWrap(datastore.NewMapDatastore())
 	memStore := store.New(ds)
 
-	cacheManager, err := cache.NewManager(config.DefaultConfig, memStore, zerolog.Nop())
+	cacheManager, err := cache.NewManager(config.DefaultConfig(), memStore, zerolog.Nop())
 	require.NoError(t, err)
 
 	metrics := common.NopMetrics()
 
 	addr, _, signerWrapper := buildTestSigner(t)
 
-	cfg := config.DefaultConfig
+	cfg := config.DefaultConfig()
 	cfg.Node.BlockTime = config.DurationWrapper{Duration: 10 * time.Millisecond}
 	cfg.Node.LazyMode = true
 	cfg.Node.MaxPendingHeadersAndData = 1000
@@ -134,14 +134,14 @@ func TestRegularMode_ProduceBlockLogic(t *testing.T) {
 	ds := sync.MutexWrap(datastore.NewMapDatastore())
 	memStore := store.New(ds)
 
-	cacheManager, err := cache.NewManager(config.DefaultConfig, memStore, zerolog.Nop())
+	cacheManager, err := cache.NewManager(config.DefaultConfig(), memStore, zerolog.Nop())
 	require.NoError(t, err)
 
 	metrics := common.NopMetrics()
 
 	addr, _, signerWrapper := buildTestSigner(t)
 
-	cfg := config.DefaultConfig
+	cfg := config.DefaultConfig()
 	cfg.Node.BlockTime = config.DurationWrapper{Duration: 10 * time.Millisecond}
 	cfg.Node.LazyMode = false // Regular mode
 	cfg.Node.MaxPendingHeadersAndData = 1000

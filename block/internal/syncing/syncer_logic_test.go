@@ -71,12 +71,12 @@ func makeData(chainID string, height uint64, txs int) *types.Data {
 func TestProcessHeightEvent_SyncsAndUpdatesState(t *testing.T) {
 	ds := sync.MutexWrap(datastore.NewMapDatastore())
 	st := store.New(ds)
-	cm, err := cache.NewManager(config.DefaultConfig, st, zerolog.Nop())
+	cm, err := cache.NewManager(config.DefaultConfig(), st, zerolog.Nop())
 	require.NoError(t, err)
 
 	addr, pub, signer := buildSyncTestSigner(t)
 
-	cfg := config.DefaultConfig
+	cfg := config.DefaultConfig()
 	gen := genesis.Genesis{ChainID: "tchain", InitialHeight: 1, StartTime: time.Now().Add(-time.Second), ProposerAddress: addr}
 
 	mockExec := testmocks.NewMockExecutor(t)
@@ -123,11 +123,11 @@ func TestProcessHeightEvent_SyncsAndUpdatesState(t *testing.T) {
 func TestSequentialBlockSync(t *testing.T) {
 	ds := sync.MutexWrap(datastore.NewMapDatastore())
 	st := store.New(ds)
-	cm, err := cache.NewManager(config.DefaultConfig, st, zerolog.Nop())
+	cm, err := cache.NewManager(config.DefaultConfig(), st, zerolog.Nop())
 	require.NoError(t, err)
 
 	addr, pub, signer := buildSyncTestSigner(t)
-	cfg := config.DefaultConfig
+	cfg := config.DefaultConfig()
 	gen := genesis.Genesis{ChainID: "tchain", InitialHeight: 1, StartTime: time.Now().Add(-time.Second), ProposerAddress: addr}
 
 	mockExec := testmocks.NewMockExecutor(t)

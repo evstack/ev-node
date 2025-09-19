@@ -30,14 +30,14 @@ func setupDASubmitterTest(t *testing.T) (*DASubmitter, store.Store, cache.Manage
 	// Create store and cache
 	ds := sync.MutexWrap(datastore.NewMapDatastore())
 	st := store.New(ds)
-	cm, err := cache.NewManager(config.DefaultConfig, st, zerolog.Nop())
+	cm, err := cache.NewManager(config.DefaultConfig(), st, zerolog.Nop())
 	require.NoError(t, err)
 
 	// Create dummy DA
 	dummyDA := coreda.NewDummyDA(10_000_000, 0, 0, 10*time.Millisecond)
 
 	// Create config
-	cfg := config.DefaultConfig
+	cfg := config.DefaultConfig()
 	cfg.DA.Namespace = "test-headers"
 	cfg.DA.DataNamespace = "test-data"
 

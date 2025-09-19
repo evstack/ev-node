@@ -35,7 +35,7 @@ func setupTestServer(t *testing.T, mockStore *mocks.MockStore, mockP2P *mocks.Mo
 	healthServer := server.NewHealthServer()
 
 	// Create config server with test config
-	testConfig := config.DefaultConfig
+	testConfig := config.DefaultConfig()
 	testConfig.DA.Namespace = "test-headers"
 	configServer := server.NewConfigServer(testConfig, nil, logger)
 

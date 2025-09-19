@@ -165,10 +165,7 @@ type DAConfig struct {
 
 // GetNamespace returns the namespace for header submissions.
 func (d *DAConfig) GetNamespace() string {
-	if d.Namespace != "" {
-		return d.Namespace
-	}
-	return "rollkit-headers" // Default value
+	return d.Namespace
 }
 
 // GetDataNamespace returns the namespace for data submissions, falling back to the header namespace if not set
@@ -235,6 +232,11 @@ func (c *Config) Validate() error {
 		return fmt.Errorf("could not create directory %q: %w", fullDir, err)
 	}
 
+	// Validate namespace not empty
+	if c.DA.GetNamespace() == "" {
+		return fmt.Errorf("namespace cannot be empty")
+	}
+
 	// Validate lazy mode configuration
 	if c.Node.LazyMode && c.Node.LazyBlockInterval.Duration <= c.Node.BlockTime.Duration {
 		return fmt.Errorf("LazyBlockInterval (%v) must be greater than BlockTime (%v) in lazy mode",
@@ -253,15 +255,17 @@ func (c *Config) ConfigPath() string {
 // This includes logging configuration and root directory settings.
 // It should be used in apps that do not already define their logger and home flag.
 func AddGlobalFlags(cmd *cobra.Command, defaultHome string) {
-	cmd.PersistentFlags().String(FlagLogLevel, DefaultConfig.Log.Level, "Set the log level (debug, info, warn, error)")
-	cmd.PersistentFlags().String(FlagLogFormat, DefaultConfig.Log.Format, "Set the log format (text, json)")
-	cmd.PersistentFlags().Bool(FlagLogTrace, DefaultConfig.Log.Trace, "Enable stack traces in error logs")
+	def := DefaultConfig()
+
+	cmd.PersistentFlags().String(FlagLogLevel, def.Log.Level, "Set the log level (debug, info, warn, error)")
+	cmd.PersistentFlags().String(FlagLogFormat, def.Log.Format, "Set the log format (text, json)")
+	cmd.PersistentFlags().Bool(FlagLogTrace, def.Log.Trace, "Enable stack traces in error logs")
 	cmd.PersistentFlags().String(FlagRootDir, DefaultRootDirWithName(defaultHome), "Root directory for application data")
 }
 
 // AddFlags adds Evolve specific configuration options to cobra Command.
 func AddFlags(cmd *cobra.Command) {
-	def := DefaultConfig
+	def := DefaultConfig()
 
 	// Set normalization function to support both flag prefixes
 	cmd.Flags().SetNormalizeFunc(func(f *pflag.FlagSet, name string) pflag.NormalizedName {
@@ -433,7 +437,7 @@ func LoadFromViper(inputViper *viper.Viper) (Config, error) {
 // loadFromViper is a helper function that processes a viper instance and returns a Config.
 // It is used by both Load and LoadFromViper to ensure consistent behavior.
 func loadFromViper(v *viper.Viper, home string) (Config, error) {
-	cfg := DefaultConfig
+	cfg := DefaultConfig()
 	cfg.RootDir = home
 
 	decoder, err := mapstructure.NewDecoder(&mapstructure.DecoderConfig{

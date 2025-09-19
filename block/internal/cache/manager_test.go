@@ -18,7 +18,7 @@ import (
 
 // helper to make a temp config rooted at t.TempDir()
 func tempConfig(t *testing.T) config.Config {
-	cfg := config.DefaultConfig
+	cfg := config.DefaultConfig()
 	cfg.RootDir = t.TempDir()
 	return cfg
 }
