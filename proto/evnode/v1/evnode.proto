@@ -93,6 +93,7 @@ message Metadata {
 message Data {
   Metadata       metadata = 1;
   repeated bytes txs      = 2;
+  bytes          cached_hash = 3; // Optional cached hash for performance
 }
 
 // SignedData is a data with a signature and a signer.

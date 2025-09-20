@@ -33,6 +33,10 @@ type Metadata struct {
 type Data struct {
 	*Metadata
 	Txs Txs
+
+	// cachedHash stores the computed hash to avoid recalculation
+	// This field is set once when Hash() is first called and never modified after that
+	cachedHash Hash
 }
 
 // SignedData combines Data and its signature.
