@@ -107,7 +107,7 @@ func StartNode(
 		if err != nil {
 			return err
 		}
-	} else {
+	} else if nodeConfig.Node.Aggregator && nodeConfig.Signer.SignerType != "file" {
 		return fmt.Errorf("unknown signer type: %s", nodeConfig.Signer.SignerType)
 	}
 
