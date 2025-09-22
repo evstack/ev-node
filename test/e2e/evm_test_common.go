@@ -17,13 +17,11 @@ package e2e
 
 import (
 	"context"
-	"encoding/hex"
 	"flag"
 	"fmt"
 	"github.com/celestiaorg/tastora/framework/docker/evstack/reth"
 	"math/big"
 	"net"
-	"net/http"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -34,7 +32,6 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/ethclient"
-	"github.com/golang-jwt/jwt/v5"
 	"github.com/stretchr/testify/require"
 
 	"github.com/evstack/ev-node/execution/evm"
@@ -150,15 +147,10 @@ const (
 )
 
 const (
-	FastPollingInterval = 50 * time.Millisecond  // Reduced from 100ms
 	SlowPollingInterval = 250 * time.Millisecond // Reduced from 500ms
 
-	ContainerReadinessTimeout = 3 * time.Second // Reduced from 5s
-	P2PDiscoveryTimeout       = 3 * time.Second // Reduced from 5s
-	NodeStartupTimeout        = 8 * time.Second // Increased back for CI stability
+	NodeStartupTimeout = 8 * time.Second // Increased back for CI stability
 
-	// Log optimization - reduce verbosity for faster I/O
-	LogBufferSize = 1024 // Smaller buffer for faster processing
 )
 
 // setupTestRethEngineE2E starts a reth engine for the sequencer and returns jwt, ethURL, engineURL.
@@ -171,86 +163,6 @@ func setupTestRethEngineE2E(t *testing.T) *reth.Node {
 func setupTestRethEngineFullNode(t *testing.T) *reth.Node {
 	t.Helper()
 	return evm.SetupTestRethEngineFullNode(t, dockerPath)
-}
-
-// decodeSecret decodes a hex-encoded JWT secret string into a byte slice.
-func decodeSecret(jwtSecret string) ([]byte, error) {
-	secret, err := hex.DecodeString(strings.TrimPrefix(jwtSecret, "0x"))
-	if err != nil {
-		return nil, fmt.Errorf("failed to decode JWT secret: %w", err)
-	}
-	return secret, nil
-}
-
-// getAuthToken creates a JWT token signed with the provided secret, valid for 1 hour.
-func getAuthToken(jwtSecret []byte) (string, error) {
-	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
-		"exp": time.Now().Add(time.Hour * 1).Unix(), // Expires in 1 hour
-		"iat": time.Now().Unix(),
-	})
-
-	// Sign the token with the decoded secret
-	authToken, err := token.SignedString(jwtSecret)
-	if err != nil {
-		return "", fmt.Errorf("failed to sign JWT token: %w", err)
-	}
-	return authToken, nil
-}
-
-// waitForRethContainerAt waits for the Reth container to be ready by polling HTTP endpoints.
-// This function polls both the ETH JSON-RPC endpoint and the Engine API endpoint with JWT authentication
-// to ensure both are fully ready before proceeding with tests.
-//
-// Parameters:
-// - jwtSecret: JWT secret for engine authentication
-// - ethURL: HTTP endpoint for ETH JSON-RPC calls (e.g., http://localhost:8545)
-// - engineURL: HTTP endpoint for Engine API calls (e.g., http://localhost:8551)
-//
-// Returns: Error if timeout occurs, nil if both endpoints become ready
-func waitForRethContainerAt(t *testing.T, jwtSecret, ethURL, engineURL string) error {
-	t.Helper()
-	client := &http.Client{Timeout: FastPollingInterval}
-	timer := time.NewTimer(ContainerReadinessTimeout)
-	defer timer.Stop()
-	for {
-		select {
-		case <-timer.C:
-			return fmt.Errorf("timeout waiting for reth container to be ready")
-		default:
-			// Check ETH RPC endpoint
-			rpcReq := strings.NewReader(`{"jsonrpc":"2.0","method":"net_version","params":[],"id":1}`)
-			resp, err := client.Post(ethURL, "application/json", rpcReq)
-			if err == nil && resp.StatusCode == http.StatusOK {
-				if err := resp.Body.Close(); err != nil {
-					return fmt.Errorf("failed to close response body: %w", err)
-				}
-
-				// Also check the engine URL with JWT authentication
-				req, err := http.NewRequest("POST", engineURL, strings.NewReader(`{"jsonrpc":"2.0","method":"engine_getClientVersionV1","params":[],"id":1}`))
-				if err != nil {
-					return err
-				}
-				req.Header.Set("Content-Type", "application/json")
-				secret, err := decodeSecret(jwtSecret)
-				if err != nil {
-					return err
-				}
-				authToken, err := getAuthToken(secret)
-				if err != nil {
-					return err
-				}
-				req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", authToken))
-				resp, err := client.Do(req)
-				if err == nil && resp.StatusCode == http.StatusOK {
-					if err := resp.Body.Close(); err != nil {
-						return fmt.Errorf("failed to close response body: %w", err)
-					}
-					return nil
-				}
-			}
-			time.Sleep(FastPollingInterval)
-		}
-	}
 }
 
 // getNodeP2PAddress uses the net-info command to get the P2P address of a node.
@@ -530,14 +442,9 @@ func setupCommonEVMTest(t *testing.T, sut *SystemUnderTest, needsFullNode bool, 
 		fnEngine = "http://localhost:" + fnInfo.External.Ports.Engine
 	}
 
-	// Get genesis hash by querying the sequencer ETH endpoint
-	var genesisHash string
-	{
-		hash, _, _, _, err := checkBlockInfoAt(t, seqEth, ptrUint64(0))
-		require.NoError(t, err)
-		genesisHash = hash.Hex()
-	}
-	t.Logf("Genesis hash: %s", genesisHash)
+	// get genesis hash by querying the sequencer ETH endpoint
+	genesisHash, err := rethNode.GenesisHash(context.Background())
+	require.NoError(t, err, "failed to get genesis hash")
 
 	// Populate ports with both dynamic rollkit ports and dynamic engine endpoints
 	dynPorts.SequencerEthURL = seqEth
@@ -547,8 +454,6 @@ func setupCommonEVMTest(t *testing.T, sut *SystemUnderTest, needsFullNode bool, 
 
 	return seqJWT, fnJWT, genesisHash, dynPorts
 }
-
-func ptrUint64(v uint64) *uint64 { x := v; return &x }
 
 // checkTxIncludedAt checks if a transaction was included in a block at the specified EVM endpoint.
 // This utility function connects to the provided EVM endpoint and queries for the
