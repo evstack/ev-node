@@ -214,7 +214,7 @@ func GetGenesisHash(t *testing.T) string {
 
 // SetupTestRethEngineFullNode sets up a Reth full node test environment using Docker Compose with the full node configuration.
 // This function is specifically for setting up full nodes that connect to ports 8555/8561.
-func SetupTestRethEngineFullNode(t *testing.T, dockerPath, jwtFilename string) (string, string, string) {
+func SetupTestRethEngineFullNode(t *testing.T, dockerPath string) *rethfw.Node {
 	t.Helper()
 	ctx := context.Background()
 	// Reuse docker client/network from the first call
@@ -229,8 +229,7 @@ func SetupTestRethEngineFullNode(t *testing.T, dockerPath, jwtFilename string) (
 	require.NoError(t, err)
 
 	// Use a different test name suffix to avoid container name collisions
-	n, err := rethfw.NewNodeBuilder(t).
-		WithTestName(t.Name() + "-full").
+	n, err := rethfw.NewNodeBuilderWithTestName(t, fmt.Sprintf(t.Name(), randomString(5), "-full")).
 		WithDockerClient(dockerCli).
 		WithDockerNetworkID(dockerNetID).
 		WithGenesis(genesisBz).
@@ -245,5 +244,5 @@ func SetupTestRethEngineFullNode(t *testing.T, dockerPath, jwtFilename string) (
 	jwtSecret := n.JWTSecretHex()
 
 	require.NoError(t, waitForRethContainer(t, jwtSecret, fullNodeEthURL, fullNodeEngineURL))
-	return jwtSecret, fullNodeEthURL, fullNodeEngineURL
+	return n
 }

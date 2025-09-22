@@ -168,9 +168,9 @@ func setupTestRethEngineE2E(t *testing.T) *reth.Node {
 }
 
 // setupTestRethEngineFullNode sets up a reth engine for a follower full node and returns jwt, ethURL, engineURL.
-func setupTestRethEngineFullNode(t *testing.T) (string, string, string) {
+func setupTestRethEngineFullNode(t *testing.T) *reth.Node {
 	t.Helper()
-	return evm.SetupTestRethEngineFullNode(t, dockerPath, "jwt.hex")
+	return evm.SetupTestRethEngineFullNode(t, dockerPath)
 }
 
 // decodeSecret decodes a hex-encoded JWT secret string into a byte slice.
@@ -520,7 +520,14 @@ func setupCommonEVMTest(t *testing.T, sut *SystemUnderTest, needsFullNode bool, 
 
 	var fnJWT, fnEth, fnEngine string
 	if needsFullNode {
-		fnJWT, fnEth, fnEngine = setupTestRethEngineFullNode(t)
+		rethFn := setupTestRethEngineFullNode(t)
+
+		fnInfo, err := rethFn.GetNetworkInfo(context.Background())
+		require.NoError(t, err, "failed to get reth network info")
+
+		fnJWT = rethFn.JWTSecretHex()
+		fnEth = "http://localhost:" + fnInfo.External.Ports.RPC
+		fnEngine = "http://localhost:" + fnInfo.External.Ports.Engine
 	}
 
 	// Get genesis hash by querying the sequencer ETH endpoint
