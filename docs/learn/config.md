@@ -837,7 +837,7 @@ signer:
 
 **Command-line Flag:**
 `--rollkit.signer.signer_path <string>`
-_Example:_ `--rollkit.signer.signer_path ./config/mykey.json`
+_Example:_ `--rollkit.signer.signer_path ./config`
 _Default:_ (Depends on application)
 _Constant:_ `FlagSignerPath`
 
