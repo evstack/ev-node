@@ -2,8 +2,6 @@ module github.com/evstack/ev-node/execution/evm
 
 go 1.24.6
 
-toolchain go1.24.7
-
 require (
 	github.com/celestiaorg/tastora v0.4.2-0.20250922082434-f16cbcc4dbd2
 	github.com/ethereum/go-ethereum v1.16.3
