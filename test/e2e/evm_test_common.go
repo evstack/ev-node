@@ -19,7 +19,6 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	"github.com/celestiaorg/tastora/framework/docker/evstack/reth"
 	"math/big"
 	"net"
 	"os"
@@ -152,18 +151,6 @@ const (
 	NodeStartupTimeout = 8 * time.Second // Increased back for CI stability
 
 )
-
-// setupTestRethEngineE2E starts a reth engine for the sequencer and returns jwt, ethURL, engineURL.
-func setupTestRethEngineE2E(t *testing.T) *reth.Node {
-	t.Helper()
-	return evm.SetupTestRethEngine(t, dockerPath)
-}
-
-// setupTestRethEngineFullNode sets up a reth engine for a follower full node and returns jwt, ethURL, engineURL.
-func setupTestRethEngineFullNode(t *testing.T) *reth.Node {
-	t.Helper()
-	return evm.SetupTestRethEngineFullNode(t, dockerPath)
-}
 
 // getNodeP2PAddress uses the net-info command to get the P2P address of a node.
 // This is more reliable than parsing logs as it directly queries the node's state.
@@ -421,7 +408,7 @@ func setupCommonEVMTest(t *testing.T, sut *SystemUnderTest, needsFullNode bool, 
 	sut.ExecCmd(localDABinary, "-port", dynPorts.DAPort)
 	t.Logf("Started local DA on port %s", dynPorts.DAPort)
 
-	rethNode := setupTestRethEngineE2E(t)
+	rethNode := evm.SetupTestRethEngine(t)
 
 	networkInfo, err := rethNode.GetNetworkInfo(context.Background())
 	require.NoError(t, err, "failed to get reth network info")
@@ -432,7 +419,7 @@ func setupCommonEVMTest(t *testing.T, sut *SystemUnderTest, needsFullNode bool, 
 
 	var fnJWT, fnEth, fnEngine string
 	if needsFullNode {
-		rethFn := setupTestRethEngineFullNode(t)
+		rethFn := evm.SetupTestRethEngineFullNode(t)
 
 		fnInfo, err := rethFn.GetNetworkInfo(context.Background())
 		require.NoError(t, err, "failed to get reth network info")

@@ -57,11 +57,11 @@ func TestEvmDARestartWithPendingBlocksE2E(t *testing.T) {
 	sut := NewSystemUnderTest(t)
 
 	// Setup sequencer and get genesis hash
-    genesisHash, seqURL := setupSequencerOnlyTest(t, sut, nodeHome)
+	genesisHash, seqURL := setupSequencerOnlyTest(t, sut, nodeHome)
 	t.Logf("Genesis hash: %s", genesisHash)
 
 	// Connect to EVM
-    client, err := ethclient.Dial(seqURL)
+	client, err := ethclient.Dial(seqURL)
 	require.NoError(t, err, "Should be able to connect to EVM")
 	defer client.Close()
 
@@ -75,23 +75,24 @@ func TestEvmDARestartWithPendingBlocksE2E(t *testing.T) {
 	const initialTxCount = 5
 	var initialTxHashes []string
 
-    for i := 0; i < initialTxCount; i++ {
-        tx := evm.GetRandomTransaction(t, TestPrivateKey, TestToAddress, DefaultChainID, DefaultGasLimit, &globalNonce)
-        require.NoError(t, client.SendTransaction(context.Background(), tx))
-        initialTxHashes = append(initialTxHashes, tx.Hash().Hex())
-        t.Logf("Submitted initial transaction %d: %s", i+1, tx.Hash().Hex())
-        time.Sleep(100 * time.Millisecond) // Small delay to ensure separate blocks
-    }
+	for i := 0; i < initialTxCount; i++ {
+		tx := evm.GetRandomTransaction(t, TestPrivateKey, TestToAddress, DefaultChainID, DefaultGasLimit, &globalNonce)
+		require.NoError(t, client.SendTransaction(context.Background(), tx))
+		initialTxHashes = append(initialTxHashes, tx.Hash().Hex())
+		t.Logf("Submitted initial transaction %d: %s", i+1, tx.Hash().Hex())
+		time.Sleep(100 * time.Millisecond) // Small delay to ensure separate blocks
+	}
 
 	// Wait for initial transactions to be included in blocks
 	t.Log("Waiting for initial transactions to be included...")
-    require.Eventually(t, func() bool {
-        for _, txHashStr := range initialTxHashes {
-            r, err := client.TransactionReceipt(context.Background(), common.HexToHash(txHashStr))
-            if err != nil || r == nil || r.Status != 1 { return false }
-        }
-        return true
-    }, 15*time.Second, 500*time.Millisecond, "All initial transactions should be included")
+	require.Eventually(t, func() bool {
+		for _, txHashStr := range initialTxHashes {
+			if !evm.CheckTxIncluded(client, common.HexToHash(txHashStr)) {
+				return false
+			}
+		}
+		return true
+	}, 15*time.Second, 500*time.Millisecond, "All initial transactions should be included")
 
 	// Get current block height after initial setup
 	initialHeader, err := client.HeaderByNumber(ctx, nil)
@@ -120,11 +121,11 @@ func TestEvmDARestartWithPendingBlocksE2E(t *testing.T) {
 
 	for block := 0; block < targetBlocks; block++ {
 		// Create multiple transactions per block to increase data size
-        for tx := 0; tx < txsPerBlock; tx++ {
-            transaction := evm.GetRandomTransaction(t, TestPrivateKey, TestToAddress, DefaultChainID, DefaultGasLimit, &globalNonce)
-            require.NoError(t, client.SendTransaction(ctx, transaction))
-            pendingTxHashes = append(pendingTxHashes, transaction.Hash().Hex())
-        }
+		for tx := 0; tx < txsPerBlock; tx++ {
+			transaction := evm.GetRandomTransaction(t, TestPrivateKey, TestToAddress, DefaultChainID, DefaultGasLimit, &globalNonce)
+			require.NoError(t, client.SendTransaction(ctx, transaction))
+			pendingTxHashes = append(pendingTxHashes, transaction.Hash().Hex())
+		}
 
 		// Small delay between transaction batches
 		time.Sleep(200 * time.Millisecond)
@@ -184,10 +185,11 @@ func TestEvmDARestartWithPendingBlocksE2E(t *testing.T) {
 	for elapsed := time.Duration(0); elapsed < recoveryTimeout; elapsed += checkInterval {
 		// Count how many pending transactions have been included
 		includedCount := 0
-        for _, txHashStr := range pendingTxHashes {
-            r, err := client.TransactionReceipt(ctx, common.HexToHash(txHashStr))
-            if err == nil && r != nil && r.Status == 1 { includedCount++ }
-        }
+		for _, txHashStr := range pendingTxHashes {
+			if evm.CheckTxIncluded(client, common.HexToHash(txHashStr)) {
+				includedCount++
+			}
+		}
 
 		finalTxCount = includedCount
 		progressPct := float64(includedCount) / float64(len(pendingTxHashes)) * 100
@@ -228,14 +230,13 @@ func TestEvmDARestartWithPendingBlocksE2E(t *testing.T) {
 
 	// Submit one final transaction to verify system is stable
 	t.Log("Testing system stability with final transaction...")
-    finalTx := evm.GetRandomTransaction(t, TestPrivateKey, TestToAddress, DefaultChainID, DefaultGasLimit, &globalNonce)
-    require.NoError(t, client.SendTransaction(ctx, finalTx))
+	finalTx := evm.GetRandomTransaction(t, TestPrivateKey, TestToAddress, DefaultChainID, DefaultGasLimit, &globalNonce)
+	require.NoError(t, client.SendTransaction(ctx, finalTx))
 
 	// Verify final transaction is included quickly (system is responsive)
-    require.Eventually(t, func() bool {
-        r, err := client.TransactionReceipt(ctx, finalTx.Hash())
-        return err == nil && r != nil && r.Status == 1
-    }, 15*time.Second, 500*time.Millisecond, "Final test transaction should be included quickly")
+	require.Eventually(t, func() bool {
+		return evm.CheckTxIncluded(client, finalTx.Hash())
+	}, 15*time.Second, 500*time.Millisecond, "Final test transaction should be included quickly")
 
 	t.Log("✅ Final transaction included - system is stable and responsive")
 

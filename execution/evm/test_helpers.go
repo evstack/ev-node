@@ -4,17 +4,12 @@
 package evm
 
 import (
-	"bytes"
 	"context"
 	"crypto/rand"
-	"encoding/hex"
-	"encoding/json"
 	"fmt"
 	"math/big"
 	mathrand "math/rand"
 	"net/http"
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -36,16 +31,6 @@ var (
 	dockerNetID string
 )
 
-// generateJWTSecret generates a random 32-byte JWT secret and returns it as a hex string.
-func generateJWTSecret() (string, error) {
-	jwtSecret := make([]byte, 32)
-	_, err := rand.Read(jwtSecret)
-	if err != nil {
-		return "", fmt.Errorf("failed to generate random bytes: %w", err)
-	}
-	return hex.EncodeToString(jwtSecret), nil
-}
-
 const charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
 
 func randomString(n int) string {
@@ -58,7 +43,7 @@ func randomString(n int) string {
 }
 
 // SetupTestRethEngine sets up a Reth engine test environment using Docker Compose, writes a JWT secret file, and returns the secret. It also registers cleanup for resources.
-func SetupTestRethEngine(t *testing.T, dockerPath string) *rethfw.Node {
+func SetupTestRethEngine(t *testing.T) *rethfw.Node {
 	t.Helper()
 	// Start a single reth via Tastora to serve as the execution engine paired with the sequencer evm-single
 	ctx := context.Background()
@@ -69,18 +54,12 @@ func SetupTestRethEngine(t *testing.T, dockerPath string) *rethfw.Node {
 		dockerCli, dockerNetID = cli, netID
 	}
 
-	// Load genesis used by previous compose path
-	dockerAbsPath, err := filepath.Abs(dockerPath)
-	require.NoError(t, err)
-	genesisPath := filepath.Join(dockerAbsPath, "chain", "genesis.json")
-	genesisBz, err := os.ReadFile(genesisPath)
-	require.NoError(t, err)
-
 	n, err := rethfw.NewNodeBuilderWithTestName(t, fmt.Sprintf("%s-%s", t.Name(), randomString(6))).
 		WithDockerClient(dockerCli).
 		WithDockerNetworkID(dockerNetID).
-		WithGenesis(genesisBz).
+		WithGenesis([]byte(rethfw.DefaultEvolveGenesisJSON())).
 		Build(ctx)
+
 	require.NoError(t, err)
 	require.NoError(t, n.Start(ctx))
 
@@ -171,68 +150,28 @@ func GetRandomTransaction(t *testing.T, privateKeyHex, toAddressHex, chainID str
 	return signedTx
 }
 
-// SubmitTransaction submits a signed Ethereum transaction to the local node at http://localhost:8545.
-func SubmitTransaction(t *testing.T, tx *types.Transaction) {
-	t.Helper()
-	rpcClient, err := ethclient.Dial("http://localhost:8545")
-	require.NoError(t, err)
-	defer rpcClient.Close()
-
-	err = rpcClient.SendTransaction(context.Background(), tx)
-	require.NoError(t, err)
-}
-
 // CheckTxIncluded checks if a transaction with the given hash was included in a block and succeeded.
-func CheckTxIncluded(t *testing.T, txHash common.Hash) bool {
-	t.Helper()
-	rpcClient, err := ethclient.Dial("http://localhost:8545")
-	if err != nil {
-		return false
-	}
-	defer rpcClient.Close()
-	receipt, err := rpcClient.TransactionReceipt(context.Background(), txHash)
+func CheckTxIncluded(client *ethclient.Client, txHash common.Hash) bool {
+	receipt, err := client.TransactionReceipt(context.Background(), txHash)
 	return err == nil && receipt != nil && receipt.Status == 1
-}
-
-// GetGenesisHash retrieves the hash of the genesis block from the local Ethereum node.
-func GetGenesisHash(t *testing.T) string {
-	t.Helper()
-	client := &http.Client{Timeout: 2 * time.Second}
-	data := []byte(`{"jsonrpc":"2.0","method":"eth_getBlockByNumber","params":["0x0", false],"id":1}`)
-	resp, err := client.Post("http://localhost:8545", "application/json", bytes.NewReader(data))
-	require.NoError(t, err)
-	defer resp.Body.Close()
-	var result struct {
-		Result struct {
-			Hash string `json:"hash"`
-		} `json:"result"`
-	}
-	require.NoError(t, json.NewDecoder(resp.Body).Decode(&result))
-	require.NotEmpty(t, result.Result.Hash)
-	return result.Result.Hash
 }
 
 // SetupTestRethEngineFullNode sets up a Reth full node test environment using Docker Compose with the full node configuration.
 // This function is specifically for setting up full nodes that connect to ports 8555/8561.
-func SetupTestRethEngineFullNode(t *testing.T, dockerPath string) *rethfw.Node {
+func SetupTestRethEngineFullNode(t *testing.T) *rethfw.Node {
 	t.Helper()
 	ctx := context.Background()
-	// Reuse docker client/network from the first call
+	// reuse docker client/network from the first call
 	if dockerCli == nil || dockerNetID == "" {
 		cli, netID := dockerfw.DockerSetup(t)
 		dockerCli, dockerNetID = cli, netID
 	}
-	dockerAbsPath, err := filepath.Abs(dockerPath)
-	require.NoError(t, err)
-	genesisPath := filepath.Join(dockerAbsPath, "chain", "genesis.json")
-	genesisBz, err := os.ReadFile(genesisPath)
-	require.NoError(t, err)
 
-	// Use a different test name suffix to avoid container name collisions
+	// use a different test name suffix to avoid container name collisions
 	n, err := rethfw.NewNodeBuilderWithTestName(t, fmt.Sprintf(t.Name(), randomString(5), "-full")).
 		WithDockerClient(dockerCli).
 		WithDockerNetworkID(dockerNetID).
-		WithGenesis(genesisBz).
+		WithGenesis([]byte(rethfw.DefaultEvolveGenesisJSON())).
 		Build(ctx)
 	require.NoError(t, err)
 	require.NoError(t, n.Start(ctx))
