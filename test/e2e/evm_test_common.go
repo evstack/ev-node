@@ -59,22 +59,16 @@ func getAvailablePort() (int, error) {
 }
 
 // TestPorts holds unique port numbers for each test instance
-// Note: EVM engine ports are kept as constants since they're hardcoded in Docker containers
 type TestPorts struct {
-	DAPort          string
-	RollkitRPCPort  string
-	RollkitP2PPort  string
-	FullNodeP2PPort string
-	FullNodeRPCPort string
-
-	// Optional EVM endpoints when using Tastora-managed execution engines
+	DAPort             string
+	RollkitRPCPort     string
+	RollkitP2PPort     string
+	FullNodeP2PPort    string
+	FullNodeRPCPort    string
 	SequencerEthURL    string
 	SequencerEngineURL string
 	FullNodeEthURL     string
 	FullNodeEngineURL  string
-
-	// Optional DA address override (full URL). If set, overrides DAPort.
-	DAAddress string
 }
 
 // generateTestPorts creates a set of unique ports for a test instance
@@ -82,7 +76,7 @@ type TestPorts struct {
 func generateTestPorts() (*TestPorts, error) {
 	ports := &TestPorts{}
 
-	// Generate unique ports for rollkit components only
+	// Generate unique ports for DA and rollkit components
 	daPort, err := getAvailablePort()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get DA port: %w", err)
@@ -375,14 +369,8 @@ func setupSequencerNode(t *testing.T, sut *SystemUnderTest, sequencerHome, jwtSe
 			"--evm.engine-url", seqEngineURL,
 			"--evm.eth-url", seqEthURL,
 		}
-		// DA address
-		if ports.DAAddress != "" {
-			args = append(args, "--rollkit.da.address", ports.DAAddress)
-		} else if ports.DAPort != "" {
-			args = append(args, "--rollkit.da.address", "http://localhost:"+ports.DAPort)
-		} else {
-			args = append(args, "--rollkit.da.address", DAAddress)
-		}
+		// DA address from DAPort
+		args = append(args, "--rollkit.da.address", "http://localhost:"+ports.DAPort)
 		// Optional dynamic rollkit RPC/P2P
 		awaiting := RollkitRPCAddress
 		if ports.RollkitRPCPort != "" {
@@ -455,14 +443,8 @@ func setupSequencerNodeLazy(t *testing.T, sut *SystemUnderTest, sequencerHome, j
 			"--evm.engine-url", seqEngineURL,
 			"--evm.eth-url", seqEthURL,
 		}
-		// DA address
-		if ports.DAAddress != "" {
-			args = append(args, "--rollkit.da.address", ports.DAAddress)
-		} else if ports.DAPort != "" {
-			args = append(args, "--rollkit.da.address", "http://localhost:"+ports.DAPort)
-		} else {
-			args = append(args, "--rollkit.da.address", DAAddress)
-		}
+		// DA address from DAPort
+		args = append(args, "--rollkit.da.address", "http://localhost:"+ports.DAPort)
 		// Optional dynamic rollkit RPC/P2P
 		awaiting := RollkitRPCAddress
 		if ports.RollkitRPCPort != "" {
@@ -547,14 +529,8 @@ func setupFullNode(t *testing.T, sut *SystemUnderTest, fullNodeHome, sequencerHo
 			"--evm.eth-url", fnEthURL,
 			"--rollkit.da.block_time", DefaultDABlockTime,
 		}
-		// DA address
-		if ports.DAAddress != "" {
-			args = append(args, "--rollkit.da.address", ports.DAAddress)
-		} else if ports.DAPort != "" {
-			args = append(args, "--rollkit.da.address", "http://localhost:"+ports.DAPort)
-		} else {
-			args = append(args, "--rollkit.da.address", DAAddress)
-		}
+		// DA address from DAPort
+		args = append(args, "--rollkit.da.address", "http://localhost:"+ports.DAPort)
 		awaiting := "http://127.0.0.1:" + FullNodeRPCPort
 		if ports.FullNodeRPCPort != "" {
 			args = append(args, "--rollkit.rpc.address", "127.0.0.1:"+ports.FullNodeRPCPort)
@@ -614,7 +590,7 @@ func submitTransactionAndGetBlockNumber(t *testing.T, sequencerClient *ethclient
 // - daPort: optional DA port to use (if empty, uses default)
 //
 // Returns: jwtSecret, fullNodeJwtSecret (empty if needsFullNode=false), genesisHash
-func setupCommonEVMTest(t *testing.T, sut *SystemUnderTest, needsFullNode bool, daPort ...string) (string, string, string, *TestPorts) {
+func setupCommonEVMTest(t *testing.T, sut *SystemUnderTest, needsFullNode bool, _ ...string) (string, string, string, *TestPorts) {
 	t.Helper()
 
 	// Reset global nonce for each test to ensure clean state
@@ -623,13 +599,6 @@ func setupCommonEVMTest(t *testing.T, sut *SystemUnderTest, needsFullNode bool, 
 	// Construct dynamic test ports (rollkit + DA)
 	dynPorts, err := generateTestPorts()
 	require.NoError(t, err, "failed to generate dynamic test ports")
-
-	// If caller passed a DA port, override; otherwise keep generated
-	if len(daPort) > 0 && daPort[0] != "" {
-		dynPorts.DAPort = daPort[0]
-	}
-	// Also compute full DA address
-	dynPorts.DAAddress = "http://localhost:" + dynPorts.DAPort
 
 	// Start local DA explicitly on the chosen port
 	localDABinary := "local-da"

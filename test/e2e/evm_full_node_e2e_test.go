@@ -662,11 +662,11 @@ func setupSequencerWithFullNodeLazy(t *testing.T, sut *SystemUnderTest, sequence
 	// Generate unique ports for this test instance to avoid conflicts
 	ports, err := generateTestPorts()
 	require.NoError(t, err, "Should be able to generate test ports")
-	t.Logf("Generated test ports - Rollkit RPC: %s, P2P: %s, Full Node RPC: %s, P2P: %s, DA: %s (EVM engine ports fixed at %s/%s)",
-		ports.RollkitRPCPort, ports.RollkitP2PPort, ports.FullNodeRPCPort, ports.FullNodeP2PPort, ports.DAPort, SequencerEthPort, FullNodeEthPort)
+    t.Logf("Generated test ports - Rollkit RPC: %s, P2P: %s, Full Node RPC: %s, P2P: %s, DA Port: %s (EVM engine ports fixed at %s/%s)",
+        ports.RollkitRPCPort, ports.RollkitP2PPort, ports.FullNodeRPCPort, ports.FullNodeP2PPort, ports.DAPort, SequencerEthPort, FullNodeEthPort)
 
 	// Common setup for both sequencer and full node with dynamic DA port
-    jwtSecret, fullNodeJwtSecret, genesisHash, enginePorts := setupCommonEVMTest(t, sut, true, ports.DAPort)
+    jwtSecret, fullNodeJwtSecret, genesisHash, enginePorts := setupCommonEVMTest(t, sut, true)
 
 	// Setup sequencer in lazy mode with dynamic ports
     // Carry over dynamic engine endpoints into ports
