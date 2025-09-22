@@ -578,7 +578,7 @@ func TestStartNodeErrors(t *testing.T) {
 				cfg.Signer.SignerType = "grpc"
 				cfg.Node.Aggregator = true
 			},
-			expectPanic: true,
+			expectedError: "unknown signer type",
 		},
 		{
 			name: "UnknownSignerError",
@@ -586,7 +586,7 @@ func TestStartNodeErrors(t *testing.T) {
 				cfg.Signer.SignerType = "unknown"
 				cfg.Node.Aggregator = true
 			},
-			expectedError: "unknown remote signer type: unknown",
+			expectedError: "unknown signer type",
 		},
 		{
 			name: "LoadFileSystemSignerError",
