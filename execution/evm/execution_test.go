@@ -62,7 +62,7 @@ func TestEngineExecution(t *testing.T) {
 	GenesisStateRoot := genesisStateRoot[:]
 
 	t.Run("Build chain", func(tt *testing.T) {
-		jwtSecret := SetupTestRethEngine(tt, DOCKER_PATH, JWT_FILENAME)
+        jwtSecret, _, _ := SetupTestRethEngine(tt, DOCKER_PATH, JWT_FILENAME)
 
 		executionClient, err := NewEngineExecutionClient(
 			TEST_ETH_URL,
@@ -152,7 +152,7 @@ func TestEngineExecution(t *testing.T) {
 
 	// start new container and try to sync
 	t.Run("Sync chain", func(tt *testing.T) {
-		jwtSecret := SetupTestRethEngine(t, DOCKER_PATH, JWT_FILENAME)
+        jwtSecret, _, _ := SetupTestRethEngine(t, DOCKER_PATH, JWT_FILENAME)
 
 		executionClient, err := NewEngineExecutionClient(
 			TEST_ETH_URL,

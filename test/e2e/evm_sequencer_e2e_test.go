@@ -313,7 +313,7 @@ func TestEvmSequencerComprehensiveE2E(t *testing.T) {
 	t.Log("Testing system stability with final valid transaction...")
 	validTx := evm.GetRandomTransaction(t, TestPrivateKey, TestToAddress, DefaultChainID, DefaultGasLimit, &globalNonce)
 
-	evm.SubmitTransaction(t, validTx)
+    require.NoError(t, client.SendTransaction(ctx, validTx))
 	t.Logf("Submitted final valid transaction: %s", validTx.Hash().Hex())
 
 	// Wait for valid transaction to be included
