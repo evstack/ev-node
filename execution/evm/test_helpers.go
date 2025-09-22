@@ -23,8 +23,27 @@ import (
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/stretchr/testify/require"
-	tc "github.com/testcontainers/testcontainers-go/modules/compose"
+
+    dockerfw "github.com/celestiaorg/tastora/framework/docker"
+    rethfw "github.com/celestiaorg/tastora/framework/docker/evstack/reth"
+    dockerclient "github.com/moby/moby/client"
 )
+
+// Dynamic endpoints captured when starting reth via Tastora
+var (
+    sequencerEthURL    string
+    sequencerEngineURL string
+    fullNodeEthURL     string
+    fullNodeEngineURL  string
+    dockerCli          *dockerclient.Client
+    dockerNetID        string
+)
+
+// CurrentSequencerEndpoints returns dynamic Eth/Engine URLs if available
+func CurrentSequencerEndpoints() (ethURL, engineURL string) { return sequencerEthURL, sequencerEngineURL }
+
+// CurrentFullNodeEndpoints returns dynamic Eth/Engine URLs if available
+func CurrentFullNodeEndpoints() (ethURL, engineURL string) { return fullNodeEthURL, fullNodeEngineURL }
 
 // generateJWTSecret generates a random 32-byte JWT secret and returns it as a hex string.
 func generateJWTSecret() (string, error) {
@@ -37,38 +56,40 @@ func generateJWTSecret() (string, error) {
 }
 
 // SetupTestRethEngine sets up a Reth engine test environment using Docker Compose, writes a JWT secret file, and returns the secret. It also registers cleanup for resources.
-func SetupTestRethEngine(t *testing.T, dockerPath, jwtFilename string) string {
-	t.Helper()
-	dockerAbsPath, err := filepath.Abs(dockerPath)
-	require.NoError(t, err)
-	jwtPath := filepath.Join(dockerAbsPath, "jwttoken")
-	err = os.MkdirAll(jwtPath, 0750)
-	require.NoError(t, err)
-	jwtSecret, err := generateJWTSecret()
-	require.NoError(t, err)
-	jwtFile := filepath.Join(jwtPath, jwtFilename)
-	err = os.WriteFile(jwtFile, []byte(jwtSecret), 0600)
-	require.NoError(t, err)
-	t.Cleanup(func() { _ = os.Remove(jwtFile) })
-	composeFilePath := filepath.Join(dockerAbsPath, "docker-compose.yml")
-	identifier := tc.StackIdentifier(strings.ToLower(t.Name()))
-	identifier = tc.StackIdentifier(strings.ReplaceAll(string(identifier), "/", "_"))
-	identifier = tc.StackIdentifier(strings.ReplaceAll(string(identifier), " ", "_"))
-	compose, err := tc.NewDockerComposeWith(tc.WithStackFiles(composeFilePath), identifier)
-	require.NoError(t, err, "Failed to create docker compose")
-	t.Cleanup(func() {
-		ctx := context.Background()
-		err := compose.Down(ctx, tc.RemoveOrphans(true), tc.RemoveVolumes(true))
-		if err != nil {
-			t.Logf("Warning: Failed to tear down docker-compose environment: %v", err)
-		}
-	})
-	ctx := context.Background()
-	err = compose.Up(ctx, tc.Wait(true))
-	require.NoError(t, err, "Failed to start docker compose")
-	err = waitForRethContainer(t, jwtSecret, "http://localhost:8545", "http://localhost:8551")
-	require.NoError(t, err)
-	return jwtSecret
+func SetupTestRethEngine(t *testing.T, dockerPath, jwtFilename string) (string, string, string) {
+    t.Helper()
+    // Start a single reth via Tastora to serve as the execution engine paired with the sequencer evm-single
+    ctx := context.Background()
+
+    // Setup Docker client/network once per test
+    if dockerCli == nil || dockerNetID == "" {
+        cli, netID := dockerfw.DockerSetup(t)
+        dockerCli, dockerNetID = cli, netID
+    }
+
+    // Load genesis used by previous compose path
+    dockerAbsPath, err := filepath.Abs(dockerPath)
+    require.NoError(t, err)
+    genesisPath := filepath.Join(dockerAbsPath, "chain", "genesis.json")
+    genesisBz, err := os.ReadFile(genesisPath)
+    require.NoError(t, err)
+
+    n, err := rethfw.NewNodeBuilder(t).
+        WithDockerClient(dockerCli).
+        WithDockerNetworkID(dockerNetID).
+        WithGenesis(genesisBz).
+        Build(ctx)
+    require.NoError(t, err)
+    require.NoError(t, n.Start(ctx))
+
+    ni, err := n.GetNetworkInfo(ctx)
+    require.NoError(t, err)
+    sequencerEthURL = "http://127.0.0.1:" + ni.External.Ports.RPC
+    sequencerEngineURL = "http://127.0.0.1:" + ni.External.Ports.Engine
+    jwtSecret := n.JWTSecretHex()
+
+    require.NoError(t, waitForRethContainer(t, jwtSecret, sequencerEthURL, sequencerEngineURL))
+    return jwtSecret, sequencerEthURL, sequencerEngineURL
 }
 
 // waitForRethContainer waits for the Reth container to be ready by polling the provided endpoints with JWT authentication.
@@ -150,81 +171,81 @@ func GetRandomTransaction(t *testing.T, privateKeyHex, toAddressHex, chainID str
 
 // SubmitTransaction submits a signed Ethereum transaction to the local node at http://localhost:8545.
 func SubmitTransaction(t *testing.T, tx *types.Transaction) {
-	t.Helper()
-	rpcClient, err := ethclient.Dial("http://localhost:8545")
-	require.NoError(t, err)
-	defer rpcClient.Close()
+    t.Helper()
+    url := sequencerEthURL
+    if url == "" { url = "http://localhost:8545" }
+    rpcClient, err := ethclient.Dial(url)
+    require.NoError(t, err)
+    defer rpcClient.Close()
 
-	err = rpcClient.SendTransaction(context.Background(), tx)
-	require.NoError(t, err)
+    err = rpcClient.SendTransaction(context.Background(), tx)
+    require.NoError(t, err)
 }
 
 // CheckTxIncluded checks if a transaction with the given hash was included in a block and succeeded.
 func CheckTxIncluded(t *testing.T, txHash common.Hash) bool {
-	t.Helper()
-	rpcClient, err := ethclient.Dial("http://localhost:8545")
-	if err != nil {
-		return false
-	}
-	defer rpcClient.Close()
-	receipt, err := rpcClient.TransactionReceipt(context.Background(), txHash)
-	return err == nil && receipt != nil && receipt.Status == 1
+    t.Helper()
+    url := sequencerEthURL
+    if url == "" { url = "http://localhost:8545" }
+    rpcClient, err := ethclient.Dial(url)
+    if err != nil { return false }
+    defer rpcClient.Close()
+    receipt, err := rpcClient.TransactionReceipt(context.Background(), txHash)
+    return err == nil && receipt != nil && receipt.Status == 1
 }
 
 // GetGenesisHash retrieves the hash of the genesis block from the local Ethereum node.
 func GetGenesisHash(t *testing.T) string {
-	t.Helper()
-	client := &http.Client{Timeout: 2 * time.Second}
-	data := []byte(`{"jsonrpc":"2.0","method":"eth_getBlockByNumber","params":["0x0", false],"id":1}`)
-	resp, err := client.Post("http://localhost:8545", "application/json", bytes.NewReader(data))
-	require.NoError(t, err)
-	defer resp.Body.Close()
-	var result struct {
-		Result struct {
-			Hash string `json:"hash"`
-		} `json:"result"`
-	}
-	require.NoError(t, json.NewDecoder(resp.Body).Decode(&result))
-	require.NotEmpty(t, result.Result.Hash)
-	return result.Result.Hash
+    t.Helper()
+    client := &http.Client{Timeout: 2 * time.Second}
+    data := []byte(`{"jsonrpc":"2.0","method":"eth_getBlockByNumber","params":["0x0", false],"id":1}`)
+    url := sequencerEthURL
+    if url == "" { url = "http://localhost:8545" }
+    resp, err := client.Post(url, "application/json", bytes.NewReader(data))
+    require.NoError(t, err)
+    defer resp.Body.Close()
+    var result struct {
+        Result struct {
+            Hash string `json:"hash"`
+        } `json:"result"`
+    }
+    require.NoError(t, json.NewDecoder(resp.Body).Decode(&result))
+    require.NotEmpty(t, result.Result.Hash)
+    return result.Result.Hash
 }
 
 // SetupTestRethEngineFullNode sets up a Reth full node test environment using Docker Compose with the full node configuration.
 // This function is specifically for setting up full nodes that connect to ports 8555/8561.
-func SetupTestRethEngineFullNode(t *testing.T, dockerPath, jwtFilename string) string {
-	t.Helper()
-	dockerAbsPath, err := filepath.Abs(dockerPath)
-	require.NoError(t, err)
-	jwtPath := filepath.Join(dockerAbsPath, "jwttoken")
-	err = os.MkdirAll(jwtPath, 0750)
-	require.NoError(t, err)
-	jwtSecret, err := generateJWTSecret()
-	require.NoError(t, err)
-	jwtFile := filepath.Join(jwtPath, jwtFilename)
-	err = os.WriteFile(jwtFile, []byte(jwtSecret), 0600)
-	require.NoError(t, err)
-	t.Cleanup(func() { _ = os.Remove(jwtFile) })
+func SetupTestRethEngineFullNode(t *testing.T, dockerPath, jwtFilename string) (string, string, string) {
+    t.Helper()
+    ctx := context.Background()
+    // Reuse docker client/network from the first call
+    if dockerCli == nil || dockerNetID == "" {
+        cli, netID := dockerfw.DockerSetup(t)
+        dockerCli, dockerNetID = cli, netID
+    }
+    dockerAbsPath, err := filepath.Abs(dockerPath)
+    require.NoError(t, err)
+    genesisPath := filepath.Join(dockerAbsPath, "chain", "genesis.json")
+    genesisBz, err := os.ReadFile(genesisPath)
+    require.NoError(t, err)
 
-	// Use the full node compose file
-	composeFilePath := filepath.Join(dockerAbsPath, "docker-compose-full-node.yml")
-	identifier := tc.StackIdentifier(strings.ToLower(t.Name()) + "_fullnode")
-	identifier = tc.StackIdentifier(strings.ReplaceAll(string(identifier), "/", "_"))
-	identifier = tc.StackIdentifier(strings.ReplaceAll(string(identifier), " ", "_"))
-	compose, err := tc.NewDockerComposeWith(tc.WithStackFiles(composeFilePath), identifier)
-	require.NoError(t, err, "Failed to create docker compose for full node")
-	t.Cleanup(func() {
-		ctx := context.Background()
-		err := compose.Down(ctx, tc.RemoveOrphans(true), tc.RemoveVolumes(true))
-		if err != nil {
-			t.Logf("Warning: Failed to tear down docker-compose environment: %v", err)
-		}
-	})
-	ctx := context.Background()
-	err = compose.Up(ctx, tc.Wait(true))
-	require.NoError(t, err, "Failed to start docker compose for full node")
+    // Use a different test name suffix to avoid container name collisions
+    n, err := rethfw.NewNodeBuilder(t).
+        WithTestName(t.Name()+"-full").
+        WithDockerClient(dockerCli).
+        WithDockerNetworkID(dockerNetID).
+        WithGenesis(genesisBz).
+        Build(ctx)
+    require.NoError(t, err)
+    require.NoError(t, n.Start(ctx))
 
-	// Wait for full node Reth container (ports 8555, 8561)
-	err = waitForRethContainer(t, jwtSecret, "http://localhost:8555", "http://localhost:8561")
-	require.NoError(t, err)
-	return jwtSecret
+    ni, err := n.GetNetworkInfo(ctx)
+    require.NoError(t, err)
+    fullNodeEthURL = "http://127.0.0.1:" + ni.External.Ports.RPC
+    fullNodeEngineURL = "http://127.0.0.1:" + ni.External.Ports.Engine
+    jwtSecret := n.JWTSecretHex()
+
+    require.NoError(t, waitForRethContainer(t, jwtSecret, fullNodeEthURL, fullNodeEngineURL))
+    return jwtSecret, fullNodeEthURL, fullNodeEngineURL
 }

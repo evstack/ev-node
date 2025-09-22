@@ -57,11 +57,11 @@ func TestEvmDARestartWithPendingBlocksE2E(t *testing.T) {
 	sut := NewSystemUnderTest(t)
 
 	// Setup sequencer and get genesis hash
-	genesisHash := setupSequencerOnlyTest(t, sut, nodeHome)
+    genesisHash, seqURL := setupSequencerOnlyTest(t, sut, nodeHome)
 	t.Logf("Genesis hash: %s", genesisHash)
 
 	// Connect to EVM
-	client, err := ethclient.Dial(SequencerEthURL)
+    client, err := ethclient.Dial(seqURL)
 	require.NoError(t, err, "Should be able to connect to EVM")
 	defer client.Close()
 
@@ -75,24 +75,23 @@ func TestEvmDARestartWithPendingBlocksE2E(t *testing.T) {
 	const initialTxCount = 5
 	var initialTxHashes []string
 
-	for i := 0; i < initialTxCount; i++ {
-		tx := evm.GetRandomTransaction(t, TestPrivateKey, TestToAddress, DefaultChainID, DefaultGasLimit, &globalNonce)
-		evm.SubmitTransaction(t, tx)
-		initialTxHashes = append(initialTxHashes, tx.Hash().Hex())
-		t.Logf("Submitted initial transaction %d: %s", i+1, tx.Hash().Hex())
-		time.Sleep(100 * time.Millisecond) // Small delay to ensure separate blocks
-	}
+    for i := 0; i < initialTxCount; i++ {
+        tx := evm.GetRandomTransaction(t, TestPrivateKey, TestToAddress, DefaultChainID, DefaultGasLimit, &globalNonce)
+        require.NoError(t, client.SendTransaction(context.Background(), tx))
+        initialTxHashes = append(initialTxHashes, tx.Hash().Hex())
+        t.Logf("Submitted initial transaction %d: %s", i+1, tx.Hash().Hex())
+        time.Sleep(100 * time.Millisecond) // Small delay to ensure separate blocks
+    }
 
 	// Wait for initial transactions to be included in blocks
 	t.Log("Waiting for initial transactions to be included...")
-	require.Eventually(t, func() bool {
-		for _, txHashStr := range initialTxHashes {
-			if !evm.CheckTxIncluded(t, common.HexToHash(txHashStr)) {
-				return false
-			}
-		}
-		return true
-	}, 15*time.Second, 500*time.Millisecond, "All initial transactions should be included")
+    require.Eventually(t, func() bool {
+        for _, txHashStr := range initialTxHashes {
+            r, err := client.TransactionReceipt(context.Background(), common.HexToHash(txHashStr))
+            if err != nil || r == nil || r.Status != 1 { return false }
+        }
+        return true
+    }, 15*time.Second, 500*time.Millisecond, "All initial transactions should be included")
 
 	// Get current block height after initial setup
 	initialHeader, err := client.HeaderByNumber(ctx, nil)
