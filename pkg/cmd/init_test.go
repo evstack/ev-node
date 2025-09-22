@@ -10,6 +10,7 @@ import (
 
 	"github.com/evstack/ev-node/pkg/cmd"
 	rollconf "github.com/evstack/ev-node/pkg/config"
+	file "github.com/evstack/ev-node/pkg/signer/file"
 )
 
 // Test CreateSigner scenarios
@@ -44,6 +45,29 @@ func TestCreateSigner(t *testing.T) {
 		signerDir := filepath.Join(tmpDir, "config")
 		_, err = os.Stat(filepath.Join(signerDir, "signer.json"))
 		assert.NoError(err, "signer file should exist")
+	})
+
+	// Case 2b: File signer, Aggregator, existing signer -> Reuse existing key
+	t.Run("FileSigner_Aggregator_ExistingKey", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		signerDir := filepath.Join(tmpDir, "mounted")
+		_, err := file.CreateFileSystemSigner(signerDir, []byte("testpass"))
+		require.NoError(err)
+
+		cfg := &rollconf.Config{
+			Signer: rollconf.SignerConfig{SignerType: "file", SignerPath: signerDir},
+			Node:   rollconf.NodeConfig{Aggregator: true},
+		}
+
+		addr, err := cmd.CreateSigner(cfg, tmpDir, "testpass")
+		require.NoError(err)
+		require.NotNil(addr)
+
+		addr2, err := cmd.CreateSigner(cfg, tmpDir, "testpass")
+		require.NoError(err)
+		require.NotNil(addr2)
+		assert.Equal(addr, addr2)
+		assert.Equal(signerDir, cfg.Signer.SignerPath)
 	})
 
 	// Case 3: Non-File signer, Aggregator -> Error (Remote signer not implemented)
@@ -85,7 +109,7 @@ func TestCreateSigner(t *testing.T) {
 		}
 		_, err = cmd.CreateSigner(cfg, tmpDir, "testpass")
 		require.Error(err)
-		assert.Contains(err.Error(), "failed to create signer directory")
+		assert.Contains(err.Error(), "must be a directory")
 	})
 }
 
