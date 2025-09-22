@@ -281,7 +281,13 @@ func (n *FullNode) Run(parentCtx context.Context) error {
 	}
 
 	// Start RPC server
-	handler, err := rpcserver.NewServiceHandler(n.Store, n.p2pClient, n.genesis.ProposerAddress, n.Logger, n.nodeConfig)
+	bestKnownHeightProvider := func() uint64 {
+		hHeight := n.hSyncService.Store().Height()
+		dHeight := n.dSyncService.Store().Height()
+		return min(hHeight, dHeight)
+	}
+
+	handler, err := rpcserver.NewServiceHandler(n.Store, n.p2pClient, n.genesis.ProposerAddress, n.Logger, n.nodeConfig, bestKnownHeightProvider)
 	if err != nil {
 		return fmt.Errorf("error creating RPC handler: %w", err)
 	}

@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/evstack/ev-node/pkg/config"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -14,7 +15,7 @@ func TestRegisterCustomHTTPEndpoints(t *testing.T) {
 	mux := http.NewServeMux()
 
 	// Register custom HTTP endpoints
-	RegisterCustomHTTPEndpoints(mux)
+	RegisterCustomHTTPEndpoints(mux, nil, nil, config.DefaultConfig(), nil)
 
 	// Create a new HTTP test server with the mux
 	testServer := httptest.NewServer(mux)

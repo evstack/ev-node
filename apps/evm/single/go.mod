@@ -16,7 +16,7 @@ require (
 	github.com/celestiaorg/go-header v0.7.2
 	github.com/ethereum/go-ethereum v1.16.3
 	github.com/evstack/ev-node v1.0.0-beta.3
-	github.com/evstack/ev-node/core v1.0.0-beta.2
+	github.com/evstack/ev-node/core v1.0.0-beta.3
 	github.com/evstack/ev-node/da v0.0.0-20250317130407-e9e0a1b0485e
 	github.com/evstack/ev-node/execution/evm v0.0.0-00010101000000-000000000000
 	github.com/evstack/ev-node/sequencers/single v0.0.0-00010101000000-000000000000
@@ -277,6 +277,7 @@ require (
 	github.com/spf13/cast v1.10.0 // indirect
 	github.com/spf13/pflag v1.0.10 // indirect
 	github.com/spf13/viper v1.21.0 // indirect
+	github.com/stretchr/objx v0.5.2 // indirect
 	github.com/stretchr/testify v1.11.1 // indirect
 	github.com/subosito/gotenv v1.6.0 // indirect
 	github.com/supranational/blst v0.3.14 // indirect

@@ -4,7 +4,7 @@ go 1.24.2
 
 require (
 	github.com/evstack/ev-node v1.0.0-beta.3
-	github.com/evstack/ev-node/core v1.0.0-beta.2
+	github.com/evstack/ev-node/core v1.0.0-beta.3
 	github.com/evstack/ev-node/da v1.0.0-beta.1
 	github.com/evstack/ev-node/execution/grpc v0.0.0
 	github.com/evstack/ev-node/sequencers/single v0.0.0
@@ -130,6 +130,7 @@ require (
 	github.com/spf13/cast v1.10.0 // indirect
 	github.com/spf13/pflag v1.0.10 // indirect
 	github.com/spf13/viper v1.21.0 // indirect
+	github.com/stretchr/objx v0.5.2 // indirect
 	github.com/stretchr/testify v1.11.1 // indirect
 	github.com/subosito/gotenv v1.6.0 // indirect
 	github.com/whyrusleeping/go-keyspace v0.0.0-20160322163242-5b898ac5add1 // indirect
