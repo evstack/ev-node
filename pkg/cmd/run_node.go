@@ -115,10 +115,8 @@ func StartNode(
 		if err != nil {
 			return err
 		}
-	} else if nodeConfig.Signer.SignerType == "grpc" {
-		panic("grpc remote signer not implemented")
-	} else if nodeConfig.Node.Aggregator {
-		return fmt.Errorf("unknown remote signer type: %s", nodeConfig.Signer.SignerType)
+	} else {
+		panic("unknown signer type or this is node is not an aggregator")
 	}
 
 	metrics := node.DefaultMetricsProvider(nodeConfig.Instrumentation)
