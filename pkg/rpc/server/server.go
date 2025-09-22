@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"encoding/binary"
-	"encoding/hex"
 	"errors"
 
 	"connectrpc.com/connect"
@@ -208,12 +207,12 @@ func (cs *ConfigServer) GetNamespace(
 	req *connect.Request[emptypb.Empty],
 ) (*connect.Response[pb.GetNamespaceResponse], error) {
 
-	hns := coreda.PrepareNamespace([]byte(cs.config.DA.GetNamespace()))
-	dns := coreda.PrepareNamespace([]byte(cs.config.DA.GetDataNamespace()))
+	hns := coreda.NamespaceFromString(cs.config.DA.GetNamespace())
+	dns := coreda.NamespaceFromString(cs.config.DA.GetDataNamespace())
 
 	return connect.NewResponse(&pb.GetNamespaceResponse{
-		HeaderNamespace: hex.EncodeToString(hns),
-		DataNamespace:   hex.EncodeToString(dns),
+		HeaderNamespace: hns.HexString(),
+		DataNamespace:   dns.HexString(),
 	}), nil
 }
 

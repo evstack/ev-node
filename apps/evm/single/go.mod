@@ -6,7 +6,6 @@ replace github.com/celestiaorg/go-header => github.com/julienrbrt/go-header v0.0
 
 replace (
 	github.com/evstack/ev-node => ../../../
-	github.com/evstack/ev-node/core => ../../../core
 	github.com/evstack/ev-node/da => ../../../da
 	github.com/evstack/ev-node/execution/evm => ../../../execution/evm
 	github.com/evstack/ev-node/sequencers/single => ../../../sequencers/single
@@ -16,8 +15,8 @@ replace (
 require (
 	github.com/celestiaorg/go-header v0.7.2
 	github.com/ethereum/go-ethereum v1.16.3
-	github.com/evstack/ev-node v0.14.2-0.20250317130407-e9e0a1b0485e
-	github.com/evstack/ev-node/core v0.0.0-20250317130407-e9e0a1b0485e
+	github.com/evstack/ev-node v1.0.0-beta.3
+	github.com/evstack/ev-node/core v1.0.0-beta.3
 	github.com/evstack/ev-node/da v0.0.0-20250317130407-e9e0a1b0485e
 	github.com/evstack/ev-node/execution/evm v0.0.0-00010101000000-000000000000
 	github.com/evstack/ev-node/sequencers/single v0.0.0-00010101000000-000000000000
@@ -56,6 +55,7 @@ require (
 	github.com/bits-and-blooms/bitset v1.20.0 // indirect
 	github.com/buger/goterm v1.0.4 // indirect
 	github.com/celestiaorg/go-libp2p-messenger v0.2.2 // indirect
+	github.com/celestiaorg/go-square/v2 v2.3.3 // indirect
 	github.com/cenkalti/backoff/v4 v4.3.0 // indirect
 	github.com/cenkalti/backoff/v5 v5.0.2 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect

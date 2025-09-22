@@ -26,7 +26,7 @@ import (
 func TestDASubmitter_SubmitHeadersAndData_MarksInclusionAndUpdatesLastSubmitted(t *testing.T) {
 	ds := sync.MutexWrap(datastore.NewMapDatastore())
 	st := store.New(ds)
-	cm, err := cache.NewManager(config.DefaultConfig, st, zerolog.Nop())
+	cm, err := cache.NewManager(config.DefaultConfig(), st, zerolog.Nop())
 	require.NoError(t, err)
 
 	// signer and proposer
@@ -39,7 +39,7 @@ func TestDASubmitter_SubmitHeadersAndData_MarksInclusionAndUpdatesLastSubmitted(
 	pub, err := n.GetPublic()
 	require.NoError(t, err)
 
-	cfg := config.DefaultConfig
+	cfg := config.DefaultConfig()
 	cfg.DA.Namespace = "ns-header"
 	cfg.DA.DataNamespace = "ns-data"
 

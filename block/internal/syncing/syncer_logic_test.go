@@ -39,8 +39,6 @@ func buildSyncTestSigner(t *testing.T) (addr []byte, pub crypto.PubKey, signer s
 	return a, p, n
 }
 
-// (no dummies needed; tests use mocks)
-
 func makeSignedHeader(t *testing.T, chainID string, height uint64, proposer []byte, pub crypto.PubKey, signer signerpkg.Signer, appHash []byte) *types.SignedHeader {
 	hdr := &types.SignedHeader{
 		Header: types.Header{
@@ -73,12 +71,12 @@ func makeData(chainID string, height uint64, txs int) *types.Data {
 func TestProcessHeightEvent_SyncsAndUpdatesState(t *testing.T) {
 	ds := sync.MutexWrap(datastore.NewMapDatastore())
 	st := store.New(ds)
-	cm, err := cache.NewManager(config.DefaultConfig, st, zerolog.Nop())
+	cm, err := cache.NewManager(config.DefaultConfig(), st, zerolog.Nop())
 	require.NoError(t, err)
 
 	addr, pub, signer := buildSyncTestSigner(t)
 
-	cfg := config.DefaultConfig
+	cfg := config.DefaultConfig()
 	gen := genesis.Genesis{ChainID: "tchain", InitialHeight: 1, StartTime: time.Now().Add(-time.Second), ProposerAddress: addr}
 
 	mockExec := testmocks.NewMockExecutor(t)
@@ -125,11 +123,11 @@ func TestProcessHeightEvent_SyncsAndUpdatesState(t *testing.T) {
 func TestSequentialBlockSync(t *testing.T) {
 	ds := sync.MutexWrap(datastore.NewMapDatastore())
 	st := store.New(ds)
-	cm, err := cache.NewManager(config.DefaultConfig, st, zerolog.Nop())
+	cm, err := cache.NewManager(config.DefaultConfig(), st, zerolog.Nop())
 	require.NoError(t, err)
 
 	addr, pub, signer := buildSyncTestSigner(t)
-	cfg := config.DefaultConfig
+	cfg := config.DefaultConfig()
 	gen := genesis.Genesis{ChainID: "tchain", InitialHeight: 1, StartTime: time.Now().Add(-time.Second), ProposerAddress: addr}
 
 	mockExec := testmocks.NewMockExecutor(t)
@@ -171,10 +169,9 @@ func TestSequentialBlockSync(t *testing.T) {
 	s.processHeightEvent(&evt2)
 
 	// Mark DA inclusion in cache (as DA retrieval would)
-	cm.SetHeaderDAIncluded(hdr1.Hash().String(), 10)
 	cm.SetDataDAIncluded(data1.DACommitment().String(), 10)
-	cm.SetHeaderDAIncluded(hdr2.Hash().String(), 11)
 	cm.SetDataDAIncluded(data2.DACommitment().String(), 11) // empty data still needs cache entry
+	// Header DA inclusion is marked by syncing loop, so it should be true without manual setting.
 
 	// Verify both blocks were synced correctly
 	finalState, _ := st.GetState(context.Background())

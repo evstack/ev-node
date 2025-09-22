@@ -41,7 +41,7 @@ func TestHeaderSyncServiceRestart(t *testing.T) {
 		InitialHeight:   1,
 		ProposerAddress: proposerAddr,
 	}
-	conf := config.DefaultConfig
+	conf := config.DefaultConfig()
 	conf.RootDir = t.TempDir()
 	nodeKey, err := key.LoadOrGenNodeKey(filepath.Dir(conf.ConfigPath()))
 	require.NoError(t, err)

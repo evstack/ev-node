@@ -231,10 +231,11 @@ func HeightFromFutureTest(t *testing.T, d coreda.DA) {
 // TestSubmitWithOptions tests the SubmitWithOptions method with various scenarios
 func TestSubmitWithOptions(t *testing.T) {
 	ctx := context.Background()
-	testNamespace := []byte("options_test")
+	testNamespace := "options_test"
 	// The client will convert the namespace string to a proper Celestia namespace
 	// using SHA256 hashing and version 0 format (1 version byte + 28 ID bytes)
-	encodedNamespace := coreda.PrepareNamespace(testNamespace)
+	namespace := coreda.NamespaceFromString(testNamespace)
+	encodedNamespace := namespace.Bytes()
 	testOptions := []byte("test_options")
 	gasPrice := 0.0
 
@@ -257,7 +258,7 @@ func TestSubmitWithOptions(t *testing.T) {
 
 		mockAPI.On("SubmitWithOptions", ctx, blobs, gasPrice, encodedNamespace, testOptions).Return(expectedIDs, nil).Once()
 
-		ids, err := client.DA.SubmitWithOptions(ctx, blobs, gasPrice, testNamespace, testOptions)
+		ids, err := client.DA.SubmitWithOptions(ctx, blobs, gasPrice, encodedNamespace, testOptions)
 
 		require.NoError(t, err)
 		assert.Equal(t, expectedIDs, ids)
@@ -271,7 +272,7 @@ func TestSubmitWithOptions(t *testing.T) {
 		largerBlob := make([]byte, testMaxBlobSize+1)
 		blobs := []coreda.Blob{largerBlob, []byte("this blob is definitely too large")}
 
-		_, err := client.DA.SubmitWithOptions(ctx, blobs, gasPrice, testNamespace, testOptions)
+		_, err := client.DA.SubmitWithOptions(ctx, blobs, gasPrice, encodedNamespace, testOptions)
 
 		require.Error(t, err)
 		mockAPI.AssertExpectations(t)
@@ -286,7 +287,7 @@ func TestSubmitWithOptions(t *testing.T) {
 
 		blobs := []coreda.Blob{blobsizes, blobsizes, blobsizesOver}
 
-		ids, err := client.DA.SubmitWithOptions(ctx, blobs, gasPrice, testNamespace, testOptions)
+		ids, err := client.DA.SubmitWithOptions(ctx, blobs, gasPrice, encodedNamespace, testOptions)
 
 		require.Error(t, err)
 		assert.ErrorIs(t, err, coreda.ErrBlobSizeOverLimit)
@@ -304,7 +305,7 @@ func TestSubmitWithOptions(t *testing.T) {
 		largerBlob := make([]byte, testMaxBlobSize+1)
 		blobs := []coreda.Blob{largerBlob, []byte("small")}
 
-		ids, err := client.DA.SubmitWithOptions(ctx, blobs, gasPrice, testNamespace, testOptions)
+		ids, err := client.DA.SubmitWithOptions(ctx, blobs, gasPrice, encodedNamespace, testOptions)
 
 		require.Error(t, err)
 		assert.ErrorIs(t, err, coreda.ErrBlobSizeOverLimit)
@@ -320,7 +321,7 @@ func TestSubmitWithOptions(t *testing.T) {
 
 		var blobs []coreda.Blob
 
-		ids, err := client.DA.SubmitWithOptions(ctx, blobs, gasPrice, testNamespace, testOptions)
+		ids, err := client.DA.SubmitWithOptions(ctx, blobs, gasPrice, encodedNamespace, testOptions)
 
 		require.NoError(t, err)
 		assert.Empty(t, ids)
@@ -338,7 +339,7 @@ func TestSubmitWithOptions(t *testing.T) {
 
 		mockAPI.On("SubmitWithOptions", ctx, blobs, gasPrice, encodedNamespace, testOptions).Return(nil, expectedError).Once()
 
-		ids, err := client.DA.SubmitWithOptions(ctx, blobs, gasPrice, testNamespace, testOptions)
+		ids, err := client.DA.SubmitWithOptions(ctx, blobs, gasPrice, encodedNamespace, testOptions)
 
 		require.Error(t, err)
 		assert.ErrorIs(t, err, expectedError)

@@ -376,7 +376,7 @@ func TestHealthLiveEndpoint(t *testing.T) {
 
 	// Create the service handler
 	logger := zerolog.Nop()
-	testConfig := config.DefaultConfig
+	testConfig := config.DefaultConfig()
 	handler, err := NewServiceHandler(mockStore, mockP2PManager, nil, logger, testConfig, nil)
 	assert.NoError(err)
 	assert.NotNil(handler)
@@ -418,7 +418,7 @@ func TestHealthReadyEndpoint(t *testing.T) {
 	}
 
 	logger := zerolog.Nop()
-	testConfig := config.DefaultConfig
+	testConfig := config.DefaultConfig()
 	testConfig.Node.Aggregator = false
 
 	for _, tc := range cases {

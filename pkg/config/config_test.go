@@ -16,18 +16,18 @@ import (
 
 func TestDefaultConfig(t *testing.T) {
 	// Test that default config has expected values
-	def := DefaultConfig
+	def := DefaultConfig()
 	def.RootDir = t.TempDir()
 
 	assert.Equal(t, "data", def.DBPath)
 	assert.Equal(t, false, def.Node.Aggregator)
 	assert.Equal(t, false, def.Node.Light)
-	assert.Equal(t, DefaultConfig.DA.Address, def.DA.Address)
+	assert.Equal(t, DefaultConfig().DA.Address, def.DA.Address)
 	assert.Equal(t, "", def.DA.AuthToken)
 	assert.Equal(t, float64(-1), def.DA.GasPrice)
 	assert.Equal(t, float64(0), def.DA.GasMultiplier)
 	assert.Equal(t, "", def.DA.SubmitOptions)
-	assert.Equal(t, "rollkit-headers", def.DA.Namespace)
+	assert.NotEmpty(t, def.DA.Namespace)
 	assert.Equal(t, 1*time.Second, def.Node.BlockTime.Duration)
 	assert.Equal(t, 6*time.Second, def.DA.BlockTime.Duration)
 	assert.Equal(t, uint64(0), def.DA.StartHeight)
@@ -53,35 +53,35 @@ func TestAddFlags(t *testing.T) {
 	persistentFlags := cmd.PersistentFlags()
 
 	// Test specific flags
-	assertFlagValue(t, flags, FlagDBPath, DefaultConfig.DBPath)
+	assertFlagValue(t, flags, FlagDBPath, DefaultConfig().DBPath)
 
 	// Node flags
-	assertFlagValue(t, flags, FlagAggregator, DefaultConfig.Node.Aggregator)
-	assertFlagValue(t, flags, FlagLight, DefaultConfig.Node.Light)
-	assertFlagValue(t, flags, FlagBlockTime, DefaultConfig.Node.BlockTime.Duration)
-	assertFlagValue(t, flags, FlagTrustedHash, DefaultConfig.Node.TrustedHash)
-	assertFlagValue(t, flags, FlagLazyAggregator, DefaultConfig.Node.LazyMode)
-	assertFlagValue(t, flags, FlagMaxPendingHeadersAndData, DefaultConfig.Node.MaxPendingHeadersAndData)
-	assertFlagValue(t, flags, FlagLazyBlockTime, DefaultConfig.Node.LazyBlockInterval.Duration)
-	assertFlagValue(t, flags, FlagReadinessMaxBlocksBehind, DefaultConfig.Node.ReadinessMaxBlocksBehind)
+	assertFlagValue(t, flags, FlagAggregator, DefaultConfig().Node.Aggregator)
+	assertFlagValue(t, flags, FlagLight, DefaultConfig().Node.Light)
+	assertFlagValue(t, flags, FlagBlockTime, DefaultConfig().Node.BlockTime.Duration)
+	assertFlagValue(t, flags, FlagTrustedHash, DefaultConfig().Node.TrustedHash)
+	assertFlagValue(t, flags, FlagLazyAggregator, DefaultConfig().Node.LazyMode)
+	assertFlagValue(t, flags, FlagMaxPendingHeadersAndData, DefaultConfig().Node.MaxPendingHeadersAndData)
+	assertFlagValue(t, flags, FlagLazyBlockTime, DefaultConfig().Node.LazyBlockInterval.Duration)
+	assertFlagValue(t, flags, FlagReadinessMaxBlocksBehind, DefaultConfig().Node.ReadinessMaxBlocksBehind)
 
 	// DA flags
-	assertFlagValue(t, flags, FlagDAAddress, DefaultConfig.DA.Address)
-	assertFlagValue(t, flags, FlagDAAuthToken, DefaultConfig.DA.AuthToken)
-	assertFlagValue(t, flags, FlagDABlockTime, DefaultConfig.DA.BlockTime.Duration)
-	assertFlagValue(t, flags, FlagDAGasPrice, DefaultConfig.DA.GasPrice)
-	assertFlagValue(t, flags, FlagDAGasMultiplier, DefaultConfig.DA.GasMultiplier)
-	assertFlagValue(t, flags, FlagDAStartHeight, DefaultConfig.DA.StartHeight)
-	assertFlagValue(t, flags, FlagDANamespace, DefaultConfig.DA.Namespace)
-	assertFlagValue(t, flags, FlagDASubmitOptions, DefaultConfig.DA.SubmitOptions)
-	assertFlagValue(t, flags, FlagDAMempoolTTL, DefaultConfig.DA.MempoolTTL)
-	assertFlagValue(t, flags, FlagDAMaxSubmitAttempts, DefaultConfig.DA.MaxSubmitAttempts)
+	assertFlagValue(t, flags, FlagDAAddress, DefaultConfig().DA.Address)
+	assertFlagValue(t, flags, FlagDAAuthToken, DefaultConfig().DA.AuthToken)
+	assertFlagValue(t, flags, FlagDABlockTime, DefaultConfig().DA.BlockTime.Duration)
+	assertFlagValue(t, flags, FlagDAGasPrice, DefaultConfig().DA.GasPrice)
+	assertFlagValue(t, flags, FlagDAGasMultiplier, DefaultConfig().DA.GasMultiplier)
+	assertFlagValue(t, flags, FlagDAStartHeight, DefaultConfig().DA.StartHeight)
+	assertFlagValue(t, flags, FlagDANamespace, DefaultConfig().DA.Namespace)
+	assertFlagValue(t, flags, FlagDASubmitOptions, DefaultConfig().DA.SubmitOptions)
+	assertFlagValue(t, flags, FlagDAMempoolTTL, DefaultConfig().DA.MempoolTTL)
+	assertFlagValue(t, flags, FlagDAMaxSubmitAttempts, DefaultConfig().DA.MaxSubmitAttempts)
 
 	// P2P flags
-	assertFlagValue(t, flags, FlagP2PListenAddress, DefaultConfig.P2P.ListenAddress)
-	assertFlagValue(t, flags, FlagP2PPeers, DefaultConfig.P2P.Peers)
-	assertFlagValue(t, flags, FlagP2PBlockedPeers, DefaultConfig.P2P.BlockedPeers)
-	assertFlagValue(t, flags, FlagP2PAllowedPeers, DefaultConfig.P2P.AllowedPeers)
+	assertFlagValue(t, flags, FlagP2PListenAddress, DefaultConfig().P2P.ListenAddress)
+	assertFlagValue(t, flags, FlagP2PPeers, DefaultConfig().P2P.Peers)
+	assertFlagValue(t, flags, FlagP2PBlockedPeers, DefaultConfig().P2P.BlockedPeers)
+	assertFlagValue(t, flags, FlagP2PAllowedPeers, DefaultConfig().P2P.AllowedPeers)
 
 	// Instrumentation flags
 	instrDef := DefaultInstrumentationConfig()
@@ -92,17 +92,17 @@ func TestAddFlags(t *testing.T) {
 	assertFlagValue(t, flags, FlagPprofListenAddr, instrDef.PprofListenAddr)
 
 	// Logging flags (in persistent flags)
-	assertFlagValue(t, persistentFlags, FlagLogLevel, DefaultConfig.Log.Level)
+	assertFlagValue(t, persistentFlags, FlagLogLevel, DefaultConfig().Log.Level)
 	assertFlagValue(t, persistentFlags, FlagLogFormat, "text")
 	assertFlagValue(t, persistentFlags, FlagLogTrace, false)
 
 	// Signer flags
 	assertFlagValue(t, flags, FlagSignerPassphrase, "")
 	assertFlagValue(t, flags, FlagSignerType, "file")
-	assertFlagValue(t, flags, FlagSignerPath, DefaultConfig.Signer.SignerPath)
+	assertFlagValue(t, flags, FlagSignerPath, DefaultConfig().Signer.SignerPath)
 
 	// RPC flags
-	assertFlagValue(t, flags, FlagRPCAddress, DefaultConfig.RPC.Address)
+	assertFlagValue(t, flags, FlagRPCAddress, DefaultConfig().RPC.Address)
 
 	// Count the number of flags we're explicitly checking
 	expectedFlagCount := 38 // Update this number if you add more flag checks above
@@ -198,7 +198,7 @@ signer:
 	assert.Equal(t, true, config.Node.Light, "Light should be set from flag")
 
 	// 4. Values not in flags or YAML should remain as default
-	assert.Equal(t, DefaultConfig.DA.BlockTime.Duration, config.DA.BlockTime.Duration, "DABlockTime should remain as default")
+	assert.Equal(t, DefaultConfig().DA.BlockTime.Duration, config.DA.BlockTime.Duration, "DABlockTime should remain as default")
 
 	// 5. Signer values should be set from flags
 	assert.Equal(t, "file", config.Signer.SignerType, "SignerType should be gotten from config")
@@ -340,10 +340,7 @@ func TestDAConfig_GetDataNamespace(t *testing.T) {
 			expectedNamespace: "namespace",
 		},
 		{
-			name:              "Both empty, use default value from default namespace",
-			dataNamespace:     "",
-			defaultNamespace:  "",
-			expectedNamespace: "rollkit-headers",
+			name: "Both empty",
 		},
 	}
 

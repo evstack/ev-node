@@ -78,7 +78,7 @@ func TestSubmitter_setSequencerHeightToDAHeight(t *testing.T) {
 	// Use a mock store to validate metadata writes
 	mockStore := testmocks.NewMockStore(t)
 
-	cfg := config.DefaultConfig
+	cfg := config.DefaultConfig()
 	metrics := common.NopMetrics()
 	daSub := NewDASubmitter(nil, cfg, genesis.Genesis{}, common.DefaultBlockOptions(), zerolog.Nop())
 	s := NewSubmitter(mockStore, nil, cm, metrics, cfg, genesis.Genesis{}, daSub, nil, zerolog.Nop(), nil)
@@ -146,7 +146,7 @@ func TestSubmitter_processDAInclusionLoop_advances(t *testing.T) {
 	cm, st := newTestCacheAndStore(t)
 
 	// small block time to tick quickly
-	cfg := config.DefaultConfig
+	cfg := config.DefaultConfig()
 	cfg.DA.BlockTime.Duration = 5 * time.Millisecond
 	metrics := common.PrometheusMetrics("test")
 
@@ -215,7 +215,7 @@ func newHeaderAndData(chainID string, height uint64, nonEmpty bool) (*types.Sign
 
 func newTestCacheAndStore(t *testing.T) (cache.Manager, store.Store) {
 	st := store.New(dssync.MutexWrap(datastore.NewMapDatastore()))
-	cm, err := cache.NewManager(config.DefaultConfig, st, zerolog.Nop())
+	cm, err := cache.NewManager(config.DefaultConfig(), st, zerolog.Nop())
 	require.NoError(t, err)
 	return cm, st
 }
@@ -228,7 +228,7 @@ func TestSubmitter_daSubmissionLoop(t *testing.T) {
 	cm, st := newTestCacheAndStore(t)
 
 	// Set a small block time so the ticker fires quickly
-	cfg := config.DefaultConfig
+	cfg := config.DefaultConfig()
 	cfg.DA.BlockTime.Duration = 5 * time.Millisecond
 	metrics := common.NopMetrics()
 
