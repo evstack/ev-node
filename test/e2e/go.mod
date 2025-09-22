@@ -8,13 +8,11 @@ require (
 	github.com/ethereum/go-ethereum v1.16.3
 	github.com/evstack/ev-node v0.0.0-00010101000000-000000000000
 	github.com/evstack/ev-node/execution/evm v0.0.0-20250602130019-2a732cf903a5
-	github.com/golang-jwt/jwt/v5 v5.3.0
 	github.com/libp2p/go-libp2p v0.43.0
 	github.com/stretchr/testify v1.11.1
 )
 
 replace (
-	github.com/celestiaorg/tastora => ../../../../celestiaorg/tastora
 	github.com/evstack/ev-node => ../../
 	github.com/evstack/ev-node/execution/evm => ../../execution/evm
 )
@@ -44,7 +42,7 @@ require (
 	github.com/btcsuite/btcd/btcec/v2 v2.3.5 // indirect
 	github.com/celestiaorg/go-header v0.7.2 // indirect
 	github.com/celestiaorg/go-square/v3 v3.0.0 // indirect
-	github.com/celestiaorg/tastora v0.0.0-00010101000000-000000000000 // indirect
+	github.com/celestiaorg/tastora v0.4.2-0.20250922082434-f16cbcc4dbd2 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/cockroachdb/errors v1.11.3 // indirect
 	github.com/cockroachdb/fifo v0.0.0-20240606204812-0bbfbd93a7ce // indirect
@@ -97,6 +95,7 @@ require (
 	github.com/godbus/dbus v0.0.0-20190726142602-4481cbc300e2 // indirect
 	github.com/gofrs/flock v0.12.1 // indirect
 	github.com/gogo/protobuf v1.3.2 // indirect
+	github.com/golang-jwt/jwt/v5 v5.3.0 // indirect
 	github.com/golang/groupcache v0.0.0-20241129210726-2c02b8208cf8 // indirect
 	github.com/golang/protobuf v1.5.4 // indirect
 	github.com/golang/snappy v0.0.5-0.20220116011046-fa5810519dcb // indirect

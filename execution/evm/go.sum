@@ -66,6 +66,8 @@ github.com/btcsuite/btcd/chaincfg/chainhash v1.0.1 h1:q0rUy8C/TYNBQS1+CGKw68tLOF
 github.com/btcsuite/btcd/chaincfg/chainhash v1.0.1/go.mod h1:7SFka0XMvUgj3hfZtydOrQY2mwhPclbT2snogU7SQQc=
 github.com/celestiaorg/go-square/v3 v3.0.0 h1:ivLUUuVr7SpkvPiPLPvuH8/Vrm+iw9X3QL8gX25j+Sk=
 github.com/celestiaorg/go-square/v3 v3.0.0/go.mod h1:IROQinUbHNyFWW1J5idanVLOSLHaK1wWwVmuVSfiCVo=
+github.com/celestiaorg/tastora v0.4.2-0.20250922082434-f16cbcc4dbd2 h1:zyuwmj1QvrSSrqokn5K/FvV2rg0f+BxbnpyBVa+HQYw=
+github.com/celestiaorg/tastora v0.4.2-0.20250922082434-f16cbcc4dbd2/go.mod h1:Xw44XeRN2T/kSdopVCJjNhwFwRSO58wTW8GrVP7OWFI=
 github.com/cenkalti/backoff v2.2.1+incompatible h1:tNowT99t7UNflLxfYYSlKYsBpXdEet03Pg2g16Swow4=
 github.com/cenkalti/backoff/v4 v4.3.0 h1:MyRJ/UdXutAwSAT+s3wNd7MfTIcy71VQueUuFK343L8=
 github.com/cenkalti/backoff/v4 v4.3.0/go.mod h1:Y3VNntkOUPxTVeUxJ/G5vcM//AlwfmyYozVcomhLiZE=

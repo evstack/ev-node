@@ -5,7 +5,7 @@ go 1.24.6
 toolchain go1.24.7
 
 require (
-	github.com/celestiaorg/tastora v0.0.0-00010101000000-000000000000
+	github.com/celestiaorg/tastora v0.4.2-0.20250922082434-f16cbcc4dbd2
 	github.com/ethereum/go-ethereum v1.16.3
 	github.com/evstack/ev-node/core v1.0.0-beta.3
 	github.com/golang-jwt/jwt/v5 v5.3.0
@@ -13,8 +13,6 @@ require (
 	github.com/rs/zerolog v1.34.0
 	github.com/stretchr/testify v1.11.1
 )
-
-replace github.com/celestiaorg/tastora => ../../../../celestiaorg/tastora
 
 require (
 	cosmossdk.io/api v0.7.6 // indirect
