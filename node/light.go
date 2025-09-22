@@ -77,7 +77,13 @@ func (ln *LightNode) Run(parentCtx context.Context) error {
 
 	ln.running = true
 	// Start RPC server (light node doesn't have a signer)
-	handler, err := rpcserver.NewServiceHandler(ln.Store, ln.P2P, nil, ln.Logger, ln.nodeConfig)
+
+	// for light nodes use the header sync service height as the best known height.
+	bestKnown := func() uint64 {
+		return ln.hSyncService.Store().Height()
+	}
+
+	handler, err := rpcserver.NewServiceHandler(ln.Store, ln.P2P, nil, ln.Logger, ln.nodeConfig, bestKnown)
 	if err != nil {
 		return fmt.Errorf("error creating RPC handler: %w", err)
 	}

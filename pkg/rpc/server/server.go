@@ -308,7 +308,7 @@ func (h *HealthServer) Livez(
 }
 
 // NewServiceHandler creates a new HTTP handler for Store, P2P and Health services
-func NewServiceHandler(store store.Store, peerManager p2p.P2PRPC, proposerAddress []byte, logger zerolog.Logger, config config.Config) (http.Handler, error) {
+func NewServiceHandler(store store.Store, peerManager p2p.P2PRPC, proposerAddress []byte, logger zerolog.Logger, config config.Config, bestKnown BestKnownHeightProvider) (http.Handler, error) {
 	storeServer := NewStoreServer(store, logger)
 	p2pServer := NewP2PServer(peerManager)
 	healthServer := NewHealthServer()
@@ -342,7 +342,7 @@ func NewServiceHandler(store store.Store, peerManager p2p.P2PRPC, proposerAddres
 	mux.Handle(configPath, configHandler)
 
 	// Register custom HTTP endpoints
-	RegisterCustomHTTPEndpoints(mux)
+	RegisterCustomHTTPEndpoints(mux, store, peerManager, config, bestKnown)
 
 	// Use h2c to support HTTP/2 without TLS
 	return h2c.NewHandler(mux, &http2.Server{

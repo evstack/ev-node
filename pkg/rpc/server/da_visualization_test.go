@@ -10,6 +10,7 @@ import (
 	"time"
 
 	coreda "github.com/evstack/ev-node/core/da"
+	"github.com/evstack/ev-node/pkg/config"
 	"github.com/evstack/ev-node/test/mocks"
 	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/assert"
@@ -254,7 +255,7 @@ func TestRegisterCustomHTTPEndpointsDAVisualization(t *testing.T) {
 
 	// Create mux and register endpoints
 	mux := http.NewServeMux()
-	RegisterCustomHTTPEndpoints(mux)
+	RegisterCustomHTTPEndpoints(mux, nil, nil, config.DefaultConfig(), nil)
 
 	// Test /da endpoint
 	req, err := http.NewRequest("GET", "/da", nil)
@@ -291,7 +292,7 @@ func TestRegisterCustomHTTPEndpointsWithoutServer(t *testing.T) {
 	SetDAVisualizationServer(nil)
 
 	mux := http.NewServeMux()
-	RegisterCustomHTTPEndpoints(mux)
+	RegisterCustomHTTPEndpoints(mux, nil, nil, config.DefaultConfig(), nil)
 
 	// Test that endpoints return service unavailable when server is not set
 	endpoints := []string{"/da", "/da/submissions", "/da/blob"}
