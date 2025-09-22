@@ -20,6 +20,7 @@ import (
 	"encoding/hex"
 	"flag"
 	"fmt"
+	"github.com/celestiaorg/tastora/framework/docker/evstack/reth"
 	"math/big"
 	"net"
 	"net/http"
@@ -161,9 +162,9 @@ const (
 )
 
 // setupTestRethEngineE2E starts a reth engine for the sequencer and returns jwt, ethURL, engineURL.
-func setupTestRethEngineE2E(t *testing.T) (string, string, string) {
+func setupTestRethEngineE2E(t *testing.T) *reth.Node {
 	t.Helper()
-	return evm.SetupTestRethEngine(t, dockerPath, "jwt.hex")
+	return evm.SetupTestRethEngine(t, dockerPath)
 }
 
 // setupTestRethEngineFullNode sets up a reth engine for a follower full node and returns jwt, ethURL, engineURL.
@@ -329,26 +330,26 @@ func setupSequencerNode(t *testing.T, sut *SystemUnderTest, sequencerHome, jwtSe
 	)
 	require.NoError(t, err, "failed to init sequencer", output)
 
-    // Resolve EVM endpoints from provided ports and start the sequencer
-    seqEthURL := ports.SequencerEthURL
-    seqEngineURL := ports.SequencerEngineURL
-    args := []string{
-        "start",
-        "--evm.jwt-secret", jwtSecret,
-        "--evm.genesis-hash", genesisHash,
-        "--rollkit.node.block_time", DefaultBlockTime,
-        "--rollkit.node.aggregator=true",
-        "--rollkit.signer.passphrase", TestPassphrase,
-        "--home", sequencerHome,
-        "--rollkit.da.block_time", DefaultDABlockTime,
-        "--rollkit.da.address", "http://localhost:" + ports.DAPort,
-        "--rollkit.rpc.address", "127.0.0.1:" + ports.RollkitRPCPort,
-        "--rollkit.p2p.listen_address", "/ip4/127.0.0.1/tcp/" + ports.RollkitP2PPort,
-        "--evm.engine-url", seqEngineURL,
-        "--evm.eth-url", seqEthURL,
-    }
-    sut.ExecCmd(evmSingleBinaryPath, args...)
-    sut.AwaitNodeUp(t, "http://127.0.0.1:"+ports.RollkitRPCPort, NodeStartupTimeout)
+	// Resolve EVM endpoints from provided ports and start the sequencer
+	seqEthURL := ports.SequencerEthURL
+	seqEngineURL := ports.SequencerEngineURL
+	args := []string{
+		"start",
+		"--evm.jwt-secret", jwtSecret,
+		"--evm.genesis-hash", genesisHash,
+		"--rollkit.node.block_time", DefaultBlockTime,
+		"--rollkit.node.aggregator=true",
+		"--rollkit.signer.passphrase", TestPassphrase,
+		"--home", sequencerHome,
+		"--rollkit.da.block_time", DefaultDABlockTime,
+		"--rollkit.da.address", "http://localhost:" + ports.DAPort,
+		"--rollkit.rpc.address", "127.0.0.1:" + ports.RollkitRPCPort,
+		"--rollkit.p2p.listen_address", "/ip4/127.0.0.1/tcp/" + ports.RollkitP2PPort,
+		"--evm.engine-url", seqEngineURL,
+		"--evm.eth-url", seqEthURL,
+	}
+	sut.ExecCmd(evmSingleBinaryPath, args...)
+	sut.AwaitNodeUp(t, "http://127.0.0.1:"+ports.RollkitRPCPort, NodeStartupTimeout)
 }
 
 // setupSequencerNodeLazy initializes and starts the sequencer node in lazy mode.
@@ -366,28 +367,28 @@ func setupSequencerNodeLazy(t *testing.T, sut *SystemUnderTest, sequencerHome, j
 	)
 	require.NoError(t, err, "failed to init sequencer", output)
 
-    // Resolve EVM endpoints
-    seqEthURL := ports.SequencerEthURL
-    seqEngineURL := ports.SequencerEngineURL
-    args := []string{
-        "start",
-        "--evm.jwt-secret", jwtSecret,
-        "--evm.genesis-hash", genesisHash,
-        "--rollkit.node.block_time", DefaultBlockTime,
-        "--rollkit.node.aggregator=true",
-        "--rollkit.node.lazy_mode=true",
-        "--rollkit.node.lazy_block_interval=60s",
-        "--rollkit.signer.passphrase", TestPassphrase,
-        "--home", sequencerHome,
-        "--rollkit.da.block_time", DefaultDABlockTime,
-        "--rollkit.da.address", "http://localhost:" + ports.DAPort,
-        "--rollkit.rpc.address", "127.0.0.1:" + ports.RollkitRPCPort,
-        "--rollkit.p2p.listen_address", "/ip4/127.0.0.1/tcp/" + ports.RollkitP2PPort,
-        "--evm.engine-url", seqEngineURL,
-        "--evm.eth-url", seqEthURL,
-    }
-    sut.ExecCmd(evmSingleBinaryPath, args...)
-    sut.AwaitNodeUp(t, "http://127.0.0.1:"+ports.RollkitRPCPort, NodeStartupTimeout)
+	// Resolve EVM endpoints
+	seqEthURL := ports.SequencerEthURL
+	seqEngineURL := ports.SequencerEngineURL
+	args := []string{
+		"start",
+		"--evm.jwt-secret", jwtSecret,
+		"--evm.genesis-hash", genesisHash,
+		"--rollkit.node.block_time", DefaultBlockTime,
+		"--rollkit.node.aggregator=true",
+		"--rollkit.node.lazy_mode=true",
+		"--rollkit.node.lazy_block_interval=60s",
+		"--rollkit.signer.passphrase", TestPassphrase,
+		"--home", sequencerHome,
+		"--rollkit.da.block_time", DefaultDABlockTime,
+		"--rollkit.da.address", "http://localhost:" + ports.DAPort,
+		"--rollkit.rpc.address", "127.0.0.1:" + ports.RollkitRPCPort,
+		"--rollkit.p2p.listen_address", "/ip4/127.0.0.1/tcp/" + ports.RollkitP2PPort,
+		"--evm.engine-url", seqEngineURL,
+		"--evm.eth-url", seqEthURL,
+	}
+	sut.ExecCmd(evmSingleBinaryPath, args...)
+	sut.AwaitNodeUp(t, "http://127.0.0.1:"+ports.RollkitRPCPort, NodeStartupTimeout)
 }
 
 // setupFullNode initializes and starts the full node with P2P connection to sequencer.
@@ -423,25 +424,25 @@ func setupFullNode(t *testing.T, sut *SystemUnderTest, fullNodeHome, sequencerHo
 	err = os.WriteFile(fullNodeGenesis, genesisData, 0644)
 	require.NoError(t, err, "failed to write full node genesis file")
 
-    // Use dynamic EVM endpoints from ports
-    fnEthURL := ports.FullNodeEthURL
-    fnEngineURL := ports.FullNodeEngineURL
+	// Use dynamic EVM endpoints from ports
+	fnEthURL := ports.FullNodeEthURL
+	fnEngineURL := ports.FullNodeEngineURL
 
-    args := []string{
-        "start",
-        "--home", fullNodeHome,
-        "--evm.jwt-secret", fullNodeJwtSecret,
-        "--evm.genesis-hash", genesisHash,
-        "--rollkit.p2p.peers", sequencerP2PAddress,
-        "--evm.engine-url", fnEngineURL,
-        "--evm.eth-url", fnEthURL,
-        "--rollkit.da.block_time", DefaultDABlockTime,
-        "--rollkit.da.address", "http://localhost:" + ports.DAPort,
-        "--rollkit.rpc.address", "127.0.0.1:" + ports.FullNodeRPCPort,
-        "--rollkit.p2p.listen_address", "/ip4/127.0.0.1/tcp/" + ports.FullNodeP2PPort,
-    }
-    sut.ExecCmd(evmSingleBinaryPath, args...)
-    sut.AwaitNodeUp(t, "http://127.0.0.1:"+ports.FullNodeRPCPort, NodeStartupTimeout)
+	args := []string{
+		"start",
+		"--home", fullNodeHome,
+		"--evm.jwt-secret", fullNodeJwtSecret,
+		"--evm.genesis-hash", genesisHash,
+		"--rollkit.p2p.peers", sequencerP2PAddress,
+		"--evm.engine-url", fnEngineURL,
+		"--evm.eth-url", fnEthURL,
+		"--rollkit.da.block_time", DefaultDABlockTime,
+		"--rollkit.da.address", "http://localhost:" + ports.DAPort,
+		"--rollkit.rpc.address", "127.0.0.1:" + ports.FullNodeRPCPort,
+		"--rollkit.p2p.listen_address", "/ip4/127.0.0.1/tcp/" + ports.FullNodeP2PPort,
+	}
+	sut.ExecCmd(evmSingleBinaryPath, args...)
+	sut.AwaitNodeUp(t, "http://127.0.0.1:"+ports.FullNodeRPCPort, NodeStartupTimeout)
 }
 
 // Global nonce counter to ensure unique nonces across multiple transaction submissions
@@ -508,8 +509,15 @@ func setupCommonEVMTest(t *testing.T, sut *SystemUnderTest, needsFullNode bool, 
 	sut.ExecCmd(localDABinary, "-port", dynPorts.DAPort)
 	t.Logf("Started local DA on port %s", dynPorts.DAPort)
 
-	// Start EVM engines via Tastora and capture dynamic endpoints
-	seqJWT, seqEth, seqEngine := setupTestRethEngineE2E(t)
+	rethNode := setupTestRethEngineE2E(t)
+
+	networkInfo, err := rethNode.GetNetworkInfo(context.Background())
+	require.NoError(t, err, "failed to get reth network info")
+
+	seqJWT := rethNode.JWTSecretHex()
+	seqEth := "http://localhost:" + networkInfo.External.Ports.RPC
+	seqEngine := "http://localhost:" + networkInfo.External.Ports.Engine
+
 	var fnJWT, fnEth, fnEngine string
 	if needsFullNode {
 		fnJWT, fnEth, fnEngine = setupTestRethEngineFullNode(t)
