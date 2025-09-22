@@ -38,7 +38,6 @@ When you're ready to test with real network conditions, you can deploy to testne
 
 Choose the deployment approach that matches your current needs:
 
-- [🏠 Local Development with Docker Compose](./local.md) - Deploy locally for development and testing
 - [🌐 Testnet Deployment](./testnet.md) - Deploy on testnet with external DA networks
 
 :::warning Disclaimer

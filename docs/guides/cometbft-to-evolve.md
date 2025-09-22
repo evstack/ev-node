@@ -41,26 +41,12 @@ Run the following command to initialize Evolve:
 ignite evolve init
 ```
 
-<!-- TODO: update
-
-## Initialize Evolve CLI Configuration {#initialize-evolve-cli-configuration}
-
-Next, you'll need to initialize the Evolve CLI configuration by generating the `evolve.toml` file. This file is crucial for Evolve to understand the structure of your chain.
-
-To create the `evolve.toml` configuration, use this command:
-
-```bash
-evolve toml init
-```
-
-This command sets up the `evolve.toml` file, where you can further customize configuration parameters as needed.
-
 ## Start Your Evolve App {#start-evolve-app}
 
 Once everything is configured, you can start your Evolve-enabled CometBFT app or (simply evolve app). Use the following command to start your blockchain:
 
 ```bash
-evolve start --evolve.aggregator <insert your flags>
+<yourappd> start --evnode.aggregator <insert your flags>
 ```
 
 ## Summary
@@ -68,5 +54,3 @@ evolve start --evolve.aggregator <insert your flags>
 By following this guide, you've successfully converted your CometBFT app into an Evolve app.
 
 To learn more about how to config your DA, Sequencing, and Execution, please check out those tutorial sections.
-
--->
