@@ -442,26 +442,6 @@ func setupCommonEVMTest(t *testing.T, sut *SystemUnderTest, needsFullNode bool, 
 	return seqJWT, fnJWT, genesisHash, dynPorts
 }
 
-// checkTxIncludedAt checks if a transaction was included in a block at the specified EVM endpoint.
-// This utility function connects to the provided EVM endpoint and queries for the
-// transaction receipt to determine if the transaction was successfully included.
-//
-// Parameters:
-// - txHash: Hash of the transaction to check
-// - ethURL: EVM endpoint URL to query (e.g., http://localhost:8545)
-//
-// Returns: true if transaction is included with success status, false otherwise
-func checkTxIncludedAt(t *testing.T, txHash common.Hash, ethURL string) bool {
-	t.Helper()
-	rpcClient, err := ethclient.Dial(ethURL)
-	if err != nil {
-		return false
-	}
-	defer rpcClient.Close()
-	receipt, err := rpcClient.TransactionReceipt(context.Background(), txHash)
-	return err == nil && receipt != nil && receipt.Status == 1
-}
-
 // checkBlockInfoAt retrieves block information at a specific height including state root.
 // This function connects to the specified EVM endpoint and queries for the block header
 // to get the block hash, state root, transaction count, and other block metadata.

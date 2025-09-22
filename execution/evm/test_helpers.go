@@ -59,6 +59,9 @@ func SetupTestRethEngine(t *testing.T) *rethfw.Node {
 		WithDockerNetworkID(dockerNetID).
 		WithGenesis([]byte(rethfw.DefaultEvolveGenesisJSON())).
 		Build(ctx)
+	t.Cleanup(func() {
+		_ = n.Remove(context.Background())
+	})
 
 	require.NoError(t, err)
 	require.NoError(t, n.Start(ctx))
@@ -168,11 +171,15 @@ func SetupTestRethEngineFullNode(t *testing.T) *rethfw.Node {
 	}
 
 	// use a different test name suffix to avoid container name collisions
-	n, err := rethfw.NewNodeBuilderWithTestName(t, fmt.Sprintf(t.Name(), randomString(5), "-full")).
+	n, err := rethfw.NewNodeBuilderWithTestName(t, fmt.Sprintf("%s-full-%s", t.Name(), randomString(5))).
 		WithDockerClient(dockerCli).
 		WithDockerNetworkID(dockerNetID).
 		WithGenesis([]byte(rethfw.DefaultEvolveGenesisJSON())).
 		Build(ctx)
+	t.Cleanup(func() {
+		_ = n.Remove(context.Background())
+	})
+
 	require.NoError(t, err)
 	require.NoError(t, n.Start(ctx))
 
