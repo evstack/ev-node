@@ -376,7 +376,7 @@ func (s *Syncer) processHeightEvent(event *common.DAHeightEvent) {
 
 	// Try to sync the next block
 	if err := s.trySyncNextBlock(event.DaHeight); err != nil {
-		s.errorCh <- fmt.Errorf("failed to sync next block: %w", err)
+		s.logger.Error().Err(err).Msg("failed to sync next block")
 		return
 	}
 
