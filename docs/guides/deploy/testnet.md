@@ -13,6 +13,7 @@ import constants from '../../.vitepress/constants/constants.js'
 :::tip
 <Callout />
 :::
+
 <!-- markdownlint-enable MD033 -->
 
 ## 🏗️ Architecture Overview
@@ -303,5 +304,3 @@ For detailed setup instructions, see:
 - [Single Sequencer Setup Guide](../evm/single.md) - Step-by-step deployment instructions
 - [RETH Backup Guide](../evm/reth-backup.md) - Data protection and backup procedures
 - [Celestia DA Guide](../da/celestia-da.md) - Connecting to Celestia networks
-
-You can also learn more about local deployments in our [Docker Compose guide](../deploy/local.md).

@@ -26,6 +26,7 @@ import constants from '../.vitepress/constants/constants.js'
 :::tip
 <Callout />
 :::
+
 <!-- markdownlint-enable MD033 -->
 
 ## 🛠️ Dependencies {#dependencies}
@@ -104,10 +105,8 @@ Now that we have our gm app generated and installed, we can launch our GM chain 
 First lets start the local DA network:
 
 ```bash
-git clone  --depth=1 --branch v1.0.0-beta.2 https://github.com/evstack/ev-node.git
-cd ev-node
-make build-da
-./build/local-da
+cd gm
+go tool github.com/evstack/ev-node/da/cmd/local-da
 ```
 
 you should see logs like:
@@ -269,26 +268,32 @@ pagination:
   total: "0"
 ```
 
-<!-- ## 📦 GM world UI app
+## 📦 GM world UI app
 
-Now that you have an idea of how to interact with the chain with the evolve CLI, let's look at the user interface (UI) application aspect of connecting a wallet to a chain.
+Now that you have an idea of how to interact with the chain with the CLI, let's look at the user interface (UI) application aspect of connecting a wallet to a chain.
+
+```bash
+ignite generate ts-client --yes
+ignite s vue
+ignite generate composables --yes
+cd vue
+pnpm install
+```
 
 Connecting your wallet to your chain is as straightforward as connecting to any other blockchain. It assumes you have the [Keplr](https://www.keplr.app/) wallet extension installed in your browser.
 
 ## 🔗 Connecting your wallet
 
-Kurtosis spun up a UI app alongside your chain already, so to connect your Keplr wallet to the application, simply open your browser and go to [http://localhost:3000](https://localhost:3000).
+Simply open your browser and go to [http://localhost:3000](https://localhost:3000) and use the Ignite UI to interact with your chain.
 
 Click the "Connect Wallet" button on the page, and approve the connection request in the Keplr prompt.
 
 Once authorized, your wallet address will be displayed, confirming that your wallet is successfully connected.
 
-![gm-world-frontend-connected](/img/gm-world-frontend-wallet-connected.png)
-
 :::tip
 If you run into any issues, make sure your Keplr wallet is updated and set to connect to your local environment.
-::: -->
+:::
 
 ## 🎉 Next steps
 
-Congratulations! You've experienced connecting to a chain from the user side — simple and straightforward. Now, you might consider exploring how to add more application logic to your chain using the Cosmos SDK, as demonstrated in our World App tutorial.
+Congratulations! You've experienced connecting to a chain from the user side — simple and straightforward. Now, you might consider exploring how to add more application logic to your chain using the Cosmos SDK, as demonstrated in our Wordle App tutorial.

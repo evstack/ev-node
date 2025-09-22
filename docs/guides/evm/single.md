@@ -47,10 +47,10 @@ This will start a local DA node on the default port (26658).
 
 ## Setting Up the EVM Layer
 
-### 1. Clone the ev-node Repository
+### 1. Clone the ev-reth Repository
 
 ```bash
-git clone https://github.com/evstack/ev-node.git
+git clone --depth 1 https://github.com/evstack/ev-reth.git
 cd ev-node
 ```
 
@@ -140,21 +140,21 @@ INF block marked as DA included blockHash=XXXX blockHeight=XX module=BlockManage
 
 ### Common Flags
 
-| Flag | Description |
-|------|-------------|
-| `--evnode.node.aggregator` | Set to true for sequencer mode, false for full node |
-| `--evnode.signer.passphrase` | Passphrase for the signer |
-| `--evnode.node.block_time` | Block time for the Evolve node |
+| Flag                         | Description                                         |
+| ---------------------------- | --------------------------------------------------- |
+| `--evnode.node.aggregator`   | Set to true for sequencer mode, false for full node |
+| `--evnode.signer.passphrase` | Passphrase for the signer                           |
+| `--evnode.node.block_time`   | Block time for the Evolve node                      |
 
 ### EVM Flags
 
-| Flag | Description |
-|------|-------------|
-| `--evm.eth-url` | Ethereum JSON-RPC URL (default `http://localhost:8545`) |
-| `--evm.engine-url` | Engine API URL (default `http://localhost:8551`) |
-| `--evm.jwt-secret` | JWT secret file path for the Engine API |
-| `--evm.genesis-hash` | Genesis block hash of the chain |
-| `--evm.fee-recipient` | Address to receive priority fees |
+| Flag                  | Description                                             |
+| --------------------- | ------------------------------------------------------- |
+| `--evm.eth-url`       | Ethereum JSON-RPC URL (default `http://localhost:8545`) |
+| `--evm.engine-url`    | Engine API URL (default `http://localhost:8551`)        |
+| `--evm.jwt-secret`    | JWT secret file path for the Engine API                 |
+| `--evm.genesis-hash`  | Genesis block hash of the chain                         |
+| `--evm.fee-recipient` | Address to receive priority fees                        |
 
 ## Conclusion
 

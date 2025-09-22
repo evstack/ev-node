@@ -43,7 +43,7 @@ To see the engine version (provided it is running): kurtosis engine status
 Now that we have kurtosis installed, we can launch our CosmWasm chain along with the local DA by running the following command:
 
 ```bash
-kurtosis run github.com/evolve/cosmwasm@v0.2.0
+kurtosis run github.com/evstack/cosmwasm@v0.2.0
 ```
 
 You should see an output like this:
@@ -172,8 +172,10 @@ Because we are deploying the compiled smart contract to `wasmd`,
 we want it to be as small as possible.
 
 <!-- markdownlint-disable MD051 -->
+
 The CosmWasm team provides a tool called `rust-optimizer`, which requires
 [Docker](#docker-installation) in order to compile.
+
 <!-- markdownlint-enable MD051 -->
 
 Run the following command in the `~/nameservice` directory you just copied:
@@ -208,9 +210,11 @@ For a better experience and to use Rust code instead of the command line to
 deploy/script and test your contracts, you can use cw-orchestrator.
 
 <!-- markdownlint-disable MD013 -->
+
 ```bash
 TX_HASH=$(wasmd tx wasm store cw_nameservice.wasm --from localwasm-key --keyring-backend test --chain-id localwasm --gas-prices 0.025uwasm --gas auto --gas-adjustment 1.3 --node http://127.0.0.1:36657 --output json -y | jq -r '.txhash') && echo $TX_HASH
 ```
+
 <!-- markdownlint-enable MD013 -->
 
 This will get you the transaction hash for the smart contract deployment.
@@ -222,6 +226,7 @@ the variables in the command with the variables in the `init.sh` script.
 :::
 
 ## 🌟 Contract interaction on CosmWasm {#contract-interaction-on-local-da}
+
 <!-- markdownlint-disable MD013 -->
 
 In the previous steps, we have stored our contract's tx hash in an
@@ -253,7 +258,7 @@ wasmd query wasm list-contract-by-code $CODE_ID --node http://127.0.0.1:36657 --
 We get the following output:
 
 ```json
-{"contracts":[],"pagination":{"next_key":null,"total":"0"}}
+{ "contracts": [], "pagination": { "next_key": null, "total": "0" } }
 ```
 
 ### 📃 Contract instantiation {#contract-instantiation}

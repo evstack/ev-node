@@ -12,11 +12,11 @@ Welcome to Evolve, a chain framework! The easiest way to launch your network nod
 
 ## 📦 Install Testapp (CLI)
 
-To install Evolve, clone the repository and build the binary:
+To install Evolve, run the following command in your terminal:
 
 ```bash
 # Clone the repository
-git clone https://github.com/evstack/ev-node.git
+git clone --depth 1 https://github.com/evstack/ev-node.git
 cd ev-node
 
 # Build the testapp binary
@@ -39,8 +39,7 @@ testapp version
 A successful installation will display the version number and its associated git commit hash.
 
 ```bash
-evolve version:  v1.0.0-beta.2
-evolve git sha:  d096a24e
+evolve version:  v1.0.0-beta.4
 ```
 
 ## 🗂️ Initialize a evolve network node
@@ -58,13 +57,8 @@ Now that we have our testapp generated and installed, we can launch our chain al
 First lets start the local DA network:
 
 ```bash
-# If you're not already in the ev-node directory
-cd ev-node
-
-# Build the local DA binary
-make build-da
-# Start the local DA network using the built binary
-./build/local-da
+go install github.com/evstack/ev-node/da/cmd/local-da@latest
+local-da
 ```
 
 You should see logs like:
