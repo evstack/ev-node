@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"math/big"
+	mathrand "math/rand"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -45,8 +46,19 @@ func generateJWTSecret() (string, error) {
 	return hex.EncodeToString(jwtSecret), nil
 }
 
+const charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+
+func randomString(n int) string {
+	r := mathrand.New(mathrand.NewSource(time.Now().UnixNano()))
+	b := make([]byte, n)
+	for i := range b {
+		b[i] = charset[r.Intn(len(charset))]
+	}
+	return string(b)
+}
+
 // SetupTestRethEngine sets up a Reth engine test environment using Docker Compose, writes a JWT secret file, and returns the secret. It also registers cleanup for resources.
-func SetupTestRethEngine(t *testing.T, dockerPath, jwtFilename string) (string, string, string) {
+func SetupTestRethEngine(t *testing.T, dockerPath string) *rethfw.Node {
 	t.Helper()
 	// Start a single reth via Tastora to serve as the execution engine paired with the sequencer evm-single
 	ctx := context.Background()
@@ -64,7 +76,7 @@ func SetupTestRethEngine(t *testing.T, dockerPath, jwtFilename string) (string, 
 	genesisBz, err := os.ReadFile(genesisPath)
 	require.NoError(t, err)
 
-	n, err := rethfw.NewNodeBuilder(t).
+	n, err := rethfw.NewNodeBuilderWithTestName(t, fmt.Sprintf("%s-%s", t.Name(), randomString(6))).
 		WithDockerClient(dockerCli).
 		WithDockerNetworkID(dockerNetID).
 		WithGenesis(genesisBz).
@@ -79,7 +91,7 @@ func SetupTestRethEngine(t *testing.T, dockerPath, jwtFilename string) (string, 
 	jwtSecret := n.JWTSecretHex()
 
 	require.NoError(t, waitForRethContainer(t, jwtSecret, sequencerEthURL, sequencerEngineURL))
-	return jwtSecret, sequencerEthURL, sequencerEngineURL
+	return n
 }
 
 // waitForRethContainer waits for the Reth container to be ready by polling the provided endpoints with JWT authentication.
