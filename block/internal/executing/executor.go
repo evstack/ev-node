@@ -211,10 +211,44 @@ func (e *Executor) initializeState() error {
 	return nil
 }
 
+// waitForGenesisTime waits until after the genesis StartTime has passed before allowing block production to begin
+func (e *Executor) waitForGenesisTime() error {
+	now := time.Now()
+	if now.Before(e.genesis.StartTime) {
+		waitDuration := e.genesis.StartTime.Sub(now)
+		e.logger.Info().
+			Time("start_time", e.genesis.StartTime).
+			Dur("wait_duration", waitDuration).
+			Msg("waiting for genesis time before beginning block production")
+
+		select {
+		case <-e.ctx.Done():
+			return e.ctx.Err()
+		case <-time.After(waitDuration):
+			e.logger.Info().
+				Time("start_time", e.genesis.StartTime).
+				Msg("genesis time reached, beginning block production")
+		}
+	} else {
+		e.logger.Info().
+			Time("start_time", e.genesis.StartTime).
+			Time("current_time", now).
+			Msg("genesis time has already passed, beginning block production")
+	}
+
+	return nil
+}
+
 // executionLoop handles block production and aggregation
 func (e *Executor) executionLoop() {
 	e.logger.Info().Msg("starting execution loop")
 	defer e.logger.Info().Msg("execution loop stopped")
+
+	// Ensure we wait until after the genesis time has passed
+	if err := e.waitForGenesisTime(); err != nil {
+		e.logger.Error().Err(err).Msg("context canceled while waiting for genesis time")
+		return
+	}
 
 	var delay time.Duration
 	initialHeight := e.genesis.InitialHeight
