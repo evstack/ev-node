@@ -22,6 +22,14 @@ import (
 	"github.com/evstack/ev-node/types"
 )
 
+type daRetriever interface {
+	RetrieveFromDA(ctx context.Context, daHeight uint64) ([]common.DAHeightEvent, error)
+}
+type p2pHandler interface {
+	ProcessHeaderRange(ctx context.Context, fromHeight, toHeight uint64) []common.DAHeightEvent
+	ProcessDataRange(ctx context.Context, fromHeight, toHeight uint64) []common.DAHeightEvent
+}
+
 // Syncer handles block synchronization from DA and P2P sources.
 type Syncer struct {
 	// Core components
@@ -51,14 +59,12 @@ type Syncer struct {
 	dataStore   goheader.Store[*types.Data]
 
 	// Channels for coordination
-	heightInCh    chan common.DAHeightEvent
-	headerStoreCh chan struct{}
-	dataStoreCh   chan struct{}
-	errorCh       chan<- error // Channel to report critical execution client failures
+	heightInCh chan common.DAHeightEvent
+	errorCh    chan<- error // Channel to report critical execution client failures
 
 	// Handlers
-	daRetriever *DARetriever
-	p2pHandler  *P2PHandler
+	daRetriever daRetriever
+	p2pHandler  p2pHandler
 
 	// Logging
 	logger zerolog.Logger
@@ -85,23 +91,21 @@ func NewSyncer(
 	errorCh chan<- error,
 ) *Syncer {
 	return &Syncer{
-		store:         store,
-		exec:          exec,
-		da:            da,
-		cache:         cache,
-		metrics:       metrics,
-		config:        config,
-		genesis:       genesis,
-		options:       options,
-		headerStore:   headerStore,
-		dataStore:     dataStore,
-		lastStateMtx:  &sync.RWMutex{},
-		daStateMtx:    &sync.RWMutex{},
-		heightInCh:    make(chan common.DAHeightEvent, 10000),
-		headerStoreCh: make(chan struct{}, 1),
-		dataStoreCh:   make(chan struct{}, 1),
-		errorCh:       errorCh,
-		logger:        logger.With().Str("component", "syncer").Logger(),
+		store:        store,
+		exec:         exec,
+		da:           da,
+		cache:        cache,
+		metrics:      metrics,
+		config:       config,
+		genesis:      genesis,
+		options:      options,
+		headerStore:  headerStore,
+		dataStore:    dataStore,
+		lastStateMtx: &sync.RWMutex{},
+		daStateMtx:   &sync.RWMutex{},
+		heightInCh:   make(chan common.DAHeightEvent, 1000),
+		errorCh:      errorCh,
+		logger:       logger.With().Str("component", "syncer").Logger(),
 	}
 }
 
@@ -212,20 +216,10 @@ func (s *Syncer) processLoop() {
 	s.logger.Info().Msg("starting process loop")
 	defer s.logger.Info().Msg("process loop stopped")
 
-	blockTicker := time.NewTicker(s.config.Node.BlockTime.Duration)
-	defer blockTicker.Stop()
-
 	for {
-		// Process pending events from cache on every iteration
-		s.processPendingEvents()
-
 		select {
 		case <-s.ctx.Done():
 			return
-		case <-blockTicker.C:
-			// Signal P2P stores to check for new data
-			s.sendNonBlockingSignal(s.headerStoreCh, "header_store")
-			s.sendNonBlockingSignal(s.dataStoreCh, "data_store")
 		case heightEvent := <-s.heightInCh:
 			s.processHeightEvent(&heightEvent)
 		}
@@ -250,15 +244,19 @@ func (s *Syncer) syncLoop() {
 	var hffDelay time.Duration
 	var nextDARequestAt time.Time
 
+	blockTicker := time.NewTicker(s.config.Node.BlockTime.Duration)
+	defer blockTicker.Stop()
+
 	// TODO: we should request to see what the head of the chain is at
 	// then we know if we are falling behind or in sync mode
-syncLoop:
 	for {
 		select {
 		case <-s.ctx.Done():
 			return
 		default:
 		}
+		// Process pending events from cache on every iteration
+		s.processPendingEvents()
 
 		now := time.Now()
 		// Respect backoff window if set
@@ -291,9 +289,7 @@ syncLoop:
 					select {
 					case s.heightInCh <- event:
 					default:
-						s.logger.Warn().Msg("height channel full, dropping DA event")
-						time.Sleep(10 * time.Millisecond)
-						continue syncLoop
+						s.cache.SetPendingEvent(event.Header.Height(), &event)
 					}
 				}
 
@@ -303,8 +299,9 @@ syncLoop:
 			}
 		}
 
+		// Opportunistically process any P2P signals
 		select {
-		case <-s.headerStoreCh:
+		case <-blockTicker.C:
 			newHeaderHeight := s.headerStore.Height()
 			if newHeaderHeight > lastHeaderHeight {
 				events := s.p2pHandler.ProcessHeaderRange(s.ctx, lastHeaderHeight+1, newHeaderHeight)
@@ -312,25 +309,24 @@ syncLoop:
 					select {
 					case s.heightInCh <- event:
 					default:
-						s.logger.Warn().Msg("height channel full, dropping P2P header event")
-						time.Sleep(10 * time.Millisecond)
-						continue syncLoop
+						s.cache.SetPendingEvent(event.Header.Height(), &event)
 					}
 				}
-
 				lastHeaderHeight = newHeaderHeight
 			}
-		case <-s.dataStoreCh:
+
 			newDataHeight := s.dataStore.Height()
+			if newDataHeight == newHeaderHeight {
+				lastDataHeight = newDataHeight
+				continue
+			}
 			if newDataHeight > lastDataHeight {
 				events := s.p2pHandler.ProcessDataRange(s.ctx, lastDataHeight+1, newDataHeight)
 				for _, event := range events {
 					select {
 					case s.heightInCh <- event:
 					default:
-						s.logger.Warn().Msg("height channel full, dropping P2P data event")
-						time.Sleep(10 * time.Millisecond)
-						continue syncLoop
+						s.cache.SetPendingEvent(event.Header.Height(), &event)
 					}
 				}
 				lastDataHeight = newDataHeight
