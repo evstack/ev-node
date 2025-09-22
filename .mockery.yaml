@@ -58,4 +58,3 @@ packages:
           dir: ./block/internal/syncing
           pkgname: syncing
           filename: syncer_mock.go
-
