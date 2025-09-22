@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strings"
 	"syscall"
 	"time"
 
@@ -97,26 +98,17 @@ func StartNode(
 		}
 
 		// Resolve signer path; allow absolute, relative to node root, or relative to CWD if resolution fails
-		signerPath := nodeConfig.Signer.SignerPath
-		if !filepath.IsAbs(signerPath) {
-			resolved := filepath.Join(nodeConfig.RootDir, signerPath)
-			if _, statErr := os.Stat(filepath.Join(resolved, "signer.json")); statErr != nil {
-				cwdPath, _ := filepath.Abs(signerPath)
-				if _, cwdErr := os.Stat(filepath.Join(cwdPath, "signer.json")); cwdErr == nil {
-					signerPath = cwdPath
-				} else {
-					signerPath = resolved
-				}
-			} else {
-				signerPath = resolved
-			}
+		signerPath, err := filepath.Abs(strings.TrimSuffix(nodeConfig.Signer.SignerPath, "signer.json"))
+		if err != nil {
+			return err
 		}
+
 		signer, err = file.LoadFileSystemSigner(signerPath, []byte(passphrase))
 		if err != nil {
 			return err
 		}
 	} else {
-		panic("unknown signer type or this is node is not an aggregator")
+		return fmt.Errorf("unknown signer type: %s", nodeConfig.Signer.SignerType)
 	}
 
 	metrics := node.DefaultMetricsProvider(nodeConfig.Instrumentation)
