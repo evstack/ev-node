@@ -63,6 +63,7 @@ func TestAddFlags(t *testing.T) {
 	assertFlagValue(t, flags, FlagLazyAggregator, DefaultConfig().Node.LazyMode)
 	assertFlagValue(t, flags, FlagMaxPendingHeadersAndData, DefaultConfig().Node.MaxPendingHeadersAndData)
 	assertFlagValue(t, flags, FlagLazyBlockTime, DefaultConfig().Node.LazyBlockInterval.Duration)
+	assertFlagValue(t, flags, FlagReadinessMaxBlocksBehind, DefaultConfig().Node.ReadinessMaxBlocksBehind)
 
 	// DA flags
 	assertFlagValue(t, flags, FlagDAAddress, DefaultConfig().DA.Address)
@@ -104,7 +105,7 @@ func TestAddFlags(t *testing.T) {
 	assertFlagValue(t, flags, FlagRPCAddress, DefaultConfig().RPC.Address)
 
 	// Count the number of flags we're explicitly checking
-	expectedFlagCount := 37 // Update this number if you add more flag checks above
+	expectedFlagCount := 38 // Update this number if you add more flag checks above
 
 	// Get the actual number of flags (both regular and persistent)
 	actualFlagCount := 0
