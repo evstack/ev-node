@@ -35,11 +35,11 @@ func newBenchFixture(b *testing.B, totalHeights uint64, daDelay, execDelay time.
 
 	ds := dssync.MutexWrap(datastore.NewMapDatastore())
 	st := store.New(ds)
-	cm, err := cache.NewManager(config.DefaultConfig, st, zerolog.Nop())
+	cm, err := cache.NewManager(config.DefaultConfig(), st, zerolog.Nop())
 	require.NoError(b, err)
 
 	addr, pub, signer := buildSyncTestSigner(b)
-	cfg := config.DefaultConfig
+	cfg := config.DefaultConfig()
 	// keep P2P ticker dormant unless we manually inject P2P events
 	cfg.Node.BlockTime = config.DurationWrapper{Duration: 10 * time.Second}
 	cfg.DA.StartHeight = 1
@@ -112,10 +112,12 @@ func BenchmarkSyncerIO(b *testing.B) {
 		p2pEnabled bool
 		p2pDelay   time.Duration
 	}{
-		"slow producer":       {heights: 100, daDelay: 200 * time.Microsecond, execDelay: 0, p2pDelay: 0, p2pEnabled: false},
-		"slow producer + p2p": {heights: 100, daDelay: 200 * time.Microsecond, execDelay: 0, p2pDelay: 150 * time.Microsecond, p2pEnabled: true},
-		"slow consumer":       {heights: 100, daDelay: 0, execDelay: 200 * time.Microsecond, p2pDelay: 0, p2pEnabled: false},
-		"slow consumer + p2p": {heights: 100, daDelay: 0, execDelay: 200 * time.Microsecond, p2pDelay: 0, p2pEnabled: true},
+		"slow producer":          {heights: 100, daDelay: 200 * time.Microsecond, execDelay: 0, p2pDelay: 0, p2pEnabled: false},
+		"slow producer big gap":  {heights: 5_000, daDelay: 200 * time.Microsecond, execDelay: 0, p2pDelay: 0, p2pEnabled: false},
+		"slow producer + p2p":    {heights: 100, daDelay: 200 * time.Microsecond, execDelay: 0, p2pDelay: 150 * time.Microsecond, p2pEnabled: true},
+		"slow consumer":          {heights: 100, daDelay: 0, execDelay: 200 * time.Microsecond, p2pDelay: 0, p2pEnabled: false},
+		"slow consumer big gap ": {heights: 5_000, daDelay: 0, execDelay: 200 * time.Microsecond, p2pDelay: 0, p2pEnabled: false},
+		"slow consumer + p2p":    {heights: 100, daDelay: 0, execDelay: 200 * time.Microsecond, p2pDelay: 0, p2pEnabled: true},
 	}
 	for name, spec := range cases {
 		b.Run(name, func(b *testing.B) {
@@ -146,7 +148,7 @@ func BenchmarkSyncerIO(b *testing.B) {
 				fixt.s.syncLoop()
 
 				// Ensure clean end-state per iteration
-				//require.Len(b, fixt.s.cache.GetPendingEvents(), 0)
+				require.Len(b, fixt.s.cache.GetPendingEvents(), 0)
 				assert.Len(b, fixt.s.heightInCh, 0)
 			}
 		})
