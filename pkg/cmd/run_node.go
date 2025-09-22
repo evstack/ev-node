@@ -96,10 +96,20 @@ func StartNode(
 			return err
 		}
 
-		// Resolve signer path relative to root directory if it's not an absolute path
+		// Resolve signer path; allow absolute, relative to node root, or relative to CWD if resolution fails
 		signerPath := nodeConfig.Signer.SignerPath
 		if !filepath.IsAbs(signerPath) {
-			signerPath = filepath.Join(nodeConfig.RootDir, signerPath)
+			resolved := filepath.Join(nodeConfig.RootDir, signerPath)
+			if _, statErr := os.Stat(filepath.Join(resolved, "signer.json")); statErr != nil {
+				cwdPath, _ := filepath.Abs(signerPath)
+				if _, cwdErr := os.Stat(filepath.Join(cwdPath, "signer.json")); cwdErr == nil {
+					signerPath = cwdPath
+				} else {
+					signerPath = resolved
+				}
+			} else {
+				signerPath = resolved
+			}
 		}
 		signer, err = file.LoadFileSystemSigner(signerPath, []byte(passphrase))
 		if err != nil {
