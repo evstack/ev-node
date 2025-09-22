@@ -114,7 +114,7 @@ func TestSyncer_sendNonBlockingSignal(t *testing.T) {
 func TestSyncer_processPendingEvents(t *testing.T) {
 	ds := dssync.MutexWrap(datastore.NewMapDatastore())
 	st := store.New(ds)
-	cm, err := cache.NewManager(config.DefaultConfig, st, zerolog.Nop())
+	cm, err := cache.NewManager(config.DefaultConfig(), st, zerolog.Nop())
 	require.NoError(t, err)
 
 	// current height 1
@@ -151,14 +151,14 @@ func TestSyncer_processPendingEvents(t *testing.T) {
 func TestSyncLoopPersistState(t *testing.T) {
 	ds := dssync.MutexWrap(datastore.NewMapDatastore())
 	st := store.New(ds)
-	cm, err := cache.NewManager(config.DefaultConfig, st, zerolog.Nop())
+	cm, err := cache.NewManager(config.DefaultConfig(), st, zerolog.Nop())
 	require.NoError(t, err)
 
 	myDAHeightOffset := uint64(1)
 	myFutureDAHeight := uint64(9)
 
 	addr, pub, signer := buildSyncTestSigner(t)
-	cfg := config.DefaultConfig
+	cfg := config.DefaultConfig()
 	cfg.DA.StartHeight = myDAHeightOffset
 	gen := genesis.Genesis{ChainID: "tchain", InitialHeight: 1, StartTime: time.Now().Add(-time.Second), ProposerAddress: addr}
 
@@ -236,7 +236,7 @@ func TestSyncLoopPersistState(t *testing.T) {
 	assert.Len(t, syncerInst1.heightInCh, 0)
 
 	// and when new instance is up on restart
-	cm, err = cache.NewManager(config.DefaultConfig, st, zerolog.Nop())
+	cm, err = cache.NewManager(config.DefaultConfig(), st, zerolog.Nop())
 	require.NoError(t, err)
 	require.NoError(t, cm.LoadFromDisk())
 

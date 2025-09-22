@@ -36,7 +36,7 @@ const (
 	MockDAAddress = "grpc://localhost:7990"
 
 	// MockDANamespace is a sample namespace used by the mock DA client
-	MockDANamespace = "00000000000000000000000000000000000000000000000000deadbeef"
+	MockDANamespace = "mock-namespace"
 
 	// MockExecutorAddress is a sample address used by the mock executor
 	MockExecutorAddress = "127.0.0.1:40041"

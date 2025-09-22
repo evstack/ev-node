@@ -2,14 +2,9 @@ module github.com/evstack/ev-node/sequencers/single
 
 go 1.24.2
 
-replace (
-	github.com/evstack/ev-node => ../../
-	github.com/evstack/ev-node/core => ../../core
-)
-
 require (
-	github.com/evstack/ev-node v0.0.0-00010101000000-000000000000
-	github.com/evstack/ev-node/core v0.0.0-20250312114929-104787ba1a4c
+	github.com/evstack/ev-node v1.0.0-beta.3
+	github.com/evstack/ev-node/core v1.0.0-beta.3
 	github.com/go-kit/kit v0.13.0
 	github.com/ipfs/go-datastore v0.8.3
 	github.com/prometheus/client_golang v1.23.2

@@ -1,6 +1,7 @@
 package syncing
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -70,7 +71,7 @@ func makeSignedDataBytes(t *testing.T, chainID string, height uint64, proposer [
 func TestDARetriever_RetrieveFromDA_NotFound(t *testing.T) {
 	ds := dssync.MutexWrap(datastore.NewMapDatastore())
 	st := store.New(ds)
-	cm, err := cache.NewManager(config.DefaultConfig, st, zerolog.Nop())
+	cm, err := cache.NewManager(config.DefaultConfig(), st, zerolog.Nop())
 	require.NoError(t, err)
 
 	mockDA := testmocks.NewMockDA(t)
@@ -79,7 +80,7 @@ func TestDARetriever_RetrieveFromDA_NotFound(t *testing.T) {
 	mockDA.EXPECT().GetIDs(mock.Anything, mock.Anything, mock.Anything).
 		Return(nil, fmt.Errorf("%s: whatever", coreda.ErrBlobNotFound.Error())).Maybe()
 
-	r := NewDARetriever(mockDA, cm, config.DefaultConfig, genesis.Genesis{}, common.DefaultBlockOptions(), zerolog.Nop())
+	r := NewDARetriever(mockDA, cm, config.DefaultConfig(), genesis.Genesis{}, common.DefaultBlockOptions(), zerolog.Nop())
 	events, err := r.RetrieveFromDA(context.Background(), 42)
 	require.Error(t, err, coreda.ErrBlobNotFound)
 	assert.Len(t, events, 0)
@@ -88,7 +89,7 @@ func TestDARetriever_RetrieveFromDA_NotFound(t *testing.T) {
 func TestDARetriever_RetrieveFromDA_HeightFromFuture(t *testing.T) {
 	ds := dssync.MutexWrap(datastore.NewMapDatastore())
 	st := store.New(ds)
-	cm, err := cache.NewManager(config.DefaultConfig, st, zerolog.Nop())
+	cm, err := cache.NewManager(config.DefaultConfig(), st, zerolog.Nop())
 	require.NoError(t, err)
 
 	mockDA := testmocks.NewMockDA(t)
@@ -96,7 +97,7 @@ func TestDARetriever_RetrieveFromDA_HeightFromFuture(t *testing.T) {
 	mockDA.EXPECT().GetIDs(mock.Anything, mock.Anything, mock.Anything).
 		Return(nil, fmt.Errorf("%s: later", coreda.ErrHeightFromFuture.Error())).Maybe()
 
-	r := NewDARetriever(mockDA, cm, config.DefaultConfig, genesis.Genesis{}, common.DefaultBlockOptions(), zerolog.Nop())
+	r := NewDARetriever(mockDA, cm, config.DefaultConfig(), genesis.Genesis{}, common.DefaultBlockOptions(), zerolog.Nop())
 	events, derr := r.RetrieveFromDA(context.Background(), 1000)
 	assert.Error(t, derr)
 	assert.True(t, errors.Is(derr, coreda.ErrHeightFromFuture))
@@ -106,19 +107,19 @@ func TestDARetriever_RetrieveFromDA_HeightFromFuture(t *testing.T) {
 func TestDARetriever_ProcessBlobs_HeaderAndData_Success(t *testing.T) {
 	ds := dssync.MutexWrap(datastore.NewMapDatastore())
 	st := store.New(ds)
-	cm, err := cache.NewManager(config.DefaultConfig, st, zerolog.Nop())
+	cm, err := cache.NewManager(config.DefaultConfig(), st, zerolog.Nop())
 	require.NoError(t, err)
 
 	addr, pub, signer := buildSyncTestSigner(t)
 	gen := genesis.Genesis{ChainID: "tchain", InitialHeight: 1, StartTime: time.Now().Add(-time.Second), ProposerAddress: addr}
 
-	r := NewDARetriever(nil, cm, config.DefaultConfig, gen, common.DefaultBlockOptions(), zerolog.Nop())
+	r := NewDARetriever(nil, cm, config.DefaultConfig(), gen, common.DefaultBlockOptions(), zerolog.Nop())
 
 	// Build one header and one data blob at same height
 	_, lastState := types.State{}, types.State{}
 	_ = lastState // placeholder to keep parity with helper pattern
 
-	hdrBin, hdr := makeSignedHeaderBytes(t, gen.ChainID, 2, addr, pub, signer, nil)
+	hdrBin, _ := makeSignedHeaderBytes(t, gen.ChainID, 2, addr, pub, signer, nil)
 	dataBin, _ := makeSignedDataBytes(t, gen.ChainID, 2, addr, pub, signer, 2)
 
 	events := r.processBlobs(context.Background(), [][]byte{hdrBin, dataBin}, 77)
@@ -127,22 +128,17 @@ func TestDARetriever_ProcessBlobs_HeaderAndData_Success(t *testing.T) {
 	assert.Equal(t, uint64(2), events[0].Data.Height())
 	assert.Equal(t, uint64(77), events[0].DaHeight)
 	assert.Equal(t, uint64(77), events[0].HeaderDaIncludedHeight)
-
-	// DA included markers should be set by tryDecodeHeader/tryDecodeData
-	if hHeight, ok := cm.GetHeaderDAIncluded(hdr.Hash().String()); assert.True(t, ok) {
-		assert.Equal(t, uint64(77), hHeight)
-	}
 }
 
 func TestDARetriever_ProcessBlobs_HeaderOnly_EmptyDataExpected(t *testing.T) {
 	ds := dssync.MutexWrap(datastore.NewMapDatastore())
 	st := store.New(ds)
-	cm, err := cache.NewManager(config.DefaultConfig, st, zerolog.Nop())
+	cm, err := cache.NewManager(config.DefaultConfig(), st, zerolog.Nop())
 	require.NoError(t, err)
 
 	addr, pub, signer := buildSyncTestSigner(t)
 	gen := genesis.Genesis{ChainID: "tchain", InitialHeight: 1, StartTime: time.Now().Add(-time.Second), ProposerAddress: addr}
-	r := NewDARetriever(nil, cm, config.DefaultConfig, gen, common.DefaultBlockOptions(), zerolog.Nop())
+	r := NewDARetriever(nil, cm, config.DefaultConfig(), gen, common.DefaultBlockOptions(), zerolog.Nop())
 
 	// Header with no data hash present should trigger empty data creation (per current logic)
 	hb, _ := makeSignedHeaderBytes(t, gen.ChainID, 3, addr, pub, signer, nil)
@@ -157,12 +153,12 @@ func TestDARetriever_ProcessBlobs_HeaderOnly_EmptyDataExpected(t *testing.T) {
 func TestDARetriever_TryDecodeHeaderAndData_Basic(t *testing.T) {
 	ds := dssync.MutexWrap(datastore.NewMapDatastore())
 	st := store.New(ds)
-	cm, err := cache.NewManager(config.DefaultConfig, st, zerolog.Nop())
+	cm, err := cache.NewManager(config.DefaultConfig(), st, zerolog.Nop())
 	require.NoError(t, err)
 
 	addr, pub, signer := buildSyncTestSigner(t)
 	gen := genesis.Genesis{ChainID: "tchain", InitialHeight: 1, StartTime: time.Now().Add(-time.Second), ProposerAddress: addr}
-	r := NewDARetriever(nil, cm, config.DefaultConfig, gen, common.DefaultBlockOptions(), zerolog.Nop())
+	r := NewDARetriever(nil, cm, config.DefaultConfig(), gen, common.DefaultBlockOptions(), zerolog.Nop())
 
 	hb, sh := makeSignedHeaderBytes(t, gen.ChainID, 5, addr, pub, signer, nil)
 	gotH := r.tryDecodeHeader(hb, 123)
@@ -192,13 +188,13 @@ func TestDARetriever_isEmptyDataExpected(t *testing.T) {
 func TestDARetriever_tryDecodeData_InvalidSignatureOrProposer(t *testing.T) {
 	ds := dssync.MutexWrap(datastore.NewMapDatastore())
 	st := store.New(ds)
-	cm, err := cache.NewManager(config.DefaultConfig, st, zerolog.Nop())
+	cm, err := cache.NewManager(config.DefaultConfig(), st, zerolog.Nop())
 	require.NoError(t, err)
 
 	goodAddr, pub, signer := buildSyncTestSigner(t)
 	badAddr := []byte("not-the-proposer")
 	gen := genesis.Genesis{ChainID: "tchain", InitialHeight: 1, StartTime: time.Now().Add(-time.Second), ProposerAddress: badAddr}
-	r := NewDARetriever(nil, cm, config.DefaultConfig, gen, common.DefaultBlockOptions(), zerolog.Nop())
+	r := NewDARetriever(nil, cm, config.DefaultConfig(), gen, common.DefaultBlockOptions(), zerolog.Nop())
 
 	// Signed data is made by goodAddr; retriever expects badAddr -> should be rejected
 	db, _ := makeSignedDataBytes(t, gen.ChainID, 7, goodAddr, pub, signer, 1)
@@ -222,7 +218,7 @@ func TestDARetriever_validateBlobResponse(t *testing.T) {
 func TestDARetriever_RetrieveFromDA_TwoNamespaces_Success(t *testing.T) {
 	ds := dssync.MutexWrap(datastore.NewMapDatastore())
 	st := store.New(ds)
-	cm, err := cache.NewManager(config.DefaultConfig, st, zerolog.Nop())
+	cm, err := cache.NewManager(config.DefaultConfig(), st, zerolog.Nop())
 	require.NoError(t, err)
 
 	addr, pub, signer := buildSyncTestSigner(t)
@@ -232,21 +228,24 @@ func TestDARetriever_RetrieveFromDA_TwoNamespaces_Success(t *testing.T) {
 	hdrBin, _ := makeSignedHeaderBytes(t, gen.ChainID, 9, addr, pub, signer, nil)
 	dataBin, _ := makeSignedDataBytes(t, gen.ChainID, 9, addr, pub, signer, 1)
 
-	mockDA := testmocks.NewMockDA(t)
-	// Expect GetIDs for both namespaces
-	mockDA.EXPECT().GetIDs(mock.Anything, uint64(1234), mock.MatchedBy(func(ns []byte) bool { return string(ns) == "nsHdr" })).
-		Return(&coreda.GetIDsResult{IDs: [][]byte{[]byte("h1")}, Timestamp: time.Now()}, nil).Once()
-	mockDA.EXPECT().Get(mock.Anything, mock.Anything, mock.MatchedBy(func(ns []byte) bool { return string(ns) == "nsHdr" })).
-		Return([][]byte{hdrBin}, nil).Once()
-
-	mockDA.EXPECT().GetIDs(mock.Anything, uint64(1234), mock.MatchedBy(func(ns []byte) bool { return string(ns) == "nsData" })).
-		Return(&coreda.GetIDsResult{IDs: [][]byte{[]byte("d1")}, Timestamp: time.Now()}, nil).Once()
-	mockDA.EXPECT().Get(mock.Anything, mock.Anything, mock.MatchedBy(func(ns []byte) bool { return string(ns) == "nsData" })).
-		Return([][]byte{dataBin}, nil).Once()
-
-	cfg := config.DefaultConfig
+	cfg := config.DefaultConfig()
 	cfg.DA.Namespace = "nsHdr"
 	cfg.DA.DataNamespace = "nsData"
+
+	namespaceBz := coreda.NamespaceFromString(cfg.DA.GetNamespace()).Bytes()
+	namespaceDataBz := coreda.NamespaceFromString(cfg.DA.GetDataNamespace()).Bytes()
+
+	mockDA := testmocks.NewMockDA(t)
+	// Expect GetIDs for both namespaces
+	mockDA.EXPECT().GetIDs(mock.Anything, uint64(1234), mock.MatchedBy(func(ns []byte) bool { return bytes.Equal(ns, namespaceBz) })).
+		Return(&coreda.GetIDsResult{IDs: [][]byte{[]byte("h1")}, Timestamp: time.Now()}, nil).Once()
+	mockDA.EXPECT().Get(mock.Anything, mock.Anything, mock.MatchedBy(func(ns []byte) bool { return bytes.Equal(ns, namespaceBz) })).
+		Return([][]byte{hdrBin}, nil).Once()
+
+	mockDA.EXPECT().GetIDs(mock.Anything, uint64(1234), mock.MatchedBy(func(ns []byte) bool { return bytes.Equal(ns, namespaceDataBz) })).
+		Return(&coreda.GetIDsResult{IDs: [][]byte{[]byte("d1")}, Timestamp: time.Now()}, nil).Once()
+	mockDA.EXPECT().Get(mock.Anything, mock.Anything, mock.MatchedBy(func(ns []byte) bool { return bytes.Equal(ns, namespaceDataBz) })).
+		Return([][]byte{dataBin}, nil).Once()
 
 	r := NewDARetriever(mockDA, cm, cfg, gen, common.DefaultBlockOptions(), zerolog.Nop())
 

@@ -30,16 +30,22 @@ The [peer-to-peer client] is used to gossip transactions between full nodes in t
 
 The [Store] is initialized with `DefaultStore`, an implementation of the [store interface] which is used for storing and retrieving blocks, commits, and state. |
 
-### blockManager
+### blockComponents
 
-The [Block Manager] is responsible for managing block-related operations including:
+The [Block Components] provide a modular architecture for managing block-related operations. Instead of a single monolithic manager, the system uses specialized components:
 
-- Block production (normal and lazy modes)
-- Header and data submission to DA layer
-- Block retrieval and synchronization
-- State updates and finalization
+**For Aggregator Nodes:**
+- **Executor**: Block production (normal and lazy modes) and state transitions
+- **Reaper**: Transaction collection and submission to sequencer
+- **Submitter**: Header and data submission to DA layer
+- **Syncer**: Block retrieval and synchronization from DA and P2P
+- **Cache Manager**: Coordination and tracking across all components
 
-It implements a header/data separation architecture where headers and transaction data are handled independently.
+**For Non-Aggregator Nodes:**
+- **Syncer**: Block retrieval and synchronization from DA and P2P
+- **Cache Manager**: Tracking and caching of synchronized blocks
+
+This modular architecture implements header/data separation where headers and transaction data are handled independently by different components.
 
 ### dalc
 
@@ -59,7 +65,7 @@ The Full Node communicates with other nodes in the network using the P2P client.
 
 ## Assumptions and Considerations
 
-The Full Node assumes that the configuration, private keys, client creator, genesis document, and logger are correctly passed in by the Cosmos SDK. It also assumes that the P2P client, data availability layer client, block manager, and other services can be started and stopped without errors.
+The Full Node assumes that the configuration, private keys, client creator, genesis document, and logger are correctly passed in by the Cosmos SDK. It also assumes that the P2P client, data availability layer client, block components, and other services can be started and stopped without errors.
 
 ## Implementation
 
@@ -79,7 +85,7 @@ See [full node]
 
 [6] [Store Interface][store interface]
 
-[7] [Block Manager][block manager]
+[7] [Block Components][block components]
 
 [8] [Data Availability Layer Client][dalc]
 
@@ -93,7 +99,7 @@ See [full node]
 [peer-to-peer client]: https://github.com/evstack/ev-node/blob/main/pkg/p2p/client.go
 [Store]: https://github.com/evstack/ev-node/blob/main/pkg/store/store.go
 [store interface]: https://github.com/evstack/ev-node/blob/main/pkg/store/types.go
-[Block Manager]: https://github.com/evstack/ev-node/blob/main/block/manager.go
+[Block Components]: https://github.com/evstack/ev-node/blob/main/block/components.go
 [dalc]: https://github.com/evstack/ev-node/blob/main/core/da/da.go
 [Header Sync Service]: https://github.com/evstack/ev-node/blob/main/pkg/sync/sync_service.go
 [Data Sync Service]: https://github.com/evstack/ev-node/blob/main/pkg/sync/sync_service.go

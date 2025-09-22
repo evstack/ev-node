@@ -22,7 +22,7 @@ func SubmitWithHelpers(
 	logger zerolog.Logger,
 	data [][]byte,
 	gasPrice float64,
-	namespace []byte, // New namespace parameter
+	namespace []byte,
 	options []byte,
 ) coreda.ResultSubmit { // Return core ResultSubmit type
 	ids, err := da.SubmitWithOptions(ctx, data, gasPrice, namespace, options)
@@ -113,7 +113,6 @@ func RetrieveWithHelpers(
 	dataLayerHeight uint64,
 	namespace []byte,
 ) coreda.ResultRetrieve {
-
 	// 1. Get IDs
 	idsResult, err := da.GetIDs(ctx, dataLayerHeight, namespace)
 	if err != nil {

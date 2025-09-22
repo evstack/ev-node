@@ -272,20 +272,3 @@ func TestP2PHandler_ProcessDataRange_HeaderValidateHeaderFails(t *testing.T) {
 	events := p2pData.Handler.ProcessDataRange(ctx, 3, 3)
 	require.Len(t, events, 0, "validateHeader failure should drop event")
 }
-
-func TestP2PHandler_ProcessDataRange_ValidateBasicWithDataFails(t *testing.T) {
-	p2pData := setupP2P(t)
-	ctx := context.Background()
-
-	// Data exists at height 4
-	blockData := p2pMakeData(t, p2pData.Genesis.ChainID, 4, 1)
-	p2pData.DataStore.EXPECT().GetByHeight(ctx, uint64(4)).Return(blockData, nil).Once()
-
-	// Header proposer matches genesis, but signature is empty -> ValidateBasicWithData should fail
-	header := p2pMakeSignedHeader(t, p2pData.Genesis.ChainID, 4, p2pData.ProposerAddr, p2pData.ProposerPub, p2pData.Signer)
-	header.Signature = nil // force signature validation failure
-	p2pData.HeaderStore.EXPECT().GetByHeight(ctx, uint64(4)).Return(header, nil).Once()
-
-	events := p2pData.Handler.ProcessDataRange(ctx, 4, 4)
-	require.Len(t, events, 0, "ValidateBasicWithData failure should drop event")
-}

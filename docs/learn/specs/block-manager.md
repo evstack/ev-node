@@ -1,16 +1,21 @@
-# Block Manager
+# Block Components
 
 ## Abstract
 
-The block manager is a key component of full nodes and is responsible for block production or block syncing depending on the node type: sequencer or non-sequencer. Block syncing in this context includes retrieving the published blocks from the network (P2P network or DA network), validating them to raise fraud proofs upon validation failure, updating the state, and storing the validated blocks. A full node invokes multiple block manager functionalities in parallel, such as:
+The block package provides a modular component-based architecture for handling block-related operations in full nodes. Instead of a single monolithic manager, the system is divided into specialized components that work together, each responsible for specific aspects of block processing. This architecture enables better separation of concerns, easier testing, and more flexible node configurations.
 
-- Block Production (only for sequencer full nodes)
-- Block Publication to DA network
-- Block Retrieval from DA network
-- Block Sync Service
-- Block Publication to P2P network
-- Block Retrieval from P2P network
-- State Update after Block Retrieval
+The main components are:
+
+- **Executor**: Handles block production and state transitions (aggregator nodes only)
+- **Reaper**: Periodically retrieves transactions and submits them to the sequencer (aggregator nodes only)
+- **Submitter**: Manages submission of headers and data to the DA network (aggregator nodes only)
+- **Syncer**: Handles synchronization from both DA and P2P sources (all full nodes)
+- **Cache Manager**: Coordinates caching and tracking of blocks across all components
+
+A full node coordinates these components based on its role:
+
+- **Aggregator nodes**: Use all components for block production, submission, and synchronization
+- **Non-aggregator full nodes**: Use only Syncer and Cache for block synchronization
 
 ```mermaid
 sequenceDiagram
@@ -46,18 +51,16 @@ sequenceDiagram
 
 ```mermaid
 flowchart TB
-    subgraph Block Manager Components
-        BM[Block Manager]
-        AGG[Aggregation]
-        REP[Reaper]
-        SUB[Submitter]
-        RET[Retriever]
-        SYNC[Sync Loop]
-        DAI[DA Includer]
+    subgraph Block Components [Modular Block Components]
+        EXE[Executor<br/>Block Production]
+        REA[Reaper<br/>Tx Collection]
+        SUB[Submitter<br/>DA Submission]
+        SYN[Syncer<br/>Block Sync]
+        CAC[Cache Manager<br/>State Tracking]
     end
 
     subgraph External Components
-        EX[Executor]
+        CEXE[Core Executor]
         SEQ[Sequencer]
         DA[DA Layer]
         HS[Header Store/P2P]
@@ -65,32 +68,71 @@ flowchart TB
         ST[Local Store]
     end
 
-    REP -->|GetTxs| EX
-    REP -->|SubmitBatch| SEQ
-    REP -->|Notify| AGG
+    REA -->|GetTxs| CEXE
+    REA -->|SubmitBatch| SEQ
+    REA -->|Notify| EXE
 
-    AGG -->|CreateBlock| BM
-    BM -->|ApplyBlock| EX
-    BM -->|Save| ST
+    EXE -->|CreateBlock| CEXE
+    EXE -->|ApplyBlock| CEXE
+    EXE -->|Save| ST
+    EXE -->|Track| CAC
 
-    BM -->|Headers| SUB
-    BM -->|Data| SUB
+    EXE -->|Headers| SUB
+    EXE -->|Data| SUB
     SUB -->|Submit| DA
+    SUB -->|Track| CAC
 
-    RET -->|Retrieve| DA
-    RET -->|Headers/Data| SYNC
+    DA -->|Retrieve| SYN
+    HS -->|Headers| SYN
+    DS -->|Data| SYN
 
-    HS -->|Headers| SYNC
-    DS -->|Data| SYNC
+    SYN -->|ApplyBlock| CEXE
+    SYN -->|Save| ST
+    SYN -->|Track| CAC
+    SYN -->|SetFinal| CEXE
 
-    SYNC -->|Complete Blocks| BM
-    SYNC -->|DA Included| DAI
-    DAI -->|SetFinal| EX
+    CAC -->|Coordinate| EXE
+    CAC -->|Coordinate| SUB
+    CAC -->|Coordinate| SYN
 ```
 
 ## Protocol/Component Description
 
-The block manager is initialized using several parameters as defined below:
+The block components are initialized based on the node type:
+
+### Aggregator Components
+
+Aggregator nodes create all components for full block production and synchronization capabilities:
+
+```go
+components := block.NewAggregatorComponents(
+    config,      // Node configuration
+    genesis,     // Genesis state
+    store,       // Local datastore
+    executor,    // Core executor for state transitions
+    sequencer,   // Sequencer client
+    da,          // DA client
+    signer,      // Block signing key
+    // P2P stores and options...
+)
+```
+
+### Non-Aggregator Components
+
+Non-aggregator full nodes create only synchronization components:
+
+```go
+components := block.NewSyncComponents(
+    config,      // Node configuration
+    genesis,     // Genesis state
+    store,       // Local datastore
+    executor,    // Core executor for state transitions
+    da,          // DA client
+    // P2P stores and options... (no signer or sequencer needed)
+)
+```
+
+### Component Initialization Parameters
 
 | **Name**                    | **Type**                                                    | **Description**                                                                                                                                                             |
 | --------------------------- | ----------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -106,7 +148,9 @@ The block manager is initialized using several parameters as defined below:
 | sequencer                   | core.Sequencer                                              | used to retrieve batches of transactions from the sequencing layer                                                                                                          |
 | reaper                      | \*Reaper                                                    | component that periodically retrieves transactions from the executor and submits them to the sequencer                                                                      |
 
-Block manager configuration options:
+### Configuration Options
+
+The block components share a common configuration:
 
 | Name                     | Type          | Description                                                                                                                                          |
 | ------------------------ | ------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -124,9 +168,9 @@ Block manager configuration options:
 | HeaderNamespace          | string        | namespace ID for submitting headers to DA layer (automatically encoded by the node)                                                                  |
 | DataNamespace            | string        | namespace ID for submitting data to DA layer (automatically encoded by the node)                                                                     |
 
-### Block Production
+### Block Production (Executor Component)
 
-When the full node is operating as a sequencer (aka aggregator), the block manager runs the block production logic. There are two modes of block production, which can be specified in the block manager configurations: `normal` and `lazy`.
+When the full node is operating as an aggregator, the **Executor component** handles block production. There are two modes of block production, which can be specified in the block manager configurations: `normal` and `lazy`.
 
 In `normal` mode, the block manager runs a timer, which is set to the `BlockTime` configuration parameter, and continuously produces blocks at `BlockTime` intervals.
 
@@ -135,17 +179,17 @@ In `lazy` mode, the block manager implements a dual timer mechanism:
 ```mermaid
 flowchart LR
     subgraph Lazy Aggregation Mode
-        R[Reaper] -->|GetTxs| E[Executor]
-        E -->|Txs Available| R
+        R[Reaper] -->|GetTxs| CE[Core Executor]
+        CE -->|Txs Available| R
         R -->|Submit to Sequencer| S[Sequencer]
         R -->|NotifyNewTransactions| N[txNotifyCh]
 
-        N --> A{Aggregation Logic}
-        BT[blockTimer] --> A
-        LT[lazyTimer] --> A
+        N --> E{Executor Logic}
+        BT[blockTimer] --> E
+        LT[lazyTimer] --> E
 
-        A -->|Txs Available| P1[Produce Block with Txs]
-        A -->|No Txs & LazyTimer| P2[Produce Empty Block]
+        E -->|Txs Available| P1[Produce Block with Txs]
+        E -->|No Txs & LazyTimer| P2[Produce Empty Block]
 
         P1 --> B[Block Creation]
         P2 --> B
@@ -157,11 +201,11 @@ flowchart LR
 
 The block manager starts building a block when any transaction becomes available in the mempool via a notification channel (`txNotifyCh`). When the `Reaper` detects new transactions, it calls `Manager.NotifyNewTransactions()`, which performs a non-blocking signal on this channel. The block manager also produces empty blocks at regular intervals to maintain consistency with the DA layer, ensuring a 1:1 mapping between DA layer blocks and execution layer blocks.
 
-The Reaper component periodically retrieves transactions from the executor and submits them to the sequencer. It runs independently and notifies the block manager when new transactions are available, enabling responsive block production in lazy mode.
+The Reaper component periodically retrieves transactions from the core executor and submits them to the sequencer. It runs independently and notifies the Executor component when new transactions are available, enabling responsive block production in lazy mode.
 
 #### Building the Block
 
-The block manager of the sequencer nodes performs the following steps to produce a block:
+The Executor component of aggregator nodes performs the following steps to produce a block:
 
 ```mermaid
 flowchart TD
@@ -196,9 +240,9 @@ flowchart TD
 
 Note: When no transactions are available, the block manager creates blocks with empty data using a special `dataHashForEmptyTxs` marker. The header and data separation architecture allows headers and data to be submitted and retrieved independently from the DA layer.
 
-### Block Publication to DA Network
+### Block Publication to DA Network (Submitter Component)
 
-The block manager of the sequencer full nodes implements separate submission loops for headers and data, both operating at `DABlockTime` intervals. Headers and data are submitted to different namespaces to improve scalability and allow for more flexible data availability strategies:
+The **Submitter component** of aggregator nodes implements separate submission loops for headers and data, both operating at `DABlockTime` intervals. Headers and data are submitted to different namespaces to improve scalability and allow for more flexible data availability strategies:
 
 ```mermaid
 flowchart LR
@@ -312,9 +356,9 @@ flowchart TD
 
 The manager enforces a limit on pending headers and data through `MaxPendingHeadersAndData` configuration. When this limit is reached, block production pauses to prevent unbounded growth of the pending queues.
 
-### Block Retrieval from DA Network
+### Block Retrieval from DA Network (Syncer Component)
 
-The block manager implements a `RetrieveLoop` that regularly pulls headers and data from the DA network. The retrieval process supports both legacy single-namespace mode (for backward compatibility) and the new separate namespace mode:
+The **Syncer component** implements a `RetrieveLoop` through its DARetriever that regularly pulls headers and data from the DA network. The retrieval process supports both legacy single-namespace mode (for backward compatibility) and the new separate namespace mode:
 
 ```mermaid
 flowchart TD
@@ -399,9 +443,9 @@ Evolve should support blocks arriving out-of-order on DA, like so:
 If the sequencer double-signs two blocks at the same height, evidence of the fault should be posted to DA. Evolve full nodes should process the longest valid chain up to the height of the fault evidence, and terminate. See diagram:
 ![termination condition](./termination.png)
 
-### Block Sync Service
+### Block Sync Service (Syncer Component)
 
-The block sync service manages the synchronization of headers and data through separate stores and channels:
+The **Syncer component** manages the synchronization of headers and data through its P2PHandler and coordination with the Cache Manager:
 
 #### Architecture
 
@@ -416,9 +460,9 @@ The block sync service manages the synchronization of headers and data through s
 3. **Cache Integration**: Both header and data caches track seen items to prevent duplicates
 4. **DA Inclusion Tracking**: Separate tracking for header and data DA inclusion status
 
-### Block Publication to P2P network
+### Block Publication to P2P network (Executor Component)
 
-The sequencer publishes headers and data separately to the P2P network:
+The **Executor component** of aggregator nodes publishes headers and data separately to the P2P network:
 
 #### Header Publication
 
@@ -434,9 +478,9 @@ The sequencer publishes headers and data separately to the P2P network:
 
 Non-sequencer full nodes receive headers and data through the P2P sync service and do not publish blocks themselves.
 
-### Block Retrieval from P2P network
+### Block Retrieval from P2P network (Syncer Component)
 
-Non-sequencer full nodes retrieve headers and data separately from P2P stores:
+The **Syncer component** retrieves headers and data separately from P2P stores through its P2PHandler:
 
 #### Header Store Retrieval Loop
 
@@ -484,9 +528,9 @@ The `DAIncluderLoop` is responsible for advancing the `DAIncludedHeight` by:
 - Storing the Evolve height to DA height mapping for tracking
 - Ensuring only blocks with both header and data present are considered DA-included
 
-### State Update after Block Retrieval
+### State Update after Block Retrieval (Syncer Component)
 
-The block manager uses a `SyncLoop` to coordinate state updates from blocks retrieved via P2P or DA networks:
+The **Syncer component** uses a `SyncLoop` to coordinate state updates from blocks retrieved via P2P or DA networks:
 
 ```mermaid
 flowchart TD
@@ -547,7 +591,11 @@ When both header and data are available for a height:
 
 ## Message Structure/Communication Format
 
-The communication between the block manager and executor:
+### Component Communication
+
+The components communicate through well-defined interfaces:
+
+#### Executor ↔ Core Executor:
 
 - `InitChain`: initializes the chain state with the given genesis time, initial height, and chain ID using `InitChainSync` on the executor to obtain initial `appHash` and initialize the state.
 - `CreateBlock`: prepares a block with transactions from the provided batch data.
@@ -555,12 +603,12 @@ The communication between the block manager and executor:
 - `SetFinal`: marks the block as final when both its header and data are confirmed on the DA layer.
 - `GetTxs`: retrieves transactions from the application (used by Reaper component).
 
-The communication with the sequencer:
+#### Reaper ↔ Sequencer:
 
 - `GetNextBatch`: retrieves the next batch of transactions to include in a block.
 - `VerifyBatch`: validates that a batch came from the expected sequencer.
 
-The communication with DA layer:
+#### Submitter/Syncer ↔ DA Layer:
 
 - `Submit`: submits headers or data blobs to the DA network.
 - `Get`: retrieves headers or data blobs from the DA network.
@@ -568,36 +616,54 @@ The communication with DA layer:
 
 ## Assumptions and Considerations
 
-- The block manager loads the initial state from the local store and uses genesis if not found in the local store, when the node (re)starts.
-- The default mode for sequencer nodes is normal (not lazy).
-- The sequencer can produce empty blocks.
-- In lazy aggregation mode, the block manager maintains consistency with the DA layer by producing empty blocks at regular intervals, ensuring a 1:1 mapping between DA layer blocks and execution layer blocks.
+### Component Architecture
+- The block package uses a modular component architecture instead of a monolithic manager
+- Components are created based on node type: aggregator nodes get all components, non-aggregator nodes only get synchronization components
+- Each component has a specific responsibility and communicates through well-defined interfaces
+- Components share a common Cache Manager for coordination and state tracking
+
+### Initialization and State Management
+- Components load the initial state from the local store and use genesis if not found in the local store, when the node (re)starts
+- The default mode for aggregator nodes is normal (not lazy)
+- Components coordinate through channels and shared cache structures
+
+### Block Production (Executor Component)
+- The Executor can produce empty blocks
+- In lazy aggregation mode, the Executor maintains consistency with the DA layer by producing empty blocks at regular intervals, ensuring a 1:1 mapping between DA layer blocks and execution layer blocks
 - The lazy aggregation mechanism uses a dual timer approach:
   - A `blockTimer` that triggers block production when transactions are available
   - A `lazyTimer` that ensures blocks are produced even during periods of inactivity
-- Empty batches are handled differently in lazy mode - instead of discarding them, they are returned with the `ErrNoBatch` error, allowing the caller to create empty blocks with proper timestamps.
-- Transaction notifications from the `Reaper` to the `Manager` are handled via a non-blocking notification channel (`txNotifyCh`) to prevent backpressure.
-- The block manager enforces `MaxPendingHeadersAndData` limit to prevent unbounded growth of pending queues during DA submission issues.
-- Headers and data are submitted separately to the DA layer using different namespaces, supporting the header/data separation architecture.
-- The block manager uses persistent caches for headers and data to track seen items and DA inclusion status.
-- Namespace migration is handled transparently, with automatic detection and state persistence to optimize future operations.
-- The system supports backward compatibility with legacy single-namespace deployments while transitioning to separate namespaces.
-- Gas price management includes automatic adjustment with `GasMultiplier` on DA submission retries.
-- The block manager uses persistent storage (disk) when the `root_dir` and `db_path` configuration parameters are specified in `config.yaml` file under the app directory. If these configuration parameters are not specified, the in-memory storage is used, which will not be persistent if the node stops.
-- The block manager does not re-apply blocks when they transition from soft confirmed to DA included status. The block is only marked DA included in the caches.
-- Header and data stores use separate prefixes for isolation in the underlying database.
-- The genesis `ChainID` is used to create separate `PubSubTopID`s for headers and data in go-header.
-- Block sync over the P2P network works only when a full node is connected to the P2P network by specifying the initial seeds to connect to via `P2PConfig.Seeds` configuration parameter when starting the full node.
-- Node's context is passed down to all components to support graceful shutdown and cancellation.
-- The block manager supports custom signature payload providers for headers, enabling flexible signing schemes.
-- The block manager supports the separation of header and data structures in Evolve. This allows for expanding the sequencing scheme beyond single sequencing and enables the use of a decentralized sequencer mode. For detailed information on this architecture, see the [Header and Data Separation ADR](../../adr/adr-014-header-and-data-separation.md).
-- The block manager processes blocks with a minimal header format, which is designed to eliminate dependency on CometBFT's header format and can be used to produce an execution layer tailored header if needed. For details on this header structure, see the [Evolve Minimal Header](../../adr/adr-015-rollkit-minimal-header.md) specification.
+- Empty batches are handled differently in lazy mode - instead of discarding them, they are returned with the `ErrNoBatch` error, allowing the caller to create empty blocks with proper timestamps
+- Transaction notifications from the `Reaper` to the `Executor` are handled via a non-blocking notification channel (`txNotifyCh`) to prevent backpressure
+
+### DA Submission (Submitter Component)
+- The Submitter enforces `MaxPendingHeadersAndData` limit to prevent unbounded growth of pending queues during DA submission issues
+- Headers and data are submitted separately to the DA layer using different namespaces, supporting the header/data separation architecture
+- The Cache Manager uses persistent caches for headers and data to track seen items and DA inclusion status
+- Namespace migration is handled transparently by the Syncer, with automatic detection and state persistence to optimize future operations
+- The system supports backward compatibility with legacy single-namespace deployments while transitioning to separate namespaces
+- Gas price management in the Submitter includes automatic adjustment with `GasMultiplier` on DA submission retries
+
+### Storage and Persistence
+- Components use persistent storage (disk) when the `root_dir` and `db_path` configuration parameters are specified in `config.yaml` file under the app directory. If these configuration parameters are not specified, the in-memory storage is used, which will not be persistent if the node stops
+- The Syncer does not re-apply blocks when they transition from soft confirmed to DA included status. The block is only marked DA included in the caches
+- Header and data stores use separate prefixes for isolation in the underlying database
+- The genesis `ChainID` is used to create separate `PubSubTopID`s for headers and data in go-header
+
+### P2P and Synchronization
+- Block sync over the P2P network works only when a full node is connected to the P2P network by specifying the initial seeds to connect to via `P2PConfig.Seeds` configuration parameter when starting the full node
+- Node's context is passed down to all components to support graceful shutdown and cancellation
+
+### Architecture Design Decisions
+- The Executor supports custom signature payload providers for headers, enabling flexible signing schemes
+- The component architecture supports the separation of header and data structures in Evolve. This allows for expanding the sequencing scheme beyond single sequencing and enables the use of a decentralized sequencer mode. For detailed information on this architecture, see the [Header and Data Separation ADR](../../adr/adr-014-header-and-data-separation.md)
+- Components process blocks with a minimal header format, which is designed to eliminate dependency on CometBFT's header format and can be used to produce an execution layer tailored header if needed. For details on this header structure, see the [Evolve Minimal Header](../../adr/adr-015-rollkit-minimal-header.md) specification
 
 ## Metrics
 
-The block manager exposes comprehensive metrics for monitoring:
+The block components expose comprehensive metrics for monitoring through the shared Metrics instance:
 
-### Block Production Metrics
+### Block Production Metrics (Executor Component)
 
 - `last_block_produced_height`: Height of the last produced block
 - `last_block_produced_time`: Timestamp of the last produced block
@@ -605,7 +671,7 @@ The block manager exposes comprehensive metrics for monitoring:
 - `block_size_bytes`: Size distribution of produced blocks
 - `produced_empty_blocks_total`: Count of empty blocks produced
 
-### DA Metrics
+### DA Metrics (Submitter and Syncer Components)
 
 - `da_submission_attempts_total`: Total DA submission attempts
 - `da_submission_success_total`: Successful DA submissions
@@ -617,7 +683,7 @@ The block manager exposes comprehensive metrics for monitoring:
 - `pending_headers_count`: Number of headers pending DA submission
 - `pending_data_count`: Number of data blocks pending DA submission
 
-### Sync Metrics
+### Sync Metrics (Syncer Component)
 
 - `sync_height`: Current sync height
 - `da_included_height`: Height of last DA-included block
@@ -625,22 +691,29 @@ The block manager exposes comprehensive metrics for monitoring:
 - `header_store_height`: Current header store height
 - `data_store_height`: Current data store height
 
-### Performance Metrics
+### Performance Metrics (All Components)
 
 - `block_production_time`: Time to produce a block
 - `da_submission_time`: Time to submit to DA
 - `state_update_time`: Time to apply block and update state
 - `channel_buffer_usage`: Usage of internal channels
 
-### Error Metrics
+### Error Metrics (All Components)
 
 - `errors_total`: Total errors by type and operation
 
 ## Implementation
 
-See [block-manager]
+The modular block components are implemented in the following packages:
 
-See [tutorial] for running a multi-node network with both sequencer and non-sequencer full nodes.
+- [Executor]: Block production and state transitions (`block/internal/executing/`)
+- [Reaper]: Transaction collection and submission (`block/internal/reaping/`)
+- [Submitter]: DA submission logic (`block/internal/submitting/`)
+- [Syncer]: Block synchronization from DA and P2P (`block/internal/syncing/`)
+- [Cache Manager]: Coordination and state tracking (`block/internal/cache/`)
+- [Components]: Main components orchestration (`block/components.go`)
+
+See [tutorial] for running a multi-node network with both aggregator and non-aggregator full nodes.
 
 ## References
 
@@ -650,7 +723,7 @@ See [tutorial] for running a multi-node network with both sequencer and non-sequ
 
 [3] [Full Node][full-node]
 
-[4] [Block Manager][block-manager]
+[4] [Block Components][Components]
 
 [5] [Tutorial][tutorial]
 
@@ -668,5 +741,10 @@ See [tutorial] for running a multi-node network with both sequencer and non-sequ
 [go-header]: https://github.com/celestiaorg/go-header
 [block-sync]: https://github.com/evstack/ev-node/blob/main/pkg/sync/sync_service.go
 [full-node]: https://github.com/evstack/ev-node/blob/main/node/full.go
-[block-manager]: https://github.com/evstack/ev-node/blob/main/block/manager.go
+[Executor]: https://github.com/evstack/ev-node/blob/main/block/internal/executing/executor.go
+[Reaper]: https://github.com/evstack/ev-node/blob/main/block/internal/reaping/reaper.go
+[Submitter]: https://github.com/evstack/ev-node/blob/main/block/internal/submitting/submitter.go
+[Syncer]: https://github.com/evstack/ev-node/blob/main/block/internal/syncing/syncer.go
+[Cache Manager]: https://github.com/evstack/ev-node/blob/main/block/internal/cache/manager.go
+[Components]: https://github.com/evstack/ev-node/blob/main/block/components.go
 [tutorial]: https://ev.xyz/guides/full-node

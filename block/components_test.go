@@ -83,7 +83,7 @@ func TestNewSyncComponents_Creation(t *testing.T) {
 	ds := sync.MutexWrap(datastore.NewMapDatastore())
 	memStore := store.New(ds)
 
-	cfg := config.DefaultConfig
+	cfg := config.DefaultConfig()
 	gen := genesis.Genesis{
 		ChainID:         "test-chain",
 		InitialHeight:   1,
@@ -122,7 +122,7 @@ func TestNewAggregatorComponents_Creation(t *testing.T) {
 	ds := sync.MutexWrap(datastore.NewMapDatastore())
 	memStore := store.New(ds)
 
-	cfg := config.DefaultConfig
+	cfg := config.DefaultConfig()
 
 	// Create a test signer first
 	priv, _, err := crypto.GenerateEd25519Key(crand.Reader)
@@ -176,7 +176,7 @@ func TestExecutor_RealExecutionClientFailure_StopsNode(t *testing.T) {
 	ds := sync.MutexWrap(datastore.NewMapDatastore())
 	memStore := store.New(ds)
 
-	cfg := config.DefaultConfig
+	cfg := config.DefaultConfig()
 	cfg.Node.BlockTime.Duration = 50 * time.Millisecond // Fast for testing
 
 	// Create test signer

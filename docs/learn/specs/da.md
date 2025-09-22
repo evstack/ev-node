@@ -12,7 +12,7 @@ Evolve provides a generic [data availability interface][da-interface] for modula
 * `--rollkit.da.header_namespace`: namespace to use when submitting headers to the DA service
 * `--rollkit.da.data_namespace`: namespace to use when submitting data to the DA service
 
-The block manager now submits headers and data separately to the DA layer using different namespaces:
+The Submitter component now submits headers and data separately to the DA layer using different namespaces:
 
 * **Headers**: Submitted to the namespace specified by `--rollkit.da.header_namespace` (or falls back to `--rollkit.da.namespace` if not set)
 * **Data**: Submitted to the namespace specified by `--rollkit.da.data_namespace` (or falls back to `--rollkit.da.namespace` if not set)

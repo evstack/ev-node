@@ -44,7 +44,7 @@ func TestProduceBlock_EmptyBatch_SetsEmptyDataHash(t *testing.T) {
 	ds := sync.MutexWrap(datastore.NewMapDatastore())
 	memStore := store.New(ds)
 
-	cacheManager, err := cache.NewManager(config.DefaultConfig, memStore, zerolog.Nop())
+	cacheManager, err := cache.NewManager(config.DefaultConfig(), memStore, zerolog.Nop())
 	require.NoError(t, err)
 
 	metrics := common.NopMetrics()
@@ -52,7 +52,7 @@ func TestProduceBlock_EmptyBatch_SetsEmptyDataHash(t *testing.T) {
 	// signer and genesis with correct proposer
 	addr, _, signerWrapper := buildTestSigner(t)
 
-	cfg := config.DefaultConfig
+	cfg := config.DefaultConfig()
 	cfg.Node.BlockTime = config.DurationWrapper{Duration: 10 * time.Millisecond}
 	cfg.Node.MaxPendingHeadersAndData = 1000
 
@@ -134,14 +134,14 @@ func TestPendingLimit_SkipsProduction(t *testing.T) {
 	ds := sync.MutexWrap(datastore.NewMapDatastore())
 	memStore := store.New(ds)
 
-	cacheManager, err := cache.NewManager(config.DefaultConfig, memStore, zerolog.Nop())
+	cacheManager, err := cache.NewManager(config.DefaultConfig(), memStore, zerolog.Nop())
 	require.NoError(t, err)
 
 	metrics := common.NopMetrics()
 
 	addr, _, signerWrapper := buildTestSigner(t)
 
-	cfg := config.DefaultConfig
+	cfg := config.DefaultConfig()
 	cfg.Node.BlockTime = config.DurationWrapper{Duration: 10 * time.Millisecond}
 	cfg.Node.MaxPendingHeadersAndData = 1 // low limit to trigger skip quickly
 

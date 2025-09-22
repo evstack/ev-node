@@ -10,6 +10,8 @@ import (
 // Implemented in accordance to https://celestiaorg.github.io/celestia-app/namespace.html
 
 const (
+	// NamespaceVersionIndex is the index of the namespace version in the byte slice
+	NamespaceVersionIndex = 0
 	// NamespaceVersionSize is the size of the namespace version in bytes
 	NamespaceVersionSize = 1
 	// NamespaceIDSize is the size of the namespace ID in bytes
@@ -37,8 +39,8 @@ type Namespace struct {
 // Bytes returns the namespace as a byte slice
 func (n Namespace) Bytes() []byte {
 	result := make([]byte, NamespaceSize)
-	result[0] = n.Version
-	copy(result[1:], n.ID[:])
+	result[NamespaceVersionIndex] = n.Version
+	copy(result[NamespaceVersionSize:], n.ID[:])
 	return result
 }
 
@@ -49,7 +51,7 @@ func (n Namespace) IsValidForVersion0() bool {
 		return false
 	}
 
-	for i := 0; i < NamespaceVersionZeroPrefixSize; i++ {
+	for i := range NamespaceVersionZeroPrefixSize {
 		if n.ID[i] != 0 {
 			return false
 		}
@@ -84,9 +86,9 @@ func NamespaceFromBytes(b []byte) (*Namespace, error) {
 	}
 
 	ns := &Namespace{
-		Version: b[0],
+		Version: b[NamespaceVersionIndex],
 	}
-	copy(ns.ID[:], b[1:])
+	copy(ns.ID[:], b[NamespaceVersionSize:])
 
 	// Validate if it's version 0
 	if ns.Version == NamespaceVersionZero && !ns.IsValidForVersion0() {
@@ -124,21 +126,4 @@ func ParseHexNamespace(hexStr string) (*Namespace, error) {
 	}
 
 	return NamespaceFromBytes(b)
-}
-
-// PrepareNamespace converts a namespace identifier (string or bytes) into a proper Celestia namespace
-// This is the main function to be used when preparing namespaces for DA operations
-func PrepareNamespace(identifier []byte) []byte {
-	// If the identifier is already a valid namespace (29 bytes), validate and return it
-	if len(identifier) == NamespaceSize {
-		ns, err := NamespaceFromBytes(identifier)
-		if err == nil {
-			return ns.Bytes()
-		}
-		// If it's not a valid namespace, treat it as a string identifier
-	}
-
-	// Convert the identifier to a string and create a namespace from it
-	ns := NamespaceFromString(string(identifier))
-	return ns.Bytes()
 }
