@@ -103,7 +103,7 @@ func NewSyncer(
 		dataStore:    dataStore,
 		lastStateMtx: &sync.RWMutex{},
 		daStateMtx:   &sync.RWMutex{},
-		heightInCh:   make(chan common.DAHeightEvent, 1000),
+		heightInCh:   make(chan common.DAHeightEvent, 10_000),
 		errorCh:      errorCh,
 		logger:       logger.With().Str("component", "syncer").Logger(),
 	}
