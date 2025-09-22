@@ -237,6 +237,15 @@ func (s *Syncer) syncLoop() {
 	s.logger.Info().Msg("starting sync loop")
 	defer s.logger.Info().Msg("sync loop stopped")
 
+	if delay := time.Until(s.genesis.StartTime); delay > 0 {
+		s.logger.Info().Dur("delay", delay).Msg("waiting until genesis to start syncing")
+		select {
+		case <-s.ctx.Done():
+			return
+		case <-time.After(delay):
+		}
+	}
+
 	initialHeight, err := s.store.Height(s.ctx)
 	if err != nil {
 		s.logger.Error().Err(err).Msg("failed to get initial height")
