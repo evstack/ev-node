@@ -2,7 +2,7 @@ package syncing
 
 import (
 	"context"
-	"math/rand"
+	"math/rand/v2"
 	"testing"
 	"time"
 
@@ -125,7 +125,7 @@ func newBenchFixture(b *testing.B, totalHeights uint64, shuffledTx bool, daDelay
 		heightEvents[i] = common.DAHeightEvent{Header: sh, Data: d, DaHeight: daHeight, HeaderDaIncludedHeight: daHeight}
 	}
 	if shuffledTx {
-		rand.New(rand.NewSource(1)).Shuffle(len(heightEvents), func(i, j int) {
+		rand.New(rand.NewPCG(1, 2)).Shuffle(len(heightEvents), func(i, j int) { //nolint:gosec // false positive
 			heightEvents[i], heightEvents[j] = heightEvents[j], heightEvents[i]
 		})
 	}
