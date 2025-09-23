@@ -366,7 +366,9 @@ func submitToDA[T any](
 		case coreda.StatusSuccess:
 			submitted := items[:res.SubmittedCount]
 			postSubmit(submitted, &res, rs.GasPrice)
-			s.logger.Info().Str("itemType", itemType).Float64("gasPrice", rs.GasPrice).Uint64("count", res.SubmittedCount).Msg("successfully submitted items to DA layer")
+			s.logger.Info().Str("itemType", itemType).Float64("gasPrice", rs.GasPrice).
+				Uint64("count", res.SubmittedCount).
+				Msg("successfully submitted items to DA layer")
 			if int(res.SubmittedCount) == len(items) {
 				rs.Next(reasonSuccess, pol, gm, sentinelNoGas)
 				return nil

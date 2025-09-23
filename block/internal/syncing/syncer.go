@@ -427,6 +427,7 @@ func (s *Syncer) trySyncNextBlock(event *common.DAHeightEvent) error {
 		Str("header_hash", headerHash).
 		Uint64("da_height", event.HeaderDaIncludedHeight).
 		Uint64("height", header.Height()).
+		Int("tx_count", len(data.Txs)).
 		Msg("header marked as DA included")
 
 	// Apply block

@@ -200,7 +200,9 @@ func (r *DARetriever) processBlobs(ctx context.Context, blobs [][]byte, daHeight
 			if r.isEmptyDataExpected(header) {
 				data = r.createEmptyDataForHeader(ctx, header)
 			} else {
-				r.logger.Debug().Uint64("height", height).Msg("header found but no matching data")
+				r.logger.Info().Uint64("height", height).
+					Uint64("da_height", daHeight).
+					Msg("header found but no matching data")
 				continue
 			}
 		}
@@ -215,7 +217,10 @@ func (r *DARetriever) processBlobs(ctx context.Context, blobs [][]byte, daHeight
 
 		events = append(events, event)
 
-		r.logger.Info().Uint64("height", height).Uint64("da_height", daHeight).Msg("processed block from DA")
+		r.logger.Info().Uint64("height", height).
+			Uint64("da_height", daHeight).
+			Int("tx_count", len(data.Txs)).
+			Msg("fetched block from DA")
 	}
 
 	return events
@@ -279,6 +284,7 @@ func (r *DARetriever) tryDecodeData(bz []byte, daHeight uint64) *types.Data {
 		Str("data_hash", dataHash).
 		Uint64("da_height", daHeight).
 		Uint64("height", signedData.Height()).
+		Int("tx_count", len(signedData.Data.Txs)).
 		Msg("data marked as DA included")
 
 	return &signedData.Data

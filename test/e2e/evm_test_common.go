@@ -267,6 +267,7 @@ func getNodeP2PAddress(t *testing.T, sut *SystemUnderTest, nodeHome string, rpcP
 		args = append(args, "--rollkit.rpc.address", "127.0.0.1:"+rpcPort[0])
 	}
 
+	t.Log("RUNNING: ", evmSingleBinaryPath, args)
 	// Run net-info command to get node network information
 	output, err := sut.RunCmd(evmSingleBinaryPath, args...)
 	require.NoError(t, err, "failed to get net-info", output)

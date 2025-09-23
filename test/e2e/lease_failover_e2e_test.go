@@ -11,9 +11,15 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/crypto"
+	"github.com/ethereum/go-ethereum/ethclient"
+
 	"github.com/evstack/ev-node/pkg/config"
 	"github.com/evstack/ev-node/pkg/lease"
 	"github.com/stretchr/testify/require"
+
+	"github.com/evstack/ev-node/execution/evm"
 )
 
 // TestLeaseFailoverE2E runs two node binaries configured to use an HTTP lease backend.
@@ -36,7 +42,7 @@ func TestLeaseFailoverE2E(t *testing.T) {
 	baseURL, shutdown := startLeaseHTTPTestServer(leaseName)
 	t.Cleanup(shutdown)
 
-	workDir := "./testnet"
+	workDir := "/Users/alex/workspace/rollkit/rollkit/test/e2e/testnet"
 	//workDir := t.TempDir()
 	node1Home := filepath.Join(workDir, "node1")
 	node2Home := filepath.Join(workDir, "node2")
@@ -57,10 +63,10 @@ func TestLeaseFailoverE2E(t *testing.T) {
 	t.Log("Sequencer1 node is up")
 
 	// Get P2P address and setup full node
-	sequencer1P2PAddress := getNodeP2PAddress(t, sut, node1Home)
+	sequencer1P2PAddress := getNodeP2PAddress(t, sut, node2Home, RollkitRPCPort)
 	t.Logf("Sequencer1 P2P address: %s", sequencer1P2PAddress)
 
-	setupFailoverAggregator(
+	setupFailoverSequencerNode(
 		t,
 		sut,
 		node2Home,
@@ -73,8 +79,9 @@ func TestLeaseFailoverE2E(t *testing.T) {
 	)
 	t.Log("Sequencer2 node is up")
 
-	sequencer2P2PAddress := getNodeP2PAddress(t, sut, node1Home)
+	sequencer2P2PAddress := getNodeP2PAddress(t, sut, node2Home, FullNodeRPCPort)
 	t.Logf("Sequencer2 P2P address: %s", sequencer2P2PAddress)
+	require.NotEqual(t, sequencer1P2PAddress, sequencer2P2PAddress)
 
 	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
 	t.Cleanup(cancel)
@@ -93,6 +100,21 @@ func TestLeaseFailoverE2E(t *testing.T) {
 		return firstLeader != ""
 	}, 10*time.Second, 100*time.Millisecond, "no leader elected")
 
+	// Connect to EVM endpoints for both instances
+	seqClient, err := ethclient.Dial(SequencerEthURL)
+	require.NoError(t, err, "connect sequencer evm")
+	defer seqClient.Close()
+	fnClient, err := ethclient.Dial(FullNodeEthURL)
+	require.NoError(t, err, "connect follower evm")
+	defer fnClient.Close()
+
+	// Submit a tx to the current leader (sequencer) and ensure it propagates
+	txHash1, blk1 := submitTransactionAndGetBlockNumber(t, seqClient)
+	require.Eventually(t, func() bool {
+		rec, err := fnClient.TransactionReceipt(t.Context(), txHash1)
+		return err == nil && rec != nil && rec.Status == 1 && rec.BlockNumber.Uint64() == blk1
+	}, 20*time.Second, 250*time.Millisecond, "tx1 not seen on follower")
+
 	t.Log("+++ killing Current leader: " + firstLeader)
 	_ = leaderProcess.Kill()
 
@@ -105,6 +127,12 @@ func TestLeaseFailoverE2E(t *testing.T) {
 		}
 		return ldr != "" && ldr != firstLeader
 	}, 10*time.Second, 100*time.Millisecond, "no failover occurred")
+
+	// After failover, submit a tx to the remaining instance and ensure inclusion
+	txHash2, blk2 := submitTxToURL(t, FullNodeEthURL)
+	_ = txHash2
+	// Ensure chain progressed across failover
+	require.Greater(t, blk2, blk1, "post-failover block should advance")
 }
 
 func setupLeaderSequencerNode(t *testing.T, sut *SystemUnderTest, sequencerHome, jwtSecret, genesisHash string, ports *TestPorts, electionConfig config.LeaderElectionConfig, ) *os.Process {
@@ -126,12 +154,13 @@ func setupLeaderSequencerNode(t *testing.T, sut *SystemUnderTest, sequencerHome,
 	// Fallback to default ports if none provided
 	process := sut.ExecCmd(evmSingleBinaryPath,
 		"start",
+		"--evnode.log.format", "json",
+		"--home", sequencerHome,
 		"--evm.jwt-secret", jwtSecret,
 		"--evm.genesis-hash", genesisHash,
 		"--rollkit.node.block_time", DefaultBlockTime,
 		"--rollkit.node.aggregator=true",
 		"--rollkit.signer.passphrase", TestPassphrase,
-		"--home", sequencerHome,
 		"--rollkit.da.address", DAAddress,
 		"--rollkit.da.block_time", DefaultDABlockTime,
 
@@ -140,12 +169,17 @@ func setupLeaderSequencerNode(t *testing.T, sut *SystemUnderTest, sequencerHome,
 		"--rollkit.leader.lease_term="+electionConfig.LeaseTerm.String(),
 		"--rollkit.leader.lease_name="+electionConfig.LeaseName,
 		"--rollkit.leader.backend_addr="+electionConfig.BackendAddr,
+
+		"--rollkit.rpc.address", "127.0.0.1:"+RollkitRPCPort,
+		"--rollkit.p2p.listen_address", "/ip4/127.0.0.1/tcp/"+RollkitP2PPort,
+		"--evm.engine-url", SequencerEngineURL,
+		"--evm.eth-url", SequencerEthURL,
 	)
-	sut.AwaitNodeUp(t, RollkitRPCAddress, NodeStartupTimeout)
+	sut.AwaitNodeUp(t, "http://127.0.0.1:"+RollkitRPCPort, NodeStartupTimeout)
 	return process
 }
 
-func setupFailoverAggregator(
+func setupFailoverSequencerNode(
 	t *testing.T,
 	sut *SystemUnderTest,
 	fullNodeHome, sequencerHome, fullNodeJwtSecret, genesisHash, sequencerP2PAddress string,
@@ -174,6 +208,7 @@ func setupFailoverAggregator(
 	// Fallback to default ports if none provided
 	process := sut.ExecCmd(evmSingleBinaryPath,
 		"start",
+		"--evnode.log.format", "json",
 		"--home", fullNodeHome,
 		"--evm.jwt-secret", fullNodeJwtSecret,
 		"--evm.genesis-hash", genesisHash,
@@ -198,4 +233,45 @@ func setupFailoverAggregator(
 	)
 	sut.AwaitNodeUp(t, "http://127.0.0.1:"+FullNodeRPCPort, NodeStartupTimeout)
 	return process
+}
+
+// submitTxToURL submits a tx to the specified EVM endpoint and waits for inclusion.
+func submitTxToURL(t *testing.T, ethURL string) (common.Hash, uint64) {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
+	defer cancel()
+
+	c, err := ethclient.Dial(ethURL)
+	require.NoError(t, err)
+	defer c.Close()
+
+	priv, err := crypto.HexToECDSA(TestPrivateKey)
+	require.NoError(t, err)
+	from := crypto.PubkeyToAddress(priv.PublicKey)
+
+	nonce, err := c.PendingNonceAt(ctx, from)
+	require.NoError(t, err)
+	ln := nonce
+
+	tx := evm.GetRandomTransaction(t, TestPrivateKey, TestToAddress, DefaultChainID, DefaultGasLimit, &ln)
+	require.NoError(t, c.SendTransaction(ctx, tx))
+
+	var blk uint64
+	require.Eventually(t, func() bool {
+		rec, err := c.TransactionReceipt(t.Context(), tx.Hash())
+		if err == nil && rec != nil && rec.Status == 1 {
+			blk = rec.BlockNumber.Uint64()
+			return true
+		}
+		return false
+	}, 20*time.Second, 250*time.Millisecond, "tx not included on %s", ethURL)
+
+	return tx.Hash(), blk
+}
+
+func must[T any](r T, err error) T {
+	if err != nil {
+		panic(err)
+	}
+	return r
 }
