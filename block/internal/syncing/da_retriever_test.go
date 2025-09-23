@@ -28,7 +28,8 @@ import (
 )
 
 // makeSignedHeaderBytes builds a valid SignedHeader and returns its binary encoding and the object
-func makeSignedHeaderBytes(t *testing.T, chainID string, height uint64, proposer []byte, pub crypto.PubKey, signer signerpkg.Signer, appHash []byte) ([]byte, *types.SignedHeader) {
+func makeSignedHeaderBytes(tb testing.TB, chainID string, height uint64, proposer []byte, pub crypto.PubKey, signer signerpkg.Signer, appHash []byte) ([]byte, *types.SignedHeader) {
+	tb.Helper()
 	hdr := &types.SignedHeader{
 		Header: types.Header{
 			BaseHeader:      types.BaseHeader{ChainID: chainID, Height: height, Time: uint64(time.Now().Add(time.Duration(height) * time.Second).UnixNano())},
@@ -38,12 +39,12 @@ func makeSignedHeaderBytes(t *testing.T, chainID string, height uint64, proposer
 		Signer: types.Signer{PubKey: pub, Address: proposer},
 	}
 	bz, err := types.DefaultAggregatorNodeSignatureBytesProvider(&hdr.Header)
-	require.NoError(t, err)
+	require.NoError(tb, err)
 	sig, err := signer.Sign(bz)
-	require.NoError(t, err)
+	require.NoError(tb, err)
 	hdr.Signature = sig
 	bin, err := hdr.MarshalBinary()
-	require.NoError(t, err)
+	require.NoError(tb, err)
 	return bin, hdr
 }
 
