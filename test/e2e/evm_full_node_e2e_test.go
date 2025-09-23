@@ -34,7 +34,6 @@ import (
 	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/stretchr/testify/require"
 
-	"github.com/evstack/ev-node/execution/evm"
 	"github.com/evstack/ev-node/pkg/rpc/client"
 	"github.com/evstack/ev-node/pkg/store"
 )
@@ -222,7 +221,7 @@ func setupSequencerWithFullNode(t *testing.T, sut *SystemUnderTest, sequencerHom
 	t.Log("Sequencer node is up")
 
 	// Get P2P address and setup full node
-	sequencerP2PAddress := getNodeP2PAddress(t, sut, sequencerHome)
+	sequencerP2PAddress := getNodeP2PAddress(t, sut, sequencerHome, ports.RollkitRPCPort)
 	t.Logf("Sequencer P2P address: %s", sequencerP2PAddress)
 
 	setupFullNode(t, sut, fullNodeHome, sequencerHome, fullNodeJwtSecret, genesisHash, sequencerP2PAddress, ports)
@@ -1040,10 +1039,6 @@ func TestEvmSequencerFullNodeRestartE2E(t *testing.T) {
 // The restartLazyMode parameter determines whether the sequencer is restarted in lazy mode.
 func testSequencerFullNodeRestart(t *testing.T, initialLazyMode, restartLazyMode bool) {
 	flag.Parse()
-
-	// Reset Docker globals to ensure fresh Docker network for each subtest
-	evm.ResetDockerGlobals()
-
 	workDir := t.TempDir()
 	sequencerHome := filepath.Join(workDir, "evm-sequencer")
 	fullNodeHome := filepath.Join(workDir, "evm-full-node")

@@ -11,6 +11,7 @@ import (
 	mathrand "math/rand"
 	"net/http"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -25,18 +26,12 @@ import (
 	dockerclient "github.com/moby/moby/client"
 )
 
-// Shared Docker client/network across reth nodes within a single test
+// Test-scoped Docker client/network mapping to avoid conflicts between tests
 var (
-	dockerCli   *dockerclient.Client
-	dockerNetID string
+	dockerClients   = make(map[string]*dockerclient.Client)
+	dockerNetworks  = make(map[string]string)
+	dockerMutex     sync.RWMutex
 )
-
-// ResetDockerGlobals resets the shared Docker client and network ID.
-// This should be called at the start of each test to ensure fresh Docker resources.
-func ResetDockerGlobals() {
-	dockerCli = nil
-	dockerNetID = ""
-}
 
 const charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
 
@@ -49,17 +44,33 @@ func randomString(n int) string {
 	return string(b)
 }
 
-// SetupTestRethEngine sets up a Reth engine test environment using Docker Compose, writes a JWT secret file, and returns the secret. It also registers cleanup for resources.
-func SetupTestRethEngine(t *testing.T) *rethfw.Node {
+// SetupTestRethNode sets up a Reth node test environment using Docker Compose, writes a JWT secret file, and returns the node. It also registers cleanup for resources.
+func SetupTestRethNode(t *testing.T) *rethfw.Node {
 	t.Helper()
-	// Start a single reth via Tastora to serve as the execution engine paired with the sequencer evm-single
+	// Start a single reth via Tastora to serve as the execution engine
 	ctx := context.Background()
 
-	// Setup Docker client/network once per test
-	if dockerCli == nil || dockerNetID == "" {
+	// Get or create Docker client/network for this specific test
+	testKey := t.Name()
+	dockerMutex.Lock()
+	defer dockerMutex.Unlock()
+
+	dockerCli, exists := dockerClients[testKey]
+	if !exists {
 		cli, netID := dockerfw.DockerSetup(t)
-		dockerCli, dockerNetID = cli, netID
+		dockerClients[testKey] = cli
+		dockerNetworks[testKey] = netID
+		dockerCli = cli
+
+		// Clean up mapping when test is done
+		t.Cleanup(func() {
+			dockerMutex.Lock()
+			defer dockerMutex.Unlock()
+			delete(dockerClients, testKey)
+			delete(dockerNetworks, testKey)
+		})
 	}
+	dockerNetID := dockerNetworks[testKey]
 
 	n, err := rethfw.NewNodeBuilderWithTestName(t, fmt.Sprintf("%s-%s", t.Name(), randomString(6))).
 		WithDockerClient(dockerCli).
@@ -75,11 +86,11 @@ func SetupTestRethEngine(t *testing.T) *rethfw.Node {
 
 	ni, err := n.GetNetworkInfo(ctx)
 	require.NoError(t, err)
-	sequencerEthURL := "http://127.0.0.1:" + ni.External.Ports.RPC
-	sequencerEngineURL := "http://127.0.0.1:" + ni.External.Ports.Engine
+	ethURL := "http://127.0.0.1:" + ni.External.Ports.RPC
+	engineURL := "http://127.0.0.1:" + ni.External.Ports.Engine
 	jwtSecret := n.JWTSecretHex()
 
-	require.NoError(t, waitForRethContainer(t, jwtSecret, sequencerEthURL, sequencerEngineURL))
+	require.NoError(t, waitForRethContainer(t, jwtSecret, ethURL, engineURL))
 	return n
 }
 
@@ -166,36 +177,3 @@ func CheckTxIncluded(client *ethclient.Client, txHash common.Hash) bool {
 	return err == nil && receipt != nil && receipt.Status == 1
 }
 
-// SetupTestRethEngineFullNode sets up a Reth full node test environment using Docker Compose with the full node configuration.
-// This function is specifically for setting up full nodes that connect to ports 8555/8561.
-func SetupTestRethEngineFullNode(t *testing.T) *rethfw.Node {
-	t.Helper()
-	ctx := context.Background()
-	// reuse docker client/network from the first call
-	if dockerCli == nil || dockerNetID == "" {
-		cli, netID := dockerfw.DockerSetup(t)
-		dockerCli, dockerNetID = cli, netID
-	}
-
-	// use a different test name suffix to avoid container name collisions
-	n, err := rethfw.NewNodeBuilderWithTestName(t, fmt.Sprintf("%s-full-%s", t.Name(), randomString(5))).
-		WithDockerClient(dockerCli).
-		WithDockerNetworkID(dockerNetID).
-		WithGenesis([]byte(rethfw.DefaultEvolveGenesisJSON())).
-		Build(ctx)
-	t.Cleanup(func() {
-		_ = n.Remove(context.Background())
-	})
-
-	require.NoError(t, err)
-	require.NoError(t, n.Start(ctx))
-
-	ni, err := n.GetNetworkInfo(ctx)
-	require.NoError(t, err)
-	fullNodeEthURL := "http://127.0.0.1:" + ni.External.Ports.RPC
-	fullNodeEngineURL := "http://127.0.0.1:" + ni.External.Ports.Engine
-	jwtSecret := n.JWTSecretHex()
-
-	require.NoError(t, waitForRethContainer(t, jwtSecret, fullNodeEthURL, fullNodeEngineURL))
-	return n
-}

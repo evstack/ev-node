@@ -59,7 +59,7 @@ func TestEngineExecution(t *testing.T) {
 	GenesisStateRoot := genesisStateRoot[:]
 
 	t.Run("Build chain", func(tt *testing.T) {
-		rethNode := SetupTestRethEngine(t)
+		rethNode := SetupTestRethNode(t)
 
 		// Discover dynamically mapped ETH and Engine URLs from the node
 		ctxNI, cancelNI := context.WithTimeout(context.Background(), 10*time.Second)
@@ -161,7 +161,7 @@ func TestEngineExecution(t *testing.T) {
 
 	// start new container and try to sync
 	t.Run("Sync chain", func(tt *testing.T) {
-		rethNode := SetupTestRethEngine(t)
+		rethNode := SetupTestRethNode(t)
 
 		// Discover dynamically mapped ETH and Engine URLs from the node
 		ctxNI, cancelNI := context.WithTimeout(context.Background(), 10*time.Second)

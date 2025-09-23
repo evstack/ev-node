@@ -403,7 +403,7 @@ func setupCommonEVMTest(t *testing.T, sut *SystemUnderTest, needsFullNode bool, 
 	sut.ExecCmd(localDABinary, "-port", dynPorts.DAPort)
 	t.Logf("Started local DA on port %s", dynPorts.DAPort)
 
-	rethNode := evm.SetupTestRethEngine(t)
+	rethNode := evm.SetupTestRethNode(t)
 
 	networkInfo, err := rethNode.GetNetworkInfo(context.Background())
 	require.NoError(t, err, "failed to get reth network info")
@@ -414,7 +414,7 @@ func setupCommonEVMTest(t *testing.T, sut *SystemUnderTest, needsFullNode bool, 
 
 	var fnJWT, fnEth, fnEngine string
 	if needsFullNode {
-		rethFn := evm.SetupTestRethEngineFullNode(t)
+		rethFn := evm.SetupTestRethNode(t)
 
 		fnInfo, err := rethFn.GetNetworkInfo(context.Background())
 		require.NoError(t, err, "failed to get reth network info")
