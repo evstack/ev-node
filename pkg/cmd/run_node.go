@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strings"
 	"syscall"
 	"time"
 
@@ -96,19 +97,18 @@ func StartNode(
 			return err
 		}
 
-		// Resolve signer path relative to root directory if it's not an absolute path
-		signerPath := nodeConfig.Signer.SignerPath
-		if !filepath.IsAbs(signerPath) {
-			signerPath = filepath.Join(nodeConfig.RootDir, signerPath)
+		// Resolve signer path; allow absolute, relative to node root, or relative to CWD if resolution fails
+		signerPath, err := filepath.Abs(strings.TrimSuffix(nodeConfig.Signer.SignerPath, "signer.json"))
+		if err != nil {
+			return err
 		}
+
 		signer, err = file.LoadFileSystemSigner(signerPath, []byte(passphrase))
 		if err != nil {
 			return err
 		}
-	} else if nodeConfig.Signer.SignerType == "grpc" {
-		panic("grpc remote signer not implemented")
-	} else if nodeConfig.Node.Aggregator {
-		return fmt.Errorf("unknown remote signer type: %s", nodeConfig.Signer.SignerType)
+	} else if nodeConfig.Node.Aggregator && nodeConfig.Signer.SignerType != "file" {
+		return fmt.Errorf("unknown signer type: %s", nodeConfig.Signer.SignerType)
 	}
 
 	metrics := node.DefaultMetricsProvider(nodeConfig.Instrumentation)

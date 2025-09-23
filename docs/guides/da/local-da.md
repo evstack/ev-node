@@ -15,11 +15,8 @@ Before proceeding, ensure that you have completed the [build a chain](./gm-world
 
 To set up a local DA network node on your machine, run the following script to install and start the local DA node:
 
-```bash
-git clone  --depth=1 --branch v1.0.0-beta.2 https://github.com/evstack/ev-node.git
-cd ev-node
-make build-da
-./build/local-da
+```bash-vue
+go install github.com/evstack/ev-node/da/cmd/local-da@latest
 ```
 
 This script will build and run the node, which will then listen on port `7980`.
@@ -39,7 +36,7 @@ testapp start --evnode.da.address http://localhost:7980
 ```
 
 ```sh [gm-world Chain]
-gmd start \
+testapp start \
     --evnode.node.aggregator \
     --evnode.da.address http://localhost:7980 \
 ```
