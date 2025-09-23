@@ -4,14 +4,15 @@ go 1.24.6
 
 require (
 	cosmossdk.io/math v1.5.3
-	github.com/celestiaorg/tastora v0.4.2-0.20250923133545-0af5860ad545
+	github.com/celestiaorg/tastora v0.5.0
 	github.com/stretchr/testify v1.11.1
 )
 
 require (
-	github.com/celestiaorg/go-square/v2 v2.1.0 // indirect
 	github.com/celestiaorg/go-square/v3 v3.0.0 // indirect
 	github.com/hashicorp/go-uuid v1.0.2 // indirect
+	github.com/klauspost/cpuid/v2 v2.2.10 // indirect
+	github.com/klauspost/reedsolomon v1.12.5 // indirect
 	github.com/mitchellh/mapstructure v1.5.0 // indirect
 	github.com/ugorji/go/codec v1.2.11 // indirect
 	go.uber.org/zap v1.27.0 // indirect
@@ -216,8 +217,8 @@ replace (
 	github.com/ChainSafe/go-schnorrkel => github.com/ChainSafe/go-schnorrkel v0.0.0-20200405005733-88cbf1b4c40d
 	github.com/ChainSafe/go-schnorrkel/1 => github.com/ChainSafe/go-schnorrkel v1.0.0
 	github.com/btcsuite/btcd/btcec/v2 => github.com/btcsuite/btcd/btcec/v2 v2.3.3
-	github.com/cometbft/cometbft => github.com/celestiaorg/celestia-core v1.56.1-tm-v0.38.17
-	github.com/cosmos/cosmos-sdk => github.com/celestiaorg/cosmos-sdk v1.29.4-sdk-v0.50.14
+	github.com/cometbft/cometbft => github.com/celestiaorg/celestia-core v0.39.4
+	github.com/cosmos/cosmos-sdk => github.com/celestiaorg/cosmos-sdk v0.51.2
 	github.com/gogo/protobuf => github.com/gogo/protobuf v1.3.2
 	github.com/moby/moby => github.com/moby/moby v27.5.1+incompatible
 )

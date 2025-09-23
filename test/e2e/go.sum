@@ -74,8 +74,8 @@ github.com/celestiaorg/go-header v0.7.2 h1:Jw01iBKnodfsILzynDCU3C11xurpoBt5SI9lg
 github.com/celestiaorg/go-header v0.7.2/go.mod h1:eX9iTSPthVEAlEDLux40ZT/olXPGhpxHd+mEzJeDhd0=
 github.com/celestiaorg/go-square/v3 v3.0.0 h1:ivLUUuVr7SpkvPiPLPvuH8/Vrm+iw9X3QL8gX25j+Sk=
 github.com/celestiaorg/go-square/v3 v3.0.0/go.mod h1:IROQinUbHNyFWW1J5idanVLOSLHaK1wWwVmuVSfiCVo=
-github.com/celestiaorg/tastora v0.4.2-0.20250923133545-0af5860ad545 h1:z6UVwHNC6rCEb5UFYtYZUPpH0RLspRSInlNsoEY+ht8=
-github.com/celestiaorg/tastora v0.4.2-0.20250923133545-0af5860ad545/go.mod h1:Xw44XeRN2T/kSdopVCJjNhwFwRSO58wTW8GrVP7OWFI=
+github.com/celestiaorg/tastora v0.5.0 h1:Cu7cIBxO3bjKiX6pdML0/9itAEO8Wfk3VSIoVeLzd7g=
+github.com/celestiaorg/tastora v0.5.0/go.mod h1:Xw44XeRN2T/kSdopVCJjNhwFwRSO58wTW8GrVP7OWFI=
 github.com/cenkalti/backoff v2.2.1+incompatible h1:tNowT99t7UNflLxfYYSlKYsBpXdEet03Pg2g16Swow4=
 github.com/cenkalti/backoff/v4 v4.3.0 h1:MyRJ/UdXutAwSAT+s3wNd7MfTIcy71VQueUuFK343L8=
 github.com/cenkalti/backoff/v4 v4.3.0/go.mod h1:Y3VNntkOUPxTVeUxJ/G5vcM//AlwfmyYozVcomhLiZE=
