@@ -50,11 +50,11 @@ func TestEvmSequencerComprehensiveE2E(t *testing.T) {
 	sut := NewSystemUnderTest(t)
 
 	// Setup sequencer once for all test phases
-    genesisHash, seqURL := setupSequencerOnlyTest(t, sut, nodeHome)
+	genesisHash, seqURL := setupSequencerOnlyTest(t, sut, nodeHome)
 	t.Logf("Genesis hash: %s", genesisHash)
 
 	// Connect to EVM once for all phases
-    client, err := ethclient.Dial(seqURL)
+	client, err := ethclient.Dial(seqURL)
 	require.NoError(t, err, "Should be able to connect to EVM")
 	defer client.Close()
 
@@ -65,15 +65,14 @@ func TestEvmSequencerComprehensiveE2E(t *testing.T) {
 	t.Log("🔄 PHASE 1: Basic Transaction Test")
 
 	// Submit a single transaction to EVM
-    tx1 := evm.GetRandomTransaction(t, TestPrivateKey, TestToAddress, DefaultChainID, DefaultGasLimit, &globalNonce)
-    require.NoError(t, client.SendTransaction(context.Background(), tx1))
+	tx1 := evm.GetRandomTransaction(t, TestPrivateKey, TestToAddress, DefaultChainID, DefaultGasLimit, &globalNonce)
+	require.NoError(t, client.SendTransaction(context.Background(), tx1))
 	t.Log("Submitted basic test transaction to EVM")
 
 	// Wait for block production and verify transaction inclusion
-    require.Eventually(t, func() bool {
-        receipt, err := client.TransactionReceipt(context.Background(), tx1.Hash())
-        return err == nil && receipt != nil && receipt.Status == 1
-    }, 15*time.Second, 500*time.Millisecond)
+	require.Eventually(t, func() bool {
+		return evm.CheckTxIncluded(client, tx1.Hash())
+	}, 15*time.Second, 500*time.Millisecond)
 	t.Log("✅ Basic transaction included in EVM block")
 
 	// ===== PHASE 2: High-Throughput Transaction Test =====
@@ -89,7 +88,7 @@ func TestEvmSequencerComprehensiveE2E(t *testing.T) {
 		// Create transaction with proper chain ID
 		tx := evm.GetRandomTransaction(t, TestPrivateKey, TestToAddress, DefaultChainID, DefaultGasLimit, &globalNonce)
 
-        require.NoError(t, client.SendTransaction(context.Background(), tx))
+		require.NoError(t, client.SendTransaction(context.Background(), tx))
 		txHashes = append(txHashes, tx.Hash())
 		expectedNonces = append(expectedNonces, tx.Nonce())
 
@@ -313,7 +312,7 @@ func TestEvmSequencerComprehensiveE2E(t *testing.T) {
 	t.Log("Testing system stability with final valid transaction...")
 	validTx := evm.GetRandomTransaction(t, TestPrivateKey, TestToAddress, DefaultChainID, DefaultGasLimit, &globalNonce)
 
-    require.NoError(t, client.SendTransaction(ctx, validTx))
+	require.NoError(t, client.SendTransaction(ctx, validTx))
 	t.Logf("Submitted final valid transaction: %s", validTx.Hash().Hex())
 
 	// Wait for valid transaction to be included

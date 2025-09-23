@@ -660,7 +660,6 @@ func setupSequencerWithFullNodeLazy(t *testing.T, sut *SystemUnderTest, sequence
 	jwtSecret, fullNodeJwtSecret, genesisHash, enginePorts := setupCommonEVMTest(t, sut, true)
 
 	// Setup sequencer in lazy mode with dynamic ports
-	// Carry over dynamic engine endpoints into ports
 	ports.SequencerEthURL = enginePorts.SequencerEthURL
 	ports.SequencerEngineURL = enginePorts.SequencerEngineURL
 	ports.FullNodeEthURL = enginePorts.FullNodeEthURL

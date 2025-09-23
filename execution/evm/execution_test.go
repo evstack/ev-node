@@ -61,10 +61,7 @@ func TestEngineExecution(t *testing.T) {
 	t.Run("Build chain", func(tt *testing.T) {
 		rethNode := SetupTestRethNode(t)
 
-		// Discover dynamically mapped ETH and Engine URLs from the node
-		ctxNI, cancelNI := context.WithTimeout(context.Background(), 10*time.Second)
-		defer cancelNI()
-		ni, err := rethNode.GetNetworkInfo(ctxNI)
+		ni, err := rethNode.GetNetworkInfo(context.TODO())
 		require.NoError(tt, err)
 		ethURL := "http://127.0.0.1:" + ni.External.Ports.RPC
 		engineURL := "http://127.0.0.1:" + ni.External.Ports.Engine
@@ -100,7 +97,7 @@ func TestEngineExecution(t *testing.T) {
 			}
 
 			txs := make([]*ethTypes.Transaction, nTxs)
-			// Create an ETH client against the dynamic ETH URL
+
 			ethClient := createEthClient(t, ethURL)
 			defer ethClient.Close()
 			for i := range txs {
@@ -163,10 +160,7 @@ func TestEngineExecution(t *testing.T) {
 	t.Run("Sync chain", func(tt *testing.T) {
 		rethNode := SetupTestRethNode(t)
 
-		// Discover dynamically mapped ETH and Engine URLs from the node
-		ctxNI, cancelNI := context.WithTimeout(context.Background(), 10*time.Second)
-		defer cancelNI()
-		ni, err := rethNode.GetNetworkInfo(ctxNI)
+		ni, err := rethNode.GetNetworkInfo(context.TODO())
 		require.NoError(tt, err)
 		ethURL := "http://127.0.0.1:" + ni.External.Ports.RPC
 		engineURL := "http://127.0.0.1:" + ni.External.Ports.Engine
