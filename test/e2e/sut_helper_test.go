@@ -30,7 +30,7 @@ func TestIterProcessesByCmd(t *testing.T) {
 
 	// The iterator should return the actual PIDs
 	require.ElementsMatch(t, testPIDs, iteratedPIDs,
-		"iterProcessesByCmd should iterate over actual PIDs, not slice indices")
+		"iterProcessesByCmd should iterate over actual PIDs")
 }
 
 // TestShutdownByCmd tests that ShutdownByCmd can properly find and signal processes.
