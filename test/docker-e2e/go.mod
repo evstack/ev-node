@@ -4,12 +4,12 @@ go 1.24.6
 
 require (
 	cosmossdk.io/math v1.5.3
-	github.com/celestiaorg/go-square/v3 v3.0.0
 	github.com/celestiaorg/tastora v0.4.2-0.20250922082434-f16cbcc4dbd2
 	github.com/stretchr/testify v1.11.1
 )
 
 require (
+	github.com/celestiaorg/go-square/v3 v3.0.0 // indirect
 	github.com/hashicorp/go-uuid v1.0.2 // indirect
 	github.com/mitchellh/mapstructure v1.5.0 // indirect
 	github.com/ugorji/go/codec v1.2.11 // indirect
