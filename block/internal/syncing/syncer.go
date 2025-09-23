@@ -105,7 +105,7 @@ func NewSyncer(
 		dataStore:    dataStore,
 		lastStateMtx: &sync.RWMutex{},
 		daStateMtx:   &sync.RWMutex{},
-		heightInCh:   make(chan common.DAHeightEvent, 10_000),
+		heightInCh:   make(chan common.DAHeightEvent, 10),
 		errorCh:      errorCh,
 		logger:       logger.With().Str("component", "syncer").Logger(),
 	}
@@ -121,8 +121,8 @@ func (s *Syncer) Start(ctx context.Context) error {
 	}
 
 	// Initialize handlers
-	//s.daRetriever = NewDARetriever(s.da, s.cache, s.config, s.genesis, s.options, s.logger)
-	//s.p2pHandler = NewP2PHandler(s.headerStore, s.dataStore, s.genesis, s.options, s.logger)
+	s.daRetriever = NewDARetriever(s.da, s.cache, s.config, s.genesis, s.options, s.logger)
+	s.p2pHandler = NewP2PHandler(s.headerStore, s.dataStore, s.genesis, s.options, s.logger)
 
 	// Start main processing loop
 	s.wg.Add(1)
@@ -267,7 +267,10 @@ func (s *Syncer) syncLoop() {
 		default:
 		}
 		// Process pending events from cache on every iteration
-		s.processPendingEvents()
+		if err := s.processPendingEvents(); err != nil {
+			s.logger.Info().Err(err).Msg("process pending events, retrying")
+			continue
+		}
 
 		now := time.Now()
 		// Respect backoff window if set
@@ -312,6 +315,8 @@ func (s *Syncer) syncLoop() {
 
 		// Opportunistically process any P2P signals
 		select {
+		case <-s.ctx.Done():
+			return
 		case <-blockTicker.C:
 			newHeaderHeight := s.headerStore.Height()
 			if newHeaderHeight > lastHeaderHeight {
@@ -344,12 +349,7 @@ func (s *Syncer) syncLoop() {
 			}
 		default:
 			// Prevent busy-waiting when no events are available.
-			waitTime := 10 * time.Millisecond
-			if waitTime > s.config.Node.BlockTime.Duration {
-				waitTime = s.config.Node.BlockTime.Duration
-			}
-
-			time.Sleep(waitTime)
+			time.Sleep(min(s.config.Node.BlockTime.Duration, 10*time.Millisecond))
 		}
 	}
 }
@@ -558,26 +558,29 @@ func (s *Syncer) isHeightFromFutureError(err error) bool {
 }
 
 // processPendingEvents fetches and processes pending events from cache
-func (s *Syncer) processPendingEvents() {
-	//pendingEvents := s.cache.GetPendingEvents()
-	for event := range s.pendingQueue.Iter() {
+func (s *Syncer) processPendingEvents() error {
+	for event := s.pendingQueue.Peek(); event != nil; event = s.pendingQueue.Peek() {
 		currentHeight, err := s.store.Height(s.ctx)
 		if err != nil {
-			s.logger.Error().Err(err).Msg("failed to get current height for pending events")
+			return err
+		}
+
+		eventHeight := event.Header.Height()
+		if eventHeight <= currentHeight {
+			// Only process events for blocks we haven't synced yet
+			_ = s.pendingQueue.Pop()
 			continue
 		}
-		// Only process events for blocks we haven't synced yet
-		if n := event.Header.Height(); n > currentHeight {
-			if n > currentHeight+2 {
-				s.pendingQueue.AddPendingEvent(event)
-				return
-			}
-			select {
-			case s.heightInCh <- *event:
-				//Remove from pending events once sent
-			case <-s.ctx.Done():
-				return
-			}
+		if eventHeight > currentHeight+1 {
+			return nil
+		}
+		// block until we can send it
+		select {
+		case s.heightInCh <- *s.pendingQueue.Pop():
+			return s.ctx.Err()
+		case <-s.ctx.Done():
+			return s.ctx.Err()
 		}
 	}
+	return nil
 }

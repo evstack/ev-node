@@ -8,45 +8,47 @@ import (
 	"github.com/evstack/ev-node/block/internal/common"
 )
 
-var _ heap.Interface = &PendingQueue{}
+var _ heap.Interface = &queue{}
+
+type queue []*common.DAHeightEvent
+
+func (p queue) Len() int {
+	return len(p)
+}
+
+func (p queue) Less(i, j int) bool {
+	return p[i].Header.Height() < p[j].Header.Height()
+}
+
+func (p queue) Swap(i, j int) {
+	p[i], p[j] = p[j], p[i]
+}
+
+func (p *queue) Push(x any) {
+	*p = append(*p, x.(*common.DAHeightEvent))
+}
+
+func (p *queue) Pop() any {
+	n := len(*p)
+	if n == 0 {
+		return nil
+	}
+	item := (*p)[n-1]
+	*p = (*p)[: n-1 : cap(*p)]
+	return item
+}
 
 type PendingQueue struct {
 	mu    sync.RWMutex
-	queue []*common.DAHeightEvent
+	queue queue
 }
 
 func NewPendingQueue() *PendingQueue {
 	p := &PendingQueue{
 		queue: make([]*common.DAHeightEvent, 0, 1024),
 	}
-	heap.Init(p)
+	heap.Init(&p.queue)
 	return p
-}
-
-func (p *PendingQueue) Len() int {
-	return len(p.queue)
-}
-
-func (p *PendingQueue) Less(i, j int) bool {
-	return p.queue[i].Header.Height() < p.queue[j].Header.Height()
-}
-
-func (p *PendingQueue) Swap(i, j int) {
-	p.queue[i], p.queue[j] = p.queue[j], p.queue[i]
-}
-
-func (p *PendingQueue) Push(x any) {
-	p.queue = append(p.queue, x.(*common.DAHeightEvent))
-}
-
-func (p *PendingQueue) Pop() any {
-	n := len(p.queue)
-	if n == 0 {
-		return nil
-	}
-	item := p.queue[n-1]
-	p.queue = p.queue[: n-1 : cap(p.queue)]
-	return item
 }
 
 func (p *PendingQueue) AddPendingEvent(event *common.DAHeightEvent) {
@@ -55,24 +57,40 @@ func (p *PendingQueue) AddPendingEvent(event *common.DAHeightEvent) {
 	}
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	heap.Push(p, event)
+	heap.Push(&p.queue, event)
 }
 
 func (p *PendingQueue) Iter() iter.Seq[*common.DAHeightEvent] {
 	return func(yield func(*common.DAHeightEvent) bool) {
-		p.mu.RLock()
-		if p.Len() == 0 {
-			p.mu.RUnlock()
-			return
-		}
-		p.mu.RUnlock()
-
-		p.mu.Lock()
-		item := heap.Pop(p).(*common.DAHeightEvent)
-		p.mu.Unlock()
-
+		item := p.Pop()
 		if item == nil || !yield(item) {
 			return
 		}
 	}
+}
+
+func (p *PendingQueue) Len() int {
+	p.mu.RLock()
+	defer p.mu.RUnlock()
+	return p.queue.Len()
+}
+
+func (p *PendingQueue) Pop() *common.DAHeightEvent {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	if p.queue.Len() == 0 {
+		return nil
+	}
+	return heap.Pop(&p.queue).(*common.DAHeightEvent)
+}
+
+func (p *PendingQueue) Peek() *common.DAHeightEvent {
+	p.mu.RLock()
+	defer p.mu.RUnlock()
+
+	if p.queue.Len() == 0 {
+		return nil
+	}
+	return p.queue[0]
 }
