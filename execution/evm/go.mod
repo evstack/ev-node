@@ -3,7 +3,7 @@ module github.com/evstack/ev-node/execution/evm
 go 1.24.6
 
 require (
-	github.com/celestiaorg/tastora v0.4.2-0.20250922082434-f16cbcc4dbd2
+	github.com/celestiaorg/tastora v0.4.2-0.20250923133545-0af5860ad545
 	github.com/ethereum/go-ethereum v1.16.3
 	github.com/evstack/ev-node/core v1.0.0-beta.3
 	github.com/golang-jwt/jwt/v5 v5.3.0
