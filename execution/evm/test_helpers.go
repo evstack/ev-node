@@ -31,6 +31,13 @@ var (
 	dockerNetID string
 )
 
+// ResetDockerGlobals resets the shared Docker client and network ID.
+// This should be called at the start of each test to ensure fresh Docker resources.
+func ResetDockerGlobals() {
+	dockerCli = nil
+	dockerNetID = ""
+}
+
 const charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
 
 func randomString(n int) string {

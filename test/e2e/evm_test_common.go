@@ -110,9 +110,6 @@ func generateTestPorts() (*TestPorts, error) {
 
 // Common constants used across EVM tests
 const (
-	// Docker configuration
-	dockerPath = "../../execution/evm/docker"
-
 	// Port configurations
 	SequencerEthPort    = "8545"
 	SequencerEnginePort = "8551"
@@ -125,12 +122,10 @@ const (
 	FullNodeRPCPort     = "46657"
 
 	// URL templates
-	SequencerEthURL    = "http://localhost:" + SequencerEthPort
-	SequencerEngineURL = "http://localhost:" + SequencerEnginePort
-	FullNodeEthURL     = "http://localhost:" + FullNodeEthPort
-	FullNodeEngineURL  = "http://localhost:" + FullNodeEnginePort
-	DAAddress          = "http://localhost:" + DAPort
-	RollkitRPCAddress  = "http://127.0.0.1:" + RollkitRPCPort
+	FullNodeEthURL    = "http://localhost:" + FullNodeEthPort
+	FullNodeEngineURL = "http://localhost:" + FullNodeEnginePort
+	DAAddress         = "http://localhost:" + DAPort
+	RollkitRPCAddress = "http://127.0.0.1:" + RollkitRPCPort
 
 	// Test configuration
 	DefaultBlockTime   = "150ms"
@@ -516,7 +511,7 @@ func setupSequencerOnlyTest(t *testing.T, sut *SystemUnderTest, nodeHome string)
 // - sequencerHome: Directory path for sequencer node data
 // - jwtSecret: JWT secret for sequencer's EVM engine authentication
 // - genesisHash: Hash of the genesis block for chain validation
-func restartDAAndSequencer(t *testing.T, sut *SystemUnderTest, sequencerHome, jwtSecret, genesisHash string) {
+func restartDAAndSequencer(t *testing.T, sut *SystemUnderTest, sequencerHome, jwtSecret, genesisHash string, ports *TestPorts) {
 	t.Helper()
 
 	// First restart the local DA
@@ -524,7 +519,7 @@ func restartDAAndSequencer(t *testing.T, sut *SystemUnderTest, sequencerHome, jw
 	if evmSingleBinaryPath != "evm-single" {
 		localDABinary = filepath.Join(filepath.Dir(evmSingleBinaryPath), "local-da")
 	}
-	sut.ExecCmd(localDABinary)
+	sut.ExecCmd(localDABinary, "-port", ports.DAPort)
 	t.Log("Restarted local DA")
 	time.Sleep(25 * time.Millisecond)
 
@@ -537,13 +532,19 @@ func restartDAAndSequencer(t *testing.T, sut *SystemUnderTest, sequencerHome, jw
 		"--rollkit.node.aggregator=true",
 		"--rollkit.signer.passphrase", TestPassphrase,
 		"--home", sequencerHome,
-		"--rollkit.da.address", DAAddress,
+		"--rollkit.da.address", "http://127.0.0.1:"+ports.DAPort,
 		"--rollkit.da.block_time", DefaultDABlockTime,
+		"--rollkit.rpc.address", "127.0.0.1:"+ports.RollkitRPCPort,
+		"--rollkit.p2p.listen_address", "/ip4/127.0.0.1/tcp/"+ports.RollkitP2PPort,
+		"--evm.engine-url", ports.SequencerEngineURL,
+		"--evm.eth-url", ports.SequencerEthURL,
 	)
 
 	time.Sleep(SlowPollingInterval)
 
-	sut.AwaitNodeUp(t, RollkitRPCAddress, NodeStartupTimeout)
+	rollkitRPCAddress := "http://127.0.0.1:" + ports.RollkitRPCPort
+
+	sut.AwaitNodeUp(t, rollkitRPCAddress, NodeStartupTimeout)
 }
 
 // restartDAAndSequencerLazy restarts both the local DA and sequencer node in lazy mode.
@@ -556,7 +557,7 @@ func restartDAAndSequencer(t *testing.T, sut *SystemUnderTest, sequencerHome, jw
 // - sequencerHome: Directory path for sequencer node data
 // - jwtSecret: JWT secret for sequencer's EVM engine authentication
 // - genesisHash: Hash of the genesis block for chain validation
-func restartDAAndSequencerLazy(t *testing.T, sut *SystemUnderTest, sequencerHome, jwtSecret, genesisHash string) {
+func restartDAAndSequencerLazy(t *testing.T, sut *SystemUnderTest, sequencerHome, jwtSecret, genesisHash string, ports *TestPorts) {
 	t.Helper()
 
 	// First restart the local DA
@@ -564,7 +565,7 @@ func restartDAAndSequencerLazy(t *testing.T, sut *SystemUnderTest, sequencerHome
 	if evmSingleBinaryPath != "evm-single" {
 		localDABinary = filepath.Join(filepath.Dir(evmSingleBinaryPath), "local-da")
 	}
-	sut.ExecCmd(localDABinary)
+	sut.ExecCmd(localDABinary, "-port", ports.DAPort)
 	t.Log("Restarted local DA")
 	time.Sleep(25 * time.Millisecond)
 
@@ -579,13 +580,17 @@ func restartDAAndSequencerLazy(t *testing.T, sut *SystemUnderTest, sequencerHome
 		"--rollkit.node.lazy_block_interval=60s", // Set lazy block interval to 60 seconds to prevent timer-based block production during test
 		"--rollkit.signer.passphrase", TestPassphrase,
 		"--home", sequencerHome,
-		"--rollkit.da.address", DAAddress,
+		"--rollkit.da.address", "http://127.0.0.1:"+ports.DAPort,
 		"--rollkit.da.block_time", DefaultDABlockTime,
+		"--rollkit.rpc.address", "127.0.0.1:"+ports.RollkitRPCPort,
+		"--rollkit.p2p.listen_address", "/ip4/127.0.0.1/tcp/"+ports.RollkitP2PPort,
+		"--evm.engine-url", ports.SequencerEngineURL,
+		"--evm.eth-url", ports.SequencerEthURL,
 	)
 
 	time.Sleep(SlowPollingInterval)
 
-	sut.AwaitNodeUp(t, RollkitRPCAddress, NodeStartupTimeout)
+	sut.AwaitNodeUp(t, "http://127.0.0.1:"+ports.RollkitRPCPort, NodeStartupTimeout)
 }
 
 // restartSequencerNode starts an existing sequencer node without initialization.
