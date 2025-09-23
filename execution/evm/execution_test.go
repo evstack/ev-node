@@ -102,7 +102,6 @@ func TestEngineExecution(t *testing.T) {
 			defer ethClient.Close()
 			for i := range txs {
 				txs[i] = GetRandomTransaction(t, TEST_PRIVATE_KEY, TEST_TO_ADDRESS, CHAIN_ID, 22000, &lastNonce)
-				// Submit via the connected client instead of a hardcoded URL
 				require.NoError(tt, ethClient.SendTransaction(context.Background(), txs[i]))
 			}
 

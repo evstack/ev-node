@@ -64,7 +64,7 @@ func getTestScopedDockerSetup(t *testing.T) (*dockerclient.Client, string) {
 	return dockerCli, dockerNetID
 }
 
-// SetupTestRethNode sets up a Reth node test environment using Docker Compose, writes a JWT secret file, and returns the node. It also registers cleanup for resources.
+// SetupTestRethNode creates a single Reth node for testing purposes.
 func SetupTestRethNode(t *testing.T) *reth.Node {
 	t.Helper()
 	ctx := context.Background()
