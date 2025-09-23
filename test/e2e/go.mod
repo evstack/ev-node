@@ -5,6 +5,7 @@ go 1.24.6
 toolchain go1.24.7
 
 require (
+	github.com/celestiaorg/tastora v0.4.2-0.20250922082434-f16cbcc4dbd2
 	github.com/ethereum/go-ethereum v1.16.3
 	github.com/evstack/ev-node v0.0.0-00010101000000-000000000000
 	github.com/evstack/ev-node/execution/evm v0.0.0-20250602130019-2a732cf903a5
@@ -42,7 +43,6 @@ require (
 	github.com/btcsuite/btcd/btcec/v2 v2.3.5 // indirect
 	github.com/celestiaorg/go-header v0.7.2 // indirect
 	github.com/celestiaorg/go-square/v3 v3.0.0 // indirect
-	github.com/celestiaorg/tastora v0.4.2-0.20250922082434-f16cbcc4dbd2 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/cockroachdb/errors v1.11.3 // indirect
 	github.com/cockroachdb/fifo v0.0.0-20240606204812-0bbfbd93a7ce // indirect

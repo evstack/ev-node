@@ -84,8 +84,6 @@ github.com/celestiaorg/go-datastore v0.0.0-20250801131506-48a63ae531e4 h1:udw77B
 github.com/celestiaorg/go-datastore v0.0.0-20250801131506-48a63ae531e4/go.mod h1:W+pI1NsUsz3tcsAACMtfC+IZdnQTnC/7VfPoJBQuts0=
 github.com/celestiaorg/go-libp2p-messenger v0.2.2 h1:osoUfqjss7vWTIZrrDSy953RjQz+ps/vBFE7bychLEc=
 github.com/celestiaorg/go-libp2p-messenger v0.2.2/go.mod h1:oTCRV5TfdO7V/k6nkx7QjQzGrWuJbupv+0o1cgnY2i4=
-github.com/celestiaorg/go-square/v2 v2.3.3 h1:vhu6Lt39km19Q/Jk4nS3r2cuWJq6jFg+/1+iG8YGftY=
-github.com/celestiaorg/go-square/v2 v2.3.3/go.mod h1:vY5RRv+qRmEVjPF6dAdr0dyLwKmTTDHHffENPQw8pUA=
 github.com/celestiaorg/go-square/v3 v3.0.0 h1:ivLUUuVr7SpkvPiPLPvuH8/Vrm+iw9X3QL8gX25j+Sk=
 github.com/celestiaorg/go-square/v3 v3.0.0/go.mod h1:IROQinUbHNyFWW1J5idanVLOSLHaK1wWwVmuVSfiCVo=
 github.com/celestiaorg/tastora v0.4.2-0.20250922082434-f16cbcc4dbd2 h1:zyuwmj1QvrSSrqokn5K/FvV2rg0f+BxbnpyBVa+HQYw=

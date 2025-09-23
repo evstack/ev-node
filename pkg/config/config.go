@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/celestiaorg/go-square/v2/share"
+	"github.com/celestiaorg/go-square/v3/share"
 	"github.com/evstack/ev-node/core/da"
 	"github.com/mitchellh/mapstructure"
 	"github.com/spf13/cobra"

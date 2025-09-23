@@ -4,12 +4,12 @@ go 1.24.6
 
 require (
 	cosmossdk.io/math v1.5.3
+	github.com/celestiaorg/go-square/v3 v3.0.0
 	github.com/celestiaorg/tastora v0.4.2-0.20250922082434-f16cbcc4dbd2
 	github.com/stretchr/testify v1.11.1
 )
 
 require (
-	github.com/celestiaorg/go-square/v3 v3.0.0 // indirect
 	github.com/hashicorp/go-uuid v1.0.2 // indirect
 	github.com/mitchellh/mapstructure v1.5.0 // indirect
 	github.com/ugorji/go/codec v1.2.11 // indirect
@@ -55,7 +55,7 @@ require (
 	github.com/aws/smithy-go v1.22.5 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/bgentry/speakeasy v0.1.1-0.20220910012023-760eaf8b6816 // indirect
-	github.com/celestiaorg/go-square/v2 v2.3.2
+	github.com/celestiaorg/go-square/v2 v2.3.2 // indirect
 	github.com/celestiaorg/nmt v0.24.1 // indirect
 	github.com/cenkalti/backoff/v4 v4.3.0 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect

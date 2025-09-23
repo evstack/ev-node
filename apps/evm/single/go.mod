@@ -50,7 +50,6 @@ require (
 	github.com/bits-and-blooms/bitset v1.20.0 // indirect
 	github.com/btcsuite/btcd/btcec/v2 v2.3.5 // indirect
 	github.com/celestiaorg/go-libp2p-messenger v0.2.2 // indirect
-	github.com/celestiaorg/go-square/v2 v2.3.3 // indirect
 	github.com/celestiaorg/go-square/v3 v3.0.0 // indirect
 	github.com/celestiaorg/tastora v0.4.2-0.20250922082434-f16cbcc4dbd2 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
