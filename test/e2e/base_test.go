@@ -184,7 +184,7 @@ func TestNodeRestartPersistence(t *testing.T) {
 
 	// Wait a moment to ensure shutdown
 	require.Eventually(t, func() bool {
-		return sut.HasProcess(binaryPath)
+		return !sut.HasProcess(binaryPath)
 	}, 500*time.Millisecond, 10*time.Millisecond)
 
 	// Restart node

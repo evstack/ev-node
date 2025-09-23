@@ -21,16 +21,16 @@ import (
 	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/stretchr/testify/require"
 
-	dockerfw "github.com/celestiaorg/tastora/framework/docker"
-	rethfw "github.com/celestiaorg/tastora/framework/docker/evstack/reth"
+	"github.com/celestiaorg/tastora/framework/docker"
+	"github.com/celestiaorg/tastora/framework/docker/evstack/reth"
 	dockerclient "github.com/moby/moby/client"
 )
 
 // Test-scoped Docker client/network mapping to avoid conflicts between tests
 var (
-	dockerClients   = make(map[string]*dockerclient.Client)
-	dockerNetworks  = make(map[string]string)
-	dockerMutex     sync.RWMutex
+	dockerClients  = make(map[string]*dockerclient.Client)
+	dockerNetworks = make(map[string]string)
+	dockerMutex    sync.RWMutex
 )
 
 const charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
@@ -44,38 +44,37 @@ func randomString(n int) string {
 	return string(b)
 }
 
-// SetupTestRethNode sets up a Reth node test environment using Docker Compose, writes a JWT secret file, and returns the node. It also registers cleanup for resources.
-func SetupTestRethNode(t *testing.T) *rethfw.Node {
+// getTestScopedDockerSetup returns a Docker client and network ID that are scoped to the specific test.
+func getTestScopedDockerSetup(t *testing.T) (*dockerclient.Client, string) {
 	t.Helper()
-	// Start a single reth via Tastora to serve as the execution engine
-	ctx := context.Background()
 
-	// Get or create Docker client/network for this specific test
 	testKey := t.Name()
 	dockerMutex.Lock()
 	defer dockerMutex.Unlock()
 
 	dockerCli, exists := dockerClients[testKey]
 	if !exists {
-		cli, netID := dockerfw.DockerSetup(t)
+		cli, netID := docker.DockerSetup(t)
 		dockerClients[testKey] = cli
 		dockerNetworks[testKey] = netID
 		dockerCli = cli
-
-		// Clean up mapping when test is done
-		t.Cleanup(func() {
-			dockerMutex.Lock()
-			defer dockerMutex.Unlock()
-			delete(dockerClients, testKey)
-			delete(dockerNetworks, testKey)
-		})
 	}
 	dockerNetID := dockerNetworks[testKey]
 
-	n, err := rethfw.NewNodeBuilderWithTestName(t, fmt.Sprintf("%s-%s", t.Name(), randomString(6))).
+	return dockerCli, dockerNetID
+}
+
+// SetupTestRethNode sets up a Reth node test environment using Docker Compose, writes a JWT secret file, and returns the node. It also registers cleanup for resources.
+func SetupTestRethNode(t *testing.T) *reth.Node {
+	t.Helper()
+	ctx := context.Background()
+
+	dockerCli, dockerNetID := getTestScopedDockerSetup(t)
+
+	n, err := reth.NewNodeBuilderWithTestName(t, fmt.Sprintf("%s-%s", t.Name(), randomString(6))).
 		WithDockerClient(dockerCli).
 		WithDockerNetworkID(dockerNetID).
-		WithGenesis([]byte(rethfw.DefaultEvolveGenesisJSON())).
+		WithGenesis([]byte(reth.DefaultEvolveGenesisJSON())).
 		Build(ctx)
 	t.Cleanup(func() {
 		_ = n.Remove(context.Background())
@@ -176,4 +175,3 @@ func CheckTxIncluded(client *ethclient.Client, txHash common.Hash) bool {
 	receipt, err := client.TransactionReceipt(context.Background(), txHash)
 	return err == nil && receipt != nil && receipt.Status == 1
 }
-
