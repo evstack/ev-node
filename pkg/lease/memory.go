@@ -140,6 +140,6 @@ func (ml *MemoryLease) GetExpiry(ctx context.Context) (time.Time, error) {
 	return ml.lease.Expiry, nil
 }
 
-func (ml MemoryLease) Name() string {
+func (ml *MemoryLease) Name() string {
 	return ml.name
 }

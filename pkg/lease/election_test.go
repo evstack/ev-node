@@ -91,7 +91,7 @@ func TestLeaderElection(t *testing.T) {
 				le := NewLeaderElection(lease, "node2", "test-leader", 100*time.Millisecond, logger)
 
 				// Simulate expired lease from another node
-				lease.leases["test-leader"] = &LeaseInfo{
+				lease.lease = &LeaseInfo{
 					Holder:   "node1",
 					Expiry:   time.Now().Add(-1 * time.Second), // Already expired
 					Acquired: time.Now().Add(-2 * time.Second),

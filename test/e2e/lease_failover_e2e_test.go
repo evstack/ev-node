@@ -36,7 +36,7 @@ func TestLeaseFailoverE2E(t *testing.T) {
 	baseURL, shutdown := startLeaseHTTPTestServer(leaseName)
 	t.Cleanup(shutdown)
 
-	workDir := "/Users/alex/workspace/rollkit/rollkit/test/e2e/testnet"
+	workDir := "./testnet"
 	//workDir := t.TempDir()
 	node1Home := filepath.Join(workDir, "node1")
 	node2Home := filepath.Join(workDir, "node2")
@@ -180,6 +180,7 @@ func setupFailoverAggregator(
 		"--rollkit.node.block_time", DefaultBlockTime,
 		"--rollkit.node.aggregator=true",
 		"--rollkit.signer.passphrase", TestPassphrase,
+		"--evnode.signer.signer_path", filepath.Join(fullNodeHome, "config"),
 		"--rollkit.da.address", DAAddress,
 		"--rollkit.da.block_time", DefaultDABlockTime,
 
