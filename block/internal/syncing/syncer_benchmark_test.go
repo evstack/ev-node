@@ -38,8 +38,7 @@ func BenchmarkSyncerIO(b *testing.B) {
 	}
 	for name, spec := range cases {
 		b.Run(name, func(b *testing.B) {
-			b.ResetTimer()
-			for i := 0; i < b.N; i++ {
+			for b.Loop() {
 				fixt := newBenchFixture(b, spec.heights, spec.shuffledTx, spec.daDelay, spec.execDelay, true)
 
 				// run both loops
@@ -52,8 +51,11 @@ func BenchmarkSyncerIO(b *testing.B) {
 				}, 5*time.Second, 50*time.Microsecond)
 				fixt.s.cancel()
 
-				// Ensure clean end-state per iteration
-				require.Len(b, fixt.s.cache.GetPendingEvents(), 0)
+				// Ensure clean end-state per iteration - verify no pending events remain
+				for i := uint64(1); i <= spec.heights; i++ {
+					event := fixt.s.cache.GetNextPendingEvent(i)
+					require.Nil(b, event, "expected no pending event at height %d", i)
+				}
 				require.Len(b, fixt.s.heightInCh, 0)
 
 				assert.Equal(b, spec.heights+daHeightOffset, fixt.s.daHeight)

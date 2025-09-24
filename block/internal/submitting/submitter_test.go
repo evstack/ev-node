@@ -58,8 +58,6 @@ func TestSubmitter_IsHeightDAIncluded(t *testing.T) {
 	}
 
 	for name, spec := range specs {
-		name := name
-		spec := spec
 		t.Run(name, func(t *testing.T) {
 			included, err := s.IsHeightDAIncluded(spec.height, spec.header, spec.data)
 			if spec.expErr {
