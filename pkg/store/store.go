@@ -292,7 +292,7 @@ func (s *DefaultStore) Rollback(ctx context.Context, height uint64, aggregator b
 			} else { // in case of syncing issues, rollback the included height is OK.
 				bz := make([]byte, 8)
 				binary.LittleEndian.PutUint64(bz, height)
-				if err := s.SetMetadata(ctx, DAIncludedHeightKey, bz); err != nil {
+				if err := batch.Put(ctx, ds.NewKey(getMetaKey(DAIncludedHeightKey)), bz); err != nil {
 					return fmt.Errorf("failed to update DA included height: %w", err)
 				}
 			}

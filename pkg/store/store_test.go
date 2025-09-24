@@ -849,7 +849,7 @@ func TestRollbackDAIncludedHeightValidation(t *testing.T) {
 		require.Contains(err.Error(), "DA included height is greater than the rollback height: cannot rollback a finalized height")
 	})
 
-	// Test case 1: Rollback to height below DA included height should fail
+	// Test case 2: Rollback to height below DA included height should succeed as sync node
 	t.Run("rollback below DA included succeed as sync node", func(t *testing.T) {
 		ctx := context.Background()
 		store := New(mustNewInMem())
@@ -891,7 +891,7 @@ func TestRollbackDAIncludedHeightValidation(t *testing.T) {
 		err = store.Rollback(ctx, uint64(6), false)
 		require.NoError(err)
 
-		// Verify height was rolled back to 8
+		// Verify height was rolled back to 6
 		currentHeight, err := store.Height(ctx)
 		require.NoError(err)
 		require.Equal(uint64(6), currentHeight)
