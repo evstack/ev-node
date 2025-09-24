@@ -28,22 +28,23 @@ import (
 )
 
 // makeSignedHeaderBytes builds a valid SignedHeader and returns its binary encoding and the object
-func makeSignedHeaderBytes(t *testing.T, chainID string, height uint64, proposer []byte, pub crypto.PubKey, signer signerpkg.Signer, appHash []byte) ([]byte, *types.SignedHeader) {
+func makeSignedHeaderBytes(tb testing.TB, chainID string, height uint64, proposer []byte, pub crypto.PubKey, signer signerpkg.Signer, appHash []byte, dataHash []byte) ([]byte, *types.SignedHeader) {
 	hdr := &types.SignedHeader{
 		Header: types.Header{
 			BaseHeader:      types.BaseHeader{ChainID: chainID, Height: height, Time: uint64(time.Now().Add(time.Duration(height) * time.Second).UnixNano())},
 			AppHash:         appHash,
+			DataHash:        dataHash,
 			ProposerAddress: proposer,
 		},
 		Signer: types.Signer{PubKey: pub, Address: proposer},
 	}
 	bz, err := types.DefaultAggregatorNodeSignatureBytesProvider(&hdr.Header)
-	require.NoError(t, err)
+	require.NoError(tb, err)
 	sig, err := signer.Sign(bz)
-	require.NoError(t, err)
+	require.NoError(tb, err)
 	hdr.Signature = sig
 	bin, err := hdr.MarshalBinary()
-	require.NoError(t, err)
+	require.NoError(tb, err)
 	return bin, hdr
 }
 
@@ -115,12 +116,8 @@ func TestDARetriever_ProcessBlobs_HeaderAndData_Success(t *testing.T) {
 
 	r := NewDARetriever(nil, cm, config.DefaultConfig(), gen, common.DefaultBlockOptions(), zerolog.Nop())
 
-	// Build one header and one data blob at same height
-	_, lastState := types.State{}, types.State{}
-	_ = lastState // placeholder to keep parity with helper pattern
-
-	hdrBin, _ := makeSignedHeaderBytes(t, gen.ChainID, 2, addr, pub, signer, nil)
-	dataBin, _ := makeSignedDataBytes(t, gen.ChainID, 2, addr, pub, signer, 2)
+	dataBin, data := makeSignedDataBytes(t, gen.ChainID, 2, addr, pub, signer, 2)
+	hdrBin, _ := makeSignedHeaderBytes(t, gen.ChainID, 2, addr, pub, signer, nil, data.Hash())
 
 	events := r.processBlobs(context.Background(), [][]byte{hdrBin, dataBin}, 77)
 	require.Len(t, events, 1)
@@ -141,7 +138,7 @@ func TestDARetriever_ProcessBlobs_HeaderOnly_EmptyDataExpected(t *testing.T) {
 	r := NewDARetriever(nil, cm, config.DefaultConfig(), gen, common.DefaultBlockOptions(), zerolog.Nop())
 
 	// Header with no data hash present should trigger empty data creation (per current logic)
-	hb, _ := makeSignedHeaderBytes(t, gen.ChainID, 3, addr, pub, signer, nil)
+	hb, _ := makeSignedHeaderBytes(t, gen.ChainID, 3, addr, pub, signer, nil, nil)
 
 	events := r.processBlobs(context.Background(), [][]byte{hb}, 88)
 	require.Len(t, events, 1)
@@ -160,7 +157,7 @@ func TestDARetriever_TryDecodeHeaderAndData_Basic(t *testing.T) {
 	gen := genesis.Genesis{ChainID: "tchain", InitialHeight: 1, StartTime: time.Now().Add(-time.Second), ProposerAddress: addr}
 	r := NewDARetriever(nil, cm, config.DefaultConfig(), gen, common.DefaultBlockOptions(), zerolog.Nop())
 
-	hb, sh := makeSignedHeaderBytes(t, gen.ChainID, 5, addr, pub, signer, nil)
+	hb, sh := makeSignedHeaderBytes(t, gen.ChainID, 5, addr, pub, signer, nil, nil)
 	gotH := r.tryDecodeHeader(hb, 123)
 	require.NotNil(t, gotH)
 	assert.Equal(t, sh.Hash().String(), gotH.Hash().String())
@@ -225,8 +222,8 @@ func TestDARetriever_RetrieveFromDA_TwoNamespaces_Success(t *testing.T) {
 	gen := genesis.Genesis{ChainID: "tchain", InitialHeight: 1, StartTime: time.Now().Add(-time.Second), ProposerAddress: addr}
 
 	// Prepare header/data blobs
-	hdrBin, _ := makeSignedHeaderBytes(t, gen.ChainID, 9, addr, pub, signer, nil)
-	dataBin, _ := makeSignedDataBytes(t, gen.ChainID, 9, addr, pub, signer, 1)
+	dataBin, data := makeSignedDataBytes(t, gen.ChainID, 9, addr, pub, signer, 1)
+	hdrBin, _ := makeSignedHeaderBytes(t, gen.ChainID, 9, addr, pub, signer, nil, data.Hash())
 
 	cfg := config.DefaultConfig()
 	cfg.DA.Namespace = "nsHdr"
@@ -254,4 +251,119 @@ func TestDARetriever_RetrieveFromDA_TwoNamespaces_Success(t *testing.T) {
 	require.Len(t, events, 1)
 	assert.Equal(t, uint64(9), events[0].Header.Height())
 	assert.Equal(t, uint64(9), events[0].Data.Height())
+}
+
+func TestDARetriever_ProcessBlobs_CrossDAHeightMatching(t *testing.T) {
+	ds := dssync.MutexWrap(datastore.NewMapDatastore())
+	st := store.New(ds)
+	cm, err := cache.NewManager(config.DefaultConfig(), st, zerolog.Nop())
+	require.NoError(t, err)
+
+	addr, pub, signer := buildSyncTestSigner(t)
+	gen := genesis.Genesis{ChainID: "tchain", InitialHeight: 1, StartTime: time.Now().Add(-time.Second), ProposerAddress: addr}
+
+	r := NewDARetriever(nil, cm, config.DefaultConfig(), gen, common.DefaultBlockOptions(), zerolog.Nop())
+
+	// Create header and data for the same block height but from different DA heights
+	dataBin, data := makeSignedDataBytes(t, gen.ChainID, 5, addr, pub, signer, 2)
+	hdrBin, _ := makeSignedHeaderBytes(t, gen.ChainID, 5, addr, pub, signer, nil, data.Hash())
+
+	// Process header from DA height 100 first
+	events1 := r.processBlobs(context.Background(), [][]byte{hdrBin}, 100)
+	require.Len(t, events1, 0, "should not create event yet - data is missing")
+
+	// Verify header is stored in pending headers
+	require.Contains(t, r.pendingHeaders, uint64(5), "header should be stored as pending")
+	require.Contains(t, r.headerDAHeights, uint64(5), "header DA height should be tracked")
+	assert.Equal(t, uint64(100), r.headerDAHeights[5])
+
+	// Process data from DA height 102
+	events2 := r.processBlobs(context.Background(), [][]byte{dataBin}, 102)
+	require.Len(t, events2, 1, "should create event when matching data arrives")
+
+	event := events2[0]
+	assert.Equal(t, uint64(5), event.Header.Height())
+	assert.Equal(t, uint64(5), event.Data.Height())
+	assert.Equal(t, uint64(102), event.DaHeight, "DaHeight should be the height where data was processed")
+	assert.Equal(t, uint64(100), event.HeaderDaIncludedHeight, "HeaderDaIncludedHeight should be where header was included")
+
+	// Verify pending maps are cleared
+	require.NotContains(t, r.pendingHeaders, uint64(5), "header should be removed from pending")
+	require.NotContains(t, r.pendingData, uint64(5), "data should be removed from pending")
+	require.NotContains(t, r.headerDAHeights, uint64(5), "header DA height should be removed")
+}
+
+func TestDARetriever_ProcessBlobs_MultipleHeadersCrossDAHeightMatching(t *testing.T) {
+	ds := dssync.MutexWrap(datastore.NewMapDatastore())
+	st := store.New(ds)
+	cm, err := cache.NewManager(config.DefaultConfig(), st, zerolog.Nop())
+	require.NoError(t, err)
+
+	addr, pub, signer := buildSyncTestSigner(t)
+	gen := genesis.Genesis{ChainID: "tchain", InitialHeight: 1, StartTime: time.Now().Add(-time.Second), ProposerAddress: addr}
+
+	r := NewDARetriever(nil, cm, config.DefaultConfig(), gen, common.DefaultBlockOptions(), zerolog.Nop())
+
+	// Create multiple headers and data for different block heights
+	data3Bin, data3 := makeSignedDataBytes(t, gen.ChainID, 3, addr, pub, signer, 1)
+	data4Bin, data4 := makeSignedDataBytes(t, gen.ChainID, 4, addr, pub, signer, 2)
+	data5Bin, data5 := makeSignedDataBytes(t, gen.ChainID, 5, addr, pub, signer, 1)
+
+	hdr3Bin, _ := makeSignedHeaderBytes(t, gen.ChainID, 3, addr, pub, signer, nil, data3.Hash())
+	hdr4Bin, _ := makeSignedHeaderBytes(t, gen.ChainID, 4, addr, pub, signer, nil, data4.Hash())
+	hdr5Bin, _ := makeSignedHeaderBytes(t, gen.ChainID, 5, addr, pub, signer, nil, data5.Hash())
+
+	// Process multiple headers from DA height 200 - should be stored as pending
+	events1 := r.processBlobs(context.Background(), [][]byte{hdr3Bin, hdr4Bin, hdr5Bin}, 200)
+	require.Len(t, events1, 0, "should not create events yet - all data is missing")
+
+	// Verify all headers are stored in pending
+	require.Contains(t, r.pendingHeaders, uint64(3), "header 3 should be pending")
+	require.Contains(t, r.pendingHeaders, uint64(4), "header 4 should be pending")
+	require.Contains(t, r.pendingHeaders, uint64(5), "header 5 should be pending")
+	assert.Equal(t, uint64(200), r.headerDAHeights[3])
+	assert.Equal(t, uint64(200), r.headerDAHeights[4])
+	assert.Equal(t, uint64(200), r.headerDAHeights[5])
+
+	// Process some data from DA height 203 - should create partial events
+	events2 := r.processBlobs(context.Background(), [][]byte{data3Bin, data5Bin}, 203)
+	require.Len(t, events2, 2, "should create events for heights 3 and 5")
+
+	// Sort events by height for consistent testing
+	if events2[0].Header.Height() > events2[1].Header.Height() {
+		events2[0], events2[1] = events2[1], events2[0]
+	}
+
+	// Verify event for height 3
+	assert.Equal(t, uint64(3), events2[0].Header.Height())
+	assert.Equal(t, uint64(3), events2[0].Data.Height())
+	assert.Equal(t, uint64(203), events2[0].DaHeight)
+	assert.Equal(t, uint64(200), events2[0].HeaderDaIncludedHeight)
+
+	// Verify event for height 5
+	assert.Equal(t, uint64(5), events2[1].Header.Height())
+	assert.Equal(t, uint64(5), events2[1].Data.Height())
+	assert.Equal(t, uint64(203), events2[1].DaHeight)
+	assert.Equal(t, uint64(200), events2[1].HeaderDaIncludedHeight)
+
+	// Verify header 4 is still pending (no matching data yet)
+	require.Contains(t, r.pendingHeaders, uint64(4), "header 4 should still be pending")
+	require.NotContains(t, r.pendingHeaders, uint64(3), "header 3 should be removed from pending")
+	require.NotContains(t, r.pendingHeaders, uint64(5), "header 5 should be removed from pending")
+
+	// Process remaining data from DA height 205
+	events3 := r.processBlobs(context.Background(), [][]byte{data4Bin}, 205)
+	require.Len(t, events3, 1, "should create event for height 4")
+
+	// Verify final event for height 4
+	assert.Equal(t, uint64(4), events3[0].Header.Height())
+	assert.Equal(t, uint64(4), events3[0].Data.Height())
+	assert.Equal(t, uint64(205), events3[0].DaHeight)
+	assert.Equal(t, uint64(200), events3[0].HeaderDaIncludedHeight)
+
+	// Verify all pending maps are now clear
+	require.NotContains(t, r.pendingHeaders, uint64(4), "header 4 should be removed from pending")
+	require.Len(t, r.pendingHeaders, 0, "all headers should be processed")
+	require.Len(t, r.pendingData, 0, "all data should be processed")
+	require.Len(t, r.headerDAHeights, 0, "all header DA heights should be cleared")
 }

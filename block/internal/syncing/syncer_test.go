@@ -144,8 +144,9 @@ func TestSyncer_processPendingEvents(t *testing.T) {
 		t.Fatal("expected a forwarded pending event")
 	}
 
-	remaining := cm.GetPendingEvents()
-	assert.Len(t, remaining, 0)
+	// Verify the event was removed by trying to get it again
+	remaining := cm.GetNextPendingEvent(2)
+	assert.Nil(t, remaining)
 }
 
 func TestSyncLoopPersistState(t *testing.T) {
@@ -188,8 +189,7 @@ func TestSyncLoopPersistState(t *testing.T) {
 	// with n da blobs fetched
 	for i := range myFutureDAHeight - myDAHeightOffset {
 		chainHeight, daHeight := i, i+myDAHeightOffset
-		_, sigHeader := makeSignedHeaderBytes(t, gen.ChainID, chainHeight, addr, pub, signer, nil)
-		//_, sigData := makeSignedDataBytes(t, gen.ChainID, chainHeight, addr, pub, signer, 1)
+		_, sigHeader := makeSignedHeaderBytes(t, gen.ChainID, chainHeight, addr, pub, signer, nil, nil)
 		emptyData := types.Data{
 			Metadata: &types.Metadata{
 				ChainID: sigHeader.ChainID(),
@@ -231,8 +231,11 @@ func TestSyncLoopPersistState(t *testing.T) {
 	daRtrMock.AssertExpectations(t)
 	p2pHndlMock.AssertExpectations(t)
 
-	// and all processed
-	assert.Len(t, syncerInst1.cache.GetPendingEvents(), 0)
+	// and all processed - verify no events remain at heights we tested
+	event1 := syncerInst1.cache.GetNextPendingEvent(1)
+	assert.Nil(t, event1)
+	event2 := syncerInst1.cache.GetNextPendingEvent(2)
+	assert.Nil(t, event2)
 	assert.Len(t, syncerInst1.heightInCh, 0)
 
 	// and when new instance is up on restart

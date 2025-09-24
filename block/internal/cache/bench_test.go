@@ -2,6 +2,7 @@ package cache
 
 import (
 	"context"
+	"math/rand/v2"
 	"testing"
 
 	"github.com/rs/zerolog"
@@ -63,7 +64,7 @@ func BenchmarkManager_GetPendingHeaders(b *testing.B) {
 			ctx := context.Background()
 			b.ReportAllocs()
 			b.ResetTimer()
-			for i := 0; i < b.N; i++ {
+			for b.Loop() {
 				hs, err := m.GetPendingHeaders(ctx)
 				if err != nil {
 					b.Fatal(err)
@@ -84,7 +85,7 @@ func BenchmarkManager_GetPendingData(b *testing.B) {
 			ctx := context.Background()
 			b.ReportAllocs()
 			b.ResetTimer()
-			for i := 0; i < b.N; i++ {
+			for b.Loop() {
 				ds, err := m.GetPendingData(ctx)
 				if err != nil {
 					b.Fatal(err)
@@ -106,11 +107,10 @@ func BenchmarkManager_PendingEventsSnapshot(b *testing.B) {
 	}
 	b.ReportAllocs()
 	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		ev := m.GetPendingEvents()
-		if len(ev) == 0 {
-			b.Fatal("unexpected empty events")
-		}
+	for b.Loop() {
+		// Test getting next pending event at various heights
+		height := rand.N(uint64(50_000)) + 1 //nolint:gosec // this is a benchmark test
+		_ = m.GetNextPendingEvent(height)
 	}
 }
 

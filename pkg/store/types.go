@@ -47,7 +47,8 @@ type Store interface {
 	GetMetadata(ctx context.Context, key string) ([]byte, error)
 
 	// Rollback deletes x height from the ev-node store.
-	Rollback(ctx context.Context, height uint64) error
+	// Aggregator is used to determine if the rollback is performed on the aggregator node.
+	Rollback(ctx context.Context, height uint64, aggregator bool) error
 
 	// Close safely closes underlying data storage, to ensure that data is actually saved.
 	Close() error
