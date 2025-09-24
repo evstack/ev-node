@@ -188,8 +188,7 @@ func TestSyncLoopPersistState(t *testing.T) {
 	// with n da blobs fetched
 	for i := range myFutureDAHeight - myDAHeightOffset {
 		chainHeight, daHeight := i, i+myDAHeightOffset
-		_, sigHeader := makeSignedHeaderBytes(t, gen.ChainID, chainHeight, addr, pub, signer, nil)
-		//_, sigData := makeSignedDataBytes(t, gen.ChainID, chainHeight, addr, pub, signer, 1)
+		_, sigHeader := makeSignedHeaderBytes(t, gen.ChainID, chainHeight, addr, pub, signer, nil, nil)
 		emptyData := types.Data{
 			Metadata: &types.Metadata{
 				ChainID: sigHeader.ChainID(),
