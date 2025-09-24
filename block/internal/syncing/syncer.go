@@ -196,10 +196,7 @@ func (s *Syncer) initializeState() error {
 	s.SetLastState(state)
 
 	// Set DA height
-	daHeight := state.DAHeight
-	if daHeight < s.config.DA.StartHeight {
-		daHeight = s.config.DA.StartHeight
-	}
+	daHeight := max(state.DAHeight, s.config.DA.StartHeight)
 	s.SetDAHeight(daHeight)
 
 	s.logger.Info().
@@ -342,10 +339,7 @@ func (s *Syncer) syncLoop() {
 			}
 		default:
 			// Prevent busy-waiting when no events are available.
-			waitTime := 10 * time.Millisecond
-			if waitTime > s.config.Node.BlockTime.Duration {
-				waitTime = s.config.Node.BlockTime.Duration
-			}
+			waitTime := min(10*time.Millisecond, s.config.Node.BlockTime.Duration)
 
 			time.Sleep(waitTime)
 		}
