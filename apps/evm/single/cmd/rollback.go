@@ -17,7 +17,11 @@ import (
 
 // NewRollbackCmd creates a command to rollback ev-node state by one height.
 func NewRollbackCmd() *cobra.Command {
-	var height uint64
+	var (
+		height        uint64
+		skipP2PStores bool
+		syncNode      bool
+	)
 
 	cmd := &cobra.Command{
 		Use:   "rollback",
@@ -61,8 +65,13 @@ func NewRollbackCmd() *cobra.Command {
 			}
 
 			// rollback ev-node main state
-			if err := evolveStore.Rollback(goCtx, height); err != nil {
+			if err := evolveStore.Rollback(goCtx, height, !syncNode); err != nil {
 				return fmt.Errorf("failed to rollback ev-node state: %w", err)
+			}
+
+			if skipP2PStores {
+				fmt.Printf("Rolled back ev-node state to height %d\n", height)
+				return nil
 			}
 
 			// rollback ev-node goheader state
@@ -108,5 +117,8 @@ func NewRollbackCmd() *cobra.Command {
 	}
 
 	cmd.Flags().Uint64Var(&height, "height", 0, "rollback to a specific height")
+	cmd.Flags().BoolVar(&syncNode, "sync-node", false, "sync node (and not aggregator)")
+	cmd.Flags().BoolVar(&skipP2PStores, "skip-p2p-stores", false, "skip rollback p2p2 stores (goheaderstore)")
+
 	return cmd
 }

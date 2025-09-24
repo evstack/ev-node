@@ -693,16 +693,16 @@ func (_c *MockStore_Height_Call) RunAndReturn(run func(ctx context.Context) (uin
 }
 
 // Rollback provides a mock function for the type MockStore
-func (_mock *MockStore) Rollback(ctx context.Context, height uint64) error {
-	ret := _mock.Called(ctx, height)
+func (_mock *MockStore) Rollback(ctx context.Context, height uint64, aggregator bool) error {
+	ret := _mock.Called(ctx, height, aggregator)
 
 	if len(ret) == 0 {
 		panic("no return value specified for Rollback")
 	}
 
 	var r0 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, uint64) error); ok {
-		r0 = returnFunc(ctx, height)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, uint64, bool) error); ok {
+		r0 = returnFunc(ctx, height, aggregator)
 	} else {
 		r0 = ret.Error(0)
 	}
@@ -717,11 +717,12 @@ type MockStore_Rollback_Call struct {
 // Rollback is a helper method to define mock.On call
 //   - ctx context.Context
 //   - height uint64
-func (_e *MockStore_Expecter) Rollback(ctx interface{}, height interface{}) *MockStore_Rollback_Call {
-	return &MockStore_Rollback_Call{Call: _e.mock.On("Rollback", ctx, height)}
+//   - aggregator bool
+func (_e *MockStore_Expecter) Rollback(ctx interface{}, height interface{}, aggregator interface{}) *MockStore_Rollback_Call {
+	return &MockStore_Rollback_Call{Call: _e.mock.On("Rollback", ctx, height, aggregator)}
 }
 
-func (_c *MockStore_Rollback_Call) Run(run func(ctx context.Context, height uint64)) *MockStore_Rollback_Call {
+func (_c *MockStore_Rollback_Call) Run(run func(ctx context.Context, height uint64, aggregator bool)) *MockStore_Rollback_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
@@ -731,9 +732,14 @@ func (_c *MockStore_Rollback_Call) Run(run func(ctx context.Context, height uint
 		if args[1] != nil {
 			arg1 = args[1].(uint64)
 		}
+		var arg2 bool
+		if args[2] != nil {
+			arg2 = args[2].(bool)
+		}
 		run(
 			arg0,
 			arg1,
+			arg2,
 		)
 	})
 	return _c
@@ -744,7 +750,7 @@ func (_c *MockStore_Rollback_Call) Return(err error) *MockStore_Rollback_Call {
 	return _c
 }
 
-func (_c *MockStore_Rollback_Call) RunAndReturn(run func(ctx context.Context, height uint64) error) *MockStore_Rollback_Call {
+func (_c *MockStore_Rollback_Call) RunAndReturn(run func(ctx context.Context, height uint64, aggregator bool) error) *MockStore_Rollback_Call {
 	_c.Call.Return(run)
 	return _c
 }

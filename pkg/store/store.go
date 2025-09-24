@@ -262,9 +262,10 @@ func (s *DefaultStore) GetMetadata(ctx context.Context, key string) ([]byte, err
 }
 
 // Rollback rolls back block data until the given height from the store.
+// When aggregator is true, it will check the latest data included height and prevent rollback further than that.
 // NOTE: this function does not rollback metadata. Those should be handled separately if required.
 // Other stores are not rolled back either.
-func (s *DefaultStore) Rollback(ctx context.Context, height uint64) error {
+func (s *DefaultStore) Rollback(ctx context.Context, height uint64, aggregator bool) error {
 	batch, err := s.db.Batch(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to create a new batch: %w", err)
@@ -285,7 +286,16 @@ func (s *DefaultStore) Rollback(ctx context.Context, height uint64) error {
 	} else if len(daIncludedHeightBz) == 8 { // valid height stored, so able to check
 		daIncludedHeight := binary.LittleEndian.Uint64(daIncludedHeightBz)
 		if daIncludedHeight > height {
-			return fmt.Errorf("DA included height is greater than the rollback height: cannot rollback a finalized height")
+			// an aggregator must not rollback a finalized height, DA is the source of truth
+			if aggregator {
+				return fmt.Errorf("DA included height is greater than the rollback height: cannot rollback a finalized height")
+			} else { // in case of syncing issues, rollback the included height is OK.
+				bz := make([]byte, 8)
+				binary.LittleEndian.PutUint64(bz, height)
+				if err := s.SetMetadata(ctx, DAIncludedHeightKey, bz); err != nil {
+					return fmt.Errorf("failed to update DA included height: %w", err)
+				}
+			}
 		}
 	}
 

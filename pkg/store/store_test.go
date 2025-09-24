@@ -671,7 +671,7 @@ func TestRollback(t *testing.T) {
 
 	// Execute rollback to height 7
 	rollbackToHeight := uint64(7)
-	err = store.Rollback(ctx, rollbackToHeight)
+	err = store.Rollback(ctx, rollbackToHeight, true)
 	require.NoError(err)
 
 	// Verify new height
@@ -718,7 +718,7 @@ func TestRollbackToSameHeight(t *testing.T) {
 	require.NoError(err)
 
 	// Execute rollback to same height
-	err = store.Rollback(ctx, height)
+	err = store.Rollback(ctx, height, true)
 	require.NoError(err)
 
 	// Verify height unchanged
@@ -753,7 +753,7 @@ func TestRollbackToHigherHeight(t *testing.T) {
 
 	// Execute rollback to higher height
 	rollbackToHeight := uint64(10)
-	err = store.Rollback(ctx, rollbackToHeight)
+	err = store.Rollback(ctx, rollbackToHeight, true)
 	require.NoError(err)
 
 	// Verify height unchanged
@@ -778,7 +778,7 @@ func TestRollbackBatchError(t *testing.T) {
 	}
 	store := New(mock)
 
-	err := store.Rollback(ctx, uint64(5))
+	err := store.Rollback(ctx, uint64(5), true)
 	require.Error(err)
 	require.Contains(err.Error(), "failed to create a new batch")
 }
@@ -795,7 +795,7 @@ func TestRollbackHeightError(t *testing.T) {
 	}
 	store := New(mock)
 
-	err := store.Rollback(ctx, uint64(5))
+	err := store.Rollback(ctx, uint64(5), true)
 	require.Error(err)
 	require.Contains(err.Error(), "failed to get current height")
 }
@@ -806,7 +806,7 @@ func TestRollbackDAIncludedHeightValidation(t *testing.T) {
 	require := require.New(t)
 
 	// Test case 1: Rollback to height below DA included height should fail
-	t.Run("rollback below DA included height fails", func(t *testing.T) {
+	t.Run("rollback below DA included height fails as aggregator", func(t *testing.T) {
 		ctx := context.Background()
 		store := New(mustNewInMem())
 
@@ -844,9 +844,57 @@ func TestRollbackDAIncludedHeightValidation(t *testing.T) {
 		require.NoError(err)
 
 		// Rollback to height below DA included height should fail
-		err = store.Rollback(ctx, uint64(6))
+		err = store.Rollback(ctx, uint64(6), true)
 		require.Error(err)
 		require.Contains(err.Error(), "DA included height is greater than the rollback height: cannot rollback a finalized height")
+	})
+
+	// Test case 1: Rollback to height below DA included height should fail
+	t.Run("rollback below DA included succeed as sync node", func(t *testing.T) {
+		ctx := context.Background()
+		store := New(mustNewInMem())
+
+		// Setup: create and save multiple blocks
+		chainID := "test-rollback-da-sync-success"
+		maxHeight := uint64(10)
+
+		for h := uint64(1); h <= maxHeight; h++ {
+			header, data := types.GetRandomBlock(h, 2, chainID)
+			sig := &header.Signature
+
+			err := store.SaveBlockData(ctx, header, data, sig)
+			require.NoError(err)
+
+			err = store.SetHeight(ctx, h)
+			require.NoError(err)
+
+			// Create and update state for this height
+			state := types.State{
+				ChainID:         chainID,
+				InitialHeight:   1,
+				LastBlockHeight: h,
+				LastBlockTime:   header.Time(),
+				AppHash:         header.AppHash,
+			}
+			err = store.UpdateState(ctx, state)
+			require.NoError(err)
+		}
+
+		// Set DA included height to 8
+		daIncludedHeight := uint64(8)
+		heightBytes := make([]byte, 8)
+		binary.LittleEndian.PutUint64(heightBytes, daIncludedHeight)
+		err := store.SetMetadata(ctx, DAIncludedHeightKey, heightBytes)
+		require.NoError(err)
+
+		// Rollback to height below DA included height should fail
+		err = store.Rollback(ctx, uint64(6), false)
+		require.NoError(err)
+
+		// Verify height was rolled back to 8
+		currentHeight, err := store.Height(ctx)
+		require.NoError(err)
+		require.Equal(uint64(6), currentHeight)
 	})
 
 	// Test case 2: Rollback to height equal to DA included height should succeed
@@ -888,7 +936,7 @@ func TestRollbackDAIncludedHeightValidation(t *testing.T) {
 		require.NoError(err)
 
 		// Rollback to height equal to DA included height should succeed
-		err = store.Rollback(ctx, uint64(8))
+		err = store.Rollback(ctx, uint64(8), true)
 		require.NoError(err)
 
 		// Verify height was rolled back to 8
@@ -936,7 +984,7 @@ func TestRollbackDAIncludedHeightValidation(t *testing.T) {
 		require.NoError(err)
 
 		// Rollback to height above DA included height should succeed
-		err = store.Rollback(ctx, uint64(9))
+		err = store.Rollback(ctx, uint64(9), true)
 		require.NoError(err)
 
 		// Verify height was rolled back to 9
@@ -982,7 +1030,7 @@ func TestRollbackDAIncludedHeightNotSet(t *testing.T) {
 
 	// Don't set DA included height - it should not exist
 	// Rollback should succeed since no DA included height is set
-	err := store.Rollback(ctx, uint64(3))
+	err := store.Rollback(ctx, uint64(3), true)
 	require.NoError(err)
 
 	// Verify height was rolled back to 3
@@ -1031,7 +1079,7 @@ func TestRollbackDAIncludedHeightInvalidLength(t *testing.T) {
 	require.NoError(err)
 
 	// Rollback should succeed since invalid length data is ignored
-	err = store.Rollback(ctx, uint64(3))
+	err = store.Rollback(ctx, uint64(3), true)
 	require.NoError(err)
 
 	// Verify height was rolled back to 3
@@ -1074,7 +1122,7 @@ func TestRollbackDAIncludedHeightGetMetadataError(t *testing.T) {
 	mock.getMetadataError = errors.New("metadata retrieval failed")
 
 	// Rollback should fail due to GetMetadata error
-	err = store.Rollback(ctx, uint64(1))
+	err = store.Rollback(ctx, uint64(1), true)
 	require.Error(err)
 	require.Contains(err.Error(), "failed to get DA included height")
 	require.Contains(err.Error(), "metadata retrieval failed")
