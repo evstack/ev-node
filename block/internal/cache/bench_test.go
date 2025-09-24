@@ -63,7 +63,7 @@ func BenchmarkManager_GetPendingHeaders(b *testing.B) {
 			ctx := context.Background()
 			b.ReportAllocs()
 			b.ResetTimer()
-			for i := 0; i < b.N; i++ {
+			for b.Loop() {
 				hs, err := m.GetPendingHeaders(ctx)
 				if err != nil {
 					b.Fatal(err)
@@ -84,7 +84,7 @@ func BenchmarkManager_GetPendingData(b *testing.B) {
 			ctx := context.Background()
 			b.ReportAllocs()
 			b.ResetTimer()
-			for i := 0; i < b.N; i++ {
+			for b.Loop() {
 				ds, err := m.GetPendingData(ctx)
 				if err != nil {
 					b.Fatal(err)
@@ -106,7 +106,7 @@ func BenchmarkManager_PendingEventsSnapshot(b *testing.B) {
 	}
 	b.ReportAllocs()
 	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		ev := m.GetPendingEvents()
 		if len(ev) == 0 {
 			b.Fatal("unexpected empty events")
