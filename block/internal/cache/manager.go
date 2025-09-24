@@ -113,7 +113,7 @@ func NewManager(cfg config.Config, store store.Store, logger zerolog.Logger) (Ma
 	if cfg.ClearCache {
 		// Clear the cache from disk
 		if err := impl.ClearFromDisk(); err != nil {
-			logger.Warn().Err(err).Msg("failed to load cache from disk, starting with empty cache")
+			logger.Warn().Err(err).Msg("failed to clear cache from disk, starting with empty cache")
 		}
 	} else {
 		// Load existing cache from disk
@@ -267,19 +267,9 @@ func (m *implementation) LoadFromDisk() error {
 }
 
 func (m *implementation) ClearFromDisk() error {
-	cfgDir := filepath.Join(m.config.RootDir, "data")
-
-	if err := os.RemoveAll(filepath.Join(cfgDir, headerCacheDir)); err != nil {
-		return fmt.Errorf("failed to clear header cache from disk: %w", err)
+	cachePath := filepath.Join(m.config.RootDir, "data", cacheDir)
+	if err := os.RemoveAll(cachePath); err != nil {
+		return fmt.Errorf("failed to clear cache from disk: %w", err)
 	}
-
-	if err := os.RemoveAll(filepath.Join(cfgDir, dataCacheDir)); err != nil {
-		return fmt.Errorf("failed to clear data cache from disk: %w", err)
-	}
-
-	if err := os.RemoveAll(filepath.Join(cfgDir, pendingEventsCacheDir)); err != nil {
-		return fmt.Errorf("failed to clear pending events cache from disk: %w", err)
-	}
-
 	return nil
 }
