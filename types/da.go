@@ -105,7 +105,7 @@ func SubmitWithHelpers(
 			IDs:            ids,
 			SubmittedCount: uint64(len(ids)),
 			Height:         height,
-			BlobSize:       0,
+			BlobSize:       blobSize,
 			Timestamp:      time.Now(),
 		},
 	}
