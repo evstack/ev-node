@@ -1,7 +1,7 @@
 //go:build evm
 // +build evm
 
-package evm_test
+package test
 
 import (
 	"context"
@@ -100,7 +100,7 @@ func TestEngineExecution(t *testing.T) {
 			ethClient := createEthClient(t, ethURL)
 			defer ethClient.Close()
 			for i := range txs {
-				txs[i] = GetRandomTransaction(t, TEST_PRIVATE_KEY, TEST_TO_ADDRESS, CHAIN_ID, 22000, &lastNonce)
+				txs[i] = evm.GetRandomTransaction(t, TEST_PRIVATE_KEY, TEST_TO_ADDRESS, CHAIN_ID, 22000, &lastNonce)
 				require.NoError(tt, ethClient.SendTransaction(context.Background(), txs[i]))
 			}
 

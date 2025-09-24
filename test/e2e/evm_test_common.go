@@ -35,6 +35,7 @@ import (
 
 	"github.com/celestiaorg/tastora/framework/docker/evstack/reth"
 	"github.com/evstack/ev-node/execution/evm"
+	evmtest "github.com/evstack/ev-node/execution/evm/test"
 )
 
 // evmSingleBinaryPath is the path to the evm-single binary used in tests
@@ -442,7 +443,7 @@ func setupCommonEVMTest(t *testing.T, sut *SystemUnderTest, needsFullNode bool, 
 	sut.ExecCmd(localDABinary, "-port", dynEndpoints.DAPort)
 	t.Logf("Started local DA on port %s", dynEndpoints.DAPort)
 
-	rethNode := evm.SetupTestRethNode(t)
+	rethNode := evmtest.SetupTestRethNode(t)
 
 	networkInfo, err := rethNode.GetNetworkInfo(context.Background())
 	require.NoError(t, err, "failed to get reth network info")
@@ -452,7 +453,7 @@ func setupCommonEVMTest(t *testing.T, sut *SystemUnderTest, needsFullNode bool, 
 	var fnJWT string
 	var rethFn *reth.Node
 	if needsFullNode {
-		rethFn = evm.SetupTestRethNode(t)
+		rethFn = evmtest.SetupTestRethNode(t)
 		fnJWT = rethFn.JWTSecretHex()
 	}
 
