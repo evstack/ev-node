@@ -128,7 +128,7 @@ func NewRollbackCmd() *cobra.Command {
 	}
 
 	cmd.Flags().Uint64Var(&height, "height", 0, "rollback to a specific height")
-	cmd.Flags().BoolVar(&syncNode, "sync-node", false, "sync node (and not aggregator)")
+	cmd.Flags().BoolVar(&syncNode, "sync-node", false, "sync node (no aggregator)")
 	cmd.Flags().BoolVar(&skipP2PStores, "skip-p2p-stores", false, "skip rollback p2p2 stores (goheaderstore)")
 	return cmd
 }
