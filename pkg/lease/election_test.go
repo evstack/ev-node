@@ -196,29 +196,31 @@ func TestSwitchAsLeader(t *testing.T) {
 				followerExecuted := make(chan struct{}, 1)
 				leaderExecuted := make(chan struct{}, 1)
 
-				followerFunc := func(ctx context.Context) {
+				followerFunc := func(ctx context.Context) error {
 					select {
 					case followerExecuted <- struct{}{}:
 					default:
 					}
 					// Keep running until cancelled
 					<-ctx.Done()
+					return nil
 				}
 
-				leaderFunc := func(leaderCtx context.Context) {
+				leaderFunc := func(leaderCtx context.Context) error {
 					select {
 					case leaderExecuted <- struct{}{}:
 					default:
 					}
 					<-leaderCtx.Done()
+					return nil
 				}
 
-				// Start SwitchAsLeader BEFORE waiting for states - it needs to catch the state changes
+				// Start RunWithElection BEFORE waiting for states - it needs to catch the state changes
 				switchCtx, switchCancel := context.WithTimeout(ctx, 2*time.Second)
 				defer switchCancel()
 
 				go func() {
-					_ = le.SwitchAsLeader(switchCtx, leaderFunc, followerFunc)
+					_ = le.RunWithElection(switchCtx, leaderFunc, followerFunc)
 				}()
 
 				// Verify follower function was called
@@ -255,29 +257,31 @@ func TestSwitchAsLeader(t *testing.T) {
 				leaderExecuted := make(chan struct{}, 1)
 				followerExecuted := make(chan struct{}, 1)
 
-				followerFunc := func(ctx context.Context) {
+				followerFunc := func(ctx context.Context) error {
 					select {
 					case followerExecuted <- struct{}{}:
 					default:
 					}
 					<-ctx.Done()
+					return nil
 				}
 
-				leaderFunc := func(leaderCtx context.Context) {
+				leaderFunc := func(leaderCtx context.Context) error {
 					select {
 					case leaderExecuted <- struct{}{}:
 					default:
 					}
 					// Keep running until context is cancelled
 					<-leaderCtx.Done()
+					return nil
 				}
 
-				// Start SwitchAsLeader BEFORE waiting for states - it needs to catch the state changes
+				// Start RunWithElection BEFORE waiting for states - it needs to catch the state changes
 				switchCtx, switchCancel := context.WithTimeout(ctx, 3*time.Second)
 				defer switchCancel()
 
 				go func() {
-					_ = le.SwitchAsLeader(switchCtx, leaderFunc, followerFunc)
+					_ = le.RunWithElection(switchCtx, leaderFunc, followerFunc)
 				}()
 
 				// Verify leader function was called
@@ -312,23 +316,25 @@ func TestSwitchAsLeader(t *testing.T) {
 				defer le.Stop() // nolint: errcheck
 
 				leaderStarted := make(chan struct{}, 1)
-				leaderFunc := func(leaderCtx context.Context) {
+				leaderFunc := func(leaderCtx context.Context) error {
 					select {
 					case leaderStarted <- struct{}{}:
 					default:
 					}
 					// Keep running until context is cancelled
 					<-leaderCtx.Done()
+					return nil
 				}
 
-				followerFunc := func(ctx context.Context) {
+				followerFunc := func(ctx context.Context) error {
 					<-ctx.Done()
+					return nil
 				}
 
-				// Start SwitchAsLeader BEFORE waiting for states
+				// Start RunWithElection BEFORE waiting for states
 				switchDone := make(chan error, 1)
 				go func() {
-					switchDone <- le.SwitchAsLeader(ctx, leaderFunc, followerFunc)
+					switchDone <- le.RunWithElection(ctx, leaderFunc, followerFunc)
 				}()
 
 				// Wait for leader function to start (meaning we became leader)
@@ -373,19 +379,21 @@ func TestSwitchAsLeader(t *testing.T) {
 				require.NoError(t, err)
 				defer le.Stop() // nolint: errcheck
 
-				leaderFunc := func(leaderCtx context.Context) {
+				leaderFunc := func(leaderCtx context.Context) error {
 					<-leaderCtx.Done()
+					return nil
 				}
 
-				followerFunc := func(ctx context.Context) {
+				followerFunc := func(ctx context.Context) error {
 					<-ctx.Done()
+					return nil
 				}
 
 				// Cancel context quickly
 				switchCtx, switchCancel := context.WithTimeout(ctx, 50*time.Millisecond)
 				defer switchCancel()
 
-				err = le.SwitchAsLeader(switchCtx, leaderFunc, followerFunc)
+				err = le.RunWithElection(switchCtx, leaderFunc, followerFunc)
 				assert.Error(t, err)
 				assert.Equal(t, context.DeadlineExceeded, err)
 			},
@@ -405,21 +413,23 @@ func TestSwitchAsLeader(t *testing.T) {
 				defer le.Stop() // nolint: errcheck
 
 				leaderStarted := make(chan struct{}, 1)
-				leaderFunc := func(leaderCtx context.Context) {
+				leaderFunc := func(leaderCtx context.Context) error {
 					select {
 					case leaderStarted <- struct{}{}:
 					default:
 					}
+					return nil
 				}
 
-				followerFunc := func(ctx context.Context) {
+				followerFunc := func(ctx context.Context) error {
 					<-ctx.Done()
+					return nil
 				}
 
-				// Start SwitchAsLeader BEFORE waiting for states
+				// Start RunWithElection BEFORE waiting for states
 				switchDone := make(chan error, 1)
 				go func() {
-					switchDone <- le.SwitchAsLeader(ctx, leaderFunc, followerFunc)
+					switchDone <- le.RunWithElection(ctx, leaderFunc, followerFunc)
 				}()
 
 				// Wait for leader function to start

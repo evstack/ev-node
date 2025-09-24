@@ -8,15 +8,21 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/ethclient"
+	coreda "github.com/evstack/ev-node/core/da"
+	"github.com/rs/zerolog"
+	"github.com/stretchr/testify/assert"
 
+	"github.com/evstack/ev-node/da/jsonrpc"
 	"github.com/evstack/ev-node/pkg/config"
 	"github.com/evstack/ev-node/pkg/lease"
+
 	"github.com/stretchr/testify/require"
 
 	"github.com/evstack/ev-node/execution/evm"
@@ -59,7 +65,7 @@ func TestLeaseFailoverE2E(t *testing.T) {
 		LeaseName:   leaseName,
 		BackendAddr: baseURL,
 	}
-	leaderProcess := setupLeaderSequencerNode(t, sut, node1Home, jwtSecret, genesisHash, nil, leaderElectionConfig)
+	leaderProcess := setupLeaderSequencerNode(t, sut, node1Home, jwtSecret, genesisHash, nil, leaderElectionConfig, true)
 	t.Log("Sequencer1 node is up")
 
 	// Get P2P address and setup full node
@@ -118,10 +124,11 @@ func TestLeaseFailoverE2E(t *testing.T) {
 	t.Log("+++ killing Current leader: " + firstLeader)
 	_ = leaderProcess.Kill()
 
+	lastDABlockOldLeader := queryLastDAHeight(t, 1, jwtSecret)
+	t.Log("+++ Last DA block of old leader: ", lastDABlockOldLeader)
 	// Expect a different node to take leadership
 	require.Eventually(t, func() bool {
 		ldr, err := httpLease.GetHolder(ctx)
-		t.Logf("+++ leader: %s\n", ldr)
 		if err != nil {
 			return false
 		}
@@ -129,24 +136,39 @@ func TestLeaseFailoverE2E(t *testing.T) {
 	}, 10*time.Second, 100*time.Millisecond, "no failover occurred")
 
 	// After failover, submit a tx to the remaining instance and ensure inclusion
-	txHash2, blk2 := submitTxToURL(t, FullNodeEthURL)
-	_ = txHash2
+	_, blk2 := submitTxToURL(t, FullNodeEthURL)
 	// Ensure chain progressed across failover
 	require.Greater(t, blk2, blk1, "post-failover block should advance")
+
+	lastDABlockNewLeader := queryLastDAHeight(t, lastDABlockOldLeader, jwtSecret)
+	t.Log("+++ Last DA block of new leader: ", lastDABlockNewLeader)
+	assert.Greater(t, lastDABlockNewLeader, lastDABlockOldLeader)
+
+	leaderProcess = setupLeaderSequencerNode(t, sut, node1Home, jwtSecret, genesisHash, nil, leaderElectionConfig, false)
+	t.Log("Reset and start node1 node to sync with new leader")
+	sut.AwaitNBlocks(t, 2, "http://127.0.0.1:"+RollkitRPCPort, 4*time.Second)
 }
 
-func setupLeaderSequencerNode(t *testing.T, sut *SystemUnderTest, sequencerHome, jwtSecret, genesisHash string, ports *TestPorts, electionConfig config.LeaderElectionConfig, ) *os.Process {
+func setupLeaderSequencerNode(
+	t *testing.T,
+	sut *SystemUnderTest,
+	sequencerHome, jwtSecret, genesisHash string,
+	ports *TestPorts,
+	electionConfig config.LeaderElectionConfig,
+	runInitBefore bool,
+) *os.Process {
 	t.Helper()
 
-	// Initialize sequencer node
-	output, err := sut.RunCmd(evmSingleBinaryPath,
-		"init",
-		"--rollkit.node.aggregator=true",
-		"--rollkit.signer.passphrase", TestPassphrase,
-		"--home", sequencerHome,
-	)
-	require.NoError(t, err, "failed to init sequencer", output)
-
+	if runInitBefore {
+		// Initialize sequencer node
+		output, err := sut.RunCmd(evmSingleBinaryPath,
+			"init",
+			"--rollkit.node.aggregator=true",
+			"--rollkit.signer.passphrase", TestPassphrase,
+			"--home", sequencerHome,
+		)
+		require.NoError(t, err, "failed to init sequencer", output)
+	}
 	if ports != nil {
 		t.Fatal("not implemented")
 		return nil
@@ -269,9 +291,24 @@ func submitTxToURL(t *testing.T, ethURL string) (common.Hash, uint64) {
 	return tx.Hash(), blk
 }
 
-func must[T any](r T, err error) T {
-	if err != nil {
-		panic(err)
+func queryLastDAHeight(t *testing.T, startHeight uint64, jwtSecret string) uint64 {
+	t.Helper()
+	client, err := jsonrpc.NewClient(t.Context(), zerolog.New(zerolog.NewTestWriter(t)), DAAddress, jwtSecret, 0, 1)
+	require.NoError(t, err)
+	defer client.Close()
+	var lastDABlock = startHeight
+	for {
+		res, err := client.DA.GetIDs(t.Context(), lastDABlock, coreda.NamespaceFromString(DefaultChainID).Bytes())
+		if err != nil {
+			if strings.Contains(err.Error(), "future") {
+				break
+			}
+			t.Fatal("failed to get IDs:", err)
+		}
+		if len(res.IDs) != 0 {
+			t.Log("+++ DA block: ", lastDABlock, " ids: ", len(res.IDs))
+		}
+		lastDABlock++
 	}
-	return r
+	return lastDABlock
 }

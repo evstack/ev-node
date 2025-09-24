@@ -56,19 +56,14 @@ type FullNode struct {
 
 	da coreda.DA
 
-	p2pClient       *p2p.Client
-	hSyncService    *evsync.HeaderSyncService
-	dSyncService    *evsync.DataSyncService
-	Store           store.Store
-	blockComponents *block.Components
-	leaderElection  lease.LeaderElector
-
-	// dependencies needed to rebuild block components on leadership changes
-	exec      coreexecutor.Executor
-	sequencer coresequencer.Sequencer
-	signer    signer.Signer
-	metrics   *block.Metrics
-	blockOpts block.BlockOptions
+	p2pClient               *p2p.Client
+	hSyncService            *evsync.HeaderSyncService
+	dSyncService            *evsync.DataSyncService
+	Store                   store.Store
+	blockComponents         *block.Components
+	leaderElection          lease.LeaderElector
+	SyncComponentFunc       func(c context.Context) error
+	AggregatorComponentFunc func(c context.Context) error
 
 	prometheusSrv *http.Server
 	pprofSrv      *http.Server
@@ -105,9 +100,6 @@ func newFullNode(
 	if err != nil {
 		return nil, err
 	}
-
-	// block components will be constructed dynamically based on leadership state
-	var blockComponents *block.Components = nil
 
 	// Initialize leader election if enabled
 	var leaderElection lease.LeaderElector
@@ -153,23 +145,68 @@ func newFullNode(
 	}
 
 	node := &FullNode{
-		genesis:         genesis,
-		nodeConfig:      nodeConfig,
-		p2pClient:       p2pClient,
-		blockComponents: blockComponents,
-		da:              da,
-		Store:           rktStore,
-		hSyncService:    headerSyncService,
-		dSyncService:    dataSyncService,
-		leaderElection:  leaderElection,
-		exec:            exec,
-		sequencer:       sequencer,
-		signer:          signer,
-		metrics:         blockMetrics,
-		blockOpts:       nodeOpts.BlockOptions,
+		genesis:        genesis,
+		nodeConfig:     nodeConfig,
+		p2pClient:      p2pClient,
+		da:             da,
+		Store:          rktStore,
+		hSyncService:   headerSyncService,
+		dSyncService:   dataSyncService,
+		leaderElection: leaderElection,
+		// block components will be constructed dynamically based on leadership state
 	}
 
 	node.BaseService = *service.NewBaseService(logger, "Node", node)
+
+	node.AggregatorComponentFunc = func(ctx context.Context) error {
+		bc, err := block.NewAggregatorComponents(
+			nodeConfig,
+			genesis,
+			rktStore,
+			exec,
+			sequencer,
+			da,
+			signer,
+			headerSyncService,
+			dataSyncService,
+			logger,
+			blockMetrics,
+			nodeOpts.BlockOptions,
+		)
+		if err != nil {
+			return fmt.Errorf("build leader components: %w", err)
+		}
+		node.blockComponents = bc
+		defer bc.Stop() // nolint: errcheck
+		if err := bc.Start(ctx); err != nil && !errors.Is(err, context.Canceled) {
+			return fmt.Errorf("leader components started with error: %w", err)
+		}
+		return nil
+	}
+
+	node.SyncComponentFunc = func(ctx context.Context) error {
+		bc, err := block.NewSyncComponents(
+			nodeConfig,
+			genesis,
+			rktStore,
+			exec,
+			da,
+			headerSyncService.Store(),
+			dataSyncService.Store(),
+			logger,
+			blockMetrics,
+			nodeOpts.BlockOptions,
+		)
+		if err != nil {
+			return fmt.Errorf("build follower components: %w", err)
+		}
+		node.blockComponents = bc
+		defer bc.Stop() // nolint: errcheck
+		if err := bc.Start(ctx); err != nil && !errors.Is(err, context.Canceled) {
+			return fmt.Errorf("leader components started with error: %w", err)
+		}
+		return nil
+	}
 
 	return node, nil
 }
@@ -353,68 +390,8 @@ func (n *FullNode) Run(parentCtx context.Context) error {
 		return fmt.Errorf("error while starting leader election: %w", err)
 	}
 
-	// Define leader and follower workers that build and run components accordingly
-	leaderWorker := func(c context.Context) {
-		bc, err := block.NewAggregatorComponents(
-			n.nodeConfig,
-			n.genesis,
-			n.Store,
-			n.exec,
-			n.sequencer,
-			n.da,
-			n.signer,
-			n.hSyncService,
-			n.dSyncService,
-			n.Logger,
-			n.metrics,
-			n.blockOpts,
-		)
-		if err != nil {
-			n.Logger.Error().Err(err).Msg("build leader components")
-			<-c.Done()
-			return
-		}
-		n.blockComponents = bc
-		if err := bc.Start(c); err != nil && !errors.Is(err, context.Canceled) {
-			n.Logger.Error().Err(err).Msg("leader components stopped with error")
-		}
-		_ = bc.Stop()
-	}
-
-	followerWorker := func(c context.Context) {
-		bc, err := block.NewSyncComponents(
-			n.nodeConfig,
-			n.genesis,
-			n.Store,
-			n.exec,
-			n.da,
-			n.hSyncService.Store(),
-			n.dSyncService.Store(),
-			n.Logger,
-			n.metrics,
-			n.blockOpts,
-		)
-		if err != nil {
-			n.Logger.Error().Err(err).Msg("build follower components")
-			<-c.Done()
-			return
-		}
-		n.blockComponents = bc
-		if err := bc.Start(c); err != nil && !errors.Is(err, context.Canceled) {
-			n.Logger.Error().Err(err).Msg("follower components stopped with error")
-		}
-		_ = bc.Stop()
-	}
-
-	// Enter election-driven role management loop
-	for {
-		if err := n.leaderElection.SwitchAsLeader(ctx, leaderWorker, followerWorker); err != nil && !errors.Is(err, context.Canceled) {
-			n.Logger.Warn().Err(err).Msg("leadership change detected, restarting components")
-			if ctx.Err() == nil {
-				continue
-			}
-		}
-		break
+	if err := n.leaderElection.RunWithElection(ctx, n.AggregatorComponentFunc, n.SyncComponentFunc); err != nil && !errors.Is(err, context.Canceled) {
+		n.Logger.Warn().Err(err).Msg("leadership change detected, restarting components")
 	}
 
 	// blocking components start exited, propagate shutdown to all other processes

@@ -111,9 +111,10 @@ func TestLeaderElectionGracefulShutdown(t *testing.T) {
 
 	// Start leader election loop in background
 	go func() {
-		_ = node.leaderElection.SwitchAsLeader(ctx, func(ctx2 context.Context) {
+		_ = node.leaderElection.RunWithElection(ctx, func(ctx2 context.Context) error {
 			// Mock leader function - just wait for context cancellation
 			<-ctx.Done()
+			return nil
 		}, nil)
 	}()
 

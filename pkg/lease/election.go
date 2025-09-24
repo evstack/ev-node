@@ -13,7 +13,7 @@ import (
 type LeaderElector interface {
 	Start(ctx context.Context) error
 	Stop() error
-	SwitchAsLeader(ctx context.Context, leaderFunc, followerFunc func(leaderCtx context.Context)) error
+	RunWithElection(ctx context.Context, leaderFunc, followerFunc func(leaderCtx context.Context) error) error
 }
 
 // LeaderElection manages leadership election using a lease mechanism
@@ -178,9 +178,12 @@ func (le *LeaderElection) notifyLeadershipUpdate(isLeader bool) {
 	}
 }
 
-// SwitchAsLeader manages leader election and runs leader-only operations
+var ErrLeadershipLost = fmt.Errorf("leader lock lost")
+
+// RunWithElection manages leader election and runs leader-only operations.
 // It's recommended that leaderFunc accepts a context.Context to allow for graceful shutdown.
-func (le *LeaderElection) SwitchAsLeader(ctx context.Context, leaderFunc, followerFunc func(leaderCtx context.Context)) error {
+// This is a blocking operation
+func (le *LeaderElection) RunWithElection(ctx context.Context, leaderFunc, followerFunc func(leaderCtx context.Context) error) error {
 	var isStarted, isCurrentlyLeader bool
 	var workerCancel context.CancelFunc = func() {} // noop
 	var wg sync.WaitGroup
@@ -192,7 +195,7 @@ func (le *LeaderElection) SwitchAsLeader(ctx context.Context, leaderFunc, follow
 		close(errCh)
 	}()
 
-	startWorker := func(name string, workerFunc func(ctx context.Context)) {
+	startWorker := func(name string, workerFunc func(ctx context.Context) error) {
 		workerCtx, cancel := context.WithCancel(ctx)
 		workerCancel = cancel
 		wg.Add(1)
@@ -200,14 +203,12 @@ func (le *LeaderElection) SwitchAsLeader(ctx context.Context, leaderFunc, follow
 		// call workerFunc in a separate goroutine
 		go func(childCtx context.Context) {
 			defer wg.Done()
-			workerFunc(childCtx)
-			if childCtx.Err() == nil {
+			if err := workerFunc(childCtx); err != nil && !errors.Is(err, context.Canceled) {
 				select {
 				case errCh <- errors.New(name + " worker exited unexpectedly"):
 				default: // do not block
 				}
 			}
-
 		}(workerCtx)
 	}
 
@@ -226,7 +227,7 @@ func (le *LeaderElection) SwitchAsLeader(ctx context.Context, leaderFunc, follow
 			} else if !isLeader && isCurrentlyLeader { // lost leadership
 				workerCancel()
 				le.logger.Info().Msg("lost leadership")
-				return fmt.Errorf("leader lock lost")
+				return ErrLeadershipLost
 			} else if !isLeader && !isCurrentlyLeader && !isStarted { // start as follower
 				le.logger.Info().Msg("starting follower operations")
 				isStarted = true
@@ -253,7 +254,6 @@ func (n AlwaysLeaderElection) Stop() error {
 	return nil
 }
 
-func (n AlwaysLeaderElection) SwitchAsLeader(ctx context.Context, leaderFunc, _ func(leaderCtx context.Context)) error {
-	leaderFunc(ctx)
-	return nil
+func (n AlwaysLeaderElection) RunWithElection(ctx context.Context, leaderFunc, _ func(leaderCtx context.Context) error) error {
+	return leaderFunc(ctx)
 }
