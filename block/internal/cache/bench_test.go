@@ -109,7 +109,7 @@ func BenchmarkManager_PendingEventsSnapshot(b *testing.B) {
 	b.ResetTimer()
 	for b.Loop() {
 		// Test getting next pending event at various heights
-		height := rand.N(uint64(50_000)) + 1
+		height := rand.N(uint64(50_000)) + 1 //nolint:gosec // this is a benchmark test
 		_ = m.GetNextPendingEvent(height)
 	}
 }
