@@ -9,7 +9,7 @@ require (
 )
 
 require (
-	github.com/celestiaorg/go-square/v3 v3.0.0 // indirect
+	github.com/celestiaorg/go-square/v3 v3.0.1 // indirect
 	github.com/hashicorp/go-uuid v1.0.2 // indirect
 	github.com/klauspost/cpuid/v2 v2.2.10 // indirect
 	github.com/klauspost/reedsolomon v1.12.5 // indirect
