@@ -151,7 +151,7 @@ func TestSubmitter_processDAInclusionLoop_advances(t *testing.T) {
 	// small block time to tick quickly
 	cfg := config.DefaultConfig()
 	cfg.DA.BlockTime.Duration = 5 * time.Millisecond
-	cfg.RPC.EnableDAVisualization = false  // Ensure visualization is disabled
+	cfg.RPC.EnableDAVisualization = false // Ensure visualization is disabled
 	metrics := common.PrometheusMetrics("test")
 
 	exec := testmocks.NewMockExecutor(t)

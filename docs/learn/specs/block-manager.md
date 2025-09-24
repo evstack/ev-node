@@ -595,7 +595,7 @@ When both header and data are available for a height:
 
 The components communicate through well-defined interfaces:
 
-#### Executor ↔ Core Executor:
+#### Executor ↔ Core Executor
 
 - `InitChain`: initializes the chain state with the given genesis time, initial height, and chain ID using `InitChainSync` on the executor to obtain initial `appHash` and initialize the state.
 - `CreateBlock`: prepares a block with transactions from the provided batch data.
@@ -603,12 +603,12 @@ The components communicate through well-defined interfaces:
 - `SetFinal`: marks the block as final when both its header and data are confirmed on the DA layer.
 - `GetTxs`: retrieves transactions from the application (used by Reaper component).
 
-#### Reaper ↔ Sequencer:
+#### Reaper ↔ Sequencer
 
 - `GetNextBatch`: retrieves the next batch of transactions to include in a block.
 - `VerifyBatch`: validates that a batch came from the expected sequencer.
 
-#### Submitter/Syncer ↔ DA Layer:
+#### Submitter/Syncer ↔ DA Layer
 
 - `Submit`: submits headers or data blobs to the DA network.
 - `Get`: retrieves headers or data blobs from the DA network.
@@ -617,17 +617,20 @@ The components communicate through well-defined interfaces:
 ## Assumptions and Considerations
 
 ### Component Architecture
+
 - The block package uses a modular component architecture instead of a monolithic manager
 - Components are created based on node type: aggregator nodes get all components, non-aggregator nodes only get synchronization components
 - Each component has a specific responsibility and communicates through well-defined interfaces
 - Components share a common Cache Manager for coordination and state tracking
 
 ### Initialization and State Management
+
 - Components load the initial state from the local store and use genesis if not found in the local store, when the node (re)starts
 - The default mode for aggregator nodes is normal (not lazy)
 - Components coordinate through channels and shared cache structures
 
 ### Block Production (Executor Component)
+
 - The Executor can produce empty blocks
 - In lazy aggregation mode, the Executor maintains consistency with the DA layer by producing empty blocks at regular intervals, ensuring a 1:1 mapping between DA layer blocks and execution layer blocks
 - The lazy aggregation mechanism uses a dual timer approach:
@@ -637,6 +640,7 @@ The components communicate through well-defined interfaces:
 - Transaction notifications from the `Reaper` to the `Executor` are handled via a non-blocking notification channel (`txNotifyCh`) to prevent backpressure
 
 ### DA Submission (Submitter Component)
+
 - The Submitter enforces `MaxPendingHeadersAndData` limit to prevent unbounded growth of pending queues during DA submission issues
 - Headers and data are submitted separately to the DA layer using different namespaces, supporting the header/data separation architecture
 - The Cache Manager uses persistent caches for headers and data to track seen items and DA inclusion status
@@ -645,16 +649,19 @@ The components communicate through well-defined interfaces:
 - Gas price management in the Submitter includes automatic adjustment with `GasMultiplier` on DA submission retries
 
 ### Storage and Persistence
+
 - Components use persistent storage (disk) when the `root_dir` and `db_path` configuration parameters are specified in `config.yaml` file under the app directory. If these configuration parameters are not specified, the in-memory storage is used, which will not be persistent if the node stops
 - The Syncer does not re-apply blocks when they transition from soft confirmed to DA included status. The block is only marked DA included in the caches
 - Header and data stores use separate prefixes for isolation in the underlying database
 - The genesis `ChainID` is used to create separate `PubSubTopID`s for headers and data in go-header
 
 ### P2P and Synchronization
+
 - Block sync over the P2P network works only when a full node is connected to the P2P network by specifying the initial seeds to connect to via `P2PConfig.Seeds` configuration parameter when starting the full node
 - Node's context is passed down to all components to support graceful shutdown and cancellation
 
 ### Architecture Design Decisions
+
 - The Executor supports custom signature payload providers for headers, enabling flexible signing schemes
 - The component architecture supports the separation of header and data structures in Evolve. This allows for expanding the sequencing scheme beyond single sequencing and enables the use of a decentralized sequencer mode. For detailed information on this architecture, see the [Header and Data Separation ADR](../../adr/adr-014-header-and-data-separation.md)
 - Components process blocks with a minimal header format, which is designed to eliminate dependency on CometBFT's header format and can be used to produce an execution layer tailored header if needed. For details on this header structure, see the [Evolve Minimal Header](../../adr/adr-015-rollkit-minimal-header.md) specification

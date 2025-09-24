@@ -35,6 +35,7 @@ The [Store] is initialized with `DefaultStore`, an implementation of the [store 
 The [Block Components] provide a modular architecture for managing block-related operations. Instead of a single monolithic manager, the system uses specialized components:
 
 **For Aggregator Nodes:**
+
 - **Executor**: Block production (normal and lazy modes) and state transitions
 - **Reaper**: Transaction collection and submission to sequencer
 - **Submitter**: Header and data submission to DA layer
@@ -42,6 +43,7 @@ The [Block Components] provide a modular architecture for managing block-related
 - **Cache Manager**: Coordination and tracking across all components
 
 **For Non-Aggregator Nodes:**
+
 - **Syncer**: Block retrieval and synchronization from DA and P2P
 - **Cache Manager**: Tracking and caching of synchronized blocks
 
