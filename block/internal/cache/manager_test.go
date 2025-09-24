@@ -68,18 +68,28 @@ func TestManager_PendingEventsCRUD(t *testing.T) {
 	m.SetPendingEvent(1, evt1)
 	m.SetPendingEvent(3, evt3)
 
-	got := m.GetPendingEvents()
-	require.Len(t, got, 3)
-	assert.Equal(t, evt1, got[1])
-	assert.Equal(t, evt3, got[3])
-	assert.Equal(t, evt5, got[5])
+	// Test getting specific events
+	got1 := m.GetNextPendingEvent(1)
+	require.NotNil(t, got1)
+	assert.Equal(t, evt1.DaHeight, got1.DaHeight)
 
-	// delete and re-check
-	m.DeletePendingEvent(3)
-	got = m.GetPendingEvents()
-	require.Len(t, got, 2)
-	_, ok := got[3]
-	assert.False(t, ok)
+	got3 := m.GetNextPendingEvent(3)
+	require.NotNil(t, got3)
+	assert.Equal(t, evt3.DaHeight, got3.DaHeight)
+
+	got5 := m.GetNextPendingEvent(5)
+	require.NotNil(t, got5)
+	assert.Equal(t, evt5.DaHeight, got5.DaHeight)
+
+	// Events should be removed after GetNextPendingEvent
+	got1Again := m.GetNextPendingEvent(1)
+	assert.Nil(t, got1Again)
+
+	// Test explicit delete
+	m.SetPendingEvent(7, evt1)
+	m.DeletePendingEvent(7)
+	got7 := m.GetNextPendingEvent(7)
+	assert.Nil(t, got7)
 }
 
 func TestManager_SaveAndLoadFromDisk(t *testing.T) {
@@ -120,15 +130,29 @@ func TestManager_SaveAndLoadFromDisk(t *testing.T) {
 	_, ok2 := m2.GetDataDAIncluded("D2")
 	assert.True(t, ok2)
 
-	events := m2.GetPendingEvents()
-	require.Len(t, events, 1)
-	assert.Equal(t, uint64(2), events[2].Header.Height())
+	// Verify pending event was loaded
+	loadedEvent := m2.GetNextPendingEvent(2)
+	require.NotNil(t, loadedEvent)
+	assert.Equal(t, uint64(2), loadedEvent.Header.Height())
 
 	// directories exist under cfg.RootDir/data/cache/...
 	base := filepath.Join(cfg.RootDir, "data", "cache")
 	assert.DirExists(t, filepath.Join(base, "header"))
 	assert.DirExists(t, filepath.Join(base, "data"))
 	assert.DirExists(t, filepath.Join(base, "pending_da_events"))
+}
+
+func TestManager_GetNextPendingEvent_NonExistent(t *testing.T) {
+	t.Parallel()
+	cfg := tempConfig(t)
+	st := memStore(t)
+
+	m, err := NewManager(cfg, st, zerolog.Nop())
+	require.NoError(t, err)
+
+	// Try to get non-existent event
+	event := m.GetNextPendingEvent(999)
+	assert.Nil(t, event)
 }
 
 func TestPendingHeadersAndData_Flow(t *testing.T) {

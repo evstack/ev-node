@@ -67,6 +67,20 @@ func (c *Cache[T]) rangeByHeight(fn func(height uint64, item *T) bool) {
 	})
 }
 
+// getNextItem returns the item at the specified height and removes it from cache if found.
+// Returns nil if not found.
+func (c *Cache[T]) getNextItem(height uint64) *T {
+	item, loaded := c.itemsByHeight.LoadAndDelete(height)
+	if !loaded {
+		return nil
+	}
+	val, ok := item.(*T)
+	if !ok {
+		return nil
+	}
+	return val
+}
+
 // isSeen returns true if the hash has been seen
 func (c *Cache[T]) isSeen(hash string) bool {
 	seen, ok := c.hashes.Load(hash)

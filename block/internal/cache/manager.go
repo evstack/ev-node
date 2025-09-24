@@ -59,7 +59,7 @@ type Manager interface {
 
 	// Pending events syncing coordination
 	SetPendingEvent(height uint64, event *common.DAHeightEvent)
-	GetPendingEvents() map[uint64]*common.DAHeightEvent
+	GetNextPendingEvent(height uint64) *common.DAHeightEvent
 	DeletePendingEvent(height uint64)
 
 	// Cleanup operations
@@ -199,18 +199,14 @@ func (m *implementation) SetPendingEvent(height uint64, event *common.DAHeightEv
 	m.pendingEventsCache.setItem(height, event)
 }
 
-func (m *implementation) GetPendingEvents() map[uint64]*common.DAHeightEvent {
-
-	events := make(map[uint64]*common.DAHeightEvent)
-	m.pendingEventsCache.rangeByHeight(func(height uint64, event *common.DAHeightEvent) bool {
-		events[height] = event
-		return true
-	})
-	return events
-}
-
 func (m *implementation) DeletePendingEvent(height uint64) {
 	m.pendingEventsCache.deleteItem(height)
+}
+
+// GetNextPendingEvent efficiently retrieves and removes the event at the specified height.
+// Returns nil if no event exists at that height.
+func (m *implementation) GetNextPendingEvent(height uint64) *common.DAHeightEvent {
+	return m.pendingEventsCache.getNextItem(height)
 }
 
 func (m *implementation) SaveToDisk() error {

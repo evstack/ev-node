@@ -107,9 +107,12 @@ func BenchmarkManager_PendingEventsSnapshot(b *testing.B) {
 	b.ReportAllocs()
 	b.ResetTimer()
 	for b.Loop() {
-		ev := m.GetPendingEvents()
-		if len(ev) == 0 {
-			b.Fatal("unexpected empty events")
+		// Test getting next pending event at various heights
+		height := uint64((b.N % 50_000) + 1)
+		ev := m.GetNextPendingEvent(height)
+		if ev != nil {
+			// Put it back for the next iteration
+			m.SetPendingEvent(height, ev)
 		}
 	}
 }
