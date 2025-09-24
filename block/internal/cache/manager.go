@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/gob"
 	"fmt"
+	"os"
 	"path/filepath"
 	"sync"
 
@@ -65,7 +66,10 @@ type Manager interface {
 	// Cleanup operations
 	SaveToDisk() error
 	LoadFromDisk() error
+	ClearFromDisk() error
 }
+
+var _ Manager = (*implementation)(nil)
 
 // implementation provides the concrete implementation of cache Manager
 type implementation struct {
@@ -106,9 +110,16 @@ func NewManager(cfg config.Config, store store.Store, logger zerolog.Logger) (Ma
 		logger:             logger,
 	}
 
-	// Load existing cache from disk
-	if err := impl.LoadFromDisk(); err != nil {
-		logger.Warn().Err(err).Msg("failed to load cache from disk, starting with empty cache")
+	if cfg.ClearCache {
+		// Clear the cache from disk
+		if err := impl.ClearFromDisk(); err != nil {
+			logger.Warn().Err(err).Msg("failed to load cache from disk, starting with empty cache")
+		}
+	} else {
+		// Load existing cache from disk
+		if err := impl.LoadFromDisk(); err != nil {
+			logger.Warn().Err(err).Msg("failed to load cache from disk, starting with empty cache")
+		}
 	}
 
 	return impl, nil
@@ -250,6 +261,24 @@ func (m *implementation) LoadFromDisk() error {
 
 	if err := m.pendingEventsCache.LoadFromDisk(filepath.Join(cfgDir, pendingEventsCacheDir)); err != nil {
 		return fmt.Errorf("failed to load pending events cache from disk: %w", err)
+	}
+
+	return nil
+}
+
+func (m *implementation) ClearFromDisk() error {
+	cfgDir := filepath.Join(m.config.RootDir, "data")
+
+	if err := os.RemoveAll(filepath.Join(cfgDir, headerCacheDir)); err != nil {
+		return fmt.Errorf("failed to clear header cache from disk: %w", err)
+	}
+
+	if err := os.RemoveAll(filepath.Join(cfgDir, dataCacheDir)); err != nil {
+		return fmt.Errorf("failed to clear data cache from disk: %w", err)
+	}
+
+	if err := os.RemoveAll(filepath.Join(cfgDir, pendingEventsCacheDir)); err != nil {
+		return fmt.Errorf("failed to clear pending events cache from disk: %w", err)
 	}
 
 	return nil
