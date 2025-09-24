@@ -371,14 +371,7 @@ func (s *Syncer) processHeightEvent(event *common.DAHeightEvent) {
 	// If this is not the next block in sequence, store as pending event
 	// This check is crucial as trySyncNextBlock simply attempts to sync the next block
 	if height != currentHeight+1 {
-		// Create a DAHeightEvent that matches the cache interface
-		pendingEvent := &common.DAHeightEvent{
-			Header:                 event.Header,
-			Data:                   event.Data,
-			DaHeight:               event.DaHeight,
-			HeaderDaIncludedHeight: event.HeaderDaIncludedHeight,
-		}
-		s.cache.SetPendingEvent(height, pendingEvent)
+		s.cache.SetPendingEvent(height, event)
 		s.logger.Debug().Uint64("height", height).Uint64("current_height", currentHeight).Msg("stored as pending event")
 		return
 	}
@@ -386,9 +379,16 @@ func (s *Syncer) processHeightEvent(event *common.DAHeightEvent) {
 	// Try to sync the next block
 	if err := s.trySyncNextBlock(event); err != nil {
 		s.logger.Error().Err(err).Msg("failed to sync next block")
+		// If the error is not due to an validation error, re-store the event as pending
+		if !errors.Is(err, errInvalidBlock) {
+			s.cache.SetPendingEvent(height, event)
+		}
 		return
 	}
 }
+
+// errInvalidBlock is returned when a block is failing validation
+var errInvalidBlock = errors.New("invalid block")
 
 // trySyncNextBlock attempts to sync the next available block
 // the event is always the next block in sequence as processHeightEvent ensures it.
@@ -410,7 +410,7 @@ func (s *Syncer) trySyncNextBlock(event *common.DAHeightEvent) error {
 	// here only the previous block needs to be applied to proceed to the verification.
 	// The header validation must be done before applying the block to avoid executing gibberish
 	if err := s.validateBlock(currentState, header, data); err != nil {
-		return fmt.Errorf("failed to validate block: %w", err)
+		return errors.Join(errInvalidBlock, fmt.Errorf("failed to validate block: %w", err))
 	}
 
 	// Mark as DA included
@@ -551,34 +551,30 @@ func (s *Syncer) isHeightFromFutureError(err error) bool {
 
 // processPendingEvents fetches and processes pending events from cache
 func (s *Syncer) processPendingEvents() {
-	pendingEvents := s.cache.GetPendingEvents()
+	currentHeight, err := s.store.Height(s.ctx)
+	if err != nil {
+		s.logger.Error().Err(err).Msg("failed to get current height for pending events")
+		return
+	}
 
-	for height, event := range pendingEvents {
-		currentHeight, err := s.store.Height(s.ctx)
-		if err != nil {
-			s.logger.Error().Err(err).Msg("failed to get current height for pending events")
-			continue
+	// Try to get the next processable event (currentHeight + 1)
+	nextHeight := currentHeight + 1
+	if event := s.cache.GetNextPendingEvent(nextHeight); event != nil {
+		heightEvent := common.DAHeightEvent{
+			Header:                 event.Header,
+			Data:                   event.Data,
+			DaHeight:               event.DaHeight,
+			HeaderDaIncludedHeight: event.HeaderDaIncludedHeight,
 		}
 
-		// Only process events for blocks we haven't synced yet
-		if height > currentHeight {
-			heightEvent := common.DAHeightEvent{
-				Header:                 event.Header,
-				Data:                   event.Data,
-				DaHeight:               event.DaHeight,
-				HeaderDaIncludedHeight: event.HeaderDaIncludedHeight,
-			}
-
-			select {
-			case s.heightInCh <- heightEvent:
-				// Remove from pending events once sent
-				s.cache.DeletePendingEvent(height)
-			case <-s.ctx.Done():
-				return
-			}
-		} else {
-			// Clean up events for blocks we've already processed
-			s.cache.DeletePendingEvent(height)
+		select {
+		case s.heightInCh <- heightEvent:
+			// Event was successfully sent and already removed by GetNextPendingEvent
+			s.logger.Debug().Uint64("height", nextHeight).Msg("sent pending event to processing")
+		case <-s.ctx.Done():
+			s.cache.SetPendingEvent(nextHeight, event)
+		default:
+			s.cache.SetPendingEvent(nextHeight, event)
 		}
 	}
 }
