@@ -18,6 +18,7 @@ import (
 	coreda "github.com/evstack/ev-node/core/da"
 	"github.com/evstack/ev-node/pkg/config"
 	"github.com/evstack/ev-node/pkg/genesis"
+	"github.com/evstack/ev-node/pkg/rpc/server"
 	"github.com/evstack/ev-node/pkg/signer"
 	"github.com/evstack/ev-node/pkg/signer/noop"
 	"github.com/evstack/ev-node/pkg/store"
@@ -81,6 +82,27 @@ func TestDASubmitter_NewDASubmitter(t *testing.T) {
 	assert.NotNil(t, submitter.da)
 	assert.NotNil(t, submitter.config)
 	assert.NotNil(t, submitter.genesis)
+}
+
+func TestNewDASubmitterSetsVisualizerWhenEnabled(t *testing.T) {
+	t.Helper()
+	defer server.SetDAVisualizationServer(nil)
+
+	cfg := config.DefaultConfig()
+	cfg.RPC.EnableDAVisualization = true
+	cfg.Node.Aggregator = true
+
+	dummyDA := coreda.NewDummyDA(10_000_000, 0, 0, 10*time.Millisecond)
+
+	NewDASubmitter(
+		dummyDA,
+		cfg,
+		genesis.Genesis{},
+		common.DefaultBlockOptions(),
+		zerolog.Nop(),
+	)
+
+	require.NotNil(t, server.GetDAVisualizationServer())
 }
 
 func TestDASubmitter_SubmitHeaders_Success(t *testing.T) {

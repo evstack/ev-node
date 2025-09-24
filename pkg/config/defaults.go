@@ -74,7 +74,8 @@ func DefaultConfig() Config {
 			SignerPath: "config",
 		},
 		RPC: RPCConfig{
-			Address: "127.0.0.1:7331",
+			Address:               "127.0.0.1:7331",
+			EnableDAVisualization: false,
 		},
 	}
 }

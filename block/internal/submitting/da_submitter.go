@@ -134,13 +134,19 @@ func NewDASubmitter(
 	options common.BlockOptions,
 	logger zerolog.Logger,
 ) *DASubmitter {
+	daSubmitterLogger := logger.With().Str("component", "da_submitter").Logger()
+
+	if config.RPC.EnableDAVisualization {
+		visualizerLogger := logger.With().Str("component", "da_visualization").Logger()
+		server.SetDAVisualizationServer(server.NewDAVisualizationServer(da, visualizerLogger, config.Node.Aggregator))
+	}
 
 	return &DASubmitter{
 		da:              da,
 		config:          config,
 		genesis:         genesis,
 		options:         options,
-		logger:          logger.With().Str("component", "da_submitter").Logger(),
+		logger:          daSubmitterLogger,
 		namespaceBz:     coreda.NamespaceFromString(config.DA.GetNamespace()).Bytes(),
 		namespaceDataBz: coreda.NamespaceFromString(config.DA.GetDataNamespace()).Bytes(),
 	}
