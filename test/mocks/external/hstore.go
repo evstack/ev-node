@@ -108,69 +108,6 @@ func (_c *MockStore_Append_Call[H]) RunAndReturn(run func(context1 context.Conte
 	return _c
 }
 
-// DeleteRange provides a mock function for the type MockStore
-func (_mock *MockStore[H]) DeleteRange(ctx context.Context, from uint64, to uint64) error {
-	ret := _mock.Called(ctx, from, to)
-
-	if len(ret) == 0 {
-		panic("no return value specified for DeleteRange")
-	}
-
-	var r0 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, uint64, uint64) error); ok {
-		r0 = returnFunc(ctx, from, to)
-	} else {
-		r0 = ret.Error(0)
-	}
-	return r0
-}
-
-// MockStore_DeleteRange_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'DeleteRange'
-type MockStore_DeleteRange_Call[H header.Header[H]] struct {
-	*mock.Call
-}
-
-// DeleteRange is a helper method to define mock.On call
-//   - ctx context.Context
-//   - from uint64
-//   - to uint64
-func (_e *MockStore_Expecter[H]) DeleteRange(ctx interface{}, from interface{}, to interface{}) *MockStore_DeleteRange_Call[H] {
-	return &MockStore_DeleteRange_Call[H]{Call: _e.mock.On("DeleteRange", ctx, from, to)}
-}
-
-func (_c *MockStore_DeleteRange_Call[H]) Run(run func(ctx context.Context, from uint64, to uint64)) *MockStore_DeleteRange_Call[H] {
-	_c.Call.Run(func(args mock.Arguments) {
-		var arg0 context.Context
-		if args[0] != nil {
-			arg0 = args[0].(context.Context)
-		}
-		var arg1 uint64
-		if args[1] != nil {
-			arg1 = args[1].(uint64)
-		}
-		var arg2 uint64
-		if args[2] != nil {
-			arg2 = args[2].(uint64)
-		}
-		run(
-			arg0,
-			arg1,
-			arg2,
-		)
-	})
-	return _c
-}
-
-func (_c *MockStore_DeleteRange_Call[H]) Return(err error) *MockStore_DeleteRange_Call[H] {
-	_c.Call.Return(err)
-	return _c
-}
-
-func (_c *MockStore_DeleteRange_Call[H]) RunAndReturn(run func(ctx context.Context, from uint64, to uint64) error) *MockStore_DeleteRange_Call[H] {
-	_c.Call.Return(run)
-	return _c
-}
-
 // DeleteTo provides a mock function for the type MockStore
 func (_mock *MockStore[H]) DeleteTo(ctx context.Context, to uint64) error {
 	ret := _mock.Called(ctx, to)
