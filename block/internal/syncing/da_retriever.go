@@ -39,9 +39,9 @@ type DARetriever struct {
 
 	// transient cache, only full event need to be passed to the syncer
 	// on restart, will be refetch as da height is updated by syncer
-	pendingHeaders  map[uint64]*types.SignedHeader
-	pendingData     map[uint64]*types.Data
-	headerDAHeights map[uint64]uint64
+	pendingHeaders  map[uint64] /* header height */ *types.SignedHeader
+	pendingData     map[uint64] /* data height */ *types.Data
+	headerDAHeights map[uint64] /* header height */ uint64
 }
 
 // NewDARetriever creates a new DA retriever
