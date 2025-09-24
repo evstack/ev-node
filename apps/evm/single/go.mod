@@ -9,7 +9,6 @@ replace (
 	github.com/evstack/ev-node/da => ../../../da
 	github.com/evstack/ev-node/execution/evm => ../../../execution/evm
 	github.com/evstack/ev-node/sequencers/single => ../../../sequencers/single
-	github.com/ipfs/go-datastore => github.com/celestiaorg/go-datastore v0.0.0-20250801131506-48a63ae531e4
 )
 
 require (
