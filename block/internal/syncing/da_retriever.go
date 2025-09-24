@@ -36,6 +36,11 @@ type DARetriever struct {
 	// calculate namespaces bytes once and reuse them
 	namespaceBz     []byte
 	namespaceDataBz []byte
+
+	// todo: ensure that these indexes are filled on restart
+	pendingHeaders  map[uint64]*types.SignedHeader
+	pendingData     map[uint64]*types.Data
+	headerDAHeights map[uint64]uint64
 }
 
 // NewDARetriever creates a new DA retriever
@@ -55,6 +60,9 @@ func NewDARetriever(
 		logger:          logger.With().Str("component", "da_retriever").Logger(),
 		namespaceBz:     coreda.NamespaceFromString(config.DA.GetNamespace()).Bytes(),
 		namespaceDataBz: coreda.NamespaceFromString(config.DA.GetDataNamespace()).Bytes(),
+		pendingHeaders:  make(map[uint64]*types.SignedHeader),
+		pendingData:     make(map[uint64]*types.Data),
+		headerDAHeights: make(map[uint64]uint64), // Track DA height for each header
 	}
 }
 
@@ -168,10 +176,6 @@ func (r *DARetriever) validateBlobResponse(res coreda.ResultRetrieve, daHeight u
 
 // processBlobs processes retrieved blobs to extract headers and data and returns height events
 func (r *DARetriever) processBlobs(ctx context.Context, blobs [][]byte, daHeight uint64) []common.DAHeightEvent {
-	headers := make(map[uint64]*types.SignedHeader)
-	dataMap := make(map[uint64]*types.Data)
-	headerDAHeights := make(map[uint64]uint64) // Track DA height for each header
-
 	// Decode all blobs
 	for _, bz := range blobs {
 		if len(bz) == 0 {
@@ -179,30 +183,38 @@ func (r *DARetriever) processBlobs(ctx context.Context, blobs [][]byte, daHeight
 		}
 
 		if header := r.tryDecodeHeader(bz, daHeight); header != nil {
-			headers[header.Height()] = header
-			headerDAHeights[header.Height()] = daHeight
+			r.pendingHeaders[header.Height()] = header
+			r.headerDAHeights[header.Height()] = daHeight
 			continue
 		}
 
 		if data := r.tryDecodeData(bz, daHeight); data != nil {
-			dataMap[data.Height()] = data
+			r.pendingData[data.Height()] = data
 		}
 	}
 
 	var events []common.DAHeightEvent
 
 	// Match headers with data and create events
-	for height, header := range headers {
-		data := dataMap[height]
+	for height, header := range r.pendingHeaders {
+		data := r.pendingData[height]
+		includedHeight := r.headerDAHeights[height]
 
 		// Handle empty data case
 		if data == nil {
 			if r.isEmptyDataExpected(header) {
 				data = r.createEmptyDataForHeader(ctx, header)
+				delete(r.pendingHeaders, height)
+				delete(r.headerDAHeights, height)
 			} else {
+				// keep header in pending headers until data lands
 				r.logger.Debug().Uint64("height", height).Msg("header found but no matching data")
 				continue
 			}
+		} else {
+			delete(r.pendingHeaders, height)
+			delete(r.pendingData, height)
+			delete(r.headerDAHeights, height)
 		}
 
 		// Create height event
@@ -210,7 +222,7 @@ func (r *DARetriever) processBlobs(ctx context.Context, blobs [][]byte, daHeight
 			Header:                 header,
 			Data:                   data,
 			DaHeight:               daHeight,
-			HeaderDaIncludedHeight: headerDAHeights[height],
+			HeaderDaIncludedHeight: includedHeight,
 		}
 
 		events = append(events, event)
