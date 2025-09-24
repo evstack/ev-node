@@ -50,11 +50,11 @@ func TestEvmSequencerComprehensiveE2E(t *testing.T) {
 	sut := NewSystemUnderTest(t)
 
 	// Setup sequencer once for all test phases
-	genesisHash := setupSequencerOnlyTest(t, sut, nodeHome)
+	genesisHash, seqURL := setupSequencerOnlyTest(t, sut, nodeHome)
 	t.Logf("Genesis hash: %s", genesisHash)
 
 	// Connect to EVM once for all phases
-	client, err := ethclient.Dial(SequencerEthURL)
+	client, err := ethclient.Dial(seqURL)
 	require.NoError(t, err, "Should be able to connect to EVM")
 	defer client.Close()
 
@@ -66,12 +66,12 @@ func TestEvmSequencerComprehensiveE2E(t *testing.T) {
 
 	// Submit a single transaction to EVM
 	tx1 := evm.GetRandomTransaction(t, TestPrivateKey, TestToAddress, DefaultChainID, DefaultGasLimit, &globalNonce)
-	evm.SubmitTransaction(t, tx1)
+	require.NoError(t, client.SendTransaction(context.Background(), tx1))
 	t.Log("Submitted basic test transaction to EVM")
 
 	// Wait for block production and verify transaction inclusion
 	require.Eventually(t, func() bool {
-		return evm.CheckTxIncluded(t, tx1.Hash())
+		return evm.CheckTxIncluded(client, tx1.Hash())
 	}, 15*time.Second, 500*time.Millisecond)
 	t.Log("✅ Basic transaction included in EVM block")
 
@@ -88,7 +88,7 @@ func TestEvmSequencerComprehensiveE2E(t *testing.T) {
 		// Create transaction with proper chain ID
 		tx := evm.GetRandomTransaction(t, TestPrivateKey, TestToAddress, DefaultChainID, DefaultGasLimit, &globalNonce)
 
-		evm.SubmitTransaction(t, tx)
+		require.NoError(t, client.SendTransaction(context.Background(), tx))
 		txHashes = append(txHashes, tx.Hash())
 		expectedNonces = append(expectedNonces, tx.Nonce())
 
@@ -312,7 +312,7 @@ func TestEvmSequencerComprehensiveE2E(t *testing.T) {
 	t.Log("Testing system stability with final valid transaction...")
 	validTx := evm.GetRandomTransaction(t, TestPrivateKey, TestToAddress, DefaultChainID, DefaultGasLimit, &globalNonce)
 
-	evm.SubmitTransaction(t, validTx)
+	require.NoError(t, client.SendTransaction(ctx, validTx))
 	t.Logf("Submitted final valid transaction: %s", validTx.Hash().Hex())
 
 	// Wait for valid transaction to be included

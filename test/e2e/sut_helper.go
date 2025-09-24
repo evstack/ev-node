@@ -283,7 +283,7 @@ func (s *SystemUnderTest) iterProcessesByCmd(cmd string) iter.Seq[*os.Process] {
 		pids := slices.Clone(s.cmdToPids[cmdKey])
 		s.pidsLock.RUnlock()
 
-		for pid := range pids {
+		for _, pid := range pids {
 			p, err := os.FindProcess(pid)
 			if err != nil {
 				continue
