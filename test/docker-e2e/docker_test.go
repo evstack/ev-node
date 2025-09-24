@@ -4,14 +4,12 @@ package docker_e2e
 
 import (
 	"context"
-	"encoding/hex"
 	"fmt"
 	"os"
 	"strings"
 	"testing"
 
 	"cosmossdk.io/math"
-	"github.com/celestiaorg/go-square/v2/share"
 	tastoradocker "github.com/celestiaorg/tastora/framework/docker"
 	"github.com/celestiaorg/tastora/framework/docker/container"
 	"github.com/celestiaorg/tastora/framework/docker/cosmos"
@@ -246,8 +244,4 @@ func getEvNodeImage() container.Image {
 	}
 
 	return container.NewImage(repo, tag, "10001:10001")
-}
-
-func generateValidNamespaceHex() string {
-	return hex.EncodeToString(share.RandomBlobNamespace().Bytes())
 }

@@ -48,7 +48,7 @@ bench:
 ## test-evm: Running EVM tests
 test-evm:
 	@echo "--> Running EVM tests"
-	@cd execution/evm && go test -mod=readonly -failfast -timeout=15m ./... -tags=evm
+	@cd execution/evm/test && go test -mod=readonly -failfast -timeout=15m ./... -tags=evm
 
 ## test-docker-e2e: Running Docker E2E tests
 test-docker-e2e: docker-build-if-local
