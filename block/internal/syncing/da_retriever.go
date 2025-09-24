@@ -37,8 +37,8 @@ type DARetriever struct {
 	namespaceBz     []byte
 	namespaceDataBz []byte
 
-	// transient cache, lost on restart, but this is ok
-	// because da height only updated when new blocks are processed.
+	// transient cache, only full event need to be passed to the syncer
+	// on restart, will be refetch as da height is updated by syncer
 	pendingHeaders  map[uint64]*types.SignedHeader
 	pendingData     map[uint64]*types.Data
 	headerDAHeights map[uint64]uint64
