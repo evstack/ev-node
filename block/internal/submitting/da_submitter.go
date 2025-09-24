@@ -139,8 +139,6 @@ func NewDASubmitter(
 	if config.RPC.EnableDAVisualization {
 		visualizerLogger := logger.With().Str("component", "da_visualization").Logger()
 		server.SetDAVisualizationServer(server.NewDAVisualizationServer(da, visualizerLogger, config.Node.Aggregator))
-	} else {
-		server.SetDAVisualizationServer(nil)
 	}
 
 	return &DASubmitter{

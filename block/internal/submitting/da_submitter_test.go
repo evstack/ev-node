@@ -105,29 +105,6 @@ func TestNewDASubmitterSetsVisualizerWhenEnabled(t *testing.T) {
 	require.NotNil(t, server.GetDAVisualizationServer())
 }
 
-func TestNewDASubmitterClearsVisualizerWhenDisabled(t *testing.T) {
-	t.Helper()
-	defer server.SetDAVisualizationServer(nil)
-
-	// Seed an existing server to ensure it gets cleared
-	seedLogger := zerolog.Nop()
-	server.SetDAVisualizationServer(server.NewDAVisualizationServer(nil, seedLogger, true))
-	require.NotNil(t, server.GetDAVisualizationServer())
-
-	cfg := config.DefaultConfig()
-	cfg.RPC.EnableDAVisualization = false
-
-	NewDASubmitter(
-		nil,
-		cfg,
-		genesis.Genesis{},
-		common.DefaultBlockOptions(),
-		zerolog.Nop(),
-	)
-
-	assert.Nil(t, server.GetDAVisualizationServer())
-}
-
 func TestDASubmitter_SubmitHeaders_Success(t *testing.T) {
 	submitter, st, cm, _, gen := setupDASubmitterTest(t)
 	ctx := context.Background()

@@ -19,6 +19,7 @@ import (
 	"github.com/evstack/ev-node/block/internal/common"
 	"github.com/evstack/ev-node/pkg/config"
 	"github.com/evstack/ev-node/pkg/genesis"
+	"github.com/evstack/ev-node/pkg/rpc/server"
 	"github.com/evstack/ev-node/pkg/signer"
 	"github.com/evstack/ev-node/pkg/store"
 	testmocks "github.com/evstack/ev-node/test/mocks"
@@ -143,11 +144,16 @@ func TestSubmitter_processDAInclusionLoop_advances(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
+	// Clean up any existing visualization server
+	defer server.SetDAVisualizationServer(nil)
+	server.SetDAVisualizationServer(nil)
+
 	cm, st := newTestCacheAndStore(t)
 
 	// small block time to tick quickly
 	cfg := config.DefaultConfig()
 	cfg.DA.BlockTime.Duration = 5 * time.Millisecond
+	cfg.RPC.EnableDAVisualization = false  // Ensure visualization is disabled
 	metrics := common.PrometheusMetrics("test")
 
 	exec := testmocks.NewMockExecutor(t)
