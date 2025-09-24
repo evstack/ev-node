@@ -38,8 +38,7 @@ func BenchmarkSyncerIO(b *testing.B) {
 	}
 	for name, spec := range cases {
 		b.Run(name, func(b *testing.B) {
-			b.ResetTimer()
-			for i := 0; i < b.N; i++ {
+			for b.Loop() {
 				fixt := newBenchFixture(b, spec.heights, spec.shuffledTx, spec.daDelay, spec.execDelay, true)
 
 				// run both loops
