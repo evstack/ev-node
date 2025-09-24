@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/gob"
 	"fmt"
+	"os"
 	"path/filepath"
 	"sync"
 
@@ -64,7 +65,10 @@ type Manager interface {
 	// Cleanup operations
 	SaveToDisk() error
 	LoadFromDisk() error
+	ClearFromDisk() error
 }
+
+var _ Manager = (*implementation)(nil)
 
 // implementation provides the concrete implementation of cache Manager
 type implementation struct {
@@ -105,9 +109,16 @@ func NewManager(cfg config.Config, store store.Store, logger zerolog.Logger) (Ma
 		logger:             logger,
 	}
 
-	// Load existing cache from disk
-	if err := impl.LoadFromDisk(); err != nil {
-		logger.Warn().Err(err).Msg("failed to load cache from disk, starting with empty cache")
+	if cfg.ClearCache {
+		// Clear the cache from disk
+		if err := impl.ClearFromDisk(); err != nil {
+			logger.Warn().Err(err).Msg("failed to clear cache from disk, starting with empty cache")
+		}
+	} else {
+		// Load existing cache from disk
+		if err := impl.LoadFromDisk(); err != nil {
+			logger.Warn().Err(err).Msg("failed to load cache from disk, starting with empty cache")
+		}
 	}
 
 	return impl, nil
@@ -243,5 +254,13 @@ func (m *implementation) LoadFromDisk() error {
 		return fmt.Errorf("failed to load pending events cache from disk: %w", err)
 	}
 
+	return nil
+}
+
+func (m *implementation) ClearFromDisk() error {
+	cachePath := filepath.Join(m.config.RootDir, "data", cacheDir)
+	if err := os.RemoveAll(cachePath); err != nil {
+		return fmt.Errorf("failed to clear cache from disk: %w", err)
+	}
 	return nil
 }
