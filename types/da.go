@@ -27,15 +27,22 @@ func SubmitWithHelpers(
 ) coreda.ResultSubmit { // Return core ResultSubmit type
 	ids, err := da.SubmitWithOptions(ctx, data, gasPrice, namespace, options)
 
+	// calculate blob size
+	var blobSize uint64
+	for _, blob := range data {
+		blobSize += uint64(len(blob))
+	}
+
 	// Handle errors returned by Submit
 	if err != nil {
 		if errors.Is(err, context.Canceled) {
 			logger.Debug().Msg("DA submission canceled via helper due to context cancellation")
 			return coreda.ResultSubmit{
 				BaseResult: coreda.BaseResult{
-					Code:    coreda.StatusContextCanceled,
-					Message: "submission canceled",
-					IDs:     ids,
+					Code:     coreda.StatusContextCanceled,
+					Message:  "submission canceled",
+					IDs:      ids,
+					BlobSize: blobSize,
 				},
 			}
 		}
@@ -67,6 +74,7 @@ func SubmitWithHelpers(
 				SubmittedCount: uint64(len(ids)),
 				Height:         0,
 				Timestamp:      time.Now(),
+				BlobSize:       blobSize,
 			},
 		}
 	}
