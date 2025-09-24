@@ -2,6 +2,7 @@ package cache
 
 import (
 	"context"
+	"math/rand/v2"
 	"testing"
 
 	"github.com/rs/zerolog"
@@ -108,12 +109,8 @@ func BenchmarkManager_PendingEventsSnapshot(b *testing.B) {
 	b.ResetTimer()
 	for b.Loop() {
 		// Test getting next pending event at various heights
-		height := uint64((b.N % 50_000) + 1)
-		ev := m.GetNextPendingEvent(height)
-		if ev != nil {
-			// Put it back for the next iteration
-			m.SetPendingEvent(height, ev)
-		}
+		height := rand.N(uint64(50_000)) + 1
+		_ = m.GetNextPendingEvent(height)
 	}
 }
 
