@@ -7,6 +7,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	pb "github.com/evstack/ev-node/types/pb/evnode/v1"
 	"net/http"
 	"path/filepath"
 	"testing"
@@ -165,11 +166,15 @@ func TestNodeRestartPersistence(t *testing.T) {
 	t.Log("Node started and is up.")
 
 	c := nodeclient.NewClient("http://127.0.0.1:7331")
-	ctx, cancel := context.WithTimeout(t.Context(), time.Second)
-	t.Cleanup(cancel)
 
-	state, err := c.GetState(ctx)
-	require.NoError(t, err)
+	// wait for state to be available
+	var state *pb.State
+	require.Eventually(t, func() bool {
+		state, err = c.GetState(context.TODO())
+		return err == nil
+	}, 5*time.Second, 100*time.Millisecond, "state should become available")
+
+	require.NotNil(t, state)
 	if state.LastBlockHeight == 1 {
 		time.Sleep(100 * time.Millisecond)
 	}
