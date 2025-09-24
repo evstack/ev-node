@@ -28,11 +28,12 @@ import (
 )
 
 // makeSignedHeaderBytes builds a valid SignedHeader and returns its binary encoding and the object
-func makeSignedHeaderBytes(t *testing.T, chainID string, height uint64, proposer []byte, pub crypto.PubKey, signer signerpkg.Signer, appHash []byte) ([]byte, *types.SignedHeader) {
+func makeSignedHeaderBytes(t *testing.T, chainID string, height uint64, proposer []byte, pub crypto.PubKey, signer signerpkg.Signer, appHash []byte, dataHash []byte) ([]byte, *types.SignedHeader) {
 	hdr := &types.SignedHeader{
 		Header: types.Header{
 			BaseHeader:      types.BaseHeader{ChainID: chainID, Height: height, Time: uint64(time.Now().Add(time.Duration(height) * time.Second).UnixNano())},
 			AppHash:         appHash,
+			DataHash:        dataHash,
 			ProposerAddress: proposer,
 		},
 		Signer: types.Signer{PubKey: pub, Address: proposer},
@@ -115,12 +116,8 @@ func TestDARetriever_ProcessBlobs_HeaderAndData_Success(t *testing.T) {
 
 	r := NewDARetriever(nil, cm, config.DefaultConfig(), gen, common.DefaultBlockOptions(), zerolog.Nop())
 
-	// Build one header and one data blob at same height
-	_, lastState := types.State{}, types.State{}
-	_ = lastState // placeholder to keep parity with helper pattern
-
-	hdrBin, _ := makeSignedHeaderBytes(t, gen.ChainID, 2, addr, pub, signer, nil)
-	dataBin, _ := makeSignedDataBytes(t, gen.ChainID, 2, addr, pub, signer, 2)
+	dataBin, data := makeSignedDataBytes(t, gen.ChainID, 2, addr, pub, signer, 2)
+	hdrBin, _ := makeSignedHeaderBytes(t, gen.ChainID, 2, addr, pub, signer, nil, data.Hash())
 
 	events := r.processBlobs(context.Background(), [][]byte{hdrBin, dataBin}, 77)
 	require.Len(t, events, 1)
@@ -141,7 +138,7 @@ func TestDARetriever_ProcessBlobs_HeaderOnly_EmptyDataExpected(t *testing.T) {
 	r := NewDARetriever(nil, cm, config.DefaultConfig(), gen, common.DefaultBlockOptions(), zerolog.Nop())
 
 	// Header with no data hash present should trigger empty data creation (per current logic)
-	hb, _ := makeSignedHeaderBytes(t, gen.ChainID, 3, addr, pub, signer, nil)
+	hb, _ := makeSignedHeaderBytes(t, gen.ChainID, 3, addr, pub, signer, nil, nil)
 
 	events := r.processBlobs(context.Background(), [][]byte{hb}, 88)
 	require.Len(t, events, 1)
@@ -160,7 +157,7 @@ func TestDARetriever_TryDecodeHeaderAndData_Basic(t *testing.T) {
 	gen := genesis.Genesis{ChainID: "tchain", InitialHeight: 1, StartTime: time.Now().Add(-time.Second), ProposerAddress: addr}
 	r := NewDARetriever(nil, cm, config.DefaultConfig(), gen, common.DefaultBlockOptions(), zerolog.Nop())
 
-	hb, sh := makeSignedHeaderBytes(t, gen.ChainID, 5, addr, pub, signer, nil)
+	hb, sh := makeSignedHeaderBytes(t, gen.ChainID, 5, addr, pub, signer, nil, nil)
 	gotH := r.tryDecodeHeader(hb, 123)
 	require.NotNil(t, gotH)
 	assert.Equal(t, sh.Hash().String(), gotH.Hash().String())
@@ -225,8 +222,8 @@ func TestDARetriever_RetrieveFromDA_TwoNamespaces_Success(t *testing.T) {
 	gen := genesis.Genesis{ChainID: "tchain", InitialHeight: 1, StartTime: time.Now().Add(-time.Second), ProposerAddress: addr}
 
 	// Prepare header/data blobs
-	hdrBin, _ := makeSignedHeaderBytes(t, gen.ChainID, 9, addr, pub, signer, nil)
-	dataBin, _ := makeSignedDataBytes(t, gen.ChainID, 9, addr, pub, signer, 1)
+	dataBin, data := makeSignedDataBytes(t, gen.ChainID, 9, addr, pub, signer, 1)
+	hdrBin, _ := makeSignedHeaderBytes(t, gen.ChainID, 9, addr, pub, signer, nil, data.Hash())
 
 	cfg := config.DefaultConfig()
 	cfg.DA.Namespace = "nsHdr"
@@ -254,4 +251,44 @@ func TestDARetriever_RetrieveFromDA_TwoNamespaces_Success(t *testing.T) {
 	require.Len(t, events, 1)
 	assert.Equal(t, uint64(9), events[0].Header.Height())
 	assert.Equal(t, uint64(9), events[0].Data.Height())
+}
+
+func TestDARetriever_ProcessBlobs_CrossDAHeightMatching(t *testing.T) {
+	ds := dssync.MutexWrap(datastore.NewMapDatastore())
+	st := store.New(ds)
+	cm, err := cache.NewManager(config.DefaultConfig(), st, zerolog.Nop())
+	require.NoError(t, err)
+
+	addr, pub, signer := buildSyncTestSigner(t)
+	gen := genesis.Genesis{ChainID: "tchain", InitialHeight: 1, StartTime: time.Now().Add(-time.Second), ProposerAddress: addr}
+
+	r := NewDARetriever(nil, cm, config.DefaultConfig(), gen, common.DefaultBlockOptions(), zerolog.Nop())
+
+	// Create header and data for the same block height but from different DA heights
+	dataBin, data := makeSignedDataBytes(t, gen.ChainID, 5, addr, pub, signer, 2)
+	hdrBin, _ := makeSignedHeaderBytes(t, gen.ChainID, 5, addr, pub, signer, nil, data.Hash())
+
+	// Process header from DA height 100 first
+	events1 := r.processBlobs(context.Background(), [][]byte{hdrBin}, 100)
+	require.Len(t, events1, 0, "should not create event yet - data is missing")
+
+	// Verify header is stored in pending headers
+	require.Contains(t, r.pendingHeaders, uint64(5), "header should be stored as pending")
+	require.Contains(t, r.headerDAHeights, uint64(5), "header DA height should be tracked")
+	assert.Equal(t, uint64(100), r.headerDAHeights[5])
+
+	// Process data from DA height 102
+	events2 := r.processBlobs(context.Background(), [][]byte{dataBin}, 102)
+	require.Len(t, events2, 1, "should create event when matching data arrives")
+
+	event := events2[0]
+	assert.Equal(t, uint64(5), event.Header.Height())
+	assert.Equal(t, uint64(5), event.Data.Height())
+	assert.Equal(t, uint64(102), event.DaHeight, "DaHeight should be the height where data was processed")
+	assert.Equal(t, uint64(100), event.HeaderDaIncludedHeight, "HeaderDaIncludedHeight should be where header was included")
+
+	// Verify pending maps are cleared
+	require.NotContains(t, r.pendingHeaders, uint64(5), "header should be removed from pending")
+	require.NotContains(t, r.pendingData, uint64(5), "data should be removed from pending")
+	require.NotContains(t, r.headerDAHeights, uint64(5), "header DA height should be removed")
 }
