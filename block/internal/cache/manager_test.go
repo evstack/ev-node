@@ -84,12 +84,6 @@ func TestManager_PendingEventsCRUD(t *testing.T) {
 	// Events should be removed after GetNextPendingEvent
 	got1Again := m.GetNextPendingEvent(1)
 	assert.Nil(t, got1Again)
-
-	// Test explicit delete
-	m.SetPendingEvent(7, evt1)
-	m.DeletePendingEvent(7)
-	got7 := m.GetNextPendingEvent(7)
-	assert.Nil(t, got7)
 }
 
 func TestManager_SaveAndLoadFromDisk(t *testing.T) {

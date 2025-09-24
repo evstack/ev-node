@@ -58,9 +58,8 @@ type Manager interface {
 	NumPendingData() uint64
 
 	// Pending events syncing coordination
-	SetPendingEvent(height uint64, event *common.DAHeightEvent)
 	GetNextPendingEvent(height uint64) *common.DAHeightEvent
-	DeletePendingEvent(height uint64)
+	SetPendingEvent(height uint64, event *common.DAHeightEvent)
 
 	// Cleanup operations
 	SaveToDisk() error
@@ -194,13 +193,9 @@ func (m *implementation) NumPendingData() uint64 {
 	return m.pendingData.NumPendingData()
 }
 
-// Pending events operations
+// SetPendingEvent sets the event at the specified height.
 func (m *implementation) SetPendingEvent(height uint64, event *common.DAHeightEvent) {
 	m.pendingEventsCache.setItem(height, event)
-}
-
-func (m *implementation) DeletePendingEvent(height uint64) {
-	m.pendingEventsCache.deleteItem(height)
 }
 
 // GetNextPendingEvent efficiently retrieves and removes the event at the specified height.

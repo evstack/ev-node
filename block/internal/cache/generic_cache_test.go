@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"sync"
 	"testing"
 )
 
@@ -13,32 +12,6 @@ type testItem struct{ V int }
 
 func init() {
 	gob.Register(&testItem{})
-}
-
-// TestCache_ConcurrentOperations exercises concurrent Set, Delete, and Range operations.
-func TestCache_ConcurrentOperations(t *testing.T) {
-	c := NewCache[testItem]()
-
-	const N = 2000
-	var wg sync.WaitGroup
-
-	// writers
-	writer := func(start int) {
-		defer wg.Done()
-		for i := start; i < N; i += 2 {
-			v := &testItem{V: i}
-			c.setItem(uint64(i), v)
-			if i%10 == 0 {
-				// randomly delete some keys
-				c.deleteItem(uint64(i))
-			}
-		}
-	}
-
-	wg.Add(2)
-	go writer(0)
-	go writer(1)
-	wg.Wait()
 }
 
 // TestCache_TypeSafety ensures methods gracefully handle invalid underlying types.
@@ -120,6 +93,6 @@ func TestCache_LargeDataset(t *testing.T) {
 	}
 	// Delete a range in the middle
 	for i := 5000; i < 10000; i += 2 {
-		c.deleteItem(uint64(i))
+		c.getNextItem(uint64(i))
 	}
 }

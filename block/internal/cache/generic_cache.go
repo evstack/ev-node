@@ -46,11 +46,6 @@ func (c *Cache[T]) setItem(height uint64, item *T) {
 	c.itemsByHeight.Store(height, item)
 }
 
-// deleteItem deletes an item from the cache by height
-func (c *Cache[T]) deleteItem(height uint64) {
-	c.itemsByHeight.Delete(height)
-}
-
 // rangeByHeight iterates over items keyed by height in an unspecified order and calls fn for each.
 // If fn returns false, iteration stops early.
 func (c *Cache[T]) rangeByHeight(fn func(height uint64, item *T) bool) {
