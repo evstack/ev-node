@@ -10,7 +10,7 @@ require (
 	connectrpc.com/connect v1.18.1
 	connectrpc.com/grpcreflect v1.3.0
 	github.com/celestiaorg/go-header v0.7.2
-	github.com/celestiaorg/go-square/v3 v3.0.0
+	github.com/celestiaorg/go-square/v3 v3.0.1
 	github.com/celestiaorg/utils v0.1.0
 	github.com/evstack/ev-node/core v1.0.0-beta.3
 	github.com/go-kit/kit v0.13.0
@@ -19,7 +19,7 @@ require (
 	github.com/ipfs/go-ds-badger4 v0.1.8
 	github.com/libp2p/go-libp2p v0.43.0
 	github.com/libp2p/go-libp2p-kad-dht v0.34.0
-	github.com/libp2p/go-libp2p-pubsub v0.14.3
+	github.com/libp2p/go-libp2p-pubsub v0.15.0
 	github.com/mitchellh/mapstructure v1.5.0
 	github.com/multiformats/go-multiaddr v0.16.1
 	github.com/prometheus/client_golang v1.23.2

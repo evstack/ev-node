@@ -125,8 +125,8 @@ github.com/celestiaorg/cosmos-sdk v0.51.2 h1:a9WguK7BaeuqCVnOa3m3ThwXKBL/RxQ46gR
 github.com/celestiaorg/cosmos-sdk v0.51.2/go.mod h1:KSCi5EM7aWwZRtCHCOH4K51a9OcjEKt4i/pr1txrnRA=
 github.com/celestiaorg/cosmos-sdk/x/upgrade v0.1.0 h1:+i3G5mP/kPgFEn83EEXGly29QDin2Gvdt0kgpmw/vTg=
 github.com/celestiaorg/cosmos-sdk/x/upgrade v0.1.0/go.mod h1:T4K9O18zQNKNpt4YvTL3lcUt4aKOEU05ZIFWVdQi3Ak=
-github.com/celestiaorg/go-square/v3 v3.0.0 h1:ivLUUuVr7SpkvPiPLPvuH8/Vrm+iw9X3QL8gX25j+Sk=
-github.com/celestiaorg/go-square/v3 v3.0.0/go.mod h1:IROQinUbHNyFWW1J5idanVLOSLHaK1wWwVmuVSfiCVo=
+github.com/celestiaorg/go-square/v3 v3.0.1 h1:44xnE3AUiZn/3q/uJ0c20AezFS0lywFTGG2lE/9jYKA=
+github.com/celestiaorg/go-square/v3 v3.0.1/go.mod h1:Xc4ubl/7pbn/STD7w8Bnk/X1/PG3vk0ycOPW6tMOPX4=
 github.com/celestiaorg/nmt v0.24.1 h1:MhGKqp257eq2EQQKcva1H/BSYFqIt0Trk8/t3IWfWSw=
 github.com/celestiaorg/nmt v0.24.1/go.mod h1:IhLnJDgCdP70crZFpgihFmU6G+PGeXN37tnMRm+/4iU=
 github.com/celestiaorg/tastora v0.5.0 h1:Cu7cIBxO3bjKiX6pdML0/9itAEO8Wfk3VSIoVeLzd7g=
