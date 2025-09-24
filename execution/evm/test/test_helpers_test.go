@@ -1,12 +1,14 @@
 //go:build evm
 // +build evm
 
-package evm
+package evm_test
 
 import (
 	"context"
 	"crypto/rand"
+	"encoding/hex"
 	"fmt"
+	"github.com/golang-jwt/jwt/v5"
 	"math/big"
 	mathrand "math/rand"
 	"net/http"
@@ -174,4 +176,28 @@ func GetRandomTransaction(t *testing.T, privateKeyHex, toAddressHex, chainID str
 func CheckTxIncluded(client *ethclient.Client, txHash common.Hash) bool {
 	receipt, err := client.TransactionReceipt(context.Background(), txHash)
 	return err == nil && receipt != nil && receipt.Status == 1
+}
+
+// decodeSecret decodes a hex-encoded JWT secret string into a byte slice.
+func decodeSecret(jwtSecret string) ([]byte, error) {
+	secret, err := hex.DecodeString(strings.TrimPrefix(jwtSecret, "0x"))
+	if err != nil {
+		return nil, fmt.Errorf("failed to decode JWT secret: %w", err)
+	}
+	return secret, nil
+}
+
+// getAuthToken creates a JWT token signed with the provided secret, valid for 1 hour.
+func getAuthToken(jwtSecret []byte) (string, error) {
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
+		"exp": time.Now().Add(time.Hour * 1).Unix(), // Expires in 1 hour
+		"iat": time.Now().Unix(),
+	})
+
+	// Sign the token with the decoded secret
+	authToken, err := token.SignedString(jwtSecret)
+	if err != nil {
+		return "", fmt.Errorf("failed to sign JWT token: %w", err)
+	}
+	return authToken, nil
 }

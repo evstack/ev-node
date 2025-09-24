@@ -1,7 +1,7 @@
 //go:build evm
 // +build evm
 
-package evm
+package evm_test
 
 import (
 	"context"
@@ -12,6 +12,8 @@ import (
 	ethTypes "github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/stretchr/testify/require"
+
+	"github.com/evstack/ev-node/execution/evm"
 )
 
 const (
@@ -20,9 +22,6 @@ const (
 	GENESIS_STATEROOT = "0x05e9954443da80d86f2104e56ffdfd98fe21988730684360104865b3dc8191b4"
 	TEST_PRIVATE_KEY  = "cece4f25ac74deb1468965160c7185e07dff413f23fcadb611b05ca37ab0a52e"
 	TEST_TO_ADDRESS   = "0x944fDcD1c868E3cC566C78023CcB38A32cDA836E"
-
-	DOCKER_PATH  = "./docker"
-	JWT_FILENAME = "jwt.hex"
 )
 
 // TestEngineExecution tests the end-to-end execution flow of the EVM engine client.
@@ -66,7 +65,7 @@ func TestEngineExecution(t *testing.T) {
 		ethURL := "http://127.0.0.1:" + ni.External.Ports.RPC
 		engineURL := "http://127.0.0.1:" + ni.External.Ports.Engine
 
-		executionClient, err := NewEngineExecutionClient(
+		executionClient, err := evm.NewEngineExecutionClient(
 			ethURL,
 			engineURL,
 			rethNode.JWTSecretHex(),
@@ -164,7 +163,7 @@ func TestEngineExecution(t *testing.T) {
 		ethURL := "http://127.0.0.1:" + ni.External.Ports.RPC
 		engineURL := "http://127.0.0.1:" + ni.External.Ports.Engine
 
-		executionClient, err := NewEngineExecutionClient(
+		executionClient, err := evm.NewEngineExecutionClient(
 			ethURL,
 			engineURL,
 			rethNode.JWTSecretHex(),
