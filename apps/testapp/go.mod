@@ -1,6 +1,6 @@
 module github.com/evstack/ev-node/apps/testapp
 
-go 1.24.2
+go 1.24.6
 
 replace github.com/celestiaorg/go-header => github.com/julienrbrt/go-header v0.0.0-20250909151551-cb11b091bf58 // TODO: to remove after https://github.com/celestiaorg/go-header/pull/347
 
@@ -28,7 +28,7 @@ require (
 	github.com/benbjohnson/clock v1.3.5 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/celestiaorg/go-libp2p-messenger v0.2.2 // indirect
-	github.com/celestiaorg/go-square/v2 v2.3.3 // indirect
+	github.com/celestiaorg/go-square/v3 v3.0.0 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
 	github.com/davidlazar/go-crypto v0.0.0-20200604182044-b73af7476f6c // indirect

@@ -1,6 +1,6 @@
 module github.com/evstack/ev-node
 
-go 1.24.2
+go 1.24.6
 
 retract v0.12.0 // Published by accident
 
@@ -10,7 +10,7 @@ require (
 	connectrpc.com/connect v1.18.1
 	connectrpc.com/grpcreflect v1.3.0
 	github.com/celestiaorg/go-header v0.7.2
-	github.com/celestiaorg/go-square/v2 v2.3.3
+	github.com/celestiaorg/go-square/v3 v3.0.0
 	github.com/celestiaorg/utils v0.1.0
 	github.com/evstack/ev-node/core v1.0.0-beta.3
 	github.com/go-kit/kit v0.13.0
