@@ -123,6 +123,6 @@ func NewRollbackCmd() *cobra.Command {
 
 func printSuccess(height uint64) error {
 	fmt.Printf("Rolled back ev-node state to height %d\n", height)
-	fmt.Println("Do not forget to run the node with the `--clear-cache` flag")
+	fmt.Println("Restart the node with the `--clear-cache` flag")
 	return nil
 }
