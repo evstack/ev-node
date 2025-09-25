@@ -377,17 +377,16 @@ func (n *FullNode) Run(parentCtx context.Context) error {
 		return fmt.Errorf("error while starting P2P client: %w", err)
 	}
 
+	// Start leader election if enabled
+	if err = n.leaderElection.Start(ctx); err != nil {
+		return fmt.Errorf("error while starting leader election: %w", err)
+	}
 	if err = n.hSyncService.Start(ctx); err != nil {
 		return fmt.Errorf("error while starting header sync service: %w", err)
 	}
 
 	if err = n.dSyncService.Start(ctx); err != nil {
 		return fmt.Errorf("error while starting data sync service: %w", err)
-	}
-
-	// Start leader election if enabled
-	if err = n.leaderElection.Start(ctx); err != nil {
-		return fmt.Errorf("error while starting leader election: %w", err)
 	}
 
 	if err := n.leaderElection.RunWithElection(ctx, n.AggregatorComponentFunc, n.SyncComponentFunc); err != nil && !errors.Is(err, context.Canceled) {
@@ -404,17 +403,19 @@ func (n *FullNode) Run(parentCtx context.Context) error {
 
 	var multiErr error // Use a multierror variable
 
-	// Stop block components
-	if err := n.blockComponents.Stop(); err != nil {
-		n.Logger.Error().Err(err).Msg("error stopping block components")
-		multiErr = errors.Join(multiErr, fmt.Errorf("stopping block components: %w", err))
-	}
-
 	// Stop leader election
 	if err := n.leaderElection.Stop(); err != nil && !errors.Is(err, context.Canceled) {
 		multiErr = errors.Join(multiErr, fmt.Errorf("stopping leader election: %w", err))
 	} else {
 		n.Logger.Debug().Msg("leader election stopped")
+	}
+
+	// Stop block components
+	if n.blockComponents != nil {
+		if err := n.blockComponents.Stop(); err != nil {
+			n.Logger.Error().Err(err).Msg("error stopping block components")
+			multiErr = errors.Join(multiErr, fmt.Errorf("stopping block components: %w", err))
+		}
 	}
 
 	// Stop Header Sync Service

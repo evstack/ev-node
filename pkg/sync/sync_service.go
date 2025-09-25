@@ -137,8 +137,9 @@ func (syncService *SyncService[H]) WriteToStoreAndBroadcast(ctx context.Context,
 	}
 
 	firstStart := false
-	if !syncService.syncerStatus.started.Load() {
+	if !syncService.syncerStatus.isStarted() {
 		firstStart = true
+		syncService.logger.Info().Msg("ALEX: broadcast")
 		if err := syncService.startSyncer(ctx); err != nil {
 			return fmt.Errorf("failed to start syncer after initializing the store: %w", err)
 		}
@@ -163,6 +164,9 @@ func (syncService *SyncService[H]) WriteToStoreAndBroadcast(ctx context.Context,
 
 	return nil
 }
+
+//func (syncService *SyncService[H]) SwitchToAggregator(ctx context.Context) error {
+//}
 
 // Start is a part of Service interface.
 func (syncService *SyncService[H]) Start(ctx context.Context) error {
@@ -190,7 +194,7 @@ func (syncService *SyncService[H]) startSyncer(ctx context.Context) error {
 	if syncService.syncerStatus.isStarted() {
 		return nil
 	}
-
+	syncService.logger.Info().Msg("ALEX: Starting syncer")
 	if err := syncService.syncer.Start(ctx); err != nil {
 		return fmt.Errorf("failed to start syncer: %w", err)
 	}
@@ -296,6 +300,7 @@ func (syncService *SyncService[H]) initFromP2PWithRetry(ctx context.Context, pee
 		if err := syncService.initStore(ctx, trusted); err != nil {
 			return false, fmt.Errorf("failed to initialize the store: %w", err)
 		}
+		syncService.logger.Info().Msg("ALEX: p2p")
 		if err := syncService.startSyncer(ctx); err != nil {
 			return false, err
 		}
@@ -404,6 +409,7 @@ func (syncService *SyncService[H]) getPeerIDs() []peer.ID {
 	peerIDs := syncService.p2p.PeerIDs()
 	if !syncService.conf.Node.Aggregator {
 		peerIDs = append(peerIDs, getPeers(syncService.conf.P2P.Peers, syncService.logger)...)
+		syncService.logger.Info().Msgf("ALEX: peers: %d", len(peerIDs))
 	}
 	return peerIDs
 }
