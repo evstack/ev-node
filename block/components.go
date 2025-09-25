@@ -166,25 +166,25 @@ func NewSyncComponents(
 	)
 
 	// Create DA submitter for sync nodes (no signer, only DA inclusion processing)
-	daSubmitter := submitting.NewDASubmitter(da, config, genesis, blockOpts, logger)
-	submitter := submitting.NewSubmitter(
-		store,
-		exec,
-		cacheManager,
-		metrics,
-		config,
-		genesis,
-		daSubmitter,
-		nil, // No signer for sync nodes
-		logger,
-		errorCh,
-	)
+	//daSubmitter := submitting.NewDASubmitter(da, config, genesis, blockOpts, logger)
+	//submitter := submitting.NewSubmitter(
+	//	store,
+	//	exec,
+	//	cacheManager,
+	//	metrics,
+	//	config,
+	//	genesis,
+	//	daSubmitter,
+	//	nil, // No signer for sync nodes
+	//	logger,
+	//	errorCh,
+	//)
 
 	return &Components{
-		Syncer:    syncer,
-		Submitter: submitter,
-		Cache:     cacheManager,
-		errorCh:   errorCh,
+		Syncer: syncer,
+		//Submitter: submitter,
+		Cache:   cacheManager,
+		errorCh: errorCh,
 	}, nil
 }
 

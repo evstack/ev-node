@@ -159,6 +159,9 @@ func newFullNode(
 	node.BaseService = *service.NewBaseService(logger, "Node", node)
 
 	node.AggregatorComponentFunc = func(ctx context.Context) error {
+		if node.blockComponents != nil {
+			node.blockComponents.Stop()
+		}
 		bc, err := block.NewAggregatorComponents(
 			nodeConfig,
 			genesis,

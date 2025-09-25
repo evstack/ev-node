@@ -25,9 +25,9 @@ import (
 type daRetriever interface {
 	RetrieveFromDA(ctx context.Context, daHeight uint64) ([]common.DAHeightEvent, error)
 }
-type p2pHandler interface {
-	ProcessHeaderRange(ctx context.Context, fromHeight, toHeight uint64) []common.DAHeightEvent
-	ProcessDataRange(ctx context.Context, fromHeight, toHeight uint64) []common.DAHeightEvent
+type p2pRetriever interface {
+	HeadersInRange(ctx context.Context, fromHeight, toHeight uint64) []common.DAHeightEvent
+	DataInRange(ctx context.Context, fromHeight, toHeight uint64) []common.DAHeightEvent
 }
 
 // Syncer handles block synchronization from DA and P2P sources.
@@ -63,8 +63,8 @@ type Syncer struct {
 	errorCh    chan<- error // Channel to report critical execution client failures
 
 	// Handlers
-	daRetriever daRetriever
-	p2pHandler  p2pHandler
+	daRetriever  daRetriever
+	p2pRetriever p2pRetriever
 
 	// Logging
 	logger zerolog.Logger
@@ -120,7 +120,7 @@ func (s *Syncer) Start(ctx context.Context) error {
 
 	// Initialize handlers
 	s.daRetriever = NewDARetriever(s.da, s.cache, s.config, s.genesis, s.options, s.logger)
-	s.p2pHandler = NewP2PHandler(s.headerStore, s.dataStore, s.genesis, s.options, s.logger)
+	//s.p2pRetriever = NewP2PStoreRetriever(s.headerStore, s.dataStore, s.genesis, s.options, s.logger)
 
 	// Start main processing loop
 	s.wg.Add(1)
@@ -147,6 +147,7 @@ func (s *Syncer) Stop() error {
 	}
 	s.wg.Wait()
 	s.logger.Info().Msg("syncer stopped")
+	close(s.heightInCh)
 	return nil
 }
 
@@ -296,6 +297,8 @@ func (s *Syncer) syncLoop() {
 				// Process DA events
 				for _, event := range events {
 					select {
+					case <-s.ctx.Done():
+						return
 					case s.heightInCh <- event:
 					default:
 						s.cache.SetPendingEvent(event.Header.Height(), &event)
@@ -311,43 +314,45 @@ func (s *Syncer) syncLoop() {
 		// Opportunistically process any P2P signals
 		select {
 		case <-blockTicker.C:
-			newHeaderHeight := s.headerStore.Height()
-			if newHeaderHeight > lastHeaderHeight {
-				events := s.p2pHandler.ProcessHeaderRange(s.ctx, lastHeaderHeight+1, newHeaderHeight)
-				for _, event := range events {
-					select {
-					case s.heightInCh <- event:
-					default:
-						s.cache.SetPendingEvent(event.Header.Height(), &event)
+			if false {
+				newHeaderHeight := s.headerStore.Height()
+				if newHeaderHeight > lastHeaderHeight {
+					events := s.p2pRetriever.HeadersInRange(s.ctx, lastHeaderHeight+1, newHeaderHeight)
+					for _, event := range events {
+						select {
+						case <-s.ctx.Done():
+							return
+						case s.heightInCh <- event:
+						default:
+							s.cache.SetPendingEvent(event.Header.Height(), &event)
+						}
 					}
+					lastHeaderHeight = newHeaderHeight
 				}
-				lastHeaderHeight = newHeaderHeight
+
+				newDataHeight := s.dataStore.Height()
+				if newDataHeight == newHeaderHeight {
+					lastDataHeight = newDataHeight
+					continue
+				}
+				if newDataHeight > lastDataHeight {
+					events := s.p2pRetriever.DataInRange(s.ctx, lastDataHeight+1, newDataHeight)
+					for _, event := range events {
+						select {
+						case s.heightInCh <- event:
+						case <-s.ctx.Done():
+							return
+						default:
+							s.cache.SetPendingEvent(event.Header.Height(), &event)
+						}
+					}
+					lastDataHeight = newDataHeight
+				}
 			}
 
-			newDataHeight := s.dataStore.Height()
-			if newDataHeight == newHeaderHeight {
-				lastDataHeight = newDataHeight
-				continue
-			}
-			if newDataHeight > lastDataHeight {
-				events := s.p2pHandler.ProcessDataRange(s.ctx, lastDataHeight+1, newDataHeight)
-				for _, event := range events {
-					select {
-					case s.heightInCh <- event:
-					default:
-						s.cache.SetPendingEvent(event.Header.Height(), &event)
-					}
-				}
-				lastDataHeight = newDataHeight
-			}
 		default:
 			// Prevent busy-waiting when no events are available.
-			waitTime := 10 * time.Millisecond
-			if waitTime > s.config.Node.BlockTime.Duration {
-				waitTime = s.config.Node.BlockTime.Duration
-			}
-
-			time.Sleep(waitTime)
+			time.Sleep(min(s.config.Node.BlockTime.Duration, 10*time.Millisecond))
 		}
 	}
 }

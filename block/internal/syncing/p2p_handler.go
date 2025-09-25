@@ -13,8 +13,8 @@ import (
 	"github.com/evstack/ev-node/types"
 )
 
-// P2PHandler handles all P2P operations for the syncer
-type P2PHandler struct {
+// P2PStoreRetriever handles all P2P operations for the syncer
+type P2PStoreRetriever struct {
 	headerStore goheader.Store[*types.SignedHeader]
 	dataStore   goheader.Store[*types.Data]
 	genesis     genesis.Genesis
@@ -22,15 +22,15 @@ type P2PHandler struct {
 	logger      zerolog.Logger
 }
 
-// NewP2PHandler creates a new P2P handler
-func NewP2PHandler(
+// NewP2PStoreRetriever creates a new P2P handler
+func NewP2PStoreRetriever(
 	headerStore goheader.Store[*types.SignedHeader],
 	dataStore goheader.Store[*types.Data],
 	genesis genesis.Genesis,
 	options common.BlockOptions,
 	logger zerolog.Logger,
-) *P2PHandler {
-	return &P2PHandler{
+) *P2PStoreRetriever {
+	return &P2PStoreRetriever{
 		headerStore: headerStore,
 		dataStore:   dataStore,
 		genesis:     genesis,
@@ -39,8 +39,8 @@ func NewP2PHandler(
 	}
 }
 
-// ProcessHeaderRange processes headers from the header store within the given range
-func (h *P2PHandler) ProcessHeaderRange(ctx context.Context, startHeight, endHeight uint64) []common.DAHeightEvent {
+// HeadersInRange processes headers from the header store within the given range
+func (h *P2PStoreRetriever) HeadersInRange(ctx context.Context, startHeight, endHeight uint64) []common.DAHeightEvent {
 	if startHeight > endHeight {
 		return nil
 	}
@@ -100,8 +100,8 @@ func (h *P2PHandler) ProcessHeaderRange(ctx context.Context, startHeight, endHei
 	return events
 }
 
-// ProcessDataRange processes data from the data store within the given range
-func (h *P2PHandler) ProcessDataRange(ctx context.Context, startHeight, endHeight uint64) []common.DAHeightEvent {
+// DataInRange processes data from the data store within the given range
+func (h *P2PStoreRetriever) DataInRange(ctx context.Context, startHeight, endHeight uint64) []common.DAHeightEvent {
 	if startHeight > endHeight {
 		return nil
 	}
@@ -154,7 +154,7 @@ func (h *P2PHandler) ProcessDataRange(ctx context.Context, startHeight, endHeigh
 }
 
 // assertExpectedProposer validates the proposer address
-func (h *P2PHandler) assertExpectedProposer(proposerAddr []byte) error {
+func (h *P2PStoreRetriever) assertExpectedProposer(proposerAddr []byte) error {
 	if !bytes.Equal(h.genesis.ProposerAddress, proposerAddr) {
 		return fmt.Errorf("proposer address mismatch: got %x, expected %x",
 			proposerAddr, h.genesis.ProposerAddress)
@@ -163,7 +163,7 @@ func (h *P2PHandler) assertExpectedProposer(proposerAddr []byte) error {
 }
 
 // createEmptyDataForHeader creates empty data for headers with empty data hash
-func (h *P2PHandler) createEmptyDataForHeader(ctx context.Context, header *types.SignedHeader) *types.Data {
+func (h *P2PStoreRetriever) createEmptyDataForHeader(ctx context.Context, header *types.SignedHeader) *types.Data {
 	headerHeight := header.Height()
 	var lastDataHash types.Hash
 

@@ -183,7 +183,7 @@ func TestSyncLoopPersistState(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 	syncerInst1.ctx = ctx
 	daRtrMock, p2pHndlMock := newMockdaRetriever(t), newMockp2pHandler(t)
-	syncerInst1.daRetriever, syncerInst1.p2pHandler = daRtrMock, p2pHndlMock
+	syncerInst1.daRetriever, syncerInst1.p2pRetriever = daRtrMock, p2pHndlMock
 
 	// with n da blobs fetched
 	for i := range myFutureDAHeight - myDAHeightOffset {
@@ -261,7 +261,7 @@ func TestSyncLoopPersistState(t *testing.T) {
 	t.Cleanup(cancel)
 	syncerInst2.ctx = ctx
 	daRtrMock, p2pHndlMock = newMockdaRetriever(t), newMockp2pHandler(t)
-	syncerInst2.daRetriever, syncerInst2.p2pHandler = daRtrMock, p2pHndlMock
+	syncerInst2.daRetriever, syncerInst2.p2pRetriever = daRtrMock, p2pHndlMock
 
 	daRtrMock.On("RetrieveFromDA", mock.Anything, mock.Anything).
 		Run(func(arg mock.Arguments) {

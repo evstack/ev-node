@@ -409,7 +409,6 @@ func (syncService *SyncService[H]) getPeerIDs() []peer.ID {
 	peerIDs := syncService.p2p.PeerIDs()
 	if !syncService.conf.Node.Aggregator {
 		peerIDs = append(peerIDs, getPeers(syncService.conf.P2P.Peers, syncService.logger)...)
-		syncService.logger.Info().Msgf("ALEX: peers: %d", len(peerIDs))
 	}
 	return peerIDs
 }

@@ -66,7 +66,7 @@ func p2pMakeData(t *testing.T, chainID string, height uint64, txs int) *types.Da
 
 // P2PTestData aggregates all dependencies used by P2P handler tests.
 type P2PTestData struct {
-	Handler      *P2PHandler
+	Handler      *P2PStoreRetriever
 	HeaderStore  *extmocks.MockStore[*types.SignedHeader]
 	DataStore    *extmocks.MockStore[*types.Data]
 	Genesis      genesis.Genesis
@@ -75,7 +75,7 @@ type P2PTestData struct {
 	Signer       signerpkg.Signer
 }
 
-// setupP2P constructs a P2PHandler with mocked go-header stores
+// setupP2P constructs a P2PStoreRetriever with mocked go-header stores
 func setupP2P(t *testing.T) *P2PTestData {
 	t.Helper()
 	proposerAddr, proposerPub, signer := buildTestSigner(t)
@@ -85,7 +85,7 @@ func setupP2P(t *testing.T) *P2PTestData {
 	headerStoreMock := extmocks.NewMockStore[*types.SignedHeader](t)
 	dataStoreMock := extmocks.NewMockStore[*types.Data](t)
 
-	handler := NewP2PHandler(headerStoreMock, dataStoreMock, gen, common.DefaultBlockOptions(), zerolog.Nop())
+	handler := NewP2PStoreRetriever(headerStoreMock, dataStoreMock, gen, common.DefaultBlockOptions(), zerolog.Nop())
 	return &P2PTestData{
 		Handler:      handler,
 		HeaderStore:  headerStoreMock,
@@ -120,7 +120,7 @@ func TestP2PHandler_ProcessHeaderRange_HeaderAndDataHappyPath(t *testing.T) {
 	p2pData.HeaderStore.EXPECT().GetByHeight(ctx, uint64(5)).Return(signedHeader, nil).Once()
 	p2pData.DataStore.EXPECT().GetByHeight(ctx, uint64(5)).Return(blockData, nil).Once()
 
-	events := p2pData.Handler.ProcessHeaderRange(ctx, 5, 5)
+	events := p2pData.Handler.HeadersInRange(ctx, 5, 5)
 	require.Len(t, events, 1, "expected one event for the provided header/data height")
 	require.Equal(t, uint64(5), events[0].Header.Height())
 	require.NotNil(t, events[0].Data)
@@ -141,7 +141,7 @@ func TestP2PHandler_ProcessHeaderRange_MissingData_NonEmptyHash(t *testing.T) {
 	p2pData.HeaderStore.EXPECT().GetByHeight(ctx, uint64(7)).Return(signedHeader, nil).Once()
 	p2pData.DataStore.EXPECT().GetByHeight(ctx, uint64(7)).Return(nil, errors.New("not found")).Once()
 
-	events := p2pData.Handler.ProcessHeaderRange(ctx, 7, 7)
+	events := p2pData.Handler.HeadersInRange(ctx, 7, 7)
 	require.Len(t, events, 0)
 }
 
@@ -153,7 +153,7 @@ func TestP2PHandler_ProcessDataRange_HeaderMissing(t *testing.T) {
 	p2pData.DataStore.EXPECT().GetByHeight(ctx, uint64(9)).Return(blockData, nil).Once()
 	p2pData.HeaderStore.EXPECT().GetByHeight(ctx, uint64(9)).Return(nil, errors.New("no header")).Once()
 
-	events := p2pData.Handler.ProcessDataRange(ctx, 9, 9)
+	events := p2pData.Handler.DataInRange(ctx, 9, 9)
 	require.Len(t, events, 0)
 }
 
@@ -169,7 +169,7 @@ func TestP2PHandler_ProposerMismatch_Rejected(t *testing.T) {
 
 	p2pData.HeaderStore.EXPECT().GetByHeight(ctx, uint64(4)).Return(signedHeader, nil).Once()
 
-	events := p2pData.Handler.ProcessHeaderRange(ctx, 4, 4)
+	events := p2pData.Handler.HeadersInRange(ctx, 4, 4)
 	require.Len(t, events, 0)
 }
 
@@ -247,7 +247,7 @@ func TestP2PHandler_ProcessHeaderRange_MultipleHeightsHappyPath(t *testing.T) {
 	p2pData.HeaderStore.EXPECT().GetByHeight(ctx, uint64(6)).Return(header6, nil).Once()
 	p2pData.DataStore.EXPECT().GetByHeight(ctx, uint64(6)).Return(data6, nil).Once()
 
-	events := p2pData.Handler.ProcessHeaderRange(ctx, 5, 6)
+	events := p2pData.Handler.HeadersInRange(ctx, 5, 6)
 	require.Len(t, events, 2, "expected two events for heights 5 and 6")
 	require.Equal(t, uint64(5), events[0].Header.Height(), "first event should be height 5")
 	require.Equal(t, uint64(6), events[1].Header.Height(), "second event should be height 6")
@@ -269,6 +269,6 @@ func TestP2PHandler_ProcessDataRange_HeaderValidateHeaderFails(t *testing.T) {
 	badHeader := p2pMakeSignedHeader(t, p2pData.Genesis.ChainID, 3, badAddr, pub, signer)
 	p2pData.HeaderStore.EXPECT().GetByHeight(ctx, uint64(3)).Return(badHeader, nil).Once()
 
-	events := p2pData.Handler.ProcessDataRange(ctx, 3, 3)
+	events := p2pData.Handler.DataInRange(ctx, 3, 3)
 	require.Len(t, events, 0, "validateHeader failure should drop event")
 }
