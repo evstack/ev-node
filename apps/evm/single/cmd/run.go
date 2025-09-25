@@ -57,6 +57,9 @@ var RunCmd = &cobra.Command{
 			return err
 		}
 
+		migrations := make(map[uint64]namespaces)
+		daAPI := newNamespaceMigrationDAAPI(daJrpc.DA, nodeConfig, migrations)
+
 		datastore, err := store.NewDefaultKVStore(nodeConfig.RootDir, nodeConfig.DBPath, "evm-single")
 		if err != nil {
 			return err
@@ -77,7 +80,7 @@ var RunCmd = &cobra.Command{
 			context.Background(),
 			logger,
 			datastore,
-			&daJrpc.DA,
+			daAPI,
 			[]byte(genesis.ChainID),
 			nodeConfig.Node.BlockTime.Duration,
 			singleMetrics,
@@ -97,7 +100,7 @@ var RunCmd = &cobra.Command{
 			return err
 		}
 
-		return rollcmd.StartNode(logger, cmd, executor, sequencer, &daJrpc.DA, p2pClient, datastore, nodeConfig, genesis, node.NodeOptions{})
+		return rollcmd.StartNode(logger, cmd, executor, sequencer, daAPI, p2pClient, datastore, nodeConfig, genesis, node.NodeOptions{})
 	},
 }
 
@@ -173,7 +176,7 @@ type namespaceMigrationDAAPI struct {
 	currentDataNamespace []byte
 }
 
-func newNamespaceMigrationDAAPI(api jsonrpc.API, cfg *config.Config, migrations map[uint64]namespaces) *namespaceMigrationDAAPI {
+func newNamespaceMigrationDAAPI(api jsonrpc.API, cfg config.Config, migrations map[uint64]namespaces) *namespaceMigrationDAAPI {
 	return &namespaceMigrationDAAPI{
 		API:                  api,
 		migrations:           migrations,
