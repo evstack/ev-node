@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"path/filepath"
@@ -142,4 +143,83 @@ func addFlags(cmd *cobra.Command) {
 	cmd.Flags().String(evm.FlagEvmJWTSecret, "", "The JWT secret for authentication with the execution client")
 	cmd.Flags().String(evm.FlagEvmGenesisHash, "", "Hash of the genesis block")
 	cmd.Flags().String(evm.FlagEvmFeeRecipient, "", "Address that will receive transaction fees")
+}
+
+// namespaces defines the namespace used for namespace migration
+type namespaces struct {
+	namespace     string
+	dataNamespace string
+}
+
+func (n namespaces) GetNamespace() string {
+	return n.namespace
+}
+
+func (n namespaces) GetDataNamespace() string {
+	if n.dataNamespace == "" {
+		return n.namespace
+	}
+
+	return n.dataNamespace
+}
+
+// namespaceMigrationDAAPI is wrapper around the da json rpc to use when handling namespace migrations
+type namespaceMigrationDAAPI struct {
+	jsonrpc.API
+
+	migrations map[uint64]namespaces
+
+	currentNamespace     []byte
+	currentDataNamespace []byte
+}
+
+func newNamespaceMigrationDAAPI(api jsonrpc.API, cfg *config.Config, migrations map[uint64]namespaces) *namespaceMigrationDAAPI {
+	return &namespaceMigrationDAAPI{
+		API:                  api,
+		migrations:           migrations,
+		currentNamespace:     da.NamespaceFromString(cfg.DA.GetNamespace()).Bytes(),
+		currentDataNamespace: da.NamespaceFromString(cfg.DA.GetDataNamespace()).Bytes(),
+	}
+}
+
+// findNamespaceForHeight determines the correct namespace to use for a given height
+func (api *namespaceMigrationDAAPI) findNamespaceForHeight(height uint64, isDataNamespace bool) []byte {
+	if len(api.migrations) == 0 {
+		if isDataNamespace {
+			return api.currentDataNamespace
+		}
+		return api.currentNamespace
+	}
+
+	// Find the highest migration height that is <= requested height
+	var selectedHeight uint64
+	var found bool
+	for migrationHeight := range api.migrations {
+		if migrationHeight <= height && migrationHeight > selectedHeight {
+			selectedHeight = migrationHeight
+			found = true
+		}
+	}
+
+	// If no migration applies to this height, use current namespace
+	if !found {
+		if isDataNamespace {
+			return api.currentDataNamespace
+		}
+		return api.currentNamespace
+	}
+
+	// Use the namespace from the migration
+	migration := api.migrations[selectedHeight]
+	if isDataNamespace {
+		return da.NamespaceFromString(migration.GetDataNamespace()).Bytes()
+	}
+	return da.NamespaceFromString(migration.GetNamespace()).Bytes()
+}
+
+// GetIDs returns IDs of all Blobs located in DA at given height.
+// This method handles namespace migrations by determining the correct namespace based on height
+func (api *namespaceMigrationDAAPI) GetIDs(ctx context.Context, height uint64, ns []byte) (*da.GetIDsResult, error) {
+	ns = api.findNamespaceForHeight(height, bytes.Equal(ns, api.currentDataNamespace))
+	return api.API.GetIDs(ctx, height, ns)
 }
