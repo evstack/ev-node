@@ -547,4 +547,3 @@ func (s *Syncer) isHeightFromFutureError(err error) bool {
 	}
 	return false
 }
-
