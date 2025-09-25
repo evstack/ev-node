@@ -550,6 +550,7 @@ func (s *Syncer) isHeightFromFutureError(err error) bool {
 }
 
 // processPendingEvents fetches and processes pending events from cache
+// optimistically fetches the next events from cache until no matching heights are found
 func (s *Syncer) processPendingEvents() {
 	currentHeight, err := s.store.Height(s.ctx)
 	if err != nil {
@@ -559,7 +560,12 @@ func (s *Syncer) processPendingEvents() {
 
 	// Try to get the next processable event (currentHeight + 1)
 	nextHeight := currentHeight + 1
-	if event := s.cache.GetNextPendingEvent(nextHeight); event != nil {
+	for {
+		event := s.cache.GetNextPendingEvent(nextHeight)
+		if event == nil {
+			return
+		}
+
 		heightEvent := common.DAHeightEvent{
 			Header:                 event.Header,
 			Data:                   event.Data,
@@ -573,8 +579,12 @@ func (s *Syncer) processPendingEvents() {
 			s.logger.Debug().Uint64("height", nextHeight).Msg("sent pending event to processing")
 		case <-s.ctx.Done():
 			s.cache.SetPendingEvent(nextHeight, event)
+			return
 		default:
 			s.cache.SetPendingEvent(nextHeight, event)
+			return
 		}
+
+		nextHeight++
 	}
 }
