@@ -56,7 +56,6 @@ func BenchmarkSyncerIO(b *testing.B) {
 					event := fixt.s.cache.GetNextPendingEvent(i)
 					require.Nil(b, event, "expected no pending event at height %d", i)
 				}
-				require.Len(b, fixt.s.heightInCh, 0)
 
 				assert.Equal(b, spec.heights+daHeightOffset, fixt.s.daHeight)
 				gotStoreHeight, err := fixt.s.store.Height(b.Context())

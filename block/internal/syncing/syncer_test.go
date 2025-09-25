@@ -121,11 +121,10 @@ func TestSyncer_processPendingEvents(t *testing.T) {
 	require.NoError(t, st.SetHeight(context.Background(), 1))
 
 	s := &Syncer{
-		store:      st,
-		cache:      cm,
-		ctx:        context.Background(),
-		heightInCh: make(chan common.DAHeightEvent, 2),
-		logger:     zerolog.Nop(),
+		store:  st,
+		cache:  cm,
+		ctx:    context.Background(),
+		logger: zerolog.Nop(),
 	}
 
 	// create two pending events, one for height 2 (> current) and one for height 1 (<= current)
@@ -134,15 +133,7 @@ func TestSyncer_processPendingEvents(t *testing.T) {
 	cm.SetPendingEvent(1, evt1)
 	cm.SetPendingEvent(2, evt2)
 
-	s.processPendingEvents()
-
-	// should have forwarded height 2 and removed both
-	select {
-	case got := <-s.heightInCh:
-		assert.Equal(t, uint64(2), got.Header.Height())
-	default:
-		t.Fatal("expected a forwarded pending event")
-	}
+	s.syncLoop()
 
 	// Verify the event was removed by trying to get it again
 	remaining := cm.GetNextPendingEvent(2)
@@ -209,17 +200,15 @@ func TestSyncLoopPersistState(t *testing.T) {
 	// stop at next height
 	daRtrMock.On("RetrieveFromDA", mock.Anything, myFutureDAHeight).
 		Run(func(_ mock.Arguments) {
-			// wait for consumer to catch up
-			require.Eventually(t, func() bool {
-				return len(syncerInst1.heightInCh) == 0
-			}, 1*time.Second, 10*time.Millisecond)
+			// Give some time for processing then cancel
+			time.Sleep(100 * time.Millisecond)
 			cancel()
 		}).
 		Return(nil, coreda.ErrHeightFromFuture)
 
 	go syncerInst1.processLoop()
 
-	// dssync from DA until stop height reached
+	// sync from DA until stop height reached
 	syncerInst1.syncLoop()
 	t.Log("syncLoop on instance1 completed")
 
@@ -236,7 +225,6 @@ func TestSyncLoopPersistState(t *testing.T) {
 	assert.Nil(t, event1)
 	event2 := syncerInst1.cache.GetNextPendingEvent(2)
 	assert.Nil(t, event2)
-	assert.Len(t, syncerInst1.heightInCh, 0)
 
 	// and when new instance is up on restart
 	cm, err = cache.NewManager(config.DefaultConfig(), st, zerolog.Nop())

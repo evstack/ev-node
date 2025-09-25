@@ -59,8 +59,7 @@ type Syncer struct {
 	dataStore   goheader.Store[*types.Data]
 
 	// Channels for coordination
-	heightInCh chan common.DAHeightEvent
-	errorCh    chan<- error // Channel to report critical execution client failures
+	errorCh chan<- error // Channel to report critical execution client failures
 
 	// Handlers
 	daRetriever daRetriever
@@ -103,7 +102,6 @@ func NewSyncer(
 		dataStore:    dataStore,
 		lastStateMtx: &sync.RWMutex{},
 		daStateMtx:   &sync.RWMutex{},
-		heightInCh:   make(chan common.DAHeightEvent, 10_000),
 		errorCh:      errorCh,
 		logger:       logger.With().Str("component", "syncer").Logger(),
 	}
@@ -217,13 +215,29 @@ func (s *Syncer) processLoop() {
 		select {
 		case <-s.ctx.Done():
 			return
-		case heightEvent := <-s.heightInCh:
-			s.processHeightEvent(&heightEvent)
+		default:
+			currentHeight, err := s.store.Height(s.ctx)
+			if err != nil {
+				s.logger.Error().Err(err).Msg("failed to get current height for pending events")
+				continue
+			}
+
+			// Try to get the next processable event (currentHeight + 1)
+			nextHeight := currentHeight + 1
+			for {
+				event := s.cache.GetNextPendingEvent(nextHeight)
+				if event == nil {
+					break
+				}
+				s.processHeightEvent(event)
+				nextHeight++
+			}
 		}
 	}
 }
 
 // syncLoop handles synchronization from DA and P2P sources.
+// all event are sent to the cache for processing.
 func (s *Syncer) syncLoop() {
 	s.logger.Info().Msg("starting sync loop")
 	defer s.logger.Info().Msg("sync loop stopped")
@@ -261,8 +275,6 @@ func (s *Syncer) syncLoop() {
 			return
 		default:
 		}
-		// Process pending events from cache on every iteration
-		s.processPendingEvents()
 
 		now := time.Now()
 		// Respect backoff window if set
@@ -292,11 +304,7 @@ func (s *Syncer) syncLoop() {
 
 				// Process DA events
 				for _, event := range events {
-					select {
-					case s.heightInCh <- event:
-					default:
-						s.cache.SetPendingEvent(event.Header.Height(), &event)
-					}
+					s.cache.SetPendingEvent(event.Header.Height(), &event)
 				}
 
 				// increment DA height on successful retrieval and continue immediately
@@ -312,11 +320,7 @@ func (s *Syncer) syncLoop() {
 			if newHeaderHeight > lastHeaderHeight {
 				events := s.p2pHandler.ProcessHeaderRange(s.ctx, lastHeaderHeight+1, newHeaderHeight)
 				for _, event := range events {
-					select {
-					case s.heightInCh <- event:
-					default:
-						s.cache.SetPendingEvent(event.Header.Height(), &event)
-					}
+					s.cache.SetPendingEvent(event.Header.Height(), &event)
 				}
 				lastHeaderHeight = newHeaderHeight
 			}
@@ -329,18 +333,13 @@ func (s *Syncer) syncLoop() {
 			if newDataHeight > lastDataHeight {
 				events := s.p2pHandler.ProcessDataRange(s.ctx, lastDataHeight+1, newDataHeight)
 				for _, event := range events {
-					select {
-					case s.heightInCh <- event:
-					default:
-						s.cache.SetPendingEvent(event.Header.Height(), &event)
-					}
+					s.cache.SetPendingEvent(event.Header.Height(), &event)
 				}
 				lastDataHeight = newDataHeight
 			}
 		default:
 			// Prevent busy-waiting when no events are available.
 			waitTime := min(10*time.Millisecond, s.config.Node.BlockTime.Duration)
-
 			time.Sleep(waitTime)
 		}
 	}
@@ -547,34 +546,4 @@ func (s *Syncer) isHeightFromFutureError(err error) bool {
 		return true
 	}
 	return false
-}
-
-// processPendingEvents fetches and processes pending events from cache
-func (s *Syncer) processPendingEvents() {
-	currentHeight, err := s.store.Height(s.ctx)
-	if err != nil {
-		s.logger.Error().Err(err).Msg("failed to get current height for pending events")
-		return
-	}
-
-	// Try to get the next processable event (currentHeight + 1)
-	nextHeight := currentHeight + 1
-	if event := s.cache.GetNextPendingEvent(nextHeight); event != nil {
-		heightEvent := common.DAHeightEvent{
-			Header:                 event.Header,
-			Data:                   event.Data,
-			DaHeight:               event.DaHeight,
-			HeaderDaIncludedHeight: event.HeaderDaIncludedHeight,
-		}
-
-		select {
-		case s.heightInCh <- heightEvent:
-			// Event was successfully sent and already removed by GetNextPendingEvent
-			s.logger.Debug().Uint64("height", nextHeight).Msg("sent pending event to processing")
-		case <-s.ctx.Done():
-			s.cache.SetPendingEvent(nextHeight, event)
-		default:
-			s.cache.SetPendingEvent(nextHeight, event)
-		}
-	}
 }
