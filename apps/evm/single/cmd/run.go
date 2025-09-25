@@ -151,10 +151,10 @@ func addFlags(cmd *cobra.Command) {
 	cmd.Flags().String(evm.FlagEvmJWTSecret, "", "The JWT secret for authentication with the execution client")
 	cmd.Flags().String(evm.FlagEvmGenesisHash, "", "Hash of the genesis block")
 	cmd.Flags().String(evm.FlagEvmFeeRecipient, "", "Address that will receive transaction fees")
-	cmd.Flags().String(flagNSMigrations, "", "Namespace migrations in format: da_height1:namespace1:dataNamespace1,da_height2:namespace2:dataNamespace2")
+	cmd.Flags().String(flagNSMigrations, "", "Namespace migrations in format: untilHeight1:namespace1:dataNamespace1,untilHeight2:namespace2:dataNamespace2 (namespace is used from height 0 up to and including untilHeight)")
 }
 
-var flagNSMigrations = "ns-migrations"
+const flagNSMigrations = "migrations"
 
 // parseMigrations parses the migrations flag into a map[uint64]namespaces
 func parseMigrations(cmd *cobra.Command) (map[uint64]namespaces, error) {
@@ -168,17 +168,21 @@ func parseMigrations(cmd *cobra.Command) (map[uint64]namespaces, error) {
 		return migrations, nil
 	}
 
-	// Parse format: height1:namespace1:dataNamespace1,height2:namespace2:dataNamespace2
+	// Parse format: untilHeight1:namespace1:dataNamespace1,untilHeight2:namespace2:dataNamespace2
 	entries := strings.Split(migrationsStr, ",")
 	for _, entry := range entries {
 		parts := strings.Split(strings.TrimSpace(entry), ":")
 		if len(parts) < 2 || len(parts) > 3 {
-			return nil, fmt.Errorf("invalid migration entry format: %s (expected height:namespace[:dataNamespace])", entry)
+			return nil, fmt.Errorf("invalid migration entry format: %s (expected untilHeight:namespace[:dataNamespace] where namespace is used until untilHeight inclusive)", entry)
 		}
 
-		height, err := strconv.ParseUint(parts[0], 10, 64)
+		untilHeight, err := strconv.ParseUint(parts[0], 10, 64)
 		if err != nil {
-			return nil, fmt.Errorf("invalid height in migration entry %s: %w", entry, err)
+			return nil, fmt.Errorf("invalid untilHeight in migration entry %s: %w", entry, err)
+		}
+
+		if parts[1] == "" {
+			return nil, fmt.Errorf("invalid migration entry format: %s (namespace cannot be empty)", entry)
 		}
 
 		ns := namespaces{
@@ -188,7 +192,7 @@ func parseMigrations(cmd *cobra.Command) (map[uint64]namespaces, error) {
 			ns.dataNamespace = parts[2]
 		}
 
-		migrations[height] = ns
+		migrations[untilHeight] = ns
 	}
 
 	return migrations, nil
@@ -231,7 +235,9 @@ func newNamespaceMigrationDAAPI(api jsonrpc.API, cfg config.Config, migrations m
 	}
 }
 
-// findNamespaceForHeight determines the correct namespace to use for a given height
+// findNamespaceForHeight determines the correct namespace to use for a given height.
+// Migrations are defined with "until" heights - the namespace is used until that height (inclusive).
+// For example, a migration at untilHeight=100 means the namespace is used for heights 0-100.
 func (api *namespaceMigrationDAAPI) findNamespaceForHeight(height uint64, isDataNamespace bool) []byte {
 	if len(api.migrations) == 0 {
 		if isDataNamespace {
@@ -240,12 +246,12 @@ func (api *namespaceMigrationDAAPI) findNamespaceForHeight(height uint64, isData
 		return api.currentNamespace
 	}
 
-	// Find the highest migration height that is <= requested height
-	var selectedHeight uint64
+	// Find the migration with the lowest untilHeight that is >= requested height
+	var selectedUntilHeight uint64
 	var found bool
-	for migrationHeight := range api.migrations {
-		if migrationHeight <= height && migrationHeight > selectedHeight {
-			selectedHeight = migrationHeight
+	for untilHeight := range api.migrations {
+		if untilHeight >= height && (!found || untilHeight < selectedUntilHeight) {
+			selectedUntilHeight = untilHeight
 			found = true
 		}
 	}
@@ -259,7 +265,7 @@ func (api *namespaceMigrationDAAPI) findNamespaceForHeight(height uint64, isData
 	}
 
 	// Use the namespace from the migration
-	migration := api.migrations[selectedHeight]
+	migration := api.migrations[selectedUntilHeight]
 	if isDataNamespace {
 		return da.NamespaceFromString(migration.GetDataNamespace()).Bytes()
 	}
