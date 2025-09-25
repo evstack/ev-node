@@ -5,6 +5,8 @@ import (
 	"context"
 	"fmt"
 	"path/filepath"
+	"strconv"
+	"strings"
 
 	"github.com/evstack/ev-node/core/da"
 	"github.com/evstack/ev-node/da/jsonrpc"
@@ -57,7 +59,10 @@ var RunCmd = &cobra.Command{
 			return err
 		}
 
-		migrations := make(map[uint64]namespaces)
+		migrations, err := parseMigrations(cmd)
+		if err != nil {
+			return fmt.Errorf("failed to parse migrations: %w", err)
+		}
 		daAPI := newNamespaceMigrationDAAPI(daJrpc.DA, nodeConfig, migrations)
 
 		datastore, err := store.NewDefaultKVStore(nodeConfig.RootDir, nodeConfig.DBPath, "evm-single")
@@ -146,6 +151,47 @@ func addFlags(cmd *cobra.Command) {
 	cmd.Flags().String(evm.FlagEvmJWTSecret, "", "The JWT secret for authentication with the execution client")
 	cmd.Flags().String(evm.FlagEvmGenesisHash, "", "Hash of the genesis block")
 	cmd.Flags().String(evm.FlagEvmFeeRecipient, "", "Address that will receive transaction fees")
+	cmd.Flags().String(flagNSMigrations, "", "Namespace migrations in format: da_height1:namespace1:dataNamespace1,da_height2:namespace2:dataNamespace2")
+}
+
+var flagNSMigrations = "ns-migrations"
+
+// parseMigrations parses the migrations flag into a map[uint64]namespaces
+func parseMigrations(cmd *cobra.Command) (map[uint64]namespaces, error) {
+	migrationsStr, err := cmd.Flags().GetString(flagNSMigrations)
+	if err != nil {
+		return nil, err
+	}
+
+	migrations := make(map[uint64]namespaces)
+	if migrationsStr == "" {
+		return migrations, nil
+	}
+
+	// Parse format: height1:namespace1:dataNamespace1,height2:namespace2:dataNamespace2
+	entries := strings.Split(migrationsStr, ",")
+	for _, entry := range entries {
+		parts := strings.Split(strings.TrimSpace(entry), ":")
+		if len(parts) < 2 || len(parts) > 3 {
+			return nil, fmt.Errorf("invalid migration entry format: %s (expected height:namespace[:dataNamespace])", entry)
+		}
+
+		height, err := strconv.ParseUint(parts[0], 10, 64)
+		if err != nil {
+			return nil, fmt.Errorf("invalid height in migration entry %s: %w", entry, err)
+		}
+
+		ns := namespaces{
+			namespace: parts[1],
+		}
+		if len(parts) == 3 {
+			ns.dataNamespace = parts[2]
+		}
+
+		migrations[height] = ns
+	}
+
+	return migrations, nil
 }
 
 // namespaces defines the namespace used for namespace migration
