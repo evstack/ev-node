@@ -237,7 +237,7 @@ func (s *Syncer) processLoop() {
 }
 
 // syncLoop handles synchronization from DA and P2P sources.
-// all event are sent to the cache for processing.
+// all events are sent to the cache for processing.
 func (s *Syncer) syncLoop() {
 	s.logger.Info().Msg("starting sync loop")
 	defer s.logger.Info().Msg("sync loop stopped")

@@ -111,21 +111,37 @@ func TestSyncer_sendNonBlockingSignal(t *testing.T) {
 	}
 }
 
-func TestSyncer_processPendingEvents(t *testing.T) {
+func TestSyncer_processLoop(t *testing.T) {
 	ds := dssync.MutexWrap(datastore.NewMapDatastore())
 	st := store.New(ds)
 	cm, err := cache.NewManager(config.DefaultConfig(), st, zerolog.Nop())
 	require.NoError(t, err)
 
-	// current height 1
-	require.NoError(t, st.SetHeight(context.Background(), 1))
+	addr, _, _ := buildSyncTestSigner(t)
+	cfg := config.DefaultConfig()
+	cfg.DA.StartHeight = uint64(1)
+	gen := genesis.Genesis{ChainID: "tchain", InitialHeight: 1, StartTime: time.Now().Add(-time.Second), ProposerAddress: addr}
 
-	s := &Syncer{
-		store:  st,
-		cache:  cm,
-		ctx:    context.Background(),
-		logger: zerolog.Nop(),
-	}
+	dummyExec := execution.NewDummyExecutor()
+
+	syncerInst1 := NewSyncer(
+		st,
+		dummyExec,
+		nil,
+		cm,
+		common.NopMetrics(),
+		cfg,
+		gen,
+		nil,
+		nil,
+		zerolog.Nop(),
+		common.DefaultBlockOptions(),
+		make(chan error, 1),
+	)
+	require.NoError(t, syncerInst1.initializeState())
+	ctx, cancel := context.WithCancel(t.Context())
+	syncerInst1.ctx = ctx
+	require.NoError(t, st.SetHeight(ctx, 1))
 
 	// create two pending events, one for height 2 (> current) and one for height 1 (<= current)
 	evt1 := &common.DAHeightEvent{Header: &types.SignedHeader{Header: types.Header{BaseHeader: types.BaseHeader{ChainID: "c", Height: 1}}}, Data: &types.Data{Metadata: &types.Metadata{ChainID: "c", Height: 1}}}
@@ -133,7 +149,11 @@ func TestSyncer_processPendingEvents(t *testing.T) {
 	cm.SetPendingEvent(1, evt1)
 	cm.SetPendingEvent(2, evt2)
 
-	s.syncLoop()
+	go func() {
+		time.Sleep(1 * time.Second)
+		cancel()
+	}()
+	syncerInst1.processLoop()
 
 	// Verify the event was removed by trying to get it again
 	remaining := cm.GetNextPendingEvent(2)
