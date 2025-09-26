@@ -116,12 +116,7 @@ func TestDARetriever_RetrieveFromDA_Timeout(t *testing.T) {
 	// Mock GetIDs to hang longer than the timeout
 	mockDA.EXPECT().GetIDs(mock.Anything, mock.Anything, mock.Anything).
 		Run(func(ctx context.Context, height uint64, namespace []byte) {
-			// Sleep longer than dAFetcherTimeout (10 seconds)
-			select {
-			case <-ctx.Done():
-				// Context should be cancelled due to timeout
-				return
-			}
+			<-ctx.Done()
 		}).
 		Return(nil, context.DeadlineExceeded).Maybe()
 
