@@ -14,7 +14,6 @@ import (
 	"github.com/evstack/ev-node/pkg/signer/noop"
 	testmocks "github.com/evstack/ev-node/test/mocks"
 	"github.com/ipfs/go-datastore"
-	"github.com/ipfs/go-datastore/sync"
 	dssync "github.com/ipfs/go-datastore/sync"
 	"github.com/libp2p/go-libp2p/core/crypto"
 	"github.com/rs/zerolog"
@@ -73,7 +72,7 @@ func makeData(chainID string, height uint64, txs int) *types.Data {
 }
 
 func TestProcessHeightEvent_SyncsAndUpdatesState(t *testing.T) {
-	ds := sync.MutexWrap(datastore.NewMapDatastore())
+	ds := dssync.MutexWrap(datastore.NewMapDatastore())
 	st := store.New(ds)
 	cm, err := cache.NewManager(config.DefaultConfig(), st, zerolog.Nop())
 	require.NoError(t, err)
@@ -125,7 +124,7 @@ func TestProcessHeightEvent_SyncsAndUpdatesState(t *testing.T) {
 }
 
 func TestSequentialBlockSync(t *testing.T) {
-	ds := sync.MutexWrap(datastore.NewMapDatastore())
+	ds := dssync.MutexWrap(datastore.NewMapDatastore())
 	st := store.New(ds)
 	cm, err := cache.NewManager(config.DefaultConfig(), st, zerolog.Nop())
 	require.NoError(t, err)
