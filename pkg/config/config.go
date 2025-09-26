@@ -49,6 +49,8 @@ const (
 	FlagReadinessMaxBlocksBehind = FlagPrefixEvnode + "node.readiness_max_blocks_behind"
 	// FlagClearCache is a flag for clearing the cache
 	FlagClearCache = FlagPrefixEvnode + "clear_cache"
+	// FlagP2PPrefer is a flag to prioritize p2p over da fetching
+	FlagP2PPrefer = FlagPrefixEvnode + "prefer_p2p"
 
 	// Data Availability configuration flags
 
@@ -131,6 +133,7 @@ const (
 type Config struct {
 	RootDir    string `mapstructure:"-" yaml:"-" comment:"Root directory where rollkit files are located"`
 	ClearCache bool   `mapstructure:"-" yaml:"-" comment:"Clear the cache"`
+	PreferP2P  bool   `mapstructure:"-" yaml:"-" comment:"Prefer P2P over DA fetching"`
 
 	// Base configuration
 	DBPath string `mapstructure:"db_path" yaml:"db_path" comment:"Path inside the root directory where the database is located"`
@@ -308,6 +311,7 @@ func AddFlags(cmd *cobra.Command) {
 	// Add base flags
 	cmd.Flags().String(FlagDBPath, def.DBPath, "path for the node database")
 	cmd.Flags().Bool(FlagClearCache, def.ClearCache, "clear the cache")
+	cmd.Flags().Bool(FlagP2PPrefer, def.PreferP2P, "prefer P2P over DA fetching")
 
 	// Node configuration flags
 	cmd.Flags().Bool(FlagAggregator, def.Node.Aggregator, "run node in aggregator mode")
@@ -354,6 +358,11 @@ func AddFlags(cmd *cobra.Command) {
 	cmd.Flags().String(FlagSignerType, def.Signer.SignerType, "type of signer to use (file, grpc)")
 	cmd.Flags().String(FlagSignerPath, def.Signer.SignerPath, "path to the signer file or address")
 	cmd.Flags().String(FlagSignerPassphrase, "", "passphrase for the signer (required for file signer and if aggregator is enabled)")
+
+	// Only sync nodes can use the FlagP2PPrefer
+	cmd.MarkFlagsMutuallyExclusive(FlagP2PPrefer, FlagAggregator)
+	// Clearing cache on an aggregator is dangerous, should be done manually
+	cmd.MarkFlagsMutuallyExclusive(FlagClearCache, FlagAggregator)
 }
 
 // Load loads the node configuration in the following order of precedence:
