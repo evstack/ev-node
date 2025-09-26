@@ -273,6 +273,9 @@ func (s *Syncer) syncLoop() {
 					// no data at this height, increase DA height
 					// we do still want to check p2p
 					s.SetDAHeight(s.GetDAHeight() + 1)
+
+					// Reset backoff on success
+					nextDARequestAt = time.Time{}
 				} else {
 					// Back off exactly by DA block time to avoid overloading
 					hffDelay = s.config.DA.BlockTime.Duration
