@@ -31,6 +31,9 @@ type p2pHandler interface {
 	ProcessDataRange(ctx context.Context, fromHeight, toHeight uint64) []common.DAHeightEvent
 }
 
+// maxRetriesBeforeHalt is the maximum number of retries against the execution client before halting the syncer.
+const maxRetriesBeforeHalt = 3
+
 // Syncer handles block synchronization from DA and P2P sources.
 type Syncer struct {
 	// Core components
@@ -70,9 +73,10 @@ type Syncer struct {
 	logger zerolog.Logger
 
 	// Lifecycle
-	ctx    context.Context
-	cancel context.CancelFunc
-	wg     sync.WaitGroup
+	ctx               context.Context
+	cancel            context.CancelFunc
+	wg                sync.WaitGroup
+	retriesBeforeHalt map[uint64]uint64
 }
 
 // NewSyncer creates a new block syncer
@@ -91,20 +95,21 @@ func NewSyncer(
 	errorCh chan<- error,
 ) *Syncer {
 	return &Syncer{
-		store:        store,
-		exec:         exec,
-		da:           da,
-		cache:        cache,
-		metrics:      metrics,
-		config:       config,
-		genesis:      genesis,
-		options:      options,
-		headerStore:  headerStore,
-		dataStore:    dataStore,
-		lastStateMtx: &sync.RWMutex{},
-		heightInCh:   make(chan common.DAHeightEvent, 10_000),
-		errorCh:      errorCh,
-		logger:       logger.With().Str("component", "syncer").Logger(),
+		store:             store,
+		exec:              exec,
+		da:                da,
+		cache:             cache,
+		metrics:           metrics,
+		config:            config,
+		genesis:           genesis,
+		options:           options,
+		headerStore:       headerStore,
+		dataStore:         dataStore,
+		lastStateMtx:      &sync.RWMutex{},
+		heightInCh:        make(chan common.DAHeightEvent, 10_000),
+		errorCh:           errorCh,
+		logger:            logger.With().Str("component", "syncer").Logger(),
+		retriesBeforeHalt: make(map[uint64]uint64),
 	}
 }
 
@@ -470,9 +475,15 @@ func (s *Syncer) applyBlock(header types.Header, data *types.Data, currentState 
 	newAppHash, _, err := s.exec.ExecuteTxs(ctx, rawTxs, header.Height(),
 		header.Time(), currentState.AppHash)
 	if err != nil {
-		s.sendCriticalError(fmt.Errorf("failed to execute transactions: %w", err))
-		return types.State{}, fmt.Errorf("failed to execute transactions: %w", err)
+		s.retriesBeforeHalt[header.Height()]++
+		if s.retriesBeforeHalt[header.Height()] > maxRetriesBeforeHalt {
+			s.sendCriticalError(fmt.Errorf("failed to execute transactions: %w", err))
+			return types.State{}, fmt.Errorf("failed to execute transactions: %w", err)
+		}
+
+		return types.State{}, fmt.Errorf("failed to execute transactions (retry %d / %d): %w", s.retriesBeforeHalt[header.Height()], maxRetriesBeforeHalt, err)
 	}
+	delete(s.retriesBeforeHalt, header.Height())
 
 	// Create new state
 	newState, err := currentState.NextState(header, newAppHash)
