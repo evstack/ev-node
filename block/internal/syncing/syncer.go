@@ -246,15 +246,13 @@ func (s *Syncer) syncLoop() {
 	lastHeaderHeight := initialHeight
 	lastDataHeight := initialHeight
 
-	// Backoff control when DA replies with height-from-future
+	// Backoff control when DA replies with errors
 	var hffDelay time.Duration
 	var nextDARequestAt time.Time
 
 	blockTicker := time.NewTicker(s.config.Node.BlockTime.Duration)
 	defer blockTicker.Stop()
 
-	// TODO: we should request to see what the head of the chain is at
-	// then we know if we are falling behind or in sync mode
 	for {
 		select {
 		case <-s.ctx.Done():
@@ -268,23 +266,26 @@ func (s *Syncer) syncLoop() {
 		// Respect backoff window if set
 		if nextDARequestAt.IsZero() || now.After(nextDARequestAt) || now.Equal(nextDARequestAt) {
 			// Retrieve from DA as fast as possible (unless throttled by HFF)
+			// DaHeight is only increased on successful retrieval, it will retry on failure at the next iteration
 			events, err := s.daRetriever.RetrieveFromDA(s.ctx, s.GetDAHeight())
 			if err != nil {
-				if s.isHeightFromFutureError(err) {
+				if errors.Is(err, coreda.ErrBlobNotFound) {
+					// no data at this height, increase DA height
+					// we do still want to check p2p
+					s.SetDAHeight(s.GetDAHeight() + 1)
+				} else {
 					// Back off exactly by DA block time to avoid overloading
 					hffDelay = s.config.DA.BlockTime.Duration
 					if hffDelay <= 0 {
 						hffDelay = 2 * time.Second
 					}
-					s.logger.Debug().Dur("delay", hffDelay).Uint64("da_height", s.GetDAHeight()).Msg("height from future; backing off DA requests")
 					nextDARequestAt = now.Add(hffDelay)
-				} else if errors.Is(err, coreda.ErrBlobNotFound) {
-					// no data at this height, increase DA height
-					s.SetDAHeight(s.GetDAHeight() + 1)
-				} else {
-					// Non-HFF errors: do not backoff artificially
-					nextDARequestAt = time.Time{}
-					s.logger.Error().Err(err).Msg("failed to retrieve from DA")
+
+					if s.isHeightFromFutureError(err) {
+						s.logger.Debug().Dur("delay", hffDelay).Uint64("da_height", s.GetDAHeight()).Msg("height from future; backing off DA requests")
+					} else {
+						s.logger.Error().Err(err).Dur("delay", hffDelay).Uint64("da_height", s.GetDAHeight()).Msg("failed to retrieve from DA; backing off DA requests")
+					}
 				}
 			} else {
 				// Reset backoff on success
@@ -301,7 +302,7 @@ func (s *Syncer) syncLoop() {
 
 				// increment DA height on successful retrieval and continue immediately
 				s.SetDAHeight(s.GetDAHeight() + 1)
-				continue
+				continue // event sent, no need to check p2p
 			}
 		}
 
