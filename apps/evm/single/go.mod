@@ -21,6 +21,7 @@ require (
 	github.com/evstack/ev-node/sequencers/single v0.0.0-00010101000000-000000000000
 	github.com/ipfs/go-datastore v0.9.0
 	github.com/spf13/cobra v1.10.1
+	github.com/stretchr/testify v1.11.1
 )
 
 require (
@@ -161,7 +162,6 @@ require (
 	github.com/spf13/pflag v1.0.10 // indirect
 	github.com/spf13/viper v1.21.0 // indirect
 	github.com/stretchr/objx v0.5.2 // indirect
-	github.com/stretchr/testify v1.11.1 // indirect
 	github.com/subosito/gotenv v1.6.0 // indirect
 	github.com/supranational/blst v0.3.14 // indirect
 	github.com/tklauser/go-sysconf v0.3.12 // indirect
