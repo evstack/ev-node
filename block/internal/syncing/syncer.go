@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	goheader "github.com/celestiaorg/go-header"
@@ -30,6 +31,9 @@ type p2pHandler interface {
 	ProcessDataRange(ctx context.Context, fromHeight, toHeight uint64) []common.DAHeightEvent
 }
 
+// maxRetriesBeforeHalt is the maximum number of retries against the execution client before halting the syncer.
+const maxRetriesBeforeHalt = 3
+
 // Syncer handles block synchronization from DA and P2P sources.
 type Syncer struct {
 	// Core components
@@ -51,8 +55,7 @@ type Syncer struct {
 	lastStateMtx *sync.RWMutex
 
 	// DA state
-	daHeight   uint64
-	daStateMtx *sync.RWMutex
+	daHeight uint64
 
 	// P2P stores
 	headerStore goheader.Store[*types.SignedHeader]
@@ -70,9 +73,10 @@ type Syncer struct {
 	logger zerolog.Logger
 
 	// Lifecycle
-	ctx    context.Context
-	cancel context.CancelFunc
-	wg     sync.WaitGroup
+	ctx               context.Context
+	cancel            context.CancelFunc
+	wg                sync.WaitGroup
+	retriesBeforeHalt map[uint64]uint64
 }
 
 // NewSyncer creates a new block syncer
@@ -91,21 +95,21 @@ func NewSyncer(
 	errorCh chan<- error,
 ) *Syncer {
 	return &Syncer{
-		store:        store,
-		exec:         exec,
-		da:           da,
-		cache:        cache,
-		metrics:      metrics,
-		config:       config,
-		genesis:      genesis,
-		options:      options,
-		headerStore:  headerStore,
-		dataStore:    dataStore,
-		lastStateMtx: &sync.RWMutex{},
-		daStateMtx:   &sync.RWMutex{},
-		heightInCh:   make(chan common.DAHeightEvent, 10_000),
-		errorCh:      errorCh,
-		logger:       logger.With().Str("component", "syncer").Logger(),
+		store:             store,
+		exec:              exec,
+		da:                da,
+		cache:             cache,
+		metrics:           metrics,
+		config:            config,
+		genesis:           genesis,
+		options:           options,
+		headerStore:       headerStore,
+		dataStore:         dataStore,
+		lastStateMtx:      &sync.RWMutex{},
+		heightInCh:        make(chan common.DAHeightEvent, 10_000),
+		errorCh:           errorCh,
+		logger:            logger.With().Str("component", "syncer").Logger(),
+		retriesBeforeHalt: make(map[uint64]uint64),
 	}
 }
 
@@ -166,16 +170,12 @@ func (s *Syncer) SetLastState(state types.State) {
 
 // GetDAHeight returns the current DA height
 func (s *Syncer) GetDAHeight() uint64 {
-	s.daStateMtx.RLock()
-	defer s.daStateMtx.RUnlock()
-	return s.daHeight
+	return atomic.LoadUint64(&s.daHeight)
 }
 
 // SetDAHeight updates the DA height
 func (s *Syncer) SetDAHeight(height uint64) {
-	s.daStateMtx.Lock()
-	defer s.daStateMtx.Unlock()
-	s.daHeight = height
+	atomic.StoreUint64(&s.daHeight, height)
 }
 
 // initializeState loads the current sync state
@@ -246,15 +246,13 @@ func (s *Syncer) syncLoop() {
 	lastHeaderHeight := initialHeight
 	lastDataHeight := initialHeight
 
-	// Backoff control when DA replies with height-from-future
+	// Backoff control when DA replies with errors
 	var hffDelay time.Duration
 	var nextDARequestAt time.Time
 
 	blockTicker := time.NewTicker(s.config.Node.BlockTime.Duration)
 	defer blockTicker.Stop()
 
-	// TODO: we should request to see what the head of the chain is at
-	// then we know if we are falling behind or in sync mode
 	for {
 		select {
 		case <-s.ctx.Done():
@@ -265,26 +263,34 @@ func (s *Syncer) syncLoop() {
 		s.processPendingEvents()
 
 		now := time.Now()
+		daHeight := s.GetDAHeight()
+
 		// Respect backoff window if set
 		if nextDARequestAt.IsZero() || now.After(nextDARequestAt) || now.Equal(nextDARequestAt) {
 			// Retrieve from DA as fast as possible (unless throttled by HFF)
-			events, err := s.daRetriever.RetrieveFromDA(s.ctx, s.GetDAHeight())
+			// DaHeight is only increased on successful retrieval, it will retry on failure at the next iteration
+			events, err := s.daRetriever.RetrieveFromDA(s.ctx, daHeight)
 			if err != nil {
-				if s.isHeightFromFutureError(err) {
+				if errors.Is(err, coreda.ErrBlobNotFound) {
+					// no data at this height, increase DA height
+					// we do still want to check p2p
+					s.SetDAHeight(daHeight + 1)
+
+					// Reset backoff on success
+					nextDARequestAt = time.Time{}
+				} else {
 					// Back off exactly by DA block time to avoid overloading
 					hffDelay = s.config.DA.BlockTime.Duration
 					if hffDelay <= 0 {
 						hffDelay = 2 * time.Second
 					}
-					s.logger.Debug().Dur("delay", hffDelay).Uint64("da_height", s.GetDAHeight()).Msg("height from future; backing off DA requests")
 					nextDARequestAt = now.Add(hffDelay)
-				} else if errors.Is(err, coreda.ErrBlobNotFound) {
-					// no data at this height, increase DA height
-					s.SetDAHeight(s.GetDAHeight() + 1)
-				} else {
-					// Non-HFF errors: do not backoff artificially
-					nextDARequestAt = time.Time{}
-					s.logger.Error().Err(err).Msg("failed to retrieve from DA")
+
+					if s.isHeightFromFutureError(err) {
+						s.logger.Debug().Dur("delay", hffDelay).Uint64("da_height", daHeight).Msg("height from future; backing off DA requests")
+					} else {
+						s.logger.Error().Err(err).Dur("delay", hffDelay).Uint64("da_height", daHeight).Msg("failed to retrieve from DA; backing off DA requests")
+					}
 				}
 			} else {
 				// Reset backoff on success
@@ -300,8 +306,8 @@ func (s *Syncer) syncLoop() {
 				}
 
 				// increment DA height on successful retrieval and continue immediately
-				s.SetDAHeight(s.GetDAHeight() + 1)
-				continue
+				s.SetDAHeight(daHeight + 1)
+				continue // event sent, no need to check p2p
 			}
 		}
 
@@ -469,9 +475,15 @@ func (s *Syncer) applyBlock(header types.Header, data *types.Data, currentState 
 	newAppHash, _, err := s.exec.ExecuteTxs(ctx, rawTxs, header.Height(),
 		header.Time(), currentState.AppHash)
 	if err != nil {
-		s.sendCriticalError(fmt.Errorf("failed to execute transactions: %w", err))
-		return types.State{}, fmt.Errorf("failed to execute transactions: %w", err)
+		s.retriesBeforeHalt[header.Height()]++
+		if s.retriesBeforeHalt[header.Height()] > maxRetriesBeforeHalt {
+			s.sendCriticalError(fmt.Errorf("failed to execute transactions: %w", err))
+			return types.State{}, fmt.Errorf("failed to execute transactions: %w", err)
+		}
+
+		return types.State{}, fmt.Errorf("failed to execute transactions (retry %d / %d): %w", s.retriesBeforeHalt[header.Height()], maxRetriesBeforeHalt, err)
 	}
+	delete(s.retriesBeforeHalt, header.Height())
 
 	// Create new state
 	newState, err := currentState.NextState(header, newAppHash)

@@ -20,10 +20,7 @@ import (
 	pb "github.com/evstack/ev-node/types/pb/evnode/v1"
 )
 
-const (
-	dAFetcherTimeout = 30 * time.Second
-	dAFetcherRetries = 10
-)
+const dAFetcherTimeout = 10 * time.Second
 
 // DARetriever handles DA retrieval operations for syncing
 type DARetriever struct {
@@ -70,49 +67,34 @@ func NewDARetriever(
 // RetrieveFromDA retrieves blocks from the specified DA height and returns height events
 func (r *DARetriever) RetrieveFromDA(ctx context.Context, daHeight uint64) ([]common.DAHeightEvent, error) {
 	r.logger.Debug().Uint64("da_height", daHeight).Msg("retrieving from DA")
+	ctx, cancel := context.WithTimeout(ctx, dAFetcherTimeout)
+	defer cancel()
 
-	var err error
-	for retry := 0; retry < dAFetcherRetries; retry++ {
-		select {
-		case <-ctx.Done():
-			return nil, ctx.Err()
-		default:
-		}
-
-		blobsResp, fetchErr := r.fetchBlobs(ctx, daHeight)
-		if fetchErr == nil {
-			if blobsResp.Code == coreda.StatusNotFound {
-				r.logger.Debug().Uint64("da_height", daHeight).Msg("no blob data found")
-				return nil, coreda.ErrBlobNotFound
-			}
-
-			r.logger.Debug().Int("blobs", len(blobsResp.Data)).Uint64("da_height", daHeight).Msg("retrieved blob data")
-			events := r.processBlobs(ctx, blobsResp.Data, daHeight)
-			return events, nil
-		}
-
-		if strings.Contains(fetchErr.Error(), coreda.ErrHeightFromFuture.Error()) {
+	blobsResp, err := r.fetchBlobs(ctx, daHeight)
+	if err != nil {
+		if strings.Contains(err.Error(), coreda.ErrHeightFromFuture.Error()) {
 			return nil, fmt.Errorf("%w: height from future", coreda.ErrHeightFromFuture)
 		}
 
-		err = errors.Join(err, fetchErr)
-
-		// Delay before retrying
-		select {
-		case <-ctx.Done():
-			return nil, err
-		case <-time.After(100 * time.Millisecond):
-		}
+		return nil, err
 	}
 
-	return nil, err
+	// Check for context cancellation upfront
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+
+	if blobsResp.Code == coreda.StatusNotFound {
+		r.logger.Debug().Uint64("da_height", daHeight).Msg("no blob data found")
+		return nil, coreda.ErrBlobNotFound
+	}
+
+	r.logger.Debug().Int("blobs", len(blobsResp.Data)).Uint64("da_height", daHeight).Msg("retrieved blob data")
+	return r.processBlobs(ctx, blobsResp.Data, daHeight), nil
 }
 
 // fetchBlobs retrieves blobs from the DA layer
 func (r *DARetriever) fetchBlobs(ctx context.Context, daHeight uint64) (coreda.ResultRetrieve, error) {
-	ctx, cancel := context.WithTimeout(ctx, dAFetcherTimeout)
-	defer cancel()
-
 	// Retrieve from both namespaces
 	headerRes := types.RetrieveWithHelpers(ctx, r.da, r.logger, daHeight, r.namespaceBz)
 
