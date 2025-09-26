@@ -67,30 +67,34 @@ func NewDARetriever(
 // RetrieveFromDA retrieves blocks from the specified DA height and returns height events
 func (r *DARetriever) RetrieveFromDA(ctx context.Context, daHeight uint64) ([]common.DAHeightEvent, error) {
 	r.logger.Debug().Uint64("da_height", daHeight).Msg("retrieving from DA")
-	blobsResp, fetchErr := r.fetchBlobs(ctx, daHeight)
-	if fetchErr == nil {
-		if blobsResp.Code == coreda.StatusNotFound {
-			r.logger.Debug().Uint64("da_height", daHeight).Msg("no blob data found")
-			return nil, coreda.ErrBlobNotFound
+	ctx, cancel := context.WithTimeout(ctx, dAFetcherTimeout)
+	defer cancel()
+
+	blobsResp, err := r.fetchBlobs(ctx, daHeight)
+	if err != nil {
+		if strings.Contains(err.Error(), coreda.ErrHeightFromFuture.Error()) {
+			return nil, fmt.Errorf("%w: height from future", coreda.ErrHeightFromFuture)
 		}
 
-		r.logger.Debug().Int("blobs", len(blobsResp.Data)).Uint64("da_height", daHeight).Msg("retrieved blob data")
-		events := r.processBlobs(ctx, blobsResp.Data, daHeight)
-		return events, nil
+		return nil, err
 	}
 
-	if strings.Contains(fetchErr.Error(), coreda.ErrHeightFromFuture.Error()) {
-		return nil, fmt.Errorf("%w: height from future", coreda.ErrHeightFromFuture)
+	// Check for context cancellation upfront
+	if err := ctx.Err(); err != nil {
+		return nil, err
 	}
 
-	return nil, fetchErr
+	if blobsResp.Code == coreda.StatusNotFound {
+		r.logger.Debug().Uint64("da_height", daHeight).Msg("no blob data found")
+		return nil, coreda.ErrBlobNotFound
+	}
+
+	r.logger.Debug().Int("blobs", len(blobsResp.Data)).Uint64("da_height", daHeight).Msg("retrieved blob data")
+	return r.processBlobs(ctx, blobsResp.Data, daHeight), nil
 }
 
 // fetchBlobs retrieves blobs from the DA layer
 func (r *DARetriever) fetchBlobs(ctx context.Context, daHeight uint64) (coreda.ResultRetrieve, error) {
-	ctx, cancel := context.WithTimeout(ctx, dAFetcherTimeout)
-	defer cancel()
-
 	// Retrieve from both namespaces
 	headerRes := types.RetrieveWithHelpers(ctx, r.da, r.logger, daHeight, r.namespaceBz)
 

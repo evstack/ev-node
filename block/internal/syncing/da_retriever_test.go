@@ -105,6 +105,66 @@ func TestDARetriever_RetrieveFromDA_HeightFromFuture(t *testing.T) {
 	assert.Nil(t, events)
 }
 
+func TestDARetriever_RetrieveFromDA_Timeout(t *testing.T) {
+	ds := dssync.MutexWrap(datastore.NewMapDatastore())
+	st := store.New(ds)
+	cm, err := cache.NewManager(config.DefaultConfig(), st, zerolog.Nop())
+	require.NoError(t, err)
+
+	mockDA := testmocks.NewMockDA(t)
+
+	// Mock GetIDs to hang longer than the timeout
+	mockDA.EXPECT().GetIDs(mock.Anything, mock.Anything, mock.Anything).
+		Run(func(ctx context.Context, height uint64, namespace []byte) {
+			// Sleep longer than dAFetcherTimeout (10 seconds)
+			select {
+			case <-ctx.Done():
+				// Context should be cancelled due to timeout
+				return
+			}
+		}).
+		Return(nil, context.DeadlineExceeded).Maybe()
+
+	r := NewDARetriever(mockDA, cm, config.DefaultConfig(), genesis.Genesis{}, common.DefaultBlockOptions(), zerolog.Nop())
+
+	start := time.Now()
+	events, err := r.RetrieveFromDA(context.Background(), 42)
+	duration := time.Since(start)
+
+	// Verify error is returned and contains deadline exceeded information
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "DA retrieval failed")
+	assert.Contains(t, err.Error(), "context deadline exceeded")
+	assert.Len(t, events, 0)
+
+	// Verify timeout occurred approximately at expected time (with some tolerance)
+	assert.Greater(t, duration, 9*time.Second, "should timeout after approximately 10 seconds")
+	assert.Less(t, duration, 12*time.Second, "should not take much longer than timeout")
+}
+
+func TestDARetriever_RetrieveFromDA_TimeoutFast(t *testing.T) {
+	ds := dssync.MutexWrap(datastore.NewMapDatastore())
+	st := store.New(ds)
+	cm, err := cache.NewManager(config.DefaultConfig(), st, zerolog.Nop())
+	require.NoError(t, err)
+
+	mockDA := testmocks.NewMockDA(t)
+
+	// Mock GetIDs to immediately return context deadline exceeded
+	mockDA.EXPECT().GetIDs(mock.Anything, mock.Anything, mock.Anything).
+		Return(nil, context.DeadlineExceeded).Maybe()
+
+	r := NewDARetriever(mockDA, cm, config.DefaultConfig(), genesis.Genesis{}, common.DefaultBlockOptions(), zerolog.Nop())
+
+	events, err := r.RetrieveFromDA(context.Background(), 42)
+
+	// Verify error is returned and contains deadline exceeded information
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "DA retrieval failed")
+	assert.Contains(t, err.Error(), "context deadline exceeded")
+	assert.Len(t, events, 0)
+}
+
 func TestDARetriever_ProcessBlobs_HeaderAndData_Success(t *testing.T) {
 	ds := dssync.MutexWrap(datastore.NewMapDatastore())
 	st := store.New(ds)
