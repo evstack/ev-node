@@ -120,7 +120,7 @@ func (s *Syncer) Start(ctx context.Context) error {
 
 	// Initialize handlers
 	s.daRetriever = NewDARetriever(s.da, s.cache, s.config, s.genesis, s.options, s.logger)
-	//s.p2pRetriever = NewP2PStoreRetriever(s.headerStore, s.dataStore, s.genesis, s.options, s.logger)
+	s.p2pRetriever = NewP2PStoreRetriever(s.headerStore, s.dataStore, s.genesis, s.options, s.logger)
 
 	// Start main processing loop
 	s.wg.Add(1)
@@ -142,12 +142,14 @@ func (s *Syncer) Start(ctx context.Context) error {
 
 // Stop shuts down the syncing component
 func (s *Syncer) Stop() error {
-	if s.cancel != nil {
-		s.cancel()
+	if s.cancel == nil {
+		return nil
 	}
+	s.cancel()
 	s.wg.Wait()
 	s.logger.Info().Msg("syncer stopped")
 	close(s.heightInCh)
+	s.cancel = nil
 	return nil
 }
 

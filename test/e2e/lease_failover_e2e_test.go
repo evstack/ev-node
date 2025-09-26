@@ -231,6 +231,7 @@ func setupFailoverSequencerNode(
 	process := sut.ExecCmd(evmSingleBinaryPath,
 		"start",
 		"--evnode.log.format", "json",
+		"--evnode.log.level", "debug",
 		"--home", fullNodeHome,
 		"--evm.jwt-secret", fullNodeJwtSecret,
 		"--evm.genesis-hash", genesisHash,

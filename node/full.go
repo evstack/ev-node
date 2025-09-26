@@ -6,10 +6,13 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math/rand"
 	"net/http"
 	"net/http/pprof"
+	"strconv"
 	"time"
 
+	"github.com/evstack/ev-node/pkg/p2p/key"
 	ds "github.com/ipfs/go-datastore"
 	ktds "github.com/ipfs/go-datastore/keytransform"
 	"github.com/prometheus/client_golang/prometheus"
@@ -56,9 +59,9 @@ type FullNode struct {
 
 	da coreda.DA
 
-	p2pClient               *p2p.Client
-	hSyncService            *evsync.HeaderSyncService
-	dSyncService            *evsync.DataSyncService
+	//p2pClient *p2p.Client
+	//hSyncService            *evsync.HeaderSyncService
+	//dSyncService            *evsync.DataSyncService
 	Store                   store.Store
 	blockComponents         *block.Components
 	leaderElection          lease.LeaderElector
@@ -73,7 +76,7 @@ type FullNode struct {
 // newFullNode creates a new Rollkit full node.
 func newFullNode(
 	nodeConfig config.Config,
-	p2pClient *p2p.Client,
+	nodeKey *key.NodeKey,
 	signer signer.Signer,
 	genesis genesispkg.Genesis,
 	database ds.Batching,
@@ -91,23 +94,15 @@ func newFullNode(
 	mainKV := newPrefixKV(database, EvPrefix)
 	rktStore := store.New(mainKV)
 
-	headerSyncService, err := initHeaderSyncService(mainKV, nodeConfig, genesis, p2pClient, logger)
-	if err != nil {
-		return nil, err
-	}
-
-	dataSyncService, err := initDataSyncService(mainKV, nodeConfig, genesis, p2pClient, logger)
-	if err != nil {
-		return nil, err
-	}
-
 	// Initialize leader election if enabled
 	var leaderElection lease.LeaderElector
 	if nodeConfig.LeaderElection.Enabled {
-		nodeID, _, _, err := p2pClient.Info()
-		if err != nil {
-			return nil, fmt.Errorf("error getting node id from p2p client info: %w", err)
-		}
+		//nodeID, _, _, err := nodeKey.Info()
+		//if err != nil {
+		//	return nil, fmt.Errorf("error getting node id from p2p client info: %w", err)
+		//}
+		// todo: use nodeID instead
+		nodeID := strconv.Itoa(rand.Int())
 
 		leaseName := nodeConfig.LeaderElection.LeaseName
 		if leaseName == "" {
@@ -145,13 +140,13 @@ func newFullNode(
 	}
 
 	node := &FullNode{
-		genesis:        genesis,
-		nodeConfig:     nodeConfig,
-		p2pClient:      p2pClient,
-		da:             da,
-		Store:          rktStore,
-		hSyncService:   headerSyncService,
-		dSyncService:   dataSyncService,
+		genesis:    genesis,
+		nodeConfig: nodeConfig,
+		//p2pClient:  nodeKey,
+		da:    da,
+		Store: rktStore,
+		//hSyncService:   headerSyncService,
+		//dSyncService:   dataSyncService,
 		leaderElection: leaderElection,
 		// block components will be constructed dynamically based on leadership state
 	}
@@ -159,9 +154,49 @@ func newFullNode(
 	node.BaseService = *service.NewBaseService(logger, "Node", node)
 
 	node.AggregatorComponentFunc = func(ctx context.Context) error {
+		logger.Info().Msg("ALEX: Starting aggregator-MODE")
+
 		if node.blockComponents != nil {
-			node.blockComponents.Stop()
+			_ = node.blockComponents.Stop()
 		}
+		nodeConfig.Node.Aggregator = true
+		nodeConfig.P2P.Peers = ""
+		p2pClient, err := p2p.NewClient(nodeConfig.P2P, nodeKey.PrivKey, database, genesis.ChainID, logger, nil)
+		if err != nil {
+			return err
+		}
+
+		headerSyncService, err := initHeaderSyncService(mainKV, nodeConfig, genesis, p2pClient, logger)
+		if err != nil {
+			return err
+		}
+
+		dataSyncService, err := initDataSyncService(mainKV, nodeConfig, genesis, p2pClient, logger)
+		if err != nil {
+			return err
+		}
+		handler, err := rpcserver.NewServiceHandler(node.Store, p2pClient, genesis.ProposerAddress, logger, nodeConfig, func() uint64 {
+			panic("not impl")
+		})
+		if err != nil {
+			return fmt.Errorf("error creating RPC handler: %w", err)
+		}
+
+		node.rpcServer = &http.Server{
+			Addr:         nodeConfig.RPC.Address,
+			Handler:      handler,
+			ReadTimeout:  10 * time.Second,
+			WriteTimeout: 10 * time.Second,
+			IdleTimeout:  120 * time.Second,
+		}
+		go func() {
+			logger.Info().Str("addr", nodeConfig.RPC.Address).Msg("started RPC server")
+			if err := node.rpcServer.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+				logger.Error().Err(err).Msg("RPC server error")
+			}
+		}()
+		defer node.rpcServer.Shutdown(context.Background())
+
 		bc, err := block.NewAggregatorComponents(
 			nodeConfig,
 			genesis,
@@ -180,6 +215,21 @@ func newFullNode(
 			return fmt.Errorf("build leader components: %w", err)
 		}
 		node.blockComponents = bc
+
+		if err := p2pClient.Start(ctx); err != nil {
+			return err
+		}
+		defer p2pClient.Close()
+
+		if err = headerSyncService.Start(ctx); err != nil {
+			return fmt.Errorf("error while starting header sync service: %w", err)
+		}
+		defer headerSyncService.Stop(context.Background())
+		if err = dataSyncService.Start(ctx); err != nil {
+			return fmt.Errorf("error while starting data sync service: %w", err)
+		}
+		defer dataSyncService.Stop(context.Background())
+
 		defer bc.Stop() // nolint: errcheck
 		if err := bc.Start(ctx); err != nil && !errors.Is(err, context.Canceled) {
 			return fmt.Errorf("leader components started with error: %w", err)
@@ -188,6 +238,45 @@ func newFullNode(
 	}
 
 	node.SyncComponentFunc = func(ctx context.Context) error {
+		logger.Info().Msg("ALEX: Starting sync-MODE")
+		nodeConfig.Node.Aggregator = false
+		p2pClient, err := p2p.NewClient(nodeConfig.P2P, nodeKey.PrivKey, database, genesis.ChainID, logger, nil)
+		if err != nil {
+			return err
+		}
+
+		handler, err := rpcserver.NewServiceHandler(node.Store, p2pClient, genesis.ProposerAddress, logger, nodeConfig, func() uint64 {
+			panic("not impl")
+		})
+		if err != nil {
+			return fmt.Errorf("error creating RPC handler: %w", err)
+		}
+
+		node.rpcServer = &http.Server{
+			Addr:         nodeConfig.RPC.Address,
+			Handler:      handler,
+			ReadTimeout:  10 * time.Second,
+			WriteTimeout: 10 * time.Second,
+			IdleTimeout:  120 * time.Second,
+		}
+		go func() {
+			logger.Info().Str("addr", nodeConfig.RPC.Address).Msg("started RPC server")
+			if err := node.rpcServer.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+				logger.Error().Err(err).Msg("RPC server error")
+			}
+		}()
+		defer node.rpcServer.Shutdown(context.Background())
+
+		headerSyncService, err := initHeaderSyncService(mainKV, nodeConfig, genesis, p2pClient, logger)
+		if err != nil {
+			return err
+		}
+
+		dataSyncService, err := initDataSyncService(mainKV, nodeConfig, genesis, p2pClient, logger)
+		if err != nil {
+			return err
+		}
+
 		bc, err := block.NewSyncComponents(
 			nodeConfig,
 			genesis,
@@ -204,6 +293,22 @@ func newFullNode(
 			return fmt.Errorf("build follower components: %w", err)
 		}
 		node.blockComponents = bc
+
+		if err := p2pClient.Start(ctx); err != nil {
+			return err
+		}
+		defer p2pClient.Close()
+
+		if err = headerSyncService.Start(ctx); err != nil {
+			return fmt.Errorf("error while starting header sync service: %w", err)
+		}
+		defer headerSyncService.Stop(context.Background())
+
+		if err = dataSyncService.Start(ctx); err != nil {
+			return fmt.Errorf("error while starting data sync service: %w", err)
+		}
+		defer dataSyncService.Stop(context.Background())
+
 		defer bc.Stop() // nolint: errcheck
 		if err := bc.Start(ctx); err != nil && !errors.Is(err, context.Canceled) {
 			return fmt.Errorf("leader components started with error: %w", err)
@@ -348,49 +453,43 @@ func (n *FullNode) Run(parentCtx context.Context) error {
 	}
 
 	// Start RPC server
-	bestKnownHeightProvider := func() uint64 {
-		hHeight := n.hSyncService.Store().Height()
-		dHeight := n.dSyncService.Store().Height()
-		return min(hHeight, dHeight)
-	}
+	//bestKnownHeightProvider := func() uint64 {
+	//hHeight := n.blockComponents.Height()
+	//dHeight := n.blockComponents.Height()
+	//return min(hHeight, dHeight)
+	//panic("Alex")
+	//}
 
-	handler, err := rpcserver.NewServiceHandler(n.Store, n.p2pClient, n.genesis.ProposerAddress, n.Logger, n.nodeConfig, bestKnownHeightProvider)
-	if err != nil {
-		return fmt.Errorf("error creating RPC handler: %w", err)
-	}
-
-	n.rpcServer = &http.Server{
-		Addr:         n.nodeConfig.RPC.Address,
-		Handler:      handler,
-		ReadTimeout:  10 * time.Second,
-		WriteTimeout: 10 * time.Second,
-		IdleTimeout:  120 * time.Second,
-	}
-
-	go func() {
-		n.Logger.Info().Str("addr", n.nodeConfig.RPC.Address).Msg("started RPC server")
-		if err := n.rpcServer.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			n.Logger.Error().Err(err).Msg("RPC server error")
-		}
-	}()
+	//handler, err := rpcserver.NewServiceHandler(n.Store, n.p2pClient, n.genesis.ProposerAddress, n.Logger, n.nodeConfig, bestKnownHeightProvider)
+	//if err != nil {
+	//	return fmt.Errorf("error creating RPC handler: %w", err)
+	//}
+	//
+	//n.rpcServer = &http.Server{
+	//	Addr:         n.nodeConfig.RPC.Address,
+	//	Handler:      handler,
+	//	ReadTimeout:  10 * time.Second,
+	//	WriteTimeout: 10 * time.Second,
+	//	IdleTimeout:  120 * time.Second,
+	//}
 
 	n.Logger.Info().Msg("starting P2P client")
-	err = n.p2pClient.Start(ctx)
-	if err != nil {
-		return fmt.Errorf("error while starting P2P client: %w", err)
-	}
+	//err = n.p2pClient.Start(ctx)
+	//if err != nil {
+	//	return fmt.Errorf("error while starting P2P client: %w", err)
+	//}
 
 	// Start leader election if enabled
-	if err = n.leaderElection.Start(ctx); err != nil {
+	if err := n.leaderElection.Start(ctx); err != nil {
 		return fmt.Errorf("error while starting leader election: %w", err)
 	}
-	if err = n.hSyncService.Start(ctx); err != nil {
-		return fmt.Errorf("error while starting header sync service: %w", err)
-	}
-
-	if err = n.dSyncService.Start(ctx); err != nil {
-		return fmt.Errorf("error while starting data sync service: %w", err)
-	}
+	//if err = n.hSyncService.Start(ctx); err != nil {
+	//	return fmt.Errorf("error while starting header sync service: %w", err)
+	//}
+	//
+	//if err = n.dSyncService.Start(ctx); err != nil {
+	//	return fmt.Errorf("error while starting data sync service: %w", err)
+	//}
 
 	if err := n.leaderElection.RunWithElection(ctx, n.AggregatorComponentFunc, n.SyncComponentFunc); err != nil && !errors.Is(err, context.Canceled) {
 		n.Logger.Warn().Err(err).Msg("leadership change detected, restarting components")
@@ -422,38 +521,38 @@ func (n *FullNode) Run(parentCtx context.Context) error {
 	}
 
 	// Stop Header Sync Service
-	err = n.hSyncService.Stop(shutdownCtx)
-	if err != nil {
-		// Log context canceled errors at a lower level if desired, or handle specific non-cancel errors
-		if !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
-			n.Logger.Error().Err(err).Msg("error stopping header sync service")
-			multiErr = errors.Join(multiErr, fmt.Errorf("stopping header sync service: %w", err))
-		} else {
-			n.Logger.Debug().Err(err).Msg("header sync service stop context ended") // Log cancellation as debug
-		}
-	}
-
-	// Stop Data Sync Service
-	err = n.dSyncService.Stop(shutdownCtx)
-	if err != nil {
-		// Log context canceled errors at a lower level if desired, or handle specific non-cancel errors
-		if !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
-			n.Logger.Error().Err(err).Msg("error stopping data sync service")
-			multiErr = errors.Join(multiErr, fmt.Errorf("stopping data sync service: %w", err))
-		} else {
-			n.Logger.Debug().Err(err).Msg("data sync service stop context ended") // Log cancellation as debug
-		}
-	}
+	//err = n.hSyncService.Stop(shutdownCtx)
+	//if err != nil {
+	//	// Log context canceled errors at a lower level if desired, or handle specific non-cancel errors
+	//	if !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
+	//		n.Logger.Error().Err(err).Msg("error stopping header sync service")
+	//		multiErr = errors.Join(multiErr, fmt.Errorf("stopping header sync service: %w", err))
+	//	} else {
+	//		n.Logger.Debug().Err(err).Msg("header sync service stop context ended") // Log cancellation as debug
+	//	}
+	//}
+	//
+	//// Stop Data Sync Service
+	//err = n.dSyncService.Stop(shutdownCtx)
+	//if err != nil {
+	//	// Log context canceled errors at a lower level if desired, or handle specific non-cancel errors
+	//	if !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
+	//		n.Logger.Error().Err(err).Msg("error stopping data sync service")
+	//		multiErr = errors.Join(multiErr, fmt.Errorf("stopping data sync service: %w", err))
+	//	} else {
+	//		n.Logger.Debug().Err(err).Msg("data sync service stop context ended") // Log cancellation as debug
+	//	}
+	//}
 
 	// Stop P2P Client
-	err = n.p2pClient.Close()
-	if err != nil {
-		multiErr = errors.Join(multiErr, fmt.Errorf("closing P2P client: %w", err))
-	}
+	//err = n.p2pClient.Close()
+	//if err != nil {
+	//	multiErr = errors.Join(multiErr, fmt.Errorf("closing P2P client: %w", err))
+	//}
 
 	// Shutdown Prometheus Server
 	if n.prometheusSrv != nil {
-		err = n.prometheusSrv.Shutdown(shutdownCtx)
+		err := n.prometheusSrv.Shutdown(shutdownCtx)
 		// http.ErrServerClosed is expected on graceful shutdown
 		if err != nil && !errors.Is(err, http.ErrServerClosed) {
 			multiErr = errors.Join(multiErr, fmt.Errorf("shutting down Prometheus server: %w", err))
@@ -464,7 +563,7 @@ func (n *FullNode) Run(parentCtx context.Context) error {
 
 	// Shutdown Pprof Server
 	if n.pprofSrv != nil {
-		err = n.pprofSrv.Shutdown(shutdownCtx)
+		err := n.pprofSrv.Shutdown(shutdownCtx)
 		if err != nil && !errors.Is(err, http.ErrServerClosed) {
 			multiErr = errors.Join(multiErr, fmt.Errorf("shutting down pprof server: %w", err))
 		} else {
@@ -474,7 +573,7 @@ func (n *FullNode) Run(parentCtx context.Context) error {
 
 	// Shutdown RPC Server
 	if n.rpcServer != nil {
-		err = n.rpcServer.Shutdown(shutdownCtx)
+		err := n.rpcServer.Shutdown(shutdownCtx)
 		if err != nil && !errors.Is(err, http.ErrServerClosed) {
 			multiErr = errors.Join(multiErr, fmt.Errorf("shutting down RPC server: %w", err))
 		} else {
@@ -483,7 +582,7 @@ func (n *FullNode) Run(parentCtx context.Context) error {
 	}
 
 	// Ensure Store.Close is called last to maximize chance of data flushing
-	if err = n.Store.Close(); err != nil {
+	if err := n.Store.Close(); err != nil {
 		multiErr = errors.Join(multiErr, fmt.Errorf("closing store: %w", err))
 	} else {
 		n.Logger.Debug().Msg("store closed")
