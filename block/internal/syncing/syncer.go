@@ -243,11 +243,11 @@ func (s *Syncer) syncLoop() {
 		return
 	}
 
-	lastHeaderHeight := initialHeight
-	lastDataHeight := initialHeight
+	lastHeaderHeight := &initialHeight
+	lastDataHeight := &initialHeight
 
 	// Backoff control when DA replies with errors
-	var nextDARequestAt time.Time
+	nextDARequestAt := &time.Time{}
 
 	blockTicker := time.NewTicker(s.config.Node.BlockTime.Duration)
 	defer blockTicker.Stop()
@@ -261,44 +261,27 @@ func (s *Syncer) syncLoop() {
 		// Process pending events from cache on every iteration
 		s.processPendingEvents()
 
-		// Try fetching from both DA and P2P in configurable order
-		if s.tryFetchStrategies(&nextDARequestAt, &lastHeaderHeight, &lastDataHeight, blockTicker.C) {
-			continue // events were processed, restart loop immediately
+		// Fetch events from DA layer first and optimistically p2p when necessary.
+		// This is the default behavior.
+		if !s.config.Sync.PreferP2P {
+			if s.tryFetchFromDA(nextDARequestAt) {
+				continue
+			}
+			if s.tryFetchFromP2P(lastHeaderHeight, lastDataHeight, blockTicker.C) {
+				continue
+			}
+		} else {
+			if s.tryFetchFromP2P(lastHeaderHeight, lastDataHeight, blockTicker.C) {
+				continue
+			}
+			if s.tryFetchFromDA(nextDARequestAt) {
+				continue
+			}
 		}
 
 		// Prevent busy-waiting when no events are available
-		waitTime := min(10*time.Millisecond, s.config.Node.BlockTime.Duration)
-		time.Sleep(waitTime)
+		time.Sleep(min(10*time.Millisecond, s.config.Node.BlockTime.Duration))
 	}
-}
-
-// tryFetchStrategies attempts to fetch from both DA and P2P based on configuration priority.
-// The order of fetching depends on the PreferP2P configuration setting:
-// - PreferP2P=false (default): DA first, then P2P (original and recommended behavior)
-// - PreferP2P=true: P2P first, then DA
-//
-// Both strategies are always attempted on each call, but the order affects which
-// events are processed first and may impact overall sync performance.
-func (s *Syncer) tryFetchStrategies(nextDARequestAt *time.Time, lastHeaderHeight, lastDataHeight *uint64, blockTicker <-chan time.Time) bool {
-	eventsProcessed := false
-
-	if s.config.PreferP2P {
-		if s.tryFetchFromP2P(lastHeaderHeight, lastDataHeight, blockTicker) {
-			eventsProcessed = true
-		}
-		if s.tryFetchFromDA(nextDARequestAt) {
-			eventsProcessed = true
-		}
-	} else {
-		if s.tryFetchFromDA(nextDARequestAt) {
-			eventsProcessed = true
-		}
-		if s.tryFetchFromP2P(lastHeaderHeight, lastDataHeight, blockTicker) {
-			eventsProcessed = true
-		}
-	}
-
-	return eventsProcessed
 }
 
 // tryFetchFromDA attempts to fetch events from the DA layer.
@@ -474,15 +457,17 @@ func (s *Syncer) trySyncNextBlock(event *common.DAHeightEvent) error {
 		return errors.Join(errInvalidBlock, fmt.Errorf("failed to validate block: %w", err))
 	}
 
-	// Mark as DA included
-	headerHash := header.Hash().String()
-	s.cache.SetHeaderDAIncluded(headerHash, event.HeaderDaIncludedHeight)
+	// Mark as DA included (only if set, p2p sync does not set it)
+	if event.HeaderDaIncludedHeight > 0 {
+		headerHash := header.Hash().String()
+		s.cache.SetHeaderDAIncluded(headerHash, event.HeaderDaIncludedHeight)
 
-	s.logger.Info().
-		Str("header_hash", headerHash).
-		Uint64("da_height", event.HeaderDaIncludedHeight).
-		Uint64("height", header.Height()).
-		Msg("header marked as DA included")
+		s.logger.Info().
+			Str("header_hash", headerHash).
+			Uint64("da_height", event.HeaderDaIncludedHeight).
+			Uint64("height", header.Height()).
+			Msg("header marked as DA included")
+	}
 
 	// Apply block
 	newState, err := s.applyBlock(header.Header, data, currentState)
