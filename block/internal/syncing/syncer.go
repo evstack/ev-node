@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	goheader "github.com/celestiaorg/go-header"
@@ -51,8 +52,7 @@ type Syncer struct {
 	lastStateMtx *sync.RWMutex
 
 	// DA state
-	daHeight   uint64
-	daStateMtx *sync.RWMutex
+	daHeight uint64
 
 	// P2P stores
 	headerStore goheader.Store[*types.SignedHeader]
@@ -102,7 +102,6 @@ func NewSyncer(
 		headerStore:  headerStore,
 		dataStore:    dataStore,
 		lastStateMtx: &sync.RWMutex{},
-		daStateMtx:   &sync.RWMutex{},
 		heightInCh:   make(chan common.DAHeightEvent, 10_000),
 		errorCh:      errorCh,
 		logger:       logger.With().Str("component", "syncer").Logger(),
@@ -166,16 +165,12 @@ func (s *Syncer) SetLastState(state types.State) {
 
 // GetDAHeight returns the current DA height
 func (s *Syncer) GetDAHeight() uint64 {
-	s.daStateMtx.RLock()
-	defer s.daStateMtx.RUnlock()
-	return s.daHeight
+	return atomic.LoadUint64(&s.daHeight)
 }
 
 // SetDAHeight updates the DA height
 func (s *Syncer) SetDAHeight(height uint64) {
-	s.daStateMtx.Lock()
-	defer s.daStateMtx.Unlock()
-	s.daHeight = height
+	atomic.StoreUint64(&s.daHeight, height)
 }
 
 // initializeState loads the current sync state
@@ -263,16 +258,18 @@ func (s *Syncer) syncLoop() {
 		s.processPendingEvents()
 
 		now := time.Now()
+		daHeight := s.GetDAHeight()
+
 		// Respect backoff window if set
 		if nextDARequestAt.IsZero() || now.After(nextDARequestAt) || now.Equal(nextDARequestAt) {
 			// Retrieve from DA as fast as possible (unless throttled by HFF)
 			// DaHeight is only increased on successful retrieval, it will retry on failure at the next iteration
-			events, err := s.daRetriever.RetrieveFromDA(s.ctx, s.GetDAHeight())
+			events, err := s.daRetriever.RetrieveFromDA(s.ctx, daHeight)
 			if err != nil {
 				if errors.Is(err, coreda.ErrBlobNotFound) {
 					// no data at this height, increase DA height
 					// we do still want to check p2p
-					s.SetDAHeight(s.GetDAHeight() + 1)
+					s.SetDAHeight(daHeight + 1)
 
 					// Reset backoff on success
 					nextDARequestAt = time.Time{}
@@ -285,9 +282,9 @@ func (s *Syncer) syncLoop() {
 					nextDARequestAt = now.Add(hffDelay)
 
 					if s.isHeightFromFutureError(err) {
-						s.logger.Debug().Dur("delay", hffDelay).Uint64("da_height", s.GetDAHeight()).Msg("height from future; backing off DA requests")
+						s.logger.Debug().Dur("delay", hffDelay).Uint64("da_height", daHeight).Msg("height from future; backing off DA requests")
 					} else {
-						s.logger.Error().Err(err).Dur("delay", hffDelay).Uint64("da_height", s.GetDAHeight()).Msg("failed to retrieve from DA; backing off DA requests")
+						s.logger.Error().Err(err).Dur("delay", hffDelay).Uint64("da_height", daHeight).Msg("failed to retrieve from DA; backing off DA requests")
 					}
 				}
 			} else {
@@ -304,7 +301,7 @@ func (s *Syncer) syncLoop() {
 				}
 
 				// increment DA height on successful retrieval and continue immediately
-				s.SetDAHeight(s.GetDAHeight() + 1)
+				s.SetDAHeight(daHeight + 1)
 				continue // event sent, no need to check p2p
 			}
 		}
