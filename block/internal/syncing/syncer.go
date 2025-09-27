@@ -243,12 +243,11 @@ func (s *Syncer) syncLoop() {
 		return
 	}
 
-	lastHeaderHeight := initialHeight
-	lastDataHeight := initialHeight
+	lastHeaderHeight := &initialHeight
+	lastDataHeight := &initialHeight
 
 	// Backoff control when DA replies with errors
-	var hffDelay time.Duration
-	var nextDARequestAt time.Time
+	nextDARequestAt := &time.Time{}
 
 	blockTicker := time.NewTicker(s.config.Node.BlockTime.Duration)
 	defer blockTicker.Stop()
@@ -262,94 +261,133 @@ func (s *Syncer) syncLoop() {
 		// Process pending events from cache on every iteration
 		s.processPendingEvents()
 
-		now := time.Now()
-		daHeight := s.GetDAHeight()
-
-		// Respect backoff window if set
-		if nextDARequestAt.IsZero() || now.After(nextDARequestAt) || now.Equal(nextDARequestAt) {
-			// Retrieve from DA as fast as possible (unless throttled by HFF)
-			// DaHeight is only increased on successful retrieval, it will retry on failure at the next iteration
-			events, err := s.daRetriever.RetrieveFromDA(s.ctx, daHeight)
-			if err != nil {
-				if errors.Is(err, coreda.ErrBlobNotFound) {
-					// no data at this height, increase DA height
-					// we do still want to check p2p
-					s.SetDAHeight(daHeight + 1)
-
-					// Reset backoff on success
-					nextDARequestAt = time.Time{}
-				} else {
-					// Back off exactly by DA block time to avoid overloading
-					hffDelay = s.config.DA.BlockTime.Duration
-					if hffDelay <= 0 {
-						hffDelay = 2 * time.Second
-					}
-					nextDARequestAt = now.Add(hffDelay)
-
-					if s.isHeightFromFutureError(err) {
-						s.logger.Debug().Dur("delay", hffDelay).Uint64("da_height", daHeight).Msg("height from future; backing off DA requests")
-					} else {
-						s.logger.Error().Err(err).Dur("delay", hffDelay).Uint64("da_height", daHeight).Msg("failed to retrieve from DA; backing off DA requests")
-					}
-				}
-			} else {
-				// Reset backoff on success
-				nextDARequestAt = time.Time{}
-
-				// Process DA events
-				for _, event := range events {
-					select {
-					case s.heightInCh <- event:
-					default:
-						s.cache.SetPendingEvent(event.Header.Height(), &event)
-					}
-				}
-
-				// increment DA height on successful retrieval and continue immediately
-				s.SetDAHeight(daHeight + 1)
-				continue // event sent, no need to check p2p
-			}
-		}
-
-		// Opportunistically process any P2P signals
-		select {
-		case <-blockTicker.C:
-			newHeaderHeight := s.headerStore.Height()
-			if newHeaderHeight > lastHeaderHeight {
-				events := s.p2pHandler.ProcessHeaderRange(s.ctx, lastHeaderHeight+1, newHeaderHeight)
-				for _, event := range events {
-					select {
-					case s.heightInCh <- event:
-					default:
-						s.cache.SetPendingEvent(event.Header.Height(), &event)
-					}
-				}
-				lastHeaderHeight = newHeaderHeight
-			}
-
-			newDataHeight := s.dataStore.Height()
-			if newDataHeight == newHeaderHeight {
-				lastDataHeight = newDataHeight
+		// Fetch events from DA layer first and optimistically p2p when necessary.
+		// This is the default behavior.
+		if !s.config.Sync.PreferP2P {
+			if s.tryFetchFromDA(nextDARequestAt) {
 				continue
 			}
-			if newDataHeight > lastDataHeight {
-				events := s.p2pHandler.ProcessDataRange(s.ctx, lastDataHeight+1, newDataHeight)
-				for _, event := range events {
-					select {
-					case s.heightInCh <- event:
-					default:
-						s.cache.SetPendingEvent(event.Header.Height(), &event)
-					}
-				}
-				lastDataHeight = newDataHeight
+			if s.tryFetchFromP2P(lastHeaderHeight, lastDataHeight, blockTicker.C) {
+				continue
 			}
-		default:
-			// Prevent busy-waiting when no events are available.
-			waitTime := min(10*time.Millisecond, s.config.Node.BlockTime.Duration)
+		} else {
+			if s.tryFetchFromP2P(lastHeaderHeight, lastDataHeight, blockTicker.C) {
+				continue
+			}
+			if s.tryFetchFromDA(nextDARequestAt) {
+				continue
+			}
+		}
 
-			time.Sleep(waitTime)
+		// Prevent busy-waiting when no events are available
+		time.Sleep(min(10*time.Millisecond, s.config.Node.BlockTime.Duration))
+	}
+}
+
+// tryFetchFromDA attempts to fetch events from the DA layer.
+// It handles backoff timing, DA height management, and error classification.
+// Returns true if any events were successfully processed.
+func (s *Syncer) tryFetchFromDA(nextDARequestAt *time.Time) bool {
+	now := time.Now()
+	daHeight := s.GetDAHeight()
+
+	// Respect backoff window if set
+	if !nextDARequestAt.IsZero() && now.Before(*nextDARequestAt) {
+		return false
+	}
+
+	// Retrieve from DA as fast as possible (unless throttled by HFF)
+	// DaHeight is only increased on successful retrieval, it will retry on failure at the next iteration
+	events, err := s.daRetriever.RetrieveFromDA(s.ctx, daHeight)
+	if err != nil {
+		if errors.Is(err, coreda.ErrBlobNotFound) {
+			// no data at this height, increase DA height
+			s.SetDAHeight(daHeight + 1)
+			// Reset backoff on success
+			*nextDARequestAt = time.Time{}
+			return false
+		}
+
+		// Back off exactly by DA block time to avoid overloading
+		hffDelay := s.config.DA.BlockTime.Duration
+		if hffDelay <= 0 {
+			hffDelay = 2 * time.Second
+		}
+		*nextDARequestAt = now.Add(hffDelay)
+
+		if s.isHeightFromFutureError(err) {
+			s.logger.Debug().Dur("delay", hffDelay).Uint64("da_height", daHeight).Msg("height from future; backing off DA requests")
+		} else {
+			s.logger.Error().Err(err).Dur("delay", hffDelay).Uint64("da_height", daHeight).Msg("failed to retrieve from DA; backing off DA requests")
+		}
+		return false
+	}
+
+	// Reset backoff on success
+	*nextDARequestAt = time.Time{}
+
+	// Process DA events
+	for _, event := range events {
+		select {
+		case s.heightInCh <- event:
+		default:
+			s.cache.SetPendingEvent(event.Header.Height(), &event)
 		}
 	}
+
+	// increment DA height on successful retrieval
+	s.SetDAHeight(daHeight + 1)
+	return len(events) > 0
+}
+
+// tryFetchFromP2P attempts to fetch events from P2P stores.
+// It processes both header and data ranges when the block ticker fires.
+// Returns true if any events were successfully processed.
+func (s *Syncer) tryFetchFromP2P(lastHeaderHeight, lastDataHeight *uint64, blockTicker <-chan time.Time) bool {
+	eventsProcessed := false
+
+	select {
+	case <-blockTicker:
+		// Process headers
+		newHeaderHeight := s.headerStore.Height()
+		if newHeaderHeight > *lastHeaderHeight {
+			events := s.p2pHandler.ProcessHeaderRange(s.ctx, *lastHeaderHeight+1, newHeaderHeight)
+			for _, event := range events {
+				select {
+				case s.heightInCh <- event:
+				default:
+					s.cache.SetPendingEvent(event.Header.Height(), &event)
+				}
+			}
+			*lastHeaderHeight = newHeaderHeight
+			if len(events) > 0 {
+				eventsProcessed = true
+			}
+		}
+
+		// Process data
+		newDataHeight := s.dataStore.Height()
+		if newDataHeight == newHeaderHeight {
+			*lastDataHeight = newDataHeight
+		} else if newDataHeight > *lastDataHeight {
+			events := s.p2pHandler.ProcessDataRange(s.ctx, *lastDataHeight+1, newDataHeight)
+			for _, event := range events {
+				select {
+				case s.heightInCh <- event:
+				default:
+					s.cache.SetPendingEvent(event.Header.Height(), &event)
+				}
+			}
+			*lastDataHeight = newDataHeight
+			if len(events) > 0 {
+				eventsProcessed = true
+			}
+		}
+	default:
+		// No P2P events available
+	}
+
+	return eventsProcessed
 }
 
 func (s *Syncer) processHeightEvent(event *common.DAHeightEvent) {
@@ -419,15 +457,17 @@ func (s *Syncer) trySyncNextBlock(event *common.DAHeightEvent) error {
 		return errors.Join(errInvalidBlock, fmt.Errorf("failed to validate block: %w", err))
 	}
 
-	// Mark as DA included
-	headerHash := header.Hash().String()
-	s.cache.SetHeaderDAIncluded(headerHash, event.HeaderDaIncludedHeight)
+	// Mark as DA included (only if set, p2p sync does not set it)
+	if event.HeaderDaIncludedHeight != 0 || event.DaHeight != 0 {
+		headerHash := header.Hash().String()
+		s.cache.SetHeaderDAIncluded(headerHash, event.HeaderDaIncludedHeight)
 
-	s.logger.Info().
-		Str("header_hash", headerHash).
-		Uint64("da_height", event.HeaderDaIncludedHeight).
-		Uint64("height", header.Height()).
-		Msg("header marked as DA included")
+		s.logger.Info().
+			Str("header_hash", headerHash).
+			Uint64("da_height", event.HeaderDaIncludedHeight).
+			Uint64("height", header.Height()).
+			Msg("header marked as DA included")
+	}
 
 	// Apply block
 	newState, err := s.applyBlock(header.Header, data, currentState)

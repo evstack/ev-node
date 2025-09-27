@@ -159,7 +159,7 @@ func TestSequentialBlockSync(t *testing.T) {
 	// Expect ExecuteTxs call for height 1
 	mockExec.EXPECT().ExecuteTxs(mock.Anything, mock.Anything, uint64(1), mock.Anything, st0.AppHash).
 		Return([]byte("app1"), uint64(1024), nil).Once()
-	evt1 := common.DAHeightEvent{Header: hdr1, Data: data1, DaHeight: 10}
+	evt1 := common.DAHeightEvent{Header: hdr1, Data: data1, DaHeight: 10, HeaderDaIncludedHeight: 10}
 	s.processHeightEvent(&evt1)
 
 	st1, _ := st.GetState(context.Background())
@@ -168,7 +168,7 @@ func TestSequentialBlockSync(t *testing.T) {
 	// Expect ExecuteTxs call for height 2
 	mockExec.EXPECT().ExecuteTxs(mock.Anything, mock.Anything, uint64(2), mock.Anything, st1.AppHash).
 		Return([]byte("app2"), uint64(1024), nil).Once()
-	evt2 := common.DAHeightEvent{Header: hdr2, Data: data2, DaHeight: 11}
+	evt2 := common.DAHeightEvent{Header: hdr2, Data: data2, DaHeight: 11, HeaderDaIncludedHeight: 11}
 	s.processHeightEvent(&evt2)
 
 	// Mark DA inclusion in cache (as DA retrieval would)

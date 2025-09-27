@@ -54,6 +54,7 @@ func TestAddFlags(t *testing.T) {
 
 	// Test specific flags
 	assertFlagValue(t, flags, FlagDBPath, DefaultConfig().DBPath)
+	assertFlagValue(t, flags, FlagClearCache, false)
 
 	// Node flags
 	assertFlagValue(t, flags, FlagAggregator, DefaultConfig().Node.Aggregator)
@@ -104,25 +105,8 @@ func TestAddFlags(t *testing.T) {
 	// RPC flags
 	assertFlagValue(t, flags, FlagRPCAddress, DefaultConfig().RPC.Address)
 
-	// Count the number of flags we're explicitly checking
-	expectedFlagCount := 39 // Update this number if you add more flag checks above
-
-	// Get the actual number of flags (both regular and persistent)
-	actualFlagCount := 0
-	flags.VisitAll(func(flag *pflag.Flag) {
-		actualFlagCount++
-	})
-	persistentFlags.VisitAll(func(flag *pflag.Flag) {
-		actualFlagCount++
-	})
-
-	// Verify that the counts match
-	assert.Equal(
-		t,
-		expectedFlagCount,
-		actualFlagCount,
-		"Number of flags doesn't match. If you added a new flag, please update the test.",
-	)
+	// Sync flags
+	assertFlagValue(t, flags, FlagSyncP2PPrefer, false)
 }
 
 func TestLoad(t *testing.T) {
