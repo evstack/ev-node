@@ -458,7 +458,7 @@ func (s *Syncer) trySyncNextBlock(event *common.DAHeightEvent) error {
 	}
 
 	// Mark as DA included (only if set, p2p sync does not set it)
-	if event.HeaderDaIncludedHeight > 0 {
+	if event.HeaderDaIncludedHeight != 0 || event.DaHeight != 0 {
 		headerHash := header.Hash().String()
 		s.cache.SetHeaderDAIncluded(headerHash, event.HeaderDaIncludedHeight)
 
