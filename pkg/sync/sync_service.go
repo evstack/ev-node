@@ -265,7 +265,7 @@ func (syncService *SyncService[H]) setupP2P(ctx context.Context) ([]peer.ID, err
 	return peerIDs, nil
 }
 
-// initFromP2P looks up for the trusted hash or the genesis header/block.
+// initFromP2PWithRetry initializes the syncer from P2P with a retry mechanism.
 // If trusted hash is available, it fetches the trusted header/block (by hash) from peers.
 // Otherwise, it tries to fetch the genesis header/block by height.
 func (syncService *SyncService[H]) initFromP2PWithRetry(ctx context.Context, peerIDs []peer.ID) error {
