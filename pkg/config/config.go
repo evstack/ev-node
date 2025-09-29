@@ -28,8 +28,6 @@ const (
 	FlagRootDir = "home"
 	// FlagDBPath is a flag for specifying the database path
 	FlagDBPath = FlagPrefixEvnode + "db_path"
-	// FlagClearCache is a flag for clearing the cache
-	FlagClearCache = FlagPrefixEvnode + "clear_cache"
 
 	// Node configuration flags
 
@@ -49,11 +47,8 @@ const (
 	FlagLazyBlockTime = FlagPrefixEvnode + "node.lazy_block_interval"
 	// FlagReadinessMaxBlocksBehind configures how many blocks behind best-known head is still considered ready
 	FlagReadinessMaxBlocksBehind = FlagPrefixEvnode + "node.readiness_max_blocks_behind"
-
-	// Sync configuration flags
-
-	// FlagSyncP2PPrefer is a flag to prioritize p2p over da fetching
-	FlagSyncP2PPrefer = FlagPrefixEvnode + "sync.prefer_p2p"
+	// FlagClearCache is a flag for clearing the cache
+	FlagClearCache = FlagPrefixEvnode + "clear_cache"
 
 	// Data Availability configuration flags
 
@@ -135,14 +130,10 @@ const (
 // Config stores Rollkit configuration.
 type Config struct {
 	RootDir    string `mapstructure:"-" yaml:"-" comment:"Root directory where rollkit files are located"`
-	ClearCache bool   `mapstructure:"clear_cache" yaml:"-" comment:"Clear the cache"`
+	ClearCache bool   `mapstructure:"-" yaml:"-" comment:"Clear the cache"`
 
 	// Base configuration
 	DBPath string `mapstructure:"db_path" yaml:"db_path" comment:"Path inside the root directory where the database is located"`
-
-	// Sync configuration (not in yaml)
-	Sync SyncConfig `mapstructure:"sync" yaml:"-"`
-
 	// P2P configuration
 	P2P P2PConfig `mapstructure:"p2p" yaml:"p2p"`
 
@@ -163,12 +154,6 @@ type Config struct {
 
 	// Remote signer configuration
 	Signer SignerConfig `mapstructure:"signer" yaml:"signer"`
-}
-
-// SyncConfig contains synchronization configuration parameters
-// Those are used in flags are not set in the ev-node config.
-type SyncConfig struct {
-	PreferP2P bool `mapstructure:"prefer_p2p" yaml:"-" comment:"Prefer P2P over DA fetching"`
 }
 
 // DAConfig contains all Data Availability configuration parameters
@@ -324,9 +309,6 @@ func AddFlags(cmd *cobra.Command) {
 	cmd.Flags().String(FlagDBPath, def.DBPath, "path for the node database")
 	cmd.Flags().Bool(FlagClearCache, def.ClearCache, "clear the cache")
 
-	// Sync configuration flags
-	cmd.Flags().Bool(FlagSyncP2PPrefer, def.Sync.PreferP2P, "prefer P2P over DA fetching")
-
 	// Node configuration flags
 	cmd.Flags().Bool(FlagAggregator, def.Node.Aggregator, "run node in aggregator mode")
 	cmd.Flags().Bool(FlagLight, def.Node.Light, "run light client")
@@ -372,9 +354,6 @@ func AddFlags(cmd *cobra.Command) {
 	cmd.Flags().String(FlagSignerType, def.Signer.SignerType, "type of signer to use (file, grpc)")
 	cmd.Flags().String(FlagSignerPath, def.Signer.SignerPath, "path to the signer file or address")
 	cmd.Flags().String(FlagSignerPassphrase, "", "passphrase for the signer (required for file signer and if aggregator is enabled)")
-
-	// FlagSyncP2PPrefer is only relevant for sync nodes.
-	cmd.MarkFlagsMutuallyExclusive(FlagSyncP2PPrefer, FlagAggregator)
 }
 
 // Load loads the node configuration in the following order of precedence:

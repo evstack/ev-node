@@ -3,7 +3,6 @@ package syncing
 import (
 	"context"
 	crand "crypto/rand"
-	"errors"
 	"testing"
 	"time"
 
@@ -189,18 +188,6 @@ func TestSequentialBlockSync(t *testing.T) {
 	assert.True(t, ok)
 	_, ok = cm.GetDataDAIncluded(data2.DACommitment().String())
 	assert.True(t, ok)
-}
-
-func TestSyncer_isHeightFromFutureError(t *testing.T) {
-	s := &Syncer{}
-	// exact error
-	err := common.ErrHeightFromFutureStr
-	assert.True(t, s.isHeightFromFutureError(err))
-	// string-wrapped error
-	err = errors.New("some context: " + common.ErrHeightFromFutureStr.Error())
-	assert.True(t, s.isHeightFromFutureError(err))
-	// unrelated
-	assert.False(t, s.isHeightFromFutureError(errors.New("boom")))
 }
 
 func TestSyncer_sendNonBlockingSignal(t *testing.T) {

@@ -5,7 +5,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -261,22 +260,12 @@ func (s *Syncer) syncLoop() {
 		// Process pending events from cache on every iteration
 		s.processPendingEvents()
 
-		// Fetch events from DA layer first and optimistically p2p when necessary.
-		// This is the default behavior.
-		if !s.config.Sync.PreferP2P {
-			if s.tryFetchFromDA(nextDARequestAt) {
-				continue
-			}
-			if s.tryFetchFromP2P(lastHeaderHeight, lastDataHeight, blockTicker.C) {
-				continue
-			}
-		} else {
-			if s.tryFetchFromP2P(lastHeaderHeight, lastDataHeight, blockTicker.C) {
-				continue
-			}
-			if s.tryFetchFromDA(nextDARequestAt) {
-				continue
-			}
+		if s.tryFetchFromDA(nextDARequestAt) {
+			continue
+		}
+
+		if s.tryFetchFromP2P(lastHeaderHeight, lastDataHeight, blockTicker.C) {
+			continue
 		}
 
 		// Prevent busy-waiting when no events are available
@@ -309,17 +298,14 @@ func (s *Syncer) tryFetchFromDA(nextDARequestAt *time.Time) bool {
 		}
 
 		// Back off exactly by DA block time to avoid overloading
-		hffDelay := s.config.DA.BlockTime.Duration
-		if hffDelay <= 0 {
-			hffDelay = 2 * time.Second
+		backoffDelay := s.config.DA.BlockTime.Duration
+		if backoffDelay <= 0 {
+			backoffDelay = 2 * time.Second
 		}
-		*nextDARequestAt = now.Add(hffDelay)
+		*nextDARequestAt = now.Add(backoffDelay)
 
-		if s.isHeightFromFutureError(err) {
-			s.logger.Debug().Dur("delay", hffDelay).Uint64("da_height", daHeight).Msg("height from future; backing off DA requests")
-		} else {
-			s.logger.Error().Err(err).Dur("delay", hffDelay).Uint64("da_height", daHeight).Msg("failed to retrieve from DA; backing off DA requests")
-		}
+		s.logger.Error().Err(err).Dur("delay", backoffDelay).Uint64("da_height", daHeight).Msg("failed to retrieve from DA; backing off DA requests")
+
 		return false
 	}
 
@@ -581,24 +567,6 @@ func (s *Syncer) sendNonBlockingSignal(ch chan struct{}, name string) {
 	default:
 		s.logger.Debug().Str("channel", name).Msg("channel full, signal dropped")
 	}
-}
-
-// isHeightFromFutureError checks if the error is a height from future error
-func (s *Syncer) isHeightFromFutureError(err error) bool {
-	if err == nil {
-		return false
-	}
-	if errors.Is(err, coreda.ErrHeightFromFuture) || errors.Is(err, common.ErrHeightFromFutureStr) {
-		return true
-	}
-	msg := err.Error()
-	if msg == "" {
-		return false
-	}
-	if strings.Contains(msg, coreda.ErrHeightFromFuture.Error()) || strings.Contains(msg, common.ErrHeightFromFutureStr.Error()) {
-		return true
-	}
-	return false
 }
 
 // processPendingEvents fetches and processes pending events from cache
