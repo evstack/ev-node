@@ -111,9 +111,8 @@ func (r *DARetriever) fetchBlobs(ctx context.Context, daHeight uint64) (coreda.R
 	// Combine successful results
 	combinedResult := coreda.ResultRetrieve{
 		BaseResult: coreda.BaseResult{
-			Code:      coreda.StatusSuccess,
-			Height:    daHeight,
-			Timestamp: headerRes.Timestamp,
+			Code:   coreda.StatusSuccess,
+			Height: daHeight,
 		},
 		Data: make([][]byte, 0),
 	}
