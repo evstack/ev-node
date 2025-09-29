@@ -316,42 +316,39 @@ func (s *Syncer) syncLoop() {
 		// Opportunistically process any P2P signals
 		select {
 		case <-blockTicker.C:
-			if false {
-				newHeaderHeight := s.headerStore.Height()
-				if newHeaderHeight > lastHeaderHeight {
-					events := s.p2pRetriever.HeadersInRange(s.ctx, lastHeaderHeight+1, newHeaderHeight)
-					for _, event := range events {
-						select {
-						case <-s.ctx.Done():
-							return
-						case s.heightInCh <- event:
-						default:
-							s.cache.SetPendingEvent(event.Header.Height(), &event)
-						}
+			newHeaderHeight := s.headerStore.Height()
+			if newHeaderHeight > lastHeaderHeight {
+				events := s.p2pRetriever.HeadersInRange(s.ctx, lastHeaderHeight+1, newHeaderHeight)
+				for _, event := range events {
+					select {
+					case <-s.ctx.Done():
+						return
+					case s.heightInCh <- event:
+					default:
+						s.cache.SetPendingEvent(event.Header.Height(), &event)
 					}
-					lastHeaderHeight = newHeaderHeight
 				}
-
-				newDataHeight := s.dataStore.Height()
-				if newDataHeight == newHeaderHeight {
-					lastDataHeight = newDataHeight
-					continue
-				}
-				if newDataHeight > lastDataHeight {
-					events := s.p2pRetriever.DataInRange(s.ctx, lastDataHeight+1, newDataHeight)
-					for _, event := range events {
-						select {
-						case s.heightInCh <- event:
-						case <-s.ctx.Done():
-							return
-						default:
-							s.cache.SetPendingEvent(event.Header.Height(), &event)
-						}
-					}
-					lastDataHeight = newDataHeight
-				}
+				lastHeaderHeight = newHeaderHeight
 			}
 
+			newDataHeight := s.dataStore.Height()
+			if newDataHeight == newHeaderHeight {
+				lastDataHeight = newDataHeight
+				continue
+			}
+			if newDataHeight > lastDataHeight {
+				events := s.p2pRetriever.DataInRange(s.ctx, lastDataHeight+1, newDataHeight)
+				for _, event := range events {
+					select {
+					case s.heightInCh <- event:
+					case <-s.ctx.Done():
+						return
+					default:
+						s.cache.SetPendingEvent(event.Header.Height(), &event)
+					}
+				}
+				lastDataHeight = newDataHeight
+			}
 		default:
 			// Prevent busy-waiting when no events are available.
 			time.Sleep(min(s.config.Node.BlockTime.Duration, 10*time.Millisecond))
@@ -399,9 +396,16 @@ func (s *Syncer) processHeightEvent(event *common.DAHeightEvent) {
 	// Try to sync the next block
 	if err := s.trySyncNextBlock(event); err != nil {
 		s.logger.Error().Err(err).Msg("failed to sync next block")
+		// If the error is not due to an validation error, re-store the event as pending
+		if !errors.Is(err, errInvalidBlock) {
+			s.cache.SetPendingEvent(height, event)
+		}
 		return
 	}
 }
+
+// errInvalidBlock is returned when a block is failing validation
+var errInvalidBlock = errors.New("invalid block")
 
 // trySyncNextBlock attempts to sync the next available block
 // the event is always the next block in sequence as processHeightEvent ensures it.
@@ -423,7 +427,7 @@ func (s *Syncer) trySyncNextBlock(event *common.DAHeightEvent) error {
 	// here only the previous block needs to be applied to proceed to the verification.
 	// The header validation must be done before applying the block to avoid executing gibberish
 	if err := s.validateBlock(currentState, header, data); err != nil {
-		return fmt.Errorf("failed to validate block: %w", err)
+		return errors.Join(errInvalidBlock, fmt.Errorf("failed to validate block: %w", err))
 	}
 
 	// Mark as DA included
@@ -564,6 +568,7 @@ func (s *Syncer) isHeightFromFutureError(err error) bool {
 }
 
 // processPendingEvents fetches and processes pending events from cache
+// optimistically fetches the next events from cache until no matching heights are found
 func (s *Syncer) processPendingEvents() {
 	pendingEvents := s.cache.GetPendingEvents()
 
