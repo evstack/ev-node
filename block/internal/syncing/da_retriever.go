@@ -131,8 +131,8 @@ func (r *DARetriever) fetchBlobs(ctx context.Context, daHeight uint64) (coreda.R
 	// Re-throw error not found if both were not found.
 	if len(combinedResult.Data) == 0 && len(combinedResult.IDs) == 0 {
 		r.logger.Debug().Uint64("da_height", daHeight).Msg("no blob data found")
-		combinedResult.BaseResult.Code = coreda.StatusNotFound
-		combinedResult.BaseResult.Message = coreda.ErrBlobNotFound.Error()
+		combinedResult.Code = coreda.StatusNotFound
+		combinedResult.Message = coreda.ErrBlobNotFound.Error()
 		return combinedResult, coreda.ErrBlobNotFound
 	}
 
