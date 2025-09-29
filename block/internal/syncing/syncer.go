@@ -247,7 +247,6 @@ func (s *Syncer) syncLoop() {
 	lastDataHeight := initialHeight
 
 	// Backoff control when DA replies with errors
-	var hffDelay time.Duration
 	var nextDARequestAt time.Time
 
 	blockTicker := time.NewTicker(s.config.Node.BlockTime.Duration)
@@ -280,16 +279,16 @@ func (s *Syncer) syncLoop() {
 					nextDARequestAt = time.Time{}
 				} else {
 					// Back off exactly by DA block time to avoid overloading
-					hffDelay = s.config.DA.BlockTime.Duration
-					if hffDelay <= 0 {
-						hffDelay = 2 * time.Second
+					backoffDelay := s.config.DA.BlockTime.Duration
+					if backoffDelay <= 0 {
+						backoffDelay = 2 * time.Second
 					}
-					nextDARequestAt = now.Add(hffDelay)
+					nextDARequestAt = now.Add(backoffDelay)
 
 					if s.isHeightFromFutureError(err) {
-						s.logger.Debug().Dur("delay", hffDelay).Uint64("da_height", daHeight).Msg("height from future; backing off DA requests")
+						s.logger.Debug().Dur("delay", backoffDelay).Uint64("da_height", daHeight).Msg("height from future; backing off DA requests")
 					} else {
-						s.logger.Error().Err(err).Dur("delay", hffDelay).Uint64("da_height", daHeight).Msg("failed to retrieve from DA; backing off DA requests")
+						s.logger.Error().Err(err).Dur("delay", backoffDelay).Uint64("da_height", daHeight).Msg("failed to retrieve from DA; backing off DA requests")
 					}
 				}
 			} else {

@@ -5,7 +5,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/rs/zerolog"
@@ -72,21 +71,12 @@ func (r *DARetriever) RetrieveFromDA(ctx context.Context, daHeight uint64) ([]co
 
 	blobsResp, err := r.fetchBlobs(ctx, daHeight)
 	if err != nil {
-		if strings.Contains(err.Error(), coreda.ErrHeightFromFuture.Error()) {
-			return nil, fmt.Errorf("%w: height from future", coreda.ErrHeightFromFuture)
-		}
-
 		return nil, err
 	}
 
 	// Check for context cancellation upfront
 	if err := ctx.Err(); err != nil {
 		return nil, err
-	}
-
-	if blobsResp.Code == coreda.StatusNotFound {
-		r.logger.Debug().Uint64("da_height", daHeight).Msg("no blob data found")
-		return nil, coreda.ErrBlobNotFound
 	}
 
 	r.logger.Debug().Int("blobs", len(blobsResp.Data)).Uint64("da_height", daHeight).Msg("retrieved blob data")
@@ -107,48 +97,58 @@ func (r *DARetriever) fetchBlobs(ctx context.Context, daHeight uint64) (coreda.R
 
 	// Validate responses
 	headerErr := r.validateBlobResponse(headerRes, daHeight)
-	dataErr := r.validateBlobResponse(dataRes, daHeight)
+	// ignoring error not found, as data can have data
+	if headerErr != nil && !errors.Is(headerErr, coreda.ErrBlobNotFound) {
+		return headerRes, headerErr
+	}
 
-	// Handle errors
-	if errors.Is(headerErr, coreda.ErrHeightFromFuture) || errors.Is(dataErr, coreda.ErrHeightFromFuture) {
-		return coreda.ResultRetrieve{
-			BaseResult: coreda.BaseResult{Code: coreda.StatusHeightFromFuture},
-		}, fmt.Errorf("%w: height from future", coreda.ErrHeightFromFuture)
+	dataErr := r.validateBlobResponse(dataRes, daHeight)
+	// ignoring error not found, as header can have data
+	if dataErr != nil && !errors.Is(dataErr, coreda.ErrBlobNotFound) {
+		return dataRes, dataErr
 	}
 
 	// Combine successful results
 	combinedResult := coreda.ResultRetrieve{
 		BaseResult: coreda.BaseResult{
-			Code:   coreda.StatusSuccess,
-			Height: daHeight,
+			Code:      coreda.StatusSuccess,
+			Height:    daHeight,
+			Timestamp: headerRes.Timestamp,
 		},
 		Data: make([][]byte, 0),
 	}
 
 	if headerRes.Code == coreda.StatusSuccess {
 		combinedResult.Data = append(combinedResult.Data, headerRes.Data...)
-		if len(headerRes.IDs) > 0 {
-			combinedResult.IDs = append(combinedResult.IDs, headerRes.IDs...)
-		}
+		combinedResult.IDs = append(combinedResult.IDs, headerRes.IDs...)
 	}
 
 	if dataRes.Code == coreda.StatusSuccess {
 		combinedResult.Data = append(combinedResult.Data, dataRes.Data...)
-		if len(dataRes.IDs) > 0 {
-			combinedResult.IDs = append(combinedResult.IDs, dataRes.IDs...)
-		}
+		combinedResult.IDs = append(combinedResult.IDs, dataRes.IDs...)
+	}
+
+	// Re-throw error not found if both were not found.
+	if len(combinedResult.Data) == 0 && len(combinedResult.IDs) == 0 {
+		r.logger.Debug().Uint64("da_height", daHeight).Msg("no blob data found")
+		combinedResult.BaseResult.Code = coreda.StatusNotFound
+		combinedResult.BaseResult.Message = coreda.ErrBlobNotFound.Error()
+		return combinedResult, coreda.ErrBlobNotFound
 	}
 
 	return combinedResult, nil
 }
 
 // validateBlobResponse validates a blob response from DA layer
+// those are the only error code returned by da.RetrieveWithHelpers
 func (r *DARetriever) validateBlobResponse(res coreda.ResultRetrieve, daHeight uint64) error {
 	switch res.Code {
 	case coreda.StatusError:
 		return fmt.Errorf("DA retrieval failed: %s", res.Message)
 	case coreda.StatusHeightFromFuture:
 		return fmt.Errorf("%w: height from future", coreda.ErrHeightFromFuture)
+	case coreda.StatusNotFound:
+		return fmt.Errorf("%w: blob not found", coreda.ErrBlobNotFound)
 	case coreda.StatusSuccess:
 		r.logger.Debug().Uint64("da_height", daHeight).Msg("successfully retrieved from DA")
 		return nil
