@@ -28,6 +28,6 @@ Evolve is designed to be DA-agnostic, meaning it can integrate with different da
 
 ## Learn More
 
-- [Set up a local DA](./guides/da/local-da.md)
-- [Set up Celestia DA](./guides/da/celestia-da.md)
+- [Set up a local DA](../guides/da/local-da.md)
+- [Set up Celestia DA](../guides/da/celestia-da.md)
 - [Celestia Docs](https://docs.celestia.org/)

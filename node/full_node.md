@@ -76,7 +76,7 @@ See [full node]
 
 [6] [Store Interface][store interface]
 
-[7] [Block Manager][block manager]
+[7] [Block Components][block components]
 
 [8] [Data Availability Layer Client][dalc]
 
@@ -90,7 +90,7 @@ See [full node]
 [peer-to-peer client]: https://github.com/evstack/ev-node/blob/main/pkg/p2p/client.go
 [Store]: https://github.com/evstack/ev-node/blob/main/pkg/store/store.go
 [store interface]: https://github.com/evstack/ev-node/blob/main/pkg/store/types.go
-[Block Manager]: https://github.com/evstack/ev-node/blob/main/block/manager.go
+[Block Components]: https://github.com/evstack/ev-node/blob/main/block/components.go
 [dalc]: https://github.com/evstack/ev-node/blob/main/core/da/da.go
 [Header Sync Service]: https://github.com/evstack/ev-node/blob/main/pkg/sync/sync_service.go
 [Block Sync Service]: https://github.com/evstack/ev-node/blob/main/pkg/sync/sync_service.go
