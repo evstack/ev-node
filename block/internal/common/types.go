@@ -8,6 +8,4 @@ type DAHeightEvent struct {
 	Data   *types.Data
 	// DaHeight corresponds to the highest DA included height between the Header and Data.
 	DaHeight uint64
-	// HeaderDaIncludedHeight corresponds to the DA height at which the Header was included.
-	HeaderDaIncludedHeight uint64
 }

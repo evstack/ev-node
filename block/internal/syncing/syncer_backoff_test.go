@@ -192,10 +192,9 @@ func TestSyncer_BackoffResetOnSuccess(t *testing.T) {
 		},
 	}
 	event := common.DAHeightEvent{
-		Header:                 header,
-		Data:                   data,
-		DaHeight:               100,
-		HeaderDaIncludedHeight: 100,
+		Header:   header,
+		Data:     data,
+		DaHeight: 100,
 	}
 
 	daRetriever.On("RetrieveFromDA", mock.Anything, uint64(100)).

@@ -35,9 +35,8 @@ type DARetriever struct {
 
 	// transient cache, only full event need to be passed to the syncer
 	// on restart, will be refetch as da height is updated by syncer
-	pendingHeaders  map[uint64]*types.SignedHeader
-	pendingData     map[uint64]*types.Data
-	headerDAHeights map[uint64]uint64
+	pendingHeaders map[uint64]*types.SignedHeader
+	pendingData    map[uint64]*types.Data
 }
 
 // NewDARetriever creates a new DA retriever
@@ -59,7 +58,6 @@ func NewDARetriever(
 		namespaceDataBz: coreda.NamespaceFromString(config.DA.GetDataNamespace()).Bytes(),
 		pendingHeaders:  make(map[uint64]*types.SignedHeader),
 		pendingData:     make(map[uint64]*types.Data),
-		headerDAHeights: make(map[uint64]uint64), // Track DA height for each header
 	}
 }
 
@@ -166,7 +164,6 @@ func (r *DARetriever) processBlobs(ctx context.Context, blobs [][]byte, daHeight
 
 		if header := r.tryDecodeHeader(bz, daHeight); header != nil {
 			r.pendingHeaders[header.Height()] = header
-			r.headerDAHeights[header.Height()] = daHeight
 			continue
 		}
 
@@ -180,14 +177,12 @@ func (r *DARetriever) processBlobs(ctx context.Context, blobs [][]byte, daHeight
 	// Match headers with data and create events
 	for height, header := range r.pendingHeaders {
 		data := r.pendingData[height]
-		includedHeight := r.headerDAHeights[height]
 
 		// Handle empty data case
 		if data == nil {
 			if r.isEmptyDataExpected(header) {
 				data = r.createEmptyDataForHeader(ctx, header)
 				delete(r.pendingHeaders, height)
-				delete(r.headerDAHeights, height)
 			} else {
 				// keep header in pending headers until data lands
 				r.logger.Debug().Uint64("height", height).Msg("header found but no matching data")
@@ -196,15 +191,13 @@ func (r *DARetriever) processBlobs(ctx context.Context, blobs [][]byte, daHeight
 		} else {
 			delete(r.pendingHeaders, height)
 			delete(r.pendingData, height)
-			delete(r.headerDAHeights, height)
 		}
 
 		// Create height event
 		event := common.DAHeightEvent{
-			Header:                 header,
-			Data:                   data,
-			DaHeight:               daHeight,
-			HeaderDaIncludedHeight: includedHeight,
+			Header:   header,
+			Data:     data,
+			DaHeight: daHeight,
 		}
 
 		events = append(events, event)
@@ -240,9 +233,17 @@ func (r *DARetriever) tryDecodeHeader(bz []byte, daHeight uint64) *types.SignedH
 		return nil
 	}
 
-	// note, we cannot mark the header as DA included
-	// we haven't done any signature verification check here
-	// signature verification happens with data.
+	// Optimistically mark as DA included
+	// This has to be done for all fetched DA headers prior to validation because P2P does not confirm
+	// da inclusion. This is not an issue, as an invalid header will be rejected. There cannot be hash collisions.
+	headerHash := header.Hash().String()
+	r.cache.SetHeaderDAIncluded(headerHash, daHeight)
+
+	r.logger.Info().
+		Str("header_hash", headerHash).
+		Uint64("da_height", daHeight).
+		Uint64("height", header.Height()).
+		Msg("optimistically marked header as DA included")
 
 	return header
 }

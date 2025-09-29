@@ -196,7 +196,14 @@ func TestDARetriever_ProcessBlobs_HeaderAndData_Success(t *testing.T) {
 	assert.Equal(t, uint64(2), events[0].Header.Height())
 	assert.Equal(t, uint64(2), events[0].Data.Height())
 	assert.Equal(t, uint64(77), events[0].DaHeight)
-	assert.Equal(t, uint64(77), events[0].HeaderDaIncludedHeight)
+
+	hHeight, ok := r.cache.GetHeaderDAIncluded(events[0].Header.Hash().String())
+	assert.True(t, ok)
+	assert.Equal(t, uint64(77), hHeight)
+
+	dHeight, ok := r.cache.GetDataDAIncluded(events[0].Data.DACommitment().String())
+	assert.True(t, ok)
+	assert.Equal(t, uint64(77), dHeight)
 }
 
 func TestDARetriever_ProcessBlobs_HeaderOnly_EmptyDataExpected(t *testing.T) {
@@ -217,6 +224,14 @@ func TestDARetriever_ProcessBlobs_HeaderOnly_EmptyDataExpected(t *testing.T) {
 	assert.Equal(t, uint64(3), events[0].Header.Height())
 	assert.NotNil(t, events[0].Data)
 	assert.Equal(t, uint64(88), events[0].DaHeight)
+
+	hHeight, ok := r.cache.GetHeaderDAIncluded(events[0].Header.Hash().String())
+	assert.True(t, ok)
+	assert.Equal(t, uint64(88), hHeight)
+
+	// empty data is not marked as data included (the submitter components does handle the empty data case)
+	_, ok = r.cache.GetDataDAIncluded(events[0].Data.DACommitment().String())
+	assert.False(t, ok)
 }
 
 func TestDARetriever_TryDecodeHeaderAndData_Basic(t *testing.T) {
@@ -346,8 +361,6 @@ func TestDARetriever_ProcessBlobs_CrossDAHeightMatching(t *testing.T) {
 
 	// Verify header is stored in pending headers
 	require.Contains(t, r.pendingHeaders, uint64(5), "header should be stored as pending")
-	require.Contains(t, r.headerDAHeights, uint64(5), "header DA height should be tracked")
-	assert.Equal(t, uint64(100), r.headerDAHeights[5])
 
 	// Process data from DA height 102
 	events2 := r.processBlobs(context.Background(), [][]byte{dataBin}, 102)
@@ -357,12 +370,10 @@ func TestDARetriever_ProcessBlobs_CrossDAHeightMatching(t *testing.T) {
 	assert.Equal(t, uint64(5), event.Header.Height())
 	assert.Equal(t, uint64(5), event.Data.Height())
 	assert.Equal(t, uint64(102), event.DaHeight, "DaHeight should be the height where data was processed")
-	assert.Equal(t, uint64(100), event.HeaderDaIncludedHeight, "HeaderDaIncludedHeight should be where header was included")
 
 	// Verify pending maps are cleared
 	require.NotContains(t, r.pendingHeaders, uint64(5), "header should be removed from pending")
 	require.NotContains(t, r.pendingData, uint64(5), "data should be removed from pending")
-	require.NotContains(t, r.headerDAHeights, uint64(5), "header DA height should be removed")
 }
 
 func TestDARetriever_ProcessBlobs_MultipleHeadersCrossDAHeightMatching(t *testing.T) {
@@ -393,9 +404,6 @@ func TestDARetriever_ProcessBlobs_MultipleHeadersCrossDAHeightMatching(t *testin
 	require.Contains(t, r.pendingHeaders, uint64(3), "header 3 should be pending")
 	require.Contains(t, r.pendingHeaders, uint64(4), "header 4 should be pending")
 	require.Contains(t, r.pendingHeaders, uint64(5), "header 5 should be pending")
-	assert.Equal(t, uint64(200), r.headerDAHeights[3])
-	assert.Equal(t, uint64(200), r.headerDAHeights[4])
-	assert.Equal(t, uint64(200), r.headerDAHeights[5])
 
 	// Process some data from DA height 203 - should create partial events
 	events2 := r.processBlobs(context.Background(), [][]byte{data3Bin, data5Bin}, 203)
@@ -410,13 +418,11 @@ func TestDARetriever_ProcessBlobs_MultipleHeadersCrossDAHeightMatching(t *testin
 	assert.Equal(t, uint64(3), events2[0].Header.Height())
 	assert.Equal(t, uint64(3), events2[0].Data.Height())
 	assert.Equal(t, uint64(203), events2[0].DaHeight)
-	assert.Equal(t, uint64(200), events2[0].HeaderDaIncludedHeight)
 
 	// Verify event for height 5
 	assert.Equal(t, uint64(5), events2[1].Header.Height())
 	assert.Equal(t, uint64(5), events2[1].Data.Height())
 	assert.Equal(t, uint64(203), events2[1].DaHeight)
-	assert.Equal(t, uint64(200), events2[1].HeaderDaIncludedHeight)
 
 	// Verify header 4 is still pending (no matching data yet)
 	require.Contains(t, r.pendingHeaders, uint64(4), "header 4 should still be pending")
@@ -431,11 +437,9 @@ func TestDARetriever_ProcessBlobs_MultipleHeadersCrossDAHeightMatching(t *testin
 	assert.Equal(t, uint64(4), events3[0].Header.Height())
 	assert.Equal(t, uint64(4), events3[0].Data.Height())
 	assert.Equal(t, uint64(205), events3[0].DaHeight)
-	assert.Equal(t, uint64(200), events3[0].HeaderDaIncludedHeight)
 
 	// Verify all pending maps are now clear
 	require.NotContains(t, r.pendingHeaders, uint64(4), "header 4 should be removed from pending")
 	require.Len(t, r.pendingHeaders, 0, "all headers should be processed")
 	require.Len(t, r.pendingData, 0, "all data should be processed")
-	require.Len(t, r.headerDAHeights, 0, "all header DA heights should be cleared")
 }

@@ -3,7 +3,6 @@ package syncing
 import (
 	"context"
 	crand "crypto/rand"
-	"errors"
 	"testing"
 	"time"
 
@@ -174,7 +173,8 @@ func TestSequentialBlockSync(t *testing.T) {
 	// Mark DA inclusion in cache (as DA retrieval would)
 	cm.SetDataDAIncluded(data1.DACommitment().String(), 10)
 	cm.SetDataDAIncluded(data2.DACommitment().String(), 11) // empty data still needs cache entry
-	// Header DA inclusion is marked by syncing loop, so it should be true without manual setting.
+	cm.SetHeaderDAIncluded(hdr1.Header.Hash().String(), 10)
+	cm.SetHeaderDAIncluded(hdr2.Header.Hash().String(), 11)
 
 	// Verify both blocks were synced correctly
 	finalState, _ := st.GetState(context.Background())
@@ -189,18 +189,6 @@ func TestSequentialBlockSync(t *testing.T) {
 	assert.True(t, ok)
 	_, ok = cm.GetDataDAIncluded(data2.DACommitment().String())
 	assert.True(t, ok)
-}
-
-func TestSyncer_isHeightFromFutureError(t *testing.T) {
-	s := &Syncer{}
-	// exact error
-	err := common.ErrHeightFromFutureStr
-	assert.True(t, s.isHeightFromFutureError(err))
-	// string-wrapped error
-	err = errors.New("some context: " + common.ErrHeightFromFutureStr.Error())
-	assert.True(t, s.isHeightFromFutureError(err))
-	// unrelated
-	assert.False(t, s.isHeightFromFutureError(errors.New("boom")))
 }
 
 func TestSyncer_sendNonBlockingSignal(t *testing.T) {
@@ -307,10 +295,9 @@ func TestSyncLoopPersistState(t *testing.T) {
 			},
 		}
 		evts := []common.DAHeightEvent{{
-			Header:                 sigHeader,
-			Data:                   &emptyData,
-			DaHeight:               daHeight,
-			HeaderDaIncludedHeight: daHeight,
+			Header:   sigHeader,
+			Data:     &emptyData,
+			DaHeight: daHeight,
 		}}
 		daRtrMock.On("RetrieveFromDA", mock.Anything, daHeight).Return(evts, nil)
 	}
