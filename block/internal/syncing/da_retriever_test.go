@@ -69,11 +69,28 @@ func makeSignedDataBytes(t *testing.T, chainID string, height uint64, proposer [
 	return bin, sd
 }
 
+func TestDARetriever_RetrieveFromDA_Invalid(t *testing.T) {
+	ds := dssync.MutexWrap(datastore.NewMapDatastore())
+	st := store.New(ds)
+	cm, err := cache.NewManager(config.DefaultConfig(), st, zerolog.Nop())
+	assert.NoError(t, err)
+
+	mockDA := testmocks.NewMockDA(t)
+
+	mockDA.EXPECT().GetIDs(mock.Anything, mock.Anything, mock.Anything).
+		Return(nil, errors.New("just invalid")).Maybe()
+
+	r := NewDARetriever(mockDA, cm, config.DefaultConfig(), genesis.Genesis{}, common.DefaultBlockOptions(), zerolog.Nop())
+	events, err := r.RetrieveFromDA(context.Background(), 42)
+	assert.Error(t, err)
+	assert.Len(t, events, 0)
+}
+
 func TestDARetriever_RetrieveFromDA_NotFound(t *testing.T) {
 	ds := dssync.MutexWrap(datastore.NewMapDatastore())
 	st := store.New(ds)
 	cm, err := cache.NewManager(config.DefaultConfig(), st, zerolog.Nop())
-	require.NoError(t, err)
+	assert.NoError(t, err)
 
 	mockDA := testmocks.NewMockDA(t)
 
@@ -83,7 +100,7 @@ func TestDARetriever_RetrieveFromDA_NotFound(t *testing.T) {
 
 	r := NewDARetriever(mockDA, cm, config.DefaultConfig(), genesis.Genesis{}, common.DefaultBlockOptions(), zerolog.Nop())
 	events, err := r.RetrieveFromDA(context.Background(), 42)
-	require.Error(t, err, coreda.ErrBlobNotFound)
+	assert.True(t, errors.Is(err, coreda.ErrBlobNotFound))
 	assert.Len(t, events, 0)
 }
 
