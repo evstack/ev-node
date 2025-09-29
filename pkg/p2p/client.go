@@ -202,11 +202,20 @@ func (c *Client) ConnectionGater() *conngater.BasicConnectionGater {
 
 // Info returns client ID, ListenAddr, and Network info
 func (c *Client) Info() (string, string, string, error) {
-	rawKey, err := c.privKey.GetPublic().Raw()
+	pubKey := c.privKey.GetPublic()
+	clientID, err := ClientID(pubKey)
 	if err != nil {
 		return "", "", "", err
 	}
-	return hex.EncodeToString(rollhash.SumTruncated(rawKey)), c.conf.ListenAddress, c.chainID, nil
+	return clientID, c.conf.ListenAddress, c.chainID, nil
+}
+
+func ClientID(pubKey crypto.PubKey) (string, error) {
+	rawKey, err := pubKey.Raw()
+	if err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(rollhash.SumTruncated(rawKey)), nil
 }
 
 // PeerIDs returns list of peer IDs of connected peers excluding self and inactive

@@ -90,11 +90,6 @@ var RunCmd = &cobra.Command{
 			return err
 		}
 
-		//p2pClient, err := p2p.NewClient(nodeConfig.P2P, nodeKey.PrivKey, datastore, genesis.ChainID, logger, nil)
-		//if err != nil {
-		//	return err
-		//}
-
 		return rollcmd.StartNode(logger, cmd, executor, sequencer, &daJrpc.DA, nodeKey, datastore, nodeConfig, genesis, node.NodeOptions{})
 	},
 }

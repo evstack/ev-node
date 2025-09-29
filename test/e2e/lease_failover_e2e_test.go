@@ -65,7 +65,7 @@ func TestLeaseFailoverE2E(t *testing.T) {
 		LeaseName:   leaseName,
 		BackendAddr: baseURL,
 	}
-	leaderProcess := setupLeaderSequencerNode(t, sut, node1Home, jwtSecret, genesisHash, nil, leaderElectionConfig, true)
+	leaderProcess := setupLeaderSequencerNode(t, sut, node1Home, jwtSecret, genesisHash, nil, leaderElectionConfig, true, "")
 	t.Log("Sequencer1 node is up")
 
 	// Get P2P address and setup full node
@@ -144,7 +144,7 @@ func TestLeaseFailoverE2E(t *testing.T) {
 	t.Log("+++ Last DA block of new leader: ", lastDABlockNewLeader)
 	assert.Greater(t, lastDABlockNewLeader, lastDABlockOldLeader)
 
-	leaderProcess = setupLeaderSequencerNode(t, sut, node1Home, jwtSecret, genesisHash, nil, leaderElectionConfig, false)
+	leaderProcess = setupLeaderSequencerNode(t, sut, node1Home, jwtSecret, genesisHash, nil, leaderElectionConfig, false, sequencer2P2PAddress)
 	t.Log("Reset and start node1 node to sync with new leader")
 	sut.AwaitNBlocks(t, 2, "http://127.0.0.1:"+RollkitRPCPort, 4*time.Second)
 }
@@ -156,6 +156,7 @@ func setupLeaderSequencerNode(
 	ports *TestPorts,
 	electionConfig config.LeaderElectionConfig,
 	runInitBefore bool,
+	p2pPeerAddr string,
 ) *os.Process {
 	t.Helper()
 
@@ -191,6 +192,7 @@ func setupLeaderSequencerNode(
 		"--rollkit.leader.lease_term="+electionConfig.LeaseTerm.String(),
 		"--rollkit.leader.lease_name="+electionConfig.LeaseName,
 		"--rollkit.leader.backend_addr="+electionConfig.BackendAddr,
+		"--rollkit.p2p.peers", p2pPeerAddr,
 
 		"--rollkit.rpc.address", "127.0.0.1:"+RollkitRPCPort,
 		"--rollkit.p2p.listen_address", "/ip4/127.0.0.1/tcp/"+RollkitP2PPort,
@@ -204,7 +206,7 @@ func setupLeaderSequencerNode(
 func setupFailoverSequencerNode(
 	t *testing.T,
 	sut *SystemUnderTest,
-	fullNodeHome, sequencerHome, fullNodeJwtSecret, genesisHash, sequencerP2PAddress string,
+	fullNodeHome, sequencerHome, fullNodeJwtSecret, genesisHash, p2pPeerAddr string,
 	ports *TestPorts,
 	electionConfig config.LeaderElectionConfig,
 ) *os.Process {
@@ -248,9 +250,9 @@ func setupFailoverSequencerNode(
 		"--rollkit.leader.lease_name="+electionConfig.LeaseName,
 		"--rollkit.leader.backend_addr="+electionConfig.BackendAddr,
 
+		"--rollkit.p2p.peers", p2pPeerAddr,
 		"--rollkit.rpc.address", "127.0.0.1:"+FullNodeRPCPort,
 		"--rollkit.p2p.listen_address", "/ip4/127.0.0.1/tcp/"+FullNodeP2PPort,
-		"--rollkit.p2p.peers", sequencerP2PAddress,
 		"--evm.engine-url", FullNodeEngineURL,
 		"--evm.eth-url", FullNodeEthURL,
 	)

@@ -43,8 +43,7 @@ func NewNode(
 	nodeOptions NodeOptions,
 ) (Node, error) {
 	if conf.Node.Light {
-		panic("todo: not impl")
-		//return newLightNode(conf, genesis, nodeKey, database, logger)
+		return newLightNode(conf, genesis, nodeKey, database, logger)
 	}
 
 	if err := nodeOptions.BlockOptions.Validate(); err != nil {

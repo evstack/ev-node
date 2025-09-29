@@ -6,10 +6,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"math/rand"
 	"net/http"
 	"net/http/pprof"
-	"strconv"
 	"time"
 
 	"github.com/evstack/ev-node/pkg/p2p/key"
@@ -97,13 +95,10 @@ func newFullNode(
 	// Initialize leader election if enabled
 	var leaderElection lease.LeaderElector
 	if nodeConfig.LeaderElection.Enabled {
-		//nodeID, _, _, err := nodeKey.Info()
-		//if err != nil {
-		//	return nil, fmt.Errorf("error getting node id from p2p client info: %w", err)
-		//}
-		// todo: use nodeID instead
-		nodeID := strconv.Itoa(rand.Int())
-
+		nodeID, err := p2p.ClientID(nodeKey.PubKey)
+		if err != nil {
+			return nil, fmt.Errorf("error getting node id: %w", err)
+		}
 		leaseName := nodeConfig.LeaderElection.LeaseName
 		if leaseName == "" {
 			leaseName = fmt.Sprintf("leader-%s", genesis.ChainID)
