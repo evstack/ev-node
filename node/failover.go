@@ -12,13 +12,12 @@ import (
 	coreexecutor "github.com/evstack/ev-node/core/execution"
 	coresequencer "github.com/evstack/ev-node/core/sequencer"
 	"github.com/evstack/ev-node/pkg/config"
-	"github.com/evstack/ev-node/pkg/signer"
-	"github.com/evstack/ev-node/pkg/store"
-
 	genesispkg "github.com/evstack/ev-node/pkg/genesis"
 	"github.com/evstack/ev-node/pkg/p2p"
 	"github.com/evstack/ev-node/pkg/p2p/key"
 	rpcserver "github.com/evstack/ev-node/pkg/rpc/server"
+	"github.com/evstack/ev-node/pkg/signer"
+	"github.com/evstack/ev-node/pkg/store"
 	evsync "github.com/evstack/ev-node/pkg/sync"
 	ds "github.com/ipfs/go-datastore"
 	"github.com/rs/zerolog"
@@ -154,7 +153,7 @@ func new(
 		bc:                bc,
 	}, nil
 }
-func (x *xxxx) Run(ctx context.Context) error {
+func (x *xxxx) Run(ctx context.Context) (multiErr error) {
 	go func() {
 		x.logger.Info().Str("addr", x.rpcServer.Addr).Msg("started RPC server")
 		if err := x.rpcServer.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
@@ -171,14 +170,27 @@ func (x *xxxx) Run(ctx context.Context) error {
 	if err := x.headerSyncService.Start(ctx); err != nil {
 		return fmt.Errorf("error while starting header sync service: %w", err)
 	}
-	defer x.headerSyncService.Stop(context.Background()) // nolint: errcheck
+	defer func() {
+		if err := x.headerSyncService.Stop(context.Background()); err != nil && !errors.Is(err, context.Canceled) {
+			multiErr = errors.Join(multiErr, fmt.Errorf("stopping header sync: %w", err))
+		}
+	}()
 
 	if err := x.dataSyncService.Start(ctx); err != nil {
 		return fmt.Errorf("error while starting data sync service: %w", err)
 	}
-	defer x.dataSyncService.Stop(context.Background()) // nolint: errcheck
+	defer func() {
+		if err := x.dataSyncService.Stop(context.Background()); err != nil && !errors.Is(err, context.Canceled) {
+			multiErr = errors.Join(multiErr, fmt.Errorf("stopping data sync: %w", err))
+		}
+	}()
 
-	defer x.bc.Stop() // nolint: errcheck
+	defer func() {
+		if err := x.bc.Stop(); err != nil && !errors.Is(err, context.Canceled) {
+			multiErr = errors.Join(multiErr, fmt.Errorf("stopping block components: %w", err))
+		}
+	}()
+
 	if err := x.bc.Start(ctx); err != nil && !errors.Is(err, context.Canceled) {
 		return fmt.Errorf("leader components started with error: %w", err)
 	}

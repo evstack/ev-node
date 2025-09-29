@@ -118,6 +118,12 @@ func (bc *Components) Stop() error {
 			errs = errors.Join(errs, fmt.Errorf("failed to stop submitter: %w", err))
 		}
 	}
+	// Save caches if needed
+	if c := bc.Cache; c != nil {
+		if err := c.SaveToDisk(); err != nil {
+			errs = errors.Join(errs, fmt.Errorf("saving caches: %w", err))
+		}
+	}
 
 	return errs
 }

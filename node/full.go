@@ -55,9 +55,6 @@ type FullNode struct {
 
 	da coreda.DA
 
-	//p2pClient *p2p.Client
-	//hSyncService            *evsync.HeaderSyncService
-	//dSyncService            *evsync.DataSyncService
 	Store                   store.Store
 	blockComponents         *block.Components
 	leaderElection          lease.LeaderElector
@@ -302,36 +299,6 @@ func (n *FullNode) Run(parentCtx context.Context) error {
 		n.Logger.Debug().Msg("leader election stopped")
 	}
 
-	// Stop Header Sync Service
-	//err = n.hSyncService.Stop(shutdownCtx)
-	//if err != nil {
-	//	// Log context canceled errors at a lower level if desired, or handle specific non-cancel errors
-	//	if !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
-	//		n.Logger.Error().Err(err).Msg("error stopping header sync service")
-	//		multiErr = errors.Join(multiErr, fmt.Errorf("stopping header sync service: %w", err))
-	//	} else {
-	//		n.Logger.Debug().Err(err).Msg("header sync service stop context ended") // Log cancellation as debug
-	//	}
-	//}
-	//
-	//// Stop Data Sync Service
-	//err = n.dSyncService.Stop(shutdownCtx)
-	//if err != nil {
-	//	// Log context canceled errors at a lower level if desired, or handle specific non-cancel errors
-	//	if !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
-	//		n.Logger.Error().Err(err).Msg("error stopping data sync service")
-	//		multiErr = errors.Join(multiErr, fmt.Errorf("stopping data sync service: %w", err))
-	//	} else {
-	//		n.Logger.Debug().Err(err).Msg("data sync service stop context ended") // Log cancellation as debug
-	//	}
-	//}
-
-	// Stop P2P Client
-	//err = n.p2pClient.Close()
-	//if err != nil {
-	//	multiErr = errors.Join(multiErr, fmt.Errorf("closing P2P client: %w", err))
-	//}
-
 	// Shutdown Prometheus Server
 	if n.prometheusSrv != nil {
 		err := n.prometheusSrv.Shutdown(shutdownCtx)
@@ -358,15 +325,6 @@ func (n *FullNode) Run(parentCtx context.Context) error {
 		multiErr = errors.Join(multiErr, fmt.Errorf("closing store: %w", err))
 	} else {
 		n.Logger.Debug().Msg("store closed")
-	}
-
-	// Save caches if needed
-	if n.blockComponents != nil && n.blockComponents.Cache != nil {
-		if err := n.blockComponents.Cache.SaveToDisk(); err != nil {
-			multiErr = errors.Join(multiErr, fmt.Errorf("saving caches: %w", err))
-		} else {
-			n.Logger.Debug().Msg("caches saved")
-		}
 	}
 
 	// Log final status

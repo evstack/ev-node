@@ -25,12 +25,12 @@ type LeaderElection struct {
 	renewInterval time.Duration
 	logger        zerolog.Logger
 
-	mu                  sync.RWMutex
-	isLockAccquiredOnce bool
-	isLeader            bool
-	leaderCh            chan bool
-	ctx                 context.Context
-	cancel              context.CancelFunc
+	mu                 sync.RWMutex
+	isLockAcquiredOnce bool
+	isLeader           bool
+	leaderCh           chan bool
+	ctx                context.Context
+	cancel             context.CancelFunc
 }
 
 // NewLeaderElection creates a new leader election instance
@@ -75,7 +75,7 @@ func (le *LeaderElection) Stop() error {
 	le.cancel()
 
 	// Release lease if we hold it
-	if le.isLockAccquiredOnce && le.isLeader {
+	if le.isLockAcquiredOnce && le.isLeader {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 
@@ -94,7 +94,7 @@ func (le *LeaderElection) Stop() error {
 func (le *LeaderElection) IsLeader() (bool, error) {
 	le.mu.RLock()
 	defer le.mu.RUnlock()
-	if !le.isLockAccquiredOnce {
+	if !le.isLockAcquiredOnce {
 		return false, errors.New("undefined state")
 	}
 	return le.isLeader, nil
@@ -155,11 +155,11 @@ func (le *LeaderElection) tryAcquireOrRenewLease() {
 	if acquired {
 		le.logger.Info().Msg("acquired leadership lease")
 		le.isLeader = true
-		le.isLockAccquiredOnce = true
+		le.isLockAcquiredOnce = true
 		le.notifyLeadershipUpdate(true)
 	} else {
-		if !le.isLockAccquiredOnce {
-			le.isLockAccquiredOnce = true
+		if !le.isLockAcquiredOnce {
+			le.isLockAcquiredOnce = true
 			le.notifyLeadershipUpdate(false)
 		}
 		// Log current leader for debugging
