@@ -260,16 +260,13 @@ func (s *Syncer) syncLoop() {
 		// Process pending events from cache on every iteration
 		s.processPendingEvents()
 
-		if s.tryFetchFromDA(nextDARequestAt) {
-			continue
-		}
-
-		if s.tryFetchFromP2P(lastHeaderHeight, lastDataHeight, blockTicker.C) {
-			continue
-		}
+		fetchedDaEvent := s.tryFetchFromDA(nextDARequestAt)
+		fetchedP2pEvent := s.tryFetchFromP2P(lastHeaderHeight, lastDataHeight, blockTicker.C)
 
 		// Prevent busy-waiting when no events are available
-		time.Sleep(min(10*time.Millisecond, s.config.Node.BlockTime.Duration))
+		if !fetchedDaEvent && !fetchedP2pEvent {
+			time.Sleep(min(10*time.Millisecond, s.config.Node.BlockTime.Duration))
+		}
 	}
 }
 
@@ -440,19 +437,9 @@ func (s *Syncer) trySyncNextBlock(event *common.DAHeightEvent) error {
 	// here only the previous block needs to be applied to proceed to the verification.
 	// The header validation must be done before applying the block to avoid executing gibberish
 	if err := s.validateBlock(currentState, header, data); err != nil {
+		// remove header as da included (not per se needed, but keep cache clean)
+		s.cache.RemoveHeaderDAIncluded(header.Hash().String())
 		return errors.Join(errInvalidBlock, fmt.Errorf("failed to validate block: %w", err))
-	}
-
-	// Mark as DA included (only if set, p2p sync does not set it)
-	if event.HeaderDaIncludedHeight != 0 || event.DaHeight != 0 {
-		headerHash := header.Hash().String()
-		s.cache.SetHeaderDAIncluded(headerHash, event.HeaderDaIncludedHeight)
-
-		s.logger.Info().
-			Str("header_hash", headerHash).
-			Uint64("da_height", event.HeaderDaIncludedHeight).
-			Uint64("height", header.Height()).
-			Msg("header marked as DA included")
 	}
 
 	// Apply block
@@ -587,10 +574,9 @@ func (s *Syncer) processPendingEvents() {
 		}
 
 		heightEvent := common.DAHeightEvent{
-			Header:                 event.Header,
-			Data:                   event.Data,
-			DaHeight:               event.DaHeight,
-			HeaderDaIncludedHeight: event.HeaderDaIncludedHeight,
+			Header:   event.Header,
+			Data:     event.Data,
+			DaHeight: event.DaHeight,
 		}
 
 		select {

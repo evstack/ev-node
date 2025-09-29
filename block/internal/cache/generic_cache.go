@@ -104,6 +104,11 @@ func (c *Cache[T]) setDAIncluded(hash string, daHeight uint64) {
 	c.daIncluded.Store(hash, daHeight)
 }
 
+// removeDAIncluded removes the DA-included status of the hash
+func (c *Cache[T]) removeDAIncluded(hash string) {
+	c.daIncluded.Delete(hash)
+}
+
 const (
 	itemsByHeightFilename = "items_by_height.gob"
 	hashesFilename        = "hashes.gob"
