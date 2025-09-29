@@ -736,15 +736,15 @@ See [tutorial] for running a multi-node network with both aggregator and non-agg
 
 [6] [Header and Data Separation ADR](../../adr/adr-014-header-and-data-separation.md)
 
-[7] [Evolve Minimal Header](../../adr/adr-015-evolve-minimal-header.md)
+[7] [Evolve Minimal Header](../../adr/adr-015-rollkit-minimal-header.md)
 
 [8] [Data Availability](./da.md)
 
 [9] [Lazy Aggregation with DA Layer Consistency ADR](../../adr/adr-021-lazy-aggregation.md)
 
-[defaultBlockTime]: https://github.com/evstack/ev-node/blob/main/block/manager.go#L36
-[defaultDABlockTime]: https://github.com/evstack/ev-node/blob/main/block/manager.go#L33
-[defaultLazyBlockTime]: https://github.com/evstack/ev-node/blob/main/block/manager.go#L39
+[defaultBlockTime]: https://github.com/evstack/ev-node/blob/main/pkg/config/defaults.go#L50
+[defaultDABlockTime]:https://github.com/evstack/ev-node/blob/main/pkg/config/defaults.go#L59
+[defaultLazyBlockTime]: https://github.com/evstack/ev-node/blob/main/pkg/config/defaults.go#L52
 [go-header]: https://github.com/celestiaorg/go-header
 [block-sync]: https://github.com/evstack/ev-node/blob/main/pkg/sync/sync_service.go
 [full-node]: https://github.com/evstack/ev-node/blob/main/node/full.go

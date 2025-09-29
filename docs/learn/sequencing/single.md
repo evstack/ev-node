@@ -14,7 +14,7 @@ A single sequencer is the simplest sequencing architecture for an Evolve-based c
    - **With lazy mode:** the sequencer produces a block once either  
      - enough transactions are collected  
      - the lazy-mode block interval elapses
-    More info [here](/docs/learn/config.md#lazy-mode-lazy-aggregator).
+    More info [here](../config.md#lazy-mode-lazy-aggregator).
    - Each block contains a batch of ordered transactions and metadata.
 
 4. **Data Availability Posting:**

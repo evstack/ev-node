@@ -25,7 +25,7 @@ This document provides a comprehensive reference for all configuration options a
   - [DA Gas Multiplier](#da-gas-multiplier)
   - [DA Submit Options](#da-submit-options)
   - [DA Namespace](#da-namespace)
-  - [DA Header Namespace](#da-header-namespace)
+  - [DA Header Namespace](#da-namespace)
   - [DA Data Namespace](#da-data-namespace)
   - [DA Block Time](#da-block-time)
   - [DA Start Height](#da-start-height)
@@ -623,7 +623,7 @@ _Example:_ `--rollkit.rpc.enable_da_visualization`
 _Default:_ `false`
 _Constant:_ `FlagRPCEnableDAVisualization`
 
-See the [DA Visualizer Guide](../guides/da/da-visualizer.md) for detailed information on using this feature.
+See the [DA Visualizer Guide](../guides/da/visualizer.md) for detailed information on using this feature.
 
 ## Instrumentation Configuration (`instrumentation`)
 

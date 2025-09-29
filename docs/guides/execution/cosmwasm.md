@@ -24,7 +24,7 @@ this tutorial.
 
 ## 💻 CosmWasm dependency {#dependencies}
 
-As with the [GM Chain](./gm-world.md), we use [kurtosis](https://docs.kurtosis.com/) to help with managing all the services we need to run. You can [install kurtosis here](https://docs.kurtosis.com/install).
+As with the [GM Chain](../gm-world.md), we use [kurtosis](https://docs.kurtosis.com/) to help with managing all the services we need to run. You can [install kurtosis here](https://docs.kurtosis.com/install).
 
 Once installed, you can verify the installation by running:
 
@@ -174,7 +174,7 @@ we want it to be as small as possible.
 <!-- markdownlint-disable MD051 -->
 
 The CosmWasm team provides a tool called `rust-optimizer`, which requires
-[Docker](#docker-installation) in order to compile.
+Docker in order to compile.
 
 <!-- markdownlint-enable MD051 -->
 
