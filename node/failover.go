@@ -23,16 +23,18 @@ import (
 	"github.com/rs/zerolog"
 )
 
-type xxxx struct {
+// failoverState collect the components to reset when switching modes.
+type failoverState struct {
+	logger zerolog.Logger
+
 	p2pClient         *p2p.Client
 	headerSyncService *evsync.HeaderSyncService
 	dataSyncService   *evsync.DataSyncService
 	rpcServer         *http.Server
 	bc                *block.Components
-	logger            zerolog.Logger
 }
 
-func NewSyncX(
+func newSyncMode(
 	nodeConfig config.Config,
 	nodeKey *key.NodeKey,
 	genesis genesispkg.Genesis,
@@ -44,7 +46,7 @@ func NewSyncX(
 	mainKV ds.Batching,
 	blockMetrics *block.Metrics,
 	nodeOpts NodeOptions,
-) (*xxxx, error) {
+) (*failoverState, error) {
 	blockComponentsFn := func(headerSyncService *evsync.HeaderSyncService, dataSyncService *evsync.DataSyncService) (*block.Components, error) {
 		return block.NewSyncComponents(
 			nodeConfig,
@@ -59,9 +61,9 @@ func NewSyncX(
 			nodeOpts.BlockOptions,
 		)
 	}
-	return new(nodeConfig, nodeKey, database, genesis, logger, mainKV, rktStore, blockComponentsFn)
+	return newFailoverState(nodeConfig, nodeKey, database, genesis, logger, mainKV, rktStore, blockComponentsFn)
 }
-func NewAggregatorX(
+func NewAggregatorMode(
 	nodeConfig config.Config,
 	nodeKey *key.NodeKey,
 	signer signer.Signer,
@@ -75,7 +77,7 @@ func NewAggregatorX(
 	mainKV ds.Batching,
 	blockMetrics *block.Metrics,
 	nodeOpts NodeOptions,
-) (*xxxx, error) {
+) (*failoverState, error) {
 
 	blockComponentsFn := func(headerSyncService *evsync.HeaderSyncService, dataSyncService *evsync.DataSyncService) (*block.Components, error) {
 		return block.NewAggregatorComponents(
@@ -94,10 +96,10 @@ func NewAggregatorX(
 		)
 	}
 
-	return new(nodeConfig, nodeKey, database, genesis, logger, mainKV, rktStore, blockComponentsFn)
+	return newFailoverState(nodeConfig, nodeKey, database, genesis, logger, mainKV, rktStore, blockComponentsFn)
 }
 
-func new(
+func newFailoverState(
 	nodeConfig config.Config,
 	nodeKey *key.NodeKey,
 	database ds.Batching,
@@ -106,7 +108,7 @@ func new(
 	mainKV ds.Batching,
 	rktStore store.Store,
 	yyy func(headerSyncService *evsync.HeaderSyncService, dataSyncService *evsync.DataSyncService) (*block.Components, error),
-) (*xxxx, error) {
+) (*failoverState, error) {
 	p2pClient, err := p2p.NewClient(nodeConfig.P2P, nodeKey.PrivKey, database, genesis.ChainID, logger, nil)
 	if err != nil {
 		return nil, err
@@ -144,7 +146,7 @@ func new(
 		return nil, fmt.Errorf("build follower components: %w", err)
 	}
 
-	return &xxxx{
+	return &failoverState{
 		logger:            logger,
 		p2pClient:         p2pClient,
 		headerSyncService: headerSyncService,
@@ -153,47 +155,65 @@ func new(
 		bc:                bc,
 	}, nil
 }
-func (x *xxxx) Run(ctx context.Context) (multiErr error) {
-	go func() {
-		x.logger.Info().Str("addr", x.rpcServer.Addr).Msg("started RPC server")
-		if err := x.rpcServer.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			x.logger.Error().Err(err).Msg("RPC server error")
-		}
-	}()
-	defer x.rpcServer.Shutdown(context.Background()) // nolint: errcheck
 
-	if err := x.p2pClient.Start(ctx); err != nil {
+func (f *failoverState) Run(ctx context.Context) (multiErr error) {
+	defer f.rpcServer.Shutdown(context.Background()) // nolint: errcheck
+
+	if err := f.p2pClient.Start(ctx); err != nil {
 		return err
 	}
-	defer x.p2pClient.Close() // nolint: errcheck
+	defer f.p2pClient.Close() // nolint: errcheck
 
-	if err := x.headerSyncService.Start(ctx); err != nil {
+	if err := f.headerSyncService.Start(ctx); err != nil {
 		return fmt.Errorf("error while starting header sync service: %w", err)
 	}
 	defer func() {
-		if err := x.headerSyncService.Stop(context.Background()); err != nil && !errors.Is(err, context.Canceled) {
+		if err := f.headerSyncService.Stop(context.Background()); err != nil && !errors.Is(err, context.Canceled) {
 			multiErr = errors.Join(multiErr, fmt.Errorf("stopping header sync: %w", err))
 		}
 	}()
 
-	if err := x.dataSyncService.Start(ctx); err != nil {
+	if err := f.dataSyncService.Start(ctx); err != nil {
 		return fmt.Errorf("error while starting data sync service: %w", err)
 	}
 	defer func() {
-		if err := x.dataSyncService.Stop(context.Background()); err != nil && !errors.Is(err, context.Canceled) {
+		if err := f.dataSyncService.Stop(context.Background()); err != nil && !errors.Is(err, context.Canceled) {
 			multiErr = errors.Join(multiErr, fmt.Errorf("stopping data sync: %w", err))
 		}
 	}()
 
 	defer func() {
-		if err := x.bc.Stop(); err != nil && !errors.Is(err, context.Canceled) {
+		if err := f.bc.Stop(); err != nil && !errors.Is(err, context.Canceled) {
 			multiErr = errors.Join(multiErr, fmt.Errorf("stopping block components: %w", err))
 		}
 	}()
 
-	if err := x.bc.Start(ctx); err != nil && !errors.Is(err, context.Canceled) {
-		return fmt.Errorf("leader components started with error: %w", err)
-	}
-	return nil
+	errChan := make(chan error)
+	go func() {
+		f.logger.Info().Str("addr", f.rpcServer.Addr).Msg("started RPC server")
+		if err := f.rpcServer.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			select {
+			case errChan <- fmt.Errorf("RPC server error: %w", err):
+			default:
+				f.logger.Error().Err(err).Msg("RPC server error")
+			}
+		}
+	}()
 
+	go func() {
+		if err := f.bc.Start(ctx); err != nil && !errors.Is(err, context.Canceled) {
+			select {
+			case errChan <- fmt.Errorf("components started with error: %w", err):
+			default:
+				f.logger.Error().Err(err).Msg("Components start error")
+			}
+		} else {
+			select {
+			case errChan <- nil:
+			default:
+			}
+		}
+	}()
+
+	return <-errChan
 }

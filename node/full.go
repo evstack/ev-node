@@ -143,26 +143,26 @@ func newFullNode(
 	node.BaseService = *service.NewBaseService(logger, "Node", node)
 
 	node.AggregatorComponentFunc = func(ctx context.Context) error {
-		logger.Info().Msg("ALEX: Starting aggregator-MODE")
+		logger.Info().Msg("Starting aggregator-MODE")
 
 		nodeConfig.Node.Aggregator = true
 		nodeConfig.P2P.Peers = ""
 
-		x, err := NewAggregatorX(nodeConfig, nodeKey, signer, genesis, database, exec, sequencer, da, logger, rktStore, mainKV, blockMetrics, nodeOpts)
+		m, err := NewAggregatorMode(nodeConfig, nodeKey, signer, genesis, database, exec, sequencer, da, logger, rktStore, mainKV, blockMetrics, nodeOpts)
 		if err != nil {
 			return err
 		}
-		return x.Run(ctx)
+		return m.Run(ctx)
 	}
 
 	node.SyncComponentFunc = func(ctx context.Context) error {
-		logger.Info().Msg("ALEX: Starting sync-MODE")
+		logger.Info().Msg("Starting sync-MODE")
 		nodeConfig.Node.Aggregator = false
-		x, err := NewSyncX(nodeConfig, nodeKey, genesis, database, exec, da, logger, rktStore, mainKV, blockMetrics, nodeOpts)
+		m, err := newSyncMode(nodeConfig, nodeKey, genesis, database, exec, da, logger, rktStore, mainKV, blockMetrics, nodeOpts)
 		if err != nil {
 			return err
 		}
-		return x.Run(ctx)
+		return m.Run(ctx)
 	}
 
 	return node, nil
