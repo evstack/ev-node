@@ -9,7 +9,7 @@ import constants from '../../.vitepress/constants/constants.js'
 
 This tutorial serves as a comprehensive guide for deploying your chain on Celestia's data availability (DA) network. From the Evolve perspective, there's no difference in posting blocks to Celestia's testnets or Mainnet Beta.
 
-Before proceeding, ensure that you have completed the [gm-world](./gm-world.md) tutorial, which covers installing the Testapp CLI and running a chain against a local DA network.
+Before proceeding, ensure that you have completed the [gm-world](../gm-world.md) tutorial, which covers installing the Testapp CLI and running a chain against a local DA network.
 
 ## 🪶 Running a Celestia light node
 
@@ -46,7 +46,7 @@ After successfully starting a light node, it's time to start posting the batches
 
 ## 🏗️ Prerequisites {#prerequisites}
 
-- `gmd` CLI installed from the [gm-world](./gm-world.md) tutorial.
+- `gmd` CLI installed from the [gm-world](../gm-world.md) tutorial.
 
 ## 🛠️ Configuring flags for DA
 
