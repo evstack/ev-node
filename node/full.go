@@ -26,11 +26,9 @@ import (
 	genesispkg "github.com/evstack/ev-node/pkg/genesis"
 	"github.com/evstack/ev-node/pkg/lease"
 	"github.com/evstack/ev-node/pkg/p2p"
-	rpcserver "github.com/evstack/ev-node/pkg/rpc/server"
 	"github.com/evstack/ev-node/pkg/service"
 	"github.com/evstack/ev-node/pkg/signer"
 	"github.com/evstack/ev-node/pkg/store"
-	evsync "github.com/evstack/ev-node/pkg/sync"
 )
 
 // EvPrefix prefixes used in KV store to separate rollkit data from execution environment data (if the same data base is reused)
@@ -68,7 +66,6 @@ type FullNode struct {
 
 	prometheusSrv *http.Server
 	pprofSrv      *http.Server
-	rpcServer     *http.Server
 }
 
 // newFullNode creates a new Rollkit full node.
@@ -151,195 +148,27 @@ func newFullNode(
 	node.AggregatorComponentFunc = func(ctx context.Context) error {
 		logger.Info().Msg("ALEX: Starting aggregator-MODE")
 
-		if node.blockComponents != nil {
-			_ = node.blockComponents.Stop()
-		}
 		nodeConfig.Node.Aggregator = true
 		nodeConfig.P2P.Peers = ""
-		p2pClient, err := p2p.NewClient(nodeConfig.P2P, nodeKey.PrivKey, database, genesis.ChainID, logger, nil)
+
+		x, err := NewAggregatorX(nodeConfig, nodeKey, signer, genesis, database, exec, sequencer, da, logger, rktStore, mainKV, blockMetrics, nodeOpts)
 		if err != nil {
 			return err
 		}
-
-		headerSyncService, err := initHeaderSyncService(mainKV, nodeConfig, genesis, p2pClient, logger)
-		if err != nil {
-			return err
-		}
-
-		dataSyncService, err := initDataSyncService(mainKV, nodeConfig, genesis, p2pClient, logger)
-		if err != nil {
-			return err
-		}
-		handler, err := rpcserver.NewServiceHandler(node.Store, p2pClient, genesis.ProposerAddress, logger, nodeConfig, func() uint64 {
-			panic("not impl")
-		})
-		if err != nil {
-			return fmt.Errorf("error creating RPC handler: %w", err)
-		}
-
-		node.rpcServer = &http.Server{
-			Addr:         nodeConfig.RPC.Address,
-			Handler:      handler,
-			ReadTimeout:  10 * time.Second,
-			WriteTimeout: 10 * time.Second,
-			IdleTimeout:  120 * time.Second,
-		}
-		go func() {
-			logger.Info().Str("addr", nodeConfig.RPC.Address).Msg("started RPC server")
-			if err := node.rpcServer.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-				logger.Error().Err(err).Msg("RPC server error")
-			}
-		}()
-		defer node.rpcServer.Shutdown(context.Background())
-
-		bc, err := block.NewAggregatorComponents(
-			nodeConfig,
-			genesis,
-			rktStore,
-			exec,
-			sequencer,
-			da,
-			signer,
-			headerSyncService,
-			dataSyncService,
-			logger,
-			blockMetrics,
-			nodeOpts.BlockOptions,
-		)
-		if err != nil {
-			return fmt.Errorf("build leader components: %w", err)
-		}
-		node.blockComponents = bc
-
-		if err := p2pClient.Start(ctx); err != nil {
-			return err
-		}
-		defer p2pClient.Close()
-
-		if err = headerSyncService.Start(ctx); err != nil {
-			return fmt.Errorf("error while starting header sync service: %w", err)
-		}
-		defer headerSyncService.Stop(context.Background())
-		if err = dataSyncService.Start(ctx); err != nil {
-			return fmt.Errorf("error while starting data sync service: %w", err)
-		}
-		defer dataSyncService.Stop(context.Background())
-
-		defer bc.Stop() // nolint: errcheck
-		if err := bc.Start(ctx); err != nil && !errors.Is(err, context.Canceled) {
-			return fmt.Errorf("leader components started with error: %w", err)
-		}
-		return nil
+		return x.Run(ctx)
 	}
 
 	node.SyncComponentFunc = func(ctx context.Context) error {
 		logger.Info().Msg("ALEX: Starting sync-MODE")
 		nodeConfig.Node.Aggregator = false
-		p2pClient, err := p2p.NewClient(nodeConfig.P2P, nodeKey.PrivKey, database, genesis.ChainID, logger, nil)
+		x, err := NewSyncX(nodeConfig, nodeKey, genesis, database, exec, da, logger, rktStore, mainKV, blockMetrics, nodeOpts)
 		if err != nil {
 			return err
 		}
-
-		handler, err := rpcserver.NewServiceHandler(node.Store, p2pClient, genesis.ProposerAddress, logger, nodeConfig, func() uint64 {
-			panic("not impl")
-		})
-		if err != nil {
-			return fmt.Errorf("error creating RPC handler: %w", err)
-		}
-
-		node.rpcServer = &http.Server{
-			Addr:         nodeConfig.RPC.Address,
-			Handler:      handler,
-			ReadTimeout:  10 * time.Second,
-			WriteTimeout: 10 * time.Second,
-			IdleTimeout:  120 * time.Second,
-		}
-		go func() {
-			logger.Info().Str("addr", nodeConfig.RPC.Address).Msg("started RPC server")
-			if err := node.rpcServer.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-				logger.Error().Err(err).Msg("RPC server error")
-			}
-		}()
-		defer node.rpcServer.Shutdown(context.Background())
-
-		headerSyncService, err := initHeaderSyncService(mainKV, nodeConfig, genesis, p2pClient, logger)
-		if err != nil {
-			return err
-		}
-
-		dataSyncService, err := initDataSyncService(mainKV, nodeConfig, genesis, p2pClient, logger)
-		if err != nil {
-			return err
-		}
-
-		bc, err := block.NewSyncComponents(
-			nodeConfig,
-			genesis,
-			rktStore,
-			exec,
-			da,
-			headerSyncService.Store(),
-			dataSyncService.Store(),
-			logger,
-			blockMetrics,
-			nodeOpts.BlockOptions,
-		)
-		if err != nil {
-			return fmt.Errorf("build follower components: %w", err)
-		}
-		node.blockComponents = bc
-
-		if err := p2pClient.Start(ctx); err != nil {
-			return err
-		}
-		defer p2pClient.Close()
-
-		if err = headerSyncService.Start(ctx); err != nil {
-			return fmt.Errorf("error while starting header sync service: %w", err)
-		}
-		defer headerSyncService.Stop(context.Background())
-
-		if err = dataSyncService.Start(ctx); err != nil {
-			return fmt.Errorf("error while starting data sync service: %w", err)
-		}
-		defer dataSyncService.Stop(context.Background())
-
-		defer bc.Stop() // nolint: errcheck
-		if err := bc.Start(ctx); err != nil && !errors.Is(err, context.Canceled) {
-			return fmt.Errorf("leader components started with error: %w", err)
-		}
-		return nil
+		return x.Run(ctx)
 	}
 
 	return node, nil
-}
-
-func initHeaderSyncService(
-	mainKV ds.Batching,
-	nodeConfig config.Config,
-	genesis genesispkg.Genesis,
-	p2pClient *p2p.Client,
-	logger zerolog.Logger,
-) (*evsync.HeaderSyncService, error) {
-	headerSyncService, err := evsync.NewHeaderSyncService(mainKV, nodeConfig, genesis, p2pClient, logger.With().Str("component", "HeaderSyncService").Logger())
-	if err != nil {
-		return nil, fmt.Errorf("error while initializing HeaderSyncService: %w", err)
-	}
-	return headerSyncService, nil
-}
-
-func initDataSyncService(
-	mainKV ds.Batching,
-	nodeConfig config.Config,
-	genesis genesispkg.Genesis,
-	p2pClient *p2p.Client,
-	logger zerolog.Logger,
-) (*evsync.DataSyncService, error) {
-	dataSyncService, err := evsync.NewDataSyncService(mainKV, nodeConfig, genesis, p2pClient, logger.With().Str("component", "DataSyncService").Logger())
-	if err != nil {
-		return nil, fmt.Errorf("error while initializing DataSyncService: %w", err)
-	}
-	return dataSyncService, nil
 }
 
 // initGenesisChunks creates a chunked format of the genesis document to make it easier to
@@ -447,44 +276,10 @@ func (n *FullNode) Run(parentCtx context.Context) error {
 		n.prometheusSrv, n.pprofSrv = n.startInstrumentationServer()
 	}
 
-	// Start RPC server
-	//bestKnownHeightProvider := func() uint64 {
-	//hHeight := n.blockComponents.Height()
-	//dHeight := n.blockComponents.Height()
-	//return min(hHeight, dHeight)
-	//panic("Alex")
-	//}
-
-	//handler, err := rpcserver.NewServiceHandler(n.Store, n.p2pClient, n.genesis.ProposerAddress, n.Logger, n.nodeConfig, bestKnownHeightProvider)
-	//if err != nil {
-	//	return fmt.Errorf("error creating RPC handler: %w", err)
-	//}
-	//
-	//n.rpcServer = &http.Server{
-	//	Addr:         n.nodeConfig.RPC.Address,
-	//	Handler:      handler,
-	//	ReadTimeout:  10 * time.Second,
-	//	WriteTimeout: 10 * time.Second,
-	//	IdleTimeout:  120 * time.Second,
-	//}
-
-	n.Logger.Info().Msg("starting P2P client")
-	//err = n.p2pClient.Start(ctx)
-	//if err != nil {
-	//	return fmt.Errorf("error while starting P2P client: %w", err)
-	//}
-
 	// Start leader election if enabled
 	if err := n.leaderElection.Start(ctx); err != nil {
 		return fmt.Errorf("error while starting leader election: %w", err)
 	}
-	//if err = n.hSyncService.Start(ctx); err != nil {
-	//	return fmt.Errorf("error while starting header sync service: %w", err)
-	//}
-	//
-	//if err = n.dSyncService.Start(ctx); err != nil {
-	//	return fmt.Errorf("error while starting data sync service: %w", err)
-	//}
 
 	if err := n.leaderElection.RunWithElection(ctx, n.AggregatorComponentFunc, n.SyncComponentFunc); err != nil && !errors.Is(err, context.Canceled) {
 		n.Logger.Warn().Err(err).Msg("leadership change detected, restarting components")
@@ -505,14 +300,6 @@ func (n *FullNode) Run(parentCtx context.Context) error {
 		multiErr = errors.Join(multiErr, fmt.Errorf("stopping leader election: %w", err))
 	} else {
 		n.Logger.Debug().Msg("leader election stopped")
-	}
-
-	// Stop block components
-	if n.blockComponents != nil {
-		if err := n.blockComponents.Stop(); err != nil {
-			n.Logger.Error().Err(err).Msg("error stopping block components")
-			multiErr = errors.Join(multiErr, fmt.Errorf("stopping block components: %w", err))
-		}
 	}
 
 	// Stop Header Sync Service
@@ -563,16 +350,6 @@ func (n *FullNode) Run(parentCtx context.Context) error {
 			multiErr = errors.Join(multiErr, fmt.Errorf("shutting down pprof server: %w", err))
 		} else {
 			n.Logger.Debug().Err(err).Msg("pprof server shutdown context ended")
-		}
-	}
-
-	// Shutdown RPC Server
-	if n.rpcServer != nil {
-		err := n.rpcServer.Shutdown(shutdownCtx)
-		if err != nil && !errors.Is(err, http.ErrServerClosed) {
-			multiErr = errors.Join(multiErr, fmt.Errorf("shutting down RPC server: %w", err))
-		} else {
-			n.Logger.Debug().Err(err).Msg("RPC server shutdown context ended")
 		}
 	}
 
