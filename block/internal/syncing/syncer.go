@@ -260,8 +260,8 @@ func (s *Syncer) syncLoop() {
 		// Process pending events from cache on every iteration
 		s.processPendingEvents()
 
-		fetchedDaEvent := s.tryFetchFromDA(nextDARequestAt)
 		fetchedP2pEvent := s.tryFetchFromP2P(lastHeaderHeight, lastDataHeight, blockTicker.C)
+		fetchedDaEvent := s.tryFetchFromDA(nextDARequestAt)
 
 		// Prevent busy-waiting when no events are available
 		if !fetchedDaEvent && !fetchedP2pEvent {
