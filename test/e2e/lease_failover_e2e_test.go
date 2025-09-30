@@ -20,7 +20,6 @@ import (
 	"github.com/evstack/ev-node/pkg/config"
 	"github.com/evstack/ev-node/pkg/lease"
 	"github.com/rs/zerolog"
-
 	"github.com/stretchr/testify/require"
 
 	"github.com/evstack/ev-node/execution/evm"
@@ -45,8 +44,7 @@ func TestLeaseFailoverE2E(t *testing.T) {
 	baseURL, shutdown := startLeaseHTTPTestServer(leaseName)
 	t.Cleanup(shutdown)
 
-	workDir := "/Users/alex/workspace/rollkit/rollkit/test/e2e/testnet"
-	//workDir := t.TempDir()
+	workDir := t.TempDir()
 	node1Home := filepath.Join(workDir, "node1")
 	node2Home := filepath.Join(workDir, "node2")
 
@@ -66,8 +64,15 @@ func TestLeaseFailoverE2E(t *testing.T) {
 
 	leaderP2PAddr := getNodeP2PAddress(t, sut, node1Home, testEndpoints.RollkitRPCPort)
 	t.Log("Leading sequencer P2P address: ", leaderP2PAddr)
+
 	setupFailoverSequencerFullNode(t, sut, node2Home, node1Home, fullNodeJwtSecret, genesisHash, testEndpoints, leaderElectionConfig, leaderP2PAddr)
 	t.Log("Follower sequencer node is up")
+
+	followerP2PAddr := getNodeP2PAddress(t, sut, node2Home, testEndpoints.FullNodeRPCPort)
+	t.Log("Follower sequencer P2P address: ", followerP2PAddr)
+
+	// Wait for at least 2 blocks to be produced before starting header detectors
+	sut.AwaitNBlocks(t, 2, testEndpoints.GetRollkitRPCAddress(), 6*time.Second)
 
 	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
 	t.Cleanup(cancel)
@@ -113,7 +118,7 @@ func TestLeaseFailoverE2E(t *testing.T) {
 			return false
 		}
 		return ldr != "" && ldr != firstLeader
-	}, 10*time.Second, 100*time.Millisecond, "no failover occurred")
+	}, 5*time.Second, 100*time.Millisecond, "no failover occurred")
 
 	// After failover, submit a tx to the remaining instance and ensure inclusion
 	_, blk2 := submitTxToURL(t, fnClient)
@@ -126,8 +131,10 @@ func TestLeaseFailoverE2E(t *testing.T) {
 	}, 2*must(time.ParseDuration(DefaultDABlockTime)), 100*time.Millisecond)
 
 	leaderProcess = setupLeaderSequencerNode(t, sut, node1Home, jwtSecret, genesisHash, testEndpoints, leaderElectionConfig, false, getNodeP2PAddress(t, sut, node1Home, testEndpoints.FullNodeRPCPort))
-	t.Log("Reset and start node1 node to sync with new leader")
-	sut.AwaitNBlocks(t, 2, testEndpoints.GetRollkitRPCAddress(), 4*time.Second)
+	t.Log("Restart node1 node to sync with new leader")
+
+	// Wait for several blocks to be produced and propagated through P2P
+	sut.AwaitNBlocks(t, 5, testEndpoints.GetRollkitRPCAddress(), 10*time.Second)
 }
 
 func setupLeaderSequencerNode(

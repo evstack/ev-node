@@ -109,7 +109,7 @@ func NewSyncer(
 		headerStore:       headerStore,
 		dataStore:         dataStore,
 		lastStateMtx:      &sync.RWMutex{},
-		heightInCh:        make(chan common.DAHeightEvent),
+		heightInCh:        make(chan common.DAHeightEvent, 10_000),
 		errorCh:           errorCh,
 		logger:            logger.With().Str("component", "syncer").Logger(),
 		retriesBeforeHalt: make(map[uint64]uint64),
@@ -145,6 +145,16 @@ func (s *Syncer) Start(ctx context.Context) error {
 
 	s.logger.Info().Msg("syncer started")
 	return nil
+}
+
+var alwaysTickCh chan time.Time
+
+func init() {
+	alwaysTickCh = make(chan time.Time)
+	close(alwaysTickCh) // always picked in select
+}
+func (s *Syncer) HasUnprocessedEvents() bool {
+	return len(s.heightInCh) != 0 || s.tryFetchFromP2P(&s.lastState.LastBlockHeight, &s.lastState.LastBlockHeight, alwaysTickCh)
 }
 
 // Stop shuts down the syncing component

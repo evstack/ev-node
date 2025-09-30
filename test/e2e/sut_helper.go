@@ -154,21 +154,18 @@ func (s *SystemUnderTest) awaitProcessCleanup(cmd *exec.Cmd) {
 }
 
 func (s *SystemUnderTest) watchLogs(cmd *exec.Cmd) {
-	logfileName := filepath.Join("./testnet", fmt.Sprintf("exec-%s-%d.out", s.t.Name(), time.Now().UnixNano()))
-	logfile, err := os.Create(logfileName)
-
 	errReader, err := cmd.StderrPipe()
 	if err != nil {
 		panic(fmt.Sprintf("stderr reader error %#+v", err))
 	}
 	stopRingBuffer := make(chan struct{})
-	go appendToBuf(io.TeeReader(errReader, logfile), s.errBuff, stopRingBuffer)
+	go appendToBuf(errReader, s.errBuff, stopRingBuffer)
 
 	outReader, err := cmd.StdoutPipe()
 	if err != nil {
 		panic(fmt.Sprintf("stdout reader error %#+v", err))
 	}
-	go appendToBuf(io.TeeReader(outReader, logfile), s.outBuff, stopRingBuffer)
+	go appendToBuf(outReader, s.outBuff, stopRingBuffer)
 	s.t.Cleanup(func() {
 		close(stopRingBuffer)
 	})

@@ -148,7 +148,7 @@ func newFullNode(
 		nodeConfig.Node.Aggregator = true
 		nodeConfig.P2P.Peers = ""
 
-		m, err := NewAggregatorMode(nodeConfig, nodeKey, signer, genesis, database, exec, sequencer, da, logger, rktStore, mainKV, blockMetrics, nodeOpts)
+		m, err := newAggregatorMode(nodeConfig, nodeKey, signer, genesis, database, exec, sequencer, da, logger, rktStore, mainKV, blockMetrics, nodeOpts)
 		if err != nil {
 			return err
 		}

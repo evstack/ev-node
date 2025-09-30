@@ -63,7 +63,7 @@ func newSyncMode(
 	}
 	return newFailoverState(nodeConfig, nodeKey, database, genesis, logger, mainKV, rktStore, blockComponentsFn)
 }
-func NewAggregatorMode(
+func newAggregatorMode(
 	nodeConfig config.Config,
 	nodeKey *key.NodeKey,
 	signer signer.Signer,
@@ -107,7 +107,7 @@ func newFailoverState(
 	logger zerolog.Logger,
 	mainKV ds.Batching,
 	rktStore store.Store,
-	yyy func(headerSyncService *evsync.HeaderSyncService, dataSyncService *evsync.DataSyncService) (*block.Components, error),
+	buildComponentsFn func(headerSyncService *evsync.HeaderSyncService, dataSyncService *evsync.DataSyncService) (*block.Components, error),
 ) (*failoverState, error) {
 	p2pClient, err := p2p.NewClient(nodeConfig.P2P, nodeKey.PrivKey, database, genesis.ChainID, logger, nil)
 	if err != nil {
@@ -141,7 +141,7 @@ func newFailoverState(
 		WriteTimeout: 10 * time.Second,
 		IdleTimeout:  120 * time.Second,
 	}
-	bc, err := yyy(headerSyncService, dataSyncService)
+	bc, err := buildComponentsFn(headerSyncService, dataSyncService)
 	if err != nil {
 		return nil, fmt.Errorf("build follower components: %w", err)
 	}
@@ -183,6 +183,12 @@ func (f *failoverState) Run(ctx context.Context) (multiErr error) {
 	}()
 
 	defer func() {
+		if f.bc.Syncer != nil {
+			for f.bc.Syncer.HasUnprocessedEvents() {
+				// give it some time to gracefully complete
+				time.Sleep(100 * time.Millisecond)
+			}
+		}
 		if err := f.bc.Stop(); err != nil && !errors.Is(err, context.Canceled) {
 			multiErr = errors.Join(multiErr, fmt.Errorf("stopping block components: %w", err))
 		}
@@ -207,11 +213,11 @@ func (f *failoverState) Run(ctx context.Context) (multiErr error) {
 			default:
 				f.logger.Error().Err(err).Msg("Components start error")
 			}
-		} else {
-			select {
-			case errChan <- nil:
-			default:
-			}
+			return
+		}
+		select {
+		case errChan <- nil:
+		default:
 		}
 	}()
 
