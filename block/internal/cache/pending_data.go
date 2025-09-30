@@ -42,10 +42,6 @@ func NewPendingData(store store.Store, logger zerolog.Logger) (*PendingData, err
 	return &PendingData{base: base}, nil
 }
 
-func (pd *PendingData) init() error {
-	return pd.base.init()
-}
-
 // GetPendingData returns a sorted slice of pending Data.
 func (pd *PendingData) GetPendingData(ctx context.Context) ([]*types.Data, error) {
 	return pd.base.getPending(ctx)

@@ -51,7 +51,3 @@ func (ph *PendingHeaders) NumPendingHeaders() uint64 {
 func (ph *PendingHeaders) SetLastSubmittedHeaderHeight(ctx context.Context, newLastSubmittedHeaderHeight uint64) {
 	ph.base.setLastSubmittedHeight(ctx, newLastSubmittedHeaderHeight)
 }
-
-func (ph *PendingHeaders) init() error {
-	return ph.base.init()
-}
