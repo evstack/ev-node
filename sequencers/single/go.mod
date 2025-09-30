@@ -1,9 +1,9 @@
 module github.com/evstack/ev-node/sequencers/single
 
-go 1.24.2
+go 1.24.6
 
 require (
-	github.com/evstack/ev-node v1.0.0-beta.4
+	github.com/evstack/ev-node v1.0.0-beta.5
 	github.com/evstack/ev-node/core v1.0.0-beta.3
 	github.com/go-kit/kit v0.13.0
 	github.com/ipfs/go-datastore v0.9.0
@@ -16,8 +16,8 @@ require (
 require (
 	github.com/benbjohnson/clock v1.3.5 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
-	github.com/celestiaorg/go-header v0.7.2 // indirect
-	github.com/celestiaorg/go-square/v2 v2.3.3 // indirect
+	github.com/celestiaorg/go-header v0.7.3 // indirect
+	github.com/celestiaorg/go-square/v3 v3.0.1 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
 	github.com/davidlazar/go-crypto v0.0.0-20200604182044-b73af7476f6c // indirect

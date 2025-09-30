@@ -22,7 +22,7 @@ require (
 )
 
 require (
-	connectrpc.com/connect v1.18.1 // indirect
+	connectrpc.com/connect v1.19.0 // indirect
 	connectrpc.com/grpcreflect v1.3.0 // indirect
 	github.com/benbjohnson/clock v1.3.5 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
