@@ -1,6 +1,6 @@
 module github.com/evstack/ev-node/da
 
-go 1.24.1
+go 1.24.6
 
 require (
 	github.com/evstack/ev-node/core v1.0.0-beta.3
