@@ -43,8 +43,7 @@ func main() {
 		goheaderstore.WithStorePrefix(headerSync),
 	)
 
-	ctx, cancel := context.WithTimeout(context.Background(), timeout)
-	defer cancel()
+	ctx := context.Background()
 
 	if err := ss.Start(ctx); err != nil {
 		log.Fatalf("Failed to start goheader store: %s", err)
@@ -56,12 +55,6 @@ func main() {
 		log.Fatalf("Failed to get store head: %s", err)
 	}
 	fmt.Println("Store Head:", storeHead)
-
-	storeTail, err := ss.Tail(ctx)
-	if err != nil {
-		log.Fatalf("Failed to get store tail: %s", err)
-	}
-	fmt.Println("Store Tail:", storeTail)
 
 	localExchange := local.NewExchange(ss)
 
