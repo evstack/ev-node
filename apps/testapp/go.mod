@@ -11,8 +11,8 @@ replace (
 )
 
 require (
-	github.com/celestiaorg/go-header v0.7.2
-	github.com/evstack/ev-node v1.0.0-beta.4
+	github.com/celestiaorg/go-header v0.7.3
+	github.com/evstack/ev-node v1.0.0-beta.5
 	github.com/evstack/ev-node/core v1.0.0-beta.3
 	github.com/evstack/ev-node/da v0.0.0-00010101000000-000000000000
 	github.com/evstack/ev-node/sequencers/single v0.0.0-00010101000000-000000000000
@@ -22,7 +22,7 @@ require (
 )
 
 require (
-	connectrpc.com/connect v1.18.1 // indirect
+	connectrpc.com/connect v1.19.0 // indirect
 	connectrpc.com/grpcreflect v1.3.0 // indirect
 	github.com/benbjohnson/clock v1.3.5 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect

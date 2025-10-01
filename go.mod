@@ -5,9 +5,9 @@ go 1.24.6
 retract v0.12.0 // Published by accident
 
 require (
-	connectrpc.com/connect v1.18.1
+	connectrpc.com/connect v1.19.0
 	connectrpc.com/grpcreflect v1.3.0
-	github.com/celestiaorg/go-header v0.7.2
+	github.com/celestiaorg/go-header v0.7.3
 	github.com/celestiaorg/go-square/v3 v3.0.1
 	github.com/celestiaorg/utils v0.1.0
 	github.com/evstack/ev-node/core v1.0.0-beta.3
