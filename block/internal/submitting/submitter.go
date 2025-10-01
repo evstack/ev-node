@@ -59,9 +59,10 @@ type Submitter struct {
 	logger zerolog.Logger
 
 	// Lifecycle
-	ctx    context.Context
-	cancel context.CancelFunc
-	wg     sync.WaitGroup
+	ctx               context.Context
+	cancel            context.CancelFunc
+	wg                sync.WaitGroup
+	retriesBeforeHalt map[uint64]uint64
 }
 
 // NewSubmitter creates a new DA submitter component
@@ -78,17 +79,18 @@ func NewSubmitter(
 	errorCh chan<- error,
 ) *Submitter {
 	return &Submitter{
-		store:       store,
-		exec:        exec,
-		cache:       cache,
-		metrics:     metrics,
-		config:      config,
-		genesis:     genesis,
-		daSubmitter: daSubmitter,
-		signer:      signer,
-		daStateMtx:  &sync.RWMutex{},
-		errorCh:     errorCh,
-		logger:      logger.With().Str("component", "submitter").Logger(),
+		store:             store,
+		exec:              exec,
+		cache:             cache,
+		metrics:           metrics,
+		config:            config,
+		genesis:           genesis,
+		daSubmitter:       daSubmitter,
+		signer:            signer,
+		daStateMtx:        &sync.RWMutex{},
+		errorCh:           errorCh,
+		logger:            logger.With().Str("component", "submitter").Logger(),
+		retriesBeforeHalt: make(map[uint64]uint64),
 	}
 }
 
@@ -217,12 +219,21 @@ func (s *Submitter) processDAInclusionLoop() {
 					break
 				}
 
+			retry:
 				// Set final height in executor
 				if err := s.exec.SetFinal(s.ctx, nextHeight); err != nil {
-					s.sendCriticalError(fmt.Errorf("failed to set final height: %w", err))
-					s.logger.Error().Err(err).Uint64("height", nextHeight).Msg("failed to set final height")
-					break
+					s.retriesBeforeHalt[header.Height()]++
+					if s.retriesBeforeHalt[header.Height()] > common.MaxRetriesBeforeHalt {
+						s.sendCriticalError(fmt.Errorf("failed to set final height: %w", err))
+						s.logger.Error().Err(err).Uint64("height", nextHeight).Msg("failed to set final height")
+						return
+					}
+
+					time.Sleep(common.MaxRetriesTimeout) // sleep before retrying
+					s.logger.Error().Err(err).Msgf("failed to set final height (retry %d / %d): %w", s.retriesBeforeHalt[header.Height()], common.MaxRetriesBeforeHalt, err)
+					goto retry
 				}
+				delete(s.retriesBeforeHalt, header.Height())
 
 				// Update DA included height
 				s.SetDAIncludedHeight(nextHeight)

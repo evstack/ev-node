@@ -93,12 +93,12 @@ func NewRollbackCmd() *cobra.Command {
 			}
 
 			if err := headerStore.Start(goCtx); err != nil {
-				return err
+				return fmt.Errorf("failed to start header store: %w", err)
 			}
 			defer headerStore.Stop(goCtx)
 
 			if err := dataStore.Start(goCtx); err != nil {
-				return err
+				return fmt.Errorf("failed to start data store: %w", err)
 			}
 			defer dataStore.Stop(goCtx)
 
