@@ -34,7 +34,7 @@ const (
 )
 
 // TODO: when we add pruning we can remove this
-var ninetyNineYears = 99 * 365 * 24 * time.Hour
+const ninetyNineYears = 99 * 365 * 24 * time.Hour
 
 // SyncService is the P2P Sync Service for blocks and headers.
 //
