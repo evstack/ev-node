@@ -58,6 +58,15 @@ func main() {
 
 	localExchange := local.NewExchange(ss)
 
+	fmt.Println("Checking earliest height:")
+	for i := storeHead.Height(); i > 0; i-- {
+		_, err := localExchange.GetByHeight(ctx, i)
+		if err != nil {
+			log.Fatalf("Failed to get exchanger height: %s", err)
+		}
+		fmt.Println("Found height", i)
+	}
+
 	head, err := localExchange.Head(ctx)
 	if err != nil {
 		log.Fatalf("Failed to get exchanger head: %s", err)
