@@ -253,8 +253,12 @@ func (s *Submitter) setFinalWithRetry(nextHeight uint64, headerHeight uint64) er
 				Uint64("height", nextHeight).
 				Msg("failed to set final height, retrying")
 
-			time.Sleep(common.MaxRetriesTimeout)
-			continue
+			select {
+			case <-time.After(common.MaxRetriesTimeout):
+				continue
+			case <-s.ctx.Done():
+				return fmt.Errorf("context cancelled during retry: %w", s.ctx.Err())
+			}
 		}
 
 		return nil

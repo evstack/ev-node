@@ -510,8 +510,12 @@ func (s *Syncer) executeTxsWithRetry(ctx context.Context, rawTxs [][]byte, heade
 				Uint64("height", header.Height()).
 				Msg("failed to execute transactions, retrying")
 
-			time.Sleep(common.MaxRetriesTimeout)
-			continue
+			select {
+			case <-time.After(common.MaxRetriesTimeout):
+				continue
+			case <-s.ctx.Done():
+				return nil, fmt.Errorf("context cancelled during retry: %w", s.ctx.Err())
+			}
 		}
 
 		return newAppHash, nil
