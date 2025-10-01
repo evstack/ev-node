@@ -13,11 +13,6 @@ import (
 	"github.com/evstack/ev-node/core/da"
 )
 
-const (
-	// DefaultMaxBlobSize is the default maximum blob size in bytes.
-	DefaultMaxBlobSize = 1.5 * 1024 * 1024 // 1.5MB
-)
-
 //go:generate mockgen -destination=mocks/api.go -package=mocks . Module
 type Module interface {
 	da.DA
@@ -227,16 +222,16 @@ func (c *Client) Close() {
 
 // NewClient creates a new Client with one connection per namespace with the
 // given token as the authorization token.
-func NewClient(ctx context.Context, logger zerolog.Logger, addr, token string, gasPrice, gasMultiplier float64) (*Client, error) {
+func NewClient(ctx context.Context, logger zerolog.Logger, addr, token string, gasPrice, gasMultiplier float64, maxBlobSize uint64) (*Client, error) {
 	authHeader := http.Header{"Authorization": []string{fmt.Sprintf("Bearer %s", token)}}
-	return newClient(ctx, logger, addr, authHeader, gasPrice, gasMultiplier)
+	return newClient(ctx, logger, addr, authHeader, gasPrice, gasMultiplier, maxBlobSize)
 }
 
-func newClient(ctx context.Context, logger zerolog.Logger, addr string, authHeader http.Header, gasPrice, gasMultiplier float64) (*Client, error) {
+func newClient(ctx context.Context, logger zerolog.Logger, addr string, authHeader http.Header, gasPrice, gasMultiplier float64, maxBlobSize uint64) (*Client, error) {
 	var multiCloser multiClientCloser
 	var client Client
 	client.DA.Logger = logger
-	client.DA.MaxBlobSize = uint64(DefaultMaxBlobSize)
+	client.DA.MaxBlobSize = maxBlobSize
 	client.DA.gasPrice = gasPrice
 	client.DA.gasMultiplier = gasMultiplier
 
