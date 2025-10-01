@@ -391,7 +391,7 @@ func newSyncer[H header.Header[H]](
 ) (*goheadersync.Syncer[H], error) {
 	opts = append(opts,
 		goheadersync.WithMetrics(),
-		goheadersync.WithPruningWindow(time.Duration(ninetyNineYears)),
+		goheadersync.WithPruningWindow(ninetyNineYears),
 	)
 	return goheadersync.NewSyncer(ex, store, sub, opts...)
 }
