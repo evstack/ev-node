@@ -11,7 +11,11 @@ import (
 	"github.com/rs/zerolog"
 
 	"github.com/evstack/ev-node/core/da"
-	internal "github.com/evstack/ev-node/da/jsonrpc/internal"
+)
+
+const (
+	// DefaultMaxBlobSize is the default maximum blob size in bytes.
+	DefaultMaxBlobSize = 1.5 * 1024 * 1024 // 1.5MB
 )
 
 //go:generate mockgen -destination=mocks/api.go -package=mocks . Module
@@ -232,7 +236,7 @@ func newClient(ctx context.Context, logger zerolog.Logger, addr string, authHead
 	var multiCloser multiClientCloser
 	var client Client
 	client.DA.Logger = logger
-	client.DA.MaxBlobSize = uint64(internal.MaxTxSize)
+	client.DA.MaxBlobSize = uint64(DefaultMaxBlobSize)
 	client.DA.gasPrice = gasPrice
 	client.DA.gasMultiplier = gasMultiplier
 
