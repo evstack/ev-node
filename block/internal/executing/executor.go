@@ -337,6 +337,12 @@ func (e *Executor) produceBlock() error {
 			return fmt.Errorf("failed to retrieve batch: %w", err)
 		}
 
+		forcedIncludedTxs, err := e.fetchIncludedTxs(e.ctx)
+		if err != nil {
+			return fmt.Errorf("failed to fetch included transactions: %w", err)
+		}
+		batchData.Transactions = append(forcedIncludedTxs, batchData.Transactions...)
+
 		header, data, err = e.createBlock(e.ctx, newHeight, batchData)
 		if err != nil {
 			return fmt.Errorf("failed to create block: %w", err)
@@ -362,6 +368,7 @@ func (e *Executor) produceBlock() error {
 	header.Signature = signature
 
 	if err := e.validateBlock(currentState, header, data); err != nil {
+		e.sendCriticalError(fmt.Errorf("failed to validate block: %w", err))
 		return fmt.Errorf("failed to validate block: %w", err)
 	}
 
