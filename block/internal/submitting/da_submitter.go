@@ -25,7 +25,7 @@ const (
 	initialBackoff               = 100 * time.Millisecond
 	defaultGasPrice              = 0.0
 	defaultGasMultiplier         = 1.0
-	defaultMaxBlobSize           = 2 * 1024 * 1024 // 2MB fallback blob size limit
+	defaultMaxBlobSize           = 1.5 * 1024 * 1024 // 1.5MB fallback blob size limit
 	defaultMaxGasPriceClamp      = 1000.0
 	defaultMaxGasMultiplierClamp = 3.0 // must always > 0 to avoid division by zero
 )
