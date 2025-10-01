@@ -33,6 +33,9 @@ const (
 	dataSync   syncType = "dataSync"
 )
 
+// TODO: when we add pruning we can remove this
+var ninetyNineYears = 99 * 365 * 24 * time.Hour
+
 // SyncService is the P2P Sync Service for blocks and headers.
 //
 // Uses the go-header library for handling all P2P logic.
@@ -388,6 +391,7 @@ func newSyncer[H header.Header[H]](
 ) (*goheadersync.Syncer[H], error) {
 	opts = append(opts,
 		goheadersync.WithMetrics(),
+		goheadersync.WithPruningWindow(time.Duration(ninetyNineYears)),
 	)
 	return goheadersync.NewSyncer(ex, store, sub, opts...)
 }
