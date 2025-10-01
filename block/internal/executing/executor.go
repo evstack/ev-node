@@ -362,6 +362,7 @@ func (e *Executor) produceBlock() error {
 	header.Signature = signature
 
 	if err := e.validateBlock(currentState, header, data); err != nil {
+		e.sendCriticalError(fmt.Errorf("failed to validate block: %w", err))
 		return fmt.Errorf("failed to validate block: %w", err)
 	}
 
