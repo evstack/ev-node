@@ -30,8 +30,12 @@ type p2pHandler interface {
 	ProcessDataRange(ctx context.Context, fromHeight, toHeight uint64) []common.DAHeightEvent
 }
 
-// maxRetriesBeforeHalt is the maximum number of retries against the execution client before halting the syncer.
-const maxRetriesBeforeHalt = 3
+const (
+	// maxRetriesBeforeHalt is the maximum number of retries against the execution client before halting the syncer.
+	maxRetriesBeforeHalt = 3
+	// maxRetriesTimeout is the maximum time to wait for a retry before halting the syncer.
+	maxRetriesTimeout = time.Second * 10
+)
 
 // Syncer handles block synchronization from DA and P2P sources.
 type Syncer struct {
@@ -494,6 +498,7 @@ func (s *Syncer) applyBlock(header types.Header, data *types.Data, currentState 
 			return types.State{}, fmt.Errorf("failed to execute transactions: %w", err)
 		}
 
+		time.Sleep(maxRetriesTimeout) // sleep before retrying
 		return types.State{}, fmt.Errorf("failed to execute transactions (retry %d / %d): %w", s.retriesBeforeHalt[header.Height()], maxRetriesBeforeHalt, err)
 	}
 	delete(s.retriesBeforeHalt, header.Height())
