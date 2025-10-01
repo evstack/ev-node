@@ -218,7 +218,7 @@ func (s *Submitter) processDAInclusionLoop() {
 				}
 
 				// Set final height in executor
-				if err := s.setFinalWithRetry(nextHeight, header.Height()); err != nil {
+				if err := s.setFinalWithRetry(nextHeight); err != nil {
 					s.sendCriticalError(fmt.Errorf("failed to set final height: %w", err))
 					s.logger.Error().Err(err).Uint64("height", nextHeight).Msg("failed to set final height")
 					break
@@ -240,7 +240,7 @@ func (s *Submitter) processDAInclusionLoop() {
 }
 
 // setFinalWithRetry sets the final height in executor with retry logic
-func (s *Submitter) setFinalWithRetry(nextHeight uint64, headerHeight uint64) error {
+func (s *Submitter) setFinalWithRetry(nextHeight uint64) error {
 	for attempt := 1; attempt <= common.MaxRetriesBeforeHalt; attempt++ {
 		if err := s.exec.SetFinal(s.ctx, nextHeight); err != nil {
 			if attempt == common.MaxRetriesBeforeHalt {
@@ -250,7 +250,7 @@ func (s *Submitter) setFinalWithRetry(nextHeight uint64, headerHeight uint64) er
 			s.logger.Error().Err(err).
 				Int("attempt", attempt).
 				Int("max_attempts", common.MaxRetriesBeforeHalt).
-				Uint64("height", nextHeight).
+				Uint64("da_height", nextHeight).
 				Msg("failed to set final height, retrying")
 
 			select {
