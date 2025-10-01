@@ -69,10 +69,9 @@ type Syncer struct {
 	logger zerolog.Logger
 
 	// Lifecycle
-	ctx               context.Context
-	cancel            context.CancelFunc
-	wg                sync.WaitGroup
-	retriesBeforeHalt map[uint64]uint64
+	ctx    context.Context
+	cancel context.CancelFunc
+	wg     sync.WaitGroup
 }
 
 // NewSyncer creates a new block syncer
@@ -91,21 +90,20 @@ func NewSyncer(
 	errorCh chan<- error,
 ) *Syncer {
 	return &Syncer{
-		store:             store,
-		exec:              exec,
-		da:                da,
-		cache:             cache,
-		metrics:           metrics,
-		config:            config,
-		genesis:           genesis,
-		options:           options,
-		headerStore:       headerStore,
-		dataStore:         dataStore,
-		lastStateMtx:      &sync.RWMutex{},
-		heightInCh:        make(chan common.DAHeightEvent, 10_000),
-		errorCh:           errorCh,
-		logger:            logger.With().Str("component", "syncer").Logger(),
-		retriesBeforeHalt: make(map[uint64]uint64),
+		store:        store,
+		exec:         exec,
+		da:           da,
+		cache:        cache,
+		metrics:      metrics,
+		config:       config,
+		genesis:      genesis,
+		options:      options,
+		headerStore:  headerStore,
+		dataStore:    dataStore,
+		lastStateMtx: &sync.RWMutex{},
+		heightInCh:   make(chan common.DAHeightEvent, 10_000),
+		errorCh:      errorCh,
+		logger:       logger.With().Str("component", "syncer").Logger(),
 	}
 }
 
