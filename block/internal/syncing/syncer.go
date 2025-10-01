@@ -482,19 +482,11 @@ func (s *Syncer) applyBlock(header types.Header, data *types.Data, currentState 
 
 	// Execute transactions
 	ctx := context.WithValue(s.ctx, types.HeaderContextKey, header)
-	newAppHash, _, err := s.exec.ExecuteTxs(ctx, rawTxs, header.Height(),
-		header.Time(), currentState.AppHash)
+	newAppHash, err := s.executeTxsWithRetry(ctx, rawTxs, header, currentState)
 	if err != nil {
-		s.retriesBeforeHalt[header.Height()]++
-		if s.retriesBeforeHalt[header.Height()] > common.MaxRetriesBeforeHalt {
-			s.sendCriticalError(fmt.Errorf("failed to execute transactions: %w", err))
-			return types.State{}, fmt.Errorf("failed to execute transactions: %w", err)
-		}
-
-		time.Sleep(common.MaxRetriesTimeout) // sleep before retrying
-		return types.State{}, fmt.Errorf("failed to execute transactions (retry %d / %d): %w", s.retriesBeforeHalt[header.Height()], common.MaxRetriesBeforeHalt, err)
+		s.sendCriticalError(fmt.Errorf("failed to execute transactions: %w", err))
+		return types.State{}, fmt.Errorf("failed to execute transactions: %w", err)
 	}
-	delete(s.retriesBeforeHalt, header.Height())
 
 	// Create new state
 	newState, err := currentState.NextState(header, newAppHash)
@@ -503,6 +495,31 @@ func (s *Syncer) applyBlock(header types.Header, data *types.Data, currentState 
 	}
 
 	return newState, nil
+}
+
+// executeTxsWithRetry executes transactions with retry logic
+func (s *Syncer) executeTxsWithRetry(ctx context.Context, rawTxs [][]byte, header types.Header, currentState types.State) ([]byte, error) {
+	for attempt := 1; attempt <= common.MaxRetriesBeforeHalt; attempt++ {
+		newAppHash, _, err := s.exec.ExecuteTxs(ctx, rawTxs, header.Height(), header.Time(), currentState.AppHash)
+		if err != nil {
+			if attempt == common.MaxRetriesBeforeHalt {
+				return nil, fmt.Errorf("failed to execute transactions: %w", err)
+			}
+
+			s.logger.Error().Err(err).
+				Int("attempt", attempt).
+				Int("max_attempts", common.MaxRetriesBeforeHalt).
+				Uint64("height", header.Height()).
+				Msg("failed to execute transactions, retrying")
+
+			time.Sleep(common.MaxRetriesTimeout)
+			continue
+		}
+
+		return newAppHash, nil
+	}
+
+	return nil, nil
 }
 
 // validateBlock validates a synced block
