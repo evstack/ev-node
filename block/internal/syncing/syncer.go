@@ -498,12 +498,7 @@ func (s *Syncer) applyBlock(header types.Header, data *types.Data, currentState 
 			return types.State{}, fmt.Errorf("failed to execute transactions: %w", err)
 		}
 
-		select {
-		case <-time.After(maxRetriesTimeout):
-		case <-s.ctx.Done():
-			return types.State{}, s.ctx.Err()
-		}
-
+		time.Sleep(maxRetriesTimeout) // sleep before retrying
 		return types.State{}, fmt.Errorf("failed to execute transactions (retry %d / %d): %w", s.retriesBeforeHalt[header.Height()], maxRetriesBeforeHalt, err)
 	}
 	delete(s.retriesBeforeHalt, header.Height())
