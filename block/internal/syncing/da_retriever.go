@@ -19,9 +19,8 @@ import (
 	pb "github.com/evstack/ev-node/types/pb/evnode/v1"
 )
 
-// dAFetcherTimeout is the timeout for fetching data from the DA
-// it needs to be high enough in case of network issues, slow DA or many blobs to download during retrieval
-const dAFetcherTimeout = 10 * time.Minute
+// defaultDATimeout is the default timeout for DA retrieval operations
+const defaultDATimeout = 10 * time.Second
 
 // DARetriever handles DA retrieval operations for syncing
 type DARetriever struct {
@@ -66,9 +65,6 @@ func NewDARetriever(
 // RetrieveFromDA retrieves blocks from the specified DA height and returns height events
 func (r *DARetriever) RetrieveFromDA(ctx context.Context, daHeight uint64) ([]common.DAHeightEvent, error) {
 	r.logger.Debug().Uint64("da_height", daHeight).Msg("retrieving from DA")
-	ctx, cancel := context.WithTimeout(ctx, dAFetcherTimeout)
-	defer cancel()
-
 	blobsResp, err := r.fetchBlobs(ctx, daHeight)
 	if err != nil {
 		return nil, err
@@ -86,14 +82,14 @@ func (r *DARetriever) RetrieveFromDA(ctx context.Context, daHeight uint64) ([]co
 // fetchBlobs retrieves blobs from the DA layer
 func (r *DARetriever) fetchBlobs(ctx context.Context, daHeight uint64) (coreda.ResultRetrieve, error) {
 	// Retrieve from both namespaces
-	headerRes := types.RetrieveWithHelpers(ctx, r.da, r.logger, daHeight, r.namespaceBz)
+	headerRes := types.RetrieveWithHelpers(ctx, r.da, r.logger, daHeight, r.namespaceBz, defaultDATimeout)
 
 	// If namespaces are the same, return header result
 	if bytes.Equal(r.namespaceBz, r.namespaceDataBz) {
 		return headerRes, r.validateBlobResponse(headerRes, daHeight)
 	}
 
-	dataRes := types.RetrieveWithHelpers(ctx, r.da, r.logger, daHeight, r.namespaceDataBz)
+	dataRes := types.RetrieveWithHelpers(ctx, r.da, r.logger, daHeight, r.namespaceDataBz, defaultDATimeout)
 
 	// Validate responses
 	headerErr := r.validateBlobResponse(headerRes, daHeight)
