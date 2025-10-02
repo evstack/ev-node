@@ -130,8 +130,8 @@ func analyzeEvents(events map[uint64]*DAHeightEvent, limit int) []eventEntry {
 		}
 
 		headerHash := "N/A"
-		if event.Header.Header.Hash() != nil {
-			headerHash = fmt.Sprintf("%.8x", event.Header.Header.Hash())
+		if event.Header.Hash() != nil {
+			headerHash = fmt.Sprintf("%.8x", event.Header.Hash())
 		}
 		dataHash := "N/A"
 		if event.Data.DACommitment() != nil {
