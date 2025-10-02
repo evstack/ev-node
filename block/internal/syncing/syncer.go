@@ -535,6 +535,11 @@ func (s *Syncer) validateBlock(
 
 	// Validate header with data
 	if err := header.ValidateBasicWithData(data); err != nil {
+		return fmt.Errorf("invalid header: %w", err)
+	}
+
+	// Validate header against data
+	if err := types.Validate(header, data); err != nil {
 		return fmt.Errorf("header-data validation failed: %w", err)
 	}
 
