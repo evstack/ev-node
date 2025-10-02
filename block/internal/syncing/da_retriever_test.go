@@ -27,34 +27,6 @@ import (
 	"github.com/evstack/ev-node/types"
 )
 
-// makeSignedHeaderBytes builds a valid SignedHeader and returns its binary encoding and the object
-func makeSignedHeaderBytes(tb testing.TB, chainID string, height uint64, proposer []byte, pub crypto.PubKey, signer signerpkg.Signer, appHash []byte, data *types.Data) ([]byte, *types.SignedHeader) {
-	time := uint64(time.Now().UnixNano())
-	dataHash := common.DataHashForEmptyTxs
-	if data != nil {
-		time = uint64(data.Time().UnixNano())
-		dataHash = data.DACommitment()
-	}
-
-	hdr := &types.SignedHeader{
-		Header: types.Header{
-			BaseHeader:      types.BaseHeader{ChainID: chainID, Height: height, Time: time},
-			AppHash:         appHash,
-			DataHash:        dataHash,
-			ProposerAddress: proposer,
-		},
-		Signer: types.Signer{PubKey: pub, Address: proposer},
-	}
-	bz, err := types.DefaultAggregatorNodeSignatureBytesProvider(&hdr.Header)
-	require.NoError(tb, err)
-	sig, err := signer.Sign(bz)
-	require.NoError(tb, err)
-	hdr.Signature = sig
-	bin, err := hdr.MarshalBinary()
-	require.NoError(tb, err)
-	return bin, hdr
-}
-
 // makeSignedDataBytes builds SignedData containing the provided Data and returns its binary encoding
 func makeSignedDataBytes(t *testing.T, chainID string, height uint64, proposer []byte, pub crypto.PubKey, signer signerpkg.Signer, txs int) ([]byte, *types.SignedData) {
 	d := &types.Data{Metadata: &types.Metadata{ChainID: chainID, Height: height, Time: uint64(time.Now().UnixNano())}}
