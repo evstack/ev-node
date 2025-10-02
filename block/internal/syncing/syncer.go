@@ -525,6 +525,9 @@ func (s *Syncer) executeTxsWithRetry(ctx context.Context, rawTxs [][]byte, heade
 }
 
 // validateBlock validates a synced block
+// NOTE: if the header was gibberish and somehow passed all validation prior but the data was correct
+// or if the data was gibberish and somehow passed all validation prior but the header was correct
+// we are still losing both in the pending event. This should never happen.
 func (s *Syncer) validateBlock(
 	lastState types.State,
 	header *types.SignedHeader,

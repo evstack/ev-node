@@ -42,12 +42,13 @@ func buildSyncTestSigner(tb testing.TB) (addr []byte, pub crypto.PubKey, signer 
 	return a, p, n
 }
 
-func makeSignedHeader(t *testing.T, chainID string, height uint64, proposer []byte, pub crypto.PubKey, signer signerpkg.Signer, appHash []byte) *types.SignedHeader {
+func makeSignedHeader(t *testing.T, chainID string, height uint64, proposer []byte, pub crypto.PubKey, signer signerpkg.Signer, appHash []byte, data *types.Data) *types.SignedHeader {
 	hdr := &types.SignedHeader{
 		Header: types.Header{
-			BaseHeader:      types.BaseHeader{ChainID: chainID, Height: height, Time: uint64(time.Now().Add(time.Duration(height) * time.Second).UnixNano())},
+			BaseHeader:      types.BaseHeader{ChainID: chainID, Height: height, Time: uint64(data.Time().UnixNano())},
 			AppHash:         appHash,
 			ProposerAddress: proposer,
+			DataHash:        data.DACommitment(),
 		},
 		Signer: types.Signer{PubKey: pub, Address: proposer},
 	}
@@ -61,7 +62,12 @@ func makeSignedHeader(t *testing.T, chainID string, height uint64, proposer []by
 }
 
 func makeData(chainID string, height uint64, txs int) *types.Data {
-	d := &types.Data{Metadata: &types.Metadata{ChainID: chainID, Height: height, Time: uint64(time.Now().UnixNano())}}
+	d := &types.Data{
+		Metadata: &types.Metadata{
+			ChainID: chainID,
+			Height:  height,
+			Time:    uint64(time.Now().Add(time.Duration(height) * time.Second).UnixNano())},
+	}
 	if txs > 0 {
 		d.Txs = make(types.Txs, txs)
 		for i := 0; i < txs; i++ {
@@ -94,7 +100,7 @@ func TestProcessHeightEvent_SyncsAndUpdatesState(t *testing.T) {
 		gen,
 		nil,
 		nil,
-		zerolog.Nop(),
+		zerolog.New(t.Output()),
 		common.DefaultBlockOptions(),
 		make(chan error, 1),
 	)
@@ -104,9 +110,8 @@ func TestProcessHeightEvent_SyncsAndUpdatesState(t *testing.T) {
 	s.ctx = context.Background()
 	// Create signed header & data for height 1
 	lastState := s.GetLastState()
-	hdr := makeSignedHeader(t, gen.ChainID, 1, addr, pub, signer, lastState.AppHash)
 	data := makeData(gen.ChainID, 1, 0)
-	// For empty data, header.DataHash should be set by producer; here we don't rely on it for syncing
+	hdr := makeSignedHeader(t, gen.ChainID, 1, addr, pub, signer, lastState.AppHash, data)
 
 	// Expect ExecuteTxs call for height 1
 	mockExec.EXPECT().ExecuteTxs(mock.Anything, mock.Anything, uint64(1), mock.Anything, lastState.AppHash).
@@ -145,7 +150,7 @@ func TestSequentialBlockSync(t *testing.T) {
 		gen,
 		nil,
 		nil,
-		zerolog.Nop(),
+		zerolog.New(t.Output()),
 		common.DefaultBlockOptions(),
 		make(chan error, 1),
 	)
@@ -154,8 +159,8 @@ func TestSequentialBlockSync(t *testing.T) {
 
 	// Sync two consecutive blocks via processHeightEvent so ExecuteTxs is called and state stored
 	st0 := s.GetLastState()
-	hdr1 := makeSignedHeader(t, gen.ChainID, 1, addr, pub, signer, st0.AppHash)
 	data1 := makeData(gen.ChainID, 1, 1) // non-empty
+	hdr1 := makeSignedHeader(t, gen.ChainID, 1, addr, pub, signer, st0.AppHash, data1)
 	// Expect ExecuteTxs call for height 1
 	mockExec.EXPECT().ExecuteTxs(mock.Anything, mock.Anything, uint64(1), mock.Anything, st0.AppHash).
 		Return([]byte("app1"), uint64(1024), nil).Once()
@@ -163,8 +168,8 @@ func TestSequentialBlockSync(t *testing.T) {
 	s.processHeightEvent(&evt1)
 
 	st1, _ := st.GetState(context.Background())
-	hdr2 := makeSignedHeader(t, gen.ChainID, 2, addr, pub, signer, st1.AppHash)
 	data2 := makeData(gen.ChainID, 2, 0) // empty data
+	hdr2 := makeSignedHeader(t, gen.ChainID, 2, addr, pub, signer, st1.AppHash, data2)
 	// Expect ExecuteTxs call for height 2
 	mockExec.EXPECT().ExecuteTxs(mock.Anything, mock.Anything, uint64(2), mock.Anything, st1.AppHash).
 		Return([]byte("app2"), uint64(1024), nil).Once()
@@ -193,7 +198,7 @@ func TestSequentialBlockSync(t *testing.T) {
 }
 
 func TestSyncer_sendNonBlockingSignal(t *testing.T) {
-	s := &Syncer{logger: zerolog.Nop()}
+	s := &Syncer{logger: zerolog.New(t.Output())}
 	ch := make(chan struct{}, 1)
 	ch <- struct{}{}
 	done := make(chan struct{})
@@ -223,7 +228,7 @@ func TestSyncer_processPendingEvents(t *testing.T) {
 		cache:      cm,
 		ctx:        context.Background(),
 		heightInCh: make(chan common.DAHeightEvent, 2),
-		logger:     zerolog.Nop(),
+		logger:     zerolog.New(t.Output()),
 	}
 
 	// create two pending events, one for height 2 (> current) and one for height 1 (<= current)
@@ -273,7 +278,7 @@ func TestSyncLoopPersistState(t *testing.T) {
 		gen,
 		nil,
 		nil,
-		zerolog.Nop(),
+		zerolog.New(t.Output()),
 		common.DefaultBlockOptions(),
 		make(chan error, 1),
 	)
@@ -287,17 +292,17 @@ func TestSyncLoopPersistState(t *testing.T) {
 	// with n da blobs fetched
 	for i := range myFutureDAHeight - myDAHeightOffset {
 		chainHeight, daHeight := i, i+myDAHeightOffset
-		_, sigHeader := makeSignedHeaderBytes(t, gen.ChainID, chainHeight, addr, pub, signer, nil, nil)
-		emptyData := types.Data{
+		emptyData := &types.Data{
 			Metadata: &types.Metadata{
-				ChainID: sigHeader.ChainID(),
-				Height:  sigHeader.Height(),
-				Time:    sigHeader.BaseHeader.Time,
+				ChainID: gen.ChainID,
+				Height:  chainHeight,
+				Time:    uint64(time.Now().Add(time.Duration(chainHeight) * time.Second).UnixNano()),
 			},
 		}
+		_, sigHeader := makeSignedHeaderBytes(t, gen.ChainID, chainHeight, addr, pub, signer, nil, emptyData)
 		evts := []common.DAHeightEvent{{
 			Header:   sigHeader,
-			Data:     &emptyData,
+			Data:     emptyData,
 			DaHeight: daHeight,
 		}}
 		daRtrMock.On("RetrieveFromDA", mock.Anything, daHeight).Return(evts, nil)
@@ -350,7 +355,7 @@ func TestSyncLoopPersistState(t *testing.T) {
 		gen,
 		nil,
 		nil,
-		zerolog.Nop(),
+		zerolog.New(t.Output()),
 		common.DefaultBlockOptions(),
 		make(chan error, 1),
 	)
