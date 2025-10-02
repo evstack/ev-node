@@ -67,7 +67,6 @@ func TestParseFlags(t *testing.T) {
 		"--rollkit.da.gas_price", "1.5",
 		"--rollkit.da.mempool_ttl", "10",
 		"--rollkit.da.namespace", "namespace",
-		"--rollkit.da.start_height", "100",
 		"--rollkit.node.lazy_mode",
 		"--rollkit.node.lazy_block_interval", "2m",
 		"--rollkit.node.light",
