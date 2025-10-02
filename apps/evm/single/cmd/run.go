@@ -1,9 +1,12 @@
 package cmd
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"path/filepath"
+	"strconv"
+	"strings"
 
 	"github.com/evstack/ev-node/core/da"
 	"github.com/evstack/ev-node/da/jsonrpc"
@@ -56,6 +59,12 @@ var RunCmd = &cobra.Command{
 			return err
 		}
 
+		migrations, err := parseMigrations(cmd)
+		if err != nil {
+			return fmt.Errorf("failed to parse migrations: %w", err)
+		}
+		daAPI := newNamespaceMigrationDAAPI(daJrpc.DA, nodeConfig, migrations)
+
 		datastore, err := store.NewDefaultKVStore(nodeConfig.RootDir, nodeConfig.DBPath, "evm-single")
 		if err != nil {
 			return err
@@ -76,7 +85,7 @@ var RunCmd = &cobra.Command{
 			context.Background(),
 			logger,
 			datastore,
-			&daJrpc.DA,
+			daAPI,
 			[]byte(genesis.ChainID),
 			nodeConfig.Node.BlockTime.Duration,
 			singleMetrics,
@@ -96,7 +105,7 @@ var RunCmd = &cobra.Command{
 			return err
 		}
 
-		return rollcmd.StartNode(logger, cmd, executor, sequencer, &daJrpc.DA, p2pClient, datastore, nodeConfig, genesis, node.NodeOptions{})
+		return rollcmd.StartNode(logger, cmd, executor, sequencer, daAPI, p2pClient, datastore, nodeConfig, genesis, node.NodeOptions{})
 	},
 }
 
@@ -142,4 +151,130 @@ func addFlags(cmd *cobra.Command) {
 	cmd.Flags().String(evm.FlagEvmJWTSecret, "", "The JWT secret for authentication with the execution client")
 	cmd.Flags().String(evm.FlagEvmGenesisHash, "", "Hash of the genesis block")
 	cmd.Flags().String(evm.FlagEvmFeeRecipient, "", "Address that will receive transaction fees")
+	cmd.Flags().String(flagNSMigrations, "", "Namespace migrations in format: untilHeight1:namespace1:dataNamespace1,untilHeight2:namespace2:dataNamespace2 (namespace is used from height 0 up to and including untilHeight)")
+}
+
+const flagNSMigrations = "migrations"
+
+// parseMigrations parses the migrations flag into a map[uint64]namespaces
+func parseMigrations(cmd *cobra.Command) (map[uint64]namespaces, error) {
+	migrationsStr, err := cmd.Flags().GetString(flagNSMigrations)
+	if err != nil {
+		return nil, err
+	}
+
+	migrations := make(map[uint64]namespaces)
+	if migrationsStr == "" {
+		return migrations, nil
+	}
+
+	// Parse format: untilHeight1:namespace1:dataNamespace1,untilHeight2:namespace2:dataNamespace2
+	entries := strings.Split(migrationsStr, ",")
+	for _, entry := range entries {
+		parts := strings.Split(strings.TrimSpace(entry), ":")
+		if len(parts) < 2 || len(parts) > 3 {
+			return nil, fmt.Errorf("invalid migration entry format: %s (expected untilHeight:namespace[:dataNamespace] where namespace is used until untilHeight inclusive)", entry)
+		}
+
+		untilHeight, err := strconv.ParseUint(parts[0], 10, 64)
+		if err != nil {
+			return nil, fmt.Errorf("invalid untilHeight in migration entry %s: %w", entry, err)
+		}
+
+		if parts[1] == "" {
+			return nil, fmt.Errorf("invalid migration entry format: %s (namespace cannot be empty)", entry)
+		}
+
+		ns := namespaces{
+			namespace: parts[1],
+		}
+		if len(parts) == 3 {
+			ns.dataNamespace = parts[2]
+		}
+
+		migrations[untilHeight] = ns
+	}
+
+	return migrations, nil
+}
+
+// namespaces defines the namespace used for namespace migration
+type namespaces struct {
+	namespace     string
+	dataNamespace string
+}
+
+func (n namespaces) GetNamespace() string {
+	return n.namespace
+}
+
+func (n namespaces) GetDataNamespace() string {
+	if n.dataNamespace == "" {
+		return n.namespace
+	}
+
+	return n.dataNamespace
+}
+
+// namespaceMigrationDAAPI is wrapper around the da json rpc to use when handling namespace migrations
+type namespaceMigrationDAAPI struct {
+	jsonrpc.API
+
+	migrations map[uint64]namespaces
+
+	currentNamespace     []byte
+	currentDataNamespace []byte
+}
+
+func newNamespaceMigrationDAAPI(api jsonrpc.API, cfg config.Config, migrations map[uint64]namespaces) *namespaceMigrationDAAPI {
+	return &namespaceMigrationDAAPI{
+		API:                  api,
+		migrations:           migrations,
+		currentNamespace:     da.NamespaceFromString(cfg.DA.GetNamespace()).Bytes(),
+		currentDataNamespace: da.NamespaceFromString(cfg.DA.GetDataNamespace()).Bytes(),
+	}
+}
+
+// findNamespaceForHeight determines the correct namespace to use for a given height.
+// Migrations are defined with "until" heights - the namespace is used until that height (inclusive).
+// For example, a migration at untilHeight=100 means the namespace is used for heights 0-100.
+func (api *namespaceMigrationDAAPI) findNamespaceForHeight(height uint64, isDataNamespace bool) []byte {
+	if len(api.migrations) == 0 {
+		if isDataNamespace {
+			return api.currentDataNamespace
+		}
+		return api.currentNamespace
+	}
+
+	// Find the migration with the lowest untilHeight that is >= requested height
+	var selectedUntilHeight uint64
+	var found bool
+	for untilHeight := range api.migrations {
+		if untilHeight >= height && (!found || untilHeight < selectedUntilHeight) {
+			selectedUntilHeight = untilHeight
+			found = true
+		}
+	}
+
+	// If no migration applies to this height, use current namespace
+	if !found {
+		if isDataNamespace {
+			return api.currentDataNamespace
+		}
+		return api.currentNamespace
+	}
+
+	// Use the namespace from the migration
+	migration := api.migrations[selectedUntilHeight]
+	if isDataNamespace {
+		return da.NamespaceFromString(migration.GetDataNamespace()).Bytes()
+	}
+	return da.NamespaceFromString(migration.GetNamespace()).Bytes()
+}
+
+// GetIDs returns IDs of all Blobs located in DA at given height.
+// This method handles namespace migrations by determining the correct namespace based on height
+func (api *namespaceMigrationDAAPI) GetIDs(ctx context.Context, height uint64, ns []byte) (*da.GetIDsResult, error) {
+	ns = api.findNamespaceForHeight(height, bytes.Equal(ns, api.currentDataNamespace))
+	return api.API.GetIDs(ctx, height, ns)
 }
