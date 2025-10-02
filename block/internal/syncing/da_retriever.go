@@ -166,7 +166,7 @@ func (r *DARetriever) processBlobs(ctx context.Context, blobs [][]byte, daHeight
 			if _, ok := r.pendingHeaders[header.Height()]; ok {
 				// a (malicious) node may have re-published valid header to another da height (should never happen)
 				// we can already discard it, only the first one is valid
-				r.logger.Debug().Uint64("height", header.Height()).Msg("header blob already exists for height, discarding")
+				r.logger.Debug().Uint64("height", header.Height()).Uint64("da_height", daHeight).Msg("header blob already exists for height, discarding")
 				continue
 			}
 
@@ -178,7 +178,7 @@ func (r *DARetriever) processBlobs(ctx context.Context, blobs [][]byte, daHeight
 			if _, ok := r.pendingData[data.Height()]; ok {
 				// a (malicious) node may have re-published valid data to another da height (should never happen)
 				// we can already discard it, only the first one is valid
-				r.logger.Debug().Uint64("height", data.Height()).Msg("data blob already exists for height, discarding")
+				r.logger.Debug().Uint64("height", data.Height()).Uint64("da_height", daHeight).Msg("data blob already exists for height, discarding")
 				continue
 			}
 
