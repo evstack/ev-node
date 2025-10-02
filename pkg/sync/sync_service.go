@@ -253,7 +253,6 @@ func (syncService *SyncService[H]) setupP2PInfrastructure(ctx context.Context) (
 		return nil, err
 	}
 
-	// Start the store
 	if err := syncService.store.Start(ctx); err != nil {
 		return nil, fmt.Errorf("error while starting store: %w", err)
 	}
@@ -264,7 +263,6 @@ func (syncService *SyncService[H]) setupP2PInfrastructure(ctx context.Context) (
 	}
 	networkID := syncService.getNetworkID(network)
 
-	// Start P2P server (Exchange server for serving headers/data to peers)
 	if syncService.p2pServer, err = newP2PServer(syncService.p2p.Host(), syncService.store, networkID); err != nil {
 		return nil, fmt.Errorf("error while creating p2p server: %w", err)
 	}
@@ -274,14 +272,12 @@ func (syncService *SyncService[H]) setupP2PInfrastructure(ctx context.Context) (
 
 	peerIDs := syncService.getPeerIDs()
 
-	// Start Exchange client (for fetching headers/data from peers)
 	if syncService.ex, err = newP2PExchange[H](syncService.p2p.Host(), peerIDs, networkID, syncService.genesis.ChainID, syncService.p2p.ConnectionGater()); err != nil {
 		return nil, fmt.Errorf("error while creating exchange: %w", err)
 	}
 	if err := syncService.ex.Start(ctx); err != nil {
 		return nil, fmt.Errorf("error while starting exchange: %w", err)
 	}
-
 	return peerIDs, nil
 }
 
