@@ -453,6 +453,13 @@ func (s *Syncer) trySyncNextBlock(event *common.DAHeightEvent) error {
 		return fmt.Errorf("failed to update height: %w", err)
 	}
 
+	// initialize p2p sync stores if this is genesis height and stores are empty
+	if header.Height() == s.genesis.InitialHeight {
+		if err := s.ensureSyncStoresInitialized(header, data); err != nil {
+			s.logger.Warn().Err(err).Msg("failed to initialize p2p sync stores")
+		}
+	}
+
 	// Update state
 	if event.DaHeight > newState.DAHeight {
 		newState.DAHeight = event.DaHeight
@@ -610,4 +617,35 @@ func (s *Syncer) processPendingEvents() {
 
 		nextHeight++
 	}
+}
+
+// ensureSyncStoresInitialized initializes the p2p sync stores with genesis blocks if they are empty.
+// this is needed for follower nodes that start with no p2p blocks available and receive their first
+// block from DA. without this, the p2p sync stores remain empty and p2p block sync never works.
+func (s *Syncer) ensureSyncStoresInitialized(header *types.SignedHeader, data *types.Data) error {
+	if s.headerStore == nil || s.dataStore == nil {
+		return nil
+	}
+
+	// check if header store is empty
+	_, err := s.headerStore.Head(s.ctx)
+	if err == nil {
+		// store already initialized
+		return nil
+	}
+
+	s.logger.Info().Uint64("height", header.Height()).Msg("initializing p2p sync stores with genesis block")
+
+	// append genesis header to header store
+	if err := s.headerStore.Append(s.ctx, header); err != nil {
+		return fmt.Errorf("failed to append genesis header to store: %w", err)
+	}
+
+	// append genesis data to data store
+	if err := s.dataStore.Append(s.ctx, data); err != nil {
+		return fmt.Errorf("failed to append genesis data to store: %w", err)
+	}
+
+	s.logger.Info().Msg("p2p sync stores initialized successfully")
+	return nil
 }
