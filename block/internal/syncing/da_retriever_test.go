@@ -27,27 +27,6 @@ import (
 	"github.com/evstack/ev-node/types"
 )
 
-// makeSignedHeaderBytes builds a valid SignedHeader and returns its binary encoding and the object
-func makeSignedHeaderBytes(tb testing.TB, chainID string, height uint64, proposer []byte, pub crypto.PubKey, signer signerpkg.Signer, appHash []byte, dataHash []byte) ([]byte, *types.SignedHeader) {
-	hdr := &types.SignedHeader{
-		Header: types.Header{
-			BaseHeader:      types.BaseHeader{ChainID: chainID, Height: height, Time: uint64(time.Now().Add(time.Duration(height) * time.Second).UnixNano())},
-			AppHash:         appHash,
-			DataHash:        dataHash,
-			ProposerAddress: proposer,
-		},
-		Signer: types.Signer{PubKey: pub, Address: proposer},
-	}
-	bz, err := types.DefaultAggregatorNodeSignatureBytesProvider(&hdr.Header)
-	require.NoError(tb, err)
-	sig, err := signer.Sign(bz)
-	require.NoError(tb, err)
-	hdr.Signature = sig
-	bin, err := hdr.MarshalBinary()
-	require.NoError(tb, err)
-	return bin, hdr
-}
-
 // makeSignedDataBytes builds SignedData containing the provided Data and returns its binary encoding
 func makeSignedDataBytes(t *testing.T, chainID string, height uint64, proposer []byte, pub crypto.PubKey, signer signerpkg.Signer, txs int) ([]byte, *types.SignedData) {
 	d := &types.Data{Metadata: &types.Metadata{ChainID: chainID, Height: height, Time: uint64(time.Now().UnixNano())}}
@@ -189,7 +168,7 @@ func TestDARetriever_ProcessBlobs_HeaderAndData_Success(t *testing.T) {
 	r := NewDARetriever(nil, cm, config.DefaultConfig(), gen, common.DefaultBlockOptions(), zerolog.Nop())
 
 	dataBin, data := makeSignedDataBytes(t, gen.ChainID, 2, addr, pub, signer, 2)
-	hdrBin, _ := makeSignedHeaderBytes(t, gen.ChainID, 2, addr, pub, signer, nil, data.Hash())
+	hdrBin, _ := makeSignedHeaderBytes(t, gen.ChainID, 2, addr, pub, signer, nil, &data.Data)
 
 	events := r.processBlobs(context.Background(), [][]byte{hdrBin, dataBin}, 77)
 	require.Len(t, events, 1)
@@ -310,7 +289,7 @@ func TestDARetriever_RetrieveFromDA_TwoNamespaces_Success(t *testing.T) {
 
 	// Prepare header/data blobs
 	dataBin, data := makeSignedDataBytes(t, gen.ChainID, 9, addr, pub, signer, 1)
-	hdrBin, _ := makeSignedHeaderBytes(t, gen.ChainID, 9, addr, pub, signer, nil, data.Hash())
+	hdrBin, _ := makeSignedHeaderBytes(t, gen.ChainID, 9, addr, pub, signer, nil, &data.Data)
 
 	cfg := config.DefaultConfig()
 	cfg.DA.Namespace = "nsHdr"
@@ -353,7 +332,7 @@ func TestDARetriever_ProcessBlobs_CrossDAHeightMatching(t *testing.T) {
 
 	// Create header and data for the same block height but from different DA heights
 	dataBin, data := makeSignedDataBytes(t, gen.ChainID, 5, addr, pub, signer, 2)
-	hdrBin, _ := makeSignedHeaderBytes(t, gen.ChainID, 5, addr, pub, signer, nil, data.Hash())
+	hdrBin, _ := makeSignedHeaderBytes(t, gen.ChainID, 5, addr, pub, signer, nil, &data.Data)
 
 	// Process header from DA height 100 first
 	events1 := r.processBlobs(context.Background(), [][]byte{hdrBin}, 100)
@@ -392,9 +371,9 @@ func TestDARetriever_ProcessBlobs_MultipleHeadersCrossDAHeightMatching(t *testin
 	data4Bin, data4 := makeSignedDataBytes(t, gen.ChainID, 4, addr, pub, signer, 2)
 	data5Bin, data5 := makeSignedDataBytes(t, gen.ChainID, 5, addr, pub, signer, 1)
 
-	hdr3Bin, _ := makeSignedHeaderBytes(t, gen.ChainID, 3, addr, pub, signer, nil, data3.Hash())
-	hdr4Bin, _ := makeSignedHeaderBytes(t, gen.ChainID, 4, addr, pub, signer, nil, data4.Hash())
-	hdr5Bin, _ := makeSignedHeaderBytes(t, gen.ChainID, 5, addr, pub, signer, nil, data5.Hash())
+	hdr3Bin, _ := makeSignedHeaderBytes(t, gen.ChainID, 3, addr, pub, signer, nil, &data3.Data)
+	hdr4Bin, _ := makeSignedHeaderBytes(t, gen.ChainID, 4, addr, pub, signer, nil, &data4.Data)
+	hdr5Bin, _ := makeSignedHeaderBytes(t, gen.ChainID, 5, addr, pub, signer, nil, &data5.Data)
 
 	// Process multiple headers from DA height 200 - should be stored as pending
 	events1 := r.processBlobs(context.Background(), [][]byte{hdr3Bin, hdr4Bin, hdr5Bin}, 200)
