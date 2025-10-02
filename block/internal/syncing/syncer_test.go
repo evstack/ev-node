@@ -109,7 +109,7 @@ func TestSyncer_validateBlock_DataHashMismatch(t *testing.T) {
 		gen,
 		nil,
 		nil,
-		zerolog.New(t.Output()),
+		zerolog.Nop(),
 		common.DefaultBlockOptions(),
 		make(chan error, 1),
 	)
@@ -157,7 +157,7 @@ func TestProcessHeightEvent_SyncsAndUpdatesState(t *testing.T) {
 		gen,
 		nil,
 		nil,
-		zerolog.New(t.Output()),
+		zerolog.Nop(),
 		common.DefaultBlockOptions(),
 		make(chan error, 1),
 	)
@@ -207,7 +207,7 @@ func TestSequentialBlockSync(t *testing.T) {
 		gen,
 		nil,
 		nil,
-		zerolog.New(t.Output()),
+		zerolog.Nop(),
 		common.DefaultBlockOptions(),
 		make(chan error, 1),
 	)
@@ -255,7 +255,7 @@ func TestSequentialBlockSync(t *testing.T) {
 }
 
 func TestSyncer_sendNonBlockingSignal(t *testing.T) {
-	s := &Syncer{logger: zerolog.New(t.Output())}
+	s := &Syncer{logger: zerolog.Nop()}
 	ch := make(chan struct{}, 1)
 	ch <- struct{}{}
 	done := make(chan struct{})
@@ -285,7 +285,7 @@ func TestSyncer_processPendingEvents(t *testing.T) {
 		cache:      cm,
 		ctx:        context.Background(),
 		heightInCh: make(chan common.DAHeightEvent, 2),
-		logger:     zerolog.New(t.Output()),
+		logger:     zerolog.Nop(),
 	}
 
 	// create two pending events, one for height 2 (> current) and one for height 1 (<= current)
@@ -335,7 +335,7 @@ func TestSyncLoopPersistState(t *testing.T) {
 		gen,
 		nil,
 		nil,
-		zerolog.New(t.Output()),
+		zerolog.Nop(),
 		common.DefaultBlockOptions(),
 		make(chan error, 1),
 	)
@@ -412,7 +412,7 @@ func TestSyncLoopPersistState(t *testing.T) {
 		gen,
 		nil,
 		nil,
-		zerolog.New(t.Output()),
+		zerolog.Nop(),
 		common.DefaultBlockOptions(),
 		make(chan error, 1),
 	)
