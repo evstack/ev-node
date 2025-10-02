@@ -30,6 +30,7 @@ func NewGenesis(
 		StartTime:       startTime,
 		InitialHeight:   initialHeight,
 		ProposerAddress: proposerAddress,
+		DAStartHeight:   0,
 	}
 
 	return genesis

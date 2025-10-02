@@ -88,6 +88,10 @@ var RunCmd = &cobra.Command{
 			return fmt.Errorf("failed to load genesis: %w", err)
 		}
 
+		if genesis.DAStartHeight == 0 && !nodeConfig.Node.Aggregator {
+			logger.Warn().Msg("da_start_height is not set in genesis.json, ask your chain developer")
+		}
+
 		sequencer, err := single.NewSequencer(
 			ctx,
 			logger,
