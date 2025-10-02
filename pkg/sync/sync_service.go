@@ -175,18 +175,7 @@ func (syncService *SyncService[H]) Start(ctx context.Context) error {
 		return fmt.Errorf("failed to setup syncer P2P infrastructure: %w", err)
 	}
 
-	// Phase 2: Initialize stores from P2P (blocking until genesis is fetched for followers)
-	// Aggregators (no peers configured) return immediately and initialize on first produced block.
-	if err := syncService.initFromP2PWithRetry(ctx, peerIDs); err != nil {
-		return err
-	}
-
-	// Phase 3: NOW start Subscriber - stores are guaranteed to have genesis for followers
-	if err := syncService.startSubscriber(ctx); err != nil {
-		return fmt.Errorf("failed to start subscriber: %w", err)
-	}
-
-	// Phase 4: Create and start syncer
+	// Phase 2: Create syncer (MUST be before initFromP2PWithRetry which calls startSyncer)
 	if syncService.syncer, err = newSyncer(
 		syncService.ex,
 		syncService.store,
@@ -194,6 +183,17 @@ func (syncService *SyncService[H]) Start(ctx context.Context) error {
 		[]goheadersync.Option{goheadersync.WithBlockTime(syncService.conf.Node.BlockTime.Duration)},
 	); err != nil {
 		return fmt.Errorf("failed to create syncer: %w", err)
+	}
+
+	// Phase 3: Initialize stores from P2P (blocking until genesis is fetched for followers)
+	// Aggregators (no peers configured) return immediately and initialize on first produced block.
+	if err := syncService.initFromP2PWithRetry(ctx, peerIDs); err != nil {
+		return err
+	}
+
+	// Phase 4: NOW start Subscriber - stores are guaranteed to have genesis for followers
+	if err := syncService.startSubscriber(ctx); err != nil {
+		return fmt.Errorf("failed to start subscriber: %w", err)
 	}
 
 	return nil
