@@ -169,13 +169,13 @@ func (syncService *SyncService[H]) WriteToStoreAndBroadcast(ctx context.Context,
 
 // Start is a part of Service interface.
 func (syncService *SyncService[H]) Start(ctx context.Context) error {
-	// Phase 1: Setup P2P infrastructure (Exchange, ExchangeServer) but DON'T start Subscriber yet
+	// setup P2P infrastructure, but don't start Subscriber yet.
 	peerIDs, err := syncService.setupP2PInfrastructure(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to setup syncer P2P infrastructure: %w", err)
 	}
 
-	// Phase 2: Create syncer (MUST be before initFromP2PWithRetry which calls startSyncer)
+	// create syncer, must be before initFromP2PWithRetry which calls startSyncer.
 	if syncService.syncer, err = newSyncer(
 		syncService.ex,
 		syncService.store,
@@ -185,13 +185,16 @@ func (syncService *SyncService[H]) Start(ctx context.Context) error {
 		return fmt.Errorf("failed to create syncer: %w", err)
 	}
 
-	// Phase 3: Initialize stores from P2P (blocking until genesis is fetched for followers)
+	// initialize stores from P2P (blocking until genesis is fetched for followers)
 	// Aggregators (no peers configured) return immediately and initialize on first produced block.
 	if err := syncService.initFromP2PWithRetry(ctx, peerIDs); err != nil {
-		return err
+		return fmt.Errorf("failed to initialize stores from P2P: %w", err)
 	}
 
-	// Phase 4: NOW start Subscriber - stores are guaranteed to have genesis for followers
+	// start the subscriber, stores are guaranteed to have genesis for followers.
+	//
+	// NOTE: we must start the subscriber after the syncer is initialized in initFromP2PWithRetry to ensure p2p syncing
+	// works correctly.
 	if err := syncService.startSubscriber(ctx); err != nil {
 		return fmt.Errorf("failed to start subscriber: %w", err)
 	}
@@ -234,7 +237,7 @@ func (syncService *SyncService[H]) initStore(ctx context.Context, initial H) err
 }
 
 // setupP2PInfrastructure sets up the P2P infrastructure (Exchange, ExchangeServer, Store)
-// but does NOT start the Subscriber. Returns peer IDs for later use.
+// but does not start the Subscriber. Returns peer IDs for later use.
 func (syncService *SyncService[H]) setupP2PInfrastructure(ctx context.Context) ([]peer.ID, error) {
 	ps := syncService.p2p.PubSub()
 	var err error
