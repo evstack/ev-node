@@ -15,6 +15,7 @@ type Genesis struct {
 	StartTime       time.Time `json:"start_time"`
 	InitialHeight   uint64    `json:"initial_height"`
 	ProposerAddress []byte    `json:"proposer_address"`
+	DAStartHeight   uint64    `json:"da_start_height"`
 }
 
 // NewGenesis creates a new Genesis instance.

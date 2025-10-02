@@ -126,7 +126,6 @@ func TestParseFlags(t *testing.T) {
 		{"DAGasPrice", nodeConfig.DA.GasPrice, 1.5},
 		{"DAMempoolTTL", nodeConfig.DA.MempoolTTL, uint64(10)},
 		{"DANamespace", nodeConfig.DA.Namespace, "namespace"},
-		{"DAStartHeight", nodeConfig.DA.StartHeight, uint64(100)},
 		{"LazyAggregator", nodeConfig.Node.LazyMode, true},
 		{"LazyBlockTime", nodeConfig.Node.LazyBlockInterval.Duration, 2 * time.Minute},
 		{"Light", nodeConfig.Node.Light, true},
