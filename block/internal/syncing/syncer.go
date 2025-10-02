@@ -30,13 +30,6 @@ type p2pHandler interface {
 	ProcessDataRange(ctx context.Context, fromHeight, toHeight uint64) []common.DAHeightEvent
 }
 
-const (
-	// maxRetriesBeforeHalt is the maximum number of retries against the execution client before halting the syncer.
-	maxRetriesBeforeHalt = 3
-	// maxRetriesTimeout is the maximum time to wait for a retry before halting the syncer.
-	maxRetriesTimeout = time.Second * 10
-)
-
 // Syncer handles block synchronization from DA and P2P sources.
 type Syncer struct {
 	// Core components
@@ -76,10 +69,9 @@ type Syncer struct {
 	logger zerolog.Logger
 
 	// Lifecycle
-	ctx               context.Context
-	cancel            context.CancelFunc
-	wg                sync.WaitGroup
-	retriesBeforeHalt map[uint64]uint64
+	ctx    context.Context
+	cancel context.CancelFunc
+	wg     sync.WaitGroup
 }
 
 // NewSyncer creates a new block syncer
@@ -98,21 +90,20 @@ func NewSyncer(
 	errorCh chan<- error,
 ) *Syncer {
 	return &Syncer{
-		store:             store,
-		exec:              exec,
-		da:                da,
-		cache:             cache,
-		metrics:           metrics,
-		config:            config,
-		genesis:           genesis,
-		options:           options,
-		headerStore:       headerStore,
-		dataStore:         dataStore,
-		lastStateMtx:      &sync.RWMutex{},
-		heightInCh:        make(chan common.DAHeightEvent, 10_000),
-		errorCh:           errorCh,
-		logger:            logger.With().Str("component", "syncer").Logger(),
-		retriesBeforeHalt: make(map[uint64]uint64),
+		store:        store,
+		exec:         exec,
+		da:           da,
+		cache:        cache,
+		metrics:      metrics,
+		config:       config,
+		genesis:      genesis,
+		options:      options,
+		headerStore:  headerStore,
+		dataStore:    dataStore,
+		lastStateMtx: &sync.RWMutex{},
+		heightInCh:   make(chan common.DAHeightEvent, 10_000),
+		errorCh:      errorCh,
+		logger:       logger.With().Str("component", "syncer").Logger(),
 	}
 }
 
@@ -489,19 +480,11 @@ func (s *Syncer) applyBlock(header types.Header, data *types.Data, currentState 
 
 	// Execute transactions
 	ctx := context.WithValue(s.ctx, types.HeaderContextKey, header)
-	newAppHash, _, err := s.exec.ExecuteTxs(ctx, rawTxs, header.Height(),
-		header.Time(), currentState.AppHash)
+	newAppHash, err := s.executeTxsWithRetry(ctx, rawTxs, header, currentState)
 	if err != nil {
-		s.retriesBeforeHalt[header.Height()]++
-		if s.retriesBeforeHalt[header.Height()] > maxRetriesBeforeHalt {
-			s.sendCriticalError(fmt.Errorf("failed to execute transactions: %w", err))
-			return types.State{}, fmt.Errorf("failed to execute transactions: %w", err)
-		}
-
-		time.Sleep(maxRetriesTimeout) // sleep before retrying
-		return types.State{}, fmt.Errorf("failed to execute transactions (retry %d / %d): %w", s.retriesBeforeHalt[header.Height()], maxRetriesBeforeHalt, err)
+		s.sendCriticalError(fmt.Errorf("failed to execute transactions: %w", err))
+		return types.State{}, fmt.Errorf("failed to execute transactions: %w", err)
 	}
-	delete(s.retriesBeforeHalt, header.Height())
 
 	// Create new state
 	newState, err := currentState.NextState(header, newAppHash)
@@ -510,6 +493,35 @@ func (s *Syncer) applyBlock(header types.Header, data *types.Data, currentState 
 	}
 
 	return newState, nil
+}
+
+// executeTxsWithRetry executes transactions with retry logic
+func (s *Syncer) executeTxsWithRetry(ctx context.Context, rawTxs [][]byte, header types.Header, currentState types.State) ([]byte, error) {
+	for attempt := 1; attempt <= common.MaxRetriesBeforeHalt; attempt++ {
+		newAppHash, _, err := s.exec.ExecuteTxs(ctx, rawTxs, header.Height(), header.Time(), currentState.AppHash)
+		if err != nil {
+			if attempt == common.MaxRetriesBeforeHalt {
+				return nil, fmt.Errorf("failed to execute transactions: %w", err)
+			}
+
+			s.logger.Error().Err(err).
+				Int("attempt", attempt).
+				Int("max_attempts", common.MaxRetriesBeforeHalt).
+				Uint64("height", header.Height()).
+				Msg("failed to execute transactions, retrying")
+
+			select {
+			case <-time.After(common.MaxRetriesTimeout):
+				continue
+			case <-s.ctx.Done():
+				return nil, fmt.Errorf("context cancelled during retry: %w", s.ctx.Err())
+			}
+		}
+
+		return newAppHash, nil
+	}
+
+	return nil, nil
 }
 
 // validateBlock validates a synced block

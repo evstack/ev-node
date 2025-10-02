@@ -3,6 +3,7 @@ package syncing
 import (
 	"context"
 	crand "crypto/rand"
+	"errors"
 	"testing"
 	"time"
 
@@ -375,4 +376,93 @@ func TestSyncLoopPersistState(t *testing.T) {
 	syncerInst2.syncLoop()
 
 	t.Log("syncLoop exited")
+}
+
+func TestSyncer_executeTxsWithRetry(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name          string
+		setupMock     func(*testmocks.MockExecutor)
+		expectSuccess bool
+		expectHash    []byte
+		expectError   string
+	}{
+		{
+			name: "success on first attempt",
+			setupMock: func(exec *testmocks.MockExecutor) {
+				exec.On("ExecuteTxs", mock.Anything, mock.Anything, uint64(100), mock.Anything, mock.Anything).
+					Return([]byte("new-hash"), uint64(0), nil).Once()
+			},
+			expectSuccess: true,
+			expectHash:    []byte("new-hash"),
+		},
+		{
+			name: "success on second attempt",
+			setupMock: func(exec *testmocks.MockExecutor) {
+				exec.On("ExecuteTxs", mock.Anything, mock.Anything, uint64(100), mock.Anything, mock.Anything).
+					Return([]byte(nil), uint64(0), errors.New("temporary failure")).Once()
+				exec.On("ExecuteTxs", mock.Anything, mock.Anything, uint64(100), mock.Anything, mock.Anything).
+					Return([]byte("new-hash"), uint64(0), nil).Once()
+			},
+			expectSuccess: true,
+			expectHash:    []byte("new-hash"),
+		},
+		{
+			name: "success on third attempt",
+			setupMock: func(exec *testmocks.MockExecutor) {
+				exec.On("ExecuteTxs", mock.Anything, mock.Anything, uint64(100), mock.Anything, mock.Anything).
+					Return([]byte(nil), uint64(0), errors.New("temporary failure")).Times(2)
+				exec.On("ExecuteTxs", mock.Anything, mock.Anything, uint64(100), mock.Anything, mock.Anything).
+					Return([]byte("new-hash"), uint64(0), nil).Once()
+			},
+			expectSuccess: true,
+			expectHash:    []byte("new-hash"),
+		},
+		{
+			name: "failure after max retries",
+			setupMock: func(exec *testmocks.MockExecutor) {
+				exec.On("ExecuteTxs", mock.Anything, mock.Anything, uint64(100), mock.Anything, mock.Anything).
+					Return([]byte(nil), uint64(0), errors.New("persistent failure")).Times(common.MaxRetriesBeforeHalt)
+			},
+			expectSuccess: false,
+			expectError:   "failed to execute transactions",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			ctx := context.Background()
+			exec := testmocks.NewMockExecutor(t)
+			tt.setupMock(exec)
+
+			s := &Syncer{
+				exec:   exec,
+				ctx:    ctx,
+				logger: zerolog.Nop(),
+			}
+
+			rawTxs := [][]byte{[]byte("tx1"), []byte("tx2")}
+			header := types.Header{
+				BaseHeader: types.BaseHeader{Height: 100, Time: uint64(time.Now().UnixNano())},
+			}
+			currentState := types.State{AppHash: []byte("current-hash")}
+
+			result, err := s.executeTxsWithRetry(ctx, rawTxs, header, currentState)
+
+			if tt.expectSuccess {
+				require.NoError(t, err)
+				assert.Equal(t, tt.expectHash, result)
+			} else {
+				require.Error(t, err)
+				if tt.expectError != "" {
+					assert.Contains(t, err.Error(), tt.expectError)
+				}
+			}
+
+			exec.AssertExpectations(t)
+		})
+	}
 }
