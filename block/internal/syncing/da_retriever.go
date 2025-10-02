@@ -19,7 +19,9 @@ import (
 	pb "github.com/evstack/ev-node/types/pb/evnode/v1"
 )
 
-const dAFetcherTimeout = 10 * time.Second
+// dAFetcherTimeout is the timeout for fetching data from the DA
+// it needs to be high enough in case of network issues, slow DA or many blobs to download during retrieval
+const dAFetcherTimeout = 10 * time.Minute
 
 // DARetriever handles DA retrieval operations for syncing
 type DARetriever struct {
