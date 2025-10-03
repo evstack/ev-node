@@ -27,7 +27,6 @@ var (
 	maxBlobSize   uint64
 	gasPrice      float64
 	gasMultiplier float64
-	noColor       bool
 	filterHeight  uint64
 )
 
@@ -47,7 +46,6 @@ A powerful DA debugging tool for inspecting blockchain data availability layers.
 	rootCmd.PersistentFlags().Uint64Var(&maxBlobSize, "max-blob-size", 1970176, "Maximum blob size in bytes")
 	rootCmd.PersistentFlags().Float64Var(&gasPrice, "gas-price", 0.0, "Gas price for DA operations")
 	rootCmd.PersistentFlags().Float64Var(&gasMultiplier, "gas-multiplier", 1.0, "Gas multiplier for DA operations")
-	rootCmd.PersistentFlags().BoolVar(&noColor, "no-color", false, "Disable colored output")
 
 	// Add subcommands
 	rootCmd.AddCommand(queryCmd())
