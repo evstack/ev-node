@@ -5,7 +5,6 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
-	"io"
 	"sync/atomic"
 
 	ds "github.com/ipfs/go-datastore"
@@ -117,15 +116,10 @@ func (pb *pendingBase[T]) iterator(ctx context.Context) (Iterator[T], error) {
 			"item (%d) is greater than height of last item (%d)", lastSubmitted, height)
 	}
 
-	it := newIterator(func() (T, error) {
-		lastSubmitted++
-		if lastSubmitted > height {
-			var zero T
-			return zero, io.EOF
-		}
-
-		return pb.fetch(ctx, pb.store, lastSubmitted)
-	})
-
-	return *it, nil
+	return Iterator[T]{
+		base:   pb,
+		ctx:    ctx,
+		cursor: lastSubmitted + 1,
+		limit:  height,
+	}, nil
 }
