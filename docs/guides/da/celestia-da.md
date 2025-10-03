@@ -135,7 +135,6 @@ gmd start \
     --evnode.da.auth_token $AUTH_TOKEN \
     --evnode.da.header_namespace $DA_NAMESPACE \
     --evnode.da.data_namespace $DA_NAMESPACE \
-    --evnode.da.start_height $DA_BLOCK_HEIGHT \
     --evnode.da.address $DA_ADDRESS
 ```
 

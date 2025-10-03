@@ -190,7 +190,7 @@ func (s *Syncer) initializeState() error {
 	s.SetLastState(state)
 
 	// Set DA height
-	daHeight := max(state.DAHeight, s.config.DA.StartHeight)
+	daHeight := max(state.DAHeight, s.genesis.DAStartHeight)
 	s.SetDAHeight(daHeight)
 
 	s.logger.Info().

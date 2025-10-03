@@ -320,8 +320,7 @@ func TestSyncLoopPersistState(t *testing.T) {
 
 	addr, pub, signer := buildSyncTestSigner(t)
 	cfg := config.DefaultConfig()
-	cfg.DA.StartHeight = myDAHeightOffset
-	gen := genesis.Genesis{ChainID: "tchain", InitialHeight: 1, StartTime: time.Now().Add(-time.Second), ProposerAddress: addr}
+	gen := genesis.Genesis{ChainID: "tchain", InitialHeight: 1, StartTime: time.Now().Add(-time.Second), ProposerAddress: addr, DAStartHeight: myDAHeightOffset}
 
 	dummyExec := execution.NewDummyExecutor()
 

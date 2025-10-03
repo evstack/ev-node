@@ -116,6 +116,15 @@ For example, start the simple ignite chain with the following command:
 gmd start --evnode.node.aggregator
 ```
 
+## Share the genesis file
+
+Once the sequencer is running, share the genesis file with your peers. You can find the genesis file at `~/.${CHAIN_ID}/config/genesis.json`.
+Before doing so, add a `da_start_height` field to the genesis file, that corresponds to the height at which the first height was included on the DA layer. This height can be fetched directly from the [sequencer RPC](https://github.com/evstack/ev-node/blob/v1.0.0-beta.5/proto/evnode/v1/state_rpc.proto).
+
+```sh
+jq '.da_start_height = 1' ~/.$CHAIN_ID/config/genesis.json > temp.json && mv temp.json ~/.$CHAIN_ID/config/genesis.json
+```
+
 ## Summary
 
 By following these steps, you will set up the genesis for your chain, initialize the validator, add a genesis account, and start the chain. This guide provides a basic framework for configuring and starting your chain using the gm-world binary. Make sure you initialized your chain correctly, and use the `gmd` command for all operations.
