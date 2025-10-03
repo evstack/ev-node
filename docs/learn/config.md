@@ -453,24 +453,6 @@ _Example:_ `--rollkit.da.block_time 12s`
 _Default:_ `"6s"`
 _Constant:_ `FlagDABlockTime`
 
-### DA Start Height
-
-**Description:**
-The block height on the DA layer from which Evolve should begin syncing. This is useful when deploying a new chain on an existing DA chain, allowing it to ignore historical data before its inception.
-
-**YAML:**
-
-```yaml
-da:
-  start_height: 100000
-```
-
-**Command-line Flag:**
-`--rollkit.da.start_height <uint64>`
-_Example:_ `--rollkit.da.start_height 500000`
-_Default:_ `0` (sync from the beginning)
-_Constant:_ `FlagDAStartHeight`
-
 ### DA Mempool TTL
 
 **Description:**

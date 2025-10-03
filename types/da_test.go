@@ -229,7 +229,7 @@ func TestRetrieveWithHelpers(t *testing.T) {
 				mockDA.On("Get", mock.Anything, tc.getIDsResult.IDs, mock.Anything).Return(mockBlobs, tc.getBlobsErr)
 			}
 
-			result := types.RetrieveWithHelpers(context.Background(), mockDA, logger, dataLayerHeight, encodedNamespace.Bytes())
+			result := types.RetrieveWithHelpers(context.Background(), mockDA, logger, dataLayerHeight, encodedNamespace.Bytes(), 5*time.Second)
 
 			assert.Equal(t, tc.expectedCode, result.Code)
 			assert.Equal(t, tc.expectedHeight, result.Height)
@@ -245,4 +245,54 @@ func TestRetrieveWithHelpers(t *testing.T) {
 			mockDA.AssertExpectations(t)
 		})
 	}
+}
+
+func TestRetrieveWithHelpers_Timeout(t *testing.T) {
+	logger := zerolog.Nop()
+	dataLayerHeight := uint64(100)
+	encodedNamespace := coreda.NamespaceFromString("test-namespace")
+
+	t.Run("timeout during GetIDs", func(t *testing.T) {
+		mockDA := mocks.NewMockDA(t)
+
+		// Mock GetIDs to block until context is cancelled
+		mockDA.On("GetIDs", mock.Anything, dataLayerHeight, mock.Anything).Run(func(args mock.Arguments) {
+			ctx := args.Get(0).(context.Context)
+			<-ctx.Done() // Wait for context cancellation
+		}).Return(nil, context.DeadlineExceeded)
+
+		// Use a very short timeout to ensure it triggers
+		result := types.RetrieveWithHelpers(context.Background(), mockDA, logger, dataLayerHeight, encodedNamespace.Bytes(), 1*time.Millisecond)
+
+		assert.Equal(t, coreda.StatusError, result.Code)
+		assert.Contains(t, result.Message, "failed to get IDs")
+		assert.Contains(t, result.Message, "context deadline exceeded")
+		mockDA.AssertExpectations(t)
+	})
+
+	t.Run("timeout during Get", func(t *testing.T) {
+		mockDA := mocks.NewMockDA(t)
+		mockIDs := [][]byte{[]byte("id1")}
+		mockTimestamp := time.Now()
+
+		// Mock GetIDs to succeed
+		mockDA.On("GetIDs", mock.Anything, dataLayerHeight, mock.Anything).Return(&coreda.GetIDsResult{
+			IDs:       mockIDs,
+			Timestamp: mockTimestamp,
+		}, nil)
+
+		// Mock Get to block until context is cancelled
+		mockDA.On("Get", mock.Anything, mockIDs, mock.Anything).Run(func(args mock.Arguments) {
+			ctx := args.Get(0).(context.Context)
+			<-ctx.Done() // Wait for context cancellation
+		}).Return(nil, context.DeadlineExceeded)
+
+		// Use a very short timeout to ensure it triggers
+		result := types.RetrieveWithHelpers(context.Background(), mockDA, logger, dataLayerHeight, encodedNamespace.Bytes(), 1*time.Millisecond)
+
+		assert.Equal(t, coreda.StatusError, result.Code)
+		assert.Contains(t, result.Message, "failed to get blobs for batch")
+		assert.Contains(t, result.Message, "context deadline exceeded")
+		mockDA.AssertExpectations(t)
+	})
 }

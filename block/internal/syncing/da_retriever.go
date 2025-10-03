@@ -19,7 +19,8 @@ import (
 	pb "github.com/evstack/ev-node/types/pb/evnode/v1"
 )
 
-const dAFetcherTimeout = 10 * time.Second
+// defaultDATimeout is the default timeout for DA retrieval operations
+const defaultDATimeout = 10 * time.Second
 
 // DARetriever handles DA retrieval operations for syncing
 type DARetriever struct {
@@ -64,9 +65,6 @@ func NewDARetriever(
 // RetrieveFromDA retrieves blocks from the specified DA height and returns height events
 func (r *DARetriever) RetrieveFromDA(ctx context.Context, daHeight uint64) ([]common.DAHeightEvent, error) {
 	r.logger.Debug().Uint64("da_height", daHeight).Msg("retrieving from DA")
-	ctx, cancel := context.WithTimeout(ctx, dAFetcherTimeout)
-	defer cancel()
-
 	blobsResp, err := r.fetchBlobs(ctx, daHeight)
 	if err != nil {
 		return nil, err
@@ -84,14 +82,14 @@ func (r *DARetriever) RetrieveFromDA(ctx context.Context, daHeight uint64) ([]co
 // fetchBlobs retrieves blobs from the DA layer
 func (r *DARetriever) fetchBlobs(ctx context.Context, daHeight uint64) (coreda.ResultRetrieve, error) {
 	// Retrieve from both namespaces
-	headerRes := types.RetrieveWithHelpers(ctx, r.da, r.logger, daHeight, r.namespaceBz)
+	headerRes := types.RetrieveWithHelpers(ctx, r.da, r.logger, daHeight, r.namespaceBz, defaultDATimeout)
 
 	// If namespaces are the same, return header result
 	if bytes.Equal(r.namespaceBz, r.namespaceDataBz) {
 		return headerRes, r.validateBlobResponse(headerRes, daHeight)
 	}
 
-	dataRes := types.RetrieveWithHelpers(ctx, r.da, r.logger, daHeight, r.namespaceDataBz)
+	dataRes := types.RetrieveWithHelpers(ctx, r.da, r.logger, daHeight, r.namespaceDataBz, defaultDATimeout)
 
 	// Validate responses
 	headerErr := r.validateBlobResponse(headerRes, daHeight)
@@ -163,11 +161,25 @@ func (r *DARetriever) processBlobs(ctx context.Context, blobs [][]byte, daHeight
 		}
 
 		if header := r.tryDecodeHeader(bz, daHeight); header != nil {
+			if _, ok := r.pendingHeaders[header.Height()]; ok {
+				// a (malicious) node may have re-published valid header to another da height (should never happen)
+				// we can already discard it, only the first one is valid
+				r.logger.Debug().Uint64("height", header.Height()).Uint64("da_height", daHeight).Msg("header blob already exists for height, discarding")
+				continue
+			}
+
 			r.pendingHeaders[header.Height()] = header
 			continue
 		}
 
 		if data := r.tryDecodeData(bz, daHeight); data != nil {
+			if _, ok := r.pendingData[data.Height()]; ok {
+				// a (malicious) node may have re-published valid data to another da height (should never happen)
+				// we can already discard it, only the first one is valid
+				r.logger.Debug().Uint64("height", data.Height()).Uint64("da_height", daHeight).Msg("data blob already exists for height, discarding")
+				continue
+			}
+
 			r.pendingData[data.Height()] = data
 		}
 	}

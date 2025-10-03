@@ -52,7 +52,7 @@ The execution client must implement the Evolve execution gRPC interface.`,
 		logger.Info().Str("headerNamespace", headerNamespace.HexString()).Str("dataNamespace", dataNamespace.HexString()).Msg("namespaces")
 
 		// Create DA client
-		daJrpc, err := jsonrpc.NewClient(cmd.Context(), logger, nodeConfig.DA.Address, nodeConfig.DA.AuthToken, nodeConfig.DA.GasPrice, nodeConfig.DA.GasMultiplier)
+		daJrpc, err := jsonrpc.NewClient(cmd.Context(), logger, nodeConfig.DA.Address, nodeConfig.DA.AuthToken, nodeConfig.DA.GasPrice, nodeConfig.DA.GasMultiplier, rollcmd.DefaultMaxBlobSize)
 		if err != nil {
 			return err
 		}
@@ -67,6 +67,10 @@ The execution client must implement the Evolve execution gRPC interface.`,
 		genesis, err := rollgenesis.LoadGenesis(rollgenesis.GenesisPath(nodeConfig.RootDir))
 		if err != nil {
 			return err
+		}
+
+		if genesis.DAStartHeight == 0 && !nodeConfig.Node.Aggregator {
+			logger.Warn().Msg("da_start_height is not set in genesis.json, ask your chain developer")
 		}
 
 		// Create metrics provider

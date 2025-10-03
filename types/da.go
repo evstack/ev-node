@@ -114,15 +114,19 @@ func SubmitWithHelpers(
 // RetrieveWithHelpers performs blob retrieval using the underlying DA layer,
 // handling error mapping to produce a ResultRetrieve.
 // It mimics the logic previously found in da.DAClient.Retrieve.
+// requestTimeout defines the timeout for the each retrieval request.
 func RetrieveWithHelpers(
 	ctx context.Context,
 	da coreda.DA,
 	logger zerolog.Logger,
 	dataLayerHeight uint64,
 	namespace []byte,
+	requestTimeout time.Duration,
 ) coreda.ResultRetrieve {
 	// 1. Get IDs
-	idsResult, err := da.GetIDs(ctx, dataLayerHeight, namespace)
+	getIDsCtx, cancel := context.WithTimeout(ctx, requestTimeout)
+	defer cancel()
+	idsResult, err := da.GetIDs(getIDsCtx, dataLayerHeight, namespace)
 	if err != nil {
 		// Handle specific "not found" error
 		if strings.Contains(err.Error(), coreda.ErrBlobNotFound.Error()) {
@@ -177,7 +181,9 @@ func RetrieveWithHelpers(
 	for i := 0; i < len(idsResult.IDs); i += batchSize {
 		end := min(i+batchSize, len(idsResult.IDs))
 
-		batchBlobs, err := da.Get(ctx, idsResult.IDs[i:end], namespace)
+		getBlobsCtx, cancel := context.WithTimeout(ctx, requestTimeout)
+		batchBlobs, err := da.Get(getBlobsCtx, idsResult.IDs[i:end], namespace)
+		cancel()
 		if err != nil {
 			// Handle errors during Get
 			logger.Error().Uint64("height", dataLayerHeight).Int("num_ids", len(idsResult.IDs)).Err(err).Msg("Retrieve helper: Failed to get blobs")

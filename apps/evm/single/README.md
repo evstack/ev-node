@@ -15,26 +15,28 @@ This directory contains the implementation of a single EVM sequencer using Ev-no
 
 2. Build the sequencer:
 
-    ```bash
-    go build -o evm-single .
-    ```
+   ```bash
+   go build -o evm-single .
+   ```
 
 3. Initialize the sequencer:
 
-    ```bash
-    ./evm-single init --rollkit.node.aggregator=true --rollkit.signer.passphrase secret
-    ```
+   ```bash
+   ./evm-single init --rollkit.node.aggregator=true --rollkit.signer.passphrase secret
+   ```
 
 4. Start the sequencer:
 
-    ```bash
-    ./evm-single start \
-      --evm.jwt-secret $(cat <path_to>/execution/evm/docker/jwttoken/jwt.hex) \
-      --evm.genesis-hash 0x2b8bbb1ea1e04f9c9809b4b278a8687806edc061a356c7dbc491930d8e922503 \
-      --rollkit.node.block_time 1s \
-      --rollkit.node.aggregator=true \
-      --rollkit.signer.passphrase secret
-    ```
+   ```bash
+   ./evm-single start \
+     --evm.jwt-secret $(cat <path_to>/execution/evm/docker/jwttoken/jwt.hex) \
+     --evm.genesis-hash 0x2b8bbb1ea1e04f9c9809b4b278a8687806edc061a356c7dbc491930d8e922503 \
+     --rollkit.node.block_time 1s \
+     --rollkit.node.aggregator=true \
+     --rollkit.signer.passphrase secret
+   ```
+
+Share your `genesis.json` with other node operators. Add `da_start_height` field corresponding to the first DA included block of the chain (can be queried on the sequencer node).
 
 Note: Replace `<path_to>` with the actual path to the rollkit repository. If you'd ever like to restart a fresh node, make sure to remove the originally created sequencer node directory using:
 
@@ -58,41 +60,43 @@ The sequencer can be configured using various command-line flags. The most impor
 
 2. Initialize the full node:
 
-    ```bash
-    ./evm-single init --home ~/.evm-single-full-node
-    ```
+   ```bash
+   ./evm-single init --home ~/.evm-single-full-node
+   ```
 
 3. Copy the genesis file from the sequencer node:
 
-    ```bash
-    cp ~/.evm-single/config/genesis.json ~/.evm-single-full-node/config/genesis.json
-    ```
+   ```bash
+   cp ~/.evm-single/config/genesis.json ~/.evm-single-full-node/config/genesis.json
+   ```
+
+   Verify the `da_start_height` value in the genesis file is set. If not, ask the chain developer to share it.
 
 4. Identify the sequencer node's P2P address from its logs. It will look similar to:
 
-    ```sh
-    1:55PM INF listening on address=/ip4/127.0.0.1/tcp/7676/p2p/12D3KooWJ1J5W7vpHuyktcvc71iuduRgb9pguY9wKMNVVPwweWPk module=main
-    ```
+   ```sh
+   1:55PM INF listening on address=/ip4/127.0.0.1/tcp/7676/p2p/12D3KooWJ1J5W7vpHuyktcvc71iuduRgb9pguY9wKMNVVPwweWPk module=main
+   ```
 
-    Create an environment variable with the P2P address:
+   Create an environment variable with the P2P address:
 
-    ```bash
-    export P2P_ID="12D3KooWJbD9TQoMSSSUyfhHMmgVY3LqCjxYFz8wQ92Qa6DAqtmh"
-    ```
+   ```bash
+   export P2P_ID="12D3KooWJbD9TQoMSSSUyfhHMmgVY3LqCjxYFz8wQ92Qa6DAqtmh"
+   ```
 
 5. Start the full node:
 
-    ```bash
-    ./evm-single start \
-       --home ~/.evm-single-full-node \
-       --evm.jwt-secret $(cat <path_to>/execution/evm/docker/jwttoken/jwt.hex) \
-       --evm.genesis-hash 0x2b8bbb1ea1e04f9c9809b4b278a8687806edc061a356c7dbc491930d8e922503 \
-       --rollkit.rpc.address=127.0.0.1:46657 \
-       --rollkit.p2p.listen_address=/ip4/127.0.0.1/tcp/7677 \
-       --rollkit.p2p.peers=/ip4/127.0.0.1/tcp/7676/p2p/$P2P_ID \
-       --evm.engine-url http://localhost:8561 \
-       --evm.eth-url http://localhost:8555
-    ```
+   ```bash
+   ./evm-single start \
+      --home ~/.evm-single-full-node \
+      --evm.jwt-secret $(cat <path_to>/execution/evm/docker/jwttoken/jwt.hex) \
+      --evm.genesis-hash 0x2b8bbb1ea1e04f9c9809b4b278a8687806edc061a356c7dbc491930d8e922503 \
+      --rollkit.rpc.address=127.0.0.1:46657 \
+      --rollkit.p2p.listen_address=/ip4/127.0.0.1/tcp/7677 \
+      --rollkit.p2p.peers=/ip4/127.0.0.1/tcp/7676/p2p/$P2P_ID \
+      --evm.engine-url http://localhost:8561 \
+      --evm.eth-url http://localhost:8555
+   ```
 
 If you'd ever like to restart a fresh node, make sure to remove the originally created full node directory using:
 

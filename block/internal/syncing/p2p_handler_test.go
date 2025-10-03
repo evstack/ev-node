@@ -51,19 +51,6 @@ func p2pMakeSignedHeader(t *testing.T, chainID string, height uint64, proposer [
 	return hdr
 }
 
-// p2pMakeData creates Data with the given number of txs
-func p2pMakeData(t *testing.T, chainID string, height uint64, txs int) *types.Data {
-	t.Helper()
-	d := &types.Data{Metadata: &types.Metadata{ChainID: chainID, Height: height, Time: uint64(time.Now().UnixNano())}}
-	if txs > 0 {
-		d.Txs = make(types.Txs, txs)
-		for i := 0; i < txs; i++ {
-			d.Txs[i] = []byte{byte(height), byte(i)}
-		}
-	}
-	return d
-}
-
 // P2PTestData aggregates all dependencies used by P2P handler tests.
 type P2PTestData struct {
 	Handler      *P2PHandler
@@ -104,7 +91,7 @@ func TestP2PHandler_ProcessHeaderRange_HeaderAndDataHappyPath(t *testing.T) {
 	// Signed header at height 5 with non-empty data
 	require.Equal(t, string(p2pData.Genesis.ProposerAddress), string(p2pData.ProposerAddr), "test signer must match genesis proposer for P2P validation")
 	signedHeader := p2pMakeSignedHeader(t, p2pData.Genesis.ChainID, 5, p2pData.ProposerAddr, p2pData.ProposerPub, p2pData.Signer)
-	blockData := p2pMakeData(t, p2pData.Genesis.ChainID, 5, 1)
+	blockData := makeData(p2pData.Genesis.ChainID, 5, 1)
 	signedHeader.DataHash = blockData.DACommitment()
 
 	// Re-sign after setting DataHash so signature matches header bytes
@@ -135,7 +122,7 @@ func TestP2PHandler_ProcessHeaderRange_MissingData_NonEmptyHash(t *testing.T) {
 	signedHeader := p2pMakeSignedHeader(t, p2pData.Genesis.ChainID, 7, p2pData.ProposerAddr, p2pData.ProposerPub, p2pData.Signer)
 
 	// Non-empty data: set header.DataHash to a commitment; expect data store lookup to fail and event skipped
-	blockData := p2pMakeData(t, p2pData.Genesis.ChainID, 7, 1)
+	blockData := makeData(p2pData.Genesis.ChainID, 7, 1)
 	signedHeader.DataHash = blockData.DACommitment()
 
 	p2pData.HeaderStore.EXPECT().GetByHeight(ctx, uint64(7)).Return(signedHeader, nil).Once()
@@ -149,7 +136,7 @@ func TestP2PHandler_ProcessDataRange_HeaderMissing(t *testing.T) {
 	p2pData := setupP2P(t)
 	ctx := context.Background()
 
-	blockData := p2pMakeData(t, p2pData.Genesis.ChainID, 9, 1)
+	blockData := makeData(p2pData.Genesis.ChainID, 9, 1)
 	p2pData.DataStore.EXPECT().GetByHeight(ctx, uint64(9)).Return(blockData, nil).Once()
 	p2pData.HeaderStore.EXPECT().GetByHeight(ctx, uint64(9)).Return(nil, errors.New("no header")).Once()
 
@@ -182,7 +169,7 @@ func TestP2PHandler_CreateEmptyDataForHeader_UsesPreviousDataHash(t *testing.T) 
 	signedHeader.DataHash = common.DataHashForEmptyTxs
 
 	// Mock previous data at height 9 so handler can propagate its hash
-	previousData := p2pMakeData(t, p2pData.Genesis.ChainID, 9, 1)
+	previousData := makeData(p2pData.Genesis.ChainID, 9, 1)
 	p2pData.DataStore.EXPECT().GetByHeight(ctx, uint64(9)).Return(previousData, nil).Once()
 
 	emptyData := p2pData.Handler.createEmptyDataForHeader(ctx, signedHeader)
@@ -220,7 +207,7 @@ func TestP2PHandler_ProcessHeaderRange_MultipleHeightsHappyPath(t *testing.T) {
 	// Build two consecutive heights with valid headers and data
 	// Height 5
 	header5 := p2pMakeSignedHeader(t, p2pData.Genesis.ChainID, 5, p2pData.ProposerAddr, p2pData.ProposerPub, p2pData.Signer)
-	data5 := p2pMakeData(t, p2pData.Genesis.ChainID, 5, 1)
+	data5 := makeData(p2pData.Genesis.ChainID, 5, 1)
 	header5.DataHash = data5.DACommitment()
 	// Re-sign after setting DataHash to keep signature valid
 	bz5, err := types.DefaultAggregatorNodeSignatureBytesProvider(&header5.Header)
@@ -232,7 +219,7 @@ func TestP2PHandler_ProcessHeaderRange_MultipleHeightsHappyPath(t *testing.T) {
 
 	// Height 6
 	header6 := p2pMakeSignedHeader(t, p2pData.Genesis.ChainID, 6, p2pData.ProposerAddr, p2pData.ProposerPub, p2pData.Signer)
-	data6 := p2pMakeData(t, p2pData.Genesis.ChainID, 6, 2)
+	data6 := makeData(p2pData.Genesis.ChainID, 6, 2)
 	header6.DataHash = data6.DACommitment()
 	bz6, err := types.DefaultAggregatorNodeSignatureBytesProvider(&header6.Header)
 	require.NoError(t, err, "failed to get signature bytes for height 6")
@@ -260,7 +247,7 @@ func TestP2PHandler_ProcessDataRange_HeaderValidateHeaderFails(t *testing.T) {
 	ctx := context.Background()
 
 	// Data exists at height 3
-	blockData := p2pMakeData(t, p2pData.Genesis.ChainID, 3, 1)
+	blockData := makeData(p2pData.Genesis.ChainID, 3, 1)
 	p2pData.DataStore.EXPECT().GetByHeight(ctx, uint64(3)).Return(blockData, nil).Once()
 
 	// Header proposer does not match genesis -> validateHeader should fail

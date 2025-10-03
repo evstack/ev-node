@@ -318,13 +318,13 @@ func setupTestSyncer(t *testing.T, daBlockTime time.Duration) *Syncer {
 
 	cfg := config.DefaultConfig()
 	cfg.DA.BlockTime.Duration = daBlockTime
-	cfg.DA.StartHeight = 100
 
 	gen := genesis.Genesis{
 		ChainID:         "test-chain",
 		InitialHeight:   1,
 		StartTime:       time.Now().Add(-time.Hour), // Start in past
 		ProposerAddress: addr,
+		DAStartHeight:   100,
 	}
 
 	syncer := NewSyncer(

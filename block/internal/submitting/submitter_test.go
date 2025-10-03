@@ -3,6 +3,7 @@ package submitting
 import (
 	"context"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"sync"
 	"testing"
@@ -26,6 +27,82 @@ import (
 	"github.com/evstack/ev-node/types"
 	"github.com/libp2p/go-libp2p/core/crypto"
 )
+
+func TestSubmitter_setFinalWithRetry(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name           string
+		setupMock      func(*testmocks.MockExecutor)
+		expectSuccess  bool
+		expectAttempts int
+		expectError    string
+	}{
+		{
+			name: "success on first attempt",
+			setupMock: func(exec *testmocks.MockExecutor) {
+				exec.On("SetFinal", mock.Anything, uint64(100)).Return(nil).Once()
+			},
+			expectSuccess:  true,
+			expectAttempts: 1,
+		},
+		{
+			name: "success on second attempt",
+			setupMock: func(exec *testmocks.MockExecutor) {
+				exec.On("SetFinal", mock.Anything, uint64(100)).Return(errors.New("temporary failure")).Once()
+				exec.On("SetFinal", mock.Anything, uint64(100)).Return(nil).Once()
+			},
+			expectSuccess:  true,
+			expectAttempts: 2,
+		},
+		{
+			name: "success on third attempt",
+			setupMock: func(exec *testmocks.MockExecutor) {
+				exec.On("SetFinal", mock.Anything, uint64(100)).Return(errors.New("temporary failure")).Times(2)
+				exec.On("SetFinal", mock.Anything, uint64(100)).Return(nil).Once()
+			},
+			expectSuccess:  true,
+			expectAttempts: 3,
+		},
+		{
+			name: "failure after max retries",
+			setupMock: func(exec *testmocks.MockExecutor) {
+				exec.On("SetFinal", mock.Anything, uint64(100)).Return(errors.New("persistent failure")).Times(common.MaxRetriesBeforeHalt)
+			},
+			expectSuccess: false,
+			expectError:   "failed to set final height after 3 attempts",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			ctx := context.Background()
+			exec := testmocks.NewMockExecutor(t)
+			tt.setupMock(exec)
+
+			s := &Submitter{
+				exec:   exec,
+				ctx:    ctx,
+				logger: zerolog.Nop(),
+			}
+
+			err := s.setFinalWithRetry(100)
+
+			if tt.expectSuccess {
+				require.NoError(t, err)
+			} else {
+				require.Error(t, err)
+				if tt.expectError != "" {
+					assert.Contains(t, err.Error(), tt.expectError)
+				}
+			}
+
+			exec.AssertExpectations(t)
+		})
+	}
+}
 
 func TestSubmitter_IsHeightDAIncluded(t *testing.T) {
 	t.Parallel()
