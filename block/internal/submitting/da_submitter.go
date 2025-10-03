@@ -249,10 +249,10 @@ func (s *DASubmitter) SubmitData(ctx context.Context, cache cache.Manager, signe
 			for _, sd := range submitted {
 				cache.SetDataDAIncluded(sd.Data.DACommitment().String(), res.Height)
 			}
-			if l := len(submitted); l > 0 {
-				lastHeight := submitted[l-1].Height()
-				cache.SetLastSubmittedDataHeight(ctx, lastHeight)
-			}
+			// if l := len(submitted); l > 0 {
+			// lastHeight := submitted[l-1].Height()
+			// cache.SetLastSubmittedDataHeight(ctx, lastHeight)
+			// }
 		},
 		"data",
 		s.namespaceDataBz,

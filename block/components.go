@@ -213,36 +213,36 @@ func NewAggregatorComponents(
 	// error channel for critical failures
 	errorCh := make(chan error, 1)
 
-	executor, err := executing.NewExecutor(
-		store,
-		exec,
-		sequencer,
-		signer,
-		cacheManager,
-		metrics,
-		config,
-		genesis,
-		headerBroadcaster,
-		dataBroadcaster,
-		logger,
-		blockOpts,
-		errorCh,
-	)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create executor: %w", err)
-	}
+	// executor, err := executing.NewExecutor(
+	// 	store,
+	// 	exec,
+	// 	sequencer,
+	// 	signer,
+	// 	cacheManager,
+	// 	metrics,
+	// 	config,
+	// 	genesis,
+	// 	headerBroadcaster,
+	// 	dataBroadcaster,
+	// 	logger,
+	// 	blockOpts,
+	// 	errorCh,
+	// )
+	// if err != nil {
+	// 	return nil, fmt.Errorf("failed to create executor: %w", err)
+	// }
 
-	reaper, err := reaping.NewReaper(
-		exec,
-		sequencer,
-		genesis,
-		logger,
-		executor,
-		reaping.DefaultInterval,
-	)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create reaper: %w", err)
-	}
+	// reaper, err := reaping.NewReaper(
+	// 	exec,
+	// 	sequencer,
+	// 	genesis,
+	// 	logger,
+	// 	executor,
+	// 	reaping.DefaultInterval,
+	// )
+	// if err != nil {
+	// 	return nil, fmt.Errorf("failed to create reaper: %w", err)
+	// }
 
 	// Create DA submitter for aggregator nodes (with signer for submission)
 	daSubmitter := submitting.NewDASubmitter(da, config, genesis, blockOpts, logger)
@@ -260,8 +260,6 @@ func NewAggregatorComponents(
 	)
 
 	return &Components{
-		Executor:  executor,
-		Reaper:    reaper,
 		Submitter: submitter,
 		Cache:     cacheManager,
 		errorCh:   errorCh,

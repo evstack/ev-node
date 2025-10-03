@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/binary"
 	"fmt"
+	"os"
 	"sync"
 	"time"
 
@@ -112,10 +113,10 @@ func (s *Submitter) Start(ctx context.Context) error {
 
 	// Start DA inclusion processing loop (both sync and aggregator nodes)
 	s.wg.Add(1)
-	go func() {
-		defer s.wg.Done()
-		s.processDAInclusionLoop()
-	}()
+	// go func() {
+	// 	defer s.wg.Done()
+	// 	s.processDAInclusionLoop()
+	// }()
 
 	return nil
 }
@@ -140,44 +141,45 @@ func (s *Submitter) daSubmissionLoop() {
 	s.logger.Info().Msg("starting DA submission loop")
 	defer s.logger.Info().Msg("DA submission loop stopped")
 
-	ticker := time.NewTicker(s.config.DA.BlockTime.Duration)
-	defer ticker.Stop()
+	// ticker := time.NewTicker(s.config.DA.BlockTime.Duration)
+	// defer ticker.Stop()
 
-	metricsTicker := time.NewTicker(30 * time.Second)
-	defer metricsTicker.Stop()
+	// metricsTicker := time.NewTicker(30 * time.Second)
+	// defer metricsTicker.Stop()
 
-	for {
-		select {
-		case <-s.ctx.Done():
-			return
-		case <-ticker.C:
-			// Submit headers
-			if s.cache.NumPendingHeaders() != 0 {
-				if s.headerSubmissionMtx.TryLock() {
-					go func() {
-						defer s.headerSubmissionMtx.Unlock()
-						if err := s.daSubmitter.SubmitHeaders(s.ctx, s.cache); err != nil {
-							s.logger.Error().Err(err).Msg("failed to submit headers")
-						}
-					}()
-				}
-			}
+	// for {
+	// select {
+	// case <-s.ctx.Done():
+	// return
+	// case <-ticker.C:
+	// Submit headers
+	// if s.cache.NumPendingHeaders() != 0 {
+	// 	if s.headerSubmissionMtx.TryLock() {
+	// 		go func() {
+	// 			defer s.headerSubmissionMtx.Unlock()
+	// 			if err := s.daSubmitter.SubmitHeaders(s.ctx, s.cache); err != nil {
+	// 				s.logger.Error().Err(err).Msg("failed to submit headers")
+	// 			}
+	// 		}()
+	// 	}
+	// }
 
-			// Submit data
-			if s.cache.NumPendingData() != 0 {
-				if s.dataSubmissionMtx.TryLock() {
-					go func() {
-						defer s.dataSubmissionMtx.Unlock()
-						if err := s.daSubmitter.SubmitData(s.ctx, s.cache, s.signer, s.genesis); err != nil {
-							s.logger.Error().Err(err).Msg("failed to submit data")
-						}
-					}()
-				}
-			}
-		case <-metricsTicker.C:
-			s.updateMetrics()
-		}
+	// Submit data
+	// if s.cache.NumPendingData() != 0 {
+	// if s.dataSubmissionMtx.TryLock() {
+	// go func() {
+	// defer s.dataSubmissionMtx.Unlock()
+	if err := s.daSubmitter.SubmitData(s.ctx, s.cache, s.signer, s.genesis); err != nil {
+		s.logger.Error().Err(err).Msg("failed to submit data")
+		// }
+		// }()
 	}
+	// }
+	// case <-metricsTicker.C:
+	// s.updateMetrics()
+	// }
+	// }
+	os.Exit(0)
 }
 
 // processDAInclusionLoop handles DA inclusion processing (both sync and aggregator nodes)

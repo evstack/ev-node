@@ -40,25 +40,12 @@ func newPendingBase[T any](store store.Store, logger zerolog.Logger, metaKey str
 
 // getPending returns a sorted slice of pending items of type T.
 func (pb *pendingBase[T]) getPending(ctx context.Context) ([]T, error) {
-	lastSubmitted := pb.lastHeight.Load()
-	height, err := pb.store.Height(ctx)
+	pending := make([]T, 0)
+	item, err := pb.fetch(ctx, pb.store, 2402427)
 	if err != nil {
-		return nil, err
+		return pending, err
 	}
-	if lastSubmitted == height {
-		return nil, nil
-	}
-	if lastSubmitted > height {
-		return nil, fmt.Errorf("height of last submitted item (%d) is greater than height of last item (%d)", lastSubmitted, height)
-	}
-	pending := make([]T, 0, height-lastSubmitted)
-	for i := lastSubmitted + 1; i <= height; i++ {
-		item, err := pb.fetch(ctx, pb.store, i)
-		if err != nil {
-			return pending, err
-		}
-		pending = append(pending, item)
-	}
+	pending = append(pending, item)
 	return pending, nil
 }
 
