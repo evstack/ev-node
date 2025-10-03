@@ -186,8 +186,7 @@ func printQueryInfo(height uint64, namespace []byte) {
 	if filterHeight > 0 {
 		fmt.Printf(" | Filter Height: %d", filterHeight)
 	}
-	fmt.Println()
-	fmt.Println()
+	fmt.Print("\n\n")
 }
 
 func printBlobHeader(current, total int) {
@@ -215,11 +214,7 @@ func printTypeHeader(title, color string) {
 }
 
 func displayHeader(header *types.SignedHeader) {
-	heightPrefix := ""
-	if filterHeight > 0 && header.Height() == filterHeight {
-		heightPrefix = "[MATCH] "
-	}
-	fmt.Printf("Height:       %s%d\n", heightPrefix, header.Height())
+	fmt.Printf("Height:       %d\n", header.Height())
 	fmt.Printf("Time:         %s\n", header.Time().Format(time.RFC3339))
 	fmt.Printf("Chain ID:     %s\n", header.ChainID())
 	fmt.Printf("Version:      Block=%d, App=%d\n", header.Version.Block, header.Version.App)
@@ -240,11 +235,7 @@ func displayHeader(header *types.SignedHeader) {
 func displayData(data *types.SignedData) {
 	if data.Metadata != nil {
 		fmt.Printf("Chain ID:     %s\n", data.ChainID())
-		heightPrefix := ""
-		if filterHeight > 0 && data.Height() == filterHeight {
-			heightPrefix = "[MATCH] "
-		}
-		fmt.Printf("Height:       %s%d\n", heightPrefix, data.Height())
+		fmt.Printf("Height:       %d\n", data.Height())
 		fmt.Printf("Time:         %s\n", data.Time().Format(time.RFC3339))
 		fmt.Printf("Last Data:    %s\n", formatHashField(hex.EncodeToString(data.LastDataHash[:])))
 	}
