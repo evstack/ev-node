@@ -19,14 +19,18 @@ import (
 goos: darwin
 goarch: arm64
 pkg: github.com/evstack/ev-node/block/internal/cache
-cpu: Apple M1 Pro
-BenchmarkManager_GetPendingHeaders/N=1000-10 	     278	   3922717 ns/op	5064666 B/op	70818 allocs/op
-BenchmarkManager_GetPendingHeaders/N=10000-10         	      28	  40704543 ns/op	50639803 B/op	709864 allocs/op
-BenchmarkManager_GetPendingData/N=1000-10             	     279	   4258291 ns/op	5869716 B/op	73824 allocs/op
-BenchmarkManager_GetPendingData/N=10000-10            	      26	  45428974 ns/op	58719067 B/op	  739926 allocs/op
-BenchmarkManager_PendingEventsSnapshot-10             	     336	   3251530 ns/op	 2365497 B/op	     285 allocs/op
+cpu: Apple M4
+BenchmarkManager_GetPendingHeaders/N=1000-10         194           5763894 ns/op         3552719 B/op      46916 allocs/op
+BenchmarkManager_GetPendingHeaders/N=10000-10                 21          53211540 ns/op        35524178 B/op     469941 allocs/op
+BenchmarkManager_GetPendingData/N=1000-10                    100          10699778 ns/op         5868643 B/op      73823 allocs/op
+BenchmarkManager_GetPendingData/N=10000-10                    13         138766532 ns/op        58667709 B/op     739950 allocs/op
+BenchmarkPendingData_Iterator/N=1000-10                       91          12462366 ns/op         5849299 B/op      72828 allocs/op
+BenchmarkPendingData_Iterator/N=10000-10                      12         111749198 ns/op        58643530 B/op     729975 allocs/op
+BenchmarkPendingHeaders_Iterator/N=1000-10                   204           6132184 ns/op         3648970 B/op      46924 allocs/op
+BenchmarkPendingHeaders_Iterator/N=10000-10                   25          53847862 ns/op        36485675 B/op     470017 allocs/op
+BenchmarkManager_PendingEventsSnapshot-10               30719360                35.37 ns/op            0 B/op          0 allocs/op
 PASS
-ok  	github.com/evstack/ev-node/block/internal/cache	25.834s
+ok      github.com/evstack/ev-node/block/internal/cache 23.693s
 */
 
 func benchSetupStore(b *testing.B, n int, txsPer int, chainID string) store.Store {
