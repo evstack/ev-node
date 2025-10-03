@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"io"
 	"sync/atomic"
 
 	ds "github.com/ipfs/go-datastore"
@@ -17,11 +18,11 @@ import (
 // that need to be published to the DA layer in order. It handles persistence
 // of the last submitted height and provides methods for retrieving pending items.
 type pendingBase[T any] struct {
-	logger     zerolog.Logger
-	store      store.Store
-	metaKey    string
-	fetch      func(ctx context.Context, store store.Store, height uint64) (T, error)
-	lastHeight atomic.Uint64
+	logger              zerolog.Logger
+	store               store.Store
+	metaKey             string
+	fetch               func(ctx context.Context, store store.Store, height uint64) (T, error)
+	lastSubmittedHeight atomic.Uint64
 }
 
 // newPendingBase constructs a new pendingBase for a given type.
@@ -40,7 +41,7 @@ func newPendingBase[T any](store store.Store, logger zerolog.Logger, metaKey str
 
 // getPending returns a sorted slice of pending items of type T.
 func (pb *pendingBase[T]) getPending(ctx context.Context) ([]T, error) {
-	lastSubmitted := pb.lastHeight.Load()
+	lastSubmitted := pb.lastSubmittedHeight.Load()
 	height, err := pb.store.Height(ctx)
 	if err != nil {
 		return nil, err
@@ -68,12 +69,12 @@ func (pb *pendingBase[T]) numPending() uint64 {
 		pb.logger.Error().Err(err).Msg("failed to get height in numPending")
 		return 0
 	}
-	return height - pb.lastHeight.Load()
+	return height - pb.lastSubmittedHeight.Load()
 }
 
 func (pb *pendingBase[T]) setLastSubmittedHeight(ctx context.Context, newLastSubmittedHeight uint64) {
-	lsh := pb.lastHeight.Load()
-	if newLastSubmittedHeight > lsh && pb.lastHeight.CompareAndSwap(lsh, newLastSubmittedHeight) {
+	lsh := pb.lastSubmittedHeight.Load()
+	if newLastSubmittedHeight > lsh && pb.lastSubmittedHeight.CompareAndSwap(lsh, newLastSubmittedHeight) {
 		bz := make([]byte, 8)
 		binary.LittleEndian.PutUint64(bz, newLastSubmittedHeight)
 		err := pb.store.SetMetadata(ctx, pb.metaKey, bz)
@@ -98,6 +99,33 @@ func (pb *pendingBase[T]) init() error {
 	if lsh == 0 {
 		return nil
 	}
-	pb.lastHeight.CompareAndSwap(0, lsh)
+	pb.lastSubmittedHeight.CompareAndSwap(0, lsh)
 	return nil
+}
+
+func (pb *pendingBase[T]) iterator(ctx context.Context) (Iterator[T], error) {
+	lastSubmitted := pb.lastSubmittedHeight.Load()
+	height, err := pb.store.Height(ctx)
+	if err != nil {
+		return Iterator[T]{}, err
+	}
+	if lastSubmitted == height {
+		return Iterator[T]{}, nil
+	}
+	if lastSubmitted > height {
+		return Iterator[T]{}, fmt.Errorf("height of last submitted "+
+			"item (%d) is greater than height of last item (%d)", lastSubmitted, height)
+	}
+
+	it := newIterator(func() (T, error) {
+		lastSubmitted++
+		if lastSubmitted > height {
+			var zero T
+			return zero, io.EOF
+		}
+
+		return pb.fetch(ctx, pb.store, lastSubmitted)
+	})
+
+	return *it, nil
 }

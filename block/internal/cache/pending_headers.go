@@ -51,3 +51,8 @@ func (ph *PendingHeaders) NumPendingHeaders() uint64 {
 func (ph *PendingHeaders) SetLastSubmittedHeaderHeight(ctx context.Context, newLastSubmittedHeaderHeight uint64) {
 	ph.base.setLastSubmittedHeight(ctx, newLastSubmittedHeaderHeight)
 }
+
+// Iterator returns an iterator that walks pending headers in ascending height order.
+func (ph *PendingHeaders) Iterator(ctx context.Context) (Iterator[*types.SignedHeader], error) {
+	return ph.base.iterator(ctx)
+}

@@ -2,6 +2,8 @@ package cache
 
 import (
 	"context"
+	"errors"
+	"io"
 	"math/rand/v2"
 	"testing"
 
@@ -92,6 +94,94 @@ func BenchmarkManager_GetPendingData(b *testing.B) {
 				}
 				if len(ds) == 0 {
 					b.Fatal("unexpected empty data")
+				}
+			}
+		})
+	}
+}
+
+func BenchmarkPendingData_Iterator(b *testing.B) {
+	for _, n := range []int{1_000, 10_000} {
+		b.Run(benchName(n), func(b *testing.B) {
+			st := benchSetupStore(b, n, 2, "bench-data-iter")
+			pd, err := NewPendingData(st, zerolog.Nop())
+			if err != nil {
+				b.Fatal(err)
+			}
+			ctx := context.Background()
+			b.ReportAllocs()
+			b.ResetTimer()
+			for b.Loop() {
+				iter, err := pd.Iterator(ctx)
+				if err != nil {
+					b.Fatal(err)
+				}
+				count := 0
+				for {
+					val, ok, err := iter.Next()
+					if errors.Is(err, io.EOF) {
+						if ok {
+							b.Fatal("expected ok=false on EOF")
+						}
+						break
+					}
+					if err != nil {
+						b.Fatal(err)
+					}
+					if !ok {
+						b.Fatal("expected ok=true before EOF")
+					}
+					if len(val.Txs) == 0 {
+						continue
+					}
+					count++
+				}
+				if count == 0 {
+					b.Fatal("unexpected empty iteration result")
+				}
+			}
+		})
+	}
+}
+
+func BenchmarkPendingHeaders_Iterator(b *testing.B) {
+	for _, n := range []int{1_000, 10_000} {
+		b.Run(benchName(n), func(b *testing.B) {
+			st := benchSetupStore(b, n, 1, "bench-headers-iter")
+			ph, err := NewPendingHeaders(st, zerolog.Nop())
+			if err != nil {
+				b.Fatal(err)
+			}
+			ctx := context.Background()
+			b.ReportAllocs()
+			b.ResetTimer()
+			for b.Loop() {
+				iter, err := ph.Iterator(ctx)
+				if err != nil {
+					b.Fatal(err)
+				}
+				count := 0
+				for {
+					val, ok, err := iter.Next()
+					if errors.Is(err, io.EOF) {
+						if ok {
+							b.Fatal("expected ok=false on EOF")
+						}
+						break
+					}
+					if err != nil {
+						b.Fatal(err)
+					}
+					if !ok {
+						b.Fatal("expected ok=true before EOF")
+					}
+					if val == nil {
+						b.Fatal("unexpected nil header")
+					}
+					count++
+				}
+				if count == 0 {
+					b.Fatal("unexpected empty iteration result")
 				}
 			}
 		})

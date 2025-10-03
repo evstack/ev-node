@@ -54,3 +54,8 @@ func (pd *PendingData) NumPendingData() uint64 {
 func (pd *PendingData) SetLastSubmittedDataHeight(ctx context.Context, newLastSubmittedDataHeight uint64) {
 	pd.base.setLastSubmittedHeight(ctx, newLastSubmittedDataHeight)
 }
+
+// Iterator returns an Iterator that walks pending data in ascending height order.
+func (pd *PendingData) Iterator(ctx context.Context) (Iterator[*types.Data], error) {
+	return pd.base.iterator(ctx)
+}
