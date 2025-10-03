@@ -19,26 +19,6 @@ import (
 	pb "github.com/evstack/ev-node/types/pb/evnode/v1"
 )
 
-// ANSI color codes
-const (
-	ColorReset   = "\033[0m"
-	ColorRed     = "\033[31m"
-	ColorGreen   = "\033[32m"
-	ColorYellow  = "\033[33m"
-	ColorBlue    = "\033[34m"
-	ColorMagenta = "\033[35m"
-	ColorCyan    = "\033[36m"
-	ColorWhite   = "\033[37m"
-	ColorBold    = "\033[1m"
-	ColorDim     = "\033[2m"
-	ColorUnder   = "\033[4m"
-
-	// Background colors
-	ColorBgGreen  = "\033[42m"
-	ColorBgBlue   = "\033[44m"
-	ColorBgYellow = "\033[43m"
-)
-
 var (
 	daURL         string
 	authToken     string
@@ -55,11 +35,9 @@ func main() {
 	rootCmd := &cobra.Command{
 		Use:   "da-debug <height> <namespace>",
 		Short: "DA debugging tool - decode blobs at given height and namespace",
-		Long: fmt.Sprintf(`%s%sDA Debug Tool%s
-%sA powerful DA debugging tool that queries a specific height and namespace,
-then decodes each blob as either header or data and displays detailed information.%s`,
-			ColorBold, ColorCyan, ColorReset,
-			ColorDim, ColorReset),
+		Long: `DA Debug Tool
+A powerful DA debugging tool that queries a specific height and namespace,
+then decodes each blob as either header or data and displays detailed information.`,
 		Args: cobra.ExactArgs(2),
 		RunE: runDebug,
 	}
@@ -108,24 +86,24 @@ func runDebug(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		// Handle "blob not found" as a normal case
 		if err.Error() == "blob: not found" || strings.Contains(err.Error(), "blob: not found") {
-			printWarning("No blobs found at height %d", height)
+			fmt.Printf("No blobs found at height %d\n", height)
 			return nil
 		}
 		// Handle future height errors gracefully
 		if strings.Contains(err.Error(), "height") && strings.Contains(err.Error(), "future") {
-			printWarning("Height %d is in the future (not yet available)", height)
+			fmt.Printf("Height %d is in the future (not yet available)\n", height)
 			return nil
 		}
 		return fmt.Errorf("failed to get IDs: %w", err)
 	}
 
 	if result == nil || len(result.IDs) == 0 {
-		printWarning("No blobs found at height %d", height)
+		fmt.Printf("No blobs found at height %d\n", height)
 		return nil
 	}
 
-	printSuccess("Found %d blob(s) at height %d", len(result.IDs), height)
-	printInfo("Timestamp: %s", result.Timestamp.Format(time.RFC3339))
+	fmt.Printf("Found %d blob(s) at height %d\n", len(result.IDs), height)
+	fmt.Printf("Timestamp: %s\n", result.Timestamp.Format(time.RFC3339))
 	fmt.Println()
 
 	// Get the actual blob data
@@ -170,13 +148,13 @@ func runDebug(cmd *cobra.Command, args []string) error {
 
 		// Try to decode as header first
 		if header := tryDecodeHeader(blob); header != nil {
-			printTypeHeader("SignedHeader", ColorBlue)
+			printTypeHeader("SignedHeader", "")
 			displayHeader(header)
 		} else if data := tryDecodeData(blob); data != nil {
-			printTypeHeader("SignedData", ColorGreen)
+			printTypeHeader("SignedData", "")
 			displayData(data)
 		} else {
-			printTypeHeader("Raw Data", ColorYellow)
+			printTypeHeader("Raw Data", "")
 			displayRawData(blob)
 		}
 
@@ -188,9 +166,9 @@ func runDebug(cmd *cobra.Command, args []string) error {
 	// Show filter results
 	if filterHeight > 0 {
 		if displayedBlobs == 0 {
-			printWarning("No blobs found matching height filter: %d", filterHeight)
+			fmt.Printf("No blobs found matching height filter: %d\n", filterHeight)
 		} else {
-			printInfo("Showing %d blob(s) matching height filter: %d", displayedBlobs, filterHeight)
+			fmt.Printf("Showing %d blob(s) matching height filter: %d\n", displayedBlobs, filterHeight)
 		}
 	}
 
@@ -199,22 +177,22 @@ func runDebug(cmd *cobra.Command, args []string) error {
 }
 
 func printBanner() {
-	banner := fmt.Sprintf(`%s%s
+	banner := `
 ╔══════════════════════════════════════╗
 ║          DA Debug Tool               ║
 ║       Blockchain Data Inspector      ║
-╚══════════════════════════════════════╝%s
-`, ColorBold, ColorCyan, ColorReset)
+╚══════════════════════════════════════╝
+`
 	fmt.Print(banner)
 }
 
 func printQueryInfo(height uint64, namespace []byte) {
-	fmt.Printf("%s%sQuery Details:%s\n", ColorBold, ColorWhite, ColorReset)
-	fmt.Printf("   DA Height: %s%d%s\n", colorize(ColorYellow), height, ColorReset)
-	fmt.Printf("   Namespace: %s%s%s\n", colorize(ColorMagenta), formatHash(hex.EncodeToString(namespace)), ColorReset)
-	fmt.Printf("   DA URL: %s%s%s\n", colorize(ColorCyan), daURL, ColorReset)
+	fmt.Printf("Query Details:\n")
+	fmt.Printf("   DA Height: %d\n", height)
+	fmt.Printf("   Namespace: %s\n", formatHash(hex.EncodeToString(namespace)))
+	fmt.Printf("   DA URL: %s\n", daURL)
 	if filterHeight > 0 {
-		fmt.Printf("   Height Filter: %s%d%s\n", colorize(ColorGreen), filterHeight, ColorReset)
+		fmt.Printf("   Height Filter: %d\n", filterHeight)
 	}
 	fmt.Println()
 }
@@ -222,46 +200,42 @@ func printQueryInfo(height uint64, namespace []byte) {
 func printBlobHeader(current, total int) {
 	if total == -1 {
 		// Filtered mode - don't show total
-		fmt.Printf("%s%s┌─ Blob %d %s\n", ColorBold, ColorBlue, current, strings.Repeat("─", 55-len(fmt.Sprintf("┌─ Blob %d ", current)))+ColorReset)
+		fmt.Printf("┌─ Blob %d %s\n", current, strings.Repeat("─", 55-len(fmt.Sprintf("┌─ Blob %d ", current))))
 	} else {
-		fmt.Printf("%s%s┌─ Blob %d/%d %s\n", ColorBold, ColorBlue, current, total, strings.Repeat("─", 50-len(fmt.Sprintf("┌─ Blob %d/%d ", current, total)))+ColorReset)
+		fmt.Printf("┌─ Blob %d/%d %s\n", current, total, strings.Repeat("─", 50-len(fmt.Sprintf("┌─ Blob %d/%d ", current, total))))
 	}
 }
 
 func displayBlobInfo(id coreda.ID, blob []byte) {
-	fmt.Printf("│ %sID:%s %s\n", colorize(ColorBold), ColorReset, formatHash(hex.EncodeToString(id)))
-	fmt.Printf("│ %sSize:%s %s bytes\n", colorize(ColorBold), ColorReset, formatSize(len(blob)))
+	fmt.Printf("│ ID: %s\n", formatHash(hex.EncodeToString(id)))
+	fmt.Printf("│ Size: %s\n", formatSize(len(blob)))
 
 	// Try to parse the ID to show height and commitment
 	if idHeight, commitment, err := coreda.SplitID(id); err == nil {
-		fmt.Printf("│ %sID Height:%s %d\n", colorize(ColorBold), ColorReset, idHeight)
-		fmt.Printf("│ %sCommitment:%s %s\n", colorize(ColorBold), ColorReset, formatHash(hex.EncodeToString(commitment)))
+		fmt.Printf("│ ID Height: %d\n", idHeight)
+		fmt.Printf("│ Commitment: %s\n", formatHash(hex.EncodeToString(commitment)))
 	}
 	fmt.Printf("│\n")
 }
 
 func printTypeHeader(title, color string) {
-	fmt.Printf("│ %s%s%s %s%s\n", ColorBold, color, title, ColorReset, strings.Repeat("─", 45))
+	fmt.Printf("│ %s %s\n", title, strings.Repeat("─", 45))
 	fmt.Printf("│\n")
 }
 
 func displayHeader(header *types.SignedHeader) {
-	fmt.Printf("│ %sCore Information:%s\n", colorizeSection("Core Information"), ColorReset)
-	heightColor := ColorYellow
+	fmt.Printf("│ Core Information:\n")
 	heightPrefix := ""
 	if filterHeight > 0 && header.Height() == filterHeight {
-		heightColor = ColorGreen
 		heightPrefix = "[MATCH] "
 	}
-	fmt.Printf("│   Height: %s%s%d%s\n", heightPrefix, colorize(heightColor), header.Height(), ColorReset)
-	fmt.Printf("│   Time: %s%s%s\n", colorize(ColorCyan), header.Time().Format(time.RFC3339), ColorReset)
-	fmt.Printf("│   Chain ID: %s%s%s\n", colorize(ColorMagenta), header.ChainID(), ColorReset)
-	fmt.Printf("│   Version: Block=%s%d%s, App=%s%d%s\n",
-		colorize(ColorYellow), header.Version.Block, ColorReset,
-		colorize(ColorYellow), header.Version.App, ColorReset)
+	fmt.Printf("│   Height: %s%d\n", heightPrefix, header.Height())
+	fmt.Printf("│   Time: %s\n", header.Time().Format(time.RFC3339))
+	fmt.Printf("│   Chain ID: %s\n", header.ChainID())
+	fmt.Printf("│   Version: Block=%d, App=%d\n", header.Version.Block, header.Version.App)
 	fmt.Printf("│\n")
 
-	fmt.Printf("│ %sHashes:%s\n", colorizeSection("Hashes"), ColorReset)
+	fmt.Printf("│ Hashes:\n")
 	fmt.Printf("│   Last Header: %s\n", formatHashField(hex.EncodeToString(header.LastHeaderHash[:])))
 	fmt.Printf("│   Last Commit: %s\n", formatHashField(hex.EncodeToString(header.LastCommitHash[:])))
 	fmt.Printf("│   Data Hash: %s\n", formatHashField(hex.EncodeToString(header.DataHash[:])))
@@ -271,7 +245,7 @@ func displayHeader(header *types.SignedHeader) {
 	fmt.Printf("│   Validator: %s\n", formatHashField(hex.EncodeToString(header.ValidatorHash[:])))
 	fmt.Printf("│\n")
 
-	fmt.Printf("│ %sSignature Information:%s\n", colorizeSection("Signature Information"), ColorReset)
+	fmt.Printf("│ Signature Information:\n")
 	fmt.Printf("│   Proposer: %s\n", formatHashField(hex.EncodeToString(header.ProposerAddress)))
 	fmt.Printf("│   Signature: %s\n", formatHashField(hex.EncodeToString(header.Signature)))
 	if len(header.Signer.Address) > 0 {
@@ -280,17 +254,15 @@ func displayHeader(header *types.SignedHeader) {
 }
 
 func displayData(data *types.SignedData) {
-	fmt.Printf("│ %sMetadata:%s\n", colorizeSection("Metadata"), ColorReset)
+	fmt.Printf("│ Metadata:\n")
 	if data.Metadata != nil {
-		fmt.Printf("│   Chain ID: %s%s%s\n", colorize(ColorMagenta), data.ChainID(), ColorReset)
-		heightColor := ColorYellow
+		fmt.Printf("│   Chain ID: %s\n", data.ChainID())
 		heightPrefix := ""
 		if filterHeight > 0 && data.Height() == filterHeight {
-			heightColor = ColorGreen
 			heightPrefix = "[MATCH] "
 		}
-		fmt.Printf("│   Height: %s%s%d%s\n", heightPrefix, colorize(heightColor), data.Height(), ColorReset)
-		fmt.Printf("│   Time: %s%s%s\n", colorize(ColorCyan), data.Time().Format(time.RFC3339), ColorReset)
+		fmt.Printf("│   Height: %s%d\n", heightPrefix, data.Height())
+		fmt.Printf("│   Time: %s\n", data.Time().Format(time.RFC3339))
 		fmt.Printf("│   Last Data Hash: %s\n", formatHashField(hex.EncodeToString(data.LastDataHash[:])))
 	}
 
@@ -298,8 +270,8 @@ func displayData(data *types.SignedData) {
 	fmt.Printf("│   DA Commitment: %s\n", formatHashField(hex.EncodeToString(dataHash[:])))
 	fmt.Printf("│\n")
 
-	fmt.Printf("│ %sTransaction Summary:%s\n", colorizeSection("Transaction Summary"), ColorReset)
-	fmt.Printf("│   Count: %s%d%s transactions\n", colorize(ColorYellow), len(data.Txs), ColorReset)
+	fmt.Printf("│ Transaction Summary:\n")
+	fmt.Printf("│   Count: %d transactions\n", len(data.Txs))
 	fmt.Printf("│   Signature: %s\n", formatHashField(hex.EncodeToString(data.Signature)))
 
 	if len(data.Signer.Address) > 0 {
@@ -309,10 +281,10 @@ func displayData(data *types.SignedData) {
 	// Display transactions
 	if len(data.Txs) > 0 {
 		fmt.Printf("│\n")
-		fmt.Printf("│ %sTransactions:%s\n", colorizeSection("Transactions"), ColorReset)
+		fmt.Printf("│ Transactions:\n")
 		for i, tx := range data.Txs {
-			fmt.Printf("│   %s%s[%d]%s Size: %s, Hash: %s\n",
-				ColorBold, ColorYellow, i+1, ColorReset,
+			fmt.Printf("│   [%d] Size: %s, Hash: %s\n",
+				i+1,
 				formatSize(len(tx)),
 				formatShortHash(hex.EncodeToString(tx)))
 
@@ -321,113 +293,70 @@ func displayData(data *types.SignedData) {
 				if len(preview) > 60 {
 					preview = preview[:60] + "..."
 				}
-				fmt.Printf("│       %sData:%s %s%s%s\n", colorize(ColorDim), ColorReset, colorize(ColorGreen), preview, ColorReset)
+				fmt.Printf("│       Data: %s\n", preview)
 			}
 		}
 	}
 }
 
 func displayRawData(blob []byte) {
-	fmt.Printf("│ %sRaw Binary Data:%s\n", colorizeSection("Raw Binary Data"), ColorReset)
+	fmt.Printf("│ Raw Binary Data:\n")
 
 	hexStr := hex.EncodeToString(blob)
 	if len(hexStr) > 120 {
-		fmt.Printf("│   Hex (preview): %s%s...%s\n", colorize(ColorDim), hexStr[:120], ColorReset)
-		fmt.Printf("│   Full length: %s bytes\n", formatSize(len(blob)))
+		fmt.Printf("│   Hex (preview): %s...\n", hexStr[:120])
+		fmt.Printf("│   Full length: %s\n", formatSize(len(blob)))
 	} else {
-		fmt.Printf("│   Hex: %s%s%s\n", colorize(ColorDim), hexStr, ColorReset)
+		fmt.Printf("│   Hex: %s\n", hexStr)
 	}
 
 	if isPrintable(blob) {
 		strData := string(blob)
 		if len(strData) > 200 {
-			fmt.Printf("│   String (preview): %s%s...%s\n", colorize(ColorGreen), strData[:200], ColorReset)
+			fmt.Printf("│   String (preview): %s...\n", strData[:200])
 		} else {
-			fmt.Printf("│   String: %s%s%s\n", colorize(ColorGreen), strData, ColorReset)
+			fmt.Printf("│   String: %s\n", strData)
 		}
 	} else {
-		fmt.Printf("│   %s(Binary data - not printable as string)%s\n", colorize(ColorDim), ColorReset)
+		fmt.Printf("│   (Binary data - not printable as string)\n")
 	}
 }
 
-// Helper functions for formatting and colors
-func colorize(color string) string {
-	if noColor {
-		return ""
-	}
-	return color
-}
-
-func colorizeSection(title string) string {
-	return fmt.Sprintf("%s%s%s%s", ColorBold, ColorWhite, title, ColorReset)
-}
+// Helper functions for formatting
 
 func formatHash(hash string) string {
-	if len(hash) > 16 {
-		return fmt.Sprintf("%s%s...%s%s", colorize(ColorDim), hash[:8], hash[len(hash)-8:], ColorReset)
-	}
-	return fmt.Sprintf("%s%s%s", colorize(ColorDim), hash, ColorReset)
+	return hash
 }
 
 func formatHashField(hash string) string {
-	if len(hash) > 20 {
-		return fmt.Sprintf("%s%s...%s%s", colorize(ColorDim), hash[:10], hash[len(hash)-10:], ColorReset)
-	}
-	return fmt.Sprintf("%s%s%s", colorize(ColorDim), hash, ColorReset)
+	return hash
 }
 
 func formatShortHash(hash string) string {
-	if len(hash) > 12 {
-		return fmt.Sprintf("%s%s...%s", colorize(ColorDim), hash[:6], hash[len(hash)-6:], ColorReset)
-	}
-	return fmt.Sprintf("%s%s%s", colorize(ColorDim), hash, ColorReset)
+	return hash
 }
 
 func formatSize(bytes int) string {
 	if bytes < 1024 {
-		return fmt.Sprintf("%s%d B%s", colorize(ColorYellow), bytes, ColorReset)
+		return fmt.Sprintf("%d B", bytes)
 	} else if bytes < 1024*1024 {
-		return fmt.Sprintf("%s%.1f KB%s", colorize(ColorYellow), float64(bytes)/1024, ColorReset)
+		return fmt.Sprintf("%.1f KB", float64(bytes)/1024)
 	} else {
-		return fmt.Sprintf("%s%.1f MB%s", colorize(ColorYellow), float64(bytes)/(1024*1024), ColorReset)
+		return fmt.Sprintf("%.1f MB", float64(bytes)/(1024*1024))
 	}
 }
 
 func printSeparator() {
-	fmt.Printf("%s%s├%s\n", ColorDim, strings.Repeat("─", 60), ColorReset)
+	fmt.Printf("├%s\n", strings.Repeat("─", 60))
 }
 
 func printFooter() {
-	fmt.Printf("%s%s└%s\n", ColorBold, ColorBlue, strings.Repeat("─", 60)+ColorReset)
-	fmt.Printf("%sAnalysis complete!%s\n", colorize(ColorGreen), ColorReset)
-}
-
-func printSuccess(format string, args ...interface{}) {
-	fmt.Printf("%s%s"+format+"%s\n", ColorBold, ColorGreen, ColorReset)
-	if len(args) > 0 {
-		fmt.Printf(format+"\n", args...)
-	}
-}
-
-func printWarning(format string, args ...interface{}) {
-	fmt.Printf("%s%s"+format+"%s\n", ColorBold, ColorYellow, ColorReset)
-	if len(args) > 0 {
-		fmt.Printf(format+"\n", args...)
-	}
-}
-
-func printInfo(format string, args ...interface{}) {
-	fmt.Printf("%s"+format+"%s\n", colorize(ColorCyan), ColorReset)
-	if len(args) > 0 {
-		fmt.Printf(format+"\n", args...)
-	}
+	fmt.Printf("└%s\n", strings.Repeat("─", 60))
+	fmt.Printf("Analysis complete!\n")
 }
 
 func printError(format string, args ...interface{}) {
-	fmt.Fprintf(os.Stderr, "%s%s"+format+"%s", ColorBold, ColorRed, ColorReset)
-	if len(args) > 0 {
-		fmt.Fprintf(os.Stderr, format, args...)
-	}
+	fmt.Fprintf(os.Stderr, "Error: "+format, args...)
 }
 
 func tryDecodeHeader(bz []byte) *types.SignedHeader {
