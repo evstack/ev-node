@@ -33,13 +33,10 @@ var (
 
 func main() {
 	rootCmd := &cobra.Command{
-		Use:   "da-debug <height> <namespace>",
-		Short: "DA debugging tool - decode blobs at given height and namespace",
+		Use:   "da-debug",
+		Short: "DA debugging tool for blockchain data inspection",
 		Long: `DA Debug Tool
-A powerful DA debugging tool that queries a specific height and namespace,
-then decodes each blob as either header or data and displays detailed information.`,
-		Args: cobra.ExactArgs(2),
-		RunE: runDebug,
+A powerful DA debugging tool for inspecting blockchain data availability layers.`,
 	}
 
 	// Global flags
@@ -51,7 +48,10 @@ then decodes each blob as either header or data and displays detailed informatio
 	rootCmd.PersistentFlags().Float64Var(&gasPrice, "gas-price", 0.0, "Gas price for DA operations")
 	rootCmd.PersistentFlags().Float64Var(&gasMultiplier, "gas-multiplier", 1.0, "Gas multiplier for DA operations")
 	rootCmd.PersistentFlags().BoolVar(&noColor, "no-color", false, "Disable colored output")
-	rootCmd.PersistentFlags().Uint64Var(&filterHeight, "filter-height", 0, "Filter blobs by specific height (0 = no filter)")
+
+	// Add subcommands
+	rootCmd.AddCommand(queryCmd())
+	rootCmd.AddCommand(searchCmd())
 
 	if err := rootCmd.Execute(); err != nil {
 		printError("Error: %v\n", err)
@@ -59,7 +59,44 @@ then decodes each blob as either header or data and displays detailed informatio
 	}
 }
 
-func runDebug(cmd *cobra.Command, args []string) error {
+func queryCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "query <height> <namespace>",
+		Short: "Query and decode blobs at a specific DA height and namespace",
+		Long: `Query and decode blobs at a specific DA height and namespace.
+Decodes each blob as either header or data and displays detailed information.`,
+		Args: cobra.ExactArgs(2),
+		RunE: runQuery,
+	}
+
+	cmd.Flags().Uint64Var(&filterHeight, "filter-height", 0, "Filter blobs by specific height (0 = no filter)")
+
+	return cmd
+}
+
+func searchCmd() *cobra.Command {
+	var searchHeight uint64
+	var searchRange uint64
+
+	cmd := &cobra.Command{
+		Use:   "search <start-da-height> <namespace> --target-height <height>",
+		Short: "Search for blobs containing a specific blockchain height",
+		Long: `Search through multiple DA heights to find blobs containing data from a specific blockchain height.
+Starting from the given DA height, searches through a range of DA heights until it finds matching blobs.`,
+		Args: cobra.ExactArgs(2),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return runSearch(cmd, args, searchHeight, searchRange)
+		},
+	}
+
+	cmd.Flags().Uint64Var(&searchHeight, "target-height", 0, "Target blockchain height to search for (required)")
+	cmd.Flags().Uint64Var(&searchRange, "range", 10, "Number of DA heights to search")
+	cmd.MarkFlagRequired("target-height")
+
+	return cmd
+}
+
+func runQuery(cmd *cobra.Command, args []string) error {
 	height, err := strconv.ParseUint(args[0], 10, 64)
 	if err != nil {
 		return fmt.Errorf("invalid height: %w", err)
@@ -82,6 +119,114 @@ func runDebug(cmd *cobra.Command, args []string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 
+	return queryHeight(ctx, client, height, namespace)
+}
+
+func runSearch(cmd *cobra.Command, args []string, searchHeight, searchRange uint64) error {
+	startHeight, err := strconv.ParseUint(args[0], 10, 64)
+	if err != nil {
+		return fmt.Errorf("invalid start height: %w", err)
+	}
+
+	namespace, err := parseNamespace(args[1])
+	if err != nil {
+		return fmt.Errorf("invalid namespace: %w", err)
+	}
+
+	printBanner()
+	printSearchInfo(startHeight, namespace, searchHeight, searchRange)
+
+	client, err := createDAClient()
+	if err != nil {
+		return err
+	}
+	defer client.Close()
+
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+
+	return searchForHeight(ctx, client, startHeight, namespace, searchHeight, searchRange)
+}
+
+func searchForHeight(ctx context.Context, client *jsonrpc.Client, startHeight uint64, namespace []byte, targetHeight, searchRange uint64) error {
+	fmt.Printf("Searching for height %d in DA heights %d-%d...\n", targetHeight, startHeight, startHeight+searchRange-1)
+	fmt.Println()
+
+	foundBlobs := 0
+	for daHeight := startHeight; daHeight < startHeight+searchRange; daHeight++ {
+		result, err := client.DA.GetIDs(ctx, daHeight, namespace)
+		if err != nil {
+			if err.Error() == "blob: not found" || strings.Contains(err.Error(), "blob: not found") {
+				continue
+			}
+			if strings.Contains(err.Error(), "height") && strings.Contains(err.Error(), "future") {
+				fmt.Printf("Reached future height at DA height %d\n", daHeight)
+				break
+			}
+			continue
+		}
+
+		if result == nil || len(result.IDs) == 0 {
+			continue
+		}
+
+		// Get the actual blob data
+		blobs, err := client.DA.Get(ctx, result.IDs, namespace)
+		if err != nil {
+			continue
+		}
+
+		// Check each blob for the target height
+		for i, blob := range blobs {
+			found := false
+			var blobHeight uint64
+
+			// Try to decode as header first
+			if header := tryDecodeHeader(blob); header != nil {
+				blobHeight = header.Height()
+				if blobHeight == targetHeight {
+					found = true
+				}
+			} else if data := tryDecodeData(blob); data != nil {
+				if data.Metadata != nil {
+					blobHeight = data.Height()
+					if blobHeight == targetHeight {
+						found = true
+					}
+				}
+			}
+
+			if found {
+				foundBlobs++
+				fmt.Printf("FOUND at DA Height %d - BLOB %d\n", daHeight, foundBlobs)
+				fmt.Println(strings.Repeat("-", 80))
+				displayBlobInfo(result.IDs[i], blob)
+
+				// Display the decoded content
+				if header := tryDecodeHeader(blob); header != nil {
+					printTypeHeader("SignedHeader", "")
+					displayHeader(header)
+				} else if data := tryDecodeData(blob); data != nil {
+					printTypeHeader("SignedData", "")
+					displayData(data)
+				}
+
+				fmt.Println()
+			}
+		}
+	}
+
+	fmt.Println(strings.Repeat("=", 50))
+	if foundBlobs == 0 {
+		fmt.Printf("No blobs found containing height %d in DA range %d-%d\n", targetHeight, startHeight, startHeight+searchRange-1)
+	} else {
+		fmt.Printf("Found %d blob(s) containing height %d\n", foundBlobs, targetHeight)
+	}
+
+	return nil
+}
+
+func queryHeight(ctx context.Context, client *jsonrpc.Client, height uint64, namespace []byte) error {
 	result, err := client.DA.GetIDs(ctx, height, namespace)
 	if err != nil {
 		// Handle "blob not found" as a normal case
@@ -186,7 +331,15 @@ func printQueryInfo(height uint64, namespace []byte) {
 	if filterHeight > 0 {
 		fmt.Printf(" | Filter Height: %d", filterHeight)
 	}
-	fmt.Print("\n\n")
+	fmt.Println()
+	fmt.Println()
+}
+
+func printSearchInfo(startHeight uint64, namespace []byte, targetHeight, searchRange uint64) {
+	fmt.Printf("Start DA Height: %d | Namespace: %s | URL: %s", startHeight, formatHash(hex.EncodeToString(namespace)), daURL)
+	fmt.Printf(" | Target Height: %d | Range: %d", targetHeight, searchRange)
+	fmt.Println()
+	fmt.Println()
 }
 
 func printBlobHeader(current, total int) {

@@ -1,58 +1,78 @@
 # DA Debug Tool
 
-A simple debugging tool for querying and decoding Data Availability (DA) layer data in ev-node.
+A professional debugging tool for querying and inspecting Data Availability (DA) layer data in ev-node.
 
 ## Overview
 
-The `da-debug` tool provides a straightforward command-line interface to query a specific DA height and namespace, then automatically decode each blob found as either a SignedHeader, SignedData, or raw data, displaying detailed information about the contents.
+The `da-debug` tool provides a command-line interface to interact with DA layers for debugging purposes. It offers two main commands: `query` for inspecting specific DA heights and `search` for finding blobs containing specific blockchain heights.
 
-## Usage
+## Commands
 
-### Basic Command
+### Query Command
 
-```bash
-da-debug [flags] <height> <namespace>
-```
-
-## Examples
-
-### Basic Usage
+Query and decode blobs at a specific DA height and namespace.
 
 ```bash
-# Query height 100 with string namespace
-da-debug 100 "my-rollup"
-
-# Query height 50 with hex namespace
-da-debug 50 0x000000000000000000000000000000000000000000000000000000746573743031
-
-# Enable verbose logging
-da-debug --verbose 25 "test-namespace"
-
-# Filter for blobs containing data from height 12345
-da-debug --filter-height 12345 100 "my-rollup"
+da-debug query <height> <namespace> [flags]
 ```
 
-### With Custom DA Server
+**Flags:**
+
+- `--filter-height uint`: Filter blobs by specific blockchain height (0 = no filter)
+
+**Examples:**
 
 ```bash
-# Connect to remote DA server
-da-debug --da-url http://celestia-node:26658 1000 "my-app"
+# Basic query
+da-debug query 100 "my-rollup"
 
-# With authentication
-da-debug --da-url https://da.example.com --auth-token "your-token" 500 "rollup-data"
+# Query with height filter (only show blobs containing height 50)
+da-debug query 100 "my-rollup" --filter-height 50
+
+# Query with hex namespace
+da-debug query 500 "0x000000000000000000000000000000000000000000000000000000746573743031"
 ```
 
-### Advanced Options
+### Search Command
+
+Search through multiple DA heights to find blobs containing a specific blockchain height.
 
 ```bash
-# Custom timeout and max blob size
-da-debug --timeout 60s --max-blob-size 2000000 100 "large-data"
-
-# Disable colors for scripting
-da-debug --no-color 100 "my-rollup"
+da-debug search <start-da-height> <namespace> --target-height <height> [flags]
 ```
 
-#### Namespaces
+**Flags:**
+
+- `--target-height uint`: Target blockchain height to search for (required)
+- `--range uint`: Number of DA heights to search (default: 10)
+
+**Examples:**
+
+```bash
+# Search for blockchain height 1000 starting from DA height 500
+da-debug search 500 "my-rollup" --target-height 1000
+
+# Search with custom range of 20 DA heights
+da-debug search 500 "my-rollup" --target-height 1000 --range 20
+
+# Search with hex namespace
+da-debug search 100 "0x000000000000000000000000000000000000000000000000000000746573743031" --target-height 50 --range 5
+```
+
+## Global Flags
+
+All commands support these global flags:
+
+- `--da-url string`: DA layer JSON-RPC URL (default: "http://localhost:7980")
+- `--auth-token string`: Authentication token for DA layer
+- `--timeout duration`: Request timeout (default: 30s)
+- `--verbose`: Enable verbose logging
+- `--max-blob-size uint`: Maximum blob size in bytes (default: 1970176)
+- `--gas-price float`: Gas price for DA operations (default: 0.0)
+- `--gas-multiplier float`: Gas multiplier for DA operations (default: 1.0)
+- `--no-color`: Disable colored output
+
+## Namespace Format
 
 Namespaces can be provided in two formats:
 
