@@ -177,113 +177,92 @@ func runDebug(cmd *cobra.Command, args []string) error {
 }
 
 func printBanner() {
-	banner := `
-╔══════════════════════════════════════╗
-║          DA Debug Tool               ║
-║       Blockchain Data Inspector      ║
-╚══════════════════════════════════════╝
-`
-	fmt.Print(banner)
+	fmt.Println("DA Debug Tool - Blockchain Data Inspector")
+	fmt.Println(strings.Repeat("=", 50))
 }
 
 func printQueryInfo(height uint64, namespace []byte) {
-	fmt.Printf("Query Details:\n")
-	fmt.Printf("   DA Height: %d\n", height)
-	fmt.Printf("   Namespace: %s\n", formatHash(hex.EncodeToString(namespace)))
-	fmt.Printf("   DA URL: %s\n", daURL)
+	fmt.Printf("DA Height: %d | Namespace: %s | URL: %s", height, formatHash(hex.EncodeToString(namespace)), daURL)
 	if filterHeight > 0 {
-		fmt.Printf("   Height Filter: %d\n", filterHeight)
+		fmt.Printf(" | Filter Height: %d", filterHeight)
 	}
+	fmt.Println()
 	fmt.Println()
 }
 
 func printBlobHeader(current, total int) {
 	if total == -1 {
-		// Filtered mode - don't show total
-		fmt.Printf("┌─ Blob %d %s\n", current, strings.Repeat("─", 55-len(fmt.Sprintf("┌─ Blob %d ", current))))
+		fmt.Printf("BLOB %d\n", current)
 	} else {
-		fmt.Printf("┌─ Blob %d/%d %s\n", current, total, strings.Repeat("─", 50-len(fmt.Sprintf("┌─ Blob %d/%d ", current, total))))
+		fmt.Printf("BLOB %d/%d\n", current, total)
 	}
+	fmt.Println(strings.Repeat("-", 80))
 }
 
 func displayBlobInfo(id coreda.ID, blob []byte) {
-	fmt.Printf("│ ID: %s\n", formatHash(hex.EncodeToString(id)))
-	fmt.Printf("│ Size: %s\n", formatSize(len(blob)))
+	fmt.Printf("ID:           %s\n", formatHash(hex.EncodeToString(id)))
+	fmt.Printf("Size:         %s\n", formatSize(len(blob)))
 
 	// Try to parse the ID to show height and commitment
 	if idHeight, commitment, err := coreda.SplitID(id); err == nil {
-		fmt.Printf("│ ID Height: %d\n", idHeight)
-		fmt.Printf("│ Commitment: %s\n", formatHash(hex.EncodeToString(commitment)))
+		fmt.Printf("ID Height:    %d\n", idHeight)
+		fmt.Printf("Commitment:   %s\n", formatHash(hex.EncodeToString(commitment)))
 	}
-	fmt.Printf("│\n")
 }
 
 func printTypeHeader(title, color string) {
-	fmt.Printf("│ %s %s\n", title, strings.Repeat("─", 45))
-	fmt.Printf("│\n")
+	fmt.Printf("Type:         %s\n", title)
 }
 
 func displayHeader(header *types.SignedHeader) {
-	fmt.Printf("│ Core Information:\n")
 	heightPrefix := ""
 	if filterHeight > 0 && header.Height() == filterHeight {
 		heightPrefix = "[MATCH] "
 	}
-	fmt.Printf("│   Height: %s%d\n", heightPrefix, header.Height())
-	fmt.Printf("│   Time: %s\n", header.Time().Format(time.RFC3339))
-	fmt.Printf("│   Chain ID: %s\n", header.ChainID())
-	fmt.Printf("│   Version: Block=%d, App=%d\n", header.Version.Block, header.Version.App)
-	fmt.Printf("│\n")
-
-	fmt.Printf("│ Hashes:\n")
-	fmt.Printf("│   Last Header: %s\n", formatHashField(hex.EncodeToString(header.LastHeaderHash[:])))
-	fmt.Printf("│   Last Commit: %s\n", formatHashField(hex.EncodeToString(header.LastCommitHash[:])))
-	fmt.Printf("│   Data Hash: %s\n", formatHashField(hex.EncodeToString(header.DataHash[:])))
-	fmt.Printf("│   Consensus: %s\n", formatHashField(hex.EncodeToString(header.ConsensusHash[:])))
-	fmt.Printf("│   App Hash: %s\n", formatHashField(hex.EncodeToString(header.AppHash[:])))
-	fmt.Printf("│   Last Results: %s\n", formatHashField(hex.EncodeToString(header.LastResultsHash[:])))
-	fmt.Printf("│   Validator: %s\n", formatHashField(hex.EncodeToString(header.ValidatorHash[:])))
-	fmt.Printf("│\n")
-
-	fmt.Printf("│ Signature Information:\n")
-	fmt.Printf("│   Proposer: %s\n", formatHashField(hex.EncodeToString(header.ProposerAddress)))
-	fmt.Printf("│   Signature: %s\n", formatHashField(hex.EncodeToString(header.Signature)))
+	fmt.Printf("Height:       %s%d\n", heightPrefix, header.Height())
+	fmt.Printf("Time:         %s\n", header.Time().Format(time.RFC3339))
+	fmt.Printf("Chain ID:     %s\n", header.ChainID())
+	fmt.Printf("Version:      Block=%d, App=%d\n", header.Version.Block, header.Version.App)
+	fmt.Printf("Last Header:  %s\n", formatHashField(hex.EncodeToString(header.LastHeaderHash[:])))
+	fmt.Printf("Last Commit:  %s\n", formatHashField(hex.EncodeToString(header.LastCommitHash[:])))
+	fmt.Printf("Data Hash:    %s\n", formatHashField(hex.EncodeToString(header.DataHash[:])))
+	fmt.Printf("Consensus:    %s\n", formatHashField(hex.EncodeToString(header.ConsensusHash[:])))
+	fmt.Printf("App Hash:     %s\n", formatHashField(hex.EncodeToString(header.AppHash[:])))
+	fmt.Printf("Last Results: %s\n", formatHashField(hex.EncodeToString(header.LastResultsHash[:])))
+	fmt.Printf("Validator:    %s\n", formatHashField(hex.EncodeToString(header.ValidatorHash[:])))
+	fmt.Printf("Proposer:     %s\n", formatHashField(hex.EncodeToString(header.ProposerAddress)))
+	fmt.Printf("Signature:    %s\n", formatHashField(hex.EncodeToString(header.Signature)))
 	if len(header.Signer.Address) > 0 {
-		fmt.Printf("│   Signer: %s\n", formatHashField(hex.EncodeToString(header.Signer.Address)))
+		fmt.Printf("Signer:       %s\n", formatHashField(hex.EncodeToString(header.Signer.Address)))
 	}
 }
 
 func displayData(data *types.SignedData) {
-	fmt.Printf("│ Metadata:\n")
 	if data.Metadata != nil {
-		fmt.Printf("│   Chain ID: %s\n", data.ChainID())
+		fmt.Printf("Chain ID:     %s\n", data.ChainID())
 		heightPrefix := ""
 		if filterHeight > 0 && data.Height() == filterHeight {
 			heightPrefix = "[MATCH] "
 		}
-		fmt.Printf("│   Height: %s%d\n", heightPrefix, data.Height())
-		fmt.Printf("│   Time: %s\n", data.Time().Format(time.RFC3339))
-		fmt.Printf("│   Last Data Hash: %s\n", formatHashField(hex.EncodeToString(data.LastDataHash[:])))
+		fmt.Printf("Height:       %s%d\n", heightPrefix, data.Height())
+		fmt.Printf("Time:         %s\n", data.Time().Format(time.RFC3339))
+		fmt.Printf("Last Data:    %s\n", formatHashField(hex.EncodeToString(data.LastDataHash[:])))
 	}
 
 	dataHash := data.DACommitment()
-	fmt.Printf("│   DA Commitment: %s\n", formatHashField(hex.EncodeToString(dataHash[:])))
-	fmt.Printf("│\n")
-
-	fmt.Printf("│ Transaction Summary:\n")
-	fmt.Printf("│   Count: %d transactions\n", len(data.Txs))
-	fmt.Printf("│   Signature: %s\n", formatHashField(hex.EncodeToString(data.Signature)))
+	fmt.Printf("DA Commit:    %s\n", formatHashField(hex.EncodeToString(dataHash[:])))
+	fmt.Printf("TX Count:     %d\n", len(data.Txs))
+	fmt.Printf("Signature:    %s\n", formatHashField(hex.EncodeToString(data.Signature)))
 
 	if len(data.Signer.Address) > 0 {
-		fmt.Printf("│   Signer: %s\n", formatHashField(hex.EncodeToString(data.Signer.Address)))
+		fmt.Printf("Signer:       %s\n", formatHashField(hex.EncodeToString(data.Signer.Address)))
 	}
 
 	// Display transactions
 	if len(data.Txs) > 0 {
-		fmt.Printf("│\n")
-		fmt.Printf("│ Transactions:\n")
+		fmt.Printf("\nTransactions:\n")
 		for i, tx := range data.Txs {
-			fmt.Printf("│   [%d] Size: %s, Hash: %s\n",
+			fmt.Printf("  [%d] Size: %s, Hash: %s\n",
 				i+1,
 				formatSize(len(tx)),
 				formatShortHash(hex.EncodeToString(tx)))
@@ -293,32 +272,30 @@ func displayData(data *types.SignedData) {
 				if len(preview) > 60 {
 					preview = preview[:60] + "..."
 				}
-				fmt.Printf("│       Data: %s\n", preview)
+				fmt.Printf("       Data: %s\n", preview)
 			}
 		}
 	}
 }
 
 func displayRawData(blob []byte) {
-	fmt.Printf("│ Raw Binary Data:\n")
-
 	hexStr := hex.EncodeToString(blob)
 	if len(hexStr) > 120 {
-		fmt.Printf("│   Hex (preview): %s...\n", hexStr[:120])
-		fmt.Printf("│   Full length: %s\n", formatSize(len(blob)))
+		fmt.Printf("Hex:          %s...\n", hexStr[:120])
+		fmt.Printf("Full Length:  %s\n", formatSize(len(blob)))
 	} else {
-		fmt.Printf("│   Hex: %s\n", hexStr)
+		fmt.Printf("Hex:          %s\n", hexStr)
 	}
 
 	if isPrintable(blob) {
 		strData := string(blob)
 		if len(strData) > 200 {
-			fmt.Printf("│   String (preview): %s...\n", strData[:200])
+			fmt.Printf("String:       %s...\n", strData[:200])
 		} else {
-			fmt.Printf("│   String: %s\n", strData)
+			fmt.Printf("String:       %s\n", strData)
 		}
 	} else {
-		fmt.Printf("│   (Binary data - not printable as string)\n")
+		fmt.Printf("String:       (Binary data - not printable)\n")
 	}
 }
 
@@ -347,11 +324,11 @@ func formatSize(bytes int) string {
 }
 
 func printSeparator() {
-	fmt.Printf("├%s\n", strings.Repeat("─", 60))
+	fmt.Println()
 }
 
 func printFooter() {
-	fmt.Printf("└%s\n", strings.Repeat("─", 60))
+	fmt.Println(strings.Repeat("=", 50))
 	fmt.Printf("Analysis complete!\n")
 }
 
