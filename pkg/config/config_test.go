@@ -30,7 +30,6 @@ func TestDefaultConfig(t *testing.T) {
 	assert.NotEmpty(t, def.DA.Namespace)
 	assert.Equal(t, 1*time.Second, def.Node.BlockTime.Duration)
 	assert.Equal(t, 6*time.Second, def.DA.BlockTime.Duration)
-	assert.Equal(t, uint64(0), def.DA.StartHeight)
 	assert.Equal(t, uint64(0), def.DA.MempoolTTL)
 	assert.Equal(t, uint64(0), def.Node.MaxPendingHeadersAndData)
 	assert.Equal(t, false, def.Node.LazyMode)
@@ -71,7 +70,6 @@ func TestAddFlags(t *testing.T) {
 	assertFlagValue(t, flags, FlagDABlockTime, DefaultConfig().DA.BlockTime.Duration)
 	assertFlagValue(t, flags, FlagDAGasPrice, DefaultConfig().DA.GasPrice)
 	assertFlagValue(t, flags, FlagDAGasMultiplier, DefaultConfig().DA.GasMultiplier)
-	assertFlagValue(t, flags, FlagDAStartHeight, DefaultConfig().DA.StartHeight)
 	assertFlagValue(t, flags, FlagDANamespace, DefaultConfig().DA.Namespace)
 	assertFlagValue(t, flags, FlagDASubmitOptions, DefaultConfig().DA.SubmitOptions)
 	assertFlagValue(t, flags, FlagDAMempoolTTL, DefaultConfig().DA.MempoolTTL)
@@ -105,7 +103,7 @@ func TestAddFlags(t *testing.T) {
 	assertFlagValue(t, flags, FlagRPCAddress, DefaultConfig().RPC.Address)
 
 	// Count the number of flags we're explicitly checking
-	expectedFlagCount := 39 // Update this number if you add more flag checks above
+	expectedFlagCount := 38 // Update this number if you add more flag checks above
 
 	// Get the actual number of flags (both regular and persistent)
 	actualFlagCount := 0

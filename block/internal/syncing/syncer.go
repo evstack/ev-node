@@ -190,7 +190,7 @@ func (s *Syncer) initializeState() error {
 	s.SetLastState(state)
 
 	// Set DA height
-	daHeight := max(state.DAHeight, s.config.DA.StartHeight)
+	daHeight := max(state.DAHeight, s.genesis.DAStartHeight)
 	s.SetDAHeight(daHeight)
 
 	s.logger.Info().
@@ -431,7 +431,7 @@ func (s *Syncer) trySyncNextBlock(event *common.DAHeightEvent) error {
 	// Compared to the executor logic where the current block needs to be applied first,
 	// here only the previous block needs to be applied to proceed to the verification.
 	// The header validation must be done before applying the block to avoid executing gibberish
-	if err := s.validateBlock(currentState, header, data); err != nil {
+	if err := s.validateBlock(header, data); err != nil {
 		// remove header as da included (not per se needed, but keep cache clean)
 		s.cache.RemoveHeaderDAIncluded(header.Hash().String())
 		return errors.Join(errInvalidBlock, fmt.Errorf("failed to validate block: %w", err))
@@ -525,8 +525,10 @@ func (s *Syncer) executeTxsWithRetry(ctx context.Context, rawTxs [][]byte, heade
 }
 
 // validateBlock validates a synced block
+// NOTE: if the header was gibberish and somehow passed all validation prior but the data was correct
+// or if the data was gibberish and somehow passed all validation prior but the header was correct
+// we are still losing both in the pending event. This should never happen.
 func (s *Syncer) validateBlock(
-	lastState types.State,
 	header *types.SignedHeader,
 	data *types.Data,
 ) error {
@@ -535,6 +537,11 @@ func (s *Syncer) validateBlock(
 
 	// Validate header with data
 	if err := header.ValidateBasicWithData(data); err != nil {
+		return fmt.Errorf("invalid header: %w", err)
+	}
+
+	// Validate header against data
+	if err := types.Validate(header, data); err != nil {
 		return fmt.Errorf("header-data validation failed: %w", err)
 	}
 
