@@ -472,7 +472,7 @@ func loadFromViper(v *viper.Viper, home string) (Config, error) {
 			mapstructure.StringToTimeDurationHookFunc(),
 			mapstructure.StringToSliceHookFunc(","),
 			func(f reflect.Type, t reflect.Type, data any) (any, error) {
-				if t == reflect.TypeOf(DurationWrapper{}) && f.Kind() == reflect.String {
+				if t == reflect.TypeFor[DurationWrapper]() && f.Kind() == reflect.String {
 					if str, ok := data.(string); ok {
 						duration, err := time.ParseDuration(str)
 						if err != nil {
