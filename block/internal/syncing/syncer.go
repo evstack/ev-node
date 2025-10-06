@@ -232,15 +232,6 @@ func (s *Syncer) syncLoop() {
 		}
 	}
 
-	initialHeight, err := s.store.Height(s.ctx)
-	if err != nil {
-		s.logger.Error().Err(err).Msg("failed to get initial height")
-		return
-	}
-
-	lastHeaderHeight := &initialHeight
-	lastDataHeight := &initialHeight
-
 	// Backoff control when DA replies with errors
 	nextDARequestAt := &time.Time{}
 
@@ -262,7 +253,7 @@ func (s *Syncer) syncLoop() {
 		fetchedP2pEvent := false
 		go func() {
 			defer wg.Done()
-			fetchedP2pEvent = s.tryFetchFromP2P(lastHeaderHeight, lastDataHeight)
+			fetchedP2pEvent = s.tryFetchFromP2P()
 		}()
 
 		wg.Add(1)
@@ -338,13 +329,19 @@ func (s *Syncer) tryFetchFromDA(nextDARequestAt *time.Time) bool {
 // tryFetchFromP2P attempts to fetch events from P2P stores.
 // It processes both header and data ranges when the block ticker fires.
 // Returns true if any events were successfully processed.
-func (s *Syncer) tryFetchFromP2P(lastHeaderHeight, lastDataHeight *uint64) bool {
+func (s *Syncer) tryFetchFromP2P() bool {
 	eventsProcessed := false
+
+	currentHeight, err := s.store.Height(s.ctx)
+	if err != nil {
+		s.logger.Error().Err(err).Msg("failed to get current height")
+		return eventsProcessed
+	}
 
 	// Process headers
 	newHeaderHeight := s.headerBroadcaster.Store().Height()
-	if newHeaderHeight > *lastHeaderHeight {
-		events := s.p2pHandler.ProcessHeaderRange(s.ctx, *lastHeaderHeight+1, newHeaderHeight)
+	if newHeaderHeight > currentHeight {
+		events := s.p2pHandler.ProcessHeaderRange(s.ctx, currentHeight+1, newHeaderHeight)
 		for _, event := range events {
 			select {
 			case s.heightInCh <- event:
@@ -352,18 +349,15 @@ func (s *Syncer) tryFetchFromP2P(lastHeaderHeight, lastDataHeight *uint64) bool 
 				s.cache.SetPendingEvent(event.Header.Height(), &event)
 			}
 		}
-		*lastHeaderHeight = newHeaderHeight
 		if len(events) > 0 {
 			eventsProcessed = true
 		}
 	}
 
-	// Process data
+	// Process data (if not already processed by headers)
 	newDataHeight := s.dataBroadcaster.Store().Height()
-	if newDataHeight == newHeaderHeight {
-		*lastDataHeight = newDataHeight
-	} else if newDataHeight > *lastDataHeight {
-		events := s.p2pHandler.ProcessDataRange(s.ctx, *lastDataHeight+1, newDataHeight)
+	if newDataHeight != newHeaderHeight && newDataHeight > currentHeight {
+		events := s.p2pHandler.ProcessDataRange(s.ctx, currentHeight+1, newDataHeight)
 		for _, event := range events {
 			select {
 			case s.heightInCh <- event:
@@ -371,7 +365,6 @@ func (s *Syncer) tryFetchFromP2P(lastHeaderHeight, lastDataHeight *uint64) bool 
 				s.cache.SetPendingEvent(event.Header.Height(), &event)
 			}
 		}
-		*lastDataHeight = newDataHeight
 		if len(events) > 0 {
 			eventsProcessed = true
 		}
