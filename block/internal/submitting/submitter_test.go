@@ -5,7 +5,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
-	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -210,7 +210,7 @@ func TestSubmitter_initializeDAIncludedHeight(t *testing.T) {
 	binary.LittleEndian.PutUint64(bz, 7)
 	require.NoError(t, st.SetMetadata(ctx, store.DAIncludedHeightKey, bz))
 
-	s := &Submitter{store: st, daStateMtx: &sync.RWMutex{}, logger: zerolog.Nop()}
+	s := &Submitter{store: st, daIncludedHeight: &atomic.Uint64{}, logger: zerolog.Nop()}
 	require.NoError(t, s.initializeDAIncludedHeight(ctx))
 	assert.Equal(t, uint64(7), s.GetDAIncludedHeight())
 }
@@ -324,16 +324,16 @@ func TestSubmitter_daSubmissionLoop(t *testing.T) {
 
 	// Provide a minimal signer implementation
 	s := &Submitter{
-		store:       st,
-		exec:        exec,
-		cache:       cm,
-		metrics:     metrics,
-		config:      cfg,
-		genesis:     genesis.Genesis{},
-		daSubmitter: fakeDA,
-		signer:      &fakeSigner{},
-		daStateMtx:  &sync.RWMutex{},
-		logger:      zerolog.Nop(),
+		store:            st,
+		exec:             exec,
+		cache:            cm,
+		metrics:          metrics,
+		config:           cfg,
+		genesis:          genesis.Genesis{},
+		daSubmitter:      fakeDA,
+		signer:           &fakeSigner{},
+		daIncludedHeight: &atomic.Uint64{},
+		logger:           zerolog.Nop(),
 	}
 
 	// Make there be pending headers and data by setting store height > last submitted

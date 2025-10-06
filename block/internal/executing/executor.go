@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/ipfs/go-datastore"
@@ -50,8 +51,7 @@ type Executor struct {
 	options common.BlockOptions
 
 	// State management
-	lastState    types.State
-	lastStateMtx *sync.RWMutex
+	lastState *atomic.Pointer[types.State]
 
 	// Channels for coordination
 	txNotifyCh chan struct{}
@@ -112,7 +112,7 @@ func NewExecutor(
 		headerBroadcaster: headerBroadcaster,
 		dataBroadcaster:   dataBroadcaster,
 		options:           options,
-		lastStateMtx:      &sync.RWMutex{},
+		lastState:         &atomic.Pointer[types.State]{},
 		txNotifyCh:        make(chan struct{}, 1),
 		errorCh:           errorCh,
 		logger:            logger.With().Str("component", "executor").Logger(),
@@ -152,16 +152,17 @@ func (e *Executor) Stop() error {
 
 // GetLastState returns the current state
 func (e *Executor) GetLastState() types.State {
-	e.lastStateMtx.RLock()
-	defer e.lastStateMtx.RUnlock()
-	return e.lastState
+	state := e.lastState.Load()
+	if state == nil {
+		// Return zero value if not initialized
+		return types.State{}
+	}
+	return *state
 }
 
 // SetLastState updates the current state
 func (e *Executor) SetLastState(state types.State) {
-	e.lastStateMtx.Lock()
-	defer e.lastStateMtx.Unlock()
-	e.lastState = state
+	e.lastState.Store(&state)
 }
 
 // NotifyNewTransactions signals that new transactions are available
