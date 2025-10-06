@@ -210,6 +210,7 @@ func (r *DARetriever) processBlobs(ctx context.Context, blobs [][]byte, daHeight
 			Header:   header,
 			Data:     data,
 			DaHeight: daHeight,
+			Source:   common.SourceDA,
 		}
 
 		events = append(events, event)

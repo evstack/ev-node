@@ -376,6 +376,7 @@ func (s *Syncer) processHeightEvent(event *common.DAHeightEvent) {
 		Uint64("height", height).
 		Uint64("da_height", event.DaHeight).
 		Str("hash", headerHash).
+		Str("source", string(event.Source)).
 		Msg("processing height event")
 
 	currentHeight, err := s.store.Height(s.ctx)
@@ -408,15 +409,23 @@ func (s *Syncer) processHeightEvent(event *common.DAHeightEvent) {
 		return
 	}
 
-	// save header and data to P2P stores
-	g, ctx := errgroup.WithContext(s.ctx)
-	g.Go(func() error { return s.headerStore.WriteToStoreAndBroadcast(ctx, event.Header) })
-	// we only need to save data if it's not empty
-	if !bytes.Equal(event.Header.Hash(), common.DataHashForEmptyTxs) {
-		g.Go(func() error { return s.dataStore.WriteToStoreAndBroadcast(ctx, event.Data) })
-	}
-	if err := g.Wait(); err != nil {
-		s.logger.Error().Err(err).Msg("failed to append event header and/or data to p2p store")
+	// Only save to P2P stores if the event came from DA
+	// P2P events are already in the P2P stores, so we don't need to write them back
+	if event.Source == common.SourceDA {
+		g, ctx := errgroup.WithContext(s.ctx)
+		g.Go(func() error { return s.headerStore.WriteToStoreAndBroadcast(ctx, event.Header) })
+		// we only need to save data if it's not empty
+		if !bytes.Equal(event.Header.Hash(), common.DataHashForEmptyTxs) {
+			g.Go(func() error { return s.dataStore.WriteToStoreAndBroadcast(ctx, event.Data) })
+		}
+		if err := g.Wait(); err != nil {
+			s.logger.Error().Err(err).Msg("failed to append event header and/or data to p2p store")
+		}
+	} else if event.Source == common.SourceP2P {
+		s.logger.Debug().
+			Uint64("height", event.Header.Height()).
+			Str("source", string(event.Source)).
+			Msg("skipping P2P store write for P2P-sourced event")
 	}
 }
 
@@ -612,6 +621,7 @@ func (s *Syncer) processPendingEvents() {
 			Header:   event.Header,
 			Data:     event.Data,
 			DaHeight: event.DaHeight,
+			Source:   event.Source,
 		}
 
 		select {

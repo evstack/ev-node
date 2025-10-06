@@ -110,6 +110,7 @@ func (h *P2PHandler) ProcessHeaderRange(ctx context.Context, startHeight, endHei
 			Header:   header,
 			Data:     data,
 			DaHeight: 0, // P2P events don't have DA height context
+			Source:   common.SourceP2P,
 		}
 
 		events = append(events, event)
@@ -180,6 +181,7 @@ func (h *P2PHandler) ProcessDataRange(ctx context.Context, startHeight, endHeigh
 			Header:   header,
 			Data:     data,
 			DaHeight: 0, // P2P events don't have DA height context
+			Source:   common.SourceP2P,
 		}
 
 		events = append(events, event)
