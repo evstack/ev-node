@@ -51,7 +51,7 @@ var RunCmd = &cobra.Command{
 
 		logger.Info().Str("headerNamespace", headerNamespace.HexString()).Str("dataNamespace", dataNamespace.HexString()).Msg("namespaces")
 
-		daJrpc, err := jsonrpc.NewClient(ctx, logger, nodeConfig.DA.Address, nodeConfig.DA.AuthToken, nodeConfig.DA.GasPrice, nodeConfig.DA.GasMultiplier)
+		daJrpc, err := jsonrpc.NewClient(ctx, logger, nodeConfig.DA.Address, nodeConfig.DA.AuthToken, nodeConfig.DA.GasPrice, nodeConfig.DA.GasMultiplier, rollcmd.DefaultMaxBlobSize)
 		if err != nil {
 			return err
 		}
@@ -86,6 +86,10 @@ var RunCmd = &cobra.Command{
 		genesis, err := genesispkg.LoadGenesis(genesisPath)
 		if err != nil {
 			return fmt.Errorf("failed to load genesis: %w", err)
+		}
+
+		if genesis.DAStartHeight == 0 && !nodeConfig.Node.Aggregator {
+			logger.Warn().Msg("da_start_height is not set in genesis.json, ask your chain developer")
 		}
 
 		sequencer, err := single.NewSequencer(

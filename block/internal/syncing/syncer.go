@@ -30,9 +30,6 @@ type p2pHandler interface {
 	ProcessDataRange(ctx context.Context, fromHeight, toHeight uint64) []common.DAHeightEvent
 }
 
-// maxRetriesBeforeHalt is the maximum number of retries against the execution client before halting the syncer.
-const maxRetriesBeforeHalt = 3
-
 // Syncer handles block synchronization from DA and P2P sources.
 type Syncer struct {
 	// Core components
@@ -72,10 +69,9 @@ type Syncer struct {
 	logger zerolog.Logger
 
 	// Lifecycle
-	ctx               context.Context
-	cancel            context.CancelFunc
-	wg                sync.WaitGroup
-	retriesBeforeHalt map[uint64]uint64
+	ctx    context.Context
+	cancel context.CancelFunc
+	wg     sync.WaitGroup
 }
 
 // NewSyncer creates a new block syncer
@@ -94,21 +90,20 @@ func NewSyncer(
 	errorCh chan<- error,
 ) *Syncer {
 	return &Syncer{
-		store:             store,
-		exec:              exec,
-		da:                da,
-		cache:             cache,
-		metrics:           metrics,
-		config:            config,
-		genesis:           genesis,
-		options:           options,
-		headerStore:       headerStore,
-		dataStore:         dataStore,
-		lastStateMtx:      &sync.RWMutex{},
-		heightInCh:        make(chan common.DAHeightEvent, 10_000),
-		errorCh:           errorCh,
-		logger:            logger.With().Str("component", "syncer").Logger(),
-		retriesBeforeHalt: make(map[uint64]uint64),
+		store:        store,
+		exec:         exec,
+		da:           da,
+		cache:        cache,
+		metrics:      metrics,
+		config:       config,
+		genesis:      genesis,
+		options:      options,
+		headerStore:  headerStore,
+		dataStore:    dataStore,
+		lastStateMtx: &sync.RWMutex{},
+		heightInCh:   make(chan common.DAHeightEvent, 10_000),
+		errorCh:      errorCh,
+		logger:       logger.With().Str("component", "syncer").Logger(),
 	}
 }
 
@@ -195,7 +190,7 @@ func (s *Syncer) initializeState() error {
 	s.SetLastState(state)
 
 	// Set DA height
-	daHeight := max(state.DAHeight, s.config.DA.StartHeight)
+	daHeight := max(state.DAHeight, s.genesis.DAStartHeight)
 	s.SetDAHeight(daHeight)
 
 	s.logger.Info().
@@ -436,7 +431,7 @@ func (s *Syncer) trySyncNextBlock(event *common.DAHeightEvent) error {
 	// Compared to the executor logic where the current block needs to be applied first,
 	// here only the previous block needs to be applied to proceed to the verification.
 	// The header validation must be done before applying the block to avoid executing gibberish
-	if err := s.validateBlock(currentState, header, data); err != nil {
+	if err := s.validateBlock(header, data); err != nil {
 		// remove header as da included (not per se needed, but keep cache clean)
 		s.cache.RemoveHeaderDAIncluded(header.Hash().String())
 		return errors.Join(errInvalidBlock, fmt.Errorf("failed to validate block: %w", err))
@@ -485,18 +480,11 @@ func (s *Syncer) applyBlock(header types.Header, data *types.Data, currentState 
 
 	// Execute transactions
 	ctx := context.WithValue(s.ctx, types.HeaderContextKey, header)
-	newAppHash, _, err := s.exec.ExecuteTxs(ctx, rawTxs, header.Height(),
-		header.Time(), currentState.AppHash)
+	newAppHash, err := s.executeTxsWithRetry(ctx, rawTxs, header, currentState)
 	if err != nil {
-		s.retriesBeforeHalt[header.Height()]++
-		if s.retriesBeforeHalt[header.Height()] > maxRetriesBeforeHalt {
-			s.sendCriticalError(fmt.Errorf("failed to execute transactions: %w", err))
-			return types.State{}, fmt.Errorf("failed to execute transactions: %w", err)
-		}
-
-		return types.State{}, fmt.Errorf("failed to execute transactions (retry %d / %d): %w", s.retriesBeforeHalt[header.Height()], maxRetriesBeforeHalt, err)
+		s.sendCriticalError(fmt.Errorf("failed to execute transactions: %w", err))
+		return types.State{}, fmt.Errorf("failed to execute transactions: %w", err)
 	}
-	delete(s.retriesBeforeHalt, header.Height())
 
 	// Create new state
 	newState, err := currentState.NextState(header, newAppHash)
@@ -507,9 +495,40 @@ func (s *Syncer) applyBlock(header types.Header, data *types.Data, currentState 
 	return newState, nil
 }
 
+// executeTxsWithRetry executes transactions with retry logic
+func (s *Syncer) executeTxsWithRetry(ctx context.Context, rawTxs [][]byte, header types.Header, currentState types.State) ([]byte, error) {
+	for attempt := 1; attempt <= common.MaxRetriesBeforeHalt; attempt++ {
+		newAppHash, _, err := s.exec.ExecuteTxs(ctx, rawTxs, header.Height(), header.Time(), currentState.AppHash)
+		if err != nil {
+			if attempt == common.MaxRetriesBeforeHalt {
+				return nil, fmt.Errorf("failed to execute transactions: %w", err)
+			}
+
+			s.logger.Error().Err(err).
+				Int("attempt", attempt).
+				Int("max_attempts", common.MaxRetriesBeforeHalt).
+				Uint64("height", header.Height()).
+				Msg("failed to execute transactions, retrying")
+
+			select {
+			case <-time.After(common.MaxRetriesTimeout):
+				continue
+			case <-s.ctx.Done():
+				return nil, fmt.Errorf("context cancelled during retry: %w", s.ctx.Err())
+			}
+		}
+
+		return newAppHash, nil
+	}
+
+	return nil, nil
+}
+
 // validateBlock validates a synced block
+// NOTE: if the header was gibberish and somehow passed all validation prior but the data was correct
+// or if the data was gibberish and somehow passed all validation prior but the header was correct
+// we are still losing both in the pending event. This should never happen.
 func (s *Syncer) validateBlock(
-	lastState types.State,
 	header *types.SignedHeader,
 	data *types.Data,
 ) error {
@@ -518,6 +537,11 @@ func (s *Syncer) validateBlock(
 
 	// Validate header with data
 	if err := header.ValidateBasicWithData(data); err != nil {
+		return fmt.Errorf("invalid header: %w", err)
+	}
+
+	// Validate header against data
+	if err := types.Validate(header, data); err != nil {
 		return fmt.Errorf("header-data validation failed: %w", err)
 	}
 

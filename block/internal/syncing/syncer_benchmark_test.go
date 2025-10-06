@@ -87,8 +87,7 @@ func newBenchFixture(b *testing.B, totalHeights uint64, shuffledTx bool, daDelay
 	cfg := config.DefaultConfig()
 	// keep P2P ticker dormant unless we manually inject P2P events
 	cfg.Node.BlockTime = config.DurationWrapper{Duration: 1}
-	cfg.DA.StartHeight = daHeightOffset
-	gen := genesis.Genesis{ChainID: "bchain", InitialHeight: 1, StartTime: time.Now().Add(-time.Second), ProposerAddress: addr}
+	gen := genesis.Genesis{ChainID: "bchain", InitialHeight: 1, StartTime: time.Now().Add(-time.Second), ProposerAddress: addr, DAStartHeight: daHeightOffset}
 
 	mockExec := testmocks.NewMockExecutor(b)
 	// if execDelay > 0, sleep on ExecuteTxs to simulate slow consumer

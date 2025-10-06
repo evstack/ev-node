@@ -218,7 +218,7 @@ func (s *Submitter) processDAInclusionLoop() {
 				}
 
 				// Set final height in executor
-				if err := s.exec.SetFinal(s.ctx, nextHeight); err != nil {
+				if err := s.setFinalWithRetry(nextHeight); err != nil {
 					s.sendCriticalError(fmt.Errorf("failed to set final height: %w", err))
 					s.logger.Error().Err(err).Uint64("height", nextHeight).Msg("failed to set final height")
 					break
@@ -237,6 +237,34 @@ func (s *Submitter) processDAInclusionLoop() {
 			}
 		}
 	}
+}
+
+// setFinalWithRetry sets the final height in executor with retry logic
+func (s *Submitter) setFinalWithRetry(nextHeight uint64) error {
+	for attempt := 1; attempt <= common.MaxRetriesBeforeHalt; attempt++ {
+		if err := s.exec.SetFinal(s.ctx, nextHeight); err != nil {
+			if attempt == common.MaxRetriesBeforeHalt {
+				return fmt.Errorf("failed to set final height after %d attempts: %w", attempt, err)
+			}
+
+			s.logger.Error().Err(err).
+				Int("attempt", attempt).
+				Int("max_attempts", common.MaxRetriesBeforeHalt).
+				Uint64("da_height", nextHeight).
+				Msg("failed to set final height, retrying")
+
+			select {
+			case <-time.After(common.MaxRetriesTimeout):
+				continue
+			case <-s.ctx.Done():
+				return fmt.Errorf("context cancelled during retry: %w", s.ctx.Err())
+			}
+		}
+
+		return nil
+	}
+
+	return nil
 }
 
 // GetDAIncludedHeight returns the DA included height
