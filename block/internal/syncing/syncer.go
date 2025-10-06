@@ -411,7 +411,10 @@ func (s *Syncer) processHeightEvent(event *common.DAHeightEvent) {
 	// save header and data to P2P stores
 	g, ctx := errgroup.WithContext(s.ctx)
 	g.Go(func() error { return s.headerStore.WriteToStoreAndBroadcast(ctx, event.Header) })
-	g.Go(func() error { return s.dataStore.WriteToStoreAndBroadcast(ctx, event.Data) })
+	// we only need to save data if it's not empty
+	if !bytes.Equal(event.Header.Hash(), common.DataHashForEmptyTxs) {
+		g.Go(func() error { return s.dataStore.WriteToStoreAndBroadcast(ctx, event.Data) })
+	}
 	if err := g.Wait(); err != nil {
 		s.logger.Error().Err(err).Msg("failed to append event header and/or data to p2p store")
 	}
