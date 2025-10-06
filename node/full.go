@@ -10,15 +10,7 @@ import (
 	"net/http/pprof"
 	"time"
 
-	"github.com/evstack/ev-node/pkg/p2p/key"
-	ds "github.com/ipfs/go-datastore"
-	ktds "github.com/ipfs/go-datastore/keytransform"
-	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/client_golang/prometheus/promhttp"
-	"github.com/rs/zerolog"
-
 	"github.com/evstack/ev-node/block"
-
 	coreda "github.com/evstack/ev-node/core/da"
 	coreexecutor "github.com/evstack/ev-node/core/execution"
 	coresequencer "github.com/evstack/ev-node/core/sequencer"
@@ -26,9 +18,16 @@ import (
 	genesispkg "github.com/evstack/ev-node/pkg/genesis"
 	"github.com/evstack/ev-node/pkg/lease"
 	"github.com/evstack/ev-node/pkg/p2p"
+	"github.com/evstack/ev-node/pkg/p2p/key"
 	"github.com/evstack/ev-node/pkg/service"
 	"github.com/evstack/ev-node/pkg/signer"
 	"github.com/evstack/ev-node/pkg/store"
+	ds "github.com/ipfs/go-datastore"
+	ktds "github.com/ipfs/go-datastore/keytransform"
+	"github.com/libp2p/go-libp2p/core/crypto"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
+	"github.com/rs/zerolog"
 )
 
 // EvPrefix prefixes used in KV store to separate rollkit data from execution environment data (if the same data base is reused)
@@ -58,8 +57,8 @@ type FullNode struct {
 	Store                   store.Store
 	blockComponents         *block.Components
 	leaderElection          lease.LeaderElector
-	SyncComponentFunc       func(c context.Context) error
-	AggregatorComponentFunc func(c context.Context) error
+	syncComponentFunc       func(c context.Context) error
+	aggregatorComponentFunc func(c context.Context) error
 
 	prometheusSrv *http.Server
 	pprofSrv      *http.Server
@@ -78,7 +77,7 @@ func newFullNode(
 	metricsProvider MetricsProvider,
 	logger zerolog.Logger,
 	nodeOpts NodeOptions,
-) (fn *FullNode, err error) {
+) (*FullNode, error) {
 	logger.Debug().Bytes("address", genesis.ProposerAddress).Msg("Proposer address")
 
 	blockMetrics, _ := metricsProvider(genesis.ChainID)
@@ -87,85 +86,89 @@ func newFullNode(
 	rktStore := store.New(mainKV)
 
 	// Initialize leader election if enabled
-	var leaderElection lease.LeaderElector
-	if nodeConfig.LeaderElection.Enabled {
-		nodeID, err := p2p.ClientID(nodeKey.PubKey)
-		if err != nil {
-			return nil, fmt.Errorf("error getting node id: %w", err)
-		}
-		leaseName := nodeConfig.LeaderElection.LeaseName
-		if leaseName == "" {
-			leaseName = fmt.Sprintf("leader-%s", genesis.ChainID)
-		}
-
-		leaseTerm := 30 * time.Second // default
-		if nodeConfig.LeaderElection.LeaseTerm.Duration > 0 {
-			leaseTerm = nodeConfig.LeaderElection.LeaseTerm.Duration
-		}
-
-		// Create lease backend based on configuration
-		var leaseImpl lease.Lease
-		switch nodeConfig.LeaderElection.Backend {
-		case "memory", "":
-			leaseImpl = lease.NewMemoryLease(leaseName)
-		case "http":
-			if nodeConfig.LeaderElection.BackendAddr == "" {
-				return nil, fmt.Errorf("http lease backend requires backend_addr")
-			}
-			leaseImpl = lease.NewHTTPLease(nodeConfig.LeaderElection.BackendAddr, leaseName)
-		default:
-			return nil, fmt.Errorf("unsupported lease backend: %s", nodeConfig.LeaderElection.Backend)
-		}
-		logger.Info().Str("backend", nodeConfig.LeaderElection.Backend).Msg("using leader election backend")
-		leaderElection = lease.NewLeaderElection(
-			leaseImpl,
-			nodeID,
-			leaseName,
-			leaseTerm,
-			logger.With().Str("component", "leader-election").Logger(),
-		)
-	} else {
-		leaderElection = &lease.AlwaysLeaderElection{}
+	leaderElection, err := setupLeaderElector(nodeConfig, nodeKey.PubKey, genesis, logger)
+	if err != nil {
+		return nil, err
 	}
 
 	node := &FullNode{
-		genesis:    genesis,
-		nodeConfig: nodeConfig,
-		//p2pClient:  nodeKey,
-		da:    da,
-		Store: rktStore,
-		//hSyncService:   headerSyncService,
-		//dSyncService:   dataSyncService,
+		genesis:        genesis,
+		nodeConfig:     nodeConfig,
+		da:             da,
+		Store:          rktStore,
 		leaderElection: leaderElection,
-		// block components will be constructed dynamically based on leadership state
+		aggregatorComponentFunc: func(ctx context.Context) error {
+			logger.Info().Msg("Starting aggregator-MODE")
+			nodeConfig.Node.Aggregator = true
+			nodeConfig.P2P.Peers = ""
+			m, err := newAggregatorMode(nodeConfig, nodeKey, signer, genesis, database, exec, sequencer, da, logger, rktStore, mainKV, blockMetrics, nodeOpts)
+			if err != nil {
+				return err
+			}
+			return m.Run(ctx)
+		},
+		syncComponentFunc: func(ctx context.Context) error {
+			logger.Info().Msg("Starting sync-MODE")
+			nodeConfig.Node.Aggregator = false
+			m, err := newSyncMode(nodeConfig, nodeKey, genesis, database, exec, da, logger, rktStore, mainKV, blockMetrics, nodeOpts)
+			if err != nil {
+				return err
+			}
+			return m.Run(ctx)
+		},
 	}
 
 	node.BaseService = *service.NewBaseService(logger, "Node", node)
 
-	node.AggregatorComponentFunc = func(ctx context.Context) error {
-		logger.Info().Msg("Starting aggregator-MODE")
-
-		nodeConfig.Node.Aggregator = true
-		nodeConfig.P2P.Peers = ""
-
-		m, err := newAggregatorMode(nodeConfig, nodeKey, signer, genesis, database, exec, sequencer, da, logger, rktStore, mainKV, blockMetrics, nodeOpts)
-		if err != nil {
-			return err
-		}
-		return m.Run(ctx)
-	}
-
-	node.SyncComponentFunc = func(ctx context.Context) error {
-		logger.Info().Msg("Starting sync-MODE")
-		nodeConfig.Node.Aggregator = false
-		m, err := newSyncMode(nodeConfig, nodeKey, genesis, database, exec, da, logger, rktStore, mainKV, blockMetrics, nodeOpts)
-		if err != nil {
-			return err
-		}
-		return m.Run(ctx)
-	}
-
 	return node, nil
+}
+
+func setupLeaderElector(
+	nodeConfig config.Config,
+	nodeKeyPub crypto.PubKey,
+	genesis genesispkg.Genesis,
+	logger zerolog.Logger,
+) (lease.LeaderElector, error) {
+	var leaderElection lease.LeaderElector
+	if !nodeConfig.LeaderElection.Enabled {
+		return &lease.AlwaysLeader{}, nil
+	}
+	nodeID, err := p2p.ClientID(nodeKeyPub)
+	if err != nil {
+		return nil, fmt.Errorf("error getting node id: %w", err)
+	}
+	leaseName := nodeConfig.LeaderElection.LeaseName
+	if leaseName == "" {
+		leaseName = fmt.Sprintf("leader-%s", genesis.ChainID)
+	}
+
+	leaseTerm := 30 * time.Second // default
+	if nodeConfig.LeaderElection.LeaseTerm.Duration > 0 {
+		leaseTerm = nodeConfig.LeaderElection.LeaseTerm.Duration
+	}
+
+	// Create lease backend based on configuration
+	var leaseImpl lease.Lease
+	switch nodeConfig.LeaderElection.Backend {
+	case "memory", "":
+		leaseImpl = lease.NewMemoryLease(leaseName)
+	case "http":
+		if nodeConfig.LeaderElection.BackendAddr == "" {
+			return nil, fmt.Errorf("http lease backend requires backend_addr")
+		}
+		leaseImpl = lease.NewHTTPLease(nodeConfig.LeaderElection.BackendAddr, leaseName)
+	default:
+		return nil, fmt.Errorf("unsupported lease backend: %s", nodeConfig.LeaderElection.Backend)
+	}
+	logger.Info().Str("backend", nodeConfig.LeaderElection.Backend).Msg("using leader election backend")
+	leaderElection = lease.NewLeaderElection(
+		leaseImpl,
+		nodeID,
+		leaseName,
+		leaseTerm,
+		logger.With().Str("component", "leader-election").Logger(),
+	)
+	return leaderElection, nil
 }
 
 // initGenesisChunks creates a chunked format of the genesis document to make it easier to
@@ -278,7 +281,7 @@ func (n *FullNode) Run(parentCtx context.Context) error {
 		return fmt.Errorf("error while starting leader election: %w", err)
 	}
 
-	if err := n.leaderElection.RunWithElection(ctx, n.AggregatorComponentFunc, n.SyncComponentFunc); err != nil && !errors.Is(err, context.Canceled) {
+	if err := n.leaderElection.RunWithElection(ctx, n.aggregatorComponentFunc, n.syncComponentFunc); err != nil && !errors.Is(err, context.Canceled) {
 		n.Logger.Warn().Err(err).Msg("leadership change detected, restarting components")
 	}
 

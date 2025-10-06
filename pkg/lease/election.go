@@ -241,19 +241,19 @@ func (le *LeaderElection) RunWithElection(ctx context.Context, leaderFunc, follo
 	}
 }
 
-var _ LeaderElector = (*AlwaysLeaderElection)(nil)
+var _ LeaderElector = (*AlwaysLeader)(nil)
 
-type AlwaysLeaderElection struct {
+type AlwaysLeader struct {
 }
 
-func (n AlwaysLeaderElection) Start(ctx context.Context) error {
+func (n AlwaysLeader) Start(ctx context.Context) error {
 	return nil
 }
 
-func (n AlwaysLeaderElection) Stop() error {
+func (n AlwaysLeader) Stop() error {
 	return nil
 }
 
-func (n AlwaysLeaderElection) RunWithElection(ctx context.Context, leaderFunc, _ func(leaderCtx context.Context) error) error {
+func (n AlwaysLeader) RunWithElection(ctx context.Context, leaderFunc, _ func(leaderCtx context.Context) error) error {
 	return leaderFunc(ctx)
 }
