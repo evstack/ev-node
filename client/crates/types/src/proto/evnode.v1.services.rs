@@ -2558,7 +2558,7 @@ pub mod config_service_client {
                 .insert(GrpcMethod::new("evnode.v1.ConfigService", "GetNamespace"));
             self.inner.unary(req, path, codec).await
         }
-        /// GetSequencerInfo returns information about the sequencer
+        /// GetSignerInfo returns information about the signer
         pub async fn get_signer_info(
             &mut self,
             request: impl tonic::IntoRequest<()>,
@@ -2601,7 +2601,7 @@ pub mod config_service_server {
             tonic::Response<super::GetNamespaceResponse>,
             tonic::Status,
         >;
-        /// GetSequencerInfo returns information about the sequencer
+        /// GetSignerInfo returns information about the signer
         async fn get_signer_info(
             &self,
             request: tonic::Request<()>,
