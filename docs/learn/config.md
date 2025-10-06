@@ -25,7 +25,7 @@ This document provides a comprehensive reference for all configuration options a
   - [DA Gas Multiplier](#da-gas-multiplier)
   - [DA Submit Options](#da-submit-options)
   - [DA Namespace](#da-namespace)
-  - [DA Header Namespace](#da-header-namespace)
+  - [DA Header Namespace](#da-namespace)
   - [DA Data Namespace](#da-data-namespace)
   - [DA Block Time](#da-block-time)
   - [DA Start Height](#da-start-height)
@@ -453,24 +453,6 @@ _Example:_ `--rollkit.da.block_time 12s`
 _Default:_ `"6s"`
 _Constant:_ `FlagDABlockTime`
 
-### DA Start Height
-
-**Description:**
-The block height on the DA layer from which Evolve should begin syncing. This is useful when deploying a new chain on an existing DA chain, allowing it to ignore historical data before its inception.
-
-**YAML:**
-
-```yaml
-da:
-  start_height: 100000
-```
-
-**Command-line Flag:**
-`--rollkit.da.start_height <uint64>`
-_Example:_ `--rollkit.da.start_height 500000`
-_Default:_ `0` (sync from the beginning)
-_Constant:_ `FlagDAStartHeight`
-
 ### DA Mempool TTL
 
 **Description:**
@@ -623,7 +605,7 @@ _Example:_ `--rollkit.rpc.enable_da_visualization`
 _Default:_ `false`
 _Constant:_ `FlagRPCEnableDAVisualization`
 
-See the [DA Visualizer Guide](../guides/da/da-visualizer.md) for detailed information on using this feature.
+See the [DA Visualizer Guide](../guides/da/visualizer.md) for detailed information on using this feature.
 
 ## Instrumentation Configuration (`instrumentation`)
 

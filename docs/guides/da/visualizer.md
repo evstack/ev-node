@@ -235,6 +235,6 @@ done
 
 ## Related Configuration
 
-For complete DA layer configuration options, see the [Config Reference](../learn/config.md#data-availability-configuration-da).
+For complete DA layer configuration options, see the [Config Reference](../../learn/config.md#data-availability-configuration-da).
 
-For metrics and monitoring setup, see the [Metrics Guide](./metrics.md).
+For metrics and monitoring setup, see the [Metrics Guide](../metrics.md).

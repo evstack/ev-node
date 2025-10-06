@@ -134,7 +134,7 @@ jobs:
       - uses: actions/setup-go@v6
         with:
           go-version-file: ./go.mod
-      - run: make tidy-all
+      - run: make deps
       - name: check for diff
         run: git diff --exit-code
 

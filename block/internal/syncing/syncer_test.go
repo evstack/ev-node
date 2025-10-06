@@ -2,6 +2,7 @@ package syncing
 
 import (
 	"context"
+	crand "crypto/rand"
 	"errors"
 	"testing"
 	"time"
@@ -9,8 +10,12 @@ import (
 	coreda "github.com/evstack/ev-node/core/da"
 	"github.com/evstack/ev-node/core/execution"
 	"github.com/evstack/ev-node/pkg/genesis"
+	signerpkg "github.com/evstack/ev-node/pkg/signer"
+	"github.com/evstack/ev-node/pkg/signer/noop"
+	testmocks "github.com/evstack/ev-node/test/mocks"
 	"github.com/ipfs/go-datastore"
 	dssync "github.com/ipfs/go-datastore/sync"
+	"github.com/libp2p/go-libp2p/core/crypto"
 	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
@@ -23,75 +28,230 @@ import (
 	"github.com/evstack/ev-node/types"
 )
 
-func TestHeightEvent_Structure(t *testing.T) {
-	// Test that HeightEvent has all required fields
-	event := common.DAHeightEvent{
-		Header: &types.SignedHeader{
-			Header: types.Header{
-				BaseHeader: types.BaseHeader{
-					ChainID: "test-chain",
-					Height:  1,
-				},
-			},
-		},
-		Data: &types.Data{
-			Metadata: &types.Metadata{
-				ChainID: "test-chain",
-				Height:  1,
-			},
-		},
-		DaHeight:               100,
-		HeaderDaIncludedHeight: 100,
-	}
-
-	assert.Equal(t, uint64(1), event.Header.Height())
-	assert.Equal(t, uint64(1), event.Data.Height())
-	assert.Equal(t, uint64(100), event.DaHeight)
-	assert.Equal(t, uint64(100), event.HeaderDaIncludedHeight)
+// helper to create a signer, pubkey and address for tests
+func buildSyncTestSigner(tb testing.TB) (addr []byte, pub crypto.PubKey, signer signerpkg.Signer) {
+	tb.Helper()
+	priv, _, err := crypto.GenerateEd25519Key(crand.Reader)
+	require.NoError(tb, err)
+	n, err := noop.NewNoopSigner(priv)
+	require.NoError(tb, err)
+	a, err := n.GetAddress()
+	require.NoError(tb, err)
+	p, err := n.GetPublic()
+	require.NoError(tb, err)
+	return a, p, n
 }
 
-func TestCacheDAHeightEvent_Usage(t *testing.T) {
-	// Test the exported DAHeightEvent type
-	header := &types.SignedHeader{
+// makeSignedHeaderBytes builds a valid SignedHeader and returns its binary encoding and the object
+func makeSignedHeaderBytes(tb testing.TB, chainID string, height uint64, proposer []byte, pub crypto.PubKey, signer signerpkg.Signer, appHash []byte, data *types.Data) ([]byte, *types.SignedHeader) {
+	time := uint64(time.Now().UnixNano())
+	dataHash := common.DataHashForEmptyTxs
+	if data != nil {
+		time = uint64(data.Time().UnixNano())
+		dataHash = data.DACommitment()
+	}
+
+	hdr := &types.SignedHeader{
 		Header: types.Header{
-			BaseHeader: types.BaseHeader{
-				ChainID: "test-chain",
-				Height:  1,
-			},
+			BaseHeader:      types.BaseHeader{ChainID: chainID, Height: height, Time: time},
+			AppHash:         appHash,
+			DataHash:        dataHash,
+			ProposerAddress: proposer,
 		},
+		Signer: types.Signer{PubKey: pub, Address: proposer},
 	}
-
-	data := &types.Data{
-		Metadata: &types.Metadata{
-			ChainID: "test-chain",
-			Height:  1,
-		},
-	}
-
-	event := &common.DAHeightEvent{
-		Header:                 header,
-		Data:                   data,
-		DaHeight:               100,
-		HeaderDaIncludedHeight: 100,
-	}
-
-	// Verify all fields are accessible
-	assert.NotNil(t, event.Header)
-	assert.NotNil(t, event.Data)
-	assert.Equal(t, uint64(100), event.DaHeight)
-	assert.Equal(t, uint64(100), event.HeaderDaIncludedHeight)
+	bz, err := types.DefaultAggregatorNodeSignatureBytesProvider(&hdr.Header)
+	require.NoError(tb, err)
+	sig, err := signer.Sign(bz)
+	require.NoError(tb, err)
+	hdr.Signature = sig
+	bin, err := hdr.MarshalBinary()
+	require.NoError(tb, err)
+	return bin, hdr
 }
 
-func TestSyncer_isHeightFromFutureError(t *testing.T) {
-	s := &Syncer{}
-	// exact error
-	err := common.ErrHeightFromFutureStr
-	assert.True(t, s.isHeightFromFutureError(err))
-	// string-wrapped error
-	err = errors.New("some context: " + common.ErrHeightFromFutureStr.Error())
-	assert.True(t, s.isHeightFromFutureError(err))
-	// unrelated
-	assert.False(t, s.isHeightFromFutureError(errors.New("boom")))
+func makeData(chainID string, height uint64, txs int) *types.Data {
+	d := &types.Data{
+		Metadata: &types.Metadata{
+			ChainID: chainID,
+			Height:  height,
+			Time:    uint64(time.Now().Add(time.Duration(height) * time.Second).UnixNano())},
+	}
+	if txs > 0 {
+		d.Txs = make(types.Txs, txs)
+		for i := 0; i < txs; i++ {
+			d.Txs[i] = types.Tx([]byte{byte(height), byte(i)})
+		}
+	}
+	return d
+}
+
+func TestSyncer_validateBlock_DataHashMismatch(t *testing.T) {
+	ds := dssync.MutexWrap(datastore.NewMapDatastore())
+	st := store.New(ds)
+	cm, err := cache.NewManager(config.DefaultConfig(), st, zerolog.Nop())
+	require.NoError(t, err)
+
+	addr, pub, signer := buildSyncTestSigner(t)
+
+	cfg := config.DefaultConfig()
+	gen := genesis.Genesis{ChainID: "tchain", InitialHeight: 1, StartTime: time.Now().Add(-time.Second), ProposerAddress: addr}
+
+	mockExec := testmocks.NewMockExecutor(t)
+
+	s := NewSyncer(
+		st,
+		mockExec,
+		nil,
+		cm,
+		common.NopMetrics(),
+		cfg,
+		gen,
+		nil,
+		nil,
+		zerolog.Nop(),
+		common.DefaultBlockOptions(),
+		make(chan error, 1),
+	)
+
+	// Create header and data with correct hash
+	data := makeData(gen.ChainID, 1, 2) // non-empty
+	_, header := makeSignedHeaderBytes(t, gen.ChainID, 1, addr, pub, signer, nil, data)
+
+	err = s.validateBlock(header, data)
+	require.NoError(t, err)
+
+	// Create header and data with mismatched hash
+	data = makeData(gen.ChainID, 1, 2) // non-empty
+	_, header = makeSignedHeaderBytes(t, gen.ChainID, 1, addr, pub, signer, nil, nil)
+	err = s.validateBlock(header, data)
+	require.Error(t, err)
+
+	// Create header and empty data
+	data = makeData(gen.ChainID, 1, 0) // empty
+	_, header = makeSignedHeaderBytes(t, gen.ChainID, 2, addr, pub, signer, nil, nil)
+	err = s.validateBlock(header, data)
+	require.Error(t, err)
+}
+
+func TestProcessHeightEvent_SyncsAndUpdatesState(t *testing.T) {
+	ds := dssync.MutexWrap(datastore.NewMapDatastore())
+	st := store.New(ds)
+	cm, err := cache.NewManager(config.DefaultConfig(), st, zerolog.Nop())
+	require.NoError(t, err)
+
+	addr, pub, signer := buildSyncTestSigner(t)
+
+	cfg := config.DefaultConfig()
+	gen := genesis.Genesis{ChainID: "tchain", InitialHeight: 1, StartTime: time.Now().Add(-time.Second), ProposerAddress: addr}
+
+	mockExec := testmocks.NewMockExecutor(t)
+
+	s := NewSyncer(
+		st,
+		mockExec,
+		nil,
+		cm,
+		common.NopMetrics(),
+		cfg,
+		gen,
+		nil,
+		nil,
+		zerolog.Nop(),
+		common.DefaultBlockOptions(),
+		make(chan error, 1),
+	)
+
+	require.NoError(t, s.initializeState())
+	// set a context for internal loops that expect it
+	s.ctx = context.Background()
+	// Create signed header & data for height 1
+	lastState := s.GetLastState()
+	data := makeData(gen.ChainID, 1, 0)
+	_, hdr := makeSignedHeaderBytes(t, gen.ChainID, 1, addr, pub, signer, lastState.AppHash, data)
+
+	// Expect ExecuteTxs call for height 1
+	mockExec.EXPECT().ExecuteTxs(mock.Anything, mock.Anything, uint64(1), mock.Anything, lastState.AppHash).
+		Return([]byte("app1"), uint64(1024), nil).Once()
+
+	evt := common.DAHeightEvent{Header: hdr, Data: data, DaHeight: 1}
+	s.processHeightEvent(&evt)
+
+	h, err := st.Height(context.Background())
+	require.NoError(t, err)
+	assert.Equal(t, uint64(1), h)
+	st1, err := st.GetState(context.Background())
+	require.NoError(t, err)
+	assert.Equal(t, uint64(1), st1.LastBlockHeight)
+}
+
+func TestSequentialBlockSync(t *testing.T) {
+	ds := dssync.MutexWrap(datastore.NewMapDatastore())
+	st := store.New(ds)
+	cm, err := cache.NewManager(config.DefaultConfig(), st, zerolog.Nop())
+	require.NoError(t, err)
+
+	addr, pub, signer := buildSyncTestSigner(t)
+	cfg := config.DefaultConfig()
+	gen := genesis.Genesis{ChainID: "tchain", InitialHeight: 1, StartTime: time.Now().Add(-time.Second), ProposerAddress: addr}
+
+	mockExec := testmocks.NewMockExecutor(t)
+
+	s := NewSyncer(
+		st,
+		mockExec,
+		nil,
+		cm,
+		common.NopMetrics(),
+		cfg,
+		gen,
+		nil,
+		nil,
+		zerolog.Nop(),
+		common.DefaultBlockOptions(),
+		make(chan error, 1),
+	)
+	require.NoError(t, s.initializeState())
+	s.ctx = context.Background()
+
+	// Sync two consecutive blocks via processHeightEvent so ExecuteTxs is called and state stored
+	st0 := s.GetLastState()
+	data1 := makeData(gen.ChainID, 1, 1) // non-empty
+	_, hdr1 := makeSignedHeaderBytes(t, gen.ChainID, 1, addr, pub, signer, st0.AppHash, data1)
+	// Expect ExecuteTxs call for height 1
+	mockExec.EXPECT().ExecuteTxs(mock.Anything, mock.Anything, uint64(1), mock.Anything, st0.AppHash).
+		Return([]byte("app1"), uint64(1024), nil).Once()
+	evt1 := common.DAHeightEvent{Header: hdr1, Data: data1, DaHeight: 10}
+	s.processHeightEvent(&evt1)
+
+	st1, _ := st.GetState(context.Background())
+	data2 := makeData(gen.ChainID, 2, 0) // empty data
+	_, hdr2 := makeSignedHeaderBytes(t, gen.ChainID, 2, addr, pub, signer, st1.AppHash, data2)
+	// Expect ExecuteTxs call for height 2
+	mockExec.EXPECT().ExecuteTxs(mock.Anything, mock.Anything, uint64(2), mock.Anything, st1.AppHash).
+		Return([]byte("app2"), uint64(1024), nil).Once()
+	evt2 := common.DAHeightEvent{Header: hdr2, Data: data2, DaHeight: 11}
+	s.processHeightEvent(&evt2)
+
+	// Mark DA inclusion in cache (as DA retrieval would)
+	cm.SetDataDAIncluded(data1.DACommitment().String(), 10)
+	cm.SetDataDAIncluded(data2.DACommitment().String(), 11) // empty data still needs cache entry
+	cm.SetHeaderDAIncluded(hdr1.Header.Hash().String(), 10)
+	cm.SetHeaderDAIncluded(hdr2.Header.Hash().String(), 11)
+
+	// Verify both blocks were synced correctly
+	finalState, _ := st.GetState(context.Background())
+	assert.Equal(t, uint64(2), finalState.LastBlockHeight)
+
+	// Verify DA inclusion markers are set
+	_, ok := cm.GetHeaderDAIncluded(hdr1.Hash().String())
+	assert.True(t, ok)
+	_, ok = cm.GetHeaderDAIncluded(hdr2.Hash().String())
+	assert.True(t, ok)
+	_, ok = cm.GetDataDAIncluded(data1.DACommitment().String())
+	assert.True(t, ok)
+	_, ok = cm.GetDataDAIncluded(data2.DACommitment().String())
+	assert.True(t, ok)
 }
 
 func TestSyncer_sendNonBlockingSignal(t *testing.T) {
@@ -160,8 +320,7 @@ func TestSyncLoopPersistState(t *testing.T) {
 
 	addr, pub, signer := buildSyncTestSigner(t)
 	cfg := config.DefaultConfig()
-	cfg.DA.StartHeight = myDAHeightOffset
-	gen := genesis.Genesis{ChainID: "tchain", InitialHeight: 1, StartTime: time.Now().Add(-time.Second), ProposerAddress: addr}
+	gen := genesis.Genesis{ChainID: "tchain", InitialHeight: 1, StartTime: time.Now().Add(-time.Second), ProposerAddress: addr, DAStartHeight: myDAHeightOffset}
 
 	dummyExec := execution.NewDummyExecutor()
 
@@ -189,19 +348,18 @@ func TestSyncLoopPersistState(t *testing.T) {
 	// with n da blobs fetched
 	for i := range myFutureDAHeight - myDAHeightOffset {
 		chainHeight, daHeight := i, i+myDAHeightOffset
-		_, sigHeader := makeSignedHeaderBytes(t, gen.ChainID, chainHeight, addr, pub, signer, nil, nil)
-		emptyData := types.Data{
+		emptyData := &types.Data{
 			Metadata: &types.Metadata{
-				ChainID: sigHeader.ChainID(),
-				Height:  sigHeader.Height(),
-				Time:    sigHeader.BaseHeader.Time,
+				ChainID: gen.ChainID,
+				Height:  chainHeight,
+				Time:    uint64(time.Now().Add(time.Duration(chainHeight) * time.Second).UnixNano()),
 			},
 		}
+		_, sigHeader := makeSignedHeaderBytes(t, gen.ChainID, chainHeight, addr, pub, signer, nil, emptyData)
 		evts := []common.DAHeightEvent{{
-			Header:                 sigHeader,
-			Data:                   &emptyData,
-			DaHeight:               daHeight,
-			HeaderDaIncludedHeight: daHeight,
+			Header:   sigHeader,
+			Data:     emptyData,
+			DaHeight: daHeight,
 		}}
 		daRtrMock.On("RetrieveFromDA", mock.Anything, daHeight).Return(evts, nil)
 	}
@@ -279,4 +437,93 @@ func TestSyncLoopPersistState(t *testing.T) {
 	syncerInst2.syncLoop()
 
 	t.Log("syncLoop exited")
+}
+
+func TestSyncer_executeTxsWithRetry(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name          string
+		setupMock     func(*testmocks.MockExecutor)
+		expectSuccess bool
+		expectHash    []byte
+		expectError   string
+	}{
+		{
+			name: "success on first attempt",
+			setupMock: func(exec *testmocks.MockExecutor) {
+				exec.On("ExecuteTxs", mock.Anything, mock.Anything, uint64(100), mock.Anything, mock.Anything).
+					Return([]byte("new-hash"), uint64(0), nil).Once()
+			},
+			expectSuccess: true,
+			expectHash:    []byte("new-hash"),
+		},
+		{
+			name: "success on second attempt",
+			setupMock: func(exec *testmocks.MockExecutor) {
+				exec.On("ExecuteTxs", mock.Anything, mock.Anything, uint64(100), mock.Anything, mock.Anything).
+					Return([]byte(nil), uint64(0), errors.New("temporary failure")).Once()
+				exec.On("ExecuteTxs", mock.Anything, mock.Anything, uint64(100), mock.Anything, mock.Anything).
+					Return([]byte("new-hash"), uint64(0), nil).Once()
+			},
+			expectSuccess: true,
+			expectHash:    []byte("new-hash"),
+		},
+		{
+			name: "success on third attempt",
+			setupMock: func(exec *testmocks.MockExecutor) {
+				exec.On("ExecuteTxs", mock.Anything, mock.Anything, uint64(100), mock.Anything, mock.Anything).
+					Return([]byte(nil), uint64(0), errors.New("temporary failure")).Times(2)
+				exec.On("ExecuteTxs", mock.Anything, mock.Anything, uint64(100), mock.Anything, mock.Anything).
+					Return([]byte("new-hash"), uint64(0), nil).Once()
+			},
+			expectSuccess: true,
+			expectHash:    []byte("new-hash"),
+		},
+		{
+			name: "failure after max retries",
+			setupMock: func(exec *testmocks.MockExecutor) {
+				exec.On("ExecuteTxs", mock.Anything, mock.Anything, uint64(100), mock.Anything, mock.Anything).
+					Return([]byte(nil), uint64(0), errors.New("persistent failure")).Times(common.MaxRetriesBeforeHalt)
+			},
+			expectSuccess: false,
+			expectError:   "failed to execute transactions",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			ctx := context.Background()
+			exec := testmocks.NewMockExecutor(t)
+			tt.setupMock(exec)
+
+			s := &Syncer{
+				exec:   exec,
+				ctx:    ctx,
+				logger: zerolog.Nop(),
+			}
+
+			rawTxs := [][]byte{[]byte("tx1"), []byte("tx2")}
+			header := types.Header{
+				BaseHeader: types.BaseHeader{Height: 100, Time: uint64(time.Now().UnixNano())},
+			}
+			currentState := types.State{AppHash: []byte("current-hash")}
+
+			result, err := s.executeTxsWithRetry(ctx, rawTxs, header, currentState)
+
+			if tt.expectSuccess {
+				require.NoError(t, err)
+				assert.Equal(t, tt.expectHash, result)
+			} else {
+				require.Error(t, err)
+				if tt.expectError != "" {
+					assert.Contains(t, err.Error(), tt.expectError)
+				}
+			}
+
+			exec.AssertExpectations(t)
+		})
+	}
 }

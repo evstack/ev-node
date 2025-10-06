@@ -27,27 +27,6 @@ import (
 	"github.com/evstack/ev-node/types"
 )
 
-// makeSignedHeaderBytes builds a valid SignedHeader and returns its binary encoding and the object
-func makeSignedHeaderBytes(tb testing.TB, chainID string, height uint64, proposer []byte, pub crypto.PubKey, signer signerpkg.Signer, appHash []byte, dataHash []byte) ([]byte, *types.SignedHeader) {
-	hdr := &types.SignedHeader{
-		Header: types.Header{
-			BaseHeader:      types.BaseHeader{ChainID: chainID, Height: height, Time: uint64(time.Now().Add(time.Duration(height) * time.Second).UnixNano())},
-			AppHash:         appHash,
-			DataHash:        dataHash,
-			ProposerAddress: proposer,
-		},
-		Signer: types.Signer{PubKey: pub, Address: proposer},
-	}
-	bz, err := types.DefaultAggregatorNodeSignatureBytesProvider(&hdr.Header)
-	require.NoError(tb, err)
-	sig, err := signer.Sign(bz)
-	require.NoError(tb, err)
-	hdr.Signature = sig
-	bin, err := hdr.MarshalBinary()
-	require.NoError(tb, err)
-	return bin, hdr
-}
-
 // makeSignedDataBytes builds SignedData containing the provided Data and returns its binary encoding
 func makeSignedDataBytes(t *testing.T, chainID string, height uint64, proposer []byte, pub crypto.PubKey, signer signerpkg.Signer, txs int) ([]byte, *types.SignedData) {
 	d := &types.Data{Metadata: &types.Metadata{ChainID: chainID, Height: height, Time: uint64(time.Now().UnixNano())}}
@@ -69,11 +48,28 @@ func makeSignedDataBytes(t *testing.T, chainID string, height uint64, proposer [
 	return bin, sd
 }
 
+func TestDARetriever_RetrieveFromDA_Invalid(t *testing.T) {
+	ds := dssync.MutexWrap(datastore.NewMapDatastore())
+	st := store.New(ds)
+	cm, err := cache.NewManager(config.DefaultConfig(), st, zerolog.Nop())
+	assert.NoError(t, err)
+
+	mockDA := testmocks.NewMockDA(t)
+
+	mockDA.EXPECT().GetIDs(mock.Anything, mock.Anything, mock.Anything).
+		Return(nil, errors.New("just invalid")).Maybe()
+
+	r := NewDARetriever(mockDA, cm, config.DefaultConfig(), genesis.Genesis{}, common.DefaultBlockOptions(), zerolog.Nop())
+	events, err := r.RetrieveFromDA(context.Background(), 42)
+	assert.Error(t, err)
+	assert.Len(t, events, 0)
+}
+
 func TestDARetriever_RetrieveFromDA_NotFound(t *testing.T) {
 	ds := dssync.MutexWrap(datastore.NewMapDatastore())
 	st := store.New(ds)
 	cm, err := cache.NewManager(config.DefaultConfig(), st, zerolog.Nop())
-	require.NoError(t, err)
+	assert.NoError(t, err)
 
 	mockDA := testmocks.NewMockDA(t)
 
@@ -83,7 +79,7 @@ func TestDARetriever_RetrieveFromDA_NotFound(t *testing.T) {
 
 	r := NewDARetriever(mockDA, cm, config.DefaultConfig(), genesis.Genesis{}, common.DefaultBlockOptions(), zerolog.Nop())
 	events, err := r.RetrieveFromDA(context.Background(), 42)
-	require.Error(t, err, coreda.ErrBlobNotFound)
+	assert.True(t, errors.Is(err, coreda.ErrBlobNotFound))
 	assert.Len(t, events, 0)
 }
 
@@ -105,6 +101,61 @@ func TestDARetriever_RetrieveFromDA_HeightFromFuture(t *testing.T) {
 	assert.Nil(t, events)
 }
 
+func TestDARetriever_RetrieveFromDA_Timeout(t *testing.T) {
+	ds := dssync.MutexWrap(datastore.NewMapDatastore())
+	st := store.New(ds)
+	cm, err := cache.NewManager(config.DefaultConfig(), st, zerolog.Nop())
+	require.NoError(t, err)
+
+	mockDA := testmocks.NewMockDA(t)
+
+	// Mock GetIDs to hang longer than the timeout
+	mockDA.EXPECT().GetIDs(mock.Anything, mock.Anything, mock.Anything).
+		Run(func(ctx context.Context, height uint64, namespace []byte) {
+			<-ctx.Done()
+		}).
+		Return(nil, context.DeadlineExceeded).Maybe()
+
+	r := NewDARetriever(mockDA, cm, config.DefaultConfig(), genesis.Genesis{}, common.DefaultBlockOptions(), zerolog.Nop())
+
+	start := time.Now()
+	events, err := r.RetrieveFromDA(context.Background(), 42)
+	duration := time.Since(start)
+
+	// Verify error is returned and contains deadline exceeded information
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "DA retrieval failed")
+	assert.Contains(t, err.Error(), "context deadline exceeded")
+	assert.Len(t, events, 0)
+
+	// Verify timeout occurred approximately at expected time (with some tolerance)
+	assert.Greater(t, duration, 9*time.Second, "should timeout after approximately 10 seconds")
+	assert.Less(t, duration, 12*time.Second, "should not take much longer than timeout")
+}
+
+func TestDARetriever_RetrieveFromDA_TimeoutFast(t *testing.T) {
+	ds := dssync.MutexWrap(datastore.NewMapDatastore())
+	st := store.New(ds)
+	cm, err := cache.NewManager(config.DefaultConfig(), st, zerolog.Nop())
+	require.NoError(t, err)
+
+	mockDA := testmocks.NewMockDA(t)
+
+	// Mock GetIDs to immediately return context deadline exceeded
+	mockDA.EXPECT().GetIDs(mock.Anything, mock.Anything, mock.Anything).
+		Return(nil, context.DeadlineExceeded).Maybe()
+
+	r := NewDARetriever(mockDA, cm, config.DefaultConfig(), genesis.Genesis{}, common.DefaultBlockOptions(), zerolog.Nop())
+
+	events, err := r.RetrieveFromDA(context.Background(), 42)
+
+	// Verify error is returned and contains deadline exceeded information
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "DA retrieval failed")
+	assert.Contains(t, err.Error(), "context deadline exceeded")
+	assert.Len(t, events, 0)
+}
+
 func TestDARetriever_ProcessBlobs_HeaderAndData_Success(t *testing.T) {
 	ds := dssync.MutexWrap(datastore.NewMapDatastore())
 	st := store.New(ds)
@@ -117,14 +168,21 @@ func TestDARetriever_ProcessBlobs_HeaderAndData_Success(t *testing.T) {
 	r := NewDARetriever(nil, cm, config.DefaultConfig(), gen, common.DefaultBlockOptions(), zerolog.Nop())
 
 	dataBin, data := makeSignedDataBytes(t, gen.ChainID, 2, addr, pub, signer, 2)
-	hdrBin, _ := makeSignedHeaderBytes(t, gen.ChainID, 2, addr, pub, signer, nil, data.Hash())
+	hdrBin, _ := makeSignedHeaderBytes(t, gen.ChainID, 2, addr, pub, signer, nil, &data.Data)
 
 	events := r.processBlobs(context.Background(), [][]byte{hdrBin, dataBin}, 77)
 	require.Len(t, events, 1)
 	assert.Equal(t, uint64(2), events[0].Header.Height())
 	assert.Equal(t, uint64(2), events[0].Data.Height())
 	assert.Equal(t, uint64(77), events[0].DaHeight)
-	assert.Equal(t, uint64(77), events[0].HeaderDaIncludedHeight)
+
+	hHeight, ok := r.cache.GetHeaderDAIncluded(events[0].Header.Hash().String())
+	assert.True(t, ok)
+	assert.Equal(t, uint64(77), hHeight)
+
+	dHeight, ok := r.cache.GetDataDAIncluded(events[0].Data.DACommitment().String())
+	assert.True(t, ok)
+	assert.Equal(t, uint64(77), dHeight)
 }
 
 func TestDARetriever_ProcessBlobs_HeaderOnly_EmptyDataExpected(t *testing.T) {
@@ -145,6 +203,14 @@ func TestDARetriever_ProcessBlobs_HeaderOnly_EmptyDataExpected(t *testing.T) {
 	assert.Equal(t, uint64(3), events[0].Header.Height())
 	assert.NotNil(t, events[0].Data)
 	assert.Equal(t, uint64(88), events[0].DaHeight)
+
+	hHeight, ok := r.cache.GetHeaderDAIncluded(events[0].Header.Hash().String())
+	assert.True(t, ok)
+	assert.Equal(t, uint64(88), hHeight)
+
+	// empty data is not marked as data included (the submitter components does handle the empty data case)
+	_, ok = r.cache.GetDataDAIncluded(events[0].Data.DACommitment().String())
+	assert.False(t, ok)
 }
 
 func TestDARetriever_TryDecodeHeaderAndData_Basic(t *testing.T) {
@@ -223,7 +289,7 @@ func TestDARetriever_RetrieveFromDA_TwoNamespaces_Success(t *testing.T) {
 
 	// Prepare header/data blobs
 	dataBin, data := makeSignedDataBytes(t, gen.ChainID, 9, addr, pub, signer, 1)
-	hdrBin, _ := makeSignedHeaderBytes(t, gen.ChainID, 9, addr, pub, signer, nil, data.Hash())
+	hdrBin, _ := makeSignedHeaderBytes(t, gen.ChainID, 9, addr, pub, signer, nil, &data.Data)
 
 	cfg := config.DefaultConfig()
 	cfg.DA.Namespace = "nsHdr"
@@ -266,7 +332,7 @@ func TestDARetriever_ProcessBlobs_CrossDAHeightMatching(t *testing.T) {
 
 	// Create header and data for the same block height but from different DA heights
 	dataBin, data := makeSignedDataBytes(t, gen.ChainID, 5, addr, pub, signer, 2)
-	hdrBin, _ := makeSignedHeaderBytes(t, gen.ChainID, 5, addr, pub, signer, nil, data.Hash())
+	hdrBin, _ := makeSignedHeaderBytes(t, gen.ChainID, 5, addr, pub, signer, nil, &data.Data)
 
 	// Process header from DA height 100 first
 	events1 := r.processBlobs(context.Background(), [][]byte{hdrBin}, 100)
@@ -274,8 +340,6 @@ func TestDARetriever_ProcessBlobs_CrossDAHeightMatching(t *testing.T) {
 
 	// Verify header is stored in pending headers
 	require.Contains(t, r.pendingHeaders, uint64(5), "header should be stored as pending")
-	require.Contains(t, r.headerDAHeights, uint64(5), "header DA height should be tracked")
-	assert.Equal(t, uint64(100), r.headerDAHeights[5])
 
 	// Process data from DA height 102
 	events2 := r.processBlobs(context.Background(), [][]byte{dataBin}, 102)
@@ -285,12 +349,10 @@ func TestDARetriever_ProcessBlobs_CrossDAHeightMatching(t *testing.T) {
 	assert.Equal(t, uint64(5), event.Header.Height())
 	assert.Equal(t, uint64(5), event.Data.Height())
 	assert.Equal(t, uint64(102), event.DaHeight, "DaHeight should be the height where data was processed")
-	assert.Equal(t, uint64(100), event.HeaderDaIncludedHeight, "HeaderDaIncludedHeight should be where header was included")
 
 	// Verify pending maps are cleared
 	require.NotContains(t, r.pendingHeaders, uint64(5), "header should be removed from pending")
 	require.NotContains(t, r.pendingData, uint64(5), "data should be removed from pending")
-	require.NotContains(t, r.headerDAHeights, uint64(5), "header DA height should be removed")
 }
 
 func TestDARetriever_ProcessBlobs_MultipleHeadersCrossDAHeightMatching(t *testing.T) {
@@ -309,9 +371,9 @@ func TestDARetriever_ProcessBlobs_MultipleHeadersCrossDAHeightMatching(t *testin
 	data4Bin, data4 := makeSignedDataBytes(t, gen.ChainID, 4, addr, pub, signer, 2)
 	data5Bin, data5 := makeSignedDataBytes(t, gen.ChainID, 5, addr, pub, signer, 1)
 
-	hdr3Bin, _ := makeSignedHeaderBytes(t, gen.ChainID, 3, addr, pub, signer, nil, data3.Hash())
-	hdr4Bin, _ := makeSignedHeaderBytes(t, gen.ChainID, 4, addr, pub, signer, nil, data4.Hash())
-	hdr5Bin, _ := makeSignedHeaderBytes(t, gen.ChainID, 5, addr, pub, signer, nil, data5.Hash())
+	hdr3Bin, _ := makeSignedHeaderBytes(t, gen.ChainID, 3, addr, pub, signer, nil, &data3.Data)
+	hdr4Bin, _ := makeSignedHeaderBytes(t, gen.ChainID, 4, addr, pub, signer, nil, &data4.Data)
+	hdr5Bin, _ := makeSignedHeaderBytes(t, gen.ChainID, 5, addr, pub, signer, nil, &data5.Data)
 
 	// Process multiple headers from DA height 200 - should be stored as pending
 	events1 := r.processBlobs(context.Background(), [][]byte{hdr3Bin, hdr4Bin, hdr5Bin}, 200)
@@ -321,9 +383,6 @@ func TestDARetriever_ProcessBlobs_MultipleHeadersCrossDAHeightMatching(t *testin
 	require.Contains(t, r.pendingHeaders, uint64(3), "header 3 should be pending")
 	require.Contains(t, r.pendingHeaders, uint64(4), "header 4 should be pending")
 	require.Contains(t, r.pendingHeaders, uint64(5), "header 5 should be pending")
-	assert.Equal(t, uint64(200), r.headerDAHeights[3])
-	assert.Equal(t, uint64(200), r.headerDAHeights[4])
-	assert.Equal(t, uint64(200), r.headerDAHeights[5])
 
 	// Process some data from DA height 203 - should create partial events
 	events2 := r.processBlobs(context.Background(), [][]byte{data3Bin, data5Bin}, 203)
@@ -338,13 +397,11 @@ func TestDARetriever_ProcessBlobs_MultipleHeadersCrossDAHeightMatching(t *testin
 	assert.Equal(t, uint64(3), events2[0].Header.Height())
 	assert.Equal(t, uint64(3), events2[0].Data.Height())
 	assert.Equal(t, uint64(203), events2[0].DaHeight)
-	assert.Equal(t, uint64(200), events2[0].HeaderDaIncludedHeight)
 
 	// Verify event for height 5
 	assert.Equal(t, uint64(5), events2[1].Header.Height())
 	assert.Equal(t, uint64(5), events2[1].Data.Height())
 	assert.Equal(t, uint64(203), events2[1].DaHeight)
-	assert.Equal(t, uint64(200), events2[1].HeaderDaIncludedHeight)
 
 	// Verify header 4 is still pending (no matching data yet)
 	require.Contains(t, r.pendingHeaders, uint64(4), "header 4 should still be pending")
@@ -359,11 +416,9 @@ func TestDARetriever_ProcessBlobs_MultipleHeadersCrossDAHeightMatching(t *testin
 	assert.Equal(t, uint64(4), events3[0].Header.Height())
 	assert.Equal(t, uint64(4), events3[0].Data.Height())
 	assert.Equal(t, uint64(205), events3[0].DaHeight)
-	assert.Equal(t, uint64(200), events3[0].HeaderDaIncludedHeight)
 
 	// Verify all pending maps are now clear
 	require.NotContains(t, r.pendingHeaders, uint64(4), "header 4 should be removed from pending")
 	require.Len(t, r.pendingHeaders, 0, "all headers should be processed")
 	require.Len(t, r.pendingData, 0, "all data should be processed")
-	require.Len(t, r.headerDAHeights, 0, "all header DA heights should be cleared")
 }

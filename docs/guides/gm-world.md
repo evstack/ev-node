@@ -284,7 +284,9 @@ Connecting your wallet to your chain is as straightforward as connecting to any 
 
 ## 🔗 Connecting your wallet
 
+<!-- markdown-link-check-disable -->
 Simply open your browser and go to [http://localhost:3000](https://localhost:3000) and use the Ignite UI to interact with your chain.
+<!-- markdown-link-check-enable -->
 
 Click the "Connect Wallet" button on the page, and approve the connection request in the Keplr prompt.
 

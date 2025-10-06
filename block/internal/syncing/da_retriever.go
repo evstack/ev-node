@@ -5,7 +5,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/rs/zerolog"
@@ -20,10 +19,8 @@ import (
 	pb "github.com/evstack/ev-node/types/pb/evnode/v1"
 )
 
-const (
-	dAFetcherTimeout = 30 * time.Second
-	dAFetcherRetries = 10
-)
+// defaultDATimeout is the default timeout for DA retrieval operations
+const defaultDATimeout = 10 * time.Second
 
 // DARetriever handles DA retrieval operations for syncing
 type DARetriever struct {
@@ -39,9 +36,8 @@ type DARetriever struct {
 
 	// transient cache, only full event need to be passed to the syncer
 	// on restart, will be refetch as da height is updated by syncer
-	pendingHeaders  map[uint64]*types.SignedHeader
-	pendingData     map[uint64]*types.Data
-	headerDAHeights map[uint64]uint64
+	pendingHeaders map[uint64]*types.SignedHeader
+	pendingData    map[uint64]*types.Data
 }
 
 // NewDARetriever creates a new DA retriever
@@ -63,75 +59,49 @@ func NewDARetriever(
 		namespaceDataBz: coreda.NamespaceFromString(config.DA.GetDataNamespace()).Bytes(),
 		pendingHeaders:  make(map[uint64]*types.SignedHeader),
 		pendingData:     make(map[uint64]*types.Data),
-		headerDAHeights: make(map[uint64]uint64), // Track DA height for each header
 	}
 }
 
 // RetrieveFromDA retrieves blocks from the specified DA height and returns height events
 func (r *DARetriever) RetrieveFromDA(ctx context.Context, daHeight uint64) ([]common.DAHeightEvent, error) {
 	r.logger.Debug().Uint64("da_height", daHeight).Msg("retrieving from DA")
-
-	var err error
-	for retry := 0; retry < dAFetcherRetries; retry++ {
-		select {
-		case <-ctx.Done():
-			return nil, ctx.Err()
-		default:
-		}
-
-		blobsResp, fetchErr := r.fetchBlobs(ctx, daHeight)
-		if fetchErr == nil {
-			if blobsResp.Code == coreda.StatusNotFound {
-				r.logger.Debug().Uint64("da_height", daHeight).Msg("no blob data found")
-				return nil, coreda.ErrBlobNotFound
-			}
-
-			r.logger.Debug().Int("blobs", len(blobsResp.Data)).Uint64("da_height", daHeight).Msg("retrieved blob data")
-			events := r.processBlobs(ctx, blobsResp.Data, daHeight)
-			return events, nil
-		}
-
-		if strings.Contains(fetchErr.Error(), coreda.ErrHeightFromFuture.Error()) {
-			return nil, fmt.Errorf("%w: height from future", coreda.ErrHeightFromFuture)
-		}
-
-		err = errors.Join(err, fetchErr)
-
-		// Delay before retrying
-		select {
-		case <-ctx.Done():
-			return nil, err
-		case <-time.After(100 * time.Millisecond):
-		}
+	blobsResp, err := r.fetchBlobs(ctx, daHeight)
+	if err != nil {
+		return nil, err
 	}
 
-	return nil, err
+	// Check for context cancellation upfront
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+
+	r.logger.Debug().Int("blobs", len(blobsResp.Data)).Uint64("da_height", daHeight).Msg("retrieved blob data")
+	return r.processBlobs(ctx, blobsResp.Data, daHeight), nil
 }
 
 // fetchBlobs retrieves blobs from the DA layer
 func (r *DARetriever) fetchBlobs(ctx context.Context, daHeight uint64) (coreda.ResultRetrieve, error) {
-	ctx, cancel := context.WithTimeout(ctx, dAFetcherTimeout)
-	defer cancel()
-
 	// Retrieve from both namespaces
-	headerRes := types.RetrieveWithHelpers(ctx, r.da, r.logger, daHeight, r.namespaceBz)
+	headerRes := types.RetrieveWithHelpers(ctx, r.da, r.logger, daHeight, r.namespaceBz, defaultDATimeout)
 
 	// If namespaces are the same, return header result
 	if bytes.Equal(r.namespaceBz, r.namespaceDataBz) {
 		return headerRes, r.validateBlobResponse(headerRes, daHeight)
 	}
 
-	dataRes := types.RetrieveWithHelpers(ctx, r.da, r.logger, daHeight, r.namespaceDataBz)
+	dataRes := types.RetrieveWithHelpers(ctx, r.da, r.logger, daHeight, r.namespaceDataBz, defaultDATimeout)
 
 	// Validate responses
 	headerErr := r.validateBlobResponse(headerRes, daHeight)
-	dataErr := r.validateBlobResponse(dataRes, daHeight)
+	// ignoring error not found, as data can have data
+	if headerErr != nil && !errors.Is(headerErr, coreda.ErrBlobNotFound) {
+		return headerRes, headerErr
+	}
 
-	// Handle errors
-	if errors.Is(headerErr, coreda.ErrHeightFromFuture) || errors.Is(dataErr, coreda.ErrHeightFromFuture) {
-		return coreda.ResultRetrieve{
-			BaseResult: coreda.BaseResult{Code: coreda.StatusHeightFromFuture},
-		}, fmt.Errorf("%w: height from future", coreda.ErrHeightFromFuture)
+	dataErr := r.validateBlobResponse(dataRes, daHeight)
+	// ignoring error not found, as header can have data
+	if dataErr != nil && !errors.Is(dataErr, coreda.ErrBlobNotFound) {
+		return dataRes, dataErr
 	}
 
 	// Combine successful results
@@ -145,28 +115,35 @@ func (r *DARetriever) fetchBlobs(ctx context.Context, daHeight uint64) (coreda.R
 
 	if headerRes.Code == coreda.StatusSuccess {
 		combinedResult.Data = append(combinedResult.Data, headerRes.Data...)
-		if len(headerRes.IDs) > 0 {
-			combinedResult.IDs = append(combinedResult.IDs, headerRes.IDs...)
-		}
+		combinedResult.IDs = append(combinedResult.IDs, headerRes.IDs...)
 	}
 
 	if dataRes.Code == coreda.StatusSuccess {
 		combinedResult.Data = append(combinedResult.Data, dataRes.Data...)
-		if len(dataRes.IDs) > 0 {
-			combinedResult.IDs = append(combinedResult.IDs, dataRes.IDs...)
-		}
+		combinedResult.IDs = append(combinedResult.IDs, dataRes.IDs...)
+	}
+
+	// Re-throw error not found if both were not found.
+	if len(combinedResult.Data) == 0 && len(combinedResult.IDs) == 0 {
+		r.logger.Debug().Uint64("da_height", daHeight).Msg("no blob data found")
+		combinedResult.Code = coreda.StatusNotFound
+		combinedResult.Message = coreda.ErrBlobNotFound.Error()
+		return combinedResult, coreda.ErrBlobNotFound
 	}
 
 	return combinedResult, nil
 }
 
 // validateBlobResponse validates a blob response from DA layer
+// those are the only error code returned by da.RetrieveWithHelpers
 func (r *DARetriever) validateBlobResponse(res coreda.ResultRetrieve, daHeight uint64) error {
 	switch res.Code {
 	case coreda.StatusError:
 		return fmt.Errorf("DA retrieval failed: %s", res.Message)
 	case coreda.StatusHeightFromFuture:
 		return fmt.Errorf("%w: height from future", coreda.ErrHeightFromFuture)
+	case coreda.StatusNotFound:
+		return fmt.Errorf("%w: blob not found", coreda.ErrBlobNotFound)
 	case coreda.StatusSuccess:
 		r.logger.Debug().Uint64("da_height", daHeight).Msg("successfully retrieved from DA")
 		return nil
@@ -184,12 +161,25 @@ func (r *DARetriever) processBlobs(ctx context.Context, blobs [][]byte, daHeight
 		}
 
 		if header := r.tryDecodeHeader(bz, daHeight); header != nil {
+			if _, ok := r.pendingHeaders[header.Height()]; ok {
+				// a (malicious) node may have re-published valid header to another da height (should never happen)
+				// we can already discard it, only the first one is valid
+				r.logger.Debug().Uint64("height", header.Height()).Uint64("da_height", daHeight).Msg("header blob already exists for height, discarding")
+				continue
+			}
+
 			r.pendingHeaders[header.Height()] = header
-			r.headerDAHeights[header.Height()] = daHeight
 			continue
 		}
 
 		if data := r.tryDecodeData(bz, daHeight); data != nil {
+			if _, ok := r.pendingData[data.Height()]; ok {
+				// a (malicious) node may have re-published valid data to another da height (should never happen)
+				// we can already discard it, only the first one is valid
+				r.logger.Debug().Uint64("height", data.Height()).Uint64("da_height", daHeight).Msg("data blob already exists for height, discarding")
+				continue
+			}
+
 			r.pendingData[data.Height()] = data
 		}
 	}
@@ -199,14 +189,12 @@ func (r *DARetriever) processBlobs(ctx context.Context, blobs [][]byte, daHeight
 	// Match headers with data and create events
 	for height, header := range r.pendingHeaders {
 		data := r.pendingData[height]
-		includedHeight := r.headerDAHeights[height]
 
 		// Handle empty data case
 		if data == nil {
 			if r.isEmptyDataExpected(header) {
 				data = r.createEmptyDataForHeader(ctx, header)
 				delete(r.pendingHeaders, height)
-				delete(r.headerDAHeights, height)
 			} else {
 				// keep header in pending headers until data lands
 				r.logger.Debug().Uint64("height", height).Msg("header found but no matching data")
@@ -215,15 +203,13 @@ func (r *DARetriever) processBlobs(ctx context.Context, blobs [][]byte, daHeight
 		} else {
 			delete(r.pendingHeaders, height)
 			delete(r.pendingData, height)
-			delete(r.headerDAHeights, height)
 		}
 
 		// Create height event
 		event := common.DAHeightEvent{
-			Header:                 header,
-			Data:                   data,
-			DaHeight:               daHeight,
-			HeaderDaIncludedHeight: includedHeight,
+			Header:   header,
+			Data:     data,
+			DaHeight: daHeight,
 		}
 
 		events = append(events, event)
@@ -259,9 +245,17 @@ func (r *DARetriever) tryDecodeHeader(bz []byte, daHeight uint64) *types.SignedH
 		return nil
 	}
 
-	// note, we cannot mark the header as DA included
-	// we haven't done any signature verification check here
-	// signature verification happens with data.
+	// Optimistically mark as DA included
+	// This has to be done for all fetched DA headers prior to validation because P2P does not confirm
+	// da inclusion. This is not an issue, as an invalid header will be rejected. There cannot be hash collisions.
+	headerHash := header.Hash().String()
+	r.cache.SetHeaderDAIncluded(headerHash, daHeight)
+
+	r.logger.Info().
+		Str("header_hash", headerHash).
+		Uint64("da_height", daHeight).
+		Uint64("height", header.Height()).
+		Msg("optimistically marked header as DA included")
 
 	return header
 }

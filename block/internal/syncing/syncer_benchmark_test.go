@@ -87,8 +87,7 @@ func newBenchFixture(b *testing.B, totalHeights uint64, shuffledTx bool, daDelay
 	cfg := config.DefaultConfig()
 	// keep P2P ticker dormant unless we manually inject P2P events
 	cfg.Node.BlockTime = config.DurationWrapper{Duration: 1}
-	cfg.DA.StartHeight = daHeightOffset
-	gen := genesis.Genesis{ChainID: "bchain", InitialHeight: 1, StartTime: time.Now().Add(-time.Second), ProposerAddress: addr}
+	gen := genesis.Genesis{ChainID: "bchain", InitialHeight: 1, StartTime: time.Now().Add(-time.Second), ProposerAddress: addr, DAStartHeight: daHeightOffset}
 
 	mockExec := testmocks.NewMockExecutor(b)
 	// if execDelay > 0, sleep on ExecuteTxs to simulate slow consumer
@@ -124,7 +123,7 @@ func newBenchFixture(b *testing.B, totalHeights uint64, shuffledTx bool, daDelay
 		blockHeight, daHeight := i+gen.InitialHeight, i+daHeightOffset
 		_, sh := makeSignedHeaderBytes(b, gen.ChainID, blockHeight, addr, pub, signer, nil, nil)
 		d := &types.Data{Metadata: &types.Metadata{ChainID: gen.ChainID, Height: blockHeight, Time: uint64(time.Now().UnixNano())}}
-		heightEvents[i] = common.DAHeightEvent{Header: sh, Data: d, DaHeight: daHeight, HeaderDaIncludedHeight: daHeight}
+		heightEvents[i] = common.DAHeightEvent{Header: sh, Data: d, DaHeight: daHeight}
 	}
 	if shuffledTx {
 		rand.New(rand.NewPCG(1, 2)).Shuffle(len(heightEvents), func(i, j int) { //nolint:gosec // false positive

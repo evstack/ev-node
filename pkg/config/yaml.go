@@ -91,7 +91,7 @@ func (c *Config) SaveAsYaml() error {
 	}
 
 	// process structs fields and comments
-	processFields(reflect.TypeOf(Config{}), "")
+	processFields(reflect.TypeFor[Config](), "")
 
 	data, err := yaml.MarshalWithOptions(c, yaml.WithComment(yamlCommentMap))
 	if err != nil {

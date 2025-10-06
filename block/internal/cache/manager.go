@@ -43,6 +43,7 @@ type Manager interface {
 	SetHeaderSeen(hash string)
 	GetHeaderDAIncluded(hash string) (uint64, bool)
 	SetHeaderDAIncluded(hash string, daHeight uint64)
+	RemoveHeaderDAIncluded(hash string)
 
 	// Data operations
 	IsDataSeen(hash string) bool
@@ -139,6 +140,10 @@ func (m *implementation) GetHeaderDAIncluded(hash string) (uint64, bool) {
 
 func (m *implementation) SetHeaderDAIncluded(hash string, daHeight uint64) {
 	m.headerCache.setDAIncluded(hash, daHeight)
+}
+
+func (m *implementation) RemoveHeaderDAIncluded(hash string) {
+	m.headerCache.removeDAIncluded(hash)
 }
 
 // Data operations

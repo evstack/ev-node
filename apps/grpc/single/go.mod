@@ -3,7 +3,7 @@ module github.com/evstack/ev-node/apps/grpc/single
 go 1.24.6
 
 require (
-	github.com/evstack/ev-node v1.0.0-beta.4
+	github.com/evstack/ev-node v1.0.0-beta.5
 	github.com/evstack/ev-node/core v1.0.0-beta.3
 	github.com/evstack/ev-node/da v1.0.0-beta.1
 	github.com/evstack/ev-node/execution/grpc v0.0.0
@@ -12,11 +12,11 @@ require (
 )
 
 require (
-	connectrpc.com/connect v1.18.1 // indirect
+	connectrpc.com/connect v1.19.0 // indirect
 	connectrpc.com/grpcreflect v1.3.0 // indirect
 	github.com/benbjohnson/clock v1.3.5 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
-	github.com/celestiaorg/go-header v0.7.2 // indirect
+	github.com/celestiaorg/go-header v0.7.3 // indirect
 	github.com/celestiaorg/go-libp2p-messenger v0.2.2 // indirect
 	github.com/celestiaorg/go-square/v3 v3.0.1 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect

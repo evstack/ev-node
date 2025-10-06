@@ -33,6 +33,9 @@ const (
 	dataSync   syncType = "dataSync"
 )
 
+// TODO: when we add pruning we can remove this
+const ninetyNineYears = 99 * 365 * 24 * time.Hour
+
 // SyncService is the P2P Sync Service for blocks and headers.
 //
 // Uses the go-header library for handling all P2P logic.
@@ -166,11 +169,13 @@ func (syncService *SyncService[H]) WriteToStoreAndBroadcast(ctx context.Context,
 
 // Start is a part of Service interface.
 func (syncService *SyncService[H]) Start(ctx context.Context) error {
-	peerIDs, err := syncService.setupP2P(ctx)
+	// setup P2P infrastructure, but don't start Subscriber yet.
+	peerIDs, err := syncService.setupP2PInfrastructure(ctx)
 	if err != nil {
-		return fmt.Errorf("failed to setup syncer P2P: %w", err)
+		return fmt.Errorf("failed to setup syncer P2P infrastructure: %w", err)
 	}
 
+	// create syncer, must be before initFromP2PWithRetry which calls startSyncer.
 	if syncService.syncer, err = newSyncer(
 		syncService.ex,
 		syncService.store,
@@ -180,9 +185,21 @@ func (syncService *SyncService[H]) Start(ctx context.Context) error {
 		return fmt.Errorf("failed to create syncer: %w", err)
 	}
 
-	// Initialize from P2P, blocking until syncing can actually start for follower nodes.
+	// initialize stores from P2P (blocking until genesis is fetched for followers)
 	// Aggregators (no peers configured) return immediately and initialize on first produced block.
-	return syncService.initFromP2PWithRetry(ctx, peerIDs)
+	if err := syncService.initFromP2PWithRetry(ctx, peerIDs); err != nil {
+		return fmt.Errorf("failed to initialize stores from P2P: %w", err)
+	}
+
+	// start the subscriber, stores are guaranteed to have genesis for followers.
+	//
+	// NOTE: we must start the subscriber after the syncer is initialized in initFromP2PWithRetry to ensure p2p syncing
+	// works correctly.
+	if err := syncService.startSubscriber(ctx); err != nil {
+		return fmt.Errorf("failed to start subscriber: %w", err)
+	}
+
+	return nil
 }
 
 // startSyncer starts the SyncService's syncer
@@ -219,11 +236,13 @@ func (syncService *SyncService[H]) initStore(ctx context.Context, initial H) err
 	return nil
 }
 
-// setupP2P sets up the P2P configuration for the SyncService and starts the necessary components.
-// it returns IDs of peers in configuration (seeds) and available in the network.
-func (syncService *SyncService[H]) setupP2P(ctx context.Context) ([]peer.ID, error) {
+// setupP2PInfrastructure sets up the P2P infrastructure (Exchange, ExchangeServer, Store)
+// but does not start the Subscriber. Returns peer IDs for later use.
+func (syncService *SyncService[H]) setupP2PInfrastructure(ctx context.Context) ([]peer.ID, error) {
 	ps := syncService.p2p.PubSub()
 	var err error
+
+	// Create subscriber but DON'T start it yet
 	syncService.sub, err = goheaderp2p.NewSubscriber[H](
 		ps,
 		pubsub.DefaultMsgIdFn,
@@ -234,15 +253,10 @@ func (syncService *SyncService[H]) setupP2P(ctx context.Context) ([]peer.ID, err
 		return nil, err
 	}
 
-	if err := syncService.sub.Start(ctx); err != nil {
-		return nil, fmt.Errorf("error while starting subscriber: %w", err)
-	}
-	if syncService.topicSubscription, err = syncService.sub.Subscribe(); err != nil {
-		return nil, fmt.Errorf("error while subscribing: %w", err)
-	}
 	if err := syncService.store.Start(ctx); err != nil {
 		return nil, fmt.Errorf("error while starting store: %w", err)
 	}
+
 	_, _, network, err := syncService.p2p.Info()
 	if err != nil {
 		return nil, fmt.Errorf("error while fetching the network: %w", err)
@@ -255,7 +269,9 @@ func (syncService *SyncService[H]) setupP2P(ctx context.Context) ([]peer.ID, err
 	if err := syncService.p2pServer.Start(ctx); err != nil {
 		return nil, fmt.Errorf("error while starting p2p server: %w", err)
 	}
+
 	peerIDs := syncService.getPeerIDs()
+
 	if syncService.ex, err = newP2PExchange[H](syncService.p2p.Host(), peerIDs, networkID, syncService.genesis.ChainID, syncService.p2p.ConnectionGater()); err != nil {
 		return nil, fmt.Errorf("error while creating exchange: %w", err)
 	}
@@ -265,7 +281,22 @@ func (syncService *SyncService[H]) setupP2P(ctx context.Context) ([]peer.ID, err
 	return peerIDs, nil
 }
 
-// initFromP2P looks up for the trusted hash or the genesis header/block.
+// startSubscriber starts the Subscriber and subscribes to the P2P topic.
+// This should be called AFTER stores are initialized to ensure proper validation.
+func (syncService *SyncService[H]) startSubscriber(ctx context.Context) error {
+	if err := syncService.sub.Start(ctx); err != nil {
+		return fmt.Errorf("error while starting subscriber: %w", err)
+	}
+
+	var err error
+	if syncService.topicSubscription, err = syncService.sub.Subscribe(); err != nil {
+		return fmt.Errorf("error while subscribing: %w", err)
+	}
+
+	return nil
+}
+
+// initFromP2PWithRetry initializes the syncer from P2P with a retry mechanism.
 // If trusted hash is available, it fetches the trusted header/block (by hash) from peers.
 // Otherwise, it tries to fetch the genesis header/block by height.
 func (syncService *SyncService[H]) initFromP2PWithRetry(ctx context.Context, peerIDs []peer.ID) error {
@@ -388,6 +419,7 @@ func newSyncer[H header.Header[H]](
 ) (*goheadersync.Syncer[H], error) {
 	opts = append(opts,
 		goheadersync.WithMetrics(),
+		goheadersync.WithPruningWindow(ninetyNineYears),
 	)
 	return goheadersync.NewSyncer(ex, store, sub, opts...)
 }
