@@ -33,7 +33,7 @@ func (m *mockBroadcaster[T]) WriteToStoreAndBroadcast(ctx context.Context, paylo
 }
 
 func (m *mockBroadcaster[T]) Store() goheader.Store[T] {
-	panic("should not need to be needed")
+	panic("should not be needed")
 }
 
 func TestExecutor_BroadcasterIntegration(t *testing.T) {

@@ -35,7 +35,7 @@ type Executor struct {
 	cache   cache.Manager
 	metrics *common.Metrics
 
-	// Broadcasting
+	// P2P handling
 	headerBroadcaster common.Broadcaster[*types.SignedHeader]
 	dataBroadcaster   common.Broadcaster[*types.Data]
 
