@@ -50,7 +50,7 @@ type Syncer struct {
 	lastState *atomic.Pointer[types.State]
 
 	// DA state
-	daHeight uint64
+	daHeight *atomic.Uint64
 
 	// P2P stores
 	headerStore goheader.Store[*types.SignedHeader]
@@ -100,6 +100,7 @@ func NewSyncer(
 		headerStore: headerStore,
 		dataStore:   dataStore,
 		lastState:   &atomic.Pointer[types.State]{},
+		daHeight:    &atomic.Uint64{},
 		heightInCh:  make(chan common.DAHeightEvent, 10_000),
 		errorCh:     errorCh,
 		logger:      logger.With().Str("component", "syncer").Logger(),
@@ -168,12 +169,12 @@ func (s *Syncer) SetLastState(state types.State) {
 
 // GetDAHeight returns the current DA height
 func (s *Syncer) GetDAHeight() uint64 {
-	return atomic.LoadUint64(&s.daHeight)
+	return s.daHeight.Load()
 }
 
 // SetDAHeight updates the DA height
 func (s *Syncer) SetDAHeight(height uint64) {
-	atomic.StoreUint64(&s.daHeight, height)
+	s.daHeight.Store(height)
 }
 
 // initializeState loads the current sync state
