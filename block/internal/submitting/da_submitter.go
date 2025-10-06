@@ -3,6 +3,7 @@ package submitting
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -29,6 +30,87 @@ const (
 	defaultMaxGasPriceClamp      = 1000.0
 	defaultMaxGasMultiplierClamp = 3.0 // must always > 0 to avoid division by zero
 )
+
+// mapSubmitError maps DA submission errors to appropriate status codes
+func mapSubmitError(err error) coreda.StatusCode {
+	switch {
+	case errors.Is(err, context.Canceled):
+		return coreda.StatusContextCanceled
+	case errors.Is(err, coreda.ErrTxTimedOut):
+		return coreda.StatusNotIncludedInBlock
+	case errors.Is(err, coreda.ErrTxAlreadyInMempool):
+		return coreda.StatusAlreadyInMempool
+	case errors.Is(err, coreda.ErrTxIncorrectAccountSequence):
+		return coreda.StatusIncorrectAccountSequence
+	case errors.Is(err, coreda.ErrBlobSizeOverLimit):
+		return coreda.StatusTooBig
+	case errors.Is(err, coreda.ErrContextDeadline):
+		return coreda.StatusContextDeadline
+	default:
+		return coreda.StatusError
+	}
+}
+
+// buildSubmitResult converts DA submission outputs into a ResultSubmit with logging.
+func buildSubmitResult(logger zerolog.Logger, err error, ids [][]byte, blobs [][]byte) coreda.ResultSubmit {
+	var blobSize uint64
+	for _, blob := range blobs {
+		blobSize += uint64(len(blob))
+	}
+
+	if err != nil {
+		status := mapSubmitError(err)
+
+		// Log failures, keeping StatusTooBig at debug to avoid noisy recursion logs
+		switch status {
+		case coreda.StatusTooBig:
+			logger.Debug().Err(err).Uint64("status", uint64(status)).Msg("DA submission failed")
+		case coreda.StatusContextCanceled:
+			// no log; caller handles cancellation separately
+		default:
+			logger.Error().Err(err).Uint64("status", uint64(status)).Msg("DA submission failed")
+		}
+
+		return coreda.ResultSubmit{
+			BaseResult: coreda.BaseResult{
+				Code:           status,
+				Message:        "failed to submit blobs: " + err.Error(),
+				IDs:            ids,
+				SubmittedCount: uint64(len(ids)),
+				Height:         0,
+				Timestamp:      time.Now(),
+				BlobSize:       blobSize,
+			},
+		}
+	}
+
+	if len(ids) == 0 && len(blobs) > 0 {
+		logger.Warn().Msg("DA submission returned no IDs for non-empty input data")
+		return coreda.ResultSubmit{
+			BaseResult: coreda.BaseResult{
+				Code:     coreda.StatusError,
+				Message:  "failed to submit blobs: no IDs returned despite non-empty input",
+				BlobSize: blobSize,
+			},
+		}
+	}
+
+	var height uint64
+	if len(ids) > 0 {
+		height, _, _ = coreda.SplitID(ids[0])
+	}
+
+	return coreda.ResultSubmit{
+		BaseResult: coreda.BaseResult{
+			Code:           coreda.StatusSuccess,
+			IDs:            ids,
+			SubmittedCount: uint64(len(ids)),
+			Height:         height,
+			BlobSize:       blobSize,
+			Timestamp:      time.Now(),
+		},
+	}
+}
 
 // retryPolicy defines clamped bounds for retries, backoff, and gas pricing.
 type retryPolicy struct {
@@ -360,8 +442,10 @@ func submitToDA[T any](
 
 		submitCtx, cancel := context.WithTimeout(ctx, submissionTimeout)
 		defer cancel()
-		// Perform submission
-		res := types.SubmitWithHelpers(submitCtx, s.da, s.logger, marshaled, rs.GasPrice, namespace, options)
+
+		// Perform submission directly
+		ids, err := s.da.SubmitWithOptions(submitCtx, marshaled, rs.GasPrice, namespace, options)
+		res := buildSubmitResult(s.logger, err, ids, marshaled)
 
 		// Record submission result for observability
 		if daVisualizationServer := server.GetDAVisualizationServer(); daVisualizationServer != nil {

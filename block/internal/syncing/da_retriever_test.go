@@ -145,7 +145,7 @@ func TestDARetriever_RetrieveFromDA_Timeout(t *testing.T) {
 
 	// Verify error is returned and contains deadline exceeded information
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "DA retrieval failed")
+	assert.Contains(t, err.Error(), "failed to get IDs")
 	assert.Contains(t, err.Error(), "context deadline exceeded")
 	assert.Len(t, events, 0)
 
@@ -172,7 +172,7 @@ func TestDARetriever_RetrieveFromDA_TimeoutFast(t *testing.T) {
 
 	// Verify error is returned and contains deadline exceeded information
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "DA retrieval failed")
+	assert.Contains(t, err.Error(), "failed to get IDs")
 	assert.Contains(t, err.Error(), "context deadline exceeded")
 	assert.Len(t, events, 0)
 }
@@ -283,20 +283,6 @@ func TestDARetriever_tryDecodeData_InvalidSignatureOrProposer(t *testing.T) {
 	// Signed data is made by goodAddr; retriever expects badAddr -> should be rejected
 	db, _ := makeSignedDataBytes(t, gen.ChainID, 7, goodAddr, pub, signer, 1)
 	assert.Nil(t, r.tryDecodeData(db, 55))
-}
-
-func TestDARetriever_validateBlobResponse(t *testing.T) {
-	r := &DARetriever{logger: zerolog.Nop()}
-	// StatusSuccess -> nil
-	err := r.validateBlobResponse(coreda.ResultRetrieve{BaseResult: coreda.BaseResult{Code: coreda.StatusSuccess}}, 1)
-	assert.NoError(t, err)
-	// StatusError -> error
-	err = r.validateBlobResponse(coreda.ResultRetrieve{BaseResult: coreda.BaseResult{Code: coreda.StatusError, Message: "fail"}}, 1)
-	assert.Error(t, err)
-	// StatusHeightFromFuture -> specific error
-	err = r.validateBlobResponse(coreda.ResultRetrieve{BaseResult: coreda.BaseResult{Code: coreda.StatusHeightFromFuture}}, 1)
-	assert.Error(t, err)
-	assert.True(t, errors.Is(err, coreda.ErrHeightFromFuture))
 }
 
 func TestDARetriever_RetrieveFromDA_TwoNamespaces_Success(t *testing.T) {

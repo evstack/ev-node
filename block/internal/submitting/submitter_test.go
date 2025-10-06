@@ -208,11 +208,12 @@ func TestSubmitter_processDAInclusionLoop_advances(t *testing.T) {
 
 // helper to create a minimal header and data for tests
 func newHeaderAndData(chainID string, height uint64, nonEmpty bool) (*types.SignedHeader, *types.Data) {
-	now := time.Now()
-	h := &types.SignedHeader{Header: types.Header{BaseHeader: types.BaseHeader{ChainID: chainID, Height: height, Time: uint64(now.UnixNano())}, ProposerAddress: []byte{1}}}
-	d := &types.Data{Metadata: &types.Metadata{ChainID: chainID, Height: height, Time: uint64(now.UnixNano())}}
+	now := time.Now().UnixNano()
+	timestamp := uint64(now) + height
+	h := &types.SignedHeader{Header: types.Header{BaseHeader: types.BaseHeader{ChainID: chainID, Height: height, Time: timestamp}, ProposerAddress: []byte{1}}}
+	d := &types.Data{Metadata: &types.Metadata{ChainID: chainID, Height: height, Time: timestamp}}
 	if nonEmpty {
-		d.Txs = types.Txs{types.Tx(fmt.Sprintf("any-unique-tx-%d", now.UnixNano()))}
+		d.Txs = types.Txs{types.Tx(fmt.Sprintf("any-unique-tx-%d-%d", height, now))}
 	}
 	return h, d
 }
