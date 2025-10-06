@@ -244,20 +244,36 @@ func (s *Syncer) syncLoop() {
 	// Backoff control when DA replies with errors
 	nextDARequestAt := &time.Time{}
 
-	blockTicker := time.NewTicker(s.config.Node.BlockTime.Duration)
-	defer blockTicker.Stop()
-
 	for {
+		wg := sync.WaitGroup{}
+
 		select {
 		case <-s.ctx.Done():
 			return
 		default:
 		}
-		// Process pending events from cache on every iteration
-		s.processPendingEvents()
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			s.processPendingEvents()
+		}()
 
-		fetchedP2pEvent := s.tryFetchFromP2P(lastHeaderHeight, lastDataHeight, blockTicker.C)
-		fetchedDaEvent := s.tryFetchFromDA(nextDARequestAt)
+		wg.Add(1)
+		fetchedP2pEvent := false
+		go func() {
+			defer wg.Done()
+			fetchedP2pEvent = s.tryFetchFromP2P(lastHeaderHeight, lastDataHeight)
+		}()
+
+		wg.Add(1)
+		fetchedDaEvent := false
+		go func() {
+			defer wg.Done()
+			fetchedDaEvent = s.tryFetchFromDA(nextDARequestAt)
+		}()
+
+		// wait for pending events processing, p2p and da fetching
+		wg.Wait()
 
 		// Prevent busy-waiting when no events are available
 		if !fetchedDaEvent && !fetchedP2pEvent {
@@ -322,48 +338,43 @@ func (s *Syncer) tryFetchFromDA(nextDARequestAt *time.Time) bool {
 // tryFetchFromP2P attempts to fetch events from P2P stores.
 // It processes both header and data ranges when the block ticker fires.
 // Returns true if any events were successfully processed.
-func (s *Syncer) tryFetchFromP2P(lastHeaderHeight, lastDataHeight *uint64, blockTicker <-chan time.Time) bool {
+func (s *Syncer) tryFetchFromP2P(lastHeaderHeight, lastDataHeight *uint64) bool {
 	eventsProcessed := false
 
-	select {
-	case <-blockTicker:
-		// Process headers
-		newHeaderHeight := s.headerBroadcaster.Store().Height()
-		if newHeaderHeight > *lastHeaderHeight {
-			events := s.p2pHandler.ProcessHeaderRange(s.ctx, *lastHeaderHeight+1, newHeaderHeight)
-			for _, event := range events {
-				select {
-				case s.heightInCh <- event:
-				default:
-					s.cache.SetPendingEvent(event.Header.Height(), &event)
-				}
-			}
-			*lastHeaderHeight = newHeaderHeight
-			if len(events) > 0 {
-				eventsProcessed = true
+	// Process headers
+	newHeaderHeight := s.headerBroadcaster.Store().Height()
+	if newHeaderHeight > *lastHeaderHeight {
+		events := s.p2pHandler.ProcessHeaderRange(s.ctx, *lastHeaderHeight+1, newHeaderHeight)
+		for _, event := range events {
+			select {
+			case s.heightInCh <- event:
+			default:
+				s.cache.SetPendingEvent(event.Header.Height(), &event)
 			}
 		}
+		*lastHeaderHeight = newHeaderHeight
+		if len(events) > 0 {
+			eventsProcessed = true
+		}
+	}
 
-		// Process data
-		newDataHeight := s.dataBroadcaster.Store().Height()
-		if newDataHeight == newHeaderHeight {
-			*lastDataHeight = newDataHeight
-		} else if newDataHeight > *lastDataHeight {
-			events := s.p2pHandler.ProcessDataRange(s.ctx, *lastDataHeight+1, newDataHeight)
-			for _, event := range events {
-				select {
-				case s.heightInCh <- event:
-				default:
-					s.cache.SetPendingEvent(event.Header.Height(), &event)
-				}
-			}
-			*lastDataHeight = newDataHeight
-			if len(events) > 0 {
-				eventsProcessed = true
+	// Process data
+	newDataHeight := s.dataBroadcaster.Store().Height()
+	if newDataHeight == newHeaderHeight {
+		*lastDataHeight = newDataHeight
+	} else if newDataHeight > *lastDataHeight {
+		events := s.p2pHandler.ProcessDataRange(s.ctx, *lastDataHeight+1, newDataHeight)
+		for _, event := range events {
+			select {
+			case s.heightInCh <- event:
+			default:
+				s.cache.SetPendingEvent(event.Header.Height(), &event)
 			}
 		}
-	default:
-		// No P2P events available
+		*lastDataHeight = newDataHeight
+		if len(events) > 0 {
+			eventsProcessed = true
+		}
 	}
 
 	return eventsProcessed
