@@ -13,6 +13,7 @@ import (
 	signerpkg "github.com/evstack/ev-node/pkg/signer"
 	"github.com/evstack/ev-node/pkg/signer/noop"
 	testmocks "github.com/evstack/ev-node/test/mocks"
+	mocks "github.com/evstack/ev-node/test/mocks/external"
 	"github.com/ipfs/go-datastore"
 	dssync "github.com/ipfs/go-datastore/sync"
 	"github.com/libp2p/go-libp2p/core/crypto"
@@ -107,8 +108,8 @@ func TestSyncer_validateBlock_DataHashMismatch(t *testing.T) {
 		common.NopMetrics(),
 		cfg,
 		gen,
-		nil,
-		nil,
+		&mocks.MockStore[*types.SignedHeader]{},
+		&mocks.MockStore[*types.Data]{},
 		zerolog.Nop(),
 		common.DefaultBlockOptions(),
 		make(chan error, 1),
@@ -147,6 +148,11 @@ func TestProcessHeightEvent_SyncsAndUpdatesState(t *testing.T) {
 
 	mockExec := testmocks.NewMockExecutor(t)
 
+	mockP2PHeaderStore := &mocks.MockStore[*types.SignedHeader]{}
+	mockP2PHeaderStore.On("Append", mock.Anything, mock.Anything).Return(nil).Maybe()
+	mockP2PDataStore := &mocks.MockStore[*types.Data]{}
+	mockP2PDataStore.On("Append", mock.Anything, mock.Anything).Return(nil).Maybe()
+
 	s := NewSyncer(
 		st,
 		mockExec,
@@ -155,8 +161,8 @@ func TestProcessHeightEvent_SyncsAndUpdatesState(t *testing.T) {
 		common.NopMetrics(),
 		cfg,
 		gen,
-		nil,
-		nil,
+		mockP2PHeaderStore,
+		mockP2PDataStore,
 		zerolog.Nop(),
 		common.DefaultBlockOptions(),
 		make(chan error, 1),
@@ -197,6 +203,11 @@ func TestSequentialBlockSync(t *testing.T) {
 
 	mockExec := testmocks.NewMockExecutor(t)
 
+	mockP2PHeaderStore := &mocks.MockStore[*types.SignedHeader]{}
+	mockP2PHeaderStore.On("Append", mock.Anything, mock.Anything).Return(nil).Maybe()
+	mockP2PDataStore := &mocks.MockStore[*types.Data]{}
+	mockP2PDataStore.On("Append", mock.Anything, mock.Anything).Return(nil).Maybe()
+
 	s := NewSyncer(
 		st,
 		mockExec,
@@ -205,8 +216,8 @@ func TestSequentialBlockSync(t *testing.T) {
 		common.NopMetrics(),
 		cfg,
 		gen,
-		nil,
-		nil,
+		mockP2PHeaderStore,
+		mockP2PDataStore,
 		zerolog.Nop(),
 		common.DefaultBlockOptions(),
 		make(chan error, 1),
@@ -324,6 +335,11 @@ func TestSyncLoopPersistState(t *testing.T) {
 
 	dummyExec := execution.NewDummyExecutor()
 
+	mockP2PHeaderStore := &mocks.MockStore[*types.SignedHeader]{}
+	mockP2PHeaderStore.On("Append", mock.Anything, mock.Anything).Return(nil).Maybe()
+	mockP2PDataStore := &mocks.MockStore[*types.Data]{}
+	mockP2PDataStore.On("Append", mock.Anything, mock.Anything).Return(nil).Maybe()
+
 	syncerInst1 := NewSyncer(
 		st,
 		dummyExec,
@@ -332,8 +348,8 @@ func TestSyncLoopPersistState(t *testing.T) {
 		common.NopMetrics(),
 		cfg,
 		gen,
-		nil,
-		nil,
+		mockP2PHeaderStore,
+		mockP2PDataStore,
 		zerolog.Nop(),
 		common.DefaultBlockOptions(),
 		make(chan error, 1),
@@ -401,6 +417,11 @@ func TestSyncLoopPersistState(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, cm.LoadFromDisk())
 
+	mockP2PHeaderStore2 := &mocks.MockStore[*types.SignedHeader]{}
+	mockP2PHeaderStore2.On("Append", mock.Anything, mock.Anything).Return(nil).Maybe()
+	mockP2PDataStore2 := &mocks.MockStore[*types.Data]{}
+	mockP2PDataStore2.On("Append", mock.Anything, mock.Anything).Return(nil).Maybe()
+
 	syncerInst2 := NewSyncer(
 		st,
 		dummyExec,
@@ -409,8 +430,8 @@ func TestSyncLoopPersistState(t *testing.T) {
 		common.NopMetrics(),
 		cfg,
 		gen,
-		nil,
-		nil,
+		mockP2PHeaderStore2,
+		mockP2PDataStore2,
 		zerolog.Nop(),
 		common.DefaultBlockOptions(),
 		make(chan error, 1),
