@@ -47,8 +47,7 @@ type Syncer struct {
 	options common.BlockOptions
 
 	// State management
-	lastState    types.State
-	lastStateMtx *sync.RWMutex
+	lastState *atomic.Pointer[types.State]
 
 	// DA state
 	daHeight uint64
@@ -90,20 +89,20 @@ func NewSyncer(
 	errorCh chan<- error,
 ) *Syncer {
 	return &Syncer{
-		store:        store,
-		exec:         exec,
-		da:           da,
-		cache:        cache,
-		metrics:      metrics,
-		config:       config,
-		genesis:      genesis,
-		options:      options,
-		headerStore:  headerStore,
-		dataStore:    dataStore,
-		lastStateMtx: &sync.RWMutex{},
-		heightInCh:   make(chan common.DAHeightEvent, 10_000),
-		errorCh:      errorCh,
-		logger:       logger.With().Str("component", "syncer").Logger(),
+		store:       store,
+		exec:        exec,
+		da:          da,
+		cache:       cache,
+		metrics:     metrics,
+		config:      config,
+		genesis:     genesis,
+		options:     options,
+		headerStore: headerStore,
+		dataStore:   dataStore,
+		lastState:   &atomic.Pointer[types.State]{},
+		heightInCh:  make(chan common.DAHeightEvent, 10_000),
+		errorCh:     errorCh,
+		logger:      logger.With().Str("component", "syncer").Logger(),
 	}
 }
 
@@ -150,16 +149,21 @@ func (s *Syncer) Stop() error {
 
 // GetLastState returns the current state
 func (s *Syncer) GetLastState() types.State {
-	s.lastStateMtx.RLock()
-	defer s.lastStateMtx.RUnlock()
-	return s.lastState
+	state := s.lastState.Load()
+	if state == nil {
+		return types.State{}
+	}
+
+	stateCopy := *state
+	stateCopy.AppHash = bytes.Clone(state.AppHash)
+	stateCopy.LastResultsHash = bytes.Clone(state.LastResultsHash)
+
+	return stateCopy
 }
 
 // SetLastState updates the current state
 func (s *Syncer) SetLastState(state types.State) {
-	s.lastStateMtx.Lock()
-	defer s.lastStateMtx.Unlock()
-	s.lastState = state
+	s.lastState.Store(&state)
 }
 
 // GetDAHeight returns the current DA height

@@ -154,10 +154,14 @@ func (e *Executor) Stop() error {
 func (e *Executor) GetLastState() types.State {
 	state := e.lastState.Load()
 	if state == nil {
-		// Return zero value if not initialized
 		return types.State{}
 	}
-	return *state
+
+	stateCopy := *state
+	stateCopy.AppHash = bytes.Clone(state.AppHash)
+	stateCopy.LastResultsHash = bytes.Clone(state.LastResultsHash)
+
+	return stateCopy
 }
 
 // SetLastState updates the current state
