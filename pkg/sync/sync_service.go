@@ -117,7 +117,7 @@ func newSyncService[H header.Header[H]](
 }
 
 // Store returns the store of the SyncService
-func (syncService *SyncService[H]) Store() *goheaderstore.Store[H] {
+func (syncService *SyncService[H]) Store() header.Store[H] {
 	return syncService.store
 }
 
