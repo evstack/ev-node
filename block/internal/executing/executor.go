@@ -150,22 +150,28 @@ func (e *Executor) Stop() error {
 	return nil
 }
 
-// GetLastState returns the current state
+// GetLastState returns the current state.
 func (e *Executor) GetLastState() types.State {
+	state := e.getLastState()
+	state.AppHash = bytes.Clone(state.AppHash)
+	state.LastResultsHash = bytes.Clone(state.LastResultsHash)
+
+	return state
+}
+
+// getLastState returns the current state.
+// getLastState should never directly mutate.
+func (e *Executor) getLastState() types.State {
 	state := e.lastState.Load()
 	if state == nil {
 		return types.State{}
 	}
 
-	stateCopy := *state
-	stateCopy.AppHash = bytes.Clone(state.AppHash)
-	stateCopy.LastResultsHash = bytes.Clone(state.LastResultsHash)
-
-	return stateCopy
+	return *state
 }
 
-// SetLastState updates the current state
-func (e *Executor) SetLastState(state types.State) {
+// setLastState updates the current state
+func (e *Executor) setLastState(state types.State) {
 	e.lastState.Store(&state)
 }
 
@@ -203,7 +209,7 @@ func (e *Executor) initializeState() error {
 		}
 	}
 
-	e.SetLastState(state)
+	e.setLastState(state)
 
 	// Set store height
 	if err := e.store.SetHeight(e.ctx, state.LastBlockHeight); err != nil {
@@ -223,7 +229,7 @@ func (e *Executor) executionLoop() {
 
 	var delay time.Duration
 	initialHeight := e.genesis.InitialHeight
-	currentState := e.GetLastState()
+	currentState := e.getLastState()
 
 	if currentState.LastBlockHeight < initialHeight {
 		delay = time.Until(e.genesis.StartTime.Add(e.config.Node.BlockTime.Duration))
@@ -296,7 +302,7 @@ func (e *Executor) produceBlock() error {
 		}
 	}()
 
-	currentState := e.GetLastState()
+	currentState := e.getLastState()
 	newHeight := currentState.LastBlockHeight + 1
 
 	e.logger.Debug().Uint64("height", newHeight).Msg("producing block")
@@ -434,7 +440,7 @@ func (e *Executor) retrieveBatch(ctx context.Context) (*BatchData, error) {
 
 // createBlock creates a new block from the given batch
 func (e *Executor) createBlock(ctx context.Context, height uint64, batchData *BatchData) (*types.SignedHeader, *types.Data, error) {
-	currentState := e.GetLastState()
+	currentState := e.getLastState()
 	headerTime := uint64(e.genesis.StartTime.UnixNano())
 
 	// Get last block info
@@ -523,7 +529,7 @@ func (e *Executor) createBlock(ctx context.Context, height uint64, batchData *Ba
 
 // applyBlock applies the block to get the new state
 func (e *Executor) applyBlock(ctx context.Context, header types.Header, data *types.Data) (types.State, error) {
-	currentState := e.GetLastState()
+	currentState := e.getLastState()
 
 	// Prepare transactions
 	rawTxs := make([][]byte, len(data.Txs))
@@ -606,7 +612,7 @@ func (e *Executor) updateState(ctx context.Context, newState types.State) error 
 		return err
 	}
 
-	e.SetLastState(newState)
+	e.setLastState(newState)
 	e.metrics.Height.Set(float64(newState.LastBlockHeight))
 
 	return nil
