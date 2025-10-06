@@ -345,7 +345,7 @@ func (s *Syncer) tryFetchFromP2P(lastHeaderHeight, lastDataHeight *uint64, block
 		}
 
 		// Process data
-		newDataHeight := s.headerBroadcaster.Store().Height()
+		newDataHeight := s.dataBroadcaster.Store().Height()
 		if newDataHeight == newHeaderHeight {
 			*lastDataHeight = newDataHeight
 		} else if newDataHeight > *lastDataHeight {
