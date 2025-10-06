@@ -23,6 +23,11 @@ import (
 	"github.com/evstack/ev-node/types"
 )
 
+// broadcaster interface for P2P broadcasting
+type broadcaster[T any] interface {
+	WriteToStoreAndBroadcast(ctx context.Context, payload T) error
+}
+
 // Executor handles block production, transaction processing, and state management
 type Executor struct {
 	// Core components
@@ -35,9 +40,9 @@ type Executor struct {
 	cache   cache.Manager
 	metrics *common.Metrics
 
-	// P2P handling
-	headerBroadcaster common.Broadcaster[*types.SignedHeader]
-	dataBroadcaster   common.Broadcaster[*types.Data]
+	// Broadcasting
+	headerBroadcaster broadcaster[*types.SignedHeader]
+	dataBroadcaster   broadcaster[*types.Data]
 
 	// Configuration
 	config  config.Config
@@ -76,8 +81,8 @@ func NewExecutor(
 	metrics *common.Metrics,
 	config config.Config,
 	genesis genesis.Genesis,
-	headerBroadcaster common.Broadcaster[*types.SignedHeader],
-	dataBroadcaster common.Broadcaster[*types.Data],
+	headerBroadcaster broadcaster[*types.SignedHeader],
+	dataBroadcaster broadcaster[*types.Data],
 	logger zerolog.Logger,
 	options common.BlockOptions,
 	errorCh chan<- error,

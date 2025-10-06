@@ -9,8 +9,8 @@ import (
 	"sync/atomic"
 	"time"
 
+	goheader "github.com/celestiaorg/go-header"
 	"github.com/rs/zerolog"
-	"golang.org/x/sync/errgroup"
 
 	"github.com/evstack/ev-node/block/internal/cache"
 	"github.com/evstack/ev-node/block/internal/common"
@@ -25,7 +25,6 @@ import (
 type daRetriever interface {
 	RetrieveFromDA(ctx context.Context, daHeight uint64) ([]common.DAHeightEvent, error)
 }
-
 type p2pHandler interface {
 	ProcessHeaderRange(ctx context.Context, fromHeight, toHeight uint64) []common.DAHeightEvent
 	ProcessDataRange(ctx context.Context, fromHeight, toHeight uint64) []common.DAHeightEvent
@@ -54,9 +53,9 @@ type Syncer struct {
 	// DA state
 	daHeight uint64
 
-	// P2P handling
-	headerBroadcaster common.Broadcaster[*types.SignedHeader]
-	dataBroadcaster   common.Broadcaster[*types.Data]
+	// P2P stores
+	headerStore goheader.Store[*types.SignedHeader]
+	dataStore   goheader.Store[*types.Data]
 
 	// Channels for coordination
 	heightInCh chan common.DAHeightEvent
@@ -84,27 +83,27 @@ func NewSyncer(
 	metrics *common.Metrics,
 	config config.Config,
 	genesis genesis.Genesis,
-	headerBroadcaster common.Broadcaster[*types.SignedHeader],
-	dataBroadcaster common.Broadcaster[*types.Data],
+	headerStore goheader.Store[*types.SignedHeader],
+	dataStore goheader.Store[*types.Data],
 	logger zerolog.Logger,
 	options common.BlockOptions,
 	errorCh chan<- error,
 ) *Syncer {
 	return &Syncer{
-		store:             store,
-		exec:              exec,
-		da:                da,
-		cache:             cache,
-		metrics:           metrics,
-		config:            config,
-		genesis:           genesis,
-		options:           options,
-		headerBroadcaster: headerBroadcaster,
-		dataBroadcaster:   dataBroadcaster,
-		lastStateMtx:      &sync.RWMutex{},
-		heightInCh:        make(chan common.DAHeightEvent, 10_000),
-		errorCh:           errorCh,
-		logger:            logger.With().Str("component", "syncer").Logger(),
+		store:        store,
+		exec:         exec,
+		da:           da,
+		cache:        cache,
+		metrics:      metrics,
+		config:       config,
+		genesis:      genesis,
+		options:      options,
+		headerStore:  headerStore,
+		dataStore:    dataStore,
+		lastStateMtx: &sync.RWMutex{},
+		heightInCh:   make(chan common.DAHeightEvent, 10_000),
+		errorCh:      errorCh,
+		logger:       logger.With().Str("component", "syncer").Logger(),
 	}
 }
 
@@ -119,7 +118,7 @@ func (s *Syncer) Start(ctx context.Context) error {
 
 	// Initialize handlers
 	s.daRetriever = NewDARetriever(s.da, s.cache, s.config, s.genesis, s.options, s.logger)
-	s.p2pHandler = NewP2PHandler(s.headerBroadcaster.Store(), s.dataBroadcaster.Store(), s.genesis, s.options, s.logger)
+	s.p2pHandler = NewP2PHandler(s.headerStore, s.dataStore, s.genesis, s.options, s.logger)
 
 	// Start main processing loop
 	s.wg.Add(1)
@@ -328,7 +327,7 @@ func (s *Syncer) tryFetchFromP2P(lastHeaderHeight, lastDataHeight *uint64, block
 	select {
 	case <-blockTicker:
 		// Process headers
-		newHeaderHeight := s.headerBroadcaster.Store().Height()
+		newHeaderHeight := s.headerStore.Height()
 		if newHeaderHeight > *lastHeaderHeight {
 			events := s.p2pHandler.ProcessHeaderRange(s.ctx, *lastHeaderHeight+1, newHeaderHeight)
 			for _, event := range events {
@@ -345,7 +344,7 @@ func (s *Syncer) tryFetchFromP2P(lastHeaderHeight, lastDataHeight *uint64, block
 		}
 
 		// Process data
-		newDataHeight := s.dataBroadcaster.Store().Height()
+		newDataHeight := s.dataStore.Height()
 		if newDataHeight == newHeaderHeight {
 			*lastDataHeight = newDataHeight
 		} else if newDataHeight > *lastDataHeight {
@@ -409,13 +408,15 @@ func (s *Syncer) processHeightEvent(event *common.DAHeightEvent) {
 		return
 	}
 
-	// broadcast header and data to P2P network
-	g, ctx := errgroup.WithContext(s.ctx)
-	g.Go(func() error { return s.headerBroadcaster.WriteToStoreAndBroadcast(ctx, event.Header) })
-	g.Go(func() error { return s.dataBroadcaster.WriteToStoreAndBroadcast(ctx, event.Data) })
-	if err := g.Wait(); err != nil {
-		s.logger.Error().Err(err).Msg("failed to broadcast header and/data")
-		// don't fail block production on broadcast error
+	// Append new event to p2p stores
+	if err := s.headerStore.Append(s.ctx, event.Header); err != nil {
+		s.logger.Error().Err(err).Msg("failed to append event header to p2p store")
+		return
+	}
+
+	if err := s.dataStore.Append(s.ctx, event.Data); err != nil {
+		s.logger.Error().Err(err).Msg("failed to append event data to p2p store")
+		return
 	}
 }
 

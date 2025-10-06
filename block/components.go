@@ -5,10 +5,10 @@ import (
 	"errors"
 	"fmt"
 
+	goheader "github.com/celestiaorg/go-header"
 	"github.com/rs/zerolog"
 
 	"github.com/evstack/ev-node/block/internal/cache"
-	"github.com/evstack/ev-node/block/internal/common"
 	"github.com/evstack/ev-node/block/internal/executing"
 	"github.com/evstack/ev-node/block/internal/reaping"
 	"github.com/evstack/ev-node/block/internal/submitting"
@@ -122,6 +122,11 @@ func (bc *Components) Stop() error {
 	return errs
 }
 
+// broadcaster interface for P2P broadcasting
+type broadcaster[T any] interface {
+	WriteToStoreAndBroadcast(ctx context.Context, payload T) error
+}
+
 // NewSyncComponents creates components for a non-aggregator full node that can only sync blocks.
 // Non-aggregator full nodes can sync from P2P and DA but cannot produce blocks or submit to DA.
 // They have more sync capabilities than light nodes but no block production. No signer required.
@@ -131,8 +136,8 @@ func NewSyncComponents(
 	store store.Store,
 	exec coreexecutor.Executor,
 	da coreda.DA,
-	headerBroadcaster common.Broadcaster[*types.SignedHeader],
-	dataBroadcaster common.Broadcaster[*types.Data],
+	headerStore goheader.Store[*types.SignedHeader],
+	dataStore goheader.Store[*types.Data],
 	logger zerolog.Logger,
 	metrics *Metrics,
 	blockOpts BlockOptions,
@@ -153,8 +158,8 @@ func NewSyncComponents(
 		metrics,
 		config,
 		genesis,
-		headerBroadcaster,
-		dataBroadcaster,
+		headerStore,
+		dataStore,
 		logger,
 		blockOpts,
 		errorCh,
@@ -194,8 +199,8 @@ func NewAggregatorComponents(
 	sequencer coresequencer.Sequencer,
 	da coreda.DA,
 	signer signer.Signer,
-	headerBroadcaster common.Broadcaster[*types.SignedHeader],
-	dataBroadcaster common.Broadcaster[*types.Data],
+	headerBroadcaster broadcaster[*types.SignedHeader],
+	dataBroadcaster broadcaster[*types.Data],
 	logger zerolog.Logger,
 	metrics *Metrics,
 	blockOpts BlockOptions,
