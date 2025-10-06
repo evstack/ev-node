@@ -25,6 +25,7 @@ import (
 type daRetriever interface {
 	RetrieveFromDA(ctx context.Context, daHeight uint64) ([]common.DAHeightEvent, error)
 }
+
 type p2pHandler interface {
 	ProcessHeaderRange(ctx context.Context, fromHeight, toHeight uint64) []common.DAHeightEvent
 	ProcessDataRange(ctx context.Context, fromHeight, toHeight uint64) []common.DAHeightEvent
@@ -53,9 +54,9 @@ type Syncer struct {
 	// DA state
 	daHeight uint64
 
-	// P2P stores
-	headerStore common.Broadcaster[*types.SignedHeader]
-	dataStore   common.Broadcaster[*types.Data]
+	// P2P handling
+	headerBroadcaster common.Broadcaster[*types.SignedHeader]
+	dataBroadcaster   common.Broadcaster[*types.Data]
 
 	// Channels for coordination
 	heightInCh chan common.DAHeightEvent
@@ -83,27 +84,27 @@ func NewSyncer(
 	metrics *common.Metrics,
 	config config.Config,
 	genesis genesis.Genesis,
-	headerStore common.Broadcaster[*types.SignedHeader],
-	dataStore common.Broadcaster[*types.Data],
+	headerBroadcaster common.Broadcaster[*types.SignedHeader],
+	dataBroadcaster common.Broadcaster[*types.Data],
 	logger zerolog.Logger,
 	options common.BlockOptions,
 	errorCh chan<- error,
 ) *Syncer {
 	return &Syncer{
-		store:        store,
-		exec:         exec,
-		da:           da,
-		cache:        cache,
-		metrics:      metrics,
-		config:       config,
-		genesis:      genesis,
-		options:      options,
-		headerStore:  headerStore,
-		dataStore:    dataStore,
-		lastStateMtx: &sync.RWMutex{},
-		heightInCh:   make(chan common.DAHeightEvent, 10_000),
-		errorCh:      errorCh,
-		logger:       logger.With().Str("component", "syncer").Logger(),
+		store:             store,
+		exec:              exec,
+		da:                da,
+		cache:             cache,
+		metrics:           metrics,
+		config:            config,
+		genesis:           genesis,
+		options:           options,
+		headerBroadcaster: headerBroadcaster,
+		dataBroadcaster:   dataBroadcaster,
+		lastStateMtx:      &sync.RWMutex{},
+		heightInCh:        make(chan common.DAHeightEvent, 10_000),
+		errorCh:           errorCh,
+		logger:            logger.With().Str("component", "syncer").Logger(),
 	}
 }
 
@@ -118,7 +119,7 @@ func (s *Syncer) Start(ctx context.Context) error {
 
 	// Initialize handlers
 	s.daRetriever = NewDARetriever(s.da, s.cache, s.config, s.genesis, s.options, s.logger)
-	s.p2pHandler = NewP2PHandler(s.headerStore.Store(), s.dataStore.Store(), s.genesis, s.options, s.logger)
+	s.p2pHandler = NewP2PHandler(s.headerBroadcaster.Store(), s.dataBroadcaster.Store(), s.genesis, s.options, s.logger)
 
 	// Start main processing loop
 	s.wg.Add(1)
@@ -327,7 +328,7 @@ func (s *Syncer) tryFetchFromP2P(lastHeaderHeight, lastDataHeight *uint64, block
 	select {
 	case <-blockTicker:
 		// Process headers
-		newHeaderHeight := s.headerStore.Store().Height()
+		newHeaderHeight := s.headerBroadcaster.Store().Height()
 		if newHeaderHeight > *lastHeaderHeight {
 			events := s.p2pHandler.ProcessHeaderRange(s.ctx, *lastHeaderHeight+1, newHeaderHeight)
 			for _, event := range events {
@@ -344,7 +345,7 @@ func (s *Syncer) tryFetchFromP2P(lastHeaderHeight, lastDataHeight *uint64, block
 		}
 
 		// Process data
-		newDataHeight := s.dataStore.Store().Height()
+		newDataHeight := s.dataBroadcaster.Store().Height()
 		if newDataHeight == newHeaderHeight {
 			*lastDataHeight = newDataHeight
 		} else if newDataHeight > *lastDataHeight {
@@ -376,7 +377,6 @@ func (s *Syncer) processHeightEvent(event *common.DAHeightEvent) {
 		Uint64("height", height).
 		Uint64("da_height", event.DaHeight).
 		Str("hash", headerHash).
-		Str("source", string(event.Source)).
 		Msg("processing height event")
 
 	currentHeight, err := s.store.Height(s.ctx)
@@ -409,23 +409,14 @@ func (s *Syncer) processHeightEvent(event *common.DAHeightEvent) {
 		return
 	}
 
-	// Only save to P2P stores if the event came from DA
-	// P2P events are already in the P2P stores, so we don't need to write them back
+	// only save to p2p stores if the event came from DA
 	if event.Source == common.SourceDA {
 		g, ctx := errgroup.WithContext(s.ctx)
-		g.Go(func() error { return s.headerStore.WriteToStoreAndBroadcast(ctx, event.Header) })
-		// we only need to save data if it's not empty
-		if !bytes.Equal(event.Header.Hash(), common.DataHashForEmptyTxs) {
-			g.Go(func() error { return s.dataStore.WriteToStoreAndBroadcast(ctx, event.Data) })
-		}
+		g.Go(func() error { return s.headerBroadcaster.WriteToStoreAndBroadcast(ctx, event.Header) })
+		g.Go(func() error { return s.dataBroadcaster.WriteToStoreAndBroadcast(ctx, event.Data) })
 		if err := g.Wait(); err != nil {
 			s.logger.Error().Err(err).Msg("failed to append event header and/or data to p2p store")
 		}
-	} else if event.Source == common.SourceP2P {
-		s.logger.Debug().
-			Uint64("height", event.Header.Height()).
-			Str("source", string(event.Source)).
-			Msg("skipping P2P store write for P2P-sourced event")
 	}
 }
 

@@ -9,6 +9,7 @@ import (
 
 	"github.com/libp2p/go-libp2p/core/crypto"
 	"github.com/rs/zerolog"
+	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 
 	"github.com/evstack/ev-node/block/internal/common"
@@ -104,8 +105,8 @@ func TestP2PHandler_ProcessHeaderRange_HeaderAndDataHappyPath(t *testing.T) {
 	// Sanity: header should validate with data using default sync verifier
 	require.NoError(t, signedHeader.ValidateBasicWithData(blockData), "header+data must validate before handler processes them")
 
-	p2pData.HeaderStore.EXPECT().GetByHeight(ctx, uint64(5)).Return(signedHeader, nil).Once()
-	p2pData.DataStore.EXPECT().GetByHeight(ctx, uint64(5)).Return(blockData, nil).Once()
+	p2pData.HeaderStore.EXPECT().GetByHeight(mock.Anything, uint64(5)).Return(signedHeader, nil).Once()
+	p2pData.DataStore.EXPECT().GetByHeight(mock.Anything, uint64(5)).Return(blockData, nil).Once()
 
 	events := p2pData.Handler.ProcessHeaderRange(ctx, 5, 5)
 	require.Len(t, events, 1, "expected one event for the provided header/data height")
@@ -125,8 +126,8 @@ func TestP2PHandler_ProcessHeaderRange_MissingData_NonEmptyHash(t *testing.T) {
 	blockData := makeData(p2pData.Genesis.ChainID, 7, 1)
 	signedHeader.DataHash = blockData.DACommitment()
 
-	p2pData.HeaderStore.EXPECT().GetByHeight(ctx, uint64(7)).Return(signedHeader, nil).Once()
-	p2pData.DataStore.EXPECT().GetByHeight(ctx, uint64(7)).Return(nil, errors.New("not found")).Once()
+	p2pData.HeaderStore.EXPECT().GetByHeight(mock.Anything, uint64(7)).Return(signedHeader, nil).Once()
+	p2pData.DataStore.EXPECT().GetByHeight(mock.Anything, uint64(7)).Return(nil, errors.New("not found")).Once()
 
 	events := p2pData.Handler.ProcessHeaderRange(ctx, 7, 7)
 	require.Len(t, events, 0)
@@ -137,8 +138,8 @@ func TestP2PHandler_ProcessDataRange_HeaderMissing(t *testing.T) {
 	ctx := context.Background()
 
 	blockData := makeData(p2pData.Genesis.ChainID, 9, 1)
-	p2pData.DataStore.EXPECT().GetByHeight(ctx, uint64(9)).Return(blockData, nil).Once()
-	p2pData.HeaderStore.EXPECT().GetByHeight(ctx, uint64(9)).Return(nil, errors.New("no header")).Once()
+	p2pData.DataStore.EXPECT().GetByHeight(mock.Anything, uint64(9)).Return(blockData, nil).Once()
+	p2pData.HeaderStore.EXPECT().GetByHeight(mock.Anything, uint64(9)).Return(nil, errors.New("no header")).Once()
 
 	events := p2pData.Handler.ProcessDataRange(ctx, 9, 9)
 	require.Len(t, events, 0)
@@ -154,7 +155,7 @@ func TestP2PHandler_ProposerMismatch_Rejected(t *testing.T) {
 	signedHeader := p2pMakeSignedHeader(t, p2pData.Genesis.ChainID, 4, badAddr, pub, signer)
 	signedHeader.DataHash = common.DataHashForEmptyTxs
 
-	p2pData.HeaderStore.EXPECT().GetByHeight(ctx, uint64(4)).Return(signedHeader, nil).Once()
+	p2pData.HeaderStore.EXPECT().GetByHeight(mock.Anything, uint64(4)).Return(signedHeader, nil).Once()
 
 	events := p2pData.Handler.ProcessHeaderRange(ctx, 4, 4)
 	require.Len(t, events, 0)
@@ -170,7 +171,7 @@ func TestP2PHandler_CreateEmptyDataForHeader_UsesPreviousDataHash(t *testing.T) 
 
 	// Mock previous data at height 9 so handler can propagate its hash
 	previousData := makeData(p2pData.Genesis.ChainID, 9, 1)
-	p2pData.DataStore.EXPECT().GetByHeight(ctx, uint64(9)).Return(previousData, nil).Once()
+	p2pData.DataStore.EXPECT().GetByHeight(mock.Anything, uint64(9)).Return(previousData, nil).Once()
 
 	emptyData := p2pData.Handler.createEmptyDataForHeader(ctx, signedHeader)
 	require.NotNil(t, emptyData, "handler should synthesize empty data when header declares empty data hash")
@@ -189,7 +190,7 @@ func TestP2PHandler_CreateEmptyDataForHeader_NoPreviousData(t *testing.T) {
 	signedHeader.DataHash = common.DataHashForEmptyTxs
 
 	// Mock previous data fetch failure
-	p2pData.DataStore.EXPECT().GetByHeight(ctx, uint64(1)).Return(nil, errors.New("not available")).Once()
+	p2pData.DataStore.EXPECT().GetByHeight(mock.Anything, uint64(1)).Return(nil, errors.New("not available")).Once()
 
 	emptyData := p2pData.Handler.createEmptyDataForHeader(ctx, signedHeader)
 	require.NotNil(t, emptyData, "handler should synthesize empty data even when previous data is unavailable")
@@ -229,10 +230,10 @@ func TestP2PHandler_ProcessHeaderRange_MultipleHeightsHappyPath(t *testing.T) {
 	require.NoError(t, header6.ValidateBasicWithData(data6), "header/data invalid for height 6")
 
 	// Expectations for both heights
-	p2pData.HeaderStore.EXPECT().GetByHeight(ctx, uint64(5)).Return(header5, nil).Once()
-	p2pData.DataStore.EXPECT().GetByHeight(ctx, uint64(5)).Return(data5, nil).Once()
-	p2pData.HeaderStore.EXPECT().GetByHeight(ctx, uint64(6)).Return(header6, nil).Once()
-	p2pData.DataStore.EXPECT().GetByHeight(ctx, uint64(6)).Return(data6, nil).Once()
+	p2pData.HeaderStore.EXPECT().GetByHeight(mock.Anything, uint64(5)).Return(header5, nil).Once()
+	p2pData.DataStore.EXPECT().GetByHeight(mock.Anything, uint64(5)).Return(data5, nil).Once()
+	p2pData.HeaderStore.EXPECT().GetByHeight(mock.Anything, uint64(6)).Return(header6, nil).Once()
+	p2pData.DataStore.EXPECT().GetByHeight(mock.Anything, uint64(6)).Return(data6, nil).Once()
 
 	events := p2pData.Handler.ProcessHeaderRange(ctx, 5, 6)
 	require.Len(t, events, 2, "expected two events for heights 5 and 6")
@@ -248,13 +249,13 @@ func TestP2PHandler_ProcessDataRange_HeaderValidateHeaderFails(t *testing.T) {
 
 	// Data exists at height 3
 	blockData := makeData(p2pData.Genesis.ChainID, 3, 1)
-	p2pData.DataStore.EXPECT().GetByHeight(ctx, uint64(3)).Return(blockData, nil).Once()
+	p2pData.DataStore.EXPECT().GetByHeight(mock.Anything, uint64(3)).Return(blockData, nil).Once()
 
 	// Header proposer does not match genesis -> validateHeader should fail
 	badAddr, pub, signer := buildTestSigner(t)
 	require.NotEqual(t, string(p2pData.Genesis.ProposerAddress), string(badAddr), "negative test requires mismatched proposer")
 	badHeader := p2pMakeSignedHeader(t, p2pData.Genesis.ChainID, 3, badAddr, pub, signer)
-	p2pData.HeaderStore.EXPECT().GetByHeight(ctx, uint64(3)).Return(badHeader, nil).Once()
+	p2pData.HeaderStore.EXPECT().GetByHeight(mock.Anything, uint64(3)).Return(badHeader, nil).Once()
 
 	events := p2pData.Handler.ProcessDataRange(ctx, 3, 3)
 	require.Len(t, events, 0, "validateHeader failure should drop event")

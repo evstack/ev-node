@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/celestiaorg/go-header"
+	goheader "github.com/celestiaorg/go-header"
 	"github.com/ipfs/go-datastore"
 	"github.com/ipfs/go-datastore/sync"
 	"github.com/rs/zerolog"
@@ -21,19 +21,19 @@ import (
 )
 
 // mockBroadcaster for testing
-type mockBroadcaster[H header.Header[H]] struct {
+type mockBroadcaster[T goheader.Header[T]] struct {
 	called  bool
-	payload H
+	payload T
 }
 
-func (m *mockBroadcaster[H]) WriteToStoreAndBroadcast(ctx context.Context, payload H) error {
+func (m *mockBroadcaster[T]) WriteToStoreAndBroadcast(ctx context.Context, payload T) error {
 	m.called = true
 	m.payload = payload
 	return nil
 }
 
-func (m *mockBroadcaster[H]) Store() header.Store[H] {
-	return nil
+func (m *mockBroadcaster[T]) Store() goheader.Store[T] {
+	panic("should not be needed")
 }
 
 func TestExecutor_BroadcasterIntegration(t *testing.T) {

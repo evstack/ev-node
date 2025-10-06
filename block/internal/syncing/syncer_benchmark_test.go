@@ -108,8 +108,8 @@ func newBenchFixture(b *testing.B, totalHeights uint64, shuffledTx bool, daDelay
 		common.NopMetrics(),
 		cfg,
 		gen,
-		nil, // headerStore not used; we inject P2P directly to channel when needed
-		nil, // dataStore not used
+		nil, // we inject P2P directly to channel when needed
+		nil, // injected when needed
 		zerolog.Nop(),
 		common.DefaultBlockOptions(),
 		make(chan error, 1),
@@ -152,9 +152,9 @@ func newBenchFixture(b *testing.B, totalHeights uint64, shuffledTx bool, daDelay
 	s.p2pHandler = newMockp2pHandler(b) // not used directly in this benchmark path
 	headerP2PStore := mocks.NewMockStore[*types.SignedHeader](b)
 	headerP2PStore.On("Height").Return(uint64(0)).Maybe()
-	s.headerStore = headerP2PStore
+	s.headerBroadcaster = &mockBroadcaster[*types.SignedHeader]{headerP2PStore}
 	dataP2PStore := mocks.NewMockStore[*types.Data](b)
 	dataP2PStore.On("Height").Return(uint64(0)).Maybe()
-	s.dataStore = dataP2PStore
+	s.dataBroadcaster = &mockBroadcaster[*types.Data]{dataP2PStore}
 	return &benchFixture{s: s, st: st, cm: cm, cancel: cancel}
 }
