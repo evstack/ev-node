@@ -9,6 +9,7 @@ import (
 	"github.com/rs/zerolog"
 
 	"github.com/evstack/ev-node/block/internal/cache"
+	"github.com/evstack/ev-node/block/internal/common"
 	"github.com/evstack/ev-node/block/internal/executing"
 	"github.com/evstack/ev-node/block/internal/reaping"
 	"github.com/evstack/ev-node/block/internal/submitting"
@@ -123,8 +124,10 @@ func (bc *Components) Stop() error {
 }
 
 // broadcaster interface for P2P broadcasting
-type broadcaster[T any] interface {
-	WriteToStoreAndBroadcast(ctx context.Context, payload T) error
+// broadcaster interface for P2P broadcasting
+type broadcaster[H goheader.Header[H]] interface {
+	WriteToStoreAndBroadcast(ctx context.Context, payload H) error
+	Store() goheader.Store[H]
 }
 
 // NewSyncComponents creates components for a non-aggregator full node that can only sync blocks.
@@ -136,8 +139,8 @@ func NewSyncComponents(
 	store store.Store,
 	exec coreexecutor.Executor,
 	da coreda.DA,
-	headerStore goheader.Store[*types.SignedHeader],
-	dataStore goheader.Store[*types.Data],
+	headerStore common.Broadcaster[*types.SignedHeader],
+	dataStore common.Broadcaster[*types.Data],
 	logger zerolog.Logger,
 	metrics *Metrics,
 	blockOpts BlockOptions,

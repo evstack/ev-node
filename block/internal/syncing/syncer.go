@@ -9,7 +9,6 @@ import (
 	"sync/atomic"
 	"time"
 
-	goheader "github.com/celestiaorg/go-header"
 	"github.com/rs/zerolog"
 	"golang.org/x/sync/errgroup"
 
@@ -55,8 +54,8 @@ type Syncer struct {
 	daHeight uint64
 
 	// P2P stores
-	headerStore goheader.Store[*types.SignedHeader]
-	dataStore   goheader.Store[*types.Data]
+	headerStore common.Broadcaster[*types.SignedHeader]
+	dataStore   common.Broadcaster[*types.Data]
 
 	// Channels for coordination
 	heightInCh chan common.DAHeightEvent
@@ -84,8 +83,8 @@ func NewSyncer(
 	metrics *common.Metrics,
 	config config.Config,
 	genesis genesis.Genesis,
-	headerStore goheader.Store[*types.SignedHeader],
-	dataStore goheader.Store[*types.Data],
+	headerStore common.Broadcaster[*types.SignedHeader],
+	dataStore common.Broadcaster[*types.Data],
 	logger zerolog.Logger,
 	options common.BlockOptions,
 	errorCh chan<- error,
@@ -119,7 +118,7 @@ func (s *Syncer) Start(ctx context.Context) error {
 
 	// Initialize handlers
 	s.daRetriever = NewDARetriever(s.da, s.cache, s.config, s.genesis, s.options, s.logger)
-	s.p2pHandler = NewP2PHandler(s.headerStore, s.dataStore, s.genesis, s.options, s.logger)
+	s.p2pHandler = NewP2PHandler(s.headerStore.Store(), s.dataStore.Store(), s.genesis, s.options, s.logger)
 
 	// Start main processing loop
 	s.wg.Add(1)
@@ -328,7 +327,7 @@ func (s *Syncer) tryFetchFromP2P(lastHeaderHeight, lastDataHeight *uint64, block
 	select {
 	case <-blockTicker:
 		// Process headers
-		newHeaderHeight := s.headerStore.Height()
+		newHeaderHeight := s.headerStore.Store().Height()
 		if newHeaderHeight > *lastHeaderHeight {
 			events := s.p2pHandler.ProcessHeaderRange(s.ctx, *lastHeaderHeight+1, newHeaderHeight)
 			for _, event := range events {
@@ -345,7 +344,7 @@ func (s *Syncer) tryFetchFromP2P(lastHeaderHeight, lastDataHeight *uint64, block
 		}
 
 		// Process data
-		newDataHeight := s.dataStore.Height()
+		newDataHeight := s.dataStore.Store().Height()
 		if newDataHeight == newHeaderHeight {
 			*lastDataHeight = newDataHeight
 		} else if newDataHeight > *lastDataHeight {
@@ -411,8 +410,8 @@ func (s *Syncer) processHeightEvent(event *common.DAHeightEvent) {
 
 	// save header and data to P2P stores
 	g, ctx := errgroup.WithContext(s.ctx)
-	g.Go(func() error { return s.headerStore.Append(ctx, event.Header) })
-	g.Go(func() error { return s.dataStore.Append(ctx, event.Data) })
+	g.Go(func() error { return s.headerStore.WriteToStoreAndBroadcast(ctx, event.Header) })
+	g.Go(func() error { return s.dataStore.WriteToStoreAndBroadcast(ctx, event.Data) })
 	if err := g.Wait(); err != nil {
 		s.logger.Error().Err(err).Msg("failed to append event header and/or data to p2p store")
 	}
