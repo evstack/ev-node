@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/evstack/ev-node/types"
+	"github.com/ipfs/go-datastore/query"
 )
 
 // Store is minimal interface for storing and retrieving blocks, commits and state.
@@ -52,4 +53,6 @@ type Store interface {
 
 	// Close safely closes underlying data storage, to ensure that data is actually saved.
 	Close() error
+
+	Query(ctx context.Context, q query.Query) (query.Results, error)
 }

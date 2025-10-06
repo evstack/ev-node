@@ -8,6 +8,7 @@ import (
 	"sync/atomic"
 
 	ds "github.com/ipfs/go-datastore"
+	"github.com/ipfs/go-datastore/query"
 	"github.com/rs/zerolog"
 
 	"github.com/evstack/ev-node/pkg/store"
@@ -122,4 +123,8 @@ func (pb *pendingBase[T]) iterator(ctx context.Context) (Iterator[T], error) {
 		cursor: lastSubmitted + 1,
 		limit:  height,
 	}, nil
+}
+
+func (pb *pendingBase[T]) Query(ctx context.Context) (query.Results, error) {
+	return pb.store.Query(ctx, query.Query{})
 }

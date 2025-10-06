@@ -7,6 +7,7 @@ import (
 	"fmt"
 
 	ds "github.com/ipfs/go-datastore"
+	"github.com/ipfs/go-datastore/query"
 	"google.golang.org/protobuf/proto"
 
 	"github.com/evstack/ev-node/types"
@@ -357,6 +358,11 @@ func (s *DefaultStore) Rollback(ctx context.Context, height uint64, aggregator b
 	}
 
 	return nil
+}
+
+// Query implements Store.
+func (s *DefaultStore) Query(ctx context.Context, q query.Query) (query.Results, error) {
+	return s.db.Query(ctx, q)
 }
 
 const heightLength = 8

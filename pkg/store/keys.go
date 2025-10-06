@@ -1,8 +1,6 @@
 package store
 
 import (
-	"strconv"
-
 	"github.com/evstack/ev-node/types"
 )
 
@@ -35,19 +33,26 @@ const (
 )
 
 func getHeaderKey(height uint64) string {
-	return GenerateKey([]string{headerPrefix, strconv.FormatUint(height, 10)})
+	return GenerateKey([]string{headerPrefix, encodeHeightKey(height)})
+}
+func HeaderPrefix() string {
+	return "/" + headerPrefix
+}
+
+func encodeHeightKey(height uint64) string {
+	return string(encodeHeight(height))
 }
 
 func getDataKey(height uint64) string {
-	return GenerateKey([]string{dataPrefix, strconv.FormatUint(height, 10)})
+	return GenerateKey([]string{dataPrefix, encodeHeightKey(height)})
 }
 
 func getSignatureKey(height uint64) string {
-	return GenerateKey([]string{signaturePrefix, strconv.FormatUint(height, 10)})
+	return GenerateKey([]string{signaturePrefix, encodeHeightKey(height)})
 }
 
 func getStateAtHeightKey(height uint64) string {
-	return GenerateKey([]string{statePrefix, strconv.FormatUint(height, 10)})
+	return GenerateKey([]string{statePrefix, encodeHeightKey(height)})
 }
 
 func getMetaKey(key string) string {
