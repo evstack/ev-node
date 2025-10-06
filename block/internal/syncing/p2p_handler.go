@@ -3,7 +3,9 @@ package syncing
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
+	"time"
 
 	goheader "github.com/celestiaorg/go-header"
 	"github.com/rs/zerolog"
@@ -54,8 +56,18 @@ func (h *P2PHandler) ProcessHeaderRange(ctx context.Context, startHeight, endHei
 		default:
 		}
 
-		header, err := h.headerStore.GetByHeight(ctx, height)
+		// Create a timeout context for each GetByHeight call to prevent blocking
+		timeoutCtx, cancel := context.WithTimeout(ctx, 500*time.Millisecond)
+		header, err := h.headerStore.GetByHeight(timeoutCtx, height)
+		cancel()
+
 		if err != nil {
+			if errors.Is(err, context.DeadlineExceeded) {
+				h.logger.Debug().Uint64("height", height).Msg("timeout waiting for header from store, will retry later")
+				// Don't continue processing further heights if we timeout on one
+				// This prevents blocking on sequential heights
+				return events
+			}
 			h.logger.Debug().Uint64("height", height).Err(err).Msg("failed to get header from store")
 			continue
 		}
@@ -72,9 +84,18 @@ func (h *P2PHandler) ProcessHeaderRange(ctx context.Context, startHeight, endHei
 			// Create empty data for headers with empty data hash
 			data = h.createEmptyDataForHeader(ctx, header)
 		} else {
-			// Try to get data from data store
-			retrievedData, err := h.dataStore.GetByHeight(ctx, height)
+			// Try to get data from data store with timeout
+			timeoutCtx, cancel := context.WithTimeout(ctx, 500*time.Millisecond)
+			retrievedData, err := h.dataStore.GetByHeight(timeoutCtx, height)
+			cancel()
+
 			if err != nil {
+				if errors.Is(err, context.DeadlineExceeded) {
+					h.logger.Debug().Uint64("height", height).Msg("timeout waiting for data from store, will retry later")
+					// Don't continue processing if data is not available
+					// Store event with header only for later processing
+					continue
+				}
 				h.logger.Debug().Uint64("height", height).Err(err).Msg("could not retrieve data for header from data store")
 				continue
 			}
@@ -114,15 +135,33 @@ func (h *P2PHandler) ProcessDataRange(ctx context.Context, startHeight, endHeigh
 		default:
 		}
 
-		data, err := h.dataStore.GetByHeight(ctx, height)
+		// Create a timeout context for each GetByHeight call to prevent blocking
+		timeoutCtx, cancel := context.WithTimeout(ctx, 500*time.Millisecond)
+		data, err := h.dataStore.GetByHeight(timeoutCtx, height)
+		cancel()
+
 		if err != nil {
+			if errors.Is(err, context.DeadlineExceeded) {
+				h.logger.Debug().Uint64("height", height).Msg("timeout waiting for data from store, will retry later")
+				// Don't continue processing further heights if we timeout on one
+				// This prevents blocking on sequential heights
+				return events
+			}
 			h.logger.Debug().Uint64("height", height).Err(err).Msg("failed to get data from store")
 			continue
 		}
 
-		// Get corresponding header
-		header, err := h.headerStore.GetByHeight(ctx, height)
+		// Get corresponding header with timeout
+		timeoutCtx, cancel = context.WithTimeout(ctx, 500*time.Millisecond)
+		header, err := h.headerStore.GetByHeight(timeoutCtx, height)
+		cancel()
+
 		if err != nil {
+			if errors.Is(err, context.DeadlineExceeded) {
+				h.logger.Debug().Uint64("height", height).Msg("timeout waiting for header from store, will retry later")
+				// Don't continue processing if header is not available
+				continue
+			}
 			h.logger.Debug().Uint64("height", height).Err(err).Msg("could not retrieve header for data from header store")
 			continue
 		}
@@ -166,8 +205,12 @@ func (h *P2PHandler) createEmptyDataForHeader(ctx context.Context, header *types
 	var lastDataHash types.Hash
 
 	if headerHeight > 1 {
-		// Try to get previous data hash, but don't fail if not available
-		if prevData, err := h.dataStore.GetByHeight(ctx, headerHeight-1); err == nil && prevData != nil {
+		// Try to get previous data hash with a short timeout, but don't fail if not available
+		timeoutCtx, cancel := context.WithTimeout(ctx, 100*time.Millisecond)
+		prevData, err := h.dataStore.GetByHeight(timeoutCtx, headerHeight-1)
+		cancel()
+
+		if err == nil && prevData != nil {
 			lastDataHash = prevData.Hash()
 		} else {
 			h.logger.Debug().Uint64("current_height", headerHeight).Uint64("previous_height", headerHeight-1).
