@@ -381,11 +381,13 @@ func (e *Executor) produceBlock() error {
 		return fmt.Errorf("failed to save block: %w", err)
 	}
 
-	if err := e.store.SetHeight(e.ctx, newHeight); err != nil {
+	// Once the SaveBlockData has been saved we must update the height and the state.
+	// context.TODO() should be reverted to the real context (e.ctx) once https://github.com/evstack/ev-node/issues/2274 has been implemented, this prevents context cancellation
+	if err := e.store.SetHeight(context.TODO(), newHeight); err != nil {
 		return fmt.Errorf("failed to update store height: %w", err)
 	}
 
-	if err := e.updateState(e.ctx, newState); err != nil {
+	if err := e.updateState(context.TODO(), newState); err != nil {
 		return fmt.Errorf("failed to update state: %w", err)
 	}
 
