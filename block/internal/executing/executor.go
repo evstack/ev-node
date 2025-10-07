@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/ipfs/go-datastore"
@@ -50,8 +51,7 @@ type Executor struct {
 	options common.BlockOptions
 
 	// State management
-	lastState    types.State
-	lastStateMtx *sync.RWMutex
+	lastState *atomic.Pointer[types.State]
 
 	// Channels for coordination
 	txNotifyCh chan struct{}
@@ -112,7 +112,7 @@ func NewExecutor(
 		headerBroadcaster: headerBroadcaster,
 		dataBroadcaster:   dataBroadcaster,
 		options:           options,
-		lastStateMtx:      &sync.RWMutex{},
+		lastState:         &atomic.Pointer[types.State]{},
 		txNotifyCh:        make(chan struct{}, 1),
 		errorCh:           errorCh,
 		logger:            logger.With().Str("component", "executor").Logger(),
@@ -150,18 +150,29 @@ func (e *Executor) Stop() error {
 	return nil
 }
 
-// GetLastState returns the current state
+// GetLastState returns the current state.
 func (e *Executor) GetLastState() types.State {
-	e.lastStateMtx.RLock()
-	defer e.lastStateMtx.RUnlock()
-	return e.lastState
+	state := e.getLastState()
+	state.AppHash = bytes.Clone(state.AppHash)
+	state.LastResultsHash = bytes.Clone(state.LastResultsHash)
+
+	return state
 }
 
-// SetLastState updates the current state
-func (e *Executor) SetLastState(state types.State) {
-	e.lastStateMtx.Lock()
-	defer e.lastStateMtx.Unlock()
-	e.lastState = state
+// getLastState returns the current state.
+// getLastState should never directly mutate.
+func (e *Executor) getLastState() types.State {
+	state := e.lastState.Load()
+	if state == nil {
+		return types.State{}
+	}
+
+	return *state
+}
+
+// setLastState updates the current state
+func (e *Executor) setLastState(state types.State) {
+	e.lastState.Store(&state)
 }
 
 // NotifyNewTransactions signals that new transactions are available
@@ -198,7 +209,7 @@ func (e *Executor) initializeState() error {
 		}
 	}
 
-	e.SetLastState(state)
+	e.setLastState(state)
 
 	// Set store height
 	if err := e.store.SetHeight(e.ctx, state.LastBlockHeight); err != nil {
@@ -218,7 +229,7 @@ func (e *Executor) executionLoop() {
 
 	var delay time.Duration
 	initialHeight := e.genesis.InitialHeight
-	currentState := e.GetLastState()
+	currentState := e.getLastState()
 
 	if currentState.LastBlockHeight < initialHeight {
 		delay = time.Until(e.genesis.StartTime.Add(e.config.Node.BlockTime.Duration))
@@ -291,7 +302,7 @@ func (e *Executor) produceBlock() error {
 		}
 	}()
 
-	currentState := e.GetLastState()
+	currentState := e.getLastState()
 	newHeight := currentState.LastBlockHeight + 1
 
 	e.logger.Debug().Uint64("height", newHeight).Msg("producing block")
@@ -429,7 +440,7 @@ func (e *Executor) retrieveBatch(ctx context.Context) (*BatchData, error) {
 
 // createBlock creates a new block from the given batch
 func (e *Executor) createBlock(ctx context.Context, height uint64, batchData *BatchData) (*types.SignedHeader, *types.Data, error) {
-	currentState := e.GetLastState()
+	currentState := e.getLastState()
 	headerTime := uint64(e.genesis.StartTime.UnixNano())
 
 	// Get last block info
@@ -518,7 +529,7 @@ func (e *Executor) createBlock(ctx context.Context, height uint64, batchData *Ba
 
 // applyBlock applies the block to get the new state
 func (e *Executor) applyBlock(ctx context.Context, header types.Header, data *types.Data) (types.State, error) {
-	currentState := e.GetLastState()
+	currentState := e.getLastState()
 
 	// Prepare transactions
 	rawTxs := make([][]byte, len(data.Txs))
@@ -601,7 +612,7 @@ func (e *Executor) updateState(ctx context.Context, newState types.State) error 
 		return err
 	}
 
-	e.SetLastState(newState)
+	e.setLastState(newState)
 	e.metrics.Height.Set(float64(newState.LastBlockHeight))
 
 	return nil
