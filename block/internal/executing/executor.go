@@ -49,6 +49,9 @@ type Executor struct {
 	genesis genesis.Genesis
 	options common.BlockOptions
 
+	// Raft consensus
+	raftNode common.RaftNode
+
 	// State management
 	lastState    types.State
 	lastStateMtx *sync.RWMutex
@@ -86,6 +89,7 @@ func NewExecutor(
 	logger zerolog.Logger,
 	options common.BlockOptions,
 	errorCh chan<- error,
+	raftNode common.RaftNode,
 ) (*Executor, error) {
 	if signer == nil {
 		return nil, errors.New("signer cannot be nil")
@@ -112,6 +116,7 @@ func NewExecutor(
 		headerBroadcaster: headerBroadcaster,
 		dataBroadcaster:   dataBroadcaster,
 		options:           options,
+		raftNode:          raftNode,
 		lastStateMtx:      &sync.RWMutex{},
 		txNotifyCh:        make(chan struct{}, 1),
 		errorCh:           errorCh,
@@ -291,6 +296,12 @@ func (e *Executor) produceBlock() error {
 		}
 	}()
 
+	// Check raft leadership if raft is enabled
+	if e.raftNode != nil && !e.raftNode.IsLeader() {
+		e.logger.Debug().Msg("not raft leader, skipping block production")
+		return nil
+	}
+
 	currentState := e.GetLastState()
 	newHeight := currentState.LastBlockHeight + 1
 
@@ -376,6 +387,31 @@ func (e *Executor) produceBlock() error {
 
 	if err := e.updateState(e.ctx, newState); err != nil {
 		return fmt.Errorf("failed to update state: %w", err)
+	}
+
+	// Propose block to raft before p2p broadcast if raft is enabled
+	if e.raftNode != nil {
+		headerBytes, err := header.MarshalBinary()
+		if err != nil {
+			return fmt.Errorf("failed to marshal header: %w", err)
+		}
+		dataBytes, err := data.MarshalBinary()
+		if err != nil {
+			return fmt.Errorf("failed to marshal data: %w", err)
+		}
+
+		raftState := &common.RaftBlockState{
+			Height:    newHeight,
+			Hash:      header.Hash(),
+			Timestamp: header.BaseHeader.Time,
+			Header:    headerBytes,
+			Data:      dataBytes,
+		}
+
+		if err := e.raftNode.ProposeBlock(e.ctx, raftState); err != nil {
+			return fmt.Errorf("failed to propose block to raft: %w", err)
+		}
+		e.logger.Debug().Uint64("height", newHeight).Msg("proposed block to raft")
 	}
 
 	// broadcast header and data to P2P network

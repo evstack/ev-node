@@ -8,6 +8,8 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/pprof"
+	"path/filepath"
+	"strings"
 	"time"
 
 	ds "github.com/ipfs/go-datastore"
@@ -24,6 +26,7 @@ import (
 	"github.com/evstack/ev-node/pkg/config"
 	genesispkg "github.com/evstack/ev-node/pkg/genesis"
 	"github.com/evstack/ev-node/pkg/p2p"
+	raftpkg "github.com/evstack/ev-node/pkg/raft"
 	rpcserver "github.com/evstack/ev-node/pkg/rpc/server"
 	"github.com/evstack/ev-node/pkg/service"
 	"github.com/evstack/ev-node/pkg/signer"
@@ -97,6 +100,15 @@ func newFullNode(
 		return nil, err
 	}
 
+	// Initialize raft node if enabled (for both aggregator and sync nodes)
+	var raftNode block.RaftNode
+	if nodeConfig.Raft.Enable {
+		raftNode, err = initRaftNode(nodeConfig, logger)
+		if err != nil {
+			return nil, fmt.Errorf("failed to initialize raft node: %w", err)
+		}
+	}
+
 	var blockComponents *block.Components
 	if nodeConfig.Node.Aggregator {
 		blockComponents, err = block.NewAggregatorComponents(
@@ -112,6 +124,7 @@ func newFullNode(
 			logger,
 			blockMetrics,
 			nodeOpts.BlockOptions,
+			raftNode,
 		)
 	} else {
 		blockComponents, err = block.NewSyncComponents(
@@ -125,6 +138,7 @@ func newFullNode(
 			logger,
 			blockMetrics,
 			nodeOpts.BlockOptions,
+			raftNode,
 		)
 	}
 	if err != nil {
@@ -173,6 +187,40 @@ func initDataSyncService(
 		return nil, fmt.Errorf("error while initializing DataSyncService: %w", err)
 	}
 	return dataSyncService, nil
+}
+
+func initRaftNode(nodeConfig config.Config, logger zerolog.Logger) (block.RaftNode, error) {
+	raftDir := nodeConfig.Raft.RaftDir
+	if raftDir == "" {
+		raftDir = filepath.Join(nodeConfig.RootDir, "raft")
+	}
+
+	raftCfg := &raftpkg.Config{
+		NodeID:      nodeConfig.Raft.NodeID,
+		RaftAddr:    nodeConfig.Raft.RaftAddr,
+		RaftDir:     raftDir,
+		Bootstrap:   nodeConfig.Raft.Bootstrap,
+		SnapCount:   nodeConfig.Raft.SnapCount,
+		Logger:      logger,
+		SendTimeout: nodeConfig.Raft.SendTimeout,
+	}
+
+	if nodeConfig.Raft.Peers != "" {
+		raftCfg.Peers = strings.Split(nodeConfig.Raft.Peers, ",")
+	}
+
+	raftNode, err := raftpkg.NewNode(context.Background(), raftCfg)
+	if err != nil {
+		return nil, fmt.Errorf("create raft node: %w", err)
+	}
+
+	logger.Info().
+		Str("node_id", nodeConfig.Raft.NodeID).
+		Str("addr", nodeConfig.Raft.RaftAddr).
+		Bool("bootstrap", nodeConfig.Raft.Bootstrap).
+		Msg("initialized raft node")
+
+	return raftNode, nil
 }
 
 // initGenesisChunks creates a chunked format of the genesis document to make it easier to

@@ -55,6 +55,7 @@ func newTestExecutor(t *testing.T) *executing.Executor {
 		zerolog.Nop(),
 		common.DefaultBlockOptions(),
 		make(chan error, 1), // error channel
+		nil,
 	)
 	require.NoError(t, err)
 

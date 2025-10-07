@@ -22,3 +22,8 @@ func PrometheusMetrics(namespace string, labelsAndValues ...string) *Metrics {
 func NopMetrics() *Metrics {
 	return common.NopMetrics()
 }
+
+// Expose Raft types for consensus integration
+type RaftNode = common.RaftNode
+type RaftBlockState = common.RaftBlockState
+type RaftApplyMsg = common.RaftApplyMsg

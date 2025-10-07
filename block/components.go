@@ -9,6 +9,7 @@ import (
 	"github.com/rs/zerolog"
 
 	"github.com/evstack/ev-node/block/internal/cache"
+	"github.com/evstack/ev-node/block/internal/common"
 	"github.com/evstack/ev-node/block/internal/executing"
 	"github.com/evstack/ev-node/block/internal/reaping"
 	"github.com/evstack/ev-node/block/internal/submitting"
@@ -22,6 +23,7 @@ import (
 	"github.com/evstack/ev-node/pkg/store"
 	"github.com/evstack/ev-node/types"
 )
+
 
 // Components represents the block-related components
 type Components struct {
@@ -141,6 +143,7 @@ func NewSyncComponents(
 	logger zerolog.Logger,
 	metrics *Metrics,
 	blockOpts BlockOptions,
+	raftNode common.RaftNode,
 ) (*Components, error) {
 	cacheManager, err := cache.NewManager(config, store, logger)
 	if err != nil {
@@ -163,6 +166,7 @@ func NewSyncComponents(
 		logger,
 		blockOpts,
 		errorCh,
+		raftNode,
 	)
 
 	// Create DA submitter for sync nodes (no signer, only DA inclusion processing)
@@ -204,6 +208,7 @@ func NewAggregatorComponents(
 	logger zerolog.Logger,
 	metrics *Metrics,
 	blockOpts BlockOptions,
+	raftNode common.RaftNode,
 ) (*Components, error) {
 	cacheManager, err := cache.NewManager(config, store, logger)
 	if err != nil {
@@ -227,6 +232,7 @@ func NewAggregatorComponents(
 		logger,
 		blockOpts,
 		errorCh,
+		raftNode,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create executor: %w", err)
