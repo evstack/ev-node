@@ -120,8 +120,6 @@ func (h *P2PHandler) ProcessHeaderRange(ctx context.Context, startHeight, endHei
 
 		h.logger.Debug().Uint64("height", height).Str("source", "p2p_headers").Msg("processed header from P2P")
 	}
-
-	return
 }
 
 // ProcessDataRange processes data from the data store within the given range
@@ -193,8 +191,6 @@ func (h *P2PHandler) ProcessDataRange(ctx context.Context, startHeight, endHeigh
 
 		h.logger.Debug().Uint64("height", height).Str("source", "p2p_data").Msg("processed data from P2P")
 	}
-
-	return
 }
 
 // assertExpectedProposer validates the proposer address

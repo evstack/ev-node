@@ -320,7 +320,6 @@ func (s *Syncer) tryFetchFromDA(nextDARequestAt *time.Time) {
 
 	// increment DA height on successful retrieval
 	s.SetDAHeight(daHeight + 1)
-	return
 }
 
 // tryFetchFromP2P attempts to fetch events from P2P stores.
