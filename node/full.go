@@ -112,7 +112,6 @@ func newFullNode(
 			logger,
 			blockMetrics,
 			nodeOpts.BlockOptions,
-			nil, // TODO: Initialize raft node when raft configuration is added
 		)
 	} else {
 		blockComponents, err = block.NewSyncComponents(
