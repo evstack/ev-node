@@ -105,7 +105,7 @@ func TestExecutor_RestartUsesPendingHeader(t *testing.T) {
 
 	// Now simulate creating a pending block at height 2 but not fully completing it
 	// This simulates a crash scenario where block data is saved but state isn't updated
-	currentState := exec1.GetLastState()
+	currentState := exec1.getLastState()
 	newHeight := currentState.LastBlockHeight + 1 // height 2
 
 	// Get validator hash properly
@@ -189,7 +189,7 @@ func TestExecutor_RestartUsesPendingHeader(t *testing.T) {
 	defer exec2.cancel()
 
 	// Verify that the state is at height 1 (pending block at height 2 wasn't committed)
-	currentState2 := exec2.GetLastState()
+	currentState2 := exec2.getLastState()
 	assert.Equal(t, uint64(1), currentState2.LastBlockHeight)
 
 	// When second executor tries to produce block at height 2, it should use pending data
@@ -225,7 +225,7 @@ func TestExecutor_RestartUsesPendingHeader(t *testing.T) {
 	assert.True(t, db2.called, "data broadcaster should be called")
 
 	// Verify the executor state was updated correctly
-	finalState := exec2.GetLastState()
+	finalState := exec2.getLastState()
 	assert.Equal(t, uint64(2), finalState.LastBlockHeight)
 	assert.Equal(t, []byte("new_root_2"), finalState.AppHash)
 
@@ -333,7 +333,7 @@ func TestExecutor_RestartNoPendingHeader(t *testing.T) {
 	defer exec2.cancel()
 
 	// Verify state loaded correctly
-	state := exec2.GetLastState()
+	state := exec2.getLastState()
 	assert.Equal(t, uint64(1), state.LastBlockHeight)
 
 	// Now produce next block - should go through normal sequencer flow since no pending block
