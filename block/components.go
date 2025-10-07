@@ -188,6 +188,13 @@ func NewSyncComponents(
 	}, nil
 }
 
+// RaftNode interface for leader election (nil for non-raft mode)
+type RaftNode interface {
+	IsLeader() bool
+	Propose(ctx context.Context, data []byte) error
+	GetStateMachine() interface{}
+}
+
 // NewAggregatorComponents creates components for an aggregator full node that can produce and sync blocks.
 // Aggregator nodes have full capabilities - they can produce blocks, sync from P2P and DA,
 // and submit headers/data to DA. Requires a signer for block production and DA submission.
@@ -204,6 +211,7 @@ func NewAggregatorComponents(
 	logger zerolog.Logger,
 	metrics *Metrics,
 	blockOpts BlockOptions,
+	raftNode RaftNode,
 ) (*Components, error) {
 	cacheManager, err := cache.NewManager(config, store, logger)
 	if err != nil {
@@ -227,6 +235,7 @@ func NewAggregatorComponents(
 		logger,
 		blockOpts,
 		errorCh,
+		raftNode,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create executor: %w", err)

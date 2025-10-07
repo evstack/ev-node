@@ -138,6 +138,9 @@ type Config struct {
 	// Node specific configuration
 	Node NodeConfig `mapstructure:"node" yaml:"node"`
 
+	// Raft consensus configuration
+	Raft RaftConfig `mapstructure:"raft" yaml:"raft"`
+
 	// Data availability configuration
 	DA DAConfig `mapstructure:"da" yaml:"da"`
 
@@ -199,6 +202,16 @@ type NodeConfig struct {
 
 	// Readiness / health configuration
 	ReadinessMaxBlocksBehind uint64 `mapstructure:"readiness_max_blocks_behind" yaml:"readiness_max_blocks_behind" comment:"How many blocks behind best-known head the node can be and still be considered ready. 0 means must be exactly at head."`
+}
+
+// RaftConfig contains all raft consensus configuration parameters
+type RaftConfig struct {
+	Enable    bool   `mapstructure:"enable" yaml:"enable" comment:"Enable raft consensus for leader election and state replication"`
+	NodeID    uint64 `mapstructure:"node_id" yaml:"node_id" comment:"Raft node ID (must be unique in the cluster, starting from 1)"`
+	RaftAddr  string `mapstructure:"raft_addr" yaml:"raft_addr" comment:"Raft communication address (http://host:port)"`
+	Peers     string `mapstructure:"peers" yaml:"peers" comment:"Comma separated list of raft peer addresses (http://host1:port1,http://host2:port2)"`
+	RaftDir   string `mapstructure:"raft_dir" yaml:"raft_dir" comment:"Directory for raft data (WAL and snapshots)"`
+	SnapCount uint64 `mapstructure:"snap_count" yaml:"snap_count" comment:"Number of log entries between snapshots (default: 10000)"`
 }
 
 // LogConfig contains all logging configuration parameters

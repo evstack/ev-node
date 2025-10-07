@@ -18,6 +18,7 @@ import (
 	coresequencer "github.com/evstack/ev-node/core/sequencer"
 	"github.com/evstack/ev-node/pkg/config"
 	"github.com/evstack/ev-node/pkg/genesis"
+	"github.com/evstack/ev-node/pkg/raft"
 	"github.com/evstack/ev-node/pkg/signer"
 	"github.com/evstack/ev-node/pkg/store"
 	"github.com/evstack/ev-node/types"
@@ -26,6 +27,13 @@ import (
 // broadcaster interface for P2P broadcasting
 type broadcaster[T any] interface {
 	WriteToStoreAndBroadcast(ctx context.Context, payload T) error
+}
+
+// RaftNode interface for leader election and state replication
+type RaftNode interface {
+	IsLeader() bool
+	Propose(ctx context.Context, data []byte) error
+	GetStateMachine() interface{}
 }
 
 // Executor handles block production, transaction processing, and state management
@@ -64,6 +72,9 @@ type Executor struct {
 	ctx    context.Context
 	cancel context.CancelFunc
 	wg     sync.WaitGroup
+
+	// Raft for leader election and state replication
+	raftNode RaftNode
 }
 
 // NewExecutor creates a new block executor.
@@ -86,6 +97,7 @@ func NewExecutor(
 	logger zerolog.Logger,
 	options common.BlockOptions,
 	errorCh chan<- error,
+	raftNode RaftNode,
 ) (*Executor, error) {
 	if signer == nil {
 		return nil, errors.New("signer cannot be nil")
@@ -116,6 +128,7 @@ func NewExecutor(
 		txNotifyCh:        make(chan struct{}, 1),
 		errorCh:           errorCh,
 		logger:            logger.With().Str("component", "executor").Logger(),
+		raftNode:          raftNode,
 	}, nil
 }
 
@@ -291,6 +304,34 @@ func (e *Executor) produceBlock() error {
 		}
 	}()
 
+	// Check leadership if raft is enabled
+	if e.raftNode != nil {
+		if !e.raftNode.IsLeader() {
+			e.logger.Debug().Msg("not leader, skipping block production")
+			return nil
+		}
+
+		// New leader catch-up: apply latest block from raft if behind
+		if sm := e.raftNode.GetStateMachine(); sm != nil {
+			if blockSM, ok := sm.(*raft.BlockStateMachine); ok {
+				raftHeader, raftData := blockSM.GetLastBlock()
+				if raftHeader != nil && raftData != nil {
+					currentState := e.GetLastState()
+					if raftHeader.Height() > currentState.LastBlockHeight {
+						e.logger.Info().
+							Uint64("current_height", currentState.LastBlockHeight).
+							Uint64("raft_height", raftHeader.Height()).
+							Msg("new leader catching up from raft")
+
+						if err := e.applyRaftBlock(raftHeader, raftData); err != nil {
+							return fmt.Errorf("catch up from raft: %w", err)
+						}
+					}
+				}
+			}
+		}
+	}
+
 	currentState := e.GetLastState()
 	newHeight := currentState.LastBlockHeight + 1
 
@@ -376,6 +417,21 @@ func (e *Executor) produceBlock() error {
 
 	if err := e.updateState(e.ctx, newState); err != nil {
 		return fmt.Errorf("failed to update state: %w", err)
+	}
+
+	// Replicate full block via raft before broadcasting to P2P
+	// This ensures follower nodes have the full block data and can apply it
+	if e.raftNode != nil {
+		blockStateData, err := raft.CreateBlockStateData(header, data)
+		if err != nil {
+			return fmt.Errorf("failed to create block state data: %w", err)
+		}
+
+		if err := e.raftNode.Propose(e.ctx, blockStateData); err != nil {
+			return fmt.Errorf("failed to propose block to raft: %w", err)
+		}
+
+		e.logger.Debug().Uint64("height", newHeight).Msg("full block replicated via raft")
 	}
 
 	// broadcast header and data to P2P network
@@ -627,6 +683,56 @@ func (e *Executor) recordBlockMetrics(data *types.Data) {
 	e.metrics.TotalTxs.Add(float64(len(data.Txs)))
 	e.metrics.BlockSizeBytes.Set(float64(data.Size()))
 	e.metrics.CommittedHeight.Set(float64(data.Metadata.Height))
+}
+
+// applyRaftBlock applies a block received via raft (for follower nodes)
+func (e *Executor) applyRaftBlock(header *types.SignedHeader, data *types.Data) error {
+	e.logger.Info().Uint64("height", header.Height()).Msg("applying block from raft")
+
+	currentState := e.GetLastState()
+
+	// Skip if already processed
+	if header.Height() <= currentState.LastBlockHeight {
+		e.logger.Debug().Uint64("height", header.Height()).Msg("block already applied, skipping")
+		return nil
+	}
+
+	// Validate block
+	if err := e.validateBlock(currentState, header, data); err != nil {
+		return fmt.Errorf("validate block: %w", err)
+	}
+
+	// Apply block to execution client
+	newState, err := e.applyBlock(e.ctx, header.Header, data)
+	if err != nil {
+		return fmt.Errorf("apply block: %w", err)
+	}
+
+	// Save block data
+	if err := e.store.SaveBlockData(e.ctx, header, data, &header.Signature); err != nil {
+		return fmt.Errorf("save block data: %w", err)
+	}
+
+	// Update store height
+	if err := e.store.SetHeight(e.ctx, header.Height()); err != nil {
+		return fmt.Errorf("set height: %w", err)
+	}
+
+	// Update state
+	if err := e.updateState(e.ctx, newState); err != nil {
+		return fmt.Errorf("update state: %w", err)
+	}
+
+	e.recordBlockMetrics(data)
+
+	e.logger.Info().Uint64("height", header.Height()).Int("txs", len(data.Txs)).Msg("applied block from raft")
+
+	return nil
+}
+
+// GetRaftStateMachine returns a reference to the raft block state machine if raft is enabled
+func (e *Executor) GetRaftStateMachine() interface{} {
+	return e.raftNode
 }
 
 // BatchData represents batch data from sequencer
