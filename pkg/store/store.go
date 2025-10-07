@@ -34,14 +34,6 @@ func (s *DefaultStore) Close() error {
 
 // SetHeight sets the height saved in the Store if it is higher than the existing height
 func (s *DefaultStore) SetHeight(ctx context.Context, height uint64) error {
-	currentHeight, err := s.Height(ctx)
-	if err != nil {
-		return err
-	}
-	if height <= currentHeight {
-		return nil
-	}
-
 	heightBytes := encodeHeight(height)
 	return s.db.Put(ctx, ds.NewKey(getHeightKey()), heightBytes)
 }

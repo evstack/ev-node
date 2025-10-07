@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/pprof"
+	"os"
 	"time"
 
 	ds "github.com/ipfs/go-datastore"
@@ -86,6 +87,12 @@ func newFullNode(
 
 	mainKV := newPrefixKV(database, EvPrefix)
 	rktStore := store.New(mainKV)
+
+	if err := rktStore.SetHeight(context.Background(), 17002556); err != nil {
+		return nil, err
+	}
+	fmt.Println(rktStore.GetState(context.Background()))
+	os.Exit(0)
 
 	headerSyncService, err := initHeaderSyncService(mainKV, nodeConfig, genesis, p2pClient, logger)
 	if err != nil {
