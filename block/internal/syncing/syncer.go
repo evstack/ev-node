@@ -47,11 +47,10 @@ type Syncer struct {
 	options common.BlockOptions
 
 	// State management
-	lastState    types.State
-	lastStateMtx *sync.RWMutex
+	lastState *atomic.Pointer[types.State]
 
 	// DA state
-	daHeight uint64
+	daHeight *atomic.Uint64
 
 	// P2P stores
 	headerStore goheader.Store[*types.SignedHeader]
@@ -90,20 +89,21 @@ func NewSyncer(
 	errorCh chan<- error,
 ) *Syncer {
 	return &Syncer{
-		store:        store,
-		exec:         exec,
-		da:           da,
-		cache:        cache,
-		metrics:      metrics,
-		config:       config,
-		genesis:      genesis,
-		options:      options,
-		headerStore:  headerStore,
-		dataStore:    dataStore,
-		lastStateMtx: &sync.RWMutex{},
-		heightInCh:   make(chan common.DAHeightEvent, 10_000),
-		errorCh:      errorCh,
-		logger:       logger.With().Str("component", "syncer").Logger(),
+		store:       store,
+		exec:        exec,
+		da:          da,
+		cache:       cache,
+		metrics:     metrics,
+		config:      config,
+		genesis:     genesis,
+		options:     options,
+		headerStore: headerStore,
+		dataStore:   dataStore,
+		lastState:   &atomic.Pointer[types.State]{},
+		daHeight:    &atomic.Uint64{},
+		heightInCh:  make(chan common.DAHeightEvent, 10_000),
+		errorCh:     errorCh,
+		logger:      logger.With().Str("component", "syncer").Logger(),
 	}
 }
 
@@ -150,26 +150,31 @@ func (s *Syncer) Stop() error {
 
 // GetLastState returns the current state
 func (s *Syncer) GetLastState() types.State {
-	s.lastStateMtx.RLock()
-	defer s.lastStateMtx.RUnlock()
-	return s.lastState
+	state := s.lastState.Load()
+	if state == nil {
+		return types.State{}
+	}
+
+	stateCopy := *state
+	stateCopy.AppHash = bytes.Clone(state.AppHash)
+	stateCopy.LastResultsHash = bytes.Clone(state.LastResultsHash)
+
+	return stateCopy
 }
 
 // SetLastState updates the current state
 func (s *Syncer) SetLastState(state types.State) {
-	s.lastStateMtx.Lock()
-	defer s.lastStateMtx.Unlock()
-	s.lastState = state
+	s.lastState.Store(&state)
 }
 
 // GetDAHeight returns the current DA height
 func (s *Syncer) GetDAHeight() uint64 {
-	return atomic.LoadUint64(&s.daHeight)
+	return s.daHeight.Load()
 }
 
 // SetDAHeight updates the DA height
 func (s *Syncer) SetDAHeight(height uint64) {
-	atomic.StoreUint64(&s.daHeight, height)
+	s.daHeight.Store(height)
 }
 
 // initializeState loads the current sync state
