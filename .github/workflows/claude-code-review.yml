@@ -36,19 +36,59 @@ jobs:
         uses: anthropics/claude-code-action@v1
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          track_progress: true
+          use_sticky_comment: true
           prompt: |
-            Please review this pull request and provide feedback on:
-            - Code quality and best practices
-            - Potential bugs or issues
-            - Performance considerations
-            - Security concerns
-            - Test coverage
+            Perform a comprehensive code review with the following focus areas:
 
-            Use the repository's CLAUDE.md for guidance on style and conventions. Be constructive and helpful in your feedback.
+            1. **Code Quality & Architecture**
+                - Verify adherence to idiomatic Go style (effective-go, golangci-lint compliance, naming conventions).
+                - Assess package structure for clarity and modularity (avoid cyclic dependencies, promote clean boundaries).
+                - Ensure interfaces are used appropriately — not over-abstracted but testable.
+                - Review concurrency patterns (goroutines, channels, sync primitives) for correctness and deadlock safety.
+                - Check configuration management (flags, environment variables, config files) for clarity and consistency.
+                - Validate that logging, error propagation, and context handling (context.Context) are consistent and properly implemented.
 
-            Use `gh pr comment` with your Bash tool to leave your review as a comment on the PR.
+            2. **Error Handling & Resilience**
+              - Verify consistent error wrapping and context (use of %w, errors.Join, or fmt.Errorf).
+              - Ensure external dependencies (network, file I/O, DB connections) have proper retry, timeout, and cancellation logic.
+              - Confirm panics are avoided or safely recovered from in long-running goroutines.
+              - Assess logging for meaningful messages while avoiding sensitive data exposure.
+
+            3. **Security**
+              - Review authentication/authorization logic and credential management.
+              - Check input validation and sanitization for APIs, CLI, or device message payloads.
+              - Ensure secrets are not hard-coded or logged.
+              - Confirm secure handling of TLS, tokens, and crypto functions where applicable.
+              - Validate dependencies for known vulnerabilities and verify minimal privilege access patterns.
+
+            4. **Performance & Resource Efficiency**
+              - Inspect hot paths for unnecessary allocations or blocking operations.
+              - Check for proper use of connection pools, goroutine lifecycle management, and cleanup.
+              - Review memory and CPU usage in concurrent loops, background workers, and I/O pipelines.
+              - Evaluate database or cache query efficiency and connection reuse.
+
+
+            5. **Testing & Reliability**
+              - Verify presence and adequacy of unit, integration, and end-to-end tests.
+              - Check test naming, isolation, and reproducibility.
+              - Ensure key edge cases (timeouts, partial failures, concurrent access) are covered.
+              - Review use of mocks/fakes for external dependencies.
+              - Confirm go test and CI workflows run cleanly and consistently.
+
+
+            6. **Documentation & Developer Experience**
+              - Confirm code comments and docstrings clearly describe public APIs, exported structs, and interfaces.
+              - Review README.md, setup scripts, and examples for developer onboarding.
+              - Ensure configuration and runtime parameters are documented.
+              - Check generated API documentation (if applicable) for completeness and alignment with implementation.
+
+
+              Feedback Guidelines
+             	•	Use inline comments for file- or line-specific issues and improvements.
+             	•	Use top-level comments for architectural observations, general patterns, or praise.
+             	•	Prioritize clarity, robustness, and production readiness in all feedback.
 
           # See https://github.com/anthropics/claude-code-action/blob/main/docs/usage.md
           # or https://docs.anthropic.com/en/docs/claude-code/sdk#command-line for available options
           claude_args: '--allowed-tools "Bash(gh issue view:*),Bash(gh search:*),Bash(gh issue list:*),Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*),Bash(gh pr list:*)"'
-          use_sticky_comment: true
