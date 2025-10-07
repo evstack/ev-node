@@ -27,8 +27,8 @@ type daRetriever interface {
 }
 
 type p2pHandler interface {
-	ProcessHeaderRange(ctx context.Context, fromHeight, toHeight uint64) []common.DAHeightEvent
-	ProcessDataRange(ctx context.Context, fromHeight, toHeight uint64) []common.DAHeightEvent
+	ProcessHeaderRange(ctx context.Context, fromHeight, toHeight uint64, heightInCh chan<- common.DAHeightEvent)
+	ProcessDataRange(ctx context.Context, fromHeight, toHeight uint64, heightInCh chan<- common.DAHeightEvent)
 }
 
 // Syncer handles block synchronization from DA and P2P sources.
@@ -118,8 +118,8 @@ func (s *Syncer) Start(ctx context.Context) error {
 	}
 
 	// Initialize handlers
-	s.daRetriever = NewDARetriever(s.da, s.cache, s.config, s.genesis, s.options, s.logger)
-	s.p2pHandler = NewP2PHandler(s.headerBroadcaster.Store(), s.dataBroadcaster.Store(), s.genesis, s.options, s.logger)
+	s.daRetriever = NewDARetriever(s.da, s.cache, s.config, s.genesis, s.logger)
+	s.p2pHandler = NewP2PHandler(s.headerBroadcaster.Store(), s.dataBroadcaster.Store(), s.cache, s.genesis, s.logger)
 
 	// Start main processing loop
 	s.wg.Add(1)
@@ -250,39 +250,32 @@ func (s *Syncer) syncLoop() {
 		}()
 
 		wg.Add(1)
-		fetchedP2pEvent := false
 		go func() {
 			defer wg.Done()
-			fetchedP2pEvent = s.tryFetchFromP2P()
+			s.tryFetchFromP2P()
 		}()
 
 		wg.Add(1)
-		fetchedDaEvent := false
 		go func() {
 			defer wg.Done()
-			fetchedDaEvent = s.tryFetchFromDA(nextDARequestAt)
+			s.tryFetchFromDA(nextDARequestAt)
 		}()
 
 		// wait for pending events processing, p2p and da fetching
 		wg.Wait()
-
-		// Prevent busy-waiting when no events are available
-		if !fetchedDaEvent && !fetchedP2pEvent {
-			time.Sleep(min(10*time.Millisecond, s.config.Node.BlockTime.Duration))
-		}
 	}
 }
 
 // tryFetchFromDA attempts to fetch events from the DA layer.
 // It handles backoff timing, DA height management, and error classification.
 // Returns true if any events were successfully processed.
-func (s *Syncer) tryFetchFromDA(nextDARequestAt *time.Time) bool {
+func (s *Syncer) tryFetchFromDA(nextDARequestAt *time.Time) {
 	now := time.Now()
 	daHeight := s.GetDAHeight()
 
 	// Respect backoff window if set
 	if !nextDARequestAt.IsZero() && now.Before(*nextDARequestAt) {
-		return false
+		return
 	}
 
 	// Retrieve from DA as fast as possible (unless throttled by HFF)
@@ -294,7 +287,7 @@ func (s *Syncer) tryFetchFromDA(nextDARequestAt *time.Time) bool {
 			s.SetDAHeight(daHeight + 1)
 			// Reset backoff on success
 			*nextDARequestAt = time.Time{}
-			return false
+			return
 		}
 
 		// Back off exactly by DA block time to avoid overloading
@@ -305,8 +298,7 @@ func (s *Syncer) tryFetchFromDA(nextDARequestAt *time.Time) bool {
 		*nextDARequestAt = now.Add(backoffDelay)
 
 		s.logger.Error().Err(err).Dur("delay", backoffDelay).Uint64("da_height", daHeight).Msg("failed to retrieve from DA; backing off DA requests")
-
-		return false
+		return
 	}
 
 	// Reset backoff on success
@@ -323,54 +315,30 @@ func (s *Syncer) tryFetchFromDA(nextDARequestAt *time.Time) bool {
 
 	// increment DA height on successful retrieval
 	s.SetDAHeight(daHeight + 1)
-	return len(events) > 0
+	return
 }
 
 // tryFetchFromP2P attempts to fetch events from P2P stores.
 // It processes both header and data ranges when the block ticker fires.
 // Returns true if any events were successfully processed.
-func (s *Syncer) tryFetchFromP2P() bool {
-	eventsProcessed := false
-
+func (s *Syncer) tryFetchFromP2P() {
 	currentHeight, err := s.store.Height(s.ctx)
 	if err != nil {
 		s.logger.Error().Err(err).Msg("failed to get current height")
-		return eventsProcessed
+		return
 	}
 
 	// Process headers
 	newHeaderHeight := s.headerBroadcaster.Store().Height()
 	if newHeaderHeight > currentHeight {
-		events := s.p2pHandler.ProcessHeaderRange(s.ctx, currentHeight+1, newHeaderHeight)
-		for _, event := range events {
-			select {
-			case s.heightInCh <- event:
-			default:
-				s.cache.SetPendingEvent(event.Header.Height(), &event)
-			}
-		}
-		if len(events) > 0 {
-			eventsProcessed = true
-		}
+		s.p2pHandler.ProcessHeaderRange(s.ctx, currentHeight+1, newHeaderHeight, s.heightInCh)
 	}
 
 	// Process data (if not already processed by headers)
 	newDataHeight := s.dataBroadcaster.Store().Height()
 	if newDataHeight != newHeaderHeight && newDataHeight > currentHeight {
-		events := s.p2pHandler.ProcessDataRange(s.ctx, currentHeight+1, newDataHeight)
-		for _, event := range events {
-			select {
-			case s.heightInCh <- event:
-			default:
-				s.cache.SetPendingEvent(event.Header.Height(), &event)
-			}
-		}
-		if len(events) > 0 {
-			eventsProcessed = true
-		}
+		s.p2pHandler.ProcessDataRange(s.ctx, currentHeight+1, newDataHeight, s.heightInCh)
 	}
-
-	return eventsProcessed
 }
 
 func (s *Syncer) processHeightEvent(event *common.DAHeightEvent) {

@@ -27,7 +27,6 @@ type DARetriever struct {
 	da      coreda.DA
 	cache   cache.Manager
 	genesis genesis.Genesis
-	options common.BlockOptions
 	logger  zerolog.Logger
 
 	// calculate namespaces bytes once and reuse them
@@ -46,14 +45,12 @@ func NewDARetriever(
 	cache cache.Manager,
 	config config.Config,
 	genesis genesis.Genesis,
-	options common.BlockOptions,
 	logger zerolog.Logger,
 ) *DARetriever {
 	return &DARetriever{
 		da:              da,
 		cache:           cache,
 		genesis:         genesis,
-		options:         options,
 		logger:          logger.With().Str("component", "da_retriever").Logger(),
 		namespaceBz:     coreda.NamespaceFromString(config.DA.GetNamespace()).Bytes(),
 		namespaceDataBz: coreda.NamespaceFromString(config.DA.GetDataNamespace()).Bytes(),

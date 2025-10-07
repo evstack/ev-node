@@ -73,7 +73,7 @@ func setupP2P(t *testing.T) *P2PTestData {
 	headerStoreMock := extmocks.NewMockStore[*types.SignedHeader](t)
 	dataStoreMock := extmocks.NewMockStore[*types.Data](t)
 
-	handler := NewP2PHandler(headerStoreMock, dataStoreMock, gen, common.DefaultBlockOptions(), zerolog.Nop())
+	handler := NewP2PHandler(headerStoreMock, dataStoreMock, gen, zerolog.Nop())
 	return &P2PTestData{
 		Handler:      handler,
 		HeaderStore:  headerStoreMock,

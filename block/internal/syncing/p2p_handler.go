@@ -10,6 +10,7 @@ import (
 	goheader "github.com/celestiaorg/go-header"
 	"github.com/rs/zerolog"
 
+	"github.com/evstack/ev-node/block/internal/cache"
 	"github.com/evstack/ev-node/block/internal/common"
 	"github.com/evstack/ev-node/pkg/genesis"
 	"github.com/evstack/ev-node/types"
@@ -19,8 +20,8 @@ import (
 type P2PHandler struct {
 	headerStore goheader.Store[*types.SignedHeader]
 	dataStore   goheader.Store[*types.Data]
+	cache       cache.Manager
 	genesis     genesis.Genesis
-	options     common.BlockOptions
 	logger      zerolog.Logger
 }
 
@@ -28,31 +29,29 @@ type P2PHandler struct {
 func NewP2PHandler(
 	headerStore goheader.Store[*types.SignedHeader],
 	dataStore goheader.Store[*types.Data],
+	cache cache.Manager,
 	genesis genesis.Genesis,
-	options common.BlockOptions,
 	logger zerolog.Logger,
 ) *P2PHandler {
 	return &P2PHandler{
 		headerStore: headerStore,
 		dataStore:   dataStore,
+		cache:       cache,
 		genesis:     genesis,
-		options:     options,
 		logger:      logger.With().Str("component", "p2p_handler").Logger(),
 	}
 }
 
 // ProcessHeaderRange processes headers from the header store within the given range
-func (h *P2PHandler) ProcessHeaderRange(ctx context.Context, startHeight, endHeight uint64) []common.DAHeightEvent {
+func (h *P2PHandler) ProcessHeaderRange(ctx context.Context, startHeight, endHeight uint64, heightInCh chan<- common.DAHeightEvent) {
 	if startHeight > endHeight {
-		return nil
+		return
 	}
-
-	var events []common.DAHeightEvent
 
 	for height := startHeight; height <= endHeight; height++ {
 		select {
 		case <-ctx.Done():
-			return events
+			return
 		default:
 		}
 
@@ -66,7 +65,7 @@ func (h *P2PHandler) ProcessHeaderRange(ctx context.Context, startHeight, endHei
 				h.logger.Debug().Uint64("height", height).Msg("timeout waiting for header from store, will retry later")
 				// Don't continue processing further heights if we timeout on one
 				// This prevents blocking on sequential heights
-				return events
+				return
 			}
 			h.logger.Debug().Uint64("height", height).Err(err).Msg("failed to get header from store")
 			continue
@@ -113,26 +112,28 @@ func (h *P2PHandler) ProcessHeaderRange(ctx context.Context, startHeight, endHei
 			Source:   common.SourceP2P,
 		}
 
-		events = append(events, event)
+		select {
+		case heightInCh <- event:
+		default:
+			h.cache.SetPendingEvent(event.Header.Height(), &event)
+		}
 
 		h.logger.Debug().Uint64("height", height).Str("source", "p2p_headers").Msg("processed header from P2P")
 	}
 
-	return events
+	return
 }
 
 // ProcessDataRange processes data from the data store within the given range
-func (h *P2PHandler) ProcessDataRange(ctx context.Context, startHeight, endHeight uint64) []common.DAHeightEvent {
+func (h *P2PHandler) ProcessDataRange(ctx context.Context, startHeight, endHeight uint64, heightInCh chan<- common.DAHeightEvent) {
 	if startHeight > endHeight {
-		return nil
+		return
 	}
-
-	var events []common.DAHeightEvent
 
 	for height := startHeight; height <= endHeight; height++ {
 		select {
 		case <-ctx.Done():
-			return events
+			return
 		default:
 		}
 
@@ -146,7 +147,7 @@ func (h *P2PHandler) ProcessDataRange(ctx context.Context, startHeight, endHeigh
 				h.logger.Debug().Uint64("height", height).Msg("timeout waiting for data from store, will retry later")
 				// Don't continue processing further heights if we timeout on one
 				// This prevents blocking on sequential heights
-				return events
+				return
 			}
 			h.logger.Debug().Uint64("height", height).Err(err).Msg("failed to get data from store")
 			continue
@@ -184,12 +185,16 @@ func (h *P2PHandler) ProcessDataRange(ctx context.Context, startHeight, endHeigh
 			Source:   common.SourceP2P,
 		}
 
-		events = append(events, event)
+		select {
+		case heightInCh <- event:
+		default:
+			h.cache.SetPendingEvent(event.Header.Height(), &event)
+		}
 
 		h.logger.Debug().Uint64("height", height).Str("source", "p2p_data").Msg("processed data from P2P")
 	}
 
-	return events
+	return
 }
 
 // assertExpectedProposer validates the proposer address
