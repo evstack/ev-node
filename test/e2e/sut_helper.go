@@ -51,6 +51,7 @@ func NewSystemUnderTest(t *testing.T) *SystemUnderTest {
 		cmdToPids: make(map[string][]int),
 		outBuff:   ring.New(100),
 		errBuff:   ring.New(100),
+		debug:     testing.Verbose(),
 	}
 	t.Cleanup(func() {
 		if t.Failed() {
@@ -74,7 +75,7 @@ func (s *SystemUnderTest) RunCmd(cmd string, args ...string) (string, error) {
 }
 
 // ExecCmd starts a process for the given command and manages it cleanup on test end.
-func (s *SystemUnderTest) ExecCmd(cmd string, args ...string) {
+func (s *SystemUnderTest) ExecCmd(cmd string, args ...string) *os.Process {
 	executable := locateExecutable(cmd)
 	c := exec.Command( //nolint:gosec // used by tests only
 		executable,
@@ -86,10 +87,11 @@ func (s *SystemUnderTest) ExecCmd(cmd string, args ...string) {
 	err := c.Start()
 	require.NoError(s.t, err)
 	if s.debug {
-		s.logf("Exec cmd (pid: %d): %s %s", c.Process.Pid, executable, strings.Join(c.Args, " "))
+		s.logf("Exec cmd (pid: %d): %s %s", c.Process.Pid, executable, strings.Join(args, " "))
 	}
 	// cleanup when stopped
 	s.awaitProcessCleanup(c)
+	return c.Process
 }
 
 // AwaitNodeUp waits until a node is operational by validating it produces blocks.

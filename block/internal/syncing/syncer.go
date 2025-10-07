@@ -151,12 +151,26 @@ func (s *Syncer) Start(ctx context.Context) error {
 
 // Stop shuts down the syncing component
 func (s *Syncer) Stop() error {
-	if s.cancel != nil {
-		s.cancel()
+	if s.cancel == nil {
+		return nil
 	}
+	s.cancel()
 	s.wg.Wait()
 	s.logger.Info().Msg("syncer stopped")
+	close(s.heightInCh)
+	s.cancel = nil
 	return nil
+}
+
+var alwaysTickCh chan time.Time
+
+func init() {
+	alwaysTickCh = make(chan time.Time)
+	close(alwaysTickCh) // always picked in select
+}
+
+func (s *Syncer) HasUnprocessedEvents() bool {
+	return len(s.heightInCh) != 0 || s.tryFetchFromP2P(&s.lastState.LastBlockHeight, &s.lastState.LastBlockHeight, alwaysTickCh)
 }
 
 // GetLastState returns the current state
@@ -222,8 +236,10 @@ func (s *Syncer) processLoop() {
 		select {
 		case <-s.ctx.Done():
 			return
-		case heightEvent := <-s.heightInCh:
-			s.processHeightEvent(&heightEvent)
+		case heightEvent, ok := <-s.heightInCh:
+			if ok {
+				s.processHeightEvent(&heightEvent)
+			}
 		}
 	}
 }
@@ -409,8 +425,7 @@ func (s *Syncer) processHeightEvent(event *common.DAHeightEvent) {
 	}
 
 	// If this is not the next block in sequence, store as pending event
-	// This check is crucial as try
-	//SyncNextBlock simply attempts to sync the next block
+	// This check is crucial as trySyncNextBlock simply attempts to sync the next block
 	if height != currentHeight+1 {
 		s.cache.SetPendingEvent(height, event)
 		s.logger.Debug().Uint64("height", height).Uint64("current_height", currentHeight).Msg("stored as pending event")

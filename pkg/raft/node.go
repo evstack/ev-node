@@ -108,7 +108,7 @@ func NewNode(ctx context.Context, cfg *Config) (*Node, error) {
 		r.BootstrapCluster(configuration)
 		node.logger.Info().Msg("bootstrapped raft cluster")
 	}
-
+	// todo: start listening for leader changes
 	return node, nil
 }
 

@@ -167,12 +167,6 @@ func generateTestEndpoints() (*TestEndpoints, error) {
 
 // Common constants used across EVM tests
 const (
-	// Port configurations
-	DAPort         = "7980"
-	RollkitRPCPort = "7331"
-
-	DAAddress         = "http://127.0.0.1:" + DAPort
-	RollkitRPCAddress = "http://127.0.0.1:" + RollkitRPCPort
 
 	// Test configuration
 	DefaultBlockTime   = "150ms"
@@ -186,6 +180,8 @@ const (
 	TestToAddress  = "0x944fDcD1c868E3cC566C78023CcB38A32cDA836E"
 	TestPassphrase = "secret"
 )
+
+var DefaultDANamespace = DefaultChainID
 
 const (
 	SlowPollingInterval = 250 * time.Millisecond // Reduced from 500ms
@@ -213,6 +209,7 @@ func getNodeP2PAddress(t *testing.T, sut *SystemUnderTest, nodeHome string, rpcP
 		args = append(args, "--rollkit.rpc.address", "127.0.0.1:"+rpcPort[0])
 	}
 
+	t.Log("RUNNING: ", evmSingleBinaryPath, args)
 	// Run net-info command to get node network information
 	output, err := sut.RunCmd(evmSingleBinaryPath, args...)
 	require.NoError(t, err, "failed to get net-info", output)
@@ -626,35 +623,6 @@ func restartDAAndSequencerLazy(t *testing.T, sut *SystemUnderTest, sequencerHome
 	time.Sleep(SlowPollingInterval)
 
 	sut.AwaitNodeUp(t, endpoints.GetRollkitRPCAddress(), NodeStartupTimeout)
-}
-
-// restartSequencerNode starts an existing sequencer node without initialization.
-// This is used for restart scenarios where the node has already been initialized.
-//
-// Parameters:
-// - sut: SystemUnderTest instance for managing test processes
-// - sequencerHome: Directory path for sequencer node data
-// - jwtSecret: JWT secret for sequencer's EVM engine authentication
-// - genesisHash: Hash of the genesis block for chain validation
-func restartSequencerNode(t *testing.T, sut *SystemUnderTest, sequencerHome, jwtSecret, genesisHash string) {
-	t.Helper()
-
-	// Start sequencer node (without init - node already exists)
-	sut.ExecCmd(evmSingleBinaryPath,
-		"start",
-		"--evm.jwt-secret", jwtSecret,
-		"--evm.genesis-hash", genesisHash,
-		"--rollkit.node.block_time", DefaultBlockTime,
-		"--rollkit.node.aggregator=true",
-		"--rollkit.signer.passphrase", TestPassphrase,
-		"--home", sequencerHome,
-		"--rollkit.da.address", DAAddress,
-		"--rollkit.da.block_time", DefaultDABlockTime,
-	)
-
-	time.Sleep(SlowPollingInterval)
-
-	sut.AwaitNodeUp(t, RollkitRPCAddress, NodeStartupTimeout)
 }
 
 // verifyNoBlockProduction verifies that no new blocks are being produced over a specified duration.

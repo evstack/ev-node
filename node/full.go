@@ -26,6 +26,7 @@ import (
 	"github.com/evstack/ev-node/pkg/config"
 	genesispkg "github.com/evstack/ev-node/pkg/genesis"
 	"github.com/evstack/ev-node/pkg/p2p"
+	"github.com/evstack/ev-node/pkg/p2p/key"
 	raftpkg "github.com/evstack/ev-node/pkg/raft"
 	rpcserver "github.com/evstack/ev-node/pkg/rpc/server"
 	"github.com/evstack/ev-node/pkg/service"
@@ -58,21 +59,19 @@ type FullNode struct {
 
 	da coreda.DA
 
-	p2pClient       *p2p.Client
-	hSyncService    *evsync.HeaderSyncService
-	dSyncService    *evsync.DataSyncService
-	Store           store.Store
-	blockComponents *block.Components
+	Store                   store.Store
+	blockComponents         *block.Components
+	syncComponentFunc       func(c context.Context) error
+	aggregatorComponentFunc func(c context.Context) error
 
 	prometheusSrv *http.Server
 	pprofSrv      *http.Server
-	rpcServer     *http.Server
 }
 
 // newFullNode creates a new Rollkit full node.
 func newFullNode(
 	nodeConfig config.Config,
-	p2pClient *p2p.Client,
+	nodeKey *key.NodeKey,
 	signer signer.Signer,
 	genesis genesispkg.Genesis,
 	database ds.Batching,
@@ -82,7 +81,7 @@ func newFullNode(
 	metricsProvider MetricsProvider,
 	logger zerolog.Logger,
 	nodeOpts NodeOptions,
-) (fn *FullNode, err error) {
+) (*FullNode, error) {
 	logger.Debug().Bytes("address", genesis.ProposerAddress).Msg("Proposer address")
 
 	blockMetrics, _ := metricsProvider(genesis.ChainID)
@@ -90,18 +89,9 @@ func newFullNode(
 	mainKV := newPrefixKV(database, EvPrefix)
 	rktStore := store.New(mainKV)
 
-	headerSyncService, err := initHeaderSyncService(mainKV, nodeConfig, genesis, p2pClient, logger)
-	if err != nil {
-		return nil, err
-	}
-
-	dataSyncService, err := initDataSyncService(mainKV, nodeConfig, genesis, p2pClient, logger)
-	if err != nil {
-		return nil, err
-	}
-
 	// Initialize raft node if enabled (for both aggregator and sync nodes)
 	var raftNode block.RaftNode
+	var err error
 	if nodeConfig.Raft.Enable {
 		raftNode, err = initRaftNode(nodeConfig, logger)
 		if err != nil {
@@ -109,51 +99,30 @@ func newFullNode(
 		}
 	}
 
-	var blockComponents *block.Components
-	if nodeConfig.Node.Aggregator {
-		blockComponents, err = block.NewAggregatorComponents(
-			nodeConfig,
-			genesis,
-			rktStore,
-			exec,
-			sequencer,
-			da,
-			signer,
-			headerSyncService,
-			dataSyncService,
-			logger,
-			blockMetrics,
-			nodeOpts.BlockOptions,
-			raftNode,
-		)
-	} else {
-		blockComponents, err = block.NewSyncComponents(
-			nodeConfig,
-			genesis,
-			rktStore,
-			exec,
-			da,
-			headerSyncService.Store(),
-			dataSyncService.Store(),
-			logger,
-			blockMetrics,
-			nodeOpts.BlockOptions,
-			raftNode,
-		)
-	}
-	if err != nil {
-		return nil, err
-	}
-
 	node := &FullNode{
-		genesis:         genesis,
-		nodeConfig:      nodeConfig,
-		p2pClient:       p2pClient,
-		blockComponents: blockComponents,
-		da:              da,
-		Store:           rktStore,
-		hSyncService:    headerSyncService,
-		dSyncService:    dataSyncService,
+		genesis:    genesis,
+		nodeConfig: nodeConfig,
+		da:         da,
+		Store:      rktStore,
+		aggregatorComponentFunc: func(ctx context.Context) error {
+			logger.Info().Msg("Starting aggregator-MODE")
+			nodeConfig.Node.Aggregator = true
+			nodeConfig.P2P.Peers = ""
+			m, err := newAggregatorMode(nodeConfig, nodeKey, signer, genesis, database, exec, sequencer, da, logger, rktStore, mainKV, blockMetrics, nodeOpts, raftNode)
+			if err != nil {
+				return err
+			}
+			return m.Run(ctx)
+		},
+		syncComponentFunc: func(ctx context.Context) error {
+			logger.Info().Msg("Starting sync-MODE")
+			nodeConfig.Node.Aggregator = false
+			m, err := newSyncMode(nodeConfig, nodeKey, genesis, database, exec, da, logger, rktStore, mainKV, blockMetrics, nodeOpts, raftNode)
+			if err != nil {
+				return err
+			}
+			return m.Run(ctx)
+		},
 	}
 
 	node.BaseService = *service.NewBaseService(logger, "Node", node)
