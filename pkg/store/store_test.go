@@ -124,9 +124,13 @@ func TestStoreHeight(t *testing.T) {
 
 			for i, header := range c.headers {
 				data := c.data[i]
-				err := bstore.SaveBlockData(t.Context(), header, data, &types.Signature{})
+				batch, err := bstore.NewBatch(t.Context())
 				require.NoError(t, err)
-				err = bstore.SetHeight(t.Context(), header.Height())
+				err = bstore.SaveBlockData(t.Context(), batch, header, data, &types.Signature{})
+				require.NoError(t, err)
+				err = bstore.SetHeight(t.Context(), batch, header.Height())
+				require.NoError(t, err)
+				err = batch.Commit(t.Context())
 				require.NoError(t, err)
 			}
 

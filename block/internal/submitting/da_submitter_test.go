@@ -167,9 +167,9 @@ func TestDASubmitter_SubmitHeaders_Success(t *testing.T) {
 	// Save to store to make them pending
 	sig1 := header1.Signature
 	sig2 := header2.Signature
-	require.NoError(t, st.SaveBlockData(ctx, header1, data1, &sig1))
-	require.NoError(t, st.SaveBlockData(ctx, header2, data2, &sig2))
-	require.NoError(t, st.SetHeight(ctx, 2))
+	require.NoError(t, st.SaveBlockData(ctx, nil, header1, data1, &sig1))
+	require.NoError(t, st.SaveBlockData(ctx, nil, header2, data2, &sig2))
+	require.NoError(t, st.SetHeight(ctx, nil, 2))
 
 	// Submit headers
 	err := submitter.SubmitHeaders(ctx, cm)
@@ -253,9 +253,9 @@ func TestDASubmitter_SubmitData_Success(t *testing.T) {
 	// Save to store to make them pending
 	sig1 := types.Signature([]byte("sig1"))
 	sig2 := types.Signature([]byte("sig2"))
-	require.NoError(t, st.SaveBlockData(ctx, header1, data1, &sig1))
-	require.NoError(t, st.SaveBlockData(ctx, header2, data2, &sig2))
-	require.NoError(t, st.SetHeight(ctx, 2))
+	require.NoError(t, st.SaveBlockData(ctx, nil, header1, data1, &sig1))
+	require.NoError(t, st.SaveBlockData(ctx, nil, header2, data2, &sig2))
+	require.NoError(t, st.SetHeight(ctx, nil, 2))
 
 	// Submit data
 	err := submitter.SubmitData(ctx, cm, signer, gen)
@@ -302,8 +302,8 @@ func TestDASubmitter_SubmitData_SkipsEmptyData(t *testing.T) {
 
 	// Save to store
 	sig := types.Signature([]byte("sig"))
-	require.NoError(t, st.SaveBlockData(ctx, header, emptyData, &sig))
-	require.NoError(t, st.SetHeight(ctx, 1))
+	require.NoError(t, st.SaveBlockData(ctx, nil, header, emptyData, &sig))
+	require.NoError(t, st.SetHeight(ctx, nil, 1))
 
 	// Submit data - should succeed but skip empty data
 	err := submitter.SubmitData(ctx, cm, signer, gen)
@@ -353,8 +353,8 @@ func TestDASubmitter_SubmitData_NilSigner(t *testing.T) {
 
 	// Save to store
 	sig := types.Signature([]byte("sig"))
-	require.NoError(t, st.SaveBlockData(ctx, header, data, &sig))
-	require.NoError(t, st.SetHeight(ctx, 1))
+	require.NoError(t, st.SaveBlockData(ctx, nil, header, data, &sig))
+	require.NoError(t, st.SetHeight(ctx, nil, 1))
 
 	// Submit data with nil signer - should fail
 	err := submitter.SubmitData(ctx, cm, nil, gen)

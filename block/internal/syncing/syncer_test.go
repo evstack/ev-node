@@ -279,7 +279,7 @@ func TestSyncer_processPendingEvents(t *testing.T) {
 	require.NoError(t, err)
 
 	// current height 1
-	require.NoError(t, st.SetHeight(context.Background(), 1))
+	require.NoError(t, st.SetHeight(context.Background(), nil, 1))
 
 	s := &Syncer{
 		store:      st,

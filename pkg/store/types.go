@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/evstack/ev-node/types"
+	ds "github.com/ipfs/go-datastore"
 )
 
 // Store is minimal interface for storing and retrieving blocks, commits and state.
@@ -12,10 +13,10 @@ type Store interface {
 	Height(ctx context.Context) (uint64, error)
 
 	// SetHeight sets the height saved in the Store if it is higher than the existing height.
-	SetHeight(ctx context.Context, height uint64) error
+	SetHeight(ctx context.Context, batch ds.Batch, height uint64) error
 
 	// SaveBlockData saves block along with its seen signature (which will be included in the next block).
-	SaveBlockData(ctx context.Context, header *types.SignedHeader, data *types.Data, signature *types.Signature) error
+	SaveBlockData(ctx context.Context, batch ds.Batch, header *types.SignedHeader, data *types.Data, signature *types.Signature) error
 
 	// GetBlockData returns block at given height, or error if it's not found in Store.
 	GetBlockData(ctx context.Context, height uint64) (*types.SignedHeader, *types.Data, error)
@@ -32,7 +33,7 @@ type Store interface {
 
 	// UpdateState updates state saved in Store. Only one State is stored.
 	// If there is no State in Store, state will be saved.
-	UpdateState(ctx context.Context, state types.State) error
+	UpdateState(ctx context.Context, batch ds.Batch, state types.State) error
 	// GetState returns last state saved with UpdateState.
 	GetState(ctx context.Context) (types.State, error)
 	// GetStateAtHeight returns state saved at given height, or error if it's not found in Store.
@@ -52,4 +53,7 @@ type Store interface {
 
 	// Close safely closes underlying data storage, to ensure that data is actually saved.
 	Close() error
+
+	// NewBatch creates a new batch.
+	NewBatch(ctx context.Context) (ds.Batch, error)
 }

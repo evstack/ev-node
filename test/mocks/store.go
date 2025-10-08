@@ -8,6 +8,7 @@ import (
 	"context"
 
 	"github.com/evstack/ev-node/types"
+	"github.com/ipfs/go-datastore"
 	mock "github.com/stretchr/testify/mock"
 )
 
@@ -692,6 +693,68 @@ func (_c *MockStore_Height_Call) RunAndReturn(run func(ctx context.Context) (uin
 	return _c
 }
 
+// NewBatch provides a mock function for the type MockStore
+func (_mock *MockStore) NewBatch(ctx context.Context) (datastore.Batch, error) {
+	ret := _mock.Called(ctx)
+
+	if len(ret) == 0 {
+		panic("no return value specified for NewBatch")
+	}
+
+	var r0 datastore.Batch
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context) (datastore.Batch, error)); ok {
+		return returnFunc(ctx)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context) datastore.Batch); ok {
+		r0 = returnFunc(ctx)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(datastore.Batch)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context) error); ok {
+		r1 = returnFunc(ctx)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}
+
+// MockStore_NewBatch_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'NewBatch'
+type MockStore_NewBatch_Call struct {
+	*mock.Call
+}
+
+// NewBatch is a helper method to define mock.On call
+//   - ctx context.Context
+func (_e *MockStore_Expecter) NewBatch(ctx interface{}) *MockStore_NewBatch_Call {
+	return &MockStore_NewBatch_Call{Call: _e.mock.On("NewBatch", ctx)}
+}
+
+func (_c *MockStore_NewBatch_Call) Run(run func(ctx context.Context)) *MockStore_NewBatch_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		run(
+			arg0,
+		)
+	})
+	return _c
+}
+
+func (_c *MockStore_NewBatch_Call) Return(batch datastore.Batch, err error) *MockStore_NewBatch_Call {
+	_c.Call.Return(batch, err)
+	return _c
+}
+
+func (_c *MockStore_NewBatch_Call) RunAndReturn(run func(ctx context.Context) (datastore.Batch, error)) *MockStore_NewBatch_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // Rollback provides a mock function for the type MockStore
 func (_mock *MockStore) Rollback(ctx context.Context, height uint64, aggregator bool) error {
 	ret := _mock.Called(ctx, height, aggregator)
@@ -756,16 +819,16 @@ func (_c *MockStore_Rollback_Call) RunAndReturn(run func(ctx context.Context, he
 }
 
 // SaveBlockData provides a mock function for the type MockStore
-func (_mock *MockStore) SaveBlockData(ctx context.Context, header *types.SignedHeader, data *types.Data, signature *types.Signature) error {
-	ret := _mock.Called(ctx, header, data, signature)
+func (_mock *MockStore) SaveBlockData(ctx context.Context, batch datastore.Batch, header *types.SignedHeader, data *types.Data, signature *types.Signature) error {
+	ret := _mock.Called(ctx, batch, header, data, signature)
 
 	if len(ret) == 0 {
 		panic("no return value specified for SaveBlockData")
 	}
 
 	var r0 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, *types.SignedHeader, *types.Data, *types.Signature) error); ok {
-		r0 = returnFunc(ctx, header, data, signature)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, datastore.Batch, *types.SignedHeader, *types.Data, *types.Signature) error); ok {
+		r0 = returnFunc(ctx, batch, header, data, signature)
 	} else {
 		r0 = ret.Error(0)
 	}
@@ -779,36 +842,42 @@ type MockStore_SaveBlockData_Call struct {
 
 // SaveBlockData is a helper method to define mock.On call
 //   - ctx context.Context
+//   - batch datastore.Batch
 //   - header *types.SignedHeader
 //   - data *types.Data
 //   - signature *types.Signature
-func (_e *MockStore_Expecter) SaveBlockData(ctx interface{}, header interface{}, data interface{}, signature interface{}) *MockStore_SaveBlockData_Call {
-	return &MockStore_SaveBlockData_Call{Call: _e.mock.On("SaveBlockData", ctx, header, data, signature)}
+func (_e *MockStore_Expecter) SaveBlockData(ctx interface{}, batch interface{}, header interface{}, data interface{}, signature interface{}) *MockStore_SaveBlockData_Call {
+	return &MockStore_SaveBlockData_Call{Call: _e.mock.On("SaveBlockData", ctx, batch, header, data, signature)}
 }
 
-func (_c *MockStore_SaveBlockData_Call) Run(run func(ctx context.Context, header *types.SignedHeader, data *types.Data, signature *types.Signature)) *MockStore_SaveBlockData_Call {
+func (_c *MockStore_SaveBlockData_Call) Run(run func(ctx context.Context, batch datastore.Batch, header *types.SignedHeader, data *types.Data, signature *types.Signature)) *MockStore_SaveBlockData_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
 			arg0 = args[0].(context.Context)
 		}
-		var arg1 *types.SignedHeader
+		var arg1 datastore.Batch
 		if args[1] != nil {
-			arg1 = args[1].(*types.SignedHeader)
+			arg1 = args[1].(datastore.Batch)
 		}
-		var arg2 *types.Data
+		var arg2 *types.SignedHeader
 		if args[2] != nil {
-			arg2 = args[2].(*types.Data)
+			arg2 = args[2].(*types.SignedHeader)
 		}
-		var arg3 *types.Signature
+		var arg3 *types.Data
 		if args[3] != nil {
-			arg3 = args[3].(*types.Signature)
+			arg3 = args[3].(*types.Data)
+		}
+		var arg4 *types.Signature
+		if args[4] != nil {
+			arg4 = args[4].(*types.Signature)
 		}
 		run(
 			arg0,
 			arg1,
 			arg2,
 			arg3,
+			arg4,
 		)
 	})
 	return _c
@@ -819,22 +888,22 @@ func (_c *MockStore_SaveBlockData_Call) Return(err error) *MockStore_SaveBlockDa
 	return _c
 }
 
-func (_c *MockStore_SaveBlockData_Call) RunAndReturn(run func(ctx context.Context, header *types.SignedHeader, data *types.Data, signature *types.Signature) error) *MockStore_SaveBlockData_Call {
+func (_c *MockStore_SaveBlockData_Call) RunAndReturn(run func(ctx context.Context, batch datastore.Batch, header *types.SignedHeader, data *types.Data, signature *types.Signature) error) *MockStore_SaveBlockData_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
 // SetHeight provides a mock function for the type MockStore
-func (_mock *MockStore) SetHeight(ctx context.Context, height uint64) error {
-	ret := _mock.Called(ctx, height)
+func (_mock *MockStore) SetHeight(ctx context.Context, batch datastore.Batch, height uint64) error {
+	ret := _mock.Called(ctx, batch, height)
 
 	if len(ret) == 0 {
 		panic("no return value specified for SetHeight")
 	}
 
 	var r0 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, uint64) error); ok {
-		r0 = returnFunc(ctx, height)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, datastore.Batch, uint64) error); ok {
+		r0 = returnFunc(ctx, batch, height)
 	} else {
 		r0 = ret.Error(0)
 	}
@@ -848,24 +917,30 @@ type MockStore_SetHeight_Call struct {
 
 // SetHeight is a helper method to define mock.On call
 //   - ctx context.Context
+//   - batch datastore.Batch
 //   - height uint64
-func (_e *MockStore_Expecter) SetHeight(ctx interface{}, height interface{}) *MockStore_SetHeight_Call {
-	return &MockStore_SetHeight_Call{Call: _e.mock.On("SetHeight", ctx, height)}
+func (_e *MockStore_Expecter) SetHeight(ctx interface{}, batch interface{}, height interface{}) *MockStore_SetHeight_Call {
+	return &MockStore_SetHeight_Call{Call: _e.mock.On("SetHeight", ctx, batch, height)}
 }
 
-func (_c *MockStore_SetHeight_Call) Run(run func(ctx context.Context, height uint64)) *MockStore_SetHeight_Call {
+func (_c *MockStore_SetHeight_Call) Run(run func(ctx context.Context, batch datastore.Batch, height uint64)) *MockStore_SetHeight_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
 			arg0 = args[0].(context.Context)
 		}
-		var arg1 uint64
+		var arg1 datastore.Batch
 		if args[1] != nil {
-			arg1 = args[1].(uint64)
+			arg1 = args[1].(datastore.Batch)
+		}
+		var arg2 uint64
+		if args[2] != nil {
+			arg2 = args[2].(uint64)
 		}
 		run(
 			arg0,
 			arg1,
+			arg2,
 		)
 	})
 	return _c
@@ -876,7 +951,7 @@ func (_c *MockStore_SetHeight_Call) Return(err error) *MockStore_SetHeight_Call 
 	return _c
 }
 
-func (_c *MockStore_SetHeight_Call) RunAndReturn(run func(ctx context.Context, height uint64) error) *MockStore_SetHeight_Call {
+func (_c *MockStore_SetHeight_Call) RunAndReturn(run func(ctx context.Context, batch datastore.Batch, height uint64) error) *MockStore_SetHeight_Call {
 	_c.Call.Return(run)
 	return _c
 }
@@ -945,16 +1020,16 @@ func (_c *MockStore_SetMetadata_Call) RunAndReturn(run func(ctx context.Context,
 }
 
 // UpdateState provides a mock function for the type MockStore
-func (_mock *MockStore) UpdateState(ctx context.Context, state types.State) error {
-	ret := _mock.Called(ctx, state)
+func (_mock *MockStore) UpdateState(ctx context.Context, batch datastore.Batch, state types.State) error {
+	ret := _mock.Called(ctx, batch, state)
 
 	if len(ret) == 0 {
 		panic("no return value specified for UpdateState")
 	}
 
 	var r0 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, types.State) error); ok {
-		r0 = returnFunc(ctx, state)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, datastore.Batch, types.State) error); ok {
+		r0 = returnFunc(ctx, batch, state)
 	} else {
 		r0 = ret.Error(0)
 	}
@@ -968,24 +1043,30 @@ type MockStore_UpdateState_Call struct {
 
 // UpdateState is a helper method to define mock.On call
 //   - ctx context.Context
+//   - batch datastore.Batch
 //   - state types.State
-func (_e *MockStore_Expecter) UpdateState(ctx interface{}, state interface{}) *MockStore_UpdateState_Call {
-	return &MockStore_UpdateState_Call{Call: _e.mock.On("UpdateState", ctx, state)}
+func (_e *MockStore_Expecter) UpdateState(ctx interface{}, batch interface{}, state interface{}) *MockStore_UpdateState_Call {
+	return &MockStore_UpdateState_Call{Call: _e.mock.On("UpdateState", ctx, batch, state)}
 }
 
-func (_c *MockStore_UpdateState_Call) Run(run func(ctx context.Context, state types.State)) *MockStore_UpdateState_Call {
+func (_c *MockStore_UpdateState_Call) Run(run func(ctx context.Context, batch datastore.Batch, state types.State)) *MockStore_UpdateState_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
 			arg0 = args[0].(context.Context)
 		}
-		var arg1 types.State
+		var arg1 datastore.Batch
 		if args[1] != nil {
-			arg1 = args[1].(types.State)
+			arg1 = args[1].(datastore.Batch)
+		}
+		var arg2 types.State
+		if args[2] != nil {
+			arg2 = args[2].(types.State)
 		}
 		run(
 			arg0,
 			arg1,
+			arg2,
 		)
 	})
 	return _c
@@ -996,7 +1077,7 @@ func (_c *MockStore_UpdateState_Call) Return(err error) *MockStore_UpdateState_C
 	return _c
 }
 
-func (_c *MockStore_UpdateState_Call) RunAndReturn(run func(ctx context.Context, state types.State) error) *MockStore_UpdateState_Call {
+func (_c *MockStore_UpdateState_Call) RunAndReturn(run func(ctx context.Context, batch datastore.Batch, state types.State) error) *MockStore_UpdateState_Call {
 	_c.Call.Return(run)
 	return _c
 }

@@ -9,6 +9,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	ds "github.com/ipfs/go-datastore"
 	"github.com/rs/zerolog"
 	"golang.org/x/sync/errgroup"
 
@@ -238,7 +239,7 @@ func (s *Syncer) syncLoop() {
 	}
 
 	// Backoff control when DA replies with errors
-	nextDARequestAt := &time.Time{}
+	nextDARequestAt := time.Time{}
 
 	for {
 		wg := sync.WaitGroup{}
@@ -263,7 +264,7 @@ func (s *Syncer) syncLoop() {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			s.tryFetchFromDA(nextDARequestAt)
+			s.tryFetchFromDA(&nextDARequestAt)
 		}()
 
 		// wait for pending events processing, p2p and da fetching
@@ -345,9 +346,9 @@ func (s *Syncer) tryFetchFromP2P() {
 		s.p2pHandler.ProcessHeaderRange(s.ctx, currentHeight+1, newHeaderHeight, s.heightInCh)
 	}
 
-	// Process data (if not already processed by headers)
+	// Process data
 	newDataHeight := s.dataBroadcaster.Store().Height()
-	if newDataHeight != newHeaderHeight && newDataHeight > currentHeight {
+	if newDataHeight > currentHeight {
 		s.p2pHandler.ProcessDataRange(s.ctx, currentHeight+1, newDataHeight, s.heightInCh)
 	}
 }
@@ -448,13 +449,19 @@ func (s *Syncer) trySyncNextBlock(event *common.DAHeightEvent) error {
 		return fmt.Errorf("failed to apply block: %w", err)
 	}
 
+	// Create a batch for atomic operations
+	batch, err := s.store.NewBatch(s.ctx)
+	if err != nil {
+		return fmt.Errorf("failed to create batch: %w", err)
+	}
+
 	// Save block
-	if err := s.store.SaveBlockData(s.ctx, header, data, &header.Signature); err != nil {
+	if err := s.store.SaveBlockData(s.ctx, batch, header, data, &header.Signature); err != nil {
 		return fmt.Errorf("failed to save block: %w", err)
 	}
 
 	// Update height
-	if err := s.store.SetHeight(s.ctx, nextHeight); err != nil {
+	if err := s.store.SetHeight(s.ctx, batch, nextHeight); err != nil {
 		return fmt.Errorf("failed to update height: %w", err)
 	}
 
@@ -462,8 +469,13 @@ func (s *Syncer) trySyncNextBlock(event *common.DAHeightEvent) error {
 	if event.DaHeight > newState.DAHeight {
 		newState.DAHeight = event.DaHeight
 	}
-	if err := s.updateState(newState); err != nil {
+	if err := s.updateState(newState, batch); err != nil {
 		return fmt.Errorf("failed to update state: %w", err)
+	}
+
+	// Commit the batch
+	if err := batch.Commit(s.ctx); err != nil {
+		return fmt.Errorf("failed to commit batch: %w", err)
 	}
 
 	// Mark as seen
@@ -565,8 +577,8 @@ func (s *Syncer) sendCriticalError(err error) {
 }
 
 // updateState saves the new state
-func (s *Syncer) updateState(newState types.State) error {
-	if err := s.store.UpdateState(s.ctx, newState); err != nil {
+func (s *Syncer) updateState(newState types.State, batch ds.Batch) error {
+	if err := s.store.UpdateState(s.ctx, batch, newState); err != nil {
 		return err
 	}
 

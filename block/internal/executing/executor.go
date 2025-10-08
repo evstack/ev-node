@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/ipfs/go-datastore"
+	ds "github.com/ipfs/go-datastore"
 	"github.com/rs/zerolog"
 	"golang.org/x/sync/errgroup"
 
@@ -207,7 +208,7 @@ func (e *Executor) initializeState() error {
 	e.setLastState(state)
 
 	// Set store height
-	if err := e.store.SetHeight(e.ctx, state.LastBlockHeight); err != nil {
+	if err := e.store.SetHeight(e.ctx, nil, state.LastBlockHeight); err != nil {
 		return fmt.Errorf("failed to set store height: %w", err)
 	}
 
@@ -347,11 +348,6 @@ func (e *Executor) produceBlock() error {
 		if err != nil {
 			return fmt.Errorf("failed to create block: %w", err)
 		}
-
-		// saved early for crash recovery, will be overwritten later with the final signature
-		if err = e.store.SaveBlockData(e.ctx, header, data, &types.Signature{}); err != nil {
-			return fmt.Errorf("failed to save block: %w", err)
-		}
 	}
 
 	newState, err := e.applyBlock(e.ctx, header.Header, data)
@@ -372,18 +368,27 @@ func (e *Executor) produceBlock() error {
 		return fmt.Errorf("failed to validate block: %w", err)
 	}
 
-	if err := e.store.SaveBlockData(e.ctx, header, data, &signature); err != nil {
+	batch, err := e.store.NewBatch(e.ctx)
+	if err != nil {
+		return fmt.Errorf("failed to create batch: %w", err)
+	}
+
+	if err := e.store.SaveBlockData(e.ctx, batch, header, data, &signature); err != nil {
 		return fmt.Errorf("failed to save block: %w", err)
 	}
 
 	// Once the SaveBlockData has been saved we must update the height and the state.
 	// context.TODO() should be reverted to the real context (e.ctx) once https://github.com/evstack/ev-node/issues/2274 has been implemented, this prevents context cancellation
-	if err := e.store.SetHeight(context.TODO(), newHeight); err != nil {
+	if err := e.store.SetHeight(context.TODO(), batch, newHeight); err != nil {
 		return fmt.Errorf("failed to update store height: %w", err)
 	}
 
-	if err := e.updateState(context.TODO(), newState); err != nil {
+	if err := e.updateState(context.TODO(), batch, newState); err != nil {
 		return fmt.Errorf("failed to update state: %w", err)
+	}
+
+	if err := batch.Commit(e.ctx); err != nil {
+		return fmt.Errorf("failed to commit block data: %w", err)
 	}
 
 	// broadcast header and data to P2P network
@@ -604,8 +609,8 @@ func (e *Executor) validateBlock(lastState types.State, header *types.SignedHead
 }
 
 // updateState saves the new state
-func (e *Executor) updateState(ctx context.Context, newState types.State) error {
-	if err := e.store.UpdateState(ctx, newState); err != nil {
+func (e *Executor) updateState(ctx context.Context, batch ds.Batch, newState types.State) error {
+	if err := e.store.UpdateState(ctx, batch, newState); err != nil {
 		return err
 	}
 

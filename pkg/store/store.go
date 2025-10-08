@@ -33,7 +33,7 @@ func (s *DefaultStore) Close() error {
 }
 
 // SetHeight sets the height saved in the Store if it is higher than the existing height
-func (s *DefaultStore) SetHeight(ctx context.Context, height uint64) error {
+func (s *DefaultStore) SetHeight(ctx context.Context, batch ds.Batch, height uint64) error {
 	currentHeight, err := s.Height(ctx)
 	if err != nil {
 		return err
@@ -43,6 +43,9 @@ func (s *DefaultStore) SetHeight(ctx context.Context, height uint64) error {
 	}
 
 	heightBytes := encodeHeight(height)
+	if batch != nil {
+		return batch.Put(ctx, ds.NewKey(getHeightKey()), heightBytes)
+	}
 	return s.db.Put(ctx, ds.NewKey(getHeightKey()), heightBytes)
 }
 
@@ -67,7 +70,7 @@ func (s *DefaultStore) Height(ctx context.Context) (uint64, error) {
 
 // SaveBlockData adds block header and data to the store along with corresponding signature.
 // Stored height is updated if block height is greater than stored value.
-func (s *DefaultStore) SaveBlockData(ctx context.Context, header *types.SignedHeader, data *types.Data, signature *types.Signature) error {
+func (s *DefaultStore) SaveBlockData(ctx context.Context, batch ds.Batch, header *types.SignedHeader, data *types.Data, signature *types.Signature) error {
 	hash := header.Hash()
 	height := header.Height()
 	signatureHash := *signature
@@ -80,25 +83,31 @@ func (s *DefaultStore) SaveBlockData(ctx context.Context, header *types.SignedHe
 		return fmt.Errorf("failed to marshal Data to binary: %w", err)
 	}
 
-	batch, err := s.db.Batch(ctx)
-	if err != nil {
-		return fmt.Errorf("failed to create a new batch: %w", err)
+	b := batch
+	if b == nil {
+		b, err = s.db.Batch(ctx)
+		if err != nil {
+			return fmt.Errorf("failed to create a new batch: %w", err)
+		}
 	}
 
-	if err := batch.Put(ctx, ds.NewKey(getHeaderKey(height)), headerBlob); err != nil {
+	if err := b.Put(ctx, ds.NewKey(getHeaderKey(height)), headerBlob); err != nil {
 		return fmt.Errorf("failed to put header blob in batch: %w", err)
 	}
-	if err := batch.Put(ctx, ds.NewKey(getDataKey(height)), dataBlob); err != nil {
+	if err := b.Put(ctx, ds.NewKey(getDataKey(height)), dataBlob); err != nil {
 		return fmt.Errorf("failed to put data blob in batch: %w", err)
 	}
-	if err := batch.Put(ctx, ds.NewKey(getSignatureKey(height)), signatureHash[:]); err != nil {
+	if err := b.Put(ctx, ds.NewKey(getSignatureKey(height)), signatureHash[:]); err != nil {
 		return fmt.Errorf("failed to put signature of block blob in batch: %w", err)
 	}
-	if err := batch.Put(ctx, ds.NewKey(getIndexKey(hash)), encodeHeight(height)); err != nil {
+	if err := b.Put(ctx, ds.NewKey(getIndexKey(hash)), encodeHeight(height)); err != nil {
 		return fmt.Errorf("failed to put index key in batch: %w", err)
 	}
-	if err := batch.Commit(ctx); err != nil {
-		return fmt.Errorf("failed to commit batch: %w", err)
+
+	if batch == nil {
+		if err := b.Commit(ctx); err != nil {
+			return fmt.Errorf("failed to commit batch: %w", err)
+		}
 	}
 
 	return nil
@@ -178,7 +187,7 @@ func (s *DefaultStore) GetSignature(ctx context.Context, height uint64) (*types.
 
 // UpdateState updates state saved in Store. Only one State is stored.
 // If there is no State in Store, state will be saved.
-func (s *DefaultStore) UpdateState(ctx context.Context, state types.State) error {
+func (s *DefaultStore) UpdateState(ctx context.Context, batch ds.Batch, state types.State) error {
 	currentHeight, err := s.Height(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to get current height: %w", err)
@@ -191,6 +200,10 @@ func (s *DefaultStore) UpdateState(ctx context.Context, state types.State) error
 	data, err := proto.Marshal(pbState)
 	if err != nil {
 		return fmt.Errorf("failed to marshal state to protobuf: %w", err)
+	}
+
+	if batch != nil {
+		return batch.Put(ctx, ds.NewKey(getStateAtHeightKey(currentHeight)), data)
 	}
 	return s.db.Put(ctx, ds.NewKey(getStateAtHeightKey(currentHeight)), data)
 }
@@ -215,6 +228,11 @@ func (s *DefaultStore) GetState(ctx context.Context) (types.State, error) {
 	var state types.State
 	err = state.FromProto(&pbState)
 	return state, err
+}
+
+// NewBatch creates a new batch.
+func (s *DefaultStore) NewBatch(ctx context.Context) (ds.Batch, error) {
+	return s.db.Batch(ctx)
 }
 
 // GetStateAtHeight returns the state at the given height.
