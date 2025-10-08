@@ -37,7 +37,7 @@ require_cmd() {
   if ! command -v "$1" >/dev/null 2>&1; then
     echo "error: required command '$1' not found in PATH" >&2
     exit 1
-  }
+  fi
 }
 
 DEST=""
@@ -123,14 +123,14 @@ if ! docker exec "$CONTAINER" bash -lc "command -v '$MDBX_COPY' >/dev/null 2>&1 
 fi
 
 echo "Running mdbx_copy inside container..."
-docker exec "$CONTAINER" bash -lc "'$MDBX_COPY' --compact '${DATADIR}/db' '$REMOTE_TMP/db/mdbx.dat'"
+docker exec "$CONTAINER" bash -lc "'$MDBX_COPY' -c '${DATADIR}/db' '$REMOTE_TMP/db/mdbx.dat'"
 docker exec "$CONTAINER" bash -lc "touch '$REMOTE_TMP/db/mdbx.lck'"
 
 echo "Copying static_files..."
 docker exec "$CONTAINER" bash -lc "if [ -d '${DATADIR}/static_files' ]; then cp -a '${DATADIR}/static_files/.' '$REMOTE_TMP/static_files/' 2>/dev/null || true; fi"
 
 echo "Querying StageCheckpoints height..."
-STAGE_JSON=$(docker exec "$CONTAINER" ev-reth db --datadir "$REMOTE_TMP" list StageCheckpoints --len 20 --json)
+STAGE_JSON=$(docker exec "$CONTAINER" ev-reth db --datadir "$REMOTE_TMP" list StageCheckpoints --len 20 --json | sed -n '/^\[/,$p')
 HEIGHT=$(echo "$STAGE_JSON" | jq -r '.[] | select(.[0]=="Finish") | .[1].block_number' | tr -d '\r\n')
 
 if [[ -z "$HEIGHT" || "$HEIGHT" == "null" ]]; then
