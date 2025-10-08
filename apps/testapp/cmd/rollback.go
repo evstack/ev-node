@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	kvexecutor "github.com/evstack/ev-node/apps/testapp/kv"
@@ -103,24 +104,26 @@ func NewRollbackCmd() *cobra.Command {
 			}
 			defer dataStore.Stop(goCtx)
 
+			var errs error
 			if err := headerStore.DeleteRange(goCtx, height+1, headerStore.Height()); err != nil {
-				return fmt.Errorf("failed to rollback header sync service state: %w", err)
+				errs = errors.Join(errs, fmt.Errorf("failed to rollback header sync service state: %w", err))
 			}
 
 			if err := dataStore.DeleteRange(goCtx, height+1, dataStore.Height()); err != nil {
-				return fmt.Errorf("failed to rollback data sync service state: %w", err)
+				errs = errors.Join(errs, fmt.Errorf("failed to rollback data sync service state: %w", err))
 			}
 
 			// rollback execution store
 			if err := executor.Rollback(goCtx, height); err != nil {
-				return fmt.Errorf("rollback failed: %w", err)
+				errs = errors.Join(errs, fmt.Errorf("rollback failed: %w", err))
 			}
 
 			fmt.Printf("Rolled back ev-node state to height %d\n", height)
 			if syncNode {
 				fmt.Println("Restart the node with the `--clear-cache` flag")
 			}
-			return nil
+
+			return errs
 		},
 	}
 
