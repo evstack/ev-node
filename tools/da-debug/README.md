@@ -6,6 +6,16 @@ A professional debugging tool for querying and inspecting Data Availability (DA)
 
 The `da-debug` tool provides a command-line interface to interact with DA layers for debugging purposes. It offers two main commands: `query` for inspecting specific DA heights and `search` for finding blobs containing specific blockchain heights.
 
+## Installation
+
+Install using `go install`:
+
+```bash
+go install github.com/evstack/ev-node/tools/da-debug@main
+```
+
+After installation, the `da-debug` binary will be available in your `$GOPATH/bin` directory.
+
 ## Commands
 
 ### Query Command
@@ -63,7 +73,9 @@ da-debug search 100 "0x000000000000000000000000000000000000000000000000000000746
 
 All commands support these global flags:
 
+<!-- markdown-link-check-disable -->
 - `--da-url string`: DA layer JSON-RPC URL (default: "http://localhost:7980")
+<!-- markdown-link-check-enable -->
 - `--auth-token string`: Authentication token for DA layer
 - `--timeout duration`: Request timeout (default: 30s)
 - `--verbose`: Enable verbose logging

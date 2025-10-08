@@ -3,6 +3,7 @@ include ./scripts/test.mk
 include ./scripts/proto.mk
 include ./scripts/utils.mk
 include ./scripts/run.mk
+include ./tools/tools.mk
 
 # Sets the default make target to `build`.
 # Requires GNU Make >= v3.81.
