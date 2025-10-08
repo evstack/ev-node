@@ -202,6 +202,21 @@ func (e *Executor) initializeState() error {
 			AppHash:         stateRoot,
 			DAHeight:        0,
 		}
+
+		// Set store height and save initial state
+		batch, err := e.store.NewBatch(e.ctx)
+		if err != nil {
+			return fmt.Errorf("failed to create batch for initialization: %w", err)
+		}
+		if err := batch.SetHeight(state.LastBlockHeight); err != nil {
+			return fmt.Errorf("failed to set store height: %w", err)
+		}
+		if err := batch.UpdateState(state); err != nil {
+			return fmt.Errorf("failed to update state: %w", err)
+		}
+		if err := batch.Commit(); err != nil {
+			return fmt.Errorf("failed to commit initial state: %w", err)
+		}
 	}
 
 	e.setLastState(state)
