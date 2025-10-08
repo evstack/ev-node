@@ -109,7 +109,10 @@ func TestSubmitter_IsHeightDAIncluded(t *testing.T) {
 
 	ctx := t.Context()
 	cm, st := newTestCacheAndStore(t)
-	require.NoError(t, st.SetHeight(ctx, nil, 5))
+	batch, err := st.NewBatch(ctx)
+	require.NoError(t, err)
+	require.NoError(t, batch.SetHeight(5))
+	require.NoError(t, batch.Commit())
 
 	s := &Submitter{store: st, cache: cm, logger: zerolog.Nop()}
 	s.ctx = ctx
@@ -245,9 +248,12 @@ func TestSubmitter_processDAInclusionLoop_advances(t *testing.T) {
 	require.NotEqual(t, d1.DACommitment(), d2.DACommitment())
 
 	sig := types.Signature([]byte("sig"))
-	require.NoError(t, st.SaveBlockData(ctx, nil, h1, d1, &sig))
-	require.NoError(t, st.SaveBlockData(ctx, nil, h2, d2, &sig))
-	require.NoError(t, st.SetHeight(ctx, nil, 2))
+	batch, err := st.NewBatch(ctx)
+	require.NoError(t, err)
+	require.NoError(t, batch.SaveBlockData(h1, d1, &sig))
+	require.NoError(t, batch.SaveBlockData(h2, d2, &sig))
+	require.NoError(t, batch.SetHeight(2))
+	require.NoError(t, batch.Commit())
 
 	cm.SetHeaderDAIncluded(h1.Hash().String(), 100)
 	cm.SetDataDAIncluded(d1.DACommitment().String(), 100)
@@ -286,10 +292,12 @@ func TestSubmitter_processDAInclusionLoop_advances(t *testing.T) {
 // helper to create a minimal header and data for tests
 func newHeaderAndData(chainID string, height uint64, nonEmpty bool) (*types.SignedHeader, *types.Data) {
 	now := time.Now()
-	h := &types.SignedHeader{Header: types.Header{BaseHeader: types.BaseHeader{ChainID: chainID, Height: height, Time: uint64(now.UnixNano())}, ProposerAddress: []byte{1}}}
-	d := &types.Data{Metadata: &types.Metadata{ChainID: chainID, Height: height, Time: uint64(now.UnixNano())}}
+	// Use height multiplied by a large offset to ensure uniqueness across multiple calls
+	timestamp := uint64(now.UnixNano()) + (height * 1000000)
+	h := &types.SignedHeader{Header: types.Header{BaseHeader: types.BaseHeader{ChainID: chainID, Height: height, Time: timestamp}, ProposerAddress: []byte{1}}}
+	d := &types.Data{Metadata: &types.Metadata{ChainID: chainID, Height: height, Time: timestamp}}
 	if nonEmpty {
-		d.Txs = types.Txs{types.Tx(fmt.Sprintf("any-unique-tx-%d", now.UnixNano()))}
+		d.Txs = types.Txs{types.Tx(fmt.Sprintf("any-unique-tx-%d-%d", height, now.UnixNano()))}
 	}
 	return h, d
 }
@@ -337,7 +345,10 @@ func TestSubmitter_daSubmissionLoop(t *testing.T) {
 	}
 
 	// Make there be pending headers and data by setting store height > last submitted
-	require.NoError(t, st.SetHeight(ctx, nil, 2))
+	batch, err := st.NewBatch(ctx)
+	require.NoError(t, err)
+	require.NoError(t, batch.SetHeight(2))
+	require.NoError(t, batch.Commit())
 
 	// Start and wait for calls
 	require.NoError(t, s.Start(ctx))

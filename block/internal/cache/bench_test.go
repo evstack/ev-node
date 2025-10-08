@@ -34,13 +34,20 @@ func benchSetupStore(b *testing.B, n int, txsPer int, chainID string) store.Stor
 	}
 	st := store.New(ds)
 	ctx := context.Background()
+	batch, err := st.NewBatch(ctx)
+	if err != nil {
+		b.Fatal(err)
+	}
 	for i := 1; i <= n; i++ {
 		h, d := types.GetRandomBlock(uint64(i), txsPer, chainID)
-		if err := st.SaveBlockData(ctx, h, d, &types.Signature{}); err != nil {
+		if err := batch.SaveBlockData(h, d, &types.Signature{}); err != nil {
 			b.Fatal(err)
 		}
 	}
-	if err := st.SetHeight(ctx, uint64(n)); err != nil {
+	if err := batch.SetHeight(uint64(n)); err != nil {
+		b.Fatal(err)
+	}
+	if err := batch.Commit(); err != nil {
 		b.Fatal(err)
 	}
 	return st

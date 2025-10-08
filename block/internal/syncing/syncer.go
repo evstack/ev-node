@@ -9,7 +9,6 @@ import (
 	"sync/atomic"
 	"time"
 
-	ds "github.com/ipfs/go-datastore"
 	"github.com/rs/zerolog"
 	"golang.org/x/sync/errgroup"
 
@@ -456,12 +455,12 @@ func (s *Syncer) trySyncNextBlock(event *common.DAHeightEvent) error {
 	}
 
 	// Save block
-	if err := s.store.SaveBlockData(s.ctx, batch, header, data, &header.Signature); err != nil {
+	if err := batch.SaveBlockData(header, data, &header.Signature); err != nil {
 		return fmt.Errorf("failed to save block: %w", err)
 	}
 
 	// Update height
-	if err := s.store.SetHeight(s.ctx, batch, nextHeight); err != nil {
+	if err := batch.SetHeight(nextHeight); err != nil {
 		return fmt.Errorf("failed to update height: %w", err)
 	}
 
@@ -474,7 +473,7 @@ func (s *Syncer) trySyncNextBlock(event *common.DAHeightEvent) error {
 	}
 
 	// Commit the batch
-	if err := batch.Commit(s.ctx); err != nil {
+	if err := batch.Commit(); err != nil {
 		return fmt.Errorf("failed to commit batch: %w", err)
 	}
 
@@ -577,8 +576,8 @@ func (s *Syncer) sendCriticalError(err error) {
 }
 
 // updateState saves the new state
-func (s *Syncer) updateState(newState types.State, batch ds.Batch) error {
-	if err := s.store.UpdateState(s.ctx, batch, newState); err != nil {
+func (s *Syncer) updateState(newState types.State, batch store.Batch) error {
+	if err := batch.UpdateState(newState); err != nil {
 		return err
 	}
 

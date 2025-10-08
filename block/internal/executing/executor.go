@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/ipfs/go-datastore"
-	ds "github.com/ipfs/go-datastore"
 	"github.com/rs/zerolog"
 	"golang.org/x/sync/errgroup"
 
@@ -207,11 +206,6 @@ func (e *Executor) initializeState() error {
 
 	e.setLastState(state)
 
-	// Set store height
-	if err := e.store.SetHeight(e.ctx, nil, state.LastBlockHeight); err != nil {
-		return fmt.Errorf("failed to set store height: %w", err)
-	}
-
 	e.logger.Info().Uint64("height", state.LastBlockHeight).
 		Str("chain_id", state.ChainID).Msg("initialized state")
 
@@ -373,21 +367,20 @@ func (e *Executor) produceBlock() error {
 		return fmt.Errorf("failed to create batch: %w", err)
 	}
 
-	if err := e.store.SaveBlockData(e.ctx, batch, header, data, &signature); err != nil {
+	if err := batch.SaveBlockData(header, data, &signature); err != nil {
 		return fmt.Errorf("failed to save block: %w", err)
 	}
 
 	// Once the SaveBlockData has been saved we must update the height and the state.
-	// context.TODO() should be reverted to the real context (e.ctx) once https://github.com/evstack/ev-node/issues/2274 has been implemented, this prevents context cancellation
-	if err := e.store.SetHeight(context.TODO(), batch, newHeight); err != nil {
+	if err := batch.SetHeight(newHeight); err != nil {
 		return fmt.Errorf("failed to update store height: %w", err)
 	}
 
-	if err := e.updateState(context.TODO(), batch, newState); err != nil {
+	if err := e.updateState(batch, newState); err != nil {
 		return fmt.Errorf("failed to update state: %w", err)
 	}
 
-	if err := batch.Commit(e.ctx); err != nil {
+	if err := batch.Commit(); err != nil {
 		return fmt.Errorf("failed to commit block data: %w", err)
 	}
 
@@ -609,8 +602,8 @@ func (e *Executor) validateBlock(lastState types.State, header *types.SignedHead
 }
 
 // updateState saves the new state
-func (e *Executor) updateState(ctx context.Context, batch ds.Batch, newState types.State) error {
-	if err := e.store.UpdateState(ctx, batch, newState); err != nil {
+func (e *Executor) updateState(batch store.Batch, newState types.State) error {
+	if err := batch.UpdateState(newState); err != nil {
 		return err
 	}
 

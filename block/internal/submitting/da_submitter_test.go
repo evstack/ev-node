@@ -167,12 +167,15 @@ func TestDASubmitter_SubmitHeaders_Success(t *testing.T) {
 	// Save to store to make them pending
 	sig1 := header1.Signature
 	sig2 := header2.Signature
-	require.NoError(t, st.SaveBlockData(ctx, nil, header1, data1, &sig1))
-	require.NoError(t, st.SaveBlockData(ctx, nil, header2, data2, &sig2))
-	require.NoError(t, st.SetHeight(ctx, nil, 2))
+	batch, err := st.NewBatch(ctx)
+	require.NoError(t, err)
+	require.NoError(t, batch.SaveBlockData(header1, data1, &sig1))
+	require.NoError(t, batch.SaveBlockData(header2, data2, &sig2))
+	require.NoError(t, batch.SetHeight(2))
+	require.NoError(t, batch.Commit())
 
 	// Submit headers
-	err := submitter.SubmitHeaders(ctx, cm)
+	err = submitter.SubmitHeaders(ctx, cm)
 	require.NoError(t, err)
 
 	// Verify headers are marked as DA included
@@ -253,12 +256,15 @@ func TestDASubmitter_SubmitData_Success(t *testing.T) {
 	// Save to store to make them pending
 	sig1 := types.Signature([]byte("sig1"))
 	sig2 := types.Signature([]byte("sig2"))
-	require.NoError(t, st.SaveBlockData(ctx, nil, header1, data1, &sig1))
-	require.NoError(t, st.SaveBlockData(ctx, nil, header2, data2, &sig2))
-	require.NoError(t, st.SetHeight(ctx, nil, 2))
+	batch, err := st.NewBatch(ctx)
+	require.NoError(t, err)
+	require.NoError(t, batch.SaveBlockData(header1, data1, &sig1))
+	require.NoError(t, batch.SaveBlockData(header2, data2, &sig2))
+	require.NoError(t, batch.SetHeight(2))
+	require.NoError(t, batch.Commit())
 
 	// Submit data
-	err := submitter.SubmitData(ctx, cm, signer, gen)
+	err = submitter.SubmitData(ctx, cm, signer, gen)
 	require.NoError(t, err)
 
 	// Verify data is marked as DA included
@@ -302,11 +308,14 @@ func TestDASubmitter_SubmitData_SkipsEmptyData(t *testing.T) {
 
 	// Save to store
 	sig := types.Signature([]byte("sig"))
-	require.NoError(t, st.SaveBlockData(ctx, nil, header, emptyData, &sig))
-	require.NoError(t, st.SetHeight(ctx, nil, 1))
+	batch, err := st.NewBatch(ctx)
+	require.NoError(t, err)
+	require.NoError(t, batch.SaveBlockData(header, emptyData, &sig))
+	require.NoError(t, batch.SetHeight(1))
+	require.NoError(t, batch.Commit())
 
 	// Submit data - should succeed but skip empty data
-	err := submitter.SubmitData(ctx, cm, signer, gen)
+	err = submitter.SubmitData(ctx, cm, signer, gen)
 	require.NoError(t, err)
 
 	// Empty data should not be marked as DA included (it's implicitly included)
@@ -353,11 +362,14 @@ func TestDASubmitter_SubmitData_NilSigner(t *testing.T) {
 
 	// Save to store
 	sig := types.Signature([]byte("sig"))
-	require.NoError(t, st.SaveBlockData(ctx, nil, header, data, &sig))
-	require.NoError(t, st.SetHeight(ctx, nil, 1))
+	batch, err := st.NewBatch(ctx)
+	require.NoError(t, err)
+	require.NoError(t, batch.SaveBlockData(header, data, &sig))
+	require.NoError(t, batch.SetHeight(1))
+	require.NoError(t, batch.Commit())
 
 	// Submit data with nil signer - should fail
-	err := submitter.SubmitData(ctx, cm, nil, gen)
+	err = submitter.SubmitData(ctx, cm, nil, gen)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "signer is nil")
 }

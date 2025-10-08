@@ -162,14 +162,17 @@ func TestPendingHeadersAndData_Flow(t *testing.T) {
 	h3, d3 := types.GetRandomBlock(3, 2, chainID)
 
 	// persist in store and set height
+	batch, err := st.NewBatch(ctx)
+	require.NoError(t, err)
 	for _, pair := range []struct {
 		h *types.SignedHeader
 		d *types.Data
 	}{{h1, d1}, {h2, d2}, {h3, d3}} {
-		err := st.SaveBlockData(ctx, pair.h, pair.d, &types.Signature{})
+		err := batch.SaveBlockData(pair.h, pair.d, &types.Signature{})
 		require.NoError(t, err)
 	}
-	require.NoError(t, st.SetHeight(ctx, 3))
+	require.NoError(t, batch.SetHeight(3))
+	require.NoError(t, batch.Commit())
 
 	// construct manager which brings up pending managers
 	cfg := tempConfig(t)

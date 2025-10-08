@@ -23,13 +23,16 @@ func TestPendingHeaders_BasicFlow(t *testing.T) {
 	h2, d2 := types.GetRandomBlock(2, 1, chainID)
 	h3, d3 := types.GetRandomBlock(3, 2, chainID)
 
+	batch, err := store.NewBatch(ctx)
+	require.NoError(t, err)
 	for _, p := range []struct {
 		h *types.SignedHeader
 		d *types.Data
 	}{{h1, d1}, {h2, d2}, {h3, d3}} {
-		require.NoError(t, store.SaveBlockData(ctx, p.h, p.d, &types.Signature{}))
+		require.NoError(t, batch.SaveBlockData(p.h, p.d, &types.Signature{}))
 	}
-	require.NoError(t, store.SetHeight(ctx, 3))
+	require.NoError(t, batch.SetHeight(3))
+	require.NoError(t, batch.Commit())
 
 	pendingHeaders, err := NewPendingHeaders(store, zerolog.Nop())
 	require.NoError(t, err)
@@ -67,8 +70,11 @@ func TestPendingHeaders_EmptyWhenUpToDate(t *testing.T) {
 	store := memStore(t)
 
 	h, d := types.GetRandomBlock(1, 1, "ph-up")
-	require.NoError(t, store.SaveBlockData(ctx, h, d, &types.Signature{}))
-	require.NoError(t, store.SetHeight(ctx, 1))
+	batch, err := store.NewBatch(ctx)
+	require.NoError(t, err)
+	require.NoError(t, batch.SaveBlockData(h, d, &types.Signature{}))
+	require.NoError(t, batch.SetHeight(1))
+	require.NoError(t, batch.Commit())
 
 	pendingHeaders, err := NewPendingHeaders(store, zerolog.Nop())
 	require.NoError(t, err)
