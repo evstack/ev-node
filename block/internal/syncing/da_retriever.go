@@ -297,6 +297,7 @@ func (r *DARetriever) isEmptyDataExpected(header *types.SignedHeader) bool {
 // createEmptyDataForHeader creates empty data for a header
 func (r *DARetriever) createEmptyDataForHeader(ctx context.Context, header *types.SignedHeader) *types.Data {
 	return &types.Data{
+		Txs: make(types.Txs, 0),
 		Metadata: &types.Metadata{
 			ChainID: header.ChainID(),
 			Height:  header.Height(),
