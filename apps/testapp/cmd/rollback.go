@@ -19,9 +19,8 @@ import (
 // NewRollbackCmd creates a command to rollback ev-node state by one height.
 func NewRollbackCmd() *cobra.Command {
 	var (
-		height        uint64
-		skipP2PStores bool
-		syncNode      bool
+		height   uint64
+		syncNode bool
 	)
 
 	cmd := &cobra.Command{
@@ -75,10 +74,6 @@ func NewRollbackCmd() *cobra.Command {
 				return fmt.Errorf("failed to rollback ev-node state: %w", err)
 			}
 
-			if skipP2PStores {
-				return printSuccess(height)
-			}
-
 			// rollback ev-node goheader state
 			headerStore, err := goheaderstore.NewStore[*types.SignedHeader](
 				evolveDB,
@@ -121,18 +116,15 @@ func NewRollbackCmd() *cobra.Command {
 				return fmt.Errorf("rollback failed: %w", err)
 			}
 
-			return printSuccess(height)
+			fmt.Printf("Rolled back ev-node state to height %d\n", height)
+			if syncNode {
+				fmt.Println("Restart the node with the `--clear-cache` flag")
+			}
+			return nil
 		},
 	}
 
 	cmd.Flags().Uint64Var(&height, "height", 0, "rollback to a specific height")
 	cmd.Flags().BoolVar(&syncNode, "sync-node", false, "sync node (no aggregator)")
-	cmd.Flags().BoolVar(&skipP2PStores, "skip-p2p-stores", false, "skip rollback p2p stores (goheaderstore)")
 	return cmd
-}
-
-func printSuccess(height uint64) error {
-	fmt.Printf("Rolled back ev-node state to height %d\n", height)
-	fmt.Println("Restart the node with the `--clear-cache` flag")
-	return nil
 }
