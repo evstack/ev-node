@@ -28,7 +28,6 @@ This document provides a comprehensive reference for all configuration options a
   - [DA Header Namespace](#da-namespace)
   - [DA Data Namespace](#da-data-namespace)
   - [DA Block Time](#da-block-time)
-  - [DA Start Height](#da-start-height)
   - [DA Mempool TTL](#da-mempool-ttl)
 - [P2P Configuration (`p2p`)](#p2p-configuration-p2p)
   - [P2P Listen Address](#p2p-listen-address)
