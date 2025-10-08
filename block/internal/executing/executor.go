@@ -397,7 +397,6 @@ func (e *Executor) produceBlock() error {
 		return fmt.Errorf("failed to save block: %w", err)
 	}
 
-	// Once the SaveBlockData has been saved we must update the height and the state.
 	if err := batch.SetHeight(newHeight); err != nil {
 		return fmt.Errorf("failed to update store height: %w", err)
 	}
