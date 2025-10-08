@@ -11,13 +11,7 @@ The `blob-decoder` tool provides a web interface for decoding protobuf-encoded b
 Install using `go install`:
 
 ```bash
-go install github.com/evstack/ev-node/tools/blob-decoder@latest
-```
-
-Or install a specific version:
-
-```bash
-go install github.com/evstack/ev-node/tools/blob-decoder@v1.0.0-beta.6
+go install github.com/evstack/ev-node/tools/blob-decoder@main
 ```
 
 After installation, the `blob-decoder` binary will be available in your `$GOPATH/bin` directory.

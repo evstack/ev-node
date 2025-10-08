@@ -11,13 +11,7 @@ The `da-debug` tool provides a command-line interface to interact with DA layers
 Install using `go install`:
 
 ```bash
-go install github.com/evstack/ev-node/tools/da-debug@latest
-```
-
-Or install a specific version:
-
-```bash
-go install github.com/evstack/ev-node/tools/da-debug@v1.0.0-beta.6
+go install github.com/evstack/ev-node/tools/da-debug@main
 ```
 
 After installation, the `da-debug` binary will be available in your `$GOPATH/bin` directory.

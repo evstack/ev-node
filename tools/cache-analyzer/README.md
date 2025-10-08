@@ -11,13 +11,7 @@ This usually means the `DA_START_HEIGHT` is too late. This tool allows clearly t
 Install using `go install`:
 
 ```bash
-go install github.com/evstack/ev-node/tools/cache-analyzer@latest
-```
-
-Or install a specific version:
-
-```bash
-go install github.com/evstack/ev-node/tools/cache-analyzer@v1.0.0-beta.6
+go install github.com/evstack/ev-node/tools/cache-analyzer@main
 ```
 
 After installation, the `cache-analyzer` binary will be available in your `$GOPATH/bin` directory.
