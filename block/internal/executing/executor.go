@@ -211,9 +211,6 @@ func (e *Executor) initializeState() error {
 		if err := batch.SetHeight(state.LastBlockHeight); err != nil {
 			return fmt.Errorf("failed to set store height: %w", err)
 		}
-		if err := batch.UpdateState(state); err != nil {
-			return fmt.Errorf("failed to update state: %w", err)
-		}
 		if err := batch.Commit(); err != nil {
 			return fmt.Errorf("failed to commit initial state: %w", err)
 		}
@@ -356,6 +353,20 @@ func (e *Executor) produceBlock() error {
 		header, data, err = e.createBlock(e.ctx, newHeight, batchData)
 		if err != nil {
 			return fmt.Errorf("failed to create block: %w", err)
+		}
+
+		// saved early for crash recovery, will be overwritten later with the final signature
+		b, err := e.store.NewBatch(context.Background())
+		if err != nil {
+			return fmt.Errorf("failed to create batch: %w", err)
+		}
+
+		if err = b.SaveBlockData(header, data, &types.Signature{}); err != nil {
+			return fmt.Errorf("failed to save block: %w", err)
+		}
+
+		if err := b.Commit(); err != nil {
+			return fmt.Errorf("failed to commit batch: %w", err)
 		}
 	}
 

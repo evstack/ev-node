@@ -345,9 +345,9 @@ func (s *Syncer) tryFetchFromP2P() {
 		s.p2pHandler.ProcessHeaderRange(s.ctx, currentHeight+1, newHeaderHeight, s.heightInCh)
 	}
 
-	// Process data
+	// Process data (if not already processed by headers)
 	newDataHeight := s.dataBroadcaster.Store().Height()
-	if newDataHeight > currentHeight {
+	if newDataHeight != newHeaderHeight && newDataHeight > currentHeight {
 		s.p2pHandler.ProcessDataRange(s.ctx, currentHeight+1, newDataHeight, s.heightInCh)
 	}
 }
