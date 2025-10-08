@@ -299,9 +299,10 @@ func (r *DARetriever) createEmptyDataForHeader(ctx context.Context, header *type
 	return &types.Data{
 		Txs: make(types.Txs, 0),
 		Metadata: &types.Metadata{
-			ChainID: header.ChainID(),
-			Height:  header.Height(),
-			Time:    header.BaseHeader.Time,
+			ChainID:      header.ChainID(),
+			Height:       header.Height(),
+			Time:         header.BaseHeader.Time,
+			LastDataHash: nil, // LastDataHash must be filled in the syncer, as it is not available here, block n-1 has not been processed yet.
 		},
 	}
 }
