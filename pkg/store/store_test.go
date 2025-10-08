@@ -719,7 +719,7 @@ func TestRollbackToSameHeight(t *testing.T) {
 
 	// Execute rollback to same height
 	err = store.Rollback(ctx, height, true)
-	require.NoError(err)
+	require.Error(err)
 
 	// Verify height unchanged
 	newHeight, err := store.Height(ctx)
@@ -754,7 +754,7 @@ func TestRollbackToHigherHeight(t *testing.T) {
 	// Execute rollback to higher height
 	rollbackToHeight := uint64(10)
 	err = store.Rollback(ctx, rollbackToHeight, true)
-	require.NoError(err)
+	require.Error(err)
 
 	// Verify height unchanged
 	newHeight, err := store.Height(ctx)
