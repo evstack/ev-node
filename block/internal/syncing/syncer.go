@@ -268,6 +268,13 @@ func (s *Syncer) syncLoop() {
 
 		// wait for pending events processing, p2p and da fetching
 		wg.Wait()
+
+		// Prevent busy-waiting when no events are processed
+		select {
+		case <-s.ctx.Done():
+			return
+		case <-time.After(min(100*time.Millisecond, s.config.Node.BlockTime.Duration)):
+		}
 	}
 }
 
