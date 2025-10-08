@@ -277,7 +277,7 @@ func (s *DefaultStore) Rollback(ctx context.Context, height uint64, aggregator b
 	}
 
 	if currentHeight <= height {
-		return nil
+		return fmt.Errorf("current height %d is already less than or equal to rollback height %d", currentHeight, height)
 	}
 
 	daIncludedHeightBz, err := s.GetMetadata(ctx, DAIncludedHeightKey)
@@ -322,6 +322,10 @@ func (s *DefaultStore) Rollback(ctx context.Context, height uint64, aggregator b
 			return fmt.Errorf("failed to delete index key in batch: %w", err)
 		}
 
+		if err := batch.Delete(ctx, ds.NewKey(getStateAtHeightKey(currentHeight))); err != nil {
+			return fmt.Errorf("failed to delete header blob in batch: %w", err)
+		}
+
 		currentHeight--
 	}
 
@@ -330,26 +334,6 @@ func (s *DefaultStore) Rollback(ctx context.Context, height uint64, aggregator b
 	heightBytes := encodeHeight(height)
 	if err := batch.Put(ctx, ds.NewKey(getHeightKey()), heightBytes); err != nil {
 		return fmt.Errorf("failed to set height: %w", err)
-	}
-
-	targetState, err := s.GetStateAtHeight(ctx, height)
-	if err != nil {
-		return fmt.Errorf("failed to get state at height %d: %w", height, err)
-	}
-
-	// update state manually to keep using the batch
-	pbState, err := targetState.ToProto()
-	if err != nil {
-		return fmt.Errorf("failed to convert type state to protobuf type: %w", err)
-	}
-
-	data, err := proto.Marshal(pbState)
-	if err != nil {
-		return fmt.Errorf("failed to marshal state to protobuf: %w", err)
-	}
-
-	if err := batch.Put(ctx, ds.NewKey(getStateAtHeightKey(height)), data); err != nil {
-		return fmt.Errorf("failed to set state at height %d: %w", height, err)
 	}
 
 	if err := batch.Commit(ctx); err != nil {
