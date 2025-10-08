@@ -323,7 +323,7 @@ func (s *DefaultStore) Rollback(ctx context.Context, height uint64, aggregator b
 		}
 
 		if err := batch.Delete(ctx, ds.NewKey(getStateAtHeightKey(currentHeight))); err != nil {
-			return fmt.Errorf("failed to delete header blob in batch: %w", err)
+			return fmt.Errorf("failed to delete state in batch: %w", err)
 		}
 
 		currentHeight--
