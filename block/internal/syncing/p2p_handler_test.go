@@ -222,46 +222,6 @@ func TestP2PHandler_ProposerMismatch_Rejected(t *testing.T) {
 	require.Len(t, events, 0)
 }
 
-func TestP2PHandler_CreateEmptyDataForHeader_UsesPreviousDataHash(t *testing.T) {
-	p2pData := setupP2P(t)
-	ctx := context.Background()
-
-	// Prepare a header at height 10
-	signedHeader := p2pMakeSignedHeader(t, p2pData.Genesis.ChainID, 10, p2pData.ProposerAddr, p2pData.ProposerPub, p2pData.Signer)
-	signedHeader.DataHash = common.DataHashForEmptyTxs
-
-	// Mock previous data at height 9 so handler can propagate its hash
-	previousData := makeData(p2pData.Genesis.ChainID, 9, 1)
-	p2pData.DataStore.EXPECT().GetByHeight(mock.Anything, uint64(9)).Return(previousData, nil).Once()
-
-	emptyData := p2pData.Handler.createEmptyDataForHeader(ctx, signedHeader)
-	require.NotNil(t, emptyData, "handler should synthesize empty data when header declares empty data hash")
-	require.Equal(t, p2pData.Genesis.ChainID, emptyData.ChainID(), "synthesized data should carry header chain ID")
-	require.Equal(t, uint64(10), emptyData.Height(), "synthesized data should carry header height")
-	require.Equal(t, signedHeader.BaseHeader.Time, emptyData.Metadata.Time, "synthesized data should carry header time")
-	require.Equal(t, previousData.Hash(), emptyData.LastDataHash, "synthesized data should propagate previous data hash")
-}
-
-func TestP2PHandler_CreateEmptyDataForHeader_NoPreviousData(t *testing.T) {
-	p2pData := setupP2P(t)
-	ctx := context.Background()
-
-	// Prepare a header at height 2 (previous height exists but will return error)
-	signedHeader := p2pMakeSignedHeader(t, p2pData.Genesis.ChainID, 2, p2pData.ProposerAddr, p2pData.ProposerPub, p2pData.Signer)
-	signedHeader.DataHash = common.DataHashForEmptyTxs
-
-	// Mock previous data fetch failure
-	p2pData.DataStore.EXPECT().GetByHeight(mock.Anything, uint64(1)).Return(nil, errors.New("not available")).Once()
-
-	emptyData := p2pData.Handler.createEmptyDataForHeader(ctx, signedHeader)
-	require.NotNil(t, emptyData, "handler should synthesize empty data even when previous data is unavailable")
-	require.Equal(t, p2pData.Genesis.ChainID, emptyData.ChainID(), "synthesized data should carry header chain ID")
-	require.Equal(t, uint64(2), emptyData.Height(), "synthesized data should carry header height")
-	require.Equal(t, signedHeader.BaseHeader.Time, emptyData.Metadata.Time, "synthesized data should carry header time")
-	// When no previous data is available, LastDataHash should be zero value
-	require.Equal(t, (types.Hash)(nil), emptyData.LastDataHash, "last data hash should be empty when previous data is not available")
-}
-
 func TestP2PHandler_ProcessHeaderRange_MultipleHeightsHappyPath(t *testing.T) {
 	p2pData := setupP2P(t)
 	ctx := context.Background()

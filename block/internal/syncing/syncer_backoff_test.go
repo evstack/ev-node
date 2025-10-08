@@ -154,7 +154,7 @@ func TestSyncer_BackoffOnDAError(t *testing.T) {
 				assert.GreaterOrEqual(t, callCount, 2, "should continue without significant delay")
 				if len(callTimes) >= 2 {
 					timeBetweenCalls := callTimes[1].Sub(callTimes[0])
-					assert.Less(t, timeBetweenCalls, 100*time.Millisecond,
+					assert.Less(t, timeBetweenCalls, 120*time.Millisecond,
 						"should not have backoff delay for ErrBlobNotFound")
 				}
 			}

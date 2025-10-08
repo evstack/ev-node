@@ -77,29 +77,23 @@ func (h *P2PHandler) ProcessHeaderRange(ctx context.Context, startHeight, endHei
 			continue
 		}
 
-		// Get corresponding data
+		// Get corresponding data (empty data are still broadcasted by peers)
 		var data *types.Data
-		if bytes.Equal(header.DataHash, common.DataHashForEmptyTxs) {
-			// Create empty data for headers with empty data hash
-			data = h.createEmptyDataForHeader(ctx, header)
-		} else {
-			// Try to get data from data store with timeout
-			timeoutCtx, cancel := context.WithTimeout(ctx, 500*time.Millisecond)
-			retrievedData, err := h.dataStore.GetByHeight(timeoutCtx, height)
-			cancel()
+		timeoutCtx, cancel = context.WithTimeout(ctx, 500*time.Millisecond)
+		retrievedData, err := h.dataStore.GetByHeight(timeoutCtx, height)
+		cancel()
 
-			if err != nil {
-				if errors.Is(err, context.DeadlineExceeded) {
-					h.logger.Debug().Uint64("height", height).Msg("timeout waiting for data from store, will retry later")
-					// Don't continue processing if data is not available
-					// Store event with header only for later processing
-					continue
-				}
-				h.logger.Debug().Uint64("height", height).Err(err).Msg("could not retrieve data for header from data store")
+		if err != nil {
+			if errors.Is(err, context.DeadlineExceeded) {
+				h.logger.Debug().Uint64("height", height).Msg("timeout waiting for data from store, will retry later")
+				// Don't continue processing if data is not available
+				// Store event with header only for later processing
 				continue
 			}
-			data = retrievedData
+			h.logger.Debug().Uint64("height", height).Err(err).Msg("could not retrieve data for header from data store")
+			continue
 		}
+		data = retrievedData
 
 		// further header validation (signature) is done in validateBlock.
 		// we need to be sure that the previous block n-1 was executed before validating block n
@@ -200,35 +194,4 @@ func (h *P2PHandler) assertExpectedProposer(proposerAddr []byte) error {
 			proposerAddr, h.genesis.ProposerAddress)
 	}
 	return nil
-}
-
-// createEmptyDataForHeader creates empty data for headers with empty data hash
-func (h *P2PHandler) createEmptyDataForHeader(ctx context.Context, header *types.SignedHeader) *types.Data {
-	headerHeight := header.Height()
-	var lastDataHash types.Hash
-
-	if headerHeight > 1 {
-		// Try to get previous data hash with a short timeout, but don't fail if not available
-		timeoutCtx, cancel := context.WithTimeout(ctx, 100*time.Millisecond)
-		prevData, err := h.dataStore.GetByHeight(timeoutCtx, headerHeight-1)
-		cancel()
-
-		if err == nil && prevData != nil {
-			lastDataHash = prevData.Hash()
-		} else {
-			h.logger.Debug().Uint64("current_height", headerHeight).Uint64("previous_height", headerHeight-1).
-				Msg("previous block not available, using empty last data hash")
-		}
-	}
-
-	metadata := &types.Metadata{
-		ChainID:      header.ChainID(),
-		Height:       headerHeight,
-		Time:         header.BaseHeader.Time,
-		LastDataHash: lastDataHash,
-	}
-
-	return &types.Data{
-		Metadata: metadata,
-	}
 }

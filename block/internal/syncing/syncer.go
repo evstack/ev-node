@@ -273,7 +273,7 @@ func (s *Syncer) syncLoop() {
 		select {
 		case <-s.ctx.Done():
 			return
-		case <-time.After(min(100*time.Millisecond, s.config.Node.BlockTime.Duration)):
+		case <-time.After(min(25*time.Millisecond, s.config.Node.BlockTime.Duration)):
 		}
 	}
 }
