@@ -54,7 +54,7 @@ type Syncer struct {
 	// DA state
 	daHeight *atomic.Uint64
 
-	// P2P handling
+	// P2P stores
 	headerStore goheader.Store[*types.SignedHeader]
 	dataStore   goheader.Store[*types.Data]
 
@@ -256,7 +256,7 @@ func (s *Syncer) syncLoop() {
 		select {
 		case <-s.ctx.Done():
 			return
-		case <-time.After(min(25*time.Millisecond, s.config.Node.BlockTime.Duration)):
+		case <-time.After(min(10*time.Millisecond, s.config.Node.BlockTime.Duration)):
 		}
 	}
 }

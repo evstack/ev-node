@@ -108,8 +108,8 @@ func newBenchFixture(b *testing.B, totalHeights uint64, shuffledTx bool, daDelay
 		common.NopMetrics(),
 		cfg,
 		gen,
-		nil, // we inject P2P directly to channel when needed
-		nil, // injected when needed
+		nil, // headerStore not used; we inject P2P directly to channel when needed
+		nil, // dataStore not used
 		zerolog.Nop(),
 		common.DefaultBlockOptions(),
 		make(chan error, 1),
