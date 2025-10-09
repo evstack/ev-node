@@ -15,6 +15,7 @@ import (
 	genesispkg "github.com/evstack/ev-node/pkg/genesis"
 	"github.com/evstack/ev-node/pkg/p2p"
 	"github.com/evstack/ev-node/pkg/p2p/key"
+	"github.com/evstack/ev-node/pkg/raft"
 	rpcserver "github.com/evstack/ev-node/pkg/rpc/server"
 	"github.com/evstack/ev-node/pkg/signer"
 	"github.com/evstack/ev-node/pkg/store"
@@ -46,7 +47,7 @@ func newSyncMode(
 	mainKV ds.Batching,
 	blockMetrics *block.Metrics,
 	nodeOpts NodeOptions,
-	raftNode block.RaftNode,
+	raftNode *raft.Node,
 ) (*failoverState, error) {
 	blockComponentsFn := func(headerSyncService *evsync.HeaderSyncService, dataSyncService *evsync.DataSyncService) (*block.Components, error) {
 		return block.NewSyncComponents(
@@ -79,7 +80,7 @@ func newAggregatorMode(
 	mainKV ds.Batching,
 	blockMetrics *block.Metrics,
 	nodeOpts NodeOptions,
-	raftNode block.RaftNode,
+	raftNode *raft.Node,
 ) (*failoverState, error) {
 
 	blockComponentsFn := func(headerSyncService *evsync.HeaderSyncService, dataSyncService *evsync.DataSyncService) (*block.Components, error) {
@@ -112,7 +113,7 @@ func setupFailoverState(
 	mainKV ds.Batching,
 	rktStore store.Store,
 	buildComponentsFn func(headerSyncService *evsync.HeaderSyncService, dataSyncService *evsync.DataSyncService) (*block.Components, error),
-	raftNode block.RaftNode,
+	raftNode *raft.Node,
 ) (*failoverState, error) {
 	p2pClient, err := p2p.NewClient(nodeConfig.P2P, nodeKey.PrivKey, database, genesis.ChainID, logger, nil)
 	if err != nil {

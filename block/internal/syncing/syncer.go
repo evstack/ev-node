@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"reflect"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -125,7 +126,7 @@ func (s *Syncer) Start(ctx context.Context) error {
 	s.daRetriever = NewDARetriever(s.da, s.cache, s.config, s.genesis, s.options, s.logger)
 	s.p2pHandler = NewP2PHandler(s.headerStore, s.dataStore, s.genesis, s.options, s.logger)
 
-	if s.raftNode != nil {
+	if !reflect.ValueOf(s.raftNode).IsNil() {
 		s.raftRetriever = newRaftRetriever(s.raftNode, s.genesis, s.logger, eventProcessorFn(s.pipeEvent))
 		if err := s.raftRetriever.Start(s.ctx); err != nil {
 			return fmt.Errorf("start raftRetriever: %w", err)

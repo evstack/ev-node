@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"reflect"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -316,7 +317,7 @@ func (e *Executor) produceBlock() error {
 	}()
 
 	// Check raft leadership if raft is enabled
-	if e.raftNode != nil && !e.raftNode.IsLeader() {
+	if !reflect.ValueOf(e.raftNode).IsNil() && !e.raftNode.IsLeader() {
 		return errors.New("not raft leader")
 	}
 
@@ -428,7 +429,7 @@ func (e *Executor) produceBlock() error {
 	e.metrics.Height.Set(float64(newState.LastBlockHeight))
 
 	// Propose block to raft before p2p broadcast if raft is enabled
-	if e.raftNode != nil {
+	if !reflect.ValueOf(e.raftNode).IsNil() {
 		headerBytes, err := header.MarshalBinary()
 		if err != nil {
 			return fmt.Errorf("failed to marshal header: %w", err)
