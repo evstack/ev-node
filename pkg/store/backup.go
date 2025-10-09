@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 
+	ds "github.com/ipfs/go-datastore"
 	badger4 "github.com/ipfs/go-ds-badger4"
 )
 
@@ -16,28 +17,51 @@ func (s *DefaultStore) Backup(ctx context.Context, writer io.Writer, since uint6
 		return 0, err
 	}
 
-	// Try to leverage a native backup implementation if the underlying datastore exposes one.
-	type backupable interface {
-		Backup(io.Writer, uint64) (uint64, error)
-	}
-	if dsBackup, ok := s.db.(backupable); ok {
-		version, err := dsBackup.Backup(writer, since)
-		if err != nil {
-			return 0, fmt.Errorf("datastore backup failed: %w", err)
-		}
-		return version, nil
-	}
-
-	// Default Badger datastore used across ev-node.
-	badgerDatastore, ok := s.db.(*badger4.Datastore)
+	visited := make(map[ds.Datastore]struct{})
+	current, ok := any(s.db).(ds.Datastore)
 	if !ok {
 		return 0, fmt.Errorf("backup is not supported by the configured datastore")
 	}
 
-	// `badger.DB.Backup` internally orchestrates a consistent snapshot without pausing writes.
-	version, err := badgerDatastore.DB.Backup(writer, since)
-	if err != nil {
-		return 0, fmt.Errorf("badger backup failed: %w", err)
+	for {
+		// Try to leverage a native backup implementation if the underlying datastore exposes one.
+		type backupable interface {
+			Backup(io.Writer, uint64) (uint64, error)
+		}
+		if dsBackup, ok := current.(backupable); ok {
+			version, err := dsBackup.Backup(writer, since)
+			if err != nil {
+				return 0, fmt.Errorf("datastore backup failed: %w", err)
+			}
+			return version, nil
+		}
+
+		// Default Badger datastore used across ev-node.
+		if badgerDatastore, ok := current.(*badger4.Datastore); ok {
+			// `badger.DB.Backup` internally orchestrates a consistent snapshot without pausing writes.
+			version, err := badgerDatastore.DB.Backup(writer, since)
+			if err != nil {
+				return 0, fmt.Errorf("badger backup failed: %w", err)
+			}
+			return version, nil
+		}
+
+		// Attempt to unwrap shimmed datastores (e.g., prefix or mutex wrappers) to reach the backing store.
+		if _, seen := visited[current]; seen {
+			break
+		}
+		visited[current] = struct{}{}
+
+		shim, ok := current.(ds.Shim)
+		if !ok {
+			break
+		}
+		children := shim.Children()
+		if len(children) == 0 {
+			break
+		}
+		current = children[0]
 	}
-	return version, nil
+
+	return 0, fmt.Errorf("backup is not supported by the configured datastore")
 }
