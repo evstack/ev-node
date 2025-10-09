@@ -384,7 +384,7 @@ func (s *Syncer) processHeightEvent(event *common.DAHeightEvent) {
 	}
 
 	// LastDataHash must be gotten from store when the data hash is empty.
-	if bytes.Equal(event.Header.DataHash, common.DataHashForEmptyTxs) {
+	if bytes.Equal(event.Header.DataHash, common.DataHashForEmptyTxs) && currentHeight > 0 {
 		_, lastData, err := s.store.GetBlockData(s.ctx, currentHeight)
 		if err != nil {
 			s.logger.Error().Err(err).Msg("failed to get last data")
