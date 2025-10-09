@@ -28,6 +28,7 @@ func main() {
 		cmd.InitCmd(),
 		cmd.RunCmd,
 		cmd.NewRollbackCmd(),
+		cmd.NewForceRollbackCmd(),
 		rollcmd.VersionCmd,
 		rollcmd.NetInfoCmd,
 		rollcmd.StoreUnsafeCleanCmd,
