@@ -18,6 +18,7 @@ import (
 	coresequencer "github.com/evstack/ev-node/core/sequencer"
 	"github.com/evstack/ev-node/pkg/config"
 	"github.com/evstack/ev-node/pkg/genesis"
+	"github.com/evstack/ev-node/pkg/raft"
 	"github.com/evstack/ev-node/pkg/signer"
 	"github.com/evstack/ev-node/pkg/store"
 	"github.com/evstack/ev-node/types"
@@ -399,7 +400,7 @@ func (e *Executor) produceBlock() error {
 			return fmt.Errorf("failed to marshal data: %w", err)
 		}
 
-		raftState := &common.RaftBlockState{
+		raftState := &raft.RaftBlockState{
 			Height:    newHeight,
 			Hash:      header.Hash(),
 			Timestamp: header.BaseHeader.Time,

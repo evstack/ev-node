@@ -8,6 +8,7 @@ import (
 
 	"github.com/evstack/ev-node/block/internal/common"
 	"github.com/evstack/ev-node/pkg/genesis"
+	"github.com/evstack/ev-node/pkg/raft"
 	"github.com/evstack/ev-node/types"
 	"github.com/rs/zerolog"
 )
@@ -55,7 +56,7 @@ func (r *raftRetriever) Start(ctx context.Context) error {
 		return errors.New("syncer already started")
 	}
 	ctx, r.cancel = context.WithCancel(ctx)
-	applyCh := make(chan common.RaftApplyMsg)
+	applyCh := make(chan raft.RaftApplyMsg)
 	r.raftNode.SetApplyCallback(applyCh)
 
 	r.wg.Add(1)
@@ -79,7 +80,7 @@ func (r *raftRetriever) Stop() {
 }
 
 // raftApplyLoop processes blocks received from raft
-func (r *raftRetriever) raftApplyLoop(ctx context.Context, applyCh <-chan common.RaftApplyMsg) {
+func (r *raftRetriever) raftApplyLoop(ctx context.Context, applyCh <-chan raft.RaftApplyMsg) {
 	r.logger.Info().Msg("starting raft apply loop")
 	defer r.logger.Info().Msg("raft apply loop stopped")
 
@@ -96,7 +97,7 @@ func (r *raftRetriever) raftApplyLoop(ctx context.Context, applyCh <-chan common
 }
 
 // consumeRaftBlock applies a block received from raft consensus
-func (r *raftRetriever) consumeRaftBlock(ctx context.Context, state *common.RaftBlockState) error {
+func (r *raftRetriever) consumeRaftBlock(ctx context.Context, state *raft.RaftBlockState) error {
 	r.logger.Debug().Uint64("height", state.Height).Msg("applying raft block")
 
 	// Unmarshal header and data

@@ -1,6 +1,8 @@
 package block
 
-import "github.com/evstack/ev-node/block/internal/common"
+import (
+	"github.com/evstack/ev-node/block/internal/common"
+)
 
 // BlockOptions defines the options for creating block components
 type BlockOptions = common.BlockOptions
@@ -25,5 +27,3 @@ func NopMetrics() *Metrics {
 
 // Expose Raft types for consensus integration
 type RaftNode = common.RaftNode
-type RaftBlockState = common.RaftBlockState
-type RaftApplyMsg = common.RaftApplyMsg

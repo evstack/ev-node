@@ -15,8 +15,6 @@ import (
 	"github.com/hashicorp/raft"
 	raftboltdb "github.com/hashicorp/raft-boltdb"
 	"github.com/rs/zerolog"
-
-	"github.com/evstack/ev-node/block"
 )
 
 type clusterClient interface {
@@ -47,8 +45,8 @@ type Config struct {
 // FSM implements raft.FSM for block state
 type FSM struct {
 	logger  zerolog.Logger
-	state   *block.RaftBlockState
-	applyCh chan<- block.RaftApplyMsg
+	state   *RaftBlockState
+	applyCh chan<- RaftApplyMsg
 }
 
 // NewNode creates a new raft node
@@ -63,7 +61,7 @@ func NewNode(cfg *Config, clusterClient clusterClient, logger zerolog.Logger) (*
 
 	fsm := &FSM{
 		logger: logger.With().Str("component", "raft-fsm").Logger(),
-		state:  &block.RaftBlockState{},
+		state:  &RaftBlockState{},
 	}
 
 	logStore, err := raftboltdb.NewBoltStore(filepath.Join(cfg.RaftDir, "raft-log.db"))
@@ -165,7 +163,7 @@ func (n *Node) NodeID() string {
 }
 
 // ProposeBlock proposes a block state to be replicated via raft
-func (n *Node) Broadcast(ctx context.Context, state *block.RaftBlockState) error {
+func (n *Node) Broadcast(ctx context.Context, state *RaftBlockState) error {
 	if !n.IsLeader() {
 		return fmt.Errorf("not leader")
 	}
@@ -184,7 +182,7 @@ func (n *Node) Broadcast(ctx context.Context, state *block.RaftBlockState) error
 }
 
 // GetState returns the current replicated state
-func (n *Node) GetState() *block.RaftBlockState {
+func (n *Node) GetState() *RaftBlockState {
 	return n.fsm.state
 }
 
@@ -231,13 +229,13 @@ func (n *Node) Shutdown() error {
 }
 
 // SetApplyCallback sets a callback to be called when log entries are applied
-func (n *Node) SetApplyCallback(ch chan<- block.RaftApplyMsg) {
+func (n *Node) SetApplyCallback(ch chan<- RaftApplyMsg) {
 	n.fsm.applyCh = ch
 }
 
 // Apply implements raft.FSM
 func (f *FSM) Apply(log *raft.Log) interface{} {
-	var state block.RaftBlockState
+	var state RaftBlockState
 	if err := json.Unmarshal(log.Data, &state); err != nil {
 		f.logger.Error().Err(err).Msg("unmarshal block state")
 		return err
@@ -248,7 +246,7 @@ func (f *FSM) Apply(log *raft.Log) interface{} {
 
 	if f.applyCh != nil {
 		select {
-		case f.applyCh <- block.RaftApplyMsg{Index: log.Index, State: &state}:
+		case f.applyCh <- RaftApplyMsg{Index: log.Index, State: &state}:
 		default:
 			f.logger.Warn().Msg("apply channel full, dropping message")
 		}
@@ -266,7 +264,7 @@ func (f *FSM) Snapshot() (raft.FSMSnapshot, error) {
 func (f *FSM) Restore(rc io.ReadCloser) error {
 	defer rc.Close()
 
-	var state block.RaftBlockState
+	var state RaftBlockState
 	if err := json.NewDecoder(rc).Decode(&state); err != nil {
 		return fmt.Errorf("decode snapshot: %w", err)
 	}
@@ -277,7 +275,7 @@ func (f *FSM) Restore(rc io.ReadCloser) error {
 }
 
 type fsmSnapshot struct {
-	state *block.RaftBlockState
+	state *RaftBlockState
 }
 
 func (s *fsmSnapshot) Persist(sink raft.SnapshotSink) error {
