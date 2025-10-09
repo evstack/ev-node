@@ -106,7 +106,6 @@ func RegisterCustomHTTPEndpoints(
 			if err := json.NewEncoder(w).Encode(rsp); err != nil {
 				http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 			}
-			return
 		})
 
 		mux.HandleFunc("/raft/join", func(w http.ResponseWriter, r *http.Request) {
@@ -135,7 +134,6 @@ func RegisterCustomHTTPEndpoints(
 			if err := raftNode.AddPeer(rsp.NodeID, rsp.Address); err != nil {
 				http.Error(w, "failed to join peer", http.StatusInternalServerError)
 			}
-			return
 		})
 		mux.HandleFunc("/raft/remove", func(w http.ResponseWriter, r *http.Request) {
 			if r.Method != http.MethodPost {
@@ -161,7 +159,6 @@ func RegisterCustomHTTPEndpoints(
 				http.Error(w, "failed to remove peer", http.StatusInternalServerError)
 				return
 			}
-			return
 		})
 	}
 

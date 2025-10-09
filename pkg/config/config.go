@@ -140,7 +140,7 @@ const (
 	FlagRaftPeers = FlagPrefixEvnode + "raft.peers"
 	// FlagRaftSnapCount is a flag for specifying snapshot frequency
 	FlagRaftSnapCount = FlagPrefixEvnode + "raft.snap_count"
-	// FlagRaftSendTimeout max time to wait for a message to be sent to a peer 
+	// FlagRaftSendTimeout max time to wait for a message to be sent to a peer
 	FlagRaftSendTimeout = FlagPrefixEvnode + "raft.send_timeout"
 	// FlagRaftHeartbeatTimeout is a flag for specifying heartbeat timeout
 	FlagRaftHeartbeatTimeout = FlagPrefixEvnode + "raft.heartbeat_timeout"

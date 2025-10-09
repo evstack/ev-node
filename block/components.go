@@ -24,7 +24,6 @@ import (
 	"github.com/evstack/ev-node/types"
 )
 
-
 // Components represents the block-related components
 type Components struct {
 	Executor  *executing.Executor

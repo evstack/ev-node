@@ -95,7 +95,6 @@ func newFullNode(
 	// Initialize raft node if enabled (for both aggregator and sync nodes)
 	var raftNode *raftpkg.Node
 	var leaderElection leaderElection
-	var err error
 	if nodeConfig.Raft.Enable {
 		raftNode, err = initRaftNode(nodeConfig, logger)
 		if err != nil {

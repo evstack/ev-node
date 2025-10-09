@@ -93,22 +93,22 @@ func NewSyncer(
 	raftNode common.RaftNode,
 ) *Syncer {
 	return &Syncer{
-		store:        store,
-		exec:         exec,
-		da:           da,
-		cache:        cache,
-		metrics:      metrics,
-		config:       config,
-		genesis:      genesis,
-		options:      options,
-		raftNode:     raftNode,
-		headerStore:  headerStore,
-		dataStore:    dataStore,
+		store:       store,
+		exec:        exec,
+		da:          da,
+		cache:       cache,
+		metrics:     metrics,
+		config:      config,
+		genesis:     genesis,
+		options:     options,
+		raftNode:    raftNode,
+		headerStore: headerStore,
+		dataStore:   dataStore,
 		lastState:   &atomic.Pointer[types.State]{},
 		daHeight:    &atomic.Uint64{},
-		heightInCh:   make(chan common.DAHeightEvent, 10_000),
-		errorCh:      errorCh,
-		logger:       logger.With().Str("component", "syncer").Logger(),
+		heightInCh:  make(chan common.DAHeightEvent, 10_000),
+		errorCh:     errorCh,
+		logger:      logger.With().Str("component", "syncer").Logger(),
 	}
 }
 
@@ -171,7 +171,7 @@ func init() {
 }
 
 func (s *Syncer) HasUnprocessedEvents() bool {
-	return len(s.heightInCh) != 0 || s.tryFetchFromP2P(&s.lastState.LastBlockHeight, &s.lastState.LastBlockHeight, alwaysTickCh)
+	return len(s.heightInCh) != 0 || s.tryFetchFromP2P(ptr(s.GetLastState().LastBlockHeight), ptr(s.GetLastState().LastBlockHeight), alwaysTickCh)
 }
 
 // GetLastState returns the current state
@@ -657,4 +657,9 @@ func (s *Syncer) processPendingEvents() {
 
 		nextHeight++
 	}
+}
+
+// returns a pointer
+func ptr[T any](v T) *T {
+	return &v
 }
