@@ -11,7 +11,6 @@ import (
 
 	goheader "github.com/celestiaorg/go-header"
 	"github.com/rs/zerolog"
-	"golang.org/x/sync/errgroup"
 
 	"github.com/evstack/ev-node/block/internal/cache"
 	"github.com/evstack/ev-node/block/internal/common"
@@ -406,12 +405,12 @@ func (s *Syncer) processHeightEvent(event *common.DAHeightEvent) {
 
 	// only save to p2p stores if the event came from DA
 	if event.Source == common.SourceDA {
-		g, ctx := errgroup.WithContext(s.ctx)
-		g.Go(func() error { return s.headerStore.Append(ctx, event.Header) })
-		g.Go(func() error { return s.dataStore.Append(ctx, event.Data) })
-		if err := g.Wait(); err != nil {
-			s.logger.Error().Err(err).Msg("failed to append event header and/or data to p2p store")
-		}
+		// g, ctx := errgroup.WithContext(s.ctx)
+		// g.Go(func() error { return s.headerStore.Append(ctx, event.Header) })
+		// g.Go(func() error { return s.dataStore.Append(ctx, event.Data) })
+		// if err := g.Wait(); err != nil {
+		// 	s.logger.Error().Err(err).Msg("failed to append event header and/or data to p2p store")
+		// }
 	}
 }
 
