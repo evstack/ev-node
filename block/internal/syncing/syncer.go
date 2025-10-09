@@ -448,23 +448,35 @@ func (s *Syncer) trySyncNextBlock(event *common.DAHeightEvent) error {
 		return fmt.Errorf("failed to apply block: %w", err)
 	}
 
-	// Save block
-	if err := s.store.SaveBlockData(s.ctx, header, data, &header.Signature); err != nil {
-		return fmt.Errorf("failed to save block: %w", err)
-	}
-
-	// Update height
-	if err := s.store.SetHeight(s.ctx, nextHeight); err != nil {
-		return fmt.Errorf("failed to update height: %w", err)
-	}
-
-	// Update state
+	// Update DA height if needed
 	if event.DaHeight > newState.DAHeight {
 		newState.DAHeight = event.DaHeight
 	}
-	if err := s.updateState(newState); err != nil {
+
+	batch, err := s.store.NewBatch(s.ctx)
+	if err != nil {
+		return fmt.Errorf("failed to create batch: %w", err)
+	}
+
+	if err := batch.SaveBlockData(header, data, &header.Signature); err != nil {
+		return fmt.Errorf("failed to save block: %w", err)
+	}
+
+	if err := batch.SetHeight(nextHeight); err != nil {
+		return fmt.Errorf("failed to update height: %w", err)
+	}
+
+	if err := batch.UpdateState(newState); err != nil {
 		return fmt.Errorf("failed to update state: %w", err)
 	}
+
+	if err := batch.Commit(); err != nil {
+		return fmt.Errorf("failed to commit batch: %w", err)
+	}
+
+	// Update in-memory state after successful commit
+	s.SetLastState(newState)
+	s.metrics.Height.Set(float64(newState.LastBlockHeight))
 
 	// Mark as seen
 	s.cache.SetHeaderSeen(header.Hash().String())
@@ -562,18 +574,6 @@ func (s *Syncer) sendCriticalError(err error) {
 			// Channel full, error already reported
 		}
 	}
-}
-
-// updateState saves the new state
-func (s *Syncer) updateState(newState types.State) error {
-	if err := s.store.UpdateState(s.ctx, newState); err != nil {
-		return err
-	}
-
-	s.SetLastState(newState)
-	s.metrics.Height.Set(float64(newState.LastBlockHeight))
-
-	return nil
 }
 
 // sendNonBlockingSignal sends a signal without blocking

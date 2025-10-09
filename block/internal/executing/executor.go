@@ -211,9 +211,16 @@ func (e *Executor) initializeState() error {
 
 	e.setLastState(state)
 
-	// Set store height
-	if err := e.store.SetHeight(e.ctx, state.LastBlockHeight); err != nil {
+	// Initialize store height using batch for atomicity
+	batch, err := e.store.NewBatch(e.ctx)
+	if err != nil {
+		return fmt.Errorf("failed to create batch: %w", err)
+	}
+	if err := batch.SetHeight(state.LastBlockHeight); err != nil {
 		return fmt.Errorf("failed to set store height: %w", err)
+	}
+	if err := batch.Commit(); err != nil {
+		return fmt.Errorf("failed to commit batch: %w", err)
 	}
 
 	e.logger.Info().Uint64("height", state.LastBlockHeight).
@@ -354,8 +361,15 @@ func (e *Executor) produceBlock() error {
 		}
 
 		// saved early for crash recovery, will be overwritten later with the final signature
-		if err = e.store.SaveBlockData(e.ctx, header, data, &types.Signature{}); err != nil {
-			return fmt.Errorf("failed to save block: %w", err)
+		batch, err := e.store.NewBatch(e.ctx)
+		if err != nil {
+			return fmt.Errorf("failed to create batch for early save: %w", err)
+		}
+		if err = batch.SaveBlockData(header, data, &types.Signature{}); err != nil {
+			return fmt.Errorf("failed to save block data: %w", err)
+		}
+		if err = batch.Commit(); err != nil {
+			return fmt.Errorf("failed to commit early save batch: %w", err)
 		}
 	}
 
@@ -377,19 +391,30 @@ func (e *Executor) produceBlock() error {
 		return fmt.Errorf("failed to validate block: %w", err)
 	}
 
-	if err := e.store.SaveBlockData(e.ctx, header, data, &signature); err != nil {
+	batch, err := e.store.NewBatch(e.ctx)
+	if err != nil {
+		return fmt.Errorf("failed to create batch: %w", err)
+	}
+
+	if err := batch.SaveBlockData(header, data, &signature); err != nil {
 		return fmt.Errorf("failed to save block: %w", err)
 	}
 
-	// Once the SaveBlockData has been saved we must update the height and the state.
-	// context.TODO() should be reverted to the real context (e.ctx) once https://github.com/evstack/ev-node/issues/2274 has been implemented, this prevents context cancellation
-	if err := e.store.SetHeight(context.TODO(), newHeight); err != nil {
+	if err := batch.SetHeight(newHeight); err != nil {
 		return fmt.Errorf("failed to update store height: %w", err)
 	}
 
-	if err := e.updateState(context.TODO(), newState); err != nil {
+	if err := batch.UpdateState(newState); err != nil {
 		return fmt.Errorf("failed to update state: %w", err)
 	}
+
+	if err := batch.Commit(); err != nil {
+		return fmt.Errorf("failed to commit batch: %w", err)
+	}
+
+	// Update in-memory state after successful commit
+	e.setLastState(newState)
+	e.metrics.Height.Set(float64(newState.LastBlockHeight))
 
 	// broadcast header and data to P2P network
 	g, ctx := errgroup.WithContext(e.ctx)
@@ -604,18 +629,6 @@ func (e *Executor) validateBlock(lastState types.State, header *types.SignedHead
 	if !bytes.Equal(header.AppHash, lastState.AppHash) {
 		return fmt.Errorf("app hash mismatch")
 	}
-
-	return nil
-}
-
-// updateState saves the new state
-func (e *Executor) updateState(ctx context.Context, newState types.State) error {
-	if err := e.store.UpdateState(ctx, newState); err != nil {
-		return err
-	}
-
-	e.setLastState(newState)
-	e.metrics.Height.Set(float64(newState.LastBlockHeight))
 
 	return nil
 }
