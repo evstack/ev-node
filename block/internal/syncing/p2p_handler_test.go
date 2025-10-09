@@ -222,6 +222,22 @@ func TestP2PHandler_ProposerMismatch_Rejected(t *testing.T) {
 	require.Len(t, events, 0)
 }
 
+func TestP2PHandler_CreateEmptyDataForHeader(t *testing.T) {
+	p2pData := setupP2P(t)
+	ctx := context.Background()
+
+	// Prepare a header at height 2 (previous height exists but will return error)
+	signedHeader := p2pMakeSignedHeader(t, p2pData.Genesis.ChainID, 2, p2pData.ProposerAddr, p2pData.ProposerPub, p2pData.Signer)
+	signedHeader.DataHash = common.DataHashForEmptyTxs
+
+	emptyData := createEmptyDataForHeader(ctx, signedHeader)
+	require.NotNil(t, emptyData, "handler should synthesize empty data even when previous data is unavailable")
+	require.Equal(t, p2pData.Genesis.ChainID, emptyData.ChainID(), "synthesized data should carry header chain ID")
+	require.Equal(t, uint64(2), emptyData.Height(), "synthesized data should carry header height")
+	require.Equal(t, signedHeader.BaseHeader.Time, emptyData.Metadata.Time, "synthesized data should carry header time")
+	require.Equal(t, (types.Hash)(nil), emptyData.LastDataHash)
+}
+
 func TestP2PHandler_ProcessHeaderRange_MultipleHeightsHappyPath(t *testing.T) {
 	p2pData := setupP2P(t)
 	ctx := context.Background()
