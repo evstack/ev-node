@@ -63,7 +63,7 @@ func newSyncMode(
 			raftNode,
 		)
 	}
-	return setupFailoverState(nodeConfig, nodeKey, database, genesis, logger, mainKV, rktStore, blockComponentsFn)
+	return setupFailoverState(nodeConfig, nodeKey, database, genesis, logger, mainKV, rktStore, blockComponentsFn, raftNode)
 }
 func newAggregatorMode(
 	nodeConfig config.Config,
@@ -100,7 +100,7 @@ func newAggregatorMode(
 		)
 	}
 
-	return setupFailoverState(nodeConfig, nodeKey, database, genesis, logger, mainKV, rktStore, blockComponentsFn)
+	return setupFailoverState(nodeConfig, nodeKey, database, genesis, logger, mainKV, rktStore, blockComponentsFn, raftNode)
 }
 
 func setupFailoverState(
@@ -112,6 +112,7 @@ func setupFailoverState(
 	mainKV ds.Batching,
 	rktStore store.Store,
 	buildComponentsFn func(headerSyncService *evsync.HeaderSyncService, dataSyncService *evsync.DataSyncService) (*block.Components, error),
+	raftNode block.RaftNode,
 ) (*failoverState, error) {
 	p2pClient, err := p2p.NewClient(nodeConfig.P2P, nodeKey.PrivKey, database, genesis.ChainID, logger, nil)
 	if err != nil {
@@ -133,7 +134,7 @@ func setupFailoverState(
 		dHeight := dataSyncService.Store().Height()
 		return min(hHeight, dHeight)
 	}
-	handler, err := rpcserver.NewServiceHandler(rktStore, p2pClient, genesis.ProposerAddress, logger, nodeConfig, bestKnownHeightProvider)
+	handler, err := rpcserver.NewServiceHandler(rktStore, p2pClient, genesis.ProposerAddress, logger, nodeConfig, bestKnownHeightProvider, raftNode)
 	if err != nil {
 		return nil, fmt.Errorf("error creating RPC handler: %w", err)
 	}

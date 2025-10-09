@@ -1,14 +1,22 @@
 package common
 
-import "context"
+import (
+	"context"
+)
 
 // RaftNode interface for raft consensus integration
 type RaftNode interface {
 	IsLeader() bool
-	ProposeBlock(ctx context.Context, state *RaftBlockState) error
+	NodeID() string
 	GetState() *RaftBlockState
+
+	Broadcast(ctx context.Context, state *RaftBlockState) error
+
 	SetApplyCallback(ch chan<- RaftApplyMsg)
 	Shutdown() error
+
+	AddPeer(nodeID, addr string) error
+	RemovePeer(nodeID string) error
 }
 
 // todo: refactor to use proto

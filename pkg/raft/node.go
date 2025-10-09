@@ -3,11 +3,13 @@ package raft
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/hashicorp/raft"
@@ -17,12 +19,18 @@ import (
 	"github.com/evstack/ev-node/block"
 )
 
+type clusterClient interface {
+	AddPeer(ctx context.Context, id, addr string) error
+	RemovePeer(ctx context.Context, id string) error
+}
+
 // Node represents a raft consensus node
 type Node struct {
-	raft   *raft.Raft
-	fsm    *FSM
-	config *Config
-	logger zerolog.Logger
+	raft          *raft.Raft
+	fsm           *FSM
+	config        *Config
+	clusterClient clusterClient
+	logger        zerolog.Logger
 }
 
 // Config holds raft node configuration
@@ -33,7 +41,6 @@ type Config struct {
 	Bootstrap   bool
 	Peers       []string
 	SnapCount   uint64
-	Logger      zerolog.Logger
 	SendTimeout time.Duration
 }
 
@@ -45,7 +52,7 @@ type FSM struct {
 }
 
 // NewNode creates a new raft node
-func NewNode(ctx context.Context, cfg *Config) (*Node, error) {
+func NewNode(cfg *Config, clusterClient clusterClient, logger zerolog.Logger) (*Node, error) {
 	if err := os.MkdirAll(cfg.RaftDir, 0755); err != nil {
 		return nil, fmt.Errorf("create raft dir: %w", err)
 	}
@@ -55,7 +62,7 @@ func NewNode(ctx context.Context, cfg *Config) (*Node, error) {
 	raftConfig.LogLevel = "INFO"
 
 	fsm := &FSM{
-		logger: cfg.Logger.With().Str("component", "raft-fsm").Logger(),
+		logger: logger.With().Str("component", "raft-fsm").Logger(),
 		state:  &block.RaftBlockState{},
 	}
 
@@ -90,35 +97,75 @@ func NewNode(ctx context.Context, cfg *Config) (*Node, error) {
 	}
 
 	node := &Node{
-		raft:   r,
-		fsm:    fsm,
-		config: cfg,
-		logger: cfg.Logger.With().Str("component", "raft-node").Logger(),
+		raft:          r,
+		fsm:           fsm,
+		config:        cfg,
+		clusterClient: clusterClient,
+		logger:        logger.With().Str("component", "raft-node").Logger(),
 	}
 
-	if cfg.Bootstrap {
-		configuration := raft.Configuration{
-			Servers: []raft.Server{
-				{
-					ID:      raft.ServerID(cfg.NodeID),
-					Address: raft.ServerAddress(cfg.RaftAddr),
-				},
-			},
-		}
-		r.BootstrapCluster(configuration)
-		node.logger.Info().Msg("bootstrapped raft cluster")
-	}
-	// todo: start listening for leader changes
 	return node, nil
+}
+
+func (n *Node) Start(ctx context.Context) error {
+	if !n.config.Bootstrap {
+		n.logger.Info().Msg("Join raft cluster")
+		return n.clusterClient.AddPeer(ctx, n.config.NodeID, n.config.RaftAddr)
+	}
+
+	n.logger.Info().Msg("Boostrap raft cluster")
+	cfg := raft.Configuration{
+		Servers: []raft.Server{
+			{
+				ID:      raft.ServerID(n.config.NodeID),
+				Address: raft.ServerAddress(n.config.RaftAddr),
+			},
+		},
+	}
+	for _, peer := range n.config.Peers {
+		addr, err := splitPeerAddr(peer)
+		if err != nil {
+			return err
+		}
+		cfg.Servers = append(cfg.Servers, addr)
+	}
+	cfg.Servers = deduplicateServers(cfg.Servers)
+
+	if err := n.raft.BootstrapCluster(cfg).Error(); err != nil {
+		return fmt.Errorf("bootstrap cluster: %w", err)
+	}
+	n.logger.Info().Msg("bootstrapped raft cluster")
+	return nil
+
+}
+
+func deduplicateServers(servers []raft.Server) []raft.Server {
+	seen := make(map[raft.ServerID]struct{})
+	unique := make([]raft.Server, 0, len(servers))
+	for _, server := range servers {
+		key := server.ID
+		if _, exists := seen[key]; !exists {
+			seen[key] = struct{}{}
+			unique = append(unique, server)
+		}
+	}
+	return unique
+}
+
+func (n *Node) Stop() error {
+	return n.raft.Shutdown().Error()
 }
 
 // IsLeader returns true if this node is the raft leader
 func (n *Node) IsLeader() bool {
 	return n.raft.State() == raft.Leader
 }
+func (n *Node) NodeID() string {
+	return n.config.NodeID
+}
 
 // ProposeBlock proposes a block state to be replicated via raft
-func (n *Node) ProposeBlock(ctx context.Context, state *block.RaftBlockState) error {
+func (n *Node) Broadcast(ctx context.Context, state *block.RaftBlockState) error {
 	if !n.IsLeader() {
 		return fmt.Errorf("not leader")
 	}
@@ -142,14 +189,39 @@ func (n *Node) GetState() *block.RaftBlockState {
 }
 
 // AddPeer adds a peer to the raft cluster
-func (n *Node) AddPeer(id, addr string) error {
-	future := n.raft.AddVoter(raft.ServerID(id), raft.ServerAddress(addr), 0, 0)
-	return future.Error()
+func (n *Node) AddPeer(nodeID, addr string) error {
+	n.logger.Debug().Msgf("received join request for remote node %s at %s", nodeID, addr)
+
+	configFuture := n.raft.GetConfiguration()
+	if err := configFuture.Error(); err != nil {
+		return err
+	}
+
+	// remove first when node is already a member of the cluster
+	for _, srv := range configFuture.Configuration().Servers {
+		if srv.ID == raft.ServerID(nodeID) || srv.Address == raft.ServerAddress(addr) {
+			if srv.Address == raft.ServerAddress(addr) && srv.ID == raft.ServerID(nodeID) {
+				n.logger.Debug().Msgf("node %s at %s already member of cluster, ignoring join request", nodeID, addr)
+				return nil
+			}
+			future := n.raft.RemoveServer(srv.ID, 0, 0)
+			if err := future.Error(); err != nil {
+				return fmt.Errorf("removing existing node %s at %s: %w", nodeID, addr, err)
+			}
+		}
+	}
+
+	f := n.raft.AddVoter(raft.ServerID(nodeID), raft.ServerAddress(addr), 0, 0)
+	if f.Error() != nil {
+		return f.Error()
+	}
+	n.logger.Debug().Msgf("node %s at %s joined successfully", nodeID, addr)
+	return nil
 }
 
 // RemovePeer removes a peer from the raft cluster
-func (n *Node) RemovePeer(id string) error {
-	future := n.raft.RemoveServer(raft.ServerID(id), 0, 0)
+func (n *Node) RemovePeer(nodeID string) error {
+	future := n.raft.RemoveServer(raft.ServerID(nodeID), 0, 0)
 	return future.Error()
 }
 
@@ -172,7 +244,7 @@ func (f *FSM) Apply(log *raft.Log) interface{} {
 	}
 
 	f.state = &state
-	f.logger.Debug().Uint64("height", state.Height).Msg("applied block state")
+	f.logger.Debug().Uint64("height", state.Height).Msg("received block state")
 
 	if f.applyCh != nil {
 		select {
@@ -225,3 +297,14 @@ func (s *fsmSnapshot) Persist(sink raft.SnapshotSink) error {
 }
 
 func (s *fsmSnapshot) Release() {}
+
+func splitPeerAddr(peer string) (raft.Server, error) {
+	parts := strings.Split(peer, "@")
+	if len(parts) != 2 {
+		return raft.Server{}, errors.New("expecting nodeID@address for peer")
+	}
+	return raft.Server{
+		ID:      raft.ServerID(parts[0]),
+		Address: raft.ServerAddress(parts[1]),
+	}, nil
+}

@@ -55,7 +55,7 @@ func (r *raftRetriever) Start(ctx context.Context) error {
 		return errors.New("syncer already started")
 	}
 	ctx, r.cancel = context.WithCancel(ctx)
-	applyCh := make(chan common.RaftApplyMsg, 100)
+	applyCh := make(chan common.RaftApplyMsg)
 	r.raftNode.SetApplyCallback(applyCh)
 
 	r.wg.Add(1)

@@ -57,6 +57,13 @@ func getAvailablePort() (int, error) {
 	return addr.Port, nil
 }
 
+func mustGetAvailablePort(t *testing.T) int {
+	t.Helper()
+	port, err := getAvailablePort()
+	require.NoError(t, err)
+	return port
+}
+
 // TestEndpoints holds unique port numbers for each test instance
 type TestEndpoints struct {
 	DAPort              string
@@ -392,21 +399,25 @@ var globalNonce uint64 = 0
 //
 // This is used in full node sync tests to verify that both nodes
 // include the same transaction in the same block number.
-func submitTransactionAndGetBlockNumber(t *testing.T, sequencerClient *ethclient.Client) (common.Hash, uint64) {
+func submitTransactionAndGetBlockNumber(t *testing.T, sequencerClients ...*ethclient.Client) (common.Hash, uint64) {
 	t.Helper()
 
 	// Submit transaction to sequencer EVM with unique nonce
 	tx := evm.GetRandomTransaction(t, TestPrivateKey, TestToAddress, DefaultChainID, DefaultGasLimit, &globalNonce)
-	require.NoError(t, sequencerClient.SendTransaction(context.Background(), tx))
+	for _, c := range sequencerClients {
+		require.NoError(t, c.SendTransaction(context.Background(), tx))
+	}
 
 	// Wait for transaction to be included and get block number
 	ctx := context.Background()
 	var txBlockNumber uint64
 	require.Eventually(t, func() bool {
-		receipt, err := sequencerClient.TransactionReceipt(ctx, tx.Hash())
-		if err == nil && receipt != nil && receipt.Status == 1 {
-			txBlockNumber = receipt.BlockNumber.Uint64()
-			return true
+		for _, c := range sequencerClients {
+			receipt, err := c.TransactionReceipt(ctx, tx.Hash())
+			if err == nil && receipt != nil && receipt.Status == 1 {
+				txBlockNumber = receipt.BlockNumber.Uint64()
+				return true
+			}
 		}
 		return false
 	}, 8*time.Second, SlowPollingInterval)

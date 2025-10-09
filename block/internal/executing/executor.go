@@ -298,8 +298,7 @@ func (e *Executor) produceBlock() error {
 
 	// Check raft leadership if raft is enabled
 	if e.raftNode != nil && !e.raftNode.IsLeader() {
-		e.logger.Debug().Msg("not raft leader, skipping block production")
-		return nil
+		return errors.New("not raft leader")
 	}
 
 	currentState := e.GetLastState()
@@ -407,8 +406,7 @@ func (e *Executor) produceBlock() error {
 			Header:    headerBytes,
 			Data:      dataBytes,
 		}
-
-		if err := e.raftNode.ProposeBlock(e.ctx, raftState); err != nil {
+		if err := e.raftNode.Broadcast(e.ctx, raftState); err != nil {
 			return fmt.Errorf("failed to propose block to raft: %w", err)
 		}
 		e.logger.Debug().Uint64("height", newHeight).Msg("proposed block to raft")
