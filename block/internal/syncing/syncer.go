@@ -241,33 +241,15 @@ func (s *Syncer) syncLoop() {
 	nextDARequestAt := &time.Time{}
 
 	for {
-		wg := sync.WaitGroup{}
-
 		select {
 		case <-s.ctx.Done():
 			return
 		default:
 		}
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			s.processPendingEvents()
-		}()
 
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			s.tryFetchFromP2P()
-		}()
-
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			s.tryFetchFromDA(nextDARequestAt)
-		}()
-
-		// wait for pending events processing, p2p and da fetching
-		wg.Wait()
+		s.processPendingEvents()
+		s.tryFetchFromP2P()
+		s.tryFetchFromDA(nextDARequestAt)
 
 		// Prevent busy-waiting when no events are processed
 		select {
@@ -310,6 +292,7 @@ func (s *Syncer) tryFetchFromDA(nextDARequestAt *time.Time) {
 		*nextDARequestAt = now.Add(backoffDelay)
 
 		s.logger.Error().Err(err).Dur("delay", backoffDelay).Uint64("da_height", daHeight).Msg("failed to retrieve from DA; backing off DA requests")
+
 		return
 	}
 

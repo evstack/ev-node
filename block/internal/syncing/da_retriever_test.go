@@ -238,16 +238,6 @@ func TestDARetriever_TryDecodeHeaderAndData_Basic(t *testing.T) {
 	assert.Nil(t, r.tryDecodeData([]byte("junk"), 1))
 }
 
-func TestDARetriever_isEmptyDataExpected(t *testing.T) {
-	r := &DARetriever{}
-	h := &types.SignedHeader{}
-	// when DataHash is nil/empty -> expected empty
-	assert.True(t, r.isEmptyDataExpected(h))
-	// when equals to predefined emptyTxs hash -> expected empty
-	h.DataHash = common.DataHashForEmptyTxs
-	assert.True(t, r.isEmptyDataExpected(h))
-}
-
 func TestDARetriever_tryDecodeData_InvalidSignatureOrProposer(t *testing.T) {
 	ds := dssync.MutexWrap(datastore.NewMapDatastore())
 	st := store.New(ds)
@@ -421,4 +411,13 @@ func TestDARetriever_ProcessBlobs_MultipleHeadersCrossDAHeightMatching(t *testin
 	require.NotContains(t, r.pendingHeaders, uint64(4), "header 4 should be removed from pending")
 	require.Len(t, r.pendingHeaders, 0, "all headers should be processed")
 	require.Len(t, r.pendingData, 0, "all data should be processed")
+}
+
+func Test_isEmptyDataExpected(t *testing.T) {
+	h := &types.SignedHeader{}
+	// when DataHash is nil/empty -> expected empty
+	assert.True(t, isEmptyDataExpected(h))
+	// when equals to predefined emptyTxs hash -> expected empty
+	h.DataHash = common.DataHashForEmptyTxs
+	assert.True(t, isEmptyDataExpected(h))
 }
