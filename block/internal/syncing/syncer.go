@@ -9,7 +9,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/celestiaorg/go-header"
+	goheader "github.com/celestiaorg/go-header"
 	"github.com/rs/zerolog"
 	"golang.org/x/sync/errgroup"
 
@@ -55,8 +55,8 @@ type Syncer struct {
 	daHeight *atomic.Uint64
 
 	// P2P handling
-	headerStore header.Store[*types.SignedHeader]
-	dataStore   header.Store[*types.Data]
+	headerStore goheader.Store[*types.SignedHeader]
+	dataStore   goheader.Store[*types.Data]
 
 	// Channels for coordination
 	heightInCh chan common.DAHeightEvent
@@ -84,8 +84,8 @@ func NewSyncer(
 	metrics *common.Metrics,
 	config config.Config,
 	genesis genesis.Genesis,
-	headerStore header.Store[*types.SignedHeader],
-	dataStore header.Store[*types.Data],
+	headerStore goheader.Store[*types.SignedHeader],
+	dataStore goheader.Store[*types.Data],
 	logger zerolog.Logger,
 	options common.BlockOptions,
 	errorCh chan<- error,
