@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"io"
 
 	"github.com/evstack/ev-node/types"
 )
@@ -49,6 +50,10 @@ type Store interface {
 	// Rollback deletes x height from the ev-node store.
 	// Aggregator is used to determine if the rollback is performed on the aggregator node.
 	Rollback(ctx context.Context, height uint64, aggregator bool) error
+
+	// Backup writes a consistent backup stream to writer. The returned version can be used
+	// as the starting point for incremental backups.
+	Backup(ctx context.Context, writer io.Writer, since uint64) (uint64, error)
 
 	// Close safely closes underlying data storage, to ensure that data is actually saved.
 	Close() error

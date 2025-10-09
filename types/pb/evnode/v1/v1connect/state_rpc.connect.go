@@ -44,6 +44,8 @@ const (
 	// StoreServiceGetGenesisDaHeightProcedure is the fully-qualified name of the StoreService's
 	// GetGenesisDaHeight RPC.
 	StoreServiceGetGenesisDaHeightProcedure = "/evnode.v1.StoreService/GetGenesisDaHeight"
+	// StoreServiceBackupProcedure is the fully-qualified name of the StoreService's Backup RPC.
+	StoreServiceBackupProcedure = "/evnode.v1.StoreService/Backup"
 )
 
 // StoreServiceClient is a client for the evnode.v1.StoreService service.
@@ -56,6 +58,8 @@ type StoreServiceClient interface {
 	GetMetadata(context.Context, *connect.Request[v1.GetMetadataRequest]) (*connect.Response[v1.GetMetadataResponse], error)
 	// GetGenesisDaHeight returns the DA height at which the first Evolve block was included.
 	GetGenesisDaHeight(context.Context, *connect.Request[emptypb.Empty]) (*connect.Response[v1.GetGenesisDaHeightResponse], error)
+	// Backup streams a Badger backup of the datastore so it can be persisted externally.
+	Backup(context.Context, *connect.Request[v1.BackupRequest]) (*connect.ServerStreamForClient[v1.BackupResponse], error)
 }
 
 // NewStoreServiceClient constructs a client for the evnode.v1.StoreService service. By default, it
@@ -93,6 +97,12 @@ func NewStoreServiceClient(httpClient connect.HTTPClient, baseURL string, opts .
 			connect.WithSchema(storeServiceMethods.ByName("GetGenesisDaHeight")),
 			connect.WithClientOptions(opts...),
 		),
+		backup: connect.NewClient[v1.BackupRequest, v1.BackupResponse](
+			httpClient,
+			baseURL+StoreServiceBackupProcedure,
+			connect.WithSchema(storeServiceMethods.ByName("Backup")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
@@ -102,6 +112,7 @@ type storeServiceClient struct {
 	getState           *connect.Client[emptypb.Empty, v1.GetStateResponse]
 	getMetadata        *connect.Client[v1.GetMetadataRequest, v1.GetMetadataResponse]
 	getGenesisDaHeight *connect.Client[emptypb.Empty, v1.GetGenesisDaHeightResponse]
+	backup             *connect.Client[v1.BackupRequest, v1.BackupResponse]
 }
 
 // GetBlock calls evnode.v1.StoreService.GetBlock.
@@ -124,6 +135,11 @@ func (c *storeServiceClient) GetGenesisDaHeight(ctx context.Context, req *connec
 	return c.getGenesisDaHeight.CallUnary(ctx, req)
 }
 
+// Backup calls evnode.v1.StoreService.Backup.
+func (c *storeServiceClient) Backup(ctx context.Context, req *connect.Request[v1.BackupRequest]) (*connect.ServerStreamForClient[v1.BackupResponse], error) {
+	return c.backup.CallServerStream(ctx, req)
+}
+
 // StoreServiceHandler is an implementation of the evnode.v1.StoreService service.
 type StoreServiceHandler interface {
 	// GetBlock returns a block by height or hash
@@ -134,6 +150,8 @@ type StoreServiceHandler interface {
 	GetMetadata(context.Context, *connect.Request[v1.GetMetadataRequest]) (*connect.Response[v1.GetMetadataResponse], error)
 	// GetGenesisDaHeight returns the DA height at which the first Evolve block was included.
 	GetGenesisDaHeight(context.Context, *connect.Request[emptypb.Empty]) (*connect.Response[v1.GetGenesisDaHeightResponse], error)
+	// Backup streams a Badger backup of the datastore so it can be persisted externally.
+	Backup(context.Context, *connect.Request[v1.BackupRequest], *connect.ServerStream[v1.BackupResponse]) error
 }
 
 // NewStoreServiceHandler builds an HTTP handler from the service implementation. It returns the
@@ -167,6 +185,12 @@ func NewStoreServiceHandler(svc StoreServiceHandler, opts ...connect.HandlerOpti
 		connect.WithSchema(storeServiceMethods.ByName("GetGenesisDaHeight")),
 		connect.WithHandlerOptions(opts...),
 	)
+	storeServiceBackupHandler := connect.NewServerStreamHandler(
+		StoreServiceBackupProcedure,
+		svc.Backup,
+		connect.WithSchema(storeServiceMethods.ByName("Backup")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/evnode.v1.StoreService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case StoreServiceGetBlockProcedure:
@@ -177,6 +201,8 @@ func NewStoreServiceHandler(svc StoreServiceHandler, opts ...connect.HandlerOpti
 			storeServiceGetMetadataHandler.ServeHTTP(w, r)
 		case StoreServiceGetGenesisDaHeightProcedure:
 			storeServiceGetGenesisDaHeightHandler.ServeHTTP(w, r)
+		case StoreServiceBackupProcedure:
+			storeServiceBackupHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -200,4 +226,8 @@ func (UnimplementedStoreServiceHandler) GetMetadata(context.Context, *connect.Re
 
 func (UnimplementedStoreServiceHandler) GetGenesisDaHeight(context.Context, *connect.Request[emptypb.Empty]) (*connect.Response[v1.GetGenesisDaHeightResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("evnode.v1.StoreService.GetGenesisDaHeight is not implemented"))
+}
+
+func (UnimplementedStoreServiceHandler) Backup(context.Context, *connect.Request[v1.BackupRequest], *connect.ServerStream[v1.BackupResponse]) error {
+	return connect.NewError(connect.CodeUnimplemented, errors.New("evnode.v1.StoreService.Backup is not implemented"))
 }

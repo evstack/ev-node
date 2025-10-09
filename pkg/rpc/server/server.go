@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"fmt"
+	"io"
 
 	"net/http"
 	"time"
@@ -186,6 +187,166 @@ func (s *StoreServer) GetMetadata(
 	return connect.NewResponse(&pb.GetMetadataResponse{
 		Value: value,
 	}), nil
+}
+
+// Backup streams a Badger backup of the datastore so it can be persisted externally.
+func (s *StoreServer) Backup(
+	ctx context.Context,
+	req *connect.Request[pb.BackupRequest],
+	stream *connect.ServerStream[pb.BackupResponse],
+) error {
+	since := req.Msg.GetSinceVersion()
+	targetHeight := req.Msg.GetTargetHeight()
+
+	currentHeight, err := s.store.Height(ctx)
+	if err != nil {
+		return connect.NewError(connect.CodeInternal, fmt.Errorf("failed to get current height: %w", err))
+	}
+
+	if targetHeight != 0 && targetHeight > currentHeight {
+		return connect.NewError(
+			connect.CodeFailedPrecondition,
+			fmt.Errorf("requested target height %d exceeds current height %d", targetHeight, currentHeight),
+		)
+	}
+
+	initialMetadata := &pb.BackupMetadata{
+		CurrentHeight: currentHeight,
+		TargetHeight:  targetHeight,
+		SinceVersion:  since,
+		Completed:     false,
+		LastVersion:   0,
+	}
+
+	if err := stream.Send(&pb.BackupResponse{
+		Response: &pb.BackupResponse_Metadata{
+			Metadata: initialMetadata,
+		},
+	}); err != nil {
+		return err
+	}
+
+	writer := newBackupStreamWriter(stream, defaultBackupChunkSize)
+	version, err := s.store.Backup(ctx, writer, since)
+	if err != nil {
+		var connectErr *connect.Error
+		if errors.As(err, &connectErr) {
+			return connectErr
+		}
+		if errors.Is(err, context.Canceled) {
+			return connect.NewError(connect.CodeCanceled, err)
+		}
+		if errors.Is(err, context.DeadlineExceeded) {
+			return connect.NewError(connect.CodeDeadlineExceeded, err)
+		}
+		return connect.NewError(connect.CodeInternal, fmt.Errorf("failed to execute backup: %w", err))
+	}
+
+	if err := writer.Flush(); err != nil {
+		var connectErr *connect.Error
+		if errors.As(err, &connectErr) {
+			return connectErr
+		}
+		if errors.Is(err, context.Canceled) {
+			return connect.NewError(connect.CodeCanceled, err)
+		}
+		if errors.Is(err, context.DeadlineExceeded) {
+			return connect.NewError(connect.CodeDeadlineExceeded, err)
+		}
+		return connect.NewError(connect.CodeInternal, fmt.Errorf("failed to flush backup stream: %w", err))
+	}
+
+	completedMetadata := &pb.BackupMetadata{
+		CurrentHeight: currentHeight,
+		TargetHeight:  targetHeight,
+		SinceVersion:  since,
+		LastVersion:   version,
+		Completed:     true,
+	}
+
+	if err := stream.Send(&pb.BackupResponse{
+		Response: &pb.BackupResponse_Metadata{
+			Metadata: completedMetadata,
+		},
+	}); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+const defaultBackupChunkSize = 128 * 1024
+
+var _ io.Writer = (*backupStreamWriter)(nil)
+
+type backupStreamWriter struct {
+	stream    *connect.ServerStream[pb.BackupResponse]
+	buf       []byte
+	chunkSize int
+}
+
+func newBackupStreamWriter(stream *connect.ServerStream[pb.BackupResponse], chunkSize int) *backupStreamWriter {
+	if chunkSize <= 0 {
+		chunkSize = defaultBackupChunkSize
+	}
+
+	return &backupStreamWriter{
+		stream:    stream,
+		buf:       make([]byte, 0, chunkSize),
+		chunkSize: chunkSize,
+	}
+}
+
+func (w *backupStreamWriter) Write(p []byte) (int, error) {
+	written := 0
+	for len(p) > 0 {
+		space := w.chunkSize - len(w.buf)
+		if space == 0 {
+			if err := w.flush(); err != nil {
+				return written, err
+			}
+			space = w.chunkSize - len(w.buf)
+		}
+
+		if space > len(p) {
+			space = len(p)
+		}
+
+		w.buf = append(w.buf, p[:space]...)
+		p = p[space:]
+		written += space
+
+		if len(w.buf) == w.chunkSize {
+			if err := w.flush(); err != nil {
+				return written, err
+			}
+		}
+	}
+	return written, nil
+}
+
+func (w *backupStreamWriter) Flush() error {
+	return w.flush()
+}
+
+func (w *backupStreamWriter) flush() error {
+	if len(w.buf) == 0 {
+		return nil
+	}
+
+	chunk := make([]byte, len(w.buf))
+	copy(chunk, w.buf)
+
+	if err := w.stream.Send(&pb.BackupResponse{
+		Response: &pb.BackupResponse_Chunk{
+			Chunk: chunk,
+		},
+	}); err != nil {
+		return err
+	}
+
+	w.buf = w.buf[:0]
+	return nil
 }
 
 type ConfigServer struct {

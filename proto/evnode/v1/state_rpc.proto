@@ -1,10 +1,9 @@
 syntax = "proto3";
 package evnode.v1;
 
-import "google/protobuf/empty.proto";
-import "google/protobuf/timestamp.proto";
 import "evnode/v1/evnode.proto";
 import "evnode/v1/state.proto";
+import "google/protobuf/empty.proto";
 
 option go_package = "github.com/evstack/ev-node/types/pb/evnode/v1";
 
@@ -21,12 +20,15 @@ service StoreService {
 
   // GetGenesisDaHeight returns the DA height at which the first Evolve block was included.
   rpc GetGenesisDaHeight(google.protobuf.Empty) returns (GetGenesisDaHeightResponse) {}
+
+  // Backup streams a Badger backup of the datastore so it can be persisted externally.
+  rpc Backup(BackupRequest) returns (stream BackupResponse) {}
 }
 
 // Block contains all the components of a complete block
 message Block {
   SignedHeader header = 1;
-  Data         data   = 2;
+  Data data = 2;
 }
 
 // GetBlockRequest defines the request for retrieving a block
@@ -34,15 +36,15 @@ message GetBlockRequest {
   // The height or hash of the block to retrieve
   oneof identifier {
     uint64 height = 1;
-    bytes  hash   = 2;
+    bytes hash = 2;
   }
 }
 
 // GetBlockResponse defines the response for retrieving a block
 message GetBlockResponse {
-  Block  block            = 1;
+  Block block = 1;
   uint64 header_da_height = 2;
-  uint64 data_da_height   = 3;
+  uint64 data_da_height = 3;
 }
 
 // GetStateResponse defines the response for retrieving the current state
@@ -62,5 +64,30 @@ message GetMetadataResponse {
 
 // GetGenesisDaHeightResponse defines the DA height at which the first Evolve block was included.
 message GetGenesisDaHeightResponse {
-    uint64 height = 3;
+  uint64 height = 3;
+}
+
+// BackupRequest defines the parameters for requesting a datastore backup.
+message BackupRequest {
+  // target_height is the Evolve height the client wants to align with. 0 skips the check.
+  uint64 target_height = 1;
+  // since_version allows incremental backups. 0 produces a full backup.
+  uint64 since_version = 2;
+}
+
+// BackupMetadata contains progress or completion details emitted during a backup stream.
+message BackupMetadata {
+  uint64 current_height = 1;
+  uint64 target_height = 2;
+  uint64 since_version = 3;
+  uint64 last_version = 4;
+  bool completed = 5;
+}
+
+// BackupResponse multiplexes metadata and raw backup data chunks in the stream.
+message BackupResponse {
+  oneof response {
+    BackupMetadata metadata = 1;
+    bytes chunk = 2;
+  }
 }

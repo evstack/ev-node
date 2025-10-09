@@ -1,6 +1,7 @@
 package store
 
 import (
+	"bytes"
 	"context"
 	"encoding/binary"
 	"errors"
@@ -1126,4 +1127,25 @@ func TestRollbackDAIncludedHeightGetMetadataError(t *testing.T) {
 	require.Error(err)
 	require.Contains(err.Error(), "failed to get DA included height")
 	require.Contains(err.Error(), "metadata retrieval failed")
+}
+
+func TestDefaultStoreBackup(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	kv, err := NewDefaultInMemoryKVStore()
+	require.NoError(t, err)
+
+	s := New(kv)
+	t.Cleanup(func() {
+		require.NoError(t, s.Close())
+	})
+
+	require.NoError(t, s.SetMetadata(ctx, "backup-test", []byte("value")))
+
+	var buf bytes.Buffer
+	version, err := s.Backup(ctx, &buf, 0)
+	require.NoError(t, err)
+	require.NotZero(t, buf.Len())
+	require.NotZero(t, version)
 }

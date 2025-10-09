@@ -1,7 +1,9 @@
 package client
 
 import (
+	"bytes"
 	"context"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -20,6 +22,7 @@ import (
 	"github.com/evstack/ev-node/pkg/rpc/server"
 	"github.com/evstack/ev-node/test/mocks"
 	"github.com/evstack/ev-node/types"
+	pb "github.com/evstack/ev-node/types/pb/evnode/v1"
 	rpc "github.com/evstack/ev-node/types/pb/evnode/v1/v1connect"
 )
 
@@ -170,6 +173,34 @@ func TestClientGetBlockByHash(t *testing.T) {
 	// Assert expectations
 	require.NoError(t, err)
 	require.NotNil(t, block)
+	mockStore.AssertExpectations(t)
+}
+
+func TestClientBackup(t *testing.T) {
+	mockStore := mocks.NewMockStore(t)
+	mockP2P := mocks.NewMockP2PRPC(t)
+
+	mockStore.On("Height", mock.Anything).Return(uint64(15), nil)
+	mockStore.On("Backup", mock.Anything, mock.Anything, mock.Anything).Run(func(args mock.Arguments) {
+		writer := args.Get(1).(io.Writer)
+		_, _ = writer.Write([]byte("chunk-1"))
+		_, _ = writer.Write([]byte("chunk-2"))
+	}).Return(uint64(42), nil)
+
+	testServer, client := setupTestServer(t, mockStore, mockP2P)
+	defer testServer.Close()
+
+	var buf bytes.Buffer
+	metadata, err := client.Backup(context.Background(), &pb.BackupRequest{TargetHeight: 10}, &buf)
+	require.NoError(t, err)
+	require.NotNil(t, metadata)
+	require.Equal(t, "chunk-1chunk-2", buf.String())
+	require.True(t, metadata.GetCompleted())
+	require.Equal(t, uint64(15), metadata.GetCurrentHeight())
+	require.Equal(t, uint64(10), metadata.GetTargetHeight())
+	require.Equal(t, uint64(0), metadata.GetSinceVersion())
+	require.Equal(t, uint64(42), metadata.GetLastVersion())
+
 	mockStore.AssertExpectations(t)
 }
 
