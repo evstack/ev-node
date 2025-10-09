@@ -228,3 +228,35 @@ func (f *failoverState) Run(ctx context.Context) (multiErr error) {
 
 	return <-errChan
 }
+
+var _ leaderElection = AlwaysLeader{}
+
+type AlwaysLeader struct{}
+
+func (a AlwaysLeader) RunWithElection(ctx context.Context, leaderFunc, _ func(leaderCtx context.Context) error) error {
+	return leaderFunc(ctx)
+}
+
+func (a AlwaysLeader) Start(ctx context.Context) error {
+	return nil
+}
+
+func (a AlwaysLeader) Stop() error {
+	return nil
+}
+
+var _ leaderElection = AlwaysFollower{}
+
+type AlwaysFollower struct{}
+
+func (a AlwaysFollower) RunWithElection(ctx context.Context, _, followerFunc func(leaderCtx context.Context) error) error {
+	return followerFunc(ctx)
+}
+
+func (a AlwaysFollower) Start(ctx context.Context) error {
+	return nil
+}
+
+func (a AlwaysFollower) Stop() error {
+	return nil
+}

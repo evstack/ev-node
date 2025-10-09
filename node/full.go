@@ -95,15 +95,16 @@ func newFullNode(
 	// Initialize raft node if enabled (for both aggregator and sync nodes)
 	var raftNode *raftpkg.Node
 	var leaderElection leaderElection
-	if nodeConfig.Raft.Enable {
-		raftNode, err = initRaftNode(nodeConfig, logger)
+	switch {
+	case nodeConfig.Node.Aggregator && nodeConfig.Raft.Enable:
+		leaderElection, err = initRaftNode(nodeConfig, logger)
 		if err != nil {
 			return nil, fmt.Errorf("failed to initialize raft node: %w", err)
 		}
-		leaderElection = raftNode
-	} else {
-		panic("Non - raft mode not supported yet")
-		//leaderElection = raftpkg.AlwasyLeader
+	case nodeConfig.Node.Aggregator && !nodeConfig.Raft.Enable:
+		leaderElection = AlwaysLeader{}
+	case !nodeConfig.Node.Aggregator:
+		leaderElection = AlwaysFollower{}
 	}
 
 	node := &FullNode{
