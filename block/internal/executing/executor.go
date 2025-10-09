@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/ipfs/go-datastore"
@@ -54,8 +55,7 @@ type Executor struct {
 	raftNode common.RaftNode
 
 	// State management
-	lastState    types.State
-	lastStateMtx *sync.RWMutex
+	lastState *atomic.Pointer[types.State]
 
 	// Channels for coordination
 	txNotifyCh chan struct{}
@@ -117,8 +117,8 @@ func NewExecutor(
 		headerBroadcaster: headerBroadcaster,
 		dataBroadcaster:   dataBroadcaster,
 		options:           options,
+		lastState:         &atomic.Pointer[types.State]{},
 		raftNode:          raftNode,
-		lastStateMtx:      &sync.RWMutex{},
 		txNotifyCh:        make(chan struct{}, 1),
 		errorCh:           errorCh,
 		logger:            logger.With().Str("component", "executor").Logger(),
@@ -156,18 +156,29 @@ func (e *Executor) Stop() error {
 	return nil
 }
 
-// GetLastState returns the current state
+// GetLastState returns the current state.
 func (e *Executor) GetLastState() types.State {
-	e.lastStateMtx.RLock()
-	defer e.lastStateMtx.RUnlock()
-	return e.lastState
+	state := e.getLastState()
+	state.AppHash = bytes.Clone(state.AppHash)
+	state.LastResultsHash = bytes.Clone(state.LastResultsHash)
+
+	return state
 }
 
-// SetLastState updates the current state
-func (e *Executor) SetLastState(state types.State) {
-	e.lastStateMtx.Lock()
-	defer e.lastStateMtx.Unlock()
-	e.lastState = state
+// getLastState returns the current state.
+// getLastState should never directly mutate.
+func (e *Executor) getLastState() types.State {
+	state := e.lastState.Load()
+	if state == nil {
+		return types.State{}
+	}
+
+	return *state
+}
+
+// setLastState updates the current state
+func (e *Executor) setLastState(state types.State) {
+	e.lastState.Store(&state)
 }
 
 // NotifyNewTransactions signals that new transactions are available
@@ -204,11 +215,18 @@ func (e *Executor) initializeState() error {
 		}
 	}
 
-	e.SetLastState(state)
+	e.setLastState(state)
 
-	// Set store height
-	if err := e.store.SetHeight(e.ctx, state.LastBlockHeight); err != nil {
+	// Initialize store height using batch for atomicity
+	batch, err := e.store.NewBatch(e.ctx)
+	if err != nil {
+		return fmt.Errorf("failed to create batch: %w", err)
+	}
+	if err := batch.SetHeight(state.LastBlockHeight); err != nil {
 		return fmt.Errorf("failed to set store height: %w", err)
+	}
+	if err := batch.Commit(); err != nil {
+		return fmt.Errorf("failed to commit batch: %w", err)
 	}
 
 	e.logger.Info().Uint64("height", state.LastBlockHeight).
@@ -224,7 +242,7 @@ func (e *Executor) executionLoop() {
 
 	var delay time.Duration
 	initialHeight := e.genesis.InitialHeight
-	currentState := e.GetLastState()
+	currentState := e.getLastState()
 
 	if currentState.LastBlockHeight < initialHeight {
 		delay = time.Until(e.genesis.StartTime.Add(e.config.Node.BlockTime.Duration))
@@ -302,7 +320,7 @@ func (e *Executor) produceBlock() error {
 		return errors.New("not raft leader")
 	}
 
-	currentState := e.GetLastState()
+	currentState := e.getLastState()
 	newHeight := currentState.LastBlockHeight + 1
 
 	e.logger.Debug().Uint64("height", newHeight).Msg("producing block")
@@ -354,8 +372,15 @@ func (e *Executor) produceBlock() error {
 		}
 
 		// saved early for crash recovery, will be overwritten later with the final signature
-		if err = e.store.SaveBlockData(e.ctx, header, data, &types.Signature{}); err != nil {
-			return fmt.Errorf("failed to save block: %w", err)
+		batch, err := e.store.NewBatch(e.ctx)
+		if err != nil {
+			return fmt.Errorf("failed to create batch for early save: %w", err)
+		}
+		if err = batch.SaveBlockData(header, data, &types.Signature{}); err != nil {
+			return fmt.Errorf("failed to save block data: %w", err)
+		}
+		if err = batch.Commit(); err != nil {
+			return fmt.Errorf("failed to commit early save batch: %w", err)
 		}
 	}
 
@@ -377,17 +402,30 @@ func (e *Executor) produceBlock() error {
 		return fmt.Errorf("failed to validate block: %w", err)
 	}
 
-	if err := e.store.SaveBlockData(e.ctx, header, data, &signature); err != nil {
+	batch, err := e.store.NewBatch(e.ctx)
+	if err != nil {
+		return fmt.Errorf("failed to create batch: %w", err)
+	}
+
+	if err := batch.SaveBlockData(header, data, &signature); err != nil {
 		return fmt.Errorf("failed to save block: %w", err)
 	}
 
-	if err := e.store.SetHeight(e.ctx, newHeight); err != nil {
+	if err := batch.SetHeight(newHeight); err != nil {
 		return fmt.Errorf("failed to update store height: %w", err)
 	}
 
-	if err := e.updateState(e.ctx, newState); err != nil {
+	if err := batch.UpdateState(newState); err != nil {
 		return fmt.Errorf("failed to update state: %w", err)
 	}
+
+	if err := batch.Commit(); err != nil {
+		return fmt.Errorf("failed to commit batch: %w", err)
+	}
+
+	// Update in-memory state after successful commit
+	e.setLastState(newState)
+	e.metrics.Height.Set(float64(newState.LastBlockHeight))
 
 	// Propose block to raft before p2p broadcast if raft is enabled
 	if e.raftNode != nil {
@@ -464,7 +502,7 @@ func (e *Executor) retrieveBatch(ctx context.Context) (*BatchData, error) {
 
 // createBlock creates a new block from the given batch
 func (e *Executor) createBlock(ctx context.Context, height uint64, batchData *BatchData) (*types.SignedHeader, *types.Data, error) {
-	currentState := e.GetLastState()
+	currentState := e.getLastState()
 	headerTime := uint64(e.genesis.StartTime.UnixNano())
 
 	// Get last block info
@@ -553,7 +591,7 @@ func (e *Executor) createBlock(ctx context.Context, height uint64, batchData *Ba
 
 // applyBlock applies the block to get the new state
 func (e *Executor) applyBlock(ctx context.Context, header types.Header, data *types.Data) (types.State, error) {
-	currentState := e.GetLastState()
+	currentState := e.getLastState()
 
 	// Prepare transactions
 	rawTxs := make([][]byte, len(data.Txs))
@@ -626,18 +664,6 @@ func (e *Executor) validateBlock(lastState types.State, header *types.SignedHead
 	if !bytes.Equal(header.AppHash, lastState.AppHash) {
 		return fmt.Errorf("app hash mismatch")
 	}
-
-	return nil
-}
-
-// updateState saves the new state
-func (e *Executor) updateState(ctx context.Context, newState types.State) error {
-	if err := e.store.UpdateState(ctx, newState); err != nil {
-		return err
-	}
-
-	e.SetLastState(newState)
-	e.metrics.Height.Set(float64(newState.LastBlockHeight))
 
 	return nil
 }

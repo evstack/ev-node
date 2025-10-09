@@ -58,7 +58,10 @@ func TestPendingBase_PersistLastSubmitted(t *testing.T) {
 	require.NoError(t, err)
 
 	// store height 3 to make numPending meaningful
-	require.NoError(t, st.SetHeight(ctx, 3))
+	batch, err := st.NewBatch(ctx)
+	require.NoError(t, err)
+	require.NoError(t, batch.SetHeight(3))
+	require.NoError(t, batch.Commit())
 	assert.Equal(t, uint64(3), ph.NumPendingHeaders())
 
 	// set last submitted higher and ensure metadata is written

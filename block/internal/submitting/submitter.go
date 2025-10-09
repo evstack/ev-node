@@ -6,6 +6,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/rs/zerolog"
@@ -45,8 +46,7 @@ type Submitter struct {
 	signer signer.Signer
 
 	// DA state
-	daIncludedHeight uint64
-	daStateMtx       *sync.RWMutex
+	daIncludedHeight *atomic.Uint64
 
 	// Submission state to prevent concurrent submissions
 	headerSubmissionMtx sync.Mutex
@@ -78,17 +78,17 @@ func NewSubmitter(
 	errorCh chan<- error,
 ) *Submitter {
 	return &Submitter{
-		store:       store,
-		exec:        exec,
-		cache:       cache,
-		metrics:     metrics,
-		config:      config,
-		genesis:     genesis,
-		daSubmitter: daSubmitter,
-		signer:      signer,
-		daStateMtx:  &sync.RWMutex{},
-		errorCh:     errorCh,
-		logger:      logger.With().Str("component", "submitter").Logger(),
+		store:            store,
+		exec:             exec,
+		cache:            cache,
+		metrics:          metrics,
+		config:           config,
+		genesis:          genesis,
+		daSubmitter:      daSubmitter,
+		signer:           signer,
+		daIncludedHeight: &atomic.Uint64{},
+		errorCh:          errorCh,
+		logger:           logger.With().Str("component", "submitter").Logger(),
 	}
 }
 
@@ -269,16 +269,12 @@ func (s *Submitter) setFinalWithRetry(nextHeight uint64) error {
 
 // GetDAIncludedHeight returns the DA included height
 func (s *Submitter) GetDAIncludedHeight() uint64 {
-	s.daStateMtx.RLock()
-	defer s.daStateMtx.RUnlock()
-	return s.daIncludedHeight
+	return s.daIncludedHeight.Load()
 }
 
 // SetDAIncludedHeight updates the DA included height
 func (s *Submitter) SetDAIncludedHeight(height uint64) {
-	s.daStateMtx.Lock()
-	defer s.daStateMtx.Unlock()
-	s.daIncludedHeight = height
+	s.daIncludedHeight.Store(height)
 }
 
 // initializeDAIncludedHeight loads the DA included height from store

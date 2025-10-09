@@ -47,11 +47,10 @@ type Syncer struct {
 	options common.BlockOptions
 
 	// State management
-	lastState    types.State
-	lastStateMtx *sync.RWMutex
+	lastState *atomic.Pointer[types.State]
 
 	// DA state
-	daHeight uint64
+	daHeight *atomic.Uint64
 
 	// P2P stores
 	headerStore goheader.Store[*types.SignedHeader]
@@ -70,6 +69,7 @@ type Syncer struct {
 
 	// Logging
 	logger zerolog.Logger
+
 	// Lifecycle
 	ctx    context.Context
 	cancel context.CancelFunc
@@ -104,7 +104,8 @@ func NewSyncer(
 		raftNode:     raftNode,
 		headerStore:  headerStore,
 		dataStore:    dataStore,
-		lastStateMtx: &sync.RWMutex{},
+		lastState:   &atomic.Pointer[types.State]{},
+		daHeight:    &atomic.Uint64{},
 		heightInCh:   make(chan common.DAHeightEvent, 10_000),
 		errorCh:      errorCh,
 		logger:       logger.With().Str("component", "syncer").Logger(),
@@ -117,7 +118,7 @@ func (s *Syncer) Start(ctx context.Context) error {
 
 	// Initialize state
 	if err := s.initializeState(); err != nil {
-		return fmt.Errorf("initialize syncer state: %w", err)
+		return fmt.Errorf("failed to initialize syncer state: %w", err)
 	}
 
 	// Initialize handlers
@@ -175,26 +176,31 @@ func (s *Syncer) HasUnprocessedEvents() bool {
 
 // GetLastState returns the current state
 func (s *Syncer) GetLastState() types.State {
-	s.lastStateMtx.RLock()
-	defer s.lastStateMtx.RUnlock()
-	return s.lastState
+	state := s.lastState.Load()
+	if state == nil {
+		return types.State{}
+	}
+
+	stateCopy := *state
+	stateCopy.AppHash = bytes.Clone(state.AppHash)
+	stateCopy.LastResultsHash = bytes.Clone(state.LastResultsHash)
+
+	return stateCopy
 }
 
 // SetLastState updates the current state
 func (s *Syncer) SetLastState(state types.State) {
-	s.lastStateMtx.Lock()
-	defer s.lastStateMtx.Unlock()
-	s.lastState = state
+	s.lastState.Store(&state)
 }
 
 // GetDAHeight returns the current DA height
 func (s *Syncer) GetDAHeight() uint64 {
-	return atomic.LoadUint64(&s.daHeight)
+	return s.daHeight.Load()
 }
 
 // SetDAHeight updates the DA height
 func (s *Syncer) SetDAHeight(height uint64) {
-	atomic.StoreUint64(&s.daHeight, height)
+	s.daHeight.Store(height)
 }
 
 // initializeState loads the current sync state
@@ -477,23 +483,35 @@ func (s *Syncer) trySyncNextBlock(event *common.DAHeightEvent) error {
 		return fmt.Errorf("failed to apply block: %w", err)
 	}
 
-	// Save block
-	if err := s.store.SaveBlockData(s.ctx, header, data, &header.Signature); err != nil {
-		return fmt.Errorf("failed to save block: %w", err)
-	}
-
-	// Update height
-	if err := s.store.SetHeight(s.ctx, nextHeight); err != nil {
-		return fmt.Errorf("failed to update height: %w", err)
-	}
-
-	// Update state
+	// Update DA height if needed
 	if event.DaHeight > newState.DAHeight {
 		newState.DAHeight = event.DaHeight
 	}
-	if err := s.updateState(newState); err != nil {
+
+	batch, err := s.store.NewBatch(s.ctx)
+	if err != nil {
+		return fmt.Errorf("failed to create batch: %w", err)
+	}
+
+	if err := batch.SaveBlockData(header, data, &header.Signature); err != nil {
+		return fmt.Errorf("failed to save block: %w", err)
+	}
+
+	if err := batch.SetHeight(nextHeight); err != nil {
+		return fmt.Errorf("failed to update height: %w", err)
+	}
+
+	if err := batch.UpdateState(newState); err != nil {
 		return fmt.Errorf("failed to update state: %w", err)
 	}
+
+	if err := batch.Commit(); err != nil {
+		return fmt.Errorf("failed to commit batch: %w", err)
+	}
+
+	// Update in-memory state after successful commit
+	s.SetLastState(newState)
+	s.metrics.Height.Set(float64(newState.LastBlockHeight))
 
 	// Mark as seen
 	s.cache.SetHeaderSeen(header.Hash().String())
@@ -591,18 +609,6 @@ func (s *Syncer) sendCriticalError(err error) {
 			// Channel full, error already reported
 		}
 	}
-}
-
-// updateState saves the new state
-func (s *Syncer) updateState(newState types.State) error {
-	if err := s.store.UpdateState(s.ctx, newState); err != nil {
-		return err
-	}
-
-	s.SetLastState(newState)
-	s.metrics.Height.Set(float64(newState.LastBlockHeight))
-
-	return nil
 }
 
 // sendNonBlockingSignal sends a signal without blocking

@@ -36,7 +36,7 @@ test-integration-cover:
 ## test-cover: generate code coverage report.
 test-cover:
 	@echo "--> Running unit tests"
-	@go run -tags=cover scripts/test_cover.go
+	@go run -tags=cover -race scripts/test_cover.go
 .PHONY: test-cover
 
 ## bench: run micro-benchmarks for internal cache

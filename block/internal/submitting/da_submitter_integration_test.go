@@ -67,9 +67,20 @@ func TestDASubmitter_SubmitHeadersAndData_MarksInclusionAndUpdatesLastSubmitted(
 	// persist to store
 	sig1t := types.Signature(sig1)
 	sig2t := types.Signature(sig2)
-	require.NoError(t, st.SaveBlockData(context.Background(), hdr1, data1, &sig1t))
-	require.NoError(t, st.SaveBlockData(context.Background(), hdr2, data2, &sig2t))
-	require.NoError(t, st.SetHeight(context.Background(), 2))
+
+	// Save block 1
+	batch1, err := st.NewBatch(context.Background())
+	require.NoError(t, err)
+	require.NoError(t, batch1.SaveBlockData(hdr1, data1, &sig1t))
+	require.NoError(t, batch1.SetHeight(1))
+	require.NoError(t, batch1.Commit())
+
+	// Save block 2
+	batch2, err := st.NewBatch(context.Background())
+	require.NoError(t, err)
+	require.NoError(t, batch2.SaveBlockData(hdr2, data2, &sig2t))
+	require.NoError(t, batch2.SetHeight(2))
+	require.NoError(t, batch2.Commit())
 
 	// Dummy DA
 	dummyDA := coreda.NewDummyDA(10_000_000, 0, 0, 10*time.Millisecond)

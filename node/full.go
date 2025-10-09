@@ -84,8 +84,8 @@ func newFullNode(
 	metricsProvider MetricsProvider,
 	logger zerolog.Logger,
 	nodeOpts NodeOptions,
-) (*FullNode, error) {
-	logger.Debug().Bytes("address", genesis.ProposerAddress).Msg("Proposer address")
+) (fn *FullNode, err error) {
+	logger.Debug().Hex("address", genesis.ProposerAddress).Msg("Proposer address")
 
 	blockMetrics, _ := metricsProvider(genesis.ChainID)
 
