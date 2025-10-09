@@ -7,11 +7,12 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	pb "github.com/evstack/ev-node/types/pb/evnode/v1"
 	"net/http"
 	"path/filepath"
 	"testing"
 	"time"
+
+	pb "github.com/evstack/ev-node/types/pb/evnode/v1"
 
 	"github.com/stretchr/testify/require"
 
