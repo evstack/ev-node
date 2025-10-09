@@ -453,7 +453,6 @@ func (s *Syncer) trySyncNextBlock(event *common.DAHeightEvent) error {
 		newState.DAHeight = event.DaHeight
 	}
 
-	// Save block, update height, and update state atomically using batch
 	batch, err := s.store.NewBatch(s.ctx)
 	if err != nil {
 		return fmt.Errorf("failed to create batch: %w", err)
