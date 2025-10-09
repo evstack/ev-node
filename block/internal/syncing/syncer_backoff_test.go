@@ -6,7 +6,6 @@ import (
 	"testing"
 	"time"
 
-	goheader "github.com/celestiaorg/go-header"
 	"github.com/ipfs/go-datastore"
 	dssync "github.com/ipfs/go-datastore/sync"
 	"github.com/rs/zerolog"
@@ -24,19 +23,6 @@ import (
 	mocks "github.com/evstack/ev-node/test/mocks/external"
 	"github.com/evstack/ev-node/types"
 )
-
-// mockBroadcaster for testing
-type mockBroadcaster[T goheader.Header[T]] struct {
-	store goheader.Store[T]
-}
-
-func (m *mockBroadcaster[T]) WriteToStoreAndBroadcast(ctx context.Context, payload T) error {
-	return nil
-}
-
-func (m *mockBroadcaster[T]) Store() goheader.Store[T] {
-	return m.store
-}
 
 // TestSyncer_BackoffOnDAError verifies that the syncer implements proper backoff
 // behavior when encountering different types of DA layer errors.
@@ -90,11 +76,11 @@ func TestSyncer_BackoffOnDAError(t *testing.T) {
 
 			headerStore := mocks.NewMockStore[*types.SignedHeader](t)
 			headerStore.On("Height").Return(uint64(0)).Maybe()
-			syncer.headerBroadcaster = &mockBroadcaster[*types.SignedHeader]{headerStore}
+			syncer.headerStore = headerStore
 
 			dataStore := mocks.NewMockStore[*types.Data](t)
 			dataStore.On("Height").Return(uint64(0)).Maybe()
-			syncer.dataBroadcaster = &mockBroadcaster[*types.Data]{dataStore}
+			syncer.dataStore = dataStore
 
 			var callTimes []time.Time
 			callCount := 0
@@ -181,11 +167,11 @@ func TestSyncer_BackoffResetOnSuccess(t *testing.T) {
 
 	headerStore := mocks.NewMockStore[*types.SignedHeader](t)
 	headerStore.On("Height").Return(uint64(0)).Maybe()
-	syncer.headerBroadcaster = &mockBroadcaster[*types.SignedHeader]{headerStore}
+	syncer.headerStore = headerStore
 
 	dataStore := mocks.NewMockStore[*types.Data](t)
 	dataStore.On("Height").Return(uint64(0)).Maybe()
-	syncer.dataBroadcaster = &mockBroadcaster[*types.Data]{dataStore}
+	syncer.dataStore = dataStore
 
 	var callTimes []time.Time
 
@@ -267,11 +253,11 @@ func TestSyncer_BackoffBehaviorIntegration(t *testing.T) {
 
 	headerStore := mocks.NewMockStore[*types.SignedHeader](t)
 	headerStore.On("Height").Return(uint64(0)).Maybe()
-	syncer.headerBroadcaster = &mockBroadcaster[*types.SignedHeader]{headerStore}
+	syncer.headerStore = headerStore
 
 	dataStore := mocks.NewMockStore[*types.Data](t)
 	dataStore.On("Height").Return(uint64(0)).Maybe()
-	syncer.dataBroadcaster = &mockBroadcaster[*types.Data]{dataStore}
+	syncer.dataStore = dataStore
 
 	var callTimes []time.Time
 
@@ -349,8 +335,8 @@ func setupTestSyncer(t *testing.T, daBlockTime time.Duration) *Syncer {
 		common.NopMetrics(),
 		cfg,
 		gen,
-		&mockBroadcaster[*types.SignedHeader]{},
-		&mockBroadcaster[*types.Data]{},
+		&mocks.MockStore[*types.SignedHeader]{},
+		&mocks.MockStore[*types.Data]{},
 		zerolog.Nop(),
 		common.DefaultBlockOptions(),
 		make(chan error, 1),

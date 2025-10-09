@@ -9,6 +9,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/celestiaorg/go-header"
 	"github.com/rs/zerolog"
 	"golang.org/x/sync/errgroup"
 
@@ -54,8 +55,8 @@ type Syncer struct {
 	daHeight *atomic.Uint64
 
 	// P2P handling
-	headerBroadcaster common.Broadcaster[*types.SignedHeader]
-	dataBroadcaster   common.Broadcaster[*types.Data]
+	headerStore header.Store[*types.SignedHeader]
+	dataStore   header.Store[*types.Data]
 
 	// Channels for coordination
 	heightInCh chan common.DAHeightEvent
@@ -83,28 +84,28 @@ func NewSyncer(
 	metrics *common.Metrics,
 	config config.Config,
 	genesis genesis.Genesis,
-	headerBroadcaster common.Broadcaster[*types.SignedHeader],
-	dataBroadcaster common.Broadcaster[*types.Data],
+	headerStore header.Store[*types.SignedHeader],
+	dataStore header.Store[*types.Data],
 	logger zerolog.Logger,
 	options common.BlockOptions,
 	errorCh chan<- error,
 ) *Syncer {
 	return &Syncer{
-		store:             store,
-		exec:              exec,
-		da:                da,
-		cache:             cache,
-		metrics:           metrics,
-		config:            config,
-		genesis:           genesis,
-		options:           options,
-		headerBroadcaster: headerBroadcaster,
-		dataBroadcaster:   dataBroadcaster,
-		lastState:         &atomic.Pointer[types.State]{},
-		daHeight:          &atomic.Uint64{},
-		heightInCh:        make(chan common.DAHeightEvent, 10_000),
-		errorCh:           errorCh,
-		logger:            logger.With().Str("component", "syncer").Logger(),
+		store:       store,
+		exec:        exec,
+		da:          da,
+		cache:       cache,
+		metrics:     metrics,
+		config:      config,
+		genesis:     genesis,
+		options:     options,
+		headerStore: headerStore,
+		dataStore:   dataStore,
+		lastState:   &atomic.Pointer[types.State]{},
+		daHeight:    &atomic.Uint64{},
+		heightInCh:  make(chan common.DAHeightEvent, 10_000),
+		errorCh:     errorCh,
+		logger:      logger.With().Str("component", "syncer").Logger(),
 	}
 }
 
@@ -119,7 +120,7 @@ func (s *Syncer) Start(ctx context.Context) error {
 
 	// Initialize handlers
 	s.daRetriever = NewDARetriever(s.da, s.cache, s.config, s.genesis, s.logger)
-	s.p2pHandler = NewP2PHandler(s.headerBroadcaster.Store(), s.dataBroadcaster.Store(), s.cache, s.genesis, s.logger)
+	s.p2pHandler = NewP2PHandler(s.headerStore, s.dataStore, s.cache, s.genesis, s.logger)
 
 	// Start main processing loop
 	s.wg.Add(1)
@@ -340,13 +341,13 @@ func (s *Syncer) tryFetchFromP2P() {
 	}
 
 	// Process headers
-	newHeaderHeight := s.headerBroadcaster.Store().Height()
+	newHeaderHeight := s.headerStore.Height()
 	if newHeaderHeight > currentHeight {
 		s.p2pHandler.ProcessHeaderRange(s.ctx, currentHeight+1, newHeaderHeight, s.heightInCh)
 	}
 
 	// Process data (if not already processed by headers)
-	newDataHeight := s.dataBroadcaster.Store().Height()
+	newDataHeight := s.dataStore.Height()
 	if newDataHeight != newHeaderHeight && newDataHeight > currentHeight {
 		s.p2pHandler.ProcessDataRange(s.ctx, currentHeight+1, newDataHeight, s.heightInCh)
 	}
@@ -406,8 +407,8 @@ func (s *Syncer) processHeightEvent(event *common.DAHeightEvent) {
 	// only save to p2p stores if the event came from DA
 	if event.Source == common.SourceDA {
 		g, ctx := errgroup.WithContext(s.ctx)
-		g.Go(func() error { return s.headerBroadcaster.WriteToStoreAndBroadcast(ctx, event.Header) })
-		g.Go(func() error { return s.dataBroadcaster.WriteToStoreAndBroadcast(ctx, event.Data) })
+		g.Go(func() error { return s.headerStore.Append(ctx, event.Header) })
+		g.Go(func() error { return s.dataStore.Append(ctx, event.Data) })
 		if err := g.Wait(); err != nil {
 			s.logger.Error().Err(err).Msg("failed to append event header and/or data to p2p store")
 		}
