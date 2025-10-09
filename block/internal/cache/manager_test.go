@@ -3,6 +3,7 @@ package cache
 import (
 	"context"
 	"encoding/gob"
+	"fmt"
 	"path/filepath"
 	"testing"
 
@@ -212,4 +213,86 @@ func TestPendingHeadersAndData_Flow(t *testing.T) {
 	// numPending views
 	assert.Equal(t, uint64(2), cm.NumPendingHeaders())
 	assert.Equal(t, uint64(1), cm.NumPendingData())
+}
+
+// TestManager_PruneCache tests cache pruning functionality
+func TestManager_PruneCache(t *testing.T) {
+	t.Parallel()
+	cfg := tempConfig(t)
+	st := memStore(t)
+
+	m, err := NewManager(cfg, st, zerolog.Nop())
+	require.NoError(t, err)
+
+	// Add entries for heights 1-100
+	for i := uint64(1); i <= 100; i++ {
+		hash := fmt.Sprintf("hash-%d", i)
+		m.SetHeaderSeen(hash)
+		m.SetHeaderDAIncluded(hash, i)
+		m.SetDataSeen(hash)
+		m.SetDataDAIncluded(hash, i)
+
+		// Add pending events
+		hdr := &types.SignedHeader{Header: types.Header{BaseHeader: types.BaseHeader{Height: i}}}
+		dat := &types.Data{Metadata: &types.Metadata{Height: i}}
+		m.SetPendingEvent(i, &common.DAHeightEvent{Header: hdr, Data: dat, DaHeight: i})
+	}
+
+	// Verify entries exist before pruning
+	assert.True(t, m.IsHeaderSeen("hash-10"))
+	assert.True(t, m.IsDataSeen("hash-10"))
+	assert.NotNil(t, m.GetNextPendingEvent(10))
+
+	// Prune with retention of 20 at height 50
+	// Should keep heights >= 30 (50 - 20)
+	m.PruneCache(50, 20)
+
+	// Entries below height 30 should be pruned for itemsByHeight
+	// (pending events use itemsByHeight)
+	for i := uint64(1); i < 30; i++ {
+		evt := m.GetNextPendingEvent(i)
+		assert.Nil(t, evt, "expected pending event at height %d to be pruned", i)
+	}
+
+	// Entries >= 30 should still exist
+	for i := uint64(30); i <= 100; i++ {
+		evt := m.GetNextPendingEvent(i)
+		assert.NotNil(t, evt, "expected pending event at height %d to remain", i)
+	}
+
+	// Note: hashes and daIncluded maps are not pruned by design
+	// as we don't have a reverse mapping from hash to height
+	assert.True(t, m.IsHeaderSeen("hash-10"))
+	assert.True(t, m.IsDataSeen("hash-10"))
+}
+
+// TestManager_PruneCache_ZeroRetention tests pruning with zero retention
+func TestManager_PruneCache_ZeroRetention(t *testing.T) {
+	t.Parallel()
+	cfg := tempConfig(t)
+	st := memStore(t)
+
+	m, err := NewManager(cfg, st, zerolog.Nop())
+	require.NoError(t, err)
+
+	// Add pending events
+	for i := uint64(1); i <= 10; i++ {
+		hdr := &types.SignedHeader{Header: types.Header{BaseHeader: types.BaseHeader{Height: i}}}
+		dat := &types.Data{Metadata: &types.Metadata{Height: i}}
+		m.SetPendingEvent(i, &common.DAHeightEvent{Header: hdr, Data: dat, DaHeight: i})
+	}
+
+	// Prune with zero retention at height 5
+	// Should keep only heights >= 5
+	m.PruneCache(5, 0)
+
+	for i := uint64(1); i < 5; i++ {
+		evt := m.GetNextPendingEvent(i)
+		assert.Nil(t, evt, "expected pending event at height %d to be pruned", i)
+	}
+
+	for i := uint64(5); i <= 10; i++ {
+		evt := m.GetNextPendingEvent(i)
+		assert.NotNil(t, evt, "expected pending event at height %d to remain", i)
+	}
 }

@@ -16,6 +16,9 @@ import (
 	"github.com/evstack/ev-node/types"
 )
 
+// CacheRetentionBlocks defines the number of blocks to retain in the cache.
+const CacheRetentionBlocks = 1000
+
 var (
 	cacheDir              = "cache"
 	headerCacheDir        = filepath.Join(cacheDir, "header")
@@ -64,6 +67,7 @@ type Manager interface {
 	SetPendingEvent(height uint64, event *common.DAHeightEvent)
 
 	// Cleanup operations
+	PruneCache(currentHeight, retentionWindow uint64)
 	SaveToDisk() error
 	LoadFromDisk() error
 	ClearFromDisk() error
@@ -260,6 +264,12 @@ func (m *implementation) LoadFromDisk() error {
 	}
 
 	return nil
+}
+
+func (m *implementation) PruneCache(currentHeight, retentionWindow uint64) {
+	m.headerCache.pruneOldEntries(currentHeight, retentionWindow)
+	m.dataCache.pruneOldEntries(currentHeight, retentionWindow)
+	m.pendingEventsCache.pruneOldEntries(currentHeight, retentionWindow)
 }
 
 func (m *implementation) ClearFromDisk() error {

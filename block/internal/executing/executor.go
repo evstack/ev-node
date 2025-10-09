@@ -416,6 +416,9 @@ func (e *Executor) produceBlock() error {
 	e.setLastState(newState)
 	e.metrics.Height.Set(float64(newState.LastBlockHeight))
 
+	// Prune old cache entries to prevent unbounded memory growth
+	e.cache.PruneCache(newState.LastBlockHeight, cache.CacheRetentionBlocks)
+
 	// broadcast header and data to P2P network
 	g, ctx := errgroup.WithContext(e.ctx)
 	g.Go(func() error { return e.headerBroadcaster.WriteToStoreAndBroadcast(ctx, header) })

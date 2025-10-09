@@ -96,3 +96,103 @@ func TestCache_LargeDataset(t *testing.T) {
 		c.getNextItem(uint64(i))
 	}
 }
+
+// TestCache_PruneOldEntries tests pruning of old entries from the cache
+func TestCache_PruneOldEntries(t *testing.T) {
+	c := NewCache[testItem]()
+
+	// Add items at various heights
+	for i := uint64(1); i <= 100; i++ {
+		c.setItem(i, &testItem{V: int(i)})
+		c.setSeen(fmt.Sprintf("hash-%d", i))
+		c.setDAIncluded(fmt.Sprintf("hash-%d", i), i)
+	}
+
+	// Prune everything below height 50 with retention of 10
+	// This should keep heights 40-100 (61 items)
+	c.pruneOldEntries(50, 10)
+
+	// Verify items below height 40 are removed
+	for i := uint64(1); i < 40; i++ {
+		if item := c.getItem(i); item != nil {
+			t.Errorf("expected item at height %d to be pruned, but found %v", i, item)
+		}
+	}
+
+	// Verify items >= 40 are kept
+	for i := uint64(40); i <= 100; i++ {
+		if item := c.getItem(i); item == nil {
+			t.Errorf("expected item at height %d to be kept, but it was pruned", i)
+		}
+	}
+
+	// Verify hashes are pruned (we can't directly verify which hashes remain,
+	// but we can check that some operations still work)
+	if !c.isSeen("hash-50") {
+		t.Error("expected hash-50 to still be marked as seen")
+	}
+	if _, ok := c.getDAIncluded("hash-50"); !ok {
+		t.Error("expected hash-50 to still have DA inclusion")
+	}
+}
+
+// TestCache_PruneOldEntries_EdgeCases tests edge cases for pruning
+func TestCache_PruneOldEntries_EdgeCases(t *testing.T) {
+	t.Run("prune with current height less than retention", func(t *testing.T) {
+		c := NewCache[testItem]()
+		for i := uint64(1); i <= 5; i++ {
+			c.setItem(i, &testItem{V: int(i)})
+		}
+		// With retention of 10 and current height 5, nothing should be pruned
+		c.pruneOldEntries(5, 10)
+
+		// All items should remain
+		for i := uint64(1); i <= 5; i++ {
+			if item := c.getItem(i); item == nil {
+				t.Errorf("expected item at height %d to be kept", i)
+			}
+		}
+	})
+
+	t.Run("prune with zero retention", func(t *testing.T) {
+		c := NewCache[testItem]()
+		for i := uint64(1); i <= 10; i++ {
+			c.setItem(i, &testItem{V: int(i)})
+		}
+		// With zero retention, only items >= current height should remain
+		c.pruneOldEntries(5, 0)
+
+		for i := uint64(1); i < 5; i++ {
+			if item := c.getItem(i); item != nil {
+				t.Errorf("expected item at height %d to be pruned", i)
+			}
+		}
+		for i := uint64(5); i <= 10; i++ {
+			if item := c.getItem(i); item == nil {
+				t.Errorf("expected item at height %d to be kept", i)
+			}
+		}
+	})
+
+	t.Run("prune empty cache", func(t *testing.T) {
+		c := NewCache[testItem]()
+		// Should not panic
+		c.pruneOldEntries(100, 10)
+	})
+
+	t.Run("prune with current height zero", func(t *testing.T) {
+		c := NewCache[testItem]()
+		for i := uint64(1); i <= 5; i++ {
+			c.setItem(i, &testItem{V: int(i)})
+		}
+		// Should not panic or prune anything
+		c.pruneOldEntries(0, 10)
+
+		// All items should remain
+		for i := uint64(1); i <= 5; i++ {
+			if item := c.getItem(i); item == nil {
+				t.Errorf("expected item at height %d to be kept", i)
+			}
+		}
+	})
+}

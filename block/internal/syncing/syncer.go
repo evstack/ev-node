@@ -450,6 +450,9 @@ func (s *Syncer) trySyncNextBlock(event *common.DAHeightEvent) error {
 	s.SetLastState(newState)
 	s.metrics.Height.Set(float64(newState.LastBlockHeight))
 
+	// Prune old cache entries to prevent unbounded memory growth
+	s.cache.PruneCache(newState.LastBlockHeight, cache.CacheRetentionBlocks)
+
 	// Mark as seen
 	s.cache.SetHeaderSeen(header.Hash().String())
 	if !bytes.Equal(header.DataHash, common.DataHashForEmptyTxs) {

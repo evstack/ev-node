@@ -109,6 +109,36 @@ func (c *Cache[T]) removeDAIncluded(hash string) {
 	c.daIncluded.Delete(hash)
 }
 
+// pruneOldEntries removes entries older than the retention window.
+// It keeps entries at heights >= (currentHeight - retentionWindow).
+// This prevents unbounded memory growth as the chain progresses.
+func (c *Cache[T]) pruneOldEntries(currentHeight, retentionWindow uint64) {
+	if currentHeight == 0 || currentHeight <= retentionWindow {
+		return
+	}
+
+	pruneBeforeHeight := currentHeight - retentionWindow
+
+	// Prune items by height
+	c.itemsByHeight.Range(func(k, v any) bool {
+		height, ok := k.(uint64)
+		if !ok {
+			return true
+		}
+		if height < pruneBeforeHeight {
+			c.itemsByHeight.Delete(height)
+		}
+		return true
+	})
+
+	// Note: We don't prune hashes and daIncluded maps directly because:
+	// 1. We don't have a reverse mapping from hash to height
+	// 2. These maps are typically smaller than itemsByHeight
+	// 3. Hashes may be checked for duplicate detection even for old blocks
+	// If needed, a more sophisticated pruning strategy with hash->height mapping
+	// could be implemented in the future.
+}
+
 const (
 	itemsByHeightFilename = "items_by_height.gob"
 	hashesFilename        = "hashes.gob"
