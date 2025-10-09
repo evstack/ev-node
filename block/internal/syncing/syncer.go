@@ -269,6 +269,9 @@ func (s *Syncer) syncLoop() {
 			s.tryFetchFromDA(nextDARequestAt)
 		}()
 
+		// wait for pending events processing, p2p and da fetching
+		wg.Wait()
+
 		// Prevent busy-waiting when no events are processed
 		select {
 		case <-s.ctx.Done():
