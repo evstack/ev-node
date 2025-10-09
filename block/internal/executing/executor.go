@@ -391,9 +391,7 @@ func (e *Executor) produceBlock() error {
 		return fmt.Errorf("failed to validate block: %w", err)
 	}
 
-	// Save block, update height, and update state atomically using batch
-	// context.TODO() should be reverted to the real context (e.ctx) once https://github.com/evstack/ev-node/issues/2274 has been implemented, this prevents context cancellation
-	batch, err := e.store.NewBatch(context.TODO())
+	batch, err := e.store.NewBatch(e.ctx)
 	if err != nil {
 		return fmt.Errorf("failed to create batch: %w", err)
 	}
