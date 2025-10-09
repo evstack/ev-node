@@ -33,13 +33,14 @@ type Node struct {
 
 // Config holds raft node configuration
 type Config struct {
-	NodeID      string
-	RaftAddr    string
-	RaftDir     string
-	Bootstrap   bool
-	Peers       []string
-	SnapCount   uint64
-	SendTimeout time.Duration
+	NodeID           string
+	RaftAddr         string
+	RaftDir          string
+	Bootstrap        bool
+	Peers            []string
+	SnapCount        uint64
+	SendTimeout      time.Duration
+	HeartbeatTimeout time.Duration
 }
 
 // FSM implements raft.FSM for block state
@@ -58,6 +59,8 @@ func NewNode(cfg *Config, clusterClient clusterClient, logger zerolog.Logger) (*
 	raftConfig := raft.DefaultConfig()
 	raftConfig.LocalID = raft.ServerID(cfg.NodeID)
 	raftConfig.LogLevel = "INFO"
+	raftConfig.HeartbeatTimeout = cfg.HeartbeatTimeout
+	raftConfig.LeaderLeaseTimeout = cfg.HeartbeatTimeout / 2
 
 	fsm := &FSM{
 		logger: logger.With().Str("component", "raft-fsm").Logger(),

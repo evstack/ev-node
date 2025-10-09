@@ -135,7 +135,8 @@ func TestLeaseFailoverE2E(t *testing.T) {
 	require.EventuallyWithT(t, func(collect *assert.CollectT) {
 		newLeader = clusterNodes.Leader(collect)
 	}, 5*time.Second, 200*time.Millisecond)
-	t.Logf("+++ New leader: %s within %s\n", newLeader, time.Since(leaderElectionStart))
+	leaderFailoverTime := time.Since(leaderElectionStart)
+	t.Logf("+++ New leader: %s within %s\n", newLeader, leaderFailoverTime)
 	require.NotEqual(t, oldLeader, newLeader)
 
 	_, blk2 := submitTxToURL(t, clusterNodes.Details(newLeader).ethClient(t))
@@ -164,6 +165,7 @@ func TestLeaseFailoverE2E(t *testing.T) {
 
 	// Cleanup processes
 	clusterNodes.killAll()
+	t.Logf("Completed leader change in: %s", leaderFailoverTime)
 }
 
 func initChain(t *testing.T, sut *SystemUnderTest, workDir string) {
@@ -222,7 +224,8 @@ func setupRaftSequencerNode(
 		"--evnode.raft.bootstrap="+strconv.FormatBool(bootstrap),
 		"--evnode.raft.peers="+strings.Join(raftPeers, ","),
 		"--evnode.raft.snap_count=10",
-		"--evnode.raft.send_timeout=5s",
+		"--evnode.raft.send_timeout=300ms",
+		"--evnode.raft.heartbeat_timeout=300ms",
 
 		"--rollkit.p2p.peers", p2pPeers,
 		"--rollkit.rpc.address", rpcAddr,
@@ -268,7 +271,11 @@ func submitTxToURL(t *testing.T, client *ethclient.Client) (common.Hash, uint64)
 
 func queryLastDAHeight(t *testing.T, startHeight uint64, jwtSecret string, daAddress string) uint64 {
 	t.Helper()
-	client, err := jsonrpc.NewClient(t.Context(), zerolog.New(zerolog.NewTestWriter(t)), daAddress, jwtSecret, 0, 1, 0)
+	logger := zerolog.Nop()
+	if testing.Verbose() {
+		logger = zerolog.New(zerolog.NewTestWriter(t)).Level(zerolog.DebugLevel)
+	}
+	client, err := jsonrpc.NewClient(t.Context(), logger, daAddress, jwtSecret, 0, 1, 0)
 	require.NoError(t, err)
 	defer client.Close()
 	var lastDABlock = startHeight
@@ -280,7 +287,7 @@ func queryLastDAHeight(t *testing.T, startHeight uint64, jwtSecret string, daAdd
 			}
 			t.Fatal("failed to get IDs:", err)
 		}
-		if len(res.IDs) != 0 {
+		if len(res.IDs) != 0 && testing.Verbose() {
 			t.Log("+++ DA block: ", lastDABlock, " ids: ", len(res.IDs))
 		}
 		lastDABlock++

@@ -146,12 +146,13 @@ func initRaftNode(nodeConfig config.Config, logger zerolog.Logger) (*raftpkg.Nod
 	}
 
 	raftCfg := &raftpkg.Config{
-		NodeID:      nodeConfig.Raft.NodeID,
-		RaftAddr:    nodeConfig.Raft.RaftAddr,
-		RaftDir:     raftDir,
-		Bootstrap:   nodeConfig.Raft.Bootstrap,
-		SnapCount:   nodeConfig.Raft.SnapCount,
-		SendTimeout: nodeConfig.Raft.SendTimeout,
+		NodeID:           nodeConfig.Raft.NodeID,
+		RaftAddr:         nodeConfig.Raft.RaftAddr,
+		RaftDir:          raftDir,
+		Bootstrap:        nodeConfig.Raft.Bootstrap,
+		SnapCount:        nodeConfig.Raft.SnapCount,
+		SendTimeout:      nodeConfig.Raft.SendTimeout,
+		HeartbeatTimeout: nodeConfig.Raft.HeartbeatTimeout,
 	}
 
 	if nodeConfig.Raft.Peers != "" {
