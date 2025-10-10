@@ -205,7 +205,6 @@ func (c *EngineClient) ExecuteTxs(ctx context.Context, txs [][]byte, blockHeight
 			Interface("forkchoiceState", args).
 			Interface("payloadAttributes", evPayloadAttrs).
 			Uint64("blockHeight", blockHeight).
-			Str("status", string(forkchoiceResult.PayloadStatus.Status)).
 			Msg("returned nil PayloadID")
 
 		return nil, 0, fmt.Errorf("returned nil PayloadID - (status: %s, latestValidHash: %s)",
