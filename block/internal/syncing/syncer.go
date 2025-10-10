@@ -454,9 +454,9 @@ func (s *Syncer) trySyncNextBlock(event *common.DAHeightEvent) error {
 	s.cache.PruneCache(newState.LastBlockHeight, cache.CacheRetentionBlocks)
 
 	// Mark as seen
-	s.cache.SetHeaderSeen(header.Hash().String())
+	s.cache.SetHeaderSeen(header.Hash().String(), newState.LastBlockHeight)
 	if !bytes.Equal(header.DataHash, common.DataHashForEmptyTxs) {
-		s.cache.SetDataSeen(data.DACommitment().String())
+		s.cache.SetDataSeen(data.DACommitment().String(), newState.LastBlockHeight)
 	}
 
 	return nil

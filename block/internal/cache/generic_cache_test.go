@@ -37,8 +37,8 @@ func TestCache_SaveLoad_ErrorPaths(t *testing.T) {
 	for i := 0; i < 5; i++ {
 		v := &testItem{V: i}
 		c.setItem(uint64(i), v)
-		c.setSeen(fmt.Sprintf("s%d", i))
-		c.setDAIncluded(fmt.Sprintf("d%d", i), uint64(i))
+		c.setSeen(fmt.Sprintf("s%d", i), uint64(i))
+		c.setDAIncluded(fmt.Sprintf("d%d", i), uint64(i), uint64(i))
 	}
 
 	// Normal save/load roundtrip
@@ -104,8 +104,8 @@ func TestCache_PruneOldEntries(t *testing.T) {
 	// Add items at various heights
 	for i := uint64(1); i <= 100; i++ {
 		c.setItem(i, &testItem{V: int(i)})
-		c.setSeen(fmt.Sprintf("hash-%d", i))
-		c.setDAIncluded(fmt.Sprintf("hash-%d", i), i)
+		c.setSeen(fmt.Sprintf("hash-%d", i), i)
+		c.setDAIncluded(fmt.Sprintf("hash-%d", i), i, i)
 	}
 
 	// Prune everything below height 50 with retention of 10
@@ -126,8 +126,8 @@ func TestCache_PruneOldEntries(t *testing.T) {
 		}
 	}
 
-	// Verify hashes are pruned (we can't directly verify which hashes remain,
-	// but we can check that some operations still work)
+	// Note: Hashes are currently NOT pruned - this is a known memory leak
+	// We verify that old hashes still exist to document current behavior
 	if !c.isSeen("hash-50") {
 		t.Error("expected hash-50 to still be marked as seen")
 	}
@@ -195,4 +195,79 @@ func TestCache_PruneOldEntries_EdgeCases(t *testing.T) {
 			}
 		}
 	})
+}
+
+// TestCache_HashMapPruning verifies that hash maps are properly pruned
+// to prevent memory leaks in long-running chains.
+func TestCache_HashMapPruning(t *testing.T) {
+	c := NewCache[testItem]()
+
+	// Simulate a long-running chain with 10,000 blocks
+	const totalBlocks = 10000
+	const retentionWindow = 1000
+
+	// Track how many hashes we add
+	hashCount := 0
+
+	for i := uint64(1); i <= totalBlocks; i++ {
+		c.setItem(i, &testItem{V: int(i)})
+		c.setSeen(fmt.Sprintf("hash-%d", i), i)
+		c.setDAIncluded(fmt.Sprintf("hash-%d", i), i, i)
+		hashCount++
+
+		// Prune every 100 blocks to simulate real usage
+		if i%100 == 0 && i > retentionWindow {
+			c.pruneOldEntries(i, retentionWindow)
+		}
+	}
+
+	// Count how many items remain in itemsByHeight (should be ~1000)
+	itemCount := 0
+	c.itemsByHeight.Range(func(k, v any) bool {
+		itemCount++
+		return true
+	})
+
+	// Count how many hashes remain (this will be ALL 10,000 - MEMORY LEAK!)
+	seenHashCount := 0
+	c.hashes.Range(func(k, v any) bool {
+		seenHashCount++
+		return true
+	})
+
+	daIncludedCount := 0
+	c.daIncluded.Range(func(k, v any) bool {
+		daIncludedCount++
+		return true
+	})
+
+	t.Logf("After processing %d blocks with retention %d:", totalBlocks, retentionWindow)
+	t.Logf("  itemsByHeight count: %d (expected ~%d)", itemCount, retentionWindow)
+	t.Logf("  hashes count: %d (expected ~%d)", seenHashCount, retentionWindow)
+	t.Logf("  daIncluded count: %d (expected ~%d)", daIncludedCount, retentionWindow)
+
+	// Verify all maps are pruned correctly
+	maxAllowed := int(retentionWindow * 1.1) // Allow 10% margin
+
+	if itemCount > maxAllowed {
+		t.Errorf("itemsByHeight not pruned correctly: got %d, want ~%d", itemCount, retentionWindow)
+	}
+
+	if seenHashCount > maxAllowed {
+		t.Errorf("hashes not pruned correctly: got %d, want ~%d", seenHashCount, retentionWindow)
+	}
+
+	if daIncludedCount > maxAllowed {
+		t.Errorf("daIncluded not pruned correctly: got %d, want ~%d", daIncludedCount, retentionWindow)
+	}
+
+	// Calculate memory saved by pruning
+	bytesPerEntry := 100 // Approximate bytes per hash entry
+	expectedWithoutPruning := hashCount
+	actualEntries := seenHashCount
+	savedEntries := expectedWithoutPruning - actualEntries
+	savedMB := float64(savedEntries*bytesPerEntry) / (1024 * 1024)
+	t.Logf("Memory saved by pruning: %.2f MB", savedMB)
+	t.Logf("At 1 block/sec, pruning prevents %.2f MB/month memory growth",
+		savedMB*30*24*60*60/float64(totalBlocks))
 }
