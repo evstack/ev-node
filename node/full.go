@@ -102,12 +102,13 @@ func newFullNode(
 			return nil, fmt.Errorf("failed to initialize raft node: %w", err)
 		}
 		leaderElection = raftNode
+		nodeConfig.P2P.Peers = "" // raft cluster provides most up to date blocks. No need for p2p peers.
 	case nodeConfig.Node.Aggregator && !nodeConfig.Raft.Enable:
 		leaderElection = AlwaysLeader{}
 	case !nodeConfig.Node.Aggregator:
 		leaderElection = AlwaysFollower{}
 	default:
-		return nil, fmt.Errorf("invalid node configuration")
+		return nil, fmt.Errorf("raft config must be used in sequencer setup only")
 	}
 
 	node := &FullNode{
