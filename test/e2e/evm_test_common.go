@@ -57,6 +57,13 @@ func getAvailablePort() (int, error) {
 	return addr.Port, nil
 }
 
+func mustGetAvailablePort(t *testing.T) int {
+	t.Helper()
+	port, err := getAvailablePort()
+	require.NoError(t, err)
+	return port
+}
+
 // TestEndpoints holds unique port numbers for each test instance
 type TestEndpoints struct {
 	DAPort              string
@@ -167,12 +174,6 @@ func generateTestEndpoints() (*TestEndpoints, error) {
 
 // Common constants used across EVM tests
 const (
-	// Port configurations
-	DAPort         = "7980"
-	RollkitRPCPort = "7331"
-
-	DAAddress         = "http://127.0.0.1:" + DAPort
-	RollkitRPCAddress = "http://127.0.0.1:" + RollkitRPCPort
 
 	// Test configuration
 	DefaultBlockTime   = "150ms"
@@ -186,6 +187,8 @@ const (
 	TestToAddress  = "0x944fDcD1c868E3cC566C78023CcB38A32cDA836E"
 	TestPassphrase = "secret"
 )
+
+var DefaultDANamespace = DefaultChainID
 
 const (
 	SlowPollingInterval = 250 * time.Millisecond // Reduced from 500ms
@@ -310,6 +313,7 @@ func setupSequencerNode(t *testing.T, sut *SystemUnderTest, sequencerHome, jwtSe
 	// Use helper methods to get complete URLs
 	args := []string{
 		"start",
+		"--evnode.log.format", "json",
 		"--evm.jwt-secret-file", jwtSecretFile,
 		"--evm.genesis-hash", genesisHash,
 		"--evnode.node.block_time", DefaultBlockTime,
@@ -351,6 +355,7 @@ func setupSequencerNodeLazy(t *testing.T, sut *SystemUnderTest, sequencerHome, j
 	// Use helper methods to get complete URLs
 	args := []string{
 		"start",
+		"--evnode.log.format", "json",
 		"--evm.jwt-secret-file", jwtSecretFile,
 		"--evm.genesis-hash", genesisHash,
 		"--evnode.node.block_time", DefaultBlockTime,
@@ -410,6 +415,7 @@ func setupFullNode(t *testing.T, sut *SystemUnderTest, fullNodeHome, sequencerHo
 	// Use helper methods to get complete URLs
 	args := []string{
 		"start",
+		"--evnode.log.format", "json",
 		"--home", fullNodeHome,
 		"--evm.jwt-secret-file", fullNodeJwtSecretFile,
 		"--evm.genesis-hash", genesisHash,
@@ -443,21 +449,25 @@ var globalNonce uint64 = 0
 //
 // This is used in full node sync tests to verify that both nodes
 // include the same transaction in the same block number.
-func submitTransactionAndGetBlockNumber(t *testing.T, sequencerClient *ethclient.Client) (common.Hash, uint64) {
+func submitTransactionAndGetBlockNumber(t *testing.T, sequencerClients ...*ethclient.Client) (common.Hash, uint64) {
 	t.Helper()
 
 	// Submit transaction to sequencer EVM with unique nonce
 	tx := evm.GetRandomTransaction(t, TestPrivateKey, TestToAddress, DefaultChainID, DefaultGasLimit, &globalNonce)
-	require.NoError(t, sequencerClient.SendTransaction(context.Background(), tx))
+	for _, c := range sequencerClients {
+		require.NoError(t, c.SendTransaction(context.Background(), tx))
+	}
 
 	// Wait for transaction to be included and get block number
 	ctx := context.Background()
 	var txBlockNumber uint64
 	require.Eventually(t, func() bool {
-		receipt, err := sequencerClient.TransactionReceipt(ctx, tx.Hash())
-		if err == nil && receipt != nil && receipt.Status == 1 {
-			txBlockNumber = receipt.BlockNumber.Uint64()
-			return true
+		for _, c := range sequencerClients {
+			receipt, err := c.TransactionReceipt(ctx, tx.Hash())
+			if err == nil && receipt != nil && receipt.Status == 1 {
+				txBlockNumber = receipt.BlockNumber.Uint64()
+				return true
+			}
 		}
 		return false
 	}, 8*time.Second, SlowPollingInterval)
@@ -614,6 +624,7 @@ func restartDAAndSequencer(t *testing.T, sut *SystemUnderTest, sequencerHome, jw
 	jwtSecretFile := filepath.Join(sequencerHome, "jwt-secret.hex")
 	sut.ExecCmd(evmSingleBinaryPath,
 		"start",
+		"--evnode.log.format", "json",
 		"--evm.jwt-secret-file", jwtSecretFile,
 		"--evm.genesis-hash", genesisHash,
 		"--evnode.node.block_time", DefaultBlockTime,
@@ -661,6 +672,7 @@ func restartDAAndSequencerLazy(t *testing.T, sut *SystemUnderTest, sequencerHome
 	jwtSecretFile := filepath.Join(sequencerHome, "jwt-secret.hex")
 	sut.ExecCmd(evmSingleBinaryPath,
 		"start",
+		"--evnode.log.format", "json",
 		"--evm.jwt-secret-file", jwtSecretFile,
 		"--evm.genesis-hash", genesisHash,
 		"--evnode.node.block_time", DefaultBlockTime,

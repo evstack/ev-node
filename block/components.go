@@ -137,6 +137,7 @@ func NewSyncComponents(
 	logger zerolog.Logger,
 	metrics *Metrics,
 	blockOpts BlockOptions,
+	raftNode common.RaftNode,
 ) (*Components, error) {
 	logger.Info().Msg("Starting in sync-mode")
 	cacheManager, err := cache.NewManager(config, store, logger)
@@ -160,6 +161,7 @@ func NewSyncComponents(
 		logger,
 		blockOpts,
 		errorCh,
+		raftNode,
 	)
 
 	// Create DA submitter for sync nodes (no signer, only DA inclusion processing)
@@ -201,6 +203,7 @@ func NewAggregatorComponents(
 	logger zerolog.Logger,
 	metrics *Metrics,
 	blockOpts BlockOptions,
+	raftNode common.RaftNode,
 ) (*Components, error) {
 	logger.Info().Msg("Starting in aggregator-mode")
 	cacheManager, err := cache.NewManager(config, store, logger)
@@ -225,6 +228,7 @@ func NewAggregatorComponents(
 		logger,
 		blockOpts,
 		errorCh,
+		raftNode,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create executor: %w", err)

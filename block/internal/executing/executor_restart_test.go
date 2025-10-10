@@ -66,6 +66,7 @@ func TestExecutor_RestartUsesPendingHeader(t *testing.T) {
 		zerolog.Nop(),
 		common.DefaultBlockOptions(),
 		make(chan error, 1),
+		nil,
 	)
 	require.NoError(t, err)
 
@@ -185,6 +186,7 @@ func TestExecutor_RestartUsesPendingHeader(t *testing.T) {
 		zerolog.Nop(),
 		common.DefaultBlockOptions(),
 		make(chan error, 1),
+		nil,
 	)
 	require.NoError(t, err)
 
@@ -283,6 +285,7 @@ func TestExecutor_RestartNoPendingHeader(t *testing.T) {
 		zerolog.Nop(),
 		common.DefaultBlockOptions(),
 		make(chan error, 1),
+		nil,
 	)
 	require.NoError(t, err)
 
@@ -335,6 +338,7 @@ func TestExecutor_RestartNoPendingHeader(t *testing.T) {
 		zerolog.Nop(),
 		common.DefaultBlockOptions(),
 		make(chan error, 1),
+		nil,
 	)
 	require.NoError(t, err)
 
