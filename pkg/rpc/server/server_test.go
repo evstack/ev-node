@@ -377,7 +377,7 @@ func TestHealthLiveEndpoint(t *testing.T) {
 	// Create the service handler
 	logger := zerolog.Nop()
 	testConfig := config.DefaultConfig()
-	handler, err := NewServiceHandler(mockStore, mockP2PManager, nil, logger, testConfig, nil)
+	handler, err := NewServiceHandler(mockStore, mockP2PManager, nil, logger, testConfig, nil, nil)
 	assert.NoError(err)
 	assert.NotNil(handler)
 
@@ -438,7 +438,7 @@ func TestHealthReadyEndpoint(t *testing.T) {
 			mockP2P.On("GetPeers").Return(peers, nil)
 
 			bestKnown := func() uint64 { return tc.bestKnown }
-			handler, err := NewServiceHandler(mockStore, mockP2P, nil, logger, testConfig, bestKnown)
+			handler, err := NewServiceHandler(mockStore, mockP2P, nil, logger, testConfig, bestKnown, nil)
 			require.NoError(t, err)
 			server := httptest.NewServer(handler)
 			defer server.Close()

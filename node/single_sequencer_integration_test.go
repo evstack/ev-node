@@ -230,7 +230,7 @@ func TestStateRecovery(t *testing.T) {
 
 	// Set up one sequencer
 	config := getTestConfig(t, 1)
-	executor, sequencer, dac, p2pClient, ds, _, stopDAHeightTicker := createTestComponents(t, config)
+	executor, sequencer, dac, ds, _, stopDAHeightTicker := createTestComponents(t, config)
 	node, cleanup := createNodeWithCustomComponents(t, config, executor, sequencer, dac, p2pClient, ds, stopDAHeightTicker)
 	defer cleanup()
 
@@ -255,7 +255,7 @@ func TestStateRecovery(t *testing.T) {
 	shutdownAndWait(t, []context.CancelFunc{cancel}, &runningWg, 60*time.Second)
 
 	// Create a new node instance using the same components
-	executor, sequencer, dac, p2pClient, _, _, stopDAHeightTicker = createTestComponents(t, config)
+	executor, sequencer, dac, _, _, stopDAHeightTicker = createTestComponents(t, config)
 	node, cleanup = createNodeWithCustomComponents(t, config, executor, sequencer, dac, p2pClient, ds, stopDAHeightTicker)
 	defer cleanup()
 
@@ -312,7 +312,7 @@ func TestBatchQueueThrottlingWithDAFailure(t *testing.T) {
 	config.DA.BlockTime = evconfig.DurationWrapper{Duration: 100 * time.Millisecond} // Longer DA time to ensure blocks are produced first
 
 	// Create test components
-	executor, sequencer, dummyDA, p2pClient, ds, _, stopDAHeightTicker := createTestComponents(t, config)
+	executor, sequencer, dummyDA, ds, _, stopDAHeightTicker := createTestComponents(t, config)
 	defer stopDAHeightTicker()
 
 	// Cast executor to DummyExecutor so we can inject transactions

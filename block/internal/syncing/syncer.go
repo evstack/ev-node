@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"reflect"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -62,8 +63,9 @@ type Syncer struct {
 	errorCh    chan<- error // Channel to report critical execution client failures
 
 	// Handlers
-	daRetriever daRetriever
-	p2pHandler  p2pHandler
+	daRetriever   daRetriever
+	p2pHandler    p2pHandler
+	raftRetriever *raftRetriever
 
 	// Logging
 	logger zerolog.Logger
@@ -88,8 +90,9 @@ func NewSyncer(
 	logger zerolog.Logger,
 	options common.BlockOptions,
 	errorCh chan<- error,
+	raftNode common.RaftNode,
 ) *Syncer {
-	return &Syncer{
+	s := &Syncer{
 		store:       store,
 		exec:        exec,
 		da:          da,
@@ -106,6 +109,10 @@ func NewSyncer(
 		errorCh:     errorCh,
 		logger:      logger.With().Str("component", "syncer").Logger(),
 	}
+	if !reflect.ValueOf(raftNode).IsNil() {
+		s.raftRetriever = newRaftRetriever(raftNode, genesis, logger, eventProcessorFn(s.pipeEvent))
+	}
+	return s
 }
 
 // Start begins the syncing component
@@ -120,6 +127,12 @@ func (s *Syncer) Start(ctx context.Context) error {
 	// Initialize handlers
 	s.daRetriever = NewDARetriever(s.da, s.cache, s.config, s.genesis, s.logger)
 	s.p2pHandler = NewP2PHandler(s.headerStore, s.dataStore, s.cache, s.genesis, s.logger)
+
+	if s.raftRetriever != nil {
+		if err := s.raftRetriever.Start(s.ctx); err != nil {
+			return fmt.Errorf("start raftRetriever: %w", err)
+		}
+	}
 
 	// Start main processing loop
 	s.wg.Add(1)
@@ -141,12 +154,28 @@ func (s *Syncer) Start(ctx context.Context) error {
 
 // Stop shuts down the syncing component
 func (s *Syncer) Stop() error {
-	if s.cancel != nil {
-		s.cancel()
+	if s.cancel == nil {
+		return nil
 	}
+	s.cancel()
 	s.wg.Wait()
 	s.logger.Info().Msg("syncer stopped")
+	close(s.heightInCh)
+	s.cancel = nil
 	return nil
+}
+
+func (s *Syncer) HasUnprocessedEvents() bool {
+	return len(s.heightInCh) != 0 || func() bool {
+		currentHeight, err := s.store.Height(s.ctx)
+		if err != nil {
+			s.logger.Error().Err(err).Msg("failed to get current height")
+			return false
+		}
+		return s.headerStore.Height() > currentHeight ||
+			s.dataStore.Height() > currentHeight ||
+			s.raftRetriever != nil && s.raftRetriever.Height() > currentHeight
+	}()
 }
 
 // GetLastState returns the current state
@@ -217,8 +246,10 @@ func (s *Syncer) processLoop() {
 		select {
 		case <-s.ctx.Done():
 			return
-		case heightEvent := <-s.heightInCh:
-			s.processHeightEvent(&heightEvent)
+		case heightEvent, ok := <-s.heightInCh:
+			if ok {
+				s.processHeightEvent(&heightEvent)
+			}
 		}
 	}
 }
@@ -301,10 +332,8 @@ func (s *Syncer) tryFetchFromDA(nextDARequestAt *time.Time) {
 
 	// Process DA events
 	for _, event := range events {
-		select {
-		case s.heightInCh <- event:
-		default:
-			s.cache.SetPendingEvent(event.Header.Height(), &event)
+		if err := s.pipeEvent(s.ctx, event); err != nil {
+			return
 		}
 	}
 
@@ -333,6 +362,19 @@ func (s *Syncer) tryFetchFromP2P() {
 	if newDataHeight != newHeaderHeight && newDataHeight > currentHeight {
 		s.p2pHandler.ProcessDataRange(s.ctx, currentHeight+1, newDataHeight, s.heightInCh)
 	}
+}
+
+func (s *Syncer) pipeEvent(ctx context.Context, event common.DAHeightEvent) error {
+	select {
+	case s.heightInCh <- event:
+		return nil
+	case <-ctx.Done():
+		s.cache.SetPendingEvent(event.Header.Height(), &event)
+		return ctx.Err()
+	default:
+		s.cache.SetPendingEvent(event.Header.Height(), &event)
+	}
+	return nil
 }
 
 func (s *Syncer) processHeightEvent(event *common.DAHeightEvent) {
