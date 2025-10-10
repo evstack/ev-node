@@ -11,6 +11,7 @@ import (
 
 	goheader "github.com/celestiaorg/go-header"
 	"github.com/rs/zerolog"
+	"golang.org/x/sync/errgroup"
 
 	"github.com/evstack/ev-node/block/internal/cache"
 	"github.com/evstack/ev-node/block/internal/common"
@@ -365,8 +366,9 @@ func (s *Syncer) processHeightEvent(event *common.DAHeightEvent) {
 		return
 	}
 
-	// LastDataHash must be gotten from store when the data hash is empty.
-	if bytes.Equal(event.Header.DataHash, common.DataHashForEmptyTxs) && currentHeight > 0 {
+	// Last data must be got from store if the event comes from DA and the data hash is empty.
+	// When if the event comes from P2P, the sequencer and then all the full nodes contains the data.
+	if event.Source == common.SourceDA && bytes.Equal(event.Header.DataHash, common.DataHashForEmptyTxs) {
 		_, lastData, err := s.store.GetBlockData(s.ctx, currentHeight)
 		if err != nil {
 			s.logger.Error().Err(err).Msg("failed to get last data")
@@ -383,6 +385,16 @@ func (s *Syncer) processHeightEvent(event *common.DAHeightEvent) {
 			s.cache.SetPendingEvent(height, event)
 		}
 		return
+	}
+
+	// only save to p2p stores if the event came from DA
+	if event.Source == common.SourceDA {
+		g, ctx := errgroup.WithContext(s.ctx)
+		g.Go(func() error { return s.headerStore.Append(ctx, event.Header) })
+		g.Go(func() error { return s.dataStore.Append(ctx, event.Data) })
+		if err := g.Wait(); err != nil {
+			s.logger.Error().Err(err).Msg("failed to append event header and/or data to p2p store")
+		}
 	}
 }
 
@@ -578,6 +590,7 @@ func (s *Syncer) processPendingEvents() {
 			Header:   event.Header,
 			Data:     event.Data,
 			DaHeight: event.DaHeight,
+			Source:   event.Source,
 		}
 
 		select {
