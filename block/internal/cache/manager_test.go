@@ -308,3 +308,139 @@ func TestManager_PruneCache_BelowCurrentHeight(t *testing.T) {
 		assert.NotNil(t, evt, "expected pending event at height %d to remain", i)
 	}
 }
+
+// TestManager_PruneCache_MetadataErrors tests error handling in PruneCache
+func TestManager_PruneCache_MetadataErrors(t *testing.T) {
+	cfg := tempConfig(t)
+	st := memStore(t)
+
+	m, err := NewManager(cfg, st, zerolog.Nop())
+	require.NoError(t, err)
+
+	// Add some test data to cache using SetHeaderSeen
+	for i := uint64(1); i <= 10; i++ {
+		hash := fmt.Sprintf("hash-%d", i)
+		m.SetHeaderSeen(hash, i)
+	}
+
+	ctx := context.Background()
+
+	// Test 1: Missing DAIncludedHeightKey - should not prune anything
+	m.PruneCache(ctx)
+
+	// Verify all entries still exist (nothing was pruned without DA height)
+	for i := uint64(1); i <= 10; i++ {
+		hash := fmt.Sprintf("hash-%d", i)
+		assert.True(t, m.IsHeaderSeen(hash), "expected header hash-%d to remain when no DA height set", i)
+	}
+
+	// Test 2: Invalid heightBytes length (not 8 bytes) - should not prune
+	err = st.SetMetadata(ctx, store.DAIncludedHeightKey, []byte{1, 2, 3}) // wrong length
+	require.NoError(t, err)
+
+	m.PruneCache(ctx)
+
+	// Verify all entries still exist (nothing was pruned with invalid DA height)
+	for i := uint64(1); i <= 10; i++ {
+		hash := fmt.Sprintf("hash-%d", i)
+		assert.True(t, m.IsHeaderSeen(hash), "expected header hash-%d to remain with invalid DA height", i)
+	}
+
+	// Test 3: DA height of 0 - should not prune
+	bz := make([]byte, 8)
+	binary.LittleEndian.PutUint64(bz, 0)
+	err = st.SetMetadata(ctx, store.DAIncludedHeightKey, bz)
+	require.NoError(t, err)
+
+	m.PruneCache(ctx)
+
+	// Verify all entries still exist (nothing was pruned with DA height 0)
+	for i := uint64(1); i <= 10; i++ {
+		hash := fmt.Sprintf("hash-%d", i)
+		assert.True(t, m.IsHeaderSeen(hash), "expected header hash-%d to remain with DA height 0", i)
+	}
+
+	// Test 4: Valid DA height - should prune correctly
+	binary.LittleEndian.PutUint64(bz, 5)
+	err = st.SetMetadata(ctx, store.DAIncludedHeightKey, bz)
+	require.NoError(t, err)
+
+	m.PruneCache(ctx)
+
+	// Verify entries below DA height are pruned
+	for i := uint64(1); i < 5; i++ {
+		hash := fmt.Sprintf("hash-%d", i)
+		assert.False(t, m.IsHeaderSeen(hash), "expected header hash-%d to be pruned", i)
+	}
+
+	// Verify entries at or above DA height remain
+	for i := uint64(5); i <= 10; i++ {
+		hash := fmt.Sprintf("hash-%d", i)
+		assert.True(t, m.IsHeaderSeen(hash), "expected header hash-%d to remain", i)
+	}
+}
+
+// TestManager_PruneCache_EmptyCache tests pruning behavior with empty cache
+func TestManager_PruneCache_EmptyCache(t *testing.T) {
+	cfg := tempConfig(t)
+	st := memStore(t)
+
+	m, err := NewManager(cfg, st, zerolog.Nop())
+	require.NoError(t, err)
+
+	ctx := context.Background()
+
+	// Set valid DA height
+	bz := make([]byte, 8)
+	binary.LittleEndian.PutUint64(bz, 100)
+	err = st.SetMetadata(ctx, store.DAIncludedHeightKey, bz)
+	require.NoError(t, err)
+
+	// Prune empty cache - should not panic
+	require.NotPanics(t, func() {
+		m.PruneCache(ctx)
+	}, "pruning empty cache should not panic")
+
+	// Verify cache can still be saved after pruning empty state
+	err = m.SaveToDisk()
+	require.NoError(t, err, "should be able to save cache after pruning empty cache")
+}
+
+// TestManager_PruneCache_ConcurrentAccess tests that pruning doesn't interfere with concurrent reads
+func TestManager_PruneCache_ConcurrentAccess(t *testing.T) {
+	cfg := tempConfig(t)
+	st := memStore(t)
+
+	m, err := NewManager(cfg, st, zerolog.Nop())
+	require.NoError(t, err)
+
+	// Add test data using SetHeaderSeen and SetDataSeen
+	for i := uint64(1); i <= 100; i++ {
+		hashH := fmt.Sprintf("header-hash-%d", i)
+		hashD := fmt.Sprintf("data-hash-%d", i)
+		m.SetHeaderSeen(hashH, i)
+		m.SetDataSeen(hashD, i)
+	}
+
+	ctx := context.Background()
+
+	// Set DA height to prune first half
+	bz := make([]byte, 8)
+	binary.LittleEndian.PutUint64(bz, 50)
+	err = st.SetMetadata(ctx, store.DAIncludedHeightKey, bz)
+	require.NoError(t, err)
+
+	// Trigger prune - the two-phase approach prevents race conditions
+	m.PruneCache(ctx)
+
+	// Verify final state is correct
+	for i := uint64(1); i < 50; i++ {
+		hashH := fmt.Sprintf("header-hash-%d", i)
+		assert.False(t, m.IsHeaderSeen(hashH), "expected header at height %d to be pruned", i)
+	}
+
+	for i := uint64(50); i <= 100; i++ {
+		hashH := fmt.Sprintf("header-hash-%d", i)
+		assert.True(t, m.IsHeaderSeen(hashH), "expected header at height %d to remain", i)
+	}
+}

@@ -268,6 +268,20 @@ func (m *implementation) LoadFromDisk() error {
 	return nil
 }
 
+// PruneCache removes cache entries below the DA included height.
+//
+// Safety invariants:
+// 1. Entries below DA included height are already persisted on DA
+// 2. We never need to re-submit these entries
+// 3. DA included height only moves forward (monotonic)
+//
+// Memory behavior:
+// If DA submissions are delayed (network issues, DA downtime), the cache will grow
+// until DA catches up. This is intentional - we cannot prune entries that haven't
+// been safely persisted to DA. Ensure monitoring is in place for cache size metrics.
+//
+// The pruning operation is performed periodically (every 20 minutes) by the executor
+// and syncer components to prevent unbounded memory growth in normal operation.
 func (m *implementation) PruneCache(ctx context.Context) {
 	// Get DA included height from store - only prune up to this height
 	// to avoid clearing cache entries that are still pending DA submission or inclusion

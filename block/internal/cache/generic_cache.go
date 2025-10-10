@@ -117,33 +117,44 @@ func (c *Cache[T]) setDAIncluded(hash string, daHeight uint64, blockHeight uint6
 	c.heightByHash.Store(hash, blockHeight)
 }
 
-// removeDAIncluded removes the DA-included status of the hash
+// removeDAIncluded removes the DA-included status of the hash.
+//
+// Note: We keep the heightByHash entry because:
+// 1. The hash may still be present in the hashes map (setSeen was called)
+// 2. heightByHash is needed for pruning to work correctly for both hashes and daIncluded
+// 3. Orphaned heightByHash entries are cleaned up during pruning when all references are gone
 func (c *Cache[T]) removeDAIncluded(hash string) {
 	c.daIncluded.Delete(hash)
-	// Note: We keep the heightByHash entry for the hash map, as it may still be in hashes
 }
 
 // pruneOldEntries removes entries below the current height.
 // It keeps entries at heights >= currentHeight.
 // This prevents unbounded memory growth as the chain progresses.
+//
+// Thread safety: Uses a two-phase approach to avoid race conditions:
+// Phase 1: Collect all keys to delete (read-only)
+// Phase 2: Delete collected keys (write-only)
+// This ensures that entries added between phases don't result in orphaned references.
 func (c *Cache[T]) pruneOldEntries(currentHeight uint64) {
 	if currentHeight == 0 {
 		return
 	}
 
-	// Prune items by height
+	// Phase 1: Collect keys to delete
+	var itemsToDelete []uint64
+	var hashesToDelete []string
+
 	c.itemsByHeight.Range(func(k, v any) bool {
 		height, ok := k.(uint64)
 		if !ok {
 			return true
 		}
 		if height < currentHeight {
-			c.itemsByHeight.Delete(height)
+			itemsToDelete = append(itemsToDelete, height)
 		}
 		return true
 	})
 
-	// Prune hash maps using the reverse mapping
 	c.heightByHash.Range(func(k, v any) bool {
 		hash, ok := k.(string)
 		if !ok {
@@ -154,12 +165,21 @@ func (c *Cache[T]) pruneOldEntries(currentHeight uint64) {
 			return true
 		}
 		if height < currentHeight {
-			c.hashes.Delete(hash)
-			c.daIncluded.Delete(hash)
-			c.heightByHash.Delete(hash)
+			hashesToDelete = append(hashesToDelete, hash)
 		}
 		return true
 	})
+
+	// Phase 2: Delete collected keys
+	for _, height := range itemsToDelete {
+		c.itemsByHeight.Delete(height)
+	}
+
+	for _, hash := range hashesToDelete {
+		c.hashes.Delete(hash)
+		c.daIncluded.Delete(hash)
+		c.heightByHash.Delete(hash)
+	}
 }
 
 const (
