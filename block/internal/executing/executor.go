@@ -170,9 +170,7 @@ func (e *Executor) cachePruneLoop() {
 		case <-e.ctx.Done():
 			return
 		case <-ticker.C:
-			currentState := e.getLastState()
-			e.cache.PruneCache(currentState.LastBlockHeight, cache.CacheRetentionBlocks)
-			e.logger.Debug().Uint64("height", currentState.LastBlockHeight).Msg("pruned cache")
+			e.cache.PruneCache(e.ctx)
 		}
 	}
 }

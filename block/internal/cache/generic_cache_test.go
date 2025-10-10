@@ -108,59 +108,45 @@ func TestCache_PruneOldEntries(t *testing.T) {
 		c.setDAIncluded(fmt.Sprintf("hash-%d", i), i, i)
 	}
 
-	// Prune everything below height 50 with retention of 10
-	// This should keep heights 40-100 (61 items)
-	c.pruneOldEntries(50, 10)
+	// Prune everything below height 50 (DA included height)
+	// This should keep only heights >= 50
+	c.pruneOldEntries(50)
 
-	// Verify items below height 40 are removed
-	for i := uint64(1); i < 40; i++ {
+	// Verify items below height 50 are removed
+	for i := uint64(1); i < 50; i++ {
 		if item := c.getItem(i); item != nil {
 			t.Errorf("expected item at height %d to be pruned, but found %v", i, item)
 		}
 	}
 
-	// Verify items >= 40 are kept
-	for i := uint64(40); i <= 100; i++ {
+	// Verify items >= 50 are kept
+	for i := uint64(50); i <= 100; i++ {
 		if item := c.getItem(i); item == nil {
 			t.Errorf("expected item at height %d to be kept, but it was pruned", i)
 		}
 	}
 
-	// Note: Hashes are currently NOT pruned - this is a known memory leak
-	// We verify that old hashes still exist to document current behavior
-	if !c.isSeen("hash-50") {
-		t.Error("expected hash-50 to still be marked as seen")
+	// Verify that hashes are pruned correctly
+	if c.isSeen("hash-10") {
+		t.Error("expected hash-10 to be pruned")
 	}
-	if _, ok := c.getDAIncluded("hash-50"); !ok {
-		t.Error("expected hash-50 to still have DA inclusion")
+	if !c.isSeen("hash-50") {
+		t.Error("expected hash-50 to remain (at DA included height)")
+	}
+	if !c.isSeen("hash-51") {
+		t.Error("expected hash-51 to still be marked as seen")
 	}
 }
 
 // TestCache_PruneOldEntries_EdgeCases tests edge cases for pruning
 func TestCache_PruneOldEntries_EdgeCases(t *testing.T) {
-	t.Run("prune with current height less than retention", func(t *testing.T) {
-		c := NewCache[testItem]()
-		for i := uint64(1); i <= 5; i++ {
-			c.setItem(i, &testItem{V: int(i)})
-		}
-		// With retention of 10 and current height 5, nothing should be pruned
-		c.pruneOldEntries(5, 10)
-
-		// All items should remain
-		for i := uint64(1); i <= 5; i++ {
-			if item := c.getItem(i); item == nil {
-				t.Errorf("expected item at height %d to be kept", i)
-			}
-		}
-	})
-
-	t.Run("prune with zero retention", func(t *testing.T) {
+	t.Run("prune below current height", func(t *testing.T) {
 		c := NewCache[testItem]()
 		for i := uint64(1); i <= 10; i++ {
 			c.setItem(i, &testItem{V: int(i)})
 		}
-		// With zero retention, only items >= current height should remain
-		c.pruneOldEntries(5, 0)
+		// Prune at height 5, only items >= 5 should remain
+		c.pruneOldEntries(5)
 
 		for i := uint64(1); i < 5; i++ {
 			if item := c.getItem(i); item != nil {
@@ -177,7 +163,7 @@ func TestCache_PruneOldEntries_EdgeCases(t *testing.T) {
 	t.Run("prune empty cache", func(t *testing.T) {
 		c := NewCache[testItem]()
 		// Should not panic
-		c.pruneOldEntries(100, 10)
+		c.pruneOldEntries(100)
 	})
 
 	t.Run("prune with current height zero", func(t *testing.T) {
@@ -186,7 +172,7 @@ func TestCache_PruneOldEntries_EdgeCases(t *testing.T) {
 			c.setItem(i, &testItem{V: int(i)})
 		}
 		// Should not panic or prune anything
-		c.pruneOldEntries(0, 10)
+		c.pruneOldEntries(0)
 
 		// All items should remain
 		for i := uint64(1); i <= 5; i++ {
@@ -204,7 +190,6 @@ func TestCache_HashMapPruning(t *testing.T) {
 
 	// Simulate a long-running chain with 10,000 blocks
 	const totalBlocks = 10000
-	const retentionWindow = 1000
 
 	// Track how many hashes we add
 	hashCount := 0
@@ -215,20 +200,24 @@ func TestCache_HashMapPruning(t *testing.T) {
 		c.setDAIncluded(fmt.Sprintf("hash-%d", i), i, i)
 		hashCount++
 
-		// Prune every 100 blocks to simulate real usage
-		if i%100 == 0 && i > retentionWindow {
-			c.pruneOldEntries(i, retentionWindow)
+		// Prune periodically to simulate real usage (keep last 100 blocks as "DA included")
+		if i%100 == 0 && i >= 100 {
+			// Prune up to i-100, keeping the last 100 blocks
+			c.pruneOldEntries(i - 100)
 		}
 	}
 
-	// Count how many items remain in itemsByHeight (should be ~1000)
+	// Final prune to keep only the last 100 blocks (DA included height simulation)
+	c.pruneOldEntries(totalBlocks - 100)
+
+	// Count how many items remain in itemsByHeight (should be ~100, the last 100 blocks)
 	itemCount := 0
 	c.itemsByHeight.Range(func(k, v any) bool {
 		itemCount++
 		return true
 	})
 
-	// Count how many hashes remain (this will be ALL 10,000 - MEMORY LEAK!)
+	// Count how many hashes remain (should also be ~100, the last 100 blocks)
 	seenHashCount := 0
 	c.hashes.Range(func(k, v any) bool {
 		seenHashCount++
@@ -241,24 +230,26 @@ func TestCache_HashMapPruning(t *testing.T) {
 		return true
 	})
 
-	t.Logf("After processing %d blocks with retention %d:", totalBlocks, retentionWindow)
-	t.Logf("  itemsByHeight count: %d (expected ~%d)", itemCount, retentionWindow)
-	t.Logf("  hashes count: %d (expected ~%d)", seenHashCount, retentionWindow)
-	t.Logf("  daIncluded count: %d (expected ~%d)", daIncludedCount, retentionWindow)
+	expectedRemaining := uint64(100)
+	t.Logf("After processing %d blocks with pruning up to height %d:", totalBlocks, totalBlocks-100)
+	t.Logf("  itemsByHeight count: %d (expected %d)", itemCount, expectedRemaining)
+	t.Logf("  hashes count: %d (expected %d)", seenHashCount, expectedRemaining)
+	t.Logf("  daIncluded count: %d (expected %d)", daIncludedCount, expectedRemaining)
 
-	// Verify all maps are pruned correctly
-	maxAllowed := int(retentionWindow * 1.1) // Allow 10% margin
+	// Verify pruning kept approximately the right amount (allow some margin)
+	maxAllowed := int(expectedRemaining * 11 / 10) // Allow 10% margin
+	minExpected := int(expectedRemaining)
 
-	if itemCount > maxAllowed {
-		t.Errorf("itemsByHeight not pruned correctly: got %d, want ~%d", itemCount, retentionWindow)
+	if itemCount < minExpected || itemCount > maxAllowed {
+		t.Errorf("itemsByHeight not pruned correctly: got %d, want ~%d", itemCount, expectedRemaining)
 	}
 
-	if seenHashCount > maxAllowed {
-		t.Errorf("hashes not pruned correctly: got %d, want ~%d", seenHashCount, retentionWindow)
+	if seenHashCount < minExpected || seenHashCount > maxAllowed {
+		t.Errorf("hashes not pruned correctly: got %d, want ~%d", seenHashCount, expectedRemaining)
 	}
 
-	if daIncludedCount > maxAllowed {
-		t.Errorf("daIncluded not pruned correctly: got %d, want ~%d", daIncludedCount, retentionWindow)
+	if daIncludedCount < minExpected || daIncludedCount > maxAllowed {
+		t.Errorf("daIncluded not pruned correctly: got %d, want ~%d", daIncludedCount, expectedRemaining)
 	}
 
 	// Calculate memory saved by pruning

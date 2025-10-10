@@ -2,6 +2,7 @@ package cache
 
 import (
 	"context"
+	"encoding/binary"
 	"encoding/gob"
 	"fmt"
 	"path/filepath"
@@ -243,35 +244,38 @@ func TestManager_PruneCache(t *testing.T) {
 	assert.True(t, m.IsDataSeen("hash-10"))
 	assert.NotNil(t, m.GetNextPendingEvent(10))
 
-	// Prune with retention of 20 at height 50
-	// Should keep heights >= 30 (50 - 20)
-	m.PruneCache(50, 20)
+	// Prune at height 50 by setting DA included height to 50
+	// Should keep only heights >= 50
+	ctx := context.Background()
+	bz := make([]byte, 8)
+	binary.LittleEndian.PutUint64(bz, 50)
+	require.NoError(t, st.SetMetadata(ctx, store.DAIncludedHeightKey, bz))
+	m.PruneCache(ctx)
 
-	// Entries below height 30 should be pruned for itemsByHeight
-	// (pending events use itemsByHeight)
-	for i := uint64(1); i < 30; i++ {
+	// Entries below height 50 should be pruned
+	for i := uint64(1); i < 50; i++ {
 		evt := m.GetNextPendingEvent(i)
 		assert.Nil(t, evt, "expected pending event at height %d to be pruned", i)
 	}
 
-	// Entries >= 30 should still exist
-	for i := uint64(30); i <= 100; i++ {
+	// Entries >= 50 should still exist
+	for i := uint64(50); i <= 100; i++ {
 		evt := m.GetNextPendingEvent(i)
 		assert.NotNil(t, evt, "expected pending event at height %d to remain", i)
 	}
 
-	// Verify that hash maps ARE now pruned correctly
-	// Hashes below height 30 should be pruned
+	// Verify that hash maps are pruned correctly
+	// Hashes below height 50 should be pruned
 	assert.False(t, m.IsHeaderSeen("hash-10"), "expected hash-10 to be pruned")
 	assert.False(t, m.IsDataSeen("hash-10"), "expected hash-10 to be pruned")
 
-	// Hashes >= 30 should still exist
+	// Hashes >= 50 should still exist
 	assert.True(t, m.IsHeaderSeen("hash-50"), "expected hash-50 to remain")
 	assert.True(t, m.IsDataSeen("hash-50"), "expected hash-50 to remain")
 }
 
-// TestManager_PruneCache_ZeroRetention tests pruning with zero retention
-func TestManager_PruneCache_ZeroRetention(t *testing.T) {
+// TestManager_PruneCache_BelowCurrentHeight tests pruning below current height
+func TestManager_PruneCache_BelowCurrentHeight(t *testing.T) {
 	t.Parallel()
 	cfg := tempConfig(t)
 	st := memStore(t)
@@ -286,9 +290,13 @@ func TestManager_PruneCache_ZeroRetention(t *testing.T) {
 		m.SetPendingEvent(i, &common.DAHeightEvent{Header: hdr, Data: dat, DaHeight: i})
 	}
 
-	// Prune with zero retention at height 5
+	// Prune at height 5 by setting DA included height to 5
 	// Should keep only heights >= 5
-	m.PruneCache(5, 0)
+	ctx := context.Background()
+	bz := make([]byte, 8)
+	binary.LittleEndian.PutUint64(bz, 5)
+	require.NoError(t, st.SetMetadata(ctx, store.DAIncludedHeightKey, bz))
+	m.PruneCache(ctx)
 
 	for i := uint64(1); i < 5; i++ {
 		evt := m.GetNextPendingEvent(i)

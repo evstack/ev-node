@@ -123,16 +123,13 @@ func (c *Cache[T]) removeDAIncluded(hash string) {
 	// Note: We keep the heightByHash entry for the hash map, as it may still be in hashes
 }
 
-// pruneOldEntries removes entries older than the retention window.
-// It keeps entries at heights >= (currentHeight - retentionWindow).
+// pruneOldEntries removes entries below the current height.
+// It keeps entries at heights >= currentHeight.
 // This prevents unbounded memory growth as the chain progresses.
-func (c *Cache[T]) pruneOldEntries(currentHeight, retentionWindow uint64) {
-	// Don't prune if we haven't exceeded the retention window yet
-	if currentHeight == 0 || currentHeight <= retentionWindow {
+func (c *Cache[T]) pruneOldEntries(currentHeight uint64) {
+	if currentHeight == 0 {
 		return
 	}
-
-	pruneBeforeHeight := currentHeight - retentionWindow
 
 	// Prune items by height
 	c.itemsByHeight.Range(func(k, v any) bool {
@@ -140,7 +137,7 @@ func (c *Cache[T]) pruneOldEntries(currentHeight, retentionWindow uint64) {
 		if !ok {
 			return true
 		}
-		if height < pruneBeforeHeight {
+		if height < currentHeight {
 			c.itemsByHeight.Delete(height)
 		}
 		return true
@@ -156,7 +153,7 @@ func (c *Cache[T]) pruneOldEntries(currentHeight, retentionWindow uint64) {
 		if !ok {
 			return true
 		}
-		if height < pruneBeforeHeight {
+		if height < currentHeight {
 			c.hashes.Delete(hash)
 			c.daIncluded.Delete(hash)
 			c.heightByHash.Delete(hash)

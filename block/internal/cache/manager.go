@@ -2,6 +2,7 @@ package cache
 
 import (
 	"context"
+	"encoding/binary"
 	"encoding/gob"
 	"fmt"
 	"os"
@@ -15,9 +16,6 @@ import (
 	"github.com/evstack/ev-node/pkg/store"
 	"github.com/evstack/ev-node/types"
 )
-
-// CacheRetentionBlocks defines the number of blocks to retain in the cache.
-const CacheRetentionBlocks = 1000
 
 var (
 	cacheDir              = "cache"
@@ -67,7 +65,7 @@ type Manager interface {
 	SetPendingEvent(height uint64, event *common.DAHeightEvent)
 
 	// Cleanup operations
-	PruneCache(currentHeight, retentionWindow uint64)
+	PruneCache(ctx context.Context)
 	SaveToDisk() error
 	LoadFromDisk() error
 	ClearFromDisk() error
@@ -82,6 +80,7 @@ type implementation struct {
 	pendingEventsCache *Cache[common.DAHeightEvent]
 	pendingHeaders     *PendingHeaders
 	pendingData        *PendingData
+	store              store.Store
 	config             config.Config
 	logger             zerolog.Logger
 }
@@ -104,12 +103,15 @@ func NewManager(cfg config.Config, store store.Store, logger zerolog.Logger) (Ma
 		return nil, fmt.Errorf("failed to create pending data: %w", err)
 	}
 
+	registerGobTypes()
+
 	impl := &implementation{
 		headerCache:        headerCache,
 		dataCache:          dataCache,
 		pendingEventsCache: pendingEventsCache,
 		pendingHeaders:     pendingHeaders,
 		pendingData:        pendingData,
+		store:              store,
 		config:             cfg,
 		logger:             logger,
 	}
@@ -266,10 +268,21 @@ func (m *implementation) LoadFromDisk() error {
 	return nil
 }
 
-func (m *implementation) PruneCache(currentHeight, retentionWindow uint64) {
-	m.headerCache.pruneOldEntries(currentHeight, retentionWindow)
-	m.dataCache.pruneOldEntries(currentHeight, retentionWindow)
-	m.pendingEventsCache.pruneOldEntries(currentHeight, retentionWindow)
+func (m *implementation) PruneCache(ctx context.Context) {
+	// Get DA included height from store - only prune up to this height
+	// to avoid clearing cache entries that are still pending DA submission or inclusion
+	daIncludedHeight := uint64(0)
+	if heightBytes, err := m.store.GetMetadata(ctx, store.DAIncludedHeightKey); err == nil && len(heightBytes) == 8 {
+		daIncludedHeight = binary.LittleEndian.Uint64(heightBytes)
+	}
+
+	// Only prune if we have a valid DA included height
+	if daIncludedHeight > 0 {
+		m.headerCache.pruneOldEntries(daIncludedHeight)
+		m.dataCache.pruneOldEntries(daIncludedHeight)
+		m.pendingEventsCache.pruneOldEntries(daIncludedHeight)
+		m.logger.Debug().Uint64("da_included_height", daIncludedHeight).Msg("pruned cache up to DA included height")
+	}
 }
 
 func (m *implementation) ClearFromDisk() error {
