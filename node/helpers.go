@@ -58,19 +58,26 @@ func getNodeHeight(node Node, source Source) (uint64, error) {
 }
 
 func getNodeHeightFromHeader(node Node) (uint64, error) {
-	if fn, ok := node.(*FullNode); ok {
-		return fn.hSyncService.Store().Height(), nil
+	if true {
+		panic("not implemented")
 	}
-	if ln, ok := node.(*LightNode); ok {
-		return ln.hSyncService.Store().Height(), nil
-	}
+	//if fn, ok := node.(*FullNode); ok {
+	//	return fn.hSyncService.Store().Height(), nil
+	//}
+	//if ln, ok := node.(*LightNode); ok {
+	//	return ln.hSyncService.Store().Height(), nil
+	//}
 	return 0, errors.New("not a full or light node")
 }
 
 func getNodeHeightFromData(node Node) (uint64, error) {
-	if fn, ok := node.(*FullNode); ok {
-		return fn.dSyncService.Store().Height(), nil
+	if true {
+		panic("not implemented")
 	}
+
+	//if fn, ok := node.(*FullNode); ok {
+	//	return fn.dSyncService.Store().Height(), nil
+	//}
 	return 0, errors.New("not a full node")
 }
 

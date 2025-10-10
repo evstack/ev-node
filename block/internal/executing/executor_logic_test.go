@@ -85,6 +85,7 @@ func TestProduceBlock_EmptyBatch_SetsEmptyDataHash(t *testing.T) {
 		zerolog.Nop(),
 		common.DefaultBlockOptions(),
 		make(chan error, 1),
+		nil,
 	)
 	require.NoError(t, err)
 
@@ -171,6 +172,7 @@ func TestPendingLimit_SkipsProduction(t *testing.T) {
 		zerolog.Nop(),
 		common.DefaultBlockOptions(),
 		make(chan error, 1),
+		nil,
 	)
 	require.NoError(t, err)
 

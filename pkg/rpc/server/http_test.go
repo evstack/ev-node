@@ -15,7 +15,7 @@ func TestRegisterCustomHTTPEndpoints(t *testing.T) {
 	mux := http.NewServeMux()
 
 	// Register custom HTTP endpoints
-	RegisterCustomHTTPEndpoints(mux, nil, nil, config.DefaultConfig(), nil)
+	RegisterCustomHTTPEndpoints(mux, nil, nil, config.DefaultConfig(), nil, nil)
 
 	// Create a new HTTP test server with the mux
 	testServer := httptest.NewServer(mux)
