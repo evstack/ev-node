@@ -16,6 +16,8 @@ type Cache[T any] struct {
 	hashes *sync.Map
 	// daIncluded tracks the DA inclusion height for a given hash
 	daIncluded *sync.Map
+	// heightByHash tracks the block height associated with each hash for pruning
+	heightByHash *sync.Map
 }
 
 // NewCache returns a new Cache struct
@@ -24,6 +26,7 @@ func NewCache[T any]() *Cache[T] {
 		itemsByHeight: new(sync.Map),
 		hashes:        new(sync.Map),
 		daIncluded:    new(sync.Map),
+		heightByHash:  new(sync.Map),
 	}
 }
 
@@ -82,12 +85,17 @@ func (c *Cache[T]) isSeen(hash string) bool {
 	if !ok {
 		return false
 	}
-	return seen.(bool)
+	val, ok := seen.(bool)
+	if !ok {
+		return false
+	}
+	return val
 }
 
-// setSeen sets the hash as seen
-func (c *Cache[T]) setSeen(hash string) {
+// setSeen sets the hash as seen and tracks its height for pruning
+func (c *Cache[T]) setSeen(hash string, height uint64) {
 	c.hashes.Store(hash, true)
+	c.heightByHash.Store(hash, height)
 }
 
 // getDAIncluded returns the DA height if the hash has been DA-included, otherwise it returns 0.
@@ -96,23 +104,89 @@ func (c *Cache[T]) getDAIncluded(hash string) (uint64, bool) {
 	if !ok {
 		return 0, false
 	}
-	return daIncluded.(uint64), true
+	val, ok := daIncluded.(uint64)
+	if !ok {
+		return 0, false
+	}
+	return val, true
 }
 
-// setDAIncluded sets the hash as DA-included with the given DA height
-func (c *Cache[T]) setDAIncluded(hash string, daHeight uint64) {
+// setDAIncluded sets the hash as DA-included with the given DA height and tracks block height for pruning
+func (c *Cache[T]) setDAIncluded(hash string, daHeight uint64, blockHeight uint64) {
 	c.daIncluded.Store(hash, daHeight)
+	c.heightByHash.Store(hash, blockHeight)
 }
 
-// removeDAIncluded removes the DA-included status of the hash
+// removeDAIncluded removes the DA-included status of the hash.
+//
+// Note: We keep the heightByHash entry because:
+// 1. The hash may still be present in the hashes map (setSeen was called)
+// 2. heightByHash is needed for pruning to work correctly for both hashes and daIncluded
+// 3. Orphaned heightByHash entries are cleaned up during pruning when all references are gone
 func (c *Cache[T]) removeDAIncluded(hash string) {
 	c.daIncluded.Delete(hash)
+}
+
+// pruneOldEntries removes entries below the current height.
+// It keeps entries at heights >= currentHeight.
+// This prevents unbounded memory growth as the chain progresses.
+//
+// Thread safety: Uses a two-phase approach to avoid race conditions:
+// Phase 1: Collect all keys to delete (read-only)
+// Phase 2: Delete collected keys (write-only)
+// This ensures that entries added between phases don't result in orphaned references.
+func (c *Cache[T]) pruneOldEntries(currentHeight uint64) {
+	if currentHeight == 0 {
+		return
+	}
+
+	// Phase 1: Collect keys to delete
+	var itemsToDelete []uint64
+	var hashesToDelete []string
+
+	c.itemsByHeight.Range(func(k, v any) bool {
+		height, ok := k.(uint64)
+		if !ok {
+			return true
+		}
+		if height < currentHeight {
+			itemsToDelete = append(itemsToDelete, height)
+		}
+		return true
+	})
+
+	c.heightByHash.Range(func(k, v any) bool {
+		hash, ok := k.(string)
+		if !ok {
+			return true
+		}
+		height, ok := v.(uint64)
+		if !ok {
+			return true
+		}
+		if height < currentHeight {
+			hashesToDelete = append(hashesToDelete, hash)
+		}
+		return true
+	})
+
+	// Phase 2: Delete collected keys
+	for _, height := range itemsToDelete {
+		c.itemsByHeight.Delete(height)
+	}
+
+	for _, hash := range hashesToDelete {
+		c.hashes.Delete(hash)
+		c.daIncluded.Delete(hash)
+		c.heightByHash.Delete(hash)
+	}
 }
 
 const (
 	itemsByHeightFilename = "items_by_height.gob"
 	hashesFilename        = "hashes.gob"
 	daIncludedFilename    = "da_included.gob"
+	heightByHashFilename  = "height_by_hash.gob"
 )
 
 // saveMapGob saves a map to a file using gob encoding.
@@ -198,7 +272,21 @@ func (c *Cache[T]) SaveToDisk(folderPath string) error {
 		}
 		return true
 	})
-	return saveMapGob(filepath.Join(folderPath, daIncludedFilename), daIncludedToSave)
+	if err := saveMapGob(filepath.Join(folderPath, daIncludedFilename), daIncludedToSave); err != nil {
+		return err
+	}
+
+	// prepare heightByHash map
+	heightByHashToSave := make(map[string]uint64)
+	c.heightByHash.Range(func(k, v any) bool {
+		keyStr, okKey := k.(string)
+		valUint64, okVal := v.(uint64)
+		if okKey && okVal {
+			heightByHashToSave[keyStr] = valUint64
+		}
+		return true
+	})
+	return saveMapGob(filepath.Join(folderPath, heightByHashFilename), heightByHashToSave)
 }
 
 // LoadFromDisk loads the cache contents from disk from the specified folder.
@@ -231,6 +319,15 @@ func (c *Cache[T]) LoadFromDisk(folderPath string) error {
 	}
 	for k, v := range daIncludedMap {
 		c.daIncluded.Store(k, v)
+	}
+
+	// load heightByHash
+	heightByHashMap, err := loadMapGob[string, uint64](filepath.Join(folderPath, heightByHashFilename))
+	if err != nil {
+		return fmt.Errorf("failed to load heightByHash: %w", err)
+	}
+	for k, v := range heightByHashMap {
+		c.heightByHash.Store(k, v)
 	}
 
 	return nil

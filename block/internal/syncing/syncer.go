@@ -135,6 +135,13 @@ func (s *Syncer) Start(ctx context.Context) error {
 		s.syncLoop()
 	}()
 
+	// Start periodic cache pruning loop
+	s.wg.Add(1)
+	go func() {
+		defer s.wg.Done()
+		s.cachePruneLoop()
+	}()
+
 	s.logger.Info().Msg("syncer started")
 	return nil
 }
@@ -219,6 +226,24 @@ func (s *Syncer) processLoop() {
 			return
 		case heightEvent := <-s.heightInCh:
 			s.processHeightEvent(&heightEvent)
+		}
+	}
+}
+
+// cachePruneLoop periodically prunes old cache entries to prevent unbounded memory growth.
+func (s *Syncer) cachePruneLoop() {
+	s.logger.Info().Msg("starting cache prune loop")
+	defer s.logger.Info().Msg("cache prune loop stopped")
+
+	ticker := time.NewTicker(20 * time.Minute)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-s.ctx.Done():
+			return
+		case <-ticker.C:
+			s.cache.PruneCache(s.ctx)
 		}
 	}
 }
@@ -451,9 +476,9 @@ func (s *Syncer) trySyncNextBlock(event *common.DAHeightEvent) error {
 	s.metrics.Height.Set(float64(newState.LastBlockHeight))
 
 	// Mark as seen
-	s.cache.SetHeaderSeen(header.Hash().String())
+	s.cache.SetHeaderSeen(header.Hash().String(), newState.LastBlockHeight)
 	if !bytes.Equal(header.DataHash, common.DataHashForEmptyTxs) {
-		s.cache.SetDataSeen(data.DACommitment().String())
+		s.cache.SetDataSeen(data.DACommitment().String(), newState.LastBlockHeight)
 	}
 
 	return nil
