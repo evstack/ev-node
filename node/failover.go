@@ -163,6 +163,17 @@ func setupFailoverState(
 }
 
 func (f *failoverState) Run(ctx context.Context) (multiErr error) {
+	errChan := make(chan error)
+	go func() {
+		f.logger.Info().Str("addr", f.rpcServer.Addr).Msg("Started RPC server")
+		if err := f.rpcServer.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			select {
+			case errChan <- fmt.Errorf("RPC server error: %w", err):
+			default:
+				f.logger.Error().Err(err).Msg("RPC server error")
+			}
+		}
+	}()
 	defer f.rpcServer.Shutdown(context.Background()) // nolint: errcheck
 
 	if err := f.p2pClient.Start(ctx); err != nil {
@@ -197,18 +208,6 @@ func (f *failoverState) Run(ctx context.Context) (multiErr error) {
 		}
 		if err := f.bc.Stop(); err != nil && !errors.Is(err, context.Canceled) {
 			multiErr = errors.Join(multiErr, fmt.Errorf("stopping block components: %w", err))
-		}
-	}()
-
-	errChan := make(chan error)
-	go func() {
-		f.logger.Info().Str("addr", f.rpcServer.Addr).Msg("started RPC server")
-		if err := f.rpcServer.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			select {
-			case errChan <- fmt.Errorf("RPC server error: %w", err):
-			default:
-				f.logger.Error().Err(err).Msg("RPC server error")
-			}
 		}
 	}()
 

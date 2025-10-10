@@ -278,6 +278,7 @@ func setupSequencerNode(t *testing.T, sut *SystemUnderTest, sequencerHome, jwtSe
 	// Use helper methods to get complete URLs
 	args := []string{
 		"start",
+		"--evnode.log.format", "json",
 		"--evm.jwt-secret", jwtSecret,
 		"--evm.genesis-hash", genesisHash,
 		"--rollkit.node.block_time", DefaultBlockTime,
@@ -313,6 +314,7 @@ func setupSequencerNodeLazy(t *testing.T, sut *SystemUnderTest, sequencerHome, j
 	// Use helper methods to get complete URLs
 	args := []string{
 		"start",
+		"--evnode.log.format", "json",
 		"--evm.jwt-secret", jwtSecret,
 		"--evm.genesis-hash", genesisHash,
 		"--rollkit.node.block_time", DefaultBlockTime,
@@ -368,6 +370,7 @@ func setupFullNode(t *testing.T, sut *SystemUnderTest, fullNodeHome, sequencerHo
 	// Use helper methods to get complete URLs
 	args := []string{
 		"start",
+		"--evnode.log.format", "json",
 		"--home", fullNodeHome,
 		"--evm.jwt-secret", fullNodeJwtSecret,
 		"--evm.genesis-hash", genesisHash,
@@ -571,6 +574,7 @@ func restartDAAndSequencer(t *testing.T, sut *SystemUnderTest, sequencerHome, jw
 	// Then restart the sequencer node (without init - node already exists)
 	sut.ExecCmd(evmSingleBinaryPath,
 		"start",
+		"--evnode.log.format", "json",
 		"--evm.jwt-secret", jwtSecret,
 		"--evm.genesis-hash", genesisHash,
 		"--rollkit.node.block_time", DefaultBlockTime,
@@ -615,6 +619,7 @@ func restartDAAndSequencerLazy(t *testing.T, sut *SystemUnderTest, sequencerHome
 	// Then restart the sequencer node in lazy mode (without init - node already exists)
 	sut.ExecCmd(evmSingleBinaryPath,
 		"start",
+		"--evnode.log.format", "json",
 		"--evm.jwt-secret", jwtSecret,
 		"--evm.genesis-hash", genesisHash,
 		"--rollkit.node.block_time", DefaultBlockTime,
