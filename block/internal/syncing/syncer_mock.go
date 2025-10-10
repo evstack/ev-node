@@ -134,22 +134,9 @@ func (_m *mockp2pHandler) EXPECT() *mockp2pHandler_Expecter {
 }
 
 // ProcessDataRange provides a mock function for the type mockp2pHandler
-func (_mock *mockp2pHandler) ProcessDataRange(ctx context.Context, fromHeight uint64, toHeight uint64) []common.DAHeightEvent {
-	ret := _mock.Called(ctx, fromHeight, toHeight)
-
-	if len(ret) == 0 {
-		panic("no return value specified for ProcessDataRange")
-	}
-
-	var r0 []common.DAHeightEvent
-	if returnFunc, ok := ret.Get(0).(func(context.Context, uint64, uint64) []common.DAHeightEvent); ok {
-		r0 = returnFunc(ctx, fromHeight, toHeight)
-	} else {
-		if ret.Get(0) != nil {
-			r0 = ret.Get(0).([]common.DAHeightEvent)
-		}
-	}
-	return r0
+func (_mock *mockp2pHandler) ProcessDataRange(ctx context.Context, fromHeight uint64, toHeight uint64, heightInCh chan<- common.DAHeightEvent) {
+	_mock.Called(ctx, fromHeight, toHeight, heightInCh)
+	return
 }
 
 // mockp2pHandler_ProcessDataRange_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'ProcessDataRange'
@@ -161,11 +148,12 @@ type mockp2pHandler_ProcessDataRange_Call struct {
 //   - ctx context.Context
 //   - fromHeight uint64
 //   - toHeight uint64
-func (_e *mockp2pHandler_Expecter) ProcessDataRange(ctx interface{}, fromHeight interface{}, toHeight interface{}) *mockp2pHandler_ProcessDataRange_Call {
-	return &mockp2pHandler_ProcessDataRange_Call{Call: _e.mock.On("ProcessDataRange", ctx, fromHeight, toHeight)}
+//   - heightInCh chan<- common.DAHeightEvent
+func (_e *mockp2pHandler_Expecter) ProcessDataRange(ctx interface{}, fromHeight interface{}, toHeight interface{}, heightInCh interface{}) *mockp2pHandler_ProcessDataRange_Call {
+	return &mockp2pHandler_ProcessDataRange_Call{Call: _e.mock.On("ProcessDataRange", ctx, fromHeight, toHeight, heightInCh)}
 }
 
-func (_c *mockp2pHandler_ProcessDataRange_Call) Run(run func(ctx context.Context, fromHeight uint64, toHeight uint64)) *mockp2pHandler_ProcessDataRange_Call {
+func (_c *mockp2pHandler_ProcessDataRange_Call) Run(run func(ctx context.Context, fromHeight uint64, toHeight uint64, heightInCh chan<- common.DAHeightEvent)) *mockp2pHandler_ProcessDataRange_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
@@ -179,42 +167,34 @@ func (_c *mockp2pHandler_ProcessDataRange_Call) Run(run func(ctx context.Context
 		if args[2] != nil {
 			arg2 = args[2].(uint64)
 		}
+		var arg3 chan<- common.DAHeightEvent
+		if args[3] != nil {
+			arg3 = args[3].(chan<- common.DAHeightEvent)
+		}
 		run(
 			arg0,
 			arg1,
 			arg2,
+			arg3,
 		)
 	})
 	return _c
 }
 
-func (_c *mockp2pHandler_ProcessDataRange_Call) Return(dAHeightEvents []common.DAHeightEvent) *mockp2pHandler_ProcessDataRange_Call {
-	_c.Call.Return(dAHeightEvents)
+func (_c *mockp2pHandler_ProcessDataRange_Call) Return() *mockp2pHandler_ProcessDataRange_Call {
+	_c.Call.Return()
 	return _c
 }
 
-func (_c *mockp2pHandler_ProcessDataRange_Call) RunAndReturn(run func(ctx context.Context, fromHeight uint64, toHeight uint64) []common.DAHeightEvent) *mockp2pHandler_ProcessDataRange_Call {
-	_c.Call.Return(run)
+func (_c *mockp2pHandler_ProcessDataRange_Call) RunAndReturn(run func(ctx context.Context, fromHeight uint64, toHeight uint64, heightInCh chan<- common.DAHeightEvent)) *mockp2pHandler_ProcessDataRange_Call {
+	_c.Run(run)
 	return _c
 }
 
 // ProcessHeaderRange provides a mock function for the type mockp2pHandler
-func (_mock *mockp2pHandler) ProcessHeaderRange(ctx context.Context, fromHeight uint64, toHeight uint64) []common.DAHeightEvent {
-	ret := _mock.Called(ctx, fromHeight, toHeight)
-
-	if len(ret) == 0 {
-		panic("no return value specified for ProcessHeaderRange")
-	}
-
-	var r0 []common.DAHeightEvent
-	if returnFunc, ok := ret.Get(0).(func(context.Context, uint64, uint64) []common.DAHeightEvent); ok {
-		r0 = returnFunc(ctx, fromHeight, toHeight)
-	} else {
-		if ret.Get(0) != nil {
-			r0 = ret.Get(0).([]common.DAHeightEvent)
-		}
-	}
-	return r0
+func (_mock *mockp2pHandler) ProcessHeaderRange(ctx context.Context, fromHeight uint64, toHeight uint64, heightInCh chan<- common.DAHeightEvent) {
+	_mock.Called(ctx, fromHeight, toHeight, heightInCh)
+	return
 }
 
 // mockp2pHandler_ProcessHeaderRange_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'ProcessHeaderRange'
@@ -226,11 +206,12 @@ type mockp2pHandler_ProcessHeaderRange_Call struct {
 //   - ctx context.Context
 //   - fromHeight uint64
 //   - toHeight uint64
-func (_e *mockp2pHandler_Expecter) ProcessHeaderRange(ctx interface{}, fromHeight interface{}, toHeight interface{}) *mockp2pHandler_ProcessHeaderRange_Call {
-	return &mockp2pHandler_ProcessHeaderRange_Call{Call: _e.mock.On("ProcessHeaderRange", ctx, fromHeight, toHeight)}
+//   - heightInCh chan<- common.DAHeightEvent
+func (_e *mockp2pHandler_Expecter) ProcessHeaderRange(ctx interface{}, fromHeight interface{}, toHeight interface{}, heightInCh interface{}) *mockp2pHandler_ProcessHeaderRange_Call {
+	return &mockp2pHandler_ProcessHeaderRange_Call{Call: _e.mock.On("ProcessHeaderRange", ctx, fromHeight, toHeight, heightInCh)}
 }
 
-func (_c *mockp2pHandler_ProcessHeaderRange_Call) Run(run func(ctx context.Context, fromHeight uint64, toHeight uint64)) *mockp2pHandler_ProcessHeaderRange_Call {
+func (_c *mockp2pHandler_ProcessHeaderRange_Call) Run(run func(ctx context.Context, fromHeight uint64, toHeight uint64, heightInCh chan<- common.DAHeightEvent)) *mockp2pHandler_ProcessHeaderRange_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
@@ -244,21 +225,26 @@ func (_c *mockp2pHandler_ProcessHeaderRange_Call) Run(run func(ctx context.Conte
 		if args[2] != nil {
 			arg2 = args[2].(uint64)
 		}
+		var arg3 chan<- common.DAHeightEvent
+		if args[3] != nil {
+			arg3 = args[3].(chan<- common.DAHeightEvent)
+		}
 		run(
 			arg0,
 			arg1,
 			arg2,
+			arg3,
 		)
 	})
 	return _c
 }
 
-func (_c *mockp2pHandler_ProcessHeaderRange_Call) Return(dAHeightEvents []common.DAHeightEvent) *mockp2pHandler_ProcessHeaderRange_Call {
-	_c.Call.Return(dAHeightEvents)
+func (_c *mockp2pHandler_ProcessHeaderRange_Call) Return() *mockp2pHandler_ProcessHeaderRange_Call {
+	_c.Call.Return()
 	return _c
 }
 
-func (_c *mockp2pHandler_ProcessHeaderRange_Call) RunAndReturn(run func(ctx context.Context, fromHeight uint64, toHeight uint64) []common.DAHeightEvent) *mockp2pHandler_ProcessHeaderRange_Call {
-	_c.Call.Return(run)
+func (_c *mockp2pHandler_ProcessHeaderRange_Call) RunAndReturn(run func(ctx context.Context, fromHeight uint64, toHeight uint64, heightInCh chan<- common.DAHeightEvent)) *mockp2pHandler_ProcessHeaderRange_Call {
+	_c.Run(run)
 	return _c
 }

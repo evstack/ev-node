@@ -26,9 +26,10 @@ import (
 type daRetriever interface {
 	RetrieveFromDA(ctx context.Context, daHeight uint64) ([]common.DAHeightEvent, error)
 }
+
 type p2pHandler interface {
-	ProcessHeaderRange(ctx context.Context, fromHeight, toHeight uint64) []common.DAHeightEvent
-	ProcessDataRange(ctx context.Context, fromHeight, toHeight uint64) []common.DAHeightEvent
+	ProcessHeaderRange(ctx context.Context, fromHeight, toHeight uint64, heightInCh chan<- common.DAHeightEvent)
+	ProcessDataRange(ctx context.Context, fromHeight, toHeight uint64, heightInCh chan<- common.DAHeightEvent)
 }
 
 // Syncer handles block synchronization from DA and P2P sources.
@@ -123,8 +124,8 @@ func (s *Syncer) Start(ctx context.Context) error {
 	}
 
 	// Initialize handlers
-	s.daRetriever = NewDARetriever(s.da, s.cache, s.config, s.genesis, s.options, s.logger)
-	s.p2pHandler = NewP2PHandler(s.headerStore, s.dataStore, s.genesis, s.options, s.logger)
+	s.daRetriever = NewDARetriever(s.da, s.cache, s.config, s.genesis, s.logger)
+	s.p2pHandler = NewP2PHandler(s.headerStore, s.dataStore, s.cache, s.genesis, s.logger)
 
 	if !reflect.ValueOf(s.raftNode).IsNil() {
 		s.raftRetriever = newRaftRetriever(s.raftNode, s.genesis, s.logger, eventProcessorFn(s.pipeEvent))
@@ -164,15 +165,15 @@ func (s *Syncer) Stop() error {
 	return nil
 }
 
-var alwaysTickCh chan time.Time
-
-func init() {
-	alwaysTickCh = make(chan time.Time)
-	close(alwaysTickCh) // always picked in select
-}
-
 func (s *Syncer) HasUnprocessedEvents() bool {
-	return len(s.heightInCh) != 0 || s.tryFetchFromP2P(ptr(s.GetLastState().LastBlockHeight), ptr(s.GetLastState().LastBlockHeight), alwaysTickCh)
+	return len(s.heightInCh) != 0 || func() bool {
+		currentHeight, err := s.store.Height(s.ctx)
+		if err != nil {
+			s.logger.Error().Err(err).Msg("failed to get current height")
+			return false
+		}
+		return s.headerStore.Height() > currentHeight || s.dataStore.Height() > currentHeight
+	}()
 }
 
 // GetLastState returns the current state
@@ -265,20 +266,8 @@ func (s *Syncer) syncLoop() {
 		}
 	}
 
-	initialHeight, err := s.store.Height(s.ctx)
-	if err != nil {
-		s.logger.Error().Err(err).Msg("failed to get initial height")
-		return
-	}
-
-	lastHeaderHeight := &initialHeight
-	lastDataHeight := &initialHeight
-
 	// Backoff control when DA replies with errors
 	nextDARequestAt := &time.Time{}
-
-	blockTicker := time.NewTicker(s.config.Node.BlockTime.Duration)
-	defer blockTicker.Stop()
 
 	for {
 		select {
@@ -286,15 +275,16 @@ func (s *Syncer) syncLoop() {
 			return
 		default:
 		}
-		// Process pending events from cache on every iteration
+
 		s.processPendingEvents()
+		s.tryFetchFromP2P()
+		s.tryFetchFromDA(nextDARequestAt)
 
-		fetchedP2pEvent := s.tryFetchFromP2P(lastHeaderHeight, lastDataHeight, blockTicker.C)
-		fetchedDaEvent := s.tryFetchFromDA(nextDARequestAt)
-
-		// Prevent busy-waiting when no events are available
-		if !fetchedDaEvent && !fetchedP2pEvent {
-			time.Sleep(min(10*time.Millisecond, s.config.Node.BlockTime.Duration))
+		// Prevent busy-waiting when no events are processed
+		select {
+		case <-s.ctx.Done():
+			return
+		case <-time.After(min(10*time.Millisecond, s.config.Node.BlockTime.Duration)):
 		}
 	}
 }
@@ -302,13 +292,13 @@ func (s *Syncer) syncLoop() {
 // tryFetchFromDA attempts to fetch events from the DA layer.
 // It handles backoff timing, DA height management, and error classification.
 // Returns true if any events were successfully processed.
-func (s *Syncer) tryFetchFromDA(nextDARequestAt *time.Time) bool {
+func (s *Syncer) tryFetchFromDA(nextDARequestAt *time.Time) {
 	now := time.Now()
 	daHeight := s.GetDAHeight()
 
 	// Respect backoff window if set
 	if !nextDARequestAt.IsZero() && now.Before(*nextDARequestAt) {
-		return false
+		return
 	}
 
 	// Retrieve from DA as fast as possible (unless throttled by HFF)
@@ -320,7 +310,7 @@ func (s *Syncer) tryFetchFromDA(nextDARequestAt *time.Time) bool {
 			s.SetDAHeight(daHeight + 1)
 			// Reset backoff on success
 			*nextDARequestAt = time.Time{}
-			return false
+			return
 		}
 
 		// Back off exactly by DA block time to avoid overloading
@@ -332,7 +322,7 @@ func (s *Syncer) tryFetchFromDA(nextDARequestAt *time.Time) bool {
 
 		s.logger.Error().Err(err).Dur("delay", backoffDelay).Uint64("da_height", daHeight).Msg("failed to retrieve from DA; backing off DA requests")
 
-		return false
+		return
 	}
 
 	// Reset backoff on success
@@ -341,59 +331,35 @@ func (s *Syncer) tryFetchFromDA(nextDARequestAt *time.Time) bool {
 	// Process DA events
 	for _, event := range events {
 		if err := s.pipeEvent(s.ctx, event); err != nil {
-			return true
+			return
 		}
 	}
 
 	// increment DA height on successful retrieval
 	s.SetDAHeight(daHeight + 1)
-	return len(events) > 0
 }
 
 // tryFetchFromP2P attempts to fetch events from P2P stores.
 // It processes both header and data ranges when the block ticker fires.
 // Returns true if any events were successfully processed.
-func (s *Syncer) tryFetchFromP2P(lastHeaderHeight, lastDataHeight *uint64, blockTicker <-chan time.Time) bool {
-	eventsProcessed := false
-
-	select {
-	case <-blockTicker:
-		// Process headers
-		newHeaderHeight := s.headerStore.Height()
-		if newHeaderHeight > *lastHeaderHeight {
-			events := s.p2pHandler.ProcessHeaderRange(s.ctx, *lastHeaderHeight+1, newHeaderHeight)
-			for _, event := range events {
-				if err := s.pipeEvent(s.ctx, event); err != nil {
-					return true
-				}
-			}
-			*lastHeaderHeight = newHeaderHeight
-			if len(events) > 0 {
-				eventsProcessed = true
-			}
-		}
-
-		// Process data
-		newDataHeight := s.dataStore.Height()
-		if newDataHeight == newHeaderHeight {
-			*lastDataHeight = newDataHeight
-		} else if newDataHeight > *lastDataHeight {
-			events := s.p2pHandler.ProcessDataRange(s.ctx, *lastDataHeight+1, newDataHeight)
-			for _, event := range events {
-				if err := s.pipeEvent(s.ctx, event); err != nil {
-					return true
-				}
-			}
-			*lastDataHeight = newDataHeight
-			if len(events) > 0 {
-				eventsProcessed = true
-			}
-		}
-	default:
-		// No P2P events available
+func (s *Syncer) tryFetchFromP2P() {
+	currentHeight, err := s.store.Height(s.ctx)
+	if err != nil {
+		s.logger.Error().Err(err).Msg("failed to get current height")
+		return
 	}
 
-	return eventsProcessed
+	// Process headers
+	newHeaderHeight := s.headerStore.Height()
+	if newHeaderHeight > currentHeight {
+		s.p2pHandler.ProcessHeaderRange(s.ctx, currentHeight+1, newHeaderHeight, s.heightInCh)
+	}
+
+	// Process data (if not already processed by headers)
+	newDataHeight := s.dataStore.Height()
+	if newDataHeight != newHeaderHeight && newDataHeight > currentHeight {
+		s.p2pHandler.ProcessDataRange(s.ctx, currentHeight+1, newDataHeight, s.heightInCh)
+	}
 }
 
 func (s *Syncer) pipeEvent(ctx context.Context, event common.DAHeightEvent) error {
@@ -437,6 +403,16 @@ func (s *Syncer) processHeightEvent(event *common.DAHeightEvent) {
 		s.cache.SetPendingEvent(height, event)
 		s.logger.Debug().Uint64("height", height).Uint64("current_height", currentHeight).Msg("stored as pending event")
 		return
+	}
+
+	// LastDataHash must be gotten from store when the data hash is empty.
+	if bytes.Equal(event.Header.DataHash, common.DataHashForEmptyTxs) && currentHeight > 0 {
+		_, lastData, err := s.store.GetBlockData(s.ctx, currentHeight)
+		if err != nil {
+			s.logger.Error().Err(err).Msg("failed to get last data")
+			return
+		}
+		event.Data.LastDataHash = lastData.Hash()
 	}
 
 	// Try to sync the next block
@@ -658,9 +634,4 @@ func (s *Syncer) processPendingEvents() {
 
 		nextHeight++
 	}
-}
-
-// returns a pointer
-func ptr[T any](v T) *T {
-	return &v
 }
