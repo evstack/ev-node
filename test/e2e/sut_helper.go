@@ -160,8 +160,10 @@ func (s *SystemUnderTest) watchLogs(cmd *exec.Cmd) {
 	require.NoError(s.t, err)
 
 	if s.debug {
-		_ = os.MkdirAll("./testnet", 0o750)
-		logfileName := filepath.Join("./testnet", fmt.Sprintf("exec-%s-%s-%d.out", filepath.Base(cmd.Args[0]), s.t.Name(), time.Now().UnixNano()))
+		logDir := filepath.Join(WorkDir, "testnet")
+		require.NoError(s.t, os.MkdirAll(logDir, 0o750))
+		testName := strings.ReplaceAll(s.t.Name(), "/", "-")
+		logfileName := filepath.Join(logDir, fmt.Sprintf("exec-%s-%s-%d.out", filepath.Base(cmd.Args[0]), testName, time.Now().UnixNano()))
 		logfile, err := os.Create(logfileName)
 		require.NoError(s.t, err)
 		errReader = io.NopCloser(io.TeeReader(errReader, logfile))

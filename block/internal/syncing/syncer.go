@@ -109,7 +109,7 @@ func NewSyncer(
 		errorCh:     errorCh,
 		logger:      logger.With().Str("component", "syncer").Logger(),
 	}
-	if !reflect.ValueOf(raftNode).IsNil() {
+	if raftNode != nil && !reflect.ValueOf(raftNode).IsNil() {
 		s.raftRetriever = newRaftRetriever(raftNode, genesis, logger, eventProcessorFn(s.pipeEvent))
 	}
 	return s

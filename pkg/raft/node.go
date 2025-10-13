@@ -159,6 +159,9 @@ func (n *Node) Stop() error {
 
 // IsLeader returns true if this node is the raft leader
 func (n *Node) IsLeader() bool {
+	if n == nil || n.raft == nil {
+		return false
+	}
 	return n.raft.State() == raft.Leader
 }
 func (n *Node) NodeID() string {

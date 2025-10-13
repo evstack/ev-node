@@ -105,8 +105,11 @@ func NewExecutor(
 	if !bytes.Equal(addr, genesis.ProposerAddress) {
 		return nil, common.ErrNotProposer
 	}
+	if raftNode != nil && reflect.ValueOf(raftNode).IsNil() {
+		raftNode = nil
+	}
 
-	return &Executor{
+	e := &Executor{
 		store:             store,
 		exec:              exec,
 		sequencer:         sequencer,
@@ -123,7 +126,9 @@ func NewExecutor(
 		txNotifyCh:        make(chan struct{}, 1),
 		errorCh:           errorCh,
 		logger:            logger.With().Str("component", "executor").Logger(),
-	}, nil
+	}
+
+	return e, nil
 }
 
 // Start begins the execution component
@@ -317,7 +322,7 @@ func (e *Executor) produceBlock() error {
 	}()
 
 	// Check raft leadership if raft is enabled
-	if !reflect.ValueOf(e.raftNode).IsNil() && !e.raftNode.IsLeader() {
+	if e.raftNode != nil && !e.raftNode.IsLeader() {
 		return errors.New("not raft leader")
 	}
 
@@ -429,7 +434,7 @@ func (e *Executor) produceBlock() error {
 	e.metrics.Height.Set(float64(newState.LastBlockHeight))
 
 	// Propose block to raft before p2p broadcast if raft is enabled
-	if !reflect.ValueOf(e.raftNode).IsNil() {
+	if e.raftNode != nil {
 		headerBytes, err := header.MarshalBinary()
 		if err != nil {
 			return fmt.Errorf("failed to marshal header: %w", err)
