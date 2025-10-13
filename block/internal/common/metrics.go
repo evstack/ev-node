@@ -65,10 +65,10 @@ type Metrics struct {
 	InvalidTransitions metrics.Counter
 
 	// DA Submitter metrics
-	DASubmitterFailures          map[string]metrics.Counter // Counter with reason label
-	DASubmitterLastFailure       map[string]metrics.Gauge   // Timestamp gauge with reason label
-	DASubmitterPendingBlobs      metrics.Gauge              // Total number of blobs awaiting submission (backlog)
-	DASubmitterResends           metrics.Counter            // Number of resend attempts
+	DASubmitterFailures     map[string]metrics.Counter // Counter with reason label
+	DASubmitterLastFailure  map[string]metrics.Gauge   // Timestamp gauge with reason label
+	DASubmitterPendingBlobs metrics.Gauge              // Total number of blobs awaiting submission (backlog)
+	DASubmitterResends      metrics.Counter            // Number of resend attempts
 }
 
 // PrometheusMetrics returns Metrics built using Prometheus client library
@@ -419,38 +419,38 @@ func NopMetrics() *Metrics {
 		CommittedHeight: discard.NewGauge(),
 
 		// Extended metrics
-		ChannelBufferUsage:       make(map[string]metrics.Gauge),
-		ErrorsByType:             make(map[string]metrics.Counter),
-		OperationDuration:        make(map[string]metrics.Histogram),
-		StateTransitions:         make(map[string]metrics.Counter),
-		DroppedSignals:           discard.NewCounter(),
-		RecoverableErrors:        discard.NewCounter(),
-		NonRecoverableErrors:     discard.NewCounter(),
-		GoroutineCount:           discard.NewGauge(),
-		DASubmissionAttempts:     discard.NewCounter(),
-		DASubmissionSuccesses:    discard.NewCounter(),
-		DASubmissionFailures:     discard.NewCounter(),
-		DARetrievalAttempts:      discard.NewCounter(),
-		DARetrievalSuccesses:     discard.NewCounter(),
-		DARetrievalFailures:      discard.NewCounter(),
-		DAInclusionHeight:        discard.NewGauge(),
-		PendingHeadersCount:      discard.NewGauge(),
-		PendingDataCount:         discard.NewGauge(),
-		SyncLag:                  discard.NewGauge(),
-		HeadersSynced:            discard.NewCounter(),
-		DataSynced:               discard.NewCounter(),
-		BlocksApplied:            discard.NewCounter(),
-		InvalidHeadersCount:      discard.NewCounter(),
-		BlockProductionTime:      discard.NewHistogram(),
-		EmptyBlocksProduced:      discard.NewCounter(),
-		LazyBlocksProduced:       discard.NewCounter(),
-		NormalBlocksProduced:     discard.NewCounter(),
-		TxsPerBlock:              discard.NewHistogram(),
-		InvalidTransitions:       discard.NewCounter(),
-		DASubmitterFailures:      make(map[string]metrics.Counter),
-		DASubmitterLastFailure:   make(map[string]metrics.Gauge),
-		DASubmitterPendingBlobs:  discard.NewGauge(),
-		DASubmitterResends:       discard.NewCounter(),
+		ChannelBufferUsage:      make(map[string]metrics.Gauge),
+		ErrorsByType:            make(map[string]metrics.Counter),
+		OperationDuration:       make(map[string]metrics.Histogram),
+		StateTransitions:        make(map[string]metrics.Counter),
+		DroppedSignals:          discard.NewCounter(),
+		RecoverableErrors:       discard.NewCounter(),
+		NonRecoverableErrors:    discard.NewCounter(),
+		GoroutineCount:          discard.NewGauge(),
+		DASubmissionAttempts:    discard.NewCounter(),
+		DASubmissionSuccesses:   discard.NewCounter(),
+		DASubmissionFailures:    discard.NewCounter(),
+		DARetrievalAttempts:     discard.NewCounter(),
+		DARetrievalSuccesses:    discard.NewCounter(),
+		DARetrievalFailures:     discard.NewCounter(),
+		DAInclusionHeight:       discard.NewGauge(),
+		PendingHeadersCount:     discard.NewGauge(),
+		PendingDataCount:        discard.NewGauge(),
+		SyncLag:                 discard.NewGauge(),
+		HeadersSynced:           discard.NewCounter(),
+		DataSynced:              discard.NewCounter(),
+		BlocksApplied:           discard.NewCounter(),
+		InvalidHeadersCount:     discard.NewCounter(),
+		BlockProductionTime:     discard.NewHistogram(),
+		EmptyBlocksProduced:     discard.NewCounter(),
+		LazyBlocksProduced:      discard.NewCounter(),
+		NormalBlocksProduced:    discard.NewCounter(),
+		TxsPerBlock:             discard.NewHistogram(),
+		InvalidTransitions:      discard.NewCounter(),
+		DASubmitterFailures:     make(map[string]metrics.Counter),
+		DASubmitterLastFailure:  make(map[string]metrics.Gauge),
+		DASubmitterPendingBlobs: discard.NewGauge(),
+		DASubmitterResends:      discard.NewCounter(),
 	}
 
 	// Initialize maps with no-op metrics
