@@ -3,26 +3,59 @@
 Script to snapshot the `ev-reth` MDBX database while the node keeps running and
 record the block height contained in the snapshot.
 
+The script supports two execution modes:
+
+- **local**: Backup a reth instance running directly on the host machine
+- **docker**: Backup a reth instance running in a Docker container
+
 ## Prerequisites
 
-- Docker access to the container running `ev-reth` (defaults to the service name
-  `ev-reth` from `docker-compose`).
-- The `mdbx_copy` binary available inside that container. If it is not provided
-  by the image, compile it once inside the container (see [libmdbx
+### Common requirements
+
+- The `mdbx_copy` binary available in the target environment (see [libmdbx
   documentation](https://libmdbx.dqdkfa.ru/)).
 - `jq` installed on the host to parse the JSON output.
 
+### Docker mode
+
+- Docker access to the container running `ev-reth` (defaults to the service name
+  `ev-reth` from `docker-compose`).
+
+### Local mode
+
+- Direct filesystem access to the reth datadir.
+- Sufficient permissions to read the database files.
+
 ## Usage
+
+### Local mode
+
+When reth is running directly on your machine:
 
 ```bash
 ./scripts/reth-backup/backup.sh \
+  --mode local \
+  --datadir /var/lib/reth \
+  --mdbx-copy /usr/local/bin/mdbx_copy \
+  /path/to/backups
+```
+
+### Docker mode
+
+When reth is running in a Docker container:
+
+```bash
+./scripts/reth-backup/backup.sh \
+  --mode docker \
   --container ev-reth \
   --datadir /home/reth/eth-home \
   --mdbx-copy /tmp/libmdbx/build/mdbx_copy \
   /path/to/backups
 ```
 
-This creates a timestamped folder under `/path/to/backups` with:
+### Output structure
+
+Both modes create a timestamped folder under `/path/to/backups` with:
 
 - `db/mdbx.dat` – consistent MDBX snapshot.
 - `db/mdbx.lck` – placeholder lock file (empty).
@@ -33,39 +66,64 @@ This creates a timestamped folder under `/path/to/backups` with:
 Additional flags:
 
 - `--tag LABEL` to override the timestamped folder name.
-- `--keep-remote` to leave the temporary snapshot inside the container (useful
-  for debugging).
+- `--keep-remote` to leave the temporary snapshot in the target environment
+  (useful for debugging).
 
 The script outputs the height at the end so you can coordinate other backups
 with the same block number.
 
-## End-to-end workflow with `apps/evm/single`
+## Architecture
+
+The backup script is split into two components:
+
+- **`backup-lib.sh`**: Abstract execution layer providing a common interface for
+  different execution modes (local, docker). This library defines functions like
+  `exec_remote`, `copy_from_remote`, `copy_to_remote`, and `cleanup_remote`
+  that are implemented differently for each backend.
+- **`backup.sh`**: Main script that uses the library and orchestrates the backup
+  workflow. It's mode-agnostic and works with any backend that implements the
+  required interface.
+
+This separation allows easy extension to support additional execution
+environments (SSH, Kubernetes, etc.) without modifying the core backup logic.
+
+## End-to-end workflow with `apps/evm/single` (Docker mode)
 
 The `evm/single` docker-compose setup expects the backup image to reuse the
 `ghcr.io/evstack/ev-reth:latest` tag. To capture both the MDBX and ev-node
 Badger backups end-to-end:
 
 1. Build the helper image so `ev-reth` has the MDBX tooling preinstalled.
+
    ```bash
    docker build -t ghcr.io/evstack/ev-reth:latest scripts/reth-backup
    ```
+
 2. Build the `ev-node-evm-single` image so it includes the latest CLI backup
    command (optional if you already pushed the binary and re-tagged it).
+
    ```bash
    docker build -t ghcr.io/evstack/ev-node-evm-single:main -f apps/evm/single/Dockerfile .
    ```
+
 3. Start the stack.
+
    ```bash
    (cd apps/evm/single && docker compose up -d)
    ```
+
 4. Run the MDBX snapshot script (adjust the destination as needed).
+
    ```bash
-   ./scripts/reth-backup/backup.sh backups/full-run/reth
+   ./scripts/reth-backup/backup.sh --mode docker backups/full-run/reth
    ```
+
    The script prints the generated tag (for example `20251013-104816`) and the
    captured height (stored under
    `backups/full-run/reth/<TAG>/height.txt`).
+
 5. Align the ev-node datastore to that height and take the Badger backup:
+
    ```bash
    HEIGHT=$(cat backups/full-run/reth/<TAG>/height.txt)
    BACKUP_ROOT="$(pwd)/backups/full-run"
@@ -123,12 +181,16 @@ EOF
      -c "/tmp/evnode_backup.sh /host-backup/evnode-backup-aligned.badger ${HEIGHT}")
 
    rm /tmp/evnode_backup.sh
+
    # Bring the managed container back with its usual supervisor.
    (cd apps/evm/single && docker compose start ev-node-evm-single)
    ```
+
    The CLI will report the streamed metadata, and the backup lands at
    `backups/full-run/ev-node/evnode-backup-aligned.badger`.
+
 6. When finished, tear the stack down.
+
    ```bash
    (cd apps/evm/single && docker compose down)
    ```
