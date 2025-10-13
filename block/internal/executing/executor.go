@@ -10,6 +10,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/evstack/ev-node/pkg/raft"
 	"github.com/ipfs/go-datastore"
 	"github.com/rs/zerolog"
 	"golang.org/x/sync/errgroup"
@@ -20,7 +21,6 @@ import (
 	coresequencer "github.com/evstack/ev-node/core/sequencer"
 	"github.com/evstack/ev-node/pkg/config"
 	"github.com/evstack/ev-node/pkg/genesis"
-	"github.com/evstack/ev-node/pkg/raft"
 	"github.com/evstack/ev-node/pkg/signer"
 	"github.com/evstack/ev-node/pkg/store"
 	"github.com/evstack/ev-node/types"
@@ -99,6 +99,9 @@ func NewExecutor(
 
 	if !bytes.Equal(addr, genesis.ProposerAddress) {
 		return nil, common.ErrNotProposer
+	}
+	if raftNode != nil && reflect.ValueOf(raftNode).IsNil() {
+		raftNode = nil
 	}
 
 	return &Executor{
@@ -210,6 +213,12 @@ func (e *Executor) initializeState() error {
 		}
 	}
 
+	if e.raftNode != nil {
+		// ensure node is fully synced before producing any blocks
+		if raftState := e.raftNode.GetState(); raftState != nil && raftState.Height != state.LastBlockHeight {
+			return fmt.Errorf("invalid state: node is not synced with the chain: raft %d != %d state", raftState.Height, state.LastBlockHeight)
+		}
+	}
 	e.setLastState(state)
 
 	// Initialize store height using batch for atomicity
@@ -318,7 +327,7 @@ func (e *Executor) produceBlock() error {
 	}()
 
 	// Check raft leadership if raft is enabled
-	if !reflect.ValueOf(e.raftNode).IsNil() && !e.raftNode.IsLeader() {
+	if e.raftNode != nil && !e.raftNode.IsLeader() {
 		return errors.New("not raft leader")
 	}
 
@@ -422,16 +431,8 @@ func (e *Executor) produceBlock() error {
 		return fmt.Errorf("failed to update state: %w", err)
 	}
 
-	if err := batch.Commit(); err != nil {
-		return fmt.Errorf("failed to commit batch: %w", err)
-	}
-
-	// Update in-memory state after successful commit
-	e.setLastState(newState)
-	e.metrics.Height.Set(float64(newState.LastBlockHeight))
-
-	// Propose block to raft before p2p broadcast if raft is enabled
-	if !reflect.ValueOf(e.raftNode).IsNil() {
+	// Propose block to raft to share state in the cluster
+	if e.raftNode != nil {
 		headerBytes, err := header.MarshalBinary()
 		if err != nil {
 			return fmt.Errorf("failed to marshal header: %w", err)
@@ -452,7 +453,18 @@ func (e *Executor) produceBlock() error {
 			return fmt.Errorf("failed to propose block to raft: %w", err)
 		}
 		e.logger.Debug().Uint64("height", newHeight).Msg("proposed block to raft")
+
 	}
+	if err := batch.Commit(); err != nil {
+		return fmt.Errorf("failed to commit batch: %w", err)
+	}
+	if err := e.store.Sync(context.Background()); err != nil {
+		return fmt.Errorf("failed to sync store: %w", err)
+	}
+
+	// Update in-memory state after successful commit
+	e.setLastState(newState)
+	e.metrics.Height.Set(float64(newState.LastBlockHeight))
 
 	// broadcast header and data to P2P network
 	g, ctx := errgroup.WithContext(e.ctx)
@@ -692,6 +704,15 @@ func (e *Executor) recordBlockMetrics(data *types.Data) {
 	e.metrics.TotalTxs.Add(float64(len(data.Txs)))
 	e.metrics.BlockSizeBytes.Set(float64(data.Size()))
 	e.metrics.CommittedHeight.Set(float64(data.Metadata.Height))
+}
+
+// IsSynced checks if the last block height in the stored state matches the expected height and returns true if they are equal.
+func (e *Executor) IsSynced(expHeight uint64) bool {
+	state, err := e.store.GetState(e.ctx)
+	if err != nil {
+		return false
+	}
+	return state.LastBlockHeight == expHeight
 }
 
 // BatchData represents batch data from sequencer

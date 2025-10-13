@@ -166,10 +166,6 @@ func RegisterCustomHTTPEndpoints(mux *http.ServeMux, s store.Store, pm p2p.P2PRP
 				http.Error(w, "id and address are required", http.StatusBadRequest)
 				return
 			}
-			//if !raftNode.IsLeader() {
-			//	http.Error(w, "not leader node", http.StatusMethodNotAllowed)
-			//	return
-			//}
 			if err := raftNode.AddPeer(rsp.NodeID, rsp.Address); err != nil {
 				http.Error(w, "failed to join peer", http.StatusInternalServerError)
 			}
@@ -190,10 +186,6 @@ func RegisterCustomHTTPEndpoints(mux *http.ServeMux, s store.Store, pm p2p.P2PRP
 				http.Error(w, "id is required", http.StatusBadRequest)
 				return
 			}
-			//if !raftNode.IsLeader() {
-			//	http.Error(w, "not leader node", http.StatusMethodNotAllowed)
-			//	return
-			//}
 			if err := raftNode.RemovePeer(rsp.NodeID); err != nil {
 				http.Error(w, "failed to remove peer", http.StatusInternalServerError)
 				return

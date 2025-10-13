@@ -5,15 +5,42 @@ import (
 	"errors"
 	"fmt"
 	"sync"
+	"sync/atomic"
 	"time"
+
+	"github.com/rs/zerolog"
 )
 
 var ErrLeadershipLost = fmt.Errorf("leader lock lost")
 
-// RunWithElection manages leader election and runs leader-only operations.
-// It's recommended that leaderFunc accepts a context.Context to allow for graceful shutdown.
-// This is a blocking operation
-func (n *Node) RunWithElection(ctx context.Context, leaderFunc, followerFunc func(leaderCtx context.Context) error) error {
+// Runnable represents a component that can be started and performs specific operations while running.
+// Run runs the main logic of the component using the provided context and returns an error if it fails.
+// IsSynced checks whether the component is synced with the given RaftBlockState.
+type Runnable interface {
+	Run(ctx context.Context) error
+	IsSynced(*RaftBlockState) bool
+}
+
+type DynamicLeaderElection struct {
+	logger                         zerolog.Logger
+	leaderFactory, followerFactory func() (Runnable, error)
+	node                           *Node
+	running                        atomic.Bool
+}
+
+// NewDynamicLeaderElection constructor
+func NewDynamicLeaderElection(
+	logger zerolog.Logger,
+	leaderFactory func() (Runnable, error),
+	followerFactory func() (Runnable, error),
+	node *Node,
+) *DynamicLeaderElection {
+	return &DynamicLeaderElection{logger: logger, leaderFactory: leaderFactory, followerFactory: followerFactory, node: node}
+}
+
+// Run starts the leader election process and manages the lifecycle of leader or follower roles based on Raft events.
+// This is a blocking call.
+func (d *DynamicLeaderElection) Run(ctx context.Context) error {
 	var isStarted, isCurrentlyLeader bool
 	var workerCancel context.CancelFunc = func() {} // noop
 	var wg sync.WaitGroup
@@ -43,40 +70,65 @@ func (n *Node) RunWithElection(ctx context.Context, leaderFunc, followerFunc fun
 	}
 	ticker := time.NewTicker(300 * time.Millisecond)
 	defer ticker.Stop()
-
+	d.running.Store(true)
+	defer d.running.Store(false)
+	var runnable Runnable
 	for {
 		select {
-		case isLeader := <-n.raft.LeaderCh():
-			n.logger.Info().Msg("Raft leader changed notification")
-			if isLeader && !isCurrentlyLeader { // new leader
+		case becameLeader := <-d.node.raft.LeaderCh():
+			d.logger.Info().Msg("Raft leader changed notification")
+			if becameLeader && !isCurrentlyLeader { // new leader
 				if isStarted {
-					n.logger.Info().Msg("became leader, stopping follower operations")
+					d.logger.Info().Msg("became leader, stopping follower operations")
+					// wait for in flight raft msgs to land
+					time.Sleep(d.node.config.SendTimeout)
+					if !runnable.IsSynced(d.node.GetState()) {
+						d.logger.Info().Msg("became leader, but not synced. Pass on leadership")
+						if err := d.node.raft.LeadershipTransfer().Error(); err != nil {
+							return err
+						}
+						continue
+					}
+					d.logger.Info().Msg("became leader, stopping follower operations")
 					workerCancel()
 					wg.Wait()
 				}
-				n.logger.Info().Msg("starting leader operations")
-				isCurrentlyLeader, isStarted = true, true
-				startWorker("leader", leaderFunc)
-			} else if !isLeader && isCurrentlyLeader { // lost leadership
-				workerCancel()
-				n.logger.Info().Msg("lost leadership")
-				return ErrLeadershipLost
-			} else if !isLeader && !isCurrentlyLeader && !isStarted { // start as follower
-				n.logger.Info().Msg("starting follower operations")
+				d.logger.Info().Msg("starting leader operations")
+				var err error
+				if runnable, err = d.leaderFactory(); err != nil {
+					return err
+				}
 				isStarted = true
-				startWorker("follower", followerFunc)
+				isCurrentlyLeader = true
+				startWorker("leader", runnable.Run)
+			} else if !becameLeader && isCurrentlyLeader { // lost leadership
+				workerCancel()
+				d.logger.Info().Msg("lost leadership")
+				return ErrLeadershipLost
+			} else if !becameLeader && !isCurrentlyLeader && !isStarted { // start as a follower
+				d.logger.Info().Msg("starting follower operations")
+				isStarted = true
+				var err error
+				if runnable, err = d.followerFactory(); err != nil {
+					return err
+				}
+				startWorker("follower", runnable.Run)
 			}
 		case <-ticker.C: // LeaderCh fires only when leader changes not on initial election
 			if isStarted {
 				ticker.Stop()
 				continue
 			}
-			_, nodeID := n.raft.LeaderWithID()
-			if nodeID != "" && string(nodeID) != n.config.NodeID {
+			_, nodeID := d.node.raft.LeaderWithID()
+			if nodeID != "" && string(nodeID) != d.node.config.NodeID {
 				ticker.Stop()
-				n.logger.Info().Msg("starting follower operations")
+				d.logger.Info().Msg("starting follower operations")
 				isStarted = true
-				startWorker("follower", followerFunc)
+				var err error
+				if runnable, err = d.followerFactory(); err != nil {
+					return err
+				}
+				startWorker("follower", runnable.Run)
 			}
 		case err := <-errCh:
 			return err
@@ -84,4 +136,8 @@ func (n *Node) RunWithElection(ctx context.Context, leaderFunc, followerFunc fun
 			return ctx.Err()
 		}
 	}
+}
+
+func (d *DynamicLeaderElection) IsRunning() bool {
+	return d.running.Load()
 }

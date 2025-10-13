@@ -1,5 +1,7 @@
 package raft
 
+import "fmt"
+
 // todo: refactor to use proto
 // RaftBlockState represents replicated block state
 type RaftBlockState struct {
@@ -8,6 +10,16 @@ type RaftBlockState struct {
 	Timestamp uint64
 	Header    []byte
 	Data      []byte
+}
+
+func (s RaftBlockState) assertValid(next RaftBlockState) error {
+	if s.Height > next.Height {
+		return fmt.Errorf("invalid height: %d > %d", s.Height, next.Height)
+	}
+	if s.Timestamp > next.Timestamp {
+		return fmt.Errorf("invalid timestamp: %d > %d", s.Timestamp, next.Timestamp)
+	}
+	return nil
 }
 
 // RaftApplyMsg is sent when raft applies a log entry

@@ -78,7 +78,7 @@ func (s *FullNodeTestSuite) SetupTest() {
 	require.NoError(err, "Failed to get DA inclusion")
 
 	// Verify block components are properly initialized
-	require.NotNil(s.node.blockComponents, "Block components should be initialized")
+	require.NotNil(castState(s.T(), s.node).bc, "Block components should be initialized")
 }
 
 // TearDownTest cancels the test context and waits for the node to stop, ensuring proper cleanup after each test.
@@ -125,13 +125,13 @@ func (s *FullNodeTestSuite) TestBlockProduction() {
 	testTx := []byte("test transaction")
 
 	// Inject transaction through the node's block components (same as integration tests)
-	if s.node.blockComponents != nil && s.node.blockComponents.Executor != nil {
+	if state := castState(s.T(), s.node); state.bc != nil && state.bc.Executor != nil {
 		// Access the core executor from the block executor
-		coreExec := s.node.blockComponents.Executor.GetCoreExecutor()
+		coreExec := state.bc.Executor.GetCoreExecutor()
 		if dummyExec, ok := coreExec.(interface{ InjectTx([]byte) }); ok {
 			dummyExec.InjectTx(testTx)
 			// Notify the executor about new transactions
-			s.node.blockComponents.Executor.NotifyNewTransactions()
+			state.bc.Executor.NotifyNewTransactions()
 		} else {
 			s.T().Fatalf("Could not cast core executor to DummyExecutor")
 		}
@@ -183,12 +183,12 @@ func (s *FullNodeTestSuite) TestBlockProduction() {
 // It injects a transaction, waits for several blocks to be produced and DA-included, and asserts that all blocks are DA included.
 func (s *FullNodeTestSuite) TestSubmitBlocksToDA() {
 	// Inject transaction through the node's block components
-	if s.node.blockComponents != nil && s.node.blockComponents.Executor != nil {
-		coreExec := s.node.blockComponents.Executor.GetCoreExecutor()
+	if state := castState(s.T(), s.node); state.bc != nil && state.bc.Executor != nil {
+		coreExec := state.bc.Executor.GetCoreExecutor()
 		if dummyExec, ok := coreExec.(interface{ InjectTx([]byte) }); ok {
 			dummyExec.InjectTx([]byte("test transaction"))
 			// Notify the executor about new transactions
-			s.node.blockComponents.Executor.NotifyNewTransactions()
+			state.bc.Executor.NotifyNewTransactions()
 		} else {
 			s.T().Fatalf("Could not cast core executor to DummyExecutor")
 		}
@@ -207,7 +207,7 @@ func (s *FullNodeTestSuite) TestSubmitBlocksToDA() {
 		header, data, err := s.node.Store.GetBlockData(s.ctx, height)
 		require.NoError(s.T(), err)
 
-		ok, err := s.node.blockComponents.Submitter.IsHeightDAIncluded(height, header, data)
+		ok, err := castState(s.T(), s.node).bc.Submitter.IsHeightDAIncluded(height, header, data)
 		require.NoError(s.T(), err)
 		require.True(s.T(), ok, "Block at height %d is not DA included", height)
 	}
@@ -219,7 +219,7 @@ func (s *FullNodeTestSuite) TestGenesisInitialization() {
 	require := require.New(s.T())
 
 	// Verify genesis state
-	state := s.node.blockComponents.GetLastState()
+	state := castState(s.T(), s.node).bc.GetLastState()
 	require.Equal(s.node.genesis.InitialHeight, state.InitialHeight)
 	require.Equal(s.node.genesis.ChainID, state.ChainID)
 }
@@ -231,8 +231,8 @@ func TestStateRecovery(t *testing.T) {
 
 	// Set up one sequencer
 	config := getTestConfig(t, 1)
-	executor, sequencer, dac, ds, _, stopDAHeightTicker := createTestComponents(t, config)
-	node, cleanup := createNodeWithCustomComponents(t, config, executor, sequencer, dac, p2pClient, ds, stopDAHeightTicker)
+	executor, sequencer, dac, ds, nodeKey, stopDAHeightTicker := createTestComponents(t, config)
+	node, cleanup := createNodeWithCustomComponents(t, config, executor, sequencer, dac, nodeKey, ds, stopDAHeightTicker)
 	defer cleanup()
 
 	var runningWg sync.WaitGroup
@@ -256,8 +256,8 @@ func TestStateRecovery(t *testing.T) {
 	shutdownAndWait(t, []context.CancelFunc{cancel}, &runningWg, 60*time.Second)
 
 	// Create a new node instance using the same components
-	executor, sequencer, dac, _, _, stopDAHeightTicker = createTestComponents(t, config)
-	node, cleanup = createNodeWithCustomComponents(t, config, executor, sequencer, dac, p2pClient, ds, stopDAHeightTicker)
+	executor, sequencer, dac, _, nodeKey, stopDAHeightTicker = createTestComponents(t, config)
+	node, cleanup = createNodeWithCustomComponents(t, config, executor, sequencer, dac, nodeKey, ds, stopDAHeightTicker)
 	defer cleanup()
 
 	// Verify state persistence
@@ -313,7 +313,7 @@ func TestBatchQueueThrottlingWithDAFailure(t *testing.T) {
 	config.DA.BlockTime = evconfig.DurationWrapper{Duration: 100 * time.Millisecond} // Longer DA time to ensure blocks are produced first
 
 	// Create test components
-	executor, sequencer, dummyDA, ds, _, stopDAHeightTicker := createTestComponents(t, config)
+	executor, sequencer, dummyDA, ds, nodeKey, stopDAHeightTicker := createTestComponents(t, config)
 	defer stopDAHeightTicker()
 
 	// Cast executor to DummyExecutor so we can inject transactions
@@ -325,7 +325,7 @@ func TestBatchQueueThrottlingWithDAFailure(t *testing.T) {
 	require.True(ok, "Expected DummyDA implementation")
 
 	// Create node with components
-	node, cleanup := createNodeWithCustomComponents(t, config, executor, sequencer, dummyDAImpl, p2pClient, ds, func() {})
+	node, cleanup := createNodeWithCustomComponents(t, config, executor, sequencer, dummyDAImpl, nodeKey, ds, func() {})
 	defer cleanup()
 
 	ctx, cancel := context.WithCancel(t.Context())

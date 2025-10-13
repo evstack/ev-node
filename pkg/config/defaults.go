@@ -94,7 +94,7 @@ func DefaultConfig() Config {
 			EnableDAVisualization: false,
 		},
 		Raft: RaftConfig{
-			HeartbeatTimeout: 1000 * time.Millisecond,
+			HeartbeatTimeout: 350 * time.Millisecond,
 		},
 	}
 }

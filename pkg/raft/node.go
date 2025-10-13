@@ -9,6 +9,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 
@@ -109,9 +110,29 @@ func NewNode(cfg *Config, clusterClient clusterClient, logger zerolog.Logger) (*
 }
 
 func (n *Node) Start(ctx context.Context) error {
+	if n == nil {
+		return nil
+	}
 	if !n.config.Bootstrap {
 		n.logger.Info().Msg("Join raft cluster")
-		return n.clusterClient.AddPeer(ctx, n.config.NodeID, n.config.RaftAddr)
+		if err := n.clusterClient.AddPeer(ctx, n.config.NodeID, n.config.RaftAddr); err != nil {
+			return err
+		}
+		ctx, cancel := context.WithTimeout(ctx, n.config.SendTimeout*5)
+		defer cancel()
+		if err := n.awaitToBeClusterMember(ctx, raft.ServerID(n.config.NodeID)); err != nil {
+			return err
+		}
+		for {
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			default:
+				if n.GetState().Height != 0 {
+					return nil
+				}
+			}
+		}
 	}
 
 	n.logger.Info().Msg("Boostrap raft cluster")
@@ -140,33 +161,56 @@ func (n *Node) Start(ctx context.Context) error {
 
 }
 
-func deduplicateServers(servers []raft.Server) []raft.Server {
-	seen := make(map[raft.ServerID]struct{})
-	unique := make([]raft.Server, 0, len(servers))
-	for _, server := range servers {
-		key := server.ID
-		if _, exists := seen[key]; !exists {
-			seen[key] = struct{}{}
-			unique = append(unique, server)
+func (n *Node) awaitToBeClusterMember(ctx context.Context, nodeID raft.ServerID) error {
+	start := time.Now()
+	for {
+		exists, err := n.isClusterMember(nodeID)
+		if err != nil {
+			return err
+		}
+		if exists {
+			n.logger.Info().Msgf("node joined cluster after %s", time.Since(start))
+			return nil
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(time.Second / 10):
 		}
 	}
-	return unique
+}
+
+func (n *Node) isClusterMember(nodeID raft.ServerID) (bool, error) {
+	future := n.raft.GetConfiguration()
+	if err := future.Error(); err != nil {
+		return false, err
+	}
+	return slices.ContainsFunc(future.Configuration().Servers, func(server raft.Server) bool {
+		return server.ID == nodeID
+	}), nil
 }
 
 func (n *Node) Stop() error {
+	if n == nil {
+		return nil
+	}
 	return n.raft.Shutdown().Error()
 }
 
 // IsLeader returns true if this node is the raft leader
 func (n *Node) IsLeader() bool {
+	if n == nil || n.raft == nil {
+		return false
+	}
 	return n.raft.State() == raft.Leader
 }
+
 func (n *Node) NodeID() string {
 	return n.config.NodeID
 }
 
-// ProposeBlock proposes a block state to be replicated via raft
-func (n *Node) Broadcast(ctx context.Context, state *RaftBlockState) error {
+// Broadcast proposes a block state to be replicated via raft
+func (n *Node) Broadcast(_ context.Context, state *RaftBlockState) error {
 	if !n.IsLeader() {
 		return fmt.Errorf("not leader")
 	}
@@ -243,7 +287,9 @@ func (f *FSM) Apply(log *raft.Log) interface{} {
 		f.logger.Error().Err(err).Msg("unmarshal block state")
 		return err
 	}
-
+	if err := f.state.assertValid(state); err != nil {
+		return err
+	}
 	f.state = &state
 	f.logger.Debug().Uint64("height", state.Height).Msg("received block state")
 
@@ -308,4 +354,17 @@ func splitPeerAddr(peer string) (raft.Server, error) {
 		ID:      raft.ServerID(parts[0]),
 		Address: raft.ServerAddress(parts[1]),
 	}, nil
+}
+
+func deduplicateServers(servers []raft.Server) []raft.Server {
+	seen := make(map[raft.ServerID]struct{})
+	unique := make([]raft.Server, 0, len(servers))
+	for _, server := range servers {
+		key := server.ID
+		if _, exists := seen[key]; !exists {
+			seen[key] = struct{}{}
+			unique = append(unique, server)
+		}
+	}
+	return unique
 }

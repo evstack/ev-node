@@ -12,7 +12,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/evstack/ev-node/block"
 	coreda "github.com/evstack/ev-node/core/da"
 	coreexecutor "github.com/evstack/ev-node/core/execution"
 	coresequencer "github.com/evstack/ev-node/core/sequencer"
@@ -43,9 +42,8 @@ const (
 var _ Node = &FullNode{}
 
 type leaderElection interface {
-	RunWithElection(ctx context.Context, leaderFunc, followerFunc func(leaderCtx context.Context) error) error
-	Start(ctx context.Context) error
-	Stop() error
+	Run(ctx context.Context) error
+	IsRunning() bool
 }
 
 // FullNode represents a client node in Rollkit network.
@@ -61,10 +59,8 @@ type FullNode struct {
 
 	da coreda.DA
 
-	Store                   store.Store
-	blockComponents         *block.Components
-	syncComponentFunc       func(c context.Context) error
-	aggregatorComponentFunc func(c context.Context) error
+	Store    store.Store
+	raftNode *raftpkg.Node
 
 	prometheusSrv  *http.Server
 	pprofSrv       *http.Server
@@ -92,21 +88,39 @@ func newFullNode(
 	mainKV := newPrefixKV(database, EvPrefix)
 	rktStore := store.New(mainKV)
 
-	// Initialize raft node if enabled (for both aggregator and sync nodes)
 	var raftNode *raftpkg.Node
-	var leaderElection leaderElection
-	switch {
-	case nodeConfig.Node.Aggregator && nodeConfig.Raft.Enable:
+	if nodeConfig.Node.Aggregator && nodeConfig.Raft.Enable {
 		raftNode, err = initRaftNode(nodeConfig, logger)
 		if err != nil {
 			return nil, fmt.Errorf("failed to initialize raft node: %w", err)
 		}
-		leaderElection = raftNode
-		nodeConfig.P2P.Peers = "" // raft cluster provides most up to date blocks. No need for p2p peers.
+	}
+
+	leaderFactory := func() (raftpkg.Runnable, error) {
+		logger.Info().Msg("Starting aggregator-MODE")
+		nodeConfig.Node.Aggregator = true
+		nodeConfig.P2P.Peers = "" // peers are not supported in aggregator mode
+		return newAggregatorMode(nodeConfig, nodeKey, signer, genesis, database, exec, sequencer, da, logger, rktStore, mainKV, blockMetrics, nodeOpts, raftNode)
+	}
+	followerFactory := func() (raftpkg.Runnable, error) {
+		logger.Info().Msg("Starting sync-MODE")
+		nodeConfig.Node.Aggregator = false
+		return newSyncMode(nodeConfig, nodeKey, genesis, database, exec, da, logger, rktStore, mainKV, blockMetrics, nodeOpts, raftNode)
+	}
+
+	// Initialize raft node if enabled (for both aggregator and sync nodes)
+	var leaderElection leaderElection
+	switch {
+	case nodeConfig.Node.Aggregator && nodeConfig.Raft.Enable:
+		leaderElection = raftpkg.NewDynamicLeaderElection(logger, leaderFactory, followerFactory, raftNode)
 	case nodeConfig.Node.Aggregator && !nodeConfig.Raft.Enable:
-		leaderElection = AlwaysLeader{}
-	case !nodeConfig.Node.Aggregator:
-		leaderElection = AlwaysFollower{}
+		if leaderElection, err = newSingleRoleElector(leaderFactory); err != nil {
+			return
+		}
+	case !nodeConfig.Node.Aggregator && !nodeConfig.Raft.Enable:
+		if leaderElection, err = newSingleRoleElector(followerFactory); err != nil {
+			return
+		}
 	default:
 		return nil, fmt.Errorf("raft config must be used in sequencer setup only")
 	}
@@ -117,25 +131,7 @@ func newFullNode(
 		da:             da,
 		Store:          rktStore,
 		leaderElection: leaderElection,
-		aggregatorComponentFunc: func(ctx context.Context) error {
-			logger.Info().Msg("Starting aggregator-MODE")
-			nodeConfig.Node.Aggregator = true
-			nodeConfig.P2P.Peers = ""
-			m, err := newAggregatorMode(nodeConfig, nodeKey, signer, genesis, database, exec, sequencer, da, logger, rktStore, mainKV, blockMetrics, nodeOpts, raftNode)
-			if err != nil {
-				return err
-			}
-			return m.Run(ctx)
-		},
-		syncComponentFunc: func(ctx context.Context) error {
-			logger.Info().Msg("Starting sync-MODE")
-			nodeConfig.Node.Aggregator = false
-			m, err := newSyncMode(nodeConfig, nodeKey, genesis, database, exec, da, logger, rktStore, mainKV, blockMetrics, nodeOpts, raftNode)
-			if err != nil {
-				return err
-			}
-			return m.Run(ctx)
-		},
+		raftNode:       raftNode,
 	}
 
 	node.BaseService = *service.NewBaseService(logger, "Node", node)
@@ -317,13 +313,15 @@ func (n *FullNode) Run(parentCtx context.Context) error {
 		(n.nodeConfig.Instrumentation.IsPrometheusEnabled() || n.nodeConfig.Instrumentation.IsPprofEnabled()) {
 		n.prometheusSrv, n.pprofSrv = n.startInstrumentationServer()
 	}
-	// Start leader election if enabled
-	if err := n.leaderElection.Start(ctx); err != nil {
-		return fmt.Errorf("error while starting leader election: %w", err)
+	// Start leader election
+	if n.raftNode != nil {
+		if err := n.raftNode.Start(ctx); err != nil {
+			return fmt.Errorf("error while starting leader election: %w", err)
+		}
 	}
 
 	var runtimeErr error
-	if err := n.leaderElection.RunWithElection(ctx, n.aggregatorComponentFunc, n.syncComponentFunc); err != nil && !errors.Is(err, context.Canceled) {
+	if err := n.leaderElection.Run(ctx); err != nil && !errors.Is(err, context.Canceled) {
 		runtimeErr = err
 	}
 
@@ -338,10 +336,12 @@ func (n *FullNode) Run(parentCtx context.Context) error {
 	var shutdownMultiErr error // Variable to accumulate multiple errors
 
 	// Stop leader election
-	if err := n.leaderElection.Stop(); err != nil && !errors.Is(err, context.Canceled) {
-		shutdownMultiErr = errors.Join(multiErr, fmt.Errorf("stopping leader election: %w", err))
-	} else {
-		n.Logger.Debug().Msg("leader election stopped")
+	if n.raftNode != nil {
+		if err := n.raftNode.Stop(); err != nil && !errors.Is(err, context.Canceled) {
+			shutdownMultiErr = errors.Join(shutdownMultiErr, fmt.Errorf("stopping leader election: %w", err))
+		} else {
+			n.Logger.Debug().Msg("leader election stopped")
+		}
 	}
 
 	// Shutdown Prometheus Server
@@ -405,7 +405,7 @@ func (n *FullNode) GetGenesisChunks() ([]string, error) {
 
 // IsRunning returns true if the node is running.
 func (n *FullNode) IsRunning() bool {
-	return n.blockComponents != nil
+	return n.leaderElection.IsRunning()
 }
 
 func newPrefixKV(kvStore ds.Batching, prefix string) ds.Batching {

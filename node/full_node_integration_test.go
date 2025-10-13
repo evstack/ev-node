@@ -49,20 +49,22 @@ func TestTxGossipingMultipleNodesNoDA(t *testing.T) {
 	}
 
 	// Inject a transaction into the sequencer's executor
-	if nodes[0].blockComponents != nil && nodes[0].blockComponents.Executor != nil {
+	if state := castState(t, nodes[0]); state.bc.Executor != nil {
 		// Access the core executor from the block executor
-		coreExec := nodes[0].blockComponents.Executor.GetCoreExecutor()
+		coreExec := state.bc.Executor.GetCoreExecutor()
 		if dummyExec, ok := coreExec.(interface{ InjectTx([]byte) }); ok {
 			dummyExec.InjectTx([]byte("test tx"))
 		} else {
 			t.Fatal("Warning: Could not cast core executor to DummyExecutor")
 		}
+	} else {
+		t.Fatal("executor empty")
 	}
 	blocksToWaitFor := uint64(3)
 	// Wait for all nodes to reach at least blocksToWaitFor blocks
-	for _, nodeItem := range nodes {
+	for i, nodeItem := range nodes {
 		requireEmptyChan(t, errChan)
-		require.NoError(waitForAtLeastNBlocks(nodeItem, blocksToWaitFor, Store))
+		require.NoError(waitForAtLeastNBlocks(nodeItem, blocksToWaitFor, Store), "node %d", i)
 	}
 
 	// Shutdown all nodes and wait
@@ -113,9 +115,9 @@ func TestTxGossipingMultipleNodesDAIncluded(t *testing.T) {
 	}
 
 	// Inject transactions into the sequencer's executor
-	if nodes[0].blockComponents != nil && nodes[0].blockComponents.Executor != nil {
+	if state := castState(t, nodes[0]); state != nil && state.bc.Executor != nil {
 		// Access the core executor from the block executor
-		coreExec := nodes[0].blockComponents.Executor.GetCoreExecutor()
+		coreExec := state.bc.Executor.GetCoreExecutor()
 		if dummyExec, ok := coreExec.(interface{ InjectTx([]byte) }); ok {
 			dummyExec.InjectTx([]byte("test tx 1"))
 			dummyExec.InjectTx([]byte("test tx 2"))
@@ -137,6 +139,14 @@ func TestTxGossipingMultipleNodesDAIncluded(t *testing.T) {
 
 	// Assert that all nodes have the same block up to height blocksToWaitFor
 	assertAllNodesSynced(t, nodes, blocksToWaitFor)
+}
+
+func castState(t *testing.T, node *FullNode) *failoverState {
+	v, ok := node.leaderElection.(testSupportElection)
+	require.True(t, ok)
+	state := v.state()
+	require.NotNil(t, state)
+	return state
 }
 
 // TestFastDASync verifies that a new node can quickly synchronize with the DA layer using fast sync.
@@ -416,14 +426,16 @@ func testSingleSequencerSingleFullNodeTrustedHash(t *testing.T, source Source) {
 	require.NoError(waitForFirstBlock(nodes[0], source))
 
 	// Get the hash of the first block (using the correct source)
+	v, ok := nodes[0].leaderElection.(testSupportElection)
+	require.True(ok)
 	var trustedHash string
 	switch source {
 	case Data:
-		trustedHashValue, err := nodes[0].dSyncService.Store().GetByHeight(ctxs[0], 1)
+		trustedHashValue, err := v.state().dataSyncService.Store().GetByHeight(ctxs[0], 1)
 		require.NoError(err)
 		trustedHash = trustedHashValue.Hash().String()
 	case Header:
-		trustedHashValue, err := nodes[0].hSyncService.Store().GetByHeight(ctxs[0], 1)
+		trustedHashValue, err := v.state().headerSyncService.Store().GetByHeight(ctxs[0], 1)
 		require.NoError(err)
 		trustedHash = trustedHashValue.Hash().String()
 	default:

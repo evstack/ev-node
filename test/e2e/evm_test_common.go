@@ -57,6 +57,7 @@ func getAvailablePort() (int, error) {
 	return addr.Port, nil
 }
 
+// same as getAvailablePort but fails test if not successful
 func mustGetAvailablePort(t *testing.T) int {
 	t.Helper()
 	port, err := getAvailablePort()
@@ -693,38 +694,6 @@ func restartDAAndSequencerLazy(t *testing.T, sut *SystemUnderTest, sequencerHome
 
 	// Use AwaitNodeLive for lazy mode since the node won't be ready (producing blocks) immediately
 	sut.AwaitNodeLive(t, endpoints.GetRollkitRPCAddress(), NodeStartupTimeout)
-}
-
-// restartSequencerNode starts an existing sequencer node without initialization.
-// This is used for restart scenarios where the node has already been initialized.
-//
-// Parameters:
-// - sut: SystemUnderTest instance for managing test processes
-// - sequencerHome: Directory path for sequencer node data
-// - jwtSecret: JWT secret for sequencer's EVM engine authentication
-// - genesisHash: Hash of the genesis block for chain validation
-func restartSequencerNode(t *testing.T, sut *SystemUnderTest, sequencerHome, jwtSecret, genesisHash string) {
-	t.Helper()
-
-	// Start sequencer node (without init - node already exists)
-	// The passphrase file and JWT secret file should still exist from the initial setup
-	passphraseFile := filepath.Join(sequencerHome, "passphrase.txt")
-	jwtSecretFile := filepath.Join(sequencerHome, "jwt-secret.hex")
-	sut.ExecCmd(evmSingleBinaryPath,
-		"start",
-		"--evm.jwt-secret-file", jwtSecretFile,
-		"--evm.genesis-hash", genesisHash,
-		"--evnode.node.block_time", DefaultBlockTime,
-		"--evnode.node.aggregator=true",
-		"--evnode.signer.passphrase_file", passphraseFile,
-		"--home", sequencerHome,
-		"--evnode.da.address", DAAddress,
-		"--evnode.da.block_time", DefaultDABlockTime,
-	)
-
-	time.Sleep(SlowPollingInterval)
-
-	sut.AwaitNodeUp(t, RollkitRPCAddress, NodeStartupTimeout)
 }
 
 // verifyNoBlockProduction verifies that no new blocks are being produced over a specified duration.

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"sync/atomic"
 	"time"
 
 	"github.com/evstack/ev-node/block"
@@ -56,8 +57,8 @@ func newSyncMode(
 			rktStore,
 			exec,
 			da,
-			headerSyncService.Store(),
-			dataSyncService.Store(),
+			headerSyncService,
+			dataSyncService,
 			logger,
 			blockMetrics,
 			nodeOpts.BlockOptions,
@@ -201,7 +202,7 @@ func (f *failoverState) Run(ctx context.Context) (multiErr error) {
 
 	defer func() {
 		if f.bc.Syncer != nil {
-			for f.bc.Syncer.HasUnprocessedEvents() {
+			for f.bc.Syncer.IsCatchingUpState() {
 				// give it some time to gracefully complete
 				time.Sleep(100 * time.Millisecond)
 			}
@@ -229,34 +230,50 @@ func (f *failoverState) Run(ctx context.Context) (multiErr error) {
 	return <-errChan
 }
 
-var _ leaderElection = AlwaysLeader{}
-
-type AlwaysLeader struct{}
-
-func (a AlwaysLeader) RunWithElection(ctx context.Context, leaderFunc, _ func(leaderCtx context.Context) error) error {
-	return leaderFunc(ctx)
+func (f *failoverState) IsSynced(s *raft.RaftBlockState) bool {
+	if s == nil || s.Height == 0 {
+		return true
+	}
+	if f.bc.Syncer != nil {
+		return f.bc.Syncer.IsSynced(s.Height)
+	}
+	if f.bc.Executor != nil {
+		return f.bc.Executor.IsSynced(s.Height)
+	}
+	return false
 }
 
-func (a AlwaysLeader) Start(ctx context.Context) error {
-	return nil
+var _ leaderElection = &singleRoleElector{}
+var _ testSupportElection = &singleRoleElector{}
+
+// singleRoleElector implements leaderElection but with a static role. No switchover.
+type singleRoleElector struct {
+	running  atomic.Bool
+	runnable raft.Runnable
 }
 
-func (a AlwaysLeader) Stop() error {
-	return nil
+func newSingleRoleElector(factory func() (raft.Runnable, error)) (*singleRoleElector, error) {
+	r, err := factory()
+	if err != nil {
+		return nil, err
+	}
+	return &singleRoleElector{runnable: r}, nil
 }
 
-var _ leaderElection = AlwaysFollower{}
-
-type AlwaysFollower struct{}
-
-func (a AlwaysFollower) RunWithElection(ctx context.Context, _, followerFunc func(leaderCtx context.Context) error) error {
-	return followerFunc(ctx)
+func (a *singleRoleElector) Run(ctx context.Context) error {
+	a.running.Store(true)
+	defer a.running.Store(false)
+	return a.runnable.Run(ctx)
 }
 
-func (a AlwaysFollower) Start(ctx context.Context) error {
-	return nil
+func (a *singleRoleElector) IsRunning() bool {
+	return a.running.Load()
 }
 
-func (a AlwaysFollower) Stop() error {
+// for testing purposes only
+func (a *singleRoleElector) state() *failoverState {
+	if v, ok := a.runnable.(*failoverState); ok {
+		return v
+	}
 	return nil
 }

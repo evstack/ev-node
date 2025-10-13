@@ -23,7 +23,6 @@ func (e eventProcessorFn) handle(ctx context.Context, event common.DAHeightEvent
 }
 
 type raftRetriever struct {
-	// Raft consensus
 	raftNode       common.RaftNode
 	wg             sync.WaitGroup
 	logger         zerolog.Logger

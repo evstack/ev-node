@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
-	pubsub "github.com/libp2p/go-libp2p-pubsub"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -115,7 +114,7 @@ func NewSyncer(
 		errorCh:     errorCh,
 		logger:      logger.With().Str("component", "syncer").Logger(),
 	}
-	if !reflect.ValueOf(raftNode).IsNil() {
+	if raftNode != nil && !reflect.ValueOf(raftNode).IsNil() {
 		s.raftRetriever = newRaftRetriever(raftNode, genesis, logger, eventProcessorFn(s.pipeEvent))
 	}
 	return s
@@ -141,7 +140,7 @@ func (s *Syncer) Start(ctx context.Context) error {
 
 	if s.raftRetriever != nil {
 		if err := s.raftRetriever.Start(s.ctx); err != nil {
-			return fmt.Errorf("start raftRetriever: %w", err)
+			return fmt.Errorf("start raft retriever: %w", err)
 		}
 	}
 
@@ -173,15 +172,16 @@ func (s *Syncer) Stop() error {
 	return nil
 }
 
-func (s *Syncer) HasUnprocessedEvents() bool {
+// IsCatchingUpState returns true if the syncer has pending events or is behind the current raft height
+func (s *Syncer) IsCatchingUpState() bool {
 	return len(s.heightInCh) != 0 || func() bool {
 		currentHeight, err := s.store.Height(s.ctx)
 		if err != nil {
 			s.logger.Error().Err(err).Msg("failed to get current height")
 			return false
 		}
-		return s.headerStore.Height() > currentHeight ||
-			s.dataStore.Height() > currentHeight ||
+		return s.headerStore.Store().Height() > currentHeight ||
+			s.dataStore.Store().Height() > currentHeight ||
 			s.raftRetriever != nil && s.raftRetriever.Height() > currentHeight
 	}()
 }
@@ -520,8 +520,11 @@ func (s *Syncer) processHeightEvent(event *common.DAHeightEvent) {
 
 	// Try to sync the next block
 	if err := s.trySyncNextBlock(event); err != nil {
-		s.logger.Error().Err(err).Msg("failed to sync next block")
-		// If the error is not due to an validation error, re-store the event as pending
+		s.logger.Error().Err(err).
+			Uint64("event-height", event.Header.Height()).
+			Uint64("state-height", s.GetLastState().LastBlockHeight).
+			Msg("failed to sync next block")
+		// If the error is not due to a validation error, re-store the event as pending
 		switch {
 		case errors.Is(err, errInvalidBlock):
 			// do not reschedule
@@ -825,4 +828,13 @@ func (s *Syncer) cancelP2PWait(height uint64) {
 		s.p2pWaitState.Store(p2pWaitState{})
 		state.cancel()
 	}
+}
+
+// IsSynced checks if the last block height in the stored state matches the expected height and returns true if they are equal.
+func (s *Syncer) IsSynced(expHeight uint64) bool {
+	state, err := s.store.GetState(s.ctx)
+	if err != nil {
+		return false
+	}
+	return state.LastBlockHeight == expHeight && !s.IsCatchingUpState()
 }
