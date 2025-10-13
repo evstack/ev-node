@@ -2,7 +2,7 @@ module github.com/evstack/ev-node/apps/evm/single
 
 go 1.24.6
 
-replace github.com/celestiaorg/go-header => github.com/julienrbrt/go-header v0.0.0-20250909151551-cb11b091bf58 // TODO: to remove after https://github.com/celestiaorg/go-header/pull/347
+replace github.com/celestiaorg/go-header => github.com/julienrbrt/go-header v0.0.0-20251008134330-747c8c192fa8 // TODO: to remove after https://github.com/celestiaorg/go-header/pull/347
 
 replace (
 	github.com/evstack/ev-node => ../../../
@@ -148,7 +148,7 @@ require (
 	github.com/prometheus/common v0.66.1 // indirect
 	github.com/prometheus/procfs v0.17.0 // indirect
 	github.com/quic-go/qpack v0.5.1 // indirect
-	github.com/quic-go/quic-go v0.54.0 // indirect
+	github.com/quic-go/quic-go v0.54.1 // indirect
 	github.com/quic-go/webtransport-go v0.9.0 // indirect
 	github.com/rivo/uniseg v0.2.0 // indirect
 	github.com/rs/zerolog v1.34.0 // indirect

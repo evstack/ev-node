@@ -117,7 +117,7 @@ func newSyncService[H header.Header[H]](
 }
 
 // Store returns the store of the SyncService
-func (syncService *SyncService[H]) Store() *goheaderstore.Store[H] {
+func (syncService *SyncService[H]) Store() header.Store[H] {
 	return syncService.store
 }
 
@@ -420,6 +420,7 @@ func newSyncer[H header.Header[H]](
 	opts = append(opts,
 		goheadersync.WithMetrics(),
 		goheadersync.WithPruningWindow(ninetyNineYears),
+		goheadersync.WithTrustingPeriod(ninetyNineYears),
 	)
 	return goheadersync.NewSyncer(ex, store, sub, opts...)
 }

@@ -58,3 +58,15 @@ packages:
           dir: ./block/internal/syncing
           pkgname: syncing
           filename: syncer_mock.go
+  github.com/evstack/ev-node/block/internal/common:
+    interfaces:
+      Broadcaster:
+        config:
+          dir: ./block/internal/common
+          pkgname: common
+          filename: broadcaster_mock.go
+      p2pHandler:
+        config:
+          dir: ./block/internal/syncing
+          pkgname: syncing
+          filename: syncer_mock.go

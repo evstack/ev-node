@@ -9,8 +9,8 @@ import (
 	"sync/atomic"
 	"time"
 
-	goheader "github.com/celestiaorg/go-header"
 	"github.com/rs/zerolog"
+	"golang.org/x/sync/errgroup"
 
 	"github.com/evstack/ev-node/block/internal/cache"
 	"github.com/evstack/ev-node/block/internal/common"
@@ -25,9 +25,10 @@ import (
 type daRetriever interface {
 	RetrieveFromDA(ctx context.Context, daHeight uint64) ([]common.DAHeightEvent, error)
 }
+
 type p2pHandler interface {
-	ProcessHeaderRange(ctx context.Context, fromHeight, toHeight uint64) []common.DAHeightEvent
-	ProcessDataRange(ctx context.Context, fromHeight, toHeight uint64) []common.DAHeightEvent
+	ProcessHeaderRange(ctx context.Context, fromHeight, toHeight uint64, heightInCh chan<- common.DAHeightEvent)
+	ProcessDataRange(ctx context.Context, fromHeight, toHeight uint64, heightInCh chan<- common.DAHeightEvent)
 }
 
 // Syncer handles block synchronization from DA and P2P sources.
@@ -53,8 +54,8 @@ type Syncer struct {
 	daHeight *atomic.Uint64
 
 	// P2P stores
-	headerStore goheader.Store[*types.SignedHeader]
-	dataStore   goheader.Store[*types.Data]
+	headerStore common.Broadcaster[*types.SignedHeader]
+	dataStore   common.Broadcaster[*types.Data]
 
 	// Channels for coordination
 	heightInCh chan common.DAHeightEvent
@@ -82,8 +83,8 @@ func NewSyncer(
 	metrics *common.Metrics,
 	config config.Config,
 	genesis genesis.Genesis,
-	headerStore goheader.Store[*types.SignedHeader],
-	dataStore goheader.Store[*types.Data],
+	headerStore common.Broadcaster[*types.SignedHeader],
+	dataStore common.Broadcaster[*types.Data],
 	logger zerolog.Logger,
 	options common.BlockOptions,
 	errorCh chan<- error,
@@ -117,8 +118,8 @@ func (s *Syncer) Start(ctx context.Context) error {
 	}
 
 	// Initialize handlers
-	s.daRetriever = NewDARetriever(s.da, s.cache, s.config, s.genesis, s.options, s.logger)
-	s.p2pHandler = NewP2PHandler(s.headerStore, s.dataStore, s.genesis, s.options, s.logger)
+	s.daRetriever = NewDARetriever(s.da, s.cache, s.config, s.genesis, s.logger)
+	s.p2pHandler = NewP2PHandler(s.headerStore.Store(), s.dataStore.Store(), s.cache, s.genesis, s.logger)
 
 	// Start main processing loop
 	s.wg.Add(1)
@@ -236,20 +237,8 @@ func (s *Syncer) syncLoop() {
 		}
 	}
 
-	initialHeight, err := s.store.Height(s.ctx)
-	if err != nil {
-		s.logger.Error().Err(err).Msg("failed to get initial height")
-		return
-	}
-
-	lastHeaderHeight := &initialHeight
-	lastDataHeight := &initialHeight
-
 	// Backoff control when DA replies with errors
 	nextDARequestAt := &time.Time{}
-
-	blockTicker := time.NewTicker(s.config.Node.BlockTime.Duration)
-	defer blockTicker.Stop()
 
 	for {
 		select {
@@ -257,15 +246,16 @@ func (s *Syncer) syncLoop() {
 			return
 		default:
 		}
-		// Process pending events from cache on every iteration
+
 		s.processPendingEvents()
+		s.tryFetchFromP2P()
+		s.tryFetchFromDA(nextDARequestAt)
 
-		fetchedP2pEvent := s.tryFetchFromP2P(lastHeaderHeight, lastDataHeight, blockTicker.C)
-		fetchedDaEvent := s.tryFetchFromDA(nextDARequestAt)
-
-		// Prevent busy-waiting when no events are available
-		if !fetchedDaEvent && !fetchedP2pEvent {
-			time.Sleep(min(10*time.Millisecond, s.config.Node.BlockTime.Duration))
+		// Prevent busy-waiting when no events are processed
+		select {
+		case <-s.ctx.Done():
+			return
+		case <-time.After(min(10*time.Millisecond, s.config.Node.BlockTime.Duration)):
 		}
 	}
 }
@@ -273,13 +263,13 @@ func (s *Syncer) syncLoop() {
 // tryFetchFromDA attempts to fetch events from the DA layer.
 // It handles backoff timing, DA height management, and error classification.
 // Returns true if any events were successfully processed.
-func (s *Syncer) tryFetchFromDA(nextDARequestAt *time.Time) bool {
+func (s *Syncer) tryFetchFromDA(nextDARequestAt *time.Time) {
 	now := time.Now()
 	daHeight := s.GetDAHeight()
 
 	// Respect backoff window if set
 	if !nextDARequestAt.IsZero() && now.Before(*nextDARequestAt) {
-		return false
+		return
 	}
 
 	// Retrieve from DA as fast as possible (unless throttled by HFF)
@@ -291,7 +281,7 @@ func (s *Syncer) tryFetchFromDA(nextDARequestAt *time.Time) bool {
 			s.SetDAHeight(daHeight + 1)
 			// Reset backoff on success
 			*nextDARequestAt = time.Time{}
-			return false
+			return
 		}
 
 		// Back off exactly by DA block time to avoid overloading
@@ -303,7 +293,7 @@ func (s *Syncer) tryFetchFromDA(nextDARequestAt *time.Time) bool {
 
 		s.logger.Error().Err(err).Dur("delay", backoffDelay).Uint64("da_height", daHeight).Msg("failed to retrieve from DA; backing off DA requests")
 
-		return false
+		return
 	}
 
 	// Reset backoff on success
@@ -320,57 +310,29 @@ func (s *Syncer) tryFetchFromDA(nextDARequestAt *time.Time) bool {
 
 	// increment DA height on successful retrieval
 	s.SetDAHeight(daHeight + 1)
-	return len(events) > 0
 }
 
 // tryFetchFromP2P attempts to fetch events from P2P stores.
 // It processes both header and data ranges when the block ticker fires.
 // Returns true if any events were successfully processed.
-func (s *Syncer) tryFetchFromP2P(lastHeaderHeight, lastDataHeight *uint64, blockTicker <-chan time.Time) bool {
-	eventsProcessed := false
-
-	select {
-	case <-blockTicker:
-		// Process headers
-		newHeaderHeight := s.headerStore.Height()
-		if newHeaderHeight > *lastHeaderHeight {
-			events := s.p2pHandler.ProcessHeaderRange(s.ctx, *lastHeaderHeight+1, newHeaderHeight)
-			for _, event := range events {
-				select {
-				case s.heightInCh <- event:
-				default:
-					s.cache.SetPendingEvent(event.Header.Height(), &event)
-				}
-			}
-			*lastHeaderHeight = newHeaderHeight
-			if len(events) > 0 {
-				eventsProcessed = true
-			}
-		}
-
-		// Process data
-		newDataHeight := s.dataStore.Height()
-		if newDataHeight == newHeaderHeight {
-			*lastDataHeight = newDataHeight
-		} else if newDataHeight > *lastDataHeight {
-			events := s.p2pHandler.ProcessDataRange(s.ctx, *lastDataHeight+1, newDataHeight)
-			for _, event := range events {
-				select {
-				case s.heightInCh <- event:
-				default:
-					s.cache.SetPendingEvent(event.Header.Height(), &event)
-				}
-			}
-			*lastDataHeight = newDataHeight
-			if len(events) > 0 {
-				eventsProcessed = true
-			}
-		}
-	default:
-		// No P2P events available
+func (s *Syncer) tryFetchFromP2P() {
+	currentHeight, err := s.store.Height(s.ctx)
+	if err != nil {
+		s.logger.Error().Err(err).Msg("failed to get current height")
+		return
 	}
 
-	return eventsProcessed
+	// Process headers
+	newHeaderHeight := s.headerStore.Store().Height()
+	if newHeaderHeight > currentHeight {
+		s.p2pHandler.ProcessHeaderRange(s.ctx, currentHeight+1, newHeaderHeight, s.heightInCh)
+	}
+
+	// Process data (if not already processed by headers)
+	newDataHeight := s.dataStore.Store().Height()
+	if newDataHeight != newHeaderHeight && newDataHeight > currentHeight {
+		s.p2pHandler.ProcessDataRange(s.ctx, currentHeight+1, newDataHeight, s.heightInCh)
+	}
 }
 
 func (s *Syncer) processHeightEvent(event *common.DAHeightEvent) {
@@ -403,6 +365,17 @@ func (s *Syncer) processHeightEvent(event *common.DAHeightEvent) {
 		return
 	}
 
+	// Last data must be got from store if the event comes from DA and the data hash is empty.
+	// When if the event comes from P2P, the sequencer and then all the full nodes contains the data.
+	if event.Source == common.SourceDA && bytes.Equal(event.Header.DataHash, common.DataHashForEmptyTxs) && currentHeight > 0 {
+		_, lastData, err := s.store.GetBlockData(s.ctx, currentHeight)
+		if err != nil {
+			s.logger.Error().Err(err).Msg("failed to get last data")
+			return
+		}
+		event.Data.LastDataHash = lastData.Hash()
+	}
+
 	// Try to sync the next block
 	if err := s.trySyncNextBlock(event); err != nil {
 		s.logger.Error().Err(err).Msg("failed to sync next block")
@@ -411,6 +384,16 @@ func (s *Syncer) processHeightEvent(event *common.DAHeightEvent) {
 			s.cache.SetPendingEvent(height, event)
 		}
 		return
+	}
+
+	// only save to p2p stores if the event came from DA
+	if event.Source == common.SourceDA {
+		g, ctx := errgroup.WithContext(s.ctx)
+		g.Go(func() error { return s.headerStore.WriteToStoreAndBroadcast(ctx, event.Header) })
+		g.Go(func() error { return s.dataStore.WriteToStoreAndBroadcast(ctx, event.Data) })
+		if err := g.Wait(); err != nil {
+			s.logger.Error().Err(err).Msg("failed to append event header and/or data to p2p store")
+		}
 	}
 }
 
@@ -448,23 +431,35 @@ func (s *Syncer) trySyncNextBlock(event *common.DAHeightEvent) error {
 		return fmt.Errorf("failed to apply block: %w", err)
 	}
 
-	// Save block
-	if err := s.store.SaveBlockData(s.ctx, header, data, &header.Signature); err != nil {
-		return fmt.Errorf("failed to save block: %w", err)
-	}
-
-	// Update height
-	if err := s.store.SetHeight(s.ctx, nextHeight); err != nil {
-		return fmt.Errorf("failed to update height: %w", err)
-	}
-
-	// Update state
+	// Update DA height if needed
 	if event.DaHeight > newState.DAHeight {
 		newState.DAHeight = event.DaHeight
 	}
-	if err := s.updateState(newState); err != nil {
+
+	batch, err := s.store.NewBatch(s.ctx)
+	if err != nil {
+		return fmt.Errorf("failed to create batch: %w", err)
+	}
+
+	if err := batch.SaveBlockData(header, data, &header.Signature); err != nil {
+		return fmt.Errorf("failed to save block: %w", err)
+	}
+
+	if err := batch.SetHeight(nextHeight); err != nil {
+		return fmt.Errorf("failed to update height: %w", err)
+	}
+
+	if err := batch.UpdateState(newState); err != nil {
 		return fmt.Errorf("failed to update state: %w", err)
 	}
+
+	if err := batch.Commit(); err != nil {
+		return fmt.Errorf("failed to commit batch: %w", err)
+	}
+
+	// Update in-memory state after successful commit
+	s.SetLastState(newState)
+	s.metrics.Height.Set(float64(newState.LastBlockHeight))
 
 	// Mark as seen
 	s.cache.SetHeaderSeen(header.Hash().String())
@@ -564,18 +559,6 @@ func (s *Syncer) sendCriticalError(err error) {
 	}
 }
 
-// updateState saves the new state
-func (s *Syncer) updateState(newState types.State) error {
-	if err := s.store.UpdateState(s.ctx, newState); err != nil {
-		return err
-	}
-
-	s.SetLastState(newState)
-	s.metrics.Height.Set(float64(newState.LastBlockHeight))
-
-	return nil
-}
-
 // sendNonBlockingSignal sends a signal without blocking
 func (s *Syncer) sendNonBlockingSignal(ch chan struct{}, name string) {
 	select {
@@ -606,6 +589,7 @@ func (s *Syncer) processPendingEvents() {
 			Header:   event.Header,
 			Data:     event.Data,
 			DaHeight: event.DaHeight,
+			Source:   event.Source,
 		}
 
 		select {

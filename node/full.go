@@ -80,7 +80,7 @@ func newFullNode(
 	logger zerolog.Logger,
 	nodeOpts NodeOptions,
 ) (fn *FullNode, err error) {
-	logger.Debug().Bytes("address", genesis.ProposerAddress).Msg("Proposer address")
+	logger.Debug().Hex("address", genesis.ProposerAddress).Msg("Proposer address")
 
 	blockMetrics, _ := metricsProvider(genesis.ChainID)
 
@@ -120,8 +120,8 @@ func newFullNode(
 			rktStore,
 			exec,
 			da,
-			headerSyncService.Store(),
-			dataSyncService.Store(),
+			headerSyncService,
+			dataSyncService,
 			logger,
 			blockMetrics,
 			nodeOpts.BlockOptions,

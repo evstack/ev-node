@@ -59,7 +59,7 @@ func TestDARetriever_RetrieveFromDA_Invalid(t *testing.T) {
 	mockDA.EXPECT().GetIDs(mock.Anything, mock.Anything, mock.Anything).
 		Return(nil, errors.New("just invalid")).Maybe()
 
-	r := NewDARetriever(mockDA, cm, config.DefaultConfig(), genesis.Genesis{}, common.DefaultBlockOptions(), zerolog.Nop())
+	r := NewDARetriever(mockDA, cm, config.DefaultConfig(), genesis.Genesis{}, zerolog.Nop())
 	events, err := r.RetrieveFromDA(context.Background(), 42)
 	assert.Error(t, err)
 	assert.Len(t, events, 0)
@@ -77,7 +77,7 @@ func TestDARetriever_RetrieveFromDA_NotFound(t *testing.T) {
 	mockDA.EXPECT().GetIDs(mock.Anything, mock.Anything, mock.Anything).
 		Return(nil, fmt.Errorf("%s: whatever", coreda.ErrBlobNotFound.Error())).Maybe()
 
-	r := NewDARetriever(mockDA, cm, config.DefaultConfig(), genesis.Genesis{}, common.DefaultBlockOptions(), zerolog.Nop())
+	r := NewDARetriever(mockDA, cm, config.DefaultConfig(), genesis.Genesis{}, zerolog.Nop())
 	events, err := r.RetrieveFromDA(context.Background(), 42)
 	assert.True(t, errors.Is(err, coreda.ErrBlobNotFound))
 	assert.Len(t, events, 0)
@@ -94,7 +94,7 @@ func TestDARetriever_RetrieveFromDA_HeightFromFuture(t *testing.T) {
 	mockDA.EXPECT().GetIDs(mock.Anything, mock.Anything, mock.Anything).
 		Return(nil, fmt.Errorf("%s: later", coreda.ErrHeightFromFuture.Error())).Maybe()
 
-	r := NewDARetriever(mockDA, cm, config.DefaultConfig(), genesis.Genesis{}, common.DefaultBlockOptions(), zerolog.Nop())
+	r := NewDARetriever(mockDA, cm, config.DefaultConfig(), genesis.Genesis{}, zerolog.Nop())
 	events, derr := r.RetrieveFromDA(context.Background(), 1000)
 	assert.Error(t, derr)
 	assert.True(t, errors.Is(derr, coreda.ErrHeightFromFuture))
@@ -116,7 +116,7 @@ func TestDARetriever_RetrieveFromDA_Timeout(t *testing.T) {
 		}).
 		Return(nil, context.DeadlineExceeded).Maybe()
 
-	r := NewDARetriever(mockDA, cm, config.DefaultConfig(), genesis.Genesis{}, common.DefaultBlockOptions(), zerolog.Nop())
+	r := NewDARetriever(mockDA, cm, config.DefaultConfig(), genesis.Genesis{}, zerolog.Nop())
 
 	start := time.Now()
 	events, err := r.RetrieveFromDA(context.Background(), 42)
@@ -145,7 +145,7 @@ func TestDARetriever_RetrieveFromDA_TimeoutFast(t *testing.T) {
 	mockDA.EXPECT().GetIDs(mock.Anything, mock.Anything, mock.Anything).
 		Return(nil, context.DeadlineExceeded).Maybe()
 
-	r := NewDARetriever(mockDA, cm, config.DefaultConfig(), genesis.Genesis{}, common.DefaultBlockOptions(), zerolog.Nop())
+	r := NewDARetriever(mockDA, cm, config.DefaultConfig(), genesis.Genesis{}, zerolog.Nop())
 
 	events, err := r.RetrieveFromDA(context.Background(), 42)
 
@@ -165,7 +165,7 @@ func TestDARetriever_ProcessBlobs_HeaderAndData_Success(t *testing.T) {
 	addr, pub, signer := buildSyncTestSigner(t)
 	gen := genesis.Genesis{ChainID: "tchain", InitialHeight: 1, StartTime: time.Now().Add(-time.Second), ProposerAddress: addr}
 
-	r := NewDARetriever(nil, cm, config.DefaultConfig(), gen, common.DefaultBlockOptions(), zerolog.Nop())
+	r := NewDARetriever(nil, cm, config.DefaultConfig(), gen, zerolog.Nop())
 
 	dataBin, data := makeSignedDataBytes(t, gen.ChainID, 2, addr, pub, signer, 2)
 	hdrBin, _ := makeSignedHeaderBytes(t, gen.ChainID, 2, addr, pub, signer, nil, &data.Data)
@@ -193,7 +193,7 @@ func TestDARetriever_ProcessBlobs_HeaderOnly_EmptyDataExpected(t *testing.T) {
 
 	addr, pub, signer := buildSyncTestSigner(t)
 	gen := genesis.Genesis{ChainID: "tchain", InitialHeight: 1, StartTime: time.Now().Add(-time.Second), ProposerAddress: addr}
-	r := NewDARetriever(nil, cm, config.DefaultConfig(), gen, common.DefaultBlockOptions(), zerolog.Nop())
+	r := NewDARetriever(nil, cm, config.DefaultConfig(), gen, zerolog.Nop())
 
 	// Header with no data hash present should trigger empty data creation (per current logic)
 	hb, _ := makeSignedHeaderBytes(t, gen.ChainID, 3, addr, pub, signer, nil, nil)
@@ -221,7 +221,7 @@ func TestDARetriever_TryDecodeHeaderAndData_Basic(t *testing.T) {
 
 	addr, pub, signer := buildSyncTestSigner(t)
 	gen := genesis.Genesis{ChainID: "tchain", InitialHeight: 1, StartTime: time.Now().Add(-time.Second), ProposerAddress: addr}
-	r := NewDARetriever(nil, cm, config.DefaultConfig(), gen, common.DefaultBlockOptions(), zerolog.Nop())
+	r := NewDARetriever(nil, cm, config.DefaultConfig(), gen, zerolog.Nop())
 
 	hb, sh := makeSignedHeaderBytes(t, gen.ChainID, 5, addr, pub, signer, nil, nil)
 	gotH := r.tryDecodeHeader(hb, 123)
@@ -238,16 +238,6 @@ func TestDARetriever_TryDecodeHeaderAndData_Basic(t *testing.T) {
 	assert.Nil(t, r.tryDecodeData([]byte("junk"), 1))
 }
 
-func TestDARetriever_isEmptyDataExpected(t *testing.T) {
-	r := &DARetriever{}
-	h := &types.SignedHeader{}
-	// when DataHash is nil/empty -> expected empty
-	assert.True(t, r.isEmptyDataExpected(h))
-	// when equals to predefined emptyTxs hash -> expected empty
-	h.DataHash = common.DataHashForEmptyTxs
-	assert.True(t, r.isEmptyDataExpected(h))
-}
-
 func TestDARetriever_tryDecodeData_InvalidSignatureOrProposer(t *testing.T) {
 	ds := dssync.MutexWrap(datastore.NewMapDatastore())
 	st := store.New(ds)
@@ -257,7 +247,7 @@ func TestDARetriever_tryDecodeData_InvalidSignatureOrProposer(t *testing.T) {
 	goodAddr, pub, signer := buildSyncTestSigner(t)
 	badAddr := []byte("not-the-proposer")
 	gen := genesis.Genesis{ChainID: "tchain", InitialHeight: 1, StartTime: time.Now().Add(-time.Second), ProposerAddress: badAddr}
-	r := NewDARetriever(nil, cm, config.DefaultConfig(), gen, common.DefaultBlockOptions(), zerolog.Nop())
+	r := NewDARetriever(nil, cm, config.DefaultConfig(), gen, zerolog.Nop())
 
 	// Signed data is made by goodAddr; retriever expects badAddr -> should be rejected
 	db, _ := makeSignedDataBytes(t, gen.ChainID, 7, goodAddr, pub, signer, 1)
@@ -310,7 +300,7 @@ func TestDARetriever_RetrieveFromDA_TwoNamespaces_Success(t *testing.T) {
 	mockDA.EXPECT().Get(mock.Anything, mock.Anything, mock.MatchedBy(func(ns []byte) bool { return bytes.Equal(ns, namespaceDataBz) })).
 		Return([][]byte{dataBin}, nil).Once()
 
-	r := NewDARetriever(mockDA, cm, cfg, gen, common.DefaultBlockOptions(), zerolog.Nop())
+	r := NewDARetriever(mockDA, cm, cfg, gen, zerolog.Nop())
 
 	events, derr := r.RetrieveFromDA(context.Background(), 1234)
 	require.NoError(t, derr)
@@ -328,7 +318,7 @@ func TestDARetriever_ProcessBlobs_CrossDAHeightMatching(t *testing.T) {
 	addr, pub, signer := buildSyncTestSigner(t)
 	gen := genesis.Genesis{ChainID: "tchain", InitialHeight: 1, StartTime: time.Now().Add(-time.Second), ProposerAddress: addr}
 
-	r := NewDARetriever(nil, cm, config.DefaultConfig(), gen, common.DefaultBlockOptions(), zerolog.Nop())
+	r := NewDARetriever(nil, cm, config.DefaultConfig(), gen, zerolog.Nop())
 
 	// Create header and data for the same block height but from different DA heights
 	dataBin, data := makeSignedDataBytes(t, gen.ChainID, 5, addr, pub, signer, 2)
@@ -364,7 +354,7 @@ func TestDARetriever_ProcessBlobs_MultipleHeadersCrossDAHeightMatching(t *testin
 	addr, pub, signer := buildSyncTestSigner(t)
 	gen := genesis.Genesis{ChainID: "tchain", InitialHeight: 1, StartTime: time.Now().Add(-time.Second), ProposerAddress: addr}
 
-	r := NewDARetriever(nil, cm, config.DefaultConfig(), gen, common.DefaultBlockOptions(), zerolog.Nop())
+	r := NewDARetriever(nil, cm, config.DefaultConfig(), gen, zerolog.Nop())
 
 	// Create multiple headers and data for different block heights
 	data3Bin, data3 := makeSignedDataBytes(t, gen.ChainID, 3, addr, pub, signer, 1)
@@ -421,4 +411,13 @@ func TestDARetriever_ProcessBlobs_MultipleHeadersCrossDAHeightMatching(t *testin
 	require.NotContains(t, r.pendingHeaders, uint64(4), "header 4 should be removed from pending")
 	require.Len(t, r.pendingHeaders, 0, "all headers should be processed")
 	require.Len(t, r.pendingData, 0, "all data should be processed")
+}
+
+func Test_isEmptyDataExpected(t *testing.T) {
+	h := &types.SignedHeader{}
+	// when DataHash is nil/empty -> expected empty
+	assert.True(t, isEmptyDataExpected(h))
+	// when equals to predefined emptyTxs hash -> expected empty
+	h.DataHash = common.DataHashForEmptyTxs
+	assert.True(t, isEmptyDataExpected(h))
 }

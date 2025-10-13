@@ -25,6 +25,7 @@ import (
 	"github.com/evstack/ev-node/block/internal/common"
 	"github.com/evstack/ev-node/pkg/config"
 	"github.com/evstack/ev-node/pkg/store"
+	extmocks "github.com/evstack/ev-node/test/mocks/external"
 	"github.com/evstack/ev-node/types"
 )
 
@@ -107,8 +108,8 @@ func TestSyncer_validateBlock_DataHashMismatch(t *testing.T) {
 		common.NopMetrics(),
 		cfg,
 		gen,
-		nil,
-		nil,
+		common.NewMockBroadcaster[*types.SignedHeader](t),
+		common.NewMockBroadcaster[*types.Data](t),
 		zerolog.Nop(),
 		common.DefaultBlockOptions(),
 		make(chan error, 1),
@@ -155,8 +156,8 @@ func TestProcessHeightEvent_SyncsAndUpdatesState(t *testing.T) {
 		common.NopMetrics(),
 		cfg,
 		gen,
-		nil,
-		nil,
+		common.NewMockBroadcaster[*types.SignedHeader](t),
+		common.NewMockBroadcaster[*types.Data](t),
 		zerolog.Nop(),
 		common.DefaultBlockOptions(),
 		make(chan error, 1),
@@ -205,8 +206,8 @@ func TestSequentialBlockSync(t *testing.T) {
 		common.NopMetrics(),
 		cfg,
 		gen,
-		nil,
-		nil,
+		common.NewMockBroadcaster[*types.SignedHeader](t),
+		common.NewMockBroadcaster[*types.Data](t),
 		zerolog.Nop(),
 		common.DefaultBlockOptions(),
 		make(chan error, 1),
@@ -278,7 +279,10 @@ func TestSyncer_processPendingEvents(t *testing.T) {
 	require.NoError(t, err)
 
 	// current height 1
-	require.NoError(t, st.SetHeight(context.Background(), 1))
+	batch, err := st.NewBatch(context.Background())
+	require.NoError(t, err)
+	require.NoError(t, batch.SetHeight(1))
+	require.NoError(t, batch.Commit())
 
 	s := &Syncer{
 		store:      st,
@@ -324,6 +328,19 @@ func TestSyncLoopPersistState(t *testing.T) {
 
 	dummyExec := execution.NewDummyExecutor()
 
+	// Create mock stores for P2P
+	mockHeaderStore := extmocks.NewMockStore[*types.SignedHeader](t)
+	mockHeaderStore.EXPECT().Height().Return(uint64(0)).Maybe()
+
+	mockDataStore := extmocks.NewMockStore[*types.Data](t)
+	mockDataStore.EXPECT().Height().Return(uint64(0)).Maybe()
+
+	mockP2PHeaderStore := common.NewMockBroadcaster[*types.SignedHeader](t)
+	mockP2PHeaderStore.EXPECT().Store().Return(mockHeaderStore).Maybe()
+
+	mockP2PDataStore := common.NewMockBroadcaster[*types.Data](t)
+	mockP2PDataStore.EXPECT().Store().Return(mockDataStore).Maybe()
+
 	syncerInst1 := NewSyncer(
 		st,
 		dummyExec,
@@ -332,8 +349,8 @@ func TestSyncLoopPersistState(t *testing.T) {
 		common.NopMetrics(),
 		cfg,
 		gen,
-		nil,
-		nil,
+		mockP2PHeaderStore,
+		mockP2PDataStore,
 		zerolog.Nop(),
 		common.DefaultBlockOptions(),
 		make(chan error, 1),
@@ -343,6 +360,8 @@ func TestSyncLoopPersistState(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 	syncerInst1.ctx = ctx
 	daRtrMock, p2pHndlMock := newMockdaRetriever(t), newMockp2pHandler(t)
+	p2pHndlMock.On("ProcessHeaderRange", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return().Maybe()
+	p2pHndlMock.On("ProcessDataRange", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return().Maybe()
 	syncerInst1.daRetriever, syncerInst1.p2pHandler = daRtrMock, p2pHndlMock
 
 	// with n da blobs fetched
@@ -409,8 +428,8 @@ func TestSyncLoopPersistState(t *testing.T) {
 		common.NopMetrics(),
 		cfg,
 		gen,
-		nil,
-		nil,
+		mockP2PHeaderStore,
+		mockP2PDataStore,
 		zerolog.Nop(),
 		common.DefaultBlockOptions(),
 		make(chan error, 1),
@@ -422,6 +441,8 @@ func TestSyncLoopPersistState(t *testing.T) {
 	t.Cleanup(cancel)
 	syncerInst2.ctx = ctx
 	daRtrMock, p2pHndlMock = newMockdaRetriever(t), newMockp2pHandler(t)
+	p2pHndlMock.On("ProcessHeaderRange", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return().Maybe()
+	p2pHndlMock.On("ProcessDataRange", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return().Maybe()
 	syncerInst2.daRetriever, syncerInst2.p2pHandler = daRtrMock, p2pHndlMock
 
 	daRtrMock.On("RetrieveFromDA", mock.Anything, mock.Anything).

@@ -125,9 +125,13 @@ func TestStoreHeight(t *testing.T) {
 
 			for i, header := range c.headers {
 				data := c.data[i]
-				err := bstore.SaveBlockData(t.Context(), header, data, &types.Signature{})
+				batch, err := bstore.NewBatch(t.Context())
 				require.NoError(t, err)
-				err = bstore.SetHeight(t.Context(), header.Height())
+				err = batch.SaveBlockData(header, data, &types.Signature{})
+				require.NoError(t, err)
+				err = batch.SetHeight(header.Height())
+				require.NoError(t, err)
+				err = batch.Commit()
 				require.NoError(t, err)
 			}
 
@@ -176,7 +180,11 @@ func TestStoreLoad(t *testing.T) {
 				for i, header := range c.headers {
 					data := c.data[i]
 					signature := &header.Signature
-					err := bstore.SaveBlockData(t.Context(), header, data, signature)
+					batch, err := bstore.NewBatch(t.Context())
+					require.NoError(err)
+					err = batch.SaveBlockData(header, data, signature)
+					require.NoError(err)
+					err = batch.Commit()
 					require.NoError(err)
 				}
 
@@ -211,9 +219,15 @@ func TestRestart(t *testing.T) {
 
 	s1 := New(kv)
 	expectedHeight := uint64(10)
-	err = s1.UpdateState(t.Context(), types.State{
+	batch, err := s1.NewBatch(t.Context())
+	require.NoError(err)
+	err = batch.SetHeight(expectedHeight)
+	require.NoError(err)
+	err = batch.UpdateState(types.State{
 		LastBlockHeight: expectedHeight,
 	})
+	assert.NoError(err)
+	err = batch.Commit()
 	assert.NoError(err)
 
 	err = s1.Close()
@@ -244,7 +258,9 @@ func TestSetHeightError(t *testing.T) {
 	mockBatchingDs := &mockBatchingDatastore{Batching: mockDs, putError: mockErr}
 	s := New(mockBatchingDs)
 
-	err := s.SetHeight(t.Context(), 10)
+	batch, err := s.NewBatch(t.Context())
+	require.NoError(err)
+	err = batch.SetHeight(10)
 	require.Error(err)
 	require.Contains(err.Error(), mockErr.Error())
 }
@@ -420,7 +436,19 @@ func TestSaveBlockDataErrors(t *testing.T) {
 			t.Parallel()
 			s := New(tc.mock)
 
-			err := s.SaveBlockData(t.Context(), header, data, signature)
+			batch, err := s.NewBatch(t.Context())
+			if tc.expectSub == "failed to create a new batch" {
+				require.ErrorContains(t, err, tc.expectSub)
+				return
+			}
+			require.NoError(t, err)
+			err = batch.SaveBlockData(header, data, signature)
+			if tc.expectSub == "failed to put header blob" {
+				require.ErrorContains(t, err, tc.expectSub)
+				return
+			}
+			require.NoError(t, err)
+			err = batch.Commit()
 			require.ErrorContains(t, err, tc.expectSub)
 		})
 	}
@@ -502,7 +530,9 @@ func TestUpdateStateError(t *testing.T) {
 	mockBatchingDsPut := &mockBatchingDatastore{Batching: mockDsPut, putError: mockErrPut}
 	sPut := New(mockBatchingDsPut)
 
-	err := sPut.UpdateState(t.Context(), state)
+	batch, err := sPut.NewBatch(t.Context())
+	require.NoError(err)
+	err = batch.UpdateState(state)
 	require.Error(err)
 	require.Contains(err.Error(), mockErrPut.Error())
 }
@@ -528,7 +558,11 @@ func TestGetStateError(t *testing.T) {
 
 	// Put some data that will cause unmarshal error
 	height := uint64(1)
-	err = sUnmarshal.SetHeight(t.Context(), height)
+	batch, err := sUnmarshal.NewBatch(t.Context())
+	require.NoError(err)
+	err = batch.SetHeight(height)
+	require.NoError(err)
+	err = batch.Commit()
 	require.NoError(err)
 
 	err = mockBatchingDsUnmarshal.Put(t.Context(), ds.NewKey(getStateAtHeightKey(height)), []byte("invalid state proto"))
@@ -641,10 +675,11 @@ func TestRollback(t *testing.T) {
 		header, data := types.GetRandomBlock(h, 2, chainID)
 		sig := &header.Signature
 
-		err := store.SaveBlockData(ctx, header, data, sig)
+		batch, err := store.NewBatch(ctx)
 		require.NoError(err)
-
-		err = store.SetHeight(ctx, h)
+		err = batch.SaveBlockData(header, data, sig)
+		require.NoError(err)
+		err = batch.SetHeight(h)
 		require.NoError(err)
 
 		// Create and update state for this height
@@ -655,7 +690,9 @@ func TestRollback(t *testing.T) {
 			LastBlockTime:   header.Time(),
 			AppHash:         header.AppHash,
 		}
-		err = store.UpdateState(ctx, state)
+		err = batch.UpdateState(state)
+		require.NoError(err)
+		err = batch.Commit()
 		require.NoError(err)
 	}
 
@@ -712,15 +749,18 @@ func TestRollbackToSameHeight(t *testing.T) {
 	header, data := types.GetRandomBlock(height, 2, chainID)
 	sig := &header.Signature
 
-	err := store.SaveBlockData(ctx, header, data, sig)
+	batch, err := store.NewBatch(ctx)
 	require.NoError(err)
-
-	err = store.SetHeight(ctx, height)
+	err = batch.SaveBlockData(header, data, sig)
+	require.NoError(err)
+	err = batch.SetHeight(height)
+	require.NoError(err)
+	err = batch.Commit()
 	require.NoError(err)
 
 	// Execute rollback to same height
 	err = store.Rollback(ctx, height, true)
-	require.NoError(err)
+	require.Error(err)
 
 	// Verify height unchanged
 	newHeight, err := store.Height(ctx)
@@ -746,16 +786,19 @@ func TestRollbackToHigherHeight(t *testing.T) {
 	header, data := types.GetRandomBlock(currentHeight, 2, chainID)
 	sig := &header.Signature
 
-	err := store.SaveBlockData(ctx, header, data, sig)
+	batch, err := store.NewBatch(ctx)
 	require.NoError(err)
-
-	err = store.SetHeight(ctx, currentHeight)
+	err = batch.SaveBlockData(header, data, sig)
+	require.NoError(err)
+	err = batch.SetHeight(currentHeight)
+	require.NoError(err)
+	err = batch.Commit()
 	require.NoError(err)
 
 	// Execute rollback to higher height
 	rollbackToHeight := uint64(10)
 	err = store.Rollback(ctx, rollbackToHeight, true)
-	require.NoError(err)
+	require.Error(err)
 
 	// Verify height unchanged
 	newHeight, err := store.Height(ctx)
@@ -819,10 +862,11 @@ func TestRollbackDAIncludedHeightValidation(t *testing.T) {
 			header, data := types.GetRandomBlock(h, 2, chainID)
 			sig := &header.Signature
 
-			err := store.SaveBlockData(ctx, header, data, sig)
+			batch, err := store.NewBatch(ctx)
 			require.NoError(err)
-
-			err = store.SetHeight(ctx, h)
+			err = batch.SaveBlockData(header, data, sig)
+			require.NoError(err)
+			err = batch.SetHeight(h)
 			require.NoError(err)
 
 			// Create and update state for this height
@@ -833,7 +877,9 @@ func TestRollbackDAIncludedHeightValidation(t *testing.T) {
 				LastBlockTime:   header.Time(),
 				AppHash:         header.AppHash,
 			}
-			err = store.UpdateState(ctx, state)
+			err = batch.UpdateState(state)
+			require.NoError(err)
+			err = batch.Commit()
 			require.NoError(err)
 		}
 
@@ -863,10 +909,11 @@ func TestRollbackDAIncludedHeightValidation(t *testing.T) {
 			header, data := types.GetRandomBlock(h, 2, chainID)
 			sig := &header.Signature
 
-			err := store.SaveBlockData(ctx, header, data, sig)
+			batch, err := store.NewBatch(ctx)
 			require.NoError(err)
-
-			err = store.SetHeight(ctx, h)
+			err = batch.SaveBlockData(header, data, sig)
+			require.NoError(err)
+			err = batch.SetHeight(h)
 			require.NoError(err)
 
 			// Create and update state for this height
@@ -877,7 +924,9 @@ func TestRollbackDAIncludedHeightValidation(t *testing.T) {
 				LastBlockTime:   header.Time(),
 				AppHash:         header.AppHash,
 			}
-			err = store.UpdateState(ctx, state)
+			err = batch.UpdateState(state)
+			require.NoError(err)
+			err = batch.Commit()
 			require.NoError(err)
 		}
 
@@ -911,10 +960,11 @@ func TestRollbackDAIncludedHeightValidation(t *testing.T) {
 			header, data := types.GetRandomBlock(h, 2, chainID)
 			sig := &header.Signature
 
-			err := store.SaveBlockData(ctx, header, data, sig)
+			batch, err := store.NewBatch(ctx)
 			require.NoError(err)
-
-			err = store.SetHeight(ctx, h)
+			err = batch.SaveBlockData(header, data, sig)
+			require.NoError(err)
+			err = batch.SetHeight(h)
 			require.NoError(err)
 
 			// Create and update state for this height
@@ -925,7 +975,9 @@ func TestRollbackDAIncludedHeightValidation(t *testing.T) {
 				LastBlockTime:   header.Time(),
 				AppHash:         header.AppHash,
 			}
-			err = store.UpdateState(ctx, state)
+			err = batch.UpdateState(state)
+			require.NoError(err)
+			err = batch.Commit()
 			require.NoError(err)
 		}
 
@@ -959,10 +1011,11 @@ func TestRollbackDAIncludedHeightValidation(t *testing.T) {
 			header, data := types.GetRandomBlock(h, 2, chainID)
 			sig := &header.Signature
 
-			err := store.SaveBlockData(ctx, header, data, sig)
+			batch, err := store.NewBatch(ctx)
 			require.NoError(err)
-
-			err = store.SetHeight(ctx, h)
+			err = batch.SaveBlockData(header, data, sig)
+			require.NoError(err)
+			err = batch.SetHeight(h)
 			require.NoError(err)
 
 			// Create and update state for this height
@@ -973,7 +1026,9 @@ func TestRollbackDAIncludedHeightValidation(t *testing.T) {
 				LastBlockTime:   header.Time(),
 				AppHash:         header.AppHash,
 			}
-			err = store.UpdateState(ctx, state)
+			err = batch.UpdateState(state)
+			require.NoError(err)
+			err = batch.Commit()
 			require.NoError(err)
 		}
 
@@ -1011,10 +1066,11 @@ func TestRollbackDAIncludedHeightNotSet(t *testing.T) {
 		header, data := types.GetRandomBlock(h, 2, chainID)
 		sig := &header.Signature
 
-		err := store.SaveBlockData(ctx, header, data, sig)
+		batch, err := store.NewBatch(ctx)
 		require.NoError(err)
-
-		err = store.SetHeight(ctx, h)
+		err = batch.SaveBlockData(header, data, sig)
+		require.NoError(err)
+		err = batch.SetHeight(h)
 		require.NoError(err)
 
 		// Create and update state for this height
@@ -1025,7 +1081,9 @@ func TestRollbackDAIncludedHeightNotSet(t *testing.T) {
 			LastBlockTime:   header.Time(),
 			AppHash:         header.AppHash,
 		}
-		err = store.UpdateState(ctx, state)
+		err = batch.UpdateState(state)
+		require.NoError(err)
+		err = batch.Commit()
 		require.NoError(err)
 	}
 
@@ -1056,10 +1114,11 @@ func TestRollbackDAIncludedHeightInvalidLength(t *testing.T) {
 		header, data := types.GetRandomBlock(h, 2, chainID)
 		sig := &header.Signature
 
-		err := store.SaveBlockData(ctx, header, data, sig)
+		batch, err := store.NewBatch(ctx)
 		require.NoError(err)
-
-		err = store.SetHeight(ctx, h)
+		err = batch.SaveBlockData(header, data, sig)
+		require.NoError(err)
+		err = batch.SetHeight(h)
 		require.NoError(err)
 
 		// Create and update state for this height
@@ -1070,7 +1129,9 @@ func TestRollbackDAIncludedHeightInvalidLength(t *testing.T) {
 			LastBlockTime:   header.Time(),
 			AppHash:         header.AppHash,
 		}
-		err = store.UpdateState(ctx, state)
+		err = batch.UpdateState(state)
+		require.NoError(err)
+		err = batch.Commit()
 		require.NoError(err)
 	}
 
@@ -1103,9 +1164,11 @@ func TestRollbackDAIncludedHeightGetMetadataError(t *testing.T) {
 	// Setup: create one block to ensure height > rollback target
 	header, data := types.GetRandomBlock(uint64(2), 2, "test-chain")
 	sig := &header.Signature
-	err := store.SaveBlockData(ctx, header, data, sig)
+	batch, err := store.NewBatch(ctx)
 	require.NoError(err)
-	err = store.SetHeight(ctx, uint64(2))
+	err = batch.SaveBlockData(header, data, sig)
+	require.NoError(err)
+	err = batch.SetHeight(uint64(2))
 	require.NoError(err)
 
 	// Create and update state for this height
@@ -1116,7 +1179,9 @@ func TestRollbackDAIncludedHeightGetMetadataError(t *testing.T) {
 		LastBlockTime:   header.Time(),
 		AppHash:         header.AppHash,
 	}
-	err = store.UpdateState(ctx, state)
+	err = batch.UpdateState(state)
+	require.NoError(err)
+	err = batch.Commit()
 	require.NoError(err)
 
 	// Configure mock to return error when getting DA included height metadata

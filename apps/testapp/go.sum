@@ -176,8 +176,8 @@ github.com/json-iterator/go v1.1.6/go.mod h1:+SdeFBvtyEkXs7REEP0seUULqWtbJapLOCV
 github.com/jstemmer/go-junit-report v0.0.0-20190106144839-af01ea7f8024/go.mod h1:6v2b51hI/fHJwM22ozAgKL4VKDeJcHhJFhtBdhmNjmU=
 github.com/jtolds/gls v4.20.0+incompatible h1:xdiiI2gbIgH/gLH7ADydsJ1uDOEzR8yvV7C0MuV77Wo=
 github.com/jtolds/gls v4.20.0+incompatible/go.mod h1:QJZ7F/aHp+rZTRtaJ1ow/lLfFfVYBRgL+9YlvaHOwJU=
-github.com/julienrbrt/go-header v0.0.0-20250909151551-cb11b091bf58 h1:FBGLvgA4hfRjjYHUiiya7KkGxcHQWSpdn2dRKUEDa5k=
-github.com/julienrbrt/go-header v0.0.0-20250909151551-cb11b091bf58/go.mod h1:eX9iTSPthVEAlEDLux40ZT/olXPGhpxHd+mEzJeDhd0=
+github.com/julienrbrt/go-header v0.0.0-20251008134330-747c8c192fa8 h1:F+gOiipBxG43s+Ho+ri9T8IwumjWjp1XUon4DLWjxfQ=
+github.com/julienrbrt/go-header v0.0.0-20251008134330-747c8c192fa8/go.mod h1:eX9iTSPthVEAlEDLux40ZT/olXPGhpxHd+mEzJeDhd0=
 github.com/kisielk/errcheck v1.5.0/go.mod h1:pFxgyoBC7bSaBwPgfKdkLd5X25qrDl4LWUI2bnpBCr8=
 github.com/kisielk/gotool v1.0.0/go.mod h1:XhKaO+MFFWcvkIS/tQcRk01m1F5IRFswLeQ+oQHNcck=
 github.com/klauspost/compress v1.18.0 h1:c/Cqfb0r+Yi+JtIEq73FWXVkRonBlf0CRNYc8Zttxdo=
@@ -354,8 +354,8 @@ github.com/prometheus/procfs v0.17.0 h1:FuLQ+05u4ZI+SS/w9+BWEM2TXiHKsUQ9TADiRH7D
 github.com/prometheus/procfs v0.17.0/go.mod h1:oPQLaDAMRbA+u8H5Pbfq+dl3VDAvHxMUOVhe0wYB2zw=
 github.com/quic-go/qpack v0.5.1 h1:giqksBPnT/HDtZ6VhtFKgoLOWmlyo9Ei6u9PqzIMbhI=
 github.com/quic-go/qpack v0.5.1/go.mod h1:+PC4XFrEskIVkcLzpEkbLqq1uCoxPhQuvK5rH1ZgaEg=
-github.com/quic-go/quic-go v0.54.0 h1:6s1YB9QotYI6Ospeiguknbp2Znb/jZYjZLRXn9kMQBg=
-github.com/quic-go/quic-go v0.54.0/go.mod h1:e68ZEaCdyviluZmy44P6Iey98v/Wfz6HCjQEm+l8zTY=
+github.com/quic-go/quic-go v0.54.1 h1:4ZAWm0AhCb6+hE+l5Q1NAL0iRn/ZrMwqHRGQiFwj2eg=
+github.com/quic-go/quic-go v0.54.1/go.mod h1:e68ZEaCdyviluZmy44P6Iey98v/Wfz6HCjQEm+l8zTY=
 github.com/quic-go/webtransport-go v0.9.0 h1:jgys+7/wm6JarGDrW+lD/r9BGqBAmqY/ssklE09bA70=
 github.com/quic-go/webtransport-go v0.9.0/go.mod h1:4FUYIiUc75XSsF6HShcLeXXYZJ9AGwo/xh3L8M/P1ao=
 github.com/rogpeppe/go-internal v1.14.1 h1:UQB4HGPB6osV0SQTLymcB4TgvyWu6ZyliaW0tI/otEQ=

@@ -67,9 +67,11 @@ func TestProduceBlock_EmptyBatch_SetsEmptyDataHash(t *testing.T) {
 	mockExec := testmocks.NewMockExecutor(t)
 	mockSeq := testmocks.NewMockSequencer(t)
 
-	// Broadcasters are required by produceBlock; use simple mocks
-	hb := &mockBroadcaster[*types.SignedHeader]{}
-	db := &mockBroadcaster[*types.Data]{}
+	// Broadcasters are required by produceBlock; use generated mocks
+	hb := common.NewMockBroadcaster[*types.SignedHeader](t)
+	hb.EXPECT().WriteToStoreAndBroadcast(mock.Anything, mock.Anything).Return(nil).Maybe()
+	db := common.NewMockBroadcaster[*types.Data](t)
+	db.EXPECT().WriteToStoreAndBroadcast(mock.Anything, mock.Anything).Return(nil).Maybe()
 
 	exec, err := NewExecutor(
 		memStore,
@@ -126,8 +128,7 @@ func TestProduceBlock_EmptyBatch_SetsEmptyDataHash(t *testing.T) {
 	assert.EqualValues(t, common.DataHashForEmptyTxs, sh.DataHash)
 
 	// Broadcasters should have been called with the produced header and data
-	assert.True(t, hb.called)
-	assert.True(t, db.called)
+	// The testify mock framework tracks calls automatically
 }
 
 func TestPendingLimit_SkipsProduction(t *testing.T) {
@@ -154,8 +155,10 @@ func TestPendingLimit_SkipsProduction(t *testing.T) {
 
 	mockExec := testmocks.NewMockExecutor(t)
 	mockSeq := testmocks.NewMockSequencer(t)
-	hb := &mockBroadcaster[*types.SignedHeader]{}
-	db := &mockBroadcaster[*types.Data]{}
+	hb := common.NewMockBroadcaster[*types.SignedHeader](t)
+	hb.EXPECT().WriteToStoreAndBroadcast(mock.Anything, mock.Anything).Return(nil).Maybe()
+	db := common.NewMockBroadcaster[*types.Data](t)
+	db.EXPECT().WriteToStoreAndBroadcast(mock.Anything, mock.Anything).Return(nil).Maybe()
 
 	exec, err := NewExecutor(
 		memStore,

@@ -27,7 +27,6 @@ type DARetriever struct {
 	da      coreda.DA
 	cache   cache.Manager
 	genesis genesis.Genesis
-	options common.BlockOptions
 	logger  zerolog.Logger
 
 	// calculate namespaces bytes once and reuse them
@@ -46,14 +45,12 @@ func NewDARetriever(
 	cache cache.Manager,
 	config config.Config,
 	genesis genesis.Genesis,
-	options common.BlockOptions,
 	logger zerolog.Logger,
 ) *DARetriever {
 	return &DARetriever{
 		da:              da,
 		cache:           cache,
 		genesis:         genesis,
-		options:         options,
 		logger:          logger.With().Str("component", "da_retriever").Logger(),
 		namespaceBz:     coreda.NamespaceFromString(config.DA.GetNamespace()).Bytes(),
 		namespaceDataBz: coreda.NamespaceFromString(config.DA.GetDataNamespace()).Bytes(),
@@ -192,8 +189,8 @@ func (r *DARetriever) processBlobs(ctx context.Context, blobs [][]byte, daHeight
 
 		// Handle empty data case
 		if data == nil {
-			if r.isEmptyDataExpected(header) {
-				data = r.createEmptyDataForHeader(ctx, header)
+			if isEmptyDataExpected(header) {
+				data = createEmptyDataForHeader(ctx, header)
 				delete(r.pendingHeaders, height)
 			} else {
 				// keep header in pending headers until data lands
@@ -210,6 +207,7 @@ func (r *DARetriever) processBlobs(ctx context.Context, blobs [][]byte, daHeight
 			Header:   header,
 			Data:     data,
 			DaHeight: daHeight,
+			Source:   common.SourceDA,
 		}
 
 		events = append(events, event)
@@ -291,22 +289,6 @@ func (r *DARetriever) tryDecodeData(bz []byte, daHeight uint64) *types.Data {
 	return &signedData.Data
 }
 
-// isEmptyDataExpected checks if empty data is expected for a header
-func (r *DARetriever) isEmptyDataExpected(header *types.SignedHeader) bool {
-	return len(header.DataHash) == 0 || bytes.Equal(header.DataHash, common.DataHashForEmptyTxs)
-}
-
-// createEmptyDataForHeader creates empty data for a header
-func (r *DARetriever) createEmptyDataForHeader(ctx context.Context, header *types.SignedHeader) *types.Data {
-	return &types.Data{
-		Metadata: &types.Metadata{
-			ChainID: header.ChainID(),
-			Height:  header.Height(),
-			Time:    header.BaseHeader.Time,
-		},
-	}
-}
-
 // assertExpectedProposer validates the proposer address
 func (r *DARetriever) assertExpectedProposer(proposerAddr []byte) error {
 	if string(proposerAddr) != string(r.genesis.ProposerAddress) {
@@ -341,4 +323,22 @@ func (r *DARetriever) assertValidSignedData(signedData *types.SignedData) error 
 	}
 
 	return nil
+}
+
+// isEmptyDataExpected checks if empty data is expected for a header
+func isEmptyDataExpected(header *types.SignedHeader) bool {
+	return len(header.DataHash) == 0 || bytes.Equal(header.DataHash, common.DataHashForEmptyTxs)
+}
+
+// createEmptyDataForHeader creates empty data for a header
+func createEmptyDataForHeader(ctx context.Context, header *types.SignedHeader) *types.Data {
+	return &types.Data{
+		Txs: make(types.Txs, 0),
+		Metadata: &types.Metadata{
+			ChainID:      header.ChainID(),
+			Height:       header.Height(),
+			Time:         header.BaseHeader.Time,
+			LastDataHash: nil, // LastDataHash must be filled in the syncer, as it is not available here, block n-1 has not been processed yet.
+		},
+	}
 }
