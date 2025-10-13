@@ -9,7 +9,6 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/celestiaorg/go-header"
 	"github.com/rs/zerolog"
 	"golang.org/x/sync/errgroup"
 
@@ -22,12 +21,6 @@ import (
 	"github.com/evstack/ev-node/pkg/store"
 	"github.com/evstack/ev-node/types"
 )
-
-// broadcaster interface for P2P broadcasting
-type broadcaster[H header.Header[H]] interface {
-	WriteToStoreAndBroadcast(ctx context.Context, payload H) error
-	Store() header.Store[H]
-}
 
 type daRetriever interface {
 	RetrieveFromDA(ctx context.Context, daHeight uint64) ([]common.DAHeightEvent, error)
@@ -61,8 +54,8 @@ type Syncer struct {
 	daHeight *atomic.Uint64
 
 	// P2P stores
-	headerStore broadcaster[*types.SignedHeader]
-	dataStore   broadcaster[*types.Data]
+	headerStore common.Broadcaster[*types.SignedHeader]
+	dataStore   common.Broadcaster[*types.Data]
 
 	// Channels for coordination
 	heightInCh chan common.DAHeightEvent
@@ -90,8 +83,8 @@ func NewSyncer(
 	metrics *common.Metrics,
 	config config.Config,
 	genesis genesis.Genesis,
-	headerStore broadcaster[*types.SignedHeader],
-	dataStore broadcaster[*types.Data],
+	headerStore common.Broadcaster[*types.SignedHeader],
+	dataStore common.Broadcaster[*types.Data],
 	logger zerolog.Logger,
 	options common.BlockOptions,
 	errorCh chan<- error,

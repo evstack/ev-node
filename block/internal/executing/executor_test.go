@@ -19,18 +19,6 @@ import (
 	"github.com/evstack/ev-node/types"
 )
 
-// mockBroadcaster for testing
-type mockBroadcaster[T any] struct {
-	called  bool
-	payload T
-}
-
-func (m *mockBroadcaster[T]) WriteToStoreAndBroadcast(ctx context.Context, payload T) error {
-	m.called = true
-	m.payload = payload
-	return nil
-}
-
 func TestExecutor_BroadcasterIntegration(t *testing.T) {
 	// Create in-memory store
 	ds := sync.MutexWrap(datastore.NewMapDatastore())
@@ -52,8 +40,8 @@ func TestExecutor_BroadcasterIntegration(t *testing.T) {
 	}
 
 	// Create mock broadcasters
-	headerBroadcaster := &mockBroadcaster[*types.SignedHeader]{}
-	dataBroadcaster := &mockBroadcaster[*types.Data]{}
+	headerBroadcaster := common.NewMockBroadcaster[*types.SignedHeader](t)
+	dataBroadcaster := common.NewMockBroadcaster[*types.Data](t)
 
 	// Create executor with broadcasters
 	executor, err := NewExecutor(
@@ -137,9 +125,9 @@ func TestExecutor_BroadcastFlow(t *testing.T) {
 	// This test demonstrates how the broadcast flow works
 	// when an Executor produces a block
 
-	// Create mock broadcasters that track calls
-	headerBroadcaster := &mockBroadcaster[*types.SignedHeader]{}
-	dataBroadcaster := &mockBroadcaster[*types.Data]{}
+	// Create mock broadcasters
+	headerBroadcaster := common.NewMockBroadcaster[*types.SignedHeader](t)
+	dataBroadcaster := common.NewMockBroadcaster[*types.Data](t)
 
 	// Create sample data that would be broadcast
 	sampleHeader := &types.SignedHeader{
@@ -164,16 +152,16 @@ func TestExecutor_BroadcastFlow(t *testing.T) {
 	// Test broadcast calls
 	ctx := context.Background()
 
+	// Set up expectations
+	headerBroadcaster.EXPECT().WriteToStoreAndBroadcast(ctx, sampleHeader).Return(nil).Once()
+	dataBroadcaster.EXPECT().WriteToStoreAndBroadcast(ctx, sampleData).Return(nil).Once()
+
 	// Simulate what happens in produceBlock() after block creation
 	err := headerBroadcaster.WriteToStoreAndBroadcast(ctx, sampleHeader)
 	require.NoError(t, err)
-	assert.True(t, headerBroadcaster.called, "header broadcaster should be called")
 
 	err = dataBroadcaster.WriteToStoreAndBroadcast(ctx, sampleData)
 	require.NoError(t, err)
-	assert.True(t, dataBroadcaster.called, "data broadcaster should be called")
 
-	// Verify the correct data was passed to broadcasters
-	assert.Equal(t, sampleHeader, headerBroadcaster.payload)
-	assert.Equal(t, sampleData, dataBroadcaster.payload)
+	// Verify expectations were met (automatically checked by testify mock on cleanup)
 }

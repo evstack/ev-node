@@ -13,7 +13,6 @@ import (
 	signerpkg "github.com/evstack/ev-node/pkg/signer"
 	"github.com/evstack/ev-node/pkg/signer/noop"
 	testmocks "github.com/evstack/ev-node/test/mocks"
-	mocks "github.com/evstack/ev-node/test/mocks/external"
 	"github.com/ipfs/go-datastore"
 	dssync "github.com/ipfs/go-datastore/sync"
 	"github.com/libp2p/go-libp2p/core/crypto"
@@ -26,6 +25,7 @@ import (
 	"github.com/evstack/ev-node/block/internal/common"
 	"github.com/evstack/ev-node/pkg/config"
 	"github.com/evstack/ev-node/pkg/store"
+	extmocks "github.com/evstack/ev-node/test/mocks/external"
 	"github.com/evstack/ev-node/types"
 )
 
@@ -108,8 +108,8 @@ func TestSyncer_validateBlock_DataHashMismatch(t *testing.T) {
 		common.NopMetrics(),
 		cfg,
 		gen,
-		&mocks.MockStore[*types.SignedHeader]{},
-		&mocks.MockStore[*types.Data]{},
+		common.NewMockBroadcaster[*types.SignedHeader](t),
+		common.NewMockBroadcaster[*types.Data](t),
 		zerolog.Nop(),
 		common.DefaultBlockOptions(),
 		make(chan error, 1),
@@ -156,8 +156,8 @@ func TestProcessHeightEvent_SyncsAndUpdatesState(t *testing.T) {
 		common.NopMetrics(),
 		cfg,
 		gen,
-		&mocks.MockStore[*types.SignedHeader]{},
-		&mocks.MockStore[*types.Data]{},
+		common.NewMockBroadcaster[*types.SignedHeader](t),
+		common.NewMockBroadcaster[*types.Data](t),
 		zerolog.Nop(),
 		common.DefaultBlockOptions(),
 		make(chan error, 1),
@@ -206,8 +206,8 @@ func TestSequentialBlockSync(t *testing.T) {
 		common.NopMetrics(),
 		cfg,
 		gen,
-		&mocks.MockStore[*types.SignedHeader]{},
-		&mocks.MockStore[*types.Data]{},
+		common.NewMockBroadcaster[*types.SignedHeader](t),
+		common.NewMockBroadcaster[*types.Data](t),
 		zerolog.Nop(),
 		common.DefaultBlockOptions(),
 		make(chan error, 1),
@@ -327,10 +327,19 @@ func TestSyncLoopPersistState(t *testing.T) {
 	gen := genesis.Genesis{ChainID: "tchain", InitialHeight: 1, StartTime: time.Now().Add(-time.Second), ProposerAddress: addr, DAStartHeight: myDAHeightOffset}
 
 	dummyExec := execution.NewDummyExecutor()
-	mockP2PHeaderStore := &mocks.MockStore[*types.SignedHeader]{}
-	mockP2PDataStore := &mocks.MockStore[*types.Data]{}
-	mockP2PHeaderStore.On("Height", mock.Anything).Return(uint64(1), nil).Maybe()
-	mockP2PDataStore.On("Height", mock.Anything).Return(uint64(1), nil).Maybe()
+
+	// Create mock stores for P2P
+	mockHeaderStore := extmocks.NewMockStore[*types.SignedHeader](t)
+	mockHeaderStore.EXPECT().Height().Return(uint64(0)).Maybe()
+
+	mockDataStore := extmocks.NewMockStore[*types.Data](t)
+	mockDataStore.EXPECT().Height().Return(uint64(0)).Maybe()
+
+	mockP2PHeaderStore := common.NewMockBroadcaster[*types.SignedHeader](t)
+	mockP2PHeaderStore.EXPECT().Store().Return(mockHeaderStore).Maybe()
+
+	mockP2PDataStore := common.NewMockBroadcaster[*types.Data](t)
+	mockP2PDataStore.EXPECT().Store().Return(mockDataStore).Maybe()
 
 	syncerInst1 := NewSyncer(
 		st,
