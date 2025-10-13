@@ -5,7 +5,7 @@ import (
 	"errors"
 	"fmt"
 
-	goheader "github.com/celestiaorg/go-header"
+	"github.com/celestiaorg/go-header"
 	"github.com/rs/zerolog"
 
 	"github.com/evstack/ev-node/block/internal/cache"
@@ -123,8 +123,9 @@ func (bc *Components) Stop() error {
 }
 
 // broadcaster interface for P2P broadcasting
-type broadcaster[T any] interface {
-	WriteToStoreAndBroadcast(ctx context.Context, payload T) error
+type broadcaster[H header.Header[H]] interface {
+	WriteToStoreAndBroadcast(ctx context.Context, payload H) error
+	Store() header.Store[H]
 }
 
 // NewSyncComponents creates components for a non-aggregator full node that can only sync blocks.
@@ -136,8 +137,8 @@ func NewSyncComponents(
 	store store.Store,
 	exec coreexecutor.Executor,
 	da coreda.DA,
-	headerStore goheader.Store[*types.SignedHeader],
-	dataStore goheader.Store[*types.Data],
+	headerStore broadcaster[*types.SignedHeader],
+	dataStore broadcaster[*types.Data],
 	logger zerolog.Logger,
 	metrics *Metrics,
 	blockOpts BlockOptions,
