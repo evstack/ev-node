@@ -120,6 +120,7 @@ type DASubmitter struct {
 	genesis genesis.Genesis
 	options common.BlockOptions
 	logger  zerolog.Logger
+	metrics *common.Metrics
 
 	// calculate namespaces bytes once and reuse them
 	namespaceBz     []byte
@@ -132,6 +133,7 @@ func NewDASubmitter(
 	config config.Config,
 	genesis genesis.Genesis,
 	options common.BlockOptions,
+	metrics *common.Metrics,
 	logger zerolog.Logger,
 ) *DASubmitter {
 	daSubmitterLogger := logger.With().Str("component", "da_submitter").Logger()
@@ -146,9 +148,23 @@ func NewDASubmitter(
 		config:          config,
 		genesis:         genesis,
 		options:         options,
+		metrics:         metrics,
 		logger:          daSubmitterLogger,
 		namespaceBz:     coreda.NamespaceFromString(config.DA.GetNamespace()).Bytes(),
 		namespaceDataBz: coreda.NamespaceFromString(config.DA.GetDataNamespace()).Bytes(),
+	}
+}
+
+// recordFailure records a DA submission failure in metrics
+func (s *DASubmitter) recordFailure(reason string) {
+	if s.metrics == nil {
+		return
+	}
+	if counter, ok := s.metrics.DASubmitterFailures[reason]; ok {
+		counter.Add(1)
+	}
+	if gauge, ok := s.metrics.DASubmitterLastFailure[reason]; ok {
+		gauge.Set(float64(time.Now().Unix()))
 	}
 }
 
@@ -352,8 +368,18 @@ func submitToDA[T any](
 		marshaled = batchMarshaled
 	}
 
+	// Update pending blobs metric
+	if s.metrics != nil {
+		s.metrics.DASubmitterPendingBlobs.Set(float64(len(items)))
+	}
+
 	// Start the retry loop
 	for rs.Attempt < pol.MaxAttempts {
+		// Record resend metric for retry attempts (not the first attempt)
+		if rs.Attempt > 0 && s.metrics != nil {
+			s.metrics.DASubmitterResends.Add(1)
+		}
+
 		if err := waitForBackoffOrContext(ctx, rs.Backoff); err != nil {
 			return err
 		}
@@ -375,14 +401,24 @@ func submitToDA[T any](
 			s.logger.Info().Str("itemType", itemType).Float64("gasPrice", rs.GasPrice).Uint64("count", res.SubmittedCount).Msg("successfully submitted items to DA layer")
 			if int(res.SubmittedCount) == len(items) {
 				rs.Next(reasonSuccess, pol, gm, sentinelNoGas)
+				// Clear pending blobs on success
+				if s.metrics != nil {
+					s.metrics.DASubmitterPendingBlobs.Set(0)
+				}
 				return nil
 			}
 			// partial success: advance window
 			items = items[res.SubmittedCount:]
 			marshaled = marshaled[res.SubmittedCount:]
 			rs.Next(reasonSuccess, pol, gm, sentinelNoGas)
+			// Update pending blobs count
+			if s.metrics != nil {
+				s.metrics.DASubmitterPendingBlobs.Set(float64(len(items)))
+			}
 
 		case coreda.StatusTooBig:
+			// Record failure metric
+			s.recordFailure("too_big")
 			// Iteratively halve until it fits or single-item too big
 			if len(items) == 1 {
 				s.logger.Error().Str("itemType", itemType).Msg("single item exceeds DA blob size limit")
@@ -397,21 +433,39 @@ func submitToDA[T any](
 			marshaled = marshaled[:half]
 			s.logger.Debug().Int("newBatchSize", half).Msg("batch too big; halving and retrying")
 			rs.Next(reasonTooBig, pol, gm, sentinelNoGas)
+			// Update pending blobs count
+			if s.metrics != nil {
+				s.metrics.DASubmitterPendingBlobs.Set(float64(len(items)))
+			}
 
-		case coreda.StatusNotIncludedInBlock, coreda.StatusAlreadyInMempool:
+		case coreda.StatusNotIncludedInBlock:
+			// Record failure metric
+			s.recordFailure("not_included_in_block")
+			s.logger.Info().Dur("backoff", pol.MaxBackoff).Float64("gasPrice", rs.GasPrice).Msg("retrying due to mempool state")
+			rs.Next(reasonMempool, pol, gm, sentinelNoGas)
+
+		case coreda.StatusAlreadyInMempool:
+			// Record failure metric
+			s.recordFailure("already_in_mempool")
 			s.logger.Info().Dur("backoff", pol.MaxBackoff).Float64("gasPrice", rs.GasPrice).Msg("retrying due to mempool state")
 			rs.Next(reasonMempool, pol, gm, sentinelNoGas)
 
 		case coreda.StatusContextCanceled:
+			// Record failure metric
+			s.recordFailure("context_canceled")
 			s.logger.Info().Msg("DA layer submission canceled due to context cancellation")
 			return context.Canceled
 
 		default:
+			// Record failure metric
+			s.recordFailure("unknown")
 			s.logger.Error().Str("error", res.Message).Int("attempt", rs.Attempt+1).Msg("DA layer submission failed")
 			rs.Next(reasonFailure, pol, gm, sentinelNoGas)
 		}
 	}
 
+	// Final failure after max attempts
+	s.recordFailure("timeout")
 	return fmt.Errorf("failed to submit all %s(s) to DA layer after %d attempts", itemType, rs.Attempt)
 }
 

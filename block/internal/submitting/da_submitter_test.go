@@ -56,6 +56,7 @@ func setupDASubmitterTest(t *testing.T) (*DASubmitter, store.Store, cache.Manage
 		cfg,
 		gen,
 		common.DefaultBlockOptions(),
+		common.NopMetrics(),
 		zerolog.Nop(),
 	)
 
@@ -99,6 +100,7 @@ func TestNewDASubmitterSetsVisualizerWhenEnabled(t *testing.T) {
 		cfg,
 		genesis.Genesis{},
 		common.DefaultBlockOptions(),
+		common.NopMetrics(),
 		zerolog.Nop(),
 	)
 

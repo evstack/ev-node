@@ -28,7 +28,7 @@ func newTestSubmitter(mockDA *mocks.MockDA, override func(*config.Config)) *DASu
 	if override != nil {
 		override(&cfg)
 	}
-	return NewDASubmitter(mockDA, cfg, genesis.Genesis{} /*options=*/, common.BlockOptions{}, zerolog.Nop())
+	return NewDASubmitter(mockDA, cfg, genesis.Genesis{} /*options=*/, common.BlockOptions{}, common.NopMetrics(), zerolog.Nop())
 }
 
 // marshal helper for simple items

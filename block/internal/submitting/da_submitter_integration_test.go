@@ -86,7 +86,7 @@ func TestDASubmitter_SubmitHeadersAndData_MarksInclusionAndUpdatesLastSubmitted(
 	dummyDA := coreda.NewDummyDA(10_000_000, 0, 0, 10*time.Millisecond)
 
 	// Create DA submitter
-	daSubmitter := NewDASubmitter(dummyDA, cfg, gen, common.DefaultBlockOptions(), zerolog.Nop())
+	daSubmitter := NewDASubmitter(dummyDA, cfg, gen, common.DefaultBlockOptions(), common.NopMetrics(), zerolog.Nop())
 
 	// Submit headers and data
 	require.NoError(t, daSubmitter.SubmitHeaders(context.Background(), cm))
