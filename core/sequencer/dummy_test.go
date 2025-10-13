@@ -154,7 +154,7 @@ func TestDummySequencer_Concurrency(t *testing.T) {
 	for i := 0; i < numGoroutines; i++ {
 		go func(routineID int) {
 			for j := 0; j < numOperationsPerGoroutine; j++ {
-				// Create a unique  ID for this operation
+				// Create a unique ID for this operation
 				ID := []byte(fmt.Sprintf("-%d-%d", routineID, j))
 
 				// Create a batch
@@ -215,7 +215,7 @@ func TestDummySequencer_Multiples(t *testing.T) {
 	seq := NewDummySequencer()
 	ctx := t.Context()
 
-	// Create multiple  IDs and batches
+	// Create multiple IDs and batches
 	IDs := [][]byte{
 		[]byte("-1"),
 		[]byte("-2"),
