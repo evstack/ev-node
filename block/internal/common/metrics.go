@@ -67,7 +67,7 @@ type Metrics struct {
 	// DA Submitter metrics
 	DASubmitterFailures          map[string]metrics.Counter // Counter with reason label
 	DASubmitterLastFailure       map[string]metrics.Gauge   // Timestamp gauge with reason label
-	DASubmitterPendingBlobs      metrics.Gauge              // Number of pending blobs
+	DASubmitterPendingBlobs      metrics.Gauge              // Total number of blobs awaiting submission (backlog)
 	DASubmitterResends           metrics.Counter            // Number of resend attempts
 }
 
@@ -362,7 +362,7 @@ func PrometheusMetrics(namespace string, labelsAndValues ...string) *Metrics {
 		Namespace: namespace,
 		Subsystem: MetricsSubsystem,
 		Name:      "da_submitter_pending_blobs",
-		Help:      "Number of blobs pending DA submission",
+		Help:      "Total number of blobs awaiting DA submission (backlog)",
 	}, labels).With(labelsAndValues...)
 
 	m.DASubmitterResends = prometheus.NewCounterFrom(stdprometheus.CounterOpts{

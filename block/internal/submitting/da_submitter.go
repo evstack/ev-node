@@ -231,6 +231,7 @@ func (s *DASubmitter) SubmitHeaders(ctx context.Context, cache cache.Manager) er
 		s.namespaceBz,
 		[]byte(s.config.DA.SubmitOptions),
 		cache,
+		func() uint64 { return cache.NumPendingHeaders() },
 	)
 }
 
@@ -274,6 +275,7 @@ func (s *DASubmitter) SubmitData(ctx context.Context, cache cache.Manager, signe
 		s.namespaceDataBz,
 		[]byte(s.config.DA.SubmitOptions),
 		cache,
+		func() uint64 { return cache.NumPendingData() },
 	)
 }
 
@@ -344,6 +346,7 @@ func submitToDA[T any](
 	namespace []byte,
 	options []byte,
 	cache cache.Manager,
+	getTotalPendingFn func() uint64,
 ) error {
 	marshaled, err := marshalItems(ctx, items, marshalFn, itemType)
 	if err != nil {
@@ -368,9 +371,9 @@ func submitToDA[T any](
 		marshaled = batchMarshaled
 	}
 
-	// Update pending blobs metric
-	if s.metrics != nil {
-		s.metrics.DASubmitterPendingBlobs.Set(float64(len(items)))
+	// Update pending blobs metric to track total backlog
+	if s.metrics != nil && getTotalPendingFn != nil {
+		s.metrics.DASubmitterPendingBlobs.Set(float64(getTotalPendingFn()))
 	}
 
 	// Start the retry loop
@@ -401,9 +404,9 @@ func submitToDA[T any](
 			s.logger.Info().Str("itemType", itemType).Float64("gasPrice", rs.GasPrice).Uint64("count", res.SubmittedCount).Msg("successfully submitted items to DA layer")
 			if int(res.SubmittedCount) == len(items) {
 				rs.Next(reasonSuccess, pol, gm, sentinelNoGas)
-				// Clear pending blobs on success
-				if s.metrics != nil {
-					s.metrics.DASubmitterPendingBlobs.Set(0)
+				// Update pending blobs metric to reflect total backlog
+				if s.metrics != nil && getTotalPendingFn != nil {
+					s.metrics.DASubmitterPendingBlobs.Set(float64(getTotalPendingFn()))
 				}
 				return nil
 			}
@@ -411,9 +414,9 @@ func submitToDA[T any](
 			items = items[res.SubmittedCount:]
 			marshaled = marshaled[res.SubmittedCount:]
 			rs.Next(reasonSuccess, pol, gm, sentinelNoGas)
-			// Update pending blobs count
-			if s.metrics != nil {
-				s.metrics.DASubmitterPendingBlobs.Set(float64(len(items)))
+			// Update pending blobs count to reflect total backlog
+			if s.metrics != nil && getTotalPendingFn != nil {
+				s.metrics.DASubmitterPendingBlobs.Set(float64(getTotalPendingFn()))
 			}
 
 		case coreda.StatusTooBig:
@@ -433,9 +436,9 @@ func submitToDA[T any](
 			marshaled = marshaled[:half]
 			s.logger.Debug().Int("newBatchSize", half).Msg("batch too big; halving and retrying")
 			rs.Next(reasonTooBig, pol, gm, sentinelNoGas)
-			// Update pending blobs count
-			if s.metrics != nil {
-				s.metrics.DASubmitterPendingBlobs.Set(float64(len(items)))
+			// Update pending blobs count to reflect total backlog
+			if s.metrics != nil && getTotalPendingFn != nil {
+				s.metrics.DASubmitterPendingBlobs.Set(float64(getTotalPendingFn()))
 			}
 
 		case coreda.StatusNotIncludedInBlock:
