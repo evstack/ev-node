@@ -340,6 +340,7 @@ func setupTestSyncer(t *testing.T, daBlockTime time.Duration) *Syncer {
 		zerolog.Nop(),
 		common.DefaultBlockOptions(),
 		make(chan error, 1),
+		nil,
 	)
 
 	require.NoError(t, syncer.initializeState())

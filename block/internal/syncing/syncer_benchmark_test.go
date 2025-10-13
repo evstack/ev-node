@@ -113,6 +113,7 @@ func newBenchFixture(b *testing.B, totalHeights uint64, shuffledTx bool, daDelay
 		zerolog.Nop(),
 		common.DefaultBlockOptions(),
 		make(chan error, 1),
+		nil,
 	)
 	require.NoError(b, s.initializeState())
 	s.ctx, s.cancel = ctx, cancel

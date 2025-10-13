@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"reflect"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -19,6 +20,7 @@ import (
 	coresequencer "github.com/evstack/ev-node/core/sequencer"
 	"github.com/evstack/ev-node/pkg/config"
 	"github.com/evstack/ev-node/pkg/genesis"
+	"github.com/evstack/ev-node/pkg/raft"
 	"github.com/evstack/ev-node/pkg/signer"
 	"github.com/evstack/ev-node/pkg/store"
 	"github.com/evstack/ev-node/types"
@@ -49,6 +51,9 @@ type Executor struct {
 	config  config.Config
 	genesis genesis.Genesis
 	options common.BlockOptions
+
+	// Raft consensus
+	raftNode common.RaftNode
 
 	// State management
 	lastState *atomic.Pointer[types.State]
@@ -86,6 +91,7 @@ func NewExecutor(
 	logger zerolog.Logger,
 	options common.BlockOptions,
 	errorCh chan<- error,
+	raftNode common.RaftNode,
 ) (*Executor, error) {
 	if signer == nil {
 		return nil, errors.New("signer cannot be nil")
@@ -99,8 +105,11 @@ func NewExecutor(
 	if !bytes.Equal(addr, genesis.ProposerAddress) {
 		return nil, common.ErrNotProposer
 	}
+	if raftNode != nil && reflect.ValueOf(raftNode).IsNil() {
+		raftNode = nil
+	}
 
-	return &Executor{
+	e := &Executor{
 		store:             store,
 		exec:              exec,
 		sequencer:         sequencer,
@@ -113,10 +122,13 @@ func NewExecutor(
 		dataBroadcaster:   dataBroadcaster,
 		options:           options,
 		lastState:         &atomic.Pointer[types.State]{},
+		raftNode:          raftNode,
 		txNotifyCh:        make(chan struct{}, 1),
 		errorCh:           errorCh,
 		logger:            logger.With().Str("component", "executor").Logger(),
-	}, nil
+	}
+
+	return e, nil
 }
 
 // Start begins the execution component
@@ -309,6 +321,11 @@ func (e *Executor) produceBlock() error {
 		}
 	}()
 
+	// Check raft leadership if raft is enabled
+	if e.raftNode != nil && !e.raftNode.IsLeader() {
+		return errors.New("not raft leader")
+	}
+
 	currentState := e.getLastState()
 	newHeight := currentState.LastBlockHeight + 1
 
@@ -415,6 +432,30 @@ func (e *Executor) produceBlock() error {
 	// Update in-memory state after successful commit
 	e.setLastState(newState)
 	e.metrics.Height.Set(float64(newState.LastBlockHeight))
+
+	// Propose block to raft before p2p broadcast if raft is enabled
+	if e.raftNode != nil {
+		headerBytes, err := header.MarshalBinary()
+		if err != nil {
+			return fmt.Errorf("failed to marshal header: %w", err)
+		}
+		dataBytes, err := data.MarshalBinary()
+		if err != nil {
+			return fmt.Errorf("failed to marshal data: %w", err)
+		}
+
+		raftState := &raft.RaftBlockState{
+			Height:    newHeight,
+			Hash:      header.Hash(),
+			Timestamp: header.BaseHeader.Time,
+			Header:    headerBytes,
+			Data:      dataBytes,
+		}
+		if err := e.raftNode.Broadcast(e.ctx, raftState); err != nil {
+			return fmt.Errorf("failed to propose block to raft: %w", err)
+		}
+		e.logger.Debug().Uint64("height", newHeight).Msg("proposed block to raft")
+	}
 
 	// broadcast header and data to P2P network
 	g, ctx := errgroup.WithContext(e.ctx)
