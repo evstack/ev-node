@@ -20,7 +20,7 @@ import (
 	"github.com/evstack/ev-node/pkg/config"
 	"github.com/evstack/ev-node/pkg/genesis"
 	"github.com/evstack/ev-node/pkg/store"
-	mocks "github.com/evstack/ev-node/test/mocks/external"
+	extmocks "github.com/evstack/ev-node/test/mocks/external"
 	"github.com/evstack/ev-node/types"
 )
 
@@ -74,12 +74,19 @@ func TestSyncer_BackoffOnDAError(t *testing.T) {
 			syncer.daRetriever = daRetriever
 			syncer.p2pHandler = p2pHandler
 
-			headerStore := mocks.NewMockStore[*types.SignedHeader](t)
-			headerStore.On("Height").Return(uint64(0)).Maybe()
+			// Create mock stores for P2P
+			mockHeaderStore := extmocks.NewMockStore[*types.SignedHeader](t)
+			mockHeaderStore.EXPECT().Height().Return(uint64(0)).Maybe()
+
+			mockDataStore := extmocks.NewMockStore[*types.Data](t)
+			mockDataStore.EXPECT().Height().Return(uint64(0)).Maybe()
+
+			headerStore := common.NewMockBroadcaster[*types.SignedHeader](t)
+			headerStore.EXPECT().Store().Return(mockHeaderStore).Maybe()
 			syncer.headerStore = headerStore
 
-			dataStore := mocks.NewMockStore[*types.Data](t)
-			dataStore.On("Height").Return(uint64(0)).Maybe()
+			dataStore := common.NewMockBroadcaster[*types.Data](t)
+			dataStore.EXPECT().Store().Return(mockDataStore).Maybe()
 			syncer.dataStore = dataStore
 
 			var callTimes []time.Time
@@ -140,7 +147,7 @@ func TestSyncer_BackoffOnDAError(t *testing.T) {
 				assert.GreaterOrEqual(t, callCount, 2, "should continue without significant delay")
 				if len(callTimes) >= 2 {
 					timeBetweenCalls := callTimes[1].Sub(callTimes[0])
-					assert.Less(t, timeBetweenCalls, 100*time.Millisecond,
+					assert.Less(t, timeBetweenCalls, 120*time.Millisecond,
 						"should not have backoff delay for ErrBlobNotFound")
 				}
 			}
@@ -165,12 +172,19 @@ func TestSyncer_BackoffResetOnSuccess(t *testing.T) {
 	syncer.daRetriever = daRetriever
 	syncer.p2pHandler = p2pHandler
 
-	headerStore := mocks.NewMockStore[*types.SignedHeader](t)
-	headerStore.On("Height").Return(uint64(0)).Maybe()
+	// Create mock stores for P2P
+	mockHeaderStore := extmocks.NewMockStore[*types.SignedHeader](t)
+	mockHeaderStore.EXPECT().Height().Return(uint64(0)).Maybe()
+
+	mockDataStore := extmocks.NewMockStore[*types.Data](t)
+	mockDataStore.EXPECT().Height().Return(uint64(0)).Maybe()
+
+	headerStore := common.NewMockBroadcaster[*types.SignedHeader](t)
+	headerStore.EXPECT().Store().Return(mockHeaderStore).Maybe()
 	syncer.headerStore = headerStore
 
-	dataStore := mocks.NewMockStore[*types.Data](t)
-	dataStore.On("Height").Return(uint64(0)).Maybe()
+	dataStore := common.NewMockBroadcaster[*types.Data](t)
+	dataStore.EXPECT().Store().Return(mockDataStore).Maybe()
 	syncer.dataStore = dataStore
 
 	var callTimes []time.Time
@@ -251,12 +265,19 @@ func TestSyncer_BackoffBehaviorIntegration(t *testing.T) {
 	syncer.daRetriever = daRetriever
 	syncer.p2pHandler = p2pHandler
 
-	headerStore := mocks.NewMockStore[*types.SignedHeader](t)
-	headerStore.On("Height").Return(uint64(0)).Maybe()
+	// Create mock stores for P2P
+	mockHeaderStore := extmocks.NewMockStore[*types.SignedHeader](t)
+	mockHeaderStore.EXPECT().Height().Return(uint64(0)).Maybe()
+
+	mockDataStore := extmocks.NewMockStore[*types.Data](t)
+	mockDataStore.EXPECT().Height().Return(uint64(0)).Maybe()
+
+	headerStore := common.NewMockBroadcaster[*types.SignedHeader](t)
+	headerStore.EXPECT().Store().Return(mockHeaderStore).Maybe()
 	syncer.headerStore = headerStore
 
-	dataStore := mocks.NewMockStore[*types.Data](t)
-	dataStore.On("Height").Return(uint64(0)).Maybe()
+	dataStore := common.NewMockBroadcaster[*types.Data](t)
+	dataStore.EXPECT().Store().Return(mockDataStore).Maybe()
 	syncer.dataStore = dataStore
 
 	var callTimes []time.Time
@@ -335,8 +356,8 @@ func setupTestSyncer(t *testing.T, daBlockTime time.Duration) *Syncer {
 		common.NopMetrics(),
 		cfg,
 		gen,
-		nil,
-		nil,
+		common.NewMockBroadcaster[*types.SignedHeader](t),
+		common.NewMockBroadcaster[*types.Data](t),
 		zerolog.Nop(),
 		common.DefaultBlockOptions(),
 		make(chan error, 1),

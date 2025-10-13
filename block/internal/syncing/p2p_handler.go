@@ -3,7 +3,9 @@ package syncing
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
+	"time"
 
 	goheader "github.com/celestiaorg/go-header"
 	"github.com/rs/zerolog"
@@ -53,8 +55,18 @@ func (h *P2PHandler) ProcessHeaderRange(ctx context.Context, startHeight, endHei
 		default:
 		}
 
-		header, err := h.headerStore.GetByHeight(ctx, height)
+		// Create a timeout context for each GetByHeight call to prevent blocking
+		timeoutCtx, cancel := context.WithTimeout(ctx, 500*time.Millisecond)
+		header, err := h.headerStore.GetByHeight(timeoutCtx, height)
+		cancel()
+
 		if err != nil {
+			if errors.Is(err, context.DeadlineExceeded) {
+				h.logger.Debug().Uint64("height", height).Msg("timeout waiting for header from store, will retry later")
+				// Don't continue processing further heights if we timeout on one
+				// This prevents blocking on sequential heights
+				return
+			}
 			h.logger.Debug().Uint64("height", height).Err(err).Msg("failed to get header from store")
 			continue
 		}
@@ -65,20 +77,23 @@ func (h *P2PHandler) ProcessHeaderRange(ctx context.Context, startHeight, endHei
 			continue
 		}
 
-		// Get corresponding data
+		// Get corresponding data (empty data are still broadcasted by peers)
 		var data *types.Data
-		if bytes.Equal(header.DataHash, common.DataHashForEmptyTxs) {
-			// Create empty data for headers with empty data hash
-			data = createEmptyDataForHeader(ctx, header)
-		} else {
-			// Try to get data from data store
-			retrievedData, err := h.dataStore.GetByHeight(ctx, height)
-			if err != nil {
-				h.logger.Debug().Uint64("height", height).Err(err).Msg("could not retrieve data for header from data store")
+		timeoutCtx, cancel = context.WithTimeout(ctx, 500*time.Millisecond)
+		retrievedData, err := h.dataStore.GetByHeight(timeoutCtx, height)
+		cancel()
+
+		if err != nil {
+			if errors.Is(err, context.DeadlineExceeded) {
+				h.logger.Debug().Uint64("height", height).Msg("timeout waiting for data from store, will retry later")
+				// Don't continue processing if data is not available
+				// Store event with header only for later processing
 				continue
 			}
-			data = retrievedData
+			h.logger.Debug().Uint64("height", height).Err(err).Msg("could not retrieve data for header from data store")
+			continue
 		}
+		data = retrievedData
 
 		// further header validation (signature) is done in validateBlock.
 		// we need to be sure that the previous block n-1 was executed before validating block n
@@ -88,6 +103,7 @@ func (h *P2PHandler) ProcessHeaderRange(ctx context.Context, startHeight, endHei
 			Header:   header,
 			Data:     data,
 			DaHeight: 0, // P2P events don't have DA height context
+			Source:   common.SourceP2P,
 		}
 
 		select {
@@ -113,15 +129,33 @@ func (h *P2PHandler) ProcessDataRange(ctx context.Context, startHeight, endHeigh
 		default:
 		}
 
-		data, err := h.dataStore.GetByHeight(ctx, height)
+		// Create a timeout context for each GetByHeight call to prevent blocking
+		timeoutCtx, cancel := context.WithTimeout(ctx, 500*time.Millisecond)
+		data, err := h.dataStore.GetByHeight(timeoutCtx, height)
+		cancel()
+
 		if err != nil {
+			if errors.Is(err, context.DeadlineExceeded) {
+				h.logger.Debug().Uint64("height", height).Msg("timeout waiting for data from store, will retry later")
+				// Don't continue processing further heights if we timeout on one
+				// This prevents blocking on sequential heights
+				return
+			}
 			h.logger.Debug().Uint64("height", height).Err(err).Msg("failed to get data from store")
 			continue
 		}
 
-		// Get corresponding header
-		header, err := h.headerStore.GetByHeight(ctx, height)
+		// Get corresponding header with timeout
+		timeoutCtx, cancel = context.WithTimeout(ctx, 500*time.Millisecond)
+		header, err := h.headerStore.GetByHeight(timeoutCtx, height)
+		cancel()
+
 		if err != nil {
+			if errors.Is(err, context.DeadlineExceeded) {
+				h.logger.Debug().Uint64("height", height).Msg("timeout waiting for header from store, will retry later")
+				// Don't continue processing if header is not available
+				continue
+			}
 			h.logger.Debug().Uint64("height", height).Err(err).Msg("could not retrieve header for data from header store")
 			continue
 		}
@@ -140,6 +174,7 @@ func (h *P2PHandler) ProcessDataRange(ctx context.Context, startHeight, endHeigh
 			Header:   header,
 			Data:     data,
 			DaHeight: 0, // P2P events don't have DA height context
+			Source:   common.SourceP2P,
 		}
 
 		select {
