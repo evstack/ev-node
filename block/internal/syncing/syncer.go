@@ -374,7 +374,7 @@ func (s *Syncer) processHeightEvent(event *common.DAHeightEvent) {
 
 	// Last data must be got from store if the event comes from DA and the data hash is empty.
 	// When if the event comes from P2P, the sequencer and then all the full nodes contains the data.
-	if event.Source == common.SourceDA && bytes.Equal(event.Header.DataHash, common.DataHashForEmptyTxs) {
+	if event.Source == common.SourceDA && bytes.Equal(event.Header.DataHash, common.DataHashForEmptyTxs) && currentHeight > 0 {
 		_, lastData, err := s.store.GetBlockData(s.ctx, currentHeight)
 		if err != nil {
 			s.logger.Error().Err(err).Msg("failed to get last data")
