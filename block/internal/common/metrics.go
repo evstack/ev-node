@@ -17,14 +17,14 @@ const (
 type DASubmitterFailureReason string
 
 const (
-	DASubmitterFailureReasonAlreadyRejected     DASubmitterFailureReason = "already_rejected"
-	DASubmitterFailureReasonInsufficientFee     DASubmitterFailureReason = "insufficient_fee"
-	DASubmitterFailureReasonTimeout             DASubmitterFailureReason = "timeout"
-	DASubmitterFailureReasonAlreadyInMempool    DASubmitterFailureReason = "already_in_mempool"
-	DASubmitterFailureReasonNotIncludedInBlock  DASubmitterFailureReason = "not_included_in_block"
-	DASubmitterFailureReasonTooBig              DASubmitterFailureReason = "too_big"
-	DASubmitterFailureReasonContextCanceled     DASubmitterFailureReason = "context_canceled"
-	DASubmitterFailureReasonUnknown             DASubmitterFailureReason = "unknown"
+	DASubmitterFailureReasonAlreadyRejected    DASubmitterFailureReason = "already_rejected"
+	DASubmitterFailureReasonInsufficientFee    DASubmitterFailureReason = "insufficient_fee"
+	DASubmitterFailureReasonTimeout            DASubmitterFailureReason = "timeout"
+	DASubmitterFailureReasonAlreadyInMempool   DASubmitterFailureReason = "already_in_mempool"
+	DASubmitterFailureReasonNotIncludedInBlock DASubmitterFailureReason = "not_included_in_block"
+	DASubmitterFailureReasonTooBig             DASubmitterFailureReason = "too_big"
+	DASubmitterFailureReasonContextCanceled    DASubmitterFailureReason = "context_canceled"
+	DASubmitterFailureReasonUnknown            DASubmitterFailureReason = "unknown"
 )
 
 // AllDASubmitterFailureReasons returns all possible failure reasons
