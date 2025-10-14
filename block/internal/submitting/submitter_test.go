@@ -120,9 +120,9 @@ func TestSubmitter_IsHeightDAIncluded(t *testing.T) {
 	h1, d1 := newHeaderAndData("chain", 3, true)
 	h2, d2 := newHeaderAndData("chain", 4, true)
 
-	cm.SetHeaderDAIncluded(h1.Hash().String(), 100)
-	cm.SetDataDAIncluded(d1.DACommitment().String(), 100)
-	cm.SetHeaderDAIncluded(h2.Hash().String(), 101)
+	cm.SetHeaderDAIncluded(h1.Hash().String(), 100, 2)
+	cm.SetDataDAIncluded(d1.DACommitment().String(), 100, 2)
+	cm.SetHeaderDAIncluded(h2.Hash().String(), 101, 4)
 	// no data for h2
 
 	specs := map[string]struct {
@@ -166,8 +166,8 @@ func TestSubmitter_setSequencerHeightToDAHeight(t *testing.T) {
 	h, d := newHeaderAndData("chain", 1, true)
 
 	// set DA included heights in cache
-	cm.SetHeaderDAIncluded(h.Hash().String(), 100)
-	cm.SetDataDAIncluded(d.DACommitment().String(), 90)
+	cm.SetHeaderDAIncluded(h.Hash().String(), 100, 1)
+	cm.SetDataDAIncluded(d.DACommitment().String(), 90, 1)
 
 	headerKey := fmt.Sprintf("%s/%d/h", store.HeightToDAHeightKey, 1)
 	dataKey := fmt.Sprintf("%s/%d/d", store.HeightToDAHeightKey, 1)
@@ -200,7 +200,7 @@ func TestSubmitter_setSequencerHeightToDAHeight_Errors(t *testing.T) {
 	assert.Error(t, s.setSequencerHeightToDAHeight(ctx, 1, h, d, false))
 
 	// Add header, missing data
-	cm.SetHeaderDAIncluded(h.Hash().String(), 10)
+	cm.SetHeaderDAIncluded(h.Hash().String(), 10, 1)
 	assert.Error(t, s.setSequencerHeightToDAHeight(ctx, 1, h, d, false))
 }
 
@@ -238,7 +238,7 @@ func TestSubmitter_processDAInclusionLoop_advances(t *testing.T) {
 	exec.On("SetFinal", mock.Anything, uint64(1)).Return(nil).Once()
 	exec.On("SetFinal", mock.Anything, uint64(2)).Return(nil).Once()
 
-	daSub := NewDASubmitter(nil, cfg, genesis.Genesis{}, common.DefaultBlockOptions(), metrics, zerolog.Nop())
+	daSub := NewDASubmitter(nil, cfg, genesis.Genesis{}, common.DefaultBlockOptions(), zerolog.Nop())
 	s := NewSubmitter(st, exec, cm, metrics, cfg, genesis.Genesis{}, daSub, nil, zerolog.Nop(), nil)
 
 	// prepare two consecutive blocks in store with DA included in cache
@@ -263,10 +263,10 @@ func TestSubmitter_processDAInclusionLoop_advances(t *testing.T) {
 	require.NoError(t, batch2.SetHeight(2))
 	require.NoError(t, batch2.Commit())
 
-	cm.SetHeaderDAIncluded(h1.Hash().String(), 100)
-	cm.SetDataDAIncluded(d1.DACommitment().String(), 100)
-	cm.SetHeaderDAIncluded(h2.Hash().String(), 101)
-	cm.SetDataDAIncluded(d2.DACommitment().String(), 101)
+	cm.SetHeaderDAIncluded(h1.Hash().String(), 100, 1)
+	cm.SetDataDAIncluded(d1.DACommitment().String(), 100, 1)
+	cm.SetHeaderDAIncluded(h2.Hash().String(), 101, 2)
+	cm.SetDataDAIncluded(d2.DACommitment().String(), 101, 2)
 
 	s.ctx, s.cancel = ctx, cancel
 	require.NoError(t, s.initializeDAIncludedHeight(ctx))
