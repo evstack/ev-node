@@ -83,6 +83,7 @@ message BackupMetadata {
 
 // BackupResponse multiplexes metadata and raw backup data chunks in the stream.
 message BackupResponse {
+  // response contains either metadata about the backup progress or a chunk of backup data.
   oneof response {
     BackupMetadata metadata = 1;
     bytes chunk = 2;

@@ -519,6 +519,8 @@ func (x *BackupMetadata) GetCompleted() bool {
 // BackupResponse multiplexes metadata and raw backup data chunks in the stream.
 type BackupResponse struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
+	// response contains either metadata about the backup progress or a chunk of backup data.
+	//
 	// Types that are valid to be assigned to Response:
 	//
 	//	*BackupResponse_Metadata
