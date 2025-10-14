@@ -67,6 +67,7 @@ type Manager interface {
 	SaveToDisk() error
 	LoadFromDisk() error
 	ClearFromDisk() error
+	ClearDAIncluded(height uint64)
 }
 
 var _ Manager = (*implementation)(nil)
@@ -162,6 +163,11 @@ func (m *implementation) GetDataDAIncluded(hash string) (uint64, bool) {
 
 func (m *implementation) SetDataDAIncluded(hash string, daHeight uint64, blockHeight uint64) {
 	m.dataCache.setDAIncluded(hash, daHeight, blockHeight)
+}
+
+func (m *implementation) ClearDAIncluded(height uint64) {
+	m.dataCache.pruneOldEntries(height)
+	m.headerCache.pruneOldEntries(height)
 }
 
 // Pending operations

@@ -8,6 +8,8 @@ import (
 	"sync"
 )
 
+const cacheWindow = 1000000
+
 // Cache is a generic cache that maintains items that are seen and hard confirmed
 type Cache[T any] struct {
 	// itemsByHeight stores items keyed by uint64 height
@@ -99,7 +101,7 @@ func (c *Cache[T]) removeDAIncluded(hash string) {
 }
 
 // pruneOldEntries removes entries below the current height.
-// It keeps entries at heights >= currentHeight.
+// It keeps entries at heights >= currentHeight-cacheWindow.
 // This prevents unbounded memory growth as the chain progresses.
 func (c *Cache[T]) pruneOldEntries(currentHeight uint64) {
 	if currentHeight == 0 {
@@ -114,7 +116,7 @@ func (c *Cache[T]) pruneOldEntries(currentHeight uint64) {
 		if !ok {
 			return true
 		}
-		if height < currentHeight {
+		if height < currentHeight-cacheWindow {
 			itemsToDelete = append(itemsToDelete, height)
 		}
 		return true
@@ -129,7 +131,7 @@ func (c *Cache[T]) pruneOldEntries(currentHeight uint64) {
 		if !ok {
 			return true
 		}
-		if height < currentHeight {
+		if height < currentHeight-cacheWindow {
 			hashesToDelete = append(hashesToDelete, hash)
 		}
 		return true
