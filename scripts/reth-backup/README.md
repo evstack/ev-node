@@ -152,9 +152,11 @@ environments (SSH, Kubernetes, etc.) without modifying the core backup logic.
 
    ```bash
    TAG=<TAG>
+   
+   # From apps/evm/single directory, use relative path to backups
    docker run --rm \
      --volumes-from ev-reth \
-     -v "$(pwd)/backups/full-run/reth/${TAG}:/backup:ro" \
+     -v "$PWD/../../backups/full-run/reth/${TAG}:/backup:ro" \
      alpine:3.18 \
      sh -c 'rm -rf /home/reth/eth-home/db /home/reth/eth-home/static_files && \
             mkdir -p /home/reth/eth-home/db /home/reth/eth-home/static_files && \
@@ -167,9 +169,11 @@ environments (SSH, Kubernetes, etc.) without modifying the core backup logic.
 
    ```bash
    TAG=<TAG>
+   
+   # From apps/evm/single directory, use relative path to backups
    docker run --rm \
      --volumes-from evolveevm-ev-node-evm-single-1 \
-     -v "$(pwd)/backups/full-run/ev-node:/backup:ro" \
+     -v "$PWD/../../backups/full-run/ev-node:/backup:ro" \
      ghcr.io/evstack/ev-node-evm-single:main \
      restore \
        --input /backup/backup-${TAG}.badger \
@@ -197,23 +201,51 @@ environments (SSH, Kubernetes, etc.) without modifying the core backup logic.
    > rolled back to the target height. The `--sync-node` flag is required for
    > non-aggregator mode rollback.
 
-5. Start services with cache cleared:
+5. Start reth and local-da services:
 
    ```bash
-   docker compose run --rm ev-node-evm-single start --evnode.clear_cache
+   docker compose start ev-reth local-da
+   ```
+
+6. Start ev-node with cache cleared (first time only):
+
+   ```bash
+   # Remove the stopped container and start with --evnode.clear_cache
+   docker rm evolveevm-ev-node-evm-single-1
+   
+   docker run -d \
+     --name evolveevm-ev-node-evm-single-1 \
+     --network evolveevm_evolve-network \
+     -p 7676:7676 -p 7331:7331 \
+     -v evolveevm_evm-single-data:/root/.evm-single/ \
+     -e EVM_ENGINE_URL=http://ev-reth:8551 \
+     -e EVM_ETH_URL=http://ev-reth:8545 \
+     -e EVM_JWT_SECRET=f747494bb0fb338a0d71f5f9fe5b5034c17cc988c229b59fd71e005ee692e9bf \
+     -e EVM_GENESIS_HASH=0x2b8bbb1ea1e04f9c9809b4b278a8687806edc061a356c7dbc491930d8e922503 \
+     -e EVM_BLOCK_TIME=1s \
+     -e EVM_SIGNER_PASSPHRASE=secret \
+     -e DA_ADDRESS=http://local-da:7980 \
+     ghcr.io/evstack/ev-node-evm-single:main \
+     start --evnode.clear_cache
    ```
 
    > **Important:** Use `--evnode.clear_cache` on first start after restore to clear
-   > any cached p2p data that may be inconsistent after rollback.
+   > any cached p2p data that may be inconsistent after rollback. On subsequent restarts,
+   > you can use `docker compose up -d` normally.
 
-6. Verify both nodes are at the same height:
+7. Verify both nodes are at the same height:
 
    ```bash
    HEIGHT=$(cat backups/full-run/ev-node/target-height.txt)
-   echo "Expected height: ${HEIGHT}"
+   echo "Expected restored height: ${HEIGHT}"
    
-   # Check ev-node logs for produced blocks
-   docker logs -f <container-name> 2>&1 | grep "initialized state"
+   # Check ev-node is producing blocks from the restored height
+   docker logs evolveevm-ev-node-evm-single-1 2>&1 | grep "produced block" | head -10
+   
+   # Check reth current height
+   docker exec ev-reth curl -s -X POST -H "Content-Type: application/json" \
+     --data '{"jsonrpc":"2.0","method":"eth_blockNumber","params":[],"id":1}' \
+     http://localhost:8545 | jq -r '.result' | xargs printf "%d\n"
    ```
 
 ## Known Limitations

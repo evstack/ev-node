@@ -108,15 +108,7 @@ func NewRestoreCmd() *cobra.Command {
 				return fmt.Errorf("restore failed: %w", err)
 			}
 
-			// Get the final height
-			height, err := evStore.Height(ctx)
-			if err != nil {
-				cmd.Printf("Warning: could not determine restored height: %v\n", err)
-			} else {
-				cmd.Printf("Restore completed successfully\n")
-				cmd.Printf("Restored height: %d\n", height)
-			}
-
+			cmd.Printf("Restore completed successfully\n")
 			cmd.Printf("Datastore restored to: %s\n", dbPath)
 
 			return nil
