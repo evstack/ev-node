@@ -150,7 +150,7 @@ func (e *Executor) Stop() error {
 	return nil
 }
 
-// getLastState returns the current state
+// GetLastState returns the current state
 func (e *Executor) GetLastState() types.State {
 	state := e.getLastState()
 	state.AppHash = bytes.Clone(state.AppHash)
@@ -160,7 +160,6 @@ func (e *Executor) GetLastState() types.State {
 }
 
 // getLastState returns the current state.
-// getLastState should never directly mutate.
 func (e *Executor) getLastState() types.State {
 	state := e.lastState.Load()
 	if state == nil {

@@ -223,8 +223,6 @@ func (s *Syncer) processLoop() {
 	}
 }
 
-// cachePruneLoop removed: pruning now handled on-demand when DA inclusion advances via cache manager.
-
 // syncLoop handles synchronization from DA and P2P sources.
 func (s *Syncer) syncLoop() {
 	s.logger.Info().Msg("starting sync loop")

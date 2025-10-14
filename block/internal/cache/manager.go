@@ -79,7 +79,6 @@ type implementation struct {
 	pendingEventsCache *Cache[common.DAHeightEvent]
 	pendingHeaders     *PendingHeaders
 	pendingData        *PendingData
-	store              store.Store
 	config             config.Config
 	logger             zerolog.Logger
 
@@ -114,7 +113,6 @@ func NewManager(cfg config.Config, store store.Store, logger zerolog.Logger) (Ma
 		pendingEventsCache: pendingEventsCache,
 		pendingHeaders:     pendingHeaders,
 		pendingData:        pendingData,
-		store:              store,
 		config:             cfg,
 		logger:             logger,
 	}
@@ -149,7 +147,6 @@ func (m *implementation) GetHeaderDAIncluded(hash string) (uint64, bool) {
 
 func (m *implementation) SetHeaderDAIncluded(hash string, daHeight uint64, blockHeight uint64) {
 	m.headerCache.setDAIncluded(hash, daHeight, blockHeight)
-	m.ClearBelowHeight(blockHeight)
 }
 
 func (m *implementation) RemoveHeaderDAIncluded(hash string) {
@@ -171,7 +168,6 @@ func (m *implementation) GetDataDAIncluded(hash string) (uint64, bool) {
 
 func (m *implementation) SetDataDAIncluded(hash string, daHeight uint64, blockHeight uint64) {
 	m.dataCache.setDAIncluded(hash, daHeight, blockHeight)
-	m.ClearBelowHeight(blockHeight)
 }
 
 // Pending operations

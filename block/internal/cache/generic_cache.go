@@ -85,11 +85,9 @@ func (c *Cache[T]) isSeen(hash string) bool {
 	if !ok {
 		return false
 	}
-	val, ok := seen.(bool)
-	if !ok {
-		return false
-	}
-	return val
+
+	_, ok = seen.(bool)
+	return ok
 }
 
 // setSeen sets the hash as seen and tracks its height for pruning
