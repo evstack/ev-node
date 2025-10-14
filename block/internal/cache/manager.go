@@ -2,7 +2,6 @@ package cache
 
 import (
 	"context"
-	"encoding/binary"
 	"encoding/gob"
 	"fmt"
 	"os"
@@ -65,10 +64,10 @@ type Manager interface {
 	SetPendingEvent(height uint64, event *common.DAHeightEvent)
 
 	// Cleanup operations
-	PruneCache(ctx context.Context)
 	SaveToDisk() error
 	LoadFromDisk() error
 	ClearFromDisk() error
+	ClearBelowHeight(height uint64)
 }
 
 var _ Manager = (*implementation)(nil)
@@ -83,6 +82,10 @@ type implementation struct {
 	store              store.Store
 	config             config.Config
 	logger             zerolog.Logger
+
+	// pruning state (guards on-demand clearing)
+	pruneMu           sync.Mutex
+	lastClearedHeight uint64
 }
 
 // NewManager creates a new cache manager instance
@@ -146,6 +149,7 @@ func (m *implementation) GetHeaderDAIncluded(hash string) (uint64, bool) {
 
 func (m *implementation) SetHeaderDAIncluded(hash string, daHeight uint64, blockHeight uint64) {
 	m.headerCache.setDAIncluded(hash, daHeight, blockHeight)
+	m.ClearBelowHeight(blockHeight)
 }
 
 func (m *implementation) RemoveHeaderDAIncluded(hash string) {
@@ -167,6 +171,7 @@ func (m *implementation) GetDataDAIncluded(hash string) (uint64, bool) {
 
 func (m *implementation) SetDataDAIncluded(hash string, daHeight uint64, blockHeight uint64) {
 	m.dataCache.setDAIncluded(hash, daHeight, blockHeight)
+	m.ClearBelowHeight(blockHeight)
 }
 
 // Pending operations
@@ -223,6 +228,7 @@ func (m *implementation) SetPendingEvent(height uint64, event *common.DAHeightEv
 // GetNextPendingEvent efficiently retrieves and removes the event at the specified height.
 // Returns nil if no event exists at that height.
 func (m *implementation) GetNextPendingEvent(height uint64) *common.DAHeightEvent {
+	m.pendingEventsCache.pruneOldEntries(height)
 	return m.pendingEventsCache.getNextItem(height)
 }
 
@@ -268,35 +274,19 @@ func (m *implementation) LoadFromDisk() error {
 	return nil
 }
 
-// PruneCache removes cache entries below the DA included height.
-//
-// Safety invariants:
-// 1. Entries below DA included height are already persisted on DA
-// 2. We never need to re-submit these entries
-// 3. DA included height only moves forward (monotonic)
-//
-// Memory behavior:
-// If DA submissions are delayed (network issues, DA downtime), the cache will grow
-// until DA catches up. This is intentional - we cannot prune entries that haven't
-// been safely persisted to DA. Ensure monitoring is in place for cache size metrics.
-//
-// The pruning operation is performed periodically (every 20 minutes) by the executor
-// and syncer components to prevent unbounded memory growth in normal operation.
-func (m *implementation) PruneCache(ctx context.Context) {
-	// Get DA included height from store - only prune up to this height
-	// to avoid clearing cache entries that are still pending DA submission or inclusion
-	daIncludedHeight := uint64(0)
-	if heightBytes, err := m.store.GetMetadata(ctx, store.DAIncludedHeightKey); err == nil && len(heightBytes) == 8 {
-		daIncludedHeight = binary.LittleEndian.Uint64(heightBytes)
+func (m *implementation) ClearBelowHeight(height uint64) {
+	if height == 0 {
+		return
 	}
-
-	// Only prune if we have a valid DA included height
-	if daIncludedHeight > 0 {
-		m.headerCache.pruneOldEntries(daIncludedHeight)
-		m.dataCache.pruneOldEntries(daIncludedHeight)
-		m.pendingEventsCache.pruneOldEntries(daIncludedHeight)
-		m.logger.Debug().Uint64("da_included_height", daIncludedHeight).Msg("pruned cache up to DA included height")
+	m.pruneMu.Lock()
+	defer m.pruneMu.Unlock()
+	if height <= m.lastClearedHeight {
+		return
 	}
+	m.headerCache.pruneOldEntries(height)
+	m.dataCache.pruneOldEntries(height)
+	m.pendingEventsCache.pruneOldEntries(height)
+	m.lastClearedHeight = height
 }
 
 func (m *implementation) ClearFromDisk() error {

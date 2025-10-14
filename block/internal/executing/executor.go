@@ -135,13 +135,6 @@ func (e *Executor) Start(ctx context.Context) error {
 		e.executionLoop()
 	}()
 
-	// Start periodic cache pruning loop
-	e.wg.Add(1)
-	go func() {
-		defer e.wg.Done()
-		e.cachePruneLoop()
-	}()
-
 	e.logger.Info().Msg("executor started")
 	return nil
 }
@@ -155,24 +148,6 @@ func (e *Executor) Stop() error {
 
 	e.logger.Info().Msg("executor stopped")
 	return nil
-}
-
-// cachePruneLoop periodically prunes old cache entries to prevent unbounded memory growth.
-func (e *Executor) cachePruneLoop() {
-	e.logger.Info().Msg("starting cache prune loop")
-	defer e.logger.Info().Msg("cache prune loop stopped")
-
-	ticker := time.NewTicker(20 * time.Minute)
-	defer ticker.Stop()
-
-	for {
-		select {
-		case <-e.ctx.Done():
-			return
-		case <-ticker.C:
-			e.cache.PruneCache(e.ctx)
-		}
-	}
 }
 
 // getLastState returns the current state
