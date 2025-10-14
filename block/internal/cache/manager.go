@@ -40,16 +40,16 @@ func registerGobTypes() {
 type Manager interface {
 	// Header operations
 	IsHeaderSeen(hash string) bool
-	SetHeaderSeen(hash string)
+	SetHeaderSeen(hash string, height uint64)
 	GetHeaderDAIncluded(hash string) (uint64, bool)
-	SetHeaderDAIncluded(hash string, daHeight uint64)
+	SetHeaderDAIncluded(hash string, daHeight uint64, blockHeight uint64)
 	RemoveHeaderDAIncluded(hash string)
 
 	// Data operations
 	IsDataSeen(hash string) bool
-	SetDataSeen(hash string)
+	SetDataSeen(hash string, height uint64)
 	GetDataDAIncluded(hash string) (uint64, bool)
-	SetDataDAIncluded(hash string, daHeight uint64)
+	SetDataDAIncluded(hash string, daHeight uint64, blockHeight uint64)
 
 	// Pending operations
 	GetPendingHeaders(ctx context.Context) ([]*types.SignedHeader, error)
@@ -100,6 +100,7 @@ func NewManager(cfg config.Config, store store.Store, logger zerolog.Logger) (Ma
 		return nil, fmt.Errorf("failed to create pending data: %w", err)
 	}
 
+	registerGobTypes()
 	impl := &implementation{
 		headerCache:        headerCache,
 		dataCache:          dataCache,
@@ -130,16 +131,16 @@ func (m *implementation) IsHeaderSeen(hash string) bool {
 	return m.headerCache.isSeen(hash)
 }
 
-func (m *implementation) SetHeaderSeen(hash string) {
-	m.headerCache.setSeen(hash)
+func (m *implementation) SetHeaderSeen(hash string, height uint64) {
+	m.headerCache.setSeen(hash, height)
 }
 
 func (m *implementation) GetHeaderDAIncluded(hash string) (uint64, bool) {
 	return m.headerCache.getDAIncluded(hash)
 }
 
-func (m *implementation) SetHeaderDAIncluded(hash string, daHeight uint64) {
-	m.headerCache.setDAIncluded(hash, daHeight)
+func (m *implementation) SetHeaderDAIncluded(hash string, daHeight uint64, blockHeight uint64) {
+	m.headerCache.setDAIncluded(hash, daHeight, blockHeight)
 }
 
 func (m *implementation) RemoveHeaderDAIncluded(hash string) {
@@ -151,16 +152,16 @@ func (m *implementation) IsDataSeen(hash string) bool {
 	return m.dataCache.isSeen(hash)
 }
 
-func (m *implementation) SetDataSeen(hash string) {
-	m.dataCache.setSeen(hash)
+func (m *implementation) SetDataSeen(hash string, height uint64) {
+	m.dataCache.setSeen(hash, height)
 }
 
 func (m *implementation) GetDataDAIncluded(hash string) (uint64, bool) {
 	return m.dataCache.getDAIncluded(hash)
 }
 
-func (m *implementation) SetDataDAIncluded(hash string, daHeight uint64) {
-	m.dataCache.setDAIncluded(hash, daHeight)
+func (m *implementation) SetDataDAIncluded(hash string, daHeight uint64, blockHeight uint64) {
+	m.dataCache.setDAIncluded(hash, daHeight, blockHeight)
 }
 
 // Pending operations

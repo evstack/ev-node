@@ -16,6 +16,8 @@ type Cache[T any] struct {
 	hashes *sync.Map
 	// daIncluded tracks the DA inclusion height for a given hash
 	daIncluded *sync.Map
+	// heightByHash tracks the block height associated with each hash for pruning
+	heightByHash *sync.Map
 }
 
 // NewCache returns a new Cache struct
@@ -24,6 +26,7 @@ func NewCache[T any]() *Cache[T] {
 		itemsByHeight: new(sync.Map),
 		hashes:        new(sync.Map),
 		daIncluded:    new(sync.Map),
+		heightByHash:  new(sync.Map),
 	}
 }
 
@@ -44,22 +47,6 @@ func (c *Cache[T]) getItem(height uint64) *T {
 // setItem sets an item in the cache by height
 func (c *Cache[T]) setItem(height uint64, item *T) {
 	c.itemsByHeight.Store(height, item)
-}
-
-// rangeByHeight iterates over items keyed by height in an unspecified order and calls fn for each.
-// If fn returns false, iteration stops early.
-func (c *Cache[T]) rangeByHeight(fn func(height uint64, item *T) bool) {
-	c.itemsByHeight.Range(func(k, v any) bool {
-		height, ok := k.(uint64)
-		if !ok {
-			return true
-		}
-		it, ok := v.(*T)
-		if !ok {
-			return true
-		}
-		return fn(height, it)
-	})
 }
 
 // getNextItem returns the item at the specified height and removes it from cache if found.
@@ -85,9 +72,10 @@ func (c *Cache[T]) isSeen(hash string) bool {
 	return seen.(bool)
 }
 
-// setSeen sets the hash as seen
-func (c *Cache[T]) setSeen(hash string) {
+// setSeen sets the hash as seen and tracks its height for pruning
+func (c *Cache[T]) setSeen(hash string, height uint64) {
 	c.hashes.Store(hash, true)
+	c.heightByHash.Store(hash, height)
 }
 
 // getDAIncluded returns the DA height if the hash has been DA-included, otherwise it returns 0.
@@ -99,14 +87,63 @@ func (c *Cache[T]) getDAIncluded(hash string) (uint64, bool) {
 	return daIncluded.(uint64), true
 }
 
-// setDAIncluded sets the hash as DA-included with the given DA height
-func (c *Cache[T]) setDAIncluded(hash string, daHeight uint64) {
+// setDAIncluded sets the hash as DA-included with the given DA height and tracks block height for pruning
+func (c *Cache[T]) setDAIncluded(hash string, daHeight uint64, blockHeight uint64) {
 	c.daIncluded.Store(hash, daHeight)
+	c.heightByHash.Store(hash, blockHeight)
 }
 
 // removeDAIncluded removes the DA-included status of the hash
 func (c *Cache[T]) removeDAIncluded(hash string) {
 	c.daIncluded.Delete(hash)
+}
+
+// pruneOldEntries removes entries below the current height.
+// It keeps entries at heights >= currentHeight.
+// This prevents unbounded memory growth as the chain progresses.
+func (c *Cache[T]) pruneOldEntries(currentHeight uint64) {
+	if currentHeight == 0 {
+		return
+	}
+
+	var itemsToDelete []uint64
+	var hashesToDelete []string
+
+	c.itemsByHeight.Range(func(k, v any) bool {
+		height, ok := k.(uint64)
+		if !ok {
+			return true
+		}
+		if height < currentHeight {
+			itemsToDelete = append(itemsToDelete, height)
+		}
+		return true
+	})
+
+	c.heightByHash.Range(func(k, v any) bool {
+		hash, ok := k.(string)
+		if !ok {
+			return true
+		}
+		height, ok := v.(uint64)
+		if !ok {
+			return true
+		}
+		if height < currentHeight {
+			hashesToDelete = append(hashesToDelete, hash)
+		}
+		return true
+	})
+
+	for _, height := range itemsToDelete {
+		c.itemsByHeight.Delete(height)
+	}
+
+	for _, hash := range hashesToDelete {
+		c.hashes.Delete(hash)
+		c.daIncluded.Delete(hash)
+		c.heightByHash.Delete(hash)
+	}
 }
 
 const (

@@ -238,7 +238,7 @@ func TestSubmitter_processDAInclusionLoop_advances(t *testing.T) {
 	exec.On("SetFinal", mock.Anything, uint64(1)).Return(nil).Once()
 	exec.On("SetFinal", mock.Anything, uint64(2)).Return(nil).Once()
 
-	daSub := NewDASubmitter(nil, cfg, genesis.Genesis{}, common.DefaultBlockOptions(), zerolog.Nop())
+	daSub := NewDASubmitter(nil, cfg, genesis.Genesis{}, common.DefaultBlockOptions(), metrics, zerolog.Nop())
 	s := NewSubmitter(st, exec, cm, metrics, cfg, genesis.Genesis{}, daSub, nil, zerolog.Nop(), nil)
 
 	// prepare two consecutive blocks in store with DA included in cache

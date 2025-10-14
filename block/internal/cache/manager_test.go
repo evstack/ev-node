@@ -39,13 +39,13 @@ func TestManager_HeaderDataOperations(t *testing.T) {
 	require.NoError(t, err)
 
 	// seen & DA included flags
-	m.SetHeaderSeen("h1")
-	m.SetDataSeen("d1")
+	m.SetHeaderSeen("h1", 1)
+	m.SetDataSeen("d1", 1)
 	assert.True(t, m.IsHeaderSeen("h1"))
 	assert.True(t, m.IsDataSeen("d1"))
 
-	m.SetHeaderDAIncluded("h1", 10)
-	m.SetDataDAIncluded("d1", 11)
+	m.SetHeaderDAIncluded("h1", 10, 2)
+	m.SetDataDAIncluded("d1", 11, 2)
 	_, ok := m.GetHeaderDAIncluded("h1")
 	assert.True(t, ok)
 	_, ok = m.GetDataDAIncluded("d1")
@@ -102,10 +102,10 @@ func TestManager_SaveAndLoadFromDisk(t *testing.T) {
 	// populate caches
 	hdr := &types.SignedHeader{Header: types.Header{BaseHeader: types.BaseHeader{ChainID: "c", Height: 2}}}
 	dat := &types.Data{Metadata: &types.Metadata{ChainID: "c", Height: 2}}
-	m1.SetHeaderSeen("H2")
-	m1.SetDataSeen("D2")
-	m1.SetHeaderDAIncluded("H2", 100)
-	m1.SetDataDAIncluded("D2", 101)
+	m1.SetHeaderSeen("H2", 2)
+	m1.SetDataSeen("D2", 2)
+	m1.SetHeaderDAIncluded("H2", 100, 2)
+	m1.SetDataDAIncluded("D2", 101, 2)
 	m1.SetPendingEvent(2, &common.DAHeightEvent{Header: hdr, Data: dat, DaHeight: 99})
 
 	// persist
