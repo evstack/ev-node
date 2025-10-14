@@ -10,7 +10,6 @@ import (
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 	emptypb "google.golang.org/protobuf/types/known/emptypb"
-	_ "google.golang.org/protobuf/types/known/timestamppb"
 	reflect "reflect"
 	sync "sync"
 	unsafe "unsafe"
@@ -405,10 +404,8 @@ func (x *GetGenesisDaHeightResponse) GetHeight() uint64 {
 // BackupRequest defines the parameters for requesting a datastore backup.
 type BackupRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	// target_height is the Evolve height the client wants to align with. 0 skips the check.
-	TargetHeight uint64 `protobuf:"varint,1,opt,name=target_height,json=targetHeight,proto3" json:"target_height,omitempty"`
 	// since_version allows incremental backups. 0 produces a full backup.
-	SinceVersion  uint64 `protobuf:"varint,2,opt,name=since_version,json=sinceVersion,proto3" json:"since_version,omitempty"`
+	SinceVersion  uint64 `protobuf:"varint,1,opt,name=since_version,json=sinceVersion,proto3" json:"since_version,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -443,13 +440,6 @@ func (*BackupRequest) Descriptor() ([]byte, []int) {
 	return file_evnode_v1_state_rpc_proto_rawDescGZIP(), []int{7}
 }
 
-func (x *BackupRequest) GetTargetHeight() uint64 {
-	if x != nil {
-		return x.TargetHeight
-	}
-	return 0
-}
-
 func (x *BackupRequest) GetSinceVersion() uint64 {
 	if x != nil {
 		return x.SinceVersion
@@ -461,10 +451,9 @@ func (x *BackupRequest) GetSinceVersion() uint64 {
 type BackupMetadata struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	CurrentHeight uint64                 `protobuf:"varint,1,opt,name=current_height,json=currentHeight,proto3" json:"current_height,omitempty"`
-	TargetHeight  uint64                 `protobuf:"varint,2,opt,name=target_height,json=targetHeight,proto3" json:"target_height,omitempty"`
-	SinceVersion  uint64                 `protobuf:"varint,3,opt,name=since_version,json=sinceVersion,proto3" json:"since_version,omitempty"`
-	LastVersion   uint64                 `protobuf:"varint,4,opt,name=last_version,json=lastVersion,proto3" json:"last_version,omitempty"`
-	Completed     bool                   `protobuf:"varint,5,opt,name=completed,proto3" json:"completed,omitempty"`
+	SinceVersion  uint64                 `protobuf:"varint,2,opt,name=since_version,json=sinceVersion,proto3" json:"since_version,omitempty"`
+	LastVersion   uint64                 `protobuf:"varint,3,opt,name=last_version,json=lastVersion,proto3" json:"last_version,omitempty"`
+	Completed     bool                   `protobuf:"varint,4,opt,name=completed,proto3" json:"completed,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -502,13 +491,6 @@ func (*BackupMetadata) Descriptor() ([]byte, []int) {
 func (x *BackupMetadata) GetCurrentHeight() uint64 {
 	if x != nil {
 		return x.CurrentHeight
-	}
-	return 0
-}
-
-func (x *BackupMetadata) GetTargetHeight() uint64 {
-	if x != nil {
-		return x.TargetHeight
 	}
 	return 0
 }
@@ -621,7 +603,7 @@ var File_evnode_v1_state_rpc_proto protoreflect.FileDescriptor
 
 const file_evnode_v1_state_rpc_proto_rawDesc = "" +
 	"\n" +
-	"\x19evnode/v1/state_rpc.proto\x12\tevnode.v1\x1a\x1bgoogle/protobuf/empty.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x16evnode/v1/evnode.proto\x1a\x15evnode/v1/state.proto\"]\n" +
+	"\x19evnode/v1/state_rpc.proto\x12\tevnode.v1\x1a\x16evnode/v1/evnode.proto\x1a\x15evnode/v1/state.proto\x1a\x1bgoogle/protobuf/empty.proto\"]\n" +
 	"\x05Block\x12/\n" +
 	"\x06header\x18\x01 \x01(\v2\x17.evnode.v1.SignedHeaderR\x06header\x12#\n" +
 	"\x04data\x18\x02 \x01(\v2\x0f.evnode.v1.DataR\x04data\"O\n" +
@@ -641,16 +623,14 @@ const file_evnode_v1_state_rpc_proto_rawDesc = "" +
 	"\x13GetMetadataResponse\x12\x14\n" +
 	"\x05value\x18\x01 \x01(\fR\x05value\"4\n" +
 	"\x1aGetGenesisDaHeightResponse\x12\x16\n" +
-	"\x06height\x18\x03 \x01(\x04R\x06height\"Y\n" +
+	"\x06height\x18\x03 \x01(\x04R\x06height\"4\n" +
 	"\rBackupRequest\x12#\n" +
-	"\rtarget_height\x18\x01 \x01(\x04R\ftargetHeight\x12#\n" +
-	"\rsince_version\x18\x02 \x01(\x04R\fsinceVersion\"\xc2\x01\n" +
+	"\rsince_version\x18\x01 \x01(\x04R\fsinceVersion\"\x9d\x01\n" +
 	"\x0eBackupMetadata\x12%\n" +
 	"\x0ecurrent_height\x18\x01 \x01(\x04R\rcurrentHeight\x12#\n" +
-	"\rtarget_height\x18\x02 \x01(\x04R\ftargetHeight\x12#\n" +
-	"\rsince_version\x18\x03 \x01(\x04R\fsinceVersion\x12!\n" +
-	"\flast_version\x18\x04 \x01(\x04R\vlastVersion\x12\x1c\n" +
-	"\tcompleted\x18\x05 \x01(\bR\tcompleted\"m\n" +
+	"\rsince_version\x18\x02 \x01(\x04R\fsinceVersion\x12!\n" +
+	"\flast_version\x18\x03 \x01(\x04R\vlastVersion\x12\x1c\n" +
+	"\tcompleted\x18\x04 \x01(\bR\tcompleted\"m\n" +
 	"\x0eBackupResponse\x127\n" +
 	"\bmetadata\x18\x01 \x01(\v2\x19.evnode.v1.BackupMetadataH\x00R\bmetadata\x12\x16\n" +
 	"\x05chunk\x18\x02 \x01(\fH\x00R\x05chunkB\n" +

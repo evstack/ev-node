@@ -191,14 +191,13 @@ func TestClientBackup(t *testing.T) {
 	defer testServer.Close()
 
 	var buf bytes.Buffer
-	metadata, err := client.Backup(context.Background(), &pb.BackupRequest{TargetHeight: 10}, &buf)
+	metadata, err := client.Backup(context.Background(), &pb.BackupRequest{SinceVersion: 5}, &buf)
 	require.NoError(t, err)
 	require.NotNil(t, metadata)
 	require.Equal(t, "chunk-1chunk-2", buf.String())
 	require.True(t, metadata.GetCompleted())
 	require.Equal(t, uint64(15), metadata.GetCurrentHeight())
-	require.Equal(t, uint64(10), metadata.GetTargetHeight())
-	require.Equal(t, uint64(0), metadata.GetSinceVersion())
+	require.Equal(t, uint64(5), metadata.GetSinceVersion())
 	require.Equal(t, uint64(42), metadata.GetLastVersion())
 
 	mockStore.AssertExpectations(t)

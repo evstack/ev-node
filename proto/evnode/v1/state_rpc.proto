@@ -69,19 +69,16 @@ message GetGenesisDaHeightResponse {
 
 // BackupRequest defines the parameters for requesting a datastore backup.
 message BackupRequest {
-  // target_height is the Evolve height the client wants to align with. 0 skips the check.
-  uint64 target_height = 1;
   // since_version allows incremental backups. 0 produces a full backup.
-  uint64 since_version = 2;
+  uint64 since_version = 1;
 }
 
 // BackupMetadata contains progress or completion details emitted during a backup stream.
 message BackupMetadata {
   uint64 current_height = 1;
-  uint64 target_height = 2;
-  uint64 since_version = 3;
-  uint64 last_version = 4;
-  bool completed = 5;
+  uint64 since_version = 2;
+  uint64 last_version = 3;
+  bool completed = 4;
 }
 
 // BackupResponse multiplexes metadata and raw backup data chunks in the stream.

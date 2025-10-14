@@ -196,23 +196,14 @@ func (s *StoreServer) Backup(
 	stream *connect.ServerStream[pb.BackupResponse],
 ) error {
 	since := req.Msg.GetSinceVersion()
-	targetHeight := req.Msg.GetTargetHeight()
 
 	currentHeight, err := s.store.Height(ctx)
 	if err != nil {
 		return connect.NewError(connect.CodeInternal, fmt.Errorf("failed to get current height: %w", err))
 	}
 
-	if targetHeight != 0 && targetHeight > currentHeight {
-		return connect.NewError(
-			connect.CodeFailedPrecondition,
-			fmt.Errorf("requested target height %d exceeds current height %d", targetHeight, currentHeight),
-		)
-	}
-
 	initialMetadata := &pb.BackupMetadata{
 		CurrentHeight: currentHeight,
-		TargetHeight:  targetHeight,
 		SinceVersion:  since,
 		Completed:     false,
 		LastVersion:   0,
@@ -258,7 +249,6 @@ func (s *StoreServer) Backup(
 
 	completedMetadata := &pb.BackupMetadata{
 		CurrentHeight: currentHeight,
-		TargetHeight:  targetHeight,
 		SinceVersion:  since,
 		LastVersion:   version,
 		Completed:     true,

@@ -80,6 +80,9 @@ type Rollback interface {
 	// as the starting point for incremental backups.
 	Backup(ctx context.Context, writer io.Writer, since uint64) (uint64, error)
 
+	// Restore loads a backup stream from reader into the datastore.
+	Restore(ctx context.Context, reader io.Reader) error
+
 	// Close safely closes underlying data storage, to ensure that data is actually saved.
 	Close() error
 }

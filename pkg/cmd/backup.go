@@ -81,11 +81,6 @@ func NewBackupCmd() *cobra.Command {
 			bytesCount := &countingWriter{}
 			streamWriter := io.MultiWriter(writer, bytesCount)
 
-			targetHeight, err := cmd.Flags().GetUint64("target-height")
-			if err != nil {
-				return err
-			}
-
 			sinceVersion, err := cmd.Flags().GetUint64("since-version")
 			if err != nil {
 				return err
@@ -99,7 +94,6 @@ func NewBackupCmd() *cobra.Command {
 			client := clientrpc.NewClient(baseURL)
 
 			metadata, backupErr := client.Backup(ctx, &pb.BackupRequest{
-				TargetHeight: targetHeight,
 				SinceVersion: sinceVersion,
 			}, streamWriter)
 			if backupErr != nil {
@@ -124,7 +118,6 @@ func NewBackupCmd() *cobra.Command {
 
 			cmd.Printf("Backup saved to %s (%d bytes)\n", outputPath, bytesCount.Bytes())
 			cmd.Printf("Current height: %d\n", metadata.GetCurrentHeight())
-			cmd.Printf("Target height: %d\n", metadata.GetTargetHeight())
 			cmd.Printf("Since version: %d\n", metadata.GetSinceVersion())
 			cmd.Printf("Last version: %d\n", metadata.GetLastVersion())
 
@@ -133,7 +126,6 @@ func NewBackupCmd() *cobra.Command {
 	}
 
 	cmd.Flags().String("output", "", "Path to the backup file (defaults to ./evnode-backup-<timestamp>.badger)")
-	cmd.Flags().Uint64("target-height", 0, "Target chain height to align the backup with (0 disables the check)")
 	cmd.Flags().Uint64("since-version", 0, "Generate an incremental backup starting from the provided version")
 	cmd.Flags().Bool("force", false, "Overwrite the output file if it already exists")
 

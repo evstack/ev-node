@@ -89,179 +89,168 @@ environments (SSH, Kubernetes, etc.) without modifying the core backup logic.
 
 ## End-to-end workflow with `apps/evm/single` (Docker mode)
 
-The `evm/single` docker-compose setup expects the backup image to reuse the
-`ghcr.io/evstack/ev-reth:latest` tag. To capture both the MDBX and ev-node
-Badger backups end-to-end:
+### Prerequisites
 
-1. Build the helper image so `ev-reth` has the MDBX tooling preinstalled.
+1. Build the reth image with MDBX tooling:
 
    ```bash
    docker build -t ghcr.io/evstack/ev-reth:latest scripts/reth-backup
    ```
 
-2. Build the `ev-node-evm-single` image so it includes the latest CLI backup
-   command (optional if you already pushed the binary and re-tagged it).
+2. Build the ev-node image with backup/restore commands:
 
    ```bash
    docker build -t ghcr.io/evstack/ev-node-evm-single:main -f apps/evm/single/Dockerfile .
    ```
 
-3. Start the stack.
+3. Start the stack:
 
    ```bash
-   (cd apps/evm/single && docker compose up -d)
+   cd apps/evm/single && docker compose up -d
    ```
 
-4. Run the MDBX snapshot script (adjust the destination as needed).
+### Backup
+
+1. Backup reth (captures MDBX snapshot at current height):
 
    ```bash
    ./scripts/reth-backup/backup.sh --mode docker backups/full-run/reth
    ```
 
-   The script prints the generated tag (for example `20251013-104816`) and the
-   captured height (stored under
-   `backups/full-run/reth/<TAG>/height.txt`).
+   Note the printed TAG (e.g., `20251013-104816`) and height.
 
-5. Align the ev-node datastore to that height and take the Badger backup:
+2. Backup ev-node (captures complete Badger datastore):
 
    ```bash
-   HEIGHT=$(cat backups/full-run/reth/<TAG>/height.txt)
-   BACKUP_ROOT="$(pwd)/backups/full-run"
-
-   # Stop the managed container so it cannot advance.
-   (cd apps/evm/single && docker compose stop ev-node-evm-single)
-
-   # Roll the datastore back to the captured height. The --sync-node and
-   # --skip-p2p-stores flags avoid DA-finality and header-store checks.
-   (cd apps/evm/single && docker compose run --rm \
-     ev-node-evm-single rollback \
-       --height "${HEIGHT}" \
-       --home /root/.evm-single \
-       --sync-node \
-       --skip-p2p-stores)
-
-   # Stream the Badger backup without producing new blocks.
-   cat <<'EOF' > /tmp/evnode_backup.sh
-set -euo pipefail
-OUT="$1"
-TARGET="$2"
-START_CMD="evm-single start \
-  --home=/root/.evm-single \
-  --evm.jwt-secret $EVM_JWT_SECRET \
-  --evm.genesis-hash $EVM_GENESIS_HASH \
-  --evm.engine-url $EVM_ENGINE_URL \
-  --evm.eth-url $EVM_ETH_URL \
-  --rollkit.node.block_time 1h \
-  --rollkit.node.aggregator=true \
-  --rollkit.signer.passphrase $EVM_SIGNER_PASSPHRASE \
-  --rollkit.da.address $DA_ADDRESS \
-  --evnode.clear_cache"
-rm -f "$OUT"
-sh -c "$START_CMD" &
-PID=$!
-trap "kill $PID 2>/dev/null || true; wait $PID 2>/dev/null || true" EXIT
-for i in $(seq 1 30); do
-  sleep 2
-  if evm-single backup --output "$OUT" --force --target-height "$TARGET" >/tmp/backup.log 2>&1; then
-    cat /tmp/backup.log
-    exit 0
-  fi
-  cat /tmp/backup.log
-done
-echo "backup did not succeed within timeout" >&2
-exit 1
-EOF
-   chmod +x /tmp/evnode_backup.sh
-
-   (cd apps/evm/single && docker compose run --rm \
-     --entrypoint sh \
-     -v /tmp/evnode_backup.sh:/tmp/evnode_backup.sh \
-     -v "${BACKUP_ROOT}/ev-node:/host-backup" \
-     ev-node-evm-single \
-     -c "/tmp/evnode_backup.sh /host-backup/evnode-backup-aligned.badger ${HEIGHT}")
-
-   rm /tmp/evnode_backup.sh
-
-   # Bring the managed container back with its usual supervisor.
-   (cd apps/evm/single && docker compose start ev-node-evm-single)
+   TAG=<TAG>  # from previous step
+   HEIGHT=$(cat backups/full-run/reth/${TAG}/height.txt)
+   
+   mkdir -p backups/full-run/ev-node
+   
+   docker exec evolveevm-ev-node-evm-single-1 \
+     evm-single backup \
+       --output /tmp/backup-${TAG}.badger \
+       --force
+   
+   docker cp evolveevm-ev-node-evm-single-1:/tmp/backup-${TAG}.badger \
+     backups/full-run/ev-node/
+   
+   echo ${HEIGHT} > backups/full-run/ev-node/target-height.txt
    ```
 
-   The CLI will report the streamed metadata, and the backup lands at
-   `backups/full-run/ev-node/evnode-backup-aligned.badger`.
+### Restore
 
-6. When finished, tear the stack down.
+1. Stop services and recreate containers:
 
    ```bash
-   (cd apps/evm/single && docker compose down)
+   cd apps/evm/single
+   docker compose down
+   docker compose up --no-start
    ```
 
-Both backups can then be found under `backups/full-run/`.
+2. Restore reth volume:
 
-## Restoring and validating the backups
-
-To verify that both snapshots can be replayed, you can shut everything down, mutate the live data, and then restore from the artifacts collected above.
-
-1. **Let the stack advance after the backup (optional but recommended).** Keep `docker compose` running for a few more blocks or submit a dev transaction so the live height diverges from the one recorded in `backups/full-run/reth/height.txt`.
-2. **Stop the services.**
    ```bash
-   (cd apps/evm/single && docker compose down)
-   ```
-3. **Recreate the containers without starting them.** This gives you stopped containers that already own the right named volumes.
-   ```bash
-   (cd apps/evm/single && docker compose up --no-start)
-   ```
-4. **Restore the `ev-reth` MDBX volume from the snapshot.** Run the following from the repository root (adjust `BACKUP_ROOT` if you saved the files elsewhere):
-   ```bash
-   BACKUP_ROOT="$(pwd)/backups/full-run"
+   TAG=<TAG>
    docker run --rm \
      --volumes-from ev-reth \
-     -v "${BACKUP_ROOT}/reth:/backup:ro" \
+     -v "$(pwd)/backups/full-run/reth/${TAG}:/backup:ro" \
      alpine:3.18 \
-     sh -ec 'rm -rf /home/reth/eth-home/db /home/reth/eth-home/static_files && \
-             mkdir -p /home/reth/eth-home/db /home/reth/eth-home/static_files && \
-             cp /backup/db/mdbx.dat /home/reth/eth-home/db/mdbx.dat && \
-             cp /backup/db/mdbx.lck /home/reth/eth-home/db/mdbx.lck && \
-             cp -a /backup/static_files/. /home/reth/eth-home/static_files/ || true'
+     sh -c 'rm -rf /home/reth/eth-home/db /home/reth/eth-home/static_files && \
+            mkdir -p /home/reth/eth-home/db /home/reth/eth-home/static_files && \
+            cp /backup/db/mdbx.dat /home/reth/eth-home/db/ && \
+            cp /backup/db/mdbx.lck /home/reth/eth-home/db/ && \
+            cp -a /backup/static_files/. /home/reth/eth-home/static_files/ || true'
    ```
-   > `docker run --volumes-from ev-reth` reuses the stopped container's volumes; adjust `alpine:3.18` if you prefer another image that provides `cp`.
-5. **Restore the `ev-node` Badger datastore.**
-   ```bash
-   TEMP_RESTORE="$(mktemp -d backups/full-run/ev-node/restore-XXXXXX)"
-    badger restore --dir "${TEMP_RESTORE}" --files "${BACKUP_ROOT}/ev-node/evnode-backup-aligned.badger"
-   docker run --rm \
-     --volumes-from ev-node-evm-single \
-     -v "${TEMP_RESTORE}:/restore:ro" \
-     alpine:3.18 \
-     sh -ec 'rm -rf /root/.evm-single/data && mkdir -p /root/.evm-single/data/evm-single && \
-             cp -a /restore/. /root/.evm-single/data/evm-single/'
-   rm -rf "${TEMP_RESTORE}"
-   ```
-   > Install the Badger CLI once via `go install github.com/dgraph-io/badger/v4/cmd/badger@latest` if it is not already on your `$PATH`.
-6. **Start the services back up.**
-   ```bash
-   (cd apps/evm/single && docker compose up -d ev-reth local-da)
-   (cd apps/evm/single && docker compose up -d ev-node-evm-single)
-   ```
-   If you prefer to launch the sequencer manually first, you can run:
-   ```bash
-   (cd apps/evm/single && docker compose run --rm \
-     ev-node-evm-single start \
-       --home /root/.evm-single \
-       --evm.jwt-secret "$EVM_JWT_SECRET" \
-       --evm.genesis-hash "$EVM_GENESIS_HASH" \
-       --evm.engine-url "$EVM_ENGINE_URL" \
-       --evm.eth-url "$EVM_ETH_URL" \
-       --rollkit.node.block_time 1s \
-       --rollkit.node.aggregator=true \
-       --rollkit.signer.passphrase "$EVM_SIGNER_PASSPHRASE" \
-       --rollkit.da.address "$DA_ADDRESS" \
-       --evnode.clear_cache)
-   ```
-   and once it exits cleanly, start the managed container with `docker compose up -d ev-node-evm-single`.
-7. **Confirm the node resumes from the backed-up height.** Compare the logged chain height with `backups/full-run/reth/height.txt` and run:
-   ```bash
-   (cd apps/evm/single && docker compose exec ev-node-evm-single evm-single net-info --home /root/.evm-single)
-   ```
-   The reported height should match the snapshot before new blocks are produced.
 
-With this round-trip check you can be confident that the snapshot pair (MDBX + Badger) fully recreates the state captured during the backup.
+3. Restore ev-node volume:
+
+   ```bash
+   TAG=<TAG>
+   docker run --rm \
+     --volumes-from evolveevm-ev-node-evm-single-1 \
+     -v "$(pwd)/backups/full-run/ev-node:/backup:ro" \
+     ghcr.io/evstack/ev-node-evm-single:main \
+     restore \
+       --input /backup/backup-${TAG}.badger \
+       --home /root/.evm-single \
+       --app-name evm-single \
+       --force
+   ```
+
+4. Align ev-node to reth height using rollback (before starting):
+
+   ```bash
+   HEIGHT=$(cat backups/full-run/ev-node/target-height.txt)
+   
+   docker run --rm \
+     --volumes-from evolveevm-ev-node-evm-single-1 \
+     ghcr.io/evstack/ev-node-evm-single:main \
+     rollback \
+       --home /root/.evm-single \
+       --height ${HEIGHT} \
+       --sync-node
+   ```
+
+   > **Note:** The rollback may report errors for p2p header/data stores with invalid
+   > ranges. This is expected and can be ignored. The main state will be correctly
+   > rolled back to the target height. The `--sync-node` flag is required for
+   > non-aggregator mode rollback.
+
+5. Start services with cache cleared:
+
+   ```bash
+   docker compose run --rm ev-node-evm-single start --evnode.clear_cache
+   ```
+
+   > **Important:** Use `--evnode.clear_cache` on first start after restore to clear
+   > any cached p2p data that may be inconsistent after rollback.
+
+6. Verify both nodes are at the same height:
+
+   ```bash
+   HEIGHT=$(cat backups/full-run/ev-node/target-height.txt)
+   echo "Expected height: ${HEIGHT}"
+   
+   # Check ev-node logs for produced blocks
+   docker logs -f <container-name> 2>&1 | grep "initialized state"
+   ```
+
+## Known Limitations
+
+### Rollback P2P Store Errors
+
+When rolling back to a height significantly lower than the current state, the p2p
+header and data sync stores may report "invalid range" errors. This occurs because
+these stores track sync progress independently. The errors can be safely ignored as:
+
+1. The main blockchain state is correctly rolled back
+2. Using `--evnode.clear_cache` on restart clears the inconsistent cache
+3. The node will resync p2p data from the restored height
+
+### Timestamp Consistency
+
+After a restore, if significant real-world time has passed since the backup was created,
+you may encounter timestamp validation errors when the node attempts to continue block
+production. This occurs because:
+
+- Reth stores block timestamps based on when blocks were originally created
+- After restore, the restored timestamps may be in the past relative to system time
+- Block validators may reject new blocks with timestamps earlier than parent blocks
+
+**Workaround:** In production environments, coordinate restore operations to minimize
+time between backup and restore, or ensure the entire network is restored simultaneously.
+
+## Summary
+
+This backup/restore workflow enables point-in-time recovery for both reth (MDBX) and
+ev-node (Badger) datastores. Key points:
+
+- **Backup**: Hot backup while nodes are running (no downtime)
+- **Restore**: Requires stopping services, restoring volumes, and aligning heights
+- **Rollback**: May show p2p store errors that can be safely ignored
+- **Production**: Test the full workflow in staging before deploying to production
+
+The process has been validated to correctly restore state and resume block production
+from the backup point, with known limitations around p2p store consistency and timestamp
+validation that can be mitigated with proper operational procedures.

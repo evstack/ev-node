@@ -65,7 +65,6 @@ func TestBackupCmd_Success(t *testing.T) {
 		"--home="+tempDir,
 		"--evnode.rpc.address="+rpcAddr,
 		"--output", outPath,
-		"--target-height", "12",
 		"--since-version", "9",
 	)
 
@@ -77,7 +76,6 @@ func TestBackupCmd_Success(t *testing.T) {
 
 	require.Contains(t, output, "Backup saved to")
 	require.Contains(t, output, "Current height: 15")
-	require.Contains(t, output, "Target height: 12")
 	require.Contains(t, output, "Since version: 9")
 	require.Contains(t, output, "Last version: 21")
 

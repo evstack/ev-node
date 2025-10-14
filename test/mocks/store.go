@@ -40,50 +40,6 @@ func (_m *MockStore) EXPECT() *MockStore_Expecter {
 	return &MockStore_Expecter{mock: &_m.Mock}
 }
 
-// Close provides a mock function for the type MockStore
-func (_mock *MockStore) Close() error {
-	ret := _mock.Called()
-
-	if len(ret) == 0 {
-		panic("no return value specified for Close")
-	}
-
-	var r0 error
-	if returnFunc, ok := ret.Get(0).(func() error); ok {
-		r0 = returnFunc()
-	} else {
-		r0 = ret.Error(0)
-	}
-	return r0
-}
-
-// MockStore_Close_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'Close'
-type MockStore_Close_Call struct {
-	*mock.Call
-}
-
-// Close is a helper method to define mock.On call
-func (_e *MockStore_Expecter) Close() *MockStore_Close_Call {
-	return &MockStore_Close_Call{Call: _e.mock.On("Close")}
-}
-
-func (_c *MockStore_Close_Call) Run(run func()) *MockStore_Close_Call {
-	_c.Call.Run(func(args mock.Arguments) {
-		run()
-	})
-	return _c
-}
-
-func (_c *MockStore_Close_Call) Return(err error) *MockStore_Close_Call {
-	_c.Call.Return(err)
-	return _c
-}
-
-func (_c *MockStore_Close_Call) RunAndReturn(run func() error) *MockStore_Close_Call {
-	_c.Call.Return(run)
-	return _c
-}
-
 // Backup provides a mock function for the type MockStore
 func (_mock *MockStore) Backup(ctx context.Context, writer io.Writer, since uint64) (uint64, error) {
 	ret := _mock.Called(ctx, writer, since)
@@ -146,12 +102,56 @@ func (_c *MockStore_Backup_Call) Run(run func(ctx context.Context, writer io.Wri
 	return _c
 }
 
-func (_c *MockStore_Backup_Call) Return(version uint64, err error) *MockStore_Backup_Call {
-	_c.Call.Return(version, err)
+func (_c *MockStore_Backup_Call) Return(v uint64, err error) *MockStore_Backup_Call {
+	_c.Call.Return(v, err)
 	return _c
 }
 
 func (_c *MockStore_Backup_Call) RunAndReturn(run func(ctx context.Context, writer io.Writer, since uint64) (uint64, error)) *MockStore_Backup_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// Close provides a mock function for the type MockStore
+func (_mock *MockStore) Close() error {
+	ret := _mock.Called()
+
+	if len(ret) == 0 {
+		panic("no return value specified for Close")
+	}
+
+	var r0 error
+	if returnFunc, ok := ret.Get(0).(func() error); ok {
+		r0 = returnFunc()
+	} else {
+		r0 = ret.Error(0)
+	}
+	return r0
+}
+
+// MockStore_Close_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'Close'
+type MockStore_Close_Call struct {
+	*mock.Call
+}
+
+// Close is a helper method to define mock.On call
+func (_e *MockStore_Expecter) Close() *MockStore_Close_Call {
+	return &MockStore_Close_Call{Call: _e.mock.On("Close")}
+}
+
+func (_c *MockStore_Close_Call) Run(run func()) *MockStore_Close_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run()
+	})
+	return _c
+}
+
+func (_c *MockStore_Close_Call) Return(err error) *MockStore_Close_Call {
+	_c.Call.Return(err)
+	return _c
+}
+
+func (_c *MockStore_Close_Call) RunAndReturn(run func() error) *MockStore_Close_Call {
 	_c.Call.Return(run)
 	return _c
 }
@@ -824,6 +824,63 @@ func (_c *MockStore_NewBatch_Call) Return(batch store.Batch, err error) *MockSto
 }
 
 func (_c *MockStore_NewBatch_Call) RunAndReturn(run func(ctx context.Context) (store.Batch, error)) *MockStore_NewBatch_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// Restore provides a mock function for the type MockStore
+func (_mock *MockStore) Restore(ctx context.Context, reader io.Reader) error {
+	ret := _mock.Called(ctx, reader)
+
+	if len(ret) == 0 {
+		panic("no return value specified for Restore")
+	}
+
+	var r0 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, io.Reader) error); ok {
+		r0 = returnFunc(ctx, reader)
+	} else {
+		r0 = ret.Error(0)
+	}
+	return r0
+}
+
+// MockStore_Restore_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'Restore'
+type MockStore_Restore_Call struct {
+	*mock.Call
+}
+
+// Restore is a helper method to define mock.On call
+//   - ctx context.Context
+//   - reader io.Reader
+func (_e *MockStore_Expecter) Restore(ctx interface{}, reader interface{}) *MockStore_Restore_Call {
+	return &MockStore_Restore_Call{Call: _e.mock.On("Restore", ctx, reader)}
+}
+
+func (_c *MockStore_Restore_Call) Run(run func(ctx context.Context, reader io.Reader)) *MockStore_Restore_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 io.Reader
+		if args[1] != nil {
+			arg1 = args[1].(io.Reader)
+		}
+		run(
+			arg0,
+			arg1,
+		)
+	})
+	return _c
+}
+
+func (_c *MockStore_Restore_Call) Return(err error) *MockStore_Restore_Call {
+	_c.Call.Return(err)
+	return _c
+}
+
+func (_c *MockStore_Restore_Call) RunAndReturn(run func(ctx context.Context, reader io.Reader) error) *MockStore_Restore_Call {
 	_c.Call.Return(run)
 	return _c
 }
