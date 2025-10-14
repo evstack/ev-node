@@ -13,6 +13,34 @@ const (
 	MetricsSubsystem = "sequencer"
 )
 
+// DASubmitterFailureReason represents a typed failure reason for DA submission failures
+type DASubmitterFailureReason string
+
+const (
+	DASubmitterFailureReasonAlreadyRejected     DASubmitterFailureReason = "already_rejected"
+	DASubmitterFailureReasonInsufficientFee     DASubmitterFailureReason = "insufficient_fee"
+	DASubmitterFailureReasonTimeout             DASubmitterFailureReason = "timeout"
+	DASubmitterFailureReasonAlreadyInMempool    DASubmitterFailureReason = "already_in_mempool"
+	DASubmitterFailureReasonNotIncludedInBlock  DASubmitterFailureReason = "not_included_in_block"
+	DASubmitterFailureReasonTooBig              DASubmitterFailureReason = "too_big"
+	DASubmitterFailureReasonContextCanceled     DASubmitterFailureReason = "context_canceled"
+	DASubmitterFailureReasonUnknown             DASubmitterFailureReason = "unknown"
+)
+
+// AllDASubmitterFailureReasons returns all possible failure reasons
+func AllDASubmitterFailureReasons() []DASubmitterFailureReason {
+	return []DASubmitterFailureReason{
+		DASubmitterFailureReasonAlreadyRejected,
+		DASubmitterFailureReasonInsufficientFee,
+		DASubmitterFailureReasonTimeout,
+		DASubmitterFailureReasonAlreadyInMempool,
+		DASubmitterFailureReasonNotIncludedInBlock,
+		DASubmitterFailureReasonTooBig,
+		DASubmitterFailureReasonContextCanceled,
+		DASubmitterFailureReasonUnknown,
+	}
+}
+
 // Metrics contains all metrics exposed by this package.
 type Metrics struct {
 	// Original metrics
@@ -65,10 +93,10 @@ type Metrics struct {
 	InvalidTransitions metrics.Counter
 
 	// DA Submitter metrics
-	DASubmitterFailures     map[string]metrics.Counter // Counter with reason label
-	DASubmitterLastFailure  map[string]metrics.Gauge   // Timestamp gauge with reason label
-	DASubmitterPendingBlobs metrics.Gauge              // Total number of blobs awaiting submission (backlog)
-	DASubmitterResends      metrics.Counter            // Number of resend attempts
+	DASubmitterFailures     map[DASubmitterFailureReason]metrics.Counter // Counter with reason label
+	DASubmitterLastFailure  map[DASubmitterFailureReason]metrics.Gauge   // Timestamp gauge with reason label
+	DASubmitterPendingBlobs metrics.Gauge                                // Total number of blobs awaiting submission (backlog)
+	DASubmitterResends      metrics.Counter                              // Number of resend attempts
 }
 
 // PrometheusMetrics returns Metrics built using Prometheus client library
@@ -83,8 +111,8 @@ func PrometheusMetrics(namespace string, labelsAndValues ...string) *Metrics {
 		ErrorsByType:           make(map[string]metrics.Counter),
 		OperationDuration:      make(map[string]metrics.Histogram),
 		StateTransitions:       make(map[string]metrics.Counter),
-		DASubmitterFailures:    make(map[string]metrics.Counter),
-		DASubmitterLastFailure: make(map[string]metrics.Gauge),
+		DASubmitterFailures:    make(map[DASubmitterFailureReason]metrics.Counter),
+		DASubmitterLastFailure: make(map[DASubmitterFailureReason]metrics.Gauge),
 	}
 
 	// Original metrics
@@ -373,24 +401,14 @@ func PrometheusMetrics(namespace string, labelsAndValues ...string) *Metrics {
 	}, labels).With(labelsAndValues...)
 
 	// Initialize DA submitter failure counters and timestamps for various reasons
-	failureReasons := []string{
-		"already_rejected",
-		"insufficient_fee",
-		"timeout",
-		"already_in_mempool",
-		"not_included_in_block",
-		"too_big",
-		"context_canceled",
-		"unknown",
-	}
-	for _, reason := range failureReasons {
+	for _, reason := range AllDASubmitterFailureReasons() {
 		m.DASubmitterFailures[reason] = prometheus.NewCounterFrom(stdprometheus.CounterOpts{
 			Namespace: namespace,
 			Subsystem: MetricsSubsystem,
 			Name:      "da_submitter_failures_total",
 			Help:      "Total number of DA submission failures by reason",
 			ConstLabels: map[string]string{
-				"reason": reason,
+				"reason": string(reason),
 			},
 		}, labels).With(labelsAndValues...)
 
@@ -400,7 +418,7 @@ func PrometheusMetrics(namespace string, labelsAndValues ...string) *Metrics {
 			Name:      "da_submitter_last_failure_timestamp",
 			Help:      "Unix timestamp of the last DA submission failure by reason",
 			ConstLabels: map[string]string{
-				"reason": reason,
+				"reason": string(reason),
 			},
 		}, labels).With(labelsAndValues...)
 	}
@@ -447,8 +465,8 @@ func NopMetrics() *Metrics {
 		NormalBlocksProduced:    discard.NewCounter(),
 		TxsPerBlock:             discard.NewHistogram(),
 		InvalidTransitions:      discard.NewCounter(),
-		DASubmitterFailures:     make(map[string]metrics.Counter),
-		DASubmitterLastFailure:  make(map[string]metrics.Gauge),
+		DASubmitterFailures:     make(map[DASubmitterFailureReason]metrics.Counter),
+		DASubmitterLastFailure:  make(map[DASubmitterFailureReason]metrics.Gauge),
 		DASubmitterPendingBlobs: discard.NewGauge(),
 		DASubmitterResends:      discard.NewCounter(),
 	}
@@ -475,17 +493,7 @@ func NopMetrics() *Metrics {
 	}
 
 	// Initialize DA submitter failure maps with no-op metrics
-	failureReasons := []string{
-		"already_rejected",
-		"insufficient_fee",
-		"timeout",
-		"already_in_mempool",
-		"not_included_in_block",
-		"too_big",
-		"context_canceled",
-		"unknown",
-	}
-	for _, reason := range failureReasons {
+	for _, reason := range AllDASubmitterFailureReasons() {
 		m.DASubmitterFailures[reason] = discard.NewCounter()
 		m.DASubmitterLastFailure[reason] = discard.NewGauge()
 	}
