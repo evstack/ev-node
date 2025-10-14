@@ -28,7 +28,7 @@ func newTestSubmitter(mockDA *mocks.MockDA, override func(*config.Config)) *DASu
 	if override != nil {
 		override(&cfg)
 	}
-	return NewDASubmitter(mockDA, cfg, genesis.Genesis{} /*options=*/, common.BlockOptions{}, zerolog.Nop())
+	return NewDASubmitter(mockDA, cfg, genesis.Genesis{} /*options=*/, common.BlockOptions{}, common.NopMetrics(), zerolog.Nop())
 }
 
 // marshal helper for simple items
@@ -86,6 +86,7 @@ func TestSubmitToDA_MempoolRetry_IncreasesGasAndSucceeds(t *testing.T) {
 		nsBz,
 		opts,
 		nil,
+		nil,
 	)
 	assert.NoError(t, err)
 
@@ -136,6 +137,7 @@ func TestSubmitToDA_UnknownError_RetriesSameGasThenSucceeds(t *testing.T) {
 		"item",
 		nsBz,
 		opts,
+		nil,
 		nil,
 	)
 	assert.NoError(t, err)
@@ -193,6 +195,7 @@ func TestSubmitToDA_TooBig_HalvesBatch(t *testing.T) {
 		nsBz,
 		opts,
 		nil,
+		nil,
 	)
 	assert.NoError(t, err)
 	assert.Equal(t, []int{4, 2}, batchSizes)
@@ -242,6 +245,7 @@ func TestSubmitToDA_SentinelNoGas_PreservesGasAcrossRetries(t *testing.T) {
 		nsBz,
 		opts,
 		nil,
+		nil,
 	)
 	assert.NoError(t, err)
 	assert.Equal(t, []float64{-1, -1}, usedGas)
@@ -281,6 +285,7 @@ func TestSubmitToDA_PartialSuccess_AdvancesWindow(t *testing.T) {
 		"item",
 		nsBz,
 		opts,
+		nil,
 		nil,
 	)
 	assert.NoError(t, err)

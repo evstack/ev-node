@@ -161,7 +161,7 @@ func NewSyncComponents(
 	)
 
 	// Create DA submitter for sync nodes (no signer, only DA inclusion processing)
-	daSubmitter := submitting.NewDASubmitter(da, config, genesis, blockOpts, logger)
+	daSubmitter := submitting.NewDASubmitter(da, config, genesis, blockOpts, metrics, logger)
 	submitter := submitting.NewSubmitter(
 		store,
 		exec,
@@ -240,7 +240,7 @@ func NewAggregatorComponents(
 	}
 
 	// Create DA submitter for aggregator nodes (with signer for submission)
-	daSubmitter := submitting.NewDASubmitter(da, config, genesis, blockOpts, logger)
+	daSubmitter := submitting.NewDASubmitter(da, config, genesis, blockOpts, metrics, logger)
 	submitter := submitting.NewSubmitter(
 		store,
 		exec,
