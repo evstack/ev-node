@@ -386,7 +386,7 @@ func (s *Syncer) processHeightEvent(event *common.DAHeightEvent) {
 		case errors.Is(err, errInvalidState):
 			s.logger.Fatal().Uint64("block_height", event.Header.Height()).
 				Uint64("state_height", s.GetLastState().LastBlockHeight).Err(err).
-				Msg("Invalid state, shutting down")
+				Msg("Invalid state detected - block references do not match local state. Manual intervention required.")
 		default:
 			s.cache.SetPendingEvent(height, event)
 		}
@@ -564,10 +564,10 @@ func (s *Syncer) validateBlock(header *types.SignedHeader, data *types.Data, sta
 		return fmt.Errorf("%w: invalid block time - got: %v, last: %v", errInvalidState, header.Time(), state.LastBlockTime)
 	}
 	if !bytes.Equal(header.LastHeaderHash, state.LastHeaderHash) {
-		return fmt.Errorf("%w: invalid last header hash - got: %x, want: %x", errInvalidState, header.LastHeaderHash, header.LastHeaderHash)
+		return fmt.Errorf("%w: invalid last header hash - got: %x, want: %x", errInvalidState, header.LastHeaderHash, state.LastHeaderHash)
 	}
 	if !bytes.Equal(header.AppHash, state.AppHash) {
-		return fmt.Errorf("%w: invalid last appHash hash - got: %x, want: %x", errInvalidState, header.AppHash, header.AppHash)
+		return fmt.Errorf("%w: invalid last app hash - got: %x, want: %x", errInvalidState, header.AppHash, state.AppHash)
 	}
 	return nil
 }
