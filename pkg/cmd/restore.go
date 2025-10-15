@@ -46,12 +46,12 @@ func NewRestoreCmd() *cobra.Command {
 				return fmt.Errorf("failed to access backup file: %w", err)
 			}
 
-			// Check if datastore already exists
 			force, err := cmd.Flags().GetBool("force")
 			if err != nil {
 				return err
 			}
 
+			// Check if datastore already exists
 			dbPath := filepath.Join(nodeConfig.RootDir, nodeConfig.DBPath)
 			if _, err := os.Stat(dbPath); err == nil && !force {
 				return fmt.Errorf("datastore already exists at %s (use --force to overwrite)", dbPath)

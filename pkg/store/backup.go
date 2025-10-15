@@ -17,51 +17,29 @@ func (s *DefaultStore) Backup(ctx context.Context, writer io.Writer, since uint6
 		return 0, err
 	}
 
-	visited := make(map[ds.Datastore]struct{})
-	current, ok := any(s.db).(ds.Datastore)
-	if !ok {
-		return 0, fmt.Errorf("backup is not supported by the configured datastore")
+	// Try direct badger4 cast first
+	if badgerDatastore, ok := s.db.(*badger4.Datastore); ok {
+		return backupBadger(badgerDatastore, writer, since)
 	}
 
-	for {
-		// Try to leverage a native backup implementation if the underlying datastore exposes one.
-		type backupable interface {
-			Backup(io.Writer, uint64) (uint64, error)
-		}
-		if dsBackup, ok := current.(backupable); ok {
-			version, err := dsBackup.Backup(writer, since)
-			if err != nil {
-				return 0, fmt.Errorf("datastore backup failed: %w", err)
-			}
-			return version, nil
-		}
-
-		// Default Badger datastore used across ev-node.
-		if badgerDatastore, ok := current.(*badger4.Datastore); ok {
-			// `badger.DB.Backup` internally orchestrates a consistent snapshot without pausing writes.
-			version, err := badgerDatastore.DB.Backup(writer, since)
-			if err != nil {
-				return 0, fmt.Errorf("badger backup failed: %w", err)
-			}
-			return version, nil
-		}
-
-		// Attempt to unwrap shimmed datastores (e.g., prefix or mutex wrappers) to reach the backing store.
-		if _, seen := visited[current]; seen {
-			break
-		}
-		visited[current] = struct{}{}
-
-		shim, ok := current.(ds.Shim)
-		if !ok {
-			break
-		}
+	// Try to unwrap one level (e.g., PrefixTransform wrapper)
+	if shim, ok := s.db.(ds.Shim); ok {
 		children := shim.Children()
-		if len(children) == 0 {
-			break
+		if len(children) > 0 {
+			if badgerDatastore, ok := children[0].(*badger4.Datastore); ok {
+				return backupBadger(badgerDatastore, writer, since)
+			}
 		}
-		current = children[0]
 	}
 
-	return 0, fmt.Errorf("backup is not supported by the configured datastore")
+	return 0, fmt.Errorf("backup is only supported for badger4 datastore")
+}
+
+func backupBadger(badgerDatastore *badger4.Datastore, writer io.Writer, since uint64) (uint64, error) {
+	// `badger.DB.Backup` internally orchestrates a consistent snapshot without pausing writes.
+	version, err := badgerDatastore.DB.Backup(writer, since)
+	if err != nil {
+		return 0, fmt.Errorf("badger backup failed: %w", err)
+	}
+	return version, nil
 }
