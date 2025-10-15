@@ -191,7 +191,15 @@ func (s *DASubmitter) SubmitHeaders(ctx context.Context, cache cache.Manager) er
 		return nil
 	}
 
-	s.logger.Info().Int("count", len(headers)).Msg("submitting headers to DA")
+	heights := make([]uint64, len(headers))
+	for i, sd := range headers {
+		heights[i] = sd.Height()
+		if len(sd.Header.ProposerAddress) == 0 || bytes.Equal(sd.Header.ProposerAddress, make([]byte, 32)) {
+			panic("empty  proposer address")
+		}
+	}
+
+	s.logger.Info().Uints64("heights", heights).Int("count", len(headers)).Msg("submitting headers to DA")
 
 	return submitToDA(s, ctx, headers,
 		func(header *types.SignedHeader) ([]byte, error) {
@@ -239,7 +247,11 @@ func (s *DASubmitter) SubmitData(ctx context.Context, cache cache.Manager, signe
 		return nil // No non-empty data to submit
 	}
 
-	s.logger.Info().Int("count", len(signedDataList)).Msg("submitting data to DA")
+	heights := make([]uint64, len(signedDataList))
+	for i, sd := range signedDataList {
+		heights[i] = sd.Height()
+	}
+	s.logger.Info().Uints64("heights", heights).Int("count", len(signedDataList)).Msg("submitting data to DA")
 
 	return submitToDA(s, ctx, signedDataList,
 		func(signedData *types.SignedData) ([]byte, error) {

@@ -103,6 +103,7 @@ func (s *Submitter) Start(ctx context.Context) error {
 
 	// Start DA submission loop if signer is available (aggregator nodes only)
 	if s.signer != nil {
+		s.logger.Info().Msg("starting DA submission loop")
 		s.wg.Add(1)
 		go func() {
 			defer s.wg.Done()
@@ -113,7 +114,14 @@ func (s *Submitter) Start(ctx context.Context) error {
 	// Start DA inclusion processing loop (both sync and aggregator nodes)
 	s.wg.Add(1)
 	go func() {
-		defer s.wg.Done()
+		defer func() {
+			// fetch all from DA to ensure final height is set
+			// todo: revisit this for a graceful shutdown scenario
+			tCtx, cancelFunc := context.WithTimeout(context.Background(), 2*time.Second)
+			defer cancelFunc()
+			s.processAllFromDA(tCtx)
+			s.wg.Done()
+		}()
 		s.processDAInclusionLoop()
 	}()
 
@@ -193,48 +201,63 @@ func (s *Submitter) processDAInclusionLoop() {
 		case <-s.ctx.Done():
 			return
 		case <-ticker.C:
-			currentDAIncluded := s.GetDAIncludedHeight()
+			s.processAllFromDA(s.ctx)
+		}
+	}
+}
 
-			for {
-				nextHeight := currentDAIncluded + 1
+func (s *Submitter) processAllFromDA(ctx context.Context) {
+	currentDAIncluded := s.GetDAIncludedHeight()
 
-				// Get block data first
-				header, data, err := s.store.GetBlockData(s.ctx, nextHeight)
-				if err != nil {
-					break
-				}
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		default:
+		}
 
-				// Check if this height is DA included
-				if included, err := s.IsHeightDAIncluded(nextHeight, header, data); err != nil || !included {
-					break
-				}
+		nextHeight := currentDAIncluded + 1
 
-				s.logger.Debug().Uint64("height", nextHeight).Msg("advancing DA included height")
+		// Get block data first
+		header, data, err := s.store.GetBlockData(s.ctx, nextHeight)
+		if err != nil {
+			return
+		}
 
-				// Set sequencer height to DA height mapping using already retrieved data
-				if err := s.setSequencerHeightToDAHeight(s.ctx, nextHeight, header, data, currentDAIncluded == 0); err != nil {
-					s.logger.Error().Err(err).Uint64("height", nextHeight).Msg("failed to set sequencer height to DA height mapping")
-					break
-				}
+		// Check if this height is DA included
+		if included, err := s.IsHeightDAIncluded(nextHeight, header, data); err != nil || !included {
+			return
+		}
 
-				// Set final height in executor
-				if err := s.setFinalWithRetry(nextHeight); err != nil {
-					s.sendCriticalError(fmt.Errorf("failed to set final height: %w", err))
-					s.logger.Error().Err(err).Uint64("height", nextHeight).Msg("failed to set final height")
-					break
-				}
+		s.logger.Debug().Uint64("height", nextHeight).Msg("advancing DA included height")
 
-				// Update DA included height
-				s.SetDAIncludedHeight(nextHeight)
-				currentDAIncluded = nextHeight
+		// Set sequencer height to DA height mapping using already retrieved data
+		if err := s.setSequencerHeightToDAHeight(s.ctx, nextHeight, header, data, currentDAIncluded == 0); err != nil {
+			s.logger.Error().Err(err).Uint64("height", nextHeight).Msg("failed to set sequencer height to DA height mapping")
+			return
+		}
 
-				// Persist DA included height
-				bz := make([]byte, 8)
-				binary.LittleEndian.PutUint64(bz, nextHeight)
-				if err := s.store.SetMetadata(s.ctx, store.DAIncludedHeightKey, bz); err != nil {
-					s.logger.Error().Err(err).Uint64("height", nextHeight).Msg("failed to persist DA included height")
-				}
-			}
+		// Set final height in executor
+		if err := s.setFinalWithRetry(nextHeight); err != nil {
+			s.sendCriticalError(fmt.Errorf("failed to set final height: %w", err))
+			s.logger.Error().Err(err).Uint64("height", nextHeight).Msg("failed to set final height")
+			return
+		}
+
+		// Update DA included height
+		s.SetDAIncludedHeight(nextHeight)
+		currentDAIncluded = nextHeight
+
+		// Persist DA included height
+		bz := make([]byte, 8)
+		binary.LittleEndian.PutUint64(bz, nextHeight)
+		if err := s.store.SetMetadata(s.ctx, store.DAIncludedHeightKey, bz); err != nil {
+			s.logger.Error().Err(err).Uint64("height", nextHeight).Msg("failed to persist DA included height")
+		}
+		if s.signer == nil {
+			// bump height to keep cache in sync when submission loop is not active
+			s.cache.SetLastSubmittedDataHeight(s.ctx, currentDAIncluded)
+			s.cache.SetLastSubmittedHeaderHeight(s.ctx, currentDAIncluded)
 		}
 	}
 }
@@ -280,6 +303,7 @@ func (s *Submitter) SetDAIncludedHeight(height uint64) {
 // initializeDAIncludedHeight loads the DA included height from store
 func (s *Submitter) initializeDAIncludedHeight(ctx context.Context) error {
 	if height, err := s.store.GetMetadata(ctx, store.DAIncludedHeightKey); err == nil && len(height) == 8 {
+		s.logger.Debug().Uint64("height", binary.LittleEndian.Uint64(height)).Msg("Initial DA included height loaded from store")
 		s.SetDAIncludedHeight(binary.LittleEndian.Uint64(height))
 	}
 	return nil
@@ -367,7 +391,7 @@ func (s *Submitter) IsHeightDAIncluded(height uint64, header *types.SignedHeader
 	_, headerIncluded := s.cache.GetHeaderDAIncluded(headerHash)
 	_, dataIncluded := s.cache.GetDataDAIncluded(dataHash)
 
-	dataIncluded = bytes.Equal(data.DACommitment(), common.DataHashForEmptyTxs) || dataIncluded
+	dataIncluded = dataIncluded || bytes.Equal(data.DACommitment(), common.DataHashForEmptyTxs)
 
 	return headerIncluded && dataIncluded, nil
 }

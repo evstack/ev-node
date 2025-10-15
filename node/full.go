@@ -105,7 +105,7 @@ func newFullNode(
 		nodeConfig.P2P.Peers = "" // raft cluster provides most up to date blocks. No need for p2p peers.
 	case nodeConfig.Node.Aggregator && !nodeConfig.Raft.Enable:
 		leaderElection = AlwaysLeader{}
-	case !nodeConfig.Node.Aggregator:
+	case !nodeConfig.Node.Aggregator && !nodeConfig.Raft.Enable:
 		leaderElection = AlwaysFollower{}
 	default:
 		return nil, fmt.Errorf("raft config must be used in sequencer setup only")
@@ -120,7 +120,7 @@ func newFullNode(
 		aggregatorComponentFunc: func(ctx context.Context) error {
 			logger.Info().Msg("Starting aggregator-MODE")
 			nodeConfig.Node.Aggregator = true
-			nodeConfig.P2P.Peers = ""
+			nodeConfig.P2P.Peers = "" // peers are not supported in aggregator mode
 			m, err := newAggregatorMode(nodeConfig, nodeKey, signer, genesis, database, exec, sequencer, da, logger, rktStore, mainKV, blockMetrics, nodeOpts, raftNode)
 			if err != nil {
 				return err

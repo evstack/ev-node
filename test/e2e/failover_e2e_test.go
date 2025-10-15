@@ -8,6 +8,7 @@ import (
 	"flag"
 	"fmt"
 	"maps"
+	"math/big"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -19,16 +20,21 @@ import (
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
+	ethtypes "github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/ethclient"
 	coreda "github.com/evstack/ev-node/core/da"
 	"github.com/evstack/ev-node/da/jsonrpc"
 	evmtest "github.com/evstack/ev-node/execution/evm/test"
+	rpcclient "github.com/evstack/ev-node/pkg/rpc/client"
 	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/protobuf/proto"
 
 	"github.com/evstack/ev-node/execution/evm"
+	"github.com/evstack/ev-node/types"
+	pb "github.com/evstack/ev-node/types/pb/evnode/v1"
 )
 
 // TestLeaseFailoverE2E runs three node binaries configured to use raft consensus.
@@ -43,7 +49,8 @@ func TestLeaseFailoverE2E(t *testing.T) {
 		})
 	}
 
-	workDir := t.TempDir()
+	//workDir := t.TempDir()
+	workDir := "/Users/alex/workspace/rollkit/rollkit/test/e2e/testnet"
 
 	// Get JWT secrets and setup common components first
 	jwtSecret, fullNodeJwtSecret, genesisHash, testEndpoints := setupCommonEVMTest(t, sut, true)
@@ -125,9 +132,12 @@ func TestLeaseFailoverE2E(t *testing.T) {
 	oldLeader := leaderNode
 	t.Logf("+++ Killing current leader (%s)\n", oldLeader)
 	_ = clusterNodes.Details(oldLeader).Kill()
-	leaderElectionStart := time.Now()
-	lastDABlockOldLeader := queryLastDAHeight(t, 1, jwtSecret, testEndpoints.GetDAAddress())
+
+	const daStartHeight = 1
+	time.Sleep(1 * time.Second)
+	lastDABlockOldLeader := queryLastDAHeight(t, daStartHeight, jwtSecret, testEndpoints.GetDAAddress())
 	t.Log("+++ Last DA block by old leader: ", lastDABlockOldLeader)
+	leaderElectionStart := time.Now()
 
 	// Wait for new leader election - submit tx to node2
 	var newLeader string
@@ -162,9 +172,133 @@ func TestLeaseFailoverE2E(t *testing.T) {
 	// Wait for several blocks to be produced and propagated
 	sut.AwaitNBlocks(t, 5, testEndpoints.GetRollkitRPCAddress(), 10*time.Second)
 
+	t.Log("+++ Verifying no double-signing...")
+	var state *pb.State
+	require.Eventually(t, func() bool {
+		state, err = clusterNodes.Details(newLeader).rpcClient(t).GetState(t.Context())
+		return err == nil
+	}, time.Second, 100*time.Millisecond)
+
+	lastDABlockNewLeader = queryLastDAHeight(t, lastDABlockNewLeader, jwtSecret, testEndpoints.GetDAAddress())
+
+	genesisHeight := state.InitialHeight
+	verifyNoDoubleSigning(t, clusterNodes, genesisHeight, state.LastBlockHeight)
+
+	// wait for the next DA block to ensure all blocks are propagated
+	require.Eventually(t, func() bool {
+		before := lastDABlockNewLeader
+		lastDABlockNewLeader = queryLastDAHeight(t, lastDABlockNewLeader, jwtSecret, testEndpoints.GetDAAddress())
+		return before < lastDABlockNewLeader
+	}, 2*must(time.ParseDuration(DefaultDABlockTime)), 100*time.Millisecond)
+
+	t.Log("+++ Verifying no DA gaps...")
+	verifyBlocks(t, daStartHeight, lastDABlockNewLeader, jwtSecret, testEndpoints.GetDAAddress(), genesisHeight, state.LastBlockHeight)
+
 	// Cleanup processes
 	clusterNodes.killAll()
 	t.Logf("Completed leader change in: %s", leaderFailoverTime)
+}
+
+// verifyNoDoubleSigning checks that no two blocks at the same height have different hashes across nodes
+func verifyNoDoubleSigning(t *testing.T, clusterNodes *raftClusterNodes, genesisHeight uint64, lastBlockHeight uint64) {
+	t.Helper()
+	// Compare block hashes across nodes
+	for height := genesisHeight; height <= lastBlockHeight; height++ {
+		nodeByHash := make(map[common.Hash][]string, 1)
+		for nodeName, node := range clusterNodes.allNodes() {
+			if !node.running.Load() {
+				continue
+			}
+			var header *ethtypes.Header
+			require.Eventually(t, func() bool {
+				header, _ = node.ethClient(t).HeaderByNumber(t.Context(), big.NewInt(int64(height)))
+				return header != nil
+			}, 2*time.Second, 100*time.Millisecond)
+			nodeByHash[header.Hash()] = append(nodeByHash[header.Hash()], nodeName)
+		}
+		if !assert.Len(t, nodeByHash, 1, "double signing detected at height %d: %v", height, nodeByHash) {
+			for _, nodes := range nodeByHash {
+				rsp, err := clusterNodes.Details(nodes[0]).rpcClient(t).GetBlockByHeight(t.Context(), height)
+				require.NoError(t, err)
+				t.Logf("%s: %v", nodes[0], rsp.Block)
+			}
+			//t.FailNow()
+		}
+	}
+}
+
+// verifyBlocks checks that DA block heights form a continuous sequence without gaps
+func verifyBlocks(t *testing.T, daStartHeight, lastDABlock uint64, jwtSecret string, daAddress string, genesisHeight, lastEVBlock uint64) {
+	t.Helper()
+	client, err := jsonrpc.NewClient(t.Context(), zerolog.Nop(), daAddress, jwtSecret, 0, 1, 0)
+	require.NoError(t, err)
+	defer client.Close()
+
+	namespace := coreda.NamespaceFromString(DefaultDANamespace).Bytes()
+	evHeightsToEvBlockParts := make(map[uint64]int)
+	deduplicationCache := make(map[string]uint64) // mixed header and data hashes
+
+	lastEVHeight := genesisHeight
+	// Verify each block is present exactly once
+	for daHeight := daStartHeight; daHeight <= lastDABlock; daHeight++ {
+		res, err := client.DA.GetIDs(t.Context(), daHeight, namespace)
+		require.NoError(t, err, "height %d/%d", daHeight, lastDABlock)
+		require.NotEmpty(t, res.IDs)
+
+		blobs, err := client.DA.Get(t.Context(), res.IDs, namespace)
+		require.NoError(t, err)
+
+		for _, blob := range blobs {
+			if evHeight, hash := extractBlockHeight(t, blob); evHeight != 0 {
+				t.Logf("extracting block height from blob (da height %d): %x", daHeight, evHeight)
+				if height, ok := deduplicationCache[hash.String()]; ok {
+					require.Equal(t, evHeight, height)
+					continue
+				}
+				_ = lastEVHeight
+				//require.GreaterOrEqual(t, evHeight, lastEVHeight)
+				lastEVHeight = evHeight
+				deduplicationCache[hash.String()] = evHeight
+				evHeightsToEvBlockParts[evHeight]++
+			}
+		}
+	}
+
+	for h := genesisHeight; h <= lastEVBlock; h++ {
+		// can be 1 or 2 blobs per block if data is not empty
+		require.NotEmpty(t, evHeightsToEvBlockParts[h], "missing block on DA for height %d/%d", h, lastEVBlock)
+		require.Less(t, evHeightsToEvBlockParts[h], 3, "duplicate block on DA for height %d/%d", h, lastEVBlock)
+	}
+}
+
+// extractBlockHeight attempts to decode a blob as SignedHeader or SignedData and extract the block height
+func extractBlockHeight(t *testing.T, blob []byte) (uint64, types.Hash) {
+	t.Helper()
+	var headerPb pb.SignedHeader
+	if err := proto.Unmarshal(blob, &headerPb); err == nil {
+		var signedHeader types.SignedHeader
+		if err := signedHeader.FromProto(&headerPb); err == nil {
+			if err := signedHeader.Header.ValidateBasic(); err == nil {
+				return signedHeader.Height(), signedHeader.Hash()
+			} else {
+				t.Logf("invalid header: %v", err)
+			}
+		} else {
+			t.Logf("failed to unmarshal signed header: %v", err)
+		}
+	} else {
+		t.Logf("failed to unmarshal blob: %v", err)
+	}
+
+	var signedData types.SignedData
+	if err := signedData.UnmarshalBinary(blob); err == nil {
+		if signedData.Metadata != nil {
+			return signedData.Height(), signedData.Hash()
+		}
+	} else {
+		t.Logf("failed to unmarshal signed data: %v", err)
+	}
+	return 0, nil
 }
 
 func initChain(t *testing.T, sut *SystemUnderTest, workDir string) {
@@ -282,7 +416,7 @@ func queryLastDAHeight(t *testing.T, startHeight uint64, jwtSecret string, daAdd
 		res, err := client.DA.GetIDs(t.Context(), lastDABlock, coreda.NamespaceFromString(DefaultDANamespace).Bytes())
 		if err != nil {
 			if strings.Contains(err.Error(), "future") {
-				break
+				return lastDABlock - 1
 			}
 			t.Fatal("failed to get IDs:", err)
 		}
@@ -291,7 +425,6 @@ func queryLastDAHeight(t *testing.T, startHeight uint64, jwtSecret string, daAdd
 		}
 		lastDABlock++
 	}
-	return lastDABlock
 }
 
 type nodeDetails struct {
@@ -299,21 +432,36 @@ type nodeDetails struct {
 	process *os.Process
 	ethAddr string
 
-	ethClientOnce sync.Once
+	extClientOnce sync.Once
 	xEthClient    atomic.Pointer[ethclient.Client]
+	xRPCClient    atomic.Pointer[rpcclient.Client]
 	running       atomic.Bool
 }
 
 func (d *nodeDetails) ethClient(t *testing.T) *ethclient.Client {
 	t.Helper()
+	d.initExtClients(t)
+	return d.xEthClient.Load()
+}
+
+func (d *nodeDetails) rpcClient(t *testing.T) *rpcclient.Client {
+	t.Helper()
+	d.initExtClients(t)
+	return d.xRPCClient.Load()
+
+}
+
+func (d *nodeDetails) initExtClients(t *testing.T) {
 	require.NotNil(t, d)
-	d.ethClientOnce.Do(func() {
+	d.extClientOnce.Do(func() {
 		client, err := ethclient.Dial(d.ethAddr)
 		require.NoError(t, err)
 		d.xEthClient.Store(client)
 		t.Cleanup(client.Close)
+		rpcClient := rpcclient.NewClient(d.rpcAddr)
+		require.NotNil(t, rpcClient)
+		d.xRPCClient.Store(rpcClient)
 	})
-	return d.xEthClient.Load()
 }
 
 func (d *nodeDetails) Kill() (err error) {
@@ -336,10 +484,7 @@ func (c *raftClusterNodes) Set(node string, listen string, proc *os.Process, eth
 }
 
 func (c *raftClusterNodes) Leader(t require.TestingT) string {
-	c.mx.Lock()
-	clone := maps.Clone(c.nodes)
-	c.mx.Unlock()
-	node, _ := leader(t, clone)
+	node, _ := leader(t, c.allNodes())
 	return node
 }
 
@@ -350,21 +495,23 @@ func (c *raftClusterNodes) Details(node string) *nodeDetails {
 }
 
 func (c *raftClusterNodes) Followers(t require.TestingT) map[string]*nodeDetails {
-	c.mx.Lock()
-	clone := maps.Clone(c.nodes)
-	c.mx.Unlock()
-	leader, _ := leader(t, clone)
-	delete(clone, leader)
-	return clone
+	all := c.allNodes()
+	leader, _ := leader(t, all)
+	delete(all, leader)
+	return all
 }
 
 func (c *raftClusterNodes) killAll() {
-	c.mx.Lock()
-	clone := maps.Clone(c.nodes)
-	c.mx.Unlock()
-	for _, d := range clone {
+	for _, d := range c.allNodes() {
 		_ = d.Kill()
 	}
+}
+
+// allNodes returns snapshot of nodes map
+func (c *raftClusterNodes) allNodes() map[string]*nodeDetails {
+	c.mx.Lock()
+	defer c.mx.Unlock()
+	return maps.Clone(c.nodes)
 }
 
 // fails when no leader is found

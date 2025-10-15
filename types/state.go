@@ -25,6 +25,9 @@ type State struct {
 	LastBlockHeight uint64
 	LastBlockTime   time.Time
 
+	// LastHeaderHash is the hash of the header of the last block
+	LastHeaderHash Hash
+
 	// DAHeight identifies DA block containing the latest applied Evolve block.
 	DAHeight uint64
 
@@ -45,6 +48,7 @@ func (s *State) NextState(header Header, stateRoot []byte) (State, error) {
 		LastBlockHeight: height,
 		LastBlockTime:   header.Time(),
 		AppHash:         stateRoot,
+		LastHeaderHash:  header.Hash(),
 		DAHeight:        s.DAHeight,
 	}, nil
 }
