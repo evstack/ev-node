@@ -94,33 +94,25 @@ func StartNode(
 	// create a new remote signer
 	var signer signer.Signer
 	if nodeConfig.Signer.SignerType == "file" && nodeConfig.Node.Aggregator {
-		// Get passphrase - prefer file over direct flag for security
-		var passphrase string
+		// Get passphrase file path
 		passphraseFile, err := cmd.Flags().GetString(rollconf.FlagSignerPassphraseFile)
 		if err != nil {
 			return fmt.Errorf("failed to get '%s' flag: %w", rollconf.FlagSignerPassphraseFile, err)
 		}
 
-		if passphraseFile != "" {
-			// Read passphrase from file
-			passphraseBytes, err := os.ReadFile(passphraseFile)
-			if err != nil {
-				return fmt.Errorf("failed to read passphrase from file '%s': %w", passphraseFile, err)
-			}
-			passphrase = string(strings.TrimSpace(string(passphraseBytes)))
-		} else {
-			// Fallback to direct flag (deprecated, less secure)
-			passphrase, err = cmd.Flags().GetString(rollconf.FlagSignerPassphrase)
-			if err != nil {
-				return fmt.Errorf("failed to get '%s' flag: %w", rollconf.FlagSignerPassphrase, err)
-			}
-			if passphrase != "" {
-				logger.Warn().Msg("WARNING: Using --evnode.signer.passphrase flag is deprecated and insecure. Use --evnode.signer.passphrase_file instead.")
-			}
+		if passphraseFile == "" {
+			return fmt.Errorf("passphrase file must be provided via --evnode.signer.passphrase_file")
 		}
 
+		// Read passphrase from file
+		passphraseBytes, err := os.ReadFile(passphraseFile)
+		if err != nil {
+			return fmt.Errorf("failed to read passphrase from file '%s': %w", passphraseFile, err)
+		}
+		passphrase := string(strings.TrimSpace(string(passphraseBytes)))
+
 		if passphrase == "" {
-			return fmt.Errorf("passphrase must be provided via --evnode.signer.passphrase_file or --evnode.signer.passphrase")
+			return fmt.Errorf("passphrase file '%s' is empty", passphraseFile)
 		}
 
 		// Resolve signer path; allow absolute, relative to node root, or relative to CWD if resolution fails

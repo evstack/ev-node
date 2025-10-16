@@ -307,7 +307,6 @@ func (s *FileSystemSigner) saveKeys(passphrase []byte) error {
 		return fmt.Errorf("failed to write key file: %w", err)
 	}
 
-	// Note: privKeyBytes and derivedKey are zeroed by deferred calls
 	return nil
 }
 
@@ -372,7 +371,6 @@ func (s *FileSystemSigner) loadKeys(passphrase []byte) error {
 	s.privateKey = privKey
 	s.publicKey = pubKey
 
-	// Note: privKeyBytes and derivedKey are zeroed by deferred calls
 	return nil
 }
 
