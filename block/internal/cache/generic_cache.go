@@ -105,7 +105,7 @@ func (c *Cache[T]) deleteAllForHeight(height uint64) {
 	if ok {
 		c.hashes.Delete(hash)
 		c.hashByHeight.Delete(height)
-		c.daIncluded.Delete(hash)
+		// c.daIncluded.Delete(hash) // we actually do not want to delete the DA-included status here
 	}
 }
 
