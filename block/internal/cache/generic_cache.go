@@ -8,6 +8,11 @@ import (
 	"sync"
 )
 
+const (
+	// MaxCacheEntries limits the size of hash-based maps to prevent unbounded growth
+	MaxCacheEntries = 100000
+)
+
 // Cache is a generic cache that maintains items that are seen and hard confirmed
 type Cache[T any] struct {
 	// itemsByHeight stores items keyed by uint64 height
@@ -16,6 +21,12 @@ type Cache[T any] struct {
 	hashes *sync.Map
 	// daIncluded tracks the DA inclusion height for a given hash
 	daIncluded *sync.Map
+	// mu protects counter operations
+	mu sync.Mutex
+	// hashesCount tracks approximate number of entries in hashes map
+	hashesCount int
+	// daIncludedCount tracks approximate number of entries in daIncluded map
+	daIncludedCount int
 }
 
 // NewCache returns a new Cache struct
@@ -87,7 +98,18 @@ func (c *Cache[T]) isSeen(hash string) bool {
 
 // setSeen sets the hash as seen
 func (c *Cache[T]) setSeen(hash string) {
-	c.hashes.Store(hash, true)
+	_, loaded := c.hashes.LoadOrStore(hash, true)
+	if !loaded {
+		// New entry added
+		c.mu.Lock()
+		c.hashesCount++
+		needsCleanup := c.hashesCount > MaxCacheEntries
+		c.mu.Unlock()
+
+		if needsCleanup {
+			c.cleanupHashes()
+		}
+	}
 }
 
 // getDAIncluded returns the DA height if the hash has been DA-included, otherwise it returns 0.
@@ -101,12 +123,93 @@ func (c *Cache[T]) getDAIncluded(hash string) (uint64, bool) {
 
 // setDAIncluded sets the hash as DA-included with the given DA height
 func (c *Cache[T]) setDAIncluded(hash string, daHeight uint64) {
-	c.daIncluded.Store(hash, daHeight)
+	_, loaded := c.daIncluded.LoadOrStore(hash, daHeight)
+	if !loaded {
+		// New entry added
+		c.mu.Lock()
+		c.daIncludedCount++
+		needsCleanup := c.daIncludedCount > MaxCacheEntries
+		c.mu.Unlock()
+
+		if needsCleanup {
+			c.cleanupDAIncluded()
+		}
+	}
 }
 
 // removeDAIncluded removes the DA-included status of the hash
 func (c *Cache[T]) removeDAIncluded(hash string) {
-	c.daIncluded.Delete(hash)
+	_, loaded := c.daIncluded.LoadAndDelete(hash)
+	if loaded {
+		c.mu.Lock()
+		c.daIncludedCount--
+		c.mu.Unlock()
+	}
+}
+
+// cleanupHashes removes approximately half of the entries from hashes map
+// when it exceeds MaxCacheEntries to prevent unbounded memory growth.
+// This uses a simple strategy of removing every other entry during iteration.
+func (c *Cache[T]) cleanupHashes() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	// Target removing about half the entries
+	targetCount := MaxCacheEntries / 2
+	removed := 0
+	skip := false
+
+	c.hashes.Range(func(k, v any) bool {
+		// Simple strategy: remove every other entry
+		if skip {
+			skip = false
+			return true
+		}
+		skip = true
+
+		if hash, ok := k.(string); ok {
+			c.hashes.Delete(hash)
+			removed++
+			if removed >= targetCount {
+				return false // Stop iteration
+			}
+		}
+		return true
+	})
+
+	c.hashesCount -= removed
+}
+
+// cleanupDAIncluded removes approximately half of the entries from daIncluded map
+// when it exceeds MaxCacheEntries to prevent unbounded memory growth.
+func (c *Cache[T]) cleanupDAIncluded() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	// Target removing about half the entries
+	targetCount := MaxCacheEntries / 2
+	removed := 0
+	skip := false
+
+	c.daIncluded.Range(func(k, v any) bool {
+		// Simple strategy: remove every other entry
+		if skip {
+			skip = false
+			return true
+		}
+		skip = true
+
+		if hash, ok := k.(string); ok {
+			c.daIncluded.Delete(hash)
+			removed++
+			if removed >= targetCount {
+				return false // Stop iteration
+			}
+		}
+		return true
+	})
+
+	c.daIncludedCount -= removed
 }
 
 const (
@@ -223,6 +326,9 @@ func (c *Cache[T]) LoadFromDisk(folderPath string) error {
 	for k, v := range hashesMap {
 		c.hashes.Store(k, v)
 	}
+	c.mu.Lock()
+	c.hashesCount = len(hashesMap)
+	c.mu.Unlock()
 
 	// load daIncluded
 	daIncludedMap, err := loadMapGob[string, uint64](filepath.Join(folderPath, daIncludedFilename))
@@ -232,6 +338,9 @@ func (c *Cache[T]) LoadFromDisk(folderPath string) error {
 	for k, v := range daIncludedMap {
 		c.daIncluded.Store(k, v)
 	}
+	c.mu.Lock()
+	c.daIncludedCount = len(daIncludedMap)
+	c.mu.Unlock()
 
 	return nil
 }

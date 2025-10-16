@@ -35,6 +35,9 @@ var (
 
 	// ErrProposerVerificationFailed is returned when the proposer verification fails.
 	ErrProposerVerificationFailed = errors.New("proposer verification failed")
+
+	// ErrInvalidTimestamp is returned when the timestamp is invalid.
+	ErrInvalidTimestamp = errors.New("invalid timestamp")
 )
 
 // BaseHeader contains the most basic data of a header
@@ -130,6 +133,19 @@ func (h *Header) Validate() error {
 func (h *Header) ValidateBasic() error {
 	if len(h.ProposerAddress) == 0 {
 		return ErrNoProposerAddress
+	}
+
+	// Validate timestamp - must be non-zero and not too far in the future
+	if h.BaseHeader.Time == 0 {
+		return fmt.Errorf("%w: timestamp cannot be zero", ErrInvalidTimestamp)
+	}
+
+	// Check timestamp is not too far in the future (allow 1 minute of clock drift)
+	maxAllowedTime := time.Now().Add(1 * time.Minute)
+	headerTime := h.Time()
+	if headerTime.After(maxAllowedTime) {
+		return fmt.Errorf("%w: timestamp too far in future (header: %v, max allowed: %v)",
+			ErrInvalidTimestamp, headerTime, maxAllowedTime)
 	}
 
 	return nil
