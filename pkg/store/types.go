@@ -33,6 +33,7 @@ type Batch interface {
 // Store is minimal interface for storing and retrieving blocks, commits and state.
 type Store interface {
 	Rollback
+	Backup
 	Reader
 
 	// SetMetadata saves arbitrary value in the store.
@@ -71,11 +72,7 @@ type Reader interface {
 	GetMetadata(ctx context.Context, key string) ([]byte, error)
 }
 
-type Rollback interface {
-	// Rollback deletes x height from the ev-node store.
-	// Aggregator is used to determine if the rollback is performed on the aggregator node.
-	Rollback(ctx context.Context, height uint64, aggregator bool) error
-
+type Backup interface {
 	// Backup writes a consistent backup stream to writer. The returned version can be used
 	// as the starting point for incremental backups.
 	Backup(ctx context.Context, writer io.Writer, since uint64) (uint64, error)
@@ -85,4 +82,10 @@ type Rollback interface {
 
 	// Close safely closes underlying data storage, to ensure that data is actually saved.
 	Close() error
+}
+
+type Rollback interface {
+	// Rollback deletes x height from the ev-node store.
+	// Aggregator is used to determine if the rollback is performed on the aggregator node.
+	Rollback(ctx context.Context, height uint64, aggregator bool) error
 }
