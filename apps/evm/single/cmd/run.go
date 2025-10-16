@@ -122,33 +122,25 @@ func createExecutionClient(cmd *cobra.Command) (execution.Executor, error) {
 		return nil, fmt.Errorf("failed to get '%s' flag: %w", evm.FlagEvmEngineURL, err)
 	}
 
-	// Get JWT secret - prefer file over direct flag for security
-	var jwtSecret string
+	// Get JWT secret file path
 	jwtSecretFile, err := cmd.Flags().GetString(evm.FlagEvmJWTSecretFile)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get '%s' flag: %w", evm.FlagEvmJWTSecretFile, err)
 	}
 
-	if jwtSecretFile != "" {
-		// Read JWT secret from file
-		secretBytes, err := os.ReadFile(jwtSecretFile)
-		if err != nil {
-			return nil, fmt.Errorf("failed to read JWT secret from file '%s': %w", jwtSecretFile, err)
-		}
-		jwtSecret = string(bytes.TrimSpace(secretBytes))
-	} else {
-		// Fallback to direct flag (deprecated, less secure)
-		jwtSecret, err = cmd.Flags().GetString(evm.FlagEvmJWTSecret)
-		if err != nil {
-			return nil, fmt.Errorf("failed to get '%s' flag: %w", evm.FlagEvmJWTSecret, err)
-		}
-		if jwtSecret != "" {
-			cmd.Printf("WARNING: Using --evm.jwt-secret flag is deprecated and insecure. Use --evm.jwt-secret-file instead.\n")
-		}
+	if jwtSecretFile == "" {
+		return nil, fmt.Errorf("JWT secret file must be provided via --evm.jwt-secret-file")
 	}
 
+	// Read JWT secret from file
+	secretBytes, err := os.ReadFile(jwtSecretFile)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read JWT secret from file '%s': %w", jwtSecretFile, err)
+	}
+	jwtSecret := string(bytes.TrimSpace(secretBytes))
+
 	if jwtSecret == "" {
-		return nil, fmt.Errorf("JWT secret must be provided via --evm.jwt-secret-file or --evm.jwt-secret")
+		return nil, fmt.Errorf("JWT secret file '%s' is empty", jwtSecretFile)
 	}
 
 	genesisHashStr, err := cmd.Flags().GetString(evm.FlagEvmGenesisHash)
@@ -171,8 +163,7 @@ func createExecutionClient(cmd *cobra.Command) (execution.Executor, error) {
 func addFlags(cmd *cobra.Command) {
 	cmd.Flags().String(evm.FlagEvmEthURL, "http://localhost:8545", "URL of the Ethereum JSON-RPC endpoint")
 	cmd.Flags().String(evm.FlagEvmEngineURL, "http://localhost:8551", "URL of the Engine API endpoint")
-	cmd.Flags().String(evm.FlagEvmJWTSecretFile, "", "Path to file containing the JWT secret for authentication (recommended)")
-	cmd.Flags().String(evm.FlagEvmJWTSecret, "", "The JWT secret for authentication (DEPRECATED: use --evm.jwt-secret-file instead)")
+	cmd.Flags().String(evm.FlagEvmJWTSecretFile, "", "Path to file containing the JWT secret for authentication")
 	cmd.Flags().String(evm.FlagEvmGenesisHash, "", "Hash of the genesis block")
 	cmd.Flags().String(evm.FlagEvmFeeRecipient, "", "Address that will receive transaction fees")
 }
