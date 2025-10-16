@@ -160,7 +160,7 @@ func (s *Submitter) daSubmissionLoop() {
 						if err := s.daSubmitter.SubmitHeaders(s.ctx, s.cache); err != nil {
 							// Check for unrecoverable errors that indicate a critical issue
 							if errors.Is(err, common.ErrOversizedItem) {
-								s.logger.Fatal().Err(err).
+								s.logger.Error().Err(err).
 									Msg("CRITICAL: Header exceeds DA blob size limit - halting to prevent live lock")
 								s.sendCriticalError(fmt.Errorf("unrecoverable DA submission error: %w", err))
 								if s.cancel != nil {
@@ -182,7 +182,7 @@ func (s *Submitter) daSubmissionLoop() {
 						if err := s.daSubmitter.SubmitData(s.ctx, s.cache, s.signer, s.genesis); err != nil {
 							// Check for unrecoverable errors that indicate a critical issue
 							if errors.Is(err, common.ErrOversizedItem) {
-								s.logger.Fatal().Err(err).
+								s.logger.Error().Err(err).
 									Msg("CRITICAL: Data exceeds DA blob size limit - halting to prevent live lock")
 								s.sendCriticalError(fmt.Errorf("unrecoverable DA submission error: %w", err))
 								if s.cancel != nil {
