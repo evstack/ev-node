@@ -95,7 +95,7 @@ func TestAddFlags(t *testing.T) {
 	assertFlagValue(t, persistentFlags, FlagLogTrace, false)
 
 	// Signer flags
-	assertFlagValue(t, flags, FlagSignerPassphrase, "")
+	assertFlagValue(t, flags, FlagSignerPassphraseFile, "")
 	assertFlagValue(t, flags, FlagSignerType, "file")
 	assertFlagValue(t, flags, FlagSignerPath, DefaultConfig().Signer.SignerPath)
 

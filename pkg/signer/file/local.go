@@ -264,9 +264,6 @@ func (s *FileSystemSigner) saveKeys(passphrase []byte) error {
 	derivedKey := deriveKeyArgon2(passphrase, salt, 32)
 	defer zeroBytes(derivedKey) // Always zero out derived key
 
-	// Zero out passphrase from memory once we have our derived key
-	zeroBytes(passphrase)
-
 	// Create AES cipher
 	block, err := aes.NewCipher(derivedKey)
 	if err != nil {
@@ -314,7 +311,6 @@ func (s *FileSystemSigner) saveKeys(passphrase []byte) error {
 func (s *FileSystemSigner) loadKeys(passphrase []byte) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	defer zeroBytes(passphrase) // Wipe passphrase from memory after use
 
 	// Read the key file
 	jsonData, err := os.ReadFile(s.keyFile)

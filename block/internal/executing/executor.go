@@ -24,6 +24,8 @@ import (
 	"github.com/evstack/ev-node/types"
 )
 
+const defaultMaxBlobSize = 1.5 * 1024 * 1024 // 1.5MB fallback blob size limit
+
 var (
 	// errBlockValidation indicates a permanent validation error that won't resolve on retry
 	errBlockValidation = errors.New("block validation failed")
