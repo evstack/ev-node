@@ -10,20 +10,20 @@
 // Sequencer is a generic interface for a sequencer
 type Sequencer interface {
  // SubmitBatchTxs submits a batch of transactions  to sequencer
- // Id is the unique identifier for the  chain
+ // Id is the unique identifier for the target chain
  // Batch is the batch of transactions to submit
  // returns an error if any from the sequencer
  SubmitBatchTxs(ctx context.Context, req SubmitBatchTxsRequest) (*SubmitBatchTxsResponse, error)
 
  // GetNextBatch returns the next batch of transactions from sequencer to
- // Id is the unique identifier for the  chain
+ // Id is the unique identifier for the target chain
  // LastBatchHash is the cryptographic hash of the last batch received by the
  // MaxBytes is the maximum number of bytes to return in the batch
  // returns the next batch of transactions and an error if any from the sequencer
  GetNextBatch(ctx context.Context, req GetNextBatchRequest) (*GetNextBatchResponse, error)
 
  // VerifyBatch verifies a batch of transactions received from the sequencer
- // Id is the unique identifier for the  chain
+ // Id is the unique identifier for the target chain
  // BatchHash is the cryptographic hash of the batch to verify
  // returns a boolean indicating if the batch is valid and an error if any from the sequencer
  VerifyBatch(ctx context.Context, req VerifyBatchResponse) (*VerifyBatchResponse, error)
