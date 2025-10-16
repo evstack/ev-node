@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"sync"
 	"sync/atomic"
@@ -157,6 +158,16 @@ func (s *Submitter) daSubmissionLoop() {
 					go func() {
 						defer s.headerSubmissionMtx.Unlock()
 						if err := s.daSubmitter.SubmitHeaders(s.ctx, s.cache); err != nil {
+							// Check for unrecoverable errors that indicate a critical issue
+							if errors.Is(err, common.ErrOversizedItem) {
+								s.logger.Fatal().Err(err).
+									Msg("CRITICAL: Header exceeds DA blob size limit - halting to prevent live lock")
+								s.sendCriticalError(fmt.Errorf("unrecoverable DA submission error: %w", err))
+								if s.cancel != nil {
+									s.cancel()
+								}
+								return
+							}
 							s.logger.Error().Err(err).Msg("failed to submit headers")
 						}
 					}()
@@ -169,6 +180,16 @@ func (s *Submitter) daSubmissionLoop() {
 					go func() {
 						defer s.dataSubmissionMtx.Unlock()
 						if err := s.daSubmitter.SubmitData(s.ctx, s.cache, s.signer, s.genesis); err != nil {
+							// Check for unrecoverable errors that indicate a critical issue
+							if errors.Is(err, common.ErrOversizedItem) {
+								s.logger.Fatal().Err(err).
+									Msg("CRITICAL: Data exceeds DA blob size limit - halting to prevent live lock")
+								s.sendCriticalError(fmt.Errorf("unrecoverable DA submission error: %w", err))
+								if s.cancel != nil {
+									s.cancel()
+								}
+								return
+							}
 							s.logger.Error().Err(err).Msg("failed to submit data")
 						}
 					}()
@@ -220,8 +241,11 @@ func (s *Submitter) processDAInclusionLoop() {
 				// Set final height in executor
 				if err := s.setFinalWithRetry(nextHeight); err != nil {
 					s.sendCriticalError(fmt.Errorf("failed to set final height: %w", err))
-					s.logger.Error().Err(err).Uint64("height", nextHeight).Msg("failed to set final height")
-					break
+					s.logger.Error().Err(err).Uint64("height", nextHeight).Msg("CRITICAL: Failed to set final height after retries - halting DA inclusion processing")
+					if s.cancel != nil {
+						s.cancel()
+					}
+					return
 				}
 
 				// Update DA included height

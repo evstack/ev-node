@@ -252,6 +252,7 @@ func (s *FileSystemSigner) saveKeys(passphrase []byte) error {
 	if err != nil {
 		return fmt.Errorf("failed to get raw private key: %w", err)
 	}
+	defer zeroBytes(privKeyBytes) // Always zero out private key bytes
 
 	// Get raw public key bytes
 	pubKeyBytes, err := s.publicKey.Raw()
@@ -261,6 +262,7 @@ func (s *FileSystemSigner) saveKeys(passphrase []byte) error {
 
 	// Derive a key with Argon2
 	derivedKey := deriveKeyArgon2(passphrase, salt, 32)
+	defer zeroBytes(derivedKey) // Always zero out derived key
 
 	// Zero out passphrase from memory once we have our derived key
 	zeroBytes(passphrase)
@@ -305,10 +307,7 @@ func (s *FileSystemSigner) saveKeys(passphrase []byte) error {
 		return fmt.Errorf("failed to write key file: %w", err)
 	}
 
-	// Zero out derivedKey bytes for security
-	zeroBytes(derivedKey)
-	zeroBytes(privKeyBytes)
-
+	// Note: privKeyBytes and derivedKey are zeroed by deferred calls
 	return nil
 }
 
@@ -338,6 +337,7 @@ func (s *FileSystemSigner) loadKeys(passphrase []byte) error {
 	} else {
 		derivedKey = deriveKeyArgon2(passphrase, data.Salt, 32)
 	}
+	defer zeroBytes(derivedKey) // Always zero out derived key
 
 	block, err := aes.NewCipher(derivedKey)
 	if err != nil {
@@ -354,6 +354,7 @@ func (s *FileSystemSigner) loadKeys(passphrase []byte) error {
 	if err != nil {
 		return fmt.Errorf("failed to decrypt private key (wrong passphrase?): %w", err)
 	}
+	defer zeroBytes(privKeyBytes) // Always zero out decrypted private key bytes
 
 	// Unmarshal the private key
 	privKey, err := crypto.UnmarshalEd25519PrivateKey(privKeyBytes)
@@ -371,9 +372,7 @@ func (s *FileSystemSigner) loadKeys(passphrase []byte) error {
 	s.privateKey = privKey
 	s.publicKey = pubKey
 
-	// Zero out sensitive data
-	zeroBytes(derivedKey)
-
+	// Note: privKeyBytes and derivedKey are zeroed by deferred calls
 	return nil
 }
 
