@@ -235,8 +235,9 @@ func (s *Submitter) processDAInclusionLoop() {
 					s.logger.Error().Err(err).Uint64("height", nextHeight).Msg("failed to persist DA included height")
 				}
 
-				// Clear DA included height cache
-				s.cache.ClearDAIncluded(nextHeight)
+				// Delete height cache for that height
+				// This can only be performed after the height has been persisted to store
+				s.cache.DeleteHeight(nextHeight)
 			}
 		}
 	}

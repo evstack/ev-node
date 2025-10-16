@@ -63,11 +63,13 @@ type Manager interface {
 	GetNextPendingEvent(height uint64) *common.DAHeightEvent
 	SetPendingEvent(height uint64, event *common.DAHeightEvent)
 
-	// Cleanup operations
+	// Disk operations
 	SaveToDisk() error
 	LoadFromDisk() error
 	ClearFromDisk() error
-	ClearDAIncluded(height uint64)
+
+	// Cleanup operations
+	DeleteHeight(height uint64)
 }
 
 var _ Manager = (*implementation)(nil)
@@ -165,9 +167,12 @@ func (m *implementation) SetDataDAIncluded(hash string, daHeight uint64, blockHe
 	m.dataCache.setDAIncluded(hash, daHeight, blockHeight)
 }
 
-func (m *implementation) ClearDAIncluded(height uint64) {
-	m.dataCache.pruneOldEntries(height)
-	m.headerCache.pruneOldEntries(height)
+// DeleteHeight removes from all caches the given height.
+// This can be done when a height has been da included.
+func (m *implementation) DeleteHeight(height uint64) {
+	m.headerCache.deleteAllForHeight(height)
+	m.dataCache.deleteAllForHeight(height)
+	m.pendingEventsCache.deleteAllForHeight(height)
 }
 
 // Pending operations
