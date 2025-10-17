@@ -433,7 +433,9 @@ func (s *Syncer) trySyncNextBlock(event *common.DAHeightEvent) error {
 	if err := s.validateBlock(currentState, data, header); err != nil {
 		// remove header as da included (not per se needed, but keep cache clean)
 		s.cache.RemoveHeaderDAIncluded(header.Hash().String())
-		return err
+		if !errors.Is(err, errInvalidState) && !errors.Is(err, errInvalidBlock) {
+			return errors.Join(errInvalidBlock, err)
+		}
 	}
 
 	// Apply block
