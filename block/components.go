@@ -137,6 +137,7 @@ func NewSyncComponents(
 	metrics *Metrics,
 	blockOpts BlockOptions,
 ) (*Components, error) {
+	logger.Info().Msg("Starting in sync-mode")
 	cacheManager, err := cache.NewManager(config, store, logger)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create cache manager: %w", err)
@@ -200,6 +201,7 @@ func NewAggregatorComponents(
 	metrics *Metrics,
 	blockOpts BlockOptions,
 ) (*Components, error) {
+	logger.Info().Msg("Starting in aggregator-mode")
 	cacheManager, err := cache.NewManager(config, store, logger)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create cache manager: %w", err)

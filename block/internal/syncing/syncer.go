@@ -158,6 +158,7 @@ func (s *Syncer) GetLastState() types.State {
 
 	stateCopy := *state
 	stateCopy.AppHash = bytes.Clone(state.AppHash)
+	stateCopy.LastHeaderHash = bytes.Clone(state.LastHeaderHash)
 
 	return stateCopy
 }
@@ -379,7 +380,14 @@ func (s *Syncer) processHeightEvent(event *common.DAHeightEvent) {
 	if err := s.trySyncNextBlock(event); err != nil {
 		s.logger.Error().Err(err).Msg("failed to sync next block")
 		// If the error is not due to an validation error, re-store the event as pending
-		if !errors.Is(err, errInvalidBlock) {
+		switch {
+		case errors.Is(err, errInvalidBlock):
+			// do not reschedule
+		case errors.Is(err, errInvalidState):
+			s.logger.Fatal().Uint64("block_height", event.Header.Height()).
+				Uint64("state_height", s.GetLastState().LastBlockHeight).Err(err).
+				Msg("Invalid state detected - block references do not match local state. Manual intervention required.")
+		default:
 			s.cache.SetPendingEvent(height, event)
 		}
 		return
@@ -396,8 +404,12 @@ func (s *Syncer) processHeightEvent(event *common.DAHeightEvent) {
 	}
 }
 
-// errInvalidBlock is returned when a block is failing validation
-var errInvalidBlock = errors.New("invalid block")
+var (
+	// errInvalidBlock is returned when a block is failing validation
+	errInvalidBlock = errors.New("invalid block")
+	// errInvalidState is returned when the state has diverged from the DA blocks
+	errInvalidState = errors.New("invalid state")
+)
 
 // trySyncNextBlock attempts to sync the next available block
 // the event is always the next block in sequence as processHeightEvent ensures it.
@@ -418,10 +430,12 @@ func (s *Syncer) trySyncNextBlock(event *common.DAHeightEvent) error {
 	// Compared to the executor logic where the current block needs to be applied first,
 	// here only the previous block needs to be applied to proceed to the verification.
 	// The header validation must be done before applying the block to avoid executing gibberish
-	if err := s.validateBlock(header, data); err != nil {
+	if err := s.validateBlock(currentState, data, header); err != nil {
 		// remove header as da included (not per se needed, but keep cache clean)
 		s.cache.RemoveHeaderDAIncluded(header.Hash().String())
-		return errors.Join(errInvalidBlock, fmt.Errorf("failed to validate block: %w", err))
+		if !errors.Is(err, errInvalidState) && !errors.Is(err, errInvalidBlock) {
+			return errors.Join(errInvalidBlock, err)
+		}
 	}
 
 	// Apply block
@@ -527,24 +541,15 @@ func (s *Syncer) executeTxsWithRetry(ctx context.Context, rawTxs [][]byte, heade
 // NOTE: if the header was gibberish and somehow passed all validation prior but the data was correct
 // or if the data was gibberish and somehow passed all validation prior but the header was correct
 // we are still losing both in the pending event. This should never happen.
-func (s *Syncer) validateBlock(
-	header *types.SignedHeader,
-	data *types.Data,
-) error {
+func (s *Syncer) validateBlock(currState types.State, data *types.Data, header *types.SignedHeader) error {
 	// Set custom verifier for aggregator node signature
 	header.SetCustomVerifierForSyncNode(s.options.SyncNodeSignatureBytesProvider)
 
-	// Validate header with data
 	if err := header.ValidateBasicWithData(data); err != nil {
 		return fmt.Errorf("invalid header: %w", err)
 	}
 
-	// Validate header against data
-	if err := types.Validate(header, data); err != nil {
-		return fmt.Errorf("header-data validation failed: %w", err)
-	}
-
-	return nil
+	return currState.AssertValidForNextState(header, data)
 }
 
 // sendCriticalError sends a critical error to the error channel without blocking

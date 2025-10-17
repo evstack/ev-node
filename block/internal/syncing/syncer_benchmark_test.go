@@ -120,7 +120,7 @@ func newBenchFixture(b *testing.B, totalHeights uint64, shuffledTx bool, daDelay
 	heightEvents := make([]common.DAHeightEvent, totalHeights)
 	for i := uint64(0); i < totalHeights; i++ {
 		blockHeight, daHeight := i+gen.InitialHeight, i+daHeightOffset
-		_, sh := makeSignedHeaderBytes(b, gen.ChainID, blockHeight, addr, pub, signer, nil, nil)
+		_, sh := makeSignedHeaderBytes(b, gen.ChainID, blockHeight, addr, pub, signer, nil, nil, nil)
 		d := &types.Data{Metadata: &types.Metadata{ChainID: gen.ChainID, Height: blockHeight, Time: uint64(time.Now().UnixNano())}}
 		heightEvents[i] = common.DAHeightEvent{Header: sh, Data: d, DaHeight: daHeight}
 	}
