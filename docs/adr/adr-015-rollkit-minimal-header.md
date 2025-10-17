@@ -106,14 +106,11 @@ This minimal Rollkit header can be transformed to be tailored to a specific exec
 This header can be transformed into an ABCI-specific header for IBC compatibility.
 
 - `Version`: Required by IBC clients to correctly interpret the block's structure and contents.
-- `LastCommitHash`: The hash of the previous block's commit, used by IBC clients to verify the legitimacy of the block's state transitions.
 - `DataHash`: A hash of the block's transaction data, enabling IBC clients to verify that the data has not been tampered with. Can be constructed from unpacking the `DataCommitment` in Rollkit header.
 - `ValidatorHash`: Current validator set's hash, which IBC clients use to verify that the block was validated by the correct set of validators. This can be the IBC attester set of the chain for backward compatibility with the IBC Tendermint client, if needed.
 - `NextValidatorsHash`: The hash of the next validator set, allowing IBC clients to anticipate and verify upcoming validators.
-- `ConsensusHash`: Denotes the hash of the consensus parameters, ensuring that IBC clients are aligned with the consensus rules of the blockchain.
 - `AppHash`: Same as the `StateRoot` in the Rollkit Header.
 - `EvidenceHash`: A hash of evidence of any misbehavior by validators, which IBC clients use to assess the trustworthiness of the validator set.
-- `LastResultsHash`: Root hash of all results from the transactions from the previous block.
 - `ProposerAddress`: The address of the block proposer, allowing IBC clients to track and verify the entities proposing new blocks. Can be constructed from the `extraData` field in the Rollkit Header.
 
 #### Transformation to ABCI Header
@@ -139,17 +136,11 @@ This header can be transformed into an ABCI-specific header for IBC compatibilit
 ├─────────────────────┼───────────────────────┤
 │ Version             │ Added for IBC         │
 ├─────────────────────┼───────────────────────┤
-│ LastCommitHash      │ Added for IBC         │
-├─────────────────────┼───────────────────────┤
 │ ValidatorHash       │ Added for IBC         │
 ├─────────────────────┼───────────────────────┤
 │ NextValidatorsHash  │ Added for IBC         │
 ├─────────────────────┼───────────────────────┤
-│ ConsensusHash       │ Added for IBC         │
-├─────────────────────┼───────────────────────┤
 │ EvidenceHash        │ Added for IBC         │
-├─────────────────────┼───────────────────────┤
-│ LastResultsHash     │ Added for IBC         │
 ├─────────────────────┼───────────────────────┤
 │ ProposerAddress     │ From ExtraData        │
 └─────────────────────┴───────────────────────┘

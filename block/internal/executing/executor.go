@@ -149,7 +149,6 @@ func (e *Executor) Stop() error {
 func (e *Executor) GetLastState() types.State {
 	state := e.getLastState()
 	state.AppHash = bytes.Clone(state.AppHash)
-	state.LastResultsHash = bytes.Clone(state.LastResultsHash)
 
 	return state
 }

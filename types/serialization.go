@@ -271,7 +271,6 @@ func (s *State) ToProto() (*pb.State, error) {
 		LastBlockHeight: s.LastBlockHeight,
 		LastBlockTime:   timestamppb.New(s.LastBlockTime),
 		DaHeight:        s.DAHeight,
-		LastResultsHash: s.LastResultsHash[:],
 		AppHash:         s.AppHash[:],
 	}, nil
 }
@@ -296,11 +295,6 @@ func (s *State) FromProto(other *pb.State) error {
 		s.LastBlockTime = other.LastBlockTime.AsTime()
 	} else {
 		s.LastBlockTime = time.Time{}
-	}
-	if other.LastResultsHash != nil {
-		s.LastResultsHash = append([]byte(nil), other.LastResultsHash...)
-	} else {
-		s.LastResultsHash = nil
 	}
 	if other.AppHash != nil {
 		s.AppHash = append([]byte(nil), other.AppHash...)

@@ -949,11 +949,6 @@
             "format": "int64",
             "description": "Data availability height"
           },
-          "last_results_hash": {
-            "type": "string",
-            "format": "byte",
-            "description": "Last results hash (base64-encoded)"
-          },
           "app_hash": {
             "type": "string",
             "format": "byte",

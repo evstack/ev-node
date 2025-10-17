@@ -158,7 +158,6 @@ func (s *Syncer) GetLastState() types.State {
 
 	stateCopy := *state
 	stateCopy.AppHash = bytes.Clone(state.AppHash)
-	stateCopy.LastResultsHash = bytes.Clone(state.LastResultsHash)
 
 	return stateCopy
 }

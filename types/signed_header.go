@@ -12,9 +12,6 @@ import (
 var (
 	// ErrLastHeaderHashMismatch is returned when the last header hash doesn't match.
 	ErrLastHeaderHashMismatch = errors.New("last header hash mismatch")
-
-	// ErrLastCommitHashMismatch is returned when the last commit hash doesn't match.
-	ErrLastCommitHashMismatch = errors.New("last commit hash mismatch")
 )
 
 var _ header.Header[*SignedHeader] = &SignedHeader{}
