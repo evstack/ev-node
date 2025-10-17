@@ -394,10 +394,10 @@ pub mod signer_service_server {
         const NAME: &'static str = "evnode.v1.SignerService";
     }
 }
-/// Version captures the consensus rules for processing a block in the blockchain,
-/// including all blockchain data structures and the rules of the application's
-/// state transition machine.
-/// This is equivalent to the tmversion.Consensus type in Tendermint.
+/// Version captures the consensus rules for processing a block in the
+/// blockchain, including all blockchain data structures and the rules of the
+/// application's state transition machine. This is equivalent to the
+/// tmversion.Consensus type in Tendermint.
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct Version {
@@ -537,8 +537,6 @@ pub struct State {
     pub last_block_time: ::core::option::Option<::prost_types::Timestamp>,
     #[prost(uint64, tag = "6")]
     pub da_height: u64,
-    #[prost(bytes = "vec", tag = "7")]
-    pub last_results_hash: ::prost::alloc::vec::Vec<u8>,
     #[prost(bytes = "vec", tag = "8")]
     pub app_hash: ::prost::alloc::vec::Vec<u8>,
 }

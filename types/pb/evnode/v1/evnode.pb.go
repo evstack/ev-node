@@ -22,10 +22,10 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
-// Version captures the consensus rules for processing a block in the blockchain,
-// including all blockchain data structures and the rules of the application's
-// state transition machine.
-// This is equivalent to the tmversion.Consensus type in Tendermint.
+// Version captures the consensus rules for processing a block in the
+// blockchain, including all blockchain data structures and the rules of the
+// application's state transition machine. This is equivalent to the
+// tmversion.Consensus type in Tendermint.
 type Version struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Block         uint64                 `protobuf:"varint,1,opt,name=block,proto3" json:"block,omitempty"`
