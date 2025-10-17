@@ -18,33 +18,24 @@ message Version {
 message Header {
   // Block and App version
   Version version = 1;
-
   // Block height
   uint64 height = 2;
-
   // Block creation time
   uint64 time = 3;
-
   // Previous block info
   bytes last_header_hash = 4;
-
-
   // Block.Data root aka Transactions
   bytes data_hash = 6;
-
   // State after applying txs from the current block
   bytes app_hash = 8;
-
   // Original proposer of the block
   // Note that the address can be derived from the pubkey which can be derived
   // from the signature when using secp256k.
   // We keep this in case users choose another signature format where the
   // pubkey can't be recovered by the signature (e.g. ed25519).
   bytes proposer_address = 10;
-
   // validatorhash for compatibility with tendermint light client.
   bytes validator_hash = 11;
-
   // Chain ID the block belongs to
   string chain_id = 12;
 
