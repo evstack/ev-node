@@ -1,6 +1,8 @@
 package types
 
 import (
+	"bytes"
+	"fmt"
 	"time"
 )
 
@@ -51,4 +53,36 @@ func (s *State) NextState(header Header, stateRoot []byte) (State, error) {
 		LastHeaderHash:  header.Hash(),
 		DAHeight:        s.DAHeight,
 	}, nil
+}
+
+// AssertValidForNextState performs common validation of a header and data against the current state.
+// It assumes any context-specific basic header checks and verifier setup have already been performed
+func (s State) AssertValidForNextState(header *SignedHeader, data *Data) error {
+	if header.ChainID() != s.ChainID {
+		return fmt.Errorf("invalid chain ID - got %s, want %s", header.ChainID(), s.ChainID)
+	}
+
+	if err := Validate(header, data); err != nil {
+		return fmt.Errorf("header-data validation failed: %w", err)
+	}
+
+	if len(s.LastHeaderHash) == 0 { // initial state
+		return nil
+	}
+
+	if expdHeight := s.LastBlockHeight + 1; header.Height() != expdHeight {
+		return fmt.Errorf("invalid block height - got: %d, want: %d", header.Height(), expdHeight)
+	}
+
+	if s.LastBlockTime.After(header.Time()) {
+		return fmt.Errorf("invalid block time - got: %v, last: %v", header.Time(), s.LastBlockTime)
+	}
+	if !bytes.Equal(header.LastHeaderHash, s.LastHeaderHash) {
+		return fmt.Errorf("invalid last header hash - got: %x, want: %x", header.LastHeaderHash, s.LastHeaderHash)
+	}
+	if !bytes.Equal(header.AppHash, s.AppHash) {
+		return fmt.Errorf("invalid last app hash - got: %x, want: %x", header.AppHash, s.AppHash)
+	}
+
+	return nil
 }

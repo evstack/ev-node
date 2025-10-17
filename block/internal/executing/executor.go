@@ -597,35 +597,7 @@ func (e *Executor) validateBlock(lastState types.State, header *types.SignedHead
 		return fmt.Errorf("invalid header: %w", err)
 	}
 
-	// Validate header against data
-	if err := types.Validate(header, data); err != nil {
-		return fmt.Errorf("header-data validation failed: %w", err)
-	}
-
-	// Check chain ID
-	if header.ChainID() != lastState.ChainID {
-		return fmt.Errorf("chain ID mismatch: expected %s, got %s",
-			lastState.ChainID, header.ChainID())
-	}
-
-	// Check height
-	expectedHeight := lastState.LastBlockHeight + 1
-	if header.Height() != expectedHeight {
-		return fmt.Errorf("invalid height: expected %d, got %d",
-			expectedHeight, header.Height())
-	}
-
-	// Check timestamp
-	if header.Height() > 1 && lastState.LastBlockTime.After(header.Time()) {
-		return fmt.Errorf("block time must be strictly increasing")
-	}
-
-	// Check app hash
-	if !bytes.Equal(header.AppHash, lastState.AppHash) {
-		return fmt.Errorf("app hash mismatch")
-	}
-
-	return nil
+	return lastState.AssertValidForNextState(header, data)
 }
 
 // sendCriticalError sends a critical error to the error channel without blocking

@@ -16,4 +16,5 @@ message State {
   uint64                    da_height         = 6;
   bytes                     last_results_hash = 7;
   bytes                     app_hash          = 8;
+  bytes                     LastHeaderHash          = 9;
 }

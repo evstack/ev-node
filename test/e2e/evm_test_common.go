@@ -563,6 +563,7 @@ func restartDAAndSequencer(t *testing.T, sut *SystemUnderTest, sequencerHome, jw
 	// Then restart the sequencer node (without init - node already exists)
 	sut.ExecCmd(evmSingleBinaryPath,
 		"start",
+		"--evnode.log.format", "json",
 		"--evm.jwt-secret", jwtSecret,
 		"--evm.genesis-hash", genesisHash,
 		"--rollkit.node.block_time", DefaultBlockTime,

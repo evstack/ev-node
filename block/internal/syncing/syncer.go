@@ -159,6 +159,7 @@ func (s *Syncer) GetLastState() types.State {
 	stateCopy := *state
 	stateCopy.AppHash = bytes.Clone(state.AppHash)
 	stateCopy.LastResultsHash = bytes.Clone(state.LastResultsHash)
+	stateCopy.LastHeaderHash = bytes.Clone(state.LastHeaderHash)
 
 	return stateCopy
 }
@@ -430,7 +431,7 @@ func (s *Syncer) trySyncNextBlock(event *common.DAHeightEvent) error {
 	// Compared to the executor logic where the current block needs to be applied first,
 	// here only the previous block needs to be applied to proceed to the verification.
 	// The header validation must be done before applying the block to avoid executing gibberish
-	if err := s.validateBlock(header, data, currentState); err != nil {
+	if err := s.validateBlock(currentState, data, header); err != nil {
 		// remove header as da included (not per se needed, but keep cache clean)
 		s.cache.RemoveHeaderDAIncluded(header.Hash().String())
 		return err
@@ -539,37 +540,15 @@ func (s *Syncer) executeTxsWithRetry(ctx context.Context, rawTxs [][]byte, heade
 // NOTE: if the header was gibberish and somehow passed all validation prior but the data was correct
 // or if the data was gibberish and somehow passed all validation prior but the header was correct
 // we are still losing both in the pending event. This should never happen.
-func (s *Syncer) validateBlock(header *types.SignedHeader, data *types.Data, state types.State, ) error {
+func (s *Syncer) validateBlock(currState types.State, data *types.Data, header *types.SignedHeader) error {
 	// Set custom verifier for aggregator node signature
 	header.SetCustomVerifierForSyncNode(s.options.SyncNodeSignatureBytesProvider)
 
-	// Validate header with data
 	if err := header.ValidateBasicWithData(data); err != nil {
 		return fmt.Errorf("invalid header: %w", err)
 	}
 
-	// Validate header against data
-	if err := types.Validate(header, data); err != nil {
-		return fmt.Errorf("header-data validation failed: %w", err)
-	}
-	if state.LastBlockHeight < s.genesis.InitialHeight {
-		return nil
-	}
-	// Validate header against state
-	if header.Height() != state.LastBlockHeight+1 {
-		return fmt.Errorf("%w: invalid block height - got: %d, want: %d", errInvalidState, header.Height(), state.LastBlockHeight+1)
-	}
-
-	if !header.Time().After(state.LastBlockTime) {
-		return fmt.Errorf("%w: invalid block time - got: %v, last: %v", errInvalidState, header.Time(), state.LastBlockTime)
-	}
-	if !bytes.Equal(header.LastHeaderHash, state.LastHeaderHash) {
-		return fmt.Errorf("%w: invalid last header hash - got: %x, want: %x", errInvalidState, header.LastHeaderHash, state.LastHeaderHash)
-	}
-	if !bytes.Equal(header.AppHash, state.AppHash) {
-		return fmt.Errorf("%w: invalid last app hash - got: %x, want: %x", errInvalidState, header.AppHash, state.AppHash)
-	}
-	return nil
+	return currState.AssertValidForNextState(header, data)
 }
 
 // sendCriticalError sends a critical error to the error channel without blocking

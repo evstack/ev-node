@@ -288,6 +288,7 @@ func (s *State) ToProto() (*pb.State, error) {
 		DaHeight:        s.DAHeight,
 		LastResultsHash: s.LastResultsHash[:],
 		AppHash:         s.AppHash[:],
+		LastHeaderHash:  s.LastHeaderHash[:],
 	}, nil
 }
 
@@ -321,6 +322,11 @@ func (s *State) FromProto(other *pb.State) error {
 		s.AppHash = append([]byte(nil), other.AppHash...)
 	} else {
 		s.AppHash = nil
+	}
+	if other.LastHeaderHash != nil {
+		s.LastHeaderHash = append([]byte(nil), other.LastHeaderHash...)
+	} else {
+		s.LastHeaderHash = nil
 	}
 	s.DAHeight = other.GetDaHeight()
 	return nil

@@ -948,6 +948,7 @@ func restartSequencerAndFullNode(t *testing.T, sut *SystemUnderTest, sequencerHo
 	// Now restart the full node (without init - node already exists)
 	sut.ExecCmd(evmSingleBinaryPath,
 		"start",
+		"--evnode.log.format", "json",
 		"--home", fullNodeHome,
 		"--evm.jwt-secret", fullNodeJwtSecret,
 		"--evm.genesis-hash", genesisHash,
