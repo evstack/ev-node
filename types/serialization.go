@@ -148,11 +148,8 @@ func (h *Header) ToProto() *pb.Header {
 		Height:          h.BaseHeader.Height,
 		Time:            h.BaseHeader.Time,
 		LastHeaderHash:  h.LastHeaderHash[:],
-		LastCommitHash:  h.LastCommitHash[:],
 		DataHash:        h.DataHash[:],
-		ConsensusHash:   h.ConsensusHash[:],
 		AppHash:         h.AppHash[:],
-		LastResultsHash: h.LastResultsHash[:],
 		ProposerAddress: h.ProposerAddress[:],
 		ChainId:         h.BaseHeader.ChainID,
 		ValidatorHash:   h.ValidatorHash,
@@ -178,31 +175,19 @@ func (h *Header) FromProto(other *pb.Header) error {
 	} else {
 		h.LastHeaderHash = nil
 	}
-	if other.LastCommitHash != nil {
-		h.LastCommitHash = append([]byte(nil), other.LastCommitHash...)
-	} else {
-		h.LastCommitHash = nil
-	}
+
 	if other.DataHash != nil {
 		h.DataHash = append([]byte(nil), other.DataHash...)
 	} else {
 		h.DataHash = nil
 	}
-	if other.ConsensusHash != nil {
-		h.ConsensusHash = append([]byte(nil), other.ConsensusHash...)
-	} else {
-		h.ConsensusHash = nil
-	}
+
 	if other.AppHash != nil {
 		h.AppHash = append([]byte(nil), other.AppHash...)
 	} else {
 		h.AppHash = nil
 	}
-	if other.LastResultsHash != nil {
-		h.LastResultsHash = append([]byte(nil), other.LastResultsHash...)
-	} else {
-		h.LastResultsHash = nil
-	}
+
 	if other.ProposerAddress != nil {
 		h.ProposerAddress = append([]byte(nil), other.ProposerAddress...)
 	} else {

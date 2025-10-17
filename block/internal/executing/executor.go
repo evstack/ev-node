@@ -512,7 +512,6 @@ func (e *Executor) createBlock(ctx context.Context, height uint64, batchData *Ba
 				Time:    headerTime,
 			},
 			LastHeaderHash:  lastHeaderHash,
-			ConsensusHash:   make(types.Hash, 32),
 			AppHash:         currentState.AppHash,
 			ProposerAddress: e.genesis.ProposerAddress,
 			ValidatorHash:   validatorHash,

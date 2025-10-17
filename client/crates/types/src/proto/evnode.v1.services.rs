@@ -422,23 +422,12 @@ pub struct Header {
     /// Previous block info
     #[prost(bytes = "vec", tag = "4")]
     pub last_header_hash: ::prost::alloc::vec::Vec<u8>,
-    /// Commit from aggregator(s) from the last block
-    #[prost(bytes = "vec", tag = "5")]
-    pub last_commit_hash: ::prost::alloc::vec::Vec<u8>,
     /// Block.Data root aka Transactions
     #[prost(bytes = "vec", tag = "6")]
     pub data_hash: ::prost::alloc::vec::Vec<u8>,
-    /// Consensus params for current block
-    #[prost(bytes = "vec", tag = "7")]
-    pub consensus_hash: ::prost::alloc::vec::Vec<u8>,
     /// State after applying txs from the current block
     #[prost(bytes = "vec", tag = "8")]
     pub app_hash: ::prost::alloc::vec::Vec<u8>,
-    /// Root hash of all results from the txs from the previous block.
-    /// This is ABCI specific but smart-contract chains require some way of committing
-    /// to transaction receipts/results.
-    #[prost(bytes = "vec", tag = "9")]
-    pub last_results_hash: ::prost::alloc::vec::Vec<u8>,
     /// Original proposer of the block
     /// Note that the address can be derived from the pubkey which can be derived
     /// from the signature when using secp256k.
@@ -1978,6 +1967,13 @@ pub struct GetMetadataResponse {
     #[prost(bytes = "vec", tag = "1")]
     pub value: ::prost::alloc::vec::Vec<u8>,
 }
+/// GetGenesisDaHeightResponse defines the DA height at which the first Evolve block was included.
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct GetGenesisDaHeightResponse {
+    #[prost(uint64, tag = "3")]
+    pub height: u64,
+}
 /// Generated client implementations.
 pub mod store_service_client {
     #![allow(unused_variables, dead_code, missing_docs, clippy::let_unit_value)]
@@ -2142,6 +2138,32 @@ pub mod store_service_client {
                 .insert(GrpcMethod::new("evnode.v1.StoreService", "GetMetadata"));
             self.inner.unary(req, path, codec).await
         }
+        /// GetGenesisDaHeight returns the DA height at which the first Evolve block was included.
+        pub async fn get_genesis_da_height(
+            &mut self,
+            request: impl tonic::IntoRequest<()>,
+        ) -> std::result::Result<
+            tonic::Response<super::GetGenesisDaHeightResponse>,
+            tonic::Status,
+        > {
+            self.inner
+                .ready()
+                .await
+                .map_err(|e| {
+                    tonic::Status::new(
+                        tonic::Code::Unknown,
+                        format!("Service was not ready: {}", e.into()),
+                    )
+                })?;
+            let codec = tonic::codec::ProstCodec::default();
+            let path = http::uri::PathAndQuery::from_static(
+                "/evnode.v1.StoreService/GetGenesisDaHeight",
+            );
+            let mut req = request.into_request();
+            req.extensions_mut()
+                .insert(GrpcMethod::new("evnode.v1.StoreService", "GetGenesisDaHeight"));
+            self.inner.unary(req, path, codec).await
+        }
     }
 }
 /// Generated server implementations.
@@ -2173,6 +2195,14 @@ pub mod store_service_server {
             request: tonic::Request<super::GetMetadataRequest>,
         ) -> std::result::Result<
             tonic::Response<super::GetMetadataResponse>,
+            tonic::Status,
+        >;
+        /// GetGenesisDaHeight returns the DA height at which the first Evolve block was included.
+        async fn get_genesis_da_height(
+            &self,
+            request: tonic::Request<()>,
+        ) -> std::result::Result<
+            tonic::Response<super::GetGenesisDaHeightResponse>,
             tonic::Status,
         >;
     }
@@ -2389,6 +2419,48 @@ pub mod store_service_server {
                     };
                     Box::pin(fut)
                 }
+                "/evnode.v1.StoreService/GetGenesisDaHeight" => {
+                    #[allow(non_camel_case_types)]
+                    struct GetGenesisDaHeightSvc<T: StoreService>(pub Arc<T>);
+                    impl<T: StoreService> tonic::server::UnaryService<()>
+                    for GetGenesisDaHeightSvc<T> {
+                        type Response = super::GetGenesisDaHeightResponse;
+                        type Future = BoxFuture<
+                            tonic::Response<Self::Response>,
+                            tonic::Status,
+                        >;
+                        fn call(&mut self, request: tonic::Request<()>) -> Self::Future {
+                            let inner = Arc::clone(&self.0);
+                            let fut = async move {
+                                <T as StoreService>::get_genesis_da_height(&inner, request)
+                                    .await
+                            };
+                            Box::pin(fut)
+                        }
+                    }
+                    let accept_compression_encodings = self.accept_compression_encodings;
+                    let send_compression_encodings = self.send_compression_encodings;
+                    let max_decoding_message_size = self.max_decoding_message_size;
+                    let max_encoding_message_size = self.max_encoding_message_size;
+                    let inner = self.inner.clone();
+                    let fut = async move {
+                        let inner = inner.0;
+                        let method = GetGenesisDaHeightSvc(inner);
+                        let codec = tonic::codec::ProstCodec::default();
+                        let mut grpc = tonic::server::Grpc::new(codec)
+                            .apply_compression_config(
+                                accept_compression_encodings,
+                                send_compression_encodings,
+                            )
+                            .apply_max_message_size_config(
+                                max_decoding_message_size,
+                                max_encoding_message_size,
+                            );
+                        let res = grpc.unary(method, req).await;
+                        Ok(res)
+                    };
+                    Box::pin(fut)
+                }
                 _ => {
                     Box::pin(async move {
                         Ok(
@@ -2558,7 +2630,7 @@ pub mod config_service_client {
                 .insert(GrpcMethod::new("evnode.v1.ConfigService", "GetNamespace"));
             self.inner.unary(req, path, codec).await
         }
-        /// GetSequencerInfo returns information about the sequencer
+        /// GetSignerInfo returns information about the signer
         pub async fn get_signer_info(
             &mut self,
             request: impl tonic::IntoRequest<()>,
@@ -2601,7 +2673,7 @@ pub mod config_service_server {
             tonic::Response<super::GetNamespaceResponse>,
             tonic::Status,
         >;
-        /// GetSequencerInfo returns information about the sequencer
+        /// GetSignerInfo returns information about the signer
         async fn get_signer_info(
             &self,
             request: tonic::Request<()>,

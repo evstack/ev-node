@@ -46,7 +46,7 @@ const (
 type ConfigServiceClient interface {
 	// GetNamespace returns the namespace for this network
 	GetNamespace(context.Context, *connect.Request[emptypb.Empty]) (*connect.Response[v1.GetNamespaceResponse], error)
-	// GetSequencerInfo returns information about the sequencer
+	// GetSignerInfo returns information about the signer
 	GetSignerInfo(context.Context, *connect.Request[emptypb.Empty]) (*connect.Response[v1.GetSignerInfoResponse], error)
 }
 
@@ -96,7 +96,7 @@ func (c *configServiceClient) GetSignerInfo(ctx context.Context, req *connect.Re
 type ConfigServiceHandler interface {
 	// GetNamespace returns the namespace for this network
 	GetNamespace(context.Context, *connect.Request[emptypb.Empty]) (*connect.Response[v1.GetNamespaceResponse], error)
-	// GetSequencerInfo returns information about the sequencer
+	// GetSignerInfo returns information about the signer
 	GetSignerInfo(context.Context, *connect.Request[emptypb.Empty]) (*connect.Response[v1.GetSignerInfoResponse], error)
 }
 

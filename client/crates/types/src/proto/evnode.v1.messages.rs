@@ -52,23 +52,12 @@ pub struct Header {
     /// Previous block info
     #[prost(bytes = "vec", tag = "4")]
     pub last_header_hash: ::prost::alloc::vec::Vec<u8>,
-    /// Commit from aggregator(s) from the last block
-    #[prost(bytes = "vec", tag = "5")]
-    pub last_commit_hash: ::prost::alloc::vec::Vec<u8>,
     /// Block.Data root aka Transactions
     #[prost(bytes = "vec", tag = "6")]
     pub data_hash: ::prost::alloc::vec::Vec<u8>,
-    /// Consensus params for current block
-    #[prost(bytes = "vec", tag = "7")]
-    pub consensus_hash: ::prost::alloc::vec::Vec<u8>,
     /// State after applying txs from the current block
     #[prost(bytes = "vec", tag = "8")]
     pub app_hash: ::prost::alloc::vec::Vec<u8>,
-    /// Root hash of all results from the txs from the previous block.
-    /// This is ABCI specific but smart-contract chains require some way of committing
-    /// to transaction receipts/results.
-    #[prost(bytes = "vec", tag = "9")]
-    pub last_results_hash: ::prost::alloc::vec::Vec<u8>,
     /// Original proposer of the block
     /// Note that the address can be derived from the pubkey which can be derived
     /// from the signature when using secp256k.
@@ -417,6 +406,13 @@ pub struct GetMetadataRequest {
 pub struct GetMetadataResponse {
     #[prost(bytes = "vec", tag = "1")]
     pub value: ::prost::alloc::vec::Vec<u8>,
+}
+/// GetGenesisDaHeightResponse defines the DA height at which the first Evolve block was included.
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct GetGenesisDaHeightResponse {
+    #[prost(uint64, tag = "3")]
+    pub height: u64,
 }
 /// GetNamespaceResponse returns the namespace for this network
 #[allow(clippy::derive_partial_eq_without_eq)]

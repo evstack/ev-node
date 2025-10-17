@@ -28,22 +28,12 @@ message Header {
   // Previous block info
   bytes last_header_hash = 4;
 
-  // Commit from aggregator(s) from the last block
-  bytes last_commit_hash = 5;
 
   // Block.Data root aka Transactions
   bytes data_hash = 6;
 
-  // Consensus params for current block
-  bytes consensus_hash = 7;
-
   // State after applying txs from the current block
   bytes app_hash = 8;
-
-  // Root hash of all results from the txs from the previous block.
-  // This is ABCI specific but smart-contract chains require some way of committing
-  // to transaction receipts/results.
-  bytes last_results_hash = 9;
 
   // Original proposer of the block
   // Note that the address can be derived from the pubkey which can be derived
@@ -57,6 +47,8 @@ message Header {
 
   // Chain ID the block belongs to
   string chain_id = 12;
+
+  reserved 5,7,9;
 }
 
 // SignedHeader is a header with a signature and a signer.
