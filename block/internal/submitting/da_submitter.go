@@ -225,7 +225,7 @@ func (s *DASubmitter) SubmitHeaders(ctx context.Context, cache cache.Manager) er
 		},
 		func(submitted []*types.SignedHeader, res *coreda.ResultSubmit, gasPrice float64) {
 			for _, header := range submitted {
-				cache.SetHeaderDAIncluded(header.Hash().String(), res.Height)
+				cache.SetHeaderDAIncluded(header.Hash().String(), res.Height, header.Height())
 			}
 			// Update last submitted height
 			if l := len(submitted); l > 0 {
@@ -270,7 +270,7 @@ func (s *DASubmitter) SubmitData(ctx context.Context, cache cache.Manager, signe
 		},
 		func(submitted []*types.SignedData, res *coreda.ResultSubmit, gasPrice float64) {
 			for _, sd := range submitted {
-				cache.SetDataDAIncluded(sd.Data.DACommitment().String(), res.Height)
+				cache.SetDataDAIncluded(sd.Data.DACommitment().String(), res.Height, sd.Height())
 			}
 			if l := len(submitted); l > 0 {
 				lastHeight := submitted[l-1].Height()

@@ -40,16 +40,16 @@ func registerGobTypes() {
 type Manager interface {
 	// Header operations
 	IsHeaderSeen(hash string) bool
-	SetHeaderSeen(hash string)
+	SetHeaderSeen(hash string, blockHeight uint64)
 	GetHeaderDAIncluded(hash string) (uint64, bool)
-	SetHeaderDAIncluded(hash string, daHeight uint64)
+	SetHeaderDAIncluded(hash string, daHeight uint64, blockHeight uint64)
 	RemoveHeaderDAIncluded(hash string)
 
 	// Data operations
 	IsDataSeen(hash string) bool
-	SetDataSeen(hash string)
+	SetDataSeen(hash string, blockHeight uint64)
 	GetDataDAIncluded(hash string) (uint64, bool)
-	SetDataDAIncluded(hash string, daHeight uint64)
+	SetDataDAIncluded(hash string, daHeight uint64, blockHeight uint64)
 
 	// Pending operations
 	GetPendingHeaders(ctx context.Context) ([]*types.SignedHeader, error)
@@ -60,13 +60,16 @@ type Manager interface {
 	NumPendingData() uint64
 
 	// Pending events syncing coordination
-	GetNextPendingEvent(height uint64) *common.DAHeightEvent
-	SetPendingEvent(height uint64, event *common.DAHeightEvent)
+	GetNextPendingEvent(blockHeight uint64) *common.DAHeightEvent
+	SetPendingEvent(blockHeight uint64, event *common.DAHeightEvent)
 
-	// Cleanup operations
+	// Disk operations
 	SaveToDisk() error
 	LoadFromDisk() error
 	ClearFromDisk() error
+
+	// Cleanup operations
+	DeleteHeight(blockHeight uint64)
 }
 
 var _ Manager = (*implementation)(nil)
@@ -100,6 +103,7 @@ func NewManager(cfg config.Config, store store.Store, logger zerolog.Logger) (Ma
 		return nil, fmt.Errorf("failed to create pending data: %w", err)
 	}
 
+	registerGobTypes()
 	impl := &implementation{
 		headerCache:        headerCache,
 		dataCache:          dataCache,
@@ -130,16 +134,16 @@ func (m *implementation) IsHeaderSeen(hash string) bool {
 	return m.headerCache.isSeen(hash)
 }
 
-func (m *implementation) SetHeaderSeen(hash string) {
-	m.headerCache.setSeen(hash)
+func (m *implementation) SetHeaderSeen(hash string, blockHeight uint64) {
+	m.headerCache.setSeen(hash, blockHeight)
 }
 
 func (m *implementation) GetHeaderDAIncluded(hash string) (uint64, bool) {
 	return m.headerCache.getDAIncluded(hash)
 }
 
-func (m *implementation) SetHeaderDAIncluded(hash string, daHeight uint64) {
-	m.headerCache.setDAIncluded(hash, daHeight)
+func (m *implementation) SetHeaderDAIncluded(hash string, daHeight uint64, blockHeight uint64) {
+	m.headerCache.setDAIncluded(hash, daHeight, blockHeight)
 }
 
 func (m *implementation) RemoveHeaderDAIncluded(hash string) {
@@ -151,16 +155,24 @@ func (m *implementation) IsDataSeen(hash string) bool {
 	return m.dataCache.isSeen(hash)
 }
 
-func (m *implementation) SetDataSeen(hash string) {
-	m.dataCache.setSeen(hash)
+func (m *implementation) SetDataSeen(hash string, blockHeight uint64) {
+	m.dataCache.setSeen(hash, blockHeight)
 }
 
 func (m *implementation) GetDataDAIncluded(hash string) (uint64, bool) {
 	return m.dataCache.getDAIncluded(hash)
 }
 
-func (m *implementation) SetDataDAIncluded(hash string, daHeight uint64) {
-	m.dataCache.setDAIncluded(hash, daHeight)
+func (m *implementation) SetDataDAIncluded(hash string, daHeight uint64, blockHeight uint64) {
+	m.dataCache.setDAIncluded(hash, daHeight, blockHeight)
+}
+
+// DeleteHeight removes from all caches the given height.
+// This can be done when a height has been da included.
+func (m *implementation) DeleteHeight(blockHeight uint64) {
+	m.headerCache.deleteAllForHeight(blockHeight)
+	m.dataCache.deleteAllForHeight(blockHeight)
+	m.pendingEventsCache.deleteAllForHeight(blockHeight)
 }
 
 // Pending operations

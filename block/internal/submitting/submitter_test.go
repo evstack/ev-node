@@ -120,9 +120,9 @@ func TestSubmitter_IsHeightDAIncluded(t *testing.T) {
 	h1, d1 := newHeaderAndData("chain", 3, true)
 	h2, d2 := newHeaderAndData("chain", 4, true)
 
-	cm.SetHeaderDAIncluded(h1.Hash().String(), 100)
-	cm.SetDataDAIncluded(d1.DACommitment().String(), 100)
-	cm.SetHeaderDAIncluded(h2.Hash().String(), 101)
+	cm.SetHeaderDAIncluded(h1.Hash().String(), 100, 2)
+	cm.SetDataDAIncluded(d1.DACommitment().String(), 100, 2)
+	cm.SetHeaderDAIncluded(h2.Hash().String(), 101, 4)
 	// no data for h2
 
 	specs := map[string]struct {
@@ -166,8 +166,8 @@ func TestSubmitter_setSequencerHeightToDAHeight(t *testing.T) {
 	h, d := newHeaderAndData("chain", 1, true)
 
 	// set DA included heights in cache
-	cm.SetHeaderDAIncluded(h.Hash().String(), 100)
-	cm.SetDataDAIncluded(d.DACommitment().String(), 90)
+	cm.SetHeaderDAIncluded(h.Hash().String(), 100, 1)
+	cm.SetDataDAIncluded(d.DACommitment().String(), 90, 1)
 
 	headerKey := fmt.Sprintf("%s/%d/h", store.HeightToDAHeightKey, 1)
 	dataKey := fmt.Sprintf("%s/%d/d", store.HeightToDAHeightKey, 1)
@@ -200,7 +200,7 @@ func TestSubmitter_setSequencerHeightToDAHeight_Errors(t *testing.T) {
 	assert.Error(t, s.setSequencerHeightToDAHeight(ctx, 1, h, d, false))
 
 	// Add header, missing data
-	cm.SetHeaderDAIncluded(h.Hash().String(), 10)
+	cm.SetHeaderDAIncluded(h.Hash().String(), 10, 1)
 	assert.Error(t, s.setSequencerHeightToDAHeight(ctx, 1, h, d, false))
 }
 
@@ -263,10 +263,10 @@ func TestSubmitter_processDAInclusionLoop_advances(t *testing.T) {
 	require.NoError(t, batch2.SetHeight(2))
 	require.NoError(t, batch2.Commit())
 
-	cm.SetHeaderDAIncluded(h1.Hash().String(), 100)
-	cm.SetDataDAIncluded(d1.DACommitment().String(), 100)
-	cm.SetHeaderDAIncluded(h2.Hash().String(), 101)
-	cm.SetDataDAIncluded(d2.DACommitment().String(), 101)
+	cm.SetHeaderDAIncluded(h1.Hash().String(), 100, 1)
+	cm.SetDataDAIncluded(d1.DACommitment().String(), 100, 1)
+	cm.SetHeaderDAIncluded(h2.Hash().String(), 101, 2)
+	cm.SetDataDAIncluded(d2.DACommitment().String(), 101, 2)
 
 	s.ctx, s.cancel = ctx, cancel
 	require.NoError(t, s.initializeDAIncludedHeight(ctx))
@@ -408,3 +408,109 @@ type fakeSigner struct{}
 func (f *fakeSigner) Sign(msg []byte) ([]byte, error)   { return append([]byte(nil), msg...), nil }
 func (f *fakeSigner) GetPublic() (crypto.PubKey, error) { return nil, nil }
 func (f *fakeSigner) GetAddress() ([]byte, error)       { return []byte("addr"), nil }
+
+func TestSubmitter_CacheClearedOnHeightInclusion(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	cm, st := newTestCacheAndStore(t)
+
+	cfg := config.DefaultConfig()
+	cfg.DA.BlockTime.Duration = 5 * time.Millisecond
+	metrics := common.NopMetrics()
+
+	exec := testmocks.NewMockExecutor(t)
+	exec.On("SetFinal", mock.Anything, uint64(1)).Return(nil).Once()
+	exec.On("SetFinal", mock.Anything, uint64(2)).Return(nil).Once()
+
+	daSub := NewDASubmitter(nil, cfg, genesis.Genesis{}, common.DefaultBlockOptions(), metrics, zerolog.Nop())
+	s := NewSubmitter(st, exec, cm, metrics, cfg, genesis.Genesis{}, daSub, nil, zerolog.Nop(), nil)
+
+	// Create test blocks
+	h1, d1 := newHeaderAndData("chain", 1, true)
+	h2, d2 := newHeaderAndData("chain", 2, true)
+	h3, d3 := newHeaderAndData("chain", 3, true)
+
+	sig := types.Signature([]byte("sig"))
+
+	// Save blocks to store
+	blocks := []struct {
+		header *types.SignedHeader
+		data   *types.Data
+		height uint64
+	}{
+		{h1, d1, 1},
+		{h2, d2, 2},
+		{h3, d3, 3},
+	}
+
+	for _, block := range blocks {
+		batch, err := st.NewBatch(ctx)
+		require.NoError(t, err)
+		require.NoError(t, batch.SaveBlockData(block.header, block.data, &sig))
+		require.NoError(t, batch.SetHeight(block.height))
+		require.NoError(t, batch.Commit())
+	}
+
+	// Set up cache with headers and data seen for all heights
+	cm.SetHeaderSeen(h1.Hash().String(), 1)
+	cm.SetDataSeen(d1.DACommitment().String(), 1)
+	cm.SetHeaderSeen(h2.Hash().String(), 2)
+	cm.SetDataSeen(d2.DACommitment().String(), 2)
+	cm.SetHeaderSeen(h3.Hash().String(), 3)
+	cm.SetDataSeen(d3.DACommitment().String(), 3)
+
+	// Verify items are seen in cache before processing
+	assert.True(t, cm.IsHeaderSeen(h1.Hash().String()))
+	assert.True(t, cm.IsDataSeen(d1.DACommitment().String()))
+	assert.True(t, cm.IsHeaderSeen(h2.Hash().String()))
+	assert.True(t, cm.IsDataSeen(d2.DACommitment().String()))
+	assert.True(t, cm.IsHeaderSeen(h3.Hash().String()))
+	assert.True(t, cm.IsDataSeen(d3.DACommitment().String()))
+
+	// Set DA inclusion for heights 1 and 2 only (height 3 will remain unprocessed)
+	cm.SetHeaderDAIncluded(h1.Hash().String(), 100, 1)
+	cm.SetDataDAIncluded(d1.DACommitment().String(), 100, 1)
+	cm.SetHeaderDAIncluded(h2.Hash().String(), 101, 2)
+	cm.SetDataDAIncluded(d2.DACommitment().String(), 101, 2)
+
+	s.ctx, s.cancel = ctx, cancel
+	require.NoError(t, s.initializeDAIncludedHeight(ctx))
+	require.Equal(t, uint64(0), s.GetDAIncludedHeight())
+
+	// Start submitter to process DA inclusions
+	require.NoError(t, s.Start(ctx))
+
+	// Wait for heights 1 and 2 to be processed
+	require.Eventually(t, func() bool {
+		return s.GetDAIncludedHeight() == 2
+	}, 1*time.Second, 10*time.Millisecond)
+
+	require.NoError(t, s.Stop())
+
+	// Verify cache is cleared for processed heights (1 and 2)
+	assert.False(t, cm.IsHeaderSeen(h1.Hash().String()), "height 1 header should be cleared from cache")
+	assert.False(t, cm.IsDataSeen(d1.DACommitment().String()), "height 1 data should be cleared from cache")
+	assert.False(t, cm.IsHeaderSeen(h2.Hash().String()), "height 2 header should be cleared from cache")
+	assert.False(t, cm.IsDataSeen(d2.DACommitment().String()), "height 2 data should be cleared from cache")
+
+	// Verify DA inclusion status remains for processed heights
+	_, h1DAIncluded := cm.GetHeaderDAIncluded(h1.Hash().String())
+	_, d1DAIncluded := cm.GetDataDAIncluded(d1.DACommitment().String())
+	_, h2DAIncluded := cm.GetHeaderDAIncluded(h2.Hash().String())
+	_, d2DAIncluded := cm.GetDataDAIncluded(d2.DACommitment().String())
+	assert.True(t, h1DAIncluded, "height 1 header DA inclusion status should remain")
+	assert.True(t, d1DAIncluded, "height 1 data DA inclusion status should remain")
+	assert.True(t, h2DAIncluded, "height 2 header DA inclusion status should remain")
+	assert.True(t, d2DAIncluded, "height 2 data DA inclusion status should remain")
+
+	// Verify unprocessed height 3 cache remains intact
+	assert.True(t, cm.IsHeaderSeen(h3.Hash().String()), "height 3 header should remain in cache")
+	assert.True(t, cm.IsDataSeen(d3.DACommitment().String()), "height 3 data should remain in cache")
+
+	// Verify height 3 has no DA inclusion status since it wasn't processed
+	_, h3DAIncluded := cm.GetHeaderDAIncluded(h3.Hash().String())
+	_, d3DAIncluded := cm.GetDataDAIncluded(d3.DACommitment().String())
+	assert.False(t, h3DAIncluded, "height 3 header should not have DA inclusion status")
+	assert.False(t, d3DAIncluded, "height 3 data should not have DA inclusion status")
+}

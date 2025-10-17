@@ -56,14 +56,8 @@ type Header struct {
     LastHeaderHash [32]byte
 
     // hashes of block data
-    LastCommitHash     [32]byte // commit from aggregator(s) from the last block
     DataHash           [32]byte // Block.Data root aka Transactions
-    ConsensusHash      [32]byte // consensus params for current block
     AppHash            [32]byte  // state after applying txs from the current block
-
-    // root hash of all results from the txs from the previous block
-    // This is ABCI specific but smart-contract chains require some way of committing to transaction receipts/results.
-    LastResultsHash [32]byte
 
 
     // Note that the address can be derived from the pubkey which can be derived

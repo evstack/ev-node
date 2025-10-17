@@ -246,10 +246,10 @@ func TestSequentialBlockSync(t *testing.T) {
 	s.processHeightEvent(&evt2)
 
 	// Mark DA inclusion in cache (as DA retrieval would)
-	cm.SetDataDAIncluded(data1.DACommitment().String(), 10)
-	cm.SetDataDAIncluded(data2.DACommitment().String(), 11) // empty data still needs cache entry
-	cm.SetHeaderDAIncluded(hdr1.Header.Hash().String(), 10)
-	cm.SetHeaderDAIncluded(hdr2.Header.Hash().String(), 11)
+	cm.SetDataDAIncluded(data1.DACommitment().String(), 10, 1)
+	cm.SetDataDAIncluded(data2.DACommitment().String(), 11, 2) // empty data still needs cache entry
+	cm.SetHeaderDAIncluded(hdr1.Header.Hash().String(), 10, 1)
+	cm.SetHeaderDAIncluded(hdr2.Header.Hash().String(), 11, 2)
 
 	// Verify both blocks were synced correctly
 	finalState, _ := st.GetState(context.Background())
