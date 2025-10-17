@@ -781,30 +781,15 @@
             "format": "byte",
             "description": "Previous block info (base64-encoded)"
           },
-          "last_commit_hash": {
-            "type": "string",
-            "format": "byte",
-            "description": "Commit from aggregator(s) from the last block (base64-encoded)"
-          },
           "data_hash": {
             "type": "string",
             "format": "byte",
             "description": "Block.Data root aka Transactions (base64-encoded)"
           },
-          "consensus_hash": {
-            "type": "string",
-            "format": "byte",
-            "description": "Consensus params for current block (base64-encoded)"
-          },
           "app_hash": {
             "type": "string",
             "format": "byte",
             "description": "State after applying txs from the current block (base64-encoded)"
-          },
-          "last_results_hash": {
-            "type": "string",
-            "format": "byte",
-            "description": "Root hash of all results from the txs from the previous block (base64-encoded)"
           },
           "proposer_address": {
             "type": "string",
