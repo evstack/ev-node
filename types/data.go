@@ -118,6 +118,33 @@ func (d *Data) Verify(untrustedData *Data) error {
 // Validate performs basic validation of a block.
 // this is used to implement the header interface for go header
 func (d *Data) Validate() error {
+	// Validate that Metadata is set
+	if d.Metadata == nil {
+		return errors.New("data metadata cannot be nil")
+	}
+
+	// Validate ChainID is not empty
+	if d.Metadata.ChainID == "" {
+		return errors.New("chain ID cannot be empty")
+	}
+
+	// Validate Height is non-zero for non-genesis blocks
+	if d.Metadata.Height == 0 {
+		return errors.New("height cannot be zero")
+	}
+
+	// Validate timestamp - must be non-zero
+	if d.Metadata.Time == 0 {
+		return errors.New("timestamp cannot be zero")
+	}
+
+	// Check timestamp is not too far in the future (allow 1 minute of clock drift)
+	maxAllowedTime := time.Now().Add(1 * time.Minute)
+	dataTime := d.Time()
+	if dataTime.After(maxAllowedTime) {
+		return errors.New("timestamp too far in future")
+	}
+
 	return nil
 }
 

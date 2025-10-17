@@ -95,6 +95,18 @@ func (h *P2PHandler) ProcessHeaderRange(ctx context.Context, startHeight, endHei
 		}
 		data = retrievedData
 
+		// CRITICAL: Validate that data matches the header's DataHash commitment
+		// This prevents accepting legitimate headers paired with tampered data from different blocks
+		dataCommitment := data.DACommitment()
+		if !bytes.Equal(header.DataHash[:], dataCommitment[:]) {
+			h.logger.Warn().
+				Uint64("height", height).
+				Str("header_data_hash", fmt.Sprintf("%x", header.DataHash)).
+				Str("actual_data_hash", fmt.Sprintf("%x", dataCommitment)).
+				Msg("DataHash mismatch: header and data do not match from P2P, discarding")
+			continue
+		}
+
 		// further header validation (signature) is done in validateBlock.
 		// we need to be sure that the previous block n-1 was executed before validating block n
 
@@ -163,6 +175,18 @@ func (h *P2PHandler) ProcessDataRange(ctx context.Context, startHeight, endHeigh
 		// basic header validation
 		if err := h.assertExpectedProposer(header.ProposerAddress); err != nil {
 			h.logger.Debug().Uint64("height", height).Err(err).Msg("invalid header from P2P")
+			continue
+		}
+
+		// CRITICAL: Validate that data matches the header's DataHash commitment
+		// This prevents accepting legitimate headers paired with tampered data from different blocks
+		dataCommitment := data.DACommitment()
+		if !bytes.Equal(header.DataHash[:], dataCommitment[:]) {
+			h.logger.Warn().
+				Uint64("height", height).
+				Str("header_data_hash", fmt.Sprintf("%x", header.DataHash)).
+				Str("actual_data_hash", fmt.Sprintf("%x", dataCommitment)).
+				Msg("DataHash mismatch: header and data do not match from P2P, discarding")
 			continue
 		}
 

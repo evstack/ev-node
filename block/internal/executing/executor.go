@@ -24,6 +24,13 @@ import (
 	"github.com/evstack/ev-node/types"
 )
 
+const defaultMaxBlobSize = 1.5 * 1024 * 1024 // 1.5MB fallback blob size limit
+
+var (
+	// errBlockValidation indicates a permanent validation error that won't resolve on retry
+	errBlockValidation = errors.New("block validation failed")
+)
+
 // Executor handles block production, transaction processing, and state management
 type Executor struct {
 	// Core components
@@ -274,6 +281,14 @@ func (e *Executor) executionLoop() {
 
 			if err := e.produceBlock(); err != nil {
 				e.logger.Error().Err(err).Msg("failed to produce block")
+				// Check for permanent validation errors that won't resolve on retry
+				if errors.Is(err, errBlockValidation) {
+					e.logger.Error().Err(err).Msg("CRITICAL: Permanent block validation error - halting block production")
+					if e.cancel != nil {
+						e.cancel()
+					}
+					return
+				}
 			}
 			txsAvailable = false
 			// Always reset block timer to keep ticking
@@ -283,6 +298,14 @@ func (e *Executor) executionLoop() {
 			e.logger.Debug().Msg("Lazy timer triggered block production")
 			if err := e.produceBlock(); err != nil {
 				e.logger.Error().Err(err).Msg("failed to produce block from lazy timer")
+				// Check for permanent validation errors that won't resolve on retry
+				if errors.Is(err, errBlockValidation) {
+					e.logger.Error().Err(err).Msg("CRITICAL: Permanent block validation error - halting block production")
+					if e.cancel != nil {
+						e.cancel()
+					}
+					return
+				}
 			}
 			// Reset lazy timer
 			lazyTimer.Reset(e.config.Node.LazyBlockInterval.Duration)
@@ -382,7 +405,7 @@ func (e *Executor) produceBlock() error {
 
 	if err := e.validateBlock(currentState, header, data); err != nil {
 		e.sendCriticalError(fmt.Errorf("failed to validate block: %w", err))
-		return fmt.Errorf("failed to validate block: %w", err)
+		return fmt.Errorf("%w: %w", errBlockValidation, err)
 	}
 
 	batch, err := e.store.NewBatch(e.ctx)
@@ -432,7 +455,8 @@ func (e *Executor) produceBlock() error {
 // retrieveBatch gets the next batch of transactions from the sequencer
 func (e *Executor) retrieveBatch(ctx context.Context) (*BatchData, error) {
 	req := coresequencer.GetNextBatchRequest{
-		Id: []byte(e.genesis.ChainID),
+		Id:       []byte(e.genesis.ChainID),
+		MaxBytes: defaultMaxBlobSize,
 	}
 
 	res, err := e.sequencer.GetNextBatch(ctx, req)
