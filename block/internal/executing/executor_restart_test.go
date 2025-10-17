@@ -129,7 +129,6 @@ func TestExecutor_RestartUsesPendingHeader(t *testing.T) {
 				Time:    uint64(time.Now().UnixNano()),
 			},
 			LastHeaderHash:  originalHeader.Hash(),
-			ConsensusHash:   make(types.Hash, 32),
 			AppHash:         currentState.AppHash,
 			ProposerAddress: gen.ProposerAddress,
 			ValidatorHash:   validatorHash,

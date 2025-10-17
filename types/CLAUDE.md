@@ -48,7 +48,6 @@ The types package defines the core data structures and types used throughout ev-
   - State transitions
   - DA height tracking
   - App hash management
-  - Results hash tracking
 - **Important**: Block version is set to 11 for CometBFT/IBC compatibility
 
 ### Transactions (`tx.go`)

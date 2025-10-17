@@ -212,13 +212,10 @@ func tryDecodeHeader(data []byte) interface{} {
 		},
 
 		// Hash fields (convert [32]byte arrays to hex strings)
-		"lastHeaderHash":  bytesToHex(signedHeader.LastHeaderHash[:]),
-		"lastCommitHash":  bytesToHex(signedHeader.LastCommitHash[:]),
-		"dataHash":        bytesToHex(signedHeader.DataHash[:]),
-		"consensusHash":   bytesToHex(signedHeader.ConsensusHash[:]),
-		"appHash":         bytesToHex(signedHeader.AppHash[:]),
-		"lastResultsHash": bytesToHex(signedHeader.LastResultsHash[:]),
-		"validatorHash":   bytesToHex(signedHeader.ValidatorHash[:]),
+		"lastHeaderHash": bytesToHex(signedHeader.LastHeaderHash[:]),
+		"dataHash":       bytesToHex(signedHeader.DataHash[:]),
+		"appHash":        bytesToHex(signedHeader.AppHash[:]),
+		"validatorHash":  bytesToHex(signedHeader.ValidatorHash[:]),
 
 		// Proposer
 		"proposerAddress": bytesToHex(signedHeader.ProposerAddress),
