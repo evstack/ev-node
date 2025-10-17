@@ -61,7 +61,6 @@ services:
           --txpool.max-account-slots 2048 \
           --txpool.max-new-txns 2048 \
           --txpool.additional-validation-tasks 16 \
-          --ev-reth.enable \
           --engine.always-process-payload-attributes-on-canonical-head \
 
 volumes:
