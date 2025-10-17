@@ -110,7 +110,6 @@ This header can be transformed into an ABCI-specific header for IBC compatibilit
 - `ValidatorHash`: Current validator set's hash, which IBC clients use to verify that the block was validated by the correct set of validators. This can be the IBC attester set of the chain for backward compatibility with the IBC Tendermint client, if needed.
 - `NextValidatorsHash`: The hash of the next validator set, allowing IBC clients to anticipate and verify upcoming validators.
 - `AppHash`: Same as the `StateRoot` in the Rollkit Header.
-- `EvidenceHash`: A hash of evidence of any misbehavior by validators, which IBC clients use to assess the trustworthiness of the validator set.
 - `ProposerAddress`: The address of the block proposer, allowing IBC clients to track and verify the entities proposing new blocks. Can be constructed from the `extraData` field in the Rollkit Header.
 
 #### Transformation to ABCI Header
@@ -139,8 +138,6 @@ This header can be transformed into an ABCI-specific header for IBC compatibilit
 │ ValidatorHash       │ Added for IBC         │
 ├─────────────────────┼───────────────────────┤
 │ NextValidatorsHash  │ Added for IBC         │
-├─────────────────────┼───────────────────────┤
-│ EvidenceHash        │ Added for IBC         │
 ├─────────────────────┼───────────────────────┤
 │ ProposerAddress     │ From ExtraData        │
 └─────────────────────┴───────────────────────┘
