@@ -38,11 +38,8 @@ func TestBlockSerializationRoundTrip(t *testing.T) {
 			Time:   4567,
 		},
 		LastHeaderHash:  h[0],
-		LastCommitHash:  h[1],
 		DataHash:        h[2],
-		ConsensusHash:   h[3],
 		AppHash:         h[4],
-		LastResultsHash: h[5],
 		ProposerAddress: []byte{4, 3, 2, 1},
 	}
 
@@ -118,7 +115,6 @@ func TestStateRoundTrip(t *testing.T) {
 				LastBlockHeight: 987654321,
 				LastBlockTime:   time.Date(2022, 6, 6, 12, 12, 33, 44, time.UTC),
 				DAHeight:        3344,
-				LastResultsHash: Hash{1, 2, 3, 4, 5, 6, 7, 8, 9, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 0, 1, 2},
 				AppHash:         Hash{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 0, 1},
 			},
 		},
@@ -345,22 +341,16 @@ func TestHeader_HashFields_NilAndEmpty(t *testing.T) {
 	assert.NotNil(t, protoMsg)
 	// All hash fields should be empty slices
 	assert.Empty(t, protoMsg.LastHeaderHash)
-	assert.Empty(t, protoMsg.LastCommitHash)
 	assert.Empty(t, protoMsg.DataHash)
-	assert.Empty(t, protoMsg.ConsensusHash)
 	assert.Empty(t, protoMsg.AppHash)
-	assert.Empty(t, protoMsg.LastResultsHash)
 	assert.Empty(t, protoMsg.ProposerAddress)
 	assert.Empty(t, protoMsg.ValidatorHash)
 
 	h2 := &Header{}
 	assert.NoError(t, h2.FromProto(protoMsg))
 	assert.Nil(t, h2.LastHeaderHash)
-	assert.Nil(t, h2.LastCommitHash)
 	assert.Nil(t, h2.DataHash)
-	assert.Nil(t, h2.ConsensusHash)
 	assert.Nil(t, h2.AppHash)
-	assert.Nil(t, h2.LastResultsHash)
 	assert.Nil(t, h2.ProposerAddress)
 	assert.Nil(t, h2.ValidatorHash)
 }
@@ -372,11 +362,8 @@ func TestProtoConversionConsistency_AllTypes(t *testing.T) {
 		Version:         Version{Block: 1, App: 2},
 		BaseHeader:      BaseHeader{Height: 3, Time: 4, ChainID: "cid"},
 		LastHeaderHash:  []byte{1, 2},
-		LastCommitHash:  []byte{3, 4},
 		DataHash:        []byte{5, 6},
-		ConsensusHash:   []byte{7, 8},
 		AppHash:         []byte{9, 10},
-		LastResultsHash: []byte{11, 12},
 		ProposerAddress: []byte{13, 14},
 		ValidatorHash:   []byte{15, 16},
 	}
@@ -400,7 +387,7 @@ func TestProtoConversionConsistency_AllTypes(t *testing.T) {
 	assert.Equal(t, d, d2)
 
 	// State
-	s := &State{Version: Version{Block: 1, App: 2}, ChainID: "cid", InitialHeight: 1, LastBlockHeight: 2, LastBlockTime: time.Now().UTC(), DAHeight: 3, LastResultsHash: []byte{1, 2}, AppHash: []byte{3, 4}}
+	s := &State{Version: Version{Block: 1, App: 2}, ChainID: "cid", InitialHeight: 1, LastBlockHeight: 2, LastBlockTime: time.Now().UTC(), DAHeight: 3, AppHash: []byte{3, 4}}
 	protoState, err := s.ToProto()
 	assert.NoError(t, err)
 	s2 := &State{}

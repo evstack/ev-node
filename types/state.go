@@ -28,9 +28,6 @@ type State struct {
 	// DAHeight identifies DA block containing the latest applied Evolve block.
 	DAHeight uint64
 
-	// Merkle root of the results from executing prev block
-	LastResultsHash Hash
-
 	// the latest AppHash we've received from calling abci.Commit()
 	AppHash []byte
 }

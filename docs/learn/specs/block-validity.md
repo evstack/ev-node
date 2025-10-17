@@ -78,8 +78,6 @@ SignedHeader.Verify(untrustedHeader *SignedHeader)
       return error "headers are not adjacent"
     // Verify the link to previous header
     verify untrustedHeader.LastHeaderHash == h.Header.Hash()
-    // Verify LastCommit hash matches previous signature
-    verify untrustedHeader.LastCommitHash == sh.Signature.GetCommitHash(...)
     // Note: ValidatorHash field exists for compatibility but is not validated
 ```
 
@@ -112,11 +110,8 @@ SignedHeader.Verify(untrustedHeader *SignedHeader)
 | **Header** .        |                                                                                            |                                       |
 | Version             | unused                                                                                     |                                       |
 | LastHeaderHash      | The hash of the previous accepted block                                                    | checked in the `Verify()`` step          |
-| LastCommitHash      | The hash of the previous accepted block's commit                                           | checked in the `Verify()`` step          |
 | DataHash            | Correct hash of the block's Data field                                                     | checked in the `ValidateBasic()`` step   |
-| ConsensusHash       | unused                                                                                     |                                       |
 | AppHash             | The correct state root after executing the block's transactions against the accepted state | checked during block execution        |
-| LastResultsHash     | Correct results from executing transactions                                                | checked during block execution        |
 | ProposerAddress     | Address of the expected proposer                                                           | Must match Signer.Address in SignedHeader |
 | ValidatorHash       | Compatibility field for Tendermint light client                                            | Not validated                             |
 

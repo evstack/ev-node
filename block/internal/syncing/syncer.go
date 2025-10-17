@@ -158,7 +158,6 @@ func (s *Syncer) GetLastState() types.State {
 
 	stateCopy := *state
 	stateCopy.AppHash = bytes.Clone(state.AppHash)
-	stateCopy.LastResultsHash = bytes.Clone(state.LastResultsHash)
 
 	return stateCopy
 }
@@ -462,9 +461,9 @@ func (s *Syncer) trySyncNextBlock(event *common.DAHeightEvent) error {
 	s.metrics.Height.Set(float64(newState.LastBlockHeight))
 
 	// Mark as seen
-	s.cache.SetHeaderSeen(header.Hash().String())
+	s.cache.SetHeaderSeen(header.Hash().String(), header.Height())
 	if !bytes.Equal(header.DataHash, common.DataHashForEmptyTxs) {
-		s.cache.SetDataSeen(data.DACommitment().String())
+		s.cache.SetDataSeen(data.DACommitment().String(), newState.LastBlockHeight)
 	}
 
 	return nil
