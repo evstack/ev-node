@@ -157,7 +157,11 @@ func ExportPrivateKey(keyPath string, passphrase []byte) ([]byte, error) {
 // WARNING: This is a destructive operation.
 func ImportPrivateKey(keyPath string, privKeyBytes []byte, passphrase []byte) error {
 	defer zeroBytes(passphrase)
-	defer zeroBytes(privKeyBytes)
+
+	// Make a copy of the private key bytes to avoid modifying the caller's data
+	privKeyBytesCopy := make([]byte, len(privKeyBytes))
+	copy(privKeyBytesCopy, privKeyBytes)
+	defer zeroBytes(privKeyBytesCopy)
 
 	filePath := filepath.Join(keyPath, "signer.json")
 
@@ -168,7 +172,7 @@ func ImportPrivateKey(keyPath string, privKeyBytes []byte, passphrase []byte) er
 	}
 
 	// Unmarshal the private key to validate it and get the public key
-	privKey, err := crypto.UnmarshalEd25519PrivateKey(privKeyBytes)
+	privKey, err := crypto.UnmarshalEd25519PrivateKey(privKeyBytesCopy)
 	if err != nil {
 		return fmt.Errorf("failed to unmarshal private key: %w", err)
 	}
@@ -208,7 +212,7 @@ func ImportPrivateKey(keyPath string, privKeyBytes []byte, passphrase []byte) er
 	}
 
 	// Encrypt the private key
-	encryptedPrivKey := gcm.Seal(nil, nonce, privKeyBytes, nil)
+	encryptedPrivKey := gcm.Seal(nil, nonce, privKeyBytesCopy, nil)
 
 	// Create key data structure
 	data := keyData{
@@ -349,10 +353,17 @@ func (s *FileSystemSigner) loadKeys(passphrase []byte) error {
 	if err != nil {
 		return fmt.Errorf("failed to decrypt private key (wrong passphrase?): %w", err)
 	}
-	defer zeroBytes(privKeyBytes) // Always zero out decrypted private key bytes
 
-	// Unmarshal the private key
-	privKey, err := crypto.UnmarshalEd25519PrivateKey(privKeyBytes)
+	// Make a copy of the private key bytes before unmarshaling
+	// since UnmarshalEd25519PrivateKey may keep a reference to the input bytes
+	privKeyBytesCopy := make([]byte, len(privKeyBytes))
+	copy(privKeyBytesCopy, privKeyBytes)
+
+	// Zero out the original decrypted bytes immediately
+	zeroBytes(privKeyBytes)
+
+	// Unmarshal the private key from the copy
+	privKey, err := crypto.UnmarshalEd25519PrivateKey(privKeyBytesCopy)
 	if err != nil {
 		return fmt.Errorf("failed to unmarshal private key: %w", err)
 	}

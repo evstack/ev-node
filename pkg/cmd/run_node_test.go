@@ -593,7 +593,14 @@ func TestStartNodeErrors(t *testing.T) {
 				cfg.Signer.SignerType = "file"
 				cfg.Signer.SignerPath = filepath.Join(tmpDir, "nonexistent_signer")
 			},
-			cmdModifier:   nil,
+			cmdModifier: func(cmd *cobra.Command) {
+				// Provide a passphrase file so we get to the signer loading error
+				passphraseFile := filepath.Join(tmpDir, "passphrase")
+				err := os.WriteFile(passphraseFile, []byte("password"), 0600)
+				assert.NoError(t, err)
+				err = cmd.Flags().Set(rollconf.FlagSignerPassphraseFile, passphraseFile)
+				assert.NoError(t, err)
+			},
 			expectedError: "no such file or directory",
 		},
 		{
