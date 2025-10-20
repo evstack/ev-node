@@ -589,7 +589,7 @@ func (e *Executor) applyBlock(ctx context.Context, header types.Header, data *ty
 // is ahead of the execution layer.
 func (e *Executor) syncExecutionLayer(ctx context.Context, state types.State) error {
 	// Check if the executor supports height checking
-	heightChecker, ok := e.exec.(interface {
+	execHeightChecker, ok := e.exec.(interface {
 		GetLatestHeight(ctx context.Context) (uint64, error)
 	})
 	if !ok {
@@ -605,8 +605,7 @@ func (e *Executor) syncExecutionLayer(ctx context.Context, state types.State) er
 		return nil
 	}
 
-	// Get execution layer height
-	execHeight, err := heightChecker.GetLatestHeight(ctx)
+	execHeight, err := execHeightChecker.GetLatestHeight(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to get execution layer height: %w", err)
 	}
@@ -616,7 +615,7 @@ func (e *Executor) syncExecutionLayer(ctx context.Context, state types.State) er
 		Uint64("exec_layer_height", execHeight).
 		Msg("execution layer height check")
 
-	// If execution layer is ahead, this is unexpected and dangerous
+	// If execution layer is ahead, this is unexpected, fail hard
 	if execHeight > evNodeHeight {
 		e.logger.Error().
 			Uint64("ev_node_height", evNodeHeight).
