@@ -4,6 +4,7 @@ import (
 	"context"
 	crand "crypto/rand"
 	"errors"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -547,4 +548,62 @@ func TestSyncer_executeTxsWithRetry(t *testing.T) {
 			exec.AssertExpectations(t)
 		})
 	}
+}
+
+func TestSyncer_InitializeState_CallsExecutionLayerSyncer(t *testing.T) {
+	// This test verifies that initializeState() invokes ExecutionLayerSyncer.
+	// The detailed sync logic is tested in block/internal/common/execution_syncer_test.go
+
+	// Create mocks
+	mockStore := testmocks.NewMockStore(t)
+	mockExec := testmocks.NewMockHeightAwareExecutor(t)
+
+	// Setup genesis
+	gen := genesis.Genesis{
+		ChainID:       "test-chain",
+		InitialHeight: 1,
+		StartTime:     time.Now().UTC(),
+		DAStartHeight: 0,
+	}
+
+	// Setup state in store
+	storeHeight := uint64(10)
+	mockStore.EXPECT().GetState(mock.Anything).Return(
+		types.State{
+			ChainID:         gen.ChainID,
+			InitialHeight:   gen.InitialHeight,
+			LastBlockHeight: storeHeight,
+			LastBlockTime:   time.Now().UTC(),
+			DAHeight:        5,
+			AppHash:         []byte("app-hash"),
+		},
+		nil,
+	)
+
+	// Setup execution layer to be in sync
+	mockExec.On("GetLatestHeight", mock.Anything).Return(storeHeight, nil)
+
+	// Create syncer with minimal dependencies
+	syncer := &Syncer{
+		store:     mockStore,
+		exec:      mockExec,
+		genesis:   gen,
+		lastState: &atomic.Pointer[types.State]{},
+		daHeight:  &atomic.Uint64{},
+		logger:    zerolog.Nop(),
+		ctx:       context.Background(),
+	}
+
+	// Initialize state - this should call ExecutionLayerSyncer
+	err := syncer.initializeState()
+	require.NoError(t, err)
+
+	// Verify state was initialized correctly
+	state := syncer.GetLastState()
+	assert.Equal(t, storeHeight, state.LastBlockHeight)
+	assert.Equal(t, gen.ChainID, state.ChainID)
+	assert.Equal(t, uint64(5), syncer.GetDAHeight())
+
+	// Verify that GetLatestHeight was called (proves ExecutionLayerSyncer was invoked)
+	mockExec.AssertCalled(t, "GetLatestHeight", mock.Anything)
 }

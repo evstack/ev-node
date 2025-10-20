@@ -3,7 +3,6 @@ package executing
 import (
 	"bytes"
 	"context"
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"sync"
@@ -221,10 +220,9 @@ func (e *Executor) initializeState() error {
 	e.logger.Info().Uint64("height", state.LastBlockHeight).
 		Str("chain_id", state.ChainID).Msg("initialized state")
 
-	// Synchronization check: verify execution layer is at the correct height
-	// This is critical - if we cannot sync the execution layer, we must fail startup
-	// to prevent running with an inconsistent state
-	if err := e.syncExecutionLayer(e.ctx, state); err != nil {
+	// Sync execution layer with store on startup
+	execSyncer := common.NewExecutionLayerSyncer(e.store, e.exec, e.genesis, e.logger)
+	if err := execSyncer.SyncToHeight(e.ctx, state.LastBlockHeight); err != nil {
 		e.sendCriticalError(fmt.Errorf("failed to sync execution layer: %w", err))
 		return fmt.Errorf("failed to sync execution layer: %w", err)
 	}
@@ -582,139 +580,6 @@ func (e *Executor) applyBlock(ctx context.Context, header types.Header, data *ty
 	}
 
 	return newState, nil
-}
-
-// syncExecutionLayer checks if the execution layer is behind ev-node and syncs it if needed.
-// This is called during initialization to handle crash recovery scenarios where ev-node
-// is ahead of the execution layer.
-func (e *Executor) syncExecutionLayer(ctx context.Context, state types.State) error {
-	// Check if the executor implements HeightProvider
-	execHeightProvider, ok := e.exec.(coreexecutor.HeightProvider)
-	if !ok {
-		e.logger.Debug().Msg("executor does not implement HeightProvider, skipping sync")
-		return nil
-	}
-
-	evNodeHeight := state.LastBlockHeight
-
-	// Skip sync check if we're at genesis
-	if evNodeHeight < e.genesis.InitialHeight {
-		e.logger.Debug().Msg("at genesis height, skipping execution layer sync check")
-		return nil
-	}
-
-	execHeight, err := execHeightProvider.GetLatestHeight(ctx)
-	if err != nil {
-		return fmt.Errorf("failed to get execution layer height: %w", err)
-	}
-
-	e.logger.Info().
-		Uint64("ev_node_height", evNodeHeight).
-		Uint64("exec_layer_height", execHeight).
-		Msg("execution layer height check")
-
-	// If execution layer is ahead, this is unexpected, fail hard
-	if execHeight > evNodeHeight {
-		e.logger.Error().
-			Uint64("ev_node_height", evNodeHeight).
-			Uint64("exec_layer_height", execHeight).
-			Msg("execution layer is ahead of ev-node - this should not happen")
-		return fmt.Errorf("execution layer height (%d) is ahead of ev-node (%d)", execHeight, evNodeHeight)
-	}
-
-	// If execution layer is behind, sync the missing blocks
-	if execHeight < evNodeHeight {
-		e.logger.Info().
-			Uint64("ev_node_height", evNodeHeight).
-			Uint64("exec_layer_height", execHeight).
-			Uint64("blocks_to_sync", evNodeHeight-execHeight).
-			Msg("execution layer is behind, syncing blocks")
-
-		// Sync blocks from execHeight+1 to evNodeHeight
-		for height := execHeight + 1; height <= evNodeHeight; height++ {
-			if err := e.syncBlockToExecutionLayer(ctx, height); err != nil {
-				return fmt.Errorf("failed to sync block %d to execution layer: %w", height, err)
-			}
-		}
-
-		e.logger.Info().
-			Uint64("synced_blocks", evNodeHeight-execHeight).
-			Msg("successfully synced execution layer")
-	} else {
-		e.logger.Info().Msg("execution layer is in sync")
-	}
-
-	return nil
-}
-
-// syncBlockToExecutionLayer syncs a specific block from ev-node to the execution layer.
-func (e *Executor) syncBlockToExecutionLayer(ctx context.Context, height uint64) error {
-	e.logger.Info().Uint64("height", height).Msg("syncing block to execution layer")
-
-	// Get the block from store
-	header, data, err := e.store.GetBlockData(ctx, height)
-	if err != nil {
-		return fmt.Errorf("failed to get block data from store: %w", err)
-	}
-
-	// Get the previous state
-	var prevState types.State
-	if height == e.genesis.InitialHeight {
-		// For the first block, use genesis state
-		prevState = types.State{
-			ChainID:         e.genesis.ChainID,
-			InitialHeight:   e.genesis.InitialHeight,
-			LastBlockHeight: e.genesis.InitialHeight - 1,
-			LastBlockTime:   e.genesis.StartTime,
-			AppHash:         header.AppHash, // This will be updated by InitChain
-		}
-	} else {
-		// Get previous state from store
-		prevState, err = e.store.GetState(ctx)
-		if err != nil {
-			return fmt.Errorf("failed to get previous state: %w", err)
-		}
-		// We need the state at height-1, so load that block's app hash
-		prevHeader, _, err := e.store.GetBlockData(ctx, height-1)
-		if err != nil {
-			return fmt.Errorf("failed to get previous block header: %w", err)
-		}
-		prevState.AppHash = prevHeader.AppHash
-		prevState.LastBlockHeight = height - 1
-	}
-
-	// Prepare transactions
-	rawTxs := make([][]byte, len(data.Txs))
-	for i, tx := range data.Txs {
-		rawTxs[i] = []byte(tx)
-	}
-
-	// Execute transactions on the execution layer
-	e.logger.Debug().
-		Uint64("height", height).
-		Int("tx_count", len(rawTxs)).
-		Msg("executing transactions on execution layer")
-
-	newAppHash, _, err := e.exec.ExecuteTxs(ctx, rawTxs, height, header.Time(), prevState.AppHash)
-	if err != nil {
-		return fmt.Errorf("failed to execute transactions: %w", err)
-	}
-
-	// Verify the app hash matches
-	if !bytes.Equal(newAppHash, header.AppHash) {
-		e.logger.Warn().
-			Str("expected", hex.EncodeToString(header.AppHash)).
-			Str("got", hex.EncodeToString(newAppHash)).
-			Msg("app hash mismatch during sync")
-		// Don't fail here - the execution layer may compute slightly different
-		// state roots in some cases, but the state should still be valid
-	}
-
-	e.logger.Info().
-		Uint64("height", height).
-		Msg("successfully synced block to execution layer")
-
-	return nil
 }
 
 // signHeader signs the block header
