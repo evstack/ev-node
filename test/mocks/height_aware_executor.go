@@ -16,7 +16,7 @@ func NewMockHeightAwareExecutor(t interface {
 	Cleanup(func())
 }) *MockHeightAwareExecutor {
 	mockExec := &MockHeightAwareExecutor{}
-	mockExec.Mock.Test(t)
+	mockExec.Test(t)
 
 	t.Cleanup(func() { mockExec.AssertExpectations(t) })
 
