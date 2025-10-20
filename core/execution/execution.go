@@ -85,3 +85,19 @@ type Executor interface {
 	// - error: Any errors during finalization
 	SetFinal(ctx context.Context, blockHeight uint64) error
 }
+
+// HeightChecker is an optional interface that execution clients can implement
+// to support height synchronization checks between ev-node and the execution layer.
+type HeightChecker interface {
+	// GetLatestHeight returns the current block height of the execution layer.
+	// This is useful for detecting desynchronization between ev-node and the execution layer
+	// after crashes or restarts.
+	//
+	// Parameters:
+	// - ctx: Context for timeout/cancellation control
+	//
+	// Returns:
+	// - height: Current block height of the execution layer
+	// - error: Any errors during height retrieval
+	GetLatestHeight(ctx context.Context) (uint64, error)
+}
