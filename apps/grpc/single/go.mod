@@ -166,6 +166,7 @@ require (
 
 replace (
 	github.com/evstack/ev-node => ../../../
+	github.com/evstack/ev-node/core => ../../../core
 	github.com/evstack/ev-node/da => ../../../da
 	github.com/evstack/ev-node/execution/grpc => ../../../execution/grpc
 	github.com/evstack/ev-node/sequencers/single => ../../../sequencers/single

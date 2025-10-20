@@ -6,6 +6,7 @@ replace github.com/celestiaorg/go-header => github.com/julienrbrt/go-header v0.0
 
 replace (
 	github.com/evstack/ev-node => ../../../
+	github.com/evstack/ev-node/core => ../../../core
 	github.com/evstack/ev-node/da => ../../../da
 	github.com/evstack/ev-node/execution/evm => ../../../execution/evm
 	github.com/evstack/ev-node/sequencers/single => ../../../sequencers/single
