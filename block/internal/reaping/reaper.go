@@ -82,7 +82,7 @@ func NewReaper(
 func (r *Reaper) Start(ctx context.Context) error {
 	r.ctx, r.cancel = context.WithCancel(ctx)
 
-	// Start repear loop
+	// Start reaper loop
 	r.wg.Add(1)
 	go func() {
 		defer r.wg.Done()
