@@ -98,7 +98,6 @@ func (r *Reaper) reaperLoop() {
 	defer ticker.Stop()
 
 	consecutiveFailures := 0
-	currentBackoff := r.interval
 
 	for {
 		select {
@@ -109,24 +108,21 @@ func (r *Reaper) reaperLoop() {
 			if err != nil {
 				// Increment failure counter and apply exponential backoff
 				consecutiveFailures++
-				currentBackoff = r.interval * time.Duration(1<<min(consecutiveFailures, 5)) // Cap at 2^5 = 32x
-				if currentBackoff > MaxBackoffInterval {
-					currentBackoff = MaxBackoffInterval
-				}
+				backoff := r.interval * time.Duration(1<<min(consecutiveFailures, 5)) // Cap at 2^5 = 32x
+				backoff = min(backoff, MaxBackoffInterval)
 				r.logger.Warn().
 					Err(err).
 					Int("consecutive_failures", consecutiveFailures).
-					Dur("next_retry_in", currentBackoff).
+					Dur("next_retry_in", backoff).
 					Msg("reaper encountered error, applying backoff")
 
 				// Reset ticker with backoff interval
-				ticker.Reset(currentBackoff)
+				ticker.Reset(backoff)
 			} else {
 				// Reset failure counter and backoff on success
 				if consecutiveFailures > 0 {
 					r.logger.Info().Msg("reaper recovered from errors, resetting backoff")
 					consecutiveFailures = 0
-					currentBackoff = r.interval
 					ticker.Reset(r.interval)
 				}
 			}

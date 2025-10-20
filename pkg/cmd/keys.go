@@ -56,7 +56,7 @@ Anyone with access to the exported key can sign messages on your behalf.
 			if err != nil {
 				return fmt.Errorf("failed to read passphrase from file '%s': %w", passphraseFile, err)
 			}
-			passphrase := string(strings.TrimSpace(string(passphraseBytes)))
+			passphrase := strings.TrimSpace(string(passphraseBytes))
 
 			if passphrase == "" {
 				return fmt.Errorf("passphrase file '%s' is empty", passphraseFile)
@@ -116,7 +116,7 @@ If a 'signer.json' file exists in your home directory, you must use the --force 
 			if err != nil {
 				return fmt.Errorf("failed to read passphrase from file '%s': %w", passphraseFile, err)
 			}
-			passphrase := string(strings.TrimSpace(string(passphraseBytes)))
+			passphrase := strings.TrimSpace(string(passphraseBytes))
 
 			if passphrase == "" {
 				return fmt.Errorf("passphrase file '%s' is empty", passphraseFile)
