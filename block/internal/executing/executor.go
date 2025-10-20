@@ -588,12 +588,10 @@ func (e *Executor) applyBlock(ctx context.Context, header types.Header, data *ty
 // This is called during initialization to handle crash recovery scenarios where ev-node
 // is ahead of the execution layer.
 func (e *Executor) syncExecutionLayer(ctx context.Context, state types.State) error {
-	// Check if the executor supports height checking
-	execHeightChecker, ok := e.exec.(interface {
-		GetLatestHeight(ctx context.Context) (uint64, error)
-	})
+	// Check if the executor implements HeightProvider
+	execHeightProvider, ok := e.exec.(coreexecutor.HeightProvider)
 	if !ok {
-		e.logger.Debug().Msg("executor does not support height checking, skipping sync")
+		e.logger.Debug().Msg("executor does not implement HeightProvider, skipping sync")
 		return nil
 	}
 
@@ -605,7 +603,7 @@ func (e *Executor) syncExecutionLayer(ctx context.Context, state types.State) er
 		return nil
 	}
 
-	execHeight, err := execHeightChecker.GetLatestHeight(ctx)
+	execHeight, err := execHeightProvider.GetLatestHeight(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to get execution layer height: %w", err)
 	}

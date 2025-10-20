@@ -14,7 +14,7 @@ import (
 	"github.com/evstack/ev-node/types"
 )
 
-// MockHeightAwareExecutor is a mock that implements both Executor and HeightChecker
+// MockHeightAwareExecutor is a mock that implements both Executor and HeightProvider
 type MockHeightAwareExecutor struct {
 	mock.Mock
 }
