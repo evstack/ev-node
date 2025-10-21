@@ -221,7 +221,7 @@ func (e *Executor) initializeState() error {
 		Str("chain_id", state.ChainID).Msg("initialized state")
 
 	// Sync execution layer with store on startup
-	execReplayer := common.NewExecutionLayerReplayer(e.store, e.exec, e.genesis, e.logger)
+	execReplayer := common.NewReplayer(e.store, e.exec, e.genesis, e.logger)
 	if err := execReplayer.SyncToHeight(e.ctx, state.LastBlockHeight); err != nil {
 		e.sendCriticalError(fmt.Errorf("failed to sync execution layer: %w", err))
 		return fmt.Errorf("failed to sync execution layer: %w", err)

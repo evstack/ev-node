@@ -14,23 +14,23 @@ import (
 	"github.com/evstack/ev-node/types"
 )
 
-// ExecutionLayerReplayer handles synchronization of the execution layer with ev-node's state.
+// Replayer handles synchronization of the execution layer with ev-node's state.
 // It replays blocks from the store to bring the execution layer up to date.
-type ExecutionLayerReplayer struct {
+type Replayer struct {
 	store   store.Store
 	exec    coreexecutor.Executor
 	genesis genesis.Genesis
 	logger  zerolog.Logger
 }
 
-// NewExecutionLayerReplayer creates a new execution layer replayer.
-func NewExecutionLayerReplayer(
+// NewReplayer creates a new execution layer replayer.
+func NewReplayer(
 	store store.Store,
 	exec coreexecutor.Executor,
 	genesis genesis.Genesis,
 	logger zerolog.Logger,
-) *ExecutionLayerReplayer {
-	return &ExecutionLayerReplayer{
+) *Replayer {
+	return &Replayer{
 		store:   store,
 		exec:    exec,
 		genesis: genesis,
@@ -43,7 +43,7 @@ func NewExecutionLayerReplayer(
 //
 // Returns:
 // - error if sync fails or if execution layer is ahead of ev-node (unexpected state)
-func (s *ExecutionLayerReplayer) SyncToHeight(ctx context.Context, targetHeight uint64) error {
+func (s *Replayer) SyncToHeight(ctx context.Context, targetHeight uint64) error {
 	// Check if the executor implements HeightProvider
 	execHeightProvider, ok := s.exec.(coreexecutor.HeightProvider)
 	if !ok {
@@ -108,7 +108,7 @@ func (s *ExecutionLayerReplayer) SyncToHeight(ctx context.Context, targetHeight 
 // - We only verify the AppHash matches to detect state divergence
 // - We skip re-validating signatures and consensus rules since this is a replay
 // - This is safe because we're re-executing transactions against a known-good state
-func (s *ExecutionLayerReplayer) replayBlock(ctx context.Context, height uint64) error {
+func (s *Replayer) replayBlock(ctx context.Context, height uint64) error {
 	s.logger.Info().Uint64("height", height).Msg("replaying block to execution layer")
 
 	// Get the block from store

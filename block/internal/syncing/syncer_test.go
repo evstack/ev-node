@@ -550,9 +550,9 @@ func TestSyncer_executeTxsWithRetry(t *testing.T) {
 	}
 }
 
-func TestSyncer_InitializeState_CallsExecutionLayerReplayer(t *testing.T) {
-	// This test verifies that initializeState() invokes ExecutionLayerReplayer.
-	// The detailed sync logic is tested in block/internal/common/execution_replayer_test.go
+func TestSyncer_InitializeState_CallsReplayer(t *testing.T) {
+	// This test verifies that initializeState() invokes Replayer.
+	// The detailed replay logic is tested in block/internal/common/replay_test.go
 
 	// Create mocks
 	mockStore := testmocks.NewMockStore(t)
@@ -594,7 +594,7 @@ func TestSyncer_InitializeState_CallsExecutionLayerReplayer(t *testing.T) {
 		ctx:       context.Background(),
 	}
 
-	// Initialize state - this should call ExecutionLayerReplayer
+	// Initialize state - this should call Replayer
 	err := syncer.initializeState()
 	require.NoError(t, err)
 
@@ -604,6 +604,6 @@ func TestSyncer_InitializeState_CallsExecutionLayerReplayer(t *testing.T) {
 	assert.Equal(t, gen.ChainID, state.ChainID)
 	assert.Equal(t, uint64(5), syncer.GetDAHeight())
 
-	// Verify that GetLatestHeight was called (proves ExecutionLayerReplayer was invoked)
+	// Verify that GetLatestHeight was called (proves Replayer was invoked)
 	mockExec.AssertCalled(t, "GetLatestHeight", mock.Anything)
 }
