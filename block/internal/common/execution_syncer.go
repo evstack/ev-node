@@ -156,13 +156,17 @@ func (s *ExecutionLayerSyncer) replayBlock(ctx context.Context, height uint64) e
 
 	// Verify the app hash matches
 	if !bytes.Equal(newAppHash, header.AppHash) {
-		s.logger.Warn().
+		err := fmt.Errorf("app hash mismatch: expected %s got %s",
+			hex.EncodeToString(header.AppHash),
+			hex.EncodeToString(newAppHash),
+		)
+		s.logger.Error().
 			Str("expected", hex.EncodeToString(header.AppHash)).
 			Str("got", hex.EncodeToString(newAppHash)).
 			Uint64("height", height).
+			Err(err).
 			Msg("app hash mismatch during replay")
-		// Don't fail here - the execution layer may compute slightly different
-		// state roots in some cases, but the state should still be valid
+		return err
 	}
 
 	s.logger.Info().

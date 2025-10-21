@@ -397,9 +397,10 @@ func TestExecutionLayerSyncer_AppHashMismatch(t *testing.T) {
 	mockExec.On("ExecuteTxs", mock.Anything, mock.Anything, uint64(100), mock.Anything, []byte("app-hash-99")).
 		Return([]byte("different-app-hash"), uint64(1000), nil)
 
-	// Should NOT fail - just log a warning
+	// Should fail with mismatch error
 	err := syncer.SyncToHeight(ctx, targetHeight)
-	require.NoError(t, err)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "app hash mismatch")
 
 	mockExec.AssertExpectations(t)
 	mockStore.AssertExpectations(t)
