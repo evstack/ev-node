@@ -1,5 +1,4 @@
 //go:build cover
-// +build cover
 
 package main
 

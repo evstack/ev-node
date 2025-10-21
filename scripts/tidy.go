@@ -1,5 +1,4 @@
 //go:build tidy
-// +build tidy
 
 package main
 
