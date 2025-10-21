@@ -145,7 +145,7 @@ The block syncer relies on a handful of queues and shared stores to keep the nod
 2. `SyncService` instances persist the payload in the prefixed go-header stores and broadcast it over libp2p.
 3. Follower syncers observe the updated store heights, fetch any missing data via P2P or the DA layer, and enqueue events on `heightInCh`.
 4. The syncer executes the block via the execution client, writes it to `store.Store` using a batch, updates in-memory state, and records metrics.
-5. For DA-sourced events, the syncer republishes the block by calling `WriteToStoreAndBroadcast` on the header and data services (`block/internal/syncing/syncer.go:386`) so gossip peers stay updated.
+5. For DA-sourced events, the syncer republishes the block by calling `WriteToStoreAndBroadcast` on the header and data services (`block/internal/syncing/syncer.go:389-392`) so gossip peers stay updated.
 6. Successfully applied blocks are now visible to both the local node and the sync services, keeping aggregator and follower paths in sync.
 7. Aggregator nodes additionally submit headers/data to the DA layer for finality.
 
