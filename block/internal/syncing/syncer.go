@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	pubsub "github.com/libp2p/go-libp2p-pubsub"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -12,10 +13,11 @@ import (
 	"github.com/rs/zerolog"
 	"golang.org/x/sync/errgroup"
 
-	"github.com/evstack/ev-node/block/internal/cache"
-	"github.com/evstack/ev-node/block/internal/common"
 	coreda "github.com/evstack/ev-node/core/da"
 	coreexecutor "github.com/evstack/ev-node/core/execution"
+
+	"github.com/evstack/ev-node/block/internal/cache"
+	"github.com/evstack/ev-node/block/internal/common"
 	"github.com/evstack/ev-node/pkg/config"
 	"github.com/evstack/ev-node/pkg/genesis"
 	"github.com/evstack/ev-node/pkg/store"
@@ -329,6 +331,8 @@ func (s *Syncer) tryFetchFromP2P() {
 
 	// Process data (if not already processed by headers)
 	newDataHeight := s.dataStore.Store().Height()
+	// TODO @MARKO: why only if newDataHeight != newHeaderHeight? why not process
+	//  just if newDataHeight > currentHeight ?
 	if newDataHeight != newHeaderHeight && newDataHeight > currentHeight {
 		s.p2pHandler.ProcessDataRange(s.ctx, currentHeight+1, newDataHeight, s.heightInCh)
 	}
@@ -388,8 +392,16 @@ func (s *Syncer) processHeightEvent(event *common.DAHeightEvent) {
 	// only save to p2p stores if the event came from DA
 	if event.Source == common.SourceDA {
 		g, ctx := errgroup.WithContext(s.ctx)
-		g.Go(func() error { return s.headerStore.WriteToStoreAndBroadcast(ctx, event.Header) })
-		g.Go(func() error { return s.dataStore.WriteToStoreAndBroadcast(ctx, event.Data) })
+		g.Go(func() error {
+			// broadcast header locally only — prevents spamming the p2p network with old height notifications,
+			// allowing the syncer to update its target and fill missing blocks
+			return s.headerStore.WriteToStoreAndBroadcast(ctx, event.Header, pubsub.WithLocalPublication(true))
+		})
+		g.Go(func() error {
+			// broadcast data locally only — prevents spamming the p2p network with old height notifications,
+			// allowing the syncer to update its target and fill missing blocks
+			return s.dataStore.WriteToStoreAndBroadcast(ctx, event.Data, pubsub.WithLocalPublication(true))
+		})
 		if err := g.Wait(); err != nil {
 			s.logger.Error().Err(err).Msg("failed to append event header and/or data to p2p store")
 		}
