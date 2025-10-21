@@ -8,6 +8,7 @@ import (
 	"context"
 
 	"github.com/celestiaorg/go-header"
+	"github.com/libp2p/go-libp2p-pubsub"
 	mock "github.com/stretchr/testify/mock"
 )
 
@@ -85,16 +86,24 @@ func (_c *MockBroadcaster_Store_Call[H]) RunAndReturn(run func() header.Store[H]
 }
 
 // WriteToStoreAndBroadcast provides a mock function for the type MockBroadcaster
-func (_mock *MockBroadcaster[H]) WriteToStoreAndBroadcast(ctx context.Context, payload H) error {
-	ret := _mock.Called(ctx, payload)
+func (_mock *MockBroadcaster[H]) WriteToStoreAndBroadcast(ctx context.Context, payload H, opts ...pubsub.PubOpt) error {
+	// pubsub.PubOpt
+	_va := make([]interface{}, len(opts))
+	for _i := range opts {
+		_va[_i] = opts[_i]
+	}
+	var _ca []interface{}
+	_ca = append(_ca, ctx, payload)
+	_ca = append(_ca, _va...)
+	ret := _mock.Called(_ca...)
 
 	if len(ret) == 0 {
 		panic("no return value specified for WriteToStoreAndBroadcast")
 	}
 
 	var r0 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, H) error); ok {
-		r0 = returnFunc(ctx, payload)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, H, ...pubsub.PubOpt) error); ok {
+		r0 = returnFunc(ctx, payload, opts...)
 	} else {
 		r0 = ret.Error(0)
 	}
@@ -109,11 +118,13 @@ type MockBroadcaster_WriteToStoreAndBroadcast_Call[H header.Header[H]] struct {
 // WriteToStoreAndBroadcast is a helper method to define mock.On call
 //   - ctx context.Context
 //   - payload H
-func (_e *MockBroadcaster_Expecter[H]) WriteToStoreAndBroadcast(ctx interface{}, payload interface{}) *MockBroadcaster_WriteToStoreAndBroadcast_Call[H] {
-	return &MockBroadcaster_WriteToStoreAndBroadcast_Call[H]{Call: _e.mock.On("WriteToStoreAndBroadcast", ctx, payload)}
+//   - opts ...pubsub.PubOpt
+func (_e *MockBroadcaster_Expecter[H]) WriteToStoreAndBroadcast(ctx interface{}, payload interface{}, opts ...interface{}) *MockBroadcaster_WriteToStoreAndBroadcast_Call[H] {
+	return &MockBroadcaster_WriteToStoreAndBroadcast_Call[H]{Call: _e.mock.On("WriteToStoreAndBroadcast",
+		append([]interface{}{ctx, payload}, opts...)...)}
 }
 
-func (_c *MockBroadcaster_WriteToStoreAndBroadcast_Call[H]) Run(run func(ctx context.Context, payload H)) *MockBroadcaster_WriteToStoreAndBroadcast_Call[H] {
+func (_c *MockBroadcaster_WriteToStoreAndBroadcast_Call[H]) Run(run func(ctx context.Context, payload H, opts ...pubsub.PubOpt)) *MockBroadcaster_WriteToStoreAndBroadcast_Call[H] {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
@@ -123,9 +134,18 @@ func (_c *MockBroadcaster_WriteToStoreAndBroadcast_Call[H]) Run(run func(ctx con
 		if args[1] != nil {
 			arg1 = args[1].(H)
 		}
+		var arg2 []pubsub.PubOpt
+		variadicArgs := make([]pubsub.PubOpt, len(args)-2)
+		for i, a := range args[2:] {
+			if a != nil {
+				variadicArgs[i] = a.(pubsub.PubOpt)
+			}
+		}
+		arg2 = variadicArgs
 		run(
 			arg0,
 			arg1,
+			arg2...,
 		)
 	})
 	return _c
@@ -136,7 +156,7 @@ func (_c *MockBroadcaster_WriteToStoreAndBroadcast_Call[H]) Return(err error) *M
 	return _c
 }
 
-func (_c *MockBroadcaster_WriteToStoreAndBroadcast_Call[H]) RunAndReturn(run func(ctx context.Context, payload H) error) *MockBroadcaster_WriteToStoreAndBroadcast_Call[H] {
+func (_c *MockBroadcaster_WriteToStoreAndBroadcast_Call[H]) RunAndReturn(run func(ctx context.Context, payload H, opts ...pubsub.PubOpt) error) *MockBroadcaster_WriteToStoreAndBroadcast_Call[H] {
 	_c.Call.Return(run)
 	return _c
 }
