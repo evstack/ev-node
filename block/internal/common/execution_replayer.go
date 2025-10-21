@@ -14,27 +14,27 @@ import (
 	"github.com/evstack/ev-node/types"
 )
 
-// ExecutionLayerSyncer handles synchronization of the execution layer with ev-node's state.
+// ExecutionLayerReplayer handles synchronization of the execution layer with ev-node's state.
 // It replays blocks from the store to bring the execution layer up to date.
-type ExecutionLayerSyncer struct {
+type ExecutionLayerReplayer struct {
 	store   store.Store
 	exec    coreexecutor.Executor
 	genesis genesis.Genesis
 	logger  zerolog.Logger
 }
 
-// NewExecutionLayerSyncer creates a new execution layer syncer.
-func NewExecutionLayerSyncer(
+// NewExecutionLayerReplayer creates a new execution layer replayer.
+func NewExecutionLayerReplayer(
 	store store.Store,
 	exec coreexecutor.Executor,
 	genesis genesis.Genesis,
 	logger zerolog.Logger,
-) *ExecutionLayerSyncer {
-	return &ExecutionLayerSyncer{
+) *ExecutionLayerReplayer {
+	return &ExecutionLayerReplayer{
 		store:   store,
 		exec:    exec,
 		genesis: genesis,
-		logger:  logger.With().Str("component", "execution_syncer").Logger(),
+		logger:  logger.With().Str("component", "execution_replayer").Logger(),
 	}
 }
 
@@ -43,7 +43,7 @@ func NewExecutionLayerSyncer(
 //
 // Returns:
 // - error if sync fails or if execution layer is ahead of ev-node (unexpected state)
-func (s *ExecutionLayerSyncer) SyncToHeight(ctx context.Context, targetHeight uint64) error {
+func (s *ExecutionLayerReplayer) SyncToHeight(ctx context.Context, targetHeight uint64) error {
 	// Check if the executor implements HeightProvider
 	execHeightProvider, ok := s.exec.(coreexecutor.HeightProvider)
 	if !ok {
@@ -102,7 +102,7 @@ func (s *ExecutionLayerSyncer) SyncToHeight(ctx context.Context, targetHeight ui
 }
 
 // replayBlock replays a specific block from the store to the execution layer.
-func (s *ExecutionLayerSyncer) replayBlock(ctx context.Context, height uint64) error {
+func (s *ExecutionLayerReplayer) replayBlock(ctx context.Context, height uint64) error {
 	s.logger.Info().Uint64("height", height).Msg("replaying block to execution layer")
 
 	// Get the block from store

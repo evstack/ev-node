@@ -14,7 +14,7 @@ import (
 	"github.com/evstack/ev-node/types"
 )
 
-func TestExecutionLayerSyncer_SyncToHeight_ExecutorBehind(t *testing.T) {
+func TestExecutionLayerReplayer_SyncToHeight_ExecutorBehind(t *testing.T) {
 	ctx := context.Background()
 	mockExec := mocks.NewMockHeightAwareExecutor(t)
 	mockStore := mocks.NewMockStore(t)
@@ -26,7 +26,7 @@ func TestExecutionLayerSyncer_SyncToHeight_ExecutorBehind(t *testing.T) {
 		StartTime:     time.Now().UTC(),
 	}
 
-	syncer := NewExecutionLayerSyncer(mockStore, mockExec, gen, logger)
+	syncer := NewExecutionLayerReplayer(mockStore, mockExec, gen, logger)
 
 	// Setup: target height is 100, execution layer is at 99
 	targetHeight := uint64(100)
@@ -93,7 +93,7 @@ func TestExecutionLayerSyncer_SyncToHeight_ExecutorBehind(t *testing.T) {
 	mockExec.AssertExpectations(t)
 }
 
-func TestExecutionLayerSyncer_SyncToHeight_InSync(t *testing.T) {
+func TestExecutionLayerReplayer_SyncToHeight_InSync(t *testing.T) {
 	ctx := context.Background()
 	mockExec := mocks.NewMockHeightAwareExecutor(t)
 	mockStore := mocks.NewMockStore(t)
@@ -105,7 +105,7 @@ func TestExecutionLayerSyncer_SyncToHeight_InSync(t *testing.T) {
 		StartTime:     time.Now().UTC(),
 	}
 
-	syncer := NewExecutionLayerSyncer(mockStore, mockExec, gen, logger)
+	syncer := NewExecutionLayerReplayer(mockStore, mockExec, gen, logger)
 
 	// Setup: both at height 100
 	targetHeight := uint64(100)
@@ -121,7 +121,7 @@ func TestExecutionLayerSyncer_SyncToHeight_InSync(t *testing.T) {
 	mockExec.AssertNotCalled(t, "ExecuteTxs")
 }
 
-func TestExecutionLayerSyncer_SyncToHeight_ExecutorAhead(t *testing.T) {
+func TestExecutionLayerReplayer_SyncToHeight_ExecutorAhead(t *testing.T) {
 	ctx := context.Background()
 	mockExec := mocks.NewMockHeightAwareExecutor(t)
 	mockStore := mocks.NewMockStore(t)
@@ -133,7 +133,7 @@ func TestExecutionLayerSyncer_SyncToHeight_ExecutorAhead(t *testing.T) {
 		StartTime:     time.Now().UTC(),
 	}
 
-	syncer := NewExecutionLayerSyncer(mockStore, mockExec, gen, logger)
+	syncer := NewExecutionLayerReplayer(mockStore, mockExec, gen, logger)
 
 	// Setup: target height is 100, execution layer is at 101 (unexpected!)
 	targetHeight := uint64(100)
@@ -147,7 +147,7 @@ func TestExecutionLayerSyncer_SyncToHeight_ExecutorAhead(t *testing.T) {
 	require.Contains(t, err.Error(), "execution layer height (101) is ahead of target height (100)")
 }
 
-func TestExecutionLayerSyncer_SyncToHeight_NoHeightProvider(t *testing.T) {
+func TestExecutionLayerReplayer_SyncToHeight_NoHeightProvider(t *testing.T) {
 	ctx := context.Background()
 	mockExec := mocks.NewMockExecutor(t) // Regular executor without HeightProvider
 	mockStore := mocks.NewMockStore(t)
@@ -159,7 +159,7 @@ func TestExecutionLayerSyncer_SyncToHeight_NoHeightProvider(t *testing.T) {
 		StartTime:     time.Now().UTC(),
 	}
 
-	syncer := NewExecutionLayerSyncer(mockStore, mockExec, gen, logger)
+	syncer := NewExecutionLayerReplayer(mockStore, mockExec, gen, logger)
 
 	// Execute sync - should skip silently
 	err := syncer.SyncToHeight(ctx, 100)
@@ -170,7 +170,7 @@ func TestExecutionLayerSyncer_SyncToHeight_NoHeightProvider(t *testing.T) {
 	mockExec.AssertNotCalled(t, "ExecuteTxs")
 }
 
-func TestExecutionLayerSyncer_SyncToHeight_AtGenesis(t *testing.T) {
+func TestExecutionLayerReplayer_SyncToHeight_AtGenesis(t *testing.T) {
 	ctx := context.Background()
 	mockExec := mocks.NewMockHeightAwareExecutor(t)
 	mockStore := mocks.NewMockStore(t)
@@ -182,7 +182,7 @@ func TestExecutionLayerSyncer_SyncToHeight_AtGenesis(t *testing.T) {
 		StartTime:     time.Now().UTC(),
 	}
 
-	syncer := NewExecutionLayerSyncer(mockStore, mockExec, gen, logger)
+	syncer := NewExecutionLayerReplayer(mockStore, mockExec, gen, logger)
 
 	// Target height is below genesis initial height
 	targetHeight := uint64(5)
@@ -196,7 +196,7 @@ func TestExecutionLayerSyncer_SyncToHeight_AtGenesis(t *testing.T) {
 	mockExec.AssertNotCalled(t, "ExecuteTxs")
 }
 
-func TestExecutionLayerSyncer_SyncToHeight_MultipleBlocks(t *testing.T) {
+func TestExecutionLayerReplayer_SyncToHeight_MultipleBlocks(t *testing.T) {
 	ctx := context.Background()
 	mockExec := mocks.NewMockHeightAwareExecutor(t)
 	mockStore := mocks.NewMockStore(t)
@@ -208,7 +208,7 @@ func TestExecutionLayerSyncer_SyncToHeight_MultipleBlocks(t *testing.T) {
 		StartTime:     time.Now().UTC(),
 	}
 
-	syncer := NewExecutionLayerSyncer(mockStore, mockExec, gen, logger)
+	syncer := NewExecutionLayerReplayer(mockStore, mockExec, gen, logger)
 
 	// Setup: target height is 100, execution layer is at 97 (need to sync 3 blocks: 98, 99, 100)
 	targetHeight := uint64(100)
@@ -282,7 +282,7 @@ func TestExecutionLayerSyncer_SyncToHeight_MultipleBlocks(t *testing.T) {
 	mockStore.AssertExpectations(t)
 }
 
-func TestExecutionLayerSyncer_ReplayBlock_FirstBlock(t *testing.T) {
+func TestExecutionLayerReplayer_ReplayBlock_FirstBlock(t *testing.T) {
 	ctx := context.Background()
 	mockExec := mocks.NewMockHeightAwareExecutor(t)
 	mockStore := mocks.NewMockStore(t)
@@ -294,7 +294,7 @@ func TestExecutionLayerSyncer_ReplayBlock_FirstBlock(t *testing.T) {
 		StartTime:     time.Now().UTC(),
 	}
 
-	syncer := NewExecutionLayerSyncer(mockStore, mockExec, gen, logger)
+	syncer := NewExecutionLayerReplayer(mockStore, mockExec, gen, logger)
 
 	now := uint64(time.Now().UnixNano())
 
@@ -330,7 +330,7 @@ func TestExecutionLayerSyncer_ReplayBlock_FirstBlock(t *testing.T) {
 	mockStore.AssertExpectations(t)
 }
 
-func TestExecutionLayerSyncer_AppHashMismatch(t *testing.T) {
+func TestExecutionLayerReplayer_AppHashMismatch(t *testing.T) {
 	ctx := context.Background()
 	mockExec := mocks.NewMockHeightAwareExecutor(t)
 	mockStore := mocks.NewMockStore(t)
@@ -342,7 +342,7 @@ func TestExecutionLayerSyncer_AppHashMismatch(t *testing.T) {
 		StartTime:     time.Now().UTC(),
 	}
 
-	syncer := NewExecutionLayerSyncer(mockStore, mockExec, gen, logger)
+	syncer := NewExecutionLayerReplayer(mockStore, mockExec, gen, logger)
 
 	targetHeight := uint64(100)
 	execHeight := uint64(99)
