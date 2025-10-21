@@ -102,6 +102,12 @@ func (s *ExecutionLayerReplayer) SyncToHeight(ctx context.Context, targetHeight 
 }
 
 // replayBlock replays a specific block from the store to the execution layer.
+//
+// Validation assumptions:
+// - Blocks in the store have already been fully validated (signatures, timestamps, etc.)
+// - We only verify the AppHash matches to detect state divergence
+// - We skip re-validating signatures and consensus rules since this is a replay
+// - This is safe because we're re-executing transactions against a known-good state
 func (s *ExecutionLayerReplayer) replayBlock(ctx context.Context, height uint64) error {
 	s.logger.Info().Uint64("height", height).Msg("replaying block to execution layer")
 
