@@ -626,6 +626,7 @@ The components communicate through well-defined interfaces:
 ### Initialization and State Management
 
 - Components load the initial state from the local store and use genesis if not found in the local store, when the node (re)starts
+- During startup the Syncer invokes the execution Replayer to re-execute any blocks the local execution layer is missing; the replayer enforces strict app-hash matching so a mismatch aborts initialization instead of silently drifting out of sync
 - The default mode for aggregator nodes is normal (not lazy)
 - Components coordinate through channels and shared cache structures
 
