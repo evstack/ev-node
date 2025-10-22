@@ -34,7 +34,7 @@ func (s *DockerTestSuite) TestBasicDockerE2E() {
 
 		bridgeNode = s.daNetwork.GetBridgeNodes()[0]
 
-		s.StartBridgeNode(ctx, bridgeNode, testChainID, genesisHash, celestiaNodeHostname)
+		s.StartBridgeNode(ctx, bridgeNode, celestiaChainID, genesisHash, celestiaNodeHostname)
 	})
 
 	s.T().Run("fund da wallet", func(t *testing.T) {

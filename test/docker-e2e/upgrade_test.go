@@ -1,4 +1,4 @@
-//go:build docker_e2e
+//go:build docker_e2e && evm
 
 package docker_e2e
 
@@ -37,7 +37,8 @@ import (
 
 const (
 	// baseEVMSingleVersion is the stable release version to start with before upgrading.
-	baseEVMSingleVersion = "v1.0.0"
+	baseEVMSingleVersion = "v1.0.0-beta.8"
+	evmChainID           = "1234"
 
 	// test account configuration (matches genesis accounts in reth/genesis.go)
 	testPrivateKey = "cece4f25ac74deb1468965160c7185e07dff413f23fcadb611b05ca37ab0a52e"
@@ -179,8 +180,10 @@ func TestEVMSingleUpgrade(t *testing.T) {
 
 	t.Run("setup evm-single with base version", func(t *testing.T) {
 		var err error
+
+		latestStableVersion := container.NewImage("ghcr.io/evstack/ev-node-evm-single", baseEVMSingleVersion, "")
 		evmSingleChain, err = evmsingle.NewChainBuilder(t).
-			WithImage(getEVMSingleImage(baseEVMSingleVersion)).
+			WithImage(latestStableVersion).
 			WithDockerClient(dockerClient).
 			WithDockerNetworkID(dockerNetworkID).
 			WithNode(
@@ -232,7 +235,7 @@ func TestEVMSingleUpgrade(t *testing.T) {
 		// verify connection
 		chainID, err := ethClient.ChainID(ctx)
 		require.NoError(t, err)
-		require.Equal(t, testChainID, chainID.String())
+		require.Equal(t, evmChainID, chainID.String())
 
 		t.Log("Ethereum client connected to Reth")
 	})
@@ -241,7 +244,7 @@ func TestEVMSingleUpgrade(t *testing.T) {
 
 	t.Run("pre-upgrade: submit transactions and verify state", func(t *testing.T) {
 		// submit first transaction
-		tx1 := evm.GetRandomTransaction(t, testPrivateKey, testToAddress, testChainID, testGasLimit, &txNonce)
+		tx1 := evm.GetRandomTransaction(t, testPrivateKey, testToAddress, evmChainID, testGasLimit, &txNonce)
 		err := ethClient.SendTransaction(ctx, tx1)
 		require.NoError(t, err)
 		preUpgradeTxHashes = append(preUpgradeTxHashes, tx1.Hash())
@@ -257,7 +260,7 @@ func TestEVMSingleUpgrade(t *testing.T) {
 		}, 30*time.Second, time.Second, "transaction 1 was not mined")
 
 		// submit second transaction
-		tx2 := evm.GetRandomTransaction(t, testPrivateKey, testToAddress, testChainID, testGasLimit, &txNonce)
+		tx2 := evm.GetRandomTransaction(t, testPrivateKey, testToAddress, evmChainID, testGasLimit, &txNonce)
 		err = ethClient.SendTransaction(ctx, tx2)
 		require.NoError(t, err)
 		preUpgradeTxHashes = append(preUpgradeTxHashes, tx2.Hash())
@@ -276,21 +279,17 @@ func TestEVMSingleUpgrade(t *testing.T) {
 	})
 
 	t.Run("perform upgrade", func(t *testing.T) {
-		// verify node is running before upgrade
-		err := evmSingleNode.ContainerLifecycle.Running(ctx)
-		require.NoError(t, err, "evm-single should be running before upgrade")
-
-		// stop the node
-		err = evmSingleNode.StopContainer(ctx)
-		require.NoError(t, err, "failed to stop evm-single")
-		t.Log("Stopped evm-single node")
-
 		// get upgrade version from environment variable (set by CI)
 		upgradeVersion := strings.TrimSpace(os.Getenv("EV_NODE_IMAGE_TAG"))
 		if upgradeVersion == "" {
 			upgradeVersion = "local-dev" // fallback for local testing
 		}
 		t.Logf("Upgrading to version: %s", upgradeVersion)
+
+		// remove container but preserve volumes
+		err := evmSingleNode.Remove(ctx, tastoratypes.WithPreserveVolumes())
+		require.NoError(t, err, "failed to remove container with volume preservation")
+		t.Log("Removed container with volume preservation")
 
 		// update image version
 		newImage := getEVMSingleImage(upgradeVersion)
@@ -299,18 +298,9 @@ func TestEVMSingleUpgrade(t *testing.T) {
 			node.Image = newImage
 		}
 
-		// remove container but preserve volumes
-		err = evmSingleNode.Remove(ctx, tastoratypes.WithPreserveVolumes())
-		require.NoError(t, err, "failed to remove container with volume preservation")
-		t.Log("Removed container with volume preservation")
-
 		// recreate and start with new version
 		err = evmSingleNode.Start(ctx)
 		require.NoError(t, err, "failed to start upgraded node")
-
-		// verify node is running after upgrade
-		err = evmSingleNode.ContainerLifecycle.Running(ctx)
-		require.NoError(t, err, "evm-single should be running after upgrade")
 
 		// health check
 		networkInfo, err := evmSingleNode.GetNetworkInfo(ctx)
@@ -344,7 +334,7 @@ func TestEVMSingleUpgrade(t *testing.T) {
 
 	t.Run("post-upgrade: submit new transactions and verify", func(t *testing.T) {
 		// submit new transaction after upgrade
-		tx := evm.GetRandomTransaction(t, testPrivateKey, testToAddress, testChainID, testGasLimit, &txNonce)
+		tx := evm.GetRandomTransaction(t, testPrivateKey, testToAddress, evmChainID, testGasLimit, &txNonce)
 		err := ethClient.SendTransaction(ctx, tx)
 		require.NoError(t, err)
 		t.Logf("Submitted post-upgrade tx: %s", tx.Hash().Hex())
@@ -401,7 +391,7 @@ func createCelestiaChain(t *testing.T, dockerClient *dockerclient.Client, docker
 
 	chain, err := cosmos.NewChainBuilder(t).
 		WithName("celestia").
-		WithChainID(testChainID).
+		WithChainID(celestiaChainID).
 		WithBinaryName("celestia-appd").
 		WithBech32Prefix("celestia").
 		WithDenom("utia").
@@ -479,10 +469,11 @@ func fundWallet(t *testing.T, ctx context.Context, chain *cosmos.Chain, wallet *
 func getEVMSingleImage(version string) container.Image {
 	repo := strings.TrimSpace(os.Getenv("EV_NODE_IMAGE_REPO"))
 	if repo == "" {
-		repo = "evstack"
+		repo = "evm-single"
 	}
 
-	return container.NewImage(repo, version, "10001:10001")
+	// evm-single runs as root (no specific user in Dockerfile), so UIDGID is empty
+	return container.NewImage(repo, version, "")
 }
 
 // getEncodingConfig returns the encoding config for Celestia.
