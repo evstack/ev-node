@@ -57,17 +57,14 @@ func TestEVMSingleUpgradeSuite(t *testing.T) {
 
 // TestEVMSingleUpgrade tests upgrading an evm-single node from a stable release
 // to a PR-built image while preserving state.
-//
-// Note: This test focuses on single-node upgrade (sequencer only) and state
-// persistence. In a production deployment with full nodes, operators must ensure
-// either: (1) all nodes upgrade together, or (2) the upgrade is backward compatible
-// so full nodes running old versions can still sync blocks from the upgraded sequencer.
 func (s *EVMSingleUpgradeTestSuite) TestEVMSingleUpgrade() {
 	ctx := context.Background()
 
-	s.Run("setup infrastructure", func() {
-		// reuse DockerTestSuite's CreateChain and CreateDANetwork
+	s.Run("setup docker", func() {
 		s.setupDockerEnvironment()
+	})
+
+	s.Run("setup celestia and DA bridge", func() {
 		s.celestia = s.CreateChain()
 		s.Require().NoError(s.celestia.Start(ctx))
 		s.T().Log("Celestia chain started")
@@ -89,7 +86,6 @@ func (s *EVMSingleUpgradeTestSuite) TestEVMSingleUpgrade() {
 		bridgeNetworkInfo, err := bridgeNode.GetNetworkInfo(ctx)
 		s.Require().NoError(err)
 		s.daAddress = fmt.Sprintf("http://%s:%s", bridgeNetworkInfo.Internal.IP, bridgeNetworkInfo.Internal.Ports.RPC)
-
 		s.T().Log("DA bridge node started and funded")
 	})
 
@@ -111,7 +107,7 @@ func (s *EVMSingleUpgradeTestSuite) TestEVMSingleUpgrade() {
 	var preUpgradeTxHashes []common.Hash
 
 	s.Run("pre-upgrade: submit transactions and verify state", func() {
-		preUpgradeTxHashes = s.submitPreUpgradeTxs(ctx)
+		preUpgradeTxHashes = s.submitPreUpgradeTxs(ctx, 20)
 		s.T().Logf("Pre-upgrade transactions verified: %d txs", len(preUpgradeTxHashes))
 	})
 
@@ -173,7 +169,6 @@ func (s *EVMSingleUpgradeTestSuite) setupRethNode(ctx context.Context) {
 
 // setupEVMSingle creates and starts an evm-single node with the specified version.
 func (s *EVMSingleUpgradeTestSuite) setupEVMSingle(ctx context.Context, image container.Image) {
-
 	nodeConfig := evmsingle.NewNodeConfigBuilder().
 		WithEVMEngineURL(s.evmEngineURL).
 		WithEVMETHURL(s.evmEthURL).
@@ -196,6 +191,7 @@ func (s *EVMSingleUpgradeTestSuite) setupEVMSingle(ctx context.Context, image co
 		WithImage(image).
 		WithNode(nodeConfig).
 		Build(ctx)
+
 	s.Require().NoError(err)
 	s.Require().Len(evmSingleChain.Nodes(), 1)
 
@@ -242,28 +238,17 @@ func (s *EVMSingleUpgradeTestSuite) setupEthClient(ctx context.Context) {
 }
 
 // submitPreUpgradeTxs submits and verifies multiple transactions before upgrade.
-func (s *EVMSingleUpgradeTestSuite) submitPreUpgradeTxs(ctx context.Context) []common.Hash {
+func (s *EVMSingleUpgradeTestSuite) submitPreUpgradeTxs(ctx context.Context, txCount int) []common.Hash {
 	var txHashes []common.Hash
 
-	// submit first transaction
-	tx1 := evm.GetRandomTransaction(s.T(), testPrivateKey, testToAddress, evmChainID, testGasLimit, &s.txNonce)
-	err := s.ethClient.SendTransaction(ctx, tx1)
-	s.Require().NoError(err)
-	txHashes = append(txHashes, tx1.Hash())
-	s.T().Logf("Submitted pre-upgrade tx 1: %s", tx1.Hash().Hex())
-
-	// wait for tx1 to be included
-	s.waitForTxIncluded(ctx, tx1.Hash())
-
-	// submit second transaction
-	tx2 := evm.GetRandomTransaction(s.T(), testPrivateKey, testToAddress, evmChainID, testGasLimit, &s.txNonce)
-	err = s.ethClient.SendTransaction(ctx, tx2)
-	s.Require().NoError(err)
-	txHashes = append(txHashes, tx2.Hash())
-	s.T().Logf("Submitted pre-upgrade tx 2: %s", tx2.Hash().Hex())
-
-	// wait for tx2 to be included
-	s.waitForTxIncluded(ctx, tx2.Hash())
+	for i := range txCount {
+		tx := evm.GetRandomTransaction(s.T(), testPrivateKey, testToAddress, evmChainID, testGasLimit, &s.txNonce)
+		err := s.ethClient.SendTransaction(ctx, tx)
+		s.Require().NoError(err)
+		txHashes = append(txHashes, tx.Hash())
+		s.T().Logf("Submitted pre-upgrade tx %d: %s", i, tx.Hash().Hex())
+		s.waitForTxIncluded(ctx, tx.Hash())
+	}
 
 	return txHashes
 }
@@ -286,7 +271,7 @@ func (s *EVMSingleUpgradeTestSuite) performUpgrade(ctx context.Context) {
 	s.Require().NoError(err, "failed to remove container with volume preservation")
 	s.T().Log("Removed container with volume preservation")
 
-	// update image version
+	// image to upgrade to will be passed via environment variables
 	newImage := getEVMSingleImage()
 
 	s.T().Logf("Upgrading to version: %s", newImage.Version)
@@ -295,7 +280,7 @@ func (s *EVMSingleUpgradeTestSuite) performUpgrade(ctx context.Context) {
 		node.Image = newImage
 	}
 
-	// recreate and start with new version
+	// start with new version on top of the same docker volume.
 	err = s.evmSingleNode.Start(ctx)
 	s.Require().NoError(err, "failed to start upgraded node")
 
