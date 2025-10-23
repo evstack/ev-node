@@ -4,7 +4,7 @@ go 1.24.6
 
 require (
 	cosmossdk.io/math v1.5.3
-	github.com/celestiaorg/tastora v0.7.3
+	github.com/celestiaorg/tastora v0.7.4
 	github.com/ethereum/go-ethereum v1.16.3
 	github.com/evstack/ev-node/execution/evm v1.0.0-beta.2
 	github.com/stretchr/testify v1.11.1
@@ -366,7 +366,6 @@ replace (
 	github.com/ChainSafe/go-schnorrkel => github.com/ChainSafe/go-schnorrkel v0.0.0-20200405005733-88cbf1b4c40d
 	github.com/ChainSafe/go-schnorrkel/1 => github.com/ChainSafe/go-schnorrkel v1.0.0
 	github.com/btcsuite/btcd/btcec/v2 => github.com/btcsuite/btcd/btcec/v2 v2.3.3
-	github.com/celestiaorg/tastora => ../../../../celestiaorg/tastora
 	github.com/cometbft/cometbft => github.com/celestiaorg/celestia-core v0.39.4
 	github.com/cosmos/cosmos-sdk => github.com/celestiaorg/cosmos-sdk v0.51.2
 	github.com/gogo/protobuf => github.com/gogo/protobuf v1.3.2

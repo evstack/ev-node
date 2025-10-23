@@ -5,7 +5,7 @@ go 1.24.6
 toolchain go1.24.7
 
 require (
-	github.com/celestiaorg/tastora v0.7.3
+	github.com/celestiaorg/tastora v0.7.4
 	github.com/ethereum/go-ethereum v1.16.5
 	github.com/evstack/ev-node v0.0.0-00010101000000-000000000000
 	github.com/evstack/ev-node/execution/evm v0.0.0-20250602130019-2a732cf903a5

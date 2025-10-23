@@ -60,11 +60,11 @@ func TestEVMSingleUpgradeSuite(t *testing.T) {
 func (s *EVMSingleUpgradeTestSuite) TestEVMSingleUpgrade() {
 	ctx := context.Background()
 
-	s.Run("setup docker", func() {
+	s.Run("setup_docker", func() {
 		s.setupDockerEnvironment()
 	})
 
-	s.Run("setup celestia and DA bridge", func() {
+	s.Run("setup_celestia_and_DA_bridge", func() {
 		s.celestia = s.CreateChain()
 		s.Require().NoError(s.celestia.Start(ctx))
 		s.T().Log("Celestia chain started")
@@ -89,41 +89,41 @@ func (s *EVMSingleUpgradeTestSuite) TestEVMSingleUpgrade() {
 		s.T().Log("DA bridge node started and funded")
 	})
 
-	s.Run("setup reth node", func() {
+	s.Run("setup_reth_node", func() {
 		s.setupRethNode(ctx)
 		s.T().Log("Reth node started")
 	})
 
-	s.Run("setup evm-single with base version", func() {
+	s.Run("setup_evm-single_with_base_version", func() {
 		s.setupEVMSingle(ctx, container.NewImage("ghcr.io/evstack/ev-node-evm-single", baseEVMSingleVersion, ""))
 		s.T().Logf("evm-single started with base version: %s", baseEVMSingleVersion)
 	})
 
-	s.Run("create ethereum client", func() {
+	s.Run("create_ethereum_client", func() {
 		s.setupEthClient(ctx)
 		s.T().Log("Ethereum client connected to Reth")
 	})
 
 	var preUpgradeTxHashes []common.Hash
 
-	s.Run("pre-upgrade: submit transactions and verify state", func() {
+	s.Run("pre_upgrade_submit_transactions_and_verify_state", func() {
 		preUpgradeTxHashes = s.submitPreUpgradeTxs(ctx, 20)
 		s.T().Logf("Pre-upgrade transactions verified: %d txs", len(preUpgradeTxHashes))
 	})
 
-	s.Run("perform upgrade", func() {
+	s.Run("perform_upgrade", func() {
 		s.performUpgrade(ctx)
 	})
 
-	s.Run("post-upgrade: verify old transactions persist", func() {
+	s.Run("post_upgrade_verify_old_transactions_persist", func() {
 		s.verifyOldTxsPersist(ctx, preUpgradeTxHashes)
 	})
 
-	s.Run("post-upgrade: submit new transactions and verify", func() {
+	s.Run("post_upgrade_submit_new_transactions_and_verify", func() {
 		s.submitAndVerifyPostUpgradeTx(ctx)
 	})
 
-	s.Run("post-upgrade: verify account balances", func() {
+	s.Run("post_upgrade_verify_account_balances", func() {
 		s.verifyAccountBalances(ctx)
 	})
 }
