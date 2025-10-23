@@ -52,7 +52,7 @@ func DefaultConfig() Config {
 			LazyBlockInterval:        DurationWrapper{60 * time.Second},
 			Light:                    false,
 			TrustedHash:              "",
-			ReadinessMaxBlocksBehind: 3,
+			ReadinessMaxBlocksBehind: 30,
 		},
 		DA: DAConfig{
 			Address:           "http://localhost:7980",
