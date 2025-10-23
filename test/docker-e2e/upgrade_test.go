@@ -348,11 +348,11 @@ func (s *EVMSingleUpgradeTestSuite) verifyAccountBalances(ctx context.Context) {
 
 // getEVMSingleImage returns the Docker image configuration for evm-single with the specified version.
 func getEVMSingleImage() container.Image {
-	repo := strings.TrimSpace(os.Getenv("EV_NODE_IMAGE_REPO"))
+	repo := strings.TrimSpace(os.Getenv("EVM_SINGLE_IMAGE_REPO"))
 	if repo == "" {
 		repo = "evm-single"
 	}
-	upgradeVersion := strings.TrimSpace(os.Getenv("EV_NODE_IMAGE_TAG"))
+	upgradeVersion := strings.TrimSpace(os.Getenv("EVM_SINGLE_NODE_IMAGE_TAG"))
 	if upgradeVersion == "" {
 		upgradeVersion = "local-dev"
 	}
