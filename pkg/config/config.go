@@ -68,6 +68,8 @@ const (
 	FlagDADataNamespace = FlagPrefixEvnode + "da.data_namespace"
 	// FlagDASubmitOptions is a flag for data availability submit options
 	FlagDASubmitOptions = FlagPrefixEvnode + "da.submit_options"
+	// FlagDASigningAddresses is a flag for specifying multiple DA signing addresses
+	FlagDASigningAddresses = FlagPrefixEvnode + "da.signing_addresses"
 	// FlagDAMempoolTTL is a flag for specifying the DA mempool TTL
 	FlagDAMempoolTTL = FlagPrefixEvnode + "da.mempool_ttl"
 	// FlagDAMaxSubmitAttempts is a flag for specifying the maximum DA submit attempts
@@ -161,6 +163,7 @@ type DAConfig struct {
 	GasPrice          float64         `mapstructure:"gas_price" yaml:"gas_price" comment:"Gas price for data availability transactions. Use -1 for automatic gas price determination. Higher values may result in faster inclusion."`
 	GasMultiplier     float64         `mapstructure:"gas_multiplier" yaml:"gas_multiplier" comment:"Multiplier applied to gas price when retrying failed DA submissions. Values > 1 increase gas price on retries to improve chances of inclusion."`
 	SubmitOptions     string          `mapstructure:"submit_options" yaml:"submit_options" comment:"Additional options passed to the DA layer when submitting data. Format depends on the specific DA implementation being used."`
+	SigningAddresses  []string        `mapstructure:"signing_addresses" yaml:"signing_addresses" comment:"List of signing addresses to use for DA submissions. When multiple addresses are provided, they will be used in round-robin fashion to prevent sequence mismatches. Useful for high-throughput chains using Cosmos SDK."`
 	Namespace         string          `mapstructure:"namespace" yaml:"namespace" comment:"Namespace ID used when submitting blobs to the DA layer. When a DataNamespace is provided, only the header is sent to this namespace."`
 	DataNamespace     string          `mapstructure:"data_namespace" yaml:"data_namespace" comment:"Namespace ID for submitting data to DA layer. Use this to speed-up light clients."`
 	BlockTime         DurationWrapper `mapstructure:"block_time" yaml:"block_time" comment:"Average block time of the DA chain (duration). Determines frequency of DA layer syncing, maximum backoff time for retries, and is multiplied by MempoolTTL to calculate transaction expiration. Examples: \"15s\", \"30s\", \"1m\", \"2m30s\", \"10m\"."`
@@ -325,6 +328,7 @@ func AddFlags(cmd *cobra.Command) {
 	cmd.Flags().String(FlagDANamespace, def.DA.Namespace, "DA namespace for header (or blob) submissions")
 	cmd.Flags().String(FlagDADataNamespace, def.DA.DataNamespace, "DA namespace for data submissions")
 	cmd.Flags().String(FlagDASubmitOptions, def.DA.SubmitOptions, "DA submit options")
+	cmd.Flags().StringSlice(FlagDASigningAddresses, def.DA.SigningAddresses, "Comma-separated list of signing addresses for DA submissions (used in round-robin)")
 	cmd.Flags().Uint64(FlagDAMempoolTTL, def.DA.MempoolTTL, "number of DA blocks until transaction is dropped from the mempool")
 	cmd.Flags().Int(FlagDAMaxSubmitAttempts, def.DA.MaxSubmitAttempts, "maximum number of attempts to submit data to the DA layer before giving up")
 
