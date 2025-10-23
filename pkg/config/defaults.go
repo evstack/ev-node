@@ -36,8 +36,19 @@ func DefaultRootDirWithName(appName string) string {
 	return filepath.Join(home, "."+appName)
 }
 
+// calculateReadinessMaxBlocksBehind calculates how many blocks represent 15 seconds
+// based on the given block time. This allows for normal batch-sync latency while
+// detecting stuck nodes.
+func calculateReadinessMaxBlocksBehind(blockTime time.Duration) uint64 {
+	if blockTime == 0 {
+		return 30 // fallback to safe default if blockTime is not set
+	}
+	return uint64(15 * time.Second / blockTime)
+}
+
 // DefaultConfig keeps default values of NodeConfig
 func DefaultConfig() Config {
+	defaultBlockTime := DurationWrapper{1 * time.Second}
 	return Config{
 		RootDir: DefaultRootDir,
 		DBPath:  "data",
@@ -47,12 +58,12 @@ func DefaultConfig() Config {
 		},
 		Node: NodeConfig{
 			Aggregator:               false,
-			BlockTime:                DurationWrapper{1 * time.Second},
+			BlockTime:                defaultBlockTime,
 			LazyMode:                 false,
 			LazyBlockInterval:        DurationWrapper{60 * time.Second},
 			Light:                    false,
 			TrustedHash:              "",
-			ReadinessMaxBlocksBehind: 30,
+			ReadinessMaxBlocksBehind: calculateReadinessMaxBlocksBehind(defaultBlockTime.Duration),
 		},
 		DA: DAConfig{
 			Address:           "http://localhost:7980",
