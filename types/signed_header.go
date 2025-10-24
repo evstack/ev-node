@@ -170,7 +170,7 @@ func (sh *SignedHeader) ValidateBasic() error {
 		return nil
 	}
 
-	legacy, err := sh.Header.MarshalBinaryLegacy()
+	legacy, err := sh.MarshalBinaryLegacy()
 	if err != nil {
 		return err
 	}
@@ -249,7 +249,7 @@ func (sh *SignedHeader) ValidateBasicWithData(data *Data) error {
 		return nil
 	}
 
-	legacy, err := sh.Header.MarshalBinaryLegacy()
+	legacy, err := sh.MarshalBinaryLegacy()
 	if err != nil {
 		return err
 	}

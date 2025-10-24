@@ -164,16 +164,16 @@ var (
 //
 // New blocks should use the slim header format by default (Legacy == nil).
 // The legacy encoding is only required when:
-//  - Syncing historical blocks from genesis
-//  - Interoperating with legacy nodes
-//  - Verifying signatures on historical blocks
+//   - Syncing historical blocks from genesis
+//   - Interoperating with legacy nodes
+//   - Verifying signatures on historical blocks
 //
 // ## For Node Operators
 //
 // Nodes will automatically:
-//  - Decode legacy headers when syncing from genesis
-//  - Verify signatures using the appropriate format
-//  - Handle mixed networks with both old and new nodes
+//   - Decode legacy headers when syncing from genesis
+//   - Verify signatures using the appropriate format
+//   - Handle mixed networks with both old and new nodes
 //
 // No configuration changes are required for the migration.
 //
