@@ -1,6 +1,7 @@
 package types
 
 import (
+	"crypto/rand"
 	"fmt"
 	"testing"
 
@@ -245,4 +246,93 @@ func testValidateBasic(t *testing.T, untrustedAdj *SignedHeader, privKey crypto.
 			}
 		})
 	}
+}
+
+func TestSignedHeaderValidateBasic_LegacyFallback(t *testing.T) {
+	privKey, pubKey, err := crypto.GenerateSecp256k1Key(rand.Reader)
+	require.NoError(t, err)
+
+	address := KeyAddress(pubKey)
+
+	header := Header{
+		BaseHeader: BaseHeader{
+			ChainID: "chain-id",
+			Height:  2,
+			Time:    123456789,
+		},
+		Version:         Version{Block: 1, App: 1},
+		LastHeaderHash:  make(Hash, 32),
+		DataHash:        make(Hash, 32),
+		AppHash:         make(Hash, 32),
+		ValidatorHash:   make(Hash, 32),
+		ProposerAddress: append([]byte(nil), address...),
+		Legacy: &LegacyHeaderFields{
+			ConsensusHash: make(Hash, 32),
+		},
+	}
+
+	legacyBytes, err := header.MarshalBinaryLegacy()
+	require.NoError(t, err)
+
+	signature, err := privKey.Sign(legacyBytes)
+	require.NoError(t, err)
+
+	var decoded Header
+	require.NoError(t, decoded.UnmarshalBinary(legacyBytes))
+
+	signed := SignedHeader{
+		Header: decoded,
+		Signature: Signature(
+			append([]byte(nil), signature...),
+		),
+		Signer: Signer{
+			PubKey:  pubKey,
+			Address: append([]byte(nil), address...),
+		},
+	}
+
+	require.NoError(t, signed.ValidateBasic())
+}
+
+func TestSignedHeaderValidateBasic_SlimFormat(t *testing.T) {
+	privKey, pubKey, err := crypto.GenerateSecp256k1Key(rand.Reader)
+	require.NoError(t, err)
+
+	address := KeyAddress(pubKey)
+
+	header := Header{
+		BaseHeader: BaseHeader{
+			ChainID: "chain-id",
+			Height:  5,
+			Time:    987654321,
+		},
+		Version:         Version{Block: 1, App: 1},
+		LastHeaderHash:  make(Hash, 32),
+		DataHash:        make(Hash, 32),
+		AppHash:         make(Hash, 32),
+		ValidatorHash:   make(Hash, 32),
+		ProposerAddress: append([]byte(nil), address...),
+	}
+
+	payload, err := header.MarshalBinary()
+	require.NoError(t, err)
+
+	signature, err := privKey.Sign(payload)
+	require.NoError(t, err)
+
+	var decoded Header
+	require.NoError(t, decoded.UnmarshalBinary(payload))
+
+	signed := SignedHeader{
+		Header: decoded,
+		Signature: Signature(
+			append([]byte(nil), signature...),
+		),
+		Signer: Signer{
+			PubKey:  pubKey,
+			Address: append([]byte(nil), address...),
+		},
+	}
+
+	require.NoError(t, signed.ValidateBasic())
 }
