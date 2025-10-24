@@ -331,6 +331,15 @@ func (c *EngineClient) getBlockInfo(ctx context.Context, height uint64) (common.
 	return header.Hash(), header.Root, header.GasLimit, header.Time, nil
 }
 
+// GetLatestHeight returns the current block height of the execution layer
+func (c *EngineClient) GetLatestHeight(ctx context.Context) (uint64, error) {
+	header, err := c.ethClient.HeaderByNumber(ctx, nil) // nil = latest block
+	if err != nil {
+		return 0, fmt.Errorf("failed to get latest block: %w", err)
+	}
+	return header.Number.Uint64(), nil
+}
+
 // decodeSecret decodes a hex-encoded JWT secret string into a byte slice.
 func decodeSecret(jwtSecret string) ([]byte, error) {
 	secret, err := hex.DecodeString(strings.TrimPrefix(jwtSecret, "0x"))

@@ -43,7 +43,7 @@ func TestNonAggregatorHandleDASubmissions(t *testing.T) {
 	assert.Equal(t, http.StatusOK, rr.Code)
 	assert.Equal(t, "application/json", rr.Header().Get("Content-Type"))
 
-	var response map[string]interface{}
+	var response map[string]any
 	err = json.Unmarshal(rr.Body.Bytes(), &response)
 	require.NoError(t, err)
 
@@ -51,7 +51,7 @@ func TestNonAggregatorHandleDASubmissions(t *testing.T) {
 	assert.Equal(t, float64(0), response["total"])
 	assert.Contains(t, response["message"], "not an aggregator")
 
-	submissions, ok := response["submissions"].([]interface{})
+	submissions, ok := response["submissions"].([]any)
 	require.True(t, ok)
 	assert.Equal(t, 0, len(submissions))
 }
@@ -73,7 +73,7 @@ func TestNonAggregatorHandleDAStats(t *testing.T) {
 	assert.Equal(t, http.StatusOK, rr.Code)
 	assert.Equal(t, "application/json", rr.Header().Get("Content-Type"))
 
-	var response map[string]interface{}
+	var response map[string]any
 	err = json.Unmarshal(rr.Body.Bytes(), &response)
 	require.NoError(t, err)
 
@@ -99,7 +99,7 @@ func TestNonAggregatorHandleDAHealth(t *testing.T) {
 	assert.Equal(t, http.StatusOK, rr.Code)
 	assert.Equal(t, "application/json", rr.Header().Get("Content-Type"))
 
-	var response map[string]interface{}
+	var response map[string]any
 	err = json.Unmarshal(rr.Body.Bytes(), &response)
 	require.NoError(t, err)
 

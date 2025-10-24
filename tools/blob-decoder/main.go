@@ -25,12 +25,12 @@ var templatesFS embed.FS
 
 // DecodedBlob represents the result of decoding a blob
 type DecodedBlob struct {
-	Type      string      `json:"type"`
-	Data      interface{} `json:"data"`
-	RawHex    string      `json:"rawHex"`
-	Size      int         `json:"size"`
-	Timestamp time.Time   `json:"timestamp"`
-	Error     string      `json:"error,omitempty"`
+	Type      string    `json:"type"`
+	Data      any       `json:"data"`
+	RawHex    string    `json:"rawHex"`
+	Size      int       `json:"size"`
+	Timestamp time.Time `json:"timestamp"`
+	Error     string    `json:"error,omitempty"`
 }
 
 func main() {
@@ -164,7 +164,7 @@ func decodeBlob(data []byte) DecodedBlob {
 	}
 
 	// Check if it's JSON
-	var jsonData interface{}
+	var jsonData any
 	if err := json.Unmarshal(data, &jsonData); err == nil {
 		return DecodedBlob{
 			Type: "JSON",
@@ -175,14 +175,14 @@ func decodeBlob(data []byte) DecodedBlob {
 	// Return as unknown binary
 	return DecodedBlob{
 		Type: "Unknown",
-		Data: map[string]interface{}{
+		Data: map[string]any{
 			"message": "Unable to decode blob format",
 			"preview": hex.EncodeToString(data[:min(100, len(data))]),
 		},
 	}
 }
 
-func tryDecodeHeader(data []byte) interface{} {
+func tryDecodeHeader(data []byte) any {
 	var headerPb pb.SignedHeader
 	if err := proto.Unmarshal(data, &headerPb); err != nil {
 		return nil
@@ -199,14 +199,14 @@ func tryDecodeHeader(data []byte) interface{} {
 	}
 
 	// Return a map with the actual header fields
-	return map[string]interface{}{
+	return map[string]any{
 		// BaseHeader fields
 		"height":  signedHeader.Height(),
 		"time":    signedHeader.Time().Format(time.RFC3339Nano),
 		"chainId": signedHeader.ChainID(),
 
 		// Version
-		"version": map[string]interface{}{
+		"version": map[string]any{
 			"block": signedHeader.Version.Block,
 			"app":   signedHeader.Version.App,
 		},
@@ -222,30 +222,30 @@ func tryDecodeHeader(data []byte) interface{} {
 
 		// Signature fields
 		"signature": bytesToHex(signedHeader.Signature),
-		"signer": map[string]interface{}{
+		"signer": map[string]any{
 			"address": bytesToHex(signedHeader.Signer.Address),
 			"pubKey":  "",
 		},
 	}
 }
 
-func tryDecodeSignedData(data []byte) interface{} {
+func tryDecodeSignedData(data []byte) any {
 	var signedData types.SignedData
 	if err := signedData.UnmarshalBinary(data); err != nil {
 		return nil
 	}
 
 	// Create transaction list
-	transactions := make([]map[string]interface{}, len(signedData.Txs))
+	transactions := make([]map[string]any, len(signedData.Txs))
 	for i, tx := range signedData.Txs {
-		transactions[i] = map[string]interface{}{
+		transactions[i] = map[string]any{
 			"index": i,
 			"size":  len(tx),
 			"data":  bytesToHex(tx),
 		}
 	}
 
-	result := map[string]interface{}{
+	result := map[string]any{
 		"transactions":     transactions,
 		"transactionCount": len(signedData.Txs),
 		"signature":        bytesToHex(signedData.Signature),
@@ -273,7 +273,7 @@ func bytesToHex(b []byte) string {
 	return hex.EncodeToString(b)
 }
 
-func sendJSONResponse(w http.ResponseWriter, data interface{}) {
+func sendJSONResponse(w http.ResponseWriter, data any) {
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(data); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)

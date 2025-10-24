@@ -3,7 +3,7 @@ module github.com/evstack/ev-node/sequencers/single
 go 1.24.6
 
 require (
-	github.com/evstack/ev-node v1.0.0-beta.7
+	github.com/evstack/ev-node v1.0.0-beta.8
 	github.com/evstack/ev-node/core v1.0.0-beta.3
 	github.com/go-kit/kit v0.13.0
 	github.com/ipfs/go-datastore v0.9.0
@@ -144,7 +144,7 @@ require (
 	golang.org/x/crypto v0.43.0 // indirect
 	golang.org/x/exp v0.0.0-20250911091902-df9299821621 // indirect
 	golang.org/x/mod v0.28.0 // indirect
-	golang.org/x/net v0.45.0 // indirect
+	golang.org/x/net v0.46.0 // indirect
 	golang.org/x/sync v0.17.0 // indirect
 	golang.org/x/sys v0.37.0 // indirect
 	golang.org/x/telemetry v0.0.0-20250908211612-aef8a434d053 // indirect
