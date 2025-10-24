@@ -4,7 +4,7 @@ go 1.24.6
 
 require (
 	cosmossdk.io/math v1.5.3
-	github.com/celestiaorg/tastora v0.7.1
+	github.com/celestiaorg/tastora v0.7.5
 	github.com/stretchr/testify v1.11.1
 )
 
