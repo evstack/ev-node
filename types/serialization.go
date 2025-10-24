@@ -2,6 +2,7 @@ package types
 
 import (
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/libp2p/go-libp2p/core/crypto"
@@ -417,10 +418,31 @@ func (sd *SignedData) UnmarshalBinary(data []byte) error {
 	return sd.FromProto(&pData)
 }
 
+// Legacy protobuf field numbers for backwards compatibility
+const (
+	legacyLastCommitHashField  = 5
+	legacyConsensusHashField   = 7
+	legacyLastResultsHashField = 9
+)
+
+// Maximum size of unknown fields to prevent DoS attacks via malicious headers
+// with excessive unknown field data. 1MB should be more than sufficient for
+// legitimate legacy headers (typical header is ~500 bytes).
+const maxUnknownFieldSize = 1024 * 1024 // 1MB
+
+// Maximum size for individual legacy hash fields. Standard hashes are 32 bytes,
+// but we allow up to 1KB for flexibility with different hash algorithms.
+const maxLegacyHashSize = 1024 // 1KB
+
 func decodeLegacyHeaderFields(pHeader *pb.Header) (*LegacyHeaderFields, error) {
 	unknown := pHeader.ProtoReflect().GetUnknown()
 	if len(unknown) == 0 {
 		return nil, nil
+	}
+
+	// Protect against DoS attacks via headers with massive unknown field data
+	if len(unknown) > maxUnknownFieldSize {
+		return nil, fmt.Errorf("unknown fields too large: %d bytes (max %d)", len(unknown), maxUnknownFieldSize)
 	}
 
 	var legacy LegacyHeaderFields
@@ -433,7 +455,7 @@ func decodeLegacyHeaderFields(pHeader *pb.Header) (*LegacyHeaderFields, error) {
 		unknown = unknown[n:]
 
 		switch fieldNum {
-		case 5, 7, 9:
+		case legacyLastCommitHashField, legacyConsensusHashField, legacyLastResultsHashField:
 			if typ != protowire.BytesType {
 				size := protowire.ConsumeFieldValue(fieldNum, typ, unknown)
 				if size < 0 {
@@ -449,14 +471,20 @@ func decodeLegacyHeaderFields(pHeader *pb.Header) (*LegacyHeaderFields, error) {
 			}
 			unknown = unknown[size:]
 
+			// Validate field size to prevent excessive memory allocation
+			if len(value) > maxLegacyHashSize {
+				return nil, fmt.Errorf("legacy hash field %d too large: %d bytes (max %d)",
+					fieldNum, len(value), maxLegacyHashSize)
+			}
+
 			copied := append([]byte(nil), value...)
 
 			switch fieldNum {
-			case 5:
+			case legacyLastCommitHashField:
 				legacy.LastCommitHash = copied
-			case 7:
+			case legacyConsensusHashField:
 				legacy.ConsensusHash = copied
-			case 9:
+			case legacyLastResultsHashField:
 				legacy.LastResultsHash = copied
 			}
 		default:
@@ -488,9 +516,7 @@ func marshalLegacyHeader(h *Header) ([]byte, error) {
 	}
 
 	clone := h.Clone()
-	if clone.Legacy == nil {
-		clone.Legacy = &LegacyHeaderFields{}
-	}
+	clone.ApplyLegacyDefaults()
 
 	var payload []byte
 
@@ -521,7 +547,7 @@ func marshalLegacyHeader(h *Header) ([]byte, error) {
 
 	// last commit hash (legacy)
 	if len(clone.Legacy.LastCommitHash) > 0 {
-		payload = appendBytesField(payload, 5, clone.Legacy.LastCommitHash)
+		payload = appendBytesField(payload, legacyLastCommitHashField, clone.Legacy.LastCommitHash)
 	}
 
 	// data hash
@@ -531,7 +557,7 @@ func marshalLegacyHeader(h *Header) ([]byte, error) {
 
 	// consensus hash (legacy)
 	if len(clone.Legacy.ConsensusHash) > 0 {
-		payload = appendBytesField(payload, 7, clone.Legacy.ConsensusHash)
+		payload = appendBytesField(payload, legacyConsensusHashField, clone.Legacy.ConsensusHash)
 	}
 
 	// app hash
@@ -541,7 +567,7 @@ func marshalLegacyHeader(h *Header) ([]byte, error) {
 
 	// last results hash (legacy)
 	if len(clone.Legacy.LastResultsHash) > 0 {
-		payload = appendBytesField(payload, 9, clone.Legacy.LastResultsHash)
+		payload = appendBytesField(payload, legacyLastResultsHashField, clone.Legacy.LastResultsHash)
 	}
 
 	// proposer address

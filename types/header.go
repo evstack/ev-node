@@ -143,6 +143,45 @@ var (
 // to the header minimisation change. When populated, these values are re-used
 // while constructing the protobuf payload so that legacy nodes can continue to
 // verify signatures and hashes.
+//
+// # Migration Guide
+//
+// This compatibility layer enables networks to sync from genesis after the header
+// minimization changes. The system automatically handles both legacy and slim
+// header formats through a multi-format verification fallback mechanism.
+//
+// ## Format Detection
+//
+// Headers are decoded and verified using the following strategy:
+//  1. Try custom signature provider (if configured)
+//  2. Try slim header format (new format without legacy fields)
+//  3. Try legacy header format (includes LastCommitHash, ConsensusHash, LastResultsHash)
+//
+// The Legacy field is automatically populated during deserialization when legacy
+// fields are detected in the protobuf unknown fields (field numbers 5, 7, 9).
+//
+// ## For Block Producers
+//
+// New blocks should use the slim header format by default (Legacy == nil).
+// The legacy encoding is only required when:
+//  - Syncing historical blocks from genesis
+//  - Interoperating with legacy nodes
+//  - Verifying signatures on historical blocks
+//
+// ## For Node Operators
+//
+// Nodes will automatically:
+//  - Decode legacy headers when syncing from genesis
+//  - Verify signatures using the appropriate format
+//  - Handle mixed networks with both old and new nodes
+//
+// No configuration changes are required for the migration.
+//
+// ## Legacy Field Defaults
+//
+// When encoding legacy headers, ConsensusHash defaults to a 32-byte zero hash
+// if not explicitly set, matching the historical behavior. Other legacy fields
+// remain nil if unset.
 type LegacyHeaderFields struct {
 	LastCommitHash  Hash
 	ConsensusHash   Hash
@@ -200,14 +239,7 @@ func (h Header) Clone() Header {
 	clone.AppHash = cloneBytes(h.AppHash)
 	clone.ValidatorHash = cloneBytes(h.ValidatorHash)
 	clone.ProposerAddress = cloneBytes(h.ProposerAddress)
-
-	if h.Legacy != nil {
-		legacyCopy := *h.Legacy
-		legacyCopy.LastCommitHash = cloneBytes(h.Legacy.LastCommitHash)
-		legacyCopy.ConsensusHash = cloneBytes(h.Legacy.ConsensusHash)
-		legacyCopy.LastResultsHash = cloneBytes(h.Legacy.LastResultsHash)
-		clone.Legacy = &legacyCopy
-	}
+	clone.Legacy = h.Legacy.Clone()
 
 	return clone
 }

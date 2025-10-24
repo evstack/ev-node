@@ -121,16 +121,21 @@ func (sh *SignedHeader) ValidateBasic() error {
 		return ErrProposerAddressMismatch
 	}
 
-	tried := make(map[string]struct{})
+	// Track tried payloads using a slice since we have at most 3 attempts.
+	// This avoids allocating strings for map keys.
+	tried := make([][]byte, 0, 3)
 	tryPayload := func(payload []byte) (bool, error) {
 		if len(payload) == 0 {
 			return false, nil
 		}
-		key := string(payload)
-		if _, ok := tried[key]; ok {
-			return false, nil
+
+		// Check if we've already tried this payload
+		for _, p := range tried {
+			if bytes.Equal(p, payload) {
+				return false, nil
+			}
 		}
-		tried[key] = struct{}{}
+		tried = append(tried, payload)
 
 		verified, err := sh.Signer.PubKey.Verify(payload, sh.Signature)
 		if err != nil {
@@ -195,16 +200,21 @@ func (sh *SignedHeader) ValidateBasicWithData(data *Data) error {
 		return ErrProposerAddressMismatch
 	}
 
-	tried := make(map[string]struct{})
+	// Track tried payloads using a slice since we have at most 3 attempts.
+	// This avoids allocating strings for map keys.
+	tried := make([][]byte, 0, 3)
 	tryPayload := func(payload []byte) (bool, error) {
 		if len(payload) == 0 {
 			return false, nil
 		}
-		key := string(payload)
-		if _, ok := tried[key]; ok {
-			return false, nil
+
+		// Check if we've already tried this payload
+		for _, p := range tried {
+			if bytes.Equal(p, payload) {
+				return false, nil
+			}
 		}
-		tried[key] = struct{}{}
+		tried = append(tried, payload)
 
 		verified, err := sh.Signer.PubKey.Verify(payload, sh.Signature)
 		if err != nil {
