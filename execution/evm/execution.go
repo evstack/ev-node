@@ -119,6 +119,16 @@ func (c *EngineClient) InitChain(ctx context.Context, genesisTime time.Time, ini
 		return nil, 0, fmt.Errorf("engine_forkchoiceUpdatedV3 failed: %w", err)
 	}
 
+	// Validate payload status
+	if forkchoiceResult.PayloadStatus.Status != engine.VALID {
+		c.logger.Warn().
+			Str("status", string(forkchoiceResult.PayloadStatus.Status)).
+			Str("latestValidHash", forkchoiceResult.PayloadStatus.LatestValidHash.Hex()).
+			Interface("validationError", forkchoiceResult.PayloadStatus.ValidationError).
+			Msg("InitChain: engine_forkchoiceUpdatedV3 returned non-VALID status")
+		return nil, 0, fmt.Errorf("%w: status=%s", ErrInvalidPayloadStatus, forkchoiceResult.PayloadStatus.Status)
+	}
+
 	_, stateRoot, gasLimit, _, err := c.getBlockInfo(ctx, 0)
 	if err != nil {
 		return nil, 0, fmt.Errorf("failed to get block info: %w", err)
@@ -197,6 +207,18 @@ func (c *EngineClient) ExecuteTxs(ctx context.Context, txs [][]byte, blockHeight
 	if err != nil {
 		return nil, 0, fmt.Errorf("forkchoice update failed: %w", err)
 	}
+
+	// Validate payload status
+	if forkchoiceResult.PayloadStatus.Status != engine.VALID {
+		c.logger.Warn().
+			Str("status", string(forkchoiceResult.PayloadStatus.Status)).
+			Str("latestValidHash", forkchoiceResult.PayloadStatus.LatestValidHash.Hex()).
+			Interface("validationError", forkchoiceResult.PayloadStatus.ValidationError).
+			Uint64("blockHeight", blockHeight).
+			Msg("ExecuteTxs: engine_forkchoiceUpdatedV3 returned non-VALID status")
+		return nil, 0, fmt.Errorf("%w: status=%s", ErrInvalidPayloadStatus, forkchoiceResult.PayloadStatus.Status)
+	}
+
 	if forkchoiceResult.PayloadID == nil {
 		c.logger.Error().
 			Str("status", string(forkchoiceResult.PayloadStatus.Status)).

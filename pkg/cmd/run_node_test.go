@@ -593,7 +593,14 @@ func TestStartNodeErrors(t *testing.T) {
 				cfg.Signer.SignerType = "file"
 				cfg.Signer.SignerPath = filepath.Join(tmpDir, "nonexistent_signer")
 			},
-			cmdModifier:   nil,
+			cmdModifier: func(cmd *cobra.Command) {
+				// Provide a passphrase file so we get to the signer loading error
+				passphraseFile := filepath.Join(tmpDir, "passphrase")
+				err := os.WriteFile(passphraseFile, []byte("password"), 0600)
+				assert.NoError(t, err)
+				err = cmd.Flags().Set(rollconf.FlagSignerPassphraseFile, passphraseFile)
+				assert.NoError(t, err)
+			},
 			expectedError: "no such file or directory",
 		},
 		{
@@ -604,7 +611,10 @@ func TestStartNodeErrors(t *testing.T) {
 				cfg.Signer.SignerPath = "signer" // Relative path that exists
 			},
 			cmdModifier: func(cmd *cobra.Command) {
-				err := cmd.Flags().Set(rollconf.FlagSignerPassphrase, "password")
+				passphraseFile := filepath.Join(tmpDir, "passphrase")
+				err := os.WriteFile(passphraseFile, []byte("password"), 0600)
+				assert.NoError(t, err)
+				err = cmd.Flags().Set(rollconf.FlagSignerPassphraseFile, passphraseFile)
 				assert.NoError(t, err)
 			},
 			expectedError: "", // Should succeed but will fail due to P2P issues, which is fine for coverage
@@ -617,7 +627,10 @@ func TestStartNodeErrors(t *testing.T) {
 				cfg.Signer.SignerPath = "nonexistent" // Relative path that doesn't exist
 			},
 			cmdModifier: func(cmd *cobra.Command) {
-				err := cmd.Flags().Set(rollconf.FlagSignerPassphrase, "password")
+				passphraseFile := filepath.Join(tmpDir, "passphrase")
+				err := os.WriteFile(passphraseFile, []byte("password"), 0600)
+				assert.NoError(t, err)
+				err = cmd.Flags().Set(rollconf.FlagSignerPassphraseFile, passphraseFile)
 				assert.NoError(t, err)
 			},
 			expectedError: "no such file or directory",

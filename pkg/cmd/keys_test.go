@@ -67,14 +67,19 @@ func TestExportKeyCmd(t *testing.T) {
 		root.SetOut(outBuf)
 		root.SetErr(errBuf)
 
+		// Create passphrase file
+		passphraseFile := filepath.Join(t.TempDir(), "passphrase")
+		err := os.WriteFile(passphraseFile, []byte(passphrase), 0600)
+		require.NoError(err)
+
 		args := []string{
 			"keys", "export",
 			"--" + rollconf.FlagRootDir, homeDir,
-			"--" + rollconf.FlagSignerPassphrase, passphrase,
+			"--" + rollconf.FlagSignerPassphraseFile, passphraseFile,
 		}
 		root.SetArgs(args)
 
-		err := root.Execute()
+		err = root.Execute()
 		require.NoError(err)
 
 		// Check stdout for the key
@@ -85,7 +90,7 @@ func TestExportKeyCmd(t *testing.T) {
 		assert.Contains(errBuf.String(), "WARNING: EXPORTING PRIVATE KEY")
 	})
 
-	t.Run("no passphrase", func(t *testing.T) {
+	t.Run("no passphrase file", func(t *testing.T) {
 		root := setupRootCmd()
 		args := []string{
 			"keys", "export",
@@ -95,19 +100,25 @@ func TestExportKeyCmd(t *testing.T) {
 
 		err := root.Execute()
 		require.Error(err)
-		assert.Contains(err.Error(), "passphrase is required")
+		assert.Contains(err.Error(), "passphrase file is required")
 	})
 
 	t.Run("wrong passphrase", func(t *testing.T) {
 		root := setupRootCmd()
+
+		// Create passphrase file with wrong password
+		passphraseFile := filepath.Join(t.TempDir(), "passphrase")
+		err := os.WriteFile(passphraseFile, []byte("wrong-password"), 0600)
+		require.NoError(err)
+
 		args := []string{
 			"keys", "export",
 			"--" + rollconf.FlagRootDir, homeDir,
-			"--" + rollconf.FlagSignerPassphrase, "wrong-password",
+			"--" + rollconf.FlagSignerPassphraseFile, passphraseFile,
 		}
 		root.SetArgs(args)
 
-		err := root.Execute()
+		err = root.Execute()
 		require.Error(err)
 		assert.Contains(err.Error(), "wrong passphrase")
 	})
@@ -132,14 +143,19 @@ func TestImportKeyCmd(t *testing.T) {
 		outBuf := new(bytes.Buffer)
 		root.SetOut(outBuf)
 
+		// Create passphrase file
+		passphraseFile := filepath.Join(t.TempDir(), "passphrase")
+		err := os.WriteFile(passphraseFile, []byte(passphrase), 0600)
+		require.NoError(err)
+
 		args := []string{
 			"keys", "import", hexPrivKey,
 			"--" + rollconf.FlagRootDir, importDir,
-			"--" + rollconf.FlagSignerPassphrase, passphrase,
+			"--" + rollconf.FlagSignerPassphraseFile, passphraseFile,
 		}
 		root.SetArgs(args)
 
-		err := root.Execute()
+		err = root.Execute()
 		require.NoError(err)
 
 		// Check for success message
@@ -158,7 +174,7 @@ func TestImportKeyCmd(t *testing.T) {
 		assert.True(loadedPubKey.Equals(privKey.GetPublic()))
 	})
 
-	t.Run("no passphrase", func(t *testing.T) {
+	t.Run("no passphrase file", func(t *testing.T) {
 		root := setupRootCmd()
 		importDir := t.TempDir()
 		args := []string{
@@ -169,20 +185,26 @@ func TestImportKeyCmd(t *testing.T) {
 
 		err := root.Execute()
 		require.Error(err)
-		assert.Contains(err.Error(), "passphrase is required")
+		assert.Contains(err.Error(), "passphrase file is required")
 	})
 
 	t.Run("invalid hex key", func(t *testing.T) {
 		root := setupRootCmd()
 		importDir := t.TempDir()
+
+		// Create passphrase file
+		passphraseFile := filepath.Join(t.TempDir(), "passphrase")
+		err := os.WriteFile(passphraseFile, []byte(passphrase), 0600)
+		require.NoError(err)
+
 		args := []string{
 			"keys", "import", "not-a-hex-key",
 			"--" + rollconf.FlagRootDir, importDir,
-			"--" + rollconf.FlagSignerPassphrase, passphrase,
+			"--" + rollconf.FlagSignerPassphraseFile, passphraseFile,
 		}
 		root.SetArgs(args)
 
-		err := root.Execute()
+		err = root.Execute()
 		require.Error(err)
 		assert.Contains(err.Error(), "failed to decode hex private key")
 	})
@@ -190,14 +212,20 @@ func TestImportKeyCmd(t *testing.T) {
 	t.Run("no key argument", func(t *testing.T) {
 		root := setupRootCmd()
 		importDir := t.TempDir()
+
+		// Create passphrase file
+		passphraseFile := filepath.Join(t.TempDir(), "passphrase")
+		err := os.WriteFile(passphraseFile, []byte(passphrase), 0600)
+		require.NoError(err)
+
 		args := []string{
 			"keys", "import",
 			"--" + rollconf.FlagRootDir, importDir,
-			"--" + rollconf.FlagSignerPassphrase, passphrase,
+			"--" + rollconf.FlagSignerPassphraseFile, passphraseFile,
 		}
 		root.SetArgs(args)
 
-		err := root.Execute()
+		err = root.Execute()
 		require.Error(err)
 		assert.Contains(err.Error(), "accepts 1 arg(s), received 0")
 	})
@@ -210,10 +238,15 @@ func TestImportKeyCmd(t *testing.T) {
 		_, err := file.CreateFileSystemSigner(keyPath, []byte("old-password"))
 		require.NoError(err)
 
+		// Create passphrase file
+		passphraseFile := filepath.Join(t.TempDir(), "passphrase")
+		err = os.WriteFile(passphraseFile, []byte(passphrase), 0600)
+		require.NoError(err)
+
 		args := []string{
 			"keys", "import", hexPrivKey,
 			"--" + rollconf.FlagRootDir, importDir,
-			"--" + rollconf.FlagSignerPassphrase, passphrase,
+			"--" + rollconf.FlagSignerPassphraseFile, passphraseFile,
 		}
 		root.SetArgs(args)
 
@@ -234,10 +267,15 @@ func TestImportKeyCmd(t *testing.T) {
 		_, err := file.CreateFileSystemSigner(keyPath, []byte("old-password"))
 		require.NoError(err)
 
+		// Create passphrase file
+		passphraseFile := filepath.Join(t.TempDir(), "passphrase")
+		err = os.WriteFile(passphraseFile, []byte(passphrase), 0600)
+		require.NoError(err)
+
 		args := []string{
 			"keys", "import", hexPrivKey,
 			"--" + rollconf.FlagRootDir, importDir,
-			"--" + rollconf.FlagSignerPassphrase, passphrase,
+			"--" + rollconf.FlagSignerPassphraseFile, passphraseFile,
 			"--force",
 		}
 		root.SetArgs(args)

@@ -42,8 +42,12 @@ func TestInitCommand(t *testing.T) {
 	// Register all persistent flags from root command
 	rollconf.AddGlobalFlags(cmd, "testapp")
 
+	// Create passphrase file
+	passphraseFile := filepath.Join(dir, "passphrase")
+	require.NoError(t, os.WriteFile(passphraseFile, []byte("test"), 0600))
+
 	// Set home flag to the test directory
-	cmd.SetArgs([]string{"init", "--home", dir, "--rollkit.node.aggregator", "--rollkit.signer.passphrase", "test"})
+	cmd.SetArgs([]string{"init", "--home", dir, "--evnode.node.aggregator", "--evnode.signer.passphrase_file", passphraseFile})
 
 	// Execute the command
 	err = cmd.Execute()

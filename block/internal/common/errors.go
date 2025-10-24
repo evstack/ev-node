@@ -17,4 +17,7 @@ var (
 
 	// ErrHeightFromFutureStr is the error message for height from future returned by da
 	ErrHeightFromFutureStr = errors.New("given height is from the future")
+
+	// ErrOversizedItem is an unrecoverable error indicating a single item exceeds DA blob size limit
+	ErrOversizedItem = errors.New("single item exceeds DA blob size limit")
 )
