@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/libp2p/go-libp2p/core/crypto"
+	"google.golang.org/protobuf/encoding/protowire"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
@@ -29,6 +30,12 @@ func (m *Metadata) UnmarshalBinary(metadata []byte) error {
 // MarshalBinary encodes Header into binary form and returns it.
 func (h *Header) MarshalBinary() ([]byte, error) {
 	return proto.Marshal(h.ToProto())
+}
+
+// MarshalBinaryLegacy returns the legacy header encoding that includes the
+// deprecated fields.
+func (h *Header) MarshalBinaryLegacy() ([]byte, error) {
+	return marshalLegacyHeader(h)
 }
 
 // UnmarshalBinary decodes binary form of Header into object.
@@ -140,7 +147,7 @@ func (sh *SignedHeader) UnmarshalBinary(data []byte) error {
 
 // ToProto converts Header into protobuf representation and returns it.
 func (h *Header) ToProto() *pb.Header {
-	return &pb.Header{
+	pHeader := &pb.Header{
 		Version: &pb.Version{
 			Block: h.Version.Block,
 			App:   h.Version.App,
@@ -154,6 +161,7 @@ func (h *Header) ToProto() *pb.Header {
 		ChainId:         h.BaseHeader.ChainID,
 		ValidatorHash:   h.ValidatorHash,
 	}
+	return pHeader
 }
 
 // FromProto fills Header with data from its protobuf representation.
@@ -198,6 +206,13 @@ func (h *Header) FromProto(other *pb.Header) error {
 	} else {
 		h.ValidatorHash = nil
 	}
+
+	legacy, err := decodeLegacyHeaderFields(other)
+	if err != nil {
+		return err
+	}
+	h.Legacy = legacy
+
 	return nil
 }
 
@@ -400,4 +415,151 @@ func (sd *SignedData) UnmarshalBinary(data []byte) error {
 		return err
 	}
 	return sd.FromProto(&pData)
+}
+
+func decodeLegacyHeaderFields(pHeader *pb.Header) (*LegacyHeaderFields, error) {
+	unknown := pHeader.ProtoReflect().GetUnknown()
+	if len(unknown) == 0 {
+		return nil, nil
+	}
+
+	var legacy LegacyHeaderFields
+
+	for len(unknown) > 0 {
+		fieldNum, typ, n := protowire.ConsumeTag(unknown)
+		if n < 0 {
+			return nil, protowire.ParseError(n)
+		}
+		unknown = unknown[n:]
+
+		switch fieldNum {
+		case 5, 7, 9:
+			if typ != protowire.BytesType {
+				size := protowire.ConsumeFieldValue(fieldNum, typ, unknown)
+				if size < 0 {
+					return nil, protowire.ParseError(size)
+				}
+				unknown = unknown[size:]
+				continue
+			}
+
+			value, size := protowire.ConsumeBytes(unknown)
+			if size < 0 {
+				return nil, protowire.ParseError(size)
+			}
+			unknown = unknown[size:]
+
+			copied := append([]byte(nil), value...)
+
+			switch fieldNum {
+			case 5:
+				legacy.LastCommitHash = copied
+			case 7:
+				legacy.ConsensusHash = copied
+			case 9:
+				legacy.LastResultsHash = copied
+			}
+		default:
+			size := protowire.ConsumeFieldValue(fieldNum, typ, unknown)
+			if size < 0 {
+				return nil, protowire.ParseError(size)
+			}
+			unknown = unknown[size:]
+		}
+	}
+
+	if legacy.IsZero() {
+		return nil, nil
+	}
+
+	return &legacy, nil
+}
+
+func appendBytesField(buf []byte, number protowire.Number, value []byte) []byte {
+	buf = protowire.AppendTag(buf, number, protowire.BytesType)
+	buf = protowire.AppendVarint(buf, uint64(len(value)))
+	buf = append(buf, value...)
+	return buf
+}
+
+func marshalLegacyHeader(h *Header) ([]byte, error) {
+	if h == nil {
+		return nil, errors.New("header is nil")
+	}
+
+	clone := h.Clone()
+	if clone.Legacy == nil {
+		clone.Legacy = &LegacyHeaderFields{}
+	}
+
+	var payload []byte
+
+	// version
+	versionBytes, err := proto.Marshal(&pb.Version{
+		Block: clone.Version.Block,
+		App:   clone.Version.App,
+	})
+	if err != nil {
+		return nil, err
+	}
+	payload = protowire.AppendTag(payload, 1, protowire.BytesType)
+	payload = protowire.AppendVarint(payload, uint64(len(versionBytes)))
+	payload = append(payload, versionBytes...)
+
+	// height
+	payload = protowire.AppendTag(payload, 2, protowire.VarintType)
+	payload = protowire.AppendVarint(payload, clone.BaseHeader.Height)
+
+	// time
+	payload = protowire.AppendTag(payload, 3, protowire.VarintType)
+	payload = protowire.AppendVarint(payload, clone.BaseHeader.Time)
+
+	// last header hash
+	if len(clone.LastHeaderHash) > 0 {
+		payload = appendBytesField(payload, 4, clone.LastHeaderHash)
+	}
+
+	// last commit hash (legacy)
+	if len(clone.Legacy.LastCommitHash) > 0 {
+		payload = appendBytesField(payload, 5, clone.Legacy.LastCommitHash)
+	}
+
+	// data hash
+	if len(clone.DataHash) > 0 {
+		payload = appendBytesField(payload, 6, clone.DataHash)
+	}
+
+	// consensus hash (legacy)
+	if len(clone.Legacy.ConsensusHash) > 0 {
+		payload = appendBytesField(payload, 7, clone.Legacy.ConsensusHash)
+	}
+
+	// app hash
+	if len(clone.AppHash) > 0 {
+		payload = appendBytesField(payload, 8, clone.AppHash)
+	}
+
+	// last results hash (legacy)
+	if len(clone.Legacy.LastResultsHash) > 0 {
+		payload = appendBytesField(payload, 9, clone.Legacy.LastResultsHash)
+	}
+
+	// proposer address
+	if len(clone.ProposerAddress) > 0 {
+		payload = appendBytesField(payload, 10, clone.ProposerAddress)
+	}
+
+	// validator hash
+	if len(clone.ValidatorHash) > 0 {
+		payload = appendBytesField(payload, 11, clone.ValidatorHash)
+	}
+
+	// chain ID
+	if len(clone.BaseHeader.ChainID) > 0 {
+		payload = protowire.AppendTag(payload, 12, protowire.BytesType)
+		payload = protowire.AppendVarint(payload, uint64(len(clone.BaseHeader.ChainID)))
+		payload = append(payload, clone.BaseHeader.ChainID...)
+	}
+
+	return payload, nil
 }

@@ -68,6 +68,11 @@ type Header struct {
 	// We keep this in case users choose another signature format where the
 	// pubkey can't be recovered by the signature (e.g. ed25519).
 	ProposerAddress []byte // original proposer of the block
+
+	// Legacy holds fields that were removed from the canonical header JSON/Go
+	// representation but may still be required for backwards compatible binary
+	// serialization (e.g. legacy signing payloads).
+	Legacy *LegacyHeaderFields
 }
 
 // New creates a new Header.
@@ -133,3 +138,83 @@ var (
 	_ encoding.BinaryMarshaler   = &Header{}
 	_ encoding.BinaryUnmarshaler = &Header{}
 )
+
+// LegacyHeaderFields captures the deprecated header fields that existed prior
+// to the header minimisation change. When populated, these values are re-used
+// while constructing the protobuf payload so that legacy nodes can continue to
+// verify signatures and hashes.
+type LegacyHeaderFields struct {
+	LastCommitHash  Hash
+	ConsensusHash   Hash
+	LastResultsHash Hash
+}
+
+// IsZero reports whether all legacy fields are unset.
+func (l *LegacyHeaderFields) IsZero() bool {
+	if l == nil {
+		return true
+	}
+	return len(l.LastCommitHash) == 0 &&
+		len(l.ConsensusHash) == 0 &&
+		len(l.LastResultsHash) == 0
+}
+
+// EnsureDefaults initialises missing legacy fields with their historical
+// default values so that the legacy protobuf payload matches the pre-change
+// encoding.
+func (l *LegacyHeaderFields) EnsureDefaults() {
+	if l.ConsensusHash == nil {
+		l.ConsensusHash = make(Hash, 32)
+	}
+}
+
+// Clone returns a deep copy of the legacy fields.
+func (l *LegacyHeaderFields) Clone() *LegacyHeaderFields {
+	if l == nil {
+		return nil
+	}
+	clone := &LegacyHeaderFields{
+		LastCommitHash:  cloneBytes(l.LastCommitHash),
+		ConsensusHash:   cloneBytes(l.ConsensusHash),
+		LastResultsHash: cloneBytes(l.LastResultsHash),
+	}
+	return clone
+}
+
+// ApplyLegacyDefaults ensures the Header has a Legacy block initialised with
+// the expected defaults so that legacy serialization works without callers
+// needing to populate every field explicitly.
+func (h *Header) ApplyLegacyDefaults() {
+	if h.Legacy == nil {
+		h.Legacy = &LegacyHeaderFields{}
+	}
+	h.Legacy.EnsureDefaults()
+}
+
+// Clone creates a deep copy of the header, ensuring all mutable slices are
+// duplicated to avoid unintended sharing between variants.
+func (h Header) Clone() Header {
+	clone := h
+	clone.LastHeaderHash = cloneBytes(h.LastHeaderHash)
+	clone.DataHash = cloneBytes(h.DataHash)
+	clone.AppHash = cloneBytes(h.AppHash)
+	clone.ValidatorHash = cloneBytes(h.ValidatorHash)
+	clone.ProposerAddress = cloneBytes(h.ProposerAddress)
+
+	if h.Legacy != nil {
+		legacyCopy := *h.Legacy
+		legacyCopy.LastCommitHash = cloneBytes(h.Legacy.LastCommitHash)
+		legacyCopy.ConsensusHash = cloneBytes(h.Legacy.ConsensusHash)
+		legacyCopy.LastResultsHash = cloneBytes(h.Legacy.LastResultsHash)
+		clone.Legacy = &legacyCopy
+	}
+
+	return clone
+}
+
+func cloneBytes(b []byte) []byte {
+	if len(b) == 0 {
+		return nil
+	}
+	return append([]byte(nil), b...)
+}
