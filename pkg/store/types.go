@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"io"
 
 	ds "github.com/ipfs/go-datastore"
 
@@ -32,6 +33,7 @@ type Batch interface {
 // Store is minimal interface for storing and retrieving blocks, commits and state.
 type Store interface {
 	Rollback
+	Backup
 	Reader
 
 	// SetMetadata saves arbitrary value in the store.
@@ -68,6 +70,18 @@ type Reader interface {
 
 	// GetMetadata returns values stored for given key with SetMetadata.
 	GetMetadata(ctx context.Context, key string) ([]byte, error)
+}
+
+type Backup interface {
+	// Backup writes a consistent backup stream to writer. The returned version can be used
+	// as the starting point for incremental backups.
+	Backup(ctx context.Context, writer io.Writer, since uint64) (uint64, error)
+
+	// Restore loads a backup stream from reader into the datastore.
+	Restore(ctx context.Context, reader io.Reader) error
+
+	// Close safely closes underlying data storage, to ensure that data is actually saved.
+	Close() error
 }
 
 type Rollback interface {

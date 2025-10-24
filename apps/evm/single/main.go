@@ -23,11 +23,17 @@ func main() {
 
 	// Add configuration flags to NetInfoCmd so it can read RPC address
 	config.AddFlags(rollcmd.NetInfoCmd)
+	backupCmd := rollcmd.NewBackupCmd()
+	config.AddFlags(backupCmd)
+	restoreCmd := rollcmd.NewRestoreCmd()
+	config.AddFlags(restoreCmd)
 
 	rootCmd.AddCommand(
 		cmd.InitCmd(),
 		cmd.RunCmd,
 		cmd.NewRollbackCmd(),
+		backupCmd,
+		restoreCmd,
 		rollcmd.VersionCmd,
 		rollcmd.NetInfoCmd,
 		rollcmd.StoreUnsafeCleanCmd,
