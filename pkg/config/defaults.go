@@ -36,8 +36,23 @@ func DefaultRootDirWithName(appName string) string {
 	return filepath.Join(home, "."+appName)
 }
 
+// calculateReadinessMaxBlocksBehind calculates how many blocks represent the readiness window
+// based on the given block time and window duration in seconds. This allows for normal
+// batch-sync latency while detecting stuck nodes.
+func calculateReadinessMaxBlocksBehind(blockTime time.Duration, windowSeconds uint64) uint64 {
+	if blockTime == 0 {
+		return 30 // fallback to safe default if blockTime is not set
+	}
+	if windowSeconds == 0 {
+		windowSeconds = 15 // fallback to default 15s window
+	}
+	return uint64(time.Duration(windowSeconds) * time.Second / blockTime)
+}
+
 // DefaultConfig keeps default values of NodeConfig
 func DefaultConfig() Config {
+	defaultBlockTime := DurationWrapper{1 * time.Second}
+	defaultReadinessWindowSeconds := uint64(15)
 	return Config{
 		RootDir: DefaultRootDir,
 		DBPath:  "data",
@@ -47,12 +62,13 @@ func DefaultConfig() Config {
 		},
 		Node: NodeConfig{
 			Aggregator:               false,
-			BlockTime:                DurationWrapper{1 * time.Second},
+			BlockTime:                defaultBlockTime,
 			LazyMode:                 false,
 			LazyBlockInterval:        DurationWrapper{60 * time.Second},
 			Light:                    false,
 			TrustedHash:              "",
-			ReadinessMaxBlocksBehind: 3,
+			ReadinessWindowSeconds:   defaultReadinessWindowSeconds,
+			ReadinessMaxBlocksBehind: calculateReadinessMaxBlocksBehind(defaultBlockTime.Duration, defaultReadinessWindowSeconds),
 		},
 		DA: DAConfig{
 			Address:           "http://localhost:7980",

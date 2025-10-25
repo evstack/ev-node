@@ -409,8 +409,8 @@ func TestHealthReadyEndpoint(t *testing.T) {
 	}{
 		{name: "at_head", local: 100, bestKnown: 100, peers: 1, expectedCode: http.StatusOK},
 		{name: "within_1_block", local: 99, bestKnown: 100, peers: 1, expectedCode: http.StatusOK},
-		{name: "within_3_blocks", local: 97, bestKnown: 100, peers: 1, expectedCode: http.StatusOK},
-		{name: "just_over_3_blocks", local: 96, bestKnown: 100, peers: 1, expectedCode: http.StatusServiceUnavailable},
+		{name: "within_15_blocks", local: 85, bestKnown: 100, peers: 1, expectedCode: http.StatusOK},
+		{name: "just_over_15_blocks", local: 84, bestKnown: 100, peers: 1, expectedCode: http.StatusServiceUnavailable},
 		{name: "local_ahead", local: 101, bestKnown: 100, peers: 1, expectedCode: http.StatusOK},
 		{name: "no_blocks_yet", local: 0, bestKnown: 100, peers: 1, expectedCode: http.StatusServiceUnavailable},
 		{name: "unknown_best_known", local: 100, bestKnown: 0, peers: 1, expectedCode: http.StatusServiceUnavailable},
