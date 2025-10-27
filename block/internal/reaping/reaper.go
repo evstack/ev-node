@@ -187,7 +187,6 @@ func (r *Reaper) SubmitTxs() error {
 		Batch: &coresequencer.Batch{Transactions: newTxs},
 	})
 	if err != nil {
-		r.logger.Error().Err(err).Msg("failed to submit txs to sequencer")
 		return fmt.Errorf("failed to submit txs to sequencer: %w", err)
 	}
 
