@@ -41,7 +41,7 @@ func (s *DockerTestSuite) TestEvNodeRestart() {
 		celestiaNodeHostname := networkInfo.Internal.Hostname
 
 		bridgeNode = s.daNetwork.GetBridgeNodes()[0]
-		s.StartBridgeNode(ctx, bridgeNode, testChainID, genesisHash, celestiaNodeHostname)
+		s.StartBridgeNode(ctx, bridgeNode, celestiaChainID, genesisHash, celestiaNodeHostname)
 
 		// Fund DA wallet
 		daWallet, err := bridgeNode.GetWallet()
@@ -196,7 +196,7 @@ func (s *DockerTestSuite) TestCelestiaDANetworkPartitionE2E() {
 		celestiaNodeHostname := networkInfo.Internal.Hostname
 
 		bridgeNode = s.daNetwork.GetBridgeNodes()[0]
-		s.StartBridgeNode(ctx, bridgeNode, testChainID, genesisHash, celestiaNodeHostname)
+		s.StartBridgeNode(ctx, bridgeNode, celestiaChainID, genesisHash, celestiaNodeHostname)
 		t.Log("✅ Bridge node started")
 
 		// Fund DA wallet
@@ -350,7 +350,7 @@ func (s *DockerTestSuite) TestCelestiaDANetworkPartitionE2E() {
 
 		// Re-initialize bridge node connection if needed
 		genesisHash := s.getGenesisHash(ctx)
-		s.StartBridgeNode(ctx, bridgeNode, testChainID, genesisHash, celestiaNodeHostname)
+		s.StartBridgeNode(ctx, bridgeNode, celestiaChainID, genesisHash, celestiaNodeHostname)
 
 		// Re-fund DA wallet after restart
 		daWallet, err := bridgeNode.GetWallet()
@@ -489,7 +489,7 @@ func (s *DockerTestSuite) TestDataCorruptionRecovery() {
 		celestiaNodeHostname := networkInfo.Internal.Hostname
 
 		bridgeNode = s.daNetwork.GetBridgeNodes()[0]
-		s.StartBridgeNode(ctx, bridgeNode, testChainID, genesisHash, celestiaNodeHostname)
+		s.StartBridgeNode(ctx, bridgeNode, celestiaChainID, genesisHash, celestiaNodeHostname)
 		t.Log("✅ Bridge node started")
 
 		// Fund DA wallet
