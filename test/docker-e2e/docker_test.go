@@ -27,9 +27,9 @@ import (
 )
 
 const (
-	// testChainID is the chain ID used for testing.
+	// celestiaChainID is the chain ID used for testing.
 	// it must be the string "test" as it is handled explicitly in app/node.
-	testChainID = "test"
+	celestiaChainID = "test"
 	// celestiaAppVersion specifies the tag of the celestia-app image to deploy in tests.
 	celestiaAppVersion = "v5.0.2"
 )
@@ -99,7 +99,7 @@ func (s *DockerTestSuite) CreateChain() *cosmos.Chain {
 	// Create chain using ChainBuilder pattern
 	chain, err := cosmos.NewChainBuilder(t).
 		WithName("celestia").
-		WithChainID(testChainID).
+		WithChainID(celestiaChainID).
 		WithBinaryName("celestia-appd").
 		WithBech32Prefix("celestia").
 		WithDenom("utia").

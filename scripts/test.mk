@@ -61,6 +61,11 @@ test-docker-e2e: docker-build-if-local
 	@cd test/docker-e2e && go test -mod=readonly -failfast -v -tags='docker_e2e' -timeout=30m ./...
 	@$(MAKE) docker-cleanup-if-local
 
+## test-docker-upgrade-e2e: Running Docker E2E Upgrade tests
+test-docker-upgrade-e2e:
+	@echo "--> Running Docker Upgrade E2E tests"
+	@cd test/docker-e2e && go test -mod=readonly -failfast -v -tags='docker_e2e evm' -timeout=30m -run '^TestEVMSingleUpgradeSuite$$/^TestEVMSingleUpgrade$$' ./...
+
 ## docker-build-if-local: Build Docker image if using local repository
 docker-build-if-local:
 	@if [ -z "$(EV_NODE_IMAGE_REPO)" ] || [ "$(EV_NODE_IMAGE_REPO)" = "evstack" ]; then \
