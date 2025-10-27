@@ -210,6 +210,10 @@ func TestExecutor_RealExecutionClientFailure_StopsNode(t *testing.T) {
 			Timestamp: time.Now(),
 		}, nil).Maybe()
 
+	// Mock GetTxs for reaper (return empty to avoid interfering with test)
+	mockExec.On("GetTxs", mock.Anything).
+		Return([][]byte{}, nil).Maybe()
+
 	// Mock ExecuteTxs to fail with a critical error
 	criticalError := errors.New("execution client RPC connection failed")
 	mockExec.On("ExecuteTxs", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
@@ -233,15 +237,26 @@ func TestExecutor_RealExecutionClientFailure_StopsNode(t *testing.T) {
 	require.NoError(t, err)
 
 	// Start should return with error when execution client fails
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	// Timeout accounts for retry delays: 3 retries × 10s timeout = ~30s plus buffer
+	ctx, cancel := context.WithTimeout(context.Background(), 35*time.Second)
 	defer cancel()
 
-	err = components.Start(ctx)
+	// Run Start in a goroutine to handle the blocking call
+	startErrCh := make(chan error, 1)
+	go func() {
+		startErrCh <- components.Start(ctx)
+	}()
 
-	// We expect an error containing the critical execution client failure
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "critical execution client failure")
-	assert.Contains(t, err.Error(), "execution client RPC connection failed")
+	// Wait for either the error or timeout
+	select {
+	case err = <-startErrCh:
+		// We expect an error containing the critical execution client failure
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "critical execution client failure")
+		assert.Contains(t, err.Error(), "execution client RPC connection failed")
+	case <-ctx.Done():
+		t.Fatal("timeout waiting for critical error to propagate")
+	}
 
 	// Clean up
 	stopErr := components.Stop()
