@@ -1,5 +1,4 @@
 //go:build run_evm
-// +build run_evm
 
 package main
 
