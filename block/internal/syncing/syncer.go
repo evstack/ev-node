@@ -206,6 +206,12 @@ func (s *Syncer) initializeState() error {
 		Str("chain_id", state.ChainID).
 		Msg("initialized syncer state")
 
+	// Sync execution layer with store on startup
+	execReplayer := common.NewReplayer(s.store, s.exec, s.genesis, s.logger)
+	if err := execReplayer.SyncToHeight(s.ctx, state.LastBlockHeight); err != nil {
+		return fmt.Errorf("failed to sync execution layer on startup: %w", err)
+	}
+
 	return nil
 }
 

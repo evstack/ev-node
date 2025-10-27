@@ -121,31 +121,68 @@ func (sh *SignedHeader) ValidateBasic() error {
 		return ErrProposerAddressMismatch
 	}
 
-	var (
-		bz  []byte
-		err error
-	)
-
-	if sh.aggregatorSignatureProvider == nil {
-		bz, err = DefaultAggregatorNodeSignatureBytesProvider(&sh.Header)
-		if err != nil {
-			return fmt.Errorf("default signature payload provider failed: %w", err)
+	// Track tried payloads using a slice since we have at most 3 attempts.
+	// This avoids allocating strings for map keys.
+	tried := make([][]byte, 0, 3)
+	tryPayload := func(payload []byte) (bool, error) {
+		if len(payload) == 0 {
+			return false, nil
 		}
-	} else {
-		bz, err = sh.aggregatorSignatureProvider(&sh.Header)
+
+		// Check if we've already tried this payload
+		for _, p := range tried {
+			if bytes.Equal(p, payload) {
+				return false, nil
+			}
+		}
+		tried = append(tried, payload)
+
+		verified, err := sh.Signer.PubKey.Verify(payload, sh.Signature)
+		if err != nil {
+			return false, err
+		}
+		return verified, nil
+	}
+
+	if sh.aggregatorSignatureProvider != nil {
+		bz, err := sh.aggregatorSignatureProvider(&sh.Header)
 		if err != nil {
 			return fmt.Errorf("custom signature payload provider failed: %w", err)
 		}
+		ok, err := tryPayload(bz)
+		if err != nil {
+			return err
+		}
+		if ok {
+			return nil
+		}
 	}
 
-	verified, err := sh.Signer.PubKey.Verify(bz, sh.Signature)
+	slim, err := sh.Header.MarshalBinary()
 	if err != nil {
 		return err
 	}
-	if !verified {
-		return ErrSignatureVerificationFailed
+	ok, err := tryPayload(slim)
+	if err != nil {
+		return err
 	}
-	return nil
+	if ok {
+		return nil
+	}
+
+	legacy, err := sh.MarshalBinaryLegacy()
+	if err != nil {
+		return err
+	}
+	ok, err = tryPayload(legacy)
+	if err != nil {
+		return err
+	}
+	if ok {
+		return nil
+	}
+
+	return ErrSignatureVerificationFailed
 }
 
 // ValidateBasicWithData performs basic validator of a signed header, granted data for syncing node.
@@ -163,29 +200,66 @@ func (sh *SignedHeader) ValidateBasicWithData(data *Data) error {
 		return ErrProposerAddressMismatch
 	}
 
-	var (
-		bz  []byte
-		err error
-	)
-
-	if sh.syncNodeSignatureBytesProvider == nil {
-		bz, err = DefaultSyncNodeSignatureBytesProvider(context.Background(), &sh.Header, nil)
-		if err != nil {
-			return fmt.Errorf("default signature payload provider failed: %w", err)
+	// Track tried payloads using a slice since we have at most 3 attempts.
+	// This avoids allocating strings for map keys.
+	tried := make([][]byte, 0, 3)
+	tryPayload := func(payload []byte) (bool, error) {
+		if len(payload) == 0 {
+			return false, nil
 		}
-	} else {
-		bz, err = sh.syncNodeSignatureBytesProvider(context.Background(), &sh.Header, data)
+
+		// Check if we've already tried this payload
+		for _, p := range tried {
+			if bytes.Equal(p, payload) {
+				return false, nil
+			}
+		}
+		tried = append(tried, payload)
+
+		verified, err := sh.Signer.PubKey.Verify(payload, sh.Signature)
+		if err != nil {
+			return false, err
+		}
+		return verified, nil
+	}
+
+	if sh.syncNodeSignatureBytesProvider != nil {
+		bz, err := sh.syncNodeSignatureBytesProvider(context.Background(), &sh.Header, data)
 		if err != nil {
 			return fmt.Errorf("custom signature payload provider failed: %w", err)
 		}
+		ok, err := tryPayload(bz)
+		if err != nil {
+			return err
+		}
+		if ok {
+			return nil
+		}
 	}
 
-	verified, err := sh.Signer.PubKey.Verify(bz, sh.Signature)
+	slim, err := sh.Header.MarshalBinary()
 	if err != nil {
 		return err
 	}
-	if !verified {
-		return ErrSignatureVerificationFailed
+	ok, err := tryPayload(slim)
+	if err != nil {
+		return err
 	}
-	return nil
+	if ok {
+		return nil
+	}
+
+	legacy, err := sh.MarshalBinaryLegacy()
+	if err != nil {
+		return err
+	}
+	ok, err = tryPayload(legacy)
+	if err != nil {
+		return err
+	}
+	if ok {
+		return nil
+	}
+
+	return ErrSignatureVerificationFailed
 }
