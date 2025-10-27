@@ -390,9 +390,9 @@ func (s *Syncer) processHeightEvent(event *common.DAHeightEvent) {
 		case errors.Is(err, errInvalidBlock):
 			// do not reschedule
 		case errors.Is(err, errInvalidState):
-			s.logger.Fatal().Uint64("block_height", event.Header.Height()).
-				Uint64("state_height", s.GetLastState().LastBlockHeight).Err(err).
-				Msg("Invalid state detected - block references do not match local state. Manual intervention required.")
+			s.sendCriticalError(fmt.Errorf("invalid state detected (block-height %d, state-height %d) "+
+				"- block references do not match local state. Manual intervention required: %w", event.Header.Height(),
+				s.GetLastState().LastBlockHeight, err))
 		default:
 			s.cache.SetPendingEvent(height, event)
 		}
@@ -555,7 +555,10 @@ func (s *Syncer) validateBlock(currState types.State, data *types.Data, header *
 		return fmt.Errorf("invalid header: %w", err)
 	}
 
-	return currState.AssertValidForNextState(header, data)
+	if err := currState.AssertValidForNextState(header, data); err != nil {
+		return errors.Join(errInvalidState, err)
+	}
+	return nil
 }
 
 // sendCriticalError sends a critical error to the error channel without blocking
