@@ -202,18 +202,6 @@ func (r *DARetriever) processBlobs(ctx context.Context, blobs [][]byte, daHeight
 			delete(r.pendingData, height)
 		}
 
-		// CRITICAL: Validate that data matches the header's DataHash commitment
-		// This prevents pairing legitimate headers with data from different blocks
-		dataCommitment := data.DACommitment()
-		if !bytes.Equal(header.DataHash[:], dataCommitment[:]) {
-			r.logger.Warn().
-				Uint64("height", height).
-				Str("header_data_hash", fmt.Sprintf("%x", header.DataHash)).
-				Str("actual_data_hash", fmt.Sprintf("%x", dataCommitment)).
-				Msg("DataHash mismatch: header and data do not match, discarding")
-			continue
-		}
-
 		// Create height event
 		event := common.DAHeightEvent{
 			Header:   header,
