@@ -115,6 +115,8 @@ func main() {
 
 If your chain utilizes the `migrationmngr` module to transition from a PoS validator set to a sequencer-based model, you must ensure that the standard `staking` module does not send conflicting validator updates during the migration.
 
+*Note: In order to understand the migration manager in depth, please refer to the [migration manager documentation](https://github.com/evstack/ev-abci/tree/main/modules/migrationmngr).*
+
 ### For Chains Using the `migrationmngr` Module
 
 **Goal:** To ensure the `migrationmngr` module is the *sole* source of validator set updates during a migration.
