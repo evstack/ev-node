@@ -138,8 +138,8 @@ func (d *Data) Validate() error {
 		return errors.New("timestamp cannot be zero")
 	}
 
-	// Check timestamp is not too far in the future (allow 1 minute of clock drift)
-	maxAllowedTime := time.Now().Add(1 * time.Minute)
+	// Check timestamp is not too far in the future (allow some clock drift)
+	maxAllowedTime := time.Now().Add(MaxClockDrift)
 	dataTime := d.Time()
 	if dataTime.After(maxAllowedTime) {
 		return errors.New("timestamp too far in future")
