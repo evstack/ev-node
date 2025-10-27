@@ -25,7 +25,6 @@ const (
 	initialBackoff               = 100 * time.Millisecond
 	defaultGasPrice              = 0.0
 	defaultGasMultiplier         = 1.0
-	defaultMaxBlobSize           = 1.5 * 1024 * 1024 // 1.5MB fallback blob size limit
 	defaultMaxGasPriceClamp      = 1000.0
 	defaultMaxGasMultiplierClamp = 3.0 // must always > 0 to avoid division by zero
 )
@@ -48,7 +47,7 @@ func defaultRetryPolicy(maxAttempts int, maxDuration time.Duration) retryPolicy 
 		MaxBackoff:       maxDuration,
 		MinGasPrice:      defaultGasPrice,
 		MaxGasPrice:      defaultMaxGasPriceClamp,
-		MaxBlobBytes:     defaultMaxBlobSize,
+		MaxBlobBytes:     common.DefaultMaxBlobSize,
 		MaxGasMultiplier: defaultMaxGasMultiplierClamp,
 	}
 }

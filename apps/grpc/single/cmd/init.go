@@ -53,7 +53,7 @@ This will create the necessary configuration structure in the specified root dir
 				if err != nil {
 					return fmt.Errorf("failed to read passphrase from file '%s': %w", passphraseFile, err)
 				}
-				passphrase = string(strings.TrimSpace(string(passphraseBytes)))
+				passphrase = strings.TrimSpace(string(passphraseBytes))
 
 				if passphrase == "" {
 					return fmt.Errorf("passphrase file '%s' is empty", passphraseFile)

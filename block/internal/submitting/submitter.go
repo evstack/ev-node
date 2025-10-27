@@ -163,9 +163,6 @@ func (s *Submitter) daSubmissionLoop() {
 								s.logger.Error().Err(err).
 									Msg("CRITICAL: Header exceeds DA blob size limit - halting to prevent live lock")
 								s.sendCriticalError(fmt.Errorf("unrecoverable DA submission error: %w", err))
-								if s.cancel != nil {
-									s.cancel()
-								}
 								return
 							}
 							s.logger.Error().Err(err).Msg("failed to submit headers")
@@ -185,9 +182,6 @@ func (s *Submitter) daSubmissionLoop() {
 								s.logger.Error().Err(err).
 									Msg("CRITICAL: Data exceeds DA blob size limit - halting to prevent live lock")
 								s.sendCriticalError(fmt.Errorf("unrecoverable DA submission error: %w", err))
-								if s.cancel != nil {
-									s.cancel()
-								}
 								return
 							}
 							s.logger.Error().Err(err).Msg("failed to submit data")
@@ -242,9 +236,6 @@ func (s *Submitter) processDAInclusionLoop() {
 				if err := s.setFinalWithRetry(nextHeight); err != nil {
 					s.sendCriticalError(fmt.Errorf("failed to set final height: %w", err))
 					s.logger.Error().Err(err).Uint64("height", nextHeight).Msg("CRITICAL: Failed to set final height after retries - halting DA inclusion processing")
-					if s.cancel != nil {
-						s.cancel()
-					}
 					return
 				}
 
