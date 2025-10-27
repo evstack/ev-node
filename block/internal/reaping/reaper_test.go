@@ -95,7 +95,7 @@ func TestReaper_SubmitTxs_NewTxs_SubmitsAndPersistsAndNotifies(t *testing.T) {
 	r := newTestReaper(t, "chain-A", mockExec, mockSeq, e)
 	store := r.SeenStore()
 
-	r.SubmitTxs()
+	assert.NoError(t, r.SubmitTxs())
 
 	// Seen keys persisted
 	has1, err := store.Has(context.Background(), ds.NewKey(hashTx(tx1)))
@@ -128,7 +128,7 @@ func TestReaper_SubmitTxs_AllSeen_NoSubmit(t *testing.T) {
 	mockExec.EXPECT().GetTxs(mock.Anything).Return([][]byte{tx1, tx2}, nil).Once()
 	// No SubmitBatchTxs expected
 
-	r.SubmitTxs()
+	assert.NoError(t, r.SubmitTxs())
 
 	// Ensure no notification occurred
 	if e.HasPendingTxNotification() {
@@ -158,7 +158,7 @@ func TestReaper_SubmitTxs_PartialSeen_FiltersAndPersists(t *testing.T) {
 			return &coresequencer.SubmitBatchTxsResponse{}, nil
 		}).Once()
 
-	r.SubmitTxs()
+	assert.NoError(t, r.SubmitTxs())
 
 	// Both should be seen after successful submit
 	hasOld, err := store.Has(context.Background(), ds.NewKey(hashTx(txOld)))
@@ -186,7 +186,7 @@ func TestReaper_SubmitTxs_SequencerError_NoPersistence_NoNotify(t *testing.T) {
 	e := newTestExecutor(t)
 	r := newTestReaper(t, "chain-D", mockExec, mockSeq, e)
 
-	r.SubmitTxs()
+	assert.Error(t, r.SubmitTxs())
 
 	// Should not be marked seen
 	store := r.SeenStore()

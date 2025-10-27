@@ -389,6 +389,7 @@ func (e *Executor) produceBlock() error {
 
 	if err := e.validateBlock(currentState, header, data); err != nil {
 		e.sendCriticalError(fmt.Errorf("failed to validate block: %w", err))
+		e.logger.Error().Err(err).Msg("CRITICAL: Permanent block validation error - halting block production")
 		return fmt.Errorf("failed to validate block: %w", err)
 	}
 
@@ -439,7 +440,8 @@ func (e *Executor) produceBlock() error {
 // retrieveBatch gets the next batch of transactions from the sequencer
 func (e *Executor) retrieveBatch(ctx context.Context) (*BatchData, error) {
 	req := coresequencer.GetNextBatchRequest{
-		Id: []byte(e.genesis.ChainID),
+		Id:       []byte(e.genesis.ChainID),
+		MaxBytes: common.DefaultMaxBlobSize,
 	}
 
 	res, err := e.sequencer.GetNextBatch(ctx, req)

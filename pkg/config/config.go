@@ -115,9 +115,8 @@ const (
 	// FlagSignerPath is a flag for specifying the signer path
 	FlagSignerPath = FlagPrefixEvnode + "signer.signer_path"
 
-	// FlagSignerPassphrase is a flag for specifying the signer passphrase
-	//nolint:gosec
-	FlagSignerPassphrase = FlagPrefixEvnode + "signer.passphrase"
+	// FlagSignerPassphraseFile is a flag for specifying the file containing the signer passphrase
+	FlagSignerPassphraseFile = FlagPrefixEvnode + "signer.passphrase_file"
 
 	// RPC configuration flags
 
@@ -353,7 +352,7 @@ func AddFlags(cmd *cobra.Command) {
 	// Signer configuration flags
 	cmd.Flags().String(FlagSignerType, def.Signer.SignerType, "type of signer to use (file, grpc)")
 	cmd.Flags().String(FlagSignerPath, def.Signer.SignerPath, "path to the signer file or address")
-	cmd.Flags().String(FlagSignerPassphrase, "", "passphrase for the signer (required for file signer and if aggregator is enabled)")
+	cmd.Flags().String(FlagSignerPassphraseFile, "", "path to file containing the signer passphrase (required for file signer and if aggregator is enabled)")
 }
 
 // Load loads the node configuration in the following order of precedence:
