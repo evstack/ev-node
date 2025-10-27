@@ -566,8 +566,8 @@ func (e *Executor) applyBlock(ctx context.Context, header types.Header, data *ty
 
 	// Execute transactions
 	ctx = context.WithValue(ctx, types.HeaderContextKey, header)
-	newAppHash, _, err := e.exec.ExecuteTxs(ctx, rawTxs, header.Height(),
-		header.Time(), currentState.AppHash)
+
+	newAppHash, err := e.executeTxsWithRetry(ctx, rawTxs, header, currentState)
 	if err != nil {
 		e.sendCriticalError(fmt.Errorf("failed to execute transactions: %w", err))
 		return types.State{}, fmt.Errorf("failed to execute transactions: %w", err)
@@ -590,6 +590,35 @@ func (e *Executor) signHeader(header types.Header) (types.Signature, error) {
 	}
 
 	return e.signer.Sign(bz)
+}
+
+// executeTxsWithRetry executes transactions with retry logic
+func (s *Executor) executeTxsWithRetry(ctx context.Context, rawTxs [][]byte, header types.Header, currentState types.State) ([]byte, error) {
+	for attempt := 1; attempt <= common.MaxRetriesBeforeHalt; attempt++ {
+		newAppHash, _, err := s.exec.ExecuteTxs(ctx, rawTxs, header.Height(), header.Time(), currentState.AppHash)
+		if err != nil {
+			if attempt == common.MaxRetriesBeforeHalt {
+				return nil, fmt.Errorf("failed to execute transactions: %w", err)
+			}
+
+			s.logger.Error().Err(err).
+				Int("attempt", attempt).
+				Int("max_attempts", common.MaxRetriesBeforeHalt).
+				Uint64("height", header.Height()).
+				Msg("failed to execute transactions, retrying")
+
+			select {
+			case <-time.After(common.MaxRetriesTimeout):
+				continue
+			case <-s.ctx.Done():
+				return nil, fmt.Errorf("context cancelled during retry: %w", s.ctx.Err())
+			}
+		}
+
+		return newAppHash, nil
+	}
+
+	return nil, nil
 }
 
 // validateBlock validates the created block
