@@ -6,10 +6,45 @@ pageClass: gas-calculator
 
 # Celestia Gas Calculator
 
-Fine-tune the inputs below to see how the 175-byte block header, block cadence, and blob payload batches contribute to the final `gasLimit` and transaction fee. All calculations mirror the structure of Celestia’s `DefaultEstimateGas`. Enter gas prices in `uTIA / gas` (the chain’s native denomination) and the estimator will report fees in `TIA`.
+Interactive calculator to estimate Celestia DA costs based on your rollup's block production rate and transaction throughput. All calculations mirror Celestia's `DefaultEstimateGas` logic, with fees reported in `TIA` based on your specified gas price in `uTIA / gas`.
 
-Set the header count to match how many headers you plan to batch per submission; the tool multiplies that count by the block time to derive the submission cadence (e.g., 15 headers at 250 ms ⇒ one submission every 3.75 s). Switch the execution environment to EVM to model data submissions: choose a transaction mix, randomize it if you want a quick sample, and the calculator will translate the calldata bytes into Celestia blob gas, projecting costs per submission, per second, per month, and per year. Cosmos SDK presets are coming soon.
+> **Important**: These are estimates only. Actual costs may vary based on network conditions, gas price fluctuations, and blob size optimizations. Use these projections as a planning guide, not exact values.
 
-For this first iteration the gas parameters are locked to the current Celestia mainnet defaults: fixed cost `65,000`, `8` gas per blob byte, effective share size `480` bytes, and zero static per-blob gas. Parameter overrides and live chain lookups will land in a follow-up.
+## How it works
+
+The calculator is organized into four sections:
+
+### 1. Header cadence
+
+Configure your rollup's block production rate and header batching strategy. Set how many headers you batch per submission—the tool automatically calculates the submission interval. For example, 15 headers at 250 ms block time means one submission every 3.75 seconds.
+
+### 2. Data workload
+
+Model your transaction throughput and calldata usage:
+
+- **EVM mode**: Customize your transaction mix across common ERC-20, ERC-721, ERC-1155, and native transfers. The visual donut chart shows the weighted distribution of transaction types and calculates the average calldata bytes per transaction. Use "Randomize configuration" for quick testing or manually adjust weights in the customization panel.
+- **Cosmos SDK mode**: Coming soon
+
+The calculator translates your transaction rate and calldata into Celestia blob gas requirements, projecting costs per submission, per second, and annually.
+
+### 3. Gas parameters
+
+Review the Celestia mainnet gas parameters used for calculations:
+- **Fixed cost**: 65,000 gas per submission
+- **Gas per blob byte**: 8 gas per byte
+- **Share size**: 480 bytes
+- **Per-blob static gas**: 0 gas
+
+Set your expected gas price and optionally account for the one-time 10,000 gas surcharge if this is the first transaction for the account.
+
+> **Note**: Gas parameters are currently locked to Celestia mainnet defaults. Live parameter fetching and manual overrides will be added in a future update.
+
+### 4. Estimation
+
+View comprehensive cost breakdowns including:
+- Total gas per submission and corresponding fees
+- Detailed breakdown of header costs, data costs, and baseline gas
+- Annual cost projections
+- Throughput metrics (transactions per second, month, and year)
 
 <CelestiaGasEstimator />
