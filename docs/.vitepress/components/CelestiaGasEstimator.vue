@@ -101,10 +101,10 @@
                         Transactions per month
                         <input
                             id="tx-month"
-                            type="number"
-                            min="0"
-                            step="1"
-                            v-model.number="txPerMonthInput"
+                            type="text"
+                            :value="txPerMonthFormatted"
+                            @input="handleTxPerMonthInput"
+                            @blur="handleTxPerMonthBlur"
                         />
                     </label>
                 </div>
@@ -580,6 +580,31 @@ const txPerMonthInput = computed({
         txPerSecond.value = sanitizeNumber(value) / SECONDS_PER_MONTH;
     },
 });
+
+const txPerMonthFormatted = computed(() => {
+    const value = txPerSecond.value * SECONDS_PER_MONTH;
+    return formatInteger(value);
+});
+
+function handleTxPerMonthInput(event: Event) {
+    const input = event.target as HTMLInputElement;
+    const rawValue = input.value.replace(/,/g, "");
+    const numValue = parseFloat(rawValue);
+    if (!isNaN(numValue) && numValue >= 0) {
+        txPerSecond.value = numValue / SECONDS_PER_MONTH;
+    }
+}
+
+function handleTxPerMonthBlur(event: Event) {
+    const input = event.target as HTMLInputElement;
+    const rawValue = input.value.replace(/,/g, "");
+    const numValue = parseFloat(rawValue);
+    if (!isNaN(numValue) && numValue >= 0) {
+        txPerSecond.value = sanitizeNumber(numValue) / SECONDS_PER_MONTH;
+    }
+    // Force re-render with formatted value
+    input.value = txPerMonthFormatted.value;
+}
 
 const blockTimeSeconds = computed(() => {
     const value = blockTime.value;
