@@ -154,9 +154,14 @@ func (s *Submitter) daSubmissionLoop() {
 		case <-ticker.C:
 			// Submit headers
 			if s.cache.NumPendingHeaders() != 0 {
+				s.logger.Info().Time("t", time.Now()).Msg("Submitting headers")
 				if s.headerSubmissionMtx.TryLock() {
+					s.logger.Warn().Time("t", time.Now()).Msg("Header submission in progress")
 					go func() {
-						defer s.headerSubmissionMtx.Unlock()
+						defer func() {
+							s.logger.Info().Time("t", time.Now()).Msg("Header submission completed")
+							s.headerSubmissionMtx.Unlock()
+						}()
 						if err := s.daSubmitter.SubmitHeaders(s.ctx, s.cache); err != nil {
 							// Check for unrecoverable errors that indicate a critical issue
 							if errors.Is(err, common.ErrOversizedItem) {
@@ -173,9 +178,14 @@ func (s *Submitter) daSubmissionLoop() {
 
 			// Submit data
 			if s.cache.NumPendingData() != 0 {
+				s.logger.Info().Time("t", time.Now()).Msg("Submitting data")
 				if s.dataSubmissionMtx.TryLock() {
+					s.logger.Info().Time("t", time.Now()).Msg("Data submission in progress")
 					go func() {
-						defer s.dataSubmissionMtx.Unlock()
+						defer func() {
+							s.logger.Info().Time("t", time.Now()).Msg("Data submission completed")
+							s.dataSubmissionMtx.Unlock()
+						}()
 						if err := s.daSubmitter.SubmitData(s.ctx, s.cache, s.signer, s.genesis); err != nil {
 							// Check for unrecoverable errors that indicate a critical issue
 							if errors.Is(err, common.ErrOversizedItem) {
