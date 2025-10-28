@@ -50,7 +50,7 @@ require (
 	github.com/ethereum/go-verkle v0.2.2 // indirect
 	github.com/ferranbt/fastssz v0.1.4 // indirect
 	github.com/filecoin-project/go-clock v0.1.0 // indirect
-	github.com/filecoin-project/go-jsonrpc v0.8.0 // indirect
+	github.com/filecoin-project/go-jsonrpc v0.9.0 // indirect
 	github.com/flynn/noise v1.1.0 // indirect
 	github.com/francoispqt/gojay v1.2.13 // indirect
 	github.com/fsnotify/fsnotify v1.9.0 // indirect
