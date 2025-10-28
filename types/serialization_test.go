@@ -394,3 +394,32 @@ func TestProtoConversionConsistency_AllTypes(t *testing.T) {
 	assert.NoError(t, s2.FromProto(protoState))
 	assert.Equal(t, s, s2)
 }
+
+func TestHeaderSerializationSize(t *testing.T) {
+	t.Parallel()
+	require := require.New(t)
+
+	h := Header{
+		Version: Version{
+			Block: 1,
+			App:   2,
+		},
+		BaseHeader: BaseHeader{
+			Height:  3,
+			Time:    4567,
+			ChainID: "test",
+		},
+		LastHeaderHash:  make(Hash, 32),
+		DataHash:        make(Hash, 32),
+		AppHash:         make(Hash, 32),
+		ProposerAddress: make([]byte, 20),
+		ValidatorHash:   make(Hash, 32),
+	}
+
+	// Marshal the header to binary
+	blob, err := h.MarshalBinary()
+	require.NoError(err)
+
+	assert.Equal(t, len(blob), 175, "Serialized header size has changed")
+
+}
