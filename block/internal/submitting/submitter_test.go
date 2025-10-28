@@ -303,7 +303,7 @@ func newHeaderAndData(chainID string, height uint64, nonEmpty bool) (*types.Sign
 	h := &types.SignedHeader{Header: types.Header{BaseHeader: types.BaseHeader{ChainID: chainID, Height: height, Time: uint64(now.UnixNano())}, ProposerAddress: []byte{1}}}
 	d := &types.Data{Metadata: &types.Metadata{ChainID: chainID, Height: height, Time: uint64(now.UnixNano())}}
 	if nonEmpty {
-		d.Txs = types.Txs{types.Tx(fmt.Sprintf("any-unique-tx-%s-%d-%d", chainID, height, now.UnixNano()))}
+		d.Txs = types.Txs{types.Tx(fmt.Sprintf("any-unique-tx-%d-%d", height, now.UnixNano()))}
 	}
 	return h, d
 }

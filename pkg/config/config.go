@@ -45,6 +45,8 @@ const (
 	FlagMaxPendingHeadersAndData = FlagPrefixEvnode + "node.max_pending_headers_and_data"
 	// FlagLazyBlockTime is a flag for specifying the maximum interval between blocks in lazy aggregation mode
 	FlagLazyBlockTime = FlagPrefixEvnode + "node.lazy_block_interval"
+	// FlagReadinessWindowSeconds configures the time window (in seconds) used to calculate readiness threshold
+	FlagReadinessWindowSeconds = FlagPrefixEvnode + "node.readiness_window_seconds"
 	// FlagReadinessMaxBlocksBehind configures how many blocks behind best-known head is still considered ready
 	FlagReadinessMaxBlocksBehind = FlagPrefixEvnode + "node.readiness_max_blocks_behind"
 	// FlagClearCache is a flag for clearing the cache
@@ -113,9 +115,8 @@ const (
 	// FlagSignerPath is a flag for specifying the signer path
 	FlagSignerPath = FlagPrefixEvnode + "signer.signer_path"
 
-	// FlagSignerPassphrase is a flag for specifying the signer passphrase
-	//nolint:gosec
-	FlagSignerPassphrase = FlagPrefixEvnode + "signer.passphrase"
+	// FlagSignerPassphraseFile is a flag for specifying the file containing the signer passphrase
+	FlagSignerPassphraseFile = FlagPrefixEvnode + "signer.passphrase_file"
 
 	// RPC configuration flags
 
@@ -198,6 +199,7 @@ type NodeConfig struct {
 	TrustedHash string `mapstructure:"trusted_hash" yaml:"trusted_hash" comment:"Initial trusted hash used to bootstrap the header exchange service. Allows nodes to start synchronizing from a specific trusted point in the chain instead of genesis. When provided, the node will fetch the corresponding header/block from peers using this hash and use it as a starting point for synchronization. If not provided, the node will attempt to fetch the genesis block instead."`
 
 	// Readiness / health configuration
+	ReadinessWindowSeconds   uint64 `mapstructure:"readiness_window_seconds" yaml:"readiness_window_seconds" comment:"Time window in seconds used to calculate ReadinessMaxBlocksBehind based on block time. Default: 15 seconds."`
 	ReadinessMaxBlocksBehind uint64 `mapstructure:"readiness_max_blocks_behind" yaml:"readiness_max_blocks_behind" comment:"How many blocks behind best-known head the node can be and still be considered ready. 0 means must be exactly at head."`
 }
 
@@ -314,6 +316,7 @@ func AddFlags(cmd *cobra.Command) {
 	cmd.Flags().Bool(FlagLazyAggregator, def.Node.LazyMode, "produce blocks only when transactions are available or after lazy block time")
 	cmd.Flags().Uint64(FlagMaxPendingHeadersAndData, def.Node.MaxPendingHeadersAndData, "maximum headers or data pending DA confirmation before pausing block production (0 for no limit)")
 	cmd.Flags().Duration(FlagLazyBlockTime, def.Node.LazyBlockInterval.Duration, "maximum interval between blocks in lazy aggregation mode")
+	cmd.Flags().Uint64(FlagReadinessWindowSeconds, def.Node.ReadinessWindowSeconds, "time window in seconds for calculating readiness threshold based on block time (default: 15s)")
 	cmd.Flags().Uint64(FlagReadinessMaxBlocksBehind, def.Node.ReadinessMaxBlocksBehind, "how many blocks behind best-known head the node can be and still be considered ready (0 = must be at head)")
 
 	// Data Availability configuration flags
@@ -349,7 +352,7 @@ func AddFlags(cmd *cobra.Command) {
 	// Signer configuration flags
 	cmd.Flags().String(FlagSignerType, def.Signer.SignerType, "type of signer to use (file, grpc)")
 	cmd.Flags().String(FlagSignerPath, def.Signer.SignerPath, "path to the signer file or address")
-	cmd.Flags().String(FlagSignerPassphrase, "", "passphrase for the signer (required for file signer and if aggregator is enabled)")
+	cmd.Flags().String(FlagSignerPassphraseFile, "", "path to file containing the signer passphrase (required for file signer and if aggregator is enabled)")
 }
 
 // Load loads the node configuration in the following order of precedence:

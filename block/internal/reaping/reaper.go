@@ -19,8 +19,14 @@ import (
 	"github.com/evstack/ev-node/pkg/store"
 )
 
-// DefaultInterval is the default reaper interval
-const DefaultInterval = 1 * time.Second
+const (
+	// DefaultInterval is the default reaper interval
+	DefaultInterval = 1 * time.Second
+	// MaxBackoffInterval is the maximum backoff interval for retries
+	MaxBackoffInterval = 30 * time.Second
+	// BackoffMultiplier is the multiplier for exponential backoff
+	BackoffMultiplier = 2
+)
 
 // Reaper is responsible for periodically retrieving transactions from the executor,
 // filtering out already seen transactions, and submitting new transactions to the sequencer.
@@ -76,7 +82,7 @@ func NewReaper(
 func (r *Reaper) Start(ctx context.Context) error {
 	r.ctx, r.cancel = context.WithCancel(ctx)
 
-	// Start repear loop
+	// Start reaper loop
 	r.wg.Add(1)
 	go func() {
 		defer r.wg.Done()
@@ -91,12 +97,35 @@ func (r *Reaper) reaperLoop() {
 	ticker := time.NewTicker(r.interval)
 	defer ticker.Stop()
 
+	consecutiveFailures := 0
+
 	for {
 		select {
 		case <-r.ctx.Done():
 			return
 		case <-ticker.C:
-			r.SubmitTxs()
+			err := r.SubmitTxs()
+			if err != nil {
+				// Increment failure counter and apply exponential backoff
+				consecutiveFailures++
+				backoff := r.interval * time.Duration(1<<min(consecutiveFailures, 5)) // Cap at 2^5 = 32x
+				backoff = min(backoff, MaxBackoffInterval)
+				r.logger.Warn().
+					Err(err).
+					Int("consecutive_failures", consecutiveFailures).
+					Dur("next_retry_in", backoff).
+					Msg("reaper encountered error, applying backoff")
+
+				// Reset ticker with backoff interval
+				ticker.Reset(backoff)
+			} else {
+				// Reset failure counter and backoff on success
+				if consecutiveFailures > 0 {
+					r.logger.Info().Msg("reaper recovered from errors, resetting backoff")
+					consecutiveFailures = 0
+					ticker.Reset(r.interval)
+				}
+			}
 		}
 	}
 }
@@ -113,24 +142,27 @@ func (r *Reaper) Stop() error {
 }
 
 // SubmitTxs retrieves transactions from the executor and submits them to the sequencer.
-func (r *Reaper) SubmitTxs() {
+// Returns an error if any critical operation fails.
+func (r *Reaper) SubmitTxs() error {
 	txs, err := r.exec.GetTxs(r.ctx)
 	if err != nil {
 		r.logger.Error().Err(err).Msg("failed to get txs from executor")
-		return
+		return fmt.Errorf("failed to get txs from executor: %w", err)
 	}
 	if len(txs) == 0 {
 		r.logger.Debug().Msg("no new txs")
-		return
+		return nil
 	}
 
 	var newTxs [][]byte
+	var seenStoreErrors int
 	for _, tx := range txs {
 		txHash := hashTx(tx)
 		key := ds.NewKey(txHash)
 		has, err := r.seenStore.Has(r.ctx, key)
 		if err != nil {
 			r.logger.Error().Err(err).Msg("failed to check seenStore")
+			seenStoreErrors++
 			continue
 		}
 		if !has {
@@ -138,9 +170,14 @@ func (r *Reaper) SubmitTxs() {
 		}
 	}
 
+	// If all transactions failed seenStore check, return error
+	if seenStoreErrors > 0 && len(newTxs) == 0 {
+		return fmt.Errorf("failed to check seenStore for all %d transactions", seenStoreErrors)
+	}
+
 	if len(newTxs) == 0 {
 		r.logger.Debug().Msg("no new txs to submit")
-		return
+		return nil
 	}
 
 	r.logger.Debug().Int("txCount", len(newTxs)).Msg("submitting txs to sequencer")
@@ -150,14 +187,14 @@ func (r *Reaper) SubmitTxs() {
 		Batch: &coresequencer.Batch{Transactions: newTxs},
 	})
 	if err != nil {
-		r.logger.Error().Err(err).Msg("failed to submit txs to sequencer")
-		return
+		return fmt.Errorf("failed to submit txs to sequencer: %w", err)
 	}
 
 	for _, tx := range newTxs {
 		txHash := hashTx(tx)
 		key := ds.NewKey(txHash)
 		if err := r.seenStore.Put(r.ctx, key, []byte{1}); err != nil {
+			// Log but don't fail on persistence errors
 			r.logger.Error().Err(err).Str("txHash", txHash).Msg("failed to persist seen tx")
 		}
 	}
@@ -169,6 +206,7 @@ func (r *Reaper) SubmitTxs() {
 	}
 
 	r.logger.Debug().Msg("successfully submitted txs")
+	return nil
 }
 
 // SeenStore returns the datastore used to track seen transactions.

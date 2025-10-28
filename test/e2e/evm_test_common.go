@@ -194,6 +194,36 @@ const (
 
 )
 
+// createPassphraseFile creates a temporary passphrase file and returns its path.
+// The file is created in the provided directory with secure permissions (0600).
+// If the directory doesn't exist, it will be created with 0755 permissions.
+func createPassphraseFile(t *testing.T, dir string) string {
+	t.Helper()
+	// Ensure the directory exists
+	err := os.MkdirAll(dir, 0755)
+	require.NoError(t, err, "failed to create directory for passphrase file")
+
+	passphraseFile := filepath.Join(dir, "passphrase.txt")
+	err = os.WriteFile(passphraseFile, []byte(TestPassphrase), 0600)
+	require.NoError(t, err, "failed to create passphrase file")
+	return passphraseFile
+}
+
+// createJWTSecretFile creates a temporary JWT secret file and returns its path.
+// The file is created in the provided directory with secure permissions (0600).
+// If the directory doesn't exist, it will be created with 0755 permissions.
+func createJWTSecretFile(t *testing.T, dir, jwtSecret string) string {
+	t.Helper()
+	// Ensure the directory exists
+	err := os.MkdirAll(dir, 0755)
+	require.NoError(t, err, "failed to create directory for JWT secret file")
+
+	jwtSecretFile := filepath.Join(dir, "jwt-secret.hex")
+	err = os.WriteFile(jwtSecretFile, []byte(jwtSecret), 0600)
+	require.NoError(t, err, "failed to create JWT secret file")
+	return jwtSecretFile
+}
+
 // getNodeP2PAddress uses the net-info command to get the P2P address of a node.
 // This is more reliable than parsing logs as it directly queries the node's state.
 //
@@ -262,11 +292,17 @@ func getNodeP2PAddress(t *testing.T, sut *SystemUnderTest, nodeHome string, rpcP
 func setupSequencerNode(t *testing.T, sut *SystemUnderTest, sequencerHome, jwtSecret, genesisHash string, endpoints *TestEndpoints) {
 	t.Helper()
 
+	// Create passphrase file
+	passphraseFile := createPassphraseFile(t, sequencerHome)
+
+	// Create JWT secret file
+	jwtSecretFile := createJWTSecretFile(t, sequencerHome, jwtSecret)
+
 	// Initialize sequencer node
 	output, err := sut.RunCmd(evmSingleBinaryPath,
 		"init",
-		"--rollkit.node.aggregator=true",
-		"--rollkit.signer.passphrase", TestPassphrase,
+		"--evnode.node.aggregator=true",
+		"--evnode.signer.passphrase_file", passphraseFile,
 		"--home", sequencerHome,
 	)
 	require.NoError(t, err, "failed to init sequencer", output)
@@ -274,16 +310,16 @@ func setupSequencerNode(t *testing.T, sut *SystemUnderTest, sequencerHome, jwtSe
 	// Use helper methods to get complete URLs
 	args := []string{
 		"start",
-		"--evm.jwt-secret", jwtSecret,
+		"--evm.jwt-secret-file", jwtSecretFile,
 		"--evm.genesis-hash", genesisHash,
-		"--rollkit.node.block_time", DefaultBlockTime,
-		"--rollkit.node.aggregator=true",
-		"--rollkit.signer.passphrase", TestPassphrase,
+		"--evnode.node.block_time", DefaultBlockTime,
+		"--evnode.node.aggregator=true",
+		"--evnode.signer.passphrase_file", passphraseFile,
 		"--home", sequencerHome,
-		"--rollkit.da.block_time", DefaultDABlockTime,
-		"--rollkit.da.address", endpoints.GetDAAddress(),
-		"--rollkit.rpc.address", endpoints.GetRollkitRPCListen(),
-		"--rollkit.p2p.listen_address", endpoints.GetRollkitP2PAddress(),
+		"--evnode.da.block_time", DefaultDABlockTime,
+		"--evnode.da.address", endpoints.GetDAAddress(),
+		"--evnode.rpc.address", endpoints.GetRollkitRPCListen(),
+		"--evnode.p2p.listen_address", endpoints.GetRollkitP2PAddress(),
 		"--evm.engine-url", endpoints.GetSequencerEngineURL(),
 		"--evm.eth-url", endpoints.GetSequencerEthURL(),
 	}
@@ -297,11 +333,17 @@ func setupSequencerNode(t *testing.T, sut *SystemUnderTest, sequencerHome, jwtSe
 func setupSequencerNodeLazy(t *testing.T, sut *SystemUnderTest, sequencerHome, jwtSecret, genesisHash string, endpoints *TestEndpoints) {
 	t.Helper()
 
+	// Create passphrase file
+	passphraseFile := createPassphraseFile(t, sequencerHome)
+
+	// Create JWT secret file
+	jwtSecretFile := createJWTSecretFile(t, sequencerHome, jwtSecret)
+
 	// Initialize sequencer node
 	output, err := sut.RunCmd(evmSingleBinaryPath,
 		"init",
-		"--rollkit.node.aggregator=true",
-		"--rollkit.signer.passphrase", TestPassphrase,
+		"--evnode.node.aggregator=true",
+		"--evnode.signer.passphrase_file", passphraseFile,
 		"--home", sequencerHome,
 	)
 	require.NoError(t, err, "failed to init sequencer", output)
@@ -309,18 +351,18 @@ func setupSequencerNodeLazy(t *testing.T, sut *SystemUnderTest, sequencerHome, j
 	// Use helper methods to get complete URLs
 	args := []string{
 		"start",
-		"--evm.jwt-secret", jwtSecret,
+		"--evm.jwt-secret-file", jwtSecretFile,
 		"--evm.genesis-hash", genesisHash,
-		"--rollkit.node.block_time", DefaultBlockTime,
-		"--rollkit.node.aggregator=true",
-		"--rollkit.node.lazy_mode=true",
-		"--rollkit.node.lazy_block_interval=60s",
-		"--rollkit.signer.passphrase", TestPassphrase,
+		"--evnode.node.block_time", DefaultBlockTime,
+		"--evnode.node.aggregator=true",
+		"--evnode.node.lazy_mode=true",
+		"--evnode.node.lazy_block_interval=60s",
+		"--evnode.signer.passphrase_file", passphraseFile,
 		"--home", sequencerHome,
-		"--rollkit.da.block_time", DefaultDABlockTime,
-		"--rollkit.da.address", endpoints.GetDAAddress(),
-		"--rollkit.rpc.address", endpoints.GetRollkitRPCListen(),
-		"--rollkit.p2p.listen_address", endpoints.GetRollkitP2PAddress(),
+		"--evnode.da.block_time", DefaultDABlockTime,
+		"--evnode.da.address", endpoints.GetDAAddress(),
+		"--evnode.rpc.address", endpoints.GetRollkitRPCListen(),
+		"--evnode.p2p.listen_address", endpoints.GetRollkitP2PAddress(),
 		"--evm.engine-url", endpoints.GetSequencerEngineURL(),
 		"--evm.eth-url", endpoints.GetSequencerEthURL(),
 	}
@@ -361,11 +403,14 @@ func setupFullNode(t *testing.T, sut *SystemUnderTest, fullNodeHome, sequencerHo
 	err = os.WriteFile(fullNodeGenesis, genesisData, 0644)
 	require.NoError(t, err, "failed to write full node genesis file")
 
+	// Create JWT secret file for full node
+	fullNodeJwtSecretFile := createJWTSecretFile(t, fullNodeHome, fullNodeJwtSecret)
+
 	// Use helper methods to get complete URLs
 	args := []string{
 		"start",
 		"--home", fullNodeHome,
-		"--evm.jwt-secret", fullNodeJwtSecret,
+		"--evm.jwt-secret-file", fullNodeJwtSecretFile,
 		"--evm.genesis-hash", genesisHash,
 		"--rollkit.p2p.peers", sequencerP2PAddress,
 		"--evm.engine-url", endpoints.GetFullNodeEngineURL(),
@@ -561,19 +606,21 @@ func restartDAAndSequencer(t *testing.T, sut *SystemUnderTest, sequencerHome, jw
 	time.Sleep(25 * time.Millisecond)
 
 	// Then restart the sequencer node (without init - node already exists)
+	// The passphrase file and JWT secret file should still exist from the initial setup
+	passphraseFile := filepath.Join(sequencerHome, "passphrase.txt")
+	jwtSecretFile := filepath.Join(sequencerHome, "jwt-secret.hex")
 	sut.ExecCmd(evmSingleBinaryPath,
 		"start",
-		"--evnode.log.format", "json",
-		"--evm.jwt-secret", jwtSecret,
+		"--evm.jwt-secret-file", jwtSecretFile,
 		"--evm.genesis-hash", genesisHash,
-		"--rollkit.node.block_time", DefaultBlockTime,
-		"--rollkit.node.aggregator=true",
-		"--rollkit.signer.passphrase", TestPassphrase,
+		"--evnode.node.block_time", DefaultBlockTime,
+		"--evnode.node.aggregator=true",
+		"--evnode.signer.passphrase_file", passphraseFile,
 		"--home", sequencerHome,
-		"--rollkit.da.address", endpoints.GetDAAddress(),
-		"--rollkit.da.block_time", DefaultDABlockTime,
-		"--rollkit.rpc.address", endpoints.GetRollkitRPCListen(),
-		"--rollkit.p2p.listen_address", endpoints.GetRollkitP2PAddress(),
+		"--evnode.da.address", endpoints.GetDAAddress(),
+		"--evnode.da.block_time", DefaultDABlockTime,
+		"--evnode.rpc.address", endpoints.GetRollkitRPCListen(),
+		"--evnode.p2p.listen_address", endpoints.GetRollkitP2PAddress(),
 		"--evm.engine-url", endpoints.GetSequencerEngineURL(),
 		"--evm.eth-url", endpoints.GetSequencerEthURL(),
 	)
@@ -606,20 +653,23 @@ func restartDAAndSequencerLazy(t *testing.T, sut *SystemUnderTest, sequencerHome
 	time.Sleep(25 * time.Millisecond)
 
 	// Then restart the sequencer node in lazy mode (without init - node already exists)
+	// The passphrase file and JWT secret file should still exist from the initial setup
+	passphraseFile := filepath.Join(sequencerHome, "passphrase.txt")
+	jwtSecretFile := filepath.Join(sequencerHome, "jwt-secret.hex")
 	sut.ExecCmd(evmSingleBinaryPath,
 		"start",
-		"--evm.jwt-secret", jwtSecret,
+		"--evm.jwt-secret-file", jwtSecretFile,
 		"--evm.genesis-hash", genesisHash,
-		"--rollkit.node.block_time", DefaultBlockTime,
-		"--rollkit.node.aggregator=true",
-		"--rollkit.node.lazy_mode=true",          // Enable lazy mode
-		"--rollkit.node.lazy_block_interval=60s", // Set lazy block interval to 60 seconds to prevent timer-based block production during test
-		"--rollkit.signer.passphrase", TestPassphrase,
+		"--evnode.node.block_time", DefaultBlockTime,
+		"--evnode.node.aggregator=true",
+		"--evnode.node.lazy_mode=true",          // Enable lazy mode
+		"--evnode.node.lazy_block_interval=60s", // Set lazy block interval to 60 seconds to prevent timer-based block production during test
+		"--evnode.signer.passphrase_file", passphraseFile,
 		"--home", sequencerHome,
-		"--rollkit.da.address", endpoints.GetDAAddress(),
-		"--rollkit.da.block_time", DefaultDABlockTime,
-		"--rollkit.rpc.address", endpoints.GetRollkitRPCListen(),
-		"--rollkit.p2p.listen_address", endpoints.GetRollkitP2PAddress(),
+		"--evnode.da.address", endpoints.GetDAAddress(),
+		"--evnode.da.block_time", DefaultDABlockTime,
+		"--evnode.rpc.address", endpoints.GetRollkitRPCListen(),
+		"--evnode.p2p.listen_address", endpoints.GetRollkitP2PAddress(),
 		"--evm.engine-url", endpoints.GetSequencerEngineURL(),
 		"--evm.eth-url", endpoints.GetSequencerEthURL(),
 	)
@@ -641,16 +691,19 @@ func restartSequencerNode(t *testing.T, sut *SystemUnderTest, sequencerHome, jwt
 	t.Helper()
 
 	// Start sequencer node (without init - node already exists)
+	// The passphrase file and JWT secret file should still exist from the initial setup
+	passphraseFile := filepath.Join(sequencerHome, "passphrase.txt")
+	jwtSecretFile := filepath.Join(sequencerHome, "jwt-secret.hex")
 	sut.ExecCmd(evmSingleBinaryPath,
 		"start",
-		"--evm.jwt-secret", jwtSecret,
+		"--evm.jwt-secret-file", jwtSecretFile,
 		"--evm.genesis-hash", genesisHash,
-		"--rollkit.node.block_time", DefaultBlockTime,
-		"--rollkit.node.aggregator=true",
-		"--rollkit.signer.passphrase", TestPassphrase,
+		"--evnode.node.block_time", DefaultBlockTime,
+		"--evnode.node.aggregator=true",
+		"--evnode.signer.passphrase_file", passphraseFile,
 		"--home", sequencerHome,
-		"--rollkit.da.address", DAAddress,
-		"--rollkit.da.block_time", DefaultDABlockTime,
+		"--evnode.da.address", DAAddress,
+		"--evnode.da.block_time", DefaultDABlockTime,
 	)
 
 	time.Sleep(SlowPollingInterval)

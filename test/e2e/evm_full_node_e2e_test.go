@@ -946,11 +946,13 @@ func restartSequencerAndFullNode(t *testing.T, sut *SystemUnderTest, sequencerHo
 	t.Logf("Sequencer P2P address after restart: %s", sequencerP2PAddress)
 
 	// Now restart the full node (without init - node already exists)
+	// The JWT secret file should still exist from the initial setup
+	fullNodeJwtSecretFile := filepath.Join(fullNodeHome, "jwt-secret.hex")
 	sut.ExecCmd(evmSingleBinaryPath,
 		"start",
 		"--evnode.log.format", "json",
 		"--home", fullNodeHome,
-		"--evm.jwt-secret", fullNodeJwtSecret,
+		"--evm.jwt-secret-file", fullNodeJwtSecretFile,
 		"--evm.genesis-hash", genesisHash,
 		"--rollkit.rpc.address", endpoints.GetFullNodeRPCListen(),
 		"--rollkit.p2p.listen_address", endpoints.GetFullNodeP2PAddress(),
