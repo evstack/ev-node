@@ -199,7 +199,7 @@ func (e *Executor) initializeState() error {
 			LastBlockHeight: e.genesis.InitialHeight - 1,
 			LastBlockTime:   e.genesis.StartTime,
 			AppHash:         stateRoot,
-			DAHeight:        0,
+			DAHeight:        e.genesis.DAStartHeight,
 		}
 	}
 

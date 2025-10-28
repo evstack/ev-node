@@ -71,8 +71,8 @@ func (s State) AssertValidForNextState(header *SignedHeader, data *Data) error {
 		return fmt.Errorf("invalid block height - got: %d, want: %d", header.Height(), expdHeight)
 	}
 
-	if s.LastBlockTime.After(header.Time()) {
-		return fmt.Errorf("invalid block time - got: %v, last: %v", header.Time(), s.LastBlockTime)
+	if headerTime := header.Time(); s.LastBlockTime.After(headerTime) {
+		return fmt.Errorf("invalid block time - got: %v, last: %v", headerTime, s.LastBlockTime)
 	}
 	if !bytes.Equal(header.LastHeaderHash, s.LastHeaderHash) {
 		return fmt.Errorf("invalid last header hash - got: %x, want: %x", header.LastHeaderHash, s.LastHeaderHash)

@@ -183,21 +183,34 @@ func (s *Syncer) initializeState() error {
 	// Load state from store
 	state, err := s.store.GetState(s.ctx)
 	if err != nil {
-		// Use genesis state if no state exists
+		// Initialize new chain state for a fresh full node (no prior state on disk)
+		// Mirror executor initialization to ensure AppHash matches headers produced by the sequencer.
+		stateRoot, _, initErr := s.exec.InitChain(
+			s.ctx,
+			s.genesis.StartTime,
+			s.genesis.InitialHeight,
+			s.genesis.ChainID,
+		)
+		if initErr != nil {
+			return fmt.Errorf("failed to initialize execution client: %w", initErr)
+		}
+
 		state = types.State{
 			ChainID:         s.genesis.ChainID,
 			InitialHeight:   s.genesis.InitialHeight,
 			LastBlockHeight: s.genesis.InitialHeight - 1,
 			LastBlockTime:   s.genesis.StartTime,
-			DAHeight:        0,
+			DAHeight:        s.genesis.DAStartHeight,
+			AppHash:         stateRoot,
 		}
 	}
-
+	if state.DAHeight < s.genesis.DAStartHeight {
+		return fmt.Errorf("DA height (%d) is lower than DA start height (%d)", state.DAHeight, s.genesis.DAStartHeight)
+	}
 	s.SetLastState(state)
 
 	// Set DA height
-	daHeight := max(state.DAHeight, s.genesis.DAStartHeight)
-	s.SetDAHeight(daHeight)
+	s.SetDAHeight(state.DAHeight)
 
 	s.logger.Info().
 		Uint64("height", state.LastBlockHeight).
@@ -442,6 +455,7 @@ func (s *Syncer) trySyncNextBlock(event *common.DAHeightEvent) error {
 		if !errors.Is(err, errInvalidState) && !errors.Is(err, errInvalidBlock) {
 			return errors.Join(errInvalidBlock, err)
 		}
+		return err
 	}
 
 	// Apply block

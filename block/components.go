@@ -46,7 +46,8 @@ func (bc *Components) GetLastState() types.State {
 	return types.State{}
 }
 
-// Start starts all components and monitors for critical errors
+// Start starts all components and monitors for critical errors.
+// It is blocking and returns when the context is cancelled or an error occurs
 func (bc *Components) Start(ctx context.Context) error {
 	ctxWithCancel, cancel := context.WithCancel(ctx)
 
