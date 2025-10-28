@@ -27,6 +27,8 @@ Model your transaction throughput and calldata usage:
 
 The calculator translates your transaction rate and calldata into Celestia blob gas requirements, projecting costs per submission, per second, and annually.
 
+For EVM workloads, data submissions are chunked into 500 KiB blobs (mirroring the batching logic in `da_submitter.go`). If a cadence produces more than 500 KiB of calldata in a window, the tool automatically simulates multiple blobs—and therefore multiple PayForBlobs transactions—so base gas and data gas scale accordingly.
+
 ### 3. Gas parameters
 
 Review the Celestia mainnet gas parameters used for calculations:

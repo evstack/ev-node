@@ -223,6 +223,16 @@
                         }}</strong>
                     </div>
                     <div>
+                        <span>Data blobs / submission</span>
+                        <strong>{{ formatInteger(dataBlobCount) }}</strong>
+                    </div>
+                    <div>
+                        <span>Average blob size (bytes)</span>
+                        <strong>{{
+                            formatNumber(averageDataBlobBytes, 2)
+                        }}</strong>
+                    </div>
+                    <div>
                         <span>Data bytes / submission</span>
                         <strong>{{
                             formatNumber(dataBytesPerSubmission, 2)
@@ -356,9 +366,25 @@
                         }}</strong>
                     </li>
                     <li>
+                        <span>Data blobs / submission</span>
+                        <strong>{{ formatInteger(dataBlobCount) }}</strong>
+                    </li>
+                    <li>
+                        <span>Average blob size (bytes)</span>
+                        <strong>{{
+                            formatNumber(averageDataBlobBytes, 2)
+                        }}</strong>
+                    </li>
+                    <li>
                         <span>Data bytes / submission</span>
                         <strong>{{
                             formatNumber(dataBytesPerSubmission, 2)
+                        }}</strong>
+                    </li>
+                    <li>
+                        <span>Data shares / submission</span>
+                        <strong>{{
+                            formatInteger(dataSharesPerSubmission)
                         }}</strong>
                     </li>
                     <li>
@@ -386,17 +412,25 @@
                 <summary>Baseline gas</summary>
                 <ul class="breakdown">
                     <li>
-                        <span>Fixed cost / submission</span>
-                        <strong>{{ formatInteger(fixedCost) }}</strong>
+                        <span>PFB transactions / submission</span>
+                        <strong>{{
+                            formatInteger(totalTransactionsPerSubmission)
+                        }}</strong>
                     </li>
                     <li>
-                        <span>Fixed fee / submission (TIA)</span>
+                        <span>Base gas / submission</span>
+                        <strong>{{
+                            formatInteger(fixedGasPerSubmission)
+                        }}</strong>
+                    </li>
+                    <li>
+                        <span>Base fee / submission (TIA)</span>
                         <strong>{{
                             formatNumber(fixedFeePerSubmissionTIA, 6)
                         }}</strong>
                     </li>
                     <li>
-                        <span>Fixed fee / year (TIA)</span>
+                        <span>Base fee / year (TIA)</span>
                         <strong>{{
                             formatNumber(fixedFeePerYearTIA, 4)
                         }}</strong>
@@ -442,6 +476,7 @@ const HEADER_BYTES = 175;
 const FIRST_TX_SURCHARGE = 10_000;
 const SECONDS_PER_MONTH = 30 * 24 * 60 * 60;
 const SECONDS_PER_YEAR = 365 * 24 * 60 * 60;
+const DATA_CHUNK_BYTES = 500 * 1024; // 500 KiB chunk limit per blob
 
 const GAS_PARAMS = Object.freeze({
     fixedCost: 65_000,
@@ -567,7 +602,7 @@ const blockTimeUnit = ref<"s" | "ms">("s");
 const firstTx = ref(false);
 const gasPriceValue = ref(0.004);
 
-const txPerSecond = ref(50);
+const txPerSecond = ref(10);
 const txPerSecondInput = computed({
     get: () => txPerSecond.value,
     set: (value: number) => {
@@ -730,37 +765,62 @@ const dataBytesPerSubmission = computed(() => {
     return averageCalldataBytes.value * transactionsPerSubmission.value;
 });
 
-const dataSharesPerSubmission = computed(() => {
-    if (dataBytesPerSubmission.value <= 0) {
-        return 0;
+const dataChunks = computed(() => {
+    if (executionEnv.value !== "evm" || dataBytesPerSubmission.value <= 0) {
+        return [] as Array<{ bytes: number; shares: number; gas: number }>;
     }
-    return Math.ceil(dataBytesPerSubmission.value / GAS_PARAMS.shareSizeBytes);
+    const shareSize = Math.max(GAS_PARAMS.shareSizeBytes, 1);
+    const gasPerByte = Math.max(GAS_PARAMS.gasPerBlobByte, 0);
+    const chunks: Array<{ bytes: number; shares: number; gas: number }> = [];
+    let remaining = dataBytesPerSubmission.value;
+    while (remaining > 0) {
+        const bytes = Math.min(DATA_CHUNK_BYTES, remaining);
+        const shares = Math.max(1, Math.ceil(bytes / shareSize));
+        const gas = shares * shareSize * gasPerByte;
+        chunks.push({ bytes, shares, gas });
+        remaining -= bytes;
+    }
+    return chunks;
 });
 
-const dataGasPerSubmission = computed(() => {
-    if (dataSharesPerSubmission.value === 0) {
-        return 0;
-    }
-    return (
-        dataSharesPerSubmission.value *
-        GAS_PARAMS.shareSizeBytes *
-        Math.max(GAS_PARAMS.gasPerBlobByte, 0)
-    );
-});
+const dataBlobCount = computed(() => dataChunks.value.length);
 
-const dataStaticGasPerSubmission = computed(() => {
-    if (dataBytesPerSubmission.value <= 0) {
+const dataSharesPerSubmission = computed(() =>
+    dataChunks.value.reduce((sum, chunk) => sum + chunk.shares, 0),
+);
+
+const dataGasPerSubmission = computed(() =>
+    dataChunks.value.reduce((sum, chunk) => sum + chunk.gas, 0),
+);
+
+const dataStaticGasPerSubmission = computed(
+    () => dataBlobCount.value * Math.max(GAS_PARAMS.perBlobStaticGas, 0),
+);
+
+const averageDataBlobBytes = computed(() => {
+    if (dataBlobCount.value === 0) {
         return 0;
     }
-    return Math.max(GAS_PARAMS.perBlobStaticGas, 0);
+    return dataBytesPerSubmission.value / dataBlobCount.value;
 });
 
 const gasPriceUTIA = computed(() => Math.max(gasPriceValue.value, 0));
 const gasPriceTIA = computed(() => gasPriceUTIA.value / 1_000_000);
 
-const fixedCost = computed(() => Math.max(GAS_PARAMS.fixedCost, 0));
+const headerTransactionCount = computed(() =>
+    normalizedHeaderCount.value > 0 ? 1 : 0,
+);
+
+const totalTransactionsPerSubmission = computed(
+    () => headerTransactionCount.value + dataBlobCount.value,
+);
+
+const fixedGasPerSubmission = computed(
+    () => totalTransactionsPerSubmission.value * GAS_PARAMS.fixedCost,
+);
+
 const fixedFeePerSubmissionTIA = computed(
-    () => fixedCost.value * gasPriceTIA.value,
+    () => fixedGasPerSubmission.value * gasPriceTIA.value,
 );
 
 const headerFeePerSubmissionTIA = computed(
@@ -777,7 +837,9 @@ const dataFeePerSubmissionTIA = computed(
 
 const recurringGasPerSubmission = computed(
     () =>
-        fixedCost.value + headerGas.value + dataRecurringGasPerSubmission.value,
+        fixedGasPerSubmission.value +
+        headerGas.value +
+        dataRecurringGasPerSubmission.value,
 );
 
 const firstTxGas = computed(() => (firstTx.value ? FIRST_TX_SURCHARGE : 0));
