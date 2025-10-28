@@ -1,240 +1,438 @@
 <template>
-  <div class="calculator">
-    <section class="panel">
-      <h2>Network cadence</h2>
-      <div class="field-row">
-        <label for="header-bytes">Header size (bytes)</label>
-        <input id="header-bytes" type="number" :value="HEADER_BYTES" readonly />
-      </div>
-      <div class="field-row">
-        <label for="header-count">Headers per submission</label>
-        <input
-          id="header-count"
-          type="number"
-          min="0"
-          step="1"
-          v-model.number="headerCount"
-          @blur="normalizeHeaderCount"
-        />
-      </div>
-      <div class="field-row">
-        <label for="block-time">Block time</label>
-        <div class="field-group">
-          <input
-            id="block-time"
-            type="number"
-            min="0"
-            step="0.001"
-            v-model.number="blockTime"
-          />
-          <select v-model="blockTimeUnit">
-            <option value="s">seconds</option>
-            <option value="ms">milliseconds</option>
-          </select>
-        </div>
-      </div>
-      <ul class="derived">
-        <li>
-          <span>Headers per submission</span>
-          <strong>{{ formatInteger(normalizedHeaderCount) }}</strong>
-        </li>
-        <li>
-          <span>Header bytes / submission</span>
-          <strong>{{ formatInteger(headerBytesTotal) }}</strong>
-        </li>
-        <li>
-          <span>Submission interval (s)</span>
-          <strong>{{ formatNumber(submissionIntervalSeconds, 3) }}</strong>
-        </li>
-        <li>
-          <span>Submissions / second</span>
-          <strong>{{ formatNumber(submissionsPerSecond, 4) }}</strong>
-        </li>
-        <li>
-          <span>Submissions / minute</span>
-          <strong>{{ formatNumber(submissionsPerMinute, 2) }}</strong>
-        </li>
-        <li>
-          <span>Blocks / second</span>
-          <strong>{{ formatNumber(blocksPerSecond, 4) }}</strong>
-        </li>
-        <li>
-          <span>Header bytes / second</span>
-          <strong>{{ formatNumber(headerBytesPerSecond, 2) }}</strong>
-        </li>
-      </ul>
-    </section>
+    <div class="calculator">
+        <section class="panel data-workload">
+            <h2>Header cadence</h2>
+            <div class="field-row">
+                <label for="header-bytes">Header size (bytes)</label>
+                <input
+                    id="header-bytes"
+                    type="number"
+                    :value="HEADER_BYTES"
+                    readonly
+                />
+            </div>
+            <div class="field-row">
+                <label for="header-count">Headers per submission</label>
+                <input
+                    id="header-count"
+                    type="number"
+                    min="1"
+                    step="1"
+                    v-model.number="headerCountInput"
+                />
+            </div>
+            <div class="field-row">
+                <label for="block-time">Block time</label>
+                <div class="field-group">
+                    <input
+                        id="block-time"
+                        type="number"
+                        min="0"
+                        step="0.001"
+                        v-model.number="blockTime"
+                    />
+                    <select v-model="blockTimeUnit">
+                        <option value="s">seconds</option>
+                        <option value="ms">milliseconds</option>
+                    </select>
+                </div>
+            </div>
+            <ul class="derived">
+                <li>
+                    <span>Headers / submission</span>
+                    <strong>{{ formatInteger(normalizedHeaderCount) }}</strong>
+                </li>
+                <li>
+                    <span>Header bytes / submission</span>
+                    <strong>{{ formatInteger(headerBytesTotal) }}</strong>
+                </li>
+                <li>
+                    <span>Submission interval (s)</span>
+                    <strong>{{
+                        formatNumber(submissionIntervalSeconds, 3)
+                    }}</strong>
+                </li>
+                <li>
+                    <span>Submissions / second</span>
+                    <strong>{{ formatNumber(submissionsPerSecond, 4) }}</strong>
+                </li>
+                <li>
+                    <span>Submissions / minute</span>
+                    <strong>{{ formatNumber(submissionsPerMinute, 2) }}</strong>
+                </li>
+                <li>
+                    <span>Blocks / second</span>
+                    <strong>{{ formatNumber(blocksPerSecond, 4) }}</strong>
+                </li>
+            </ul>
+        </section>
 
-    <section class="panel">
-      <h2>Gas parameters</h2>
-      <p class="hint">
-        Locked to Celestia mainnet defaults until live parameter fetching and
-        manual overrides ship.
-      </p>
-      <ul class="param-list">
-        <li>
-          <span>Fixed cost</span>
-          <strong>{{ formatInteger(GAS_PARAMS.fixedCost) }} gas</strong>
-        </li>
-        <li>
-          <span>Gas per blob byte</span>
-          <strong>{{ formatInteger(GAS_PARAMS.gasPerBlobByte) }} gas / byte</strong>
-        </li>
-        <li>
-          <span>Share size</span>
-          <strong>{{ formatInteger(GAS_PARAMS.shareSizeBytes) }} bytes</strong>
-        </li>
-        <li>
-          <span>Per-blob static gas</span>
-          <strong>{{ formatInteger(GAS_PARAMS.perBlobStaticGas) }} gas</strong>
-        </li>
-      </ul>
-      <div class="toggle-row">
-        <label>
-          <input type="checkbox" v-model="firstTx" />
-          First transaction for this account (adds 10,000 gas)
-        </label>
-      </div>
-      <div class="field-row">
-        <label for="gas-price">Gas price (uTIA / gas)</label>
-        <input
-          id="gas-price"
-          type="number"
-          min="0"
-          step="0.001"
-          v-model.number="gasPriceValue"
-        />
-      </div>
-    </section>
+        <section class="panel data-workload">
+            <h2>Data workload</h2>
+            <div class="env-toggle">
+                <label>
+                    <input type="radio" value="evm" v-model="executionEnv" />
+                    EVM
+                </label>
+                <label>
+                    <input type="radio" value="cosmos" v-model="executionEnv" />
+                    Cosmos SDK
+                </label>
+            </div>
 
-    <section class="panel">
-      <h2>Blobs</h2>
-      <p class="hint">
-        Describe each blob batch with a payload size (bytes) and how many blobs
-        of that size you plan to include. Empty or zero-count rows are ignored.
-      </p>
-      <div class="blob-row" v-for="(blob, index) in blobs" :key="blob.id">
-        <div class="blob-label">Batch {{ index + 1 }}</div>
-        <div class="blob-inputs">
-          <label :for="`blob-size-${blob.id}`">
-            Size (bytes)
-            <input
-              :id="`blob-size-${blob.id}`"
-              type="number"
-              min="0"
-              step="1"
-              v-model.number="blob.size"
-            />
-          </label>
-          <label :for="`blob-count-${blob.id}`">
-            Count
-            <input
-              :id="`blob-count-${blob.id}`"
-              type="number"
-              min="1"
-              step="1"
-              v-model.number="blob.count"
-              @blur="normalizeCount(blob)"
-            />
-          </label>
-        </div>
-        <button
-          type="button"
-          class="ghost"
-          @click="removeBlob(blob.id)"
-          v-if="blobs.length > 1"
-        >
-          Remove
-        </button>
-      </div>
-      <button type="button" class="secondary" @click="addBlob">
-        Add blob
-      </button>
-    </section>
+            <div v-if="executionEnv === 'cosmos'" class="coming-soon">
+                Cosmos SDK transaction size presets are coming soon. Header
+                costs still apply; data costs default to zero.
+            </div>
 
-    <section class="panel results">
-      <h2>Estimation</h2>
-      <div class="summary">
-        <div class="summary-item">
-          <span>Total gas limit (per block)</span>
-          <strong>{{ formatInteger(totalGasLimit) }}</strong>
-        </div>
-        <div class="summary-item">
-          <span>Fee per block (TIA)</span>
-          <strong>{{ formatNumber(totalFeeTIA, 6) }}</strong>
-        </div>
-        <div class="summary-item">
-          <span>Fee per second (TIA)</span>
-          <strong>{{ formatNumber(feePerSecondTIA, 6) }}</strong>
-        </div>
-        <div class="summary-item">
-          <span>Projected daily fee (TIA)</span>
-          <strong>{{ formatNumber(feePerDayTIA, 4) }}</strong>
-        </div>
-      </div>
+            <div v-else class="evm-config">
+                <div class="rate-grid">
+                    <label for="tx-tps">
+                        Transactions per second
+                        <input
+                            id="tx-tps"
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            v-model.number="txPerSecondInput"
+                        />
+                    </label>
+                    <label for="tx-month">
+                        Transactions per month
+                        <input
+                            id="tx-month"
+                            type="number"
+                            min="0"
+                            step="1"
+                            v-model.number="txPerMonthInput"
+                        />
+                    </label>
+                </div>
 
-      <details open>
-        <summary>Contribution breakdown</summary>
-        <ul class="breakdown">
-          <li>
-            <span>Fixed cost</span>
-            <strong>{{ formatInteger(fixedCost) }}</strong>
-          </li>
-          <li v-if="headerGas > 0">
-            <span>Header data cost ({{ formatInteger(normalizedHeaderCount) }}
-              header<span v-if="normalizedHeaderCount !== 1">s</span>,
-              {{ headerShares }}
-              share<span v-if="headerShares !== 1">s</span>)</span
-            >
-            <strong>{{ formatInteger(headerGas) }}</strong>
-          </li>
-          <li>
-            <span>Blob data cost</span>
-            <strong>{{ formatInteger(blobGasTotal) }}</strong>
-          </li>
-          <li>
-            <span>Per-blob static gas</span>
-            <strong>{{ formatInteger(perBlobStaticGasTotal) }}</strong>
-          </li>
-          <li v-if="firstTx">
-            <span>First transaction surcharge</span>
-            <strong>{{ FIRST_TX_SURCHARGE }}</strong>
-          </li>
-        </ul>
-      </details>
+                <div class="mix-actions">
+                    <button
+                        type="button"
+                        class="secondary"
+                        @click="randomizeMix"
+                    >
+                        Randomize configuration
+                    </button>
+                    <button type="button" class="ghost" @click="resetMix">
+                        Reset defaults
+                    </button>
+                </div>
 
-      <details :open="activeBlobBreakdown.length > 0">
-        <summary>Per-blob breakdown</summary>
-        <p v-if="activeBlobBreakdown.length === 0" class="hint">
-          Add a blob size above to see individual share usage.
-        </p>
-        <table v-else>
-          <thead>
-            <tr>
-              <th>#</th>
-              <th>Size (bytes)</th>
-              <th>Count</th>
-              <th>Shares / blob</th>
-              <th>Total shares</th>
-              <th>Gas / blob</th>
-              <th>Total gas</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr v-for="item in activeBlobBreakdown" :key="item.id">
-              <td>{{ item.index + 1 }}</td>
-              <td>{{ formatInteger(item.size) }}</td>
-              <td>{{ formatInteger(item.count) }}</td>
-              <td>{{ formatInteger(item.sharesPerBlob) }}</td>
-              <td>{{ formatInteger(item.totalShares) }}</td>
-              <td>{{ formatInteger(item.gasPerBlob) }}</td>
-              <td>{{ formatInteger(item.totalGas) }}</td>
-            </tr>
-          </tbody>
-        </table>
-      </details>
-    </section>
-  </div>
+                <div class="mix-grid">
+                    <div class="mix-visual">
+                        <template v-if="mixSegments.length">
+                            <svg viewBox="0 0 36 36" class="mix-visual__chart">
+                                <circle
+                                    class="mix-visual__track"
+                                    cx="18"
+                                    cy="18"
+                                    r="15.9155"
+                                />
+                                <circle
+                                    v-for="segment in mixSegments"
+                                    :key="segment.id"
+                                    class="mix-visual__segment"
+                                    cx="18"
+                                    cy="18"
+                                    r="15.9155"
+                                    :stroke="segment.color"
+                                    :stroke-dasharray="segment.dashArray"
+                                    :stroke-dashoffset="segment.dashOffset"
+                                />
+                            </svg>
+                            <div class="mix-visual__center">
+                                <div class="mix-visual__value">
+                                    {{ formatNumber(averageCalldataBytes, 1) }}
+                                </div>
+                                <div class="mix-visual__label">bytes avg</div>
+                            </div>
+                        </template>
+                        <div v-else class="mix-chart__empty">
+                            Enable at least one transaction type
+                        </div>
+                    </div>
+                    <ul class="mix-legend">
+                        <li v-for="slice in mixSlices" :key="slice.id">
+                            <span
+                                class="color-dot"
+                                :style="{ background: slice.color }"
+                            />
+                            <div>
+                                <strong>{{ slice.label }}</strong>
+                                <span
+                                    >{{ formatNumber(slice.percentage, 1) }}% •
+                                    {{ slice.bytes }} bytes</span
+                                >
+                            </div>
+                        </li>
+                    </ul>
+                </div>
+
+                <details class="mix-table" open>
+                    <summary>Customize transaction mix</summary>
+                    <div class="mix-table__grid">
+                        <label
+                            v-for="entry in evmMix"
+                            :key="entry.id"
+                            class="mix-card"
+                            :class="{ disabled: !entry.enabled }"
+                        >
+                            <div class="mix-card__header">
+                                <input
+                                    type="checkbox"
+                                    v-model="entry.enabled"
+                                />
+                                <span>{{ entry.label }}</span>
+                            </div>
+                            <div class="mix-card__meta">
+                                <span>{{ entry.bytes }} bytes</span>
+                                <span
+                                    class="color-dot"
+                                    :style="{ background: entry.color }"
+                                />
+                            </div>
+                            <div class="mix-card__control">
+                                <span>Weight</span>
+                                <input
+                                    type="number"
+                                    min="0"
+                                    step="1"
+                                    v-model.number="entry.weight"
+                                    :disabled="!entry.enabled"
+                                />
+                            </div>
+                        </label>
+                    </div>
+                </details>
+
+                <div class="metrics">
+                    <div>
+                        <span>Average calldata bytes / tx</span>
+                        <strong>{{
+                            formatNumber(averageCalldataBytes, 2)
+                        }}</strong>
+                    </div>
+                    <div>
+                        <span>Transactions / submission</span>
+                        <strong>{{
+                            formatNumber(transactionsPerSubmission, 2)
+                        }}</strong>
+                    </div>
+                    <div>
+                        <span>Data bytes / submission</span>
+                        <strong>{{
+                            formatNumber(dataBytesPerSubmission, 2)
+                        }}</strong>
+                    </div>
+                    <div>
+                        <span>Data shares / submission</span>
+                        <strong>{{
+                            formatInteger(dataSharesPerSubmission)
+                        }}</strong>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section class="panel">
+            <h2>Gas parameters</h2>
+            <p class="hint">
+                Locked to Celestia mainnet defaults until live parameter
+                fetching and manual overrides ship.
+            </p>
+            <ul class="param-list">
+                <li>
+                    <span>Fixed cost</span>
+                    <strong
+                        >{{ formatInteger(GAS_PARAMS.fixedCost) }} gas</strong
+                    >
+                </li>
+                <li>
+                    <span>Gas per blob byte</span>
+                    <strong
+                        >{{ formatInteger(GAS_PARAMS.gasPerBlobByte) }} gas /
+                        byte</strong
+                    >
+                </li>
+                <li>
+                    <span>Share size</span>
+                    <strong
+                        >{{
+                            formatInteger(GAS_PARAMS.shareSizeBytes)
+                        }}
+                        bytes</strong
+                    >
+                </li>
+                <li>
+                    <span>Per-blob static gas</span>
+                    <strong
+                        >{{
+                            formatInteger(GAS_PARAMS.perBlobStaticGas)
+                        }}
+                        gas</strong
+                    >
+                </li>
+            </ul>
+            <div class="toggle-row">
+                <label>
+                    <input type="checkbox" v-model="firstTx" />
+                    First transaction for this account (adds 10,000 gas once)
+                </label>
+            </div>
+            <div class="field-row">
+                <label for="gas-price">Gas price (uTIA / gas)</label>
+                <input
+                    id="gas-price"
+                    type="number"
+                    min="0"
+                    step="0.001"
+                    v-model.number="gasPriceValue"
+                />
+            </div>
+        </section>
+
+        <section class="panel results">
+            <h2>Estimation</h2>
+            <div class="summary">
+                <div class="summary-item">
+                    <span>Total gas / submission</span>
+                    <strong>{{ formatInteger(totalGasPerSubmission) }}</strong>
+                </div>
+                <div class="summary-item">
+                    <span>Fee / submission (TIA)</span>
+                    <strong>{{
+                        formatNumber(totalFeePerSubmissionTIA, 6)
+                    }}</strong>
+                </div>
+                <div class="summary-item">
+                    <span>Fee / second (TIA)</span>
+                    <strong>{{ formatNumber(feePerSecondTIA, 6) }}</strong>
+                </div>
+                <div class="summary-item">
+                    <span>Total yearly fee (TIA)</span>
+                    <strong>{{
+                        formatNumber(totalRecurringFeePerYearTIA, 4)
+                    }}</strong>
+                </div>
+            </div>
+
+            <details open>
+                <summary>Header costs</summary>
+                <ul class="breakdown">
+                    <li>
+                        <span>Header gas / submission</span>
+                        <strong>{{ formatInteger(headerGas) }}</strong>
+                    </li>
+                    <li>
+                        <span>Header fee / submission (TIA)</span>
+                        <strong>{{
+                            formatNumber(headerFeePerSubmissionTIA, 6)
+                        }}</strong>
+                    </li>
+                    <li>
+                        <span>Header fee / year (TIA)</span>
+                        <strong>{{
+                            formatNumber(headerFeePerYearTIA, 4)
+                        }}</strong>
+                    </li>
+                </ul>
+            </details>
+
+            <details :open="executionEnv === 'evm'">
+                <summary>Data costs</summary>
+                <p v-if="averageCalldataBytes === 0" class="hint">
+                    Enable at least one transaction type to model calldata
+                    usage.
+                </p>
+                <ul v-else class="breakdown">
+                    <li>
+                        <span>Average calldata bytes / tx</span>
+                        <strong>{{
+                            formatNumber(averageCalldataBytes, 2)
+                        }}</strong>
+                    </li>
+                    <li>
+                        <span>Data bytes / submission</span>
+                        <strong>{{
+                            formatNumber(dataBytesPerSubmission, 2)
+                        }}</strong>
+                    </li>
+                    <li>
+                        <span>Data gas / submission</span>
+                        <strong>{{
+                            formatInteger(dataGasPerSubmission)
+                        }}</strong>
+                    </li>
+                    <li>
+                        <span>Data fee / submission (TIA)</span>
+                        <strong>{{
+                            formatNumber(dataFeePerSubmissionTIA, 6)
+                        }}</strong>
+                    </li>
+                    <li>
+                        <span>Data fee / year (TIA)</span>
+                        <strong>{{
+                            formatNumber(dataFeePerYearTIA, 4)
+                        }}</strong>
+                    </li>
+                </ul>
+            </details>
+
+            <details open>
+                <summary>Baseline gas</summary>
+                <ul class="breakdown">
+                    <li>
+                        <span>Fixed cost / submission</span>
+                        <strong>{{ formatInteger(fixedCost) }}</strong>
+                    </li>
+                    <li>
+                        <span>Fixed fee / submission (TIA)</span>
+                        <strong>{{
+                            formatNumber(fixedFeePerSubmissionTIA, 6)
+                        }}</strong>
+                    </li>
+                    <li>
+                        <span>Fixed fee / year (TIA)</span>
+                        <strong>{{
+                            formatNumber(fixedFeePerYearTIA, 4)
+                        }}</strong>
+                    </li>
+                    <li v-if="firstTx">
+                        <span>First transaction surcharge (TIA)</span>
+                        <strong>{{ formatNumber(firstTxFeeTIA, 6) }}</strong>
+                    </li>
+                </ul>
+            </details>
+
+            <details>
+                <summary>Throughput metrics</summary>
+                <ul class="breakdown">
+                    <li>
+                        <span>Transactions per second</span>
+                        <strong>{{ formatNumber(txPerSecond, 4) }}</strong>
+                    </li>
+                    <li>
+                        <span>Transactions per month</span>
+                        <strong>{{ formatNumber(txPerMonth, 0) }}</strong>
+                    </li>
+                    <li>
+                        <span>Transactions per year</span>
+                        <strong>{{ formatNumber(txPerYear, 0) }}</strong>
+                    </li>
+                    <li>
+                        <span>Submissions per year</span>
+                        <strong>{{
+                            formatNumber(submissionsPerYear, 0)
+                        }}</strong>
+                    </li>
+                </ul>
+            </details>
+        </section>
+    </div>
 </template>
 
 <script setup lang="ts">
@@ -242,488 +440,864 @@ import { computed, reactive, ref } from "vue";
 
 const HEADER_BYTES = 175;
 const FIRST_TX_SURCHARGE = 10_000;
+const SECONDS_PER_MONTH = 30 * 24 * 60 * 60;
+const SECONDS_PER_YEAR = 365 * 24 * 60 * 60;
+
 const GAS_PARAMS = Object.freeze({
-  fixedCost: 65_000,
-  gasPerBlobByte: 8,
-  perBlobStaticGas: 0,
-  shareSizeBytes: 480,
+    fixedCost: 65_000,
+    gasPerBlobByte: 8,
+    perBlobStaticGas: 0,
+    shareSizeBytes: 480,
 });
 
-type BlobInput = {
-  id: number;
-  size: number;
-  count: number;
+type ExecutionEnv = "evm" | "cosmos";
+
+type EvmTxType = {
+    id: string;
+    label: string;
+    bytes: number;
+    description?: string;
+    defaultWeight: number;
 };
 
-const headerCount = ref(1);
-const blockTime = ref(2);
+type EvmMixEntry = EvmTxType & {
+    enabled: boolean;
+    weight: number;
+    color: string;
+};
+
+const EVM_TX_TYPES: EvmTxType[] = [
+    {
+        id: "native-transfer",
+        label: "Native value transfer",
+        bytes: 0,
+        defaultWeight: 2,
+    },
+    {
+        id: "erc20-transfer",
+        label: "ERC-20 transfer",
+        bytes: 68,
+        defaultWeight: 5,
+    },
+    {
+        id: "erc20-approve",
+        label: "ERC-20 approve",
+        bytes: 68,
+        defaultWeight: 3,
+    },
+    {
+        id: "erc20-transferFrom",
+        label: "ERC-20 transferFrom",
+        bytes: 100,
+        defaultWeight: 2,
+    },
+    {
+        id: "erc721-transferFrom",
+        label: "ERC-721 transferFrom",
+        bytes: 100,
+        defaultWeight: 1,
+    },
+    {
+        id: "erc721-safeTransferFrom",
+        label: "ERC-721 safeTransferFrom",
+        bytes: 164,
+        defaultWeight: 1,
+    },
+    {
+        id: "erc721-mint",
+        label: "ERC-721 mint",
+        bytes: 68,
+        defaultWeight: 1,
+    },
+    {
+        id: "erc1155-transfer",
+        label: "ERC-1155 safeTransferFrom",
+        bytes: 196,
+        defaultWeight: 1,
+    },
+    {
+        id: "erc1155-batch",
+        label: "ERC-1155 safeBatchTransferFrom",
+        bytes: 228,
+        defaultWeight: 1,
+    },
+    {
+        id: "permit",
+        label: "EIP-2612 permit",
+        bytes: 228,
+        defaultWeight: 1,
+    },
+];
+
+const COLOR_PALETTE = [
+    "#4263eb",
+    "#f76707",
+    "#0ca678",
+    "#a61e4d",
+    "#1098ad",
+    "#5f3dc4",
+    "#2d6a4f",
+    "#ff922b",
+    "#9c36b5",
+    "#ffa94d",
+];
+
+const executionEnv = ref<ExecutionEnv>("evm");
+
+const evmMix = reactive<EvmMixEntry[]>(
+    EVM_TX_TYPES.map((type, index) => ({
+        ...type,
+        enabled: type.defaultWeight > 0,
+        weight: type.defaultWeight,
+        color: COLOR_PALETTE[index % COLOR_PALETTE.length],
+    })),
+);
+
+const headerCount = ref(15);
+const headerCountInput = computed({
+    get: () => headerCount.value,
+    set: (value: number) => {
+        const sanitized = sanitizeInteger(value, 1);
+        headerCount.value = sanitized;
+    },
+});
+
+const blockTime = ref(0.25);
 const blockTimeUnit = ref<"s" | "ms">("s");
 const firstTx = ref(false);
 const gasPriceValue = ref(0.004);
-const blobs = reactive<BlobInput[]>([{ id: 1, size: 0, count: 1 }]);
 
-let nextBlobId = 2;
+const txPerSecond = ref(50);
+const txPerSecondInput = computed({
+    get: () => txPerSecond.value,
+    set: (value: number) => {
+        txPerSecond.value = sanitizeNumber(value);
+    },
+});
+const txPerMonthInput = computed({
+    get: () => txPerSecond.value * SECONDS_PER_MONTH,
+    set: (value: number) => {
+        txPerSecond.value = sanitizeNumber(value) / SECONDS_PER_MONTH;
+    },
+});
 
 const blockTimeSeconds = computed(() => {
-  const value = blockTime.value;
-  if (!isFinite(value) || value <= 0) {
-    return NaN;
-  }
-  return blockTimeUnit.value === "ms" ? value / 1000 : value;
+    const value = blockTime.value;
+    if (!isFinite(value) || value <= 0) {
+        return NaN;
+    }
+    return blockTimeUnit.value === "ms" ? value / 1000 : value;
 });
 
 const normalizedHeaderCount = computed(() =>
-  Math.max(0, Math.round(isFinite(headerCount.value) ? headerCount.value : 0)),
+    Math.max(
+        1,
+        Math.round(isFinite(headerCount.value) ? headerCount.value : 1),
+    ),
 );
 
 const headerBytesTotal = computed(
-  () => normalizedHeaderCount.value * HEADER_BYTES,
+    () => normalizedHeaderCount.value * HEADER_BYTES,
 );
 
 const submissionIntervalSeconds = computed(() => {
-  const blockSeconds = blockTimeSeconds.value;
-  const count = normalizedHeaderCount.value;
-  if (!isFinite(blockSeconds) || blockSeconds <= 0 || count <= 0) {
-    return NaN;
-  }
-  return blockSeconds * count;
+    const blockSeconds = blockTimeSeconds.value;
+    const count = normalizedHeaderCount.value;
+    if (!isFinite(blockSeconds) || blockSeconds <= 0 || count <= 0) {
+        return NaN;
+    }
+    return blockSeconds * count;
 });
 
 const submissionsPerSecond = computed(() => {
-  const interval = submissionIntervalSeconds.value;
-  if (!isFinite(interval) || interval <= 0) {
-    return 0;
-  }
-  return 1 / interval;
+    const interval = submissionIntervalSeconds.value;
+    if (!isFinite(interval) || interval <= 0) {
+        return 0;
+    }
+    return 1 / interval;
 });
 
-const submissionsPerMinute = computed(
-  () => submissionsPerSecond.value * 60,
+const submissionsPerMinute = computed(() => submissionsPerSecond.value * 60);
+
+const submissionsPerYear = computed(
+    () => submissionsPerSecond.value * SECONDS_PER_YEAR,
 );
 
 const blocksPerSecond = computed(() => {
-  const seconds = blockTimeSeconds.value;
-  if (!seconds || !isFinite(seconds) || seconds <= 0) {
-    return 0;
-  }
-  return 1 / seconds;
+    const seconds = blockTimeSeconds.value;
+    if (!isFinite(seconds) || seconds <= 0) {
+        return 0;
+    }
+    return 1 / seconds;
 });
 
 const headerBytesPerSecond = computed(() => {
-  const totalBytes = headerBytesTotal.value;
-  if (totalBytes === 0) {
-    return 0;
-  }
-  const seconds = submissionIntervalSeconds.value;
-  if (!seconds || !isFinite(seconds) || seconds <= 0) {
-    return 0;
-  }
-  return totalBytes / seconds;
+    const interval = submissionIntervalSeconds.value;
+    if (!isFinite(interval) || interval <= 0) {
+        return 0;
+    }
+    return headerBytesTotal.value / interval;
 });
 
 const headerShares = computed(() => {
-  const shareSize = Math.max(GAS_PARAMS.shareSizeBytes, 1);
-  const totalBytes = headerBytesTotal.value;
-  if (totalBytes <= 0) {
-    return 0;
-  }
-  return Math.max(1, Math.ceil(totalBytes / shareSize));
+    const shareSize = Math.max(GAS_PARAMS.shareSizeBytes, 1);
+    const totalBytes = headerBytesTotal.value;
+    return Math.max(1, Math.ceil(totalBytes / shareSize));
 });
 
 const headerGas = computed(() => {
-  const shareSize = Math.max(GAS_PARAMS.shareSizeBytes, 1);
-  const gasPerByte = Math.max(GAS_PARAMS.gasPerBlobByte, 0);
-  if (headerShares.value === 0) {
-    return 0;
-  }
-  return Math.round(headerShares.value * shareSize * gasPerByte);
+    const shareSize = Math.max(GAS_PARAMS.shareSizeBytes, 1);
+    const gasPerByte = Math.max(GAS_PARAMS.gasPerBlobByte, 0);
+    return Math.round(headerShares.value * shareSize * gasPerByte);
 });
 
-const activeBlobs = computed(() =>
-  blobs.filter(
-    (blob) =>
-      blob.size !== undefined &&
-      blob.size > 0 &&
-      blob.count !== undefined &&
-      blob.count > 0,
-  ),
+const enabledMix = computed(() =>
+    evmMix.filter((entry) => entry.enabled && entry.weight > 0),
 );
 
-const activeBlobBreakdown = computed(() => {
-  const shareSize = Math.max(GAS_PARAMS.shareSizeBytes, 1);
-  const gasPerByte = Math.max(GAS_PARAMS.gasPerBlobByte, 0);
+const totalMixWeight = computed(() =>
+    enabledMix.value.reduce((sum, entry) => sum + entry.weight, 0),
+);
 
-  return activeBlobs.value.map((blob, index) => {
-    const shares = Math.max(1, Math.ceil(blob.size / shareSize));
-    const gas = Math.round(shares * shareSize * gasPerByte);
-    const count = Math.max(1, Math.floor(blob.count));
-    return {
-      id: blob.id,
-      index,
-      size: blob.size,
-      count,
-      sharesPerBlob: shares,
-      totalShares: shares * count,
-      gasPerBlob: gas,
-      totalGas: gas * count,
-    };
-  });
+const mixSlices = computed(() => {
+    const total = totalMixWeight.value;
+    if (total === 0) {
+        return [];
+    }
+    return enabledMix.value.map((entry) => ({
+        id: entry.id,
+        label: entry.label,
+        bytes: entry.bytes,
+        percentage: (entry.weight / total) * 100,
+        color: entry.color,
+    }));
 });
 
-const blobGasTotal = computed(() =>
-  activeBlobBreakdown.value.reduce((sum, blob) => sum + blob.totalGas, 0),
-);
-
-const perBlobStaticGasTotal = computed(() => {
-  const perBlobStaticGasValue = Math.max(GAS_PARAMS.perBlobStaticGas, 0);
-  return activeBlobBreakdown.value.reduce(
-    (sum, blob) => sum + blob.count * perBlobStaticGasValue,
-    0,
-  );
+const mixSegments = computed(() => {
+    const slices = mixSlices.value;
+    if (!slices.length) {
+        return [];
+    }
+    const total = slices.reduce((sum, slice) => sum + slice.percentage, 0);
+    if (total === 0) {
+        return [];
+    }
+    let cumulative = 0;
+    return slices.map((slice) => {
+        const value = (slice.percentage / total) * 100;
+        const dashArray = `${value} ${100 - value}`;
+        const dashOffset = 25 - cumulative;
+        cumulative += value;
+        return {
+            ...slice,
+            dashArray,
+            dashOffset,
+        };
+    });
 });
 
-const fixedCost = computed(() => Math.max(GAS_PARAMS.fixedCost, 0));
+const averageCalldataBytes = computed(() => {
+    if (executionEnv.value !== "evm") {
+        return 0;
+    }
+    const total = totalMixWeight.value;
+    if (total === 0) {
+        return 0;
+    }
+    return (
+        enabledMix.value.reduce(
+            (sum, entry) => sum + (entry.weight / total) * entry.bytes,
+            0,
+        ) || 0
+    );
+});
 
-const firstTxSurcharge = computed(() =>
-  firstTx.value ? FIRST_TX_SURCHARGE : 0,
-);
+const txPerMonth = computed(() => txPerSecond.value * SECONDS_PER_MONTH);
+const txPerYear = computed(() => txPerSecond.value * SECONDS_PER_YEAR);
 
-const totalGasLimit = computed(() =>
-  Math.round(
-    fixedCost.value +
-      headerGas.value +
-      blobGasTotal.value +
-      perBlobStaticGasTotal.value +
-      firstTxSurcharge.value,
-  ),
-);
-
-const gasPriceUTIA = computed(() => Math.max(gasPriceValue.value, 0));
-
-const totalFeeUTIA = computed(() => totalGasLimit.value * gasPriceUTIA.value);
-const totalFeeTIA = computed(() => totalFeeUTIA.value / 1_000_000);
-
-const feePerSecondTIA = computed(
-  () => {
+const transactionsPerSubmission = computed(() => {
     const interval = submissionIntervalSeconds.value;
     if (!isFinite(interval) || interval <= 0) {
-      return 0;
+        return 0;
     }
-    return totalFeeTIA.value / interval;
-  },
+    return txPerSecond.value * interval;
+});
+
+const dataBytesPerSubmission = computed(() => {
+    if (executionEnv.value !== "evm") {
+        return 0;
+    }
+    return averageCalldataBytes.value * transactionsPerSubmission.value;
+});
+
+const dataSharesPerSubmission = computed(() => {
+    if (dataBytesPerSubmission.value <= 0) {
+        return 0;
+    }
+    return Math.ceil(dataBytesPerSubmission.value / GAS_PARAMS.shareSizeBytes);
+});
+
+const dataGasPerSubmission = computed(() => {
+    if (dataSharesPerSubmission.value === 0) {
+        return 0;
+    }
+    return (
+        dataSharesPerSubmission.value *
+        GAS_PARAMS.shareSizeBytes *
+        Math.max(GAS_PARAMS.gasPerBlobByte, 0)
+    );
+});
+
+const dataStaticGasPerSubmission = computed(() => {
+    if (dataBytesPerSubmission.value <= 0) {
+        return 0;
+    }
+    return Math.max(GAS_PARAMS.perBlobStaticGas, 0);
+});
+
+const gasPriceUTIA = computed(() => Math.max(gasPriceValue.value, 0));
+const gasPriceTIA = computed(() => gasPriceUTIA.value / 1_000_000);
+
+const fixedCost = computed(() => Math.max(GAS_PARAMS.fixedCost, 0));
+const fixedFeePerSubmissionTIA = computed(
+    () => fixedCost.value * gasPriceTIA.value,
 );
 
-const feePerDayTIA = computed(() => feePerSecondTIA.value * 86_400);
+const headerFeePerSubmissionTIA = computed(
+    () => headerGas.value * gasPriceTIA.value,
+);
 
-function addBlob() {
-  blobs.push({ id: nextBlobId++, size: 0, count: 1 });
+const dataRecurringGasPerSubmission = computed(
+    () => dataGasPerSubmission.value + dataStaticGasPerSubmission.value,
+);
+
+const dataFeePerSubmissionTIA = computed(
+    () => dataRecurringGasPerSubmission.value * gasPriceTIA.value,
+);
+
+const recurringGasPerSubmission = computed(
+    () =>
+        fixedCost.value + headerGas.value + dataRecurringGasPerSubmission.value,
+);
+
+const firstTxGas = computed(() => (firstTx.value ? FIRST_TX_SURCHARGE : 0));
+const firstTxFeeTIA = computed(() => firstTxGas.value * gasPriceTIA.value);
+
+const totalGasPerSubmission = computed(
+    () => recurringGasPerSubmission.value + firstTxGas.value,
+);
+
+const totalFeePerSubmissionTIA = computed(
+    () => totalGasPerSubmission.value * gasPriceTIA.value,
+);
+
+const headerFeePerYearTIA = computed(
+    () => headerFeePerSubmissionTIA.value * submissionsPerYear.value,
+);
+
+const dataFeePerYearTIA = computed(
+    () => dataFeePerSubmissionTIA.value * submissionsPerYear.value,
+);
+
+const fixedFeePerYearTIA = computed(
+    () => fixedFeePerSubmissionTIA.value * submissionsPerYear.value,
+);
+
+const totalRecurringFeePerYearTIA = computed(
+    () =>
+        headerFeePerYearTIA.value +
+        dataFeePerYearTIA.value +
+        fixedFeePerYearTIA.value,
+);
+
+const feePerSecondTIA = computed(() => {
+    const interval = submissionIntervalSeconds.value;
+    if (!isFinite(interval) || interval <= 0) {
+        return 0;
+    }
+    return (recurringGasPerSubmission.value * gasPriceTIA.value) / interval;
+});
+
+function randomizeMix() {
+    let anyEnabled = false;
+    evmMix.forEach((entry) => {
+        entry.enabled = true;
+        entry.weight = Math.max(1, Math.round(Math.random() * 100));
+        anyEnabled = true;
+    });
+    if (!anyEnabled) {
+        evmMix[0].enabled = true;
+        evmMix[0].weight = 1;
+    }
 }
 
-function removeBlob(id: number) {
-  if (blobs.length === 1) {
-    blobs[0].size = 0;
-    blobs[0].count = 1;
-    return;
-  }
-  const index = blobs.findIndex((blob) => blob.id === id);
-  if (index !== -1) {
-    blobs.splice(index, 1);
-  }
+function resetMix() {
+    evmMix.forEach((entry, index) => {
+        entry.enabled = EVM_TX_TYPES[index].defaultWeight > 0;
+        entry.weight = EVM_TX_TYPES[index].defaultWeight;
+    });
 }
 
-function normalizeHeaderCount() {
-  if (!Number.isFinite(headerCount.value) || headerCount.value < 0) {
-    headerCount.value = 0;
-    return;
-  }
-  headerCount.value = Math.round(headerCount.value);
+function sanitizeNumber(value: number): number {
+    if (!isFinite(value) || value < 0) {
+        return 0;
+    }
+    return value;
 }
 
-function normalizeCount(blob: BlobInput) {
-  if (blob.count === undefined || blob.count < 1 || !Number.isFinite(blob.count)) {
-    blob.count = 1;
-    return;
-  }
-  blob.count = Math.round(blob.count);
+function sanitizeInteger(value: number, min: number): number {
+    if (!isFinite(value)) {
+        return min;
+    }
+    return Math.max(min, Math.round(value));
 }
 
 function formatNumber(value: number, maximumFractionDigits = 2) {
-  if (!isFinite(value)) {
-    return "0";
-  }
-  return new Intl.NumberFormat("en-US", {
-    minimumFractionDigits: 0,
-    maximumFractionDigits,
-  }).format(value);
+    if (!isFinite(value)) {
+        return "0";
+    }
+    return new Intl.NumberFormat("en-US", {
+        minimumFractionDigits: 0,
+        maximumFractionDigits,
+    }).format(value);
 }
 
 function formatInteger(value: number) {
-  if (!isFinite(value)) {
-    return "0";
-  }
-  return new Intl.NumberFormat("en-US", {
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0,
-  }).format(Math.round(value));
+    if (!isFinite(value)) {
+        return "0";
+    }
+    return new Intl.NumberFormat("en-US", {
+        minimumFractionDigits: 0,
+        maximumFractionDigits: 0,
+    }).format(Math.round(value));
 }
 </script>
 
 <style scoped>
+/* ===== MAIN LAYOUT ===== */
 .calculator {
-  display: grid;
-  gap: 1.75rem;
-  max-width: 1100px;
-  margin: 0 auto;
+    display: flex;
+    flex-direction: column;
+    gap: 2rem;
+    padding: 0 0 3rem;
 }
 
-@media (min-width: 900px) {
-  .calculator {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-}
-
-.results {
-  grid-column: 1 / -1;
-}
-
+/* ===== PANELS ===== */
 .panel {
-  background: var(--vp-c-bg-soft);
-  border-radius: 12px;
-  padding: 1.75rem;
-  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.05);
+    background: var(--vp-c-bg-soft);
+    border-radius: 14px;
+    padding: 2rem;
+    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.05);
 }
 
 .panel h2 {
-  margin-top: 0;
-  margin-bottom: 1rem;
-  font-size: 1.125rem;
+    margin: 0 0 1rem;
+    font-size: 1.125rem;
 }
 
+/* ===== FORM ELEMENTS ===== */
 .field-row {
-  display: flex;
-  flex-direction: column;
-  gap: 0.25rem;
-  margin-bottom: 1.25rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+    margin-bottom: 1.25rem;
 }
 
 .field-row label {
-  font-weight: 600;
+    font-weight: 600;
 }
 
 .field-group {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.5rem;
+    display: flex;
+    gap: 0.5rem;
 }
 
 .field-group input {
-  flex: 1;
+    flex: 1;
+    min-width: 0;
 }
 
 .field-group select {
-  min-width: 130px;
+    min-width: 120px;
 }
 
 input,
 select {
-  border: 1px solid var(--vp-c-divider);
-  border-radius: 8px;
-  padding: 0.5rem 0.75rem;
-  font-size: 0.95rem;
-  background: var(--vp-c-bg);
-  color: inherit;
+    border: 1px solid var(--vp-c-divider);
+    border-radius: 8px;
+    padding: 0.55rem 0.75rem;
+    font-size: 0.95rem;
+    background: var(--vp-c-bg);
+    color: inherit;
 }
 
 input[readonly] {
-  background: var(--vp-c-bg-soft);
-  cursor: not-allowed;
+    background: var(--vp-c-bg-soft);
+    cursor: not-allowed;
 }
 
-.derived {
-  list-style: none;
-  padding: 0;
-  margin: 0;
-  display: grid;
-  gap: 0.5rem;
-}
-
-.derived li {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  font-size: 0.95rem;
-  gap: 1rem;
-}
-
-.toggle-row {
-  margin: 1rem 0;
-}
-
-.toggle-row label {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.5rem;
-  font-weight: 500;
-}
-
-.param-list {
-  list-style: none;
-  margin: 0 0 1.5rem;
-  padding: 0;
-  display: grid;
-  gap: 0.75rem;
-}
-
-.param-list li {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 1rem;
-  font-size: 0.95rem;
-}
-
-.param-list strong {
-  font-variant-numeric: tabular-nums;
-}
-
-.hint {
-  margin-top: 0;
-  margin-bottom: 1.25rem;
-  font-size: 0.85rem;
-  color: var(--vp-c-text-2);
-}
-
-.blob-row {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: flex-start;
-  gap: 1rem;
-  margin-bottom: 1rem;
-  padding: 1rem;
-  border: 1px solid var(--vp-c-divider);
-  border-radius: 10px;
-  background: var(--vp-c-bg);
-}
-
-.blob-label {
-  font-weight: 600;
-  min-width: 90px;
-}
-
-.blob-inputs {
-  flex: 1;
-  display: grid;
-  gap: 0.75rem;
-  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
-}
-
-.blob-inputs label {
-  display: flex;
-  flex-direction: column;
-  gap: 0.25rem;
-  font-weight: 600;
-}
-
-.blob-inputs input {
-  width: 100%;
-}
-
+/* ===== BUTTONS ===== */
 button {
-  border: none;
-  border-radius: 8px;
-  padding: 0.5rem 0.75rem;
-  font-weight: 600;
-  cursor: pointer;
-  transition: background 0.15s ease;
+    border: none;
+    border-radius: 8px;
+    padding: 0.55rem 0.85rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.15s ease;
 }
 
 button.secondary {
-  background: var(--vp-c-brand-soft);
-  color: var(--vp-c-brand-1);
+    background: var(--vp-c-brand-soft);
+    color: var(--vp-c-brand-1);
 }
 
 button.secondary:hover {
-  background: var(--vp-c-brand-1);
-  color: var(--vp-c-bg);
+    background: var(--vp-c-brand-1);
+    color: var(--vp-c-bg);
 }
 
 button.ghost {
-  background: transparent;
-  border: 1px solid var(--vp-c-divider);
-  color: inherit;
+    background: transparent;
+    border: 1px solid var(--vp-c-divider);
+    color: inherit;
 }
 
 button.ghost:hover {
-  border-color: var(--vp-c-brand-1);
-  color: var(--vp-c-brand-1);
+    border-color: var(--vp-c-brand-1);
+    color: var(--vp-c-brand-1);
 }
 
-.results .summary {
-  display: grid;
-  gap: 1rem;
-  margin-bottom: 1.5rem;
-  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+/* ===== LISTS & DATA DISPLAY ===== */
+.derived,
+.param-list,
+.breakdown {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    gap: 0.6rem;
 }
 
-.summary-item {
-  padding: 1rem;
-  border-radius: 8px;
-  background: var(--vp-c-bg);
-  border: 1px solid var(--vp-c-divider);
-  display: flex;
-  flex-direction: column;
-  gap: 0.25rem;
-  font-variant-numeric: tabular-nums;
+.derived li,
+.param-list li,
+.breakdown li {
+    display: flex;
+    justify-content: space-between;
+    gap: 1rem;
+    font-size: 0.95rem;
 }
 
-.summary-item span {
-  font-size: 0.85rem;
-  color: var(--vp-c-text-2);
-}
-
-details summary {
-  cursor: pointer;
-  font-weight: 600;
-  margin-bottom: 0.75rem;
+.param-list {
+    margin-bottom: 1.5rem;
 }
 
 .breakdown {
-  list-style: none;
-  padding: 0;
-  margin: 0 0 1.5rem;
-  display: grid;
-  gap: 0.5rem;
+    margin-bottom: 1.5rem;
 }
 
-.breakdown li {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  font-size: 0.95rem;
+/* ===== TOGGLES ===== */
+.env-toggle,
+.toggle-row {
+    margin-bottom: 1rem;
 }
 
-table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 0.9rem;
+.env-toggle {
+    display: flex;
+    gap: 1rem;
+    font-weight: 600;
 }
 
-.results table {
-  min-width: 420px;
+.toggle-row label {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-weight: 500;
 }
 
-.results details {
-  overflow-x: auto;
+/* ===== TEXT STYLES ===== */
+.hint {
+    margin: 0 0 1.25rem;
+    font-size: 0.85rem;
+    color: var(--vp-c-text-2);
 }
 
-th,
-td {
-  padding: 0.5rem;
-  border-bottom: 1px solid var(--vp-c-divider);
-  text-align: left;
+strong {
+    font-variant-numeric: tabular-nums;
 }
 
-thead {
-  background: var(--vp-c-bg);
+/* ===== DATA WORKLOAD SECTION ===== */
+.coming-soon {
+    border: 1px dashed var(--vp-c-divider);
+    border-radius: 10px;
+    padding: 1rem;
+    font-size: 0.95rem;
+    background: rgba(148, 163, 184, 0.08);
+}
+
+.evm-config {
+    display: flex;
+    flex-direction: column;
+    gap: 1.25rem;
+}
+
+/* Transaction rate inputs */
+.rate-grid {
+    display: grid;
+    gap: 1rem;
+    grid-template-columns: 1fr;
+}
+
+@media (min-width: 640px) {
+    .rate-grid {
+        grid-template-columns: 1fr 1fr;
+    }
+}
+
+.rate-grid label {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+    font-weight: 600;
+}
+
+/* Action buttons */
+.mix-actions {
+    display: flex;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+}
+
+/* Chart and legend container */
+.mix-grid {
+    display: grid;
+    gap: 2rem;
+}
+
+@media (min-width: 768px) {
+    .mix-grid {
+        grid-template-columns: 280px 1fr;
+    }
+}
+
+/* Donut chart */
+.mix-visual {
+    position: relative;
+    width: 220px;
+    height: 220px;
+    margin: 0 auto;
+}
+
+.mix-visual__chart {
+    width: 100%;
+    height: 100%;
+    transform: rotate(-90deg);
+}
+
+.mix-visual__track {
+    fill: none;
+    stroke: var(--vp-c-divider-soft);
+    stroke-width: 3.2;
+}
+
+.mix-visual__segment {
+    fill: none;
+    stroke-width: 3.2;
+    stroke-linecap: butt;
+}
+
+.mix-visual__center {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    text-align: center;
+    background: var(--vp-c-bg);
+    border-radius: 50%;
+    width: 130px;
+    height: 130px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 0.15rem;
+    box-shadow: inset 0 0 0 1px var(--vp-c-divider);
+}
+
+.mix-visual__value {
+    font-weight: 700;
+    font-size: 1.25rem;
+    font-variant-numeric: tabular-nums;
+}
+
+.mix-visual__label {
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--vp-c-text-2);
+}
+
+.mix-chart__empty {
+    text-align: center;
+    font-size: 0.85rem;
+    color: var(--vp-c-text-2);
+    padding: 2rem 1rem;
+}
+
+/* Transaction type legend */
+.mix-legend {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+}
+
+.mix-legend li {
+    display: flex;
+    gap: 0.75rem;
+    align-items: flex-start;
+}
+
+.color-dot {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    flex-shrink: 0;
+    margin-top: 0.25rem;
+}
+
+.mix-legend li > div {
+    flex: 1;
+    min-width: 0;
+}
+
+.mix-legend li strong {
+    display: block;
+    margin-bottom: 0.25rem;
+}
+
+.mix-legend li span {
+    font-size: 0.9rem;
+    color: var(--vp-c-text-2);
+}
+
+/* Transaction mix customization table */
+.mix-table {
+    border: 1px solid var(--vp-c-divider);
+    border-radius: 12px;
+    background: var(--vp-c-bg);
+    padding: 1rem;
+}
+
+.mix-table summary {
+    font-weight: 600;
+    cursor: pointer;
+    margin-bottom: 1rem;
+}
+
+.mix-table__grid {
+    display: grid;
+    gap: 0.75rem;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+}
+
+.mix-card {
+    border: 1px solid var(--vp-c-divider);
+    border-radius: 12px;
+    padding: 1rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    background: var(--vp-c-bg-soft);
+}
+
+.mix-card.disabled {
+    opacity: 0.5;
+}
+
+.mix-card__header {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-weight: 600;
+}
+
+.mix-card__meta {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 0.85rem;
+    color: var(--vp-c-text-2);
+}
+
+.mix-card__control {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 0.75rem;
+}
+
+.mix-card__control span {
+    font-size: 0.9rem;
+}
+
+.mix-card__control input[type="number"] {
+    width: 80px;
+}
+
+/* Summary metrics */
+.metrics {
+    display: flex;
+    flex-direction: column;
+    gap: 0.6rem;
+    padding: 1rem;
+    border-radius: 10px;
+    background: rgba(76, 99, 235, 0.08);
+}
+
+.metrics div {
+    display: flex;
+    justify-content: space-between;
+    gap: 1rem;
+    font-size: 0.95rem;
+}
+
+/* ===== RESULTS SECTION ===== */
+.results .summary {
+    display: grid;
+    gap: 1rem;
+    margin-bottom: 1.5rem;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+}
+
+.summary-item {
+    padding: 1rem;
+    border-radius: 8px;
+    background: var(--vp-c-bg);
+    border: 1px solid var(--vp-c-divider);
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+}
+
+.summary-item span {
+    font-size: 0.85rem;
+    color: var(--vp-c-text-2);
+}
+
+.summary-item strong {
+    font-size: 1.1rem;
+}
+
+/* Details/summary elements */
+details {
+    margin-bottom: 1.5rem;
+}
+
+details summary {
+    cursor: pointer;
+    font-weight: 600;
+    margin-bottom: 0.75rem;
 }
 </style>
