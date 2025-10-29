@@ -96,3 +96,21 @@ func TestLeafHashOpt(t *testing.T) {
 	assert.Equal(t, expectedHash2, hash2)
 	assert.NotEqual(t, hash1, hash2)
 }
+
+// TestHeaderHashWithBytes tests the HeaderHash function directly
+func TestHeaderHashWithBytes(t *testing.T) {
+	header := &Header{
+		BaseHeader: BaseHeader{Height: 1, Time: 1234567890},
+		DataHash:   []byte("datahash"),
+	}
+
+	// Hash using the method
+	hash1 := header.Hash()
+
+	// Hash using the function directly
+	headerBytes, err := header.MarshalBinary()
+	require.NoError(t, err)
+	hash2 := HeaderHash(headerBytes)
+
+	assert.Equal(t, hash1, hash2, "HeaderHash should produce same result as Header.Hash()")
+}
