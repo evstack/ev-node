@@ -154,12 +154,12 @@ func (s *Submitter) daSubmissionLoop() {
 		case <-ticker.C:
 			// Submit headers
 			if headersNb := s.cache.NumPendingHeaders(); headersNb != 0 {
-				s.logger.Info().Time("t", time.Now()).Uint64("headers", headersNb).Msg("Submitting headers")
+				s.logger.Debug().Time("t", time.Now()).Uint64("headers", headersNb).Msg("Submitting headers")
 				if s.headerSubmissionMtx.TryLock() {
-					s.logger.Warn().Time("t", time.Now()).Uint64("headers", headersNb).Msg("Header submission in progress")
+					s.logger.Debug().Time("t", time.Now()).Uint64("headers", headersNb).Msg("Header submission in progress")
 					go func() {
 						defer func() {
-							s.logger.Info().Time("t", time.Now()).Uint64("headers", headersNb).Msg("Header submission completed")
+							s.logger.Debug().Time("t", time.Now()).Uint64("headers", headersNb).Msg("Header submission completed")
 							s.headerSubmissionMtx.Unlock()
 						}()
 						if err := s.daSubmitter.SubmitHeaders(s.ctx, s.cache); err != nil {
@@ -178,12 +178,12 @@ func (s *Submitter) daSubmissionLoop() {
 
 			// Submit data
 			if dataNb := s.cache.NumPendingData(); dataNb != 0 {
-				s.logger.Info().Time("t", time.Now()).Uint64("data", dataNb).Msg("Submitting data")
+				s.logger.Debug().Time("t", time.Now()).Uint64("data", dataNb).Msg("Submitting data")
 				if s.dataSubmissionMtx.TryLock() {
-					s.logger.Info().Time("t", time.Now()).Uint64("data", dataNb).Msg("Data submission in progress")
+					s.logger.Debug().Time("t", time.Now()).Uint64("data", dataNb).Msg("Data submission in progress")
 					go func() {
 						defer func() {
-							s.logger.Info().Time("t", time.Now()).Uint64("data", dataNb).Msg("Data submission completed")
+							s.logger.Debug().Time("t", time.Now()).Uint64("data", dataNb).Msg("Data submission completed")
 							s.dataSubmissionMtx.Unlock()
 						}()
 						if err := s.daSubmitter.SubmitData(s.ctx, s.cache, s.signer, s.genesis); err != nil {
