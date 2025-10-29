@@ -418,7 +418,7 @@ da:
 ```
 
 **Command-line Flag:**
-`--rollkit.da.signing_addresses <string>`
+`--evnode.da.signing_addresses <string>`
 _Example:_ `--rollkit.da.signing_addresses celestia1abc...,celestia1def...,celestia1ghi...`
 _Default:_ `[]` (empty, uses default DA node behavior)
 _Constant:_ `FlagDASigningAddresses`
