@@ -13,6 +13,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 <!-- New features or capabilities -->
+- Added automated upgrade test for the `evm-single` app that verifies compatibility when moving from v1.0.0-beta.8 to HEAD in CI ([#2780](https://github.com/evstack/ev-node/pull/2780))
+- Added execution-layer replay mechanism so nodes can resynchronize by replaying missed batches against the executor ([#2771](https://github.com/evstack/ev-node/pull/2771))
+- Added cache-pruning logic that evicts entries once heights are finalized to keep node memory usage bounded ([#2761](https://github.com/evstack/ev-node/pull/2761))
+- Added Prometheus gauges and counters that surface DA submission failures, pending blobs, and resend attempts for easier operational monitoring ([#2756](https://github.com/evstack/ev-node/pull/2756))
 - Added gRPC execution client implementation for remote execution services using Connect-RPC protocol ([#2490](https://github.com/evstack/ev-node/pull/2490))
 - Added `ExecutorService` protobuf definition with InitChain, GetTxs, ExecuteTxs, and SetFinal RPCs ([#2490](https://github.com/evstack/ev-node/pull/2490))
 - Added new `grpc` app for running EVNode with a remote execution layer via gRPC ([#2490](https://github.com/evstack/ev-node/pull/2490))
@@ -20,6 +24,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 <!-- Changes to existing functionality -->
+- Hardened signer CLI and block pipeline per security audit: passphrases must be provided via `--evnode.signer.passphrase_file`, data/header validation enforces metadata and timestamp checks, and the reaper backs off on failures (BREAKING) ([#2764](https://github.com/evstack/ev-node/pull/2764))
+- Added retries around executor `ExecuteTxs` calls to better tolerate transient execution errors ([#2784](https://github.com/evstack/ev-node/pull/2784))
+- Increased default `ReadinessMaxBlocksBehind` from 3 to 30 blocks so `/health/ready` stays true during normal batch sync ([#2779](https://github.com/evstack/ev-node/pull/2779))
+- Replaced uses of `interface{}` with `any` across tooling to align with modern Go style ([#2781](https://github.com/evstack/ev-node/pull/2781))
+- Updated `pkg/sync` README with current component responsibilities and flow diagrams ([#2776](https://github.com/evstack/ev-node/pull/2776))
+- Removed deprecated `// +build` constraints from Go helper scripts in favor of `//go:build` ([#2774](https://github.com/evstack/ev-node/pull/2774))
+- Updated cache-analyzer tooling to Go 1.21 `slices.Sort` helpers for clearer ordering semantics ([#2768](https://github.com/evstack/ev-node/pull/2768))
+- Clarified sequencing documentation and inline comments around the “target chain” wording ([#2762](https://github.com/evstack/ev-node/pull/2762))
 - Updated EVM execution client to use new `txpoolExt_getTxs` RPC API for retrieving pending transactions as RLP-encoded bytes
 
 ### Deprecated
@@ -30,11 +42,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Removed
 
 <!-- Features that were removed -->
--
+- Removed `LastCommitHash`, `ConsensusHash`, and `LastResultsHash` from the canonical header representation in favor of slim headers (BREAKING; legacy hashes now live under `Header.Legacy`) ([#2766](https://github.com/evstack/ev-node/pull/2766))
 
 ### Fixed
 
 <!-- Bug fixes -->
+- Restored backwards-compatible header signature verification so legacy networks can sync with slim headers ([#2782](https://github.com/evstack/ev-node/pull/2782))
 - Pass correct namespaces for header and data to the da layer for posting ([#2560](https://github.com/evstack/ev-node/pull/2560))
 
 ### Security
