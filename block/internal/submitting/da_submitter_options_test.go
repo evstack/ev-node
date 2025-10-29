@@ -122,3 +122,11 @@ func TestMergeSubmitOptions_ComplexJSON(t *testing.T) {
 	// Check signing address was added
 	assert.Equal(t, signingAddress, resultMap["signer_address"])
 }
+
+func TestMergeSubmitOptions_NullJSON(t *testing.T) {
+	base := []byte("null")
+	merged, err := mergeSubmitOptions(base, `{"signer_address": "abc"}`)
+	require.NoError(t, err)
+	require.NotNil(t, merged)
+	require.Contains(t, string(merged), "signer_address")
+}

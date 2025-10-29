@@ -364,17 +364,20 @@ func mergeSubmitOptions(baseOptions []byte, signingAddress string) ([]byte, erro
 		return baseOptions, nil
 	}
 
-	// Create options map with signing address
-	optionsMap := make(map[string]interface{})
+	var optionsMap map[string]interface{}
 
 	// If base options are provided, try to parse them as JSON
 	if len(baseOptions) > 0 {
-		// Try to unmarshal existing options
+		// Try to unmarshal existing options, ignoring errors for non-JSON input
 		if err := json.Unmarshal(baseOptions, &optionsMap); err != nil {
-			// If it's not valid JSON, start with empty map
-			// Log at debug level since this is expected for non-JSON options
+			// Not valid JSON - start with empty map
 			optionsMap = make(map[string]interface{})
 		}
+	}
+
+	// Ensure map is initialized even if unmarshal returned nil
+	if optionsMap == nil {
+		optionsMap = make(map[string]interface{})
 	}
 
 	// Add or override the signing address
