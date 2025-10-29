@@ -153,10 +153,15 @@ func (s *Submitter) daSubmissionLoop() {
 			return
 		case <-ticker.C:
 			// Submit headers
-			if s.cache.NumPendingHeaders() != 0 {
+			if headersNb := s.cache.NumPendingHeaders(); headersNb != 0 {
+				s.logger.Debug().Time("t", time.Now()).Uint64("headers", headersNb).Msg("Submitting headers")
 				if s.headerSubmissionMtx.TryLock() {
+					s.logger.Debug().Time("t", time.Now()).Uint64("headers", headersNb).Msg("Header submission in progress")
 					go func() {
-						defer s.headerSubmissionMtx.Unlock()
+						defer func() {
+							s.logger.Debug().Time("t", time.Now()).Uint64("headers", headersNb).Msg("Header submission completed")
+							s.headerSubmissionMtx.Unlock()
+						}()
 						if err := s.daSubmitter.SubmitHeaders(s.ctx, s.cache); err != nil {
 							// Check for unrecoverable errors that indicate a critical issue
 							if errors.Is(err, common.ErrOversizedItem) {
@@ -172,10 +177,15 @@ func (s *Submitter) daSubmissionLoop() {
 			}
 
 			// Submit data
-			if s.cache.NumPendingData() != 0 {
+			if dataNb := s.cache.NumPendingData(); dataNb != 0 {
+				s.logger.Debug().Time("t", time.Now()).Uint64("data", dataNb).Msg("Submitting data")
 				if s.dataSubmissionMtx.TryLock() {
+					s.logger.Debug().Time("t", time.Now()).Uint64("data", dataNb).Msg("Data submission in progress")
 					go func() {
-						defer s.dataSubmissionMtx.Unlock()
+						defer func() {
+							s.logger.Debug().Time("t", time.Now()).Uint64("data", dataNb).Msg("Data submission completed")
+							s.dataSubmissionMtx.Unlock()
+						}()
 						if err := s.daSubmitter.SubmitData(s.ctx, s.cache, s.signer, s.genesis); err != nil {
 							// Check for unrecoverable errors that indicate a critical issue
 							if errors.Is(err, common.ErrOversizedItem) {
