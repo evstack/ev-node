@@ -15,6 +15,12 @@ func (h *Header) Hash() Hash {
 	if err != nil {
 		return nil
 	}
+	return HeaderHash(bytes)
+}
+
+// HeaderHash returns hash of the header
+// This is meant to avoid encoding the header multiple times.
+func HeaderHash(bytes []byte) Hash {
 	hash := sha256.Sum256(bytes)
 	return hash[:]
 }

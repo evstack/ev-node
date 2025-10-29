@@ -47,7 +47,6 @@ func (b *DefaultBatch) SetHeight(height uint64) error {
 
 // SaveBlockData saves block data to the batch
 func (b *DefaultBatch) SaveBlockData(header *types.SignedHeader, data *types.Data, signature *types.Signature) error {
-	hash := header.Hash()
 	height := header.Height()
 	signatureHash := *signature
 
@@ -70,8 +69,9 @@ func (b *DefaultBatch) SaveBlockData(header *types.SignedHeader, data *types.Dat
 		return fmt.Errorf("failed to put signature blob in batch: %w", err)
 	}
 
+	headerHash := types.HeaderHash(headerBlob)
 	heightBytes := encodeHeight(height)
-	if err := b.batch.Put(b.ctx, ds.NewKey(getIndexKey(hash)), heightBytes); err != nil {
+	if err := b.batch.Put(b.ctx, ds.NewKey(getIndexKey(headerHash)), heightBytes); err != nil {
 		return fmt.Errorf("failed to put index key in batch: %w", err)
 	}
 
