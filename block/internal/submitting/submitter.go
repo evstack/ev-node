@@ -391,12 +391,13 @@ func (s *Submitter) IsHeightDAIncluded(height uint64, header *types.SignedHeader
 	}
 
 	headerHash := header.Hash().String()
-	dataHash := data.DACommitment().String()
+	dataCommitment := data.DACommitment()
+	dataHash := dataCommitment.String()
 
 	_, headerIncluded := s.cache.GetHeaderDAIncluded(headerHash)
 	_, dataIncluded := s.cache.GetDataDAIncluded(dataHash)
 
-	dataIncluded = bytes.Equal(data.DACommitment(), common.DataHashForEmptyTxs) || dataIncluded
+	dataIncluded = bytes.Equal(dataCommitment, common.DataHashForEmptyTxs) || dataIncluded
 
 	return headerIncluded && dataIncluded, nil
 }

@@ -15,6 +15,13 @@ func (h *Header) Hash() Hash {
 	if err != nil {
 		return nil
 	}
+	return HeaderHash(bytes)
+}
+
+// HeaderHash returns the SHA256 hash of pre-marshaled header bytes.
+// Use this function when you already have marshaled header bytes to avoid
+// redundant marshaling operations. For convenience, use Header.Hash() instead.
+func HeaderHash(bytes []byte) Hash {
 	hash := sha256.Sum256(bytes)
 	return hash[:]
 }
