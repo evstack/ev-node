@@ -400,7 +400,9 @@ func submitToDA[T any](
 		submitCtx, cancel := context.WithTimeout(ctx, submissionTimeout)
 		defer cancel()
 		// Perform submission
+		start := time.Now()
 		res := types.SubmitWithHelpers(submitCtx, s.da, s.logger, marshaled, rs.GasPrice, namespace, options)
+		s.logger.Info().Int("attempts", rs.Attempt).Dur("elapsed", time.Since(start)).Msg("got SubmitWithHelpers response from celestia")
 
 		// Record submission result for observability
 		if daVisualizationServer := server.GetDAVisualizationServer(); daVisualizationServer != nil {
