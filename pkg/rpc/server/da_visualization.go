@@ -118,7 +118,7 @@ func (s *DAVisualizationServer) handleDASubmissions(w http.ResponseWriter, r *ht
 
 	// If not an aggregator, return empty submissions with a message
 	if !s.isAggregator {
-		response := map[string]interface{}{
+		response := map[string]any{
 			"is_aggregator": false,
 			"submissions":   []DASubmissionInfo{},
 			"total":         0,
@@ -139,7 +139,7 @@ func (s *DAVisualizationServer) handleDASubmissions(w http.ResponseWriter, r *ht
 	}
 
 	// Build response
-	response := map[string]interface{}{
+	response := map[string]any{
 		"submissions": reversed,
 		"total":       len(reversed),
 	}
@@ -192,7 +192,7 @@ func (s *DAVisualizationServer) handleDABlobDetails(w http.ResponseWriter, r *ht
 	}
 
 	blob := blobs[0]
-	response := map[string]interface{}{
+	response := map[string]any{
 		"id":              blobID,
 		"height":          height,
 		"commitment":      hex.EncodeToString(commitment),
@@ -215,7 +215,7 @@ func (s *DAVisualizationServer) handleDAStats(w http.ResponseWriter, r *http.Req
 
 	// If not an aggregator, return empty stats
 	if !s.isAggregator {
-		stats := map[string]interface{}{
+		stats := map[string]any{
 			"is_aggregator":     false,
 			"total_submissions": 0,
 			"message":           "This node is not an aggregator and does not submit to the DA layer",
@@ -264,7 +264,7 @@ func (s *DAVisualizationServer) handleDAStats(w http.ResponseWriter, r *http.Req
 		lastSubmission = &s.submissions[len(s.submissions)-1].Timestamp
 	}
 
-	stats := map[string]interface{}{
+	stats := map[string]any{
 		"total_submissions": totalSubmissions,
 		"success_count":     successCount,
 		"error_count":       errorCount,
@@ -272,7 +272,7 @@ func (s *DAVisualizationServer) handleDAStats(w http.ResponseWriter, r *http.Req
 		"total_blob_size":   totalBlobSize,
 		"avg_blob_size":     avgBlobSize,
 		"avg_gas_price":     avgGasPrice,
-		"time_range": map[string]interface{}{
+		"time_range": map[string]any{
 			"first": firstSubmission,
 			"last":  lastSubmission,
 		},
@@ -292,7 +292,7 @@ func (s *DAVisualizationServer) handleDAHealth(w http.ResponseWriter, r *http.Re
 
 	// If not an aggregator, return simplified health status
 	if !s.isAggregator {
-		health := map[string]interface{}{
+		health := map[string]any{
 			"is_aggregator":     false,
 			"status":            "n/a",
 			"message":           "This node is not an aggregator and does not submit to the DA layer",
@@ -409,12 +409,12 @@ func (s *DAVisualizationServer) handleDAHealth(w http.ResponseWriter, r *http.Re
 		}
 	}
 
-	health := map[string]interface{}{
+	health := map[string]any{
 		"status":             healthStatus,
 		"is_healthy":         isHealthy,
 		"connection_status":  connectionStatus,
 		"connection_healthy": connectionHealthy,
-		"metrics": map[string]interface{}{
+		"metrics": map[string]any{
 			"recent_error_rate":    fmt.Sprintf("%.1f%%", errorRate),
 			"recent_errors":        recentErrors,
 			"recent_successes":     recentSuccesses,
@@ -454,7 +454,7 @@ func (s *DAVisualizationServer) handleDAVisualizationHTML(w http.ResponseWriter,
 			}
 			return s[start:end]
 		},
-		"len": func(items interface{}) int {
+		"len": func(items any) int {
 			// Handle different types gracefully
 			switch v := items.(type) {
 			case []DASubmissionInfo:

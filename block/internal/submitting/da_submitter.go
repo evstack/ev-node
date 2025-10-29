@@ -27,7 +27,6 @@ const (
 	initialBackoff               = 100 * time.Millisecond
 	defaultGasPrice              = 0.0
 	defaultGasMultiplier         = 1.0
-	defaultMaxBlobSize           = 1.5 * 1024 * 1024 // 1.5MB fallback blob size limit
 	defaultMaxGasPriceClamp      = 1000.0
 	defaultMaxGasMultiplierClamp = 3.0 // must always > 0 to avoid division by zero
 )
@@ -50,7 +49,7 @@ func defaultRetryPolicy(maxAttempts int, maxDuration time.Duration) retryPolicy 
 		MaxBackoff:       maxDuration,
 		MinGasPrice:      defaultGasPrice,
 		MaxGasPrice:      defaultMaxGasPriceClamp,
-		MaxBlobBytes:     defaultMaxBlobSize,
+		MaxBlobBytes:     common.DefaultMaxBlobSize,
 		MaxGasMultiplier: defaultMaxGasMultiplierClamp,
 	}
 }
@@ -420,7 +419,12 @@ func submitToDA[T any](
 	if len(marshaled) > 0 {
 		batchItems, batchMarshaled, err := limitBatchBySize(items, marshaled, pol.MaxBlobBytes)
 		if err != nil {
-			return fmt.Errorf("no %s items fit within max blob size: %w", itemType, err)
+			s.logger.Error().
+				Str("itemType", itemType).
+				Int("maxBlobBytes", pol.MaxBlobBytes).
+				Err(err).
+				Msg("CRITICAL: Unrecoverable error - item exceeds maximum blob size")
+			return fmt.Errorf("unrecoverable error: no %s items fit within max blob size: %w", itemType, err)
 		}
 		items = batchItems
 		marshaled = batchMarshaled
@@ -491,9 +495,11 @@ func submitToDA[T any](
 			s.recordFailure(common.DASubmitterFailureReasonTooBig)
 			// Iteratively halve until it fits or single-item too big
 			if len(items) == 1 {
-				s.logger.Error().Str("itemType", itemType).Msg("single item exceeds DA blob size limit")
-				rs.Next(reasonTooBig, pol, gm, sentinelNoGas)
-				return fmt.Errorf("single %s item exceeds DA blob size limit", itemType)
+				s.logger.Error().
+					Str("itemType", itemType).
+					Int("maxBlobBytes", pol.MaxBlobBytes).
+					Msg("CRITICAL: Unrecoverable error - single item exceeds DA blob size limit")
+				return fmt.Errorf("unrecoverable error: %w: single %s item exceeds DA blob size limit", common.ErrOversizedItem, itemType)
 			}
 			half := len(items) / 2
 			if half == 0 {
@@ -540,7 +546,7 @@ func submitToDA[T any](
 }
 
 // limitBatchBySize returns a prefix of items whose total marshaled size does not exceed maxBytes.
-// If the first item exceeds maxBytes, it returns an error.
+// If the first item exceeds maxBytes, it returns ErrOversizedItem which is unrecoverable.
 func limitBatchBySize[T any](items []T, marshaled [][]byte, maxBytes int) ([]T, [][]byte, error) {
 	total := 0
 	count := 0
@@ -548,7 +554,7 @@ func limitBatchBySize[T any](items []T, marshaled [][]byte, maxBytes int) ([]T, 
 		sz := len(marshaled[i])
 		if sz > maxBytes {
 			if i == 0 {
-				return nil, nil, fmt.Errorf("item size %d exceeds max %d", sz, maxBytes)
+				return nil, nil, fmt.Errorf("%w: item size %d exceeds max %d", common.ErrOversizedItem, sz, maxBytes)
 			}
 			break
 		}

@@ -136,16 +136,16 @@ func TestHandleDASubmissions(t *testing.T) {
 	assert.Equal(t, http.StatusOK, rr.Code)
 	assert.Equal(t, "application/json", rr.Header().Get("Content-Type"))
 
-	var response map[string]interface{}
+	var response map[string]any
 	err = json.Unmarshal(rr.Body.Bytes(), &response)
 	require.NoError(t, err)
 
 	assert.Equal(t, float64(1), response["total"])
-	submissions, ok := response["submissions"].([]interface{})
+	submissions, ok := response["submissions"].([]any)
 	require.True(t, ok)
 	assert.Equal(t, 1, len(submissions))
 
-	submission := submissions[0].(map[string]interface{})
+	submission := submissions[0].(map[string]any)
 	assert.Equal(t, float64(100), submission["height"])
 	assert.Equal(t, float64(1024), submission["blob_size"])
 	assert.Equal(t, 0.5, submission["gas_price"])

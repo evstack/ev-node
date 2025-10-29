@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/spf13/cobra"
 
@@ -41,12 +42,24 @@ Anyone with access to the exported key can sign messages on your behalf.
 				return fmt.Errorf("failed to load node config: %w", err)
 			}
 
-			passphrase, err := cmd.Flags().GetString(rollconf.FlagSignerPassphrase)
+			// Get passphrase file path
+			passphraseFile, err := cmd.Flags().GetString(rollconf.FlagSignerPassphraseFile)
 			if err != nil {
-				return err
+				return fmt.Errorf("failed to get '%s' flag: %w", rollconf.FlagSignerPassphraseFile, err)
 			}
+			if passphraseFile == "" {
+				return fmt.Errorf("passphrase file is required. Please provide it using the --%s flag", rollconf.FlagSignerPassphraseFile)
+			}
+
+			// Read passphrase from file
+			passphraseBytes, err := os.ReadFile(passphraseFile)
+			if err != nil {
+				return fmt.Errorf("failed to read passphrase from file '%s': %w", passphraseFile, err)
+			}
+			passphrase := strings.TrimSpace(string(passphraseBytes))
+
 			if passphrase == "" {
-				return fmt.Errorf("passphrase is required. Please provide it using the --%s flag", rollconf.FlagSignerPassphrase)
+				return fmt.Errorf("passphrase file '%s' is empty", passphraseFile)
 			}
 
 			keyPath := filepath.Join(nodeConfig.RootDir, "config")
@@ -66,7 +79,7 @@ Anyone with access to the exported key can sign messages on your behalf.
 			return nil
 		},
 	}
-	cmd.Flags().String(rollconf.FlagSignerPassphrase, "", "Passphrase for the signer key")
+	cmd.Flags().String(rollconf.FlagSignerPassphraseFile, "", "Path to file containing the passphrase for the signer key")
 	return cmd
 }
 
@@ -89,12 +102,24 @@ If a 'signer.json' file exists in your home directory, you must use the --force 
 				return fmt.Errorf("failed to load node config: %w", err)
 			}
 
-			passphrase, err := cmd.Flags().GetString(rollconf.FlagSignerPassphrase)
+			// Get passphrase file path
+			passphraseFile, err := cmd.Flags().GetString(rollconf.FlagSignerPassphraseFile)
 			if err != nil {
-				return err
+				return fmt.Errorf("failed to get '%s' flag: %w", rollconf.FlagSignerPassphraseFile, err)
 			}
+			if passphraseFile == "" {
+				return fmt.Errorf("passphrase file is required to encrypt the imported key. Please provide it using the --%s flag", rollconf.FlagSignerPassphraseFile)
+			}
+
+			// Read passphrase from file
+			passphraseBytes, err := os.ReadFile(passphraseFile)
+			if err != nil {
+				return fmt.Errorf("failed to read passphrase from file '%s': %w", passphraseFile, err)
+			}
+			passphrase := strings.TrimSpace(string(passphraseBytes))
+
 			if passphrase == "" {
-				return fmt.Errorf("passphrase is required to encrypt the imported key. Please provide it using the --%s flag", rollconf.FlagSignerPassphrase)
+				return fmt.Errorf("passphrase file '%s' is empty", passphraseFile)
 			}
 
 			hexKey := args[0]
@@ -122,6 +147,6 @@ If a 'signer.json' file exists in your home directory, you must use the --force 
 	}
 
 	cmd.Flags().Bool("force", false, "Overwrite existing key file if it exists")
-	cmd.Flags().String(rollconf.FlagSignerPassphrase, "", "Passphrase to encrypt the imported key")
+	cmd.Flags().String(rollconf.FlagSignerPassphraseFile, "", "Path to file containing the passphrase to encrypt the imported key")
 	return cmd
 }

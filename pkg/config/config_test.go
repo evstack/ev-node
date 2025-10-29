@@ -62,6 +62,7 @@ func TestAddFlags(t *testing.T) {
 	assertFlagValue(t, flags, FlagLazyAggregator, DefaultConfig().Node.LazyMode)
 	assertFlagValue(t, flags, FlagMaxPendingHeadersAndData, DefaultConfig().Node.MaxPendingHeadersAndData)
 	assertFlagValue(t, flags, FlagLazyBlockTime, DefaultConfig().Node.LazyBlockInterval.Duration)
+	assertFlagValue(t, flags, FlagReadinessWindowSeconds, DefaultConfig().Node.ReadinessWindowSeconds)
 	assertFlagValue(t, flags, FlagReadinessMaxBlocksBehind, DefaultConfig().Node.ReadinessMaxBlocksBehind)
 
 	// DA flags
@@ -96,7 +97,7 @@ func TestAddFlags(t *testing.T) {
 	assertFlagValue(t, persistentFlags, FlagLogTrace, false)
 
 	// Signer flags
-	assertFlagValue(t, flags, FlagSignerPassphrase, "")
+	assertFlagValue(t, flags, FlagSignerPassphraseFile, "")
 	assertFlagValue(t, flags, FlagSignerType, "file")
 	assertFlagValue(t, flags, FlagSignerPath, DefaultConfig().Signer.SignerPath)
 

@@ -3,6 +3,8 @@ package cmd
 import (
 	"errors"
 	"fmt"
+	"os"
+	"strings"
 
 	"github.com/spf13/cobra"
 
@@ -38,9 +40,24 @@ This will create the necessary configuration structure in the specified root dir
 				return fmt.Errorf("error validating config: %w", err)
 			}
 
-			passphrase, err := cmd.Flags().GetString(rollconf.FlagSignerPassphrase)
+			// Get passphrase file path
+			passphraseFile, err := cmd.Flags().GetString(rollconf.FlagSignerPassphraseFile)
 			if err != nil {
-				return fmt.Errorf("error reading passphrase flag: %w", err)
+				return fmt.Errorf("failed to get '%s' flag: %w", rollconf.FlagSignerPassphraseFile, err)
+			}
+
+			var passphrase string
+			if passphraseFile != "" {
+				// Read passphrase from file
+				passphraseBytes, err := os.ReadFile(passphraseFile)
+				if err != nil {
+					return fmt.Errorf("failed to read passphrase from file '%s': %w", passphraseFile, err)
+				}
+				passphrase = strings.TrimSpace(string(passphraseBytes))
+
+				if passphrase == "" {
+					return fmt.Errorf("passphrase file '%s' is empty", passphraseFile)
+				}
 			}
 
 			proposerAddress, err := rollcmd.CreateSigner(&cfg, homePath, passphrase)
