@@ -221,7 +221,7 @@ func (d *DummyDA) SubmitWithOptions(ctx context.Context, blobs []Blob, gasPrice 
 
 		d.blobs[idStr] = blob
 		d.commitments[idStr] = commitment
-		d.proofs[idStr] = commitment // Simple proof
+		d.proofs[idStr] = commitment       // Simple proof
 		d.namespaceByID[idStr] = namespace // Store namespace for this blob
 
 		ids = append(ids, id)

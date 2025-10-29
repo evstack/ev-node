@@ -88,6 +88,10 @@ if [ -n "$DA_NAMESPACE" ]; then
   default_flags="$default_flags --rollkit.da.namespace $DA_NAMESPACE"
 fi
 
+if [ -n "$DA_SIGNING_ADDRESSES" ]; then
+  default_flags="$default_flags --rollkit.da.signing_addresses $DA_SIGNING_ADDRESSES"
+fi
+
 # If no arguments passed, show help
 if [ $# -eq 0 ]; then
   exec evm-single
