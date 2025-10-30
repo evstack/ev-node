@@ -328,3 +328,36 @@ func (_c *mockp2pHandler_SetProcessedHeight_Call) RunAndReturn(run func(height u
 	_c.Run(run)
 	return _c
 }
+
+// Shutdown provides a mock function for the type mockp2pHandler
+func (_mock *mockp2pHandler) Shutdown() {
+	_mock.Called()
+	return
+}
+
+// mockp2pHandler_Shutdown_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'Shutdown'
+type mockp2pHandler_Shutdown_Call struct {
+	*mock.Call
+}
+
+// Shutdown is a helper method to define mock.On call
+func (_e *mockp2pHandler_Expecter) Shutdown() *mockp2pHandler_Shutdown_Call {
+	return &mockp2pHandler_Shutdown_Call{Call: _e.mock.On("Shutdown")}
+}
+
+func (_c *mockp2pHandler_Shutdown_Call) Run(run func()) *mockp2pHandler_Shutdown_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run()
+	})
+	return _c
+}
+
+func (_c *mockp2pHandler_Shutdown_Call) Return() *mockp2pHandler_Shutdown_Call {
+	_c.Call.Return()
+	return _c
+}
+
+func (_c *mockp2pHandler_Shutdown_Call) RunAndReturn(run func()) *mockp2pHandler_Shutdown_Call {
+	_c.Run(run)
+	return _c
+}

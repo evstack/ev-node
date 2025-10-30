@@ -427,11 +427,11 @@ func TestSyncLoopPersistState(t *testing.T) {
 		Return(nil, coreda.ErrHeightFromFuture)
 
 	go syncerInst1.processLoop()
-	// sync from DA until stop height reached
-	syncerInst1.syncLoop()
+	syncerInst1.startSyncWorkers()
+	syncerInst1.wg.Wait()
 	requireEmptyChan(t, errorCh)
 
-	t.Log("syncLoop on instance1 completed")
+	t.Log("sync workers on instance1 completed")
 	require.Equal(t, myFutureDAHeight, syncerInst1.GetDAHeight())
 	lastStateDAHeight := syncerInst1.GetLastState().DAHeight
 
@@ -491,10 +491,11 @@ func TestSyncLoopPersistState(t *testing.T) {
 		Return(nil, nil)
 
 	// when it starts, it should fetch from the last height it stopped at
-	t.Log("syncLoop on instance2 started")
-	syncerInst2.syncLoop()
+	t.Log("sync workers on instance2 started")
+	syncerInst2.startSyncWorkers()
+	syncerInst2.wg.Wait()
 
-	t.Log("syncLoop exited")
+	t.Log("sync workers exited")
 }
 
 func TestSyncer_executeTxsWithRetry(t *testing.T) {
@@ -648,7 +649,7 @@ func requireEmptyChan(t *testing.T, errorCh chan error) {
 	t.Helper()
 	select {
 	case err := <-errorCh:
-		t.Fatalf("syncLoop on instance1 failed: %v", err)
+		t.Fatalf("sync workers failed: %v", err)
 	default:
 	}
 }

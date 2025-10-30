@@ -33,6 +33,7 @@ type p2pHandler interface {
 	ProcessDataRange(ctx context.Context, fromHeight, toHeight uint64, heightInCh chan<- common.DAHeightEvent)
 	SetProcessedHeight(height uint64)
 	OnHeightProcessed(height uint64)
+	Shutdown()
 }
 
 // Syncer handles block synchronization from DA and P2P sources.
@@ -137,12 +138,8 @@ func (s *Syncer) Start(ctx context.Context) error {
 		s.processLoop()
 	}()
 
-	// Start sync loop (DA and P2P retrieval)
-	s.wg.Add(1)
-	go func() {
-		defer s.wg.Done()
-		s.syncLoop()
-	}()
+	// Start dedicated workers for P2P, DA, and pending processing
+	s.startSyncWorkers()
 
 	s.logger.Info().Msg("syncer started")
 	return nil
@@ -152,6 +149,9 @@ func (s *Syncer) Start(ctx context.Context) error {
 func (s *Syncer) Stop() error {
 	if s.cancel != nil {
 		s.cancel()
+	}
+	if s.p2pHandler != nil {
+		s.p2pHandler.Shutdown()
 	}
 	s.wg.Wait()
 	s.logger.Info().Msg("syncer stopped")
@@ -251,41 +251,107 @@ func (s *Syncer) processLoop() {
 	}
 }
 
-// syncLoop handles synchronization from DA and P2P sources.
-func (s *Syncer) syncLoop() {
-	s.logger.Info().Msg("starting sync loop")
-	defer s.logger.Info().Msg("sync loop stopped")
+func (s *Syncer) startSyncWorkers() {
+	s.wg.Add(3)
+	go s.daWorker()
+	go s.p2pWorker()
+	go s.pendingWorker()
+}
 
-	if delay := time.Until(s.genesis.StartTime); delay > 0 {
-		s.logger.Info().Dur("delay", delay).Msg("waiting until genesis to start syncing")
+func (s *Syncer) daWorker() {
+	defer s.wg.Done()
+	s.daWorkerLoop()
+}
+
+func (s *Syncer) daWorkerLoop() {
+	if !s.waitForGenesis() {
+		return
+	}
+
+	s.logger.Info().Msg("starting DA worker")
+	defer s.logger.Info().Msg("DA worker stopped")
+
+	nextDARequestAt := &time.Time{}
+	pollInterval := min(10*time.Millisecond, s.config.Node.BlockTime.Duration)
+	if pollInterval <= 0 {
+		pollInterval = 10 * time.Millisecond
+	}
+
+	for {
+		s.tryFetchFromDA(nextDARequestAt)
 		select {
 		case <-s.ctx.Done():
 			return
-		case <-time.After(delay):
+		case <-time.After(pollInterval):
 		}
 	}
+}
 
-	// Backoff control when DA replies with errors
-	nextDARequestAt := &time.Time{}
+func (s *Syncer) p2pWorker() {
+	defer s.wg.Done()
+	s.p2pWorkerLoop()
+}
+
+func (s *Syncer) p2pWorkerLoop() {
+	if !s.waitForGenesis() {
+		return
+	}
+
+	s.logger.Info().Msg("starting P2P worker")
+	defer s.logger.Info().Msg("P2P worker stopped")
+
+	pollInterval := min(10*time.Millisecond, s.config.Node.BlockTime.Duration)
+	if pollInterval <= 0 {
+		pollInterval = 10 * time.Millisecond
+	}
+
+	for {
+		s.tryFetchFromP2P()
+		select {
+		case <-s.ctx.Done():
+			return
+		case <-time.After(pollInterval):
+		}
+	}
+}
+
+func (s *Syncer) pendingWorker() {
+	defer s.wg.Done()
+	s.pendingWorkerLoop()
+}
+
+func (s *Syncer) pendingWorkerLoop() {
+	if !s.waitForGenesis() {
+		return
+	}
+
+	s.logger.Info().Msg("starting pending worker")
+	defer s.logger.Info().Msg("pending worker stopped")
+
+	ticker := time.NewTicker(10 * time.Millisecond)
+	defer ticker.Stop()
 
 	for {
 		select {
 		case <-s.ctx.Done():
 			return
-		default:
-		}
-
-		s.processPendingEvents()
-		s.tryFetchFromP2P()
-		s.tryFetchFromDA(nextDARequestAt)
-
-		// Prevent busy-waiting when no events are processed
-		select {
-		case <-s.ctx.Done():
-			return
-		case <-time.After(min(10*time.Millisecond, s.config.Node.BlockTime.Duration)):
+		case <-ticker.C:
+			s.processPendingEvents()
 		}
 	}
+}
+
+func (s *Syncer) waitForGenesis() bool {
+	if delay := time.Until(s.genesis.StartTime); delay > 0 {
+		timer := time.NewTimer(delay)
+		defer timer.Stop()
+		select {
+		case <-s.ctx.Done():
+			return false
+		case <-timer.C:
+		}
+	}
+	return true
 }
 
 // tryFetchFromDA attempts to fetch events from the DA layer.

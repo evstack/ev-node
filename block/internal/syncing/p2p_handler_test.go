@@ -4,6 +4,7 @@ import (
 	"context"
 	crand "crypto/rand"
 	"errors"
+	"sync"
 	"testing"
 	"time"
 
@@ -205,6 +206,140 @@ func TestP2PHandler_ProcessDataRange_HeaderMissing(t *testing.T) {
 	<-headerCalled
 	events := collectEvents(t, ch, 100*time.Millisecond)
 	require.Len(t, events, 0)
+}
+
+func TestP2PHandler_WatcherLimit(t *testing.T) {
+	p2pData := setupP2P(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	handler := p2pData.Handler
+	handler.watcherSem = make(chan struct{}, 1)
+
+	require.Equal(t, string(p2pData.Genesis.ProposerAddress), string(p2pData.ProposerAddr))
+
+	header5 := p2pMakeSignedHeader(t, p2pData.Genesis.ChainID, 5, p2pData.ProposerAddr, p2pData.ProposerPub, p2pData.Signer)
+	data5 := makeData(p2pData.Genesis.ChainID, 5, 0)
+	header5.DataHash = data5.DACommitment()
+	bz5, err := types.DefaultAggregatorNodeSignatureBytesProvider(&header5.Header)
+	require.NoError(t, err)
+	sig5, err := p2pData.Signer.Sign(bz5)
+	require.NoError(t, err)
+	header5.Signature = sig5
+
+	header6 := p2pMakeSignedHeader(t, p2pData.Genesis.ChainID, 6, p2pData.ProposerAddr, p2pData.ProposerPub, p2pData.Signer)
+	data6 := makeData(p2pData.Genesis.ChainID, 6, 0)
+	header6.DataHash = data6.DACommitment()
+	bz6, err := types.DefaultAggregatorNodeSignatureBytesProvider(&header6.Header)
+	require.NoError(t, err)
+	sig6, err := p2pData.Signer.Sign(bz6)
+	require.NoError(t, err)
+	header6.Signature = sig6
+
+	blockFirst := make(chan struct{})
+	header6Started := make(chan struct{})
+
+	p2pData.HeaderStore.EXPECT().GetByHeight(mock.Anything, uint64(5)).RunAndReturn(func(ctx context.Context, _ uint64) (*types.SignedHeader, error) {
+		<-blockFirst
+		return header5, nil
+	}).Once()
+	p2pData.DataStore.EXPECT().GetByHeight(mock.Anything, uint64(5)).RunAndReturn(func(ctx context.Context, _ uint64) (*types.Data, error) {
+		<-blockFirst
+		return data5, nil
+	}).Once()
+
+	p2pData.HeaderStore.EXPECT().GetByHeight(mock.Anything, uint64(6)).RunAndReturn(func(ctx context.Context, _ uint64) (*types.SignedHeader, error) {
+		close(header6Started)
+		return header6, nil
+	}).Once()
+	p2pData.DataStore.EXPECT().GetByHeight(mock.Anything, uint64(6)).Return(data6, nil).Once()
+
+	ch := make(chan common.DAHeightEvent, 2)
+
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		handler.ProcessHeaderRange(ctx, 5, 6, ch)
+	}()
+
+	require.Eventually(t, func() bool {
+		handler.mu.Lock()
+		defer handler.mu.Unlock()
+		return len(handler.inflightWatchers) == 1
+	}, time.Second, 10*time.Millisecond, "first watcher should be running")
+
+	select {
+	case <-header6Started:
+		t.Fatal("second watcher started despite semaphore limit")
+	default:
+	}
+
+	close(blockFirst)
+
+	require.Eventually(t, func() bool {
+		select {
+		case <-header6Started:
+			return true
+		default:
+			return false
+		}
+	}, time.Second, 10*time.Millisecond, "second watcher did not launch after slot freed")
+
+	wg.Wait()
+	cancel()
+
+	// Drain channel to avoid goroutine leaks in the handler emit path.
+	collectEvents(t, ch, 100*time.Millisecond)
+}
+
+func TestP2PHandler_ShutdownCancelsWatchers(t *testing.T) {
+	p2pData := setupP2P(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	handler := p2pData.Handler
+	handler.watcherSem = make(chan struct{}, 2)
+
+	cancelled := make(chan struct{})
+
+	p2pData.HeaderStore.EXPECT().GetByHeight(mock.Anything, uint64(5)).RunAndReturn(func(ctx context.Context, _ uint64) (*types.SignedHeader, error) {
+		<-ctx.Done()
+		close(cancelled)
+		return nil, ctx.Err()
+	}).Once()
+	p2pData.DataStore.EXPECT().GetByHeight(mock.Anything, uint64(5)).Return(nil, context.Canceled).Maybe()
+
+	ch := make(chan common.DAHeightEvent, 1)
+
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		handler.ProcessHeaderRange(ctx, 5, 5, ch)
+	}()
+
+	require.Eventually(t, func() bool {
+		handler.mu.Lock()
+		defer handler.mu.Unlock()
+		return len(handler.inflightWatchers) == 1
+	}, time.Second, 10*time.Millisecond, "watcher should be registered")
+
+	handler.Shutdown()
+
+	select {
+	case <-cancelled:
+	case <-time.After(time.Second):
+		t.Fatal("watcher did not receive cancellation on shutdown")
+	}
+
+	require.Eventually(t, func() bool {
+		handler.mu.Lock()
+		defer handler.mu.Unlock()
+		return len(handler.inflightWatchers) == 0
+	}, time.Second, 10*time.Millisecond, "inflight watchers should be cleared")
+
+	wg.Wait()
 }
 
 func TestP2PHandler_WaitsForDataBeforeEmitting(t *testing.T) {

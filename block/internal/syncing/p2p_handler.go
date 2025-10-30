@@ -15,6 +15,8 @@ import (
 	"github.com/evstack/ev-node/types"
 )
 
+const defaultWatcherLimit = 128
+
 // P2PHandler handles all P2P operations for the syncer
 type P2PHandler struct {
 	headerStore goheader.Store[*types.SignedHeader]
@@ -23,9 +25,10 @@ type P2PHandler struct {
 	genesis     genesis.Genesis
 	logger      zerolog.Logger
 
-	mu              sync.Mutex
-	processedHeight uint64
-	inflight        map[uint64]context.CancelFunc
+	mu               sync.Mutex
+	processedHeight  uint64 // highest block fully applied; protects against duplicate watcher creation
+	inflightWatchers map[uint64]context.CancelFunc
+	watcherSem       chan struct{}
 }
 
 // NewP2PHandler creates a new P2P handler
@@ -37,12 +40,13 @@ func NewP2PHandler(
 	logger zerolog.Logger,
 ) *P2PHandler {
 	return &P2PHandler{
-		headerStore: headerStore,
-		dataStore:   dataStore,
-		cache:       cache,
-		genesis:     genesis,
-		logger:      logger.With().Str("component", "p2p_handler").Logger(),
-		inflight:    make(map[uint64]context.CancelFunc),
+		headerStore:      headerStore,
+		dataStore:        dataStore,
+		cache:            cache,
+		genesis:          genesis,
+		logger:           logger.With().Str("component", "p2p_handler").Logger(),
+		inflightWatchers: make(map[uint64]context.CancelFunc),
+		watcherSem:       make(chan struct{}, defaultWatcherLimit),
 	}
 }
 
@@ -56,12 +60,14 @@ func (h *P2PHandler) SetProcessedHeight(height uint64) {
 }
 
 // OnHeightProcessed cancels any pending watcher for a processed height.
+// Duplicate events are still filtered by the cache's seen-set in the syncer,
+// so racing watchers that observe the same height cannot cause re-execution.
 func (h *P2PHandler) OnHeightProcessed(height uint64) {
 	h.mu.Lock()
 	if height > h.processedHeight {
 		h.processedHeight = height
 	}
-	cancel, ok := h.inflight[height]
+	cancel, ok := h.inflightWatchers[height]
 	h.mu.Unlock()
 	if ok {
 		cancel()
@@ -96,21 +102,44 @@ func (h *P2PHandler) ensureWatcher(ctx context.Context, height uint64, heightInC
 		h.mu.Unlock()
 		return
 	}
-	if _, exists := h.inflight[height]; exists {
+	if _, exists := h.inflightWatchers[height]; exists {
 		h.mu.Unlock()
 		return
 	}
-
-	childCtx, cancel := context.WithCancel(ctx)
-	h.inflight[height] = cancel
 	h.mu.Unlock()
 
-	go h.awaitHeight(childCtx, height, heightInCh, cancel)
+	select {
+	case h.watcherSem <- struct{}{}:
+		childCtx, cancel := context.WithCancel(ctx)
+
+		h.mu.Lock()
+		if height <= h.processedHeight {
+			h.mu.Unlock()
+			cancel()
+			<-h.watcherSem
+			return
+		}
+		if _, exists := h.inflightWatchers[height]; exists {
+			h.mu.Unlock()
+			cancel()
+			<-h.watcherSem
+			return
+		}
+		h.inflightWatchers[height] = cancel
+		h.mu.Unlock()
+
+		go h.awaitHeight(childCtx, height, heightInCh, cancel)
+	case <-ctx.Done():
+		return
+	}
 }
 
 func (h *P2PHandler) awaitHeight(ctx context.Context, height uint64, heightInCh chan<- common.DAHeightEvent, cancel context.CancelFunc) {
 	defer cancel()
 	defer h.removeInflight(height)
+	defer func() {
+		<-h.watcherSem
+	}()
 
 	header, err := h.headerStore.GetByHeight(ctx, height)
 	if err != nil {
@@ -146,6 +175,16 @@ func (h *P2PHandler) awaitHeight(ctx context.Context, height uint64, heightInCh 
 	h.emitEvent(height, header, data, heightInCh, "p2p_watch")
 }
 
+// Shutdown cancels all in-flight watchers. It is idempotent and safe to call multiple times.
+func (h *P2PHandler) Shutdown() {
+	h.mu.Lock()
+	for height, cancel := range h.inflightWatchers {
+		cancel()
+		delete(h.inflightWatchers, height)
+	}
+	h.mu.Unlock()
+}
+
 // assertExpectedProposer validates the proposer address
 func (h *P2PHandler) assertExpectedProposer(proposerAddr []byte) error {
 	if !bytes.Equal(h.genesis.ProposerAddress, proposerAddr) {
@@ -174,6 +213,6 @@ func (h *P2PHandler) emitEvent(height uint64, header *types.SignedHeader, data *
 
 func (h *P2PHandler) removeInflight(height uint64) {
 	h.mu.Lock()
-	delete(h.inflight, height)
+	delete(h.inflightWatchers, height)
 	h.mu.Unlock()
 }
