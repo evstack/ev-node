@@ -443,6 +443,7 @@ func (s *Syncer) trySyncNextBlock(event *common.DAHeightEvent) error {
 	data := event.Data
 	nextHeight := event.Header.Height()
 	currentState := s.GetLastState()
+	headerHash := header.Hash().String()
 
 	s.logger.Info().Uint64("height", nextHeight).Msg("syncing block")
 
@@ -451,7 +452,7 @@ func (s *Syncer) trySyncNextBlock(event *common.DAHeightEvent) error {
 	// The header validation must be done before applying the block to avoid executing gibberish
 	if err := s.validateBlock(currentState, data, header); err != nil {
 		// remove header as da included (not per se needed, but keep cache clean)
-		s.cache.RemoveHeaderDAIncluded(header.Hash().String())
+		s.cache.RemoveHeaderDAIncluded(headerHash)
 		if !errors.Is(err, errInvalidState) && !errors.Is(err, errInvalidBlock) {
 			return errors.Join(errInvalidBlock, err)
 		}
@@ -495,7 +496,7 @@ func (s *Syncer) trySyncNextBlock(event *common.DAHeightEvent) error {
 	s.metrics.Height.Set(float64(newState.LastBlockHeight))
 
 	// Mark as seen
-	s.cache.SetHeaderSeen(header.Hash().String(), header.Height())
+	s.cache.SetHeaderSeen(headerHash, header.Height())
 	if !bytes.Equal(header.DataHash, common.DataHashForEmptyTxs) {
 		s.cache.SetDataSeen(data.DACommitment().String(), newState.LastBlockHeight)
 	}
