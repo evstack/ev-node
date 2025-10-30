@@ -1,6 +1,7 @@
 package types
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"testing"
 
@@ -32,6 +33,34 @@ func TestHeaderHash(t *testing.T) {
 	header.BaseHeader.Height = 2
 	hash2 := header.Hash()
 	assert.NotEqual(t, hash1, hash2, "Different headers should have different hashes")
+}
+
+func TestHeaderHashLegacy(t *testing.T) {
+	legacyFields := &LegacyHeaderFields{
+		LastCommitHash:  bytes.Repeat([]byte{0x01}, 32),
+		ConsensusHash:   bytes.Repeat([]byte{0x02}, 32),
+		LastResultsHash: bytes.Repeat([]byte{0x03}, 32),
+	}
+
+	header := &Header{
+		BaseHeader: BaseHeader{
+			Height:  10,
+			Time:    987654321,
+			ChainID: "legacy-chain",
+		},
+		DataHash: bytes.Repeat([]byte{0x04}, 32),
+		Legacy:   legacyFields,
+	}
+
+	hash := header.Hash()
+
+	legacyBytes, err := header.MarshalBinaryLegacy()
+	require.NoError(t, err)
+	expected := sha256.Sum256(legacyBytes)
+
+	assert.NotNil(t, hash)
+	assert.Len(t, hash, sha256.Size)
+	assert.Equal(t, Hash(expected[:]), hash, "Header hash should prefer legacy encoding when legacy fields are present")
 }
 
 // TestDataHash tests the Hash method of the Data.
@@ -110,7 +139,7 @@ func TestHeaderHashWithBytes(t *testing.T) {
 	// Hash using the function directly
 	headerBytes, err := header.MarshalBinary()
 	require.NoError(t, err)
-	hash2 := HeaderHash(headerBytes)
-
-	assert.Equal(t, hash1, hash2, "HeaderHash should produce same result as Header.Hash()")
+	var targetHeader Header
+	require.NoError(t, targetHeader.UnmarshalBinary(headerBytes))
+	assert.Equal(t, hash1, targetHeader.Hash(), "HeaderHash should produce same result as Header.Hash()")
 }

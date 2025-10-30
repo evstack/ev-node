@@ -15,6 +15,7 @@ message State {
   google.protobuf.Timestamp last_block_time = 5;
   uint64 da_height = 6;
   bytes app_hash = 8;
+  bytes last_header_hash = 9;
 
   reserved 7;
 }

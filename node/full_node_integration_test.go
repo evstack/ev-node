@@ -28,8 +28,9 @@ func TestTxGossipingMultipleNodesNoDA(t *testing.T) {
 	ctxs, cancels := createNodeContexts(numNodes)
 	var runningWg sync.WaitGroup
 
+	errChan := make(chan error, numNodes)
 	// Start only the sequencer first
-	startNodeInBackground(t, nodes, ctxs, &runningWg, 0)
+	startNodeInBackground(t, nodes, ctxs, &runningWg, 0, errChan)
 
 	// Wait for the first block to be produced by the sequencer
 	err := waitForFirstBlock(nodes[0], Header)
@@ -40,7 +41,7 @@ func TestTxGossipingMultipleNodesNoDA(t *testing.T) {
 
 	// Start the other nodes
 	for i := 1; i < numNodes; i++ {
-		startNodeInBackground(t, nodes, ctxs, &runningWg, i)
+		startNodeInBackground(t, nodes, ctxs, &runningWg, i, errChan)
 		// Add a small delay between starting nodes to avoid connection race
 		if i < numNodes-1 {
 			time.Sleep(100 * time.Millisecond)
@@ -54,13 +55,13 @@ func TestTxGossipingMultipleNodesNoDA(t *testing.T) {
 		if dummyExec, ok := coreExec.(interface{ InjectTx([]byte) }); ok {
 			dummyExec.InjectTx([]byte("test tx"))
 		} else {
-			t.Logf("Warning: Could not cast core executor to DummyExecutor, skipping transaction injection")
+			t.Fatal("Warning: Could not cast core executor to DummyExecutor")
 		}
 	}
-
 	blocksToWaitFor := uint64(3)
 	// Wait for all nodes to reach at least blocksToWaitFor blocks
 	for _, nodeItem := range nodes {
+		requireEmptyChan(t, errChan)
 		require.NoError(waitForAtLeastNBlocks(nodeItem, blocksToWaitFor, Store))
 	}
 
@@ -88,8 +89,9 @@ func TestTxGossipingMultipleNodesDAIncluded(t *testing.T) {
 	ctxs, cancels := createNodeContexts(numNodes)
 	var runningWg sync.WaitGroup
 
+	errChan := make(chan error, numNodes)
 	// Start only the sequencer first
-	startNodeInBackground(t, nodes, ctxs, &runningWg, 0)
+	startNodeInBackground(t, nodes, ctxs, &runningWg, 0, errChan)
 
 	// Wait for the first block to be produced by the sequencer
 	err := waitForFirstBlock(nodes[0], Header)
@@ -103,7 +105,7 @@ func TestTxGossipingMultipleNodesDAIncluded(t *testing.T) {
 
 	// Start the other nodes
 	for i := 1; i < numNodes; i++ {
-		startNodeInBackground(t, nodes, ctxs, &runningWg, i)
+		startNodeInBackground(t, nodes, ctxs, &runningWg, i, errChan)
 		// Add a small delay between starting nodes to avoid connection race
 		if i < numNodes-1 {
 			time.Sleep(100 * time.Millisecond)
@@ -119,13 +121,14 @@ func TestTxGossipingMultipleNodesDAIncluded(t *testing.T) {
 			dummyExec.InjectTx([]byte("test tx 2"))
 			dummyExec.InjectTx([]byte("test tx 3"))
 		} else {
-			t.Logf("Warning: Could not cast core executor to DummyExecutor, skipping transaction injection")
+			t.Fatalf("Could not cast core executor to DummyExecutor")
 		}
 	}
 
 	blocksToWaitFor := uint64(5)
 	// Wait for all nodes to reach at least blocksToWaitFor blocks with DA inclusion
 	for _, nodeItem := range nodes {
+		requireEmptyChan(t, errChan)
 		require.NoError(waitForAtLeastNDAIncludedHeight(nodeItem, blocksToWaitFor))
 	}
 
@@ -159,8 +162,9 @@ func TestFastDASync(t *testing.T) {
 	ctxs, cancels := createNodeContexts(len(nodes))
 	var runningWg sync.WaitGroup
 
+	errChan := make(chan error, len(nodes))
 	// Start only the first node
-	startNodeInBackground(t, nodes, ctxs, &runningWg, 0)
+	startNodeInBackground(t, nodes, ctxs, &runningWg, 0, errChan)
 
 	// Wait for the first node to produce a few blocks
 	blocksToWaitFor := uint64(2)
@@ -170,7 +174,7 @@ func TestFastDASync(t *testing.T) {
 	time.Sleep(500 * time.Millisecond)
 
 	// Now start the second node and time its sync
-	startNodeInBackground(t, nodes, ctxs, &runningWg, 1)
+	startNodeInBackground(t, nodes, ctxs, &runningWg, 1, errChan)
 	start := time.Now()
 	// Wait for the second node to catch up to the first node
 	require.NoError(waitForAtLeastNBlocks(nodes[1], blocksToWaitFor, Store))
@@ -185,6 +189,7 @@ func TestFastDASync(t *testing.T) {
 		"DA fast sync took %v, should be much faster than sequential block time %v (max reasonable: %v). ",
 		syncDuration, expectedSequentialTime, maxReasonableSyncTime)
 
+	requireEmptyChan(t, errChan)
 	// Verify both nodes are synced and that the synced block is DA-included
 	assertAllNodesSynced(t, nodes, blocksToWaitFor)
 
@@ -211,9 +216,10 @@ func TestSingleSequencerTwoFullNodesBlockSyncSpeed(t *testing.T) {
 
 	ctxs, cancels := createNodeContexts(numNodes)
 	var runningWg sync.WaitGroup
+	errChan := make(chan error, numNodes)
 
 	// Start only the sequencer first
-	startNodeInBackground(t, nodes, ctxs, &runningWg, 0)
+	startNodeInBackground(t, nodes, ctxs, &runningWg, 0, errChan)
 
 	// Wait for the sequencer to produce at first block
 	require.NoError(waitForFirstBlock(nodes[0], Store))
@@ -223,7 +229,7 @@ func TestSingleSequencerTwoFullNodesBlockSyncSpeed(t *testing.T) {
 
 	// Now start the other nodes
 	for i := 1; i < numNodes; i++ {
-		startNodeInBackground(t, nodes, ctxs, &runningWg, i)
+		startNodeInBackground(t, nodes, ctxs, &runningWg, i, errChan)
 		// Add a small delay between starting nodes to avoid connection race
 		if i < numNodes-1 {
 			time.Sleep(100 * time.Millisecond)
@@ -235,6 +241,7 @@ func TestSingleSequencerTwoFullNodesBlockSyncSpeed(t *testing.T) {
 
 	// Wait for all nodes to reach the target block height
 	for _, nodeItem := range nodes {
+		requireEmptyChan(t, errChan)
 		require.NoError(waitForAtLeastNBlocks(nodeItem, blocksToWaitFor, Store))
 	}
 	totalDuration := time.Since(start)
@@ -306,9 +313,10 @@ func testSingleSequencerSingleFullNode(t *testing.T, source Source) {
 
 	ctxs, cancels := createNodeContexts(numNodes)
 	var runningWg sync.WaitGroup
+	errChan := make(chan error, numNodes)
 
 	// Start the sequencer first
-	startNodeInBackground(t, nodes, ctxs, &runningWg, 0)
+	startNodeInBackground(t, nodes, ctxs, &runningWg, 0, errChan)
 
 	// Wait for the sequencer to produce at first block
 	require.NoError(waitForFirstBlock(nodes[0], source))
@@ -317,11 +325,12 @@ func testSingleSequencerSingleFullNode(t *testing.T, source Source) {
 	time.Sleep(500 * time.Millisecond)
 
 	// Start the full node
-	startNodeInBackground(t, nodes, ctxs, &runningWg, 1)
+	startNodeInBackground(t, nodes, ctxs, &runningWg, 1, errChan)
 
 	blocksToWaitFor := uint64(3)
 	// Wait for both nodes to reach at least blocksToWaitFor blocks
 	for _, nodeItem := range nodes {
+		requireEmptyChan(t, errChan)
 		require.NoError(waitForAtLeastNBlocks(nodeItem, blocksToWaitFor, source))
 	}
 
@@ -347,9 +356,10 @@ func testSingleSequencerTwoFullNodes(t *testing.T, source Source) {
 
 	ctxs, cancels := createNodeContexts(numNodes)
 	var runningWg sync.WaitGroup
+	errChan := make(chan error, numNodes)
 
 	// Start the sequencer first
-	startNodeInBackground(t, nodes, ctxs, &runningWg, 0)
+	startNodeInBackground(t, nodes, ctxs, &runningWg, 0, errChan)
 
 	// Wait for the sequencer to produce at first block
 	require.NoError(waitForFirstBlock(nodes[0], source))
@@ -359,7 +369,7 @@ func testSingleSequencerTwoFullNodes(t *testing.T, source Source) {
 
 	// Start the full nodes
 	for i := 1; i < numNodes; i++ {
-		startNodeInBackground(t, nodes, ctxs, &runningWg, i)
+		startNodeInBackground(t, nodes, ctxs, &runningWg, i, errChan)
 		// Add a small delay between starting nodes to avoid connection race
 		if i < numNodes-1 {
 			time.Sleep(100 * time.Millisecond)
@@ -369,6 +379,7 @@ func testSingleSequencerTwoFullNodes(t *testing.T, source Source) {
 	blocksToWaitFor := uint64(3)
 	// Wait for all nodes to reach at least blocksToWaitFor blocks
 	for _, nodeItem := range nodes {
+		requireEmptyChan(t, errChan)
 		require.NoError(waitForAtLeastNBlocks(nodeItem, blocksToWaitFor, source))
 	}
 
@@ -396,9 +407,10 @@ func testSingleSequencerSingleFullNodeTrustedHash(t *testing.T, source Source) {
 
 	ctxs, cancels := createNodeContexts(numNodes)
 	var runningWg sync.WaitGroup
+	errChan := make(chan error, numNodes)
 
 	// Start the sequencer first
-	startNodeInBackground(t, nodes, ctxs, &runningWg, 0)
+	startNodeInBackground(t, nodes, ctxs, &runningWg, 0, errChan)
 
 	// Wait for the sequencer to produce at first block
 	require.NoError(waitForFirstBlock(nodes[0], source))
@@ -426,11 +438,12 @@ func testSingleSequencerSingleFullNodeTrustedHash(t *testing.T, source Source) {
 	time.Sleep(500 * time.Millisecond)
 
 	// Start the full node
-	startNodeInBackground(t, nodes, ctxs, &runningWg, 1)
+	startNodeInBackground(t, nodes, ctxs, &runningWg, 1, errChan)
 
 	blocksToWaitFor := uint64(3)
 	// Wait for both nodes to reach at least blocksToWaitFor blocks
 	for _, nodeItem := range nodes {
+		requireEmptyChan(t, errChan)
 		require.NoError(waitForAtLeastNBlocks(nodeItem, blocksToWaitFor, source))
 	}
 
@@ -491,9 +504,10 @@ func testTwoChainsInOneNamespace(t *testing.T, chainID1 string, chainID2 string)
 	// Set up context and wait group for the sequencer of chain 1
 	ctxs1, cancels1 := createNodeContexts(1)
 	var runningWg1 sync.WaitGroup
+	errChan := make(chan error, 2)
 
 	// Start the sequencer of chain 1
-	startNodeInBackground(t, nodes1, ctxs1, &runningWg1, 0)
+	startNodeInBackground(t, nodes1, ctxs1, &runningWg1, 0, errChan)
 
 	// Wait for the sequencer to produce at first block
 	require.NoError(waitForFirstBlock(nodes1[0], Store))
@@ -503,13 +517,14 @@ func testTwoChainsInOneNamespace(t *testing.T, chainID1 string, chainID2 string)
 	var runningWg2 sync.WaitGroup
 
 	// Start the sequencer of chain 2
-	startNodeInBackground(t, nodes2, ctxs2, &runningWg2, 0)
+	startNodeInBackground(t, nodes2, ctxs2, &runningWg2, 0, errChan)
 
 	// Wait for the sequencer to produce at first block
 	require.NoError(waitForFirstBlock(nodes2[0], Store))
 
 	blocksToWaitFor := uint64(3)
 
+	requireEmptyChan(t, errChan)
 	// Wait for the full node of chain 1 to reach at least blocksToWaitFor blocks
 	require.NoError(waitForAtLeastNBlocks(nodes1[0], blocksToWaitFor, Store))
 
@@ -519,4 +534,13 @@ func testTwoChainsInOneNamespace(t *testing.T, chainID1 string, chainID2 string)
 	// Cancel all node contexts to signal shutdown and wait for both chains
 	shutdownAndWait(t, cancels1, &runningWg1, 5*time.Second)
 	shutdownAndWait(t, cancels2, &runningWg2, 5*time.Second)
+}
+
+func requireEmptyChan(t *testing.T, errChan chan error) {
+	t.Helper()
+	select {
+	case err := <-errChan:
+		t.Fatalf("Error received: %v", err)
+	default:
+	}
 }
