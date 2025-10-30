@@ -139,7 +139,7 @@ func TestHeaderHashWithBytes(t *testing.T) {
 	// Hash using the function directly
 	headerBytes, err := header.MarshalBinary()
 	require.NoError(t, err)
-	hash2 := HeaderHash(headerBytes)
-
-	assert.Equal(t, hash1, hash2, "HeaderHash should produce same result as Header.Hash()")
+	var targetHeader Header
+	require.NoError(t, targetHeader.UnmarshalBinary(headerBytes))
+	assert.Equal(t, hash1, targetHeader.Hash(), "HeaderHash should produce same result as Header.Hash()")
 }
