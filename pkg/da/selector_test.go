@@ -9,14 +9,19 @@ import (
 )
 
 func TestRoundRobinSelector_EmptyList(t *testing.T) {
-	selector := NewRoundRobinSelector([]string{})
+	// Should panic when creating selector with empty address list
+	assert.Panics(t, func() {
+		NewRoundRobinSelector([]string{})
+	}, "should panic when creating RoundRobinSelector with empty address list")
+}
 
-	addr := selector.Next()
-	assert.Empty(t, addr, "should return empty string for empty address list")
-
-	// Multiple calls should still return empty
-	addr = selector.Next()
-	assert.Empty(t, addr)
+func TestRoundRobinSelector_NextWithoutAddresses(t *testing.T) {
+	// Should panic if Next is called on a selector with no addresses
+	// (e.g., if someone creates the struct directly without using the constructor)
+	selector := &RoundRobinSelector{addresses: []string{}}
+	assert.Panics(t, func() {
+		selector.Next()
+	}, "should panic when calling Next with no addresses configured")
 }
 
 func TestRoundRobinSelector_SingleAddress(t *testing.T) {

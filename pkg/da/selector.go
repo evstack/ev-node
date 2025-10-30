@@ -7,7 +7,7 @@ import (
 // AddressSelector defines the interface for selecting a signing address from a list.
 type AddressSelector interface {
 	// Next returns the next address to use for signing.
-	// Returns empty string if no addresses are configured.
+	// Implementations may return empty string (NoOpSelector) or panic (RoundRobinSelector with no addresses).
 	Next() string
 }
 
@@ -20,7 +20,11 @@ type RoundRobinSelector struct {
 }
 
 // NewRoundRobinSelector creates a new round-robin address selector.
+// Panics if addresses is empty - use NewNoOpSelector instead.
 func NewRoundRobinSelector(addresses []string) *RoundRobinSelector {
+	if len(addresses) == 0 {
+		panic("NewRoundRobinSelector: addresses slice is empty; use NewNoOpSelector instead")
+	}
 	return &RoundRobinSelector{
 		addresses: addresses,
 	}
@@ -28,9 +32,10 @@ func NewRoundRobinSelector(addresses []string) *RoundRobinSelector {
 
 // Next returns the next address in round-robin fashion.
 // Thread-safe for concurrent access.
+// Panics if no addresses are configured - this indicates a programming error.
 func (s *RoundRobinSelector) Next() string {
 	if len(s.addresses) == 0 {
-		return ""
+		panic("RoundRobinSelector.Next: no addresses configured; use NewNoOpSelector instead")
 	}
 
 	if len(s.addresses) == 1 {
