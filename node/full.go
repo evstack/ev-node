@@ -29,6 +29,7 @@ import (
 	"github.com/evstack/ev-node/pkg/signer"
 	"github.com/evstack/ev-node/pkg/store"
 	evsync "github.com/evstack/ev-node/pkg/sync"
+	syncnotifier "github.com/evstack/ev-node/pkg/sync/notifier"
 )
 
 // prefixes used in KV store to separate rollkit data from execution environment data (if the same data base is reused)
@@ -38,6 +39,9 @@ const (
 	// genesisChunkSize is the maximum size, in bytes, of each
 	// chunk in the genesis structure for the chunked API
 	genesisChunkSize = 16 * 1024 * 1024 // 16 MiB
+
+	// syncNotifierBufferSize bounds event fan-out queues.
+	syncNotifierBufferSize = 128
 )
 
 var _ Node = &FullNode{}
@@ -154,7 +158,14 @@ func initHeaderSyncService(
 	p2pClient *p2p.Client,
 	logger zerolog.Logger,
 ) (*evsync.HeaderSyncService, error) {
-	headerSyncService, err := evsync.NewHeaderSyncService(mainKV, nodeConfig, genesis, p2pClient, logger.With().Str("component", "HeaderSyncService").Logger())
+	componentLogger := logger.With().Str("component", "HeaderSyncService").Logger()
+	var opts []evsync.ServiceOption
+	if !nodeConfig.Node.Aggregator {
+		n := syncnotifier.New(syncNotifierBufferSize, componentLogger.With().Str("subcomponent", "notifier").Logger())
+		opts = append(opts, evsync.WithNotifier(n))
+	}
+
+	headerSyncService, err := evsync.NewHeaderSyncService(mainKV, nodeConfig, genesis, p2pClient, componentLogger, opts...)
 	if err != nil {
 		return nil, fmt.Errorf("error while initializing HeaderSyncService: %w", err)
 	}
@@ -168,7 +179,14 @@ func initDataSyncService(
 	p2pClient *p2p.Client,
 	logger zerolog.Logger,
 ) (*evsync.DataSyncService, error) {
-	dataSyncService, err := evsync.NewDataSyncService(mainKV, nodeConfig, genesis, p2pClient, logger.With().Str("component", "DataSyncService").Logger())
+	componentLogger := logger.With().Str("component", "DataSyncService").Logger()
+	var opts []evsync.ServiceOption
+	if !nodeConfig.Node.Aggregator {
+		n := syncnotifier.New(syncNotifierBufferSize, componentLogger.With().Str("subcomponent", "notifier").Logger())
+		opts = append(opts, evsync.WithNotifier(n))
+	}
+
+	dataSyncService, err := evsync.NewDataSyncService(mainKV, nodeConfig, genesis, p2pClient, componentLogger, opts...)
 	if err != nil {
 		return nil, fmt.Errorf("error while initializing DataSyncService: %w", err)
 	}

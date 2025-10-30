@@ -23,6 +23,7 @@ import (
 	"github.com/evstack/ev-node/pkg/config"
 	"github.com/evstack/ev-node/pkg/genesis"
 	"github.com/evstack/ev-node/pkg/p2p"
+	syncnotifier "github.com/evstack/ev-node/pkg/sync/notifier"
 	"github.com/evstack/ev-node/types"
 )
 
@@ -32,6 +33,20 @@ const (
 	headerSync syncType = "headerSync"
 	dataSync   syncType = "dataSync"
 )
+
+type serviceOptions struct {
+	notifier *syncnotifier.Notifier
+}
+
+// ServiceOption configures optional SyncService behaviour.
+type ServiceOption func(*serviceOptions)
+
+// WithNotifier enables event publication for store writes.
+func WithNotifier(notifier *syncnotifier.Notifier) ServiceOption {
+	return func(o *serviceOptions) {
+		o.notifier = notifier
+	}
+}
 
 // TODO: when we add pruning we can remove this
 const ninetyNineYears = 99 * 365 * 24 * time.Hour
@@ -52,9 +67,13 @@ type SyncService[H header.Header[H]] struct {
 	sub               *goheaderp2p.Subscriber[H]
 	p2pServer         *goheaderp2p.ExchangeServer[H]
 	store             *goheaderstore.Store[H]
+	storeView         header.Store[H]
 	syncer            *goheadersync.Syncer[H]
 	syncerStatus      *SyncerStatus
 	topicSubscription header.Subscription[H]
+
+	notifier  *syncnotifier.Notifier
+	eventType syncnotifier.EventType
 }
 
 // DataSyncService is the P2P Sync Service for blocks.
@@ -70,8 +89,9 @@ func NewDataSyncService(
 	genesis genesis.Genesis,
 	p2p *p2p.Client,
 	logger zerolog.Logger,
+	opts ...ServiceOption,
 ) (*DataSyncService, error) {
-	return newSyncService[*types.Data](store, dataSync, conf, genesis, p2p, logger)
+	return newSyncService[*types.Data](store, dataSync, conf, genesis, p2p, logger, opts...)
 }
 
 // NewHeaderSyncService returns a new HeaderSyncService.
@@ -81,8 +101,9 @@ func NewHeaderSyncService(
 	genesis genesis.Genesis,
 	p2p *p2p.Client,
 	logger zerolog.Logger,
+	opts ...ServiceOption,
 ) (*HeaderSyncService, error) {
-	return newSyncService[*types.SignedHeader](store, headerSync, conf, genesis, p2p, logger)
+	return newSyncService[*types.SignedHeader](store, headerSync, conf, genesis, p2p, logger, opts...)
 }
 
 func newSyncService[H header.Header[H]](
@@ -92,10 +113,19 @@ func newSyncService[H header.Header[H]](
 	genesis genesis.Genesis,
 	p2p *p2p.Client,
 	logger zerolog.Logger,
+	opts ...ServiceOption,
 ) (*SyncService[H], error) {
 	if p2p == nil {
 		return nil, errors.New("p2p client cannot be nil")
 	}
+
+	options := serviceOptions{}
+	for _, opt := range opts {
+		if opt != nil {
+			opt(&options)
+		}
+	}
+
 	ss, err := goheaderstore.NewStore[H](
 		store,
 		goheaderstore.WithStorePrefix(string(syncType)),
@@ -105,7 +135,9 @@ func newSyncService[H header.Header[H]](
 		return nil, fmt.Errorf("failed to initialize the %s store: %w", syncType, err)
 	}
 
-	return &SyncService[H]{
+	eventType := eventTypeForSync(syncType)
+
+	svc := &SyncService[H]{
 		conf:         conf,
 		genesis:      genesis,
 		p2p:          p2p,
@@ -113,12 +145,24 @@ func newSyncService[H header.Header[H]](
 		syncType:     syncType,
 		logger:       logger,
 		syncerStatus: new(SyncerStatus),
-	}, nil
+		notifier:     options.notifier,
+		eventType:    eventType,
+	}
+
+	if options.notifier != nil {
+		svc.storeView = newInstrumentedStore[H](ss, func(headers []H) {
+			svc.publish(headers, syncnotifier.SourceP2P)
+		})
+	} else {
+		svc.storeView = ss
+	}
+
+	return svc, nil
 }
 
 // Store returns the store of the SyncService
 func (syncService *SyncService[H]) Store() header.Store[H] {
-	return syncService.store
+	return syncService.storeView
 }
 
 // WriteToStoreAndBroadcast initializes store if needed and broadcasts provided header or block.
@@ -178,7 +222,7 @@ func (syncService *SyncService[H]) Start(ctx context.Context) error {
 	// create syncer, must be before initFromP2PWithRetry which calls startSyncer.
 	if syncService.syncer, err = newSyncer(
 		syncService.ex,
-		syncService.store,
+		syncService.storeView,
 		syncService.sub,
 		[]goheadersync.Option{goheadersync.WithBlockTime(syncService.conf.Node.BlockTime.Duration)},
 	); err != nil {
@@ -231,6 +275,8 @@ func (syncService *SyncService[H]) initStore(ctx context.Context, initial H) err
 		if err := syncService.store.Sync(ctx); err != nil {
 			return err
 		}
+
+		syncService.publish([]H{initial}, syncnotifier.SourceLocal)
 	}
 
 	return nil
@@ -379,6 +425,27 @@ func (syncService *SyncService[H]) Stop(ctx context.Context) error {
 	}
 	err = errors.Join(err, syncService.store.Stop(ctx))
 	return err
+}
+
+// Notifier exposes the event notifier instance, if configured.
+func (syncService *SyncService[H]) Notifier() *syncnotifier.Notifier {
+	return syncService.notifier
+}
+
+func (syncService *SyncService[H]) publish(headers []H, source syncnotifier.EventSource) {
+	if syncService.notifier == nil {
+		return
+	}
+
+	for _, h := range headers {
+		syncService.notifier.Publish(syncnotifier.Event{
+			Type:      syncService.eventType,
+			Height:    h.Height(),
+			Hash:      h.Hash().String(),
+			Source:    source,
+			Timestamp: time.Now(),
+		})
+	}
 }
 
 // newP2PServer constructs a new ExchangeServer using the given Network as a protocolID suffix.

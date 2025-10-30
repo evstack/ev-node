@@ -5,11 +5,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	pubsub "github.com/libp2p/go-libp2p-pubsub"
 	"sync"
 	"sync/atomic"
 	"time"
 
+	pubsub "github.com/libp2p/go-libp2p-pubsub"
 	"github.com/rs/zerolog"
 	"golang.org/x/sync/errgroup"
 
@@ -21,6 +21,7 @@ import (
 	"github.com/evstack/ev-node/pkg/config"
 	"github.com/evstack/ev-node/pkg/genesis"
 	"github.com/evstack/ev-node/pkg/store"
+	syncnotifier "github.com/evstack/ev-node/pkg/sync/notifier"
 	"github.com/evstack/ev-node/types"
 )
 
@@ -77,6 +78,10 @@ type Syncer struct {
 	ctx    context.Context
 	cancel context.CancelFunc
 	wg     sync.WaitGroup
+
+	// Notifier subscriptions
+	headerSub *syncnotifier.Subscription
+	dataSub   *syncnotifier.Subscription
 }
 
 // NewSyncer creates a new block syncer
@@ -131,6 +136,10 @@ func (s *Syncer) Start(ctx context.Context) error {
 		s.p2pHandler.SetProcessedHeight(currentHeight)
 	}
 
+	if err := s.startP2PListeners(); err != nil {
+		return fmt.Errorf("failed to start P2P listeners: %w", err)
+	}
+
 	// Start main processing loop
 	s.wg.Add(1)
 	go func() {
@@ -152,6 +161,12 @@ func (s *Syncer) Stop() error {
 	}
 	if s.p2pHandler != nil {
 		s.p2pHandler.Shutdown()
+	}
+	if s.headerSub != nil {
+		s.headerSub.Cancel()
+	}
+	if s.dataSub != nil {
+		s.dataSub.Cancel()
 	}
 	s.wg.Wait()
 	s.logger.Info().Msg("syncer stopped")
@@ -252,10 +267,71 @@ func (s *Syncer) processLoop() {
 }
 
 func (s *Syncer) startSyncWorkers() {
-	s.wg.Add(3)
+	s.wg.Add(2)
 	go s.daWorker()
-	go s.p2pWorker()
 	go s.pendingWorker()
+}
+
+func (s *Syncer) startP2PListeners() error {
+	if s.headerStore == nil {
+		return errors.New("header store not configured")
+	}
+	if s.dataStore == nil {
+		return errors.New("data store not configured")
+	}
+
+	headerNotifier := s.headerStore.Notifier()
+	if headerNotifier == nil {
+		return errors.New("header notifier not configured")
+	}
+
+	dataNotifier := s.dataStore.Notifier()
+	if dataNotifier == nil {
+		return errors.New("data notifier not configured")
+	}
+
+	s.headerSub = headerNotifier.Subscribe()
+	s.wg.Add(1)
+	go s.consumeNotifierEvents(s.headerSub, syncnotifier.EventTypeHeader)
+
+	s.dataSub = dataNotifier.Subscribe()
+	s.wg.Add(1)
+	go s.consumeNotifierEvents(s.dataSub, syncnotifier.EventTypeData)
+
+	return nil
+}
+
+func (s *Syncer) consumeNotifierEvents(sub *syncnotifier.Subscription, expected syncnotifier.EventType) {
+	defer s.wg.Done()
+
+	if !s.waitForGenesis() {
+		return
+	}
+
+	logger := s.logger.With().Str("event_type", string(expected)).Logger()
+	logger.Info().Msg("starting P2P notifier worker")
+	defer logger.Info().Msg("P2P notifier worker stopped")
+
+	for {
+		select {
+		case <-s.ctx.Done():
+			return
+		case evt, ok := <-sub.C:
+			if !ok {
+				return
+			}
+			if evt.Type != expected {
+				logger.Debug().Str("received_type", string(evt.Type)).Msg("ignoring notifier event with unexpected type")
+				continue
+			}
+			s.handleNotifierEvent(evt)
+		}
+	}
+}
+
+func (s *Syncer) handleNotifierEvent(evt syncnotifier.Event) {
+	s.logger.Debug().Str("event_type", string(evt.Type)).Str("source", string(evt.Source)).Uint64("height", evt.Height).Msg("received store event")
+	s.tryFetchFromP2P()
 }
 
 func (s *Syncer) daWorker() {
@@ -279,34 +355,6 @@ func (s *Syncer) daWorkerLoop() {
 
 	for {
 		s.tryFetchFromDA(nextDARequestAt)
-		select {
-		case <-s.ctx.Done():
-			return
-		case <-time.After(pollInterval):
-		}
-	}
-}
-
-func (s *Syncer) p2pWorker() {
-	defer s.wg.Done()
-	s.p2pWorkerLoop()
-}
-
-func (s *Syncer) p2pWorkerLoop() {
-	if !s.waitForGenesis() {
-		return
-	}
-
-	s.logger.Info().Msg("starting P2P worker")
-	defer s.logger.Info().Msg("P2P worker stopped")
-
-	pollInterval := min(10*time.Millisecond, s.config.Node.BlockTime.Duration)
-	if pollInterval <= 0 {
-		pollInterval = 10 * time.Millisecond
-	}
-
-	for {
-		s.tryFetchFromP2P()
 		select {
 		case <-s.ctx.Done():
 			return
