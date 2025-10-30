@@ -2,6 +2,8 @@ module github.com/evstack/ev-node
 
 go 1.24.6
 
+replace github.com/evstack/ev-node/core => ./core
+
 retract v0.12.0 // Published by accident
 
 require (

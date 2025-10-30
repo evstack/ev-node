@@ -14,6 +14,7 @@ import (
 
 	"github.com/evstack/ev-node/block/internal/cache"
 	"github.com/evstack/ev-node/block/internal/common"
+	"github.com/evstack/ev-node/block/internal/syncing"
 	coreseq "github.com/evstack/ev-node/core/sequencer"
 	"github.com/evstack/ev-node/pkg/config"
 	"github.com/evstack/ev-node/pkg/genesis"
@@ -56,6 +57,7 @@ func TestExecutor_RestartUsesPendingHeader(t *testing.T) {
 		memStore,
 		mockExec1,
 		mockSeq1,
+		syncing.NewMockDaRetrieverI(t),
 		signerWrapper,
 		cacheManager,
 		metrics,
@@ -175,6 +177,7 @@ func TestExecutor_RestartUsesPendingHeader(t *testing.T) {
 		memStore, // same store
 		mockExec2,
 		mockSeq2,
+		syncing.NewMockDaRetrieverI(t),
 		signerWrapper,
 		cacheManager,
 		metrics,
@@ -273,6 +276,7 @@ func TestExecutor_RestartNoPendingHeader(t *testing.T) {
 		memStore,
 		mockExec1,
 		mockSeq1,
+		syncing.NewMockDaRetrieverI(t),
 		signerWrapper,
 		cacheManager,
 		metrics,
@@ -325,6 +329,7 @@ func TestExecutor_RestartNoPendingHeader(t *testing.T) {
 		memStore,
 		mockExec2,
 		mockSeq2,
+		syncing.NewMockDaRetrieverI(t),
 		signerWrapper,
 		cacheManager,
 		metrics,

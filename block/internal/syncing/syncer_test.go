@@ -360,7 +360,7 @@ func TestSyncLoopPersistState(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(t.Context())
 	syncerInst1.ctx = ctx
-	daRtrMock, p2pHndlMock := newMockdaRetriever(t), newMockp2pHandler(t)
+	daRtrMock, p2pHndlMock := NewMockDaRetrieverI(t), newMockp2pHandler(t)
 	p2pHndlMock.On("ProcessHeaderRange", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return().Maybe()
 	p2pHndlMock.On("ProcessDataRange", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return().Maybe()
 	syncerInst1.daRetriever, syncerInst1.p2pHandler = daRtrMock, p2pHndlMock
@@ -441,7 +441,7 @@ func TestSyncLoopPersistState(t *testing.T) {
 	ctx, cancel = context.WithCancel(t.Context())
 	t.Cleanup(cancel)
 	syncerInst2.ctx = ctx
-	daRtrMock, p2pHndlMock = newMockdaRetriever(t), newMockp2pHandler(t)
+	daRtrMock, p2pHndlMock = NewMockDaRetrieverI(t), newMockp2pHandler(t)
 	p2pHndlMock.On("ProcessHeaderRange", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return().Maybe()
 	p2pHndlMock.On("ProcessDataRange", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return().Maybe()
 	syncerInst2.daRetriever, syncerInst2.p2pHandler = daRtrMock, p2pHndlMock

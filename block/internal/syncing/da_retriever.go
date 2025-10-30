@@ -30,8 +30,12 @@ type DARetriever struct {
 	logger  zerolog.Logger
 
 	// calculate namespaces bytes once and reuse them
-	namespaceBz     []byte
-	namespaceDataBz []byte
+	namespaceBz                []byte
+	namespaceDataBz            []byte
+	namespaceForcedInclusionBz []byte
+
+	hasForcedInclusionNs bool
+	daEpochSize          uint64
 
 	// transient cache, only full event need to be passed to the syncer
 	// on restart, will be refetch as da height is updated by syncer
@@ -47,15 +51,26 @@ func NewDARetriever(
 	genesis genesis.Genesis,
 	logger zerolog.Logger,
 ) *DARetriever {
+	forcedInclusionNs := config.DA.GetForcedInclusionNamespace()
+	hasForcedInclusionNs := forcedInclusionNs != ""
+
+	var namespaceForcedInclusionBz []byte
+	if hasForcedInclusionNs {
+		namespaceForcedInclusionBz = coreda.NamespaceFromString(forcedInclusionNs).Bytes()
+	}
+
 	return &DARetriever{
-		da:              da,
-		cache:           cache,
-		genesis:         genesis,
-		logger:          logger.With().Str("component", "da_retriever").Logger(),
-		namespaceBz:     coreda.NamespaceFromString(config.DA.GetNamespace()).Bytes(),
-		namespaceDataBz: coreda.NamespaceFromString(config.DA.GetDataNamespace()).Bytes(),
-		pendingHeaders:  make(map[uint64]*types.SignedHeader),
-		pendingData:     make(map[uint64]*types.Data),
+		da:                         da,
+		cache:                      cache,
+		genesis:                    genesis,
+		logger:                     logger.With().Str("component", "da_retriever").Logger(),
+		namespaceBz:                coreda.NamespaceFromString(config.DA.GetNamespace()).Bytes(),
+		namespaceDataBz:            coreda.NamespaceFromString(config.DA.GetDataNamespace()).Bytes(),
+		namespaceForcedInclusionBz: namespaceForcedInclusionBz,
+		hasForcedInclusionNs:       hasForcedInclusionNs,
+		daEpochSize:                config.DA.ForcedInclusionDAEpoch,
+		pendingHeaders:             make(map[uint64]*types.SignedHeader),
+		pendingData:                make(map[uint64]*types.Data),
 	}
 }
 
@@ -74,6 +89,40 @@ func (r *DARetriever) RetrieveFromDA(ctx context.Context, daHeight uint64) ([]co
 
 	r.logger.Debug().Int("blobs", len(blobsResp.Data)).Uint64("da_height", daHeight).Msg("retrieved blob data")
 	return r.processBlobs(ctx, blobsResp.Data, daHeight), nil
+}
+
+// RetrieveForcedIncludedTxsFromDA retrieves forced inclusion transactions from the DA layer.
+// It fetches from the daHeight for the da epoch range defined in the config.
+func (r *DARetriever) RetrieveForcedIncludedTxsFromDA(ctx context.Context, daHeight uint64) (*common.ForcedIncludedEvent, error) {
+	if !r.hasForcedInclusionNs {
+		return nil, fmt.Errorf("forced inclusion namespace not configured")
+	}
+
+	event := &common.ForcedIncludedEvent{
+		StartDaHeight: daHeight,
+	}
+
+	r.logger.Debug().Uint64("da_height", daHeight).Uint64("range", r.daEpochSize).Msg("retrieving forced included transactions from DA")
+
+	for epochHeight := daHeight + 1; epochHeight <= daHeight+r.daEpochSize; epochHeight++ {
+		result := types.RetrieveWithHelpers(ctx, r.da, r.logger, epochHeight, r.namespaceForcedInclusionBz, defaultDATimeout)
+
+		// quickly break if we are too ahead.
+		if result.Code == coreda.StatusHeightFromFuture {
+			break
+		}
+
+		if result.Code == coreda.StatusSuccess {
+			if err := r.validateBlobResponse(result, epochHeight); !errors.Is(err, coreda.ErrBlobNotFound) && err != nil {
+				return nil, err
+			}
+
+			event.StartDaHeight = epochHeight
+			event.Txs = append(event.Txs, result.Data...)
+		}
+	}
+
+	return event, nil
 }
 
 // fetchBlobs retrieves blobs from the DA layer

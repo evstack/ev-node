@@ -22,8 +22,9 @@ import (
 	"github.com/evstack/ev-node/types"
 )
 
-type daRetriever interface {
+type DaRetrieverI interface {
 	RetrieveFromDA(ctx context.Context, daHeight uint64) ([]common.DAHeightEvent, error)
+	RetrieveForcedIncludedTxsFromDA(ctx context.Context, daHeight uint64) (*common.ForcedIncludedEvent, error)
 }
 
 type p2pHandler interface {
@@ -62,7 +63,7 @@ type Syncer struct {
 	errorCh    chan<- error // Channel to report critical execution client failures
 
 	// Handlers
-	daRetriever daRetriever
+	daRetriever DaRetrieverI
 	p2pHandler  p2pHandler
 
 	// Logging

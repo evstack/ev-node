@@ -14,6 +14,7 @@ import (
 
 	"github.com/evstack/ev-node/block/internal/cache"
 	"github.com/evstack/ev-node/block/internal/common"
+	"github.com/evstack/ev-node/block/internal/syncing"
 	coreseq "github.com/evstack/ev-node/core/sequencer"
 	"github.com/evstack/ev-node/pkg/config"
 	"github.com/evstack/ev-node/pkg/genesis"
@@ -56,6 +57,7 @@ func TestLazyMode_ProduceBlockLogic(t *testing.T) {
 		memStore,
 		mockExec,
 		mockSeq,
+		syncing.NewMockDaRetrieverI(t),
 		signerWrapper,
 		cacheManager,
 		metrics,
@@ -166,6 +168,7 @@ func TestRegularMode_ProduceBlockLogic(t *testing.T) {
 		memStore,
 		mockExec,
 		mockSeq,
+		syncing.NewMockDaRetrieverI(t),
 		signerWrapper,
 		cacheManager,
 		metrics,

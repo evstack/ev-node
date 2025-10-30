@@ -25,7 +25,8 @@ type State struct {
 	LastBlockHeight uint64
 	LastBlockTime   time.Time
 
-	// DAHeight identifies DA block containing the latest applied Evolve block.
+	// DAHeight identifies DA block containing the latest applied Evolve block for a syncing node.
+	// In the case of an aggregator, this corresponds as the last fetched DA block height for forced inclused transactions.
 	DAHeight uint64
 
 	// the latest AppHash we've received from calling abci.Commit()

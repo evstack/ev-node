@@ -421,3 +421,86 @@ func Test_isEmptyDataExpected(t *testing.T) {
 	h.DataHash = common.DataHashForEmptyTxs
 	assert.True(t, isEmptyDataExpected(h))
 }
+
+func TestDARetriever_RetrieveForcedIncludedTxsFromDA_Success(t *testing.T) {
+	ds := dssync.MutexWrap(datastore.NewMapDatastore())
+	st := store.New(ds)
+	cm, err := cache.NewManager(config.DefaultConfig(), st, zerolog.Nop())
+	require.NoError(t, err)
+
+	addr, pub, signer := buildSyncTestSigner(t)
+	gen := genesis.Genesis{ChainID: "tchain", InitialHeight: 1, StartTime: time.Now().Add(-time.Second), ProposerAddress: addr}
+
+	// Prepare forced inclusion transaction data
+	dataBin, _ := makeSignedDataBytes(t, gen.ChainID, 10, addr, pub, signer, 3)
+
+	cfg := config.DefaultConfig()
+	cfg.DA.ForcedInclusionNamespace = "nsForcedInclusion"
+	cfg.DA.ForcedInclusionDAEpoch = 1 // Limit to 1 iteration for test
+
+	namespaceForcedInclusionBz := coreda.NamespaceFromString(cfg.DA.GetForcedInclusionNamespace()).Bytes()
+
+	mockDA := testmocks.NewMockDA(t)
+	mockDA.EXPECT().GetIDs(mock.Anything, uint64(5679), mock.MatchedBy(func(ns []byte) bool {
+		return bytes.Equal(ns, namespaceForcedInclusionBz)
+	})).Return(&coreda.GetIDsResult{IDs: [][]byte{[]byte("fi1")}, Timestamp: time.Now()}, nil).Once()
+
+	mockDA.EXPECT().Get(mock.Anything, mock.Anything, mock.MatchedBy(func(ns []byte) bool {
+		return bytes.Equal(ns, namespaceForcedInclusionBz)
+	})).Return([][]byte{dataBin}, nil).Once()
+
+	r := NewDARetriever(mockDA, cm, cfg, gen, zerolog.Nop())
+
+	result, err := r.RetrieveForcedIncludedTxsFromDA(context.Background(), 5678)
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.Len(t, result.Txs, 1)
+	assert.Equal(t, dataBin, result.Txs[0])
+}
+
+func TestDARetriever_FetchForcedIncludedTxs_NoNamespaceConfigured(t *testing.T) {
+	ds := dssync.MutexWrap(datastore.NewMapDatastore())
+	st := store.New(ds)
+	cm, err := cache.NewManager(config.DefaultConfig(), st, zerolog.Nop())
+	require.NoError(t, err)
+
+	addr, _, _ := buildSyncTestSigner(t)
+	gen := genesis.Genesis{ChainID: "tchain", InitialHeight: 1, StartTime: time.Now().Add(-time.Second), ProposerAddress: addr}
+
+	cfg := config.DefaultConfig()
+	// Leave ForcedInclusionNamespace empty
+
+	r := NewDARetriever(nil, cm, cfg, gen, zerolog.Nop())
+
+	result, err := r.RetrieveForcedIncludedTxsFromDA(context.Background(), 1234)
+	require.Error(t, err)
+	require.Nil(t, result)
+}
+
+func TestDARetriever_FetchForcedIncludedTxs_NotFound(t *testing.T) {
+	ds := dssync.MutexWrap(datastore.NewMapDatastore())
+	st := store.New(ds)
+	cm, err := cache.NewManager(config.DefaultConfig(), st, zerolog.Nop())
+	require.NoError(t, err)
+
+	addr, _, _ := buildSyncTestSigner(t)
+	gen := genesis.Genesis{ChainID: "tchain", InitialHeight: 1, StartTime: time.Now().Add(-time.Second), ProposerAddress: addr}
+
+	cfg := config.DefaultConfig()
+	cfg.DA.ForcedInclusionNamespace = "nsForcedInclusion"
+	cfg.DA.ForcedInclusionDAEpoch = 1 // Limit to 1 iteration for test
+
+	namespaceForcedInclusionBz := coreda.NamespaceFromString(cfg.DA.GetForcedInclusionNamespace()).Bytes()
+
+	mockDA := testmocks.NewMockDA(t)
+	mockDA.EXPECT().GetIDs(mock.Anything, uint64(10000), mock.MatchedBy(func(ns []byte) bool {
+		return bytes.Equal(ns, namespaceForcedInclusionBz)
+	})).Return(&coreda.GetIDsResult{IDs: [][]byte{}, Timestamp: time.Now()}, nil).Once()
+
+	r := NewDARetriever(mockDA, cm, cfg, gen, zerolog.Nop())
+
+	result, err := r.RetrieveForcedIncludedTxsFromDA(context.Background(), 9999)
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.Empty(t, result.Txs)
+}

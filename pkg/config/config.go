@@ -68,6 +68,10 @@ const (
 	FlagDANamespace = FlagPrefixEvnode + "da.namespace"
 	// FlagDADataNamespace is a flag for specifying the DA data namespace ID
 	FlagDADataNamespace = FlagPrefixEvnode + "da.data_namespace"
+	// FlagDAForcedInclusionNamespace is a flag for specifying the DA forced inclusion namespace ID
+	FlagDAForcedInclusionNamespace = FlagPrefixEvnode + "da.forced_inclusion_namespace"
+	// FlagDAForcedInclusionDAEpoch is a flag for specifying the DA forced inclusion DA epoch
+	FlagDAForcedInclusionDAEpoch = FlagPrefixEvnode + "da.forced_inclusion_da_epoch"
 	// FlagDASubmitOptions is a flag for data availability submit options
 	FlagDASubmitOptions = FlagPrefixEvnode + "da.submit_options"
 	// FlagDAMempoolTTL is a flag for specifying the DA mempool TTL
@@ -157,16 +161,18 @@ type Config struct {
 
 // DAConfig contains all Data Availability configuration parameters
 type DAConfig struct {
-	Address           string          `mapstructure:"address" yaml:"address" comment:"Address of the data availability layer service (host:port). This is the endpoint where Rollkit will connect to submit and retrieve data."`
-	AuthToken         string          `mapstructure:"auth_token" yaml:"auth_token" comment:"Authentication token for the data availability layer service. Required if the DA service needs authentication."`
-	GasPrice          float64         `mapstructure:"gas_price" yaml:"gas_price" comment:"Gas price for data availability transactions. Use -1 for automatic gas price determination. Higher values may result in faster inclusion."`
-	GasMultiplier     float64         `mapstructure:"gas_multiplier" yaml:"gas_multiplier" comment:"Multiplier applied to gas price when retrying failed DA submissions. Values > 1 increase gas price on retries to improve chances of inclusion."`
-	SubmitOptions     string          `mapstructure:"submit_options" yaml:"submit_options" comment:"Additional options passed to the DA layer when submitting data. Format depends on the specific DA implementation being used."`
-	Namespace         string          `mapstructure:"namespace" yaml:"namespace" comment:"Namespace ID used when submitting blobs to the DA layer. When a DataNamespace is provided, only the header is sent to this namespace."`
-	DataNamespace     string          `mapstructure:"data_namespace" yaml:"data_namespace" comment:"Namespace ID for submitting data to DA layer. Use this to speed-up light clients."`
-	BlockTime         DurationWrapper `mapstructure:"block_time" yaml:"block_time" comment:"Average block time of the DA chain (duration). Determines frequency of DA layer syncing, maximum backoff time for retries, and is multiplied by MempoolTTL to calculate transaction expiration. Examples: \"15s\", \"30s\", \"1m\", \"2m30s\", \"10m\"."`
-	MempoolTTL        uint64          `mapstructure:"mempool_ttl" yaml:"mempool_ttl" comment:"Number of DA blocks after which a transaction is considered expired and dropped from the mempool. Controls retry backoff timing."`
-	MaxSubmitAttempts int             `mapstructure:"max_submit_attempts" yaml:"max_submit_attempts" comment:"Maximum number of attempts to submit data to the DA layer before giving up. Higher values provide more resilience but can delay error reporting."`
+	Address                  string          `mapstructure:"address" yaml:"address" comment:"Address of the data availability layer service (host:port). This is the endpoint where Rollkit will connect to submit and retrieve data."`
+	AuthToken                string          `mapstructure:"auth_token" yaml:"auth_token" comment:"Authentication token for the data availability layer service. Required if the DA service needs authentication."`
+	GasPrice                 float64         `mapstructure:"gas_price" yaml:"gas_price" comment:"Gas price for data availability transactions. Use -1 for automatic gas price determination. Higher values may result in faster inclusion."`
+	GasMultiplier            float64         `mapstructure:"gas_multiplier" yaml:"gas_multiplier" comment:"Multiplier applied to gas price when retrying failed DA submissions. Values > 1 increase gas price on retries to improve chances of inclusion."`
+	SubmitOptions            string          `mapstructure:"submit_options" yaml:"submit_options" comment:"Additional options passed to the DA layer when submitting data. Format depends on the specific DA implementation being used."`
+	Namespace                string          `mapstructure:"namespace" yaml:"namespace" comment:"Namespace ID used when submitting blobs to the DA layer. When a DataNamespace is provided, only the header is sent to this namespace."`
+	DataNamespace            string          `mapstructure:"data_namespace" yaml:"data_namespace" comment:"Namespace ID for submitting data to DA layer. Use this to speed-up light clients."`
+	ForcedInclusionNamespace string          `mapstructure:"forced_inclusion_namespace" yaml:"forced_inclusion_namespace" comment:"Namespace ID for forced inclusion transactions on the DA layer."`
+	ForcedInclusionDAEpoch   uint64          `mapstructure:"forced_inclusion_da_epoch" yaml:"forced_inclusion_da_epoch" comment:"DA epoch for forced inclusion transactions on the DA layer."`
+	BlockTime                DurationWrapper `mapstructure:"block_time" yaml:"block_time" comment:"Average block time of the DA chain (duration). Determines frequency of DA layer syncing, maximum backoff time for retries, and is multiplied by MempoolTTL to calculate transaction expiration. Examples: \"15s\", \"30s\", \"1m\", \"2m30s\", \"10m\"."`
+	MempoolTTL               uint64          `mapstructure:"mempool_ttl" yaml:"mempool_ttl" comment:"Number of DA blocks after which a transaction is considered expired and dropped from the mempool. Controls retry backoff timing."`
+	MaxSubmitAttempts        int             `mapstructure:"max_submit_attempts" yaml:"max_submit_attempts" comment:"Maximum number of attempts to submit data to the DA layer before giving up. Higher values provide more resilience but can delay error reporting."`
 }
 
 // GetNamespace returns the namespace for header submissions.
@@ -181,6 +187,11 @@ func (d *DAConfig) GetDataNamespace() string {
 	}
 
 	return d.GetNamespace()
+}
+
+// GetForcedInclusionNamespace returns the namespace for forced inclusion transactions
+func (d *DAConfig) GetForcedInclusionNamespace() string {
+	return d.ForcedInclusionNamespace
 }
 
 // NodeConfig contains all Rollkit specific configuration parameters
@@ -327,6 +338,8 @@ func AddFlags(cmd *cobra.Command) {
 	cmd.Flags().Float64(FlagDAGasMultiplier, def.DA.GasMultiplier, "DA gas price multiplier for retrying blob transactions")
 	cmd.Flags().String(FlagDANamespace, def.DA.Namespace, "DA namespace for header (or blob) submissions")
 	cmd.Flags().String(FlagDADataNamespace, def.DA.DataNamespace, "DA namespace for data submissions")
+	cmd.Flags().String(FlagDAForcedInclusionNamespace, def.DA.ForcedInclusionNamespace, "DA namespace for forced inclusion transactions")
+	cmd.Flags().Uint64(FlagDAForcedInclusionDAEpoch, def.DA.ForcedInclusionDAEpoch, "DA epoch for forced inclusion transactions (i.e: how many DA blocks processed to include transactions)")
 	cmd.Flags().String(FlagDASubmitOptions, def.DA.SubmitOptions, "DA submit options")
 	cmd.Flags().Uint64(FlagDAMempoolTTL, def.DA.MempoolTTL, "number of DA blocks until transaction is dropped from the mempool")
 	cmd.Flags().Int(FlagDAMaxSubmitAttempts, def.DA.MaxSubmitAttempts, "maximum number of attempts to submit data to the DA layer before giving up")
