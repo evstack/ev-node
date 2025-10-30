@@ -395,6 +395,10 @@ func TestProtoConversionConsistency_AllTypes(t *testing.T) {
 	assert.Equal(t, s, s2)
 }
 
+// TestHeaderSerializationSize verifies the serialized size of a header remains constant.
+// If this test fails, it means the size of the header has changed, which may impact
+// network bandwidth, storage requirements, and protocol compatibility. Review the changes
+// carefully and update the expected size if the change is intentional.
 func TestHeaderSerializationSize(t *testing.T) {
 	t.Parallel()
 	require := require.New(t)
