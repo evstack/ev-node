@@ -277,7 +277,7 @@
                         bytes</strong
                     >
                 </li>
-                <li>
+                <!-- <li>
                     <span>Per-blob static gas</span>
                     <strong
                         >{{
@@ -285,7 +285,7 @@
                         }}
                         gas</strong
                     >
-                </li>
+                </li> -->
             </ul>
             <div class="toggle-row">
                 <label>
@@ -482,7 +482,7 @@ const GAS_PARAMS = Object.freeze({
     fixedCost: 65_000,
     gasPerBlobByte: 8,
     perBlobStaticGas: 0,
-    shareSizeBytes: 480,
+    shareSizeBytes: 482,
 });
 
 type ExecutionEnv = "evm" | "cosmos";
