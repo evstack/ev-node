@@ -157,7 +157,11 @@ func ExportPrivateKey(keyPath string, passphrase []byte) ([]byte, error) {
 // WARNING: This is a destructive operation.
 func ImportPrivateKey(keyPath string, privKeyBytes []byte, passphrase []byte) error {
 	defer zeroBytes(passphrase)
-	defer zeroBytes(privKeyBytes)
+
+	// Make a copy of the private key bytes to avoid modifying the caller's data
+	privKeyBytesCopy := make([]byte, len(privKeyBytes))
+	copy(privKeyBytesCopy, privKeyBytes)
+	defer zeroBytes(privKeyBytesCopy)
 
 	filePath := filepath.Join(keyPath, "signer.json")
 
@@ -168,7 +172,7 @@ func ImportPrivateKey(keyPath string, privKeyBytes []byte, passphrase []byte) er
 	}
 
 	// Unmarshal the private key to validate it and get the public key
-	privKey, err := crypto.UnmarshalEd25519PrivateKey(privKeyBytes)
+	privKey, err := crypto.UnmarshalEd25519PrivateKey(privKeyBytesCopy)
 	if err != nil {
 		return fmt.Errorf("failed to unmarshal private key: %w", err)
 	}
@@ -208,7 +212,7 @@ func ImportPrivateKey(keyPath string, privKeyBytes []byte, passphrase []byte) er
 	}
 
 	// Encrypt the private key
-	encryptedPrivKey := gcm.Seal(nil, nonce, privKeyBytes, nil)
+	encryptedPrivKey := gcm.Seal(nil, nonce, privKeyBytesCopy, nil)
 
 	// Create key data structure
 	data := keyData{
@@ -252,6 +256,7 @@ func (s *FileSystemSigner) saveKeys(passphrase []byte) error {
 	if err != nil {
 		return fmt.Errorf("failed to get raw private key: %w", err)
 	}
+	defer zeroBytes(privKeyBytes) // Always zero out private key bytes
 
 	// Get raw public key bytes
 	pubKeyBytes, err := s.publicKey.Raw()
@@ -261,9 +266,7 @@ func (s *FileSystemSigner) saveKeys(passphrase []byte) error {
 
 	// Derive a key with Argon2
 	derivedKey := deriveKeyArgon2(passphrase, salt, 32)
-
-	// Zero out passphrase from memory once we have our derived key
-	zeroBytes(passphrase)
+	defer zeroBytes(derivedKey) // Always zero out derived key
 
 	// Create AES cipher
 	block, err := aes.NewCipher(derivedKey)
@@ -305,10 +308,6 @@ func (s *FileSystemSigner) saveKeys(passphrase []byte) error {
 		return fmt.Errorf("failed to write key file: %w", err)
 	}
 
-	// Zero out derivedKey bytes for security
-	zeroBytes(derivedKey)
-	zeroBytes(privKeyBytes)
-
 	return nil
 }
 
@@ -316,7 +315,6 @@ func (s *FileSystemSigner) saveKeys(passphrase []byte) error {
 func (s *FileSystemSigner) loadKeys(passphrase []byte) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	defer zeroBytes(passphrase) // Wipe passphrase from memory after use
 
 	// Read the key file
 	jsonData, err := os.ReadFile(s.keyFile)
@@ -338,6 +336,7 @@ func (s *FileSystemSigner) loadKeys(passphrase []byte) error {
 	} else {
 		derivedKey = deriveKeyArgon2(passphrase, data.Salt, 32)
 	}
+	defer zeroBytes(derivedKey) // Always zero out derived key
 
 	block, err := aes.NewCipher(derivedKey)
 	if err != nil {
@@ -355,8 +354,16 @@ func (s *FileSystemSigner) loadKeys(passphrase []byte) error {
 		return fmt.Errorf("failed to decrypt private key (wrong passphrase?): %w", err)
 	}
 
-	// Unmarshal the private key
-	privKey, err := crypto.UnmarshalEd25519PrivateKey(privKeyBytes)
+	// Make a copy of the private key bytes before unmarshaling
+	// since UnmarshalEd25519PrivateKey may keep a reference to the input bytes
+	privKeyBytesCopy := make([]byte, len(privKeyBytes))
+	copy(privKeyBytesCopy, privKeyBytes)
+
+	// Zero out the original decrypted bytes immediately
+	zeroBytes(privKeyBytes)
+
+	// Unmarshal the private key from the copy
+	privKey, err := crypto.UnmarshalEd25519PrivateKey(privKeyBytesCopy)
 	if err != nil {
 		return fmt.Errorf("failed to unmarshal private key: %w", err)
 	}
@@ -370,9 +377,6 @@ func (s *FileSystemSigner) loadKeys(passphrase []byte) error {
 	// Set the keys
 	s.privateKey = privKey
 	s.publicKey = pubKey
-
-	// Zero out sensitive data
-	zeroBytes(derivedKey)
 
 	return nil
 }
