@@ -3,9 +3,8 @@ package syncing
 import (
 	"bytes"
 	"context"
-	"errors"
 	"fmt"
-	"time"
+	"sync"
 
 	goheader "github.com/celestiaorg/go-header"
 	"github.com/rs/zerolog"
@@ -23,6 +22,10 @@ type P2PHandler struct {
 	cache       cache.Manager
 	genesis     genesis.Genesis
 	logger      zerolog.Logger
+
+	mu              sync.Mutex
+	processedHeight uint64
+	inflight        map[uint64]context.CancelFunc
 }
 
 // NewP2PHandler creates a new P2P handler
@@ -39,176 +42,108 @@ func NewP2PHandler(
 		cache:       cache,
 		genesis:     genesis,
 		logger:      logger.With().Str("component", "p2p_handler").Logger(),
+		inflight:    make(map[uint64]context.CancelFunc),
 	}
 }
 
-// ProcessHeaderRange processes headers from the header store within the given range
+// SetProcessedHeight updates the highest processed block height.
+func (h *P2PHandler) SetProcessedHeight(height uint64) {
+	h.mu.Lock()
+	if height > h.processedHeight {
+		h.processedHeight = height
+	}
+	h.mu.Unlock()
+}
+
+// OnHeightProcessed cancels any pending watcher for a processed height.
+func (h *P2PHandler) OnHeightProcessed(height uint64) {
+	h.mu.Lock()
+	if height > h.processedHeight {
+		h.processedHeight = height
+	}
+	cancel, ok := h.inflight[height]
+	h.mu.Unlock()
+	if ok {
+		cancel()
+	}
+}
+
+// ProcessHeaderRange ensures watchers are running for the provided heights.
 func (h *P2PHandler) ProcessHeaderRange(ctx context.Context, startHeight, endHeight uint64, heightInCh chan<- common.DAHeightEvent) {
 	if startHeight > endHeight {
 		return
 	}
 
 	for height := startHeight; height <= endHeight; height++ {
-		select {
-		case <-ctx.Done():
-			return
-		default:
-		}
-
-		// Create a timeout context for each GetByHeight call to prevent blocking
-		timeoutCtx, cancel := context.WithTimeout(ctx, 500*time.Millisecond)
-		header, err := h.headerStore.GetByHeight(timeoutCtx, height)
-		cancel()
-
-		if err != nil {
-			if errors.Is(err, context.DeadlineExceeded) {
-				h.logger.Debug().Uint64("height", height).Msg("timeout waiting for header from store, will retry later")
-				// Don't continue processing further heights if we timeout on one
-				// This prevents blocking on sequential heights
-				return
-			}
-			h.logger.Debug().Uint64("height", height).Err(err).Msg("failed to get header from store")
-			continue
-		}
-
-		// basic header validation
-		if err := h.assertExpectedProposer(header.ProposerAddress); err != nil {
-			h.logger.Debug().Uint64("height", height).Err(err).Msg("invalid header from P2P")
-			continue
-		}
-
-		// Get corresponding data (empty data are still broadcasted by peers)
-		var data *types.Data
-		timeoutCtx, cancel = context.WithTimeout(ctx, 500*time.Millisecond)
-		retrievedData, err := h.dataStore.GetByHeight(timeoutCtx, height)
-		cancel()
-
-		if err != nil {
-			if errors.Is(err, context.DeadlineExceeded) {
-				h.logger.Debug().Uint64("height", height).Msg("timeout waiting for data from store, will retry later")
-				// Don't continue processing if data is not available
-				// Store event with header only for later processing
-				continue
-			}
-			h.logger.Debug().Uint64("height", height).Err(err).Msg("could not retrieve data for header from data store")
-			continue
-		}
-		data = retrievedData
-
-		// CRITICAL: Validate that data matches the header's DataHash commitment
-		// This prevents accepting legitimate headers paired with tampered data from different blocks
-		dataCommitment := data.DACommitment()
-		if !bytes.Equal(header.DataHash[:], dataCommitment[:]) {
-			h.logger.Warn().
-				Uint64("height", height).
-				Str("header_data_hash", fmt.Sprintf("%x", header.DataHash)).
-				Str("actual_data_hash", fmt.Sprintf("%x", dataCommitment)).
-				Msg("DataHash mismatch: header and data do not match from P2P, discarding")
-			continue
-		}
-
-		// further header validation (signature) is done in validateBlock.
-		// we need to be sure that the previous block n-1 was executed before validating block n
-
-		// Create height event
-		event := common.DAHeightEvent{
-			Header:   header,
-			Data:     data,
-			DaHeight: 0, // P2P events don't have DA height context
-			Source:   common.SourceP2P,
-		}
-
-		select {
-		case heightInCh <- event:
-		default:
-			h.cache.SetPendingEvent(event.Header.Height(), &event)
-		}
-
-		h.logger.Debug().Uint64("height", height).Str("source", "p2p_headers").Msg("processed header from P2P")
+		h.ensureWatcher(ctx, height, heightInCh)
 	}
 }
 
-// ProcessDataRange processes data from the data store within the given range
+// ProcessDataRange ensures watchers are running for the provided heights.
 func (h *P2PHandler) ProcessDataRange(ctx context.Context, startHeight, endHeight uint64, heightInCh chan<- common.DAHeightEvent) {
 	if startHeight > endHeight {
 		return
 	}
 
 	for height := startHeight; height <= endHeight; height++ {
-		select {
-		case <-ctx.Done():
-			return
-		default:
-		}
-
-		// Create a timeout context for each GetByHeight call to prevent blocking
-		timeoutCtx, cancel := context.WithTimeout(ctx, 500*time.Millisecond)
-		data, err := h.dataStore.GetByHeight(timeoutCtx, height)
-		cancel()
-
-		if err != nil {
-			if errors.Is(err, context.DeadlineExceeded) {
-				h.logger.Debug().Uint64("height", height).Msg("timeout waiting for data from store, will retry later")
-				// Don't continue processing further heights if we timeout on one
-				// This prevents blocking on sequential heights
-				return
-			}
-			h.logger.Debug().Uint64("height", height).Err(err).Msg("failed to get data from store")
-			continue
-		}
-
-		// Get corresponding header with timeout
-		timeoutCtx, cancel = context.WithTimeout(ctx, 500*time.Millisecond)
-		header, err := h.headerStore.GetByHeight(timeoutCtx, height)
-		cancel()
-
-		if err != nil {
-			if errors.Is(err, context.DeadlineExceeded) {
-				h.logger.Debug().Uint64("height", height).Msg("timeout waiting for header from store, will retry later")
-				// Don't continue processing if header is not available
-				continue
-			}
-			h.logger.Debug().Uint64("height", height).Err(err).Msg("could not retrieve header for data from header store")
-			continue
-		}
-
-		// basic header validation
-		if err := h.assertExpectedProposer(header.ProposerAddress); err != nil {
-			h.logger.Debug().Uint64("height", height).Err(err).Msg("invalid header from P2P")
-			continue
-		}
-
-		// CRITICAL: Validate that data matches the header's DataHash commitment
-		// This prevents accepting legitimate headers paired with tampered data from different blocks
-		dataCommitment := data.DACommitment()
-		if !bytes.Equal(header.DataHash[:], dataCommitment[:]) {
-			h.logger.Warn().
-				Uint64("height", height).
-				Str("header_data_hash", fmt.Sprintf("%x", header.DataHash)).
-				Str("actual_data_hash", fmt.Sprintf("%x", dataCommitment)).
-				Msg("DataHash mismatch: header and data do not match from P2P, discarding")
-			continue
-		}
-
-		// further header validation (signature) is done in validateBlock.
-		// we need to be sure that the previous block n-1 was executed before validating block n
-
-		// Create height event
-		event := common.DAHeightEvent{
-			Header:   header,
-			Data:     data,
-			DaHeight: 0, // P2P events don't have DA height context
-			Source:   common.SourceP2P,
-		}
-
-		select {
-		case heightInCh <- event:
-		default:
-			h.cache.SetPendingEvent(event.Header.Height(), &event)
-		}
-
-		h.logger.Debug().Uint64("height", height).Str("source", "p2p_data").Msg("processed data from P2P")
+		h.ensureWatcher(ctx, height, heightInCh)
 	}
+}
+
+func (h *P2PHandler) ensureWatcher(ctx context.Context, height uint64, heightInCh chan<- common.DAHeightEvent) {
+	h.mu.Lock()
+	if height <= h.processedHeight {
+		h.mu.Unlock()
+		return
+	}
+	if _, exists := h.inflight[height]; exists {
+		h.mu.Unlock()
+		return
+	}
+
+	childCtx, cancel := context.WithCancel(ctx)
+	h.inflight[height] = cancel
+	h.mu.Unlock()
+
+	go h.awaitHeight(childCtx, height, heightInCh, cancel)
+}
+
+func (h *P2PHandler) awaitHeight(ctx context.Context, height uint64, heightInCh chan<- common.DAHeightEvent, cancel context.CancelFunc) {
+	defer cancel()
+	defer h.removeInflight(height)
+
+	header, err := h.headerStore.GetByHeight(ctx, height)
+	if err != nil {
+		if ctx.Err() == nil {
+			h.logger.Debug().Uint64("height", height).Err(err).Msg("failed to get header from store")
+		}
+		return
+	}
+
+	if err := h.assertExpectedProposer(header.ProposerAddress); err != nil {
+		h.logger.Debug().Uint64("height", height).Err(err).Msg("invalid header from P2P")
+		return
+	}
+
+	data, err := h.dataStore.GetByHeight(ctx, height)
+	if err != nil {
+		if ctx.Err() == nil {
+			h.logger.Debug().Uint64("height", height).Err(err).Msg("failed to get data from store")
+		}
+		return
+	}
+
+	dataCommitment := data.DACommitment()
+	if !bytes.Equal(header.DataHash[:], dataCommitment[:]) {
+		h.logger.Warn().
+			Uint64("height", height).
+			Str("header_data_hash", fmt.Sprintf("%x", header.DataHash)).
+			Str("actual_data_hash", fmt.Sprintf("%x", dataCommitment)).
+			Msg("DataHash mismatch: header and data do not match from P2P, discarding")
+		return
+	}
+
+	h.emitEvent(height, header, data, heightInCh, "p2p_watch")
 }
 
 // assertExpectedProposer validates the proposer address
@@ -218,4 +153,27 @@ func (h *P2PHandler) assertExpectedProposer(proposerAddr []byte) error {
 			proposerAddr, h.genesis.ProposerAddress)
 	}
 	return nil
+}
+
+func (h *P2PHandler) emitEvent(height uint64, header *types.SignedHeader, data *types.Data, heightInCh chan<- common.DAHeightEvent, source string) {
+	event := common.DAHeightEvent{
+		Header:   header,
+		Data:     data,
+		DaHeight: 0,
+		Source:   common.SourceP2P,
+	}
+
+	select {
+	case heightInCh <- event:
+	default:
+		h.cache.SetPendingEvent(event.Header.Height(), &event)
+	}
+
+	h.logger.Debug().Uint64("height", height).Str("source", source).Msg("processed event from P2P")
+}
+
+func (h *P2PHandler) removeInflight(height uint64) {
+	h.mu.Lock()
+	delete(h.inflight, height)
+	h.mu.Unlock()
 }

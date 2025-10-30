@@ -190,22 +190,96 @@ func TestP2PHandler_ProcessDataRange_HeaderMissing(t *testing.T) {
 	p2pData := setupP2P(t)
 	ctx := context.Background()
 
-	blockData := makeData(p2pData.Genesis.ChainID, 9, 1)
-	p2pData.DataStore.EXPECT().GetByHeight(mock.Anything, uint64(9)).Return(blockData, nil).Once()
-	p2pData.HeaderStore.EXPECT().GetByHeight(mock.Anything, uint64(9)).Return(nil, errors.New("no header")).Once()
+	headerCalled := make(chan struct{})
+	p2pData.HeaderStore.EXPECT().GetByHeight(mock.Anything, uint64(9)).RunAndReturn(
+		func(ctx context.Context, _ uint64) (*types.SignedHeader, error) {
+			close(headerCalled)
+			return nil, errors.New("no header")
+		},
+	).Once()
 
 	// Create channel and process
 	ch := make(chan common.DAHeightEvent, 10)
 	p2pData.Handler.ProcessDataRange(ctx, 9, 9, ch)
 
+	<-headerCalled
 	events := collectEvents(t, ch, 100*time.Millisecond)
 	require.Len(t, events, 0)
+}
+
+func TestP2PHandler_WaitsForDataBeforeEmitting(t *testing.T) {
+	p2pData := setupP2P(t)
+	ctx := context.Background()
+
+	require.Equal(t, string(p2pData.Genesis.ProposerAddress), string(p2pData.ProposerAddr))
+	signedHeader := p2pMakeSignedHeader(t, p2pData.Genesis.ChainID, 13, p2pData.ProposerAddr, p2pData.ProposerPub, p2pData.Signer)
+	blockData := makeData(p2pData.Genesis.ChainID, 13, 1)
+	signedHeader.DataHash = blockData.DACommitment()
+
+	bz, err := types.DefaultAggregatorNodeSignatureBytesProvider(&signedHeader.Header)
+	require.NoError(t, err)
+	sig, err := p2pData.Signer.Sign(bz)
+	require.NoError(t, err)
+	signedHeader.Signature = sig
+
+	dataReady := make(chan struct{})
+
+	p2pData.HeaderStore.EXPECT().GetByHeight(mock.Anything, uint64(13)).Return(signedHeader, nil).Once()
+	p2pData.DataStore.EXPECT().GetByHeight(mock.Anything, uint64(13)).RunAndReturn(
+		func(ctx context.Context, _ uint64) (*types.Data, error) {
+			select {
+			case <-dataReady:
+				return blockData, nil
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			}
+		},
+	).Once()
+
+	ch := make(chan common.DAHeightEvent, 10)
+	p2pData.Handler.ProcessHeaderRange(ctx, 13, 13, ch)
+
+	require.Empty(t, collectEvents(t, ch, 50*time.Millisecond), "event should wait for data availability")
+
+	close(dataReady)
+
+	events := collectEvents(t, ch, 200*time.Millisecond)
+	require.Len(t, events, 1)
+	require.Equal(t, uint64(13), events[0].Header.Height())
+	require.NotNil(t, events[0].Data)
+}
+
+func TestP2PHandler_OnHeightProcessedCancelsWatcher(t *testing.T) {
+	p2pData := setupP2P(t)
+	ctx := context.Background()
+
+	cancelled := make(chan struct{})
+
+	p2pData.HeaderStore.EXPECT().GetByHeight(mock.Anything, uint64(14)).RunAndReturn(
+		func(ctx context.Context, _ uint64) (*types.SignedHeader, error) {
+			<-ctx.Done()
+			close(cancelled)
+			return nil, ctx.Err()
+		},
+	).Once()
+
+	ch := make(chan common.DAHeightEvent, 10)
+	p2pData.Handler.ProcessHeaderRange(ctx, 14, 14, ch)
+
+	p2pData.Handler.OnHeightProcessed(14)
+
+	select {
+	case <-cancelled:
+	case <-time.After(200 * time.Millisecond):
+		t.Fatal("watcher was not cancelled after height processed")
+	}
+
+	require.Empty(t, collectEvents(t, ch, 50*time.Millisecond))
 }
 
 func TestP2PHandler_ProposerMismatch_Rejected(t *testing.T) {
 	p2pData := setupP2P(t)
 	ctx := context.Background()
-
 	// Build a header with a different proposer
 	badAddr, pub, signer := buildTestSigner(t)
 	require.NotEqual(t, string(p2pData.Genesis.ProposerAddress), string(badAddr), "negative test requires mismatched proposer")
@@ -262,19 +336,21 @@ func TestP2PHandler_ProcessHeaderRange_MultipleHeightsHappyPath(t *testing.T) {
 
 	events := collectEvents(t, ch, 100*time.Millisecond)
 	require.Len(t, events, 2, "expected two events for heights 5 and 6")
-	require.Equal(t, uint64(5), events[0].Header.Height(), "first event should be height 5")
-	require.Equal(t, uint64(6), events[1].Header.Height(), "second event should be height 6")
-	require.NotNil(t, events[0].Data, "event for height 5 must include data")
-	require.NotNil(t, events[1].Data, "event for height 6 must include data")
+	require.NotNil(t, events[0].Data, "event must include data")
+	require.NotNil(t, events[1].Data, "event must include data")
+
+	collected := map[uint64]struct{}{}
+	for _, evt := range events {
+		collected[evt.Header.Height()] = struct{}{}
+	}
+	require.Len(t, collected, 2, "should contain both heights")
+	require.Contains(t, collected, uint64(5))
+	require.Contains(t, collected, uint64(6))
 }
 
 func TestP2PHandler_ProcessDataRange_HeaderValidateHeaderFails(t *testing.T) {
 	p2pData := setupP2P(t)
 	ctx := context.Background()
-
-	// Data exists at height 3
-	blockData := makeData(p2pData.Genesis.ChainID, 3, 1)
-	p2pData.DataStore.EXPECT().GetByHeight(mock.Anything, uint64(3)).Return(blockData, nil).Once()
 
 	// Header proposer does not match genesis -> validateHeader should fail
 	badAddr, pub, signer := buildTestSigner(t)
@@ -288,4 +364,5 @@ func TestP2PHandler_ProcessDataRange_HeaderValidateHeaderFails(t *testing.T) {
 
 	events := collectEvents(t, ch, 100*time.Millisecond)
 	require.Len(t, events, 0, "validateHeader failure should drop event")
+	p2pData.DataStore.AssertNotCalled(t, "GetByHeight", mock.Anything, uint64(3))
 }

@@ -31,6 +31,8 @@ type daRetriever interface {
 type p2pHandler interface {
 	ProcessHeaderRange(ctx context.Context, fromHeight, toHeight uint64, heightInCh chan<- common.DAHeightEvent)
 	ProcessDataRange(ctx context.Context, fromHeight, toHeight uint64, heightInCh chan<- common.DAHeightEvent)
+	SetProcessedHeight(height uint64)
+	OnHeightProcessed(height uint64)
 }
 
 // Syncer handles block synchronization from DA and P2P sources.
@@ -122,6 +124,11 @@ func (s *Syncer) Start(ctx context.Context) error {
 	// Initialize handlers
 	s.daRetriever = NewDARetriever(s.da, s.cache, s.config, s.genesis, s.logger)
 	s.p2pHandler = NewP2PHandler(s.headerStore.Store(), s.dataStore.Store(), s.cache, s.genesis, s.logger)
+	if currentHeight, err := s.store.Height(s.ctx); err != nil {
+		s.logger.Error().Err(err).Msg("failed to set initial processed height for p2p handler")
+	} else {
+		s.p2pHandler.SetProcessedHeight(currentHeight)
+	}
 
 	// Start main processing loop
 	s.wg.Add(1)
@@ -351,9 +358,7 @@ func (s *Syncer) tryFetchFromP2P() {
 
 	// Process data (if not already processed by headers)
 	newDataHeight := s.dataStore.Store().Height()
-	// TODO @MARKO: why only if newDataHeight != newHeaderHeight? why not process
-	//  just if newDataHeight > currentHeight ?
-	if newDataHeight != newHeaderHeight && newDataHeight > currentHeight {
+	if newDataHeight > currentHeight {
 		s.p2pHandler.ProcessDataRange(s.ctx, currentHeight+1, newDataHeight, s.heightInCh)
 	}
 }
@@ -511,6 +516,10 @@ func (s *Syncer) trySyncNextBlock(event *common.DAHeightEvent) error {
 	s.cache.SetHeaderSeen(headerHash, header.Height())
 	if !bytes.Equal(header.DataHash, common.DataHashForEmptyTxs) {
 		s.cache.SetDataSeen(data.DACommitment().String(), newState.LastBlockHeight)
+	}
+
+	if s.p2pHandler != nil {
+		s.p2pHandler.OnHeightProcessed(newState.LastBlockHeight)
 	}
 
 	return nil
