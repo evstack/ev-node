@@ -8,6 +8,7 @@ import (
 	"flag"
 	"fmt"
 	"net/http"
+	"os"
 	"path/filepath"
 	"testing"
 	"time"
@@ -48,13 +49,18 @@ func TestBasic(t *testing.T) {
 	time.Sleep(500 * time.Millisecond)
 
 	aggregatorPass := "12345678"
+	// Create passphrase file for aggregator
+	passphraseFile := filepath.Join(workDir, "passphrase.txt")
+	err := os.WriteFile(passphraseFile, []byte(aggregatorPass), 0600)
+	require.NoError(t, err, "failed to create passphrase file")
+
 	// init aggregator
 	output, err := sut.RunCmd(binaryPath,
 		"init",
 		"--home="+node1Home,
 		"--chain_id=testing",
 		"--evnode.node.aggregator",
-		"--evnode.signer.passphrase="+aggregatorPass,
+		"--evnode.signer.passphrase_file="+passphraseFile,
 	)
 	require.NoError(t, err, "failed to init aggregator", output)
 
@@ -63,7 +69,7 @@ func TestBasic(t *testing.T) {
 		"start",
 		"--home="+node1Home,
 		"--evnode.node.aggregator",
-		"--evnode.signer.passphrase="+aggregatorPass,
+		"--evnode.signer.passphrase_file="+passphraseFile,
 		"--evnode.node.block_time=5ms",
 		"--evnode.da.block_time=15ms",
 		"--kv-endpoint=127.0.0.1:9090",
@@ -143,13 +149,18 @@ func TestNodeRestartPersistence(t *testing.T) {
 	sut.ExecCmd(localDABinary)
 	time.Sleep(500 * time.Millisecond)
 
+	// Create passphrase file
+	passphraseFile := filepath.Join(workDir, "passphrase.txt")
+	err := os.WriteFile(passphraseFile, []byte("12345678"), 0600)
+	require.NoError(t, err, "failed to create passphrase file")
+
 	// Init node
 	output, err := sut.RunCmd(binaryPath,
 		"init",
 		"--home="+nodeHome,
 		"--chain_id=testing",
 		"--evnode.node.aggregator",
-		"--evnode.signer.passphrase=12345678",
+		"--evnode.signer.passphrase_file="+passphraseFile,
 	)
 	require.NoError(t, err, "failed to init node", output)
 
@@ -158,7 +169,7 @@ func TestNodeRestartPersistence(t *testing.T) {
 		"start",
 		"--home="+nodeHome,
 		"--evnode.node.aggregator",
-		"--evnode.signer.passphrase=12345678",
+		"--evnode.signer.passphrase_file="+passphraseFile,
 		"--evnode.node.block_time=5ms",
 		"--evnode.da.block_time=15ms",
 		"--kv-endpoint=127.0.0.1:9090",
@@ -198,7 +209,7 @@ func TestNodeRestartPersistence(t *testing.T) {
 		"start",
 		"--home="+nodeHome,
 		"--evnode.node.aggregator",
-		"--evnode.signer.passphrase=12345678",
+		"--evnode.signer.passphrase_file="+passphraseFile,
 		"--evnode.node.block_time=5ms",
 		"--evnode.da.block_time=15ms",
 		"--kv-endpoint=127.0.0.1:9090",

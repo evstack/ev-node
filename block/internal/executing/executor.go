@@ -199,7 +199,7 @@ func (e *Executor) initializeState() error {
 			LastBlockHeight: e.genesis.InitialHeight - 1,
 			LastBlockTime:   e.genesis.StartTime,
 			AppHash:         stateRoot,
-			DAHeight:        0,
+			DAHeight:        e.genesis.DAStartHeight,
 		}
 	}
 
@@ -389,6 +389,7 @@ func (e *Executor) produceBlock() error {
 
 	if err := e.validateBlock(currentState, header, data); err != nil {
 		e.sendCriticalError(fmt.Errorf("failed to validate block: %w", err))
+		e.logger.Error().Err(err).Msg("CRITICAL: Permanent block validation error - halting block production")
 		return fmt.Errorf("failed to validate block: %w", err)
 	}
 
@@ -439,7 +440,8 @@ func (e *Executor) produceBlock() error {
 // retrieveBatch gets the next batch of transactions from the sequencer
 func (e *Executor) retrieveBatch(ctx context.Context) (*BatchData, error) {
 	req := coresequencer.GetNextBatchRequest{
-		Id: []byte(e.genesis.ChainID),
+		Id:       []byte(e.genesis.ChainID),
+		MaxBytes: common.DefaultMaxBlobSize,
 	}
 
 	res, err := e.sequencer.GetNextBatch(ctx, req)
@@ -566,8 +568,8 @@ func (e *Executor) applyBlock(ctx context.Context, header types.Header, data *ty
 
 	// Execute transactions
 	ctx = context.WithValue(ctx, types.HeaderContextKey, header)
-	newAppHash, _, err := e.exec.ExecuteTxs(ctx, rawTxs, header.Height(),
-		header.Time(), currentState.AppHash)
+
+	newAppHash, err := e.executeTxsWithRetry(ctx, rawTxs, header, currentState)
 	if err != nil {
 		e.sendCriticalError(fmt.Errorf("failed to execute transactions: %w", err))
 		return types.State{}, fmt.Errorf("failed to execute transactions: %w", err)
@@ -592,6 +594,35 @@ func (e *Executor) signHeader(header types.Header) (types.Signature, error) {
 	return e.signer.Sign(bz)
 }
 
+// executeTxsWithRetry executes transactions with retry logic
+func (e *Executor) executeTxsWithRetry(ctx context.Context, rawTxs [][]byte, header types.Header, currentState types.State) ([]byte, error) {
+	for attempt := 1; attempt <= common.MaxRetriesBeforeHalt; attempt++ {
+		newAppHash, _, err := e.exec.ExecuteTxs(ctx, rawTxs, header.Height(), header.Time(), currentState.AppHash)
+		if err != nil {
+			if attempt == common.MaxRetriesBeforeHalt {
+				return nil, fmt.Errorf("failed to execute transactions: %w", err)
+			}
+
+			e.logger.Error().Err(err).
+				Int("attempt", attempt).
+				Int("max_attempts", common.MaxRetriesBeforeHalt).
+				Uint64("height", header.Height()).
+				Msg("failed to execute transactions, retrying")
+
+			select {
+			case <-time.After(common.MaxRetriesTimeout):
+				continue
+			case <-e.ctx.Done():
+				return nil, fmt.Errorf("context cancelled during retry: %w", e.ctx.Err())
+			}
+		}
+
+		return newAppHash, nil
+	}
+
+	return nil, nil
+}
+
 // validateBlock validates the created block
 func (e *Executor) validateBlock(lastState types.State, header *types.SignedHeader, data *types.Data) error {
 	// Set custom verifier for aggregator node signature
@@ -602,35 +633,7 @@ func (e *Executor) validateBlock(lastState types.State, header *types.SignedHead
 		return fmt.Errorf("invalid header: %w", err)
 	}
 
-	// Validate header against data
-	if err := types.Validate(header, data); err != nil {
-		return fmt.Errorf("header-data validation failed: %w", err)
-	}
-
-	// Check chain ID
-	if header.ChainID() != lastState.ChainID {
-		return fmt.Errorf("chain ID mismatch: expected %s, got %s",
-			lastState.ChainID, header.ChainID())
-	}
-
-	// Check height
-	expectedHeight := lastState.LastBlockHeight + 1
-	if header.Height() != expectedHeight {
-		return fmt.Errorf("invalid height: expected %d, got %d",
-			expectedHeight, header.Height())
-	}
-
-	// Check timestamp
-	if header.Height() > 1 && lastState.LastBlockTime.After(header.Time()) {
-		return fmt.Errorf("block time must be strictly increasing")
-	}
-
-	// Check app hash
-	if !bytes.Equal(header.AppHash, lastState.AppHash) {
-		return fmt.Errorf("app hash mismatch")
-	}
-
-	return nil
+	return lastState.AssertValidForNextState(header, data)
 }
 
 // sendCriticalError sends a critical error to the error channel without blocking

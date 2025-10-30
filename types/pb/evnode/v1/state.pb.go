@@ -32,6 +32,7 @@ type State struct {
 	LastBlockTime   *timestamppb.Timestamp `protobuf:"bytes,5,opt,name=last_block_time,json=lastBlockTime,proto3" json:"last_block_time,omitempty"`
 	DaHeight        uint64                 `protobuf:"varint,6,opt,name=da_height,json=daHeight,proto3" json:"da_height,omitempty"`
 	AppHash         []byte                 `protobuf:"bytes,8,opt,name=app_hash,json=appHash,proto3" json:"app_hash,omitempty"`
+	LastHeaderHash  []byte                 `protobuf:"bytes,9,opt,name=last_header_hash,json=lastHeaderHash,proto3" json:"last_header_hash,omitempty"`
 	unknownFields   protoimpl.UnknownFields
 	sizeCache       protoimpl.SizeCache
 }
@@ -115,11 +116,18 @@ func (x *State) GetAppHash() []byte {
 	return nil
 }
 
+func (x *State) GetLastHeaderHash() []byte {
+	if x != nil {
+		return x.LastHeaderHash
+	}
+	return nil
+}
+
 var File_evnode_v1_state_proto protoreflect.FileDescriptor
 
 const file_evnode_v1_state_proto_rawDesc = "" +
 	"\n" +
-	"\x15evnode/v1/state.proto\x12\tevnode.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x16evnode/v1/evnode.proto\"\xa5\x02\n" +
+	"\x15evnode/v1/state.proto\x12\tevnode.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x16evnode/v1/evnode.proto\"\xcf\x02\n" +
 	"\x05State\x12,\n" +
 	"\aversion\x18\x01 \x01(\v2\x12.evnode.v1.VersionR\aversion\x12\x19\n" +
 	"\bchain_id\x18\x02 \x01(\tR\achainId\x12%\n" +
@@ -127,7 +135,8 @@ const file_evnode_v1_state_proto_rawDesc = "" +
 	"\x11last_block_height\x18\x04 \x01(\x04R\x0flastBlockHeight\x12B\n" +
 	"\x0flast_block_time\x18\x05 \x01(\v2\x1a.google.protobuf.TimestampR\rlastBlockTime\x12\x1b\n" +
 	"\tda_height\x18\x06 \x01(\x04R\bdaHeight\x12\x19\n" +
-	"\bapp_hash\x18\b \x01(\fR\aappHashJ\x04\b\a\x10\bB/Z-github.com/evstack/ev-node/types/pb/evnode/v1b\x06proto3"
+	"\bapp_hash\x18\b \x01(\fR\aappHash\x12(\n" +
+	"\x10last_header_hash\x18\t \x01(\fR\x0elastHeaderHashJ\x04\b\a\x10\bB/Z-github.com/evstack/ev-node/types/pb/evnode/v1b\x06proto3"
 
 var (
 	file_evnode_v1_state_proto_rawDescOnce sync.Once

@@ -2,6 +2,7 @@ package types
 
 import (
 	"crypto/sha256"
+	"errors"
 	"hash"
 )
 
@@ -9,14 +10,56 @@ var (
 	leafPrefix = []byte{0}
 )
 
+// HashSlim returns the SHA256 hash of the header using the slim (current) binary encoding.
+func (h *Header) HashSlim() (Hash, error) {
+	if h == nil {
+		return nil, errors.New("header is nil")
+	}
+
+	bytes, err := h.MarshalBinary()
+	if err != nil {
+		return nil, err
+	}
+
+	hash := sha256.Sum256(bytes)
+	return hash[:], nil
+}
+
+// HashLegacy returns the SHA256 hash of the header using the legacy binary encoding that
+// includes the deprecated fields.
+func (h *Header) HashLegacy() (Hash, error) {
+	if h == nil {
+		return nil, errors.New("header is nil")
+	}
+
+	bytes, err := h.MarshalBinaryLegacy()
+	if err != nil {
+		return nil, err
+	}
+
+	hash := sha256.Sum256(bytes)
+	return hash[:], nil
+}
+
 // Hash returns hash of the header
 func (h *Header) Hash() Hash {
-	bytes, err := h.MarshalBinary()
+	if h == nil {
+		return nil
+	}
+
+	slimHash, err := h.HashSlim()
 	if err != nil {
 		return nil
 	}
-	hash := sha256.Sum256(bytes)
-	return hash[:]
+
+	if h.Legacy != nil && !h.Legacy.IsZero() {
+		legacyHash, err := h.HashLegacy()
+		if err == nil {
+			return legacyHash
+		}
+	}
+
+	return slimHash
 }
 
 // Hash returns hash of the Data

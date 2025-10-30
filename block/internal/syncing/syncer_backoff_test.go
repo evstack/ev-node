@@ -197,7 +197,7 @@ func TestSyncer_BackoffResetOnSuccess(t *testing.T) {
 		Return(nil, errors.New("temporary failure")).Once()
 
 	// Second call - success (should reset backoff and increment DA height)
-	_, header := makeSignedHeaderBytes(t, gen.ChainID, 1, addr, pub, signer, nil, nil)
+	_, header := makeSignedHeaderBytes(t, gen.ChainID, 1, addr, pub, signer, nil, nil, nil)
 	data := &types.Data{
 		Metadata: &types.Metadata{
 			ChainID: gen.ChainID,

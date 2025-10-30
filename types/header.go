@@ -29,12 +29,21 @@ func HeaderFromContext(ctx context.Context) (Header, bool) {
 // Hash is a 32-byte array which is used to represent a hash result.
 type Hash = header.Hash
 
+const (
+	// MaxClockDrift is the maximum allowed clock drift for timestamp validation.
+	// This allows for slight time differences between nodes in a distributed system.
+	MaxClockDrift = 1 * time.Minute
+)
+
 var (
 	// ErrNoProposerAddress is returned when the proposer address is not set.
 	ErrNoProposerAddress = errors.New("no proposer address")
 
 	// ErrProposerVerificationFailed is returned when the proposer verification fails.
 	ErrProposerVerificationFailed = errors.New("proposer verification failed")
+
+	// ErrInvalidTimestamp is returned when the timestamp is invalid.
+	ErrInvalidTimestamp = errors.New("invalid timestamp")
 )
 
 // BaseHeader contains the most basic data of a header
@@ -128,6 +137,19 @@ func (h *Header) Validate() error {
 func (h *Header) ValidateBasic() error {
 	if len(h.ProposerAddress) == 0 {
 		return ErrNoProposerAddress
+	}
+
+	// Validate timestamp - must be non-zero and not too far in the future
+	if h.BaseHeader.Time == 0 {
+		return fmt.Errorf("%w: timestamp cannot be zero", ErrInvalidTimestamp)
+	}
+
+	// Check timestamp is not too far in the future (allow some clock drift)
+	maxAllowedTime := time.Now().Add(MaxClockDrift)
+	headerTime := h.Time()
+	if headerTime.After(maxAllowedTime) {
+		return fmt.Errorf("%w: timestamp too far in future (header: %v, max allowed: %v)",
+			ErrInvalidTimestamp, headerTime, maxAllowedTime)
 	}
 
 	return nil

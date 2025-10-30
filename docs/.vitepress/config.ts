@@ -301,6 +301,10 @@ function sidebarHome() {
           link: "/guides/cometbft-to-evolve",
         },
         {
+          text: "Migrating to ev-abci",
+          link: "/guides/migrating-to-ev-abci",
+        },
+        {
           text: "Create genesis for your chain",
           link: "/guides/create-genesis",
         },
