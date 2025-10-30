@@ -118,11 +118,33 @@ Create and submit a software upgrade governance proposal to initiate the migrati
 
 Wait for the proposal to pass and for the chain to reach the upgrade height. The chain will halt at the specified height, waiting for the upgrade to be applied.
 
+### Trigger Migration to Evolve
+
+After the upgrade proposal has passed, submit the `MsgMigrateToEvolve` message to initiate the actual migration process. This can be done through a governance proposal or directly if your chain's authority allows it.
+
+```bash
+# Submit MsgMigrateToEvolve governance proposal (if using governance)
+<appd> tx gov submit-proposal migrate-to-evolve \
+  --title "Trigger Migration to Evolve" \
+  --description "Execute migration to ev-abci consensus" \
+  --from <your-key> \
+  --chain-id <chain-id>
+
+# Or submit directly if authority allows (authority address depends on your chain configuration)
+<appd> tx migrationmngr migrate-to-evolve \
+  --from <authority-key> \
+  --chain-id <chain-id>
+```
+
+Once this message is processed, the migration manager module will handle the transition from the PoS validator set to the sequencer-based model.
+
 ---
 
 ## Phase 4: Wire ev-abci Start Handler in root.go
 
-After the governance proposal passes, modify your node's entrypoint to use the `ev-abci` server commands.
+**⚠️ Important:** Complete this phase BEFORE the chain halts at the upgrade height. Do NOT start your node yet - you will start it in Phase 6 after running the migration command.
+
+Modify your node's entrypoint to use the `ev-abci` server commands.
 
 ### Locate Your Application's Entrypoint
 
@@ -185,11 +207,15 @@ Re-build your application's binary with the updated code:
 go build -o <appd> ./cmd/<appd>
 ```
 
+**⚠️ Important:** Do NOT start the node yet. Proceed directly to Phase 5 to run the migration command.
+
 ---
 
 ## Phase 5: Run evolve-migrate
 
 After the chain halts at the upgrade height, run the migration command to transform the CometBFT data to Evolve format.
+
+**⚠️ Critical:** The node must NOT be running when you execute this command. Ensure all node processes are stopped before proceeding.
 
 ```bash
 # Run the migration command
