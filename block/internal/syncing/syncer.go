@@ -34,7 +34,6 @@ type p2pHandler interface {
 	ProcessDataRange(ctx context.Context, fromHeight, toHeight uint64, heightInCh chan<- common.DAHeightEvent)
 	SetProcessedHeight(height uint64)
 	OnHeightProcessed(height uint64)
-	Shutdown()
 }
 
 // Syncer handles block synchronization from DA and P2P sources.
@@ -158,9 +157,6 @@ func (s *Syncer) Start(ctx context.Context) error {
 func (s *Syncer) Stop() error {
 	if s.cancel != nil {
 		s.cancel()
-	}
-	if s.p2pHandler != nil {
-		s.p2pHandler.Shutdown()
 	}
 	if s.headerSub != nil {
 		s.headerSub.Cancel()

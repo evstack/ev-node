@@ -15,9 +15,9 @@ import (
 	"github.com/evstack/ev-node/types"
 )
 
-const defaultWatcherLimit = 128
-
-// P2PHandler handles all P2P operations for the syncer
+// P2PHandler fan-outs store updates from the go-header stores into the syncer.
+// It ensures both the header and data for a given height are present and
+// consistent before emitting an event to the syncer.
 type P2PHandler struct {
 	headerStore goheader.Store[*types.SignedHeader]
 	dataStore   goheader.Store[*types.Data]
@@ -25,13 +25,11 @@ type P2PHandler struct {
 	genesis     genesis.Genesis
 	logger      zerolog.Logger
 
-	mu               sync.Mutex
-	processedHeight  uint64 // highest block fully applied; protects against duplicate watcher creation
-	inflightWatchers map[uint64]context.CancelFunc
-	watcherSem       chan struct{}
+	mu              sync.Mutex
+	processedHeight uint64 // highest block fully applied by the syncer
 }
 
-// NewP2PHandler creates a new P2P handler
+// NewP2PHandler creates a new P2P handler.
 func NewP2PHandler(
 	headerStore goheader.Store[*types.SignedHeader],
 	dataStore goheader.Store[*types.Data],
@@ -40,13 +38,11 @@ func NewP2PHandler(
 	logger zerolog.Logger,
 ) *P2PHandler {
 	return &P2PHandler{
-		headerStore:      headerStore,
-		dataStore:        dataStore,
-		cache:            cache,
-		genesis:          genesis,
-		logger:           logger.With().Str("component", "p2p_handler").Logger(),
-		inflightWatchers: make(map[uint64]context.CancelFunc),
-		watcherSem:       make(chan struct{}, defaultWatcherLimit),
+		headerStore: headerStore,
+		dataStore:   dataStore,
+		cache:       cache,
+		genesis:     genesis,
+		logger:      logger.With().Str("component", "p2p_handler").Logger(),
 	}
 }
 
@@ -59,105 +55,59 @@ func (h *P2PHandler) SetProcessedHeight(height uint64) {
 	h.mu.Unlock()
 }
 
-// OnHeightProcessed cancels any pending watcher for a processed height.
-// Duplicate events are still filtered by the cache's seen-set in the syncer,
-// so racing watchers that observe the same height cannot cause re-execution.
+// OnHeightProcessed records progress after a block is successfully applied.
 func (h *P2PHandler) OnHeightProcessed(height uint64) {
-	h.mu.Lock()
-	if height > h.processedHeight {
-		h.processedHeight = height
-	}
-	cancel, ok := h.inflightWatchers[height]
-	h.mu.Unlock()
-	if ok {
-		cancel()
-	}
+	h.SetProcessedHeight(height)
 }
 
-// ProcessHeaderRange ensures watchers are running for the provided heights.
+// ProcessHeaderRange scans the provided heights and emits events when both the
+// header and data are available.
 func (h *P2PHandler) ProcessHeaderRange(ctx context.Context, startHeight, endHeight uint64, heightInCh chan<- common.DAHeightEvent) {
-	if startHeight > endHeight {
-		return
-	}
-
-	for height := startHeight; height <= endHeight; height++ {
-		h.ensureWatcher(ctx, height, heightInCh)
-	}
+	h.processRange(ctx, startHeight, endHeight, heightInCh, "header_range")
 }
 
-// ProcessDataRange ensures watchers are running for the provided heights.
+// ProcessDataRange scans the provided heights and emits events when both the
+// header and data are available.
 func (h *P2PHandler) ProcessDataRange(ctx context.Context, startHeight, endHeight uint64, heightInCh chan<- common.DAHeightEvent) {
+	h.processRange(ctx, startHeight, endHeight, heightInCh, "data_range")
+}
+
+func (h *P2PHandler) processRange(ctx context.Context, startHeight, endHeight uint64, heightInCh chan<- common.DAHeightEvent, source string) {
 	if startHeight > endHeight {
 		return
 	}
 
 	for height := startHeight; height <= endHeight; height++ {
-		h.ensureWatcher(ctx, height, heightInCh)
+		if !h.shouldProcessHeight(height) {
+			continue
+		}
+		h.processHeight(ctx, height, heightInCh, source)
 	}
 }
 
-func (h *P2PHandler) ensureWatcher(ctx context.Context, height uint64, heightInCh chan<- common.DAHeightEvent) {
+func (h *P2PHandler) shouldProcessHeight(height uint64) bool {
 	h.mu.Lock()
-	if height <= h.processedHeight {
-		h.mu.Unlock()
-		return
-	}
-	if _, exists := h.inflightWatchers[height]; exists {
-		h.mu.Unlock()
-		return
-	}
-	h.mu.Unlock()
-
-	select {
-	case h.watcherSem <- struct{}{}:
-		childCtx, cancel := context.WithCancel(ctx)
-
-		h.mu.Lock()
-		if height <= h.processedHeight {
-			h.mu.Unlock()
-			cancel()
-			<-h.watcherSem
-			return
-		}
-		if _, exists := h.inflightWatchers[height]; exists {
-			h.mu.Unlock()
-			cancel()
-			<-h.watcherSem
-			return
-		}
-		h.inflightWatchers[height] = cancel
-		h.mu.Unlock()
-
-		go h.awaitHeight(childCtx, height, heightInCh, cancel)
-	case <-ctx.Done():
-		return
-	}
+	defer h.mu.Unlock()
+	return height > h.processedHeight
 }
 
-func (h *P2PHandler) awaitHeight(ctx context.Context, height uint64, heightInCh chan<- common.DAHeightEvent, cancel context.CancelFunc) {
-	defer cancel()
-	defer h.removeInflight(height)
-	defer func() {
-		<-h.watcherSem
-	}()
-
+func (h *P2PHandler) processHeight(ctx context.Context, height uint64, heightInCh chan<- common.DAHeightEvent, source string) {
 	header, err := h.headerStore.GetByHeight(ctx, height)
 	if err != nil {
 		if ctx.Err() == nil {
-			h.logger.Debug().Uint64("height", height).Err(err).Msg("failed to get header from store")
+			h.logger.Debug().Uint64("height", height).Err(err).Str("source", source).Msg("header unavailable in store")
 		}
 		return
 	}
-
 	if err := h.assertExpectedProposer(header.ProposerAddress); err != nil {
-		h.logger.Debug().Uint64("height", height).Err(err).Msg("invalid header from P2P")
+		h.logger.Debug().Uint64("height", height).Err(err).Str("source", source).Msg("invalid header from P2P")
 		return
 	}
 
 	data, err := h.dataStore.GetByHeight(ctx, height)
 	if err != nil {
 		if ctx.Err() == nil {
-			h.logger.Debug().Uint64("height", height).Err(err).Msg("failed to get data from store")
+			h.logger.Debug().Uint64("height", height).Err(err).Str("source", source).Msg("data unavailable in store")
 		}
 		return
 	}
@@ -168,24 +118,15 @@ func (h *P2PHandler) awaitHeight(ctx context.Context, height uint64, heightInCh 
 			Uint64("height", height).
 			Str("header_data_hash", fmt.Sprintf("%x", header.DataHash)).
 			Str("actual_data_hash", fmt.Sprintf("%x", dataCommitment)).
+			Str("source", source).
 			Msg("DataHash mismatch: header and data do not match from P2P, discarding")
 		return
 	}
 
-	h.emitEvent(height, header, data, heightInCh, "p2p_watch")
+	h.emitEvent(height, header, data, heightInCh, source)
 }
 
-// Shutdown cancels all in-flight watchers. It is idempotent and safe to call multiple times.
-func (h *P2PHandler) Shutdown() {
-	h.mu.Lock()
-	for height, cancel := range h.inflightWatchers {
-		cancel()
-		delete(h.inflightWatchers, height)
-	}
-	h.mu.Unlock()
-}
-
-// assertExpectedProposer validates the proposer address
+// assertExpectedProposer validates the proposer address.
 func (h *P2PHandler) assertExpectedProposer(proposerAddr []byte) error {
 	if !bytes.Equal(h.genesis.ProposerAddress, proposerAddr) {
 		return fmt.Errorf("proposer address mismatch: got %x, expected %x",
@@ -209,10 +150,4 @@ func (h *P2PHandler) emitEvent(height uint64, header *types.SignedHeader, data *
 	}
 
 	h.logger.Debug().Uint64("height", height).Str("source", source).Msg("processed event from P2P")
-}
-
-func (h *P2PHandler) removeInflight(height uint64) {
-	h.mu.Lock()
-	delete(h.inflightWatchers, height)
-	h.mu.Unlock()
 }
