@@ -5,7 +5,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	pubsub "github.com/libp2p/go-libp2p-pubsub"
 	"sync"
 	"sync/atomic"
 	"time"

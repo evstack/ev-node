@@ -163,6 +163,15 @@ func main() {
 	// Start multiple nodes
 	var aggregatorAddress string
 
+	// Create passphrase file
+	passphraseFile := "./testapp_passphrase.txt"
+	if err := os.WriteFile(passphraseFile, []byte("12345678"), 0600); err != nil {
+		log.Printf("Error creating passphrase file: %v", err)
+		return
+	}
+	// Track the passphrase file for cleanup
+	nodeHomes = append(nodeHomes, passphraseFile)
+
 	for i := 0; i < *numNodes; i++ {
 		nodeHome := fmt.Sprintf("./testapp_home_node%d", i)
 		// Track the node home for cleanup
@@ -179,7 +188,7 @@ func main() {
 			"init",
 			fmt.Sprintf("--home=%s", nodeHome),
 			fmt.Sprintf("--rollkit.node.aggregator=%t", isAggregator),
-			"--rollkit.signer.passphrase=12345678",
+			fmt.Sprintf("--rollkit.signer.passphrase_file=%s", passphraseFile),
 			fmt.Sprintf("--rollkit.rpc.address=0.0.0.0:%d", rpcPort),
 		}
 
@@ -225,7 +234,7 @@ func main() {
 			fmt.Sprintf("--home=%s", nodeHome),
 			"--rollkit.da.address=http://localhost:7980",
 			fmt.Sprintf("--rollkit.node.aggregator=%t", isAggregator),
-			"--rollkit.signer.passphrase=12345678",
+			fmt.Sprintf("--rollkit.signer.passphrase_file=%s", passphraseFile),
 			fmt.Sprintf("--rollkit.p2p.listen_address=/ip4/0.0.0.0/tcp/%d", p2pPort),
 			fmt.Sprintf("--rollkit.rpc.address=0.0.0.0:%d", rpcPort),
 		}

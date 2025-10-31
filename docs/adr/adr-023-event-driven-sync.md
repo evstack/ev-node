@@ -18,19 +18,25 @@ The goal was to decouple the syncer from P2P stores while improving efficiency a
 ## Alternative Approaches
 
 ### Direct Store Polling (Previous Approach)
+
 The original design had the syncer directly polling P2P stores on a timer:
+
 - **Pros**: Simple to understand, direct control over polling frequency
 - **Cons**: Tight coupling, inefficient resource usage, artificial latency, complex coordination logic
 - **Rejected**: While simpler initially, the tight coupling made the code harder to maintain and test
 
 ### Event Bus Architecture
+
 Could have implemented a centralized event bus for all store events:
+
 - **Pros**: Maximum flexibility, could handle many event types, well-known pattern
 - **Cons**: Over-engineered for our needs, added complexity and overhead
 - **Rejected**: The notification system is simpler and sufficient for our use case
 
 ### Callback-Based Approach
+
 Could have used callbacks passed to stores:
+
 - **Pros**: Direct communication, no intermediate components
 - **Cons**: Tight coupling through callbacks, harder to test, callback hell
 - **Rejected**: Would have created different coupling issues
@@ -45,6 +51,7 @@ We implemented an **event-driven architecture using a notification system** that
 4. **Event-Triggered Processing**: Instead of polling, the syncer fetches from P2P only when notified of new data
 
 This design follows an **observer pattern** where:
+
 - P2P stores are the subjects (publish events)
 - The syncer is the observer (subscribes and reacts)
 - The notifier is the event channel (facilitates communication)
@@ -56,6 +63,7 @@ This design follows an **observer pattern** where:
 #### 1. Notifier System (`pkg/sync/notifier/`)
 
 **Notifier**: Manages event publication and subscription
+
 ```go
 type Notifier struct {
     subscribers []*Subscription
@@ -67,6 +75,7 @@ func (n *Notifier) Subscribe() *Subscription
 ```
 
 **Event Structure**:
+
 ```go
 type Event struct {
     Type      EventType      // Header or Data
@@ -78,6 +87,7 @@ type Event struct {
 ```
 
 **Subscription**: Delivers events to subscribers via buffered channel
+
 ```go
 type Subscription struct {
     C      chan Event  // Buffered channel (100 events)
@@ -88,6 +98,7 @@ type Subscription struct {
 #### 2. Instrumented Store Pattern (`pkg/sync/sync_service.go`)
 
 **Wrapper Design**: Decorates stores without modifying them
+
 ```go
 type instrumentedStore[H header.Header[H]] struct {
     header.Store[H]           // Embedded delegate
@@ -109,6 +120,7 @@ func (s *instrumentedStore[H]) Append(ctx context.Context, headers ...H) error {
 ```
 
 **Integration**: Applied transparently when notifier is configured
+
 ```go
 if options.notifier != nil {
     svc.storeView = newInstrumentedStore[H](ss, func(headers []H) {
@@ -122,6 +134,7 @@ if options.notifier != nil {
 #### 3. Event-Driven Syncer (`block/internal/syncing/syncer.go`)
 
 **Subscription Management**: Subscribe to both header and data stores
+
 ```go
 func (s *Syncer) startP2PListeners() error {
     // Subscribe to header events
@@ -137,6 +150,7 @@ func (s *Syncer) startP2PListeners() error {
 ```
 
 **Event Consumption**: React to store events
+
 ```go
 func (s *Syncer) consumeNotifierEvents(sub *syncnotifier.Subscription, expected syncnotifier.EventType) {
     for {
@@ -154,6 +168,7 @@ func (s *Syncer) consumeNotifierEvents(sub *syncnotifier.Subscription, expected 
 ```
 
 **Processing Flow**:
+
 ```
 P2P Store Write → Publish Event → Notifier → Subscription Channel → Syncer → Fetch from P2P → Process Block
 ```
@@ -161,26 +176,31 @@ P2P Store Write → Publish Event → Notifier → Subscription Channel → Sync
 ### Key Design Properties
 
 **Separation of Concerns**:
+
 - P2P stores: Focus on storing and serving headers/data
 - Notifier: Handles event distribution
 - Syncer: Coordinates block synchronization
 
 **Loose Coupling**:
+
 - Stores don't know about syncer
 - Syncer only knows about notifier interface
 - Changes to stores don't affect syncer
 
 **Event Filtering**:
+
 - Events include type (Header/Data) for filtering
 - Source tracking (P2P/Local) prevents feedback loops
 - Height/hash metadata enables decision-making
 
 **Resource Efficiency**:
+
 - No polling when no data available
 - Buffered channels (100 events) handle bursts
 - Event coalescing: multiple writes trigger single fetch
 
 **Testability**:
+
 - Notifier can be mocked easily
 - Events can be injected for testing
 - Stores can be tested independently
@@ -188,6 +208,7 @@ P2P Store Write → Publish Event → Notifier → Subscription Channel → Sync
 ### Integration with Existing Architecture
 
 **DA Retrieval**: Unchanged, continues polling DA layer
+
 ```go
 func (s *Syncer) daWorkerLoop() {
     for {
@@ -198,6 +219,7 @@ func (s *Syncer) daWorkerLoop() {
 ```
 
 **P2P Processing**: Now event-triggered
+
 ```go
 func (s *Syncer) tryFetchFromP2P() {
     currentHeight := s.store.Height()
@@ -217,6 +239,7 @@ func (s *Syncer) tryFetchFromP2P() {
 ```
 
 **Local Broadcasts**: Prevent network spam
+
 ```go
 // When syncing from DA, broadcast locally only
 s.headerStore.WriteToStoreAndBroadcast(ctx, event.Header,
@@ -240,6 +263,7 @@ Example:
 ```
 
 **Recovery mechanism in tryFetchFromP2P()**:
+
 ```go
 func (s *Syncer) tryFetchFromP2P() {
     currentHeight := s.store.Height()  // Returns 89 (last processed)
@@ -258,6 +282,7 @@ func (s *Syncer) tryFetchFromP2P() {
 #### Restart Scenario
 
 On restart, the system state is as follows:
+
 1. P2P stores have persisted data up to some height (e.g., 100)
 2. Syncer's local store has processed blocks up to height 85
 3. **No events exist** because the subscription is freshly created
@@ -265,6 +290,7 @@ On restart, the system state is as follows:
 **Recovery depends on triggering mechanism**:
 
 **Scenario A - New P2P data arrives after restart**:
+
 ```
 - System restarts at height 85
 - P2P store has blocks 1-100 persisted
@@ -275,6 +301,7 @@ On restart, the system state is as follows:
 ```
 
 **Scenario B - No new P2P data (quiescent period)**:
+
 ```
 - System restarts at height 85
 - P2P store has blocks 1-100 persisted
@@ -292,6 +319,7 @@ On restart, the system state is as follows:
 #### DA Layer as Safety Net
 
 The DA retrieval loop continues to poll independently:
+
 ```go
 func (s *Syncer) daWorkerLoop() {
     for {
@@ -302,6 +330,7 @@ func (s *Syncer) daWorkerLoop() {
 ```
 
 This ensures that:
+
 - If P2P is quiet after restart, DA retrieval will eventually catch up
 - The system can't be permanently stuck, only temporarily delayed
 - DA provides the authoritative source of truth regardless of P2P state
@@ -316,6 +345,7 @@ The event-driven design prioritizes **efficiency over immediate post-restart cat
 4. **Restart during quiescence**: DA polling provides eventual consistency (safety net)
 
 This is acceptable because:
+
 - Restarts are infrequent compared to normal operation
 - DA polling ensures eventual consistency
 - The efficiency gains during normal operation (no polling) outweigh the restart delay
@@ -337,7 +367,6 @@ Accepted and Implemented
 ### Negative
 
 ### Neutral
-
 
 ## References
 

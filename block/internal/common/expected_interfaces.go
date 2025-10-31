@@ -2,10 +2,10 @@ package common
 
 import (
 	"context"
+
 	pubsub "github.com/libp2p/go-libp2p-pubsub"
 
 	"github.com/celestiaorg/go-header"
-	pubsub "github.com/libp2p/go-libp2p-pubsub"
 
 	syncnotifier "github.com/evstack/ev-node/pkg/sync/notifier"
 )
