@@ -55,11 +55,6 @@ func (h *P2PHandler) SetProcessedHeight(height uint64) {
 	h.mu.Unlock()
 }
 
-// OnHeightProcessed records progress after a block is successfully applied.
-func (h *P2PHandler) OnHeightProcessed(height uint64) {
-	h.SetProcessedHeight(height)
-}
-
 // ProcessHeaderRange scans the provided heights and emits events when both the
 // header and data are available.
 func (h *P2PHandler) ProcessHeaderRange(ctx context.Context, startHeight, endHeight uint64, heightInCh chan<- common.DAHeightEvent) {

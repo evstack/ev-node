@@ -261,7 +261,7 @@ func TestP2PHandler_OnHeightProcessedPreventsDuplicates(t *testing.T) {
 	require.Len(t, events, 1)
 
 	// Mark the height as processed; a subsequent range should skip lookups.
-	p.Handler.OnHeightProcessed(8)
+	p.Handler.SetProcessedHeight(8)
 
 	p.HeaderStore.AssertExpectations(t)
 	p.DataStore.AssertExpectations(t)
