@@ -63,32 +63,39 @@ func (h *P2PHandler) OnHeightProcessed(height uint64) {
 // ProcessHeaderRange scans the provided heights and emits events when both the
 // header and data are available.
 func (h *P2PHandler) ProcessHeaderRange(ctx context.Context, startHeight, endHeight uint64, heightInCh chan<- common.DAHeightEvent) {
-	h.processRange(ctx, startHeight, endHeight, heightInCh, "header_range")
-}
-
-// ProcessDataRange scans the provided heights and emits events when both the
-// header and data are available.
-func (h *P2PHandler) ProcessDataRange(ctx context.Context, startHeight, endHeight uint64, heightInCh chan<- common.DAHeightEvent) {
-	h.processRange(ctx, startHeight, endHeight, heightInCh, "data_range")
-}
-
-func (h *P2PHandler) processRange(ctx context.Context, startHeight, endHeight uint64, heightInCh chan<- common.DAHeightEvent, source string) {
 	if startHeight > endHeight {
 		return
 	}
 
 	for height := startHeight; height <= endHeight; height++ {
-		if !h.shouldProcessHeight(height) {
+		h.mu.Lock()
+		shouldProcess := height > h.processedHeight
+		h.mu.Unlock()
+
+		if !shouldProcess {
 			continue
 		}
-		h.processHeight(ctx, height, heightInCh, source)
+		h.processHeight(ctx, height, heightInCh, "header_range")
 	}
 }
 
-func (h *P2PHandler) shouldProcessHeight(height uint64) bool {
-	h.mu.Lock()
-	defer h.mu.Unlock()
-	return height > h.processedHeight
+// ProcessDataRange scans the provided heights and emits events when both the
+// header and data are available.
+func (h *P2PHandler) ProcessDataRange(ctx context.Context, startHeight, endHeight uint64, heightInCh chan<- common.DAHeightEvent) {
+	if startHeight > endHeight {
+		return
+	}
+
+	for height := startHeight; height <= endHeight; height++ {
+		h.mu.Lock()
+		shouldProcess := height > h.processedHeight
+		h.mu.Unlock()
+
+		if !shouldProcess {
+			continue
+		}
+		h.processHeight(ctx, height, heightInCh, "data_range")
+	}
 }
 
 func (h *P2PHandler) processHeight(ctx context.Context, height uint64, heightInCh chan<- common.DAHeightEvent, source string) {
@@ -123,19 +130,6 @@ func (h *P2PHandler) processHeight(ctx context.Context, height uint64, heightInC
 		return
 	}
 
-	h.emitEvent(height, header, data, heightInCh, source)
-}
-
-// assertExpectedProposer validates the proposer address.
-func (h *P2PHandler) assertExpectedProposer(proposerAddr []byte) error {
-	if !bytes.Equal(h.genesis.ProposerAddress, proposerAddr) {
-		return fmt.Errorf("proposer address mismatch: got %x, expected %x",
-			proposerAddr, h.genesis.ProposerAddress)
-	}
-	return nil
-}
-
-func (h *P2PHandler) emitEvent(height uint64, header *types.SignedHeader, data *types.Data, heightInCh chan<- common.DAHeightEvent, source string) {
 	event := common.DAHeightEvent{
 		Header:   header,
 		Data:     data,
@@ -150,4 +144,13 @@ func (h *P2PHandler) emitEvent(height uint64, header *types.SignedHeader, data *
 	}
 
 	h.logger.Debug().Uint64("height", height).Str("source", source).Msg("processed event from P2P")
+}
+
+// assertExpectedProposer validates the proposer address.
+func (h *P2PHandler) assertExpectedProposer(proposerAddr []byte) error {
+	if !bytes.Equal(h.genesis.ProposerAddress, proposerAddr) {
+		return fmt.Errorf("proposer address mismatch: got %x, expected %x",
+			proposerAddr, h.genesis.ProposerAddress)
+	}
+	return nil
 }
