@@ -162,6 +162,9 @@ func (h *Header) ToProto() *pb.Header {
 		ChainId:         h.BaseHeader.ChainID,
 		ValidatorHash:   h.ValidatorHash,
 	}
+	if unknown := encodeLegacyUnknownFields(h.Legacy); len(unknown) > 0 {
+		pHeader.ProtoReflect().SetUnknown(unknown)
+	}
 	return pHeader
 }
 
@@ -507,6 +510,28 @@ func decodeLegacyHeaderFields(pHeader *pb.Header) (*LegacyHeaderFields, error) {
 	}
 
 	return &legacy, nil
+}
+
+func encodeLegacyUnknownFields(legacy *LegacyHeaderFields) []byte {
+	if legacy == nil || legacy.IsZero() {
+		return nil
+	}
+
+	var payload []byte
+
+	if len(legacy.LastCommitHash) > 0 {
+		payload = appendBytesField(payload, legacyLastCommitHashField, legacy.LastCommitHash)
+	}
+
+	if len(legacy.ConsensusHash) > 0 {
+		payload = appendBytesField(payload, legacyConsensusHashField, legacy.ConsensusHash)
+	}
+
+	if len(legacy.LastResultsHash) > 0 {
+		payload = appendBytesField(payload, legacyLastResultsHashField, legacy.LastResultsHash)
+	}
+
+	return payload
 }
 
 func appendBytesField(buf []byte, number protowire.Number, value []byte) []byte {

@@ -123,7 +123,7 @@ func (syncService *SyncService[H]) Store() header.Store[H] {
 
 // WriteToStoreAndBroadcast initializes store if needed and broadcasts provided header or block.
 // Note: Only returns an error in case store can't be initialized. Logs error if there's one while broadcasting.
-func (syncService *SyncService[H]) WriteToStoreAndBroadcast(ctx context.Context, headerOrData H) error {
+func (syncService *SyncService[H]) WriteToStoreAndBroadcast(ctx context.Context, headerOrData H, opts ...pubsub.PubOpt) error {
 	if syncService.genesis.InitialHeight == 0 {
 		return fmt.Errorf("invalid initial height; cannot be zero")
 	}
@@ -148,7 +148,7 @@ func (syncService *SyncService[H]) WriteToStoreAndBroadcast(ctx context.Context,
 	}
 
 	// Broadcast for subscribers
-	if err := syncService.sub.Broadcast(ctx, headerOrData); err != nil {
+	if err := syncService.sub.Broadcast(ctx, headerOrData, opts...); err != nil {
 		// for the first block when starting the app, broadcast error is expected
 		// as we have already initialized the store for starting the syncer.
 		// Hence, we ignore the error. Exact reason: validation ignored
