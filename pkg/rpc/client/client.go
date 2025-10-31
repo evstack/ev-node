@@ -2,6 +2,8 @@ package client
 
 import (
 	"context"
+	"fmt"
+	"io"
 	"net/http"
 
 	"connectrpc.com/connect"
@@ -90,6 +92,54 @@ func (c *Client) GetMetadata(ctx context.Context, key string) ([]byte, error) {
 	}
 
 	return resp.Msg.Value, nil
+}
+
+// Backup streams a datastore backup into the provided writer and returns the final metadata emitted by the server.
+// The writer is not closed by this method.
+func (c *Client) Backup(ctx context.Context, params *pb.BackupRequest, dst io.Writer) (*pb.BackupMetadata, error) {
+	if dst == nil {
+		return nil, fmt.Errorf("backup destination writer cannot be nil")
+	}
+
+	if params == nil {
+		params = &pb.BackupRequest{}
+	}
+
+	stream, err := c.storeClient.Backup(ctx, connect.NewRequest(params))
+	if err != nil {
+		return nil, err
+	}
+	defer stream.Close() // Best effort; ignore close error to preserve primary result.
+
+	var lastMetadata *pb.BackupMetadata
+	for stream.Receive() {
+		msg := stream.Msg()
+		if metadata := msg.GetMetadata(); metadata != nil {
+			lastMetadata = metadata
+			continue
+		}
+
+		if chunk := msg.GetChunk(); chunk != nil {
+			if _, err := dst.Write(chunk); err != nil {
+				_ = stream.Close()
+				return lastMetadata, fmt.Errorf("failed to write backup chunk: %w", err)
+			}
+		}
+	}
+
+	if err := stream.Err(); err != nil {
+		return lastMetadata, err
+	}
+
+	if lastMetadata == nil {
+		return nil, fmt.Errorf("backup stream completed without metadata")
+	}
+
+	if !lastMetadata.GetCompleted() {
+		return lastMetadata, fmt.Errorf("backup stream ended without completion metadata")
+	}
+
+	return lastMetadata, nil
 }
 
 // GetPeerInfo returns information about the connected peers
