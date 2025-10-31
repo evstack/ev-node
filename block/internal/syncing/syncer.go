@@ -5,11 +5,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	pubsub "github.com/libp2p/go-libp2p-pubsub"
 	"sync"
 	"sync/atomic"
 	"time"
 
+	pubsub "github.com/libp2p/go-libp2p-pubsub"
 	"github.com/rs/zerolog"
 	"golang.org/x/sync/errgroup"
 
@@ -21,6 +21,7 @@ import (
 	"github.com/evstack/ev-node/pkg/config"
 	"github.com/evstack/ev-node/pkg/genesis"
 	"github.com/evstack/ev-node/pkg/store"
+	syncnotifier "github.com/evstack/ev-node/pkg/sync/notifier"
 	"github.com/evstack/ev-node/types"
 )
 
@@ -31,6 +32,7 @@ type daRetriever interface {
 type p2pHandler interface {
 	ProcessHeaderRange(ctx context.Context, fromHeight, toHeight uint64, heightInCh chan<- common.DAHeightEvent)
 	ProcessDataRange(ctx context.Context, fromHeight, toHeight uint64, heightInCh chan<- common.DAHeightEvent)
+	SetProcessedHeight(height uint64)
 }
 
 // Syncer handles block synchronization from DA and P2P sources.
@@ -74,6 +76,10 @@ type Syncer struct {
 	ctx    context.Context
 	cancel context.CancelFunc
 	wg     sync.WaitGroup
+
+	// Notifier subscriptions
+	headerSub *syncnotifier.Subscription
+	dataSub   *syncnotifier.Subscription
 }
 
 // NewSyncer creates a new block syncer
@@ -122,6 +128,15 @@ func (s *Syncer) Start(ctx context.Context) error {
 	// Initialize handlers
 	s.daRetriever = NewDARetriever(s.da, s.cache, s.config, s.genesis, s.logger)
 	s.p2pHandler = NewP2PHandler(s.headerStore.Store(), s.dataStore.Store(), s.cache, s.genesis, s.logger)
+	if currentHeight, err := s.store.Height(s.ctx); err != nil {
+		s.logger.Error().Err(err).Msg("failed to set initial processed height for p2p handler")
+	} else {
+		s.p2pHandler.SetProcessedHeight(currentHeight)
+	}
+
+	if err := s.startP2PListeners(); err != nil {
+		return fmt.Errorf("failed to start P2P listeners: %w", err)
+	}
 
 	// Start main processing loop
 	s.wg.Add(1)
@@ -130,12 +145,8 @@ func (s *Syncer) Start(ctx context.Context) error {
 		s.processLoop()
 	}()
 
-	// Start sync loop (DA and P2P retrieval)
-	s.wg.Add(1)
-	go func() {
-		defer s.wg.Done()
-		s.syncLoop()
-	}()
+	// Start dedicated workers for DA, and pending processing
+	s.startSyncWorkers()
 
 	s.logger.Info().Msg("syncer started")
 	return nil
@@ -145,6 +156,12 @@ func (s *Syncer) Start(ctx context.Context) error {
 func (s *Syncer) Stop() error {
 	if s.cancel != nil {
 		s.cancel()
+	}
+	if s.headerSub != nil {
+		s.headerSub.Cancel()
+	}
+	if s.dataSub != nil {
+		s.dataSub.Cancel()
 	}
 	s.wg.Wait()
 	s.logger.Info().Msg("syncer stopped")
@@ -244,41 +261,123 @@ func (s *Syncer) processLoop() {
 	}
 }
 
-// syncLoop handles synchronization from DA and P2P sources.
-func (s *Syncer) syncLoop() {
-	s.logger.Info().Msg("starting sync loop")
-	defer s.logger.Info().Msg("sync loop stopped")
+func (s *Syncer) startSyncWorkers() {
+	s.wg.Add(2)
+	go s.daWorkerLoop()
+	go s.pendingWorkerLoop()
+}
 
-	if delay := time.Until(s.genesis.StartTime); delay > 0 {
-		s.logger.Info().Dur("delay", delay).Msg("waiting until genesis to start syncing")
-		select {
-		case <-s.ctx.Done():
-			return
-		case <-time.After(delay):
-		}
+func (s *Syncer) startP2PListeners() error {
+	headerNotifier := s.headerStore.Notifier()
+	if headerNotifier == nil {
+		return errors.New("header notifier not configured")
 	}
 
-	// Backoff control when DA replies with errors
-	nextDARequestAt := &time.Time{}
+	dataNotifier := s.dataStore.Notifier()
+	if dataNotifier == nil {
+		return errors.New("data notifier not configured")
+	}
+
+	s.headerSub = headerNotifier.Subscribe()
+	s.wg.Add(1)
+	go s.consumeNotifierEvents(s.headerSub, syncnotifier.EventTypeHeader)
+
+	s.dataSub = dataNotifier.Subscribe()
+	s.wg.Add(1)
+	go s.consumeNotifierEvents(s.dataSub, syncnotifier.EventTypeData)
+
+	return nil
+}
+
+func (s *Syncer) consumeNotifierEvents(sub *syncnotifier.Subscription, expected syncnotifier.EventType) {
+	defer s.wg.Done()
+
+	if !s.waitForGenesis() {
+		return
+	}
+
+	logger := s.logger.With().Str("event_type", string(expected)).Logger()
+	logger.Info().Msg("starting P2P notifier worker")
+	defer logger.Info().Msg("P2P notifier worker stopped")
 
 	for {
 		select {
 		case <-s.ctx.Done():
 			return
-		default:
+		case evt, ok := <-sub.C:
+			if !ok {
+				return
+			}
+			if evt.Type != expected {
+				logger.Debug().Str("received_type", string(evt.Type)).Msg("ignoring notifier event with unexpected type")
+				continue
+			}
+			s.logger.Debug().Str("event_type", string(evt.Type)).Str("source", string(evt.Source)).Uint64("height", evt.Height).Msg("received store event")
+			s.tryFetchFromP2P()
 		}
+	}
+}
 
-		s.processPendingEvents()
-		s.tryFetchFromP2P()
+func (s *Syncer) daWorkerLoop() {
+	defer s.wg.Done()
+
+	if !s.waitForGenesis() {
+		return
+	}
+
+	s.logger.Info().Msg("starting DA worker")
+	defer s.logger.Info().Msg("DA worker stopped")
+
+	nextDARequestAt := &time.Time{}
+	pollInterval := min(10*time.Millisecond, s.config.Node.BlockTime.Duration)
+	if pollInterval <= 0 {
+		pollInterval = 10 * time.Millisecond
+	}
+
+	for {
 		s.tryFetchFromDA(nextDARequestAt)
-
-		// Prevent busy-waiting when no events are processed
 		select {
 		case <-s.ctx.Done():
 			return
-		case <-time.After(min(10*time.Millisecond, s.config.Node.BlockTime.Duration)):
+		case <-time.After(pollInterval):
 		}
 	}
+}
+
+func (s *Syncer) pendingWorkerLoop() {
+	defer s.wg.Done()
+
+	if !s.waitForGenesis() {
+		return
+	}
+
+	s.logger.Info().Msg("starting pending worker")
+	defer s.logger.Info().Msg("pending worker stopped")
+
+	ticker := time.NewTicker(10 * time.Millisecond)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-s.ctx.Done():
+			return
+		case <-ticker.C:
+			s.processPendingEvents()
+		}
+	}
+}
+
+func (s *Syncer) waitForGenesis() bool {
+	if delay := time.Until(s.genesis.StartTime); delay > 0 {
+		timer := time.NewTimer(delay)
+		defer timer.Stop()
+		select {
+		case <-s.ctx.Done():
+			return false
+		case <-timer.C:
+		}
+	}
+	return true
 }
 
 // tryFetchFromDA attempts to fetch events from the DA layer.
@@ -351,9 +450,7 @@ func (s *Syncer) tryFetchFromP2P() {
 
 	// Process data (if not already processed by headers)
 	newDataHeight := s.dataStore.Store().Height()
-	// TODO @MARKO: why only if newDataHeight != newHeaderHeight? why not process
-	//  just if newDataHeight > currentHeight ?
-	if newDataHeight != newHeaderHeight && newDataHeight > currentHeight {
+	if newDataHeight > currentHeight {
 		s.p2pHandler.ProcessDataRange(s.ctx, currentHeight+1, newDataHeight, s.heightInCh)
 	}
 }
@@ -511,6 +608,10 @@ func (s *Syncer) trySyncNextBlock(event *common.DAHeightEvent) error {
 	s.cache.SetHeaderSeen(headerHash, header.Height())
 	if !bytes.Equal(header.DataHash, common.DataHashForEmptyTxs) {
 		s.cache.SetDataSeen(data.DACommitment().String(), newState.LastBlockHeight)
+	}
+
+	if s.p2pHandler != nil {
+		s.p2pHandler.SetProcessedHeight(newState.LastBlockHeight)
 	}
 
 	return nil

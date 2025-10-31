@@ -17,9 +17,12 @@ import (
 	"github.com/evstack/ev-node/pkg/service"
 	"github.com/evstack/ev-node/pkg/store"
 	"github.com/evstack/ev-node/pkg/sync"
+	syncnotifier "github.com/evstack/ev-node/pkg/sync/notifier"
 )
 
 var _ Node = &LightNode{}
+
+const lightNotifierBufferSize = 128
 
 // LightNode is a chain node that only needs the header service
 type LightNode struct {
@@ -42,7 +45,9 @@ func newLightNode(
 	database ds.Batching,
 	logger zerolog.Logger,
 ) (ln *LightNode, err error) {
-	headerSyncService, err := sync.NewHeaderSyncService(database, conf, genesis, p2pClient, logger.With().Str("component", "HeaderSyncService").Logger())
+	componentLogger := logger.With().Str("component", "HeaderSyncService").Logger()
+	n := syncnotifier.New(lightNotifierBufferSize, componentLogger.With().Str("subcomponent", "notifier").Logger())
+	headerSyncService, err := sync.NewHeaderSyncService(database, conf, genesis, p2pClient, componentLogger, sync.WithNotifier(n))
 	if err != nil {
 		return nil, fmt.Errorf("error while initializing HeaderSyncService: %w", err)
 	}

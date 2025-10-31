@@ -17,3 +17,4 @@ ignore:
   - "execution/evm" # EVM is covered in e2e/integration tests
   - "**/metrics.go"
   - "client" # TODO: add more tests
+  - "block/internal/**/*_mock.go"

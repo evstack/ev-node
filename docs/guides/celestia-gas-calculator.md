@@ -32,6 +32,7 @@ For EVM workloads, data submissions are chunked into 500 KiB blobs (mirroring 
 ### 3. Gas parameters
 
 Review the Celestia mainnet gas parameters used for calculations:
+
 - **Fixed cost**: 65,000 gas per submission
 - **Gas per blob byte**: 8 gas per byte
 - **Share size**: 480 bytes
@@ -44,6 +45,7 @@ Set your expected gas price and optionally account for the one-time 10,000 gas s
 ### 4. Estimation
 
 View comprehensive cost breakdowns including:
+
 - Total gas per submission and corresponding fees
 - Detailed breakdown of header costs, data costs, and baseline gas
 - Annual cost projections

@@ -8,6 +8,7 @@ import (
 	"context"
 
 	"github.com/celestiaorg/go-header"
+	"github.com/evstack/ev-node/pkg/sync/notifier"
 	"github.com/libp2p/go-libp2p-pubsub"
 	mock "github.com/stretchr/testify/mock"
 )
@@ -37,6 +38,52 @@ type MockBroadcaster_Expecter[H header.Header[H]] struct {
 
 func (_m *MockBroadcaster[H]) EXPECT() *MockBroadcaster_Expecter[H] {
 	return &MockBroadcaster_Expecter[H]{mock: &_m.Mock}
+}
+
+// Notifier provides a mock function for the type MockBroadcaster
+func (_mock *MockBroadcaster[H]) Notifier() *notifier.Notifier {
+	ret := _mock.Called()
+
+	if len(ret) == 0 {
+		panic("no return value specified for Notifier")
+	}
+
+	var r0 *notifier.Notifier
+	if returnFunc, ok := ret.Get(0).(func() *notifier.Notifier); ok {
+		r0 = returnFunc()
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*notifier.Notifier)
+		}
+	}
+	return r0
+}
+
+// MockBroadcaster_Notifier_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'Notifier'
+type MockBroadcaster_Notifier_Call[H header.Header[H]] struct {
+	*mock.Call
+}
+
+// Notifier is a helper method to define mock.On call
+func (_e *MockBroadcaster_Expecter[H]) Notifier() *MockBroadcaster_Notifier_Call[H] {
+	return &MockBroadcaster_Notifier_Call[H]{Call: _e.mock.On("Notifier")}
+}
+
+func (_c *MockBroadcaster_Notifier_Call[H]) Run(run func()) *MockBroadcaster_Notifier_Call[H] {
+	_c.Call.Run(func(args mock.Arguments) {
+		run()
+	})
+	return _c
+}
+
+func (_c *MockBroadcaster_Notifier_Call[H]) Return(notifier1 *notifier.Notifier) *MockBroadcaster_Notifier_Call[H] {
+	_c.Call.Return(notifier1)
+	return _c
+}
+
+func (_c *MockBroadcaster_Notifier_Call[H]) RunAndReturn(run func() *notifier.Notifier) *MockBroadcaster_Notifier_Call[H] {
+	_c.Call.Return(run)
+	return _c
 }
 
 // Store provides a mock function for the type MockBroadcaster

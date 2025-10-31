@@ -73,6 +73,8 @@ func TestSyncer_BackoffOnDAError(t *testing.T) {
 			p2pHandler := newMockp2pHandler(t)
 			syncer.daRetriever = daRetriever
 			syncer.p2pHandler = p2pHandler
+			p2pHandler.On("OnHeightProcessed", mock.Anything).Return().Maybe()
+			p2pHandler.On("SetProcessedHeight", mock.Anything).Return().Maybe()
 
 			// Create mock stores for P2P
 			mockHeaderStore := extmocks.NewMockStore[*types.SignedHeader](t)
@@ -122,13 +124,9 @@ func TestSyncer_BackoffOnDAError(t *testing.T) {
 			}
 
 			// Run sync loop
-			done := make(chan struct{})
-			go func() {
-				defer close(done)
-				syncer.syncLoop()
-			}()
-
-			<-done
+			syncer.startSyncWorkers()
+			<-ctx.Done()
+			syncer.wg.Wait()
 
 			// Verify behavior
 			if tc.expectsBackoff {
@@ -171,6 +169,10 @@ func TestSyncer_BackoffResetOnSuccess(t *testing.T) {
 	p2pHandler := newMockp2pHandler(t)
 	syncer.daRetriever = daRetriever
 	syncer.p2pHandler = p2pHandler
+	p2pHandler.On("OnHeightProcessed", mock.Anything).Return().Maybe()
+	p2pHandler.On("SetProcessedHeight", mock.Anything).Return().Maybe()
+	p2pHandler.On("OnHeightProcessed", mock.Anything).Return().Maybe()
+	p2pHandler.On("SetProcessedHeight", mock.Anything).Return().Maybe()
 
 	// Create mock stores for P2P
 	mockHeaderStore := extmocks.NewMockStore[*types.SignedHeader](t)
@@ -228,14 +230,10 @@ func TestSyncer_BackoffResetOnSuccess(t *testing.T) {
 	// Start process loop to handle events
 	go syncer.processLoop()
 
-	// Run sync loop
-	done := make(chan struct{})
-	go func() {
-		defer close(done)
-		syncer.syncLoop()
-	}()
-
-	<-done
+	// Run workers
+	syncer.startSyncWorkers()
+	<-ctx.Done()
+	syncer.wg.Wait()
 
 	require.Len(t, callTimes, 3, "should make exactly 3 calls")
 
@@ -281,6 +279,8 @@ func TestSyncer_BackoffBehaviorIntegration(t *testing.T) {
 	syncer.dataStore = dataStore
 
 	var callTimes []time.Time
+	p2pHandler.On("OnHeightProcessed", mock.Anything).Return().Maybe()
+	p2pHandler.On("SetProcessedHeight", mock.Anything).Return().Maybe()
 
 	// First call - error (triggers backoff)
 	daRetriever.On("RetrieveFromDA", mock.Anything, uint64(100)).
@@ -305,14 +305,9 @@ func TestSyncer_BackoffBehaviorIntegration(t *testing.T) {
 		Return(nil, coreda.ErrBlobNotFound).Once()
 
 	go syncer.processLoop()
-
-	done := make(chan struct{})
-	go func() {
-		defer close(done)
-		syncer.syncLoop()
-	}()
-
-	<-done
+	syncer.startSyncWorkers()
+	<-ctx.Done()
+	syncer.wg.Wait()
 
 	require.Len(t, callTimes, 3, "should make exactly 3 calls")
 
