@@ -316,6 +316,10 @@ function sidebarHome() {
           text: "Use IBC token (TIA) as gas token in your chain",
           link: "/guides/use-tia-for-gas",
         },
+        {
+          text: "Celestia Gas Calculator",
+          link: "/guides/celestia-gas-calculator",
+        },
       ],
     },
     {
