@@ -348,7 +348,9 @@ func TestSyncerNotifierTriggersHeaderRange(t *testing.T) {
 	require.NoError(t, s.initializeState())
 
 	s.ctx, s.cancel = context.WithCancel(context.Background())
-	defer s.Stop()
+	defer func() {
+		require.NoError(t, s.Stop())
+	}()
 
 	stubHandler := newStubP2PHandler()
 	s.p2pHandler = stubHandler
@@ -419,7 +421,9 @@ func TestSyncerNotifierTriggersDataRange(t *testing.T) {
 	require.NoError(t, s.initializeState())
 
 	s.ctx, s.cancel = context.WithCancel(context.Background())
-	defer s.Stop()
+	defer func() {
+		require.NoError(t, s.Stop())
+	}()
 
 	stubHandler := newStubP2PHandler()
 	s.p2pHandler = stubHandler

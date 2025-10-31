@@ -293,19 +293,19 @@ func TestNotifier_SubscriberCount(t *testing.T) {
 
 func TestEventTypes(t *testing.T) {
 	tests := []struct {
-		name     string
+		name      string
 		eventType EventType
-		want     string
+		want      string
 	}{
 		{
-			name:     "header event type",
+			name:      "header event type",
 			eventType: EventTypeHeader,
-			want:     "header",
+			want:      "header",
 		},
 		{
-			name:     "data event type",
+			name:      "data event type",
 			eventType: EventTypeData,
-			want:     "data",
+			want:      "data",
 		},
 	}
 
