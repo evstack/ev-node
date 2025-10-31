@@ -333,23 +333,11 @@ Accepted and Implemented
 - **Efficiency**: No CPU cycles wasted on polling when idle
 - **Lower Latency**: Immediate reaction to new data (no polling interval delay)
 - **Cleaner Code**: Separation of concerns makes code easier to understand
-- **Better Testability**: Components can be tested in isolation
-- **Extensibility**: Easy to add new event types or subscribers
-- **Resource Optimization**: Better CPU and memory usage patterns
 
 ### Negative
 
-- **Additional Component**: Notifier adds another layer to understand
-- **Event Buffer Management**: Need to configure channel buffer sizes appropriately
-- **Debugging Complexity**: Event flow can be harder to trace than direct calls
-- **Memory Overhead**: Each subscription maintains a buffered channel (minimal but measurable)
-
 ### Neutral
 
-- **Learning Curve**: Developers need to understand event-driven patterns
-- **Event Semantics**: Need clear documentation on what events mean and when they're published
-- **Order Guarantees**: Events are delivered in order per subscription but no cross-subscription ordering
-- **Backpressure**: Slow consumers could fill buffers, but this is intentional design
 
 ## References
 
