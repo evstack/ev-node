@@ -268,18 +268,11 @@ func (s *Syncer) processLoop() {
 
 func (s *Syncer) startSyncWorkers() {
 	s.wg.Add(2)
-	go s.daWorker()
-	go s.pendingWorker()
+	go s.daWorkerLoop()
+	go s.pendingWorkerLoop()
 }
 
 func (s *Syncer) startP2PListeners() error {
-	if s.headerStore == nil {
-		return errors.New("header store not configured")
-	}
-	if s.dataStore == nil {
-		return errors.New("data store not configured")
-	}
-
 	headerNotifier := s.headerStore.Notifier()
 	if headerNotifier == nil {
 		return errors.New("header notifier not configured")
@@ -324,22 +317,15 @@ func (s *Syncer) consumeNotifierEvents(sub *syncnotifier.Subscription, expected 
 				logger.Debug().Str("received_type", string(evt.Type)).Msg("ignoring notifier event with unexpected type")
 				continue
 			}
-			s.handleNotifierEvent(evt)
+			s.logger.Debug().Str("event_type", string(evt.Type)).Str("source", string(evt.Source)).Uint64("height", evt.Height).Msg("received store event")
+			s.tryFetchFromP2P()
 		}
 	}
 }
 
-func (s *Syncer) handleNotifierEvent(evt syncnotifier.Event) {
-	s.logger.Debug().Str("event_type", string(evt.Type)).Str("source", string(evt.Source)).Uint64("height", evt.Height).Msg("received store event")
-	s.tryFetchFromP2P()
-}
-
-func (s *Syncer) daWorker() {
-	defer s.wg.Done()
-	s.daWorkerLoop()
-}
-
 func (s *Syncer) daWorkerLoop() {
+	defer s.wg.Done()
+
 	if !s.waitForGenesis() {
 		return
 	}
@@ -363,12 +349,9 @@ func (s *Syncer) daWorkerLoop() {
 	}
 }
 
-func (s *Syncer) pendingWorker() {
-	defer s.wg.Done()
-	s.pendingWorkerLoop()
-}
-
 func (s *Syncer) pendingWorkerLoop() {
+	defer s.wg.Done()
+
 	if !s.waitForGenesis() {
 		return
 	}

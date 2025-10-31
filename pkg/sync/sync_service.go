@@ -34,6 +34,17 @@ const (
 	dataSync   syncType = "dataSync"
 )
 
+func eventTypeForSync(syncType syncType) syncnotifier.EventType {
+	switch syncType {
+	case headerSync:
+		return syncnotifier.EventTypeHeader
+	case dataSync:
+		return syncnotifier.EventTypeData
+	default:
+		return syncnotifier.EventTypeHeader
+	}
+}
+
 type serviceOptions struct {
 	notifier *syncnotifier.Notifier
 }
