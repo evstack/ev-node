@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/binary"
 	"errors"
 	"fmt"
@@ -247,8 +248,8 @@ func (s *DefaultStore) Rollback(ctx context.Context, height uint64, aggregator b
 		}
 
 		// Use HeaderHash to avoid re-marshaling the header
-		hash := types.HeaderHash(headerBlob)
-		if err := batch.Delete(ctx, ds.NewKey(getIndexKey(hash))); err != nil {
+		headerHash := sha256.Sum256(headerBlob)
+		if err := batch.Delete(ctx, ds.NewKey(getIndexKey(headerHash[:]))); err != nil {
 			return fmt.Errorf("failed to delete index key in batch: %w", err)
 		}
 

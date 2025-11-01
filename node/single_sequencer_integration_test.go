@@ -240,7 +240,7 @@ func TestStateRecovery(t *testing.T) {
 	defer cancel()
 
 	// Start the sequencer first
-	startNodeInBackground(t, []*FullNode{node}, []context.Context{ctx}, &runningWg, 0)
+	startNodeInBackground(t, []*FullNode{node}, []context.Context{ctx}, &runningWg, 0, nil)
 
 	blocksToWaitFor := uint64(20)
 	// Wait for the sequencer to produce at first block
@@ -283,7 +283,7 @@ func TestMaxPendingHeadersAndData(t *testing.T) {
 	defer cancel()
 
 	var runningWg sync.WaitGroup
-	startNodeInBackground(t, []*FullNode{node}, []context.Context{ctx}, &runningWg, 0)
+	startNodeInBackground(t, []*FullNode{node}, []context.Context{ctx}, &runningWg, 0, nil)
 
 	// Wait blocks to be produced up to max pending
 	numExtraBlocks := uint64(5)
@@ -331,7 +331,7 @@ func TestBatchQueueThrottlingWithDAFailure(t *testing.T) {
 	defer cancel()
 
 	var runningWg sync.WaitGroup
-	startNodeInBackground(t, []*FullNode{node}, []context.Context{ctx}, &runningWg, 0)
+	startNodeInBackground(t, []*FullNode{node}, []context.Context{ctx}, &runningWg, 0, nil)
 
 	// Wait for the node to start producing blocks
 	waitForBlockN(t, 1, node, config.Node.BlockTime.Duration)

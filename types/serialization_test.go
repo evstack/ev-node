@@ -1,6 +1,7 @@
 package types
 
 import (
+	"bytes"
 	"crypto/rand"
 	"testing"
 	"time"
@@ -355,6 +356,53 @@ func TestHeader_HashFields_NilAndEmpty(t *testing.T) {
 	assert.Nil(t, h2.ValidatorHash)
 }
 
+func TestHeaderMarshalBinary_PreservesLegacyFields(t *testing.T) {
+	t.Parallel()
+
+	header := &Header{
+		Version:    Version{Block: 2, App: 3},
+		BaseHeader: BaseHeader{Height: 42, Time: 123456789, ChainID: "chain-legacy"},
+		LastHeaderHash: []byte{
+			0x01, 0x02, 0x03, 0x04,
+		},
+		DataHash:        []byte{0x05, 0x06, 0x07, 0x08},
+		AppHash:         []byte{0x09, 0x0A, 0x0B, 0x0C},
+		ProposerAddress: []byte{0x0D, 0x0E, 0x0F, 0x10},
+		ValidatorHash:   []byte{0x11, 0x12, 0x13, 0x14},
+		Legacy: &LegacyHeaderFields{
+			LastCommitHash:  bytes.Repeat([]byte{0x21}, 32),
+			ConsensusHash:   bytes.Repeat([]byte{0x22}, 32),
+			LastResultsHash: bytes.Repeat([]byte{0x23}, 32),
+		},
+	}
+
+	unknown := header.ToProto().ProtoReflect().GetUnknown()
+	require.NotEmpty(t, unknown, "legacy fields should be serialized into unknown proto fields")
+
+	raw, err := header.MarshalBinary()
+	require.NoError(t, err)
+	require.NotEmpty(t, raw)
+
+	var decoded Header
+	require.NoError(t, decoded.UnmarshalBinary(raw))
+	require.NotNil(t, decoded.Legacy)
+	require.False(t, decoded.Legacy.IsZero())
+
+	assert.Equal(t, header.Legacy.LastCommitHash, decoded.Legacy.LastCommitHash)
+	assert.Equal(t, header.Legacy.ConsensusHash, decoded.Legacy.ConsensusHash)
+	assert.Equal(t, header.Legacy.LastResultsHash, decoded.Legacy.LastResultsHash)
+
+	origHash := header.Hash()
+	decodedHash := decoded.Hash()
+	require.NotNil(t, origHash)
+	require.NotNil(t, decodedHash)
+	assert.Equal(t, origHash, decodedHash)
+
+	legacyHash, err := header.HashLegacy()
+	require.NoError(t, err)
+	assert.Equal(t, legacyHash, origHash)
+}
+
 // TestProtoConversionConsistency_AllTypes checks that ToProto/FromProto are true inverses for all major types.
 func TestProtoConversionConsistency_AllTypes(t *testing.T) {
 	// Header
@@ -393,4 +441,37 @@ func TestProtoConversionConsistency_AllTypes(t *testing.T) {
 	s2 := &State{}
 	assert.NoError(t, s2.FromProto(protoState))
 	assert.Equal(t, s, s2)
+}
+
+// TestHeaderSerializationSize verifies the serialized size of a header remains constant.
+// If this test fails, it means the size of the header has changed, which may impact
+// network bandwidth, storage requirements, and protocol compatibility. Review the changes
+// carefully and update the expected size if the change is intentional.
+func TestHeaderSerializationSize(t *testing.T) {
+	t.Parallel()
+	require := require.New(t)
+
+	h := Header{
+		Version: Version{
+			Block: 1,
+			App:   2,
+		},
+		BaseHeader: BaseHeader{
+			Height:  3,
+			Time:    4567,
+			ChainID: "test",
+		},
+		LastHeaderHash:  make(Hash, 32),
+		DataHash:        make(Hash, 32),
+		AppHash:         make(Hash, 32),
+		ProposerAddress: make([]byte, 20),
+		ValidatorHash:   make(Hash, 32),
+	}
+
+	// Marshal the header to binary
+	blob, err := h.MarshalBinary()
+	require.NoError(err)
+
+	assert.Equal(t, len(blob), 175, "Serialized header size has changed")
+
 }

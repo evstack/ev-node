@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"crypto/sha256"
 	"fmt"
 
 	ds "github.com/ipfs/go-datastore"
@@ -69,9 +70,9 @@ func (b *DefaultBatch) SaveBlockData(header *types.SignedHeader, data *types.Dat
 		return fmt.Errorf("failed to put signature blob in batch: %w", err)
 	}
 
-	headerHash := types.HeaderHash(headerBlob)
+	headerHash := sha256.Sum256(headerBlob)
 	heightBytes := encodeHeight(height)
-	if err := b.batch.Put(b.ctx, ds.NewKey(getIndexKey(headerHash)), heightBytes); err != nil {
+	if err := b.batch.Put(b.ctx, ds.NewKey(getIndexKey(headerHash[:])), heightBytes); err != nil {
 		return fmt.Errorf("failed to put index key in batch: %w", err)
 	}
 
