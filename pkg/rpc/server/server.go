@@ -344,7 +344,7 @@ func (h *HealthServer) Livez(
 			failThreshold := blockTime * healthCheckFailMultiplier
 
 			if timeSinceLastBlock > failThreshold {
-				h.logger.Warn().
+				h.logger.Error().
 					Dur("time_since_last_block", timeSinceLastBlock).
 					Dur("fail_threshold", failThreshold).
 					Uint64("last_block_height", state.LastBlockHeight).
