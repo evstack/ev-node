@@ -23,15 +23,23 @@ import (
 	rpc "github.com/evstack/ev-node/types/pb/evnode/v1/v1connect"
 )
 
-// setupTestServer creates a test server with mock store and mock p2p manager
-func setupTestServer(t *testing.T, mockStore *mocks.MockStore, mockP2P *mocks.MockP2PRPC) (*httptest.Server, *Client) {
+// setupTestServer creates a test server with mock store and mock p2p manager.
+// An optional custom config can be provided; if not provided, uses DefaultConfig with test-headers namespace.
+func setupTestServer(t *testing.T, mockStore *mocks.MockStore, mockP2P *mocks.MockP2PRPC, customConfig ...config.Config) (*httptest.Server, *Client) {
 	// Create a new HTTP test server
 	mux := http.NewServeMux()
 
 	// Create the servers
 	logger := zerolog.Nop()
-	testConfig := config.DefaultConfig()
-	testConfig.DA.Namespace = "test-headers"
+
+	// Use custom config if provided, otherwise use default
+	var testConfig config.Config
+	if len(customConfig) > 0 {
+		testConfig = customConfig[0]
+	} else {
+		testConfig = config.DefaultConfig()
+		testConfig.DA.Namespace = "test-headers"
+	}
 
 	storeServer := server.NewStoreServer(mockStore, logger)
 	p2pServer := server.NewP2PServer(mockP2P)
@@ -271,10 +279,8 @@ func TestClientGetHealth(t *testing.T) {
 		mockStore.On("GetState", mock.Anything).Return(state, nil)
 
 		// Create custom test server with aggregator config
-		testServer := createCustomTestServer(t, mockStore, mockP2P, testConfig)
+		testServer, client := setupTestServer(t, mockStore, mockP2P, testConfig)
 		defer testServer.Close()
-
-		client := NewClient(testServer.URL)
 		healthStatus, err := client.GetHealth(context.Background())
 
 		require.NoError(t, err)
@@ -297,10 +303,9 @@ func TestClientGetHealth(t *testing.T) {
 		}
 		mockStore.On("GetState", mock.Anything).Return(state, nil)
 
-		testServer := createCustomTestServer(t, mockStore, mockP2P, testConfig)
+		testServer, client := setupTestServer(t, mockStore, mockP2P, testConfig)
 		defer testServer.Close()
 
-		client := NewClient(testServer.URL)
 		healthStatus, err := client.GetHealth(context.Background())
 
 		require.NoError(t, err)
@@ -323,41 +328,15 @@ func TestClientGetHealth(t *testing.T) {
 		}
 		mockStore.On("GetState", mock.Anything).Return(state, nil)
 
-		testServer := createCustomTestServer(t, mockStore, mockP2P, testConfig)
+		testServer, client := setupTestServer(t, mockStore, mockP2P, testConfig)
 		defer testServer.Close()
 
-		client := NewClient(testServer.URL)
 		healthStatus, err := client.GetHealth(context.Background())
 
 		require.NoError(t, err)
 		require.Equal(t, "FAIL", healthStatus.String())
 		mockStore.AssertExpectations(t)
 	})
-}
-
-// createCustomTestServer creates a test server with custom configuration
-func createCustomTestServer(t *testing.T, mockStore *mocks.MockStore, mockP2P *mocks.MockP2PRPC, testConfig config.Config) *httptest.Server {
-	mux := http.NewServeMux()
-
-	logger := zerolog.Nop()
-	storeServer := server.NewStoreServer(mockStore, logger)
-	p2pServer := server.NewP2PServer(mockP2P)
-	healthServer := server.NewHealthServer(mockStore, testConfig, logger)
-	configServer := server.NewConfigServer(testConfig, nil, logger)
-
-	storePath, storeHandler := rpc.NewStoreServiceHandler(storeServer)
-	mux.Handle(storePath, storeHandler)
-
-	p2pPath, p2pHandler := rpc.NewP2PServiceHandler(p2pServer)
-	mux.Handle(p2pPath, p2pHandler)
-
-	healthPath, healthHandler := rpc.NewHealthServiceHandler(healthServer)
-	mux.Handle(healthPath, healthHandler)
-
-	configPath, configHandler := rpc.NewConfigServiceHandler(configServer)
-	mux.Handle(configPath, configHandler)
-
-	return httptest.NewServer(h2c.NewHandler(mux, &http2.Server{}))
 }
 
 func TestClientGetNamespace(t *testing.T) {
