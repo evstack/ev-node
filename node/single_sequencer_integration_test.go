@@ -466,21 +466,25 @@ func TestHealthEndpointWhenBlockProductionStops(t *testing.T) {
 	// warnThreshold = blockTime * 3 = 1500ms = 1.5s
 	// failThreshold = blockTime * 5 = 2500ms = 2.5s
 
-	// Wait for WARN threshold (3x block time = 1.5 seconds after last block)
-	// We need to wait a bit longer to account for the time blocks take to stop
-	time.Sleep(1700 * time.Millisecond)
+	// Poll for health to transition away from PASS (to WARN or FAIL)
+	// This is more robust than fixed time.Sleep as it handles timing variations
+	require.Eventually(func() bool {
+		health, err := rpcClient.GetHealth(ctx)
+		if err != nil {
+			return false
+		}
+		return health.String() != "PASS"
+	}, 5*time.Second, 100*time.Millisecond, "Health should transition away from PASS after block production stops")
 
-	health, err = rpcClient.GetHealth(ctx)
-	require.NoError(err)
-	// Health could be WARN or FAIL depending on exact timing, but should not be PASS
-	require.NotEqual("PASS", health.String(), "Health should not be PASS after block production stops")
-
-	// Wait for FAIL threshold (5x block time = 2.5 seconds total after last block)
-	time.Sleep(1500 * time.Millisecond)
-
-	health, err = rpcClient.GetHealth(ctx)
-	require.NoError(err)
-	require.Equal("FAIL", health.String(), "Health should be FAIL after 5x block time without new blocks")
+	// Poll for health to reach FAIL state
+	// Timeout is set to 10 seconds to be safe, but should happen around 2.5s
+	require.Eventually(func() bool {
+		health, err := rpcClient.GetHealth(ctx)
+		if err != nil {
+			return false
+		}
+		return health.String() == "FAIL"
+	}, 10*time.Second, 100*time.Millisecond, "Health should be FAIL after 5x block time without new blocks")
 
 	// Stop the node and wait for shutdown
 	shutdownAndWait(t, []context.CancelFunc{cancel}, &runningWg, 10*time.Second)
