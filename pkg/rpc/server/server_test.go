@@ -361,10 +361,132 @@ func TestP2PServer_GetNetInfo(t *testing.T) {
 }
 
 func TestHealthServer_Livez(t *testing.T) {
-	h := NewHealthServer()
-	resp, err := h.Livez(context.Background(), connect.NewRequest(&emptypb.Empty{}))
-	require.NoError(t, err)
-	require.Equal(t, pb.HealthStatus_PASS, resp.Msg.Status)
+	logger := zerolog.Nop()
+
+	t.Run("non-aggregator always returns PASS", func(t *testing.T) {
+		mockStore := mocks.NewMockStore(t)
+		testConfig := config.DefaultConfig()
+		testConfig.Node.Aggregator = false
+
+		h := NewHealthServer(mockStore, testConfig, logger)
+		resp, err := h.Livez(context.Background(), connect.NewRequest(&emptypb.Empty{}))
+		require.NoError(t, err)
+		require.Equal(t, pb.HealthStatus_PASS, resp.Msg.Status)
+	})
+
+	t.Run("aggregator with no blocks returns PASS", func(t *testing.T) {
+		mockStore := mocks.NewMockStore(t)
+		testConfig := config.DefaultConfig()
+		testConfig.Node.Aggregator = true
+
+		// State with no blocks yet
+		state := types.State{
+			LastBlockHeight: 0,
+		}
+		mockStore.On("GetState", mock.Anything).Return(state, nil)
+
+		h := NewHealthServer(mockStore, testConfig, logger)
+		resp, err := h.Livez(context.Background(), connect.NewRequest(&emptypb.Empty{}))
+		require.NoError(t, err)
+		require.Equal(t, pb.HealthStatus_PASS, resp.Msg.Status)
+		mockStore.AssertExpectations(t)
+	})
+
+	t.Run("aggregator with recent blocks returns PASS", func(t *testing.T) {
+		mockStore := mocks.NewMockStore(t)
+		testConfig := config.DefaultConfig()
+		testConfig.Node.Aggregator = true
+		testConfig.Node.BlockTime.Duration = 1 * time.Second
+
+		// State with recent block
+		state := types.State{
+			LastBlockHeight: 100,
+			LastBlockTime:   time.Now().Add(-500 * time.Millisecond), // Recent block
+		}
+		mockStore.On("GetState", mock.Anything).Return(state, nil)
+
+		h := NewHealthServer(mockStore, testConfig, logger)
+		resp, err := h.Livez(context.Background(), connect.NewRequest(&emptypb.Empty{}))
+		require.NoError(t, err)
+		require.Equal(t, pb.HealthStatus_PASS, resp.Msg.Status)
+		mockStore.AssertExpectations(t)
+	})
+
+	t.Run("aggregator with slow block production returns WARN", func(t *testing.T) {
+		mockStore := mocks.NewMockStore(t)
+		testConfig := config.DefaultConfig()
+		testConfig.Node.Aggregator = true
+		testConfig.Node.BlockTime.Duration = 1 * time.Second
+
+		// State with block older than 3x block time (warn threshold)
+		state := types.State{
+			LastBlockHeight: 100,
+			LastBlockTime:   time.Now().Add(-4 * time.Second), // 4 seconds ago > 3x block time
+		}
+		mockStore.On("GetState", mock.Anything).Return(state, nil)
+
+		h := NewHealthServer(mockStore, testConfig, logger)
+		resp, err := h.Livez(context.Background(), connect.NewRequest(&emptypb.Empty{}))
+		require.NoError(t, err)
+		require.Equal(t, pb.HealthStatus_WARN, resp.Msg.Status)
+		mockStore.AssertExpectations(t)
+	})
+
+	t.Run("aggregator with stopped block production returns FAIL", func(t *testing.T) {
+		mockStore := mocks.NewMockStore(t)
+		testConfig := config.DefaultConfig()
+		testConfig.Node.Aggregator = true
+		testConfig.Node.BlockTime.Duration = 1 * time.Second
+
+		// State with block older than 5x block time (fail threshold)
+		state := types.State{
+			LastBlockHeight: 100,
+			LastBlockTime:   time.Now().Add(-10 * time.Second), // 10 seconds ago > 5x block time
+		}
+		mockStore.On("GetState", mock.Anything).Return(state, nil)
+
+		h := NewHealthServer(mockStore, testConfig, logger)
+		resp, err := h.Livez(context.Background(), connect.NewRequest(&emptypb.Empty{}))
+		require.NoError(t, err)
+		require.Equal(t, pb.HealthStatus_FAIL, resp.Msg.Status)
+		mockStore.AssertExpectations(t)
+	})
+
+	t.Run("lazy aggregator uses lazy block interval for threshold", func(t *testing.T) {
+		mockStore := mocks.NewMockStore(t)
+		testConfig := config.DefaultConfig()
+		testConfig.Node.Aggregator = true
+		testConfig.Node.LazyMode = true
+		testConfig.Node.BlockTime.Duration = 1 * time.Second
+		testConfig.Node.LazyBlockInterval.Duration = 10 * time.Second
+
+		// State with block older than 3x lazy block interval (warn threshold)
+		state := types.State{
+			LastBlockHeight: 100,
+			LastBlockTime:   time.Now().Add(-35 * time.Second), // 35 seconds ago > 3x lazy interval (30s)
+		}
+		mockStore.On("GetState", mock.Anything).Return(state, nil)
+
+		h := NewHealthServer(mockStore, testConfig, logger)
+		resp, err := h.Livez(context.Background(), connect.NewRequest(&emptypb.Empty{}))
+		require.NoError(t, err)
+		require.Equal(t, pb.HealthStatus_WARN, resp.Msg.Status)
+		mockStore.AssertExpectations(t)
+	})
+
+	t.Run("aggregator with state error returns FAIL", func(t *testing.T) {
+		mockStore := mocks.NewMockStore(t)
+		testConfig := config.DefaultConfig()
+		testConfig.Node.Aggregator = true
+
+		mockStore.On("GetState", mock.Anything).Return(types.State{}, fmt.Errorf("state error"))
+
+		h := NewHealthServer(mockStore, testConfig, logger)
+		resp, err := h.Livez(context.Background(), connect.NewRequest(&emptypb.Empty{}))
+		require.NoError(t, err)
+		require.Equal(t, pb.HealthStatus_FAIL, resp.Msg.Status)
+		mockStore.AssertExpectations(t)
+	})
 }
 
 func TestHealthLiveEndpoint(t *testing.T) {

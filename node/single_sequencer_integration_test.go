@@ -418,3 +418,70 @@ func waitForBlockN(t *testing.T, n uint64, node *FullNode, blockInterval time.Du
 		return got >= n
 	}, timeout[0], blockInterval/2)
 }
+// TestHealthEndpointWhenBlockProductionStops verifies that the health endpoint
+// correctly reports WARN and FAIL states when an aggregator stops producing blocks.
+func TestHealthEndpointWhenBlockProductionStops(t *testing.T) {
+	require := require.New(t)
+
+	// Set up configuration with specific block time for predictable health checks
+	config := getTestConfig(t, 1)
+	config.Node.Aggregator = true
+	config.Node.BlockTime = evconfig.DurationWrapper{Duration: 500 * time.Millisecond}
+	config.Node.MaxPendingHeadersAndData = 2
+
+	// Set DA block time large enough to avoid header submission to DA layer
+	// This will cause block production to stop once MaxPendingHeadersAndData is reached
+	config.DA.BlockTime = evconfig.DurationWrapper{Duration: 100 * time.Second}
+
+	node, cleanup := createNodeWithCleanup(t, config)
+	defer cleanup()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	var runningWg sync.WaitGroup
+	startNodeInBackground(t, []*FullNode{node}, []context.Context{ctx}, &runningWg, 0, nil)
+
+	// Wait for first block to be produced
+	waitForBlockN(t, 1, node, config.Node.BlockTime.Duration)
+
+	// Create RPC client
+	rpcClient := NewRPCClient(config.RPC.Address)
+
+	// Verify health is PASS while blocks are being produced
+	health, err := rpcClient.GetHealth(ctx)
+	require.NoError(err)
+	require.Equal("PASS", health.String(), "Health should be PASS while producing blocks")
+
+	// Wait for block production to stop (when MaxPendingHeadersAndData is reached)
+	time.Sleep(time.Duration(config.Node.MaxPendingHeadersAndData+2) * config.Node.BlockTime.Duration)
+
+	// Get the height to confirm blocks stopped
+	height, err := getNodeHeight(node, Store)
+	require.NoError(err)
+	require.LessOrEqual(height, config.Node.MaxPendingHeadersAndData)
+
+	// Health check threshold calculations:
+	// blockTime = 500ms
+	// warnThreshold = blockTime * 3 = 1500ms = 1.5s
+	// failThreshold = blockTime * 5 = 2500ms = 2.5s
+
+	// Wait for WARN threshold (3x block time = 1.5 seconds after last block)
+	// We need to wait a bit longer to account for the time blocks take to stop
+	time.Sleep(1700 * time.Millisecond)
+
+	health, err = rpcClient.GetHealth(ctx)
+	require.NoError(err)
+	// Health could be WARN or FAIL depending on exact timing, but should not be PASS
+	require.NotEqual("PASS", health.String(), "Health should not be PASS after block production stops")
+
+	// Wait for FAIL threshold (5x block time = 2.5 seconds total after last block)
+	time.Sleep(1500 * time.Millisecond)
+
+	health, err = rpcClient.GetHealth(ctx)
+	require.NoError(err)
+	require.Equal("FAIL", health.String(), "Health should be FAIL after 5x block time without new blocks")
+
+	// Stop the node and wait for shutdown
+	shutdownAndWait(t, []context.CancelFunc{cancel}, &runningWg, 10*time.Second)
+}

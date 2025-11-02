@@ -30,13 +30,12 @@ func setupTestServer(t *testing.T, mockStore *mocks.MockStore, mockP2P *mocks.Mo
 
 	// Create the servers
 	logger := zerolog.Nop()
-	storeServer := server.NewStoreServer(mockStore, logger)
-	p2pServer := server.NewP2PServer(mockP2P)
-	healthServer := server.NewHealthServer()
-
-	// Create config server with test config
 	testConfig := config.DefaultConfig()
 	testConfig.DA.Namespace = "test-headers"
+
+	storeServer := server.NewStoreServer(mockStore, logger)
+	p2pServer := server.NewP2PServer(mockP2P)
+	healthServer := server.NewHealthServer(mockStore, testConfig, logger)
 	configServer := server.NewConfigServer(testConfig, nil, logger)
 
 	// Register the store service
@@ -242,21 +241,123 @@ func TestClientGetNetInfo(t *testing.T) {
 }
 
 func TestClientGetHealth(t *testing.T) {
-	// Create mocks
-	mockStore := mocks.NewMockStore(t)
-	mockP2P := mocks.NewMockP2PRPC(t)
+	t.Run("non-aggregator returns PASS", func(t *testing.T) {
+		mockStore := mocks.NewMockStore(t)
+		mockP2P := mocks.NewMockP2PRPC(t)
 
-	// Setup test server and client
-	testServer, client := setupTestServer(t, mockStore, mockP2P)
-	defer testServer.Close()
+		testServer, client := setupTestServer(t, mockStore, mockP2P)
+		defer testServer.Close()
 
-	// Call GetHealth
-	healthStatus, err := client.GetHealth(context.Background())
+		healthStatus, err := client.GetHealth(context.Background())
 
-	// Assert expectations
-	require.NoError(t, err)
-	// Health server always returns PASS in Livez
-	require.NotEqual(t, healthStatus.String(), "UNKNOWN")
+		require.NoError(t, err)
+		require.Equal(t, "PASS", healthStatus.String())
+	})
+
+	t.Run("aggregator with recent blocks returns PASS", func(t *testing.T) {
+		mockStore := mocks.NewMockStore(t)
+		mockP2P := mocks.NewMockP2PRPC(t)
+
+		// Setup aggregator config
+		testConfig := config.DefaultConfig()
+		testConfig.Node.Aggregator = true
+		testConfig.Node.BlockTime.Duration = 1 * time.Second
+
+		// Create state with recent block
+		state := types.State{
+			LastBlockHeight: 100,
+			LastBlockTime:   time.Now().Add(-500 * time.Millisecond),
+		}
+		mockStore.On("GetState", mock.Anything).Return(state, nil)
+
+		// Create custom test server with aggregator config
+		testServer := createCustomTestServer(t, mockStore, mockP2P, testConfig)
+		defer testServer.Close()
+
+		client := NewClient(testServer.URL)
+		healthStatus, err := client.GetHealth(context.Background())
+
+		require.NoError(t, err)
+		require.Equal(t, "PASS", healthStatus.String())
+		mockStore.AssertExpectations(t)
+	})
+
+	t.Run("aggregator with slow block production returns WARN", func(t *testing.T) {
+		mockStore := mocks.NewMockStore(t)
+		mockP2P := mocks.NewMockP2PRPC(t)
+
+		testConfig := config.DefaultConfig()
+		testConfig.Node.Aggregator = true
+		testConfig.Node.BlockTime.Duration = 1 * time.Second
+
+		// State with block older than 3x block time
+		state := types.State{
+			LastBlockHeight: 100,
+			LastBlockTime:   time.Now().Add(-4 * time.Second),
+		}
+		mockStore.On("GetState", mock.Anything).Return(state, nil)
+
+		testServer := createCustomTestServer(t, mockStore, mockP2P, testConfig)
+		defer testServer.Close()
+
+		client := NewClient(testServer.URL)
+		healthStatus, err := client.GetHealth(context.Background())
+
+		require.NoError(t, err)
+		require.Equal(t, "WARN", healthStatus.String())
+		mockStore.AssertExpectations(t)
+	})
+
+	t.Run("aggregator with stopped block production returns FAIL", func(t *testing.T) {
+		mockStore := mocks.NewMockStore(t)
+		mockP2P := mocks.NewMockP2PRPC(t)
+
+		testConfig := config.DefaultConfig()
+		testConfig.Node.Aggregator = true
+		testConfig.Node.BlockTime.Duration = 1 * time.Second
+
+		// State with block older than 5x block time
+		state := types.State{
+			LastBlockHeight: 100,
+			LastBlockTime:   time.Now().Add(-10 * time.Second),
+		}
+		mockStore.On("GetState", mock.Anything).Return(state, nil)
+
+		testServer := createCustomTestServer(t, mockStore, mockP2P, testConfig)
+		defer testServer.Close()
+
+		client := NewClient(testServer.URL)
+		healthStatus, err := client.GetHealth(context.Background())
+
+		require.NoError(t, err)
+		require.Equal(t, "FAIL", healthStatus.String())
+		mockStore.AssertExpectations(t)
+	})
+}
+
+// createCustomTestServer creates a test server with custom configuration
+func createCustomTestServer(t *testing.T, mockStore *mocks.MockStore, mockP2P *mocks.MockP2PRPC, testConfig config.Config) *httptest.Server {
+	mux := http.NewServeMux()
+
+	logger := zerolog.Nop()
+	storeServer := server.NewStoreServer(mockStore, logger)
+	p2pServer := server.NewP2PServer(mockP2P)
+	healthServer := server.NewHealthServer(mockStore, testConfig, logger)
+	configServer := server.NewConfigServer(testConfig, nil, logger)
+
+	storePath, storeHandler := rpc.NewStoreServiceHandler(storeServer)
+	mux.Handle(storePath, storeHandler)
+
+	p2pPath, p2pHandler := rpc.NewP2PServiceHandler(p2pServer)
+	mux.Handle(p2pPath, p2pHandler)
+
+	healthPath, healthHandler := rpc.NewHealthServiceHandler(healthServer)
+	mux.Handle(healthPath, healthHandler)
+
+	configPath, configHandler := rpc.NewConfigServiceHandler(configServer)
+	mux.Handle(configPath, configHandler)
+
+	return httptest.NewServer(h2c.NewHandler(mux, &http2.Server{}))
 }
 
 func TestClientGetNamespace(t *testing.T) {

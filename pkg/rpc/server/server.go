@@ -28,6 +28,16 @@ import (
 	rpc "github.com/evstack/ev-node/types/pb/evnode/v1/v1connect"
 )
 
+const (
+	// healthCheckWarnMultiplier is the multiplier for block time to determine WARN threshold
+	// If no block has been produced in (blockTime * healthCheckWarnMultiplier), return WARN
+	healthCheckWarnMultiplier = 3
+
+	// healthCheckFailMultiplier is the multiplier for block time to determine FAIL threshold
+	// If no block has been produced in (blockTime * healthCheckFailMultiplier), return FAIL
+	healthCheckFailMultiplier = 5
+)
+
 var _ rpc.StoreServiceHandler = (*StoreServer)(nil)
 
 // StoreServer implements the StoreService defined in the proto file
@@ -288,11 +298,19 @@ func (p *P2PServer) GetNetInfo(
 }
 
 // HealthServer implements the HealthService defined in the proto file
-type HealthServer struct{}
+type HealthServer struct {
+	store  store.Store
+	config config.Config
+	logger zerolog.Logger
+}
 
 // NewHealthServer creates a new HealthServer instance
-func NewHealthServer() *HealthServer {
-	return &HealthServer{}
+func NewHealthServer(store store.Store, config config.Config, logger zerolog.Logger) *HealthServer {
+	return &HealthServer{
+		store:  store,
+		config: config,
+		logger: logger,
+	}
 }
 
 // Livez implements the HealthService.Livez RPC
@@ -300,7 +318,56 @@ func (h *HealthServer) Livez(
 	ctx context.Context,
 	req *connect.Request[emptypb.Empty],
 ) (*connect.Response[pb.GetHealthResponse], error) {
-	// always return healthy
+	// For aggregator nodes, check if block production is healthy
+	if h.config.Node.Aggregator {
+		state, err := h.store.GetState(ctx)
+		if err != nil {
+			h.logger.Error().Err(err).Msg("Failed to get state for health check")
+			return connect.NewResponse(&pb.GetHealthResponse{
+				Status: pb.HealthStatus_FAIL,
+			}), nil
+		}
+
+		// If we have blocks, check if the last block time is recent
+		if state.LastBlockHeight > 0 {
+			timeSinceLastBlock := time.Since(state.LastBlockTime)
+
+			// Calculate the threshold based on block time
+			blockTime := h.config.Node.BlockTime.Duration
+
+			// For lazy mode, use the lazy block interval instead
+			if h.config.Node.LazyMode {
+				blockTime = h.config.Node.LazyBlockInterval.Duration
+			}
+
+			warnThreshold := blockTime * healthCheckWarnMultiplier
+			failThreshold := blockTime * healthCheckFailMultiplier
+
+			if timeSinceLastBlock > failThreshold {
+				h.logger.Warn().
+					Dur("time_since_last_block", timeSinceLastBlock).
+					Dur("fail_threshold", failThreshold).
+					Uint64("last_block_height", state.LastBlockHeight).
+					Time("last_block_time", state.LastBlockTime).
+					Msg("Health check: node has stopped producing blocks (FAIL)")
+				return connect.NewResponse(&pb.GetHealthResponse{
+					Status: pb.HealthStatus_FAIL,
+				}), nil
+			} else if timeSinceLastBlock > warnThreshold {
+				h.logger.Warn().
+					Dur("time_since_last_block", timeSinceLastBlock).
+					Dur("warn_threshold", warnThreshold).
+					Uint64("last_block_height", state.LastBlockHeight).
+					Time("last_block_time", state.LastBlockTime).
+					Msg("Health check: block production is slow (WARN)")
+				return connect.NewResponse(&pb.GetHealthResponse{
+					Status: pb.HealthStatus_WARN,
+				}), nil
+			}
+		}
+	}
+
+	// For non-aggregator nodes or if checks pass, return healthy
 	return connect.NewResponse(&pb.GetHealthResponse{
 		Status: pb.HealthStatus_PASS,
 	}), nil
@@ -310,7 +377,7 @@ func (h *HealthServer) Livez(
 func NewServiceHandler(store store.Store, peerManager p2p.P2PRPC, proposerAddress []byte, logger zerolog.Logger, config config.Config, bestKnown BestKnownHeightProvider) (http.Handler, error) {
 	storeServer := NewStoreServer(store, logger)
 	p2pServer := NewP2PServer(peerManager)
-	healthServer := NewHealthServer()
+	healthServer := NewHealthServer(store, config, logger)
 	configServer := NewConfigServer(config, proposerAddress, logger)
 
 	mux := http.NewServeMux()
