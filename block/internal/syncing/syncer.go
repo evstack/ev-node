@@ -440,6 +440,9 @@ func (s *Syncer) waitForNewP2PHeights() {
 		if s.dataStore.Store().Height() < syncHeadData.Height() {
 			s.p2pHandler.ProcessDataRange(s.ctx, s.dataStore.Store().Height()+1, syncHeadData.Height(), s.heightInCh)
 		}
+
+		// and flush all pending
+		s.processPendingEvents()
 	}
 }
 
