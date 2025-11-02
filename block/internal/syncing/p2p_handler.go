@@ -55,11 +55,9 @@ func (h *P2PHandler) ProcessHeaderRange(ctx context.Context, startHeight, endHei
 		default:
 		}
 
-		// Create a timeout context for each GetByHeight call to prevent blocking
-		timeoutCtx, cancel := context.WithTimeout(ctx, 500*time.Millisecond)
-		header, err := h.headerStore.GetByHeight(timeoutCtx, height)
-		cancel()
-
+		// TODO @tac0turtle: it is desirable to block here as go-header store automatically subscribes to the new height
+		//  if it is not available, and returns it when it becomes available (appended)
+		header, err := h.headerStore.GetByHeight(ctx, height)
 		if err != nil {
 			if errors.Is(err, context.DeadlineExceeded) {
 				h.logger.Debug().Uint64("height", height).Msg("timeout waiting for header from store, will retry later")
@@ -79,10 +77,12 @@ func (h *P2PHandler) ProcessHeaderRange(ctx context.Context, startHeight, endHei
 
 		// Get corresponding data (empty data are still broadcasted by peers)
 		var data *types.Data
-		timeoutCtx, cancel = context.WithTimeout(ctx, 500*time.Millisecond)
+
+		// TODO @tac0turtle: we can provide a sane timeout here bc we expect header + data not to
+		//  drift too much
+		timeoutCtx, cancel := context.WithTimeout(ctx, time.Second*2)
 		retrievedData, err := h.dataStore.GetByHeight(timeoutCtx, height)
 		cancel()
-
 		if err != nil {
 			if errors.Is(err, context.DeadlineExceeded) {
 				h.logger.Debug().Uint64("height", height).Msg("timeout waiting for data from store, will retry later")
@@ -141,11 +141,8 @@ func (h *P2PHandler) ProcessDataRange(ctx context.Context, startHeight, endHeigh
 		default:
 		}
 
-		// Create a timeout context for each GetByHeight call to prevent blocking
-		timeoutCtx, cancel := context.WithTimeout(ctx, 500*time.Millisecond)
-		data, err := h.dataStore.GetByHeight(timeoutCtx, height)
-		cancel()
-
+		// TODO @tac0turtle: same here
+		data, err := h.dataStore.GetByHeight(ctx, height)
 		if err != nil {
 			if errors.Is(err, context.DeadlineExceeded) {
 				h.logger.Debug().Uint64("height", height).Msg("timeout waiting for data from store, will retry later")
@@ -158,10 +155,9 @@ func (h *P2PHandler) ProcessDataRange(ctx context.Context, startHeight, endHeigh
 		}
 
 		// Get corresponding header with timeout
-		timeoutCtx, cancel = context.WithTimeout(ctx, 500*time.Millisecond)
+		timeoutCtx, cancel := context.WithTimeout(ctx, time.Second*2)
 		header, err := h.headerStore.GetByHeight(timeoutCtx, height)
 		cancel()
-
 		if err != nil {
 			if errors.Is(err, context.DeadlineExceeded) {
 				h.logger.Debug().Uint64("height", height).Msg("timeout waiting for header from store, will retry later")

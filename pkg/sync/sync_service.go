@@ -116,6 +116,10 @@ func newSyncService[H header.Header[H]](
 	}, nil
 }
 
+func (syncService *SyncService[H]) SyncHead(ctx context.Context) (H, error) {
+	return syncService.syncer.Head(ctx)
+}
+
 // Store returns the store of the SyncService
 func (syncService *SyncService[H]) Store() header.Store[H] {
 	return syncService.store

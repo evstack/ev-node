@@ -124,18 +124,14 @@ func (s *Syncer) Start(ctx context.Context) error {
 	s.p2pHandler = NewP2PHandler(s.headerStore.Store(), s.dataStore.Store(), s.cache, s.genesis, s.logger)
 
 	// Start main processing loop
-	s.wg.Add(1)
-	go func() {
-		defer s.wg.Done()
+	s.wg.Go(func() {
 		s.processLoop()
-	}()
+	})
 
-	// Start sync loop (DA and P2P retrieval)
-	s.wg.Add(1)
-	go func() {
-		defer s.wg.Done()
+	// Start P2p + DA syncing loop
+	s.wg.Go(func() {
 		s.syncLoop()
-	}()
+	})
 
 	s.logger.Info().Msg("syncer started")
 	return nil
@@ -244,11 +240,10 @@ func (s *Syncer) processLoop() {
 	}
 }
 
-// syncLoop handles synchronization from DA and P2P sources.
+// syncLoop handles the node's initial sync process from both
+// DA and P2P sources and then spawns tip-tracking routines
+// upon successful initial sync.
 func (s *Syncer) syncLoop() {
-	s.logger.Info().Msg("starting sync loop")
-	defer s.logger.Info().Msg("sync loop stopped")
-
 	if delay := time.Until(s.genesis.StartTime); delay > 0 {
 		s.logger.Info().Dur("delay", delay).Msg("waiting until genesis to start syncing")
 		select {
@@ -258,25 +253,104 @@ func (s *Syncer) syncLoop() {
 		}
 	}
 
+	s.logger.Info().Msg("starting sync loop")
+	defer s.logger.Info().Msg("sync loop stopped")
+
+	// first flush any existing pending events
+	s.processPendingEvents()
+
+	// get starting height of node
+	ctx, cancel := context.WithTimeout(s.ctx, time.Second) // TODO @tac0turtle: you can adjust timeouts to realistic
+	startHeight, err := s.store.Height(ctx)
+	cancel()
+	if err != nil {
+		// TODO @tac0turtle: this would be fatal
+		s.logger.Error().Err(err).Msg("failed to get start height for sync loop")
+		return
+	}
+
+	wg := sync.WaitGroup{}
+	// check if p2p stores are behind the node's store. Note that processing
+	// header range requires the header to be available in the p2p store in
+	// order to proceed (regardless of height of data p2p store, so we only
+	// trigger processing for p2p header store
+	if s.headerStore.Store().Height() < startHeight {
+		// trigger sync job async
+		wg.Go(func() {
+			s.p2pHandler.ProcessHeaderRange(s.ctx, s.headerStore.Store().Height(), startHeight+1, s.heightInCh)
+		})
+	}
+
+	// check if DA is behind the node's store, and if so, sync.
+	if s.GetDAHeight() < startHeight {
+		// trigger sync job from DA async
+		wg.Go(func() {
+			s.syncDARange(startHeight)
+		})
+	}
+	wg.Wait()
+
+	// begin tip-tracking routines
+	s.wg.Go(func() {
+		s.waitForNewP2PHeights()
+	})
+	s.wg.Go(func() {
+		s.daRetrievalLoop()
+	})
+}
+
+func (s *Syncer) syncDARange(toHeight uint64) {
+	currentDAHeight := s.GetDAHeight()
+
+	for currentDAHeight <= toHeight {
+		events, err := s.daRetriever.RetrieveFromDA(s.ctx, currentDAHeight)
+		if err != nil {
+			if errors.Is(err, coreda.ErrBlobNotFound) {
+				// no data at this height, increase DA height
+				currentDAHeight++
+				s.SetDAHeight(currentDAHeight)
+				continue
+			}
+			s.logger.Error().Err(err).Uint64("da_height", currentDAHeight).Msg("failed to retrieve from DA during sync")
+			return
+		}
+
+		// Process DA events
+		for _, event := range events {
+			select {
+			case <-s.ctx.Done():
+				return
+			case s.heightInCh <- event:
+			default:
+				s.cache.SetPendingEvent(event.Header.Height(), &event)
+			}
+		}
+
+		// increase DA height
+		currentDAHeight++
+		s.SetDAHeight(currentDAHeight)
+	}
+}
+
+func (s *Syncer) daRetrievalLoop() {
+	s.logger.Info().Msg("starting DA retrieval loop")
+	defer s.logger.Info().Msg("DA retrieval loop stopped")
+
 	// Backoff control when DA replies with errors
 	nextDARequestAt := &time.Time{}
+
+	// TODO @tac0turtle, changed it to fire on Celestia block time
+	ticker := time.NewTicker(time.Second * 6)
+	defer ticker.Stop()
 
 	for {
 		select {
 		case <-s.ctx.Done():
 			return
+		case <-ticker.C:
+			s.tryFetchFromDA(nextDARequestAt)
+			s.processPendingEvents()
 		default:
-		}
-
-		s.processPendingEvents()
-		s.tryFetchFromP2P()
-		s.tryFetchFromDA(nextDARequestAt)
-
-		// Prevent busy-waiting when no events are processed
-		select {
-		case <-s.ctx.Done():
-			return
-		case <-time.After(min(10*time.Millisecond, s.config.Node.BlockTime.Duration)):
 		}
 	}
 }
@@ -333,28 +407,39 @@ func (s *Syncer) tryFetchFromDA(nextDARequestAt *time.Time) {
 	s.SetDAHeight(daHeight + 1)
 }
 
-// tryFetchFromP2P attempts to fetch events from P2P stores.
-// It processes both header and data ranges when the block ticker fires.
-// Returns true if any events were successfully processed.
-func (s *Syncer) tryFetchFromP2P() {
-	currentHeight, err := s.store.Height(s.ctx)
-	if err != nil {
-		s.logger.Error().Err(err).Msg("failed to get current height")
-		return
-	}
+// waitForNewP2PHeights waits for new headers or data to appear in the p2p
+// header/data stores and processes them.
+func (s *Syncer) waitForNewP2PHeights() {
+	// TODO @tac0turtle: ev-node expected blocktime here
+	ticker := time.NewTicker(time.Millisecond * 100)
+	defer ticker.Stop()
 
-	// Process headers
-	newHeaderHeight := s.headerStore.Store().Height()
-	if newHeaderHeight > currentHeight {
-		s.p2pHandler.ProcessHeaderRange(s.ctx, currentHeight+1, newHeaderHeight, s.heightInCh)
-	}
+	for {
+		select {
+		case <-s.ctx.Done():
+			return
+		default:
+		}
 
-	// Process data (if not already processed by headers)
-	newDataHeight := s.dataStore.Store().Height()
-	// TODO @MARKO: why only if newDataHeight != newHeaderHeight? why not process
-	//  just if newDataHeight > currentHeight ?
-	if newDataHeight != newHeaderHeight && newDataHeight > currentHeight {
-		s.p2pHandler.ProcessDataRange(s.ctx, currentHeight+1, newDataHeight, s.heightInCh)
+		syncHeadHeader, err := s.headerStore.SyncHead()
+		if err != nil {
+			s.logger.Error().Err(err).Msg("failed to get header p2p sync head")
+			continue
+		}
+
+		// try to process all headers between store's height and the syncer's head
+		s.p2pHandler.ProcessHeaderRange(s.ctx, s.headerStore.Store().Height()+1, syncHeadHeader.Height(), s.heightInCh)
+
+		// process data (if not already processed by headers)
+		syncHeadData, err := s.dataStore.SyncHead()
+		if err != nil {
+			s.logger.Error().Err(err).Msg("failed to get data p2p sync head")
+			continue
+		}
+
+		if s.dataStore.Store().Height() < syncHeadData.Height() {
+			s.p2pHandler.ProcessDataRange(s.ctx, s.dataStore.Store().Height()+1, syncHeadData.Height(), s.heightInCh)
+		}
 	}
 }
 
@@ -636,9 +721,6 @@ func (s *Syncer) processPendingEvents() {
 		case s.heightInCh <- heightEvent:
 			// Event was successfully sent and already removed by GetNextPendingEvent
 			s.logger.Debug().Uint64("height", nextHeight).Msg("sent pending event to processing")
-		case <-s.ctx.Done():
-			s.cache.SetPendingEvent(nextHeight, event)
-			return
 		default:
 			s.cache.SetPendingEvent(nextHeight, event)
 			return
