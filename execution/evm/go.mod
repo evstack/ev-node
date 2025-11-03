@@ -4,7 +4,7 @@ go 1.24.6
 
 require (
 	github.com/ethereum/go-ethereum v1.16.5
-	github.com/evstack/ev-node/core v1.0.0-beta.3
+	github.com/evstack/ev-node/core v1.0.0-beta.4
 	github.com/golang-jwt/jwt/v5 v5.3.0
 	github.com/rs/zerolog v1.34.0
 	github.com/stretchr/testify v1.11.1
