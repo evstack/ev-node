@@ -59,14 +59,33 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Determine if tag should be pushed
+        id: check-tag
+        run: |
+          TAG="${{ inputs.image-tag }}"
+          if [[ "$TAG" == sequencers/single/* ]]; then
+            echo "should-push=true" >> $GITHUB_OUTPUT
+            # Strip the sequencers/single/ prefix for docker tag
+            DOCKER_TAG="${TAG#sequencers/single/}"
+            echo "docker-tag=$DOCKER_TAG" >> $GITHUB_OUTPUT
+          elif [[ "$TAG" == pr-* ]]; then
+            echo "should-push=true" >> $GITHUB_OUTPUT
+            # Keep pr- tags as-is
+            echo "docker-tag=$TAG" >> $GITHUB_OUTPUT
+          else
+            echo "should-push=false" >> $GITHUB_OUTPUT
+            echo "docker-tag=$TAG" >> $GITHUB_OUTPUT
+          fi
+
       - name: Build and push ev-node-evm-single Docker image
+        if: steps.check-tag.outputs.should-push == 'true'
         uses: docker/build-push-action@v6
         with:
           context: .
           file: apps/evm/single/Dockerfile
           push: true
           platforms: linux/amd64,linux/arm64
-          tags: ghcr.io/${{ github.repository_owner }}/ev-node-evm-single:${{ inputs.image-tag }}
+          tags: ghcr.io/${{ github.repository_owner }}/ev-node-evm-single:${{ steps.check-tag.outputs.docker-tag }}
 
   build-local-da-image:
     name: Build local-da Docker Image

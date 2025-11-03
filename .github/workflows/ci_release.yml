@@ -3,9 +3,9 @@ on:
   push:
     branches:
       - main
-    # Trigger on version tags
+    # Trigger on all tags
     tags:
-      - "v*"
+      - "*"
   pull_request:
   merge_group:
   workflow_dispatch:
