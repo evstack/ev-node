@@ -77,7 +77,7 @@ jobs:
             const versions = await github.paginate(listFn, listParams);
             core.info(`Found ${versions.length} versions`);
 
-            const hashRegex = /^[0-9a-f]{40}$/i;
+            const hashRegex = /^(?:sha256:)?[0-9a-f]{7,64}$/i;
             let deleted = 0;
             for (const version of versions) {
               const created = new Date(version.created_at).getTime();
@@ -86,7 +86,16 @@ jobs:
               }
 
               const tags = version.metadata?.container?.tags ?? [];
-              const hasCommitTag = tags.some(tag => hashRegex.test(tag));
+              const digest = version.metadata?.container?.digest;
+              const identifiers = [...tags];
+              if (digest) {
+                identifiers.push(digest);
+              }
+              if (version.name) {
+                identifiers.push(version.name);
+              }
+
+              const hasCommitTag = identifiers.some(id => hashRegex.test(id));
               if (!hasCommitTag) {
                 continue;
               }
