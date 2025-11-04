@@ -21,7 +21,6 @@ import (
 	"github.com/evstack/ev-node/pkg/config"
 	"github.com/evstack/ev-node/pkg/genesis"
 	"github.com/evstack/ev-node/pkg/store"
-	syncnotifier "github.com/evstack/ev-node/pkg/sync/notifier"
 	"github.com/evstack/ev-node/types"
 )
 
@@ -30,8 +29,7 @@ type daRetriever interface {
 }
 
 type p2pHandler interface {
-	ProcessHeaderRange(ctx context.Context, fromHeight, toHeight uint64, heightInCh chan<- common.DAHeightEvent)
-	ProcessDataRange(ctx context.Context, fromHeight, toHeight uint64, heightInCh chan<- common.DAHeightEvent)
+	ProcessHeight(ctx context.Context, height uint64, heightInCh chan<- common.DAHeightEvent) error
 	SetProcessedHeight(height uint64)
 }
 
@@ -77,9 +75,9 @@ type Syncer struct {
 	cancel context.CancelFunc
 	wg     sync.WaitGroup
 
-	// Notifier subscriptions
-	headerSub *syncnotifier.Subscription
-	dataSub   *syncnotifier.Subscription
+	// P2P wait coordination
+	p2pWaitMu    sync.Mutex
+	p2pWaitState p2pWaitState
 }
 
 // NewSyncer creates a new block syncer
@@ -134,10 +132,6 @@ func (s *Syncer) Start(ctx context.Context) error {
 		s.p2pHandler.SetProcessedHeight(currentHeight)
 	}
 
-	if err := s.startP2PListeners(); err != nil {
-		return fmt.Errorf("failed to start P2P listeners: %w", err)
-	}
-
 	// Start main processing loop
 	s.wg.Add(1)
 	go func() {
@@ -157,12 +151,7 @@ func (s *Syncer) Stop() error {
 	if s.cancel != nil {
 		s.cancel()
 	}
-	if s.headerSub != nil {
-		s.headerSub.Cancel()
-	}
-	if s.dataSub != nil {
-		s.dataSub.Cancel()
-	}
+	s.cancelP2PWait(0)
 	s.wg.Wait()
 	s.logger.Info().Msg("syncer stopped")
 	return nil
@@ -262,60 +251,10 @@ func (s *Syncer) processLoop() {
 }
 
 func (s *Syncer) startSyncWorkers() {
-	s.wg.Add(2)
+	s.wg.Add(3)
 	go s.daWorkerLoop()
 	go s.pendingWorkerLoop()
-}
-
-func (s *Syncer) startP2PListeners() error {
-	headerNotifier := s.headerStore.Notifier()
-	if headerNotifier == nil {
-		return errors.New("header notifier not configured")
-	}
-
-	dataNotifier := s.dataStore.Notifier()
-	if dataNotifier == nil {
-		return errors.New("data notifier not configured")
-	}
-
-	s.headerSub = headerNotifier.Subscribe()
-	s.wg.Add(1)
-	go s.consumeNotifierEvents(s.headerSub, syncnotifier.EventTypeHeader)
-
-	s.dataSub = dataNotifier.Subscribe()
-	s.wg.Add(1)
-	go s.consumeNotifierEvents(s.dataSub, syncnotifier.EventTypeData)
-
-	return nil
-}
-
-func (s *Syncer) consumeNotifierEvents(sub *syncnotifier.Subscription, expected syncnotifier.EventType) {
-	defer s.wg.Done()
-
-	if !s.waitForGenesis() {
-		return
-	}
-
-	logger := s.logger.With().Str("event_type", string(expected)).Logger()
-	logger.Info().Msg("starting P2P notifier worker")
-	defer logger.Info().Msg("P2P notifier worker stopped")
-
-	for {
-		select {
-		case <-s.ctx.Done():
-			return
-		case evt, ok := <-sub.C:
-			if !ok {
-				return
-			}
-			if evt.Type != expected {
-				logger.Debug().Str("received_type", string(evt.Type)).Msg("ignoring notifier event with unexpected type")
-				continue
-			}
-			s.logger.Debug().Str("event_type", string(evt.Type)).Str("source", string(evt.Source)).Uint64("height", evt.Height).Msg("received store event")
-			s.tryFetchFromP2P()
-		}
-	}
+	go s.p2pWorkerLoop()
 }
 
 func (s *Syncer) daWorkerLoop() {
@@ -363,6 +302,65 @@ func (s *Syncer) pendingWorkerLoop() {
 			return
 		case <-ticker.C:
 			s.processPendingEvents()
+		}
+	}
+}
+
+func (s *Syncer) p2pWorkerLoop() {
+	defer s.wg.Done()
+
+	if !s.waitForGenesis() {
+		return
+	}
+
+	logger := s.logger.With().Str("worker", "p2p").Logger()
+	logger.Info().Msg("starting P2P worker")
+	defer logger.Info().Msg("P2P worker stopped")
+
+	for {
+		select {
+		case <-s.ctx.Done():
+			return
+		default:
+		}
+
+		currentHeight, err := s.store.Height(s.ctx)
+		if err != nil {
+			logger.Error().Err(err).Msg("failed to get current height for P2P worker")
+			if !s.sleepOrDone(50 * time.Millisecond) {
+				return
+			}
+			continue
+		}
+
+		targetHeight := currentHeight + 1
+		waitCtx, cancel := context.WithCancel(s.ctx)
+		s.setP2PWaitState(targetHeight, cancel)
+
+		err = s.p2pHandler.ProcessHeight(waitCtx, targetHeight, s.heightInCh)
+		s.clearP2PWaitState(targetHeight)
+		cancel()
+
+		if err != nil {
+			if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+				continue
+			}
+
+			if waitCtx.Err() == nil {
+				logger.Warn().Err(err).Uint64("height", targetHeight).Msg("P2P handler failed to process height")
+			}
+
+			if !s.sleepOrDone(50 * time.Millisecond) {
+				return
+			}
+			continue
+		}
+
+		if err := s.waitForStoreHeight(targetHeight); err != nil {
+			if errors.Is(err, context.Canceled) {
+				return
+			}
+			logger.Error().Err(err).Uint64("height", targetHeight).Msg("failed waiting for height commit")
 		}
 	}
 }
@@ -432,29 +430,6 @@ func (s *Syncer) tryFetchFromDA(nextDARequestAt *time.Time) {
 	s.SetDAHeight(daHeight + 1)
 }
 
-// tryFetchFromP2P attempts to fetch events from P2P stores.
-// It processes both header and data ranges when the block ticker fires.
-// Returns true if any events were successfully processed.
-func (s *Syncer) tryFetchFromP2P() {
-	currentHeight, err := s.store.Height(s.ctx)
-	if err != nil {
-		s.logger.Error().Err(err).Msg("failed to get current height")
-		return
-	}
-
-	// Process headers
-	newHeaderHeight := s.headerStore.Store().Height()
-	if newHeaderHeight > currentHeight {
-		s.p2pHandler.ProcessHeaderRange(s.ctx, currentHeight+1, newHeaderHeight, s.heightInCh)
-	}
-
-	// Process data (if not already processed by headers)
-	newDataHeight := s.dataStore.Store().Height()
-	if newDataHeight > currentHeight {
-		s.p2pHandler.ProcessDataRange(s.ctx, currentHeight+1, newDataHeight, s.heightInCh)
-	}
-}
-
 func (s *Syncer) processHeightEvent(event *common.DAHeightEvent) {
 	height := event.Header.Height()
 	headerHash := event.Header.Hash().String()
@@ -512,6 +487,9 @@ func (s *Syncer) processHeightEvent(event *common.DAHeightEvent) {
 		}
 		return
 	}
+
+	// Cancel any P2P wait that might still be blocked on this height
+	s.cancelP2PWait(height)
 
 	// only save to p2p stores if the event came from DA
 	if event.Source == common.SourceDA {
@@ -746,5 +724,68 @@ func (s *Syncer) processPendingEvents() {
 		}
 
 		nextHeight++
+	}
+}
+
+func (s *Syncer) waitForStoreHeight(target uint64) error {
+	for {
+		currentHeight, err := s.store.Height(s.ctx)
+		if err != nil {
+			return err
+		}
+
+		if currentHeight >= target {
+			return nil
+		}
+
+		if !s.sleepOrDone(10 * time.Millisecond) {
+			if s.ctx.Err() != nil {
+				return s.ctx.Err()
+			}
+		}
+	}
+}
+
+func (s *Syncer) sleepOrDone(duration time.Duration) bool {
+	timer := time.NewTimer(duration)
+	defer timer.Stop()
+
+	select {
+	case <-s.ctx.Done():
+		return false
+	case <-timer.C:
+		return true
+	}
+}
+
+type p2pWaitState struct {
+	height uint64
+	cancel context.CancelFunc
+}
+
+func (s *Syncer) setP2PWaitState(height uint64, cancel context.CancelFunc) {
+	s.p2pWaitMu.Lock()
+	s.p2pWaitState = p2pWaitState{
+		height: height,
+		cancel: cancel,
+	}
+	s.p2pWaitMu.Unlock()
+}
+
+func (s *Syncer) clearP2PWaitState(height uint64) {
+	s.p2pWaitMu.Lock()
+	if s.p2pWaitState.height == height {
+		s.p2pWaitState = p2pWaitState{}
+	}
+	s.p2pWaitMu.Unlock()
+}
+
+func (s *Syncer) cancelP2PWait(height uint64) {
+	s.p2pWaitMu.Lock()
+	defer s.p2pWaitMu.Unlock()
+
+	if s.p2pWaitState.cancel != nil && (height == 0 || s.p2pWaitState.height == height) {
+		s.p2pWaitState.cancel()
+		s.p2pWaitState = p2pWaitState{}
 	}
 }

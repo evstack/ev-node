@@ -71,9 +71,9 @@ func TestSyncer_BackoffOnDAError(t *testing.T) {
 			// Setup mocks
 			daRetriever := newMockdaRetriever(t)
 			p2pHandler := newMockp2pHandler(t)
+			p2pHandler.On("ProcessHeight", mock.Anything, mock.Anything, mock.Anything).Return(nil).Maybe()
 			syncer.daRetriever = daRetriever
 			syncer.p2pHandler = p2pHandler
-			p2pHandler.On("OnHeightProcessed", mock.Anything).Return().Maybe()
 			p2pHandler.On("SetProcessedHeight", mock.Anything).Return().Maybe()
 
 			// Create mock stores for P2P
@@ -167,11 +167,9 @@ func TestSyncer_BackoffResetOnSuccess(t *testing.T) {
 
 	daRetriever := newMockdaRetriever(t)
 	p2pHandler := newMockp2pHandler(t)
+	p2pHandler.On("ProcessHeight", mock.Anything, mock.Anything, mock.Anything).Return(nil).Maybe()
 	syncer.daRetriever = daRetriever
 	syncer.p2pHandler = p2pHandler
-	p2pHandler.On("OnHeightProcessed", mock.Anything).Return().Maybe()
-	p2pHandler.On("SetProcessedHeight", mock.Anything).Return().Maybe()
-	p2pHandler.On("OnHeightProcessed", mock.Anything).Return().Maybe()
 	p2pHandler.On("SetProcessedHeight", mock.Anything).Return().Maybe()
 
 	// Create mock stores for P2P
@@ -260,6 +258,7 @@ func TestSyncer_BackoffBehaviorIntegration(t *testing.T) {
 
 	daRetriever := newMockdaRetriever(t)
 	p2pHandler := newMockp2pHandler(t)
+	p2pHandler.On("ProcessHeight", mock.Anything, mock.Anything, mock.Anything).Return(nil).Maybe()
 	syncer.daRetriever = daRetriever
 	syncer.p2pHandler = p2pHandler
 
@@ -279,7 +278,6 @@ func TestSyncer_BackoffBehaviorIntegration(t *testing.T) {
 	syncer.dataStore = dataStore
 
 	var callTimes []time.Time
-	p2pHandler.On("OnHeightProcessed", mock.Anything).Return().Maybe()
 	p2pHandler.On("SetProcessedHeight", mock.Anything).Return().Maybe()
 
 	// First call - error (triggers backoff)
