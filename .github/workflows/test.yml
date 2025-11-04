@@ -149,7 +149,6 @@ jobs:
           EVM_SINGLE_IMAGE_REPO: ghcr.io/${{ github.repository_owner }}/ev-node-evm-single
           EVM_SINGLE_NODE_IMAGE_TAG: ${{ inputs.image-tag }}
 
-
   build_all-apps:
     name: Build All ev-node Binaries
     runs-on: ubuntu-latest
