@@ -257,6 +257,11 @@ func (s *Syncer) startSyncWorkers() {
 	go s.p2pWorkerLoop()
 }
 
+const (
+	fastDAPollInterval  = 10 * time.Millisecond
+	futureHeightBackoff = 6 * time.Second // current celestia block time
+)
+
 func (s *Syncer) daWorkerLoop() {
 	defer s.wg.Done()
 
@@ -268,10 +273,7 @@ func (s *Syncer) daWorkerLoop() {
 	defer s.logger.Info().Msg("DA worker stopped")
 
 	nextDARequestAt := &time.Time{}
-	pollInterval := min(10*time.Millisecond, s.config.Node.BlockTime.Duration)
-	if pollInterval <= 0 {
-		pollInterval = 10 * time.Millisecond
-	}
+	pollInterval := fastDAPollInterval
 
 	for {
 		s.tryFetchFromDA(nextDARequestAt)
@@ -394,24 +396,30 @@ func (s *Syncer) tryFetchFromDA(nextDARequestAt *time.Time) {
 	// DaHeight is only increased on successful retrieval, it will retry on failure at the next iteration
 	events, err := s.daRetriever.RetrieveFromDA(s.ctx, daHeight)
 	if err != nil {
-		if errors.Is(err, coreda.ErrBlobNotFound) {
+		switch {
+		case errors.Is(err, coreda.ErrBlobNotFound):
 			// no data at this height, increase DA height
 			s.SetDAHeight(daHeight + 1)
 			// Reset backoff on success
 			*nextDARequestAt = time.Time{}
 			return
+		case errors.Is(err, coreda.ErrHeightFromFuture):
+			delay := futureHeightBackoff
+			*nextDARequestAt = now.Add(delay)
+			s.logger.Debug().Err(err).Dur("delay", delay).Uint64("da_height", daHeight).Msg("DA is ahead of local target; backing off future height requests")
+			return
+		default:
+			// Back off exactly by DA block time to avoid overloading
+			backoffDelay := s.config.DA.BlockTime.Duration
+			if backoffDelay <= 0 {
+				backoffDelay = 2 * time.Second
+			}
+			*nextDARequestAt = now.Add(backoffDelay)
+
+			s.logger.Error().Err(err).Dur("delay", backoffDelay).Uint64("da_height", daHeight).Msg("failed to retrieve from DA; backing off DA requests")
+
+			return
 		}
-
-		// Back off exactly by DA block time to avoid overloading
-		backoffDelay := s.config.DA.BlockTime.Duration
-		if backoffDelay <= 0 {
-			backoffDelay = 2 * time.Second
-		}
-		*nextDARequestAt = now.Add(backoffDelay)
-
-		s.logger.Error().Err(err).Dur("delay", backoffDelay).Uint64("da_height", daHeight).Msg("failed to retrieve from DA; backing off DA requests")
-
-		return
 	}
 
 	// Reset backoff on success
