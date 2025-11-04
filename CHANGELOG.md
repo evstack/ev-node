@@ -38,7 +38,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Deprecated
 
-## <!-- Features that will be removed in future versions -->
+<!-- Features that will be removed in future versions -->
 
 ### Removed
 
@@ -52,7 +52,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security
 
-## <!-- Security vulnerability fixes -->
+<!-- Security vulnerability fixes -->
 
 <!--
 ## Category Guidelines:
@@ -121,3 +121,6 @@ Given a version number MAJOR.MINOR.PATCH:
 
 Pre-release versions: 0.x.y (anything may change)
 -->
+
+<!-- Links -->
+- [Unreleased]: https://github.com/evstack/ev-node/compare/v1.0.0-beta.1...HEAD
