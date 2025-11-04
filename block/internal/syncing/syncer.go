@@ -352,7 +352,7 @@ func (s *Syncer) tryFetchFromP2P() {
 	// Process data (if not already processed by headers)
 	newDataHeight := s.dataStore.Store().Height()
 	// TODO @MARKO: why only if newDataHeight != newHeaderHeight? why not process
-	//  just if newDataHeight > currentHeight ?
+	// just if newDataHeight > currentHeight ?
 	if newDataHeight != newHeaderHeight && newDataHeight > currentHeight {
 		s.p2pHandler.ProcessDataRange(s.ctx, currentHeight+1, newDataHeight, s.heightInCh)
 	}

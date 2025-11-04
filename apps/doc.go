@@ -1,5 +1,5 @@
 /*
-This pkg defines a set of sequencer configurations that can be used out of the box.
+This package defines a set of sequencer configurations that can be used out of the box.
 
 The configurations are:
 
