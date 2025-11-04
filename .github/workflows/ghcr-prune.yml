@@ -78,8 +78,13 @@ jobs:
 
             const hashRegex = /^(?:sha256:)?[0-9a-f]{7,64}$/i;
             const prRegex = /^pr-\d+$/i;
+            const maxDeletes = 100;
             let deleted = 0;
             for (const version of versions) {
+              if (deleted >= maxDeletes) {
+                core.info(`Hit per-run deletion cap (${maxDeletes}); stopping early for ${packageName}`);
+                break;
+              }
               const created = new Date(version.created_at).getTime();
               if (Number.isNaN(created) || created >= cutoff) {
                 continue;
