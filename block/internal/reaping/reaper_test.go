@@ -6,7 +6,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ipfs/go-datastore"
 	ds "github.com/ipfs/go-datastore"
 	dssync "github.com/ipfs/go-datastore/sync"
 	"github.com/libp2p/go-libp2p/core/crypto"
@@ -226,7 +225,7 @@ func TestReaper_CachePersistence(t *testing.T) {
 
 	// Create cache with real store
 	tempDir := t.TempDir()
-	dataStore := dssync.MutexWrap(datastore.NewMapDatastore())
+	dataStore := dssync.MutexWrap(ds.NewMapDatastore())
 	st := store.New(dataStore)
 	cfg := config.Config{
 		RootDir:    tempDir,
@@ -251,7 +250,7 @@ func TestReaper_CachePersistence(t *testing.T) {
 	require.NoError(t, cm.SaveToDisk())
 
 	// Create new cache manager and load from disk
-	dataStore2 := dssync.MutexWrap(datastore.NewMapDatastore())
+	dataStore2 := dssync.MutexWrap(ds.NewMapDatastore())
 	st2 := store.New(dataStore2)
 	cm2, err := cache.NewManager(cfg, st2, zerolog.Nop())
 	require.NoError(t, err)
