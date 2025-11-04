@@ -12,7 +12,7 @@ jobs:
   build-ev-node-image:
     name: Build ev-node Docker Image
     # skip building images for merge groups as they are already built on PRs and main
-    if: github.event_name != 'merge_group' && inputs.image-tag != 'skip'
+    if: github.event_name != 'merge_group'
     runs-on: ubuntu-latest
     permissions:
       packages: write
@@ -41,7 +41,7 @@ jobs:
   build-ev-node-evm-single-image:
     name: Build ev-node EVM Single Docker Image
     # skip building images for merge groups as they are already built on PRs and main
-    if: github.event_name != 'merge_group' && inputs.image-tag != 'skip'
+    if: github.event_name != 'merge_group'
     runs-on: ubuntu-latest
     permissions:
       packages: write
@@ -71,7 +71,7 @@ jobs:
   build-local-da-image:
     name: Build local-da Docker Image
     # skip building images for merge groups as they are already built on PRs and main
-    if: github.event_name != 'merge_group' && inputs.image-tag != 'skip'
+    if: github.event_name != 'merge_group'
     runs-on: ubuntu-latest
     permissions:
       packages: write
@@ -100,7 +100,6 @@ jobs:
 
   docker-tests:
     name: Docker E2E Tests
-    if: inputs.image-tag != 'skip'
     needs: build-ev-node-image
     runs-on: ubuntu-latest
     steps:
@@ -117,7 +116,6 @@ jobs:
 
   docker-upgrade-tests:
     name: Docker Upgrade E2E Tests
-    if: inputs.image-tag != 'skip'
     needs: build-ev-node-evm-single-image
     runs-on: ubuntu-latest
     steps:
@@ -131,7 +129,6 @@ jobs:
         env:
           EVM_SINGLE_IMAGE_REPO: ghcr.io/${{ github.repository_owner }}/ev-node-evm-single
           EVM_SINGLE_NODE_IMAGE_TAG: ${{ inputs.image-tag }}
-
 
   build_all-apps:
     name: Build All ev-node Binaries

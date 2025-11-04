@@ -1,0 +1,104 @@
+# Cleanup workflow for pruning old commit-hash Docker tags from GHCR.
+name: GHCR Tag Prune
+on:
+  pull_request:
+  schedule:
+    - cron: "0 6 * * *" # daily at 06:00 UTC
+  workflow_dispatch:
+    inputs:
+      retention-days:
+        description: "Override retention window (days)"
+        required: false
+        type: number
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  DEFAULT_RETENTION_DAYS: 14
+
+jobs:
+  prune:
+    name: Remove aged commit-hash tags
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        package:
+          - ev-node
+          - ev-node-evm-single
+          - local-da
+    steps:
+      - name: Delete stale tags
+        uses: actions/github-script@v7
+        env:
+          PACKAGE_NAME: ${{ matrix.package }}
+          OVERRIDE_RETENTION: ${{ github.event.inputs.retention-days }}
+        with:
+          script: |
+            const packageName = process.env.PACKAGE_NAME;
+            if (!packageName) {
+              core.setFailed('PACKAGE_NAME env not provided');
+              return;
+            }
+
+            const retentionDaysInput = process.env.OVERRIDE_RETENTION;
+            const retentionDays = retentionDaysInput ? Number(retentionDaysInput) : Number(process.env.DEFAULT_RETENTION_DAYS);
+            if (Number.isNaN(retentionDays) || retentionDays <= 0) {
+              core.setFailed(`Invalid retention window: ${retentionDaysInput}`);
+              return;
+            }
+            const cutoff = Date.now() - retentionDays * 24 * 60 * 60 * 1000;
+            const owner = context.repo.owner;
+            const ownerType = context.payload.repository?.owner?.type === 'User' ? 'User' : 'Organization';
+
+            core.info(`Processing ${packageName} for ${ownerType.toLowerCase()} ${owner}; removing commit-hash tags older than ${retentionDays} days`);
+
+            const listParams = {
+              package_type: 'container',
+              package_name: packageName,
+              per_page: 100,
+            };
+            if (ownerType === 'Organization') {
+              listParams.org = owner;
+            } else {
+              listParams.username = owner;
+            }
+
+            const listFn = ownerType === 'Organization'
+              ? github.rest.packages.getAllPackageVersionsForPackageOwnedByOrg
+              : github.rest.packages.getAllPackageVersionsForPackageOwnedByUser;
+
+            const deleteFn = ownerType === 'Organization'
+              ? github.rest.packages.deletePackageVersionForOrg
+              : github.rest.packages.deletePackageVersionForUser;
+
+            const versions = await github.paginate(listFn, listParams);
+            core.info(`Found ${versions.length} versions`);
+
+            const hashRegex = /^[0-9a-f]{40}$/i;
+            let deleted = 0;
+            for (const version of versions) {
+              const created = new Date(version.created_at).getTime();
+              if (Number.isNaN(created) || created >= cutoff) {
+                continue;
+              }
+
+              const tags = version.metadata?.container?.tags ?? [];
+              const hasCommitTag = tags.some(tag => hashRegex.test(tag));
+              if (!hasCommitTag) {
+                continue;
+              }
+
+              core.info(`Deleting version ${version.id} (${tags.join(', ')}) created ${version.created_at}`);
+              await deleteFn({
+                package_type: 'container',
+                package_name: packageName,
+                package_version_id: version.id,
+                ...(ownerType === 'Organization' ? { org: owner } : { username: owner }),
+              });
+              deleted += 1;
+            }
+
+            core.info(`Deleted ${deleted} old commit-hash tags for ${packageName}`);
