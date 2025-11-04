@@ -25,7 +25,7 @@ import (
 )
 
 const (
-	baseEVMSingleVersion = "v1.0.0-beta.8"
+	baseEVMSingleVersion = "v1.0.0-beta.9"
 	evmChainID           = "1234"
 	testPrivateKey       = "cece4f25ac74deb1468965160c7185e07dff413f23fcadb611b05ca37ab0a52e"
 	testToAddress        = "0x944fDcD1c868E3cC566C78023CcB38A32cDA836E"

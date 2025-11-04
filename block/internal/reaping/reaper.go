@@ -9,14 +9,13 @@ import (
 	"sync"
 	"time"
 
-	ds "github.com/ipfs/go-datastore"
 	"github.com/rs/zerolog"
 
+	"github.com/evstack/ev-node/block/internal/cache"
 	"github.com/evstack/ev-node/block/internal/executing"
 	coreexecutor "github.com/evstack/ev-node/core/execution"
 	coresequencer "github.com/evstack/ev-node/core/sequencer"
 	"github.com/evstack/ev-node/pkg/genesis"
-	"github.com/evstack/ev-node/pkg/store"
 )
 
 const (
@@ -35,7 +34,7 @@ type Reaper struct {
 	sequencer coresequencer.Sequencer
 	chainID   string
 	interval  time.Duration
-	seenStore ds.Batching
+	cache     cache.Manager
 	executor  *executing.Executor
 
 	// shared components
@@ -47,24 +46,24 @@ type Reaper struct {
 	wg     sync.WaitGroup
 }
 
-// NewReaper creates a new Reaper instance with persistent seenTx storage.
+// NewReaper creates a new Reaper instance.
 func NewReaper(
 	exec coreexecutor.Executor,
 	sequencer coresequencer.Sequencer,
 	genesis genesis.Genesis,
 	logger zerolog.Logger,
 	executor *executing.Executor,
+	cache cache.Manager,
 	scrapeInterval time.Duration,
 ) (*Reaper, error) {
 	if executor == nil {
 		return nil, errors.New("executor cannot be nil")
 	}
+	if cache == nil {
+		return nil, errors.New("cache cannot be nil")
+	}
 	if scrapeInterval == 0 {
 		return nil, errors.New("scrape interval cannot be empty")
-	}
-	store, err := store.NewDefaultInMemoryKVStore()
-	if err != nil {
-		return nil, fmt.Errorf("failed to create reaper store: %w", err)
 	}
 
 	return &Reaper{
@@ -73,7 +72,7 @@ func NewReaper(
 		chainID:   genesis.ChainID,
 		interval:  scrapeInterval,
 		logger:    logger.With().Str("component", "reaper").Logger(),
-		seenStore: store,
+		cache:     cache,
 		executor:  executor,
 	}, nil
 }
@@ -96,6 +95,9 @@ func (r *Reaper) Start(ctx context.Context) error {
 func (r *Reaper) reaperLoop() {
 	ticker := time.NewTicker(r.interval)
 	defer ticker.Stop()
+
+	cleanupTicker := time.NewTicker(1 * time.Hour)
+	defer cleanupTicker.Stop()
 
 	consecutiveFailures := 0
 
@@ -126,6 +128,13 @@ func (r *Reaper) reaperLoop() {
 					ticker.Reset(r.interval)
 				}
 			}
+		case <-cleanupTicker.C:
+			// Clean up transaction hashes older than 24 hours
+			// This prevents unbounded growth of the transaction seen cache
+			removed := r.cache.CleanupOldTxs(cache.DefaultTxCacheRetention)
+			if removed > 0 {
+				r.logger.Info().Int("removed", removed).Msg("cleaned up old transaction hashes")
+			}
 		}
 	}
 }
@@ -155,24 +164,11 @@ func (r *Reaper) SubmitTxs() error {
 	}
 
 	var newTxs [][]byte
-	var seenStoreErrors int
 	for _, tx := range txs {
 		txHash := hashTx(tx)
-		key := ds.NewKey(txHash)
-		has, err := r.seenStore.Has(r.ctx, key)
-		if err != nil {
-			r.logger.Error().Err(err).Msg("failed to check seenStore")
-			seenStoreErrors++
-			continue
-		}
-		if !has {
+		if !r.cache.IsTxSeen(txHash) {
 			newTxs = append(newTxs, tx)
 		}
-	}
-
-	// If all transactions failed seenStore check, return error
-	if seenStoreErrors > 0 && len(newTxs) == 0 {
-		return fmt.Errorf("failed to check seenStore for all %d transactions", seenStoreErrors)
 	}
 
 	if len(newTxs) == 0 {
@@ -192,11 +188,7 @@ func (r *Reaper) SubmitTxs() error {
 
 	for _, tx := range newTxs {
 		txHash := hashTx(tx)
-		key := ds.NewKey(txHash)
-		if err := r.seenStore.Put(r.ctx, key, []byte{1}); err != nil {
-			// Log but don't fail on persistence errors
-			r.logger.Error().Err(err).Str("txHash", txHash).Msg("failed to persist seen tx")
-		}
+		r.cache.SetTxSeen(txHash)
 	}
 
 	// Notify the executor that new transactions are available
@@ -207,11 +199,6 @@ func (r *Reaper) SubmitTxs() error {
 
 	r.logger.Debug().Msg("successfully submitted txs")
 	return nil
-}
-
-// SeenStore returns the datastore used to track seen transactions.
-func (r *Reaper) SeenStore() ds.Datastore {
-	return r.seenStore
 }
 
 func hashTx(tx []byte) string {

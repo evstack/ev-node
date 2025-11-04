@@ -15,7 +15,7 @@ import (
 func TestPendingBase_ErrorConditions(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
-	dsKV, err := store.NewDefaultInMemoryKVStore()
+	dsKV, err := store.NewTestInMemoryKVStore()
 	require.NoError(t, err)
 	st := store.New(dsKV)
 	logger := zerolog.Nop()
@@ -49,7 +49,7 @@ func TestPendingBase_ErrorConditions(t *testing.T) {
 func TestPendingBase_PersistLastSubmitted(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
-	dsKV, err := store.NewDefaultInMemoryKVStore()
+	dsKV, err := store.NewTestInMemoryKVStore()
 	require.NoError(t, err)
 	st := store.New(dsKV)
 	logger := zerolog.Nop()
