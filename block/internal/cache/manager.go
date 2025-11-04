@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
+	"time"
 
 	"github.com/rs/zerolog"
 
@@ -22,6 +23,9 @@ var (
 	dataCacheDir          = filepath.Join(cacheDir, "data")
 	pendingEventsCacheDir = filepath.Join(cacheDir, "pending_da_events")
 	txCacheDir            = filepath.Join(cacheDir, "tx")
+
+	// DefaultTxCacheRetention is the default time to keep transaction hashes in cache
+	DefaultTxCacheRetention = 24 * time.Hour
 )
 
 // gobRegisterOnce ensures gob type registration happens exactly once process-wide.
@@ -55,6 +59,7 @@ type Manager interface {
 	// Transaction operations
 	IsTxSeen(hash string) bool
 	SetTxSeen(hash string)
+	CleanupOldTxs(olderThan time.Duration) int
 
 	// Pending operations
 	GetPendingHeaders(ctx context.Context) ([]*types.SignedHeader, error)
@@ -84,6 +89,7 @@ type implementation struct {
 	headerCache        *Cache[types.SignedHeader]
 	dataCache          *Cache[types.Data]
 	txCache            *Cache[struct{}]
+	txTimestamps       *sync.Map // map[string]time.Time - tracks when each tx was seen
 	pendingEventsCache *Cache[common.DAHeightEvent]
 	pendingHeaders     *PendingHeaders
 	pendingData        *PendingData
@@ -115,6 +121,7 @@ func NewManager(cfg config.Config, store store.Store, logger zerolog.Logger) (Ma
 		headerCache:        headerCache,
 		dataCache:          dataCache,
 		txCache:            txCache,
+		txTimestamps:       new(sync.Map),
 		pendingEventsCache: pendingEventsCache,
 		pendingHeaders:     pendingHeaders,
 		pendingData:        pendingData,
@@ -183,6 +190,49 @@ func (m *implementation) IsTxSeen(hash string) bool {
 func (m *implementation) SetTxSeen(hash string) {
 	// Use 0 as height since transactions don't have a block height yet
 	m.txCache.setSeen(hash, 0)
+	// Track timestamp for cleanup purposes
+	m.txTimestamps.Store(hash, time.Now())
+}
+
+// CleanupOldTxs removes transaction hashes older than the specified duration.
+// Returns the number of transactions removed.
+// This prevents unbounded growth of the transaction cache.
+func (m *implementation) CleanupOldTxs(olderThan time.Duration) int {
+	if olderThan <= 0 {
+		olderThan = DefaultTxCacheRetention
+	}
+
+	cutoff := time.Now().Add(-olderThan)
+	removed := 0
+
+	m.txTimestamps.Range(func(key, value any) bool {
+		hash, ok := key.(string)
+		if !ok {
+			return true
+		}
+
+		timestamp, ok := value.(time.Time)
+		if !ok {
+			return true
+		}
+
+		if timestamp.Before(cutoff) {
+			// Remove from both caches
+			m.txCache.hashes.Delete(hash)
+			m.txTimestamps.Delete(hash)
+			removed++
+		}
+		return true
+	})
+
+	if removed > 0 {
+		m.logger.Debug().
+			Int("removed", removed).
+			Dur("older_than", olderThan).
+			Msg("cleaned up old transaction hashes from cache")
+	}
+
+	return removed
 }
 
 // DeleteHeight removes from all caches the given height.
@@ -192,7 +242,11 @@ func (m *implementation) DeleteHeight(blockHeight uint64) {
 	m.dataCache.deleteAllForHeight(blockHeight)
 	m.pendingEventsCache.deleteAllForHeight(blockHeight)
 
-	// tx cache is not deleted as not height dependent
+	// Note: txCache is intentionally NOT deleted here because:
+	// 1. Transactions are tracked by hash, not by block height (they use height 0)
+	// 2. A transaction seen at one height may be resubmitted at a different height
+	// 3. The cache prevents duplicate submissions across block heights
+	// 4. Cleanup is handled separately via CleanupOldTxs() based on time, not height
 }
 
 // Pending operations
@@ -274,6 +328,10 @@ func (m *implementation) SaveToDisk() error {
 		return fmt.Errorf("failed to save pending events cache to disk: %w", err)
 	}
 
+	// Note: txTimestamps are not persisted to disk intentionally.
+	// On restart, all cached transactions will be treated as "new" for cleanup purposes,
+	// which is acceptable as they will be cleaned up on the next cleanup cycle if old enough.
+
 	return nil
 }
 
@@ -298,6 +356,16 @@ func (m *implementation) LoadFromDisk() error {
 	if err := m.pendingEventsCache.LoadFromDisk(filepath.Join(cfgDir, pendingEventsCacheDir)); err != nil {
 		return fmt.Errorf("failed to load pending events cache from disk: %w", err)
 	}
+
+	// After loading tx cache from disk, initialize timestamps for loaded transactions
+	// Set them to current time so they won't be immediately cleaned up
+	now := time.Now()
+	m.txCache.hashes.Range(func(key, value any) bool {
+		if hash, ok := key.(string); ok {
+			m.txTimestamps.Store(hash, now)
+		}
+		return true
+	})
 
 	return nil
 }

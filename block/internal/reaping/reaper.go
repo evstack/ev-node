@@ -96,6 +96,9 @@ func (r *Reaper) reaperLoop() {
 	ticker := time.NewTicker(r.interval)
 	defer ticker.Stop()
 
+	cleanupTicker := time.NewTicker(1 * time.Hour)
+	defer cleanupTicker.Stop()
+
 	consecutiveFailures := 0
 
 	for {
@@ -124,6 +127,13 @@ func (r *Reaper) reaperLoop() {
 					consecutiveFailures = 0
 					ticker.Reset(r.interval)
 				}
+			}
+		case <-cleanupTicker.C:
+			// Clean up transaction hashes older than 24 hours
+			// This prevents unbounded growth of the transaction seen cache
+			removed := r.cache.CleanupOldTxs(cache.DefaultTxCacheRetention)
+			if removed > 0 {
+				r.logger.Info().Int("removed", removed).Msg("cleaned up old transaction hashes")
 			}
 		}
 	}
