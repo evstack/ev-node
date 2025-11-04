@@ -15,7 +15,7 @@ func TestPrefixKV1(t *testing.T) {
 	assert := assert.New(t)
 	require := require.New(t)
 
-	base, _ := NewDefaultInMemoryKVStore()
+	base, _ := NewTestInMemoryKVStore()
 
 	p1 := ktds.Wrap(base, ktds.PrefixTransform{Prefix: ds.NewKey("1")})
 	p2 := ktds.Wrap(base, ktds.PrefixTransform{Prefix: ds.NewKey("2")})
@@ -80,7 +80,7 @@ func TestPrefixKVBatch(t *testing.T) {
 	assert := assert.New(t)
 	require := require.New(t)
 
-	basekv, _ := NewDefaultInMemoryKVStore()
+	basekv, _ := NewTestInMemoryKVStore()
 	prefixkv := ktds.Wrap(basekv, ktds.PrefixTransform{Prefix: ds.NewKey("prefix1")}).Children()[0]
 
 	badgerPrefixkv, _ := prefixkv.(ds.TxnDatastore)

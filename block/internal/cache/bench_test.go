@@ -28,7 +28,7 @@ ok  	github.com/evstack/ev-node/block/internal/cache	25.834s
 */
 
 func benchSetupStore(b *testing.B, n int, txsPer int, chainID string) store.Store {
-	ds, err := store.NewDefaultInMemoryKVStore()
+	ds, err := store.NewTestInMemoryKVStore()
 	if err != nil {
 		b.Fatal(err)
 	}

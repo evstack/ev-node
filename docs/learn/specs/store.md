@@ -27,7 +27,7 @@ Note: While blocks are stored as complete units in the store, the block componen
 
 The `TxnDatastore` interface inside [go-datastore] is used for constructing different key-value stores for the underlying storage of a full node. There are two different implementations of `TxnDatastore` in [kv.go]:
 
-- `NewDefaultInMemoryKVStore`: Builds a key-value store that uses the [BadgerDB] library and operates in-memory, without accessing the disk. Used only across unit tests and integration tests.
+- `NewTestInMemoryKVStore`: Builds a key-value store that uses the [BadgerDB] library and operates in-memory, without accessing the disk. Used only across unit tests and integration tests.
 
 - `NewDefaultKVStore`: Builds a key-value store that uses the [BadgerDB] library and stores the data on disk at the specified path.
 
@@ -46,7 +46,7 @@ Additional prefixes used by sync services:
 
 - `headerSyncPrefix` with value "hs": Used by the header sync service for P2P synced headers.
 - `dataSyncPrefix` with value "ds": Used by the data sync service for P2P synced transaction data.
-For example, in a call to `GetBlockByHash` for some block hash `<block_hash>`, the key used in the full node's base key-value store will be `/0/b/<block_hash>` where `0` is the main store prefix and `b` is the block prefix. Similarly, in a call to `GetValidators` for some height `<height>`, the key used in the full node's base key-value store will be `/0/v/<height>` where `0` is the main store prefix and `v` is the validator set prefix.
+  For example, in a call to `GetBlockByHash` for some block hash `<block_hash>`, the key used in the full node's base key-value store will be `/0/b/<block_hash>` where `0` is the main store prefix and `b` is the block prefix. Similarly, in a call to `GetValidators` for some height `<height>`, the key used in the full node's base key-value store will be `/0/v/<height>` where `0` is the main store prefix and `v` is the validator set prefix.
 
 Inside the key-value store, the value of these various types of data like `Block` is stored as a byte array which is encoded and decoded using the corresponding Protobuf [marshal and unmarshal methods][serialization].
 

@@ -116,7 +116,7 @@ func TestStoreHeight(t *testing.T) {
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
 			assert := assert.New(t)
-			ds, _ := NewDefaultInMemoryKVStore()
+			ds, _ := NewTestInMemoryKVStore()
 			bstore := New(ds)
 			height, err := bstore.Height(t.Context())
 			assert.NoError(err)
@@ -166,7 +166,7 @@ func TestStoreLoad(t *testing.T) {
 
 	tmpDir := t.TempDir()
 
-	mKV, _ := NewDefaultInMemoryKVStore()
+	mKV, _ := NewTestInMemoryKVStore()
 	dKV, _ := NewDefaultKVStore(tmpDir, "db", "test")
 	for _, kv := range []ds.Batching{mKV, dKV} {
 		for _, c := range cases {
@@ -253,7 +253,7 @@ func TestSetHeightError(t *testing.T) {
 
 	// Simulate an error when putting data
 	mockErr := fmt.Errorf("mock put error")
-	mockDs, _ := NewDefaultInMemoryKVStore()
+	mockDs, _ := NewTestInMemoryKVStore()
 	mockBatchingDs := &mockBatchingDatastore{Batching: mockDs, putError: mockErr}
 	s := New(mockBatchingDs)
 
@@ -311,7 +311,7 @@ func TestMetadata(t *testing.T) {
 	t.Parallel()
 	require := require.New(t)
 
-	kv, err := NewDefaultInMemoryKVStore()
+	kv, err := NewTestInMemoryKVStore()
 	require.NoError(err)
 	s := New(kv)
 
@@ -455,7 +455,7 @@ func TestSaveBlockDataErrors(t *testing.T) {
 
 // mustNewInMem is a test-helper that panics if the in-memory KV store cannot be created.
 func mustNewInMem() ds.Batching {
-	m, err := NewDefaultInMemoryKVStore()
+	m, err := NewTestInMemoryKVStore()
 	if err != nil {
 		panic(err)
 	}
@@ -469,7 +469,7 @@ func TestGetBlockByHashError(t *testing.T) {
 
 	// Simulate getHeightByHash error
 	mockErr := fmt.Errorf("mock get height by hash error")
-	mockDs, _ := NewDefaultInMemoryKVStore()
+	mockDs, _ := NewTestInMemoryKVStore()
 	mockBatchingDs := &mockBatchingDatastore{Batching: mockDs, getError: mockErr} // This will cause getHeightByHash to fail
 	s := New(mockBatchingDs)
 
@@ -486,7 +486,7 @@ func TestGetSignatureByHashError(t *testing.T) {
 
 	// Simulate getHeightByHash error
 	mockErr := fmt.Errorf("mock get height by hash error")
-	mockDs, _ := NewDefaultInMemoryKVStore()
+	mockDs, _ := NewTestInMemoryKVStore()
 	mockBatchingDs := &mockBatchingDatastore{Batching: mockDs, getError: mockErr} // This will cause getHeightByHash to fail
 	s := New(mockBatchingDs)
 
@@ -503,7 +503,7 @@ func TestGetSignatureError(t *testing.T) {
 
 	// Simulate get error for signature data
 	mockErrGet := fmt.Errorf("mock get signature error")
-	mockDsGet, _ := NewDefaultInMemoryKVStore()
+	mockDsGet, _ := NewTestInMemoryKVStore()
 	mockBatchingDsGet := &mockBatchingDatastore{Batching: mockDsGet, getError: mockErrGet}
 	sGet := New(mockBatchingDsGet)
 
@@ -525,7 +525,7 @@ func TestUpdateStateError(t *testing.T) {
 
 	// Simulate put error
 	mockErrPut := fmt.Errorf("mock put state error")
-	mockDsPut, _ := NewDefaultInMemoryKVStore()
+	mockDsPut, _ := NewTestInMemoryKVStore()
 	mockBatchingDsPut := &mockBatchingDatastore{Batching: mockDsPut, putError: mockErrPut}
 	sPut := New(mockBatchingDsPut)
 
@@ -542,7 +542,7 @@ func TestGetStateError(t *testing.T) {
 
 	// Simulate get error
 	mockErrGet := fmt.Errorf("mock get state error")
-	mockDsGet, _ := NewDefaultInMemoryKVStore()
+	mockDsGet, _ := NewTestInMemoryKVStore()
 	mockBatchingDsGet := &mockBatchingDatastore{Batching: mockDsGet, getError: mockErrGet}
 	sGet := New(mockBatchingDsGet)
 
@@ -551,7 +551,7 @@ func TestGetStateError(t *testing.T) {
 	require.Contains(err.Error(), mockErrGet.Error())
 
 	// Simulate proto.Unmarshal error
-	mockDsUnmarshal, _ := NewDefaultInMemoryKVStore()
+	mockDsUnmarshal, _ := NewTestInMemoryKVStore()
 	mockBatchingDsUnmarshal := &mockBatchingDatastore{Batching: mockDsUnmarshal, unmarshalErrorOnCall: 3}
 	sUnmarshal := New(mockBatchingDsUnmarshal)
 
@@ -580,7 +580,7 @@ func TestSetMetadataError(t *testing.T) {
 
 	// Simulate put error
 	mockErrPut := fmt.Errorf("mock put metadata error")
-	mockDsPut, _ := NewDefaultInMemoryKVStore()
+	mockDsPut, _ := NewTestInMemoryKVStore()
 	mockBatchingDsPut := &mockBatchingDatastore{Batching: mockDsPut, putError: mockErrPut}
 	sPut := New(mockBatchingDsPut)
 
@@ -597,7 +597,7 @@ func TestGetMetadataError(t *testing.T) {
 
 	// Simulate get error
 	mockErrGet := fmt.Errorf("mock get metadata error")
-	mockDsGet, _ := NewDefaultInMemoryKVStore()
+	mockDsGet, _ := NewTestInMemoryKVStore()
 	mockBatchingDsGet := &mockBatchingDatastore{Batching: mockDsGet, getError: mockErrGet}
 	sGet := New(mockBatchingDsGet)
 
