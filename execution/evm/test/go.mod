@@ -4,7 +4,7 @@ go 1.24.6
 
 require (
 	github.com/celestiaorg/tastora v0.7.5
-	github.com/ethereum/go-ethereum v1.16.5
+	github.com/ethereum/go-ethereum v1.16.6
 	github.com/evstack/ev-node/execution/evm v0.0.0-00010101000000-000000000000
 	github.com/golang-jwt/jwt/v5 v5.3.0
 	github.com/moby/moby v27.5.1+incompatible
@@ -27,6 +27,7 @@ require (
 	github.com/BurntSushi/toml v1.5.0 // indirect
 	github.com/DataDog/zstd v1.5.5 // indirect
 	github.com/Microsoft/go-winio v0.6.2 // indirect
+	github.com/ProjectZKM/Ziren/crates/go-runtime/zkvm_runtime v0.0.0-20251001021608-1fe7b43fc4d6 // indirect
 	github.com/StackExchange/wmi v1.2.1 // indirect
 	github.com/avast/retry-go/v4 v4.6.1 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
@@ -70,7 +71,7 @@ require (
 	github.com/emicklei/dot v1.6.2 // indirect
 	github.com/ethereum/c-kzg-4844/v2 v2.1.3 // indirect
 	github.com/ethereum/go-verkle v0.2.2 // indirect
-	github.com/evstack/ev-node/core v1.0.0-beta.3 // indirect
+	github.com/evstack/ev-node/core v1.0.0-beta.4 // indirect
 	github.com/felixge/httpsnoop v1.0.4 // indirect
 	github.com/ferranbt/fastssz v0.1.4 // indirect
 	github.com/fsnotify/fsnotify v1.7.0 // indirect
