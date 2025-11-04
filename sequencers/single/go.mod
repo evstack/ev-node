@@ -4,7 +4,7 @@ go 1.24.6
 
 require (
 	github.com/evstack/ev-node v1.0.0-beta.8
-	github.com/evstack/ev-node/core v1.0.0-beta.3
+	github.com/evstack/ev-node/core v1.0.0-beta.4
 	github.com/go-kit/kit v0.13.0
 	github.com/ipfs/go-datastore v0.9.0
 	github.com/prometheus/client_golang v1.23.2

@@ -62,6 +62,12 @@ github.com/envoyproxy/go-control-plane v0.9.0/go.mod h1:YTl/9mNaCwkRvm6d1a2C3ymF
 github.com/envoyproxy/go-control-plane v0.9.1-0.20191026205805-5f8ba28d4473/go.mod h1:YTl/9mNaCwkRvm6d1a2C3ymFceY/DCBVvsKhRF0iEA4=
 github.com/envoyproxy/go-control-plane v0.9.4/go.mod h1:6rpuAdCZL397s3pYoYcLgu1mIlRU8Am5FuJP05cCM98=
 github.com/envoyproxy/protoc-gen-validate v0.1.0/go.mod h1:iSmxcyjqTsJpI2R4NaDN7+kN2VEUnK/pcBlmesArF7c=
+github.com/evstack/ev-node/core v1.0.0-beta.4 h1:F/rqHCrZ+ViUY4I6RuoBVvkhYfosD68yo/6gCdGRdmo=
+github.com/evstack/ev-node/core v1.0.0-beta.4/go.mod h1:n2w/LhYQTPsi48m6lMj16YiIqsaQw6gxwjyJvR+B3sY=
+github.com/evstack/ev-node/da v1.0.0-beta.5 h1:rWs/H0Nkj9uwTqD7Tzu+PpaNHGFE71B1ZVKCFLx0yVI=
+github.com/evstack/ev-node/da v1.0.0-beta.5/go.mod h1:lJ7vGlczBwiqTaTE9C4zV9tEsQO+oi0sqyUyYzj3zpo=
+github.com/evstack/ev-node/sequencers/single v1.0.0-beta.3 h1:BT/UeH7Tf8z0btzomCzTbbDDZGAT8/yHcd6xY6P/aaw=
+github.com/evstack/ev-node/sequencers/single v1.0.0-beta.3/go.mod h1:eCkDecdJ3s7TB3R5nFdPDyz7jjRmwYen6lGe9D2sSH4=
 github.com/filecoin-project/go-clock v0.1.0 h1:SFbYIM75M8NnFm1yMHhN9Ahy3W5bEZV9gd6MPfXbKVU=
 github.com/filecoin-project/go-clock v0.1.0/go.mod h1:4uB/O4PvOjlx1VCMdZ9MyDZXRm//gkj1ELEbxfI1AZs=
 github.com/filecoin-project/go-jsonrpc v0.9.0 h1:G47qEF52w7GholpI21vPSTVBFvsrip6geIoqNiqyZtQ=
