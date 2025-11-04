@@ -25,7 +25,7 @@ func tempConfig(t *testing.T) config.Config {
 
 // helper to make an in-memory store
 func memStore(t *testing.T) store.Store {
-	ds, err := store.NewDefaultInMemoryKVStore()
+	ds, err := store.NewTestInMemoryKVStore()
 	require.NoError(t, err)
 	return store.New(ds)
 }

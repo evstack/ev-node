@@ -21,6 +21,7 @@ var (
 	headerCacheDir        = filepath.Join(cacheDir, "header")
 	dataCacheDir          = filepath.Join(cacheDir, "data")
 	pendingEventsCacheDir = filepath.Join(cacheDir, "pending_da_events")
+	txCacheDir            = filepath.Join(cacheDir, "tx")
 )
 
 // gobRegisterOnce ensures gob type registration happens exactly once process-wide.
@@ -51,6 +52,10 @@ type Manager interface {
 	GetDataDAIncluded(hash string) (uint64, bool)
 	SetDataDAIncluded(hash string, daHeight uint64, blockHeight uint64)
 
+	// Transaction operations
+	IsTxSeen(hash string) bool
+	SetTxSeen(hash string)
+
 	// Pending operations
 	GetPendingHeaders(ctx context.Context) ([]*types.SignedHeader, error)
 	GetPendingData(ctx context.Context) ([]*types.SignedData, error)
@@ -78,6 +83,7 @@ var _ Manager = (*implementation)(nil)
 type implementation struct {
 	headerCache        *Cache[types.SignedHeader]
 	dataCache          *Cache[types.Data]
+	txCache            *Cache[struct{}]
 	pendingEventsCache *Cache[common.DAHeightEvent]
 	pendingHeaders     *PendingHeaders
 	pendingData        *PendingData
@@ -90,6 +96,7 @@ func NewManager(cfg config.Config, store store.Store, logger zerolog.Logger) (Ma
 	// Initialize caches
 	headerCache := NewCache[types.SignedHeader]()
 	dataCache := NewCache[types.Data]()
+	txCache := NewCache[struct{}]()
 	pendingEventsCache := NewCache[common.DAHeightEvent]()
 
 	// Initialize pending managers
@@ -107,6 +114,7 @@ func NewManager(cfg config.Config, store store.Store, logger zerolog.Logger) (Ma
 	impl := &implementation{
 		headerCache:        headerCache,
 		dataCache:          dataCache,
+		txCache:            txCache,
 		pendingEventsCache: pendingEventsCache,
 		pendingHeaders:     pendingHeaders,
 		pendingData:        pendingData,
@@ -167,12 +175,24 @@ func (m *implementation) SetDataDAIncluded(hash string, daHeight uint64, blockHe
 	m.dataCache.setDAIncluded(hash, daHeight, blockHeight)
 }
 
+// Transaction operations
+func (m *implementation) IsTxSeen(hash string) bool {
+	return m.txCache.isSeen(hash)
+}
+
+func (m *implementation) SetTxSeen(hash string) {
+	// Use 0 as height since transactions don't have a block height yet
+	m.txCache.setSeen(hash, 0)
+}
+
 // DeleteHeight removes from all caches the given height.
 // This can be done when a height has been da included.
 func (m *implementation) DeleteHeight(blockHeight uint64) {
 	m.headerCache.deleteAllForHeight(blockHeight)
 	m.dataCache.deleteAllForHeight(blockHeight)
 	m.pendingEventsCache.deleteAllForHeight(blockHeight)
+
+	// tx cache is not deleted as not height dependent
 }
 
 // Pending operations
@@ -246,6 +266,10 @@ func (m *implementation) SaveToDisk() error {
 		return fmt.Errorf("failed to save data cache to disk: %w", err)
 	}
 
+	if err := m.txCache.SaveToDisk(filepath.Join(cfgDir, txCacheDir)); err != nil {
+		return fmt.Errorf("failed to save tx cache to disk: %w", err)
+	}
+
 	if err := m.pendingEventsCache.SaveToDisk(filepath.Join(cfgDir, pendingEventsCacheDir)); err != nil {
 		return fmt.Errorf("failed to save pending events cache to disk: %w", err)
 	}
@@ -265,6 +289,10 @@ func (m *implementation) LoadFromDisk() error {
 
 	if err := m.dataCache.LoadFromDisk(filepath.Join(cfgDir, dataCacheDir)); err != nil {
 		return fmt.Errorf("failed to load data cache from disk: %w", err)
+	}
+
+	if err := m.txCache.LoadFromDisk(filepath.Join(cfgDir, txCacheDir)); err != nil {
+		return fmt.Errorf("failed to load tx cache from disk: %w", err)
 	}
 
 	if err := m.pendingEventsCache.LoadFromDisk(filepath.Join(cfgDir, pendingEventsCacheDir)); err != nil {

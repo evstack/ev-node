@@ -236,6 +236,7 @@ func NewAggregatorComponents(
 		genesis,
 		logger,
 		executor,
+		cacheManager,
 		reaping.DefaultInterval,
 	)
 	if err != nil {
