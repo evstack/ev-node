@@ -336,7 +336,7 @@ func (e *Executor) produceBlock() error {
 
 	// fetch forced included txs
 	forcedIncludedTxsEvent, err := e.daRetriever.RetrieveForcedIncludedTxsFromDA(e.ctx, currentState.DAHeight)
-	if err != nil {
+	if err != nil && !errors.Is(err, syncing.ErrForceInclusionNotConfigured) {
 		e.logger.Error().Err(err).Msg("failed to retrieve forced included txs")
 	}
 

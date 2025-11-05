@@ -91,11 +91,14 @@ func (r *DARetriever) RetrieveFromDA(ctx context.Context, daHeight uint64) ([]co
 	return r.processBlobs(ctx, blobsResp.Data, daHeight), nil
 }
 
+// ErrForceInclusionNotConfigured is returned when the forced inclusion namespace is not configured.
+var ErrForceInclusionNotConfigured = errors.New("forced inclusion namespace not configured")
+
 // RetrieveForcedIncludedTxsFromDA retrieves forced inclusion transactions from the DA layer.
 // It fetches from the daHeight for the da epoch range defined in the config.
 func (r *DARetriever) RetrieveForcedIncludedTxsFromDA(ctx context.Context, daHeight uint64) (*common.ForcedIncludedEvent, error) {
 	if !r.hasForcedInclusionNs {
-		return nil, fmt.Errorf("forced inclusion namespace not configured")
+		return nil, ErrForceInclusionNotConfigured
 	}
 
 	event := &common.ForcedIncludedEvent{
