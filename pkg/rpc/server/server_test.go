@@ -360,22 +360,34 @@ func TestP2PServer_GetNetInfo(t *testing.T) {
 	require.Nil(t, resp2)
 }
 
-func TestHealthServer_Livez(t *testing.T) {
+func TestHealthLiveEndpoint(t *testing.T) {
 	logger := zerolog.Nop()
 
-	t.Run("non-aggregator always returns PASS", func(t *testing.T) {
+	t.Run("non-aggregator always returns OK", func(t *testing.T) {
 		mockStore := mocks.NewMockStore(t)
+		mockP2PManager := &mocks.MockP2PRPC{}
 		testConfig := config.DefaultConfig()
 		testConfig.Node.Aggregator = false
 
-		h := NewHealthServer(mockStore, testConfig, logger)
-		resp, err := h.Livez(context.Background(), connect.NewRequest(&emptypb.Empty{}))
+		handler, err := NewServiceHandler(mockStore, mockP2PManager, nil, logger, testConfig, nil)
 		require.NoError(t, err)
-		require.Equal(t, pb.HealthStatus_PASS, resp.Msg.Status)
+
+		server := httptest.NewServer(handler)
+		defer server.Close()
+
+		resp, err := http.Get(server.URL + "/health/live")
+		require.NoError(t, err)
+		defer resp.Body.Close()
+
+		require.Equal(t, http.StatusOK, resp.StatusCode)
+		body, err := io.ReadAll(resp.Body)
+		require.NoError(t, err)
+		require.Equal(t, "OK\n", string(body))
 	})
 
-	t.Run("aggregator with no blocks returns PASS", func(t *testing.T) {
+	t.Run("aggregator with no blocks returns OK", func(t *testing.T) {
 		mockStore := mocks.NewMockStore(t)
+		mockP2PManager := &mocks.MockP2PRPC{}
 		testConfig := config.DefaultConfig()
 		testConfig.Node.Aggregator = true
 
@@ -385,15 +397,26 @@ func TestHealthServer_Livez(t *testing.T) {
 		}
 		mockStore.On("GetState", mock.Anything).Return(state, nil)
 
-		h := NewHealthServer(mockStore, testConfig, logger)
-		resp, err := h.Livez(context.Background(), connect.NewRequest(&emptypb.Empty{}))
+		handler, err := NewServiceHandler(mockStore, mockP2PManager, nil, logger, testConfig, nil)
 		require.NoError(t, err)
-		require.Equal(t, pb.HealthStatus_PASS, resp.Msg.Status)
+
+		server := httptest.NewServer(handler)
+		defer server.Close()
+
+		resp, err := http.Get(server.URL + "/health/live")
+		require.NoError(t, err)
+		defer resp.Body.Close()
+
+		require.Equal(t, http.StatusOK, resp.StatusCode)
+		body, err := io.ReadAll(resp.Body)
+		require.NoError(t, err)
+		require.Equal(t, "OK\n", string(body))
 		mockStore.AssertExpectations(t)
 	})
 
-	t.Run("aggregator with recent blocks returns PASS", func(t *testing.T) {
+	t.Run("aggregator with recent blocks returns OK", func(t *testing.T) {
 		mockStore := mocks.NewMockStore(t)
+		mockP2PManager := &mocks.MockP2PRPC{}
 		testConfig := config.DefaultConfig()
 		testConfig.Node.Aggregator = true
 		testConfig.Node.BlockTime.Duration = 1 * time.Second
@@ -405,15 +428,26 @@ func TestHealthServer_Livez(t *testing.T) {
 		}
 		mockStore.On("GetState", mock.Anything).Return(state, nil)
 
-		h := NewHealthServer(mockStore, testConfig, logger)
-		resp, err := h.Livez(context.Background(), connect.NewRequest(&emptypb.Empty{}))
+		handler, err := NewServiceHandler(mockStore, mockP2PManager, nil, logger, testConfig, nil)
 		require.NoError(t, err)
-		require.Equal(t, pb.HealthStatus_PASS, resp.Msg.Status)
+
+		server := httptest.NewServer(handler)
+		defer server.Close()
+
+		resp, err := http.Get(server.URL + "/health/live")
+		require.NoError(t, err)
+		defer resp.Body.Close()
+
+		require.Equal(t, http.StatusOK, resp.StatusCode)
+		body, err := io.ReadAll(resp.Body)
+		require.NoError(t, err)
+		require.Equal(t, "OK\n", string(body))
 		mockStore.AssertExpectations(t)
 	})
 
 	t.Run("aggregator with slow block production returns WARN", func(t *testing.T) {
 		mockStore := mocks.NewMockStore(t)
+		mockP2PManager := &mocks.MockP2PRPC{}
 		testConfig := config.DefaultConfig()
 		testConfig.Node.Aggregator = true
 		testConfig.Node.BlockTime.Duration = 1 * time.Second
@@ -425,15 +459,26 @@ func TestHealthServer_Livez(t *testing.T) {
 		}
 		mockStore.On("GetState", mock.Anything).Return(state, nil)
 
-		h := NewHealthServer(mockStore, testConfig, logger)
-		resp, err := h.Livez(context.Background(), connect.NewRequest(&emptypb.Empty{}))
+		handler, err := NewServiceHandler(mockStore, mockP2PManager, nil, logger, testConfig, nil)
 		require.NoError(t, err)
-		require.Equal(t, pb.HealthStatus_WARN, resp.Msg.Status)
+
+		server := httptest.NewServer(handler)
+		defer server.Close()
+
+		resp, err := http.Get(server.URL + "/health/live")
+		require.NoError(t, err)
+		defer resp.Body.Close()
+
+		require.Equal(t, http.StatusOK, resp.StatusCode)
+		body, err := io.ReadAll(resp.Body)
+		require.NoError(t, err)
+		require.Equal(t, "WARN\n", string(body))
 		mockStore.AssertExpectations(t)
 	})
 
 	t.Run("aggregator with stopped block production returns FAIL", func(t *testing.T) {
 		mockStore := mocks.NewMockStore(t)
+		mockP2PManager := &mocks.MockP2PRPC{}
 		testConfig := config.DefaultConfig()
 		testConfig.Node.Aggregator = true
 		testConfig.Node.BlockTime.Duration = 1 * time.Second
@@ -445,15 +490,26 @@ func TestHealthServer_Livez(t *testing.T) {
 		}
 		mockStore.On("GetState", mock.Anything).Return(state, nil)
 
-		h := NewHealthServer(mockStore, testConfig, logger)
-		resp, err := h.Livez(context.Background(), connect.NewRequest(&emptypb.Empty{}))
+		handler, err := NewServiceHandler(mockStore, mockP2PManager, nil, logger, testConfig, nil)
 		require.NoError(t, err)
-		require.Equal(t, pb.HealthStatus_FAIL, resp.Msg.Status)
+
+		server := httptest.NewServer(handler)
+		defer server.Close()
+
+		resp, err := http.Get(server.URL + "/health/live")
+		require.NoError(t, err)
+		defer resp.Body.Close()
+
+		require.Equal(t, http.StatusServiceUnavailable, resp.StatusCode)
+		body, err := io.ReadAll(resp.Body)
+		require.NoError(t, err)
+		require.Contains(t, string(body), "FAIL")
 		mockStore.AssertExpectations(t)
 	})
 
 	t.Run("lazy aggregator uses lazy block interval for threshold", func(t *testing.T) {
 		mockStore := mocks.NewMockStore(t)
+		mockP2PManager := &mocks.MockP2PRPC{}
 		testConfig := config.DefaultConfig()
 		testConfig.Node.Aggregator = true
 		testConfig.Node.LazyMode = true
@@ -467,58 +523,47 @@ func TestHealthServer_Livez(t *testing.T) {
 		}
 		mockStore.On("GetState", mock.Anything).Return(state, nil)
 
-		h := NewHealthServer(mockStore, testConfig, logger)
-		resp, err := h.Livez(context.Background(), connect.NewRequest(&emptypb.Empty{}))
+		handler, err := NewServiceHandler(mockStore, mockP2PManager, nil, logger, testConfig, nil)
 		require.NoError(t, err)
-		require.Equal(t, pb.HealthStatus_WARN, resp.Msg.Status)
+
+		server := httptest.NewServer(handler)
+		defer server.Close()
+
+		resp, err := http.Get(server.URL + "/health/live")
+		require.NoError(t, err)
+		defer resp.Body.Close()
+
+		require.Equal(t, http.StatusOK, resp.StatusCode)
+		body, err := io.ReadAll(resp.Body)
+		require.NoError(t, err)
+		require.Equal(t, "WARN\n", string(body))
 		mockStore.AssertExpectations(t)
 	})
 
 	t.Run("aggregator with state error returns FAIL", func(t *testing.T) {
 		mockStore := mocks.NewMockStore(t)
+		mockP2PManager := &mocks.MockP2PRPC{}
 		testConfig := config.DefaultConfig()
 		testConfig.Node.Aggregator = true
 
 		mockStore.On("GetState", mock.Anything).Return(types.State{}, fmt.Errorf("state error"))
 
-		h := NewHealthServer(mockStore, testConfig, logger)
-		resp, err := h.Livez(context.Background(), connect.NewRequest(&emptypb.Empty{}))
+		handler, err := NewServiceHandler(mockStore, mockP2PManager, nil, logger, testConfig, nil)
 		require.NoError(t, err)
-		require.Equal(t, pb.HealthStatus_FAIL, resp.Msg.Status)
+
+		server := httptest.NewServer(handler)
+		defer server.Close()
+
+		resp, err := http.Get(server.URL + "/health/live")
+		require.NoError(t, err)
+		defer resp.Body.Close()
+
+		require.Equal(t, http.StatusServiceUnavailable, resp.StatusCode)
+		body, err := io.ReadAll(resp.Body)
+		require.NoError(t, err)
+		require.Contains(t, string(body), "FAIL")
 		mockStore.AssertExpectations(t)
 	})
-}
-
-func TestHealthLiveEndpoint(t *testing.T) {
-	assert := require.New(t)
-
-	// Create mock dependencies
-	mockStore := mocks.NewMockStore(t)
-	mockP2PManager := &mocks.MockP2PRPC{} // Assuming this mock is sufficient or can be adapted
-
-	// Create the service handler
-	logger := zerolog.Nop()
-	testConfig := config.DefaultConfig()
-	handler, err := NewServiceHandler(mockStore, mockP2PManager, nil, logger, testConfig, nil)
-	assert.NoError(err)
-	assert.NotNil(handler)
-
-	// Create a new HTTP test server
-	server := httptest.NewServer(handler)
-	defer server.Close()
-
-	// Make a GET request to the /health/live endpoint
-	resp, err := http.Get(server.URL + "/health/live")
-	assert.NoError(err)
-	defer resp.Body.Close()
-
-	// Check the status code
-	assert.Equal(http.StatusOK, resp.StatusCode)
-
-	// Check the response body
-	body, err := io.ReadAll(resp.Body)
-	assert.NoError(err)
-	assert.Equal("OK\n", string(body)) // fmt.Fprintln adds a newline
 }
 
 func TestHealthReadyEndpoint(t *testing.T) {

@@ -210,10 +210,9 @@ func (s *EVMSingleUpgradeTestSuite) waitForEVMSingleHealthy(ctx context.Context,
 	networkInfo, err := node.GetNetworkInfo(ctx)
 	s.Require().NoError(err)
 
-	healthURL := fmt.Sprintf("http://0.0.0.0:%s/evnode.v1.HealthService/Livez", networkInfo.External.Ports.RPC)
+	healthURL := fmt.Sprintf("http://0.0.0.0:%s/health/live", networkInfo.External.Ports.RPC)
 	s.Require().Eventually(func() bool {
-		req, _ := http.NewRequestWithContext(ctx, http.MethodPost, healthURL, bytes.NewBufferString("{}"))
-		req.Header.Set("Content-Type", "application/json")
+		req, _ := http.NewRequestWithContext(ctx, http.MethodGet, healthURL, nil)
 		resp, err := http.DefaultClient.Do(req)
 		if err != nil {
 			return false

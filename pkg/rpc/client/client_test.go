@@ -43,7 +43,6 @@ func setupTestServer(t *testing.T, mockStore *mocks.MockStore, mockP2P *mocks.Mo
 
 	storeServer := server.NewStoreServer(mockStore, logger)
 	p2pServer := server.NewP2PServer(mockP2P)
-	healthServer := server.NewHealthServer(mockStore, testConfig, logger)
 	configServer := server.NewConfigServer(testConfig, nil, logger)
 
 	// Register the store service
@@ -54,13 +53,12 @@ func setupTestServer(t *testing.T, mockStore *mocks.MockStore, mockP2P *mocks.Mo
 	p2pPath, p2pHandler := rpc.NewP2PServiceHandler(p2pServer)
 	mux.Handle(p2pPath, p2pHandler)
 
-	// Register the health service
-	healthPath, healthHandler := rpc.NewHealthServiceHandler(healthServer)
-	mux.Handle(healthPath, healthHandler)
-
 	// Register the config service
 	configPath, configHandler := rpc.NewConfigServiceHandler(configServer)
 	mux.Handle(configPath, configHandler)
+
+	// Register custom HTTP endpoints (including health)
+	server.RegisterCustomHTTPEndpoints(mux, mockStore, mockP2P, testConfig, nil, logger)
 
 	// Create an HTTP server with h2c for HTTP/2 support
 	testServer := httptest.NewServer(h2c.NewHandler(mux, &http2.Server{}))

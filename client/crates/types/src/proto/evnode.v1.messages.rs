@@ -169,6 +169,8 @@ pub struct State {
     pub da_height: u64,
     #[prost(bytes = "vec", tag = "8")]
     pub app_hash: ::prost::alloc::vec::Vec<u8>,
+    #[prost(bytes = "vec", tag = "9")]
+    pub last_header_hash: ::prost::alloc::vec::Vec<u8>,
 }
 /// GetPeerInfoResponse defines the response for retrieving peer information
 #[allow(clippy::derive_partial_eq_without_eq)]
@@ -217,51 +219,6 @@ pub struct NetInfo {
 pub struct Batch {
     #[prost(bytes = "vec", repeated, tag = "1")]
     pub txs: ::prost::alloc::vec::Vec<::prost::alloc::vec::Vec<u8>>,
-}
-/// GetHealthResponse defines the response for retrieving health status
-#[allow(clippy::derive_partial_eq_without_eq)]
-#[derive(Clone, PartialEq, ::prost::Message)]
-pub struct GetHealthResponse {
-    /// Health status
-    #[prost(enumeration = "HealthStatus", tag = "1")]
-    pub status: i32,
-}
-/// HealthStatus defines the health status of the node
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
-#[repr(i32)]
-pub enum HealthStatus {
-    /// Unknown health status
-    Unknown = 0,
-    /// Healthy status (Healthy)
-    Pass = 1,
-    /// Degraded but still serving
-    Warn = 2,
-    /// Hard fail
-    Fail = 3,
-}
-impl HealthStatus {
-    /// String value of the enum field names used in the ProtoBuf definition.
-    ///
-    /// The values are not transformed in any way and thus are considered stable
-    /// (if the ProtoBuf definition does not change) and safe for programmatic use.
-    pub fn as_str_name(&self) -> &'static str {
-        match self {
-            HealthStatus::Unknown => "UNKNOWN",
-            HealthStatus::Pass => "PASS",
-            HealthStatus::Warn => "WARN",
-            HealthStatus::Fail => "FAIL",
-        }
-    }
-    /// Creates an enum from field names used in the ProtoBuf definition.
-    pub fn from_str_name(value: &str) -> ::core::option::Option<Self> {
-        match value {
-            "UNKNOWN" => Some(Self::Unknown),
-            "PASS" => Some(Self::Pass),
-            "WARN" => Some(Self::Warn),
-            "FAIL" => Some(Self::Fail),
-            _ => None,
-        }
-    }
 }
 /// InitChainRequest contains the genesis parameters for chain initialization
 #[allow(clippy::derive_partial_eq_without_eq)]

@@ -2,7 +2,10 @@ package client
 
 import (
 	"context"
+	"fmt"
+	"io"
 	"net/http"
+	"strings"
 
 	"connectrpc.com/connect"
 	"google.golang.org/protobuf/types/known/emptypb"
@@ -11,12 +14,40 @@ import (
 	rpc "github.com/evstack/ev-node/types/pb/evnode/v1/v1connect"
 )
 
-// Client is the client for StoreService, P2PService, HealthService, and ConfigService
+// HealthStatus represents the health status of a node
+type HealthStatus int32
+
+const (
+	// HealthStatus_UNKNOWN represents an unknown health status
+	HealthStatus_UNKNOWN HealthStatus = 0
+	// HealthStatus_PASS represents a healthy node
+	HealthStatus_PASS HealthStatus = 1
+	// HealthStatus_WARN represents a degraded but still serving node
+	HealthStatus_WARN HealthStatus = 2
+	// HealthStatus_FAIL represents a failed node
+	HealthStatus_FAIL HealthStatus = 3
+)
+
+func (h HealthStatus) String() string {
+	switch h {
+	case HealthStatus_PASS:
+		return "PASS"
+	case HealthStatus_WARN:
+		return "WARN"
+	case HealthStatus_FAIL:
+		return "FAIL"
+	default:
+		return "UNKNOWN"
+	}
+}
+
+// Client is the client for StoreService, P2PService, and ConfigService
 type Client struct {
 	storeClient  rpc.StoreServiceClient
 	p2pClient    rpc.P2PServiceClient
-	healthClient rpc.HealthServiceClient
 	configClient rpc.ConfigServiceClient
+	baseURL      string
+	httpClient   *http.Client
 }
 
 // NewClient creates a new RPC client
@@ -24,14 +55,14 @@ func NewClient(baseURL string) *Client {
 	httpClient := http.DefaultClient
 	storeClient := rpc.NewStoreServiceClient(httpClient, baseURL, connect.WithGRPC())
 	p2pClient := rpc.NewP2PServiceClient(httpClient, baseURL, connect.WithGRPC())
-	healthClient := rpc.NewHealthServiceClient(httpClient, baseURL, connect.WithGRPC())
 	configClient := rpc.NewConfigServiceClient(httpClient, baseURL, connect.WithGRPC())
 
 	return &Client{
 		storeClient:  storeClient,
 		p2pClient:    p2pClient,
-		healthClient: healthClient,
 		configClient: configClient,
+		baseURL:      baseURL,
+		httpClient:   httpClient,
 	}
 }
 
@@ -114,14 +145,37 @@ func (c *Client) GetNetInfo(ctx context.Context) (*pb.NetInfo, error) {
 	return resp.Msg.NetInfo, nil
 }
 
-// GetHealth calls the HealthService.Livez endpoint and returns the HealthStatus
-func (c *Client) GetHealth(ctx context.Context) (pb.HealthStatus, error) {
-	req := connect.NewRequest(&emptypb.Empty{})
-	resp, err := c.healthClient.Livez(ctx, req)
+// GetHealth calls the /health/live HTTP endpoint and returns the HealthStatus
+func (c *Client) GetHealth(ctx context.Context) (HealthStatus, error) {
+	healthURL := fmt.Sprintf("%s/health/live", c.baseURL)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, healthURL, nil)
 	if err != nil {
-		return pb.HealthStatus_UNKNOWN, err
+		return HealthStatus_UNKNOWN, fmt.Errorf("failed to create health request: %w", err)
 	}
-	return resp.Msg.Status, nil
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return HealthStatus_UNKNOWN, fmt.Errorf("failed to get health: %w", err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return HealthStatus_UNKNOWN, fmt.Errorf("failed to read health response: %w", err)
+	}
+
+	// Parse the text response
+	status := strings.TrimSpace(string(body))
+	switch status {
+	case "OK":
+		return HealthStatus_PASS, nil
+	case "WARN":
+		return HealthStatus_WARN, nil
+	case "FAIL":
+		return HealthStatus_FAIL, nil
+	default:
+		return HealthStatus_UNKNOWN, fmt.Errorf("unknown health status: %s", status)
+	}
 }
 
 // GetNamespace returns the namespace configuration for this network

@@ -7,15 +7,17 @@ import (
 	"testing"
 
 	"github.com/evstack/ev-node/pkg/config"
+	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/assert"
 )
 
 func TestRegisterCustomHTTPEndpoints(t *testing.T) {
 	// Create a new ServeMux
 	mux := http.NewServeMux()
+	logger := zerolog.Nop()
 
 	// Register custom HTTP endpoints
-	RegisterCustomHTTPEndpoints(mux, nil, nil, config.DefaultConfig(), nil)
+	RegisterCustomHTTPEndpoints(mux, nil, nil, config.DefaultConfig(), nil, logger)
 
 	// Create a new HTTP test server with the mux
 	testServer := httptest.NewServer(mux)

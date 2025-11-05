@@ -3,10 +3,22 @@ package server
 import (
 	"fmt"
 	"net/http"
+	"time"
 
 	"github.com/evstack/ev-node/pkg/config"
 	"github.com/evstack/ev-node/pkg/p2p"
 	"github.com/evstack/ev-node/pkg/store"
+	"github.com/rs/zerolog"
+)
+
+const (
+	// healthCheckWarnMultiplier is the multiplier for block time to determine WARN threshold
+	// If no block has been produced in (blockTime * healthCheckWarnMultiplier), return WARN
+	healthCheckWarnMultiplier = 3
+
+	// healthCheckFailMultiplier is the multiplier for block time to determine FAIL threshold
+	// If no block has been produced in (blockTime * healthCheckFailMultiplier), return FAIL
+	healthCheckFailMultiplier = 5
 )
 
 // BestKnownHeightProvider should return the best-known network height observed by the node
@@ -15,9 +27,59 @@ type BestKnownHeightProvider func() uint64
 
 // RegisterCustomHTTPEndpoints is the designated place to add new, non-gRPC, plain HTTP handlers.
 // Additional custom HTTP endpoints can be registered on the mux here.
-func RegisterCustomHTTPEndpoints(mux *http.ServeMux, s store.Store, pm p2p.P2PRPC, cfg config.Config, bestKnownHeightProvider BestKnownHeightProvider) {
+func RegisterCustomHTTPEndpoints(mux *http.ServeMux, s store.Store, pm p2p.P2PRPC, cfg config.Config, bestKnownHeightProvider BestKnownHeightProvider, logger zerolog.Logger) {
+	// Liveness endpoint - checks if block production is healthy for aggregator nodes
 	mux.HandleFunc("/health/live", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/plain")
+
+		// For aggregator nodes, check if block production is healthy
+		if cfg.Node.Aggregator {
+			state, err := s.GetState(r.Context())
+			if err != nil {
+				logger.Error().Err(err).Msg("Failed to get state for health check")
+				http.Error(w, "FAIL", http.StatusServiceUnavailable)
+				return
+			}
+
+			// If we have blocks, check if the last block time is recent
+			if state.LastBlockHeight > 0 {
+				timeSinceLastBlock := time.Since(state.LastBlockTime)
+
+				// Calculate the threshold based on block time
+				blockTime := cfg.Node.BlockTime.Duration
+
+				// For lazy mode, use the lazy block interval instead
+				if cfg.Node.LazyMode {
+					blockTime = cfg.Node.LazyBlockInterval.Duration
+				}
+
+				warnThreshold := blockTime * healthCheckWarnMultiplier
+				failThreshold := blockTime * healthCheckFailMultiplier
+
+				if timeSinceLastBlock > failThreshold {
+					logger.Error().
+						Dur("time_since_last_block", timeSinceLastBlock).
+						Dur("fail_threshold", failThreshold).
+						Uint64("last_block_height", state.LastBlockHeight).
+						Time("last_block_time", state.LastBlockTime).
+						Msg("Health check: node has stopped producing blocks (FAIL)")
+					http.Error(w, "FAIL", http.StatusServiceUnavailable)
+					return
+				} else if timeSinceLastBlock > warnThreshold {
+					logger.Warn().
+						Dur("time_since_last_block", timeSinceLastBlock).
+						Dur("warn_threshold", warnThreshold).
+						Uint64("last_block_height", state.LastBlockHeight).
+						Time("last_block_time", state.LastBlockTime).
+						Msg("Health check: block production is slow (WARN)")
+					w.WriteHeader(http.StatusOK)
+					fmt.Fprintln(w, "WARN")
+					return
+				}
+			}
+		}
+
+		// For non-aggregator nodes or if checks pass, return healthy
 		w.WriteHeader(http.StatusOK)
 		fmt.Fprintln(w, "OK")
 	})
