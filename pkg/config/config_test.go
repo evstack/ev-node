@@ -106,7 +106,7 @@ func TestAddFlags(t *testing.T) {
 	assertFlagValue(t, flags, FlagRPCAddress, DefaultConfig().RPC.Address)
 
 	// Count the number of flags we're explicitly checking
-	expectedFlagCount := 40 // Update this number if you add more flag checks above
+	expectedFlagCount := 46 // Update this number if you add more flag checks above
 
 	// Get the actual number of flags (both regular and persistent)
 	actualFlagCount := 0
@@ -376,5 +376,59 @@ func assertFlagValue(t *testing.T, flags *pflag.FlagSet, name string, expectedVa
 		default:
 			assert.Equal(t, fmt.Sprintf("%v", v), flag.DefValue, "Flag %s should have default value %v", name, v)
 		}
+	}
+}
+
+func TestBasedSequencerValidation(t *testing.T) {
+	tests := []struct {
+		name        string
+		aggregator  bool
+		basedSeq    bool
+		expectError bool
+		errorMsg    string
+	}{
+		{
+			name:        "based sequencer without aggregator should fail",
+			aggregator:  false,
+			basedSeq:    true,
+			expectError: true,
+			errorMsg:    "based sequencer mode requires aggregator mode to be enabled",
+		},
+		{
+			name:        "based sequencer with aggregator should pass",
+			aggregator:  true,
+			basedSeq:    true,
+			expectError: false,
+		},
+		{
+			name:        "aggregator without based sequencer should pass",
+			aggregator:  true,
+			basedSeq:    false,
+			expectError: false,
+		},
+		{
+			name:        "neither aggregator nor based sequencer should pass",
+			aggregator:  false,
+			basedSeq:    false,
+			expectError: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := DefaultConfig()
+			cfg.RootDir = t.TempDir()
+			cfg.Node.Aggregator = tt.aggregator
+			cfg.Node.BasedSequencer = tt.basedSeq
+
+			err := cfg.Validate()
+
+			if tt.expectError {
+				require.Error(t, err)
+				assert.Contains(t, err.Error(), tt.errorMsg)
+			} else {
+				require.NoError(t, err)
+			}
+		})
 	}
 }

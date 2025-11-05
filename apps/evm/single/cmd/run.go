@@ -7,23 +7,27 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/evstack/ev-node/core/da"
-	"github.com/evstack/ev-node/da/jsonrpc"
-	"github.com/evstack/ev-node/node"
-	"github.com/evstack/ev-node/sequencers/single"
-
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ipfs/go-datastore"
+	"github.com/rs/zerolog"
 	"github.com/spf13/cobra"
 
-	"github.com/evstack/ev-node/execution/evm"
-
+	"github.com/evstack/ev-node/block"
+	"github.com/evstack/ev-node/core/da"
 	"github.com/evstack/ev-node/core/execution"
+	coresequencer "github.com/evstack/ev-node/core/sequencer"
+	"github.com/evstack/ev-node/da/jsonrpc"
+	"github.com/evstack/ev-node/execution/evm"
+	"github.com/evstack/ev-node/node"
 	rollcmd "github.com/evstack/ev-node/pkg/cmd"
 	"github.com/evstack/ev-node/pkg/config"
+	"github.com/evstack/ev-node/pkg/genesis"
 	genesispkg "github.com/evstack/ev-node/pkg/genesis"
 	"github.com/evstack/ev-node/pkg/p2p"
 	"github.com/evstack/ev-node/pkg/p2p/key"
 	"github.com/evstack/ev-node/pkg/store"
+	"github.com/evstack/ev-node/sequencers/based"
+	"github.com/evstack/ev-node/sequencers/single"
 )
 
 var RunCmd = &cobra.Command{
@@ -73,21 +77,8 @@ var RunCmd = &cobra.Command{
 			logger.Warn().Msg("da_start_height is not set in genesis.json, ask your chain developer")
 		}
 
-		singleMetrics, err := single.DefaultMetricsProvider(nodeConfig.Instrumentation.IsPrometheusEnabled())(genesis.ChainID)
-		if err != nil {
-			return err
-		}
-
-		sequencer, err := single.NewSequencer(
-			context.Background(),
-			logger,
-			datastore,
-			&daJrpc.DA,
-			[]byte(genesis.ChainID),
-			nodeConfig.Node.BlockTime.Duration,
-			singleMetrics,
-			nodeConfig.Node.Aggregator,
-		)
+		// Create sequencer based on configuration
+		sequencer, err := createSequencer(context.Background(), logger, datastore, &daJrpc.DA, nodeConfig, genesis)
 		if err != nil {
 			return err
 		}
@@ -109,6 +100,61 @@ var RunCmd = &cobra.Command{
 func init() {
 	config.AddFlags(RunCmd)
 	addFlags(RunCmd)
+}
+
+// createSequencer creates a sequencer based on the configuration.
+// If BasedSequencer is enabled, it creates a based sequencer that fetches transactions from DA.
+// Otherwise, it creates a single (traditional) sequencer.
+func createSequencer(
+	ctx context.Context,
+	logger zerolog.Logger,
+	datastore datastore.Batching,
+	da da.DA,
+	nodeConfig config.Config,
+	genesis genesis.Genesis,
+) (coresequencer.Sequencer, error) {
+	if nodeConfig.Node.BasedSequencer {
+		// Based sequencer mode - fetch transactions only from DA
+		if !nodeConfig.Node.Aggregator {
+			return nil, fmt.Errorf("based sequencer mode requires aggregator mode to be enabled")
+		}
+
+		daRetriever, err := block.NewDARetriever(da, nodeConfig, genesis, logger)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create DA retriever: %w", err)
+		}
+
+		adapter := based.NewDARetrieverAdapter(daRetriever.RetrieveForcedIncludedTxsFromDA)
+		basedSeq := based.NewBasedSequencer(adapter, da, nodeConfig, genesis, logger)
+
+		logger.Info().
+			Str("forced_inclusion_namespace", nodeConfig.DA.GetForcedInclusionNamespace()).
+			Uint64("da_epoch", nodeConfig.DA.ForcedInclusionDAEpoch).
+			Msg("based sequencer initialized")
+
+		return basedSeq, nil
+	}
+
+	singleMetrics, err := single.NopMetrics()
+	if err != nil {
+		return nil, fmt.Errorf("failed to create single sequencer metrics: %w", err)
+	}
+
+	sequencer, err := single.NewSequencer(
+		ctx,
+		logger,
+		datastore,
+		da,
+		[]byte(genesis.ChainID),
+		nodeConfig.Node.BlockTime.Duration,
+		singleMetrics,
+		nodeConfig.Node.Aggregator,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create single sequencer: %w", err)
+	}
+
+	return sequencer, nil
 }
 
 func createExecutionClient(cmd *cobra.Command) (execution.Executor, error) {

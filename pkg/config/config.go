@@ -33,6 +33,8 @@ const (
 
 	// FlagAggregator is a flag for running node in aggregator mode
 	FlagAggregator = FlagPrefixEvnode + "node.aggregator"
+	// FlagBasedSequencer is a flag for enabling based sequencer mode (requires aggregator mode)
+	FlagBasedSequencer = FlagPrefixEvnode + "node.based_sequencer"
 	// FlagLight is a flag for running the node in light mode
 	FlagLight = FlagPrefixEvnode + "node.light"
 	// FlagBlockTime is a flag for specifying the block time
@@ -197,8 +199,9 @@ func (d *DAConfig) GetForcedInclusionNamespace() string {
 // NodeConfig contains all Rollkit specific configuration parameters
 type NodeConfig struct {
 	// Node mode configuration
-	Aggregator bool `yaml:"aggregator" comment:"Run node in aggregator mode"`
-	Light      bool `yaml:"light" comment:"Run node in light mode"`
+	Aggregator     bool `yaml:"aggregator" comment:"Run node in aggregator mode"`
+	BasedSequencer bool `yaml:"based_sequencer" comment:"Run node with based sequencer (fetches transactions only from DA forced inclusion namespace). Requires aggregator mode to be enabled."`
+	Light          bool `yaml:"light" comment:"Run node in light mode"`
 
 	// Block management configuration
 	BlockTime                DurationWrapper `mapstructure:"block_time" yaml:"block_time" comment:"Block time (duration). Examples: \"500ms\", \"1s\", \"5s\", \"1m\", \"2m30s\", \"10m\"."`
@@ -251,6 +254,11 @@ func (c *Config) Validate() error {
 	fullDir := filepath.Dir(c.ConfigPath())
 	if err := os.MkdirAll(fullDir, 0o750); err != nil {
 		return fmt.Errorf("could not create directory %q: %w", fullDir, err)
+	}
+
+	// Validate based sequencer requires aggregator mode
+	if c.Node.BasedSequencer && !c.Node.Aggregator {
+		return fmt.Errorf("based sequencer mode requires aggregator mode to be enabled")
 	}
 
 	// Validate namespaces
@@ -320,8 +328,9 @@ func AddFlags(cmd *cobra.Command) {
 	cmd.Flags().Bool(FlagClearCache, def.ClearCache, "clear the cache")
 
 	// Node configuration flags
-	cmd.Flags().Bool(FlagAggregator, def.Node.Aggregator, "run node in aggregator mode")
-	cmd.Flags().Bool(FlagLight, def.Node.Light, "run light client")
+	cmd.Flags().Bool(FlagAggregator, def.Node.Aggregator, "run node as an aggregator")
+	cmd.Flags().Bool(FlagBasedSequencer, def.Node.BasedSequencer, "run node with based sequencer (requires aggregator mode)")
+	cmd.Flags().Bool(FlagLight, def.Node.Light, "run node in light mode")
 	cmd.Flags().Duration(FlagBlockTime, def.Node.BlockTime.Duration, "block time (for aggregator mode)")
 	cmd.Flags().String(FlagTrustedHash, def.Node.TrustedHash, "initial trusted hash to start the header exchange service")
 	cmd.Flags().Bool(FlagLazyAggregator, def.Node.LazyMode, "produce blocks only when transactions are available or after lazy block time")
@@ -366,6 +375,9 @@ func AddFlags(cmd *cobra.Command) {
 	cmd.Flags().String(FlagSignerType, def.Signer.SignerType, "type of signer to use (file, grpc)")
 	cmd.Flags().String(FlagSignerPath, def.Signer.SignerPath, "path to the signer file or address")
 	cmd.Flags().String(FlagSignerPassphraseFile, "", "path to file containing the signer passphrase (required for file signer and if aggregator is enabled)")
+
+	// flag constraints
+	cmd.MarkFlagsMutuallyExclusive(FlagLight, FlagAggregator)
 }
 
 // Load loads the node configuration in the following order of precedence:

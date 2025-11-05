@@ -32,7 +32,7 @@ type Executor struct {
 	exec        coreexecutor.Executor
 	sequencer   coresequencer.Sequencer
 	signer      signer.Signer
-	daRetriever syncing.DaRetrieverI
+	daRetriever common.DARetriever
 
 	// Shared components
 	cache   cache.Manager
@@ -73,7 +73,7 @@ func NewExecutor(
 	store store.Store,
 	exec coreexecutor.Executor,
 	sequencer coresequencer.Sequencer,
-	daRetriever syncing.DaRetrieverI,
+	daRetriever common.DARetriever,
 	signer signer.Signer,
 	cache cache.Manager,
 	metrics *common.Metrics,
@@ -335,9 +335,15 @@ func (e *Executor) produceBlock() error {
 	}
 
 	// fetch forced included txs
-	forcedIncludedTxsEvent, err := e.daRetriever.RetrieveForcedIncludedTxsFromDA(e.ctx, currentState.DAHeight)
-	if err != nil && !errors.Is(err, syncing.ErrForceInclusionNotConfigured) {
-		e.logger.Error().Err(err).Msg("failed to retrieve forced included txs")
+	var (
+		forcedIncludedTxsEvent *common.ForcedIncludedEvent
+		err                    error
+	)
+	if !e.config.Node.BasedSequencer {
+		forcedIncludedTxsEvent, err = e.daRetriever.RetrieveForcedIncludedTxsFromDA(e.ctx, currentState.DAHeight)
+		if err != nil && !errors.Is(err, syncing.ErrForceInclusionNotConfigured) {
+			e.logger.Error().Err(err).Msg("failed to retrieve forced included txs")
+		}
 	}
 
 	var (

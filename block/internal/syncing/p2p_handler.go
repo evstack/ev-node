@@ -16,6 +16,11 @@ import (
 	"github.com/evstack/ev-node/types"
 )
 
+type p2pHandler interface {
+	ProcessHeaderRange(ctx context.Context, fromHeight, toHeight uint64, heightInCh chan<- common.DAHeightEvent)
+	ProcessDataRange(ctx context.Context, fromHeight, toHeight uint64, heightInCh chan<- common.DAHeightEvent)
+}
+
 // P2PHandler handles all P2P operations for the syncer
 type P2PHandler struct {
 	headerStore goheader.Store[*types.SignedHeader]

@@ -1,6 +1,10 @@
 package common
 
-import "github.com/evstack/ev-node/types"
+import (
+	"context"
+
+	"github.com/evstack/ev-node/types"
+)
 
 // EventSource represents the origin of a block event
 type EventSource string
@@ -12,8 +16,14 @@ const (
 	SourceP2P EventSource = "P2P"
 )
 
+// DARetriever defines the interface for retrieving events from the DA layer
+type DARetriever interface {
+	RetrieveFromDA(ctx context.Context, daHeight uint64) ([]DAHeightEvent, error)
+	RetrieveForcedIncludedTxsFromDA(ctx context.Context, daHeight uint64) (*ForcedIncludedEvent, error)
+}
+
 // DAHeightEvent represents a DA event for caching
-type DAHeightEvent struct {
+type DAHeightEvent = struct {
 	Header *types.SignedHeader
 	Data   *types.Data
 	// DaHeight corresponds to the highest DA included height between the Header and Data.
@@ -23,7 +33,7 @@ type DAHeightEvent struct {
 }
 
 // ForcedIncluded represents a forced inclusion event for caching
-type ForcedIncludedEvent struct {
+type ForcedIncludedEvent = struct {
 	Txs           [][]byte
 	StartDaHeight uint64
 	EndDaHeight   uint64
