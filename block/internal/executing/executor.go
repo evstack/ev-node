@@ -204,6 +204,7 @@ func (e *Executor) initializeState() error {
 	}
 
 	e.setLastState(state)
+	e.sequencer.SetDAHeight(state.DAHeight)
 
 	// Initialize store height using batch for atomicity
 	batch, err := e.store.NewBatch(e.ctx)
@@ -439,10 +440,9 @@ func (e *Executor) produceBlock() error {
 
 // retrieveBatch gets the next batch of transactions from the sequencer
 func (e *Executor) retrieveBatch(ctx context.Context) (*BatchData, error) {
-	currentState := e.getLastState()
 
 	// Update sequencer's DA height for forced inclusion tracking
-	e.sequencer.SetDAHeight(currentState.DAHeight)
+	// e.sequencer.SetDAHeight(currentState.DAHeight)
 
 	req := coresequencer.GetNextBatchRequest{
 		Id:            []byte(e.genesis.ChainID),
