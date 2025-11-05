@@ -466,7 +466,11 @@ func (s *Syncer) trySyncNextBlock(event *common.DAHeightEvent) error {
 	// Verify forced inclusion transactions if configured
 	if err := s.verifyForcedInclusionTxs(currentState, data); err != nil {
 		s.logger.Error().Err(err).Uint64("height", nextHeight).Msg("forced inclusion verification failed")
-		// TODO(@julienrbrt): Eventually halt the syncer and request the node to be started using the based sequencer.
+		if errors.Is(err, errMaliciousProposer) {
+			s.logger.Error().Msg("Restart with based sequencer.")
+			s.cache.RemoveHeaderDAIncluded(headerHash)
+			return err
+		}
 	}
 
 	// Apply block
@@ -586,6 +590,8 @@ func (s *Syncer) validateBlock(currState types.State, data *types.Data, header *
 	return nil
 }
 
+var errMaliciousProposer = errors.New("malicious proposer detected")
+
 // verifyForcedInclusionTxs verifies that all forced inclusion transactions from DA are included in the block
 func (s *Syncer) verifyForcedInclusionTxs(currentState types.State, data *types.Data) error {
 	if s.daRetriever == nil {
@@ -631,7 +637,7 @@ func (s *Syncer) verifyForcedInclusionTxs(currentState types.State, data *types.
 			Int("missing_count", len(missingTxs)).
 			Int("total_forced", len(forcedIncludedTxsEvent.Txs)).
 			Msg("SEQUENCER IS MALICIOUS: forced inclusion transactions missing from block")
-		return fmt.Errorf("sequencer is malicious: %d forced inclusion transactions not included in block", len(missingTxs))
+		return errors.Join(errMaliciousProposer, fmt.Errorf("sequencer is malicious: %d forced inclusion transactions not included in block", len(missingTxs)))
 	}
 
 	s.logger.Debug().

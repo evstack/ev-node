@@ -246,6 +246,15 @@ func NewAggregatorComponents(
 		return nil, fmt.Errorf("failed to create reaper: %w", err)
 	}
 
+	if config.Node.BasedSequencer { // no submissions needed for bases sequencer
+		return &Components{
+			Executor: executor,
+			Reaper:   reaper,
+			Cache:    cacheManager,
+			errorCh:  errorCh,
+		}, nil
+	}
+
 	// Create DA submitter for aggregator nodes (with signer for submission)
 	daSubmitter := submitting.NewDASubmitter(da, config, genesis, blockOpts, metrics, logger)
 	submitter := submitting.NewSubmitter(
