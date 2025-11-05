@@ -13,7 +13,6 @@ import (
 
 	"github.com/evstack/ev-node/block/internal/cache"
 	"github.com/evstack/ev-node/block/internal/common"
-	"github.com/evstack/ev-node/block/internal/syncing"
 	"github.com/evstack/ev-node/pkg/config"
 	"github.com/evstack/ev-node/pkg/genesis"
 	"github.com/evstack/ev-node/pkg/store"
@@ -49,7 +48,7 @@ func TestExecutor_BroadcasterIntegration(t *testing.T) {
 		memStore,
 		nil, // nil executor (we're not testing execution)
 		nil, // nil sequencer (we're not testing sequencing)
-		syncing.NewMockDaRetrieverI(t),
+		common.NewMockDARetriever(t),
 		testSigner, // test signer (required for executor)
 		cacheManager,
 		metrics,
@@ -100,7 +99,7 @@ func TestExecutor_NilBroadcasters(t *testing.T) {
 		memStore,
 		nil, // nil executor
 		nil, // nil sequencer
-		syncing.NewMockDaRetrieverI(t),
+		common.NewMockDARetriever(t),
 		testSigner, // test signer (required for executor)
 		cacheManager,
 		metrics,
