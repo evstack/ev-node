@@ -100,6 +100,11 @@ jobs:
                 identifiers.push(version.name);
               }
 
+              if (tags.length === 0) {
+                core.info(`Skipping version ${version.id} - no tags found`);
+                continue;
+              }
+
               const hasReleaseTag = tags.some(tag => tag.startsWith('v'));
               if (hasReleaseTag) {
                 continue;
