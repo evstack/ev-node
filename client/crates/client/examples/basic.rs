@@ -1,4 +1,4 @@
-use ev_client::{Client, HealthClient, P2PClient, StoreClient};
+use ev_client::{health::HealthClient, Client, P2PClient, StoreClient};
 use std::error::Error;
 
 #[tokio::main]
@@ -14,15 +14,26 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let client = Client::connect(&endpoint).await?;
     println!("Successfully connected to evolve node");
 
-    // Check health status
+    // Check health status (HTTP endpoints)
     println!("\n=== Health Check ===");
-    let health = HealthClient::new(&client);
-    match health.get_health().await {
-        Ok(health_response) => {
-            println!("Health status: {:?}", health_response.status());
-            println!("Node is healthy: {}", health.is_healthy().await?);
+    let health = HealthClient::with_base_url(endpoint.clone());
+
+    // Liveness check - is the process alive?
+    match health.livez().await {
+        Ok(status) => {
+            println!("Liveness status: {:?}", status);
+            println!("Node is alive: {}", health.is_healthy().await?);
         }
-        Err(e) => println!("Failed to get health status: {e}"),
+        Err(e) => println!("Failed to get liveness status: {e}"),
+    }
+
+    // Readiness check - can it serve correct data?
+    match health.readyz().await {
+        Ok(status) => {
+            println!("Readiness status: {:?}", status);
+            println!("Node is ready: {}", health.is_ready().await?);
+        }
+        Err(e) => println!("Failed to get readiness status: {e}"),
     }
 
     // Get P2P information

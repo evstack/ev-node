@@ -1,6 +1,6 @@
 use crate::{client::Client, error::Result};
 
-/// Health status of the node
+/// Health status of the node (liveness check)
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum HealthStatus {
     /// Node is operating normally
@@ -10,6 +10,17 @@ pub enum HealthStatus {
     /// Node has failed health checks
     Fail,
     /// Unknown health status
+    Unknown,
+}
+
+/// Readiness status of the node (can serve correct data)
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ReadinessStatus {
+    /// Node is ready to serve traffic
+    Ready,
+    /// Node is not ready to serve traffic
+    Unready,
+    /// Unknown readiness status
     Unknown,
 }
 
@@ -37,7 +48,10 @@ impl HealthClient {
         }
     }
 
-    /// Check if the node is alive and get its health status
+    /// Check if the node is alive and get its health status (liveness check)
+    ///
+    /// This endpoint checks if the process is alive and responsive.
+    /// A failing liveness check should result in killing/restarting the process.
     pub async fn livez(&self) -> Result<HealthStatus> {
         let url = format!("{}/health/live", self.base_url);
         let response = self.http_client.get(&url).send().await?;
@@ -52,9 +66,35 @@ impl HealthClient {
         }
     }
 
-    /// Check if the node is healthy (status is PASS)
+    /// Check if the node is ready to serve correct data (readiness check)
+    ///
+    /// This endpoint checks if the node can serve correct data to clients.
+    /// A failing readiness check should remove the node from load balancer
+    /// but NOT kill the process.
+    pub async fn readyz(&self) -> Result<ReadinessStatus> {
+        let url = format!("{}/health/ready", self.base_url);
+        let response = self.http_client.get(&url).send().await?;
+
+        let status_text = response.text().await?.trim().to_string();
+
+        if status_text.starts_with("READY") {
+            Ok(ReadinessStatus::Ready)
+        } else if status_text.starts_with("UNREADY") {
+            Ok(ReadinessStatus::Unready)
+        } else {
+            Ok(ReadinessStatus::Unknown)
+        }
+    }
+
+    /// Check if the node is healthy (liveness status is PASS)
     pub async fn is_healthy(&self) -> Result<bool> {
         let status = self.livez().await?;
         Ok(status == HealthStatus::Pass)
+    }
+
+    /// Check if the node is ready (readiness status is READY)
+    pub async fn is_ready(&self) -> Result<bool> {
+        let status = self.readyz().await?;
+        Ok(status == ReadinessStatus::Ready)
     }
 }

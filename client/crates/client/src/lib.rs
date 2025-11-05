@@ -88,7 +88,7 @@ pub mod store;
 pub use client::{Client, ClientBuilder};
 pub use config::ConfigClient;
 pub use error::{ClientError, Result};
-pub use health::HealthClient;
+pub use health::{HealthClient, HealthStatus, ReadinessStatus};
 pub use p2p::P2PClient;
 pub use signer::SignerClient;
 pub use store::StoreClient;

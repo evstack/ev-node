@@ -26,7 +26,7 @@ import (
 
 // setupTestServerOptions holds optional parameters for setupTestServer
 type setupTestServerOptions struct {
-	config                   *config.Config
+	config                  *config.Config
 	bestKnownHeightProvider server.BestKnownHeightProvider
 }
 
