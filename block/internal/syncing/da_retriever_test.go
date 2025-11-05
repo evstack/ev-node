@@ -255,7 +255,7 @@ func TestDARetriever_tryDecodeData_InvalidSignatureOrProposer(t *testing.T) {
 }
 
 func TestDARetriever_validateBlobResponse(t *testing.T) {
-	r := &DARetriever{logger: zerolog.Nop()}
+	r := &daRetriever{logger: zerolog.Nop()}
 	// StatusSuccess -> nil
 	err := r.validateBlobResponse(coreda.ResultRetrieve{BaseResult: coreda.BaseResult{Code: coreda.StatusSuccess}}, 1)
 	assert.NoError(t, err)

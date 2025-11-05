@@ -43,7 +43,6 @@ func newTestExecutor(t *testing.T) *executing.Executor {
 		nil, // store (unused)
 		nil, // core executor (unused)
 		nil, // sequencer (unused)
-		nil, // daretriever (unused)
 		s,   // signer (required)
 		nil, // cache (unused)
 		nil, // metrics (unused)

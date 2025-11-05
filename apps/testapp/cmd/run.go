@@ -146,6 +146,29 @@ func createSequencer(
 		return nil, fmt.Errorf("failed to create single sequencer metrics: %w", err)
 	}
 
+	// Create DA retriever for forced inclusion support
+	var daRetriever single.DARetriever
+	if nodeConfig.Node.Aggregator {
+		commonDARetriever, err := block.NewDARetriever(da, nodeConfig, genesis, logger)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create DA retriever: %w", err)
+		}
+
+		// Adapter function to convert between common and single event types
+		adapterFunc := func(ctx context.Context, daHeight uint64) (*single.ForcedInclusionEvent, error) {
+			event, err := commonDARetriever.RetrieveForcedIncludedTxsFromDA(ctx, daHeight)
+			if err != nil {
+				return nil, err
+			}
+			return &single.ForcedInclusionEvent{
+				Txs:           event.Txs,
+				StartDaHeight: event.StartDaHeight,
+				EndDaHeight:   event.EndDaHeight,
+			}, nil
+		}
+		daRetriever = single.NewDARetrieverAdapter(adapterFunc)
+	}
+
 	sequencer, err := single.NewSequencer(
 		ctx,
 		logger,
@@ -155,10 +178,18 @@ func createSequencer(
 		nodeConfig.Node.BlockTime.Duration,
 		singleMetrics,
 		nodeConfig.Node.Aggregator,
+		1000,
+		daRetriever,
+		genesis,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create single sequencer: %w", err)
 	}
+
+	logger.Info().
+		Bool("forced_inclusion_enabled", daRetriever != nil).
+		Str("forced_inclusion_namespace", nodeConfig.DA.GetForcedInclusionNamespace()).
+		Msg("single sequencer initialized")
 
 	return sequencer, nil
 }

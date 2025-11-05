@@ -103,14 +103,10 @@ github.com/ethereum/go-ethereum v1.16.5 h1:GZI995PZkzP7ySCxEFaOPzS8+bd8NldE//1qv
 github.com/ethereum/go-ethereum v1.16.5/go.mod h1:kId9vOtlYg3PZk9VwKbGlQmSACB5ESPTBGT+M9zjmok=
 github.com/ethereum/go-verkle v0.2.2 h1:I2W0WjnrFUIzzVPwm8ykY+7pL2d4VhlsePn4j7cnFk8=
 github.com/ethereum/go-verkle v0.2.2/go.mod h1:M3b90YRnzqKyyzBEWJGqj8Qff4IDeXnzFw0P9bFw3uk=
-github.com/evstack/ev-node/core v1.0.0-beta.4 h1:F/rqHCrZ+ViUY4I6RuoBVvkhYfosD68yo/6gCdGRdmo=
-github.com/evstack/ev-node/core v1.0.0-beta.4/go.mod h1:n2w/LhYQTPsi48m6lMj16YiIqsaQw6gxwjyJvR+B3sY=
 github.com/evstack/ev-node/da v1.0.0-beta.5 h1:rWs/H0Nkj9uwTqD7Tzu+PpaNHGFE71B1ZVKCFLx0yVI=
 github.com/evstack/ev-node/da v1.0.0-beta.5/go.mod h1:lJ7vGlczBwiqTaTE9C4zV9tEsQO+oi0sqyUyYzj3zpo=
 github.com/evstack/ev-node/execution/evm v1.0.0-beta.3 h1:xo0mZz3CJtntP1RPLFDBubBKpNkqStImt9H9N0xysj8=
 github.com/evstack/ev-node/execution/evm v1.0.0-beta.3/go.mod h1:yazCKZaVczYwizfHYSQ4KIYqW0d42M7q7e9AxuSXV3s=
-github.com/evstack/ev-node/sequencers/single v1.0.0-beta.3 h1:BT/UeH7Tf8z0btzomCzTbbDDZGAT8/yHcd6xY6P/aaw=
-github.com/evstack/ev-node/sequencers/single v1.0.0-beta.3/go.mod h1:eCkDecdJ3s7TB3R5nFdPDyz7jjRmwYen6lGe9D2sSH4=
 github.com/ferranbt/fastssz v0.1.4 h1:OCDB+dYDEQDvAgtAGnTSidK1Pe2tW3nFV40XyMkTeDY=
 github.com/ferranbt/fastssz v0.1.4/go.mod h1:Ea3+oeoRGGLGm5shYAeDgu6PGUlcvQhE2fILyD9+tGg=
 github.com/filecoin-project/go-clock v0.1.0 h1:SFbYIM75M8NnFm1yMHhN9Ahy3W5bEZV9gd6MPfXbKVU=

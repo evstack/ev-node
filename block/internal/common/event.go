@@ -1,8 +1,6 @@
 package common
 
 import (
-	"context"
-
 	"github.com/evstack/ev-node/types"
 )
 
@@ -15,12 +13,6 @@ const (
 	// SourceP2P indicates the event came from P2P network
 	SourceP2P EventSource = "P2P"
 )
-
-// DARetriever defines the interface for retrieving events from the DA layer
-type DARetriever interface {
-	RetrieveFromDA(ctx context.Context, daHeight uint64) ([]DAHeightEvent, error)
-	RetrieveForcedIncludedTxsFromDA(ctx context.Context, daHeight uint64) (*ForcedIncludedEvent, error)
-}
 
 // DAHeightEvent represents a DA event for caching
 type DAHeightEvent = struct {

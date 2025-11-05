@@ -211,13 +211,10 @@ func NewAggregatorComponents(
 	// error channel for critical failures
 	errorCh := make(chan error, 1)
 
-	daRetriever := syncing.NewDARetriever(da, cacheManager, config, genesis, logger)
-
 	executor, err := executing.NewExecutor(
 		store,
 		exec,
 		sequencer,
-		daRetriever,
 		signer,
 		cacheManager,
 		metrics,

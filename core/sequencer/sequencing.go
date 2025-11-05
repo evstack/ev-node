@@ -27,6 +27,10 @@ type Sequencer interface {
 	// BatchHash is the cryptographic hash of the batch to verify
 	// returns a boolean indicating if the batch is valid and an error if any from the sequencer
 	VerifyBatch(ctx context.Context, req VerifyBatchRequest) (*VerifyBatchResponse, error)
+
+	// SetDAHeight sets the current DA height for the sequencer
+	// This allows the sequencer to track DA height for forced inclusion retrieval
+	SetDAHeight(height uint64)
 }
 
 // Batch is a collection of transactions

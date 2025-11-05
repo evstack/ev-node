@@ -48,6 +48,11 @@ packages:
           filename: external/hstore.go
   github.com/evstack/ev-node/block/internal/syncing:
     interfaces:
+      DARetriever:
+        config:
+          dir: ./block/internal/syncing
+          pkgname: syncing
+          filename: da_retriever_mock.go
       p2pHandler:
         config:
           dir: ./block/internal/syncing
@@ -60,8 +65,3 @@ packages:
           dir: ./block/internal/common
           pkgname: common
           filename: broadcaster_mock.go
-      DARetriever:
-        config:
-          dir: ./block/internal/common
-          pkgname: common
-          filename: da_retriever_mock.go

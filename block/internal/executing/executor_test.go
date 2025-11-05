@@ -46,9 +46,8 @@ func TestExecutor_BroadcasterIntegration(t *testing.T) {
 	// Create executor with broadcasters
 	executor, err := NewExecutor(
 		memStore,
-		nil, // nil executor (we're not testing execution)
-		nil, // nil sequencer (we're not testing sequencing)
-		common.NewMockDARetriever(t),
+		nil,        // nil executor (we're not testing execution)
+		nil,        // nil sequencer (we're not testing sequencing)
 		testSigner, // test signer (required for executor)
 		cacheManager,
 		metrics,
@@ -97,9 +96,8 @@ func TestExecutor_NilBroadcasters(t *testing.T) {
 	// Create executor with nil broadcasters (light node scenario)
 	executor, err := NewExecutor(
 		memStore,
-		nil, // nil executor
-		nil, // nil sequencer
-		common.NewMockDARetriever(t),
+		nil,        // nil executor
+		nil,        // nil sequencer
 		testSigner, // test signer (required for executor)
 		cacheManager,
 		metrics,

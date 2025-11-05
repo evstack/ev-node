@@ -127,7 +127,9 @@ func (s *BasedSequencer) GetNextBatch(ctx context.Context, req coresequencer.Get
 		}
 
 		if errors.Is(err, coreda.ErrHeightFromFuture) {
-			s.logger.Debug().Uint64("da_height", s.daHeight).Msg("DA height from future, incrementing")
+			s.logger.Debug().
+				Uint64("da_height", s.daHeight).
+				Msg("DA height from future, waiting for DA to produce block")
 			return &coresequencer.GetNextBatchResponse{
 				Batch:     &coresequencer.Batch{Transactions: nil},
 				Timestamp: time.Now(),
@@ -186,7 +188,7 @@ func (s *BasedSequencer) createBatchFromQueue(maxBytes uint64) *coresequencer.Ba
 
 		// If this is the last transaction, clear the queue
 		if i == len(s.txQueue)-1 {
-			s.ClearQueue()
+			s.txQueue = s.txQueue[:0]
 		}
 	}
 
@@ -215,12 +217,4 @@ func (s *BasedSequencer) GetDAHeight() uint64 {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	return s.daHeight
-}
-
-// ClearQueue clears the transaction queue
-func (s *BasedSequencer) ClearQueue() {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.txQueue = s.txQueue[:0]
-	s.logger.Debug().Msg("transaction queue cleared")
 }

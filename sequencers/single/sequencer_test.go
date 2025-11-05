@@ -15,6 +15,7 @@ import (
 
 	coreda "github.com/evstack/ev-node/core/da"
 	coresequencer "github.com/evstack/ev-node/core/sequencer"
+	"github.com/evstack/ev-node/pkg/genesis"
 	damocks "github.com/evstack/ev-node/test/mocks"
 )
 
@@ -26,7 +27,7 @@ func TestNewSequencer(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
 	logger := zerolog.Nop()
-	seq, err := NewSequencer(ctx, logger, db, dummyDA, []byte("test1"), 10*time.Second, metrics, false)
+	seq, err := NewSequencer(ctx, logger, db, dummyDA, []byte("test1"), 10*time.Second, metrics, false, 1000, nil, genesis.Genesis{})
 	if err != nil {
 		t.Fatalf("Failed to create sequencer: %v", err)
 	}
@@ -59,7 +60,7 @@ func TestSequencer_SubmitBatchTxs(t *testing.T) {
 	defer cancel()
 	Id := []byte("test1")
 	logger := zerolog.Nop()
-	seq, err := NewSequencer(ctx, logger, db, dummyDA, Id, 10*time.Second, metrics, false)
+	seq, err := NewSequencer(ctx, logger, db, dummyDA, Id, 10*time.Second, metrics, false, 1000, nil, genesis.Genesis{})
 	if err != nil {
 		t.Fatalf("Failed to create sequencer: %v", err)
 	}
@@ -112,7 +113,7 @@ func TestSequencer_SubmitBatchTxs_EmptyBatch(t *testing.T) {
 	defer cancel()
 	Id := []byte("test1")
 	logger := zerolog.Nop()
-	seq, err := NewSequencer(ctx, logger, db, dummyDA, Id, 10*time.Second, metrics, false)
+	seq, err := NewSequencer(ctx, logger, db, dummyDA, Id, 10*time.Second, metrics, false, 1000, nil, genesis.Genesis{})
 	require.NoError(t, err, "Failed to create sequencer")
 	defer func() {
 		err := db.Close()
@@ -385,7 +386,7 @@ func TestSequencer_GetNextBatch_BeforeDASubmission(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	logger := zerolog.Nop()
-	seq, err := NewSequencer(ctx, logger, db, mockDA, []byte("test1"), 1*time.Second, metrics, false)
+	seq, err := NewSequencer(ctx, logger, db, mockDA, []byte("test1"), 1*time.Second, metrics, false, 1000, nil, genesis.Genesis{})
 	if err != nil {
 		t.Fatalf("Failed to create sequencer: %v", err)
 	}
@@ -643,7 +644,7 @@ func TestSequencer_DAFailureAndQueueThrottling_Integration(t *testing.T) {
 	// Create sequencer with small queue size to trigger throttling quickly
 	queueSize := 3 // Small for testing
 	logger := zerolog.Nop()
-	seq, err := NewSequencerWithQueueSize(
+	seq, err := NewSequencer(
 		context.Background(),
 		logger,
 		db,
@@ -653,6 +654,8 @@ func TestSequencer_DAFailureAndQueueThrottling_Integration(t *testing.T) {
 		nil,  // metrics
 		true, // proposer
 		queueSize,
+		nil,               // daRetriever
+		genesis.Genesis{}, // genesis
 	)
 	require.NoError(t, err)
 

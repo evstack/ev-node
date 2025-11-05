@@ -2,11 +2,12 @@
 // github.com/vektra/mockery
 // template: testify
 
-package common
+package syncing
 
 import (
 	"context"
 
+	"github.com/evstack/ev-node/block/internal/common"
 	mock "github.com/stretchr/testify/mock"
 )
 
@@ -38,23 +39,23 @@ func (_m *MockDARetriever) EXPECT() *MockDARetriever_Expecter {
 }
 
 // RetrieveForcedIncludedTxsFromDA provides a mock function for the type MockDARetriever
-func (_mock *MockDARetriever) RetrieveForcedIncludedTxsFromDA(ctx context.Context, daHeight uint64) (*ForcedIncludedEvent, error) {
+func (_mock *MockDARetriever) RetrieveForcedIncludedTxsFromDA(ctx context.Context, daHeight uint64) (*common.ForcedIncludedEvent, error) {
 	ret := _mock.Called(ctx, daHeight)
 
 	if len(ret) == 0 {
 		panic("no return value specified for RetrieveForcedIncludedTxsFromDA")
 	}
 
-	var r0 *ForcedIncludedEvent
+	var r0 *common.ForcedIncludedEvent
 	var r1 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, uint64) (*ForcedIncludedEvent, error)); ok {
+	if returnFunc, ok := ret.Get(0).(func(context.Context, uint64) (*common.ForcedIncludedEvent, error)); ok {
 		return returnFunc(ctx, daHeight)
 	}
-	if returnFunc, ok := ret.Get(0).(func(context.Context, uint64) *ForcedIncludedEvent); ok {
+	if returnFunc, ok := ret.Get(0).(func(context.Context, uint64) *common.ForcedIncludedEvent); ok {
 		r0 = returnFunc(ctx, daHeight)
 	} else {
 		if ret.Get(0) != nil {
-			r0 = ret.Get(0).(*ForcedIncludedEvent)
+			r0 = ret.Get(0).(*common.ForcedIncludedEvent)
 		}
 	}
 	if returnFunc, ok := ret.Get(1).(func(context.Context, uint64) error); ok {
@@ -95,34 +96,34 @@ func (_c *MockDARetriever_RetrieveForcedIncludedTxsFromDA_Call) Run(run func(ctx
 	return _c
 }
 
-func (_c *MockDARetriever_RetrieveForcedIncludedTxsFromDA_Call) Return(v *ForcedIncludedEvent, err error) *MockDARetriever_RetrieveForcedIncludedTxsFromDA_Call {
+func (_c *MockDARetriever_RetrieveForcedIncludedTxsFromDA_Call) Return(v *common.ForcedIncludedEvent, err error) *MockDARetriever_RetrieveForcedIncludedTxsFromDA_Call {
 	_c.Call.Return(v, err)
 	return _c
 }
 
-func (_c *MockDARetriever_RetrieveForcedIncludedTxsFromDA_Call) RunAndReturn(run func(ctx context.Context, daHeight uint64) (*ForcedIncludedEvent, error)) *MockDARetriever_RetrieveForcedIncludedTxsFromDA_Call {
+func (_c *MockDARetriever_RetrieveForcedIncludedTxsFromDA_Call) RunAndReturn(run func(ctx context.Context, daHeight uint64) (*common.ForcedIncludedEvent, error)) *MockDARetriever_RetrieveForcedIncludedTxsFromDA_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
 // RetrieveFromDA provides a mock function for the type MockDARetriever
-func (_mock *MockDARetriever) RetrieveFromDA(ctx context.Context, daHeight uint64) ([]DAHeightEvent, error) {
+func (_mock *MockDARetriever) RetrieveFromDA(ctx context.Context, daHeight uint64) ([]common.DAHeightEvent, error) {
 	ret := _mock.Called(ctx, daHeight)
 
 	if len(ret) == 0 {
 		panic("no return value specified for RetrieveFromDA")
 	}
 
-	var r0 []DAHeightEvent
+	var r0 []common.DAHeightEvent
 	var r1 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, uint64) ([]DAHeightEvent, error)); ok {
+	if returnFunc, ok := ret.Get(0).(func(context.Context, uint64) ([]common.DAHeightEvent, error)); ok {
 		return returnFunc(ctx, daHeight)
 	}
-	if returnFunc, ok := ret.Get(0).(func(context.Context, uint64) []DAHeightEvent); ok {
+	if returnFunc, ok := ret.Get(0).(func(context.Context, uint64) []common.DAHeightEvent); ok {
 		r0 = returnFunc(ctx, daHeight)
 	} else {
 		if ret.Get(0) != nil {
-			r0 = ret.Get(0).([]DAHeightEvent)
+			r0 = ret.Get(0).([]common.DAHeightEvent)
 		}
 	}
 	if returnFunc, ok := ret.Get(1).(func(context.Context, uint64) error); ok {
@@ -163,12 +164,12 @@ func (_c *MockDARetriever_RetrieveFromDA_Call) Run(run func(ctx context.Context,
 	return _c
 }
 
-func (_c *MockDARetriever_RetrieveFromDA_Call) Return(vs []DAHeightEvent, err error) *MockDARetriever_RetrieveFromDA_Call {
+func (_c *MockDARetriever_RetrieveFromDA_Call) Return(vs []common.DAHeightEvent, err error) *MockDARetriever_RetrieveFromDA_Call {
 	_c.Call.Return(vs, err)
 	return _c
 }
 
-func (_c *MockDARetriever_RetrieveFromDA_Call) RunAndReturn(run func(ctx context.Context, daHeight uint64) ([]DAHeightEvent, error)) *MockDARetriever_RetrieveFromDA_Call {
+func (_c *MockDARetriever_RetrieveFromDA_Call) RunAndReturn(run func(ctx context.Context, daHeight uint64) ([]common.DAHeightEvent, error)) *MockDARetriever_RetrieveFromDA_Call {
 	_c.Call.Return(run)
 	return _c
 }

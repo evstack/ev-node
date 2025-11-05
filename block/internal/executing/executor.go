@@ -15,7 +15,6 @@ import (
 
 	"github.com/evstack/ev-node/block/internal/cache"
 	"github.com/evstack/ev-node/block/internal/common"
-	"github.com/evstack/ev-node/block/internal/syncing"
 	coreexecutor "github.com/evstack/ev-node/core/execution"
 	coresequencer "github.com/evstack/ev-node/core/sequencer"
 	"github.com/evstack/ev-node/pkg/config"
@@ -28,11 +27,10 @@ import (
 // Executor handles block production, transaction processing, and state management
 type Executor struct {
 	// Core components
-	store       store.Store
-	exec        coreexecutor.Executor
-	sequencer   coresequencer.Sequencer
-	signer      signer.Signer
-	daRetriever common.DARetriever
+	store     store.Store
+	exec      coreexecutor.Executor
+	sequencer coresequencer.Sequencer
+	signer    signer.Signer
 
 	// Shared components
 	cache   cache.Manager
@@ -73,7 +71,6 @@ func NewExecutor(
 	store store.Store,
 	exec coreexecutor.Executor,
 	sequencer coresequencer.Sequencer,
-	daRetriever common.DARetriever,
 	signer signer.Signer,
 	cache cache.Manager,
 	metrics *common.Metrics,
@@ -102,7 +99,6 @@ func NewExecutor(
 		store:             store,
 		exec:              exec,
 		sequencer:         sequencer,
-		daRetriever:       daRetriever,
 		signer:            signer,
 		cache:             cache,
 		metrics:           metrics,
@@ -334,18 +330,6 @@ func (e *Executor) produceBlock() error {
 		}
 	}
 
-	// fetch forced included txs
-	var (
-		forcedIncludedTxsEvent *common.ForcedIncludedEvent
-		err                    error
-	)
-	if !e.config.Node.BasedSequencer {
-		forcedIncludedTxsEvent, err = e.daRetriever.RetrieveForcedIncludedTxsFromDA(e.ctx, currentState.DAHeight)
-		if err != nil && !errors.Is(err, syncing.ErrForceInclusionNotConfigured) {
-			e.logger.Error().Err(err).Msg("failed to retrieve forced included txs")
-		}
-	}
-
 	var (
 		header *types.SignedHeader
 		data   *types.Data
@@ -372,12 +356,6 @@ func (e *Executor) produceBlock() error {
 			return fmt.Errorf("failed to retrieve batch: %w", err)
 		}
 
-		// append forced included txs to batch data
-		// TODO(@julienrbrt): if the batch is at size, adding more txs isn't what we want.
-		// maybe we need to add a limit to retrieveBatch based on the forced included txs size.
-		// for the poc this is ok as is.
-		batchData.Transactions = append(batchData.Transactions, forcedIncludedTxsEvent.Txs...)
-
 		header, data, err = e.createBlock(e.ctx, newHeight, batchData)
 		if err != nil {
 			return fmt.Errorf("failed to create block: %w", err)
@@ -399,11 +377,6 @@ func (e *Executor) produceBlock() error {
 	newState, err := e.applyBlock(e.ctx, header.Header, data)
 	if err != nil {
 		return fmt.Errorf("failed to apply block: %w", err)
-	}
-
-	// update da height, based on last retrieved.
-	if forcedIncludedTxsEvent.EndDaHeight > newState.DAHeight {
-		newState.DAHeight = forcedIncludedTxsEvent.EndDaHeight
 	}
 
 	// signing the header is done after applying the block
@@ -466,9 +439,15 @@ func (e *Executor) produceBlock() error {
 
 // retrieveBatch gets the next batch of transactions from the sequencer
 func (e *Executor) retrieveBatch(ctx context.Context) (*BatchData, error) {
+	currentState := e.getLastState()
+
+	// Update sequencer's DA height for forced inclusion tracking
+	e.sequencer.SetDAHeight(currentState.DAHeight)
+
 	req := coresequencer.GetNextBatchRequest{
-		Id:       []byte(e.genesis.ChainID),
-		MaxBytes: common.DefaultMaxBlobSize,
+		Id:            []byte(e.genesis.ChainID),
+		MaxBytes:      common.DefaultMaxBlobSize,
+		LastBatchData: [][]byte{}, // Can be populated if needed for sequencer context
 	}
 
 	res, err := e.sequencer.GetNextBatch(ctx, req)

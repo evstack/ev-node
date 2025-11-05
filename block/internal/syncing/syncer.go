@@ -56,7 +56,7 @@ type Syncer struct {
 	errorCh    chan<- error // Channel to report critical execution client failures
 
 	// Handlers
-	daRetriever common.DARetriever
+	daRetriever DARetriever
 	p2pHandler  p2pHandler
 
 	// Logging

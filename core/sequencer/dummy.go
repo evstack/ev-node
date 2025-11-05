@@ -64,3 +64,8 @@ func (s *DummySequencer) VerifyBatch(ctx context.Context, req VerifyBatchRequest
 		Status: true,
 	}, nil
 }
+
+// SetDAHeight sets the current DA height for the sequencer
+func (s *DummySequencer) SetDAHeight(height uint64) {
+	// No-op for dummy sequencer
+}

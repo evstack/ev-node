@@ -15,7 +15,7 @@ require (
 	github.com/celestiaorg/go-header v0.7.3
 	github.com/evstack/ev-node v1.0.0-beta.9
 	github.com/evstack/ev-node/core v1.0.0-beta.4
-	github.com/evstack/ev-node/da v0.0.0-00010101000000-000000000000
+	github.com/evstack/ev-node/da v1.0.0-beta.5
 	github.com/evstack/ev-node/sequencers/single v0.0.0-00010101000000-000000000000
 	github.com/ipfs/go-datastore v0.9.0
 	github.com/rs/zerolog v1.34.0
@@ -82,7 +82,7 @@ require (
 	github.com/libp2p/go-reuseport v0.4.0 // indirect
 	github.com/libp2p/go-yamux/v5 v5.0.1 // indirect
 	github.com/marten-seemann/tcp v0.0.0-20210406111302-dfbc87cc63fd // indirect
-	github.com/mattn/go-colorable v0.1.13 // indirect
+	github.com/mattn/go-colorable v0.1.14 // indirect
 	github.com/mattn/go-isatty v0.0.20 // indirect
 	github.com/miekg/dns v1.1.68 // indirect
 	github.com/mikioh/tcpinfo v0.0.0-20190314235526-30a79bb1804b // indirect

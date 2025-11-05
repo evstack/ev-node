@@ -22,8 +22,14 @@ import (
 // defaultDATimeout is the default timeout for DA retrieval operations
 const defaultDATimeout = 10 * time.Second
 
-// DARetriever handles DA retrieval operations for syncing
-type DARetriever struct {
+// DARetriever defines the interface for retrieving events from the DA layer
+type DARetriever interface {
+	RetrieveFromDA(ctx context.Context, daHeight uint64) ([]common.DAHeightEvent, error)
+	RetrieveForcedIncludedTxsFromDA(ctx context.Context, daHeight uint64) (*common.ForcedIncludedEvent, error)
+}
+
+// daRetriever handles DA retrieval operations for syncing
+type daRetriever struct {
 	da      coreda.DA
 	cache   cache.Manager
 	genesis genesis.Genesis
@@ -50,7 +56,7 @@ func NewDARetriever(
 	config config.Config,
 	genesis genesis.Genesis,
 	logger zerolog.Logger,
-) *DARetriever {
+) *daRetriever {
 	forcedInclusionNs := config.DA.GetForcedInclusionNamespace()
 	hasForcedInclusionNs := forcedInclusionNs != ""
 
@@ -59,7 +65,7 @@ func NewDARetriever(
 		namespaceForcedInclusionBz = coreda.NamespaceFromString(forcedInclusionNs).Bytes()
 	}
 
-	return &DARetriever{
+	return &daRetriever{
 		da:                         da,
 		cache:                      cache,
 		genesis:                    genesis,
@@ -75,7 +81,7 @@ func NewDARetriever(
 }
 
 // RetrieveFromDA retrieves blocks from the specified DA height and returns height events
-func (r *DARetriever) RetrieveFromDA(ctx context.Context, daHeight uint64) ([]common.DAHeightEvent, error) {
+func (r *daRetriever) RetrieveFromDA(ctx context.Context, daHeight uint64) ([]common.DAHeightEvent, error) {
 	r.logger.Debug().Uint64("da_height", daHeight).Msg("retrieving from DA")
 	blobsResp, err := r.fetchBlobs(ctx, daHeight)
 	if err != nil {
@@ -96,7 +102,7 @@ var ErrForceInclusionNotConfigured = errors.New("forced inclusion namespace not 
 
 // RetrieveForcedIncludedTxsFromDA retrieves forced inclusion transactions from the DA layer.
 // It fetches from the daHeight for the da epoch range defined in the config.
-func (r *DARetriever) RetrieveForcedIncludedTxsFromDA(ctx context.Context, daHeight uint64) (*common.ForcedIncludedEvent, error) {
+func (r *daRetriever) RetrieveForcedIncludedTxsFromDA(ctx context.Context, daHeight uint64) (*common.ForcedIncludedEvent, error) {
 	if !r.hasForcedInclusionNs {
 		return nil, ErrForceInclusionNotConfigured
 	}
@@ -129,7 +135,7 @@ func (r *DARetriever) RetrieveForcedIncludedTxsFromDA(ctx context.Context, daHei
 }
 
 // fetchBlobs retrieves blobs from the DA layer
-func (r *DARetriever) fetchBlobs(ctx context.Context, daHeight uint64) (coreda.ResultRetrieve, error) {
+func (r *daRetriever) fetchBlobs(ctx context.Context, daHeight uint64) (coreda.ResultRetrieve, error) {
 	// Retrieve from both namespaces
 	headerRes := types.RetrieveWithHelpers(ctx, r.da, r.logger, daHeight, r.namespaceBz, defaultDATimeout)
 
@@ -185,7 +191,7 @@ func (r *DARetriever) fetchBlobs(ctx context.Context, daHeight uint64) (coreda.R
 
 // validateBlobResponse validates a blob response from DA layer
 // those are the only error code returned by da.RetrieveWithHelpers
-func (r *DARetriever) validateBlobResponse(res coreda.ResultRetrieve, daHeight uint64) error {
+func (r *daRetriever) validateBlobResponse(res coreda.ResultRetrieve, daHeight uint64) error {
 	switch res.Code {
 	case coreda.StatusError:
 		return fmt.Errorf("DA retrieval failed: %s", res.Message)
@@ -202,7 +208,7 @@ func (r *DARetriever) validateBlobResponse(res coreda.ResultRetrieve, daHeight u
 }
 
 // processBlobs processes retrieved blobs to extract headers and data and returns height events
-func (r *DARetriever) processBlobs(ctx context.Context, blobs [][]byte, daHeight uint64) []common.DAHeightEvent {
+func (r *daRetriever) processBlobs(ctx context.Context, blobs [][]byte, daHeight uint64) []common.DAHeightEvent {
 	// Decode all blobs
 	for _, bz := range blobs {
 		if len(bz) == 0 {
@@ -271,7 +277,7 @@ func (r *DARetriever) processBlobs(ctx context.Context, blobs [][]byte, daHeight
 }
 
 // tryDecodeHeader attempts to decode a blob as a header
-func (r *DARetriever) tryDecodeHeader(bz []byte, daHeight uint64) *types.SignedHeader {
+func (r *daRetriever) tryDecodeHeader(bz []byte, daHeight uint64) *types.SignedHeader {
 	header := new(types.SignedHeader)
 	var headerPb pb.SignedHeader
 
@@ -311,7 +317,7 @@ func (r *DARetriever) tryDecodeHeader(bz []byte, daHeight uint64) *types.SignedH
 }
 
 // tryDecodeData attempts to decode a blob as signed data
-func (r *DARetriever) tryDecodeData(bz []byte, daHeight uint64) *types.Data {
+func (r *daRetriever) tryDecodeData(bz []byte, daHeight uint64) *types.Data {
 	var signedData types.SignedData
 	if err := signedData.UnmarshalBinary(bz); err != nil {
 		return nil
@@ -342,7 +348,7 @@ func (r *DARetriever) tryDecodeData(bz []byte, daHeight uint64) *types.Data {
 }
 
 // assertExpectedProposer validates the proposer address
-func (r *DARetriever) assertExpectedProposer(proposerAddr []byte) error {
+func (r *daRetriever) assertExpectedProposer(proposerAddr []byte) error {
 	if string(proposerAddr) != string(r.genesis.ProposerAddress) {
 		return fmt.Errorf("unexpected proposer: got %x, expected %x",
 			proposerAddr, r.genesis.ProposerAddress)
@@ -351,7 +357,7 @@ func (r *DARetriever) assertExpectedProposer(proposerAddr []byte) error {
 }
 
 // assertValidSignedData validates signed data using the configured signature provider
-func (r *DARetriever) assertValidSignedData(signedData *types.SignedData) error {
+func (r *daRetriever) assertValidSignedData(signedData *types.SignedData) error {
 	if signedData == nil || signedData.Txs == nil {
 		return errors.New("empty signed data")
 	}

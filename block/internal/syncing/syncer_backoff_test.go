@@ -69,7 +69,7 @@ func TestSyncer_BackoffOnDAError(t *testing.T) {
 			syncer.ctx = ctx
 
 			// Setup mocks
-			daRetriever := common.NewMockDARetriever(t)
+			daRetriever := NewMockDARetriever(t)
 			p2pHandler := newMockp2pHandler(t)
 			syncer.daRetriever = daRetriever
 			syncer.p2pHandler = p2pHandler
@@ -167,7 +167,7 @@ func TestSyncer_BackoffResetOnSuccess(t *testing.T) {
 	addr, pub, signer := buildSyncTestSigner(t)
 	gen := syncer.genesis
 
-	daRetriever := common.NewMockDARetriever(t)
+	daRetriever := NewMockDARetriever(t)
 	p2pHandler := newMockp2pHandler(t)
 	syncer.daRetriever = daRetriever
 	syncer.p2pHandler = p2pHandler
@@ -260,7 +260,7 @@ func TestSyncer_BackoffBehaviorIntegration(t *testing.T) {
 	syncer := setupTestSyncer(t, 500*time.Millisecond)
 	syncer.ctx = ctx
 
-	daRetriever := common.NewMockDARetriever(t)
+	daRetriever := NewMockDARetriever(t)
 	p2pHandler := newMockp2pHandler(t)
 	syncer.daRetriever = daRetriever
 	syncer.p2pHandler = p2pHandler

@@ -269,8 +269,8 @@ func TestBasedSequencer_GetNextBatch_HeightFromFuture(t *testing.T) {
 	require.NotNil(t, resp.Batch)
 	assert.Nil(t, resp.Batch.Transactions)
 
-	// DA height should be incremented
-	assert.Equal(t, uint64(101), seq.GetDAHeight())
+	// DA height should NOT increment on ErrHeightFromFuture - we wait for DA to catch up
+	assert.Equal(t, uint64(100), seq.GetDAHeight())
 
 	mockRetriever.AssertExpectations(t)
 }
@@ -397,22 +397,6 @@ func TestBasedSequencer_SetDAHeight(t *testing.T) {
 
 	seq.SetDAHeight(200)
 	assert.Equal(t, uint64(200), seq.GetDAHeight())
-}
-
-func TestBasedSequencer_ClearQueue(t *testing.T) {
-	mockRetriever := new(MockDARetriever)
-	mockDA := new(MockDA)
-	cfg := config.DefaultConfig()
-	gen := genesis.Genesis{ChainID: "test-chain"}
-
-	seq := NewBasedSequencer(mockRetriever, mockDA, cfg, gen, zerolog.Nop())
-
-	// Pre-populate the queue
-	seq.txQueue = [][]byte{[]byte("tx1"), []byte("tx2"), []byte("tx3")}
-	assert.Equal(t, 3, len(seq.txQueue))
-
-	seq.ClearQueue()
-	assert.Equal(t, 0, len(seq.txQueue))
 }
 
 func TestBasedSequencer_ConcurrentAccess(t *testing.T) {
