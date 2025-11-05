@@ -11,16 +11,6 @@ import (
 	"github.com/rs/zerolog"
 )
 
-const (
-	// healthCheckWarnMultiplier is the multiplier for block time to determine WARN threshold
-	// If no block has been produced in (blockTime * healthCheckWarnMultiplier), return WARN
-	healthCheckWarnMultiplier = 3
-
-	// healthCheckFailMultiplier is the multiplier for block time to determine FAIL threshold
-	// If no block has been produced in (blockTime * healthCheckFailMultiplier), return FAIL
-	healthCheckFailMultiplier = 5
-)
-
 // BestKnownHeightProvider should return the best-known network height observed by the node
 // (e.g. min(headerSyncHeight, dataSyncHeight) for full nodes, or header height for light nodes).
 type BestKnownHeightProvider func() uint64
@@ -28,58 +18,22 @@ type BestKnownHeightProvider func() uint64
 // RegisterCustomHTTPEndpoints is the designated place to add new, non-gRPC, plain HTTP handlers.
 // Additional custom HTTP endpoints can be registered on the mux here.
 func RegisterCustomHTTPEndpoints(mux *http.ServeMux, s store.Store, pm p2p.P2PRPC, cfg config.Config, bestKnownHeightProvider BestKnownHeightProvider, logger zerolog.Logger) {
-	// Liveness endpoint - checks if block production is healthy for aggregator nodes
+	// Liveness endpoint - checks if the service process is alive and responsive
+	// A failing liveness check should result in killing/restarting the process
+	// This endpoint should NOT check business logic (like block production or sync status)
 	mux.HandleFunc("/health/live", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/plain")
 
-		// For aggregator nodes, check if block production is healthy
-		if cfg.Node.Aggregator {
-			state, err := s.GetState(r.Context())
-			if err != nil {
-				logger.Error().Err(err).Msg("Failed to get state for health check")
-				http.Error(w, "FAIL", http.StatusServiceUnavailable)
-				return
-			}
-
-			// If we have blocks, check if the last block time is recent
-			if state.LastBlockHeight > 0 {
-				timeSinceLastBlock := time.Since(state.LastBlockTime)
-
-				// Calculate the threshold based on block time
-				blockTime := cfg.Node.BlockTime.Duration
-
-				// For lazy mode, use the lazy block interval instead
-				if cfg.Node.LazyMode {
-					blockTime = cfg.Node.LazyBlockInterval.Duration
-				}
-
-				warnThreshold := blockTime * healthCheckWarnMultiplier
-				failThreshold := blockTime * healthCheckFailMultiplier
-
-				if timeSinceLastBlock > failThreshold {
-					logger.Error().
-						Dur("time_since_last_block", timeSinceLastBlock).
-						Dur("fail_threshold", failThreshold).
-						Uint64("last_block_height", state.LastBlockHeight).
-						Time("last_block_time", state.LastBlockTime).
-						Msg("Health check: node has stopped producing blocks (FAIL)")
-					http.Error(w, "FAIL", http.StatusServiceUnavailable)
-					return
-				} else if timeSinceLastBlock > warnThreshold {
-					logger.Warn().
-						Dur("time_since_last_block", timeSinceLastBlock).
-						Dur("warn_threshold", warnThreshold).
-						Uint64("last_block_height", state.LastBlockHeight).
-						Time("last_block_time", state.LastBlockTime).
-						Msg("Health check: block production is slow (WARN)")
-					w.WriteHeader(http.StatusOK)
-					fmt.Fprintln(w, "WARN")
-					return
-				}
-			}
+		// Basic liveness check: Can we access the store?
+		// This verifies the process is alive and core dependencies are accessible
+		_, err := s.Height(r.Context())
+		if err != nil {
+			logger.Error().Err(err).Msg("Liveness check failed: cannot access store")
+			http.Error(w, "FAIL", http.StatusServiceUnavailable)
+			return
 		}
 
-		// For non-aggregator nodes or if checks pass, return healthy
+		// Process is alive and responsive
 		w.WriteHeader(http.StatusOK)
 		fmt.Fprintln(w, "OK")
 	})
@@ -88,29 +42,56 @@ func RegisterCustomHTTPEndpoints(mux *http.ServeMux, s store.Store, pm p2p.P2PRP
 	mux.HandleFunc("/health/ready", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/plain")
 
-		// Peer readiness: non-aggregator nodes should have at least 1 peer
-		if pm != nil && !cfg.Node.Aggregator {
-			peers, err := pm.GetPeers()
+		// P2P readiness: if P2P is enabled, verify it's ready to accept connections
+		if pm != nil {
+			netInfo, err := pm.GetNetworkInfo()
 			if err != nil {
-				http.Error(w, "UNREADY: failed to query peers", http.StatusServiceUnavailable)
+				http.Error(w, "UNREADY: failed to query P2P network info", http.StatusServiceUnavailable)
 				return
 			}
-			if len(peers) == 0 {
-				http.Error(w, "UNREADY: no peers connected", http.StatusServiceUnavailable)
+			if len(netInfo.ListenAddress) == 0 {
+				http.Error(w, "UNREADY: P2P not listening for connections", http.StatusServiceUnavailable)
 				return
+			}
+
+			// Peer readiness: non-aggregator nodes should have at least 1 peer
+			if !cfg.Node.Aggregator {
+				peers, err := pm.GetPeers()
+				if err != nil {
+					http.Error(w, "UNREADY: failed to query peers", http.StatusServiceUnavailable)
+					return
+				}
+				if len(peers) == 0 {
+					http.Error(w, "UNREADY: no peers connected", http.StatusServiceUnavailable)
+					return
+				}
 			}
 		}
 
-		localHeight, err := s.Height(r.Context())
+		// Get current state
+		state, err := s.GetState(r.Context())
 		if err != nil {
 			http.Error(w, "UNREADY: state unavailable", http.StatusServiceUnavailable)
 			return
 		}
 
+		localHeight := state.LastBlockHeight
+
 		// If no blocks yet, consider unready
 		if localHeight == 0 {
 			http.Error(w, "UNREADY: no blocks yet", http.StatusServiceUnavailable)
 			return
+		}
+
+		// Aggregator block production check: verify blocks are being produced at expected rate
+		if cfg.Node.Aggregator {
+			timeSinceLastBlock := time.Since(state.LastBlockTime)
+			maxAllowedDelay := 5 * cfg.Node.BlockTime.Duration
+
+			if timeSinceLastBlock > maxAllowedDelay {
+				http.Error(w, "UNREADY: aggregator not producing blocks at expected rate", http.StatusServiceUnavailable)
+				return
+			}
 		}
 
 		// Require best-known height to make the readiness decision

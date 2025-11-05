@@ -10,6 +10,7 @@ import (
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/multiformats/go-multiaddr"
 	"github.com/rs/zerolog"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/net/http2"
@@ -247,9 +248,12 @@ func TestClientGetNetInfo(t *testing.T) {
 }
 
 func TestClientGetHealth(t *testing.T) {
-	t.Run("non-aggregator returns PASS", func(t *testing.T) {
+	t.Run("returns PASS when store is accessible", func(t *testing.T) {
 		mockStore := mocks.NewMockStore(t)
 		mockP2P := mocks.NewMockP2PRPC(t)
+
+		// Mock Height to return successfully
+		mockStore.On("Height", mock.Anything).Return(uint64(100), nil)
 
 		testServer, client := setupTestServer(t, mockStore, mockP2P)
 		defer testServer.Close()
@@ -258,81 +262,40 @@ func TestClientGetHealth(t *testing.T) {
 
 		require.NoError(t, err)
 		require.Equal(t, "PASS", healthStatus.String())
-	})
-
-	t.Run("aggregator with recent blocks returns PASS", func(t *testing.T) {
-		mockStore := mocks.NewMockStore(t)
-		mockP2P := mocks.NewMockP2PRPC(t)
-
-		// Setup aggregator config
-		testConfig := config.DefaultConfig()
-		testConfig.Node.Aggregator = true
-		testConfig.Node.BlockTime.Duration = 1 * time.Second
-
-		// Create state with recent block
-		state := types.State{
-			LastBlockHeight: 100,
-			LastBlockTime:   time.Now().Add(-500 * time.Millisecond),
-		}
-		mockStore.On("GetState", mock.Anything).Return(state, nil)
-
-		// Create custom test server with aggregator config
-		testServer, client := setupTestServer(t, mockStore, mockP2P, testConfig)
-		defer testServer.Close()
-		healthStatus, err := client.GetHealth(context.Background())
-
-		require.NoError(t, err)
-		require.Equal(t, "PASS", healthStatus.String())
 		mockStore.AssertExpectations(t)
 	})
 
-	t.Run("aggregator with slow block production returns WARN", func(t *testing.T) {
+	t.Run("returns FAIL when store is not accessible", func(t *testing.T) {
 		mockStore := mocks.NewMockStore(t)
 		mockP2P := mocks.NewMockP2PRPC(t)
 
-		testConfig := config.DefaultConfig()
-		testConfig.Node.Aggregator = true
-		testConfig.Node.BlockTime.Duration = 1 * time.Second
+		// Mock Height to return an error
+		mockStore.On("Height", mock.Anything).Return(uint64(0), assert.AnError)
 
-		// State with block older than 3x block time
-		state := types.State{
-			LastBlockHeight: 100,
-			LastBlockTime:   time.Now().Add(-4 * time.Second),
-		}
-		mockStore.On("GetState", mock.Anything).Return(state, nil)
-
-		testServer, client := setupTestServer(t, mockStore, mockP2P, testConfig)
-		defer testServer.Close()
-
-		healthStatus, err := client.GetHealth(context.Background())
-
-		require.NoError(t, err)
-		require.Equal(t, "WARN", healthStatus.String())
-		mockStore.AssertExpectations(t)
-	})
-
-	t.Run("aggregator with stopped block production returns FAIL", func(t *testing.T) {
-		mockStore := mocks.NewMockStore(t)
-		mockP2P := mocks.NewMockP2PRPC(t)
-
-		testConfig := config.DefaultConfig()
-		testConfig.Node.Aggregator = true
-		testConfig.Node.BlockTime.Duration = 1 * time.Second
-
-		// State with block older than 5x block time
-		state := types.State{
-			LastBlockHeight: 100,
-			LastBlockTime:   time.Now().Add(-10 * time.Second),
-		}
-		mockStore.On("GetState", mock.Anything).Return(state, nil)
-
-		testServer, client := setupTestServer(t, mockStore, mockP2P, testConfig)
+		testServer, client := setupTestServer(t, mockStore, mockP2P)
 		defer testServer.Close()
 
 		healthStatus, err := client.GetHealth(context.Background())
 
 		require.NoError(t, err)
 		require.Equal(t, "FAIL", healthStatus.String())
+		mockStore.AssertExpectations(t)
+	})
+
+	t.Run("returns PASS even at height 0", func(t *testing.T) {
+		mockStore := mocks.NewMockStore(t)
+		mockP2P := mocks.NewMockP2PRPC(t)
+
+		// Mock Height to return 0 successfully (genesis state)
+		mockStore.On("Height", mock.Anything).Return(uint64(0), nil)
+
+		testServer, client := setupTestServer(t, mockStore, mockP2P)
+		defer testServer.Close()
+
+		healthStatus, err := client.GetHealth(context.Background())
+
+		require.NoError(t, err)
+		require.Equal(t, "PASS", healthStatus.String())
 		mockStore.AssertExpectations(t)
 	})
 }
