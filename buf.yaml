@@ -14,3 +14,7 @@ lint:
 breaking:
   use:
     - FILE
+  ignore:
+    # health.proto was intentionally removed - health checks migrated to HTTP endpoints
+    # See: docs/learn/config.md#health-endpoints
+    - evnode/v1/health.proto
