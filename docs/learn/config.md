@@ -37,6 +37,7 @@ This document provides a comprehensive reference for all configuration options a
 - [RPC Configuration (`rpc`)](#rpc-configuration-rpc)
   - [RPC Server Address](#rpc-server-address)
   - [Enable DA Visualization](#enable-da-visualization)
+  - [Health Endpoints](#health-endpoints)
 - [Instrumentation Configuration (`instrumentation`)](#instrumentation-configuration-instrumentation)
   - [Enable Prometheus Metrics](#enable-prometheus-metrics)
   - [Prometheus Listen Address](#prometheus-listen-address)
@@ -605,6 +606,134 @@ _Default:_ `false`
 _Constant:_ `FlagRPCEnableDAVisualization`
 
 See the [DA Visualizer Guide](../guides/da/visualizer.md) for detailed information on using this feature.
+
+### Health Endpoints
+
+Evolve exposes two HTTP health check endpoints that serve different purposes in production environments. These endpoints are automatically available on the RPC server and follow Kubernetes health check best practices.
+
+#### `/health/live` - Liveness Probe
+
+**Purpose:** Determines if the node process is alive and responsive.
+
+**What it checks:**
+- Store accessibility (can the process access its database?)
+
+**Typical usage:**
+- Kubernetes liveness probes
+- Process monitoring systems
+- Container orchestration health checks
+
+**Response:**
+- `200 OK` with body `OK` - Process is alive and responsive
+- `503 Service Unavailable` with body `FAIL` - Process is dead or unresponsive
+
+**Failure action:** If this endpoint fails, the process should be **killed and restarted**. A failing liveness check indicates the process is in an unrecoverable state (e.g., database connection lost, deadlock, etc.).
+
+**Example:**
+```bash
+curl http://localhost:7331/health/live
+# Response: OK (HTTP 200)
+```
+
+**Kubernetes liveness probe configuration:**
+```yaml
+livenessProbe:
+  httpGet:
+    path: /health/live
+    port: 7331
+  initialDelaySeconds: 10
+  periodSeconds: 10
+  timeoutSeconds: 5
+  failureThreshold: 3
+```
+
+---
+
+#### `/health/ready` - Readiness Probe
+
+**Purpose:** Determines if the node can serve correct data to clients.
+
+**What it checks:**
+
+**For all nodes:**
+1. **P2P listening** (if P2P enabled): P2P network is accepting connections
+2. **Store accessible**: Can read state from the database
+3. **Has blocks**: Node has synced at least one block (height > 0)
+4. **Best-known height available**: Can determine network height
+5. **Sync status**: Node is not too far behind the network (within `readiness_max_blocks_behind`)
+
+**Additional checks for non-aggregators:**
+6. **Has peers**: Connected to at least one peer (for receiving blocks)
+
+**Additional checks for aggregators:**
+7. **Block production rate**: Producing blocks at expected rate (within 5x `block_time`)
+
+**Typical usage:**
+- Kubernetes readiness probes
+- Load balancer health checks
+- Service mesh routing decisions
+
+**Response:**
+- `200 OK` with body `READY` - Node can serve correct data
+- `503 Service Unavailable` with body `UNREADY: <reason>` - Node should not receive traffic
+
+**Failure action:** If this endpoint fails, the node should be **removed from the load balancer** but **NOT killed**. The process is alive but temporarily unable to serve correct data (e.g., syncing, no peers, behind network head).
+
+**Example:**
+```bash
+curl http://localhost:7331/health/ready
+# Response: READY (HTTP 200)
+# or
+# Response: UNREADY: behind best-known head (HTTP 503)
+```
+
+**Kubernetes readiness probe configuration:**
+```yaml
+readinessProbe:
+  httpGet:
+    path: /health/ready
+    port: 7331
+  initialDelaySeconds: 30
+  periodSeconds: 10
+  timeoutSeconds: 5
+  failureThreshold: 3
+```
+
+---
+
+#### Key Differences: Liveness vs Readiness
+
+| Aspect | Liveness (`/health/live`) | Readiness (`/health/ready`) |
+|--------|---------------------------|----------------------------|
+| **Purpose** | Is the process alive? | Can it serve correct data? |
+| **Checks** | Infrastructure (store accessible) | Business logic (synced, peers, block production) |
+| **Failure means** | Process is broken/deadlocked | Temporarily unable to serve |
+| **Action on failure** | **Kill and restart** process | **Remove from load balancer** |
+| **Check frequency** | Less frequent (every 10-30s) | More frequent (every 5-10s) |
+| **Example failure** | Database corruption, deadlock | Syncing from genesis, no peers |
+
+**Important:** A node can be **live but not ready**. For example, a newly started full node is alive (process running, database accessible) but not ready (still syncing blocks from peers). In this state:
+- `/health/live` returns `200 OK` (don't kill the process)
+- `/health/ready` returns `503 UNREADY: behind best-known head` (don't route traffic yet)
+
+#### Configuration
+
+**Readiness max blocks behind:**
+
+The readiness endpoint uses the `readiness_max_blocks_behind` configuration to determine if a node is too far behind the network.
+
+**YAML:**
+```yaml
+node:
+  readiness_max_blocks_behind: 15
+```
+
+**Command-line Flag:**
+`--rollkit.node.readiness_max_blocks_behind <uint64>`
+_Example:_ `--rollkit.node.readiness_max_blocks_behind 20`
+_Default:_ `15`
+
+This value determines how many blocks behind the best-known network height a node can be before being considered unready. Lower values ensure tighter consistency but may cause nodes to be marked unready more frequently during network hiccups.
 
 ## Instrumentation Configuration (`instrumentation`)
 

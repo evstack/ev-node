@@ -1,3 +1,9 @@
+// Package server provides HTTP endpoint handlers for the RPC server.
+//
+// Health Endpoints:
+// This file implements health check endpoints following Kubernetes best practices.
+// For comprehensive documentation on health endpoints, their differences, and usage examples,
+// see: docs/learn/config.md#health-endpoints
 package server
 
 import (
@@ -17,10 +23,14 @@ type BestKnownHeightProvider func() uint64
 
 // RegisterCustomHTTPEndpoints is the designated place to add new, non-gRPC, plain HTTP handlers.
 // Additional custom HTTP endpoints can be registered on the mux here.
+//
+// For detailed documentation on health endpoints, see: docs/learn/config.md#health-endpoints
 func RegisterCustomHTTPEndpoints(mux *http.ServeMux, s store.Store, pm p2p.P2PRPC, cfg config.Config, bestKnownHeightProvider BestKnownHeightProvider, logger zerolog.Logger) {
 	// Liveness endpoint - checks if the service process is alive and responsive
 	// A failing liveness check should result in killing/restarting the process
 	// This endpoint should NOT check business logic (like block production or sync status)
+	//
+	// See docs/learn/config.md#healthlive---liveness-probe for details
 	mux.HandleFunc("/health/live", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/plain")
 
@@ -38,7 +48,11 @@ func RegisterCustomHTTPEndpoints(mux *http.ServeMux, s store.Store, pm p2p.P2PRP
 		fmt.Fprintln(w, "OK")
 	})
 
-	// Readiness endpoint
+	// Readiness endpoint - checks if the node can serve correct data to clients
+	// A failing readiness check should result in removing the node from load balancer
+	// but NOT killing the process (e.g., node is syncing, no peers, etc.)
+	//
+	// See docs/learn/config.md#healthready---readiness-probe for details
 	mux.HandleFunc("/health/ready", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/plain")
 
