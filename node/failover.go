@@ -201,12 +201,6 @@ func (f *failoverState) Run(ctx context.Context) (multiErr error) {
 	}()
 
 	defer func() {
-		if f.bc.Syncer != nil {
-			for f.bc.Syncer.IsCatchingUpState() {
-				// give it some time to gracefully complete
-				time.Sleep(100 * time.Millisecond)
-			}
-		}
 		if err := f.bc.Stop(); err != nil && !errors.Is(err, context.Canceled) {
 			multiErr = errors.Join(multiErr, fmt.Errorf("stopping block components: %w", err))
 		}

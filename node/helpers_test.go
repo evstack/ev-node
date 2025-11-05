@@ -211,7 +211,7 @@ func createNodesWithCleanup(t *testing.T, num int, config evconfig.Config) ([]*F
 			sequencer,
 			dac,
 			nil,
-			aggP2PKey,
+			nodeP2PKey,
 			genesis,
 			dssync.MutexWrap(datastore.NewMapDatastore()),
 			DefaultMetricsProvider(evconfig.DefaultInstrumentationConfig()),

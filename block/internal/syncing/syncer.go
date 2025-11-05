@@ -172,8 +172,8 @@ func (s *Syncer) Stop() error {
 	return nil
 }
 
-// IsCatchingUpState returns true if the syncer has pending events or is behind the current raft height
-func (s *Syncer) IsCatchingUpState() bool {
+// isCatchingUpState returns true if the syncer has pending events or is behind the current raft height
+func (s *Syncer) isCatchingUpState() bool {
 	return len(s.heightInCh) != 0 || func() bool {
 		currentHeight, err := s.store.Height(s.ctx)
 		if err != nil {
@@ -836,5 +836,5 @@ func (s *Syncer) IsSynced(expHeight uint64) bool {
 	if err != nil {
 		return false
 	}
-	return state.LastBlockHeight == expHeight && !s.IsCatchingUpState()
+	return state.LastBlockHeight == expHeight && !s.isCatchingUpState()
 }

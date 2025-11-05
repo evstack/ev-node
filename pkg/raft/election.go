@@ -21,10 +21,19 @@ type Runnable interface {
 	IsSynced(*RaftBlockState) bool
 }
 
+type sourceNode interface {
+	Config() Config
+	leaderCh() <-chan bool
+	leaderID() string
+	NodeID() string
+	GetState() *RaftBlockState
+	leadershipTransfer() error
+}
+
 type DynamicLeaderElection struct {
 	logger                         zerolog.Logger
 	leaderFactory, followerFactory func() (Runnable, error)
-	node                           *Node
+	node                           sourceNode
 	running                        atomic.Bool
 }
 
@@ -75,16 +84,16 @@ func (d *DynamicLeaderElection) Run(ctx context.Context) error {
 	var runnable Runnable
 	for {
 		select {
-		case becameLeader := <-d.node.raft.LeaderCh():
+		case becameLeader := <-d.node.leaderCh():
 			d.logger.Info().Msg("Raft leader changed notification")
 			if becameLeader && !isCurrentlyLeader { // new leader
 				if isStarted {
 					d.logger.Info().Msg("became leader, stopping follower operations")
 					// wait for in flight raft msgs to land
-					time.Sleep(d.node.config.SendTimeout)
+					time.Sleep(d.node.Config().SendTimeout)
 					if !runnable.IsSynced(d.node.GetState()) {
 						d.logger.Info().Msg("became leader, but not synced. Pass on leadership")
-						if err := d.node.raft.LeadershipTransfer().Error(); err != nil {
+						if err := d.node.leadershipTransfer(); err != nil {
 							return err
 						}
 						continue
@@ -119,8 +128,7 @@ func (d *DynamicLeaderElection) Run(ctx context.Context) error {
 				ticker.Stop()
 				continue
 			}
-			_, nodeID := d.node.raft.LeaderWithID()
-			if nodeID != "" && string(nodeID) != d.node.config.NodeID {
+			if leaderID := d.node.leaderID(); leaderID != "" && leaderID != d.node.NodeID() {
 				ticker.Stop()
 				d.logger.Info().Msg("starting follower operations")
 				isStarted = true

@@ -209,6 +209,23 @@ func (n *Node) NodeID() string {
 	return n.config.NodeID
 }
 
+func (n *Node) leaderID() string {
+	_, id := n.raft.LeaderWithID()
+	return string(id)
+}
+
+func (n *Node) leaderCh() <-chan bool {
+	return n.raft.LeaderCh()
+}
+
+func (n *Node) leadershipTransfer() error {
+	return n.raft.LeadershipTransfer().Error()
+}
+
+func (n *Node) Config() Config {
+	return *n.config
+}
+
 // Broadcast proposes a block state to be replicated via raft
 func (n *Node) Broadcast(_ context.Context, state *RaftBlockState) error {
 	if !n.IsLeader() {

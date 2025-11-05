@@ -332,8 +332,9 @@ func TestBatchQueueThrottlingWithDAFailure(t *testing.T) {
 	defer cancel()
 
 	var runningWg sync.WaitGroup
-	startNodeInBackground(t, []*FullNode{node}, []context.Context{ctx}, &runningWg, 0, nil)
-
+	errChan := make(chan error, 1)
+	startNodeInBackground(t, []*FullNode{node}, []context.Context{ctx}, &runningWg, 0, errChan)
+	require.Len(errChan, 0, "Expected no errors when starting node")
 	// Wait for the node to start producing blocks
 	waitForBlockN(t, 1, node, config.Node.BlockTime.Duration)
 
@@ -385,7 +386,8 @@ func TestBatchQueueThrottlingWithDAFailure(t *testing.T) {
 	finalHeight, err := getNodeHeight(node, Store)
 	require.NoError(err)
 	t.Logf("Final height: %d", finalHeight)
-
+	cancel() // stop the node
+	
 	// The height should not have increased much due to MaxPendingHeadersAndData limit
 	// Allow at most 3 additional blocks due to timing and pending blocks in queue
 	heightIncrease := finalHeight - heightAfterDAFailure
