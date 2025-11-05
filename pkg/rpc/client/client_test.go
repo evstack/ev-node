@@ -24,9 +24,28 @@ import (
 	rpc "github.com/evstack/ev-node/types/pb/evnode/v1/v1connect"
 )
 
+// setupTestServerOptions holds optional parameters for setupTestServer
+type setupTestServerOptions struct {
+	config                   *config.Config
+	bestKnownHeightProvider server.BestKnownHeightProvider
+}
+
 // setupTestServer creates a test server with mock store and mock p2p manager.
 // An optional custom config can be provided; if not provided, uses DefaultConfig with test-headers namespace.
 func setupTestServer(t *testing.T, mockStore *mocks.MockStore, mockP2P *mocks.MockP2PRPC, customConfig ...config.Config) (*httptest.Server, *Client) {
+	return setupTestServerWithOptions(t, mockStore, mockP2P, setupTestServerOptions{
+		config: func() *config.Config {
+			if len(customConfig) > 0 {
+				return &customConfig[0]
+			}
+			return nil
+		}(),
+		bestKnownHeightProvider: func() uint64 { return 100 }, // Default provider
+	})
+}
+
+// setupTestServerWithOptions creates a test server with full control over options
+func setupTestServerWithOptions(t *testing.T, mockStore *mocks.MockStore, mockP2P *mocks.MockP2PRPC, opts setupTestServerOptions) (*httptest.Server, *Client) {
 	// Create a new HTTP test server
 	mux := http.NewServeMux()
 
@@ -35,8 +54,8 @@ func setupTestServer(t *testing.T, mockStore *mocks.MockStore, mockP2P *mocks.Mo
 
 	// Use custom config if provided, otherwise use default
 	var testConfig config.Config
-	if len(customConfig) > 0 {
-		testConfig = customConfig[0]
+	if opts.config != nil {
+		testConfig = *opts.config
 	} else {
 		testConfig = config.DefaultConfig()
 		testConfig.DA.Namespace = "test-headers"
@@ -59,7 +78,11 @@ func setupTestServer(t *testing.T, mockStore *mocks.MockStore, mockP2P *mocks.Mo
 	mux.Handle(configPath, configHandler)
 
 	// Register custom HTTP endpoints (including health)
-	server.RegisterCustomHTTPEndpoints(mux, mockStore, mockP2P, testConfig, nil, logger)
+	bestKnownHeight := opts.bestKnownHeightProvider
+	if bestKnownHeight == nil {
+		bestKnownHeight = func() uint64 { return 100 }
+	}
+	server.RegisterCustomHTTPEndpoints(mux, mockStore, mockP2P, testConfig, bestKnownHeight, logger)
 
 	// Create an HTTP server with h2c for HTTP/2 support
 	testServer := httptest.NewServer(h2c.NewHandler(mux, &http2.Server{}))
@@ -297,6 +320,85 @@ func TestClientGetHealth(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, "PASS", healthStatus.String())
 		mockStore.AssertExpectations(t)
+	})
+}
+
+func TestClientGetReadiness(t *testing.T) {
+	t.Run("returns READY when all checks pass", func(t *testing.T) {
+		mockStore := mocks.NewMockStore(t)
+		mockP2P := mocks.NewMockP2PRPC(t)
+
+		// Setup P2P network info
+		netInfo := p2p.NetworkInfo{
+			ID:            "test-node",
+			ListenAddress: []string{"/ip4/0.0.0.0/tcp/26656"},
+		}
+		mockP2P.On("GetNetworkInfo").Return(netInfo, nil)
+
+		// Setup peers (non-aggregator needs peers)
+		peers := []peer.AddrInfo{{}}
+		mockP2P.On("GetPeers").Return(peers, nil)
+
+		// Setup state
+		state := types.State{
+			LastBlockHeight: 100,
+			LastBlockTime:   time.Now(),
+		}
+		mockStore.On("GetState", mock.Anything).Return(state, nil)
+
+		testServer, client := setupTestServer(t, mockStore, mockP2P)
+		defer testServer.Close()
+
+		readiness, err := client.GetReadiness(context.Background())
+
+		require.NoError(t, err)
+		require.Equal(t, "READY", readiness.String())
+		mockStore.AssertExpectations(t)
+		mockP2P.AssertExpectations(t)
+	})
+
+	t.Run("returns UNREADY when P2P not listening", func(t *testing.T) {
+		mockStore := mocks.NewMockStore(t)
+		mockP2P := mocks.NewMockP2PRPC(t)
+
+		// Setup P2P network info with no listen addresses
+		netInfo := p2p.NetworkInfo{
+			ID: "test-node",
+		}
+		mockP2P.On("GetNetworkInfo").Return(netInfo, nil)
+
+		testServer, client := setupTestServer(t, mockStore, mockP2P)
+		defer testServer.Close()
+
+		readiness, err := client.GetReadiness(context.Background())
+
+		require.NoError(t, err)
+		require.Equal(t, "UNREADY", readiness.String())
+		mockP2P.AssertExpectations(t)
+	})
+
+	t.Run("returns UNREADY when no peers (non-aggregator)", func(t *testing.T) {
+		mockStore := mocks.NewMockStore(t)
+		mockP2P := mocks.NewMockP2PRPC(t)
+
+		// Setup P2P network info
+		netInfo := p2p.NetworkInfo{
+			ID:            "test-node",
+			ListenAddress: []string{"/ip4/0.0.0.0/tcp/26656"},
+		}
+		mockP2P.On("GetNetworkInfo").Return(netInfo, nil)
+
+		// No peers
+		mockP2P.On("GetPeers").Return([]peer.AddrInfo{}, nil)
+
+		testServer, client := setupTestServer(t, mockStore, mockP2P)
+		defer testServer.Close()
+
+		readiness, err := client.GetReadiness(context.Background())
+
+		require.NoError(t, err)
+		require.Equal(t, "UNREADY", readiness.String())
+		mockP2P.AssertExpectations(t)
 	})
 }
 

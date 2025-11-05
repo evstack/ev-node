@@ -14,12 +14,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added comprehensive health endpoint documentation in `docs/learn/config.md#health-endpoints` explaining liveness vs readiness checks, Kubernetes probe configuration, and usage examples ([#2800](https://github.com/evstack/ev-node/pull/2800))
 - Added P2P listening check to `/health/ready` endpoint to verify P2P network is ready to accept connections ([#2800](https://github.com/evstack/ev-node/pull/2800))
 - Added aggregator block production rate check to `/health/ready` endpoint to ensure aggregators are producing blocks within expected timeframe (5x block time) ([#2800](https://github.com/evstack/ev-node/pull/2800))
+- Added `GetReadiness()` method to Go RPC client for checking `/health/ready` endpoint ([#2800](https://github.com/evstack/ev-node/pull/2800))
+- Added `ReadinessStatus` type to Go RPC client with READY/UNREADY/UNKNOWN states ([#2800](https://github.com/evstack/ev-node/pull/2800))
 
 ### Changed
 
 - Use cache instead of in memory store for reaper. Persist cache on reload. Autoclean after 24 hours. ([#2811](https://github.com/evstack/ev-node/pull/2811))
 - Simplified `/health/live` endpoint to only check store accessibility (liveness) instead of business logic, following Kubernetes best practices ([#2800](https://github.com/evstack/ev-node/pull/2800))
 - Updated `/health/ready` endpoint to use `GetState()` instead of `Height()` to access block production timing information ([#2800](https://github.com/evstack/ev-node/pull/2800))
+- Renamed integration test from `TestHealthEndpointWhenBlockProductionStops` to `TestReadinessEndpointWhenBlockProductionStops` to correctly test readiness endpoint ([#2800](https://github.com/evstack/ev-node/pull/2800))
 
 ### Removed
 

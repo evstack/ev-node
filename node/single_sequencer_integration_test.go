@@ -418,12 +418,12 @@ func waitForBlockN(t *testing.T, n uint64, node *FullNode, blockInterval time.Du
 		return got >= n
 	}, timeout[0], blockInterval/2)
 }
-// TestHealthEndpointWhenBlockProductionStops verifies that the health endpoint
-// correctly reports WARN and FAIL states when an aggregator stops producing blocks.
-func TestHealthEndpointWhenBlockProductionStops(t *testing.T) {
+// TestReadinessEndpointWhenBlockProductionStops verifies that the readiness endpoint
+// correctly reports UNREADY state when an aggregator stops producing blocks.
+func TestReadinessEndpointWhenBlockProductionStops(t *testing.T) {
 	require := require.New(t)
 
-	// Set up configuration with specific block time for predictable health checks
+	// Set up configuration with specific block time for predictable readiness checks
 	config := getTestConfig(t, 1)
 	config.Node.Aggregator = true
 	config.Node.BlockTime = evconfig.DurationWrapper{Duration: 500 * time.Millisecond}
@@ -448,10 +448,10 @@ func TestHealthEndpointWhenBlockProductionStops(t *testing.T) {
 	// Create RPC client
 	rpcClient := NewRPCClient(config.RPC.Address)
 
-	// Verify health is PASS while blocks are being produced
-	health, err := rpcClient.GetHealth(ctx)
+	// Verify readiness is READY while blocks are being produced
+	readiness, err := rpcClient.GetReadiness(ctx)
 	require.NoError(err)
-	require.Equal("PASS", health.String(), "Health should be PASS while producing blocks")
+	require.Equal("READY", readiness.String(), "Readiness should be READY while producing blocks")
 
 	// Wait for block production to stop (when MaxPendingHeadersAndData is reached)
 	time.Sleep(time.Duration(config.Node.MaxPendingHeadersAndData+2) * config.Node.BlockTime.Duration)
@@ -461,30 +461,20 @@ func TestHealthEndpointWhenBlockProductionStops(t *testing.T) {
 	require.NoError(err)
 	require.LessOrEqual(height, config.Node.MaxPendingHeadersAndData)
 
-	// Health check threshold calculations:
+	// Readiness check threshold for aggregators:
 	// blockTime = 500ms
-	// warnThreshold = blockTime * 3 = 1500ms = 1.5s
-	// failThreshold = blockTime * 5 = 2500ms = 2.5s
+	// maxAllowedDelay = blockTime * 5 = 2500ms = 2.5s
+	// After 2.5s without producing a block, aggregator should be UNREADY
 
-	// Poll for health to transition away from PASS (to WARN or FAIL)
+	// Poll for readiness to transition to UNREADY
 	// This is more robust than fixed time.Sleep as it handles timing variations
 	require.Eventually(func() bool {
-		health, err := rpcClient.GetHealth(ctx)
+		readiness, err := rpcClient.GetReadiness(ctx)
 		if err != nil {
 			return false
 		}
-		return health.String() != "PASS"
-	}, 5*time.Second, 100*time.Millisecond, "Health should transition away from PASS after block production stops")
-
-	// Poll for health to reach FAIL state
-	// Timeout is set to 10 seconds to be safe, but should happen around 2.5s
-	require.Eventually(func() bool {
-		health, err := rpcClient.GetHealth(ctx)
-		if err != nil {
-			return false
-		}
-		return health.String() == "FAIL"
-	}, 10*time.Second, 100*time.Millisecond, "Health should be FAIL after 5x block time without new blocks")
+		return readiness.String() == "UNREADY"
+	}, 10*time.Second, 100*time.Millisecond, "Readiness should be UNREADY after aggregator stops producing blocks (5x block time)")
 
 	// Stop the node and wait for shutdown
 	shutdownAndWait(t, []context.CancelFunc{cancel}, &runningWg, 10*time.Second)
