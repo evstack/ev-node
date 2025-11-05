@@ -17,6 +17,7 @@ import (
 	"github.com/evstack/ev-node/node"
 	"github.com/evstack/ev-node/pkg/cmd"
 	"github.com/evstack/ev-node/pkg/config"
+	"github.com/evstack/ev-node/pkg/genesis"
 	genesispkg "github.com/evstack/ev-node/pkg/genesis"
 	"github.com/evstack/ev-node/pkg/p2p"
 	"github.com/evstack/ev-node/pkg/p2p/key"
@@ -117,20 +118,20 @@ func createSequencer(
 	datastore datastore.Batching,
 	da da.DA,
 	nodeConfig config.Config,
-	genesis genesispkg.Genesis,
+	genesis genesis.Genesis,
 ) (coresequencer.Sequencer, error) {
+	daRetriever, err := block.NewDARetriever(da, nodeConfig, genesis, logger)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create DA retriever: %w", err)
+	}
+	adapter := based.NewDARetrieverAdapter(daRetriever.RetrieveForcedIncludedTxsFromDA)
+
 	if nodeConfig.Node.BasedSequencer {
 		// Based sequencer mode - fetch transactions only from DA
 		if !nodeConfig.Node.Aggregator {
 			return nil, fmt.Errorf("based sequencer mode requires aggregator mode to be enabled")
 		}
 
-		daRetriever, err := block.NewDARetriever(da, nodeConfig, genesis, logger)
-		if err != nil {
-			return nil, fmt.Errorf("failed to create DA retriever: %w", err)
-		}
-
-		adapter := based.NewDARetrieverAdapter(daRetriever.RetrieveForcedIncludedTxsFromDA)
 		basedSeq := based.NewBasedSequencer(adapter, da, nodeConfig, genesis, logger)
 
 		logger.Info().
@@ -144,29 +145,6 @@ func createSequencer(
 	singleMetrics, err := single.NopMetrics()
 	if err != nil {
 		return nil, fmt.Errorf("failed to create single sequencer metrics: %w", err)
-	}
-
-	// Create DA retriever for forced inclusion support
-	var daRetriever single.DARetriever
-	if nodeConfig.Node.Aggregator {
-		commonDARetriever, err := block.NewDARetriever(da, nodeConfig, genesis, logger)
-		if err != nil {
-			return nil, fmt.Errorf("failed to create DA retriever: %w", err)
-		}
-
-		// Adapter function to convert between common and single event types
-		adapterFunc := func(ctx context.Context, daHeight uint64) (*single.ForcedInclusionEvent, error) {
-			event, err := commonDARetriever.RetrieveForcedIncludedTxsFromDA(ctx, daHeight)
-			if err != nil {
-				return nil, err
-			}
-			return &single.ForcedInclusionEvent{
-				Txs:           event.Txs,
-				StartDaHeight: event.StartDaHeight,
-				EndDaHeight:   event.EndDaHeight,
-			}, nil
-		}
-		daRetriever = single.NewDARetrieverAdapter(adapterFunc)
 	}
 
 	sequencer, err := single.NewSequencer(
