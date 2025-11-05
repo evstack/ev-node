@@ -312,6 +312,12 @@ func (h *HealthServer) Livez(
 	ctx context.Context,
 	req *connect.Request[emptypb.Empty],
 ) (*connect.Response[pb.GetHealthResponse], error) {
+	// Log deprecation warning
+	h.logger.Warn().
+		Str("deprecated_endpoint", "/evnode.v1.HealthService/Livez").
+		Str("recommended_endpoint", "GET /health/live").
+		Msg("DEPRECATED: gRPC health endpoint called. Please migrate to HTTP endpoint GET /health/live")
+
 	status := pb.HealthStatus_PASS
 
 	// For aggregator nodes, check if block production is healthy
@@ -359,9 +365,15 @@ func (h *HealthServer) Livez(
 		}
 	}
 
-	return connect.NewResponse(&pb.GetHealthResponse{
+	// Add deprecation warning to response headers
+	resp := connect.NewResponse(&pb.GetHealthResponse{
 		Status: status,
-	}), nil
+	})
+	resp.Header().Set("X-Deprecated", "true")
+	resp.Header().Set("X-Deprecated-Message", "Use GET /health/live instead")
+	resp.Header().Set("Warning", "299 - \"Deprecated endpoint. Use GET /health/live\"")
+
+	return resp, nil
 }
 
 // NewServiceHandler creates a new HTTP handler for Store, P2P, Health and Config services

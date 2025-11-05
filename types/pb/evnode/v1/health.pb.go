@@ -136,9 +136,9 @@ const file_evnode_v1_health_proto_rawDesc = "" +
 	"\aUNKNOWN\x10\x00\x12\b\n" +
 	"\x04PASS\x10\x01\x12\b\n" +
 	"\x04WARN\x10\x02\x12\b\n" +
-	"\x04FAIL\x10\x032P\n" +
-	"\rHealthService\x12?\n" +
-	"\x05Livez\x12\x16.google.protobuf.Empty\x1a\x1c.evnode.v1.GetHealthResponse\"\x00B/Z-github.com/evstack/ev-node/types/pb/evnode/v1b\x06proto3"
+	"\x04FAIL\x10\x032X\n" +
+	"\rHealthService\x12B\n" +
+	"\x05Livez\x12\x16.google.protobuf.Empty\x1a\x1c.evnode.v1.GetHealthResponse\"\x03\x88\x02\x01\x1a\x03\x88\x02\x01B/Z-github.com/evstack/ev-node/types/pb/evnode/v1b\x06proto3"
 
 var (
 	file_evnode_v1_health_proto_rawDescOnce sync.Once

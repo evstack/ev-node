@@ -39,9 +39,14 @@ const (
 )
 
 // HealthServiceClient is a client for the evnode.v1.HealthService service.
+//
+// Deprecated: do not use.
 type HealthServiceClient interface {
 	// Livez returns the health status of the node
-	// DEPRECATED: Use HTTP endpoint GET /health/live instead
+	// DEPRECATED: Use HTTP endpoint GET /health/live instead.
+	// This endpoint logs deprecation warnings and adds deprecation headers to responses.
+	//
+	// Deprecated: do not use.
 	Livez(context.Context, *connect.Request[emptypb.Empty]) (*connect.Response[v1.GetHealthResponse], error)
 }
 
@@ -52,6 +57,8 @@ type HealthServiceClient interface {
 //
 // The URL supplied here should be the base URL for the Connect or gRPC server (for example,
 // http://api.acme.com or https://acme.com/grpc).
+//
+// Deprecated: do not use.
 func NewHealthServiceClient(httpClient connect.HTTPClient, baseURL string, opts ...connect.ClientOption) HealthServiceClient {
 	baseURL = strings.TrimRight(baseURL, "/")
 	healthServiceMethods := v1.File_evnode_v1_health_proto.Services().ByName("HealthService").Methods()
@@ -71,14 +78,21 @@ type healthServiceClient struct {
 }
 
 // Livez calls evnode.v1.HealthService.Livez.
+//
+// Deprecated: do not use.
 func (c *healthServiceClient) Livez(ctx context.Context, req *connect.Request[emptypb.Empty]) (*connect.Response[v1.GetHealthResponse], error) {
 	return c.livez.CallUnary(ctx, req)
 }
 
 // HealthServiceHandler is an implementation of the evnode.v1.HealthService service.
+//
+// Deprecated: do not use.
 type HealthServiceHandler interface {
 	// Livez returns the health status of the node
-	// DEPRECATED: Use HTTP endpoint GET /health/live instead
+	// DEPRECATED: Use HTTP endpoint GET /health/live instead.
+	// This endpoint logs deprecation warnings and adds deprecation headers to responses.
+	//
+	// Deprecated: do not use.
 	Livez(context.Context, *connect.Request[emptypb.Empty]) (*connect.Response[v1.GetHealthResponse], error)
 }
 
@@ -87,6 +101,8 @@ type HealthServiceHandler interface {
 //
 // By default, handlers support the Connect, gRPC, and gRPC-Web protocols with the binary Protobuf
 // and JSON codecs. They also support gzip compression.
+//
+// Deprecated: do not use.
 func NewHealthServiceHandler(svc HealthServiceHandler, opts ...connect.HandlerOption) (string, http.Handler) {
 	healthServiceMethods := v1.File_evnode_v1_health_proto.Services().ByName("HealthService").Methods()
 	healthServiceLivezHandler := connect.NewUnaryHandler(
