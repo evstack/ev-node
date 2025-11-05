@@ -3,8 +3,8 @@ module github.com/evstack/ev-node/da
 go 1.24.1
 
 require (
-	github.com/evstack/ev-node/core v1.0.0-beta.3
-	github.com/filecoin-project/go-jsonrpc v0.8.0
+	github.com/evstack/ev-node/core v1.0.0-beta.4
+	github.com/filecoin-project/go-jsonrpc v0.9.0
 	github.com/rs/zerolog v1.34.0
 	github.com/stretchr/testify v1.11.1
 )

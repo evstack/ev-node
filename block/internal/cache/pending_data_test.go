@@ -62,7 +62,7 @@ func TestPendingData_BasicFlow(t *testing.T) {
 func TestPendingData_InitFromMetadata(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
-	ds, err := store.NewDefaultInMemoryKVStore()
+	ds, err := store.NewTestInMemoryKVStore()
 	require.NoError(t, err)
 	store := store.New(ds)
 

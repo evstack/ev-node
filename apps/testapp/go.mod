@@ -6,14 +6,15 @@ replace github.com/celestiaorg/go-header => github.com/julienrbrt/go-header v0.0
 
 replace (
 	github.com/evstack/ev-node => ../../.
+	github.com/evstack/ev-node/core => ../../core
 	github.com/evstack/ev-node/da => ../../da
 	github.com/evstack/ev-node/sequencers/single => ../../sequencers/single
 )
 
 require (
 	github.com/celestiaorg/go-header v0.7.3
-	github.com/evstack/ev-node v1.0.0-beta.7
-	github.com/evstack/ev-node/core v1.0.0-beta.3
+	github.com/evstack/ev-node v1.0.0-beta.9
+	github.com/evstack/ev-node/core v1.0.0-beta.4
 	github.com/evstack/ev-node/da v0.0.0-00010101000000-000000000000
 	github.com/evstack/ev-node/sequencers/single v0.0.0-00010101000000-000000000000
 	github.com/ipfs/go-datastore v0.9.0
@@ -36,7 +37,7 @@ require (
 	github.com/dgraph-io/ristretto/v2 v2.1.0 // indirect
 	github.com/dustin/go-humanize v1.0.1 // indirect
 	github.com/filecoin-project/go-clock v0.1.0 // indirect
-	github.com/filecoin-project/go-jsonrpc v0.8.0 // indirect
+	github.com/filecoin-project/go-jsonrpc v0.9.0 // indirect
 	github.com/flynn/noise v1.1.0 // indirect
 	github.com/francoispqt/gojay v1.2.13 // indirect
 	github.com/fsnotify/fsnotify v1.9.0 // indirect
@@ -157,7 +158,7 @@ require (
 	golang.org/x/crypto v0.43.0 // indirect
 	golang.org/x/exp v0.0.0-20250911091902-df9299821621 // indirect
 	golang.org/x/mod v0.28.0 // indirect
-	golang.org/x/net v0.45.0 // indirect
+	golang.org/x/net v0.46.0 // indirect
 	golang.org/x/sync v0.17.0 // indirect
 	golang.org/x/sys v0.37.0 // indirect
 	golang.org/x/telemetry v0.0.0-20250908211612-aef8a434d053 // indirect

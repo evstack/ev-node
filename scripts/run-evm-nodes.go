@@ -1,5 +1,4 @@
 //go:build run_evm
-// +build run_evm
 
 package main
 
@@ -294,7 +293,6 @@ func (nm *nodeManager) startEVMDocker(name string, rpcPort, enginePort, wsPort i
 		"--txpool.max-new-txns", "2048",
 		"--txpool.additional-validation-tasks", "16",
 		"--engine.always-process-payload-attributes-on-canonical-head",
-		"--ev-reth.enable",
 	}
 
 	cmd := exec.Command("docker", args...)

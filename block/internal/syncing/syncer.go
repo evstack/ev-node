@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	pubsub "github.com/libp2p/go-libp2p-pubsub"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -12,10 +13,11 @@ import (
 	"github.com/rs/zerolog"
 	"golang.org/x/sync/errgroup"
 
-	"github.com/evstack/ev-node/block/internal/cache"
-	"github.com/evstack/ev-node/block/internal/common"
 	coreda "github.com/evstack/ev-node/core/da"
 	coreexecutor "github.com/evstack/ev-node/core/execution"
+
+	"github.com/evstack/ev-node/block/internal/cache"
+	"github.com/evstack/ev-node/block/internal/common"
 	"github.com/evstack/ev-node/pkg/config"
 	"github.com/evstack/ev-node/pkg/genesis"
 	"github.com/evstack/ev-node/pkg/store"
@@ -158,7 +160,7 @@ func (s *Syncer) GetLastState() types.State {
 
 	stateCopy := *state
 	stateCopy.AppHash = bytes.Clone(state.AppHash)
-	stateCopy.LastResultsHash = bytes.Clone(state.LastResultsHash)
+	stateCopy.LastHeaderHash = bytes.Clone(state.LastHeaderHash)
 
 	return stateCopy
 }
@@ -183,27 +185,46 @@ func (s *Syncer) initializeState() error {
 	// Load state from store
 	state, err := s.store.GetState(s.ctx)
 	if err != nil {
-		// Use genesis state if no state exists
+		// Initialize new chain state for a fresh full node (no prior state on disk)
+		// Mirror executor initialization to ensure AppHash matches headers produced by the sequencer.
+		stateRoot, _, initErr := s.exec.InitChain(
+			s.ctx,
+			s.genesis.StartTime,
+			s.genesis.InitialHeight,
+			s.genesis.ChainID,
+		)
+		if initErr != nil {
+			return fmt.Errorf("failed to initialize execution client: %w", initErr)
+		}
+
 		state = types.State{
 			ChainID:         s.genesis.ChainID,
 			InitialHeight:   s.genesis.InitialHeight,
 			LastBlockHeight: s.genesis.InitialHeight - 1,
 			LastBlockTime:   s.genesis.StartTime,
-			DAHeight:        0,
+			DAHeight:        s.genesis.DAStartHeight,
+			AppHash:         stateRoot,
 		}
 	}
-
+	if state.DAHeight < s.genesis.DAStartHeight {
+		return fmt.Errorf("DA height (%d) is lower than DA start height (%d)", state.DAHeight, s.genesis.DAStartHeight)
+	}
 	s.SetLastState(state)
 
 	// Set DA height
-	daHeight := max(state.DAHeight, s.genesis.DAStartHeight)
-	s.SetDAHeight(daHeight)
+	s.SetDAHeight(state.DAHeight)
 
 	s.logger.Info().
 		Uint64("height", state.LastBlockHeight).
 		Uint64("da_height", s.GetDAHeight()).
 		Str("chain_id", state.ChainID).
 		Msg("initialized syncer state")
+
+	// Sync execution layer with store on startup
+	execReplayer := common.NewReplayer(s.store, s.exec, s.genesis, s.logger)
+	if err := execReplayer.SyncToHeight(s.ctx, state.LastBlockHeight); err != nil {
+		return fmt.Errorf("failed to sync execution layer on startup: %w", err)
+	}
 
 	return nil
 }
@@ -330,6 +351,8 @@ func (s *Syncer) tryFetchFromP2P() {
 
 	// Process data (if not already processed by headers)
 	newDataHeight := s.dataStore.Store().Height()
+	// TODO @MARKO: why only if newDataHeight != newHeaderHeight? why not process
+	//  just if newDataHeight > currentHeight ?
 	if newDataHeight != newHeaderHeight && newDataHeight > currentHeight {
 		s.p2pHandler.ProcessDataRange(s.ctx, currentHeight+1, newDataHeight, s.heightInCh)
 	}
@@ -380,7 +403,14 @@ func (s *Syncer) processHeightEvent(event *common.DAHeightEvent) {
 	if err := s.trySyncNextBlock(event); err != nil {
 		s.logger.Error().Err(err).Msg("failed to sync next block")
 		// If the error is not due to an validation error, re-store the event as pending
-		if !errors.Is(err, errInvalidBlock) {
+		switch {
+		case errors.Is(err, errInvalidBlock):
+			// do not reschedule
+		case errors.Is(err, errInvalidState):
+			s.sendCriticalError(fmt.Errorf("invalid state detected (block-height %d, state-height %d) "+
+				"- block references do not match local state. Manual intervention required: %w", event.Header.Height(),
+				s.GetLastState().LastBlockHeight, err))
+		default:
 			s.cache.SetPendingEvent(height, event)
 		}
 		return
@@ -389,16 +419,28 @@ func (s *Syncer) processHeightEvent(event *common.DAHeightEvent) {
 	// only save to p2p stores if the event came from DA
 	if event.Source == common.SourceDA {
 		g, ctx := errgroup.WithContext(s.ctx)
-		g.Go(func() error { return s.headerStore.WriteToStoreAndBroadcast(ctx, event.Header) })
-		g.Go(func() error { return s.dataStore.WriteToStoreAndBroadcast(ctx, event.Data) })
+		g.Go(func() error {
+			// broadcast header locally only — prevents spamming the p2p network with old height notifications,
+			// allowing the syncer to update its target and fill missing blocks
+			return s.headerStore.WriteToStoreAndBroadcast(ctx, event.Header, pubsub.WithLocalPublication(true))
+		})
+		g.Go(func() error {
+			// broadcast data locally only — prevents spamming the p2p network with old height notifications,
+			// allowing the syncer to update its target and fill missing blocks
+			return s.dataStore.WriteToStoreAndBroadcast(ctx, event.Data, pubsub.WithLocalPublication(true))
+		})
 		if err := g.Wait(); err != nil {
 			s.logger.Error().Err(err).Msg("failed to append event header and/or data to p2p store")
 		}
 	}
 }
 
-// errInvalidBlock is returned when a block is failing validation
-var errInvalidBlock = errors.New("invalid block")
+var (
+	// errInvalidBlock is returned when a block is failing validation
+	errInvalidBlock = errors.New("invalid block")
+	// errInvalidState is returned when the state has diverged from the DA blocks
+	errInvalidState = errors.New("invalid state")
+)
 
 // trySyncNextBlock attempts to sync the next available block
 // the event is always the next block in sequence as processHeightEvent ensures it.
@@ -413,16 +455,20 @@ func (s *Syncer) trySyncNextBlock(event *common.DAHeightEvent) error {
 	data := event.Data
 	nextHeight := event.Header.Height()
 	currentState := s.GetLastState()
+	headerHash := header.Hash().String()
 
 	s.logger.Info().Uint64("height", nextHeight).Msg("syncing block")
 
 	// Compared to the executor logic where the current block needs to be applied first,
 	// here only the previous block needs to be applied to proceed to the verification.
 	// The header validation must be done before applying the block to avoid executing gibberish
-	if err := s.validateBlock(header, data); err != nil {
+	if err := s.validateBlock(currentState, data, header); err != nil {
 		// remove header as da included (not per se needed, but keep cache clean)
-		s.cache.RemoveHeaderDAIncluded(header.Hash().String())
-		return errors.Join(errInvalidBlock, fmt.Errorf("failed to validate block: %w", err))
+		s.cache.RemoveHeaderDAIncluded(headerHash)
+		if !errors.Is(err, errInvalidState) && !errors.Is(err, errInvalidBlock) {
+			return errors.Join(errInvalidBlock, err)
+		}
+		return err
 	}
 
 	// Apply block
@@ -462,9 +508,9 @@ func (s *Syncer) trySyncNextBlock(event *common.DAHeightEvent) error {
 	s.metrics.Height.Set(float64(newState.LastBlockHeight))
 
 	// Mark as seen
-	s.cache.SetHeaderSeen(header.Hash().String())
+	s.cache.SetHeaderSeen(headerHash, header.Height())
 	if !bytes.Equal(header.DataHash, common.DataHashForEmptyTxs) {
-		s.cache.SetDataSeen(data.DACommitment().String())
+		s.cache.SetDataSeen(data.DACommitment().String(), newState.LastBlockHeight)
 	}
 
 	return nil
@@ -528,23 +574,17 @@ func (s *Syncer) executeTxsWithRetry(ctx context.Context, rawTxs [][]byte, heade
 // NOTE: if the header was gibberish and somehow passed all validation prior but the data was correct
 // or if the data was gibberish and somehow passed all validation prior but the header was correct
 // we are still losing both in the pending event. This should never happen.
-func (s *Syncer) validateBlock(
-	header *types.SignedHeader,
-	data *types.Data,
-) error {
+func (s *Syncer) validateBlock(currState types.State, data *types.Data, header *types.SignedHeader) error {
 	// Set custom verifier for aggregator node signature
 	header.SetCustomVerifierForSyncNode(s.options.SyncNodeSignatureBytesProvider)
 
-	// Validate header with data
 	if err := header.ValidateBasicWithData(data); err != nil {
 		return fmt.Errorf("invalid header: %w", err)
 	}
 
-	// Validate header against data
-	if err := types.Validate(header, data); err != nil {
-		return fmt.Errorf("header-data validation failed: %w", err)
+	if err := currState.AssertValidForNextState(header, data); err != nil {
+		return errors.Join(errInvalidState, err)
 	}
-
 	return nil
 }
 

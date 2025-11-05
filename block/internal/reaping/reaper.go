@@ -9,18 +9,23 @@ import (
 	"sync"
 	"time"
 
-	ds "github.com/ipfs/go-datastore"
 	"github.com/rs/zerolog"
 
+	"github.com/evstack/ev-node/block/internal/cache"
 	"github.com/evstack/ev-node/block/internal/executing"
 	coreexecutor "github.com/evstack/ev-node/core/execution"
 	coresequencer "github.com/evstack/ev-node/core/sequencer"
 	"github.com/evstack/ev-node/pkg/genesis"
-	"github.com/evstack/ev-node/pkg/store"
 )
 
-// DefaultInterval is the default reaper interval
-const DefaultInterval = 1 * time.Second
+const (
+	// DefaultInterval is the default reaper interval
+	DefaultInterval = 1 * time.Second
+	// MaxBackoffInterval is the maximum backoff interval for retries
+	MaxBackoffInterval = 30 * time.Second
+	// BackoffMultiplier is the multiplier for exponential backoff
+	BackoffMultiplier = 2
+)
 
 // Reaper is responsible for periodically retrieving transactions from the executor,
 // filtering out already seen transactions, and submitting new transactions to the sequencer.
@@ -29,7 +34,7 @@ type Reaper struct {
 	sequencer coresequencer.Sequencer
 	chainID   string
 	interval  time.Duration
-	seenStore ds.Batching
+	cache     cache.Manager
 	executor  *executing.Executor
 
 	// shared components
@@ -41,24 +46,24 @@ type Reaper struct {
 	wg     sync.WaitGroup
 }
 
-// NewReaper creates a new Reaper instance with persistent seenTx storage.
+// NewReaper creates a new Reaper instance.
 func NewReaper(
 	exec coreexecutor.Executor,
 	sequencer coresequencer.Sequencer,
 	genesis genesis.Genesis,
 	logger zerolog.Logger,
 	executor *executing.Executor,
+	cache cache.Manager,
 	scrapeInterval time.Duration,
 ) (*Reaper, error) {
 	if executor == nil {
 		return nil, errors.New("executor cannot be nil")
 	}
+	if cache == nil {
+		return nil, errors.New("cache cannot be nil")
+	}
 	if scrapeInterval == 0 {
 		return nil, errors.New("scrape interval cannot be empty")
-	}
-	store, err := store.NewDefaultInMemoryKVStore()
-	if err != nil {
-		return nil, fmt.Errorf("failed to create reaper store: %w", err)
 	}
 
 	return &Reaper{
@@ -67,7 +72,7 @@ func NewReaper(
 		chainID:   genesis.ChainID,
 		interval:  scrapeInterval,
 		logger:    logger.With().Str("component", "reaper").Logger(),
-		seenStore: store,
+		cache:     cache,
 		executor:  executor,
 	}, nil
 }
@@ -76,7 +81,7 @@ func NewReaper(
 func (r *Reaper) Start(ctx context.Context) error {
 	r.ctx, r.cancel = context.WithCancel(ctx)
 
-	// Start repear loop
+	// Start reaper loop
 	r.wg.Add(1)
 	go func() {
 		defer r.wg.Done()
@@ -91,12 +96,45 @@ func (r *Reaper) reaperLoop() {
 	ticker := time.NewTicker(r.interval)
 	defer ticker.Stop()
 
+	cleanupTicker := time.NewTicker(1 * time.Hour)
+	defer cleanupTicker.Stop()
+
+	consecutiveFailures := 0
+
 	for {
 		select {
 		case <-r.ctx.Done():
 			return
 		case <-ticker.C:
-			r.SubmitTxs()
+			err := r.SubmitTxs()
+			if err != nil {
+				// Increment failure counter and apply exponential backoff
+				consecutiveFailures++
+				backoff := r.interval * time.Duration(1<<min(consecutiveFailures, 5)) // Cap at 2^5 = 32x
+				backoff = min(backoff, MaxBackoffInterval)
+				r.logger.Warn().
+					Err(err).
+					Int("consecutive_failures", consecutiveFailures).
+					Dur("next_retry_in", backoff).
+					Msg("reaper encountered error, applying backoff")
+
+				// Reset ticker with backoff interval
+				ticker.Reset(backoff)
+			} else {
+				// Reset failure counter and backoff on success
+				if consecutiveFailures > 0 {
+					r.logger.Info().Msg("reaper recovered from errors, resetting backoff")
+					consecutiveFailures = 0
+					ticker.Reset(r.interval)
+				}
+			}
+		case <-cleanupTicker.C:
+			// Clean up transaction hashes older than 24 hours
+			// This prevents unbounded growth of the transaction seen cache
+			removed := r.cache.CleanupOldTxs(cache.DefaultTxCacheRetention)
+			if removed > 0 {
+				r.logger.Info().Int("removed", removed).Msg("cleaned up old transaction hashes")
+			}
 		}
 	}
 }
@@ -113,34 +151,29 @@ func (r *Reaper) Stop() error {
 }
 
 // SubmitTxs retrieves transactions from the executor and submits them to the sequencer.
-func (r *Reaper) SubmitTxs() {
+// Returns an error if any critical operation fails.
+func (r *Reaper) SubmitTxs() error {
 	txs, err := r.exec.GetTxs(r.ctx)
 	if err != nil {
 		r.logger.Error().Err(err).Msg("failed to get txs from executor")
-		return
+		return fmt.Errorf("failed to get txs from executor: %w", err)
 	}
 	if len(txs) == 0 {
 		r.logger.Debug().Msg("no new txs")
-		return
+		return nil
 	}
 
 	var newTxs [][]byte
 	for _, tx := range txs {
 		txHash := hashTx(tx)
-		key := ds.NewKey(txHash)
-		has, err := r.seenStore.Has(r.ctx, key)
-		if err != nil {
-			r.logger.Error().Err(err).Msg("failed to check seenStore")
-			continue
-		}
-		if !has {
+		if !r.cache.IsTxSeen(txHash) {
 			newTxs = append(newTxs, tx)
 		}
 	}
 
 	if len(newTxs) == 0 {
 		r.logger.Debug().Msg("no new txs to submit")
-		return
+		return nil
 	}
 
 	r.logger.Debug().Int("txCount", len(newTxs)).Msg("submitting txs to sequencer")
@@ -150,16 +183,12 @@ func (r *Reaper) SubmitTxs() {
 		Batch: &coresequencer.Batch{Transactions: newTxs},
 	})
 	if err != nil {
-		r.logger.Error().Err(err).Msg("failed to submit txs to sequencer")
-		return
+		return fmt.Errorf("failed to submit txs to sequencer: %w", err)
 	}
 
 	for _, tx := range newTxs {
 		txHash := hashTx(tx)
-		key := ds.NewKey(txHash)
-		if err := r.seenStore.Put(r.ctx, key, []byte{1}); err != nil {
-			r.logger.Error().Err(err).Str("txHash", txHash).Msg("failed to persist seen tx")
-		}
+		r.cache.SetTxSeen(txHash)
 	}
 
 	// Notify the executor that new transactions are available
@@ -169,11 +198,7 @@ func (r *Reaper) SubmitTxs() {
 	}
 
 	r.logger.Debug().Msg("successfully submitted txs")
-}
-
-// SeenStore returns the datastore used to track seen transactions.
-func (r *Reaper) SeenStore() ds.Datastore {
-	return r.seenStore
+	return nil
 }
 
 func hashTx(tx []byte) string {

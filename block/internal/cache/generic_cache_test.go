@@ -14,31 +14,14 @@ func init() {
 	gob.Register(&testItem{})
 }
 
-// TestCache_TypeSafety ensures methods gracefully handle invalid underlying types.
-func TestCache_TypeSafety(t *testing.T) {
-	c := NewCache[testItem]()
-
-	// Inject invalid value types directly into maps (bypassing typed methods)
-	c.itemsByHeight.Store(uint64(1), "not-a-*testItem")
-
-	if got := c.getItem(1); got != nil {
-		t.Fatalf("expected nil for invalid stored type, got %#v", got)
-	}
-
-	// Range should skip invalid entries and not panic
-	ran := false
-	c.rangeByHeight(func(_ uint64, _ *testItem) bool { ran = true; return true })
-	_ = ran // ensure no panic
-}
-
 // TestCache_SaveLoad_ErrorPaths covers SaveToDisk and LoadFromDisk error scenarios.
 func TestCache_SaveLoad_ErrorPaths(t *testing.T) {
 	c := NewCache[testItem]()
 	for i := 0; i < 5; i++ {
 		v := &testItem{V: i}
 		c.setItem(uint64(i), v)
-		c.setSeen(fmt.Sprintf("s%d", i))
-		c.setDAIncluded(fmt.Sprintf("d%d", i), uint64(i))
+		c.setSeen(fmt.Sprintf("s%d", i), uint64(i))
+		c.setDAIncluded(fmt.Sprintf("d%d", i), uint64(i), uint64(i))
 	}
 
 	// Normal save/load roundtrip

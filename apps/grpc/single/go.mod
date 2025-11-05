@@ -3,11 +3,11 @@ module github.com/evstack/ev-node/apps/grpc/single
 go 1.24.6
 
 require (
-	github.com/evstack/ev-node v1.0.0-beta.7
-	github.com/evstack/ev-node/core v1.0.0-beta.3
-	github.com/evstack/ev-node/da v1.0.0-beta.1
+	github.com/evstack/ev-node v1.0.0-beta.9
+	github.com/evstack/ev-node/core v1.0.0-beta.4
+	github.com/evstack/ev-node/da v1.0.0-beta.5
 	github.com/evstack/ev-node/execution/grpc v0.0.0
-	github.com/evstack/ev-node/sequencers/single v0.0.0
+	github.com/evstack/ev-node/sequencers/single v1.0.0-beta.3
 	github.com/spf13/cobra v1.10.1
 )
 
@@ -27,7 +27,7 @@ require (
 	github.com/dgraph-io/ristretto/v2 v2.1.0 // indirect
 	github.com/dustin/go-humanize v1.0.1 // indirect
 	github.com/filecoin-project/go-clock v0.1.0 // indirect
-	github.com/filecoin-project/go-jsonrpc v0.8.0 // indirect
+	github.com/filecoin-project/go-jsonrpc v0.9.0 // indirect
 	github.com/flynn/noise v1.1.0 // indirect
 	github.com/francoispqt/gojay v1.2.13 // indirect
 	github.com/fsnotify/fsnotify v1.9.0 // indirect
@@ -166,7 +166,5 @@ require (
 
 replace (
 	github.com/evstack/ev-node => ../../../
-	github.com/evstack/ev-node/da => ../../../da
 	github.com/evstack/ev-node/execution/grpc => ../../../execution/grpc
-	github.com/evstack/ev-node/sequencers/single => ../../../sequencers/single
 )

@@ -172,6 +172,10 @@ func createNodesWithCleanup(t *testing.T, num int, config evconfig.Config) ([]*F
 	aggPeerID, err := peer.IDFromPrivateKey(aggP2PKey.PrivKey)
 	require.NoError(err)
 
+	logger := zerolog.Nop()
+	if testing.Verbose() {
+		logger = zerolog.New(zerolog.NewTestWriter(t))
+	}
 	aggNode, err := NewNode(
 		config,
 		executor,
@@ -182,7 +186,7 @@ func createNodesWithCleanup(t *testing.T, num int, config evconfig.Config) ([]*F
 		genesis,
 		ds,
 		DefaultMetricsProvider(evconfig.DefaultInstrumentationConfig()),
-		zerolog.Nop(),
+		logger,
 		NodeOptions{},
 	)
 	require.NoError(err)
@@ -216,7 +220,7 @@ func createNodesWithCleanup(t *testing.T, num int, config evconfig.Config) ([]*F
 			genesis,
 			dssync.MutexWrap(datastore.NewMapDatastore()),
 			DefaultMetricsProvider(evconfig.DefaultInstrumentationConfig()),
-			zerolog.Nop(),
+			logger,
 			NodeOptions{},
 		)
 		require.NoError(err)
@@ -246,13 +250,17 @@ func createNodeContexts(n int) ([]context.Context, []context.CancelFunc) {
 }
 
 // Helper to start a single node in a goroutine and add to wait group
-func startNodeInBackground(t *testing.T, nodes []*FullNode, ctxs []context.Context, wg *sync.WaitGroup, idx int) {
+func startNodeInBackground(t *testing.T, nodes []*FullNode, ctxs []context.Context, wg *sync.WaitGroup, idx int, errChan chan<- error) {
 	wg.Add(1)
 	go func(node *FullNode, ctx context.Context, idx int) {
 		defer wg.Done()
 		err := node.Run(ctx)
 		if err != nil && !errors.Is(err, context.Canceled) {
-			t.Logf("Error running node %d: %v", idx, err)
+			if errChan != nil {
+				errChan <- err
+			} else {
+				t.Logf("Error running node %d: %v", idx, err)
+			}
 		}
 	}(nodes[idx], ctxs[idx], idx)
 }

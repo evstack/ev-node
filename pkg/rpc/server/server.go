@@ -138,7 +138,6 @@ func (s *StoreServer) GetState(
 		LastBlockHeight: state.LastBlockHeight,
 		LastBlockTime:   timestamppb.New(state.LastBlockTime),
 		DaHeight:        state.DAHeight,
-		LastResultsHash: state.LastResultsHash,
 		ChainId:         state.ChainID,
 		Version: &pb.Version{
 			Block: state.Version.Block,

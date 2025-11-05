@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"sync"
 	"sync/atomic"
@@ -152,11 +153,23 @@ func (s *Submitter) daSubmissionLoop() {
 			return
 		case <-ticker.C:
 			// Submit headers
-			if s.cache.NumPendingHeaders() != 0 {
+			if headersNb := s.cache.NumPendingHeaders(); headersNb != 0 {
+				s.logger.Debug().Time("t", time.Now()).Uint64("headers", headersNb).Msg("Submitting headers")
 				if s.headerSubmissionMtx.TryLock() {
+					s.logger.Debug().Time("t", time.Now()).Uint64("headers", headersNb).Msg("Header submission in progress")
 					go func() {
-						defer s.headerSubmissionMtx.Unlock()
+						defer func() {
+							s.logger.Debug().Time("t", time.Now()).Uint64("headers", headersNb).Msg("Header submission completed")
+							s.headerSubmissionMtx.Unlock()
+						}()
 						if err := s.daSubmitter.SubmitHeaders(s.ctx, s.cache); err != nil {
+							// Check for unrecoverable errors that indicate a critical issue
+							if errors.Is(err, common.ErrOversizedItem) {
+								s.logger.Error().Err(err).
+									Msg("CRITICAL: Header exceeds DA blob size limit - halting to prevent live lock")
+								s.sendCriticalError(fmt.Errorf("unrecoverable DA submission error: %w", err))
+								return
+							}
 							s.logger.Error().Err(err).Msg("failed to submit headers")
 						}
 					}()
@@ -164,11 +177,23 @@ func (s *Submitter) daSubmissionLoop() {
 			}
 
 			// Submit data
-			if s.cache.NumPendingData() != 0 {
+			if dataNb := s.cache.NumPendingData(); dataNb != 0 {
+				s.logger.Debug().Time("t", time.Now()).Uint64("data", dataNb).Msg("Submitting data")
 				if s.dataSubmissionMtx.TryLock() {
+					s.logger.Debug().Time("t", time.Now()).Uint64("data", dataNb).Msg("Data submission in progress")
 					go func() {
-						defer s.dataSubmissionMtx.Unlock()
+						defer func() {
+							s.logger.Debug().Time("t", time.Now()).Uint64("data", dataNb).Msg("Data submission completed")
+							s.dataSubmissionMtx.Unlock()
+						}()
 						if err := s.daSubmitter.SubmitData(s.ctx, s.cache, s.signer, s.genesis); err != nil {
+							// Check for unrecoverable errors that indicate a critical issue
+							if errors.Is(err, common.ErrOversizedItem) {
+								s.logger.Error().Err(err).
+									Msg("CRITICAL: Data exceeds DA blob size limit - halting to prevent live lock")
+								s.sendCriticalError(fmt.Errorf("unrecoverable DA submission error: %w", err))
+								return
+							}
 							s.logger.Error().Err(err).Msg("failed to submit data")
 						}
 					}()
@@ -220,8 +245,8 @@ func (s *Submitter) processDAInclusionLoop() {
 				// Set final height in executor
 				if err := s.setFinalWithRetry(nextHeight); err != nil {
 					s.sendCriticalError(fmt.Errorf("failed to set final height: %w", err))
-					s.logger.Error().Err(err).Uint64("height", nextHeight).Msg("failed to set final height")
-					break
+					s.logger.Error().Err(err).Uint64("height", nextHeight).Msg("CRITICAL: Failed to set final height after retries - halting DA inclusion processing")
+					return
 				}
 
 				// Update DA included height
@@ -234,6 +259,10 @@ func (s *Submitter) processDAInclusionLoop() {
 				if err := s.store.SetMetadata(s.ctx, store.DAIncludedHeightKey, bz); err != nil {
 					s.logger.Error().Err(err).Uint64("height", nextHeight).Msg("failed to persist DA included height")
 				}
+
+				// Delete height cache for that height
+				// This can only be performed after the height has been persisted to store
+				s.cache.DeleteHeight(nextHeight)
 			}
 		}
 	}
@@ -362,12 +391,13 @@ func (s *Submitter) IsHeightDAIncluded(height uint64, header *types.SignedHeader
 	}
 
 	headerHash := header.Hash().String()
-	dataHash := data.DACommitment().String()
+	dataCommitment := data.DACommitment()
+	dataHash := dataCommitment.String()
 
 	_, headerIncluded := s.cache.GetHeaderDAIncluded(headerHash)
 	_, dataIncluded := s.cache.GetDataDAIncluded(dataHash)
 
-	dataIncluded = bytes.Equal(data.DACommitment(), common.DataHashForEmptyTxs) || dataIncluded
+	dataIncluded = bytes.Equal(dataCommitment, common.DataHashForEmptyTxs) || dataIncluded
 
 	return headerIncluded && dataIncluded, nil
 }

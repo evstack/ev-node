@@ -119,6 +119,16 @@ func (c *EngineClient) InitChain(ctx context.Context, genesisTime time.Time, ini
 		return nil, 0, fmt.Errorf("engine_forkchoiceUpdatedV3 failed: %w", err)
 	}
 
+	// Validate payload status
+	if forkchoiceResult.PayloadStatus.Status != engine.VALID {
+		c.logger.Warn().
+			Str("status", string(forkchoiceResult.PayloadStatus.Status)).
+			Str("latestValidHash", forkchoiceResult.PayloadStatus.LatestValidHash.Hex()).
+			Interface("validationError", forkchoiceResult.PayloadStatus.ValidationError).
+			Msg("InitChain: engine_forkchoiceUpdatedV3 returned non-VALID status")
+		return nil, 0, fmt.Errorf("%w: status=%s", ErrInvalidPayloadStatus, forkchoiceResult.PayloadStatus.Status)
+	}
+
 	_, stateRoot, gasLimit, _, err := c.getBlockInfo(ctx, 0)
 	if err != nil {
 		return nil, 0, fmt.Errorf("failed to get block info: %w", err)
@@ -197,6 +207,18 @@ func (c *EngineClient) ExecuteTxs(ctx context.Context, txs [][]byte, blockHeight
 	if err != nil {
 		return nil, 0, fmt.Errorf("forkchoice update failed: %w", err)
 	}
+
+	// Validate payload status
+	if forkchoiceResult.PayloadStatus.Status != engine.VALID {
+		c.logger.Warn().
+			Str("status", string(forkchoiceResult.PayloadStatus.Status)).
+			Str("latestValidHash", forkchoiceResult.PayloadStatus.LatestValidHash.Hex()).
+			Interface("validationError", forkchoiceResult.PayloadStatus.ValidationError).
+			Uint64("blockHeight", blockHeight).
+			Msg("ExecuteTxs: engine_forkchoiceUpdatedV3 returned non-VALID status")
+		return nil, 0, fmt.Errorf("%w: status=%s", ErrInvalidPayloadStatus, forkchoiceResult.PayloadStatus.Status)
+	}
+
 	if forkchoiceResult.PayloadID == nil {
 		c.logger.Error().
 			Str("status", string(forkchoiceResult.PayloadStatus.Status)).
@@ -307,6 +329,15 @@ func (c *EngineClient) getBlockInfo(ctx context.Context, height uint64) (common.
 	}
 
 	return header.Hash(), header.Root, header.GasLimit, header.Time, nil
+}
+
+// GetLatestHeight returns the current block height of the execution layer
+func (c *EngineClient) GetLatestHeight(ctx context.Context) (uint64, error) {
+	header, err := c.ethClient.HeaderByNumber(ctx, nil) // nil = latest block
+	if err != nil {
+		return 0, fmt.Errorf("failed to get latest block: %w", err)
+	}
+	return header.Number.Uint64(), nil
 }
 
 // decodeSecret decodes a hex-encoded JWT secret string into a byte slice.

@@ -1,10 +1,16 @@
 # Tests / Code Coverage workflow
-# This workflow is triggered by ci_release.yml workflow
+# This workflow is triggered by ci_release.yml workflow or manually
 name: Tests / Code Coverage
 on:
   workflow_call:
     inputs:
       image-tag:
+        required: true
+        type: string
+  workflow_dispatch:
+    inputs:
+      image-tag:
+        description: 'Docker image tag to build (e.g., v1.2.3, sha-abc123)'
         required: true
         type: string
 
@@ -114,6 +120,22 @@ jobs:
           EV_NODE_IMAGE_REPO: ghcr.io/${{ github.repository }}
           EV_NODE_IMAGE_TAG: ${{ inputs.image-tag }}
 
+  docker-upgrade-tests:
+    name: Docker Upgrade E2E Tests
+    needs: build-ev-node-evm-single-image
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: set up go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: ./test/docker-e2e/go.mod
+      - name: Run Docker Upgrade E2E Tests
+        run: make test-docker-upgrade-e2e
+        env:
+          EVM_SINGLE_IMAGE_REPO: ghcr.io/${{ github.repository_owner }}/ev-node-evm-single
+          EVM_SINGLE_NODE_IMAGE_TAG: ${{ inputs.image-tag }}
+
   build_all-apps:
     name: Build All ev-node Binaries
     runs-on: ubuntu-latest
@@ -150,7 +172,7 @@ jobs:
       - name: Run unit test
         run: make test-cover
       - name: Upload unit test coverage report
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: unit-test-coverage-report-${{ github.sha }}
           path: ./coverage.txt
@@ -169,7 +191,7 @@ jobs:
       - name: Run integration test
         run: make test-integration-cover
       - name: Upload integration test coverage report
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: integration-test-coverage-report-${{ github.sha }}
           path: ./node/coverage.txt
@@ -210,12 +232,12 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - name: Download unit test coverage report
-        uses: actions/download-artifact@v5
+        uses: actions/download-artifact@v6
         with:
           name: unit-test-coverage-report-${{ github.sha }}
           path: ./unit-coverage
       - name: Download integration test coverage report
-        uses: actions/download-artifact@v5
+        uses: actions/download-artifact@v6
         with:
           name: integration-test-coverage-report-${{ github.sha }}
           path: ./integration-coverage

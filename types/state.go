@@ -1,6 +1,8 @@
 package types
 
 import (
+	"bytes"
+	"fmt"
 	"time"
 )
 
@@ -25,11 +27,11 @@ type State struct {
 	LastBlockHeight uint64
 	LastBlockTime   time.Time
 
+	// LastHeaderHash is the hash of the header of the last block
+	LastHeaderHash Hash
+
 	// DAHeight identifies DA block containing the latest applied Evolve block.
 	DAHeight uint64
-
-	// Merkle root of the results from executing prev block
-	LastResultsHash Hash
 
 	// the latest AppHash we've received from calling abci.Commit()
 	AppHash []byte
@@ -45,6 +47,39 @@ func (s *State) NextState(header Header, stateRoot []byte) (State, error) {
 		LastBlockHeight: height,
 		LastBlockTime:   header.Time(),
 		AppHash:         stateRoot,
+		LastHeaderHash:  header.Hash(),
 		DAHeight:        s.DAHeight,
 	}, nil
+}
+
+// AssertValidForNextState performs common validation of a header and data against the current state.
+// It assumes any context-specific basic header checks and verifier setup have already been performed
+func (s State) AssertValidForNextState(header *SignedHeader, data *Data) error {
+	if header.ChainID() != s.ChainID {
+		return fmt.Errorf("invalid chain ID - got %s, want %s", header.ChainID(), s.ChainID)
+	}
+
+	if err := Validate(header, data); err != nil {
+		return fmt.Errorf("header-data validation failed: %w", err)
+	}
+
+	if len(s.LastHeaderHash) == 0 { // initial state
+		return nil
+	}
+
+	if expdHeight := s.LastBlockHeight + 1; header.Height() != expdHeight {
+		return fmt.Errorf("invalid block height - got: %d, want: %d", header.Height(), expdHeight)
+	}
+
+	if headerTime := header.Time(); s.LastBlockTime.After(headerTime) {
+		return fmt.Errorf("invalid block time - got: %v, last: %v", headerTime, s.LastBlockTime)
+	}
+	if !bytes.Equal(header.LastHeaderHash, s.LastHeaderHash) {
+		return fmt.Errorf("invalid last header hash - got: %x, want: %x", header.LastHeaderHash, s.LastHeaderHash)
+	}
+	if !bytes.Equal(header.AppHash, s.AppHash) {
+		return fmt.Errorf("invalid last app hash - got: %x, want: %x", header.AppHash, s.AppHash)
+	}
+
+	return nil
 }

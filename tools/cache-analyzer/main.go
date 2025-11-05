@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"sort"
+	"slices"
 	"strings"
 
 	"github.com/evstack/ev-node/types"
@@ -114,9 +114,7 @@ func analyzeEvents(events map[uint64]*DAHeightEvent, limit int) []eventEntry {
 	for height := range events {
 		heights = append(heights, height)
 	}
-	sort.Slice(heights, func(i, j int) bool {
-		return heights[i] < heights[j]
-	})
+	slices.Sort(heights)
 
 	// Apply limit
 	if limit > 0 && len(heights) > limit {

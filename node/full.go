@@ -321,10 +321,11 @@ func (n *FullNode) Run(parentCtx context.Context) error {
 		return fmt.Errorf("error while starting data sync service: %w", err)
 	}
 
+	var runtimeErr error
 	// Start the block components (blocking)
 	if err := n.blockComponents.Start(ctx); err != nil {
 		if !errors.Is(err, context.Canceled) {
-			n.Logger.Error().Err(err).Msg("unrecoverable error in block components")
+			runtimeErr = fmt.Errorf("running block components: %w", err)
 		} else {
 			n.Logger.Info().Msg("context canceled, stopping node")
 		}
@@ -338,12 +339,12 @@ func (n *FullNode) Run(parentCtx context.Context) error {
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 9*time.Second)
 	defer cancel()
 
-	var multiErr error // Use a multierror variable
+	var shutdownMultiErr error // Variable to accumulate multiple errors
 
 	// Stop block components
 	if err := n.blockComponents.Stop(); err != nil {
 		n.Logger.Error().Err(err).Msg("error stopping block components")
-		multiErr = errors.Join(multiErr, fmt.Errorf("stopping block components: %w", err))
+		shutdownMultiErr = errors.Join(shutdownMultiErr, fmt.Errorf("stopping block components: %w", err))
 	}
 
 	// Stop Header Sync Service
@@ -352,7 +353,7 @@ func (n *FullNode) Run(parentCtx context.Context) error {
 		// Log context canceled errors at a lower level if desired, or handle specific non-cancel errors
 		if !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
 			n.Logger.Error().Err(err).Msg("error stopping header sync service")
-			multiErr = errors.Join(multiErr, fmt.Errorf("stopping header sync service: %w", err))
+			shutdownMultiErr = errors.Join(shutdownMultiErr, fmt.Errorf("stopping header sync service: %w", err))
 		} else {
 			n.Logger.Debug().Err(err).Msg("header sync service stop context ended") // Log cancellation as debug
 		}
@@ -364,7 +365,7 @@ func (n *FullNode) Run(parentCtx context.Context) error {
 		// Log context canceled errors at a lower level if desired, or handle specific non-cancel errors
 		if !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
 			n.Logger.Error().Err(err).Msg("error stopping data sync service")
-			multiErr = errors.Join(multiErr, fmt.Errorf("stopping data sync service: %w", err))
+			shutdownMultiErr = errors.Join(shutdownMultiErr, fmt.Errorf("stopping data sync service: %w", err))
 		} else {
 			n.Logger.Debug().Err(err).Msg("data sync service stop context ended") // Log cancellation as debug
 		}
@@ -373,7 +374,7 @@ func (n *FullNode) Run(parentCtx context.Context) error {
 	// Stop P2P Client
 	err = n.p2pClient.Close()
 	if err != nil {
-		multiErr = errors.Join(multiErr, fmt.Errorf("closing P2P client: %w", err))
+		shutdownMultiErr = errors.Join(shutdownMultiErr, fmt.Errorf("closing P2P client: %w", err))
 	}
 
 	// Shutdown Prometheus Server
@@ -381,7 +382,7 @@ func (n *FullNode) Run(parentCtx context.Context) error {
 		err = n.prometheusSrv.Shutdown(shutdownCtx)
 		// http.ErrServerClosed is expected on graceful shutdown
 		if err != nil && !errors.Is(err, http.ErrServerClosed) {
-			multiErr = errors.Join(multiErr, fmt.Errorf("shutting down Prometheus server: %w", err))
+			shutdownMultiErr = errors.Join(shutdownMultiErr, fmt.Errorf("shutting down Prometheus server: %w", err))
 		} else {
 			n.Logger.Debug().Err(err).Msg("Prometheus server shutdown context ended")
 		}
@@ -391,7 +392,7 @@ func (n *FullNode) Run(parentCtx context.Context) error {
 	if n.pprofSrv != nil {
 		err = n.pprofSrv.Shutdown(shutdownCtx)
 		if err != nil && !errors.Is(err, http.ErrServerClosed) {
-			multiErr = errors.Join(multiErr, fmt.Errorf("shutting down pprof server: %w", err))
+			shutdownMultiErr = errors.Join(shutdownMultiErr, fmt.Errorf("shutting down pprof server: %w", err))
 		} else {
 			n.Logger.Debug().Err(err).Msg("pprof server shutdown context ended")
 		}
@@ -401,7 +402,7 @@ func (n *FullNode) Run(parentCtx context.Context) error {
 	if n.rpcServer != nil {
 		err = n.rpcServer.Shutdown(shutdownCtx)
 		if err != nil && !errors.Is(err, http.ErrServerClosed) {
-			multiErr = errors.Join(multiErr, fmt.Errorf("shutting down RPC server: %w", err))
+			shutdownMultiErr = errors.Join(shutdownMultiErr, fmt.Errorf("shutting down RPC server: %w", err))
 		} else {
 			n.Logger.Debug().Err(err).Msg("RPC server shutdown context ended")
 		}
@@ -409,7 +410,7 @@ func (n *FullNode) Run(parentCtx context.Context) error {
 
 	// Ensure Store.Close is called last to maximize chance of data flushing
 	if err = n.Store.Close(); err != nil {
-		multiErr = errors.Join(multiErr, fmt.Errorf("closing store: %w", err))
+		shutdownMultiErr = errors.Join(shutdownMultiErr, fmt.Errorf("closing store: %w", err))
 	} else {
 		n.Logger.Debug().Msg("store closed")
 	}
@@ -417,28 +418,27 @@ func (n *FullNode) Run(parentCtx context.Context) error {
 	// Save caches if needed
 	if n.blockComponents != nil && n.blockComponents.Cache != nil {
 		if err := n.blockComponents.Cache.SaveToDisk(); err != nil {
-			multiErr = errors.Join(multiErr, fmt.Errorf("saving caches: %w", err))
+			shutdownMultiErr = errors.Join(shutdownMultiErr, fmt.Errorf("saving caches: %w", err))
 		} else {
 			n.Logger.Debug().Msg("caches saved")
 		}
 	}
 
 	// Log final status
-	if multiErr != nil {
-		for _, err := range multiErr.(interface{ Unwrap() []error }).Unwrap() {
+	if shutdownMultiErr != nil {
+		for _, err := range shutdownMultiErr.(interface{ Unwrap() []error }).Unwrap() {
 			n.Logger.Error().Err(err).Msg("error during shutdown")
 		}
 	} else {
 		n.Logger.Info().Msg("full node halted successfully")
 	}
-
-	// Return the original context error if it exists (e.g., context cancelled)
-	// or the combined shutdown error if the context cancellation was clean.
-	if ctx.Err() != nil {
-		return ctx.Err()
+	if runtimeErr != nil {
+		return runtimeErr
 	}
-
-	return multiErr // Return shutdown errors if context was okay
+	if shutdownMultiErr != nil {
+		return shutdownMultiErr
+	}
+	return ctx.Err() // context canceled
 }
 
 // GetGenesis returns entire genesis doc.

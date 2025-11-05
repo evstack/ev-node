@@ -3,8 +3,8 @@ module github.com/evstack/ev-node/execution/evm
 go 1.24.6
 
 require (
-	github.com/ethereum/go-ethereum v1.16.4
-	github.com/evstack/ev-node/core v1.0.0-beta.3
+	github.com/ethereum/go-ethereum v1.16.6
+	github.com/evstack/ev-node/core v1.0.0-beta.4
 	github.com/golang-jwt/jwt/v5 v5.3.0
 	github.com/rs/zerolog v1.34.0
 	github.com/stretchr/testify v1.11.1
@@ -13,6 +13,7 @@ require (
 require (
 	github.com/DataDog/zstd v1.5.5 // indirect
 	github.com/Microsoft/go-winio v0.6.2 // indirect
+	github.com/ProjectZKM/Ziren/crates/go-runtime/zkvm_runtime v0.0.0-20251001021608-1fe7b43fc4d6 // indirect
 	github.com/StackExchange/wmi v1.2.1 // indirect
 	github.com/bits-and-blooms/bitset v1.20.0 // indirect
 	github.com/consensys/gnark-crypto v0.18.0 // indirect
@@ -28,7 +29,7 @@ require (
 	github.com/ferranbt/fastssz v0.1.4 // indirect
 	github.com/go-ole/go-ole v1.3.0 // indirect
 	github.com/gofrs/flock v0.12.1 // indirect
-	github.com/golang/snappy v0.0.5-0.20220116011046-fa5810519dcb // indirect
+	github.com/golang/snappy v1.0.0 // indirect
 	github.com/gorilla/websocket v1.5.3 // indirect
 	github.com/holiman/uint256 v1.3.2 // indirect
 	github.com/klauspost/cpuid/v2 v2.2.10 // indirect

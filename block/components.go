@@ -46,7 +46,8 @@ func (bc *Components) GetLastState() types.State {
 	return types.State{}
 }
 
-// Start starts all components and monitors for critical errors
+// Start starts all components and monitors for critical errors.
+// It is blocking and returns when the context is cancelled or an error occurs
 func (bc *Components) Start(ctx context.Context) error {
 	ctxWithCancel, cancel := context.WithCancel(ctx)
 
@@ -137,6 +138,7 @@ func NewSyncComponents(
 	metrics *Metrics,
 	blockOpts BlockOptions,
 ) (*Components, error) {
+	logger.Info().Msg("Starting in sync-mode")
 	cacheManager, err := cache.NewManager(config, store, logger)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create cache manager: %w", err)
@@ -200,6 +202,7 @@ func NewAggregatorComponents(
 	metrics *Metrics,
 	blockOpts BlockOptions,
 ) (*Components, error) {
+	logger.Info().Msg("Starting in aggregator-mode")
 	cacheManager, err := cache.NewManager(config, store, logger)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create cache manager: %w", err)
@@ -233,6 +236,7 @@ func NewAggregatorComponents(
 		genesis,
 		logger,
 		executor,
+		cacheManager,
 		reaping.DefaultInterval,
 	)
 	if err != nil {
