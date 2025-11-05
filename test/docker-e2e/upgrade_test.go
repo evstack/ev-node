@@ -3,7 +3,6 @@
 package docker_e2e
 
 import (
-	"bytes"
 	"context"
 	"fmt"
 	"math/big"
