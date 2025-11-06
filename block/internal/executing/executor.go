@@ -380,6 +380,9 @@ func (e *Executor) produceBlock() error {
 		return fmt.Errorf("failed to apply block: %w", err)
 	}
 
+	// set the DA height in the sequencer
+	newState.DAHeight = e.sequencer.GetDAHeight()
+
 	// signing the header is done after applying the block
 	// as for signing, the state of the block may be required by the signature payload provider.
 	signature, err := e.signHeader(header.Header)
@@ -440,10 +443,6 @@ func (e *Executor) produceBlock() error {
 
 // retrieveBatch gets the next batch of transactions from the sequencer
 func (e *Executor) retrieveBatch(ctx context.Context) (*BatchData, error) {
-
-	// Update sequencer's DA height for forced inclusion tracking
-	// e.sequencer.SetDAHeight(currentState.DAHeight)
-
 	req := coresequencer.GetNextBatchRequest{
 		Id:            []byte(e.genesis.ChainID),
 		MaxBytes:      common.DefaultMaxBlobSize,

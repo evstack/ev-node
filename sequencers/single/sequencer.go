@@ -36,7 +36,7 @@ type DARetriever interface {
 	RetrieveForcedIncludedTxsFromDA(ctx context.Context, daHeight uint64) (*ForcedInclusionEvent, error)
 }
 
-var _ coresequencer.Sequencer = &Sequencer{}
+var _ coresequencer.Sequencer = (*Sequencer)(nil)
 
 // Sequencer implements core sequencing interface
 type Sequencer struct {

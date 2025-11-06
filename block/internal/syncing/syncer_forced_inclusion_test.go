@@ -34,6 +34,7 @@ func TestVerifyForcedInclusionTxs_AllTransactionsIncluded(t *testing.T) {
 		InitialHeight:   1,
 		StartTime:       time.Now().Add(-time.Second),
 		ProposerAddress: addr,
+		DAStartHeight:   0,
 	}
 
 	cfg := config.DefaultConfig()
@@ -72,15 +73,18 @@ func TestVerifyForcedInclusionTxs_AllTransactionsIncluded(t *testing.T) {
 	// Create forced inclusion transaction blob (SignedData) in DA
 	dataBin, _ := makeSignedDataBytes(t, gen.ChainID, 10, addr, pub, signer, 2)
 
-	mockDA.EXPECT().GetIDs(mock.Anything, uint64(1), mock.MatchedBy(func(ns []byte) bool {
+	// With DAStartHeight=0, epoch size=1, daHeight=0 -> epoch boundaries are [0, 0]
+	// Check epoch start only (end check is skipped when same as start)
+	mockDA.EXPECT().GetIDs(mock.Anything, uint64(0), mock.MatchedBy(func(ns []byte) bool {
 		return bytes.Equal(ns, namespaceForcedInclusionBz)
 	})).Return(&coreda.GetIDsResult{IDs: [][]byte{[]byte("fi1")}, Timestamp: time.Now()}, nil).Once()
 
+	// Fetch epoch start data
 	mockDA.EXPECT().Get(mock.Anything, mock.Anything, mock.MatchedBy(func(ns []byte) bool {
 		return bytes.Equal(ns, namespaceForcedInclusionBz)
 	})).Return([][]byte{dataBin}, nil).Once()
 
-	// Create block data that includes the forced transaction blob as a single transaction
+	// Create block data that includes the forced transaction blob
 	data := makeData(gen.ChainID, 1, 1)
 	data.Txs[0] = types.Tx(dataBin)
 
@@ -104,6 +108,7 @@ func TestVerifyForcedInclusionTxs_MissingTransactions(t *testing.T) {
 		InitialHeight:   1,
 		StartTime:       time.Now().Add(-time.Second),
 		ProposerAddress: addr,
+		DAStartHeight:   0,
 	}
 
 	cfg := config.DefaultConfig()
@@ -142,10 +147,13 @@ func TestVerifyForcedInclusionTxs_MissingTransactions(t *testing.T) {
 	// Create forced inclusion transaction blob (SignedData) in DA
 	dataBin, _ := makeSignedDataBytes(t, gen.ChainID, 10, addr, pub, signer, 2)
 
-	mockDA.EXPECT().GetIDs(mock.Anything, uint64(1), mock.MatchedBy(func(ns []byte) bool {
+	// With DAStartHeight=0, epoch size=1, daHeight=0 -> epoch boundaries are [0, 0]
+	// Check epoch start only (end check is skipped when same as start)
+	mockDA.EXPECT().GetIDs(mock.Anything, uint64(0), mock.MatchedBy(func(ns []byte) bool {
 		return bytes.Equal(ns, namespaceForcedInclusionBz)
 	})).Return(&coreda.GetIDsResult{IDs: [][]byte{[]byte("fi1")}, Timestamp: time.Now()}, nil).Once()
 
+	// Fetch epoch start data
 	mockDA.EXPECT().Get(mock.Anything, mock.Anything, mock.MatchedBy(func(ns []byte) bool {
 		return bytes.Equal(ns, namespaceForcedInclusionBz)
 	})).Return([][]byte{dataBin}, nil).Once()
@@ -177,6 +185,7 @@ func TestVerifyForcedInclusionTxs_PartiallyIncluded(t *testing.T) {
 		InitialHeight:   1,
 		StartTime:       time.Now().Add(-time.Second),
 		ProposerAddress: addr,
+		DAStartHeight:   0,
 	}
 
 	cfg := config.DefaultConfig()
@@ -216,10 +225,13 @@ func TestVerifyForcedInclusionTxs_PartiallyIncluded(t *testing.T) {
 	dataBin1, _ := makeSignedDataBytes(t, gen.ChainID, 10, addr, pub, signer, 2)
 	dataBin2, _ := makeSignedDataBytes(t, gen.ChainID, 11, addr, pub, signer, 1)
 
-	mockDA.EXPECT().GetIDs(mock.Anything, uint64(1), mock.MatchedBy(func(ns []byte) bool {
+	// With DAStartHeight=0, epoch size=1, daHeight=0 -> epoch boundaries are [0, 0]
+	// Check epoch start only (end check is skipped when same as start)
+	mockDA.EXPECT().GetIDs(mock.Anything, uint64(0), mock.MatchedBy(func(ns []byte) bool {
 		return bytes.Equal(ns, namespaceForcedInclusionBz)
 	})).Return(&coreda.GetIDsResult{IDs: [][]byte{[]byte("fi1"), []byte("fi2")}, Timestamp: time.Now()}, nil).Once()
 
+	// Fetch epoch start data
 	mockDA.EXPECT().Get(mock.Anything, mock.Anything, mock.MatchedBy(func(ns []byte) bool {
 		return bytes.Equal(ns, namespaceForcedInclusionBz)
 	})).Return([][]byte{dataBin1, dataBin2}, nil).Once()
@@ -233,7 +245,7 @@ func TestVerifyForcedInclusionTxs_PartiallyIncluded(t *testing.T) {
 	currentState := s.GetLastState()
 	currentState.DAHeight = 0
 
-	// Verify - should fail since one forced tx is missing
+	// Verify - should fail since dataBin2 is missing
 	err = s.verifyForcedInclusionTxs(currentState, data)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "sequencer is malicious")
@@ -252,6 +264,7 @@ func TestVerifyForcedInclusionTxs_NoForcedTransactions(t *testing.T) {
 		InitialHeight:   1,
 		StartTime:       time.Now().Add(-time.Second),
 		ProposerAddress: addr,
+		DAStartHeight:   0,
 	}
 
 	cfg := config.DefaultConfig()
@@ -287,7 +300,9 @@ func TestVerifyForcedInclusionTxs_NoForcedTransactions(t *testing.T) {
 	// Mock DA to return no forced inclusion transactions
 	namespaceForcedInclusionBz := coreda.NamespaceFromString(cfg.DA.GetForcedInclusionNamespace()).Bytes()
 
-	mockDA.EXPECT().GetIDs(mock.Anything, uint64(1), mock.MatchedBy(func(ns []byte) bool {
+	// With DAStartHeight=0, epoch size=1, daHeight=0 -> epoch boundaries are [0, 0]
+	// Check epoch start only (end check is skipped when same as start)
+	mockDA.EXPECT().GetIDs(mock.Anything, uint64(0), mock.MatchedBy(func(ns []byte) bool {
 		return bytes.Equal(ns, namespaceForcedInclusionBz)
 	})).Return(&coreda.GetIDsResult{IDs: [][]byte{}, Timestamp: time.Now()}, nil).Once()
 

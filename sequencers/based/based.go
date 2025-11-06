@@ -31,6 +31,8 @@ type DARetriever interface {
 	RetrieveForcedIncludedTxsFromDA(ctx context.Context, daHeight uint64) (*ForcedInclusionEvent, error)
 }
 
+var _ coresequencer.Sequencer = (*BasedSequencer)(nil)
+
 // BasedSequencer is a sequencer that only retrieves transactions from the DA layer
 // via the forced inclusion mechanism. It does not accept transactions from the reaper.
 type BasedSequencer struct {

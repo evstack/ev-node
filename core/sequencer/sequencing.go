@@ -31,6 +31,9 @@ type Sequencer interface {
 	// SetDAHeight sets the current DA height for the sequencer
 	// This allows the sequencer to track DA height for forced inclusion retrieval
 	SetDAHeight(height uint64)
+
+	// GetDAHeight returns the current DA height for the sequencer
+	GetDAHeight() uint64
 }
 
 // Batch is a collection of transactions

@@ -106,72 +106,177 @@ var (
 )
 
 // RetrieveForcedIncludedTxsFromDA retrieves forced inclusion transactions from the DA layer.
-// It fetches from the daHeight for the da epoch range defined in the config.
+// It only fetches when daHeight is at the start of an epoch to prevent redundant fetching.
+// Returns an error if the epoch start height is not yet available on DA (caller should backoff).
 func (r *daRetriever) RetrieveForcedIncludedTxsFromDA(ctx context.Context, daHeight uint64) (*common.ForcedIncludedEvent, error) {
 	if !r.hasForcedInclusionNs {
 		return nil, ErrForceInclusionNotConfigured
 	}
 
-	event := &common.ForcedIncludedEvent{
-		StartDaHeight: daHeight,
+	// Calculate deterministic epoch boundaries
+	epochStart, epochEnd := r.calculateEpochBoundaries(daHeight)
+
+	// Only fetch at epoch start to prevent double fetching as DA height progresses
+	if daHeight != epochStart {
+		r.logger.Debug().
+			Uint64("da_height", daHeight).
+			Uint64("epoch_start", epochStart).
+			Msg("skipping forced inclusion fetch - not at epoch start")
+		return &common.ForcedIncludedEvent{
+			StartDaHeight: daHeight,
+			EndDaHeight:   daHeight,
+			Txs:           [][]byte{},
+		}, nil
 	}
 
-	r.logger.Debug().Uint64("da_height", daHeight).Uint64("range", r.daEpochSize).Msg("retrieving forced included transactions from DA")
+	event := &common.ForcedIncludedEvent{
+		StartDaHeight: epochStart,
+	}
+
+	r.logger.Debug().
+		Uint64("da_height", daHeight).
+		Uint64("epoch_start", epochStart).
+		Uint64("epoch_end", epochEnd).
+		Uint64("epoch_num", r.calculateEpochNumber(daHeight)).
+		Msg("retrieving forced included transactions from DA")
+
+	// Check if both epoch start and end are available before fetching
+	// This ensures we can retrieve the complete epoch in one go
+	epochStartResult := types.RetrieveWithHelpers(ctx, r.da, r.logger, epochStart, r.namespaceForcedInclusionBz, defaultDATimeout)
+	if epochStartResult.Code == coreda.StatusHeightFromFuture {
+		r.logger.Debug().
+			Uint64("epoch_start", epochStart).
+			Msg("epoch start height not yet available on DA - backoff required")
+		return nil, fmt.Errorf("%w: epoch start height %d not yet available", coreda.ErrHeightFromFuture, epochStart)
+	}
+
+	epochEndResult := epochStartResult
+	if epochStart != epochEnd {
+		epochEndResult = types.RetrieveWithHelpers(ctx, r.da, r.logger, epochEnd, r.namespaceForcedInclusionBz, defaultDATimeout)
+		if epochEndResult.Code == coreda.StatusHeightFromFuture {
+			r.logger.Debug().
+				Uint64("epoch_end", epochEnd).
+				Msg("epoch end height not yet available on DA - backoff required")
+			return nil, fmt.Errorf("%w: epoch end height %d not yet available", coreda.ErrHeightFromFuture, epochEnd)
+		}
+	}
 
 	var currentSize int
-	lastProcessedHeight := daHeight
+	lastProcessedHeight := epochStart
 
-	for epochHeight := daHeight + 1; epochHeight <= daHeight+r.daEpochSize; epochHeight++ {
+	// Process epoch start
+	if err := r.processForcedInclusionBlobs(event, &currentSize, &lastProcessedHeight, epochStartResult, epochStart); err != nil {
+		return nil, err
+	}
+
+	// Process heights between start and end (exclusive)
+	for epochHeight := epochStart + 1; epochHeight < epochEnd; epochHeight++ {
 		result := types.RetrieveWithHelpers(ctx, r.da, r.logger, epochHeight, r.namespaceForcedInclusionBz, defaultDATimeout)
 
-		// quickly break if we are too ahead.
+		// If any intermediate height is from future, break early
 		if result.Code == coreda.StatusHeightFromFuture {
+			r.logger.Debug().
+				Uint64("epoch_height", epochHeight).
+				Uint64("last_processed", lastProcessedHeight).
+				Msg("reached future DA height within epoch - stopping")
 			break
 		}
 
-		if result.Code == coreda.StatusSuccess {
-			if err := r.validateBlobResponse(result, epochHeight); !errors.Is(err, coreda.ErrBlobNotFound) && err != nil {
-				return nil, err
-			}
+		if err := r.processForcedInclusionBlobs(event, &currentSize, &lastProcessedHeight, result, epochHeight); err != nil {
+			return nil, err
+		}
+	}
 
-			for i, data := range result.Data {
-				if len(data) > common.DefaultMaxBlobSize {
-					r.logger.Debug().
-						Uint64("da_height", epochHeight).
-						Int("index", i).
-						Uint64("blob_size", uint64(len(data))).
-						Msg("Following data exceeds maximum blob size. Skipping...")
-					continue
-				}
-
-				// Calculate size of new data
-				var newDataSize int
-				for _, data := range result.Data {
-					newDataSize += len(data)
-				}
-
-				// Check if adding this data would exceed max blob size
-				if currentSize+newDataSize > common.DefaultMaxBlobSize {
-					r.logger.Warn().Msg("forced inclusion data exceeds maximum blob size - reduce ForcedInclusionDAEpoch configuration if this happens often")
-
-					// TODO(@julienrbrt): we need to keep track of which that haven't been included, so they are retried in the next epoch
-
-					continue
-				}
-
-				event.Txs = append(event.Txs, data)
-				currentSize += newDataSize
-				lastProcessedHeight = epochHeight
-			}
-
+	// Process epoch end (only if different from start)
+	if epochEnd != epochStart {
+		if err := r.processForcedInclusionBlobs(event, &currentSize, &lastProcessedHeight, epochEndResult, epochEnd); err != nil {
+			return nil, err
 		}
 	}
 
 	// Set the DA height range based on what we actually processed
-	event.StartDaHeight = daHeight
+	event.StartDaHeight = epochStart
 	event.EndDaHeight = lastProcessedHeight
 
 	return event, nil
+}
+
+// processForcedInclusionBlobs processes blobs from a DA retrieval result and adds them to the event
+func (r *daRetriever) processForcedInclusionBlobs(
+	event *common.ForcedIncludedEvent,
+	currentSize *int,
+	lastProcessedHeight *uint64,
+	result coreda.ResultRetrieve,
+	daHeight uint64,
+) error {
+	if result.Code != coreda.StatusSuccess {
+		return nil
+	}
+
+	if err := r.validateBlobResponse(result, daHeight); !errors.Is(err, coreda.ErrBlobNotFound) && err != nil {
+		return err
+	}
+
+	for i, data := range result.Data {
+		if len(data) > common.DefaultMaxBlobSize {
+			r.logger.Debug().
+				Uint64("da_height", daHeight).
+				Int("index", i).
+				Uint64("blob_size", uint64(len(data))).
+				Msg("Following data exceeds maximum blob size. Skipping...")
+			continue
+		}
+
+		// Calculate size of this specific data item
+		dataSize := len(data)
+
+		// Check if adding this data would exceed max blob size
+		if *currentSize+dataSize > common.DefaultMaxBlobSize {
+			r.logger.Warn().Msg("forced inclusion data exceeds maximum blob size - reduce ForcedInclusionDAEpoch configuration if this happens often")
+
+			// TODO(@julienrbrt): we need to keep track of which that haven't been included, so they are retried in the next epoch
+
+			continue
+		}
+
+		event.Txs = append(event.Txs, data)
+		*currentSize += dataSize
+		*lastProcessedHeight = daHeight
+	}
+
+	return nil
+}
+
+// calculateEpochNumber returns the deterministic epoch number for a given DA height.
+// Epoch 1 starts at DAStartHeight.
+func (r *daRetriever) calculateEpochNumber(daHeight uint64) uint64 {
+	if daHeight < r.genesis.DAStartHeight {
+		return 0
+	}
+
+	if r.daEpochSize == 0 {
+		return 1
+	}
+
+	return ((daHeight - r.genesis.DAStartHeight) / r.daEpochSize) + 1
+}
+
+// calculateEpochBoundaries returns the start and end DA heights for the epoch
+// containing the given DA height. The boundaries are inclusive.
+func (r *daRetriever) calculateEpochBoundaries(daHeight uint64) (start, end uint64) {
+	if daHeight < r.genesis.DAStartHeight {
+		return r.genesis.DAStartHeight, r.genesis.DAStartHeight + r.daEpochSize - 1
+	}
+
+	if r.daEpochSize == 0 {
+		return r.genesis.DAStartHeight, r.genesis.DAStartHeight
+	}
+
+	epochNum := r.calculateEpochNumber(daHeight)
+	start = r.genesis.DAStartHeight + (epochNum-1)*r.daEpochSize
+	end = r.genesis.DAStartHeight + epochNum*r.daEpochSize - 1
+
+	return start, end
 }
 
 // fetchBlobs retrieves blobs from the DA layer
