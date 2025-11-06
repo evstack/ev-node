@@ -1,6 +1,8 @@
 # Docker E2E Tests workflow
 # This workflow runs tests that require Docker images to be built first
 name: Docker E2E Tests
+permissions:
+  contents: read
 on:
   workflow_call:
     inputs:
