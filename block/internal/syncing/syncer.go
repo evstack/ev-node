@@ -398,6 +398,8 @@ func (s *Syncer) processHeightEvent(event *common.DAHeightEvent) {
 		switch {
 		case errors.Is(err, errInvalidBlock):
 			// do not reschedule
+		case errors.Is(err, errMaliciousProposer):
+			s.sendCriticalError(fmt.Errorf("Sequencer malicious. Restart the node with --node.aggregator --node.based_sequencer or keep the chain halted: %w", err))
 		case errors.Is(err, errInvalidState):
 			s.sendCriticalError(fmt.Errorf("invalid state detected (block-height %d, state-height %d) "+
 				"- block references do not match local state. Manual intervention required: %w", event.Header.Height(),
@@ -467,7 +469,6 @@ func (s *Syncer) trySyncNextBlock(event *common.DAHeightEvent) error {
 	if err := s.verifyForcedInclusionTxs(currentState, data); err != nil {
 		s.logger.Error().Err(err).Uint64("height", nextHeight).Msg("forced inclusion verification failed")
 		if errors.Is(err, errMaliciousProposer) {
-			s.logger.Error().Msg("Restart with based sequencer.")
 			s.cache.RemoveHeaderDAIncluded(headerHash)
 			return err
 		}
