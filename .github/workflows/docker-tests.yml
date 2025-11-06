@@ -1,8 +1,7 @@
 # Docker E2E Tests workflow
 # This workflow runs tests that require Docker images to be built first
 name: Docker E2E Tests
-permissions:
-  contents: read
+permissions: {}
 on:
   workflow_call:
     inputs:
@@ -18,6 +17,8 @@ on:
 
 jobs:
   docker-tests:
+    permissions:
+      contents: read
     name: Docker E2E Tests
     runs-on: ubuntu-latest
     steps:
@@ -34,6 +35,8 @@ jobs:
 
   docker-upgrade-tests:
     name: Docker Upgrade E2E Tests
+    permissions:
+      contents: read
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5

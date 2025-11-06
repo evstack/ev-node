@@ -50,6 +50,7 @@ jobs:
     uses: ./.github/workflows/docker.yml
     secrets: inherit
     permissions:
+      contents: read
       packages: write
     with:
       image-tag: ${{ needs.determine-image-tag.outputs.tag }}

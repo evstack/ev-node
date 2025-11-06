@@ -1,6 +1,7 @@
 # Docker Images Build workflow
 # This workflow builds and pushes Docker images to GHCR
 name: Build Docker Images
+permissions: {}
 on:
   workflow_call:
     inputs:
@@ -16,6 +17,7 @@ jobs:
     if: github.event_name != 'merge_group'
     runs-on: ubuntu-latest
     permissions:
+      contents: read
       packages: write
     strategy:
       matrix:
