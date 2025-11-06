@@ -108,7 +108,7 @@ func NewSyncer(
 		dataStore:   dataStore,
 		lastState:   &atomic.Pointer[types.State]{},
 		daHeight:    &atomic.Uint64{},
-		heightInCh:  make(chan common.DAHeightEvent, 10_000),
+		heightInCh:  make(chan common.DAHeightEvent, 1_000),
 		errorCh:     errorCh,
 		logger:      logger.With().Str("component", "syncer").Logger(),
 	}
@@ -340,8 +340,7 @@ func (s *Syncer) p2pWorkerLoop() {
 		s.setP2PWaitState(targetHeight, cancel)
 
 		err = s.p2pHandler.ProcessHeight(waitCtx, targetHeight, s.heightInCh)
-		s.clearP2PWaitState(targetHeight)
-		cancel()
+		s.cancelP2PWait(targetHeight)
 
 		if err != nil {
 			if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
@@ -773,26 +772,18 @@ type p2pWaitState struct {
 
 func (s *Syncer) setP2PWaitState(height uint64, cancel context.CancelFunc) {
 	s.p2pWaitMu.Lock()
+	defer s.p2pWaitMu.Unlock()
 	s.p2pWaitState = p2pWaitState{
 		height: height,
 		cancel: cancel,
 	}
-	s.p2pWaitMu.Unlock()
-}
-
-func (s *Syncer) clearP2PWaitState(height uint64) {
-	s.p2pWaitMu.Lock()
-	if s.p2pWaitState.height == height {
-		s.p2pWaitState = p2pWaitState{}
-	}
-	s.p2pWaitMu.Unlock()
 }
 
 func (s *Syncer) cancelP2PWait(height uint64) {
 	s.p2pWaitMu.Lock()
 	defer s.p2pWaitMu.Unlock()
 
-	if s.p2pWaitState.cancel != nil && (height == 0 || s.p2pWaitState.height == height) {
+	if s.p2pWaitState.cancel != nil && (height == 0 || s.p2pWaitState.height <= height) {
 		s.p2pWaitState.cancel()
 		s.p2pWaitState = p2pWaitState{}
 	}
