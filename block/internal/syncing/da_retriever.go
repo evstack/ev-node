@@ -97,8 +97,13 @@ func (r *daRetriever) RetrieveFromDA(ctx context.Context, daHeight uint64) ([]co
 	return r.processBlobs(ctx, blobsResp.Data, daHeight), nil
 }
 
-// ErrForceInclusionNotConfigured is returned when the forced inclusion namespace is not configured.
-var ErrForceInclusionNotConfigured = errors.New("forced inclusion namespace not configured")
+var (
+	// ErrForceInclusionNotConfigured is returned when the forced inclusion namespace is not configured.
+	ErrForceInclusionNotConfigured = errors.New("forced inclusion namespace not configured")
+
+	// ErrForcedInclusionDataTooLarge is returned when forced inclusion data exceeds the maximum blob size.
+	ErrForcedInclusionDataTooLarge = errors.New("forced inclusion data exceeds maximum blob size limit")
+)
 
 // RetrieveForcedIncludedTxsFromDA retrieves forced inclusion transactions from the DA layer.
 // It fetches from the daHeight for the da epoch range defined in the config.
@@ -113,6 +118,9 @@ func (r *daRetriever) RetrieveForcedIncludedTxsFromDA(ctx context.Context, daHei
 
 	r.logger.Debug().Uint64("da_height", daHeight).Uint64("range", r.daEpochSize).Msg("retrieving forced included transactions from DA")
 
+	var currentSize int
+	lastProcessedHeight := daHeight
+
 	for epochHeight := daHeight + 1; epochHeight <= daHeight+r.daEpochSize; epochHeight++ {
 		result := types.RetrieveWithHelpers(ctx, r.da, r.logger, epochHeight, r.namespaceForcedInclusionBz, defaultDATimeout)
 
@@ -126,10 +134,42 @@ func (r *daRetriever) RetrieveForcedIncludedTxsFromDA(ctx context.Context, daHei
 				return nil, err
 			}
 
-			event.StartDaHeight = epochHeight
-			event.Txs = append(event.Txs, result.Data...)
+			for i, data := range result.Data {
+				if len(data) > common.DefaultMaxBlobSize {
+					r.logger.Debug().
+						Uint64("da_height", epochHeight).
+						Int("index", i).
+						Uint64("blob_size", uint64(len(data))).
+						Msg("Following data exceeds maximum blob size. Skipping...")
+					continue
+				}
+
+				// Calculate size of new data
+				var newDataSize int
+				for _, data := range result.Data {
+					newDataSize += len(data)
+				}
+
+				// Check if adding this data would exceed max blob size
+				if currentSize+newDataSize > common.DefaultMaxBlobSize {
+					r.logger.Warn().Msg("forced inclusion data exceeds maximum blob size - reduce ForcedInclusionDAEpoch configuration if this happens often")
+
+					// TODO(@julienrbrt): we need to keep track of which that haven't been included, so they are retried in the next epoch
+
+					continue
+				}
+
+				event.Txs = append(event.Txs, data)
+				currentSize += newDataSize
+				lastProcessedHeight = epochHeight
+			}
+
 		}
 	}
+
+	// Set the DA height range based on what we actually processed
+	event.StartDaHeight = daHeight
+	event.EndDaHeight = lastProcessedHeight
 
 	return event, nil
 }

@@ -40,10 +40,9 @@ type BasedSequencer struct {
 	genesis     genesis.Genesis
 	logger      zerolog.Logger
 
-	mu            sync.RWMutex
-	currentHeight uint64
-	daHeight      uint64
-	txQueue       [][]byte
+	mu       sync.RWMutex
+	daHeight uint64
+	txQueue  [][]byte
 }
 
 // NewBasedSequencer creates a new based sequencer instance
@@ -55,14 +54,13 @@ func NewBasedSequencer(
 	logger zerolog.Logger,
 ) *BasedSequencer {
 	return &BasedSequencer{
-		daRetriever:   daRetriever,
-		da:            da,
-		config:        config,
-		genesis:       genesis,
-		logger:        logger.With().Str("component", "based_sequencer").Logger(),
-		currentHeight: 0,
-		daHeight:      genesis.DAStartHeight,
-		txQueue:       make([][]byte, 0),
+		daRetriever: daRetriever,
+		da:          da,
+		config:      config,
+		genesis:     genesis,
+		logger:      logger.With().Str("component", "based_sequencer").Logger(),
+		daHeight:    genesis.DAStartHeight,
+		txQueue:     make([][]byte, 0),
 	}
 }
 

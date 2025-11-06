@@ -616,15 +616,15 @@ func (s *Syncer) verifyForcedInclusionTxs(currentState types.State, data *types.
 		return nil
 	}
 
-	blockTxMap := make(map[string]bool)
+	blockTxMap := make(map[string]struct{})
 	for _, tx := range data.Txs {
-		blockTxMap[string(tx)] = true
+		blockTxMap[string(tx)] = struct{}{}
 	}
 
 	// Check if all forced inclusion transactions are present in the block
 	var missingTxs [][]byte
 	for _, forcedTx := range forcedIncludedTxsEvent.Txs {
-		if !blockTxMap[string(forcedTx)] {
+		if _, ok := blockTxMap[string(forcedTx)]; !ok {
 			missingTxs = append(missingTxs, forcedTx)
 		}
 	}
