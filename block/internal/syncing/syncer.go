@@ -399,7 +399,7 @@ func (s *Syncer) processHeightEvent(event *common.DAHeightEvent) {
 		case errors.Is(err, errInvalidBlock):
 			// do not reschedule
 		case errors.Is(err, errMaliciousProposer):
-			s.sendCriticalError(fmt.Errorf("Sequencer malicious. Restart the node with --node.aggregator --node.based_sequencer or keep the chain halted: %w", err))
+			s.sendCriticalError(fmt.Errorf("sequencer malicious. Restart the node with --node.aggregator --node.based_sequencer or keep the chain halted: %w", err))
 		case errors.Is(err, errInvalidState):
 			s.sendCriticalError(fmt.Errorf("invalid state detected (block-height %d, state-height %d) "+
 				"- block references do not match local state. Manual intervention required: %w", event.Header.Height(),
