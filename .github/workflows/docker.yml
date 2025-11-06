@@ -8,11 +8,6 @@ on:
         required: true
         type: string
         description: 'Docker image tag (e.g., v1.2.3, pr-123, sha-abc123)'
-  push:
-    tags:
-      - 'v*'
-  release:
-    types: [published]
 
 jobs:
   build-images:
