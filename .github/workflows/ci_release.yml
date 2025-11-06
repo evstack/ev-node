@@ -26,6 +26,8 @@ jobs:
   determine-image-tag:
     name: Determine Image Tag
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     outputs:
       tag: ${{ steps.set-tag.outputs.tag }}
     steps:
@@ -39,6 +41,8 @@ jobs:
           fi
 
   lint:
+    permissions:
+      contents: read
     uses: ./.github/workflows/lint.yml
 
   docker:
@@ -52,6 +56,8 @@ jobs:
 
   test:
     needs: determine-image-tag
+    permissions:
+      contents: read
     uses: ./.github/workflows/test.yml
     secrets: inherit
     with:
@@ -67,11 +73,15 @@ jobs:
       image-tag: ${{ needs.determine-image-tag.outputs.tag }}
 
   proto:
+    permissions:
+      contents: read
     uses: ./.github/workflows/proto.yml
 
   # branch_name trims ref/heads/ from github.ref to access a clean branch name
   branch_name:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     outputs:
       branch: ${{ steps.trim_ref.outputs.branch }}
     steps:
