@@ -452,26 +452,6 @@ func TestBasedSequencer_ConcurrentAccess(t *testing.T) {
 	}
 }
 
-func TestDARetrieverAdapter(t *testing.T) {
-	called := false
-	expectedEvent := &ForcedInclusionEvent{
-		Txs:           [][]byte{[]byte("tx1")},
-		StartDaHeight: 100,
-		EndDaHeight:   105,
-	}
-
-	adapter := NewDARetrieverAdapter(func(ctx context.Context, daHeight uint64) (*ForcedInclusionEvent, error) {
-		called = true
-		assert.Equal(t, uint64(100), daHeight)
-		return expectedEvent, nil
-	})
-
-	event, err := adapter.RetrieveForcedIncludedTxsFromDA(context.Background(), 100)
-	require.NoError(t, err)
-	assert.True(t, called)
-	assert.Equal(t, expectedEvent, event)
-}
-
 func TestBasedSequencer_GetNextBatch_ErrorHandling(t *testing.T) {
 	mockRetriever := new(MockDARetriever)
 	mockDA := new(MockDA)

@@ -36,23 +36,6 @@ type DARetriever interface {
 	RetrieveForcedIncludedTxsFromDA(ctx context.Context, daHeight uint64) (*ForcedInclusionEvent, error)
 }
 
-// DARetrieverAdapter adapts any retriever that returns a compatible event type
-type DARetrieverAdapter struct {
-	retrieveFunc func(ctx context.Context, daHeight uint64) (*ForcedInclusionEvent, error)
-}
-
-// NewDARetrieverAdapter creates a new adapter with a custom retrieval function
-func NewDARetrieverAdapter(retrieveFunc func(ctx context.Context, daHeight uint64) (*ForcedInclusionEvent, error)) *DARetrieverAdapter {
-	return &DARetrieverAdapter{
-		retrieveFunc: retrieveFunc,
-	}
-}
-
-// RetrieveForcedIncludedTxsFromDA implements the DARetriever interface
-func (a *DARetrieverAdapter) RetrieveForcedIncludedTxsFromDA(ctx context.Context, daHeight uint64) (*ForcedInclusionEvent, error) {
-	return a.retrieveFunc(ctx, daHeight)
-}
-
 var _ coresequencer.Sequencer = &Sequencer{}
 
 // Sequencer implements core sequencing interface

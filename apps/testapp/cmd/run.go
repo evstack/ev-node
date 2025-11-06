@@ -124,7 +124,6 @@ func createSequencer(
 	if err != nil {
 		return nil, fmt.Errorf("failed to create DA retriever: %w", err)
 	}
-	adapter := based.NewDARetrieverAdapter(daRetriever.RetrieveForcedIncludedTxsFromDA)
 
 	if nodeConfig.Node.BasedSequencer {
 		// Based sequencer mode - fetch transactions only from DA
@@ -132,7 +131,7 @@ func createSequencer(
 			return nil, fmt.Errorf("based sequencer mode requires aggregator mode to be enabled")
 		}
 
-		basedSeq := based.NewBasedSequencer(adapter, da, nodeConfig, genesis, logger)
+		basedSeq := based.NewBasedSequencer(daRetriever, da, nodeConfig, genesis, logger)
 
 		logger.Info().
 			Str("forced_inclusion_namespace", nodeConfig.DA.GetForcedInclusionNamespace()).

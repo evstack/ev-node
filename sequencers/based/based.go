@@ -31,23 +31,6 @@ type DARetriever interface {
 	RetrieveForcedIncludedTxsFromDA(ctx context.Context, daHeight uint64) (*ForcedInclusionEvent, error)
 }
 
-// DARetrieverAdapter adapts any retriever that returns a compatible event type
-type DARetrieverAdapter struct {
-	retrieveFunc func(ctx context.Context, daHeight uint64) (*ForcedInclusionEvent, error)
-}
-
-// NewDARetrieverAdapter creates a new adapter with a custom retrieval function
-func NewDARetrieverAdapter(retrieveFunc func(ctx context.Context, daHeight uint64) (*ForcedInclusionEvent, error)) *DARetrieverAdapter {
-	return &DARetrieverAdapter{
-		retrieveFunc: retrieveFunc,
-	}
-}
-
-// RetrieveForcedIncludedTxsFromDA implements the DARetriever interface
-func (a *DARetrieverAdapter) RetrieveForcedIncludedTxsFromDA(ctx context.Context, daHeight uint64) (*ForcedInclusionEvent, error) {
-	return a.retrieveFunc(ctx, daHeight)
-}
-
 // BasedSequencer is a sequencer that only retrieves transactions from the DA layer
 // via the forced inclusion mechanism. It does not accept transactions from the reaper.
 type BasedSequencer struct {
@@ -126,6 +109,8 @@ func (s *BasedSequencer) GetNextBatch(ctx context.Context, req coresequencer.Get
 			}, nil
 		}
 
+		// If we get a height from future error, keep the current DA height and return batch
+		// We'll retry the same height on the next call until DA produces that block
 		if errors.Is(err, coreda.ErrHeightFromFuture) {
 			s.logger.Debug().
 				Uint64("da_height", s.daHeight).
