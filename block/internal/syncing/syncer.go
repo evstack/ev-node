@@ -258,7 +258,6 @@ func (s *Syncer) startSyncWorkers() {
 }
 
 const (
-	fastDAPollInterval  = 10 * time.Millisecond
 	futureHeightBackoff = 6 * time.Second // current celestia block time
 )
 
@@ -272,16 +271,71 @@ func (s *Syncer) daWorkerLoop() {
 	s.logger.Info().Msg("starting DA worker")
 	defer s.logger.Info().Msg("DA worker stopped")
 
-	nextDARequestAt := &time.Time{}
-	pollInterval := fastDAPollInterval
-
 	for {
-		s.tryFetchFromDA(nextDARequestAt)
+		err := s.fetchDAUntilCaughtUp()
+
+		var backoff time.Duration
+		if err == nil {
+			// No error, means we are caught up.
+			backoff = futureHeightBackoff
+		} else {
+			// Error, back off for a shorter duration.
+			backoff = s.config.DA.BlockTime.Duration
+			if backoff <= 0 {
+				backoff = 2 * time.Second
+			}
+		}
+
 		select {
 		case <-s.ctx.Done():
 			return
-		case <-time.After(pollInterval):
+		case <-time.After(backoff):
 		}
+	}
+}
+
+func (s *Syncer) fetchDAUntilCaughtUp() error {
+	for {
+		select {
+		case <-s.ctx.Done():
+			return s.ctx.Err()
+		default:
+		}
+
+		daHeight := s.GetDAHeight()
+		events, err := s.daRetriever.RetrieveFromDA(s.ctx, daHeight)
+		if err != nil {
+			switch {
+			case errors.Is(err, coreda.ErrBlobNotFound):
+				s.SetDAHeight(daHeight + 1)
+				continue // Fetch next height immediately
+			case errors.Is(err, coreda.ErrHeightFromFuture):
+				s.logger.Debug().Err(err).Uint64("da_height", daHeight).Msg("DA is ahead of local target; backing off future height requests")
+				return nil // Caught up
+			default:
+				s.logger.Error().Err(err).Uint64("da_height", daHeight).Msg("failed to retrieve from DA; backing off DA requests")
+				return err // Other errors
+			}
+		}
+
+		if len(events) == 0 {
+			// This can happen if RetrieveFromDA returns no events and no error.
+			// This is unexpected, but we should handle it to avoid busy-looping.
+			s.logger.Warn().Uint64("da_height", daHeight).Msg("no events returned from DA, but no error either. Backing off.")
+			return fmt.Errorf("no events returned from DA for height %d", daHeight)
+		}
+
+		// Process DA events
+		for _, event := range events {
+			select {
+			case s.heightInCh <- event:
+			default:
+				s.cache.SetPendingEvent(event.Header.Height(), &event)
+			}
+		}
+
+		// increment DA height on successful retrieval
+		s.SetDAHeight(daHeight + 1)
 	}
 }
 
@@ -377,64 +431,6 @@ func (s *Syncer) waitForGenesis() bool {
 		}
 	}
 	return true
-}
-
-// tryFetchFromDA attempts to fetch events from the DA layer.
-// It handles backoff timing, DA height management, and error classification.
-// Returns true if any events were successfully processed.
-func (s *Syncer) tryFetchFromDA(nextDARequestAt *time.Time) {
-	now := time.Now()
-	daHeight := s.GetDAHeight()
-
-	// Respect backoff window if set
-	if !nextDARequestAt.IsZero() && now.Before(*nextDARequestAt) {
-		return
-	}
-
-	// Retrieve from DA as fast as possible (unless throttled by HFF)
-	// DaHeight is only increased on successful retrieval, it will retry on failure at the next iteration
-	events, err := s.daRetriever.RetrieveFromDA(s.ctx, daHeight)
-	if err != nil {
-		switch {
-		case errors.Is(err, coreda.ErrBlobNotFound):
-			// no data at this height, increase DA height
-			s.SetDAHeight(daHeight + 1)
-			// Reset backoff on success
-			*nextDARequestAt = time.Time{}
-			return
-		case errors.Is(err, coreda.ErrHeightFromFuture):
-			delay := futureHeightBackoff
-			*nextDARequestAt = now.Add(delay)
-			s.logger.Debug().Err(err).Dur("delay", delay).Uint64("da_height", daHeight).Msg("DA is ahead of local target; backing off future height requests")
-			return
-		default:
-			// Back off exactly by DA block time to avoid overloading
-			backoffDelay := s.config.DA.BlockTime.Duration
-			if backoffDelay <= 0 {
-				backoffDelay = 2 * time.Second
-			}
-			*nextDARequestAt = now.Add(backoffDelay)
-
-			s.logger.Error().Err(err).Dur("delay", backoffDelay).Uint64("da_height", daHeight).Msg("failed to retrieve from DA; backing off DA requests")
-
-			return
-		}
-	}
-
-	// Reset backoff on success
-	*nextDARequestAt = time.Time{}
-
-	// Process DA events
-	for _, event := range events {
-		select {
-		case s.heightInCh <- event:
-		default:
-			s.cache.SetPendingEvent(event.Header.Height(), &event)
-		}
-	}
-
-	// increment DA height on successful retrieval
-	s.SetDAHeight(daHeight + 1)
 }
 
 func (s *Syncer) processHeightEvent(event *common.DAHeightEvent) {
