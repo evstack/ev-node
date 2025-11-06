@@ -11,28 +11,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- Added comprehensive health endpoint documentation in `docs/learn/config.md#health-endpoints` explaining liveness vs readiness checks, Kubernetes probe configuration, and usage examples ([#2800](https://github.com/evstack/ev-node/pull/2800))
-- Added P2P listening check to `/health/ready` endpoint to verify P2P network is ready to accept connections ([#2800](https://github.com/evstack/ev-node/pull/2800))
-- Added aggregator block production rate check to `/health/ready` endpoint to ensure aggregators are producing blocks within expected timeframe (5x block time) ([#2800](https://github.com/evstack/ev-node/pull/2800))
-- Added `readyz()` and `is_ready()` methods to Rust `HealthClient` for checking `/health/ready` endpoint ([#2800](https://github.com/evstack/ev-node/pull/2800))
-- Added `ReadinessStatus` enum to Rust client with Ready/Unready/Unknown states ([#2800](https://github.com/evstack/ev-node/pull/2800))
+- Enhanced health check system with separate liveness (`/health/live`) and readiness (`/health/ready`) HTTP endpoints. Readiness endpoint includes P2P listening check and aggregator block production rate validation (5x block time threshold). ([#2800](https://github.com/evstack/ev-node/pull/2800))
 
 ### Changed
 
 - Use cache instead of in memory store for reaper. Persist cache on reload. Autoclean after 24 hours. ([#2811](https://github.com/evstack/ev-node/pull/2811))
-- Simplified `/health/live` endpoint to only check store accessibility (liveness) instead of business logic, following Kubernetes best practices ([#2800](https://github.com/evstack/ev-node/pull/2800))
-- Updated `/health/ready` endpoint to use `GetState()` instead of `Height()` to access block production timing information ([#2800](https://github.com/evstack/ev-node/pull/2800))
-- Updated E2E test helper `AwaitNodeUp()` to check both liveness and readiness endpoints, ensuring nodes are not just alive but ready to serve traffic ([#2800](https://github.com/evstack/ev-node/pull/2800))
-- Renamed integration test from `TestHealthEndpointWhenBlockProductionStops` to `TestReadinessEndpointWhenBlockProductionStops` to correctly test readiness endpoint ([#2800](https://github.com/evstack/ev-node/pull/2800))
-- Updated Rust client example (`client/crates/client/examples/basic.rs`) to demonstrate both liveness and readiness checks ([#2800](https://github.com/evstack/ev-node/pull/2800))
 
 ### Removed
 
-- **BREAKING:** Removed `evnode.v1.HealthService` gRPC endpoint in favor of HTTP health endpoints ([#2800](https://github.com/evstack/ev-node/pull/2800))
-  - Migration: Use `GET /health/live` instead of `HealthService.Livez()` gRPC call
-  - See migration guide: `docs/learn/config.md#health-endpoints`
-  - Affected clients: Rust client (`client/crates/client`) and any external services using the gRPC health endpoint
-- Removed `proto/evnode/v1/health.proto` and generated protobuf files ([#2800](https://github.com/evstack/ev-node/pull/2800))
+- **BREAKING:** Removed `evnode.v1.HealthService` gRPC endpoint. Use HTTP endpoints: `GET /health/live` and `GET /health/ready`. ([#2800](https://github.com/evstack/ev-node/pull/2800))
 
 ## v1.0.0-beta.9
 

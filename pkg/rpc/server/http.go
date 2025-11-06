@@ -15,10 +15,8 @@ import (
 type BestKnownHeightProvider func() uint64
 
 // RegisterCustomHTTPEndpoints registers custom HTTP handlers on the mux.
-// See docs/learn/config.md#health-endpoints for health endpoint documentation.
 func RegisterCustomHTTPEndpoints(mux *http.ServeMux, s store.Store, pm p2p.P2PRPC, cfg config.Config, bestKnownHeightProvider BestKnownHeightProvider, logger zerolog.Logger) {
-	// /health/live - Liveness probe: checks if process is alive and responsive
-	// Should NOT check business logic (block production, sync status, etc.)
+	// /health/live checks if the process is alive and responsive
 	mux.HandleFunc("/health/live", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/plain")
 
@@ -33,8 +31,7 @@ func RegisterCustomHTTPEndpoints(mux *http.ServeMux, s store.Store, pm p2p.P2PRP
 		fmt.Fprintln(w, "OK")
 	})
 
-	// /health/ready - Readiness probe: checks if node can serve correct data
-	// Failing readiness removes node from load balancer but doesn't kill process
+	// /health/ready checks if the node can serve correct data
 	mux.HandleFunc("/health/ready", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/plain")
 

@@ -5,24 +5,23 @@
 //! # Example
 //!
 //! ```no_run
-//! use ev_client::{Client, HealthClient, ConfigClient};
+//! use ev_client::{Client, ConfigClient};
 //!
 //! #[tokio::main]
 //! async fn main() -> Result<(), Box<dyn std::error::Error>> {
 //!     // Connect to a Evolve node
 //!     let client = Client::connect("http://localhost:50051").await?;
-//!     
-//!     // Check health
-//!     let health = HealthClient::new(&client);
-//!     let is_healthy = health.is_healthy().await?;
-//!     println!("Node healthy: {}", is_healthy);
-//!     
+//!
 //!     // Get namespace configuration
 //!     let config = ConfigClient::new(&client);
 //!     let namespace = config.get_namespace().await?;
 //!     println!("Header namespace: {}", namespace.header_namespace);
 //!     println!("Data namespace: {}", namespace.data_namespace);
-//!     
+//!
+//!     // For health checks, use HTTP endpoints directly:
+//!     // curl http://localhost:9090/health/live
+//!     // curl http://localhost:9090/health/ready
+//!
 //!     Ok(())
 //! }
 //! ```
@@ -79,7 +78,6 @@
 pub mod client;
 pub mod config;
 pub mod error;
-pub mod health;
 pub mod p2p;
 pub mod signer;
 pub mod store;
@@ -88,7 +86,6 @@ pub mod store;
 pub use client::{Client, ClientBuilder};
 pub use config::ConfigClient;
 pub use error::{ClientError, Result};
-pub use health::{HealthClient, HealthStatus, ReadinessStatus};
 pub use p2p::P2PClient;
 pub use signer::SignerClient;
 pub use store::StoreClient;
