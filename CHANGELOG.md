@@ -24,6 +24,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Use cache instead of in memory store for reaper. Persist cache on reload. Autoclean after 24 hours. ([#2811](https://github.com/evstack/ev-node/pull/2811))
 - Simplified `/health/live` endpoint to only check store accessibility (liveness) instead of business logic, following Kubernetes best practices ([#2800](https://github.com/evstack/ev-node/pull/2800))
 - Updated `/health/ready` endpoint to use `GetState()` instead of `Height()` to access block production timing information ([#2800](https://github.com/evstack/ev-node/pull/2800))
+- Updated E2E test helper `AwaitNodeUp()` to check both liveness and readiness endpoints, ensuring nodes are not just alive but ready to serve traffic ([#2800](https://github.com/evstack/ev-node/pull/2800))
 - Renamed integration test from `TestHealthEndpointWhenBlockProductionStops` to `TestReadinessEndpointWhenBlockProductionStops` to correctly test readiness endpoint ([#2800](https://github.com/evstack/ev-node/pull/2800))
 - Updated Rust client example (`client/crates/client/examples/basic.rs`) to demonstrate both liveness and readiness checks ([#2800](https://github.com/evstack/ev-node/pull/2800))
 

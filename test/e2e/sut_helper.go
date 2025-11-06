@@ -93,7 +93,8 @@ func (s *SystemUnderTest) ExecCmd(cmd string, args ...string) {
 	s.awaitProcessCleanup(c)
 }
 
-// AwaitNodeUp waits until a node is operational by validating it produces blocks.
+// AwaitNodeUp waits until a node is operational by checking both liveness and readiness.
+// This verifies the process is alive (liveness) and ready to serve traffic (readiness).
 func (s *SystemUnderTest) AwaitNodeUp(t *testing.T, rpcAddr string, timeout time.Duration) {
 	t.Helper()
 	t.Logf("Await node is up: %s", rpcAddr)
@@ -102,8 +103,15 @@ func (s *SystemUnderTest) AwaitNodeUp(t *testing.T, rpcAddr string, timeout time
 	require.EventuallyWithT(t, func(t *assert.CollectT) {
 		c := client.NewClient(rpcAddr)
 		require.NotNil(t, c)
+
+		// Check liveness: is the process alive?
 		_, err := c.GetHealth(ctx)
-		require.NoError(t, err)
+		require.NoError(t, err, "liveness check failed")
+
+		// Check readiness: is the node ready to serve traffic?
+		readiness, err := c.GetReadiness(ctx)
+		require.NoError(t, err, "readiness check failed")
+		require.Equal(t, client.ReadinessStatus_READY, readiness, "node is not ready")
 	}, timeout, min(timeout/10, 200*time.Millisecond), "node is not up")
 }
 

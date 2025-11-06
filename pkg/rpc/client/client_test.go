@@ -284,7 +284,7 @@ func TestClientGetHealth(t *testing.T) {
 		healthStatus, err := client.GetHealth(context.Background())
 
 		require.NoError(t, err)
-		require.Equal(t, "PASS", healthStatus.String())
+		require.Equal(t, HealthStatus_PASS, healthStatus)
 		mockStore.AssertExpectations(t)
 	})
 
@@ -301,7 +301,7 @@ func TestClientGetHealth(t *testing.T) {
 		healthStatus, err := client.GetHealth(context.Background())
 
 		require.NoError(t, err)
-		require.Equal(t, "FAIL", healthStatus.String())
+		require.Equal(t, HealthStatus_FAIL, healthStatus)
 		mockStore.AssertExpectations(t)
 	})
 
@@ -318,7 +318,7 @@ func TestClientGetHealth(t *testing.T) {
 		healthStatus, err := client.GetHealth(context.Background())
 
 		require.NoError(t, err)
-		require.Equal(t, "PASS", healthStatus.String())
+		require.Equal(t, HealthStatus_PASS, healthStatus)
 		mockStore.AssertExpectations(t)
 	})
 }
@@ -352,7 +352,7 @@ func TestClientGetReadiness(t *testing.T) {
 		readiness, err := client.GetReadiness(context.Background())
 
 		require.NoError(t, err)
-		require.Equal(t, "READY", readiness.String())
+		require.Equal(t, ReadinessStatus_READY, readiness)
 		mockStore.AssertExpectations(t)
 		mockP2P.AssertExpectations(t)
 	})
@@ -373,7 +373,7 @@ func TestClientGetReadiness(t *testing.T) {
 		readiness, err := client.GetReadiness(context.Background())
 
 		require.NoError(t, err)
-		require.Equal(t, "UNREADY", readiness.String())
+		require.Equal(t, ReadinessStatus_UNREADY, readiness)
 		mockP2P.AssertExpectations(t)
 	})
 
@@ -397,7 +397,7 @@ func TestClientGetReadiness(t *testing.T) {
 		readiness, err := client.GetReadiness(context.Background())
 
 		require.NoError(t, err)
-		require.Equal(t, "UNREADY", readiness.String())
+		require.Equal(t, ReadinessStatus_UNREADY, readiness)
 		mockP2P.AssertExpectations(t)
 	})
 }

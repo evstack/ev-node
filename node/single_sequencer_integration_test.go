@@ -16,6 +16,7 @@ import (
 	coreda "github.com/evstack/ev-node/core/da"
 	coreexecutor "github.com/evstack/ev-node/core/execution"
 	evconfig "github.com/evstack/ev-node/pkg/config"
+	"github.com/evstack/ev-node/pkg/rpc/client"
 )
 
 // FullNodeTestSuite is a test suite for full node integration tests
@@ -451,7 +452,7 @@ func TestReadinessEndpointWhenBlockProductionStops(t *testing.T) {
 	// Verify readiness is READY while blocks are being produced
 	readiness, err := rpcClient.GetReadiness(ctx)
 	require.NoError(err)
-	require.Equal("READY", readiness.String(), "Readiness should be READY while producing blocks")
+	require.Equal(client.ReadinessStatus_READY, readiness, "Readiness should be READY while producing blocks")
 
 	// Wait for block production to stop (when MaxPendingHeadersAndData is reached)
 	time.Sleep(time.Duration(config.Node.MaxPendingHeadersAndData+2) * config.Node.BlockTime.Duration)
@@ -473,7 +474,7 @@ func TestReadinessEndpointWhenBlockProductionStops(t *testing.T) {
 		if err != nil {
 			return false
 		}
-		return readiness.String() == "UNREADY"
+		return readiness == client.ReadinessStatus_UNREADY
 	}, 10*time.Second, 100*time.Millisecond, "Readiness should be UNREADY after aggregator stops producing blocks (5x block time)")
 
 	// Stop the node and wait for shutdown
