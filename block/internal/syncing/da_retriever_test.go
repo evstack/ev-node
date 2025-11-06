@@ -504,3 +504,114 @@ func TestDARetriever_FetchForcedIncludedTxs_NotFound(t *testing.T) {
 	require.NotNil(t, result)
 	require.Empty(t, result.Txs)
 }
+
+func TestDARetriever_RetrieveForcedIncludedTxsFromDA_ExceedsMaxBlobSize(t *testing.T) {
+	ds := dssync.MutexWrap(datastore.NewMapDatastore())
+	st := store.New(ds)
+	cm, err := cache.NewManager(config.DefaultConfig(), st, zerolog.Nop())
+	require.NoError(t, err)
+
+	addr, pub, signer := buildSyncTestSigner(t)
+	gen := genesis.Genesis{ChainID: "tchain", InitialHeight: 1, StartTime: time.Now().Add(-time.Second), ProposerAddress: addr}
+
+	cfg := config.DefaultConfig()
+	cfg.DA.ForcedInclusionNamespace = "nsForcedInclusion"
+	cfg.DA.ForcedInclusionDAEpoch = 3 // Test with multiple epochs
+
+	namespaceForcedInclusionBz := coreda.NamespaceFromString(cfg.DA.GetForcedInclusionNamespace()).Bytes()
+
+	// Create signed data blobs that will exceed DefaultMaxBlobSize when accumulated
+	// DefaultMaxBlobSize is 1.5MB = 1,572,864 bytes
+	// Each 700KB tx becomes ~719KB blob, so 2 blobs = ~1.44MB (fits), 3 blobs = ~2.16MB (exceeds)
+	d1 := &types.Data{
+		Metadata: &types.Metadata{ChainID: gen.ChainID, Height: 10, Time: uint64(time.Now().UnixNano())},
+		Txs:      make(types.Txs, 1),
+	}
+	d1.Txs[0] = make([]byte, 700*1024) // 700KB transaction
+
+	payload1, err := d1.MarshalBinary()
+	require.NoError(t, err)
+	sig1, err := signer.Sign(payload1)
+	require.NoError(t, err)
+	sd1 := &types.SignedData{Data: *d1, Signature: sig1, Signer: types.Signer{PubKey: pub, Address: addr}}
+	dataBin1, err := sd1.MarshalBinary()
+	require.NoError(t, err)
+
+	d2 := &types.Data{
+		Metadata: &types.Metadata{ChainID: gen.ChainID, Height: 11, Time: uint64(time.Now().UnixNano())},
+		Txs:      make(types.Txs, 1),
+	}
+	d2.Txs[0] = make([]byte, 700*1024) // 700KB transaction
+
+	payload2, err := d2.MarshalBinary()
+	require.NoError(t, err)
+	sig2, err := signer.Sign(payload2)
+	require.NoError(t, err)
+	sd2 := &types.SignedData{Data: *d2, Signature: sig2, Signer: types.Signer{PubKey: pub, Address: addr}}
+	dataBin2, err := sd2.MarshalBinary()
+	require.NoError(t, err)
+
+	d3 := &types.Data{
+		Metadata: &types.Metadata{ChainID: gen.ChainID, Height: 12, Time: uint64(time.Now().UnixNano())},
+		Txs:      make(types.Txs, 1),
+	}
+	d3.Txs[0] = make([]byte, 700*1024) // 700KB transaction
+
+	payload3, err := d3.MarshalBinary()
+	require.NoError(t, err)
+	sig3, err := signer.Sign(payload3)
+	require.NoError(t, err)
+	sd3 := &types.SignedData{Data: *d3, Signature: sig3, Signer: types.Signer{PubKey: pub, Address: addr}}
+	dataBin3, err := sd3.MarshalBinary()
+	require.NoError(t, err)
+
+	mockDA := testmocks.NewMockDA(t)
+
+	// First epoch - should succeed
+	mockDA.EXPECT().GetIDs(mock.Anything, uint64(1001), mock.MatchedBy(func(ns []byte) bool {
+		return bytes.Equal(ns, namespaceForcedInclusionBz)
+	})).Return(&coreda.GetIDsResult{IDs: [][]byte{[]byte("fi1")}, Timestamp: time.Now()}, nil).Once()
+
+	mockDA.EXPECT().Get(mock.Anything, mock.Anything, mock.MatchedBy(func(ns []byte) bool {
+		return bytes.Equal(ns, namespaceForcedInclusionBz)
+	})).Return([][]byte{dataBin1}, nil).Once()
+
+	// Second epoch - should succeed
+	mockDA.EXPECT().GetIDs(mock.Anything, uint64(1002), mock.MatchedBy(func(ns []byte) bool {
+		return bytes.Equal(ns, namespaceForcedInclusionBz)
+	})).Return(&coreda.GetIDsResult{IDs: [][]byte{[]byte("fi2")}, Timestamp: time.Now()}, nil).Once()
+
+	mockDA.EXPECT().Get(mock.Anything, mock.Anything, mock.MatchedBy(func(ns []byte) bool {
+		return bytes.Equal(ns, namespaceForcedInclusionBz)
+	})).Return([][]byte{dataBin2}, nil).Once()
+
+	// Third epoch - should be retrieved but cause error due to size limit
+	mockDA.EXPECT().GetIDs(mock.Anything, uint64(1003), mock.MatchedBy(func(ns []byte) bool {
+		return bytes.Equal(ns, namespaceForcedInclusionBz)
+	})).Return(&coreda.GetIDsResult{IDs: [][]byte{[]byte("fi3")}, Timestamp: time.Now()}, nil).Once()
+
+	mockDA.EXPECT().Get(mock.Anything, mock.Anything, mock.MatchedBy(func(ns []byte) bool {
+		return bytes.Equal(ns, namespaceForcedInclusionBz)
+	})).Return([][]byte{dataBin3}, nil).Once()
+
+	r := NewDARetriever(mockDA, cm, cfg, gen, zerolog.Nop())
+
+	result, err := r.RetrieveForcedIncludedTxsFromDA(context.Background(), 1000)
+
+	// Should succeed but skip the third blob due to size limit (using continue)
+	require.NoError(t, err)
+	require.NotNil(t, result)
+
+	// Should only have 2 transactions, third is skipped due to size
+	require.Len(t, result.Txs, 2)
+	assert.Equal(t, dataBin1, result.Txs[0])
+	assert.Equal(t, dataBin2, result.Txs[1])
+
+	// Verify total size is within limits
+	totalSize := len(dataBin1) + len(dataBin2)
+	assert.LessOrEqual(t, totalSize, int(common.DefaultMaxBlobSize))
+
+	// Verify that adding the third would have exceeded the limit
+	totalSizeWithThird := totalSize + len(dataBin3)
+	assert.Greater(t, totalSizeWithThird, int(common.DefaultMaxBlobSize))
+}
