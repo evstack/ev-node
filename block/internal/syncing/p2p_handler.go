@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"sync"
+	"sync/atomic"
 
 	goheader "github.com/celestiaorg/go-header"
 	"github.com/rs/zerolog"
@@ -28,8 +28,7 @@ type P2PHandler struct {
 	genesis     genesis.Genesis
 	logger      zerolog.Logger
 
-	mu              sync.Mutex
-	processedHeight uint64 // highest block fully applied by the syncer
+	processedHeight atomic.Uint64
 }
 
 // NewP2PHandler creates a new P2P handler.
@@ -51,22 +50,22 @@ func NewP2PHandler(
 
 // SetProcessedHeight updates the highest processed block height.
 func (h *P2PHandler) SetProcessedHeight(height uint64) {
-	h.mu.Lock()
-	if height > h.processedHeight {
-		h.processedHeight = height
+	for {
+		current := h.processedHeight.Load()
+		if height <= current {
+			return
+		}
+		if h.processedHeight.CompareAndSwap(current, height) {
+			return
+		}
 	}
-	h.mu.Unlock()
 }
 
 // ProcessHeight retrieves and validates both header and data for the given height from P2P stores.
 // It blocks until both are available, validates consistency (proposer address and data hash match),
 // then emits the event to heightInCh or stores it as pending. Updates processedHeight on success.
 func (h *P2PHandler) ProcessHeight(ctx context.Context, height uint64, heightInCh chan<- common.DAHeightEvent) error {
-	h.mu.Lock()
-	shouldProcess := height > h.processedHeight
-	h.mu.Unlock()
-
-	if !shouldProcess {
+	if height <= h.processedHeight.Load() {
 		return nil
 	}
 
@@ -110,11 +109,7 @@ func (h *P2PHandler) ProcessHeight(ctx context.Context, height uint64, heightInC
 		h.cache.SetPendingEvent(event.Header.Height(), &event)
 	}
 
-	h.mu.Lock()
-	if height > h.processedHeight {
-		h.processedHeight = height
-	}
-	h.mu.Unlock()
+	h.SetProcessedHeight(height)
 
 	h.logger.Debug().Uint64("height", height).Msg("processed event from P2P")
 	return nil

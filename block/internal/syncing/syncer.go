@@ -76,8 +76,7 @@ type Syncer struct {
 	wg     sync.WaitGroup
 
 	// P2P wait coordination
-	p2pWaitMu    sync.Mutex
-	p2pWaitState p2pWaitState
+	p2pWaitState atomic.Value // stores p2pWaitState
 }
 
 // NewSyncer creates a new block syncer
@@ -257,10 +256,6 @@ func (s *Syncer) startSyncWorkers() {
 	go s.p2pWorkerLoop()
 }
 
-const (
-	futureHeightBackoff = 6 * time.Second // current celestia block time
-)
-
 func (s *Syncer) daWorkerLoop() {
 	defer s.wg.Done()
 
@@ -277,7 +272,7 @@ func (s *Syncer) daWorkerLoop() {
 		var backoff time.Duration
 		if err == nil {
 			// No error, means we are caught up.
-			backoff = futureHeightBackoff
+			backoff = s.config.DA.BlockTime.Duration
 		} else {
 			// Error, back off for a shorter duration.
 			backoff = s.config.DA.BlockTime.Duration
@@ -772,20 +767,21 @@ type p2pWaitState struct {
 }
 
 func (s *Syncer) setP2PWaitState(height uint64, cancel context.CancelFunc) {
-	s.p2pWaitMu.Lock()
-	defer s.p2pWaitMu.Unlock()
-	s.p2pWaitState = p2pWaitState{
-		height: height,
-		cancel: cancel,
-	}
+	s.p2pWaitState.Store(p2pWaitState{height: height, cancel: cancel})
 }
 
 func (s *Syncer) cancelP2PWait(height uint64) {
-	s.p2pWaitMu.Lock()
-	defer s.p2pWaitMu.Unlock()
+	val := s.p2pWaitState.Load()
+	if val == nil {
+		return
+	}
+	state, ok := val.(p2pWaitState)
+	if !ok || state.cancel == nil {
+		return
+	}
 
-	if s.p2pWaitState.cancel != nil && (height == 0 || s.p2pWaitState.height <= height) {
-		s.p2pWaitState.cancel()
-		s.p2pWaitState = p2pWaitState{}
+	if height == 0 || state.height <= height {
+		s.p2pWaitState.Store(p2pWaitState{})
+		state.cancel()
 	}
 }
