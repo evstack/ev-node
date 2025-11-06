@@ -8,6 +8,7 @@ import (
 	"io"
 	"iter"
 	"maps"
+	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -98,20 +99,19 @@ func (s *SystemUnderTest) ExecCmd(cmd string, args ...string) {
 func (s *SystemUnderTest) AwaitNodeUp(t *testing.T, rpcAddr string, timeout time.Duration) {
 	t.Helper()
 	t.Logf("Await node is up: %s", rpcAddr)
-	ctx, done := context.WithTimeout(context.Background(), timeout)
-	defer done()
 	require.EventuallyWithT(t, func(t *assert.CollectT) {
 		c := client.NewClient(rpcAddr)
 		require.NotNil(t, c)
 
-		// Check liveness: is the process alive?
-		_, err := c.GetHealth(ctx)
+		resp, err := http.Get(rpcAddr + "/health/live")
 		require.NoError(t, err, "liveness check failed")
+		defer resp.Body.Close()
+		require.Equal(t, http.StatusOK, resp.StatusCode, "liveness check failed")
 
-		// Check readiness: is the node ready to serve traffic?
-		readiness, err := c.GetReadiness(ctx)
+		resp, err = http.Get(rpcAddr + "/health/ready")
 		require.NoError(t, err, "readiness check failed")
-		require.Equal(t, client.ReadinessStatus_READY, readiness, "node is not ready")
+		defer resp.Body.Close()
+		require.Equal(t, http.StatusOK, resp.StatusCode, "node is not ready")
 	}, timeout, min(timeout/10, 200*time.Millisecond), "node is not up")
 }
 
@@ -121,15 +121,14 @@ func (s *SystemUnderTest) AwaitNodeUp(t *testing.T, rpcAddr string, timeout time
 func (s *SystemUnderTest) AwaitNodeLive(t *testing.T, rpcAddr string, timeout time.Duration) {
 	t.Helper()
 	t.Logf("Await node is live: %s", rpcAddr)
-	ctx, done := context.WithTimeout(context.Background(), timeout)
-	defer done()
 	require.EventuallyWithT(t, func(t *assert.CollectT) {
 		c := client.NewClient(rpcAddr)
 		require.NotNil(t, c)
 
-		// Check liveness only: is the process alive?
-		_, err := c.GetHealth(ctx)
+		resp, err := http.Get(rpcAddr + "/health/live")
 		require.NoError(t, err, "liveness check failed")
+		defer resp.Body.Close()
+		require.Equal(t, http.StatusOK, resp.StatusCode, "liveness check failed")
 	}, timeout, min(timeout/10, 200*time.Millisecond), "node is not live")
 }
 

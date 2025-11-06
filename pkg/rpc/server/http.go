@@ -1,9 +1,3 @@
-// Package server provides HTTP endpoint handlers for the RPC server.
-//
-// Health Endpoints:
-// This file implements health check endpoints following Kubernetes best practices.
-// For comprehensive documentation on health endpoints, their differences, and usage examples,
-// see: docs/learn/config.md#health-endpoints
 package server
 
 import (
@@ -17,25 +11,17 @@ import (
 	"github.com/rs/zerolog"
 )
 
-// BestKnownHeightProvider should return the best-known network height observed by the node
-// (e.g. min(headerSyncHeight, dataSyncHeight) for full nodes, or header height for light nodes).
+// BestKnownHeightProvider returns the best-known network height observed by the node
 type BestKnownHeightProvider func() uint64
 
-// RegisterCustomHTTPEndpoints is the designated place to add new, non-gRPC, plain HTTP handlers.
-// Additional custom HTTP endpoints can be registered on the mux here.
-//
-// For detailed documentation on health endpoints, see: docs/learn/config.md#health-endpoints
+// RegisterCustomHTTPEndpoints registers custom HTTP handlers on the mux.
+// See docs/learn/config.md#health-endpoints for health endpoint documentation.
 func RegisterCustomHTTPEndpoints(mux *http.ServeMux, s store.Store, pm p2p.P2PRPC, cfg config.Config, bestKnownHeightProvider BestKnownHeightProvider, logger zerolog.Logger) {
-	// Liveness endpoint - checks if the service process is alive and responsive
-	// A failing liveness check should result in killing/restarting the process
-	// This endpoint should NOT check business logic (like block production or sync status)
-	//
-	// See docs/learn/config.md#healthlive---liveness-probe for details
+	// /health/live - Liveness probe: checks if process is alive and responsive
+	// Should NOT check business logic (block production, sync status, etc.)
 	mux.HandleFunc("/health/live", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/plain")
 
-		// Basic liveness check: Can we access the store?
-		// This verifies the process is alive and core dependencies are accessible
 		_, err := s.Height(r.Context())
 		if err != nil {
 			logger.Error().Err(err).Msg("Liveness check failed: cannot access store")
@@ -43,20 +29,15 @@ func RegisterCustomHTTPEndpoints(mux *http.ServeMux, s store.Store, pm p2p.P2PRP
 			return
 		}
 
-		// Process is alive and responsive
 		w.WriteHeader(http.StatusOK)
 		fmt.Fprintln(w, "OK")
 	})
 
-	// Readiness endpoint - checks if the node can serve correct data to clients
-	// A failing readiness check should result in removing the node from load balancer
-	// but NOT killing the process (e.g., node is syncing, no peers, etc.)
-	//
-	// See docs/learn/config.md#healthready---readiness-probe for details
+	// /health/ready - Readiness probe: checks if node can serve correct data
+	// Failing readiness removes node from load balancer but doesn't kill process
 	mux.HandleFunc("/health/ready", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/plain")
 
-		// P2P readiness: if P2P is enabled, verify it's ready to accept connections
 		if pm != nil {
 			netInfo, err := pm.GetNetworkInfo()
 			if err != nil {
@@ -68,7 +49,6 @@ func RegisterCustomHTTPEndpoints(mux *http.ServeMux, s store.Store, pm p2p.P2PRP
 				return
 			}
 
-			// Peer readiness: non-aggregator nodes should have at least 1 peer
 			if !cfg.Node.Aggregator {
 				peers, err := pm.GetPeers()
 				if err != nil {
@@ -82,7 +62,6 @@ func RegisterCustomHTTPEndpoints(mux *http.ServeMux, s store.Store, pm p2p.P2PRP
 			}
 		}
 
-		// Get current state
 		state, err := s.GetState(r.Context())
 		if err != nil {
 			http.Error(w, "UNREADY: state unavailable", http.StatusServiceUnavailable)
@@ -90,14 +69,11 @@ func RegisterCustomHTTPEndpoints(mux *http.ServeMux, s store.Store, pm p2p.P2PRP
 		}
 
 		localHeight := state.LastBlockHeight
-
-		// If no blocks yet, consider unready
 		if localHeight == 0 {
 			http.Error(w, "UNREADY: no blocks yet", http.StatusServiceUnavailable)
 			return
 		}
 
-		// Aggregator block production check: verify blocks are being produced at expected rate
 		if cfg.Node.Aggregator {
 			timeSinceLastBlock := time.Since(state.LastBlockTime)
 			maxAllowedDelay := 5 * cfg.Node.BlockTime.Duration
@@ -108,7 +84,6 @@ func RegisterCustomHTTPEndpoints(mux *http.ServeMux, s store.Store, pm p2p.P2PRP
 			}
 		}
 
-		// Require best-known height to make the readiness decision
 		if bestKnownHeightProvider == nil {
 			http.Error(w, "UNREADY: best-known height unavailable", http.StatusServiceUnavailable)
 			return
@@ -122,7 +97,6 @@ func RegisterCustomHTTPEndpoints(mux *http.ServeMux, s store.Store, pm p2p.P2PRP
 
 		allowedBlocksBehind := cfg.Node.ReadinessMaxBlocksBehind
 		if bestKnownHeight <= localHeight {
-			// local is ahead of our observed best-known consider ready
 			w.WriteHeader(http.StatusOK)
 			fmt.Fprintln(w, "READY")
 			return

@@ -2,10 +2,7 @@ package client
 
 import (
 	"context"
-	"fmt"
-	"io"
 	"net/http"
-	"strings"
 
 	"connectrpc.com/connect"
 	"google.golang.org/protobuf/types/known/emptypb"
@@ -14,40 +11,11 @@ import (
 	rpc "github.com/evstack/ev-node/types/pb/evnode/v1/v1connect"
 )
 
-// HealthStatus represents the health status of a node
-type HealthStatus int32
-
-const (
-	// HealthStatus_UNKNOWN represents an unknown health status
-	HealthStatus_UNKNOWN HealthStatus = 0
-	// HealthStatus_PASS represents a healthy node
-	HealthStatus_PASS HealthStatus = 1
-	// HealthStatus_WARN represents a degraded but still serving node
-	HealthStatus_WARN HealthStatus = 2
-	// HealthStatus_FAIL represents a failed node
-	HealthStatus_FAIL HealthStatus = 3
-)
-
-func (h HealthStatus) String() string {
-	switch h {
-	case HealthStatus_PASS:
-		return "PASS"
-	case HealthStatus_WARN:
-		return "WARN"
-	case HealthStatus_FAIL:
-		return "FAIL"
-	default:
-		return "UNKNOWN"
-	}
-}
-
 // Client is the client for StoreService, P2PService, and ConfigService
 type Client struct {
 	storeClient  rpc.StoreServiceClient
 	p2pClient    rpc.P2PServiceClient
 	configClient rpc.ConfigServiceClient
-	baseURL      string
-	httpClient   *http.Client
 }
 
 // NewClient creates a new RPC client
@@ -61,8 +29,6 @@ func NewClient(baseURL string) *Client {
 		storeClient:  storeClient,
 		p2pClient:    p2pClient,
 		configClient: configClient,
-		baseURL:      baseURL,
-		httpClient:   httpClient,
 	}
 }
 
@@ -143,92 +109,6 @@ func (c *Client) GetNetInfo(ctx context.Context) (*pb.NetInfo, error) {
 	}
 
 	return resp.Msg.NetInfo, nil
-}
-
-// GetHealth calls the /health/live HTTP endpoint and returns the HealthStatus
-// This endpoint checks liveness (is the process alive and responsive?).
-// For readiness checks (can the node serve correct data?), use GetReadiness().
-func (c *Client) GetHealth(ctx context.Context) (HealthStatus, error) {
-	healthURL := fmt.Sprintf("%s/health/live", c.baseURL)
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, healthURL, nil)
-	if err != nil {
-		return HealthStatus_UNKNOWN, fmt.Errorf("failed to create health request: %w", err)
-	}
-
-	resp, err := c.httpClient.Do(req)
-	if err != nil {
-		return HealthStatus_UNKNOWN, fmt.Errorf("failed to get health: %w", err)
-	}
-	defer resp.Body.Close()
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return HealthStatus_UNKNOWN, fmt.Errorf("failed to read health response: %w", err)
-	}
-
-	// Parse the text response
-	status := strings.TrimSpace(string(body))
-	switch status {
-	case "OK":
-		return HealthStatus_PASS, nil
-	case "WARN":
-		return HealthStatus_WARN, nil
-	case "FAIL":
-		return HealthStatus_FAIL, nil
-	default:
-		return HealthStatus_UNKNOWN, fmt.Errorf("unknown health status: %s", status)
-	}
-}
-
-// ReadinessStatus represents the readiness state of a node
-type ReadinessStatus int32
-
-const (
-	ReadinessStatus_UNKNOWN ReadinessStatus = 0
-	ReadinessStatus_READY   ReadinessStatus = 1
-	ReadinessStatus_UNREADY ReadinessStatus = 2
-)
-
-func (s ReadinessStatus) String() string {
-	switch s {
-	case ReadinessStatus_READY:
-		return "READY"
-	case ReadinessStatus_UNREADY:
-		return "UNREADY"
-	default:
-		return "UNKNOWN"
-	}
-}
-
-// GetReadiness calls the /health/ready HTTP endpoint and returns the ReadinessStatus
-// This endpoint checks if the node can serve correct data to clients.
-// For liveness checks (is the process alive?), use GetHealth().
-func (c *Client) GetReadiness(ctx context.Context) (ReadinessStatus, error) {
-	readinessURL := fmt.Sprintf("%s/health/ready", c.baseURL)
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, readinessURL, nil)
-	if err != nil {
-		return ReadinessStatus_UNKNOWN, fmt.Errorf("failed to create readiness request: %w", err)
-	}
-
-	resp, err := c.httpClient.Do(req)
-	if err != nil {
-		return ReadinessStatus_UNKNOWN, fmt.Errorf("failed to get readiness: %w", err)
-	}
-	defer resp.Body.Close()
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return ReadinessStatus_UNKNOWN, fmt.Errorf("failed to read readiness response: %w", err)
-	}
-
-	// Parse the text response
-	status := strings.TrimSpace(string(body))
-	if strings.HasPrefix(status, "READY") {
-		return ReadinessStatus_READY, nil
-	} else if strings.HasPrefix(status, "UNREADY") {
-		return ReadinessStatus_UNREADY, nil
-	}
-	return ReadinessStatus_UNKNOWN, fmt.Errorf("unknown readiness status: %s", status)
 }
 
 // GetNamespace returns the namespace configuration for this network

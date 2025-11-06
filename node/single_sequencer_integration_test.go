@@ -419,19 +419,13 @@ func waitForBlockN(t *testing.T, n uint64, node *FullNode, blockInterval time.Du
 		return got >= n
 	}, timeout[0], blockInterval/2)
 }
-// TestReadinessEndpointWhenBlockProductionStops verifies that the readiness endpoint
-// correctly reports UNREADY state when an aggregator stops producing blocks.
 func TestReadinessEndpointWhenBlockProductionStops(t *testing.T) {
 	require := require.New(t)
 
-	// Set up configuration with specific block time for predictable readiness checks
 	config := getTestConfig(t, 1)
 	config.Node.Aggregator = true
 	config.Node.BlockTime = evconfig.DurationWrapper{Duration: 500 * time.Millisecond}
 	config.Node.MaxPendingHeadersAndData = 2
-
-	// Set DA block time large enough to avoid header submission to DA layer
-	// This will cause block production to stop once MaxPendingHeadersAndData is reached
 	config.DA.BlockTime = evconfig.DurationWrapper{Duration: 100 * time.Second}
 
 	node, cleanup := createNodeWithCleanup(t, config)
@@ -443,32 +437,20 @@ func TestReadinessEndpointWhenBlockProductionStops(t *testing.T) {
 	var runningWg sync.WaitGroup
 	startNodeInBackground(t, []*FullNode{node}, []context.Context{ctx}, &runningWg, 0, nil)
 
-	// Wait for first block to be produced
 	waitForBlockN(t, 1, node, config.Node.BlockTime.Duration)
 
-	// Create RPC client
 	rpcClient := NewRPCClient(config.RPC.Address)
 
-	// Verify readiness is READY while blocks are being produced
 	readiness, err := rpcClient.GetReadiness(ctx)
 	require.NoError(err)
 	require.Equal(client.ReadinessStatus_READY, readiness, "Readiness should be READY while producing blocks")
 
-	// Wait for block production to stop (when MaxPendingHeadersAndData is reached)
 	time.Sleep(time.Duration(config.Node.MaxPendingHeadersAndData+2) * config.Node.BlockTime.Duration)
 
-	// Get the height to confirm blocks stopped
 	height, err := getNodeHeight(node, Store)
 	require.NoError(err)
 	require.LessOrEqual(height, config.Node.MaxPendingHeadersAndData)
 
-	// Readiness check threshold for aggregators:
-	// blockTime = 500ms
-	// maxAllowedDelay = blockTime * 5 = 2500ms = 2.5s
-	// After 2.5s without producing a block, aggregator should be UNREADY
-
-	// Poll for readiness to transition to UNREADY
-	// This is more robust than fixed time.Sleep as it handles timing variations
 	require.Eventually(func() bool {
 		readiness, err := rpcClient.GetReadiness(ctx)
 		if err != nil {
@@ -477,6 +459,5 @@ func TestReadinessEndpointWhenBlockProductionStops(t *testing.T) {
 		return readiness == client.ReadinessStatus_UNREADY
 	}, 10*time.Second, 100*time.Millisecond, "Readiness should be UNREADY after aggregator stops producing blocks (5x block time)")
 
-	// Stop the node and wait for shutdown
 	shutdownAndWait(t, []context.CancelFunc{cancel}, &runningWg, 10*time.Second)
 }

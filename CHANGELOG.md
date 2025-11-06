@@ -14,8 +14,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added comprehensive health endpoint documentation in `docs/learn/config.md#health-endpoints` explaining liveness vs readiness checks, Kubernetes probe configuration, and usage examples ([#2800](https://github.com/evstack/ev-node/pull/2800))
 - Added P2P listening check to `/health/ready` endpoint to verify P2P network is ready to accept connections ([#2800](https://github.com/evstack/ev-node/pull/2800))
 - Added aggregator block production rate check to `/health/ready` endpoint to ensure aggregators are producing blocks within expected timeframe (5x block time) ([#2800](https://github.com/evstack/ev-node/pull/2800))
-- Added `GetReadiness()` method to Go RPC client for checking `/health/ready` endpoint ([#2800](https://github.com/evstack/ev-node/pull/2800))
-- Added `ReadinessStatus` type to Go RPC client with READY/UNREADY/UNKNOWN states ([#2800](https://github.com/evstack/ev-node/pull/2800))
 - Added `readyz()` and `is_ready()` methods to Rust `HealthClient` for checking `/health/ready` endpoint ([#2800](https://github.com/evstack/ev-node/pull/2800))
 - Added `ReadinessStatus` enum to Rust client with Ready/Unready/Unknown states ([#2800](https://github.com/evstack/ev-node/pull/2800))
 
@@ -33,7 +31,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **BREAKING:** Removed `evnode.v1.HealthService` gRPC endpoint in favor of HTTP health endpoints ([#2800](https://github.com/evstack/ev-node/pull/2800))
   - Migration: Use `GET /health/live` instead of `HealthService.Livez()` gRPC call
   - See migration guide: `docs/learn/config.md#health-endpoints`
-  - Affected clients: Go client (`pkg/rpc/client`), Rust client (`client/crates/client`), and any external services using the gRPC health endpoint
+  - Affected clients: Rust client (`client/crates/client`) and any external services using the gRPC health endpoint
 - Removed `proto/evnode/v1/health.proto` and generated protobuf files ([#2800](https://github.com/evstack/ev-node/pull/2800))
 
 ## v1.0.0-beta.9
