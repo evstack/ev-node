@@ -61,6 +61,8 @@ jobs:
     needs: [determine-image-tag, docker]
     uses: ./.github/workflows/docker-tests.yml
     secrets: inherit
+    permissions:
+      contents: read
     with:
       image-tag: ${{ needs.determine-image-tag.outputs.tag }}
 
