@@ -320,8 +320,7 @@ func (s *Syncer) fetchDAUntilCaughtUp() error {
 
 		if len(events) == 0 {
 			// This can happen if RetrieveFromDA returns no events and no error.
-			s.logger.Debug().Uint64("da_height", daHeight).Msg("no events returned from DA, but no error either. Backing off.")
-			// return fmt.Errorf("no events returned from DA for height %d", daHeight)
+			s.logger.Debug().Uint64("da_height", daHeight).Msg("no events returned from DA, but no error either.")
 		}
 
 		// Process DA events
