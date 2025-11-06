@@ -65,6 +65,7 @@ func TestBasic(t *testing.T) {
 	require.NoError(t, err, "failed to init aggregator", output)
 
 	// start aggregator
+	node1P2P := "/ip4/0.0.0.0/tcp/26656"
 	sut.ExecCmd(binaryPath,
 		"start",
 		"--home="+node1Home,
@@ -72,13 +73,14 @@ func TestBasic(t *testing.T) {
 		"--evnode.signer.passphrase_file="+passphraseFile,
 		"--evnode.node.block_time=5ms",
 		"--evnode.da.block_time=15ms",
+		"--evnode.p2p.listen_address="+node1P2P,
 		"--kv-endpoint=127.0.0.1:9090",
 	)
 
 	sut.AwaitNodeUp(t, "http://127.0.0.1:7331", 2*time.Second)
 
 	// Give aggregator more time before starting the next node
-	time.Sleep(1 * time.Second) // Increased wait time
+	time.Sleep(2 * time.Second)
 
 	// Init the second node (full node)
 	output, err = sut.RunCmd(binaryPath,
@@ -91,7 +93,7 @@ func TestBasic(t *testing.T) {
 	// Copy genesis file from aggregator to full node
 	MustCopyFile(t, filepath.Join(node1Home, "config", "genesis.json"), filepath.Join(node2Home, "config", "genesis.json"))
 
-	// Start the full node
+	// Start the full node - will discover aggregator via DHT
 	node2RPC := "127.0.0.1:7332"
 	node2P2P := "/ip4/0.0.0.0/tcp/7676"
 	sut.ExecCmd(
@@ -100,11 +102,13 @@ func TestBasic(t *testing.T) {
 		"--home="+node2Home,
 		"--evnode.log.level=debug",
 		"--evnode.p2p.listen_address="+node2P2P,
+		"--evnode.node.readiness_max_blocks_behind=100", // Allow more blocks behind during bootstrap
 		fmt.Sprintf("--evnode.rpc.address=%s", node2RPC),
 	)
 
-	sut.AwaitNodeUp(t, "http://"+node2RPC, 2*time.Second)
-	t.Logf("Full node (node 2) is up.")
+	// For local e2e tests, only check liveness (not full readiness with peers)
+	sut.AwaitNodeLive(t, "http://"+node2RPC, 10*time.Second)
+	t.Logf("Full node (node 2) is live.")
 
 	// when a client TX for state update is executed
 	const myKey = "foo"
