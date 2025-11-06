@@ -15,9 +15,12 @@ import (
 	"github.com/evstack/ev-node/types"
 )
 
-// P2PHandler fan-outs store updates from the go-header stores into the syncer.
-// It ensures both the header and data for a given height are present and
-// consistent before emitting an event to the syncer.
+// P2PHandler coordinates block retrieval from P2P stores for the syncer.
+// It waits for both header and data to be available at a given height,
+// validates their consistency, and emits events to the syncer for processing.
+//
+// The handler maintains a processedHeight to track the highest block that has been
+// successfully validated and sent to the syncer, preventing duplicate processing.
 type P2PHandler struct {
 	headerStore goheader.Store[*types.SignedHeader]
 	dataStore   goheader.Store[*types.Data]
@@ -55,8 +58,9 @@ func (h *P2PHandler) SetProcessedHeight(height uint64) {
 	h.mu.Unlock()
 }
 
-// ProcessHeight waits until both header and data for the given height are available.
-// Once available, it validates and emits the event to the provided channel or stores it as pending.
+// ProcessHeight retrieves and validates both header and data for the given height from P2P stores.
+// It blocks until both are available, validates consistency (proposer address and data hash match),
+// then emits the event to heightInCh or stores it as pending. Updates processedHeight on success.
 func (h *P2PHandler) ProcessHeight(ctx context.Context, height uint64, heightInCh chan<- common.DAHeightEvent) error {
 	h.mu.Lock()
 	shouldProcess := height > h.processedHeight

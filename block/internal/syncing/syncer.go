@@ -478,6 +478,9 @@ func (s *Syncer) processHeightEvent(event *common.DAHeightEvent) {
 		event.Data.LastDataHash = lastData.Hash()
 	}
 
+	// Cancel any P2P wait that might still be blocked on this height, as we have a block for it.
+	s.cancelP2PWait(height)
+
 	// Try to sync the next block
 	if err := s.trySyncNextBlock(event); err != nil {
 		s.logger.Error().Err(err).Msg("failed to sync next block")
@@ -494,9 +497,6 @@ func (s *Syncer) processHeightEvent(event *common.DAHeightEvent) {
 		}
 		return
 	}
-
-	// Cancel any P2P wait that might still be blocked on this height
-	s.cancelP2PWait(height)
 
 	// only save to p2p stores if the event came from DA
 	if event.Source == common.SourceDA {
