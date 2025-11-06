@@ -55,74 +55,42 @@ func (h *P2PHandler) SetProcessedHeight(height uint64) {
 	h.mu.Unlock()
 }
 
-// ProcessHeaderRange scans the provided heights and emits events when both the
-// header and data are available.
-func (h *P2PHandler) ProcessHeaderRange(ctx context.Context, startHeight, endHeight uint64, heightInCh chan<- common.DAHeightEvent) {
-	if startHeight > endHeight {
-		return
+// ProcessHeight waits until both header and data for the given height are available.
+// Once available, it validates and emits the event to the provided channel or stores it as pending.
+func (h *P2PHandler) ProcessHeight(ctx context.Context, height uint64, heightInCh chan<- common.DAHeightEvent) error {
+	h.mu.Lock()
+	shouldProcess := height > h.processedHeight
+	h.mu.Unlock()
+
+	if !shouldProcess {
+		return nil
 	}
 
-	for height := startHeight; height <= endHeight; height++ {
-		h.mu.Lock()
-		shouldProcess := height > h.processedHeight
-		h.mu.Unlock()
-
-		if !shouldProcess {
-			continue
-		}
-		h.processHeight(ctx, height, heightInCh, "header_range")
-	}
-}
-
-// ProcessDataRange scans the provided heights and emits events when both the
-// header and data are available.
-func (h *P2PHandler) ProcessDataRange(ctx context.Context, startHeight, endHeight uint64, heightInCh chan<- common.DAHeightEvent) {
-	if startHeight > endHeight {
-		return
-	}
-
-	for height := startHeight; height <= endHeight; height++ {
-		h.mu.Lock()
-		shouldProcess := height > h.processedHeight
-		h.mu.Unlock()
-
-		if !shouldProcess {
-			continue
-		}
-		h.processHeight(ctx, height, heightInCh, "data_range")
-	}
-}
-
-func (h *P2PHandler) processHeight(ctx context.Context, height uint64, heightInCh chan<- common.DAHeightEvent, source string) {
 	header, err := h.headerStore.GetByHeight(ctx, height)
 	if err != nil {
 		if ctx.Err() == nil {
-			h.logger.Debug().Uint64("height", height).Err(err).Str("source", source).Msg("header unavailable in store")
+			h.logger.Debug().Uint64("height", height).Err(err).Msg("header unavailable in store")
 		}
-		return
+		return err
 	}
 	if err := h.assertExpectedProposer(header.ProposerAddress); err != nil {
-		h.logger.Debug().Uint64("height", height).Err(err).Str("source", source).Msg("invalid header from P2P")
-		return
+		h.logger.Debug().Uint64("height", height).Err(err).Msg("invalid header from P2P")
+		return err
 	}
 
 	data, err := h.dataStore.GetByHeight(ctx, height)
 	if err != nil {
 		if ctx.Err() == nil {
-			h.logger.Debug().Uint64("height", height).Err(err).Str("source", source).Msg("data unavailable in store")
+			h.logger.Debug().Uint64("height", height).Err(err).Msg("data unavailable in store")
 		}
-		return
+		return err
 	}
 
 	dataCommitment := data.DACommitment()
 	if !bytes.Equal(header.DataHash[:], dataCommitment[:]) {
-		h.logger.Warn().
-			Uint64("height", height).
-			Str("header_data_hash", fmt.Sprintf("%x", header.DataHash)).
-			Str("actual_data_hash", fmt.Sprintf("%x", dataCommitment)).
-			Str("source", source).
-			Msg("DataHash mismatch: header and data do not match from P2P, discarding")
-		return
+		err := fmt.Errorf("data hash mismatch: header %x, data %x", header.DataHash, dataCommitment)
+		h.logger.Warn().Uint64("height", height).Err(err).Msg("discarding inconsistent block from P2P")
+		return err
 	}
 
 	event := common.DAHeightEvent{
@@ -138,7 +106,14 @@ func (h *P2PHandler) processHeight(ctx context.Context, height uint64, heightInC
 		h.cache.SetPendingEvent(event.Header.Height(), &event)
 	}
 
-	h.logger.Debug().Uint64("height", height).Str("source", source).Msg("processed event from P2P")
+	h.mu.Lock()
+	if height > h.processedHeight {
+		h.processedHeight = height
+	}
+	h.mu.Unlock()
+
+	h.logger.Debug().Uint64("height", height).Msg("processed event from P2P")
+	return nil
 }
 
 // assertExpectedProposer validates the proposer address.

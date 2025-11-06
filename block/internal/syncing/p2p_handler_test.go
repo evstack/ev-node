@@ -130,7 +130,7 @@ func collectEvents(t *testing.T, ch <-chan common.DAHeightEvent, timeout time.Du
 	}
 }
 
-func TestP2PHandler_ProcessRange_EmitsEventWhenHeaderAndDataPresent(t *testing.T) {
+func TestP2PHandler_ProcessHeight_EmitsEventWhenHeaderAndDataPresent(t *testing.T) {
 	p := setupP2P(t)
 	ctx := context.Background()
 
@@ -149,7 +149,8 @@ func TestP2PHandler_ProcessRange_EmitsEventWhenHeaderAndDataPresent(t *testing.T
 	p.DataStore.EXPECT().GetByHeight(mock.Anything, uint64(5)).Return(data, nil).Once()
 
 	ch := make(chan common.DAHeightEvent, 1)
-	p.Handler.ProcessHeaderRange(ctx, 5, 5, ch)
+	err = p.Handler.ProcessHeight(ctx, 5, ch)
+	require.NoError(t, err)
 
 	events := collectEvents(t, ch, 50*time.Millisecond)
 	require.Len(t, events, 1)
@@ -157,7 +158,7 @@ func TestP2PHandler_ProcessRange_EmitsEventWhenHeaderAndDataPresent(t *testing.T
 	require.NotNil(t, events[0].Data)
 }
 
-func TestP2PHandler_ProcessRange_SkipsWhenDataMissing(t *testing.T) {
+func TestP2PHandler_ProcessHeight_SkipsWhenDataMissing(t *testing.T) {
 	p := setupP2P(t)
 	ctx := context.Background()
 
@@ -174,27 +175,30 @@ func TestP2PHandler_ProcessRange_SkipsWhenDataMissing(t *testing.T) {
 	p.DataStore.EXPECT().GetByHeight(mock.Anything, uint64(7)).Return(nil, errors.New("missing")).Once()
 
 	ch := make(chan common.DAHeightEvent, 1)
-	p.Handler.ProcessHeaderRange(ctx, 7, 7, ch)
+	err = p.Handler.ProcessHeight(ctx, 7, ch)
+	require.Error(t, err)
 
 	require.Empty(t, collectEvents(t, ch, 50*time.Millisecond))
 }
 
-func TestP2PHandler_ProcessRange_SkipsWhenHeaderMissing(t *testing.T) {
+func TestP2PHandler_ProcessHeight_SkipsWhenHeaderMissing(t *testing.T) {
 	p := setupP2P(t)
 	ctx := context.Background()
 
 	p.HeaderStore.EXPECT().GetByHeight(mock.Anything, uint64(9)).Return(nil, errors.New("missing")).Once()
 
 	ch := make(chan common.DAHeightEvent, 1)
-	p.Handler.ProcessHeaderRange(ctx, 9, 9, ch)
+	err := p.Handler.ProcessHeight(ctx, 9, ch)
+	require.Error(t, err)
 
 	require.Empty(t, collectEvents(t, ch, 50*time.Millisecond))
 	p.DataStore.AssertNotCalled(t, "GetByHeight", mock.Anything, uint64(9))
 }
 
-func TestP2PHandler_ProcessRange_SkipsOnProposerMismatch(t *testing.T) {
+func TestP2PHandler_ProcessHeight_SkipsOnProposerMismatch(t *testing.T) {
 	p := setupP2P(t)
 	ctx := context.Background()
+	var err error
 
 	badAddr, pub, signer := buildTestSigner(t)
 	require.NotEqual(t, string(p.Genesis.ProposerAddress), string(badAddr))
@@ -205,19 +209,29 @@ func TestP2PHandler_ProcessRange_SkipsOnProposerMismatch(t *testing.T) {
 	p.HeaderStore.EXPECT().GetByHeight(mock.Anything, uint64(11)).Return(header, nil).Once()
 
 	ch := make(chan common.DAHeightEvent, 1)
-	p.Handler.ProcessHeaderRange(ctx, 11, 11, ch)
+	err = p.Handler.ProcessHeight(ctx, 11, ch)
+	require.Error(t, err)
 
 	require.Empty(t, collectEvents(t, ch, 50*time.Millisecond))
 	p.DataStore.AssertNotCalled(t, "GetByHeight", mock.Anything, uint64(11))
 }
 
-func TestP2PHandler_ProcessRange_UsesProcessedHeightToSkip(t *testing.T) {
+func TestP2PHandler_ProcessedHeightSkipsPreviouslyHandledBlocks(t *testing.T) {
 	p := setupP2P(t)
 	ctx := context.Background()
 
 	// Mark up to height 5 as processed.
 	p.Handler.SetProcessedHeight(5)
 
+	ch := make(chan common.DAHeightEvent, 1)
+
+	// Heights below or equal to 5 should be skipped without touching the stores.
+	require.NoError(t, p.Handler.ProcessHeight(ctx, 4, ch))
+	require.Empty(t, collectEvents(t, ch, 50*time.Millisecond))
+	p.HeaderStore.AssertNotCalled(t, "GetByHeight", mock.Anything, uint64(4))
+	p.DataStore.AssertNotCalled(t, "GetByHeight", mock.Anything, uint64(4))
+
+	// Height 6 should be fetched normally.
 	header := p2pMakeSignedHeader(t, p.Genesis.ChainID, 6, p.ProposerAddr, p.ProposerPub, p.Signer)
 	data := makeData(p.Genesis.ChainID, 6, 1)
 	header.DataHash = data.DACommitment()
@@ -230,15 +244,14 @@ func TestP2PHandler_ProcessRange_UsesProcessedHeightToSkip(t *testing.T) {
 	p.HeaderStore.EXPECT().GetByHeight(mock.Anything, uint64(6)).Return(header, nil).Once()
 	p.DataStore.EXPECT().GetByHeight(mock.Anything, uint64(6)).Return(data, nil).Once()
 
-	ch := make(chan common.DAHeightEvent, 1)
-	p.Handler.ProcessHeaderRange(ctx, 4, 6, ch)
+	require.NoError(t, p.Handler.ProcessHeight(ctx, 6, ch))
 
 	events := collectEvents(t, ch, 50*time.Millisecond)
 	require.Len(t, events, 1)
 	require.Equal(t, uint64(6), events[0].Header.Height())
 }
 
-func TestP2PHandler_OnHeightProcessedPreventsDuplicates(t *testing.T) {
+func TestP2PHandler_SetProcessedHeightPreventsDuplicates(t *testing.T) {
 	p := setupP2P(t)
 	ctx := context.Background()
 
@@ -255,18 +268,18 @@ func TestP2PHandler_OnHeightProcessedPreventsDuplicates(t *testing.T) {
 	p.DataStore.EXPECT().GetByHeight(mock.Anything, uint64(8)).Return(data, nil).Once()
 
 	ch := make(chan common.DAHeightEvent, 1)
-	p.Handler.ProcessHeaderRange(ctx, 8, 8, ch)
+	require.NoError(t, p.Handler.ProcessHeight(ctx, 8, ch))
 
 	events := collectEvents(t, ch, 50*time.Millisecond)
 	require.Len(t, events, 1)
 
-	// Mark the height as processed; a subsequent range should skip lookups.
+	// Mark the height as processed; a subsequent request should skip store access.
 	p.Handler.SetProcessedHeight(8)
 
 	p.HeaderStore.AssertExpectations(t)
 	p.DataStore.AssertExpectations(t)
 
 	// No additional expectations set; if the handler queried the stores again the mock would fail.
-	p.Handler.ProcessHeaderRange(ctx, 7, 8, ch)
+	require.NoError(t, p.Handler.ProcessHeight(ctx, 8, ch))
 	require.Empty(t, collectEvents(t, ch, 50*time.Millisecond))
 }

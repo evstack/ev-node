@@ -27,7 +27,6 @@ import (
 	"github.com/evstack/ev-node/block/internal/common"
 	"github.com/evstack/ev-node/pkg/config"
 	"github.com/evstack/ev-node/pkg/store"
-	syncnotifier "github.com/evstack/ev-node/pkg/sync/notifier"
 	extmocks "github.com/evstack/ev-node/test/mocks/external"
 	"github.com/evstack/ev-node/types"
 )
@@ -99,33 +98,6 @@ func makeData(chainID string, height uint64, txs int) *types.Data {
 		}
 	}
 	return d
-}
-
-type stubP2PHandler struct {
-	headerCalls chan [2]uint64
-	dataCalls   chan [2]uint64
-}
-
-func newStubP2PHandler() *stubP2PHandler {
-	return &stubP2PHandler{
-		headerCalls: make(chan [2]uint64, 4),
-		dataCalls:   make(chan [2]uint64, 4),
-	}
-}
-
-func (s *stubP2PHandler) ProcessHeaderRange(_ context.Context, fromHeight, toHeight uint64, _ chan<- common.DAHeightEvent) {
-	s.headerCalls <- [2]uint64{fromHeight, toHeight}
-}
-
-func (s *stubP2PHandler) ProcessDataRange(_ context.Context, fromHeight, toHeight uint64, _ chan<- common.DAHeightEvent) {
-	s.dataCalls <- [2]uint64{fromHeight, toHeight}
-}
-
-func (s *stubP2PHandler) SetProcessedHeight(uint64) {}
-
-func (s *stubP2PHandler) OnHeightProcessed(uint64) {}
-
-func (s *stubP2PHandler) Shutdown() {
 }
 
 func TestSyncer_validateBlock_DataHashMismatch(t *testing.T) {
@@ -302,152 +274,6 @@ func TestSequentialBlockSync(t *testing.T) {
 	requireEmptyChan(t, errChan)
 }
 
-func TestSyncerNotifierTriggersHeaderRange(t *testing.T) {
-	ds := dssync.MutexWrap(datastore.NewMapDatastore())
-	st := store.New(ds)
-	cfg := config.DefaultConfig()
-	gen := genesis.Genesis{ChainID: "tchain", InitialHeight: 1, StartTime: time.Now().Add(-time.Second), ProposerAddress: []byte("proposer")}
-
-	cm, err := cache.NewManager(cfg, st, zerolog.Nop())
-	require.NoError(t, err)
-
-	mockExec := testmocks.NewMockExecutor(t)
-	mockExec.EXPECT().InitChain(mock.Anything, gen.StartTime, gen.InitialHeight, gen.ChainID).Return([]byte("app0"), uint64(1024), nil).Once()
-
-	headerNotifier := syncnotifier.New(8, zerolog.Nop())
-	dataNotifier := syncnotifier.New(8, zerolog.Nop())
-
-	headerStoreMock := extmocks.NewMockStore[*types.SignedHeader](t)
-	headerStoreMock.EXPECT().Height().Return(uint64(5)).Maybe()
-
-	dataStoreMock := extmocks.NewMockStore[*types.Data](t)
-	dataStoreMock.EXPECT().Height().Return(uint64(0)).Maybe()
-
-	headerBroadcaster := common.NewMockBroadcaster[*types.SignedHeader](t)
-	headerBroadcaster.EXPECT().Notifier().Return(headerNotifier).Once()
-	headerBroadcaster.EXPECT().Store().Return(headerStoreMock).Maybe()
-
-	dataBroadcaster := common.NewMockBroadcaster[*types.Data](t)
-	dataBroadcaster.EXPECT().Notifier().Return(dataNotifier).Once()
-	dataBroadcaster.EXPECT().Store().Return(dataStoreMock).Maybe()
-
-	s := NewSyncer(
-		st,
-		mockExec,
-		nil,
-		cm,
-		common.NopMetrics(),
-		cfg,
-		gen,
-		headerBroadcaster,
-		dataBroadcaster,
-		zerolog.Nop(),
-		common.DefaultBlockOptions(),
-		make(chan error, 1),
-	)
-	require.NoError(t, s.initializeState())
-
-	s.ctx, s.cancel = context.WithCancel(context.Background())
-	defer func() {
-		require.NoError(t, s.Stop())
-	}()
-
-	stubHandler := newStubP2PHandler()
-	s.p2pHandler = stubHandler
-
-	require.NoError(t, s.startP2PListeners())
-
-	published := headerNotifier.Publish(syncnotifier.Event{Type: syncnotifier.EventTypeHeader, Height: 5, Source: syncnotifier.SourceP2P, Timestamp: time.Now()})
-	require.True(t, published)
-
-	select {
-	case call := <-stubHandler.headerCalls:
-		require.Equal(t, uint64(1), call[0])
-		require.Equal(t, uint64(5), call[1])
-	case <-time.After(time.Second):
-		t.Fatal("timeout waiting for header range processing")
-	}
-
-	select {
-	case <-stubHandler.dataCalls:
-		t.Fatal("unexpected data range processing for header-only event")
-	default:
-	}
-}
-
-func TestSyncerNotifierTriggersDataRange(t *testing.T) {
-	ds := dssync.MutexWrap(datastore.NewMapDatastore())
-	st := store.New(ds)
-	cfg := config.DefaultConfig()
-	gen := genesis.Genesis{ChainID: "tchain", InitialHeight: 1, StartTime: time.Now().Add(-time.Second), ProposerAddress: []byte("proposer")}
-
-	cm, err := cache.NewManager(cfg, st, zerolog.Nop())
-	require.NoError(t, err)
-
-	mockExec := testmocks.NewMockExecutor(t)
-	mockExec.EXPECT().InitChain(mock.Anything, gen.StartTime, gen.InitialHeight, gen.ChainID).Return([]byte("app0"), uint64(1024), nil).Once()
-
-	headerNotifier := syncnotifier.New(8, zerolog.Nop())
-	dataNotifier := syncnotifier.New(8, zerolog.Nop())
-
-	headerStoreMock := extmocks.NewMockStore[*types.SignedHeader](t)
-	headerStoreMock.EXPECT().Height().Return(uint64(0)).Maybe()
-
-	dataStoreMock := extmocks.NewMockStore[*types.Data](t)
-	dataStoreMock.EXPECT().Height().Return(uint64(7)).Maybe()
-
-	headerBroadcaster := common.NewMockBroadcaster[*types.SignedHeader](t)
-	headerBroadcaster.EXPECT().Notifier().Return(headerNotifier).Once()
-	headerBroadcaster.EXPECT().Store().Return(headerStoreMock).Maybe()
-
-	dataBroadcaster := common.NewMockBroadcaster[*types.Data](t)
-	dataBroadcaster.EXPECT().Notifier().Return(dataNotifier).Once()
-	dataBroadcaster.EXPECT().Store().Return(dataStoreMock).Maybe()
-
-	s := NewSyncer(
-		st,
-		mockExec,
-		nil,
-		cm,
-		common.NopMetrics(),
-		cfg,
-		gen,
-		headerBroadcaster,
-		dataBroadcaster,
-		zerolog.Nop(),
-		common.DefaultBlockOptions(),
-		make(chan error, 1),
-	)
-	require.NoError(t, s.initializeState())
-
-	s.ctx, s.cancel = context.WithCancel(context.Background())
-	defer func() {
-		require.NoError(t, s.Stop())
-	}()
-
-	stubHandler := newStubP2PHandler()
-	s.p2pHandler = stubHandler
-
-	require.NoError(t, s.startP2PListeners())
-
-	published := dataNotifier.Publish(syncnotifier.Event{Type: syncnotifier.EventTypeData, Height: 7, Source: syncnotifier.SourceP2P, Timestamp: time.Now()})
-	require.True(t, published)
-
-	select {
-	case call := <-stubHandler.dataCalls:
-		require.Equal(t, uint64(1), call[0])
-		require.Equal(t, uint64(7), call[1])
-	case <-time.After(time.Second):
-		t.Fatal("timeout waiting for data range processing")
-	}
-
-	select {
-	case <-stubHandler.headerCalls:
-		t.Fatal("unexpected header range processing for data-only event")
-	default:
-	}
-}
-
 func TestSyncer_sendNonBlockingSignal(t *testing.T) {
 	s := &Syncer{logger: zerolog.Nop()}
 	ch := make(chan struct{}, 1)
@@ -510,6 +336,8 @@ func TestSyncLoopPersistState(t *testing.T) {
 	ds := dssync.MutexWrap(datastore.NewMapDatastore())
 	st := store.New(ds)
 	cfg := config.DefaultConfig()
+	t.Setenv("HOME", t.TempDir())
+	cfg.RootDir = t.TempDir()
 	cfg.ClearCache = true
 
 	cacheMgr, err := cache.NewManager(cfg, st, zerolog.Nop())
@@ -556,9 +384,7 @@ func TestSyncLoopPersistState(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 	syncerInst1.ctx = ctx
 	daRtrMock, p2pHndlMock := newMockdaRetriever(t), newMockp2pHandler(t)
-	p2pHndlMock.On("ProcessHeaderRange", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return().Maybe()
-	p2pHndlMock.On("ProcessDataRange", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return().Maybe()
-	p2pHndlMock.On("OnHeightProcessed", mock.Anything).Return().Maybe()
+	p2pHndlMock.On("ProcessHeight", mock.Anything, mock.Anything, mock.Anything).Return(nil).Maybe()
 	p2pHndlMock.On("SetProcessedHeight", mock.Anything).Return().Maybe()
 	syncerInst1.daRetriever, syncerInst1.p2pHandler = daRtrMock, p2pHndlMock
 
@@ -650,9 +476,7 @@ func TestSyncLoopPersistState(t *testing.T) {
 	t.Cleanup(cancel)
 	syncerInst2.ctx = ctx
 	daRtrMock, p2pHndlMock = newMockdaRetriever(t), newMockp2pHandler(t)
-	p2pHndlMock.On("ProcessHeaderRange", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return().Maybe()
-	p2pHndlMock.On("ProcessDataRange", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return().Maybe()
-	p2pHndlMock.On("OnHeightProcessed", mock.Anything).Return().Maybe()
+	p2pHndlMock.On("ProcessHeight", mock.Anything, mock.Anything, mock.Anything).Return(nil).Maybe()
 	p2pHndlMock.On("SetProcessedHeight", mock.Anything).Return().Maybe()
 	syncerInst2.daRetriever, syncerInst2.p2pHandler = daRtrMock, p2pHndlMock
 
