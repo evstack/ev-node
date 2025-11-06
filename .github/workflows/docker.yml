@@ -43,17 +43,6 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Determine image tag
-        id: tag
-        run: |
-          if [ "${{ github.event_name }}" = "release" ] || [ "${{ github.event_name }}" = "push" ]; then
-            echo "tag=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
-          elif [ "${{ github.event_name }}" = "pull_request" ]; then
-            echo "tag=pr-${{ github.event.pull_request.number }}" >> $GITHUB_OUTPUT
-          else
-            echo "tag=${{ inputs.image-tag }}" >> $GITHUB_OUTPUT
-          fi
-
       - name: Build and push ${{ matrix.image-name }} Docker image
         uses: docker/build-push-action@v6
         with:
@@ -61,4 +50,4 @@ jobs:
           file: ${{ matrix.dockerfile }}
           push: true
           platforms: linux/amd64,linux/arm64
-          tags: ghcr.io/${{ github.repository_owner }}/${{ matrix.image-name }}:${{ steps.tag.outputs.tag }}
+          tags: ghcr.io/${{ github.repository_owner }}/${{ matrix.image-name }}:${{ inputs.image-tag }}
