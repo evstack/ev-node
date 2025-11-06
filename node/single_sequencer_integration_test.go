@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
 	"sync"
 	"testing"
 	"time"
@@ -16,7 +17,6 @@ import (
 	coreda "github.com/evstack/ev-node/core/da"
 	coreexecutor "github.com/evstack/ev-node/core/execution"
 	evconfig "github.com/evstack/ev-node/pkg/config"
-	"github.com/evstack/ev-node/pkg/rpc/client"
 )
 
 // FullNodeTestSuite is a test suite for full node integration tests
@@ -439,11 +439,10 @@ func TestReadinessEndpointWhenBlockProductionStops(t *testing.T) {
 
 	waitForBlockN(t, 1, node, config.Node.BlockTime.Duration)
 
-	rpcClient := NewRPCClient(config.RPC.Address)
-
-	readiness, err := rpcClient.GetReadiness(ctx)
+	resp, err := http.Get("http://" + config.RPC.Address + "/health/ready")
 	require.NoError(err)
-	require.Equal(client.ReadinessStatus_READY, readiness, "Readiness should be READY while producing blocks")
+	require.Equal(http.StatusOK, resp.StatusCode, "Readiness should be READY while producing blocks")
+	resp.Body.Close()
 
 	time.Sleep(time.Duration(config.Node.MaxPendingHeadersAndData+2) * config.Node.BlockTime.Duration)
 
@@ -452,11 +451,12 @@ func TestReadinessEndpointWhenBlockProductionStops(t *testing.T) {
 	require.LessOrEqual(height, config.Node.MaxPendingHeadersAndData)
 
 	require.Eventually(func() bool {
-		readiness, err := rpcClient.GetReadiness(ctx)
+		resp, err := http.Get("http://" + config.RPC.Address + "/health/ready")
 		if err != nil {
 			return false
 		}
-		return readiness == client.ReadinessStatus_UNREADY
+		defer resp.Body.Close()
+		return resp.StatusCode == http.StatusServiceUnavailable
 	}, 10*time.Second, 100*time.Millisecond, "Readiness should be UNREADY after aggregator stops producing blocks (5x block time)")
 
 	shutdownAndWait(t, []context.CancelFunc{cancel}, &runningWg, 10*time.Second)

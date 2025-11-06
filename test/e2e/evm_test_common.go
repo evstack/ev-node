@@ -367,7 +367,8 @@ func setupSequencerNodeLazy(t *testing.T, sut *SystemUnderTest, sequencerHome, j
 		"--evm.eth-url", endpoints.GetSequencerEthURL(),
 	}
 	sut.ExecCmd(evmSingleBinaryPath, args...)
-	sut.AwaitNodeUp(t, endpoints.GetRollkitRPCAddress(), NodeStartupTimeout)
+	// Use AwaitNodeLive for lazy mode since the node won't be ready (producing blocks) immediately
+	sut.AwaitNodeLive(t, endpoints.GetRollkitRPCAddress(), NodeStartupTimeout)
 }
 
 // setupFullNode initializes and starts the full node with P2P connection to sequencer.
@@ -421,7 +422,9 @@ func setupFullNode(t *testing.T, sut *SystemUnderTest, fullNodeHome, sequencerHo
 		"--rollkit.p2p.listen_address", endpoints.GetFullNodeP2PAddress(),
 	}
 	sut.ExecCmd(evmSingleBinaryPath, args...)
-	sut.AwaitNodeUp(t, endpoints.GetFullNodeRPCAddress(), NodeStartupTimeout)
+	// Use AwaitNodeLive instead of AwaitNodeUp because in lazy mode scenarios,
+	// the full node may not become ready until the sequencer produces blocks
+	sut.AwaitNodeLive(t, endpoints.GetFullNodeRPCAddress(), NodeStartupTimeout)
 }
 
 // Global nonce counter to ensure unique nonces across multiple transaction submissions
@@ -676,7 +679,8 @@ func restartDAAndSequencerLazy(t *testing.T, sut *SystemUnderTest, sequencerHome
 
 	time.Sleep(SlowPollingInterval)
 
-	sut.AwaitNodeUp(t, endpoints.GetRollkitRPCAddress(), NodeStartupTimeout)
+	// Use AwaitNodeLive for lazy mode since the node won't be ready (producing blocks) immediately
+	sut.AwaitNodeLive(t, endpoints.GetRollkitRPCAddress(), NodeStartupTimeout)
 }
 
 // restartSequencerNode starts an existing sequencer node without initialization.
