@@ -35,10 +35,22 @@ jobs:
         id: set-tag
         run: |
           if [ -n "${{ github.event.pull_request.number }}" ]; then
-            echo "tag=pr-${{ github.event.pull_request.number }}" >> $GITHUB_OUTPUT
+            TAG="pr-${{ github.event.pull_request.number }}"
+            echo "::notice::Using PR-based tag: $TAG"
           else
-            echo "tag=${{ github.ref_name }}" >> $GITHUB_OUTPUT
+            # Sanitize ref_name by replacing / with -
+            TAG="${{ github.ref_name }}"
+            TAG="${TAG//\//-}"
+            echo "::notice::Using branch/tag-based tag: $TAG"
           fi
+
+          # Validate tag format
+          if [[ ! "$TAG" =~ ^[a-zA-Z0-9._-]+$ ]]; then
+            echo "::error::Invalid image tag format: $TAG"
+            exit 1
+          fi
+
+          echo "tag=$TAG" >> $GITHUB_OUTPUT
 
   lint:
     permissions:
@@ -65,7 +77,7 @@ jobs:
       image-tag: ${{ needs.determine-image-tag.outputs.tag }}
 
   docker-tests:
-    needs: [determine-image-tag, docker]
+    needs: [docker]
     uses: ./.github/workflows/docker-tests.yml
     secrets: inherit
     permissions:
@@ -93,7 +105,7 @@ jobs:
 
   # Make a release if this is a manually trigger job, i.e. workflow_dispatch
   release:
-    needs: [lint, docker, test, docker-tests, proto, branch_name]
+    needs: [lint, test, docker-tests, proto, branch_name]
     runs-on: ubuntu-latest
     if: ${{ github.event_name == 'workflow_dispatch' }}
     permissions: "write-all"
