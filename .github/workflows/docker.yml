@@ -8,12 +8,6 @@ on:
         required: true
         type: string
         description: 'Docker image tag (e.g., v1.2.3, pr-123, sha-abc123)'
-  workflow_dispatch:
-    inputs:
-      image-tag:
-        description: 'Docker image tag to build (e.g., v1.2.3, sha-abc123)'
-        required: true
-        type: string
   push:
     tags:
       - 'v*'
