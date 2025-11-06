@@ -14,5 +14,3 @@ lint:
 breaking:
   use:
     - FILE
-  ignore:
-    - evnode/v1/health.proto

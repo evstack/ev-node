@@ -65,7 +65,6 @@ func TestBasic(t *testing.T) {
 	require.NoError(t, err, "failed to init aggregator", output)
 
 	// start aggregator
-	node1P2P := "/ip4/0.0.0.0/tcp/26656"
 	sut.ExecCmd(binaryPath,
 		"start",
 		"--home="+node1Home,
@@ -73,7 +72,6 @@ func TestBasic(t *testing.T) {
 		"--evnode.signer.passphrase_file="+passphraseFile,
 		"--evnode.node.block_time=5ms",
 		"--evnode.da.block_time=15ms",
-		"--evnode.p2p.listen_address="+node1P2P,
 		"--kv-endpoint=127.0.0.1:9090",
 	)
 
@@ -102,11 +100,10 @@ func TestBasic(t *testing.T) {
 		"--home="+node2Home,
 		"--evnode.log.level=debug",
 		"--evnode.p2p.listen_address="+node2P2P,
-		"--evnode.node.readiness_max_blocks_behind=100", // Allow more blocks behind during bootstrap
 		fmt.Sprintf("--evnode.rpc.address=%s", node2RPC),
 	)
 
-	// For local e2e tests, only check liveness (not full readiness with peers)
+	// For local e2e tests, only check liveness since P2P discovery may take time
 	sut.AwaitNodeLive(t, "http://"+node2RPC, 10*time.Second)
 	t.Logf("Full node (node 2) is live.")
 

@@ -16,7 +16,9 @@ type BestKnownHeightProvider func() uint64
 
 // RegisterCustomHTTPEndpoints registers custom HTTP handlers on the mux.
 func RegisterCustomHTTPEndpoints(mux *http.ServeMux, s store.Store, pm p2p.P2PRPC, cfg config.Config, bestKnownHeightProvider BestKnownHeightProvider, logger zerolog.Logger) {
-	// /health/live checks if the process is alive and responsive
+	// /health/live performs a basic liveness check to determine if the process is alive and responsive.
+	// Returns 200 if the process can access its store, 503 otherwise.
+	// This is a lightweight check suitable for Kubernetes liveness probes.
 	mux.HandleFunc("/health/live", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/plain")
 
@@ -31,7 +33,23 @@ func RegisterCustomHTTPEndpoints(mux *http.ServeMux, s store.Store, pm p2p.P2PRP
 		fmt.Fprintln(w, "OK")
 	})
 
-	// /health/ready checks if the node can serve correct data
+	// /health/ready performs a comprehensive readiness check to determine if the node can serve correct data.
+	// Returns 200 if all checks pass, 503 otherwise.
+	// Suitable for Kubernetes readiness probes and load balancer health checks.
+	//
+	// The following checks are performed:
+	// 1. P2P network connectivity (if P2P is enabled):
+	//    - Verifies P2P network info is accessible
+	//    - Confirms node is listening for P2P connections
+	//    - For non-aggregator nodes: ensures at least one peer is connected
+	// 2. Block production/sync status:
+	//    - Confirms node state is accessible
+	//    - Verifies at least one block has been produced/synced
+	// 3. Aggregator-specific checks (for aggregator nodes only):
+	//    - Validates blocks are being produced at expected rate (within 5x block_time)
+	// 4. Sync status (for all nodes):
+	//    - Compares local height with best known network height
+	//    - Ensures node is not falling behind by more than readiness_max_blocks_behind
 	mux.HandleFunc("/health/ready", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/plain")
 

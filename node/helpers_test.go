@@ -24,7 +24,6 @@ import (
 	evconfig "github.com/evstack/ev-node/pkg/config"
 	"github.com/evstack/ev-node/pkg/p2p"
 	"github.com/evstack/ev-node/pkg/p2p/key"
-	rpcclient "github.com/evstack/ev-node/pkg/rpc/client"
 	remote_signer "github.com/evstack/ev-node/pkg/signer/noop"
 	"github.com/evstack/ev-node/types"
 )
@@ -317,9 +316,4 @@ func verifyNodesSynced(node1, syncingNode Node, source Source) error {
 		}
 		return fmt.Errorf("nodes not synced: sequencer at height %v, syncing node at height %v", sequencerHeight, syncingHeight)
 	})
-}
-
-// NewRPCClient creates a new RPC client for testing
-func NewRPCClient(address string) *rpcclient.Client {
-	return rpcclient.NewClient("http://" + address)
 }

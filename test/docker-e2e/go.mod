@@ -4,6 +4,7 @@ go 1.24.6
 
 require (
 	cosmossdk.io/math v1.5.3
+	// TODO(reviewer): Update to tagged release once tastora is merged and tagged
 	github.com/celestiaorg/tastora v0.7.6-0.20251106081541-3ec2da2f1f7f
 	github.com/ethereum/go-ethereum v1.16.6
 	github.com/evstack/ev-node/execution/evm v1.0.0-beta.3
