@@ -1,0 +1,75 @@
+# Docker Images Build workflow
+# This workflow builds and pushes Docker images to GHCR
+name: Build Docker Images
+on:
+  workflow_call:
+    inputs:
+      image-tag:
+        required: true
+        type: string
+        description: 'Docker image tag (e.g., v1.2.3, pr-123, sha-abc123)'
+  workflow_dispatch:
+    inputs:
+      image-tag:
+        description: 'Docker image tag to build (e.g., v1.2.3, sha-abc123)'
+        required: true
+        type: string
+  push:
+    tags:
+      - 'v*'
+  release:
+    types: [published]
+
+jobs:
+  build-images:
+    name: Build ${{ matrix.image-name }}
+    # skip building images for merge groups as they are already built on PRs and main
+    if: github.event_name != 'merge_group'
+    runs-on: ubuntu-latest
+    permissions:
+      packages: write
+    strategy:
+      matrix:
+        include:
+          - image-name: ev-node
+            dockerfile: Dockerfile
+            context: .
+          - image-name: ev-node-evm-single
+            dockerfile: apps/evm/single/Dockerfile
+            context: .
+          - image-name: local-da
+            dockerfile: da/cmd/local-da/Dockerfile
+            context: .
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Determine image tag
+        id: tag
+        run: |
+          if [ "${{ github.event_name }}" = "release" ] || [ "${{ github.event_name }}" = "push" ]; then
+            echo "tag=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+          elif [ "${{ github.event_name }}" = "pull_request" ]; then
+            echo "tag=pr-${{ github.event.pull_request.number }}" >> $GITHUB_OUTPUT
+          else
+            echo "tag=${{ inputs.image-tag }}" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Build and push ${{ matrix.image-name }} Docker image
+        uses: docker/build-push-action@v6
+        with:
+          context: ${{ matrix.context }}
+          file: ${{ matrix.dockerfile }}
+          push: true
+          platforms: linux/amd64,linux/arm64
+          tags: ghcr.io/${{ github.repository_owner }}/${{ matrix.image-name }}:${{ steps.tag.outputs.tag }}

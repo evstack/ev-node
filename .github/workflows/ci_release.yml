@@ -26,8 +26,25 @@ jobs:
   lint:
     uses: ./.github/workflows/lint.yml
 
+  docker:
+    uses: ./.github/workflows/docker.yml
+    secrets: inherit
+    permissions:
+      packages: write
+    with:
+      # tag with the pr in the format of pr-1234 or the tag / branch if it is not a PR.
+      image-tag: ${{ github.event.pull_request.number && format('pr-{0}', github.event.pull_request.number) || github.ref_name }}
+
   test:
     uses: ./.github/workflows/test.yml
+    secrets: inherit
+    with:
+      # tag with the pr in the format of pr-1234 or the tag / branch if it is not a PR.
+      image-tag: ${{ github.event.pull_request.number && format('pr-{0}', github.event.pull_request.number) || github.ref_name }}
+
+  docker-tests:
+    needs: docker
+    uses: ./.github/workflows/docker-tests.yml
     secrets: inherit
     with:
       # tag with the pr in the format of pr-1234 or the tag / branch if it is not a PR.
@@ -49,7 +66,7 @@ jobs:
 
   # Make a release if this is a manually trigger job, i.e. workflow_dispatch
   release:
-    needs: [lint, test, proto, branch_name]
+    needs: [lint, docker, test, docker-tests, proto, branch_name]
     runs-on: ubuntu-latest
     if: ${{ github.event_name == 'workflow_dispatch' }}
     permissions: "write-all"

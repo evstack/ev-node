@@ -1,0 +1,46 @@
+# Docker E2E Tests workflow
+# This workflow runs tests that require Docker images to be built first
+name: Docker E2E Tests
+on:
+  workflow_call:
+    inputs:
+      image-tag:
+        required: true
+        type: string
+  workflow_dispatch:
+    inputs:
+      image-tag:
+        description: 'Docker image tag to use for tests (e.g., v1.2.3, pr-123, sha-abc123)'
+        required: true
+        type: string
+
+jobs:
+  docker-tests:
+    name: Docker E2E Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: set up go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: ./test/docker-e2e/go.mod
+      - name: Run Docker E2E Tests
+        run: make test-docker-e2e
+        env:
+          EV_NODE_IMAGE_REPO: ghcr.io/${{ github.repository }}
+          EV_NODE_IMAGE_TAG: ${{ inputs.image-tag }}
+
+  docker-upgrade-tests:
+    name: Docker Upgrade E2E Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: set up go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: ./test/docker-e2e/go.mod
+      - name: Run Docker Upgrade E2E Tests
+        run: make test-docker-upgrade-e2e
+        env:
+          EVM_SINGLE_IMAGE_REPO: ghcr.io/${{ github.repository_owner }}/ev-node-evm-single
+          EVM_SINGLE_NODE_IMAGE_TAG: ${{ inputs.image-tag }}
