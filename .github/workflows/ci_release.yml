@@ -23,32 +23,46 @@ on:
           - major
 
 jobs:
+  determine-image-tag:
+    name: Determine Image Tag
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.set-tag.outputs.tag }}
+    steps:
+      - name: Set image tag
+        id: set-tag
+        run: |
+          if [ -n "${{ github.event.pull_request.number }}" ]; then
+            echo "tag=pr-${{ github.event.pull_request.number }}" >> $GITHUB_OUTPUT
+          else
+            echo "tag=${{ github.ref_name }}" >> $GITHUB_OUTPUT
+          fi
+
   lint:
     uses: ./.github/workflows/lint.yml
 
   docker:
+    needs: determine-image-tag
     uses: ./.github/workflows/docker.yml
     secrets: inherit
     permissions:
       packages: write
     with:
-      # tag with the pr in the format of pr-1234 or the tag / branch if it is not a PR.
-      image-tag: ${{ github.event.pull_request.number && format('pr-{0}', github.event.pull_request.number) || github.ref_name }}
+      image-tag: ${{ needs.determine-image-tag.outputs.tag }}
 
   test:
+    needs: determine-image-tag
     uses: ./.github/workflows/test.yml
     secrets: inherit
     with:
-      # tag with the pr in the format of pr-1234 or the tag / branch if it is not a PR.
-      image-tag: ${{ github.event.pull_request.number && format('pr-{0}', github.event.pull_request.number) || github.ref_name }}
+      image-tag: ${{ needs.determine-image-tag.outputs.tag }}
 
   docker-tests:
-    needs: docker
+    needs: [determine-image-tag, docker]
     uses: ./.github/workflows/docker-tests.yml
     secrets: inherit
     with:
-      # tag with the pr in the format of pr-1234 or the tag / branch if it is not a PR.
-      image-tag: ${{ github.event.pull_request.number && format('pr-{0}', github.event.pull_request.number) || github.ref_name }}
+      image-tag: ${{ needs.determine-image-tag.outputs.tag }}
 
   proto:
     uses: ./.github/workflows/proto.yml
