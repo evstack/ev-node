@@ -25,14 +25,14 @@ The `DefaultStore` is the standard implementation of the `Store` interface, util
 
 The store organizes data using a prefix-based key system:
 
-| Prefix | Purpose | Key Format |
-|--------|---------|------------|
-| `h` | Block headers | `/h/{height}` |
-| `d` | Block data | `/d/{height}` |
-| `i` | Block index (hash -> height) | `/i/{hash}` |
-| `c` | Block signatures | `/c/{height}` |
-| `s` | Chain state | `s` |
-| `m` | Metadata | `/m/{key}` |
+| Prefix | Purpose                      | Key Format    |
+| ------ | ---------------------------- | ------------- |
+| `h`    | Block headers                | `/h/{height}` |
+| `d`    | Block data                   | `/d/{height}` |
+| `i`    | Block index (hash -> height) | `/i/{hash}`   |
+| `c`    | Block signatures             | `/c/{height}` |
+| `s`    | Chain state                  | `s`           |
+| `m`    | Metadata                     | `/m/{key}`    |
 
 ## Block Storage Sequence
 
@@ -117,7 +117,7 @@ classDiagram
 
 ```go
 // In-memory store (for testing)
-kvStore, err := store.NewDefaultInMemoryKVStore()
+kvStore, err := store.NewTestInMemoryKVStore()
 if err != nil {
     // handle error
 }

@@ -1,10 +1,16 @@
 # Tests / Code Coverage workflow
-# This workflow is triggered by ci_release.yml workflow
+# This workflow is triggered by ci_release.yml workflow or manually
 name: Tests / Code Coverage
 on:
   workflow_call:
     inputs:
       image-tag:
+        required: true
+        type: string
+  workflow_dispatch:
+    inputs:
+      image-tag:
+        description: 'Docker image tag to build (e.g., v1.2.3, sha-abc123)'
         required: true
         type: string
 
@@ -129,7 +135,6 @@ jobs:
         env:
           EVM_SINGLE_IMAGE_REPO: ghcr.io/${{ github.repository_owner }}/ev-node-evm-single
           EVM_SINGLE_NODE_IMAGE_TAG: ${{ inputs.image-tag }}
-
 
   build_all-apps:
     name: Build All ev-node Binaries

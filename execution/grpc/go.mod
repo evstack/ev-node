@@ -5,8 +5,8 @@ go 1.24.6
 require (
 	connectrpc.com/connect v1.19.1
 	connectrpc.com/grpcreflect v1.3.0
-	github.com/evstack/ev-node v1.0.0-beta.8
-	github.com/evstack/ev-node/core v1.0.0-beta.3
+	github.com/evstack/ev-node v1.0.0-beta.9
+	github.com/evstack/ev-node/core v1.0.0-beta.4
 	golang.org/x/net v0.46.0
 	google.golang.org/protobuf v1.36.10
 )
