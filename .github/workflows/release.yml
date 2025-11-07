@@ -4,6 +4,7 @@ on:
     tags:
       - '**/v*.*.*'  # Matches tags like evm/single/v0.2.0, testapp/v0.4.0, etc.
 
+permissions: {}
 jobs:
   parse-tag:
     name: Parse Release Tag
