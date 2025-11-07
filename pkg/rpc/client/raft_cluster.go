@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"time"
 )
 
 // RaftClusterClient is simple http based client for raft cluster management
@@ -70,6 +71,6 @@ func (r RaftClusterClient) broadcast(ctx context.Context, path string, obj any) 
 func NewRaftClusterClient(peers ...string) (RaftClusterClient, error) {
 	return RaftClusterClient{
 		peers:      peers,
-		httpClient: &http.Client{},
+		httpClient: &http.Client{Timeout: 3 * time.Second},
 	}, nil
 }

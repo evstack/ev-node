@@ -8,6 +8,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/hashicorp/raft"
 	"github.com/rs/zerolog"
 )
 
@@ -18,7 +19,7 @@ var ErrLeadershipLost = fmt.Errorf("leader lock lost")
 // IsSynced checks whether the component is synced with the given RaftBlockState.
 type Runnable interface {
 	Run(ctx context.Context) error
-	IsSynced(*RaftBlockState) bool
+	IsSynced(RaftBlockState) bool
 }
 
 type sourceNode interface {
@@ -26,7 +27,7 @@ type sourceNode interface {
 	leaderCh() <-chan bool
 	leaderID() string
 	NodeID() string
-	GetState() *RaftBlockState
+	GetState() RaftBlockState
 	leadershipTransfer() error
 }
 
@@ -93,7 +94,7 @@ func (d *DynamicLeaderElection) Run(ctx context.Context) error {
 					time.Sleep(d.node.Config().SendTimeout)
 					if !runnable.IsSynced(d.node.GetState()) {
 						d.logger.Info().Msg("became leader, but not synced. Pass on leadership")
-						if err := d.node.leadershipTransfer(); err != nil {
+						if err := d.node.leadershipTransfer(); err != nil && !errors.Is(err, raft.ErrNotLeader) {
 							return err
 						}
 						continue

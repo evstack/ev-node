@@ -215,7 +215,7 @@ func (e *Executor) initializeState() error {
 
 	if e.raftNode != nil {
 		// ensure node is fully synced before producing any blocks
-		if raftState := e.raftNode.GetState(); raftState != nil && raftState.Height != state.LastBlockHeight {
+		if raftState := e.raftNode.GetState(); raftState.Height != 0 && raftState.Height != state.LastBlockHeight {
 			return fmt.Errorf("invalid state: node is not synced with the chain: raft %d != %d state", raftState.Height, state.LastBlockHeight)
 		}
 	}
@@ -591,7 +591,7 @@ func (e *Executor) createBlock(ctx context.Context, height uint64, batchData *Ba
 	}
 
 	for i, tx := range batchData.Transactions {
-		data.Txs[i] = types.Tx(tx)
+		data.Txs[i] = tx
 	}
 
 	// Set data hash

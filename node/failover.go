@@ -200,13 +200,12 @@ func (f *failoverState) Run(ctx context.Context) (multiErr error) {
 		}
 	}()
 
-	defer func() {
-		if err := f.bc.Stop(); err != nil && !errors.Is(err, context.Canceled) {
-			multiErr = errors.Join(multiErr, fmt.Errorf("stopping block components: %w", err))
-		}
-	}()
-
 	go func() {
+		defer func() {
+			if err := f.bc.Stop(); err != nil && !errors.Is(err, context.Canceled) {
+				multiErr = errors.Join(multiErr, fmt.Errorf("stopping block components: %w", err))
+			}
+		}()
 		if err := f.bc.Start(ctx); err != nil && !errors.Is(err, context.Canceled) {
 			select {
 			case errChan <- fmt.Errorf("components started with error: %w", err):
@@ -224,8 +223,8 @@ func (f *failoverState) Run(ctx context.Context) (multiErr error) {
 	return <-errChan
 }
 
-func (f *failoverState) IsSynced(s *raft.RaftBlockState) bool {
-	if s == nil || s.Height == 0 {
+func (f *failoverState) IsSynced(s raft.RaftBlockState) bool {
+	if s.Height == 0 {
 		return true
 	}
 	if f.bc.Syncer != nil {

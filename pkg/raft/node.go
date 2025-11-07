@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/hashicorp/raft"
@@ -47,7 +48,7 @@ type Config struct {
 // FSM implements raft.FSM for block state
 type FSM struct {
 	logger  zerolog.Logger
-	state   *RaftBlockState
+	state   *atomic.Pointer[RaftBlockState]
 	applyCh chan<- RaftApplyMsg
 }
 
@@ -63,9 +64,11 @@ func NewNode(cfg *Config, clusterClient clusterClient, logger zerolog.Logger) (*
 	raftConfig.HeartbeatTimeout = cfg.HeartbeatTimeout
 	raftConfig.LeaderLeaseTimeout = cfg.HeartbeatTimeout / 2
 
+	startPointer := new(atomic.Pointer[RaftBlockState])
+	startPointer.Store(&RaftBlockState{})
 	fsm := &FSM{
 		logger: logger.With().Str("component", "raft-fsm").Logger(),
-		state:  &RaftBlockState{},
+		state:  startPointer,
 	}
 
 	logStore, err := raftboltdb.NewBoltStore(filepath.Join(cfg.RaftDir, "raft-log.db"))
@@ -131,6 +134,7 @@ func (n *Node) Start(ctx context.Context) error {
 				if n.GetState().Height != 0 {
 					return nil
 				}
+				time.Sleep(time.Second / 10)
 			}
 		}
 	}
@@ -158,7 +162,6 @@ func (n *Node) Start(ctx context.Context) error {
 	}
 	n.logger.Info().Msg("bootstrapped raft cluster")
 	return nil
-
 }
 
 func (n *Node) awaitToBeClusterMember(ctx context.Context, nodeID raft.ServerID) error {
@@ -246,8 +249,8 @@ func (n *Node) Broadcast(_ context.Context, state *RaftBlockState) error {
 }
 
 // GetState returns the current replicated state
-func (n *Node) GetState() *RaftBlockState {
-	return n.fsm.state
+func (n *Node) GetState() RaftBlockState {
+	return *n.fsm.state.Load()
 }
 
 // AddPeer adds a peer to the raft cluster
@@ -304,10 +307,10 @@ func (f *FSM) Apply(log *raft.Log) interface{} {
 		f.logger.Error().Err(err).Msg("unmarshal block state")
 		return err
 	}
-	if err := f.state.assertValid(state); err != nil {
+	if err := f.state.Load().assertValid(state); err != nil {
 		return err
 	}
-	f.state = &state
+	f.state.Store(&state)
 	f.logger.Debug().Uint64("height", state.Height).Msg("received block state")
 
 	if f.applyCh != nil {
@@ -323,7 +326,7 @@ func (f *FSM) Apply(log *raft.Log) interface{} {
 
 // Snapshot implements raft.FSM
 func (f *FSM) Snapshot() (raft.FSMSnapshot, error) {
-	return &fsmSnapshot{state: f.state}, nil
+	return &fsmSnapshot{state: *f.state.Load()}, nil
 }
 
 // Restore implements raft.FSM
@@ -335,13 +338,13 @@ func (f *FSM) Restore(rc io.ReadCloser) error {
 		return fmt.Errorf("decode snapshot: %w", err)
 	}
 
-	f.state = &state
+	f.state.Store(&state)
 	f.logger.Info().Uint64("height", state.Height).Msg("restored from snapshot")
 	return nil
 }
 
 type fsmSnapshot struct {
-	state *RaftBlockState
+	state RaftBlockState
 }
 
 func (s *fsmSnapshot) Persist(sink raft.SnapshotSink) error {

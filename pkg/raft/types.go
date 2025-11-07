@@ -12,6 +12,7 @@ type RaftBlockState struct {
 	Data      []byte
 }
 
+// assertValid checks basic constraints but does not ensure that no gaps exist or chain continuity
 func (s RaftBlockState) assertValid(next RaftBlockState) error {
 	if s.Height > next.Height {
 		return fmt.Errorf("invalid height: %d > %d", s.Height, next.Height)
