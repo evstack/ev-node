@@ -22,14 +22,14 @@ jobs:
     strategy:
       matrix:
         include:
-          - image-name: ev-node
+          - image-name: testapp
             dockerfile: Dockerfile
             context: .
           - image-name: ev-node-evm-single
             dockerfile: apps/evm/single/Dockerfile
             context: .
           - image-name: local-da
-            dockerfile: da/cmd/local-da/Dockerfile
+            dockerfile: apps/local-da/Dockerfile
             context: .
     steps:
       - name: Checkout code

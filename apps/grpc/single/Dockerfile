@@ -10,9 +10,9 @@ WORKDIR /ev-node
 # Copy go mod files
 COPY go.mod go.sum ./
 COPY apps/grpc/single/go.mod apps/grpc/single/go.sum ./apps/grpc/single/
-COPY core/go.mod core/go.sum ./core/
+COPY core/go.mod ./core/
 COPY execution/grpc/go.mod execution/grpc/go.sum ./execution/grpc/
-COPY pkg/go.mod pkg/go.sum ./pkg/
+# COPY pkg/go.mod pkg/go.sum ./pkg/
 COPY sequencers/single/go.mod sequencers/single/go.sum ./sequencers/single/
 
 # Download dependencies
