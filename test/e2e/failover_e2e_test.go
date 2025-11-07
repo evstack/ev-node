@@ -51,8 +51,7 @@ func TestLeaseFailoverE2E(t *testing.T) {
 		})
 	}
 
-	//workDir := t.TempDir()
-	workDir := "/Users/alex/workspace/rollkit/rollkit/test/e2e/testnet"
+	workDir := t.TempDir()
 
 	// Get JWT secrets and setup common components first
 	jwtSecret, fullNodeJwtSecret, genesisHash, testEndpoints := setupCommonEVMTest(t, sut, true)

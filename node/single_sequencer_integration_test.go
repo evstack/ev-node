@@ -387,7 +387,13 @@ func TestBatchQueueThrottlingWithDAFailure(t *testing.T) {
 	require.NoError(err)
 	t.Logf("Final height: %d", finalHeight)
 	cancel() // stop the node
-	
+	if v, ok := node.leaderElection.(*singleRoleElector); ok {
+		// skip cache persistence to avoid race condition with shutdown
+		v.runnable.(*failoverState).bc.Cache = nil
+	} else {
+		time.Sleep(time.Second)
+	}
+
 	// The height should not have increased much due to MaxPendingHeadersAndData limit
 	// Allow at most 3 additional blocks due to timing and pending blocks in queue
 	heightIncrease := finalHeight - heightAfterDAFailure
