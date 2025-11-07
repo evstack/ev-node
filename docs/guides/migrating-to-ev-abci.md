@@ -6,12 +6,12 @@ This guide is for developers of existing Cosmos SDK chains who want to replace t
 
 The migration process involves the following key phases:
 
-1.  **Code Preparation:** Add migration module, staking wrapper, and upgrade handler to your existing chain
-2.  **Governance Proposal:** Create and pass a governance proposal to initiate the migration
-3.  **State Export:** Export the current chain state at the designated upgrade height
-4.  **Node Reconfiguration:** Wire the `ev-abci` start handler into your node's entrypoint
-5.  **Migration Execution:** Run `appd evolve-migrate` to transform the exported state
-6.  **Chain Restart:** Start the new `ev-abci` node with the migrated state
+1. **Code Preparation:** Add migration module, staking wrapper, and upgrade handler to your existing chain
+2. **Governance Proposal:** Create and pass a governance proposal to initiate the migration
+3. **State Export:** Export the current chain state at the designated upgrade height
+4. **Node Reconfiguration:** Wire the `ev-abci` start handler into your node's entrypoint
+5. **Migration Execution:** Run `appd evolve-migrate` to transform the exported state
+6. **Chain Restart:** Start the new `ev-abci` node with the migrated state
 
 This document will guide you through each phase.
 
@@ -30,6 +30,7 @@ Add the `migrationmngr` module to your application. This module manages the tran
 In your `app.go` file:
 
 1. Import the migration manager module:
+
 ```go
 import (
 	// ...
@@ -53,6 +54,7 @@ Replace the standard Cosmos SDK `x/staking` module with the **staking wrapper mo
 In your `app.go` file (and any other files that import the staking module):
 
 **Replace this:**
+
 ```go
 import (
 	// ...
@@ -64,6 +66,7 @@ import (
 ```
 
 **With this:**
+
 ```go
 import (
 	// ...

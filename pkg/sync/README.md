@@ -105,22 +105,12 @@ flowchart TD
     Handle --> Start
 ```
 
-#### b. `syncLoop`
+#### b. Worker loops
 
-- Sleeps until genesis if necessary, then runs at the cadence of the configured block time.
-- Drains cached events, pulls new ranges from the go-header stores (`tryFetchFromP2P`), and queries the DA layer with backoff (`tryFetchFromDA`).
-- Pushes results into `heightInCh`, falling back to the cache when the queue is full.
-
-```mermaid
-flowchart TD
-    Begin[Start loop] --> Pending[processPendingEvents]
-    Pending --> P2P[tryFetchFromP2P]
-    P2P --> DA[tryFetchFromDA]
-    DA --> Wait{"ctx.Done()?"}
-    Wait -->|yes| End[Stop]
-    Wait -->|no| Sleep[time.After/backoff]
-    Sleep --> Begin
-```
+- `daWorker` – waits for genesis, then continually invokes `tryFetchFromDA`, respecting backoff windows and bumping the tracked DA height as blobs arrive.
+- `p2pWorker` – polls the go-header stores, and when they advance past the local height, hands the range to `ProcessHeaderRange` / `ProcessDataRange` so watcher goroutines can block on the next missing height.
+- `pendingWorker` – periodically drains cached events via `processPendingEvents`, ensuring gaps filled from disk or DA are replayed promptly.
+- All three workers honor `ctx.Done()` and share the syncer’s wait group, so shutting down the syncer or test harness simply cancels the context and waits for the loops to exit.
 
 #### c. Supporting helpers
 

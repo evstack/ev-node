@@ -42,7 +42,8 @@ func newLightNode(
 	database ds.Batching,
 	logger zerolog.Logger,
 ) (ln *LightNode, err error) {
-	headerSyncService, err := sync.NewHeaderSyncService(database, conf, genesis, p2pClient, logger.With().Str("component", "HeaderSyncService").Logger())
+	componentLogger := logger.With().Str("component", "HeaderSyncService").Logger()
+	headerSyncService, err := sync.NewHeaderSyncService(database, conf, genesis, p2pClient, componentLogger)
 	if err != nil {
 		return nil, fmt.Errorf("error while initializing HeaderSyncService: %w", err)
 	}

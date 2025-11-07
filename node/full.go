@@ -154,7 +154,9 @@ func initHeaderSyncService(
 	p2pClient *p2p.Client,
 	logger zerolog.Logger,
 ) (*evsync.HeaderSyncService, error) {
-	headerSyncService, err := evsync.NewHeaderSyncService(mainKV, nodeConfig, genesis, p2pClient, logger.With().Str("component", "HeaderSyncService").Logger())
+	componentLogger := logger.With().Str("component", "HeaderSyncService").Logger()
+
+	headerSyncService, err := evsync.NewHeaderSyncService(mainKV, nodeConfig, genesis, p2pClient, componentLogger)
 	if err != nil {
 		return nil, fmt.Errorf("error while initializing HeaderSyncService: %w", err)
 	}
@@ -168,7 +170,9 @@ func initDataSyncService(
 	p2pClient *p2p.Client,
 	logger zerolog.Logger,
 ) (*evsync.DataSyncService, error) {
-	dataSyncService, err := evsync.NewDataSyncService(mainKV, nodeConfig, genesis, p2pClient, logger.With().Str("component", "DataSyncService").Logger())
+	componentLogger := logger.With().Str("component", "DataSyncService").Logger()
+
+	dataSyncService, err := evsync.NewDataSyncService(mainKV, nodeConfig, genesis, p2pClient, componentLogger)
 	if err != nil {
 		return nil, fmt.Errorf("error while initializing DataSyncService: %w", err)
 	}
