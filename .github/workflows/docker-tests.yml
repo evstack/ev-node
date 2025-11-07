@@ -30,7 +30,7 @@ jobs:
       - name: Run Docker E2E Tests
         run: make test-docker-e2e
         env:
-          EV_NODE_IMAGE_REPO: ghcr.io/${{ github.repository }}
+          EV_NODE_IMAGE_REPO: ghcr.io/${{ github.repository_owner }}
           EV_NODE_IMAGE_TAG: ${{ inputs.image-tag }}
 
   docker-upgrade-tests:

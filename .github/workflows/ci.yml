@@ -6,6 +6,7 @@ on:
   pull_request:
   merge_group:
 
+permissions: {}
 jobs:
   determine-image-tag:
     name: Determine Image Tag
@@ -52,7 +53,7 @@ jobs:
       image-tag: ${{ needs.determine-image-tag.outputs.tag }}
       apps: |
         [
-          {"name": "ev-node-evm-single", "dockerfile": "apps/evm/single/Dockerfile"},
+          {"name": "ev-node-evm-single", "dockerfile": "apps/evm/single/Dockerfile"}
         ]
 
   test:
