@@ -1,26 +1,10 @@
-name: CI and Release
+name: CI
 on:
   push:
     branches:
       - main
-    # Trigger on version tags
-    tags:
-      - "v*"
   pull_request:
   merge_group:
-  workflow_dispatch:
-    # Inputs the workflow accepts.
-    inputs:
-      version:
-        # Friendly description to be shown in the UI instead of 'name'
-        description: "Semver type of new version (major / minor / patch)"
-        # Input has to be provided for the workflow to run
-        required: true
-        type: choice
-        options:
-          - patch
-          - minor
-          - major
 
 jobs:
   determine-image-tag:
@@ -66,6 +50,10 @@ jobs:
       packages: write
     with:
       image-tag: ${{ needs.determine-image-tag.outputs.tag }}
+      apps: |
+        [
+          {"name": "ev-node-evm-single", "dockerfile": "apps/evm/single/Dockerfile"},
+        ]
 
   test:
     needs: determine-image-tag
@@ -77,7 +65,7 @@ jobs:
       image-tag: ${{ needs.determine-image-tag.outputs.tag }}
 
   docker-tests:
-    needs: [docker]
+    needs: [determine-image-tag, docker]
     uses: ./.github/workflows/docker-tests.yml
     secrets: inherit
     permissions:
@@ -89,34 +77,3 @@ jobs:
     permissions:
       contents: read
     uses: ./.github/workflows/proto.yml
-
-  # branch_name trims ref/heads/ from github.ref to access a clean branch name
-  branch_name:
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-    outputs:
-      branch: ${{ steps.trim_ref.outputs.branch }}
-    steps:
-      - name: Trim branch name
-        id: trim_ref
-        run: |
-          echo "branch=$(${${{ github.ref }}:11})" >> $GITHUB_OUTPUT
-
-  # Make a release if this is a manually trigger job, i.e. workflow_dispatch
-  release:
-    needs: [lint, test, docker-tests, proto, branch_name]
-    runs-on: ubuntu-latest
-    if: ${{ github.event_name == 'workflow_dispatch' }}
-    permissions: "write-all"
-    steps:
-      - uses: actions/checkout@v5
-      - name: Remove existing files
-        run: |
-          rm -rf /opt/homebrew/bin/gtar
-      - name: Version Release
-        uses: evstack/.github/.github/actions/version-release@v0.5.0
-        with:
-          github-token: ${{secrets.GITHUB_TOKEN}}
-          version-bump: ${{inputs.version}}
-          release-branch: ${{needs.branch_name.outputs.branch}}
