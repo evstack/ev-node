@@ -173,20 +173,15 @@ func (s *DASubmitter) recordFailure(reason common.DASubmitterFailureReason) {
 	}
 }
 
-// getGasMultiplier fetches the gas multiplier from DA layer with fallback and clamping
+// getGasMultiplier returns the gas multiplier from configuration with fallback and clamping
 func (s *DASubmitter) getGasMultiplier(ctx context.Context, pol retryPolicy) float64 {
-	gasMultiplier, err := s.da.GasMultiplier(ctx)
-	if err != nil || gasMultiplier <= 0 {
-		if s.config.DA.GasMultiplier > 0 {
-			return clamp(s.config.DA.GasMultiplier, 0.1, pol.MaxGasMultiplier)
-		}
-		s.logger.Warn().Err(err).Msg("failed to get gas multiplier from DA layer, using default 1.0")
-		return defaultGasMultiplier
+	if s.config.DA.GasMultiplier > 0 {
+		return clamp(s.config.DA.GasMultiplier, 0.1, pol.MaxGasMultiplier)
 	}
-	return clamp(gasMultiplier, 0.1, pol.MaxGasMultiplier)
+	return defaultGasMultiplier
 }
 
-// initialGasPrice determines the starting gas price with clamping and sentinel handling
+// initialGasPrice determines the starting gas price from configuration with clamping and sentinel handling
 func (s *DASubmitter) initialGasPrice(ctx context.Context, pol retryPolicy) (price float64, sentinelNoGas bool) {
 	if s.config.DA.GasPrice == noGasPrice {
 		return noGasPrice, true
@@ -194,10 +189,6 @@ func (s *DASubmitter) initialGasPrice(ctx context.Context, pol retryPolicy) (pri
 	if s.config.DA.GasPrice > 0 {
 		return clamp(s.config.DA.GasPrice, pol.MinGasPrice, pol.MaxGasPrice), false
 	}
-	if gp, err := s.da.GasPrice(ctx); err == nil {
-		return clamp(gp, pol.MinGasPrice, pol.MaxGasPrice), false
-	}
-	s.logger.Warn().Msg("DA gas price unavailable; using default 0.0")
 	return pol.MinGasPrice, false
 }
 

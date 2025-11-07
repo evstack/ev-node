@@ -29,7 +29,7 @@ const MockDANamespace = "test"
 func createTestComponents(_ context.Context, t *testing.T) (coreexecutor.Executor, coresequencer.Sequencer, coreda.DA, signer.Signer, *p2p.Client, datastore.Batching, func()) {
 	executor := coreexecutor.NewDummyExecutor()
 	sequencer := coresequencer.NewDummySequencer()
-	dummyDA := coreda.NewDummyDA(100_000, 0, 0, 10*time.Second)
+	dummyDA := coreda.NewDummyDA(100_000, 10*time.Second)
 	dummyDA.StartHeightTicker()
 	stopDAHeightTicker := func() {
 		dummyDA.StopHeightTicker()

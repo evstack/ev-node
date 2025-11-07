@@ -22,8 +22,6 @@ type DummyDA struct {
 	timestampsByHeight map[uint64]time.Time
 	namespaceByID      map[string][]byte // Track namespace for each blob ID
 	maxBlobSize        uint64
-	gasPrice           float64
-	gasMultiplier      float64
 
 	// DA height simulation
 	currentHeight uint64
@@ -37,7 +35,7 @@ type DummyDA struct {
 var ErrHeightFromFutureStr = fmt.Errorf("given height is from the future")
 
 // NewDummyDA creates a new instance of DummyDA with the specified maximum blob size and block time.
-func NewDummyDA(maxBlobSize uint64, gasPrice float64, gasMultiplier float64, blockTime time.Duration) *DummyDA {
+func NewDummyDA(maxBlobSize uint64, blockTime time.Duration) *DummyDA {
 	return &DummyDA{
 		blobs:              make(map[string]Blob),
 		commitments:        make(map[string]Commitment),
@@ -46,8 +44,6 @@ func NewDummyDA(maxBlobSize uint64, gasPrice float64, gasMultiplier float64, blo
 		timestampsByHeight: make(map[uint64]time.Time),
 		namespaceByID:      make(map[string][]byte),
 		maxBlobSize:        maxBlobSize,
-		gasPrice:           gasPrice,
-		gasMultiplier:      gasMultiplier,
 		blockTime:          blockTime,
 		stopCh:             make(chan struct{}),
 		currentHeight:      0,
@@ -75,16 +71,6 @@ func (d *DummyDA) StartHeightTicker() {
 // StopHeightTicker stops the height ticker goroutine.
 func (d *DummyDA) StopHeightTicker() {
 	close(d.stopCh)
-}
-
-// GasPrice returns the gas price for the DA layer.
-func (d *DummyDA) GasPrice(ctx context.Context) (float64, error) {
-	return d.gasPrice, nil
-}
-
-// GasMultiplier returns the gas multiplier for the DA layer.
-func (d *DummyDA) GasMultiplier(ctx context.Context) (float64, error) {
-	return d.gasMultiplier, nil
 }
 
 // Get returns blobs for the given IDs.
