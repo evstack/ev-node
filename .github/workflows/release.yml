@@ -84,30 +84,3 @@ jobs:
           tags: |
             ghcr.io/${{ github.repository_owner }}/${{ needs.parse-tag.outputs.image-name }}:${{ needs.parse-tag.outputs.version }}
             ghcr.io/${{ github.repository_owner }}/${{ needs.parse-tag.outputs.image-name }}:latest
-
-  create-release:
-    name: Create GitHub Release
-    needs: [parse-tag, build-and-push]
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v5
-
-      - name: Create Release
-        uses: actions/create-release@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          tag_name: ${{ github.ref_name }}
-          release_name: ${{ needs.parse-tag.outputs.app-path }} ${{ needs.parse-tag.outputs.version }}
-          body: |
-            Release of **${{ needs.parse-tag.outputs.app-path }}** version **${{ needs.parse-tag.outputs.version }}**
-
-            ## Docker Image
-            ```
-            docker pull ghcr.io/${{ github.repository_owner }}/${{ needs.parse-tag.outputs.image-name }}:${{ needs.parse-tag.outputs.version }}
-            ```
-          draft: false
-          prerelease: false
