@@ -360,84 +360,185 @@ func TestP2PServer_GetNetInfo(t *testing.T) {
 	require.Nil(t, resp2)
 }
 
-func TestHealthServer_Livez(t *testing.T) {
-	h := NewHealthServer()
-	resp, err := h.Livez(context.Background(), connect.NewRequest(&emptypb.Empty{}))
-	require.NoError(t, err)
-	require.Equal(t, pb.HealthStatus_PASS, resp.Msg.Status)
-}
-
 func TestHealthLiveEndpoint(t *testing.T) {
-	assert := require.New(t)
-
-	// Create mock dependencies
-	mockStore := mocks.NewMockStore(t)
-	mockP2PManager := &mocks.MockP2PRPC{} // Assuming this mock is sufficient or can be adapted
-
-	// Create the service handler
 	logger := zerolog.Nop()
-	testConfig := config.DefaultConfig()
-	handler, err := NewServiceHandler(mockStore, mockP2PManager, nil, logger, testConfig, nil)
-	assert.NoError(err)
-	assert.NotNil(handler)
 
-	// Create a new HTTP test server
-	server := httptest.NewServer(handler)
-	defer server.Close()
+	t.Run("returns OK when store is accessible", func(t *testing.T) {
+		mockStore := mocks.NewMockStore(t)
+		mockP2PManager := &mocks.MockP2PRPC{}
+		testConfig := config.DefaultConfig()
 
-	// Make a GET request to the /health/live endpoint
-	resp, err := http.Get(server.URL + "/health/live")
-	assert.NoError(err)
-	defer resp.Body.Close()
+		// Mock successful store access
+		mockStore.On("Height", mock.Anything).Return(uint64(100), nil)
 
-	// Check the status code
-	assert.Equal(http.StatusOK, resp.StatusCode)
+		handler, err := NewServiceHandler(mockStore, mockP2PManager, nil, logger, testConfig, nil)
+		require.NoError(t, err)
 
-	// Check the response body
-	body, err := io.ReadAll(resp.Body)
-	assert.NoError(err)
-	assert.Equal("OK\n", string(body)) // fmt.Fprintln adds a newline
+		server := httptest.NewServer(handler)
+		defer server.Close()
+
+		resp, err := http.Get(server.URL + "/health/live")
+		require.NoError(t, err)
+		defer resp.Body.Close()
+
+		require.Equal(t, http.StatusOK, resp.StatusCode)
+		body, err := io.ReadAll(resp.Body)
+		require.NoError(t, err)
+		require.Equal(t, "OK\n", string(body))
+		mockStore.AssertExpectations(t)
+	})
+
+	t.Run("returns FAIL when store is not accessible", func(t *testing.T) {
+		mockStore := mocks.NewMockStore(t)
+		mockP2PManager := &mocks.MockP2PRPC{}
+		testConfig := config.DefaultConfig()
+
+		// Mock store access failure
+		mockStore.On("Height", mock.Anything).Return(uint64(0), fmt.Errorf("store unavailable"))
+
+		handler, err := NewServiceHandler(mockStore, mockP2PManager, nil, logger, testConfig, nil)
+		require.NoError(t, err)
+
+		server := httptest.NewServer(handler)
+		defer server.Close()
+
+		resp, err := http.Get(server.URL + "/health/live")
+		require.NoError(t, err)
+		defer resp.Body.Close()
+
+		require.Equal(t, http.StatusServiceUnavailable, resp.StatusCode)
+		body, err := io.ReadAll(resp.Body)
+		require.NoError(t, err)
+		require.Contains(t, string(body), "FAIL")
+		mockStore.AssertExpectations(t)
+	})
+
+	t.Run("returns OK even at height 0", func(t *testing.T) {
+		mockStore := mocks.NewMockStore(t)
+		mockP2PManager := &mocks.MockP2PRPC{}
+		testConfig := config.DefaultConfig()
+
+		// Mock successful store access at genesis
+		mockStore.On("Height", mock.Anything).Return(uint64(0), nil)
+
+		handler, err := NewServiceHandler(mockStore, mockP2PManager, nil, logger, testConfig, nil)
+		require.NoError(t, err)
+
+		server := httptest.NewServer(handler)
+		defer server.Close()
+
+		resp, err := http.Get(server.URL + "/health/live")
+		require.NoError(t, err)
+		defer resp.Body.Close()
+
+		require.Equal(t, http.StatusOK, resp.StatusCode)
+		body, err := io.ReadAll(resp.Body)
+		require.NoError(t, err)
+		require.Equal(t, "OK\n", string(body))
+		mockStore.AssertExpectations(t)
+	})
 }
 
 func TestHealthReadyEndpoint(t *testing.T) {
-	cases := []struct {
-		name         string
-		local        uint64
-		bestKnown    uint64
-		peers        int
-		expectedCode int
-	}{
-		{name: "at_head", local: 100, bestKnown: 100, peers: 1, expectedCode: http.StatusOK},
-		{name: "within_1_block", local: 99, bestKnown: 100, peers: 1, expectedCode: http.StatusOK},
-		{name: "within_15_blocks", local: 85, bestKnown: 100, peers: 1, expectedCode: http.StatusOK},
-		{name: "just_over_15_blocks", local: 84, bestKnown: 100, peers: 1, expectedCode: http.StatusServiceUnavailable},
-		{name: "local_ahead", local: 101, bestKnown: 100, peers: 1, expectedCode: http.StatusOK},
-		{name: "no_blocks_yet", local: 0, bestKnown: 100, peers: 1, expectedCode: http.StatusServiceUnavailable},
-		{name: "unknown_best_known", local: 100, bestKnown: 0, peers: 1, expectedCode: http.StatusServiceUnavailable},
-		{name: "no_peers", local: 100, bestKnown: 100, peers: 0, expectedCode: http.StatusServiceUnavailable},
-	}
+	t.Run("non-aggregator tests", func(t *testing.T) {
+		cases := []struct {
+			name          string
+			local         uint64
+			bestKnown     uint64
+			peers         int
+			p2pListening  bool
+			lastBlockTime time.Time
+			expectedCode  int
+		}{
+			{name: "at_head", local: 100, bestKnown: 100, peers: 1, p2pListening: true, lastBlockTime: time.Now(), expectedCode: http.StatusOK},
+			{name: "within_1_block", local: 99, bestKnown: 100, peers: 1, p2pListening: true, lastBlockTime: time.Now(), expectedCode: http.StatusOK},
+			{name: "within_15_blocks", local: 85, bestKnown: 100, peers: 1, p2pListening: true, lastBlockTime: time.Now(), expectedCode: http.StatusOK},
+			{name: "just_over_15_blocks", local: 84, bestKnown: 100, peers: 1, p2pListening: true, lastBlockTime: time.Now(), expectedCode: http.StatusServiceUnavailable},
+			{name: "local_ahead", local: 101, bestKnown: 100, peers: 1, p2pListening: true, lastBlockTime: time.Now(), expectedCode: http.StatusOK},
+			{name: "no_blocks_yet", local: 0, bestKnown: 100, peers: 1, p2pListening: true, lastBlockTime: time.Now(), expectedCode: http.StatusServiceUnavailable},
+			{name: "unknown_best_known", local: 100, bestKnown: 0, peers: 1, p2pListening: true, lastBlockTime: time.Now(), expectedCode: http.StatusServiceUnavailable},
+			{name: "no_peers", local: 100, bestKnown: 100, peers: 0, p2pListening: true, lastBlockTime: time.Now(), expectedCode: http.StatusServiceUnavailable},
+			{name: "p2p_not_listening", local: 100, bestKnown: 100, peers: 1, p2pListening: false, lastBlockTime: time.Now(), expectedCode: http.StatusServiceUnavailable},
+		}
 
-	logger := zerolog.Nop()
-	testConfig := config.DefaultConfig()
-	testConfig.Node.Aggregator = false
+		logger := zerolog.Nop()
+		testConfig := config.DefaultConfig()
+		testConfig.Node.Aggregator = false
 
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
+		for _, tc := range cases {
+			t.Run(tc.name, func(t *testing.T) {
+				mockStore := mocks.NewMockStore(t)
+				mockP2P := mocks.NewMockP2PRPC(t)
+
+				// Setup P2P network info
+				netInfo := p2p.NetworkInfo{
+					ID: "test-node",
+				}
+				if tc.p2pListening {
+					netInfo.ListenAddress = []string{"/ip4/0.0.0.0/tcp/26656"}
+				}
+				mockP2P.On("GetNetworkInfo").Return(netInfo, nil)
+
+				// Only expect GetPeers() when P2P is listening (handler returns early if not listening)
+				if tc.p2pListening {
+					var peers []peer.AddrInfo
+					for i := 0; i < tc.peers; i++ {
+						peers = append(peers, peer.AddrInfo{})
+					}
+					mockP2P.On("GetPeers").Return(peers, nil)
+				}
+
+				// Only expect GetState() when peers are present (handler returns early on no peers)
+				if tc.peers > 0 && tc.p2pListening {
+					state := types.State{
+						LastBlockHeight: tc.local,
+						LastBlockTime:   tc.lastBlockTime,
+					}
+					mockStore.On("GetState", mock.Anything).Return(state, nil)
+				}
+
+				bestKnown := func() uint64 { return tc.bestKnown }
+				handler, err := NewServiceHandler(mockStore, mockP2P, nil, logger, testConfig, bestKnown)
+				require.NoError(t, err)
+				server := httptest.NewServer(handler)
+				defer server.Close()
+
+				resp, err := http.Get(server.URL + "/health/ready")
+				require.NoError(t, err)
+				defer resp.Body.Close()
+				require.Equal(t, tc.expectedCode, resp.StatusCode)
+			})
+		}
+	})
+
+	t.Run("aggregator tests", func(t *testing.T) {
+		logger := zerolog.Nop()
+		testConfig := config.DefaultConfig()
+		testConfig.Node.Aggregator = true
+		testConfig.Node.BlockTime.Duration = 1 * time.Second
+
+		t.Run("producing blocks at expected rate", func(t *testing.T) {
 			mockStore := mocks.NewMockStore(t)
 			mockP2P := mocks.NewMockP2PRPC(t)
 
-			// only expect Height() when peers are present handler returns early on no peers
-			if tc.peers > 0 {
-				mockStore.On("Height", mock.Anything).Return(tc.local, nil)
+			// Setup P2P
+			netInfo := p2p.NetworkInfo{
+				ID:            "test-node",
+				ListenAddress: []string{"/ip4/0.0.0.0/tcp/26656"},
 			}
+			mockP2P.On("GetNetworkInfo").Return(netInfo, nil)
 
-			var peers []peer.AddrInfo
-			for i := 0; i < tc.peers; i++ {
-				peers = append(peers, peer.AddrInfo{})
+			// Aggregators don't need peers check
+			// No GetPeers() call expected
+
+			// Recent block (within 5x block time)
+			state := types.State{
+				LastBlockHeight: 100,
+				LastBlockTime:   time.Now().Add(-2 * time.Second), // 2 seconds ago, within 5x1s = 5s
 			}
-			mockP2P.On("GetPeers").Return(peers, nil)
+			mockStore.On("GetState", mock.Anything).Return(state, nil)
 
-			bestKnown := func() uint64 { return tc.bestKnown }
+			bestKnown := func() uint64 { return 100 }
 			handler, err := NewServiceHandler(mockStore, mockP2P, nil, logger, testConfig, bestKnown)
 			require.NoError(t, err)
 			server := httptest.NewServer(handler)
@@ -446,7 +547,37 @@ func TestHealthReadyEndpoint(t *testing.T) {
 			resp, err := http.Get(server.URL + "/health/ready")
 			require.NoError(t, err)
 			defer resp.Body.Close()
-			require.Equal(t, tc.expectedCode, resp.StatusCode)
+			require.Equal(t, http.StatusOK, resp.StatusCode)
 		})
-	}
+
+		t.Run("not producing blocks at expected rate", func(t *testing.T) {
+			mockStore := mocks.NewMockStore(t)
+			mockP2P := mocks.NewMockP2PRPC(t)
+
+			// Setup P2P
+			netInfo := p2p.NetworkInfo{
+				ID:            "test-node",
+				ListenAddress: []string{"/ip4/0.0.0.0/tcp/26656"},
+			}
+			mockP2P.On("GetNetworkInfo").Return(netInfo, nil)
+
+			// Old block (beyond 5x block time)
+			state := types.State{
+				LastBlockHeight: 100,
+				LastBlockTime:   time.Now().Add(-10 * time.Second), // 10 seconds ago, beyond 5x1s = 5s
+			}
+			mockStore.On("GetState", mock.Anything).Return(state, nil)
+
+			bestKnown := func() uint64 { return 100 }
+			handler, err := NewServiceHandler(mockStore, mockP2P, nil, logger, testConfig, bestKnown)
+			require.NoError(t, err)
+			server := httptest.NewServer(handler)
+			defer server.Close()
+
+			resp, err := http.Get(server.URL + "/health/ready")
+			require.NoError(t, err)
+			defer resp.Body.Close()
+			require.Equal(t, http.StatusServiceUnavailable, resp.StatusCode)
+		})
+	})
 }

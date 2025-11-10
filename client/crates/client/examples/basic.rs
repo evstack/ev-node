@@ -1,12 +1,10 @@
-use ev_client::{Client, HealthClient, P2PClient, StoreClient};
+use ev_client::{Client, P2PClient, StoreClient};
 use std::error::Error;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
-    // Initialize tracing for better debugging
     tracing_subscriber::fmt::init();
 
-    // Connect to a Evolve node
     let endpoint =
         std::env::var("EVOLVE_ENDPOINT").unwrap_or_else(|_| "http://localhost:50051".to_string());
     println!("Connecting to evolve node at: {endpoint}");
@@ -14,18 +12,6 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let client = Client::connect(&endpoint).await?;
     println!("Successfully connected to evolve node");
 
-    // Check health status
-    println!("\n=== Health Check ===");
-    let health = HealthClient::new(&client);
-    match health.get_health().await {
-        Ok(health_response) => {
-            println!("Health status: {:?}", health_response.status());
-            println!("Node is healthy: {}", health.is_healthy().await?);
-        }
-        Err(e) => println!("Failed to get health status: {e}"),
-    }
-
-    // Get P2P information
     println!("\n=== P2P Information ===");
     let p2p = P2PClient::new(&client);
     match p2p.get_net_info().await {

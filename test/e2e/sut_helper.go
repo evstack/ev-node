@@ -8,6 +8,7 @@ import (
 	"io"
 	"iter"
 	"maps"
+	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -93,18 +94,33 @@ func (s *SystemUnderTest) ExecCmd(cmd string, args ...string) {
 	s.awaitProcessCleanup(c)
 }
 
-// AwaitNodeUp waits until a node is operational by validating it produces blocks.
+// AwaitNodeUp waits until a node is operational by checking both liveness and readiness.
 func (s *SystemUnderTest) AwaitNodeUp(t *testing.T, rpcAddr string, timeout time.Duration) {
 	t.Helper()
 	t.Logf("Await node is up: %s", rpcAddr)
-	ctx, done := context.WithTimeout(context.Background(), timeout)
-	defer done()
 	require.EventuallyWithT(t, func(t *assert.CollectT) {
-		c := client.NewClient(rpcAddr)
-		require.NotNil(t, c)
-		_, err := c.GetHealth(ctx)
-		require.NoError(t, err)
+		resp, err := http.Get(rpcAddr + "/health/live")
+		require.NoError(t, err, "liveness check failed")
+		defer resp.Body.Close()
+		require.Equal(t, http.StatusOK, resp.StatusCode, "liveness check failed")
+
+		resp, err = http.Get(rpcAddr + "/health/ready")
+		require.NoError(t, err, "readiness check failed")
+		defer resp.Body.Close()
+		require.Equal(t, http.StatusOK, resp.StatusCode, "node is not ready")
 	}, timeout, min(timeout/10, 200*time.Millisecond), "node is not up")
+}
+
+// AwaitNodeLive waits until a node is alive (liveness check only).
+func (s *SystemUnderTest) AwaitNodeLive(t *testing.T, rpcAddr string, timeout time.Duration) {
+	t.Helper()
+	t.Logf("Await node is live: %s", rpcAddr)
+	require.EventuallyWithT(t, func(t *assert.CollectT) {
+		resp, err := http.Get(rpcAddr + "/health/live")
+		require.NoError(t, err, "liveness check failed")
+		defer resp.Body.Close()
+		require.Equal(t, http.StatusOK, resp.StatusCode, "liveness check failed")
+	}, timeout, min(timeout/10, 200*time.Millisecond), "node is not live")
 }
 
 // AwaitNBlocks waits until the node has produced at least `n` blocks.
