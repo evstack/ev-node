@@ -114,7 +114,7 @@ func (r *daRetriever) RetrieveForcedIncludedTxsFromDA(ctx context.Context, daHei
 	}
 
 	// Calculate deterministic epoch boundaries
-	epochStart, epochEnd := r.calculateEpochBoundaries(daHeight)
+	epochStart, epochEnd := types.CalculateEpochBoundaries(daHeight, r.genesis.DAStartHeight, r.daEpochSize)
 
 	// Only fetch at epoch start to prevent double fetching as DA height progresses
 	if daHeight != epochStart {
@@ -137,7 +137,7 @@ func (r *daRetriever) RetrieveForcedIncludedTxsFromDA(ctx context.Context, daHei
 		Uint64("da_height", daHeight).
 		Uint64("epoch_start", epochStart).
 		Uint64("epoch_end", epochEnd).
-		Uint64("epoch_num", r.calculateEpochNumber(daHeight)).
+		Uint64("epoch_num", types.CalculateEpochNumber(daHeight, r.genesis.DAStartHeight, r.daEpochSize)).
 		Msg("retrieving forced included transactions from DA")
 
 	// Check if both epoch start and end are available before fetching
@@ -245,38 +245,6 @@ func (r *daRetriever) processForcedInclusionBlobs(
 	}
 
 	return nil
-}
-
-// calculateEpochNumber returns the deterministic epoch number for a given DA height.
-// Epoch 1 starts at DAStartHeight.
-func (r *daRetriever) calculateEpochNumber(daHeight uint64) uint64 {
-	if daHeight < r.genesis.DAStartHeight {
-		return 0
-	}
-
-	if r.daEpochSize == 0 {
-		return 1
-	}
-
-	return ((daHeight - r.genesis.DAStartHeight) / r.daEpochSize) + 1
-}
-
-// calculateEpochBoundaries returns the start and end DA heights for the epoch
-// containing the given DA height. The boundaries are inclusive.
-func (r *daRetriever) calculateEpochBoundaries(daHeight uint64) (start, end uint64) {
-	if daHeight < r.genesis.DAStartHeight {
-		return r.genesis.DAStartHeight, r.genesis.DAStartHeight + r.daEpochSize - 1
-	}
-
-	if r.daEpochSize == 0 {
-		return r.genesis.DAStartHeight, r.genesis.DAStartHeight
-	}
-
-	epochNum := r.calculateEpochNumber(daHeight)
-	start = r.genesis.DAStartHeight + (epochNum-1)*r.daEpochSize
-	end = r.genesis.DAStartHeight + epochNum*r.daEpochSize - 1
-
-	return start, end
 }
 
 // fetchBlobs retrieves blobs from the DA layer
