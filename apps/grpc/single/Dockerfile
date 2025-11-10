@@ -1,7 +1,7 @@
 # Build stage
 FROM golang:1.24-alpine AS builder
 
-# Install build dependencies
+#hadolint ignore=DL3018
 RUN apk add --no-cache git make gcc musl-dev linux-headers
 
 # Set working directory
@@ -26,9 +26,9 @@ WORKDIR /ev-node/apps/grpc/single
 RUN go build -o grpc-single .
 
 # Runtime stage
-FROM alpine:3.19
+FROM alpine:3
 
-# Install runtime dependencies
+#hadolint ignore=DL3018
 RUN apk add --no-cache ca-certificates curl
 
 # Create non-root user

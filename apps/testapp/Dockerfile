@@ -1,7 +1,6 @@
-## prep the base image.
-#
 FROM golang:1.24 AS base
 
+#hadolint ignore=DL3018
 RUN apt-get update && \
 	apt-get install -y --no-install-recommends \
 	build-essential \
@@ -26,7 +25,7 @@ RUN go mod download && make install
 
 ## prep the final image.
 #
-FROM base
+FROM alpine:3
 
 COPY --from=builder /go/bin/testapp /usr/bin
 

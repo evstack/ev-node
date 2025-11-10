@@ -2,9 +2,10 @@ FROM golang:1.24-alpine AS build-env
 
 WORKDIR /src
 
+#hadolint ignore=DL3018
 RUN apk add --no-cache make
 
-ADD core core
+COPY core core
 
 COPY go.mod go.sum ./
 RUN go mod download
@@ -13,8 +14,9 @@ COPY . .
 
 RUN make build-da
 
-FROM alpine:3.18.3
+FROM alpine:3
 
+#hadolint ignore=DL3018
 RUN apk --no-cache add ca-certificates curl
 
 WORKDIR /root
