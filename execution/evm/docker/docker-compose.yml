@@ -3,7 +3,7 @@ name: "ev-reth-sequencer"
 services:
   jwt-init:
     container_name: jwt-init
-    image: alpine:3.19
+    image: alpine:3.22.2
     volumes:
       - ./jwttoken:/jwt
     healthcheck:
