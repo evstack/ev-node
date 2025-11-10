@@ -79,7 +79,6 @@ func DefaultConfig() Config {
 			Namespace:                randString(10),
 			DataNamespace:            "",
 			ForcedInclusionNamespace: "",
-			ForcedInclusionDAEpoch:   50,
 		},
 		Instrumentation: DefaultInstrumentationConfig(),
 		Log: LogConfig{

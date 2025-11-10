@@ -128,7 +128,7 @@ func createSequencer(
 
 		logger.Info().
 			Str("forced_inclusion_namespace", nodeConfig.DA.GetForcedInclusionNamespace()).
-			Uint64("da_epoch", nodeConfig.DA.ForcedInclusionDAEpoch).
+			Uint64("da_epoch", genesis.DAEpochForcedInclusion).
 			Msg("based sequencer initialized")
 
 		return basedSeq, nil

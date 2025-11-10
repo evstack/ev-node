@@ -74,7 +74,7 @@ func NewDARetriever(
 		namespaceDataBz:            coreda.NamespaceFromString(config.DA.GetDataNamespace()).Bytes(),
 		namespaceForcedInclusionBz: namespaceForcedInclusionBz,
 		hasForcedInclusionNs:       hasForcedInclusionNs,
-		daEpochSize:                config.DA.ForcedInclusionDAEpoch,
+		daEpochSize:                genesis.DAEpochForcedInclusion,
 		pendingHeaders:             make(map[uint64]*types.SignedHeader),
 		pendingData:                make(map[uint64]*types.Data),
 	}
@@ -232,7 +232,7 @@ func (r *daRetriever) processForcedInclusionBlobs(
 
 		// Check if adding this data would exceed max blob size
 		if *currentSize+dataSize > common.DefaultMaxBlobSize {
-			r.logger.Warn().Msg("forced inclusion data exceeds maximum blob size - reduce ForcedInclusionDAEpoch configuration if this happens often")
+			r.logger.Warn().Msg("forced inclusion data exceeds maximum blob size - reduce DAEpochForcedInclusion if always often")
 
 			// TODO(@julienrbrt): we need to keep track of which that haven't been included, so they are retried in the next epoch
 

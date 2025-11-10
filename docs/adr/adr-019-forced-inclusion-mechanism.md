@@ -332,16 +332,23 @@ func (s *BasedSequencer) createBatchFromQueue(maxBytes uint64) *Batch {
 ### Configuration
 
 ```go
+type Genesis struct {
+    ChainID                string
+    StartTime              time.Time
+    InitialHeight          uint64
+    ProposerAddress        []byte
+    DAStartHeight          uint64
+    // Number of DA blocks to scan per forced inclusion fetch
+    // Higher values reduce DA queries but increase latency
+    // Lower values increase DA queries but improve responsiveness
+    DAEpochForcedInclusion uint64
+}
+
 type DAConfig struct {
     // ... existing fields ...
 
     // Namespace for forced inclusion transactions
     ForcedInclusionNamespace string
-
-    // Number of DA blocks to scan per forced inclusion fetch
-    // Higher values reduce DA queries but increase latency
-    // Lower values increase DA queries but improve responsiveness
-    ForcedInclusionDAEpoch uint64
 }
 
 type NodeConfig struct {
@@ -357,25 +364,37 @@ type NodeConfig struct {
 #### Traditional Sequencer with Forced Inclusion
 
 ```yaml
-da:
-  forced_inclusion_namespace: "0x0000000000000000000000000000000000000000000000000000666f72636564"
-  forced_inclusion_da_epoch: 10 # Scan 10 DA blocks at a time
+# genesis.json
+{
+  "chain_id": "my-rollup",
+  "forced_inclusion_da_epoch": 10  # Scan 10 DA blocks at a time
+}
 
-node:
-  aggregator: true
-  based_sequencer: false # Use traditional sequencer
+# config.toml
+[da]
+forced_inclusion_namespace = "0x0000000000000000000000000000000000000000000000000000666f72636564"
+
+[node]
+aggregator = true
+based_sequencer = false # Use traditional sequencer
 ```
 
 #### Based Sequencer (DA-Only)
 
 ```yaml
-da:
-  forced_inclusion_namespace: "0x0000000000000000000000000000000000000000000000000000666f72636564"
-  forced_inclusion_da_epoch: 5 # Scan 5 DA blocks at a time
+# genesis.json
+{
+  "chain_id": "my-rollup",
+  "forced_inclusion_da_epoch": 5  # Scan 5 DA blocks at a time
+}
 
-node:
-  aggregator: true
-  based_sequencer: true # Use based sequencer
+# config.toml
+[da]
+forced_inclusion_namespace = "0x0000000000000000000000000000000000000000000000000000666f72636564"
+
+[node]
+aggregator = true
+based_sequencer = true # Use based sequencer
 ```
 
 ### Sequencer Operation Flows
@@ -426,8 +445,8 @@ node:
 
 **DA Query Frequency**:
 
-- Traditional: Every `ForcedInclusionDAEpoch` DA blocks
-- Based Sequencer: Every `ForcedInclusionDAEpoch` DA blocks or when queue empty
+- Traditional: Every `DAEpochForcedInclusion` DA blocks
+- Based Sequencer: Every `DAEpochForcedInclusion` DA blocks or when queue empty
 - Full Nodes: At each block height for verification
 
 ### Security Considerations
@@ -546,7 +565,7 @@ Accepted and Implemented
 2. **DA Dependency**: Requires DA layer to support multiple namespaces
 3. **Higher DA Costs**: Users pay DA posting fees for forced inclusion
 4. **Additional Complexity**: New component (DA Retriever) and verification logic
-5. **Epoch Configuration**: Requires tuning `ForcedInclusionDAEpoch` per network
+5. **Epoch Configuration**: Requires setting `DAEpochForcedInclusion` in genesis (consensus parameter)
 
 ### Neutral
 
@@ -554,6 +573,7 @@ Accepted and Implemented
 2. **Privacy Model Unchanged**: Forced inclusion has same privacy as normal path
 3. **Monitoring**: Operators should monitor forced inclusion namespace usage
 4. **Documentation**: Users need guidance on when to use forced inclusion
+5. **Genesis Parameter**: `DAEpochForcedInclusion` is a consensus parameter fixed at genesis
 
 ## References
 

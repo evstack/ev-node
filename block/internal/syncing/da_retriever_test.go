@@ -429,14 +429,13 @@ func TestDARetriever_RetrieveForcedIncludedTxsFromDA_Success(t *testing.T) {
 	require.NoError(t, err)
 
 	addr, pub, signer := buildSyncTestSigner(t)
-	gen := genesis.Genesis{ChainID: "tchain", InitialHeight: 1, StartTime: time.Now().Add(-time.Second), ProposerAddress: addr, DAStartHeight: 5678}
+	gen := genesis.Genesis{ChainID: "tchain", InitialHeight: 1, StartTime: time.Now().Add(-time.Second), ProposerAddress: addr, DAStartHeight: 5678, DAEpochForcedInclusion: 1}
 
 	// Prepare forced inclusion transaction data
 	dataBin, _ := makeSignedDataBytes(t, gen.ChainID, 10, addr, pub, signer, 3)
 
 	cfg := config.DefaultConfig()
 	cfg.DA.ForcedInclusionNamespace = "nsForcedInclusion"
-	cfg.DA.ForcedInclusionDAEpoch = 1 // Epoch size of 1
 
 	namespaceForcedInclusionBz := coreda.NamespaceFromString(cfg.DA.GetForcedInclusionNamespace()).Bytes()
 
@@ -468,7 +467,7 @@ func TestDARetriever_FetchForcedIncludedTxs_NoNamespaceConfigured(t *testing.T) 
 	require.NoError(t, err)
 
 	addr, _, _ := buildSyncTestSigner(t)
-	gen := genesis.Genesis{ChainID: "tchain", InitialHeight: 1, StartTime: time.Now().Add(-time.Second), ProposerAddress: addr, DAStartHeight: 0}
+	gen := genesis.Genesis{ChainID: "tchain", InitialHeight: 1, StartTime: time.Now().Add(-time.Second), ProposerAddress: addr, DAStartHeight: 0, DAEpochForcedInclusion: 1}
 
 	cfg := config.DefaultConfig()
 	// Leave ForcedInclusionNamespace empty
@@ -487,11 +486,10 @@ func TestDARetriever_FetchForcedIncludedTxs_NotFound(t *testing.T) {
 	require.NoError(t, err)
 
 	addr, _, _ := buildSyncTestSigner(t)
-	gen := genesis.Genesis{ChainID: "tchain", InitialHeight: 1, StartTime: time.Now().Add(-time.Second), ProposerAddress: addr, DAStartHeight: 9999}
+	gen := genesis.Genesis{ChainID: "tchain", InitialHeight: 1, StartTime: time.Now().Add(-time.Second), ProposerAddress: addr, DAStartHeight: 9999, DAEpochForcedInclusion: 1}
 
 	cfg := config.DefaultConfig()
 	cfg.DA.ForcedInclusionNamespace = "nsForcedInclusion"
-	cfg.DA.ForcedInclusionDAEpoch = 1 // Epoch size of 1
 
 	namespaceForcedInclusionBz := coreda.NamespaceFromString(cfg.DA.GetForcedInclusionNamespace()).Bytes()
 
@@ -517,11 +515,10 @@ func TestDARetriever_RetrieveForcedIncludedTxsFromDA_ExceedsMaxBlobSize(t *testi
 	require.NoError(t, err)
 
 	addr, pub, signer := buildSyncTestSigner(t)
-	gen := genesis.Genesis{ChainID: "tchain", InitialHeight: 1, StartTime: time.Now().Add(-time.Second), ProposerAddress: addr, DAStartHeight: 1000}
+	gen := genesis.Genesis{ChainID: "tchain", InitialHeight: 1, StartTime: time.Now().Add(-time.Second), ProposerAddress: addr, DAStartHeight: 1000, DAEpochForcedInclusion: 3}
 
 	cfg := config.DefaultConfig()
 	cfg.DA.ForcedInclusionNamespace = "nsForcedInclusion"
-	cfg.DA.ForcedInclusionDAEpoch = 3 // Epoch size of 3
 
 	namespaceForcedInclusionBz := coreda.NamespaceFromString(cfg.DA.GetForcedInclusionNamespace()).Bytes()
 
@@ -631,11 +628,10 @@ func TestDARetriever_RetrieveForcedIncludedTxsFromDA_NotAtEpochStart(t *testing.
 	require.NoError(t, err)
 
 	addr, _, _ := buildSyncTestSigner(t)
-	gen := genesis.Genesis{ChainID: "tchain", InitialHeight: 1, StartTime: time.Now().Add(-time.Second), ProposerAddress: addr, DAStartHeight: 100}
+	gen := genesis.Genesis{ChainID: "tchain", InitialHeight: 1, StartTime: time.Now().Add(-time.Second), ProposerAddress: addr, DAStartHeight: 100, DAEpochForcedInclusion: 10}
 
 	cfg := config.DefaultConfig()
 	cfg.DA.ForcedInclusionNamespace = "nsForcedInclusion"
-	cfg.DA.ForcedInclusionDAEpoch = 10
 
 	mockDA := testmocks.NewMockDA(t)
 
@@ -658,11 +654,10 @@ func TestDARetriever_RetrieveForcedIncludedTxsFromDA_EpochStartFromFuture(t *tes
 	require.NoError(t, err)
 
 	addr, _, _ := buildSyncTestSigner(t)
-	gen := genesis.Genesis{ChainID: "tchain", InitialHeight: 1, StartTime: time.Now().Add(-time.Second), ProposerAddress: addr, DAStartHeight: 1000}
+	gen := genesis.Genesis{ChainID: "tchain", InitialHeight: 1, StartTime: time.Now().Add(-time.Second), ProposerAddress: addr, DAStartHeight: 100, DAEpochForcedInclusion: 10}
 
 	cfg := config.DefaultConfig()
 	cfg.DA.ForcedInclusionNamespace = "nsForcedInclusion"
-	cfg.DA.ForcedInclusionDAEpoch = 10
 
 	namespaceForcedInclusionBz := coreda.NamespaceFromString(cfg.DA.GetForcedInclusionNamespace()).Bytes()
 
@@ -689,11 +684,10 @@ func TestDARetriever_RetrieveForcedIncludedTxsFromDA_EpochEndFromFuture(t *testi
 	require.NoError(t, err)
 
 	addr, _, _ := buildSyncTestSigner(t)
-	gen := genesis.Genesis{ChainID: "tchain", InitialHeight: 1, StartTime: time.Now().Add(-time.Second), ProposerAddress: addr, DAStartHeight: 1000}
+	gen := genesis.Genesis{ChainID: "tchain", InitialHeight: 1, StartTime: time.Now().Add(-time.Second), ProposerAddress: addr, DAStartHeight: 100, DAEpochForcedInclusion: 10}
 
 	cfg := config.DefaultConfig()
 	cfg.DA.ForcedInclusionNamespace = "nsForcedInclusion"
-	cfg.DA.ForcedInclusionDAEpoch = 10
 
 	namespaceForcedInclusionBz := coreda.NamespaceFromString(cfg.DA.GetForcedInclusionNamespace()).Bytes()
 
@@ -724,7 +718,7 @@ func TestDARetriever_RetrieveForcedIncludedTxsFromDA_CompleteEpoch(t *testing.T)
 	require.NoError(t, err)
 
 	addr, pub, signer := buildSyncTestSigner(t)
-	gen := genesis.Genesis{ChainID: "tchain", InitialHeight: 1, StartTime: time.Now().Add(-time.Second), ProposerAddress: addr, DAStartHeight: 2000}
+	gen := genesis.Genesis{ChainID: "tchain", InitialHeight: 1, StartTime: time.Now().Add(-time.Second), ProposerAddress: addr, DAStartHeight: 2000, DAEpochForcedInclusion: 3}
 
 	// Prepare forced inclusion transaction data
 	dataBin1, _ := makeSignedDataBytes(t, gen.ChainID, 10, addr, pub, signer, 2)
@@ -733,7 +727,6 @@ func TestDARetriever_RetrieveForcedIncludedTxsFromDA_CompleteEpoch(t *testing.T)
 
 	cfg := config.DefaultConfig()
 	cfg.DA.ForcedInclusionNamespace = "nsForcedInclusion"
-	cfg.DA.ForcedInclusionDAEpoch = 3
 
 	namespaceForcedInclusionBz := coreda.NamespaceFromString(cfg.DA.GetForcedInclusionNamespace()).Bytes()
 

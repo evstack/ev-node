@@ -11,11 +11,12 @@ const ChainIDFlag = "chain_id"
 // This genesis struct only contains the fields required by evolve.
 // The app state or other fields are not included here.
 type Genesis struct {
-	ChainID         string    `json:"chain_id"`
-	StartTime       time.Time `json:"start_time"`
-	InitialHeight   uint64    `json:"initial_height"`
-	ProposerAddress []byte    `json:"proposer_address"`
-	DAStartHeight   uint64    `json:"da_start_height"`
+	ChainID                string    `json:"chain_id"`
+	StartTime              time.Time `json:"start_time"`
+	InitialHeight          uint64    `json:"initial_height"`
+	ProposerAddress        []byte    `json:"proposer_address"`
+	DAStartHeight          uint64    `json:"da_start_height"`
+	DAEpochForcedInclusion uint64    `json:"da_epoch_forced_inclusion"`
 }
 
 // NewGenesis creates a new Genesis instance.
@@ -26,11 +27,12 @@ func NewGenesis(
 	proposerAddress []byte,
 ) Genesis {
 	genesis := Genesis{
-		ChainID:         chainID,
-		StartTime:       startTime,
-		InitialHeight:   initialHeight,
-		ProposerAddress: proposerAddress,
-		DAStartHeight:   0,
+		ChainID:                chainID,
+		StartTime:              startTime,
+		InitialHeight:          initialHeight,
+		ProposerAddress:        proposerAddress,
+		DAStartHeight:          0,
+		DAEpochForcedInclusion: 50, // Default epoch size
 	}
 
 	return genesis
@@ -52,6 +54,10 @@ func (g Genesis) Validate() error {
 
 	if g.ProposerAddress == nil {
 		return fmt.Errorf("proposer_address cannot be nil")
+	}
+
+	if g.DAEpochForcedInclusion < 1 {
+		return fmt.Errorf("da_epoch_forced_inclusion must be at least 1, got %d", g.DAEpochForcedInclusion)
 	}
 
 	return nil

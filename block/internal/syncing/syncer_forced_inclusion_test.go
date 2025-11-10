@@ -30,16 +30,16 @@ func TestVerifyForcedInclusionTxs_AllTransactionsIncluded(t *testing.T) {
 
 	addr, pub, signer := buildSyncTestSigner(t)
 	gen := genesis.Genesis{
-		ChainID:         "tchain",
-		InitialHeight:   1,
-		StartTime:       time.Now().Add(-time.Second),
-		ProposerAddress: addr,
-		DAStartHeight:   0,
+		ChainID:                "tchain",
+		InitialHeight:          1,
+		StartTime:              time.Now().Add(-time.Second),
+		ProposerAddress:        addr,
+		DAStartHeight:          0,
+		DAEpochForcedInclusion: 1,
 	}
 
 	cfg := config.DefaultConfig()
 	cfg.DA.ForcedInclusionNamespace = "nsForcedInclusion"
-	cfg.DA.ForcedInclusionDAEpoch = 1
 
 	mockExec := testmocks.NewMockExecutor(t)
 	mockExec.EXPECT().InitChain(mock.Anything, mock.Anything, uint64(1), "tchain").
@@ -104,16 +104,16 @@ func TestVerifyForcedInclusionTxs_MissingTransactions(t *testing.T) {
 
 	addr, pub, signer := buildSyncTestSigner(t)
 	gen := genesis.Genesis{
-		ChainID:         "tchain",
-		InitialHeight:   1,
-		StartTime:       time.Now().Add(-time.Second),
-		ProposerAddress: addr,
-		DAStartHeight:   0,
+		ChainID:                "tchain",
+		InitialHeight:          1,
+		StartTime:              time.Now().Add(-time.Second),
+		ProposerAddress:        addr,
+		DAStartHeight:          0,
+		DAEpochForcedInclusion: 1,
 	}
 
 	cfg := config.DefaultConfig()
 	cfg.DA.ForcedInclusionNamespace = "nsForcedInclusion"
-	cfg.DA.ForcedInclusionDAEpoch = 1
 
 	mockExec := testmocks.NewMockExecutor(t)
 	mockExec.EXPECT().InitChain(mock.Anything, mock.Anything, uint64(1), "tchain").
@@ -181,16 +181,16 @@ func TestVerifyForcedInclusionTxs_PartiallyIncluded(t *testing.T) {
 
 	addr, pub, signer := buildSyncTestSigner(t)
 	gen := genesis.Genesis{
-		ChainID:         "tchain",
-		InitialHeight:   1,
-		StartTime:       time.Now().Add(-time.Second),
-		ProposerAddress: addr,
-		DAStartHeight:   0,
+		ChainID:                "tchain",
+		InitialHeight:          1,
+		StartTime:              time.Now().Add(-time.Second),
+		ProposerAddress:        addr,
+		DAStartHeight:          0,
+		DAEpochForcedInclusion: 1,
 	}
 
 	cfg := config.DefaultConfig()
 	cfg.DA.ForcedInclusionNamespace = "nsForcedInclusion"
-	cfg.DA.ForcedInclusionDAEpoch = 1
 
 	mockExec := testmocks.NewMockExecutor(t)
 	mockExec.EXPECT().InitChain(mock.Anything, mock.Anything, uint64(1), "tchain").
@@ -260,16 +260,16 @@ func TestVerifyForcedInclusionTxs_NoForcedTransactions(t *testing.T) {
 
 	addr, _, _ := buildSyncTestSigner(t)
 	gen := genesis.Genesis{
-		ChainID:         "tchain",
-		InitialHeight:   1,
-		StartTime:       time.Now().Add(-time.Second),
-		ProposerAddress: addr,
-		DAStartHeight:   0,
+		ChainID:                "tchain",
+		InitialHeight:          1,
+		StartTime:              time.Now().Add(-time.Second),
+		ProposerAddress:        addr,
+		DAStartHeight:          0,
+		DAEpochForcedInclusion: 1,
 	}
 
 	cfg := config.DefaultConfig()
 	cfg.DA.ForcedInclusionNamespace = "nsForcedInclusion"
-	cfg.DA.ForcedInclusionDAEpoch = 1
 
 	mockExec := testmocks.NewMockExecutor(t)
 	mockExec.EXPECT().InitChain(mock.Anything, mock.Anything, uint64(1), "tchain").

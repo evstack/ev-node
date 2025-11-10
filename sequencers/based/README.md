@@ -64,10 +64,15 @@ type Sequencer interface {
 
 ## Configuration
 
-The based sequencer uses the following configuration from `config.Config`:
+The based sequencer uses the following configuration:
+
+From `config.Config`:
 
 - `DA.ForcedInclusionNamespace`: Namespace for forced inclusion transactions
-- `DA.ForcedInclusionDAEpoch`: Number of DA blocks to scan per fetch
+
+From `genesis.Genesis`:
+
+- `DAEpochForcedInclusion`: Number of DA blocks to scan per fetch (consensus parameter)
 
 If `ForcedInclusionNamespace` is not configured, the sequencer returns empty batches.
 
@@ -76,7 +81,7 @@ If `ForcedInclusionNamespace` is not configured, the sequencer returns empty bat
 - **Batching**: Transactions are batched to reduce DA queries
 - **Queue**: In-memory queue prevents repeated DA fetches
 - **Mutex Protection**: Thread-safe but may block on concurrent access
-- **DA Epoch**: Configure `ForcedInclusionDAEpoch` to balance freshness vs. efficiency
+- **DA Epoch**: Set `DAEpochForcedInclusion` in genesis to balance freshness vs. efficiency
 
 ## Comparison to Traditional Sequencer
 
