@@ -410,7 +410,6 @@ git tag evm/single/v0.2.0  # Less informative
 
 ## Quick Links
 
-- **Workflow Details**: [.github/workflows/README.md](.github/workflows/README.md)
 - **CI Workflow**: [.github/workflows/ci.yml](.github/workflows/ci.yml)
 - **Release Workflow**: [.github/workflows/release.yml](.github/workflows/release.yml)
 - **GitHub Actions**: https://github.com/evstack/ev-node/actions
