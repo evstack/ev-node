@@ -577,34 +577,37 @@ func TestDARetriever_RetrieveForcedIncludedTxsFromDA_ExceedsMaxBlobSize(t *testi
 	mockDA := testmocks.NewMockDA(t)
 
 	// With DAStartHeight=1000, epoch size=3, daHeight=1000 -> epoch boundaries are [1000, 1002]
+	// RetrieveWithHelpers calls in order: start (1000), end (1002), then intermediate (1001)
+
 	// Check epoch start
 	mockDA.EXPECT().GetIDs(mock.Anything, uint64(1000), mock.MatchedBy(func(ns []byte) bool {
 		return bytes.Equal(ns, namespaceForcedInclusionBz)
 	})).Return(&coreda.GetIDsResult{IDs: [][]byte{[]byte("fi1")}, Timestamp: time.Now()}, nil).Once()
+
+	// Fetch epoch start data (height 1000)
+	mockDA.EXPECT().Get(mock.Anything, mock.Anything, mock.MatchedBy(func(ns []byte) bool {
+		return bytes.Equal(ns, namespaceForcedInclusionBz)
+	})).Return([][]byte{dataBin1}, nil).Once()
 
 	// Check epoch end
 	mockDA.EXPECT().GetIDs(mock.Anything, uint64(1002), mock.MatchedBy(func(ns []byte) bool {
 		return bytes.Equal(ns, namespaceForcedInclusionBz)
 	})).Return(&coreda.GetIDsResult{IDs: [][]byte{[]byte("fi3")}, Timestamp: time.Now()}, nil).Once()
 
-	// Fetch epoch start data
+	// Fetch epoch end data (height 1002) - should be retrieved but skipped due to size limit
 	mockDA.EXPECT().Get(mock.Anything, mock.Anything, mock.MatchedBy(func(ns []byte) bool {
 		return bytes.Equal(ns, namespaceForcedInclusionBz)
-	})).Return([][]byte{dataBin1}, nil).Once()
+	})).Return([][]byte{dataBin3}, nil).Once()
 
-	// Second height in epoch - should succeed
+	// Check intermediate height in epoch (height 1001)
 	mockDA.EXPECT().GetIDs(mock.Anything, uint64(1001), mock.MatchedBy(func(ns []byte) bool {
 		return bytes.Equal(ns, namespaceForcedInclusionBz)
 	})).Return(&coreda.GetIDsResult{IDs: [][]byte{[]byte("fi2")}, Timestamp: time.Now()}, nil).Once()
 
+	// Fetch intermediate height data (height 1001)
 	mockDA.EXPECT().Get(mock.Anything, mock.Anything, mock.MatchedBy(func(ns []byte) bool {
 		return bytes.Equal(ns, namespaceForcedInclusionBz)
 	})).Return([][]byte{dataBin2}, nil).Once()
-
-	// Fetch epoch end data - should be retrieved but skipped due to size limit
-	mockDA.EXPECT().Get(mock.Anything, mock.Anything, mock.MatchedBy(func(ns []byte) bool {
-		return bytes.Equal(ns, namespaceForcedInclusionBz)
-	})).Return([][]byte{dataBin3}, nil).Once()
 
 	r := NewDARetriever(mockDA, cm, cfg, gen, zerolog.Nop())
 
@@ -741,36 +744,37 @@ func TestDARetriever_RetrieveForcedIncludedTxsFromDA_CompleteEpoch(t *testing.T)
 	mockDA := testmocks.NewMockDA(t)
 
 	// With DAStartHeight=2000, epoch size=3, daHeight=2000 -> epoch boundaries are [2000, 2002]
-	// All heights available
+	// RetrieveWithHelpers calls in order: start (2000), end (2002), then intermediate (2001)
 
 	// Check epoch start (2000)
 	mockDA.EXPECT().GetIDs(mock.Anything, uint64(2000), mock.MatchedBy(func(ns []byte) bool {
 		return bytes.Equal(ns, namespaceForcedInclusionBz)
 	})).Return(&coreda.GetIDsResult{IDs: [][]byte{[]byte("fi1")}, Timestamp: time.Now()}, nil).Once()
 
+	// Fetch epoch start data (height 2000)
+	mockDA.EXPECT().Get(mock.Anything, mock.Anything, mock.MatchedBy(func(ns []byte) bool {
+		return bytes.Equal(ns, namespaceForcedInclusionBz)
+	})).Return([][]byte{dataBin1}, nil).Once()
+
 	// Check epoch end (2002)
 	mockDA.EXPECT().GetIDs(mock.Anything, uint64(2002), mock.MatchedBy(func(ns []byte) bool {
 		return bytes.Equal(ns, namespaceForcedInclusionBz)
 	})).Return(&coreda.GetIDsResult{IDs: [][]byte{[]byte("fi3")}, Timestamp: time.Now()}, nil).Once()
 
-	// Fetch epoch start data
+	// Fetch epoch end data (height 2002)
 	mockDA.EXPECT().Get(mock.Anything, mock.Anything, mock.MatchedBy(func(ns []byte) bool {
 		return bytes.Equal(ns, namespaceForcedInclusionBz)
-	})).Return([][]byte{dataBin1}, nil).Once()
+	})).Return([][]byte{dataBin3}, nil).Once()
 
 	// Fetch middle height (2001)
 	mockDA.EXPECT().GetIDs(mock.Anything, uint64(2001), mock.MatchedBy(func(ns []byte) bool {
 		return bytes.Equal(ns, namespaceForcedInclusionBz)
 	})).Return(&coreda.GetIDsResult{IDs: [][]byte{[]byte("fi2")}, Timestamp: time.Now()}, nil).Once()
 
+	// Fetch intermediate height data (height 2001)
 	mockDA.EXPECT().Get(mock.Anything, mock.Anything, mock.MatchedBy(func(ns []byte) bool {
 		return bytes.Equal(ns, namespaceForcedInclusionBz)
 	})).Return([][]byte{dataBin2}, nil).Once()
-
-	// Fetch epoch end data
-	mockDA.EXPECT().Get(mock.Anything, mock.Anything, mock.MatchedBy(func(ns []byte) bool {
-		return bytes.Equal(ns, namespaceForcedInclusionBz)
-	})).Return([][]byte{dataBin3}, nil).Once()
 
 	r := NewDARetriever(mockDA, cm, cfg, gen, zerolog.Nop())
 
