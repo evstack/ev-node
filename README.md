@@ -8,6 +8,8 @@ Ev-node is the basis of the Evolve Stack. For more in-depth information about Ev
 [![GoDoc](https://godoc.org/github.com/evstack/ev-node?status.svg)](https://godoc.org/github.com/evstack/ev-node)
 <!-- markdownlint-enable MD013 -->
 
+> **⚠️ Version Notice**: Do not use tags or releases before v1.0.0. Pre-v1 releases are not considered stable and may contain breaking changes.
+
 ## Using Evolve
 
 Evolve supports multiple sync modes:
