@@ -4,8 +4,6 @@ This document covers the release process for ev-node components:
 - **Docker Image Releases** - Automated via GitHub workflows (for deployable applications)
 - **Go Module Releases** - Manual process for library packages and dependencies
 
-For detailed CI/CD workflow information, see [.github/workflows/README.md](.github/workflows/README.md).
-
 ---
 
 ## Docker Image Releases (Automated)
