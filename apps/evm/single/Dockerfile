@@ -2,7 +2,7 @@ FROM golang:1.24-alpine AS build-env
 
 WORKDIR /src
 
-ADD core core
+COPY core core
 
 COPY go.mod go.sum ./
 RUN go mod download
@@ -12,8 +12,9 @@ COPY . .
 WORKDIR /src/apps/evm/single
 RUN go mod tidy && CGO_ENABLED=0 GOOS=linux go build -o evm-single .
 
-FROM alpine:3.18.3
+FROM alpine:3.22.2
 
+#hadolint ignore=DL3018
 RUN apk --no-cache add ca-certificates curl
 
 WORKDIR /root

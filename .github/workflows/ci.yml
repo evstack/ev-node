@@ -1,0 +1,81 @@
+---
+name: CI
+"on":
+  push:
+    branches:
+      - main
+  pull_request:
+  merge_group:
+
+permissions: {}
+jobs:
+  determine-image-tag:
+    name: Determine Image Tag
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      tag: ${{ steps.set-tag.outputs.tag }}
+    steps:
+      - name: Set image tag
+        id: set-tag
+        run: |
+          if [ -n "${{ github.event.pull_request.number }}" ]; then
+            TAG="pr-${{ github.event.pull_request.number }}"
+            echo "::notice::Using PR-based tag: $TAG"
+          else
+            # Sanitize ref_name by replacing / with -
+            TAG="${{ github.ref_name }}"
+            TAG="${TAG//\//-}"
+            echo "::notice::Using branch/tag-based tag: $TAG"
+          fi
+
+          # Validate tag format
+          if [[ ! "$TAG" =~ ^[a-zA-Z0-9._-]+$ ]]; then
+            echo "::error::Invalid image tag format: $TAG"
+            exit 1
+          fi
+
+          echo "tag=$TAG" >> $GITHUB_OUTPUT
+
+  lint:
+    permissions:
+      contents: read
+    uses: ./.github/workflows/lint.yml
+
+  docker:
+    needs: determine-image-tag
+    uses: ./.github/workflows/docker-build-push.yml
+    secrets: inherit
+    permissions:
+      contents: read
+      packages: write
+    with:
+      image-tag: ${{ needs.determine-image-tag.outputs.tag }}
+      apps: |
+        [
+          {"name": "ev-node-evm-single", "dockerfile": "apps/evm/single/Dockerfile"},
+          {"name": "ev-node-testapp", "dockerfile": "apps/testapp/Dockerfile"}
+        ]
+
+  test:
+    permissions:
+      actions: read
+      contents: read
+    uses: ./.github/workflows/test.yml
+    secrets: inherit
+
+  docker-tests:
+    needs: [determine-image-tag, docker]
+    uses: ./.github/workflows/docker-tests.yml
+    secrets: inherit
+    permissions:
+      contents: read
+    with:
+      image-tag: ${{ needs.determine-image-tag.outputs.tag }}
+
+  proto:
+    permissions:
+      contents: read
+      pull-requests: write
+    uses: ./.github/workflows/proto.yml

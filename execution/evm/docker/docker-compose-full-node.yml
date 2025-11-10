@@ -3,7 +3,7 @@ name: "ev-reth-full-node"
 services:
   jwt-init-full-node:
     container_name: jwt-init-full-node
-    image: alpine:3.19
+    image: alpine:3.22.2
     volumes:
       - ./jwttoken:/jwt
     healthcheck:

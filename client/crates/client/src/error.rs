@@ -8,6 +8,9 @@ pub enum ClientError {
     #[error("RPC error: {0}")]
     Rpc(#[from] tonic::Status),
 
+    #[error("HTTP error: {0}")]
+    Http(#[from] reqwest::Error),
+
     #[error("Connection error: {0}")]
     Connection(String),
 

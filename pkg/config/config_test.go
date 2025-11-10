@@ -69,6 +69,7 @@ func TestAddFlags(t *testing.T) {
 	assertFlagValue(t, flags, FlagDABlockTime, DefaultConfig().DA.BlockTime.Duration)
 	assertFlagValue(t, flags, FlagDANamespace, DefaultConfig().DA.Namespace)
 	assertFlagValue(t, flags, FlagDASubmitOptions, DefaultConfig().DA.SubmitOptions)
+	assertFlagValue(t, flags, FlagDASigningAddresses, DefaultConfig().DA.SigningAddresses)
 	assertFlagValue(t, flags, FlagDAMempoolTTL, DefaultConfig().DA.MempoolTTL)
 	assertFlagValue(t, flags, FlagDAMaxSubmitAttempts, DefaultConfig().DA.MaxSubmitAttempts)
 
@@ -100,7 +101,7 @@ func TestAddFlags(t *testing.T) {
 	assertFlagValue(t, flags, FlagRPCAddress, DefaultConfig().RPC.Address)
 
 	// Count the number of flags we're explicitly checking
-	expectedFlagCount := 37 // Update this number if you add more flag checks above
+	expectedFlagCount := 38 // Update this number if you add more flag checks above
 
 	// Get the actual number of flags (both regular and persistent)
 	actualFlagCount := 0

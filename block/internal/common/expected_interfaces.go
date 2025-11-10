@@ -2,6 +2,7 @@ package common
 
 import (
 	"context"
+
 	pubsub "github.com/libp2p/go-libp2p-pubsub"
 
 	"github.com/celestiaorg/go-header"
