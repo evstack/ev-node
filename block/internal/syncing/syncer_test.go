@@ -336,6 +336,8 @@ func TestSyncLoopPersistState(t *testing.T) {
 	ds := dssync.MutexWrap(datastore.NewMapDatastore())
 	st := store.New(ds)
 	cfg := config.DefaultConfig()
+	t.Setenv("HOME", t.TempDir())
+	cfg.RootDir = t.TempDir()
 	cfg.ClearCache = true
 
 	cacheMgr, err := cache.NewManager(cfg, st, zerolog.Nop())
@@ -382,8 +384,8 @@ func TestSyncLoopPersistState(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 	syncerInst1.ctx = ctx
 	daRtrMock, p2pHndlMock := NewMockDARetriever(t), newMockp2pHandler(t)
-	p2pHndlMock.On("ProcessHeaderRange", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return().Maybe()
-	p2pHndlMock.On("ProcessDataRange", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return().Maybe()
+	p2pHndlMock.On("ProcessHeight", mock.Anything, mock.Anything, mock.Anything).Return(nil).Maybe()
+	p2pHndlMock.On("SetProcessedHeight", mock.Anything).Return().Maybe()
 	syncerInst1.daRetriever, syncerInst1.p2pHandler = daRtrMock, p2pHndlMock
 
 	// with n da blobs fetched
@@ -426,11 +428,11 @@ func TestSyncLoopPersistState(t *testing.T) {
 		Return(nil, coreda.ErrHeightFromFuture)
 
 	go syncerInst1.processLoop()
-	// sync from DA until stop height reached
-	syncerInst1.syncLoop()
+	syncerInst1.startSyncWorkers()
+	syncerInst1.wg.Wait()
 	requireEmptyChan(t, errorCh)
 
-	t.Log("syncLoop on instance1 completed")
+	t.Log("sync workers on instance1 completed")
 	require.Equal(t, myFutureDAHeight, syncerInst1.GetDAHeight())
 	lastStateDAHeight := syncerInst1.GetLastState().DAHeight
 
@@ -475,8 +477,8 @@ func TestSyncLoopPersistState(t *testing.T) {
 	t.Cleanup(cancel)
 	syncerInst2.ctx = ctx
 	daRtrMock, p2pHndlMock = NewMockDARetriever(t), newMockp2pHandler(t)
-	p2pHndlMock.On("ProcessHeaderRange", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return().Maybe()
-	p2pHndlMock.On("ProcessDataRange", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return().Maybe()
+	p2pHndlMock.On("ProcessHeight", mock.Anything, mock.Anything, mock.Anything).Return(nil).Maybe()
+	p2pHndlMock.On("SetProcessedHeight", mock.Anything).Return().Maybe()
 	syncerInst2.daRetriever, syncerInst2.p2pHandler = daRtrMock, p2pHndlMock
 
 	daRtrMock.On("RetrieveForcedIncludedTxsFromDA", mock.Anything, mock.Anything).Return(&common.ForcedIncludedEvent{Txs: [][]byte{}}, nil).Maybe()
@@ -489,10 +491,11 @@ func TestSyncLoopPersistState(t *testing.T) {
 		Return(nil, nil)
 
 	// when it starts, it should fetch from the last height it stopped at
-	t.Log("syncLoop on instance2 started")
-	syncerInst2.syncLoop()
+	t.Log("sync workers on instance2 started")
+	syncerInst2.startSyncWorkers()
+	syncerInst2.wg.Wait()
 
-	t.Log("syncLoop exited")
+	t.Log("sync workers exited")
 }
 
 func TestSyncer_executeTxsWithRetry(t *testing.T) {
@@ -646,7 +649,7 @@ func requireEmptyChan(t *testing.T, errorCh chan error) {
 	t.Helper()
 	select {
 	case err := <-errorCh:
-		t.Fatalf("syncLoop on instance1 failed: %v", err)
+		t.Fatalf("sync workers failed: %v", err)
 	default:
 	}
 }

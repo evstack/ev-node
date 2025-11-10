@@ -75,6 +75,7 @@ func TestAddFlags(t *testing.T) {
 	assertFlagValue(t, flags, FlagDADataNamespace, DefaultConfig().DA.DataNamespace)
 	assertFlagValue(t, flags, FlagDAForcedInclusionNamespace, DefaultConfig().DA.ForcedInclusionNamespace)
 	assertFlagValue(t, flags, FlagDASubmitOptions, DefaultConfig().DA.SubmitOptions)
+	assertFlagValue(t, flags, FlagDASigningAddresses, DefaultConfig().DA.SigningAddresses)
 	assertFlagValue(t, flags, FlagDAMempoolTTL, DefaultConfig().DA.MempoolTTL)
 	assertFlagValue(t, flags, FlagDAMaxSubmitAttempts, DefaultConfig().DA.MaxSubmitAttempts)
 

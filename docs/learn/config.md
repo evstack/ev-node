@@ -24,6 +24,7 @@ This document provides a comprehensive reference for all configuration options a
   - [DA Gas Price](#da-gas-price)
   - [DA Gas Multiplier](#da-gas-multiplier)
   - [DA Submit Options](#da-submit-options)
+  - [DA Signing Addresses](#da-signing-addresses)
   - [DA Namespace](#da-namespace)
   - [DA Header Namespace](#da-namespace)
   - [DA Data Namespace](#da-data-namespace)
@@ -37,6 +38,7 @@ This document provides a comprehensive reference for all configuration options a
 - [RPC Configuration (`rpc`)](#rpc-configuration-rpc)
   - [RPC Server Address](#rpc-server-address)
   - [Enable DA Visualization](#enable-da-visualization)
+  - [Health Endpoints](#health-endpoints)
 - [Instrumentation Configuration (`instrumentation`)](#instrumentation-configuration-instrumentation)
   - [Enable Prometheus Metrics](#enable-prometheus-metrics)
   - [Prometheus Listen Address](#prometheus-listen-address)
@@ -377,13 +379,15 @@ _Constant:_ `FlagDAGasMultiplier`
 ### DA Submit Options
 
 **Description:**
-Additional options passed to the DA layer when submitting data. The format and meaning of these options depend on the specific DA implementation being used.
+Additional options passed to the DA layer when submitting data. The format and meaning of these options depend on the specific DA implementation being used. For example, with Celestia, this can include custom gas settings or other submission parameters in JSON format.
+
+**Note:** If you configure multiple signing addresses (see [DA Signing Addresses](#da-signing-addresses)), the selected signing address will be automatically merged into these options as a JSON field `signer_address` (matching Celestia's TxConfig schema). If the base options are already valid JSON, the signing address is added to the existing object; otherwise, a new JSON object is created.
 
 **YAML:**
 
 ```yaml
 da:
-  submit_options: "{"key":"value"}" # Example, format depends on DA layer
+  submit_options: '{"key":"value"}' # Example, format depends on DA layer
 ```
 
 **Command-line Flag:**
@@ -391,6 +395,41 @@ da:
 _Example:_ `--rollkit.da.submit_options '{"custom_param":true}'`
 _Default:_ `""` (empty)
 _Constant:_ `FlagDASubmitOptions`
+
+### DA Signing Addresses
+
+**Description:**
+A comma-separated list of signing addresses to use for DA blob submissions. When multiple addresses are provided, they will be used in round-robin fashion to prevent sequence mismatches that can occur with high-throughput Cosmos SDK-based DA layers. This is particularly useful for Celestia when submitting many transactions concurrently.
+
+Each submission will select the next address in the list, and that address will be automatically added to the `submit_options` as `signer_address`. This ensures that the DA layer (e.g., celestia-node) uses the specified account for signing that particular blob submission.
+
+**Setup Requirements:**
+
+- All addresses must be loaded into the DA node's keyring and have sufficient funds for transaction fees
+- For Celestia, see the guide on setting up multiple accounts in the DA node documentation
+
+**YAML:**
+
+```yaml
+da:
+  signing_addresses:
+    - "celestia1abc123..."
+    - "celestia1def456..."
+    - "celestia1ghi789..."
+```
+
+**Command-line Flag:**
+`--evnode.da.signing_addresses <string>`
+_Example:_ `--rollkit.da.signing_addresses celestia1abc...,celestia1def...,celestia1ghi...`
+_Default:_ `[]` (empty, uses default DA node behavior)
+_Constant:_ `FlagDASigningAddresses`
+
+**Behavior:**
+
+- If no signing addresses are configured, submissions use the DA layer's default signing behavior
+- If one address is configured, all submissions use that address
+- If multiple addresses are configured, they are used in round-robin order to distribute the load and prevent nonce/sequence conflicts
+- The address selection is thread-safe for concurrent submissions
 
 ### DA Namespace
 
@@ -605,6 +644,35 @@ _Default:_ `false`
 _Constant:_ `FlagRPCEnableDAVisualization`
 
 See the [DA Visualizer Guide](../guides/da/visualizer.md) for detailed information on using this feature.
+
+### Health Endpoints
+
+#### `/health/live`
+
+Returns `200 OK` if the process is alive and can access the store.
+
+```bash
+curl http://localhost:7331/health/live
+```
+
+#### `/health/ready`
+
+Returns `200 OK` if the node can serve correct data. Checks:
+- P2P is listening (if enabled)
+- Has synced blocks
+- Not too far behind network
+- Non-aggregators: has peers
+- Aggregators: producing blocks at expected rate
+
+```bash
+curl http://localhost:7331/health/ready
+```
+
+Configure max blocks behind:
+```yaml
+node:
+  readiness_max_blocks_behind: 15
+```
 
 ## Instrumentation Configuration (`instrumentation`)
 

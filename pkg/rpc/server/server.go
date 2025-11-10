@@ -287,30 +287,10 @@ func (p *P2PServer) GetNetInfo(
 	}), nil
 }
 
-// HealthServer implements the HealthService defined in the proto file
-type HealthServer struct{}
-
-// NewHealthServer creates a new HealthServer instance
-func NewHealthServer() *HealthServer {
-	return &HealthServer{}
-}
-
-// Livez implements the HealthService.Livez RPC
-func (h *HealthServer) Livez(
-	ctx context.Context,
-	req *connect.Request[emptypb.Empty],
-) (*connect.Response[pb.GetHealthResponse], error) {
-	// always return healthy
-	return connect.NewResponse(&pb.GetHealthResponse{
-		Status: pb.HealthStatus_PASS,
-	}), nil
-}
-
-// NewServiceHandler creates a new HTTP handler for Store, P2P and Health services
+// NewServiceHandler creates a new HTTP handler for Store, P2P and Config services
 func NewServiceHandler(store store.Store, peerManager p2p.P2PRPC, proposerAddress []byte, logger zerolog.Logger, config config.Config, bestKnown BestKnownHeightProvider) (http.Handler, error) {
 	storeServer := NewStoreServer(store, logger)
 	p2pServer := NewP2PServer(peerManager)
-	healthServer := NewHealthServer()
 	configServer := NewConfigServer(config, proposerAddress, logger)
 
 	mux := http.NewServeMux()
@@ -319,7 +299,6 @@ func NewServiceHandler(store store.Store, peerManager p2p.P2PRPC, proposerAddres
 	reflector := grpcreflect.NewStaticReflector(
 		rpc.StoreServiceName,
 		rpc.P2PServiceName,
-		rpc.HealthServiceName,
 		rpc.ConfigServiceName,
 	)
 	mux.Handle(grpcreflect.NewHandlerV1(reflector, compress1KB))
@@ -333,15 +312,11 @@ func NewServiceHandler(store store.Store, peerManager p2p.P2PRPC, proposerAddres
 	p2pPath, p2pHandler := rpc.NewP2PServiceHandler(p2pServer)
 	mux.Handle(p2pPath, p2pHandler)
 
-	// Register HealthService
-	healthPath, healthHandler := rpc.NewHealthServiceHandler(healthServer)
-	mux.Handle(healthPath, healthHandler)
-
 	configPath, configHandler := rpc.NewConfigServiceHandler(configServer)
 	mux.Handle(configPath, configHandler)
 
 	// Register custom HTTP endpoints
-	RegisterCustomHTTPEndpoints(mux, store, peerManager, config, bestKnown)
+	RegisterCustomHTTPEndpoints(mux, store, peerManager, config, bestKnown, logger)
 
 	// Use h2c to support HTTP/2 without TLS
 	return h2c.NewHandler(mux, &http2.Server{

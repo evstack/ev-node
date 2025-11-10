@@ -51,17 +51,18 @@ type nodeConfig struct {
 }
 
 type nodeManager struct {
-	ctx           context.Context
-	cancel        context.CancelFunc
-	projectRoot   string
-	jwtPath       string
-	cleanOnExit   bool
-	logLevel      string
-	numNodes      int
-	nodes         []nodeConfig
-	processes     []*exec.Cmd
-	nodeDirs      []string
-	dockerCleanup []string
+	ctx            context.Context
+	cancel         context.CancelFunc
+	projectRoot    string
+	jwtPath        string
+	passphraseFile string
+	cleanOnExit    bool
+	logLevel       string
+	numNodes       int
+	nodes          []nodeConfig
+	processes      []*exec.Cmd
+	nodeDirs       []string
+	dockerCleanup  []string
 }
 
 func main() {
@@ -165,12 +166,13 @@ func (nm *nodeManager) run() error {
 }
 
 func (nm *nodeManager) setupJWT() error {
-	// Create temporary directory for JWT
+	// Create temporary directory for JWT and passphrase
 	tmpDir, err := os.MkdirTemp("", "rollkit-evm-jwt-*")
 	if err != nil {
 		return fmt.Errorf("failed to create temp dir: %w", err)
 	}
 	nm.jwtPath = filepath.Join(tmpDir, "jwt.hex")
+	nm.passphraseFile = filepath.Join(tmpDir, "passphrase.txt")
 
 	// Generate JWT token using crypto/rand (same as test helpers)
 	jwtSecret := make([]byte, 32)
@@ -187,6 +189,13 @@ func (nm *nodeManager) setupJWT() error {
 	}
 
 	log.Printf("Generated JWT token at: %s", nm.jwtPath)
+
+	// Write passphrase to file
+	if err := os.WriteFile(nm.passphraseFile, []byte("secret"), 0600); err != nil {
+		return fmt.Errorf("failed to write passphrase: %w", err)
+	}
+
+	log.Printf("Created passphrase file at: %s", nm.passphraseFile)
 	return nil
 }
 
@@ -352,7 +361,7 @@ func (nm *nodeManager) startNode(node *nodeConfig, sequencerP2PAddr string) (str
 	if node.isSequencer {
 		initArgs = append(initArgs,
 			"--rollkit.node.aggregator=true",
-			"--rollkit.signer.passphrase=secret",
+			fmt.Sprintf("--rollkit.signer.passphrase_file=%s", nm.passphraseFile),
 		)
 	}
 
@@ -410,7 +419,7 @@ func (nm *nodeManager) startNode(node *nodeConfig, sequencerP2PAddr string) (str
 		runArgs = append(runArgs,
 			"--rollkit.node.block_time=1s",
 			"--rollkit.node.aggregator=true",
-			"--rollkit.signer.passphrase=secret",
+			fmt.Sprintf("--rollkit.signer.passphrase_file=%s", nm.passphraseFile),
 		)
 	} else {
 		// Full node needs to connect to sequencer

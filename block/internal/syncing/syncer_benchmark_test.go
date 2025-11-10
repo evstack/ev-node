@@ -42,13 +42,14 @@ func BenchmarkSyncerIO(b *testing.B) {
 
 				// run both loops
 				go fixt.s.processLoop()
-				go fixt.s.syncLoop()
+				fixt.s.startSyncWorkers()
 
 				require.Eventually(b, func() bool {
 					processedHeight, _ := fixt.s.store.Height(b.Context())
 					return processedHeight == spec.heights
 				}, 5*time.Second, 50*time.Microsecond)
 				fixt.s.cancel()
+				fixt.s.wg.Wait()
 
 				// Ensure clean end-state per iteration - verify no pending events remain
 				for i := uint64(1); i <= spec.heights; i++ {
@@ -148,7 +149,9 @@ func newBenchFixture(b *testing.B, totalHeights uint64, shuffledTx bool, daDelay
 
 	// Attach mocks
 	s.daRetriever = daR
-	s.p2pHandler = newMockp2pHandler(b) // not used directly in this benchmark path
+	mockP2P := newMockp2pHandler(b) // not used directly in this benchmark path
+	mockP2P.On("SetProcessedHeight", mock.Anything).Return().Maybe()
+	s.p2pHandler = mockP2P
 	headerP2PStore := common.NewMockBroadcaster[*types.SignedHeader](b)
 	s.headerStore = headerP2PStore
 	dataP2PStore := common.NewMockBroadcaster[*types.Data](b)

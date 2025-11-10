@@ -49,6 +49,7 @@ Press Ctrl+C to stop the server
 Open your browser and navigate to `http://localhost:8090` to access the web interface.
 
 The interface allows you to:
+
 - Paste blob data in either hex or base64 format
 - Automatically detect and decode the blob type
 - View decoded block headers, transactions, and other metadata
@@ -69,6 +70,7 @@ Content-Type: application/json
 ```
 
 Response:
+
 ```json
 {
   "type": "Block",

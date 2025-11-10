@@ -96,6 +96,7 @@ func newSyncService[H header.Header[H]](
 	if p2p == nil {
 		return nil, errors.New("p2p client cannot be nil")
 	}
+
 	ss, err := goheaderstore.NewStore[H](
 		store,
 		goheaderstore.WithStorePrefix(string(syncType)),
@@ -105,7 +106,7 @@ func newSyncService[H header.Header[H]](
 		return nil, fmt.Errorf("failed to initialize the %s store: %w", syncType, err)
 	}
 
-	return &SyncService[H]{
+	svc := &SyncService[H]{
 		conf:         conf,
 		genesis:      genesis,
 		p2p:          p2p,
@@ -113,7 +114,9 @@ func newSyncService[H header.Header[H]](
 		syncType:     syncType,
 		logger:       logger,
 		syncerStatus: new(SyncerStatus),
-	}, nil
+	}
+
+	return svc, nil
 }
 
 // Store returns the store of the SyncService
@@ -231,6 +234,7 @@ func (syncService *SyncService[H]) initStore(ctx context.Context, initial H) err
 		if err := syncService.store.Sync(ctx); err != nil {
 			return err
 		}
+
 	}
 
 	return nil

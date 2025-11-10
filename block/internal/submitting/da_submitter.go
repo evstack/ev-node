@@ -3,6 +3,7 @@ package submitting
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"time"
 
@@ -13,6 +14,7 @@ import (
 	"github.com/evstack/ev-node/block/internal/common"
 	coreda "github.com/evstack/ev-node/core/da"
 	"github.com/evstack/ev-node/pkg/config"
+	pkgda "github.com/evstack/ev-node/pkg/da"
 	"github.com/evstack/ev-node/pkg/genesis"
 	"github.com/evstack/ev-node/pkg/rpc/server"
 	"github.com/evstack/ev-node/pkg/signer"
@@ -124,6 +126,9 @@ type DASubmitter struct {
 	// calculate namespaces bytes once and reuse them
 	namespaceBz     []byte
 	namespaceDataBz []byte
+
+	// address selector for multi-account support
+	addressSelector pkgda.AddressSelector
 }
 
 // NewDASubmitter creates a new DA submitter
@@ -147,6 +152,17 @@ func NewDASubmitter(
 		metrics = common.NopMetrics()
 	}
 
+	// Create address selector based on configuration
+	var addressSelector pkgda.AddressSelector
+	if len(config.DA.SigningAddresses) > 0 {
+		addressSelector = pkgda.NewRoundRobinSelector(config.DA.SigningAddresses)
+		daSubmitterLogger.Info().
+			Int("num_addresses", len(config.DA.SigningAddresses)).
+			Msg("initialized round-robin address selector for multi-account DA submissions")
+	} else {
+		addressSelector = pkgda.NewNoOpSelector()
+	}
+
 	return &DASubmitter{
 		da:              da,
 		config:          config,
@@ -156,6 +172,7 @@ func NewDASubmitter(
 		logger:          daSubmitterLogger,
 		namespaceBz:     coreda.NamespaceFromString(config.DA.GetNamespace()).Bytes(),
 		namespaceDataBz: coreda.NamespaceFromString(config.DA.GetDataNamespace()).Bytes(),
+		addressSelector: addressSelector,
 	}
 }
 
@@ -235,7 +252,6 @@ func (s *DASubmitter) SubmitHeaders(ctx context.Context, cache cache.Manager) er
 		"header",
 		s.namespaceBz,
 		[]byte(s.config.DA.SubmitOptions),
-		cache,
 		func() uint64 { return cache.NumPendingHeaders() },
 	)
 }
@@ -279,7 +295,6 @@ func (s *DASubmitter) SubmitData(ctx context.Context, cache cache.Manager, signe
 		"data",
 		s.namespaceDataBz,
 		[]byte(s.config.DA.SubmitOptions),
-		cache,
 		func() uint64 { return cache.NumPendingData() },
 	)
 }
@@ -340,6 +355,44 @@ func (s *DASubmitter) createSignedData(dataList []*types.SignedData, signer sign
 	return signedDataList, nil
 }
 
+// mergeSubmitOptions merges the base submit options with a signing address.
+// If the base options are valid JSON, the signing address is added to the JSON object.
+// Otherwise, a new JSON object is created with just the signing address.
+// Returns the base options unchanged if no signing address is provided.
+func mergeSubmitOptions(baseOptions []byte, signingAddress string) ([]byte, error) {
+	if signingAddress == "" {
+		return baseOptions, nil
+	}
+
+	var optionsMap map[string]interface{}
+
+	// If base options are provided, try to parse them as JSON
+	if len(baseOptions) > 0 {
+		// Try to unmarshal existing options, ignoring errors for non-JSON input
+		if err := json.Unmarshal(baseOptions, &optionsMap); err != nil {
+			// Not valid JSON - start with empty map
+			optionsMap = make(map[string]interface{})
+		}
+	}
+
+	// Ensure map is initialized even if unmarshal returned nil
+	if optionsMap == nil {
+		optionsMap = make(map[string]interface{})
+	}
+
+	// Add or override the signing address
+	// Note: Uses "signer_address" to match Celestia's TxConfig JSON schema
+	optionsMap["signer_address"] = signingAddress
+
+	// Marshal back to JSON
+	mergedOptions, err := json.Marshal(optionsMap)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal submit options: %w", err)
+	}
+
+	return mergedOptions, nil
+}
+
 // submitToDA is a generic helper for submitting items to the DA layer with retry, backoff, and gas price logic.
 func submitToDA[T any](
 	s *DASubmitter,
@@ -350,7 +403,6 @@ func submitToDA[T any](
 	itemType string,
 	namespace []byte,
 	options []byte,
-	cache cache.Manager,
 	getTotalPendingFn func() uint64,
 ) error {
 	marshaled, err := marshalItems(ctx, items, marshalFn, itemType)
@@ -397,12 +449,24 @@ func submitToDA[T any](
 			return err
 		}
 
+		// Select signing address and merge with options
+		signingAddress := s.addressSelector.Next()
+		mergedOptions, err := mergeSubmitOptions(options, signingAddress)
+		if err != nil {
+			s.logger.Error().Err(err).Msg("failed to merge submit options with signing address")
+			return fmt.Errorf("failed to merge submit options: %w", err)
+		}
+
+		if signingAddress != "" {
+			s.logger.Debug().Str("signingAddress", signingAddress).Msg("using signing address for DA submission")
+		}
+
 		submitCtx, cancel := context.WithTimeout(ctx, submissionTimeout)
 		defer cancel()
 
 		// Perform submission
 		start := time.Now()
-		res := types.SubmitWithHelpers(submitCtx, s.da, s.logger, marshaled, rs.GasPrice, namespace, options)
+		res := types.SubmitWithHelpers(submitCtx, s.da, s.logger, marshaled, rs.GasPrice, namespace, mergedOptions)
 		s.logger.Debug().Int("attempts", rs.Attempt).Dur("elapsed", time.Since(start)).Uint64("code", uint64(res.Code)).Msg("got SubmitWithHelpers response from celestia")
 
 		// Record submission result for observability
