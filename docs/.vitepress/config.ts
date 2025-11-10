@@ -301,6 +301,10 @@ function sidebarHome() {
           link: "/guides/cometbft-to-evolve",
         },
         {
+          text: "Migrating to ev-abci",
+          link: "/guides/migrating-to-ev-abci",
+        },
+        {
           text: "Create genesis for your chain",
           link: "/guides/create-genesis",
         },
@@ -311,6 +315,10 @@ function sidebarHome() {
         {
           text: "Use IBC token (TIA) as gas token in your chain",
           link: "/guides/use-tia-for-gas",
+        },
+        {
+          text: "Celestia Gas Calculator",
+          link: "/guides/celestia-gas-calculator",
         },
       ],
     },

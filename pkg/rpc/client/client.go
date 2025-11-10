@@ -11,11 +11,10 @@ import (
 	rpc "github.com/evstack/ev-node/types/pb/evnode/v1/v1connect"
 )
 
-// Client is the client for StoreService, P2PService, HealthService, and ConfigService
+// Client is the client for StoreService, P2PService, and ConfigService
 type Client struct {
 	storeClient  rpc.StoreServiceClient
 	p2pClient    rpc.P2PServiceClient
-	healthClient rpc.HealthServiceClient
 	configClient rpc.ConfigServiceClient
 }
 
@@ -24,13 +23,11 @@ func NewClient(baseURL string) *Client {
 	httpClient := http.DefaultClient
 	storeClient := rpc.NewStoreServiceClient(httpClient, baseURL, connect.WithGRPC())
 	p2pClient := rpc.NewP2PServiceClient(httpClient, baseURL, connect.WithGRPC())
-	healthClient := rpc.NewHealthServiceClient(httpClient, baseURL, connect.WithGRPC())
 	configClient := rpc.NewConfigServiceClient(httpClient, baseURL, connect.WithGRPC())
 
 	return &Client{
 		storeClient:  storeClient,
 		p2pClient:    p2pClient,
-		healthClient: healthClient,
 		configClient: configClient,
 	}
 }
@@ -112,16 +109,6 @@ func (c *Client) GetNetInfo(ctx context.Context) (*pb.NetInfo, error) {
 	}
 
 	return resp.Msg.NetInfo, nil
-}
-
-// GetHealth calls the HealthService.Livez endpoint and returns the HealthStatus
-func (c *Client) GetHealth(ctx context.Context) (pb.HealthStatus, error) {
-	req := connect.NewRequest(&emptypb.Empty{})
-	resp, err := c.healthClient.Livez(ctx, req)
-	if err != nil {
-		return pb.HealthStatus_UNKNOWN, err
-	}
-	return resp.Msg.Status, nil
 }
 
 // GetNamespace returns the namespace configuration for this network

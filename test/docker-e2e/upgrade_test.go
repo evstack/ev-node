@@ -3,7 +3,6 @@
 package docker_e2e
 
 import (
-	"bytes"
 	"context"
 	"fmt"
 	"math/big"
@@ -25,7 +24,7 @@ import (
 )
 
 const (
-	baseEVMSingleVersion = "v1.0.0-beta.8"
+	baseEVMSingleVersion = "v1.0.0-beta.9"
 	evmChainID           = "1234"
 	testPrivateKey       = "cece4f25ac74deb1468965160c7185e07dff413f23fcadb611b05ca37ab0a52e"
 	testToAddress        = "0x944fDcD1c868E3cC566C78023CcB38A32cDA836E"
@@ -210,10 +209,9 @@ func (s *EVMSingleUpgradeTestSuite) waitForEVMSingleHealthy(ctx context.Context,
 	networkInfo, err := node.GetNetworkInfo(ctx)
 	s.Require().NoError(err)
 
-	healthURL := fmt.Sprintf("http://0.0.0.0:%s/evnode.v1.HealthService/Livez", networkInfo.External.Ports.RPC)
+	healthURL := fmt.Sprintf("http://0.0.0.0:%s/health/live", networkInfo.External.Ports.RPC)
 	s.Require().Eventually(func() bool {
-		req, _ := http.NewRequestWithContext(ctx, http.MethodPost, healthURL, bytes.NewBufferString("{}"))
-		req.Header.Set("Content-Type", "application/json")
+		req, _ := http.NewRequestWithContext(ctx, http.MethodGet, healthURL, nil)
 		resp, err := http.DefaultClient.Do(req)
 		if err != nil {
 			return false

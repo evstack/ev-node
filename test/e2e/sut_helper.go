@@ -8,6 +8,7 @@ import (
 	"io"
 	"iter"
 	"maps"
+	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -51,6 +52,7 @@ func NewSystemUnderTest(t *testing.T) *SystemUnderTest {
 		cmdToPids: make(map[string][]int),
 		outBuff:   ring.New(100),
 		errBuff:   ring.New(100),
+		debug:     testing.Verbose(),
 	}
 	t.Cleanup(func() {
 		if t.Failed() {
@@ -92,18 +94,33 @@ func (s *SystemUnderTest) ExecCmd(cmd string, args ...string) {
 	s.awaitProcessCleanup(c)
 }
 
-// AwaitNodeUp waits until a node is operational by validating it produces blocks.
+// AwaitNodeUp waits until a node is operational by checking both liveness and readiness.
 func (s *SystemUnderTest) AwaitNodeUp(t *testing.T, rpcAddr string, timeout time.Duration) {
 	t.Helper()
 	t.Logf("Await node is up: %s", rpcAddr)
-	ctx, done := context.WithTimeout(context.Background(), timeout)
-	defer done()
 	require.EventuallyWithT(t, func(t *assert.CollectT) {
-		c := client.NewClient(rpcAddr)
-		require.NotNil(t, c)
-		_, err := c.GetHealth(ctx)
-		require.NoError(t, err)
-	}, timeout, timeout/10, "node is not up")
+		resp, err := http.Get(rpcAddr + "/health/live")
+		require.NoError(t, err, "liveness check failed")
+		defer resp.Body.Close()
+		require.Equal(t, http.StatusOK, resp.StatusCode, "liveness check failed")
+
+		resp, err = http.Get(rpcAddr + "/health/ready")
+		require.NoError(t, err, "readiness check failed")
+		defer resp.Body.Close()
+		require.Equal(t, http.StatusOK, resp.StatusCode, "node is not ready")
+	}, timeout, min(timeout/10, 200*time.Millisecond), "node is not up")
+}
+
+// AwaitNodeLive waits until a node is alive (liveness check only).
+func (s *SystemUnderTest) AwaitNodeLive(t *testing.T, rpcAddr string, timeout time.Duration) {
+	t.Helper()
+	t.Logf("Await node is live: %s", rpcAddr)
+	require.EventuallyWithT(t, func(t *assert.CollectT) {
+		resp, err := http.Get(rpcAddr + "/health/live")
+		require.NoError(t, err, "liveness check failed")
+		defer resp.Body.Close()
+		require.Equal(t, http.StatusOK, resp.StatusCode, "liveness check failed")
+	}, timeout, min(timeout/10, 200*time.Millisecond), "node is not live")
 }
 
 // AwaitNBlocks waits until the node has produced at least `n` blocks.
@@ -153,16 +170,24 @@ func (s *SystemUnderTest) awaitProcessCleanup(cmd *exec.Cmd) {
 
 func (s *SystemUnderTest) watchLogs(cmd *exec.Cmd) {
 	errReader, err := cmd.StderrPipe()
-	if err != nil {
-		panic(fmt.Sprintf("stderr reader error %#+v", err))
+	require.NoError(s.t, err)
+	outReader, err := cmd.StdoutPipe()
+	require.NoError(s.t, err)
+
+	if s.debug {
+		logDir := filepath.Join(WorkDir, "testnet")
+		require.NoError(s.t, os.MkdirAll(logDir, 0o750))
+		testName := strings.ReplaceAll(s.t.Name(), "/", "-")
+		logfileName := filepath.Join(logDir, fmt.Sprintf("exec-%s-%s-%d.out", filepath.Base(cmd.Args[0]), testName, time.Now().UnixNano()))
+		logfile, err := os.Create(logfileName)
+		require.NoError(s.t, err)
+		errReader = io.NopCloser(io.TeeReader(errReader, logfile))
+		outReader = io.NopCloser(io.TeeReader(outReader, logfile))
 	}
+
 	stopRingBuffer := make(chan struct{})
 	go appendToBuf(errReader, s.errBuff, stopRingBuffer)
 
-	outReader, err := cmd.StdoutPipe()
-	if err != nil {
-		panic(fmt.Sprintf("stdout reader error %#+v", err))
-	}
 	go appendToBuf(outReader, s.outBuff, stopRingBuffer)
 	s.t.Cleanup(func() {
 		close(stopRingBuffer)

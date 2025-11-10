@@ -96,6 +96,7 @@ func newSyncService[H header.Header[H]](
 	if p2p == nil {
 		return nil, errors.New("p2p client cannot be nil")
 	}
+
 	ss, err := goheaderstore.NewStore[H](
 		store,
 		goheaderstore.WithStorePrefix(string(syncType)),
@@ -105,7 +106,7 @@ func newSyncService[H header.Header[H]](
 		return nil, fmt.Errorf("failed to initialize the %s store: %w", syncType, err)
 	}
 
-	return &SyncService[H]{
+	svc := &SyncService[H]{
 		conf:         conf,
 		genesis:      genesis,
 		p2p:          p2p,
@@ -113,7 +114,9 @@ func newSyncService[H header.Header[H]](
 		syncType:     syncType,
 		logger:       logger,
 		syncerStatus: new(SyncerStatus),
-	}, nil
+	}
+
+	return svc, nil
 }
 
 // Store returns the store of the SyncService
@@ -123,7 +126,7 @@ func (syncService *SyncService[H]) Store() header.Store[H] {
 
 // WriteToStoreAndBroadcast initializes store if needed and broadcasts provided header or block.
 // Note: Only returns an error in case store can't be initialized. Logs error if there's one while broadcasting.
-func (syncService *SyncService[H]) WriteToStoreAndBroadcast(ctx context.Context, headerOrData H) error {
+func (syncService *SyncService[H]) WriteToStoreAndBroadcast(ctx context.Context, headerOrData H, opts ...pubsub.PubOpt) error {
 	if syncService.genesis.InitialHeight == 0 {
 		return fmt.Errorf("invalid initial height; cannot be zero")
 	}
@@ -148,7 +151,7 @@ func (syncService *SyncService[H]) WriteToStoreAndBroadcast(ctx context.Context,
 	}
 
 	// Broadcast for subscribers
-	if err := syncService.sub.Broadcast(ctx, headerOrData); err != nil {
+	if err := syncService.sub.Broadcast(ctx, headerOrData, opts...); err != nil {
 		// for the first block when starting the app, broadcast error is expected
 		// as we have already initialized the store for starting the syncer.
 		// Hence, we ignore the error. Exact reason: validation ignored
@@ -231,6 +234,7 @@ func (syncService *SyncService[H]) initStore(ctx context.Context, initial H) err
 		if err := syncService.store.Sync(ctx); err != nil {
 			return err
 		}
+
 	}
 
 	return nil

@@ -7,18 +7,21 @@ import (
 	"time"
 
 	ds "github.com/ipfs/go-datastore"
+	dssync "github.com/ipfs/go-datastore/sync"
 	"github.com/libp2p/go-libp2p/core/crypto"
 	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 
+	"github.com/evstack/ev-node/block/internal/cache"
 	"github.com/evstack/ev-node/block/internal/common"
 	"github.com/evstack/ev-node/block/internal/executing"
 	coresequencer "github.com/evstack/ev-node/core/sequencer"
 	"github.com/evstack/ev-node/pkg/config"
 	"github.com/evstack/ev-node/pkg/genesis"
 	"github.com/evstack/ev-node/pkg/signer/noop"
+	"github.com/evstack/ev-node/pkg/store"
 	testmocks "github.com/evstack/ev-node/test/mocks"
 )
 
@@ -61,11 +64,32 @@ func newTestExecutor(t *testing.T) *executing.Executor {
 	return exec
 }
 
-// reaper with mocks and in-memory seen store
-func newTestReaper(t *testing.T, chainID string, execMock *testmocks.MockExecutor, seqMock *testmocks.MockSequencer, e *executing.Executor) *Reaper {
+// helper to create a cache manager for tests
+func newTestCache(t *testing.T) cache.Manager {
 	t.Helper()
 
-	r, err := NewReaper(execMock, seqMock, genesis.Genesis{ChainID: chainID}, zerolog.Nop(), e, 100*time.Millisecond)
+	// Create a mock store for the cache manager
+	storeMock := testmocks.NewMockStore(t)
+	storeMock.EXPECT().GetMetadata(mock.Anything, "last-submitted-header-height").Return(nil, ds.ErrNotFound).Maybe()
+	storeMock.EXPECT().GetMetadata(mock.Anything, "last-submitted-data-height").Return(nil, ds.ErrNotFound).Maybe()
+	storeMock.EXPECT().Height(mock.Anything).Return(uint64(0), nil).Maybe()
+	storeMock.EXPECT().SetMetadata(mock.Anything, mock.Anything, mock.Anything).Return(nil).Maybe()
+
+	cfg := config.Config{
+		RootDir:    t.TempDir(),
+		ClearCache: true,
+	}
+	cacheManager, err := cache.NewManager(cfg, storeMock, zerolog.Nop())
+	require.NoError(t, err)
+
+	return cacheManager
+}
+
+// reaper with mocks and cache manager
+func newTestReaper(t *testing.T, chainID string, execMock *testmocks.MockExecutor, seqMock *testmocks.MockSequencer, e *executing.Executor, cm cache.Manager) *Reaper {
+	t.Helper()
+
+	r, err := NewReaper(execMock, seqMock, genesis.Genesis{ChainID: chainID}, zerolog.Nop(), e, cm, 100*time.Millisecond)
 	require.NoError(t, err)
 
 	return r
@@ -91,19 +115,15 @@ func TestReaper_SubmitTxs_NewTxs_SubmitsAndPersistsAndNotifies(t *testing.T) {
 
 	// Minimal executor to capture NotifyNewTransactions
 	e := newTestExecutor(t)
+	cm := newTestCache(t)
 
-	r := newTestReaper(t, "chain-A", mockExec, mockSeq, e)
-	store := r.SeenStore()
+	r := newTestReaper(t, "chain-A", mockExec, mockSeq, e, cm)
 
 	assert.NoError(t, r.SubmitTxs())
 
-	// Seen keys persisted
-	has1, err := store.Has(context.Background(), ds.NewKey(hashTx(tx1)))
-	require.NoError(t, err)
-	has2, err := store.Has(context.Background(), ds.NewKey(hashTx(tx2)))
-	require.NoError(t, err)
-	assert.True(t, has1)
-	assert.True(t, has2)
+	// Verify transactions are marked as seen in cache
+	assert.True(t, cm.IsTxSeen(hashTx(tx1)))
+	assert.True(t, cm.IsTxSeen(hashTx(tx2)))
 
 	// Executor notified - check using test helper
 	if !e.HasPendingTxNotification() {
@@ -118,12 +138,13 @@ func TestReaper_SubmitTxs_AllSeen_NoSubmit(t *testing.T) {
 	tx1 := []byte("tx1")
 	tx2 := []byte("tx2")
 
-	// Pre-populate seen store
+	// Pre-populate cache with seen transactions
 	e := newTestExecutor(t)
-	r := newTestReaper(t, "chain-B", mockExec, mockSeq, e)
-	store := r.SeenStore()
-	require.NoError(t, store.Put(context.Background(), ds.NewKey(hashTx(tx1)), []byte{1}))
-	require.NoError(t, store.Put(context.Background(), ds.NewKey(hashTx(tx2)), []byte{1}))
+	cm := newTestCache(t)
+	cm.SetTxSeen(hashTx(tx1))
+	cm.SetTxSeen(hashTx(tx2))
+
+	r := newTestReaper(t, "chain-B", mockExec, mockSeq, e, cm)
 
 	mockExec.EXPECT().GetTxs(mock.Anything).Return([][]byte{tx1, tx2}, nil).Once()
 	// No SubmitBatchTxs expected
@@ -144,11 +165,12 @@ func TestReaper_SubmitTxs_PartialSeen_FiltersAndPersists(t *testing.T) {
 	txNew := []byte("new")
 
 	e := newTestExecutor(t)
-	r := newTestReaper(t, "chain-C", mockExec, mockSeq, e)
+	cm := newTestCache(t)
 
 	// Mark txOld as seen
-	store := r.SeenStore()
-	require.NoError(t, store.Put(context.Background(), ds.NewKey(hashTx(txOld)), []byte{1}))
+	cm.SetTxSeen(hashTx(txOld))
+
+	r := newTestReaper(t, "chain-C", mockExec, mockSeq, e, cm)
 
 	mockExec.EXPECT().GetTxs(mock.Anything).Return([][]byte{txOld, txNew}, nil).Once()
 	mockSeq.EXPECT().SubmitBatchTxs(mock.Anything, mock.AnythingOfType("sequencer.SubmitBatchTxsRequest")).
@@ -161,12 +183,8 @@ func TestReaper_SubmitTxs_PartialSeen_FiltersAndPersists(t *testing.T) {
 	assert.NoError(t, r.SubmitTxs())
 
 	// Both should be seen after successful submit
-	hasOld, err := store.Has(context.Background(), ds.NewKey(hashTx(txOld)))
-	require.NoError(t, err)
-	hasNew, err := store.Has(context.Background(), ds.NewKey(hashTx(txNew)))
-	require.NoError(t, err)
-	assert.True(t, hasOld)
-	assert.True(t, hasNew)
+	assert.True(t, cm.IsTxSeen(hashTx(txOld)))
+	assert.True(t, cm.IsTxSeen(hashTx(txNew)))
 
 	// Notification should occur since a new tx was submitted
 	if !e.HasPendingTxNotification() {
@@ -184,18 +202,59 @@ func TestReaper_SubmitTxs_SequencerError_NoPersistence_NoNotify(t *testing.T) {
 		Return((*coresequencer.SubmitBatchTxsResponse)(nil), assert.AnError).Once()
 
 	e := newTestExecutor(t)
-	r := newTestReaper(t, "chain-D", mockExec, mockSeq, e)
+	cm := newTestCache(t)
+	r := newTestReaper(t, "chain-D", mockExec, mockSeq, e, cm)
 
 	assert.Error(t, r.SubmitTxs())
 
 	// Should not be marked seen
-	store := r.SeenStore()
-	has, err := store.Has(context.Background(), ds.NewKey(hashTx(tx)))
-	require.NoError(t, err)
-	assert.False(t, has)
+	assert.False(t, cm.IsTxSeen(hashTx(tx)))
 
 	// Should not notify
 	if e.HasPendingTxNotification() {
 		t.Fatal("did not expect notification on sequencer error")
 	}
+}
+
+func TestReaper_CachePersistence(t *testing.T) {
+	// Test that transaction seen status persists to disk and can be loaded
+	mockExec := testmocks.NewMockExecutor(t)
+	mockSeq := testmocks.NewMockSequencer(t)
+
+	tx1 := []byte("persistent-tx")
+
+	// Create cache with real store
+	tempDir := t.TempDir()
+	dataStore := dssync.MutexWrap(ds.NewMapDatastore())
+	st := store.New(dataStore)
+	cfg := config.Config{
+		RootDir:    tempDir,
+		ClearCache: false, // Don't clear cache
+	}
+	cm, err := cache.NewManager(cfg, st, zerolog.Nop())
+	require.NoError(t, err)
+
+	e := newTestExecutor(t)
+	r := newTestReaper(t, "chain-persist", mockExec, mockSeq, e, cm)
+
+	mockExec.EXPECT().GetTxs(mock.Anything).Return([][]byte{tx1}, nil).Once()
+	mockSeq.EXPECT().SubmitBatchTxs(mock.Anything, mock.AnythingOfType("sequencer.SubmitBatchTxsRequest")).
+		Return(&coresequencer.SubmitBatchTxsResponse{}, nil).Once()
+
+	require.NoError(t, r.SubmitTxs())
+
+	// Verify tx is marked as seen
+	assert.True(t, cm.IsTxSeen(hashTx(tx1)))
+
+	// Save to disk
+	require.NoError(t, cm.SaveToDisk())
+
+	// Create new cache manager and load from disk
+	dataStore2 := dssync.MutexWrap(ds.NewMapDatastore())
+	st2 := store.New(dataStore2)
+	cm2, err := cache.NewManager(cfg, st2, zerolog.Nop())
+	require.NoError(t, err)
+
+	// Verify the seen status was persisted
+	assert.True(t, cm2.IsTxSeen(hashTx(tx1)))
 }

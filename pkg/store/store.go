@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/binary"
 	"errors"
 	"fmt"
@@ -228,7 +229,8 @@ func (s *DefaultStore) Rollback(ctx context.Context, height uint64, aggregator b
 	}
 
 	for currentHeight > height {
-		header, err := s.GetHeader(ctx, currentHeight)
+		// Get header blob directly to reuse for hash calculation
+		headerBlob, err := s.db.Get(ctx, ds.NewKey(getHeaderKey(currentHeight)))
 		if err != nil {
 			return fmt.Errorf("failed to get header at height %d: %w", currentHeight, err)
 		}
@@ -245,8 +247,9 @@ func (s *DefaultStore) Rollback(ctx context.Context, height uint64, aggregator b
 			return fmt.Errorf("failed to delete signature of block blob in batch: %w", err)
 		}
 
-		hash := header.Hash()
-		if err := batch.Delete(ctx, ds.NewKey(getIndexKey(hash))); err != nil {
+		// Use HeaderHash to avoid re-marshaling the header
+		headerHash := sha256.Sum256(headerBlob)
+		if err := batch.Delete(ctx, ds.NewKey(getIndexKey(headerHash[:]))); err != nil {
 			return fmt.Errorf("failed to delete index key in batch: %w", err)
 		}
 

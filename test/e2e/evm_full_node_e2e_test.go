@@ -950,6 +950,7 @@ func restartSequencerAndFullNode(t *testing.T, sut *SystemUnderTest, sequencerHo
 	fullNodeJwtSecretFile := filepath.Join(fullNodeHome, "jwt-secret.hex")
 	sut.ExecCmd(evmSingleBinaryPath,
 		"start",
+		"--evnode.log.format", "json",
 		"--home", fullNodeHome,
 		"--evm.jwt-secret-file", fullNodeJwtSecretFile,
 		"--evm.genesis-hash", genesisHash,

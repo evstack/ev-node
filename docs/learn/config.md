@@ -38,6 +38,7 @@ This document provides a comprehensive reference for all configuration options a
 - [RPC Configuration (`rpc`)](#rpc-configuration-rpc)
   - [RPC Server Address](#rpc-server-address)
   - [Enable DA Visualization](#enable-da-visualization)
+  - [Health Endpoints](#health-endpoints)
 - [Instrumentation Configuration (`instrumentation`)](#instrumentation-configuration-instrumentation)
   - [Enable Prometheus Metrics](#enable-prometheus-metrics)
   - [Prometheus Listen Address](#prometheus-listen-address)
@@ -643,6 +644,35 @@ _Default:_ `false`
 _Constant:_ `FlagRPCEnableDAVisualization`
 
 See the [DA Visualizer Guide](../guides/da/visualizer.md) for detailed information on using this feature.
+
+### Health Endpoints
+
+#### `/health/live`
+
+Returns `200 OK` if the process is alive and can access the store.
+
+```bash
+curl http://localhost:7331/health/live
+```
+
+#### `/health/ready`
+
+Returns `200 OK` if the node can serve correct data. Checks:
+- P2P is listening (if enabled)
+- Has synced blocks
+- Not too far behind network
+- Non-aggregators: has peers
+- Aggregators: producing blocks at expected rate
+
+```bash
+curl http://localhost:7331/health/ready
+```
+
+Configure max blocks behind:
+```yaml
+node:
+  readiness_max_blocks_behind: 15
+```
 
 ## Instrumentation Configuration (`instrumentation`)
 

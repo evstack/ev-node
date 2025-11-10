@@ -160,6 +160,15 @@ body {
     background-attachment: fixed;
 }
 
+/**
+ * Gas calculator page layout adjustments
+ * -------------------------------------------------------------------------- */
+
+.gas-calculator .VPDoc .container,
+.gas-calculator .VPDoc .content-container {
+    max-width: 100% !important;
+}
+
 .dark body {
     background-color: #000000;
 }
@@ -410,4 +419,3 @@ html.dark .VPNavBar {
     width: auto !important;
     max-height: 55px !important;
 }
-

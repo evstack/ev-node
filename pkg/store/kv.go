@@ -5,23 +5,11 @@ import (
 	"path"
 	"path/filepath"
 	"strings"
-	"time"
 
 	ds "github.com/ipfs/go-datastore"
 	dsq "github.com/ipfs/go-datastore/query"
 	badger4 "github.com/ipfs/go-ds-badger4"
 )
-
-// NewDefaultInMemoryKVStore builds KVStore that works in-memory (without accessing disk).
-func NewDefaultInMemoryKVStore() (ds.Batching, error) {
-	inMemoryOptions := &badger4.Options{
-		GcDiscardRatio: 0.2,
-		GcInterval:     15 * time.Minute,
-		GcSleep:        10 * time.Second,
-		Options:        badger4.DefaultOptions.WithInMemory(true),
-	}
-	return badger4.NewDatastore("", inMemoryOptions)
-}
 
 // NewDefaultKVStore creates instance of default key-value store.
 func NewDefaultKVStore(rootDir, dbPath, dbName string) (ds.Batching, error) {
@@ -50,4 +38,12 @@ func rootify(rootDir, dbPath string) string {
 		return dbPath
 	}
 	return filepath.Join(rootDir, dbPath)
+}
+
+// NewTestInMemoryKVStore builds KVStore that works in-memory (without accessing disk).
+func NewTestInMemoryKVStore() (ds.Batching, error) {
+	inMemoryOptions := &badger4.Options{
+		Options: badger4.DefaultOptions.WithInMemory(true),
+	}
+	return badger4.NewDatastore("", inMemoryOptions)
 }
