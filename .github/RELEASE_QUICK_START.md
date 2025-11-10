@@ -1,8 +1,6 @@
 # Quick Start: Release Guide
 
-This is a quick reference guide for releasing ev-node components. For detailed documentation, see:
-- **Workflow Details**: [.github/workflows/README.md](workflows/README.md)
-- **Complete Release Process**: [RELEASE.md](../RELEASE.md)
+This is a quick reference guide for releasing ev-node components.
 
 ## Docker Image Release (Recommended for Apps)
 
