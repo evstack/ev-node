@@ -445,9 +445,7 @@ based_sequencer = true # Use based sequencer
 
 **DA Query Frequency**:
 
-- Traditional: Every `DAEpochForcedInclusion` DA blocks
-- Based Sequencer: Every `DAEpochForcedInclusion` DA blocks or when queue empty
-- Full Nodes: At each block height for verification
+Every `DAEpochForcedInclusion` DA blocks
 
 ### Security Considerations
 
@@ -462,15 +460,6 @@ based_sequencer = true # Use based sequencer
 - **Censorship**: Mitigated by forced inclusion verification
 - **DA Spam**: Limited by DA layer's native spam protection and blob size limits
 - **Block Withholding**: Full nodes can fetch and verify from DA independently
-
-### Privacy Considerations
-
-1. **Public Transactions**: Forced inclusion transactions are public on DA layer
-2. **Timing Analysis**: Transaction submission timing visible on DA
-3. **No Metadata**: No additional metadata beyond transaction content
-4. **Same Privacy Model**: Privacy properties same as normal transactions
-
-Users requiring privacy should use application-level encryption or privacy protocols.
 
 ### Testing Strategy
 
