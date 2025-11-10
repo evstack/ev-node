@@ -13,8 +13,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
-        with:
-          ref: ${{ github.event.pull_request.head.sha || github.ref }}
       - uses: actions/setup-go@v6
         with:
           go-version-file: ./go.mod
@@ -35,62 +33,19 @@ jobs:
           github-token: ${{ secrets.github_token }}
         if: env.GIT_DIFF
 
-  # Find modified Dockerfiles only
-  find-dockerfiles:
-    runs-on: ubuntu-latest
-    outputs:
-      dockerfiles: ${{ steps.find.outputs.dockerfiles }}
-      has_dockerfiles: ${{ steps.find.outputs.has_dockerfiles }}
-    steps:
-      - uses: actions/checkout@v5
-        with:
-          ref: ${{ github.event.pull_request.head.sha || github.ref }}
-          fetch-depth: 0
-      - name: Fetch base branch for comparison
-        if: github.event_name == 'pull_request'
-        run: |
-          git fetch origin ${{ github.base_ref }}:refs/remotes/origin/${{ github.base_ref }}
-      - name: Find modified Dockerfiles
-        id: find
-        run: |
-          # Get list of changed files
-          if [ "${{ github.event_name }}" == "pull_request" ]; then
-            changed_files=$(git diff --name-only origin/${{ github.base_ref }}...HEAD)
-          else
-            # For push events, compare with previous commit
-            changed_files=$(git diff --name-only HEAD^ HEAD)
-          fi
-
-          # Filter for Dockerfiles
-          dockerfiles=$(echo "$changed_files" | grep -E 'Dockerfile[^/]*$' | jq -R -s -c 'split("\n") | map(select(length > 0))')
-
-          if [ "$dockerfiles" == "[]" ] || [ -z "$dockerfiles" ]; then
-            echo "has_dockerfiles=false" >> $GITHUB_OUTPUT
-            echo "dockerfiles=[]" >> $GITHUB_OUTPUT
-          else
-            echo "has_dockerfiles=true" >> $GITHUB_OUTPUT
-            echo "dockerfiles=$dockerfiles" >> $GITHUB_OUTPUT
-          fi
-
-  # hadolint lints modified Dockerfiles only
   hadolint:
-    needs: find-dockerfiles
-    if: ${{ needs.find-dockerfiles.outputs.has_dockerfiles == 'true' }}
-    strategy:
-      fail-fast: false
-      matrix:
-        dockerfile: ${{ fromJson(needs.find-dockerfiles.outputs.dockerfiles) }}
-    uses: evstack/.github/.github/workflows/reusable_dockerfile_lint.yml@v0.5.0  # yamllint disable-line rule:line-length
-    with:
-      dockerfile: ${{ matrix.dockerfile }}
-      failure-threshold: error
+    runs-on: ubuntu-latest
+    steps:
+      - uses: hadolint/hadolint-action@v3.3.0
+        with:
+          recursive: true
+          failure-threshold: error
 
   yamllint:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
         with:
-          ref: ${{ github.event.pull_request.head.sha || github.ref }}
           fetch-depth: 0
       - uses: technote-space/get-diff-action@v6.1.2
         with:
@@ -105,7 +60,6 @@ jobs:
     steps:
       - uses: actions/checkout@v5
         with:
-          ref: ${{ github.event.pull_request.head.sha || github.ref }}
           fetch-depth: 0
       - uses: technote-space/get-diff-action@v6.1.2
         with:
@@ -121,7 +75,6 @@ jobs:
       - name: checkout
         uses: actions/checkout@v5
         with:
-          ref: ${{ github.event.pull_request.head.sha || github.ref }}
           fetch-depth: 0
       - uses: technote-space/get-diff-action@v6.1.2
         with:
