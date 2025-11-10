@@ -1,7 +1,10 @@
+---
 # lint runs all linters in this repository
-# This workflow is triggered by ci_release.yml workflow
+# This workflow is triggered by ci.yml workflow
 name: lint
-on:
+permissions:
+  contents: read
+"on":
   workflow_call:
 
 jobs:
@@ -13,8 +16,8 @@ jobs:
       - uses: actions/setup-go@v6
         with:
           go-version-file: ./go.mod
-        # This steps sets the GIT_DIFF environment variable to true
-        # if files defined in PATTERS changed
+      # This steps sets the GIT_DIFF environment variable to true
+      # if files defined in PATTERS changed
       - uses: technote-space/get-diff-action@v6.1.2
         with:
           # This job will pass without running if go.mod, go.sum, and *.go
@@ -51,7 +54,7 @@ jobs:
       fail-fast: false
       matrix:
         dockerfile: ${{ fromJson(needs.find-dockerfiles.outputs.dockerfiles) }}
-    uses: evstack/.github/.github/workflows/reusable_dockerfile_lint.yml@v0.5.0 # yamllint disable-line rule:line-length
+    uses: evstack/.github/.github/workflows/reusable_dockerfile_lint.yml@v0.5.0  # yamllint disable-line rule:line-length
     with:
       dockerfile: ${{ matrix.dockerfile }}
       failure-threshold: error

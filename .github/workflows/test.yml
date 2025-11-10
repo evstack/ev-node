@@ -1,8 +1,8 @@
-# Tests / Code Coverage workflow
-# This workflow is triggered by ci_release.yml workflow or manually
+---
+# This workflow is triggered by ci.yml workflow or manually
 name: Tests / Code Coverage
 permissions: {}
-on:
+"on":
   workflow_call:
     inputs:
       image-tag:

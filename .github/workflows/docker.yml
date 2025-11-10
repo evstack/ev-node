@@ -1,8 +1,8 @@
-# Docker Images Build workflow
+---
 # This workflow builds and pushes Docker images to GHCR
 name: Build Docker Images
 permissions: {}
-on:
+"on":
   workflow_call:
     inputs:
       image-tag:
