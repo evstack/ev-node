@@ -59,6 +59,7 @@ jobs:
   test:
     needs: determine-image-tag
     permissions:
+      actions: read
       contents: read
     uses: ./.github/workflows/test.yml
     secrets: inherit
