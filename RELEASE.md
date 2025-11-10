@@ -405,12 +405,3 @@ git tag evm/single/v0.2.0  # Less informative
    - **Go modules**: NEVER delete tags. Create a new patch version instead (e.g., v0.3.1) to avoid Go proxy issues.
 
 5. **Protected Branches**: Create version branches (e.g., `v0`, `v0.3`) for maintaining release history and backporting fixes.
-
----
-
-## Quick Links
-
-- **CI Workflow**: [.github/workflows/ci.yml](.github/workflows/ci.yml)
-- **Release Workflow**: [.github/workflows/release.yml](.github/workflows/release.yml)
-- **GitHub Actions**: https://github.com/evstack/ev-node/actions
-- **GitHub Packages**: https://github.com/orgs/evstack/packages
