@@ -1,7 +1,10 @@
+---
 # lint runs all linters in this repository
-# This workflow is triggered by ci_release.yml workflow
+# This workflow is triggered by ci.yml workflow
 name: lint
-on:
+permissions:
+  contents: read
+"on":
   workflow_call:
 
 jobs:
@@ -13,8 +16,8 @@ jobs:
       - uses: actions/setup-go@v6
         with:
           go-version-file: ./go.mod
-        # This steps sets the GIT_DIFF environment variable to true
-        # if files defined in PATTERS changed
+      # This steps sets the GIT_DIFF environment variable to true
+      # if files defined in PATTERS changed
       - uses: technote-space/get-diff-action@v6.1.2
         with:
           # This job will pass without running if go.mod, go.sum, and *.go
@@ -30,24 +33,41 @@ jobs:
           github-token: ${{ secrets.github_token }}
         if: env.GIT_DIFF
 
-  # hadolint lints the Dockerfile
   hadolint:
-    uses: evstack/.github/.github/workflows/reusable_dockerfile_lint.yml@v0.5.0 # yamllint disable-line rule:line-length
-    with:
-      dockerfile: Dockerfile
-      failure-threshold: error
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: hadolint/hadolint-action@v3.3.0
+        with:
+          recursive: true
+          failure-threshold: error
 
   yamllint:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - uses: technote-space/get-diff-action@v6.1.2
+        with:
+          PATTERNS: |
+            **/*.yml
+            **/*.yaml
       - uses: evstack/.github/.github/actions/yamllint@v0.5.0
+        if: env.GIT_DIFF
 
   markdown-lint:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - uses: technote-space/get-diff-action@v6.1.2
+        with:
+          PATTERNS: |
+            **/*.md
       - uses: evstack/.github/.github/actions/markdown-lint@v0.5.0
+        if: env.GIT_DIFF
 
   # Checks that the .goreleaser.yaml file is valid
   goreleaser-check:
@@ -55,7 +75,15 @@ jobs:
     steps:
       - name: checkout
         uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - uses: technote-space/get-diff-action@v6.1.2
+        with:
+          PATTERNS: |
+            .goreleaser.yaml
+            .goreleaser.yml
       - uses: goreleaser/goreleaser-action@v6
         with:
           version: latest
           args: check
+        if: env.GIT_DIFF

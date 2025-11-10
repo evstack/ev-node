@@ -1,7 +1,7 @@
 # Build stage
 FROM golang:1.24-alpine AS builder
 
-# Install build dependencies
+#hadolint ignore=DL3018
 RUN apk add --no-cache git make gcc musl-dev linux-headers
 
 # Set working directory
@@ -10,9 +10,8 @@ WORKDIR /ev-node
 # Copy go mod files
 COPY go.mod go.sum ./
 COPY apps/grpc/single/go.mod apps/grpc/single/go.sum ./apps/grpc/single/
-COPY core/go.mod core/go.sum ./core/
+COPY core/go.mod ./core/
 COPY execution/grpc/go.mod execution/grpc/go.sum ./execution/grpc/
-COPY pkg/go.mod pkg/go.sum ./pkg/
 COPY sequencers/single/go.mod sequencers/single/go.sum ./sequencers/single/
 
 # Download dependencies
@@ -26,9 +25,9 @@ WORKDIR /ev-node/apps/grpc/single
 RUN go build -o grpc-single .
 
 # Runtime stage
-FROM alpine:3.19
+FROM alpine:3.22.2
 
-# Install runtime dependencies
+#hadolint ignore=DL3018
 RUN apk add --no-cache ca-certificates curl
 
 # Create non-root user

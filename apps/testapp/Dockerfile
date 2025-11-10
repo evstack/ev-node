@@ -1,7 +1,6 @@
-## prep the base image.
-#
 FROM golang:1.24 AS base
 
+#hadolint ignore=DL3018
 RUN apt-get update && \
 	apt-get install -y --no-install-recommends \
 	build-essential \
