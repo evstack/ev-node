@@ -439,13 +439,13 @@ func TestReadinessEndpointWhenBlockProductionStops(t *testing.T) {
 	node, cleanup := createNodeWithCleanup(t, config)
 	defer cleanup()
 
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 
 	var runningWg sync.WaitGroup
 	startNodeInBackground(t, []*FullNode{node}, []context.Context{ctx}, &runningWg, 0, nil)
 
-	waitForBlockN(t, 1, node, config.Node.BlockTime.Duration)
+	waitForBlockN(t, 3, node, config.Node.BlockTime.Duration)
 
 	resp, err := http.Get("http://" + config.RPC.Address + "/health/ready")
 	require.NoError(err)

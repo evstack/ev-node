@@ -128,8 +128,7 @@ func saveMapGob[K comparable, V any](filePath string, data map[K]V) (err error) 
 	writer := bufio.NewWriter(file)
 
 	defer func() {
-		err = errors.Join(err, writer.Flush())
-		err = errors.Join(err, file.Close())
+		err = errors.Join(err, writer.Flush(), file.Sync(), file.Close())
 	}()
 	if err := gob.NewEncoder(writer).Encode(data); err != nil {
 		return fmt.Errorf("failed to encode to file %s: %w", filePath, err)
@@ -213,7 +212,7 @@ func (c *Cache[T]) SaveToDisk(folderPath string) error {
 			return true
 		})
 		if err := saveMapGob(filepath.Join(folderPath, daIncludedFilename), daIncludedToSave); err != nil {
-			return fmt.Errorf("save %s: %w", hashesFilename, err)
+			return fmt.Errorf("save %s: %w", daIncludedFilename, err)
 		}
 		return nil
 	})

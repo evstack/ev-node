@@ -16,7 +16,7 @@ import (
 type BestKnownHeightProvider func() uint64
 
 // RegisterCustomHTTPEndpoints registers custom HTTP handlers on the mux.
-func RegisterCustomHTTPEndpoints(mux *http.ServeMux, s store.Store, pm p2p.P2PRPC, cfg config.Config, bestKnownHeightProvider BestKnownHeightProvider, logger zerolog.Logger, raftNode RaftNodeSource,) {
+func RegisterCustomHTTPEndpoints(mux *http.ServeMux, s store.Store, pm p2p.P2PRPC, cfg config.Config, bestKnownHeightProvider BestKnownHeightProvider, logger zerolog.Logger, raftNode RaftNodeSource) {
 	// /health/live performs a basic liveness check to determine if the process is alive and responsive.
 	// Returns 200 if the process can access its store, 503 otherwise.
 	// This is a lightweight check suitable for Kubernetes liveness probes.

@@ -355,12 +355,12 @@ func (s *Syncer) fetchDAUntilCaughtUp() error {
 			s.logger.Debug().Uint64("da_height", daHeight).Msg("no events returned from DA, but no error either.")
 		}
 
-	// Process DA events
-	for _, event := range events {
-		if err := s.pipeEvent(s.ctx, event); err != nil {
-			// ignore
+		// Process DA events
+		for _, event := range events {
+			if err := s.pipeEvent(s.ctx, event); err != nil {
+				return err
+			}
 		}
-	}
 
 		// increment DA height on successful retrieval
 		s.SetDAHeight(daHeight + 1)

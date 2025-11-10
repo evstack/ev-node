@@ -67,7 +67,8 @@ func getTestConfig(t *testing.T, n int) evconfig.Config {
 	// Use a higher base port to reduce chances of conflicts with system services
 	startPort := 40000 // Spread port ranges further apart
 	return evconfig.Config{
-		RootDir: t.TempDir(),
+		RootDir:    t.TempDir(),
+		ClearCache: true, // Clear cache between tests to avoid interference with other tests and slow shutdown on serialization
 		Node: evconfig.NodeConfig{
 			Aggregator:               true,
 			BlockTime:                evconfig.DurationWrapper{Duration: 100 * time.Millisecond},
@@ -189,6 +190,12 @@ func createNodesWithCleanup(t *testing.T, num int, config evconfig.Config) ([]*F
 	// Update cleanup to cancel the context instead of calling Stop
 	cleanup := func() {
 		stopDAHeightTicker()
+		// slow down shutdown to let caches persist
+		for _, n := range nodes {
+			if n.IsRunning() {
+				time.Sleep(time.Second / 10)
+			}
+		}
 	}
 
 	nodes[0], cleanups[0] = aggNode.(*FullNode), cleanup

@@ -23,6 +23,7 @@ import (
 	evsync "github.com/evstack/ev-node/pkg/sync"
 	ds "github.com/ipfs/go-datastore"
 	"github.com/rs/zerolog"
+	"golang.org/x/sync/errgroup"
 )
 
 // failoverState collect the components to reset when switching modes.
@@ -164,21 +165,19 @@ func setupFailoverState(
 }
 
 func (f *failoverState) Run(ctx context.Context) (multiErr error) {
-	errChan := make(chan error)
-	go func() {
+	//wg, ctx := errgroup.WithContext(ctx)
+	var wg = errgroup.Group{}
+	wg.Go(func() error {
 		f.logger.Info().Str("addr", f.rpcServer.Addr).Msg("Started RPC server")
 		if err := f.rpcServer.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			select {
-			case errChan <- fmt.Errorf("RPC server error: %w", err):
-			default:
-				f.logger.Error().Err(err).Msg("RPC server error")
-			}
+			return err
 		}
-	}()
+		return nil
+	})
 	defer f.rpcServer.Shutdown(context.Background()) // nolint: errcheck
 
 	if err := f.p2pClient.Start(ctx); err != nil {
-		return err
+		return fmt.Errorf("start p2p: %w", err)
 	}
 	defer f.p2pClient.Close() // nolint: errcheck
 
@@ -200,27 +199,19 @@ func (f *failoverState) Run(ctx context.Context) (multiErr error) {
 		}
 	}()
 
-	go func() {
-		defer func() {
-			if err := f.bc.Stop(); err != nil && !errors.Is(err, context.Canceled) {
-				multiErr = errors.Join(multiErr, fmt.Errorf("stopping block components: %w", err))
-			}
-		}()
+	wg.Go(func() error {
 		if err := f.bc.Start(ctx); err != nil && !errors.Is(err, context.Canceled) {
-			select {
-			case errChan <- fmt.Errorf("components started with error: %w", err):
-			default:
-				f.logger.Error().Err(err).Msg("Components start error")
-			}
-			return
+			return fmt.Errorf("components started with error: %w", err)
 		}
-		select {
-		case errChan <- nil:
-		default:
+		return nil
+	})
+	defer func() {
+		if err := f.bc.Stop(); err != nil && !errors.Is(err, context.Canceled) {
+			multiErr = errors.Join(multiErr, fmt.Errorf("stopping block components: %w", err))
 		}
 	}()
 
-	return <-errChan
+	return wg.Wait()
 }
 
 func (f *failoverState) IsSynced(s raft.RaftBlockState) bool {
