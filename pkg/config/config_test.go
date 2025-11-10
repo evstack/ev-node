@@ -24,8 +24,6 @@ func TestDefaultConfig(t *testing.T) {
 	assert.Equal(t, false, def.Node.Light)
 	assert.Equal(t, DefaultConfig().DA.Address, def.DA.Address)
 	assert.Equal(t, "", def.DA.AuthToken)
-	assert.Equal(t, float64(-1), def.DA.GasPrice)
-	assert.Equal(t, float64(0), def.DA.GasMultiplier)
 	assert.Equal(t, "", def.DA.SubmitOptions)
 	assert.NotEmpty(t, def.DA.Namespace)
 	assert.Equal(t, 1*time.Second, def.Node.BlockTime.Duration)
@@ -69,8 +67,6 @@ func TestAddFlags(t *testing.T) {
 	assertFlagValue(t, flags, FlagDAAddress, DefaultConfig().DA.Address)
 	assertFlagValue(t, flags, FlagDAAuthToken, DefaultConfig().DA.AuthToken)
 	assertFlagValue(t, flags, FlagDABlockTime, DefaultConfig().DA.BlockTime.Duration)
-	assertFlagValue(t, flags, FlagDAGasPrice, DefaultConfig().DA.GasPrice)
-	assertFlagValue(t, flags, FlagDAGasMultiplier, DefaultConfig().DA.GasMultiplier)
 	assertFlagValue(t, flags, FlagDANamespace, DefaultConfig().DA.Namespace)
 	assertFlagValue(t, flags, FlagDASubmitOptions, DefaultConfig().DA.SubmitOptions)
 	assertFlagValue(t, flags, FlagDAMempoolTTL, DefaultConfig().DA.MempoolTTL)
@@ -104,7 +100,7 @@ func TestAddFlags(t *testing.T) {
 	assertFlagValue(t, flags, FlagRPCAddress, DefaultConfig().RPC.Address)
 
 	// Count the number of flags we're explicitly checking
-	expectedFlagCount := 39 // Update this number if you add more flag checks above
+	expectedFlagCount := 37 // Update this number if you add more flag checks above
 
 	// Get the actual number of flags (both regular and persistent)
 	actualFlagCount := 0
@@ -236,7 +232,6 @@ signer:
 	// Set some flags through the command line
 	cmd.SetArgs([]string{
 		"--home=" + tempDir,
-		"--rollkit.da.gas_price=0.5",
 		"--rollkit.node.lazy_mode=true",
 	})
 	err = cmd.Execute()
@@ -249,7 +244,6 @@ signer:
 	// Now create a Viper instance with the same flags
 	v := viper.New()
 	v.Set(FlagRootDir, tempDir)
-	v.Set("rollkit.da.gas_price", "0.5")
 	v.Set("rollkit.node.lazy_mode", true)
 
 	// Load configuration using the new LoadFromViper method
@@ -258,7 +252,6 @@ signer:
 
 	// Compare the results - they should be identical
 	require.Equal(t, cfgFromLoad.RootDir, cfgFromViper.RootDir, "RootDir should match")
-	require.Equal(t, cfgFromLoad.DA.GasPrice, cfgFromViper.DA.GasPrice, "DA.GasPrice should match")
 	require.Equal(t, cfgFromLoad.Node.LazyMode, cfgFromViper.Node.LazyMode, "Node.LazyMode should match")
 	require.Equal(t, cfgFromLoad.Node.Aggregator, cfgFromViper.Node.Aggregator, "Node.Aggregator should match")
 	require.Equal(t, cfgFromLoad.Node.BlockTime, cfgFromViper.Node.BlockTime, "Node.BlockTime should match")

@@ -173,24 +173,6 @@ func (s *DASubmitter) recordFailure(reason common.DASubmitterFailureReason) {
 	}
 }
 
-// getGasMultiplier returns the gas multiplier from configuration with fallback and clamping
-func (s *DASubmitter) getGasMultiplier(ctx context.Context, pol retryPolicy) float64 {
-	if s.config.DA.GasMultiplier > 0 {
-		return clamp(s.config.DA.GasMultiplier, 0.1, pol.MaxGasMultiplier)
-	}
-	return defaultGasMultiplier
-}
-
-// initialGasPrice determines the starting gas price from configuration with clamping and sentinel handling
-func (s *DASubmitter) initialGasPrice(ctx context.Context, pol retryPolicy) (price float64, sentinelNoGas bool) {
-	if s.config.DA.GasPrice == noGasPrice {
-		return noGasPrice, true
-	}
-	if s.config.DA.GasPrice > 0 {
-		return clamp(s.config.DA.GasPrice, pol.MinGasPrice, pol.MaxGasPrice), false
-	}
-	return pol.MinGasPrice, false
-}
 
 // SubmitHeaders submits pending headers to DA layer
 func (s *DASubmitter) SubmitHeaders(ctx context.Context, cache cache.Manager) error {
@@ -213,11 +195,10 @@ func (s *DASubmitter) SubmitHeaders(ctx context.Context, cache cache.Manager) er
 			}
 			return proto.Marshal(headerPb)
 		},
-		func(submitted []*types.SignedHeader, res *coreda.ResultSubmit, gasPrice float64) {
+		func(submitted []*types.SignedHeader, res *coreda.ResultSubmit) {
 			for _, header := range submitted {
 				cache.SetHeaderDAIncluded(header.Hash().String(), res.Height, header.Height())
 			}
-			// Update last submitted height
 			if l := len(submitted); l > 0 {
 				lastHeight := submitted[l-1].Height()
 				cache.SetLastSubmittedHeaderHeight(ctx, lastHeight)
@@ -258,7 +239,7 @@ func (s *DASubmitter) SubmitData(ctx context.Context, cache cache.Manager, signe
 		func(signedData *types.SignedData) ([]byte, error) {
 			return signedData.MarshalBinary()
 		},
-		func(submitted []*types.SignedData, res *coreda.ResultSubmit, gasPrice float64) {
+		func(submitted []*types.SignedData, res *coreda.ResultSubmit) {
 			for _, sd := range submitted {
 				cache.SetDataDAIncluded(sd.Data.DACommitment().String(), res.Height, sd.Height())
 			}
@@ -337,7 +318,7 @@ func submitToDA[T any](
 	ctx context.Context,
 	items []T,
 	marshalFn func(T) ([]byte, error),
-	postSubmit func([]T, *coreda.ResultSubmit, float64),
+	postSubmit func([]T, *coreda.ResultSubmit),
 	itemType string,
 	namespace []byte,
 	options []byte,
@@ -349,13 +330,11 @@ func submitToDA[T any](
 		return err
 	}
 
-	// Build retry policy from config with sane defaults
 	pol := defaultRetryPolicy(s.config.DA.MaxSubmitAttempts, s.config.DA.BlockTime.Duration)
 
-	// Choose initial gas price with clamp
-	gasPrice, sentinelNoGas := s.initialGasPrice(ctx, pol)
-	rs := retryState{Attempt: 0, Backoff: 0, GasPrice: gasPrice}
-	gm := s.getGasMultiplier(ctx, pol)
+	rs := retryState{Attempt: 0, Backoff: 0, GasPrice: noGasPrice}
+	const sentinelNoGas = true
+	const gm = defaultGasMultiplier
 
 	// Limit this submission to a single size-capped batch
 	if len(marshaled) > 0 {
@@ -404,7 +383,7 @@ func submitToDA[T any](
 		switch res.Code {
 		case coreda.StatusSuccess:
 			submitted := items[:res.SubmittedCount]
-			postSubmit(submitted, &res, rs.GasPrice)
+			postSubmit(submitted, &res)
 			s.logger.Info().Str("itemType", itemType).Float64("gasPrice", rs.GasPrice).Uint64("count", res.SubmittedCount).Msg("successfully submitted items to DA layer")
 			if int(res.SubmittedCount) == len(items) {
 				rs.Next(reasonSuccess, pol, gm, sentinelNoGas)
