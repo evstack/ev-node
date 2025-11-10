@@ -45,7 +45,7 @@ jobs:
 
   docker:
     needs: determine-image-tag
-    uses: ./.github/workflows/docker.yml
+    uses: ./.github/workflows/docker-build-push.yml
     secrets: inherit
     permissions:
       contents: read
