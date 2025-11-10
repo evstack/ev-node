@@ -139,38 +139,6 @@ func newFullNode(
 	return node, nil
 }
 
-func initHeaderSyncService(
-	mainKV ds.Batching,
-	nodeConfig config.Config,
-	genesis genesispkg.Genesis,
-	p2pClient *p2p.Client,
-	logger zerolog.Logger,
-) (*evsync.HeaderSyncService, error) {
-	componentLogger := logger.With().Str("component", "HeaderSyncService").Logger()
-
-	headerSyncService, err := evsync.NewHeaderSyncService(mainKV, nodeConfig, genesis, p2pClient, componentLogger)
-	if err != nil {
-		return nil, fmt.Errorf("error while initializing HeaderSyncService: %w", err)
-	}
-	return headerSyncService, nil
-}
-
-func initDataSyncService(
-	mainKV ds.Batching,
-	nodeConfig config.Config,
-	genesis genesispkg.Genesis,
-	p2pClient *p2p.Client,
-	logger zerolog.Logger,
-) (*evsync.DataSyncService, error) {
-	componentLogger := logger.With().Str("component", "DataSyncService").Logger()
-
-	dataSyncService, err := evsync.NewDataSyncService(mainKV, nodeConfig, genesis, p2pClient, componentLogger)
-	if err != nil {
-		return nil, fmt.Errorf("error while initializing DataSyncService: %w", err)
-	}
-	return dataSyncService, nil
-}
-
 func initRaftNode(nodeConfig config.Config, logger zerolog.Logger) (*raftpkg.Node, error) {
 	raftDir := nodeConfig.Raft.RaftDir
 	if raftDir == "" {
@@ -207,7 +175,6 @@ func initRaftNode(nodeConfig config.Config, logger zerolog.Logger) (*raftpkg.Nod
 
 	return raftNode, nil
 }
-
 
 // initGenesisChunks creates a chunked format of the genesis document to make it easier to
 // iterate through larger genesis structures.
