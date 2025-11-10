@@ -13,6 +13,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.ref }}
       - uses: actions/setup-go@v6
         with:
           go-version-file: ./go.mod
@@ -42,7 +44,12 @@ jobs:
     steps:
       - uses: actions/checkout@v5
         with:
+          ref: ${{ github.event.pull_request.head.sha || github.ref }}
           fetch-depth: 0
+      - name: Fetch base branch for comparison
+        if: github.event_name == 'pull_request'
+        run: |
+          git fetch origin ${{ github.base_ref }}:refs/remotes/origin/${{ github.base_ref }}
       - name: Find modified Dockerfiles
         id: find
         run: |
@@ -83,6 +90,7 @@ jobs:
     steps:
       - uses: actions/checkout@v5
         with:
+          ref: ${{ github.event.pull_request.head.sha || github.ref }}
           fetch-depth: 0
       - uses: technote-space/get-diff-action@v6.1.2
         with:
@@ -97,6 +105,7 @@ jobs:
     steps:
       - uses: actions/checkout@v5
         with:
+          ref: ${{ github.event.pull_request.head.sha || github.ref }}
           fetch-depth: 0
       - uses: technote-space/get-diff-action@v6.1.2
         with:
@@ -112,6 +121,7 @@ jobs:
       - name: checkout
         uses: actions/checkout@v5
         with:
+          ref: ${{ github.event.pull_request.head.sha || github.ref }}
           fetch-depth: 0
       - uses: technote-space/get-diff-action@v6.1.2
         with:
