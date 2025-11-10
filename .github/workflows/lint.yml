@@ -30,11 +30,30 @@ jobs:
           github-token: ${{ secrets.github_token }}
         if: env.GIT_DIFF
 
-  # hadolint lints the Dockerfile
+  # Find all Dockerfiles dynamically
+  find-dockerfiles:
+    runs-on: ubuntu-latest
+    outputs:
+      dockerfiles: ${{ steps.find.outputs.dockerfiles }}
+    steps:
+      - uses: actions/checkout@v5
+      - name: Find Dockerfiles
+        id: find
+        run: |
+          dockerfiles=$(find . -name "Dockerfile*" -type f | jq -R -s -c 'split("\n")[:-1]')
+          echo "dockerfiles=$dockerfiles" >> $GITHUB_OUTPUT
+
+  # hadolint lints all Dockerfiles in the repository
   hadolint:
+    needs: find-dockerfiles
+    if: ${{ needs.find-dockerfiles.outputs.dockerfiles != '[]' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        dockerfile: ${{ fromJson(needs.find-dockerfiles.outputs.dockerfiles) }}
     uses: evstack/.github/.github/workflows/reusable_dockerfile_lint.yml@v0.5.0 # yamllint disable-line rule:line-length
     with:
-      dockerfile: Dockerfile
+      dockerfile: ${{ matrix.dockerfile }}
       failure-threshold: error
 
   yamllint:
