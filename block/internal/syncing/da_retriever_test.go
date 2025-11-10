@@ -29,7 +29,11 @@ import (
 
 // makeSignedDataBytes builds SignedData containing the provided Data and returns its binary encoding
 func makeSignedDataBytes(t *testing.T, chainID string, height uint64, proposer []byte, pub crypto.PubKey, signer signerpkg.Signer, txs int) ([]byte, *types.SignedData) {
-	d := &types.Data{Metadata: &types.Metadata{ChainID: chainID, Height: height, Time: uint64(time.Now().UnixNano())}}
+	return makeSignedDataBytesWithTime(t, chainID, height, proposer, pub, signer, txs, uint64(time.Now().UnixNano()))
+}
+
+func makeSignedDataBytesWithTime(t *testing.T, chainID string, height uint64, proposer []byte, pub crypto.PubKey, signer signerpkg.Signer, txs int, timestamp uint64) ([]byte, *types.SignedData) {
+	d := &types.Data{Metadata: &types.Metadata{ChainID: chainID, Height: height, Time: timestamp}}
 	if txs > 0 {
 		d.Txs = make(types.Txs, txs)
 		for i := 0; i < txs; i++ {
@@ -522,11 +526,14 @@ func TestDARetriever_RetrieveForcedIncludedTxsFromDA_ExceedsMaxBlobSize(t *testi
 
 	namespaceForcedInclusionBz := coreda.NamespaceFromString(cfg.DA.GetForcedInclusionNamespace()).Bytes()
 
+	// Use fixed timestamp for deterministic test data
+	fixedTime := uint64(1234567890)
+
 	// Create signed data blobs that will exceed DefaultMaxBlobSize when accumulated
 	// DefaultMaxBlobSize is 1.5MB = 1,572,864 bytes
 	// Each 700KB tx becomes ~719KB blob, so 2 blobs = ~1.44MB (fits), 3 blobs = ~2.16MB (exceeds)
 	d1 := &types.Data{
-		Metadata: &types.Metadata{ChainID: gen.ChainID, Height: 10, Time: uint64(time.Now().UnixNano())},
+		Metadata: &types.Metadata{ChainID: gen.ChainID, Height: 10, Time: fixedTime},
 		Txs:      make(types.Txs, 1),
 	}
 	d1.Txs[0] = make([]byte, 700*1024) // 700KB transaction
@@ -540,7 +547,7 @@ func TestDARetriever_RetrieveForcedIncludedTxsFromDA_ExceedsMaxBlobSize(t *testi
 	require.NoError(t, err)
 
 	d2 := &types.Data{
-		Metadata: &types.Metadata{ChainID: gen.ChainID, Height: 11, Time: uint64(time.Now().UnixNano())},
+		Metadata: &types.Metadata{ChainID: gen.ChainID, Height: 11, Time: fixedTime},
 		Txs:      make(types.Txs, 1),
 	}
 	d2.Txs[0] = make([]byte, 700*1024) // 700KB transaction
@@ -554,7 +561,7 @@ func TestDARetriever_RetrieveForcedIncludedTxsFromDA_ExceedsMaxBlobSize(t *testi
 	require.NoError(t, err)
 
 	d3 := &types.Data{
-		Metadata: &types.Metadata{ChainID: gen.ChainID, Height: 12, Time: uint64(time.Now().UnixNano())},
+		Metadata: &types.Metadata{ChainID: gen.ChainID, Height: 12, Time: fixedTime},
 		Txs:      make(types.Txs, 1),
 	}
 	d3.Txs[0] = make([]byte, 700*1024) // 700KB transaction
@@ -720,10 +727,11 @@ func TestDARetriever_RetrieveForcedIncludedTxsFromDA_CompleteEpoch(t *testing.T)
 	addr, pub, signer := buildSyncTestSigner(t)
 	gen := genesis.Genesis{ChainID: "tchain", InitialHeight: 1, StartTime: time.Now().Add(-time.Second), ProposerAddress: addr, DAStartHeight: 2000, DAEpochForcedInclusion: 3}
 
-	// Prepare forced inclusion transaction data
-	dataBin1, _ := makeSignedDataBytes(t, gen.ChainID, 10, addr, pub, signer, 2)
-	dataBin2, _ := makeSignedDataBytes(t, gen.ChainID, 11, addr, pub, signer, 1)
-	dataBin3, _ := makeSignedDataBytes(t, gen.ChainID, 12, addr, pub, signer, 1)
+	// Prepare forced inclusion transaction data with fixed timestamp
+	fixedTime := uint64(1234567890)
+	dataBin1, _ := makeSignedDataBytesWithTime(t, gen.ChainID, 10, addr, pub, signer, 2, fixedTime)
+	dataBin2, _ := makeSignedDataBytesWithTime(t, gen.ChainID, 11, addr, pub, signer, 1, fixedTime)
+	dataBin3, _ := makeSignedDataBytesWithTime(t, gen.ChainID, 12, addr, pub, signer, 1, fixedTime)
 
 	cfg := config.DefaultConfig()
 	cfg.DA.ForcedInclusionNamespace = "nsForcedInclusion"
