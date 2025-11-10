@@ -78,4 +78,5 @@ jobs:
   proto:
     permissions:
       contents: read
+      pull-requests: write
     uses: ./.github/workflows/proto.yml
