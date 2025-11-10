@@ -12,7 +12,6 @@ COPY go.mod go.sum ./
 COPY apps/grpc/single/go.mod apps/grpc/single/go.sum ./apps/grpc/single/
 COPY core/go.mod ./core/
 COPY execution/grpc/go.mod execution/grpc/go.sum ./execution/grpc/
-# COPY pkg/go.mod pkg/go.sum ./pkg/
 COPY sequencers/single/go.mod sequencers/single/go.sum ./sequencers/single/
 
 # Download dependencies
@@ -26,7 +25,7 @@ WORKDIR /ev-node/apps/grpc/single
 RUN go build -o grpc-single .
 
 # Runtime stage
-FROM alpine:3
+FROM alpine:3.22.2
 
 #hadolint ignore=DL3018
 RUN apk add --no-cache ca-certificates curl

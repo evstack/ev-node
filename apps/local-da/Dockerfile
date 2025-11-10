@@ -14,7 +14,7 @@ COPY . .
 
 RUN make build-da
 
-FROM alpine:3
+FROM alpine:3.22.2
 
 #hadolint ignore=DL3018
 RUN apk --no-cache add ca-certificates curl

@@ -25,7 +25,7 @@ RUN go mod download && make install
 
 ## prep the final image.
 #
-FROM alpine:3
+FROM alpine:3.22.2
 
 COPY --from=builder /go/bin/testapp /usr/bin
 

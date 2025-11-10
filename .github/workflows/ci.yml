@@ -55,17 +55,15 @@ jobs:
       apps: |
         [
           {"name": "ev-node-evm-single", "dockerfile": "apps/evm/single/Dockerfile"}
+          {"name": "ev-node-testapp", "dockerfile": "apps/testapp/Dockerfile"}
         ]
 
   test:
-    needs: determine-image-tag
     permissions:
       actions: read
       contents: read
     uses: ./.github/workflows/test.yml
     secrets: inherit
-    with:
-      image-tag: ${{ needs.determine-image-tag.outputs.tag }}
 
   docker-tests:
     needs: [determine-image-tag, docker]

@@ -12,7 +12,7 @@ COPY . .
 WORKDIR /src/apps/evm/single
 RUN go mod tidy && CGO_ENABLED=0 GOOS=linux go build -o evm-single .
 
-FROM alpine:3
+FROM alpine:3.22.2
 
 #hadolint ignore=DL3018
 RUN apk --no-cache add ca-certificates curl
