@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
 	"sync"
 	"testing"
 	"time"
@@ -417,4 +418,46 @@ func waitForBlockN(t *testing.T, n uint64, node *FullNode, blockInterval time.Du
 		require.NoError(t, err)
 		return got >= n
 	}, timeout[0], blockInterval/2)
+}
+func TestReadinessEndpointWhenBlockProductionStops(t *testing.T) {
+	require := require.New(t)
+
+	config := getTestConfig(t, 1)
+	config.Node.Aggregator = true
+	config.Node.BlockTime = evconfig.DurationWrapper{Duration: 500 * time.Millisecond}
+	config.Node.MaxPendingHeadersAndData = 2
+	config.DA.BlockTime = evconfig.DurationWrapper{Duration: 100 * time.Second}
+
+	node, cleanup := createNodeWithCleanup(t, config)
+	defer cleanup()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	var runningWg sync.WaitGroup
+	startNodeInBackground(t, []*FullNode{node}, []context.Context{ctx}, &runningWg, 0, nil)
+
+	waitForBlockN(t, 1, node, config.Node.BlockTime.Duration)
+
+	resp, err := http.Get("http://" + config.RPC.Address + "/health/ready")
+	require.NoError(err)
+	require.Equal(http.StatusOK, resp.StatusCode, "Readiness should be READY while producing blocks")
+	resp.Body.Close()
+
+	time.Sleep(time.Duration(config.Node.MaxPendingHeadersAndData+2) * config.Node.BlockTime.Duration)
+
+	height, err := getNodeHeight(node, Store)
+	require.NoError(err)
+	require.LessOrEqual(height, config.Node.MaxPendingHeadersAndData)
+
+	require.Eventually(func() bool {
+		resp, err := http.Get("http://" + config.RPC.Address + "/health/ready")
+		if err != nil {
+			return false
+		}
+		defer resp.Body.Close()
+		return resp.StatusCode == http.StatusServiceUnavailable
+	}, 10*time.Second, 100*time.Millisecond, "Readiness should be UNREADY after aggregator stops producing blocks (5x block time)")
+
+	shutdownAndWait(t, []context.CancelFunc{cancel}, &runningWg, 10*time.Second)
 }
