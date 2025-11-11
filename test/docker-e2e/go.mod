@@ -4,8 +4,7 @@ go 1.24.6
 
 require (
 	cosmossdk.io/math v1.5.3
-	// TODO(reviewer): Update to tagged release once tastora is merged and tagged
-	github.com/celestiaorg/tastora v0.7.6-0.20251106081541-3ec2da2f1f7f
+	github.com/celestiaorg/tastora v0.8.0
 	github.com/ethereum/go-ethereum v1.16.6
 	github.com/evstack/ev-node/execution/evm v1.0.0-beta.3
 	github.com/stretchr/testify v1.11.1
@@ -17,7 +16,7 @@ require (
 	github.com/StackExchange/wmi v1.2.1 // indirect
 	github.com/bits-and-blooms/bitset v1.20.0 // indirect
 	github.com/celestiaorg/go-square/v3 v3.0.2 // indirect
-	github.com/consensys/gnark-crypto v0.18.0 // indirect
+	github.com/consensys/gnark-crypto v0.18.1 // indirect
 	github.com/containerd/continuity v0.4.5 // indirect
 	github.com/crate-crypto/go-eth-kzg v1.4.0 // indirect
 	github.com/crate-crypto/go-ipa v0.0.0-20240724233137-53bbb0ceb27a // indirect
