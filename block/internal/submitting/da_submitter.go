@@ -190,7 +190,6 @@ func (s *DASubmitter) recordFailure(reason common.DASubmitterFailureReason) {
 	}
 }
 
-
 // SubmitHeaders submits pending headers to DA layer
 func (s *DASubmitter) SubmitHeaders(ctx context.Context, cache cache.Manager) error {
 	headers, err := cache.GetPendingHeaders(ctx)
