@@ -157,4 +157,5 @@ require (
 )
 
 replace github.com/evstack/ev-node/core => ../../core
+
 replace github.com/evstack/ev-node/da => ../../da
