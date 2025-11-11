@@ -165,6 +165,15 @@ func setupFailoverState(
 }
 
 func (f *failoverState) Run(pCtx context.Context) (multiErr error) {
+	stopService := func(stoppable func(context.Context) error, name string) {
+		shutdownCtx, done := context.WithTimeout(context.Background(), 3*time.Second)
+		defer done()
+
+		if err := stoppable(shutdownCtx); err != nil && !errors.Is(err, context.Canceled) {
+			multiErr = errors.Join(multiErr, fmt.Errorf("stopping %s: %w", name, err))
+		}
+	}
+
 	wg, ctx := errgroup.WithContext(pCtx)
 
 	if err := f.p2pClient.Start(ctx); err != nil {
@@ -175,27 +184,12 @@ func (f *failoverState) Run(pCtx context.Context) (multiErr error) {
 	if err := f.headerSyncService.Start(ctx); err != nil {
 		return fmt.Errorf("error while starting header sync service: %w", err)
 	}
-
-	defer func() {
-		shutdownCtx, done := context.WithTimeout(context.Background(), 3*time.Second)
-		defer done()
-
-		if err := f.headerSyncService.Stop(shutdownCtx); err != nil && !errors.Is(err, context.Canceled) {
-			multiErr = errors.Join(multiErr, fmt.Errorf("stopping header sync: %w", err))
-		}
-	}()
+	defer stopService(f.headerSyncService.Stop, "header sync")
 
 	if err := f.dataSyncService.Start(ctx); err != nil {
 		return fmt.Errorf("error while starting data sync service: %w", err)
 	}
-	defer func() {
-		shutdownCtx, done := context.WithTimeout(context.Background(), 3*time.Second)
-		defer done()
-
-		if err := f.dataSyncService.Stop(shutdownCtx); err != nil && !errors.Is(err, context.Canceled) {
-			multiErr = errors.Join(multiErr, fmt.Errorf("stopping data sync: %w", err))
-		}
-	}()
+	defer stopService(f.dataSyncService.Stop, "data sync")
 
 	wg.Go(func() (rerr error) {
 		defer func() {
