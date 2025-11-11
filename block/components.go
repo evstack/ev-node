@@ -100,7 +100,6 @@ func (bc *Components) Start(ctx context.Context) error {
 func (bc *Components) Stop() error {
 	var errs error
 	if bc.Executor != nil {
-		println("+++ stopping executor")
 		if err := bc.Executor.Stop(); err != nil {
 			errs = errors.Join(errs, fmt.Errorf("failed to stop executor: %w", err))
 		}
