@@ -22,7 +22,7 @@ func TestMergeSubmitOptions_EmptyBaseOptions(t *testing.T) {
 	result, err := mergeSubmitOptions([]byte{}, signingAddress)
 	require.NoError(t, err)
 
-	var resultMap map[string]interface{}
+	var resultMap map[string]any
 	err = json.Unmarshal(result, &resultMap)
 	require.NoError(t, err)
 
@@ -36,7 +36,7 @@ func TestMergeSubmitOptions_ValidJSON(t *testing.T) {
 	result, err := mergeSubmitOptions(baseOptions, signingAddress)
 	require.NoError(t, err)
 
-	var resultMap map[string]interface{}
+	var resultMap map[string]any
 	err = json.Unmarshal(result, &resultMap)
 	require.NoError(t, err)
 
@@ -52,7 +52,7 @@ func TestMergeSubmitOptions_InvalidJSON(t *testing.T) {
 	result, err := mergeSubmitOptions(baseOptions, signingAddress)
 	require.NoError(t, err)
 
-	var resultMap map[string]interface{}
+	var resultMap map[string]any
 	err = json.Unmarshal(result, &resultMap)
 	require.NoError(t, err)
 
@@ -68,7 +68,7 @@ func TestMergeSubmitOptions_OverrideExistingAddress(t *testing.T) {
 	result, err := mergeSubmitOptions(baseOptions, newAddress)
 	require.NoError(t, err)
 
-	var resultMap map[string]interface{}
+	var resultMap map[string]any
 	err = json.Unmarshal(result, &resultMap)
 	require.NoError(t, err)
 
@@ -82,7 +82,7 @@ func TestMergeSubmitOptions_NilBaseOptions(t *testing.T) {
 	result, err := mergeSubmitOptions(nil, signingAddress)
 	require.NoError(t, err)
 
-	var resultMap map[string]interface{}
+	var resultMap map[string]any
 	err = json.Unmarshal(result, &resultMap)
 	require.NoError(t, err)
 
@@ -102,17 +102,17 @@ func TestMergeSubmitOptions_ComplexJSON(t *testing.T) {
 	result, err := mergeSubmitOptions(baseOptions, signingAddress)
 	require.NoError(t, err)
 
-	var resultMap map[string]interface{}
+	var resultMap map[string]any
 	err = json.Unmarshal(result, &resultMap)
 	require.NoError(t, err)
 
 	// Check nested structure is preserved
-	nested, ok := resultMap["nested"].(map[string]interface{})
+	nested, ok := resultMap["nested"].(map[string]any)
 	require.True(t, ok)
 	assert.Equal(t, "value", nested["key"])
 
 	// Check array is preserved
-	array, ok := resultMap["array"].([]interface{})
+	array, ok := resultMap["array"].([]any)
 	require.True(t, ok)
 	assert.Len(t, array, 3)
 
