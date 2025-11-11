@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"sync"
 	"testing"
@@ -68,6 +69,7 @@ func (s *FullNodeTestSuite) SetupTest() {
 
 	// Start the node in a goroutine using Run instead of Start
 	s.startNodeInBackground(s.node)
+	s.T().Cleanup(func() { shutdownAndWait(s.T(), []context.CancelFunc{s.cancel}, &s.runningWg, 10*time.Second) })
 
 	// Verify that the node is running and producing blocks
 	err := waitForFirstBlock(s.node, Header)
@@ -242,6 +244,7 @@ func TestStateRecovery(t *testing.T) {
 
 	// Start the sequencer first
 	startNodeInBackground(t, []*FullNode{node}, []context.Context{ctx}, &runningWg, 0, nil)
+	t.Cleanup(func() { shutdownAndWait(t, []context.CancelFunc{cancel}, &runningWg, 10*time.Second) })
 
 	blocksToWaitFor := uint64(20)
 	// Wait for the sequencer to produce at first block
@@ -285,6 +288,7 @@ func TestMaxPendingHeadersAndData(t *testing.T) {
 
 	var runningWg sync.WaitGroup
 	startNodeInBackground(t, []*FullNode{node}, []context.Context{ctx}, &runningWg, 0, nil)
+	t.Cleanup(func() { shutdownAndWait(t, []context.CancelFunc{cancel}, &runningWg, 10*time.Second) })
 
 	// Wait blocks to be produced up to max pending
 	numExtraBlocks := uint64(5)
@@ -294,9 +298,6 @@ func TestMaxPendingHeadersAndData(t *testing.T) {
 	height, err := getNodeHeight(node, Store)
 	require.NoError(err)
 	require.LessOrEqual(height, config.Node.MaxPendingHeadersAndData)
-
-	// Stop the node and wait for shutdown
-	shutdownAndWait(t, []context.CancelFunc{cancel}, &runningWg, 10*time.Second)
 }
 
 // TestBatchQueueThrottlingWithDAFailure tests that when DA layer fails and MaxPendingHeadersAndData
@@ -334,7 +335,9 @@ func TestBatchQueueThrottlingWithDAFailure(t *testing.T) {
 	var runningWg sync.WaitGroup
 	errChan := make(chan error, 1)
 	startNodeInBackground(t, []*FullNode{node}, []context.Context{ctx}, &runningWg, 0, errChan)
+	t.Cleanup(func() { shutdownAndWait(t, []context.CancelFunc{cancel}, &runningWg, 10*time.Second) })
 	require.Len(errChan, 0, "Expected no errors when starting node")
+
 	// Wait for the node to start producing blocks
 	waitForBlockN(t, 1, node, config.Node.BlockTime.Duration)
 
@@ -387,13 +390,6 @@ func TestBatchQueueThrottlingWithDAFailure(t *testing.T) {
 	require.NoError(err)
 	t.Logf("Final height: %d", finalHeight)
 	cancel() // stop the node
-	if v, ok := node.leaderElection.(*singleRoleElector); ok {
-		// skip cache persistence to avoid race condition with shutdown
-		v.runnable.(*failoverState).bc.Cache = nil
-	} else {
-		time.Sleep(time.Second)
-	}
-
 	// The height should not have increased much due to MaxPendingHeadersAndData limit
 	// Allow at most 3 additional blocks due to timing and pending blocks in queue
 	heightIncrease := finalHeight - heightAfterDAFailure
@@ -427,6 +423,7 @@ func waitForBlockN(t *testing.T, n uint64, node *FullNode, blockInterval time.Du
 		return got >= n
 	}, timeout[0], blockInterval/2)
 }
+
 func TestReadinessEndpointWhenBlockProductionStops(t *testing.T) {
 	require := require.New(t)
 
@@ -443,14 +440,20 @@ func TestReadinessEndpointWhenBlockProductionStops(t *testing.T) {
 	defer cancel()
 
 	var runningWg sync.WaitGroup
-	startNodeInBackground(t, []*FullNode{node}, []context.Context{ctx}, &runningWg, 0, nil)
+	errChan := make(chan error, 1)
+	startNodeInBackground(t, []*FullNode{node}, []context.Context{ctx}, &runningWg, 0, errChan)
+	t.Cleanup(func() { shutdownAndWait(t, []context.CancelFunc{cancel}, &runningWg, 10*time.Second) })
+	require.Len(errChan, 0, "Expected no errors when starting node")
 
-	waitForBlockN(t, 3, node, config.Node.BlockTime.Duration)
+	waitForBlockN(t, 2, node, config.Node.BlockTime.Duration)
+	require.Len(errChan, 0, "Expected no errors when starting node")
 
 	resp, err := http.Get("http://" + config.RPC.Address + "/health/ready")
 	require.NoError(err)
-	require.Equal(http.StatusOK, resp.StatusCode, "Readiness should be READY while producing blocks")
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(err)
 	resp.Body.Close()
+	require.Equal(http.StatusOK, resp.StatusCode, "Readiness should be READY while producing blocks: %s", body)
 
 	time.Sleep(time.Duration(config.Node.MaxPendingHeadersAndData+2) * config.Node.BlockTime.Duration)
 
@@ -466,6 +469,4 @@ func TestReadinessEndpointWhenBlockProductionStops(t *testing.T) {
 		defer resp.Body.Close()
 		return resp.StatusCode == http.StatusServiceUnavailable
 	}, 10*time.Second, 100*time.Millisecond, "Readiness should be UNREADY after aggregator stops producing blocks (5x block time)")
-
-	shutdownAndWait(t, []context.CancelFunc{cancel}, &runningWg, 10*time.Second)
 }

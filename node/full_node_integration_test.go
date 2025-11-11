@@ -84,9 +84,6 @@ func TestTxGossipingMultipleNodesDAIncluded(t *testing.T) {
 
 	numNodes := 4
 	nodes, cleanups := createNodesWithCleanup(t, numNodes, config)
-	for _, cleanup := range cleanups {
-		defer cleanup()
-	}
 
 	ctxs, cancels := createNodeContexts(numNodes)
 	var runningWg sync.WaitGroup
@@ -94,6 +91,7 @@ func TestTxGossipingMultipleNodesDAIncluded(t *testing.T) {
 	errChan := make(chan error, numNodes)
 	// Start only the sequencer first
 	startNodeInBackground(t, nodes, ctxs, &runningWg, 0, errChan)
+	t.Cleanup(func() { shutdownAndWait(t, cleanups, &runningWg, 10*time.Second) })
 
 	// Wait for the first block to be produced by the sequencer
 	err := waitForFirstBlock(nodes[0], Header)
@@ -165,16 +163,13 @@ func TestFastDASync(t *testing.T) {
 	config.DA.BlockTime = evconfig.DurationWrapper{Duration: 200 * time.Millisecond}
 
 	nodes, cleanups := createNodesWithCleanup(t, 2, config)
-	for _, cleanup := range cleanups {
-		defer cleanup()
-	}
-
 	ctxs, cancels := createNodeContexts(len(nodes))
 	var runningWg sync.WaitGroup
 
 	errChan := make(chan error, len(nodes))
 	// Start only the first node
 	startNodeInBackground(t, nodes, ctxs, &runningWg, 0, errChan)
+	t.Cleanup(func() { shutdownAndWait(t, cleanups, &runningWg, 10*time.Second) })
 
 	// Wait for the first node to produce a few blocks
 	blocksToWaitFor := uint64(2)
@@ -185,6 +180,7 @@ func TestFastDASync(t *testing.T) {
 
 	// Now start the second node and time its sync
 	startNodeInBackground(t, nodes, ctxs, &runningWg, 1, errChan)
+
 	start := time.Now()
 	// Wait for the second node to catch up to the first node
 	require.NoError(waitForAtLeastNBlocks(nodes[1], blocksToWaitFor, Store))
@@ -327,6 +323,7 @@ func testSingleSequencerSingleFullNode(t *testing.T, source Source) {
 
 	// Start the sequencer first
 	startNodeInBackground(t, nodes, ctxs, &runningWg, 0, errChan)
+	t.Cleanup(func() { shutdownAndWait(t, cancels, &runningWg, 10*time.Second) })
 
 	// Wait for the sequencer to produce at first block
 	require.NoError(waitForFirstBlock(nodes[0], source))
@@ -346,9 +343,6 @@ func testSingleSequencerSingleFullNode(t *testing.T, source Source) {
 
 	// Verify both nodes are synced using the helper
 	require.NoError(verifyNodesSynced(nodes[0], nodes[1], source))
-
-	// Cancel all node contexts to signal shutdown and wait
-	shutdownAndWait(t, cancels, &runningWg, 5*time.Second)
 }
 
 // testSingleSequencerTwoFullNodes sets up a single sequencer and two full nodes, starts the sequencer, waits for it to produce a block, then starts the full nodes.
@@ -370,6 +364,7 @@ func testSingleSequencerTwoFullNodes(t *testing.T, source Source) {
 
 	// Start the sequencer first
 	startNodeInBackground(t, nodes, ctxs, &runningWg, 0, errChan)
+	t.Cleanup(func() { shutdownAndWait(t, cancels, &runningWg, 10*time.Second) })
 
 	// Wait for the sequencer to produce at first block
 	require.NoError(waitForFirstBlock(nodes[0], source))
@@ -397,9 +392,6 @@ func testSingleSequencerTwoFullNodes(t *testing.T, source Source) {
 	for i := 1; i < numNodes; i++ {
 		require.NoError(verifyNodesSynced(nodes[0], nodes[i], source))
 	}
-
-	// Cancel all node contexts to signal shutdown and wait
-	shutdownAndWait(t, cancels, &runningWg, 5*time.Second)
 }
 
 // testSingleSequencerSingleFullNodeTrustedHash sets up a single sequencer and a single full node with a trusted hash, starts the sequencer, waits for it to produce a block, then starts the full node with the trusted hash.
@@ -421,6 +413,7 @@ func testSingleSequencerSingleFullNodeTrustedHash(t *testing.T, source Source) {
 
 	// Start the sequencer first
 	startNodeInBackground(t, nodes, ctxs, &runningWg, 0, errChan)
+	t.Cleanup(func() { shutdownAndWait(t, cancels, &runningWg, 10*time.Second) })
 
 	// Wait for the sequencer to produce at first block
 	require.NoError(waitForFirstBlock(nodes[0], source))
@@ -461,9 +454,6 @@ func testSingleSequencerSingleFullNodeTrustedHash(t *testing.T, source Source) {
 
 	// Verify both nodes are synced using the helper
 	require.NoError(verifyNodesSynced(nodes[0], nodes[1], source))
-
-	// Cancel all node contexts to signal shutdown and wait
-	shutdownAndWait(t, cancels, &runningWg, 5*time.Second)
 }
 
 // TestTwoChainsInOneNamespace verifies that two chains in the same namespace can coexist without any issues.

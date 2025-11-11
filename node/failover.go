@@ -165,8 +165,7 @@ func setupFailoverState(
 }
 
 func (f *failoverState) Run(ctx context.Context) (multiErr error) {
-	//wg, ctx := errgroup.WithContext(ctx)
-	var wg = errgroup.Group{}
+	var wg errgroup.Group
 	wg.Go(func() error {
 		f.logger.Info().Str("addr", f.rpcServer.Addr).Msg("Started RPC server")
 		if err := f.rpcServer.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
@@ -174,7 +173,6 @@ func (f *failoverState) Run(ctx context.Context) (multiErr error) {
 		}
 		return nil
 	})
-	defer f.rpcServer.Shutdown(context.Background()) // nolint: errcheck
 
 	if err := f.p2pClient.Start(ctx); err != nil {
 		return fmt.Errorf("start p2p: %w", err)
@@ -184,8 +182,12 @@ func (f *failoverState) Run(ctx context.Context) (multiErr error) {
 	if err := f.headerSyncService.Start(ctx); err != nil {
 		return fmt.Errorf("error while starting header sync service: %w", err)
 	}
+
 	defer func() {
-		if err := f.headerSyncService.Stop(context.Background()); err != nil && !errors.Is(err, context.Canceled) {
+		shutdownCtx, done := context.WithTimeout(context.Background(), 3*time.Second)
+		defer done()
+
+		if err := f.headerSyncService.Stop(shutdownCtx); err != nil && !errors.Is(err, context.Canceled) {
 			multiErr = errors.Join(multiErr, fmt.Errorf("stopping header sync: %w", err))
 		}
 	}()
@@ -194,7 +196,10 @@ func (f *failoverState) Run(ctx context.Context) (multiErr error) {
 		return fmt.Errorf("error while starting data sync service: %w", err)
 	}
 	defer func() {
-		if err := f.dataSyncService.Stop(context.Background()); err != nil && !errors.Is(err, context.Canceled) {
+		shutdownCtx, done := context.WithTimeout(context.Background(), 3*time.Second)
+		defer done()
+
+		if err := f.dataSyncService.Stop(shutdownCtx); err != nil && !errors.Is(err, context.Canceled) {
 			multiErr = errors.Join(multiErr, fmt.Errorf("stopping data sync: %w", err))
 		}
 	}()
@@ -209,6 +214,12 @@ func (f *failoverState) Run(ctx context.Context) (multiErr error) {
 		if err := f.bc.Stop(); err != nil && !errors.Is(err, context.Canceled) {
 			multiErr = errors.Join(multiErr, fmt.Errorf("stopping block components: %w", err))
 		}
+	}()
+
+	defer func() { // shutdown first
+		shutdownCtx, done := context.WithTimeout(context.Background(), 3*time.Second)
+		defer done()
+		_ = f.rpcServer.Shutdown(shutdownCtx)
 	}()
 
 	return wg.Wait()

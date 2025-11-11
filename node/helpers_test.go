@@ -107,6 +107,10 @@ func newTestNode(
 	remoteSigner, err := remote_signer.NewNoopSigner(genesisValidatorKey)
 	require.NoError(t, err)
 
+	logger := zerolog.Nop()
+	if testing.Verbose() {
+		logger = zerolog.New(zerolog.NewTestWriter(t))
+	}
 	node, err := NewNode(
 		config,
 		executor,
@@ -117,7 +121,7 @@ func newTestNode(
 		genesis,
 		ds,
 		DefaultMetricsProvider(evconfig.DefaultInstrumentationConfig()),
-		zerolog.Nop(),
+		logger,
 		NodeOptions{},
 	)
 	require.NoError(t, err)
@@ -190,12 +194,6 @@ func createNodesWithCleanup(t *testing.T, num int, config evconfig.Config) ([]*F
 	// Update cleanup to cancel the context instead of calling Stop
 	cleanup := func() {
 		stopDAHeightTicker()
-		// slow down shutdown to let caches persist
-		for _, n := range nodes {
-			if n.IsRunning() {
-				time.Sleep(time.Second / 10)
-			}
-		}
 	}
 
 	nodes[0], cleanups[0] = aggNode.(*FullNode), cleanup
@@ -268,7 +266,7 @@ func startNodeInBackground(t *testing.T, nodes []*FullNode, ctxs []context.Conte
 }
 
 // Helper to cancel all contexts and wait for goroutines with timeout
-func shutdownAndWait(t *testing.T, cancels []context.CancelFunc, wg *sync.WaitGroup, timeout time.Duration) {
+func shutdownAndWait[T ~func()](t *testing.T, cancels []T, wg *sync.WaitGroup, timeout time.Duration) {
 	for _, cancel := range cancels {
 		cancel()
 	}
