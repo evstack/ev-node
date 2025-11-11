@@ -22,7 +22,6 @@ import (
 	"github.com/cosmos/cosmos-sdk/x/auth"
 	"github.com/cosmos/cosmos-sdk/x/bank"
 	banktypes "github.com/cosmos/cosmos-sdk/x/bank/types"
-	dockerclient "github.com/moby/moby/client"
 	"github.com/stretchr/testify/suite"
 )
 
@@ -52,14 +51,14 @@ type DockerTestSuite struct {
 	celestia        *cosmos.Chain
 	daNetwork       *da.Network
 	evNodeChain     *evstack.Chain
-	dockerClient    *dockerclient.Client
+	dockerClient    tastoratypes.TastoraDockerClient
 	dockerNetworkID string
 }
 
 // setupDockerEnvironment sets up the basic Docker environment
 func (s *DockerTestSuite) setupDockerEnvironment() {
 	t := s.T()
-	client, network := tastoradocker.DockerSetup(t)
+	client, network := tastoradocker.Setup(t)
 
 	// Store client and network ID in the suite for later use
 	s.dockerClient = client
