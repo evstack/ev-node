@@ -658,6 +658,7 @@ curl http://localhost:7331/health/live
 #### `/health/ready`
 
 Returns `200 OK` if the node can serve correct data. Checks:
+
 - P2P is listening (if enabled)
 - Has synced blocks
 - Not too far behind network
@@ -669,6 +670,7 @@ curl http://localhost:7331/health/ready
 ```
 
 Configure max blocks behind:
+
 ```yaml
 node:
   readiness_max_blocks_behind: 15
