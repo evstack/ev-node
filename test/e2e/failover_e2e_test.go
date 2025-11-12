@@ -170,7 +170,7 @@ func TestLeaseFailoverE2E(t *testing.T) {
 		}
 	}
 	oldDetails := clusterNodes.Details(oldLeader)
-	restartedNodeProcess := setupRaftSequencerNode(t, sut, workDir, oldLeader, oldDetails.raftAddr, jwtSecret, genesisHash, testEndpoints.GetDAAddress(), "", raftClusterRPCs, clusterNodes.Details(newLeader).p2pAddr, oldDetails.rpcAddr, oldDetails.p2pAddr, oldDetails.engineURL, oldDetails.ethAddr, false, passphraseFile)
+	restartedNodeProcess := setupRaftSequencerNode(t, sut, workDir, oldLeader, oldDetails.raftAddr, jwtSecret, genesisHash, testEndpoints.GetDAAddress(), "", raftCluster, clusterNodes.Details(newLeader).p2pAddr, oldDetails.rpcAddr, oldDetails.p2pAddr, oldDetails.engineURL, oldDetails.ethAddr, false, passphraseFile)
 	t.Log("Restarted old leader to sync with cluster: " + oldLeader)
 
 	if IsNodeUp(t, oldDetails.rpcAddr, NodeStartupTimeout) {
@@ -355,7 +355,7 @@ func setupRaftSequencerNode(
 	t *testing.T,
 	sut *SystemUnderTest,
 	workDir, nodeID, raftAddr, jwtSecret, genesisHash, daAddress, bootstrapDir string,
-	raftPeers []string,
+	allRaftClusterMembers []string,
 	p2pPeers, rpcAddr, p2pAddr, engineURL, ethURL string,
 	bootstrap bool,
 	passphraseFile string,
@@ -378,6 +378,7 @@ func setupRaftSequencerNode(
 	if strings.HasPrefix(rpcAddr, "http://") {
 		rpcAddr = rpcAddr[7:]
 	}
+	raftPeers := slices.DeleteFunc(slices.Clone(allRaftClusterMembers), func(v string) bool { return strings.Contains(v, nodeID+"@") || strings.TrimSpace(v) == "" })
 
 	// Start node with raft configuration
 	process := sut.ExecCmdWithLogPrefix(nodeID, evmSingleBinaryPath,

@@ -9,7 +9,6 @@ import (
 	"net"
 	"os"
 	"path/filepath"
-	"slices"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -114,57 +113,31 @@ func (n *Node) Start(_ context.Context) error {
 	}
 
 	n.logger.Info().Msg("Boostrap raft cluster")
+	thisNode := raft.Server{ID: raft.ServerID(n.config.NodeID), Address: raft.ServerAddress(n.config.RaftAddr)}
 	cfg := raft.Configuration{
 		Servers: []raft.Server{
-			{
-				ID:      raft.ServerID(n.config.NodeID),
-				Address: raft.ServerAddress(n.config.RaftAddr),
-			},
+			thisNode,
 		},
 	}
 	for _, peer := range n.config.Peers {
 		addr, err := splitPeerAddr(peer)
 		if err != nil {
-			return err
+			return fmt.Errorf("peer %q : %w", peer, err)
 		}
-		cfg.Servers = append(cfg.Servers, addr)
+		if addr != thisNode {
+			cfg.Servers = append(cfg.Servers, addr)
+		}
 	}
-	cfg.Servers = deduplicateServers(cfg.Servers)
+
+	if svrs := deduplicateServers(cfg.Servers); len(svrs) != len(cfg.Servers) {
+		return fmt.Errorf("duplicate peers found in config: %v", cfg.Servers)
+	}
 
 	if err := n.raft.BootstrapCluster(cfg).Error(); err != nil {
 		return fmt.Errorf("bootstrap cluster: %w", err)
 	}
 	n.logger.Info().Msg("bootstrapped raft cluster")
 	return nil
-}
-
-func (n *Node) awaitToBeClusterMember(ctx context.Context, nodeID raft.ServerID) error {
-	start := time.Now()
-	for {
-		exists, err := n.isClusterMember(nodeID)
-		if err != nil {
-			return err
-		}
-		if exists {
-			n.logger.Info().Msgf("node joined cluster after %s", time.Since(start))
-			return nil
-		}
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		case <-time.After(time.Second / 10):
-		}
-	}
-}
-
-func (n *Node) isClusterMember(nodeID raft.ServerID) (bool, error) {
-	future := n.raft.GetConfiguration()
-	if err := future.Error(); err != nil {
-		return false, err
-	}
-	return slices.ContainsFunc(future.Configuration().Servers, func(server raft.Server) bool {
-		return server.ID == nodeID
-	}), nil
 }
 
 func (n *Node) Stop() error {
@@ -344,13 +317,26 @@ func splitPeerAddr(peer string) (raft.Server, error) {
 	if len(parts) != 2 {
 		return raft.Server{}, errors.New("expecting nodeID@address for peer")
 	}
+
+	nodeID, address := strings.TrimSpace(parts[0]), strings.TrimSpace(parts[1])
+
+	if nodeID == "" {
+		return raft.Server{}, errors.New("nodeID cannot be empty")
+	}
+	if address == "" {
+		return raft.Server{}, errors.New("address cannot be empty")
+	}
+
 	return raft.Server{
-		ID:      raft.ServerID(parts[0]),
-		Address: raft.ServerAddress(parts[1]),
+		ID:      raft.ServerID(nodeID),
+		Address: raft.ServerAddress(address),
 	}, nil
 }
 
 func deduplicateServers(servers []raft.Server) []raft.Server {
+	if len(servers) == 0 {
+		return []raft.Server{}
+	}
 	seen := make(map[raft.ServerID]struct{})
 	unique := make([]raft.Server, 0, len(servers))
 	for _, server := range servers {
