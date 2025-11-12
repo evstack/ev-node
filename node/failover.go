@@ -173,8 +173,22 @@ func (f *failoverState) Run(pCtx context.Context) (multiErr error) {
 			multiErr = errors.Join(multiErr, fmt.Errorf("stopping %s: %w", name, err))
 		}
 	}
+	cCtx, cancel := context.WithCancel(pCtx)
+	defer cancel()
+	wg, ctx := errgroup.WithContext(cCtx)
+	wg.Go(func() (rerr error) {
+		defer func() {
+			if err := f.bc.Stop(); err != nil && !errors.Is(err, context.Canceled) {
+				rerr = errors.Join(rerr, fmt.Errorf("stopping block components: %w", err))
+			}
+		}()
 
-	wg, ctx := errgroup.WithContext(pCtx)
+		f.logger.Info().Str("addr", f.rpcServer.Addr).Msg("Started RPC server")
+		if err := f.rpcServer.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			return err
+		}
+		return nil
+	})
 
 	if err := f.p2pClient.Start(ctx); err != nil {
 		return fmt.Errorf("start p2p: %w", err)
@@ -190,20 +204,6 @@ func (f *failoverState) Run(pCtx context.Context) (multiErr error) {
 		return fmt.Errorf("error while starting data sync service: %w", err)
 	}
 	defer stopService(f.dataSyncService.Stop, "data sync")
-
-	wg.Go(func() (rerr error) {
-		defer func() {
-			if err := f.bc.Stop(); err != nil && !errors.Is(err, context.Canceled) {
-				rerr = errors.Join(rerr, fmt.Errorf("stopping block components: %w", err))
-			}
-		}()
-
-		f.logger.Info().Str("addr", f.rpcServer.Addr).Msg("Started RPC server")
-		if err := f.rpcServer.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			return err
-		}
-		return nil
-	})
 
 	wg.Go(func() error {
 		defer func() {
