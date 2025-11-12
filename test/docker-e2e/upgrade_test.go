@@ -59,9 +59,7 @@ func TestEVMSingleUpgradeSuite(t *testing.T) {
 func (s *EVMSingleUpgradeTestSuite) TestEVMSingleUpgrade() {
 	ctx := context.Background()
 
-	s.Run("setup_docker", func() {
-		s.setupDockerEnvironment()
-	})
+	s.setupDockerEnvironment()
 
 	s.Run("setup_celestia_and_DA_bridge", func() {
 		s.celestia = s.CreateChain()
