@@ -3,6 +3,8 @@ package syncing
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"sync"
@@ -672,6 +674,12 @@ func (s *Syncer) validateBlock(currState types.State, data *types.Data, header *
 
 var errMaliciousProposer = errors.New("malicious proposer detected")
 
+// hashTx returns a hex-encoded SHA256 hash of the transaction.
+func hashTx(tx []byte) string {
+	hash := sha256.Sum256(tx)
+	return hex.EncodeToString(hash[:])
+}
+
 // verifyForcedInclusionTxs verifies that all forced inclusion transactions from DA are included in the block
 func (s *Syncer) verifyForcedInclusionTxs(currentState types.State, data *types.Data) error {
 	if s.daRetriever == nil {
@@ -697,13 +705,13 @@ func (s *Syncer) verifyForcedInclusionTxs(currentState types.State, data *types.
 
 	blockTxMap := make(map[string]struct{})
 	for _, tx := range data.Txs {
-		blockTxMap[string(tx)] = struct{}{}
+		blockTxMap[hashTx(tx)] = struct{}{}
 	}
 
 	// Check if all forced inclusion transactions are present in the block
 	var missingTxs [][]byte
 	for _, forcedTx := range forcedIncludedTxsEvent.Txs {
-		if _, ok := blockTxMap[string(forcedTx)]; !ok {
+		if _, ok := blockTxMap[hashTx(forcedTx)]; !ok {
 			missingTxs = append(missingTxs, forcedTx)
 		}
 	}
