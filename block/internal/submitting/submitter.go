@@ -104,6 +104,7 @@ func (s *Submitter) Start(ctx context.Context) error {
 
 	// Start DA submission loop if signer is available (aggregator nodes only)
 	if s.signer != nil {
+		s.logger.Info().Msg("starting DA submission loop")
 		s.wg.Add(1)
 		go func() {
 			defer s.wg.Done()

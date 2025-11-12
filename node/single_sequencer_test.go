@@ -50,4 +50,5 @@ func TestStartup(t *testing.T) {
 
 	// Run the cleanup function from setupTestNodeWithCleanup
 	cleanup()
+	time.Sleep(time.Second) // shutdown takes some time to persist caches
 }

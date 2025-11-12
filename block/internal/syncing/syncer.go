@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"reflect"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -64,8 +65,9 @@ type Syncer struct {
 	errorCh    chan<- error // Channel to report critical execution client failures
 
 	// Handlers
-	daRetriever daRetriever
-	p2pHandler  p2pHandler
+	daRetriever   daRetriever
+	p2pHandler    p2pHandler
+	raftRetriever *raftRetriever
 
 	// Logging
 	logger zerolog.Logger
@@ -93,8 +95,9 @@ func NewSyncer(
 	logger zerolog.Logger,
 	options common.BlockOptions,
 	errorCh chan<- error,
+	raftNode common.RaftNode,
 ) *Syncer {
-	return &Syncer{
+	s := &Syncer{
 		store:       store,
 		exec:        exec,
 		da:          da,
@@ -111,6 +114,10 @@ func NewSyncer(
 		errorCh:     errorCh,
 		logger:      logger.With().Str("component", "syncer").Logger(),
 	}
+	if raftNode != nil && !reflect.ValueOf(raftNode).IsNil() {
+		s.raftRetriever = newRaftRetriever(raftNode, genesis, logger, eventProcessorFn(s.pipeEvent))
+	}
+	return s
 }
 
 // Start begins the syncing component
@@ -131,6 +138,12 @@ func (s *Syncer) Start(ctx context.Context) error {
 		s.p2pHandler.SetProcessedHeight(currentHeight)
 	}
 
+	if s.raftRetriever != nil {
+		if err := s.raftRetriever.Start(s.ctx); err != nil {
+			return fmt.Errorf("start raft retriever: %w", err)
+		}
+	}
+
 	// Start main processing loop
 	s.wg.Add(1)
 	go func() {
@@ -147,13 +160,30 @@ func (s *Syncer) Start(ctx context.Context) error {
 
 // Stop shuts down the syncing component
 func (s *Syncer) Stop() error {
-	if s.cancel != nil {
-		s.cancel()
+	if s.cancel == nil {
+		return nil
 	}
+	s.cancel()
 	s.cancelP2PWait(0)
 	s.wg.Wait()
 	s.logger.Info().Msg("syncer stopped")
+	close(s.heightInCh)
+	s.cancel = nil
 	return nil
+}
+
+// isCatchingUpState returns true if the syncer has pending events or is behind the current raft height
+func (s *Syncer) isCatchingUpState() bool {
+	return len(s.heightInCh) != 0 || func() bool {
+		currentHeight, err := s.store.Height(s.ctx)
+		if err != nil {
+			s.logger.Error().Err(err).Msg("failed to get current height")
+			return false
+		}
+		return s.headerStore.Store().Height() > currentHeight ||
+			s.dataStore.Store().Height() > currentHeight ||
+			s.raftRetriever != nil && s.raftRetriever.Height() > currentHeight
+	}()
 }
 
 // GetLastState returns the current state
@@ -243,8 +273,10 @@ func (s *Syncer) processLoop() {
 		select {
 		case <-s.ctx.Done():
 			return
-		case heightEvent := <-s.heightInCh:
-			s.processHeightEvent(&heightEvent)
+		case heightEvent, ok := <-s.heightInCh:
+			if ok {
+				s.processHeightEvent(&heightEvent)
+			}
 		}
 	}
 }
@@ -325,10 +357,8 @@ func (s *Syncer) fetchDAUntilCaughtUp() error {
 
 		// Process DA events
 		for _, event := range events {
-			select {
-			case s.heightInCh <- event:
-			default:
-				s.cache.SetPendingEvent(event.Header.Height(), &event)
+			if err := s.pipeEvent(s.ctx, event); err != nil {
+				return err
 			}
 		}
 
@@ -431,6 +461,19 @@ func (s *Syncer) waitForGenesis() bool {
 	return true
 }
 
+func (s *Syncer) pipeEvent(ctx context.Context, event common.DAHeightEvent) error {
+	select {
+	case s.heightInCh <- event:
+		return nil
+	case <-ctx.Done():
+		s.cache.SetPendingEvent(event.Header.Height(), &event)
+		return ctx.Err()
+	default:
+		s.cache.SetPendingEvent(event.Header.Height(), &event)
+	}
+	return nil
+}
+
 func (s *Syncer) processHeightEvent(event *common.DAHeightEvent) {
 	height := event.Header.Height()
 	headerHash := event.Header.Hash().String()
@@ -477,8 +520,11 @@ func (s *Syncer) processHeightEvent(event *common.DAHeightEvent) {
 
 	// Try to sync the next block
 	if err := s.trySyncNextBlock(event); err != nil {
-		s.logger.Error().Err(err).Msg("failed to sync next block")
-		// If the error is not due to an validation error, re-store the event as pending
+		s.logger.Error().Err(err).
+			Uint64("event-height", event.Header.Height()).
+			Uint64("state-height", s.GetLastState().LastBlockHeight).
+			Msg("failed to sync next block")
+		// If the error is not due to a validation error, re-store the event as pending
 		switch {
 		case errors.Is(err, errInvalidBlock):
 			// do not reschedule
@@ -782,4 +828,13 @@ func (s *Syncer) cancelP2PWait(height uint64) {
 		s.p2pWaitState.Store(p2pWaitState{})
 		state.cancel()
 	}
+}
+
+// IsSynced checks if the last block height in the stored state matches the expected height and returns true if they are equal.
+func (s *Syncer) IsSynced(expHeight uint64) bool {
+	state, err := s.store.GetState(s.ctx)
+	if err != nil {
+		return false
+	}
+	return state.LastBlockHeight == expHeight && !s.isCatchingUpState()
 }

@@ -1,6 +1,8 @@
 package block
 
-import "github.com/evstack/ev-node/block/internal/common"
+import (
+	"github.com/evstack/ev-node/block/internal/common"
+)
 
 // BlockOptions defines the options for creating block components
 type BlockOptions = common.BlockOptions
@@ -22,3 +24,6 @@ func PrometheusMetrics(namespace string, labelsAndValues ...string) *Metrics {
 func NopMetrics() *Metrics {
 	return common.NopMetrics()
 }
+
+// Expose Raft types for consensus integration
+type RaftNode = common.RaftNode

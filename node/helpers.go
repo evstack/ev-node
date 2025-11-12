@@ -3,9 +3,12 @@ package node
 
 import (
 	"context"
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"time"
+
+	"github.com/evstack/ev-node/pkg/store"
 )
 
 // Source is an enum representing different sources of height
@@ -57,9 +60,15 @@ func getNodeHeight(node Node, source Source) (uint64, error) {
 	}
 }
 
+type testSupportElection interface {
+	state() *failoverState
+}
+
 func getNodeHeightFromHeader(node Node) (uint64, error) {
 	if fn, ok := node.(*FullNode); ok {
-		return fn.hSyncService.Store().Height(), nil
+		if v, ok := fn.leaderElection.(testSupportElection); ok {
+			return v.state().headerSyncService.Store().Height(), nil
+		}
 	}
 	if ln, ok := node.(*LightNode); ok {
 		return ln.hSyncService.Store().Height(), nil
@@ -69,7 +78,9 @@ func getNodeHeightFromHeader(node Node) (uint64, error) {
 
 func getNodeHeightFromData(node Node) (uint64, error) {
 	if fn, ok := node.(*FullNode); ok {
-		return fn.dSyncService.Store().Height(), nil
+		if v, ok := fn.leaderElection.(testSupportElection); ok {
+			return v.state().dataSyncService.Store().Height(), nil
+		}
 	}
 	return 0, errors.New("not a full node")
 }
@@ -98,19 +109,20 @@ func waitForAtLeastNBlocks(node Node, n uint64, source Source) error {
 // waitForAtLeastNDAIncludedHeight waits for the DA included height to be at least n
 func waitForAtLeastNDAIncludedHeight(node Node, n uint64) error {
 	return Retry(300, 100*time.Millisecond, func() error {
-		if fn, ok := node.(*FullNode); ok {
-			if fn.blockComponents != nil && fn.blockComponents.Submitter != nil {
-				nHeight := fn.blockComponents.Submitter.GetDAIncludedHeight()
-				if nHeight == 0 {
-					return fmt.Errorf("waiting for DA inclusion")
-				}
-				if nHeight >= n {
-					return nil
-				}
-				return fmt.Errorf("current DA inclusion height %d, expected %d", nHeight, n)
-			}
+		fn, ok := node.(*FullNode)
+		if !ok {
+			return fmt.Errorf("not a full node")
 		}
-		return fmt.Errorf("not a full node or submitter not initialized")
+
+		bz, err := fn.Store.GetMetadata(context.Background(), store.DAIncludedHeightKey)
+		if err != nil || len(bz) != 8 {
+			return fmt.Errorf("waiting for DA inclusion")
+		}
+		nHeight := binary.LittleEndian.Uint64(bz)
+		if nHeight >= n {
+			return nil
+		}
+		return fmt.Errorf("current DA inclusion height %d, expected %d", nHeight, n)
 	})
 }
 

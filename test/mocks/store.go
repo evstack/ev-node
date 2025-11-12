@@ -880,3 +880,54 @@ func (_c *MockStore_SetMetadata_Call) RunAndReturn(run func(ctx context.Context,
 	_c.Call.Return(run)
 	return _c
 }
+
+// Sync provides a mock function for the type MockStore
+func (_mock *MockStore) Sync(ctx context.Context) error {
+	ret := _mock.Called(ctx)
+
+	if len(ret) == 0 {
+		panic("no return value specified for Sync")
+	}
+
+	var r0 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context) error); ok {
+		r0 = returnFunc(ctx)
+	} else {
+		r0 = ret.Error(0)
+	}
+	return r0
+}
+
+// MockStore_Sync_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'Sync'
+type MockStore_Sync_Call struct {
+	*mock.Call
+}
+
+// Sync is a helper method to define mock.On call
+//   - ctx context.Context
+func (_e *MockStore_Expecter) Sync(ctx interface{}) *MockStore_Sync_Call {
+	return &MockStore_Sync_Call{Call: _e.mock.On("Sync", ctx)}
+}
+
+func (_c *MockStore_Sync_Call) Run(run func(ctx context.Context)) *MockStore_Sync_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		run(
+			arg0,
+		)
+	})
+	return _c
+}
+
+func (_c *MockStore_Sync_Call) Return(err error) *MockStore_Sync_Call {
+	_c.Call.Return(err)
+	return _c
+}
+
+func (_c *MockStore_Sync_Call) RunAndReturn(run func(ctx context.Context) error) *MockStore_Sync_Call {
+	_c.Call.Return(run)
+	return _c
+}
