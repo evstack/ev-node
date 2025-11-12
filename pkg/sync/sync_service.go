@@ -136,10 +136,9 @@ func (syncService *SyncService[H]) WriteToStoreAndBroadcast(ctx context.Context,
 	}
 
 	isGenesis := headerOrData.Height() == syncService.genesis.InitialHeight
-	if isGenesis { // when starting the syncer for the first time, we have no blocks, so initFromP2P didn't initialize the genesis block.
-		if err := syncService.initStore(ctx, headerOrData); err != nil {
-			return fmt.Errorf("failed to initialize the store: %w", err)
-		}
+	storeInitialized, err := syncService.initStore(ctx, headerOrData)
+	if err != nil {
+		return fmt.Errorf("failed to initialize the store: %w", err)
 	}
 
 	firstStart := false
@@ -156,10 +155,10 @@ func (syncService *SyncService[H]) WriteToStoreAndBroadcast(ctx context.Context,
 		// as we have already initialized the store for starting the syncer.
 		// Hence, we ignore the error. Exact reason: validation ignored
 		if (firstStart && errors.Is(err, pubsub.ValidationError{Reason: pubsub.RejectValidationIgnored})) ||
-			// for the genesis header, broadcast error is expected as we have already initialized the store
+			// for the genesis header (or any first header used to bootstrap the store), broadcast error is expected as we have already initialized the store
 			// for starting the syncer. Hence, we ignore the error.
 			// exact reason: validation failed, err header verification failed: known header: '1' <= current '1'
-			(isGenesis && errors.Is(err, pubsub.ValidationError{Reason: pubsub.RejectValidationFailed})) {
+			((isGenesis || storeInitialized) && errors.Is(err, pubsub.ValidationError{Reason: pubsub.RejectValidationFailed})) {
 
 			return nil
 		}
@@ -221,23 +220,27 @@ func (syncService *SyncService[H]) startSyncer(ctx context.Context) error {
 
 // initStore initializes the store with the given initial header.
 // it is a no-op if the store is already initialized.
-func (syncService *SyncService[H]) initStore(ctx context.Context, initial H) error {
+// Returns true when the store was initialized by this call.
+func (syncService *SyncService[H]) initStore(ctx context.Context, initial H) (bool, error) {
 	if initial.IsZero() {
-		return errors.New("failed to initialize the store")
+		return false, errors.New("failed to initialize the store")
 	}
 
 	if _, err := syncService.store.Head(ctx); errors.Is(err, header.ErrNotFound) || errors.Is(err, header.ErrEmptyStore) {
 		if err := syncService.store.Append(ctx, initial); err != nil {
-			return err
+			return false, err
 		}
 
 		if err := syncService.store.Sync(ctx); err != nil {
-			return err
+			return false, err
 		}
 
+		return true, nil
+	} else if err != nil {
+		return false, err
 	}
 
-	return nil
+	return false, nil
 }
 
 // setupP2PInfrastructure sets up the P2P infrastructure (Exchange, ExchangeServer, Store)
@@ -328,7 +331,7 @@ func (syncService *SyncService[H]) initFromP2PWithRetry(ctx context.Context, pee
 			}
 		}
 
-		if err := syncService.initStore(ctx, trusted); err != nil {
+		if _, err := syncService.initStore(ctx, trusted); err != nil {
 			return false, fmt.Errorf("failed to initialize the store: %w", err)
 		}
 		if err := syncService.startSyncer(ctx); err != nil {
