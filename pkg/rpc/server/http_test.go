@@ -20,7 +20,7 @@ func TestRegisterCustomHTTPEndpoints(t *testing.T) {
 	mockStore := mocks.NewMockStore(t)
 	mockStore.On("Height", mock.Anything).Return(uint64(100), nil)
 
-	RegisterCustomHTTPEndpoints(mux, mockStore, nil, config.DefaultConfig(), nil, logger)
+	RegisterCustomHTTPEndpoints(mux, mockStore, nil, config.DefaultConfig(), nil, logger, nil)
 
 	testServer := httptest.NewServer(mux)
 	defer testServer.Close()

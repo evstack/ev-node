@@ -126,6 +126,7 @@ func TestSyncer_validateBlock_DataHashMismatch(t *testing.T) {
 		zerolog.Nop(),
 		common.DefaultBlockOptions(),
 		make(chan error, 1),
+		nil,
 	)
 	require.NoError(t, s.initializeState())
 	// Create header and data with correct hash
@@ -176,6 +177,7 @@ func TestProcessHeightEvent_SyncsAndUpdatesState(t *testing.T) {
 		zerolog.Nop(),
 		common.DefaultBlockOptions(),
 		errChan,
+		nil,
 	)
 
 	require.NoError(t, s.initializeState())
@@ -229,6 +231,7 @@ func TestSequentialBlockSync(t *testing.T) {
 		zerolog.Nop(),
 		common.DefaultBlockOptions(),
 		errChan,
+		nil,
 	)
 	require.NoError(t, s.initializeState())
 	s.ctx = context.Background()
@@ -378,6 +381,7 @@ func TestSyncLoopPersistState(t *testing.T) {
 		zerolog.Nop(),
 		common.DefaultBlockOptions(),
 		errorCh,
+		nil,
 	)
 	require.NoError(t, syncerInst1.initializeState())
 
@@ -468,6 +472,7 @@ func TestSyncLoopPersistState(t *testing.T) {
 		zerolog.Nop(),
 		common.DefaultBlockOptions(),
 		make(chan error, 1),
+		nil,
 	)
 	require.NoError(t, syncerInst2.initializeState())
 	require.Equal(t, lastStateDAHeight, syncerInst2.GetDAHeight())

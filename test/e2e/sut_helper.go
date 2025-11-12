@@ -76,25 +76,31 @@ func (s *SystemUnderTest) RunCmd(cmd string, args ...string) (string, error) {
 }
 
 // ExecCmd starts a process for the given command and manages it cleanup on test end.
-func (s *SystemUnderTest) ExecCmd(cmd string, args ...string) {
+func (s *SystemUnderTest) ExecCmd(cmd string, args ...string) *os.Process {
+	return s.ExecCmdWithLogPrefix("", cmd, args...)
+}
+func (s *SystemUnderTest) ExecCmdWithLogPrefix(prefix, cmd string, args ...string) *os.Process {
+
 	executable := locateExecutable(cmd)
 	c := exec.Command( //nolint:gosec // used by tests only
 		executable,
 		args...,
 	)
 	c.Dir = WorkDir
-	s.watchLogs(c)
+	s.watchLogs(prefix, c)
 
 	err := c.Start()
 	require.NoError(s.t, err)
 	if s.debug {
-		s.logf("Exec cmd (pid: %d): %s %s", c.Process.Pid, executable, strings.Join(c.Args, " "))
+		s.logf("Exec cmd (pid: %d): %s %s", c.Process.Pid, executable, strings.Join(args, " "))
 	}
 	// cleanup when stopped
 	s.awaitProcessCleanup(c)
+	return c.Process
 }
 
 // AwaitNodeUp waits until a node is operational by checking both liveness and readiness.
+// Fails tests when node is not up within the specified timeout.
 func (s *SystemUnderTest) AwaitNodeUp(t *testing.T, rpcAddr string, timeout time.Duration) {
 	t.Helper()
 	t.Logf("Await node is up: %s", rpcAddr)
@@ -168,7 +174,7 @@ func (s *SystemUnderTest) awaitProcessCleanup(cmd *exec.Cmd) {
 	}()
 }
 
-func (s *SystemUnderTest) watchLogs(cmd *exec.Cmd) {
+func (s *SystemUnderTest) watchLogs(prefix string, cmd *exec.Cmd) {
 	errReader, err := cmd.StderrPipe()
 	require.NoError(s.t, err)
 	outReader, err := cmd.StdoutPipe()
@@ -178,7 +184,7 @@ func (s *SystemUnderTest) watchLogs(cmd *exec.Cmd) {
 		logDir := filepath.Join(WorkDir, "testnet")
 		require.NoError(s.t, os.MkdirAll(logDir, 0o750))
 		testName := strings.ReplaceAll(s.t.Name(), "/", "-")
-		logfileName := filepath.Join(logDir, fmt.Sprintf("exec-%s-%s-%d.out", filepath.Base(cmd.Args[0]), testName, time.Now().UnixNano()))
+		logfileName := filepath.Join(logDir, prefix+fmt.Sprintf("exec-%s-%s-%d.out", filepath.Base(cmd.Args[0]), testName, time.Now().UnixNano()))
 		logfile, err := os.Create(logfileName)
 		require.NoError(s.t, err)
 		errReader = io.NopCloser(io.TeeReader(errReader, logfile))

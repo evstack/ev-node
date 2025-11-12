@@ -300,6 +300,11 @@ func (syncService *SyncService[H]) startSubscriber(ctx context.Context) error {
 	return nil
 }
 
+// Height returns the current height stored
+func (s SyncService[H]) Height() uint64 {
+	return s.store.Height()
+}
+
 // initFromP2PWithRetry initializes the syncer from P2P with a retry mechanism.
 // If trusted hash is available, it fetches the trusted header/block (by hash) from peers.
 // Otherwise, it tries to fetch the genesis header/block by height.

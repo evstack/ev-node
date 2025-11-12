@@ -190,6 +190,11 @@ func (s *DefaultStore) GetMetadata(ctx context.Context, key string) ([]byte, err
 	return data, nil
 }
 
+// Sync flushes the store state to disk
+func (s *DefaultStore) Sync(ctx context.Context) error {
+	return s.db.Sync(ctx, ds.NewKey("/"))
+}
+
 // Rollback rolls back block data until the given height from the store.
 // When aggregator is true, it will check the latest data included height and prevent rollback further than that.
 // NOTE: this function does not rollback metadata. Those should be handled separately if required.

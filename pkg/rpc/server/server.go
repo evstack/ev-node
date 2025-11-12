@@ -287,8 +287,22 @@ func (p *P2PServer) GetNetInfo(
 	}), nil
 }
 
+type RaftNodeSource interface {
+	IsLeader() bool
+	NodeID() string
+}
+
 // NewServiceHandler creates a new HTTP handler for Store, P2P and Config services
-func NewServiceHandler(store store.Store, peerManager p2p.P2PRPC, proposerAddress []byte, logger zerolog.Logger, config config.Config, bestKnown BestKnownHeightProvider) (http.Handler, error) {
+func NewServiceHandler(
+	store store.Store,
+	peerManager p2p.P2PRPC,
+	proposerAddress []byte,
+	logger zerolog.Logger,
+	config config.Config,
+	bestKnown BestKnownHeightProvider,
+	raftNode RaftNodeSource,
+) (http.Handler, error) {
+
 	storeServer := NewStoreServer(store, logger)
 	p2pServer := NewP2PServer(peerManager)
 	configServer := NewConfigServer(config, proposerAddress, logger)
@@ -316,7 +330,7 @@ func NewServiceHandler(store store.Store, peerManager p2p.P2PRPC, proposerAddres
 	mux.Handle(configPath, configHandler)
 
 	// Register custom HTTP endpoints
-	RegisterCustomHTTPEndpoints(mux, store, peerManager, config, bestKnown, logger)
+	RegisterCustomHTTPEndpoints(mux, store, peerManager, config, bestKnown, logger, raftNode)
 
 	// Use h2c to support HTTP/2 without TLS
 	return h2c.NewHandler(mux, &http2.Server{

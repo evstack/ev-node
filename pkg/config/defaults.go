@@ -91,6 +91,9 @@ func DefaultConfig() Config {
 			Address:               "127.0.0.1:7331",
 			EnableDAVisualization: false,
 		},
+		Raft: RaftConfig{
+			HeartbeatTimeout: 350 * time.Millisecond,
+		},
 	}
 }
 

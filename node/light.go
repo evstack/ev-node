@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/evstack/ev-node/pkg/p2p/key"
 	ds "github.com/ipfs/go-datastore"
 	"github.com/rs/zerolog"
 
@@ -38,10 +39,15 @@ type LightNode struct {
 func newLightNode(
 	conf config.Config,
 	genesis genesis.Genesis,
-	p2pClient *p2p.Client,
+	nodeKey *key.NodeKey,
 	database ds.Batching,
 	logger zerolog.Logger,
 ) (ln *LightNode, err error) {
+	p2pClient, err := p2p.NewClient(conf.P2P, nodeKey.PrivKey, database, genesis.ChainID, logger, nil)
+	if err != nil {
+		return nil, err
+	}
+
 	componentLogger := logger.With().Str("component", "HeaderSyncService").Logger()
 	headerSyncService, err := sync.NewHeaderSyncService(database, conf, genesis, p2pClient, componentLogger)
 	if err != nil {
@@ -84,7 +90,7 @@ func (ln *LightNode) Run(parentCtx context.Context) error {
 		return ln.hSyncService.Store().Height()
 	}
 
-	handler, err := rpcserver.NewServiceHandler(ln.Store, ln.P2P, nil, ln.Logger, ln.nodeConfig, bestKnown)
+	handler, err := rpcserver.NewServiceHandler(ln.Store, ln.P2P, nil, ln.Logger, ln.nodeConfig, bestKnown, nil)
 	if err != nil {
 		return fmt.Errorf("error creating RPC handler: %w", err)
 	}
