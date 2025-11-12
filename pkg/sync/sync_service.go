@@ -135,7 +135,6 @@ func (syncService *SyncService[H]) WriteToStoreAndBroadcast(ctx context.Context,
 		return fmt.Errorf("empty header/data cannot write to store or broadcast")
 	}
 
-	isGenesis := headerOrData.Height() == syncService.genesis.InitialHeight
 	storeInitialized, err := syncService.initStore(ctx, headerOrData)
 	if err != nil {
 		return fmt.Errorf("failed to initialize the store: %w", err)
@@ -158,7 +157,7 @@ func (syncService *SyncService[H]) WriteToStoreAndBroadcast(ctx context.Context,
 			// for the genesis header (or any first header used to bootstrap the store), broadcast error is expected as we have already initialized the store
 			// for starting the syncer. Hence, we ignore the error.
 			// exact reason: validation failed, err header verification failed: known header: '1' <= current '1'
-			((isGenesis || storeInitialized) && errors.Is(err, pubsub.ValidationError{Reason: pubsub.RejectValidationFailed})) {
+			((storeInitialized) && errors.Is(err, pubsub.ValidationError{Reason: pubsub.RejectValidationFailed})) {
 
 			return nil
 		}
