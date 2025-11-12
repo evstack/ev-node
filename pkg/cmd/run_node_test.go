@@ -29,7 +29,7 @@ const MockDANamespace = "test"
 func createTestComponents(_ context.Context, t *testing.T) (coreexecutor.Executor, coresequencer.Sequencer, coreda.DA, signer.Signer, *p2p.Client, datastore.Batching, func()) {
 	executor := coreexecutor.NewDummyExecutor()
 	sequencer := coresequencer.NewDummySequencer()
-	dummyDA := coreda.NewDummyDA(100_000, 0, 0, 10*time.Second)
+	dummyDA := coreda.NewDummyDA(100_000, 10*time.Second)
 	dummyDA.StartHeightTicker()
 	stopDAHeightTicker := func() {
 		dummyDA.StopHeightTicker()
@@ -63,8 +63,6 @@ func TestParseFlags(t *testing.T) {
 		"--rollkit.da.address", "http://127.0.0.1:27005",
 		"--rollkit.da.auth_token", "token",
 		"--rollkit.da.block_time", "20s",
-		"--rollkit.da.gas_multiplier", "1.5",
-		"--rollkit.da.gas_price", "1.5",
 		"--rollkit.da.mempool_ttl", "10",
 		"--rollkit.da.namespace", "namespace",
 		"--rollkit.node.lazy_mode",
@@ -121,8 +119,6 @@ func TestParseFlags(t *testing.T) {
 		{"DAAddress", nodeConfig.DA.Address, "http://127.0.0.1:27005"},
 		{"DAAuthToken", nodeConfig.DA.AuthToken, "token"},
 		{"DABlockTime", nodeConfig.DA.BlockTime.Duration, 20 * time.Second},
-		{"DAGasMultiplier", nodeConfig.DA.GasMultiplier, 1.5},
-		{"DAGasPrice", nodeConfig.DA.GasPrice, 1.5},
 		{"DAMempoolTTL", nodeConfig.DA.MempoolTTL, uint64(10)},
 		{"DANamespace", nodeConfig.DA.Namespace, "namespace"},
 		{"LazyAggregator", nodeConfig.Node.LazyMode, true},

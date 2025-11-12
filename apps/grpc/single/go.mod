@@ -170,3 +170,7 @@ replace (
 	github.com/evstack/ev-node => ../../../
 	github.com/evstack/ev-node/execution/grpc => ../../../execution/grpc
 )
+
+replace github.com/evstack/ev-node/core => ../../../core
+
+replace github.com/evstack/ev-node/da => ../../../da

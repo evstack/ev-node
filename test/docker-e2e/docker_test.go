@@ -218,7 +218,6 @@ func (s *DockerTestSuite) StartEVNodeWithNamespace(ctx context.Context, bridgeNo
 	daAddress := fmt.Sprintf("http://%s", bridgeRPCAddress)
 	err = evNode.Start(ctx,
 		"--evnode.da.address", daAddress,
-		"--evnode.da.gas_price", "0.025",
 		"--evnode.da.auth_token", authToken,
 		"--evnode.rpc.address", "0.0.0.0:7331", // bind to 0.0.0.0 so rpc is reachable from test host.
 		"--evnode.da.namespace", headerNamespace,
