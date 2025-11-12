@@ -290,8 +290,6 @@ func (p *P2PServer) GetNetInfo(
 type RaftNodeSource interface {
 	IsLeader() bool
 	NodeID() string
-	AddPeer(nodeID string, address string) error
-	RemovePeer(nodeID string) error
 }
 
 // NewServiceHandler creates a new HTTP handler for Store, P2P and Config services

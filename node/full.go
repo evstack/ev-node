@@ -19,7 +19,6 @@ import (
 	genesispkg "github.com/evstack/ev-node/pkg/genesis"
 	"github.com/evstack/ev-node/pkg/p2p/key"
 	raftpkg "github.com/evstack/ev-node/pkg/raft"
-	rpcclient "github.com/evstack/ev-node/pkg/rpc/client"
 	"github.com/evstack/ev-node/pkg/service"
 	"github.com/evstack/ev-node/pkg/signer"
 	"github.com/evstack/ev-node/pkg/store"
@@ -158,11 +157,7 @@ func initRaftNode(nodeConfig config.Config, logger zerolog.Logger) (*raftpkg.Nod
 	if nodeConfig.Raft.Peers != "" {
 		raftCfg.Peers = strings.Split(nodeConfig.Raft.Peers, ",")
 	}
-	clusterClient, err := rpcclient.NewRaftClusterClient(raftCfg.Peers...)
-	if err != nil {
-		return nil, fmt.Errorf("create raft cluster client: %w", err)
-	}
-	raftNode, err := raftpkg.NewNode(raftCfg, clusterClient, logger)
+	raftNode, err := raftpkg.NewNode(raftCfg, logger)
 	if err != nil {
 		return nil, fmt.Errorf("create raft node: %w", err)
 	}

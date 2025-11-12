@@ -19,18 +19,12 @@ import (
 	"github.com/rs/zerolog"
 )
 
-type clusterClient interface {
-	AddPeer(ctx context.Context, id, addr string) error
-	RemovePeer(ctx context.Context, id string) error
-}
-
 // Node represents a raft consensus node
 type Node struct {
-	raft          *raft.Raft
-	fsm           *FSM
-	config        *Config
-	clusterClient clusterClient
-	logger        zerolog.Logger
+	raft    *raft.Raft
+	fsm     *FSM
+	config  *Config
+	logger  zerolog.Logger
 }
 
 // Config holds raft node configuration
@@ -53,7 +47,7 @@ type FSM struct {
 }
 
 // NewNode creates a new raft node
-func NewNode(cfg *Config, clusterClient clusterClient, logger zerolog.Logger) (*Node, error) {
+func NewNode(cfg *Config, logger zerolog.Logger) (*Node, error) {
 	if err := os.MkdirAll(cfg.RaftDir, 0755); err != nil {
 		return nil, fmt.Errorf("create raft dir: %w", err)
 	}
@@ -102,11 +96,10 @@ func NewNode(cfg *Config, clusterClient clusterClient, logger zerolog.Logger) (*
 	}
 
 	node := &Node{
-		raft:          r,
-		fsm:           fsm,
-		config:        cfg,
-		clusterClient: clusterClient,
-		logger:        logger.With().Str("component", "raft-node").Logger(),
+		raft:   r,
+		fsm:    fsm,
+		config: cfg,
+		logger: logger.With().Str("component", "raft-node").Logger(),
 	}
 
 	return node, nil
@@ -117,26 +110,7 @@ func (n *Node) Start(ctx context.Context) error {
 		return nil
 	}
 	if !n.config.Bootstrap {
-		n.logger.Info().Msg("Join raft cluster")
-		if err := n.clusterClient.AddPeer(ctx, n.config.NodeID, n.config.RaftAddr); err != nil {
-			return err
-		}
-		ctx, cancel := context.WithTimeout(ctx, n.config.SendTimeout*5)
-		defer cancel()
-		if err := n.awaitToBeClusterMember(ctx, raft.ServerID(n.config.NodeID)); err != nil {
-			return err
-		}
-		for {
-			select {
-			case <-ctx.Done():
-				return ctx.Err()
-			default:
-				if n.GetState().Height != 0 {
-					return nil
-				}
-				time.Sleep(time.Second / 10)
-			}
-		}
+		return fmt.Errorf("raft cluster requires bootstrap mode")
 	}
 
 	n.logger.Info().Msg("Boostrap raft cluster")

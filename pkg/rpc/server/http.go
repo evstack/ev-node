@@ -147,50 +147,6 @@ func RegisterCustomHTTPEndpoints(mux *http.ServeMux, s store.Store, pm p2p.P2PRP
 			}
 		})
 
-		mux.HandleFunc("/raft/join", func(w http.ResponseWriter, r *http.Request) {
-			if r.Method != http.MethodPost {
-				http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-				return
-			}
-			defer r.Body.Close()
-
-			var rsp struct {
-				NodeID  string `json:"id"`
-				Address string `json:"address"`
-			}
-			if err := json.NewDecoder(r.Body).Decode(&rsp); err != nil {
-				http.Error(w, "bad request", http.StatusBadRequest)
-				return
-			}
-			if rsp.NodeID == "" || rsp.Address == "" {
-				http.Error(w, "id and address are required", http.StatusBadRequest)
-				return
-			}
-			if err := raftNode.AddPeer(rsp.NodeID, rsp.Address); err != nil {
-				http.Error(w, "failed to join peer", http.StatusInternalServerError)
-			}
-		})
-		mux.HandleFunc("/raft/remove", func(w http.ResponseWriter, r *http.Request) {
-			if r.Method != http.MethodPost {
-				http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-				return
-			}
-			defer r.Body.Close()
-			var rsp struct {
-				NodeID string `json:"id"`
-			}
-			if err := json.NewDecoder(r.Body).Decode(&rsp); err != nil {
-				http.Error(w, "bad request", http.StatusBadRequest)
-			}
-			if rsp.NodeID == "" {
-				http.Error(w, "id is required", http.StatusBadRequest)
-				return
-			}
-			if err := raftNode.RemovePeer(rsp.NodeID); err != nil {
-				http.Error(w, "failed to remove peer", http.StatusInternalServerError)
-				return
-			}
-		})
 	}
 
 	// DA Visualization endpoints
