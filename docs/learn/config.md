@@ -17,7 +17,6 @@ This document provides a comprehensive reference for all configuration options a
   - [Maximum Pending Blocks](#maximum-pending-blocks)
   - [Lazy Mode (Lazy Aggregator)](#lazy-mode-lazy-aggregator)
   - [Lazy Block Interval](#lazy-block-interval)
-  - [Trusted Hash](#trusted-hash)
 - [Data Availability Configuration (`da`)](#data-availability-configuration-da)
   - [DA Service Address](#da-service-address)
   - [DA Authentication Token](#da-authentication-token)
@@ -275,23 +274,6 @@ _Example:_ `--rollkit.node.lazy_block_interval 1m`
 _Default:_ `"30s"`
 _Constant:_ `FlagLazyBlockTime`
 
-### Trusted Hash
-
-**Description:**
-The initial trusted hash used to bootstrap the header exchange service. This allows nodes to start synchronizing from a specific, trusted point in the chain history instead of from the genesis block. When provided, the node will fetch the corresponding header/block from peers using this hash. If not provided, the node attempts to sync from genesis.
-
-**YAML:**
-
-```yaml
-node:
-  trusted_hash: "YOUR_TRUSTED_HASH_HEX_STRING"
-```
-
-**Command-line Flag:**
-`--rollkit.node.trusted_hash <string>`
-_Example:_ `--rollkit.node.trusted_hash ABCDEF012345...`
-_Default:_ `""` (empty, sync from genesis)
-_Constant:_ `FlagTrustedHash`
 
 ## Data Availability Configuration (`da`)
 

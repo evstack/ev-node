@@ -2,7 +2,6 @@ package sync
 
 import (
 	"context"
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"strings"
@@ -303,8 +302,9 @@ func (syncService *SyncService[H]) startSubscriber(ctx context.Context) error {
 }
 
 // initFromP2PWithRetry initializes the syncer from P2P with a retry mechanism.
-// If trusted hash is available, it fetches the trusted header/block (by hash) from peers.
-// Otherwise, it tries to fetch the genesis header/block by height.
+// It inspects the local store to determine the first height to request:
+//   - when the store already contains items, it reuses the latest height as the starting point;
+//   - otherwise, it falls back to the configured genesis height.
 func (syncService *SyncService[H]) initFromP2PWithRetry(ctx context.Context, peerIDs []peer.ID) error {
 	if len(peerIDs) == 0 {
 		return nil
@@ -312,22 +312,23 @@ func (syncService *SyncService[H]) initFromP2PWithRetry(ctx context.Context, pee
 
 	tryInit := func(ctx context.Context) (bool, error) {
 		var (
-			trusted H
-			err     error
+			trusted       H
+			err           error
+			heightToQuery uint64
 		)
 
-		if syncService.conf.Node.TrustedHash != "" {
-			trustedHashBytes, err := hex.DecodeString(syncService.conf.Node.TrustedHash)
-			if err != nil {
-				return false, fmt.Errorf("failed to parse the trusted hash for initializing the store: %w", err)
-			}
-			if trusted, err = syncService.ex.Get(ctx, trustedHashBytes); err != nil {
-				return false, fmt.Errorf("failed to fetch the trusted header/block for initializing the store: %w", err)
-			}
-		} else {
-			if trusted, err = syncService.ex.GetByHeight(ctx, syncService.genesis.InitialHeight); err != nil {
-				return false, fmt.Errorf("failed to fetch the genesis: %w", err)
-			}
+		head, headErr := syncService.store.Head(ctx)
+		switch {
+		case errors.Is(headErr, header.ErrNotFound), errors.Is(headErr, header.ErrEmptyStore):
+			heightToQuery = syncService.genesis.InitialHeight
+		case headErr != nil:
+			return false, fmt.Errorf("failed to inspect local store head: %w", headErr)
+		default:
+			heightToQuery = head.Height()
+		}
+
+		if trusted, err = syncService.ex.GetByHeight(ctx, heightToQuery); err != nil {
+			return false, fmt.Errorf("failed to fetch height %d from peers: %w", heightToQuery, err)
 		}
 
 		if _, err := syncService.initStore(ctx, trusted); err != nil {
