@@ -38,18 +38,9 @@ func TestSubmitToDA_MempoolRetry_IncreasesGasAndSucceeds(t *testing.T) {
 	t.Parallel()
 
 	mockDA := mocks.NewMockDA(t)
-	// Initial gas price fetched from DA since cfg.DA.GasPrice==0
-	mockDA.On("GasPrice", mock.Anything).Return(1.0, nil).Once()
-	// Gas multiplier available and used on mempool retry
-	mockDA.On("GasMultiplier", mock.Anything).Return(2.0, nil).Once()
-
-	// First attempt returns a mempool-related error (mapped to StatusNotIncludedInBlock)
-	// Expect gasPrice=1.0
 
 	nsBz := coreda.NamespaceFromString("ns").Bytes()
-
 	opts := []byte("opts")
-	// capture gas prices used
 	var usedGas []float64
 	mockDA.
 		On("SubmitWithOptions", mock.Anything, mock.Anything, mock.AnythingOfType("float64"), nsBz, opts).
@@ -59,7 +50,6 @@ func TestSubmitToDA_MempoolRetry_IncreasesGasAndSucceeds(t *testing.T) {
 		Return(nil, coreda.ErrTxTimedOut).
 		Once()
 
-	// Second attempt should use doubled gas price = 2.0 and succeed for all items
 	ids := [][]byte{[]byte("id1"), []byte("id2"), []byte("id3")}
 	mockDA.
 		On("SubmitWithOptions", mock.Anything, mock.Anything, mock.AnythingOfType("float64"), nsBz, opts).
@@ -69,10 +59,7 @@ func TestSubmitToDA_MempoolRetry_IncreasesGasAndSucceeds(t *testing.T) {
 		Return(ids, nil).
 		Once()
 
-	s := newTestSubmitter(mockDA, func(c *config.Config) {
-		// trigger initial gas price path from DA
-		c.DA.GasPrice = 0
-	})
+	s := newTestSubmitter(mockDA, nil)
 
 	items := []string{"a", "b", "c"}
 	ctx := context.Background()
@@ -81,7 +68,7 @@ func TestSubmitToDA_MempoolRetry_IncreasesGasAndSucceeds(t *testing.T) {
 		ctx,
 		items,
 		marshalString,
-		func(_ []string, _ *coreda.ResultSubmit, _ float64) {},
+		func(_ []string, _ *coreda.ResultSubmit) {},
 		"item",
 		nsBz,
 		opts,
@@ -89,8 +76,8 @@ func TestSubmitToDA_MempoolRetry_IncreasesGasAndSucceeds(t *testing.T) {
 	)
 	assert.NoError(t, err)
 
-	// Expect two attempts with gas 1.0 then 2.0
-	assert.Equal(t, []float64{1.0, 2.0}, usedGas)
+	// Sentinel value is preserved on retry
+	assert.Equal(t, []float64{-1, -1}, usedGas)
 	mockDA.AssertExpectations(t)
 }
 
@@ -98,8 +85,6 @@ func TestSubmitToDA_UnknownError_RetriesSameGasThenSucceeds(t *testing.T) {
 	t.Parallel()
 
 	mockDA := mocks.NewMockDA(t)
-	// Initial gas price comes from config (set below), so DA.GasPrice is not called
-	mockDA.On("GasMultiplier", mock.Anything).Return(3.0, nil).Once()
 
 	nsBz := coreda.NamespaceFromString("ns").Bytes()
 
@@ -121,9 +106,7 @@ func TestSubmitToDA_UnknownError_RetriesSameGasThenSucceeds(t *testing.T) {
 		Return(ids, nil).
 		Once()
 
-	s := newTestSubmitter(mockDA, func(c *config.Config) {
-		c.DA.GasPrice = 5.5 // fixed gas from config
-	})
+	s := newTestSubmitter(mockDA, nil)
 
 	items := []string{"x"}
 	ctx := context.Background()
@@ -132,14 +115,14 @@ func TestSubmitToDA_UnknownError_RetriesSameGasThenSucceeds(t *testing.T) {
 		ctx,
 		items,
 		marshalString,
-		func(_ []string, _ *coreda.ResultSubmit, _ float64) {},
+		func(_ []string, _ *coreda.ResultSubmit) {},
 		"item",
 		nsBz,
 		opts,
 		nil,
 	)
 	assert.NoError(t, err)
-	assert.Equal(t, []float64{5.5, 5.5}, usedGas)
+	assert.Equal(t, []float64{-1, -1}, usedGas)
 	mockDA.AssertExpectations(t)
 }
 
@@ -147,8 +130,6 @@ func TestSubmitToDA_TooBig_HalvesBatch(t *testing.T) {
 	t.Parallel()
 
 	mockDA := mocks.NewMockDA(t)
-	// Use fixed gas from config to simplify
-	mockDA.On("GasMultiplier", mock.Anything).Return(2.0, nil).Once()
 
 	nsBz := coreda.NamespaceFromString("ns").Bytes()
 
@@ -177,9 +158,7 @@ func TestSubmitToDA_TooBig_HalvesBatch(t *testing.T) {
 		Return(ids, nil).
 		Once()
 
-	s := newTestSubmitter(mockDA, func(c *config.Config) {
-		c.DA.GasPrice = 1.0
-	})
+	s := newTestSubmitter(mockDA, nil)
 
 	items := []string{"a", "b", "c", "d"}
 	ctx := context.Background()
@@ -188,7 +167,7 @@ func TestSubmitToDA_TooBig_HalvesBatch(t *testing.T) {
 		ctx,
 		items,
 		marshalString,
-		func(_ []string, _ *coreda.ResultSubmit, _ float64) {},
+		func(_ []string, _ *coreda.ResultSubmit) {},
 		"item",
 		nsBz,
 		opts,
@@ -203,8 +182,6 @@ func TestSubmitToDA_SentinelNoGas_PreservesGasAcrossRetries(t *testing.T) {
 	t.Parallel()
 
 	mockDA := mocks.NewMockDA(t)
-	// GasMultiplier is still called once, but should not affect gas when sentinel is used
-	mockDA.On("GasMultiplier", mock.Anything).Return(10.0, nil).Once()
 
 	nsBz := coreda.NamespaceFromString("ns").Bytes()
 
@@ -226,9 +203,7 @@ func TestSubmitToDA_SentinelNoGas_PreservesGasAcrossRetries(t *testing.T) {
 		Return(ids, nil).
 		Once()
 
-	s := newTestSubmitter(mockDA, func(c *config.Config) {
-		c.DA.GasPrice = -1 // sentinel no-gas behavior
-	})
+	s := newTestSubmitter(mockDA, nil)
 
 	items := []string{"only"}
 	ctx := context.Background()
@@ -237,7 +212,7 @@ func TestSubmitToDA_SentinelNoGas_PreservesGasAcrossRetries(t *testing.T) {
 		ctx,
 		items,
 		marshalString,
-		func(_ []string, _ *coreda.ResultSubmit, _ float64) {},
+		func(_ []string, _ *coreda.ResultSubmit) {},
 		"item",
 		nsBz,
 		opts,
@@ -252,7 +227,6 @@ func TestSubmitToDA_PartialSuccess_AdvancesWindow(t *testing.T) {
 	t.Parallel()
 
 	mockDA := mocks.NewMockDA(t)
-	mockDA.On("GasMultiplier", mock.Anything).Return(2.0, nil).Once()
 
 	nsBz := coreda.NamespaceFromString("ns").Bytes()
 
@@ -268,7 +242,7 @@ func TestSubmitToDA_PartialSuccess_AdvancesWindow(t *testing.T) {
 	secondIDs := [][]byte{[]byte("id3")}
 	mockDA.On("SubmitWithOptions", mock.Anything, mock.Anything, mock.Anything, nsBz, opts).Return(secondIDs, nil).Once()
 
-	s := newTestSubmitter(mockDA, func(c *config.Config) { c.DA.GasPrice = 1.0 })
+	s := newTestSubmitter(mockDA, nil)
 
 	items := []string{"a", "b", "c"}
 	ctx := context.Background()
@@ -277,7 +251,7 @@ func TestSubmitToDA_PartialSuccess_AdvancesWindow(t *testing.T) {
 		ctx,
 		items,
 		marshalString,
-		func(submitted []string, _ *coreda.ResultSubmit, _ float64) { totalSubmitted += len(submitted) },
+		func(submitted []string, _ *coreda.ResultSubmit) { totalSubmitted += len(submitted) },
 		"item",
 		nsBz,
 		opts,

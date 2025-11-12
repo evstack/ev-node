@@ -45,7 +45,7 @@ func getTestDABlockTime() time.Duration {
 }
 
 func TestProxy(t *testing.T) {
-	dummy := coreda.NewDummyDA(100_000, 0, 0, getTestDABlockTime())
+	dummy := coreda.NewDummyDA(100_000, getTestDABlockTime())
 	dummy.StartHeightTicker()
 	logger := zerolog.Nop()
 	server := proxy.NewServer(logger, ServerHost, ServerPort, dummy)
@@ -57,7 +57,7 @@ func TestProxy(t *testing.T) {
 		}
 	}()
 
-	client, err := proxy.NewClient(context.Background(), logger, ClientURL, "74657374", 0, 1, DefaultMaxBlobSize)
+	client, err := proxy.NewClient(context.Background(), logger, ClientURL, "74657374", DefaultMaxBlobSize)
 	require.NoError(t, err)
 
 	t.Run("Basic DA test", func(t *testing.T) {

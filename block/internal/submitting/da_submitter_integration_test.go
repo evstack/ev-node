@@ -83,7 +83,7 @@ func TestDASubmitter_SubmitHeadersAndData_MarksInclusionAndUpdatesLastSubmitted(
 	require.NoError(t, batch2.Commit())
 
 	// Dummy DA
-	dummyDA := coreda.NewDummyDA(10_000_000, 0, 0, 10*time.Millisecond)
+	dummyDA := coreda.NewDummyDA(10_000_000, 10*time.Millisecond)
 
 	// Create DA submitter
 	daSubmitter := NewDASubmitter(dummyDA, cfg, gen, common.DefaultBlockOptions(), common.NopMetrics(), zerolog.Nop())

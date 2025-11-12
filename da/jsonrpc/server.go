@@ -72,18 +72,6 @@ func (s *serverInternalAPI) SubmitWithOptions(ctx context.Context, blobs []da.Bl
 	return s.daImpl.SubmitWithOptions(ctx, blobs, gasPrice, ns, options)
 }
 
-// GasPrice implements the RPC method.
-func (s *serverInternalAPI) GasPrice(ctx context.Context) (float64, error) {
-	s.logger.Debug().Msg("RPC server: GasPrice called")
-	return s.daImpl.GasPrice(ctx)
-}
-
-// GasMultiplier implements the RPC method.
-func (s *serverInternalAPI) GasMultiplier(ctx context.Context) (float64, error) {
-	s.logger.Debug().Msg("RPC server: GasMultiplier called")
-	return s.daImpl.GasMultiplier(ctx)
-}
-
 // NewServer accepts the host address port and the DA implementation to serve as a jsonrpc service
 func NewServer(logger zerolog.Logger, address, port string, daImplementation da.DA) *Server {
 	rpc := jsonrpc.NewServer(jsonrpc.WithServerErrors(getKnownErrorsMapping()))

@@ -45,7 +45,7 @@ const (
 func createTestComponents(t *testing.T, config evconfig.Config) (coreexecutor.Executor, coresequencer.Sequencer, coreda.DA, datastore.Batching, *key.NodeKey, func()) {
 	executor := coreexecutor.NewDummyExecutor()
 	sequencer := coresequencer.NewDummySequencer()
-	dummyDA := coreda.NewDummyDA(100_000, 0, 0, config.DA.BlockTime.Duration)
+	dummyDA := coreda.NewDummyDA(100_000, config.DA.BlockTime.Duration)
 	dummyDA.StartHeightTicker()
 
 	stopDAHeightTicker := func() {

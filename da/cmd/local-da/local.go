@@ -73,18 +73,6 @@ func (d *LocalDA) MaxBlobSize(ctx context.Context) (uint64, error) {
 	return d.maxBlobSize, nil
 }
 
-// GasMultiplier returns the gas multiplier.
-func (d *LocalDA) GasMultiplier(ctx context.Context) (float64, error) {
-	d.logger.Debug().Msg("GasMultiplier called")
-	return 1.0, nil
-}
-
-// GasPrice returns the gas price.
-func (d *LocalDA) GasPrice(ctx context.Context) (float64, error) {
-	d.logger.Debug().Msg("GasPrice called")
-	return 0.0, nil
-}
-
 // Get returns Blobs for given IDs.
 func (d *LocalDA) Get(ctx context.Context, ids []coreda.ID, ns []byte) ([]coreda.Blob, error) {
 	if err := validateNamespace(ns); err != nil {

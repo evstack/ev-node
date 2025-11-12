@@ -20,14 +20,12 @@ import (
 )
 
 var (
-	daURL         string
-	authToken     string
-	timeout       time.Duration
-	verbose       bool
-	maxBlobSize   uint64
-	gasPrice      float64
-	gasMultiplier float64
-	filterHeight  uint64
+	daURL        string
+	authToken    string
+	timeout      time.Duration
+	verbose      bool
+	maxBlobSize  uint64
+	filterHeight uint64
 )
 
 func main() {
@@ -44,8 +42,6 @@ A powerful DA debugging tool for inspecting blockchain data availability layers.
 	rootCmd.PersistentFlags().DurationVar(&timeout, "timeout", 30*time.Second, "Request timeout")
 	rootCmd.PersistentFlags().BoolVar(&verbose, "verbose", false, "Enable verbose logging")
 	rootCmd.PersistentFlags().Uint64Var(&maxBlobSize, "max-blob-size", 1970176, "Maximum blob size in bytes")
-	rootCmd.PersistentFlags().Float64Var(&gasPrice, "gas-price", 0.0, "Gas price for DA operations")
-	rootCmd.PersistentFlags().Float64Var(&gasMultiplier, "gas-multiplier", 1.0, "Gas multiplier for DA operations")
 
 	// Add subcommands
 	rootCmd.AddCommand(queryCmd())
@@ -517,7 +513,7 @@ func createDAClient() (*jsonrpc.Client, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 
-	client, err := jsonrpc.NewClient(ctx, logger, daURL, authToken, gasPrice, gasMultiplier, maxBlobSize)
+	client, err := jsonrpc.NewClient(ctx, logger, daURL, authToken, maxBlobSize)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create DA client: %w", err)
 	}

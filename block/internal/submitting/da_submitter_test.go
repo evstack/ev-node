@@ -35,7 +35,7 @@ func setupDASubmitterTest(t *testing.T) (*DASubmitter, store.Store, cache.Manage
 	require.NoError(t, err)
 
 	// Create dummy DA
-	dummyDA := coreda.NewDummyDA(10_000_000, 0, 0, 10*time.Millisecond)
+	dummyDA := coreda.NewDummyDA(10_000_000, 10*time.Millisecond)
 
 	// Create config
 	cfg := config.DefaultConfig()
@@ -93,7 +93,7 @@ func TestNewDASubmitterSetsVisualizerWhenEnabled(t *testing.T) {
 	cfg.RPC.EnableDAVisualization = true
 	cfg.Node.Aggregator = true
 
-	dummyDA := coreda.NewDummyDA(10_000_000, 0, 0, 10*time.Millisecond)
+	dummyDA := coreda.NewDummyDA(10_000_000, 10*time.Millisecond)
 
 	NewDASubmitter(
 		dummyDA,

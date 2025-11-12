@@ -46,13 +46,13 @@ func TestRecordSubmission(t *testing.T) {
 		},
 	}
 
-	server.RecordSubmission(result, 0.5, 2)
+	server.RecordSubmission(result, -1, 2)
 
 	assert.Equal(t, 1, len(server.submissions))
 	submission := server.submissions[0]
 	assert.Equal(t, uint64(100), submission.Height)
 	assert.Equal(t, uint64(1024), submission.BlobSize)
-	assert.Equal(t, 0.5, submission.GasPrice)
+	assert.Equal(t, float64(-1), submission.GasPrice)
 	assert.Equal(t, "Success", submission.StatusCode)
 	assert.Equal(t, uint64(2), submission.NumBlobs)
 	assert.Equal(t, 2, len(submission.BlobIDs))

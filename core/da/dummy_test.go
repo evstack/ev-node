@@ -10,7 +10,7 @@ import (
 func TestDummyDA(t *testing.T) {
 	testDABlockTime := 100 * time.Millisecond
 	// Create a new DummyDA instance with a max blob size of 1024 bytes
-	dummyDA := NewDummyDA(1024, 0, 0, testDABlockTime)
+	dummyDA := NewDummyDA(1024, testDABlockTime)
 	dummyDA.StartHeightTicker()
 	defer dummyDA.StopHeightTicker()
 	// Height is always 0
