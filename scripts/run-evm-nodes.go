@@ -606,7 +606,7 @@ func findProjectRoot() (string, error) {
 
 func isProjectRoot(dir string) bool {
 	markers := []string{
-		"apps/evm/single",
+		"apps/evm",
 		"execution/evm",
 		"da",
 		"scripts",

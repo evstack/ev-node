@@ -22,7 +22,7 @@ The gRPC single sequencer app provides:
 From the repository root:
 
 ```bash
-cd apps/grpc/single
+cd apps/grpc
 go build -o evgrpc
 ```
 

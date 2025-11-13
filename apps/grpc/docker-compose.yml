@@ -33,7 +33,7 @@ services:
   evolve-grpc:
     build:
       context: ../../../
-      dockerfile: apps/grpc/single/Dockerfile
+      dockerfile: apps/grpc/Dockerfile
     depends_on:
       local-da:
         condition: service_healthy

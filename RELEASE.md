@@ -34,9 +34,9 @@ Use the hierarchical tag format: `{app-path}/v{major}.{minor}.{patch}`
 
 **Examples:**
 
-- `evm/single/v0.2.0` → Releases `apps/evm/single/`
-- `testapp/v1.0.0` → Releases `apps/testapp/`
-- `grpc/single/v2.1.3` → Releases `apps/grpc/single/`
+- `apps/evm/v0.2.0` → Releases `apps/evm/`
+- `apps/testapp/v1.0.0` → Releases `apps/testapp/`
+- `apps/grpc/v2.1.3` → Releases `apps/grpc/`
 
 ### Automated Process
 
@@ -75,12 +75,11 @@ This section outlines the release process for all Go packages in the ev-node rep
    │   da    │         │ ev-node │      │execution/evm │
    └─────────┘         └────┬────┘      └──────────────┘
                             │
-                ┌───────────┴───────────┐
-                │                       │
-                ▼                       ▼
-      ┌─────────────────┐     ┌─────────────────┐
-      │apps/evm/based   │     │apps/evm/single  │
-      └─────────────────┘     └─────────────────┘
+                            │
+                            ▼
+                      ┌───────────┐
+                      │ apps/evm  │
+                      └───────────┘
 ```
 
 ### Release Order
@@ -168,25 +167,15 @@ go list -m github.com/evstack/ev-node/execution/evm@v0.3.0
 After all dependencies are available:
 
 ```bash
-# Update and release apps/evm/based
-cd apps/evm/based
-go get github.com/evstack/ev-node/core@v0.3.0
-go get github.com/evstack/ev-node/da@v0.3.0
-go get github.com/evstack/ev-node/execution/evm@v0.3.0
-go get github.com/evstack/ev-node@v0.3.0
-go mod tidy
-git tag apps/evm/based/v0.3.0
-git push origin apps/evm/based/v0.3.0
 
-# Update and release apps/evm/single
-cd ../single
+# Update and release apps/evm
 go get github.com/evstack/ev-node/core@v0.3.0
 go get github.com/evstack/ev-node/da@v0.3.0
 go get github.com/evstack/ev-node/execution/evm@v0.3.0
 go get github.com/evstack/ev-node@v0.3.0
 go mod tidy
-git tag apps/evm/single/v0.3.0
-git push origin apps/evm/single/v0.3.0
+git tag apps/evm/v0.3.0
+git push origin apps/evm/v0.3.0
 
 # Verify availability
 go list -m github.com/evstack/ev-node/apps/evm@v0.3.0
@@ -200,8 +189,8 @@ go list -m github.com/evstack/ev-node/apps/evm@v0.3.0
 
 ```bash
 # Tag and push - automation handles the rest
-git tag evm/single/v0.2.0
-git push origin evm/single/v0.2.0
+git tag evm/v0.2.0
+git push origin evm/v0.2.0
 ```
 
 ### Scenario 2: Release Multiple Apps
@@ -227,8 +216,7 @@ git tag v0.3.0 && git push origin v0.3.0
 git tag execution/evm/v0.3.0 && git push origin execution/evm/v0.3.0
 
 # 3. Wait, update deps, then release apps
-git tag apps/evm/based/v0.3.0 && git push origin apps/evm/based/v0.3.0
-git tag apps/evm/single/v0.3.0 && git push origin apps/evm/single/v0.3.0
+git tag apps/evm/v0.3.0 && git push origin apps/evm/v0.3.0
 ```
 
 ### Scenario 4: Hotfix/Patch Release
@@ -282,7 +270,7 @@ go get github.com/evstack/ev-node/core@v0.3.0
 
 **"App directory does not exist"**
 
-- Ensure tag matches app path: `apps/evm/single/` → `evm/single/v0.2.0`
+- Ensure tag matches app path: `apps/evm/` → `apps/evm/v0.2.0`
 - Check spelling and case sensitivity
 
 **"Dockerfile not found"**
