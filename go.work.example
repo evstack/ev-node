@@ -4,8 +4,8 @@ use (
 	.
 	./core
 	./apps/testapp
-	./apps/evm/single
-	./apps/grpc/single
+	./apps/evm
+	./apps/grpc
 	./execution/evm
 	./execution/grpc
 	./da/

@@ -237,7 +237,7 @@ func (nm *nodeManager) configureNodes() {
 			evmRPC:      baseEVMRPC + (i * portOffset),
 			evmEngine:   baseEVMEngine + (i * portOffset),
 			evmWS:       baseEVMWS + (i * portOffset),
-			homeDir:     filepath.Join(nm.projectRoot, fmt.Sprintf(".evm-single-%s", name)),
+			homeDir:     filepath.Join(nm.projectRoot, fmt.Sprintf(".evm-%s", name)),
 			isSequencer: isSequencer,
 		}
 		nm.nodes = append(nm.nodes, node)
@@ -350,7 +350,7 @@ func (nm *nodeManager) startNode(node *nodeConfig, sequencerP2PAddr string) (str
 	// Remove existing directory
 	os.RemoveAll(node.homeDir)
 
-	evmSinglePath := filepath.Join(nm.projectRoot, "build", "evm-single")
+	evmSinglePath := filepath.Join(nm.projectRoot, "build", "evm")
 
 	// Initialize node
 	initArgs := []string{
@@ -606,7 +606,7 @@ func findProjectRoot() (string, error) {
 
 func isProjectRoot(dir string) bool {
 	markers := []string{
-		"apps/evm/single",
+		"apps/evm",
 		"execution/evm",
 		"da",
 		"scripts",

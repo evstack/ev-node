@@ -22,8 +22,8 @@ The gRPC single sequencer app provides:
 From the repository root:
 
 ```bash
-cd apps/grpc/single
-go build -o grpc-single
+cd apps/grpc
+go build -o evgrpc
 ```
 
 ## Usage
@@ -33,14 +33,14 @@ go build -o grpc-single
 First, initialize the node configuration:
 
 ```bash
-./grpc-single init --root-dir ~/.grpc-single
+./evgrpc init --root-dir ~/.evgrpc
 ```
 
 This creates the necessary configuration files and directories.
 
 ### 2. Configure the Node
 
-Edit the configuration file at `~/.grpc-single/config/config.toml` to set your preferred parameters, or use command-line flags.
+Edit the configuration file at `~/.evgrpc/config/config.toml` to set your preferred parameters, or use command-line flags.
 
 ### 3. Start the Execution Service
 
@@ -51,8 +51,8 @@ Before starting the Evolve node, ensure your gRPC execution service is running.
 Start the Evolve node with:
 
 ```bash
-./grpc-single start \
-  --root-dir ~/.grpc-single \
+./evgrpc start \
+  --root-dir ~/.evgrpc \
   --grpc-executor-url http://localhost:50051 \
   --da.address http://localhost:7980 \
   --da.auth-token your-da-token
@@ -66,7 +66,7 @@ Start the Evolve node with:
 
 ### Common Evolve Flags
 
-- `--root-dir`: Root directory for config and data (default: `~/.grpc-single`)
+- `--root-dir`: Root directory for config and data (default: `~/.evgrpc`)
 - `--chain-id`: The chain ID for your rollup
 - `--da.address`: Data availability layer address
 - `--da.auth-token`: Authentication token for DA layer
@@ -78,26 +78,26 @@ Start the Evolve node with:
 
 1. Start the local DA service:
 
-    ```bash
-    cd da/cmd/local-da
-    go run main.go
-    ```
+   ```bash
+   cd da/cmd/local-da
+   go run main.go
+   ```
 
 2. Start your gRPC execution service:
 
-    ```bash
-    # Your execution service implementation
-    ```
+   ```bash
+   # Your execution service implementation
+   ```
 
 3. Initialize and run the node:
 
-    ```bash
-    ./grpc-single init --root-dir ~/.grpc-single --chain-id test-chain
-    ./grpc-single start \
-      --root-dir ~/.grpc-single \
-      --grpc-executor-url http://localhost:50051 \
-      --da.address http://localhost:7980
-    ```
+   ```bash
+   ./evgrpc init --root-dir ~/.evgrpc --chain-id test-chain
+   ./evgrpc start \
+     --root-dir ~/.evgrpc \
+     --grpc-executor-url http://localhost:50051 \
+     --da.address http://localhost:7980
+   ```
 
 ## Architecture
 
@@ -120,7 +120,7 @@ Start the Evolve node with:
 ### Building from Source
 
 ```bash
-go build -o grpc-single
+go build -o evgrpc
 ```
 
 ### Running Tests
