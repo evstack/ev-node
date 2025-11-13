@@ -105,7 +105,7 @@ These packages only depend on `core` and can be released in parallel after `core
 
 These packages have the most dependencies and should be released last:
 
-2. **github.com/evstack/ev-node/apps/evm** - Path: `./apps/evm`
+- **github.com/evstack/ev-node/apps/evm** - Path: `./apps/evm`
 
 ### Release Process
 
