@@ -12,6 +12,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - Enhanced health check system with separate liveness (`/health/live`) and readiness (`/health/ready`) HTTP endpoints. Readiness endpoint includes P2P listening check and aggregator block production rate validation (5x block time threshold). ([#2800](https://github.com/evstack/ev-node/pull/2800))
+- Implement forced inclusion and based sequencing ([#2797](https://github.com/evstack/ev-node/pull/2797))
+  This changes requires to add a `da_epoch_forced_inclusion` field in `genesis.json` file.
+  To enable this feature, set the force inclusion namespace in the `evnode.yaml`.
 
 ### Changed
 
