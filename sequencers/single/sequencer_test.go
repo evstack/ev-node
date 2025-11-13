@@ -21,7 +21,7 @@ import (
 
 func TestNewSequencer(t *testing.T) {
 	// Create a new sequencer with mock DA client
-	dummyDA := coreda.NewDummyDA(100_000_000, 0, 0, 10*time.Second)
+	dummyDA := coreda.NewDummyDA(100_000_000, 10*time.Second)
 	metrics, _ := NopMetrics()
 	db := ds.NewMapDatastore()
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
@@ -54,7 +54,7 @@ func TestNewSequencer(t *testing.T) {
 func TestSequencer_SubmitBatchTxs(t *testing.T) {
 	// Initialize a new sequencer
 	metrics, _ := NopMetrics()
-	dummyDA := coreda.NewDummyDA(100_000_000, 0, 0, 10*time.Second)
+	dummyDA := coreda.NewDummyDA(100_000_000, 10*time.Second)
 	db := ds.NewMapDatastore()
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
@@ -107,7 +107,7 @@ func TestSequencer_SubmitBatchTxs(t *testing.T) {
 func TestSequencer_SubmitBatchTxs_EmptyBatch(t *testing.T) {
 	// Initialize a new sequencer
 	metrics, _ := NopMetrics()
-	dummyDA := coreda.NewDummyDA(100_000_000, 0, 0, 10*time.Second)
+	dummyDA := coreda.NewDummyDA(100_000_000, 10*time.Second)
 	db := ds.NewMapDatastore()
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
@@ -398,8 +398,6 @@ func TestSequencer_GetNextBatch_BeforeDASubmission(t *testing.T) {
 	}()
 
 	// Set up mock expectations
-	mockDA.On("GasPrice", mock.Anything).Return(float64(0), nil)
-	mockDA.On("GasMultiplier", mock.Anything).Return(float64(0), nil)
 	mockDA.On("Submit", mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 		Return(nil, errors.New("mock DA always rejects submissions"))
 
@@ -637,7 +635,7 @@ func TestSequencer_DAFailureAndQueueThrottling_Integration(t *testing.T) {
 	defer db.Close()
 
 	// Create a dummy DA that we can make fail
-	dummyDA := coreda.NewDummyDA(100_000, 0, 0, 100*time.Millisecond)
+	dummyDA := coreda.NewDummyDA(100_000, 100*time.Millisecond)
 	dummyDA.StartHeightTicker()
 	defer dummyDA.StopHeightTicker()
 

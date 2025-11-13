@@ -177,7 +177,6 @@ func (s *EVMSingleUpgradeTestSuite) setupEVMSingle(ctx context.Context, image co
 		WithDANamespace("evm-single-header").
 		WithAdditionalStartArgs(
 			"--evnode.rpc.address", "0.0.0.0:7331",
-			"--evnode.da.gas_price", "0.025",
 			"--evnode.da.data_namespace", "evm-single-data",
 		).
 		Build()

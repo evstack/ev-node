@@ -20,11 +20,9 @@ type Module interface {
 
 // API defines the jsonrpc service module API
 type API struct {
-	Logger        zerolog.Logger
-	MaxBlobSize   uint64
-	gasPrice      float64
-	gasMultiplier float64
-	Internal      struct {
+	Logger      zerolog.Logger
+	MaxBlobSize uint64
+	Internal    struct {
 		Get               func(ctx context.Context, ids []da.ID, ns []byte) ([]da.Blob, error)           `perm:"read"`
 		GetIDs            func(ctx context.Context, height uint64, ns []byte) (*da.GetIDsResult, error)  `perm:"read"`
 		GetProofs         func(ctx context.Context, ids []da.ID, ns []byte) ([]da.Proof, error)          `perm:"read"`
@@ -32,8 +30,6 @@ type API struct {
 		Validate          func(context.Context, []da.ID, []da.Proof, []byte) ([]bool, error)             `perm:"read"`
 		Submit            func(context.Context, []da.Blob, float64, []byte) ([]da.ID, error)             `perm:"write"`
 		SubmitWithOptions func(context.Context, []da.Blob, float64, []byte, []byte) ([]da.ID, error)     `perm:"write"`
-		GasMultiplier     func(context.Context) (float64, error)                                         `perm:"read"`
-		GasPrice          func(context.Context) (float64, error)                                         `perm:"read"`
 	}
 }
 
@@ -180,18 +176,6 @@ func (api *API) SubmitWithOptions(ctx context.Context, inputBlobs []da.Blob, gas
 	return res, err
 }
 
-func (api *API) GasMultiplier(ctx context.Context) (float64, error) {
-	api.Logger.Debug().Str("method", "GasMultiplier").Msg("Making RPC call")
-
-	return api.gasMultiplier, nil
-}
-
-func (api *API) GasPrice(ctx context.Context) (float64, error) {
-	api.Logger.Debug().Str("method", "GasPrice").Msg("Making RPC call")
-
-	return api.gasPrice, nil
-}
-
 // Client is the jsonrpc client
 type Client struct {
 	DA     API
@@ -222,18 +206,16 @@ func (c *Client) Close() {
 
 // NewClient creates a new Client with one connection per namespace with the
 // given token as the authorization token.
-func NewClient(ctx context.Context, logger zerolog.Logger, addr, token string, gasPrice, gasMultiplier float64, maxBlobSize uint64) (*Client, error) {
+func NewClient(ctx context.Context, logger zerolog.Logger, addr, token string, maxBlobSize uint64) (*Client, error) {
 	authHeader := http.Header{"Authorization": []string{fmt.Sprintf("Bearer %s", token)}}
-	return newClient(ctx, logger, addr, authHeader, gasPrice, gasMultiplier, maxBlobSize)
+	return newClient(ctx, logger, addr, authHeader, maxBlobSize)
 }
 
-func newClient(ctx context.Context, logger zerolog.Logger, addr string, authHeader http.Header, gasPrice, gasMultiplier float64, maxBlobSize uint64) (*Client, error) {
+func newClient(ctx context.Context, logger zerolog.Logger, addr string, authHeader http.Header, maxBlobSize uint64) (*Client, error) {
 	var multiCloser multiClientCloser
 	var client Client
 	client.DA.Logger = logger
 	client.DA.MaxBlobSize = maxBlobSize
-	client.DA.gasPrice = gasPrice
-	client.DA.gasMultiplier = gasMultiplier
 
 	errs := getKnownErrorsMapping()
 	for name, module := range moduleMap(&client) {

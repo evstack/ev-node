@@ -22,43 +22,31 @@ import (
 )
 
 const (
-	submissionTimeout            = 60 * time.Second
-	noGasPrice                   = -1
-	initialBackoff               = 100 * time.Millisecond
-	defaultGasPrice              = 0.0
-	defaultGasMultiplier         = 1.0
-	defaultMaxGasPriceClamp      = 1000.0
-	defaultMaxGasMultiplierClamp = 3.0 // must always > 0 to avoid division by zero
+	submissionTimeout = 60 * time.Second
+	initialBackoff    = 100 * time.Millisecond
 )
 
-// retryPolicy defines clamped bounds for retries, backoff, and gas pricing.
+// retryPolicy defines clamped bounds for retries and backoff.
 type retryPolicy struct {
-	MaxAttempts      int
-	MinBackoff       time.Duration
-	MaxBackoff       time.Duration
-	MinGasPrice      float64
-	MaxGasPrice      float64
-	MaxBlobBytes     int
-	MaxGasMultiplier float64
+	MaxAttempts  int
+	MinBackoff   time.Duration
+	MaxBackoff   time.Duration
+	MaxBlobBytes int
 }
 
 func defaultRetryPolicy(maxAttempts int, maxDuration time.Duration) retryPolicy {
 	return retryPolicy{
-		MaxAttempts:      maxAttempts,
-		MinBackoff:       initialBackoff,
-		MaxBackoff:       maxDuration,
-		MinGasPrice:      defaultGasPrice,
-		MaxGasPrice:      defaultMaxGasPriceClamp,
-		MaxBlobBytes:     common.DefaultMaxBlobSize,
-		MaxGasMultiplier: defaultMaxGasMultiplierClamp,
+		MaxAttempts:  maxAttempts,
+		MinBackoff:   initialBackoff,
+		MaxBackoff:   maxDuration,
+		MaxBlobBytes: common.DefaultMaxBlobSize,
 	}
 }
 
-// retryState holds the current retry attempt, backoff, and gas price.
+// retryState holds the current retry attempt and backoff.
 type retryState struct {
-	Attempt  int
-	Backoff  time.Duration
-	GasPrice float64
+	Attempt int
+	Backoff time.Duration
 }
 
 type retryReason int
@@ -71,21 +59,11 @@ const (
 	reasonTooBig
 )
 
-func (rs *retryState) Next(reason retryReason, pol retryPolicy, gasMultiplier float64, sentinelNoGas bool) {
+func (rs *retryState) Next(reason retryReason, pol retryPolicy) {
 	switch reason {
 	case reasonSuccess:
-		// Reduce gas price towards initial on success, if multiplier is available
-		if !sentinelNoGas && gasMultiplier > 0 {
-			m := clamp(gasMultiplier, 1/pol.MaxGasMultiplier, pol.MaxGasMultiplier)
-			rs.GasPrice = clamp(rs.GasPrice/m, pol.MinGasPrice, pol.MaxGasPrice)
-		}
 		rs.Backoff = pol.MinBackoff
 	case reasonMempool:
-		if !sentinelNoGas && gasMultiplier > 0 {
-			m := clamp(gasMultiplier, 1/pol.MaxGasMultiplier, pol.MaxGasMultiplier)
-			rs.GasPrice = clamp(rs.GasPrice*m, pol.MinGasPrice, pol.MaxGasPrice)
-		}
-		// Honor mempool stalling by using max backoff window
 		rs.Backoff = pol.MaxBackoff
 	case reasonFailure, reasonTooBig:
 		if rs.Backoff == 0 {
@@ -100,8 +78,8 @@ func (rs *retryState) Next(reason retryReason, pol retryPolicy, gasMultiplier fl
 	rs.Attempt++
 }
 
-// clamp constrains a value between min and max bounds for any comparable type
-func clamp[T ~float64 | time.Duration](v, min, max T) T {
+// clamp constrains a duration between min and max bounds
+func clamp(v, min, max time.Duration) time.Duration {
 	if min > max {
 		min, max = max, min
 	}
@@ -190,34 +168,6 @@ func (s *DASubmitter) recordFailure(reason common.DASubmitterFailureReason) {
 	}
 }
 
-// getGasMultiplier fetches the gas multiplier from DA layer with fallback and clamping
-func (s *DASubmitter) getGasMultiplier(ctx context.Context, pol retryPolicy) float64 {
-	gasMultiplier, err := s.da.GasMultiplier(ctx)
-	if err != nil || gasMultiplier <= 0 {
-		if s.config.DA.GasMultiplier > 0 {
-			return clamp(s.config.DA.GasMultiplier, 0.1, pol.MaxGasMultiplier)
-		}
-		s.logger.Warn().Err(err).Msg("failed to get gas multiplier from DA layer, using default 1.0")
-		return defaultGasMultiplier
-	}
-	return clamp(gasMultiplier, 0.1, pol.MaxGasMultiplier)
-}
-
-// initialGasPrice determines the starting gas price with clamping and sentinel handling
-func (s *DASubmitter) initialGasPrice(ctx context.Context, pol retryPolicy) (price float64, sentinelNoGas bool) {
-	if s.config.DA.GasPrice == noGasPrice {
-		return noGasPrice, true
-	}
-	if s.config.DA.GasPrice > 0 {
-		return clamp(s.config.DA.GasPrice, pol.MinGasPrice, pol.MaxGasPrice), false
-	}
-	if gp, err := s.da.GasPrice(ctx); err == nil {
-		return clamp(gp, pol.MinGasPrice, pol.MaxGasPrice), false
-	}
-	s.logger.Warn().Msg("DA gas price unavailable; using default 0.0")
-	return pol.MinGasPrice, false
-}
-
 // SubmitHeaders submits pending headers to DA layer
 func (s *DASubmitter) SubmitHeaders(ctx context.Context, cache cache.Manager) error {
 	headers, err := cache.GetPendingHeaders(ctx)
@@ -239,11 +189,10 @@ func (s *DASubmitter) SubmitHeaders(ctx context.Context, cache cache.Manager) er
 			}
 			return proto.Marshal(headerPb)
 		},
-		func(submitted []*types.SignedHeader, res *coreda.ResultSubmit, gasPrice float64) {
+		func(submitted []*types.SignedHeader, res *coreda.ResultSubmit) {
 			for _, header := range submitted {
 				cache.SetHeaderDAIncluded(header.Hash().String(), res.Height, header.Height())
 			}
-			// Update last submitted height
 			if l := len(submitted); l > 0 {
 				lastHeight := submitted[l-1].Height()
 				cache.SetLastSubmittedHeaderHeight(ctx, lastHeight)
@@ -283,7 +232,7 @@ func (s *DASubmitter) SubmitData(ctx context.Context, cache cache.Manager, signe
 		func(signedData *types.SignedData) ([]byte, error) {
 			return signedData.MarshalBinary()
 		},
-		func(submitted []*types.SignedData, res *coreda.ResultSubmit, gasPrice float64) {
+		func(submitted []*types.SignedData, res *coreda.ResultSubmit) {
 			for _, sd := range submitted {
 				cache.SetDataDAIncluded(sd.Data.DACommitment().String(), res.Height, sd.Height())
 			}
@@ -399,7 +348,7 @@ func submitToDA[T any](
 	ctx context.Context,
 	items []T,
 	marshalFn func(T) ([]byte, error),
-	postSubmit func([]T, *coreda.ResultSubmit, float64),
+	postSubmit func([]T, *coreda.ResultSubmit),
 	itemType string,
 	namespace []byte,
 	options []byte,
@@ -410,13 +359,9 @@ func submitToDA[T any](
 		return err
 	}
 
-	// Build retry policy from config with sane defaults
 	pol := defaultRetryPolicy(s.config.DA.MaxSubmitAttempts, s.config.DA.BlockTime.Duration)
 
-	// Choose initial gas price with clamp
-	gasPrice, sentinelNoGas := s.initialGasPrice(ctx, pol)
-	rs := retryState{Attempt: 0, Backoff: 0, GasPrice: gasPrice}
-	gm := s.getGasMultiplier(ctx, pol)
+	rs := retryState{Attempt: 0, Backoff: 0}
 
 	// Limit this submission to a single size-capped batch
 	if len(marshaled) > 0 {
@@ -466,21 +411,21 @@ func submitToDA[T any](
 
 		// Perform submission
 		start := time.Now()
-		res := types.SubmitWithHelpers(submitCtx, s.da, s.logger, marshaled, rs.GasPrice, namespace, mergedOptions)
+		res := types.SubmitWithHelpers(submitCtx, s.da, s.logger, marshaled, -1, namespace, mergedOptions)
 		s.logger.Debug().Int("attempts", rs.Attempt).Dur("elapsed", time.Since(start)).Uint64("code", uint64(res.Code)).Msg("got SubmitWithHelpers response from celestia")
 
 		// Record submission result for observability
 		if daVisualizationServer := server.GetDAVisualizationServer(); daVisualizationServer != nil {
-			daVisualizationServer.RecordSubmission(&res, rs.GasPrice, uint64(len(items)))
+			daVisualizationServer.RecordSubmission(&res, 0, uint64(len(items)))
 		}
 
 		switch res.Code {
 		case coreda.StatusSuccess:
 			submitted := items[:res.SubmittedCount]
-			postSubmit(submitted, &res, rs.GasPrice)
-			s.logger.Info().Str("itemType", itemType).Float64("gasPrice", rs.GasPrice).Uint64("count", res.SubmittedCount).Msg("successfully submitted items to DA layer")
+			postSubmit(submitted, &res)
+			s.logger.Info().Str("itemType", itemType).Uint64("count", res.SubmittedCount).Msg("successfully submitted items to DA layer")
 			if int(res.SubmittedCount) == len(items) {
-				rs.Next(reasonSuccess, pol, gm, sentinelNoGas)
+				rs.Next(reasonSuccess, pol)
 				// Update pending blobs metric to reflect total backlog
 				if getTotalPendingFn != nil {
 					s.metrics.DASubmitterPendingBlobs.Set(float64(getTotalPendingFn()))
@@ -490,7 +435,7 @@ func submitToDA[T any](
 			// partial success: advance window
 			items = items[res.SubmittedCount:]
 			marshaled = marshaled[res.SubmittedCount:]
-			rs.Next(reasonSuccess, pol, gm, sentinelNoGas)
+			rs.Next(reasonSuccess, pol)
 			// Update pending blobs count to reflect total backlog
 			if getTotalPendingFn != nil {
 				s.metrics.DASubmitterPendingBlobs.Set(float64(getTotalPendingFn()))
@@ -514,7 +459,7 @@ func submitToDA[T any](
 			items = items[:half]
 			marshaled = marshaled[:half]
 			s.logger.Debug().Int("newBatchSize", half).Msg("batch too big; halving and retrying")
-			rs.Next(reasonTooBig, pol, gm, sentinelNoGas)
+			rs.Next(reasonTooBig, pol)
 			// Update pending blobs count to reflect total backlog
 			if getTotalPendingFn != nil {
 				s.metrics.DASubmitterPendingBlobs.Set(float64(getTotalPendingFn()))
@@ -523,14 +468,14 @@ func submitToDA[T any](
 		case coreda.StatusNotIncludedInBlock:
 			// Record failure metric
 			s.recordFailure(common.DASubmitterFailureReasonNotIncludedInBlock)
-			s.logger.Info().Dur("backoff", pol.MaxBackoff).Float64("gasPrice", rs.GasPrice).Msg("retrying due to mempool state")
-			rs.Next(reasonMempool, pol, gm, sentinelNoGas)
+			s.logger.Info().Dur("backoff", pol.MaxBackoff).Msg("retrying due to mempool state")
+			rs.Next(reasonMempool, pol)
 
 		case coreda.StatusAlreadyInMempool:
 			// Record failure metric
 			s.recordFailure(common.DASubmitterFailureReasonAlreadyInMempool)
-			s.logger.Info().Dur("backoff", pol.MaxBackoff).Float64("gasPrice", rs.GasPrice).Msg("retrying due to mempool state")
-			rs.Next(reasonMempool, pol, gm, sentinelNoGas)
+			s.logger.Info().Dur("backoff", pol.MaxBackoff).Msg("retrying due to mempool state")
+			rs.Next(reasonMempool, pol)
 
 		case coreda.StatusContextCanceled:
 			// Record failure metric
@@ -542,7 +487,7 @@ func submitToDA[T any](
 			// Record failure metric
 			s.recordFailure(common.DASubmitterFailureReasonUnknown)
 			s.logger.Error().Str("error", res.Message).Int("attempt", rs.Attempt+1).Msg("DA layer submission failed")
-			rs.Next(reasonFailure, pol, gm, sentinelNoGas)
+			rs.Next(reasonFailure, pol)
 		}
 	}
 

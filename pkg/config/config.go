@@ -62,10 +62,6 @@ const (
 	FlagDAAuthToken = FlagPrefixEvnode + "da.auth_token" // #nosec G101
 	// FlagDABlockTime is a flag for specifying the data availability layer block time
 	FlagDABlockTime = FlagPrefixEvnode + "da.block_time"
-	// FlagDAGasPrice is a flag for specifying the data availability layer gas price
-	FlagDAGasPrice = FlagPrefixEvnode + "da.gas_price"
-	// FlagDAGasMultiplier is a flag for specifying the data availability layer gas price retry multiplier
-	FlagDAGasMultiplier = FlagPrefixEvnode + "da.gas_multiplier"
 	// FlagDANamespace is a flag for specifying the DA namespace ID
 	FlagDANamespace = FlagPrefixEvnode + "da.namespace"
 	// FlagDADataNamespace is a flag for specifying the DA data namespace ID
@@ -165,8 +161,6 @@ type Config struct {
 type DAConfig struct {
 	Address                  string          `mapstructure:"address" yaml:"address" comment:"Address of the data availability layer service (host:port). This is the endpoint where Rollkit will connect to submit and retrieve data."`
 	AuthToken                string          `mapstructure:"auth_token" yaml:"auth_token" comment:"Authentication token for the data availability layer service. Required if the DA service needs authentication."`
-	GasPrice                 float64         `mapstructure:"gas_price" yaml:"gas_price" comment:"Gas price for data availability transactions. Use -1 for automatic gas price determination. Higher values may result in faster inclusion."`
-	GasMultiplier            float64         `mapstructure:"gas_multiplier" yaml:"gas_multiplier" comment:"Multiplier applied to gas price when retrying failed DA submissions. Values > 1 increase gas price on retries to improve chances of inclusion."`
 	SubmitOptions            string          `mapstructure:"submit_options" yaml:"submit_options" comment:"Additional options passed to the DA layer when submitting data. Format depends on the specific DA implementation being used."`
 	SigningAddresses         []string        `mapstructure:"signing_addresses" yaml:"signing_addresses" comment:"List of addresses to use for DA submissions. When multiple addresses are provided, they will be used in round-robin fashion to prevent sequence mismatches. Useful for high-throughput chains."`
 	Namespace                string          `mapstructure:"namespace" yaml:"namespace" comment:"Namespace ID used when submitting blobs to the DA layer. When a DataNamespace is provided, only the header is sent to this namespace."`
@@ -343,8 +337,6 @@ func AddFlags(cmd *cobra.Command) {
 	cmd.Flags().String(FlagDAAddress, def.DA.Address, "DA address (host:port)")
 	cmd.Flags().String(FlagDAAuthToken, def.DA.AuthToken, "DA auth token")
 	cmd.Flags().Duration(FlagDABlockTime, def.DA.BlockTime.Duration, "DA chain block time (for syncing)")
-	cmd.Flags().Float64(FlagDAGasPrice, def.DA.GasPrice, "DA gas price for blob transactions")
-	cmd.Flags().Float64(FlagDAGasMultiplier, def.DA.GasMultiplier, "DA gas price multiplier for retrying blob transactions")
 	cmd.Flags().String(FlagDANamespace, def.DA.Namespace, "DA namespace for header (or blob) submissions")
 	cmd.Flags().String(FlagDADataNamespace, def.DA.DataNamespace, "DA namespace for data submissions")
 	cmd.Flags().String(FlagDAForcedInclusionNamespace, def.DA.ForcedInclusionNamespace, "DA namespace for forced inclusion transactions")
