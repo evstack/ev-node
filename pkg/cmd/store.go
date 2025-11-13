@@ -205,7 +205,7 @@ func populateSnapshot[H goheader.Header[H]](
 		return fmt.Errorf("failed to read %s tail: %w", snapshot.Label, err)
 	}
 
-	snapshot.Empty = !(snapshot.HeadPresent || snapshot.TailPresent)
+	snapshot.Empty = !snapshot.HeadPresent && !snapshot.TailPresent
 
 	return nil
 }

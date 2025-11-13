@@ -274,7 +274,6 @@ _Example:_ `--rollkit.node.lazy_block_interval 1m`
 _Default:_ `"30s"`
 _Constant:_ `FlagLazyBlockTime`
 
-
 ## Data Availability Configuration (`da`)
 
 Parameters for connecting and interacting with the Data Availability (DA) layer, which Evolve uses to publish block data.
