@@ -4,8 +4,6 @@ go 1.24.6
 
 retract v0.12.0 // Published by accident
 
-replace github.com/evstack/ev-node/core => ./core
-
 require (
 	connectrpc.com/connect v1.19.1
 	connectrpc.com/grpcreflect v1.3.0

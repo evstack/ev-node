@@ -7,7 +7,7 @@ replace github.com/celestiaorg/go-header => github.com/julienrbrt/go-header v0.0
 replace (
 	github.com/evstack/ev-node => ../../../
 	github.com/evstack/ev-node/core => ../../../core
-	github.com/evstack/ev-node/sequencers/single => ../../../sequencers/single
+	github.com/evstack/ev-node/da => ../../../da
 )
 
 require (
@@ -195,7 +195,3 @@ require (
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 	lukechampine.com/blake3 v1.4.1 // indirect
 )
-
-replace github.com/evstack/ev-node/core => ../../../core
-
-replace github.com/evstack/ev-node/da => ../../../da

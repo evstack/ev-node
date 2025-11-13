@@ -53,3 +53,7 @@ func NewDARetriever(
 		logger,
 	), nil
 }
+
+// ErrForceInclusionNotConfigured is returned when force inclusion is not configured.
+// It is exported because sequencers needs to check for this error.
+var ErrForceInclusionNotConfigured = common.ErrForceInclusionNotConfigured

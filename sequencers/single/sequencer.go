@@ -11,6 +11,7 @@ import (
 	ds "github.com/ipfs/go-datastore"
 	"github.com/rs/zerolog"
 
+	"github.com/evstack/ev-node/block"
 	coreda "github.com/evstack/ev-node/core/da"
 	coresequencer "github.com/evstack/ev-node/core/sequencer"
 	"github.com/evstack/ev-node/pkg/genesis"
@@ -137,27 +138,27 @@ func (c *Sequencer) GetNextBatch(ctx context.Context, req coresequencer.GetNextB
 
 		forcedEvent, err := c.daRetriever.RetrieveForcedIncludedTxsFromDA(ctx, currentDAHeight)
 		if err != nil {
-			// If forced inclusion is not configured, continue without forced txs
-			if !errors.Is(err, common.ErrForceInclusionNotConfigured) {
-				// If we get a height from future error, keep the current DA height and return batch
-				// We'll retry the same height on the next call until DA produces that block
-				if errors.Is(err, coreda.ErrHeightFromFuture) {
-					c.logger.Debug().
-						Uint64("da_height", currentDAHeight).
-						Msg("DA height from future, waiting for DA to produce block")
+			// If we get a height from future error, keep the current DA height and return batch
+			// We'll retry the same height on the next call until DA produces that block
+			if errors.Is(err, coreda.ErrHeightFromFuture) {
+				c.logger.Debug().
+					Uint64("da_height", currentDAHeight).
+					Msg("DA height from future, waiting for DA to produce block")
 
-					batch, err := c.queue.Next(ctx)
-					if err != nil {
-						return nil, err
-					}
-
-					return &coresequencer.GetNextBatchResponse{
-						Batch:     batch,
-						Timestamp: time.Now(),
-						BatchData: req.LastBatchData,
-					}, nil
+				batch, err := c.queue.Next(ctx)
+				if err != nil {
+					return nil, err
 				}
 
+				return &coresequencer.GetNextBatchResponse{
+					Batch:     batch,
+					Timestamp: time.Now(),
+					BatchData: req.LastBatchData,
+				}, nil
+			}
+
+			// If forced inclusion is not configured, continue without forced txs
+			if !errors.Is(err, block.ErrForceInclusionNotConfigured) {
 				c.logger.Error().Err(err).Uint64("da_height", currentDAHeight).Msg("failed to retrieve forced inclusion transactions")
 				// Continue without forced txs on other errors
 			}
