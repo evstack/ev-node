@@ -42,7 +42,7 @@ import (
 var evmSingleBinaryPath string
 
 func init() {
-	flag.StringVar(&evmBinaryPath, "evm-binary", "evm", "evm binary")
+	flag.StringVar(&evmSingleBinaryPath, "evm-binary", "evm", "evm binary")
 }
 
 // getAvailablePort finds an available TCP port on localhost
