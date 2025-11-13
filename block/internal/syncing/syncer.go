@@ -689,7 +689,7 @@ func (s *Syncer) verifyForcedInclusionTxs(currentState types.State, data *types.
 	// Retrieve forced inclusion transactions from DA
 	forcedIncludedTxsEvent, err := s.daRetriever.RetrieveForcedIncludedTxsFromDA(s.ctx, currentState.DAHeight)
 	if err != nil {
-		if errors.Is(err, ErrForceInclusionNotConfigured) {
+		if errors.Is(err, common.ErrForceInclusionNotConfigured) {
 			s.logger.Debug().Msg("forced inclusion namespace not configured, skipping verification")
 			return nil
 		}

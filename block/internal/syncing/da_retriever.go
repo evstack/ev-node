@@ -109,14 +109,6 @@ func (r *daRetriever) RetrieveFromDA(ctx context.Context, daHeight uint64) ([]co
 	return r.processBlobs(ctx, blobsResp.Data, daHeight), nil
 }
 
-var (
-	// ErrForceInclusionNotConfigured is returned when the forced inclusion namespace is not configured.
-	ErrForceInclusionNotConfigured = errors.New("forced inclusion namespace not configured")
-
-	// ErrForcedInclusionDataTooLarge is returned when forced inclusion data exceeds the maximum blob size.
-	ErrForcedInclusionDataTooLarge = errors.New("forced inclusion data exceeds maximum blob size limit")
-)
-
 // RetrieveForcedIncludedTxsFromDA retrieves forced inclusion transactions from the DA layer.
 //
 // Behavior:
@@ -132,7 +124,7 @@ var (
 //   - Error if forced inclusion is not configured or DA layer is unavailable
 func (r *daRetriever) RetrieveForcedIncludedTxsFromDA(ctx context.Context, daHeight uint64) (*common.ForcedIncludedEvent, error) {
 	if !r.hasForcedInclusionNs {
-		return nil, ErrForceInclusionNotConfigured
+		return nil, common.ErrForceInclusionNotConfigured
 	}
 
 	// Calculate deterministic epoch boundaries
@@ -306,7 +298,7 @@ func (r *daRetriever) processForcedInclusionBlobs(
 				Int("blob_size", dataSize).
 				Float64("max_size", common.DefaultMaxBlobSize).
 				Msg("forced inclusion blob exceeds maximum size - skipping")
-			return fmt.Errorf("%w: blob size %d exceeds maximum %f", ErrForcedInclusionDataTooLarge, dataSize, common.DefaultMaxBlobSize)
+			return fmt.Errorf("blob size %d exceeds maximum %f", dataSize, common.DefaultMaxBlobSize)
 		}
 
 		// Check if adding this blob would exceed the current epoch's max size

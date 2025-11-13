@@ -5,7 +5,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"strings"
 	"sync"
 	"time"
 
@@ -20,8 +19,6 @@ import (
 var (
 	// ErrInvalidId is returned when the chain id is invalid
 	ErrInvalidId = errors.New("invalid chain id")
-	// ErrForceInclusionNotConfigured is returned when forced inclusion is not configured
-	ErrForceInclusionNotConfigured = errors.New("forced inclusion namespace not configured")
 )
 
 // ForcedInclusionEvent represents forced inclusion transactions retrieved from DA
@@ -141,7 +138,7 @@ func (c *Sequencer) GetNextBatch(ctx context.Context, req coresequencer.GetNextB
 		forcedEvent, err := c.daRetriever.RetrieveForcedIncludedTxsFromDA(ctx, currentDAHeight)
 		if err != nil {
 			// If forced inclusion is not configured, continue without forced txs
-			if !strings.Contains(err.Error(), ErrForceInclusionNotConfigured.Error()) {
+			if !errors.Is(err, common.ErrForceInclusionNotConfigured) {
 				// If we get a height from future error, keep the current DA height and return batch
 				// We'll retry the same height on the next call until DA produces that block
 				if errors.Is(err, coreda.ErrHeightFromFuture) {

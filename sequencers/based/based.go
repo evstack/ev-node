@@ -3,20 +3,17 @@ package based
 import (
 	"context"
 	"errors"
-	"strings"
 	"sync"
 	"time"
 
 	"github.com/rs/zerolog"
 
+	"github.com/evstack/ev-node/block/internal/common"
 	coreda "github.com/evstack/ev-node/core/da"
 	coresequencer "github.com/evstack/ev-node/core/sequencer"
 	"github.com/evstack/ev-node/pkg/config"
 	"github.com/evstack/ev-node/pkg/genesis"
 )
-
-// ErrForceInclusionNotConfigured is returned when forced inclusion is not configured
-var ErrForceInclusionNotConfigured = errors.New("forced inclusion namespace not configured")
 
 // ForcedInclusionEvent represents forced inclusion transactions retrieved from DA
 type ForcedInclusionEvent = struct {
@@ -100,7 +97,7 @@ func (s *BasedSequencer) GetNextBatch(ctx context.Context, req coresequencer.Get
 
 	forcedTxsEvent, err := s.daRetriever.RetrieveForcedIncludedTxsFromDA(ctx, s.daHeight)
 	if err != nil {
-		if strings.Contains(err.Error(), ErrForceInclusionNotConfigured.Error()) {
+		if errors.Is(err, common.ErrForceInclusionNotConfigured) {
 			s.logger.Error().Msg("forced inclusion not configured, returning empty batch")
 			return &coresequencer.GetNextBatchResponse{
 				Batch:     &coresequencer.Batch{Transactions: nil},
