@@ -152,7 +152,7 @@ The DA Retriever component handles fetching forced inclusion transactions:
 ```go
 type daRetriever struct {
     da                         coreda.DA
-    cache                      cache.Manager
+    cache                      cache.CacheManager
     genesis                    genesis.Genesis
     logger                     zerolog.Logger
     namespaceForcedInclusionBz []byte

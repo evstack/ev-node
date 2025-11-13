@@ -29,7 +29,7 @@ type p2pHandler interface {
 type P2PHandler struct {
 	headerStore goheader.Store[*types.SignedHeader]
 	dataStore   goheader.Store[*types.Data]
-	cache       cache.Manager
+	cache       cache.CacheManager
 	genesis     genesis.Genesis
 	logger      zerolog.Logger
 
@@ -40,7 +40,7 @@ type P2PHandler struct {
 func NewP2PHandler(
 	headerStore goheader.Store[*types.SignedHeader],
 	dataStore goheader.Store[*types.Data],
-	cache cache.Manager,
+	cache cache.CacheManager,
 	genesis genesis.Genesis,
 	logger zerolog.Logger,
 ) *P2PHandler {

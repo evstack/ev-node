@@ -25,7 +25,8 @@ import (
 func TestVerifyForcedInclusionTxs_AllTransactionsIncluded(t *testing.T) {
 	ds := dssync.MutexWrap(datastore.NewMapDatastore())
 	st := store.New(ds)
-	cm, err := cache.NewManager(config.DefaultConfig(), st, zerolog.Nop())
+
+	cm, err := cache.NewCacheManager(config.DefaultConfig(), zerolog.Nop())
 	require.NoError(t, err)
 
 	addr, pub, signer := buildSyncTestSigner(t)
@@ -99,7 +100,8 @@ func TestVerifyForcedInclusionTxs_AllTransactionsIncluded(t *testing.T) {
 func TestVerifyForcedInclusionTxs_MissingTransactions(t *testing.T) {
 	ds := dssync.MutexWrap(datastore.NewMapDatastore())
 	st := store.New(ds)
-	cm, err := cache.NewManager(config.DefaultConfig(), st, zerolog.Nop())
+
+	cm, err := cache.NewCacheManager(config.DefaultConfig(), zerolog.Nop())
 	require.NoError(t, err)
 
 	addr, pub, signer := buildSyncTestSigner(t)
@@ -176,7 +178,8 @@ func TestVerifyForcedInclusionTxs_MissingTransactions(t *testing.T) {
 func TestVerifyForcedInclusionTxs_PartiallyIncluded(t *testing.T) {
 	ds := dssync.MutexWrap(datastore.NewMapDatastore())
 	st := store.New(ds)
-	cm, err := cache.NewManager(config.DefaultConfig(), st, zerolog.Nop())
+
+	cm, err := cache.NewCacheManager(config.DefaultConfig(), zerolog.Nop())
 	require.NoError(t, err)
 
 	addr, pub, signer := buildSyncTestSigner(t)
@@ -255,7 +258,8 @@ func TestVerifyForcedInclusionTxs_PartiallyIncluded(t *testing.T) {
 func TestVerifyForcedInclusionTxs_NoForcedTransactions(t *testing.T) {
 	ds := dssync.MutexWrap(datastore.NewMapDatastore())
 	st := store.New(ds)
-	cm, err := cache.NewManager(config.DefaultConfig(), st, zerolog.Nop())
+
+	cm, err := cache.NewCacheManager(config.DefaultConfig(), zerolog.Nop())
 	require.NoError(t, err)
 
 	addr, _, _ := buildSyncTestSigner(t)
@@ -320,7 +324,8 @@ func TestVerifyForcedInclusionTxs_NoForcedTransactions(t *testing.T) {
 func TestVerifyForcedInclusionTxs_NamespaceNotConfigured(t *testing.T) {
 	ds := dssync.MutexWrap(datastore.NewMapDatastore())
 	st := store.New(ds)
-	cm, err := cache.NewManager(config.DefaultConfig(), st, zerolog.Nop())
+
+	cm, err := cache.NewCacheManager(config.DefaultConfig(), zerolog.Nop())
 	require.NoError(t, err)
 
 	addr, _, _ := buildSyncTestSigner(t)

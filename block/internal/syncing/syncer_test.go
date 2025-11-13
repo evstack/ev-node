@@ -103,7 +103,8 @@ func makeData(chainID string, height uint64, txs int) *types.Data {
 func TestSyncer_validateBlock_DataHashMismatch(t *testing.T) {
 	ds := dssync.MutexWrap(datastore.NewMapDatastore())
 	st := store.New(ds)
-	cm, err := cache.NewManager(config.DefaultConfig(), st, zerolog.Nop())
+
+	cm, err := cache.NewCacheManager(config.DefaultConfig(), zerolog.Nop())
 	require.NoError(t, err)
 
 	addr, pub, signer := buildSyncTestSigner(t)
@@ -151,7 +152,8 @@ func TestSyncer_validateBlock_DataHashMismatch(t *testing.T) {
 func TestProcessHeightEvent_SyncsAndUpdatesState(t *testing.T) {
 	ds := dssync.MutexWrap(datastore.NewMapDatastore())
 	st := store.New(ds)
-	cm, err := cache.NewManager(config.DefaultConfig(), st, zerolog.Nop())
+
+	cm, err := cache.NewCacheManager(config.DefaultConfig(), zerolog.Nop())
 	require.NoError(t, err)
 
 	addr, pub, signer := buildSyncTestSigner(t)
@@ -205,7 +207,8 @@ func TestProcessHeightEvent_SyncsAndUpdatesState(t *testing.T) {
 func TestSequentialBlockSync(t *testing.T) {
 	ds := dssync.MutexWrap(datastore.NewMapDatastore())
 	st := store.New(ds)
-	cm, err := cache.NewManager(config.DefaultConfig(), st, zerolog.Nop())
+
+	cm, err := cache.NewCacheManager(config.DefaultConfig(), zerolog.Nop())
 	require.NoError(t, err)
 
 	addr, pub, signer := buildSyncTestSigner(t)
@@ -294,7 +297,8 @@ func TestSyncer_sendNonBlockingSignal(t *testing.T) {
 func TestSyncer_processPendingEvents(t *testing.T) {
 	ds := dssync.MutexWrap(datastore.NewMapDatastore())
 	st := store.New(ds)
-	cm, err := cache.NewManager(config.DefaultConfig(), st, zerolog.Nop())
+
+	cm, err := cache.NewCacheManager(config.DefaultConfig(), zerolog.Nop())
 	require.NoError(t, err)
 
 	// current height 1
@@ -340,7 +344,7 @@ func TestSyncLoopPersistState(t *testing.T) {
 	cfg.RootDir = t.TempDir()
 	cfg.ClearCache = true
 
-	cacheMgr, err := cache.NewManager(cfg, st, zerolog.Nop())
+	cacheMgr, err := cache.NewCacheManager(cfg, zerolog.Nop())
 	require.NoError(t, err)
 
 	const myDAHeightOffset = uint64(1)
@@ -452,7 +456,7 @@ func TestSyncLoopPersistState(t *testing.T) {
 		require.Nil(t, event, "event at height %d should have been removed", blockHeight)
 	}
 	// and when new instance is up on restart
-	cacheMgr, err = cache.NewManager(cfg, st, zerolog.Nop())
+	cacheMgr, err = cache.NewCacheManager(cfg, zerolog.Nop())
 	require.NoError(t, err)
 	require.NoError(t, cacheMgr.LoadFromDisk())
 

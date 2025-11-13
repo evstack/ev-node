@@ -325,7 +325,8 @@ func setupTestSyncer(t *testing.T, daBlockTime time.Duration) *Syncer {
 
 	ds := dssync.MutexWrap(datastore.NewMapDatastore())
 	st := store.New(ds)
-	cm, err := cache.NewManager(config.DefaultConfig(), st, zerolog.Nop())
+
+	cm, err := cache.NewCacheManager(config.DefaultConfig(), zerolog.Nop())
 	require.NoError(t, err)
 
 	addr, _, _ := buildSyncTestSigner(t)

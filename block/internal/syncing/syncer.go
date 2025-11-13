@@ -34,7 +34,7 @@ type Syncer struct {
 	da    coreda.DA
 
 	// Shared components
-	cache   cache.Manager
+	cache   cache.CacheManager
 	metrics *common.Metrics
 
 	// Configuration
@@ -77,7 +77,7 @@ func NewSyncer(
 	store store.Store,
 	exec coreexecutor.Executor,
 	da coreda.DA,
-	cache cache.Manager,
+	cache cache.CacheManager,
 	metrics *common.Metrics,
 	config config.Config,
 	genesis genesis.Genesis,

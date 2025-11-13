@@ -40,7 +40,7 @@ func NewDARetriever(
 	genesis genesis.Genesis,
 	logger zerolog.Logger,
 ) (syncing.DARetriever, error) {
-	cacheManager, err := cache.NewManager(config, nil /* pending data not used */, logger)
+	cacheManager, err := cache.NewCacheManager(config, logger)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create cache manager: %w", err)
 	}

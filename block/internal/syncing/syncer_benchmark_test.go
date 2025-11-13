@@ -70,7 +70,7 @@ func BenchmarkSyncerIO(b *testing.B) {
 type benchFixture struct {
 	s      *Syncer
 	st     store.Store
-	cm     cache.Manager
+	cm     cache.CacheManager
 	cancel context.CancelFunc
 }
 
@@ -80,7 +80,8 @@ func newBenchFixture(b *testing.B, totalHeights uint64, shuffledTx bool, daDelay
 
 	ds := dssync.MutexWrap(datastore.NewMapDatastore())
 	st := store.New(ds)
-	cm, err := cache.NewManager(config.DefaultConfig(), st, zerolog.Nop())
+
+	cm, err := cache.NewCacheManager(config.DefaultConfig(), zerolog.Nop())
 	require.NoError(b, err)
 
 	addr, pub, signer := buildSyncTestSigner(b)

@@ -8,8 +8,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ipfs/go-datastore"
-	dssync "github.com/ipfs/go-datastore/sync"
 	"github.com/libp2p/go-libp2p/core/crypto"
 	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/assert"
@@ -22,7 +20,6 @@ import (
 	"github.com/evstack/ev-node/pkg/config"
 	"github.com/evstack/ev-node/pkg/genesis"
 	signerpkg "github.com/evstack/ev-node/pkg/signer"
-	"github.com/evstack/ev-node/pkg/store"
 	testmocks "github.com/evstack/ev-node/test/mocks"
 	"github.com/evstack/ev-node/types"
 )
@@ -53,9 +50,7 @@ func makeSignedDataBytesWithTime(t *testing.T, chainID string, height uint64, pr
 }
 
 func TestDARetriever_RetrieveFromDA_Invalid(t *testing.T) {
-	ds := dssync.MutexWrap(datastore.NewMapDatastore())
-	st := store.New(ds)
-	cm, err := cache.NewManager(config.DefaultConfig(), st, zerolog.Nop())
+	cm, err := cache.NewCacheManager(config.DefaultConfig(), zerolog.Nop())
 	assert.NoError(t, err)
 
 	mockDA := testmocks.NewMockDA(t)
@@ -70,9 +65,7 @@ func TestDARetriever_RetrieveFromDA_Invalid(t *testing.T) {
 }
 
 func TestDARetriever_RetrieveFromDA_NotFound(t *testing.T) {
-	ds := dssync.MutexWrap(datastore.NewMapDatastore())
-	st := store.New(ds)
-	cm, err := cache.NewManager(config.DefaultConfig(), st, zerolog.Nop())
+	cm, err := cache.NewCacheManager(config.DefaultConfig(), zerolog.Nop())
 	assert.NoError(t, err)
 
 	mockDA := testmocks.NewMockDA(t)
@@ -88,9 +81,7 @@ func TestDARetriever_RetrieveFromDA_NotFound(t *testing.T) {
 }
 
 func TestDARetriever_RetrieveFromDA_HeightFromFuture(t *testing.T) {
-	ds := dssync.MutexWrap(datastore.NewMapDatastore())
-	st := store.New(ds)
-	cm, err := cache.NewManager(config.DefaultConfig(), st, zerolog.Nop())
+	cm, err := cache.NewCacheManager(config.DefaultConfig(), zerolog.Nop())
 	require.NoError(t, err)
 
 	mockDA := testmocks.NewMockDA(t)
@@ -106,9 +97,7 @@ func TestDARetriever_RetrieveFromDA_HeightFromFuture(t *testing.T) {
 }
 
 func TestDARetriever_RetrieveFromDA_Timeout(t *testing.T) {
-	ds := dssync.MutexWrap(datastore.NewMapDatastore())
-	st := store.New(ds)
-	cm, err := cache.NewManager(config.DefaultConfig(), st, zerolog.Nop())
+	cm, err := cache.NewCacheManager(config.DefaultConfig(), zerolog.Nop())
 	require.NoError(t, err)
 
 	mockDA := testmocks.NewMockDA(t)
@@ -138,9 +127,7 @@ func TestDARetriever_RetrieveFromDA_Timeout(t *testing.T) {
 }
 
 func TestDARetriever_RetrieveFromDA_TimeoutFast(t *testing.T) {
-	ds := dssync.MutexWrap(datastore.NewMapDatastore())
-	st := store.New(ds)
-	cm, err := cache.NewManager(config.DefaultConfig(), st, zerolog.Nop())
+	cm, err := cache.NewCacheManager(config.DefaultConfig(), zerolog.Nop())
 	require.NoError(t, err)
 
 	mockDA := testmocks.NewMockDA(t)
@@ -161,9 +148,7 @@ func TestDARetriever_RetrieveFromDA_TimeoutFast(t *testing.T) {
 }
 
 func TestDARetriever_ProcessBlobs_HeaderAndData_Success(t *testing.T) {
-	ds := dssync.MutexWrap(datastore.NewMapDatastore())
-	st := store.New(ds)
-	cm, err := cache.NewManager(config.DefaultConfig(), st, zerolog.Nop())
+	cm, err := cache.NewCacheManager(config.DefaultConfig(), zerolog.Nop())
 	require.NoError(t, err)
 
 	addr, pub, signer := buildSyncTestSigner(t)
@@ -190,9 +175,7 @@ func TestDARetriever_ProcessBlobs_HeaderAndData_Success(t *testing.T) {
 }
 
 func TestDARetriever_ProcessBlobs_HeaderOnly_EmptyDataExpected(t *testing.T) {
-	ds := dssync.MutexWrap(datastore.NewMapDatastore())
-	st := store.New(ds)
-	cm, err := cache.NewManager(config.DefaultConfig(), st, zerolog.Nop())
+	cm, err := cache.NewCacheManager(config.DefaultConfig(), zerolog.Nop())
 	require.NoError(t, err)
 
 	addr, pub, signer := buildSyncTestSigner(t)
@@ -218,9 +201,7 @@ func TestDARetriever_ProcessBlobs_HeaderOnly_EmptyDataExpected(t *testing.T) {
 }
 
 func TestDARetriever_TryDecodeHeaderAndData_Basic(t *testing.T) {
-	ds := dssync.MutexWrap(datastore.NewMapDatastore())
-	st := store.New(ds)
-	cm, err := cache.NewManager(config.DefaultConfig(), st, zerolog.Nop())
+	cm, err := cache.NewCacheManager(config.DefaultConfig(), zerolog.Nop())
 	require.NoError(t, err)
 
 	addr, pub, signer := buildSyncTestSigner(t)
@@ -243,9 +224,7 @@ func TestDARetriever_TryDecodeHeaderAndData_Basic(t *testing.T) {
 }
 
 func TestDARetriever_tryDecodeData_InvalidSignatureOrProposer(t *testing.T) {
-	ds := dssync.MutexWrap(datastore.NewMapDatastore())
-	st := store.New(ds)
-	cm, err := cache.NewManager(config.DefaultConfig(), st, zerolog.Nop())
+	cm, err := cache.NewCacheManager(config.DefaultConfig(), zerolog.Nop())
 	require.NoError(t, err)
 
 	goodAddr, pub, signer := buildSyncTestSigner(t)
@@ -273,9 +252,7 @@ func TestDARetriever_validateBlobResponse(t *testing.T) {
 }
 
 func TestDARetriever_RetrieveFromDA_TwoNamespaces_Success(t *testing.T) {
-	ds := dssync.MutexWrap(datastore.NewMapDatastore())
-	st := store.New(ds)
-	cm, err := cache.NewManager(config.DefaultConfig(), st, zerolog.Nop())
+	cm, err := cache.NewCacheManager(config.DefaultConfig(), zerolog.Nop())
 	require.NoError(t, err)
 
 	addr, pub, signer := buildSyncTestSigner(t)
@@ -314,9 +291,7 @@ func TestDARetriever_RetrieveFromDA_TwoNamespaces_Success(t *testing.T) {
 }
 
 func TestDARetriever_ProcessBlobs_CrossDAHeightMatching(t *testing.T) {
-	ds := dssync.MutexWrap(datastore.NewMapDatastore())
-	st := store.New(ds)
-	cm, err := cache.NewManager(config.DefaultConfig(), st, zerolog.Nop())
+	cm, err := cache.NewCacheManager(config.DefaultConfig(), zerolog.Nop())
 	require.NoError(t, err)
 
 	addr, pub, signer := buildSyncTestSigner(t)
@@ -350,9 +325,7 @@ func TestDARetriever_ProcessBlobs_CrossDAHeightMatching(t *testing.T) {
 }
 
 func TestDARetriever_ProcessBlobs_MultipleHeadersCrossDAHeightMatching(t *testing.T) {
-	ds := dssync.MutexWrap(datastore.NewMapDatastore())
-	st := store.New(ds)
-	cm, err := cache.NewManager(config.DefaultConfig(), st, zerolog.Nop())
+	cm, err := cache.NewCacheManager(config.DefaultConfig(), zerolog.Nop())
 	require.NoError(t, err)
 
 	addr, pub, signer := buildSyncTestSigner(t)
@@ -427,9 +400,7 @@ func Test_isEmptyDataExpected(t *testing.T) {
 }
 
 func TestDARetriever_RetrieveForcedIncludedTxsFromDA_Success(t *testing.T) {
-	ds := dssync.MutexWrap(datastore.NewMapDatastore())
-	st := store.New(ds)
-	cm, err := cache.NewManager(config.DefaultConfig(), st, zerolog.Nop())
+	cm, err := cache.NewCacheManager(config.DefaultConfig(), zerolog.Nop())
 	require.NoError(t, err)
 
 	addr, pub, signer := buildSyncTestSigner(t)
@@ -465,9 +436,7 @@ func TestDARetriever_RetrieveForcedIncludedTxsFromDA_Success(t *testing.T) {
 }
 
 func TestDARetriever_FetchForcedIncludedTxs_NoNamespaceConfigured(t *testing.T) {
-	ds := dssync.MutexWrap(datastore.NewMapDatastore())
-	st := store.New(ds)
-	cm, err := cache.NewManager(config.DefaultConfig(), st, zerolog.Nop())
+	cm, err := cache.NewCacheManager(config.DefaultConfig(), zerolog.Nop())
 	require.NoError(t, err)
 
 	addr, _, _ := buildSyncTestSigner(t)
@@ -484,9 +453,7 @@ func TestDARetriever_FetchForcedIncludedTxs_NoNamespaceConfigured(t *testing.T) 
 }
 
 func TestDARetriever_FetchForcedIncludedTxs_NotFound(t *testing.T) {
-	ds := dssync.MutexWrap(datastore.NewMapDatastore())
-	st := store.New(ds)
-	cm, err := cache.NewManager(config.DefaultConfig(), st, zerolog.Nop())
+	cm, err := cache.NewCacheManager(config.DefaultConfig(), zerolog.Nop())
 	require.NoError(t, err)
 
 	addr, _, _ := buildSyncTestSigner(t)
@@ -513,9 +480,7 @@ func TestDARetriever_FetchForcedIncludedTxs_NotFound(t *testing.T) {
 }
 
 func TestDARetriever_RetrieveForcedIncludedTxsFromDA_ExceedsMaxBlobSize(t *testing.T) {
-	ds := dssync.MutexWrap(datastore.NewMapDatastore())
-	st := store.New(ds)
-	cm, err := cache.NewManager(config.DefaultConfig(), st, zerolog.Nop())
+	cm, err := cache.NewCacheManager(config.DefaultConfig(), zerolog.Nop())
 	require.NoError(t, err)
 
 	addr, pub, signer := buildSyncTestSigner(t)
@@ -632,9 +597,7 @@ func TestDARetriever_RetrieveForcedIncludedTxsFromDA_ExceedsMaxBlobSize(t *testi
 }
 
 func TestDARetriever_RetrieveForcedIncludedTxsFromDA_NotAtEpochStart(t *testing.T) {
-	ds := dssync.MutexWrap(datastore.NewMapDatastore())
-	st := store.New(ds)
-	cm, err := cache.NewManager(config.DefaultConfig(), st, zerolog.Nop())
+	cm, err := cache.NewCacheManager(config.DefaultConfig(), zerolog.Nop())
 	require.NoError(t, err)
 
 	addr, _, _ := buildSyncTestSigner(t)
@@ -658,9 +621,7 @@ func TestDARetriever_RetrieveForcedIncludedTxsFromDA_NotAtEpochStart(t *testing.
 }
 
 func TestDARetriever_RetrieveForcedIncludedTxsFromDA_EpochStartFromFuture(t *testing.T) {
-	ds := dssync.MutexWrap(datastore.NewMapDatastore())
-	st := store.New(ds)
-	cm, err := cache.NewManager(config.DefaultConfig(), st, zerolog.Nop())
+	cm, err := cache.NewCacheManager(config.DefaultConfig(), zerolog.Nop())
 	require.NoError(t, err)
 
 	addr, _, _ := buildSyncTestSigner(t)
@@ -688,9 +649,7 @@ func TestDARetriever_RetrieveForcedIncludedTxsFromDA_EpochStartFromFuture(t *tes
 }
 
 func TestDARetriever_RetrieveForcedIncludedTxsFromDA_EpochEndFromFuture(t *testing.T) {
-	ds := dssync.MutexWrap(datastore.NewMapDatastore())
-	st := store.New(ds)
-	cm, err := cache.NewManager(config.DefaultConfig(), st, zerolog.Nop())
+	cm, err := cache.NewCacheManager(config.DefaultConfig(), zerolog.Nop())
 	require.NoError(t, err)
 
 	addr, _, _ := buildSyncTestSigner(t)
@@ -722,9 +681,7 @@ func TestDARetriever_RetrieveForcedIncludedTxsFromDA_EpochEndFromFuture(t *testi
 }
 
 func TestDARetriever_RetrieveForcedIncludedTxsFromDA_CompleteEpoch(t *testing.T) {
-	ds := dssync.MutexWrap(datastore.NewMapDatastore())
-	st := store.New(ds)
-	cm, err := cache.NewManager(config.DefaultConfig(), st, zerolog.Nop())
+	cm, err := cache.NewCacheManager(config.DefaultConfig(), zerolog.Nop())
 	require.NoError(t, err)
 
 	addr, pub, signer := buildSyncTestSigner(t)

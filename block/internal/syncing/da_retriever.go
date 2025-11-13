@@ -38,7 +38,7 @@ type DARetriever interface {
 // daRetriever handles DA retrieval operations for syncing
 type daRetriever struct {
 	da      coreda.DA
-	cache   cache.Manager
+	cache   cache.CacheManager
 	genesis genesis.Genesis
 	logger  zerolog.Logger
 
@@ -63,7 +63,7 @@ type daRetriever struct {
 // NewDARetriever creates a new DA retriever
 func NewDARetriever(
 	da coreda.DA,
-	cache cache.Manager,
+	cache cache.CacheManager,
 	config config.Config,
 	genesis genesis.Genesis,
 	logger zerolog.Logger,
