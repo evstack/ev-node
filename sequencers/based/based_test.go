@@ -11,6 +11,7 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 
+	"github.com/evstack/ev-node/block"
 	coreda "github.com/evstack/ev-node/core/da"
 	coresequencer "github.com/evstack/ev-node/core/sequencer"
 	"github.com/evstack/ev-node/pkg/config"
@@ -227,7 +228,7 @@ func TestBasedSequencer_GetNextBatch_NotConfigured(t *testing.T) {
 
 	// Mock retriever to return not configured error
 	mockRetriever.On("RetrieveForcedIncludedTxsFromDA", mock.Anything, uint64(100)).
-		Return(nil, errors.New("forced inclusion namespace not configured")).Once()
+		Return(nil, block.ErrForceInclusionNotConfigured).Once()
 
 	req := coresequencer.GetNextBatchRequest{
 		Id:       []byte("test-chain"),

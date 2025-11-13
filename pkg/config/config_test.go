@@ -51,9 +51,11 @@ func TestAddFlags(t *testing.T) {
 
 	// Test specific flags
 	assertFlagValue(t, flags, FlagDBPath, DefaultConfig().DBPath)
+	assertFlagValue(t, flags, FlagClearCache, DefaultConfig().ClearCache)
 
 	// Node flags
 	assertFlagValue(t, flags, FlagAggregator, DefaultConfig().Node.Aggregator)
+	assertFlagValue(t, flags, FlagBasedSequencer, DefaultConfig().Node.BasedSequencer)
 	assertFlagValue(t, flags, FlagLight, DefaultConfig().Node.Light)
 	assertFlagValue(t, flags, FlagBlockTime, DefaultConfig().Node.BlockTime.Duration)
 	assertFlagValue(t, flags, FlagTrustedHash, DefaultConfig().Node.TrustedHash)
@@ -93,6 +95,7 @@ func TestAddFlags(t *testing.T) {
 	assertFlagValue(t, persistentFlags, FlagLogLevel, DefaultConfig().Log.Level)
 	assertFlagValue(t, persistentFlags, FlagLogFormat, "text")
 	assertFlagValue(t, persistentFlags, FlagLogTrace, false)
+	assertFlagValue(t, persistentFlags, FlagRootDir, DefaultRootDirWithName("test"))
 
 	// Signer flags
 	assertFlagValue(t, flags, FlagSignerPassphraseFile, "")
@@ -101,9 +104,10 @@ func TestAddFlags(t *testing.T) {
 
 	// RPC flags
 	assertFlagValue(t, flags, FlagRPCAddress, DefaultConfig().RPC.Address)
+	assertFlagValue(t, flags, FlagRPCEnableDAVisualization, DefaultConfig().RPC.EnableDAVisualization)
 
 	// Count the number of flags we're explicitly checking
-	expectedFlagCount := 46 // Update this number if you add more flag checks above
+	expectedFlagCount := 44 // Update this number if you add more flag checks above
 
 	// Get the actual number of flags (both regular and persistent)
 	actualFlagCount := 0
