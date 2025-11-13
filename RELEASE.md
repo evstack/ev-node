@@ -79,11 +79,6 @@ This section outlines the release process for all Go packages in the ev-node rep
                 │                       │
                 ▼                       ▼
       ┌─────────────────┐     ┌─────────────────┐
-      │sequencers/based │     │sequencers/single│
-      └────────┬────────┘     └────────┬────────┘
-               │                       │
-               ▼                       ▼
-      ┌─────────────────┐     ┌─────────────────┐
       │apps/evm/based   │     │apps/evm/single  │
       └─────────────────┘     └─────────────────┘
 ```
@@ -107,14 +102,7 @@ These packages only depend on `core` and can be released in parallel after `core
 2. **github.com/evstack/ev-node** - Path: `./` (root)
 3. **github.com/evstack/ev-node/execution/evm** - Path: `./execution/evm`
 
-#### Phase 3: Sequencer Packages
-
-These packages depend on both `core` and the main `ev-node` package:
-
-1. **github.com/evstack/ev-node/sequencers/based** - Path: `./sequencers/based`
-2. **github.com/evstack/ev-node/sequencers/single** - Path: `./sequencers/single`
-
-#### Phase 4: Application Packages
+#### Phase 3: Application Packages
 
 These packages have the most dependencies and should be released last:
 
@@ -176,33 +164,7 @@ go list -m github.com/evstack/ev-node@v0.3.0
 go list -m github.com/evstack/ev-node/execution/evm@v0.3.0
 ```
 
-#### Phase 3: Release Sequencers
-
-After core and ev-node are available:
-
-```bash
-# Update and release sequencers/based
-cd sequencers/based
-go get github.com/evstack/ev-node/core@v0.3.0
-go get github.com/evstack/ev-node@v0.3.0
-go mod tidy
-git tag sequencers/based/v0.3.0
-git push origin sequencers/based/v0.3.0
-
-# Update and release sequencers/single
-cd ../single
-go get github.com/evstack/ev-node/core@v0.3.0
-go get github.com/evstack/ev-node@v0.3.0
-go mod tidy
-git tag sequencers/single/v0.3.0
-git push origin sequencers/single/v0.3.0
-
-# Verify availability
-go list -m github.com/evstack/ev-node/sequencers/based@v0.3.0
-go list -m github.com/evstack/ev-node/sequencers/single@v0.3.0
-```
-
-#### Phase 4: Release Applications
+#### Phase 3: Release Applications
 
 After all dependencies are available:
 
@@ -213,7 +175,6 @@ go get github.com/evstack/ev-node/core@v0.3.0
 go get github.com/evstack/ev-node/da@v0.3.0
 go get github.com/evstack/ev-node/execution/evm@v0.3.0
 go get github.com/evstack/ev-node@v0.3.0
-go get github.com/evstack/ev-node/sequencers/based@v0.3.0
 go mod tidy
 git tag apps/evm/based/v0.3.0
 git push origin apps/evm/based/v0.3.0
@@ -224,7 +185,6 @@ go get github.com/evstack/ev-node/core@v0.3.0
 go get github.com/evstack/ev-node/da@v0.3.0
 go get github.com/evstack/ev-node/execution/evm@v0.3.0
 go get github.com/evstack/ev-node@v0.3.0
-go get github.com/evstack/ev-node/sequencers/single@v0.3.0
 go mod tidy
 git tag apps/evm/single/v0.3.0
 git push origin apps/evm/single/v0.3.0
@@ -268,11 +228,7 @@ git tag da/v0.3.0 && git push origin da/v0.3.0
 git tag v0.3.0 && git push origin v0.3.0
 git tag execution/evm/v0.3.0 && git push origin execution/evm/v0.3.0
 
-# 3. Wait, update deps, then release sequencers
-git tag sequencers/based/v0.3.0 && git push origin sequencers/based/v0.3.0
-git tag sequencers/single/v0.3.0 && git push origin sequencers/single/v0.3.0
-
-# 4. Wait, update deps, then release apps
+# 3. Wait, update deps, then release apps
 git tag apps/evm/based/v0.3.0 && git push origin apps/evm/based/v0.3.0
 git tag apps/evm/single/v0.3.0 && git push origin apps/evm/single/v0.3.0
 ```
