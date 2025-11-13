@@ -30,6 +30,7 @@ the Evolve execution gRPC interface.`,
 		evcmd.VersionCmd,
 		evcmd.NetInfoCmd,
 		evcmd.StoreUnsafeCleanCmd,
+		evcmd.StoreP2PInspectCmd,
 		evcmd.KeysCmd(),
 	)
 
