@@ -266,6 +266,14 @@ func (c *Config) Validate() error {
 		}
 	}
 
+	if len(c.DA.GetForcedInclusionNamespace()) > 0 {
+		// if err := validateNamespace(c.DA.GetForcedInclusionNamespace()); err != nil {
+		// 	return fmt.Errorf("could not validate forced inclusion namespace (%s): %w", c.DA.GetForcedInclusionNamespace(), err)
+		// }
+		return fmt.Errorf("forced inclusion is not yet live")
+
+	}
+
 	// Validate lazy mode configuration
 	if c.Node.LazyMode && c.Node.LazyBlockInterval.Duration <= c.Node.BlockTime.Duration {
 		return fmt.Errorf("LazyBlockInterval (%v) must be greater than BlockTime (%v) in lazy mode",
