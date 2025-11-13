@@ -21,8 +21,8 @@ RUN go mod download
 COPY . .
 
 # Build the application
-WORKDIR /ev-node/apps/grpc/single
-RUN go build -o grpc-single .
+WORKDIR /ev-node/apps/grpc
+RUN go build -o evgrpc .
 
 # Runtime stage
 FROM alpine:3.22.2
@@ -38,10 +38,10 @@ RUN addgroup -g 1000 ev-node && \
 WORKDIR /home/ev-node
 
 # Copy binary from builder
-COPY --from=builder /ev-node/apps/grpc/single/grpc-single /usr/local/bin/
+COPY --from=builder /ev-node/apps/grpc/evgrpc /usr/local/bin/
 
 # Create necessary directories
-RUN mkdir -p /home/ev-node/.grpc-single && \
+RUN mkdir -p /home/ev-node/.evgrpc && \
     chown -R ev-node:ev-node /home/ev-node
 
 # Switch to non-root user
@@ -56,7 +56,7 @@ EXPOSE 26657
 EXPOSE 26660
 
 # Set entrypoint
-ENTRYPOINT ["grpc-single"]
+ENTRYPOINT ["evgrpc"]
 
 # Default command
 CMD ["start"]

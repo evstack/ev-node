@@ -25,7 +25,7 @@ git push origin evm/single/v0.2.0
 # GitHub → Actions → Release workflow
 
 # 4. Verify release
-docker pull ghcr.io/evstack/ev-node-evm-single:v0.2.0
+docker pull ghcr.io/evstack/ev-node-evm:v0.2.0
 ```
 
 ### Tag Format
@@ -106,8 +106,7 @@ These packages only depend on `core` and can be released in parallel after `core
 
 These packages have the most dependencies and should be released last:
 
-1. **github.com/evstack/ev-node/apps/evm/based** - Path: `./apps/evm/based`
-2. **github.com/evstack/ev-node/apps/evm/single** - Path: `./apps/evm/single`
+2. **github.com/evstack/ev-node/apps/evm** - Path: `./apps/evm`
 
 ### Release Process
 
@@ -190,8 +189,7 @@ git tag apps/evm/single/v0.3.0
 git push origin apps/evm/single/v0.3.0
 
 # Verify availability
-go list -m github.com/evstack/ev-node/apps/evm/based@v0.3.0
-go list -m github.com/evstack/ev-node/apps/evm/single@v0.3.0
+go list -m github.com/evstack/ev-node/apps/evm@v0.3.0
 ```
 
 ---
@@ -259,11 +257,11 @@ git push origin evm/single/v0.2.1
 # GitHub → Actions → Release
 
 # Pull and test image
-docker pull ghcr.io/evstack/ev-node-evm-single:v0.2.0
-docker run ghcr.io/evstack/ev-node-evm-single:v0.2.0 --version
+docker pull ghcr.io/evstack/ev-node-evm:v0.2.0
+docker run ghcr.io/evstack/ev-node-evm:v0.2.0 --version
 
 # Check GHCR
-# GitHub → Packages → ev-node-evm-single
+# GitHub → Packages → ev-node-evm
 ```
 
 ### Go Module Release

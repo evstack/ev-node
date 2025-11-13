@@ -54,7 +54,7 @@ func TestEVMSingleUpgradeSuite(t *testing.T) {
 	suite.Run(t, new(EVMSingleUpgradeTestSuite))
 }
 
-// TestEVMSingleUpgrade tests upgrading an evm-single node from a stable release
+// TestEVMSingleUpgrade tests upgrading an evm node from a stable release
 // to a PR-built image while preserving state.
 func (s *EVMSingleUpgradeTestSuite) TestEVMSingleUpgrade() {
 	ctx := context.Background()
@@ -91,9 +91,9 @@ func (s *EVMSingleUpgradeTestSuite) TestEVMSingleUpgrade() {
 		s.T().Log("Reth node started")
 	})
 
-	s.Run("setup_evm-single_with_base_version", func() {
-		s.setupEVMSingle(ctx, container.NewImage("ghcr.io/evstack/ev-node-evm-single", baseEVMSingleVersion, ""))
-		s.T().Logf("evm-single started with base version: %s", baseEVMSingleVersion)
+	s.Run("setup_evm_with_base_version", func() {
+		s.setupEVMSingle(ctx, container.NewImage("ghcr.io/evstack/ev-node-evm", baseEVMSingleVersion, ""))
+		s.T().Logf("evm started with base version: %s", baseEVMSingleVersion)
 	})
 
 	s.Run("create_ethereum_client", func() {
@@ -148,7 +148,7 @@ func (s *EVMSingleUpgradeTestSuite) setupRethNode(ctx context.Context) {
 		}
 		conn.Close()
 
-		// internal URLs for container-to-container communication (evm-single -> reth)
+		// internal URLs for container-to-container communication (evm -> reth)
 		s.evmEngineURL = fmt.Sprintf("http://%s:%s", networkInfo.Internal.Hostname, networkInfo.Internal.Ports.Engine)
 		s.evmEthURL = fmt.Sprintf("http://%s:%s", networkInfo.Internal.Hostname, networkInfo.Internal.Ports.RPC)
 		// external URL for test code -> reth communication
@@ -164,7 +164,7 @@ func (s *EVMSingleUpgradeTestSuite) setupRethNode(ctx context.Context) {
 	s.rethGenesisHash = genesisHash
 }
 
-// setupEVMSingle creates and starts an evm-single node with the specified version.
+// setupEVMSingle creates and starts an evm node with the specified version.
 func (s *EVMSingleUpgradeTestSuite) setupEVMSingle(ctx context.Context, image container.Image) {
 	nodeConfig := evmsingle.NewNodeConfigBuilder().
 		WithEVMEngineURL(s.evmEngineURL).
@@ -174,10 +174,10 @@ func (s *EVMSingleUpgradeTestSuite) setupEVMSingle(ctx context.Context, image co
 		WithEVMBlockTime("1s").
 		WithEVMSignerPassphrase("secret").
 		WithDAAddress(s.daAddress).
-		WithDANamespace("evm-single-header").
+		WithDANamespace("evm-header").
 		WithAdditionalStartArgs(
 			"--evnode.rpc.address", "0.0.0.0:7331",
-			"--evnode.da.data_namespace", "evm-single-data",
+			"--evnode.da.data_namespace", "evm-data",
 		).
 		Build()
 
@@ -194,14 +194,14 @@ func (s *EVMSingleUpgradeTestSuite) setupEVMSingle(ctx context.Context, image co
 	evmSingleNode := evmSingleChain.Nodes()[0]
 	s.Require().NoError(evmSingleNode.Start(ctx))
 
-	// wait for evm-single to be healthy
+	// wait for evm to be healthy
 	s.waitForEVMSingleHealthy(ctx, evmSingleNode)
 
 	s.evmSingleChain = evmSingleChain
 	s.evmSingleNode = evmSingleNode
 }
 
-// waitForEVMSingleHealthy waits for evm-single to respond to health checks.
+// waitForEVMSingleHealthy waits for evm to respond to health checks.
 func (s *EVMSingleUpgradeTestSuite) waitForEVMSingleHealthy(ctx context.Context, node *evmsingle.Node) {
 	networkInfo, err := node.GetNetworkInfo(ctx)
 	s.Require().NoError(err)
@@ -215,7 +215,7 @@ func (s *EVMSingleUpgradeTestSuite) waitForEVMSingleHealthy(ctx context.Context,
 		}
 		defer resp.Body.Close()
 		return resp.StatusCode == http.StatusOK
-	}, 60*time.Second, 2*time.Second, "evm-single did not become healthy")
+	}, 60*time.Second, 2*time.Second, "evm did not become healthy")
 }
 
 // setupEthClient creates an Ethereum client and verifies connectivity.
@@ -341,17 +341,17 @@ func (s *EVMSingleUpgradeTestSuite) verifyAccountBalances(ctx context.Context) {
 	s.T().Log("Account balances verified after upgrade")
 }
 
-// getEVMSingleImage returns the Docker image configuration for evm-single with the specified version.
+// getEVMSingleImage returns the Docker image configuration for evm with the specified version.
 func getEVMSingleImage() container.Image {
-	repo := strings.TrimSpace(os.Getenv("EVM_SINGLE_IMAGE_REPO"))
+	repo := strings.TrimSpace(os.Getenv("EVM_IMAGE_REPO"))
 	if repo == "" {
-		repo = "evm-single"
+		repo = "evm"
 	}
-	upgradeVersion := strings.TrimSpace(os.Getenv("EVM_SINGLE_NODE_IMAGE_TAG"))
+	upgradeVersion := strings.TrimSpace(os.Getenv("EVM_NODE_IMAGE_TAG"))
 	if upgradeVersion == "" {
 		upgradeVersion = "local-dev"
 	}
 
-	// evm-single runs as root (no specific user in Dockerfile), so UIDGID is empty
+	// evm runs as root (no specific user in Dockerfile), so UIDGID is empty
 	return container.NewImage(repo, upgradeVersion, "")
 }

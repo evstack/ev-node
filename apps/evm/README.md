@@ -16,19 +16,19 @@ This directory contains the implementation of a single EVM sequencer using Ev-no
 2. Build the sequencer:
 
    ```bash
-   go build -o evm-single .
+   go build -o evm .
    ```
 
 3. Initialize the sequencer:
 
    ```bash
-   ./evm-single init --rollkit.node.aggregator=true --rollkit.signer.passphrase secret
+   ./evm init --rollkit.node.aggregator=true --rollkit.signer.passphrase secret
    ```
 
 4. Start the sequencer:
 
    ```bash
-   ./evm-single start \
+   ./evm start \
      --evm.jwt-secret $(cat <path_to>/execution/evm/docker/jwttoken/jwt.hex) \
      --evm.genesis-hash 0x2b8bbb1ea1e04f9c9809b4b278a8687806edc061a356c7dbc491930d8e922503 \
      --rollkit.node.block_time 1s \
@@ -41,7 +41,7 @@ Share your `genesis.json` with other node operators. Add `da_start_height` field
 Note: Replace `<path_to>` with the actual path to the rollkit repository. If you'd ever like to restart a fresh node, make sure to remove the originally created sequencer node directory using:
 
 ```bash
-    rm -rf ~/.evm-single
+    rm -rf ~/.evm
 ```
 
 ## Configuration
@@ -61,13 +61,13 @@ The sequencer can be configured using various command-line flags. The most impor
 2. Initialize the full node:
 
    ```bash
-   ./evm-single init --home ~/.evm-single-full-node
+   ./evm init --home ~/.evm-full-node
    ```
 
 3. Copy the genesis file from the sequencer node:
 
    ```bash
-   cp ~/.evm-single/config/genesis.json ~/.evm-single-full-node/config/genesis.json
+   cp ~/.evm/config/genesis.json ~/.evm-full-node/config/genesis.json
    ```
 
    Verify the `da_start_height` value in the genesis file is set. If not, ask the chain developer to share it.
@@ -87,8 +87,8 @@ The sequencer can be configured using various command-line flags. The most impor
 5. Start the full node:
 
    ```bash
-   ./evm-single start \
-      --home ~/.evm-single-full-node \
+   ./evm start \
+      --home ~/.evm-full-node \
       --evm.jwt-secret $(cat <path_to>/execution/evm/docker/jwttoken/jwt.hex) \
       --evm.genesis-hash 0x2b8bbb1ea1e04f9c9809b4b278a8687806edc061a356c7dbc491930d8e922503 \
       --rollkit.rpc.address=127.0.0.1:46657 \
@@ -101,5 +101,5 @@ The sequencer can be configured using various command-line flags. The most impor
 If you'd ever like to restart a fresh node, make sure to remove the originally created full node directory using:
 
 ```bash
-    rm -rf ~/.evm-single-full-node
+    rm -rf ~/.evm-full-node
 ```

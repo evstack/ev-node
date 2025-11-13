@@ -1,13 +1,10 @@
 package cmd
 
 import (
-	"bytes"
 	"context"
 	"fmt"
-	"os"
 	"path/filepath"
 
-	"github.com/ethereum/go-ethereum/common"
 	"github.com/ipfs/go-datastore"
 	"github.com/rs/zerolog"
 	"github.com/spf13/cobra"
@@ -17,12 +14,12 @@ import (
 	"github.com/evstack/ev-node/core/execution"
 	coresequencer "github.com/evstack/ev-node/core/sequencer"
 	"github.com/evstack/ev-node/da/jsonrpc"
-	"github.com/evstack/ev-node/execution/evm"
+	executiongrpc "github.com/evstack/ev-node/execution/grpc"
 	"github.com/evstack/ev-node/node"
 	rollcmd "github.com/evstack/ev-node/pkg/cmd"
 	"github.com/evstack/ev-node/pkg/config"
 	"github.com/evstack/ev-node/pkg/genesis"
-	genesispkg "github.com/evstack/ev-node/pkg/genesis"
+	rollgenesis "github.com/evstack/ev-node/pkg/genesis"
 	"github.com/evstack/ev-node/pkg/p2p"
 	"github.com/evstack/ev-node/pkg/p2p/key"
 	"github.com/evstack/ev-node/pkg/store"
@@ -30,16 +27,25 @@ import (
 	"github.com/evstack/ev-node/sequencers/single"
 )
 
+const (
+	// FlagGrpcExecutorURL is the flag for the gRPC executor endpoint
+	FlagGrpcExecutorURL = "grpc-executor-url"
+)
+
 var RunCmd = &cobra.Command{
 	Use:     "start",
 	Aliases: []string{"node", "run"},
-	Short:   "Run the evolve node with EVM execution client",
+	Short:   "Run the evolve node with gRPC execution client",
+	Long: `Start a Evolve node that connects to a remote execution client via gRPC.
+The execution client must implement the Evolve execution gRPC interface.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		executor, err := createExecutionClient(cmd)
+		// Create gRPC execution client
+		executor, err := createGRPCExecutionClient(cmd)
 		if err != nil {
 			return err
 		}
 
+		// Parse node configuration
 		nodeConfig, err := rollcmd.ParseConfig(cmd)
 		if err != nil {
 			return err
@@ -47,30 +53,27 @@ var RunCmd = &cobra.Command{
 
 		logger := rollcmd.SetupLogger(nodeConfig.Log)
 
-		// Attach logger to the EVM engine client if available
-		if ec, ok := executor.(*evm.EngineClient); ok {
-			ec.SetLogger(logger.With().Str("module", "engine_client").Logger())
-		}
-
 		headerNamespace := da.NamespaceFromString(nodeConfig.DA.GetNamespace())
 		dataNamespace := da.NamespaceFromString(nodeConfig.DA.GetDataNamespace())
 
 		logger.Info().Str("headerNamespace", headerNamespace.HexString()).Str("dataNamespace", dataNamespace.HexString()).Msg("namespaces")
 
-		daJrpc, err := jsonrpc.NewClient(context.Background(), logger, nodeConfig.DA.Address, nodeConfig.DA.AuthToken, rollcmd.DefaultMaxBlobSize)
+		// Create DA client
+		daJrpc, err := jsonrpc.NewClient(cmd.Context(), logger, nodeConfig.DA.Address, nodeConfig.DA.AuthToken, rollcmd.DefaultMaxBlobSize)
 		if err != nil {
 			return err
 		}
 
-		datastore, err := store.NewDefaultKVStore(nodeConfig.RootDir, nodeConfig.DBPath, "evm-single")
+		// Create datastore
+		datastore, err := store.NewDefaultKVStore(nodeConfig.RootDir, nodeConfig.DBPath, "evgrpc")
 		if err != nil {
 			return err
 		}
 
-		genesisPath := filepath.Join(filepath.Dir(nodeConfig.ConfigPath()), "genesis.json")
-		genesis, err := genesispkg.LoadGenesis(genesisPath)
+		// Load genesis
+		genesis, err := rollgenesis.LoadGenesis(rollgenesis.GenesisPath(nodeConfig.RootDir))
 		if err != nil {
-			return fmt.Errorf("failed to load genesis: %w", err)
+			return err
 		}
 
 		if genesis.DAStartHeight == 0 && !nodeConfig.Node.Aggregator {
@@ -78,28 +81,34 @@ var RunCmd = &cobra.Command{
 		}
 
 		// Create sequencer based on configuration
-		sequencer, err := createSequencer(context.Background(), logger, datastore, &daJrpc.DA, nodeConfig, genesis)
+		sequencer, err := createSequencer(cmd.Context(), logger, datastore, &daJrpc.DA, nodeConfig, genesis)
 		if err != nil {
 			return err
 		}
 
+		// Load node key
 		nodeKey, err := key.LoadNodeKey(filepath.Dir(nodeConfig.ConfigPath()))
 		if err != nil {
 			return err
 		}
 
+		// Create P2P client
 		p2pClient, err := p2p.NewClient(nodeConfig.P2P, nodeKey.PrivKey, datastore, genesis.ChainID, logger, nil)
 		if err != nil {
 			return err
 		}
 
+		// Start the node
 		return rollcmd.StartNode(logger, cmd, executor, sequencer, &daJrpc.DA, p2pClient, datastore, nodeConfig, genesis, node.NodeOptions{})
 	},
 }
 
 func init() {
+	// Add evolve configuration flags
 	config.AddFlags(RunCmd)
-	addFlags(RunCmd)
+
+	// Add gRPC-specific flags
+	addGRPCFlags(RunCmd)
 }
 
 // createSequencer creates a sequencer based on the configuration.
@@ -164,59 +173,23 @@ func createSequencer(
 	return sequencer, nil
 }
 
-func createExecutionClient(cmd *cobra.Command) (execution.Executor, error) {
-	// Read execution client parameters from flags
-	ethURL, err := cmd.Flags().GetString(evm.FlagEvmEthURL)
+// createGRPCExecutionClient creates a new gRPC execution client from command flags
+func createGRPCExecutionClient(cmd *cobra.Command) (execution.Executor, error) {
+	// Get the gRPC executor URL from flags
+	executorURL, err := cmd.Flags().GetString(FlagGrpcExecutorURL)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get '%s' flag: %w", evm.FlagEvmEthURL, err)
-	}
-	engineURL, err := cmd.Flags().GetString(evm.FlagEvmEngineURL)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get '%s' flag: %w", evm.FlagEvmEngineURL, err)
+		return nil, fmt.Errorf("failed to get '%s' flag: %w", FlagGrpcExecutorURL, err)
 	}
 
-	// Get JWT secret file path
-	jwtSecretFile, err := cmd.Flags().GetString(evm.FlagEvmJWTSecretFile)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get '%s' flag: %w", evm.FlagEvmJWTSecretFile, err)
+	if executorURL == "" {
+		return nil, fmt.Errorf("%s flag is required", FlagGrpcExecutorURL)
 	}
 
-	if jwtSecretFile == "" {
-		return nil, fmt.Errorf("JWT secret file must be provided via --evm.jwt-secret-file")
-	}
-
-	// Read JWT secret from file
-	secretBytes, err := os.ReadFile(jwtSecretFile)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read JWT secret from file '%s': %w", jwtSecretFile, err)
-	}
-	jwtSecret := string(bytes.TrimSpace(secretBytes))
-
-	if jwtSecret == "" {
-		return nil, fmt.Errorf("JWT secret file '%s' is empty", jwtSecretFile)
-	}
-
-	genesisHashStr, err := cmd.Flags().GetString(evm.FlagEvmGenesisHash)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get '%s' flag: %w", evm.FlagEvmGenesisHash, err)
-	}
-	feeRecipientStr, err := cmd.Flags().GetString(evm.FlagEvmFeeRecipient)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get '%s' flag: %w", evm.FlagEvmFeeRecipient, err)
-	}
-
-	// Convert string parameters to Ethereum types
-	genesisHash := common.HexToHash(genesisHashStr)
-	feeRecipient := common.HexToAddress(feeRecipientStr)
-
-	return evm.NewEngineExecutionClient(ethURL, engineURL, jwtSecret, genesisHash, feeRecipient)
+	// Create and return the gRPC client
+	return executiongrpc.NewClient(executorURL), nil
 }
 
-// addFlags adds flags related to the EVM execution client
-func addFlags(cmd *cobra.Command) {
-	cmd.Flags().String(evm.FlagEvmEthURL, "http://localhost:8545", "URL of the Ethereum JSON-RPC endpoint")
-	cmd.Flags().String(evm.FlagEvmEngineURL, "http://localhost:8551", "URL of the Engine API endpoint")
-	cmd.Flags().String(evm.FlagEvmJWTSecretFile, "", "Path to file containing the JWT secret for authentication")
-	cmd.Flags().String(evm.FlagEvmGenesisHash, "", "Hash of the genesis block")
-	cmd.Flags().String(evm.FlagEvmFeeRecipient, "", "Address that will receive transaction fees")
+// addGRPCFlags adds flags specific to the gRPC execution client
+func addGRPCFlags(cmd *cobra.Command) {
+	cmd.Flags().String(FlagGrpcExecutorURL, "http://localhost:50051", "URL of the gRPC execution service")
 }

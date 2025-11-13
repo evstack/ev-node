@@ -6,7 +6,7 @@ run-n: build build-da
 
 ## run-evm-nodes: Run EVM nodes (one sequencer and one full node)
 ## Usage: make run-evm-nodes
-run-evm-nodes: build-da build-evm-single
+run-evm-nodes: build-da build-evm
 	@echo "Starting EVM nodes..."
 	@go run -tags=run_evm scripts/run-evm-nodes.go --nodes=$(or $(NODES),1)
 .PHONY: run-evm-nodes

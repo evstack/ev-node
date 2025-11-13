@@ -11,7 +11,7 @@ permissions: {}
   workflow_dispatch:
     inputs:
       image-tag:
-        description: 'Docker image tag to use for tests (e.g., v1.2.3, pr-123, sha-abc123)'
+        description: "Docker image tag to use for tests (e.g., v1.2.3, pr-123, sha-abc123)"
         required: true
         type: string
 
@@ -47,5 +47,5 @@ jobs:
       - name: Run Docker Upgrade E2E Tests
         run: make test-docker-upgrade-e2e
         env:
-          EVM_SINGLE_IMAGE_REPO: ghcr.io/${{ github.repository_owner }}/ev-node-evm-single
-          EVM_SINGLE_NODE_IMAGE_TAG: ${{ inputs.image-tag }}
+          EVM_IMAGE_REPO: ghcr.io/${{ github.repository_owner }}/ev-node-evm
+          EVM_NODE_IMAGE_TAG: ${{ inputs.image-tag }}
