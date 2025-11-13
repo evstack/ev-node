@@ -5,7 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"sync"
+	"sync/atomic"
 	"time"
 
 	ds "github.com/ipfs/go-datastore"
@@ -54,8 +54,7 @@ type Sequencer struct {
 	// Forced inclusion support
 	daRetriever DARetriever
 	genesis     genesis.Genesis
-	mu          sync.RWMutex
-	daHeight    uint64
+	daHeight    atomic.Uint64
 }
 
 // NewSequencer creates a new Single Sequencer
@@ -82,8 +81,8 @@ func NewSequencer(
 		proposer:    proposer,
 		daRetriever: daRetriever,
 		genesis:     gen,
-		daHeight:    gen.DAStartHeight,
 	}
+	s.SetDAHeight(gen.DAStartHeight) // will be overridden by the executor
 
 	loadCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
@@ -131,55 +130,49 @@ func (c *Sequencer) GetNextBatch(ctx context.Context, req coresequencer.GetNextB
 
 	// Retrieve forced inclusion transactions if DARetriever is configured
 	var forcedTxs [][]byte
-	if c.daRetriever != nil {
-		c.mu.Lock()
-		currentDAHeight := c.daHeight
-		c.mu.Unlock()
+	currentDAHeight := c.daHeight.Load()
 
-		forcedEvent, err := c.daRetriever.RetrieveForcedIncludedTxsFromDA(ctx, currentDAHeight)
-		if err != nil {
-			// If we get a height from future error, keep the current DA height and return batch
-			// We'll retry the same height on the next call until DA produces that block
-			if errors.Is(err, coreda.ErrHeightFromFuture) {
-				c.logger.Debug().
-					Uint64("da_height", currentDAHeight).
-					Msg("DA height from future, waiting for DA to produce block")
+	forcedEvent, err := c.daRetriever.RetrieveForcedIncludedTxsFromDA(ctx, currentDAHeight)
+	if err != nil {
+		// If we get a height from future error, keep the current DA height and return batch
+		// We'll retry the same height on the next call until DA produces that block
+		if errors.Is(err, coreda.ErrHeightFromFuture) {
+			c.logger.Debug().
+				Uint64("da_height", currentDAHeight).
+				Msg("DA height from future, waiting for DA to produce block")
 
-				batch, err := c.queue.Next(ctx)
-				if err != nil {
-					return nil, err
-				}
-
-				return &coresequencer.GetNextBatchResponse{
-					Batch:     batch,
-					Timestamp: time.Now(),
-					BatchData: req.LastBatchData,
-				}, nil
+			batch, err := c.queue.Next(ctx)
+			if err != nil {
+				return nil, err
 			}
 
-			// If forced inclusion is not configured, continue without forced txs
-			if !errors.Is(err, block.ErrForceInclusionNotConfigured) {
-				c.logger.Error().Err(err).Uint64("da_height", currentDAHeight).Msg("failed to retrieve forced inclusion transactions")
-				// Continue without forced txs on other errors
-			}
-		} else {
-			forcedTxs = forcedEvent.Txs
-
-			// Update DA height based on the retrieved event
-			c.mu.Lock()
-			if forcedEvent.EndDaHeight > c.daHeight {
-				c.daHeight = forcedEvent.EndDaHeight
-			} else if forcedEvent.StartDaHeight > c.daHeight {
-				c.daHeight = forcedEvent.StartDaHeight
-			}
-			c.mu.Unlock()
-
-			c.logger.Info().
-				Int("tx_count", len(forcedEvent.Txs)).
-				Uint64("da_height_start", forcedEvent.StartDaHeight).
-				Uint64("da_height_end", forcedEvent.EndDaHeight).
-				Msg("retrieved forced inclusion transactions from DA")
+			return &coresequencer.GetNextBatchResponse{
+				Batch:     batch,
+				Timestamp: time.Now(),
+				BatchData: req.LastBatchData,
+			}, nil
 		}
+
+		// If forced inclusion is not configured, continue without forced txs
+		if !errors.Is(err, block.ErrForceInclusionNotConfigured) {
+			c.logger.Error().Err(err).Uint64("da_height", currentDAHeight).Msg("failed to retrieve forced inclusion transactions")
+			// Continue without forced txs on other errors
+		}
+	} else {
+		forcedTxs = forcedEvent.Txs
+
+		// Update DA height based on the retrieved event
+		if forcedEvent.EndDaHeight > currentDAHeight {
+			c.SetDAHeight(forcedEvent.EndDaHeight)
+		} else if forcedEvent.StartDaHeight > currentDAHeight {
+			c.SetDAHeight(forcedEvent.StartDaHeight)
+		}
+
+		c.logger.Info().
+			Int("tx_count", len(forcedEvent.Txs)).
+			Uint64("da_height_start", forcedEvent.StartDaHeight).
+			Uint64("da_height_end", forcedEvent.EndDaHeight).
+			Msg("retrieved forced inclusion transactions from DA")
 	}
 
 	batch, err := c.queue.Next(ctx)
@@ -250,15 +243,11 @@ func (c *Sequencer) isValid(Id []byte) bool {
 // SetDAHeight sets the current DA height for the sequencer
 // This should be called when the sequencer needs to sync to a specific DA height
 func (c *Sequencer) SetDAHeight(height uint64) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	c.daHeight = height
+	c.daHeight.Store(height)
 	c.logger.Debug().Uint64("da_height", height).Msg("DA height updated")
 }
 
 // GetDAHeight returns the current DA height
 func (c *Sequencer) GetDAHeight() uint64 {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-	return c.daHeight
+	return c.daHeight.Load()
 }
