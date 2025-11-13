@@ -143,6 +143,14 @@ func TestCalculateEpochBoundaries(t *testing.T) {
 			expectedEnd:   109,
 		},
 		{
+			name:          "before start height with zero epoch size",
+			daStartHeight: 2,
+			daEpochSize:   0,
+			daHeight:      1,
+			expectedStart: 2,
+			expectedEnd:   2,
+		},
+		{
 			name:          "zero epoch size",
 			daStartHeight: 100,
 			daEpochSize:   0,
