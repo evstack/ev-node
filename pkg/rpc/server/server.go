@@ -12,6 +12,7 @@ import (
 
 	"connectrpc.com/connect"
 	"connectrpc.com/grpcreflect"
+	goheader "github.com/celestiaorg/go-header"
 	coreda "github.com/evstack/ev-node/core/da"
 	ds "github.com/ipfs/go-datastore"
 	"github.com/rs/zerolog"
@@ -32,15 +33,24 @@ var _ rpc.StoreServiceHandler = (*StoreServer)(nil)
 
 // StoreServer implements the StoreService defined in the proto file
 type StoreServer struct {
-	store  store.Store
-	logger zerolog.Logger
+	store       store.Store
+	headerStore goheader.Store[*types.SignedHeader]
+	dataStore   goheader.Store[*types.Data]
+	logger      zerolog.Logger
 }
 
 // NewStoreServer creates a new StoreServer instance
-func NewStoreServer(store store.Store, logger zerolog.Logger) *StoreServer {
+func NewStoreServer(
+	store store.Store,
+	headerStore goheader.Store[*types.SignedHeader],
+	dataStore goheader.Store[*types.Data],
+	logger zerolog.Logger,
+) *StoreServer {
 	return &StoreServer{
-		store:  store,
-		logger: logger,
+		store:       store,
+		headerStore: headerStore,
+		dataStore:   dataStore,
+		logger:      logger,
 	}
 }
 
@@ -172,6 +182,34 @@ func (s *StoreServer) GetGenesisDaHeight(
 
 }
 
+// GetP2PStoreInfo implements the GetP2PStoreInfo RPC method
+func (s *StoreServer) GetP2PStoreInfo(
+	ctx context.Context,
+	_ *connect.Request[emptypb.Empty],
+) (*connect.Response[pb.GetP2PStoreInfoResponse], error) {
+	snapshots := make([]*pb.P2PStoreSnapshot, 0, 2)
+
+	if s.headerStore != nil {
+		snapshot, err := collectP2PStoreSnapshot(ctx, s.headerStore, "Header Store")
+		if err != nil {
+			return nil, connect.NewError(connect.CodeInternal, err)
+		}
+		snapshots = append(snapshots, snapshot)
+	}
+
+	if s.dataStore != nil {
+		snapshot, err := collectP2PStoreSnapshot(ctx, s.dataStore, "Data Store")
+		if err != nil {
+			return nil, connect.NewError(connect.CodeInternal, err)
+		}
+		snapshots = append(snapshots, snapshot)
+	}
+
+	return connect.NewResponse(&pb.GetP2PStoreInfoResponse{
+		Stores: snapshots,
+	}), nil
+}
+
 // GetMetadata implements the GetMetadata RPC method
 func (s *StoreServer) GetMetadata(
 	ctx context.Context,
@@ -185,6 +223,50 @@ func (s *StoreServer) GetMetadata(
 	return connect.NewResponse(&pb.GetMetadataResponse{
 		Value: value,
 	}), nil
+}
+
+func collectP2PStoreSnapshot[H goheader.Header[H]](
+	ctx context.Context,
+	store goheader.Store[H],
+	label string,
+) (*pb.P2PStoreSnapshot, error) {
+	snapshot := &pb.P2PStoreSnapshot{
+		Label:  label,
+		Height: store.Height(),
+	}
+
+	if head, err := store.Head(ctx); err == nil {
+		snapshot.HeadPresent = true
+		snapshot.Head = toP2PStoreEntry(head)
+	} else if !errors.Is(err, goheader.ErrEmptyStore) && !errors.Is(err, goheader.ErrNotFound) {
+		return nil, fmt.Errorf("failed to read %s head: %w", label, err)
+	}
+
+	if tail, err := store.Tail(ctx); err == nil {
+		snapshot.TailPresent = true
+		snapshot.Tail = toP2PStoreEntry(tail)
+	} else if !errors.Is(err, goheader.ErrEmptyStore) && !errors.Is(err, goheader.ErrNotFound) {
+		return nil, fmt.Errorf("failed to read %s tail: %w", label, err)
+	}
+
+	return snapshot, nil
+}
+
+func toP2PStoreEntry[H goheader.Header[H]](item H) *pb.P2PStoreEntry {
+	if any(item) == nil {
+		return nil
+	}
+
+	entry := &pb.P2PStoreEntry{
+		Height: item.Height(),
+		Hash:   append([]byte(nil), item.Hash()...),
+	}
+
+	if ts := item.Time(); !ts.IsZero() {
+		entry.Time = timestamppb.New(ts)
+	}
+
+	return entry
 }
 
 type ConfigServer struct {
@@ -288,8 +370,17 @@ func (p *P2PServer) GetNetInfo(
 }
 
 // NewServiceHandler creates a new HTTP handler for Store, P2P and Config services
-func NewServiceHandler(store store.Store, peerManager p2p.P2PRPC, proposerAddress []byte, logger zerolog.Logger, config config.Config, bestKnown BestKnownHeightProvider) (http.Handler, error) {
-	storeServer := NewStoreServer(store, logger)
+func NewServiceHandler(
+	store store.Store,
+	headerStore goheader.Store[*types.SignedHeader],
+	dataStore goheader.Store[*types.Data],
+	peerManager p2p.P2PRPC,
+	proposerAddress []byte,
+	logger zerolog.Logger,
+	config config.Config,
+	bestKnown BestKnownHeightProvider,
+) (http.Handler, error) {
+	storeServer := NewStoreServer(store, headerStore, dataStore, logger)
 	p2pServer := NewP2PServer(peerManager)
 	configServer := NewConfigServer(config, proposerAddress, logger)
 
