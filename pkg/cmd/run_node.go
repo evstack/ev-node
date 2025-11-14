@@ -93,7 +93,7 @@ func StartNode(
 
 	// create a new remote signer
 	var signer signer.Signer
-	if nodeConfig.Signer.SignerType == "file" && nodeConfig.Node.Aggregator {
+	if nodeConfig.Signer.SignerType == "file" && (nodeConfig.Node.Aggregator && !nodeConfig.Node.BasedSequencer) {
 		// Get passphrase file path
 		passphraseFile, err := cmd.Flags().GetString(rollconf.FlagSignerPassphraseFile)
 		if err != nil {

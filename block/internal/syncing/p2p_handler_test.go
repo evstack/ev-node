@@ -7,7 +7,6 @@ import (
 	"testing"
 	"time"
 
-	ds "github.com/ipfs/go-datastore"
 	"github.com/libp2p/go-libp2p/core/crypto"
 	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/mock"
@@ -19,7 +18,6 @@ import (
 	"github.com/evstack/ev-node/pkg/genesis"
 	signerpkg "github.com/evstack/ev-node/pkg/signer"
 	"github.com/evstack/ev-node/pkg/signer/noop"
-	storemocks "github.com/evstack/ev-node/test/mocks"
 	extmocks "github.com/evstack/ev-node/test/mocks/external"
 	"github.com/evstack/ev-node/types"
 )
@@ -61,7 +59,7 @@ type P2PTestData struct {
 	Handler      *P2PHandler
 	HeaderStore  *extmocks.MockStore[*types.SignedHeader]
 	DataStore    *extmocks.MockStore[*types.Data]
-	Cache        cache.Manager
+	Cache        cache.CacheManager
 	Genesis      genesis.Genesis
 	ProposerAddr []byte
 	ProposerPub  crypto.PubKey
@@ -78,17 +76,11 @@ func setupP2P(t *testing.T) *P2PTestData {
 	headerStoreMock := extmocks.NewMockStore[*types.SignedHeader](t)
 	dataStoreMock := extmocks.NewMockStore[*types.Data](t)
 
-	storeMock := storemocks.NewMockStore(t)
-	storeMock.EXPECT().GetMetadata(mock.Anything, "last-submitted-header-height").Return(nil, ds.ErrNotFound).Maybe()
-	storeMock.EXPECT().GetMetadata(mock.Anything, "last-submitted-data-height").Return(nil, ds.ErrNotFound).Maybe()
-	storeMock.EXPECT().Height(mock.Anything).Return(uint64(0), nil).Maybe()
-	storeMock.EXPECT().SetMetadata(mock.Anything, mock.Anything, mock.Anything).Return(nil).Maybe()
-
 	cfg := config.Config{
 		RootDir:    t.TempDir(),
 		ClearCache: true,
 	}
-	cacheManager, err := cache.NewManager(cfg, storeMock, zerolog.Nop())
+	cacheManager, err := cache.NewCacheManager(cfg, zerolog.Nop())
 	require.NoError(t, err, "failed to create cache manager")
 
 	handler := NewP2PHandler(headerStoreMock, dataStoreMock, cacheManager, gen, zerolog.Nop())

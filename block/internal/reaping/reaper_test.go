@@ -65,28 +65,21 @@ func newTestExecutor(t *testing.T) *executing.Executor {
 }
 
 // helper to create a cache manager for tests
-func newTestCache(t *testing.T) cache.Manager {
+func newTestCache(t *testing.T) cache.CacheManager {
 	t.Helper()
-
-	// Create a mock store for the cache manager
-	storeMock := testmocks.NewMockStore(t)
-	storeMock.EXPECT().GetMetadata(mock.Anything, "last-submitted-header-height").Return(nil, ds.ErrNotFound).Maybe()
-	storeMock.EXPECT().GetMetadata(mock.Anything, "last-submitted-data-height").Return(nil, ds.ErrNotFound).Maybe()
-	storeMock.EXPECT().Height(mock.Anything).Return(uint64(0), nil).Maybe()
-	storeMock.EXPECT().SetMetadata(mock.Anything, mock.Anything, mock.Anything).Return(nil).Maybe()
 
 	cfg := config.Config{
 		RootDir:    t.TempDir(),
 		ClearCache: true,
 	}
-	cacheManager, err := cache.NewManager(cfg, storeMock, zerolog.Nop())
+	cacheManager, err := cache.NewCacheManager(cfg, zerolog.Nop())
 	require.NoError(t, err)
 
 	return cacheManager
 }
 
 // reaper with mocks and cache manager
-func newTestReaper(t *testing.T, chainID string, execMock *testmocks.MockExecutor, seqMock *testmocks.MockSequencer, e *executing.Executor, cm cache.Manager) *Reaper {
+func newTestReaper(t *testing.T, chainID string, execMock *testmocks.MockExecutor, seqMock *testmocks.MockSequencer, e *executing.Executor, cm cache.CacheManager) *Reaper {
 	t.Helper()
 
 	r, err := NewReaper(execMock, seqMock, genesis.Genesis{ChainID: chainID}, zerolog.Nop(), e, cm, 100*time.Millisecond)

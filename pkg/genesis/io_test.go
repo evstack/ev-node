@@ -30,40 +30,44 @@ func TestLoadAndSaveGenesis(t *testing.T) {
 		{
 			name: "valid genesis",
 			genesis: Genesis{
-				ChainID:         "test-chain-1",
-				InitialHeight:   1,
-				StartTime:       validTime,
-				ProposerAddress: []byte("proposer-address"),
+				ChainID:                "test-chain-1",
+				InitialHeight:          1,
+				StartTime:              validTime,
+				ProposerAddress:        []byte("proposer-address"),
+				DAEpochForcedInclusion: 1,
 			},
 			wantErr: false,
 		},
 		{
 			name: "valid genesis - minimal",
 			genesis: Genesis{
-				ChainID:         "test-chain-2",
-				InitialHeight:   1,
-				StartTime:       validTime,
-				ProposerAddress: []byte("proposer-address"),
+				ChainID:                "test-chain-2",
+				InitialHeight:          1,
+				StartTime:              validTime,
+				ProposerAddress:        []byte("proposer-address"),
+				DAEpochForcedInclusion: 1,
 			},
 			wantErr: false,
 		},
 		{
 			name: "invalid genesis - empty chain ID",
 			genesis: Genesis{
-				ChainID:         "",
-				InitialHeight:   1,
-				StartTime:       validTime,
-				ProposerAddress: []byte("proposer-address"),
+				ChainID:                "",
+				InitialHeight:          1,
+				StartTime:              validTime,
+				ProposerAddress:        []byte("proposer-address"),
+				DAEpochForcedInclusion: 1,
 			},
 			wantErr: true,
 		},
 		{
 			name: "invalid genesis - zero initial height",
 			genesis: Genesis{
-				ChainID:         "test-chain",
-				InitialHeight:   0,
-				StartTime:       validTime,
-				ProposerAddress: []byte("proposer-address"),
+				ChainID:                "test-chain",
+				InitialHeight:          0,
+				StartTime:              validTime,
+				ProposerAddress:        []byte("proposer-address"),
+				DAEpochForcedInclusion: 1,
 			},
 			wantErr: true,
 		},
@@ -177,10 +181,11 @@ func TestSaveGenesis_InvalidPath(t *testing.T) {
 			}
 
 			genesis := Genesis{
-				ChainID:         "test-chain",
-				InitialHeight:   1,
-				StartTime:       time.Now().UTC(),
-				ProposerAddress: []byte("proposer-address"),
+				ChainID:                "test-chain",
+				InitialHeight:          1,
+				StartTime:              time.Now().UTC(),
+				ProposerAddress:        []byte("proposer-address"),
+				DAEpochForcedInclusion: 1,
 			}
 
 			err := genesis.Save(tc.path)

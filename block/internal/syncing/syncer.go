@@ -3,6 +3,8 @@ package syncing
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"sync"
@@ -24,15 +26,6 @@ import (
 	"github.com/evstack/ev-node/types"
 )
 
-type daRetriever interface {
-	RetrieveFromDA(ctx context.Context, daHeight uint64) ([]common.DAHeightEvent, error)
-}
-
-type p2pHandler interface {
-	ProcessHeight(ctx context.Context, height uint64, heightInCh chan<- common.DAHeightEvent) error
-	SetProcessedHeight(height uint64)
-}
-
 // Syncer handles block synchronization from DA and P2P sources.
 type Syncer struct {
 	// Core components
@@ -41,7 +34,7 @@ type Syncer struct {
 	da    coreda.DA
 
 	// Shared components
-	cache   cache.Manager
+	cache   cache.CacheManager
 	metrics *common.Metrics
 
 	// Configuration
@@ -64,7 +57,7 @@ type Syncer struct {
 	errorCh    chan<- error // Channel to report critical execution client failures
 
 	// Handlers
-	daRetriever daRetriever
+	daRetriever DARetriever
 	p2pHandler  p2pHandler
 
 	// Logging
@@ -84,7 +77,7 @@ func NewSyncer(
 	store store.Store,
 	exec coreexecutor.Executor,
 	da coreda.DA,
-	cache cache.Manager,
+	cache cache.CacheManager,
 	metrics *common.Metrics,
 	config config.Config,
 	genesis genesis.Genesis,
@@ -482,6 +475,8 @@ func (s *Syncer) processHeightEvent(event *common.DAHeightEvent) {
 		switch {
 		case errors.Is(err, errInvalidBlock):
 			// do not reschedule
+		case errors.Is(err, errMaliciousProposer):
+			s.sendCriticalError(fmt.Errorf("sequencer malicious. Restart the node with --node.aggregator --node.based_sequencer or keep the chain halted: %w", err))
 		case errors.Is(err, errInvalidState):
 			s.sendCriticalError(fmt.Errorf("invalid state detected (block-height %d, state-height %d) "+
 				"- block references do not match local state. Manual intervention required: %w", event.Header.Height(),
@@ -545,6 +540,15 @@ func (s *Syncer) trySyncNextBlock(event *common.DAHeightEvent) error {
 			return errors.Join(errInvalidBlock, err)
 		}
 		return err
+	}
+
+	// Verify forced inclusion transactions if configured
+	if err := s.verifyForcedInclusionTxs(currentState, data); err != nil {
+		s.logger.Error().Err(err).Uint64("height", nextHeight).Msg("forced inclusion verification failed")
+		if errors.Is(err, errMaliciousProposer) {
+			s.cache.RemoveHeaderDAIncluded(headerHash)
+			return err
+		}
 	}
 
 	// Apply block
@@ -665,6 +669,70 @@ func (s *Syncer) validateBlock(currState types.State, data *types.Data, header *
 	if err := currState.AssertValidForNextState(header, data); err != nil {
 		return errors.Join(errInvalidState, err)
 	}
+	return nil
+}
+
+var errMaliciousProposer = errors.New("malicious proposer detected")
+
+// hashTx returns a hex-encoded SHA256 hash of the transaction.
+func hashTx(tx []byte) string {
+	hash := sha256.Sum256(tx)
+	return hex.EncodeToString(hash[:])
+}
+
+// verifyForcedInclusionTxs verifies that all forced inclusion transactions from DA are included in the block
+func (s *Syncer) verifyForcedInclusionTxs(currentState types.State, data *types.Data) error {
+	if s.daRetriever == nil {
+		return nil
+	}
+
+	// Retrieve forced inclusion transactions from DA
+	forcedIncludedTxsEvent, err := s.daRetriever.RetrieveForcedIncludedTxsFromDA(s.ctx, currentState.DAHeight)
+	if err != nil {
+		if errors.Is(err, common.ErrForceInclusionNotConfigured) {
+			s.logger.Debug().Msg("forced inclusion namespace not configured, skipping verification")
+			return nil
+		}
+
+		return fmt.Errorf("failed to retrieve forced included txs from DA: %w", err)
+	}
+
+	// If no forced inclusion transactions found, nothing to verify
+	if len(forcedIncludedTxsEvent.Txs) == 0 {
+		s.logger.Debug().Uint64("da_height", currentState.DAHeight).Msg("no forced inclusion transactions to verify")
+		return nil
+	}
+
+	blockTxMap := make(map[string]struct{})
+	for _, tx := range data.Txs {
+		blockTxMap[hashTx(tx)] = struct{}{}
+	}
+
+	// Check if all forced inclusion transactions are present in the block
+	var missingTxs [][]byte
+	for _, forcedTx := range forcedIncludedTxsEvent.Txs {
+		if _, ok := blockTxMap[hashTx(forcedTx)]; !ok {
+			missingTxs = append(missingTxs, forcedTx)
+		}
+	}
+
+	if len(missingTxs) > 0 {
+		s.logger.Error().
+			Uint64("height", data.Height()).
+			Uint64("da_height", currentState.DAHeight).
+			Uint64("da_epoch_start", forcedIncludedTxsEvent.StartDaHeight).
+			Uint64("da_epoch_end", forcedIncludedTxsEvent.EndDaHeight).
+			Int("missing_count", len(missingTxs)).
+			Int("total_forced", len(forcedIncludedTxsEvent.Txs)).
+			Msg("SEQUENCER IS MALICIOUS: forced inclusion transactions missing from block")
+		return errors.Join(errMaliciousProposer, fmt.Errorf("sequencer is malicious: %d forced inclusion transactions not included in block", len(missingTxs)))
+	}
+
+	s.logger.Debug().
+		Uint64("height", data.Height()).
+		Int("forced_txs", len(forcedIncludedTxsEvent.Txs)).
+		Msg("all forced inclusion transactions verified in block")
+
 	return nil
 }
 

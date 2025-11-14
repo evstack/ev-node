@@ -69,7 +69,7 @@ func TestSyncer_BackoffOnDAError(t *testing.T) {
 			syncer.ctx = ctx
 
 			// Setup mocks
-			daRetriever := newMockdaRetriever(t)
+			daRetriever := NewMockDARetriever(t)
 			p2pHandler := newMockp2pHandler(t)
 			p2pHandler.On("ProcessHeight", mock.Anything, mock.Anything, mock.Anything).Return(nil).Maybe()
 			syncer.daRetriever = daRetriever
@@ -165,7 +165,7 @@ func TestSyncer_BackoffResetOnSuccess(t *testing.T) {
 	addr, pub, signer := buildSyncTestSigner(t)
 	gen := syncer.genesis
 
-	daRetriever := newMockdaRetriever(t)
+	daRetriever := NewMockDARetriever(t)
 	p2pHandler := newMockp2pHandler(t)
 	p2pHandler.On("ProcessHeight", mock.Anything, mock.Anything, mock.Anything).Return(nil).Maybe()
 	syncer.daRetriever = daRetriever
@@ -256,7 +256,7 @@ func TestSyncer_BackoffBehaviorIntegration(t *testing.T) {
 	syncer := setupTestSyncer(t, 500*time.Millisecond)
 	syncer.ctx = ctx
 
-	daRetriever := newMockdaRetriever(t)
+	daRetriever := NewMockDARetriever(t)
 	p2pHandler := newMockp2pHandler(t)
 	p2pHandler.On("ProcessHeight", mock.Anything, mock.Anything, mock.Anything).Return(nil).Maybe()
 	syncer.daRetriever = daRetriever
@@ -325,7 +325,8 @@ func setupTestSyncer(t *testing.T, daBlockTime time.Duration) *Syncer {
 
 	ds := dssync.MutexWrap(datastore.NewMapDatastore())
 	st := store.New(ds)
-	cm, err := cache.NewManager(config.DefaultConfig(), st, zerolog.Nop())
+
+	cm, err := cache.NewCacheManager(config.DefaultConfig(), zerolog.Nop())
 	require.NoError(t, err)
 
 	addr, _, _ := buildSyncTestSigner(t)

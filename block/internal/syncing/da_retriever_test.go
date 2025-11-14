@@ -8,8 +8,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ipfs/go-datastore"
-	dssync "github.com/ipfs/go-datastore/sync"
 	"github.com/libp2p/go-libp2p/core/crypto"
 	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/assert"
@@ -22,14 +20,17 @@ import (
 	"github.com/evstack/ev-node/pkg/config"
 	"github.com/evstack/ev-node/pkg/genesis"
 	signerpkg "github.com/evstack/ev-node/pkg/signer"
-	"github.com/evstack/ev-node/pkg/store"
 	testmocks "github.com/evstack/ev-node/test/mocks"
 	"github.com/evstack/ev-node/types"
 )
 
 // makeSignedDataBytes builds SignedData containing the provided Data and returns its binary encoding
 func makeSignedDataBytes(t *testing.T, chainID string, height uint64, proposer []byte, pub crypto.PubKey, signer signerpkg.Signer, txs int) ([]byte, *types.SignedData) {
-	d := &types.Data{Metadata: &types.Metadata{ChainID: chainID, Height: height, Time: uint64(time.Now().UnixNano())}}
+	return makeSignedDataBytesWithTime(t, chainID, height, proposer, pub, signer, txs, uint64(time.Now().UnixNano()))
+}
+
+func makeSignedDataBytesWithTime(t *testing.T, chainID string, height uint64, proposer []byte, pub crypto.PubKey, signer signerpkg.Signer, txs int, timestamp uint64) ([]byte, *types.SignedData) {
+	d := &types.Data{Metadata: &types.Metadata{ChainID: chainID, Height: height, Time: timestamp}}
 	if txs > 0 {
 		d.Txs = make(types.Txs, txs)
 		for i := 0; i < txs; i++ {
@@ -49,9 +50,7 @@ func makeSignedDataBytes(t *testing.T, chainID string, height uint64, proposer [
 }
 
 func TestDARetriever_RetrieveFromDA_Invalid(t *testing.T) {
-	ds := dssync.MutexWrap(datastore.NewMapDatastore())
-	st := store.New(ds)
-	cm, err := cache.NewManager(config.DefaultConfig(), st, zerolog.Nop())
+	cm, err := cache.NewCacheManager(config.DefaultConfig(), zerolog.Nop())
 	assert.NoError(t, err)
 
 	mockDA := testmocks.NewMockDA(t)
@@ -66,9 +65,7 @@ func TestDARetriever_RetrieveFromDA_Invalid(t *testing.T) {
 }
 
 func TestDARetriever_RetrieveFromDA_NotFound(t *testing.T) {
-	ds := dssync.MutexWrap(datastore.NewMapDatastore())
-	st := store.New(ds)
-	cm, err := cache.NewManager(config.DefaultConfig(), st, zerolog.Nop())
+	cm, err := cache.NewCacheManager(config.DefaultConfig(), zerolog.Nop())
 	assert.NoError(t, err)
 
 	mockDA := testmocks.NewMockDA(t)
@@ -84,9 +81,7 @@ func TestDARetriever_RetrieveFromDA_NotFound(t *testing.T) {
 }
 
 func TestDARetriever_RetrieveFromDA_HeightFromFuture(t *testing.T) {
-	ds := dssync.MutexWrap(datastore.NewMapDatastore())
-	st := store.New(ds)
-	cm, err := cache.NewManager(config.DefaultConfig(), st, zerolog.Nop())
+	cm, err := cache.NewCacheManager(config.DefaultConfig(), zerolog.Nop())
 	require.NoError(t, err)
 
 	mockDA := testmocks.NewMockDA(t)
@@ -102,9 +97,7 @@ func TestDARetriever_RetrieveFromDA_HeightFromFuture(t *testing.T) {
 }
 
 func TestDARetriever_RetrieveFromDA_Timeout(t *testing.T) {
-	ds := dssync.MutexWrap(datastore.NewMapDatastore())
-	st := store.New(ds)
-	cm, err := cache.NewManager(config.DefaultConfig(), st, zerolog.Nop())
+	cm, err := cache.NewCacheManager(config.DefaultConfig(), zerolog.Nop())
 	require.NoError(t, err)
 
 	mockDA := testmocks.NewMockDA(t)
@@ -134,9 +127,7 @@ func TestDARetriever_RetrieveFromDA_Timeout(t *testing.T) {
 }
 
 func TestDARetriever_RetrieveFromDA_TimeoutFast(t *testing.T) {
-	ds := dssync.MutexWrap(datastore.NewMapDatastore())
-	st := store.New(ds)
-	cm, err := cache.NewManager(config.DefaultConfig(), st, zerolog.Nop())
+	cm, err := cache.NewCacheManager(config.DefaultConfig(), zerolog.Nop())
 	require.NoError(t, err)
 
 	mockDA := testmocks.NewMockDA(t)
@@ -157,9 +148,7 @@ func TestDARetriever_RetrieveFromDA_TimeoutFast(t *testing.T) {
 }
 
 func TestDARetriever_ProcessBlobs_HeaderAndData_Success(t *testing.T) {
-	ds := dssync.MutexWrap(datastore.NewMapDatastore())
-	st := store.New(ds)
-	cm, err := cache.NewManager(config.DefaultConfig(), st, zerolog.Nop())
+	cm, err := cache.NewCacheManager(config.DefaultConfig(), zerolog.Nop())
 	require.NoError(t, err)
 
 	addr, pub, signer := buildSyncTestSigner(t)
@@ -186,9 +175,7 @@ func TestDARetriever_ProcessBlobs_HeaderAndData_Success(t *testing.T) {
 }
 
 func TestDARetriever_ProcessBlobs_HeaderOnly_EmptyDataExpected(t *testing.T) {
-	ds := dssync.MutexWrap(datastore.NewMapDatastore())
-	st := store.New(ds)
-	cm, err := cache.NewManager(config.DefaultConfig(), st, zerolog.Nop())
+	cm, err := cache.NewCacheManager(config.DefaultConfig(), zerolog.Nop())
 	require.NoError(t, err)
 
 	addr, pub, signer := buildSyncTestSigner(t)
@@ -214,9 +201,7 @@ func TestDARetriever_ProcessBlobs_HeaderOnly_EmptyDataExpected(t *testing.T) {
 }
 
 func TestDARetriever_TryDecodeHeaderAndData_Basic(t *testing.T) {
-	ds := dssync.MutexWrap(datastore.NewMapDatastore())
-	st := store.New(ds)
-	cm, err := cache.NewManager(config.DefaultConfig(), st, zerolog.Nop())
+	cm, err := cache.NewCacheManager(config.DefaultConfig(), zerolog.Nop())
 	require.NoError(t, err)
 
 	addr, pub, signer := buildSyncTestSigner(t)
@@ -239,9 +224,7 @@ func TestDARetriever_TryDecodeHeaderAndData_Basic(t *testing.T) {
 }
 
 func TestDARetriever_tryDecodeData_InvalidSignatureOrProposer(t *testing.T) {
-	ds := dssync.MutexWrap(datastore.NewMapDatastore())
-	st := store.New(ds)
-	cm, err := cache.NewManager(config.DefaultConfig(), st, zerolog.Nop())
+	cm, err := cache.NewCacheManager(config.DefaultConfig(), zerolog.Nop())
 	require.NoError(t, err)
 
 	goodAddr, pub, signer := buildSyncTestSigner(t)
@@ -255,7 +238,7 @@ func TestDARetriever_tryDecodeData_InvalidSignatureOrProposer(t *testing.T) {
 }
 
 func TestDARetriever_validateBlobResponse(t *testing.T) {
-	r := &DARetriever{logger: zerolog.Nop()}
+	r := &daRetriever{logger: zerolog.Nop()}
 	// StatusSuccess -> nil
 	err := r.validateBlobResponse(coreda.ResultRetrieve{BaseResult: coreda.BaseResult{Code: coreda.StatusSuccess}}, 1)
 	assert.NoError(t, err)
@@ -269,9 +252,7 @@ func TestDARetriever_validateBlobResponse(t *testing.T) {
 }
 
 func TestDARetriever_RetrieveFromDA_TwoNamespaces_Success(t *testing.T) {
-	ds := dssync.MutexWrap(datastore.NewMapDatastore())
-	st := store.New(ds)
-	cm, err := cache.NewManager(config.DefaultConfig(), st, zerolog.Nop())
+	cm, err := cache.NewCacheManager(config.DefaultConfig(), zerolog.Nop())
 	require.NoError(t, err)
 
 	addr, pub, signer := buildSyncTestSigner(t)
@@ -310,9 +291,7 @@ func TestDARetriever_RetrieveFromDA_TwoNamespaces_Success(t *testing.T) {
 }
 
 func TestDARetriever_ProcessBlobs_CrossDAHeightMatching(t *testing.T) {
-	ds := dssync.MutexWrap(datastore.NewMapDatastore())
-	st := store.New(ds)
-	cm, err := cache.NewManager(config.DefaultConfig(), st, zerolog.Nop())
+	cm, err := cache.NewCacheManager(config.DefaultConfig(), zerolog.Nop())
 	require.NoError(t, err)
 
 	addr, pub, signer := buildSyncTestSigner(t)
@@ -346,9 +325,7 @@ func TestDARetriever_ProcessBlobs_CrossDAHeightMatching(t *testing.T) {
 }
 
 func TestDARetriever_ProcessBlobs_MultipleHeadersCrossDAHeightMatching(t *testing.T) {
-	ds := dssync.MutexWrap(datastore.NewMapDatastore())
-	st := store.New(ds)
-	cm, err := cache.NewManager(config.DefaultConfig(), st, zerolog.Nop())
+	cm, err := cache.NewCacheManager(config.DefaultConfig(), zerolog.Nop())
 	require.NoError(t, err)
 
 	addr, pub, signer := buildSyncTestSigner(t)
@@ -420,4 +397,351 @@ func Test_isEmptyDataExpected(t *testing.T) {
 	// when equals to predefined emptyTxs hash -> expected empty
 	h.DataHash = common.DataHashForEmptyTxs
 	assert.True(t, isEmptyDataExpected(h))
+}
+
+func TestDARetriever_RetrieveForcedIncludedTxsFromDA_Success(t *testing.T) {
+	cm, err := cache.NewCacheManager(config.DefaultConfig(), zerolog.Nop())
+	require.NoError(t, err)
+
+	addr, pub, signer := buildSyncTestSigner(t)
+	gen := genesis.Genesis{ChainID: "tchain", InitialHeight: 1, StartTime: time.Now().Add(-time.Second), ProposerAddress: addr, DAStartHeight: 5678, DAEpochForcedInclusion: 1}
+
+	// Prepare forced inclusion transaction data
+	dataBin, _ := makeSignedDataBytes(t, gen.ChainID, 10, addr, pub, signer, 3)
+
+	cfg := config.DefaultConfig()
+	cfg.DA.ForcedInclusionNamespace = "nsForcedInclusion"
+
+	namespaceForcedInclusionBz := coreda.NamespaceFromString(cfg.DA.GetForcedInclusionNamespace()).Bytes()
+
+	mockDA := testmocks.NewMockDA(t)
+	// With DAStartHeight=5678, epoch size=1, daHeight=5678 -> epoch boundaries are [5678, 5678]
+	// Check epoch start only (end check is skipped when same as start)
+	mockDA.EXPECT().GetIDs(mock.Anything, uint64(5678), mock.MatchedBy(func(ns []byte) bool {
+		return bytes.Equal(ns, namespaceForcedInclusionBz)
+	})).Return(&coreda.GetIDsResult{IDs: [][]byte{[]byte("fi1")}, Timestamp: time.Now()}, nil).Once()
+
+	// Fetch epoch start data
+	mockDA.EXPECT().Get(mock.Anything, mock.Anything, mock.MatchedBy(func(ns []byte) bool {
+		return bytes.Equal(ns, namespaceForcedInclusionBz)
+	})).Return([][]byte{dataBin}, nil).Once()
+
+	r := NewDARetriever(mockDA, cm, cfg, gen, zerolog.Nop())
+
+	result, err := r.RetrieveForcedIncludedTxsFromDA(context.Background(), 5678)
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.Len(t, result.Txs, 1) // Only fetched once since start == end
+	assert.Equal(t, dataBin, result.Txs[0])
+}
+
+func TestDARetriever_FetchForcedIncludedTxs_NoNamespaceConfigured(t *testing.T) {
+	cm, err := cache.NewCacheManager(config.DefaultConfig(), zerolog.Nop())
+	require.NoError(t, err)
+
+	addr, _, _ := buildSyncTestSigner(t)
+	gen := genesis.Genesis{ChainID: "tchain", InitialHeight: 1, StartTime: time.Now().Add(-time.Second), ProposerAddress: addr, DAStartHeight: 0, DAEpochForcedInclusion: 1}
+
+	cfg := config.DefaultConfig()
+	// Leave ForcedInclusionNamespace empty
+
+	r := NewDARetriever(nil, cm, cfg, gen, zerolog.Nop())
+
+	result, err := r.RetrieveForcedIncludedTxsFromDA(context.Background(), 1234)
+	require.Error(t, err)
+	require.Nil(t, result)
+}
+
+func TestDARetriever_FetchForcedIncludedTxs_NotFound(t *testing.T) {
+	cm, err := cache.NewCacheManager(config.DefaultConfig(), zerolog.Nop())
+	require.NoError(t, err)
+
+	addr, _, _ := buildSyncTestSigner(t)
+	gen := genesis.Genesis{ChainID: "tchain", InitialHeight: 1, StartTime: time.Now().Add(-time.Second), ProposerAddress: addr, DAStartHeight: 9999, DAEpochForcedInclusion: 1}
+
+	cfg := config.DefaultConfig()
+	cfg.DA.ForcedInclusionNamespace = "nsForcedInclusion"
+
+	namespaceForcedInclusionBz := coreda.NamespaceFromString(cfg.DA.GetForcedInclusionNamespace()).Bytes()
+
+	mockDA := testmocks.NewMockDA(t)
+	// With DAStartHeight=9999, epoch size=1, daHeight=9999 -> epoch boundaries are [9999, 9999]
+	// Check epoch start only (end check is skipped when same as start)
+	mockDA.EXPECT().GetIDs(mock.Anything, uint64(9999), mock.MatchedBy(func(ns []byte) bool {
+		return bytes.Equal(ns, namespaceForcedInclusionBz)
+	})).Return(&coreda.GetIDsResult{IDs: [][]byte{}, Timestamp: time.Now()}, nil).Once()
+
+	r := NewDARetriever(mockDA, cm, cfg, gen, zerolog.Nop())
+
+	result, err := r.RetrieveForcedIncludedTxsFromDA(context.Background(), 9999)
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.Empty(t, result.Txs)
+}
+
+func TestDARetriever_RetrieveForcedIncludedTxsFromDA_ExceedsMaxBlobSize(t *testing.T) {
+	cm, err := cache.NewCacheManager(config.DefaultConfig(), zerolog.Nop())
+	require.NoError(t, err)
+
+	addr, pub, signer := buildSyncTestSigner(t)
+	gen := genesis.Genesis{ChainID: "tchain", InitialHeight: 1, StartTime: time.Now().Add(-time.Second), ProposerAddress: addr, DAStartHeight: 1000, DAEpochForcedInclusion: 3}
+
+	cfg := config.DefaultConfig()
+	cfg.DA.ForcedInclusionNamespace = "nsForcedInclusion"
+
+	namespaceForcedInclusionBz := coreda.NamespaceFromString(cfg.DA.GetForcedInclusionNamespace()).Bytes()
+
+	// Use fixed timestamp for deterministic test data
+	fixedTime := uint64(1234567890)
+
+	// Create signed data blobs that will exceed DefaultMaxBlobSize when accumulated
+	// DefaultMaxBlobSize is 1.5MB = 1,572,864 bytes
+	// Each 700KB tx becomes ~719KB blob, so 2 blobs = ~1.44MB (fits), 3 blobs = ~2.16MB (exceeds)
+	d1 := &types.Data{
+		Metadata: &types.Metadata{ChainID: gen.ChainID, Height: 10, Time: fixedTime},
+		Txs:      make(types.Txs, 1),
+	}
+	d1.Txs[0] = make([]byte, 700*1024) // 700KB transaction
+
+	payload1, err := d1.MarshalBinary()
+	require.NoError(t, err)
+	sig1, err := signer.Sign(payload1)
+	require.NoError(t, err)
+	sd1 := &types.SignedData{Data: *d1, Signature: sig1, Signer: types.Signer{PubKey: pub, Address: addr}}
+	dataBin1, err := sd1.MarshalBinary()
+	require.NoError(t, err)
+
+	d2 := &types.Data{
+		Metadata: &types.Metadata{ChainID: gen.ChainID, Height: 11, Time: fixedTime},
+		Txs:      make(types.Txs, 1),
+	}
+	d2.Txs[0] = make([]byte, 700*1024) // 700KB transaction
+
+	payload2, err := d2.MarshalBinary()
+	require.NoError(t, err)
+	sig2, err := signer.Sign(payload2)
+	require.NoError(t, err)
+	sd2 := &types.SignedData{Data: *d2, Signature: sig2, Signer: types.Signer{PubKey: pub, Address: addr}}
+	dataBin2, err := sd2.MarshalBinary()
+	require.NoError(t, err)
+
+	d3 := &types.Data{
+		Metadata: &types.Metadata{ChainID: gen.ChainID, Height: 12, Time: fixedTime},
+		Txs:      make(types.Txs, 1),
+	}
+	d3.Txs[0] = make([]byte, 700*1024) // 700KB transaction
+
+	payload3, err := d3.MarshalBinary()
+	require.NoError(t, err)
+	sig3, err := signer.Sign(payload3)
+	require.NoError(t, err)
+	sd3 := &types.SignedData{Data: *d3, Signature: sig3, Signer: types.Signer{PubKey: pub, Address: addr}}
+	dataBin3, err := sd3.MarshalBinary()
+	require.NoError(t, err)
+
+	mockDA := testmocks.NewMockDA(t)
+
+	// With DAStartHeight=1000, epoch size=3, daHeight=1000 -> epoch boundaries are [1000, 1002]
+	// RetrieveWithHelpers calls in order: start (1000), end (1002), then intermediate (1001)
+
+	// Check epoch start
+	mockDA.EXPECT().GetIDs(mock.Anything, uint64(1000), mock.MatchedBy(func(ns []byte) bool {
+		return bytes.Equal(ns, namespaceForcedInclusionBz)
+	})).Return(&coreda.GetIDsResult{IDs: [][]byte{[]byte("fi1")}, Timestamp: time.Now()}, nil).Once()
+
+	// Fetch epoch start data (height 1000)
+	mockDA.EXPECT().Get(mock.Anything, mock.Anything, mock.MatchedBy(func(ns []byte) bool {
+		return bytes.Equal(ns, namespaceForcedInclusionBz)
+	})).Return([][]byte{dataBin1}, nil).Once()
+
+	// Check epoch end
+	mockDA.EXPECT().GetIDs(mock.Anything, uint64(1002), mock.MatchedBy(func(ns []byte) bool {
+		return bytes.Equal(ns, namespaceForcedInclusionBz)
+	})).Return(&coreda.GetIDsResult{IDs: [][]byte{[]byte("fi3")}, Timestamp: time.Now()}, nil).Once()
+
+	// Fetch epoch end data (height 1002) - should be retrieved but skipped due to size limit
+	mockDA.EXPECT().Get(mock.Anything, mock.Anything, mock.MatchedBy(func(ns []byte) bool {
+		return bytes.Equal(ns, namespaceForcedInclusionBz)
+	})).Return([][]byte{dataBin3}, nil).Once()
+
+	// Check intermediate height in epoch (height 1001)
+	mockDA.EXPECT().GetIDs(mock.Anything, uint64(1001), mock.MatchedBy(func(ns []byte) bool {
+		return bytes.Equal(ns, namespaceForcedInclusionBz)
+	})).Return(&coreda.GetIDsResult{IDs: [][]byte{[]byte("fi2")}, Timestamp: time.Now()}, nil).Once()
+
+	// Fetch intermediate height data (height 1001)
+	mockDA.EXPECT().Get(mock.Anything, mock.Anything, mock.MatchedBy(func(ns []byte) bool {
+		return bytes.Equal(ns, namespaceForcedInclusionBz)
+	})).Return([][]byte{dataBin2}, nil).Once()
+
+	r := NewDARetriever(mockDA, cm, cfg, gen, zerolog.Nop())
+
+	result, err := r.RetrieveForcedIncludedTxsFromDA(context.Background(), 1000)
+
+	// Should succeed but skip the third blob due to size limit (using continue)
+	require.NoError(t, err)
+	require.NotNil(t, result)
+
+	// Should only have 2 transactions, third is skipped due to size
+	require.Len(t, result.Txs, 2)
+	assert.Equal(t, dataBin1, result.Txs[0])
+	assert.Equal(t, dataBin2, result.Txs[1])
+
+	// Verify total size is within limits
+	totalSize := len(dataBin1) + len(dataBin2)
+	assert.LessOrEqual(t, totalSize, int(common.DefaultMaxBlobSize))
+
+	// Verify that adding the third would have exceeded the limit
+	totalSizeWithThird := totalSize + len(dataBin3)
+	assert.Greater(t, totalSizeWithThird, int(common.DefaultMaxBlobSize))
+}
+
+func TestDARetriever_RetrieveForcedIncludedTxsFromDA_NotAtEpochStart(t *testing.T) {
+	cm, err := cache.NewCacheManager(config.DefaultConfig(), zerolog.Nop())
+	require.NoError(t, err)
+
+	addr, _, _ := buildSyncTestSigner(t)
+	gen := genesis.Genesis{ChainID: "tchain", InitialHeight: 1, StartTime: time.Now().Add(-time.Second), ProposerAddress: addr, DAStartHeight: 100, DAEpochForcedInclusion: 10}
+
+	cfg := config.DefaultConfig()
+	cfg.DA.ForcedInclusionNamespace = "nsForcedInclusion"
+
+	mockDA := testmocks.NewMockDA(t)
+
+	r := NewDARetriever(mockDA, cm, cfg, gen, zerolog.Nop())
+
+	// With DAStartHeight=100, epoch size=10, daHeight=105 -> epoch boundaries are [100, 109]
+	// But daHeight=105 is NOT the epoch start, so it should be a no-op
+	result, err := r.RetrieveForcedIncludedTxsFromDA(context.Background(), 105)
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.Empty(t, result.Txs)
+	require.Equal(t, uint64(105), result.StartDaHeight)
+	require.Equal(t, uint64(105), result.EndDaHeight)
+}
+
+func TestDARetriever_RetrieveForcedIncludedTxsFromDA_EpochStartFromFuture(t *testing.T) {
+	cm, err := cache.NewCacheManager(config.DefaultConfig(), zerolog.Nop())
+	require.NoError(t, err)
+
+	addr, _, _ := buildSyncTestSigner(t)
+	gen := genesis.Genesis{ChainID: "tchain", InitialHeight: 1, StartTime: time.Now().Add(-time.Second), ProposerAddress: addr, DAStartHeight: 100, DAEpochForcedInclusion: 10}
+
+	cfg := config.DefaultConfig()
+	cfg.DA.ForcedInclusionNamespace = "nsForcedInclusion"
+
+	namespaceForcedInclusionBz := coreda.NamespaceFromString(cfg.DA.GetForcedInclusionNamespace()).Bytes()
+
+	mockDA := testmocks.NewMockDA(t)
+	// With DAStartHeight=1000, epoch size=10, daHeight=1000 -> epoch boundaries are [1000, 1009]
+	// Mock that height 1000 (epoch start) is from the future
+	mockDA.EXPECT().GetIDs(mock.Anything, uint64(1000), mock.MatchedBy(func(ns []byte) bool {
+		return bytes.Equal(ns, namespaceForcedInclusionBz)
+	})).Return(nil, fmt.Errorf("%s: not yet available", coreda.ErrHeightFromFuture.Error())).Once()
+
+	r := NewDARetriever(mockDA, cm, cfg, gen, zerolog.Nop())
+
+	result, err := r.RetrieveForcedIncludedTxsFromDA(context.Background(), 1000)
+	require.Error(t, err)
+	require.Nil(t, result)
+	require.True(t, errors.Is(err, coreda.ErrHeightFromFuture))
+	require.Contains(t, err.Error(), "epoch start height 1000 not yet available")
+}
+
+func TestDARetriever_RetrieveForcedIncludedTxsFromDA_EpochEndFromFuture(t *testing.T) {
+	cm, err := cache.NewCacheManager(config.DefaultConfig(), zerolog.Nop())
+	require.NoError(t, err)
+
+	addr, _, _ := buildSyncTestSigner(t)
+	gen := genesis.Genesis{ChainID: "tchain", InitialHeight: 1, StartTime: time.Now().Add(-time.Second), ProposerAddress: addr, DAStartHeight: 100, DAEpochForcedInclusion: 10}
+
+	cfg := config.DefaultConfig()
+	cfg.DA.ForcedInclusionNamespace = "nsForcedInclusion"
+
+	namespaceForcedInclusionBz := coreda.NamespaceFromString(cfg.DA.GetForcedInclusionNamespace()).Bytes()
+
+	mockDA := testmocks.NewMockDA(t)
+	// With DAStartHeight=1000, epoch size=10, daHeight=1000 -> epoch boundaries are [1000, 1009]
+	// Epoch start is available but epoch end (1009) is from the future
+	mockDA.EXPECT().GetIDs(mock.Anything, uint64(1000), mock.MatchedBy(func(ns []byte) bool {
+		return bytes.Equal(ns, namespaceForcedInclusionBz)
+	})).Return(&coreda.GetIDsResult{IDs: [][]byte{}, Timestamp: time.Now()}, nil).Once()
+
+	mockDA.EXPECT().GetIDs(mock.Anything, uint64(1009), mock.MatchedBy(func(ns []byte) bool {
+		return bytes.Equal(ns, namespaceForcedInclusionBz)
+	})).Return(nil, fmt.Errorf("%s: not yet available", coreda.ErrHeightFromFuture.Error())).Once()
+
+	r := NewDARetriever(mockDA, cm, cfg, gen, zerolog.Nop())
+
+	result, err := r.RetrieveForcedIncludedTxsFromDA(context.Background(), 1000)
+	require.Error(t, err)
+	require.Nil(t, result)
+	require.True(t, errors.Is(err, coreda.ErrHeightFromFuture))
+	require.Contains(t, err.Error(), "epoch end height 1009 not yet available")
+}
+
+func TestDARetriever_RetrieveForcedIncludedTxsFromDA_CompleteEpoch(t *testing.T) {
+	cm, err := cache.NewCacheManager(config.DefaultConfig(), zerolog.Nop())
+	require.NoError(t, err)
+
+	addr, pub, signer := buildSyncTestSigner(t)
+	gen := genesis.Genesis{ChainID: "tchain", InitialHeight: 1, StartTime: time.Now().Add(-time.Second), ProposerAddress: addr, DAStartHeight: 2000, DAEpochForcedInclusion: 3}
+
+	// Prepare forced inclusion transaction data with fixed timestamp
+	fixedTime := uint64(1234567890)
+	dataBin1, _ := makeSignedDataBytesWithTime(t, gen.ChainID, 10, addr, pub, signer, 2, fixedTime)
+	dataBin2, _ := makeSignedDataBytesWithTime(t, gen.ChainID, 11, addr, pub, signer, 1, fixedTime)
+	dataBin3, _ := makeSignedDataBytesWithTime(t, gen.ChainID, 12, addr, pub, signer, 1, fixedTime)
+
+	cfg := config.DefaultConfig()
+	cfg.DA.ForcedInclusionNamespace = "nsForcedInclusion"
+
+	namespaceForcedInclusionBz := coreda.NamespaceFromString(cfg.DA.GetForcedInclusionNamespace()).Bytes()
+
+	mockDA := testmocks.NewMockDA(t)
+
+	// With DAStartHeight=2000, epoch size=3, daHeight=2000 -> epoch boundaries are [2000, 2002]
+	// RetrieveWithHelpers calls in order: start (2000), end (2002), then intermediate (2001)
+
+	// Check epoch start (2000)
+	mockDA.EXPECT().GetIDs(mock.Anything, uint64(2000), mock.MatchedBy(func(ns []byte) bool {
+		return bytes.Equal(ns, namespaceForcedInclusionBz)
+	})).Return(&coreda.GetIDsResult{IDs: [][]byte{[]byte("fi1")}, Timestamp: time.Now()}, nil).Once()
+
+	// Fetch epoch start data (height 2000)
+	mockDA.EXPECT().Get(mock.Anything, mock.Anything, mock.MatchedBy(func(ns []byte) bool {
+		return bytes.Equal(ns, namespaceForcedInclusionBz)
+	})).Return([][]byte{dataBin1}, nil).Once()
+
+	// Check epoch end (2002)
+	mockDA.EXPECT().GetIDs(mock.Anything, uint64(2002), mock.MatchedBy(func(ns []byte) bool {
+		return bytes.Equal(ns, namespaceForcedInclusionBz)
+	})).Return(&coreda.GetIDsResult{IDs: [][]byte{[]byte("fi3")}, Timestamp: time.Now()}, nil).Once()
+
+	// Fetch epoch end data (height 2002)
+	mockDA.EXPECT().Get(mock.Anything, mock.Anything, mock.MatchedBy(func(ns []byte) bool {
+		return bytes.Equal(ns, namespaceForcedInclusionBz)
+	})).Return([][]byte{dataBin3}, nil).Once()
+
+	// Fetch middle height (2001)
+	mockDA.EXPECT().GetIDs(mock.Anything, uint64(2001), mock.MatchedBy(func(ns []byte) bool {
+		return bytes.Equal(ns, namespaceForcedInclusionBz)
+	})).Return(&coreda.GetIDsResult{IDs: [][]byte{[]byte("fi2")}, Timestamp: time.Now()}, nil).Once()
+
+	// Fetch intermediate height data (height 2001)
+	mockDA.EXPECT().Get(mock.Anything, mock.Anything, mock.MatchedBy(func(ns []byte) bool {
+		return bytes.Equal(ns, namespaceForcedInclusionBz)
+	})).Return([][]byte{dataBin2}, nil).Once()
+
+	r := NewDARetriever(mockDA, cm, cfg, gen, zerolog.Nop())
+
+	result, err := r.RetrieveForcedIncludedTxsFromDA(context.Background(), 2000)
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.Len(t, result.Txs, 3)
+	require.Equal(t, dataBin1, result.Txs[0])
+	require.Equal(t, dataBin2, result.Txs[1])
+	require.Equal(t, dataBin3, result.Txs[2])
+	require.Equal(t, uint64(2000), result.StartDaHeight)
+	require.Equal(t, uint64(2002), result.EndDaHeight)
 }

@@ -34,7 +34,7 @@ type Reaper struct {
 	sequencer coresequencer.Sequencer
 	chainID   string
 	interval  time.Duration
-	cache     cache.Manager
+	cache     cache.CacheManager
 	executor  *executing.Executor
 
 	// shared components
@@ -53,7 +53,7 @@ func NewReaper(
 	genesis genesis.Genesis,
 	logger zerolog.Logger,
 	executor *executing.Executor,
-	cache cache.Manager,
+	cache cache.CacheManager,
 	scrapeInterval time.Duration,
 ) (*Reaper, error) {
 	if executor == nil {

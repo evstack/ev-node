@@ -95,6 +95,7 @@ func TestProduceBlock_EmptyBatch_SetsEmptyDataHash(t *testing.T) {
 	initStateRoot := []byte("init_root")
 	mockExec.EXPECT().InitChain(mock.Anything, mock.AnythingOfType("time.Time"), gen.InitialHeight, gen.ChainID).
 		Return(initStateRoot, uint64(1024), nil).Once()
+	mockSeq.EXPECT().SetDAHeight(uint64(0)).Return().Once()
 
 	// initialize state (creates genesis block in store and sets state)
 	require.NoError(t, exec.initializeState())
@@ -112,6 +113,8 @@ func TestProduceBlock_EmptyBatch_SetsEmptyDataHash(t *testing.T) {
 	// executor ExecuteTxs called with empty txs and previous state root
 	mockExec.EXPECT().ExecuteTxs(mock.Anything, mock.Anything, uint64(1), mock.AnythingOfType("time.Time"), initStateRoot).
 		Return([]byte("new_root"), uint64(1024), nil).Once()
+
+	mockSeq.EXPECT().GetDAHeight().Return(uint64(0)).Once()
 
 	// produce one block
 	err = exec.produceBlock()
@@ -180,6 +183,7 @@ func TestPendingLimit_SkipsProduction(t *testing.T) {
 
 	mockExec.EXPECT().InitChain(mock.Anything, mock.AnythingOfType("time.Time"), gen.InitialHeight, gen.ChainID).
 		Return([]byte("i0"), uint64(1024), nil).Once()
+	mockSeq.EXPECT().SetDAHeight(uint64(0)).Return().Once()
 	require.NoError(t, exec.initializeState())
 
 	// Set up context for the executor (normally done in Start method)
@@ -195,6 +199,8 @@ func TestPendingLimit_SkipsProduction(t *testing.T) {
 	// ExecuteTxs with empty
 	mockExec.EXPECT().ExecuteTxs(mock.Anything, mock.Anything, uint64(1), mock.AnythingOfType("time.Time"), []byte("i0")).
 		Return([]byte("i1"), uint64(1024), nil).Once()
+
+	mockSeq.EXPECT().GetDAHeight().Return(uint64(0)).Once()
 
 	require.NoError(t, exec.produceBlock())
 	h1, err := memStore.Height(context.Background())
