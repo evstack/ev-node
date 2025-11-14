@@ -3,7 +3,7 @@ package based
 import (
 	"context"
 	"errors"
-	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/rs/zerolog"
@@ -26,6 +26,7 @@ type ForcedInclusionEvent = struct {
 // This interface is intentionally generic to allow different implementations
 type DARetriever interface {
 	RetrieveForcedIncludedTxsFromDA(ctx context.Context, daHeight uint64) (*ForcedInclusionEvent, error)
+	SetDAHeight(height uint64)
 }
 
 var _ coresequencer.Sequencer = (*BasedSequencer)(nil)
@@ -39,9 +40,8 @@ type BasedSequencer struct {
 	genesis     genesis.Genesis
 	logger      zerolog.Logger
 
-	mu       sync.RWMutex
-	daHeight uint64
-	txQueue  [][]byte
+	daHeight atomic.Uint64
+	txQueue  atomic.Pointer[[][]byte]
 }
 
 // NewBasedSequencer creates a new based sequencer instance
@@ -52,15 +52,17 @@ func NewBasedSequencer(
 	genesis genesis.Genesis,
 	logger zerolog.Logger,
 ) *BasedSequencer {
-	return &BasedSequencer{
+	s := &BasedSequencer{
 		daRetriever: daRetriever,
 		da:          da,
 		config:      config,
 		genesis:     genesis,
 		logger:      logger.With().Str("component", "based_sequencer").Logger(),
-		daHeight:    genesis.DAStartHeight,
-		txQueue:     make([][]byte, 0),
 	}
+	s.daHeight.Store(genesis.DAStartHeight)
+	initialQueue := make([][]byte, 0)
+	s.txQueue.Store(&initialQueue)
+	return s
 }
 
 // SubmitBatchTxs does nothing for a based sequencer as it only pulls from DA
@@ -73,16 +75,17 @@ func (s *BasedSequencer) SubmitBatchTxs(ctx context.Context, req coresequencer.S
 // GetNextBatch retrieves the next batch of transactions from the DA layer
 // It fetches forced inclusion transactions and returns them as the next batch
 func (s *BasedSequencer) GetNextBatch(ctx context.Context, req coresequencer.GetNextBatchRequest) (*coresequencer.GetNextBatchResponse, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
 	// If we have transactions in the queue, return them first
-	if len(s.txQueue) > 0 {
+	queuePtr := s.txQueue.Load()
+	queue := *queuePtr
+	if len(queue) > 0 {
 		batch := s.createBatchFromQueue(req.MaxBytes)
 		if len(batch.Transactions) > 0 {
+			queuePtr := s.txQueue.Load()
+			queue := *queuePtr
 			s.logger.Debug().
 				Int("tx_count", len(batch.Transactions)).
-				Int("remaining", len(s.txQueue)).
+				Int("remaining", len(queue)).
 				Msg("returning batch from queue")
 			return &coresequencer.GetNextBatchResponse{
 				Batch:     batch,
@@ -93,9 +96,10 @@ func (s *BasedSequencer) GetNextBatch(ctx context.Context, req coresequencer.Get
 	}
 
 	// Fetch forced inclusion transactions from DA
-	s.logger.Debug().Uint64("da_height", s.daHeight).Msg("fetching forced inclusion transactions from DA")
+	currentHeight := s.daHeight.Load()
+	s.logger.Debug().Uint64("da_height", currentHeight).Msg("fetching forced inclusion transactions from DA")
 
-	forcedTxsEvent, err := s.daRetriever.RetrieveForcedIncludedTxsFromDA(ctx, s.daHeight)
+	forcedTxsEvent, err := s.daRetriever.RetrieveForcedIncludedTxsFromDA(ctx, currentHeight)
 	if err != nil {
 		if errors.Is(err, block.ErrForceInclusionNotConfigured) {
 			s.logger.Error().Msg("forced inclusion not configured, returning empty batch")
@@ -110,7 +114,7 @@ func (s *BasedSequencer) GetNextBatch(ctx context.Context, req coresequencer.Get
 		// We'll retry the same height on the next call until DA produces that block
 		if errors.Is(err, coreda.ErrHeightFromFuture) {
 			s.logger.Debug().
-				Uint64("da_height", s.daHeight).
+				Uint64("da_height", currentHeight).
 				Msg("DA height from future, waiting for DA to produce block")
 			return &coresequencer.GetNextBatchResponse{
 				Batch:     &coresequencer.Batch{Transactions: nil},
@@ -119,19 +123,33 @@ func (s *BasedSequencer) GetNextBatch(ctx context.Context, req coresequencer.Get
 			}, nil
 		}
 
-		s.logger.Error().Err(err).Uint64("da_height", s.daHeight).Msg("failed to retrieve forced inclusion transactions")
+		s.logger.Error().Err(err).Uint64("da_height", currentHeight).Msg("failed to retrieve forced inclusion transactions")
 		return nil, err
 	}
 
 	// Update DA height based on the retrieved event
-	if forcedTxsEvent.EndDaHeight > s.daHeight {
-		s.daHeight = forcedTxsEvent.EndDaHeight
-	} else if forcedTxsEvent.StartDaHeight > s.daHeight {
-		s.daHeight = forcedTxsEvent.StartDaHeight
+	for {
+		current := s.daHeight.Load()
+		newHeight := current
+		if forcedTxsEvent.EndDaHeight > current {
+			newHeight = forcedTxsEvent.EndDaHeight
+		} else if forcedTxsEvent.StartDaHeight > current {
+			newHeight = forcedTxsEvent.StartDaHeight
+		}
+		if newHeight == current || s.daHeight.CompareAndSwap(current, newHeight) {
+			break
+		}
 	}
 
 	// Add transactions to queue
-	s.txQueue = append(s.txQueue, forcedTxsEvent.Txs...)
+	for {
+		oldQueuePtr := s.txQueue.Load()
+		oldQueue := *oldQueuePtr
+		newQueue := append(oldQueue, forcedTxsEvent.Txs...)
+		if s.txQueue.CompareAndSwap(oldQueuePtr, &newQueue) {
+			break
+		}
+	}
 
 	s.logger.Info().
 		Int("tx_count", len(forcedTxsEvent.Txs)).
@@ -150,31 +168,40 @@ func (s *BasedSequencer) GetNextBatch(ctx context.Context, req coresequencer.Get
 
 // createBatchFromQueue creates a batch from the transaction queue respecting MaxBytes
 func (s *BasedSequencer) createBatchFromQueue(maxBytes uint64) *coresequencer.Batch {
-	if len(s.txQueue) == 0 {
-		return &coresequencer.Batch{Transactions: nil}
-	}
-
-	var batch [][]byte
-	var totalBytes uint64
-
-	for i, tx := range s.txQueue {
-		txSize := uint64(len(tx))
-		if totalBytes+txSize > maxBytes && len(batch) > 0 {
-			// Would exceed max bytes, stop here
-			s.txQueue = s.txQueue[i:]
-			break
+	for {
+		queuePtr := s.txQueue.Load()
+		queue := *queuePtr
+		if len(queue) == 0 {
+			return &coresequencer.Batch{Transactions: nil}
 		}
 
-		batch = append(batch, tx)
-		totalBytes += txSize
+		var batch [][]byte
+		var totalBytes uint64
+		var remaining [][]byte
 
-		// If this is the last transaction, clear the queue
-		if i == len(s.txQueue)-1 {
-			s.txQueue = s.txQueue[:0]
+		for i, tx := range queue {
+			txSize := uint64(len(tx))
+			if totalBytes+txSize > maxBytes && len(batch) > 0 {
+				// Would exceed max bytes, stop here
+				remaining = queue[i:]
+				break
+			}
+
+			batch = append(batch, tx)
+			totalBytes += txSize
+
+			// If this is the last transaction, clear the queue
+			if i == len(queue)-1 {
+				remaining = nil
+			}
 		}
-	}
 
-	return &coresequencer.Batch{Transactions: batch}
+		// Try to update queue atomically
+		if s.txQueue.CompareAndSwap(queuePtr, &remaining) {
+			return &coresequencer.Batch{Transactions: batch}
+		}
+		// If CAS failed, retry with new queue state
+	}
 }
 
 // VerifyBatch verifies a batch of transactions
@@ -188,15 +215,14 @@ func (s *BasedSequencer) VerifyBatch(ctx context.Context, req coresequencer.Veri
 // SetDAHeight sets the current DA height for the sequencer
 // This should be called when the sequencer needs to sync to a specific DA height
 func (s *BasedSequencer) SetDAHeight(height uint64) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.daHeight = height
+	s.daHeight.Store(height)
+	if s.daRetriever != nil {
+		s.daRetriever.SetDAHeight(height)
+	}
 	s.logger.Debug().Uint64("da_height", height).Msg("DA height updated")
 }
 
 // GetDAHeight returns the current DA height
 func (s *BasedSequencer) GetDAHeight() uint64 {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	return s.daHeight
+	return s.daHeight.Load()
 }
