@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	goheader "github.com/celestiaorg/go-header"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/multiformats/go-multiaddr"
 	"github.com/rs/zerolog"
@@ -19,15 +20,22 @@ import (
 	"github.com/evstack/ev-node/pkg/p2p"
 	"github.com/evstack/ev-node/pkg/rpc/server"
 	"github.com/evstack/ev-node/test/mocks"
+	headerstoremocks "github.com/evstack/ev-node/test/mocks/external"
 	"github.com/evstack/ev-node/types"
 	rpc "github.com/evstack/ev-node/types/pb/evnode/v1/v1connect"
 )
 
-func setupTestServer(t *testing.T, mockStore *mocks.MockStore, mockP2P *mocks.MockP2PRPC) (*httptest.Server, *Client) {
+func setupTestServer(
+	t *testing.T,
+	mockStore *mocks.MockStore,
+	headerStore goheader.Store[*types.SignedHeader],
+	dataStore goheader.Store[*types.Data],
+	mockP2P *mocks.MockP2PRPC,
+) (*httptest.Server, *Client) {
 	mux := http.NewServeMux()
 
 	logger := zerolog.Nop()
-	storeServer := server.NewStoreServer(mockStore, logger)
+	storeServer := server.NewStoreServer(mockStore, headerStore, dataStore, logger)
 	p2pServer := server.NewP2PServer(mockP2P)
 
 	testConfig := config.DefaultConfig()
@@ -62,7 +70,7 @@ func TestClientGetState(t *testing.T) {
 
 	mockStore.On("GetState", mock.Anything).Return(state, nil)
 
-	testServer, client := setupTestServer(t, mockStore, mockP2P)
+	testServer, client := setupTestServer(t, mockStore, nil, nil, mockP2P)
 	defer testServer.Close()
 
 	resultState, err := client.GetState(context.Background())
@@ -84,7 +92,7 @@ func TestClientGetMetadata(t *testing.T) {
 
 	mockStore.On("GetMetadata", mock.Anything, key).Return(value, nil)
 
-	testServer, client := setupTestServer(t, mockStore, mockP2P)
+	testServer, client := setupTestServer(t, mockStore, nil, nil, mockP2P)
 	defer testServer.Close()
 
 	resultValue, err := client.GetMetadata(context.Background(), key)
@@ -92,6 +100,44 @@ func TestClientGetMetadata(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, value, resultValue)
 	mockStore.AssertExpectations(t)
+}
+
+func TestClientGetP2PStoreInfo(t *testing.T) {
+	mockStore := mocks.NewMockStore(t)
+	mockP2P := mocks.NewMockP2PRPC(t)
+	headerStore := headerstoremocks.NewMockStore[*types.SignedHeader](t)
+	dataStore := headerstoremocks.NewMockStore[*types.Data](t)
+
+	now := time.Now().UTC()
+
+	headerHead := testSignedHeader(10, now)
+	headerTail := testSignedHeader(5, now.Add(-time.Minute))
+	headerStore.On("Height").Return(uint64(10))
+	headerStore.On("Head", mock.Anything).Return(headerHead, nil)
+	headerStore.On("Tail", mock.Anything).Return(headerTail, nil)
+
+	dataHead := testData(8, now.Add(-30*time.Second))
+	dataTail := testData(4, now.Add(-2*time.Minute))
+	dataStore.On("Height").Return(uint64(8))
+	dataStore.On("Head", mock.Anything).Return(dataHead, nil)
+	dataStore.On("Tail", mock.Anything).Return(dataTail, nil)
+
+	testServer, client := setupTestServer(t, mockStore, headerStore, dataStore, mockP2P)
+	defer testServer.Close()
+
+	stores, err := client.GetP2PStoreInfo(context.Background())
+	require.NoError(t, err)
+	require.Len(t, stores, 2)
+
+	require.Equal(t, "Header Store", stores[0].Label)
+	require.True(t, stores[0].HeadPresent)
+	require.Equal(t, uint64(10), stores[0].Head.Height)
+	require.True(t, stores[0].TailPresent)
+	require.Equal(t, uint64(5), stores[0].Tail.Height)
+
+	require.Equal(t, "Data Store", stores[1].Label)
+	require.Equal(t, uint64(8), stores[1].Height)
+	require.Equal(t, uint64(4), stores[1].Tail.Height)
 }
 
 func TestClientGetBlockByHeight(t *testing.T) {
@@ -104,7 +150,7 @@ func TestClientGetBlockByHeight(t *testing.T) {
 
 	mockStore.On("GetBlockData", mock.Anything, height).Return(header, data, nil)
 
-	testServer, client := setupTestServer(t, mockStore, mockP2P)
+	testServer, client := setupTestServer(t, mockStore, nil, nil, mockP2P)
 	defer testServer.Close()
 
 	block, err := client.GetBlockByHeight(context.Background(), height)
@@ -124,7 +170,7 @@ func TestClientGetBlockByHash(t *testing.T) {
 
 	mockStore.On("GetBlockByHash", mock.Anything, hash).Return(header, data, nil)
 
-	testServer, client := setupTestServer(t, mockStore, mockP2P)
+	testServer, client := setupTestServer(t, mockStore, nil, nil, mockP2P)
 	defer testServer.Close()
 
 	block, err := client.GetBlockByHash(context.Background(), hash)
@@ -154,7 +200,7 @@ func TestClientGetPeerInfo(t *testing.T) {
 
 	mockP2P.On("GetPeers").Return(peers, nil)
 
-	testServer, client := setupTestServer(t, mockStore, mockP2P)
+	testServer, client := setupTestServer(t, mockStore, nil, nil, mockP2P)
 	defer testServer.Close()
 
 	resultPeers, err := client.GetPeerInfo(context.Background())
@@ -179,7 +225,7 @@ func TestClientGetNetInfo(t *testing.T) {
 
 	mockP2P.On("GetNetworkInfo").Return(netInfo, nil)
 
-	testServer, client := setupTestServer(t, mockStore, mockP2P)
+	testServer, client := setupTestServer(t, mockStore, nil, nil, mockP2P)
 	defer testServer.Close()
 
 	resultNetInfo, err := client.GetNetInfo(context.Background())
@@ -194,7 +240,7 @@ func TestClientGetNamespace(t *testing.T) {
 	mockStore := mocks.NewMockStore(t)
 	mockP2P := mocks.NewMockP2PRPC(t)
 
-	testServer, client := setupTestServer(t, mockStore, mockP2P)
+	testServer, client := setupTestServer(t, mockStore, nil, nil, mockP2P)
 	defer testServer.Close()
 
 	namespaceResp, err := client.GetNamespace(context.Background())
@@ -204,4 +250,29 @@ func TestClientGetNamespace(t *testing.T) {
 	// The namespace should be derived from the config we set in setupTestServer
 	require.NotEmpty(t, namespaceResp.HeaderNamespace)
 	require.NotEmpty(t, namespaceResp.DataNamespace)
+}
+
+func testSignedHeader(height uint64, ts time.Time) *types.SignedHeader {
+	return &types.SignedHeader{
+		Header: types.Header{
+			BaseHeader: types.BaseHeader{
+				Height:  height,
+				Time:    uint64(ts.UnixNano()),
+				ChainID: "test-chain",
+			},
+			ProposerAddress: []byte{0x01},
+			DataHash:        []byte{0x02},
+			AppHash:         []byte{0x03},
+		},
+	}
+}
+
+func testData(height uint64, ts time.Time) *types.Data {
+	return &types.Data{
+		Metadata: &types.Metadata{
+			ChainID: "test-chain",
+			Height:  height,
+			Time:    uint64(ts.UnixNano()),
+		},
+	}
 }
