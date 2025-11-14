@@ -299,13 +299,7 @@ func (s *Syncer) fetchDAUntilCaughtUp() error {
 
 		daHeight := s.GetDAHeight()
 
-		// Create a cancellable context for the DA call that inherits the syncer's lifecycle.
-		// We intentionally avoid adding another timeout layer on top of the per-request timeout
-		// inside the DA retriever so large blob batches can finish downloading.
-		ctx, cancel := context.WithCancel(s.ctx)
-
-		events, err := s.daRetriever.RetrieveFromDA(ctx, daHeight)
-		cancel()
+		events, err := s.daRetriever.RetrieveFromDA(s.ctx, daHeight)
 		if err != nil {
 			switch {
 			case errors.Is(err, coreda.ErrBlobNotFound):
