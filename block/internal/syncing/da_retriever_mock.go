@@ -213,3 +213,36 @@ func (_c *MockDARetriever_SetDAHeight_Call) RunAndReturn(run func(height uint64)
 	_c.Run(run)
 	return _c
 }
+
+// StopBackgroundFetcher provides a mock function for the type MockDARetriever
+func (_mock *MockDARetriever) StopBackgroundFetcher() {
+	_mock.Called()
+	return
+}
+
+// MockDARetriever_StopBackgroundFetcher_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'StopBackgroundFetcher'
+type MockDARetriever_StopBackgroundFetcher_Call struct {
+	*mock.Call
+}
+
+// StopBackgroundFetcher is a helper method to define mock.On call
+func (_e *MockDARetriever_Expecter) StopBackgroundFetcher() *MockDARetriever_StopBackgroundFetcher_Call {
+	return &MockDARetriever_StopBackgroundFetcher_Call{Call: _e.mock.On("StopBackgroundFetcher")}
+}
+
+func (_c *MockDARetriever_StopBackgroundFetcher_Call) Run(run func()) *MockDARetriever_StopBackgroundFetcher_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run()
+	})
+	return _c
+}
+
+func (_c *MockDARetriever_StopBackgroundFetcher_Call) Return() *MockDARetriever_StopBackgroundFetcher_Call {
+	_c.Call.Return()
+	return _c
+}
+
+func (_c *MockDARetriever_StopBackgroundFetcher_Call) RunAndReturn(run func()) *MockDARetriever_StopBackgroundFetcher_Call {
+	_c.Run(run)
+	return _c
+}

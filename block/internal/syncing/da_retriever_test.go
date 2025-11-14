@@ -427,7 +427,7 @@ func TestDARetriever_RetrieveForcedIncludedTxsFromDA_Success(t *testing.T) {
 	})).Return([][]byte{dataBin}, nil).Once()
 
 	r := NewDARetriever(mockDA, cm, cfg, gen, zerolog.Nop())
-	t.Cleanup(func() { r.Stop() })
+	t.Cleanup(func() { r.StopBackgroundFetcher() })
 
 	result, err := r.RetrieveForcedIncludedTxsFromDA(context.Background(), 5678)
 	require.NoError(t, err)
@@ -447,7 +447,7 @@ func TestDARetriever_FetchForcedIncludedTxs_NoNamespaceConfigured(t *testing.T) 
 	// Leave ForcedInclusionNamespace empty
 
 	r := NewDARetriever(nil, cm, cfg, gen, zerolog.Nop())
-	t.Cleanup(func() { r.Stop() })
+	t.Cleanup(func() { r.StopBackgroundFetcher() })
 
 	result, err := r.RetrieveForcedIncludedTxsFromDA(context.Background(), 100)
 	require.Error(t, err)
@@ -474,7 +474,7 @@ func TestDARetriever_FetchForcedIncludedTxs_NotFound(t *testing.T) {
 	})).Return(&coreda.GetIDsResult{IDs: [][]byte{}, Timestamp: time.Now()}, nil).Once()
 
 	r := NewDARetriever(mockDA, cm, cfg, gen, zerolog.Nop())
-	t.Cleanup(func() { r.Stop() })
+	t.Cleanup(func() { r.StopBackgroundFetcher() })
 
 	result, err := r.RetrieveForcedIncludedTxsFromDA(context.Background(), 9999)
 	require.NoError(t, err)
@@ -578,7 +578,7 @@ func TestDARetriever_RetrieveForcedIncludedTxsFromDA_ExceedsMaxBlobSize(t *testi
 	})).Return([][]byte{dataBin2}, nil).Once()
 
 	r := NewDARetriever(mockDA, cm, cfg, gen, zerolog.Nop())
-	t.Cleanup(func() { r.Stop() })
+	t.Cleanup(func() { r.StopBackgroundFetcher() })
 
 	result, err := r.RetrieveForcedIncludedTxsFromDA(context.Background(), 1000)
 
@@ -613,7 +613,7 @@ func TestDARetriever_RetrieveForcedIncludedTxsFromDA_NotAtEpochStart(t *testing.
 	mockDA := testmocks.NewMockDA(t)
 
 	r := NewDARetriever(mockDA, cm, cfg, gen, zerolog.Nop())
-	t.Cleanup(func() { r.Stop() })
+	t.Cleanup(func() { r.StopBackgroundFetcher() })
 
 	// With DAStartHeight=100, epoch size=10, daHeight=105 -> epoch boundaries are [100, 109]
 	// But daHeight=105 is NOT the epoch start, so it should be a no-op
@@ -645,7 +645,7 @@ func TestDARetriever_RetrieveForcedIncludedTxsFromDA_EpochStartFromFuture(t *tes
 	})).Return(nil, fmt.Errorf("%s: not yet available", coreda.ErrHeightFromFuture.Error())).Once()
 
 	r := NewDARetriever(mockDA, cm, cfg, gen, zerolog.Nop())
-	t.Cleanup(func() { r.Stop() })
+	t.Cleanup(func() { r.StopBackgroundFetcher() })
 
 	result, err := r.RetrieveForcedIncludedTxsFromDA(context.Background(), 100)
 	require.Error(t, err)
@@ -678,7 +678,7 @@ func TestDARetriever_RetrieveForcedIncludedTxsFromDA_EpochEndFromFuture(t *testi
 	})).Return(nil, fmt.Errorf("%s: not yet available", coreda.ErrHeightFromFuture.Error())).Once()
 
 	r := NewDARetriever(mockDA, cm, cfg, gen, zerolog.Nop())
-	t.Cleanup(func() { r.Stop() })
+	t.Cleanup(func() { r.StopBackgroundFetcher() })
 
 	result, err := r.RetrieveForcedIncludedTxsFromDA(context.Background(), 100)
 	require.Error(t, err)
@@ -741,7 +741,7 @@ func TestDARetriever_RetrieveForcedIncludedTxsFromDA_CompleteEpoch(t *testing.T)
 	})).Return([][]byte{dataBin2}, nil).Once()
 
 	r := NewDARetriever(mockDA, cm, cfg, gen, zerolog.Nop())
-	t.Cleanup(func() { r.Stop() })
+	t.Cleanup(func() { r.StopBackgroundFetcher() })
 
 	result, err := r.RetrieveForcedIncludedTxsFromDA(context.Background(), 2000)
 	require.NoError(t, err)

@@ -132,6 +132,7 @@ type DARetriever interface {
 	RetrieveFromDA(ctx context.Context, daHeight uint64) ([]common.DAHeightEvent, error)
 	RetrieveForcedIncludedTxsFromDA(ctx context.Context, daHeight uint64) (*common.ForcedIncludedEvent, error)
 	SetDAHeight(height uint64)
+	StopBackgroundFetcher()
 }
 
 // daRetriever handles DA retrieval operations for syncing
@@ -561,7 +562,7 @@ func (r *daRetriever) fetchEpochSync(ctx context.Context, epochStart, epochEnd u
 }
 
 // Stop stops the background fetcher
-func (r *daRetriever) Stop() {
+func (r *daRetriever) StopBackgroundFetcher() {
 	if r.fetcherCancel != nil {
 		r.fetcherCancel()
 		r.fetcherWg.Wait()
