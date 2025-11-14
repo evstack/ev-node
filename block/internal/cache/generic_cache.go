@@ -98,7 +98,7 @@ func (c *Cache[T]) removeDAIncluded(hash string) {
 	c.daIncluded.Delete(hash)
 }
 
-// deleteAll removes all items and their associated data from the cache at the given height
+// deleteAllForHeight removes all items and their associated data from the cache at the given height
 func (c *Cache[T]) deleteAllForHeight(height uint64) {
 	c.itemsByHeight.Delete(height)
 	hash, ok := c.hashByHeight.Load(height)
