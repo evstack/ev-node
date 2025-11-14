@@ -128,9 +128,9 @@ func TestDARetriever_RetrieveFromDA_Timeout(t *testing.T) {
 	assert.Contains(t, err.Error(), "context deadline exceeded")
 	assert.Len(t, events, 0)
 
-	// Verify timeout occurred approximately at expected time (with some tolerance)
-	assert.Greater(t, duration, 9*time.Second, "should timeout after approximately 10 seconds")
-	assert.Less(t, duration, 12*time.Second, "should not take much longer than timeout")
+	// Verify timeout occurred approximately at the helper timeout (with some tolerance)
+	assert.Greater(t, duration, defaultDATimeout-2*time.Second, "should timeout close to the helper timeout")
+	assert.Less(t, duration, defaultDATimeout+time.Second, "should not take much longer than timeout")
 }
 
 func TestDARetriever_RetrieveFromDA_TimeoutFast(t *testing.T) {
