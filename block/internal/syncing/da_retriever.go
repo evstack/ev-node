@@ -5,6 +5,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/rs/zerolog"
@@ -22,6 +24,18 @@ import (
 // defaultDATimeout is the default timeout for DA retrieval operations
 const defaultDATimeout = 10 * time.Second
 
+// defaultEpochLag is the default number of blocks to lag behind DA height when fetching forced inclusion txs
+const defaultEpochLag = 10
+
+// defaultMinEpochWindow is the minimum window size for epoch lag calculation
+const defaultMinEpochWindow = 5
+
+// defaultMaxEpochWindow is the maximum window size for epoch lag calculation
+const defaultMaxEpochWindow = 100
+
+// defaultFetchInterval is the interval between async fetch attempts
+const defaultFetchInterval = 2 * time.Second
+
 // pendingForcedInclusionTx represents a forced inclusion transaction that couldn't fit in the current epoch
 // and needs to be retried in future epochs.
 type pendingForcedInclusionTx struct {
@@ -29,10 +43,95 @@ type pendingForcedInclusionTx struct {
 	OriginalHeight uint64 // Original DA height where this transaction was found
 }
 
+// epochCache stores fetched forced inclusion events by epoch start height
+type epochCache struct {
+	events     atomic.Pointer[map[uint64]*common.ForcedIncludedEvent]
+	fetchTimes atomic.Pointer[[]time.Duration]
+	maxSamples int
+}
+
+func newEpochCache(maxSamples int) *epochCache {
+	c := &epochCache{
+		maxSamples: maxSamples,
+	}
+	initialEvents := make(map[uint64]*common.ForcedIncludedEvent)
+	c.events.Store(&initialEvents)
+	initialTimes := make([]time.Duration, 0, maxSamples)
+	c.fetchTimes.Store(&initialTimes)
+	return c
+}
+
+func (c *epochCache) get(epochStart uint64) (*common.ForcedIncludedEvent, bool) {
+	events := c.events.Load()
+	event, ok := (*events)[epochStart]
+	return event, ok
+}
+
+func (c *epochCache) set(epochStart uint64, event *common.ForcedIncludedEvent) {
+	for {
+		oldEventsPtr := c.events.Load()
+		oldEvents := *oldEventsPtr
+		newEvents := make(map[uint64]*common.ForcedIncludedEvent, len(oldEvents)+1)
+		for k, v := range oldEvents {
+			newEvents[k] = v
+		}
+		newEvents[epochStart] = event
+		if c.events.CompareAndSwap(oldEventsPtr, &newEvents) {
+			return
+		}
+	}
+}
+
+func (c *epochCache) recordFetchTime(duration time.Duration) {
+	for {
+		oldTimesPtr := c.fetchTimes.Load()
+		oldTimes := *oldTimesPtr
+		newTimes := make([]time.Duration, 0, c.maxSamples)
+		newTimes = append(newTimes, oldTimes...)
+		newTimes = append(newTimes, duration)
+		if len(newTimes) > c.maxSamples {
+			newTimes = newTimes[1:]
+		}
+		if c.fetchTimes.CompareAndSwap(oldTimesPtr, &newTimes) {
+			return
+		}
+	}
+}
+
+func (c *epochCache) averageFetchTime() time.Duration {
+	timesPtr := c.fetchTimes.Load()
+	times := *timesPtr
+	if len(times) == 0 {
+		return 0
+	}
+	var sum time.Duration
+	for _, d := range times {
+		sum += d
+	}
+	return sum / time.Duration(len(times))
+}
+
+func (c *epochCache) cleanup(beforeEpoch uint64) {
+	for {
+		oldEventsPtr := c.events.Load()
+		oldEvents := *oldEventsPtr
+		newEvents := make(map[uint64]*common.ForcedIncludedEvent)
+		for epoch, event := range oldEvents {
+			if epoch >= beforeEpoch {
+				newEvents[epoch] = event
+			}
+		}
+		if c.events.CompareAndSwap(oldEventsPtr, &newEvents) {
+			return
+		}
+	}
+}
+
 // DARetriever defines the interface for retrieving events from the DA layer
 type DARetriever interface {
 	RetrieveFromDA(ctx context.Context, daHeight uint64) ([]common.DAHeightEvent, error)
 	RetrieveForcedIncludedTxsFromDA(ctx context.Context, daHeight uint64) (*common.ForcedIncludedEvent, error)
+	SetDAHeight(height uint64)
 }
 
 // daRetriever handles DA retrieval operations for syncing
@@ -58,6 +157,13 @@ type daRetriever struct {
 	// Forced inclusion transactions that couldn't fit in the current epoch
 	// and need to be retried in future epochs.
 	pendingForcedInclusionTxs []pendingForcedInclusionTx
+
+	// Async forced inclusion fetching
+	epochCache      *epochCache
+	fetcherCtx      context.Context
+	fetcherCancel   context.CancelFunc
+	fetcherWg       sync.WaitGroup
+	currentDAHeight atomic.Uint64
 }
 
 // NewDARetriever creates a new DA retriever
@@ -76,7 +182,9 @@ func NewDARetriever(
 		namespaceForcedInclusionBz = coreda.NamespaceFromString(forcedInclusionNs).Bytes()
 	}
 
-	return &daRetriever{
+	ctx, cancel := context.WithCancel(context.Background())
+
+	r := &daRetriever{
 		da:                         da,
 		cache:                      cache,
 		genesis:                    genesis,
@@ -89,24 +197,167 @@ func NewDARetriever(
 		pendingHeaders:             make(map[uint64]*types.SignedHeader),
 		pendingData:                make(map[uint64]*types.Data),
 		pendingForcedInclusionTxs:  make([]pendingForcedInclusionTx, 0),
+		epochCache:                 newEpochCache(10), // Keep last 10 fetch times for averaging
+		fetcherCtx:                 ctx,
+		fetcherCancel:              cancel,
+	}
+	r.currentDAHeight.Store(genesis.DAStartHeight)
+
+	// Start background fetcher if forced inclusion is configured
+	if hasForcedInclusionNs {
+		r.fetcherWg.Add(1)
+		go r.backgroundFetcher()
+	}
+
+	return r
+}
+
+// SetDAHeight updates the current DA height for async fetching
+func (r *daRetriever) SetDAHeight(height uint64) {
+	for {
+		current := r.currentDAHeight.Load()
+		if height <= current {
+			return
+		}
+		if r.currentDAHeight.CompareAndSwap(current, height) {
+			return
+		}
 	}
 }
 
-// RetrieveFromDA retrieves blocks from the specified DA height and returns height events
-func (r *daRetriever) RetrieveFromDA(ctx context.Context, daHeight uint64) ([]common.DAHeightEvent, error) {
-	r.logger.Debug().Uint64("da_height", daHeight).Msg("retrieving from DA")
-	blobsResp, err := r.fetchBlobs(ctx, daHeight)
+// GetDAHeight returns the current DA height
+func (r *daRetriever) GetDAHeight() uint64 {
+	return r.currentDAHeight.Load()
+}
+
+// calculateAdaptiveEpochWindow calculates the epoch lag window based on average fetch time
+func (r *daRetriever) calculateAdaptiveEpochWindow() uint64 {
+	avgFetchTime := r.epochCache.averageFetchTime()
+	if avgFetchTime == 0 {
+		return defaultEpochLag
+	}
+
+	// Scale window based on fetch time: faster fetches = smaller window
+	// If fetch takes 1 second, window = 5
+	// If fetch takes 5 seconds, window = 25
+	// If fetch takes 10 seconds, window = 50
+	window := uint64(avgFetchTime.Seconds() * 5)
+
+	if window < defaultMinEpochWindow {
+		window = defaultMinEpochWindow
+	}
+	if window > defaultMaxEpochWindow {
+		window = defaultMaxEpochWindow
+	}
+
+	return window
+}
+
+// backgroundFetcher continuously fetches forced inclusion transactions ahead of time
+func (r *daRetriever) backgroundFetcher() {
+	defer r.fetcherWg.Done()
+
+	ticker := time.NewTicker(defaultFetchInterval)
+	defer ticker.Stop()
+
+	r.logger.Info().Msg("started background forced inclusion fetcher")
+
+	for {
+		select {
+		case <-r.fetcherCtx.Done():
+			r.logger.Info().Msg("stopped background forced inclusion fetcher")
+			return
+		case <-ticker.C:
+			r.fetchNextEpoch()
+		}
+	}
+}
+
+// fetchNextEpoch fetches the next epoch that should be available based on current DA height and lag
+func (r *daRetriever) fetchNextEpoch() {
+	currentHeight := r.GetDAHeight()
+	if currentHeight == 0 {
+		return
+	}
+
+	window := r.calculateAdaptiveEpochWindow()
+
+	// Calculate which epoch the sequencer will need soon (lagging behind current height)
+	// We want to prefetch this epoch before it's actually requested
+	var targetHeight uint64
+	if currentHeight > window {
+		targetHeight = currentHeight - window
+	} else {
+		targetHeight = r.genesis.DAStartHeight
+	}
+
+	// Calculate epoch boundaries for the target height
+	epochStart, epochEnd := types.CalculateEpochBoundaries(targetHeight, r.genesis.DAStartHeight, r.daEpochSize)
+
+	// Check if we already have this epoch cached
+	if _, exists := r.epochCache.get(epochStart); exists {
+		// Already cached, try to fetch the next epoch ahead
+		nextEpochStart := epochEnd + 1
+		nextEpochStart, nextEpochEnd := types.CalculateEpochBoundaries(nextEpochStart, r.genesis.DAStartHeight, r.daEpochSize)
+
+		// Only prefetch next epoch if we're not too far ahead
+		if nextEpochEnd <= currentHeight {
+			if _, exists := r.epochCache.get(nextEpochStart); !exists {
+				epochStart = nextEpochStart
+				epochEnd = nextEpochEnd
+			} else {
+				// Both current and next epoch are cached
+				return
+			}
+		} else {
+			// Current epoch cached and next epoch is too far ahead
+			return
+		}
+	}
+
+	r.logger.Debug().
+		Uint64("current_height", currentHeight).
+		Uint64("target_height", targetHeight).
+		Uint64("epoch_start", epochStart).
+		Uint64("epoch_end", epochEnd).
+		Uint64("window", window).
+		Msg("fetching epoch in background")
+
+	startTime := time.Now()
+	event, err := r.fetchEpochSync(r.fetcherCtx, epochStart, epochEnd)
+	fetchDuration := time.Since(startTime)
+
 	if err != nil {
-		return nil, err
+		// Don't log errors for heights that are from the future - this is expected
+		if !errors.Is(err, coreda.ErrHeightFromFuture) {
+			r.logger.Debug().
+				Err(err).
+				Uint64("epoch_start", epochStart).
+				Uint64("epoch_end", epochEnd).
+				Msg("failed to fetch epoch in background")
+		}
+		return
 	}
 
-	// Check for context cancellation upfront
-	if err := ctx.Err(); err != nil {
-		return nil, err
-	}
+	// Cache the result
+	r.epochCache.set(epochStart, event)
+	r.epochCache.recordFetchTime(fetchDuration)
 
-	r.logger.Debug().Int("blobs", len(blobsResp.Data)).Uint64("da_height", daHeight).Msg("retrieved blob data")
-	return r.processBlobs(ctx, blobsResp.Data, daHeight), nil
+	r.logger.Info().
+		Uint64("epoch_start", epochStart).
+		Uint64("epoch_end", epochEnd).
+		Int("tx_count", len(event.Txs)).
+		Dur("fetch_duration", fetchDuration).
+		Msg("cached epoch in background")
+
+	// Cleanup old epochs (keep last 5 epochs)
+	if epochStart >= r.genesis.DAStartHeight+r.daEpochSize*5 {
+		cleanupBefore := epochStart - r.daEpochSize*5
+		if cleanupBefore < r.genesis.DAStartHeight {
+			cleanupBefore = r.genesis.DAStartHeight
+		}
+		r.epochCache.cleanup(cleanupBefore)
+	}
 }
 
 // RetrieveForcedIncludedTxsFromDA retrieves forced inclusion transactions from the DA layer.
@@ -126,6 +377,9 @@ func (r *daRetriever) RetrieveForcedIncludedTxsFromDA(ctx context.Context, daHei
 	if !r.hasForcedInclusionNs {
 		return nil, common.ErrForceInclusionNotConfigured
 	}
+
+	// Update our tracking of DA height
+	r.SetDAHeight(daHeight)
 
 	// Calculate deterministic epoch boundaries
 	epochStart, epochEnd := types.CalculateEpochBoundaries(daHeight, r.genesis.DAStartHeight, r.daEpochSize)
@@ -162,23 +416,69 @@ func (r *daRetriever) RetrieveForcedIncludedTxsFromDA(ctx context.Context, daHei
 		return event, nil
 	}
 
-	// We're at epoch start - fetch new transactions from DA
+	// We're at epoch start - check cache first
+	if cachedEvent, exists := r.epochCache.get(epochStart); exists {
+		r.logger.Info().
+			Uint64("epoch_start", epochStart).
+			Uint64("epoch_end", epochEnd).
+			Int("tx_count", len(cachedEvent.Txs)).
+			Msg("using cached forced inclusion transactions")
 
-	currentEpochNumber := types.CalculateEpochNumber(daHeight, r.genesis.DAStartHeight, r.daEpochSize)
+		// Create a copy with pending txs prepended
+		event := &common.ForcedIncludedEvent{
+			StartDaHeight: cachedEvent.StartDaHeight,
+			EndDaHeight:   cachedEvent.EndDaHeight,
+			Txs:           make([][]byte, 0, len(cachedEvent.Txs)),
+		}
+
+		// Prepend pending transactions
+		if len(r.pendingForcedInclusionTxs) > 0 {
+			pendingTxs, indicesToRemove, _ := r.processPendingForcedInclusionTxs()
+			event.Txs = append(event.Txs, pendingTxs...)
+
+			if len(indicesToRemove) > 0 {
+				r.removePendingForcedInclusionTxs(indicesToRemove)
+			}
+		}
+
+		event.Txs = append(event.Txs, cachedEvent.Txs...)
+		return event, nil
+	}
+
+	// Not in cache - fetch synchronously (fallback)
+	r.logger.Debug().
+		Uint64("epoch_start", epochStart).
+		Uint64("epoch_end", epochEnd).
+		Msg("epoch not in cache, fetching synchronously")
+
+	startTime := time.Now()
+	event, err := r.fetchEpochSync(ctx, epochStart, epochEnd)
+	if err != nil {
+		return nil, err
+	}
+
+	// Record fetch time and cache the result
+	r.epochCache.recordFetchTime(time.Since(startTime))
+	r.epochCache.set(epochStart, event)
+
+	return event, nil
+}
+
+// fetchEpochSync fetches an epoch synchronously (used by both background fetcher and fallback)
+func (r *daRetriever) fetchEpochSync(ctx context.Context, epochStart, epochEnd uint64) (*common.ForcedIncludedEvent, error) {
+	currentEpochNumber := types.CalculateEpochNumber(epochStart, r.genesis.DAStartHeight, r.daEpochSize)
 
 	event := &common.ForcedIncludedEvent{
 		StartDaHeight: epochStart,
 	}
 
 	r.logger.Debug().
-		Uint64("da_height", daHeight).
 		Uint64("epoch_start", epochStart).
 		Uint64("epoch_end", epochEnd).
 		Uint64("epoch_num", currentEpochNumber).
-		Msg("retrieving forced included transactions from DA")
+		Msg("fetching forced included transactions from DA")
 
 	// Check if both epoch start and end are available before fetching
-	// This ensures we can retrieve the complete epoch in one go
 	epochStartResult := types.RetrieveWithHelpers(ctx, r.da, r.logger, epochStart, r.namespaceForcedInclusionBz, defaultDATimeout)
 	if epochStartResult.Code == coreda.StatusHeightFromFuture {
 		r.logger.Debug().
@@ -258,6 +558,31 @@ func (r *daRetriever) RetrieveForcedIncludedTxsFromDA(ctx context.Context, daHei
 	event.EndDaHeight = lastProcessedHeight
 
 	return event, nil
+}
+
+// Stop stops the background fetcher
+func (r *daRetriever) Stop() {
+	if r.fetcherCancel != nil {
+		r.fetcherCancel()
+		r.fetcherWg.Wait()
+	}
+}
+
+// RetrieveFromDA retrieves blocks from the specified DA height and returns height events
+func (r *daRetriever) RetrieveFromDA(ctx context.Context, daHeight uint64) ([]common.DAHeightEvent, error) {
+	r.logger.Debug().Uint64("da_height", daHeight).Msg("retrieving from DA")
+	blobsResp, err := r.fetchBlobs(ctx, daHeight)
+	if err != nil {
+		return nil, err
+	}
+
+	// Check for context cancellation upfront
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+
+	r.logger.Debug().Int("blobs", len(blobsResp.Data)).Uint64("da_height", daHeight).Msg("retrieved blob data")
+	return r.processBlobs(ctx, blobsResp.Data, daHeight), nil
 }
 
 // processForcedInclusionBlobs processes forced inclusion blobs from a single DA height.

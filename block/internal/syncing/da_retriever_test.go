@@ -427,6 +427,7 @@ func TestDARetriever_RetrieveForcedIncludedTxsFromDA_Success(t *testing.T) {
 	})).Return([][]byte{dataBin}, nil).Once()
 
 	r := NewDARetriever(mockDA, cm, cfg, gen, zerolog.Nop())
+	t.Cleanup(func() { r.Stop() })
 
 	result, err := r.RetrieveForcedIncludedTxsFromDA(context.Background(), 5678)
 	require.NoError(t, err)
@@ -446,8 +447,9 @@ func TestDARetriever_FetchForcedIncludedTxs_NoNamespaceConfigured(t *testing.T) 
 	// Leave ForcedInclusionNamespace empty
 
 	r := NewDARetriever(nil, cm, cfg, gen, zerolog.Nop())
+	t.Cleanup(func() { r.Stop() })
 
-	result, err := r.RetrieveForcedIncludedTxsFromDA(context.Background(), 1234)
+	result, err := r.RetrieveForcedIncludedTxsFromDA(context.Background(), 100)
 	require.Error(t, err)
 	require.Nil(t, result)
 }
@@ -472,6 +474,7 @@ func TestDARetriever_FetchForcedIncludedTxs_NotFound(t *testing.T) {
 	})).Return(&coreda.GetIDsResult{IDs: [][]byte{}, Timestamp: time.Now()}, nil).Once()
 
 	r := NewDARetriever(mockDA, cm, cfg, gen, zerolog.Nop())
+	t.Cleanup(func() { r.Stop() })
 
 	result, err := r.RetrieveForcedIncludedTxsFromDA(context.Background(), 9999)
 	require.NoError(t, err)
@@ -575,6 +578,7 @@ func TestDARetriever_RetrieveForcedIncludedTxsFromDA_ExceedsMaxBlobSize(t *testi
 	})).Return([][]byte{dataBin2}, nil).Once()
 
 	r := NewDARetriever(mockDA, cm, cfg, gen, zerolog.Nop())
+	t.Cleanup(func() { r.Stop() })
 
 	result, err := r.RetrieveForcedIncludedTxsFromDA(context.Background(), 1000)
 
@@ -609,6 +613,7 @@ func TestDARetriever_RetrieveForcedIncludedTxsFromDA_NotAtEpochStart(t *testing.
 	mockDA := testmocks.NewMockDA(t)
 
 	r := NewDARetriever(mockDA, cm, cfg, gen, zerolog.Nop())
+	t.Cleanup(func() { r.Stop() })
 
 	// With DAStartHeight=100, epoch size=10, daHeight=105 -> epoch boundaries are [100, 109]
 	// But daHeight=105 is NOT the epoch start, so it should be a no-op
@@ -635,17 +640,18 @@ func TestDARetriever_RetrieveForcedIncludedTxsFromDA_EpochStartFromFuture(t *tes
 	mockDA := testmocks.NewMockDA(t)
 	// With DAStartHeight=1000, epoch size=10, daHeight=1000 -> epoch boundaries are [1000, 1009]
 	// Mock that height 1000 (epoch start) is from the future
-	mockDA.EXPECT().GetIDs(mock.Anything, uint64(1000), mock.MatchedBy(func(ns []byte) bool {
+	mockDA.EXPECT().GetIDs(mock.Anything, uint64(100), mock.MatchedBy(func(ns []byte) bool {
 		return bytes.Equal(ns, namespaceForcedInclusionBz)
 	})).Return(nil, fmt.Errorf("%s: not yet available", coreda.ErrHeightFromFuture.Error())).Once()
 
 	r := NewDARetriever(mockDA, cm, cfg, gen, zerolog.Nop())
+	t.Cleanup(func() { r.Stop() })
 
-	result, err := r.RetrieveForcedIncludedTxsFromDA(context.Background(), 1000)
+	result, err := r.RetrieveForcedIncludedTxsFromDA(context.Background(), 100)
 	require.Error(t, err)
 	require.Nil(t, result)
 	require.True(t, errors.Is(err, coreda.ErrHeightFromFuture))
-	require.Contains(t, err.Error(), "epoch start height 1000 not yet available")
+	require.Contains(t, err.Error(), "epoch start height 100 not yet available")
 }
 
 func TestDARetriever_RetrieveForcedIncludedTxsFromDA_EpochEndFromFuture(t *testing.T) {
@@ -661,23 +667,24 @@ func TestDARetriever_RetrieveForcedIncludedTxsFromDA_EpochEndFromFuture(t *testi
 	namespaceForcedInclusionBz := coreda.NamespaceFromString(cfg.DA.GetForcedInclusionNamespace()).Bytes()
 
 	mockDA := testmocks.NewMockDA(t)
-	// With DAStartHeight=1000, epoch size=10, daHeight=1000 -> epoch boundaries are [1000, 1009]
-	// Epoch start is available but epoch end (1009) is from the future
-	mockDA.EXPECT().GetIDs(mock.Anything, uint64(1000), mock.MatchedBy(func(ns []byte) bool {
+	// With DAStartHeight=100, epoch size=10, daHeight=100 -> epoch boundaries are [100, 109]
+	// Mock that height 100 (epoch start) is available, but height 109 (epoch end) is from the future
+	mockDA.EXPECT().GetIDs(mock.Anything, uint64(100), mock.MatchedBy(func(ns []byte) bool {
 		return bytes.Equal(ns, namespaceForcedInclusionBz)
 	})).Return(&coreda.GetIDsResult{IDs: [][]byte{}, Timestamp: time.Now()}, nil).Once()
 
-	mockDA.EXPECT().GetIDs(mock.Anything, uint64(1009), mock.MatchedBy(func(ns []byte) bool {
+	mockDA.EXPECT().GetIDs(mock.Anything, uint64(109), mock.MatchedBy(func(ns []byte) bool {
 		return bytes.Equal(ns, namespaceForcedInclusionBz)
 	})).Return(nil, fmt.Errorf("%s: not yet available", coreda.ErrHeightFromFuture.Error())).Once()
 
 	r := NewDARetriever(mockDA, cm, cfg, gen, zerolog.Nop())
+	t.Cleanup(func() { r.Stop() })
 
-	result, err := r.RetrieveForcedIncludedTxsFromDA(context.Background(), 1000)
+	result, err := r.RetrieveForcedIncludedTxsFromDA(context.Background(), 100)
 	require.Error(t, err)
 	require.Nil(t, result)
 	require.True(t, errors.Is(err, coreda.ErrHeightFromFuture))
-	require.Contains(t, err.Error(), "epoch end height 1009 not yet available")
+	require.Contains(t, err.Error(), "epoch end height 109 not yet available")
 }
 
 func TestDARetriever_RetrieveForcedIncludedTxsFromDA_CompleteEpoch(t *testing.T) {
@@ -734,6 +741,7 @@ func TestDARetriever_RetrieveForcedIncludedTxsFromDA_CompleteEpoch(t *testing.T)
 	})).Return([][]byte{dataBin2}, nil).Once()
 
 	r := NewDARetriever(mockDA, cm, cfg, gen, zerolog.Nop())
+	t.Cleanup(func() { r.Stop() })
 
 	result, err := r.RetrieveForcedIncludedTxsFromDA(context.Background(), 2000)
 	require.NoError(t, err)

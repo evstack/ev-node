@@ -33,6 +33,10 @@ func (m *MockDARetriever) RetrieveForcedIncludedTxsFromDA(ctx context.Context, d
 	return args.Get(0).(*ForcedInclusionEvent), args.Error(1)
 }
 
+func (m *MockDARetriever) SetDAHeight(height uint64) {
+	m.Called(height)
+}
+
 func TestNewSequencer(t *testing.T) {
 	// Create a new sequencer with mock DA client
 	dummyDA := coreda.NewDummyDA(100_000_000, 10*time.Second)
@@ -44,6 +48,7 @@ func TestNewSequencer(t *testing.T) {
 	mockRetriever := new(MockDARetriever)
 	mockRetriever.On("RetrieveForcedIncludedTxsFromDA", mock.Anything, mock.Anything).
 		Return(nil, block.ErrForceInclusionNotConfigured).Maybe()
+	mockRetriever.On("SetDAHeight", mock.Anything).Return().Maybe()
 	seq, err := NewSequencer(ctx, logger, db, dummyDA, []byte("test1"), 10*time.Second, metrics, false, 1000, mockRetriever, genesis.Genesis{})
 	if err != nil {
 		t.Fatalf("Failed to create sequencer: %v", err)
@@ -80,6 +85,7 @@ func TestSequencer_SubmitBatchTxs(t *testing.T) {
 	mockRetriever := new(MockDARetriever)
 	mockRetriever.On("RetrieveForcedIncludedTxsFromDA", mock.Anything, mock.Anything).
 		Return(nil, block.ErrForceInclusionNotConfigured).Maybe()
+	mockRetriever.On("SetDAHeight", mock.Anything).Return().Maybe()
 	seq, err := NewSequencer(ctx, logger, db, dummyDA, Id, 10*time.Second, metrics, false, 1000, mockRetriever, genesis.Genesis{})
 	if err != nil {
 		t.Fatalf("Failed to create sequencer: %v", err)
@@ -136,6 +142,7 @@ func TestSequencer_SubmitBatchTxs_EmptyBatch(t *testing.T) {
 	mockRetriever := new(MockDARetriever)
 	mockRetriever.On("RetrieveForcedIncludedTxsFromDA", mock.Anything, mock.Anything).
 		Return(nil, block.ErrForceInclusionNotConfigured).Maybe()
+	mockRetriever.On("SetDAHeight", mock.Anything).Return().Maybe()
 	seq, err := NewSequencer(ctx, logger, db, dummyDA, Id, 10*time.Second, metrics, false, 1000, mockRetriever, genesis.Genesis{})
 	require.NoError(t, err, "Failed to create sequencer")
 	defer func() {
@@ -179,6 +186,7 @@ func TestSequencer_GetNextBatch_NoLastBatch(t *testing.T) {
 	mockRetriever := new(MockDARetriever)
 	mockRetriever.On("RetrieveForcedIncludedTxsFromDA", mock.Anything, mock.Anything).
 		Return(nil, block.ErrForceInclusionNotConfigured).Maybe()
+	mockRetriever.On("SetDAHeight", mock.Anything).Return().Maybe()
 	seq := &Sequencer{
 		logger:      logger,
 		queue:       NewBatchQueue(db, "batches", 0), // 0 = unlimited for test
@@ -219,6 +227,7 @@ func TestSequencer_GetNextBatch_Success(t *testing.T) {
 	mockRetriever := new(MockDARetriever)
 	mockRetriever.On("RetrieveForcedIncludedTxsFromDA", mock.Anything, mock.Anything).
 		Return(nil, block.ErrForceInclusionNotConfigured).Maybe()
+	mockRetriever.On("SetDAHeight", mock.Anything).Return().Maybe()
 	seq := &Sequencer{
 		logger:      logger,
 		queue:       NewBatchQueue(db, "batches", 0), // 0 = unlimited for test
@@ -282,6 +291,7 @@ func TestSequencer_VerifyBatch(t *testing.T) {
 		mockRetriever := new(MockDARetriever)
 		mockRetriever.On("RetrieveForcedIncludedTxsFromDA", mock.Anything, mock.Anything).
 			Return(nil, block.ErrForceInclusionNotConfigured).Maybe()
+		mockRetriever.On("SetDAHeight", mock.Anything).Return().Maybe()
 
 		seq := &Sequencer{
 			logger:      logger,
@@ -308,6 +318,7 @@ func TestSequencer_VerifyBatch(t *testing.T) {
 			mockRetriever := new(MockDARetriever)
 			mockRetriever.On("RetrieveForcedIncludedTxsFromDA", mock.Anything, mock.Anything).
 				Return(nil, block.ErrForceInclusionNotConfigured).Maybe()
+			mockRetriever.On("SetDAHeight", mock.Anything).Return().Maybe()
 			seq := &Sequencer{
 				logger:      logger,
 				Id:          Id,
@@ -333,6 +344,7 @@ func TestSequencer_VerifyBatch(t *testing.T) {
 			mockRetriever := new(MockDARetriever)
 			mockRetriever.On("RetrieveForcedIncludedTxsFromDA", mock.Anything, mock.Anything).
 				Return(nil, block.ErrForceInclusionNotConfigured).Maybe()
+			mockRetriever.On("SetDAHeight", mock.Anything).Return().Maybe()
 			seq := &Sequencer{
 				logger:      logger,
 				Id:          Id,
@@ -358,6 +370,7 @@ func TestSequencer_VerifyBatch(t *testing.T) {
 			mockRetriever := new(MockDARetriever)
 			mockRetriever.On("RetrieveForcedIncludedTxsFromDA", mock.Anything, mock.Anything).
 				Return(nil, block.ErrForceInclusionNotConfigured).Maybe()
+			mockRetriever.On("SetDAHeight", mock.Anything).Return().Maybe()
 			seq := &Sequencer{
 				logger:      logger,
 				Id:          Id,
@@ -384,6 +397,8 @@ func TestSequencer_VerifyBatch(t *testing.T) {
 			mockRetriever := new(MockDARetriever)
 			mockRetriever.On("RetrieveForcedIncludedTxsFromDA", mock.Anything, mock.Anything).
 				Return(nil, block.ErrForceInclusionNotConfigured).Maybe()
+			mockRetriever.On("SetDAHeight", mock.Anything).Return().Maybe()
+			mockRetriever.On("SetDAHeight", mock.Anything).Return().Maybe()
 			seq := &Sequencer{
 				logger:      logger,
 				Id:          Id,
@@ -444,6 +459,7 @@ func TestSequencer_GetNextBatch_BeforeDASubmission(t *testing.T) {
 	mockRetriever := new(MockDARetriever)
 	mockRetriever.On("RetrieveForcedIncludedTxsFromDA", mock.Anything, mock.Anything).
 		Return(nil, block.ErrForceInclusionNotConfigured).Maybe()
+	mockRetriever.On("SetDAHeight", mock.Anything).Return().Maybe()
 	seq, err := NewSequencer(ctx, logger, db, mockDA, []byte("test1"), 1*time.Second, metrics, false, 1000, mockRetriever, genesis.Genesis{})
 	if err != nil {
 		t.Fatalf("Failed to create sequencer: %v", err)
@@ -707,6 +723,7 @@ func TestSequencer_DAFailureAndQueueThrottling_Integration(t *testing.T) {
 	mockRetriever := new(MockDARetriever)
 	mockRetriever.On("RetrieveForcedIncludedTxsFromDA", mock.Anything, mock.Anything).
 		Return(nil, block.ErrForceInclusionNotConfigured).Maybe()
+	mockRetriever.On("SetDAHeight", mock.Anything).Return().Maybe()
 	seq, err := NewSequencer(
 		context.Background(),
 		logger,

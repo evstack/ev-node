@@ -32,6 +32,7 @@ type ForcedInclusionEvent = struct {
 // DARetriever defines the interface for retrieving forced inclusion transactions from DA
 type DARetriever interface {
 	RetrieveForcedIncludedTxsFromDA(ctx context.Context, daHeight uint64) (*ForcedInclusionEvent, error)
+	SetDAHeight(height uint64)
 }
 
 var _ coresequencer.Sequencer = (*Sequencer)(nil)
@@ -244,6 +245,9 @@ func (c *Sequencer) isValid(Id []byte) bool {
 // This should be called when the sequencer needs to sync to a specific DA height
 func (c *Sequencer) SetDAHeight(height uint64) {
 	c.daHeight.Store(height)
+	if c.daRetriever != nil {
+		c.daRetriever.SetDAHeight(height)
+	}
 	c.logger.Debug().Uint64("da_height", height).Msg("DA height updated")
 }
 

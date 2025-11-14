@@ -31,6 +31,10 @@ func (m *MockDARetriever) RetrieveForcedIncludedTxsFromDA(ctx context.Context, d
 	return args.Get(0).(*ForcedInclusionEvent), args.Error(1)
 }
 
+func (m *MockDARetriever) SetDAHeight(height uint64) {
+	m.Called(height)
+}
+
 // MockDA is a mock implementation of DA for testing
 type MockDA struct {
 	mock.Mock
@@ -104,6 +108,7 @@ func (m *MockDA) GasMultiplier(ctx context.Context) (float64, error) {
 
 func TestNewBasedSequencer(t *testing.T) {
 	mockRetriever := new(MockDARetriever)
+	mockRetriever.On("SetDAHeight", mock.Anything).Return().Maybe()
 	mockDA := new(MockDA)
 	cfg := config.DefaultConfig()
 	gen := genesis.Genesis{
@@ -114,12 +119,14 @@ func TestNewBasedSequencer(t *testing.T) {
 	seq := NewBasedSequencer(mockRetriever, mockDA, cfg, gen, zerolog.Nop())
 
 	require.NotNil(t, seq)
-	assert.Equal(t, uint64(100), seq.daHeight)
-	assert.Equal(t, 0, len(seq.txQueue))
+	assert.Equal(t, uint64(100), seq.GetDAHeight())
+	queuePtr := seq.txQueue.Load()
+	assert.Equal(t, 0, len(*queuePtr))
 }
 
 func TestBasedSequencer_SubmitBatchTxs(t *testing.T) {
 	mockRetriever := new(MockDARetriever)
+	mockRetriever.On("SetDAHeight", mock.Anything).Return().Maybe()
 	mockDA := new(MockDA)
 	cfg := config.DefaultConfig()
 	gen := genesis.Genesis{ChainID: "test-chain"}
@@ -139,11 +146,13 @@ func TestBasedSequencer_SubmitBatchTxs(t *testing.T) {
 	require.NotNil(t, resp)
 
 	// Queue should still be empty
-	assert.Equal(t, 0, len(seq.txQueue))
+	queuePtr := seq.txQueue.Load()
+	assert.Equal(t, 0, len(*queuePtr))
 }
 
 func TestBasedSequencer_GetNextBatch_WithForcedTxs(t *testing.T) {
 	mockRetriever := new(MockDARetriever)
+	mockRetriever.On("SetDAHeight", mock.Anything).Return().Maybe()
 	mockDA := new(MockDA)
 	cfg := config.DefaultConfig()
 	gen := genesis.Genesis{
@@ -183,6 +192,7 @@ func TestBasedSequencer_GetNextBatch_WithForcedTxs(t *testing.T) {
 
 func TestBasedSequencer_GetNextBatch_EmptyDA(t *testing.T) {
 	mockRetriever := new(MockDARetriever)
+	mockRetriever.On("SetDAHeight", mock.Anything).Return().Maybe()
 	mockDA := new(MockDA)
 	cfg := config.DefaultConfig()
 	gen := genesis.Genesis{
@@ -229,6 +239,7 @@ func TestBasedSequencer_GetNextBatch_NotConfigured(t *testing.T) {
 	// Mock retriever to return not configured error
 	mockRetriever.On("RetrieveForcedIncludedTxsFromDA", mock.Anything, uint64(100)).
 		Return(nil, block.ErrForceInclusionNotConfigured).Once()
+	mockRetriever.On("SetDAHeight", mock.Anything).Return().Maybe()
 
 	req := coresequencer.GetNextBatchRequest{
 		Id:       []byte("test-chain"),
@@ -258,6 +269,7 @@ func TestBasedSequencer_GetNextBatch_HeightFromFuture(t *testing.T) {
 	// Mock retriever to return height from future error
 	mockRetriever.On("RetrieveForcedIncludedTxsFromDA", mock.Anything, uint64(100)).
 		Return(nil, coreda.ErrHeightFromFuture).Once()
+	mockRetriever.On("SetDAHeight", mock.Anything).Return().Maybe()
 
 	req := coresequencer.GetNextBatchRequest{
 		Id:       []byte("test-chain"),
@@ -278,6 +290,7 @@ func TestBasedSequencer_GetNextBatch_HeightFromFuture(t *testing.T) {
 
 func TestBasedSequencer_GetNextBatch_WithMaxBytes(t *testing.T) {
 	mockRetriever := new(MockDARetriever)
+	mockRetriever.On("SetDAHeight", mock.Anything).Return().Maybe()
 	mockDA := new(MockDA)
 	cfg := config.DefaultConfig()
 	gen := genesis.Genesis{
@@ -313,7 +326,8 @@ func TestBasedSequencer_GetNextBatch_WithMaxBytes(t *testing.T) {
 	assert.Equal(t, 2, len(resp.Batch.Transactions))
 
 	// Third transaction should still be in queue
-	assert.Equal(t, 1, len(seq.txQueue))
+	queuePtr := seq.txQueue.Load()
+	assert.Equal(t, 1, len(*queuePtr))
 
 	// Next request should return the remaining transaction
 	req2 := coresequencer.GetNextBatchRequest{
@@ -326,13 +340,15 @@ func TestBasedSequencer_GetNextBatch_WithMaxBytes(t *testing.T) {
 	require.NotNil(t, resp2)
 	require.NotNil(t, resp2.Batch)
 	assert.Equal(t, 1, len(resp2.Batch.Transactions))
-	assert.Equal(t, 0, len(seq.txQueue))
+	queuePtr = seq.txQueue.Load()
+	assert.Equal(t, 0, len(*queuePtr))
 
 	mockRetriever.AssertExpectations(t)
 }
 
 func TestBasedSequencer_GetNextBatch_FromQueue(t *testing.T) {
 	mockRetriever := new(MockDARetriever)
+	mockRetriever.On("SetDAHeight", mock.Anything).Return().Maybe()
 	mockDA := new(MockDA)
 	cfg := config.DefaultConfig()
 	gen := genesis.Genesis{
@@ -343,7 +359,8 @@ func TestBasedSequencer_GetNextBatch_FromQueue(t *testing.T) {
 	seq := NewBasedSequencer(mockRetriever, mockDA, cfg, gen, zerolog.Nop())
 
 	// Pre-populate the queue
-	seq.txQueue = [][]byte{[]byte("queued_tx1"), []byte("queued_tx2")}
+	initialQueue := [][]byte{[]byte("queued_tx1"), []byte("queued_tx2")}
+	seq.txQueue.Store(&initialQueue)
 
 	req := coresequencer.GetNextBatchRequest{
 		Id:       []byte("test-chain"),
@@ -358,7 +375,8 @@ func TestBasedSequencer_GetNextBatch_FromQueue(t *testing.T) {
 	assert.Equal(t, 2, len(resp.Batch.Transactions))
 	assert.Equal(t, []byte("queued_tx1"), resp.Batch.Transactions[0])
 	assert.Equal(t, []byte("queued_tx2"), resp.Batch.Transactions[1])
-	assert.Equal(t, 0, len(seq.txQueue))
+	queuePtr := seq.txQueue.Load()
+	assert.Equal(t, 0, len(*queuePtr))
 
 	// No expectations on retriever since it shouldn't be called
 	mockRetriever.AssertExpectations(t)
@@ -366,6 +384,7 @@ func TestBasedSequencer_GetNextBatch_FromQueue(t *testing.T) {
 
 func TestBasedSequencer_VerifyBatch(t *testing.T) {
 	mockRetriever := new(MockDARetriever)
+	mockRetriever.On("SetDAHeight", mock.Anything).Return().Maybe()
 	mockDA := new(MockDA)
 	cfg := config.DefaultConfig()
 	gen := genesis.Genesis{ChainID: "test-chain"}
@@ -385,6 +404,7 @@ func TestBasedSequencer_VerifyBatch(t *testing.T) {
 
 func TestBasedSequencer_SetDAHeight(t *testing.T) {
 	mockRetriever := new(MockDARetriever)
+	mockRetriever.On("SetDAHeight", mock.Anything).Return().Maybe()
 	mockDA := new(MockDA)
 	cfg := config.DefaultConfig()
 	gen := genesis.Genesis{
@@ -402,6 +422,7 @@ func TestBasedSequencer_SetDAHeight(t *testing.T) {
 
 func TestBasedSequencer_ConcurrentAccess(t *testing.T) {
 	mockRetriever := new(MockDARetriever)
+	mockRetriever.On("SetDAHeight", mock.Anything).Return().Maybe()
 	mockDA := new(MockDA)
 	cfg := config.DefaultConfig()
 	gen := genesis.Genesis{
@@ -455,6 +476,7 @@ func TestBasedSequencer_ConcurrentAccess(t *testing.T) {
 
 func TestBasedSequencer_GetNextBatch_ErrorHandling(t *testing.T) {
 	mockRetriever := new(MockDARetriever)
+	mockRetriever.On("SetDAHeight", mock.Anything).Return().Maybe()
 	mockDA := new(MockDA)
 	cfg := config.DefaultConfig()
 	gen := genesis.Genesis{

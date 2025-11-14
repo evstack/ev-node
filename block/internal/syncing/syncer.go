@@ -145,6 +145,14 @@ func (s *Syncer) Stop() error {
 	}
 	s.cancelP2PWait(0)
 	s.wg.Wait()
+
+	// Stop the DA retriever's background fetcher
+	if s.daRetriever != nil {
+		if dr, ok := s.daRetriever.(interface{ Stop() }); ok {
+			dr.Stop()
+		}
+	}
+
 	s.logger.Info().Msg("syncer stopped")
 	return nil
 }
