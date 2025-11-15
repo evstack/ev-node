@@ -31,6 +31,7 @@ func main() {
 		rollcmd.VersionCmd,
 		rollcmd.NetInfoCmd,
 		rollcmd.StoreUnsafeCleanCmd,
+		rollcmd.StoreP2PInspectCmd,
 		rollcmd.KeysCmd(),
 	)
 

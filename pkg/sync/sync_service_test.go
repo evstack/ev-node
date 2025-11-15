@@ -114,6 +114,59 @@ func TestHeaderSyncServiceRestart(t *testing.T) {
 	cancel()
 }
 
+func TestHeaderSyncServiceInitFromHigherHeight(t *testing.T) {
+	mainKV := sync.MutexWrap(datastore.NewMapDatastore())
+	pk, _, err := crypto.GenerateEd25519Key(cryptoRand.Reader)
+	require.NoError(t, err)
+	noopSigner, err := noop.NewNoopSigner(pk)
+	require.NoError(t, err)
+	rnd := rand.New(rand.NewSource(1)) // nolint:gosec // test code only
+	mn := mocknet.New()
+
+	chainId := "test-chain-id"
+
+	proposerAddr := []byte("test")
+	genesisDoc := genesispkg.Genesis{
+		ChainID:         chainId,
+		StartTime:       time.Now(),
+		InitialHeight:   1,
+		ProposerAddress: proposerAddr,
+	}
+	conf := config.DefaultConfig()
+	conf.RootDir = t.TempDir()
+	nodeKey, err := key.LoadOrGenNodeKey(filepath.Dir(conf.ConfigPath()))
+	require.NoError(t, err)
+	logger := zerolog.Nop()
+	priv := nodeKey.PrivKey
+	h, err := mn.AddPeer(priv, nil)
+	require.NoError(t, err)
+
+	p2pClient, err := p2p.NewClientWithHost(conf.P2P, nodeKey.PrivKey, mainKV, chainId, logger, p2p.NopMetrics(), h)
+	require.NoError(t, err)
+
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	require.NoError(t, p2pClient.Start(ctx))
+	t.Cleanup(func() { _ = p2pClient.Close() })
+
+	svc, err := NewHeaderSyncService(mainKV, conf, genesisDoc, p2pClient, logger)
+	require.NoError(t, err)
+	require.NoError(t, svc.Start(ctx))
+	t.Cleanup(func() { _ = svc.Stop(context.Background()) })
+
+	headerConfig := types.HeaderConfig{
+		Height:   genesisDoc.InitialHeight + 5,
+		DataHash: bytesN(rnd, 32),
+		AppHash:  bytesN(rnd, 32),
+		Signer:   noopSigner,
+	}
+	signedHeader, err := types.GetRandomSignedHeaderCustom(&headerConfig, genesisDoc.ChainID)
+	require.NoError(t, err)
+	require.NoError(t, signedHeader.Validate())
+
+	require.NoError(t, svc.WriteToStoreAndBroadcast(ctx, signedHeader))
+}
+
 func nextHeader(t *testing.T, previousHeader *types.SignedHeader, chainID string, noopSigner signer.Signer) *types.SignedHeader {
 	newSignedHeader := &types.SignedHeader{
 		Header: types.GetRandomNextHeader(previousHeader.Header, chainID),

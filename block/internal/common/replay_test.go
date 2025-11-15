@@ -141,10 +141,12 @@ func TestReplayer_SyncToHeight_ExecutorAhead(t *testing.T) {
 
 	mockExec.On("GetLatestHeight", mock.Anything).Return(execHeight, nil)
 
-	// Execute sync - should fail
+	// Execute sync - should just log and continue without error
 	err := syncer.SyncToHeight(ctx, targetHeight)
-	require.Error(t, err)
-	require.Contains(t, err.Error(), "execution layer height (101) is ahead of target height (100)")
+	require.NoError(t, err)
+
+	// No replay should be attempted
+	mockExec.AssertNotCalled(t, "ExecuteTxs", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything)
 }
 
 func TestReplayer_SyncToHeight_NoHeightProvider(t *testing.T) {

@@ -20,7 +20,7 @@ import (
 )
 
 // defaultDATimeout is the default timeout for DA retrieval operations
-const defaultDATimeout = 10 * time.Second
+const defaultDATimeout = 30 * time.Second
 
 // DARetriever handles DA retrieval operations for syncing
 type DARetriever struct {
