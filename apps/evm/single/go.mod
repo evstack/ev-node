@@ -13,7 +13,6 @@ require (
 	github.com/evstack/ev-node/core v1.0.0-beta.4
 	github.com/evstack/ev-node/da v1.0.0-beta.5
 	github.com/evstack/ev-node/execution/evm v1.0.0-beta.3
-	github.com/evstack/ev-node/sequencers/single v1.0.0-beta.3
 	github.com/ipfs/go-datastore v0.9.0
 	github.com/spf13/cobra v1.10.1
 )
@@ -29,7 +28,7 @@ require (
 	github.com/celestiaorg/go-libp2p-messenger v0.2.2 // indirect
 	github.com/celestiaorg/go-square/v3 v3.0.2 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
-	github.com/consensys/gnark-crypto v0.18.0 // indirect
+	github.com/consensys/gnark-crypto v0.18.1 // indirect
 	github.com/crate-crypto/go-eth-kzg v1.4.0 // indirect
 	github.com/crate-crypto/go-ipa v0.0.0-20240724233137-53bbb0ceb27a // indirect
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect

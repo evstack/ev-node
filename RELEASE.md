@@ -1,6 +1,7 @@
 # ev-node Release Guide
 
 This document covers the release process for ev-node components:
+
 - **Docker Image Releases** - Automated via GitHub workflows (for deployable applications)
 - **Go Module Releases** - Manual process for library packages and dependencies
 
@@ -32,6 +33,7 @@ docker pull ghcr.io/evstack/ev-node-evm-single:v0.2.0
 Use the hierarchical tag format: `{app-path}/v{major}.{minor}.{patch}`
 
 **Examples:**
+
 - `evm/single/v0.2.0` → Releases `apps/evm/single/`
 - `testapp/v1.0.0` → Releases `apps/testapp/`
 - `grpc/single/v2.1.3` → Releases `apps/grpc/single/`
@@ -77,11 +79,6 @@ This section outlines the release process for all Go packages in the ev-node rep
                 │                       │
                 ▼                       ▼
       ┌─────────────────┐     ┌─────────────────┐
-      │sequencers/based │     │sequencers/single│
-      └────────┬────────┘     └────────┬────────┘
-               │                       │
-               ▼                       ▼
-      ┌─────────────────┐     ┌─────────────────┐
       │apps/evm/based   │     │apps/evm/single  │
       └─────────────────┘     └─────────────────┘
 ```
@@ -105,14 +102,7 @@ These packages only depend on `core` and can be released in parallel after `core
 2. **github.com/evstack/ev-node** - Path: `./` (root)
 3. **github.com/evstack/ev-node/execution/evm** - Path: `./execution/evm`
 
-#### Phase 3: Sequencer Packages
-
-These packages depend on both `core` and the main `ev-node` package:
-
-1. **github.com/evstack/ev-node/sequencers/based** - Path: `./sequencers/based`
-2. **github.com/evstack/ev-node/sequencers/single** - Path: `./sequencers/single`
-
-#### Phase 4: Application Packages
+#### Phase 3: Application Packages
 
 These packages have the most dependencies and should be released last:
 
@@ -124,6 +114,7 @@ These packages have the most dependencies and should be released last:
 **IMPORTANT**: Each module must be fully released and available on the Go proxy before updating dependencies in dependent modules.
 
 **Before Starting:**
+
 - Create a protected version branch (e.g., `v0` for major versions, `v0.3` for minor breaking changes)
 - Ensure CHANGELOG.md is up to date with all changes properly categorized
 - Remove all `replace` directives from go.mod files
@@ -173,33 +164,7 @@ go list -m github.com/evstack/ev-node@v0.3.0
 go list -m github.com/evstack/ev-node/execution/evm@v0.3.0
 ```
 
-#### Phase 3: Release Sequencers
-
-After core and ev-node are available:
-
-```bash
-# Update and release sequencers/based
-cd sequencers/based
-go get github.com/evstack/ev-node/core@v0.3.0
-go get github.com/evstack/ev-node@v0.3.0
-go mod tidy
-git tag sequencers/based/v0.3.0
-git push origin sequencers/based/v0.3.0
-
-# Update and release sequencers/single
-cd ../single
-go get github.com/evstack/ev-node/core@v0.3.0
-go get github.com/evstack/ev-node@v0.3.0
-go mod tidy
-git tag sequencers/single/v0.3.0
-git push origin sequencers/single/v0.3.0
-
-# Verify availability
-go list -m github.com/evstack/ev-node/sequencers/based@v0.3.0
-go list -m github.com/evstack/ev-node/sequencers/single@v0.3.0
-```
-
-#### Phase 4: Release Applications
+#### Phase 3: Release Applications
 
 After all dependencies are available:
 
@@ -210,7 +175,6 @@ go get github.com/evstack/ev-node/core@v0.3.0
 go get github.com/evstack/ev-node/da@v0.3.0
 go get github.com/evstack/ev-node/execution/evm@v0.3.0
 go get github.com/evstack/ev-node@v0.3.0
-go get github.com/evstack/ev-node/sequencers/based@v0.3.0
 go mod tidy
 git tag apps/evm/based/v0.3.0
 git push origin apps/evm/based/v0.3.0
@@ -221,7 +185,6 @@ go get github.com/evstack/ev-node/core@v0.3.0
 go get github.com/evstack/ev-node/da@v0.3.0
 go get github.com/evstack/ev-node/execution/evm@v0.3.0
 go get github.com/evstack/ev-node@v0.3.0
-go get github.com/evstack/ev-node/sequencers/single@v0.3.0
 go mod tidy
 git tag apps/evm/single/v0.3.0
 git push origin apps/evm/single/v0.3.0
@@ -265,11 +228,7 @@ git tag da/v0.3.0 && git push origin da/v0.3.0
 git tag v0.3.0 && git push origin v0.3.0
 git tag execution/evm/v0.3.0 && git push origin execution/evm/v0.3.0
 
-# 3. Wait, update deps, then release sequencers
-git tag sequencers/based/v0.3.0 && git push origin sequencers/based/v0.3.0
-git tag sequencers/single/v0.3.0 && git push origin sequencers/single/v0.3.0
-
-# 4. Wait, update deps, then release apps
+# 3. Wait, update deps, then release apps
 git tag apps/evm/based/v0.3.0 && git push origin apps/evm/based/v0.3.0
 git tag apps/evm/single/v0.3.0 && git push origin apps/evm/single/v0.3.0
 ```
@@ -324,25 +283,30 @@ go get github.com/evstack/ev-node/core@v0.3.0
 ### Docker Releases
 
 **"App directory does not exist"**
+
 - Ensure tag matches app path: `apps/evm/single/` → `evm/single/v0.2.0`
 - Check spelling and case sensitivity
 
 **"Dockerfile not found"**
+
 - Verify Dockerfile exists at `apps/{app-path}/Dockerfile`
 - Check filename is exactly `Dockerfile`
 
 **"Image not found" in tests**
+
 - Wait for Docker build workflow to complete
 - Check workflow dependencies in Actions tab
 
 ### Go Module Releases
 
 **Go proxy delay**
+
 - Wait 5-30 minutes for propagation
 - Use `go list -m` to verify availability
 - Check https://proxy.golang.org/
 
 **Dependency version conflicts**
+
 - Ensure all dependencies are released before dependent modules
 - Verify go.mod has correct versions
 - Remove `replace` directives
