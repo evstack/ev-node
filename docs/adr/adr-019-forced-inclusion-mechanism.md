@@ -175,25 +175,85 @@ The single sequencer is enhanced to fetch and include forced transactions:
 ```go
 type Sequencer struct {
     // ... existing fields ...
-    daRetriever DARetriever
-    genesis     genesis.Genesis
-    mu          sync.RWMutex
-    daHeight    uint64
+    fiRetriever               ForcedInclusionRetriever
+    genesis                   genesis.Genesis
+    daHeight                  atomic.Uint64
+    pendingForcedInclusionTxs []pendingForcedInclusionTx
+    queue                     *BatchQueue
+}
+
+type pendingForcedInclusionTx struct {
+    Data           []byte
+    OriginalHeight uint64
 }
 
 func (s *Sequencer) GetNextBatch(ctx context.Context, req GetNextBatchRequest) (*GetNextBatchResponse, error) {
     // 1. Fetch forced inclusion transactions from DA
-    forcedEvent, err := s.daRetriever.RetrieveForcedIncludedTxsFromDA(ctx, s.daHeight)
+    forcedEvent, err := s.fiRetriever.RetrieveForcedIncludedTxs(ctx, s.daHeight.Load())
 
-    // 2. Get batch from mempool
+    // 2. Process forced txs with size validation and pending queue
+    forcedTxs := s.processForcedInclusionTxs(forcedEvent, req.MaxBytes)
+
+    // 3. Get batch from mempool queue
     batch, err := s.queue.Next(ctx)
 
-    // 3. Prepend forced transactions to batch
-    if len(forcedEvent.Txs) > 0 {
-        batch.Transactions = append(forcedEvent.Txs, batch.Transactions...)
+    // 4. Prepend forced txs and trim batch to fit MaxBytes
+    if len(forcedTxs) > 0 {
+        forcedTxsSize := calculateSize(forcedTxs)
+        remainingBytes := req.MaxBytes - forcedTxsSize
+
+        // Trim batch transactions to fit
+        trimmedBatchTxs := trimToSize(batch.Transactions, remainingBytes)
+
+        // Return excluded txs to front of queue
+        if len(trimmedBatchTxs) < len(batch.Transactions) {
+            excludedBatch := batch.Transactions[len(trimmedBatchTxs):]
+            s.queue.Prepend(ctx, Batch{Transactions: excludedBatch})
+        }
+
+        batch.Transactions = append(forcedTxs, trimmedBatchTxs...)
     }
 
     return &GetNextBatchResponse{Batch: batch}
+}
+
+// processForcedInclusionTxs validates and queues forced txs
+func (s *Sequencer) processForcedInclusionTxs(event *ForcedInclusionEvent, maxBytes uint64) [][]byte {
+    var validatedTxs [][]byte
+    var newPendingTxs []pendingForcedInclusionTx
+    currentSize := 0
+
+    // Process pending txs from previous epochs first
+    for _, pendingTx := range s.pendingForcedInclusionTxs {
+        if !ValidateBlobSize(pendingTx.Data) {
+            continue // Skip blobs exceeding absolute DA limit
+        }
+        if WouldExceedCumulativeSize(currentSize, len(pendingTx.Data), maxBytes) {
+            newPendingTxs = append(newPendingTxs, pendingTx)
+            continue
+        }
+        validatedTxs = append(validatedTxs, pendingTx.Data)
+        currentSize += len(pendingTx.Data)
+    }
+
+    // Process new txs from this epoch
+    for _, tx := range event.Txs {
+        if !ValidateBlobSize(tx) {
+            continue // Skip blobs exceeding absolute DA limit
+        }
+        if WouldExceedCumulativeSize(currentSize, len(tx), maxBytes) {
+            newPendingTxs = append(newPendingTxs, pendingForcedInclusionTx{
+                Data:           tx,
+                OriginalHeight: event.StartDaHeight,
+            })
+            continue
+        }
+        validatedTxs = append(validatedTxs, tx)
+        currentSize += len(tx)
+    }
+
+    s.pendingForcedInclusionTxs = newPendingTxs
+    return validatedTxs
 }
 ```
 
@@ -203,7 +263,7 @@ A new sequencer implementation that ONLY retrieves transactions from DA:
 
 ```go
 type BasedSequencer struct {
-    daRetriever DARetriever
+    fiRetriever ForcedInclusionRetriever
     da          coreda.DA
     config      config.Config
     genesis     genesis.Genesis
@@ -214,11 +274,20 @@ type BasedSequencer struct {
 }
 
 func (s *BasedSequencer) GetNextBatch(ctx context.Context, req GetNextBatchRequest) (*GetNextBatchResponse, error) {
-    // Fetch forced inclusion transactions from DA
-    forcedEvent, err := s.daRetriever.RetrieveForcedIncludedTxsFromDA(ctx, s.daHeight)
 
-    // Add transactions to queue
-    s.txQueue = append(s.txQueue, forcedEvent.Txs...)
+
+    // Always fetch forced inclusion transactions from DA
+    forcedEvent, err := s.fiRetriever.RetrieveForcedIncludedTxs(ctx, s.daHeight)
+    if err != nil && !errors.Is(err, ErrHeightFromFuture) {
+        return nil, err
+    }
+
+    // Validate and add transactions to queue
+    for _, tx := range forcedEvent.Txs {
+        if ValidateBlobSize(tx) {
+            s.txQueue = append(s.txQueue, tx)
+        }
+    }
 
     // Create batch from queue respecting MaxBytes
     batch := s.createBatchFromQueue(req.MaxBytes)
@@ -304,9 +373,37 @@ if errors.Is(err, coreda.ErrHeightFromFuture) {
 }
 ```
 
+#### Size Validation and Max Bytes Handling
+
+Both sequencers enforce strict size limits to prevent DoS and ensure batches never exceed the DA layer's limits:
+
+```go
+// Size validation utilities
+const AbsoluteMaxBlobSize = 1.5 * 1024 * 1024 // 1.5MB DA layer limit
+
+// ValidateBlobSize checks against absolute DA layer limit
+func ValidateBlobSize(blob []byte) bool {
+    return uint64(len(blob)) <= AbsoluteMaxBlobSize
+}
+
+// WouldExceedCumulativeSize checks against per-batch limit
+func WouldExceedCumulativeSize(currentSize int, blobSize int, maxBytes uint64) bool {
+    return uint64(currentSize)+uint64(blobSize) > maxBytes
+}
+```
+
+**Key Behaviors**:
+
+- **Absolute validation**: Blobs exceeding 1.5MB are permanently rejected
+- **Batch size limits**: `req.MaxBytes` is NEVER exceeded in any batch
+- **Transaction preservation**:
+  - Single sequencer: Trimmed batch txs returned to queue via `Prepend()`
+  - Based sequencer: Excess txs remain in `txQueue` for next batch
+  - Forced txs that don't fit go to `pendingForcedInclusionTxs` (single) or stay in `txQueue` (based)
+
 #### Transaction Queue Management
 
-The based sequencer uses a queue to handle transactions exceeding batch size:
+The based sequencer uses a simplified queue to handle transactions:
 
 ```go
 func (s *BasedSequencer) createBatchFromQueue(maxBytes uint64) *Batch {
@@ -315,19 +412,27 @@ func (s *BasedSequencer) createBatchFromQueue(maxBytes uint64) *Batch {
 
     for i, tx := range s.txQueue {
         txSize := uint64(len(tx))
-        if totalBytes+txSize > maxBytes && len(batch) > 0 {
-            // Would exceed max bytes, stop here
+        // Always respect maxBytes, even for first transaction
+        if totalBytes+txSize > maxBytes {
+            // Would exceed max bytes, keep remaining in queue
             s.txQueue = s.txQueue[i:]
             break
         }
 
         batch = append(batch, tx)
         totalBytes += txSize
+
+        // Clear queue if we processed everything
+        if i == len(s.txQueue)-1 {
+            s.txQueue = s.txQueue[:0]
+        }
     }
 
     return &Batch{Transactions: batch}
 }
 ```
+
+**Note**: The based sequencer is simpler than the single sequencer - it doesn't need a separate pending queue because `txQueue` naturally handles all transaction buffering.
 
 ### Configuration
 
@@ -442,6 +547,10 @@ based_sequencer = true # Use based sequencer
 3. **Fetch at Epoch Start**: Prevents duplicate fetches as DA height progresses
 4. **Transaction Queue**: Buffers excess transactions across multiple blocks
 5. **Conditional Fetching**: Only when forced inclusion namespace is configured
+6. **Size Pre-validation**: Invalid blobs rejected early, before batch construction
+7. **Efficient Queue Operations**:
+   - Single sequencer: `Prepend()` reuses space before head position
+   - Based sequencer: Simple slice operations for queue management
 
 **DA Query Frequency**:
 
@@ -451,15 +560,20 @@ Every `DAEpochForcedInclusion` DA blocks
 
 1. **Malicious Proposer Detection**: Full nodes reject blocks missing forced transactions
 2. **No Timing Attacks**: Epoch boundaries are deterministic, no time-based logic
-3. **Blob Size Limits**: Enforces maximum blob size to prevent DoS
+3. **Blob Size Limits**: Two-tier size validation prevents DoS
+   - Absolute limit (1.5MB): Blobs exceeding this are permanently rejected
+   - Batch limit (`MaxBytes`): Ensures no batch exceeds DA submission limits
 4. **Graceful Degradation**: Continues operation if forced inclusion not configured
 5. **Height Validation**: Handles "height from future" errors without state corruption
+6. **Transaction Preservation**: No valid transactions are lost due to size constraints
+7. **Strict MaxBytes Enforcement**: Batches NEVER exceed `req.MaxBytes`, preventing DA layer rejections
 
 **Attack Vectors**:
 
 - **Censorship**: Mitigated by forced inclusion verification
-- **DA Spam**: Limited by DA layer's native spam protection and blob size limits
+- **DA Spam**: Limited by DA layer's native spam protection and two-tier blob size limits
 - **Block Withholding**: Full nodes can fetch and verify from DA independently
+- **Oversized Batches**: Prevented by strict size validation at multiple levels
 
 ### Testing Strategy
 
@@ -471,17 +585,32 @@ Every `DAEpochForcedInclusion` DA blocks
    - Blob size validation
    - Empty epoch handling
 
-2. **Single Sequencer**:
-   - Forced transaction prepending
+2. **Size Validation**:
+   - Individual blob size validation (absolute limit)
+   - Cumulative size checking (batch limit)
+   - Edge cases (empty blobs, exact limits, exceeding limits)
+
+3. **Single Sequencer**:
+   - Forced transaction prepending with size constraints
+   - Batch trimming when forced + batch exceeds MaxBytes
+   - Trimmed transactions returned to queue via Prepend
+   - Pending forced inclusion queue management
    - DA height tracking
    - Error handling
 
-3. **Based Sequencer**:
-   - Queue management
-   - Batch size limits
-   - DA-only operation
+4. **BatchQueue**:
+   - Prepend operation (empty queue, with items, after consuming)
+   - Multiple prepends (LIFO ordering)
+   - Space reuse before head position
 
-4. **Syncer Verification**:
+5. **Based Sequencer**:
+   - Queue management with size validation
+   - Batch size limits strictly enforced
+   - Transaction buffering across batches
+   - DA-only operation
+   - Always checking for new forced txs
+
+6. **Syncer Verification**:
    - All forced txs included (pass)
    - Missing forced txs (fail)
    - No forced txs (pass)
@@ -543,10 +672,13 @@ Accepted and Implemented
 1. **Censorship Resistance**: Users have guaranteed path to include transactions
 2. **Verifiable**: Full nodes enforce forced inclusion, detecting malicious sequencers
 3. **Simple Design**: No complex timing mechanisms or fallback modes
-4. **Based Rollup Option**: Fully DA-driven transaction ordering available
+4. **Based Rollup Option**: Fully DA-driven transaction ordering available (simplified implementation)
 5. **Optional**: Forced inclusion can be disabled for permissioned deployments
 6. **Efficient**: Epoch-based fetching minimizes DA queries
 7. **Flexible**: Configurable epoch size allows tuning latency vs efficiency
+8. **Robust Size Handling**: Two-tier size validation prevents DoS and DA rejections
+9. **Transaction Preservation**: All valid transactions are preserved in queues, nothing is lost
+10. **Strict MaxBytes Compliance**: Batches never exceed limits, preventing DA submission failures
 
 ### Negative
 

@@ -14,6 +14,7 @@ import (
 
 	"github.com/evstack/ev-node/block/internal/cache"
 	"github.com/evstack/ev-node/block/internal/common"
+	"github.com/evstack/ev-node/block/internal/da"
 	coreda "github.com/evstack/ev-node/core/da"
 	"github.com/evstack/ev-node/pkg/config"
 	"github.com/evstack/ev-node/pkg/genesis"
@@ -47,7 +48,16 @@ func TestVerifyForcedInclusionTxs_AllTransactionsIncluded(t *testing.T) {
 		Return([]byte("app0"), uint64(1024), nil).Once()
 
 	mockDA := testmocks.NewMockDA(t)
-	daRetriever := NewDARetriever(mockDA, cm, cfg, gen, zerolog.Nop())
+
+	daClient := da.NewClient(da.Config{
+		DA:                       mockDA,
+		Logger:                   zerolog.Nop(),
+		Namespace:                cfg.DA.Namespace,
+		DataNamespace:            cfg.DA.DataNamespace,
+		ForcedInclusionNamespace: cfg.DA.ForcedInclusionNamespace,
+	})
+	daRetriever := NewDARetriever(daClient, cm, gen, zerolog.Nop())
+	fiRetriever := da.NewForcedInclusionRetriever(daClient, gen, zerolog.Nop())
 
 	s := NewSyncer(
 		st,
@@ -64,6 +74,7 @@ func TestVerifyForcedInclusionTxs_AllTransactionsIncluded(t *testing.T) {
 		make(chan error, 1),
 	)
 	s.daRetriever = daRetriever
+	s.fiRetriever = fiRetriever
 
 	require.NoError(t, s.initializeState())
 	s.ctx = context.Background()
@@ -122,7 +133,16 @@ func TestVerifyForcedInclusionTxs_MissingTransactions(t *testing.T) {
 		Return([]byte("app0"), uint64(1024), nil).Once()
 
 	mockDA := testmocks.NewMockDA(t)
-	daRetriever := NewDARetriever(mockDA, cm, cfg, gen, zerolog.Nop())
+
+	daClient := da.NewClient(da.Config{
+		DA:                       mockDA,
+		Logger:                   zerolog.Nop(),
+		Namespace:                cfg.DA.Namespace,
+		DataNamespace:            cfg.DA.DataNamespace,
+		ForcedInclusionNamespace: cfg.DA.ForcedInclusionNamespace,
+	})
+	daRetriever := NewDARetriever(daClient, cm, gen, zerolog.Nop())
+	fiRetriever := da.NewForcedInclusionRetriever(daClient, gen, zerolog.Nop())
 
 	s := NewSyncer(
 		st,
@@ -139,6 +159,7 @@ func TestVerifyForcedInclusionTxs_MissingTransactions(t *testing.T) {
 		make(chan error, 1),
 	)
 	s.daRetriever = daRetriever
+	s.fiRetriever = fiRetriever
 
 	require.NoError(t, s.initializeState())
 	s.ctx = context.Background()
@@ -200,7 +221,16 @@ func TestVerifyForcedInclusionTxs_PartiallyIncluded(t *testing.T) {
 		Return([]byte("app0"), uint64(1024), nil).Once()
 
 	mockDA := testmocks.NewMockDA(t)
-	daRetriever := NewDARetriever(mockDA, cm, cfg, gen, zerolog.Nop())
+
+	daClient := da.NewClient(da.Config{
+		DA:                       mockDA,
+		Logger:                   zerolog.Nop(),
+		Namespace:                cfg.DA.Namespace,
+		DataNamespace:            cfg.DA.DataNamespace,
+		ForcedInclusionNamespace: cfg.DA.ForcedInclusionNamespace,
+	})
+	daRetriever := NewDARetriever(daClient, cm, gen, zerolog.Nop())
+	fiRetriever := da.NewForcedInclusionRetriever(daClient, gen, zerolog.Nop())
 
 	s := NewSyncer(
 		st,
@@ -217,6 +247,7 @@ func TestVerifyForcedInclusionTxs_PartiallyIncluded(t *testing.T) {
 		make(chan error, 1),
 	)
 	s.daRetriever = daRetriever
+	s.fiRetriever = fiRetriever
 
 	require.NoError(t, s.initializeState())
 	s.ctx = context.Background()
@@ -280,7 +311,16 @@ func TestVerifyForcedInclusionTxs_NoForcedTransactions(t *testing.T) {
 		Return([]byte("app0"), uint64(1024), nil).Once()
 
 	mockDA := testmocks.NewMockDA(t)
-	daRetriever := NewDARetriever(mockDA, cm, cfg, gen, zerolog.Nop())
+
+	daClient := da.NewClient(da.Config{
+		DA:                       mockDA,
+		Logger:                   zerolog.Nop(),
+		Namespace:                cfg.DA.Namespace,
+		DataNamespace:            cfg.DA.DataNamespace,
+		ForcedInclusionNamespace: cfg.DA.ForcedInclusionNamespace,
+	})
+	daRetriever := NewDARetriever(daClient, cm, gen, zerolog.Nop())
+	fiRetriever := da.NewForcedInclusionRetriever(daClient, gen, zerolog.Nop())
 
 	s := NewSyncer(
 		st,
@@ -297,6 +337,7 @@ func TestVerifyForcedInclusionTxs_NoForcedTransactions(t *testing.T) {
 		make(chan error, 1),
 	)
 	s.daRetriever = daRetriever
+	s.fiRetriever = fiRetriever
 
 	require.NoError(t, s.initializeState())
 	s.ctx = context.Background()
@@ -344,7 +385,16 @@ func TestVerifyForcedInclusionTxs_NamespaceNotConfigured(t *testing.T) {
 		Return([]byte("app0"), uint64(1024), nil).Once()
 
 	mockDA := testmocks.NewMockDA(t)
-	daRetriever := NewDARetriever(mockDA, cm, cfg, gen, zerolog.Nop())
+
+	daClient := da.NewClient(da.Config{
+		DA:            mockDA,
+		Logger:        zerolog.Nop(),
+		Namespace:     cfg.DA.Namespace,
+		DataNamespace: cfg.DA.DataNamespace,
+		// No ForcedInclusionNamespace - not configured
+	})
+	daRetriever := NewDARetriever(daClient, cm, gen, zerolog.Nop())
+	fiRetriever := da.NewForcedInclusionRetriever(daClient, gen, zerolog.Nop())
 
 	s := NewSyncer(
 		st,
@@ -361,6 +411,7 @@ func TestVerifyForcedInclusionTxs_NamespaceNotConfigured(t *testing.T) {
 		make(chan error, 1),
 	)
 	s.daRetriever = daRetriever
+	s.fiRetriever = fiRetriever
 
 	require.NoError(t, s.initializeState())
 	s.ctx = context.Background()

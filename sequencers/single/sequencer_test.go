@@ -20,17 +20,17 @@ import (
 	damocks "github.com/evstack/ev-node/test/mocks"
 )
 
-// MockDARetriever is a mock implementation of DARetriever for testing
-type MockDARetriever struct {
+// MockForcedInclusionRetriever is a mock implementation of DARetriever for testing
+type MockForcedInclusionRetriever struct {
 	mock.Mock
 }
 
-func (m *MockDARetriever) RetrieveForcedIncludedTxsFromDA(ctx context.Context, daHeight uint64) (*ForcedInclusionEvent, error) {
+func (m *MockForcedInclusionRetriever) RetrieveForcedIncludedTxs(ctx context.Context, daHeight uint64) (*block.ForcedInclusionEvent, error) {
 	args := m.Called(ctx, daHeight)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
 	}
-	return args.Get(0).(*ForcedInclusionEvent), args.Error(1)
+	return args.Get(0).(*block.ForcedInclusionEvent), args.Error(1)
 }
 
 func (m *MockDARetriever) SetDAHeight(height uint64) {
@@ -45,8 +45,8 @@ func TestNewSequencer(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
 	logger := zerolog.Nop()
-	mockRetriever := new(MockDARetriever)
-	mockRetriever.On("RetrieveForcedIncludedTxsFromDA", mock.Anything, mock.Anything).
+	mockRetriever := new(MockForcedInclusionRetriever)
+	mockRetriever.On("RetrieveForcedIncludedTxs", mock.Anything, mock.Anything).
 		Return(nil, block.ErrForceInclusionNotConfigured).Maybe()
 	mockRetriever.On("SetDAHeight", mock.Anything).Return().Maybe()
 	seq, err := NewSequencer(ctx, logger, db, dummyDA, []byte("test1"), 10*time.Second, metrics, false, 1000, mockRetriever, genesis.Genesis{})
@@ -82,8 +82,8 @@ func TestSequencer_SubmitBatchTxs(t *testing.T) {
 	defer cancel()
 	Id := []byte("test1")
 	logger := zerolog.Nop()
-	mockRetriever := new(MockDARetriever)
-	mockRetriever.On("RetrieveForcedIncludedTxsFromDA", mock.Anything, mock.Anything).
+	mockRetriever := new(MockForcedInclusionRetriever)
+	mockRetriever.On("RetrieveForcedIncludedTxs", mock.Anything, mock.Anything).
 		Return(nil, block.ErrForceInclusionNotConfigured).Maybe()
 	mockRetriever.On("SetDAHeight", mock.Anything).Return().Maybe()
 	seq, err := NewSequencer(ctx, logger, db, dummyDA, Id, 10*time.Second, metrics, false, 1000, mockRetriever, genesis.Genesis{})
@@ -139,8 +139,8 @@ func TestSequencer_SubmitBatchTxs_EmptyBatch(t *testing.T) {
 	defer cancel()
 	Id := []byte("test1")
 	logger := zerolog.Nop()
-	mockRetriever := new(MockDARetriever)
-	mockRetriever.On("RetrieveForcedIncludedTxsFromDA", mock.Anything, mock.Anything).
+	mockRetriever := new(MockForcedInclusionRetriever)
+	mockRetriever.On("RetrieveForcedIncludedTxs", mock.Anything, mock.Anything).
 		Return(nil, block.ErrForceInclusionNotConfigured).Maybe()
 	mockRetriever.On("SetDAHeight", mock.Anything).Return().Maybe()
 	seq, err := NewSequencer(ctx, logger, db, dummyDA, Id, 10*time.Second, metrics, false, 1000, mockRetriever, genesis.Genesis{})
@@ -183,15 +183,15 @@ func TestSequencer_GetNextBatch_NoLastBatch(t *testing.T) {
 	db := ds.NewMapDatastore()
 	logger := zerolog.Nop()
 
-	mockRetriever := new(MockDARetriever)
-	mockRetriever.On("RetrieveForcedIncludedTxsFromDA", mock.Anything, mock.Anything).
+	mockRetriever := new(MockForcedInclusionRetriever)
+	mockRetriever.On("RetrieveForcedIncludedTxs", mock.Anything, mock.Anything).
 		Return(nil, block.ErrForceInclusionNotConfigured).Maybe()
 	mockRetriever.On("SetDAHeight", mock.Anything).Return().Maybe()
 	seq := &Sequencer{
 		logger:      logger,
 		queue:       NewBatchQueue(db, "batches", 0), // 0 = unlimited for test
 		Id:          []byte("test"),
-		daRetriever: mockRetriever,
+		fiRetriever: mockRetriever,
 	}
 	defer func() {
 		err := db.Close()
@@ -224,15 +224,15 @@ func TestSequencer_GetNextBatch_Success(t *testing.T) {
 	db := ds.NewMapDatastore()
 	logger := zerolog.Nop()
 
-	mockRetriever := new(MockDARetriever)
-	mockRetriever.On("RetrieveForcedIncludedTxsFromDA", mock.Anything, mock.Anything).
+	mockRetriever := new(MockForcedInclusionRetriever)
+	mockRetriever.On("RetrieveForcedIncludedTxs", mock.Anything, mock.Anything).
 		Return(nil, block.ErrForceInclusionNotConfigured).Maybe()
 	mockRetriever.On("SetDAHeight", mock.Anything).Return().Maybe()
 	seq := &Sequencer{
 		logger:      logger,
 		queue:       NewBatchQueue(db, "batches", 0), // 0 = unlimited for test
 		Id:          []byte("test"),
-		daRetriever: mockRetriever,
+		fiRetriever: mockRetriever,
 	}
 	defer func() {
 		err := db.Close()
@@ -288,8 +288,8 @@ func TestSequencer_VerifyBatch(t *testing.T) {
 	t.Run("Proposer Mode", func(t *testing.T) {
 		mockDA := damocks.NewMockDA(t)
 		logger := zerolog.Nop()
-		mockRetriever := new(MockDARetriever)
-		mockRetriever.On("RetrieveForcedIncludedTxsFromDA", mock.Anything, mock.Anything).
+		mockRetriever := new(MockForcedInclusionRetriever)
+		mockRetriever.On("RetrieveForcedIncludedTxs", mock.Anything, mock.Anything).
 			Return(nil, block.ErrForceInclusionNotConfigured).Maybe()
 		mockRetriever.On("SetDAHeight", mock.Anything).Return().Maybe()
 
@@ -299,7 +299,7 @@ func TestSequencer_VerifyBatch(t *testing.T) {
 			proposer:    true,
 			da:          mockDA,
 			queue:       NewBatchQueue(db, "proposer_queue", 0), // 0 = unlimited for test
-			daRetriever: mockRetriever,
+			fiRetriever: mockRetriever,
 		}
 
 		res, err := seq.VerifyBatch(context.Background(), coresequencer.VerifyBatchRequest{Id: seq.Id, BatchData: batchData})
@@ -315,8 +315,8 @@ func TestSequencer_VerifyBatch(t *testing.T) {
 		t.Run("Valid Proofs", func(t *testing.T) {
 			mockDA := damocks.NewMockDA(t)
 			logger := zerolog.Nop()
-			mockRetriever := new(MockDARetriever)
-			mockRetriever.On("RetrieveForcedIncludedTxsFromDA", mock.Anything, mock.Anything).
+			mockRetriever := new(MockForcedInclusionRetriever)
+			mockRetriever.On("RetrieveForcedIncludedTxs", mock.Anything, mock.Anything).
 				Return(nil, block.ErrForceInclusionNotConfigured).Maybe()
 			mockRetriever.On("SetDAHeight", mock.Anything).Return().Maybe()
 			seq := &Sequencer{
@@ -325,7 +325,7 @@ func TestSequencer_VerifyBatch(t *testing.T) {
 				proposer:    false,
 				da:          mockDA,
 				queue:       NewBatchQueue(db, "valid_proofs_queue", 0),
-				daRetriever: mockRetriever,
+				fiRetriever: mockRetriever,
 			}
 
 			mockDA.On("GetProofs", context.Background(), batchData, Id).Return(proofs, nil).Once()
@@ -341,8 +341,8 @@ func TestSequencer_VerifyBatch(t *testing.T) {
 		t.Run("Invalid Proof", func(t *testing.T) {
 			mockDA := damocks.NewMockDA(t)
 			logger := zerolog.Nop()
-			mockRetriever := new(MockDARetriever)
-			mockRetriever.On("RetrieveForcedIncludedTxsFromDA", mock.Anything, mock.Anything).
+			mockRetriever := new(MockForcedInclusionRetriever)
+			mockRetriever.On("RetrieveForcedIncludedTxs", mock.Anything, mock.Anything).
 				Return(nil, block.ErrForceInclusionNotConfigured).Maybe()
 			mockRetriever.On("SetDAHeight", mock.Anything).Return().Maybe()
 			seq := &Sequencer{
@@ -351,7 +351,7 @@ func TestSequencer_VerifyBatch(t *testing.T) {
 				proposer:    false,
 				da:          mockDA,
 				queue:       NewBatchQueue(db, "invalid_proof_queue", 0),
-				daRetriever: mockRetriever,
+				fiRetriever: mockRetriever,
 			}
 
 			mockDA.On("GetProofs", context.Background(), batchData, Id).Return(proofs, nil).Once()
@@ -367,8 +367,8 @@ func TestSequencer_VerifyBatch(t *testing.T) {
 		t.Run("GetProofs Error", func(t *testing.T) {
 			mockDA := damocks.NewMockDA(t)
 			logger := zerolog.Nop()
-			mockRetriever := new(MockDARetriever)
-			mockRetriever.On("RetrieveForcedIncludedTxsFromDA", mock.Anything, mock.Anything).
+			mockRetriever := new(MockForcedInclusionRetriever)
+			mockRetriever.On("RetrieveForcedIncludedTxs", mock.Anything, mock.Anything).
 				Return(nil, block.ErrForceInclusionNotConfigured).Maybe()
 			mockRetriever.On("SetDAHeight", mock.Anything).Return().Maybe()
 			seq := &Sequencer{
@@ -377,7 +377,7 @@ func TestSequencer_VerifyBatch(t *testing.T) {
 				proposer:    false,
 				da:          mockDA,
 				queue:       NewBatchQueue(db, "getproofs_err_queue", 0),
-				daRetriever: mockRetriever,
+				fiRetriever: mockRetriever,
 			}
 			expectedErr := errors.New("get proofs failed")
 
@@ -394,8 +394,8 @@ func TestSequencer_VerifyBatch(t *testing.T) {
 		t.Run("Validate Error", func(t *testing.T) {
 			mockDA := damocks.NewMockDA(t)
 			logger := zerolog.Nop()
-			mockRetriever := new(MockDARetriever)
-			mockRetriever.On("RetrieveForcedIncludedTxsFromDA", mock.Anything, mock.Anything).
+			mockRetriever := new(MockForcedInclusionRetriever)
+			mockRetriever.On("RetrieveForcedIncludedTxs", mock.Anything, mock.Anything).
 				Return(nil, block.ErrForceInclusionNotConfigured).Maybe()
 			mockRetriever.On("SetDAHeight", mock.Anything).Return().Maybe()
 			mockRetriever.On("SetDAHeight", mock.Anything).Return().Maybe()
@@ -405,7 +405,7 @@ func TestSequencer_VerifyBatch(t *testing.T) {
 				proposer:    false,
 				da:          mockDA,
 				queue:       NewBatchQueue(db, "validate_err_queue", 0),
-				daRetriever: mockRetriever,
+				fiRetriever: mockRetriever,
 			}
 			expectedErr := errors.New("validate failed")
 
@@ -422,8 +422,8 @@ func TestSequencer_VerifyBatch(t *testing.T) {
 		t.Run("Invalid ID", func(t *testing.T) {
 			mockDA := damocks.NewMockDA(t)
 			logger := zerolog.Nop()
-			mockRetriever := new(MockDARetriever)
-			mockRetriever.On("RetrieveForcedIncludedTxsFromDA", mock.Anything, mock.Anything).
+			mockRetriever := new(MockForcedInclusionRetriever)
+			mockRetriever.On("RetrieveForcedIncludedTxs", mock.Anything, mock.Anything).
 				Return(nil, block.ErrForceInclusionNotConfigured).Maybe()
 
 			seq := &Sequencer{
@@ -432,7 +432,7 @@ func TestSequencer_VerifyBatch(t *testing.T) {
 				proposer:    false,
 				da:          mockDA,
 				queue:       NewBatchQueue(db, "invalid_queue", 0),
-				daRetriever: mockRetriever,
+				fiRetriever: mockRetriever,
 			}
 
 			invalidId := []byte("invalid")
@@ -456,8 +456,8 @@ func TestSequencer_GetNextBatch_BeforeDASubmission(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	logger := zerolog.Nop()
-	mockRetriever := new(MockDARetriever)
-	mockRetriever.On("RetrieveForcedIncludedTxsFromDA", mock.Anything, mock.Anything).
+	mockRetriever := new(MockForcedInclusionRetriever)
+	mockRetriever.On("RetrieveForcedIncludedTxs", mock.Anything, mock.Anything).
 		Return(nil, block.ErrForceInclusionNotConfigured).Maybe()
 	mockRetriever.On("SetDAHeight", mock.Anything).Return().Maybe()
 	seq, err := NewSequencer(ctx, logger, db, mockDA, []byte("test1"), 1*time.Second, metrics, false, 1000, mockRetriever, genesis.Genesis{})
@@ -504,6 +504,254 @@ func TestSequencer_GetNextBatch_BeforeDASubmission(t *testing.T) {
 
 	// Verify all mock expectations were met
 	mockDA.AssertExpectations(t)
+}
+
+func TestSequencer_GetNextBatch_ForcedInclusionAndBatch_MaxBytes(t *testing.T) {
+	ctx := context.Background()
+	logger := zerolog.New(zerolog.NewConsoleWriter())
+
+	// Create in-memory datastore
+	db := ds.NewMapDatastore()
+
+	// Create mock forced inclusion retriever with txs that are 50 bytes each
+	mockFI := &MockForcedInclusionRetriever{}
+	forcedTx1 := make([]byte, 50)
+	forcedTx2 := make([]byte, 60)
+	mockFI.On("RetrieveForcedIncludedTxs", mock.Anything, uint64(100)).Return(&block.ForcedInclusionEvent{
+		Txs:           [][]byte{forcedTx1, forcedTx2}, // Total 110 bytes
+		StartDaHeight: 100,
+		EndDaHeight:   100,
+	}, nil)
+
+	gen := genesis.Genesis{
+		ChainID:       "test-chain",
+		DAStartHeight: 100,
+	}
+
+	seq, err := NewSequencer(
+		ctx,
+		logger,
+		db,
+		nil,
+		[]byte("test-chain"),
+		1*time.Second,
+		nil,
+		true,
+		100,
+		mockFI,
+		gen,
+	)
+	require.NoError(t, err)
+
+	// Submit batch txs that are 40 bytes each
+	batchTx1 := make([]byte, 40)
+	batchTx2 := make([]byte, 40)
+	batchTx3 := make([]byte, 40)
+
+	submitReq := coresequencer.SubmitBatchTxsRequest{
+		Id: []byte("test-chain"),
+		Batch: &coresequencer.Batch{
+			Transactions: [][]byte{batchTx1, batchTx2, batchTx3}, // Total 120 bytes
+		},
+	}
+
+	_, err = seq.SubmitBatchTxs(ctx, submitReq)
+	require.NoError(t, err)
+
+	// Request batch with maxBytes = 150
+	// Forced inclusion: 110 bytes (50 + 60)
+	// Batch txs: 120 bytes (40 + 40 + 40)
+	// Combined would be 230 bytes, exceeds 150
+	// Should return forced txs + only 1 batch tx (110 + 40 = 150)
+	getReq := coresequencer.GetNextBatchRequest{
+		Id:            []byte("test-chain"),
+		MaxBytes:      150,
+		LastBatchData: nil,
+	}
+
+	resp, err := seq.GetNextBatch(ctx, getReq)
+	require.NoError(t, err)
+	require.NotNil(t, resp.Batch)
+
+	// Should have forced txs (2) + partial batch txs
+	// Total size should not exceed 150 bytes
+	totalSize := 0
+	for _, tx := range resp.Batch.Transactions {
+		totalSize += len(tx)
+	}
+	assert.LessOrEqual(t, totalSize, 150, "Total batch size should not exceed maxBytes")
+
+	// First 2 txs should be forced inclusion txs
+	assert.GreaterOrEqual(t, len(resp.Batch.Transactions), 2, "Should have at least forced inclusion txs")
+	assert.Equal(t, forcedTx1, resp.Batch.Transactions[0])
+	assert.Equal(t, forcedTx2, resp.Batch.Transactions[1])
+
+	mockFI.AssertExpectations(t)
+}
+
+func TestSequencer_GetNextBatch_ForcedInclusion_ExceedsMaxBytes(t *testing.T) {
+	ctx := context.Background()
+	logger := zerolog.New(zerolog.NewConsoleWriter())
+
+	db := ds.NewMapDatastore()
+
+	// Create forced inclusion txs where combined they exceed maxBytes
+	mockFI := &MockForcedInclusionRetriever{}
+	forcedTx1 := make([]byte, 100)
+	forcedTx2 := make([]byte, 80) // This would be deferred
+	mockFI.On("RetrieveForcedIncludedTxs", mock.Anything, uint64(100)).Return(&block.ForcedInclusionEvent{
+		Txs:           [][]byte{forcedTx1, forcedTx2},
+		StartDaHeight: 100,
+		EndDaHeight:   100,
+	}, nil).Once()
+
+	// Second call should process pending tx
+	mockFI.On("RetrieveForcedIncludedTxs", mock.Anything, uint64(100)).Return(&block.ForcedInclusionEvent{
+		Txs:           [][]byte{},
+		StartDaHeight: 100,
+		EndDaHeight:   100,
+	}, nil).Once()
+
+	gen := genesis.Genesis{
+		ChainID:       "test-chain",
+		DAStartHeight: 100,
+	}
+
+	seq, err := NewSequencer(
+		ctx,
+		logger,
+		db,
+		nil,
+		[]byte("test-chain"),
+		1*time.Second,
+		nil,
+		true,
+		100,
+		mockFI,
+		gen,
+	)
+	require.NoError(t, err)
+
+	// Request batch with maxBytes = 120
+	getReq := coresequencer.GetNextBatchRequest{
+		Id:            []byte("test-chain"),
+		MaxBytes:      120,
+		LastBatchData: nil,
+	}
+
+	// First call - should get only first forced tx (100 bytes)
+	resp, err := seq.GetNextBatch(ctx, getReq)
+	require.NoError(t, err)
+	require.NotNil(t, resp.Batch)
+	assert.Equal(t, 1, len(resp.Batch.Transactions), "Should only include first forced tx")
+	assert.Equal(t, 100, len(resp.Batch.Transactions[0]))
+
+	// Verify pending tx is stored
+	assert.Equal(t, 1, len(seq.pendingForcedInclusionTxs), "Second tx should be pending")
+
+	// Second call - should get the pending forced tx
+	resp2, err := seq.GetNextBatch(ctx, getReq)
+	require.NoError(t, err)
+	require.NotNil(t, resp2.Batch)
+	assert.Equal(t, 1, len(resp2.Batch.Transactions), "Should include pending forced tx")
+	assert.Equal(t, 80, len(resp2.Batch.Transactions[0]))
+
+	// Pending queue should now be empty
+	assert.Equal(t, 0, len(seq.pendingForcedInclusionTxs), "Pending queue should be empty")
+
+	mockFI.AssertExpectations(t)
+}
+
+func TestSequencer_GetNextBatch_AlwaysCheckPendingForcedInclusion(t *testing.T) {
+	ctx := context.Background()
+	logger := zerolog.New(zerolog.NewConsoleWriter())
+
+	db := ds.NewMapDatastore()
+
+	mockFI := &MockForcedInclusionRetriever{}
+
+	// First call returns a large forced tx that gets deferred
+	largeForcedTx := make([]byte, 150)
+	mockFI.On("RetrieveForcedIncludedTxs", mock.Anything, uint64(100)).Return(&block.ForcedInclusionEvent{
+		Txs:           [][]byte{largeForcedTx},
+		StartDaHeight: 100,
+		EndDaHeight:   100,
+	}, nil).Once()
+
+	// Second call returns no new forced txs, but pending should still be processed
+	mockFI.On("RetrieveForcedIncludedTxs", mock.Anything, uint64(100)).Return(&block.ForcedInclusionEvent{
+		Txs:           [][]byte{},
+		StartDaHeight: 100,
+		EndDaHeight:   100,
+	}, nil).Once()
+
+	gen := genesis.Genesis{
+		ChainID:       "test-chain",
+		DAStartHeight: 100,
+	}
+
+	seq, err := NewSequencer(
+		ctx,
+		logger,
+		db,
+		nil,
+		[]byte("test-chain"),
+		1*time.Second,
+		nil,
+		true,
+		100,
+		mockFI,
+		gen,
+	)
+	require.NoError(t, err)
+
+	// Submit a batch tx
+	batchTx := make([]byte, 50)
+	submitReq := coresequencer.SubmitBatchTxsRequest{
+		Id: []byte("test-chain"),
+		Batch: &coresequencer.Batch{
+			Transactions: [][]byte{batchTx},
+		},
+	}
+	_, err = seq.SubmitBatchTxs(ctx, submitReq)
+	require.NoError(t, err)
+
+	// First call with maxBytes = 100
+	// Large forced tx (150 bytes) won't fit, gets deferred
+	// Batch tx (50 bytes) should be returned
+	getReq := coresequencer.GetNextBatchRequest{
+		Id:            []byte("test-chain"),
+		MaxBytes:      100,
+		LastBatchData: nil,
+	}
+
+	resp, err := seq.GetNextBatch(ctx, getReq)
+	require.NoError(t, err)
+	require.NotNil(t, resp.Batch)
+	assert.Equal(t, 1, len(resp.Batch.Transactions), "Should have batch tx only")
+	assert.Equal(t, 50, len(resp.Batch.Transactions[0]))
+
+	// Verify pending forced tx is stored
+	assert.Equal(t, 1, len(seq.pendingForcedInclusionTxs), "Large forced tx should be pending")
+
+	// Second call with larger maxBytes = 200
+	// Should process pending forced tx first
+	getReq2 := coresequencer.GetNextBatchRequest{
+		Id:            []byte("test-chain"),
+		MaxBytes:      200,
+		LastBatchData: nil,
+	}
+
+	resp2, err := seq.GetNextBatch(ctx, getReq2)
+	require.NoError(t, err)
+	require.NotNil(t, resp2.Batch)
+	assert.Equal(t, 1, len(resp2.Batch.Transactions), "Should include pending forced tx")
+	assert.Equal(t, 150, len(resp2.Batch.Transactions[0]))
+
+	// Pending queue should now be empty
+	assert.Equal(t, 0, len(seq.pendingForcedInclusionTxs), "Pending queue should be empty")
+
+	mockFI.AssertExpectations(t)
 }
 
 // TestSequencer_RecordMetrics tests the RecordMetrics method to ensure it properly updates metrics.
@@ -598,8 +846,8 @@ func TestSequencer_QueueLimit_Integration(t *testing.T) {
 	defer db.Close()
 
 	mockDA := &damocks.MockDA{}
-	mockRetriever := new(MockDARetriever)
-	mockRetriever.On("RetrieveForcedIncludedTxsFromDA", mock.Anything, mock.Anything).
+	mockRetriever := new(MockForcedInclusionRetriever)
+	mockRetriever.On("RetrieveForcedIncludedTxs", mock.Anything, mock.Anything).
 		Return(nil, block.ErrForceInclusionNotConfigured).Maybe()
 
 	// Create a sequencer with a small queue limit for testing
@@ -611,7 +859,7 @@ func TestSequencer_QueueLimit_Integration(t *testing.T) {
 		Id:          []byte("test"),
 		queue:       NewBatchQueue(db, "test_queue", 2), // Very small limit for testing
 		proposer:    true,
-		daRetriever: mockRetriever,
+		fiRetriever: mockRetriever,
 	}
 
 	ctx := context.Background()
@@ -720,8 +968,8 @@ func TestSequencer_DAFailureAndQueueThrottling_Integration(t *testing.T) {
 	// Create sequencer with small queue size to trigger throttling quickly
 	queueSize := 3 // Small for testing
 	logger := zerolog.Nop()
-	mockRetriever := new(MockDARetriever)
-	mockRetriever.On("RetrieveForcedIncludedTxsFromDA", mock.Anything, mock.Anything).
+	mockRetriever := new(MockForcedInclusionRetriever)
+	mockRetriever.On("RetrieveForcedIncludedTxs", mock.Anything, mock.Anything).
 		Return(nil, block.ErrForceInclusionNotConfigured).Maybe()
 	mockRetriever.On("SetDAHeight", mock.Anything).Return().Maybe()
 	seq, err := NewSequencer(
@@ -734,7 +982,7 @@ func TestSequencer_DAFailureAndQueueThrottling_Integration(t *testing.T) {
 		nil,  // metrics
 		true, // proposer
 		queueSize,
-		mockRetriever,     // daRetriever
+		mockRetriever,     // fiRetriever
 		genesis.Genesis{}, // genesis
 	)
 	require.NoError(t, err)

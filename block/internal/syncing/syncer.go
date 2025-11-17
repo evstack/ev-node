@@ -20,6 +20,7 @@ import (
 
 	"github.com/evstack/ev-node/block/internal/cache"
 	"github.com/evstack/ev-node/block/internal/common"
+	"github.com/evstack/ev-node/block/internal/da"
 	"github.com/evstack/ev-node/pkg/config"
 	"github.com/evstack/ev-node/pkg/genesis"
 	"github.com/evstack/ev-node/pkg/store"
@@ -58,6 +59,7 @@ type Syncer struct {
 
 	// Handlers
 	daRetriever DARetriever
+	fiRetriever *da.ForcedInclusionRetriever
 	p2pHandler  p2pHandler
 
 	// Logging
@@ -116,7 +118,16 @@ func (s *Syncer) Start(ctx context.Context) error {
 	}
 
 	// Initialize handlers
-	s.daRetriever = NewDARetriever(s.da, s.cache, s.config, s.genesis, s.logger)
+	daClient := da.NewClient(da.Config{
+		DA:                       s.da,
+		Logger:                   s.logger,
+		DefaultTimeout:           30 * time.Second,
+		Namespace:                s.config.DA.GetNamespace(),
+		DataNamespace:            s.config.DA.GetDataNamespace(),
+		ForcedInclusionNamespace: s.config.DA.GetForcedInclusionNamespace(),
+	})
+	s.daRetriever = NewDARetriever(daClient, s.cache, s.genesis, s.logger)
+	s.fiRetriever = da.NewForcedInclusionRetriever(daClient, s.genesis, s.logger)
 	s.p2pHandler = NewP2PHandler(s.headerStore.Store(), s.dataStore.Store(), s.cache, s.genesis, s.logger)
 	if currentHeight, err := s.store.Height(s.ctx); err != nil {
 		s.logger.Error().Err(err).Msg("failed to set initial processed height for p2p handler")
@@ -685,14 +696,14 @@ func hashTx(tx []byte) string {
 
 // verifyForcedInclusionTxs verifies that all forced inclusion transactions from DA are included in the block
 func (s *Syncer) verifyForcedInclusionTxs(currentState types.State, data *types.Data) error {
-	if s.daRetriever == nil {
+	if s.fiRetriever == nil {
 		return nil
 	}
 
 	// Retrieve forced inclusion transactions from DA
-	forcedIncludedTxsEvent, err := s.daRetriever.RetrieveForcedIncludedTxsFromDA(s.ctx, currentState.DAHeight)
+	forcedIncludedTxsEvent, err := s.fiRetriever.RetrieveForcedIncludedTxs(s.ctx, currentState.DAHeight)
 	if err != nil {
-		if errors.Is(err, common.ErrForceInclusionNotConfigured) {
+		if errors.Is(err, da.ErrForceInclusionNotConfigured) {
 			s.logger.Debug().Msg("forced inclusion namespace not configured, skipping verification")
 			return nil
 		}

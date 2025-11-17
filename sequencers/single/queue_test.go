@@ -12,6 +12,7 @@ import (
 	ds "github.com/ipfs/go-datastore"
 	"github.com/ipfs/go-datastore/query"
 	dssync "github.com/ipfs/go-datastore/sync"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/proto"
 
@@ -566,4 +567,157 @@ func TestBatchQueue_QueueLimit_Concurrency(t *testing.T) {
 	}
 
 	t.Logf("Successfully added %d batches, rejected %d due to queue being full", addedCount, errorCount)
+}
+
+func TestBatchQueue_Prepend(t *testing.T) {
+	ctx := context.Background()
+	db := ds.NewMapDatastore()
+
+	t.Run("prepend to empty queue", func(t *testing.T) {
+		queue := NewBatchQueue(db, "test-prepend-empty", 0)
+		err := queue.Load(ctx)
+		require.NoError(t, err)
+
+		batch := coresequencer.Batch{
+			Transactions: [][]byte{[]byte("tx1"), []byte("tx2")},
+		}
+
+		err = queue.Prepend(ctx, batch)
+		require.NoError(t, err)
+
+		assert.Equal(t, 1, queue.Size())
+
+		// Next should return the prepended batch
+		nextBatch, err := queue.Next(ctx)
+		require.NoError(t, err)
+		assert.Equal(t, 2, len(nextBatch.Transactions))
+		assert.Equal(t, []byte("tx1"), nextBatch.Transactions[0])
+	})
+
+	t.Run("prepend to queue with items", func(t *testing.T) {
+		queue := NewBatchQueue(db, "test-prepend-with-items", 0)
+		err := queue.Load(ctx)
+		require.NoError(t, err)
+
+		// Add some batches first
+		batch1 := coresequencer.Batch{Transactions: [][]byte{[]byte("tx1")}}
+		batch2 := coresequencer.Batch{Transactions: [][]byte{[]byte("tx2")}}
+		err = queue.AddBatch(ctx, batch1)
+		require.NoError(t, err)
+		err = queue.AddBatch(ctx, batch2)
+		require.NoError(t, err)
+
+		assert.Equal(t, 2, queue.Size())
+
+		// Prepend a batch
+		prependedBatch := coresequencer.Batch{Transactions: [][]byte{[]byte("prepended")}}
+		err = queue.Prepend(ctx, prependedBatch)
+		require.NoError(t, err)
+
+		assert.Equal(t, 3, queue.Size())
+
+		// Next should return the prepended batch first
+		nextBatch, err := queue.Next(ctx)
+		require.NoError(t, err)
+		assert.Equal(t, 1, len(nextBatch.Transactions))
+		assert.Equal(t, []byte("prepended"), nextBatch.Transactions[0])
+
+		// Then the original batches
+		nextBatch, err = queue.Next(ctx)
+		require.NoError(t, err)
+		assert.Equal(t, []byte("tx1"), nextBatch.Transactions[0])
+
+		nextBatch, err = queue.Next(ctx)
+		require.NoError(t, err)
+		assert.Equal(t, []byte("tx2"), nextBatch.Transactions[0])
+	})
+
+	t.Run("prepend after consuming some items", func(t *testing.T) {
+		queue := NewBatchQueue(db, "test-prepend-after-consume", 0)
+		err := queue.Load(ctx)
+		require.NoError(t, err)
+
+		// Add batches
+		batch1 := coresequencer.Batch{Transactions: [][]byte{[]byte("tx1")}}
+		batch2 := coresequencer.Batch{Transactions: [][]byte{[]byte("tx2")}}
+		batch3 := coresequencer.Batch{Transactions: [][]byte{[]byte("tx3")}}
+		err = queue.AddBatch(ctx, batch1)
+		require.NoError(t, err)
+		err = queue.AddBatch(ctx, batch2)
+		require.NoError(t, err)
+		err = queue.AddBatch(ctx, batch3)
+		require.NoError(t, err)
+
+		assert.Equal(t, 3, queue.Size())
+
+		// Consume first batch
+		nextBatch, err := queue.Next(ctx)
+		require.NoError(t, err)
+		assert.Equal(t, []byte("tx1"), nextBatch.Transactions[0])
+		assert.Equal(t, 2, queue.Size())
+
+		// Prepend - should reuse the head position
+		prependedBatch := coresequencer.Batch{Transactions: [][]byte{[]byte("prepended")}}
+		err = queue.Prepend(ctx, prependedBatch)
+		require.NoError(t, err)
+
+		assert.Equal(t, 3, queue.Size())
+
+		// Should get prepended, then tx2, then tx3
+		nextBatch, err = queue.Next(ctx)
+		require.NoError(t, err)
+		assert.Equal(t, []byte("prepended"), nextBatch.Transactions[0])
+
+		nextBatch, err = queue.Next(ctx)
+		require.NoError(t, err)
+		assert.Equal(t, []byte("tx2"), nextBatch.Transactions[0])
+
+		nextBatch, err = queue.Next(ctx)
+		require.NoError(t, err)
+		assert.Equal(t, []byte("tx3"), nextBatch.Transactions[0])
+
+		assert.Equal(t, 0, queue.Size())
+	})
+
+	t.Run("multiple prepends", func(t *testing.T) {
+		queue := NewBatchQueue(db, "test-multiple-prepends", 0)
+		err := queue.Load(ctx)
+		require.NoError(t, err)
+
+		// Add a batch
+		batch1 := coresequencer.Batch{Transactions: [][]byte{[]byte("tx1")}}
+		err = queue.AddBatch(ctx, batch1)
+		require.NoError(t, err)
+
+		// Prepend multiple batches
+		prepend1 := coresequencer.Batch{Transactions: [][]byte{[]byte("prepend1")}}
+		prepend2 := coresequencer.Batch{Transactions: [][]byte{[]byte("prepend2")}}
+		prepend3 := coresequencer.Batch{Transactions: [][]byte{[]byte("prepend3")}}
+
+		err = queue.Prepend(ctx, prepend1)
+		require.NoError(t, err)
+		err = queue.Prepend(ctx, prepend2)
+		require.NoError(t, err)
+		err = queue.Prepend(ctx, prepend3)
+		require.NoError(t, err)
+
+		assert.Equal(t, 4, queue.Size())
+
+		// Should get in reverse order of prepending (LIFO for prepended items)
+		nextBatch, err := queue.Next(ctx)
+		require.NoError(t, err)
+		assert.Equal(t, []byte("prepend3"), nextBatch.Transactions[0])
+
+		nextBatch, err = queue.Next(ctx)
+		require.NoError(t, err)
+		assert.Equal(t, []byte("prepend2"), nextBatch.Transactions[0])
+
+		nextBatch, err = queue.Next(ctx)
+		require.NoError(t, err)
+		assert.Equal(t, []byte("prepend1"), nextBatch.Transactions[0])
+
+		nextBatch, err = queue.Next(ctx)
+		require.NoError(t, err)
+		assert.Equal(t, []byte("tx1"), nextBatch.Transactions[0])
+	})
 }

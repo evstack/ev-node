@@ -11,6 +11,7 @@ import (
 	"github.com/stretchr/testify/mock"
 
 	"github.com/evstack/ev-node/block/internal/common"
+	"github.com/evstack/ev-node/block/internal/da"
 	coreda "github.com/evstack/ev-node/core/da"
 	"github.com/evstack/ev-node/pkg/config"
 	"github.com/evstack/ev-node/pkg/genesis"
@@ -25,10 +26,17 @@ func newTestSubmitter(mockDA *mocks.MockDA, override func(*config.Config)) *DASu
 	cfg.DA.MaxSubmitAttempts = 3
 	cfg.DA.SubmitOptions = "opts"
 	cfg.DA.Namespace = "ns"
+	cfg.DA.DataNamespace = "ns-data"
 	if override != nil {
 		override(&cfg)
 	}
-	return NewDASubmitter(mockDA, cfg, genesis.Genesis{} /*options=*/, common.BlockOptions{}, common.NopMetrics(), zerolog.Nop())
+	daClient := da.NewClient(da.Config{
+		DA:            mockDA,
+		Logger:        zerolog.Nop(),
+		Namespace:     cfg.DA.Namespace,
+		DataNamespace: cfg.DA.DataNamespace,
+	})
+	return NewDASubmitter(daClient, cfg, genesis.Genesis{} /*options=*/, common.BlockOptions{}, common.NopMetrics(), zerolog.Nop())
 }
 
 // marshal helper for simple items

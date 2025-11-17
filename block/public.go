@@ -1,11 +1,11 @@
 package block
 
 import (
-	"fmt"
+	"context"
+	"time"
 
-	"github.com/evstack/ev-node/block/internal/cache"
 	"github.com/evstack/ev-node/block/internal/common"
-	"github.com/evstack/ev-node/block/internal/syncing"
+	"github.com/evstack/ev-node/block/internal/da"
 	coreda "github.com/evstack/ev-node/core/da"
 	"github.com/evstack/ev-node/pkg/config"
 	"github.com/evstack/ev-node/pkg/genesis"
@@ -33,27 +33,42 @@ func NopMetrics() *Metrics {
 	return common.NopMetrics()
 }
 
-// NewDaRetriver creates a new DA retriever instance.
-func NewDARetriever(
-	da coreda.DA,
-	config config.Config,
-	genesis genesis.Genesis,
-	logger zerolog.Logger,
-) (syncing.DARetriever, error) {
-	cacheManager, err := cache.NewCacheManager(config, logger)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create cache manager: %w", err)
-	}
-
-	return syncing.NewDARetriever(
-		da,
-		cacheManager,
-		config,
-		genesis,
-		logger,
-	), nil
-}
-
 // ErrForceInclusionNotConfigured is returned when force inclusion is not configured.
 // It is exported because sequencers needs to check for this error.
-var ErrForceInclusionNotConfigured = common.ErrForceInclusionNotConfigured
+var ErrForceInclusionNotConfigured = da.ErrForceInclusionNotConfigured
+
+// DAClient is the interface representing the DA client for public use.
+type DAClient = da.Client
+
+// ForcedInclusionEvent represents forced inclusion transactions retrieved from DA
+type ForcedInclusionEvent = da.ForcedInclusionEvent
+
+// ForcedInclusionRetriever defines the interface for retrieving forced inclusion transactions from DA
+type ForcedInclusionRetriever interface {
+	RetrieveForcedIncludedTxs(ctx context.Context, daHeight uint64) (*da.ForcedInclusionEvent, error)
+}
+
+// NewDAClient creates a new DA client with configuration
+func NewDAClient(
+	daLayer coreda.DA,
+	config config.Config,
+	logger zerolog.Logger,
+) DAClient {
+	return da.NewClient(da.Config{
+		DA:                       daLayer,
+		Logger:                   logger,
+		DefaultTimeout:           10 * time.Second,
+		Namespace:                config.DA.GetNamespace(),
+		DataNamespace:            config.DA.GetDataNamespace(),
+		ForcedInclusionNamespace: config.DA.GetForcedInclusionNamespace(),
+	})
+}
+
+// NewForcedInclusionRetriever creates a new forced inclusion retriever
+func NewForcedInclusionRetriever(
+	client DAClient,
+	genesis genesis.Genesis,
+	logger zerolog.Logger,
+) ForcedInclusionRetriever {
+	return da.NewForcedInclusionRetriever(client, genesis, logger)
+}
