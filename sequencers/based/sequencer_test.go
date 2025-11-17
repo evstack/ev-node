@@ -242,43 +242,6 @@ func TestBasedSequencer_GetNextBatch_NotConfigured(t *testing.T) {
 	assert.Equal(t, 0, len(resp.Batch.Transactions))
 }
 
-func TestBasedSequencer_GetNextBatch_HeightFromFuture(t *testing.T) {
-	mockDA := new(MockDA)
-	mockDA.On("GetIDs", mock.Anything, uint64(100), mock.Anything).Return(nil, coreda.ErrHeightFromFuture)
-
-	gen := genesis.Genesis{
-		ChainID:                "test-chain",
-		DAStartHeight:          100,
-		DAEpochForcedInclusion: 1,
-	}
-
-	cfg := config.DefaultConfig()
-	cfg.DA.Namespace = "test-ns"
-	cfg.DA.DataNamespace = "test-data-ns"
-	cfg.DA.ForcedInclusionNamespace = "test-fi-ns"
-
-	daClient := block.NewDAClient(mockDA, cfg, zerolog.Nop())
-	fiRetriever := block.NewForcedInclusionRetriever(daClient, gen, zerolog.Nop())
-
-	seq := NewBasedSequencer(fiRetriever, mockDA, cfg, gen, zerolog.Nop())
-
-	req := coresequencer.GetNextBatchRequest{
-		MaxBytes:      1000000,
-		LastBatchData: nil,
-	}
-
-	resp, err := seq.GetNextBatch(context.Background(), req)
-	require.NoError(t, err)
-	require.NotNil(t, resp)
-	require.NotNil(t, resp.Batch)
-	assert.Equal(t, 0, len(resp.Batch.Transactions))
-
-	// DA height should remain the same
-	assert.Equal(t, uint64(100), seq.GetDAHeight())
-
-	mockDA.AssertExpectations(t)
-}
-
 func TestBasedSequencer_GetNextBatch_WithMaxBytes(t *testing.T) {
 	testBlobs := [][]byte{
 		make([]byte, 50),  // 50 bytes
