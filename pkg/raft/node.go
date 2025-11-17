@@ -112,6 +112,11 @@ func (n *Node) Start(_ context.Context) error {
 		return fmt.Errorf("raft cluster requires bootstrap mode")
 	}
 
+	if future := n.raft.GetConfiguration(); future.Error() == nil && len(future.Configuration().Servers) > 0 {
+		n.logger.Info().Msg("cluster already bootstrapped, skipping")
+		return nil
+	}
+
 	n.logger.Info().Msg("Boostrap raft cluster")
 	thisNode := raft.Server{ID: raft.ServerID(n.config.NodeID), Address: raft.ServerAddress(n.config.RaftAddr)}
 	cfg := raft.Configuration{
@@ -264,6 +269,7 @@ func (f *FSM) Apply(log *raft.Log) interface{} {
 		select {
 		case f.applyCh <- RaftApplyMsg{Index: log.Index, State: &state}:
 		default:
+			// on a slow consumer, the raft cluster should not be blocked. Followers can sync from DA or other peers, too.
 			f.logger.Warn().Msg("apply channel full, dropping message")
 		}
 	}
@@ -326,6 +332,7 @@ func splitPeerAddr(peer string) (raft.Server, error) {
 	if address == "" {
 		return raft.Server{}, errors.New("address cannot be empty")
 	}
+	// we can skip address validation as they come from a local configuration
 
 	return raft.Server{
 		ID:      raft.ServerID(nodeID),

@@ -2,8 +2,7 @@ package raft
 
 import "fmt"
 
-// todo: refactor to use proto
-// RaftBlockState represents replicated block state
+// RaftBlockState represents a replicated block state
 type RaftBlockState struct {
 	Height    uint64
 	Hash      []byte

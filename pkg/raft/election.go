@@ -63,6 +63,7 @@ func (d *DynamicLeaderElection) Run(ctx context.Context) error {
 	}()
 
 	startWorker := func(name string, workerFunc func(ctx context.Context) error) {
+		workerCancel()
 		workerCtx, cancel := context.WithCancel(ctx)
 		workerCancel = cancel
 		wg.Add(1)
@@ -89,12 +90,20 @@ func (d *DynamicLeaderElection) Run(ctx context.Context) error {
 			d.logger.Info().Msg("Raft leader changed notification")
 			if becameLeader && !isCurrentlyLeader { // new leader
 				if isStarted {
+					var synced bool
 					d.logger.Info().Msg("became leader, stopping follower operations")
 					// wait for in flight raft msgs to land
-					time.Sleep(d.node.Config().SendTimeout)
-					if !runnable.IsSynced(d.node.GetState()) {
+				awaitSyncLoop:
+					for end := time.Now().Add(d.node.Config().SendTimeout); time.Now().Before(end); {
+						if synced = runnable.IsSynced(d.node.GetState()); synced {
+							break awaitSyncLoop
+						}
+						time.Sleep(d.node.Config().SendTimeout / 10)
+					}
+					if !synced && !runnable.IsSynced(d.node.GetState()) {
 						d.logger.Info().Msg("became leader, but not synced. Pass on leadership")
 						if err := d.node.leadershipTransfer(); err != nil && !errors.Is(err, raft.ErrNotLeader) {
+							// the leadership transfer can fail due to no suitable leader. Better stop than double sign on old state
 							return err
 						}
 						continue
@@ -127,10 +136,12 @@ func (d *DynamicLeaderElection) Run(ctx context.Context) error {
 		case <-ticker.C: // LeaderCh fires only when leader changes not on initial election
 			if isStarted {
 				ticker.Stop()
+				ticker.C = nil
 				continue
 			}
 			if leaderID := d.node.leaderID(); leaderID != "" && leaderID != d.node.NodeID() {
 				ticker.Stop()
+				ticker.C = nil
 				d.logger.Info().Msg("starting follower operations")
 				isStarted = true
 				var err error

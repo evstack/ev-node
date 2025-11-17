@@ -166,6 +166,7 @@ func setupFailoverState(
 
 func (f *failoverState) Run(pCtx context.Context) (multiErr error) {
 	stopService := func(stoppable func(context.Context) error, name string) {
+		// parent context is cancelled already, so we need to create a new one
 		shutdownCtx, done := context.WithTimeout(context.Background(), 3*time.Second)
 		defer done()
 
