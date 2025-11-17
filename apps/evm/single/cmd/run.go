@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 
 	"github.com/evstack/ev-node/core/da"
-	"github.com/evstack/ev-node/da/jsonrpc"
+	celestiada "github.com/evstack/ev-node/da/celestia"
 	"github.com/evstack/ev-node/node"
 	"github.com/evstack/ev-node/sequencers/single"
 
@@ -53,10 +53,12 @@ var RunCmd = &cobra.Command{
 
 		logger.Info().Str("headerNamespace", headerNamespace.HexString()).Str("dataNamespace", dataNamespace.HexString()).Msg("namespaces")
 
-		daJrpc, err := jsonrpc.NewClient(context.Background(), logger, nodeConfig.DA.Address, nodeConfig.DA.AuthToken, rollcmd.DefaultMaxBlobSize)
+		ctx := context.Background()
+		daAdapter, err := celestiada.NewAdapter(ctx, logger, nodeConfig.DA.Address, nodeConfig.DA.AuthToken, rollcmd.DefaultMaxBlobSize)
 		if err != nil {
 			return err
 		}
+		defer daAdapter.Close()
 
 		datastore, err := store.NewDefaultKVStore(nodeConfig.RootDir, nodeConfig.DBPath, "evm-single")
 		if err != nil {
@@ -79,10 +81,10 @@ var RunCmd = &cobra.Command{
 		}
 
 		sequencer, err := single.NewSequencer(
-			context.Background(),
+			ctx,
 			logger,
 			datastore,
-			&daJrpc.DA,
+			daAdapter,
 			[]byte(genesis.ChainID),
 			nodeConfig.Node.BlockTime.Duration,
 			singleMetrics,
@@ -102,7 +104,7 @@ var RunCmd = &cobra.Command{
 			return err
 		}
 
-		return rollcmd.StartNode(logger, cmd, executor, sequencer, &daJrpc.DA, p2pClient, datastore, nodeConfig, genesis, node.NodeOptions{})
+		return rollcmd.StartNode(logger, cmd, executor, sequencer, daAdapter, p2pClient, datastore, nodeConfig, genesis, node.NodeOptions{})
 	},
 }
 

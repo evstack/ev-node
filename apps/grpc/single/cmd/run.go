@@ -8,7 +8,7 @@ import (
 
 	"github.com/evstack/ev-node/core/da"
 	"github.com/evstack/ev-node/core/execution"
-	"github.com/evstack/ev-node/da/jsonrpc"
+	celestiada "github.com/evstack/ev-node/da/celestia"
 	executiongrpc "github.com/evstack/ev-node/execution/grpc"
 	"github.com/evstack/ev-node/node"
 	rollcmd "github.com/evstack/ev-node/pkg/cmd"
@@ -52,10 +52,11 @@ The execution client must implement the Evolve execution gRPC interface.`,
 		logger.Info().Str("headerNamespace", headerNamespace.HexString()).Str("dataNamespace", dataNamespace.HexString()).Msg("namespaces")
 
 		// Create DA client
-		daJrpc, err := jsonrpc.NewClient(cmd.Context(), logger, nodeConfig.DA.Address, nodeConfig.DA.AuthToken, rollcmd.DefaultMaxBlobSize)
+		daAdapter, err := celestiada.NewAdapter(cmd.Context(), logger, nodeConfig.DA.Address, nodeConfig.DA.AuthToken, rollcmd.DefaultMaxBlobSize)
 		if err != nil {
 			return err
 		}
+		defer daAdapter.Close()
 
 		// Create datastore
 		datastore, err := store.NewDefaultKVStore(nodeConfig.RootDir, nodeConfig.DBPath, "grpc-single")
@@ -84,7 +85,7 @@ The execution client must implement the Evolve execution gRPC interface.`,
 			cmd.Context(),
 			logger,
 			datastore,
-			&daJrpc.DA,
+			daAdapter,
 			[]byte(genesis.ChainID),
 			nodeConfig.Node.BlockTime.Duration,
 			singleMetrics,
@@ -107,7 +108,7 @@ The execution client must implement the Evolve execution gRPC interface.`,
 		}
 
 		// Start the node
-		return rollcmd.StartNode(logger, cmd, executor, sequencer, &daJrpc.DA, p2pClient, datastore, nodeConfig, genesis, node.NodeOptions{})
+		return rollcmd.StartNode(logger, cmd, executor, sequencer, daAdapter, p2pClient, datastore, nodeConfig, genesis, node.NodeOptions{})
 	},
 }
 
