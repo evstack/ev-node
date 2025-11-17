@@ -33,10 +33,6 @@ func (m *MockForcedInclusionRetriever) RetrieveForcedIncludedTxs(ctx context.Con
 	return args.Get(0).(*block.ForcedInclusionEvent), args.Error(1)
 }
 
-func (m *MockDARetriever) SetDAHeight(height uint64) {
-	m.Called(height)
-}
-
 func TestNewSequencer(t *testing.T) {
 	// Create a new sequencer with mock DA client
 	dummyDA := coreda.NewDummyDA(100_000_000, 10*time.Second)
@@ -48,7 +44,6 @@ func TestNewSequencer(t *testing.T) {
 	mockRetriever := new(MockForcedInclusionRetriever)
 	mockRetriever.On("RetrieveForcedIncludedTxs", mock.Anything, mock.Anything).
 		Return(nil, block.ErrForceInclusionNotConfigured).Maybe()
-	mockRetriever.On("SetDAHeight", mock.Anything).Return().Maybe()
 	seq, err := NewSequencer(ctx, logger, db, dummyDA, []byte("test1"), 10*time.Second, metrics, false, 1000, mockRetriever, genesis.Genesis{})
 	if err != nil {
 		t.Fatalf("Failed to create sequencer: %v", err)

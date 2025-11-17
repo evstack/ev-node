@@ -58,6 +58,7 @@ func TestVerifyForcedInclusionTxs_AllTransactionsIncluded(t *testing.T) {
 	})
 	daRetriever := NewDARetriever(daClient, cm, gen, zerolog.Nop())
 	fiRetriever := da.NewForcedInclusionRetriever(daClient, gen, zerolog.Nop())
+	t.Cleanup(func() { fiRetriever.StopBackgroundFetcher() })
 
 	s := NewSyncer(
 		st,
@@ -143,6 +144,7 @@ func TestVerifyForcedInclusionTxs_MissingTransactions(t *testing.T) {
 	})
 	daRetriever := NewDARetriever(daClient, cm, gen, zerolog.Nop())
 	fiRetriever := da.NewForcedInclusionRetriever(daClient, gen, zerolog.Nop())
+	t.Cleanup(func() { fiRetriever.StopBackgroundFetcher() })
 
 	s := NewSyncer(
 		st,
@@ -231,6 +233,7 @@ func TestVerifyForcedInclusionTxs_PartiallyIncluded(t *testing.T) {
 	})
 	daRetriever := NewDARetriever(daClient, cm, gen, zerolog.Nop())
 	fiRetriever := da.NewForcedInclusionRetriever(daClient, gen, zerolog.Nop())
+	t.Cleanup(func() { fiRetriever.StopBackgroundFetcher() })
 
 	s := NewSyncer(
 		st,
@@ -321,6 +324,7 @@ func TestVerifyForcedInclusionTxs_NoForcedTransactions(t *testing.T) {
 	})
 	daRetriever := NewDARetriever(daClient, cm, gen, zerolog.Nop())
 	fiRetriever := da.NewForcedInclusionRetriever(daClient, gen, zerolog.Nop())
+	t.Cleanup(func() { fiRetriever.StopBackgroundFetcher() })
 
 	s := NewSyncer(
 		st,
@@ -395,6 +399,7 @@ func TestVerifyForcedInclusionTxs_NamespaceNotConfigured(t *testing.T) {
 	})
 	daRetriever := NewDARetriever(daClient, cm, gen, zerolog.Nop())
 	fiRetriever := da.NewForcedInclusionRetriever(daClient, gen, zerolog.Nop())
+	t.Cleanup(func() { fiRetriever.StopBackgroundFetcher() })
 
 	s := NewSyncer(
 		st,

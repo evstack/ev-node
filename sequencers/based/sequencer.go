@@ -181,7 +181,8 @@ func (s *BasedSequencer) createBatchFromQueue(maxBytes uint64) *coresequencer.Ba
 
 		for i, tx := range queue {
 			txSize := uint64(len(tx))
-			if totalBytes+txSize > maxBytes && len(batch) > 0 {
+			// Always respect maxBytes, even for the first transaction
+			if totalBytes+txSize > maxBytes {
 				// Would exceed max bytes, stop here
 				remaining = queue[i:]
 				break

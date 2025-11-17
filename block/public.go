@@ -46,6 +46,9 @@ type ForcedInclusionEvent = da.ForcedInclusionEvent
 // ForcedInclusionRetriever defines the interface for retrieving forced inclusion transactions from DA
 type ForcedInclusionRetriever interface {
 	RetrieveForcedIncludedTxs(ctx context.Context, daHeight uint64) (*da.ForcedInclusionEvent, error)
+	StopBackgroundFetcher()
+	SetDAHeight(height uint64)
+	GetDAHeight() uint64
 }
 
 // NewDAClient creates a new DA client with configuration
