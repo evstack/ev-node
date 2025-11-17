@@ -5,90 +5,51 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"time"
 
 	"github.com/rs/zerolog"
 	"google.golang.org/protobuf/proto"
 
 	"github.com/evstack/ev-node/block/internal/cache"
 	"github.com/evstack/ev-node/block/internal/common"
+	"github.com/evstack/ev-node/block/internal/da"
 	coreda "github.com/evstack/ev-node/core/da"
-	"github.com/evstack/ev-node/pkg/config"
 	"github.com/evstack/ev-node/pkg/genesis"
 	"github.com/evstack/ev-node/types"
 	pb "github.com/evstack/ev-node/types/pb/evnode/v1"
 )
 
-// defaultDATimeout is the default timeout for DA retrieval operations
-const defaultDATimeout = 10 * time.Second
-
-// pendingForcedInclusionTx represents a forced inclusion transaction that couldn't fit in the current epoch
-// and needs to be retried in future epochs.
-type pendingForcedInclusionTx struct {
-	Data           []byte // The transaction data
-	OriginalHeight uint64 // Original DA height where this transaction was found
-}
-
 // DARetriever defines the interface for retrieving events from the DA layer
 type DARetriever interface {
 	RetrieveFromDA(ctx context.Context, daHeight uint64) ([]common.DAHeightEvent, error)
-	RetrieveForcedIncludedTxsFromDA(ctx context.Context, daHeight uint64) (*common.ForcedIncludedEvent, error)
 }
 
 // daRetriever handles DA retrieval operations for syncing
 type daRetriever struct {
-	da      coreda.DA
+	client  da.Client
 	cache   cache.CacheManager
 	genesis genesis.Genesis
 	logger  zerolog.Logger
-
-	// calculate namespaces bytes once and reuse them
-	namespaceBz                []byte
-	namespaceDataBz            []byte
-	namespaceForcedInclusionBz []byte
-
-	hasForcedInclusionNs bool
-	daEpochSize          uint64
 
 	// transient cache, only full event need to be passed to the syncer
 	// on restart, will be refetch as da height is updated by syncer
 	pendingHeaders map[uint64]*types.SignedHeader
 	pendingData    map[uint64]*types.Data
-
-	// Forced inclusion transactions that couldn't fit in the current epoch
-	// and need to be retried in future epochs.
-	pendingForcedInclusionTxs []pendingForcedInclusionTx
 }
 
 // NewDARetriever creates a new DA retriever
 func NewDARetriever(
-	da coreda.DA,
+	client da.Client,
 	cache cache.CacheManager,
-	config config.Config,
 	genesis genesis.Genesis,
 	logger zerolog.Logger,
 ) *daRetriever {
-	forcedInclusionNs := config.DA.GetForcedInclusionNamespace()
-	hasForcedInclusionNs := forcedInclusionNs != ""
-
-	var namespaceForcedInclusionBz []byte
-	if hasForcedInclusionNs {
-		namespaceForcedInclusionBz = coreda.NamespaceFromString(forcedInclusionNs).Bytes()
-	}
-
 	return &daRetriever{
-		da:                         da,
-		cache:                      cache,
-		genesis:                    genesis,
-		logger:                     logger.With().Str("component", "da_retriever").Logger(),
-		namespaceBz:                coreda.NamespaceFromString(config.DA.GetNamespace()).Bytes(),
-		namespaceDataBz:            coreda.NamespaceFromString(config.DA.GetDataNamespace()).Bytes(),
-		namespaceForcedInclusionBz: namespaceForcedInclusionBz,
-		hasForcedInclusionNs:       hasForcedInclusionNs,
-		daEpochSize:                genesis.DAEpochForcedInclusion,
-		pendingHeaders:             make(map[uint64]*types.SignedHeader),
-		pendingData:                make(map[uint64]*types.Data),
-		pendingForcedInclusionTxs:  make([]pendingForcedInclusionTx, 0),
+		client:         client,
+		cache:          cache,
+		genesis:        genesis,
+		logger:         logger.With().Str("component", "da_retriever").Logger(),
+		pendingHeaders: make(map[uint64]*types.SignedHeader),
+		pendingData:    make(map[uint64]*types.Data),
 	}
 }
 
@@ -109,234 +70,17 @@ func (r *daRetriever) RetrieveFromDA(ctx context.Context, daHeight uint64) ([]co
 	return r.processBlobs(ctx, blobsResp.Data, daHeight), nil
 }
 
-// RetrieveForcedIncludedTxsFromDA retrieves forced inclusion transactions from the DA layer.
-//
-// Behavior:
-//   - At epoch boundaries (when daHeight == epochStart): fetches new forced-inclusion transactions
-//     from the DA layer for the entire epoch range, processes them, and returns all that fit within
-//     the max blob size limit. Transactions that don't fit are stored in the pending queue for retry.
-//   - Outside epoch boundaries (when daHeight != epochStart): returns any pending transactions from
-//     the queue that were deferred from previous epochs.
-//   - Pending transactions are kept in-memory only and will be lost on node restart.
-//
-// Returns:
-//   - ForcedIncludedEvent with transactions that should be included in the next block (may be empty)
-//   - Error if forced inclusion is not configured or DA layer is unavailable
-func (r *daRetriever) RetrieveForcedIncludedTxsFromDA(ctx context.Context, daHeight uint64) (*common.ForcedIncludedEvent, error) {
-	if !r.hasForcedInclusionNs {
-		return nil, common.ErrForceInclusionNotConfigured
-	}
-
-	// Calculate deterministic epoch boundaries
-	epochStart, epochEnd := types.CalculateEpochBoundaries(daHeight, r.genesis.DAStartHeight, r.daEpochSize)
-
-	// If we're not at epoch start, return pending transactions only (if any)
-	if daHeight != epochStart {
-		r.logger.Debug().
-			Uint64("da_height", daHeight).
-			Uint64("epoch_start", epochStart).
-			Int("pending_count", len(r.pendingForcedInclusionTxs)).
-			Msg("not at epoch start - returning pending transactions only")
-
-		event := &common.ForcedIncludedEvent{
-			StartDaHeight: daHeight,
-			EndDaHeight:   daHeight,
-			Txs:           [][]byte{},
-		}
-
-		// Return pending txs if any exist
-		if len(r.pendingForcedInclusionTxs) > 0 {
-			pendingTxs, indicesToRemove, _ := r.processPendingForcedInclusionTxs()
-			event.Txs = pendingTxs
-
-			// Remove successfully included pending transactions
-			if len(indicesToRemove) > 0 {
-				r.removePendingForcedInclusionTxs(indicesToRemove)
-				r.logger.Debug().
-					Int("included_count", len(indicesToRemove)).
-					Int("remaining_count", len(r.pendingForcedInclusionTxs)).
-					Msg("included pending forced inclusion transactions")
-			}
-		}
-
-		return event, nil
-	}
-
-	// We're at epoch start - fetch new transactions from DA
-
-	currentEpochNumber := types.CalculateEpochNumber(daHeight, r.genesis.DAStartHeight, r.daEpochSize)
-
-	event := &common.ForcedIncludedEvent{
-		StartDaHeight: epochStart,
-	}
-
-	r.logger.Debug().
-		Uint64("da_height", daHeight).
-		Uint64("epoch_start", epochStart).
-		Uint64("epoch_end", epochEnd).
-		Uint64("epoch_num", currentEpochNumber).
-		Msg("retrieving forced included transactions from DA")
-
-	// Check if both epoch start and end are available before fetching
-	// This ensures we can retrieve the complete epoch in one go
-	epochStartResult := types.RetrieveWithHelpers(ctx, r.da, r.logger, epochStart, r.namespaceForcedInclusionBz, defaultDATimeout)
-	if epochStartResult.Code == coreda.StatusHeightFromFuture {
-		r.logger.Debug().
-			Uint64("epoch_start", epochStart).
-			Msg("epoch start height not yet available on DA - backoff required")
-		return nil, fmt.Errorf("%w: epoch start height %d not yet available", coreda.ErrHeightFromFuture, epochStart)
-	}
-
-	epochEndResult := epochStartResult
-	if epochStart != epochEnd {
-		epochEndResult = types.RetrieveWithHelpers(ctx, r.da, r.logger, epochEnd, r.namespaceForcedInclusionBz, defaultDATimeout)
-		if epochEndResult.Code == coreda.StatusHeightFromFuture {
-			r.logger.Debug().
-				Uint64("epoch_end", epochEnd).
-				Msg("epoch end height not yet available on DA - backoff required")
-			return nil, fmt.Errorf("%w: epoch end height %d not yet available", coreda.ErrHeightFromFuture, epochEnd)
-		}
-	}
-
-	lastProcessedHeight := epochStart
-	newPendingTxs := []pendingForcedInclusionTx{}
-
-	// Prepend pending transactions from previous epochs at the start of this epoch
-	pendingTxs, indicesToRemove, currentSize := r.processPendingForcedInclusionTxs()
-	event.Txs = pendingTxs
-
-	// Remove successfully included pending transactions
-	if len(indicesToRemove) > 0 {
-		r.removePendingForcedInclusionTxs(indicesToRemove)
-		r.logger.Debug().
-			Int("included_count", len(indicesToRemove)).
-			Int("remaining_count", len(r.pendingForcedInclusionTxs)).
-			Msg("included pending forced inclusion transactions")
-	}
-
-	// Process epoch start
-	if err := r.processForcedInclusionBlobs(event, &currentSize, &lastProcessedHeight, &newPendingTxs, epochStartResult, epochStart); err != nil {
-		return nil, err
-	}
-
-	// Process heights between start and end (exclusive)
-	for epochHeight := epochStart + 1; epochHeight < epochEnd; epochHeight++ {
-		result := types.RetrieveWithHelpers(ctx, r.da, r.logger, epochHeight, r.namespaceForcedInclusionBz, defaultDATimeout)
-
-		// If any intermediate height is from future, break early
-		if result.Code == coreda.StatusHeightFromFuture {
-			r.logger.Debug().
-				Uint64("epoch_height", epochHeight).
-				Uint64("last_processed", lastProcessedHeight).
-				Msg("reached future DA height within epoch - stopping")
-			break
-		}
-
-		if err := r.processForcedInclusionBlobs(event, &currentSize, &lastProcessedHeight, &newPendingTxs, result, epochHeight); err != nil {
-			return nil, err
-		}
-	}
-
-	// Process epoch end (only if different from start)
-	if epochEnd != epochStart {
-		if err := r.processForcedInclusionBlobs(event, &currentSize, &lastProcessedHeight, &newPendingTxs, epochEndResult, epochEnd); err != nil {
-			return nil, err
-		}
-	}
-
-	// Store any new pending transactions that couldn't fit in this epoch
-	if len(newPendingTxs) > 0 {
-		r.pendingForcedInclusionTxs = append(r.pendingForcedInclusionTxs, newPendingTxs...)
-		r.logger.Info().
-			Int("new_pending_count", len(newPendingTxs)).
-			Int("total_pending_count", len(r.pendingForcedInclusionTxs)).
-			Msg("stored pending forced inclusion transactions for next epoch")
-	}
-
-	// Set the DA height range based on what we actually processed
-	event.StartDaHeight = epochStart
-	event.EndDaHeight = lastProcessedHeight
-
-	return event, nil
-}
-
-// processForcedInclusionBlobs processes forced inclusion blobs from a single DA height.
-// It accumulates transactions that fit within maxBlobSize and stores excess in newPendingTxs.
-func (r *daRetriever) processForcedInclusionBlobs(
-	event *common.ForcedIncludedEvent,
-	currentSize *int,
-	lastProcessedHeight *uint64,
-	newPendingTxs *[]pendingForcedInclusionTx,
-	result coreda.ResultRetrieve,
-	daHeight uint64,
-) error {
-	if result.Code != coreda.StatusSuccess {
-		return nil
-	}
-
-	if err := r.validateBlobResponse(result, daHeight); !errors.Is(err, coreda.ErrBlobNotFound) && err != nil {
-		return err
-	}
-
-	for i, data := range result.Data {
-		if len(data) > common.DefaultMaxBlobSize {
-			r.logger.Debug().
-				Uint64("da_height", daHeight).
-				Int("index", i).
-				Uint64("blob_size", uint64(len(data))).
-				Msg("Following data exceeds maximum blob size. Skipping...")
-			continue
-		}
-
-		// Calculate size of this specific data item
-		dataSize := len(data)
-
-		// Check if individual blob exceeds max size
-		if dataSize > int(common.DefaultMaxBlobSize) {
-			r.logger.Warn().
-				Uint64("da_height", daHeight).
-				Int("blob_size", dataSize).
-				Float64("max_size", common.DefaultMaxBlobSize).
-				Msg("forced inclusion blob exceeds maximum size - skipping")
-			return fmt.Errorf("blob size %d exceeds maximum %f", dataSize, common.DefaultMaxBlobSize)
-		}
-
-		// Check if adding this blob would exceed the current epoch's max size
-		if *currentSize+dataSize > int(common.DefaultMaxBlobSize) {
-			r.logger.Debug().
-				Uint64("da_height", daHeight).
-				Int("current_size", *currentSize).
-				Int("blob_size", dataSize).
-				Msg("blob would exceed max size for this epoch - deferring to pending queue")
-
-			// Store for next epoch
-			*newPendingTxs = append(*newPendingTxs, pendingForcedInclusionTx{
-				Data:           data,
-				OriginalHeight: daHeight,
-			})
-			continue
-		}
-
-		// Include this transaction
-		event.Txs = append(event.Txs, data)
-		*currentSize += dataSize
-		*lastProcessedHeight = daHeight
-	}
-
-	return nil
-}
-
-// fetchBlobs retrieves blobs from the DA layer
+// fetchBlobs retrieves blobs from both header and data namespaces
 func (r *daRetriever) fetchBlobs(ctx context.Context, daHeight uint64) (coreda.ResultRetrieve, error) {
-	// Retrieve from both namespaces
-	headerRes := types.RetrieveWithHelpers(ctx, r.da, r.logger, daHeight, r.namespaceBz, defaultDATimeout)
+	// Retrieve from both namespaces using the DA client
+	headerRes := r.client.RetrieveHeaders(ctx, daHeight)
 
 	// If namespaces are the same, return header result
-	if bytes.Equal(r.namespaceBz, r.namespaceDataBz) {
+	if bytes.Equal(r.client.GetHeaderNamespace(), r.client.GetDataNamespace()) {
 		return headerRes, r.validateBlobResponse(headerRes, daHeight)
 	}
 
-	dataRes := types.RetrieveWithHelpers(ctx, r.da, r.logger, daHeight, r.namespaceDataBz, defaultDATimeout)
+	dataRes := r.client.RetrieveData(ctx, daHeight)
 
 	// Validate responses
 	headerErr := r.validateBlobResponse(headerRes, daHeight)
@@ -591,54 +335,4 @@ func createEmptyDataForHeader(ctx context.Context, header *types.SignedHeader) *
 			LastDataHash: nil, // LastDataHash must be filled in the syncer, as it is not available here, block n-1 has not been processed yet.
 		},
 	}
-}
-
-// processPendingForcedInclusionTxs processes pending transactions and returns those that fit within the max blob size.
-// Returns the transactions to include, the indices of transactions to remove, and the total size used.
-func (r *daRetriever) processPendingForcedInclusionTxs() ([][]byte, []int, int) {
-	var (
-		currentSize     int
-		txs             [][]byte
-		indicesToRemove []int
-	)
-
-	for i, pendingTx := range r.pendingForcedInclusionTxs {
-		dataSize := len(pendingTx.Data)
-		if currentSize+dataSize > int(common.DefaultMaxBlobSize) {
-			r.logger.Debug().
-				Int("current_size", currentSize).
-				Int("data_size", dataSize).
-				Msg("pending transaction would exceed max blob size, will retry later")
-			break
-		}
-
-		txs = append(txs, pendingTx.Data)
-		currentSize += dataSize
-		indicesToRemove = append(indicesToRemove, i)
-	}
-
-	return txs, indicesToRemove, currentSize
-}
-
-// removePendingForcedInclusionTxs removes pending transactions at the specified indices.
-// Indices must be sorted in ascending order.
-func (r *daRetriever) removePendingForcedInclusionTxs(indices []int) {
-	if len(indices) == 0 {
-		return
-	}
-
-	// Create a new slice without the removed elements
-	newPending := make([]pendingForcedInclusionTx, 0, len(r.pendingForcedInclusionTxs)-len(indices))
-	removeMap := make(map[int]bool, len(indices))
-	for _, idx := range indices {
-		removeMap[idx] = true
-	}
-
-	for i, tx := range r.pendingForcedInclusionTxs {
-		if !removeMap[i] {
-			newPending = append(newPending, tx)
-		}
-	}
-
-	r.pendingForcedInclusionTxs = newPending
 }

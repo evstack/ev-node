@@ -412,7 +412,6 @@ func TestSyncLoopPersistState(t *testing.T) {
 			DaHeight: daHeight,
 		}}
 		daRtrMock.On("RetrieveFromDA", mock.Anything, daHeight).Return(evts, nil)
-		daRtrMock.On("RetrieveForcedIncludedTxsFromDA", mock.Anything, mock.Anything).Return(&common.ForcedIncludedEvent{Txs: [][]byte{}}, nil).Maybe()
 		prevHeaderHash = sigHeader.Hash()
 		hasher := sha512.New()
 		hasher.Write(prevAppHash)
@@ -485,7 +484,6 @@ func TestSyncLoopPersistState(t *testing.T) {
 	p2pHndlMock.On("SetProcessedHeight", mock.Anything).Return().Maybe()
 	syncerInst2.daRetriever, syncerInst2.p2pHandler = daRtrMock, p2pHndlMock
 
-	daRtrMock.On("RetrieveForcedIncludedTxsFromDA", mock.Anything, mock.Anything).Return(&common.ForcedIncludedEvent{Txs: [][]byte{}}, nil).Maybe()
 	daRtrMock.On("RetrieveFromDA", mock.Anything, mock.Anything).
 		Run(func(arg mock.Arguments) {
 			cancel()

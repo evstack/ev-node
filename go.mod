@@ -30,6 +30,7 @@ require (
 	golang.org/x/net v0.46.0
 	golang.org/x/sync v0.17.0
 	google.golang.org/protobuf v1.36.10
+	gotest.tools/v3 v3.5.2
 )
 
 require (
@@ -53,6 +54,7 @@ require (
 	github.com/gogo/protobuf v1.3.2 // indirect
 	github.com/golang/groupcache v0.0.0-20241129210726-2c02b8208cf8 // indirect
 	github.com/google/flatbuffers v24.12.23+incompatible // indirect
+	github.com/google/go-cmp v0.7.0 // indirect
 	github.com/google/gopacket v1.1.19 // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/gopherjs/gopherjs v0.0.0-20190812055157-5d271430af9f // indirect

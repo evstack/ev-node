@@ -20,7 +20,4 @@ var (
 
 	// ErrOversizedItem is an unrecoverable error indicating a single item exceeds DA blob size limit
 	ErrOversizedItem = errors.New("single item exceeds DA blob size limit")
-
-	// ErrForceInclusionNotConfigured is returned when the forced inclusion namespace is not configured.
-	ErrForceInclusionNotConfigured = errors.New("forced inclusion namespace not configured")
 )

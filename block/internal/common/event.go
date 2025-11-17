@@ -23,10 +23,3 @@ type DAHeightEvent = struct {
 	// Source indicates where this event originated from (DA or P2P)
 	Source EventSource
 }
-
-// ForcedIncluded represents a forced inclusion event for caching
-type ForcedIncludedEvent = struct {
-	Txs           [][]byte
-	StartDaHeight uint64
-	EndDaHeight   uint64
-}
