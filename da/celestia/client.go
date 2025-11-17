@@ -83,7 +83,25 @@ func (c *Client) Close() {
 
 // Submit submits blobs to Celestia and returns the height at which they were included.
 func (c *Client) Submit(ctx context.Context, blobs []*Blob, opts *SubmitOptions) (uint64, error) {
-	return 0, fmt.Errorf("not implemented yet")
+	c.logger.Debug().
+		Int("num_blobs", len(blobs)).
+		Msg("Submitting blobs to Celestia")
+
+	height, err := c.Internal.Submit(ctx, blobs, opts)
+	if err != nil {
+		c.logger.Error().
+			Err(err).
+			Int("num_blobs", len(blobs)).
+			Msg("Failed to submit blobs")
+		return 0, fmt.Errorf("failed to submit blobs: %w", err)
+	}
+
+	c.logger.Info().
+		Uint64("height", height).
+		Int("num_blobs", len(blobs)).
+		Msg("Successfully submitted blobs")
+
+	return height, nil
 }
 
 // Get retrieves a single blob by commitment at a given height and namespace.

@@ -103,7 +103,61 @@ func TestClient_Close(t *testing.T) {
 	})
 }
 
-func TestClient_BlobAPIMethods(t *testing.T) {
+func TestClient_Submit(t *testing.T) {
+	logger := zerolog.Nop()
+	ctx := context.Background()
+
+	validNamespace := make([]byte, 29)
+	validBlob := &Blob{
+		Namespace: validNamespace,
+		Data:      []byte("test data"),
+	}
+
+	tests := []struct {
+		name   string
+		blobs  []*Blob
+		wantRPC bool
+	}{
+		{
+			name:    "single blob",
+			blobs:   []*Blob{validBlob},
+			wantRPC: true,
+		},
+		{
+			name: "multiple blobs",
+			blobs: []*Blob{
+				validBlob,
+				{
+					Namespace: validNamespace,
+					Data:      []byte("more data"),
+				},
+			},
+			wantRPC: true,
+		},
+		{
+			name:    "empty list delegates to celestia-node",
+			blobs:   []*Blob{},
+			wantRPC: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			client, err := NewClient(ctx, logger, "http://localhost:26658", "token", 1024*1024)
+			require.NoError(t, err)
+			defer client.Close()
+
+			_, err = client.Submit(ctx, tt.blobs, nil)
+
+			if tt.wantRPC {
+				require.Error(t, err)
+				assert.Contains(t, err.Error(), "failed to submit blobs")
+			}
+		})
+	}
+}
+
+func TestClient_UnimplementedMethods(t *testing.T) {
 	logger := zerolog.Nop()
 	ctx := context.Background()
 
@@ -111,13 +165,6 @@ func TestClient_BlobAPIMethods(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, client)
 	defer client.Close()
-
-	// Test that all native blob API methods exist and return "not implemented" for now
-	t.Run("Submit", func(t *testing.T) {
-		_, err := client.Submit(ctx, nil, nil)
-		assert.Error(t, err)
-		assert.Contains(t, err.Error(), "not implemented")
-	})
 
 	t.Run("Get", func(t *testing.T) {
 		_, err := client.Get(ctx, 0, nil, nil)
