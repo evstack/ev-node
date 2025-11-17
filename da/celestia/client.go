@@ -106,20 +106,94 @@ func (c *Client) Submit(ctx context.Context, blobs []*Blob, opts *SubmitOptions)
 
 // Get retrieves a single blob by commitment at a given height and namespace.
 func (c *Client) Get(ctx context.Context, height uint64, namespace Namespace, commitment Commitment) (*Blob, error) {
-	return nil, fmt.Errorf("not implemented yet")
+	c.logger.Debug().
+		Uint64("height", height).
+		Msg("Getting blob from Celestia")
+
+	blob, err := c.Internal.Get(ctx, height, namespace, commitment)
+	if err != nil {
+		c.logger.Error().
+			Err(err).
+			Uint64("height", height).
+			Msg("Failed to get blob")
+		return nil, fmt.Errorf("failed to get blob: %w", err)
+	}
+
+	c.logger.Debug().
+		Uint64("height", height).
+		Int("data_size", len(blob.Data)).
+		Msg("Successfully retrieved blob")
+
+	return blob, nil
 }
 
 // GetAll retrieves all blobs at a given height for the specified namespaces.
 func (c *Client) GetAll(ctx context.Context, height uint64, namespaces []Namespace) ([]*Blob, error) {
-	return nil, fmt.Errorf("not implemented yet")
+	c.logger.Debug().
+		Uint64("height", height).
+		Int("num_namespaces", len(namespaces)).
+		Msg("Getting all blobs from Celestia")
+
+	blobs, err := c.Internal.GetAll(ctx, height, namespaces)
+	if err != nil {
+		c.logger.Error().
+			Err(err).
+			Uint64("height", height).
+			Int("num_namespaces", len(namespaces)).
+			Msg("Failed to get blobs")
+		return nil, fmt.Errorf("failed to get blobs: %w", err)
+	}
+
+	c.logger.Debug().
+		Uint64("height", height).
+		Int("num_blobs", len(blobs)).
+		Msg("Successfully retrieved blobs")
+
+	return blobs, nil
 }
 
 // GetProof retrieves the inclusion proof for a blob.
 func (c *Client) GetProof(ctx context.Context, height uint64, namespace Namespace, commitment Commitment) (*Proof, error) {
-	return nil, fmt.Errorf("not implemented yet")
+	c.logger.Debug().
+		Uint64("height", height).
+		Msg("Getting proof from Celestia")
+
+	proof, err := c.Internal.GetProof(ctx, height, namespace, commitment)
+	if err != nil {
+		c.logger.Error().
+			Err(err).
+			Uint64("height", height).
+			Msg("Failed to get proof")
+		return nil, fmt.Errorf("failed to get proof: %w", err)
+	}
+
+	c.logger.Debug().
+		Uint64("height", height).
+		Int("proof_size", len(proof.Data)).
+		Msg("Successfully retrieved proof")
+
+	return proof, nil
 }
 
 // Included checks whether a blob is included in the Celestia block.
 func (c *Client) Included(ctx context.Context, height uint64, namespace Namespace, proof *Proof, commitment Commitment) (bool, error) {
-	return false, fmt.Errorf("not implemented yet")
+	c.logger.Debug().
+		Uint64("height", height).
+		Msg("Checking blob inclusion in Celestia")
+
+	included, err := c.Internal.Included(ctx, height, namespace, proof, commitment)
+	if err != nil {
+		c.logger.Error().
+			Err(err).
+			Uint64("height", height).
+			Msg("Failed to check inclusion")
+		return false, fmt.Errorf("failed to check inclusion: %w", err)
+	}
+
+	c.logger.Debug().
+		Uint64("height", height).
+		Bool("included", included).
+		Msg("Inclusion check completed")
+
+	return included, nil
 }

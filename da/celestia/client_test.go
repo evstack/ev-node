@@ -157,36 +157,67 @@ func TestClient_Submit(t *testing.T) {
 	}
 }
 
-func TestClient_UnimplementedMethods(t *testing.T) {
+func TestClient_Get(t *testing.T) {
 	logger := zerolog.Nop()
 	ctx := context.Background()
 
 	client, err := NewClient(ctx, logger, "http://localhost:26658", "token", 1024*1024)
 	require.NoError(t, err)
-	require.NotNil(t, client)
 	defer client.Close()
 
-	t.Run("Get", func(t *testing.T) {
-		_, err := client.Get(ctx, 0, nil, nil)
-		assert.Error(t, err)
-		assert.Contains(t, err.Error(), "not implemented")
-	})
+	validNamespace := make([]byte, 29)
+	validCommitment := []byte("commitment")
 
-	t.Run("GetAll", func(t *testing.T) {
-		_, err := client.GetAll(ctx, 0, nil)
-		assert.Error(t, err)
-		assert.Contains(t, err.Error(), "not implemented")
-	})
+	_, err = client.Get(ctx, 100, validNamespace, validCommitment)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "failed to get blob")
+}
 
-	t.Run("GetProof", func(t *testing.T) {
-		_, err := client.GetProof(ctx, 0, nil, nil)
-		assert.Error(t, err)
-		assert.Contains(t, err.Error(), "not implemented")
-	})
+func TestClient_GetAll(t *testing.T) {
+	logger := zerolog.Nop()
+	ctx := context.Background()
 
-	t.Run("Included", func(t *testing.T) {
-		_, err := client.Included(ctx, 0, nil, nil, nil)
-		assert.Error(t, err)
-		assert.Contains(t, err.Error(), "not implemented")
-	})
+	client, err := NewClient(ctx, logger, "http://localhost:26658", "token", 1024*1024)
+	require.NoError(t, err)
+	defer client.Close()
+
+	validNamespace := make([]byte, 29)
+	namespaces := []Namespace{validNamespace}
+
+	_, err = client.GetAll(ctx, 100, namespaces)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "failed to get blobs")
+}
+
+func TestClient_GetProof(t *testing.T) {
+	logger := zerolog.Nop()
+	ctx := context.Background()
+
+	client, err := NewClient(ctx, logger, "http://localhost:26658", "token", 1024*1024)
+	require.NoError(t, err)
+	defer client.Close()
+
+	validNamespace := make([]byte, 29)
+	validCommitment := []byte("commitment")
+
+	_, err = client.GetProof(ctx, 100, validNamespace, validCommitment)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "failed to get proof")
+}
+
+func TestClient_Included(t *testing.T) {
+	logger := zerolog.Nop()
+	ctx := context.Background()
+
+	client, err := NewClient(ctx, logger, "http://localhost:26658", "token", 1024*1024)
+	require.NoError(t, err)
+	defer client.Close()
+
+	validNamespace := make([]byte, 29)
+	validCommitment := []byte("commitment")
+	proof := &Proof{Data: []byte("proof")}
+
+	_, err = client.Included(ctx, 100, validNamespace, proof, validCommitment)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "failed to check inclusion")
 }
