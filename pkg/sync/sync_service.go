@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/celestiaorg/go-header"
@@ -54,6 +55,7 @@ type SyncService[H header.Header[H]] struct {
 	syncer            *goheadersync.Syncer[H]
 	syncerStatus      *SyncerStatus
 	topicSubscription header.Subscription[H]
+	storeInitialized  atomic.Bool
 }
 
 // DataSyncService is the P2P Sync Service for blocks.
@@ -134,9 +136,14 @@ func (syncService *SyncService[H]) WriteToStoreAndBroadcast(ctx context.Context,
 		return fmt.Errorf("empty header/data cannot write to store or broadcast")
 	}
 
-	storeInitialized, err := syncService.initStore(ctx, headerOrData)
-	if err != nil {
-		return fmt.Errorf("failed to initialize the store: %w", err)
+	storeInitialized := false
+	if !syncService.storeInitialized.Load() {
+		var err error
+		storeInitialized, err = syncService.initStore(ctx, headerOrData)
+		if err != nil {
+			return fmt.Errorf("failed to initialize the store: %w", err)
+		}
+		syncService.storeInitialized.Store(true)
 	}
 
 	firstStart := false
@@ -340,6 +347,7 @@ func (syncService *SyncService[H]) initFromP2PWithRetry(ctx context.Context, pee
 		if _, err := syncService.initStore(ctx, trusted); err != nil {
 			return false, fmt.Errorf("failed to initialize the store: %w", err)
 		}
+		syncService.storeInitialized.Store(true)
 		if err := syncService.startSyncer(ctx); err != nil {
 			return false, err
 		}
