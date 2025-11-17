@@ -20,6 +20,12 @@ type ForcedInclusionRetriever interface {
 	RetrieveForcedIncludedTxs(ctx context.Context, daHeight uint64) (*block.ForcedInclusionEvent, error)
 }
 
+// pendingForcedInclusionTx represents a forced inclusion transaction that couldn't fit in the current epoch
+type pendingForcedInclusionTx struct {
+	Data           []byte
+	OriginalHeight uint64
+}
+
 var _ coresequencer.Sequencer = (*BasedSequencer)(nil)
 
 // BasedSequencer is a sequencer that only retrieves transactions from the DA layer
@@ -31,9 +37,10 @@ type BasedSequencer struct {
 	genesis     genesis.Genesis
 	logger      zerolog.Logger
 
-	mu       sync.RWMutex
-	daHeight uint64
-	txQueue  [][]byte
+	mu                        sync.RWMutex
+	daHeight                  uint64
+	txQueue                   [][]byte
+	pendingForcedInclusionTxs []pendingForcedInclusionTx
 }
 
 // NewBasedSequencer creates a new based sequencer instance
@@ -45,13 +52,14 @@ func NewBasedSequencer(
 	logger zerolog.Logger,
 ) *BasedSequencer {
 	return &BasedSequencer{
-		fiRetriever: fiRetriever,
-		da:          da,
-		config:      config,
-		genesis:     genesis,
-		logger:      logger.With().Str("component", "based_sequencer").Logger(),
-		daHeight:    genesis.DAStartHeight,
-		txQueue:     make([][]byte, 0),
+		fiRetriever:               fiRetriever,
+		da:                        da,
+		config:                    config,
+		genesis:                   genesis,
+		logger:                    logger.With().Str("component", "based_sequencer").Logger(),
+		daHeight:                  genesis.DAStartHeight,
+		txQueue:                   make([][]byte, 0),
+		pendingForcedInclusionTxs: make([]pendingForcedInclusionTx, 0),
 	}
 }
 
@@ -123,8 +131,11 @@ func (s *BasedSequencer) GetNextBatch(ctx context.Context, req coresequencer.Get
 		s.daHeight = forcedTxsEvent.StartDaHeight
 	}
 
-	// Add transactions to queue
-	s.txQueue = append(s.txQueue, forcedTxsEvent.Txs...)
+	// Process forced inclusion transactions with size validation and pending queue management
+	if err := s.processForcedInclusionTxs(forcedTxsEvent); err != nil {
+		s.logger.Error().Err(err).Msg("failed to process forced inclusion transactions")
+		return nil, err
+	}
 
 	s.logger.Info().
 		Int("tx_count", len(forcedTxsEvent.Txs)).
@@ -192,4 +203,104 @@ func (s *BasedSequencer) GetDAHeight() uint64 {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	return s.daHeight
+}
+
+// processForcedInclusionTxs processes forced inclusion transactions with size validation and pending queue management
+func (s *BasedSequencer) processForcedInclusionTxs(event *block.ForcedInclusionEvent) error {
+	currentSize := 0
+	var newPendingTxs []pendingForcedInclusionTx
+	var txsToQueue [][]byte
+
+	// First, process any pending transactions from previous epochs
+	for _, pendingTx := range s.pendingForcedInclusionTxs {
+		txSize := len(pendingTx.Data)
+
+		// Validate individual blob size
+		if txSize > int(block.DefaultMaxBlobSize) {
+			s.logger.Warn().
+				Uint64("original_height", pendingTx.OriginalHeight).
+				Int("blob_size", txSize).
+				Float64("max_size", block.DefaultMaxBlobSize).
+				Msg("pending forced inclusion blob exceeds maximum size - skipping")
+			continue
+		}
+
+		// Check if adding this blob would exceed the current epoch's max size
+		if currentSize+txSize > int(block.DefaultMaxBlobSize) {
+			s.logger.Debug().
+				Uint64("original_height", pendingTx.OriginalHeight).
+				Int("current_size", currentSize).
+				Int("blob_size", txSize).
+				Msg("pending blob would exceed max size for this epoch - deferring again")
+			newPendingTxs = append(newPendingTxs, pendingTx)
+			continue
+		}
+
+		txsToQueue = append(txsToQueue, pendingTx.Data)
+		currentSize += txSize
+
+		s.logger.Debug().
+			Uint64("original_height", pendingTx.OriginalHeight).
+			Int("blob_size", txSize).
+			Int("current_size", currentSize).
+			Msg("processed pending forced inclusion transaction")
+	}
+
+	// Now process new transactions from this epoch
+	for _, tx := range event.Txs {
+		txSize := len(tx)
+
+		// Validate individual blob size
+		if txSize > int(block.DefaultMaxBlobSize) {
+			s.logger.Warn().
+				Uint64("da_height", event.StartDaHeight).
+				Int("blob_size", txSize).
+				Float64("max_size", block.DefaultMaxBlobSize).
+				Msg("forced inclusion blob exceeds maximum size - skipping")
+			continue
+		}
+
+		// Check if adding this blob would exceed the current epoch's max size
+		if currentSize+txSize > int(block.DefaultMaxBlobSize) {
+			s.logger.Debug().
+				Uint64("da_height", event.StartDaHeight).
+				Int("current_size", currentSize).
+				Int("blob_size", txSize).
+				Msg("blob would exceed max size for this epoch - deferring to pending queue")
+
+			// Store for next epoch
+			newPendingTxs = append(newPendingTxs, pendingForcedInclusionTx{
+				Data:           tx,
+				OriginalHeight: event.StartDaHeight,
+			})
+			continue
+		}
+
+		txsToQueue = append(txsToQueue, tx)
+		currentSize += txSize
+
+		s.logger.Debug().
+			Int("blob_size", txSize).
+			Int("current_size", currentSize).
+			Msg("processed forced inclusion transaction")
+	}
+
+	// Update pending queue
+	s.pendingForcedInclusionTxs = newPendingTxs
+	if len(newPendingTxs) > 0 {
+		s.logger.Info().
+			Int("new_pending_count", len(newPendingTxs)).
+			Msg("stored pending forced inclusion transactions for next epoch")
+	}
+
+	// Add validated transactions to the queue
+	s.txQueue = append(s.txQueue, txsToQueue...)
+
+	s.logger.Info().
+		Int("processed_tx_count", len(txsToQueue)).
+		Int("pending_tx_count", len(newPendingTxs)).
+		Int("current_size", currentSize).
+		Msg("completed processing forced inclusion transactions")
+
+	return nil
 }

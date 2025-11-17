@@ -20,6 +20,9 @@ func DefaultBlockOptions() BlockOptions {
 	return common.DefaultBlockOptions()
 }
 
+// DefaultMaxBlobSize is the default maximum blob size for DA submissions
+const DefaultMaxBlobSize = common.DefaultMaxBlobSize
+
 // Expose Metrics for constructor
 type Metrics = common.Metrics
 

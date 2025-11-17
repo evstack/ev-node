@@ -26,8 +26,6 @@ import (
 	"github.com/evstack/ev-node/pkg/signer/file"
 )
 
-const DefaultMaxBlobSize = 1.5 * 1024 * 1024 // 1.5MB
-
 // ParseConfig is an helpers that loads the node configuration and validates it.
 func ParseConfig(cmd *cobra.Command) (rollconf.Config, error) {
 	nodeConfig, err := rollconf.Load(cmd)
