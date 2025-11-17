@@ -47,7 +47,6 @@ func TestHealthReady_aggregatorBlockDelay(t *testing.T) {
 	logger := zerolog.Nop()
 
 	type spec struct {
-		name          string
 		lazy          bool
 		blockTime     time.Duration
 		lazyInterval  time.Duration
