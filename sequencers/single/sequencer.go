@@ -22,16 +22,9 @@ var (
 	ErrInvalidId = errors.New("invalid chain id")
 )
 
-// ForcedInclusionEvent represents forced inclusion transactions retrieved from DA
-type ForcedInclusionEvent = struct {
-	Txs           [][]byte
-	StartDaHeight uint64
-	EndDaHeight   uint64
-}
-
-// DARetriever defines the interface for retrieving forced inclusion transactions from DA
-type DARetriever interface {
-	RetrieveForcedIncludedTxsFromDA(ctx context.Context, daHeight uint64) (*ForcedInclusionEvent, error)
+// ForcedInclusionRetriever defines the interface for retrieving forced inclusion transactions from DA
+type ForcedInclusionRetriever interface {
+	RetrieveForcedIncludedTxs(ctx context.Context, daHeight uint64) (*block.ForcedInclusionEvent, error)
 }
 
 var _ coresequencer.Sequencer = (*Sequencer)(nil)
@@ -52,7 +45,7 @@ type Sequencer struct {
 	metrics *Metrics
 
 	// Forced inclusion support
-	daRetriever DARetriever
+	fiRetriever ForcedInclusionRetriever
 	genesis     genesis.Genesis
 	daHeight    atomic.Uint64
 }
@@ -68,7 +61,7 @@ func NewSequencer(
 	metrics *Metrics,
 	proposer bool,
 	maxQueueSize int,
-	daRetriever DARetriever,
+	fiRetriever ForcedInclusionRetriever,
 	gen genesis.Genesis,
 ) (*Sequencer, error) {
 	s := &Sequencer{
@@ -79,7 +72,7 @@ func NewSequencer(
 		queue:       NewBatchQueue(db, "batches", maxQueueSize),
 		metrics:     metrics,
 		proposer:    proposer,
-		daRetriever: daRetriever,
+		fiRetriever: fiRetriever,
 		genesis:     gen,
 	}
 	s.SetDAHeight(gen.DAStartHeight) // will be overridden by the executor
@@ -132,7 +125,7 @@ func (c *Sequencer) GetNextBatch(ctx context.Context, req coresequencer.GetNextB
 	var forcedTxs [][]byte
 	currentDAHeight := c.daHeight.Load()
 
-	forcedEvent, err := c.daRetriever.RetrieveForcedIncludedTxsFromDA(ctx, currentDAHeight)
+	forcedEvent, err := c.fiRetriever.RetrieveForcedIncludedTxs(ctx, currentDAHeight)
 	if err != nil {
 		// If we get a height from future error, keep the current DA height and return batch
 		// We'll retry the same height on the next call until DA produces that block

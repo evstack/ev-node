@@ -15,17 +15,9 @@ import (
 	"github.com/evstack/ev-node/pkg/genesis"
 )
 
-// ForcedInclusionEvent represents forced inclusion transactions retrieved from DA
-type ForcedInclusionEvent = struct {
-	Txs           [][]byte
-	StartDaHeight uint64
-	EndDaHeight   uint64
-}
-
-// DARetriever defines the interface for retrieving forced inclusion transactions from DA
-// This interface is intentionally generic to allow different implementations
-type DARetriever interface {
-	RetrieveForcedIncludedTxsFromDA(ctx context.Context, daHeight uint64) (*ForcedInclusionEvent, error)
+// ForcedInclusionRetriever defines the interface for retrieving forced inclusion transactions from DA
+type ForcedInclusionRetriever interface {
+	RetrieveForcedIncludedTxs(ctx context.Context, daHeight uint64) (*block.ForcedInclusionEvent, error)
 }
 
 var _ coresequencer.Sequencer = (*BasedSequencer)(nil)
@@ -33,7 +25,7 @@ var _ coresequencer.Sequencer = (*BasedSequencer)(nil)
 // BasedSequencer is a sequencer that only retrieves transactions from the DA layer
 // via the forced inclusion mechanism. It does not accept transactions from the reaper.
 type BasedSequencer struct {
-	daRetriever DARetriever
+	fiRetriever ForcedInclusionRetriever
 	da          coreda.DA
 	config      config.Config
 	genesis     genesis.Genesis
@@ -46,14 +38,14 @@ type BasedSequencer struct {
 
 // NewBasedSequencer creates a new based sequencer instance
 func NewBasedSequencer(
-	daRetriever DARetriever,
+	fiRetriever ForcedInclusionRetriever,
 	da coreda.DA,
 	config config.Config,
 	genesis genesis.Genesis,
 	logger zerolog.Logger,
 ) *BasedSequencer {
 	return &BasedSequencer{
-		daRetriever: daRetriever,
+		fiRetriever: fiRetriever,
 		da:          da,
 		config:      config,
 		genesis:     genesis,
@@ -95,8 +87,9 @@ func (s *BasedSequencer) GetNextBatch(ctx context.Context, req coresequencer.Get
 	// Fetch forced inclusion transactions from DA
 	s.logger.Debug().Uint64("da_height", s.daHeight).Msg("fetching forced inclusion transactions from DA")
 
-	forcedTxsEvent, err := s.daRetriever.RetrieveForcedIncludedTxsFromDA(ctx, s.daHeight)
+	forcedTxsEvent, err := s.fiRetriever.RetrieveForcedIncludedTxs(ctx, s.daHeight)
 	if err != nil {
+		// Check if forced inclusion is not configured
 		if errors.Is(err, block.ErrForceInclusionNotConfigured) {
 			s.logger.Error().Msg("forced inclusion not configured, returning empty batch")
 			return &coresequencer.GetNextBatchResponse{

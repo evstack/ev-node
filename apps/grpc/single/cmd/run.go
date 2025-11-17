@@ -122,10 +122,8 @@ func createSequencer(
 	nodeConfig config.Config,
 	genesis genesis.Genesis,
 ) (coresequencer.Sequencer, error) {
-	daRetriever, err := block.NewDARetriever(da, nodeConfig, genesis, logger)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create DA retriever: %w", err)
-	}
+	daClient := block.NewDAClient(da, nodeConfig, logger)
+	fiRetriever := block.NewForcedInclusionRetriever(daClient, genesis, logger)
 
 	if nodeConfig.Node.BasedSequencer {
 		// Based sequencer mode - fetch transactions only from DA
@@ -133,7 +131,7 @@ func createSequencer(
 			return nil, fmt.Errorf("based sequencer mode requires aggregator mode to be enabled")
 		}
 
-		basedSeq := based.NewBasedSequencer(daRetriever, da, nodeConfig, genesis, logger)
+		basedSeq := based.NewBasedSequencer(fiRetriever, da, nodeConfig, genesis, logger)
 
 		logger.Info().
 			Str("forced_inclusion_namespace", nodeConfig.DA.GetForcedInclusionNamespace()).
@@ -158,7 +156,7 @@ func createSequencer(
 		singleMetrics,
 		nodeConfig.Node.Aggregator,
 		1000,
-		daRetriever,
+		fiRetriever,
 		genesis,
 	)
 	if err != nil {
@@ -166,7 +164,6 @@ func createSequencer(
 	}
 
 	logger.Info().
-		Bool("forced_inclusion_enabled", daRetriever != nil).
 		Str("forced_inclusion_namespace", nodeConfig.DA.GetForcedInclusionNamespace()).
 		Msg("single sequencer initialized")
 

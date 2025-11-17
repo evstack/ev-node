@@ -12,6 +12,7 @@ import (
 
 	"github.com/evstack/ev-node/block/internal/cache"
 	"github.com/evstack/ev-node/block/internal/common"
+	"github.com/evstack/ev-node/block/internal/da"
 	coreda "github.com/evstack/ev-node/core/da"
 	"github.com/evstack/ev-node/pkg/config"
 	pkgda "github.com/evstack/ev-node/pkg/da"
@@ -94,16 +95,12 @@ func clamp(v, min, max time.Duration) time.Duration {
 
 // DASubmitter handles DA submission operations
 type DASubmitter struct {
-	da      coreda.DA
+	client  da.Client
 	config  config.Config
 	genesis genesis.Genesis
 	options common.BlockOptions
 	logger  zerolog.Logger
 	metrics *common.Metrics
-
-	// calculate namespaces bytes once and reuse them
-	namespaceBz     []byte
-	namespaceDataBz []byte
 
 	// address selector for multi-account support
 	addressSelector pkgda.AddressSelector
@@ -111,7 +108,7 @@ type DASubmitter struct {
 
 // NewDASubmitter creates a new DA submitter
 func NewDASubmitter(
-	da coreda.DA,
+	client da.Client,
 	config config.Config,
 	genesis genesis.Genesis,
 	options common.BlockOptions,
@@ -122,7 +119,7 @@ func NewDASubmitter(
 
 	if config.RPC.EnableDAVisualization {
 		visualizerLogger := logger.With().Str("component", "da_visualization").Logger()
-		server.SetDAVisualizationServer(server.NewDAVisualizationServer(da, visualizerLogger, config.Node.Aggregator))
+		server.SetDAVisualizationServer(server.NewDAVisualizationServer(client.GetDA(), visualizerLogger, config.Node.Aggregator))
 	}
 
 	// Use NoOp metrics if nil to avoid nil checks throughout the code
@@ -142,14 +139,12 @@ func NewDASubmitter(
 	}
 
 	return &DASubmitter{
-		da:              da,
+		client:          client,
 		config:          config,
 		genesis:         genesis,
 		options:         options,
 		metrics:         metrics,
 		logger:          daSubmitterLogger,
-		namespaceBz:     coreda.NamespaceFromString(config.DA.GetNamespace()).Bytes(),
-		namespaceDataBz: coreda.NamespaceFromString(config.DA.GetDataNamespace()).Bytes(),
 		addressSelector: addressSelector,
 	}
 }
@@ -199,7 +194,7 @@ func (s *DASubmitter) SubmitHeaders(ctx context.Context, cache cache.Manager) er
 			}
 		},
 		"header",
-		s.namespaceBz,
+		s.client.GetHeaderNamespace(),
 		[]byte(s.config.DA.SubmitOptions),
 		func() uint64 { return cache.NumPendingHeaders() },
 	)
@@ -242,7 +237,7 @@ func (s *DASubmitter) SubmitData(ctx context.Context, cache cache.Manager, signe
 			}
 		},
 		"data",
-		s.namespaceDataBz,
+		s.client.GetDataNamespace(),
 		[]byte(s.config.DA.SubmitOptions),
 		func() uint64 { return cache.NumPendingData() },
 	)
@@ -411,7 +406,7 @@ func submitToDA[T any](
 
 		// Perform submission
 		start := time.Now()
-		res := types.SubmitWithHelpers(submitCtx, s.da, s.logger, marshaled, -1, namespace, mergedOptions)
+		res := s.client.Submit(submitCtx, marshaled, -1, namespace, mergedOptions)
 		s.logger.Debug().Int("attempts", rs.Attempt).Dur("elapsed", time.Since(start)).Uint64("code", uint64(res.Code)).Msg("got SubmitWithHelpers response from celestia")
 
 		// Record submission result for observability
