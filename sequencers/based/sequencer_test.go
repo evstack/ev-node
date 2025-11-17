@@ -98,7 +98,7 @@ func TestNewBasedSequencer(t *testing.T) {
 	seq := NewBasedSequencer(fiRetriever, mockDA, cfg, gen, zerolog.Nop())
 
 	require.NotNil(t, seq)
-	assert.Equal(t, uint64(100), seq.daHeight)
+	assert.Equal(t, uint64(100), seq.daHeight.Load())
 	assert.Equal(t, 0, len(seq.txQueue))
 }
 
@@ -287,11 +287,15 @@ func TestBasedSequencer_GetNextBatch_WithMaxBytes(t *testing.T) {
 	}
 
 	mockDA := new(MockDA)
+	// First call returns forced txs
 	mockDA.On("GetIDs", mock.Anything, uint64(100), mock.Anything).Return(&coreda.GetIDsResult{
 		IDs:       []coreda.ID{[]byte("id1"), []byte("id2"), []byte("id3")},
 		Timestamp: time.Now(),
-	}, nil)
-	mockDA.On("Get", mock.Anything, mock.Anything, mock.Anything).Return(testBlobs, nil)
+	}, nil).Once()
+	mockDA.On("Get", mock.Anything, mock.Anything, mock.Anything).Return(testBlobs, nil).Once()
+
+	// Subsequent calls should return no new forced txs
+	mockDA.On("GetIDs", mock.Anything, uint64(100), mock.Anything).Return(nil, coreda.ErrBlobNotFound)
 
 	gen := genesis.Genesis{
 		ChainID:                "test-chain",
@@ -319,7 +323,7 @@ func TestBasedSequencer_GetNextBatch_WithMaxBytes(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, resp)
 	require.NotNil(t, resp.Batch)
-	// Should get first tx (50 bytes), then break before second tx (would make 110 total)
+	// Should get first tx (50 bytes), second tx would exceed limit (50+60=110 > 100)
 	assert.Equal(t, 1, len(resp.Batch.Transactions))
 	assert.Equal(t, 2, len(seq.txQueue)) // 2 remaining in queue
 
@@ -384,6 +388,139 @@ func TestBasedSequencer_GetNextBatch_FromQueue(t *testing.T) {
 
 	// Queue should be empty now
 	assert.Equal(t, 0, len(seq.txQueue))
+}
+
+func TestBasedSequencer_GetNextBatch_AlwaysCheckPendingForcedInclusion(t *testing.T) {
+	mockDA := new(MockDA)
+
+	// First call: return a forced tx that will be added to queue
+	forcedTx := make([]byte, 150)
+	mockDA.On("GetIDs", mock.Anything, uint64(100), mock.Anything).Return(&coreda.GetIDsResult{
+		IDs:       []coreda.ID{[]byte("id1")},
+		Timestamp: time.Now(),
+	}, nil).Once()
+	mockDA.On("Get", mock.Anything, mock.Anything, mock.Anything).Return([][]byte{forcedTx}, nil).Once()
+
+	// Second call: no new forced txs
+	mockDA.On("GetIDs", mock.Anything, uint64(100), mock.Anything).Return(nil, coreda.ErrBlobNotFound).Once()
+
+	gen := genesis.Genesis{
+		ChainID:                "test-chain",
+		DAStartHeight:          100,
+		DAEpochForcedInclusion: 1,
+	}
+
+	cfg := config.DefaultConfig()
+	cfg.DA.Namespace = "test-ns"
+	cfg.DA.DataNamespace = "test-data-ns"
+	cfg.DA.ForcedInclusionNamespace = "test-fi-ns"
+
+	daClient := block.NewDAClient(mockDA, cfg, zerolog.Nop())
+	fiRetriever := block.NewForcedInclusionRetriever(daClient, gen, zerolog.Nop())
+
+	seq := NewBasedSequencer(fiRetriever, mockDA, cfg, gen, zerolog.Nop())
+
+	// First call with maxBytes = 100
+	// Forced tx (150 bytes) is added to queue, but batch will be empty since it exceeds maxBytes
+	req1 := coresequencer.GetNextBatchRequest{
+		MaxBytes:      100,
+		LastBatchData: nil,
+	}
+
+	resp1, err := seq.GetNextBatch(context.Background(), req1)
+	require.NoError(t, err)
+	require.NotNil(t, resp1)
+	require.NotNil(t, resp1.Batch)
+	assert.Equal(t, 0, len(resp1.Batch.Transactions), "Should have no txs as forced tx exceeds maxBytes")
+
+	// Verify forced tx is in queue
+	assert.Equal(t, 1, len(seq.txQueue), "Forced tx should be in queue")
+
+	// Second call with larger maxBytes = 200
+	// Should process tx from queue
+	req2 := coresequencer.GetNextBatchRequest{
+		MaxBytes:      200,
+		LastBatchData: nil,
+	}
+
+	resp2, err := seq.GetNextBatch(context.Background(), req2)
+	require.NoError(t, err)
+	require.NotNil(t, resp2)
+	require.NotNil(t, resp2.Batch)
+	assert.Equal(t, 1, len(resp2.Batch.Transactions), "Should include tx from queue")
+	assert.Equal(t, 150, len(resp2.Batch.Transactions[0]))
+
+	// Queue should now be empty
+	assert.Equal(t, 0, len(seq.txQueue), "Queue should be empty")
+
+	mockDA.AssertExpectations(t)
+}
+
+func TestBasedSequencer_GetNextBatch_ForcedInclusionExceedsMaxBytes(t *testing.T) {
+	mockDA := new(MockDA)
+
+	// Return forced txs where combined they exceed maxBytes
+	forcedTx1 := make([]byte, 100)
+	forcedTx2 := make([]byte, 80)
+	mockDA.On("GetIDs", mock.Anything, uint64(100), mock.Anything).Return(&coreda.GetIDsResult{
+		IDs:       []coreda.ID{[]byte("id1"), []byte("id2")},
+		Timestamp: time.Now(),
+	}, nil).Once()
+	mockDA.On("Get", mock.Anything, mock.Anything, mock.Anything).Return([][]byte{forcedTx1, forcedTx2}, nil).Once()
+
+	// Second call
+	mockDA.On("GetIDs", mock.Anything, uint64(100), mock.Anything).Return(nil, coreda.ErrBlobNotFound).Once()
+
+	gen := genesis.Genesis{
+		ChainID:                "test-chain",
+		DAStartHeight:          100,
+		DAEpochForcedInclusion: 1,
+	}
+
+	cfg := config.DefaultConfig()
+	cfg.DA.Namespace = "test-ns"
+	cfg.DA.DataNamespace = "test-data-ns"
+	cfg.DA.ForcedInclusionNamespace = "test-fi-ns"
+
+	daClient := block.NewDAClient(mockDA, cfg, zerolog.Nop())
+	fiRetriever := block.NewForcedInclusionRetriever(daClient, gen, zerolog.Nop())
+
+	seq := NewBasedSequencer(fiRetriever, mockDA, cfg, gen, zerolog.Nop())
+
+	// First call with maxBytes = 120
+	// Should get only first forced tx (100 bytes), second stays in queue
+	req1 := coresequencer.GetNextBatchRequest{
+		MaxBytes:      120,
+		LastBatchData: nil,
+	}
+
+	resp1, err := seq.GetNextBatch(context.Background(), req1)
+	require.NoError(t, err)
+	require.NotNil(t, resp1)
+	require.NotNil(t, resp1.Batch)
+	assert.Equal(t, 1, len(resp1.Batch.Transactions), "Should only include first forced tx")
+	assert.Equal(t, 100, len(resp1.Batch.Transactions[0]))
+
+	// Verify second tx is still in queue
+	assert.Equal(t, 1, len(seq.txQueue), "Second tx should be in queue")
+
+	// Second call - should get the second tx from queue
+	req2 := coresequencer.GetNextBatchRequest{
+		MaxBytes:      120,
+		LastBatchData: nil,
+	}
+
+	resp2, err := seq.GetNextBatch(context.Background(), req2)
+	require.NoError(t, err)
+	require.NotNil(t, resp2)
+	require.NotNil(t, resp2.Batch)
+	assert.Equal(t, 1, len(resp2.Batch.Transactions), "Should include second tx from queue")
+	assert.Equal(t, 80, len(resp2.Batch.Transactions[0]))
+
+	// Queue should now be empty
+	assert.Equal(t, 0, len(seq.txQueue), "Queue should be empty")
+
+	mockDA.AssertExpectations(t)
 }
 
 func TestBasedSequencer_VerifyBatch(t *testing.T) {

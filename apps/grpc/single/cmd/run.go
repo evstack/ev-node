@@ -24,6 +24,7 @@ import (
 	"github.com/evstack/ev-node/pkg/p2p/key"
 	"github.com/evstack/ev-node/pkg/store"
 	"github.com/evstack/ev-node/sequencers/based"
+	seqcommon "github.com/evstack/ev-node/sequencers/common"
 	"github.com/evstack/ev-node/sequencers/single"
 )
 
@@ -59,7 +60,7 @@ The execution client must implement the Evolve execution gRPC interface.`,
 		logger.Info().Str("headerNamespace", headerNamespace.HexString()).Str("dataNamespace", dataNamespace.HexString()).Msg("namespaces")
 
 		// Create DA client
-		daJrpc, err := jsonrpc.NewClient(cmd.Context(), logger, nodeConfig.DA.Address, nodeConfig.DA.AuthToken, rollcmd.DefaultMaxBlobSize)
+		daJrpc, err := jsonrpc.NewClient(cmd.Context(), logger, nodeConfig.DA.Address, nodeConfig.DA.AuthToken, seqcommon.AbsoluteMaxBlobSize)
 		if err != nil {
 			return err
 		}

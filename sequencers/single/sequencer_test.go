@@ -490,6 +490,254 @@ func TestSequencer_GetNextBatch_BeforeDASubmission(t *testing.T) {
 	mockDA.AssertExpectations(t)
 }
 
+func TestSequencer_GetNextBatch_ForcedInclusionAndBatch_MaxBytes(t *testing.T) {
+	ctx := context.Background()
+	logger := zerolog.New(zerolog.NewConsoleWriter())
+
+	// Create in-memory datastore
+	db := ds.NewMapDatastore()
+
+	// Create mock forced inclusion retriever with txs that are 50 bytes each
+	mockFI := &MockForcedInclusionRetriever{}
+	forcedTx1 := make([]byte, 50)
+	forcedTx2 := make([]byte, 60)
+	mockFI.On("RetrieveForcedIncludedTxs", mock.Anything, uint64(100)).Return(&block.ForcedInclusionEvent{
+		Txs:           [][]byte{forcedTx1, forcedTx2}, // Total 110 bytes
+		StartDaHeight: 100,
+		EndDaHeight:   100,
+	}, nil)
+
+	gen := genesis.Genesis{
+		ChainID:       "test-chain",
+		DAStartHeight: 100,
+	}
+
+	seq, err := NewSequencer(
+		ctx,
+		logger,
+		db,
+		nil,
+		[]byte("test-chain"),
+		1*time.Second,
+		nil,
+		true,
+		100,
+		mockFI,
+		gen,
+	)
+	require.NoError(t, err)
+
+	// Submit batch txs that are 40 bytes each
+	batchTx1 := make([]byte, 40)
+	batchTx2 := make([]byte, 40)
+	batchTx3 := make([]byte, 40)
+
+	submitReq := coresequencer.SubmitBatchTxsRequest{
+		Id: []byte("test-chain"),
+		Batch: &coresequencer.Batch{
+			Transactions: [][]byte{batchTx1, batchTx2, batchTx3}, // Total 120 bytes
+		},
+	}
+
+	_, err = seq.SubmitBatchTxs(ctx, submitReq)
+	require.NoError(t, err)
+
+	// Request batch with maxBytes = 150
+	// Forced inclusion: 110 bytes (50 + 60)
+	// Batch txs: 120 bytes (40 + 40 + 40)
+	// Combined would be 230 bytes, exceeds 150
+	// Should return forced txs + only 1 batch tx (110 + 40 = 150)
+	getReq := coresequencer.GetNextBatchRequest{
+		Id:            []byte("test-chain"),
+		MaxBytes:      150,
+		LastBatchData: nil,
+	}
+
+	resp, err := seq.GetNextBatch(ctx, getReq)
+	require.NoError(t, err)
+	require.NotNil(t, resp.Batch)
+
+	// Should have forced txs (2) + partial batch txs
+	// Total size should not exceed 150 bytes
+	totalSize := 0
+	for _, tx := range resp.Batch.Transactions {
+		totalSize += len(tx)
+	}
+	assert.LessOrEqual(t, totalSize, 150, "Total batch size should not exceed maxBytes")
+
+	// First 2 txs should be forced inclusion txs
+	assert.GreaterOrEqual(t, len(resp.Batch.Transactions), 2, "Should have at least forced inclusion txs")
+	assert.Equal(t, forcedTx1, resp.Batch.Transactions[0])
+	assert.Equal(t, forcedTx2, resp.Batch.Transactions[1])
+
+	mockFI.AssertExpectations(t)
+}
+
+func TestSequencer_GetNextBatch_ForcedInclusion_ExceedsMaxBytes(t *testing.T) {
+	ctx := context.Background()
+	logger := zerolog.New(zerolog.NewConsoleWriter())
+
+	db := ds.NewMapDatastore()
+
+	// Create forced inclusion txs where combined they exceed maxBytes
+	mockFI := &MockForcedInclusionRetriever{}
+	forcedTx1 := make([]byte, 100)
+	forcedTx2 := make([]byte, 80) // This would be deferred
+	mockFI.On("RetrieveForcedIncludedTxs", mock.Anything, uint64(100)).Return(&block.ForcedInclusionEvent{
+		Txs:           [][]byte{forcedTx1, forcedTx2},
+		StartDaHeight: 100,
+		EndDaHeight:   100,
+	}, nil).Once()
+
+	// Second call should process pending tx
+	mockFI.On("RetrieveForcedIncludedTxs", mock.Anything, uint64(100)).Return(&block.ForcedInclusionEvent{
+		Txs:           [][]byte{},
+		StartDaHeight: 100,
+		EndDaHeight:   100,
+	}, nil).Once()
+
+	gen := genesis.Genesis{
+		ChainID:       "test-chain",
+		DAStartHeight: 100,
+	}
+
+	seq, err := NewSequencer(
+		ctx,
+		logger,
+		db,
+		nil,
+		[]byte("test-chain"),
+		1*time.Second,
+		nil,
+		true,
+		100,
+		mockFI,
+		gen,
+	)
+	require.NoError(t, err)
+
+	// Request batch with maxBytes = 120
+	getReq := coresequencer.GetNextBatchRequest{
+		Id:            []byte("test-chain"),
+		MaxBytes:      120,
+		LastBatchData: nil,
+	}
+
+	// First call - should get only first forced tx (100 bytes)
+	resp, err := seq.GetNextBatch(ctx, getReq)
+	require.NoError(t, err)
+	require.NotNil(t, resp.Batch)
+	assert.Equal(t, 1, len(resp.Batch.Transactions), "Should only include first forced tx")
+	assert.Equal(t, 100, len(resp.Batch.Transactions[0]))
+
+	// Verify pending tx is stored
+	assert.Equal(t, 1, len(seq.pendingForcedInclusionTxs), "Second tx should be pending")
+
+	// Second call - should get the pending forced tx
+	resp2, err := seq.GetNextBatch(ctx, getReq)
+	require.NoError(t, err)
+	require.NotNil(t, resp2.Batch)
+	assert.Equal(t, 1, len(resp2.Batch.Transactions), "Should include pending forced tx")
+	assert.Equal(t, 80, len(resp2.Batch.Transactions[0]))
+
+	// Pending queue should now be empty
+	assert.Equal(t, 0, len(seq.pendingForcedInclusionTxs), "Pending queue should be empty")
+
+	mockFI.AssertExpectations(t)
+}
+
+func TestSequencer_GetNextBatch_AlwaysCheckPendingForcedInclusion(t *testing.T) {
+	ctx := context.Background()
+	logger := zerolog.New(zerolog.NewConsoleWriter())
+
+	db := ds.NewMapDatastore()
+
+	mockFI := &MockForcedInclusionRetriever{}
+
+	// First call returns a large forced tx that gets deferred
+	largeForcedTx := make([]byte, 150)
+	mockFI.On("RetrieveForcedIncludedTxs", mock.Anything, uint64(100)).Return(&block.ForcedInclusionEvent{
+		Txs:           [][]byte{largeForcedTx},
+		StartDaHeight: 100,
+		EndDaHeight:   100,
+	}, nil).Once()
+
+	// Second call returns no new forced txs, but pending should still be processed
+	mockFI.On("RetrieveForcedIncludedTxs", mock.Anything, uint64(100)).Return(&block.ForcedInclusionEvent{
+		Txs:           [][]byte{},
+		StartDaHeight: 100,
+		EndDaHeight:   100,
+	}, nil).Once()
+
+	gen := genesis.Genesis{
+		ChainID:       "test-chain",
+		DAStartHeight: 100,
+	}
+
+	seq, err := NewSequencer(
+		ctx,
+		logger,
+		db,
+		nil,
+		[]byte("test-chain"),
+		1*time.Second,
+		nil,
+		true,
+		100,
+		mockFI,
+		gen,
+	)
+	require.NoError(t, err)
+
+	// Submit a batch tx
+	batchTx := make([]byte, 50)
+	submitReq := coresequencer.SubmitBatchTxsRequest{
+		Id: []byte("test-chain"),
+		Batch: &coresequencer.Batch{
+			Transactions: [][]byte{batchTx},
+		},
+	}
+	_, err = seq.SubmitBatchTxs(ctx, submitReq)
+	require.NoError(t, err)
+
+	// First call with maxBytes = 100
+	// Large forced tx (150 bytes) won't fit, gets deferred
+	// Batch tx (50 bytes) should be returned
+	getReq := coresequencer.GetNextBatchRequest{
+		Id:            []byte("test-chain"),
+		MaxBytes:      100,
+		LastBatchData: nil,
+	}
+
+	resp, err := seq.GetNextBatch(ctx, getReq)
+	require.NoError(t, err)
+	require.NotNil(t, resp.Batch)
+	assert.Equal(t, 1, len(resp.Batch.Transactions), "Should have batch tx only")
+	assert.Equal(t, 50, len(resp.Batch.Transactions[0]))
+
+	// Verify pending forced tx is stored
+	assert.Equal(t, 1, len(seq.pendingForcedInclusionTxs), "Large forced tx should be pending")
+
+	// Second call with larger maxBytes = 200
+	// Should process pending forced tx first
+	getReq2 := coresequencer.GetNextBatchRequest{
+		Id:            []byte("test-chain"),
+		MaxBytes:      200,
+		LastBatchData: nil,
+	}
+
+	resp2, err := seq.GetNextBatch(ctx, getReq2)
+	require.NoError(t, err)
+	require.NotNil(t, resp2.Batch)
+	assert.Equal(t, 1, len(resp2.Batch.Transactions), "Should include pending forced tx")
+	assert.Equal(t, 150, len(resp2.Batch.Transactions[0]))
+
+	// Pending queue should now be empty
+	assert.Equal(t, 0, len(seq.pendingForcedInclusionTxs), "Pending queue should be empty")
+
+	mockFI.AssertExpectations(t)
+}
+
 // TestSequencer_RecordMetrics tests the RecordMetrics method to ensure it properly updates metrics.
 func TestSequencer_RecordMetrics(t *testing.T) {
 	t.Run("With Metrics", func(t *testing.T) {

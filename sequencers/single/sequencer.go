@@ -134,33 +134,25 @@ func (c *Sequencer) GetNextBatch(ctx context.Context, req coresequencer.GetNextB
 
 	forcedEvent, err := c.fiRetriever.RetrieveForcedIncludedTxs(ctx, currentDAHeight)
 	if err != nil {
-		// If we get a height from future error, keep the current DA height and return batch
-		// We'll retry the same height on the next call until DA produces that block
+		// Continue without forced txs. Add logging for clarity.
+
 		if errors.Is(err, coreda.ErrHeightFromFuture) {
 			c.logger.Debug().
 				Uint64("da_height", currentDAHeight).
 				Msg("DA height from future, waiting for DA to produce block")
-
-			batch, err := c.queue.Next(ctx)
-			if err != nil {
-				return nil, err
-			}
-
-			return &coresequencer.GetNextBatchResponse{
-				Batch:     batch,
-				Timestamp: time.Now(),
-				BatchData: req.LastBatchData,
-			}, nil
+		} else if !errors.Is(err, block.ErrForceInclusionNotConfigured) {
+			c.logger.Error().Err(err).Uint64("da_height", currentDAHeight).Msg("failed to retrieve forced inclusion transactions")
 		}
 
-		// If forced inclusion is not configured, continue without forced txs
-		if !errors.Is(err, block.ErrForceInclusionNotConfigured) {
-			c.logger.Error().Err(err).Uint64("da_height", currentDAHeight).Msg("failed to retrieve forced inclusion transactions")
-			// Continue without forced txs on other errors
+		// Still create an empty forced inclusion event
+		forcedEvent = &block.ForcedInclusionEvent{
+			Txs:           [][]byte{},
+			StartDaHeight: currentDAHeight,
+			EndDaHeight:   currentDAHeight,
 		}
 	}
 
-	// Always try to process forced inclusion transactions (can be in queue)
+	// Always try to process forced inclusion transactions (including pending from previous epochs)
 	forcedTxs := c.processForcedInclusionTxs(forcedEvent, req.MaxBytes)
 	if forcedEvent.EndDaHeight > currentDAHeight {
 		c.SetDAHeight(forcedEvent.EndDaHeight)
@@ -174,18 +166,55 @@ func (c *Sequencer) GetNextBatch(ctx context.Context, req coresequencer.GetNextB
 		Uint64("da_height_end", forcedEvent.EndDaHeight).
 		Msg("retrieved forced inclusion transactions from DA")
 
+	// Calculate size used by forced inclusion transactions
+	forcedTxsSize := 0
+	for _, tx := range forcedTxs {
+		forcedTxsSize += len(tx)
+	}
+
 	batch, err := c.queue.Next(ctx)
 	if err != nil {
 		return nil, err
 	}
 
 	// Prepend forced inclusion transactions to the batch
+	// and ensure total size doesn't exceed maxBytes
 	if len(forcedTxs) > 0 {
-		batch.Transactions = append(forcedTxs, batch.Transactions...)
+		// Trim batch transactions to fit within maxBytes
+		remainingBytes := int(req.MaxBytes) - forcedTxsSize
+		trimmedBatchTxs := make([][]byte, 0, len(batch.Transactions))
+		currentBatchSize := 0
+
+		for i, tx := range batch.Transactions {
+			txSize := len(tx)
+			if currentBatchSize+txSize > remainingBytes {
+				// Would exceed limit, return remaining txs to the front of the queue
+				excludedBatch := coresequencer.Batch{Transactions: batch.Transactions[i:]}
+				if err := c.queue.Prepend(ctx, excludedBatch); err != nil {
+					c.logger.Error().Err(err).
+						Int("excluded_count", len(batch.Transactions)-i).
+						Msg("failed to prepend excluded transactions back to queue")
+				} else {
+					c.logger.Debug().
+						Int("excluded_count", len(batch.Transactions)-i).
+						Msg("returned excluded batch transactions to front of queue")
+				}
+				break
+			}
+			trimmedBatchTxs = append(trimmedBatchTxs, tx)
+			currentBatchSize += txSize
+		}
+
+		batch.Transactions = append(forcedTxs, trimmedBatchTxs...)
+
 		c.logger.Debug().
 			Int("forced_tx_count", len(forcedTxs)).
+			Int("forced_txs_size", forcedTxsSize).
+			Int("batch_tx_count", len(trimmedBatchTxs)).
+			Int("batch_size", currentBatchSize).
 			Int("total_tx_count", len(batch.Transactions)).
-			Msg("prepended forced inclusion transactions to batch")
+			Int("total_size", forcedTxsSize+currentBatchSize).
+			Msg("combined forced inclusion and batch transactions")
 	}
 
 	return &coresequencer.GetNextBatchResponse{
@@ -261,11 +290,11 @@ func (c *Sequencer) processForcedInclusionTxs(event *block.ForcedInclusionEvent,
 	for _, pendingTx := range c.pendingForcedInclusionTxs {
 		txSize := seqcommon.GetBlobSize(pendingTx.Data)
 
-		if !seqcommon.ValidateBlobSize(pendingTx.Data, maxBytes) {
+		if !seqcommon.ValidateBlobSize(pendingTx.Data) {
 			c.logger.Warn().
 				Uint64("original_height", pendingTx.OriginalHeight).
 				Int("blob_size", txSize).
-				Msg("pending forced inclusion blob exceeds maximum size - skipping")
+				Msg("pending forced inclusion blob exceeds absolute maximum size - skipping")
 			continue
 		}
 
@@ -293,11 +322,11 @@ func (c *Sequencer) processForcedInclusionTxs(event *block.ForcedInclusionEvent,
 	for _, tx := range event.Txs {
 		txSize := seqcommon.GetBlobSize(tx)
 
-		if !seqcommon.ValidateBlobSize(tx, maxBytes) {
+		if !seqcommon.ValidateBlobSize(tx) {
 			c.logger.Warn().
 				Uint64("da_height", event.StartDaHeight).
 				Int("blob_size", txSize).
-				Msg("forced inclusion blob exceeds maximum size - skipping")
+				Msg("forced inclusion blob exceeds absolute maximum size - skipping")
 			continue
 		}
 
