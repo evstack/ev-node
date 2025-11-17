@@ -51,10 +51,8 @@ func (r *ForcedInclusionRetriever) RetrieveForcedIncludedTxs(ctx context.Context
 		return nil, ErrForceInclusionNotConfigured
 	}
 
-	// Calculate deterministic epoch boundaries
 	epochStart, epochEnd := types.CalculateEpochBoundaries(daHeight, r.genesis.DAStartHeight, r.daEpochSize)
 
-	// If we're not at epoch start, return empty result
 	if daHeight != epochStart {
 		r.logger.Debug().
 			Uint64("da_height", daHeight).
@@ -83,7 +81,6 @@ func (r *ForcedInclusionRetriever) RetrieveForcedIncludedTxs(ctx context.Context
 		Uint64("epoch_num", currentEpochNumber).
 		Msg("retrieving forced included transactions from DA")
 
-	// Check if epoch start is available
 	epochStartResult := r.client.RetrieveForcedInclusion(ctx, epochStart)
 	if epochStartResult.Code == coreda.StatusHeightFromFuture {
 		r.logger.Debug().
@@ -92,7 +89,6 @@ func (r *ForcedInclusionRetriever) RetrieveForcedIncludedTxs(ctx context.Context
 		return nil, fmt.Errorf("%w: epoch start height %d not yet available", coreda.ErrHeightFromFuture, epochStart)
 	}
 
-	// Check if epoch end is available
 	epochEndResult := epochStartResult
 	if epochStart != epochEnd {
 		epochEndResult = r.client.RetrieveForcedInclusion(ctx, epochEnd)
@@ -106,7 +102,6 @@ func (r *ForcedInclusionRetriever) RetrieveForcedIncludedTxs(ctx context.Context
 
 	lastProcessedHeight := epochStart
 
-	// Process epoch start
 	if err := r.processForcedInclusionBlobs(event, &lastProcessedHeight, epochStartResult, epochStart); err != nil {
 		return nil, err
 	}
@@ -136,7 +131,6 @@ func (r *ForcedInclusionRetriever) RetrieveForcedIncludedTxs(ctx context.Context
 		}
 	}
 
-	// Set the DA height range based on what we actually processed
 	event.EndDaHeight = lastProcessedHeight
 
 	r.logger.Info().

@@ -15,6 +15,7 @@ import (
 	coreda "github.com/evstack/ev-node/core/da"
 	coresequencer "github.com/evstack/ev-node/core/sequencer"
 	"github.com/evstack/ev-node/pkg/genesis"
+	seqcommon "github.com/evstack/ev-node/sequencers/common"
 )
 
 var (
@@ -129,8 +130,6 @@ func (c *Sequencer) GetNextBatch(ctx context.Context, req coresequencer.GetNextB
 		return nil, ErrInvalidId
 	}
 
-	// Retrieve forced inclusion transactions if DARetriever is configured
-	var forcedTxs [][]byte
 	currentDAHeight := c.daHeight.Load()
 
 	forcedEvent, err := c.fiRetriever.RetrieveForcedIncludedTxs(ctx, currentDAHeight)
@@ -159,29 +158,21 @@ func (c *Sequencer) GetNextBatch(ctx context.Context, req coresequencer.GetNextB
 			c.logger.Error().Err(err).Uint64("da_height", currentDAHeight).Msg("failed to retrieve forced inclusion transactions")
 			// Continue without forced txs on other errors
 		}
-	} else {
-		// Process forced inclusion transactions with size validation
-		processedTxs, err := c.processForcedInclusionTxs(forcedEvent)
-		if err != nil {
-			c.logger.Error().Err(err).Msg("failed to process forced inclusion transactions")
-			// Continue without forced txs on processing errors
-		} else {
-			forcedTxs = processedTxs
-
-			// Update DA height based on the retrieved event
-			if forcedEvent.EndDaHeight > currentDAHeight {
-				c.SetDAHeight(forcedEvent.EndDaHeight)
-			} else if forcedEvent.StartDaHeight > currentDAHeight {
-				c.SetDAHeight(forcedEvent.StartDaHeight)
-			}
-
-			c.logger.Info().
-				Int("tx_count", len(processedTxs)).
-				Uint64("da_height_start", forcedEvent.StartDaHeight).
-				Uint64("da_height_end", forcedEvent.EndDaHeight).
-				Msg("retrieved forced inclusion transactions from DA")
-		}
 	}
+
+	// Always try to process forced inclusion transactions (can be in queue)
+	forcedTxs := c.processForcedInclusionTxs(forcedEvent, req.MaxBytes)
+	if forcedEvent.EndDaHeight > currentDAHeight {
+		c.SetDAHeight(forcedEvent.EndDaHeight)
+	} else if forcedEvent.StartDaHeight > currentDAHeight {
+		c.SetDAHeight(forcedEvent.StartDaHeight)
+	}
+
+	c.logger.Debug().
+		Int("tx_count", len(forcedTxs)).
+		Uint64("da_height_start", forcedEvent.StartDaHeight).
+		Uint64("da_height_end", forcedEvent.EndDaHeight).
+		Msg("retrieved forced inclusion transactions from DA")
 
 	batch, err := c.queue.Next(ctx)
 	if err != nil {
@@ -261,27 +252,24 @@ func (c *Sequencer) GetDAHeight() uint64 {
 }
 
 // processForcedInclusionTxs processes forced inclusion transactions with size validation and pending queue management
-func (c *Sequencer) processForcedInclusionTxs(event *block.ForcedInclusionEvent) ([][]byte, error) {
+func (c *Sequencer) processForcedInclusionTxs(event *block.ForcedInclusionEvent, maxBytes uint64) [][]byte {
 	currentSize := 0
 	var newPendingTxs []pendingForcedInclusionTx
 	var validatedTxs [][]byte
 
 	// First, process any pending transactions from previous epochs
 	for _, pendingTx := range c.pendingForcedInclusionTxs {
-		txSize := len(pendingTx.Data)
+		txSize := seqcommon.GetBlobSize(pendingTx.Data)
 
-		// Validate individual blob size
-		if txSize > int(block.DefaultMaxBlobSize) {
+		if !seqcommon.ValidateBlobSize(pendingTx.Data, maxBytes) {
 			c.logger.Warn().
 				Uint64("original_height", pendingTx.OriginalHeight).
 				Int("blob_size", txSize).
-				Float64("max_size", block.DefaultMaxBlobSize).
 				Msg("pending forced inclusion blob exceeds maximum size - skipping")
 			continue
 		}
 
-		// Check if adding this blob would exceed the current epoch's max size
-		if currentSize+txSize > int(block.DefaultMaxBlobSize) {
+		if seqcommon.WouldExceedCumulativeSize(currentSize, txSize, maxBytes) {
 			c.logger.Debug().
 				Uint64("original_height", pendingTx.OriginalHeight).
 				Int("current_size", currentSize).
@@ -303,27 +291,24 @@ func (c *Sequencer) processForcedInclusionTxs(event *block.ForcedInclusionEvent)
 
 	// Now process new transactions from this epoch
 	for _, tx := range event.Txs {
-		txSize := len(tx)
+		txSize := seqcommon.GetBlobSize(tx)
 
-		// Validate individual blob size
-		if txSize > int(block.DefaultMaxBlobSize) {
+		if !seqcommon.ValidateBlobSize(tx, maxBytes) {
 			c.logger.Warn().
 				Uint64("da_height", event.StartDaHeight).
 				Int("blob_size", txSize).
-				Float64("max_size", block.DefaultMaxBlobSize).
 				Msg("forced inclusion blob exceeds maximum size - skipping")
 			continue
 		}
 
-		// Check if adding this blob would exceed the current epoch's max size
-		if currentSize+txSize > int(block.DefaultMaxBlobSize) {
+		if seqcommon.WouldExceedCumulativeSize(currentSize, txSize, maxBytes) {
 			c.logger.Debug().
 				Uint64("da_height", event.StartDaHeight).
 				Int("current_size", currentSize).
 				Int("blob_size", txSize).
 				Msg("blob would exceed max size for this epoch - deferring to pending queue")
 
-			// Store for next epoch
+			// Store for next call
 			newPendingTxs = append(newPendingTxs, pendingForcedInclusionTx{
 				Data:           tx,
 				OriginalHeight: event.StartDaHeight,
@@ -354,5 +339,5 @@ func (c *Sequencer) processForcedInclusionTxs(event *block.ForcedInclusionEvent)
 		Int("current_size", currentSize).
 		Msg("completed processing forced inclusion transactions")
 
-	return validatedTxs, nil
+	return validatedTxs
 }

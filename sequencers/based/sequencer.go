@@ -13,6 +13,7 @@ import (
 	coresequencer "github.com/evstack/ev-node/core/sequencer"
 	"github.com/evstack/ev-node/pkg/config"
 	"github.com/evstack/ev-node/pkg/genesis"
+	seqcommon "github.com/evstack/ev-node/sequencers/common"
 )
 
 // ForcedInclusionRetriever defines the interface for retrieving forced inclusion transactions from DA
@@ -132,7 +133,7 @@ func (s *BasedSequencer) GetNextBatch(ctx context.Context, req coresequencer.Get
 	}
 
 	// Process forced inclusion transactions with size validation and pending queue management
-	if err := s.processForcedInclusionTxs(forcedTxsEvent); err != nil {
+	if err := s.processForcedInclusionTxs(forcedTxsEvent, req.MaxBytes); err != nil {
 		s.logger.Error().Err(err).Msg("failed to process forced inclusion transactions")
 		return nil, err
 	}
@@ -206,31 +207,30 @@ func (s *BasedSequencer) GetDAHeight() uint64 {
 }
 
 // processForcedInclusionTxs processes forced inclusion transactions with size validation and pending queue management
-func (s *BasedSequencer) processForcedInclusionTxs(event *block.ForcedInclusionEvent) error {
+func (s *BasedSequencer) processForcedInclusionTxs(event *block.ForcedInclusionEvent, maxBytes uint64) error {
 	currentSize := 0
 	var newPendingTxs []pendingForcedInclusionTx
 	var txsToQueue [][]byte
 
 	// First, process any pending transactions from previous epochs
 	for _, pendingTx := range s.pendingForcedInclusionTxs {
-		txSize := len(pendingTx.Data)
+		txSize := seqcommon.GetBlobSize(pendingTx.Data)
 
-		// Validate individual blob size
-		if txSize > int(block.DefaultMaxBlobSize) {
+		if !seqcommon.ValidateBlobSize(pendingTx.Data, maxBytes) {
 			s.logger.Warn().
 				Uint64("original_height", pendingTx.OriginalHeight).
 				Int("blob_size", txSize).
-				Float64("max_size", block.DefaultMaxBlobSize).
+				Uint64("max_size", maxBytes).
 				Msg("pending forced inclusion blob exceeds maximum size - skipping")
 			continue
 		}
 
-		// Check if adding this blob would exceed the current epoch's max size
-		if currentSize+txSize > int(block.DefaultMaxBlobSize) {
+		if seqcommon.WouldExceedCumulativeSize(currentSize, txSize, maxBytes) {
 			s.logger.Debug().
 				Uint64("original_height", pendingTx.OriginalHeight).
 				Int("current_size", currentSize).
 				Int("blob_size", txSize).
+				Uint64("max_size", maxBytes).
 				Msg("pending blob would exceed max size for this epoch - deferring again")
 			newPendingTxs = append(newPendingTxs, pendingTx)
 			continue
@@ -248,24 +248,23 @@ func (s *BasedSequencer) processForcedInclusionTxs(event *block.ForcedInclusionE
 
 	// Now process new transactions from this epoch
 	for _, tx := range event.Txs {
-		txSize := len(tx)
+		txSize := seqcommon.GetBlobSize(tx)
 
-		// Validate individual blob size
-		if txSize > int(block.DefaultMaxBlobSize) {
+		if !seqcommon.ValidateBlobSize(tx, maxBytes) {
 			s.logger.Warn().
 				Uint64("da_height", event.StartDaHeight).
 				Int("blob_size", txSize).
-				Float64("max_size", block.DefaultMaxBlobSize).
+				Uint64("max_size", maxBytes).
 				Msg("forced inclusion blob exceeds maximum size - skipping")
 			continue
 		}
 
-		// Check if adding this blob would exceed the current epoch's max size
-		if currentSize+txSize > int(block.DefaultMaxBlobSize) {
+		if seqcommon.WouldExceedCumulativeSize(currentSize, txSize, maxBytes) {
 			s.logger.Debug().
 				Uint64("da_height", event.StartDaHeight).
 				Int("current_size", currentSize).
 				Int("blob_size", txSize).
+				Uint64("max_size", maxBytes).
 				Msg("blob would exceed max size for this epoch - deferring to pending queue")
 
 			// Store for next epoch
@@ -293,7 +292,6 @@ func (s *BasedSequencer) processForcedInclusionTxs(event *block.ForcedInclusionE
 			Msg("stored pending forced inclusion transactions for next epoch")
 	}
 
-	// Add validated transactions to the queue
 	s.txQueue = append(s.txQueue, txsToQueue...)
 
 	s.logger.Info().
