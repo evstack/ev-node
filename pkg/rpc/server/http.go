@@ -91,9 +91,13 @@ func RegisterCustomHTTPEndpoints(mux *http.ServeMux, s store.Store, pm p2p.P2PRP
 		}
 
 		if cfg.Node.Aggregator {
+			var maxAllowedDelay time.Duration
+			if cfg.Node.LazyMode {
+				maxAllowedDelay = 2 * cfg.Node.LazyBlockInterval.Duration
+			} else {
+				maxAllowedDelay = 5 * cfg.Node.BlockTime.Duration
+			}
 			timeSinceLastBlock := time.Since(state.LastBlockTime)
-			maxAllowedDelay := 5 * cfg.Node.BlockTime.Duration
-
 			if timeSinceLastBlock > maxAllowedDelay {
 				http.Error(w, "UNREADY: aggregator not producing blocks at expected rate", http.StatusServiceUnavailable)
 				return
