@@ -338,11 +338,8 @@ func (syncService *SyncService[H]) initFromP2PWithRetry(ctx context.Context, pee
 			return false, fmt.Errorf("failed to fetch height %d from peers: %w", heightToQuery, err)
 		}
 
-		// Use CompareAndSwap to atomically check and set initialization flag
-		// This prevents race condition where concurrent calls could both initialize the store
 		if syncService.storeInitialized.CompareAndSwap(false, true) {
 			if _, err := syncService.initStore(ctx, trusted); err != nil {
-				// Revert the flag on error so initialization can be retried
 				syncService.storeInitialized.Store(false)
 				return false, fmt.Errorf("failed to initialize the store: %w", err)
 			}
