@@ -130,9 +130,7 @@ func TestClientGetP2PStoreInfo(t *testing.T) {
 	require.Len(t, stores, 2)
 
 	require.Equal(t, "Header Store", stores[0].Label)
-	require.True(t, stores[0].HeadPresent)
 	require.Equal(t, uint64(10), stores[0].Head.Height)
-	require.True(t, stores[0].TailPresent)
 	require.Equal(t, uint64(5), stores[0].Tail.Height)
 
 	require.Equal(t, "Data Store", stores[1].Label)

@@ -468,9 +468,7 @@ type P2PStoreSnapshot struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Label         string                 `protobuf:"bytes,1,opt,name=label,proto3" json:"label,omitempty"`
 	Height        uint64                 `protobuf:"varint,2,opt,name=height,proto3" json:"height,omitempty"`
-	HeadPresent   bool                   `protobuf:"varint,3,opt,name=head_present,json=headPresent,proto3" json:"head_present,omitempty"`
 	Head          *P2PStoreEntry         `protobuf:"bytes,4,opt,name=head,proto3" json:"head,omitempty"`
-	TailPresent   bool                   `protobuf:"varint,5,opt,name=tail_present,json=tailPresent,proto3" json:"tail_present,omitempty"`
 	Tail          *P2PStoreEntry         `protobuf:"bytes,6,opt,name=tail,proto3" json:"tail,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -520,25 +518,11 @@ func (x *P2PStoreSnapshot) GetHeight() uint64 {
 	return 0
 }
 
-func (x *P2PStoreSnapshot) GetHeadPresent() bool {
-	if x != nil {
-		return x.HeadPresent
-	}
-	return false
-}
-
 func (x *P2PStoreSnapshot) GetHead() *P2PStoreEntry {
 	if x != nil {
 		return x.Head
 	}
 	return nil
-}
-
-func (x *P2PStoreSnapshot) GetTailPresent() bool {
-	if x != nil {
-		return x.TailPresent
-	}
-	return false
 }
 
 func (x *P2PStoreSnapshot) GetTail() *P2PStoreEntry {
@@ -621,13 +605,11 @@ const file_evnode_v1_state_rpc_proto_rawDesc = "" +
 	"\rP2PStoreEntry\x12\x16\n" +
 	"\x06height\x18\x01 \x01(\x04R\x06height\x12\x12\n" +
 	"\x04hash\x18\x02 \x01(\fR\x04hash\x12.\n" +
-	"\x04time\x18\x03 \x01(\v2\x1a.google.protobuf.TimestampR\x04time\"\xe2\x01\n" +
+	"\x04time\x18\x03 \x01(\v2\x1a.google.protobuf.TimestampR\x04time\"\x9c\x01\n" +
 	"\x10P2PStoreSnapshot\x12\x14\n" +
 	"\x05label\x18\x01 \x01(\tR\x05label\x12\x16\n" +
-	"\x06height\x18\x02 \x01(\x04R\x06height\x12!\n" +
-	"\fhead_present\x18\x03 \x01(\bR\vheadPresent\x12,\n" +
-	"\x04head\x18\x04 \x01(\v2\x18.evnode.v1.P2PStoreEntryR\x04head\x12!\n" +
-	"\ftail_present\x18\x05 \x01(\bR\vtailPresent\x12,\n" +
+	"\x06height\x18\x02 \x01(\x04R\x06height\x12,\n" +
+	"\x04head\x18\x04 \x01(\v2\x18.evnode.v1.P2PStoreEntryR\x04head\x12,\n" +
 	"\x04tail\x18\x06 \x01(\v2\x18.evnode.v1.P2PStoreEntryR\x04tail\"N\n" +
 	"\x17GetP2PStoreInfoResponse\x123\n" +
 	"\x06stores\x18\x01 \x03(\v2\x1b.evnode.v1.P2PStoreSnapshotR\x06stores2\x90\x03\n" +

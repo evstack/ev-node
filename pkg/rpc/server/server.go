@@ -236,14 +236,12 @@ func collectP2PStoreSnapshot[H goheader.Header[H]](
 	}
 
 	if head, err := store.Head(ctx); err == nil {
-		snapshot.HeadPresent = true
 		snapshot.Head = toP2PStoreEntry(head)
 	} else if !errors.Is(err, goheader.ErrEmptyStore) && !errors.Is(err, goheader.ErrNotFound) {
 		return nil, fmt.Errorf("failed to read %s head: %w", label, err)
 	}
 
 	if tail, err := store.Tail(ctx); err == nil {
-		snapshot.TailPresent = true
 		snapshot.Tail = toP2PStoreEntry(tail)
 	} else if !errors.Is(err, goheader.ErrEmptyStore) && !errors.Is(err, goheader.ErrNotFound) {
 		return nil, fmt.Errorf("failed to read %s tail: %w", label, err)

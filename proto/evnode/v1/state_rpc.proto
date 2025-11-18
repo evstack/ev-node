@@ -65,24 +65,22 @@ message GetMetadataResponse {
 
 // GetGenesisDaHeightResponse defines the DA height at which the first Evolve block was included.
 message GetGenesisDaHeightResponse {
-    uint64 height = 3;
+  uint64 height = 3;
 }
 
 // P2PStoreEntry captures a single head or tail record from a go-header store.
 message P2PStoreEntry {
-  uint64 height = 1;
-  bytes  hash   = 2;
-  google.protobuf.Timestamp time = 3;
+  uint64                    height = 1;
+  bytes                     hash   = 2;
+  google.protobuf.Timestamp time   = 3;
 }
 
 // P2PStoreSnapshot provides head/tail status for a go-header store.
 message P2PStoreSnapshot {
-  string         label        = 1;
-  uint64         height       = 2;
-  bool           head_present = 3;
-  P2PStoreEntry  head         = 4;
-  bool           tail_present = 5;
-  P2PStoreEntry  tail         = 6;
+  string        label  = 1;
+  uint64        height = 2;
+  P2PStoreEntry head   = 4;
+  P2PStoreEntry tail   = 6;
 }
 
 // GetP2PStoreInfoResponse holds the snapshots for configured go-header stores.

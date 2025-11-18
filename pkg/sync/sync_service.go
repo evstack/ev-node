@@ -154,11 +154,6 @@ func (syncService *SyncService[H]) WriteToStoreAndBroadcast(ctx context.Context,
 		}
 	}
 
-	if err := headerOrData.Validate(); err != nil {
-		syncService.logger.Error().Err(err).Msg("failed to validate header")
-		panic(err)
-	}
-
 	// Broadcast for subscribers
 	if err := syncService.sub.Broadcast(ctx, headerOrData, opts...); err != nil {
 		// for the first block when starting the app, broadcast error is expected
@@ -174,7 +169,6 @@ func (syncService *SyncService[H]) WriteToStoreAndBroadcast(ctx context.Context,
 		}
 
 		syncService.logger.Error().Err(err).Msg("failed to broadcast")
-		panic(err)
 	}
 
 	return nil
