@@ -109,6 +109,7 @@ func TestDynamicLeaderElectionRun(t *testing.T) {
 				leaderCh := make(chan bool, 2)
 				m.EXPECT().leaderCh().Return((<-chan bool)(leaderCh))
 				m.EXPECT().Config().Return(testCfg())
+				m.EXPECT().waitForMsgsLanded(2 * time.Millisecond).Return(nil)
 				m.EXPECT().GetState().Return(RaftBlockState{Height: 1})
 				m.EXPECT().leadershipTransfer().Return(nil)
 
@@ -148,6 +149,7 @@ func TestDynamicLeaderElectionRun(t *testing.T) {
 				m.EXPECT().leaderCh().Return((<-chan bool)(leaderCh))
 				// On leadership change to true, election will sleep SendTimeout, then check sync against state
 				m.EXPECT().Config().Return(testCfg())
+				m.EXPECT().waitForMsgsLanded(2 * time.Millisecond).Return(nil)
 				m.EXPECT().GetState().Return(RaftBlockState{Height: 1})
 
 				fStarted := make(chan struct{})

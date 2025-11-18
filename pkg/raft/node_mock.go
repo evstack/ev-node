@@ -5,6 +5,8 @@
 package raft
 
 import (
+	"time"
+
 	mock "github.com/stretchr/testify/mock"
 )
 
@@ -297,6 +299,57 @@ func (_c *mocksourceNode_leadershipTransfer_Call) Return(err error) *mocksourceN
 }
 
 func (_c *mocksourceNode_leadershipTransfer_Call) RunAndReturn(run func() error) *mocksourceNode_leadershipTransfer_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// waitForMsgsLanded provides a mock function for the type mocksourceNode
+func (_mock *mocksourceNode) waitForMsgsLanded(duration time.Duration) error {
+	ret := _mock.Called(duration)
+
+	if len(ret) == 0 {
+		panic("no return value specified for waitForMsgsLanded")
+	}
+
+	var r0 error
+	if returnFunc, ok := ret.Get(0).(func(time.Duration) error); ok {
+		r0 = returnFunc(duration)
+	} else {
+		r0 = ret.Error(0)
+	}
+	return r0
+}
+
+// mocksourceNode_waitForMsgsLanded_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'waitForMsgsLanded'
+type mocksourceNode_waitForMsgsLanded_Call struct {
+	*mock.Call
+}
+
+// waitForMsgsLanded is a helper method to define mock.On call
+//   - duration time.Duration
+func (_e *mocksourceNode_Expecter) waitForMsgsLanded(duration interface{}) *mocksourceNode_waitForMsgsLanded_Call {
+	return &mocksourceNode_waitForMsgsLanded_Call{Call: _e.mock.On("waitForMsgsLanded", duration)}
+}
+
+func (_c *mocksourceNode_waitForMsgsLanded_Call) Run(run func(duration time.Duration)) *mocksourceNode_waitForMsgsLanded_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 time.Duration
+		if args[0] != nil {
+			arg0 = args[0].(time.Duration)
+		}
+		run(
+			arg0,
+		)
+	})
+	return _c
+}
+
+func (_c *mocksourceNode_waitForMsgsLanded_Call) Return(err error) *mocksourceNode_waitForMsgsLanded_Call {
+	_c.Call.Return(err)
+	return _c
+}
+
+func (_c *mocksourceNode_waitForMsgsLanded_Call) RunAndReturn(run func(duration time.Duration) error) *mocksourceNode_waitForMsgsLanded_Call {
 	_c.Call.Return(run)
 	return _c
 }
