@@ -137,13 +137,13 @@ func (syncService *SyncService[H]) WriteToStoreAndBroadcast(ctx context.Context,
 	}
 
 	storeInitialized := false
-	if !syncService.storeInitialized.Load() {
+	if syncService.storeInitialized.CompareAndSwap(false, true) {
 		var err error
 		storeInitialized, err = syncService.initStore(ctx, headerOrData)
 		if err != nil {
+			syncService.storeInitialized.Store(false)
 			return fmt.Errorf("failed to initialize the store: %w", err)
 		}
-		syncService.storeInitialized.Store(true)
 	}
 
 	firstStart := false
@@ -338,10 +338,15 @@ func (syncService *SyncService[H]) initFromP2PWithRetry(ctx context.Context, pee
 			return false, fmt.Errorf("failed to fetch height %d from peers: %w", heightToQuery, err)
 		}
 
-		if _, err := syncService.initStore(ctx, trusted); err != nil {
-			return false, fmt.Errorf("failed to initialize the store: %w", err)
+		// Use CompareAndSwap to atomically check and set initialization flag
+		// This prevents race condition where concurrent calls could both initialize the store
+		if syncService.storeInitialized.CompareAndSwap(false, true) {
+			if _, err := syncService.initStore(ctx, trusted); err != nil {
+				// Revert the flag on error so initialization can be retried
+				syncService.storeInitialized.Store(false)
+				return false, fmt.Errorf("failed to initialize the store: %w", err)
+			}
 		}
-		syncService.storeInitialized.Store(true)
 		if err := syncService.startSyncer(ctx); err != nil {
 			return false, err
 		}
