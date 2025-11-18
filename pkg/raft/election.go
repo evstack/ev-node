@@ -29,6 +29,7 @@ type sourceNode interface {
 	NodeID() string
 	GetState() RaftBlockState
 	leadershipTransfer() error
+	waitForMsgsLanded(duration time.Duration) error
 }
 
 type DynamicLeaderElection struct {
@@ -90,17 +91,11 @@ func (d *DynamicLeaderElection) Run(ctx context.Context) error {
 			d.logger.Info().Msg("Raft leader changed notification")
 			if becameLeader && !isCurrentlyLeader { // new leader
 				if isStarted {
-					var synced bool
 					d.logger.Info().Msg("became leader, stopping follower operations")
-					// wait for in flight raft msgs to land
-				awaitSyncLoop:
-					for end := time.Now().Add(d.node.Config().SendTimeout); time.Now().Before(end); {
-						if synced = runnable.IsSynced(d.node.GetState()); synced {
-							break awaitSyncLoop
-						}
-						time.Sleep(d.node.Config().SendTimeout / 10)
-					}
-					if !synced && !runnable.IsSynced(d.node.GetState()) {
+					// wait for in flight raft msgs to land, this is critical to avoid double sign on old state
+					raftSynced := d.node.waitForMsgsLanded(d.node.Config().SendTimeout) == nil
+					time.Sleep(d.node.Config().SendTimeout)
+					if !raftSynced || !runnable.IsSynced(d.node.GetState()) {
 						d.logger.Info().Msg("became leader, but not synced. Pass on leadership")
 						if err := d.node.leadershipTransfer(); err != nil && !errors.Is(err, raft.ErrNotLeader) {
 							// the leadership transfer can fail due to no suitable leader. Better stop than double sign on old state

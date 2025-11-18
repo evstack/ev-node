@@ -145,6 +145,27 @@ func (n *Node) Start(_ context.Context) error {
 	return nil
 }
 
+func (n *Node) waitForMsgsLanded(timeout time.Duration) error {
+	if n == nil {
+		return nil
+	}
+	timeoutTicker := time.NewTicker(timeout)
+	defer timeoutTicker.Stop()
+	ticker := time.NewTicker(min(n.config.SendTimeout, timeout) / 2)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ticker.C:
+			if n.raft.AppliedIndex() >= n.raft.LastIndex() {
+				return nil
+			}
+		case <-timeoutTicker.C:
+			return errors.New("max wait time reached")
+		}
+	}
+}
+
 func (n *Node) Stop() error {
 	if n == nil {
 		return nil
