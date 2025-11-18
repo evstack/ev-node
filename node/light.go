@@ -172,7 +172,6 @@ func (ln *LightNode) Run(parentCtx context.Context) error {
 		} else {
 			ln.Logger.Error().Err(multiErr).Msg("error during shutdown")
 		}
-		ln.Logger.Error().Err(err).Msg("error during shutdown")
 	}
 
 	if ctx.Err() != nil {
