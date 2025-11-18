@@ -113,7 +113,7 @@ func TestHealthReady_aggregatorBlockDelay(t *testing.T) {
 
 			bestKnownHeightProvider := func() uint64 { return state.LastBlockHeight }
 
-			RegisterCustomHTTPEndpoints(mux, mockStore, nil, cfg, bestKnownHeightProvider, logger)
+			RegisterCustomHTTPEndpoints(mux, mockStore, nil, cfg, bestKnownHeightProvider, logger, nil)
 
 			ts := httptest.NewServer(mux)
 			t.Cleanup(ts.Close)
