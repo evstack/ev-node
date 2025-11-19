@@ -19,12 +19,12 @@ import (
 
 	"github.com/celestiaorg/tastora/framework/docker"
 	"github.com/celestiaorg/tastora/framework/docker/evstack/reth"
-	dockerclient "github.com/moby/moby/client"
+	tastoratypes "github.com/celestiaorg/tastora/framework/types"
 )
 
 // Test-scoped Docker client/network mapping to avoid conflicts between tests
 var (
-	dockerClients  = make(map[string]*dockerclient.Client)
+	dockerClients  = make(map[string]tastoratypes.TastoraDockerClient)
 	dockerNetworks = make(map[string]string)
 	dockerMutex    sync.RWMutex
 )
@@ -41,7 +41,7 @@ func randomString(n int) string {
 }
 
 // getTestScopedDockerSetup returns a Docker client and network ID that are scoped to the specific test.
-func getTestScopedDockerSetup(t *testing.T) (*dockerclient.Client, string) {
+func getTestScopedDockerSetup(t *testing.T) (tastoratypes.TastoraDockerClient, string) {
 	t.Helper()
 
 	testKey := t.Name()
@@ -50,7 +50,7 @@ func getTestScopedDockerSetup(t *testing.T) (*dockerclient.Client, string) {
 
 	dockerCli, exists := dockerClients[testKey]
 	if !exists {
-		cli, netID := docker.DockerSetup(t)
+		cli, netID := docker.Setup(t)
 		dockerClients[testKey] = cli
 		dockerNetworks[testKey] = netID
 		dockerCli = cli
