@@ -169,6 +169,7 @@ func (syncService *SyncService[H]) WriteToStoreAndBroadcast(ctx context.Context,
 		}
 
 		syncService.logger.Error().Err(err).Msg("failed to broadcast")
+		panic(err)
 	}
 
 	return nil

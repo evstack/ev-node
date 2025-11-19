@@ -71,7 +71,9 @@ var StoreP2PInspectCmd = &cobra.Command{
 	Use:   "store-info",
 	Short: "Inspect the go-header (P2P) stores and display their tail/head entries",
 	Long: `Opens the datastore used by the node's go-header services and reports
-the current height, head, and tail information for both the header and data stores.`,
+the current height, head, and tail information for both the header and data stores.
+The datastore is opened in read-only mode so that it can run against mounted snapshots
+or other read-only environments without requiring write access.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		nodeConfig, err := ParseConfig(cmd)
 		if err != nil {
@@ -85,7 +87,7 @@ the current height, head, and tail information for both the header and data stor
 
 		dbName := resolveDBName(cmd)
 
-		rawStore, err := store.NewDefaultKVStore(nodeConfig.RootDir, nodeConfig.DBPath, dbName)
+		rawStore, err := store.NewDefaultReadOnlyKVStore(nodeConfig.RootDir, nodeConfig.DBPath, dbName)
 		if err != nil {
 			return fmt.Errorf("failed to open datastore: %w", err)
 		}
