@@ -154,18 +154,6 @@ func (syncService *SyncService[H]) WriteToStoreAndBroadcast(ctx context.Context,
 		}
 	}
 
-	hh, err := syncService.store.Head(ctx)
-	if err != nil {
-		return fmt.Errorf("failed to get head from store: %w", err)
-	}
-	syncService.logger.Info().Uint64("height", hh.Height()).
-		Uint64("header_or_data", headerOrData.Height()).
-		Msg("writing to store and broadcasting")
-
-	if err := hh.Verify(headerOrData); err != nil {
-		panic(fmt.Errorf("header verification failed: %w", err))
-	}
-
 	// Broadcast for subscribers
 	if err := syncService.sub.Broadcast(ctx, headerOrData, opts...); err != nil {
 		// for the first block when starting the app, broadcast error is expected
@@ -181,7 +169,6 @@ func (syncService *SyncService[H]) WriteToStoreAndBroadcast(ctx context.Context,
 		}
 
 		syncService.logger.Error().Err(err).Msg("failed to broadcast")
-		panic(err)
 	}
 
 	return nil
