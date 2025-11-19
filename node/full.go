@@ -87,12 +87,12 @@ func newFullNode(
 	mainKV := newPrefixKV(database, EvPrefix)
 	rktStore := store.New(mainKV)
 
-	headerSyncService, err := initHeaderSyncService(mainKV, nodeConfig, genesis, p2pClient, logger)
+	headerSyncService, err := initHeaderSyncService(mainKV, rktStore, nodeConfig, genesis, p2pClient, logger)
 	if err != nil {
 		return nil, err
 	}
 
-	dataSyncService, err := initDataSyncService(mainKV, nodeConfig, genesis, p2pClient, logger)
+	dataSyncService, err := initDataSyncService(mainKV, rktStore, nodeConfig, genesis, p2pClient, logger)
 	if err != nil {
 		return nil, err
 	}
@@ -149,6 +149,7 @@ func newFullNode(
 
 func initHeaderSyncService(
 	mainKV ds.Batching,
+	daStore store.Store,
 	nodeConfig config.Config,
 	genesis genesispkg.Genesis,
 	p2pClient *p2p.Client,
@@ -156,7 +157,7 @@ func initHeaderSyncService(
 ) (*evsync.HeaderSyncService, error) {
 	componentLogger := logger.With().Str("component", "HeaderSyncService").Logger()
 
-	headerSyncService, err := evsync.NewHeaderSyncService(mainKV, nodeConfig, genesis, p2pClient, componentLogger)
+	headerSyncService, err := evsync.NewHeaderSyncService(mainKV, daStore, nodeConfig, genesis, p2pClient, componentLogger)
 	if err != nil {
 		return nil, fmt.Errorf("error while initializing HeaderSyncService: %w", err)
 	}
@@ -165,6 +166,7 @@ func initHeaderSyncService(
 
 func initDataSyncService(
 	mainKV ds.Batching,
+	daStore store.Store,
 	nodeConfig config.Config,
 	genesis genesispkg.Genesis,
 	p2pClient *p2p.Client,
@@ -172,7 +174,7 @@ func initDataSyncService(
 ) (*evsync.DataSyncService, error) {
 	componentLogger := logger.With().Str("component", "DataSyncService").Logger()
 
-	dataSyncService, err := evsync.NewDataSyncService(mainKV, nodeConfig, genesis, p2pClient, componentLogger)
+	dataSyncService, err := evsync.NewDataSyncService(mainKV, daStore, nodeConfig, genesis, p2pClient, componentLogger)
 	if err != nil {
 		return nil, fmt.Errorf("error while initializing DataSyncService: %w", err)
 	}
