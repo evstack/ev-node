@@ -13,22 +13,8 @@ import (
 
 // NewDefaultKVStore creates instance of default key-value store.
 func NewDefaultKVStore(rootDir, dbPath, dbName string) (ds.Batching, error) {
-	return newDefaultKVStore(rootDir, dbPath, dbName, nil)
-}
-
-// NewDefaultReadOnlyKVStore creates a key-value store opened in badger's read-only mode.
-//
-// This is useful for tools that only inspect state (such as store-info) where the
-// underlying data directory might be mounted read-only.
-func NewDefaultReadOnlyKVStore(rootDir, dbPath, dbName string) (ds.Batching, error) {
-	opts := badger4.DefaultOptions
-	opts.Options = opts.Options.WithReadOnly(true)
-	return newDefaultKVStore(rootDir, dbPath, dbName, &opts)
-}
-
-func newDefaultKVStore(rootDir, dbPath, dbName string, options *badger4.Options) (ds.Batching, error) {
 	path := filepath.Join(rootify(rootDir, dbPath), dbName)
-	return badger4.NewDatastore(path, options)
+	return badger4.NewDatastore(path, nil)
 }
 
 // PrefixEntries retrieves all entries in the datastore whose keys have the supplied prefix
