@@ -12,7 +12,6 @@ import (
 	"github.com/rs/zerolog"
 	"github.com/spf13/cobra"
 
-	"github.com/evstack/ev-node/block"
 	"github.com/evstack/ev-node/core/da"
 	"github.com/evstack/ev-node/core/execution"
 	coresequencer "github.com/evstack/ev-node/core/sequencer"
@@ -110,9 +109,6 @@ func createSequencer(
 	nodeConfig config.Config,
 	genesis genesis.Genesis,
 ) (coresequencer.Sequencer, error) {
-	daClient := block.NewDAClient(da, nodeConfig, logger)
-	fiRetriever := block.NewForcedInclusionRetriever(daClient, genesis, logger)
-
 	singleMetrics, err := single.NopMetrics()
 	if err != nil {
 		return nil, fmt.Errorf("failed to create single sequencer metrics: %w", err)
@@ -127,17 +123,10 @@ func createSequencer(
 		nodeConfig.Node.BlockTime.Duration,
 		singleMetrics,
 		nodeConfig.Node.Aggregator,
-		1000,
-		fiRetriever,
-		genesis,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create single sequencer: %w", err)
 	}
-
-	logger.Info().
-		Str("forced_inclusion_namespace", nodeConfig.DA.GetForcedInclusionNamespace()).
-		Msg("single sequencer initialized")
 
 	return sequencer, nil
 }
