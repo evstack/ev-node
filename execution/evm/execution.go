@@ -51,7 +51,7 @@ var _ execution.Executor = (*EngineClient)(nil)
 //   - SYNCING/ACCEPTED: Temporary unavailability, return ErrPayloadSyncing for retry
 //   - INVALID: Permanent failure, return ErrInvalidPayloadStatus (no retry)
 //   - Unknown: Treat as permanent failure (no retry)
-func validatePayloadStatus(status engine.PayloadStatusV1, operation string) error {
+func validatePayloadStatus(status engine.PayloadStatusV1) error {
 	switch status.Status {
 	case engine.VALID:
 		return nil
@@ -201,7 +201,7 @@ func (c *EngineClient) InitChain(ctx context.Context, genesisTime time.Time, ini
 		}
 
 		// Validate payload status
-		if err := validatePayloadStatus(forkchoiceResult.PayloadStatus, "InitChain"); err != nil {
+		if err := validatePayloadStatus(forkchoiceResult.PayloadStatus); err != nil {
 			c.logger.Warn().
 				Str("status", forkchoiceResult.PayloadStatus.Status).
 				Str("latestValidHash", forkchoiceResult.PayloadStatus.LatestValidHash.Hex()).
@@ -299,7 +299,7 @@ func (c *EngineClient) ExecuteTxs(ctx context.Context, txs [][]byte, blockHeight
 	var payloadID *engine.PayloadID
 	err = retryWithBackoff(ctx, func() error {
 		// Validate payload status
-		if err := validatePayloadStatus(forkchoiceResult.PayloadStatus, "ExecuteTxs forkchoice"); err != nil {
+		if err := validatePayloadStatus(forkchoiceResult.PayloadStatus); err != nil {
 			c.logger.Warn().
 				Str("status", forkchoiceResult.PayloadStatus.Status).
 				Str("latestValidHash", forkchoiceResult.PayloadStatus.LatestValidHash.Hex()).
@@ -363,7 +363,7 @@ func (c *EngineClient) ExecuteTxs(ctx context.Context, txs [][]byte, blockHeight
 
 	// Validate new payload status with retry logic
 	err = retryWithBackoff(ctx, func() error {
-		if err := validatePayloadStatus(newPayloadResult, "ExecuteTxs newPayload"); err != nil {
+		if err := validatePayloadStatus(newPayloadResult); err != nil {
 			c.logger.Warn().
 				Str("status", newPayloadResult.Status).
 				Str("latestValidHash", newPayloadResult.LatestValidHash.Hex()).
@@ -429,7 +429,7 @@ func (c *EngineClient) setFinal(ctx context.Context, blockHash common.Hash, isFi
 
 	// Validate payload status with retry logic
 	err = retryWithBackoff(ctx, func() error {
-		if err := validatePayloadStatus(forkchoiceResult.PayloadStatus, "setFinal"); err != nil {
+		if err := validatePayloadStatus(forkchoiceResult.PayloadStatus); err != nil {
 			c.logger.Warn().
 				Str("status", forkchoiceResult.PayloadStatus.Status).
 				Str("latestValidHash", forkchoiceResult.PayloadStatus.LatestValidHash.Hex()).
