@@ -8,7 +8,7 @@ require (
 	github.com/celestiaorg/tastora v0.7.5
 	github.com/ethereum/go-ethereum v1.16.6
 	github.com/evstack/ev-node v0.0.0-00010101000000-000000000000
-	github.com/evstack/ev-node/core v1.0.0-beta.4
+	github.com/evstack/ev-node/core v1.0.0-beta.5
 	github.com/evstack/ev-node/da v1.0.0-beta.4
 	github.com/evstack/ev-node/execution/evm v0.0.0-20250602130019-2a732cf903a5
 	github.com/evstack/ev-node/execution/evm/test v0.0.0-00010101000000-000000000000
@@ -203,7 +203,6 @@ require (
 	golang.org/x/net v0.47.0 // indirect
 	golang.org/x/sync v0.18.0 // indirect
 	golang.org/x/sys v0.38.0 // indirect
-	golang.org/x/telemetry v0.0.0-20251008203120-078029d740a8 // indirect
 	golang.org/x/term v0.37.0 // indirect
 	golang.org/x/text v0.31.0 // indirect
 	golang.org/x/xerrors v0.0.0-20240903120638-7835f813f4da // indirect
