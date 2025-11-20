@@ -177,7 +177,7 @@ func (s *Syncer) SetLastState(state types.State) {
 
 // GetDAHeight returns the current DA height
 func (s *Syncer) GetDAHeight() uint64 {
-	return s.daHeight.Load()
+	return max(s.daHeight.Load(), s.cache.DaHeight())
 }
 
 // SetDAHeight updates the DA height
@@ -217,7 +217,7 @@ func (s *Syncer) initializeState() error {
 	s.SetLastState(state)
 
 	// Set DA height
-	s.SetDAHeight(state.DAHeight)
+	s.SetDAHeight(max(s.genesis.DAStartHeight, s.cache.DaHeight()))
 
 	s.logger.Info().
 		Uint64("height", state.LastBlockHeight).
