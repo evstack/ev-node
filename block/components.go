@@ -119,6 +119,11 @@ func (bc *Components) Stop() error {
 			errs = errors.Join(errs, fmt.Errorf("failed to stop submitter: %w", err))
 		}
 	}
+	if bc.Cache != nil {
+		if err := bc.Cache.SaveToDisk(); err != nil {
+			errs = errors.Join(errs, fmt.Errorf("failed to save caches: %w", err))
+		}
+	}
 
 	return errs
 }
@@ -137,8 +142,8 @@ func NewSyncComponents(
 	logger zerolog.Logger,
 	metrics *Metrics,
 	blockOpts BlockOptions,
+	raftNode common.RaftNode,
 ) (*Components, error) {
-	logger.Info().Msg("Starting in sync-mode")
 	cacheManager, err := cache.NewManager(config, store, logger)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create cache manager: %w", err)
@@ -160,6 +165,7 @@ func NewSyncComponents(
 		logger,
 		blockOpts,
 		errorCh,
+		raftNode,
 	)
 
 	// Create DA submitter for sync nodes (no signer, only DA inclusion processing)
@@ -201,8 +207,8 @@ func NewAggregatorComponents(
 	logger zerolog.Logger,
 	metrics *Metrics,
 	blockOpts BlockOptions,
+	raftNode common.RaftNode,
 ) (*Components, error) {
-	logger.Info().Msg("Starting in aggregator-mode")
 	cacheManager, err := cache.NewManager(config, store, logger)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create cache manager: %w", err)
@@ -225,6 +231,7 @@ func NewAggregatorComponents(
 		logger,
 		blockOpts,
 		errorCh,
+		raftNode,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create executor: %w", err)

@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/evstack/ev-node/pkg/p2p/key"
 	"github.com/ipfs/go-datastore"
 	"github.com/rs/zerolog"
 	"github.com/spf13/cobra"
@@ -19,14 +20,13 @@ import (
 	"github.com/evstack/ev-node/node"
 	rollconf "github.com/evstack/ev-node/pkg/config"
 	genesis "github.com/evstack/ev-node/pkg/genesis"
-	"github.com/evstack/ev-node/pkg/p2p"
 	"github.com/evstack/ev-node/pkg/signer"
 	filesigner "github.com/evstack/ev-node/pkg/signer/file"
 )
 
 const MockDANamespace = "test"
 
-func createTestComponents(_ context.Context, t *testing.T) (coreexecutor.Executor, coresequencer.Sequencer, coreda.DA, signer.Signer, *p2p.Client, datastore.Batching, func()) {
+func createTestComponents(_ context.Context, t *testing.T) (coreexecutor.Executor, coresequencer.Sequencer, coreda.DA, signer.Signer, *key.NodeKey, datastore.Batching, func()) {
 	executor := coreexecutor.NewDummyExecutor()
 	sequencer := coresequencer.NewDummySequencer()
 	dummyDA := coreda.NewDummyDA(100_000, 10*time.Second)
@@ -40,10 +40,9 @@ func createTestComponents(_ context.Context, t *testing.T) (coreexecutor.Executo
 		panic(err)
 	}
 	// Create a dummy P2P client and datastore for testing
-	p2pClient := &p2p.Client{}
 	ds := datastore.NewMapDatastore()
 
-	return executor, sequencer, dummyDA, keyProvider, p2pClient, ds, stopDAHeightTicker
+	return executor, sequencer, dummyDA, keyProvider, nil, ds, stopDAHeightTicker
 }
 
 func TestParseFlags(t *testing.T) {
@@ -78,13 +77,13 @@ func TestParseFlags(t *testing.T) {
 
 	args := append([]string{"start"}, flags...)
 
-	executor, sequencer, dac, keyProvider, p2pClient, ds, stopDAHeightTicker := createTestComponents(context.Background(), t)
+	executor, sequencer, dac, keyProvider, nodeKey, ds, stopDAHeightTicker := createTestComponents(context.Background(), t)
 	defer stopDAHeightTicker()
 
 	nodeConfig := rollconf.DefaultConfig()
 	nodeConfig.RootDir = t.TempDir()
 
-	newRunNodeCmd := newRunNodeCmd(t.Context(), executor, sequencer, dac, keyProvider, p2pClient, ds, nodeConfig)
+	newRunNodeCmd := newRunNodeCmd(t.Context(), executor, sequencer, dac, keyProvider, nodeKey, ds, nodeConfig)
 	_ = newRunNodeCmd.Flags().Set(rollconf.FlagRootDir, "custom/root/dir")
 	if err := newRunNodeCmd.ParseFlags(args); err != nil {
 		t.Errorf("Error: %v", err)
@@ -153,13 +152,13 @@ func TestAggregatorFlagInvariants(t *testing.T) {
 	for i, flags := range flagVariants {
 		args := append([]string{"start"}, flags...)
 
-		executor, sequencer, dac, keyProvider, p2pClient, ds, stopDAHeightTicker := createTestComponents(context.Background(), t)
+		executor, sequencer, dac, keyProvider, nodeKey, ds, stopDAHeightTicker := createTestComponents(context.Background(), t)
 		defer stopDAHeightTicker()
 
 		nodeConfig := rollconf.DefaultConfig()
 		nodeConfig.RootDir = t.TempDir()
 
-		newRunNodeCmd := newRunNodeCmd(t.Context(), executor, sequencer, dac, keyProvider, p2pClient, ds, nodeConfig)
+		newRunNodeCmd := newRunNodeCmd(t.Context(), executor, sequencer, dac, keyProvider, nodeKey, ds, nodeConfig)
 		_ = newRunNodeCmd.Flags().Set(rollconf.FlagRootDir, "custom/root/dir")
 
 		if err := newRunNodeCmd.ParseFlags(args); err != nil {
@@ -189,13 +188,13 @@ func TestDefaultAggregatorValue(t *testing.T) {
 	}
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			executor, sequencer, dac, keyProvider, p2pClient, ds, stopDAHeightTicker := createTestComponents(context.Background(), t)
+			executor, sequencer, dac, keyProvider, nodeKey, ds, stopDAHeightTicker := createTestComponents(context.Background(), t)
 			defer stopDAHeightTicker()
 
 			nodeConfig := rollconf.DefaultConfig()
 			nodeConfig.RootDir = t.TempDir()
 
-			newRunNodeCmd := newRunNodeCmd(t.Context(), executor, sequencer, dac, keyProvider, p2pClient, ds, nodeConfig)
+			newRunNodeCmd := newRunNodeCmd(t.Context(), executor, sequencer, dac, keyProvider, nodeKey, ds, nodeConfig)
 			_ = newRunNodeCmd.Flags().Set(rollconf.FlagRootDir, "custom/root/dir")
 
 			// Create a new command without specifying any flags
@@ -271,10 +270,10 @@ func TestCentralizedAddresses(t *testing.T) {
 		"--rollkit.da.address=http://central-da:26657",
 	}
 
-	executor, sequencer, dac, keyProvider, p2pClient, ds, stopDAHeightTicker := createTestComponents(context.Background(), t)
+	executor, sequencer, dac, keyProvider, nodeKey, ds, stopDAHeightTicker := createTestComponents(context.Background(), t)
 	defer stopDAHeightTicker()
 
-	cmd := newRunNodeCmd(t.Context(), executor, sequencer, dac, keyProvider, p2pClient, ds, nodeConfig)
+	cmd := newRunNodeCmd(t.Context(), executor, sequencer, dac, keyProvider, nodeKey, ds, nodeConfig)
 	_ = cmd.Flags().Set(rollconf.FlagRootDir, "custom/root/dir")
 	if err := cmd.ParseFlags(args); err != nil {
 		t.Fatalf("ParseFlags error: %v", err)
@@ -537,7 +536,7 @@ func TestStartNodeSignerPathResolution(t *testing.T) {
 func TestStartNodeErrors(t *testing.T) {
 	baseCtx := context.Background()
 
-	executor, sequencer, dac, _, p2pClient, ds, stopDAHeightTicker := createTestComponents(baseCtx, t)
+	executor, sequencer, dac, _, nodeKey, ds, stopDAHeightTicker := createTestComponents(baseCtx, t)
 	defer stopDAHeightTicker()
 
 	tmpDir := t.TempDir()
@@ -643,7 +642,7 @@ func TestStartNodeErrors(t *testing.T) {
 
 			dummySigner, _ := filesigner.CreateFileSystemSigner(dummySignerPath, []byte("password"))
 
-			cmd := newRunNodeCmd(baseCtx, executor, sequencer, dac, dummySigner, p2pClient, ds, nodeConfig)
+			cmd := newRunNodeCmd(baseCtx, executor, sequencer, dac, dummySigner, nodeKey, ds, nodeConfig)
 
 			cmd.SetContext(baseCtx)
 
@@ -654,7 +653,7 @@ func TestStartNodeErrors(t *testing.T) {
 
 			runFunc := func() {
 				currentTestLogger := zerolog.Nop()
-				err := StartNode(currentTestLogger, cmd, executor, sequencer, dac, p2pClient, ds, nodeConfig, testGenesis, node.NodeOptions{})
+				err := StartNode(currentTestLogger, cmd, executor, sequencer, dac, nodeKey, ds, nodeConfig, testGenesis, node.NodeOptions{})
 				if tc.expectedError != "" {
 					assert.ErrorContains(t, err, tc.expectedError)
 				} else {
@@ -671,7 +670,7 @@ func TestStartNodeErrors(t *testing.T) {
 			} else {
 				assert.NotPanics(t, runFunc)
 				checkLogger := zerolog.Nop()
-				err := StartNode(checkLogger, cmd, executor, sequencer, dac, p2pClient, ds, nodeConfig, testGenesis, node.NodeOptions{})
+				err := StartNode(checkLogger, cmd, executor, sequencer, dac, nodeKey, ds, nodeConfig, testGenesis, node.NodeOptions{})
 				if tc.expectedError != "" {
 					assert.ErrorContains(t, err, tc.expectedError)
 				}
@@ -687,7 +686,7 @@ func newRunNodeCmd(
 	sequencer coresequencer.Sequencer,
 	dac coreda.DA,
 	remoteSigner signer.Signer,
-	p2pClient *p2p.Client,
+	nodeKey *key.NodeKey,
 	datastore datastore.Batching,
 	nodeConfig rollconf.Config,
 ) *cobra.Command {
@@ -709,7 +708,7 @@ func newRunNodeCmd(
 		Aliases: []string{"node", "run"},
 		Short:   "Run the rollkit node",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return StartNode(zerolog.Nop(), cmd, executor, sequencer, dac, p2pClient, datastore, nodeConfig, testGenesis, node.NodeOptions{})
+			return StartNode(zerolog.Nop(), cmd, executor, sequencer, dac, nodeKey, datastore, nodeConfig, testGenesis, node.NodeOptions{})
 		},
 	}
 

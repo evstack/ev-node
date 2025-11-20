@@ -416,7 +416,7 @@ func TestHealthLiveEndpoint(t *testing.T) {
 		// Mock successful store access
 		mockStore.On("Height", mock.Anything).Return(uint64(100), nil)
 
-		handler, err := NewServiceHandler(mockStore, nil, nil, mockP2PManager, nil, logger, testConfig, nil)
+		handler, err := NewServiceHandler(mockStore, nil, nil, mockP2PManager, nil, logger, testConfig, nil, nil)
 		require.NoError(t, err)
 
 		server := httptest.NewServer(handler)
@@ -441,7 +441,7 @@ func TestHealthLiveEndpoint(t *testing.T) {
 		// Mock store access failure
 		mockStore.On("Height", mock.Anything).Return(uint64(0), fmt.Errorf("store unavailable"))
 
-		handler, err := NewServiceHandler(mockStore, nil, nil, mockP2PManager, nil, logger, testConfig, nil)
+		handler, err := NewServiceHandler(mockStore, nil, nil, mockP2PManager, nil, logger, testConfig, nil, nil)
 		require.NoError(t, err)
 
 		server := httptest.NewServer(handler)
@@ -466,7 +466,7 @@ func TestHealthLiveEndpoint(t *testing.T) {
 		// Mock successful store access at genesis
 		mockStore.On("Height", mock.Anything).Return(uint64(0), nil)
 
-		handler, err := NewServiceHandler(mockStore, nil, nil, mockP2PManager, nil, logger, testConfig, nil)
+		handler, err := NewServiceHandler(mockStore, nil, nil, mockP2PManager, nil, logger, testConfig, nil, nil)
 		require.NoError(t, err)
 
 		server := httptest.NewServer(handler)
@@ -543,7 +543,7 @@ func TestHealthReadyEndpoint(t *testing.T) {
 				}
 
 				bestKnown := func() uint64 { return tc.bestKnown }
-				handler, err := NewServiceHandler(mockStore, nil, nil, mockP2P, nil, logger, testConfig, bestKnown)
+				handler, err := NewServiceHandler(mockStore, nil, nil, mockP2P, nil, logger, testConfig, bestKnown, nil)
 				require.NoError(t, err)
 				server := httptest.NewServer(handler)
 				defer server.Close()
@@ -584,7 +584,7 @@ func TestHealthReadyEndpoint(t *testing.T) {
 			mockStore.On("GetState", mock.Anything).Return(state, nil)
 
 			bestKnown := func() uint64 { return 100 }
-			handler, err := NewServiceHandler(mockStore, nil, nil, mockP2P, nil, logger, testConfig, bestKnown)
+			handler, err := NewServiceHandler(mockStore, nil, nil, mockP2P, nil, logger, testConfig, bestKnown, nil)
 			require.NoError(t, err)
 			server := httptest.NewServer(handler)
 			defer server.Close()
@@ -614,7 +614,7 @@ func TestHealthReadyEndpoint(t *testing.T) {
 			mockStore.On("GetState", mock.Anything).Return(state, nil)
 
 			bestKnown := func() uint64 { return 100 }
-			handler, err := NewServiceHandler(mockStore, nil, nil, mockP2P, nil, logger, testConfig, bestKnown)
+			handler, err := NewServiceHandler(mockStore, nil, nil, mockP2P, nil, logger, testConfig, bestKnown, nil)
 			require.NoError(t, err)
 			server := httptest.NewServer(handler)
 			defer server.Close()
