@@ -1,17 +1,24 @@
-module github.com/evstack/ev-node/apps/evm/single
+module github.com/evstack/ev-node/apps/evm
 
 go 1.24.6
 
 replace github.com/celestiaorg/go-header => github.com/julienrbrt/go-header v0.0.0-20251008134330-747c8c192fa8 // TODO: to remove after https://github.com/celestiaorg/go-header/pull/347
 
-replace github.com/evstack/ev-node => ../../../
+replace (
+	github.com/evstack/ev-node => ../../
+	github.com/evstack/ev-node/core => ../../core
+	github.com/evstack/ev-node/da => ../../da
+)
 
 require (
+	github.com/celestiaorg/go-header v0.7.3
 	github.com/ethereum/go-ethereum v1.16.5
 	github.com/evstack/ev-node v1.0.0-beta.9
 	github.com/evstack/ev-node/core v1.0.0-beta.4
 	github.com/evstack/ev-node/da v1.0.0-beta.5
 	github.com/evstack/ev-node/execution/evm v1.0.0-beta.3
+	github.com/ipfs/go-datastore v0.9.0
+	github.com/rs/zerolog v1.34.0
 	github.com/spf13/cobra v1.10.1
 )
 
@@ -23,7 +30,6 @@ require (
 	github.com/benbjohnson/clock v1.3.5 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/bits-and-blooms/bitset v1.20.0 // indirect
-	github.com/celestiaorg/go-header v0.7.3 // indirect
 	github.com/celestiaorg/go-libp2p-messenger v0.2.2 // indirect
 	github.com/celestiaorg/go-square/v3 v3.0.2 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
@@ -68,7 +74,6 @@ require (
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/ipfs/boxo v0.35.0 // indirect
 	github.com/ipfs/go-cid v0.5.0 // indirect
-	github.com/ipfs/go-datastore v0.9.0 // indirect
 	github.com/ipfs/go-ds-badger4 v0.1.8 // indirect
 	github.com/ipfs/go-log/v2 v2.8.1 // indirect
 	github.com/ipld/go-ipld-prime v0.21.0 // indirect
@@ -145,7 +150,6 @@ require (
 	github.com/quic-go/quic-go v0.54.1 // indirect
 	github.com/quic-go/webtransport-go v0.9.0 // indirect
 	github.com/rivo/uniseg v0.2.0 // indirect
-	github.com/rs/zerolog v1.34.0 // indirect
 	github.com/sagikazarmark/locafero v0.11.0 // indirect
 	github.com/shirou/gopsutil v3.21.4-0.20210419000835-c7a38de76ee5+incompatible // indirect
 	github.com/sourcegraph/conc v0.3.1-0.20240121214520-5f936abd7ae8 // indirect
@@ -191,7 +195,3 @@ require (
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 	lukechampine.com/blake3 v1.4.1 // indirect
 )
-
-replace github.com/evstack/ev-node/core => ../../../core
-
-replace github.com/evstack/ev-node/da => ../../../da
