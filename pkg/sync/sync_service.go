@@ -58,6 +58,9 @@ type SyncService[H header.Header[H]] struct {
 	syncer            *goheadersync.Syncer[H]
 	syncerStatus      *SyncerStatus
 	topicSubscription header.Subscription[H]
+
+	getter         storeGetter[H]
+	getterByHeight storeGetterByHeight[H]
 }
 
 // DataSyncService is the P2P Sync Service for blocks.
@@ -68,31 +71,48 @@ type HeaderSyncService = SyncService[*types.SignedHeader]
 
 // NewDataSyncService returns a new DataSyncService.
 func NewDataSyncService(
-	store ds.Batching,
+	dsStore ds.Batching,
 	daStore store.Store,
 	conf config.Config,
 	genesis genesis.Genesis,
 	p2p *p2p.Client,
 	logger zerolog.Logger,
 ) (*DataSyncService, error) {
-	return newSyncService[*types.Data](store, daStore, dataSync, conf, genesis, p2p, logger)
+	getter := func(ctx context.Context, s store.Store, hash header.Hash) (*types.Data, error) {
+		_, d, err := s.GetBlockByHash(ctx, hash)
+		return d, err
+	}
+	getterByHeight := func(ctx context.Context, s store.Store, height uint64) (*types.Data, error) {
+		_, d, err := s.GetBlockData(ctx, height)
+		return d, err
+	}
+	return newSyncService[*types.Data](dsStore, daStore, getter, getterByHeight, dataSync, conf, genesis, p2p, logger)
 }
 
 // NewHeaderSyncService returns a new HeaderSyncService.
 func NewHeaderSyncService(
-	store ds.Batching,
+	dsStore ds.Batching,
 	daStore store.Store,
 	conf config.Config,
 	genesis genesis.Genesis,
 	p2p *p2p.Client,
 	logger zerolog.Logger,
 ) (*HeaderSyncService, error) {
-	return newSyncService[*types.SignedHeader](store, daStore, headerSync, conf, genesis, p2p, logger)
+	getter := func(ctx context.Context, s store.Store, hash header.Hash) (*types.SignedHeader, error) {
+		h, _, err := s.GetBlockByHash(ctx, hash)
+		return h, err
+	}
+	getterByHeight := func(ctx context.Context, s store.Store, height uint64) (*types.SignedHeader, error) {
+		return s.GetHeader(ctx, height)
+	}
+	return newSyncService[*types.SignedHeader](dsStore, daStore, getter, getterByHeight, headerSync, conf, genesis, p2p, logger)
 }
 
 func newSyncService[H header.Header[H]](
 	dsStore ds.Batching,
 	daStore store.Store,
+	getter storeGetter[H],
+	getterByHeight storeGetterByHeight[H],
 	syncType syncType,
 	conf config.Config,
 	genesis genesis.Genesis,
@@ -113,14 +133,16 @@ func newSyncService[H header.Header[H]](
 	}
 
 	svc := &SyncService[H]{
-		conf:         conf,
-		genesis:      genesis,
-		p2p:          p2p,
-		store:        ss,
-		daStore:      daStore,
-		syncType:     syncType,
-		logger:       logger,
-		syncerStatus: new(SyncerStatus),
+		conf:           conf,
+		genesis:        genesis,
+		p2p:            p2p,
+		store:          ss,
+		daStore:        daStore,
+		getter:         getter,
+		getterByHeight: getterByHeight,
+		syncType:       syncType,
+		logger:         logger,
+		syncerStatus:   new(SyncerStatus),
 	}
 
 	return svc, nil
@@ -292,8 +314,10 @@ func (syncService *SyncService[H]) setupP2PInfrastructure(ctx context.Context) (
 
 	// Wrap the exchange with the DA store check
 	syncService.ex = &exchangeWrapper[H]{
-		Exchange: syncService.p2pExchange,
-		daStore:  syncService.daStore,
+		Exchange:       syncService.p2pExchange,
+		daStore:        syncService.daStore,
+		getter:         syncService.getter,
+		getterByHeight: syncService.getterByHeight,
 	}
 
 	return peerIDs, nil

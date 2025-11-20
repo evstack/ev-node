@@ -5,29 +5,23 @@ import (
 
 	"github.com/celestiaorg/go-header"
 	"github.com/evstack/ev-node/pkg/store"
-	"github.com/evstack/ev-node/types"
 )
+
+type storeGetter[H header.Header[H]] func(context.Context, store.Store, header.Hash) (H, error)
+type storeGetterByHeight[H header.Header[H]] func(context.Context, store.Store, uint64) (H, error)
 
 type exchangeWrapper[H header.Header[H]] struct {
 	header.Exchange[H]
-	daStore store.Store
+	daStore        store.Store
+	getter         storeGetter[H]
+	getterByHeight storeGetterByHeight[H]
 }
 
 func (ew *exchangeWrapper[H]) Get(ctx context.Context, hash header.Hash) (H, error) {
 	// Check DA store first
-	var zero H
-	if ew.daStore != nil {
-		switch any(zero).(type) {
-		case *types.SignedHeader:
-			h, _, err := ew.daStore.GetBlockByHash(ctx, hash)
-			if err == nil && h != nil {
-				return any(h).(H), nil
-			}
-		case *types.Data:
-			_, d, err := ew.daStore.GetBlockByHash(ctx, hash)
-			if err == nil && d != nil {
-				return any(d).(H), nil
-			}
+	if ew.daStore != nil && ew.getter != nil {
+		if h, err := ew.getter(ctx, ew.daStore, hash); err == nil && !h.IsZero() {
+			return h, nil
 		}
 	}
 
@@ -37,19 +31,9 @@ func (ew *exchangeWrapper[H]) Get(ctx context.Context, hash header.Hash) (H, err
 
 func (ew *exchangeWrapper[H]) GetByHeight(ctx context.Context, height uint64) (H, error) {
 	// Check DA store first
-	var zero H
-	if ew.daStore != nil {
-		switch any(zero).(type) {
-		case *types.SignedHeader:
-			h, _, err := ew.daStore.GetBlockData(ctx, height)
-			if err == nil && h != nil {
-				return any(h).(H), nil
-			}
-		case *types.Data:
-			_, d, err := ew.daStore.GetBlockData(ctx, height)
-			if err == nil && d != nil {
-				return any(d).(H), nil
-			}
+	if ew.daStore != nil && ew.getterByHeight != nil {
+		if h, err := ew.getterByHeight(ctx, ew.daStore, height); err == nil && !h.IsZero() {
+			return h, nil
 		}
 	}
 
