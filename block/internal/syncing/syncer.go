@@ -217,7 +217,9 @@ func (s *Syncer) initializeState() error {
 	s.SetLastState(state)
 
 	// Set DA height
-	s.SetDAHeight(max(s.genesis.DAStartHeight, s.cache.DaHeight()))
+	// we get the max from the genesis da height, the state da height and the cache (fetched) da height
+	// if a user has messed up and sync da too far ahead, on restart they can clear the cache (--clear-cache) and the retrieve will restart fetching from the last known block synced and executed from DA or the set genesis da height.
+	s.SetDAHeight(max(s.genesis.DAStartHeight, s.cache.DaHeight(), state.DAHeight))
 
 	s.logger.Info().
 		Uint64("height", state.LastBlockHeight).
