@@ -15,8 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- Improved EVM execution client payload status validation with proper retry logic for SYNCING states in `InitChain`, `ExecuteTxs`, and `SetFinal` methods. The implementation now follows Engine API specification by retrying SYNCING/ACCEPTED status with exponential backoff and failing immediately on INVALID status, preventing unnecessary node shutdowns during transient execution engine sync operations.
-
+- Improved EVM execution client payload status validation with proper retry logic for SYNCING states in `InitChain`, `ExecuteTxs`, and `SetFinal` methods. The implementation now follows Engine API specification by retrying SYNCING/ACCEPTED status with exponential backoff and failing immediately on INVALID status, preventing unnecessary node shutdowns during transient execution engine sync operations. ([#2863](https://github.com/evstack/ev-node/pull/2863))
 - Remove GasPrice and GasMultiplier from DA interface and configuration to use celestia-node's native fee estimation. ([#2822](https://github.com/evstack/ev-node/pull/2822))
 - Use cache instead of in memory store for reaper. Persist cache on reload. Autoclean after 24 hours. ([#2811](https://github.com/evstack/ev-node/pull/2811))
 
