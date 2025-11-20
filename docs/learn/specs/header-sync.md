@@ -68,10 +68,9 @@ The Executor component (in aggregator nodes) broadcasts headers and data in para
 - Chain IDs for pubsub topics are also separated:
   - Headers: `{chainID}-headerSync` creates topic like `/gm-headerSync/header-sub/v0.0.1`
   - Data: `{chainID}-dataSync` creates topic like `/gm-dataSync/header-sub/v0.0.1`
-- Both stores must be initialized with genesis items before starting:
-  - Header store needs genesis header
-  - Data store needs genesis data (if applicable)
-- Genesis items can be loaded via `NodeConfig.TrustedHash` or P2P network query
+- Both stores must contain at least one item before the syncer starts:
+  - On first boot, the services fetch the configured genesis height from peers
+  - On restart, each store reuses its latest item to derive the initial height requested from peers
 - Sync services work only when connected to P2P network via `P2PConfig.Seeds`
 - Node context is passed to all components for graceful shutdown
 - Headers and data are linked through DataHash but synced independently

@@ -12,16 +12,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - Enhanced health check system with separate liveness (`/health/live`) and readiness (`/health/ready`) HTTP endpoints. Readiness endpoint includes P2P listening check and aggregator block production rate validation (5x block time threshold). ([#2800](https://github.com/evstack/ev-node/pull/2800))
+- Added `GetP2PStoreInfo` RPC method to retrieve head/tail metadata for go-header stores used by P2P sync ([#2835](https://github.com/evstack/ev-node/pull/2835))
+- Added protobuf definitions for `P2PStoreEntry` and `P2PStoreSnapshot` messages to support P2P store inspection
 
 ### Changed
 
 - Improved EVM execution client payload status validation with proper retry logic for SYNCING states in `InitChain`, `ExecuteTxs`, and `SetFinal` methods. The implementation now follows Engine API specification by retrying SYNCING/ACCEPTED status with exponential backoff and failing immediately on INVALID status, preventing unnecessary node shutdowns during transient execution engine sync operations. ([#2863](https://github.com/evstack/ev-node/pull/2863))
 - Remove GasPrice and GasMultiplier from DA interface and configuration to use celestia-node's native fee estimation. ([#2822](https://github.com/evstack/ev-node/pull/2822))
 - Use cache instead of in memory store for reaper. Persist cache on reload. Autoclean after 24 hours. ([#2811](https://github.com/evstack/ev-node/pull/2811))
+- Improved P2P sync service store initialization to be atomic and prevent race conditions ([#2838](https://github.com/evstack/ev-node/pull/2838))
+- Enhanced P2P bootstrap behavior to intelligently detect starting height from local store instead of requiring trusted hash
+- Relaxed execution layer height validation in block replay to allow execution to be ahead of target height, enabling recovery from manual intervention scenarios
 
 ### Removed
 
 - **BREAKING:** Removed `evnode.v1.HealthService` gRPC endpoint. Use HTTP endpoints: `GET /health/live` and `GET /health/ready`. ([#2800](https://github.com/evstack/ev-node/pull/2800))
+- **BREAKING:** Removed `TrustedHash` configuration option and `--evnode.node.trusted_hash` flag. Sync service now automatically determines starting height from local store state ([#2838](https://github.com/evstack/ev-node/pull/2838))
+
+### Fixed
+
+- Fixed sync service initialization issue when node is not on genesis but has an empty store
 
 ## v1.0.0-beta.9
 
