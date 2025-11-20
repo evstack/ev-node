@@ -6,8 +6,6 @@ import (
 	"path/filepath"
 
 	"github.com/spf13/cobra"
-
-	"github.com/evstack/ev-node/pkg/config"
 )
 
 // UnsafeCleanDataDir removes all contents of the specified data directory.
@@ -54,23 +52,4 @@ This operation is unsafe and cannot be undone. Use with caution!`,
 		cmd.Printf("All contents of the data directory at %s have been removed.\n", dataDir)
 		return nil
 	},
-}
-
-func resolveDBName(cmd *cobra.Command) string {
-	if cmd == nil {
-		return config.ConfigFileName
-	}
-	root := cmd.Root()
-	if root == nil || root.Name() == "" {
-		return config.ConfigFileName
-	}
-	return root.Name()
-}
-
-func resolveStorePath(rootDir, dbPath, dbName string) string {
-	base := dbPath
-	if !filepath.IsAbs(dbPath) {
-		base = filepath.Join(rootDir, dbPath)
-	}
-	return filepath.Join(base, dbName)
 }
