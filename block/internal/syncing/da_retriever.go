@@ -211,8 +211,10 @@ func (r *DARetriever) processBlobs(ctx context.Context, blobs [][]byte, daHeight
 		}
 
 		events = append(events, event)
+	}
 
-		r.logger.Info().Uint64("height", height).Uint64("da_height", daHeight).Msg("processed block from DA")
+	if len(events) > 0 {
+		r.logger.Info().Int("count", len(events)).Uint64("da_height", daHeight).Msg("processed blocks from DA")
 	}
 
 	return events
@@ -249,7 +251,7 @@ func (r *DARetriever) tryDecodeHeader(bz []byte, daHeight uint64) *types.SignedH
 	headerHash := header.Hash().String()
 	r.cache.SetHeaderDAIncluded(headerHash, daHeight, header.Height())
 
-	r.logger.Info().
+	r.logger.Debug().
 		Str("header_hash", headerHash).
 		Uint64("da_height", daHeight).
 		Uint64("height", header.Height()).
@@ -280,7 +282,7 @@ func (r *DARetriever) tryDecodeData(bz []byte, daHeight uint64) *types.Data {
 	dataHash := signedData.Data.DACommitment().String()
 	r.cache.SetDataDAIncluded(dataHash, daHeight, signedData.Height())
 
-	r.logger.Info().
+	r.logger.Debug().
 		Str("data_hash", dataHash).
 		Uint64("da_height", daHeight).
 		Uint64("height", signedData.Height()).
