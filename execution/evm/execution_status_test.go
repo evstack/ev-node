@@ -1,10 +1,9 @@
-//go:build !evm
-// +build !evm
-
 package evm
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"testing"
 	"time"
 
@@ -66,7 +65,7 @@ func TestValidatePayloadStatus(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			err := validatePayloadStatus(tt.status, "test_operation")
+			err := validatePayloadStatus(tt.status)
 
 			if tt.expectError {
 				require.Error(t, err, "expected error but got nil")
@@ -212,4 +211,43 @@ func TestRetryWithBackoff_ContextTimeout(t *testing.T) {
 	assert.ErrorIs(t, err, context.DeadlineExceeded, "expected context.DeadlineExceeded error")
 	// Should stop on timeout, not exhaust all retries
 	assert.Less(t, attempts, 10, "expected fewer than 10 attempts due to timeout, got %d", attempts)
+}
+
+// TestRetryWithBackoff_RPCErrors tests that RPC errors are not retried
+func TestRetryWithBackoff_RPCErrors(t *testing.T) {
+	t.Parallel()
+
+	rpcError := errors.New("RPC connection failed")
+	attempts := 0
+	retryFn := func() error {
+		attempts++
+		return rpcError
+	}
+
+	ctx := context.Background()
+	err := retryWithBackoff(ctx, retryFn, 5, 1*time.Millisecond, "test_operation")
+
+	require.Error(t, err, "expected error from RPC failure")
+	assert.Equal(t, rpcError, err, "expected original RPC error to be returned")
+	// Should fail immediately without retries on non-syncing errors
+	assert.Equal(t, 1, attempts, "expected exactly 1 attempt, got %d", attempts)
+}
+
+// TestRetryWithBackoff_WrappedRPCErrors tests that wrapped RPC errors are not retried
+func TestRetryWithBackoff_WrappedRPCErrors(t *testing.T) {
+	t.Parallel()
+
+	rpcError := errors.New("connection refused")
+	attempts := 0
+	retryFn := func() error {
+		attempts++
+		return fmt.Errorf("forkchoice update failed: %w", rpcError)
+	}
+
+	ctx := context.Background()
+	err := retryWithBackoff(ctx, retryFn, 5, 1*time.Millisecond, "test_operation")
+
+	require.Error(t, err, "expected error from RPC failure")
+	// Should fail immediately without retries on non-syncing errors
+	assert.Equal(t, 1, attempts, "expected exactly 1 attempt, got %d", attempts)
 }

@@ -271,7 +271,7 @@ func (c *EngineClient) ExecuteTxs(ctx context.Context, txs [][]byte, blockHeight
 
 	// update forkchoice to get the next payload id
 	// Create evolve-compatible payloadtimestamp.Unix()
-	evPayloadAttrs := map[string]interface{}{
+	evPayloadAttrs := map[string]any{
 		// Standard Ethereum payload attributes (flattened) - using camelCase as expected by JSON
 		"timestamp":             timestamp.Unix(),
 		"prevRandao":            c.derivePrevRandao(blockHeight),
@@ -289,15 +289,15 @@ func (c *EngineClient) ExecuteTxs(ctx context.Context, txs [][]byte, blockHeight
 		Int("tx_count", len(txs)).
 		Msg("engine_forkchoiceUpdatedV3")
 
-	var forkchoiceResult engine.ForkChoiceResponse
-	err = c.engineClient.CallContext(ctx, &forkchoiceResult, "engine_forkchoiceUpdatedV3", args, evPayloadAttrs)
-	if err != nil {
-		return nil, 0, fmt.Errorf("forkchoice update failed: %w", err)
-	}
-
-	// Validate payload status with retry logic for SYNCING
+	// Call forkchoice update with retry logic for SYNCING status
 	var payloadID *engine.PayloadID
 	err = retryWithBackoff(ctx, func() error {
+		var forkchoiceResult engine.ForkChoiceResponse
+		err := c.engineClient.CallContext(ctx, &forkchoiceResult, "engine_forkchoiceUpdatedV3", args, evPayloadAttrs)
+		if err != nil {
+			return fmt.Errorf("forkchoice update failed: %w", err)
+		}
+
 		// Validate payload status
 		if err := validatePayloadStatus(forkchoiceResult.PayloadStatus); err != nil {
 			c.logger.Warn().
@@ -306,17 +306,6 @@ func (c *EngineClient) ExecuteTxs(ctx context.Context, txs [][]byte, blockHeight
 				Interface("validationError", forkchoiceResult.PayloadStatus.ValidationError).
 				Uint64("blockHeight", blockHeight).
 				Msg("ExecuteTxs: engine_forkchoiceUpdatedV3 returned non-VALID status")
-
-			// If syncing, retry the entire forkchoice call
-			if errors.Is(err, ErrPayloadSyncing) {
-				// Re-call forkchoiceUpdatedV3 on retry
-				var retryResult engine.ForkChoiceResponse
-				if callErr := c.engineClient.CallContext(ctx, &retryResult, "engine_forkchoiceUpdatedV3", args, evPayloadAttrs); callErr != nil {
-					return fmt.Errorf("forkchoice update retry failed: %w", callErr)
-				}
-				forkchoiceResult = retryResult
-				return err // Return ErrPayloadSyncing to trigger retry
-			}
 			return err
 		}
 
@@ -349,20 +338,20 @@ func (c *EngineClient) ExecuteTxs(ctx context.Context, txs [][]byte, blockHeight
 		return nil, 0, fmt.Errorf("get payload failed: %w", err)
 	}
 
-	// submit payload
+	// Submit payload with retry logic for SYNCING status
 	var newPayloadResult engine.PayloadStatusV1
-	err = c.engineClient.CallContext(ctx, &newPayloadResult, "engine_newPayloadV4",
-		payloadResult.ExecutionPayload,
-		[]string{},          // No blob hashes
-		common.Hash{}.Hex(), // Use zero hash for parentBeaconBlockRoot (same as in payload attributes)
-		[][]byte{},          // No execution requests
-	)
-	if err != nil {
-		return nil, 0, fmt.Errorf("new payload submission failed: %w", err)
-	}
-
-	// Validate new payload status with retry logic
 	err = retryWithBackoff(ctx, func() error {
+		err := c.engineClient.CallContext(ctx, &newPayloadResult, "engine_newPayloadV4",
+			payloadResult.ExecutionPayload,
+			[]string{},          // No blob hashes
+			common.Hash{}.Hex(), // Use zero hash for parentBeaconBlockRoot (same as in payload attributes)
+			[][]byte{},          // No execution requests
+		)
+		if err != nil {
+			return fmt.Errorf("new payload submission failed: %w", err)
+		}
+
+		// Validate payload status
 		if err := validatePayloadStatus(newPayloadResult); err != nil {
 			c.logger.Warn().
 				Str("status", newPayloadResult.Status).
@@ -370,21 +359,6 @@ func (c *EngineClient) ExecuteTxs(ctx context.Context, txs [][]byte, blockHeight
 				Interface("validationError", newPayloadResult.ValidationError).
 				Uint64("blockHeight", blockHeight).
 				Msg("engine_newPayloadV4 returned non-VALID status")
-
-			// If syncing, retry the newPayload call
-			if errors.Is(err, ErrPayloadSyncing) {
-				var retryResult engine.PayloadStatusV1
-				if callErr := c.engineClient.CallContext(ctx, &retryResult, "engine_newPayloadV4",
-					payloadResult.ExecutionPayload,
-					[]string{},
-					common.Hash{}.Hex(),
-					[][]byte{},
-				); callErr != nil {
-					return fmt.Errorf("new payload retry failed: %w", callErr)
-				}
-				newPayloadResult = retryResult
-				return err // Return ErrPayloadSyncing to trigger retry
-			}
 			return err
 		}
 		return nil
@@ -421,30 +395,21 @@ func (c *EngineClient) setFinal(ctx context.Context, blockHash common.Hash, isFi
 	}
 	c.mu.Unlock()
 
-	var forkchoiceResult engine.ForkChoiceResponse
-	err := c.engineClient.CallContext(ctx, &forkchoiceResult, "engine_forkchoiceUpdatedV3", args, nil)
-	if err != nil {
-		return fmt.Errorf("forkchoice update failed with error: %w", err)
-	}
+	// Call forkchoice update with retry logic for SYNCING status
+	err := retryWithBackoff(ctx, func() error {
+		var forkchoiceResult engine.ForkChoiceResponse
+		err := c.engineClient.CallContext(ctx, &forkchoiceResult, "engine_forkchoiceUpdatedV3", args, nil)
+		if err != nil {
+			return fmt.Errorf("forkchoice update failed: %w", err)
+		}
 
-	// Validate payload status with retry logic
-	err = retryWithBackoff(ctx, func() error {
+		// Validate payload status
 		if err := validatePayloadStatus(forkchoiceResult.PayloadStatus); err != nil {
 			c.logger.Warn().
 				Str("status", forkchoiceResult.PayloadStatus.Status).
 				Str("latestValidHash", forkchoiceResult.PayloadStatus.LatestValidHash.Hex()).
 				Interface("validationError", forkchoiceResult.PayloadStatus.ValidationError).
 				Msg("forkchoiceUpdatedV3 returned non-VALID status")
-
-			// If syncing, retry the forkchoice call
-			if errors.Is(err, ErrPayloadSyncing) {
-				var retryResult engine.ForkChoiceResponse
-				if callErr := c.engineClient.CallContext(ctx, &retryResult, "engine_forkchoiceUpdatedV3", args, nil); callErr != nil {
-					return fmt.Errorf("forkchoice update retry failed: %w", callErr)
-				}
-				forkchoiceResult = retryResult
-				return err // Return ErrPayloadSyncing to trigger retry
-			}
 			return err
 		}
 		return nil
