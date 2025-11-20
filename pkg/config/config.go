@@ -227,7 +227,7 @@ type RPCConfig struct {
 	EnableDAVisualization bool   `mapstructure:"enable_da_visualization" yaml:"enable_da_visualization" comment:"Enable DA visualization endpoints for monitoring blob submissions. Default: false"`
 }
 
-// Validate ensures validates the config and ensure that the root directory exists.
+// Validate validates the config and ensures that the root directory exists.
 // It creates the directory if it does not exist.
 func (c *Config) Validate() error {
 	if c.RootDir == "" {
