@@ -348,6 +348,78 @@ func TestDAConfig_GetDataNamespace(t *testing.T) {
 	}
 }
 
+func TestRaftConfig_Validate(t *testing.T) {
+	// helper to build a valid base config per test (temp dir varies per subtest)
+	newValid := func() RaftConfig {
+		return RaftConfig{
+			Enable:           true,
+			NodeID:           "node-1",
+			RaftAddr:         "127.0.0.1:9000",
+			RaftDir:          t.TempDir(),
+			Bootstrap:        false,
+			Peers:            "",
+			SnapCount:        1,
+			SendTimeout:      1 * time.Second,
+			HeartbeatTimeout: 1 * time.Second,
+		}
+	}
+
+	specs := map[string]struct {
+		mutate func(c *RaftConfig)
+		expErr string
+	}{
+		"disabled": {
+			mutate: func(c *RaftConfig) { c.Enable = false },
+		},
+		"valid": {
+			mutate: func(c *RaftConfig) {},
+		},
+		"empty node id": {
+			mutate: func(c *RaftConfig) { c.NodeID = "" },
+			expErr: "node ID is required",
+		},
+		"empty raft addr": {
+			mutate: func(c *RaftConfig) { c.RaftAddr = "" },
+			expErr: "raft address is required",
+		},
+		"empty raft dir": {
+			mutate: func(c *RaftConfig) { c.RaftDir = "" },
+			expErr: "raft directory is required",
+		},
+		"non-positive send timeout": {
+			mutate: func(c *RaftConfig) { c.SendTimeout = 0 },
+			expErr: "send timeout must be positive",
+		},
+		"non-positive heartbeat timeout": {
+			mutate: func(c *RaftConfig) { c.HeartbeatTimeout = 0 },
+			expErr: "heartbeat timeout must be positive",
+		},
+		"multiple invalid returns last": {
+			mutate: func(c *RaftConfig) {
+				c.NodeID = ""
+				c.RaftAddr = ""
+				c.HeartbeatTimeout = 0
+			},
+			expErr: "node ID is required\nraft address is required\nheartbeat timeout must be positive",
+		},
+	}
+
+	for name, spec := range specs {
+		t.Run(name, func(t *testing.T) {
+			cfg := newValid()
+			spec.mutate(&cfg)
+			err := cfg.Validate()
+
+			if spec.expErr != "" {
+				require.Error(t, err)
+				assert.Equal(t, spec.expErr, err.Error())
+				return
+			}
+			require.NoError(t, err)
+		})
+	}
+}
+
 func assertFlagValue(t *testing.T, flags *pflag.FlagSet, name string, expectedValue any) {
 	flag := flags.Lookup(name)
 	assert.NotNil(t, flag, "Flag %s should exist", name)

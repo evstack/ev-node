@@ -93,6 +93,7 @@ func DefaultConfig() Config {
 		Raft: RaftConfig{
 			SendTimeout:      200 * time.Millisecond,
 			HeartbeatTimeout: 350 * time.Millisecond,
+			RaftDir:          filepath.Join(DefaultRootDir, "raft"),
 		},
 	}
 }

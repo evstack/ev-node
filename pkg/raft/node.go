@@ -268,7 +268,9 @@ func (n *Node) Shutdown() error {
 	return n.raft.Shutdown().Error()
 }
 
-// SetApplyCallback sets a callback to be called when log entries are applied
+// SetApplyCallback sets a callback channel to receive notifications when a new block state is replicated.
+// The channel must have sufficient buffer space since updates are published only once without blocking.
+// If the channel is full, state updates will be skipped to prevent blocking the raft cluster.
 func (n *Node) SetApplyCallback(ch chan<- RaftApplyMsg) {
 	n.fsm.applyCh = ch
 }

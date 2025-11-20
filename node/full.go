@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/pprof"
-	"path/filepath"
 	"strings"
 	"time"
 
@@ -139,15 +138,10 @@ func newFullNode(
 }
 
 func initRaftNode(nodeConfig config.Config, logger zerolog.Logger) (*raftpkg.Node, error) {
-	raftDir := nodeConfig.Raft.RaftDir
-	if raftDir == "" {
-		raftDir = filepath.Join(nodeConfig.RootDir, "raft")
-	}
-
 	raftCfg := &raftpkg.Config{
 		NodeID:           nodeConfig.Raft.NodeID,
 		RaftAddr:         nodeConfig.Raft.RaftAddr,
-		RaftDir:          raftDir,
+		RaftDir:          nodeConfig.Raft.RaftDir,
 		Bootstrap:        nodeConfig.Raft.Bootstrap,
 		SnapCount:        nodeConfig.Raft.SnapCount,
 		SendTimeout:      nodeConfig.Raft.SendTimeout,

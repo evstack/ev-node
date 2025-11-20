@@ -259,6 +259,32 @@ type RaftConfig struct {
 	HeartbeatTimeout time.Duration `mapstructure:"heartbeat_timeout" yaml:"heartbeat_timeout" comment:"Time between leader heartbeats to followers"`
 }
 
+func (c RaftConfig) Validate() error {
+	if !c.Enable {
+		return nil
+	}
+	var multiErr error
+	if c.NodeID == "" {
+		multiErr = fmt.Errorf("node ID is required")
+	}
+	if c.RaftAddr == "" {
+		multiErr = errors.Join(multiErr, fmt.Errorf("raft address is required"))
+	}
+	if c.RaftDir == "" {
+		multiErr = errors.Join(multiErr, fmt.Errorf("raft directory is required"))
+	}
+
+	if c.SendTimeout <= 0 {
+		multiErr = errors.Join(multiErr, fmt.Errorf("send timeout must be positive"))
+	}
+
+	if c.HeartbeatTimeout <= 0 {
+		multiErr = errors.Join(multiErr, fmt.Errorf("heartbeat timeout must be positive"))
+	}
+
+	return multiErr
+}
+
 // Validate validates the config and ensures that the root directory exists.
 // It creates the directory if it does not exist.
 func (c *Config) Validate() error {
@@ -287,7 +313,9 @@ func (c *Config) Validate() error {
 		return fmt.Errorf("LazyBlockInterval (%v) must be greater than BlockTime (%v) in lazy mode",
 			c.Node.LazyBlockInterval.Duration, c.Node.BlockTime.Duration)
 	}
-
+	if err := c.Raft.Validate(); err != nil {
+		return err
+	}
 	return nil
 }
 
