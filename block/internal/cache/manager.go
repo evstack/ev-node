@@ -166,9 +166,9 @@ func (m *implementation) RemoveHeaderDAIncluded(hash string) {
 	m.headerCache.removeDAIncluded(hash)
 }
 
-// DaHeight fetches the heighest da height contained in the processed cache.
+// DaHeight fetches the heights da height contained in the processed cache.
 func (m *implementation) DaHeight() uint64 {
-	return max(m.headerCache.maxDAHeight.Load(), m.dataCache.maxDAHeight.Load())
+	return max(m.headerCache.daHeight(), m.dataCache.daHeight())
 }
 
 // Data operations

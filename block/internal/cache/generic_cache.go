@@ -20,7 +20,7 @@ type Cache[T any] struct {
 	// hashByHeight tracks the hash associated with each height for pruning
 	hashByHeight *sync.Map
 	// maxDAHeight tracks the maximum DA height seen
-	maxDAHeight atomic.Uint64
+	maxDAHeight *atomic.Uint64
 }
 
 // NewCache returns a new Cache struct
@@ -30,7 +30,7 @@ func NewCache[T any]() *Cache[T] {
 		hashes:        new(sync.Map),
 		daIncluded:    new(sync.Map),
 		hashByHeight:  new(sync.Map),
-		maxDAHeight:   atomic.Uint64{},
+		maxDAHeight:   &atomic.Uint64{},
 	}
 }
 

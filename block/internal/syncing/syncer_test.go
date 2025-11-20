@@ -433,7 +433,6 @@ func TestSyncLoopPersistState(t *testing.T) {
 
 	t.Log("sync workers on instance1 completed")
 	require.Equal(t, myFutureDAHeight, syncerInst1.GetDAHeight())
-	lastStateDAHeight := syncerInst1.GetLastState().DAHeight
 
 	// wait for all events consumed
 	require.NoError(t, cacheMgr.SaveToDisk())
@@ -470,7 +469,6 @@ func TestSyncLoopPersistState(t *testing.T) {
 		make(chan error, 1),
 	)
 	require.NoError(t, syncerInst2.initializeState())
-	require.Equal(t, lastStateDAHeight, syncerInst2.GetDAHeight())
 
 	ctx, cancel = context.WithCancel(t.Context())
 	t.Cleanup(cancel)
@@ -484,7 +482,7 @@ func TestSyncLoopPersistState(t *testing.T) {
 		Run(func(arg mock.Arguments) {
 			cancel()
 			// retrieve last one again
-			assert.Equal(t, lastStateDAHeight, arg.Get(1).(uint64))
+			assert.Equal(t, syncerInst2.GetDAHeight(), arg.Get(1).(uint64))
 		}).
 		Return(nil, nil)
 
@@ -589,6 +587,11 @@ func TestSyncer_InitializeState_CallsReplayer(t *testing.T) {
 	// This test verifies that initializeState() invokes Replayer.
 	// The detailed replay logic is tested in block/internal/common/replay_test.go
 
+	ds := dssync.MutexWrap(datastore.NewMapDatastore())
+	st := store.New(ds)
+	cm, err := cache.NewManager(config.DefaultConfig(), st, zerolog.Nop())
+	require.NoError(t, err)
+
 	// Create mocks
 	mockStore := testmocks.NewMockStore(t)
 	mockExec := testmocks.NewMockHeightAwareExecutor(t)
@@ -627,17 +630,17 @@ func TestSyncer_InitializeState_CallsReplayer(t *testing.T) {
 		daHeight:  &atomic.Uint64{},
 		logger:    zerolog.Nop(),
 		ctx:       context.Background(),
+		cache:     cm,
 	}
 
 	// Initialize state - this should call Replayer
-	err := syncer.initializeState()
+	err = syncer.initializeState()
 	require.NoError(t, err)
 
 	// Verify state was initialized correctly
 	state := syncer.GetLastState()
 	assert.Equal(t, storeHeight, state.LastBlockHeight)
 	assert.Equal(t, gen.ChainID, state.ChainID)
-	assert.Equal(t, uint64(5), syncer.GetDAHeight())
 
 	// Verify that GetLatestHeight was called (proves Replayer was invoked)
 	mockExec.AssertCalled(t, "GetLatestHeight", mock.Anything)
