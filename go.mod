@@ -10,7 +10,7 @@ require (
 	github.com/celestiaorg/go-header v0.7.3
 	github.com/celestiaorg/go-square/v3 v3.0.2
 	github.com/celestiaorg/utils v0.1.0
-	github.com/evstack/ev-node/core v1.0.0-beta.4
+	github.com/evstack/ev-node/core v1.0.0-beta.5
 	github.com/go-kit/kit v0.13.0
 	github.com/goccy/go-yaml v1.18.0
 	github.com/ipfs/go-datastore v0.9.0
@@ -161,5 +161,3 @@ require (
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 	lukechampine.com/blake3 v1.4.1 // indirect
 )
-
-replace github.com/evstack/ev-node/core => ./core
