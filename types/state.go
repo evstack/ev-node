@@ -30,9 +30,6 @@ type State struct {
 	// LastHeaderHash is the hash of the header of the last block
 	LastHeaderHash Hash
 
-	// DAHeight identifies DA block containing the latest applied Evolve block.
-	DAHeight uint64
-
 	// the latest AppHash we've received from calling abci.Commit()
 	AppHash []byte
 }
@@ -48,7 +45,6 @@ func (s *State) NextState(header Header, stateRoot []byte) (State, error) {
 		LastBlockTime:   header.Time(),
 		AppHash:         stateRoot,
 		LastHeaderHash:  header.Hash(),
-		DAHeight:        s.DAHeight,
 	}, nil
 }
 

@@ -289,7 +289,6 @@ func (s *State) ToProto() (*pb.State, error) {
 		InitialHeight:   s.InitialHeight,
 		LastBlockHeight: s.LastBlockHeight,
 		LastBlockTime:   timestamppb.New(s.LastBlockTime),
-		DaHeight:        s.DAHeight,
 		AppHash:         s.AppHash[:],
 		LastHeaderHash:  s.LastHeaderHash[:],
 	}, nil
@@ -326,7 +325,6 @@ func (s *State) FromProto(other *pb.State) error {
 	} else {
 		s.LastHeaderHash = nil
 	}
-	s.DAHeight = other.GetDaHeight()
 	return nil
 }
 

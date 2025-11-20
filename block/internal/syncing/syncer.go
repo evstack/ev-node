@@ -207,7 +207,6 @@ func (s *Syncer) initializeState() error {
 			InitialHeight:   s.genesis.InitialHeight,
 			LastBlockHeight: s.genesis.InitialHeight - 1,
 			LastBlockTime:   s.genesis.StartTime,
-			DAHeight:        s.genesis.DAStartHeight,
 			AppHash:         stateRoot,
 		}
 	}

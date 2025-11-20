@@ -115,7 +115,6 @@ func TestStateRoundTrip(t *testing.T) {
 				InitialHeight:   987,
 				LastBlockHeight: 987654321,
 				LastBlockTime:   time.Date(2022, 6, 6, 12, 12, 33, 44, time.UTC),
-				DAHeight:        3344,
 				AppHash:         Hash{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 0, 1},
 			},
 		},
@@ -435,7 +434,7 @@ func TestProtoConversionConsistency_AllTypes(t *testing.T) {
 	assert.Equal(t, d, d2)
 
 	// State
-	s := &State{Version: Version{Block: 1, App: 2}, ChainID: "cid", InitialHeight: 1, LastBlockHeight: 2, LastBlockTime: time.Now().UTC(), DAHeight: 3, AppHash: []byte{3, 4}}
+	s := &State{Version: Version{Block: 1, App: 2}, ChainID: "cid", InitialHeight: 1, LastBlockHeight: 2, LastBlockTime: time.Now().UTC(), AppHash: []byte{3, 4}}
 	protoState, err := s.ToProto()
 	assert.NoError(t, err)
 	s2 := &State{}

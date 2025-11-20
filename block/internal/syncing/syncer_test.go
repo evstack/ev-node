@@ -433,7 +433,6 @@ func TestSyncLoopPersistState(t *testing.T) {
 
 	t.Log("sync workers on instance1 completed")
 	require.Equal(t, myFutureDAHeight, syncerInst1.GetDAHeight())
-	lastStateDAHeight := syncerInst1.GetLastState().DAHeight
 
 	// wait for all events consumed
 	require.NoError(t, cacheMgr.SaveToDisk())
@@ -470,7 +469,6 @@ func TestSyncLoopPersistState(t *testing.T) {
 		make(chan error, 1),
 	)
 	require.NoError(t, syncerInst2.initializeState())
-	require.Equal(t, lastStateDAHeight, syncerInst2.GetDAHeight())
 
 	ctx, cancel = context.WithCancel(t.Context())
 	t.Cleanup(cancel)
@@ -483,8 +481,6 @@ func TestSyncLoopPersistState(t *testing.T) {
 	daRtrMock.On("RetrieveFromDA", mock.Anything, mock.Anything).
 		Run(func(arg mock.Arguments) {
 			cancel()
-			// retrieve last one again
-			assert.Equal(t, lastStateDAHeight, arg.Get(1).(uint64))
 		}).
 		Return(nil, nil)
 
@@ -609,7 +605,6 @@ func TestSyncer_InitializeState_CallsReplayer(t *testing.T) {
 			InitialHeight:   gen.InitialHeight,
 			LastBlockHeight: storeHeight,
 			LastBlockTime:   time.Now().UTC(),
-			DAHeight:        5,
 			AppHash:         []byte("app-hash"),
 		},
 		nil,
