@@ -98,12 +98,8 @@ func (c *Cache[T]) setDAIncluded(hash string, daHeight uint64, blockHeight uint6
 
 	// Update max DA height if necessary
 	current := c.maxDAHeight.Load()
-	if daHeight <= current {
-		return
-	}
-
-	if c.maxDAHeight.CompareAndSwap(current, daHeight) {
-		return
+	if daHeight >= current {
+		_ = c.maxDAHeight.CompareAndSwap(current, daHeight)
 	}
 }
 
