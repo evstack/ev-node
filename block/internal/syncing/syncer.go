@@ -445,6 +445,11 @@ func (s *Syncer) processHeightEvent(event *common.DAHeightEvent) {
 
 	// Skip if already processed
 	if height <= currentHeight || s.cache.IsHeaderSeen(headerHash) {
+		if event.Source == common.SourceDA {
+			if err := s.updateStateDAHeight(event.DaHeight); err != nil {
+				s.logger.Error().Err(err).Msg("failed to update DA height")
+			}
+		}
 		s.logger.Debug().Uint64("height", height).Msg("height already processed")
 		return
 	}
@@ -778,4 +783,29 @@ func (s *Syncer) cancelP2PWait(height uint64) {
 		s.p2pWaitState.Store(p2pWaitState{})
 		state.cancel()
 	}
+}
+
+func (s *Syncer) updateStateDAHeight(daHeight uint64) error {
+	currentState := s.GetLastState()
+	if daHeight <= currentState.DAHeight {
+		return nil
+	}
+
+	currentState.DAHeight = daHeight
+
+	batch, err := s.store.NewBatch(s.ctx)
+	if err != nil {
+		return fmt.Errorf("failed to create batch: %w", err)
+	}
+
+	if err := batch.UpdateState(currentState); err != nil {
+		return fmt.Errorf("failed to update state: %w", err)
+	}
+
+	if err := batch.Commit(); err != nil {
+		return fmt.Errorf("failed to commit batch: %w", err)
+	}
+
+	s.SetLastState(currentState)
+	return nil
 }
