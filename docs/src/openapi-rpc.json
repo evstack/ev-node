@@ -472,6 +472,48 @@
           }
         }
       }
+    },
+    "/evnode.v1.StoreService/GetP2PStoreInfo": {
+      "post": {
+        "tags": [
+          "Store Service"
+        ],
+        "summary": "Inspect go-header stores",
+        "description": "Returns head/tail information for the header and data go-header stores used by P2P sync.",
+        "operationId": "getP2PStoreInfo",
+        "requestBody": {
+          "description": "Empty request",
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Empty"
+              },
+              "examples": {
+                "default": {
+                  "summary": "Get go-header store snapshots",
+                  "value": {}
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Snapshots returned successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GetP2PStoreInfoResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      }
     }
   },
   "components": {
@@ -1010,6 +1052,81 @@
               "type": "object"
             },
             "description": "Additional error details"
+          }
+        }
+      },
+      "P2PStoreEntry": {
+        "type": "object",
+        "description": "Head or tail entry for a go-header store",
+        "required": [
+          "height",
+          "hash"
+        ],
+        "properties": {
+          "height": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Block height"
+          },
+          "hash": {
+            "type": "string",
+            "format": "byte",
+            "description": "Header/data hash (base64-encoded)"
+          },
+          "time": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Entry timestamp"
+          }
+        }
+      },
+      "P2PStoreSnapshot": {
+        "type": "object",
+        "description": "Snapshot of a go-header store",
+        "required": [
+          "label",
+          "height",
+          "head_present",
+          "tail_present"
+        ],
+        "properties": {
+          "label": {
+            "type": "string",
+            "description": "Human friendly store label"
+          },
+          "height": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Highest contiguous height"
+          },
+          "head_present": {
+            "type": "boolean",
+            "description": "Whether a head entry exists"
+          },
+          "head": {
+            "$ref": "#/components/schemas/P2PStoreEntry"
+          },
+          "tail_present": {
+            "type": "boolean",
+            "description": "Whether a tail entry exists"
+          },
+          "tail": {
+            "$ref": "#/components/schemas/P2PStoreEntry"
+          }
+        }
+      },
+      "GetP2PStoreInfoResponse": {
+        "type": "object",
+        "description": "Snapshot of the header and data go-header stores",
+        "required": [
+          "stores"
+        ],
+        "properties": {
+          "stores": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/P2PStoreSnapshot"
+            }
           }
         }
       }

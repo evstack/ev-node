@@ -32,7 +32,6 @@ func TestDefaultConfig(t *testing.T) {
 	assert.Equal(t, uint64(0), def.Node.MaxPendingHeadersAndData)
 	assert.Equal(t, false, def.Node.LazyMode)
 	assert.Equal(t, 60*time.Second, def.Node.LazyBlockInterval.Duration)
-	assert.Equal(t, "", def.Node.TrustedHash)
 	assert.Equal(t, "file", def.Signer.SignerType)
 	assert.Equal(t, "config", def.Signer.SignerPath)
 	assert.Equal(t, "127.0.0.1:7331", def.RPC.Address)
@@ -56,7 +55,6 @@ func TestAddFlags(t *testing.T) {
 	assertFlagValue(t, flags, FlagAggregator, DefaultConfig().Node.Aggregator)
 	assertFlagValue(t, flags, FlagLight, DefaultConfig().Node.Light)
 	assertFlagValue(t, flags, FlagBlockTime, DefaultConfig().Node.BlockTime.Duration)
-	assertFlagValue(t, flags, FlagTrustedHash, DefaultConfig().Node.TrustedHash)
 	assertFlagValue(t, flags, FlagLazyAggregator, DefaultConfig().Node.LazyMode)
 	assertFlagValue(t, flags, FlagMaxPendingHeadersAndData, DefaultConfig().Node.MaxPendingHeadersAndData)
 	assertFlagValue(t, flags, FlagLazyBlockTime, DefaultConfig().Node.LazyBlockInterval.Duration)
@@ -101,7 +99,7 @@ func TestAddFlags(t *testing.T) {
 	assertFlagValue(t, flags, FlagRPCAddress, DefaultConfig().RPC.Address)
 
 	// Count the number of flags we're explicitly checking
-	expectedFlagCount := 47 // Update this number if you add more flag checks above
+	expectedFlagCount := 46 // Update this number if you add more flag checks above
 
 	// Get the actual number of flags (both regular and persistent)
 	actualFlagCount := 0

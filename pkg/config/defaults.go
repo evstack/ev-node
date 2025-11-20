@@ -66,7 +66,6 @@ func DefaultConfig() Config {
 			LazyMode:                 false,
 			LazyBlockInterval:        DurationWrapper{60 * time.Second},
 			Light:                    false,
-			TrustedHash:              "",
 			ReadinessWindowSeconds:   defaultReadinessWindowSeconds,
 			ReadinessMaxBlocksBehind: calculateReadinessMaxBlocksBehind(defaultBlockTime.Duration, defaultReadinessWindowSeconds),
 		},

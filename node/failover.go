@@ -137,7 +137,17 @@ func setupFailoverState(
 		dHeight := dataSyncService.Store().Height()
 		return min(hHeight, dHeight)
 	}
-	handler, err := rpcserver.NewServiceHandler(rktStore, p2pClient, genesis.ProposerAddress, logger, nodeConfig, bestKnownHeightProvider, raftNode)
+	handler, err := rpcserver.NewServiceHandler(
+		rktStore,
+		headerSyncService.Store(),
+		dataSyncService.Store(),
+		p2pClient,
+		genesis.ProposerAddress,
+		logger,
+		nodeConfig,
+		bestKnownHeightProvider,
+		raftNode,
+	)
 	if err != nil {
 		return nil, fmt.Errorf("error creating RPC handler: %w", err)
 	}

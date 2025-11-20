@@ -90,7 +90,17 @@ func (ln *LightNode) Run(parentCtx context.Context) error {
 		return ln.hSyncService.Store().Height()
 	}
 
-	handler, err := rpcserver.NewServiceHandler(ln.Store, ln.P2P, nil, ln.Logger, ln.nodeConfig, bestKnown, nil)
+	handler, err := rpcserver.NewServiceHandler(
+		ln.Store,
+		ln.hSyncService.Store(),
+		nil,
+		ln.P2P,
+		nil,
+		ln.Logger,
+		ln.nodeConfig,
+		bestKnown,
+		nil,
+	)
 	if err != nil {
 		return fmt.Errorf("error creating RPC handler: %w", err)
 	}

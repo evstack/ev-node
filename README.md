@@ -8,7 +8,7 @@ Ev-node is the basis of the Evolve Stack. For more in-depth information about Ev
 [![GoDoc](https://godoc.org/github.com/evstack/ev-node?status.svg)](https://godoc.org/github.com/evstack/ev-node)
 <!-- markdownlint-enable MD013 -->
 
-> **⚠️ Version Notice**: Do not use tags or releases before v1.*. Pre-v1 releases are not stable and should be considered abandoned. 
+> **⚠️ Version Notice**: Do not use tags or releases before v1.*. Pre-v1 releases are not stable and should be considered abandoned.
 
 ## Using Evolve
 

@@ -331,11 +331,7 @@ func (s *Syncer) fetchDAUntilCaughtUp() error {
 
 		daHeight := s.GetDAHeight()
 
-		// Create a new context with a timeout for the DA call
-		ctx, cancel := context.WithTimeout(s.ctx, 5*time.Second)
-		defer cancel()
-
-		events, err := s.daRetriever.RetrieveFromDA(ctx, daHeight)
+		events, err := s.daRetriever.RetrieveFromDA(s.ctx, daHeight)
 		if err != nil {
 			switch {
 			case errors.Is(err, coreda.ErrBlobNotFound):
