@@ -572,16 +572,10 @@ func (s *Syncer) trySyncNextBlock(event *common.DAHeightEvent) error {
 		return fmt.Errorf("failed to update height: %w", err)
 	}
 
-	if err := batch.UpdateState(newState); err != nil {
-		return fmt.Errorf("failed to update state: %w", err)
+	if err := s.saveState(batch, newState); err != nil {
+		return fmt.Errorf("failed to save state: %w", err)
 	}
 
-	if err := batch.Commit(); err != nil {
-		return fmt.Errorf("failed to commit batch: %w", err)
-	}
-
-	// Update in-memory state after successful commit
-	s.SetLastState(newState)
 	s.metrics.Height.Set(float64(newState.LastBlockHeight))
 
 	// Mark as seen
@@ -798,7 +792,11 @@ func (s *Syncer) updateStateDAHeight(daHeight uint64) error {
 		return fmt.Errorf("failed to create batch: %w", err)
 	}
 
-	if err := batch.UpdateState(currentState); err != nil {
+	return s.saveState(batch, currentState)
+}
+
+func (s *Syncer) saveState(batch store.Batch, state types.State) error {
+	if err := batch.UpdateState(state); err != nil {
 		return fmt.Errorf("failed to update state: %w", err)
 	}
 
@@ -806,6 +804,6 @@ func (s *Syncer) updateStateDAHeight(daHeight uint64) error {
 		return fmt.Errorf("failed to commit batch: %w", err)
 	}
 
-	s.SetLastState(currentState)
+	s.SetLastState(state)
 	return nil
 }
