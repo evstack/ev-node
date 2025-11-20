@@ -59,9 +59,9 @@ type SyncService[H header.Header[H]] struct {
 	syncerStatus      *SyncerStatus
 	topicSubscription header.Subscription[H]
 
-	getter         storeGetter[H]
-	getterByHeight storeGetterByHeight[H]
-	storeInitialized  atomic.Bool
+	getter           storeGetter[H]
+	getterByHeight   storeGetterByHeight[H]
+	storeInitialized atomic.Bool
 }
 
 // DataSyncService is the P2P Sync Service for blocks.
