@@ -303,7 +303,7 @@ go get github.com/evstack/ev-node/core@v0.3.0
 
 - Wait 5-30 minutes for propagation
 - Use `go list -m` to verify availability
-- Check https://proxy.golang.org/
+- Check <https://proxy.golang.org/>
 
 **Dependency version conflicts**
 

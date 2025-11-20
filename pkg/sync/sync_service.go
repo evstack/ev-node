@@ -2,10 +2,10 @@ package sync
 
 import (
 	"context"
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/celestiaorg/go-header"
@@ -61,6 +61,7 @@ type SyncService[H header.Header[H]] struct {
 
 	getter         storeGetter[H]
 	getterByHeight storeGetterByHeight[H]
+	storeInitialized  atomic.Bool
 }
 
 // DataSyncService is the P2P Sync Service for blocks.
@@ -164,9 +165,12 @@ func (syncService *SyncService[H]) WriteToStoreAndBroadcast(ctx context.Context,
 		return fmt.Errorf("empty header/data cannot write to store or broadcast")
 	}
 
-	isGenesis := headerOrData.Height() == syncService.genesis.InitialHeight
-	if isGenesis { // when starting the syncer for the first time, we have no blocks, so initFromP2P didn't initialize the genesis block.
-		if err := syncService.initStore(ctx, headerOrData); err != nil {
+	storeInitialized := false
+	if syncService.storeInitialized.CompareAndSwap(false, true) {
+		var err error
+		storeInitialized, err = syncService.initStore(ctx, headerOrData)
+		if err != nil {
+			syncService.storeInitialized.Store(false)
 			return fmt.Errorf("failed to initialize the store: %w", err)
 		}
 	}
@@ -185,10 +189,10 @@ func (syncService *SyncService[H]) WriteToStoreAndBroadcast(ctx context.Context,
 		// as we have already initialized the store for starting the syncer.
 		// Hence, we ignore the error. Exact reason: validation ignored
 		if (firstStart && errors.Is(err, pubsub.ValidationError{Reason: pubsub.RejectValidationIgnored})) ||
-			// for the genesis header, broadcast error is expected as we have already initialized the store
+			// for the genesis header (or any first header used to bootstrap the store), broadcast error is expected as we have already initialized the store
 			// for starting the syncer. Hence, we ignore the error.
 			// exact reason: validation failed, err header verification failed: known header: '1' <= current '1'
-			(isGenesis && errors.Is(err, pubsub.ValidationError{Reason: pubsub.RejectValidationFailed})) {
+			((storeInitialized) && errors.Is(err, pubsub.ValidationError{Reason: pubsub.RejectValidationFailed})) {
 
 			return nil
 		}
@@ -250,23 +254,27 @@ func (syncService *SyncService[H]) startSyncer(ctx context.Context) error {
 
 // initStore initializes the store with the given initial header.
 // it is a no-op if the store is already initialized.
-func (syncService *SyncService[H]) initStore(ctx context.Context, initial H) error {
+// Returns true when the store was initialized by this call.
+func (syncService *SyncService[H]) initStore(ctx context.Context, initial H) (bool, error) {
 	if initial.IsZero() {
-		return errors.New("failed to initialize the store")
+		return false, errors.New("failed to initialize the store")
 	}
 
 	if _, err := syncService.store.Head(ctx); errors.Is(err, header.ErrNotFound) || errors.Is(err, header.ErrEmptyStore) {
 		if err := syncService.store.Append(ctx, initial); err != nil {
-			return err
+			return false, err
 		}
 
 		if err := syncService.store.Sync(ctx); err != nil {
-			return err
+			return false, err
 		}
 
+		return true, nil
+	} else if err != nil {
+		return false, err
 	}
 
-	return nil
+	return false, nil
 }
 
 // setupP2PInfrastructure sets up the P2P infrastructure (Exchange, ExchangeServer, Store)
@@ -339,8 +347,9 @@ func (syncService *SyncService[H]) startSubscriber(ctx context.Context) error {
 }
 
 // initFromP2PWithRetry initializes the syncer from P2P with a retry mechanism.
-// If trusted hash is available, it fetches the trusted header/block (by hash) from peers.
-// Otherwise, it tries to fetch the genesis header/block by height.
+// It inspects the local store to determine the first height to request:
+//   - when the store already contains items, it reuses the latest height as the starting point;
+//   - otherwise, it falls back to the configured genesis height.
 func (syncService *SyncService[H]) initFromP2PWithRetry(ctx context.Context, peerIDs []peer.ID) error {
 	if len(peerIDs) == 0 {
 		return nil
@@ -348,26 +357,30 @@ func (syncService *SyncService[H]) initFromP2PWithRetry(ctx context.Context, pee
 
 	tryInit := func(ctx context.Context) (bool, error) {
 		var (
-			trusted H
-			err     error
+			trusted       H
+			err           error
+			heightToQuery uint64
 		)
 
-		if syncService.conf.Node.TrustedHash != "" {
-			trustedHashBytes, err := hex.DecodeString(syncService.conf.Node.TrustedHash)
-			if err != nil {
-				return false, fmt.Errorf("failed to parse the trusted hash for initializing the store: %w", err)
-			}
-			if trusted, err = syncService.ex.Get(ctx, trustedHashBytes); err != nil {
-				return false, fmt.Errorf("failed to fetch the trusted header/block for initializing the store: %w", err)
-			}
-		} else {
-			if trusted, err = syncService.ex.GetByHeight(ctx, syncService.genesis.InitialHeight); err != nil {
-				return false, fmt.Errorf("failed to fetch the genesis: %w", err)
-			}
+		head, headErr := syncService.store.Head(ctx)
+		switch {
+		case errors.Is(headErr, header.ErrNotFound), errors.Is(headErr, header.ErrEmptyStore):
+			heightToQuery = syncService.genesis.InitialHeight
+		case headErr != nil:
+			return false, fmt.Errorf("failed to inspect local store head: %w", headErr)
+		default:
+			heightToQuery = head.Height()
 		}
 
-		if err := syncService.initStore(ctx, trusted); err != nil {
-			return false, fmt.Errorf("failed to initialize the store: %w", err)
+		if trusted, err = syncService.ex.GetByHeight(ctx, heightToQuery); err != nil {
+			return false, fmt.Errorf("failed to fetch height %d from peers: %w", heightToQuery, err)
+		}
+
+		if syncService.storeInitialized.CompareAndSwap(false, true) {
+			if _, err := syncService.initStore(ctx, trusted); err != nil {
+				syncService.storeInitialized.Store(false)
+				return false, fmt.Errorf("failed to initialize the store: %w", err)
+			}
 		}
 		if err := syncService.startSyncer(ctx); err != nil {
 			return false, err

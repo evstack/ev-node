@@ -260,10 +260,9 @@ func TestSingleSequencerTwoFullNodesBlockSyncSpeed(t *testing.T) {
 
 // TestDataExchange verifies data exchange and synchronization between nodes in various network topologies.
 //
-// This test runs three sub-tests:
+// This test runs two sub-tests:
 //  1. Single sequencer and single full
 //  2. Single sequencer and two full nodes.
-//  3. Single sequencer and single full node with trusted hash.
 //
 // Each sub-test checks data exchange and synchronization to ensure correct data propagation and consistency across nodes.
 func TestDataExchange(t *testing.T) {
@@ -273,17 +272,13 @@ func TestDataExchange(t *testing.T) {
 	t.Run("SingleSequencerTwoFullNodes", func(t *testing.T) {
 		testSingleSequencerTwoFullNodes(t, Data)
 	})
-	t.Run("SingleSequencerSingleFullNodeTrustedHash", func(t *testing.T) {
-		testSingleSequencerSingleFullNodeTrustedHash(t, Data)
-	})
 }
 
 // TestHeaderExchange verifies header exchange and synchronization between nodes in various network topologies.
 //
-// This test runs three sub-tests:
+// This test runs two sub-tests:
 //  1. Single sequencer and single full
 //  2. Single sequencer and two full nodes.
-//  3. Single sequencer and single full node with trusted hash.
 //
 // Each sub-test checks header exchange and synchronization to ensure correct header propagation and consistency across nodes.
 func TestHeaderExchange(t *testing.T) {
@@ -292,9 +287,6 @@ func TestHeaderExchange(t *testing.T) {
 	})
 	t.Run("SingleSequencerTwoFullNodes", func(t *testing.T) {
 		testSingleSequencerTwoFullNodes(t, Header)
-	})
-	t.Run("SingleSequencerSingleFullNodeTrustedHash", func(t *testing.T) {
-		testSingleSequencerSingleFullNodeTrustedHash(t, Header)
 	})
 }
 
@@ -387,68 +379,6 @@ func testSingleSequencerTwoFullNodes(t *testing.T, source Source) {
 	for i := 1; i < numNodes; i++ {
 		require.NoError(verifyNodesSynced(nodes[0], nodes[i], source))
 	}
-
-	// Cancel all node contexts to signal shutdown and wait
-	shutdownAndWait(t, cancels, &runningWg, 5*time.Second)
-}
-
-// testSingleSequencerSingleFullNodeTrustedHash sets up a single sequencer and a single full node with a trusted hash, starts the sequencer, waits for it to produce a block, then starts the full node with the trusted hash.
-// It waits for both nodes to reach a target block height (using the provided 'source' to determine block inclusion), verifies that both nodes are fully synced, and then shuts them down.
-func testSingleSequencerSingleFullNodeTrustedHash(t *testing.T, source Source) {
-	require := require.New(t)
-
-	// Set up one sequencer and one full node
-	config := getTestConfig(t, 1)
-	numNodes := 2
-	nodes, cleanups := createNodesWithCleanup(t, numNodes, config)
-	for _, cleanup := range cleanups {
-		defer cleanup()
-	}
-
-	ctxs, cancels := createNodeContexts(numNodes)
-	var runningWg sync.WaitGroup
-	errChan := make(chan error, numNodes)
-
-	// Start the sequencer first
-	startNodeInBackground(t, nodes, ctxs, &runningWg, 0, errChan)
-
-	// Wait for the sequencer to produce at first block
-	require.NoError(waitForFirstBlock(nodes[0], source))
-
-	// Get the hash of the first block (using the correct source)
-	var trustedHash string
-	switch source {
-	case Data:
-		trustedHashValue, err := nodes[0].dSyncService.Store().GetByHeight(ctxs[0], 1)
-		require.NoError(err)
-		trustedHash = trustedHashValue.Hash().String()
-	case Header:
-		trustedHashValue, err := nodes[0].hSyncService.Store().GetByHeight(ctxs[0], 1)
-		require.NoError(err)
-		trustedHash = trustedHashValue.Hash().String()
-	default:
-		t.Fatalf("unsupported source for trusted hash test: %v", source)
-	}
-
-	// Set the trusted hash in the full node
-	nodeConfig := nodes[1].nodeConfig
-	nodeConfig.Node.TrustedHash = trustedHash
-
-	// Add a small delay to ensure P2P services are fully ready
-	time.Sleep(500 * time.Millisecond)
-
-	// Start the full node
-	startNodeInBackground(t, nodes, ctxs, &runningWg, 1, errChan)
-
-	blocksToWaitFor := uint64(3)
-	// Wait for both nodes to reach at least blocksToWaitFor blocks
-	for _, nodeItem := range nodes {
-		requireEmptyChan(t, errChan)
-		require.NoError(waitForAtLeastNBlocks(nodeItem, blocksToWaitFor, source))
-	}
-
-	// Verify both nodes are synced using the helper
-	require.NoError(verifyNodesSynced(nodes[0], nodes[1], source))
 
 	// Cancel all node contexts to signal shutdown and wait
 	shutdownAndWait(t, cancels, &runningWg, 5*time.Second)
