@@ -160,7 +160,7 @@ func TestEvmDARestartWithPendingBlocksE2E(t *testing.T) {
 
 	// Start local DA again with a very small max blob size to force the error
 	localDABinary := "local-da"
-	if evmSingleBinaryPath != "evm-single" {
+	if evmSingleBinaryPath != "evm" {
 		localDABinary = filepath.Join(filepath.Dir(evmSingleBinaryPath), "local-da")
 	}
 	// Use an extremely small max blob size (100 bytes) to guarantee StatusTooBig with our large batch

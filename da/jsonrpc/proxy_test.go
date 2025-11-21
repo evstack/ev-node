@@ -30,7 +30,7 @@ const (
 
 	testMaxBlobSize = 100
 
-	DefaultMaxBlobSize = 1.5 * 1024 * 1024 // 1.5MB
+	DefaultMaxBlobSize = 2 * 1024 * 1024 // 2MB
 )
 
 // testNamespace is a 15-byte namespace that will be hex encoded to 30 chars and truncated to 29

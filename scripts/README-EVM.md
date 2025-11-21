@@ -15,7 +15,7 @@ A comprehensive script that automates the setup and execution of two EVM nodes:
 - Docker installed and running
 - OpenSSL (for JWT generation)
 - Built binaries (script will build if missing):
-  - `evm-single` binary
+  - `evm` binary
   - `local-da` binary
 
 ### Usage

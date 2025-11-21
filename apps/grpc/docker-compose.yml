@@ -1,4 +1,4 @@
-version: '3.8'
+version: "3.8"
 
 services:
   # Local DA service for development
@@ -33,25 +33,25 @@ services:
   evolve-grpc:
     build:
       context: ../../../
-      dockerfile: apps/grpc/single/Dockerfile
+      dockerfile: apps/grpc/Dockerfile
     depends_on:
       local-da:
         condition: service_healthy
       # execution-service:
       #   condition: service_healthy
     ports:
-      - "26656:26656"  # P2P
-      - "26657:26657"  # RPC
-      - "26660:26660"  # Prometheus metrics
+      - "26656:26656" # P2P
+      - "26657:26657" # RPC
+      - "26660:26660" # Prometheus metrics
     environment:
       - DA_ADDRESS=http://local-da:7980
       - DA_NAMESPACE=00000000000000000000000000000000000000000000000000deadbeef
-      - GRPC_EXECUTOR_URL=http://host.docker.internal:50051  # Change to your execution service
+      - GRPC_EXECUTOR_URL=http://host.docker.internal:50051 # Change to your execution service
     volumes:
-      - evolve-data:/home/evolve/.grpc-single
+      - evolve-data:/home/evolve/.evgrpc
     command:
       - start
-      - --root-dir=/home/evolve/.grpc-single
+      - --root-dir=/home/evolve/.evgrpc
       - --da.address=${DA_ADDRESS:-http://local-da:7980}
       - --da.namespace=${DA_NAMESPACE}
       - --grpc-executor-url=${GRPC_EXECUTOR_URL:-http://host.docker.internal:50051}
