@@ -50,8 +50,8 @@ services:
     networks:
       - evolve-network
 
-  ev-node-evm-single:
-    image: ghcr.io/evstack/ev-node-evm-single:main
+  ev-node-evm:
+    image: ghcr.io/evstack/ev-node-evm:main
     depends_on:
       ev-reth:
         condition: service_started
@@ -61,7 +61,7 @@ services:
       - "7676:7676" # p2p
       - "7331:7331" # rpc
     volumes:
-      - evm-single-data:/root/.evm-single/
+      - evm-single-data:/root/.evm/
     restart: always
     entrypoint: /usr/bin/entrypoint.sh
     command: start

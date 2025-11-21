@@ -9,20 +9,20 @@ import (
 	evcmd "github.com/evstack/ev-node/pkg/cmd"
 	"github.com/evstack/ev-node/pkg/config"
 
-	"github.com/evstack/ev-node/apps/grpc/single/cmd"
+	"github.com/evstack/ev-node/apps/grpc/cmd"
 )
 
 func main() {
 	// Initiate the root command
 	rootCmd := &cobra.Command{
-		Use:   "grpc-single",
+		Use:   "evgrpc",
 		Short: "Evolve node with gRPC execution client; single sequencer",
 		Long: `Run a Evolve node with a gRPC-based execution client.
 This allows you to connect to any execution layer that implements
 the Evolve execution gRPC interface.`,
 	}
 
-	config.AddGlobalFlags(rootCmd, "grpc-single")
+	config.AddGlobalFlags(rootCmd, "evgrpc")
 
 	rootCmd.AddCommand(
 		cmd.InitCmd(),
