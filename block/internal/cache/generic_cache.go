@@ -102,7 +102,7 @@ func (c *Cache[T]) setDAIncluded(hash string, daHeight uint64, blockHeight uint6
 	c.hashByHeight.Store(blockHeight, hash)
 
 	// Update max DA height if necessary
-	for {
+	for range 1_000 {
 		current := c.maxDAHeight.Load()
 		if daHeight <= current {
 			return
