@@ -1,12 +1,14 @@
 package block
 
 import (
+	"context"
 	"time"
 
 	"github.com/evstack/ev-node/block/internal/common"
 	"github.com/evstack/ev-node/block/internal/da"
 	coreda "github.com/evstack/ev-node/core/da"
 	"github.com/evstack/ev-node/pkg/config"
+	"github.com/evstack/ev-node/pkg/genesis"
 	"github.com/rs/zerolog"
 )
 
@@ -41,10 +43,32 @@ func NewDAClient(
 	logger zerolog.Logger,
 ) DAClient {
 	return da.NewClient(da.Config{
-		DA:             daLayer,
-		Logger:         logger,
-		DefaultTimeout: 10 * time.Second,
-		Namespace:      config.DA.GetNamespace(),
-		DataNamespace:  config.DA.GetDataNamespace(),
+		DA:                       daLayer,
+		Logger:                   logger,
+		DefaultTimeout:           10 * time.Second,
+		Namespace:                config.DA.GetNamespace(),
+		DataNamespace:            config.DA.GetDataNamespace(),
+		ForcedInclusionNamespace: config.DA.GetForcedInclusionNamespace(),
 	})
+}
+
+// ErrForceInclusionNotConfigured is returned when force inclusion is not configured.
+// It is exported because sequencers needs to check for this error.
+var ErrForceInclusionNotConfigured = da.ErrForceInclusionNotConfigured
+
+// ForcedInclusionEvent represents forced inclusion transactions retrieved from DA
+type ForcedInclusionEvent = da.ForcedInclusionEvent
+
+// ForcedInclusionRetriever defines the interface for retrieving forced inclusion transactions from DA
+type ForcedInclusionRetriever interface {
+	RetrieveForcedIncludedTxs(ctx context.Context, daHeight uint64) (*da.ForcedInclusionEvent, error)
+}
+
+// NewForcedInclusionRetriever creates a new forced inclusion retriever
+func NewForcedInclusionRetriever(
+	client DAClient,
+	genesis genesis.Genesis,
+	logger zerolog.Logger,
+) ForcedInclusionRetriever {
+	return da.NewForcedInclusionRetriever(client, genesis, logger)
 }

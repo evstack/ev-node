@@ -52,6 +52,7 @@ type Executor interface {
 	// Requirements:
 	// - Must validate state transition against previous state root
 	// - Must handle empty transaction list
+	// - Must handle gracefully gibberish transactions
 	// - Must maintain deterministic execution
 	// - Must respect context cancellation/timeout
 	// - The rest of the rules are defined by the specific execution layer

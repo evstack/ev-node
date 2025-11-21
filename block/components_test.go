@@ -203,6 +203,9 @@ func TestExecutor_RealExecutionClientFailure_StopsNode(t *testing.T) {
 	mockExec.On("InitChain", mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 		Return([]byte("state-root"), uint64(1024), nil).Once()
 
+	// Mock SetDAHeight to be called during initialization
+	mockSeq.On("SetDAHeight", uint64(0)).Return().Once()
+
 	// Mock GetNextBatch to return empty batch
 	mockSeq.On("GetNextBatch", mock.Anything, mock.Anything).
 		Return(&coresequencer.GetNextBatchResponse{

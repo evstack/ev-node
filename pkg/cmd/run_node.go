@@ -27,8 +27,6 @@ import (
 	"github.com/evstack/ev-node/pkg/signer/file"
 )
 
-const DefaultMaxBlobSize = 2 * 1024 * 1024 // 2MB
-
 // ParseConfig is an helpers that loads the node configuration and validates it.
 func ParseConfig(cmd *cobra.Command) (rollconf.Config, error) {
 	nodeConfig, err := rollconf.Load(cmd)
@@ -94,7 +92,7 @@ func StartNode(
 
 	// create a new remote signer
 	var signer signer.Signer
-	if nodeConfig.Signer.SignerType == "file" && nodeConfig.Node.Aggregator {
+	if nodeConfig.Signer.SignerType == "file" && (nodeConfig.Node.Aggregator && !nodeConfig.Node.BasedSequencer) {
 		// Get passphrase file path
 		passphraseFile, err := cmd.Flags().GetString(rollconf.FlagSignerPassphraseFile)
 		if err != nil {
