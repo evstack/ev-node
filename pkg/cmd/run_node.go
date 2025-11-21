@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"syscall"
 	"time"
@@ -21,12 +22,12 @@ import (
 	"github.com/evstack/ev-node/node"
 	rollconf "github.com/evstack/ev-node/pkg/config"
 	genesispkg "github.com/evstack/ev-node/pkg/genesis"
-	"github.com/evstack/ev-node/pkg/p2p"
+	"github.com/evstack/ev-node/pkg/p2p/key"
 	"github.com/evstack/ev-node/pkg/signer"
 	"github.com/evstack/ev-node/pkg/signer/file"
 )
 
-const DefaultMaxBlobSize = 2 * 1024 * 1024 // 2MB
+const DefaultMaxBlobSize = 1.5 * 1024 * 1024 // 1.5MB
 
 // ParseConfig is an helpers that loads the node configuration and validates it.
 func ParseConfig(cmd *cobra.Command) (rollconf.Config, error) {
@@ -82,7 +83,7 @@ func StartNode(
 	executor coreexecutor.Executor,
 	sequencer coresequencer.Sequencer,
 	da coreda.DA,
-	p2pClient *p2p.Client,
+	nodeKey *key.NodeKey,
 	datastore datastore.Batching,
 	nodeConfig rollconf.Config,
 	genesis genesispkg.Genesis,
@@ -138,7 +139,7 @@ func StartNode(
 		sequencer,
 		da,
 		signer,
-		p2pClient,
+		nodeKey,
 		genesis,
 		datastore,
 		metrics,
@@ -155,8 +156,10 @@ func StartNode(
 	go func() {
 		defer func() {
 			if r := recover(); r != nil {
-				err := fmt.Errorf("node panicked: %v", r)
-				logger.Error().Interface("panic", r).Msg("Recovered from panic in node")
+				buf := make([]byte, 1024)
+				n := runtime.Stack(buf, false)
+				err := fmt.Errorf("node panicked: %v\nstack trace:\n%s", r, buf[:n])
+				logger.Error().Interface("panic", r).Str("stacktrace", string(buf[:n])).Msg("Recovered from panic in node")
 				select {
 				case errCh <- err:
 				default:
