@@ -1,3 +1,5 @@
+// Package da provides a reusable wrapper around the core DA interface
+// with common configuration for namespace handling and timeouts.
 package da
 
 import (

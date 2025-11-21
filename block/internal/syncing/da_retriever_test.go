@@ -64,9 +64,11 @@ func makeSignedDataBytesWithTime(t *testing.T, chainID string, height uint64, pr
 
 	// For DA SignedData, sign the Data payload bytes (matches DA submission logic)
 	payload, _ := d.MarshalBinary()
-	sig, _ := signer.Sign(payload)
+	sig, err := signer.Sign(payload)
+	require.NoError(t, err)
 	sd := &types.SignedData{Data: *d, Signature: sig, Signer: types.Signer{PubKey: pub, Address: proposer}}
-	bin, _ := sd.MarshalBinary()
+	bin, err := sd.MarshalBinary()
+	require.NoError(t, err)
 	return bin, sd
 }
 

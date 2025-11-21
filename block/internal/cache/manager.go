@@ -41,7 +41,8 @@ func registerGobTypes() {
 	})
 }
 
-// CacheManager provides centralized cache management for both executing and syncing components
+// CacheManager provides thread-safe cache operations for tracking seen blocks
+// and DA inclusion status during block execution and syncing.
 type CacheManager interface {
 	// Header operations
 	IsHeaderSeen(hash string) bool
