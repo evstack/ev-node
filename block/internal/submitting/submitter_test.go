@@ -178,8 +178,8 @@ func TestSubmitter_setSequencerHeightToDAHeight(t *testing.T) {
 	cm.SetHeaderDAIncluded(h.Hash().String(), 100, 1)
 	cm.SetDataDAIncluded(d.DACommitment().String(), 90, 1)
 
-	headerKey := fmt.Sprintf("%s/%d/h", store.HeightToDAHeightKey, 1)
-	dataKey := fmt.Sprintf("%s/%d/d", store.HeightToDAHeightKey, 1)
+	headerKey := store.GetHeightToDAHeightHeaderKey(1)
+	dataKey := store.GetHeightToDAHeightDataKey(1)
 
 	hBz := make([]byte, 8)
 	binary.LittleEndian.PutUint64(hBz, 100)
@@ -297,11 +297,11 @@ func TestSubmitter_processDAInclusionLoop_advances(t *testing.T) {
 
 	// verify metadata mapping persisted in store
 	for i := range 2 {
-		hBz, err := st.GetMetadata(ctx, fmt.Sprintf("%s/%d/h", store.HeightToDAHeightKey, i+1))
+		hBz, err := st.GetMetadata(ctx, store.GetHeightToDAHeightHeaderKey(uint64(i+1)))
 		require.NoError(t, err)
 		assert.Equal(t, uint64(100+i), binary.LittleEndian.Uint64(hBz))
 
-		dBz, err := st.GetMetadata(ctx, fmt.Sprintf("%s/%d/d", store.HeightToDAHeightKey, i+1))
+		dBz, err := st.GetMetadata(ctx, store.GetHeightToDAHeightDataKey(uint64(i+1)))
 		require.NoError(t, err)
 		assert.Equal(t, uint64(100+i), binary.LittleEndian.Uint64(dBz))
 	}
