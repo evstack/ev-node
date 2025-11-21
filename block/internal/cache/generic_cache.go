@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
+	"sync/atomic"
 )
 
 // Cache is a generic cache that maintains items that are seen and hard confirmed
@@ -18,6 +19,8 @@ type Cache[T any] struct {
 	daIncluded *sync.Map
 	// hashByHeight tracks the hash associated with each height for pruning
 	hashByHeight *sync.Map
+	// maxDAHeight tracks the maximum DA height seen
+	maxDAHeight *atomic.Uint64
 }
 
 // NewCache returns a new Cache struct
@@ -27,6 +30,7 @@ func NewCache[T any]() *Cache[T] {
 		hashes:        new(sync.Map),
 		daIncluded:    new(sync.Map),
 		hashByHeight:  new(sync.Map),
+		maxDAHeight:   &atomic.Uint64{},
 	}
 }
 
@@ -91,11 +95,28 @@ func (c *Cache[T]) getDAIncluded(hash string) (uint64, bool) {
 func (c *Cache[T]) setDAIncluded(hash string, daHeight uint64, blockHeight uint64) {
 	c.daIncluded.Store(hash, daHeight)
 	c.hashByHeight.Store(blockHeight, hash)
+
+	// Update max DA height if necessary
+	for {
+		current := c.maxDAHeight.Load()
+		if daHeight <= current {
+			return
+		}
+		if c.maxDAHeight.CompareAndSwap(current, daHeight) {
+			return
+		}
+	}
 }
 
 // removeDAIncluded removes the DA-included status of the hash
 func (c *Cache[T]) removeDAIncluded(hash string) {
 	c.daIncluded.Delete(hash)
+}
+
+// daHeight returns the maximum DA height from all DA-included items.
+// Returns 0 if no items are DA-included.
+func (c *Cache[T]) daHeight() uint64 {
+	return c.maxDAHeight.Load()
 }
 
 // deleteAllForHeight removes all items and their associated data from the cache at the given height
@@ -231,6 +252,11 @@ func (c *Cache[T]) LoadFromDisk(folderPath string) error {
 	}
 	for k, v := range daIncludedMap {
 		c.daIncluded.Store(k, v)
+		// Update max DA height during load
+		current := c.maxDAHeight.Load()
+		if v > current {
+			c.maxDAHeight.Store(v)
+		}
 	}
 
 	return nil

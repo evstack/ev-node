@@ -12,9 +12,9 @@ replace (
 )
 
 require (
-	github.com/evstack/ev-node v1.0.0-beta.9
+	github.com/evstack/ev-node v1.0.0-beta.10
 	github.com/evstack/ev-node/core v1.0.0-beta.5
-	github.com/evstack/ev-node/da v1.0.0-beta.5
+	github.com/evstack/ev-node/da v1.0.0-beta.6
 	github.com/evstack/ev-node/execution/grpc v0.0.0
 	github.com/ipfs/go-datastore v0.9.0
 	github.com/rs/zerolog v1.34.0
