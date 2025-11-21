@@ -55,7 +55,7 @@ func NewP2PHandler(
 
 // SetProcessedHeight updates the highest processed block height.
 func (h *P2PHandler) SetProcessedHeight(height uint64) {
-	for {
+	for range 1_000 {
 		current := h.processedHeight.Load()
 		if height <= current {
 			return

@@ -129,7 +129,11 @@ func (s *Syncer) Start(ctx context.Context) error {
 	}
 
 	// Start main processing loop
-	go s.processLoop()
+	s.wg.Add(1)
+	go func() {
+		defer s.wg.Done()
+		s.processLoop()
+	}()
 
 	// Start dedicated workers for DA, and pending processing
 	s.startSyncWorkers()
@@ -220,9 +224,6 @@ func (s *Syncer) initializeState() error {
 
 // processLoop is the main coordination loop for processing events
 func (s *Syncer) processLoop() {
-	s.wg.Add(1)
-	defer s.wg.Done()
-
 	s.logger.Info().Msg("starting process loop")
 	defer s.logger.Info().Msg("process loop stopped")
 
