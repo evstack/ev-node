@@ -117,7 +117,6 @@ func NewSyncer(
 func (s *Syncer) Start(ctx context.Context) error {
 	s.ctx, s.cancel = context.WithCancel(ctx)
 
-	// Initialize state
 	if err := s.initializeState(); err != nil {
 		return fmt.Errorf("failed to initialize syncer state: %w", err)
 	}
@@ -131,12 +130,13 @@ func (s *Syncer) Start(ctx context.Context) error {
 		s.p2pHandler.SetProcessedHeight(currentHeight)
 	}
 
+	if !s.waitForGenesis() {
+		return nil
+	}
+
 	// Start main processing loop
 	s.wg.Add(1)
-	go func() {
-		defer s.wg.Done()
-		s.processLoop()
-	}()
+	go s.processLoop()
 
 	// Start dedicated workers for DA, and pending processing
 	s.startSyncWorkers()
@@ -237,6 +237,8 @@ func (s *Syncer) initializeState() error {
 
 // processLoop is the main coordination loop for processing events
 func (s *Syncer) processLoop() {
+	defer s.wg.Done()
+
 	s.logger.Info().Msg("starting process loop")
 	defer s.logger.Info().Msg("process loop stopped")
 
@@ -259,10 +261,6 @@ func (s *Syncer) startSyncWorkers() {
 
 func (s *Syncer) daWorkerLoop() {
 	defer s.wg.Done()
-
-	if !s.waitForGenesis() {
-		return
-	}
 
 	s.logger.Info().Msg("starting DA worker")
 	defer s.logger.Info().Msg("DA worker stopped")
@@ -337,10 +335,6 @@ func (s *Syncer) fetchDAUntilCaughtUp() error {
 func (s *Syncer) pendingWorkerLoop() {
 	defer s.wg.Done()
 
-	if !s.waitForGenesis() {
-		return
-	}
-
 	s.logger.Info().Msg("starting pending worker")
 	defer s.logger.Info().Msg("pending worker stopped")
 
@@ -359,10 +353,6 @@ func (s *Syncer) pendingWorkerLoop() {
 
 func (s *Syncer) p2pWorkerLoop() {
 	defer s.wg.Done()
-
-	if !s.waitForGenesis() {
-		return
-	}
 
 	logger := s.logger.With().Str("worker", "p2p").Logger()
 	logger.Info().Msg("starting P2P worker")
