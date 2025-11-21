@@ -135,7 +135,6 @@ func (s *Syncer) Start(ctx context.Context) error {
 	}
 
 	// Start main processing loop
-	s.wg.Add(1)
 	go s.processLoop()
 
 	// Start dedicated workers for DA, and pending processing
@@ -227,6 +226,7 @@ func (s *Syncer) initializeState() error {
 
 // processLoop is the main coordination loop for processing events
 func (s *Syncer) processLoop() {
+	s.wg.Add(1)
 	defer s.wg.Done()
 
 	s.logger.Info().Msg("starting process loop")
@@ -530,7 +530,7 @@ func (s *Syncer) trySyncNextBlock(event *common.DAHeightEvent) error {
 	}
 
 	// Update DA height if needed
-	// This height is only updated when an height is process from DA as P2P
+	// This height is only updated when a height is processed from DA as P2P
 	// events do not contain DA height information
 	if event.DaHeight > newState.DAHeight {
 		newState.DAHeight = event.DaHeight
