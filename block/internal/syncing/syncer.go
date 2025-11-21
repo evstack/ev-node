@@ -216,9 +216,8 @@ func (s *Syncer) initializeState() error {
 	}
 	s.SetLastState(state)
 
-	// Set DA height
-	// we get the max from the genesis da height, the state da height and the cache (fetched) da height
-	// if a user has messed up and sync da too far ahead, on restart they can clear the cache (--clear-cache) and the retrieve will restart fetching from the last known block synced and executed from DA or the set genesis da height.
+	// Set DA height to the maximum of the genesis start height, the state's DA height, and the cached DA height.
+	// This ensures we resume from the highest known DA height, even if the cache is cleared on restart. If the DA height is too high because of a user error, reset it with --evnode.clear_cache. The DA height will be back to the last highest known executed DA height for a height.
 	s.SetDAHeight(max(s.genesis.DAStartHeight, s.cache.DaHeight(), state.DAHeight))
 
 	s.logger.Info().

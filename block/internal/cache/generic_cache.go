@@ -99,7 +99,7 @@ func (c *Cache[T]) setDAIncluded(hash string, daHeight uint64, blockHeight uint6
 	// Update max DA height if necessary
 	current := c.maxDAHeight.Load()
 	if daHeight >= current {
-		_ = c.maxDAHeight.CompareAndSwap(current, daHeight)
+		c.maxDAHeight.Store(daHeight)
 	}
 }
 
@@ -250,7 +250,7 @@ func (c *Cache[T]) LoadFromDisk(folderPath string) error {
 		// Update max DA height during load
 		current := c.maxDAHeight.Load()
 		if v > current {
-			_ = c.maxDAHeight.CompareAndSwap(current, v)
+			c.maxDAHeight.Store(v)
 		}
 	}
 
