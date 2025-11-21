@@ -49,6 +49,7 @@ type Manager interface {
 	GetHeaderDAIncluded(hash string) (uint64, bool)
 	SetHeaderDAIncluded(hash string, daHeight uint64, blockHeight uint64)
 	RemoveHeaderDAIncluded(hash string)
+	DaHeight() uint64
 
 	// Data operations
 	IsDataSeen(hash string) bool
@@ -163,6 +164,11 @@ func (m *implementation) SetHeaderDAIncluded(hash string, daHeight uint64, block
 
 func (m *implementation) RemoveHeaderDAIncluded(hash string) {
 	m.headerCache.removeDAIncluded(hash)
+}
+
+// DaHeight fetches the heights da height contained in the processed cache.
+func (m *implementation) DaHeight() uint64 {
+	return max(m.headerCache.daHeight(), m.dataCache.daHeight())
 }
 
 // Data operations

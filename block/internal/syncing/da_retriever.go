@@ -214,7 +214,18 @@ func (r *DARetriever) processBlobs(ctx context.Context, blobs [][]byte, daHeight
 	}
 
 	if len(events) > 0 {
-		r.logger.Info().Int("count", len(events)).Uint64("da_height", daHeight).Msg("processed blocks from DA")
+		startHeight := events[0].Header.Height()
+		endHeight := events[0].Header.Height()
+		for _, event := range events {
+			h := event.Header.Height()
+			if h < startHeight {
+				startHeight = h
+			}
+			if h > endHeight {
+				endHeight = h
+			}
+		}
+		r.logger.Info().Uint64("da_height", daHeight).Uint64("start_height", startHeight).Uint64("end_height", endHeight).Msg("processed blocks from DA")
 	}
 
 	return events
