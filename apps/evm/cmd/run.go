@@ -12,6 +12,7 @@ import (
 	"github.com/rs/zerolog"
 	"github.com/spf13/cobra"
 
+	"github.com/evstack/ev-node/block"
 	"github.com/evstack/ev-node/core/da"
 	"github.com/evstack/ev-node/core/execution"
 	coresequencer "github.com/evstack/ev-node/core/sequencer"
@@ -25,6 +26,8 @@ import (
 	"github.com/evstack/ev-node/pkg/p2p"
 	"github.com/evstack/ev-node/pkg/p2p/key"
 	"github.com/evstack/ev-node/pkg/store"
+	"github.com/evstack/ev-node/sequencers/based"
+	seqcommon "github.com/evstack/ev-node/sequencers/common"
 	"github.com/evstack/ev-node/sequencers/single"
 )
 
@@ -55,7 +58,7 @@ var RunCmd = &cobra.Command{
 
 		logger.Info().Str("headerNamespace", headerNamespace.HexString()).Str("dataNamespace", dataNamespace.HexString()).Msg("namespaces")
 
-		daJrpc, err := jsonrpc.NewClient(context.Background(), logger, nodeConfig.DA.Address, nodeConfig.DA.AuthToken, rollcmd.DefaultMaxBlobSize)
+		daJrpc, err := jsonrpc.NewClient(context.Background(), logger, nodeConfig.DA.Address, nodeConfig.DA.AuthToken, seqcommon.AbsoluteMaxBlobSize)
 		if err != nil {
 			return err
 		}
@@ -101,6 +104,8 @@ func init() {
 }
 
 // createSequencer creates a sequencer based on the configuration.
+// If BasedSequencer is enabled, it creates a based sequencer that fetches transactions from DA.
+// Otherwise, it creates a single (traditional) sequencer.
 func createSequencer(
 	ctx context.Context,
 	logger zerolog.Logger,
@@ -109,6 +114,25 @@ func createSequencer(
 	nodeConfig config.Config,
 	genesis genesis.Genesis,
 ) (coresequencer.Sequencer, error) {
+	daClient := block.NewDAClient(da, nodeConfig, logger)
+	fiRetriever := block.NewForcedInclusionRetriever(daClient, genesis, logger)
+
+	if nodeConfig.Node.BasedSequencer {
+		// Based sequencer mode - fetch transactions only from DA
+		if !nodeConfig.Node.Aggregator {
+			return nil, fmt.Errorf("based sequencer mode requires aggregator mode to be enabled")
+		}
+
+		basedSeq := based.NewBasedSequencer(fiRetriever, da, nodeConfig, genesis, logger)
+
+		logger.Info().
+			Str("forced_inclusion_namespace", nodeConfig.DA.GetForcedInclusionNamespace()).
+			Uint64("da_epoch", genesis.DAEpochForcedInclusion).
+			Msg("based sequencer initialized")
+
+		return basedSeq, nil
+	}
+
 	singleMetrics, err := single.NopMetrics()
 	if err != nil {
 		return nil, fmt.Errorf("failed to create single sequencer metrics: %w", err)
@@ -123,10 +147,17 @@ func createSequencer(
 		nodeConfig.Node.BlockTime.Duration,
 		singleMetrics,
 		nodeConfig.Node.Aggregator,
+		1000,
+		fiRetriever,
+		genesis,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create single sequencer: %w", err)
 	}
+
+	logger.Info().
+		Str("forced_inclusion_namespace", nodeConfig.DA.GetForcedInclusionNamespace()).
+		Msg("single sequencer initialized")
 
 	return sequencer, nil
 }

@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Implement forced inclusion and based sequencing ([#2797](https://github.com/evstack/ev-node/pull/2797))
+  This changes requires to add a `da_epoch_forced_inclusion` field in `genesis.json` file.
+  To enable this feature, set the force inclusion namespace in the `evnode.yaml`.
+
 ### Changed
 
 - Rename `evm-single` to `evm` and `grpc-single` to `evgrpc` for clarity. [#2839](https://github.com/evstack/ev-node/pull/2839)

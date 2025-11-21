@@ -70,11 +70,12 @@ func DefaultConfig() Config {
 			ReadinessMaxBlocksBehind: calculateReadinessMaxBlocksBehind(defaultBlockTime.Duration, defaultReadinessWindowSeconds),
 		},
 		DA: DAConfig{
-			Address:           "http://localhost:7980",
-			BlockTime:         DurationWrapper{6 * time.Second},
-			MaxSubmitAttempts: 30,
-			Namespace:         randString(10),
-			DataNamespace:     "",
+			Address:                  "http://localhost:7980",
+			BlockTime:                DurationWrapper{6 * time.Second},
+			MaxSubmitAttempts:        30,
+			Namespace:                randString(10),
+			DataNamespace:            "",
+			ForcedInclusionNamespace: "",
 		},
 		Instrumentation: DefaultInstrumentationConfig(),
 		Log: LogConfig{

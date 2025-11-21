@@ -38,6 +38,50 @@ func (_m *MockSequencer) EXPECT() *MockSequencer_Expecter {
 	return &MockSequencer_Expecter{mock: &_m.Mock}
 }
 
+// GetDAHeight provides a mock function for the type MockSequencer
+func (_mock *MockSequencer) GetDAHeight() uint64 {
+	ret := _mock.Called()
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetDAHeight")
+	}
+
+	var r0 uint64
+	if returnFunc, ok := ret.Get(0).(func() uint64); ok {
+		r0 = returnFunc()
+	} else {
+		r0 = ret.Get(0).(uint64)
+	}
+	return r0
+}
+
+// MockSequencer_GetDAHeight_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetDAHeight'
+type MockSequencer_GetDAHeight_Call struct {
+	*mock.Call
+}
+
+// GetDAHeight is a helper method to define mock.On call
+func (_e *MockSequencer_Expecter) GetDAHeight() *MockSequencer_GetDAHeight_Call {
+	return &MockSequencer_GetDAHeight_Call{Call: _e.mock.On("GetDAHeight")}
+}
+
+func (_c *MockSequencer_GetDAHeight_Call) Run(run func()) *MockSequencer_GetDAHeight_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run()
+	})
+	return _c
+}
+
+func (_c *MockSequencer_GetDAHeight_Call) Return(v uint64) *MockSequencer_GetDAHeight_Call {
+	_c.Call.Return(v)
+	return _c
+}
+
+func (_c *MockSequencer_GetDAHeight_Call) RunAndReturn(run func() uint64) *MockSequencer_GetDAHeight_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // GetNextBatch provides a mock function for the type MockSequencer
 func (_mock *MockSequencer) GetNextBatch(ctx context.Context, req sequencer.GetNextBatchRequest) (*sequencer.GetNextBatchResponse, error) {
 	ret := _mock.Called(ctx, req)
@@ -103,6 +147,46 @@ func (_c *MockSequencer_GetNextBatch_Call) Return(getNextBatchResponse *sequence
 
 func (_c *MockSequencer_GetNextBatch_Call) RunAndReturn(run func(ctx context.Context, req sequencer.GetNextBatchRequest) (*sequencer.GetNextBatchResponse, error)) *MockSequencer_GetNextBatch_Call {
 	_c.Call.Return(run)
+	return _c
+}
+
+// SetDAHeight provides a mock function for the type MockSequencer
+func (_mock *MockSequencer) SetDAHeight(height uint64) {
+	_mock.Called(height)
+	return
+}
+
+// MockSequencer_SetDAHeight_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'SetDAHeight'
+type MockSequencer_SetDAHeight_Call struct {
+	*mock.Call
+}
+
+// SetDAHeight is a helper method to define mock.On call
+//   - height uint64
+func (_e *MockSequencer_Expecter) SetDAHeight(height interface{}) *MockSequencer_SetDAHeight_Call {
+	return &MockSequencer_SetDAHeight_Call{Call: _e.mock.On("SetDAHeight", height)}
+}
+
+func (_c *MockSequencer_SetDAHeight_Call) Run(run func(height uint64)) *MockSequencer_SetDAHeight_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 uint64
+		if args[0] != nil {
+			arg0 = args[0].(uint64)
+		}
+		run(
+			arg0,
+		)
+	})
+	return _c
+}
+
+func (_c *MockSequencer_SetDAHeight_Call) Return() *MockSequencer_SetDAHeight_Call {
+	_c.Call.Return()
+	return _c
+}
+
+func (_c *MockSequencer_SetDAHeight_Call) RunAndReturn(run func(height uint64)) *MockSequencer_SetDAHeight_Call {
+	_c.Run(run)
 	return _c
 }
 
