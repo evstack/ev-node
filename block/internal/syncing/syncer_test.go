@@ -274,23 +274,6 @@ func TestSequentialBlockSync(t *testing.T) {
 	requireEmptyChan(t, errChan)
 }
 
-func TestSyncer_sendNonBlockingSignal(t *testing.T) {
-	s := &Syncer{logger: zerolog.Nop()}
-	ch := make(chan struct{}, 1)
-	ch <- struct{}{}
-	done := make(chan struct{})
-	go func() {
-		s.sendNonBlockingSignal(ch, "test")
-		close(done)
-	}()
-	select {
-	case <-done:
-		// ok
-	case <-time.After(200 * time.Millisecond):
-		t.Fatal("sendNonBlockingSignal blocked unexpectedly")
-	}
-}
-
 func TestSyncer_processPendingEvents(t *testing.T) {
 	ds := dssync.MutexWrap(datastore.NewMapDatastore())
 	st := store.New(ds)
@@ -432,7 +415,7 @@ func TestSyncLoopPersistState(t *testing.T) {
 	requireEmptyChan(t, errorCh)
 
 	t.Log("sync workers on instance1 completed")
-	require.Equal(t, myFutureDAHeight, syncerInst1.GetDAHeight())
+	require.Equal(t, myFutureDAHeight, syncerInst1.daRetrieverHeight.Load())
 
 	// wait for all events consumed
 	require.NoError(t, cacheMgr.SaveToDisk())
@@ -482,7 +465,7 @@ func TestSyncLoopPersistState(t *testing.T) {
 		Run(func(arg mock.Arguments) {
 			cancel()
 			// retrieve last one again
-			assert.Equal(t, syncerInst2.GetDAHeight(), arg.Get(1).(uint64))
+			assert.Equal(t, syncerInst2.daRetrieverHeight.Load(), arg.Get(1).(uint64))
 		}).
 		Return(nil, nil)
 
@@ -623,14 +606,14 @@ func TestSyncer_InitializeState_CallsReplayer(t *testing.T) {
 
 	// Create syncer with minimal dependencies
 	syncer := &Syncer{
-		store:     mockStore,
-		exec:      mockExec,
-		genesis:   gen,
-		lastState: &atomic.Pointer[types.State]{},
-		daHeight:  &atomic.Uint64{},
-		logger:    zerolog.Nop(),
-		ctx:       context.Background(),
-		cache:     cm,
+		store:             mockStore,
+		exec:              mockExec,
+		genesis:           gen,
+		lastState:         &atomic.Pointer[types.State]{},
+		daRetrieverHeight: &atomic.Uint64{},
+		logger:            zerolog.Nop(),
+		ctx:               context.Background(),
+		cache:             cm,
 	}
 
 	// Initialize state - this should call Replayer

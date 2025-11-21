@@ -52,8 +52,8 @@ type Syncer struct {
 	// State management
 	lastState *atomic.Pointer[types.State]
 
-	// DA state
-	daHeight *atomic.Uint64
+	// DA retriever height
+	daRetrieverHeight *atomic.Uint64
 
 	// P2P stores
 	headerStore common.Broadcaster[*types.SignedHeader]
@@ -95,21 +95,21 @@ func NewSyncer(
 	errorCh chan<- error,
 ) *Syncer {
 	return &Syncer{
-		store:       store,
-		exec:        exec,
-		da:          da,
-		cache:       cache,
-		metrics:     metrics,
-		config:      config,
-		genesis:     genesis,
-		options:     options,
-		headerStore: headerStore,
-		dataStore:   dataStore,
-		lastState:   &atomic.Pointer[types.State]{},
-		daHeight:    &atomic.Uint64{},
-		heightInCh:  make(chan common.DAHeightEvent, 1_000),
-		errorCh:     errorCh,
-		logger:      logger.With().Str("component", "syncer").Logger(),
+		store:             store,
+		exec:              exec,
+		da:                da,
+		cache:             cache,
+		metrics:           metrics,
+		config:            config,
+		genesis:           genesis,
+		options:           options,
+		headerStore:       headerStore,
+		dataStore:         dataStore,
+		lastState:         &atomic.Pointer[types.State]{},
+		daRetrieverHeight: &atomic.Uint64{},
+		heightInCh:        make(chan common.DAHeightEvent, 1_000),
+		errorCh:           errorCh,
+		logger:            logger.With().Str("component", "syncer").Logger(),
 	}
 }
 
@@ -175,16 +175,6 @@ func (s *Syncer) SetLastState(state types.State) {
 	s.lastState.Store(&state)
 }
 
-// GetDAHeight returns the current DA height
-func (s *Syncer) GetDAHeight() uint64 {
-	return s.daHeight.Load()
-}
-
-// SetDAHeight updates the DA height
-func (s *Syncer) SetDAHeight(height uint64) {
-	s.daHeight.Store(height)
-}
-
 // initializeState loads the current sync state
 func (s *Syncer) initializeState() error {
 	// Load state from store
@@ -218,11 +208,11 @@ func (s *Syncer) initializeState() error {
 
 	// Set DA height to the maximum of the genesis start height, the state's DA height, and the cached DA height.
 	// This ensures we resume from the highest known DA height, even if the cache is cleared on restart. If the DA height is too high because of a user error, reset it with --evnode.clear_cache. The DA height will be back to the last highest known executed DA height for a height.
-	s.SetDAHeight(max(s.genesis.DAStartHeight, s.cache.DaHeight(), state.DAHeight))
+	s.daRetrieverHeight.Store(max(s.genesis.DAStartHeight, s.cache.DaHeight(), state.DAHeight))
 
 	s.logger.Info().
 		Uint64("height", state.LastBlockHeight).
-		Uint64("da_height", s.GetDAHeight()).
+		Uint64("da_height", s.daRetrieverHeight.Load()).
 		Str("chain_id", state.ChainID).
 		Msg("initialized syncer state")
 
@@ -296,13 +286,13 @@ func (s *Syncer) fetchDAUntilCaughtUp() error {
 		default:
 		}
 
-		daHeight := max(s.GetDAHeight(), s.cache.DaHeight())
+		daHeight := max(s.daRetrieverHeight.Load(), s.cache.DaHeight())
 
 		events, err := s.daRetriever.RetrieveFromDA(s.ctx, daHeight)
 		if err != nil {
 			switch {
 			case errors.Is(err, coreda.ErrBlobNotFound):
-				s.SetDAHeight(daHeight + 1)
+				s.daRetrieverHeight.Store(daHeight + 1)
 				continue // Fetch next height immediately
 			case errors.Is(err, coreda.ErrHeightFromFuture):
 				s.logger.Debug().Err(err).Uint64("da_height", daHeight).Msg("DA is ahead of local target; backing off future height requests")
@@ -327,8 +317,8 @@ func (s *Syncer) fetchDAUntilCaughtUp() error {
 			}
 		}
 
-		// increment DA height on successful retrieval
-		s.SetDAHeight(daHeight + 1)
+		// increment DA retrieval height on successful retrieval
+		s.daRetrieverHeight.Store(daHeight + 1)
 	}
 }
 
@@ -534,13 +524,14 @@ func (s *Syncer) trySyncNextBlock(event *common.DAHeightEvent) error {
 		return err
 	}
 
-	// Apply block
 	newState, err := s.applyBlock(header.Header, data, currentState)
 	if err != nil {
 		return fmt.Errorf("failed to apply block: %w", err)
 	}
 
 	// Update DA height if needed
+	// This height is only updated when an height is process from DA as P2P
+	// events do not contain DA height information
 	if event.DaHeight > newState.DAHeight {
 		newState.DAHeight = event.DaHeight
 	}
@@ -663,15 +654,6 @@ func (s *Syncer) sendCriticalError(err error) {
 		default:
 			// Channel full, error already reported
 		}
-	}
-}
-
-// sendNonBlockingSignal sends a signal without blocking
-func (s *Syncer) sendNonBlockingSignal(ch chan struct{}, name string) {
-	select {
-	case ch <- struct{}{}:
-	default:
-		s.logger.Debug().Str("channel", name).Msg("channel full, signal dropped")
 	}
 }
 
