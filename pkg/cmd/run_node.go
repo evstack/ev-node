@@ -22,12 +22,12 @@ import (
 	"github.com/evstack/ev-node/node"
 	rollconf "github.com/evstack/ev-node/pkg/config"
 	genesispkg "github.com/evstack/ev-node/pkg/genesis"
-	"github.com/evstack/ev-node/pkg/p2p/key"
+	"github.com/evstack/ev-node/pkg/p2p"
 	"github.com/evstack/ev-node/pkg/signer"
 	"github.com/evstack/ev-node/pkg/signer/file"
 )
 
-const DefaultMaxBlobSize = 1.5 * 1024 * 1024 // 1.5MB
+const DefaultMaxBlobSize = 2 * 1024 * 1024 // 2MB
 
 // ParseConfig is an helpers that loads the node configuration and validates it.
 func ParseConfig(cmd *cobra.Command) (rollconf.Config, error) {
@@ -83,7 +83,7 @@ func StartNode(
 	executor coreexecutor.Executor,
 	sequencer coresequencer.Sequencer,
 	da coreda.DA,
-	nodeKey *key.NodeKey,
+	p2pClient *p2p.Client,
 	datastore datastore.Batching,
 	nodeConfig rollconf.Config,
 	genesis genesispkg.Genesis,
@@ -139,7 +139,7 @@ func StartNode(
 		sequencer,
 		da,
 		signer,
-		nodeKey,
+		p2pClient,
 		genesis,
 		datastore,
 		metrics,
