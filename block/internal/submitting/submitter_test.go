@@ -18,6 +18,7 @@ import (
 
 	"github.com/evstack/ev-node/block/internal/cache"
 	"github.com/evstack/ev-node/block/internal/common"
+	"github.com/evstack/ev-node/block/internal/da"
 	"github.com/evstack/ev-node/pkg/config"
 	"github.com/evstack/ev-node/pkg/genesis"
 	"github.com/evstack/ev-node/pkg/rpc/server"
@@ -158,8 +159,16 @@ func TestSubmitter_setSequencerHeightToDAHeight(t *testing.T) {
 	mockStore := testmocks.NewMockStore(t)
 
 	cfg := config.DefaultConfig()
+	cfg.DA.Namespace = "test-ns"
+	cfg.DA.DataNamespace = "test-data-ns"
 	metrics := common.NopMetrics()
-	daSub := NewDASubmitter(nil, cfg, genesis.Genesis{}, common.DefaultBlockOptions(), metrics, zerolog.Nop())
+	daClient := da.NewClient(da.Config{
+		DA:            nil,
+		Logger:        zerolog.Nop(),
+		Namespace:     cfg.DA.Namespace,
+		DataNamespace: cfg.DA.DataNamespace,
+	})
+	daSub := NewDASubmitter(daClient, cfg, genesis.Genesis{}, common.BlockOptions{}, metrics, zerolog.Nop())
 	s := NewSubmitter(mockStore, nil, cm, metrics, cfg, genesis.Genesis{}, daSub, nil, zerolog.Nop(), nil)
 	s.ctx = ctx
 
@@ -238,7 +247,13 @@ func TestSubmitter_processDAInclusionLoop_advances(t *testing.T) {
 	exec.On("SetFinal", mock.Anything, uint64(1)).Return(nil).Once()
 	exec.On("SetFinal", mock.Anything, uint64(2)).Return(nil).Once()
 
-	daSub := NewDASubmitter(nil, cfg, genesis.Genesis{}, common.DefaultBlockOptions(), metrics, zerolog.Nop())
+	daClient := da.NewClient(da.Config{
+		DA:            nil,
+		Logger:        zerolog.Nop(),
+		Namespace:     cfg.DA.Namespace,
+		DataNamespace: cfg.DA.DataNamespace,
+	})
+	daSub := NewDASubmitter(daClient, cfg, genesis.Genesis{}, common.BlockOptions{}, metrics, zerolog.Nop())
 	s := NewSubmitter(st, exec, cm, metrics, cfg, genesis.Genesis{}, daSub, nil, zerolog.Nop(), nil)
 
 	// prepare two consecutive blocks in store with DA included in cache
@@ -423,7 +438,13 @@ func TestSubmitter_CacheClearedOnHeightInclusion(t *testing.T) {
 	exec.On("SetFinal", mock.Anything, uint64(1)).Return(nil).Once()
 	exec.On("SetFinal", mock.Anything, uint64(2)).Return(nil).Once()
 
-	daSub := NewDASubmitter(nil, cfg, genesis.Genesis{}, common.DefaultBlockOptions(), metrics, zerolog.Nop())
+	daClient := da.NewClient(da.Config{
+		DA:            nil,
+		Logger:        zerolog.Nop(),
+		Namespace:     cfg.DA.Namespace,
+		DataNamespace: cfg.DA.DataNamespace,
+	})
+	daSub := NewDASubmitter(daClient, cfg, genesis.Genesis{}, common.BlockOptions{}, metrics, zerolog.Nop())
 	s := NewSubmitter(st, exec, cm, metrics, cfg, genesis.Genesis{}, daSub, nil, zerolog.Nop(), nil)
 
 	// Create test blocks

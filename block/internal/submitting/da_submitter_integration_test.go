@@ -15,6 +15,7 @@ import (
 
 	"github.com/evstack/ev-node/block/internal/cache"
 	"github.com/evstack/ev-node/block/internal/common"
+	"github.com/evstack/ev-node/block/internal/da"
 	coreda "github.com/evstack/ev-node/core/da"
 	"github.com/evstack/ev-node/pkg/config"
 	"github.com/evstack/ev-node/pkg/genesis"
@@ -86,7 +87,13 @@ func TestDASubmitter_SubmitHeadersAndData_MarksInclusionAndUpdatesLastSubmitted(
 	dummyDA := coreda.NewDummyDA(10_000_000, 10*time.Millisecond)
 
 	// Create DA submitter
-	daSubmitter := NewDASubmitter(dummyDA, cfg, gen, common.DefaultBlockOptions(), common.NopMetrics(), zerolog.Nop())
+	daClient := da.NewClient(da.Config{
+		DA:            dummyDA,
+		Logger:        zerolog.Nop(),
+		Namespace:     cfg.DA.Namespace,
+		DataNamespace: cfg.DA.DataNamespace,
+	})
+	daSubmitter := NewDASubmitter(daClient, cfg, gen, common.DefaultBlockOptions(), common.NopMetrics(), zerolog.Nop())
 
 	// Submit headers and data
 	require.NoError(t, daSubmitter.SubmitHeaders(context.Background(), cm))
