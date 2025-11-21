@@ -28,6 +28,7 @@ func TestNewForcedInclusionRetriever(t *testing.T) {
 	}
 
 	retriever := NewForcedInclusionRetriever(client, gen, zerolog.Nop())
+	t.Cleanup(func() { retriever.StopBackgroundFetcher() })
 	assert.Assert(t, retriever != nil)
 	assert.Equal(t, retriever.daEpochSize, uint64(10))
 }
@@ -47,6 +48,7 @@ func TestForcedInclusionRetriever_RetrieveForcedIncludedTxs_NoNamespace(t *testi
 	}
 
 	retriever := NewForcedInclusionRetriever(client, gen, zerolog.Nop())
+	t.Cleanup(func() { retriever.StopBackgroundFetcher() })
 	ctx := context.Background()
 
 	_, err := retriever.RetrieveForcedIncludedTxs(ctx, 100)
@@ -69,6 +71,7 @@ func TestForcedInclusionRetriever_RetrieveForcedIncludedTxs_NotAtEpochStart(t *t
 	}
 
 	retriever := NewForcedInclusionRetriever(client, gen, zerolog.Nop())
+	t.Cleanup(func() { retriever.StopBackgroundFetcher() })
 	ctx := context.Background()
 
 	// Height 105 is not an epoch start (100, 110, 120, etc. are epoch starts)
@@ -113,6 +116,7 @@ func TestForcedInclusionRetriever_RetrieveForcedIncludedTxs_EpochStartSuccess(t 
 	}
 
 	retriever := NewForcedInclusionRetriever(client, gen, zerolog.Nop())
+	t.Cleanup(func() { retriever.StopBackgroundFetcher() })
 	ctx := context.Background()
 
 	// Height 100 is an epoch start
@@ -146,6 +150,7 @@ func TestForcedInclusionRetriever_RetrieveForcedIncludedTxs_EpochStartNotAvailab
 	}
 
 	retriever := NewForcedInclusionRetriever(client, gen, zerolog.Nop())
+	t.Cleanup(func() { retriever.StopBackgroundFetcher() })
 	ctx := context.Background()
 
 	_, err := retriever.RetrieveForcedIncludedTxs(ctx, 100)
@@ -174,6 +179,7 @@ func TestForcedInclusionRetriever_RetrieveForcedIncludedTxs_NoBlobsAtHeight(t *t
 	}
 
 	retriever := NewForcedInclusionRetriever(client, gen, zerolog.Nop())
+	t.Cleanup(func() { retriever.StopBackgroundFetcher() })
 	ctx := context.Background()
 
 	event, err := retriever.RetrieveForcedIncludedTxs(ctx, 100)
@@ -235,6 +241,7 @@ func TestForcedInclusionRetriever_RetrieveForcedIncludedTxs_MultiHeightEpoch(t *
 	}
 
 	retriever := NewForcedInclusionRetriever(client, gen, zerolog.Nop())
+	t.Cleanup(func() { retriever.StopBackgroundFetcher() })
 	ctx := context.Background()
 
 	event, err := retriever.RetrieveForcedIncludedTxs(ctx, 100)
@@ -263,6 +270,7 @@ func TestForcedInclusionRetriever_processForcedInclusionBlobs(t *testing.T) {
 	}
 
 	retriever := NewForcedInclusionRetriever(client, gen, zerolog.Nop())
+	t.Cleanup(func() { retriever.StopBackgroundFetcher() })
 
 	tests := []struct {
 		name               string

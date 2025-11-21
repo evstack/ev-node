@@ -155,6 +155,9 @@ func (s *Syncer) Stop() error {
 	}
 	s.cancelP2PWait(0)
 	s.wg.Wait()
+
+	s.fiRetriever.StopBackgroundFetcher()
+
 	s.logger.Info().Msg("syncer stopped")
 	return nil
 }
