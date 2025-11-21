@@ -15,6 +15,7 @@ import (
 
 	"github.com/evstack/ev-node/block/internal/cache"
 	"github.com/evstack/ev-node/block/internal/common"
+	"github.com/evstack/ev-node/block/internal/da"
 	coreda "github.com/evstack/ev-node/core/da"
 	"github.com/evstack/ev-node/pkg/config"
 	"github.com/evstack/ev-node/pkg/genesis"
@@ -51,8 +52,14 @@ func setupDASubmitterTest(t *testing.T) (*DASubmitter, store.Store, cache.Manage
 	}
 
 	// Create DA submitter
+	daClient := da.NewClient(da.Config{
+		DA:            dummyDA,
+		Logger:        zerolog.Nop(),
+		Namespace:     cfg.DA.Namespace,
+		DataNamespace: cfg.DA.DataNamespace,
+	})
 	daSubmitter := NewDASubmitter(
-		dummyDA,
+		daClient,
 		cfg,
 		gen,
 		common.DefaultBlockOptions(),
@@ -80,7 +87,7 @@ func TestDASubmitter_NewDASubmitter(t *testing.T) {
 	submitter, _, _, _, _ := setupDASubmitterTest(t)
 
 	assert.NotNil(t, submitter)
-	assert.NotNil(t, submitter.da)
+	assert.NotNil(t, submitter.client)
 	assert.NotNil(t, submitter.config)
 	assert.NotNil(t, submitter.genesis)
 }
@@ -95,8 +102,14 @@ func TestNewDASubmitterSetsVisualizerWhenEnabled(t *testing.T) {
 
 	dummyDA := coreda.NewDummyDA(10_000_000, 10*time.Millisecond)
 
+	daClient := da.NewClient(da.Config{
+		DA:            dummyDA,
+		Logger:        zerolog.Nop(),
+		Namespace:     cfg.DA.Namespace,
+		DataNamespace: cfg.DA.DataNamespace,
+	})
 	NewDASubmitter(
-		dummyDA,
+		daClient,
 		cfg,
 		genesis.Genesis{},
 		common.DefaultBlockOptions(),

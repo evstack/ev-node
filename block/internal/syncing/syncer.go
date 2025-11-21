@@ -18,30 +18,21 @@ import (
 
 	"github.com/evstack/ev-node/block/internal/cache"
 	"github.com/evstack/ev-node/block/internal/common"
+	"github.com/evstack/ev-node/block/internal/da"
 	"github.com/evstack/ev-node/pkg/config"
 	"github.com/evstack/ev-node/pkg/genesis"
 	"github.com/evstack/ev-node/pkg/store"
 	"github.com/evstack/ev-node/types"
 )
 
-type daRetriever interface {
-	RetrieveFromDA(ctx context.Context, daHeight uint64) ([]common.DAHeightEvent, error)
-}
-
-type p2pHandler interface {
-	ProcessHeight(ctx context.Context, height uint64, heightInCh chan<- common.DAHeightEvent) error
-	SetProcessedHeight(height uint64)
-}
-
 // Syncer handles block synchronization from DA and P2P sources.
 type Syncer struct {
 	// Core components
 	store store.Store
 	exec  coreexecutor.Executor
-	da    coreda.DA
 
 	// Shared components
-	cache   cache.Manager
+	cache   cache.CacheManager
 	metrics *common.Metrics
 
 	// Configuration
@@ -52,7 +43,8 @@ type Syncer struct {
 	// State management
 	lastState *atomic.Pointer[types.State]
 
-	// DA retriever height
+	// DA retriever
+	daClient          da.Client
 	daRetrieverHeight *atomic.Uint64
 
 	// P2P stores
@@ -64,7 +56,7 @@ type Syncer struct {
 	errorCh    chan<- error // Channel to report critical execution client failures
 
 	// Handlers
-	daRetriever daRetriever
+	daRetriever DARetriever
 	p2pHandler  p2pHandler
 
 	// Logging
@@ -83,8 +75,8 @@ type Syncer struct {
 func NewSyncer(
 	store store.Store,
 	exec coreexecutor.Executor,
-	da coreda.DA,
-	cache cache.Manager,
+	daClient da.Client,
+	cache cache.CacheManager,
 	metrics *common.Metrics,
 	config config.Config,
 	genesis genesis.Genesis,
@@ -97,7 +89,7 @@ func NewSyncer(
 	return &Syncer{
 		store:             store,
 		exec:              exec,
-		da:                da,
+		daClient:          daClient,
 		cache:             cache,
 		metrics:           metrics,
 		config:            config,
@@ -122,7 +114,7 @@ func (s *Syncer) Start(ctx context.Context) error {
 	}
 
 	// Initialize handlers
-	s.daRetriever = NewDARetriever(s.da, s.cache, s.config, s.genesis, s.logger)
+	s.daRetriever = NewDARetriever(s.daClient, s.cache, s.genesis, s.logger)
 	s.p2pHandler = NewP2PHandler(s.headerStore.Store(), s.dataStore.Store(), s.cache, s.genesis, s.logger)
 	if currentHeight, err := s.store.Height(s.ctx); err != nil {
 		s.logger.Error().Err(err).Msg("failed to set initial processed height for p2p handler")
@@ -135,7 +127,11 @@ func (s *Syncer) Start(ctx context.Context) error {
 	}
 
 	// Start main processing loop
-	go s.processLoop()
+	s.wg.Add(1)
+	go func() {
+		defer s.wg.Done()
+		s.processLoop()
+	}()
 
 	// Start dedicated workers for DA, and pending processing
 	s.startSyncWorkers()
@@ -226,9 +222,6 @@ func (s *Syncer) initializeState() error {
 
 // processLoop is the main coordination loop for processing events
 func (s *Syncer) processLoop() {
-	s.wg.Add(1)
-	defer s.wg.Done()
-
 	s.logger.Info().Msg("starting process loop")
 	defer s.logger.Info().Msg("process loop stopped")
 

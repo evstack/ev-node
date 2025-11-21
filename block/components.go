@@ -144,13 +144,15 @@ func NewSyncComponents(
 		return nil, fmt.Errorf("failed to create cache manager: %w", err)
 	}
 
+	daClient := NewDAClient(da, config, logger)
+
 	// error channel for critical failures
 	errorCh := make(chan error, 1)
 
 	syncer := syncing.NewSyncer(
 		store,
 		exec,
-		da,
+		daClient,
 		cacheManager,
 		metrics,
 		config,
@@ -162,8 +164,8 @@ func NewSyncComponents(
 		errorCh,
 	)
 
-	// Create DA submitter for sync nodes (no signer, only DA inclusion processing)
-	daSubmitter := submitting.NewDASubmitter(da, config, genesis, blockOpts, metrics, logger)
+	// Create submitter for sync nodes (no signer, only DA inclusion processing)
+	daSubmitter := submitting.NewDASubmitter(daClient, config, genesis, blockOpts, metrics, logger)
 	submitter := submitting.NewSubmitter(
 		store,
 		exec,
@@ -243,8 +245,9 @@ func NewAggregatorComponents(
 		return nil, fmt.Errorf("failed to create reaper: %w", err)
 	}
 
-	// Create DA submitter for aggregator nodes (with signer for submission)
-	daSubmitter := submitting.NewDASubmitter(da, config, genesis, blockOpts, metrics, logger)
+	// Create DA client and submitter for aggregator nodes (with signer for submission)
+	daClient := NewDAClient(da, config, logger)
+	daSubmitter := submitting.NewDASubmitter(daClient, config, genesis, blockOpts, metrics, logger)
 	submitter := submitting.NewSubmitter(
 		store,
 		exec,
