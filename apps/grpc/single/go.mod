@@ -5,7 +5,7 @@ go 1.24.6
 replace github.com/celestiaorg/go-header => github.com/julienrbrt/go-header v0.0.0-20251008134330-747c8c192fa8 // TODO: to remove after https://github.com/celestiaorg/go-header/pull/347
 
 require (
-	github.com/evstack/ev-node v1.0.0-beta.9
+	github.com/evstack/ev-node v1.0.0-beta.10
 	github.com/evstack/ev-node/core v1.0.0-beta.5
 	github.com/evstack/ev-node/da v1.0.0-beta.6
 	github.com/evstack/ev-node/execution/grpc v0.0.0
