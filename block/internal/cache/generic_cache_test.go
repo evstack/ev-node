@@ -14,6 +14,47 @@ func init() {
 	gob.Register(&testItem{})
 }
 
+// TestCache_MaxDAHeight verifies that daHeight tracks the maximum DA height
+func TestCache_MaxDAHeight(t *testing.T) {
+	c := NewCache[testItem]()
+
+	// Initially should be 0
+	if got := c.daHeight(); got != 0 {
+		t.Errorf("initial daHeight = %d, want 0", got)
+	}
+
+	// Set items with increasing DA heights
+	c.setDAIncluded("hash1", 100, 1)
+	if got := c.daHeight(); got != 100 {
+		t.Errorf("after setDAIncluded(100): daHeight = %d, want 100", got)
+	}
+
+	c.setDAIncluded("hash2", 50, 2) // Lower height shouldn't change max
+	if got := c.daHeight(); got != 100 {
+		t.Errorf("after setDAIncluded(50): daHeight = %d, want 100", got)
+	}
+
+	c.setDAIncluded("hash3", 200, 3)
+	if got := c.daHeight(); got != 200 {
+		t.Errorf("after setDAIncluded(200): daHeight = %d, want 200", got)
+	}
+
+	// Test persistence
+	dir := t.TempDir()
+	if err := c.SaveToDisk(dir); err != nil {
+		t.Fatalf("SaveToDisk failed: %v", err)
+	}
+
+	c2 := NewCache[testItem]()
+	if err := c2.LoadFromDisk(dir); err != nil {
+		t.Fatalf("LoadFromDisk failed: %v", err)
+	}
+
+	if got := c2.daHeight(); got != 200 {
+		t.Errorf("after load: daHeight = %d, want 200", got)
+	}
+}
+
 // TestCache_SaveLoad_ErrorPaths covers SaveToDisk and LoadFromDisk error scenarios.
 func TestCache_SaveLoad_ErrorPaths(t *testing.T) {
 	c := NewCache[testItem]()

@@ -23,6 +23,7 @@ import (
 	"github.com/evstack/ev-node/pkg/p2p"
 	"github.com/evstack/ev-node/pkg/store"
 	"github.com/evstack/ev-node/test/mocks"
+	headerstoremocks "github.com/evstack/ev-node/test/mocks/external"
 	"github.com/evstack/ev-node/types"
 	pb "github.com/evstack/ev-node/types/pb/evnode/v1"
 )
@@ -46,7 +47,7 @@ func TestGetBlock(t *testing.T) {
 
 	// Create server with mock store
 	logger := zerolog.Nop()
-	server := NewStoreServer(mockStore, logger)
+	server := NewStoreServer(mockStore, nil, nil, logger)
 
 	// Test GetBlock with height - success case
 	t.Run("by height with DA heights", func(t *testing.T) {
@@ -138,7 +139,7 @@ func TestGetBlock_Latest(t *testing.T) {
 
 	mockStore := mocks.NewMockStore(t)
 	logger := zerolog.Nop()
-	server := NewStoreServer(mockStore, logger)
+	server := NewStoreServer(mockStore, nil, nil, logger)
 
 	latestHeight := uint64(20)
 	header := &types.SignedHeader{Header: types.Header{BaseHeader: types.BaseHeader{Height: latestHeight}}}
@@ -194,7 +195,7 @@ func TestGetState(t *testing.T) {
 
 	// Create server with mock store
 	logger := zerolog.Nop()
-	server := NewStoreServer(mockStore, logger)
+	server := NewStoreServer(mockStore, nil, nil, logger)
 
 	// Call GetState
 	req := connect.NewRequest(&emptypb.Empty{})
@@ -217,7 +218,7 @@ func TestGetState_Error(t *testing.T) {
 	mockStore := mocks.NewMockStore(t)
 	mockStore.On("GetState", mock.Anything).Return(types.State{}, fmt.Errorf("state error"))
 	logger := zerolog.Nop()
-	server := NewStoreServer(mockStore, logger)
+	server := NewStoreServer(mockStore, nil, nil, logger)
 	resp, err := server.GetState(context.Background(), connect.NewRequest(&emptypb.Empty{}))
 	require.Error(t, err)
 	require.Nil(t, resp)
@@ -236,7 +237,7 @@ func TestGetMetadata(t *testing.T) {
 
 	// Create server with mock store
 	logger := zerolog.Nop()
-	server := NewStoreServer(mockStore, logger)
+	server := NewStoreServer(mockStore, nil, nil, logger)
 
 	// Call GetMetadata
 	req := connect.NewRequest(&pb.GetMetadataRequest{
@@ -254,7 +255,7 @@ func TestGetMetadata_Error(t *testing.T) {
 	mockStore := mocks.NewMockStore(t)
 	mockStore.On("GetMetadata", mock.Anything, "bad").Return(nil, fmt.Errorf("meta error"))
 	logger := zerolog.Nop()
-	server := NewStoreServer(mockStore, logger)
+	server := NewStoreServer(mockStore, nil, nil, logger)
 	resp, err := server.GetMetadata(context.Background(), connect.NewRequest(&pb.GetMetadataRequest{Key: "bad"}))
 	require.Error(t, err)
 	require.Nil(t, resp)
@@ -269,7 +270,7 @@ func TestGetGenesisDaHeight(t *testing.T) {
 	mockStore.On("GetMetadata", mock.Anything, store.GenesisDAHeightKey).Return(heightBytes, nil).Once()
 
 	logger := zerolog.Nop()
-	server := NewStoreServer(mockStore, logger)
+	server := NewStoreServer(mockStore, nil, nil, logger)
 
 	t.Run("success", func(t *testing.T) {
 		req := connect.NewRequest(&emptypb.Empty{})
@@ -287,7 +288,7 @@ func TestGetGenesisDaHeight_NotFound(t *testing.T) {
 	mockStore.On("GetMetadata", mock.Anything, store.GenesisDAHeightKey).Return(nil, fmt.Errorf("genesis DA height not found")).Once()
 
 	logger := zerolog.Nop()
-	server := NewStoreServer(mockStore, logger)
+	server := NewStoreServer(mockStore, nil, nil, logger)
 
 	req := connect.NewRequest(&emptypb.Empty{})
 	resp, err := server.GetGenesisDaHeight(context.Background(), req)
@@ -307,7 +308,7 @@ func TestGetGenesisDaHeight_InvalidLength(t *testing.T) {
 	mockStore.On("GetMetadata", mock.Anything, store.GenesisDAHeightKey).Return(invalidBytes, nil).Once()
 
 	logger := zerolog.Nop()
-	server := NewStoreServer(mockStore, logger)
+	server := NewStoreServer(mockStore, nil, nil, logger)
 
 	req := connect.NewRequest(&emptypb.Empty{})
 	resp, err := server.GetGenesisDaHeight(context.Background(), req)
@@ -319,6 +320,50 @@ func TestGetGenesisDaHeight_InvalidLength(t *testing.T) {
 	require.Equal(t, connect.CodeNotFound, connectErr.Code())
 	require.Contains(t, connectErr.Message(), "invalid metadata value")
 	mockStore.AssertExpectations(t)
+}
+
+func TestGetP2PStoreInfo(t *testing.T) {
+	t.Run("returns snapshots for configured stores", func(t *testing.T) {
+		mockStore := mocks.NewMockStore(t)
+		headerStore := headerstoremocks.NewMockStore[*types.SignedHeader](t)
+		dataStore := headerstoremocks.NewMockStore[*types.Data](t)
+		logger := zerolog.Nop()
+		server := NewStoreServer(mockStore, headerStore, dataStore, logger)
+
+		now := time.Now().UTC()
+		headerStore.On("Height").Return(uint64(12))
+		headerStore.On("Head", mock.Anything).Return(makeTestSignedHeader(12, now), nil)
+		headerStore.On("Tail", mock.Anything).Return(makeTestSignedHeader(7, now.Add(-time.Minute)), nil)
+
+		dataStore.On("Height").Return(uint64(9))
+		dataStore.On("Head", mock.Anything).Return(makeTestData(9, now.Add(-30*time.Second)), nil)
+		dataStore.On("Tail", mock.Anything).Return(makeTestData(4, now.Add(-2*time.Minute)), nil)
+
+		resp, err := server.GetP2PStoreInfo(context.Background(), connect.NewRequest(&emptypb.Empty{}))
+		require.NoError(t, err)
+		require.Len(t, resp.Msg.Stores, 2)
+
+		require.Equal(t, "Header Store", resp.Msg.Stores[0].Label)
+		require.Equal(t, uint64(12), resp.Msg.Stores[0].Height)
+
+		require.Equal(t, "Data Store", resp.Msg.Stores[1].Label)
+		require.Equal(t, uint64(9), resp.Msg.Stores[1].Height)
+		require.Equal(t, uint64(9), resp.Msg.Stores[1].Head.Height)
+		require.Equal(t, uint64(4), resp.Msg.Stores[1].Tail.Height)
+	})
+
+	t.Run("returns error when a store edge fails", func(t *testing.T) {
+		mockStore := mocks.NewMockStore(t)
+		headerStore := headerstoremocks.NewMockStore[*types.SignedHeader](t)
+		logger := zerolog.Nop()
+		headerStore.On("Height").Return(uint64(0))
+		headerStore.On("Head", mock.Anything).Return((*types.SignedHeader)(nil), fmt.Errorf("boom"))
+
+		server := NewStoreServer(mockStore, headerStore, nil, logger)
+		resp, err := server.GetP2PStoreInfo(context.Background(), connect.NewRequest(&emptypb.Empty{}))
+		require.Error(t, err)
+		require.Nil(t, resp)
+	})
 }
 
 func TestP2PServer_GetPeerInfo(t *testing.T) {
@@ -371,7 +416,7 @@ func TestHealthLiveEndpoint(t *testing.T) {
 		// Mock successful store access
 		mockStore.On("Height", mock.Anything).Return(uint64(100), nil)
 
-		handler, err := NewServiceHandler(mockStore, mockP2PManager, nil, logger, testConfig, nil)
+		handler, err := NewServiceHandler(mockStore, nil, nil, mockP2PManager, nil, logger, testConfig, nil)
 		require.NoError(t, err)
 
 		server := httptest.NewServer(handler)
@@ -396,7 +441,7 @@ func TestHealthLiveEndpoint(t *testing.T) {
 		// Mock store access failure
 		mockStore.On("Height", mock.Anything).Return(uint64(0), fmt.Errorf("store unavailable"))
 
-		handler, err := NewServiceHandler(mockStore, mockP2PManager, nil, logger, testConfig, nil)
+		handler, err := NewServiceHandler(mockStore, nil, nil, mockP2PManager, nil, logger, testConfig, nil)
 		require.NoError(t, err)
 
 		server := httptest.NewServer(handler)
@@ -421,7 +466,7 @@ func TestHealthLiveEndpoint(t *testing.T) {
 		// Mock successful store access at genesis
 		mockStore.On("Height", mock.Anything).Return(uint64(0), nil)
 
-		handler, err := NewServiceHandler(mockStore, mockP2PManager, nil, logger, testConfig, nil)
+		handler, err := NewServiceHandler(mockStore, nil, nil, mockP2PManager, nil, logger, testConfig, nil)
 		require.NoError(t, err)
 
 		server := httptest.NewServer(handler)
@@ -498,7 +543,7 @@ func TestHealthReadyEndpoint(t *testing.T) {
 				}
 
 				bestKnown := func() uint64 { return tc.bestKnown }
-				handler, err := NewServiceHandler(mockStore, mockP2P, nil, logger, testConfig, bestKnown)
+				handler, err := NewServiceHandler(mockStore, nil, nil, mockP2P, nil, logger, testConfig, bestKnown)
 				require.NoError(t, err)
 				server := httptest.NewServer(handler)
 				defer server.Close()
@@ -539,7 +584,7 @@ func TestHealthReadyEndpoint(t *testing.T) {
 			mockStore.On("GetState", mock.Anything).Return(state, nil)
 
 			bestKnown := func() uint64 { return 100 }
-			handler, err := NewServiceHandler(mockStore, mockP2P, nil, logger, testConfig, bestKnown)
+			handler, err := NewServiceHandler(mockStore, nil, nil, mockP2P, nil, logger, testConfig, bestKnown)
 			require.NoError(t, err)
 			server := httptest.NewServer(handler)
 			defer server.Close()
@@ -569,7 +614,7 @@ func TestHealthReadyEndpoint(t *testing.T) {
 			mockStore.On("GetState", mock.Anything).Return(state, nil)
 
 			bestKnown := func() uint64 { return 100 }
-			handler, err := NewServiceHandler(mockStore, mockP2P, nil, logger, testConfig, bestKnown)
+			handler, err := NewServiceHandler(mockStore, nil, nil, mockP2P, nil, logger, testConfig, bestKnown)
 			require.NoError(t, err)
 			server := httptest.NewServer(handler)
 			defer server.Close()
@@ -580,4 +625,29 @@ func TestHealthReadyEndpoint(t *testing.T) {
 			require.Equal(t, http.StatusServiceUnavailable, resp.StatusCode)
 		})
 	})
+}
+
+func makeTestSignedHeader(height uint64, ts time.Time) *types.SignedHeader {
+	return &types.SignedHeader{
+		Header: types.Header{
+			BaseHeader: types.BaseHeader{
+				Height:  height,
+				Time:    uint64(ts.UnixNano()),
+				ChainID: "test-chain",
+			},
+			ProposerAddress: []byte{0x01},
+			DataHash:        []byte{0x02},
+			AppHash:         []byte{0x03},
+		},
+	}
+}
+
+func makeTestData(height uint64, ts time.Time) *types.Data {
+	return &types.Data{
+		Metadata: &types.Metadata{
+			ChainID: "test-chain",
+			Height:  height,
+			Time:    uint64(ts.UnixNano()),
+		},
+	}
 }

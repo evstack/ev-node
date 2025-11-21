@@ -5,7 +5,7 @@ package common
 const (
 	// AbsoluteMaxBlobSize is the absolute maximum size for a single blob (DA layer limit).
 	// Blobs exceeding this size are invalid and should be rejected permanently.
-	AbsoluteMaxBlobSize = 1.5 * 1024 * 1024 // 1.5MB
+	AbsoluteMaxBlobSize = 2 * 1024 * 1024 // 2MB
 )
 
 // ValidateBlobSize checks if a single blob exceeds the absolute maximum allowed size.

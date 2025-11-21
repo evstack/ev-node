@@ -10,7 +10,7 @@ import (
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 	emptypb "google.golang.org/protobuf/types/known/emptypb"
-	_ "google.golang.org/protobuf/types/known/timestamppb"
+	timestamppb "google.golang.org/protobuf/types/known/timestamppb"
 	reflect "reflect"
 	sync "sync"
 	unsafe "unsafe"
@@ -402,6 +402,181 @@ func (x *GetGenesisDaHeightResponse) GetHeight() uint64 {
 	return 0
 }
 
+// P2PStoreEntry captures a single head or tail record from a go-header store.
+type P2PStoreEntry struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Height        uint64                 `protobuf:"varint,1,opt,name=height,proto3" json:"height,omitempty"`
+	Hash          []byte                 `protobuf:"bytes,2,opt,name=hash,proto3" json:"hash,omitempty"`
+	Time          *timestamppb.Timestamp `protobuf:"bytes,3,opt,name=time,proto3" json:"time,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *P2PStoreEntry) Reset() {
+	*x = P2PStoreEntry{}
+	mi := &file_evnode_v1_state_rpc_proto_msgTypes[7]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *P2PStoreEntry) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*P2PStoreEntry) ProtoMessage() {}
+
+func (x *P2PStoreEntry) ProtoReflect() protoreflect.Message {
+	mi := &file_evnode_v1_state_rpc_proto_msgTypes[7]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use P2PStoreEntry.ProtoReflect.Descriptor instead.
+func (*P2PStoreEntry) Descriptor() ([]byte, []int) {
+	return file_evnode_v1_state_rpc_proto_rawDescGZIP(), []int{7}
+}
+
+func (x *P2PStoreEntry) GetHeight() uint64 {
+	if x != nil {
+		return x.Height
+	}
+	return 0
+}
+
+func (x *P2PStoreEntry) GetHash() []byte {
+	if x != nil {
+		return x.Hash
+	}
+	return nil
+}
+
+func (x *P2PStoreEntry) GetTime() *timestamppb.Timestamp {
+	if x != nil {
+		return x.Time
+	}
+	return nil
+}
+
+// P2PStoreSnapshot provides head/tail status for a go-header store.
+type P2PStoreSnapshot struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Label         string                 `protobuf:"bytes,1,opt,name=label,proto3" json:"label,omitempty"`
+	Height        uint64                 `protobuf:"varint,2,opt,name=height,proto3" json:"height,omitempty"`
+	Head          *P2PStoreEntry         `protobuf:"bytes,4,opt,name=head,proto3" json:"head,omitempty"`
+	Tail          *P2PStoreEntry         `protobuf:"bytes,6,opt,name=tail,proto3" json:"tail,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *P2PStoreSnapshot) Reset() {
+	*x = P2PStoreSnapshot{}
+	mi := &file_evnode_v1_state_rpc_proto_msgTypes[8]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *P2PStoreSnapshot) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*P2PStoreSnapshot) ProtoMessage() {}
+
+func (x *P2PStoreSnapshot) ProtoReflect() protoreflect.Message {
+	mi := &file_evnode_v1_state_rpc_proto_msgTypes[8]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use P2PStoreSnapshot.ProtoReflect.Descriptor instead.
+func (*P2PStoreSnapshot) Descriptor() ([]byte, []int) {
+	return file_evnode_v1_state_rpc_proto_rawDescGZIP(), []int{8}
+}
+
+func (x *P2PStoreSnapshot) GetLabel() string {
+	if x != nil {
+		return x.Label
+	}
+	return ""
+}
+
+func (x *P2PStoreSnapshot) GetHeight() uint64 {
+	if x != nil {
+		return x.Height
+	}
+	return 0
+}
+
+func (x *P2PStoreSnapshot) GetHead() *P2PStoreEntry {
+	if x != nil {
+		return x.Head
+	}
+	return nil
+}
+
+func (x *P2PStoreSnapshot) GetTail() *P2PStoreEntry {
+	if x != nil {
+		return x.Tail
+	}
+	return nil
+}
+
+// GetP2PStoreInfoResponse holds the snapshots for configured go-header stores.
+type GetP2PStoreInfoResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Stores        []*P2PStoreSnapshot    `protobuf:"bytes,1,rep,name=stores,proto3" json:"stores,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetP2PStoreInfoResponse) Reset() {
+	*x = GetP2PStoreInfoResponse{}
+	mi := &file_evnode_v1_state_rpc_proto_msgTypes[9]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetP2PStoreInfoResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetP2PStoreInfoResponse) ProtoMessage() {}
+
+func (x *GetP2PStoreInfoResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_evnode_v1_state_rpc_proto_msgTypes[9]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetP2PStoreInfoResponse.ProtoReflect.Descriptor instead.
+func (*GetP2PStoreInfoResponse) Descriptor() ([]byte, []int) {
+	return file_evnode_v1_state_rpc_proto_rawDescGZIP(), []int{9}
+}
+
+func (x *GetP2PStoreInfoResponse) GetStores() []*P2PStoreSnapshot {
+	if x != nil {
+		return x.Stores
+	}
+	return nil
+}
+
 var File_evnode_v1_state_rpc_proto protoreflect.FileDescriptor
 
 const file_evnode_v1_state_rpc_proto_rawDesc = "" +
@@ -426,12 +601,24 @@ const file_evnode_v1_state_rpc_proto_rawDesc = "" +
 	"\x13GetMetadataResponse\x12\x14\n" +
 	"\x05value\x18\x01 \x01(\fR\x05value\"4\n" +
 	"\x1aGetGenesisDaHeightResponse\x12\x16\n" +
-	"\x06height\x18\x03 \x01(\x04R\x06height2\xbf\x02\n" +
+	"\x06height\x18\x03 \x01(\x04R\x06height\"k\n" +
+	"\rP2PStoreEntry\x12\x16\n" +
+	"\x06height\x18\x01 \x01(\x04R\x06height\x12\x12\n" +
+	"\x04hash\x18\x02 \x01(\fR\x04hash\x12.\n" +
+	"\x04time\x18\x03 \x01(\v2\x1a.google.protobuf.TimestampR\x04time\"\x9c\x01\n" +
+	"\x10P2PStoreSnapshot\x12\x14\n" +
+	"\x05label\x18\x01 \x01(\tR\x05label\x12\x16\n" +
+	"\x06height\x18\x02 \x01(\x04R\x06height\x12,\n" +
+	"\x04head\x18\x04 \x01(\v2\x18.evnode.v1.P2PStoreEntryR\x04head\x12,\n" +
+	"\x04tail\x18\x06 \x01(\v2\x18.evnode.v1.P2PStoreEntryR\x04tail\"N\n" +
+	"\x17GetP2PStoreInfoResponse\x123\n" +
+	"\x06stores\x18\x01 \x03(\v2\x1b.evnode.v1.P2PStoreSnapshotR\x06stores2\x90\x03\n" +
 	"\fStoreService\x12E\n" +
 	"\bGetBlock\x12\x1a.evnode.v1.GetBlockRequest\x1a\x1b.evnode.v1.GetBlockResponse\"\x00\x12A\n" +
 	"\bGetState\x12\x16.google.protobuf.Empty\x1a\x1b.evnode.v1.GetStateResponse\"\x00\x12N\n" +
 	"\vGetMetadata\x12\x1d.evnode.v1.GetMetadataRequest\x1a\x1e.evnode.v1.GetMetadataResponse\"\x00\x12U\n" +
-	"\x12GetGenesisDaHeight\x12\x16.google.protobuf.Empty\x1a%.evnode.v1.GetGenesisDaHeightResponse\"\x00B/Z-github.com/evstack/ev-node/types/pb/evnode/v1b\x06proto3"
+	"\x12GetGenesisDaHeight\x12\x16.google.protobuf.Empty\x1a%.evnode.v1.GetGenesisDaHeightResponse\"\x00\x12O\n" +
+	"\x0fGetP2PStoreInfo\x12\x16.google.protobuf.Empty\x1a\".evnode.v1.GetP2PStoreInfoResponse\"\x00B/Z-github.com/evstack/ev-node/types/pb/evnode/v1b\x06proto3"
 
 var (
 	file_evnode_v1_state_rpc_proto_rawDescOnce sync.Once
@@ -445,7 +632,7 @@ func file_evnode_v1_state_rpc_proto_rawDescGZIP() []byte {
 	return file_evnode_v1_state_rpc_proto_rawDescData
 }
 
-var file_evnode_v1_state_rpc_proto_msgTypes = make([]protoimpl.MessageInfo, 7)
+var file_evnode_v1_state_rpc_proto_msgTypes = make([]protoimpl.MessageInfo, 10)
 var file_evnode_v1_state_rpc_proto_goTypes = []any{
 	(*Block)(nil),                      // 0: evnode.v1.Block
 	(*GetBlockRequest)(nil),            // 1: evnode.v1.GetBlockRequest
@@ -454,29 +641,39 @@ var file_evnode_v1_state_rpc_proto_goTypes = []any{
 	(*GetMetadataRequest)(nil),         // 4: evnode.v1.GetMetadataRequest
 	(*GetMetadataResponse)(nil),        // 5: evnode.v1.GetMetadataResponse
 	(*GetGenesisDaHeightResponse)(nil), // 6: evnode.v1.GetGenesisDaHeightResponse
-	(*SignedHeader)(nil),               // 7: evnode.v1.SignedHeader
-	(*Data)(nil),                       // 8: evnode.v1.Data
-	(*State)(nil),                      // 9: evnode.v1.State
-	(*emptypb.Empty)(nil),              // 10: google.protobuf.Empty
+	(*P2PStoreEntry)(nil),              // 7: evnode.v1.P2PStoreEntry
+	(*P2PStoreSnapshot)(nil),           // 8: evnode.v1.P2PStoreSnapshot
+	(*GetP2PStoreInfoResponse)(nil),    // 9: evnode.v1.GetP2PStoreInfoResponse
+	(*SignedHeader)(nil),               // 10: evnode.v1.SignedHeader
+	(*Data)(nil),                       // 11: evnode.v1.Data
+	(*State)(nil),                      // 12: evnode.v1.State
+	(*timestamppb.Timestamp)(nil),      // 13: google.protobuf.Timestamp
+	(*emptypb.Empty)(nil),              // 14: google.protobuf.Empty
 }
 var file_evnode_v1_state_rpc_proto_depIdxs = []int32{
-	7,  // 0: evnode.v1.Block.header:type_name -> evnode.v1.SignedHeader
-	8,  // 1: evnode.v1.Block.data:type_name -> evnode.v1.Data
+	10, // 0: evnode.v1.Block.header:type_name -> evnode.v1.SignedHeader
+	11, // 1: evnode.v1.Block.data:type_name -> evnode.v1.Data
 	0,  // 2: evnode.v1.GetBlockResponse.block:type_name -> evnode.v1.Block
-	9,  // 3: evnode.v1.GetStateResponse.state:type_name -> evnode.v1.State
-	1,  // 4: evnode.v1.StoreService.GetBlock:input_type -> evnode.v1.GetBlockRequest
-	10, // 5: evnode.v1.StoreService.GetState:input_type -> google.protobuf.Empty
-	4,  // 6: evnode.v1.StoreService.GetMetadata:input_type -> evnode.v1.GetMetadataRequest
-	10, // 7: evnode.v1.StoreService.GetGenesisDaHeight:input_type -> google.protobuf.Empty
-	2,  // 8: evnode.v1.StoreService.GetBlock:output_type -> evnode.v1.GetBlockResponse
-	3,  // 9: evnode.v1.StoreService.GetState:output_type -> evnode.v1.GetStateResponse
-	5,  // 10: evnode.v1.StoreService.GetMetadata:output_type -> evnode.v1.GetMetadataResponse
-	6,  // 11: evnode.v1.StoreService.GetGenesisDaHeight:output_type -> evnode.v1.GetGenesisDaHeightResponse
-	8,  // [8:12] is the sub-list for method output_type
-	4,  // [4:8] is the sub-list for method input_type
-	4,  // [4:4] is the sub-list for extension type_name
-	4,  // [4:4] is the sub-list for extension extendee
-	0,  // [0:4] is the sub-list for field type_name
+	12, // 3: evnode.v1.GetStateResponse.state:type_name -> evnode.v1.State
+	13, // 4: evnode.v1.P2PStoreEntry.time:type_name -> google.protobuf.Timestamp
+	7,  // 5: evnode.v1.P2PStoreSnapshot.head:type_name -> evnode.v1.P2PStoreEntry
+	7,  // 6: evnode.v1.P2PStoreSnapshot.tail:type_name -> evnode.v1.P2PStoreEntry
+	8,  // 7: evnode.v1.GetP2PStoreInfoResponse.stores:type_name -> evnode.v1.P2PStoreSnapshot
+	1,  // 8: evnode.v1.StoreService.GetBlock:input_type -> evnode.v1.GetBlockRequest
+	14, // 9: evnode.v1.StoreService.GetState:input_type -> google.protobuf.Empty
+	4,  // 10: evnode.v1.StoreService.GetMetadata:input_type -> evnode.v1.GetMetadataRequest
+	14, // 11: evnode.v1.StoreService.GetGenesisDaHeight:input_type -> google.protobuf.Empty
+	14, // 12: evnode.v1.StoreService.GetP2PStoreInfo:input_type -> google.protobuf.Empty
+	2,  // 13: evnode.v1.StoreService.GetBlock:output_type -> evnode.v1.GetBlockResponse
+	3,  // 14: evnode.v1.StoreService.GetState:output_type -> evnode.v1.GetStateResponse
+	5,  // 15: evnode.v1.StoreService.GetMetadata:output_type -> evnode.v1.GetMetadataResponse
+	6,  // 16: evnode.v1.StoreService.GetGenesisDaHeight:output_type -> evnode.v1.GetGenesisDaHeightResponse
+	9,  // 17: evnode.v1.StoreService.GetP2PStoreInfo:output_type -> evnode.v1.GetP2PStoreInfoResponse
+	13, // [13:18] is the sub-list for method output_type
+	8,  // [8:13] is the sub-list for method input_type
+	8,  // [8:8] is the sub-list for extension type_name
+	8,  // [8:8] is the sub-list for extension extendee
+	0,  // [0:8] is the sub-list for field type_name
 }
 
 func init() { file_evnode_v1_state_rpc_proto_init() }
@@ -496,7 +693,7 @@ func file_evnode_v1_state_rpc_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_evnode_v1_state_rpc_proto_rawDesc), len(file_evnode_v1_state_rpc_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   7,
+			NumMessages:   10,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

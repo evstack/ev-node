@@ -3,7 +3,7 @@ module github.com/evstack/ev-node/da
 go 1.24.1
 
 require (
-	github.com/evstack/ev-node/core v1.0.0-beta.4
+	github.com/evstack/ev-node/core v1.0.0-beta.5
 	github.com/filecoin-project/go-jsonrpc v0.9.0
 	github.com/rs/zerolog v1.34.0
 	github.com/stretchr/testify v1.11.1
@@ -30,5 +30,3 @@ require (
 	gopkg.in/check.v1 v1.0.0-20201130134442-10cb98267c6c // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
-
-replace github.com/evstack/ev-node/core => ../core

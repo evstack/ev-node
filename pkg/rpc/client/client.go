@@ -89,6 +89,16 @@ func (c *Client) GetMetadata(ctx context.Context, key string) ([]byte, error) {
 	return resp.Msg.Value, nil
 }
 
+// GetP2PStoreInfo returns head/tail metadata for the go-header stores
+func (c *Client) GetP2PStoreInfo(ctx context.Context) ([]*pb.P2PStoreSnapshot, error) {
+	req := connect.NewRequest(&emptypb.Empty{})
+	resp, err := c.storeClient.GetP2PStoreInfo(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+	return resp.Msg.Stores, nil
+}
+
 // GetPeerInfo returns information about the connected peers
 func (c *Client) GetPeerInfo(ctx context.Context) ([]*pb.PeerInfo, error) {
 	req := connect.NewRequest(&emptypb.Empty{})

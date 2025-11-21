@@ -17,7 +17,6 @@ This document provides a comprehensive reference for all configuration options a
   - [Maximum Pending Blocks](#maximum-pending-blocks)
   - [Lazy Mode (Lazy Aggregator)](#lazy-mode-lazy-aggregator)
   - [Lazy Block Interval](#lazy-block-interval)
-  - [Trusted Hash](#trusted-hash)
 - [Data Availability Configuration (`da`)](#data-availability-configuration-da)
   - [DA Service Address](#da-service-address)
   - [DA Authentication Token](#da-authentication-token)
@@ -274,24 +273,6 @@ node:
 _Example:_ `--rollkit.node.lazy_block_interval 1m`
 _Default:_ `"30s"`
 _Constant:_ `FlagLazyBlockTime`
-
-### Trusted Hash
-
-**Description:**
-The initial trusted hash used to bootstrap the header exchange service. This allows nodes to start synchronizing from a specific, trusted point in the chain history instead of from the genesis block. When provided, the node will fetch the corresponding header/block from peers using this hash. If not provided, the node attempts to sync from genesis.
-
-**YAML:**
-
-```yaml
-node:
-  trusted_hash: "YOUR_TRUSTED_HASH_HEX_STRING"
-```
-
-**Command-line Flag:**
-`--rollkit.node.trusted_hash <string>`
-_Example:_ `--rollkit.node.trusted_hash ABCDEF012345...`
-_Default:_ `""` (empty, sync from genesis)
-_Constant:_ `FlagTrustedHash`
 
 ## Data Availability Configuration (`da`)
 
@@ -658,6 +639,7 @@ curl http://localhost:7331/health/live
 #### `/health/ready`
 
 Returns `200 OK` if the node can serve correct data. Checks:
+
 - P2P is listening (if enabled)
 - Has synced blocks
 - Not too far behind network
@@ -669,6 +651,7 @@ curl http://localhost:7331/health/ready
 ```
 
 Configure max blocks behind:
+
 ```yaml
 node:
   readiness_max_blocks_behind: 15

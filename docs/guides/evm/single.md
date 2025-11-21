@@ -25,13 +25,13 @@ cd evolve
 ### 2. Build the Evolve EVM Single Sequencer Implementation
 
 ```bash
-make build-evm-single
+make build-evm
 make build-da
 ```
 
 This will create the following binaries in the `build` directory:
 
-- `evm-single` - Single sequencer implementation
+- `evm` - Sequencer implementation
 - `local-da` - Local data availability node for testing
 
 ## Setting Up the Data Availability (DA) Layer
@@ -72,13 +72,13 @@ The JWT secret is typically located at `ev-node/execution/evm/docker/jwttoken/jw
 
 ```bash
 cd build
-./evm-single init --evnode.node.aggregator=true --evnode.signer.passphrase secret
+./evm init --evnode.node.aggregator=true --evnode.signer.passphrase secret
 ```
 
 ### 2. Start the Sequencer
 
 ```bash
-./evm-single start \
+./evm start \
   --evm.jwt-secret $(cat /path/to/ev-node/execution/evm/docker/jwttoken/jwt.hex) \
   --evm.genesis-hash 0x0a962a0d163416829894c89cb604ae422323bcdf02d7ea08b94d68d3e026a380 \
   --evnode.node.block_time 1s \
@@ -95,7 +95,7 @@ To run a full node alongside your sequencer, follow these steps:
 ### 1. Initialize a New Node Directory
 
 ```bash
-./evm-single init --home ~/.evolve/evm-single-fullnode
+./evm init --home ~/.evolve/evm-fullnode
 ```
 
 ### 2. Copy the Genesis File
@@ -103,7 +103,7 @@ To run a full node alongside your sequencer, follow these steps:
 Copy the genesis file from the sequencer node to the full node:
 
 ```bash
-cp ~/.evolve/evm-single/config/genesis.json ~/.evolve/evm-single-fullnode/config/
+cp ~/.evolve/evm/config/genesis.json ~/.evolve/evm-fullnode/config/
 ```
 
 ### 3. Get the Sequencer's P2P Address
@@ -117,8 +117,8 @@ INF listening on address=/ip4/127.0.0.1/tcp/26659/p2p/12D3KooWXXXXXXXXXXXXXXXXXX
 ### 4. Start the Full Node
 
 ```bash
-./evm-single start \
-  --home ~/.evolve/evm-single-fullnode \
+./evm start \
+  --home ~/.evolve/evm-fullnode \
   --evm.jwt-secret $(cat /path/to/ev-node/execution/evm/docker/jwttoken/jwt.hex) \
   --evm.genesis-hash 0x0a962a0d163416829894c89cb604ae422323bcdf02d7ea08b94d68d3e026a380 \
   --evnode.node.block_time 1s \

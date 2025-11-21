@@ -26,7 +26,7 @@ jobs:
       matrix:
         package:
           - ev-node
-          - ev-node-evm-single
+          - ev-node-evm
           - local-da
     steps:
       - name: Delete stale tags

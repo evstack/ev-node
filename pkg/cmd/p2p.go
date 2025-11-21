@@ -14,7 +14,7 @@ import (
 	rpc "github.com/evstack/ev-node/types/pb/evnode/v1/v1connect"
 )
 
-// NodeInfoCmd returns information about the running node via RPC
+// NetInfoCmd returns information about the running node via RPC
 var NetInfoCmd = &cobra.Command{
 	Use:   "net-info",
 	Short: "Get information about a running node via RPC",

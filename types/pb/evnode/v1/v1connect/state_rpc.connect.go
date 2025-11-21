@@ -44,6 +44,9 @@ const (
 	// StoreServiceGetGenesisDaHeightProcedure is the fully-qualified name of the StoreService's
 	// GetGenesisDaHeight RPC.
 	StoreServiceGetGenesisDaHeightProcedure = "/evnode.v1.StoreService/GetGenesisDaHeight"
+	// StoreServiceGetP2PStoreInfoProcedure is the fully-qualified name of the StoreService's
+	// GetP2PStoreInfo RPC.
+	StoreServiceGetP2PStoreInfoProcedure = "/evnode.v1.StoreService/GetP2PStoreInfo"
 )
 
 // StoreServiceClient is a client for the evnode.v1.StoreService service.
@@ -56,6 +59,8 @@ type StoreServiceClient interface {
 	GetMetadata(context.Context, *connect.Request[v1.GetMetadataRequest]) (*connect.Response[v1.GetMetadataResponse], error)
 	// GetGenesisDaHeight returns the DA height at which the first Evolve block was included.
 	GetGenesisDaHeight(context.Context, *connect.Request[emptypb.Empty]) (*connect.Response[v1.GetGenesisDaHeightResponse], error)
+	// GetP2PStoreInfo returns head/tail information for the go-header stores used by P2P sync.
+	GetP2PStoreInfo(context.Context, *connect.Request[emptypb.Empty]) (*connect.Response[v1.GetP2PStoreInfoResponse], error)
 }
 
 // NewStoreServiceClient constructs a client for the evnode.v1.StoreService service. By default, it
@@ -93,6 +98,12 @@ func NewStoreServiceClient(httpClient connect.HTTPClient, baseURL string, opts .
 			connect.WithSchema(storeServiceMethods.ByName("GetGenesisDaHeight")),
 			connect.WithClientOptions(opts...),
 		),
+		getP2PStoreInfo: connect.NewClient[emptypb.Empty, v1.GetP2PStoreInfoResponse](
+			httpClient,
+			baseURL+StoreServiceGetP2PStoreInfoProcedure,
+			connect.WithSchema(storeServiceMethods.ByName("GetP2PStoreInfo")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
@@ -102,6 +113,7 @@ type storeServiceClient struct {
 	getState           *connect.Client[emptypb.Empty, v1.GetStateResponse]
 	getMetadata        *connect.Client[v1.GetMetadataRequest, v1.GetMetadataResponse]
 	getGenesisDaHeight *connect.Client[emptypb.Empty, v1.GetGenesisDaHeightResponse]
+	getP2PStoreInfo    *connect.Client[emptypb.Empty, v1.GetP2PStoreInfoResponse]
 }
 
 // GetBlock calls evnode.v1.StoreService.GetBlock.
@@ -124,6 +136,11 @@ func (c *storeServiceClient) GetGenesisDaHeight(ctx context.Context, req *connec
 	return c.getGenesisDaHeight.CallUnary(ctx, req)
 }
 
+// GetP2PStoreInfo calls evnode.v1.StoreService.GetP2PStoreInfo.
+func (c *storeServiceClient) GetP2PStoreInfo(ctx context.Context, req *connect.Request[emptypb.Empty]) (*connect.Response[v1.GetP2PStoreInfoResponse], error) {
+	return c.getP2PStoreInfo.CallUnary(ctx, req)
+}
+
 // StoreServiceHandler is an implementation of the evnode.v1.StoreService service.
 type StoreServiceHandler interface {
 	// GetBlock returns a block by height or hash
@@ -134,6 +151,8 @@ type StoreServiceHandler interface {
 	GetMetadata(context.Context, *connect.Request[v1.GetMetadataRequest]) (*connect.Response[v1.GetMetadataResponse], error)
 	// GetGenesisDaHeight returns the DA height at which the first Evolve block was included.
 	GetGenesisDaHeight(context.Context, *connect.Request[emptypb.Empty]) (*connect.Response[v1.GetGenesisDaHeightResponse], error)
+	// GetP2PStoreInfo returns head/tail information for the go-header stores used by P2P sync.
+	GetP2PStoreInfo(context.Context, *connect.Request[emptypb.Empty]) (*connect.Response[v1.GetP2PStoreInfoResponse], error)
 }
 
 // NewStoreServiceHandler builds an HTTP handler from the service implementation. It returns the
@@ -167,6 +186,12 @@ func NewStoreServiceHandler(svc StoreServiceHandler, opts ...connect.HandlerOpti
 		connect.WithSchema(storeServiceMethods.ByName("GetGenesisDaHeight")),
 		connect.WithHandlerOptions(opts...),
 	)
+	storeServiceGetP2PStoreInfoHandler := connect.NewUnaryHandler(
+		StoreServiceGetP2PStoreInfoProcedure,
+		svc.GetP2PStoreInfo,
+		connect.WithSchema(storeServiceMethods.ByName("GetP2PStoreInfo")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/evnode.v1.StoreService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case StoreServiceGetBlockProcedure:
@@ -177,6 +202,8 @@ func NewStoreServiceHandler(svc StoreServiceHandler, opts ...connect.HandlerOpti
 			storeServiceGetMetadataHandler.ServeHTTP(w, r)
 		case StoreServiceGetGenesisDaHeightProcedure:
 			storeServiceGetGenesisDaHeightHandler.ServeHTTP(w, r)
+		case StoreServiceGetP2PStoreInfoProcedure:
+			storeServiceGetP2PStoreInfoHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -200,4 +227,8 @@ func (UnimplementedStoreServiceHandler) GetMetadata(context.Context, *connect.Re
 
 func (UnimplementedStoreServiceHandler) GetGenesisDaHeight(context.Context, *connect.Request[emptypb.Empty]) (*connect.Response[v1.GetGenesisDaHeightResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("evnode.v1.StoreService.GetGenesisDaHeight is not implemented"))
+}
+
+func (UnimplementedStoreServiceHandler) GetP2PStoreInfo(context.Context, *connect.Request[emptypb.Empty]) (*connect.Response[v1.GetP2PStoreInfoResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("evnode.v1.StoreService.GetP2PStoreInfo is not implemented"))
 }
