@@ -86,7 +86,7 @@ func NewSyncer(
 	options common.BlockOptions,
 	errorCh chan<- error,
 ) *Syncer {
-	s := &Syncer{
+	return &Syncer{
 		store:             store,
 		exec:              exec,
 		daClient:          daClient,
@@ -103,8 +103,6 @@ func NewSyncer(
 		errorCh:           errorCh,
 		logger:            logger.With().Str("component", "syncer").Logger(),
 	}
-
-	return s
 }
 
 // Start begins the syncing component
