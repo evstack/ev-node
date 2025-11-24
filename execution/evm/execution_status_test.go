@@ -77,8 +77,8 @@ func TestValidatePayloadStatus(t *testing.T) {
 	}
 }
 
-// TestRetryWithBackoff tests the retry logic with exponential backoff
-func TestRetryWithBackoff(t *testing.T) {
+// TestRetryWithBackoffOnPayloadStatus tests the retry logic with exponential backoff
+func TestRetryWithBackoffOnPayloadStatus(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
@@ -157,7 +157,7 @@ func TestRetryWithBackoff(t *testing.T) {
 			}
 
 			ctx := context.Background()
-			err := retryWithBackoff(ctx, retryFn, tt.maxRetries, 1*time.Millisecond, "test_operation")
+			err := retryWithBackoffOnPayloadStatus(ctx, retryFn, tt.maxRetries, 1*time.Millisecond, "test_operation")
 
 			if tt.shouldSucceed {
 				require.NoError(t, err, "expected success but got error")
@@ -170,8 +170,8 @@ func TestRetryWithBackoff(t *testing.T) {
 	}
 }
 
-// TestRetryWithBackoff_ContextCancellation tests that retry respects context cancellation
-func TestRetryWithBackoff_ContextCancellation(t *testing.T) {
+// TestRetryWithBackoffOnPayloadStatus_ContextCancellation tests that retry respects context cancellation
+func TestRetryWithBackoffOnPayloadStatus_ContextCancellation(t *testing.T) {
 	t.Parallel()
 
 	attempts := 0
@@ -183,7 +183,7 @@ func TestRetryWithBackoff_ContextCancellation(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel() // Cancel immediately
 
-	err := retryWithBackoff(ctx, retryFn, 5, 100*time.Millisecond, "test_operation")
+	err := retryWithBackoffOnPayloadStatus(ctx, retryFn, 5, 100*time.Millisecond, "test_operation")
 
 	require.Error(t, err, "expected error due to context cancellation")
 	assert.ErrorIs(t, err, context.Canceled, "expected context.Canceled error")
@@ -191,8 +191,8 @@ func TestRetryWithBackoff_ContextCancellation(t *testing.T) {
 	assert.LessOrEqual(t, attempts, 1, "expected at most 1 attempt, got %d", attempts)
 }
 
-// TestRetryWithBackoff_ContextTimeout tests that retry respects context timeout
-func TestRetryWithBackoff_ContextTimeout(t *testing.T) {
+// TestRetryWithBackoffOnPayloadStatus_ContextTimeout tests that retry respects context timeout
+func TestRetryWithBackoffOnPayloadStatus_ContextTimeout(t *testing.T) {
 	t.Parallel()
 
 	attempts := 0
@@ -205,7 +205,7 @@ func TestRetryWithBackoff_ContextTimeout(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
 	defer cancel()
 
-	err := retryWithBackoff(ctx, retryFn, 10, 1*time.Second, "test_operation")
+	err := retryWithBackoffOnPayloadStatus(ctx, retryFn, 10, 1*time.Second, "test_operation")
 
 	require.Error(t, err, "expected error due to context timeout")
 	assert.ErrorIs(t, err, context.DeadlineExceeded, "expected context.DeadlineExceeded error")
@@ -213,8 +213,8 @@ func TestRetryWithBackoff_ContextTimeout(t *testing.T) {
 	assert.Less(t, attempts, 10, "expected fewer than 10 attempts due to timeout, got %d", attempts)
 }
 
-// TestRetryWithBackoff_RPCErrors tests that RPC errors are not retried
-func TestRetryWithBackoff_RPCErrors(t *testing.T) {
+// TestRetryWithBackoffOnPayloadStatus_RPCErrors tests that RPC errors are not retried
+func TestRetryWithBackoffOnPayloadStatus_RPCErrors(t *testing.T) {
 	t.Parallel()
 
 	rpcError := errors.New("RPC connection failed")
@@ -225,7 +225,7 @@ func TestRetryWithBackoff_RPCErrors(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	err := retryWithBackoff(ctx, retryFn, 5, 1*time.Millisecond, "test_operation")
+	err := retryWithBackoffOnPayloadStatus(ctx, retryFn, 5, 1*time.Millisecond, "test_operation")
 
 	require.Error(t, err, "expected error from RPC failure")
 	assert.Equal(t, rpcError, err, "expected original RPC error to be returned")
@@ -233,8 +233,8 @@ func TestRetryWithBackoff_RPCErrors(t *testing.T) {
 	assert.Equal(t, 1, attempts, "expected exactly 1 attempt, got %d", attempts)
 }
 
-// TestRetryWithBackoff_WrappedRPCErrors tests that wrapped RPC errors are not retried
-func TestRetryWithBackoff_WrappedRPCErrors(t *testing.T) {
+// TestRetryWithBackoffOnPayloadStatus_WrappedRPCErrors tests that wrapped RPC errors are not retried
+func TestRetryWithBackoffOnPayloadStatus_WrappedRPCErrors(t *testing.T) {
 	t.Parallel()
 
 	rpcError := errors.New("connection refused")
@@ -245,7 +245,7 @@ func TestRetryWithBackoff_WrappedRPCErrors(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	err := retryWithBackoff(ctx, retryFn, 5, 1*time.Millisecond, "test_operation")
+	err := retryWithBackoffOnPayloadStatus(ctx, retryFn, 5, 1*time.Millisecond, "test_operation")
 
 	require.Error(t, err, "expected error from RPC failure")
 	// Should fail immediately without retries on non-syncing errors

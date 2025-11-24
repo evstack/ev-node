@@ -74,7 +74,7 @@ func validatePayloadStatus(status engine.PayloadStatusV1) error {
 //   - Fails immediately on ErrInvalidPayloadStatus (permanent failures)
 //   - Respects context cancellation for graceful shutdown
 //   - Uses exponential backoff that doubles on each attempt
-func retryWithBackoff(ctx context.Context, fn func() error, maxRetries int, initialBackoff time.Duration, operation string) error {
+func retryWithBackoffOnPayloadStatus(ctx context.Context, fn func() error, maxRetries int, initialBackoff time.Duration, operation string) error {
 	backoff := initialBackoff
 
 	for attempt := 1; attempt <= maxRetries; attempt++ {
@@ -186,7 +186,7 @@ func (c *EngineClient) InitChain(ctx context.Context, genesisTime time.Time, ini
 	}
 
 	// Acknowledge the genesis block with retry logic for SYNCING status
-	err := retryWithBackoff(ctx, func() error {
+	err := retryWithBackoffOnPayloadStatus(ctx, func() error {
 		var forkchoiceResult engine.ForkChoiceResponse
 		err := c.engineClient.CallContext(ctx, &forkchoiceResult, "engine_forkchoiceUpdatedV3",
 			engine.ForkchoiceStateV1{
@@ -291,7 +291,7 @@ func (c *EngineClient) ExecuteTxs(ctx context.Context, txs [][]byte, blockHeight
 
 	// Call forkchoice update with retry logic for SYNCING status
 	var payloadID *engine.PayloadID
-	err = retryWithBackoff(ctx, func() error {
+	err = retryWithBackoffOnPayloadStatus(ctx, func() error {
 		var forkchoiceResult engine.ForkChoiceResponse
 		err := c.engineClient.CallContext(ctx, &forkchoiceResult, "engine_forkchoiceUpdatedV3", args, evPayloadAttrs)
 		if err != nil {
@@ -340,7 +340,7 @@ func (c *EngineClient) ExecuteTxs(ctx context.Context, txs [][]byte, blockHeight
 
 	// Submit payload with retry logic for SYNCING status
 	var newPayloadResult engine.PayloadStatusV1
-	err = retryWithBackoff(ctx, func() error {
+	err = retryWithBackoffOnPayloadStatus(ctx, func() error {
 		err := c.engineClient.CallContext(ctx, &newPayloadResult, "engine_newPayloadV4",
 			payloadResult.ExecutionPayload,
 			[]string{},          // No blob hashes
@@ -396,7 +396,7 @@ func (c *EngineClient) setFinal(ctx context.Context, blockHash common.Hash, isFi
 	c.mu.Unlock()
 
 	// Call forkchoice update with retry logic for SYNCING status
-	err := retryWithBackoff(ctx, func() error {
+	err := retryWithBackoffOnPayloadStatus(ctx, func() error {
 		var forkchoiceResult engine.ForkChoiceResponse
 		err := c.engineClient.CallContext(ctx, &forkchoiceResult, "engine_forkchoiceUpdatedV3", args, nil)
 		if err != nil {
