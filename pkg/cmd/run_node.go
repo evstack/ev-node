@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"syscall"
 	"time"
@@ -153,8 +154,10 @@ func StartNode(
 	go func() {
 		defer func() {
 			if r := recover(); r != nil {
-				err := fmt.Errorf("node panicked: %v", r)
-				logger.Error().Interface("panic", r).Msg("Recovered from panic in node")
+				buf := make([]byte, 1024)
+				n := runtime.Stack(buf, false)
+				err := fmt.Errorf("node panicked: %v\nstack trace:\n%s", r, buf[:n])
+				logger.Error().Interface("panic", r).Str("stacktrace", string(buf[:n])).Msg("Recovered from panic in node")
 				select {
 				case errCh <- err:
 				default:
