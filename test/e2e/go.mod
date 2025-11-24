@@ -20,6 +20,7 @@ require (
 
 replace (
 	github.com/evstack/ev-node => ../../
+	github.com/evstack/ev-node/da => ../../da
 	github.com/evstack/ev-node/execution/evm => ../../execution/evm
 	github.com/evstack/ev-node/execution/evm/test => ../../execution/evm/test
 )
@@ -88,7 +89,7 @@ require (
 	github.com/ethereum/go-verkle v0.2.2 // indirect
 	github.com/felixge/httpsnoop v1.0.4 // indirect
 	github.com/ferranbt/fastssz v0.1.4 // indirect
-	github.com/filecoin-project/go-jsonrpc v0.8.0 // indirect
+	github.com/filecoin-project/go-jsonrpc v0.9.0 // indirect
 	github.com/fsnotify/fsnotify v1.9.0 // indirect
 	github.com/getsentry/sentry-go v0.27.0 // indirect
 	github.com/go-kit/kit v0.13.0 // indirect

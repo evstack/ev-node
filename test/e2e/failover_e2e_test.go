@@ -268,7 +268,7 @@ func verifyNoDoubleSigning(t *testing.T, clusterNodes *raftClusterNodes, genesis
 // verifyBlocks checks that DA block heights form a continuous sequence without gaps
 func verifyBlocks(t *testing.T, daStartHeight, lastDABlock uint64, jwtSecret string, daAddress string, genesisHeight, lastEVBlock uint64) {
 	t.Helper()
-	client, err := jsonrpc.NewClient(t.Context(), zerolog.Nop(), daAddress, jwtSecret, 0, 1, 0)
+	client, err := jsonrpc.NewClient(t.Context(), zerolog.Nop(), daAddress, jwtSecret, defaultMaxBlobSize)
 	require.NoError(t, err)
 	defer client.Close()
 
@@ -448,13 +448,15 @@ func submitTxToURL(t *testing.T, client *ethclient.Client) (common.Hash, uint64)
 	return tx.Hash(), blk
 }
 
+const defaultMaxBlobSize = 2 * 1024 * 1024 // 2MB
+
 func queryLastDAHeight(t *testing.T, startHeight uint64, jwtSecret string, daAddress string) uint64 {
 	t.Helper()
 	logger := zerolog.Nop()
 	if testing.Verbose() {
 		logger = zerolog.New(zerolog.NewTestWriter(t)).Level(zerolog.DebugLevel)
 	}
-	client, err := jsonrpc.NewClient(t.Context(), logger, daAddress, jwtSecret, 0, 1, 0)
+	client, err := jsonrpc.NewClient(t.Context(), logger, daAddress, jwtSecret, defaultMaxBlobSize)
 	require.NoError(t, err)
 	defer client.Close()
 	var lastDABlock = startHeight

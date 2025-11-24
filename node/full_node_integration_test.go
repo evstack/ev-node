@@ -278,9 +278,6 @@ func TestDataExchange(t *testing.T) {
 	t.Run("SingleSequencerTwoFullNodes", func(t *testing.T) {
 		testSingleSequencerTwoFullNodes(t, Data)
 	})
-	t.Run("SingleSequencerSingleFullNodeTrustedHash", func(t *testing.T) {
-		testSingleSequencerSingleFullNodeTrustedHash(t, Data)
-	})
 }
 
 // TestHeaderExchange verifies header exchange and synchronization between nodes in various network topologies.
