@@ -58,8 +58,8 @@ type Syncer struct {
 	errorCh    chan<- error // Channel to report critical execution client failures
 
 	// Handlers
-	daRetriever DARetriever
-	p2pHandler  p2pHandler
+	daRetriever   DARetriever
+	p2pHandler    p2pHandler
 	raftRetriever *raftRetriever
 
 	// Logging
@@ -90,7 +90,7 @@ func NewSyncer(
 	errorCh chan<- error,
 	raftNode common.RaftNode,
 ) *Syncer {
-	s:= &Syncer{
+	s := &Syncer{
 		store:             store,
 		exec:              exec,
 		daClient:          daClient,
