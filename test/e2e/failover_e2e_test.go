@@ -268,9 +268,9 @@ func verifyNoDoubleSigning(t *testing.T, clusterNodes *raftClusterNodes, genesis
 // verifyBlocks checks that DA block heights form a continuous sequence without gaps
 func verifyBlocks(t *testing.T, daStartHeight, lastDABlock uint64, jwtSecret string, daAddress string, genesisHeight, lastEVBlock uint64) {
 	t.Helper()
-	client, err := jsonrpc.NewClient(t.Context(), zerolog.Nop(), daAddress, jwtSecret, defaultMaxBlobSize)
+	rpcClient, err := jsonrpc.NewClient(t.Context(), zerolog.Nop(), daAddress, jwtSecret, defaultMaxBlobSize)
 	require.NoError(t, err)
-	defer client.Close()
+	defer rpcClient.Close()
 
 	namespace := coreda.NamespaceFromString(DefaultDANamespace).Bytes()
 	evHeightsToEvBlockParts := make(map[uint64]int)
@@ -279,11 +279,11 @@ func verifyBlocks(t *testing.T, daStartHeight, lastDABlock uint64, jwtSecret str
 	lastEVHeight := genesisHeight
 	// Verify each block is present exactly once
 	for daHeight := daStartHeight; daHeight <= lastDABlock; daHeight++ {
-		res, err := client.DA.GetIDs(t.Context(), daHeight, namespace)
+		res, err := rpcClient.DA.GetIDs(t.Context(), daHeight, namespace)
 		require.NoError(t, err, "height %d/%d", daHeight, lastDABlock)
 		require.NotEmpty(t, res.IDs)
 
-		blobs, err := client.DA.Get(t.Context(), res.IDs, namespace)
+		blobs, err := rpcClient.DA.Get(t.Context(), res.IDs, namespace)
 		require.NoError(t, err)
 
 		for _, blob := range blobs {
@@ -293,8 +293,7 @@ func verifyBlocks(t *testing.T, daStartHeight, lastDABlock uint64, jwtSecret str
 					require.Equal(t, evHeight, height)
 					continue
 				}
-				_ = lastEVHeight
-				//require.GreaterOrEqual(t, evHeight, lastEVHeight)
+				require.GreaterOrEqual(t, evHeight, lastEVHeight)
 				lastEVHeight = evHeight
 				deduplicationCache[hash.String()] = evHeight
 				evHeightsToEvBlockParts[evHeight]++
