@@ -2,14 +2,20 @@ package celestia
 
 import (
 	"context"
+	"encoding/binary"
+	"encoding/json"
 	"fmt"
 	"net/http"
+	"strings"
+	"time"
 
 	"github.com/filecoin-project/go-jsonrpc"
 	"github.com/rs/zerolog"
+
+	"github.com/evstack/ev-node/da"
 )
 
-// Client connects to celestia-node's blob API via JSON-RPC.
+// Client connects to celestia-node's blob API via JSON-RPC and implements the da.DA interface.
 type Client struct {
 	logger      zerolog.Logger
 	maxBlobSize uint64
@@ -24,7 +30,7 @@ type Client struct {
 	}
 }
 
-// NewClient creates a new client connected to celestia-node.
+// NewClient creates a new client connected to celestia-node that implements the da.DA interface.
 // Token is obtained from: celestia light auth write
 func NewClient(
 	ctx context.Context,
@@ -81,8 +87,8 @@ func (c *Client) Close() {
 	c.logger.Debug().Msg("Celestia client connection closed")
 }
 
-// Submit submits blobs to Celestia and returns the height at which they were included.
-func (c *Client) Submit(ctx context.Context, blobs []*Blob, opts *SubmitOptions) (uint64, error) {
+// submit is a private method that submits blobs and returns the height (used internally).
+func (c *Client) submit(ctx context.Context, blobs []*Blob, opts *SubmitOptions) (uint64, error) {
 	c.logger.Debug().
 		Int("num_blobs", len(blobs)).
 		Msg("Submitting blobs to Celestia")
@@ -104,8 +110,8 @@ func (c *Client) Submit(ctx context.Context, blobs []*Blob, opts *SubmitOptions)
 	return height, nil
 }
 
-// Get retrieves a single blob by commitment at a given height and namespace.
-func (c *Client) Get(ctx context.Context, height uint64, namespace Namespace, commitment Commitment) (*Blob, error) {
+// get retrieves a single blob by commitment at a given height and namespace (used internally).
+func (c *Client) get(ctx context.Context, height uint64, namespace Namespace, commitment Commitment) (*Blob, error) {
 	c.logger.Debug().
 		Uint64("height", height).
 		Msg("Getting blob from Celestia")
@@ -127,8 +133,8 @@ func (c *Client) Get(ctx context.Context, height uint64, namespace Namespace, co
 	return blob, nil
 }
 
-// GetAll retrieves all blobs at a given height for the specified namespaces.
-func (c *Client) GetAll(ctx context.Context, height uint64, namespaces []Namespace) ([]*Blob, error) {
+// getAll retrieves all blobs at a given height for the specified namespaces (used internally).
+func (c *Client) getAll(ctx context.Context, height uint64, namespaces []Namespace) ([]*Blob, error) {
 	c.logger.Debug().
 		Uint64("height", height).
 		Int("num_namespaces", len(namespaces)).
@@ -152,8 +158,8 @@ func (c *Client) GetAll(ctx context.Context, height uint64, namespaces []Namespa
 	return blobs, nil
 }
 
-// GetProof retrieves the inclusion proof for a blob.
-func (c *Client) GetProof(ctx context.Context, height uint64, namespace Namespace, commitment Commitment) (*Proof, error) {
+// getProof retrieves the inclusion proof for a blob (used internally).
+func (c *Client) getProof(ctx context.Context, height uint64, namespace Namespace, commitment Commitment) (*Proof, error) {
 	c.logger.Debug().
 		Uint64("height", height).
 		Msg("Getting proof from Celestia")
@@ -175,8 +181,8 @@ func (c *Client) GetProof(ctx context.Context, height uint64, namespace Namespac
 	return proof, nil
 }
 
-// Included checks whether a blob is included in the Celestia block.
-func (c *Client) Included(ctx context.Context, height uint64, namespace Namespace, proof *Proof, commitment Commitment) (bool, error) {
+// included checks whether a blob is included in the Celestia block (used internally).
+func (c *Client) included(ctx context.Context, height uint64, namespace Namespace, proof *Proof, commitment Commitment) (bool, error) {
 	c.logger.Debug().
 		Uint64("height", height).
 		Msg("Checking blob inclusion in Celestia")
@@ -196,4 +202,206 @@ func (c *Client) Included(ctx context.Context, height uint64, namespace Namespac
 		Msg("Inclusion check completed")
 
 	return included, nil
+}
+
+// DA interface implementation
+
+// Submit submits blobs to Celestia and returns IDs.
+func (c *Client) Submit(ctx context.Context, blobs []da.Blob, gasPrice float64, namespace []byte) ([]da.ID, error) {
+	return c.SubmitWithOptions(ctx, blobs, gasPrice, namespace, nil)
+}
+
+// SubmitWithOptions submits blobs to Celestia with additional options.
+func (c *Client) SubmitWithOptions(ctx context.Context, blobs []da.Blob, gasPrice float64, namespace []byte, options []byte) ([]da.ID, error) {
+	if len(blobs) == 0 {
+		return []da.ID{}, nil
+	}
+
+	// Validate namespace
+	if err := ValidateNamespace(namespace); err != nil {
+		return nil, fmt.Errorf("invalid namespace: %w", err)
+	}
+
+	// Convert blobs to Celestia format
+	celestiaBlobs := make([]*Blob, len(blobs))
+	for i, blob := range blobs {
+		celestiaBlobs[i] = &Blob{
+			Namespace: namespace,
+			Data:      blob,
+		}
+	}
+
+	// Parse submit options if provided
+	var opts *SubmitOptions
+	if len(options) > 0 {
+		opts = &SubmitOptions{}
+		if err := json.Unmarshal(options, opts); err != nil {
+			return nil, fmt.Errorf("failed to unmarshal submit options: %w", err)
+		}
+		opts.Fee = gasPrice
+	} else {
+		opts = &SubmitOptions{Fee: gasPrice}
+	}
+
+	height, err := c.submit(ctx, celestiaBlobs, opts)
+	if err != nil {
+		if strings.Contains(err.Error(), "timeout") {
+			return nil, da.ErrTxTimedOut
+		}
+		if strings.Contains(err.Error(), "too large") || strings.Contains(err.Error(), "exceeds") {
+			return nil, da.ErrBlobSizeOverLimit
+		}
+		return nil, err
+	}
+
+	// Create IDs from height only (commitments not needed for Submit result)
+	// Commitments will be retrieved later via GetIDs when needed
+	ids := make([]da.ID, len(celestiaBlobs))
+	for i := range celestiaBlobs {
+		ids[i] = makeID(height, nil)
+	}
+
+	return ids, nil
+}
+
+// Get retrieves blobs by their IDs.
+func (c *Client) Get(ctx context.Context, ids []da.ID, namespace []byte) ([]da.Blob, error) {
+	if len(ids) == 0 {
+		return []da.Blob{}, nil
+	}
+
+	// Group IDs by height for efficient retrieval
+	type blobKey struct {
+		height     uint64
+		commitment string
+	}
+	heightGroups := make(map[uint64][]Commitment)
+	idToIndex := make(map[blobKey]int)
+
+	for i, id := range ids {
+		height, commitment, err := da.SplitID(id)
+		if err != nil {
+			return nil, fmt.Errorf("invalid ID at index %d: %w", i, err)
+		}
+		heightGroups[height] = append(heightGroups[height], commitment)
+		idToIndex[blobKey{height, string(commitment)}] = i
+	}
+
+	// Retrieve blobs for each height
+	result := make([]da.Blob, len(ids))
+	for height := range heightGroups {
+		blobs, err := c.getAll(ctx, height, []Namespace{namespace})
+		if err != nil {
+			if strings.Contains(err.Error(), "not found") {
+				return nil, da.ErrBlobNotFound
+			}
+			return nil, fmt.Errorf("failed to get blobs at height %d: %w", height, err)
+		}
+
+		// Match blobs to their original positions
+		for _, blob := range blobs {
+			key := blobKey{height, string(blob.Commitment)}
+			if idx, ok := idToIndex[key]; ok {
+				result[idx] = blob.Data
+			}
+		}
+	}
+
+	return result, nil
+}
+
+// GetIDs returns all blob IDs at the given height.
+func (c *Client) GetIDs(ctx context.Context, height uint64, namespace []byte) (*da.GetIDsResult, error) {
+	blobs, err := c.getAll(ctx, height, []Namespace{namespace})
+	if err != nil {
+		if strings.Contains(err.Error(), "not found") {
+			return nil, da.ErrBlobNotFound
+		}
+		if strings.Contains(err.Error(), "height") && strings.Contains(err.Error(), "future") {
+			return nil, da.ErrHeightFromFuture
+		}
+		return nil, err
+	}
+
+	if len(blobs) == 0 {
+		return nil, da.ErrBlobNotFound
+	}
+
+	ids := make([]da.ID, len(blobs))
+	for i, blob := range blobs {
+		ids[i] = makeID(height, blob.Commitment)
+	}
+
+	return &da.GetIDsResult{
+		IDs:       ids,
+		Timestamp: time.Now(),
+	}, nil
+}
+
+// GetProofs retrieves inclusion proofs for the given IDs.
+func (c *Client) GetProofs(ctx context.Context, ids []da.ID, namespace []byte) ([]da.Proof, error) {
+	if len(ids) == 0 {
+		return []da.Proof{}, nil
+	}
+
+	proofs := make([]da.Proof, len(ids))
+	for i, id := range ids {
+		height, commitment, err := da.SplitID(id)
+		if err != nil {
+			return nil, fmt.Errorf("invalid ID at index %d: %w", i, err)
+		}
+
+		proof, err := c.getProof(ctx, height, namespace, commitment)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get proof for ID %d: %w", i, err)
+		}
+
+		proofs[i] = proof.Data
+	}
+
+	return proofs, nil
+}
+
+// Commit creates commitments for the given blobs.
+// Note: Celestia generates commitments automatically during submission,
+// so this is a no-op that returns nil commitments.
+func (c *Client) Commit(ctx context.Context, blobs []da.Blob, namespace []byte) ([]da.Commitment, error) {
+	commitments := make([]da.Commitment, len(blobs))
+	for i := range blobs {
+		commitments[i] = nil
+	}
+	return commitments, nil
+}
+
+// Validate validates commitments against proofs.
+func (c *Client) Validate(ctx context.Context, ids []da.ID, proofs []da.Proof, namespace []byte) ([]bool, error) {
+	if len(ids) != len(proofs) {
+		return nil, fmt.Errorf("mismatched lengths: %d IDs vs %d proofs", len(ids), len(proofs))
+	}
+
+	results := make([]bool, len(ids))
+	for i, id := range ids {
+		height, commitment, err := da.SplitID(id)
+		if err != nil {
+			return nil, fmt.Errorf("invalid ID at index %d: %w", i, err)
+		}
+
+		proof := &Proof{Data: proofs[i]}
+		included, err := c.included(ctx, height, namespace, proof, commitment)
+		if err != nil {
+			return nil, fmt.Errorf("failed to validate proof %d: %w", i, err)
+		}
+
+		results[i] = included
+	}
+
+	return results, nil
+}
+
+// makeID creates an ID from a height and a commitment.
+func makeID(height uint64, commitment []byte) []byte {
+	id := make([]byte, len(commitment)+8)
+	binary.LittleEndian.PutUint64(id, height)
+	copy(id[8:], commitment)
+	return id
 }

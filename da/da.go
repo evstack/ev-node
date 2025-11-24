@@ -104,7 +104,7 @@ func makeID(height uint64, commitment []byte) []byte {
 
 // SplitID splits an ID into a height and a commitment.
 func SplitID(id []byte) (uint64, []byte, error) {
-	if len(id) <= 8 {
+	if len(id) < 8 {
 		return 0, nil, fmt.Errorf("invalid ID length: %d", len(id))
 	}
 	commitment := id[8:]

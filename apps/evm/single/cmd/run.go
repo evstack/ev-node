@@ -54,11 +54,11 @@ var RunCmd = &cobra.Command{
 		logger.Info().Str("headerNamespace", headerNamespace.HexString()).Str("dataNamespace", dataNamespace.HexString()).Msg("namespaces")
 
 		ctx := context.Background()
-		daAdapter, err := celestiada.NewAdapter(ctx, logger, nodeConfig.DA.Address, nodeConfig.DA.AuthToken, rollcmd.DefaultMaxBlobSize)
+		daClient, err := celestiada.NewClient(ctx, logger, nodeConfig.DA.Address, nodeConfig.DA.AuthToken, rollcmd.DefaultMaxBlobSize)
 		if err != nil {
 			return err
 		}
-		defer daAdapter.Close()
+		defer daClient.Close()
 
 		datastore, err := store.NewDefaultKVStore(nodeConfig.RootDir, nodeConfig.DBPath, "evm-single")
 		if err != nil {
@@ -84,7 +84,7 @@ var RunCmd = &cobra.Command{
 			ctx,
 			logger,
 			datastore,
-			daAdapter,
+			daClient,
 			[]byte(genesis.ChainID),
 			nodeConfig.Node.BlockTime.Duration,
 			singleMetrics,
@@ -104,7 +104,7 @@ var RunCmd = &cobra.Command{
 			return err
 		}
 
-		return rollcmd.StartNode(logger, cmd, executor, sequencer, daAdapter, p2pClient, datastore, nodeConfig, genesis, node.NodeOptions{})
+		return rollcmd.StartNode(logger, cmd, executor, sequencer, daClient, p2pClient, datastore, nodeConfig, genesis, node.NodeOptions{})
 	},
 }
 
