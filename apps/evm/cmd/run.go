@@ -7,22 +7,24 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/evstack/ev-node/core/da"
-	"github.com/evstack/ev-node/da/jsonrpc"
-	"github.com/evstack/ev-node/node"
-	"github.com/evstack/ev-node/sequencers/single"
-
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ipfs/go-datastore"
+	"github.com/rs/zerolog"
 	"github.com/spf13/cobra"
 
-	"github.com/evstack/ev-node/execution/evm"
-
+	"github.com/evstack/ev-node/core/da"
 	"github.com/evstack/ev-node/core/execution"
+	coresequencer "github.com/evstack/ev-node/core/sequencer"
+	"github.com/evstack/ev-node/da/jsonrpc"
+	"github.com/evstack/ev-node/execution/evm"
+	"github.com/evstack/ev-node/node"
 	rollcmd "github.com/evstack/ev-node/pkg/cmd"
 	"github.com/evstack/ev-node/pkg/config"
+	"github.com/evstack/ev-node/pkg/genesis"
 	genesispkg "github.com/evstack/ev-node/pkg/genesis"
 	"github.com/evstack/ev-node/pkg/p2p/key"
 	"github.com/evstack/ev-node/pkg/store"
+	"github.com/evstack/ev-node/sequencers/single"
 )
 
 var RunCmd = &cobra.Command{
@@ -57,7 +59,7 @@ var RunCmd = &cobra.Command{
 			return err
 		}
 
-		datastore, err := store.NewDefaultKVStore(nodeConfig.RootDir, nodeConfig.DBPath, "evm-single")
+		datastore, err := store.NewDefaultKVStore(nodeConfig.RootDir, nodeConfig.DBPath, "evm")
 		if err != nil {
 			return err
 		}
@@ -72,21 +74,8 @@ var RunCmd = &cobra.Command{
 			logger.Warn().Msg("da_start_height is not set in genesis.json, ask your chain developer")
 		}
 
-		singleMetrics, err := single.DefaultMetricsProvider(nodeConfig.Instrumentation.IsPrometheusEnabled())(genesis.ChainID)
-		if err != nil {
-			return err
-		}
-
-		sequencer, err := single.NewSequencer(
-			context.Background(),
-			logger,
-			datastore,
-			&daJrpc.DA,
-			[]byte(genesis.ChainID),
-			nodeConfig.Node.BlockTime.Duration,
-			singleMetrics,
-			nodeConfig.Node.Aggregator,
-		)
+		// Create sequencer based on configuration
+		sequencer, err := createSequencer(context.Background(), logger, datastore, &daJrpc.DA, nodeConfig, genesis)
 		if err != nil {
 			return err
 		}
@@ -103,6 +92,37 @@ var RunCmd = &cobra.Command{
 func init() {
 	config.AddFlags(RunCmd)
 	addFlags(RunCmd)
+}
+
+// createSequencer creates a sequencer based on the configuration.
+func createSequencer(
+	ctx context.Context,
+	logger zerolog.Logger,
+	datastore datastore.Batching,
+	da da.DA,
+	nodeConfig config.Config,
+	genesis genesis.Genesis,
+) (coresequencer.Sequencer, error) {
+	singleMetrics, err := single.NopMetrics()
+	if err != nil {
+		return nil, fmt.Errorf("failed to create single sequencer metrics: %w", err)
+	}
+
+	sequencer, err := single.NewSequencer(
+		ctx,
+		logger,
+		datastore,
+		da,
+		[]byte(genesis.ChainID),
+		nodeConfig.Node.BlockTime.Duration,
+		singleMetrics,
+		nodeConfig.Node.Aggregator,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create single sequencer: %w", err)
+	}
+
+	return sequencer, nil
 }
 
 func createExecutionClient(cmd *cobra.Command) (execution.Executor, error) {

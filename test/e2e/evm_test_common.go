@@ -42,7 +42,7 @@ import (
 var evmSingleBinaryPath string
 
 func init() {
-	flag.StringVar(&evmSingleBinaryPath, "evm-binary", "evm-single", "evm-single binary")
+	flag.StringVar(&evmSingleBinaryPath, "evm-binary", "evm", "evm binary")
 }
 
 // getAvailablePort finds an available TCP port on localhost
@@ -496,7 +496,7 @@ func setupCommonEVMTest(t *testing.T, sut *SystemUnderTest, needsFullNode bool, 
 
 	// Start local DA explicitly on the chosen port
 	localDABinary := "local-da"
-	if evmSingleBinaryPath != "evm-single" {
+	if evmSingleBinaryPath != "evm" {
 		localDABinary = filepath.Join(filepath.Dir(evmSingleBinaryPath), "local-da")
 	}
 	sut.ExecCmd(localDABinary, "-port", dynEndpoints.DAPort)
@@ -612,7 +612,7 @@ func restartDAAndSequencer(t *testing.T, sut *SystemUnderTest, sequencerHome, jw
 
 	// First restart the local DA
 	localDABinary := "local-da"
-	if evmSingleBinaryPath != "evm-single" {
+	if evmSingleBinaryPath != "evm" {
 		localDABinary = filepath.Join(filepath.Dir(evmSingleBinaryPath), "local-da")
 	}
 	sut.ExecCmd(localDABinary, "-port", endpoints.DAPort)
@@ -660,7 +660,7 @@ func restartDAAndSequencerLazy(t *testing.T, sut *SystemUnderTest, sequencerHome
 
 	// First restart the local DA
 	localDABinary := "local-da"
-	if evmSingleBinaryPath != "evm-single" {
+	if evmSingleBinaryPath != "evm" {
 		localDABinary = filepath.Join(filepath.Dir(evmSingleBinaryPath), "local-da")
 	}
 	sut.ExecCmd(localDABinary, "-port", endpoints.DAPort)

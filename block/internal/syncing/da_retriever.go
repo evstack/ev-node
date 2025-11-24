@@ -5,33 +5,30 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"time"
 
 	"github.com/rs/zerolog"
 	"google.golang.org/protobuf/proto"
 
 	"github.com/evstack/ev-node/block/internal/cache"
 	"github.com/evstack/ev-node/block/internal/common"
+	"github.com/evstack/ev-node/block/internal/da"
 	coreda "github.com/evstack/ev-node/core/da"
-	"github.com/evstack/ev-node/pkg/config"
 	"github.com/evstack/ev-node/pkg/genesis"
 	"github.com/evstack/ev-node/types"
 	pb "github.com/evstack/ev-node/types/pb/evnode/v1"
 )
 
-// defaultDATimeout is the default timeout for DA retrieval operations
-const defaultDATimeout = 10 * time.Second
+// DARetriever defines the interface for retrieving events from the DA layer
+type DARetriever interface {
+	RetrieveFromDA(ctx context.Context, daHeight uint64) ([]common.DAHeightEvent, error)
+}
 
-// DARetriever handles DA retrieval operations for syncing
-type DARetriever struct {
-	da      coreda.DA
-	cache   cache.Manager
+// daRetriever handles DA retrieval operations for syncing
+type daRetriever struct {
+	client  da.Client
+	cache   cache.CacheManager
 	genesis genesis.Genesis
 	logger  zerolog.Logger
-
-	// calculate namespaces bytes once and reuse them
-	namespaceBz     []byte
-	namespaceDataBz []byte
 
 	// transient cache, only full event need to be passed to the syncer
 	// on restart, will be refetch as da height is updated by syncer
@@ -41,26 +38,23 @@ type DARetriever struct {
 
 // NewDARetriever creates a new DA retriever
 func NewDARetriever(
-	da coreda.DA,
-	cache cache.Manager,
-	config config.Config,
+	client da.Client,
+	cache cache.CacheManager,
 	genesis genesis.Genesis,
 	logger zerolog.Logger,
-) *DARetriever {
-	return &DARetriever{
-		da:              da,
-		cache:           cache,
-		genesis:         genesis,
-		logger:          logger.With().Str("component", "da_retriever").Logger(),
-		namespaceBz:     coreda.NamespaceFromString(config.DA.GetNamespace()).Bytes(),
-		namespaceDataBz: coreda.NamespaceFromString(config.DA.GetDataNamespace()).Bytes(),
-		pendingHeaders:  make(map[uint64]*types.SignedHeader),
-		pendingData:     make(map[uint64]*types.Data),
+) *daRetriever {
+	return &daRetriever{
+		client:         client,
+		cache:          cache,
+		genesis:        genesis,
+		logger:         logger.With().Str("component", "da_retriever").Logger(),
+		pendingHeaders: make(map[uint64]*types.SignedHeader),
+		pendingData:    make(map[uint64]*types.Data),
 	}
 }
 
 // RetrieveFromDA retrieves blocks from the specified DA height and returns height events
-func (r *DARetriever) RetrieveFromDA(ctx context.Context, daHeight uint64) ([]common.DAHeightEvent, error) {
+func (r *daRetriever) RetrieveFromDA(ctx context.Context, daHeight uint64) ([]common.DAHeightEvent, error) {
 	r.logger.Debug().Uint64("da_height", daHeight).Msg("retrieving from DA")
 	blobsResp, err := r.fetchBlobs(ctx, daHeight)
 	if err != nil {
@@ -76,17 +70,17 @@ func (r *DARetriever) RetrieveFromDA(ctx context.Context, daHeight uint64) ([]co
 	return r.processBlobs(ctx, blobsResp.Data, daHeight), nil
 }
 
-// fetchBlobs retrieves blobs from the DA layer
-func (r *DARetriever) fetchBlobs(ctx context.Context, daHeight uint64) (coreda.ResultRetrieve, error) {
-	// Retrieve from both namespaces
-	headerRes := types.RetrieveWithHelpers(ctx, r.da, r.logger, daHeight, r.namespaceBz, defaultDATimeout)
+// fetchBlobs retrieves blobs from both header and data namespaces
+func (r *daRetriever) fetchBlobs(ctx context.Context, daHeight uint64) (coreda.ResultRetrieve, error) {
+	// Retrieve from both namespaces using the DA client
+	headerRes := r.client.RetrieveHeaders(ctx, daHeight)
 
 	// If namespaces are the same, return header result
-	if bytes.Equal(r.namespaceBz, r.namespaceDataBz) {
+	if bytes.Equal(r.client.GetHeaderNamespace(), r.client.GetDataNamespace()) {
 		return headerRes, r.validateBlobResponse(headerRes, daHeight)
 	}
 
-	dataRes := types.RetrieveWithHelpers(ctx, r.da, r.logger, daHeight, r.namespaceDataBz, defaultDATimeout)
+	dataRes := r.client.RetrieveData(ctx, daHeight)
 
 	// Validate responses
 	headerErr := r.validateBlobResponse(headerRes, daHeight)
@@ -133,7 +127,7 @@ func (r *DARetriever) fetchBlobs(ctx context.Context, daHeight uint64) (coreda.R
 
 // validateBlobResponse validates a blob response from DA layer
 // those are the only error code returned by da.RetrieveWithHelpers
-func (r *DARetriever) validateBlobResponse(res coreda.ResultRetrieve, daHeight uint64) error {
+func (r *daRetriever) validateBlobResponse(res coreda.ResultRetrieve, daHeight uint64) error {
 	switch res.Code {
 	case coreda.StatusError:
 		return fmt.Errorf("DA retrieval failed: %s", res.Message)
@@ -150,7 +144,7 @@ func (r *DARetriever) validateBlobResponse(res coreda.ResultRetrieve, daHeight u
 }
 
 // processBlobs processes retrieved blobs to extract headers and data and returns height events
-func (r *DARetriever) processBlobs(ctx context.Context, blobs [][]byte, daHeight uint64) []common.DAHeightEvent {
+func (r *daRetriever) processBlobs(ctx context.Context, blobs [][]byte, daHeight uint64) []common.DAHeightEvent {
 	// Decode all blobs
 	for _, bz := range blobs {
 		if len(bz) == 0 {
@@ -232,7 +226,7 @@ func (r *DARetriever) processBlobs(ctx context.Context, blobs [][]byte, daHeight
 }
 
 // tryDecodeHeader attempts to decode a blob as a header
-func (r *DARetriever) tryDecodeHeader(bz []byte, daHeight uint64) *types.SignedHeader {
+func (r *daRetriever) tryDecodeHeader(bz []byte, daHeight uint64) *types.SignedHeader {
 	header := new(types.SignedHeader)
 	var headerPb pb.SignedHeader
 
@@ -272,7 +266,7 @@ func (r *DARetriever) tryDecodeHeader(bz []byte, daHeight uint64) *types.SignedH
 }
 
 // tryDecodeData attempts to decode a blob as signed data
-func (r *DARetriever) tryDecodeData(bz []byte, daHeight uint64) *types.Data {
+func (r *daRetriever) tryDecodeData(bz []byte, daHeight uint64) *types.Data {
 	var signedData types.SignedData
 	if err := signedData.UnmarshalBinary(bz); err != nil {
 		return nil
@@ -303,12 +297,12 @@ func (r *DARetriever) tryDecodeData(bz []byte, daHeight uint64) *types.Data {
 }
 
 // assertExpectedProposer validates the proposer address
-func (r *DARetriever) assertExpectedProposer(proposerAddr []byte) error {
+func (r *daRetriever) assertExpectedProposer(proposerAddr []byte) error {
 	return assertExpectedProposer(r.genesis, proposerAddr)
 }
 
 // assertValidSignedData validates signed data using the configured signature provider
-func (r *DARetriever) assertValidSignedData(signedData *types.SignedData) error {
+func (r *daRetriever) assertValidSignedData(signedData *types.SignedData) error {
 	return assertValidSignedData(signedData, r.genesis)
 }
 

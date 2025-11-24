@@ -3,6 +3,7 @@ package syncing
 import (
 	"bytes"
 	"context"
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"reflect"
@@ -19,30 +20,21 @@ import (
 
 	"github.com/evstack/ev-node/block/internal/cache"
 	"github.com/evstack/ev-node/block/internal/common"
+	"github.com/evstack/ev-node/block/internal/da"
 	"github.com/evstack/ev-node/pkg/config"
 	"github.com/evstack/ev-node/pkg/genesis"
 	"github.com/evstack/ev-node/pkg/store"
 	"github.com/evstack/ev-node/types"
 )
 
-type daRetriever interface {
-	RetrieveFromDA(ctx context.Context, daHeight uint64) ([]common.DAHeightEvent, error)
-}
-
-type p2pHandler interface {
-	ProcessHeight(ctx context.Context, height uint64, heightInCh chan<- common.DAHeightEvent) error
-	SetProcessedHeight(height uint64)
-}
-
 // Syncer handles block synchronization from DA and P2P sources.
 type Syncer struct {
 	// Core components
 	store store.Store
 	exec  coreexecutor.Executor
-	da    coreda.DA
 
 	// Shared components
-	cache   cache.Manager
+	cache   cache.CacheManager
 	metrics *common.Metrics
 
 	// Configuration
@@ -53,7 +45,8 @@ type Syncer struct {
 	// State management
 	lastState *atomic.Pointer[types.State]
 
-	// DA retriever height
+	// DA retriever
+	daClient          da.Client
 	daRetrieverHeight *atomic.Uint64
 
 	// P2P stores
@@ -65,8 +58,8 @@ type Syncer struct {
 	errorCh    chan<- error // Channel to report critical execution client failures
 
 	// Handlers
-	daRetriever   daRetriever
-	p2pHandler    p2pHandler
+	daRetriever DARetriever
+	p2pHandler  p2pHandler
 	raftRetriever *raftRetriever
 
 	// Logging
@@ -85,8 +78,8 @@ type Syncer struct {
 func NewSyncer(
 	store store.Store,
 	exec coreexecutor.Executor,
-	da coreda.DA,
-	cache cache.Manager,
+	daClient da.Client,
+	cache cache.CacheManager,
 	metrics *common.Metrics,
 	config config.Config,
 	genesis genesis.Genesis,
@@ -97,22 +90,22 @@ func NewSyncer(
 	errorCh chan<- error,
 	raftNode common.RaftNode,
 ) *Syncer {
-	s := &Syncer{
-		store:       store,
-		exec:        exec,
-		da:          da,
-		cache:       cache,
-		metrics:     metrics,
-		config:      config,
-		genesis:     genesis,
-		options:     options,
-		headerStore: headerStore,
-		dataStore:   dataStore,
-		lastState:   &atomic.Pointer[types.State]{},
+	s:= &Syncer{
+		store:             store,
+		exec:              exec,
+		daClient:          daClient,
+		cache:             cache,
+		metrics:           metrics,
+		config:            config,
+		genesis:           genesis,
+		options:           options,
+		headerStore:       headerStore,
+		dataStore:         dataStore,
+		lastState:         &atomic.Pointer[types.State]{},
 		daRetrieverHeight: &atomic.Uint64{},
-		heightInCh:  make(chan common.DAHeightEvent, 1_000),
-		errorCh:     errorCh,
-		logger:      logger.With().Str("component", "syncer").Logger(),
+		heightInCh:        make(chan common.DAHeightEvent, 1_000),
+		errorCh:           errorCh,
+		logger:            logger.With().Str("component", "syncer").Logger(),
 	}
 	if raftNode != nil && !reflect.ValueOf(raftNode).IsNil() {
 		s.raftRetriever = newRaftRetriever(raftNode, genesis, logger, eventProcessorFn(s.pipeEvent))
@@ -129,7 +122,7 @@ func (s *Syncer) Start(ctx context.Context) error {
 	}
 
 	// Initialize handlers
-	s.daRetriever = NewDARetriever(s.da, s.cache, s.config, s.genesis, s.logger)
+	s.daRetriever = NewDARetriever(s.daClient, s.cache, s.genesis, s.logger)
 	s.p2pHandler = NewP2PHandler(s.headerStore.Store(), s.dataStore.Store(), s.cache, s.genesis, s.logger)
 	if currentHeight, err := s.store.Height(s.ctx); err != nil {
 		s.logger.Error().Err(err).Msg("failed to set initial processed height for p2p handler")
@@ -148,7 +141,11 @@ func (s *Syncer) Start(ctx context.Context) error {
 	}
 
 	// Start main processing loop
-	go s.processLoop()
+	s.wg.Add(1)
+	go func() {
+		defer s.wg.Done()
+		s.processLoop()
+	}()
 
 	// Start dedicated workers for DA, and pending processing
 	s.startSyncWorkers()
@@ -235,9 +232,9 @@ func (s *Syncer) initializeState() error {
 	}
 	s.SetLastState(state)
 
-	// Set DA height to the maximum of the genesis start height, the state's DA height, and the cached DA height.
+	// Set DA height to the maximum of the genesis start height, the state's DA height, the cached DA height, and the highest stored included DA height.
 	// This ensures we resume from the highest known DA height, even if the cache is cleared on restart. If the DA height is too high because of a user error, reset it with --evnode.clear_cache. The DA height will be back to the last highest known executed DA height for a height.
-	s.daRetrieverHeight.Store(max(s.genesis.DAStartHeight, s.cache.DaHeight(), state.DAHeight))
+	s.daRetrieverHeight.Store(max(s.genesis.DAStartHeight, s.cache.DaHeight(), state.DAHeight, s.getHighestStoredDAHeight()))
 
 	s.logger.Info().
 		Uint64("height", state.LastBlockHeight).
@@ -256,9 +253,6 @@ func (s *Syncer) initializeState() error {
 
 // processLoop is the main coordination loop for processing events
 func (s *Syncer) processLoop() {
-	s.wg.Add(1)
-	defer s.wg.Done()
-
 	s.logger.Info().Msg("starting process loop")
 	defer s.logger.Info().Msg("process loop stopped")
 
@@ -645,7 +639,8 @@ func (s *Syncer) applyBlock(header types.Header, data *types.Data, currentState 
 	return newState, nil
 }
 
-// executeTxsWithRetry executes transactions with retry logic
+// executeTxsWithRetry executes transactions with retry logic.
+// NOTE: the function retries the execution client call regardless of the error. Some execution clients errors are irrecoverable, and will eventually halt the node, as expected.
 func (s *Syncer) executeTxsWithRetry(ctx context.Context, rawTxs [][]byte, header types.Header, currentState types.State) ([]byte, error) {
 	for attempt := 1; attempt <= common.MaxRetriesBeforeHalt; attempt++ {
 		newAppHash, _, err := s.exec.ExecuteTxs(ctx, rawTxs, header.Height(), header.Time(), currentState.AppHash)
@@ -772,6 +767,39 @@ func (s *Syncer) sleepOrDone(duration time.Duration) bool {
 	case <-timer.C:
 		return true
 	}
+}
+
+// getHighestStoredDAHeight retrieves the highest DA height from the store by checking
+// the DA heights stored for the last DA included height
+// this relies on the node syncing with DA and setting included heights.
+func (s *Syncer) getHighestStoredDAHeight() uint64 {
+	// Get the DA included height from store
+	daIncludedHeightBytes, err := s.store.GetMetadata(s.ctx, store.DAIncludedHeightKey)
+	if err != nil || len(daIncludedHeightBytes) != 8 {
+		return 0
+	}
+	daIncludedHeight := binary.LittleEndian.Uint64(daIncludedHeightBytes)
+	if daIncludedHeight == 0 {
+		return 0
+	}
+
+	var highestDAHeight uint64
+
+	// Get header DA height for the last included height
+	headerKey := store.GetHeightToDAHeightHeaderKey(daIncludedHeight)
+	if headerBytes, err := s.store.GetMetadata(s.ctx, headerKey); err == nil && len(headerBytes) == 8 {
+		headerDAHeight := binary.LittleEndian.Uint64(headerBytes)
+		highestDAHeight = max(highestDAHeight, headerDAHeight)
+	}
+
+	// Get data DA height for the last included height
+	dataKey := store.GetHeightToDAHeightDataKey(daIncludedHeight)
+	if dataBytes, err := s.store.GetMetadata(s.ctx, dataKey); err == nil && len(dataBytes) == 8 {
+		dataDAHeight := binary.LittleEndian.Uint64(dataBytes)
+		highestDAHeight = max(highestDAHeight, dataDAHeight)
+	}
+
+	return highestDAHeight
 }
 
 type p2pWaitState struct {

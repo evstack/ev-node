@@ -4,6 +4,7 @@ import (
 	"context"
 	crand "crypto/rand"
 	"crypto/sha512"
+	"encoding/binary"
 	"errors"
 	"sync/atomic"
 	"testing"
@@ -103,7 +104,8 @@ func makeData(chainID string, height uint64, txs int) *types.Data {
 func TestSyncer_validateBlock_DataHashMismatch(t *testing.T) {
 	ds := dssync.MutexWrap(datastore.NewMapDatastore())
 	st := store.New(ds)
-	cm, err := cache.NewManager(config.DefaultConfig(), st, zerolog.Nop())
+
+	cm, err := cache.NewCacheManager(config.DefaultConfig(), zerolog.Nop())
 	require.NoError(t, err)
 
 	addr, pub, signer := buildSyncTestSigner(t)
@@ -152,7 +154,8 @@ func TestSyncer_validateBlock_DataHashMismatch(t *testing.T) {
 func TestProcessHeightEvent_SyncsAndUpdatesState(t *testing.T) {
 	ds := dssync.MutexWrap(datastore.NewMapDatastore())
 	st := store.New(ds)
-	cm, err := cache.NewManager(config.DefaultConfig(), st, zerolog.Nop())
+
+	cm, err := cache.NewCacheManager(config.DefaultConfig(), zerolog.Nop())
 	require.NoError(t, err)
 
 	addr, pub, signer := buildSyncTestSigner(t)
@@ -207,7 +210,8 @@ func TestProcessHeightEvent_SyncsAndUpdatesState(t *testing.T) {
 func TestSequentialBlockSync(t *testing.T) {
 	ds := dssync.MutexWrap(datastore.NewMapDatastore())
 	st := store.New(ds)
-	cm, err := cache.NewManager(config.DefaultConfig(), st, zerolog.Nop())
+
+	cm, err := cache.NewCacheManager(config.DefaultConfig(), zerolog.Nop())
 	require.NoError(t, err)
 
 	addr, pub, signer := buildSyncTestSigner(t)
@@ -280,7 +284,8 @@ func TestSequentialBlockSync(t *testing.T) {
 func TestSyncer_processPendingEvents(t *testing.T) {
 	ds := dssync.MutexWrap(datastore.NewMapDatastore())
 	st := store.New(ds)
-	cm, err := cache.NewManager(config.DefaultConfig(), st, zerolog.Nop())
+
+	cm, err := cache.NewCacheManager(config.DefaultConfig(), zerolog.Nop())
 	require.NoError(t, err)
 
 	// current height 1
@@ -326,7 +331,7 @@ func TestSyncLoopPersistState(t *testing.T) {
 	cfg.RootDir = t.TempDir()
 	cfg.ClearCache = true
 
-	cacheMgr, err := cache.NewManager(cfg, st, zerolog.Nop())
+	cacheMgr, err := cache.NewCacheManager(cfg, zerolog.Nop())
 	require.NoError(t, err)
 
 	const myDAHeightOffset = uint64(1)
@@ -370,7 +375,7 @@ func TestSyncLoopPersistState(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(t.Context())
 	syncerInst1.ctx = ctx
-	daRtrMock, p2pHndlMock := newMockdaRetriever(t), newMockp2pHandler(t)
+	daRtrMock, p2pHndlMock := NewMockDARetriever(t), newMockp2pHandler(t)
 	p2pHndlMock.On("ProcessHeight", mock.Anything, mock.Anything, mock.Anything).Return(nil).Maybe()
 	p2pHndlMock.On("SetProcessedHeight", mock.Anything).Return().Maybe()
 	syncerInst1.daRetriever, syncerInst1.p2pHandler = daRtrMock, p2pHndlMock
@@ -437,7 +442,7 @@ func TestSyncLoopPersistState(t *testing.T) {
 		require.Nil(t, event, "event at height %d should have been removed", blockHeight)
 	}
 	// and when new instance is up on restart
-	cacheMgr, err = cache.NewManager(cfg, st, zerolog.Nop())
+	cacheMgr, err = cache.NewCacheManager(cfg, zerolog.Nop())
 	require.NoError(t, err)
 	require.NoError(t, cacheMgr.LoadFromDisk())
 
@@ -461,7 +466,7 @@ func TestSyncLoopPersistState(t *testing.T) {
 	ctx, cancel = context.WithCancel(t.Context())
 	t.Cleanup(cancel)
 	syncerInst2.ctx = ctx
-	daRtrMock, p2pHndlMock = newMockdaRetriever(t), newMockp2pHandler(t)
+	daRtrMock, p2pHndlMock = NewMockDARetriever(t), newMockp2pHandler(t)
 	p2pHndlMock.On("ProcessHeight", mock.Anything, mock.Anything, mock.Anything).Return(nil).Maybe()
 	p2pHndlMock.On("SetProcessedHeight", mock.Anything).Return().Maybe()
 	syncerInst2.daRetriever, syncerInst2.p2pHandler = daRtrMock, p2pHndlMock
@@ -606,6 +611,9 @@ func TestSyncer_InitializeState_CallsReplayer(t *testing.T) {
 		nil,
 	)
 
+	// Mock GetMetadata calls for DA included height retrieval
+	mockStore.EXPECT().GetMetadata(mock.Anything, store.DAIncludedHeightKey).Return(nil, datastore.ErrNotFound)
+
 	// Setup execution layer to be in sync
 	mockExec.On("GetLatestHeight", mock.Anything).Return(storeHeight, nil)
 
@@ -641,4 +649,59 @@ func requireEmptyChan(t *testing.T, errorCh chan error) {
 		t.Fatalf("sync workers failed: %v", err)
 	default:
 	}
+}
+
+func TestSyncer_getHighestStoredDAHeight(t *testing.T) {
+	ds := dssync.MutexWrap(datastore.NewMapDatastore())
+	st := store.New(ds)
+	ctx := context.Background()
+
+	syncer := &Syncer{
+		store:  st,
+		ctx:    ctx,
+		logger: zerolog.Nop(),
+	}
+
+	// Test case 1: No DA included height set
+	highestDA := syncer.getHighestStoredDAHeight()
+	assert.Equal(t, uint64(0), highestDA)
+
+	// Test case 2: DA included height set, but no mappings
+	bz := make([]byte, 8)
+	binary.LittleEndian.PutUint64(bz, 1)
+	require.NoError(t, st.SetMetadata(ctx, store.DAIncludedHeightKey, bz))
+
+	highestDA = syncer.getHighestStoredDAHeight()
+	assert.Equal(t, uint64(0), highestDA)
+
+	// Test case 3: DA included height with header mapping
+	headerBytes := make([]byte, 8)
+	binary.LittleEndian.PutUint64(headerBytes, 100)
+	require.NoError(t, st.SetMetadata(ctx, store.GetHeightToDAHeightHeaderKey(1), headerBytes))
+
+	highestDA = syncer.getHighestStoredDAHeight()
+	assert.Equal(t, uint64(100), highestDA)
+
+	// Test case 4: DA included height with both header and data mappings (data is higher)
+	dataBytes := make([]byte, 8)
+	binary.LittleEndian.PutUint64(dataBytes, 105)
+	require.NoError(t, st.SetMetadata(ctx, store.GetHeightToDAHeightDataKey(1), dataBytes))
+
+	highestDA = syncer.getHighestStoredDAHeight()
+	assert.Equal(t, uint64(105), highestDA)
+
+	// Test case 5: Advance to height 2 with higher DA heights
+	binary.LittleEndian.PutUint64(bz, 2)
+	require.NoError(t, st.SetMetadata(ctx, store.DAIncludedHeightKey, bz))
+
+	headerBytes2 := make([]byte, 8)
+	binary.LittleEndian.PutUint64(headerBytes2, 200)
+	require.NoError(t, st.SetMetadata(ctx, store.GetHeightToDAHeightHeaderKey(2), headerBytes2))
+
+	dataBytes2 := make([]byte, 8)
+	binary.LittleEndian.PutUint64(dataBytes2, 195)
+	require.NoError(t, st.SetMetadata(ctx, store.GetHeightToDAHeightDataKey(2), dataBytes2))
+
+	highestDA = syncer.getHighestStoredDAHeight()
+	assert.Equal(t, uint64(200), highestDA, "should return highest DA height from most recent included height")
 }

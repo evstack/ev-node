@@ -9,8 +9,9 @@ import (
 	"path/filepath"
 	"sync"
 
-	"golang.org/x/sync/errgroup"
 	"sync/atomic"
+
+	"golang.org/x/sync/errgroup"
 )
 
 // Cache is a generic cache that maintains items that are seen and hard confirmed
@@ -101,7 +102,7 @@ func (c *Cache[T]) setDAIncluded(hash string, daHeight uint64, blockHeight uint6
 	c.hashByHeight.Store(blockHeight, hash)
 
 	// Update max DA height if necessary
-	for {
+	for range 1_000 {
 		current := c.maxDAHeight.Load()
 		if daHeight <= current {
 			return
@@ -282,7 +283,6 @@ func (c *Cache[T]) LoadFromDisk(folderPath string) error {
 				c.maxDAHeight.Store(v)
 			}
 		}
-
 		return nil
 	})
 	return wg.Wait()

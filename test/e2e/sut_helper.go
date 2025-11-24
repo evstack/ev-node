@@ -79,6 +79,8 @@ func (s *SystemUnderTest) RunCmd(cmd string, args ...string) (string, error) {
 func (s *SystemUnderTest) ExecCmd(cmd string, args ...string) *os.Process {
 	return s.ExecCmdWithLogPrefix("", cmd, args...)
 }
+
+// ExecCmdWithLogPrefix same as ExecCmd but prepends the given prefix to the log output
 func (s *SystemUnderTest) ExecCmdWithLogPrefix(prefix, cmd string, args ...string) *os.Process {
 
 	executable := locateExecutable(cmd)

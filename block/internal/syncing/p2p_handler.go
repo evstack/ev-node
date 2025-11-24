@@ -15,6 +15,11 @@ import (
 	"github.com/evstack/ev-node/types"
 )
 
+type p2pHandler interface {
+	ProcessHeight(ctx context.Context, height uint64, heightInCh chan<- common.DAHeightEvent) error
+	SetProcessedHeight(height uint64)
+}
+
 // P2PHandler coordinates block retrieval from P2P stores for the syncer.
 // It waits for both header and data to be available at a given height,
 // validates their consistency, and emits events to the syncer for processing.
@@ -24,7 +29,7 @@ import (
 type P2PHandler struct {
 	headerStore goheader.Store[*types.SignedHeader]
 	dataStore   goheader.Store[*types.Data]
-	cache       cache.Manager
+	cache       cache.CacheManager
 	genesis     genesis.Genesis
 	logger      zerolog.Logger
 
@@ -35,7 +40,7 @@ type P2PHandler struct {
 func NewP2PHandler(
 	headerStore goheader.Store[*types.SignedHeader],
 	dataStore goheader.Store[*types.Data],
-	cache cache.Manager,
+	cache cache.CacheManager,
 	genesis genesis.Genesis,
 	logger zerolog.Logger,
 ) *P2PHandler {
@@ -50,7 +55,7 @@ func NewP2PHandler(
 
 // SetProcessedHeight updates the highest processed block height.
 func (h *P2PHandler) SetProcessedHeight(height uint64) {
-	for {
+	for range 1_000 {
 		current := h.processedHeight.Load()
 		if height <= current {
 			return
