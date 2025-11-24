@@ -593,7 +593,8 @@ func (s *Syncer) applyBlock(header types.Header, data *types.Data, currentState 
 	return newState, nil
 }
 
-// executeTxsWithRetry executes transactions with retry logic
+// executeTxsWithRetry executes transactions with retry logic.
+// NOTE: the function retries the execution client call regardless of the error. Some execution clients errors are irrecoverable, and will eventually halt the node, as expected.
 func (s *Syncer) executeTxsWithRetry(ctx context.Context, rawTxs [][]byte, header types.Header, currentState types.State) ([]byte, error) {
 	for attempt := 1; attempt <= common.MaxRetriesBeforeHalt; attempt++ {
 		newAppHash, _, err := s.exec.ExecuteTxs(ctx, rawTxs, header.Height(), header.Time(), currentState.AppHash)
