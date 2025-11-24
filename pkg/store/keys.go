@@ -61,3 +61,15 @@ func getIndexKey(hash types.Hash) string {
 func getHeightKey() string {
 	return GenerateKey([]string{heightPrefix})
 }
+
+// GetHeightToDAHeightHeaderKey returns the metadata key for storing the DA height
+// where a block's header was included for a given sequencer height.
+func GetHeightToDAHeightHeaderKey(height uint64) string {
+	return HeightToDAHeightKey + "/" + strconv.FormatUint(height, 10) + "/h"
+}
+
+// GetHeightToDAHeightDataKey returns the metadata key for storing the DA height
+// where a block's data was included for a given sequencer height.
+func GetHeightToDAHeightDataKey(height uint64) string {
+	return HeightToDAHeightKey + "/" + strconv.FormatUint(height, 10) + "/d"
+}
