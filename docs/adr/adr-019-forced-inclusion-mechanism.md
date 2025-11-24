@@ -394,7 +394,7 @@ func WouldExceedCumulativeSize(currentSize int, blobSize int, maxBytes uint64) b
 
 **Key Behaviors**:
 
-- **Absolute validation**: Blobs exceeding 1.5MB are permanently rejected
+- **Absolute validation**: Blobs exceeding 2MB are permanently rejected
 - **Batch size limits**: `req.MaxBytes` is NEVER exceeded in any batch
 - **Transaction preservation**:
   - Single sequencer: Trimmed batch txs returned to queue via `Prepend()`
