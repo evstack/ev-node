@@ -147,7 +147,7 @@ func TestClient_Submit(t *testing.T) {
 			require.NoError(t, err)
 			defer client.Close()
 
-			_, err = client.Submit(ctx, tt.blobs, nil)
+			_, err = client.submit(ctx, tt.blobs, nil)
 
 			if tt.wantRPC {
 				require.Error(t, err)
@@ -168,7 +168,7 @@ func TestClient_Get(t *testing.T) {
 	validNamespace := make([]byte, 29)
 	validCommitment := []byte("commitment")
 
-	_, err = client.Get(ctx, 100, validNamespace, validCommitment)
+	_, err = client.get(ctx, 100, validNamespace, validCommitment)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "failed to get blob")
 }
@@ -184,7 +184,7 @@ func TestClient_GetAll(t *testing.T) {
 	validNamespace := make([]byte, 29)
 	namespaces := []Namespace{validNamespace}
 
-	_, err = client.GetAll(ctx, 100, namespaces)
+	_, err = client.getAll(ctx, 100, namespaces)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "failed to get blobs")
 }
@@ -200,7 +200,7 @@ func TestClient_GetProof(t *testing.T) {
 	validNamespace := make([]byte, 29)
 	validCommitment := []byte("commitment")
 
-	_, err = client.GetProof(ctx, 100, validNamespace, validCommitment)
+	_, err = client.getProof(ctx, 100, validNamespace, validCommitment)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "failed to get proof")
 }
@@ -217,7 +217,7 @@ func TestClient_Included(t *testing.T) {
 	validCommitment := []byte("commitment")
 	proof := &Proof{Data: []byte("proof")}
 
-	_, err = client.Included(ctx, 100, validNamespace, proof, validCommitment)
+	_, err = client.included(ctx, 100, validNamespace, proof, validCommitment)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "failed to check inclusion")
 }
