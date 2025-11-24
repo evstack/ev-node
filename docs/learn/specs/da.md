@@ -1,10 +1,10 @@
 # DA
 
-Evolve provides a generic [data availability interface][da-interface] for modular blockchains. Any DA that implements this interface can be used with Evolve.
+Evolve uses Celestia as its data availability layer through the [data availability interface][da-interface].
 
 ## Details
 
-`Client` can connect via JSON-RPC transports using Evolve's [jsonrpc][jsonrpc] implementations. The connection can be configured using the following cli flags:
+The Celestia DA client connects directly to a Celestia node using the blob API. The connection can be configured using the following cli flags:
 
 * `--rollkit.da.address`: url address of the DA service (default: "grpc://localhost:26650")
 * `--rollkit.da.auth_token`: authentication token of the DA service
@@ -21,10 +21,10 @@ Each submission first encodes the headers or data using protobuf (the encoded da
 
 To make sure that the serialised blocks don't exceed the underlying DA's blob limits, it fetches the blob size limit by calling `Config` which returns the limit as `uint64` bytes, then includes serialised blocks until the limit is reached. If the limit is reached, it submits the partial set and returns the count of successfully submitted blocks as `SubmittedCount`. The caller should retry with the remaining blocks until all the blocks are submitted. If the first block itself is over the limit, it throws an error.
 
-The `Submit` call may result in an error (`StatusError`) based on the underlying DA implementations on following scenarios:
+The `Submit` call may result in an error (`StatusError`) in the following scenarios:
 
-* the total blobs size exceeds the underlying DA's limits (includes empty blobs)
-* the implementation specific failures, e.g., for [celestia-da-json-rpc][jsonrpc], invalid namespace, unable to create the commitment or proof, setting low gas price, etc, could return error.
+* the total blobs size exceeds Celestia's blob size limits (includes empty blobs)
+* Celestia-specific failures, e.g., invalid namespace, unable to create the commitment or proof, setting low gas price, etc.
 
 The retrieval process now supports both legacy single-namespace mode and separate namespace mode:
 
@@ -42,7 +42,7 @@ The retrieval process now supports both legacy single-namespace mode and separat
 
 If there are no blocks available for a given DA height in any namespace, `StatusNotFound` is returned (which is not an error case). The retrieved blobs are converted back to headers and data, then combined into complete blocks for processing.
 
-Both header/data submission and retrieval operations may be unsuccessful if the DA node and the DA blockchain that the DA implementation is using have failures. For example, failures such as, DA mempool is full, DA submit transaction is nonce clashing with other transaction from the DA submitter account, DA node is not synced, etc.
+Both header/data submission and retrieval operations may be unsuccessful if the Celestia node or the Celestia network have failures. For example, mempool is full, transaction nonce conflicts, node is not synced, etc.
 
 ## Namespace Separation Benefits
 
@@ -57,7 +57,4 @@ The separation of headers and data into different namespaces provides several ad
 
 [1] [da-interface][da-interface]
 
-[2] [jsonrpc][jsonrpc]
-
 [da-interface]: https://github.com/evstack/ev-node/blob/main/core/da/da.go#L11
-[jsonrpc]: https://github.com/evstack/ev-node/tree/main/da/jsonrpc

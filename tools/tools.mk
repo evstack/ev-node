@@ -1,7 +1,7 @@
 # tools.mk - Build configuration for ev-node tools
 
 # Tool names
-TOOLS := da-debug blob-decoder cache-analyzer
+TOOLS := blob-decoder cache-analyzer
 
 # Build directory
 TOOLS_BUILD_DIR := $(CURDIR)/build
@@ -14,14 +14,6 @@ LDFLAGS ?= \
 	-X main.GitSHA=$(GITSHA)
 
 # Individual tool build targets
-## build-tool-da-debug: Build da-debug tool
-build-tool-da-debug:
-	@echo "--> Building da-debug tool"
-	@mkdir -p $(TOOLS_BUILD_DIR)
-	@cd tools/da-debug && go build -ldflags "$(LDFLAGS)" -o $(TOOLS_BUILD_DIR)/da-debug .
-	@echo "--> da-debug built: $(TOOLS_BUILD_DIR)/da-debug"
-.PHONY: build-tool-da-debug
-
 ## build-tool-blob-decoder: Build blob-decoder tool
 build-tool-blob-decoder:
 	@echo "--> Building blob-decoder tool"
@@ -45,13 +37,6 @@ build-tools: $(addprefix build-tool-, $(TOOLS))
 .PHONY: build-tools
 
 # Install individual tools
-## install-tool-da-debug: Install da-debug tool to Go bin
-install-tool-da-debug:
-	@echo "--> Installing da-debug tool"
-	@cd tools/da-debug && go install -ldflags "$(LDFLAGS)" .
-	@echo "--> da-debug installed to Go bin"
-.PHONY: install-tool-da-debug
-
 ## install-tool-blob-decoder: Install blob-decoder tool to Go bin
 install-tool-blob-decoder:
 	@echo "--> Installing blob-decoder tool"

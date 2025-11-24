@@ -9,8 +9,6 @@ import (
 	"syscall"
 
 	"github.com/rs/zerolog"
-
-	proxy "github.com/evstack/ev-node/da/jsonrpc"
 )
 
 const (
@@ -46,7 +44,7 @@ func main() {
 	}
 	da := NewLocalDA(logger, opts...)
 
-	srv := proxy.NewServer(logger, host, port, da)
+	srv := NewServer(logger, host, port, da)
 	logger.Info().Str("host", host).Str("port", port).Uint64("maxBlobSize", maxBlobSize).Msg("Listening on")
 	if err := srv.Start(context.Background()); err != nil {
 		logger.Error().Err(err).Msg("error while serving")

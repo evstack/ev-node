@@ -16,10 +16,10 @@ type Client struct {
 	closer      jsonrpc.ClientCloser
 
 	Internal struct {
-		Submit   func(ctx context.Context, blobs []*Blob, opts *SubmitOptions) (uint64, error)       `perm:"write"`
-		Get      func(ctx context.Context, height uint64, ns Namespace, c Commitment) (*Blob, error) `perm:"read"`
-		GetAll   func(ctx context.Context, height uint64, namespaces []Namespace) ([]*Blob, error)   `perm:"read"`
-		GetProof func(ctx context.Context, height uint64, ns Namespace, c Commitment) (*Proof, error) `perm:"read"`
+		Submit   func(ctx context.Context, blobs []*Blob, opts *SubmitOptions) (uint64, error)                    `perm:"write"`
+		Get      func(ctx context.Context, height uint64, ns Namespace, c Commitment) (*Blob, error)              `perm:"read"`
+		GetAll   func(ctx context.Context, height uint64, namespaces []Namespace) ([]*Blob, error)                `perm:"read"`
+		GetProof func(ctx context.Context, height uint64, ns Namespace, c Commitment) (*Proof, error)             `perm:"read"`
 		Included func(ctx context.Context, height uint64, ns Namespace, proof *Proof, c Commitment) (bool, error) `perm:"read"`
 	}
 }

@@ -1,4 +1,4 @@
-package jsonrpc
+package main
 
 import (
 	"context"
@@ -13,7 +13,7 @@ import (
 	"github.com/evstack/ev-node/core/da"
 )
 
-// Server is a jsonrpc service that can serve the DA interface
+// Server is a jsonrpc service that serves the LocalDA implementation
 type Server struct {
 	logger   zerolog.Logger
 	srv      *http.Server
@@ -60,7 +60,7 @@ func (s *serverInternalAPI) Validate(ctx context.Context, ids []da.ID, proofs []
 	return s.daImpl.Validate(ctx, ids, proofs, ns)
 }
 
-// Submit implements the RPC method. This is the primary submit method which includes options.
+// Submit implements the RPC method.
 func (s *serverInternalAPI) Submit(ctx context.Context, blobs []da.Blob, gasPrice float64, ns []byte) ([]da.ID, error) {
 	s.logger.Debug().Int("num_blobs", len(blobs)).Float64("gas_price", gasPrice).Str("namespace", string(ns)).Msg("RPC server: Submit called")
 	return s.daImpl.Submit(ctx, blobs, gasPrice, ns)
@@ -72,7 +72,20 @@ func (s *serverInternalAPI) SubmitWithOptions(ctx context.Context, blobs []da.Bl
 	return s.daImpl.SubmitWithOptions(ctx, blobs, gasPrice, ns, options)
 }
 
-// NewServer accepts the host address port and the DA implementation to serve as a jsonrpc service
+func getKnownErrorsMapping() jsonrpc.Errors {
+	errs := jsonrpc.NewErrors()
+	errs.Register(jsonrpc.ErrorCode(da.StatusNotFound), &da.ErrBlobNotFound)
+	errs.Register(jsonrpc.ErrorCode(da.StatusTooBig), &da.ErrBlobSizeOverLimit)
+	errs.Register(jsonrpc.ErrorCode(da.StatusContextDeadline), &da.ErrTxTimedOut)
+	errs.Register(jsonrpc.ErrorCode(da.StatusAlreadyInMempool), &da.ErrTxAlreadyInMempool)
+	errs.Register(jsonrpc.ErrorCode(da.StatusIncorrectAccountSequence), &da.ErrTxIncorrectAccountSequence)
+	errs.Register(jsonrpc.ErrorCode(da.StatusContextDeadline), &da.ErrContextDeadline)
+	errs.Register(jsonrpc.ErrorCode(da.StatusContextCanceled), &da.ErrContextCanceled)
+	errs.Register(jsonrpc.ErrorCode(da.StatusHeightFromFuture), &da.ErrHeightFromFuture)
+	return errs
+}
+
+// NewServer creates a new JSON-RPC server for the LocalDA implementation
 func NewServer(logger zerolog.Logger, address, port string, daImplementation da.DA) *Server {
 	rpc := jsonrpc.NewServer(jsonrpc.WithServerErrors(getKnownErrorsMapping()))
 	srv := &Server{
@@ -96,8 +109,6 @@ func NewServer(logger zerolog.Logger, address, port string, daImplementation da.
 }
 
 // Start starts the RPC Server.
-// This function can be called multiple times concurrently
-// Once started, subsequent calls are a no-op
 func (s *Server) Start(context.Context) error {
 	couldStart := s.started.CompareAndSwap(false, true)
 
@@ -117,8 +128,6 @@ func (s *Server) Start(context.Context) error {
 }
 
 // Stop stops the RPC Server.
-// This function can be called multiple times concurrently
-// Once stopped, subsequent calls are a no-op
 func (s *Server) Stop(ctx context.Context) error {
 	couldStop := s.started.CompareAndSwap(true, false)
 	if !couldStop {

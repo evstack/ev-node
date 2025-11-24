@@ -114,8 +114,8 @@ func TestClient_Submit(t *testing.T) {
 	}
 
 	tests := []struct {
-		name   string
-		blobs  []*Blob
+		name    string
+		blobs   []*Blob
 		wantRPC bool
 	}{
 		{
