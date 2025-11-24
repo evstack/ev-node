@@ -41,14 +41,16 @@ func registerGobTypes() {
 	})
 }
 
-// Manager provides centralized cache management for both executing and syncing components
-type Manager interface {
+// CacheManager provides thread-safe cache operations for tracking seen blocks
+// and DA inclusion status during block execution and syncing.
+type CacheManager interface {
 	// Header operations
 	IsHeaderSeen(hash string) bool
 	SetHeaderSeen(hash string, blockHeight uint64)
 	GetHeaderDAIncluded(hash string) (uint64, bool)
 	SetHeaderDAIncluded(hash string, daHeight uint64, blockHeight uint64)
 	RemoveHeaderDAIncluded(hash string)
+	DaHeight() uint64
 
 	// Data operations
 	IsDataSeen(hash string) bool
@@ -61,14 +63,6 @@ type Manager interface {
 	SetTxSeen(hash string)
 	CleanupOldTxs(olderThan time.Duration) int
 
-	// Pending operations
-	GetPendingHeaders(ctx context.Context) ([]*types.SignedHeader, error)
-	GetPendingData(ctx context.Context) ([]*types.SignedData, error)
-	SetLastSubmittedHeaderHeight(ctx context.Context, height uint64)
-	SetLastSubmittedDataHeight(ctx context.Context, height uint64)
-	NumPendingHeaders() uint64
-	NumPendingData() uint64
-
 	// Pending events syncing coordination
 	GetNextPendingEvent(blockHeight uint64) *common.DAHeightEvent
 	SetPendingEvent(blockHeight uint64, event *common.DAHeightEvent)
@@ -80,6 +74,22 @@ type Manager interface {
 
 	// Cleanup operations
 	DeleteHeight(blockHeight uint64)
+}
+
+// PendingManager provides operations for managing pending headers and data
+type PendingManager interface {
+	GetPendingHeaders(ctx context.Context) ([]*types.SignedHeader, error)
+	GetPendingData(ctx context.Context) ([]*types.SignedData, error)
+	SetLastSubmittedHeaderHeight(ctx context.Context, height uint64)
+	SetLastSubmittedDataHeight(ctx context.Context, height uint64)
+	NumPendingHeaders() uint64
+	NumPendingData() uint64
+}
+
+// Manager provides centralized cache management for both executing and syncing components
+type Manager interface {
+	CacheManager
+	PendingManager
 }
 
 var _ Manager = (*implementation)(nil)
@@ -95,6 +105,59 @@ type implementation struct {
 	pendingData        *PendingData
 	config             config.Config
 	logger             zerolog.Logger
+}
+
+// NewPendingManager creates a new pending manager instance
+func NewPendingManager(store store.Store, logger zerolog.Logger) (PendingManager, error) {
+	pendingHeaders, err := NewPendingHeaders(store, logger)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create pending headers: %w", err)
+	}
+
+	pendingData, err := NewPendingData(store, logger)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create pending data: %w", err)
+	}
+
+	return &implementation{
+		pendingHeaders: pendingHeaders,
+		pendingData:    pendingData,
+		logger:         logger,
+	}, nil
+}
+
+// NewCacheManager creates a new cache manager instance
+func NewCacheManager(cfg config.Config, logger zerolog.Logger) (CacheManager, error) {
+	// Initialize caches
+	headerCache := NewCache[types.SignedHeader]()
+	dataCache := NewCache[types.Data]()
+	txCache := NewCache[struct{}]()
+	pendingEventsCache := NewCache[common.DAHeightEvent]()
+
+	registerGobTypes()
+	impl := &implementation{
+		headerCache:        headerCache,
+		dataCache:          dataCache,
+		txCache:            txCache,
+		txTimestamps:       new(sync.Map),
+		pendingEventsCache: pendingEventsCache,
+		config:             cfg,
+		logger:             logger,
+	}
+
+	if cfg.ClearCache {
+		// Clear the cache from disk
+		if err := impl.ClearFromDisk(); err != nil {
+			logger.Warn().Err(err).Msg("failed to clear cache from disk, starting with empty cache")
+		}
+	} else {
+		// Load existing cache from disk
+		if err := impl.LoadFromDisk(); err != nil {
+			logger.Warn().Err(err).Msg("failed to load cache from disk, starting with empty cache")
+		}
+	}
+
+	return impl, nil
 }
 
 // NewManager creates a new cache manager instance
@@ -163,6 +226,11 @@ func (m *implementation) SetHeaderDAIncluded(hash string, daHeight uint64, block
 
 func (m *implementation) RemoveHeaderDAIncluded(hash string) {
 	m.headerCache.removeDAIncluded(hash)
+}
+
+// DaHeight fetches the heights da height contained in the processed cache.
+func (m *implementation) DaHeight() uint64 {
+	return max(m.headerCache.daHeight(), m.dataCache.daHeight())
 }
 
 // Data operations

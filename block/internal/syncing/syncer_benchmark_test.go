@@ -58,7 +58,7 @@ func BenchmarkSyncerIO(b *testing.B) {
 				}
 				require.Len(b, fixt.s.heightInCh, 0)
 
-				assert.Equal(b, spec.heights+daHeightOffset, fixt.s.daHeight)
+				assert.Equal(b, spec.heights+daHeightOffset, fixt.s.daRetrieverHeight)
 				gotStoreHeight, err := fixt.s.store.Height(b.Context())
 				require.NoError(b, err)
 				assert.Equal(b, spec.heights, gotStoreHeight)
@@ -70,7 +70,7 @@ func BenchmarkSyncerIO(b *testing.B) {
 type benchFixture struct {
 	s      *Syncer
 	st     store.Store
-	cm     cache.Manager
+	cm     cache.CacheManager
 	cancel context.CancelFunc
 }
 
@@ -80,7 +80,8 @@ func newBenchFixture(b *testing.B, totalHeights uint64, shuffledTx bool, daDelay
 
 	ds := dssync.MutexWrap(datastore.NewMapDatastore())
 	st := store.New(ds)
-	cm, err := cache.NewManager(config.DefaultConfig(), st, zerolog.Nop())
+
+	cm, err := cache.NewCacheManager(config.DefaultConfig(), zerolog.Nop())
 	require.NoError(b, err)
 
 	addr, pub, signer := buildSyncTestSigner(b)
@@ -132,7 +133,7 @@ func newBenchFixture(b *testing.B, totalHeights uint64, shuffledTx bool, daDelay
 	}
 
 	// Mock DA retriever to emit exactly totalHeights events, then HFF and cancel
-	daR := newMockdaRetriever(b)
+	daR := NewMockDARetriever(b)
 	for i := uint64(0); i < totalHeights; i++ {
 		daHeight := i + daHeightOffset
 		daR.On("RetrieveFromDA", mock.Anything, daHeight).

@@ -1,3 +1,3 @@
 package common
 
-const DefaultMaxBlobSize = 1.5 * 1024 * 1024 // 1.5MB fallback blob size limit
+const DefaultMaxBlobSize = 2 * 1024 * 1024 // 2MB fallback blob size limit

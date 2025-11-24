@@ -4,8 +4,8 @@ go 1.24.6
 
 require (
 	github.com/evstack/ev-node v1.0.0-beta.6
-	github.com/evstack/ev-node/core v1.0.0-beta.4
-	github.com/evstack/ev-node/da v1.0.0-beta.4
+	github.com/evstack/ev-node/core v1.0.0-beta.5
+	github.com/evstack/ev-node/da v1.0.0-beta.6
 	github.com/rs/zerolog v1.34.0
 	github.com/spf13/cobra v1.10.1
 	google.golang.org/protobuf v1.36.9
@@ -46,13 +46,9 @@ require (
 	go.opencensus.io v0.24.0 // indirect
 	go.uber.org/multierr v1.11.0 // indirect
 	go.uber.org/zap v1.27.0 // indirect
-	golang.org/x/crypto v0.42.0 // indirect
+	golang.org/x/crypto v0.45.0 // indirect
 	golang.org/x/exp v0.0.0-20250811191247-51f88131bc50 // indirect
-	golang.org/x/sys v0.36.0 // indirect
+	golang.org/x/sys v0.38.0 // indirect
 	golang.org/x/xerrors v0.0.0-20240903120638-7835f813f4da // indirect
 	lukechampine.com/blake3 v1.4.1 // indirect
 )
-
-replace github.com/evstack/ev-node/core => ../../core
-
-replace github.com/evstack/ev-node/da => ../../da

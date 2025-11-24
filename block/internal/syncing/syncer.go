@@ -3,6 +3,7 @@ package syncing
 import (
 	"bytes"
 	"context"
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"sync"
@@ -18,30 +19,21 @@ import (
 
 	"github.com/evstack/ev-node/block/internal/cache"
 	"github.com/evstack/ev-node/block/internal/common"
+	"github.com/evstack/ev-node/block/internal/da"
 	"github.com/evstack/ev-node/pkg/config"
 	"github.com/evstack/ev-node/pkg/genesis"
 	"github.com/evstack/ev-node/pkg/store"
 	"github.com/evstack/ev-node/types"
 )
 
-type daRetriever interface {
-	RetrieveFromDA(ctx context.Context, daHeight uint64) ([]common.DAHeightEvent, error)
-}
-
-type p2pHandler interface {
-	ProcessHeight(ctx context.Context, height uint64, heightInCh chan<- common.DAHeightEvent) error
-	SetProcessedHeight(height uint64)
-}
-
 // Syncer handles block synchronization from DA and P2P sources.
 type Syncer struct {
 	// Core components
 	store store.Store
 	exec  coreexecutor.Executor
-	da    coreda.DA
 
 	// Shared components
-	cache   cache.Manager
+	cache   cache.CacheManager
 	metrics *common.Metrics
 
 	// Configuration
@@ -52,8 +44,9 @@ type Syncer struct {
 	// State management
 	lastState *atomic.Pointer[types.State]
 
-	// DA state
-	daHeight *atomic.Uint64
+	// DA retriever
+	daClient          da.Client
+	daRetrieverHeight *atomic.Uint64
 
 	// P2P stores
 	headerStore common.Broadcaster[*types.SignedHeader]
@@ -64,7 +57,7 @@ type Syncer struct {
 	errorCh    chan<- error // Channel to report critical execution client failures
 
 	// Handlers
-	daRetriever daRetriever
+	daRetriever DARetriever
 	p2pHandler  p2pHandler
 
 	// Logging
@@ -83,8 +76,8 @@ type Syncer struct {
 func NewSyncer(
 	store store.Store,
 	exec coreexecutor.Executor,
-	da coreda.DA,
-	cache cache.Manager,
+	daClient da.Client,
+	cache cache.CacheManager,
 	metrics *common.Metrics,
 	config config.Config,
 	genesis genesis.Genesis,
@@ -95,21 +88,21 @@ func NewSyncer(
 	errorCh chan<- error,
 ) *Syncer {
 	return &Syncer{
-		store:       store,
-		exec:        exec,
-		da:          da,
-		cache:       cache,
-		metrics:     metrics,
-		config:      config,
-		genesis:     genesis,
-		options:     options,
-		headerStore: headerStore,
-		dataStore:   dataStore,
-		lastState:   &atomic.Pointer[types.State]{},
-		daHeight:    &atomic.Uint64{},
-		heightInCh:  make(chan common.DAHeightEvent, 1_000),
-		errorCh:     errorCh,
-		logger:      logger.With().Str("component", "syncer").Logger(),
+		store:             store,
+		exec:              exec,
+		daClient:          daClient,
+		cache:             cache,
+		metrics:           metrics,
+		config:            config,
+		genesis:           genesis,
+		options:           options,
+		headerStore:       headerStore,
+		dataStore:         dataStore,
+		lastState:         &atomic.Pointer[types.State]{},
+		daRetrieverHeight: &atomic.Uint64{},
+		heightInCh:        make(chan common.DAHeightEvent, 1_000),
+		errorCh:           errorCh,
+		logger:            logger.With().Str("component", "syncer").Logger(),
 	}
 }
 
@@ -117,18 +110,21 @@ func NewSyncer(
 func (s *Syncer) Start(ctx context.Context) error {
 	s.ctx, s.cancel = context.WithCancel(ctx)
 
-	// Initialize state
 	if err := s.initializeState(); err != nil {
 		return fmt.Errorf("failed to initialize syncer state: %w", err)
 	}
 
 	// Initialize handlers
-	s.daRetriever = NewDARetriever(s.da, s.cache, s.config, s.genesis, s.logger)
+	s.daRetriever = NewDARetriever(s.daClient, s.cache, s.genesis, s.logger)
 	s.p2pHandler = NewP2PHandler(s.headerStore.Store(), s.dataStore.Store(), s.cache, s.genesis, s.logger)
 	if currentHeight, err := s.store.Height(s.ctx); err != nil {
 		s.logger.Error().Err(err).Msg("failed to set initial processed height for p2p handler")
 	} else {
 		s.p2pHandler.SetProcessedHeight(currentHeight)
+	}
+
+	if !s.waitForGenesis() {
+		return nil
 	}
 
 	// Start main processing loop
@@ -175,16 +171,6 @@ func (s *Syncer) SetLastState(state types.State) {
 	s.lastState.Store(&state)
 }
 
-// GetDAHeight returns the current DA height
-func (s *Syncer) GetDAHeight() uint64 {
-	return s.daHeight.Load()
-}
-
-// SetDAHeight updates the DA height
-func (s *Syncer) SetDAHeight(height uint64) {
-	s.daHeight.Store(height)
-}
-
 // initializeState loads the current sync state
 func (s *Syncer) initializeState() error {
 	// Load state from store
@@ -216,12 +202,13 @@ func (s *Syncer) initializeState() error {
 	}
 	s.SetLastState(state)
 
-	// Set DA height
-	s.SetDAHeight(state.DAHeight)
+	// Set DA height to the maximum of the genesis start height, the state's DA height, the cached DA height, and the highest stored included DA height.
+	// This ensures we resume from the highest known DA height, even if the cache is cleared on restart. If the DA height is too high because of a user error, reset it with --evnode.clear_cache. The DA height will be back to the last highest known executed DA height for a height.
+	s.daRetrieverHeight.Store(max(s.genesis.DAStartHeight, s.cache.DaHeight(), state.DAHeight, s.getHighestStoredDAHeight()))
 
 	s.logger.Info().
 		Uint64("height", state.LastBlockHeight).
-		Uint64("da_height", s.GetDAHeight()).
+		Uint64("da_height", s.daRetrieverHeight.Load()).
 		Str("chain_id", state.ChainID).
 		Msg("initialized syncer state")
 
@@ -259,10 +246,6 @@ func (s *Syncer) startSyncWorkers() {
 func (s *Syncer) daWorkerLoop() {
 	defer s.wg.Done()
 
-	if !s.waitForGenesis() {
-		return
-	}
-
 	s.logger.Info().Msg("starting DA worker")
 	defer s.logger.Info().Msg("DA worker stopped")
 
@@ -297,13 +280,13 @@ func (s *Syncer) fetchDAUntilCaughtUp() error {
 		default:
 		}
 
-		daHeight := s.GetDAHeight()
+		daHeight := max(s.daRetrieverHeight.Load(), s.cache.DaHeight())
 
 		events, err := s.daRetriever.RetrieveFromDA(s.ctx, daHeight)
 		if err != nil {
 			switch {
 			case errors.Is(err, coreda.ErrBlobNotFound):
-				s.SetDAHeight(daHeight + 1)
+				s.daRetrieverHeight.Store(daHeight + 1)
 				continue // Fetch next height immediately
 			case errors.Is(err, coreda.ErrHeightFromFuture):
 				s.logger.Debug().Err(err).Uint64("da_height", daHeight).Msg("DA is ahead of local target; backing off future height requests")
@@ -328,17 +311,13 @@ func (s *Syncer) fetchDAUntilCaughtUp() error {
 			}
 		}
 
-		// increment DA height on successful retrieval
-		s.SetDAHeight(daHeight + 1)
+		// increment DA retrieval height on successful retrieval
+		s.daRetrieverHeight.Store(daHeight + 1)
 	}
 }
 
 func (s *Syncer) pendingWorkerLoop() {
 	defer s.wg.Done()
-
-	if !s.waitForGenesis() {
-		return
-	}
 
 	s.logger.Info().Msg("starting pending worker")
 	defer s.logger.Info().Msg("pending worker stopped")
@@ -358,10 +337,6 @@ func (s *Syncer) pendingWorkerLoop() {
 
 func (s *Syncer) p2pWorkerLoop() {
 	defer s.wg.Done()
-
-	if !s.waitForGenesis() {
-		return
-	}
 
 	logger := s.logger.With().Str("worker", "p2p").Logger()
 	logger.Info().Msg("starting P2P worker")
@@ -543,13 +518,14 @@ func (s *Syncer) trySyncNextBlock(event *common.DAHeightEvent) error {
 		return err
 	}
 
-	// Apply block
 	newState, err := s.applyBlock(header.Header, data, currentState)
 	if err != nil {
 		return fmt.Errorf("failed to apply block: %w", err)
 	}
 
 	// Update DA height if needed
+	// This height is only updated when a height is processed from DA as P2P
+	// events do not contain DA height information
 	if event.DaHeight > newState.DAHeight {
 		newState.DAHeight = event.DaHeight
 	}
@@ -617,7 +593,8 @@ func (s *Syncer) applyBlock(header types.Header, data *types.Data, currentState 
 	return newState, nil
 }
 
-// executeTxsWithRetry executes transactions with retry logic
+// executeTxsWithRetry executes transactions with retry logic.
+// NOTE: the function retries the execution client call regardless of the error. Some execution clients errors are irrecoverable, and will eventually halt the node, as expected.
 func (s *Syncer) executeTxsWithRetry(ctx context.Context, rawTxs [][]byte, header types.Header, currentState types.State) ([]byte, error) {
 	for attempt := 1; attempt <= common.MaxRetriesBeforeHalt; attempt++ {
 		newAppHash, _, err := s.exec.ExecuteTxs(ctx, rawTxs, header.Height(), header.Time(), currentState.AppHash)
@@ -672,15 +649,6 @@ func (s *Syncer) sendCriticalError(err error) {
 		default:
 			// Channel full, error already reported
 		}
-	}
-}
-
-// sendNonBlockingSignal sends a signal without blocking
-func (s *Syncer) sendNonBlockingSignal(ch chan struct{}, name string) {
-	select {
-	case ch <- struct{}{}:
-	default:
-		s.logger.Debug().Str("channel", name).Msg("channel full, signal dropped")
 	}
 }
 
@@ -753,6 +721,39 @@ func (s *Syncer) sleepOrDone(duration time.Duration) bool {
 	case <-timer.C:
 		return true
 	}
+}
+
+// getHighestStoredDAHeight retrieves the highest DA height from the store by checking
+// the DA heights stored for the last DA included height
+// this relies on the node syncing with DA and setting included heights.
+func (s *Syncer) getHighestStoredDAHeight() uint64 {
+	// Get the DA included height from store
+	daIncludedHeightBytes, err := s.store.GetMetadata(s.ctx, store.DAIncludedHeightKey)
+	if err != nil || len(daIncludedHeightBytes) != 8 {
+		return 0
+	}
+	daIncludedHeight := binary.LittleEndian.Uint64(daIncludedHeightBytes)
+	if daIncludedHeight == 0 {
+		return 0
+	}
+
+	var highestDAHeight uint64
+
+	// Get header DA height for the last included height
+	headerKey := store.GetHeightToDAHeightHeaderKey(daIncludedHeight)
+	if headerBytes, err := s.store.GetMetadata(s.ctx, headerKey); err == nil && len(headerBytes) == 8 {
+		headerDAHeight := binary.LittleEndian.Uint64(headerBytes)
+		highestDAHeight = max(highestDAHeight, headerDAHeight)
+	}
+
+	// Get data DA height for the last included height
+	dataKey := store.GetHeightToDAHeightDataKey(daIncludedHeight)
+	if dataBytes, err := s.store.GetMetadata(s.ctx, dataKey); err == nil && len(dataBytes) == 8 {
+		dataDAHeight := binary.LittleEndian.Uint64(dataBytes)
+		highestDAHeight = max(highestDAHeight, dataDAHeight)
+	}
+
+	return highestDAHeight
 }
 
 type p2pWaitState struct {

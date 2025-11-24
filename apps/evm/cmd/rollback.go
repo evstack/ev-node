@@ -38,7 +38,7 @@ func NewRollbackCmd() *cobra.Command {
 			}
 
 			// evolve db
-			rawEvolveDB, err := store.NewDefaultKVStore(nodeConfig.RootDir, nodeConfig.DBPath, "evm-single")
+			rawEvolveDB, err := store.NewDefaultKVStore(nodeConfig.RootDir, nodeConfig.DBPath, "evm")
 			if err != nil {
 				return err
 			}
@@ -109,7 +109,7 @@ func NewRollbackCmd() *cobra.Command {
 
 			fmt.Printf("Rolled back ev-node state to height %d\n", height)
 			if syncNode {
-				fmt.Println("Restart the node with the `--clear-cache` flag")
+				fmt.Println("Restart the node with the `--evnode.clear_cache` flag")
 			}
 
 			return errs

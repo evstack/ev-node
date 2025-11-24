@@ -22,9 +22,9 @@ test-integration:
 .PHONY: test-integration
 
 ## test-e2e: Running e2e tests
-test-e2e: build build-da build-evm-single
+test-e2e: build build-da build-evm
 	@echo "--> Running e2e tests"
-	@cd test/e2e && go test -mod=readonly -failfast -timeout=15m -tags='e2e evm' ./... --binary=../../build/testapp --evm-binary=../../build/evm-single
+	@cd test/e2e && go test -mod=readonly -failfast -timeout=15m -tags='e2e evm' ./... --binary=../../build/testapp --evm-binary=../../build/evm
 .PHONY: test-e2e
 
 ## test-integration-cover: generate code coverage report for integration tests.

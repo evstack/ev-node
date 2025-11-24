@@ -54,7 +54,7 @@ jobs:
       image-tag: ${{ needs.determine-image-tag.outputs.tag }}
       apps: |
         [
-          {"name": "ev-node-evm-single", "dockerfile": "apps/evm/single/Dockerfile"},
+          {"name": "ev-node-evm", "dockerfile": "apps/evm/Dockerfile"},
           {"name": "ev-node-testapp", "dockerfile": "apps/testapp/Dockerfile"}
         ]
 

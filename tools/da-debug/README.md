@@ -74,7 +74,7 @@ da-debug search 100 "0x000000000000000000000000000000000000000000000000000000746
 All commands support these global flags:
 
 <!-- markdown-link-check-disable -->
-- `--da-url string`: DA layer JSON-RPC URL (default: "http://localhost:7980")
+- `--da-url string`: DA layer JSON-RPC URL (default: "<http://localhost:7980>")
 <!-- markdown-link-check-enable -->
 - `--auth-token string`: Authentication token for DA layer
 - `--timeout duration`: Request timeout (default: 30s)

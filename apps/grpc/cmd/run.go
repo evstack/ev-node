@@ -1,18 +1,23 @@
 package cmd
 
 import (
+	"context"
 	"fmt"
 	"path/filepath"
 
+	"github.com/ipfs/go-datastore"
+	"github.com/rs/zerolog"
 	"github.com/spf13/cobra"
 
 	"github.com/evstack/ev-node/core/da"
 	"github.com/evstack/ev-node/core/execution"
+	coresequencer "github.com/evstack/ev-node/core/sequencer"
 	"github.com/evstack/ev-node/da/jsonrpc"
 	executiongrpc "github.com/evstack/ev-node/execution/grpc"
 	"github.com/evstack/ev-node/node"
 	rollcmd "github.com/evstack/ev-node/pkg/cmd"
 	"github.com/evstack/ev-node/pkg/config"
+	"github.com/evstack/ev-node/pkg/genesis"
 	rollgenesis "github.com/evstack/ev-node/pkg/genesis"
 	"github.com/evstack/ev-node/pkg/p2p"
 	"github.com/evstack/ev-node/pkg/p2p/key"
@@ -58,7 +63,7 @@ The execution client must implement the Evolve execution gRPC interface.`,
 		}
 
 		// Create datastore
-		datastore, err := store.NewDefaultKVStore(nodeConfig.RootDir, nodeConfig.DBPath, "grpc-single")
+		datastore, err := store.NewDefaultKVStore(nodeConfig.RootDir, nodeConfig.DBPath, "evgrpc")
 		if err != nil {
 			return err
 		}
@@ -73,23 +78,8 @@ The execution client must implement the Evolve execution gRPC interface.`,
 			logger.Warn().Msg("da_start_height is not set in genesis.json, ask your chain developer")
 		}
 
-		// Create metrics provider
-		singleMetrics, err := single.DefaultMetricsProvider(nodeConfig.Instrumentation.IsPrometheusEnabled())(genesis.ChainID)
-		if err != nil {
-			return err
-		}
-
-		// Create sequencer
-		sequencer, err := single.NewSequencer(
-			cmd.Context(),
-			logger,
-			datastore,
-			&daJrpc.DA,
-			[]byte(genesis.ChainID),
-			nodeConfig.Node.BlockTime.Duration,
-			singleMetrics,
-			nodeConfig.Node.Aggregator,
-		)
+		// Create sequencer based on configuration
+		sequencer, err := createSequencer(cmd.Context(), logger, datastore, &daJrpc.DA, nodeConfig, genesis)
 		if err != nil {
 			return err
 		}
@@ -117,6 +107,37 @@ func init() {
 
 	// Add gRPC-specific flags
 	addGRPCFlags(RunCmd)
+}
+
+// createSequencer creates a sequencer based on the configuration.
+func createSequencer(
+	ctx context.Context,
+	logger zerolog.Logger,
+	datastore datastore.Batching,
+	da da.DA,
+	nodeConfig config.Config,
+	genesis genesis.Genesis,
+) (coresequencer.Sequencer, error) {
+	singleMetrics, err := single.NopMetrics()
+	if err != nil {
+		return nil, fmt.Errorf("failed to create single sequencer metrics: %w", err)
+	}
+
+	sequencer, err := single.NewSequencer(
+		ctx,
+		logger,
+		datastore,
+		da,
+		[]byte(genesis.ChainID),
+		nodeConfig.Node.BlockTime.Duration,
+		singleMetrics,
+		nodeConfig.Node.Aggregator,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create single sequencer: %w", err)
+	}
+
+	return sequencer, nil
 }
 
 // createGRPCExecutionClient creates a new gRPC execution client from command flags

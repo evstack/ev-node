@@ -10,7 +10,7 @@ require (
 	github.com/celestiaorg/go-header v0.7.3
 	github.com/celestiaorg/go-square/v3 v3.0.2
 	github.com/celestiaorg/utils v0.1.0
-	github.com/evstack/ev-node/core v1.0.0-beta.4
+	github.com/evstack/ev-node/core v1.0.0-beta.5
 	github.com/go-kit/kit v0.13.0
 	github.com/goccy/go-yaml v1.18.0
 	github.com/ipfs/go-datastore v0.9.0
@@ -30,6 +30,7 @@ require (
 	golang.org/x/net v0.47.0
 	golang.org/x/sync v0.18.0
 	google.golang.org/protobuf v1.36.10
+	gotest.tools/v3 v3.5.2
 )
 
 require (
@@ -53,6 +54,7 @@ require (
 	github.com/gogo/protobuf v1.3.2 // indirect
 	github.com/golang/groupcache v0.0.0-20241129210726-2c02b8208cf8 // indirect
 	github.com/google/flatbuffers v24.12.23+incompatible // indirect
+	github.com/google/go-cmp v0.7.0 // indirect
 	github.com/google/gopacket v1.1.19 // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/gopherjs/gopherjs v0.0.0-20190812055157-5d271430af9f // indirect
@@ -161,5 +163,3 @@ require (
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 	lukechampine.com/blake3 v1.4.1 // indirect
 )
-
-replace github.com/evstack/ev-node/core => ./core
