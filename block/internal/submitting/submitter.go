@@ -334,38 +334,35 @@ func (s *Submitter) sendCriticalError(err error) {
 // For blocks with empty transactions, both header and data use the same DA height since
 // empty transaction data is not actually published to the DA layer.
 func (s *Submitter) setSequencerHeightToDAHeight(ctx context.Context, height uint64, header *types.SignedHeader, data *types.Data, genesisInclusion bool) error {
-
 	headerHash, dataHash := header.Hash(), data.DACommitment()
 
-	headerHeightBytes := make([]byte, 8)
+	headerDaHeightBytes := make([]byte, 8)
 	daHeightForHeader, ok := s.cache.GetHeaderDAIncluded(headerHash.String())
 	if !ok {
 		return fmt.Errorf("header hash %s not found in cache", headerHash)
 	}
-	binary.LittleEndian.PutUint64(headerHeightBytes, daHeightForHeader)
-	genesisDAIncludedHeight := daHeightForHeader
+	binary.LittleEndian.PutUint64(headerDaHeightBytes, daHeightForHeader)
 
-	if err := s.store.SetMetadata(ctx, fmt.Sprintf("%s/%d/h", store.HeightToDAHeightKey, height), headerHeightBytes); err != nil {
+	if err := s.store.SetMetadata(ctx, store.GetHeightToDAHeightHeaderKey(height), headerDaHeightBytes); err != nil {
 		return err
 	}
 
-	dataHeightBytes := make([]byte, 8)
+	genesisDAIncludedHeight := daHeightForHeader
+	dataDaHeightBytes := make([]byte, 8)
 	// For empty transactions, use the same DA height as the header
 	if bytes.Equal(dataHash, common.DataHashForEmptyTxs) {
-		binary.LittleEndian.PutUint64(dataHeightBytes, daHeightForHeader)
+		binary.LittleEndian.PutUint64(dataDaHeightBytes, daHeightForHeader)
 	} else {
 		daHeightForData, ok := s.cache.GetDataDAIncluded(dataHash.String())
 		if !ok {
 			return fmt.Errorf("data hash %s not found in cache", dataHash.String())
 		}
-		binary.LittleEndian.PutUint64(dataHeightBytes, daHeightForData)
+		binary.LittleEndian.PutUint64(dataDaHeightBytes, daHeightForData)
 
-		// if data posted before header, use data da included height
-		if daHeightForData < genesisDAIncludedHeight {
-			genesisDAIncludedHeight = daHeightForData
-		}
+		// if data posted before header, use data da included height for genesis da height
+		genesisDAIncludedHeight = min(daHeightForData, genesisDAIncludedHeight)
 	}
-	if err := s.store.SetMetadata(ctx, fmt.Sprintf("%s/%d/d", store.HeightToDAHeightKey, height), dataHeightBytes); err != nil {
+	if err := s.store.SetMetadata(ctx, store.GetHeightToDAHeightDataKey(height), dataDaHeightBytes); err != nil {
 		return err
 	}
 
