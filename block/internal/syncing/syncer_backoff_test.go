@@ -15,7 +15,7 @@ import (
 
 	"github.com/evstack/ev-node/block/internal/cache"
 	"github.com/evstack/ev-node/block/internal/common"
-	coreda "github.com/evstack/ev-node/core/da"
+	da "github.com/evstack/ev-node/da"
 	"github.com/evstack/ev-node/core/execution"
 	"github.com/evstack/ev-node/pkg/config"
 	"github.com/evstack/ev-node/pkg/genesis"
@@ -41,13 +41,13 @@ func TestSyncer_BackoffOnDAError(t *testing.T) {
 		},
 		"height_from_future_triggers_backoff": {
 			daBlockTime:    500 * time.Millisecond,
-			error:          coreda.ErrHeightFromFuture,
+			error:          da.ErrHeightFromFuture,
 			expectsBackoff: true,
 			description:    "Height from future should trigger backoff",
 		},
 		"blob_not_found_no_backoff": {
 			daBlockTime:    1 * time.Second,
-			error:          coreda.ErrBlobNotFound,
+			error:          da.ErrBlobNotFound,
 			expectsBackoff: false,
 			description:    "ErrBlobNotFound should not trigger backoff",
 		},
@@ -111,7 +111,7 @@ func TestSyncer_BackoffOnDAError(t *testing.T) {
 						// Cancel to end test
 						cancel()
 					}).
-					Return(nil, coreda.ErrBlobNotFound).Once()
+					Return(nil, da.ErrBlobNotFound).Once()
 			} else {
 				// For ErrBlobNotFound, DA height should increment
 				daRetriever.On("RetrieveFromDA", mock.Anything, uint64(101)).
@@ -120,7 +120,7 @@ func TestSyncer_BackoffOnDAError(t *testing.T) {
 						callCount++
 						cancel()
 					}).
-					Return(nil, coreda.ErrBlobNotFound).Once()
+					Return(nil, da.ErrBlobNotFound).Once()
 			}
 
 			// Run sync loop
@@ -223,7 +223,7 @@ func TestSyncer_BackoffResetOnSuccess(t *testing.T) {
 			callTimes = append(callTimes, time.Now())
 			cancel()
 		}).
-		Return(nil, coreda.ErrBlobNotFound).Once()
+		Return(nil, da.ErrBlobNotFound).Once()
 
 	// Start process loop to handle events
 	go syncer.processLoop()
@@ -292,7 +292,7 @@ func TestSyncer_BackoffBehaviorIntegration(t *testing.T) {
 		Run(func(args mock.Arguments) {
 			callTimes = append(callTimes, time.Now())
 		}).
-		Return(nil, coreda.ErrBlobNotFound).Once()
+		Return(nil, da.ErrBlobNotFound).Once()
 
 	// Third call - should continue without delay (DA height incremented)
 	daRetriever.On("RetrieveFromDA", mock.Anything, uint64(101)).
@@ -300,7 +300,7 @@ func TestSyncer_BackoffBehaviorIntegration(t *testing.T) {
 			callTimes = append(callTimes, time.Now())
 			cancel()
 		}).
-		Return(nil, coreda.ErrBlobNotFound).Once()
+		Return(nil, da.ErrBlobNotFound).Once()
 
 	go syncer.processLoop()
 	syncer.startSyncWorkers()

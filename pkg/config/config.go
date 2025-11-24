@@ -11,7 +11,7 @@ import (
 	"time"
 
 	"github.com/celestiaorg/go-square/v3/share"
-	"github.com/evstack/ev-node/core/da"
+	"github.com/evstack/ev-node/da"
 	"github.com/mitchellh/mapstructure"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"

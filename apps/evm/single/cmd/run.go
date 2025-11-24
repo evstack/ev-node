@@ -7,7 +7,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/evstack/ev-node/core/da"
+	"github.com/evstack/ev-node/da"
 	celestiada "github.com/evstack/ev-node/da/celestia"
 	"github.com/evstack/ev-node/node"
 	"github.com/evstack/ev-node/sequencers/single"

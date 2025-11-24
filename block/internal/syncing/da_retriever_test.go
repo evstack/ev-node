@@ -18,7 +18,7 @@ import (
 
 	"github.com/evstack/ev-node/block/internal/cache"
 	"github.com/evstack/ev-node/block/internal/common"
-	coreda "github.com/evstack/ev-node/core/da"
+	da "github.com/evstack/ev-node/da"
 	"github.com/evstack/ev-node/pkg/config"
 	"github.com/evstack/ev-node/pkg/genesis"
 	signerpkg "github.com/evstack/ev-node/pkg/signer"
@@ -75,11 +75,11 @@ func TestDARetriever_RetrieveFromDA_NotFound(t *testing.T) {
 
 	// GetIDs returns ErrBlobNotFound -> helper maps to StatusNotFound
 	mockDA.EXPECT().GetIDs(mock.Anything, mock.Anything, mock.Anything).
-		Return(nil, fmt.Errorf("%s: whatever", coreda.ErrBlobNotFound.Error())).Maybe()
+		Return(nil, fmt.Errorf("%s: whatever", da.ErrBlobNotFound.Error())).Maybe()
 
 	r := NewDARetriever(mockDA, cm, config.DefaultConfig(), genesis.Genesis{}, zerolog.Nop())
 	events, err := r.RetrieveFromDA(context.Background(), 42)
-	assert.True(t, errors.Is(err, coreda.ErrBlobNotFound))
+	assert.True(t, errors.Is(err, da.ErrBlobNotFound))
 	assert.Len(t, events, 0)
 }
 
@@ -92,12 +92,12 @@ func TestDARetriever_RetrieveFromDA_HeightFromFuture(t *testing.T) {
 	mockDA := testmocks.NewMockDA(t)
 	// GetIDs returns ErrHeightFromFuture -> helper maps to StatusHeightFromFuture, fetchBlobs returns error
 	mockDA.EXPECT().GetIDs(mock.Anything, mock.Anything, mock.Anything).
-		Return(nil, fmt.Errorf("%s: later", coreda.ErrHeightFromFuture.Error())).Maybe()
+		Return(nil, fmt.Errorf("%s: later", da.ErrHeightFromFuture.Error())).Maybe()
 
 	r := NewDARetriever(mockDA, cm, config.DefaultConfig(), genesis.Genesis{}, zerolog.Nop())
 	events, derr := r.RetrieveFromDA(context.Background(), 1000)
 	assert.Error(t, derr)
-	assert.True(t, errors.Is(derr, coreda.ErrHeightFromFuture))
+	assert.True(t, errors.Is(derr, da.ErrHeightFromFuture))
 	assert.Nil(t, events)
 }
 
@@ -257,15 +257,15 @@ func TestDARetriever_tryDecodeData_InvalidSignatureOrProposer(t *testing.T) {
 func TestDARetriever_validateBlobResponse(t *testing.T) {
 	r := &DARetriever{logger: zerolog.Nop()}
 	// StatusSuccess -> nil
-	err := r.validateBlobResponse(coreda.ResultRetrieve{BaseResult: coreda.BaseResult{Code: coreda.StatusSuccess}}, 1)
+	err := r.validateBlobResponse(da.ResultRetrieve{BaseResult: da.BaseResult{Code: da.StatusSuccess}}, 1)
 	assert.NoError(t, err)
 	// StatusError -> error
-	err = r.validateBlobResponse(coreda.ResultRetrieve{BaseResult: coreda.BaseResult{Code: coreda.StatusError, Message: "fail"}}, 1)
+	err = r.validateBlobResponse(da.ResultRetrieve{BaseResult: da.BaseResult{Code: da.StatusError, Message: "fail"}}, 1)
 	assert.Error(t, err)
 	// StatusHeightFromFuture -> specific error
-	err = r.validateBlobResponse(coreda.ResultRetrieve{BaseResult: coreda.BaseResult{Code: coreda.StatusHeightFromFuture}}, 1)
+	err = r.validateBlobResponse(da.ResultRetrieve{BaseResult: da.BaseResult{Code: da.StatusHeightFromFuture}}, 1)
 	assert.Error(t, err)
-	assert.True(t, errors.Is(err, coreda.ErrHeightFromFuture))
+	assert.True(t, errors.Is(err, da.ErrHeightFromFuture))
 }
 
 func TestDARetriever_RetrieveFromDA_TwoNamespaces_Success(t *testing.T) {
@@ -285,18 +285,18 @@ func TestDARetriever_RetrieveFromDA_TwoNamespaces_Success(t *testing.T) {
 	cfg.DA.Namespace = "nsHdr"
 	cfg.DA.DataNamespace = "nsData"
 
-	namespaceBz := coreda.NamespaceFromString(cfg.DA.GetNamespace()).Bytes()
-	namespaceDataBz := coreda.NamespaceFromString(cfg.DA.GetDataNamespace()).Bytes()
+	namespaceBz := da.NamespaceFromString(cfg.DA.GetNamespace()).Bytes()
+	namespaceDataBz := da.NamespaceFromString(cfg.DA.GetDataNamespace()).Bytes()
 
 	mockDA := testmocks.NewMockDA(t)
 	// Expect GetIDs for both namespaces
 	mockDA.EXPECT().GetIDs(mock.Anything, uint64(1234), mock.MatchedBy(func(ns []byte) bool { return bytes.Equal(ns, namespaceBz) })).
-		Return(&coreda.GetIDsResult{IDs: [][]byte{[]byte("h1")}, Timestamp: time.Now()}, nil).Once()
+		Return(&da.GetIDsResult{IDs: [][]byte{[]byte("h1")}, Timestamp: time.Now()}, nil).Once()
 	mockDA.EXPECT().Get(mock.Anything, mock.Anything, mock.MatchedBy(func(ns []byte) bool { return bytes.Equal(ns, namespaceBz) })).
 		Return([][]byte{hdrBin}, nil).Once()
 
 	mockDA.EXPECT().GetIDs(mock.Anything, uint64(1234), mock.MatchedBy(func(ns []byte) bool { return bytes.Equal(ns, namespaceDataBz) })).
-		Return(&coreda.GetIDsResult{IDs: [][]byte{[]byte("d1")}, Timestamp: time.Now()}, nil).Once()
+		Return(&da.GetIDsResult{IDs: [][]byte{[]byte("d1")}, Timestamp: time.Now()}, nil).Once()
 	mockDA.EXPECT().Get(mock.Anything, mock.Anything, mock.MatchedBy(func(ns []byte) bool { return bytes.Equal(ns, namespaceDataBz) })).
 		Return([][]byte{dataBin}, nil).Once()
 

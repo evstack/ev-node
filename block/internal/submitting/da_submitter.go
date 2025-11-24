@@ -12,7 +12,7 @@ import (
 
 	"github.com/evstack/ev-node/block/internal/cache"
 	"github.com/evstack/ev-node/block/internal/common"
-	coreda "github.com/evstack/ev-node/core/da"
+	dapkg "github.com/evstack/ev-node/da"
 	"github.com/evstack/ev-node/pkg/config"
 	pkgda "github.com/evstack/ev-node/pkg/da"
 	"github.com/evstack/ev-node/pkg/genesis"
@@ -94,7 +94,7 @@ func clamp(v, min, max time.Duration) time.Duration {
 
 // DASubmitter handles DA submission operations
 type DASubmitter struct {
-	da      coreda.DA
+	da      dapkg.DA
 	config  config.Config
 	genesis genesis.Genesis
 	options common.BlockOptions
@@ -111,7 +111,7 @@ type DASubmitter struct {
 
 // NewDASubmitter creates a new DA submitter
 func NewDASubmitter(
-	da coreda.DA,
+	da dapkg.DA,
 	config config.Config,
 	genesis genesis.Genesis,
 	options common.BlockOptions,
@@ -148,8 +148,8 @@ func NewDASubmitter(
 		options:         options,
 		metrics:         metrics,
 		logger:          daSubmitterLogger,
-		namespaceBz:     coreda.NamespaceFromString(config.DA.GetNamespace()).Bytes(),
-		namespaceDataBz: coreda.NamespaceFromString(config.DA.GetDataNamespace()).Bytes(),
+		namespaceBz:     dapkg.NamespaceFromString(config.DA.GetNamespace()).Bytes(),
+		namespaceDataBz: dapkg.NamespaceFromString(config.DA.GetDataNamespace()).Bytes(),
 		addressSelector: addressSelector,
 	}
 }
@@ -189,7 +189,7 @@ func (s *DASubmitter) SubmitHeaders(ctx context.Context, cache cache.Manager) er
 			}
 			return proto.Marshal(headerPb)
 		},
-		func(submitted []*types.SignedHeader, res *coreda.ResultSubmit) {
+		func(submitted []*types.SignedHeader, res *dapkg.ResultSubmit) {
 			for _, header := range submitted {
 				cache.SetHeaderDAIncluded(header.Hash().String(), res.Height, header.Height())
 			}
@@ -232,7 +232,7 @@ func (s *DASubmitter) SubmitData(ctx context.Context, cache cache.Manager, signe
 		func(signedData *types.SignedData) ([]byte, error) {
 			return signedData.MarshalBinary()
 		},
-		func(submitted []*types.SignedData, res *coreda.ResultSubmit) {
+		func(submitted []*types.SignedData, res *dapkg.ResultSubmit) {
 			for _, sd := range submitted {
 				cache.SetDataDAIncluded(sd.Data.DACommitment().String(), res.Height, sd.Height())
 			}
@@ -348,7 +348,7 @@ func submitToDA[T any](
 	ctx context.Context,
 	items []T,
 	marshalFn func(T) ([]byte, error),
-	postSubmit func([]T, *coreda.ResultSubmit),
+	postSubmit func([]T, *dapkg.ResultSubmit),
 	itemType string,
 	namespace []byte,
 	options []byte,
@@ -420,7 +420,7 @@ func submitToDA[T any](
 		}
 
 		switch res.Code {
-		case coreda.StatusSuccess:
+		case dapkg.StatusSuccess:
 			submitted := items[:res.SubmittedCount]
 			postSubmit(submitted, &res)
 			s.logger.Info().Str("itemType", itemType).Uint64("count", res.SubmittedCount).Msg("successfully submitted items to DA layer")
@@ -441,7 +441,7 @@ func submitToDA[T any](
 				s.metrics.DASubmitterPendingBlobs.Set(float64(getTotalPendingFn()))
 			}
 
-		case coreda.StatusTooBig:
+		case dapkg.StatusTooBig:
 			// Record failure metric
 			s.recordFailure(common.DASubmitterFailureReasonTooBig)
 			// Iteratively halve until it fits or single-item too big
@@ -465,19 +465,19 @@ func submitToDA[T any](
 				s.metrics.DASubmitterPendingBlobs.Set(float64(getTotalPendingFn()))
 			}
 
-		case coreda.StatusNotIncludedInBlock:
+		case dapkg.StatusNotIncludedInBlock:
 			// Record failure metric
 			s.recordFailure(common.DASubmitterFailureReasonNotIncludedInBlock)
 			s.logger.Info().Dur("backoff", pol.MaxBackoff).Msg("retrying due to mempool state")
 			rs.Next(reasonMempool, pol)
 
-		case coreda.StatusAlreadyInMempool:
+		case dapkg.StatusAlreadyInMempool:
 			// Record failure metric
 			s.recordFailure(common.DASubmitterFailureReasonAlreadyInMempool)
 			s.logger.Info().Dur("backoff", pol.MaxBackoff).Msg("retrying due to mempool state")
 			rs.Next(reasonMempool, pol)
 
-		case coreda.StatusContextCanceled:
+		case dapkg.StatusContextCanceled:
 			// Record failure metric
 			s.recordFailure(common.DASubmitterFailureReasonContextCanceled)
 			s.logger.Info().Msg("DA layer submission canceled due to context cancellation")

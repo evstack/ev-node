@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/evstack/ev-node/core/da"
+	"github.com/evstack/ev-node/da"
 	"github.com/rs/zerolog"
 )
 

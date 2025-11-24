@@ -13,7 +13,7 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
 
-	coreda "github.com/evstack/ev-node/core/da"
+	da "github.com/evstack/ev-node/da"
 	coreexecutor "github.com/evstack/ev-node/core/execution"
 	coresequencer "github.com/evstack/ev-node/core/sequencer"
 	"github.com/evstack/ev-node/node"
@@ -26,10 +26,10 @@ import (
 
 const MockDANamespace = "test"
 
-func createTestComponents(_ context.Context, t *testing.T) (coreexecutor.Executor, coresequencer.Sequencer, coreda.DA, signer.Signer, *p2p.Client, datastore.Batching, func()) {
+func createTestComponents(_ context.Context, t *testing.T) (coreexecutor.Executor, coresequencer.Sequencer, da.DA, signer.Signer, *p2p.Client, datastore.Batching, func()) {
 	executor := coreexecutor.NewDummyExecutor()
 	sequencer := coresequencer.NewDummySequencer()
-	dummyDA := coreda.NewDummyDA(100_000, 10*time.Second)
+	dummyDA := da.NewDummyDA(100_000, 10*time.Second)
 	dummyDA.StartHeightTicker()
 	stopDAHeightTicker := func() {
 		dummyDA.StopHeightTicker()
@@ -687,7 +687,7 @@ func newRunNodeCmd(
 	ctx context.Context,
 	executor coreexecutor.Executor,
 	sequencer coresequencer.Sequencer,
-	dac coreda.DA,
+	dac da.DA,
 	remoteSigner signer.Signer,
 	p2pClient *p2p.Client,
 	datastore datastore.Batching,

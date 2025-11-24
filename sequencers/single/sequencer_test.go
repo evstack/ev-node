@@ -13,14 +13,14 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 
-	coreda "github.com/evstack/ev-node/core/da"
+	da "github.com/evstack/ev-node/da"
 	coresequencer "github.com/evstack/ev-node/core/sequencer"
 	damocks "github.com/evstack/ev-node/test/mocks"
 )
 
 func TestNewSequencer(t *testing.T) {
 	// Create a new sequencer with mock DA client
-	dummyDA := coreda.NewDummyDA(100_000_000, 10*time.Second)
+	dummyDA := da.NewDummyDA(100_000_000, 10*time.Second)
 	metrics, _ := NopMetrics()
 	db := ds.NewMapDatastore()
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
@@ -53,7 +53,7 @@ func TestNewSequencer(t *testing.T) {
 func TestSequencer_SubmitBatchTxs(t *testing.T) {
 	// Initialize a new sequencer
 	metrics, _ := NopMetrics()
-	dummyDA := coreda.NewDummyDA(100_000_000, 10*time.Second)
+	dummyDA := da.NewDummyDA(100_000_000, 10*time.Second)
 	db := ds.NewMapDatastore()
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
@@ -106,7 +106,7 @@ func TestSequencer_SubmitBatchTxs(t *testing.T) {
 func TestSequencer_SubmitBatchTxs_EmptyBatch(t *testing.T) {
 	// Initialize a new sequencer
 	metrics, _ := NopMetrics()
-	dummyDA := coreda.NewDummyDA(100_000_000, 10*time.Second)
+	dummyDA := da.NewDummyDA(100_000_000, 10*time.Second)
 	db := ds.NewMapDatastore()
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
@@ -447,7 +447,7 @@ func TestSequencer_RecordMetrics(t *testing.T) {
 		// Test values
 		gasPrice := 1.5
 		blobSize := uint64(1024)
-		statusCode := coreda.StatusSuccess
+		statusCode := da.StatusSuccess
 		numPendingBlocks := uint64(5)
 		includedBlockHeight := uint64(100)
 
@@ -470,7 +470,7 @@ func TestSequencer_RecordMetrics(t *testing.T) {
 		// Test values
 		gasPrice := 2.0
 		blobSize := uint64(2048)
-		statusCode := coreda.StatusNotIncludedInBlock
+		statusCode := da.StatusNotIncludedInBlock
 		numPendingBlocks := uint64(3)
 		includedBlockHeight := uint64(200)
 
@@ -495,13 +495,13 @@ func TestSequencer_RecordMetrics(t *testing.T) {
 		// Test different status codes
 		testCases := []struct {
 			name       string
-			statusCode coreda.StatusCode
+			statusCode da.StatusCode
 		}{
-			{"Success", coreda.StatusSuccess},
-			{"NotIncluded", coreda.StatusNotIncludedInBlock},
-			{"AlreadyInMempool", coreda.StatusAlreadyInMempool},
-			{"TooBig", coreda.StatusTooBig},
-			{"ContextCanceled", coreda.StatusContextCanceled},
+			{"Success", da.StatusSuccess},
+			{"NotIncluded", da.StatusNotIncludedInBlock},
+			{"AlreadyInMempool", da.StatusAlreadyInMempool},
+			{"TooBig", da.StatusTooBig},
+			{"ContextCanceled", da.StatusContextCanceled},
 		}
 
 		for _, tc := range testCases {
@@ -634,7 +634,7 @@ func TestSequencer_DAFailureAndQueueThrottling_Integration(t *testing.T) {
 	defer db.Close()
 
 	// Create a dummy DA that we can make fail
-	dummyDA := coreda.NewDummyDA(100_000, 100*time.Millisecond)
+	dummyDA := da.NewDummyDA(100_000, 100*time.Millisecond)
 	dummyDA.StartHeightTicker()
 	defer dummyDA.StopHeightTicker()
 

@@ -15,7 +15,7 @@ import (
 
 	"github.com/evstack/ev-node/block/internal/cache"
 	"github.com/evstack/ev-node/block/internal/common"
-	coreda "github.com/evstack/ev-node/core/da"
+	da "github.com/evstack/ev-node/da"
 	"github.com/evstack/ev-node/pkg/config"
 	"github.com/evstack/ev-node/pkg/genesis"
 	"github.com/evstack/ev-node/pkg/rpc/server"
@@ -25,7 +25,7 @@ import (
 	"github.com/evstack/ev-node/types"
 )
 
-func setupDASubmitterTest(t *testing.T) (*DASubmitter, store.Store, cache.Manager, coreda.DA, genesis.Genesis) {
+func setupDASubmitterTest(t *testing.T) (*DASubmitter, store.Store, cache.Manager, da.DA, genesis.Genesis) {
 	t.Helper()
 
 	// Create store and cache
@@ -35,7 +35,7 @@ func setupDASubmitterTest(t *testing.T) (*DASubmitter, store.Store, cache.Manage
 	require.NoError(t, err)
 
 	// Create dummy DA
-	dummyDA := coreda.NewDummyDA(10_000_000, 10*time.Millisecond)
+	dummyDA := da.NewDummyDA(10_000_000, 10*time.Millisecond)
 
 	// Create config
 	cfg := config.DefaultConfig()
@@ -93,7 +93,7 @@ func TestNewDASubmitterSetsVisualizerWhenEnabled(t *testing.T) {
 	cfg.RPC.EnableDAVisualization = true
 	cfg.Node.Aggregator = true
 
-	dummyDA := coreda.NewDummyDA(10_000_000, 10*time.Millisecond)
+	dummyDA := da.NewDummyDA(10_000_000, 10*time.Millisecond)
 
 	NewDASubmitter(
 		dummyDA,

@@ -14,7 +14,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 
-	coreda "github.com/evstack/ev-node/core/da"
+	da "github.com/evstack/ev-node/da"
 	coreexecutor "github.com/evstack/ev-node/core/execution"
 	evconfig "github.com/evstack/ev-node/pkg/config"
 )
@@ -321,7 +321,7 @@ func TestBatchQueueThrottlingWithDAFailure(t *testing.T) {
 	require.True(ok, "Expected DummyExecutor implementation")
 
 	// Cast dummyDA to our enhanced version so we can make it fail
-	dummyDAImpl, ok := dummyDA.(*coreda.DummyDA)
+	dummyDAImpl, ok := dummyDA.(*da.DummyDA)
 	require.True(ok, "Expected DummyDA implementation")
 
 	// Create node with components

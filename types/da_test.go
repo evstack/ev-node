@@ -10,7 +10,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 
-	coreda "github.com/evstack/ev-node/core/da"
+	da "github.com/evstack/ev-node/da"
 	"github.com/evstack/ev-node/test/mocks"
 	"github.com/evstack/ev-node/types"
 )
@@ -25,7 +25,7 @@ func TestSubmitWithHelpers(t *testing.T) {
 		options        []byte
 		submitErr      error
 		submitIDs      [][]byte
-		expectedCode   coreda.StatusCode
+		expectedCode   da.StatusCode
 		expectedErrMsg string
 		expectedIDs    [][]byte
 		expectedCount  uint64
@@ -36,7 +36,7 @@ func TestSubmitWithHelpers(t *testing.T) {
 			gasPrice:      1.0,
 			options:       []byte("opts"),
 			submitIDs:     [][]byte{[]byte("id1"), []byte("id2")},
-			expectedCode:  coreda.StatusSuccess,
+			expectedCode:  da.StatusSuccess,
 			expectedIDs:   [][]byte{[]byte("id1"), []byte("id2")},
 			expectedCount: 2,
 		},
@@ -46,7 +46,7 @@ func TestSubmitWithHelpers(t *testing.T) {
 			gasPrice:       1.0,
 			options:        []byte("opts"),
 			submitErr:      context.Canceled,
-			expectedCode:   coreda.StatusContextCanceled,
+			expectedCode:   da.StatusContextCanceled,
 			expectedErrMsg: "submission canceled",
 		},
 		{
@@ -54,45 +54,45 @@ func TestSubmitWithHelpers(t *testing.T) {
 			data:           [][]byte{[]byte("blob1")},
 			gasPrice:       1.0,
 			options:        []byte("opts"),
-			submitErr:      coreda.ErrTxTimedOut,
-			expectedCode:   coreda.StatusNotIncludedInBlock,
-			expectedErrMsg: "failed to submit blobs: " + coreda.ErrTxTimedOut.Error(),
+			submitErr:      da.ErrTxTimedOut,
+			expectedCode:   da.StatusNotIncludedInBlock,
+			expectedErrMsg: "failed to submit blobs: " + da.ErrTxTimedOut.Error(),
 		},
 		{
 			name:           "tx already in mempool error",
 			data:           [][]byte{[]byte("blob1")},
 			gasPrice:       1.0,
 			options:        []byte("opts"),
-			submitErr:      coreda.ErrTxAlreadyInMempool,
-			expectedCode:   coreda.StatusAlreadyInMempool,
-			expectedErrMsg: "failed to submit blobs: " + coreda.ErrTxAlreadyInMempool.Error(),
+			submitErr:      da.ErrTxAlreadyInMempool,
+			expectedCode:   da.StatusAlreadyInMempool,
+			expectedErrMsg: "failed to submit blobs: " + da.ErrTxAlreadyInMempool.Error(),
 		},
 		{
 			name:           "incorrect account sequence error",
 			data:           [][]byte{[]byte("blob1")},
 			gasPrice:       1.0,
 			options:        []byte("opts"),
-			submitErr:      coreda.ErrTxIncorrectAccountSequence,
-			expectedCode:   coreda.StatusIncorrectAccountSequence,
-			expectedErrMsg: "failed to submit blobs: " + coreda.ErrTxIncorrectAccountSequence.Error(),
+			submitErr:      da.ErrTxIncorrectAccountSequence,
+			expectedCode:   da.StatusIncorrectAccountSequence,
+			expectedErrMsg: "failed to submit blobs: " + da.ErrTxIncorrectAccountSequence.Error(),
 		},
 		{
 			name:           "blob size over limit error",
 			data:           [][]byte{[]byte("blob1")},
 			gasPrice:       1.0,
 			options:        []byte("opts"),
-			submitErr:      coreda.ErrBlobSizeOverLimit,
-			expectedCode:   coreda.StatusTooBig,
-			expectedErrMsg: "failed to submit blobs: " + coreda.ErrBlobSizeOverLimit.Error(),
+			submitErr:      da.ErrBlobSizeOverLimit,
+			expectedCode:   da.StatusTooBig,
+			expectedErrMsg: "failed to submit blobs: " + da.ErrBlobSizeOverLimit.Error(),
 		},
 		{
 			name:           "context deadline error",
 			data:           [][]byte{[]byte("blob1")},
 			gasPrice:       1.0,
 			options:        []byte("opts"),
-			submitErr:      coreda.ErrContextDeadline,
-			expectedCode:   coreda.StatusContextDeadline,
-			expectedErrMsg: "failed to submit blobs: " + coreda.ErrContextDeadline.Error(),
+			submitErr:      da.ErrContextDeadline,
+			expectedCode:   da.StatusContextDeadline,
+			expectedErrMsg: "failed to submit blobs: " + da.ErrContextDeadline.Error(),
 		},
 		{
 			name:           "generic submission error",
@@ -100,7 +100,7 @@ func TestSubmitWithHelpers(t *testing.T) {
 			gasPrice:       1.0,
 			options:        []byte("opts"),
 			submitErr:      errors.New("some generic error"),
-			expectedCode:   coreda.StatusError,
+			expectedCode:   da.StatusError,
 			expectedErrMsg: "failed to submit blobs: some generic error",
 		},
 		{
@@ -109,7 +109,7 @@ func TestSubmitWithHelpers(t *testing.T) {
 			gasPrice:       1.0,
 			options:        []byte("opts"),
 			submitIDs:      [][]byte{},
-			expectedCode:   coreda.StatusError,
+			expectedCode:   da.StatusError,
 			expectedErrMsg: "failed to submit blobs: no IDs returned despite non-empty input",
 		},
 	}
@@ -117,7 +117,7 @@ func TestSubmitWithHelpers(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			mockDA := mocks.NewMockDA(t)
-			encodedNamespace := coreda.NamespaceFromString("test-namespace")
+			encodedNamespace := da.NamespaceFromString("test-namespace")
 
 			mockDA.On("SubmitWithOptions", mock.Anything, tc.data, tc.gasPrice, encodedNamespace.Bytes(), tc.options).Return(tc.submitIDs, tc.submitErr)
 
@@ -147,10 +147,10 @@ func TestRetrieveWithHelpers(t *testing.T) {
 
 	testCases := []struct {
 		name           string
-		getIDsResult   *coreda.GetIDsResult
+		getIDsResult   *da.GetIDsResult
 		getIDsErr      error
 		getBlobsErr    error
-		expectedCode   coreda.StatusCode
+		expectedCode   da.StatusCode
 		expectedErrMsg string
 		expectedIDs    [][]byte
 		expectedData   [][]byte
@@ -158,61 +158,61 @@ func TestRetrieveWithHelpers(t *testing.T) {
 	}{
 		{
 			name: "successful retrieval",
-			getIDsResult: &coreda.GetIDsResult{
+			getIDsResult: &da.GetIDsResult{
 				IDs:       mockIDs,
 				Timestamp: mockTimestamp,
 			},
-			expectedCode:   coreda.StatusSuccess,
+			expectedCode:   da.StatusSuccess,
 			expectedIDs:    mockIDs,
 			expectedData:   mockBlobs,
 			expectedHeight: dataLayerHeight,
 		},
 		{
 			name:           "blob not found error during GetIDs",
-			getIDsErr:      coreda.ErrBlobNotFound,
-			expectedCode:   coreda.StatusNotFound,
-			expectedErrMsg: coreda.ErrBlobNotFound.Error(),
+			getIDsErr:      da.ErrBlobNotFound,
+			expectedCode:   da.StatusNotFound,
+			expectedErrMsg: da.ErrBlobNotFound.Error(),
 			expectedHeight: dataLayerHeight,
 		},
 		{
 			name:           "height from future error during GetIDs",
-			getIDsErr:      coreda.ErrHeightFromFuture,
-			expectedCode:   coreda.StatusHeightFromFuture,
-			expectedErrMsg: coreda.ErrHeightFromFuture.Error(),
+			getIDsErr:      da.ErrHeightFromFuture,
+			expectedCode:   da.StatusHeightFromFuture,
+			expectedErrMsg: da.ErrHeightFromFuture.Error(),
 			expectedHeight: dataLayerHeight,
 		},
 		{
 			name:           "generic error during GetIDs",
 			getIDsErr:      errors.New("failed to connect to DA"),
-			expectedCode:   coreda.StatusError,
+			expectedCode:   da.StatusError,
 			expectedErrMsg: "failed to get IDs: failed to connect to DA",
 			expectedHeight: dataLayerHeight,
 		},
 		{
 			name:           "GetIDs returns nil result",
 			getIDsResult:   nil,
-			expectedCode:   coreda.StatusNotFound,
-			expectedErrMsg: coreda.ErrBlobNotFound.Error(),
+			expectedCode:   da.StatusNotFound,
+			expectedErrMsg: da.ErrBlobNotFound.Error(),
 			expectedHeight: dataLayerHeight,
 		},
 		{
 			name: "GetIDs returns empty IDs",
-			getIDsResult: &coreda.GetIDsResult{
+			getIDsResult: &da.GetIDsResult{
 				IDs:       [][]byte{},
 				Timestamp: mockTimestamp,
 			},
-			expectedCode:   coreda.StatusNotFound,
-			expectedErrMsg: coreda.ErrBlobNotFound.Error(),
+			expectedCode:   da.StatusNotFound,
+			expectedErrMsg: da.ErrBlobNotFound.Error(),
 			expectedHeight: dataLayerHeight,
 		},
 		{
 			name: "error during Get (blobs retrieval)",
-			getIDsResult: &coreda.GetIDsResult{
+			getIDsResult: &da.GetIDsResult{
 				IDs:       mockIDs,
 				Timestamp: mockTimestamp,
 			},
 			getBlobsErr:    errors.New("network error during blob retrieval"),
-			expectedCode:   coreda.StatusError,
+			expectedCode:   da.StatusError,
 			expectedErrMsg: "failed to get blobs for batch 0-1: network error during blob retrieval",
 			expectedHeight: dataLayerHeight,
 		},
@@ -221,7 +221,7 @@ func TestRetrieveWithHelpers(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			mockDA := mocks.NewMockDA(t)
-			encodedNamespace := coreda.NamespaceFromString("test-namespace")
+			encodedNamespace := da.NamespaceFromString("test-namespace")
 
 			mockDA.On("GetIDs", mock.Anything, dataLayerHeight, mock.Anything).Return(tc.getIDsResult, tc.getIDsErr)
 
@@ -250,7 +250,7 @@ func TestRetrieveWithHelpers(t *testing.T) {
 func TestRetrieveWithHelpers_Timeout(t *testing.T) {
 	logger := zerolog.Nop()
 	dataLayerHeight := uint64(100)
-	encodedNamespace := coreda.NamespaceFromString("test-namespace")
+	encodedNamespace := da.NamespaceFromString("test-namespace")
 
 	t.Run("timeout during GetIDs", func(t *testing.T) {
 		mockDA := mocks.NewMockDA(t)
@@ -264,7 +264,7 @@ func TestRetrieveWithHelpers_Timeout(t *testing.T) {
 		// Use a very short timeout to ensure it triggers
 		result := types.RetrieveWithHelpers(context.Background(), mockDA, logger, dataLayerHeight, encodedNamespace.Bytes(), 1*time.Millisecond)
 
-		assert.Equal(t, coreda.StatusError, result.Code)
+		assert.Equal(t, da.StatusError, result.Code)
 		assert.Contains(t, result.Message, "failed to get IDs")
 		assert.Contains(t, result.Message, "context deadline exceeded")
 		mockDA.AssertExpectations(t)
@@ -276,7 +276,7 @@ func TestRetrieveWithHelpers_Timeout(t *testing.T) {
 		mockTimestamp := time.Now()
 
 		// Mock GetIDs to succeed
-		mockDA.On("GetIDs", mock.Anything, dataLayerHeight, mock.Anything).Return(&coreda.GetIDsResult{
+		mockDA.On("GetIDs", mock.Anything, dataLayerHeight, mock.Anything).Return(&da.GetIDsResult{
 			IDs:       mockIDs,
 			Timestamp: mockTimestamp,
 		}, nil)
@@ -290,7 +290,7 @@ func TestRetrieveWithHelpers_Timeout(t *testing.T) {
 		// Use a very short timeout to ensure it triggers
 		result := types.RetrieveWithHelpers(context.Background(), mockDA, logger, dataLayerHeight, encodedNamespace.Bytes(), 1*time.Millisecond)
 
-		assert.Equal(t, coreda.StatusError, result.Code)
+		assert.Equal(t, da.StatusError, result.Code)
 		assert.Contains(t, result.Message, "failed to get blobs for batch")
 		assert.Contains(t, result.Message, "context deadline exceeded")
 		mockDA.AssertExpectations(t)

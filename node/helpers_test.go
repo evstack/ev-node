@@ -17,7 +17,7 @@ import (
 	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/require"
 
-	coreda "github.com/evstack/ev-node/core/da"
+	da "github.com/evstack/ev-node/da"
 	coreexecutor "github.com/evstack/ev-node/core/execution"
 	coresequencer "github.com/evstack/ev-node/core/sequencer"
 
@@ -43,10 +43,10 @@ const (
 )
 
 // createTestComponents creates test components for node initialization
-func createTestComponents(t *testing.T, config evconfig.Config) (coreexecutor.Executor, coresequencer.Sequencer, coreda.DA, *p2p.Client, datastore.Batching, *key.NodeKey, func()) {
+func createTestComponents(t *testing.T, config evconfig.Config) (coreexecutor.Executor, coresequencer.Sequencer, da.DA, *p2p.Client, datastore.Batching, *key.NodeKey, func()) {
 	executor := coreexecutor.NewDummyExecutor()
 	sequencer := coresequencer.NewDummySequencer()
-	dummyDA := coreda.NewDummyDA(100_000, config.DA.BlockTime.Duration)
+	dummyDA := da.NewDummyDA(100_000, config.DA.BlockTime.Duration)
 	dummyDA.StartHeightTicker()
 
 	stopDAHeightTicker := func() {
@@ -101,7 +101,7 @@ func newTestNode(
 	config evconfig.Config,
 	executor coreexecutor.Executor,
 	sequencer coresequencer.Sequencer,
-	dac coreda.DA,
+	dac da.DA,
 	p2pClient *p2p.Client,
 	ds datastore.Batching,
 	stopDAHeightTicker func(),
@@ -145,7 +145,7 @@ func createNodeWithCustomComponents(
 	config evconfig.Config,
 	executor coreexecutor.Executor,
 	sequencer coresequencer.Sequencer,
-	dac coreda.DA,
+	dac da.DA,
 	p2pClient *p2p.Client,
 	ds datastore.Batching,
 	stopDAHeightTicker func(),

@@ -13,7 +13,7 @@ import (
 	"github.com/evstack/ev-node/block/internal/reaping"
 	"github.com/evstack/ev-node/block/internal/submitting"
 	"github.com/evstack/ev-node/block/internal/syncing"
-	coreda "github.com/evstack/ev-node/core/da"
+	da "github.com/evstack/ev-node/da"
 	coreexecutor "github.com/evstack/ev-node/core/execution"
 	coresequencer "github.com/evstack/ev-node/core/sequencer"
 	"github.com/evstack/ev-node/pkg/config"
@@ -131,7 +131,7 @@ func NewSyncComponents(
 	genesis genesis.Genesis,
 	store store.Store,
 	exec coreexecutor.Executor,
-	da coreda.DA,
+	da da.DA,
 	headerStore common.Broadcaster[*types.SignedHeader],
 	dataStore common.Broadcaster[*types.Data],
 	logger zerolog.Logger,
@@ -194,7 +194,7 @@ func NewAggregatorComponents(
 	store store.Store,
 	exec coreexecutor.Executor,
 	sequencer coresequencer.Sequencer,
-	da coreda.DA,
+	da da.DA,
 	signer signer.Signer,
 	headerBroadcaster common.Broadcaster[*types.SignedHeader],
 	dataBroadcaster common.Broadcaster[*types.Data],

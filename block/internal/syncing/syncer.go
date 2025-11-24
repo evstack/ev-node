@@ -13,7 +13,7 @@ import (
 	"github.com/rs/zerolog"
 	"golang.org/x/sync/errgroup"
 
-	coreda "github.com/evstack/ev-node/core/da"
+	da "github.com/evstack/ev-node/da"
 	coreexecutor "github.com/evstack/ev-node/core/execution"
 
 	"github.com/evstack/ev-node/block/internal/cache"
@@ -38,7 +38,7 @@ type Syncer struct {
 	// Core components
 	store store.Store
 	exec  coreexecutor.Executor
-	da    coreda.DA
+	da    da.DA
 
 	// Shared components
 	cache   cache.Manager
@@ -83,7 +83,7 @@ type Syncer struct {
 func NewSyncer(
 	store store.Store,
 	exec coreexecutor.Executor,
-	da coreda.DA,
+	da da.DA,
 	cache cache.Manager,
 	metrics *common.Metrics,
 	config config.Config,
@@ -306,10 +306,10 @@ func (s *Syncer) fetchDAUntilCaughtUp() error {
 		events, err := s.daRetriever.RetrieveFromDA(ctx, daHeight)
 		if err != nil {
 			switch {
-			case errors.Is(err, coreda.ErrBlobNotFound):
+			case errors.Is(err, da.ErrBlobNotFound):
 				s.SetDAHeight(daHeight + 1)
 				continue // Fetch next height immediately
-			case errors.Is(err, coreda.ErrHeightFromFuture):
+			case errors.Is(err, da.ErrHeightFromFuture):
 				s.logger.Debug().Err(err).Uint64("da_height", daHeight).Msg("DA is ahead of local target; backing off future height requests")
 				return nil // Caught up
 			default:

@@ -15,7 +15,7 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 
-	coreda "github.com/evstack/ev-node/core/da"
+	da "github.com/evstack/ev-node/da"
 	coresequencer "github.com/evstack/ev-node/core/sequencer"
 	"github.com/evstack/ev-node/pkg/config"
 	"github.com/evstack/ev-node/pkg/genesis"
@@ -92,7 +92,7 @@ func TestNewSyncComponents_Creation(t *testing.T) {
 	}
 
 	mockExec := testmocks.NewMockExecutor(t)
-	dummyDA := coreda.NewDummyDA(10_000_000, 10*time.Millisecond)
+	dummyDA := da.NewDummyDA(10_000_000, 10*time.Millisecond)
 
 	// Just test that the constructor doesn't panic - don't start the components
 	// to avoid P2P store dependencies
@@ -143,7 +143,7 @@ func TestNewAggregatorComponents_Creation(t *testing.T) {
 
 	mockExec := testmocks.NewMockExecutor(t)
 	mockSeq := testmocks.NewMockSequencer(t)
-	dummyDA := coreda.NewDummyDA(10_000_000, 10*time.Millisecond)
+	dummyDA := da.NewDummyDA(10_000_000, 10*time.Millisecond)
 
 	components, err := NewAggregatorComponents(
 		cfg,
@@ -197,7 +197,7 @@ func TestExecutor_RealExecutionClientFailure_StopsNode(t *testing.T) {
 	// Create mock executor that will fail on ExecuteTxs
 	mockExec := testmocks.NewMockExecutor(t)
 	mockSeq := testmocks.NewMockSequencer(t)
-	dummyDA := coreda.NewDummyDA(10_000_000, 10*time.Millisecond)
+	dummyDA := da.NewDummyDA(10_000_000, 10*time.Millisecond)
 
 	// Mock InitChain to succeed initially
 	mockExec.On("InitChain", mock.Anything, mock.Anything, mock.Anything, mock.Anything).

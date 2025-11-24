@@ -11,7 +11,7 @@ import (
 	"sync"
 	"time"
 
-	coreda "github.com/evstack/ev-node/core/da"
+	da "github.com/evstack/ev-node/da"
 	"github.com/rs/zerolog"
 )
 
@@ -33,7 +33,7 @@ type DASubmissionInfo struct {
 
 // DAVisualizationServer provides DA layer visualization endpoints
 type DAVisualizationServer struct {
-	da           coreda.DA
+	da           da.DA
 	logger       zerolog.Logger
 	submissions  []DASubmissionInfo
 	mutex        sync.RWMutex
@@ -41,7 +41,7 @@ type DAVisualizationServer struct {
 }
 
 // NewDAVisualizationServer creates a new DA visualization server
-func NewDAVisualizationServer(da coreda.DA, logger zerolog.Logger, isAggregator bool) *DAVisualizationServer {
+func NewDAVisualizationServer(da da.DA, logger zerolog.Logger, isAggregator bool) *DAVisualizationServer {
 	return &DAVisualizationServer{
 		da:           da,
 		logger:       logger,
@@ -52,7 +52,7 @@ func NewDAVisualizationServer(da coreda.DA, logger zerolog.Logger, isAggregator 
 
 // RecordSubmission records a DA submission for visualization
 // Only keeps the last 100 submissions in memory for the dashboard display
-func (s *DAVisualizationServer) RecordSubmission(result *coreda.ResultSubmit, gasPrice float64, numBlobs uint64) {
+func (s *DAVisualizationServer) RecordSubmission(result *da.ResultSubmit, gasPrice float64, numBlobs uint64) {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
 
@@ -83,27 +83,27 @@ func (s *DAVisualizationServer) RecordSubmission(result *coreda.ResultSubmit, ga
 }
 
 // getStatusCodeString converts status code to human-readable string
-func (s *DAVisualizationServer) getStatusCodeString(code coreda.StatusCode) string {
+func (s *DAVisualizationServer) getStatusCodeString(code da.StatusCode) string {
 	switch code {
-	case coreda.StatusSuccess:
+	case da.StatusSuccess:
 		return "Success"
-	case coreda.StatusNotFound:
+	case da.StatusNotFound:
 		return "Not Found"
-	case coreda.StatusNotIncludedInBlock:
+	case da.StatusNotIncludedInBlock:
 		return "Not Included In Block"
-	case coreda.StatusAlreadyInMempool:
+	case da.StatusAlreadyInMempool:
 		return "Already In Mempool"
-	case coreda.StatusTooBig:
+	case da.StatusTooBig:
 		return "Too Big"
-	case coreda.StatusContextDeadline:
+	case da.StatusContextDeadline:
 		return "Context Deadline"
-	case coreda.StatusError:
+	case da.StatusError:
 		return "Error"
-	case coreda.StatusIncorrectAccountSequence:
+	case da.StatusIncorrectAccountSequence:
 		return "Incorrect Account Sequence"
-	case coreda.StatusContextCanceled:
+	case da.StatusContextCanceled:
 		return "Context Canceled"
-	case coreda.StatusHeightFromFuture:
+	case da.StatusHeightFromFuture:
 		return "Height From Future"
 	default:
 		return "Unknown"
@@ -173,7 +173,7 @@ func (s *DAVisualizationServer) handleDABlobDetails(w http.ResponseWriter, r *ht
 
 	// Extract namespace - using empty namespace for now, could be parameterized
 	namespace := []byte{}
-	blobs, err := s.da.Get(ctx, []coreda.ID{id}, namespace)
+	blobs, err := s.da.Get(ctx, []da.ID{id}, namespace)
 	if err != nil {
 		s.logger.Error().Err(err).Str("blob_id", blobID).Msg("Failed to retrieve blob from DA")
 		http.Error(w, fmt.Sprintf("Failed to retrieve blob: %v", err), http.StatusInternalServerError)
@@ -186,7 +186,7 @@ func (s *DAVisualizationServer) handleDABlobDetails(w http.ResponseWriter, r *ht
 	}
 
 	// Parse the blob ID to extract height and commitment
-	height, commitment, err := coreda.SplitID(id)
+	height, commitment, err := da.SplitID(id)
 	if err != nil {
 		s.logger.Error().Err(err).Str("blob_id", blobID).Msg("Failed to split blob ID")
 	}

@@ -10,7 +10,7 @@ import (
 	"github.com/filecoin-project/go-jsonrpc"
 	"github.com/rs/zerolog"
 
-	"github.com/evstack/ev-node/core/da"
+	"github.com/evstack/ev-node/da"
 )
 
 // Server is a jsonrpc service that serves the LocalDA implementation

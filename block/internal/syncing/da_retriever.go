@@ -12,7 +12,7 @@ import (
 
 	"github.com/evstack/ev-node/block/internal/cache"
 	"github.com/evstack/ev-node/block/internal/common"
-	coreda "github.com/evstack/ev-node/core/da"
+	dapkg "github.com/evstack/ev-node/da"
 	"github.com/evstack/ev-node/pkg/config"
 	"github.com/evstack/ev-node/pkg/genesis"
 	"github.com/evstack/ev-node/types"
@@ -24,7 +24,7 @@ const defaultDATimeout = 10 * time.Second
 
 // DARetriever handles DA retrieval operations for syncing
 type DARetriever struct {
-	da      coreda.DA
+	da      dapkg.DA
 	cache   cache.Manager
 	genesis genesis.Genesis
 	logger  zerolog.Logger
@@ -41,7 +41,7 @@ type DARetriever struct {
 
 // NewDARetriever creates a new DA retriever
 func NewDARetriever(
-	da coreda.DA,
+	da dapkg.DA,
 	cache cache.Manager,
 	config config.Config,
 	genesis genesis.Genesis,
@@ -52,8 +52,8 @@ func NewDARetriever(
 		cache:           cache,
 		genesis:         genesis,
 		logger:          logger.With().Str("component", "da_retriever").Logger(),
-		namespaceBz:     coreda.NamespaceFromString(config.DA.GetNamespace()).Bytes(),
-		namespaceDataBz: coreda.NamespaceFromString(config.DA.GetDataNamespace()).Bytes(),
+		namespaceBz:     dapkg.NamespaceFromString(config.DA.GetNamespace()).Bytes(),
+		namespaceDataBz: dapkg.NamespaceFromString(config.DA.GetDataNamespace()).Bytes(),
 		pendingHeaders:  make(map[uint64]*types.SignedHeader),
 		pendingData:     make(map[uint64]*types.Data),
 	}
@@ -77,7 +77,7 @@ func (r *DARetriever) RetrieveFromDA(ctx context.Context, daHeight uint64) ([]co
 }
 
 // fetchBlobs retrieves blobs from the DA layer
-func (r *DARetriever) fetchBlobs(ctx context.Context, daHeight uint64) (coreda.ResultRetrieve, error) {
+func (r *DARetriever) fetchBlobs(ctx context.Context, daHeight uint64) (dapkg.ResultRetrieve, error) {
 	// Retrieve from both namespaces
 	headerRes := types.RetrieveWithHelpers(ctx, r.da, r.logger, daHeight, r.namespaceBz, defaultDATimeout)
 
@@ -91,31 +91,31 @@ func (r *DARetriever) fetchBlobs(ctx context.Context, daHeight uint64) (coreda.R
 	// Validate responses
 	headerErr := r.validateBlobResponse(headerRes, daHeight)
 	// ignoring error not found, as data can have data
-	if headerErr != nil && !errors.Is(headerErr, coreda.ErrBlobNotFound) {
+	if headerErr != nil && !errors.Is(headerErr, dapkg.ErrBlobNotFound) {
 		return headerRes, headerErr
 	}
 
 	dataErr := r.validateBlobResponse(dataRes, daHeight)
 	// ignoring error not found, as header can have data
-	if dataErr != nil && !errors.Is(dataErr, coreda.ErrBlobNotFound) {
+	if dataErr != nil && !errors.Is(dataErr, dapkg.ErrBlobNotFound) {
 		return dataRes, dataErr
 	}
 
 	// Combine successful results
-	combinedResult := coreda.ResultRetrieve{
-		BaseResult: coreda.BaseResult{
-			Code:   coreda.StatusSuccess,
+	combinedResult := dapkg.ResultRetrieve{
+		BaseResult: dapkg.BaseResult{
+			Code:   dapkg.StatusSuccess,
 			Height: daHeight,
 		},
 		Data: make([][]byte, 0),
 	}
 
-	if headerRes.Code == coreda.StatusSuccess {
+	if headerRes.Code == dapkg.StatusSuccess {
 		combinedResult.Data = append(combinedResult.Data, headerRes.Data...)
 		combinedResult.IDs = append(combinedResult.IDs, headerRes.IDs...)
 	}
 
-	if dataRes.Code == coreda.StatusSuccess {
+	if dataRes.Code == dapkg.StatusSuccess {
 		combinedResult.Data = append(combinedResult.Data, dataRes.Data...)
 		combinedResult.IDs = append(combinedResult.IDs, dataRes.IDs...)
 	}
@@ -123,25 +123,25 @@ func (r *DARetriever) fetchBlobs(ctx context.Context, daHeight uint64) (coreda.R
 	// Re-throw error not found if both were not found.
 	if len(combinedResult.Data) == 0 && len(combinedResult.IDs) == 0 {
 		r.logger.Debug().Uint64("da_height", daHeight).Msg("no blob data found")
-		combinedResult.Code = coreda.StatusNotFound
-		combinedResult.Message = coreda.ErrBlobNotFound.Error()
-		return combinedResult, coreda.ErrBlobNotFound
+		combinedResult.Code = dapkg.StatusNotFound
+		combinedResult.Message = dapkg.ErrBlobNotFound.Error()
+		return combinedResult, dapkg.ErrBlobNotFound
 	}
 
 	return combinedResult, nil
 }
 
 // validateBlobResponse validates a blob response from DA layer
-// those are the only error code returned by da.RetrieveWithHelpers
-func (r *DARetriever) validateBlobResponse(res coreda.ResultRetrieve, daHeight uint64) error {
+// those are the only error code returned by dapkg.RetrieveWithHelpers
+func (r *DARetriever) validateBlobResponse(res dapkg.ResultRetrieve, daHeight uint64) error {
 	switch res.Code {
-	case coreda.StatusError:
+	case dapkg.StatusError:
 		return fmt.Errorf("DA retrieval failed: %s", res.Message)
-	case coreda.StatusHeightFromFuture:
-		return fmt.Errorf("%w: height from future", coreda.ErrHeightFromFuture)
-	case coreda.StatusNotFound:
-		return fmt.Errorf("%w: blob not found", coreda.ErrBlobNotFound)
-	case coreda.StatusSuccess:
+	case dapkg.StatusHeightFromFuture:
+		return fmt.Errorf("%w: height from future", dapkg.ErrHeightFromFuture)
+	case dapkg.StatusNotFound:
+		return fmt.Errorf("%w: blob not found", dapkg.ErrBlobNotFound)
+	case dapkg.StatusSuccess:
 		r.logger.Debug().Uint64("da_height", daHeight).Msg("successfully retrieved from DA")
 		return nil
 	default:

@@ -11,7 +11,7 @@ import (
 	"github.com/stretchr/testify/mock"
 
 	"github.com/evstack/ev-node/block/internal/common"
-	coreda "github.com/evstack/ev-node/core/da"
+	da "github.com/evstack/ev-node/da"
 	"github.com/evstack/ev-node/pkg/config"
 	"github.com/evstack/ev-node/pkg/genesis"
 	"github.com/evstack/ev-node/test/mocks"
@@ -39,7 +39,7 @@ func TestSubmitToDA_MempoolRetry_IncreasesGasAndSucceeds(t *testing.T) {
 
 	mockDA := mocks.NewMockDA(t)
 
-	nsBz := coreda.NamespaceFromString("ns").Bytes()
+	nsBz := da.NamespaceFromString("ns").Bytes()
 	opts := []byte("opts")
 	var usedGas []float64
 	mockDA.
@@ -47,7 +47,7 @@ func TestSubmitToDA_MempoolRetry_IncreasesGasAndSucceeds(t *testing.T) {
 		Run(func(args mock.Arguments) {
 			usedGas = append(usedGas, args.Get(2).(float64))
 		}).
-		Return(nil, coreda.ErrTxTimedOut).
+		Return(nil, da.ErrTxTimedOut).
 		Once()
 
 	ids := [][]byte{[]byte("id1"), []byte("id2"), []byte("id3")}
@@ -68,7 +68,7 @@ func TestSubmitToDA_MempoolRetry_IncreasesGasAndSucceeds(t *testing.T) {
 		ctx,
 		items,
 		marshalString,
-		func(_ []string, _ *coreda.ResultSubmit) {},
+		func(_ []string, _ *da.ResultSubmit) {},
 		"item",
 		nsBz,
 		opts,
@@ -86,7 +86,7 @@ func TestSubmitToDA_UnknownError_RetriesSameGasThenSucceeds(t *testing.T) {
 
 	mockDA := mocks.NewMockDA(t)
 
-	nsBz := coreda.NamespaceFromString("ns").Bytes()
+	nsBz := da.NamespaceFromString("ns").Bytes()
 
 	opts := []byte("opts")
 	var usedGas []float64
@@ -115,7 +115,7 @@ func TestSubmitToDA_UnknownError_RetriesSameGasThenSucceeds(t *testing.T) {
 		ctx,
 		items,
 		marshalString,
-		func(_ []string, _ *coreda.ResultSubmit) {},
+		func(_ []string, _ *da.ResultSubmit) {},
 		"item",
 		nsBz,
 		opts,
@@ -131,7 +131,7 @@ func TestSubmitToDA_TooBig_HalvesBatch(t *testing.T) {
 
 	mockDA := mocks.NewMockDA(t)
 
-	nsBz := coreda.NamespaceFromString("ns").Bytes()
+	nsBz := da.NamespaceFromString("ns").Bytes()
 
 	opts := []byte("opts")
 	// record sizes of batches sent to DA
@@ -144,7 +144,7 @@ func TestSubmitToDA_TooBig_HalvesBatch(t *testing.T) {
 			blobs := args.Get(1).([][]byte)
 			batchSizes = append(batchSizes, len(blobs))
 		}).
-		Return(nil, coreda.ErrBlobSizeOverLimit).
+		Return(nil, da.ErrBlobSizeOverLimit).
 		Once()
 
 	// Second attempt: expect half the size, succeed
@@ -167,7 +167,7 @@ func TestSubmitToDA_TooBig_HalvesBatch(t *testing.T) {
 		ctx,
 		items,
 		marshalString,
-		func(_ []string, _ *coreda.ResultSubmit) {},
+		func(_ []string, _ *da.ResultSubmit) {},
 		"item",
 		nsBz,
 		opts,
@@ -183,7 +183,7 @@ func TestSubmitToDA_SentinelNoGas_PreservesGasAcrossRetries(t *testing.T) {
 
 	mockDA := mocks.NewMockDA(t)
 
-	nsBz := coreda.NamespaceFromString("ns").Bytes()
+	nsBz := da.NamespaceFromString("ns").Bytes()
 
 	opts := []byte("opts")
 	var usedGas []float64
@@ -192,7 +192,7 @@ func TestSubmitToDA_SentinelNoGas_PreservesGasAcrossRetries(t *testing.T) {
 	mockDA.
 		On("SubmitWithOptions", mock.Anything, mock.Anything, mock.AnythingOfType("float64"), nsBz, opts).
 		Run(func(args mock.Arguments) { usedGas = append(usedGas, args.Get(2).(float64)) }).
-		Return(nil, coreda.ErrTxAlreadyInMempool).
+		Return(nil, da.ErrTxAlreadyInMempool).
 		Once()
 
 	// Second attempt: should use same sentinel gas (-1), succeed
@@ -212,7 +212,7 @@ func TestSubmitToDA_SentinelNoGas_PreservesGasAcrossRetries(t *testing.T) {
 		ctx,
 		items,
 		marshalString,
-		func(_ []string, _ *coreda.ResultSubmit) {},
+		func(_ []string, _ *da.ResultSubmit) {},
 		"item",
 		nsBz,
 		opts,
@@ -228,7 +228,7 @@ func TestSubmitToDA_PartialSuccess_AdvancesWindow(t *testing.T) {
 
 	mockDA := mocks.NewMockDA(t)
 
-	nsBz := coreda.NamespaceFromString("ns").Bytes()
+	nsBz := da.NamespaceFromString("ns").Bytes()
 
 	opts := []byte("opts")
 	// track how many items postSubmit sees across attempts
@@ -251,7 +251,7 @@ func TestSubmitToDA_PartialSuccess_AdvancesWindow(t *testing.T) {
 		ctx,
 		items,
 		marshalString,
-		func(submitted []string, _ *coreda.ResultSubmit) { totalSubmitted += len(submitted) },
+		func(submitted []string, _ *da.ResultSubmit) { totalSubmitted += len(submitted) },
 		"item",
 		nsBz,
 		opts,

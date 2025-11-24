@@ -6,7 +6,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/evstack/ev-node/core/da"
+	"github.com/evstack/ev-node/da"
 	"github.com/evstack/ev-node/core/execution"
 	celestiada "github.com/evstack/ev-node/da/celestia"
 	executiongrpc "github.com/evstack/ev-node/execution/grpc"
