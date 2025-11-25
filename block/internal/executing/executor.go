@@ -458,9 +458,6 @@ func (e *Executor) produceBlock() error {
 	if err := batch.Commit(); err != nil {
 		return fmt.Errorf("failed to commit batch: %w", err)
 	}
-	if err := e.store.Sync(context.Background()); err != nil {
-		return fmt.Errorf("failed to sync store: %w", err)
-	}
 
 	// Update in-memory state after successful commit
 	e.setLastState(newState)
