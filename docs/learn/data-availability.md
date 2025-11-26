@@ -5,7 +5,6 @@ Data availability (DA) is a core of Evolve's. Evolve utilize's  data availabilit
 Learn more about data availability:
 
 - [What is DA](https://celestia.org/what-is-da/)
-- [The importance of DA for Rollups](https://medium.com/zeeve/exploring-data-availability-layer-and-its-importance-in-rollups-0a4fbf2e0ffc)
 
 ## How Evolve Handles Data Availability
 
