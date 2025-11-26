@@ -10,6 +10,7 @@ import (
 	"encoding/binary"
 	"errors"
 
+	goheader "github.com/celestiaorg/go-header"
 	"connectrpc.com/connect"
 	"connectrpc.com/grpcreflect"
 	da "github.com/evstack/ev-node/da"
@@ -32,15 +33,24 @@ var _ rpc.StoreServiceHandler = (*StoreServer)(nil)
 
 // StoreServer implements the StoreService defined in the proto file
 type StoreServer struct {
-	store  store.Store
-	logger zerolog.Logger
+	store       store.Store
+	headerStore goheader.Store[*types.SignedHeader]
+	dataStore   goheader.Store[*types.Data]
+	logger      zerolog.Logger
 }
 
 // NewStoreServer creates a new StoreServer instance
-func NewStoreServer(store store.Store, logger zerolog.Logger) *StoreServer {
+func NewStoreServer(
+	store store.Store,
+	headerStore goheader.Store[*types.SignedHeader],
+	dataStore goheader.Store[*types.Data],
+	logger zerolog.Logger,
+) *StoreServer {
 	return &StoreServer{
-		store:  store,
-		logger: logger,
+		store:       store,
+		headerStore: headerStore,
+		dataStore:   dataStore,
+		logger:      logger,
 	}
 }
 
@@ -187,6 +197,96 @@ func (s *StoreServer) GetMetadata(
 	}), nil
 }
 
+// GetP2PStoreInfo returns head/tail information for the go-header stores used by P2P sync.
+func (s *StoreServer) GetP2PStoreInfo(
+	ctx context.Context,
+	_ *connect.Request[emptypb.Empty],
+) (*connect.Response[pb.GetP2PStoreInfoResponse], error) {
+	var snapshots []*pb.P2PStoreSnapshot
+
+	// Header store snapshot
+	if s.headerStore != nil {
+		snap, err := s.buildHeaderStoreSnapshot(ctx, "Header Store")
+		if err != nil {
+			return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("header store: %w", err))
+		}
+		snapshots = append(snapshots, snap)
+	}
+
+	// Data store snapshot
+	if s.dataStore != nil {
+		snap, err := s.buildDataStoreSnapshot(ctx, "Data Store")
+		if err != nil {
+			return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("data store: %w", err))
+		}
+		snapshots = append(snapshots, snap)
+	}
+
+	return connect.NewResponse(&pb.GetP2PStoreInfoResponse{
+		Stores: snapshots,
+	}), nil
+}
+
+// buildHeaderStoreSnapshot builds a P2PStoreSnapshot from the header store
+func (s *StoreServer) buildHeaderStoreSnapshot(ctx context.Context, label string) (*pb.P2PStoreSnapshot, error) {
+	height := s.headerStore.Height()
+
+	head, err := s.headerStore.Head(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get head: %w", err)
+	}
+
+	tail, err := s.headerStore.Tail(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get tail: %w", err)
+	}
+
+	return &pb.P2PStoreSnapshot{
+		Label:  label,
+		Height: height,
+		Head: &pb.P2PStoreEntry{
+			Height: head.Height(),
+			Hash:   head.Hash()[:],
+			Time:   timestamppb.New(head.Time()),
+		},
+		Tail: &pb.P2PStoreEntry{
+			Height: tail.Height(),
+			Hash:   tail.Hash()[:],
+			Time:   timestamppb.New(tail.Time()),
+		},
+	}, nil
+}
+
+// buildDataStoreSnapshot builds a P2PStoreSnapshot from the data store
+func (s *StoreServer) buildDataStoreSnapshot(ctx context.Context, label string) (*pb.P2PStoreSnapshot, error) {
+	height := s.dataStore.Height()
+
+	head, err := s.dataStore.Head(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get head: %w", err)
+	}
+
+	tail, err := s.dataStore.Tail(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get tail: %w", err)
+	}
+
+	return &pb.P2PStoreSnapshot{
+		Label:  label,
+		Height: height,
+		Head: &pb.P2PStoreEntry{
+			Height: head.Height(),
+			Hash:   head.Hash()[:],
+			Time:   timestamppb.New(head.Time()),
+		},
+		Tail: &pb.P2PStoreEntry{
+			Height: tail.Height(),
+			Hash:   tail.Hash()[:],
+			Time:   timestamppb.New(tail.Time()),
+		},
+	}, nil
+}
+
 type ConfigServer struct {
 	config config.Config
 	signer []byte
@@ -288,8 +388,17 @@ func (p *P2PServer) GetNetInfo(
 }
 
 // NewServiceHandler creates a new HTTP handler for Store, P2P and Config services
-func NewServiceHandler(store store.Store, peerManager p2p.P2PRPC, proposerAddress []byte, logger zerolog.Logger, config config.Config, bestKnown BestKnownHeightProvider) (http.Handler, error) {
-	storeServer := NewStoreServer(store, logger)
+func NewServiceHandler(
+	store store.Store,
+	headerStore goheader.Store[*types.SignedHeader],
+	dataStore goheader.Store[*types.Data],
+	peerManager p2p.P2PRPC,
+	proposerAddress []byte,
+	logger zerolog.Logger,
+	config config.Config,
+	bestKnown BestKnownHeightProvider,
+) (http.Handler, error) {
+	storeServer := NewStoreServer(store, headerStore, dataStore, logger)
 	p2pServer := NewP2PServer(peerManager)
 	configServer := NewConfigServer(config, proposerAddress, logger)
 

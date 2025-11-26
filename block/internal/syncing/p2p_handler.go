@@ -24,7 +24,7 @@ import (
 type P2PHandler struct {
 	headerStore goheader.Store[*types.SignedHeader]
 	dataStore   goheader.Store[*types.Data]
-	cache       cache.Manager
+	cache       cache.CacheManager
 	genesis     genesis.Genesis
 	logger      zerolog.Logger
 
@@ -35,7 +35,7 @@ type P2PHandler struct {
 func NewP2PHandler(
 	headerStore goheader.Store[*types.SignedHeader],
 	dataStore goheader.Store[*types.Data],
-	cache cache.Manager,
+	cache cache.CacheManager,
 	genesis genesis.Genesis,
 	logger zerolog.Logger,
 ) *P2PHandler {
@@ -50,7 +50,7 @@ func NewP2PHandler(
 
 // SetProcessedHeight updates the highest processed block height.
 func (h *P2PHandler) SetProcessedHeight(height uint64) {
-	for {
+	for range 1_000 {
 		current := h.processedHeight.Load()
 		if height <= current {
 			return

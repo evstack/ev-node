@@ -42,7 +42,7 @@ func NewReplayer(
 // This is useful for crash recovery scenarios where ev-node is ahead of the execution layer.
 //
 // Returns:
-// - error if sync fails or if execution layer is ahead of ev-node (unexpected state)
+// - error if sync fails
 func (s *Replayer) SyncToHeight(ctx context.Context, targetHeight uint64) error {
 	// Check if the executor implements HeightProvider
 	execHeightProvider, ok := s.exec.(coreexecutor.HeightProvider)
@@ -67,13 +67,15 @@ func (s *Replayer) SyncToHeight(ctx context.Context, targetHeight uint64) error 
 		Uint64("exec_layer_height", execHeight).
 		Msg("execution layer height check")
 
-	// If execution layer is ahead, this is unexpected, fail hard
+	// If execution layer is ahead, skip syncing and continue. This can happen if execution
+	// progressed independently (e.g. after manual intervention). We log it for visibility but
+	// do not treat it as fatal.
 	if execHeight > targetHeight {
-		s.logger.Error().
+		s.logger.Warn().
 			Uint64("target_height", targetHeight).
 			Uint64("exec_layer_height", execHeight).
-			Msg("execution layer is ahead of target height - this should not happen")
-		return fmt.Errorf("execution layer height (%d) is ahead of target height (%d)", execHeight, targetHeight)
+			Msg("execution layer is ahead of target height - skipping replay")
+		return nil
 	}
 
 	// If execution layer is behind, sync the missing blocks

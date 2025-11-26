@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	da "github.com/evstack/ev-node/da"
+	dapkg "github.com/evstack/ev-node/da"
 	"github.com/evstack/ev-node/pkg/config"
 	"github.com/evstack/ev-node/test/mocks"
 	"github.com/rs/zerolog"
@@ -34,9 +34,9 @@ func TestRecordSubmission(t *testing.T) {
 	server := NewDAVisualizationServer(da, logger, true)
 
 	// Test recording a successful submission
-	result := &da.ResultSubmit{
-		BaseResult: da.BaseResult{
-			Code:           da.StatusSuccess,
+	result := &dapkg.ResultSubmit{
+		BaseResult: dapkg.BaseResult{
+			Code:           dapkg.StatusSuccess,
 			Height:         100,
 			BlobSize:       1024,
 			Timestamp:      time.Now(),
@@ -67,9 +67,9 @@ func TestRecordSubmissionMemoryLimit(t *testing.T) {
 
 	// Add 101 submissions (more than the limit of 100)
 	for i := 0; i < 101; i++ {
-		result := &da.ResultSubmit{
-			BaseResult: da.BaseResult{
-				Code:      da.StatusSuccess,
+		result := &dapkg.ResultSubmit{
+			BaseResult: dapkg.BaseResult{
+				Code:      dapkg.StatusSuccess,
 				Height:    uint64(i),
 				BlobSize:  uint64(i * 10),
 				Timestamp: time.Now(),
@@ -92,15 +92,15 @@ func TestGetStatusCodeString(t *testing.T) {
 	server := NewDAVisualizationServer(da, logger, true)
 
 	tests := []struct {
-		code     da.StatusCode
+		code     dapkg.StatusCode
 		expected string
 	}{
-		{da.StatusSuccess, "Success"},
-		{da.StatusNotFound, "Not Found"},
-		{da.StatusError, "Error"},
-		{da.StatusTooBig, "Too Big"},
-		{da.StatusContextDeadline, "Context Deadline"},
-		{da.StatusUnknown, "Unknown"},
+		{dapkg.StatusSuccess, "Success"},
+		{dapkg.StatusNotFound, "Not Found"},
+		{dapkg.StatusError, "Error"},
+		{dapkg.StatusTooBig, "Too Big"},
+		{dapkg.StatusContextDeadline, "Context Deadline"},
+		{dapkg.StatusUnknown, "Unknown"},
 	}
 
 	for _, tt := range tests {
@@ -115,9 +115,9 @@ func TestHandleDASubmissions(t *testing.T) {
 	server := NewDAVisualizationServer(da, logger, true)
 
 	// Add a test submission
-	result := &da.ResultSubmit{
-		BaseResult: da.BaseResult{
-			Code:      da.StatusSuccess,
+	result := &dapkg.ResultSubmit{
+		BaseResult: dapkg.BaseResult{
+			Code:      dapkg.StatusSuccess,
 			Height:    100,
 			BlobSize:  1024,
 			Timestamp: time.Now(),
@@ -188,9 +188,9 @@ func TestHandleDAVisualizationHTML(t *testing.T) {
 	server := NewDAVisualizationServer(da, logger, true)
 
 	// Add a test submission
-	result := &da.ResultSubmit{
-		BaseResult: da.BaseResult{
-			Code:      da.StatusSuccess,
+	result := &dapkg.ResultSubmit{
+		BaseResult: dapkg.BaseResult{
+			Code:      dapkg.StatusSuccess,
 			Height:    100,
 			BlobSize:  1024,
 			Timestamp: time.Now(),
@@ -239,9 +239,9 @@ func TestRegisterCustomHTTPEndpointsDAVisualization(t *testing.T) {
 	server := NewDAVisualizationServer(da, logger, true)
 
 	// Add test submission
-	result := &da.ResultSubmit{
-		BaseResult: da.BaseResult{
-			Code:      da.StatusSuccess,
+	result := &dapkg.ResultSubmit{
+		BaseResult: dapkg.BaseResult{
+			Code:      dapkg.StatusSuccess,
 			Height:    100,
 			BlobSize:  1024,
 			Timestamp: time.Now(),

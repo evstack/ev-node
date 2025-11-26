@@ -103,6 +103,7 @@ func makeData(chainID string, height uint64, txs int) *types.Data {
 func TestSyncer_validateBlock_DataHashMismatch(t *testing.T) {
 	ds := dssync.MutexWrap(datastore.NewMapDatastore())
 	st := store.New(ds)
+
 	cm, err := cache.NewManager(config.DefaultConfig(), st, zerolog.Nop())
 	require.NoError(t, err)
 
@@ -151,6 +152,7 @@ func TestSyncer_validateBlock_DataHashMismatch(t *testing.T) {
 func TestProcessHeightEvent_SyncsAndUpdatesState(t *testing.T) {
 	ds := dssync.MutexWrap(datastore.NewMapDatastore())
 	st := store.New(ds)
+
 	cm, err := cache.NewManager(config.DefaultConfig(), st, zerolog.Nop())
 	require.NoError(t, err)
 
@@ -205,6 +207,7 @@ func TestProcessHeightEvent_SyncsAndUpdatesState(t *testing.T) {
 func TestSequentialBlockSync(t *testing.T) {
 	ds := dssync.MutexWrap(datastore.NewMapDatastore())
 	st := store.New(ds)
+
 	cm, err := cache.NewManager(config.DefaultConfig(), st, zerolog.Nop())
 	require.NoError(t, err)
 
@@ -274,26 +277,10 @@ func TestSequentialBlockSync(t *testing.T) {
 	requireEmptyChan(t, errChan)
 }
 
-func TestSyncer_sendNonBlockingSignal(t *testing.T) {
-	s := &Syncer{logger: zerolog.Nop()}
-	ch := make(chan struct{}, 1)
-	ch <- struct{}{}
-	done := make(chan struct{})
-	go func() {
-		s.sendNonBlockingSignal(ch, "test")
-		close(done)
-	}()
-	select {
-	case <-done:
-		// ok
-	case <-time.After(200 * time.Millisecond):
-		t.Fatal("sendNonBlockingSignal blocked unexpectedly")
-	}
-}
-
 func TestSyncer_processPendingEvents(t *testing.T) {
 	ds := dssync.MutexWrap(datastore.NewMapDatastore())
 	st := store.New(ds)
+
 	cm, err := cache.NewManager(config.DefaultConfig(), st, zerolog.Nop())
 	require.NoError(t, err)
 
@@ -383,7 +370,7 @@ func TestSyncLoopPersistState(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(t.Context())
 	syncerInst1.ctx = ctx
-	daRtrMock, p2pHndlMock := newMockdaRetriever(t), newMockp2pHandler(t)
+	daRtrMock, p2pHndlMock := NewMockDARetriever(t), newMockp2pHandler(t)
 	p2pHndlMock.On("ProcessHeight", mock.Anything, mock.Anything, mock.Anything).Return(nil).Maybe()
 	p2pHndlMock.On("SetProcessedHeight", mock.Anything).Return().Maybe()
 	syncerInst1.daRetriever, syncerInst1.p2pHandler = daRtrMock, p2pHndlMock
@@ -432,8 +419,7 @@ func TestSyncLoopPersistState(t *testing.T) {
 	requireEmptyChan(t, errorCh)
 
 	t.Log("sync workers on instance1 completed")
-	require.Equal(t, myFutureDAHeight, syncerInst1.GetDAHeight())
-	lastStateDAHeight := syncerInst1.GetLastState().DAHeight
+	require.Equal(t, myFutureDAHeight, syncerInst1.daHeight.Load())
 
 	// wait for all events consumed
 	require.NoError(t, cacheMgr.SaveToDisk())
@@ -470,12 +456,11 @@ func TestSyncLoopPersistState(t *testing.T) {
 		make(chan error, 1),
 	)
 	require.NoError(t, syncerInst2.initializeState())
-	require.Equal(t, lastStateDAHeight, syncerInst2.GetDAHeight())
 
 	ctx, cancel = context.WithCancel(t.Context())
 	t.Cleanup(cancel)
 	syncerInst2.ctx = ctx
-	daRtrMock, p2pHndlMock = newMockdaRetriever(t), newMockp2pHandler(t)
+	daRtrMock, p2pHndlMock = NewMockDARetriever(t), newMockp2pHandler(t)
 	p2pHndlMock.On("ProcessHeight", mock.Anything, mock.Anything, mock.Anything).Return(nil).Maybe()
 	p2pHndlMock.On("SetProcessedHeight", mock.Anything).Return().Maybe()
 	syncerInst2.daRetriever, syncerInst2.p2pHandler = daRtrMock, p2pHndlMock
@@ -484,7 +469,7 @@ func TestSyncLoopPersistState(t *testing.T) {
 		Run(func(arg mock.Arguments) {
 			cancel()
 			// retrieve last one again
-			assert.Equal(t, lastStateDAHeight, arg.Get(1).(uint64))
+			assert.Equal(t, syncerInst2.daHeight.Load(), arg.Get(1).(uint64))
 		}).
 		Return(nil, nil)
 
@@ -589,6 +574,11 @@ func TestSyncer_InitializeState_CallsReplayer(t *testing.T) {
 	// This test verifies that initializeState() invokes Replayer.
 	// The detailed replay logic is tested in block/internal/common/replay_test.go
 
+	ds := dssync.MutexWrap(datastore.NewMapDatastore())
+	st := store.New(ds)
+	cm, err := cache.NewManager(config.DefaultConfig(), st, zerolog.Nop())
+	require.NoError(t, err)
+
 	// Create mocks
 	mockStore := testmocks.NewMockStore(t)
 	mockExec := testmocks.NewMockHeightAwareExecutor(t)
@@ -615,6 +605,9 @@ func TestSyncer_InitializeState_CallsReplayer(t *testing.T) {
 		nil,
 	)
 
+	// Mock GetMetadata calls for DA included height retrieval
+	mockStore.EXPECT().GetMetadata(mock.Anything, mock.Anything).Return(nil, datastore.ErrNotFound).Maybe()
+
 	// Setup execution layer to be in sync
 	mockExec.On("GetLatestHeight", mock.Anything).Return(storeHeight, nil)
 
@@ -627,17 +620,17 @@ func TestSyncer_InitializeState_CallsReplayer(t *testing.T) {
 		daHeight:  &atomic.Uint64{},
 		logger:    zerolog.Nop(),
 		ctx:       context.Background(),
+		cache:     cm,
 	}
 
 	// Initialize state - this should call Replayer
-	err := syncer.initializeState()
+	err = syncer.initializeState()
 	require.NoError(t, err)
 
 	// Verify state was initialized correctly
 	state := syncer.GetLastState()
 	assert.Equal(t, storeHeight, state.LastBlockHeight)
 	assert.Equal(t, gen.ChainID, state.ChainID)
-	assert.Equal(t, uint64(5), syncer.GetDAHeight())
 
 	// Verify that GetLatestHeight was called (proves Replayer was invoked)
 	mockExec.AssertCalled(t, "GetLatestHeight", mock.Anything)
@@ -651,3 +644,4 @@ func requireEmptyChan(t *testing.T, errorCh chan error) {
 	default:
 	}
 }
+

@@ -75,7 +75,7 @@ func TestSequencer_SubmitBatchTxs(t *testing.T) {
 
 	res, err := seq.SubmitBatchTxs(context.Background(), coresequencer.SubmitBatchTxsRequest{Id: Id, Batch: &coresequencer.Batch{Transactions: [][]byte{tx}}})
 	if err != nil {
-		t.Fatalf("Failed to submit  transaction: %v", err)
+		t.Fatalf("Failed to submit transaction: %v", err)
 	}
 	if res == nil {
 		t.Fatal("Expected response to not be nil")
@@ -90,10 +90,10 @@ func TestSequencer_SubmitBatchTxs(t *testing.T) {
 		t.Fatalf("Expected 1 transaction, got %d", len(nextBatchresp.Batch.Transactions))
 	}
 
-	// Test with a different  ID (expecting an error due to mismatch)
+	// Test with a different ID (expecting an error due to mismatch)
 	res, err = seq.SubmitBatchTxs(context.Background(), coresequencer.SubmitBatchTxsRequest{Id: []byte("test2"), Batch: &coresequencer.Batch{Transactions: [][]byte{tx}}})
 	if err == nil {
-		t.Fatal("Expected error for invalid  ID, got nil")
+		t.Fatal("Expected error for invalid ID, got nil")
 	}
 	if !errors.Is(err, ErrInvalidId) {
 		t.Fatalf("Expected ErrInvalidId, got %v", err)
@@ -408,7 +408,7 @@ func TestSequencer_GetNextBatch_BeforeDASubmission(t *testing.T) {
 		Batch: &coresequencer.Batch{Transactions: [][]byte{tx}},
 	})
 	if err != nil {
-		t.Fatalf("Failed to submit  transaction: %v", err)
+		t.Fatalf("Failed to submit transaction: %v", err)
 	}
 	if res == nil {
 		t.Fatal("Expected response to not be nil")
