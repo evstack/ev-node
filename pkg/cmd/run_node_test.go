@@ -13,9 +13,9 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
 
-	da "github.com/evstack/ev-node/da"
 	coreexecutor "github.com/evstack/ev-node/core/execution"
 	coresequencer "github.com/evstack/ev-node/core/sequencer"
+	da "github.com/evstack/ev-node/da"
 	"github.com/evstack/ev-node/node"
 	rollconf "github.com/evstack/ev-node/pkg/config"
 	genesis "github.com/evstack/ev-node/pkg/genesis"

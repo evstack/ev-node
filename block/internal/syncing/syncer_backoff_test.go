@@ -15,8 +15,8 @@ import (
 
 	"github.com/evstack/ev-node/block/internal/cache"
 	"github.com/evstack/ev-node/block/internal/common"
-	da "github.com/evstack/ev-node/da"
 	"github.com/evstack/ev-node/core/execution"
+	da "github.com/evstack/ev-node/da"
 	"github.com/evstack/ev-node/pkg/config"
 	"github.com/evstack/ev-node/pkg/genesis"
 	"github.com/evstack/ev-node/pkg/store"

@@ -109,8 +109,7 @@ func (d *DummyDA) GetIDs(ctx context.Context, height uint64, namespace []byte) (
 	// Filter IDs by namespace
 	filteredIDs := make([]ID, 0)
 	for _, id := range ids {
-		idStr := string(id)
-		if ns, exists := d.namespaceByID[idStr]; exists && bytes.Equal(ns, namespace) {
+		if ns, exists := d.namespaceByID[string(id)]; exists && bytes.Equal(ns, namespace) {
 			filteredIDs = append(filteredIDs, id)
 		}
 	}

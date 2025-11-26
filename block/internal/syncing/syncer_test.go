@@ -9,8 +9,8 @@ import (
 	"testing"
 	"time"
 
-	da "github.com/evstack/ev-node/da"
 	"github.com/evstack/ev-node/core/execution"
+	da "github.com/evstack/ev-node/da"
 	"github.com/evstack/ev-node/pkg/genesis"
 	signerpkg "github.com/evstack/ev-node/pkg/signer"
 	"github.com/evstack/ev-node/pkg/signer/noop"
@@ -644,4 +644,3 @@ func requireEmptyChan(t *testing.T, errorCh chan error) {
 	default:
 	}
 }
-

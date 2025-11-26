@@ -13,8 +13,8 @@ import (
 	"github.com/rs/zerolog"
 	"golang.org/x/sync/errgroup"
 
-	da "github.com/evstack/ev-node/da"
 	coreexecutor "github.com/evstack/ev-node/core/execution"
+	da "github.com/evstack/ev-node/da"
 
 	"github.com/evstack/ev-node/block/internal/cache"
 	"github.com/evstack/ev-node/block/internal/common"
@@ -676,15 +676,6 @@ func (s *Syncer) sendCriticalError(err error) {
 		default:
 			// Channel full, error already reported
 		}
-	}
-}
-
-// sendNonBlockingSignal sends a signal without blocking
-func (s *Syncer) sendNonBlockingSignal(ch chan struct{}, name string) {
-	select {
-	case ch <- struct{}{}:
-	default:
-		s.logger.Debug().Str("channel", name).Msg("channel full, signal dropped")
 	}
 }
 

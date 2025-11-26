@@ -18,9 +18,9 @@ import (
 
 	"github.com/evstack/ev-node/block"
 
-	da "github.com/evstack/ev-node/da"
 	coreexecutor "github.com/evstack/ev-node/core/execution"
 	coresequencer "github.com/evstack/ev-node/core/sequencer"
+	da "github.com/evstack/ev-node/da"
 	"github.com/evstack/ev-node/pkg/config"
 	genesispkg "github.com/evstack/ev-node/pkg/genesis"
 	"github.com/evstack/ev-node/pkg/p2p"

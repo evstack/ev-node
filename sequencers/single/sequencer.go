@@ -10,8 +10,8 @@ import (
 	ds "github.com/ipfs/go-datastore"
 	"github.com/rs/zerolog"
 
-	da "github.com/evstack/ev-node/da"
 	coresequencer "github.com/evstack/ev-node/core/sequencer"
+	da "github.com/evstack/ev-node/da"
 )
 
 // ErrInvalidId is returned when the chain id is invalid

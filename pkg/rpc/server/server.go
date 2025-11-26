@@ -10,9 +10,9 @@ import (
 	"encoding/binary"
 	"errors"
 
-	goheader "github.com/celestiaorg/go-header"
 	"connectrpc.com/connect"
 	"connectrpc.com/grpcreflect"
+	goheader "github.com/celestiaorg/go-header"
 	da "github.com/evstack/ev-node/da"
 	ds "github.com/ipfs/go-datastore"
 	"github.com/rs/zerolog"

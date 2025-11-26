@@ -15,8 +15,8 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 
-	da "github.com/evstack/ev-node/da"
 	coresequencer "github.com/evstack/ev-node/core/sequencer"
+	da "github.com/evstack/ev-node/da"
 	"github.com/evstack/ev-node/pkg/config"
 	"github.com/evstack/ev-node/pkg/genesis"
 	"github.com/evstack/ev-node/pkg/signer/noop"
