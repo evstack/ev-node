@@ -1,4 +1,5 @@
 {
+  "$comment": "Medium.com returns 403 for automated requests in CI, even though the links are valid",
   "ignorePatterns": [
     {
       "pattern": "^https://medium\\.com"
