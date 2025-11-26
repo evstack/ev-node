@@ -38,16 +38,9 @@ func TestNewSequencer(t *testing.T) {
 	}()
 
 	// Check if the sequencer was created with the correct values
-	if seq == nil {
-		t.Fatal("Expected sequencer to not be nil")
-	}
-
-	if seq.queue == nil {
-		t.Fatal("Expected batch queue to not be nil")
-	}
-	if seq.da == nil {
-		t.Fatal("Expected DA client to not be nil")
-	}
+	require.NotNil(t, seq, "Expected sequencer to not be nil")
+	require.NotNil(t, seq.queue, "Expected batch queue to not be nil")
+	require.NotNil(t, seq.da, "Expected DA client to not be nil")
 }
 
 func TestSequencer_SubmitBatchTxs(t *testing.T) {
