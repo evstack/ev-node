@@ -75,7 +75,7 @@ da-debug search 100 "0x000000000000000000000000000000000000000000000000000000746
 
 All commands support these global flags:
 
-- `--da-url string`: Celestia node RPC URL (default: "http://localhost:26658")
+- `--da-url string`: Celestia node RPC URL (default: `http://localhost:26658`)
 - `--auth-token string`: Authentication token for Celestia node
 - `--timeout duration`: Request timeout (default: 30s)
 - `--verbose`: Enable verbose logging
