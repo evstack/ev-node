@@ -1,8 +1,0 @@
-{
-  "ignorePatterns": [
-    {
-      "pattern": "^https://medium\\.com"
-    }
-  ],
-  "aliveStatusCodes": [200, 206, 403]
-}
