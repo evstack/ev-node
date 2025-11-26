@@ -18,7 +18,6 @@ require (
 	github.com/evstack/ev-node/da v1.0.0-beta.6
 	github.com/evstack/ev-node/execution/evm v1.0.0-beta.3
 	github.com/ipfs/go-datastore v0.9.0
-	github.com/rs/zerolog v1.34.0
 	github.com/spf13/cobra v1.10.1
 )
 
@@ -150,6 +149,7 @@ require (
 	github.com/quic-go/quic-go v0.54.1 // indirect
 	github.com/quic-go/webtransport-go v0.9.0 // indirect
 	github.com/rivo/uniseg v0.2.0 // indirect
+	github.com/rs/zerolog v1.34.0 // indirect
 	github.com/sagikazarmark/locafero v0.11.0 // indirect
 	github.com/shirou/gopsutil v3.21.4-0.20210419000835-c7a38de76ee5+incompatible // indirect
 	github.com/sourcegraph/conc v0.3.1-0.20240121214520-5f936abd7ae8 // indirect

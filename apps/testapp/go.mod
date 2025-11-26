@@ -13,7 +13,6 @@ replace (
 require (
 	github.com/celestiaorg/go-header v0.7.3
 	github.com/evstack/ev-node v1.0.0-beta.9
-	github.com/evstack/ev-node/core v1.0.0-beta.5
 	github.com/evstack/ev-node/da v0.0.0-00010101000000-000000000000
 	github.com/ipfs/go-datastore v0.9.0
 	github.com/spf13/cobra v1.10.1
@@ -34,6 +33,7 @@ require (
 	github.com/dgraph-io/badger/v4 v4.5.1 // indirect
 	github.com/dgraph-io/ristretto/v2 v2.1.0 // indirect
 	github.com/dustin/go-humanize v1.0.1 // indirect
+	github.com/evstack/ev-node/core v1.0.0-beta.5 // indirect
 	github.com/filecoin-project/go-clock v0.1.0 // indirect
 	github.com/filecoin-project/go-jsonrpc v0.9.0 // indirect
 	github.com/flynn/noise v1.1.0 // indirect
