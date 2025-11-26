@@ -404,6 +404,10 @@ func setupFullNode(t *testing.T, sut *SystemUnderTest, fullNodeHome, sequencerHo
 	err = os.WriteFile(fullNodeGenesis, genesisData, 0644)
 	require.NoError(t, err, "failed to write full node genesis file")
 
+	// Read namespace from sequencer config to pass to full node
+	sequencerConfigPath := filepath.Join(sequencerHome, "config", "evnode.yaml")
+	namespace := extractNamespaceFromConfig(t, sequencerConfigPath)
+
 	// Create JWT secret file for full node
 	fullNodeJwtSecretFile := createJWTSecretFile(t, fullNodeHome, fullNodeJwtSecret)
 
@@ -418,6 +422,7 @@ func setupFullNode(t *testing.T, sut *SystemUnderTest, fullNodeHome, sequencerHo
 		"--evm.eth-url", endpoints.GetFullNodeEthURL(),
 		"--rollkit.da.block_time", DefaultDABlockTime,
 		"--rollkit.da.address", endpoints.GetDAAddress(),
+		"--rollkit.da.namespace", namespace, // Use same namespace as sequencer
 		"--rollkit.rpc.address", endpoints.GetFullNodeRPCListen(),
 		"--rollkit.p2p.listen_address", endpoints.GetFullNodeP2PAddress(),
 	}
@@ -425,6 +430,42 @@ func setupFullNode(t *testing.T, sut *SystemUnderTest, fullNodeHome, sequencerHo
 	// Use AwaitNodeLive instead of AwaitNodeUp because in lazy mode scenarios,
 	// the full node may not become ready until the sequencer produces blocks
 	sut.AwaitNodeLive(t, endpoints.GetFullNodeRPCAddress(), NodeStartupTimeout)
+}
+
+// extractNamespaceFromConfig reads the namespace from a config file
+func extractNamespaceFromConfig(t *testing.T, configPath string) string {
+	t.Helper()
+
+	configData, err := os.ReadFile(configPath)
+	require.NoError(t, err, "failed to read config file")
+
+	// Parse YAML - look for "namespace:" under "da:" section
+	lines := strings.Split(string(configData), "\n")
+	inDASection := false
+	for _, line := range lines {
+		// Check if we're entering the da: section
+		if strings.TrimSpace(line) == "da:" {
+			inDASection = true
+			continue
+		}
+		// Check if we're leaving the da: section (new top-level key)
+		if inDASection && len(line) > 0 && line[0] != ' ' && line[0] != '\t' {
+			inDASection = false
+		}
+		// Look for namespace: inside the da: section
+		if inDASection {
+			trimmed := strings.TrimSpace(line)
+			if strings.HasPrefix(trimmed, "namespace:") {
+				parts := strings.SplitN(trimmed, ":", 2)
+				if len(parts) == 2 {
+					return strings.TrimSpace(parts[1])
+				}
+			}
+		}
+	}
+
+	t.Fatal("namespace not found in config file")
+	return ""
 }
 
 // Global nonce counter to ensure unique nonces across multiple transaction submissions
