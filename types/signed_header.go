@@ -3,6 +3,7 @@ package types
 import (
 	"bytes"
 	"context"
+	"encoding/binary"
 	"errors"
 	"fmt"
 
@@ -13,6 +14,47 @@ var (
 	// ErrLastHeaderHashMismatch is returned when the last header hash doesn't match.
 	ErrLastHeaderHashMismatch = errors.New("last header hash mismatch")
 )
+
+var _ header.Header[*SignedHeaderWithDAHint] = &SignedHeaderWithDAHint{}
+
+type SignedHeaderWithDAHint struct {
+	*SignedHeader
+	DAHeightHint uint64
+}
+
+func (s *SignedHeaderWithDAHint) New() *SignedHeaderWithDAHint {
+	return &SignedHeaderWithDAHint{SignedHeader: &SignedHeader{}}
+}
+func (sh *SignedHeaderWithDAHint) Verify(untrstH *SignedHeaderWithDAHint) error {
+	return sh.SignedHeader.Verify(untrstH.SignedHeader)
+}
+
+func (s *SignedHeaderWithDAHint) Zero() bool {
+	return s == nil
+}
+
+func (s *SignedHeaderWithDAHint) IsZero() bool {
+	return s == nil
+}
+
+func (s *SignedHeaderWithDAHint) MarshalBinary() ([]byte, error) {
+	bz, err := s.SignedHeader.MarshalBinary()
+	if err != nil {
+		return nil, err
+	}
+	out := make([]byte, 8+len(bz))
+	binary.BigEndian.PutUint64(out, s.DAHeightHint)
+	copy(out[8:], bz)
+	return out, nil
+}
+
+func (s *SignedHeaderWithDAHint) UnmarshalBinary(data []byte) error {
+	if len(data) < 8 {
+		return fmt.Errorf("invalid length: %d", len(data))
+	}
+	s.DAHeightHint = binary.BigEndian.Uint64(data)
+	return s.SignedHeader.UnmarshalBinary(data[8:])
+}
 
 var _ header.Header[*SignedHeader] = &SignedHeader{}
 

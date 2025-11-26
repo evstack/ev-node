@@ -12,4 +12,5 @@ import (
 type Broadcaster[H header.Header[H]] interface {
 	WriteToStoreAndBroadcast(ctx context.Context, payload H, opts ...pubsub.PubOpt) error
 	Store() header.Store[H]
+	XXX(ctx context.Context, headerOrData H) error
 }

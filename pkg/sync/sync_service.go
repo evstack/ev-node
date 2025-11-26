@@ -62,7 +62,7 @@ type SyncService[H header.Header[H]] struct {
 type DataSyncService = SyncService[*types.Data]
 
 // HeaderSyncService is the P2P Sync Service for headers.
-type HeaderSyncService = SyncService[*types.SignedHeader]
+type HeaderSyncService = SyncService[*types.SignedHeaderWithDAHint]
 
 // NewDataSyncService returns a new DataSyncService.
 func NewDataSyncService(
@@ -83,7 +83,7 @@ func NewHeaderSyncService(
 	p2p *p2p.Client,
 	logger zerolog.Logger,
 ) (*HeaderSyncService, error) {
-	return newSyncService[*types.SignedHeader](store, headerSync, conf, genesis, p2p, logger)
+	return newSyncService[*types.SignedHeaderWithDAHint](store, headerSync, conf, genesis, p2p, logger)
 }
 
 func newSyncService[H header.Header[H]](
@@ -172,6 +172,10 @@ func (syncService *SyncService[H]) WriteToStoreAndBroadcast(ctx context.Context,
 	}
 
 	return nil
+}
+
+func (s *SyncService[H]) XXX(ctx context.Context, headerOrData H) error {
+	return s.store.Append(ctx, headerOrData)
 }
 
 // Start is a part of Service interface.

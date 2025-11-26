@@ -160,3 +160,60 @@ func (_c *MockBroadcaster_WriteToStoreAndBroadcast_Call[H]) RunAndReturn(run fun
 	_c.Call.Return(run)
 	return _c
 }
+
+// XXX provides a mock function for the type MockBroadcaster
+func (_mock *MockBroadcaster[H]) XXX(ctx context.Context, headerOrData H) error {
+	ret := _mock.Called(ctx, headerOrData)
+
+	if len(ret) == 0 {
+		panic("no return value specified for XXX")
+	}
+
+	var r0 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, H) error); ok {
+		r0 = returnFunc(ctx, headerOrData)
+	} else {
+		r0 = ret.Error(0)
+	}
+	return r0
+}
+
+// MockBroadcaster_XXX_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'XXX'
+type MockBroadcaster_XXX_Call[H header.Header[H]] struct {
+	*mock.Call
+}
+
+// XXX is a helper method to define mock.On call
+//   - ctx context.Context
+//   - headerOrData H
+func (_e *MockBroadcaster_Expecter[H]) XXX(ctx interface{}, headerOrData interface{}) *MockBroadcaster_XXX_Call[H] {
+	return &MockBroadcaster_XXX_Call[H]{Call: _e.mock.On("XXX", ctx, headerOrData)}
+}
+
+func (_c *MockBroadcaster_XXX_Call[H]) Run(run func(ctx context.Context, headerOrData H)) *MockBroadcaster_XXX_Call[H] {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 H
+		if args[1] != nil {
+			arg1 = args[1].(H)
+		}
+		run(
+			arg0,
+			arg1,
+		)
+	})
+	return _c
+}
+
+func (_c *MockBroadcaster_XXX_Call[H]) Return(err error) *MockBroadcaster_XXX_Call[H] {
+	_c.Call.Return(err)
+	return _c
+}
+
+func (_c *MockBroadcaster_XXX_Call[H]) RunAndReturn(run func(ctx context.Context, headerOrData H) error) *MockBroadcaster_XXX_Call[H] {
+	_c.Call.Return(run)
+	return _c
+}

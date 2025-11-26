@@ -34,7 +34,7 @@ var _ rpc.StoreServiceHandler = (*StoreServer)(nil)
 // StoreServer implements the StoreService defined in the proto file
 type StoreServer struct {
 	store       store.Store
-	headerStore goheader.Store[*types.SignedHeader]
+	headerStore goheader.Store[*types.SignedHeaderWithDAHint]
 	dataStore   goheader.Store[*types.Data]
 	logger      zerolog.Logger
 }
@@ -42,7 +42,7 @@ type StoreServer struct {
 // NewStoreServer creates a new StoreServer instance
 func NewStoreServer(
 	store store.Store,
-	headerStore goheader.Store[*types.SignedHeader],
+	headerStore goheader.Store[*types.SignedHeaderWithDAHint],
 	dataStore goheader.Store[*types.Data],
 	logger zerolog.Logger,
 ) *StoreServer {
@@ -370,7 +370,7 @@ func (p *P2PServer) GetNetInfo(
 // NewServiceHandler creates a new HTTP handler for Store, P2P and Config services
 func NewServiceHandler(
 	store store.Store,
-	headerStore goheader.Store[*types.SignedHeader],
+	headerStore goheader.Store[*types.SignedHeaderWithDAHint],
 	dataStore goheader.Store[*types.Data],
 	peerManager p2p.P2PRPC,
 	proposerAddress []byte,

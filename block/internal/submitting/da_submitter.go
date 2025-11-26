@@ -93,6 +93,10 @@ func clamp(v, min, max time.Duration) time.Duration {
 	return v
 }
 
+type xxxer interface {
+	XXX(ctx context.Context, header *types.SignedHeaderWithDAHint) error
+}
+
 // DASubmitter handles DA submission operations
 type DASubmitter struct {
 	client  da.Client
@@ -101,6 +105,7 @@ type DASubmitter struct {
 	options common.BlockOptions
 	logger  zerolog.Logger
 	metrics *common.Metrics
+	xxxer   xxxer
 
 	// address selector for multi-account support
 	addressSelector pkgda.AddressSelector
@@ -114,6 +119,7 @@ func NewDASubmitter(
 	options common.BlockOptions,
 	metrics *common.Metrics,
 	logger zerolog.Logger,
+	xxxer xxxer,
 ) *DASubmitter {
 	daSubmitterLogger := logger.With().Str("component", "da_submitter").Logger()
 
@@ -146,6 +152,7 @@ func NewDASubmitter(
 		metrics:         metrics,
 		logger:          daSubmitterLogger,
 		addressSelector: addressSelector,
+		xxxer:           xxxer,
 	}
 }
 
@@ -187,6 +194,11 @@ func (s *DASubmitter) SubmitHeaders(ctx context.Context, cache cache.Manager) er
 		func(submitted []*types.SignedHeader, res *coreda.ResultSubmit) {
 			for _, header := range submitted {
 				cache.SetHeaderDAIncluded(header.Hash().String(), res.Height, header.Height())
+				payload := &types.SignedHeaderWithDAHint{SignedHeader: header, DAHeightHint: res.Height}
+				if err := s.xxxer.XXX(ctx, payload); err != nil {
+					s.logger.Error().Err(err).Msg("failed to update header in p2p store")
+					// ignoring error here, since we don't want to block the block submission'
+				}
 			}
 			if l := len(submitted); l > 0 {
 				lastHeight := submitted[l-1].Height()

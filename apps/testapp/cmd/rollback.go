@@ -76,7 +76,7 @@ func NewRollbackCmd() *cobra.Command {
 			}
 
 			// rollback ev-node goheader state
-			headerStore, err := goheaderstore.NewStore[*types.SignedHeader](
+			headerStore, err := goheaderstore.NewStore[*types.SignedHeaderWithDAHint](
 				evolveDB,
 				goheaderstore.WithStorePrefix("headerSync"),
 				goheaderstore.WithMetrics(),

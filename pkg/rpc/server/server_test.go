@@ -325,7 +325,7 @@ func TestGetGenesisDaHeight_InvalidLength(t *testing.T) {
 func TestGetP2PStoreInfo(t *testing.T) {
 	t.Run("returns snapshots for configured stores", func(t *testing.T) {
 		mockStore := mocks.NewMockStore(t)
-		headerStore := headerstoremocks.NewMockStore[*types.SignedHeader](t)
+		headerStore := headerstoremocks.NewMockStore[*types.SignedHeaderWithDAHint](t)
 		dataStore := headerstoremocks.NewMockStore[*types.Data](t)
 		logger := zerolog.Nop()
 		server := NewStoreServer(mockStore, headerStore, dataStore, logger)
@@ -354,10 +354,10 @@ func TestGetP2PStoreInfo(t *testing.T) {
 
 	t.Run("returns error when a store edge fails", func(t *testing.T) {
 		mockStore := mocks.NewMockStore(t)
-		headerStore := headerstoremocks.NewMockStore[*types.SignedHeader](t)
+		headerStore := headerstoremocks.NewMockStore[*types.SignedHeaderWithDAHint](t)
 		logger := zerolog.Nop()
 		headerStore.On("Height").Return(uint64(0))
-		headerStore.On("Head", mock.Anything).Return((*types.SignedHeader)(nil), fmt.Errorf("boom"))
+		headerStore.On("Head", mock.Anything).Return((*types.SignedHeaderWithDAHint)(nil), fmt.Errorf("boom"))
 
 		server := NewStoreServer(mockStore, headerStore, nil, logger)
 		resp, err := server.GetP2PStoreInfo(context.Background(), connect.NewRequest(&emptypb.Empty{}))
@@ -627,8 +627,8 @@ func TestHealthReadyEndpoint(t *testing.T) {
 	})
 }
 
-func makeTestSignedHeader(height uint64, ts time.Time) *types.SignedHeader {
-	return &types.SignedHeader{
+func makeTestSignedHeader(height uint64, ts time.Time) *types.SignedHeaderWithDAHint {
+	return &types.SignedHeaderWithDAHint{SignedHeader: &types.SignedHeader{
 		Header: types.Header{
 			BaseHeader: types.BaseHeader{
 				Height:  height,
@@ -639,6 +639,7 @@ func makeTestSignedHeader(height uint64, ts time.Time) *types.SignedHeader {
 			DataHash:        []byte{0x02},
 			AppHash:         []byte{0x03},
 		},
+	},
 	}
 }
 

@@ -28,10 +28,11 @@ import (
 func setupTestServer(
 	t *testing.T,
 	mockStore *mocks.MockStore,
-	headerStore goheader.Store[*types.SignedHeader],
+	headerStore goheader.Store[*types.SignedHeaderWithDAHint],
 	dataStore goheader.Store[*types.Data],
 	mockP2P *mocks.MockP2PRPC,
 ) (*httptest.Server, *Client) {
+	t.Helper()
 	mux := http.NewServeMux()
 
 	logger := zerolog.Nop()
@@ -105,13 +106,13 @@ func TestClientGetMetadata(t *testing.T) {
 func TestClientGetP2PStoreInfo(t *testing.T) {
 	mockStore := mocks.NewMockStore(t)
 	mockP2P := mocks.NewMockP2PRPC(t)
-	headerStore := headerstoremocks.NewMockStore[*types.SignedHeader](t)
+	headerStore := headerstoremocks.NewMockStore[*types.SignedHeaderWithDAHint](t)
 	dataStore := headerstoremocks.NewMockStore[*types.Data](t)
 
 	now := time.Now().UTC()
 
-	headerHead := testSignedHeader(10, now)
-	headerTail := testSignedHeader(5, now.Add(-time.Minute))
+	headerHead := &types.SignedHeaderWithDAHint{SignedHeader: testSignedHeader(10, now)}
+	headerTail := &types.SignedHeaderWithDAHint{SignedHeader: testSignedHeader(5, now.Add(-time.Minute))}
 	headerStore.On("Height").Return(uint64(10))
 	headerStore.On("Head", mock.Anything).Return(headerHead, nil)
 	headerStore.On("Tail", mock.Anything).Return(headerTail, nil)

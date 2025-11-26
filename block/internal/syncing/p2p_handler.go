@@ -27,7 +27,7 @@ type p2pHandler interface {
 // The handler maintains a processedHeight to track the highest block that has been
 // successfully validated and sent to the syncer, preventing duplicate processing.
 type P2PHandler struct {
-	headerStore goheader.Store[*types.SignedHeader]
+	headerStore goheader.Store[*types.SignedHeaderWithDAHint]
 	dataStore   goheader.Store[*types.Data]
 	cache       cache.CacheManager
 	genesis     genesis.Genesis
@@ -38,7 +38,7 @@ type P2PHandler struct {
 
 // NewP2PHandler creates a new P2P handler.
 func NewP2PHandler(
-	headerStore goheader.Store[*types.SignedHeader],
+	headerStore goheader.Store[*types.SignedHeaderWithDAHint],
 	dataStore goheader.Store[*types.Data],
 	cache cache.CacheManager,
 	genesis genesis.Genesis,
@@ -104,10 +104,10 @@ func (h *P2PHandler) ProcessHeight(ctx context.Context, height uint64, heightInC
 	// further header validation (signature) is done in validateBlock.
 	// we need to be sure that the previous block n-1 was executed before validating block n
 	event := common.DAHeightEvent{
-		Header:   header,
-		Data:     data,
-		DaHeight: 0,
-		Source:   common.SourceP2P,
+		Header:       header.SignedHeader,
+		Data:         data,
+		Source:       common.SourceP2P,
+		DaHeightHint: header.DAHeightHint,
 	}
 
 	select {

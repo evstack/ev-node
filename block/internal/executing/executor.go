@@ -37,7 +37,7 @@ type Executor struct {
 	metrics *common.Metrics
 
 	// Broadcasting
-	headerBroadcaster common.Broadcaster[*types.SignedHeader]
+	headerBroadcaster common.Broadcaster[*types.SignedHeaderWithDAHint]
 	dataBroadcaster   common.Broadcaster[*types.Data]
 
 	// Configuration
@@ -76,7 +76,7 @@ func NewExecutor(
 	metrics *common.Metrics,
 	config config.Config,
 	genesis genesis.Genesis,
-	headerBroadcaster common.Broadcaster[*types.SignedHeader],
+	headerBroadcaster common.Broadcaster[*types.SignedHeaderWithDAHint],
 	dataBroadcaster common.Broadcaster[*types.Data],
 	logger zerolog.Logger,
 	options common.BlockOptions,
@@ -420,7 +420,7 @@ func (e *Executor) produceBlock() error {
 
 	// broadcast header and data to P2P network
 	g, ctx := errgroup.WithContext(e.ctx)
-	g.Go(func() error { return e.headerBroadcaster.WriteToStoreAndBroadcast(ctx, header) })
+	g.Go(func() error { return e.headerBroadcaster.WriteToStoreAndBroadcast(ctx, &types.SignedHeaderWithDAHint{SignedHeader: header}) })
 	g.Go(func() error { return e.dataBroadcaster.WriteToStoreAndBroadcast(ctx, data) })
 	if err := g.Wait(); err != nil {
 		e.logger.Error().Err(err).Msg("failed to broadcast header and/data")

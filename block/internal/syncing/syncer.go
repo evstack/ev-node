@@ -49,7 +49,7 @@ type Syncer struct {
 	daRetrieverHeight *atomic.Uint64
 
 	// P2P stores
-	headerStore common.Broadcaster[*types.SignedHeader]
+	headerStore common.Broadcaster[*types.SignedHeaderWithDAHint]
 	dataStore   common.Broadcaster[*types.Data]
 
 	// Channels for coordination
@@ -81,7 +81,7 @@ func NewSyncer(
 	metrics *common.Metrics,
 	config config.Config,
 	genesis genesis.Genesis,
-	headerStore common.Broadcaster[*types.SignedHeader],
+	headerStore common.Broadcaster[*types.SignedHeaderWithDAHint],
 	dataStore common.Broadcaster[*types.Data],
 	logger zerolog.Logger,
 	options common.BlockOptions,
@@ -432,6 +432,41 @@ func (s *Syncer) processHeightEvent(event *common.DAHeightEvent) {
 		return
 	}
 
+	// If this is a P2P event with a DA height hint, trigger targeted DA retrieval
+	// This allows us to fetch the block directly from the specified DA height instead of sequential scanning
+	if event.Source == common.SourceP2P && event.DaHeightHint != 0 {
+		if _, exists := s.cache.GetHeaderDAIncluded(event.Header.Hash().String()); !exists {
+			s.logger.Debug().
+				Uint64("height", height).
+				Uint64("da_height_hint", event.DaHeightHint).
+				Msg("P2P event with DA height hint, triggering targeted DA retrieval")
+
+			// Trigger targeted DA retrieval in background
+			go func() {
+				targetEvents, err := s.daRetriever.RetrieveFromDA(s.ctx, event.DaHeightHint)
+				if err != nil {
+					s.logger.Debug().
+						Err(err).
+						Uint64("da_height", event.DaHeightHint).
+						Msg("targeted DA retrieval failed (hint may be incorrect or DA not yet available)")
+					// Not a critical error - the sequential DA worker will eventually find it
+					return
+				}
+
+				// Process retrieved events from the targeted DA height
+				for _, daEvent := range targetEvents {
+					select {
+					case s.heightInCh <- daEvent:
+					case <-s.ctx.Done():
+						return
+					default:
+						s.cache.SetPendingEvent(daEvent.Header.Height(), &daEvent)
+					}
+				}
+			}()
+		}
+	}
+
 	// Last data must be got from store if the event comes from DA and the data hash is empty.
 	// When if the event comes from P2P, the sequencer and then all the full nodes contains the data.
 	if event.Source == common.SourceDA && bytes.Equal(event.Header.DataHash, common.DataHashForEmptyTxs) && currentHeight > 0 {
@@ -469,7 +504,8 @@ func (s *Syncer) processHeightEvent(event *common.DAHeightEvent) {
 		g.Go(func() error {
 			// broadcast header locally only — prevents spamming the p2p network with old height notifications,
 			// allowing the syncer to update its target and fill missing blocks
-			return s.headerStore.WriteToStoreAndBroadcast(ctx, event.Header, pubsub.WithLocalPublication(true))
+			payload := &types.SignedHeaderWithDAHint{SignedHeader: event.Header, DAHeightHint: event.DaHeightHint}
+			return s.headerStore.WriteToStoreAndBroadcast(ctx, payload, pubsub.WithLocalPublication(true))
 		})
 		g.Go(func() error {
 			// broadcast data locally only — prevents spamming the p2p network with old height notifications,

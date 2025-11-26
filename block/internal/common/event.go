@@ -20,4 +20,7 @@ type DAHeightEvent struct {
 	DaHeight uint64
 	// Source indicates where this event originated from (DA or P2P)
 	Source EventSource
+
+	// Optional DA height hint from P2P
+	DaHeightHint uint64
 }

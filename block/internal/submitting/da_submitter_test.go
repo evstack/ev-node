@@ -65,6 +65,7 @@ func setupDASubmitterTest(t *testing.T) (*DASubmitter, store.Store, cache.Manage
 		common.DefaultBlockOptions(),
 		common.NopMetrics(),
 		zerolog.Nop(),
+		noopXXXer{},
 	)
 
 	return daSubmitter, st, cm, dummyDA, gen
@@ -115,6 +116,7 @@ func TestNewDASubmitterSetsVisualizerWhenEnabled(t *testing.T) {
 		common.DefaultBlockOptions(),
 		common.NopMetrics(),
 		zerolog.Nop(),
+		nil,
 	)
 
 	require.NotNil(t, server.GetDAVisualizationServer())

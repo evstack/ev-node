@@ -132,7 +132,7 @@ func NewSyncComponents(
 	store store.Store,
 	exec coreexecutor.Executor,
 	da coreda.DA,
-	headerStore common.Broadcaster[*types.SignedHeader],
+	headerStore common.Broadcaster[*types.SignedHeaderWithDAHint],
 	dataStore common.Broadcaster[*types.Data],
 	logger zerolog.Logger,
 	metrics *Metrics,
@@ -165,7 +165,7 @@ func NewSyncComponents(
 	)
 
 	// Create submitter for sync nodes (no signer, only DA inclusion processing)
-	daSubmitter := submitting.NewDASubmitter(daClient, config, genesis, blockOpts, metrics, logger)
+	daSubmitter := submitting.NewDASubmitter(daClient, config, genesis, blockOpts, metrics, logger, nil) // todo (Alex): use a noop
 	submitter := submitting.NewSubmitter(
 		store,
 		exec,
@@ -198,7 +198,7 @@ func NewAggregatorComponents(
 	sequencer coresequencer.Sequencer,
 	da coreda.DA,
 	signer signer.Signer,
-	headerBroadcaster common.Broadcaster[*types.SignedHeader],
+	headerBroadcaster common.Broadcaster[*types.SignedHeaderWithDAHint],
 	dataBroadcaster common.Broadcaster[*types.Data],
 	logger zerolog.Logger,
 	metrics *Metrics,
@@ -247,7 +247,7 @@ func NewAggregatorComponents(
 
 	// Create DA client and submitter for aggregator nodes (with signer for submission)
 	daClient := NewDAClient(da, config, logger)
-	daSubmitter := submitting.NewDASubmitter(daClient, config, genesis, blockOpts, metrics, logger)
+	daSubmitter := submitting.NewDASubmitter(daClient, config, genesis, blockOpts, metrics, logger, headerBroadcaster)
 	submitter := submitting.NewSubmitter(
 		store,
 		exec,

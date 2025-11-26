@@ -57,7 +57,7 @@ func p2pMakeSignedHeader(t *testing.T, chainID string, height uint64, proposer [
 // P2PTestData aggregates dependencies used by P2P handler tests.
 type P2PTestData struct {
 	Handler      *P2PHandler
-	HeaderStore  *extmocks.MockStore[*types.SignedHeader]
+	HeaderStore  *extmocks.MockStore[*types.SignedHeaderWithDAHint]
 	DataStore    *extmocks.MockStore[*types.Data]
 	Cache        cache.CacheManager
 	Genesis      genesis.Genesis
@@ -73,7 +73,7 @@ func setupP2P(t *testing.T) *P2PTestData {
 
 	gen := genesis.Genesis{ChainID: "p2p-test", InitialHeight: 1, StartTime: time.Now().Add(-time.Second), ProposerAddress: proposerAddr}
 
-	headerStoreMock := extmocks.NewMockStore[*types.SignedHeader](t)
+	headerStoreMock := extmocks.NewMockStore[*types.SignedHeaderWithDAHint](t)
 	dataStoreMock := extmocks.NewMockStore[*types.Data](t)
 
 	cfg := config.Config{
@@ -136,8 +136,8 @@ func TestP2PHandler_ProcessHeight_EmitsEventWhenHeaderAndDataPresent(t *testing.
 	sig, err := p.Signer.Sign(bz)
 	require.NoError(t, err)
 	header.Signature = sig
-
-	p.HeaderStore.EXPECT().GetByHeight(mock.Anything, uint64(5)).Return(header, nil).Once()
+	payload := &types.SignedHeaderWithDAHint{SignedHeader: header}
+	p.HeaderStore.EXPECT().GetByHeight(mock.Anything, uint64(5)).Return(payload, nil).Once()
 	p.DataStore.EXPECT().GetByHeight(mock.Anything, uint64(5)).Return(data, nil).Once()
 
 	ch := make(chan common.DAHeightEvent, 1)
@@ -163,7 +163,8 @@ func TestP2PHandler_ProcessHeight_SkipsWhenDataMissing(t *testing.T) {
 	require.NoError(t, err)
 	header.Signature = sig
 
-	p.HeaderStore.EXPECT().GetByHeight(mock.Anything, uint64(7)).Return(header, nil).Once()
+	payload := &types.SignedHeaderWithDAHint{SignedHeader: header}
+	p.HeaderStore.EXPECT().GetByHeight(mock.Anything, uint64(7)).Return(payload, nil).Once()
 	p.DataStore.EXPECT().GetByHeight(mock.Anything, uint64(7)).Return(nil, errors.New("missing")).Once()
 
 	ch := make(chan common.DAHeightEvent, 1)
@@ -198,7 +199,8 @@ func TestP2PHandler_ProcessHeight_SkipsOnProposerMismatch(t *testing.T) {
 	header := p2pMakeSignedHeader(t, p.Genesis.ChainID, 11, badAddr, pub, signer)
 	header.DataHash = common.DataHashForEmptyTxs
 
-	p.HeaderStore.EXPECT().GetByHeight(mock.Anything, uint64(11)).Return(header, nil).Once()
+	payload := &types.SignedHeaderWithDAHint{SignedHeader: header}
+	p.HeaderStore.EXPECT().GetByHeight(mock.Anything, uint64(11)).Return(payload, nil).Once()
 
 	ch := make(chan common.DAHeightEvent, 1)
 	err = p.Handler.ProcessHeight(ctx, 11, ch)
@@ -233,7 +235,8 @@ func TestP2PHandler_ProcessedHeightSkipsPreviouslyHandledBlocks(t *testing.T) {
 	require.NoError(t, err)
 	header.Signature = sig
 
-	p.HeaderStore.EXPECT().GetByHeight(mock.Anything, uint64(6)).Return(header, nil).Once()
+	payload := &types.SignedHeaderWithDAHint{SignedHeader: header}
+	p.HeaderStore.EXPECT().GetByHeight(mock.Anything, uint64(6)).Return(payload, nil).Once()
 	p.DataStore.EXPECT().GetByHeight(mock.Anything, uint64(6)).Return(data, nil).Once()
 
 	require.NoError(t, p.Handler.ProcessHeight(ctx, 6, ch))
@@ -256,7 +259,8 @@ func TestP2PHandler_SetProcessedHeightPreventsDuplicates(t *testing.T) {
 	require.NoError(t, err)
 	header.Signature = sig
 
-	p.HeaderStore.EXPECT().GetByHeight(mock.Anything, uint64(8)).Return(header, nil).Once()
+	payload := &types.SignedHeaderWithDAHint{SignedHeader: header}
+	p.HeaderStore.EXPECT().GetByHeight(mock.Anything, uint64(8)).Return(payload, nil).Once()
 	p.DataStore.EXPECT().GetByHeight(mock.Anything, uint64(8)).Return(data, nil).Once()
 
 	ch := make(chan common.DAHeightEvent, 1)

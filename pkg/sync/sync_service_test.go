@@ -167,7 +167,7 @@ func TestHeaderSyncServiceInitFromHigherHeight(t *testing.T) {
 	require.NoError(t, svc.WriteToStoreAndBroadcast(ctx, signedHeader))
 }
 
-func nextHeader(t *testing.T, previousHeader *types.SignedHeader, chainID string, noopSigner signer.Signer) *types.SignedHeader {
+func nextHeader(t *testing.T, previousHeader *types.SignedHeaderWithDAHint, chainID string, noopSigner signer.Signer) *types.SignedHeaderWithDAHint {
 	newSignedHeader := &types.SignedHeader{
 		Header: types.GetRandomNextHeader(previousHeader.Header, chainID),
 		Signer: previousHeader.Signer,
@@ -178,8 +178,7 @@ func nextHeader(t *testing.T, previousHeader *types.SignedHeader, chainID string
 	require.NoError(t, err)
 	newSignedHeader.Signature = signature
 	require.NoError(t, newSignedHeader.Validate())
-	previousHeader = newSignedHeader
-	return previousHeader
+	return &types.SignedHeaderWithDAHint{SignedHeader: newSignedHeader}
 }
 
 func bytesN(r *rand.Rand, n int) []byte {
