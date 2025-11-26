@@ -194,6 +194,7 @@ function sidebarHome() {
           items: [
             { text: "Overview", link: "/learn/sequencing/overview" },
             { text: "Single", link: "/learn/sequencing/single" },
+            { text: "Based", link: "/learn/sequencing/based" },
           ],
         },
         {
