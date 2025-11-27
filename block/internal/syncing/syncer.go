@@ -42,6 +42,7 @@ type Syncer struct {
 	config  config.Config
 	genesis genesis.Genesis
 	options common.BlockOptions
+	logger  zerolog.Logger
 
 	// State management
 	lastState *atomic.Pointer[types.State]
@@ -63,8 +64,8 @@ type Syncer struct {
 	fiRetriever *da.ForcedInclusionRetriever
 	p2pHandler  p2pHandler
 
-	// Logging
-	logger zerolog.Logger
+	// Forced inclusion tracking
+	pendingForcedInclusionTxs sync.Map // map[string]pendingForcedInclusionTx
 
 	// Lifecycle
 	ctx    context.Context
@@ -73,6 +74,14 @@ type Syncer struct {
 
 	// P2P wait coordination
 	p2pWaitState atomic.Value // stores p2pWaitState
+}
+
+// pendingForcedInclusionTx represents a forced inclusion transaction that hasn't been included yet
+type pendingForcedInclusionTx struct {
+	Data       []byte
+	EpochStart uint64
+	EpochEnd   uint64
+	TxHash     string
 }
 
 // NewSyncer creates a new block syncer
@@ -90,20 +99,23 @@ func NewSyncer(
 	options common.BlockOptions,
 	errorCh chan<- error,
 ) *Syncer {
+	daRetrieverHeight := &atomic.Uint64{}
+	daRetrieverHeight.Store(genesis.DAStartHeight)
+
 	return &Syncer{
 		store:             store,
 		exec:              exec,
-		daClient:          daClient,
 		cache:             cache,
 		metrics:           metrics,
 		config:            config,
 		genesis:           genesis,
 		options:           options,
+		lastState:         &atomic.Pointer[types.State]{},
+		daClient:          daClient,
+		daRetrieverHeight: daRetrieverHeight,
 		headerStore:       headerStore,
 		dataStore:         dataStore,
-		lastState:         &atomic.Pointer[types.State]{},
-		daRetrieverHeight: &atomic.Uint64{},
-		heightInCh:        make(chan common.DAHeightEvent, 1_000),
+		heightInCh:        make(chan common.DAHeightEvent, 100),
 		errorCh:           errorCh,
 		logger:            logger.With().Str("component", "syncer").Logger(),
 	}
@@ -665,13 +677,16 @@ func hashTx(tx []byte) string {
 	return hex.EncodeToString(hash[:])
 }
 
-// verifyForcedInclusionTxs verifies that all forced inclusion transactions from DA are included in the block
+// verifyForcedInclusionTxs verifies that forced inclusion transactions from DA are properly handled.
+// Note: Due to block size constraints (MaxBytes), sequencers may defer forced inclusion transactions
+// to future blocks (smoothing). This is legitimate behavior within an epoch.
+// However, ALL forced inclusion txs from an epoch MUST be included before the next epoch begins.
 func (s *Syncer) verifyForcedInclusionTxs(currentState types.State, data *types.Data) error {
 	if s.fiRetriever == nil {
 		return nil
 	}
 
-	// Retrieve forced inclusion transactions from DA
+	// Retrieve forced inclusion transactions from DA for current epoch
 	forcedIncludedTxsEvent, err := s.fiRetriever.RetrieveForcedIncludedTxs(s.ctx, currentState.DAHeight)
 	if err != nil {
 		if errors.Is(err, da.ErrForceInclusionNotConfigured) {
@@ -682,41 +697,104 @@ func (s *Syncer) verifyForcedInclusionTxs(currentState types.State, data *types.
 		return fmt.Errorf("failed to retrieve forced included txs from DA: %w", err)
 	}
 
-	// If no forced inclusion transactions found, nothing to verify
-	if len(forcedIncludedTxsEvent.Txs) == 0 {
-		s.logger.Debug().Uint64("da_height", currentState.DAHeight).Msg("no forced inclusion transactions to verify")
-		return nil
-	}
-
+	// Build map of transactions in current block
 	blockTxMap := make(map[string]struct{})
 	for _, tx := range data.Txs {
 		blockTxMap[hashTx(tx)] = struct{}{}
 	}
 
-	// Check if all forced inclusion transactions are present in the block
-	var missingTxs [][]byte
+	// Check if any pending forced inclusion txs from previous epochs are included
+	var stillPending []pendingForcedInclusionTx
+	s.pendingForcedInclusionTxs.Range(func(key, value interface{}) bool {
+		pending := value.(pendingForcedInclusionTx)
+		if _, ok := blockTxMap[pending.TxHash]; ok {
+			s.logger.Debug().
+				Uint64("height", data.Height()).
+				Uint64("epoch_start", pending.EpochStart).
+				Uint64("epoch_end", pending.EpochEnd).
+				Str("tx_hash", pending.TxHash[:16]).
+				Msg("pending forced inclusion transaction included in block")
+			s.pendingForcedInclusionTxs.Delete(key)
+		} else {
+			stillPending = append(stillPending, pending)
+		}
+		return true
+	})
+
+	// Add new forced inclusion transactions from current epoch
+	var newPendingCount, includedCount int
 	for _, forcedTx := range forcedIncludedTxsEvent.Txs {
-		if _, ok := blockTxMap[hashTx(forcedTx)]; !ok {
-			missingTxs = append(missingTxs, forcedTx)
+		txHash := hashTx(forcedTx)
+		if _, ok := blockTxMap[txHash]; ok {
+			// Transaction is included in this block
+			includedCount++
+		} else {
+			// Transaction not included, add to pending
+			stillPending = append(stillPending, pendingForcedInclusionTx{
+				Data:       forcedTx,
+				EpochStart: forcedIncludedTxsEvent.StartDaHeight,
+				EpochEnd:   forcedIncludedTxsEvent.EndDaHeight,
+				TxHash:     txHash,
+			})
+			newPendingCount++
 		}
 	}
 
-	if len(missingTxs) > 0 {
-		s.logger.Error().
-			Uint64("height", data.Height()).
-			Uint64("da_height", currentState.DAHeight).
-			Uint64("da_epoch_start", forcedIncludedTxsEvent.StartDaHeight).
-			Uint64("da_epoch_end", forcedIncludedTxsEvent.EndDaHeight).
-			Int("missing_count", len(missingTxs)).
-			Int("total_forced", len(forcedIncludedTxsEvent.Txs)).
-			Msg("SEQUENCER IS MALICIOUS: forced inclusion transactions missing from block")
-		return errors.Join(errMaliciousProposer, fmt.Errorf("sequencer is malicious: %d forced inclusion transactions not included in block", len(missingTxs)))
+	// Check if we've moved past any epoch boundaries with pending txs
+	var maliciousTxs, remainingPending []pendingForcedInclusionTx
+	for _, pending := range stillPending {
+		// If current DA height is past this epoch's end, these txs should have been included
+		if currentState.DAHeight > pending.EpochEnd {
+			maliciousTxs = append(maliciousTxs, pending)
+		} else {
+			remainingPending = append(remainingPending, pending)
+		}
 	}
 
-	s.logger.Debug().
-		Uint64("height", data.Height()).
-		Int("forced_txs", len(forcedIncludedTxsEvent.Txs)).
-		Msg("all forced inclusion transactions verified in block")
+	// Update pending map - clear old entries and store only remaining pending
+	s.pendingForcedInclusionTxs.Range(func(key, value interface{}) bool {
+		s.pendingForcedInclusionTxs.Delete(key)
+		return true
+	})
+	for _, pending := range remainingPending {
+		s.pendingForcedInclusionTxs.Store(pending.TxHash, pending)
+	}
+
+	// If there are transactions from past epochs that weren't included, sequencer is malicious
+	if len(maliciousTxs) > 0 {
+		s.logger.Error().
+			Uint64("height", data.Height()).
+			Uint64("current_da_height", currentState.DAHeight).
+			Int("malicious_count", len(maliciousTxs)).
+			Msg("SEQUENCER IS MALICIOUS: forced inclusion transactions from past epoch(s) not included")
+		return errors.Join(errMaliciousProposer, fmt.Errorf("sequencer is malicious: %d forced inclusion transactions from past epoch(s) not included", len(maliciousTxs)))
+	}
+
+	// Log current state
+	if len(forcedIncludedTxsEvent.Txs) > 0 {
+		if newPendingCount > 0 {
+			totalPending := 0
+			s.pendingForcedInclusionTxs.Range(func(key, value interface{}) bool {
+				totalPending++
+				return true
+			})
+
+			s.logger.Info().
+				Uint64("height", data.Height()).
+				Uint64("da_height", currentState.DAHeight).
+				Uint64("epoch_start", forcedIncludedTxsEvent.StartDaHeight).
+				Uint64("epoch_end", forcedIncludedTxsEvent.EndDaHeight).
+				Int("included_count", includedCount).
+				Int("deferred_count", newPendingCount).
+				Int("total_pending", totalPending).
+				Msg("forced inclusion transactions processed - some deferred due to block size constraints")
+		} else {
+			s.logger.Debug().
+				Uint64("height", data.Height()).
+				Int("forced_txs", len(forcedIncludedTxsEvent.Txs)).
+				Msg("all forced inclusion transactions included in block")
+		}
+	}
 
 	return nil
 }

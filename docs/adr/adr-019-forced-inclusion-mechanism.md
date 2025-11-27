@@ -304,31 +304,98 @@ func (s *BasedSequencer) SubmitBatchTxs(ctx context.Context, req SubmitBatchTxsR
 
 #### Syncer Verification
 
-Full nodes verify forced inclusion in the sync process:
+Full nodes verify forced inclusion in the sync process with support for transaction smoothing across multiple blocks:
 
 ```go
 func (s *Syncer) verifyForcedInclusionTxs(currentState State, data *Data) error {
-    // 1. Retrieve forced inclusion transactions from DA
+    // 1. Retrieve forced inclusion transactions from DA for current epoch
     forcedEvent, err := s.daRetriever.RetrieveForcedIncludedTxsFromDA(s.ctx, currentState.DAHeight)
     if err != nil {
         return err
     }
 
-    // 2. Build map of transactions in block
+    // 2. Build map of transactions in current block
     blockTxMap := make(map[string]struct{})
     for _, tx := range data.Txs {
-        blockTxMap[string(tx)] = struct{}{}
+        blockTxMap[hashTx(tx)] = struct{}{}
     }
 
-    // 3. Verify all forced transactions are included
-    for _, forcedTx := range forcedEvent.Txs {
-        if _, ok := blockTxMap[string(forcedTx)]; !ok {
-            return errMaliciousProposer
+    // 3. Check if any pending forced inclusion txs from previous epochs are included
+    var stillPending []pendingForcedInclusionTx
+    s.pendingForcedInclusionTxs.Range(func(key, value interface{}) bool {
+        pending := value.(pendingForcedInclusionTx)
+        if _, ok := blockTxMap[pending.TxHash]; ok {
+            // Transaction was included - remove from pending
+            s.pendingForcedInclusionTxs.Delete(key)
+        } else {
+            stillPending = append(stillPending, pending)
         }
+        return true
+    })
+
+    // 4. Process new forced inclusion transactions from current epoch
+    for _, forcedTx := range forcedEvent.Txs {
+        txHash := hashTx(forcedTx)
+        if _, ok := blockTxMap[txHash]; !ok {
+            // Transaction not included yet - add to pending for deferral within epoch
+            stillPending = append(stillPending, pendingForcedInclusionTx{
+                Data:       forcedTx,
+                EpochStart: forcedEvent.StartDaHeight,
+                EpochEnd:   forcedEvent.EndDaHeight,
+                TxHash:     txHash,
+            })
+        }
+    }
+
+    // 5. Check for malicious behavior: pending txs past their epoch boundary
+    var maliciousTxs, remainingPending []pendingForcedInclusionTx
+    for _, pending := range stillPending {
+        // If current DA height is past this epoch's end, these txs MUST have been included
+        if currentState.DAHeight > pending.EpochEnd {
+            maliciousTxs = append(maliciousTxs, pending)
+        } else {
+            remainingPending = append(remainingPending, pending)
+        }
+    }
+
+    // 6. Update pending map with only remaining valid pending txs
+    pendingForcedInclusionTxs = remainingPending
+
+    // 7. Reject block if sequencer censored forced txs past epoch boundary
+    if len(maliciousTxs) > 0 {
+        return fmt.Errorf("sequencer is malicious: %d forced inclusion transactions from past epoch(s) not included", len(maliciousTxs))
     }
 
     return nil
 }
+```
+
+**Key Verification Features**:
+
+1. **Pending Transaction Tracking**: Maintains a map of forced inclusion transactions that haven't been included yet
+2. **Epoch-Based Deferral**: Allows transactions to be deferred (smoothed) across multiple blocks within the same epoch
+3. **Strict Epoch Boundary Enforcement**: Once `currentState.DAHeight > pending.EpochEnd`, all pending transactions from that epoch MUST have been included
+4. **Censorship Detection**: Identifies malicious sequencers that fail to include forced transactions after epoch boundaries
+
+**Smoothing Example**:
+
+```
+Epoch [100-109] contains 3MB of forced inclusion transactions
+
+Block at DA height 100:
+  - Includes 2MB of forced txs (partial)
+  - Remaining 1MB added to pending map with EpochEnd=109
+  - ✅ Valid - within epoch boundary
+
+Block at DA height 105:
+  - Includes remaining 1MB from pending
+  - Pending map cleared for those txs
+  - ✅ Valid - within epoch boundary
+
+Block at DA height 110 (next epoch):
+  - If any txs from epoch [100-109] still pending
+  - ❌ MALICIOUS - epoch boundary violated
+  - Block rejected, sequencer flagged
 ```
 
 ### Implementation Details
@@ -394,7 +461,7 @@ func WouldExceedCumulativeSize(currentSize int, blobSize int, maxBytes uint64) b
 
 **Key Behaviors**:
 
-- **Absolute validation**: Blobs exceeding 1.5MB are permanently rejected
+- **Absolute validation**: Blobs exceeding 2MB are permanently rejected
 - **Batch size limits**: `req.MaxBytes` is NEVER exceeded in any batch
 - **Transaction preservation**:
   - Single sequencer: Trimmed batch txs returned to queue via `Prepend()`
