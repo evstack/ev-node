@@ -43,66 +43,9 @@ type Server struct {
 	srv      *http.Server
 	rpc      *jsonrpc.RPCServer
 	listener net.Listener
-	daImpl   da.DA
-	localDA  *LocalDA // For blob API access to internal data
+	localDA  *LocalDA
 
 	started atomic.Bool
-}
-
-// serverInternalAPI provides the actual RPC methods.
-type serverInternalAPI struct {
-	logger zerolog.Logger
-	daImpl da.DA
-}
-
-// Get implements the RPC method.
-func (s *serverInternalAPI) Get(ctx context.Context, ids []da.ID, ns []byte) ([]da.Blob, error) {
-	s.logger.Debug().Int("num_ids", len(ids)).Str("namespace", string(ns)).Msg("RPC server: Get called")
-	return s.daImpl.Get(ctx, ids, ns)
-}
-
-// GetIDs implements the RPC method.
-func (s *serverInternalAPI) GetIDs(ctx context.Context, height uint64, ns []byte) (*da.GetIDsResult, error) {
-	s.logger.Debug().Uint64("height", height).Str("namespace", string(ns)).Msg("RPC server: GetIDs called")
-	return s.daImpl.GetIDs(ctx, height, ns)
-}
-
-// GetProofs implements the RPC method.
-func (s *serverInternalAPI) GetProofs(ctx context.Context, ids []da.ID, ns []byte) ([]da.Proof, error) {
-	s.logger.Debug().Int("num_ids", len(ids)).Str("namespace", string(ns)).Msg("RPC server: GetProofs called")
-	return s.daImpl.GetProofs(ctx, ids, ns)
-}
-
-// Commit implements the RPC method.
-func (s *serverInternalAPI) Commit(ctx context.Context, blobs []da.Blob, ns []byte) ([]da.Commitment, error) {
-	s.logger.Debug().Int("num_blobs", len(blobs)).Str("namespace", string(ns)).Msg("RPC server: Commit called")
-	return s.daImpl.Commit(ctx, blobs, ns)
-}
-
-// Validate implements the RPC method.
-func (s *serverInternalAPI) Validate(ctx context.Context, ids []da.ID, proofs []da.Proof, ns []byte) ([]bool, error) {
-	s.logger.Debug().Int("num_ids", len(ids)).Int("num_proofs", len(proofs)).Str("namespace", string(ns)).Msg("RPC server: Validate called")
-	return s.daImpl.Validate(ctx, ids, proofs, ns)
-}
-
-// Submit implements the RPC method.
-func (s *serverInternalAPI) Submit(ctx context.Context, blobs []da.Blob, gasPrice float64, ns []byte) ([]da.ID, error) {
-	s.logger.Debug().Int("num_blobs", len(blobs)).Float64("gas_price", gasPrice).Str("namespace", string(ns)).Msg("RPC server: Submit called")
-	result := s.daImpl.Submit(ctx, blobs, gasPrice, ns)
-	if result.Code != da.StatusSuccess {
-		return result.IDs, da.StatusCodeToError(result.Code, result.Message)
-	}
-	return result.IDs, nil
-}
-
-// SubmitWithOptions implements the RPC method.
-func (s *serverInternalAPI) SubmitWithOptions(ctx context.Context, blobs []da.Blob, gasPrice float64, ns []byte, options []byte) ([]da.ID, error) {
-	s.logger.Debug().Int("num_blobs", len(blobs)).Float64("gas_price", gasPrice).Str("namespace", string(ns)).Str("options", string(options)).Msg("RPC server: SubmitWithOptions called")
-	result := s.daImpl.SubmitWithOptions(ctx, blobs, gasPrice, ns, options)
-	if result.Code != da.StatusSuccess {
-		return result.IDs, da.StatusCodeToError(result.Code, result.Message)
-	}
-	return result.IDs, nil
 }
 
 // blobAPI provides Celestia-compatible Blob API methods
@@ -293,13 +236,11 @@ func getKnownErrorsMapping() jsonrpc.Errors {
 }
 
 // NewServer creates a new JSON-RPC server for the LocalDA implementation
-// It registers both the legacy "da" namespace and the Celestia-compatible "blob" namespace
 func NewServer(logger zerolog.Logger, address, port string, localDA *LocalDA) *Server {
 	rpc := jsonrpc.NewServer(jsonrpc.WithServerErrors(getKnownErrorsMapping()))
 	srv := &Server{
 		rpc:     rpc,
 		logger:  logger,
-		daImpl:  localDA,
 		localDA: localDA,
 		srv: &http.Server{
 			Addr:              address + ":" + port,
@@ -307,13 +248,6 @@ func NewServer(logger zerolog.Logger, address, port string, localDA *LocalDA) *S
 		},
 	}
 	srv.srv.Handler = http.HandlerFunc(rpc.ServeHTTP)
-
-	// Register legacy "da" namespace API
-	daAPIHandler := &serverInternalAPI{
-		logger: logger,
-		daImpl: localDA,
-	}
-	srv.rpc.Register("da", daAPIHandler)
 
 	// Register Celestia-compatible "blob" namespace API
 	blobAPIHandler := &blobAPI{
