@@ -4,10 +4,8 @@ import (
 	"context"
 	"encoding/binary"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"net/http"
-	"strings"
 	"time"
 
 	"github.com/filecoin-project/go-jsonrpc"
@@ -245,9 +243,6 @@ func (c *Client) Get(ctx context.Context, ids []da.ID, namespace []byte) ([]da.B
 	for height := range heightGroups {
 		blobs, err := c.getAll(ctx, height, []Namespace{namespace})
 		if err != nil {
-			if strings.Contains(err.Error(), "not found") {
-				return nil, da.ErrBlobNotFound
-			}
 			return nil, fmt.Errorf("failed to get blobs at height %d: %w", height, err)
 		}
 
@@ -409,34 +404,11 @@ func (c *Client) SubmitWithOptions(ctx context.Context, blobs []da.Blob, gasPric
 
 	height, err := c.submit(ctx, celestiaBlobs, opts)
 	if err != nil {
-		status := da.StatusError
-		errStr := err.Error()
-
-		switch {
-		case errors.Is(err, context.Canceled):
-			status = da.StatusContextCanceled
-		case errors.Is(err, context.DeadlineExceeded):
-			status = da.StatusContextDeadline
-		case strings.Contains(errStr, "timeout"):
-			status = da.StatusNotIncludedInBlock
-		case strings.Contains(errStr, "too large") || strings.Contains(errStr, "exceeds"):
-			status = da.StatusTooBig
-		case strings.Contains(errStr, "already in mempool"):
-			status = da.StatusAlreadyInMempool
-		case strings.Contains(errStr, "incorrect account sequence"):
-			status = da.StatusIncorrectAccountSequence
-		}
-
-		if status == da.StatusTooBig {
-			c.logger.Debug().Err(err).Uint64("status", uint64(status)).Msg("DA submission failed")
-		} else {
-			c.logger.Error().Err(err).Uint64("status", uint64(status)).Msg("DA submission failed")
-		}
-
+		c.logger.Error().Err(err).Msg("DA submission failed")
 		return da.ResultSubmit{
 			BaseResult: da.BaseResult{
-				Code:      status,
-				Message:   "failed to submit blobs: " + err.Error(),
+				Code:      da.StatusError,
+				Message:   err.Error(),
 				BlobSize:  blobSize,
 				Timestamp: time.Now(),
 			},
@@ -467,36 +439,11 @@ func (c *Client) Retrieve(ctx context.Context, height uint64, namespace []byte) 
 
 	blobs, err := c.getAll(getCtx, height, []Namespace{namespace})
 	if err != nil {
-		errStr := err.Error()
-
-		if strings.Contains(errStr, "not found") {
-			c.logger.Debug().Uint64("height", height).Msg("Blobs not found at height")
-			return da.ResultRetrieve{
-				BaseResult: da.BaseResult{
-					Code:      da.StatusNotFound,
-					Message:   da.ErrBlobNotFound.Error(),
-					Height:    height,
-					Timestamp: time.Now(),
-				},
-			}
-		}
-		if strings.Contains(errStr, "height") && strings.Contains(errStr, "future") {
-			c.logger.Debug().Uint64("height", height).Msg("Height is from the future")
-			return da.ResultRetrieve{
-				BaseResult: da.BaseResult{
-					Code:      da.StatusHeightFromFuture,
-					Message:   da.ErrHeightFromFuture.Error(),
-					Height:    height,
-					Timestamp: time.Now(),
-				},
-			}
-		}
-
 		c.logger.Error().Uint64("height", height).Err(err).Msg("Failed to retrieve blobs")
 		return da.ResultRetrieve{
 			BaseResult: da.BaseResult{
 				Code:      da.StatusError,
-				Message:   fmt.Sprintf("failed to retrieve blobs: %s", err.Error()),
+				Message:   err.Error(),
 				Height:    height,
 				Timestamp: time.Now(),
 			},
