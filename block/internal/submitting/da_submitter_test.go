@@ -1,3 +1,6 @@
+//go:build !ignore
+// +build !ignore
+
 package submitting
 
 import (
@@ -16,7 +19,6 @@ import (
 	"github.com/evstack/ev-node/block/internal/cache"
 	"github.com/evstack/ev-node/block/internal/common"
 	"github.com/evstack/ev-node/block/internal/da"
-	coreda "github.com/evstack/ev-node/core/da"
 	"github.com/evstack/ev-node/pkg/config"
 	"github.com/evstack/ev-node/pkg/genesis"
 	"github.com/evstack/ev-node/pkg/rpc/server"
@@ -26,22 +28,20 @@ import (
 	"github.com/evstack/ev-node/types"
 )
 
-func setupDASubmitterTest(t *testing.T) (*DASubmitter, store.Store, cache.Manager, coreda.DA, genesis.Genesis) {
+func setupDASubmitterTest(t *testing.T) (*DASubmitter, store.Store, cache.Manager, genesis.Genesis) {
 	t.Helper()
 
 	// Create store and cache
 	ds := sync.MutexWrap(datastore.NewMapDatastore())
 	st := store.New(ds)
-	cm, err := cache.NewManager(config.DefaultConfig(), st, zerolog.Nop())
-	require.NoError(t, err)
-
-	// Create dummy DA
-	dummyDA := coreda.NewDummyDA(10_000_000, 10*time.Millisecond)
-
-	// Create config
 	cfg := config.DefaultConfig()
 	cfg.DA.Namespace = "test-headers"
 	cfg.DA.DataNamespace = "test-data"
+	cm, err := cache.NewManager(cfg, st, zerolog.Nop())
+	require.NoError(t, err)
+
+	// Create config
+	blobAPI := da.NewLocalBlobAPI(common.DefaultMaxBlobSize)
 
 	// Create genesis
 	gen := genesis.Genesis{
@@ -53,10 +53,11 @@ func setupDASubmitterTest(t *testing.T) (*DASubmitter, store.Store, cache.Manage
 
 	// Create DA submitter
 	daClient := da.NewClient(da.Config{
-		DA:            dummyDA,
-		Logger:        zerolog.Nop(),
-		Namespace:     cfg.DA.Namespace,
-		DataNamespace: cfg.DA.DataNamespace,
+		BlobAPI:        blobAPI,
+		Logger:         zerolog.Nop(),
+		Namespace:      cfg.DA.Namespace,
+		DataNamespace:  cfg.DA.DataNamespace,
+		DefaultTimeout: 10 * time.Second,
 	})
 	daSubmitter := NewDASubmitter(
 		daClient,
@@ -67,7 +68,7 @@ func setupDASubmitterTest(t *testing.T) (*DASubmitter, store.Store, cache.Manage
 		zerolog.Nop(),
 	)
 
-	return daSubmitter, st, cm, dummyDA, gen
+	return daSubmitter, st, cm, gen
 }
 
 func createTestSigner(t *testing.T) ([]byte, crypto.PubKey, signer.Signer) {
@@ -84,7 +85,7 @@ func createTestSigner(t *testing.T) ([]byte, crypto.PubKey, signer.Signer) {
 }
 
 func TestDASubmitter_NewDASubmitter(t *testing.T) {
-	submitter, _, _, _, _ := setupDASubmitterTest(t)
+	submitter, _, _, _ := setupDASubmitterTest(t)
 
 	assert.NotNil(t, submitter)
 	assert.NotNil(t, submitter.client)
@@ -100,13 +101,12 @@ func TestNewDASubmitterSetsVisualizerWhenEnabled(t *testing.T) {
 	cfg.RPC.EnableDAVisualization = true
 	cfg.Node.Aggregator = true
 
-	dummyDA := coreda.NewDummyDA(10_000_000, 10*time.Millisecond)
-
 	daClient := da.NewClient(da.Config{
-		DA:            dummyDA,
-		Logger:        zerolog.Nop(),
-		Namespace:     cfg.DA.Namespace,
-		DataNamespace: cfg.DA.DataNamespace,
+		BlobAPI:        da.NewLocalBlobAPI(common.DefaultMaxBlobSize),
+		Logger:         zerolog.Nop(),
+		Namespace:      cfg.DA.Namespace,
+		DataNamespace:  cfg.DA.DataNamespace,
+		DefaultTimeout: 10 * time.Second,
 	})
 	NewDASubmitter(
 		daClient,
@@ -121,7 +121,7 @@ func TestNewDASubmitterSetsVisualizerWhenEnabled(t *testing.T) {
 }
 
 func TestDASubmitter_SubmitHeaders_Success(t *testing.T) {
-	submitter, st, cm, _, gen := setupDASubmitterTest(t)
+	submitter, st, cm, gen := setupDASubmitterTest(t)
 	ctx := context.Background()
 
 	// Create test signer
@@ -211,7 +211,7 @@ func TestDASubmitter_SubmitHeaders_Success(t *testing.T) {
 }
 
 func TestDASubmitter_SubmitHeaders_NoPendingHeaders(t *testing.T) {
-	submitter, _, cm, _, _ := setupDASubmitterTest(t)
+	submitter, _, cm, _ := setupDASubmitterTest(t)
 	ctx := context.Background()
 
 	// Submit headers when none are pending
@@ -220,7 +220,7 @@ func TestDASubmitter_SubmitHeaders_NoPendingHeaders(t *testing.T) {
 }
 
 func TestDASubmitter_SubmitData_Success(t *testing.T) {
-	submitter, st, cm, _, gen := setupDASubmitterTest(t)
+	submitter, st, cm, gen := setupDASubmitterTest(t)
 	ctx := context.Background()
 
 	// Create test signer
@@ -306,7 +306,7 @@ func TestDASubmitter_SubmitData_Success(t *testing.T) {
 }
 
 func TestDASubmitter_SubmitData_SkipsEmptyData(t *testing.T) {
-	submitter, st, cm, _, gen := setupDASubmitterTest(t)
+	submitter, st, cm, gen := setupDASubmitterTest(t)
 	ctx := context.Background()
 
 	// Create test signer
@@ -355,7 +355,7 @@ func TestDASubmitter_SubmitData_SkipsEmptyData(t *testing.T) {
 }
 
 func TestDASubmitter_SubmitData_NoPendingData(t *testing.T) {
-	submitter, _, cm, _, gen := setupDASubmitterTest(t)
+	submitter, _, cm, gen := setupDASubmitterTest(t)
 	ctx := context.Background()
 
 	// Create test signer
@@ -367,7 +367,7 @@ func TestDASubmitter_SubmitData_NoPendingData(t *testing.T) {
 }
 
 func TestDASubmitter_SubmitData_NilSigner(t *testing.T) {
-	submitter, st, cm, _, gen := setupDASubmitterTest(t)
+	submitter, st, cm, gen := setupDASubmitterTest(t)
 	ctx := context.Background()
 
 	// Create test data with transactions
@@ -406,7 +406,7 @@ func TestDASubmitter_SubmitData_NilSigner(t *testing.T) {
 }
 
 func TestDASubmitter_CreateSignedData(t *testing.T) {
-	submitter, _, _, _, gen := setupDASubmitterTest(t)
+	submitter, _, _, gen := setupDASubmitterTest(t)
 
 	// Create test signer
 	addr, _, signer := createTestSigner(t)
@@ -464,7 +464,7 @@ func TestDASubmitter_CreateSignedData(t *testing.T) {
 }
 
 func TestDASubmitter_CreateSignedData_NilSigner(t *testing.T) {
-	submitter, _, _, _, gen := setupDASubmitterTest(t)
+	submitter, _, _, gen := setupDASubmitterTest(t)
 
 	// Create test data
 	signedData := &types.SignedData{

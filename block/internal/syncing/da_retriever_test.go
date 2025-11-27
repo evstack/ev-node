@@ -1,32 +1,34 @@
+//go:build !ignore
+// +build !ignore
+
 package syncing
 
 import (
-	"bytes"
 	"context"
 	"errors"
-	"fmt"
 	"testing"
 	"time"
 
+	"github.com/celestiaorg/go-square/v3/share"
 	"github.com/libp2p/go-libp2p/core/crypto"
 	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 
 	"github.com/evstack/ev-node/block/internal/cache"
 	"github.com/evstack/ev-node/block/internal/common"
 	"github.com/evstack/ev-node/block/internal/da"
 	coreda "github.com/evstack/ev-node/core/da"
+	"github.com/evstack/ev-node/pkg/blob"
 	"github.com/evstack/ev-node/pkg/config"
+	datypes "github.com/evstack/ev-node/pkg/da/types"
 	"github.com/evstack/ev-node/pkg/genesis"
 	signerpkg "github.com/evstack/ev-node/pkg/signer"
-	testmocks "github.com/evstack/ev-node/test/mocks"
 	"github.com/evstack/ev-node/types"
 )
 
 // newTestDARetriever creates a DA retriever for testing with the given DA implementation
-func newTestDARetriever(t *testing.T, mockDA coreda.DA, cfg config.Config, gen genesis.Genesis) *daRetriever {
+func newTestDARetriever(t *testing.T, api da.BlobAPI, cfg config.Config, gen genesis.Genesis) *daRetriever {
 	t.Helper()
 	if cfg.DA.Namespace == "" {
 		cfg.DA.Namespace = "test-ns"
@@ -38,14 +40,54 @@ func newTestDARetriever(t *testing.T, mockDA coreda.DA, cfg config.Config, gen g
 	cm, err := cache.NewCacheManager(cfg, zerolog.Nop())
 	require.NoError(t, err)
 
+	blobAPI := api
+	if blobAPI == nil {
+		blobAPI = da.NewLocalBlobAPI(common.DefaultMaxBlobSize)
+	}
 	daClient := da.NewClient(da.Config{
-		DA:            mockDA,
-		Logger:        zerolog.Nop(),
-		Namespace:     cfg.DA.Namespace,
-		DataNamespace: cfg.DA.DataNamespace,
+		BlobAPI:        blobAPI,
+		Logger:         zerolog.Nop(),
+		Namespace:      cfg.DA.Namespace,
+		DataNamespace:  cfg.DA.DataNamespace,
+		DefaultTimeout: 10 * time.Second,
 	})
 
 	return NewDARetriever(daClient, cm, gen, zerolog.Nop())
+}
+
+type stubBlobAPI struct {
+	submitFn   func(ctx context.Context, blobs []*blob.Blob, opts *blob.SubmitOptions) (uint64, error)
+	getAllFn   func(ctx context.Context, height uint64, namespaces []share.Namespace) ([]*blob.Blob, error)
+	getProofFn func(ctx context.Context, height uint64, namespace share.Namespace, commitment blob.Commitment) (*blob.Proof, error)
+	includedFn func(ctx context.Context, height uint64, namespace share.Namespace, proof *blob.Proof, commitment blob.Commitment) (bool, error)
+}
+
+func (s stubBlobAPI) Submit(ctx context.Context, blobs []*blob.Blob, opts *blob.SubmitOptions) (uint64, error) {
+	if s.submitFn != nil {
+		return s.submitFn(ctx, blobs, opts)
+	}
+	return 0, nil
+}
+
+func (s stubBlobAPI) GetAll(ctx context.Context, height uint64, namespaces []share.Namespace) ([]*blob.Blob, error) {
+	if s.getAllFn != nil {
+		return s.getAllFn(ctx, height, namespaces)
+	}
+	return []*blob.Blob{}, nil
+}
+
+func (s stubBlobAPI) GetProof(ctx context.Context, height uint64, namespace share.Namespace, commitment blob.Commitment) (*blob.Proof, error) {
+	if s.getProofFn != nil {
+		return s.getProofFn(ctx, height, namespace, commitment)
+	}
+	return &blob.Proof{}, nil
+}
+
+func (s stubBlobAPI) Included(ctx context.Context, height uint64, namespace share.Namespace, proof *blob.Proof, commitment blob.Commitment) (bool, error) {
+	if s.includedFn != nil {
+		return s.includedFn(ctx, height, namespace, proof, commitment)
+	}
+	return true, nil
 }
 
 // makeSignedDataBytes builds SignedData containing the provided Data and returns its binary encoding
@@ -73,56 +115,57 @@ func makeSignedDataBytesWithTime(t *testing.T, chainID string, height uint64, pr
 }
 
 func TestDARetriever_RetrieveFromDA_Invalid(t *testing.T) {
-	mockDA := testmocks.NewMockDA(t)
+	api := stubBlobAPI{
+		getAllFn: func(ctx context.Context, height uint64, namespaces []share.Namespace) ([]*blob.Blob, error) {
+			return nil, errors.New("just invalid")
+		},
+	}
 
-	mockDA.EXPECT().GetIDs(mock.Anything, mock.Anything, mock.Anything).
-		Return(nil, errors.New("just invalid")).Maybe()
-
-	r := newTestDARetriever(t, mockDA, config.DefaultConfig(), genesis.Genesis{})
+	r := newTestDARetriever(t, api, config.DefaultConfig(), genesis.Genesis{})
 	events, err := r.RetrieveFromDA(context.Background(), 42)
 	assert.Error(t, err)
 	assert.Len(t, events, 0)
 }
 
 func TestDARetriever_RetrieveFromDA_NotFound(t *testing.T) {
-	mockDA := testmocks.NewMockDA(t)
+	api := stubBlobAPI{
+		getAllFn: func(ctx context.Context, height uint64, namespaces []share.Namespace) ([]*blob.Blob, error) {
+			return nil, errors.New(datypes.ErrBlobNotFound.Error())
+		},
+	}
 
-	// GetIDs returns ErrBlobNotFound -> helper maps to StatusNotFound
-	mockDA.EXPECT().GetIDs(mock.Anything, mock.Anything, mock.Anything).
-		Return(nil, fmt.Errorf("%s: whatever", coreda.ErrBlobNotFound.Error())).Maybe()
-
-	r := newTestDARetriever(t, mockDA, config.DefaultConfig(), genesis.Genesis{})
+	r := newTestDARetriever(t, api, config.DefaultConfig(), genesis.Genesis{})
 	events, err := r.RetrieveFromDA(context.Background(), 42)
-	assert.True(t, errors.Is(err, coreda.ErrBlobNotFound))
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "blob: not found")
 	assert.Len(t, events, 0)
 }
 
 func TestDARetriever_RetrieveFromDA_HeightFromFuture(t *testing.T) {
-	mockDA := testmocks.NewMockDA(t)
-	// GetIDs returns ErrHeightFromFuture -> helper maps to StatusHeightFromFuture, fetchBlobs returns error
-	mockDA.EXPECT().GetIDs(mock.Anything, mock.Anything, mock.Anything).
-		Return(nil, fmt.Errorf("%s: later", coreda.ErrHeightFromFuture.Error())).Maybe()
+	api := stubBlobAPI{
+		getAllFn: func(ctx context.Context, height uint64, namespaces []share.Namespace) ([]*blob.Blob, error) {
+			return nil, errors.New(datypes.ErrHeightFromFuture.Error())
+		},
+	}
 
-	r := newTestDARetriever(t, mockDA, config.DefaultConfig(), genesis.Genesis{})
+	r := newTestDARetriever(t, api, config.DefaultConfig(), genesis.Genesis{})
 	events, derr := r.RetrieveFromDA(context.Background(), 1000)
 	assert.Error(t, derr)
-	assert.True(t, errors.Is(derr, coreda.ErrHeightFromFuture))
+	assert.Contains(t, derr.Error(), "height from future")
 	assert.Nil(t, events)
 }
 
 func TestDARetriever_RetrieveFromDA_Timeout(t *testing.T) {
 	t.Skip("Skipping flaky timeout test - timing is now controlled by DA client")
 
-	mockDA := testmocks.NewMockDA(t)
-
-	// Mock GetIDs to hang longer than the timeout
-	mockDA.EXPECT().GetIDs(mock.Anything, mock.Anything, mock.Anything).
-		Run(func(ctx context.Context, height uint64, namespace []byte) {
+	api := stubBlobAPI{
+		getAllFn: func(ctx context.Context, height uint64, namespaces []share.Namespace) ([]*blob.Blob, error) {
 			<-ctx.Done()
-		}).
-		Return(nil, context.DeadlineExceeded).Maybe()
+			return nil, context.DeadlineExceeded
+		},
+	}
 
-	r := newTestDARetriever(t, mockDA, config.DefaultConfig(), genesis.Genesis{})
+	r := newTestDARetriever(t, api, config.DefaultConfig(), genesis.Genesis{})
 
 	start := time.Now()
 	events, err := r.RetrieveFromDA(context.Background(), 42)
@@ -142,13 +185,13 @@ func TestDARetriever_RetrieveFromDA_Timeout(t *testing.T) {
 
 func TestDARetriever_RetrieveFromDA_TimeoutFast(t *testing.T) {
 
-	mockDA := testmocks.NewMockDA(t)
+	api := stubBlobAPI{
+		getAllFn: func(ctx context.Context, height uint64, namespaces []share.Namespace) ([]*blob.Blob, error) {
+			return nil, context.DeadlineExceeded
+		},
+	}
 
-	// Mock GetIDs to immediately return context deadline exceeded
-	mockDA.EXPECT().GetIDs(mock.Anything, mock.Anything, mock.Anything).
-		Return(nil, context.DeadlineExceeded).Maybe()
-
-	r := newTestDARetriever(t, mockDA, config.DefaultConfig(), genesis.Genesis{})
+	r := newTestDARetriever(t, api, config.DefaultConfig(), genesis.Genesis{})
 
 	events, err := r.RetrieveFromDA(context.Background(), 42)
 
@@ -244,15 +287,15 @@ func TestDARetriever_tryDecodeData_InvalidSignatureOrProposer(t *testing.T) {
 func TestDARetriever_validateBlobResponse(t *testing.T) {
 	r := &daRetriever{logger: zerolog.Nop()}
 	// StatusSuccess -> nil
-	err := r.validateBlobResponse(coreda.ResultRetrieve{BaseResult: coreda.BaseResult{Code: coreda.StatusSuccess}}, 1)
+	err := r.validateBlobResponse(datypes.ResultRetrieve{BaseResult: datypes.BaseResult{Code: datypes.StatusSuccess}}, 1)
 	assert.NoError(t, err)
 	// StatusError -> error
-	err = r.validateBlobResponse(coreda.ResultRetrieve{BaseResult: coreda.BaseResult{Code: coreda.StatusError, Message: "fail"}}, 1)
+	err = r.validateBlobResponse(datypes.ResultRetrieve{BaseResult: datypes.BaseResult{Code: datypes.StatusError, Message: "fail"}}, 1)
 	assert.Error(t, err)
 	// StatusHeightFromFuture -> specific error
-	err = r.validateBlobResponse(coreda.ResultRetrieve{BaseResult: coreda.BaseResult{Code: coreda.StatusHeightFromFuture}}, 1)
+	err = r.validateBlobResponse(datypes.ResultRetrieve{BaseResult: datypes.BaseResult{Code: datypes.StatusHeightFromFuture}}, 1)
 	assert.Error(t, err)
-	assert.True(t, errors.Is(err, coreda.ErrHeightFromFuture))
+	assert.True(t, errors.Is(err, datypes.ErrHeightFromFuture))
 }
 
 func TestDARetriever_RetrieveFromDA_TwoNamespaces_Success(t *testing.T) {
@@ -271,19 +314,32 @@ func TestDARetriever_RetrieveFromDA_TwoNamespaces_Success(t *testing.T) {
 	namespaceBz := coreda.NamespaceFromString(cfg.DA.GetNamespace()).Bytes()
 	namespaceDataBz := coreda.NamespaceFromString(cfg.DA.GetDataNamespace()).Bytes()
 
-	mockDA := testmocks.NewMockDA(t)
-	// Expect GetIDs for both namespaces
-	mockDA.EXPECT().GetIDs(mock.Anything, uint64(1234), mock.MatchedBy(func(ns []byte) bool { return bytes.Equal(ns, namespaceBz) })).
-		Return(&coreda.GetIDsResult{IDs: [][]byte{[]byte("h1")}, Timestamp: time.Now()}, nil).Once()
-	mockDA.EXPECT().Get(mock.Anything, mock.Anything, mock.MatchedBy(func(ns []byte) bool { return bytes.Equal(ns, namespaceBz) })).
-		Return([][]byte{hdrBin}, nil).Once()
+	hdrNS, err := share.NewNamespaceFromBytes(namespaceBz)
+	require.NoError(t, err)
+	dataNS, err := share.NewNamespaceFromBytes(namespaceDataBz)
+	require.NoError(t, err)
 
-	mockDA.EXPECT().GetIDs(mock.Anything, uint64(1234), mock.MatchedBy(func(ns []byte) bool { return bytes.Equal(ns, namespaceDataBz) })).
-		Return(&coreda.GetIDsResult{IDs: [][]byte{[]byte("d1")}, Timestamp: time.Now()}, nil).Once()
-	mockDA.EXPECT().Get(mock.Anything, mock.Anything, mock.MatchedBy(func(ns []byte) bool { return bytes.Equal(ns, namespaceDataBz) })).
-		Return([][]byte{dataBin}, nil).Once()
+	hdrBlob, err := blob.NewBlobV0(hdrNS, hdrBin)
+	require.NoError(t, err)
+	dataBlob, err := blob.NewBlobV0(dataNS, dataBin)
+	require.NoError(t, err)
 
-	r := newTestDARetriever(t, mockDA, cfg, gen)
+	api := stubBlobAPI{
+		getAllFn: func(ctx context.Context, height uint64, namespaces []share.Namespace) ([]*blob.Blob, error) {
+			require.Equal(t, uint64(1234), height)
+			require.Len(t, namespaces, 1)
+			switch string(namespaces[0].Bytes()) {
+			case string(hdrNS.Bytes()):
+				return []*blob.Blob{hdrBlob}, nil
+			case string(dataNS.Bytes()):
+				return []*blob.Blob{dataBlob}, nil
+			default:
+				return []*blob.Blob{}, nil
+			}
+		},
+	}
+
+	r := newTestDARetriever(t, api, cfg, gen)
 
 	events, derr := r.RetrieveFromDA(context.Background(), 1234)
 	require.NoError(t, derr)

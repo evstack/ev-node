@@ -1,16 +1,15 @@
 package da
 
-import (
-	"errors"
-)
+import datypes "github.com/evstack/ev-node/pkg/da/types"
 
+// Deprecated: use pkg/da/types equivalents.
 var (
-	ErrBlobNotFound               = errors.New("blob: not found")
-	ErrBlobSizeOverLimit          = errors.New("blob: over size limit")
-	ErrTxTimedOut                 = errors.New("timed out waiting for tx to be included in a block")
-	ErrTxAlreadyInMempool         = errors.New("tx already in mempool")
-	ErrTxIncorrectAccountSequence = errors.New("incorrect account sequence")
-	ErrContextDeadline            = errors.New("context deadline")
-	ErrHeightFromFuture           = errors.New("given height is from the future")
-	ErrContextCanceled            = errors.New("context canceled")
+	ErrBlobNotFound               = datypes.ErrBlobNotFound
+	ErrBlobSizeOverLimit          = datypes.ErrBlobSizeOverLimit
+	ErrTxTimedOut                 = datypes.ErrTxTimedOut
+	ErrTxAlreadyInMempool         = datypes.ErrTxAlreadyInMempool
+	ErrTxIncorrectAccountSequence = datypes.ErrTxIncorrectAccountSequence
+	ErrContextDeadline            = datypes.ErrContextDeadline
+	ErrHeightFromFuture           = datypes.ErrHeightFromFuture
+	ErrContextCanceled            = datypes.ErrContextCanceled
 )

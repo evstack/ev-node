@@ -13,9 +13,10 @@ import (
 	"github.com/evstack/ev-node/block/internal/cache"
 	"github.com/evstack/ev-node/block/internal/common"
 	"github.com/evstack/ev-node/block/internal/da"
-	coreda "github.com/evstack/ev-node/core/da"
+	"github.com/evstack/ev-node/pkg/blob"
 	"github.com/evstack/ev-node/pkg/config"
 	pkgda "github.com/evstack/ev-node/pkg/da"
+	datypes "github.com/evstack/ev-node/pkg/da/types"
 	"github.com/evstack/ev-node/pkg/genesis"
 	"github.com/evstack/ev-node/pkg/rpc/server"
 	"github.com/evstack/ev-node/pkg/signer"
@@ -119,7 +120,21 @@ func NewDASubmitter(
 
 	if config.RPC.EnableDAVisualization {
 		visualizerLogger := logger.With().Str("component", "da_visualization").Logger()
-		server.SetDAVisualizationServer(server.NewDAVisualizationServer(client.GetDA(), visualizerLogger, config.Node.Aggregator))
+		server.SetDAVisualizationServer(
+			server.NewDAVisualizationServer(
+				func(ctx context.Context, id []byte, ns []byte) ([]datypes.Blob, error) {
+					// minimal fetch: derive height from ID and use namespace provided
+					height, _ := blob.SplitID(id)
+					res := client.Retrieve(ctx, height, ns)
+					if res.Code != datypes.StatusSuccess || len(res.Data) == 0 {
+						return nil, fmt.Errorf("blob not found")
+					}
+					return res.Data, nil
+				},
+				visualizerLogger,
+				config.Node.Aggregator,
+			),
+		)
 	}
 
 	// Use NoOp metrics if nil to avoid nil checks throughout the code
@@ -184,7 +199,7 @@ func (s *DASubmitter) SubmitHeaders(ctx context.Context, cache cache.Manager) er
 			}
 			return proto.Marshal(headerPb)
 		},
-		func(submitted []*types.SignedHeader, res *coreda.ResultSubmit) {
+		func(submitted []*types.SignedHeader, res *datypes.ResultSubmit) {
 			for _, header := range submitted {
 				cache.SetHeaderDAIncluded(header.Hash().String(), res.Height, header.Height())
 			}
@@ -227,7 +242,7 @@ func (s *DASubmitter) SubmitData(ctx context.Context, cache cache.Manager, signe
 		func(signedData *types.SignedData) ([]byte, error) {
 			return signedData.MarshalBinary()
 		},
-		func(submitted []*types.SignedData, res *coreda.ResultSubmit) {
+		func(submitted []*types.SignedData, res *datypes.ResultSubmit) {
 			for _, sd := range submitted {
 				cache.SetDataDAIncluded(sd.Data.DACommitment().String(), res.Height, sd.Height())
 			}
@@ -343,7 +358,7 @@ func submitToDA[T any](
 	ctx context.Context,
 	items []T,
 	marshalFn func(T) ([]byte, error),
-	postSubmit func([]T, *coreda.ResultSubmit),
+	postSubmit func([]T, *datypes.ResultSubmit),
 	itemType string,
 	namespace []byte,
 	options []byte,
@@ -406,7 +421,7 @@ func submitToDA[T any](
 
 		// Perform submission
 		start := time.Now()
-		res := s.client.Submit(submitCtx, marshaled, -1, namespace, mergedOptions)
+		res := s.client.Submit(submitCtx, marshaled, namespace, mergedOptions)
 		s.logger.Debug().Int("attempts", rs.Attempt).Dur("elapsed", time.Since(start)).Uint64("code", uint64(res.Code)).Msg("got SubmitWithHelpers response from celestia")
 
 		// Record submission result for observability
@@ -415,7 +430,7 @@ func submitToDA[T any](
 		}
 
 		switch res.Code {
-		case coreda.StatusSuccess:
+		case datypes.StatusSuccess:
 			submitted := items[:res.SubmittedCount]
 			postSubmit(submitted, &res)
 			s.logger.Info().Str("itemType", itemType).Uint64("count", res.SubmittedCount).Msg("successfully submitted items to DA layer")
@@ -436,7 +451,7 @@ func submitToDA[T any](
 				s.metrics.DASubmitterPendingBlobs.Set(float64(getTotalPendingFn()))
 			}
 
-		case coreda.StatusTooBig:
+		case datypes.StatusTooBig:
 			// Record failure metric
 			s.recordFailure(common.DASubmitterFailureReasonTooBig)
 			// Iteratively halve until it fits or single-item too big
@@ -460,19 +475,19 @@ func submitToDA[T any](
 				s.metrics.DASubmitterPendingBlobs.Set(float64(getTotalPendingFn()))
 			}
 
-		case coreda.StatusNotIncludedInBlock:
+		case datypes.StatusNotIncludedInBlock:
 			// Record failure metric
 			s.recordFailure(common.DASubmitterFailureReasonNotIncludedInBlock)
 			s.logger.Info().Dur("backoff", pol.MaxBackoff).Msg("retrying due to mempool state")
 			rs.Next(reasonMempool, pol)
 
-		case coreda.StatusAlreadyInMempool:
+		case datypes.StatusAlreadyInMempool:
 			// Record failure metric
 			s.recordFailure(common.DASubmitterFailureReasonAlreadyInMempool)
 			s.logger.Info().Dur("backoff", pol.MaxBackoff).Msg("retrying due to mempool state")
 			rs.Next(reasonMempool, pol)
 
-		case coreda.StatusContextCanceled:
+		case datypes.StatusContextCanceled:
 			// Record failure metric
 			s.recordFailure(common.DASubmitterFailureReasonContextCanceled)
 			s.logger.Info().Msg("DA layer submission canceled due to context cancellation")

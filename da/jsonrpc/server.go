@@ -74,7 +74,7 @@ func (s *serverInternalAPI) SubmitWithOptions(ctx context.Context, blobs []da.Bl
 
 // NewServer accepts the host address port and the DA implementation to serve as a jsonrpc service
 func NewServer(logger zerolog.Logger, address, port string, daImplementation da.DA) *Server {
-	rpc := jsonrpc.NewServer(jsonrpc.WithServerErrors(getKnownErrorsMapping()))
+	rpc := jsonrpc.NewServer()
 	srv := &Server{
 		rpc:    rpc,
 		logger: logger,

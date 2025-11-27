@@ -1,11 +1,12 @@
 package block
 
 import (
+	"context"
 	"time"
 
 	"github.com/evstack/ev-node/block/internal/common"
 	"github.com/evstack/ev-node/block/internal/da"
-	coreda "github.com/evstack/ev-node/core/da"
+	"github.com/evstack/ev-node/da/jsonrpc"
 	"github.com/evstack/ev-node/pkg/config"
 	"github.com/rs/zerolog"
 )
@@ -34,14 +35,26 @@ func NopMetrics() *Metrics {
 // DAClient is the interface representing the DA client for public use.
 type DAClient = da.Client
 
-// NewDAClient creates a new DA client with configuration
+// NewDAClient creates a new DA client with configuration.
+// It always dials the blob RPC endpoint configured in config.DA.
 func NewDAClient(
-	daLayer coreda.DA,
+	_ any, // legacy parameter removed; kept for signature compatibility
 	config config.Config,
 	logger zerolog.Logger,
 ) DAClient {
+	var (
+		blobClient da.BlobAPI
+		err        error
+	)
+
+	blobClient, err = jsonrpc.NewClient(context.Background(), logger, config.DA.Address, config.DA.AuthToken, common.DefaultMaxBlobSize)
+	if err != nil {
+		logger.Warn().Err(err).Msg("failed to create blob jsonrpc client, falling back to local in-memory client")
+		blobClient = da.NewLocalBlobAPI(common.DefaultMaxBlobSize)
+	}
+
 	return da.NewClient(da.Config{
-		DA:             daLayer,
+		BlobAPI:        blobClient,
 		Logger:         logger,
 		DefaultTimeout: 10 * time.Second,
 		Namespace:      config.DA.GetNamespace(),

@@ -1,114 +1,157 @@
-// Package da provides a reusable wrapper around the core DA interface
-// with common configuration for namespace handling and timeouts.
 package da
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
 	"time"
 
+	"github.com/celestiaorg/go-square/v3/share"
 	"github.com/rs/zerolog"
 
 	coreda "github.com/evstack/ev-node/core/da"
+	"github.com/evstack/ev-node/pkg/blob"
+	datypes "github.com/evstack/ev-node/pkg/da/types"
 )
 
 // Client is the interface representing the DA client.
 type Client interface {
-	Submit(ctx context.Context, data [][]byte, gasPrice float64, namespace []byte, options []byte) coreda.ResultSubmit
-	Retrieve(ctx context.Context, height uint64, namespace []byte) coreda.ResultRetrieve
-	RetrieveHeaders(ctx context.Context, height uint64) coreda.ResultRetrieve
-	RetrieveData(ctx context.Context, height uint64) coreda.ResultRetrieve
+	Submit(ctx context.Context, data [][]byte, namespace []byte, options []byte) datypes.ResultSubmit
+	Retrieve(ctx context.Context, height uint64, namespace []byte) datypes.ResultRetrieve
+	RetrieveHeaders(ctx context.Context, height uint64) datypes.ResultRetrieve
+	RetrieveData(ctx context.Context, height uint64) datypes.ResultRetrieve
 
 	GetHeaderNamespace() []byte
 	GetDataNamespace() []byte
-	GetDA() coreda.DA
 }
 
-// client provides a reusable wrapper around the core DA interface
-// with common configuration for namespace handling and timeouts.
+// client provides a reusable wrapper around the blob RPC with common configuration for namespaces and timeouts.
 type client struct {
-	da              coreda.DA
+	blobClient      BlobAPI
 	logger          zerolog.Logger
 	defaultTimeout  time.Duration
 	namespaceBz     []byte
-	namespaceDataBz []byte
+	dataNamespaceBz []byte
+	maxBlobSize     uint64
+}
+
+// BlobAPI captures the minimal blob RPC methods used by the node.
+type BlobAPI interface {
+	Submit(ctx context.Context, blobs []*blob.Blob, opts *blob.SubmitOptions) (uint64, error)
+	GetAll(ctx context.Context, height uint64, namespaces []share.Namespace) ([]*blob.Blob, error)
+	GetProof(ctx context.Context, height uint64, namespace share.Namespace, commitment blob.Commitment) (*blob.Proof, error)
+	Included(ctx context.Context, height uint64, namespace share.Namespace, proof *blob.Proof, commitment blob.Commitment) (bool, error)
 }
 
 // Config contains configuration for the DA client.
 type Config struct {
-	DA             coreda.DA
+	BlobAPI        BlobAPI
 	Logger         zerolog.Logger
 	DefaultTimeout time.Duration
 	Namespace      string
 	DataNamespace  string
+	MaxBlobSize    uint64
 }
 
-// NewClient creates a new DA client with pre-calculated namespace bytes.
+// NewClient creates a new blob client wrapper with pre-calculated namespace bytes.
 func NewClient(cfg Config) *client {
 	if cfg.DefaultTimeout == 0 {
 		cfg.DefaultTimeout = 30 * time.Second
 	}
+	if cfg.MaxBlobSize == 0 {
+		cfg.MaxBlobSize = blob.DefaultMaxBlobSize
+	}
 
 	return &client{
-		da:              cfg.DA,
+		blobClient:      cfg.BlobAPI,
 		logger:          cfg.Logger.With().Str("component", "da_client").Logger(),
 		defaultTimeout:  cfg.DefaultTimeout,
 		namespaceBz:     coreda.NamespaceFromString(cfg.Namespace).Bytes(),
-		namespaceDataBz: coreda.NamespaceFromString(cfg.DataNamespace).Bytes(),
+		dataNamespaceBz: coreda.NamespaceFromString(cfg.DataNamespace).Bytes(),
+		maxBlobSize:     cfg.MaxBlobSize,
 	}
 }
 
 // Submit submits blobs to the DA layer with the specified options.
-func (c *client) Submit(ctx context.Context, data [][]byte, gasPrice float64, namespace []byte, options []byte) coreda.ResultSubmit {
-	ids, err := c.da.SubmitWithOptions(ctx, data, gasPrice, namespace, options)
-
+func (c *client) Submit(ctx context.Context, data [][]byte, namespace []byte, options []byte) datypes.ResultSubmit {
 	// calculate blob size
 	var blobSize uint64
-	for _, blob := range data {
-		blobSize += uint64(len(blob))
+	for _, b := range data {
+		blobSize += uint64(len(b))
 	}
 
-	// Handle errors returned by Submit
+	ns, err := share.NewNamespaceFromBytes(namespace)
 	if err != nil {
-		if errors.Is(err, context.Canceled) {
-			c.logger.Debug().Msg("DA submission canceled due to context cancellation")
-			return coreda.ResultSubmit{
-				BaseResult: coreda.BaseResult{
-					Code:     coreda.StatusContextCanceled,
-					Message:  "submission canceled",
-					IDs:      ids,
-					BlobSize: blobSize,
+		return datypes.ResultSubmit{
+			BaseResult: datypes.BaseResult{
+				Code:    datypes.StatusError,
+				Message: fmt.Sprintf("invalid namespace: %v", err),
+			},
+		}
+	}
+
+	blobs := make([]*blob.Blob, len(data))
+	for i, raw := range data {
+		if uint64(len(raw)) > c.maxBlobSize {
+			return datypes.ResultSubmit{
+				BaseResult: datypes.BaseResult{
+					Code:    datypes.StatusTooBig,
+					Message: datypes.ErrBlobSizeOverLimit.Error(),
 				},
 			}
 		}
-		status := coreda.StatusError
-		switch {
-		case errors.Is(err, coreda.ErrTxTimedOut):
-			status = coreda.StatusNotIncludedInBlock
-		case errors.Is(err, coreda.ErrTxAlreadyInMempool):
-			status = coreda.StatusAlreadyInMempool
-		case errors.Is(err, coreda.ErrTxIncorrectAccountSequence):
-			status = coreda.StatusIncorrectAccountSequence
-		case errors.Is(err, coreda.ErrBlobSizeOverLimit):
-			status = coreda.StatusTooBig
-		case errors.Is(err, coreda.ErrContextDeadline):
-			status = coreda.StatusContextDeadline
+		blobs[i], err = blob.NewBlobV0(ns, raw)
+		if err != nil {
+			return datypes.ResultSubmit{
+				BaseResult: datypes.BaseResult{
+					Code:    datypes.StatusError,
+					Message: fmt.Sprintf("failed to build blob %d: %v", i, err),
+				},
+			}
 		}
+	}
 
-		// Use debug level for StatusTooBig as it gets handled later in submitToDA through recursive splitting
-		if status == coreda.StatusTooBig {
-			c.logger.Debug().Err(err).Uint64("status", uint64(status)).Msg("DA submission failed")
-		} else {
-			c.logger.Error().Err(err).Uint64("status", uint64(status)).Msg("DA submission failed")
+	var submitOpts blob.SubmitOptions
+	if len(options) > 0 {
+		if err := json.Unmarshal(options, &submitOpts); err != nil {
+			return datypes.ResultSubmit{
+				BaseResult: datypes.BaseResult{
+					Code:    datypes.StatusError,
+					Message: fmt.Sprintf("failed to parse submit options: %v", err),
+				},
+			}
 		}
-		return coreda.ResultSubmit{
-			BaseResult: coreda.BaseResult{
-				Code:           status,
+	}
+
+	height, err := c.blobClient.Submit(ctx, blobs, &submitOpts)
+	if err != nil {
+		code := datypes.StatusError
+		switch {
+		case errors.Is(err, context.Canceled):
+			code = datypes.StatusContextCanceled
+		case strings.Contains(err.Error(), datypes.ErrTxTimedOut.Error()):
+			code = datypes.StatusNotIncludedInBlock
+		case strings.Contains(err.Error(), datypes.ErrTxAlreadyInMempool.Error()):
+			code = datypes.StatusAlreadyInMempool
+		case strings.Contains(err.Error(), datypes.ErrTxIncorrectAccountSequence.Error()):
+			code = datypes.StatusIncorrectAccountSequence
+		case strings.Contains(err.Error(), datypes.ErrBlobSizeOverLimit.Error()):
+			code = datypes.StatusTooBig
+		case strings.Contains(err.Error(), datypes.ErrContextDeadline.Error()):
+			code = datypes.StatusContextDeadline
+		}
+		if code == datypes.StatusTooBig {
+			c.logger.Debug().Err(err).Uint64("status", uint64(code)).Msg("DA submission failed")
+		} else {
+			c.logger.Error().Err(err).Uint64("status", uint64(code)).Msg("DA submission failed")
+		}
+		return datypes.ResultSubmit{
+			BaseResult: datypes.BaseResult{
+				Code:           code,
 				Message:        "failed to submit blobs: " + err.Error(),
-				IDs:            ids,
-				SubmittedCount: uint64(len(ids)),
+				SubmittedCount: 0,
 				Height:         0,
 				Timestamp:      time.Now(),
 				BlobSize:       blobSize,
@@ -116,29 +159,24 @@ func (c *client) Submit(ctx context.Context, data [][]byte, gasPrice float64, na
 		}
 	}
 
-	if len(ids) == 0 && len(data) > 0 {
-		c.logger.Warn().Msg("DA submission returned no IDs for non-empty input data")
-		return coreda.ResultSubmit{
-			BaseResult: coreda.BaseResult{
-				Code:    coreda.StatusError,
-				Message: "failed to submit blobs: no IDs returned despite non-empty input",
+	if len(blobs) == 0 {
+		return datypes.ResultSubmit{
+			BaseResult: datypes.BaseResult{
+				Code:     datypes.StatusSuccess,
+				BlobSize: blobSize,
+				Height:   height,
 			},
 		}
 	}
 
-	// Get height from the first ID
-	var height uint64
-	if len(ids) > 0 {
-		height, _, err = coreda.SplitID(ids[0])
-		if err != nil {
-			c.logger.Error().Err(err).Msg("failed to split ID")
-		}
+	ids := make([]datypes.ID, len(blobs))
+	for i, b := range blobs {
+		ids[i] = blob.MakeID(height, b.Commitment)
 	}
 
-	c.logger.Debug().Int("num_ids", len(ids)).Msg("DA submission successful")
-	return coreda.ResultSubmit{
-		BaseResult: coreda.BaseResult{
-			Code:           coreda.StatusSuccess,
+	return datypes.ResultSubmit{
+		BaseResult: datypes.BaseResult{
+			Code:           datypes.StatusSuccess,
 			IDs:            ids,
 			SubmittedCount: uint64(len(ids)),
 			Height:         height,
@@ -149,103 +187,94 @@ func (c *client) Submit(ctx context.Context, data [][]byte, gasPrice float64, na
 }
 
 // Retrieve retrieves blobs from the DA layer at the specified height and namespace.
-func (c *client) Retrieve(ctx context.Context, height uint64, namespace []byte) coreda.ResultRetrieve {
-	// 1. Get IDs
+func (c *client) Retrieve(ctx context.Context, height uint64, namespace []byte) datypes.ResultRetrieve {
+	ns, err := share.NewNamespaceFromBytes(namespace)
+	if err != nil {
+		return datypes.ResultRetrieve{
+			BaseResult: datypes.BaseResult{
+				Code:    datypes.StatusError,
+				Message: fmt.Sprintf("invalid namespace: %v", err),
+				Height:  height,
+			},
+		}
+	}
+
 	getIDsCtx, cancel := context.WithTimeout(ctx, c.defaultTimeout)
 	defer cancel()
-	idsResult, err := c.da.GetIDs(getIDsCtx, height, namespace)
+
+	blobs, err := c.blobClient.GetAll(getIDsCtx, height, []share.Namespace{ns})
 	if err != nil {
-		// Handle specific "not found" error
-		if strings.Contains(err.Error(), coreda.ErrBlobNotFound.Error()) {
-			c.logger.Debug().Uint64("height", height).Msg("Blobs not found at height")
-			return coreda.ResultRetrieve{
-				BaseResult: coreda.BaseResult{
-					Code:      coreda.StatusNotFound,
-					Message:   coreda.ErrBlobNotFound.Error(),
+		// Handle known errors by substring because RPC may wrap them.
+		switch {
+		case strings.Contains(err.Error(), datypes.ErrBlobNotFound.Error()):
+			return datypes.ResultRetrieve{
+				BaseResult: datypes.BaseResult{
+					Code:      datypes.StatusNotFound,
+					Message:   datypes.ErrBlobNotFound.Error(),
+					Height:    height,
+					Timestamp: time.Now(),
+				},
+			}
+		case strings.Contains(err.Error(), datypes.ErrHeightFromFuture.Error()):
+			return datypes.ResultRetrieve{
+				BaseResult: datypes.BaseResult{
+					Code:      datypes.StatusHeightFromFuture,
+					Message:   datypes.ErrHeightFromFuture.Error(),
+					Height:    height,
+					Timestamp: time.Now(),
+				},
+			}
+		default:
+			c.logger.Error().Uint64("height", height).Err(err).Msg("failed to get blobs")
+			return datypes.ResultRetrieve{
+				BaseResult: datypes.BaseResult{
+					Code:      datypes.StatusError,
+					Message:   fmt.Sprintf("failed to get blobs: %s", err.Error()),
 					Height:    height,
 					Timestamp: time.Now(),
 				},
 			}
 		}
-		if strings.Contains(err.Error(), coreda.ErrHeightFromFuture.Error()) {
-			c.logger.Debug().Uint64("height", height).Msg("Blobs not found at height")
-			return coreda.ResultRetrieve{
-				BaseResult: coreda.BaseResult{
-					Code:      coreda.StatusHeightFromFuture,
-					Message:   coreda.ErrHeightFromFuture.Error(),
-					Height:    height,
-					Timestamp: time.Now(),
-				},
-			}
-		}
-		// Handle other errors during GetIDs
-		c.logger.Error().Uint64("height", height).Err(err).Msg("Failed to get IDs")
-		return coreda.ResultRetrieve{
-			BaseResult: coreda.BaseResult{
-				Code:      coreda.StatusError,
-				Message:   fmt.Sprintf("failed to get IDs: %s", err.Error()),
+	}
+
+	if len(blobs) == 0 {
+		c.logger.Debug().Uint64("height", height).Msg("No blobs found at height")
+		return datypes.ResultRetrieve{
+			BaseResult: datypes.BaseResult{
+				Code:      datypes.StatusNotFound,
+				Message:   datypes.ErrBlobNotFound.Error(),
 				Height:    height,
 				Timestamp: time.Now(),
 			},
 		}
 	}
 
-	// This check should technically be redundant if GetIDs correctly returns ErrBlobNotFound
-	if idsResult == nil || len(idsResult.IDs) == 0 {
-		c.logger.Debug().Uint64("height", height).Msg("No IDs found at height")
-		return coreda.ResultRetrieve{
-			BaseResult: coreda.BaseResult{
-				Code:      coreda.StatusNotFound,
-				Message:   coreda.ErrBlobNotFound.Error(),
-				Height:    height,
-				Timestamp: time.Now(),
-			},
-		}
+	out := make([][]byte, len(blobs))
+	ids := make([][]byte, len(blobs))
+	for i, b := range blobs {
+		out[i] = b.Data()
+		ids[i] = blob.MakeID(height, b.Commitment)
 	}
-	// 2. Get Blobs using the retrieved IDs in batches
-	batchSize := 100
-	blobs := make([][]byte, 0, len(idsResult.IDs))
-	for i := 0; i < len(idsResult.IDs); i += batchSize {
-		end := min(i+batchSize, len(idsResult.IDs))
 
-		getBlobsCtx, cancel := context.WithTimeout(ctx, c.defaultTimeout)
-		batchBlobs, err := c.da.Get(getBlobsCtx, idsResult.IDs[i:end], namespace)
-		cancel()
-		if err != nil {
-			// Handle errors during Get
-			c.logger.Error().Uint64("height", height).Int("num_ids", len(idsResult.IDs)).Err(err).Msg("Failed to get blobs")
-			return coreda.ResultRetrieve{
-				BaseResult: coreda.BaseResult{
-					Code:      coreda.StatusError,
-					Message:   fmt.Sprintf("failed to get blobs for batch %d-%d: %s", i, end-1, err.Error()),
-					Height:    height,
-					Timestamp: time.Now(),
-				},
-			}
-		}
-		blobs = append(blobs, batchBlobs...)
-	}
-	// Success
-	c.logger.Debug().Uint64("height", height).Int("num_blobs", len(blobs)).Msg("Successfully retrieved blobs")
-	return coreda.ResultRetrieve{
-		BaseResult: coreda.BaseResult{
-			Code:      coreda.StatusSuccess,
+	return datypes.ResultRetrieve{
+		BaseResult: datypes.BaseResult{
+			Code:      datypes.StatusSuccess,
 			Height:    height,
-			IDs:       idsResult.IDs,
-			Timestamp: idsResult.Timestamp,
+			IDs:       ids,
+			Timestamp: time.Now(),
 		},
-		Data: blobs,
+		Data: out,
 	}
 }
 
 // RetrieveHeaders retrieves blobs from the header namespace at the specified height.
-func (c *client) RetrieveHeaders(ctx context.Context, height uint64) coreda.ResultRetrieve {
+func (c *client) RetrieveHeaders(ctx context.Context, height uint64) datypes.ResultRetrieve {
 	return c.Retrieve(ctx, height, c.namespaceBz)
 }
 
 // RetrieveData retrieves blobs from the data namespace at the specified height.
-func (c *client) RetrieveData(ctx context.Context, height uint64) coreda.ResultRetrieve {
-	return c.Retrieve(ctx, height, c.namespaceDataBz)
+func (c *client) RetrieveData(ctx context.Context, height uint64) datypes.ResultRetrieve {
+	return c.Retrieve(ctx, height, c.dataNamespaceBz)
 }
 
 // GetHeaderNamespace returns the header namespace bytes.
@@ -255,10 +284,5 @@ func (c *client) GetHeaderNamespace() []byte {
 
 // GetDataNamespace returns the data namespace bytes.
 func (c *client) GetDataNamespace() []byte {
-	return c.namespaceDataBz
-}
-
-// GetDA returns the underlying DA interface for advanced usage.
-func (c *client) GetDA() coreda.DA {
-	return c.da
+	return c.dataNamespaceBz
 }
