@@ -67,7 +67,7 @@ func validatePayloadStatus(status engine.PayloadStatusV1) error {
 	}
 }
 
-// retryWithBackoff executes a function with exponential backoff retry logic.
+// retryWithBackoffOnPayloadStatus executes a function with exponential backoff retry logic.
 // It implements the Engine API specification's recommendation to retry SYNCING
 // status with exponential backoff. The function:
 //   - Retries only on ErrPayloadSyncing (transient failures)
