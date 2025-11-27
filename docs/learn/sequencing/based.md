@@ -30,6 +30,9 @@ Forced inclusion transactions are retrieved in epochs defined by `DAEpochForcedI
 - DA heights 110-119 form the next epoch
 - Transactions from each epoch must be included before the epoch ends
 
+Epochs durations determine the block time in based sequencing.
+Additionally, because no headers are published, the lazy mode has no effect. The block time is a factor of the DA layer's block time.
+
 ## Block Smoothing
 
 When forced inclusion transactions exceed the `MaxBytes` limit for a single block, they can be "smoothed" across multiple blocks within the same epoch. This ensures that:
@@ -59,12 +62,13 @@ Based sequencing minimizes trust assumptions:
 
 ## Comparison with Single Sequencer
 
-| Feature               | Based Sequencing            | Single Sequencer            |
-| --------------------- | --------------------------- | --------------------------- |
-| Decentralization      | ✅ Fully decentralized      | ❌ Single point of control  |
-| Censorship Resistance | ✅ Guaranteed by base layer | ⚠️ Guaranteed by base layer |
-| Latency               | ⚠️ Depends on DA layer      | ✅ Low latency              |
-| Trust Assumptions     | ✅ Minimal (only DA layer)  | ❌ Trust the sequencer      |
+| Feature               | Based Sequencing              | Single Sequencer              |
+| --------------------- | ----------------------------- | ----------------------------- |
+| Decentralization      | ✅ Fully decentralized        | ❌ Single point of control    |
+| Censorship Resistance | ✅ Guaranteed by base layer   | ⚠️ Guaranteed by base layer   |
+| Latency               | ⚠️ Depends on DA layer (~12s) | ✅ Low latency (configurable) |
+| Block Time Control    | ❌ Factor of DA block time    | ✅ Configurable by sequencer  |
+| Trust Assumptions     | ✅ Minimal (only DA layer)    | ❌ Trust the sequencer        |
 
 ## Further Reading
 

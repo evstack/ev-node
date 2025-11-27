@@ -5,21 +5,18 @@
 - 2025-04-09: Initial draft
 - 2025-04-09: Added optional UX optimization where full nodes can relay user transactions to base layer
 - 2025-04-09: Added rationale for VerifyBatch utility in a based setup
-- 2025-04-09: Reworded forkchoice rule to use maxHeightDrift instead of time-based maxLatency
 - 2025-04-10: Added Relaying Costs and Fee Compensation via EVM
+- 2025-11-27: Updated to reflect actual implementation with epoch-based forced inclusion
 
 ## Context
 
-Most chains today rely on single sequencers to form batches of user transactions, despite the availability of base layers (like Celestia) that provide data availability and canonical ordering guarantees. A Single sequencer introduces liveness and censorship risks, as well as complexity in proposer election, fault tolerance, and bridge security.
+Most chains today rely on single sequencers to form batches of user transactions, despite the availability of base layers (like Celestia) that provide data availability and canonical ordering guarantees. A single sequencer introduces liveness and censorship risks, as well as complexity in proposer election, fault tolerance, and bridge security.
 
-Based sequencing eliminates this reliance by having the base layer determine transaction ordering. However, previous implementations still assumed the existence of a proposer to prepare batches.
+Based sequencing eliminates this reliance by having the base layer determine transaction ordering. This ADR describes the **epoch-based forced inclusion** implementation where **every full node acts as its own proposer** by independently:
 
-This ADR proposes a **based sequencing model** in which **every full node acts as its own proposer** by independently:
-
-- Reading chain-specific blobs from the base layer
-- Applying a deterministic forkchoice rule
-- Constructing blocks
-- Executing batches to compute state updates
+- Reading forced inclusion transactions from the base layer at epoch boundaries
+- Applying deterministic batching rules
+- Executing transactions to compute state updates
 
 This approach ensures consistency, removes the need for trusted intermediaries, and improves decentralization and resilience.
 
@@ -35,235 +32,291 @@ This approach ensures consistency, removes the need for trusted intermediaries, 
 - Some nodes are elected to act as proposers for efficiency.
 - Still introduces trust assumptions, coordination complexity, and MEV-related risks.
 
-### Trusted Light Client Commitments
+### Continuous DA Polling
 
-- Blocks are committed to L1 (e.g., Ethereum) and verified by a light client.
-- Adds delay and dependency on L1 finality, and often still relies on centralized proposers.
+- Full nodes continuously poll DA and form batches based on size thresholds.
+- More complex coordination and can lead to inconsistent batch boundaries across nodes.
 
-None of these provide the decentralization and self-sovereignty enabled by a fully deterministic, proposerless, based sequencing model.
+The epoch-based approach provides deterministic batch boundaries while minimizing DA queries and ensuring all honest nodes derive identical blocks.
 
 ## Decision
 
-We adopt a based sequencing model where **every full node in the network acts as its own proposer** by deterministically deriving the next batch using only:
+We adopt a based sequencing model where every full node in the network acts as its own proposer using an epoch-based forced inclusion mechanism:
 
-- Base-layer data (e.g., Celestia blobs tagged by ChainID)
-- A forkchoice rule: MaxBytes + Bounded L1 Height Drift (maxHeightDrift)
-- Local execution (e.g., EVM via reth)
+### Core Principles
 
-This model removes the need for:
+1. **Epoch Boundaries**: Transactions are retrieved from DA in epochs defined by `DAEpochForcedInclusion`
+2. **Deterministic Batch Formation**: All nodes apply the same rules to form batches from queued transactions
+3. **MaxBytes Enforcement**: Individual blocks respect a maximum byte limit (2MB default)
+4. **Transaction Smoothing**: Large transaction sets can be smoothed across multiple blocks within an epoch
+5. **No Trusted Sequencer**: All ordering comes from the base layer
 
-- A designated sequencer
-- Coordination mechanisms
-- Sequencer signatures
+### Sequencing Model
 
-The canonical chain state becomes a **function of the base layer** and a well-defined forkchoice rule.
+The `BasedSequencer` implementation:
 
-Additionally, to improve UX for users who do not operate a base layer client or wallet, **full nodes may optionally relay user-submitted transactions to the base layer**. This maintains decentralization while improving accessibility.
+- **Only retrieves transactions from DA** via forced inclusion namespace
+- **Ignores transactions submitted via `SubmitBatchTxs`** (no mempool)
+- **Fetches at epoch boundaries** to minimize DA queries
+- **Queues transactions** and creates batches respecting `MaxBytes`
+- **Validates blob sizes** against absolute maximum to prevent oversized submissions
 
-The following sequence diagram demonstrates two full nodes independently preparing batches and chain states that are identical using the user transactions that are directly submitted to the base layer.
+### Transaction Flow
 
 ```mermaid
 sequenceDiagram
-    participant L1 as Base Layer (e.g., Celestia)
+    participant User
+    participant DA as Base Layer (Celestia)
     participant NodeA as Full Node A
     participant NodeB as Full Node B
     participant ExecA as Execution Engine A
     participant ExecB as Execution Engine B
 
-    Note over L1: Users post transactions as blobs tagged with ChainID
+    Note over User: User posts transaction to DA<br/>forced inclusion namespace
 
-    NodeA->>L1: Retrieve new blobs since last DA height
-    NodeB->>L1: Retrieve new blobs since last DA height
+    User->>DA: Submit blob to forced inclusion namespace
 
-    NodeA->>NodeA: Apply forkchoice rule<br/>MaxBytes or MaxHeightDrift met?
-    NodeB->>NodeB: Apply forkchoice rule<br/>MaxBytes or MaxHeightDrift met?
+    Note over NodeA,NodeB: At epoch start (e.g., DA height 100, 110, 120...)
 
-    NodeA->>ExecA: ExecuteTxs(blobs)
-    NodeB->>ExecB: ExecuteTxs(blobs)
+    NodeA->>DA: RetrieveForcedIncludedTxs(epochStart)
+    NodeB->>DA: RetrieveForcedIncludedTxs(epochStart)
 
-    ExecA-->>NodeA: Updated state root
-    ExecB-->>NodeB: Updated state root
+    DA-->>NodeA: Txs from epoch [100-109]
+    DA-->>NodeB: Txs from epoch [100-109]
 
-    NodeA->>NodeA: Build block with batch + state root
-    NodeB->>NodeB: Build block with batch + state root
+    Note over NodeA,NodeB: Queue transactions and create batches<br/>respecting MaxBytes
 
-    Note over NodeA, NodeB: Both nodes independently reach the same block & state
-```
+    NodeA->>NodeA: createBatchFromQueue(MaxBytes)
+    NodeB->>NodeB: createBatchFromQueue(MaxBytes)
 
-The following sequence diagram shows the case where the user utilizes the full node to relay the transaction to the base layer and the light client in action.
+    NodeA->>ExecA: ExecuteTxs(batch)
+    NodeB->>ExecB: ExecuteTxs(batch)
 
-```mermaid
-sequenceDiagram
-    participant User as User
-    participant Node as Full Node
-    participant Base as Base Layer (e.g., Celestia)
-    participant Exec as Execution Engine
-    participant LightClient as Light Client
+    ExecA-->>NodeA: State root
+    ExecB-->>NodeB: State root
 
-    Note over User: User submits transaction
-
-    User->>Node: SubmitTx(tx)
-    Node->>Base: Post tx blob (DA blob with ChainID)
-
-    Note over Node: Node continuously scans base layer
-
-    Node->>Base: Retrieve blobs since last height
-    Node->>Node: Apply forkchoice rule (MaxBytes or MaxHeightDrift)
-    Node->>Exec: ExecuteTxs(blobs)
-    Exec-->>Node: Updated state root
-    Node->>Node: Build block
-
-    Note over LightClient: Re-executes forkchoice & verifies state
-
-    LightClient->>Base: Retrieve blobs
-    LightClient->>LightClient: Apply forkchoice & re-execute
-    LightClient->>LightClient: Verify state root & inclusion
+    Note over NodeA,NodeB: Both nodes produce identical blocks
 ```
 
 ## Detailed Design
 
-### User Requirements
+### Epoch-Based Retrieval
 
-- Users submit transactions by:
-  - Posting them directly to the base layer in tagged blobs, **or**
-  - Sending them to any full node's RPC endpoint, which will relay them to the base layer on their behalf
-- Users can verify finality by checking light clients or DA inclusion
+**Epoch Calculation**:
 
-### Systems Affected
+- Epoch number: `((daHeight - daStartHeight) / daEpochSize) + 1`
+- Epoch boundaries: `[start, end]` where transactions must be included
 
-- Full nodes
-- Light clients
-- Batch building and execution logic
+**Example with `DAEpochForcedInclusion = 10`**:
 
-### Forkchoice Rule
+- DA heights 100-109 = Epoch 1
+- DA heights 110-119 = Epoch 2
+- DA heights 120-129 = Epoch 3
 
-A batch is constructed when:
+**Retrieval Logic** (`ForcedInclusionRetriever`):
 
-1. The accumulated size of base-layer blobs >= `MAX_BYTES`
-2. OR the L1 height difference since the last batch exceeds `MAX_HEIGHT_DRIFT`
+1. Check if DA height is at epoch start
+2. If not at epoch start, return empty transaction set
+3. If at epoch start, fetch all blobs from forced inclusion namespace for entire epoch
+4. Return `ForcedInclusionEvent` with transactions and DA height range
 
-All full nodes:
+### Batch Formation
 
-- Track base-layer heights and timestamps
-- Fetch all chain-specific tagged blobs
-- Apply the rule deterministically
-- Execute batches to update state
+**BasedSequencer Queue Management**:
 
-Without forkchoice parameters, full nodes cannot independently produce identical blocks (i.e., matching state roots or headers), as they wouldn’t know how to consistently form batches—specifically, how many transactions to include per batch. The maxHeightDrift parameter addresses this by enabling progress when the maxBytes threshold isn’t met, without relying on global time synchronization. Relying on timestamps could lead to inconsistencies due to clock drift between nodes, so using L1-based timestamps or heights provides a reliable and deterministic reference for batching.
+```go
+// On GetNextBatch:
+1. Retrieve forced inclusion transactions for current epoch
+2. Validate blob sizes (skip oversized blobs)
+3. Add valid transactions to internal queue
+4. Create batch from queue respecting MaxBytes
+5. Return batch (may be partial if queue exceeds MaxBytes)
+```
 
-#### Configurable Forkchoice rule
+**Batch Creation** (`createBatchFromQueue`):
 
-By default, the based sequencing supports max bytes along with max height drift as the forkchoice rule; however, this can be made configurable to support different forkchoice strategies, such as prioritizing highest to lowest fee-paying transactions, earliest submitted transactions, application-specific prioritization, or even hybrid strategies that balance throughput, latency, and economic incentives, allowing chain operators to customize batch construction policies according to their needs.
+- Iterate through queued transactions
+- Accumulate until `totalBytes + txSize > MaxBytes`
+- Stop at limit and preserve remaining transactions for next block
+- Clear queue when all transactions consumed
 
-### Light Clients
+### Block Production
 
-Light clients (once implemented) are not expected to re-execute transactions to derive headers. Instead, they will perform verification only. These clients will typically receive headers either:
+**Executor Flow** (`block/internal/executing/executor.go`):
 
-- via the p2p network along with accompanying proofs, or
-- from a connected full node, in which case they will still require validity proofs for the received headers.
+1. **Retrieve Batch**: Call `sequencer.GetNextBatch(MaxBytes: 2MB)`
+2. **Handle Empty Batch**: Skip block production if no transactions
+3. **Create Block**: Form block header and data with batch transactions
+4. **Execute**: Apply transactions via execution engine
+5. **Update State**: Store DA height from sequencer in state
+6. **Sign Header**: Based sequencer returns empty signature
+7. **Persist**: Save block to store
+8. **Broadcast**: Propagate header and data to P2P network
 
-This design ensures that light clients remain lightweight and efficient, relying on cryptographic proofs rather than execution to validate the chain state.
+### Transaction Smoothing
+
+When forced inclusion transactions exceed `MaxBytes`:
+
+**Block 1**:
+
+```
+Epoch [100-109] contains 3MB of transactions
+Block at DA height 100: 2MB (partial)
+Remaining in queue: 1MB
+```
+
+**Block 2**:
+
+```
+Block at DA height 101: 1MB (remainder) + new regular txs
+Queue cleared
+```
+
+This ensures all epoch transactions are eventually included while respecting block size limits.
+
+### Forced Inclusion Verification
+
+Full nodes verify that batches include all required forced inclusion transactions via `Syncer.verifyForcedInclusionTxs`:
+
+1. Retrieve forced inclusion transactions for current DA height
+2. Check all forced txs are present in block
+3. Allow deferral within epoch boundaries
+4. Reject blocks that:
+   - Censor forced inclusion transactions after epoch end
+   - Skip forced transactions without valid reason
 
 ### Data Structures
 
-- Blob index: to track chain-specific blobs by height and timestamp
-- Batch metadata: includes L1 timestamps, blob IDs, and state roots
+**ForcedInclusionEvent**:
+
+```go
+type ForcedInclusionEvent struct {
+    StartDaHeight uint64    // Epoch start DA height
+    EndDaHeight   uint64    // Last processed DA height in epoch
+    Txs           [][]byte  // All transactions from epoch
+}
+```
+
+**BasedSequencer State**:
+
+```go
+type BasedSequencer struct {
+    daHeight    atomic.Uint64  // Current DA height
+    txQueue     [][]byte       // Queued transactions awaiting inclusion
+}
+```
+
+### Configuration
+
+**Genesis Configuration**:
+
+- `DAStartHeight`: Starting DA height for the chain
+- `DAEpochForcedInclusion`: Number of DA blocks per epoch (e.g., 10)
+
+**Constants**:
+
+- `DefaultMaxBlobSize`: 2MB per batch/block
+- Enforced both at submission and retrieval
+
+### Systems Affected
+
+- **BasedSequencer**: Implements epoch-based transaction retrieval
+- **ForcedInclusionRetriever**: Fetches transactions from DA at epochs
+- **Executor**: Drives block production using sequencer batches
+- **Syncer**: Verifies forced inclusion compliance
+- **DA Client**: Must support forced inclusion namespace
 
 ### APIs
 
-- `GetNextBatch(lastBatchData, maxBytes, maxHeightDrift)`: deterministically builds batch, `maxHeightDrift` can be configured locally instead of passing on every call.
-- `VerifyBatch(batchData)`: re-derives and checks state
-- `SubmitBatchTxs(batch [][]byte)`: relays a user transaction(s) to the base layer
+**Sequencer Interface**:
 
-In based sequencing, full nodes do not need VerifyBatch to participate in consensus or build the canonical chain state — because they derive everything deterministically from L1. However, VerifyBatch may still be useful in sync, light clients, testing, or cross-domain verification.
+```go
+// Returns empty response - based sequencer ignores submissions
+SubmitBatchTxs(ctx, req) (*SubmitBatchTxsResponse, error)
 
-- Light Clients: L1 or cross-domain light clients can use VerifyBatch to validate that a given chain state root or message was derived according to the forkchoice rule and execution logic.
+// Retrieves next batch from forced inclusion queue
+GetNextBatch(ctx, req) (*GetNextBatchResponse, error)
 
-- Syncing Peers: During peer synchronization or state catch-up, nodes may download batches and use VerifyBatch to confirm correctness before trusting the result.
+// Always returns true for based sequencer
+VerifyBatch(ctx, req) (*VerifyBatchResponse, error)
+```
 
-- Auditing / Indexers: Off-chain services may verify batches as part of building state snapshots, fraud monitoring, or historical replays.
+**Forced Inclusion Retrieval**:
 
-- Testing: Developers and test frameworks can validate batch formation correctness and execution determinism using VerifyBatch.
+```go
+// Retrieves forced inclusion txs at DA height (epoch start)
+RetrieveForcedIncludedTxs(ctx, daHeight) (*ForcedInclusionEvent, error)
+```
 
-In all of these cases, VerifyBatch acts as a stateless, replayable re-computation check using base-layer data and chain rules.
+### Block Time Characteristics
 
-### Relaying Costs and Fee Compensation via EVM
+- **Block time is a function of DA layer block time**
+- With `DAEpochForcedInclusion = 10` and Celestia ~12s block time:
+  - Minimum block time: ~12s (if transactions present)
+  - Maximum epoch duration: ~120s (10 blocks)
+- **Lazy mode has no effect** - based sequencing inherently follows DA timing
+- **No headers are published to DA** - only forced inclusion blobs
 
-In a based sequencing architecture, users may choose to submit their transactions directly to the base layer (e.g., Celestia) or rely on full nodes to relay the transactions on their behalf. When full nodes act as relayers, they are responsible for covering the base layer data availability (DA) fees. To make this economically viable, the protocol must include a mechanism to compensate these full nodes for their relaying service—ideally without modifying the EVM or execution engine.
+### Security Considerations
 
-To achieve this, we leverage existing EVM transaction fee mechanisms and Engine API standards. Specifically, we utilize the suggestedFeeRecipient field in the engine_forkchoiceUpdatedV3 call. This field is included in the PayloadAttributes sent by the consensus client (Rollkit) to the execution client (reth) when proposing a new block payload. By setting suggestedFeeRecipient to the full node’s address, we instruct the execution engine to assign the transaction priority fees (tip) and base fees to the relaying full node when the payload is created.
+**Trust Model**:
 
-The user transaction itself includes a maxFeePerGas and maxPriorityFeePerGas—standard EIP-1559 fields. These fees are used as usual by the execution engine during payload construction. Since the full node is named as the fee recipient, it directly receives the gas fees when the transaction is executed, effectively covering its cost of DA submission on the user’s behalf. This approach requires no changes to the EVM engine, remains backward compatible with Ethereum infrastructure, and aligns incentives for honest full nodes to participate in relaying and batching.
+- No trusted sequencer required
+- All nodes derive identical state from DA
+- Invalid blocks are automatically rejected by execution rules
 
-This design ensures:
+**Attack Vectors**:
 
-- Fee accountability: Users pay for DA inclusion via standard gas fees.
-- Node neutrality: Any full node can relay a transaction and get compensated.
-- No execution-layer changes: Works with a modified reth clients.
-- Security: Users retain flexibility to either self-submit or rely on decentralized relayers.
-
-Additional enhancements like dynamic fee markets, relayer reputation, or chain-native incentives can be layered atop this base mechanism in the future.
+- Invalid State: Rejected by execution engine during `ExecuteTxs`
+- Blob Spam: Limited by DA namespace fees and size validation
+- Incorrect Batch: Each node independently derives batches, inconsistent nodes fall out of sync
 
 ### Efficiency
 
-- Deterministic block production without overhead of consensus
-- Bound latency ensures timely progress even with low traffic
-
-### Observability
-
-- Each node can log forkchoice decisions, skipped blobs, and batch triggers
-
-### Security
-
-- No sequencer key or proposer trust required
-- Replayable from public data (DA layer)
-- Optional transaction relay must not allow censorship or injection
-
-### Privacy
-
-- No privacy regressions; same as base-layer visibility
-
-### Testing
-
-- Unit tests for forkchoice implementation
-- End-to-end replay tests against base-layer data
-- Mocked relayer tests for SubmitTx
-
-### Deployment
-
-- No breaking changes to existing based chain logic
-- Can be rolled out by disabling proposer logic
-- Optional relayer logic gated by config flag
+- Minimal DA Queries: Only fetch at epoch boundaries
+- Bounded Latency: Epoch duration provides upper bound
+- Transaction Queuing: Smooth large batches across multiple blocks
 
 ## Status
 
-Proposed
+Implemented
 
 ## Consequences
 
 ### Positive
 
-- Adds an alternate to single sequencer
-- Fully deterministic and transparent
-- Enables trustless bridges and light clients
-- Optional relayer support improves UX for walletless or mobile users
+- **Eliminates single sequencer dependency** - fully decentralized ordering
+- **Deterministic consensus** - all nodes converge on same state
+- **Censorship resistance** - forced inclusion verified by all nodes
+- **Simplified architecture** - no proposer election or coordination
+- **Economic sustainability** - fee recipient mechanism enables relay compensation
 
 ### Negative
 
-- Slight increase in complexity in forkchoice validation
-- Must standardize timestamp and blob access for determinism
-- Must prevent relayer misuse or spam
+- **Block time tied to DA layer** - cannot be independently configured
+- **Minimum latency** - at least one DA block time
+- **Epoch-based batching** - cannot include transactions mid-epoch
 
 ### Neutral
 
-- Shifts latency tuning from proposer logic to forkchoice parameters
+- **No mempool in based sequencer** - transactions only via forced inclusion
+- **Queue management required** - full nodes maintain transaction queues
+- **DA namespace dependency** - requires forced inclusion namespace support
+
+## Future Enhancements
+
+1. **Transaction Relaying**: Implement full node RPC endpoints to accept and relay user transactions to DA
+2. **Dynamic Epochs**: Adjust epoch size based on transaction volume or network conditions
+3. **Priority Mechanisms**: Support application-specific transaction ordering within epochs
+4. **Light Client Integration**: Implement header verification without full re-execution
+5. **Cross-Chain Inclusion**: Enable forced inclusion from multiple DA layers
 
 ## References
 
-- [EthResearch: Based Chains](https://ethresear.ch/t/based-rollups-superpowers-from-l1-sequencing/15016)
 <!-- markdown-link-check-disable -->
-- [Taiko](https://taiko.mirror.xyz/7dfMydX1FqEx9_sOvhRt3V8hJksKSIWjzhCVu7FyMZU)
-<!-- markdown-link-check-enable -->
-- [Surge](https://www.surge.wtf/)
+
+- [EthResearch: Based Rollups](https://ethresear.ch/t/based-rollups-superpowers-from-l1-sequencing/15016)
+- [Taiko: Based Sequencing](https://taiko.mirror.xyz/7dfMydX1FqEx9_sOvhRt3V8hJksKSIWjzhCVu7FyMZU)
+- [Surge Rollup](https://www.surge.wtf/)
 - [Spire](https://www.spire.dev/)
-- [Unifi from Puffer](https://www.puffer.fi/unifi)
+- [Puffer UniFi](https://www.puffer.fi/unifi)
