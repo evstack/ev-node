@@ -4,13 +4,14 @@ import (
 	"context"
 	crand "crypto/rand"
 	"crypto/sha512"
+	"encoding/binary"
 	"errors"
 	"sync/atomic"
 	"testing"
 	"time"
 
-	"github.com/evstack/ev-node/core/execution"
 	da "github.com/evstack/ev-node/da"
+	"github.com/evstack/ev-node/core/execution"
 	"github.com/evstack/ev-node/pkg/genesis"
 	signerpkg "github.com/evstack/ev-node/pkg/signer"
 	"github.com/evstack/ev-node/pkg/signer/noop"
@@ -104,7 +105,7 @@ func TestSyncer_validateBlock_DataHashMismatch(t *testing.T) {
 	ds := dssync.MutexWrap(datastore.NewMapDatastore())
 	st := store.New(ds)
 
-	cm, err := cache.NewManager(config.DefaultConfig(), st, zerolog.Nop())
+	cm, err := cache.NewCacheManager(config.DefaultConfig(), zerolog.Nop())
 	require.NoError(t, err)
 
 	addr, pub, signer := buildSyncTestSigner(t)
@@ -153,7 +154,7 @@ func TestProcessHeightEvent_SyncsAndUpdatesState(t *testing.T) {
 	ds := dssync.MutexWrap(datastore.NewMapDatastore())
 	st := store.New(ds)
 
-	cm, err := cache.NewManager(config.DefaultConfig(), st, zerolog.Nop())
+	cm, err := cache.NewCacheManager(config.DefaultConfig(), zerolog.Nop())
 	require.NoError(t, err)
 
 	addr, pub, signer := buildSyncTestSigner(t)
@@ -208,7 +209,7 @@ func TestSequentialBlockSync(t *testing.T) {
 	ds := dssync.MutexWrap(datastore.NewMapDatastore())
 	st := store.New(ds)
 
-	cm, err := cache.NewManager(config.DefaultConfig(), st, zerolog.Nop())
+	cm, err := cache.NewCacheManager(config.DefaultConfig(), zerolog.Nop())
 	require.NoError(t, err)
 
 	addr, pub, signer := buildSyncTestSigner(t)
@@ -281,7 +282,7 @@ func TestSyncer_processPendingEvents(t *testing.T) {
 	ds := dssync.MutexWrap(datastore.NewMapDatastore())
 	st := store.New(ds)
 
-	cm, err := cache.NewManager(config.DefaultConfig(), st, zerolog.Nop())
+	cm, err := cache.NewCacheManager(config.DefaultConfig(), zerolog.Nop())
 	require.NoError(t, err)
 
 	// current height 1
@@ -327,7 +328,7 @@ func TestSyncLoopPersistState(t *testing.T) {
 	cfg.RootDir = t.TempDir()
 	cfg.ClearCache = true
 
-	cacheMgr, err := cache.NewManager(cfg, st, zerolog.Nop())
+	cacheMgr, err := cache.NewCacheManager(cfg, zerolog.Nop())
 	require.NoError(t, err)
 
 	const myDAHeightOffset = uint64(1)
@@ -437,7 +438,7 @@ func TestSyncLoopPersistState(t *testing.T) {
 		require.Nil(t, event, "event at height %d should have been removed", blockHeight)
 	}
 	// and when new instance is up on restart
-	cacheMgr, err = cache.NewManager(cfg, st, zerolog.Nop())
+	cacheMgr, err = cache.NewCacheManager(cfg, zerolog.Nop())
 	require.NoError(t, err)
 	require.NoError(t, cacheMgr.LoadFromDisk())
 
@@ -574,9 +575,7 @@ func TestSyncer_InitializeState_CallsReplayer(t *testing.T) {
 	// This test verifies that initializeState() invokes Replayer.
 	// The detailed replay logic is tested in block/internal/common/replay_test.go
 
-	ds := dssync.MutexWrap(datastore.NewMapDatastore())
-	st := store.New(ds)
-	cm, err := cache.NewManager(config.DefaultConfig(), st, zerolog.Nop())
+	cm, err := cache.NewCacheManager(config.DefaultConfig(), zerolog.Nop())
 	require.NoError(t, err)
 
 	// Create mocks
@@ -606,21 +605,21 @@ func TestSyncer_InitializeState_CallsReplayer(t *testing.T) {
 	)
 
 	// Mock GetMetadata calls for DA included height retrieval
-	mockStore.EXPECT().GetMetadata(mock.Anything, mock.Anything).Return(nil, datastore.ErrNotFound).Maybe()
+	mockStore.EXPECT().GetMetadata(mock.Anything, store.DAIncludedHeightKey).Return(nil, datastore.ErrNotFound)
 
 	// Setup execution layer to be in sync
 	mockExec.On("GetLatestHeight", mock.Anything).Return(storeHeight, nil)
 
 	// Create syncer with minimal dependencies
 	syncer := &Syncer{
-		store:     mockStore,
-		exec:      mockExec,
-		genesis:   gen,
-		lastState: &atomic.Pointer[types.State]{},
+		store:             mockStore,
+		exec:              mockExec,
+		genesis:           gen,
+		lastState:         &atomic.Pointer[types.State]{},
 		daRetrieverHeight: &atomic.Uint64{},
-		logger:    zerolog.Nop(),
-		ctx:       context.Background(),
-		cache:     cm,
+		logger:            zerolog.Nop(),
+		ctx:               context.Background(),
+		cache:             cm,
 	}
 
 	// Initialize state - this should call Replayer
@@ -643,4 +642,59 @@ func requireEmptyChan(t *testing.T, errorCh chan error) {
 		t.Fatalf("sync workers failed: %v", err)
 	default:
 	}
+}
+
+func TestSyncer_getHighestStoredDAHeight(t *testing.T) {
+	ds := dssync.MutexWrap(datastore.NewMapDatastore())
+	st := store.New(ds)
+	ctx := context.Background()
+
+	syncer := &Syncer{
+		store:  st,
+		ctx:    ctx,
+		logger: zerolog.Nop(),
+	}
+
+	// Test case 1: No DA included height set
+	highestDA := syncer.getHighestStoredDAHeight()
+	assert.Equal(t, uint64(0), highestDA)
+
+	// Test case 2: DA included height set, but no mappings
+	bz := make([]byte, 8)
+	binary.LittleEndian.PutUint64(bz, 1)
+	require.NoError(t, st.SetMetadata(ctx, store.DAIncludedHeightKey, bz))
+
+	highestDA = syncer.getHighestStoredDAHeight()
+	assert.Equal(t, uint64(0), highestDA)
+
+	// Test case 3: DA included height with header mapping
+	headerBytes := make([]byte, 8)
+	binary.LittleEndian.PutUint64(headerBytes, 100)
+	require.NoError(t, st.SetMetadata(ctx, store.GetHeightToDAHeightHeaderKey(1), headerBytes))
+
+	highestDA = syncer.getHighestStoredDAHeight()
+	assert.Equal(t, uint64(100), highestDA)
+
+	// Test case 4: DA included height with both header and data mappings (data is higher)
+	dataBytes := make([]byte, 8)
+	binary.LittleEndian.PutUint64(dataBytes, 105)
+	require.NoError(t, st.SetMetadata(ctx, store.GetHeightToDAHeightDataKey(1), dataBytes))
+
+	highestDA = syncer.getHighestStoredDAHeight()
+	assert.Equal(t, uint64(105), highestDA)
+
+	// Test case 5: Advance to height 2 with higher DA heights
+	binary.LittleEndian.PutUint64(bz, 2)
+	require.NoError(t, st.SetMetadata(ctx, store.DAIncludedHeightKey, bz))
+
+	headerBytes2 := make([]byte, 8)
+	binary.LittleEndian.PutUint64(headerBytes2, 200)
+	require.NoError(t, st.SetMetadata(ctx, store.GetHeightToDAHeightHeaderKey(2), headerBytes2))
+
+	dataBytes2 := make([]byte, 8)
+	binary.LittleEndian.PutUint64(dataBytes2, 195)
+	require.NoError(t, st.SetMetadata(ctx, store.GetHeightToDAHeightDataKey(2), dataBytes2))
+
+	highestDA = syncer.getHighestStoredDAHeight()
+	assert.Equal(t, uint64(200), highestDA, "should return highest DA height from most recent included height")
 }

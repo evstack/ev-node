@@ -15,8 +15,8 @@ import (
 
 	"github.com/evstack/ev-node/block/internal/cache"
 	"github.com/evstack/ev-node/block/internal/common"
-	"github.com/evstack/ev-node/core/execution"
 	da "github.com/evstack/ev-node/da"
+	"github.com/evstack/ev-node/core/execution"
 	"github.com/evstack/ev-node/pkg/config"
 	"github.com/evstack/ev-node/pkg/genesis"
 	"github.com/evstack/ev-node/pkg/store"
@@ -326,7 +326,7 @@ func setupTestSyncer(t *testing.T, daBlockTime time.Duration) *Syncer {
 	ds := dssync.MutexWrap(datastore.NewMapDatastore())
 	st := store.New(ds)
 
-	cm, err := cache.NewManager(config.DefaultConfig(), st, zerolog.Nop())
+	cm, err := cache.NewCacheManager(config.DefaultConfig(), zerolog.Nop())
 	require.NoError(t, err)
 
 	addr, _, _ := buildSyncTestSigner(t)
