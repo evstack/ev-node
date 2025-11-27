@@ -11,7 +11,7 @@ replace (
 )
 
 require (
-	github.com/celestiaorg/go-header v0.7.3
+	github.com/celestiaorg/go-header v0.7.4
 	github.com/evstack/ev-node v1.0.0-beta.9
 	github.com/evstack/ev-node/core v1.0.0-beta.5
 	github.com/evstack/ev-node/da v0.0.0-00010101000000-000000000000
