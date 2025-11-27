@@ -222,12 +222,18 @@ func (c *Client) SubmitWithOptions(ctx context.Context, blobs []da.Blob, gasPric
 		return nil, fmt.Errorf("invalid namespace: %w", err)
 	}
 
-	// Convert blobs to Celestia format
+	// Convert blobs to Celestia format and calculate commitments locally
 	celestiaBlobs := make([]*Blob, len(blobs))
 	for i, blob := range blobs {
+		// Calculate commitment locally using the same algorithm as celestia-node
+		commitment, err := CreateCommitment(blob, namespace)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create commitment for blob %d: %w", i, err)
+		}
 		celestiaBlobs[i] = &Blob{
-			Namespace: namespace,
-			Data:      blob,
+			Namespace:  namespace,
+			Data:       blob,
+			Commitment: commitment,
 		}
 	}
 
@@ -254,11 +260,10 @@ func (c *Client) SubmitWithOptions(ctx context.Context, blobs []da.Blob, gasPric
 		return nil, err
 	}
 
-	// Create IDs from height only (commitments not needed for Submit result)
-	// Commitments will be retrieved later via GetIDs when needed
+	// Create IDs from height and locally-computed commitments
 	ids := make([]da.ID, len(celestiaBlobs))
-	for i := range celestiaBlobs {
-		ids[i] = makeID(height, nil)
+	for i, blob := range celestiaBlobs {
+		ids[i] = makeID(height, blob.Commitment)
 	}
 
 	return ids, nil
@@ -363,12 +368,15 @@ func (c *Client) GetProofs(ctx context.Context, ids []da.ID, namespace []byte) (
 }
 
 // Commit creates commitments for the given blobs.
-// Note: Celestia generates commitments automatically during submission,
-// so this is a no-op that returns nil commitments.
+// Commitments are computed locally using the same algorithm as celestia-node.
 func (c *Client) Commit(ctx context.Context, blobs []da.Blob, namespace []byte) ([]da.Commitment, error) {
 	commitments := make([]da.Commitment, len(blobs))
-	for i := range blobs {
-		commitments[i] = nil
+	for i, blob := range blobs {
+		commitment, err := CreateCommitment(blob, namespace)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create commitment for blob %d: %w", i, err)
+		}
+		commitments[i] = commitment
 	}
 	return commitments, nil
 }
