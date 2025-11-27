@@ -7,6 +7,8 @@ import (
 	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/celestiaorg/nmt"
 )
 
 func TestNewClient(t *testing.T) {
@@ -215,9 +217,9 @@ func TestClient_Included(t *testing.T) {
 
 	validNamespace := make([]byte, 29)
 	validCommitment := []byte("commitment")
-	proof := &Proof{Data: []byte("proof")}
+	proof := Proof{&nmt.Proof{}}
 
-	_, err = client.included(ctx, 100, validNamespace, proof, validCommitment)
+	_, err = client.included(ctx, 100, validNamespace, &proof, validCommitment)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "failed to check inclusion")
 }

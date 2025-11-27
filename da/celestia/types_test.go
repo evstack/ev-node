@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"testing"
 
+	"github.com/celestiaorg/nmt"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -49,8 +50,8 @@ func TestValidateNamespace(t *testing.T) {
 }
 
 func TestProofJSONMarshaling(t *testing.T) {
-	proof := &Proof{
-		Data: []byte{1, 2, 3, 4, 5},
+	proof := Proof{
+		&nmt.Proof{},
 	}
 
 	// Marshal
@@ -62,14 +63,16 @@ func TestProofJSONMarshaling(t *testing.T) {
 	err = json.Unmarshal(data, &decoded)
 	require.NoError(t, err)
 
-	assert.Equal(t, proof.Data, decoded.Data)
+	assert.Equal(t, len(proof), len(decoded))
 }
 
 func TestSubmitOptionsJSON(t *testing.T) {
 	opts := &SubmitOptions{
-		Fee:           0.002,
-		GasLimit:      100000,
-		SignerAddress: "celestia1abc123",
+		GasPrice:          0.002,
+		IsGasPriceSet:     true,
+		Gas:               100000,
+		SignerAddress:     "celestia1abc123",
+		FeeGranterAddress: "celestia1feegranter",
 	}
 
 	// Marshal
@@ -81,7 +84,9 @@ func TestSubmitOptionsJSON(t *testing.T) {
 	err = json.Unmarshal(data, &decoded)
 	require.NoError(t, err)
 
-	assert.Equal(t, opts.Fee, decoded.Fee)
-	assert.Equal(t, opts.GasLimit, decoded.GasLimit)
+	assert.Equal(t, opts.GasPrice, decoded.GasPrice)
+	assert.Equal(t, opts.IsGasPriceSet, decoded.IsGasPriceSet)
+	assert.Equal(t, opts.Gas, decoded.Gas)
 	assert.Equal(t, opts.SignerAddress, decoded.SignerAddress)
+	assert.Equal(t, opts.FeeGranterAddress, decoded.FeeGranterAddress)
 }

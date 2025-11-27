@@ -3,6 +3,10 @@ package celestia
 import (
 	"encoding/json"
 	"fmt"
+
+	"github.com/celestiaorg/nmt"
+
+	"github.com/evstack/ev-node/da"
 )
 
 // Namespace represents a Celestia namespace (29 bytes: 1 version + 28 ID)
@@ -15,38 +19,55 @@ type Commitment []byte
 type Blob struct {
 	Namespace  Namespace  `json:"namespace"`
 	Data       []byte     `json:"data"`
-	ShareVer   uint32     `json:"share_version"`
+	ShareVer   uint8      `json:"share_version"`
 	Commitment Commitment `json:"commitment"`
+	Signer     []byte     `json:"signer,omitempty"`
 	Index      int        `json:"index"`
 }
 
 // Proof represents a Celestia inclusion proof
-type Proof struct {
-	Data []byte `json:"data"`
-}
+type Proof []*nmt.Proof
 
 // SubmitOptions contains options for blob submission
 type SubmitOptions struct {
-	Fee           float64 `json:"fee,omitempty"`
-	GasLimit      uint64  `json:"gas_limit,omitempty"`
-	SignerAddress string  `json:"signer_address,omitempty"`
+	GasPrice          float64 `json:"gas_price,omitempty"`
+	IsGasPriceSet     bool    `json:"is_gas_price_set,omitempty"`
+	MaxGasPrice       float64 `json:"max_gas_price,omitempty"`
+	Gas               uint64  `json:"gas,omitempty"`
+	TxPriority        int     `json:"tx_priority,omitempty"`
+	KeyName           string  `json:"key_name,omitempty"`
+	SignerAddress     string  `json:"signer_address,omitempty"`
+	FeeGranterAddress string  `json:"fee_granter_address,omitempty"`
 }
 
 // MarshalJSON implements json.Marshaler for Proof
-func (p *Proof) MarshalJSON() ([]byte, error) {
-	return json.Marshal(p.Data)
+func (p Proof) MarshalJSON() ([]byte, error) {
+	return json.Marshal([]*nmt.Proof(p))
 }
 
 // UnmarshalJSON implements json.Unmarshaler for Proof
 func (p *Proof) UnmarshalJSON(data []byte) error {
-	return json.Unmarshal(data, &p.Data)
+	var proofs []*nmt.Proof
+	if err := json.Unmarshal(data, &proofs); err != nil {
+		return err
+	}
+	*p = proofs
+	return nil
 }
 
 // ValidateNamespace validates that a namespace is properly formatted (29 bytes).
 func ValidateNamespace(ns Namespace) error {
-	const NamespaceSize = 29
-	if len(ns) != NamespaceSize {
-		return fmt.Errorf("invalid namespace size: got %d, expected %d", len(ns), NamespaceSize)
+	if len(ns) != da.NamespaceSize {
+		return fmt.Errorf("invalid namespace size: got %d, expected %d", len(ns), da.NamespaceSize)
+	}
+
+	parsed, err := da.NamespaceFromBytes(ns)
+	if err != nil {
+		return fmt.Errorf("invalid namespace: %w", err)
+	}
+
+	if parsed.Version != da.NamespaceVersionZero || !parsed.IsValidForVersion0() {
+		return fmt.Errorf("invalid namespace: only version 0 namespaces with first %d zero bytes are supported", da.NamespaceVersionZeroPrefixSize)
 	}
 	return nil
 }

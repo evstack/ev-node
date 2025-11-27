@@ -178,9 +178,13 @@ func (c *Client) getProof(ctx context.Context, height uint64, namespace Namespac
 		return nil, fmt.Errorf("failed to get proof: %w", err)
 	}
 
+	proofSegments := 0
+	if proof != nil {
+		proofSegments = len(*proof)
+	}
 	c.logger.Debug().
 		Uint64("height", height).
-		Int("proof_size", len(proof.Data)).
+		Int("proof_segments", proofSegments).
 		Msg("Successfully retrieved proof")
 
 	return proof, nil
@@ -287,7 +291,11 @@ func (c *Client) GetProofs(ctx context.Context, ids []da.ID, namespace []byte) (
 			return nil, fmt.Errorf("failed to get proof for ID %d: %w", i, err)
 		}
 
-		proofs[i] = proof.Data
+		encodedProof, err := json.Marshal(proof)
+		if err != nil {
+			return nil, fmt.Errorf("failed to marshal proof for ID %d: %w", i, err)
+		}
+		proofs[i] = encodedProof
 	}
 
 	return proofs, nil
@@ -320,8 +328,12 @@ func (c *Client) Validate(ctx context.Context, ids []da.ID, proofs []da.Proof, n
 			return nil, fmt.Errorf("invalid ID at index %d: %w", i, err)
 		}
 
-		proof := &Proof{Data: proofs[i]}
-		included, err := c.included(ctx, height, namespace, proof, commitment)
+		var proof Proof
+		if err := json.Unmarshal(proofs[i], &proof); err != nil {
+			return nil, fmt.Errorf("failed to decode proof %d: %w", i, err)
+		}
+
+		included, err := c.included(ctx, height, namespace, &proof, commitment)
 		if err != nil {
 			return nil, fmt.Errorf("failed to validate proof %d: %w", i, err)
 		}
@@ -380,14 +392,14 @@ func (c *Client) SubmitWithOptions(ctx context.Context, blobs []da.Blob, gasPric
 		}
 		celestiaBlobs[i] = &Blob{
 			Namespace:  namespace,
+			ShareVer:   0,
 			Data:       blob,
 			Commitment: commitment,
 		}
 	}
 
-	var opts *SubmitOptions
+	opts := &SubmitOptions{}
 	if len(options) > 0 {
-		opts = &SubmitOptions{}
 		if err := json.Unmarshal(options, opts); err != nil {
 			return da.ResultSubmit{
 				BaseResult: da.BaseResult{
@@ -397,10 +409,9 @@ func (c *Client) SubmitWithOptions(ctx context.Context, blobs []da.Blob, gasPric
 				},
 			}
 		}
-		opts.Fee = gasPrice
-	} else {
-		opts = &SubmitOptions{Fee: gasPrice}
 	}
+	opts.GasPrice = gasPrice
+	opts.IsGasPriceSet = true
 
 	height, err := c.submit(ctx, celestiaBlobs, opts)
 	if err != nil {
