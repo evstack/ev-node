@@ -11,7 +11,10 @@ require (
 )
 
 require (
-	github.com/celestiaorg/go-header v0.7.3 // indirect
+	github.com/celestiaorg/go-header v0.7.4 // indirect
+	github.com/celestiaorg/go-square/merkle v0.0.0-20240117232118-fd78256df076 // indirect
+	github.com/celestiaorg/go-square/v3 v3.0.2 // indirect
+	github.com/celestiaorg/nmt v0.24.2 // indirect
 	github.com/decred/dcrd/dcrec/secp256k1/v4 v4.4.0 // indirect
 	github.com/filecoin-project/go-jsonrpc v0.9.0 // indirect
 	github.com/gogo/protobuf v1.3.2 // indirect
@@ -47,6 +50,7 @@ require (
 	go.uber.org/zap v1.27.0 // indirect
 	golang.org/x/crypto v0.45.0 // indirect
 	golang.org/x/exp v0.0.0-20250911091902-df9299821621 // indirect
+	golang.org/x/sync v0.18.0 // indirect
 	golang.org/x/sys v0.38.0 // indirect
 	golang.org/x/xerrors v0.0.0-20240903120638-7835f813f4da // indirect
 	lukechampine.com/blake3 v1.4.1 // indirect
