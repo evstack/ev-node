@@ -8,6 +8,7 @@ replace (
 	github.com/evstack/ev-node => ../../
 	github.com/evstack/ev-node/core => ../../core
 	github.com/evstack/ev-node/da => ../../da
+	github.com/evstack/ev-node/execution/evm => ../../execution/evm
 )
 
 require (
