@@ -122,7 +122,7 @@ func postTxRunE(cmd *cobra.Command, args []string) error {
 		submitOpts = nodeConfig.DA.SubmitOptions
 	}
 
-	logger.Info().Msgf("posting transaction to DA layer", "namespace", namespace, "gas_price", gasPrice, "tx_size", len(txData))
+	logger.Info().Str("namespace", namespace).Float64("gas_price", gasPrice).Int("tx_size", len(txData)).Msg("posting transaction to DA layer")
 
 	daClient, err := jsonrpc.NewClient(
 		cmd.Context(),

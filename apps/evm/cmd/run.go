@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ipfs/go-datastore"
@@ -29,7 +30,11 @@ import (
 	"github.com/evstack/ev-node/sequencers/based"
 	seqcommon "github.com/evstack/ev-node/sequencers/common"
 	"github.com/evstack/ev-node/sequencers/single"
+
+	"github.com/evstack/ev-node/apps/evm/server"
 )
+
+const flagForceInclusionServer = "force-inclusion-server"
 
 var RunCmd = &cobra.Command{
 	Use:     "start",
@@ -92,6 +97,38 @@ var RunCmd = &cobra.Command{
 		p2pClient, err := p2p.NewClient(nodeConfig.P2P, nodeKey.PrivKey, datastore, genesis.ChainID, logger, nil)
 		if err != nil {
 			return err
+		}
+
+		// Start force inclusion API server if address is provided
+		forceInclusionAddr, err := cmd.Flags().GetString(flagForceInclusionServer)
+		if err != nil {
+			return fmt.Errorf("failed to get '%s' flag: %w", flagForceInclusionServer, err)
+		}
+
+		if forceInclusionAddr != "" {
+			forceInclusionServer, err := server.NewForceInclusionServer(
+				forceInclusionAddr,
+				&daJrpc.DA,
+				nodeConfig,
+				genesis,
+				logger,
+			)
+			if err != nil {
+				return fmt.Errorf("failed to create force inclusion server: %w", err)
+			}
+
+			if err := forceInclusionServer.Start(cmd.Context()); err != nil {
+				return fmt.Errorf("failed to start force inclusion API server: %w", err)
+			}
+
+			// Ensure server is stopped when node stops
+			defer func() {
+				shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+				defer cancel()
+				if err := forceInclusionServer.Stop(shutdownCtx); err != nil {
+					logger.Error().Err(err).Msg("failed to stop force inclusion API server")
+				}
+			}()
 		}
 
 		return rollcmd.StartNode(logger, cmd, executor, sequencer, &daJrpc.DA, p2pClient, datastore, nodeConfig, genesis, node.NodeOptions{})
@@ -217,4 +254,5 @@ func addFlags(cmd *cobra.Command) {
 	cmd.Flags().String(evm.FlagEvmJWTSecretFile, "", "Path to file containing the JWT secret for authentication")
 	cmd.Flags().String(evm.FlagEvmGenesisHash, "", "Hash of the genesis block")
 	cmd.Flags().String(evm.FlagEvmFeeRecipient, "", "Address that will receive transaction fees")
+	cmd.Flags().String(flagForceInclusionServer, "", "Address for force inclusion API server (e.g. 127.0.0.1:8547). If set, enables the server for direct DA submission")
 }

@@ -20,6 +20,7 @@ require (
 	github.com/ipfs/go-datastore v0.9.0
 	github.com/rs/zerolog v1.34.0
 	github.com/spf13/cobra v1.10.1
+	gotest.tools/v3 v3.5.2
 )
 
 require (
@@ -65,6 +66,7 @@ require (
 	github.com/golang/groupcache v0.0.0-20241129210726-2c02b8208cf8 // indirect
 	github.com/golang/snappy v1.0.0 // indirect
 	github.com/google/flatbuffers v24.12.23+incompatible // indirect
+	github.com/google/go-cmp v0.7.0 // indirect
 	github.com/google/gopacket v1.1.19 // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/gorilla/websocket v1.5.3 // indirect
