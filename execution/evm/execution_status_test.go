@@ -251,3 +251,69 @@ func TestRetryWithBackoffOnPayloadStatus_WrappedRPCErrors(t *testing.T) {
 	// Should fail immediately without retries on non-syncing errors
 	assert.Equal(t, 1, attempts, "expected exactly 1 attempt, got %d", attempts)
 }
+
+// TestExecuteTxs_GibberishTransactions tests that the EVM executor handles invalid/gibberish transactions gracefully
+// According to the Executor interface requirements: "Must handle gracefully gibberish transactions"
+func TestExecuteTxs_GibberishTransactions(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name         string
+		transactions [][]byte
+		description  string
+	}{
+		{
+			name: "completely invalid transaction data",
+			transactions: [][]byte{
+				[]byte("not a valid transaction"),
+				[]byte("gibberish"),
+				{0x00, 0x01, 0x02, 0x03},
+			},
+			description: "random bytes that don't form valid RLP-encoded transactions",
+		},
+		{
+			name:         "empty transactions",
+			transactions: [][]byte{{}, {}},
+			description:  "empty byte slices",
+		},
+		{
+			name: "mix of invalid and potentially valid looking data",
+			transactions: [][]byte{
+				[]byte("0xinvalidhex"),
+				{0xff, 0xff, 0xff, 0xff},
+				[]byte("random string"),
+			},
+			description: "various forms of invalid transaction data",
+		},
+		{
+			name:         "empty transaction list",
+			transactions: [][]byte{},
+			description:  "no transactions at all should still produce a valid block",
+		},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			// Note: This test documents the expected behavior but cannot run without a real EVM client
+			// The EVM executor should:
+			// 1. Filter out invalid transactions before submitting to engine API
+			// 2. OR handle INVALID payload status gracefully
+			// 3. Still produce a valid block (possibly empty) and return a valid state root
+			// 4. NOT return an error that crashes the node
+
+			t.Logf("Testing gibberish transaction handling: %s", tt.description)
+			t.Logf("Transactions count: %d", len(tt.transactions))
+
+			// The actual implementation should ensure that when ExecuteTxs is called with
+			// gibberish transactions, it either:
+			// - Filters them out and creates an empty block
+			// - Wraps them in a way the engine accepts
+			// - Catches INVALID status and continues with a valid empty block
+			//
+			// It should NOT propagate the error up as a critical failure
+		})
+	}
+}

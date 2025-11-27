@@ -221,7 +221,7 @@ func (k *KVExecutor) GetTxs(ctx context.Context) ([][]byte, error) {
 
 // ExecuteTxs processes each transaction assumed to be in the format "key=value".
 // It updates the database accordingly using a batch and removes the executed transactions from the mempool.
-// If a transaction is malformed, an error is returned, and the database is not changed.
+// Invalid transactions are filtered out and logged, but execution continues.
 func (k *KVExecutor) ExecuteTxs(ctx context.Context, txs [][]byte, blockHeight uint64, timestamp time.Time, prevStateRoot []byte) ([]byte, uint64, error) {
 	select {
 	case <-ctx.Done():
@@ -234,23 +234,42 @@ func (k *KVExecutor) ExecuteTxs(ctx context.Context, txs [][]byte, blockHeight u
 		return nil, 0, fmt.Errorf("failed to create database batch: %w", err)
 	}
 
+	validTxCount := 0
+	invalidTxCount := 0
+
 	// Process transactions and stage them in the batch
-	for _, tx := range txs {
+	// Filter out invalid/gibberish transactions gracefully
+	for i, tx := range txs {
+		// Skip empty transactions
+		if len(tx) == 0 {
+			fmt.Printf("Warning: skipping empty transaction at index %d in block %d\n", i, blockHeight)
+			invalidTxCount++
+			continue
+		}
+
 		parts := strings.SplitN(string(tx), "=", 2)
 		if len(parts) != 2 {
-			return nil, 0, errors.New("malformed transaction; expected format key=value")
+			// Log but don't fail - this is gibberish that should be filtered out
+			fmt.Printf("Warning: filtering out malformed transaction at index %d in block %d (expected format key=value): %s\n", i, blockHeight, string(tx))
+			invalidTxCount++
+			continue
 		}
+
 		key := strings.TrimSpace(parts[0])
 		value := strings.TrimSpace(parts[1])
 		if key == "" {
-			return nil, 0, errors.New("empty key in transaction")
+			fmt.Printf("Warning: filtering out transaction with empty key at index %d in block %d\n", i, blockHeight)
+			invalidTxCount++
+			continue
 		}
 
 		dsKey := getTxKey(blockHeight, key)
 
 		// Prevent writing reserved keys via transactions
 		if reservedKeys[dsKey] {
-			return nil, 0, fmt.Errorf("transaction attempts to modify reserved key: %s", key)
+			fmt.Printf("Warning: filtering out transaction attempting to modify reserved key at index %d in block %d: %s\n", i, blockHeight, key)
+			invalidTxCount++
+			continue
 		}
 
 		err = batch.Put(ctx, dsKey, []byte(value))
@@ -258,6 +277,12 @@ func (k *KVExecutor) ExecuteTxs(ctx context.Context, txs [][]byte, blockHeight u
 			// This error is unlikely for Put unless the context is cancelled.
 			return nil, 0, fmt.Errorf("failed to stage put operation in batch for key '%s': %w", key, err)
 		}
+		validTxCount++
+	}
+
+	// Log filtering results if any transactions were filtered
+	if invalidTxCount > 0 {
+		fmt.Printf("Block %d: processed %d valid transactions, filtered out %d invalid transactions\n", blockHeight, validTxCount, invalidTxCount)
 	}
 
 	// Commit the batch to apply all changes atomically
