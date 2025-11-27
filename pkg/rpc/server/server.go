@@ -35,7 +35,7 @@ var _ rpc.StoreServiceHandler = (*StoreServer)(nil)
 type StoreServer struct {
 	store       store.Store
 	headerStore goheader.Store[*types.SignedHeaderWithDAHint]
-	dataStore   goheader.Store[*types.Data]
+	dataStore   goheader.Store[*types.DataWithDAHint]
 	logger      zerolog.Logger
 }
 
@@ -43,7 +43,7 @@ type StoreServer struct {
 func NewStoreServer(
 	store store.Store,
 	headerStore goheader.Store[*types.SignedHeaderWithDAHint],
-	dataStore goheader.Store[*types.Data],
+	dataStore goheader.Store[*types.DataWithDAHint],
 	logger zerolog.Logger,
 ) *StoreServer {
 	return &StoreServer{
@@ -371,7 +371,7 @@ func (p *P2PServer) GetNetInfo(
 func NewServiceHandler(
 	store store.Store,
 	headerStore goheader.Store[*types.SignedHeaderWithDAHint],
-	dataStore goheader.Store[*types.Data],
+	dataStore goheader.Store[*types.DataWithDAHint],
 	peerManager p2p.P2PRPC,
 	proposerAddress []byte,
 	logger zerolog.Logger,

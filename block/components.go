@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/evstack/ev-node/pkg/sync"
 	"github.com/rs/zerolog"
 
 	"github.com/evstack/ev-node/block/internal/cache"
@@ -132,8 +133,8 @@ func NewSyncComponents(
 	store store.Store,
 	exec coreexecutor.Executor,
 	da coreda.DA,
-	headerStore common.Broadcaster[*types.SignedHeaderWithDAHint],
-	dataStore common.Broadcaster[*types.Data],
+	headerStore *sync.HeaderSyncService,
+	dataStore *sync.DataSyncService,
 	logger zerolog.Logger,
 	metrics *Metrics,
 	blockOpts BlockOptions,
@@ -157,15 +158,15 @@ func NewSyncComponents(
 		metrics,
 		config,
 		genesis,
-		headerStore,
-		dataStore,
+		common.NewDecorator[*types.SignedHeader](headerStore),
+		common.NewDecorator[*types.Data](dataStore),
 		logger,
 		blockOpts,
 		errorCh,
 	)
 
 	// Create submitter for sync nodes (no signer, only DA inclusion processing)
-	daSubmitter := submitting.NewDASubmitter(daClient, config, genesis, blockOpts, metrics, logger, nil) // todo (Alex): use a noop
+	daSubmitter := submitting.NewDASubmitter(daClient, config, genesis, blockOpts, metrics, logger, headerStore, dataStore)
 	submitter := submitting.NewSubmitter(
 		store,
 		exec,
@@ -198,8 +199,8 @@ func NewAggregatorComponents(
 	sequencer coresequencer.Sequencer,
 	da coreda.DA,
 	signer signer.Signer,
-	headerBroadcaster common.Broadcaster[*types.SignedHeaderWithDAHint],
-	dataBroadcaster common.Broadcaster[*types.Data],
+	headerBroadcaster *sync.HeaderSyncService,
+	dataBroadcaster *sync.DataSyncService,
 	logger zerolog.Logger,
 	metrics *Metrics,
 	blockOpts BlockOptions,
@@ -222,8 +223,8 @@ func NewAggregatorComponents(
 		metrics,
 		config,
 		genesis,
-		headerBroadcaster,
-		dataBroadcaster,
+		common.NewDecorator[*types.SignedHeader](headerBroadcaster),
+		common.NewDecorator[*types.Data](dataBroadcaster),
 		logger,
 		blockOpts,
 		errorCh,
@@ -247,7 +248,7 @@ func NewAggregatorComponents(
 
 	// Create DA client and submitter for aggregator nodes (with signer for submission)
 	daClient := NewDAClient(da, config, logger)
-	daSubmitter := submitting.NewDASubmitter(daClient, config, genesis, blockOpts, metrics, logger, headerBroadcaster)
+	daSubmitter := submitting.NewDASubmitter(daClient, config, genesis, blockOpts, metrics, logger, headerBroadcaster, dataBroadcaster)
 	submitter := submitting.NewSubmitter(
 		store,
 		exec,

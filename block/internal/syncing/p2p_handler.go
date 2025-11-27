@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"sync/atomic"
 
-	goheader "github.com/celestiaorg/go-header"
 	"github.com/rs/zerolog"
 
 	"github.com/evstack/ev-node/block/internal/cache"
@@ -27,8 +26,8 @@ type p2pHandler interface {
 // The handler maintains a processedHeight to track the highest block that has been
 // successfully validated and sent to the syncer, preventing duplicate processing.
 type P2PHandler struct {
-	headerStore goheader.Store[*types.SignedHeaderWithDAHint]
-	dataStore   goheader.Store[*types.Data]
+	headerStore common.HeightStore[*types.SignedHeaderWithDAHint]
+	dataStore   common.HeightStore[*types.DataWithDAHint]
 	cache       cache.CacheManager
 	genesis     genesis.Genesis
 	logger      zerolog.Logger
@@ -38,8 +37,8 @@ type P2PHandler struct {
 
 // NewP2PHandler creates a new P2P handler.
 func NewP2PHandler(
-	headerStore goheader.Store[*types.SignedHeaderWithDAHint],
-	dataStore goheader.Store[*types.Data],
+	headerStore common.HeightStore[*types.SignedHeaderWithDAHint],
+	dataStore common.HeightStore[*types.DataWithDAHint],
 	cache cache.CacheManager,
 	genesis genesis.Genesis,
 	logger zerolog.Logger,
@@ -74,26 +73,27 @@ func (h *P2PHandler) ProcessHeight(ctx context.Context, height uint64, heightInC
 		return nil
 	}
 
-	header, err := h.headerStore.GetByHeight(ctx, height)
+	headerTuple, err := h.headerStore.GetByHeight(ctx, height)
 	if err != nil {
 		if ctx.Err() == nil {
 			h.logger.Debug().Uint64("height", height).Err(err).Msg("header unavailable in store")
 		}
 		return err
 	}
+	header := headerTuple.Entry
 	if err := h.assertExpectedProposer(header.ProposerAddress); err != nil {
 		h.logger.Debug().Uint64("height", height).Err(err).Msg("invalid header from P2P")
 		return err
 	}
 
-	data, err := h.dataStore.GetByHeight(ctx, height)
+	dataTuple, err := h.dataStore.GetByHeight(ctx, height)
 	if err != nil {
 		if ctx.Err() == nil {
 			h.logger.Debug().Uint64("height", height).Err(err).Msg("data unavailable in store")
 		}
 		return err
 	}
-
+	data := dataTuple.Entry
 	dataCommitment := data.DACommitment()
 	if !bytes.Equal(header.DataHash[:], dataCommitment[:]) {
 		err := fmt.Errorf("data hash mismatch: header %x, data %x", header.DataHash, dataCommitment)
@@ -104,10 +104,10 @@ func (h *P2PHandler) ProcessHeight(ctx context.Context, height uint64, heightInC
 	// further header validation (signature) is done in validateBlock.
 	// we need to be sure that the previous block n-1 was executed before validating block n
 	event := common.DAHeightEvent{
-		Header:       header.SignedHeader,
-		Data:         data,
-		Source:       common.SourceP2P,
-		DaHeightHint: header.DAHeightHint,
+		Header:        header,
+		Data:          data,
+		Source:        common.SourceP2P,
+		DaHeightHints: [2]uint64{headerTuple.DAHeightHint, dataTuple.DAHeightHint},
 	}
 
 	select {

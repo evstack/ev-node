@@ -93,19 +93,20 @@ func clamp(v, min, max time.Duration) time.Duration {
 	return v
 }
 
-type xxxer interface {
-	XXX(ctx context.Context, header *types.SignedHeaderWithDAHint) error
+type DAHintAppender interface {
+	AppendDAHint(ctx context.Context, daHeight uint64, hash ...types.Hash) error
 }
 
 // DASubmitter handles DA submission operations
 type DASubmitter struct {
-	client  da.Client
-	config  config.Config
-	genesis genesis.Genesis
-	options common.BlockOptions
-	logger  zerolog.Logger
-	metrics *common.Metrics
-	xxxer   xxxer
+	client               da.Client
+	config               config.Config
+	genesis              genesis.Genesis
+	options              common.BlockOptions
+	logger               zerolog.Logger
+	metrics              *common.Metrics
+	headerDAHintAppender DAHintAppender
+	dataDAHintAppender   DAHintAppender
 
 	// address selector for multi-account support
 	addressSelector pkgda.AddressSelector
@@ -119,7 +120,8 @@ func NewDASubmitter(
 	options common.BlockOptions,
 	metrics *common.Metrics,
 	logger zerolog.Logger,
-	xxxer xxxer,
+	headerDAHintAppender DAHintAppender,
+	dataDAHintAppender DAHintAppender,
 ) *DASubmitter {
 	daSubmitterLogger := logger.With().Str("component", "da_submitter").Logger()
 
@@ -145,14 +147,15 @@ func NewDASubmitter(
 	}
 
 	return &DASubmitter{
-		client:          client,
-		config:          config,
-		genesis:         genesis,
-		options:         options,
-		metrics:         metrics,
-		logger:          daSubmitterLogger,
-		addressSelector: addressSelector,
-		xxxer:           xxxer,
+		client:               client,
+		config:               config,
+		genesis:              genesis,
+		options:              options,
+		metrics:              metrics,
+		logger:               daSubmitterLogger,
+		addressSelector:      addressSelector,
+		headerDAHintAppender: headerDAHintAppender,
+		dataDAHintAppender:   dataDAHintAppender,
 	}
 }
 
@@ -192,13 +195,15 @@ func (s *DASubmitter) SubmitHeaders(ctx context.Context, cache cache.Manager) er
 			return proto.Marshal(headerPb)
 		},
 		func(submitted []*types.SignedHeader, res *coreda.ResultSubmit) {
-			for _, header := range submitted {
-				cache.SetHeaderDAIncluded(header.Hash().String(), res.Height, header.Height())
-				payload := &types.SignedHeaderWithDAHint{SignedHeader: header, DAHeightHint: res.Height}
-				if err := s.xxxer.XXX(ctx, payload); err != nil {
-					s.logger.Error().Err(err).Msg("failed to update header in p2p store")
-					// ignoring error here, since we don't want to block the block submission'
-				}
+			hashes := make([]types.Hash, len(submitted))
+			for i, header := range submitted {
+				headerHash := header.Hash()
+				cache.SetHeaderDAIncluded(headerHash.String(), res.Height, header.Height())
+				hashes[i] = headerHash
+			}
+			if err := s.headerDAHintAppender.AppendDAHint(ctx, res.Height, hashes...); err != nil {
+				s.logger.Error().Err(err).Msg("failed to append da height hint in header p2p store")
+				// ignoring error here, since we don't want to block the block submission'
 			}
 			if l := len(submitted); l > 0 {
 				lastHeight := submitted[l-1].Height()
@@ -240,8 +245,14 @@ func (s *DASubmitter) SubmitData(ctx context.Context, cache cache.Manager, signe
 			return signedData.MarshalBinary()
 		},
 		func(submitted []*types.SignedData, res *coreda.ResultSubmit) {
-			for _, sd := range submitted {
+			hashes := make([]types.Hash, len(submitted))
+			for i, sd := range submitted {
 				cache.SetDataDAIncluded(sd.Data.DACommitment().String(), res.Height, sd.Height())
+				hashes[i] = sd.Hash()
+			}
+			if err := s.dataDAHintAppender.AppendDAHint(ctx, res.Height, hashes...); err != nil {
+				s.logger.Error().Err(err).Msg("failed to append da height hint in data p2p store")
+				// ignoring error here, since we don't want to block the block submission'
 			}
 			if l := len(submitted); l > 0 {
 				lastHeight := submitted[l-1].Height()

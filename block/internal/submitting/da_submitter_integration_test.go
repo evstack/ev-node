@@ -113,6 +113,6 @@ func TestDASubmitter_SubmitHeadersAndData_MarksInclusionAndUpdatesLastSubmitted(
 
 type noopXXXer struct{}
 
-func (n noopXXXer) XXX(ctx context.Context, header *types.SignedHeaderWithDAHint) error {
+func (n noopXXXer) AppendDAHint(ctx context.Context, header *types.SignedHeaderWithDAHint) error {
 	return nil
 }

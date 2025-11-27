@@ -10,20 +10,18 @@ import (
 	"sync/atomic"
 	"time"
 
-	pubsub "github.com/libp2p/go-libp2p-pubsub"
-	"github.com/rs/zerolog"
-	"golang.org/x/sync/errgroup"
-
-	coreda "github.com/evstack/ev-node/core/da"
-	coreexecutor "github.com/evstack/ev-node/core/execution"
-
 	"github.com/evstack/ev-node/block/internal/cache"
 	"github.com/evstack/ev-node/block/internal/common"
 	"github.com/evstack/ev-node/block/internal/da"
+	coreda "github.com/evstack/ev-node/core/da"
+	coreexecutor "github.com/evstack/ev-node/core/execution"
 	"github.com/evstack/ev-node/pkg/config"
 	"github.com/evstack/ev-node/pkg/genesis"
 	"github.com/evstack/ev-node/pkg/store"
 	"github.com/evstack/ev-node/types"
+	pubsub "github.com/libp2p/go-libp2p-pubsub"
+	"github.com/rs/zerolog"
+	"golang.org/x/sync/errgroup"
 )
 
 // Syncer handles block synchronization from DA and P2P sources.
@@ -49,8 +47,8 @@ type Syncer struct {
 	daRetrieverHeight *atomic.Uint64
 
 	// P2P stores
-	headerStore common.Broadcaster[*types.SignedHeaderWithDAHint]
-	dataStore   common.Broadcaster[*types.Data]
+	headerStore common.HeaderP2PBroadcaster
+	dataStore   common.DataP2PBroadcaster
 
 	// Channels for coordination
 	heightInCh chan common.DAHeightEvent
@@ -81,8 +79,8 @@ func NewSyncer(
 	metrics *common.Metrics,
 	config config.Config,
 	genesis genesis.Genesis,
-	headerStore common.Broadcaster[*types.SignedHeaderWithDAHint],
-	dataStore common.Broadcaster[*types.Data],
+	headerStore common.HeaderP2PBroadcaster,
+	dataStore common.DataP2PBroadcaster,
 	logger zerolog.Logger,
 	options common.BlockOptions,
 	errorCh chan<- error,
@@ -116,7 +114,7 @@ func (s *Syncer) Start(ctx context.Context) error {
 
 	// Initialize handlers
 	s.daRetriever = NewDARetriever(s.daClient, s.cache, s.genesis, s.logger)
-	s.p2pHandler = NewP2PHandler(s.headerStore.Store(), s.dataStore.Store(), s.cache, s.genesis, s.logger)
+	s.p2pHandler = NewP2PHandler(s.headerStore.XStore(), s.dataStore.XStore(), s.cache, s.genesis, s.logger)
 	if currentHeight, err := s.store.Height(s.ctx); err != nil {
 		s.logger.Error().Err(err).Msg("failed to set initial processed height for p2p handler")
 	} else {
@@ -434,36 +432,64 @@ func (s *Syncer) processHeightEvent(event *common.DAHeightEvent) {
 
 	// If this is a P2P event with a DA height hint, trigger targeted DA retrieval
 	// This allows us to fetch the block directly from the specified DA height instead of sequential scanning
-	if event.Source == common.SourceP2P && event.DaHeightHint != 0 {
-		if _, exists := s.cache.GetHeaderDAIncluded(event.Header.Hash().String()); !exists {
-			s.logger.Debug().
-				Uint64("height", height).
-				Uint64("da_height_hint", event.DaHeightHint).
-				Msg("P2P event with DA height hint, triggering targeted DA retrieval")
+	if event.Source == common.SourceP2P {
+		var daHeightHints []uint64
+		switch {
+		case event.DaHeightHints == [2]uint64{0, 0}:
+		// empty, nothing to do
+		case event.DaHeightHints[0] == 0:
+			// check only data
+			if _, exists := s.cache.GetDataDAIncluded(event.Data.Hash().String()); !exists {
+				daHeightHints = []uint64{event.DaHeightHints[1]}
+			}
+		case event.DaHeightHints[1] == 0:
+			// check only header
+			if _, exists := s.cache.GetHeaderDAIncluded(event.Header.Hash().String()); !exists {
+				daHeightHints = []uint64{event.DaHeightHints[0]}
+			}
+		default:
+			// check both
+			if _, exists := s.cache.GetDataDAIncluded(event.Data.Hash().String()); !exists {
+				daHeightHints = []uint64{event.DaHeightHints[1]}
+			}
+			if _, exists := s.cache.GetDataDAIncluded(event.Data.Hash().String()); !exists {
+				daHeightHints = append(daHeightHints, event.DaHeightHints[1])
+			}
+			if len(daHeightHints) == 2 && daHeightHints[0] == daHeightHints[1] {
+				daHeightHints = daHeightHints[0:1]
+			}
+		}
+		if len(daHeightHints) > 0 {
+			for _, daHeightHint := range daHeightHints {
+				s.logger.Debug().
+					Uint64("height", height).
+					Uint64("da_height_hint", daHeightHint).
+					Msg("P2P event with DA height hint, triggering targeted DA retrieval")
 
-			// Trigger targeted DA retrieval in background
-			go func() {
-				targetEvents, err := s.daRetriever.RetrieveFromDA(s.ctx, event.DaHeightHint)
-				if err != nil {
-					s.logger.Debug().
-						Err(err).
-						Uint64("da_height", event.DaHeightHint).
-						Msg("targeted DA retrieval failed (hint may be incorrect or DA not yet available)")
-					// Not a critical error - the sequential DA worker will eventually find it
-					return
-				}
-
-				// Process retrieved events from the targeted DA height
-				for _, daEvent := range targetEvents {
-					select {
-					case s.heightInCh <- daEvent:
-					case <-s.ctx.Done():
+				// Trigger targeted DA retrieval in background
+				go func() {
+					targetEvents, err := s.daRetriever.RetrieveFromDA(s.ctx, daHeightHint)
+					if err != nil {
+						s.logger.Debug().
+							Err(err).
+							Uint64("da_height", daHeightHint).
+							Msg("targeted DA retrieval failed (hint may be incorrect or DA not yet available)")
+						// Not a critical error - the sequential DA worker will eventually find it
 						return
-					default:
-						s.cache.SetPendingEvent(daEvent.Header.Height(), &daEvent)
 					}
-				}
-			}()
+
+					// Process retrieved events from the targeted DA height
+					for _, daEvent := range targetEvents {
+						select {
+						case s.heightInCh <- daEvent:
+						case <-s.ctx.Done():
+							return
+						default:
+							s.cache.SetPendingEvent(daEvent.Header.Height(), &daEvent)
+						}
+					}
+				}()
+			}
 		}
 	}
 
@@ -504,8 +530,7 @@ func (s *Syncer) processHeightEvent(event *common.DAHeightEvent) {
 		g.Go(func() error {
 			// broadcast header locally only — prevents spamming the p2p network with old height notifications,
 			// allowing the syncer to update its target and fill missing blocks
-			payload := &types.SignedHeaderWithDAHint{SignedHeader: event.Header, DAHeightHint: event.DaHeightHint}
-			return s.headerStore.WriteToStoreAndBroadcast(ctx, payload, pubsub.WithLocalPublication(true))
+			return s.headerStore.WriteToStoreAndBroadcast(ctx, event.Header, pubsub.WithLocalPublication(true))
 		})
 		g.Go(func() error {
 			// broadcast data locally only — prevents spamming the p2p network with old height notifications,

@@ -8,6 +8,7 @@ import (
 	"context"
 
 	"github.com/celestiaorg/go-header"
+	"github.com/evstack/ev-node/types"
 	"github.com/libp2p/go-libp2p-pubsub"
 	mock "github.com/stretchr/testify/mock"
 )
@@ -37,6 +38,82 @@ type MockBroadcaster_Expecter[H header.Header[H]] struct {
 
 func (_m *MockBroadcaster[H]) EXPECT() *MockBroadcaster_Expecter[H] {
 	return &MockBroadcaster_Expecter[H]{mock: &_m.Mock}
+}
+
+// AppendDAHint provides a mock function for the type MockBroadcaster
+func (_mock *MockBroadcaster[H]) AppendDAHint(ctx context.Context, daHeight uint64, hashes ...types.Hash) error {
+	// types.Hash
+	_va := make([]interface{}, len(hashes))
+	for _i := range hashes {
+		_va[_i] = hashes[_i]
+	}
+	var _ca []interface{}
+	_ca = append(_ca, ctx, daHeight)
+	_ca = append(_ca, _va...)
+	ret := _mock.Called(_ca...)
+
+	if len(ret) == 0 {
+		panic("no return value specified for AppendDAHint")
+	}
+
+	var r0 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, uint64, ...types.Hash) error); ok {
+		r0 = returnFunc(ctx, daHeight, hashes...)
+	} else {
+		r0 = ret.Error(0)
+	}
+	return r0
+}
+
+// MockBroadcaster_AppendDAHint_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'AppendDAHint'
+type MockBroadcaster_AppendDAHint_Call[H header.Header[H]] struct {
+	*mock.Call
+}
+
+// AppendDAHint is a helper method to define mock.On call
+//   - ctx context.Context
+//   - daHeight uint64
+//   - hashes ...types.Hash
+func (_e *MockBroadcaster_Expecter[H]) AppendDAHint(ctx interface{}, daHeight interface{}, hashes ...interface{}) *MockBroadcaster_AppendDAHint_Call[H] {
+	return &MockBroadcaster_AppendDAHint_Call[H]{Call: _e.mock.On("AppendDAHint",
+		append([]interface{}{ctx, daHeight}, hashes...)...)}
+}
+
+func (_c *MockBroadcaster_AppendDAHint_Call[H]) Run(run func(ctx context.Context, daHeight uint64, hashes ...types.Hash)) *MockBroadcaster_AppendDAHint_Call[H] {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 uint64
+		if args[1] != nil {
+			arg1 = args[1].(uint64)
+		}
+		var arg2 []types.Hash
+		variadicArgs := make([]types.Hash, len(args)-2)
+		for i, a := range args[2:] {
+			if a != nil {
+				variadicArgs[i] = a.(types.Hash)
+			}
+		}
+		arg2 = variadicArgs
+		run(
+			arg0,
+			arg1,
+			arg2...,
+		)
+	})
+	return _c
+}
+
+func (_c *MockBroadcaster_AppendDAHint_Call[H]) Return(err error) *MockBroadcaster_AppendDAHint_Call[H] {
+	_c.Call.Return(err)
+	return _c
+}
+
+func (_c *MockBroadcaster_AppendDAHint_Call[H]) RunAndReturn(run func(ctx context.Context, daHeight uint64, hashes ...types.Hash) error) *MockBroadcaster_AppendDAHint_Call[H] {
+	_c.Call.Return(run)
+	return _c
 }
 
 // Store provides a mock function for the type MockBroadcaster
@@ -157,63 +234,6 @@ func (_c *MockBroadcaster_WriteToStoreAndBroadcast_Call[H]) Return(err error) *M
 }
 
 func (_c *MockBroadcaster_WriteToStoreAndBroadcast_Call[H]) RunAndReturn(run func(ctx context.Context, payload H, opts ...pubsub.PubOpt) error) *MockBroadcaster_WriteToStoreAndBroadcast_Call[H] {
-	_c.Call.Return(run)
-	return _c
-}
-
-// XXX provides a mock function for the type MockBroadcaster
-func (_mock *MockBroadcaster[H]) XXX(ctx context.Context, headerOrData H) error {
-	ret := _mock.Called(ctx, headerOrData)
-
-	if len(ret) == 0 {
-		panic("no return value specified for XXX")
-	}
-
-	var r0 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, H) error); ok {
-		r0 = returnFunc(ctx, headerOrData)
-	} else {
-		r0 = ret.Error(0)
-	}
-	return r0
-}
-
-// MockBroadcaster_XXX_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'XXX'
-type MockBroadcaster_XXX_Call[H header.Header[H]] struct {
-	*mock.Call
-}
-
-// XXX is a helper method to define mock.On call
-//   - ctx context.Context
-//   - headerOrData H
-func (_e *MockBroadcaster_Expecter[H]) XXX(ctx interface{}, headerOrData interface{}) *MockBroadcaster_XXX_Call[H] {
-	return &MockBroadcaster_XXX_Call[H]{Call: _e.mock.On("XXX", ctx, headerOrData)}
-}
-
-func (_c *MockBroadcaster_XXX_Call[H]) Run(run func(ctx context.Context, headerOrData H)) *MockBroadcaster_XXX_Call[H] {
-	_c.Call.Run(func(args mock.Arguments) {
-		var arg0 context.Context
-		if args[0] != nil {
-			arg0 = args[0].(context.Context)
-		}
-		var arg1 H
-		if args[1] != nil {
-			arg1 = args[1].(H)
-		}
-		run(
-			arg0,
-			arg1,
-		)
-	})
-	return _c
-}
-
-func (_c *MockBroadcaster_XXX_Call[H]) Return(err error) *MockBroadcaster_XXX_Call[H] {
-	_c.Call.Return(err)
-	return _c
-}
-
-func (_c *MockBroadcaster_XXX_Call[H]) RunAndReturn(run func(ctx context.Context, headerOrData H) error) *MockBroadcaster_XXX_Call[H] {
 	_c.Call.Return(run)
 	return _c
 }

@@ -36,10 +36,21 @@ const (
 // TODO: when we add pruning we can remove this
 const ninetyNineYears = 99 * 365 * 24 * time.Hour
 
+type EntityWithDAHint[H any] interface {
+	header.Header[H]
+	SetDAHint(daHeight uint64)
+}
+
+// DataSyncService is the P2P Sync Service for blocks.
+type DataSyncService = SyncService[*types.DataWithDAHint]
+
+// HeaderSyncService is the P2P Sync Service for headers.
+type HeaderSyncService = SyncService[*types.SignedHeaderWithDAHint]
+
 // SyncService is the P2P Sync Service for blocks and headers.
 //
 // Uses the go-header library for handling all P2P logic.
-type SyncService[H header.Header[H]] struct {
+type SyncService[H EntityWithDAHint[H]] struct {
 	conf     config.Config
 	logger   zerolog.Logger
 	syncType syncType
@@ -58,12 +69,6 @@ type SyncService[H header.Header[H]] struct {
 	storeInitialized  atomic.Bool
 }
 
-// DataSyncService is the P2P Sync Service for blocks.
-type DataSyncService = SyncService[*types.Data]
-
-// HeaderSyncService is the P2P Sync Service for headers.
-type HeaderSyncService = SyncService[*types.SignedHeaderWithDAHint]
-
 // NewDataSyncService returns a new DataSyncService.
 func NewDataSyncService(
 	store ds.Batching,
@@ -72,7 +77,7 @@ func NewDataSyncService(
 	p2p *p2p.Client,
 	logger zerolog.Logger,
 ) (*DataSyncService, error) {
-	return newSyncService[*types.Data](store, dataSync, conf, genesis, p2p, logger)
+	return newSyncService[*types.DataWithDAHint](store, dataSync, conf, genesis, p2p, logger)
 }
 
 // NewHeaderSyncService returns a new HeaderSyncService.
@@ -86,7 +91,7 @@ func NewHeaderSyncService(
 	return newSyncService[*types.SignedHeaderWithDAHint](store, headerSync, conf, genesis, p2p, logger)
 }
 
-func newSyncService[H header.Header[H]](
+func newSyncService[H EntityWithDAHint[H]](
 	store ds.Batching,
 	syncType syncType,
 	conf config.Config,
@@ -174,8 +179,17 @@ func (syncService *SyncService[H]) WriteToStoreAndBroadcast(ctx context.Context,
 	return nil
 }
 
-func (s *SyncService[H]) XXX(ctx context.Context, headerOrData H) error {
-	return s.store.Append(ctx, headerOrData)
+func (s *SyncService[H]) AppendDAHint(ctx context.Context, daHeight uint64, hashes ...types.Hash) error {
+	entries := make([]H, 0, len(hashes))
+	for _, h := range hashes {
+		v, err := s.store.Get(ctx, h)
+		if err != nil && !errors.Is(err, header.ErrNotFound) {
+			return err
+		}
+		v.SetDAHint(daHeight)
+		entries = append(entries, v)
+	}
+	return s.store.Append(ctx, entries...)
 }
 
 // Start is a part of Service interface.

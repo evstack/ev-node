@@ -68,7 +68,7 @@ func GenerateRandomBlockCustomWithAppHash(config *BlockConfig, chainID string, a
 	}
 
 	if config.ProposerAddr != nil {
-		signedHeader.ProposerAddress = config.ProposerAddr
+		signedHeader.Entry.ProposerAddress = config.ProposerAddr
 	}
 
 	data.Metadata = &Metadata{
@@ -78,7 +78,7 @@ func GenerateRandomBlockCustomWithAppHash(config *BlockConfig, chainID string, a
 		Time:         uint64(signedHeader.Time().UnixNano()),
 	}
 
-	return signedHeader.SignedHeader, data, config.PrivKey
+	return signedHeader.Entry, data, config.PrivKey
 }
 
 // GenerateRandomBlockCustom returns a block with random data and the given height, transactions, privateKey and proposer address.
@@ -150,7 +150,7 @@ func GetRandomSignedHeader(chainID string) (*SignedHeader, crypto.PrivKey, error
 	if err != nil {
 		return nil, nil, err
 	}
-	return signedHeader.SignedHeader, pk, nil
+	return signedHeader.Entry, pk, nil
 }
 
 // GetRandomSignedHeaderCustom creates a signed header based on the provided HeaderConfig.
@@ -183,7 +183,7 @@ func GetRandomSignedHeaderCustom(config *HeaderConfig, chainID string) (*SignedH
 		return nil, err
 	}
 	signedHeader.Signature = signature
-	return &SignedHeaderWithDAHint{SignedHeader: signedHeader}, nil
+	return &SignedHeaderWithDAHint{Entry: signedHeader}, nil
 }
 
 // GetRandomNextSignedHeader returns a signed header with random data and height of +1 from
