@@ -58,7 +58,7 @@ func BenchmarkSyncerIO(b *testing.B) {
 				}
 				require.Len(b, fixt.s.heightInCh, 0)
 
-				assert.Equal(b, spec.heights+daHeightOffset, fixt.s.daHeight.Load())
+				assert.Equal(b, spec.heights+daHeightOffset, fixt.s.daRetrieverHeight.Load())
 				gotStoreHeight, err := fixt.s.store.Height(b.Context())
 				require.NoError(b, err)
 				assert.Equal(b, spec.heights, gotStoreHeight)

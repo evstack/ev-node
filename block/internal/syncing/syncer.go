@@ -25,15 +25,6 @@ import (
 	"github.com/evstack/ev-node/types"
 )
 
-type daRetriever interface {
-	RetrieveFromDA(ctx context.Context, daHeight uint64) ([]common.DAHeightEvent, error)
-}
-
-type p2pHandler interface {
-	ProcessHeight(ctx context.Context, height uint64, heightInCh chan<- common.DAHeightEvent) error
-	SetProcessedHeight(height uint64)
-}
-
 // Syncer handles block synchronization from DA and P2P sources.
 type Syncer struct {
 	// Core components
@@ -42,7 +33,7 @@ type Syncer struct {
 	da    da.DA
 
 	// Shared components
-	cache   cache.Manager
+	cache   cache.CacheManager
 	metrics *common.Metrics
 
 	// Configuration
@@ -65,8 +56,8 @@ type Syncer struct {
 	errorCh    chan<- error // Channel to report critical execution client failures
 
 	// Handlers
-	daRetrieverHandler daRetriever
-	p2pHandler         p2pHandler
+	daRetriever DARetriever
+	p2pHandler  p2pHandler
 
 	// Logging
 	logger zerolog.Logger
@@ -85,7 +76,7 @@ func NewSyncer(
 	store store.Store,
 	exec coreexecutor.Executor,
 	da da.DA,
-	cache cache.Manager,
+	cache cache.CacheManager,
 	metrics *common.Metrics,
 	config config.Config,
 	genesis genesis.Genesis,
@@ -123,7 +114,7 @@ func (s *Syncer) Start(ctx context.Context) error {
 	}
 
 	// Initialize handlers
-	s.daRetrieverHandler = NewDARetriever(s.da, s.cache, s.config, s.genesis, s.logger)
+	s.daRetriever = NewDARetriever(s.da, s.cache, s.config, s.genesis, s.logger)
 	s.p2pHandler = NewP2PHandler(s.headerStore.Store(), s.dataStore.Store(), s.cache, s.genesis, s.logger)
 	if currentHeight, err := s.store.Height(s.ctx); err != nil {
 		s.logger.Error().Err(err).Msg("failed to set initial processed height for p2p handler")
@@ -290,7 +281,7 @@ func (s *Syncer) fetchDAUntilCaughtUp() error {
 
 		daHeight := max(s.daRetrieverHeight.Load(), s.cache.DaHeight())
 
-		events, err := s.daRetrieverHandler.RetrieveFromDA(s.ctx, daHeight)
+		events, err := s.daRetriever.RetrieveFromDA(s.ctx, daHeight)
 		if err != nil {
 			switch {
 			case errors.Is(err, da.ErrBlobNotFound):

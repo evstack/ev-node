@@ -11,21 +11,26 @@ import (
 
 	"github.com/evstack/ev-node/block/internal/cache"
 	"github.com/evstack/ev-node/block/internal/common"
-	dapkg "github.com/evstack/ev-node/da"
+	da "github.com/evstack/ev-node/da"
 	"github.com/evstack/ev-node/pkg/config"
 	"github.com/evstack/ev-node/pkg/genesis"
 	"github.com/evstack/ev-node/types"
 	pb "github.com/evstack/ev-node/types/pb/evnode/v1"
 )
 
-// DARetriever handles DA retrieval operations for syncing
-type DARetriever struct {
-	da      dapkg.DA
-	cache   cache.Manager
+// DARetriever defines the interface for retrieving events from the DA layer
+type DARetriever interface {
+	RetrieveFromDA(ctx context.Context, daHeight uint64) ([]common.DAHeightEvent, error)
+}
+
+// daRetriever handles DA retrieval operations for syncing
+type daRetriever struct {
+	da      da.DA
+	cache   cache.CacheManager
 	genesis genesis.Genesis
 	logger  zerolog.Logger
 
-	// calculate namespaces bytes once and reuse them
+	// namespace bytes calculated once
 	namespaceBz     []byte
 	namespaceDataBz []byte
 
@@ -37,26 +42,26 @@ type DARetriever struct {
 
 // NewDARetriever creates a new DA retriever
 func NewDARetriever(
-	da dapkg.DA,
-	cache cache.Manager,
+	daClient da.DA,
+	cache cache.CacheManager,
 	config config.Config,
 	genesis genesis.Genesis,
 	logger zerolog.Logger,
-) *DARetriever {
-	return &DARetriever{
-		da:              da,
+) *daRetriever {
+	return &daRetriever{
+		da:              daClient,
 		cache:           cache,
 		genesis:         genesis,
 		logger:          logger.With().Str("component", "da_retriever").Logger(),
-		namespaceBz:     dapkg.NamespaceFromString(config.DA.GetNamespace()).Bytes(),
-		namespaceDataBz: dapkg.NamespaceFromString(config.DA.GetDataNamespace()).Bytes(),
+		namespaceBz:     da.NamespaceFromString(config.DA.GetNamespace()).Bytes(),
+		namespaceDataBz: da.NamespaceFromString(config.DA.GetDataNamespace()).Bytes(),
 		pendingHeaders:  make(map[uint64]*types.SignedHeader),
 		pendingData:     make(map[uint64]*types.Data),
 	}
 }
 
 // RetrieveFromDA retrieves blocks from the specified DA height and returns height events
-func (r *DARetriever) RetrieveFromDA(ctx context.Context, daHeight uint64) ([]common.DAHeightEvent, error) {
+func (r *daRetriever) RetrieveFromDA(ctx context.Context, daHeight uint64) ([]common.DAHeightEvent, error) {
 	r.logger.Debug().Uint64("da_height", daHeight).Msg("retrieving from DA")
 	blobsResp, err := r.fetchBlobs(ctx, daHeight)
 	if err != nil {
@@ -72,9 +77,9 @@ func (r *DARetriever) RetrieveFromDA(ctx context.Context, daHeight uint64) ([]co
 	return r.processBlobs(ctx, blobsResp.Data, daHeight), nil
 }
 
-// fetchBlobs retrieves blobs from the DA layer
-func (r *DARetriever) fetchBlobs(ctx context.Context, daHeight uint64) (dapkg.ResultRetrieve, error) {
-	// Retrieve from both namespaces
+// fetchBlobs retrieves blobs from both header and data namespaces
+func (r *daRetriever) fetchBlobs(ctx context.Context, daHeight uint64) (da.ResultRetrieve, error) {
+	// Retrieve from header namespace
 	headerRes := r.da.Retrieve(ctx, daHeight, r.namespaceBz)
 
 	// If namespaces are the same, return header result
@@ -87,31 +92,31 @@ func (r *DARetriever) fetchBlobs(ctx context.Context, daHeight uint64) (dapkg.Re
 	// Validate responses
 	headerErr := r.validateBlobResponse(headerRes, daHeight)
 	// ignoring error not found, as data can have data
-	if headerErr != nil && !errors.Is(headerErr, dapkg.ErrBlobNotFound) {
+	if headerErr != nil && !errors.Is(headerErr, da.ErrBlobNotFound) {
 		return headerRes, headerErr
 	}
 
 	dataErr := r.validateBlobResponse(dataRes, daHeight)
 	// ignoring error not found, as header can have data
-	if dataErr != nil && !errors.Is(dataErr, dapkg.ErrBlobNotFound) {
+	if dataErr != nil && !errors.Is(dataErr, da.ErrBlobNotFound) {
 		return dataRes, dataErr
 	}
 
 	// Combine successful results
-	combinedResult := dapkg.ResultRetrieve{
-		BaseResult: dapkg.BaseResult{
-			Code:   dapkg.StatusSuccess,
+	combinedResult := da.ResultRetrieve{
+		BaseResult: da.BaseResult{
+			Code:   da.StatusSuccess,
 			Height: daHeight,
 		},
 		Data: make([][]byte, 0),
 	}
 
-	if headerRes.Code == dapkg.StatusSuccess {
+	if headerRes.Code == da.StatusSuccess {
 		combinedResult.Data = append(combinedResult.Data, headerRes.Data...)
 		combinedResult.IDs = append(combinedResult.IDs, headerRes.IDs...)
 	}
 
-	if dataRes.Code == dapkg.StatusSuccess {
+	if dataRes.Code == da.StatusSuccess {
 		combinedResult.Data = append(combinedResult.Data, dataRes.Data...)
 		combinedResult.IDs = append(combinedResult.IDs, dataRes.IDs...)
 	}
@@ -119,25 +124,25 @@ func (r *DARetriever) fetchBlobs(ctx context.Context, daHeight uint64) (dapkg.Re
 	// Re-throw error not found if both were not found.
 	if len(combinedResult.Data) == 0 && len(combinedResult.IDs) == 0 {
 		r.logger.Debug().Uint64("da_height", daHeight).Msg("no blob data found")
-		combinedResult.Code = dapkg.StatusNotFound
-		combinedResult.Message = dapkg.ErrBlobNotFound.Error()
-		return combinedResult, dapkg.ErrBlobNotFound
+		combinedResult.Code = da.StatusNotFound
+		combinedResult.Message = da.ErrBlobNotFound.Error()
+		return combinedResult, da.ErrBlobNotFound
 	}
 
 	return combinedResult, nil
 }
 
 // validateBlobResponse validates a blob response from DA layer
-// those are the only error code returned by dapkg.RetrieveWithHelpers
-func (r *DARetriever) validateBlobResponse(res dapkg.ResultRetrieve, daHeight uint64) error {
+// those are the only error code returned by da.RetrieveWithHelpers
+func (r *daRetriever) validateBlobResponse(res da.ResultRetrieve, daHeight uint64) error {
 	switch res.Code {
-	case dapkg.StatusError:
+	case da.StatusError:
 		return fmt.Errorf("DA retrieval failed: %s", res.Message)
-	case dapkg.StatusHeightFromFuture:
-		return fmt.Errorf("%w: height from future", dapkg.ErrHeightFromFuture)
-	case dapkg.StatusNotFound:
-		return fmt.Errorf("%w: blob not found", dapkg.ErrBlobNotFound)
-	case dapkg.StatusSuccess:
+	case da.StatusHeightFromFuture:
+		return fmt.Errorf("%w: height from future", da.ErrHeightFromFuture)
+	case da.StatusNotFound:
+		return fmt.Errorf("%w: blob not found", da.ErrBlobNotFound)
+	case da.StatusSuccess:
 		r.logger.Debug().Uint64("da_height", daHeight).Msg("successfully retrieved from DA")
 		return nil
 	default:
@@ -146,7 +151,7 @@ func (r *DARetriever) validateBlobResponse(res dapkg.ResultRetrieve, daHeight ui
 }
 
 // processBlobs processes retrieved blobs to extract headers and data and returns height events
-func (r *DARetriever) processBlobs(ctx context.Context, blobs [][]byte, daHeight uint64) []common.DAHeightEvent {
+func (r *daRetriever) processBlobs(ctx context.Context, blobs [][]byte, daHeight uint64) []common.DAHeightEvent {
 	// Decode all blobs
 	for _, bz := range blobs {
 		if len(bz) == 0 {
@@ -207,15 +212,28 @@ func (r *DARetriever) processBlobs(ctx context.Context, blobs [][]byte, daHeight
 		}
 
 		events = append(events, event)
+	}
 
-		r.logger.Info().Uint64("height", height).Uint64("da_height", daHeight).Msg("processed block from DA")
+	if len(events) > 0 {
+		startHeight := events[0].Header.Height()
+		endHeight := events[0].Header.Height()
+		for _, event := range events {
+			h := event.Header.Height()
+			if h < startHeight {
+				startHeight = h
+			}
+			if h > endHeight {
+				endHeight = h
+			}
+		}
+		r.logger.Info().Uint64("da_height", daHeight).Uint64("start_height", startHeight).Uint64("end_height", endHeight).Msg("processed blocks from DA")
 	}
 
 	return events
 }
 
 // tryDecodeHeader attempts to decode a blob as a header
-func (r *DARetriever) tryDecodeHeader(bz []byte, daHeight uint64) *types.SignedHeader {
+func (r *daRetriever) tryDecodeHeader(bz []byte, daHeight uint64) *types.SignedHeader {
 	header := new(types.SignedHeader)
 	var headerPb pb.SignedHeader
 
@@ -245,7 +263,7 @@ func (r *DARetriever) tryDecodeHeader(bz []byte, daHeight uint64) *types.SignedH
 	headerHash := header.Hash().String()
 	r.cache.SetHeaderDAIncluded(headerHash, daHeight, header.Height())
 
-	r.logger.Info().
+	r.logger.Debug().
 		Str("header_hash", headerHash).
 		Uint64("da_height", daHeight).
 		Uint64("height", header.Height()).
@@ -255,7 +273,7 @@ func (r *DARetriever) tryDecodeHeader(bz []byte, daHeight uint64) *types.SignedH
 }
 
 // tryDecodeData attempts to decode a blob as signed data
-func (r *DARetriever) tryDecodeData(bz []byte, daHeight uint64) *types.Data {
+func (r *daRetriever) tryDecodeData(bz []byte, daHeight uint64) *types.Data {
 	var signedData types.SignedData
 	if err := signedData.UnmarshalBinary(bz); err != nil {
 		return nil
@@ -276,7 +294,7 @@ func (r *DARetriever) tryDecodeData(bz []byte, daHeight uint64) *types.Data {
 	dataHash := signedData.Data.DACommitment().String()
 	r.cache.SetDataDAIncluded(dataHash, daHeight, signedData.Height())
 
-	r.logger.Info().
+	r.logger.Debug().
 		Str("data_hash", dataHash).
 		Uint64("da_height", daHeight).
 		Uint64("height", signedData.Height()).
@@ -286,7 +304,7 @@ func (r *DARetriever) tryDecodeData(bz []byte, daHeight uint64) *types.Data {
 }
 
 // assertExpectedProposer validates the proposer address
-func (r *DARetriever) assertExpectedProposer(proposerAddr []byte) error {
+func (r *daRetriever) assertExpectedProposer(proposerAddr []byte) error {
 	if string(proposerAddr) != string(r.genesis.ProposerAddress) {
 		return fmt.Errorf("unexpected proposer: got %x, expected %x",
 			proposerAddr, r.genesis.ProposerAddress)
@@ -295,7 +313,7 @@ func (r *DARetriever) assertExpectedProposer(proposerAddr []byte) error {
 }
 
 // assertValidSignedData validates signed data using the configured signature provider
-func (r *DARetriever) assertValidSignedData(signedData *types.SignedData) error {
+func (r *daRetriever) assertValidSignedData(signedData *types.SignedData) error {
 	if signedData == nil || signedData.Txs == nil {
 		return errors.New("empty signed data")
 	}

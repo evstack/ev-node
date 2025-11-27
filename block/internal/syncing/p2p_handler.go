@@ -15,6 +15,11 @@ import (
 	"github.com/evstack/ev-node/types"
 )
 
+type p2pHandler interface {
+	ProcessHeight(ctx context.Context, height uint64, heightInCh chan<- common.DAHeightEvent) error
+	SetProcessedHeight(height uint64)
+}
+
 // P2PHandler coordinates block retrieval from P2P stores for the syncer.
 // It waits for both header and data to be available at a given height,
 // validates their consistency, and emits events to the syncer for processing.

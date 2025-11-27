@@ -419,7 +419,7 @@ func TestSyncLoopPersistState(t *testing.T) {
 	requireEmptyChan(t, errorCh)
 
 	t.Log("sync workers on instance1 completed")
-	require.Equal(t, myFutureDAHeight, syncerInst1.daHeight.Load())
+	require.Equal(t, myFutureDAHeight, syncerInst1.daRetrieverHeight.Load())
 
 	// wait for all events consumed
 	require.NoError(t, cacheMgr.SaveToDisk())
@@ -469,7 +469,7 @@ func TestSyncLoopPersistState(t *testing.T) {
 		Run(func(arg mock.Arguments) {
 			cancel()
 			// retrieve last one again
-			assert.Equal(t, syncerInst2.daHeight.Load(), arg.Get(1).(uint64))
+			assert.Equal(t, syncerInst2.daRetrieverHeight.Load(), arg.Get(1).(uint64))
 		}).
 		Return(nil, nil)
 
@@ -617,7 +617,7 @@ func TestSyncer_InitializeState_CallsReplayer(t *testing.T) {
 		exec:      mockExec,
 		genesis:   gen,
 		lastState: &atomic.Pointer[types.State]{},
-		daHeight:  &atomic.Uint64{},
+		daRetrieverHeight: &atomic.Uint64{},
 		logger:    zerolog.Nop(),
 		ctx:       context.Background(),
 		cache:     cm,
