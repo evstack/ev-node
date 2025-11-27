@@ -252,10 +252,8 @@ func (c *EngineClient) GetTxs(ctx context.Context) ([][]byte, error) {
 // ExecuteTxs executes the given transactions at the specified block height and timestamp
 func (c *EngineClient) ExecuteTxs(ctx context.Context, txs [][]byte, blockHeight uint64, timestamp time.Time, prevStateRoot []byte) (updatedStateRoot []byte, maxBytes uint64, err error) {
 	// Filter out invalid transactions to handle gibberish gracefully
-	// According to Executor interface: "Must handle gracefully gibberish transactions"
 	validTxs := make([]string, 0, len(txs))
 	for i, tx := range txs {
-		// Skip empty transactions
 		if len(tx) == 0 {
 			c.logger.Debug().
 				Int("tx_index", i).
@@ -267,7 +265,6 @@ func (c *EngineClient) ExecuteTxs(ctx context.Context, txs [][]byte, blockHeight
 		// Validate that the transaction can be parsed as an Ethereum transaction
 		var ethTx types.Transaction
 		if err := ethTx.UnmarshalBinary(tx); err != nil {
-			// Log but don't fail - this is gibberish that should be filtered out
 			c.logger.Warn().
 				Int("tx_index", i).
 				Uint64("block_height", blockHeight).
@@ -277,11 +274,9 @@ func (c *EngineClient) ExecuteTxs(ctx context.Context, txs [][]byte, blockHeight
 			continue
 		}
 
-		// Transaction is valid, add it to the payload
 		validTxs = append(validTxs, "0x"+hex.EncodeToString(tx))
 	}
 
-	// Log filtering results
 	if len(validTxs) < len(txs) {
 		c.logger.Info().
 			Int("total_txs", len(txs)).
@@ -290,7 +285,6 @@ func (c *EngineClient) ExecuteTxs(ctx context.Context, txs [][]byte, blockHeight
 			Uint64("block_height", blockHeight).
 			Msg("filtered out invalid transactions")
 	}
-
 	txsPayload := validTxs
 
 	prevBlockHash, _, prevGasLimit, _, err := c.getBlockInfo(ctx, blockHeight-1)

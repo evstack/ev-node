@@ -249,7 +249,6 @@ func (k *KVExecutor) ExecuteTxs(ctx context.Context, txs [][]byte, blockHeight u
 
 		parts := strings.SplitN(string(tx), "=", 2)
 		if len(parts) != 2 {
-			// Log but don't fail - this is gibberish that should be filtered out
 			fmt.Printf("Warning: filtering out malformed transaction at index %d in block %d (expected format key=value): %s\n", i, blockHeight, string(tx))
 			invalidTxCount++
 			continue
