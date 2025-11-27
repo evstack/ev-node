@@ -4,8 +4,10 @@ import (
 	"context"
 	"encoding/binary"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/filecoin-project/go-jsonrpc"
@@ -16,9 +18,6 @@ import (
 
 // defaultRetrieveTimeout is the default timeout for DA retrieval operations
 const defaultRetrieveTimeout = 10 * time.Second
-
-// retrieveBatchSize is the number of blobs to retrieve in a single batch
-const retrieveBatchSize = 100
 
 // Client connects to celestia-node's blob API via JSON-RPC and implements the da.DA interface.
 type Client struct {
@@ -378,6 +377,28 @@ func (c *Client) SubmitWithOptions(ctx context.Context, blobs []da.Blob, gasPric
 		}
 	}
 
+	// Enforce max blob size locally so callers can handle StatusTooBig (used by submitter to split batches)
+	for i, blob := range blobs {
+		if uint64(len(blob)) > c.maxBlobSize {
+			return da.ResultSubmit{
+				BaseResult: da.BaseResult{
+					Code:     da.StatusTooBig,
+					Message:  fmt.Sprintf("blob %d exceeds max blob size (%d > %d)", i, len(blob), c.maxBlobSize),
+					BlobSize: blobSize,
+				},
+			}
+		}
+	}
+	if blobSize > c.maxBlobSize {
+		return da.ResultSubmit{
+			BaseResult: da.BaseResult{
+				Code:     da.StatusTooBig,
+				Message:  fmt.Sprintf("total blob size exceeds max blob size (%d > %d)", blobSize, c.maxBlobSize),
+				BlobSize: blobSize,
+			},
+		}
+	}
+
 	celestiaBlobs := make([]*Blob, len(blobs))
 	for i, blob := range blobs {
 		commitment, err := CreateCommitment(blob, namespace)
@@ -415,15 +436,7 @@ func (c *Client) SubmitWithOptions(ctx context.Context, blobs []da.Blob, gasPric
 
 	height, err := c.submit(ctx, celestiaBlobs, opts)
 	if err != nil {
-		c.logger.Error().Err(err).Msg("DA submission failed")
-		return da.ResultSubmit{
-			BaseResult: da.BaseResult{
-				Code:      da.StatusError,
-				Message:   err.Error(),
-				BlobSize:  blobSize,
-				Timestamp: time.Now(),
-			},
-		}
+		return c.handleSubmitError(err, blobSize)
 	}
 
 	ids := make([]da.ID, len(celestiaBlobs))
@@ -450,15 +463,7 @@ func (c *Client) Retrieve(ctx context.Context, height uint64, namespace []byte) 
 
 	blobs, err := c.getAll(getCtx, height, []Namespace{namespace})
 	if err != nil {
-		c.logger.Error().Uint64("height", height).Err(err).Msg("Failed to retrieve blobs")
-		return da.ResultRetrieve{
-			BaseResult: da.BaseResult{
-				Code:      da.StatusError,
-				Message:   err.Error(),
-				Height:    height,
-				Timestamp: time.Now(),
-			},
-		}
+		return c.handleRetrieveError(err, height)
 	}
 
 	if len(blobs) == 0 {
@@ -489,5 +494,124 @@ func (c *Client) Retrieve(ctx context.Context, height uint64, namespace []byte) 
 			Timestamp: time.Now(),
 		},
 		Data: data,
+	}
+}
+
+// handleSubmitError maps errors from the blob API to DA status codes and returns a ResultSubmit.
+func (c *Client) handleSubmitError(err error, blobSize uint64) da.ResultSubmit {
+	status := da.StatusError
+	message := err.Error()
+
+	var rpcErr *jsonrpc.JSONRPCError
+	if errors.As(err, &rpcErr) {
+		switch rpcErr.Code {
+		case jsonrpc.ErrorCode(da.StatusNotIncludedInBlock):
+			status = da.StatusNotIncludedInBlock
+		case jsonrpc.ErrorCode(da.StatusAlreadyInMempool):
+			status = da.StatusAlreadyInMempool
+		case jsonrpc.ErrorCode(da.StatusTooBig):
+			status = da.StatusTooBig
+		case jsonrpc.ErrorCode(da.StatusIncorrectAccountSequence):
+			status = da.StatusIncorrectAccountSequence
+		case jsonrpc.ErrorCode(da.StatusContextDeadline):
+			status = da.StatusContextDeadline
+		case jsonrpc.ErrorCode(da.StatusContextCanceled):
+			status = da.StatusContextCanceled
+		}
+		if rpcErr.Message != "" {
+			message = rpcErr.Message
+		}
+	}
+
+	if status == da.StatusError {
+		errStr := err.Error()
+		switch {
+		case errors.Is(err, context.Canceled):
+			status = da.StatusContextCanceled
+		case errors.Is(err, context.DeadlineExceeded):
+			status = da.StatusContextDeadline
+		case strings.Contains(errStr, "timeout"):
+			status = da.StatusNotIncludedInBlock
+		case strings.Contains(errStr, "blob(s) too large"),
+			strings.Contains(errStr, "total blob size too large"),
+			strings.Contains(errStr, "too large"),
+			strings.Contains(errStr, "exceeds"):
+			status = da.StatusTooBig
+		case strings.Contains(errStr, "already in mempool"),
+			strings.Contains(errStr, "tx already exists in cache"):
+			status = da.StatusAlreadyInMempool
+		case strings.Contains(errStr, "incorrect account sequence"),
+			strings.Contains(errStr, "account sequence mismatch"):
+			status = da.StatusIncorrectAccountSequence
+		}
+	}
+
+	if status == da.StatusTooBig {
+		c.logger.Debug().Err(err).Uint64("status", uint64(status)).Msg("DA submission failed")
+	} else {
+		c.logger.Error().Err(err).Uint64("status", uint64(status)).Msg("DA submission failed")
+	}
+
+	return da.ResultSubmit{
+		BaseResult: da.BaseResult{
+			Code:      status,
+			Message:   message,
+			BlobSize:  blobSize,
+			Timestamp: time.Now(),
+		},
+	}
+}
+
+// handleRetrieveError maps blob API errors to DA status codes and returns a ResultRetrieve.
+func (c *Client) handleRetrieveError(err error, height uint64) da.ResultRetrieve {
+	status := da.StatusError
+	message := err.Error()
+
+	var rpcErr *jsonrpc.JSONRPCError
+	if errors.As(err, &rpcErr) {
+		switch rpcErr.Code {
+		case jsonrpc.ErrorCode(da.StatusNotFound):
+			status = da.StatusNotFound
+		case jsonrpc.ErrorCode(da.StatusHeightFromFuture):
+			status = da.StatusHeightFromFuture
+		case jsonrpc.ErrorCode(da.StatusContextDeadline):
+			status = da.StatusContextDeadline
+		case jsonrpc.ErrorCode(da.StatusContextCanceled):
+			status = da.StatusContextCanceled
+		}
+		if rpcErr.Message != "" {
+			message = rpcErr.Message
+		}
+	}
+
+	if status == da.StatusError {
+		errStr := err.Error()
+		switch {
+		case strings.Contains(errStr, "not found"):
+			status = da.StatusNotFound
+			message = da.ErrBlobNotFound.Error()
+		case strings.Contains(errStr, "height") && strings.Contains(errStr, "future"):
+			status = da.StatusHeightFromFuture
+			message = da.ErrHeightFromFuture.Error()
+		case errors.Is(err, context.Canceled):
+			status = da.StatusContextCanceled
+		case errors.Is(err, context.DeadlineExceeded):
+			status = da.StatusContextDeadline
+		}
+	}
+
+	if status == da.StatusNotFound || status == da.StatusHeightFromFuture {
+		c.logger.Debug().Uint64("height", height).Str("status", fmt.Sprintf("%d", status)).Msg("Retrieve returned non-success status")
+	} else {
+		c.logger.Error().Uint64("height", height).Err(err).Uint64("status", uint64(status)).Msg("Failed to retrieve blobs")
+	}
+
+	return da.ResultRetrieve{
+		BaseResult: da.BaseResult{
+			Code:      status,
+			Message:   message,
+			Height:    height,
+			Timestamp: time.Now(),
+		},
 	}
 }
