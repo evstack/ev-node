@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"time"
 
@@ -26,103 +25,6 @@ const (
 	submissionTimeout = 60 * time.Second
 	initialBackoff    = 100 * time.Millisecond
 )
-
-// submitWithHelpers performs blob submission using the underlying DA layer,
-// handling error mapping to produce a ResultSubmit.
-func submitWithHelpers(
-	ctx context.Context,
-	daLayer dapkg.DA,
-	logger zerolog.Logger,
-	data [][]byte,
-	gasPrice float64,
-	namespace []byte,
-	options []byte,
-) dapkg.ResultSubmit {
-	ids, err := daLayer.SubmitWithOptions(ctx, data, gasPrice, namespace, options)
-
-	// calculate blob size
-	var blobSize uint64
-	for _, blob := range data {
-		blobSize += uint64(len(blob))
-	}
-
-	// Handle errors returned by Submit
-	if err != nil {
-		if errors.Is(err, context.Canceled) {
-			logger.Debug().Msg("DA submission canceled via helper due to context cancellation")
-			return dapkg.ResultSubmit{
-				BaseResult: dapkg.BaseResult{
-					Code:     dapkg.StatusContextCanceled,
-					Message:  "submission canceled",
-					IDs:      ids,
-					BlobSize: blobSize,
-				},
-			}
-		}
-		status := dapkg.StatusError
-		switch {
-		case errors.Is(err, dapkg.ErrTxTimedOut):
-			status = dapkg.StatusNotIncludedInBlock
-		case errors.Is(err, dapkg.ErrTxAlreadyInMempool):
-			status = dapkg.StatusAlreadyInMempool
-		case errors.Is(err, dapkg.ErrTxIncorrectAccountSequence):
-			status = dapkg.StatusIncorrectAccountSequence
-		case errors.Is(err, dapkg.ErrBlobSizeOverLimit):
-			status = dapkg.StatusTooBig
-		case errors.Is(err, dapkg.ErrContextDeadline):
-			status = dapkg.StatusContextDeadline
-		}
-
-		// Use debug level for StatusTooBig as it gets handled later in submitToDA through recursive splitting
-		if status == dapkg.StatusTooBig {
-			logger.Debug().Err(err).Uint64("status", uint64(status)).Msg("DA submission failed via helper")
-		} else {
-			logger.Error().Err(err).Uint64("status", uint64(status)).Msg("DA submission failed via helper")
-		}
-		return dapkg.ResultSubmit{
-			BaseResult: dapkg.BaseResult{
-				Code:           status,
-				Message:        "failed to submit blobs: " + err.Error(),
-				IDs:            ids,
-				SubmittedCount: uint64(len(ids)),
-				Height:         0,
-				Timestamp:      time.Now(),
-				BlobSize:       blobSize,
-			},
-		}
-	}
-
-	if len(ids) == 0 && len(data) > 0 {
-		logger.Warn().Msg("DA submission via helper returned no IDs for non-empty input data")
-		return dapkg.ResultSubmit{
-			BaseResult: dapkg.BaseResult{
-				Code:    dapkg.StatusError,
-				Message: "failed to submit blobs: no IDs returned despite non-empty input",
-			},
-		}
-	}
-
-	// Get height from the first ID
-	var height uint64
-	if len(ids) > 0 {
-		height, _, err = dapkg.SplitID(ids[0])
-		if err != nil {
-			logger.Error().Err(err).Msg("failed to split ID")
-		}
-	}
-
-	logger.Debug().Int("num_ids", len(ids)).Msg("DA submission successful via helper")
-	return dapkg.ResultSubmit{
-		BaseResult: dapkg.BaseResult{
-			Code:           dapkg.StatusSuccess,
-			IDs:            ids,
-			SubmittedCount: uint64(len(ids)),
-			Height:         height,
-			BlobSize:       blobSize,
-			Timestamp:      time.Now(),
-		},
-	}
-}
 
 // retryPolicy defines clamped bounds for retries and backoff.
 type retryPolicy struct {
@@ -509,8 +411,8 @@ func submitToDA[T any](
 
 		// Perform submission
 		start := time.Now()
-		res := submitWithHelpers(submitCtx, s.da, s.logger, marshaled, -1, namespace, mergedOptions)
-		s.logger.Debug().Int("attempts", rs.Attempt).Dur("elapsed", time.Since(start)).Uint64("code", uint64(res.Code)).Msg("got SubmitWithHelpers response from celestia")
+		res := s.da.SubmitWithOptions(submitCtx, marshaled, -1, namespace, mergedOptions)
+		s.logger.Debug().Int("attempts", rs.Attempt).Dur("elapsed", time.Since(start)).Uint64("code", uint64(res.Code)).Msg("got SubmitWithOptions response from Celestia layer")
 
 		// Record submission result for observability
 		if daVisualizationServer := server.GetDAVisualizationServer(); daVisualizationServer != nil {

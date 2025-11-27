@@ -2,7 +2,6 @@ package submitting
 
 import (
 	"context"
-	"errors"
 	"testing"
 	"time"
 
@@ -34,6 +33,27 @@ func newTestSubmitter(mockDA *mocks.MockDA, override func(*config.Config)) *DASu
 // marshal helper for simple items
 func marshalString(s string) ([]byte, error) { return []byte(s), nil }
 
+// helper to create a ResultSubmit for errors
+func errorResult(code da.StatusCode, msg string) da.ResultSubmit {
+	return da.ResultSubmit{
+		BaseResult: da.BaseResult{
+			Code:    code,
+			Message: msg,
+		},
+	}
+}
+
+// helper to create a ResultSubmit for success
+func successResult(ids []da.ID) da.ResultSubmit {
+	return da.ResultSubmit{
+		BaseResult: da.BaseResult{
+			Code:           da.StatusSuccess,
+			IDs:            ids,
+			SubmittedCount: uint64(len(ids)),
+		},
+	}
+}
+
 func TestSubmitToDA_MempoolRetry_IncreasesGasAndSucceeds(t *testing.T) {
 	t.Parallel()
 
@@ -42,21 +62,24 @@ func TestSubmitToDA_MempoolRetry_IncreasesGasAndSucceeds(t *testing.T) {
 	nsBz := da.NamespaceFromString("ns").Bytes()
 	opts := []byte("opts")
 	var usedGas []float64
+
+	// First attempt: timeout error (mapped to StatusNotIncludedInBlock)
 	mockDA.
 		On("SubmitWithOptions", mock.Anything, mock.Anything, mock.AnythingOfType("float64"), nsBz, opts).
 		Run(func(args mock.Arguments) {
 			usedGas = append(usedGas, args.Get(2).(float64))
 		}).
-		Return(nil, da.ErrTxTimedOut).
+		Return(errorResult(da.StatusNotIncludedInBlock, "timeout")).
 		Once()
 
-	ids := [][]byte{[]byte("id1"), []byte("id2"), []byte("id3")}
+	// Second attempt: success
+	ids := []da.ID{[]byte("id1"), []byte("id2"), []byte("id3")}
 	mockDA.
 		On("SubmitWithOptions", mock.Anything, mock.Anything, mock.AnythingOfType("float64"), nsBz, opts).
 		Run(func(args mock.Arguments) {
 			usedGas = append(usedGas, args.Get(2).(float64))
 		}).
-		Return(ids, nil).
+		Return(successResult(ids)).
 		Once()
 
 	s := newTestSubmitter(mockDA, nil)
@@ -95,15 +118,15 @@ func TestSubmitToDA_UnknownError_RetriesSameGasThenSucceeds(t *testing.T) {
 	mockDA.
 		On("SubmitWithOptions", mock.Anything, mock.Anything, mock.AnythingOfType("float64"), nsBz, opts).
 		Run(func(args mock.Arguments) { usedGas = append(usedGas, args.Get(2).(float64)) }).
-		Return(nil, errors.New("boom")).
+		Return(errorResult(da.StatusError, "boom")).
 		Once()
 
 	// Second attempt: same gas, success
-	ids := [][]byte{[]byte("id1")}
+	ids := []da.ID{[]byte("id1")}
 	mockDA.
 		On("SubmitWithOptions", mock.Anything, mock.Anything, mock.AnythingOfType("float64"), nsBz, opts).
 		Run(func(args mock.Arguments) { usedGas = append(usedGas, args.Get(2).(float64)) }).
-		Return(ids, nil).
+		Return(successResult(ids)).
 		Once()
 
 	s := newTestSubmitter(mockDA, nil)
@@ -144,18 +167,18 @@ func TestSubmitToDA_TooBig_HalvesBatch(t *testing.T) {
 			blobs := args.Get(1).([][]byte)
 			batchSizes = append(batchSizes, len(blobs))
 		}).
-		Return(nil, da.ErrBlobSizeOverLimit).
+		Return(errorResult(da.StatusTooBig, "blob too big")).
 		Once()
 
 	// Second attempt: expect half the size, succeed
-	ids := [][]byte{[]byte("id1"), []byte("id2")}
+	ids := []da.ID{[]byte("id1"), []byte("id2")}
 	mockDA.
 		On("SubmitWithOptions", mock.Anything, mock.Anything, mock.Anything, nsBz, opts).
 		Run(func(args mock.Arguments) {
 			blobs := args.Get(1).([][]byte)
 			batchSizes = append(batchSizes, len(blobs))
 		}).
-		Return(ids, nil).
+		Return(successResult(ids)).
 		Once()
 
 	s := newTestSubmitter(mockDA, nil)
@@ -192,15 +215,15 @@ func TestSubmitToDA_SentinelNoGas_PreservesGasAcrossRetries(t *testing.T) {
 	mockDA.
 		On("SubmitWithOptions", mock.Anything, mock.Anything, mock.AnythingOfType("float64"), nsBz, opts).
 		Run(func(args mock.Arguments) { usedGas = append(usedGas, args.Get(2).(float64)) }).
-		Return(nil, da.ErrTxAlreadyInMempool).
+		Return(errorResult(da.StatusAlreadyInMempool, "already in mempool")).
 		Once()
 
 	// Second attempt: should use same sentinel gas (-1), succeed
-	ids := [][]byte{[]byte("id1")}
+	ids := []da.ID{[]byte("id1")}
 	mockDA.
 		On("SubmitWithOptions", mock.Anything, mock.Anything, mock.AnythingOfType("float64"), nsBz, opts).
 		Run(func(args mock.Arguments) { usedGas = append(usedGas, args.Get(2).(float64)) }).
-		Return(ids, nil).
+		Return(successResult(ids)).
 		Once()
 
 	s := newTestSubmitter(mockDA, nil)
@@ -235,12 +258,12 @@ func TestSubmitToDA_PartialSuccess_AdvancesWindow(t *testing.T) {
 	var totalSubmitted int
 
 	// First attempt: success for first 2 of 3
-	firstIDs := [][]byte{[]byte("id1"), []byte("id2")}
-	mockDA.On("SubmitWithOptions", mock.Anything, mock.Anything, mock.Anything, nsBz, opts).Return(firstIDs, nil).Once()
+	firstIDs := []da.ID{[]byte("id1"), []byte("id2")}
+	mockDA.On("SubmitWithOptions", mock.Anything, mock.Anything, mock.Anything, nsBz, opts).Return(successResult(firstIDs)).Once()
 
 	// Second attempt: success for remaining 1
-	secondIDs := [][]byte{[]byte("id3")}
-	mockDA.On("SubmitWithOptions", mock.Anything, mock.Anything, mock.Anything, nsBz, opts).Return(secondIDs, nil).Once()
+	secondIDs := []da.ID{[]byte("id3")}
+	mockDA.On("SubmitWithOptions", mock.Anything, mock.Anything, mock.Anything, nsBz, opts).Return(successResult(secondIDs)).Once()
 
 	s := newTestSubmitter(mockDA, nil)
 

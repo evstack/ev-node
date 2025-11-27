@@ -21,11 +21,12 @@ func TestDummyDA(t *testing.T) {
 		[]byte("test blob 1"),
 		[]byte("test blob 2"),
 	}
-	ids, err := dummyDA.Submit(ctx, blobs, 0, nil)
-	if err != nil {
-		t.Fatalf("Submit failed: %v", err)
+	result := dummyDA.Submit(ctx, blobs, 0, nil)
+	if result.Code != StatusSuccess {
+		t.Fatalf("Submit failed: %s", result.Message)
 	}
-	err = waitForFirstDAHeight(ctx, dummyDA) // Wait for height to increment
+	ids := result.IDs
+	err := waitForFirstDAHeight(ctx, dummyDA) // Wait for height to increment
 	if err != nil {
 		t.Fatalf("waitForFirstDAHeight failed: %v", err)
 	}
@@ -48,12 +49,12 @@ func TestDummyDA(t *testing.T) {
 	}
 
 	// Test GetIDs
-	result, err := dummyDA.GetIDs(ctx, 1, nil)
+	getIDsResult, err := dummyDA.GetIDs(ctx, 1, nil)
 	if err != nil {
 		t.Fatalf("GetIDs failed: %v", err)
 	}
-	if len(result.IDs) != len(ids) {
-		t.Errorf("Expected %d IDs, got %d", len(ids), len(result.IDs))
+	if len(getIDsResult.IDs) != len(ids) {
+		t.Errorf("Expected %d IDs, got %d", len(ids), len(getIDsResult.IDs))
 	}
 
 	// Test Commit
@@ -90,9 +91,9 @@ func TestDummyDA(t *testing.T) {
 
 	// Test error case: blob size exceeds maximum
 	largeBlob := make([]byte, 2048) // Larger than our max of 1024
-	_, err = dummyDA.Submit(ctx, []Blob{largeBlob}, 0, nil)
-	if err == nil {
-		t.Errorf("Expected error for blob exceeding max size, got nil")
+	largeResult := dummyDA.Submit(ctx, []Blob{largeBlob}, 0, nil)
+	if largeResult.Code == StatusSuccess {
+		t.Errorf("Expected error for blob exceeding max size, got success")
 	}
 }
 

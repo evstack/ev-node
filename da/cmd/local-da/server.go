@@ -88,13 +88,21 @@ func (s *serverInternalAPI) Validate(ctx context.Context, ids []da.ID, proofs []
 // Submit implements the RPC method.
 func (s *serverInternalAPI) Submit(ctx context.Context, blobs []da.Blob, gasPrice float64, ns []byte) ([]da.ID, error) {
 	s.logger.Debug().Int("num_blobs", len(blobs)).Float64("gas_price", gasPrice).Str("namespace", string(ns)).Msg("RPC server: Submit called")
-	return s.daImpl.Submit(ctx, blobs, gasPrice, ns)
+	result := s.daImpl.Submit(ctx, blobs, gasPrice, ns)
+	if result.Code != da.StatusSuccess {
+		return result.IDs, da.StatusCodeToError(result.Code, result.Message)
+	}
+	return result.IDs, nil
 }
 
 // SubmitWithOptions implements the RPC method.
 func (s *serverInternalAPI) SubmitWithOptions(ctx context.Context, blobs []da.Blob, gasPrice float64, ns []byte, options []byte) ([]da.ID, error) {
 	s.logger.Debug().Int("num_blobs", len(blobs)).Float64("gas_price", gasPrice).Str("namespace", string(ns)).Str("options", string(options)).Msg("RPC server: SubmitWithOptions called")
-	return s.daImpl.SubmitWithOptions(ctx, blobs, gasPrice, ns, options)
+	result := s.daImpl.SubmitWithOptions(ctx, blobs, gasPrice, ns, options)
+	if result.Code != da.StatusSuccess {
+		return result.IDs, da.StatusCodeToError(result.Code, result.Message)
+	}
+	return result.IDs, nil
 }
 
 // blobAPI provides Celestia-compatible Blob API methods
@@ -123,17 +131,13 @@ func (b *blobAPI) Submit(ctx context.Context, blobs []*Blob, opts *SubmitOptions
 		gasPrice = opts.Fee
 	}
 
-	_, err := b.localDA.Submit(ctx, rawBlobs, gasPrice, ns)
-	if err != nil {
-		return 0, err
+	result := b.localDA.Submit(ctx, rawBlobs, gasPrice, ns)
+	if result.Code != da.StatusSuccess {
+		return 0, da.StatusCodeToError(result.Code, result.Message)
 	}
 
-	b.localDA.mu.Lock()
-	height := b.localDA.height
-	b.localDA.mu.Unlock()
-
-	b.logger.Info().Uint64("height", height).Int("num_blobs", len(blobs)).Msg("blob.Submit successful")
-	return height, nil
+	b.logger.Info().Uint64("height", result.Height).Int("num_blobs", len(blobs)).Msg("blob.Submit successful")
+	return result.Height, nil
 }
 
 // Get retrieves a single blob by commitment at a given height (Celestia blob API compatible)

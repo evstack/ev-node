@@ -335,31 +335,19 @@ func (_c *MockDA_GetProofs_Call) RunAndReturn(run func(ctx context.Context, ids 
 }
 
 // Submit provides a mock function for the type MockDA
-func (_mock *MockDA) Submit(ctx context.Context, blobs []da.Blob, gasPrice float64, namespace []byte) ([]da.ID, error) {
+func (_mock *MockDA) Submit(ctx context.Context, blobs []da.Blob, gasPrice float64, namespace []byte) da.ResultSubmit {
 	ret := _mock.Called(ctx, blobs, gasPrice, namespace)
 
 	if len(ret) == 0 {
 		panic("no return value specified for Submit")
 	}
 
-	var r0 []da.ID
-	var r1 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, []da.Blob, float64, []byte) ([]da.ID, error)); ok {
+	var r0 da.ResultSubmit
+	if returnFunc, ok := ret.Get(0).(func(context.Context, []da.Blob, float64, []byte) da.ResultSubmit); ok {
 		return returnFunc(ctx, blobs, gasPrice, namespace)
 	}
-	if returnFunc, ok := ret.Get(0).(func(context.Context, []da.Blob, float64, []byte) []da.ID); ok {
-		r0 = returnFunc(ctx, blobs, gasPrice, namespace)
-	} else {
-		if ret.Get(0) != nil {
-			r0 = ret.Get(0).([]da.ID)
-		}
-	}
-	if returnFunc, ok := ret.Get(1).(func(context.Context, []da.Blob, float64, []byte) error); ok {
-		r1 = returnFunc(ctx, blobs, gasPrice, namespace)
-	} else {
-		r1 = ret.Error(1)
-	}
-	return r0, r1
+	r0 = ret.Get(0).(da.ResultSubmit)
+	return r0
 }
 
 // MockDA_Submit_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'Submit'
@@ -404,42 +392,30 @@ func (_c *MockDA_Submit_Call) Run(run func(ctx context.Context, blobs []da.Blob,
 	return _c
 }
 
-func (_c *MockDA_Submit_Call) Return(vs []da.ID, err error) *MockDA_Submit_Call {
-	_c.Call.Return(vs, err)
+func (_c *MockDA_Submit_Call) Return(result da.ResultSubmit) *MockDA_Submit_Call {
+	_c.Call.Return(result)
 	return _c
 }
 
-func (_c *MockDA_Submit_Call) RunAndReturn(run func(ctx context.Context, blobs []da.Blob, gasPrice float64, namespace []byte) ([]da.ID, error)) *MockDA_Submit_Call {
+func (_c *MockDA_Submit_Call) RunAndReturn(run func(ctx context.Context, blobs []da.Blob, gasPrice float64, namespace []byte) da.ResultSubmit) *MockDA_Submit_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
 // SubmitWithOptions provides a mock function for the type MockDA
-func (_mock *MockDA) SubmitWithOptions(ctx context.Context, blobs []da.Blob, gasPrice float64, namespace []byte, options []byte) ([]da.ID, error) {
+func (_mock *MockDA) SubmitWithOptions(ctx context.Context, blobs []da.Blob, gasPrice float64, namespace []byte, options []byte) da.ResultSubmit {
 	ret := _mock.Called(ctx, blobs, gasPrice, namespace, options)
 
 	if len(ret) == 0 {
 		panic("no return value specified for SubmitWithOptions")
 	}
 
-	var r0 []da.ID
-	var r1 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, []da.Blob, float64, []byte, []byte) ([]da.ID, error)); ok {
+	var r0 da.ResultSubmit
+	if returnFunc, ok := ret.Get(0).(func(context.Context, []da.Blob, float64, []byte, []byte) da.ResultSubmit); ok {
 		return returnFunc(ctx, blobs, gasPrice, namespace, options)
 	}
-	if returnFunc, ok := ret.Get(0).(func(context.Context, []da.Blob, float64, []byte, []byte) []da.ID); ok {
-		r0 = returnFunc(ctx, blobs, gasPrice, namespace, options)
-	} else {
-		if ret.Get(0) != nil {
-			r0 = ret.Get(0).([]da.ID)
-		}
-	}
-	if returnFunc, ok := ret.Get(1).(func(context.Context, []da.Blob, float64, []byte, []byte) error); ok {
-		r1 = returnFunc(ctx, blobs, gasPrice, namespace, options)
-	} else {
-		r1 = ret.Error(1)
-	}
-	return r0, r1
+	r0 = ret.Get(0).(da.ResultSubmit)
+	return r0
 }
 
 // MockDA_SubmitWithOptions_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'SubmitWithOptions'
@@ -490,12 +466,12 @@ func (_c *MockDA_SubmitWithOptions_Call) Run(run func(ctx context.Context, blobs
 	return _c
 }
 
-func (_c *MockDA_SubmitWithOptions_Call) Return(vs []da.ID, err error) *MockDA_SubmitWithOptions_Call {
-	_c.Call.Return(vs, err)
+func (_c *MockDA_SubmitWithOptions_Call) Return(result da.ResultSubmit) *MockDA_SubmitWithOptions_Call {
+	_c.Call.Return(result)
 	return _c
 }
 
-func (_c *MockDA_SubmitWithOptions_Call) RunAndReturn(run func(ctx context.Context, blobs []da.Blob, gasPrice float64, namespace []byte, options []byte) ([]da.ID, error)) *MockDA_SubmitWithOptions_Call {
+func (_c *MockDA_SubmitWithOptions_Call) RunAndReturn(run func(ctx context.Context, blobs []da.Blob, gasPrice float64, namespace []byte, options []byte) da.ResultSubmit) *MockDA_SubmitWithOptions_Call {
 	_c.Call.Return(run)
 	return _c
 }
@@ -577,5 +553,43 @@ func (_c *MockDA_Validate_Call) Return(bools []bool, err error) *MockDA_Validate
 
 func (_c *MockDA_Validate_Call) RunAndReturn(run func(ctx context.Context, ids []da.ID, proofs []da.Proof, namespace []byte) ([]bool, error)) *MockDA_Validate_Call {
 	_c.Call.Return(run)
+	return _c
+}
+
+// Retrieve provides a mock function for the type MockDA
+func (_mock *MockDA) Retrieve(ctx context.Context, height uint64, namespace []byte) da.ResultRetrieve {
+	ret := _mock.Called(ctx, height, namespace)
+
+	if len(ret) == 0 {
+		panic("no return value specified for Retrieve")
+	}
+
+	var r0 da.ResultRetrieve
+	if returnFunc, ok := ret.Get(0).(func(context.Context, uint64, []byte) da.ResultRetrieve); ok {
+		return returnFunc(ctx, height, namespace)
+	}
+	r0 = ret.Get(0).(da.ResultRetrieve)
+	return r0
+}
+
+// MockDA_Retrieve_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'Retrieve'
+type MockDA_Retrieve_Call struct {
+	*mock.Call
+}
+
+// Retrieve is a helper method to define mock.On call
+func (_e *MockDA_Expecter) Retrieve(ctx interface{}, height interface{}, namespace interface{}) *MockDA_Retrieve_Call {
+	return &MockDA_Retrieve_Call{Call: _e.mock.On("Retrieve", ctx, height, namespace)}
+}
+
+func (_c *MockDA_Retrieve_Call) Run(run func(ctx context.Context, height uint64, namespace []byte)) *MockDA_Retrieve_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(context.Context), args[1].(uint64), args[2].([]byte))
+	})
+	return _c
+}
+
+func (_c *MockDA_Retrieve_Call) Return(result da.ResultRetrieve) *MockDA_Retrieve_Call {
+	_c.Call.Return(result)
 	return _c
 }

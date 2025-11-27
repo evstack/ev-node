@@ -1,13 +1,7 @@
 package block
 
 import (
-	"time"
-
 	"github.com/evstack/ev-node/block/internal/common"
-	"github.com/evstack/ev-node/block/internal/da"
-	coreda "github.com/evstack/ev-node/da"
-	"github.com/evstack/ev-node/pkg/config"
-	"github.com/rs/zerolog"
 )
 
 // BlockOptions defines the options for creating block components
@@ -29,22 +23,4 @@ func PrometheusMetrics(namespace string, labelsAndValues ...string) *Metrics {
 // NopMetrics creates a new NopMetrics instance.
 func NopMetrics() *Metrics {
 	return common.NopMetrics()
-}
-
-// DAClient is the interface representing the DA client for public use.
-type DAClient = da.Client
-
-// NewDAClient creates a new DA client with configuration
-func NewDAClient(
-	daLayer coreda.DA,
-	config config.Config,
-	logger zerolog.Logger,
-) DAClient {
-	return da.NewClient(da.Config{
-		DA:             daLayer,
-		Logger:         logger,
-		DefaultTimeout: 10 * time.Second,
-		Namespace:      config.DA.GetNamespace(),
-		DataNamespace:  config.DA.GetDataNamespace(),
-	})
 }

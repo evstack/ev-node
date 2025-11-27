@@ -25,11 +25,14 @@ type DA interface {
 	// Commit creates a Commitment for each given Blob.
 	Commit(ctx context.Context, blobs []Blob, namespace []byte) ([]Commitment, error)
 
-	// Submit submits the Blobs to Data Availability layer.
-	Submit(ctx context.Context, blobs []Blob, gasPrice float64, namespace []byte) ([]ID, error)
+	// Submit submits the Blobs to Data Availability layer and returns a structured result.
+	Submit(ctx context.Context, blobs []Blob, gasPrice float64, namespace []byte) ResultSubmit
 
 	// SubmitWithOptions submits the Blobs to Data Availability layer with additional options.
-	SubmitWithOptions(ctx context.Context, blobs []Blob, gasPrice float64, namespace []byte, options []byte) ([]ID, error)
+	SubmitWithOptions(ctx context.Context, blobs []Blob, gasPrice float64, namespace []byte, options []byte) ResultSubmit
+
+	// Retrieve retrieves all blobs at the given height and returns a structured result.
+	Retrieve(ctx context.Context, height uint64, namespace []byte) ResultRetrieve
 
 	// Validate validates Commitments against the corresponding Proofs.
 	Validate(ctx context.Context, ids []ID, proofs []Proof, namespace []byte) ([]bool, error)
@@ -122,6 +125,35 @@ var (
 	ErrHeightFromFuture           = errors.New("given height is from the future")
 	ErrContextCanceled            = errors.New("context canceled")
 )
+
+// StatusCodeToError converts a StatusCode to its corresponding error.
+// Returns nil for StatusSuccess or StatusUnknown.
+func StatusCodeToError(code StatusCode, message string) error {
+	switch code {
+	case StatusSuccess, StatusUnknown:
+		return nil
+	case StatusNotFound:
+		return ErrBlobNotFound
+	case StatusNotIncludedInBlock:
+		return ErrTxTimedOut
+	case StatusAlreadyInMempool:
+		return ErrTxAlreadyInMempool
+	case StatusTooBig:
+		return ErrBlobSizeOverLimit
+	case StatusContextDeadline:
+		return ErrContextDeadline
+	case StatusIncorrectAccountSequence:
+		return ErrTxIncorrectAccountSequence
+	case StatusContextCanceled:
+		return ErrContextCanceled
+	case StatusHeightFromFuture:
+		return ErrHeightFromFuture
+	case StatusError:
+		return errors.New(message)
+	default:
+		return errors.New(message)
+	}
+}
 
 // Namespace constants and types
 const (

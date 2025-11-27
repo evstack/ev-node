@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"errors"
-	"fmt"
 	"testing"
 	"time"
 
@@ -56,8 +55,13 @@ func TestDARetriever_RetrieveFromDA_Invalid(t *testing.T) {
 
 	mockDA := testmocks.NewMockDA(t)
 
-	mockDA.EXPECT().GetIDs(mock.Anything, mock.Anything, mock.Anything).
-		Return(nil, errors.New("just invalid")).Maybe()
+	mockDA.EXPECT().Retrieve(mock.Anything, mock.Anything, mock.Anything).
+		Return(da.ResultRetrieve{
+			BaseResult: da.BaseResult{
+				Code:    da.StatusError,
+				Message: "just invalid",
+			},
+		}).Maybe()
 
 	r := NewDARetriever(mockDA, cm, config.DefaultConfig(), genesis.Genesis{}, zerolog.Nop())
 	events, err := r.RetrieveFromDA(context.Background(), 42)
@@ -73,9 +77,14 @@ func TestDARetriever_RetrieveFromDA_NotFound(t *testing.T) {
 
 	mockDA := testmocks.NewMockDA(t)
 
-	// GetIDs returns ErrBlobNotFound -> helper maps to StatusNotFound
-	mockDA.EXPECT().GetIDs(mock.Anything, mock.Anything, mock.Anything).
-		Return(nil, fmt.Errorf("%s: whatever", da.ErrBlobNotFound.Error())).Maybe()
+	// Retrieve returns StatusNotFound
+	mockDA.EXPECT().Retrieve(mock.Anything, mock.Anything, mock.Anything).
+		Return(da.ResultRetrieve{
+			BaseResult: da.BaseResult{
+				Code:    da.StatusNotFound,
+				Message: da.ErrBlobNotFound.Error(),
+			},
+		}).Maybe()
 
 	r := NewDARetriever(mockDA, cm, config.DefaultConfig(), genesis.Genesis{}, zerolog.Nop())
 	events, err := r.RetrieveFromDA(context.Background(), 42)
@@ -90,9 +99,14 @@ func TestDARetriever_RetrieveFromDA_HeightFromFuture(t *testing.T) {
 	require.NoError(t, err)
 
 	mockDA := testmocks.NewMockDA(t)
-	// GetIDs returns ErrHeightFromFuture -> helper maps to StatusHeightFromFuture, fetchBlobs returns error
-	mockDA.EXPECT().GetIDs(mock.Anything, mock.Anything, mock.Anything).
-		Return(nil, fmt.Errorf("%s: later", da.ErrHeightFromFuture.Error())).Maybe()
+	// Retrieve returns StatusHeightFromFuture
+	mockDA.EXPECT().Retrieve(mock.Anything, mock.Anything, mock.Anything).
+		Return(da.ResultRetrieve{
+			BaseResult: da.BaseResult{
+				Code:    da.StatusHeightFromFuture,
+				Message: da.ErrHeightFromFuture.Error(),
+			},
+		}).Maybe()
 
 	r := NewDARetriever(mockDA, cm, config.DefaultConfig(), genesis.Genesis{}, zerolog.Nop())
 	events, derr := r.RetrieveFromDA(context.Background(), 1000)
@@ -109,28 +123,24 @@ func TestDARetriever_RetrieveFromDA_Timeout(t *testing.T) {
 
 	mockDA := testmocks.NewMockDA(t)
 
-	// Mock GetIDs to hang longer than the timeout
-	mockDA.EXPECT().GetIDs(mock.Anything, mock.Anything, mock.Anything).
-		Run(func(ctx context.Context, height uint64, namespace []byte) {
-			<-ctx.Done()
-		}).
-		Return(nil, context.DeadlineExceeded).Maybe()
+	// Mock Retrieve to return timeout error
+	mockDA.EXPECT().Retrieve(mock.Anything, mock.Anything, mock.Anything).
+		Return(da.ResultRetrieve{
+			BaseResult: da.BaseResult{
+				Code:    da.StatusError,
+				Message: "failed to get IDs: context deadline exceeded",
+			},
+		}).Maybe()
 
 	r := NewDARetriever(mockDA, cm, config.DefaultConfig(), genesis.Genesis{}, zerolog.Nop())
 
-	start := time.Now()
 	events, err := r.RetrieveFromDA(context.Background(), 42)
-	duration := time.Since(start)
 
 	// Verify error is returned and contains deadline exceeded information
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "DA retrieval failed")
 	assert.Contains(t, err.Error(), "context deadline exceeded")
 	assert.Len(t, events, 0)
-
-	// Verify timeout occurred approximately at expected time (with some tolerance)
-	assert.Greater(t, duration, 9*time.Second, "should timeout after approximately 10 seconds")
-	assert.Less(t, duration, 12*time.Second, "should not take much longer than timeout")
 }
 
 func TestDARetriever_RetrieveFromDA_TimeoutFast(t *testing.T) {
@@ -141,9 +151,14 @@ func TestDARetriever_RetrieveFromDA_TimeoutFast(t *testing.T) {
 
 	mockDA := testmocks.NewMockDA(t)
 
-	// Mock GetIDs to immediately return context deadline exceeded
-	mockDA.EXPECT().GetIDs(mock.Anything, mock.Anything, mock.Anything).
-		Return(nil, context.DeadlineExceeded).Maybe()
+	// Mock Retrieve to immediately return context deadline exceeded
+	mockDA.EXPECT().Retrieve(mock.Anything, mock.Anything, mock.Anything).
+		Return(da.ResultRetrieve{
+			BaseResult: da.BaseResult{
+				Code:    da.StatusError,
+				Message: "failed to get IDs: context deadline exceeded",
+			},
+		}).Maybe()
 
 	r := NewDARetriever(mockDA, cm, config.DefaultConfig(), genesis.Genesis{}, zerolog.Nop())
 
@@ -289,16 +304,26 @@ func TestDARetriever_RetrieveFromDA_TwoNamespaces_Success(t *testing.T) {
 	namespaceDataBz := da.NamespaceFromString(cfg.DA.GetDataNamespace()).Bytes()
 
 	mockDA := testmocks.NewMockDA(t)
-	// Expect GetIDs for both namespaces
-	mockDA.EXPECT().GetIDs(mock.Anything, uint64(1234), mock.MatchedBy(func(ns []byte) bool { return bytes.Equal(ns, namespaceBz) })).
-		Return(&da.GetIDsResult{IDs: [][]byte{[]byte("h1")}, Timestamp: time.Now()}, nil).Once()
-	mockDA.EXPECT().Get(mock.Anything, mock.Anything, mock.MatchedBy(func(ns []byte) bool { return bytes.Equal(ns, namespaceBz) })).
-		Return([][]byte{hdrBin}, nil).Once()
+	// Expect Retrieve for both namespaces
+	mockDA.EXPECT().Retrieve(mock.Anything, uint64(1234), mock.MatchedBy(func(ns []byte) bool { return bytes.Equal(ns, namespaceBz) })).
+		Return(da.ResultRetrieve{
+			BaseResult: da.BaseResult{
+				Code:      da.StatusSuccess,
+				IDs:       [][]byte{[]byte("h1")},
+				Timestamp: time.Now(),
+			},
+			Data: [][]byte{hdrBin},
+		}).Once()
 
-	mockDA.EXPECT().GetIDs(mock.Anything, uint64(1234), mock.MatchedBy(func(ns []byte) bool { return bytes.Equal(ns, namespaceDataBz) })).
-		Return(&da.GetIDsResult{IDs: [][]byte{[]byte("d1")}, Timestamp: time.Now()}, nil).Once()
-	mockDA.EXPECT().Get(mock.Anything, mock.Anything, mock.MatchedBy(func(ns []byte) bool { return bytes.Equal(ns, namespaceDataBz) })).
-		Return([][]byte{dataBin}, nil).Once()
+	mockDA.EXPECT().Retrieve(mock.Anything, uint64(1234), mock.MatchedBy(func(ns []byte) bool { return bytes.Equal(ns, namespaceDataBz) })).
+		Return(da.ResultRetrieve{
+			BaseResult: da.BaseResult{
+				Code:      da.StatusSuccess,
+				IDs:       [][]byte{[]byte("d1")},
+				Timestamp: time.Now(),
+			},
+			Data: [][]byte{dataBin},
+		}).Once()
 
 	r := NewDARetriever(mockDA, cm, cfg, gen, zerolog.Nop())
 

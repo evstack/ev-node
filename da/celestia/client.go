@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/binary"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
@@ -14,6 +15,12 @@ import (
 
 	"github.com/evstack/ev-node/da"
 )
+
+// defaultRetrieveTimeout is the default timeout for DA retrieval operations
+const defaultRetrieveTimeout = 10 * time.Second
+
+// retrieveBatchSize is the number of blobs to retrieve in a single batch
+const retrieveBatchSize = 100
 
 // Client connects to celestia-node's blob API via JSON-RPC and implements the da.DA interface.
 type Client struct {
@@ -206,67 +213,8 @@ func (c *Client) included(ctx context.Context, height uint64, namespace Namespac
 
 // DA interface implementation
 
-// Submit submits blobs to Celestia and returns IDs.
-func (c *Client) Submit(ctx context.Context, blobs []da.Blob, gasPrice float64, namespace []byte) ([]da.ID, error) {
+func (c *Client) Submit(ctx context.Context, blobs []da.Blob, gasPrice float64, namespace []byte) da.ResultSubmit {
 	return c.SubmitWithOptions(ctx, blobs, gasPrice, namespace, nil)
-}
-
-// SubmitWithOptions submits blobs to Celestia with additional options.
-func (c *Client) SubmitWithOptions(ctx context.Context, blobs []da.Blob, gasPrice float64, namespace []byte, options []byte) ([]da.ID, error) {
-	if len(blobs) == 0 {
-		return []da.ID{}, nil
-	}
-
-	// Validate namespace
-	if err := ValidateNamespace(namespace); err != nil {
-		return nil, fmt.Errorf("invalid namespace: %w", err)
-	}
-
-	// Convert blobs to Celestia format and calculate commitments locally
-	celestiaBlobs := make([]*Blob, len(blobs))
-	for i, blob := range blobs {
-		// Calculate commitment locally using the same algorithm as celestia-node
-		commitment, err := CreateCommitment(blob, namespace)
-		if err != nil {
-			return nil, fmt.Errorf("failed to create commitment for blob %d: %w", i, err)
-		}
-		celestiaBlobs[i] = &Blob{
-			Namespace:  namespace,
-			Data:       blob,
-			Commitment: commitment,
-		}
-	}
-
-	// Parse submit options if provided
-	var opts *SubmitOptions
-	if len(options) > 0 {
-		opts = &SubmitOptions{}
-		if err := json.Unmarshal(options, opts); err != nil {
-			return nil, fmt.Errorf("failed to unmarshal submit options: %w", err)
-		}
-		opts.Fee = gasPrice
-	} else {
-		opts = &SubmitOptions{Fee: gasPrice}
-	}
-
-	height, err := c.submit(ctx, celestiaBlobs, opts)
-	if err != nil {
-		if strings.Contains(err.Error(), "timeout") {
-			return nil, da.ErrTxTimedOut
-		}
-		if strings.Contains(err.Error(), "too large") || strings.Contains(err.Error(), "exceeds") {
-			return nil, da.ErrBlobSizeOverLimit
-		}
-		return nil, err
-	}
-
-	// Create IDs from height and locally-computed commitments
-	ids := make([]da.ID, len(celestiaBlobs))
-	for i, blob := range celestiaBlobs {
-		ids[i] = makeID(height, blob.Commitment)
-	}
-
-	return ids, nil
 }
 
 // Get retrieves blobs by their IDs.
@@ -315,31 +263,14 @@ func (c *Client) Get(ctx context.Context, ids []da.ID, namespace []byte) ([]da.B
 	return result, nil
 }
 
-// GetIDs returns all blob IDs at the given height.
 func (c *Client) GetIDs(ctx context.Context, height uint64, namespace []byte) (*da.GetIDsResult, error) {
-	blobs, err := c.getAll(ctx, height, []Namespace{namespace})
-	if err != nil {
-		if strings.Contains(err.Error(), "not found") {
-			return nil, da.ErrBlobNotFound
-		}
-		if strings.Contains(err.Error(), "height") && strings.Contains(err.Error(), "future") {
-			return nil, da.ErrHeightFromFuture
-		}
-		return nil, err
+	result := c.Retrieve(ctx, height, namespace)
+	if result.Code != da.StatusSuccess {
+		return nil, da.StatusCodeToError(result.Code, result.Message)
 	}
-
-	if len(blobs) == 0 {
-		return nil, da.ErrBlobNotFound
-	}
-
-	ids := make([]da.ID, len(blobs))
-	for i, blob := range blobs {
-		ids[i] = makeID(height, blob.Commitment)
-	}
-
 	return &da.GetIDsResult{
-		IDs:       ids,
-		Timestamp: time.Now(),
+		IDs:       result.IDs,
+		Timestamp: result.Timestamp,
 	}, nil
 }
 
@@ -412,4 +343,193 @@ func makeID(height uint64, commitment []byte) []byte {
 	binary.LittleEndian.PutUint64(id, height)
 	copy(id[8:], commitment)
 	return id
+}
+
+func (c *Client) SubmitWithOptions(ctx context.Context, blobs []da.Blob, gasPrice float64, namespace []byte, options []byte) da.ResultSubmit {
+	var blobSize uint64
+	for _, blob := range blobs {
+		blobSize += uint64(len(blob))
+	}
+
+	if len(blobs) == 0 {
+		return da.ResultSubmit{
+			BaseResult: da.BaseResult{
+				Code:      da.StatusSuccess,
+				IDs:       []da.ID{},
+				Timestamp: time.Now(),
+			},
+		}
+	}
+
+	if err := ValidateNamespace(namespace); err != nil {
+		return da.ResultSubmit{
+			BaseResult: da.BaseResult{
+				Code:     da.StatusError,
+				Message:  fmt.Sprintf("invalid namespace: %s", err.Error()),
+				BlobSize: blobSize,
+			},
+		}
+	}
+
+	celestiaBlobs := make([]*Blob, len(blobs))
+	for i, blob := range blobs {
+		commitment, err := CreateCommitment(blob, namespace)
+		if err != nil {
+			return da.ResultSubmit{
+				BaseResult: da.BaseResult{
+					Code:     da.StatusError,
+					Message:  fmt.Sprintf("failed to create commitment for blob %d: %s", i, err.Error()),
+					BlobSize: blobSize,
+				},
+			}
+		}
+		celestiaBlobs[i] = &Blob{
+			Namespace:  namespace,
+			Data:       blob,
+			Commitment: commitment,
+		}
+	}
+
+	var opts *SubmitOptions
+	if len(options) > 0 {
+		opts = &SubmitOptions{}
+		if err := json.Unmarshal(options, opts); err != nil {
+			return da.ResultSubmit{
+				BaseResult: da.BaseResult{
+					Code:     da.StatusError,
+					Message:  fmt.Sprintf("failed to unmarshal submit options: %s", err.Error()),
+					BlobSize: blobSize,
+				},
+			}
+		}
+		opts.Fee = gasPrice
+	} else {
+		opts = &SubmitOptions{Fee: gasPrice}
+	}
+
+	height, err := c.submit(ctx, celestiaBlobs, opts)
+	if err != nil {
+		status := da.StatusError
+		errStr := err.Error()
+
+		switch {
+		case errors.Is(err, context.Canceled):
+			status = da.StatusContextCanceled
+		case errors.Is(err, context.DeadlineExceeded):
+			status = da.StatusContextDeadline
+		case strings.Contains(errStr, "timeout"):
+			status = da.StatusNotIncludedInBlock
+		case strings.Contains(errStr, "too large") || strings.Contains(errStr, "exceeds"):
+			status = da.StatusTooBig
+		case strings.Contains(errStr, "already in mempool"):
+			status = da.StatusAlreadyInMempool
+		case strings.Contains(errStr, "incorrect account sequence"):
+			status = da.StatusIncorrectAccountSequence
+		}
+
+		if status == da.StatusTooBig {
+			c.logger.Debug().Err(err).Uint64("status", uint64(status)).Msg("DA submission failed")
+		} else {
+			c.logger.Error().Err(err).Uint64("status", uint64(status)).Msg("DA submission failed")
+		}
+
+		return da.ResultSubmit{
+			BaseResult: da.BaseResult{
+				Code:      status,
+				Message:   "failed to submit blobs: " + err.Error(),
+				BlobSize:  blobSize,
+				Timestamp: time.Now(),
+			},
+		}
+	}
+
+	ids := make([]da.ID, len(celestiaBlobs))
+	for i, blob := range celestiaBlobs {
+		ids[i] = makeID(height, blob.Commitment)
+	}
+
+	c.logger.Debug().Int("num_ids", len(ids)).Uint64("height", height).Msg("DA submission successful")
+	return da.ResultSubmit{
+		BaseResult: da.BaseResult{
+			Code:           da.StatusSuccess,
+			IDs:            ids,
+			SubmittedCount: uint64(len(ids)),
+			Height:         height,
+			BlobSize:       blobSize,
+			Timestamp:      time.Now(),
+		},
+	}
+}
+
+func (c *Client) Retrieve(ctx context.Context, height uint64, namespace []byte) da.ResultRetrieve {
+	getCtx, cancel := context.WithTimeout(ctx, defaultRetrieveTimeout)
+	defer cancel()
+
+	blobs, err := c.getAll(getCtx, height, []Namespace{namespace})
+	if err != nil {
+		errStr := err.Error()
+
+		if strings.Contains(errStr, "not found") {
+			c.logger.Debug().Uint64("height", height).Msg("Blobs not found at height")
+			return da.ResultRetrieve{
+				BaseResult: da.BaseResult{
+					Code:      da.StatusNotFound,
+					Message:   da.ErrBlobNotFound.Error(),
+					Height:    height,
+					Timestamp: time.Now(),
+				},
+			}
+		}
+		if strings.Contains(errStr, "height") && strings.Contains(errStr, "future") {
+			c.logger.Debug().Uint64("height", height).Msg("Height is from the future")
+			return da.ResultRetrieve{
+				BaseResult: da.BaseResult{
+					Code:      da.StatusHeightFromFuture,
+					Message:   da.ErrHeightFromFuture.Error(),
+					Height:    height,
+					Timestamp: time.Now(),
+				},
+			}
+		}
+
+		c.logger.Error().Uint64("height", height).Err(err).Msg("Failed to retrieve blobs")
+		return da.ResultRetrieve{
+			BaseResult: da.BaseResult{
+				Code:      da.StatusError,
+				Message:   fmt.Sprintf("failed to retrieve blobs: %s", err.Error()),
+				Height:    height,
+				Timestamp: time.Now(),
+			},
+		}
+	}
+
+	if len(blobs) == 0 {
+		c.logger.Debug().Uint64("height", height).Msg("No blobs found at height")
+		return da.ResultRetrieve{
+			BaseResult: da.BaseResult{
+				Code:      da.StatusNotFound,
+				Message:   da.ErrBlobNotFound.Error(),
+				Height:    height,
+				Timestamp: time.Now(),
+			},
+		}
+	}
+
+	ids := make([]da.ID, len(blobs))
+	data := make([][]byte, len(blobs))
+	for i, blob := range blobs {
+		ids[i] = makeID(height, blob.Commitment)
+		data[i] = blob.Data
+	}
+
+	c.logger.Debug().Uint64("height", height).Int("num_blobs", len(blobs)).Msg("Successfully retrieved blobs")
+	return da.ResultRetrieve{
+		BaseResult: da.BaseResult{
+			Code:      da.StatusSuccess,
+			Height:    height,
+			IDs:       ids,
+			Timestamp: time.Now(),
+		},
+		Data: data,
+	}
 }

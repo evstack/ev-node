@@ -90,33 +90,15 @@ func (d *DummyDA) Get(ctx context.Context, ids []ID, namespace []byte) ([]Blob, 
 }
 
 // GetIDs returns IDs of all blobs at the given height.
+// Delegates to Retrieve.
 func (d *DummyDA) GetIDs(ctx context.Context, height uint64, namespace []byte) (*GetIDsResult, error) {
-	d.mu.RLock()
-	defer d.mu.RUnlock()
-
-	if height > d.currentHeight {
-		return nil, fmt.Errorf("%w: requested %d, current %d", ErrHeightFromFutureStr, height, d.currentHeight)
+	result := d.Retrieve(ctx, height, namespace)
+	if result.Code != StatusSuccess {
+		return nil, StatusCodeToError(result.Code, result.Message)
 	}
-
-	ids, exists := d.blobsByHeight[height]
-	if !exists {
-		return &GetIDsResult{
-			IDs:       []ID{},
-			Timestamp: time.Now(),
-		}, nil
-	}
-
-	// Filter IDs by namespace
-	filteredIDs := make([]ID, 0)
-	for _, id := range ids {
-		if ns, exists := d.namespaceByID[string(id)]; exists && bytes.Equal(ns, namespace) {
-			filteredIDs = append(filteredIDs, id)
-		}
-	}
-
 	return &GetIDsResult{
-		IDs:       filteredIDs,
-		Timestamp: d.timestampsByHeight[height],
+		IDs:       result.IDs,
+		Timestamp: result.Timestamp,
 	}, nil
 }
 
@@ -150,8 +132,9 @@ func (d *DummyDA) Commit(ctx context.Context, blobs []Blob, namespace []byte) ([
 	return commitments, nil
 }
 
-// Submit submits blobs to the DA layer.
-func (d *DummyDA) Submit(ctx context.Context, blobs []Blob, gasPrice float64, namespace []byte) ([]ID, error) {
+// Submit submits blobs to the DA layer and returns a structured result.
+// Delegates to SubmitWithOptions with nil options.
+func (d *DummyDA) Submit(ctx context.Context, blobs []Blob, gasPrice float64, namespace []byte) ResultSubmit {
 	return d.SubmitWithOptions(ctx, blobs, gasPrice, namespace, nil)
 }
 
@@ -162,36 +145,67 @@ func (d *DummyDA) SetSubmitFailure(shouldFail bool) {
 	d.submitShouldFail = shouldFail
 }
 
-// SubmitWithOptions submits blobs to the DA layer with additional options.
-func (d *DummyDA) SubmitWithOptions(ctx context.Context, blobs []Blob, gasPrice float64, namespace []byte, options []byte) ([]ID, error) {
+// Validate validates commitments against proofs.
+func (d *DummyDA) Validate(ctx context.Context, ids []ID, proofs []Proof, namespace []byte) ([]bool, error) {
+	d.mu.RLock()
+	defer d.mu.RUnlock()
+
+	if len(ids) != len(proofs) {
+		return nil, errors.New("number of IDs and proofs must match")
+	}
+
+	results := make([]bool, len(ids))
+	for i, id := range ids {
+		_, exists := d.blobs[string(id)]
+		results[i] = exists
+	}
+
+	return results, nil
+}
+
+// SubmitWithOptions submits blobs to the DA layer with additional options and returns a structured result.
+// This is the primary implementation - Submit delegates to this method.
+func (d *DummyDA) SubmitWithOptions(ctx context.Context, blobs []Blob, gasPrice float64, namespace []byte, options []byte) ResultSubmit {
+	// Calculate blob size upfront
+	var blobSize uint64
+	for _, blob := range blobs {
+		blobSize += uint64(len(blob))
+	}
+
 	d.mu.Lock()
 	defer d.mu.Unlock()
 
 	// Check if we should simulate failure
 	if d.submitShouldFail {
-		return nil, errors.New("simulated DA layer failure")
+		return ResultSubmit{
+			BaseResult: BaseResult{
+				Code:     StatusError,
+				Message:  "simulated DA layer failure",
+				BlobSize: blobSize,
+			},
+		}
 	}
 
 	height := d.currentHeight + 1
 	ids := make([]ID, 0, len(blobs))
 	var currentSize uint64
 
-	for _, blob := range blobs { // Use _ instead of i
+	for _, blob := range blobs {
 		blobLen := uint64(len(blob))
 		// Check individual blob size first
 		if blobLen > d.maxBlobSize {
-			// Mimic DAClient behavior: if the first blob is too large, return error.
-			// Otherwise, we would have submitted the previous fitting blobs.
-			// Since DummyDA processes all at once, we return error if any *individual* blob is too large.
-			// A more complex dummy could simulate partial submission based on cumulative size.
-			// For now, error out if any single blob is too big.
-			return nil, ErrBlobSizeOverLimit // Use specific error type
+			return ResultSubmit{
+				BaseResult: BaseResult{
+					Code:     StatusTooBig,
+					Message:  "failed to submit blobs: " + ErrBlobSizeOverLimit.Error(),
+					BlobSize: blobSize,
+				},
+			}
 		}
 
 		// Check cumulative batch size
 		if currentSize+blobLen > d.maxBlobSize {
 			// Stop processing blobs for this batch, return IDs collected so far
-			// d.logger.Info("DummyDA: Blob size limit reached for batch", "maxBlobSize", d.maxBlobSize, "index", i, "currentSize", currentSize, "nextBlobSize", blobLen) // Removed logger call
 			break
 		}
 		currentSize += blobLen
@@ -220,23 +234,80 @@ func (d *DummyDA) SubmitWithOptions(ctx context.Context, blobs []Blob, gasPrice 
 	}
 	d.timestampsByHeight[height] = time.Now()
 
-	return ids, nil
+	return ResultSubmit{
+		BaseResult: BaseResult{
+			Code:           StatusSuccess,
+			IDs:            ids,
+			SubmittedCount: uint64(len(ids)),
+			Height:         height,
+			BlobSize:       blobSize,
+			Timestamp:      time.Now(),
+		},
+	}
 }
 
-// Validate validates commitments against proofs.
-func (d *DummyDA) Validate(ctx context.Context, ids []ID, proofs []Proof, namespace []byte) ([]bool, error) {
+// Retrieve retrieves all blobs at the given height and returns a structured result.
+// This is the primary implementation - GetIDs delegates to this method.
+func (d *DummyDA) Retrieve(ctx context.Context, height uint64, namespace []byte) ResultRetrieve {
 	d.mu.RLock()
 	defer d.mu.RUnlock()
 
-	if len(ids) != len(proofs) {
-		return nil, errors.New("number of IDs and proofs must match")
+	// Check height bounds
+	if height > d.currentHeight {
+		return ResultRetrieve{
+			BaseResult: BaseResult{
+				Code:      StatusHeightFromFuture,
+				Message:   ErrHeightFromFuture.Error(),
+				Height:    height,
+				Timestamp: time.Now(),
+			},
+		}
 	}
 
-	results := make([]bool, len(ids))
-	for i, id := range ids {
-		_, exists := d.blobs[string(id)]
-		results[i] = exists
+	// Get IDs at height
+	ids, exists := d.blobsByHeight[height]
+	if !exists {
+		return ResultRetrieve{
+			BaseResult: BaseResult{
+				Code:      StatusNotFound,
+				Message:   ErrBlobNotFound.Error(),
+				Height:    height,
+				Timestamp: time.Now(),
+			},
+		}
 	}
 
-	return results, nil
+	// Filter IDs by namespace and collect blobs
+	filteredIDs := make([]ID, 0)
+	blobs := make([]Blob, 0)
+	for _, id := range ids {
+		if ns, nsExists := d.namespaceByID[string(id)]; nsExists && bytes.Equal(ns, namespace) {
+			filteredIDs = append(filteredIDs, id)
+			if blob, blobExists := d.blobs[string(id)]; blobExists {
+				blobs = append(blobs, blob)
+			}
+		}
+	}
+
+	// Handle empty result after namespace filtering
+	if len(filteredIDs) == 0 {
+		return ResultRetrieve{
+			BaseResult: BaseResult{
+				Code:      StatusNotFound,
+				Message:   ErrBlobNotFound.Error(),
+				Height:    height,
+				Timestamp: time.Now(),
+			},
+		}
+	}
+
+	return ResultRetrieve{
+		BaseResult: BaseResult{
+			Code:      StatusSuccess,
+			Height:    height,
+			IDs:       filteredIDs,
+			Timestamp: d.timestampsByHeight[height],
+		},
+		Data: blobs,
+	}
 }

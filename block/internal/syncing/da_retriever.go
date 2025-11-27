@@ -5,8 +5,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"strings"
-	"time"
 
 	"github.com/rs/zerolog"
 	"google.golang.org/protobuf/proto"
@@ -19,108 +17,6 @@ import (
 	"github.com/evstack/ev-node/types"
 	pb "github.com/evstack/ev-node/types/pb/evnode/v1"
 )
-
-// defaultDATimeout is the default timeout for DA retrieval operations
-const defaultDATimeout = 10 * time.Second
-
-// retrieveWithHelpers performs blob retrieval using the underlying DA layer,
-// handling error mapping to produce a ResultRetrieve.
-func retrieveWithHelpers(
-	ctx context.Context,
-	daLayer dapkg.DA,
-	logger zerolog.Logger,
-	dataLayerHeight uint64,
-	namespace []byte,
-	requestTimeout time.Duration,
-) dapkg.ResultRetrieve {
-	// 1. Get IDs
-	getIDsCtx, cancel := context.WithTimeout(ctx, requestTimeout)
-	defer cancel()
-	idsResult, err := daLayer.GetIDs(getIDsCtx, dataLayerHeight, namespace)
-	if err != nil {
-		// Handle specific "not found" error
-		if strings.Contains(err.Error(), dapkg.ErrBlobNotFound.Error()) {
-			logger.Debug().Uint64("height", dataLayerHeight).Msg("Retrieve helper: Blobs not found at height")
-			return dapkg.ResultRetrieve{
-				BaseResult: dapkg.BaseResult{
-					Code:      dapkg.StatusNotFound,
-					Message:   dapkg.ErrBlobNotFound.Error(),
-					Height:    dataLayerHeight,
-					Timestamp: time.Now(),
-				},
-			}
-		}
-		if strings.Contains(err.Error(), dapkg.ErrHeightFromFuture.Error()) {
-			logger.Debug().Uint64("height", dataLayerHeight).Msg("Retrieve helper: Blobs not found at height")
-			return dapkg.ResultRetrieve{
-				BaseResult: dapkg.BaseResult{
-					Code:      dapkg.StatusHeightFromFuture,
-					Message:   dapkg.ErrHeightFromFuture.Error(),
-					Height:    dataLayerHeight,
-					Timestamp: time.Now(),
-				},
-			}
-		}
-		// Handle other errors during GetIDs
-		logger.Error().Uint64("height", dataLayerHeight).Err(err).Msg("Retrieve helper: Failed to get IDs")
-		return dapkg.ResultRetrieve{
-			BaseResult: dapkg.BaseResult{
-				Code:      dapkg.StatusError,
-				Message:   fmt.Sprintf("failed to get IDs: %s", err.Error()),
-				Height:    dataLayerHeight,
-				Timestamp: time.Now(),
-			},
-		}
-	}
-
-	// This check should technically be redundant if GetIDs correctly returns ErrBlobNotFound
-	if idsResult == nil || len(idsResult.IDs) == 0 {
-		logger.Debug().Uint64("height", dataLayerHeight).Msg("Retrieve helper: No IDs found at height")
-		return dapkg.ResultRetrieve{
-			BaseResult: dapkg.BaseResult{
-				Code:      dapkg.StatusNotFound,
-				Message:   dapkg.ErrBlobNotFound.Error(),
-				Height:    dataLayerHeight,
-				Timestamp: time.Now(),
-			},
-		}
-	}
-	// 2. Get Blobs using the retrieved IDs in batches
-	batchSize := 100
-	blobs := make([][]byte, 0, len(idsResult.IDs))
-	for i := 0; i < len(idsResult.IDs); i += batchSize {
-		end := min(i+batchSize, len(idsResult.IDs))
-
-		getBlobsCtx, cancel := context.WithTimeout(ctx, requestTimeout)
-		batchBlobs, err := daLayer.Get(getBlobsCtx, idsResult.IDs[i:end], namespace)
-		cancel()
-		if err != nil {
-			// Handle errors during Get
-			logger.Error().Uint64("height", dataLayerHeight).Int("num_ids", len(idsResult.IDs)).Err(err).Msg("Retrieve helper: Failed to get blobs")
-			return dapkg.ResultRetrieve{
-				BaseResult: dapkg.BaseResult{
-					Code:      dapkg.StatusError,
-					Message:   fmt.Sprintf("failed to get blobs for batch %d-%d: %s", i, end-1, err.Error()),
-					Height:    dataLayerHeight,
-					Timestamp: time.Now(),
-				},
-			}
-		}
-		blobs = append(blobs, batchBlobs...)
-	}
-
-	// Success
-	logger.Debug().Uint64("height", dataLayerHeight).Int("num_blobs", len(blobs)).Msg("Successfully retrieved blobs")
-	return dapkg.ResultRetrieve{
-		BaseResult: dapkg.BaseResult{
-			Code:      dapkg.StatusSuccess,
-			Height:    dataLayerHeight,
-			IDs:       idsResult.IDs,
-			Timestamp: idsResult.Timestamp,
-		},
-		Data: blobs,
-	}
-}
 
 // DARetriever handles DA retrieval operations for syncing
 type DARetriever struct {
@@ -179,14 +75,14 @@ func (r *DARetriever) RetrieveFromDA(ctx context.Context, daHeight uint64) ([]co
 // fetchBlobs retrieves blobs from the DA layer
 func (r *DARetriever) fetchBlobs(ctx context.Context, daHeight uint64) (dapkg.ResultRetrieve, error) {
 	// Retrieve from both namespaces
-	headerRes := retrieveWithHelpers(ctx, r.da, r.logger, daHeight, r.namespaceBz, defaultDATimeout)
+	headerRes := r.da.Retrieve(ctx, daHeight, r.namespaceBz)
 
 	// If namespaces are the same, return header result
 	if bytes.Equal(r.namespaceBz, r.namespaceDataBz) {
 		return headerRes, r.validateBlobResponse(headerRes, daHeight)
 	}
 
-	dataRes := retrieveWithHelpers(ctx, r.da, r.logger, daHeight, r.namespaceDataBz, defaultDATimeout)
+	dataRes := r.da.Retrieve(ctx, daHeight, r.namespaceDataBz)
 
 	// Validate responses
 	headerErr := r.validateBlobResponse(headerRes, daHeight)

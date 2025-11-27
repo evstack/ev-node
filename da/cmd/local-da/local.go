@@ -7,7 +7,6 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/binary"
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"sync"
@@ -106,32 +105,16 @@ func (d *LocalDA) Get(ctx context.Context, ids []da.ID, ns []byte) ([]da.Blob, e
 }
 
 // GetIDs returns IDs of Blobs at given DA height.
+// Delegates to Retrieve.
 func (d *LocalDA) GetIDs(ctx context.Context, height uint64, ns []byte) (*da.GetIDsResult, error) {
-	if err := validateNamespace(ns); err != nil {
-		d.logger.Error().Err(err).Msg("GetIDs: invalid namespace")
-		return nil, err
+	result := d.Retrieve(ctx, height, ns)
+	if result.Code != da.StatusSuccess {
+		return nil, da.StatusCodeToError(result.Code, result.Message)
 	}
-	d.logger.Debug().Uint64("height", height).Msg("GetIDs called")
-	d.mu.Lock()
-	defer d.mu.Unlock()
-
-	if height > d.height {
-		d.logger.Error().Uint64("requested", height).Uint64("current", d.height).Msg("GetIDs: height in future")
-		return nil, fmt.Errorf("height %d is in the future: %w", height, da.ErrHeightFromFuture)
-	}
-
-	kvps, ok := d.data[height]
-	if !ok {
-		d.logger.Debug().Uint64("height", height).Msg("GetIDs: no data for height")
-		return nil, nil
-	}
-
-	ids := make([]da.ID, len(kvps))
-	for i, kv := range kvps {
-		ids[i] = kv.key
-	}
-	d.logger.Debug().Int("count", len(ids)).Msg("GetIDs successful")
-	return &da.GetIDsResult{IDs: ids, Timestamp: d.timestamps[height]}, nil
+	return &da.GetIDsResult{
+		IDs:       result.IDs,
+		Timestamp: result.Timestamp,
+	}, nil
 }
 
 // GetProofs returns inclusion Proofs for all Blobs located in DA at given height.
@@ -172,64 +155,10 @@ func (d *LocalDA) Commit(ctx context.Context, blobs []da.Blob, ns []byte) ([]da.
 	return commits, nil
 }
 
-// SubmitWithOptions stores blobs in DA layer (options are ignored).
-func (d *LocalDA) SubmitWithOptions(ctx context.Context, blobs []da.Blob, gasPrice float64, ns []byte, _ []byte) ([]da.ID, error) {
-	if err := validateNamespace(ns); err != nil {
-		d.logger.Error().Err(err).Msg("SubmitWithOptions: invalid namespace")
-		return nil, err
-	}
-	d.logger.Info().Int("numBlobs", len(blobs)).Float64("gasPrice", gasPrice).Str("namespace", hex.EncodeToString(ns)).Msg("SubmitWithOptions called")
-
-	// Validate blob sizes before processing
-	for i, blob := range blobs {
-		if uint64(len(blob)) > d.maxBlobSize {
-			d.logger.Error().Int("blobIndex", i).Int("blobSize", len(blob)).Uint64("maxBlobSize", d.maxBlobSize).Msg("SubmitWithOptions: blob size exceeds limit")
-			return nil, da.ErrBlobSizeOverLimit
-		}
-	}
-
-	d.mu.Lock()
-	defer d.mu.Unlock()
-	ids := make([]da.ID, len(blobs))
-	d.height += 1
-	d.timestamps[d.height] = time.Now()
-	for i, blob := range blobs {
-		ids[i] = append(d.nextID(), d.getHash(blob)...)
-
-		d.data[d.height] = append(d.data[d.height], kvp{ids[i], blob})
-	}
-	d.logger.Info().Uint64("newHeight", d.height).Int("count", len(ids)).Msg("SubmitWithOptions successful")
-	return ids, nil
-}
-
-// Submit stores blobs in DA layer (options are ignored).
-func (d *LocalDA) Submit(ctx context.Context, blobs []da.Blob, gasPrice float64, ns []byte) ([]da.ID, error) {
-	if err := validateNamespace(ns); err != nil {
-		d.logger.Error().Err(err).Msg("Submit: invalid namespace")
-		return nil, err
-	}
-	d.logger.Info().Int("numBlobs", len(blobs)).Float64("gasPrice", gasPrice).Str("namespace", string(ns)).Msg("Submit called")
-
-	// Validate blob sizes before processing
-	for i, blob := range blobs {
-		if uint64(len(blob)) > d.maxBlobSize {
-			d.logger.Error().Int("blobIndex", i).Int("blobSize", len(blob)).Uint64("maxBlobSize", d.maxBlobSize).Msg("Submit: blob size exceeds limit")
-			return nil, da.ErrBlobSizeOverLimit
-		}
-	}
-
-	d.mu.Lock()
-	defer d.mu.Unlock()
-	ids := make([]da.ID, len(blobs))
-	d.height += 1
-	d.timestamps[d.height] = time.Now()
-	for i, blob := range blobs {
-		ids[i] = append(d.nextID(), d.getHash(blob)...)
-
-		d.data[d.height] = append(d.data[d.height], kvp{ids[i], blob})
-	}
-	d.logger.Info().Uint64("newHeight", d.height).Int("count", len(ids)).Msg("Submit successful")
-	return ids, nil
+// Submit stores blobs in DA layer and returns a structured result.
+// Delegates to SubmitWithOptions with nil options.
+func (d *LocalDA) Submit(ctx context.Context, blobs []da.Blob, gasPrice float64, ns []byte) da.ResultSubmit {
+	return d.SubmitWithOptions(ctx, blobs, gasPrice, ns, nil)
 }
 
 // Validate checks the Proofs for given IDs.
@@ -277,5 +206,130 @@ func WithMaxBlobSize(maxBlobSize uint64) func(*LocalDA) *LocalDA {
 	return func(da *LocalDA) *LocalDA {
 		da.maxBlobSize = maxBlobSize
 		return da
+	}
+}
+
+// SubmitWithOptions stores blobs in DA layer with additional options and returns a structured result.
+// This is the primary implementation - Submit delegates to this method.
+func (d *LocalDA) SubmitWithOptions(ctx context.Context, blobs []da.Blob, gasPrice float64, namespace []byte, options []byte) da.ResultSubmit {
+	// Calculate blob size upfront
+	var blobSize uint64
+	for _, blob := range blobs {
+		blobSize += uint64(len(blob))
+	}
+
+	// Validate namespace
+	if err := validateNamespace(namespace); err != nil {
+		d.logger.Error().Err(err).Msg("SubmitWithResult: invalid namespace")
+		return da.ResultSubmit{
+			BaseResult: da.BaseResult{
+				Code:     da.StatusError,
+				Message:  err.Error(),
+				BlobSize: blobSize,
+			},
+		}
+	}
+
+	// Validate blob sizes before processing
+	for i, blob := range blobs {
+		if uint64(len(blob)) > d.maxBlobSize {
+			d.logger.Error().Int("blobIndex", i).Int("blobSize", len(blob)).Uint64("maxBlobSize", d.maxBlobSize).Msg("SubmitWithResult: blob size exceeds limit")
+			return da.ResultSubmit{
+				BaseResult: da.BaseResult{
+					Code:     da.StatusTooBig,
+					Message:  "failed to submit blobs: " + da.ErrBlobSizeOverLimit.Error(),
+					BlobSize: blobSize,
+				},
+			}
+		}
+	}
+
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	ids := make([]da.ID, len(blobs))
+	d.height++
+	d.timestamps[d.height] = time.Now()
+	for i, blob := range blobs {
+		ids[i] = append(d.nextID(), d.getHash(blob)...)
+		d.data[d.height] = append(d.data[d.height], kvp{ids[i], blob})
+	}
+
+	d.logger.Debug().Int("num_ids", len(ids)).Uint64("height", d.height).Msg("DA submission successful")
+	return da.ResultSubmit{
+		BaseResult: da.BaseResult{
+			Code:           da.StatusSuccess,
+			IDs:            ids,
+			SubmittedCount: uint64(len(ids)),
+			Height:         d.height,
+			BlobSize:       blobSize,
+			Timestamp:      time.Now(),
+		},
+	}
+}
+
+// Retrieve retrieves all blobs at the given height and returns a structured result.
+// This is the primary implementation - GetIDs delegates to this method.
+func (d *LocalDA) Retrieve(ctx context.Context, height uint64, namespace []byte) da.ResultRetrieve {
+	// Validate namespace
+	if err := validateNamespace(namespace); err != nil {
+		d.logger.Error().Err(err).Msg("Retrieve: invalid namespace")
+		return da.ResultRetrieve{
+			BaseResult: da.BaseResult{
+				Code:      da.StatusError,
+				Message:   err.Error(),
+				Height:    height,
+				Timestamp: time.Now(),
+			},
+		}
+	}
+
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	// Check height bounds
+	if height > d.height {
+		d.logger.Error().Uint64("requested", height).Uint64("current", d.height).Msg("Retrieve: height in future")
+		return da.ResultRetrieve{
+			BaseResult: da.BaseResult{
+				Code:      da.StatusHeightFromFuture,
+				Message:   da.ErrHeightFromFuture.Error(),
+				Height:    height,
+				Timestamp: time.Now(),
+			},
+		}
+	}
+
+	// Get data at height
+	kvps, ok := d.data[height]
+	if !ok || len(kvps) == 0 {
+		d.logger.Debug().Uint64("height", height).Msg("Retrieve: no data for height")
+		return da.ResultRetrieve{
+			BaseResult: da.BaseResult{
+				Code:      da.StatusNotFound,
+				Message:   da.ErrBlobNotFound.Error(),
+				Height:    height,
+				Timestamp: time.Now(),
+			},
+		}
+	}
+
+	// Extract IDs and blobs
+	ids := make([]da.ID, len(kvps))
+	blobs := make([][]byte, len(kvps))
+	for i, kv := range kvps {
+		ids[i] = kv.key
+		blobs[i] = kv.value
+	}
+
+	d.logger.Debug().Uint64("height", height).Int("num_blobs", len(blobs)).Msg("Successfully retrieved blobs")
+	return da.ResultRetrieve{
+		BaseResult: da.BaseResult{
+			Code:      da.StatusSuccess,
+			Height:    height,
+			IDs:       ids,
+			Timestamp: d.timestamps[height],
+		},
+		Data: blobs,
 	}
 }
