@@ -86,7 +86,7 @@ func TestForceInclusionServer_handleSendRawTransaction_Success(t *testing.T) {
 	}
 
 	logger := zerolog.New(zerolog.NewTestWriter(t))
-	server, err := NewForceInclusionServer("", mockDAClient, cfg, gen, logger)
+	server, err := NewForceInclusionServer("", mockDAClient, cfg, gen, logger, "")
 	assert.NilError(t, err)
 
 	// Create test request
@@ -127,7 +127,7 @@ func TestForceInclusionServer_handleSendRawTransaction_InvalidParams(t *testing.
 
 	gen := genesis.Genesis{}
 	logger := zerolog.New(zerolog.NewTestWriter(t))
-	server, err := NewForceInclusionServer("", mockDAClient, cfg, gen, logger)
+	server, err := NewForceInclusionServer("", mockDAClient, cfg, gen, logger, "")
 	assert.NilError(t, err)
 
 	tests := []struct {
@@ -196,7 +196,7 @@ func TestForceInclusionServer_handleSendRawTransaction_DAError(t *testing.T) {
 
 	gen := genesis.Genesis{}
 	logger := zerolog.New(zerolog.NewTestWriter(t))
-	server, err := NewForceInclusionServer("", mockDAClient, cfg, gen, logger)
+	server, err := NewForceInclusionServer("", mockDAClient, cfg, gen, logger, "")
 	assert.NilError(t, err)
 
 	reqBody := JSONRPCRequest{
@@ -235,7 +235,7 @@ func TestForceInclusionServer_handleJSONRPC_MethodNotFound(t *testing.T) {
 
 	gen := genesis.Genesis{}
 	logger := zerolog.New(zerolog.NewTestWriter(t))
-	server, err := NewForceInclusionServer("", mockDAClient, cfg, gen, logger)
+	server, err := NewForceInclusionServer("", mockDAClient, cfg, gen, logger, "")
 	assert.NilError(t, err)
 
 	reqBody := JSONRPCRequest{
@@ -274,7 +274,7 @@ func TestForceInclusionServer_handleJSONRPC_InvalidJSON(t *testing.T) {
 
 	gen := genesis.Genesis{}
 	logger := zerolog.New(zerolog.NewTestWriter(t))
-	server, err := NewForceInclusionServer("", mockDAClient, cfg, gen, logger)
+	server, err := NewForceInclusionServer("", mockDAClient, cfg, gen, logger, "")
 	assert.NilError(t, err)
 
 	req := httptest.NewRequest(http.MethodPost, "/", bytes.NewReader([]byte("invalid json")))
@@ -303,7 +303,7 @@ func TestForceInclusionServer_StartStop(t *testing.T) {
 
 	gen := genesis.Genesis{}
 	logger := zerolog.New(zerolog.NewTestWriter(t))
-	server, err := NewForceInclusionServer("127.0.0.1:0", mockDAClient, cfg, gen, logger)
+	server, err := NewForceInclusionServer("127.0.0.1:0", mockDAClient, cfg, gen, logger, "")
 	assert.NilError(t, err)
 
 	ctx := context.Background()
@@ -331,7 +331,7 @@ func TestDecodeHexTx(t *testing.T) {
 
 	gen := genesis.Genesis{}
 	logger := zerolog.New(zerolog.NewTestWriter(t))
-	server, err := NewForceInclusionServer("", mockDAClient, cfg, gen, logger)
+	server, err := NewForceInclusionServer("", mockDAClient, cfg, gen, logger, "")
 	assert.NilError(t, err)
 
 	tests := []struct {
@@ -377,4 +377,104 @@ func TestDecodeHexTx(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestForceInclusionServer_ProxyToExecutionRPC(t *testing.T) {
+	mockDAClient := &mockDA{}
+
+	// Create a mock execution RPC server
+	mockExecutionRPC := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var req JSONRPCRequest
+		err := json.NewDecoder(r.Body).Decode(&req)
+		assert.NilError(t, err)
+
+		// Return a mock response
+		resp := JSONRPCResponse{
+			JSONRPC: "2.0",
+			ID:      req.ID,
+			Result:  "0x1234567890abcdef",
+		}
+		w.Header().Set("Content-Type", "application/json")
+		err = json.NewEncoder(w).Encode(resp)
+		assert.NilError(t, err)
+	}))
+	defer mockExecutionRPC.Close()
+
+	cfg := config.Config{
+		DA: config.DAConfig{
+			ForcedInclusionNamespace: "0x0000000000000000000000000000000000000000000000000000666f72636564",
+		},
+	}
+
+	gen := genesis.Genesis{}
+	logger := zerolog.New(zerolog.NewTestWriter(t))
+	server, err := NewForceInclusionServer("", mockDAClient, cfg, gen, logger, mockExecutionRPC.URL)
+	assert.NilError(t, err)
+
+	// Test proxying eth_getBalance
+	reqBody := JSONRPCRequest{
+		JSONRPC: "2.0",
+		ID:      1,
+		Method:  "eth_getBalance",
+		Params:  json.RawMessage(`["0x1234567890123456789012345678901234567890", "latest"]`),
+	}
+
+	reqJSON, err := json.Marshal(reqBody)
+	assert.NilError(t, err)
+
+	req := httptest.NewRequest(http.MethodPost, "/", bytes.NewReader(reqJSON))
+	w := httptest.NewRecorder()
+
+	server.handleJSONRPC(w, req)
+
+	resp := w.Result()
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+
+	var jsonResp JSONRPCResponse
+	err = json.NewDecoder(resp.Body).Decode(&jsonResp)
+	assert.NilError(t, err)
+	assert.Equal(t, "2.0", jsonResp.JSONRPC)
+	assert.Assert(t, jsonResp.Error == nil)
+	assert.Equal(t, "0x1234567890abcdef", jsonResp.Result)
+}
+
+func TestForceInclusionServer_ProxyWithoutExecutionRPC(t *testing.T) {
+	mockDAClient := &mockDA{}
+
+	cfg := config.Config{
+		DA: config.DAConfig{
+			ForcedInclusionNamespace: "0x0000000000000000000000000000000000000000000000000000666f72636564",
+		},
+	}
+
+	gen := genesis.Genesis{}
+	logger := zerolog.New(zerolog.NewTestWriter(t))
+	// Create server without execution RPC URL
+	server, err := NewForceInclusionServer("", mockDAClient, cfg, gen, logger, "")
+	assert.NilError(t, err)
+
+	// Test that unknown methods return method not found when no execution RPC is configured
+	reqBody := JSONRPCRequest{
+		JSONRPC: "2.0",
+		ID:      1,
+		Method:  "eth_getBalance",
+		Params:  json.RawMessage(`[]`),
+	}
+
+	reqJSON, err := json.Marshal(reqBody)
+	assert.NilError(t, err)
+
+	req := httptest.NewRequest(http.MethodPost, "/", bytes.NewReader(reqJSON))
+	w := httptest.NewRecorder()
+
+	server.handleJSONRPC(w, req)
+
+	resp := w.Result()
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+
+	var jsonResp JSONRPCResponse
+	err = json.NewDecoder(resp.Body).Decode(&jsonResp)
+	assert.NilError(t, err)
+	assert.Assert(t, jsonResp.Error != nil)
+	assert.Equal(t, MethodNotFound, jsonResp.Error.Code)
 }

@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -29,12 +30,14 @@ const (
 // ForceInclusionServer provides an Ethereum-compatible JSON-RPC endpoint
 // that accepts transactions and submits them directly to the DA layer for force inclusion
 type ForceInclusionServer struct {
-	server    *http.Server
-	daClient  da.DA
-	config    config.Config
-	genesis   genesis.Genesis
-	logger    zerolog.Logger
-	namespace []byte
+	server          *http.Server
+	daClient        da.DA
+	config          config.Config
+	genesis         genesis.Genesis
+	logger          zerolog.Logger
+	namespace       []byte
+	executionRPCURL string
+	httpClient      *http.Client
 }
 
 // NewForceInclusionServer creates a new force inclusion server
@@ -44,6 +47,7 @@ func NewForceInclusionServer(
 	cfg config.Config,
 	gen genesis.Genesis,
 	logger zerolog.Logger,
+	executionRPCURL string,
 ) (*ForceInclusionServer, error) {
 	if addr == "" {
 		addr = defaultForceInclusionAddr
@@ -56,11 +60,15 @@ func NewForceInclusionServer(
 	namespace := da.NamespaceFromString(cfg.DA.GetForcedInclusionNamespace()).Bytes()
 
 	s := &ForceInclusionServer{
-		daClient:  daClient,
-		config:    cfg,
-		genesis:   gen,
-		logger:    logger.With().Str("module", "force_inclusion_api").Logger(),
-		namespace: namespace,
+		daClient:        daClient,
+		config:          cfg,
+		genesis:         gen,
+		logger:          logger.With().Str("module", "force_inclusion_api").Logger(),
+		namespace:       namespace,
+		executionRPCURL: executionRPCURL,
+		httpClient: &http.Client{
+			Timeout: 30 * time.Second,
+		},
 	}
 
 	mux := http.NewServeMux()
@@ -163,7 +171,60 @@ func (s *ForceInclusionServer) handleJSONRPC(w http.ResponseWriter, r *http.Requ
 	case "eth_sendRawTransaction":
 		s.handleSendRawTransaction(w, &req)
 	default:
+		s.proxyToExecutionRPC(w, &req, body)
+	}
+}
+
+// handleChainID handles eth_chainId requests
+func (s *ForceInclusionServer) handleChainID(w http.ResponseWriter, req *JSONRPCRequest) {
+	// Convert chain ID string to integer
+	chainIDInt, err := strconv.ParseUint(s.genesis.ChainID, 10, 64)
+	if err != nil {
+		s.writeError(w, req.ID, InternalError, fmt.Sprintf("invalid chain ID: %v", err))
+		return
+	}
+	// Return the chain ID as a hex string prefixed with 0x
+	chainID := fmt.Sprintf("0x%x", chainIDInt)
+	s.writeSuccess(w, req.ID, chainID)
+}
+
+// proxyToExecutionRPC forwards unknown RPC methods to the execution RPC endpoint
+func (s *ForceInclusionServer) proxyToExecutionRPC(w http.ResponseWriter, req *JSONRPCRequest, body []byte) {
+	if s.executionRPCURL == "" {
 		s.writeError(w, req.ID, MethodNotFound, fmt.Sprintf("method %s not found", req.Method))
+		return
+	}
+
+	s.logger.Debug().
+		Str("method", req.Method).
+		Str("execution_rpc_url", s.executionRPCURL).
+		Msg("proxying request to execution RPC")
+
+	proxyReq, err := http.NewRequest(http.MethodPost, s.executionRPCURL, strings.NewReader(string(body)))
+	if err != nil {
+		s.writeError(w, req.ID, InternalError, fmt.Sprintf("failed to create proxy request: %v", err))
+		return
+	}
+
+	proxyReq.Header.Set("Content-Type", "application/json")
+
+	resp, err := s.httpClient.Do(proxyReq)
+	if err != nil {
+		s.writeError(w, req.ID, InternalError, fmt.Sprintf("failed to proxy request: %v", err))
+		return
+	}
+	defer resp.Body.Close()
+
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		s.writeError(w, req.ID, InternalError, fmt.Sprintf("failed to read proxy response: %v", err))
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(resp.StatusCode)
+	if _, err := w.Write(respBody); err != nil {
+		s.logger.Error().Err(err).Msg("failed to write proxy response")
 	}
 }
 

@@ -106,12 +106,18 @@ var RunCmd = &cobra.Command{
 		}
 
 		if forceInclusionAddr != "" {
+			ethURL, err := cmd.Flags().GetString(evm.FlagEvmEthURL)
+			if err != nil {
+				return fmt.Errorf("failed to get '%s' flag: %w", evm.FlagEvmEthURL, err)
+			}
+
 			forceInclusionServer, err := server.NewForceInclusionServer(
 				forceInclusionAddr,
 				&daJrpc.DA,
 				nodeConfig,
 				genesis,
 				logger,
+				ethURL,
 			)
 			if err != nil {
 				return fmt.Errorf("failed to create force inclusion server: %w", err)
