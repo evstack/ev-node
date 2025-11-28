@@ -73,6 +73,11 @@ func (d *LocalDA) GetAll(ctx context.Context, height uint64, namespaces []share.
 	d.mu.RLock()
 	defer d.mu.RUnlock()
 
+	// Return error if requesting a height from the future
+	if height > d.height {
+		return nil, fmt.Errorf("height %d is in the future (current: %d): given height is from the future", height, d.height)
+	}
+
 	entries, ok := d.blobs[height]
 	if !ok {
 		return nil, nil
