@@ -174,26 +174,42 @@ func (s *DAVisualizationServer) handleDABlobDetails(w http.ResponseWriter, r *ht
 	defer cancel()
 
 	var namespace []byte
-
-	s.mutex.RLock()
 	found := false
-	for _, submission := range s.submissions {
-		for _, subBlobID := range submission.BlobIDs {
-			if subBlobID == blobID {
-				if submission.Namespace != "" {
-					if ns, err := hex.DecodeString(submission.Namespace); err == nil {
-						namespace = ns
-						found = true
+
+	// 1. Check query parameter first
+	nsParam := r.URL.Query().Get("namespace")
+	if nsParam != "" {
+		if ns, err := coreda.ParseHexNamespace(nsParam); err == nil {
+			namespace = ns.Bytes()
+			found = true
+		} else {
+			ns := coreda.NamespaceFromString(nsParam)
+			namespace = ns.Bytes()
+			found = true
+		}
+	}
+
+	// 2. If not provided in query, try to find in recent submissions
+	if !found {
+		s.mutex.RLock()
+		for _, submission := range s.submissions {
+			for _, subBlobID := range submission.BlobIDs {
+				if subBlobID == blobID {
+					if submission.Namespace != "" {
+						if ns, err := hex.DecodeString(submission.Namespace); err == nil {
+							namespace = ns
+							found = true
+						}
 					}
+					break
 				}
+			}
+			if found {
 				break
 			}
 		}
-		if found {
-			break
-		}
+		s.mutex.RUnlock()
 	}
-	s.mutex.RUnlock()
 
 	if !found || len(namespace) == 0 {
 		http.Error(w, "Namespace required to retrieve blob (not found in recent submissions and not provided in query)", http.StatusBadRequest)

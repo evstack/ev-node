@@ -178,8 +178,9 @@
                 {{.NumBlobs}}
                 {{if .BlobIDs}}
                 <div class="blob-ids">
+                    {{$namespace := .Namespace}}
                     {{range .BlobIDs}}
-                    <a href="/da/blob?id={{.}}" class="blob-link blob-id" title="Click to view blob details">{{slice . 0 8}}...</a>
+                    <a href="/da/blob?id={{.}}&namespace={{$namespace}}" class="blob-link blob-id" title="Click to view blob details">{{slice . 0 8}}...</a>
                     {{end}}
                 </div>
                 {{end}}
