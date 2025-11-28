@@ -17,6 +17,7 @@ import (
 
 	coreexecutor "github.com/evstack/ev-node/core/execution"
 	evconfig "github.com/evstack/ev-node/pkg/config"
+	datypes "github.com/evstack/ev-node/pkg/da/types"
 )
 
 // FullNodeTestSuite is a test suite for full node integration tests
