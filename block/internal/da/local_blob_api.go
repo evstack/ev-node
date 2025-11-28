@@ -48,6 +48,11 @@ func (l *LocalBlobAPI) GetAll(ctx context.Context, height uint64, namespaces []s
 	l.mu.Lock()
 	defer l.mu.Unlock()
 
+	// Return error if requesting a height from the future
+	if height > l.height {
+		return nil, fmt.Errorf("height %d is in the future (current: %d): given height is from the future", height, l.height)
+	}
+
 	nsMap := make(map[string]struct{}, len(namespaces))
 	for _, ns := range namespaces {
 		nsMap[string(ns.Bytes())] = struct{}{}

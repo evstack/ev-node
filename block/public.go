@@ -60,3 +60,19 @@ func NewDAClient(
 		DataNamespace:  config.DA.GetDataNamespace(),
 	})
 }
+
+// NewLocalDAClient creates a new DA client using an in-memory LocalBlobAPI.
+// This is useful for tests where multiple nodes need to share the same DA state.
+func NewLocalDAClient(
+	config config.Config,
+	logger zerolog.Logger,
+) DAClient {
+	blobClient := da.NewLocalBlobAPI(common.DefaultMaxBlobSize)
+	return da.NewClient(da.Config{
+		BlobAPI:        blobClient,
+		Logger:         logger,
+		DefaultTimeout: 10 * time.Second,
+		Namespace:      config.DA.GetNamespace(),
+		DataNamespace:  config.DA.GetDataNamespace(),
+	})
+}

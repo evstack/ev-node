@@ -145,6 +145,12 @@ func createNodeWithCustomComponents(
 	return newTestNode(t, config, executor, sequencer, daClient, p2pClient, ds, stopDAHeightTicker)
 }
 
+// createTestDAClient creates a shared DA client for tests using LocalBlobAPI.
+// All nodes in a test should share this client so they see the same DA state.
+func createTestDAClient(config evconfig.Config, logger zerolog.Logger) block.DAClient {
+	return block.NewLocalDAClient(config, logger)
+}
+
 // Creates the given number of nodes the given nodes using the given wait group to synchronize them
 func createNodesWithCleanup(t *testing.T, num int, config evconfig.Config) ([]*FullNode, []func()) {
 	t.Helper()
@@ -168,6 +174,10 @@ func createNodesWithCleanup(t *testing.T, num int, config evconfig.Config) ([]*F
 	if testing.Verbose() {
 		logger = zerolog.New(zerolog.NewTestWriter(t))
 	}
+
+	// Create a shared DA client for all nodes
+	sharedDAClient := createTestDAClient(config, logger)
+
 	aggNode, err := NewNode(
 		config,
 		executor,
@@ -178,7 +188,7 @@ func createNodesWithCleanup(t *testing.T, num int, config evconfig.Config) ([]*F
 		ds,
 		DefaultMetricsProvider(evconfig.DefaultInstrumentationConfig()),
 		logger,
-		NodeOptions{},
+		NodeOptions{DAClient: sharedDAClient},
 	)
 	require.NoError(err)
 
@@ -211,7 +221,7 @@ func createNodesWithCleanup(t *testing.T, num int, config evconfig.Config) ([]*F
 			dssync.MutexWrap(datastore.NewMapDatastore()),
 			DefaultMetricsProvider(evconfig.DefaultInstrumentationConfig()),
 			logger,
-			NodeOptions{},
+			NodeOptions{DAClient: sharedDAClient},
 		)
 		require.NoError(err)
 		// Update cleanup to cancel the context instead of calling Stop
