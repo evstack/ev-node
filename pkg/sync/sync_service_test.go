@@ -167,6 +167,181 @@ func TestHeaderSyncServiceInitFromHigherHeight(t *testing.T) {
 	require.NoError(t, svc.WriteToStoreAndBroadcast(ctx, signedHeader))
 }
 
+func TestDAHintStorageHeader(t *testing.T) {
+	mainKV := sync.MutexWrap(datastore.NewMapDatastore())
+	pk, _, err := crypto.GenerateEd25519Key(cryptoRand.Reader)
+	require.NoError(t, err)
+	noopSigner, err := noop.NewNoopSigner(pk)
+	require.NoError(t, err)
+	rnd := rand.New(rand.NewSource(1)) // nolint:gosec // test code only
+	mn := mocknet.New()
+
+	chainId := "test-chain-id"
+
+	proposerAddr := []byte("test")
+	genesisDoc := genesispkg.Genesis{
+		ChainID:         chainId,
+		StartTime:       time.Now(),
+		InitialHeight:   1,
+		ProposerAddress: proposerAddr,
+	}
+	conf := config.DefaultConfig()
+	conf.RootDir = t.TempDir()
+	nodeKey, err := key.LoadOrGenNodeKey(filepath.Dir(conf.ConfigPath()))
+	require.NoError(t, err)
+	logger := zerolog.Nop()
+	priv := nodeKey.PrivKey
+	p2pHost, err := mn.AddPeer(priv, nil)
+	require.NoError(t, err)
+
+	p2pClient, err := p2p.NewClientWithHost(conf.P2P, nodeKey.PrivKey, mainKV, chainId, logger, p2p.NopMetrics(), p2pHost)
+	require.NoError(t, err)
+
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	require.NoError(t, p2pClient.Start(ctx))
+
+	headerSvc, err := NewHeaderSyncService(mainKV, conf, genesisDoc, p2pClient, logger)
+	require.NoError(t, err)
+	require.NoError(t, headerSvc.Start(ctx))
+
+	headerConfig := types.HeaderConfig{
+		Height:   genesisDoc.InitialHeight,
+		DataHash: bytesN(rnd, 32),
+		AppHash:  bytesN(rnd, 32),
+		Signer:   noopSigner,
+	}
+	signedHeader, err := types.GetRandomSignedHeaderCustom(&headerConfig, genesisDoc.ChainID)
+	require.NoError(t, err)
+	require.NoError(t, signedHeader.Validate())
+
+	require.NoError(t, headerSvc.WriteToStoreAndBroadcast(ctx, signedHeader))
+
+	daHeight := uint64(100)
+	require.NoError(t, headerSvc.AppendDAHint(ctx, daHeight, signedHeader.Hash()))
+
+	h, hint, err := headerSvc.GetByHeight(ctx, signedHeader.Height())
+	require.NoError(t, err)
+	require.Equal(t, signedHeader.Hash(), h.Hash())
+	require.Equal(t, daHeight, hint)
+
+	_ = p2pClient.Close()
+	_ = headerSvc.Stop(ctx)
+	cancel()
+
+	// Restart
+	h2, err := mn.AddPeer(priv, nil)
+	require.NoError(t, err)
+	p2pClient, err = p2p.NewClientWithHost(conf.P2P, nodeKey.PrivKey, mainKV, chainId, logger, p2p.NopMetrics(), h2)
+	require.NoError(t, err)
+
+	ctx, cancel = context.WithCancel(t.Context())
+	defer cancel()
+	require.NoError(t, p2pClient.Start(ctx))
+	t.Cleanup(func() { _ = p2pClient.Close() })
+
+	headerSvc, err = NewHeaderSyncService(mainKV, conf, genesisDoc, p2pClient, logger)
+	require.NoError(t, err)
+	require.NoError(t, headerSvc.Start(ctx))
+	t.Cleanup(func() { _ = headerSvc.Stop(context.Background()) })
+
+	h, hint, err = headerSvc.GetByHeight(ctx, signedHeader.Height())
+	require.NoError(t, err)
+	require.Equal(t, signedHeader.Hash(), h.Hash())
+	require.Equal(t, daHeight, hint)
+}
+
+func TestDAHintStorageData(t *testing.T) {
+	mainKV := sync.MutexWrap(datastore.NewMapDatastore())
+	pk, _, err := crypto.GenerateEd25519Key(cryptoRand.Reader)
+	require.NoError(t, err)
+	noopSigner, err := noop.NewNoopSigner(pk)
+	require.NoError(t, err)
+	rnd := rand.New(rand.NewSource(1)) // nolint:gosec // test code only
+	mn := mocknet.New()
+
+	chainId := "test-chain-id"
+
+	proposerAddr := []byte("test")
+	genesisDoc := genesispkg.Genesis{
+		ChainID:         chainId,
+		StartTime:       time.Now(),
+		InitialHeight:   1,
+		ProposerAddress: proposerAddr,
+	}
+	conf := config.DefaultConfig()
+	conf.RootDir = t.TempDir()
+	nodeKey, err := key.LoadOrGenNodeKey(filepath.Dir(conf.ConfigPath()))
+	require.NoError(t, err)
+	logger := zerolog.Nop()
+	priv := nodeKey.PrivKey
+	p2pHost, err := mn.AddPeer(priv, nil)
+	require.NoError(t, err)
+
+	p2pClient, err := p2p.NewClientWithHost(conf.P2P, nodeKey.PrivKey, mainKV, chainId, logger, p2p.NopMetrics(), p2pHost)
+	require.NoError(t, err)
+
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	require.NoError(t, p2pClient.Start(ctx))
+
+	dataSvc, err := NewDataSyncService(mainKV, conf, genesisDoc, p2pClient, logger)
+	require.NoError(t, err)
+	require.NoError(t, dataSvc.Start(ctx))
+
+	// Need a valid header height for data metadata
+	headerConfig := types.HeaderConfig{
+		Height:   genesisDoc.InitialHeight,
+		DataHash: bytesN(rnd, 32),
+		AppHash:  bytesN(rnd, 32),
+		Signer:   noopSigner,
+	}
+	signedHeader, err := types.GetRandomSignedHeaderCustom(&headerConfig, genesisDoc.ChainID)
+	require.NoError(t, err)
+
+	data := types.Data{
+		Txs: types.Txs{[]byte("tx1")},
+		Metadata: &types.Metadata{
+			Height: signedHeader.Height(),
+		},
+	}
+
+	require.NoError(t, dataSvc.WriteToStoreAndBroadcast(ctx, &data))
+
+	daHeight := uint64(100)
+	require.NoError(t, dataSvc.AppendDAHint(ctx, daHeight, data.Hash()))
+
+	d, hint, err := dataSvc.GetByHeight(ctx, signedHeader.Height())
+	require.NoError(t, err)
+	require.Equal(t, data.Hash(), d.Hash())
+	require.Equal(t, daHeight, hint)
+
+	_ = p2pClient.Close()
+	_ = dataSvc.Stop(ctx)
+	cancel()
+
+	// Restart
+	h2, err := mn.AddPeer(priv, nil)
+	require.NoError(t, err)
+	p2pClient, err = p2p.NewClientWithHost(conf.P2P, nodeKey.PrivKey, mainKV, chainId, logger, p2p.NopMetrics(), h2)
+	require.NoError(t, err)
+
+	ctx, cancel = context.WithCancel(t.Context())
+	defer cancel()
+	require.NoError(t, p2pClient.Start(ctx))
+	t.Cleanup(func() { _ = p2pClient.Close() })
+
+	dataSvc, err = NewDataSyncService(mainKV, conf, genesisDoc, p2pClient, logger)
+	require.NoError(t, err)
+	require.NoError(t, dataSvc.Start(ctx))
+	t.Cleanup(func() { _ = dataSvc.Stop(context.Background()) })
+
+	d, hint, err = dataSvc.GetByHeight(ctx, signedHeader.Height())
+	require.NoError(t, err)
+	require.Equal(t, data.Hash(), d.Hash())
+	require.Equal(t, daHeight, hint)
+}
+
 func nextHeader(t *testing.T, previousHeader *types.SignedHeader, chainID string, noopSigner signer.Signer) *types.SignedHeader {
 	newSignedHeader := &types.SignedHeader{
 		Header: types.GetRandomNextHeader(previousHeader.Header, chainID),

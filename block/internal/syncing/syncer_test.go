@@ -697,3 +697,79 @@ func TestSyncer_getHighestStoredDAHeight(t *testing.T) {
 	highestDA = syncer.getHighestStoredDAHeight()
 	assert.Equal(t, uint64(200), highestDA, "should return highest DA height from most recent included height")
 }
+
+func TestProcessHeightEvent_TriggersAsyncDARetrieval(t *testing.T) {
+	ds := dssync.MutexWrap(datastore.NewMapDatastore())
+	st := store.New(ds)
+	cm, err := cache.NewCacheManager(config.DefaultConfig(), zerolog.Nop())
+	require.NoError(t, err)
+
+	addr, _, _ := buildSyncTestSigner(t)
+	cfg := config.DefaultConfig()
+	gen := genesis.Genesis{ChainID: "tchain", InitialHeight: 1, StartTime: time.Now().Add(-time.Second), ProposerAddress: addr}
+
+	mockExec := testmocks.NewMockExecutor(t)
+	mockExec.EXPECT().InitChain(mock.Anything, mock.Anything, uint64(1), "tchain").Return([]byte("app0"), uint64(1024), nil).Once()
+
+	s := NewSyncer(
+		st,
+		mockExec,
+		nil,
+		cm,
+		common.NopMetrics(),
+		cfg,
+		gen,
+		common.NewMockBroadcaster[*types.SignedHeader](t),
+		common.NewMockBroadcaster[*types.Data](t),
+		zerolog.Nop(),
+		common.DefaultBlockOptions(),
+		make(chan error, 1),
+	)
+	require.NoError(t, s.initializeState())
+	s.ctx = context.Background()
+
+	// Mock AsyncDARetriever
+	mockRetriever := NewMockDARetriever(t)
+	asyncRetriever := NewAsyncDARetriever(mockRetriever, s.heightInCh, zerolog.Nop())
+	// We don't start the async retriever to avoid race conditions in test, 
+	// we just want to verify RequestRetrieval queues the request.
+	// However, RequestRetrieval writes to a channel, so we need a consumer or a buffered channel.
+	// The workCh is buffered (100), so we are good.
+	s.asyncDARetriever = asyncRetriever
+
+	// Create event with DA height hint
+	evt := common.DAHeightEvent{
+		Header: &types.SignedHeader{Header: types.Header{BaseHeader: types.BaseHeader{ChainID: "c", Height: 2}}},
+		Data:   &types.Data{Metadata: &types.Metadata{ChainID: "c", Height: 2}},
+		Source: common.SourceP2P,
+		DaHeightHints: [2]uint64{100, 100},
+	}
+
+	// Current height is 0 (from init), event height is 2.
+	// processHeightEvent checks:
+	// 1. height <= currentHeight (2 <= 0 -> false)
+	// 2. height != currentHeight+1 (2 != 1 -> true) -> stores as pending event
+	
+	// We need to simulate height 1 being processed first so height 2 is "next"
+	// OR we can just test that it DOES NOT trigger DA retrieval if it's pending.
+	// Wait, the logic for DA retrieval is BEFORE the "next block" check?
+	// Let's check syncer.go...
+	// Yes, "If this is a P2P event with a DA height hint, trigger targeted DA retrieval" block is AFTER "If this is not the next block in sequence... return"
+	
+	// So we need to be at height 1 to process height 2.
+	// Let's set the store height to 1.
+	batch, err := st.NewBatch(context.Background())
+	require.NoError(t, err)
+	require.NoError(t, batch.SetHeight(1))
+	require.NoError(t, batch.Commit())
+
+	s.processHeightEvent(&evt)
+
+	// Verify that the request was queued in the async retriever
+	select {
+	case h := <-asyncRetriever.workCh:
+		assert.Equal(t, uint64(100), h)
+	default:
+		t.Fatal("expected DA retrieval request to be queued")
+	}
+}

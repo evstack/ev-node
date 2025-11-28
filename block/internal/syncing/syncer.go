@@ -68,6 +68,9 @@ type Syncer struct {
 
 	// P2P wait coordination
 	p2pWaitState atomic.Value // stores p2pWaitState
+
+	// Async DA retriever
+	asyncDARetriever *AsyncDARetriever
 }
 
 // NewSyncer creates a new block syncer
@@ -114,6 +117,9 @@ func (s *Syncer) Start(ctx context.Context) error {
 
 	// Initialize handlers
 	s.daRetriever = NewDARetriever(s.daClient, s.cache, s.genesis, s.logger)
+	s.asyncDARetriever = NewAsyncDARetriever(s.daRetriever, s.heightInCh, s.logger)
+	s.asyncDARetriever.Start(s.ctx)
+
 	s.p2pHandler = NewP2PHandler(s.headerStore, s.dataStore, s.cache, s.genesis, s.logger)
 	if currentHeight, err := s.store.Height(s.ctx); err != nil {
 		s.logger.Error().Err(err).Msg("failed to set initial processed height for p2p handler")
@@ -143,6 +149,9 @@ func (s *Syncer) Start(ctx context.Context) error {
 func (s *Syncer) Stop() error {
 	if s.cancel != nil {
 		s.cancel()
+	}
+	if s.asyncDARetriever != nil {
+		s.asyncDARetriever.Stop()
 	}
 	s.cancelP2PWait(0)
 	s.wg.Wait()
@@ -466,29 +475,8 @@ func (s *Syncer) processHeightEvent(event *common.DAHeightEvent) {
 					Uint64("da_height_hint", daHeightHint).
 					Msg("P2P event with DA height hint, triggering targeted DA retrieval")
 
-				// Trigger targeted DA retrieval in background
-				go func() {
-					targetEvents, err := s.daRetriever.RetrieveFromDA(s.ctx, daHeightHint)
-					if err != nil {
-						s.logger.Debug().
-							Err(err).
-							Uint64("da_height", daHeightHint).
-							Msg("targeted DA retrieval failed (hint may be incorrect or DA not yet available)")
-						// Not a critical error - the sequential DA worker will eventually find it
-						return
-					}
-
-					// Process retrieved events from the targeted DA height
-					for _, daEvent := range targetEvents {
-						select {
-						case s.heightInCh <- daEvent:
-						case <-s.ctx.Done():
-							return
-						default:
-							s.cache.SetPendingEvent(daEvent.Header.Height(), &daEvent)
-						}
-					}
-				}()
+				// Trigger targeted DA retrieval in background via worker pool
+				s.asyncDARetriever.RequestRetrieval(daHeightHint)
 			}
 		}
 	}
