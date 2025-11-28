@@ -17,7 +17,7 @@ Evolve is designed to be DA-agnostic, meaning it can integrate with different da
 
 - **External Data Availability Layer (DA Interface):**
   - Used for production and secure deployments.
-  - Evolve can post block data to any external DA layer that implements the Evolve [DA interface](https://github.com/evstack/ev-node/blob/main/core/da/da.go#L11) (e.g., Celestia).
+  - Evolve can post block data to any external DA layer that implements the blob [DA interface](https://github.com/evstack/ev-node/blob/main/block/internal/da/client.go#L41) (e.g., Celestia).
   - Anyone can verify that the data is available and reconstruct the chain state, depending on the guarantees of the chosen DA layer.
 
 ## Best Practices

@@ -38,7 +38,6 @@ type DAClient = da.Client
 // NewDAClient creates a new DA client with configuration.
 // It always dials the blob RPC endpoint configured in config.DA.
 func NewDAClient(
-	_ any, // legacy parameter removed; kept for signature compatibility
 	config config.Config,
 	logger zerolog.Logger,
 ) DAClient {

@@ -4,7 +4,7 @@ import (
 	"encoding/hex"
 	"testing"
 
-	coreda "github.com/evstack/ev-node/core/da"
+	"github.com/evstack/ev-node/pkg/blob"
 )
 
 func TestParseNamespace(t *testing.T) {
@@ -187,23 +187,12 @@ func TestIDSplitting(t *testing.T) {
 	height := uint64(12345)
 	commitment := []byte("test-commitment-data")
 
-	// Create an ID using the format from the LocalDA implementation
-	id := make([]byte, 8+len(commitment))
-	// Use little endian as per the da.go implementation
-	id[0] = byte(height)
-	id[1] = byte(height >> 8)
-	id[2] = byte(height >> 16)
-	id[3] = byte(height >> 24)
-	id[4] = byte(height >> 32)
-	id[5] = byte(height >> 40)
-	id[6] = byte(height >> 48)
-	id[7] = byte(height >> 56)
-	copy(id[8:], commitment)
+	id := blob.MakeID(height, commitment)
 
 	// Test splitting
-	parsedHeight, parsedCommitment, err := coreda.SplitID(id)
-	if err != nil {
-		t.Errorf("SplitID() unexpected error: %v", err)
+	parsedHeight, parsedCommitment := blob.SplitID(id)
+	if parsedCommitment == nil {
+		t.Fatalf("SplitID() returned nil commitment")
 	}
 
 	if parsedHeight != height {

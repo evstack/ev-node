@@ -11,7 +11,7 @@ import (
 	"time"
 
 	"github.com/celestiaorg/go-square/v3/share"
-	"github.com/evstack/ev-node/core/da"
+	"github.com/evstack/ev-node/pkg/namespace"
 	"github.com/mitchellh/mapstructure"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
@@ -254,14 +254,14 @@ func (c *Config) Validate() error {
 	return nil
 }
 
-func validateNamespace(namespace string) error {
-	if namespace == "" {
+func validateNamespace(nsStr string) error {
+	if nsStr == "" {
 		return fmt.Errorf("namespace cannot be empty")
 	}
 
-	ns := da.NamespaceFromString(namespace)
+	ns := namespace.NamespaceFromString(nsStr)
 	if _, err := share.NewNamespaceFromBytes(ns.Bytes()); err != nil {
-		return fmt.Errorf("could not validate namespace (%s): %w", namespace, err)
+		return fmt.Errorf("could not validate namespace (%s): %w", nsStr, err)
 	}
 	return nil
 }

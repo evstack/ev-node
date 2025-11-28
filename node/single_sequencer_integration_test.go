@@ -8,13 +8,13 @@ import (
 	"fmt"
 	"net/http"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 
-	coreda "github.com/evstack/ev-node/core/da"
 	coreexecutor "github.com/evstack/ev-node/core/execution"
 	evconfig "github.com/evstack/ev-node/pkg/config"
 )
@@ -231,8 +231,8 @@ func TestStateRecovery(t *testing.T) {
 
 	// Set up one sequencer
 	config := getTestConfig(t, 1)
-	executor, sequencer, dac, p2pClient, ds, _, stopDAHeightTicker := createTestComponents(t, config)
-	node, cleanup := createNodeWithCustomComponents(t, config, executor, sequencer, dac, p2pClient, ds, stopDAHeightTicker)
+	executor, sequencer, p2pClient, ds, _, stopDAHeightTicker := createTestComponents(t, config)
+	node, cleanup := createNodeWithCustomComponents(t, config, executor, sequencer, nil, p2pClient, ds, stopDAHeightTicker)
 	defer cleanup()
 
 	var runningWg sync.WaitGroup
@@ -256,8 +256,8 @@ func TestStateRecovery(t *testing.T) {
 	shutdownAndWait(t, []context.CancelFunc{cancel}, &runningWg, 60*time.Second)
 
 	// Create a new node instance using the same components
-	executor, sequencer, dac, p2pClient, _, _, stopDAHeightTicker = createTestComponents(t, config)
-	node, cleanup = createNodeWithCustomComponents(t, config, executor, sequencer, dac, p2pClient, ds, stopDAHeightTicker)
+	executor, sequencer, p2pClient, _, _, stopDAHeightTicker = createTestComponents(t, config)
+	node, cleanup = createNodeWithCustomComponents(t, config, executor, sequencer, nil, p2pClient, ds, stopDAHeightTicker)
 	defer cleanup()
 
 	// Verify state persistence
@@ -313,19 +313,16 @@ func TestBatchQueueThrottlingWithDAFailure(t *testing.T) {
 	config.DA.BlockTime = evconfig.DurationWrapper{Duration: 100 * time.Millisecond} // Longer DA time to ensure blocks are produced first
 
 	// Create test components
-	executor, sequencer, dummyDA, p2pClient, ds, _, stopDAHeightTicker := createTestComponents(t, config)
+	executor, sequencer, p2pClient, ds, _, stopDAHeightTicker := createTestComponents(t, config)
 	defer stopDAHeightTicker()
+	daClient := newControllableDAClient(config)
 
 	// Cast executor to DummyExecutor so we can inject transactions
 	dummyExecutor, ok := executor.(*coreexecutor.DummyExecutor)
 	require.True(ok, "Expected DummyExecutor implementation")
 
-	// Cast dummyDA to our enhanced version so we can make it fail
-	dummyDAImpl, ok := dummyDA.(*coreda.DummyDA)
-	require.True(ok, "Expected DummyDA implementation")
-
 	// Create node with components
-	node, cleanup := createNodeWithCustomComponents(t, config, executor, sequencer, dummyDAImpl, p2pClient, ds, func() {})
+	node, cleanup := createNodeWithCustomComponents(t, config, executor, sequencer, daClient, p2pClient, ds, func() {})
 	defer cleanup()
 
 	ctx, cancel := context.WithCancel(t.Context())
@@ -352,7 +349,7 @@ func TestBatchQueueThrottlingWithDAFailure(t *testing.T) {
 
 	// Simulate DA layer going down
 	t.Log("Simulating DA layer failure")
-	dummyDAImpl.SetSubmitFailure(true)
+	daClient.SetSubmitFailure(true)
 
 	// Continue injecting transactions - this tests the behavior when:
 	// 1. DA layer is down (can't submit blocks to DA)
@@ -460,4 +457,49 @@ func TestReadinessEndpointWhenBlockProductionStops(t *testing.T) {
 	}, 10*time.Second, 100*time.Millisecond, "Readiness should be UNREADY after aggregator stops producing blocks (5x block time)")
 
 	shutdownAndWait(t, []context.CancelFunc{cancel}, &runningWg, 10*time.Second)
+}
+
+// controllableDAClient is a lightweight DA client tailored for integration tests. It records
+// submitted heights via an atomic counter and can simulate failures by toggling submitFailure.
+// Retrieval methods are implemented to satisfy interfaces but return empty data to keep tests focused.
+type controllableDAClient struct {
+	headerNamespace []byte
+	dataNamespace   []byte
+	submitFailure   atomic.Bool
+	latestHeight    atomic.Uint64
+}
+
+func newControllableDAClient(cfg evconfig.Config) *controllableDAClient {
+	return &controllableDAClient{
+		headerNamespace: []byte(cfg.DA.Namespace),
+		dataNamespace:   []byte(cfg.DA.DataNamespace),
+	}
+}
+
+// Submit adheres to block/internal/da.Client interface; it increments synthetic height for successful submissions.
+func (c *controllableDAClient) Submit(ctx context.Context, data [][]byte, namespace []byte, options []byte) datypes.ResultSubmit {
+	if c.submitFailure.Load() {
+		return datypes.ResultSubmit{BaseResult: datypes.BaseResult{Code: datypes.StatusError, Message: "forced failure"}}
+	}
+	newHeight := c.latestHeight.Add(1)
+	return datypes.ResultSubmit{BaseResult: datypes.BaseResult{Code: datypes.StatusSuccess, Height: newHeight, SubmittedCount: uint64(len(data)), Timestamp: time.Now()}}
+}
+
+func (c *controllableDAClient) Retrieve(ctx context.Context, height uint64, namespace []byte) datypes.ResultRetrieve {
+	return datypes.ResultRetrieve{BaseResult: datypes.BaseResult{Code: datypes.StatusNotFound}}
+}
+
+func (c *controllableDAClient) RetrieveHeaders(ctx context.Context, height uint64) datypes.ResultRetrieve {
+	return c.Retrieve(ctx, height, c.headerNamespace)
+}
+
+func (c *controllableDAClient) RetrieveData(ctx context.Context, height uint64) datypes.ResultRetrieve {
+	return c.Retrieve(ctx, height, c.dataNamespace)
+}
+
+func (c *controllableDAClient) GetHeaderNamespace() []byte { return c.headerNamespace }
+func (c *controllableDAClient) GetDataNamespace() []byte   { return c.dataNamespace }
+
+func (c *controllableDAClient) SetSubmitFailure(val bool) {
+	c.submitFailure.Store(val)
 }

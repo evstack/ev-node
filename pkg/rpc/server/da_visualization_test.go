@@ -12,8 +12,8 @@ import (
 	"testing"
 	"time"
 
-	coreda "github.com/evstack/ev-node/core/da"
 	"github.com/evstack/ev-node/pkg/config"
+	datypes "github.com/evstack/ev-node/pkg/da/types"
 	"github.com/evstack/ev-node/test/mocks"
 	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/assert"
@@ -37,9 +37,9 @@ func TestRecordSubmission(t *testing.T) {
 	server := NewDAVisualizationServer(da, logger, true)
 
 	// Test recording a successful submission
-	result := &coreda.ResultSubmit{
-		BaseResult: coreda.BaseResult{
-			Code:           coreda.StatusSuccess,
+	result := &datypes.ResultSubmit{
+		BaseResult: datypes.BaseResult{
+			Code:           datypes.StatusSuccess,
 			Height:         100,
 			BlobSize:       1024,
 			Timestamp:      time.Now(),
@@ -70,9 +70,9 @@ func TestRecordSubmissionMemoryLimit(t *testing.T) {
 
 	// Add 101 submissions (more than the limit of 100)
 	for i := 0; i < 101; i++ {
-		result := &coreda.ResultSubmit{
-			BaseResult: coreda.BaseResult{
-				Code:      coreda.StatusSuccess,
+		result := &datypes.ResultSubmit{
+			BaseResult: datypes.BaseResult{
+				Code:      datypes.StatusSuccess,
 				Height:    uint64(i),
 				BlobSize:  uint64(i * 10),
 				Timestamp: time.Now(),
@@ -95,15 +95,15 @@ func TestGetStatusCodeString(t *testing.T) {
 	server := NewDAVisualizationServer(da, logger, true)
 
 	tests := []struct {
-		code     coreda.StatusCode
+		code     datypes.StatusCode
 		expected string
 	}{
-		{coreda.StatusSuccess, "Success"},
-		{coreda.StatusNotFound, "Not Found"},
-		{coreda.StatusError, "Error"},
-		{coreda.StatusTooBig, "Too Big"},
-		{coreda.StatusContextDeadline, "Context Deadline"},
-		{coreda.StatusUnknown, "Unknown"},
+		{datypes.StatusSuccess, "Success"},
+		{datypes.StatusNotFound, "Not Found"},
+		{datypes.StatusError, "Error"},
+		{datypes.StatusTooBig, "Too Big"},
+		{datypes.StatusContextDeadline, "Context Deadline"},
+		{datypes.StatusUnknown, "Unknown"},
 	}
 
 	for _, tt := range tests {
@@ -118,9 +118,9 @@ func TestHandleDASubmissions(t *testing.T) {
 	server := NewDAVisualizationServer(da, logger, true)
 
 	// Add a test submission
-	result := &coreda.ResultSubmit{
-		BaseResult: coreda.BaseResult{
-			Code:      coreda.StatusSuccess,
+	result := &datypes.ResultSubmit{
+		BaseResult: datypes.BaseResult{
+			Code:      datypes.StatusSuccess,
 			Height:    100,
 			BlobSize:  1024,
 			Timestamp: time.Now(),
@@ -191,9 +191,9 @@ func TestHandleDAVisualizationHTML(t *testing.T) {
 	server := NewDAVisualizationServer(da, logger, true)
 
 	// Add a test submission
-	result := &coreda.ResultSubmit{
-		BaseResult: coreda.BaseResult{
-			Code:      coreda.StatusSuccess,
+	result := &datypes.ResultSubmit{
+		BaseResult: datypes.BaseResult{
+			Code:      datypes.StatusSuccess,
 			Height:    100,
 			BlobSize:  1024,
 			Timestamp: time.Now(),
@@ -242,9 +242,9 @@ func TestRegisterCustomHTTPEndpointsDAVisualization(t *testing.T) {
 	server := NewDAVisualizationServer(da, logger, true)
 
 	// Add test submission
-	result := &coreda.ResultSubmit{
-		BaseResult: coreda.BaseResult{
-			Code:      coreda.StatusSuccess,
+	result := &datypes.ResultSubmit{
+		BaseResult: datypes.BaseResult{
+			Code:      datypes.StatusSuccess,
 			Height:    100,
 			BlobSize:  1024,
 			Timestamp: time.Now(),

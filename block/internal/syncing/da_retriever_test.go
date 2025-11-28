@@ -18,11 +18,11 @@ import (
 	"github.com/evstack/ev-node/block/internal/cache"
 	"github.com/evstack/ev-node/block/internal/common"
 	"github.com/evstack/ev-node/block/internal/da"
-	coreda "github.com/evstack/ev-node/core/da"
 	"github.com/evstack/ev-node/pkg/blob"
 	"github.com/evstack/ev-node/pkg/config"
 	datypes "github.com/evstack/ev-node/pkg/da/types"
 	"github.com/evstack/ev-node/pkg/genesis"
+	"github.com/evstack/ev-node/pkg/namespace"
 	signerpkg "github.com/evstack/ev-node/pkg/signer"
 	"github.com/evstack/ev-node/types"
 )
@@ -311,8 +311,8 @@ func TestDARetriever_RetrieveFromDA_TwoNamespaces_Success(t *testing.T) {
 	cfg.DA.Namespace = "nsHdr"
 	cfg.DA.DataNamespace = "nsData"
 
-	namespaceBz := coreda.NamespaceFromString(cfg.DA.GetNamespace()).Bytes()
-	namespaceDataBz := coreda.NamespaceFromString(cfg.DA.GetDataNamespace()).Bytes()
+	namespaceBz := namespace.NamespaceFromString(cfg.DA.GetNamespace()).Bytes()
+	namespaceDataBz := namespace.NamespaceFromString(cfg.DA.GetDataNamespace()).Bytes()
 
 	hdrNS, err := share.NewNamespaceFromBytes(namespaceBz)
 	require.NoError(t, err)

@@ -2,7 +2,7 @@ package datypes
 
 import "time"
 
-// StatusCode mirrors the DA status codes previously defined under core/da.
+// StatusCode mirrors the blob RPC status codes shared with block/internal/da.
 type StatusCode uint64
 
 // Data Availability return codes.

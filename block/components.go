@@ -13,7 +13,6 @@ import (
 	"github.com/evstack/ev-node/block/internal/reaping"
 	"github.com/evstack/ev-node/block/internal/submitting"
 	"github.com/evstack/ev-node/block/internal/syncing"
-	coreda "github.com/evstack/ev-node/core/da"
 	coreexecutor "github.com/evstack/ev-node/core/execution"
 	coresequencer "github.com/evstack/ev-node/core/sequencer"
 	"github.com/evstack/ev-node/pkg/config"
@@ -131,7 +130,7 @@ func NewSyncComponents(
 	genesis genesis.Genesis,
 	store store.Store,
 	exec coreexecutor.Executor,
-	da coreda.DA,
+	daClient DAClient,
 	headerStore common.Broadcaster[*types.SignedHeader],
 	dataStore common.Broadcaster[*types.Data],
 	logger zerolog.Logger,
@@ -139,12 +138,13 @@ func NewSyncComponents(
 	blockOpts BlockOptions,
 ) (*Components, error) {
 	logger.Info().Msg("Starting in sync-mode")
+	if daClient == nil {
+		return nil, fmt.Errorf("da client is required")
+	}
 	cacheManager, err := cache.NewManager(config, store, logger)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create cache manager: %w", err)
 	}
-
-	daClient := NewDAClient(da, config, logger)
 
 	// error channel for critical failures
 	errorCh := make(chan error, 1)
@@ -196,7 +196,7 @@ func NewAggregatorComponents(
 	store store.Store,
 	exec coreexecutor.Executor,
 	sequencer coresequencer.Sequencer,
-	da coreda.DA,
+	daClient DAClient,
 	signer signer.Signer,
 	headerBroadcaster common.Broadcaster[*types.SignedHeader],
 	dataBroadcaster common.Broadcaster[*types.Data],
@@ -205,6 +205,9 @@ func NewAggregatorComponents(
 	blockOpts BlockOptions,
 ) (*Components, error) {
 	logger.Info().Msg("Starting in aggregator-mode")
+	if daClient == nil {
+		return nil, fmt.Errorf("da client is required")
+	}
 	cacheManager, err := cache.NewManager(config, store, logger)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create cache manager: %w", err)
@@ -245,8 +248,7 @@ func NewAggregatorComponents(
 		return nil, fmt.Errorf("failed to create reaper: %w", err)
 	}
 
-	// Create DA client and submitter for aggregator nodes (with signer for submission)
-	daClient := NewDAClient(da, config, logger)
+	// Create DA submitter for aggregator nodes (with signer for submission)
 	daSubmitter := submitting.NewDASubmitter(daClient, config, genesis, blockOpts, metrics, logger)
 	submitter := submitting.NewSubmitter(
 		store,

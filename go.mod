@@ -5,6 +5,7 @@ go 1.24.6
 retract v0.12.0 // Published by accident
 
 replace github.com/evstack/ev-node/core => ./core
+
 replace github.com/evstack/ev-node/da => ./da
 
 require (

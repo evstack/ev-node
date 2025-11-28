@@ -11,9 +11,9 @@ import (
 	"github.com/celestiaorg/go-square/v3/share"
 	"github.com/rs/zerolog"
 
-	coreda "github.com/evstack/ev-node/core/da"
 	"github.com/evstack/ev-node/pkg/blob"
 	datypes "github.com/evstack/ev-node/pkg/da/types"
+	"github.com/evstack/ev-node/pkg/namespace"
 )
 
 // Client is the interface representing the DA client.
@@ -68,8 +68,8 @@ func NewClient(cfg Config) *client {
 		blobClient:      cfg.BlobAPI,
 		logger:          cfg.Logger.With().Str("component", "da_client").Logger(),
 		defaultTimeout:  cfg.DefaultTimeout,
-		namespaceBz:     coreda.NamespaceFromString(cfg.Namespace).Bytes(),
-		dataNamespaceBz: coreda.NamespaceFromString(cfg.DataNamespace).Bytes(),
+		namespaceBz:     namespace.NamespaceFromString(cfg.Namespace).Bytes(),
+		dataNamespaceBz: namespace.NamespaceFromString(cfg.DataNamespace).Bytes(),
 		maxBlobSize:     cfg.MaxBlobSize,
 	}
 }

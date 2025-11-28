@@ -11,15 +11,14 @@ import (
 	"time"
 
 	testutils "github.com/celestiaorg/utils/test"
+	"github.com/evstack/ev-node/block"
+	coreexecutor "github.com/evstack/ev-node/core/execution"
+	coresequencer "github.com/evstack/ev-node/core/sequencer"
 	"github.com/ipfs/go-datastore"
 	dssync "github.com/ipfs/go-datastore/sync"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/require"
-
-	coreda "github.com/evstack/ev-node/core/da"
-	coreexecutor "github.com/evstack/ev-node/core/execution"
-	coresequencer "github.com/evstack/ev-node/core/sequencer"
 
 	evconfig "github.com/evstack/ev-node/pkg/config"
 	"github.com/evstack/ev-node/pkg/p2p"
@@ -43,15 +42,9 @@ const (
 )
 
 // createTestComponents creates test components for node initialization
-func createTestComponents(t *testing.T, config evconfig.Config) (coreexecutor.Executor, coresequencer.Sequencer, coreda.DA, *p2p.Client, datastore.Batching, *key.NodeKey, func()) {
+func createTestComponents(t *testing.T, config evconfig.Config) (coreexecutor.Executor, coresequencer.Sequencer, *p2p.Client, datastore.Batching, *key.NodeKey, func()) {
 	executor := coreexecutor.NewDummyExecutor()
 	sequencer := coresequencer.NewDummySequencer()
-	dummyDA := coreda.NewDummyDA(100_000, config.DA.BlockTime.Duration)
-	dummyDA.StartHeightTicker()
-
-	stopDAHeightTicker := func() {
-		dummyDA.StopHeightTicker()
-	}
 
 	// Create genesis and keys for P2P client
 	_, genesisValidatorKey, _ := types.GetGenesisWithPrivkey("test-chain")
@@ -65,7 +58,7 @@ func createTestComponents(t *testing.T, config evconfig.Config) (coreexecutor.Ex
 	require.NotNil(t, p2pClient)
 	ds := dssync.MutexWrap(datastore.NewMapDatastore())
 
-	return executor, sequencer, dummyDA, p2pClient, ds, p2pKey, stopDAHeightTicker
+	return executor, sequencer, p2pClient, ds, p2pKey, func() {}
 }
 
 func getTestConfig(t *testing.T, n int) evconfig.Config {
@@ -101,7 +94,7 @@ func newTestNode(
 	config evconfig.Config,
 	executor coreexecutor.Executor,
 	sequencer coresequencer.Sequencer,
-	dac coreda.DA,
+	daClient block.DAClient,
 	p2pClient *p2p.Client,
 	ds datastore.Batching,
 	stopDAHeightTicker func(),
@@ -115,14 +108,13 @@ func newTestNode(
 		config,
 		executor,
 		sequencer,
-		dac,
 		remoteSigner,
 		p2pClient,
 		genesis,
 		ds,
 		DefaultMetricsProvider(evconfig.DefaultInstrumentationConfig()),
 		zerolog.Nop(),
-		NodeOptions{},
+		NodeOptions{DAClient: daClient},
 	)
 	require.NoError(t, err)
 
@@ -136,8 +128,8 @@ func newTestNode(
 }
 
 func createNodeWithCleanup(t *testing.T, config evconfig.Config) (*FullNode, func()) {
-	executor, sequencer, dac, p2pClient, ds, _, stopDAHeightTicker := createTestComponents(t, config)
-	return newTestNode(t, config, executor, sequencer, dac, p2pClient, ds, stopDAHeightTicker)
+	executor, sequencer, p2pClient, ds, _, cleanup := createTestComponents(t, config)
+	return newTestNode(t, config, executor, sequencer, nil, p2pClient, ds, cleanup)
 }
 
 func createNodeWithCustomComponents(
@@ -145,12 +137,12 @@ func createNodeWithCustomComponents(
 	config evconfig.Config,
 	executor coreexecutor.Executor,
 	sequencer coresequencer.Sequencer,
-	dac coreda.DA,
+	daClient block.DAClient,
 	p2pClient *p2p.Client,
 	ds datastore.Batching,
 	stopDAHeightTicker func(),
 ) (*FullNode, func()) {
-	return newTestNode(t, config, executor, sequencer, dac, p2pClient, ds, stopDAHeightTicker)
+	return newTestNode(t, config, executor, sequencer, daClient, p2pClient, ds, stopDAHeightTicker)
 }
 
 // Creates the given number of nodes the given nodes using the given wait group to synchronize them
@@ -168,7 +160,7 @@ func createNodesWithCleanup(t *testing.T, num int, config evconfig.Config) ([]*F
 
 	aggListenAddress := config.P2P.ListenAddress
 	aggPeers := config.P2P.Peers
-	executor, sequencer, dac, p2pClient, ds, aggP2PKey, stopDAHeightTicker := createTestComponents(t, config)
+	executor, sequencer, p2pClient, ds, aggP2PKey, stopComponents := createTestComponents(t, config)
 	aggPeerID, err := peer.IDFromPrivateKey(aggP2PKey.PrivKey)
 	require.NoError(err)
 
@@ -180,7 +172,6 @@ func createNodesWithCleanup(t *testing.T, num int, config evconfig.Config) ([]*F
 		config,
 		executor,
 		sequencer,
-		dac,
 		remoteSigner,
 		p2pClient,
 		genesis,
@@ -193,7 +184,7 @@ func createNodesWithCleanup(t *testing.T, num int, config evconfig.Config) ([]*F
 
 	// Update cleanup to cancel the context instead of calling Stop
 	cleanup := func() {
-		stopDAHeightTicker()
+		stopComponents()
 	}
 
 	nodes[0], cleanups[0] = aggNode.(*FullNode), cleanup
@@ -209,12 +200,11 @@ func createNodesWithCleanup(t *testing.T, num int, config evconfig.Config) ([]*F
 		}
 		config.P2P.ListenAddress = fmt.Sprintf("/ip4/127.0.0.1/tcp/%d", 40001+i)
 		config.RPC.Address = fmt.Sprintf("127.0.0.1:%d", 8001+i)
-		executor, sequencer, _, p2pClient, _, nodeP2PKey, stopDAHeightTicker := createTestComponents(t, config)
+		executor, sequencer, p2pClient, _, nodeP2PKey, stopComponents := createTestComponents(t, config)
 		node, err := NewNode(
 			config,
 			executor,
 			sequencer,
-			dac,
 			nil,
 			p2pClient,
 			genesis,
@@ -226,7 +216,7 @@ func createNodesWithCleanup(t *testing.T, num int, config evconfig.Config) ([]*F
 		require.NoError(err)
 		// Update cleanup to cancel the context instead of calling Stop
 		cleanup := func() {
-			stopDAHeightTicker()
+			stopComponents()
 		}
 		nodes[i], cleanups[i] = node.(*FullNode), cleanup
 		nodePeerID, err := peer.IDFromPrivateKey(nodeP2PKey.PrivKey)

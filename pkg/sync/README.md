@@ -154,7 +154,7 @@ The sync package is consumed by both the block executor (aggregator mode) and th
 - `github.com/ipfs/go-datastore/sync` - Thread-safe datastore wrapper
 - `github.com/celestiaorg/go-header` - Header synchronization library
 - `github.com/libp2p/go-libp2p` - P2P networking stack
-- `github.com/evstack/ev-node/core/da` - Data Availability client interface
+- `github.com/evstack/ev-node/block/internal/da` - Blob RPC client used for DA interactions
 
 ## Data Flow
 
