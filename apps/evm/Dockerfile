@@ -2,9 +2,9 @@ FROM golang:1.24-alpine AS build-env
 
 WORKDIR /src
 
-COPY core core
-
 COPY go.mod go.sum ./
+COPY core core
+COPY da da
 RUN go mod download
 
 COPY . .

@@ -12,10 +12,10 @@ import (
 
 // LocalBlobAPI is a simple in-memory BlobAPI implementation for tests.
 type LocalBlobAPI struct {
-	mu        sync.Mutex
-	height    uint64
-	maxSize   uint64
-	byHeight  map[uint64][]*blob.Blob
+	mu       sync.Mutex
+	height   uint64
+	maxSize  uint64
+	byHeight map[uint64][]*blob.Blob
 }
 
 // NewLocalBlobAPI creates an in-memory BlobAPI with a max blob size.
@@ -39,9 +39,7 @@ func (l *LocalBlobAPI) Submit(ctx context.Context, blobs []*blob.Blob, _ *blob.S
 	l.height++
 	// store clones to avoid external mutation
 	stored := make([]*blob.Blob, len(blobs))
-	for i, b := range blobs {
-		stored[i] = b
-	}
+	copy(stored, blobs)
 	l.byHeight[l.height] = append(l.byHeight[l.height], stored...)
 	return l.height, nil
 }
