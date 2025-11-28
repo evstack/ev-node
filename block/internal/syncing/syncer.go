@@ -449,8 +449,8 @@ func (s *Syncer) processHeightEvent(event *common.DAHeightEvent) {
 			}
 		default:
 			// check both
-			if _, exists := s.cache.GetDataDAIncluded(event.Data.Hash().String()); !exists {
-				daHeightHints = []uint64{event.DaHeightHints[1]}
+			if _, exists := s.cache.GetHeaderDAIncluded(event.Header.Hash().String()); !exists {
+				daHeightHints = []uint64{event.DaHeightHints[0]}
 			}
 			if _, exists := s.cache.GetDataDAIncluded(event.Data.Hash().String()); !exists {
 				daHeightHints = append(daHeightHints, event.DaHeightHints[1])
