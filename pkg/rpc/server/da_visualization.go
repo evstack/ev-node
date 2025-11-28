@@ -173,10 +173,8 @@ func (s *DAVisualizationServer) handleDABlobDetails(w http.ResponseWriter, r *ht
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
 
-	// Determine namespace to use
 	var namespace []byte
 
-	// 1. Try to find in recent submissions
 	s.mutex.RLock()
 	found := false
 	for _, submission := range s.submissions {
@@ -196,20 +194,6 @@ func (s *DAVisualizationServer) handleDABlobDetails(w http.ResponseWriter, r *ht
 		}
 	}
 	s.mutex.RUnlock()
-
-	// 2. Check query parameter if not found
-	if !found {
-		nsParam := r.URL.Query().Get("namespace")
-		if nsParam != "" {
-			if ns, err := hex.DecodeString(nsParam); err == nil {
-				namespace = ns
-				found = true
-			} else if ns, err := coreda.ParseHexNamespace(nsParam); err == nil {
-				namespace = ns.Bytes()
-				found = true
-			}
-		}
-	}
 
 	if !found || len(namespace) == 0 {
 		http.Error(w, "Namespace required to retrieve blob (not found in recent submissions and not provided in query)", http.StatusBadRequest)
