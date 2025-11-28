@@ -464,13 +464,6 @@ func (s *Syncer) processHeightEvent(event *common.DAHeightEvent) {
 
 	// only save to p2p stores if the event came from DA
 	if event.Source == common.SourceDA {
-		// Persist DA included height for full nodes syncing from DA
-		bz := make([]byte, 8)
-		binary.LittleEndian.PutUint64(bz, height)
-		if err := s.store.SetMetadata(s.ctx, store.DAIncludedHeightKey, bz); err != nil {
-			s.logger.Error().Err(err).Uint64("height", height).Msg("failed to persist DA included height")
-		}
-
 		g, ctx := errgroup.WithContext(s.ctx)
 		g.Go(func() error {
 			// broadcast header locally only — prevents spamming the p2p network with old height notifications,
