@@ -411,7 +411,7 @@ func submitToDA[T any](
 
 		// Record submission result for observability
 		if daVisualizationServer := server.GetDAVisualizationServer(); daVisualizationServer != nil {
-			daVisualizationServer.RecordSubmission(&res, 0, uint64(len(items)))
+			daVisualizationServer.RecordSubmission(&res, 0, uint64(len(items)), namespace)
 		}
 
 		switch res.Code {
