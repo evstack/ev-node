@@ -39,18 +39,19 @@ const ninetyNineYears = 99 * 365 * 24 * time.Hour
 type EntityWithDAHint[H any] interface {
 	header.Header[H]
 	SetDAHint(daHeight uint64)
+	DAHint() uint64
 }
 
-// DataSyncService is the P2P Sync Service for blocks.
-type DataSyncService = SyncService[*types.DataWithDAHint]
-
 // HeaderSyncService is the P2P Sync Service for headers.
-type HeaderSyncService = SyncService[*types.SignedHeaderWithDAHint]
+type HeaderSyncService = SyncService[*types.SignedHeader]
+
+// DataSyncService is the P2P Sync Service for blocks.
+type DataSyncService = SyncService[*types.Data]
 
 // SyncService is the P2P Sync Service for blocks and headers.
 //
 // Uses the go-header library for handling all P2P logic.
-type SyncService[H EntityWithDAHint[H]] struct {
+type SyncService[V header.Header[V]] struct {
 	conf     config.Config
 	logger   zerolog.Logger
 	syncType syncType
@@ -59,13 +60,13 @@ type SyncService[H EntityWithDAHint[H]] struct {
 
 	p2p *p2p.Client
 
-	ex                *goheaderp2p.Exchange[H]
-	sub               *goheaderp2p.Subscriber[H]
-	p2pServer         *goheaderp2p.ExchangeServer[H]
-	store             *goheaderstore.Store[H]
-	syncer            *goheadersync.Syncer[H]
+	ex                *goheaderp2p.Exchange[*DAHeightHintContainer[V]]
+	sub               *goheaderp2p.Subscriber[*DAHeightHintContainer[V]]
+	p2pServer         *goheaderp2p.ExchangeServer[*DAHeightHintContainer[V]]
+	store             *goheaderstore.Store[*DAHeightHintContainer[V]]
+	syncer            *goheadersync.Syncer[*DAHeightHintContainer[V]]
 	syncerStatus      *SyncerStatus
-	topicSubscription header.Subscription[H]
+	topicSubscription header.Subscription[*DAHeightHintContainer[V]]
 	storeInitialized  atomic.Bool
 }
 
@@ -77,7 +78,7 @@ func NewDataSyncService(
 	p2p *p2p.Client,
 	logger zerolog.Logger,
 ) (*DataSyncService, error) {
-	return newSyncService[*types.DataWithDAHint](store, dataSync, conf, genesis, p2p, logger)
+	return newSyncService[*types.Data](store, dataSync, conf, genesis, p2p, logger)
 }
 
 // NewHeaderSyncService returns a new HeaderSyncService.
@@ -88,22 +89,22 @@ func NewHeaderSyncService(
 	p2p *p2p.Client,
 	logger zerolog.Logger,
 ) (*HeaderSyncService, error) {
-	return newSyncService[*types.SignedHeaderWithDAHint](store, headerSync, conf, genesis, p2p, logger)
+	return newSyncService[*types.SignedHeader](store, headerSync, conf, genesis, p2p, logger)
 }
 
-func newSyncService[H EntityWithDAHint[H]](
+func newSyncService[V header.Header[V]](
 	store ds.Batching,
 	syncType syncType,
 	conf config.Config,
 	genesis genesis.Genesis,
 	p2p *p2p.Client,
 	logger zerolog.Logger,
-) (*SyncService[H], error) {
+) (*SyncService[V], error) {
 	if p2p == nil {
 		return nil, errors.New("p2p client cannot be nil")
 	}
 
-	ss, err := goheaderstore.NewStore[H](
+	ss, err := goheaderstore.NewStore[*DAHeightHintContainer[V]](
 		store,
 		goheaderstore.WithStorePrefix(string(syncType)),
 		goheaderstore.WithMetrics(),
@@ -112,7 +113,7 @@ func newSyncService[H EntityWithDAHint[H]](
 		return nil, fmt.Errorf("failed to initialize the %s store: %w", syncType, err)
 	}
 
-	svc := &SyncService[H]{
+	svc := &SyncService[V]{
 		conf:         conf,
 		genesis:      genesis,
 		p2p:          p2p,
@@ -126,21 +127,22 @@ func newSyncService[H EntityWithDAHint[H]](
 }
 
 // Store returns the store of the SyncService
-func (syncService *SyncService[H]) Store() header.Store[H] {
+func (syncService *SyncService[V]) Store() header.Store[*DAHeightHintContainer[V]] {
 	return syncService.store
 }
 
 // WriteToStoreAndBroadcast initializes store if needed and broadcasts provided header or block.
 // Note: Only returns an error in case store can't be initialized. Logs error if there's one while broadcasting.
-func (syncService *SyncService[H]) WriteToStoreAndBroadcast(ctx context.Context, headerOrData H, opts ...pubsub.PubOpt) error {
+func (syncService *SyncService[V]) WriteToStoreAndBroadcast(ctx context.Context, payload V, opts ...pubsub.PubOpt) error {
 	if syncService.genesis.InitialHeight == 0 {
 		return fmt.Errorf("invalid initial height; cannot be zero")
 	}
 
-	if headerOrData.IsZero() {
+	if payload.IsZero() {
 		return fmt.Errorf("empty header/data cannot write to store or broadcast")
 	}
 
+	headerOrData := &DAHeightHintContainer[V]{Entry: payload}
 	storeInitialized := false
 	if syncService.storeInitialized.CompareAndSwap(false, true) {
 		var err error
@@ -179,11 +181,14 @@ func (syncService *SyncService[H]) WriteToStoreAndBroadcast(ctx context.Context,
 	return nil
 }
 
-func (s *SyncService[H]) AppendDAHint(ctx context.Context, daHeight uint64, hashes ...types.Hash) error {
-	entries := make([]H, 0, len(hashes))
+func (s *SyncService[V]) AppendDAHint(ctx context.Context, daHeight uint64, hashes ...types.Hash) error {
+	entries := make([]*DAHeightHintContainer[V], 0, len(hashes))
 	for _, h := range hashes {
 		v, err := s.store.Get(ctx, h)
-		if err != nil && !errors.Is(err, header.ErrNotFound) {
+		if err != nil {
+			if errors.Is(err, header.ErrNotFound) {
+				continue
+			}
 			return err
 		}
 		v.SetDAHint(daHeight)
@@ -192,8 +197,17 @@ func (s *SyncService[H]) AppendDAHint(ctx context.Context, daHeight uint64, hash
 	return s.store.Append(ctx, entries...)
 }
 
+func (s *SyncService[V]) GetByHeight(ctx context.Context, height uint64) (V, uint64, error) {
+	c, err := s.store.GetByHeight(ctx, height)
+	if err != nil {
+		var zero V
+		return zero, 0, err
+	}
+	return c.Entry, c.DAHint(), nil
+}
+
 // Start is a part of Service interface.
-func (syncService *SyncService[H]) Start(ctx context.Context) error {
+func (syncService *SyncService[V]) Start(ctx context.Context) error {
 	// setup P2P infrastructure, but don't start Subscriber yet.
 	peerIDs, err := syncService.setupP2PInfrastructure(ctx)
 	if err != nil {
@@ -201,7 +215,7 @@ func (syncService *SyncService[H]) Start(ctx context.Context) error {
 	}
 
 	// create syncer, must be before initFromP2PWithRetry which calls startSyncer.
-	if syncService.syncer, err = newSyncer(
+	if syncService.syncer, err = newSyncer[V](
 		syncService.ex,
 		syncService.store,
 		syncService.sub,
@@ -244,7 +258,7 @@ func (syncService *SyncService[H]) startSyncer(ctx context.Context) error {
 // initStore initializes the store with the given initial header.
 // it is a no-op if the store is already initialized.
 // Returns true when the store was initialized by this call.
-func (syncService *SyncService[H]) initStore(ctx context.Context, initial H) (bool, error) {
+func (syncService *SyncService[V]) initStore(ctx context.Context, initial *DAHeightHintContainer[V]) (bool, error) {
 	if initial.IsZero() {
 		return false, errors.New("failed to initialize the store")
 	}
@@ -268,12 +282,12 @@ func (syncService *SyncService[H]) initStore(ctx context.Context, initial H) (bo
 
 // setupP2PInfrastructure sets up the P2P infrastructure (Exchange, ExchangeServer, Store)
 // but does not start the Subscriber. Returns peer IDs for later use.
-func (syncService *SyncService[H]) setupP2PInfrastructure(ctx context.Context) ([]peer.ID, error) {
+func (syncService *SyncService[V]) setupP2PInfrastructure(ctx context.Context) ([]peer.ID, error) {
 	ps := syncService.p2p.PubSub()
 	var err error
 
 	// Create subscriber but DON'T start it yet
-	syncService.sub, err = goheaderp2p.NewSubscriber[H](
+	syncService.sub, err = goheaderp2p.NewSubscriber[*DAHeightHintContainer[V]](
 		ps,
 		pubsub.DefaultMsgIdFn,
 		goheaderp2p.WithSubscriberNetworkID(syncService.getChainID()),
@@ -302,7 +316,7 @@ func (syncService *SyncService[H]) setupP2PInfrastructure(ctx context.Context) (
 
 	peerIDs := syncService.getPeerIDs()
 
-	if syncService.ex, err = newP2PExchange[H](syncService.p2p.Host(), peerIDs, networkID, syncService.genesis.ChainID, syncService.p2p.ConnectionGater()); err != nil {
+	if syncService.ex, err = newP2PExchange[*DAHeightHintContainer[V]](syncService.p2p.Host(), peerIDs, networkID, syncService.genesis.ChainID, syncService.p2p.ConnectionGater()); err != nil {
 		return nil, fmt.Errorf("error while creating exchange: %w", err)
 	}
 	if err := syncService.ex.Start(ctx); err != nil {
@@ -330,14 +344,14 @@ func (syncService *SyncService[H]) startSubscriber(ctx context.Context) error {
 // It inspects the local store to determine the first height to request:
 //   - when the store already contains items, it reuses the latest height as the starting point;
 //   - otherwise, it falls back to the configured genesis height.
-func (syncService *SyncService[H]) initFromP2PWithRetry(ctx context.Context, peerIDs []peer.ID) error {
+func (syncService *SyncService[V]) initFromP2PWithRetry(ctx context.Context, peerIDs []peer.ID) error {
 	if len(peerIDs) == 0 {
 		return nil
 	}
 
 	tryInit := func(ctx context.Context) (bool, error) {
 		var (
-			trusted       H
+			trusted       *DAHeightHintContainer[V]
 			err           error
 			heightToQuery uint64
 		)
@@ -401,7 +415,7 @@ func (syncService *SyncService[H]) initFromP2PWithRetry(ctx context.Context, pee
 // Stop is a part of Service interface.
 //
 // `store` is closed last because it's used by other services.
-func (syncService *SyncService[H]) Stop(ctx context.Context) error {
+func (syncService *SyncService[V]) Stop(ctx context.Context) error {
 	// unsubscribe from topic first so that sub.Stop() does not fail
 	syncService.topicSubscription.Cancel()
 	err := errors.Join(
@@ -447,17 +461,17 @@ func newP2PExchange[H header.Header[H]](
 
 // newSyncer constructs new Syncer for headers/blocks.
 func newSyncer[H header.Header[H]](
-	ex header.Exchange[H],
-	store header.Store[H],
-	sub header.Subscriber[H],
+	ex header.Exchange[*DAHeightHintContainer[H]],
+	store header.Store[*DAHeightHintContainer[H]],
+	sub header.Subscriber[*DAHeightHintContainer[H]],
 	opts []goheadersync.Option,
-) (*goheadersync.Syncer[H], error) {
+) (*goheadersync.Syncer[*DAHeightHintContainer[H]], error) {
 	opts = append(opts,
 		goheadersync.WithMetrics(),
 		goheadersync.WithPruningWindow(ninetyNineYears),
 		goheadersync.WithTrustingPeriod(ninetyNineYears),
 	)
-	return goheadersync.NewSyncer(ex, store, sub, opts...)
+	return goheadersync.NewSyncer[*DAHeightHintContainer[H]](ex, store, sub, opts...)
 }
 
 func (syncService *SyncService[H]) getNetworkID(network string) string {

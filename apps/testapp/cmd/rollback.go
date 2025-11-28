@@ -5,13 +5,12 @@ import (
 	"errors"
 	"fmt"
 
+	goheaderstore "github.com/celestiaorg/go-header/store"
 	kvexecutor "github.com/evstack/ev-node/apps/testapp/kv"
 	"github.com/evstack/ev-node/node"
 	rollcmd "github.com/evstack/ev-node/pkg/cmd"
 	"github.com/evstack/ev-node/pkg/store"
-	"github.com/evstack/ev-node/types"
-
-	goheaderstore "github.com/celestiaorg/go-header/store"
+	"github.com/evstack/ev-node/pkg/sync"
 	ds "github.com/ipfs/go-datastore"
 	kt "github.com/ipfs/go-datastore/keytransform"
 	"github.com/spf13/cobra"
@@ -76,7 +75,7 @@ func NewRollbackCmd() *cobra.Command {
 			}
 
 			// rollback ev-node goheader state
-			headerStore, err := goheaderstore.NewStore[*types.SignedHeaderWithDAHint](
+			headerStore, err := goheaderstore.NewStore[*sync.SignedHeaderWithDAHint](
 				evolveDB,
 				goheaderstore.WithStorePrefix("headerSync"),
 				goheaderstore.WithMetrics(),
@@ -85,7 +84,7 @@ func NewRollbackCmd() *cobra.Command {
 				return err
 			}
 
-			dataStore, err := goheaderstore.NewStore[*types.Data](
+			dataStore, err := goheaderstore.NewStore[*sync.DataWithDAHint](
 				evolveDB,
 				goheaderstore.WithStorePrefix("dataSync"),
 				goheaderstore.WithMetrics(),

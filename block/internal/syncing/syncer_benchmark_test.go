@@ -153,7 +153,7 @@ func newBenchFixture(b *testing.B, totalHeights uint64, shuffledTx bool, daDelay
 	mockP2P := newMockp2pHandler(b) // not used directly in this benchmark path
 	mockP2P.On("SetProcessedHeight", mock.Anything).Return().Maybe()
 	s.p2pHandler = mockP2P
-	headerP2PStore := common.NewMockBroadcaster[*types.SignedHeaderWithDAHint](b)
+	headerP2PStore := common.NewMockBroadcaster[*types.SignedHeader](b)
 	s.headerStore = headerP2PStore
 	dataP2PStore := common.NewMockBroadcaster[*types.Data](b)
 	s.dataStore = dataP2PStore

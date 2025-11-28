@@ -123,7 +123,7 @@ func TestSyncer_validateBlock_DataHashMismatch(t *testing.T) {
 		common.NopMetrics(),
 		cfg,
 		gen,
-		common.NewMockBroadcaster[*types.SignedHeaderWithDAHint](t),
+		common.NewMockBroadcaster[*types.SignedHeader](t),
 		common.NewMockBroadcaster[*types.Data](t),
 		zerolog.Nop(),
 		common.DefaultBlockOptions(),
@@ -174,7 +174,7 @@ func TestProcessHeightEvent_SyncsAndUpdatesState(t *testing.T) {
 		common.NopMetrics(),
 		cfg,
 		gen,
-		common.NewMockBroadcaster[*types.SignedHeaderWithDAHint](t),
+		common.NewMockBroadcaster[*types.SignedHeader](t),
 		common.NewMockBroadcaster[*types.Data](t),
 		zerolog.Nop(),
 		common.DefaultBlockOptions(),
@@ -228,7 +228,7 @@ func TestSequentialBlockSync(t *testing.T) {
 		common.NopMetrics(),
 		cfg,
 		gen,
-		common.NewMockBroadcaster[*types.SignedHeaderWithDAHint](t),
+		common.NewMockBroadcaster[*types.SignedHeader](t),
 		common.NewMockBroadcaster[*types.Data](t),
 		zerolog.Nop(),
 		common.DefaultBlockOptions(),
@@ -340,17 +340,14 @@ func TestSyncLoopPersistState(t *testing.T) {
 	dummyExec := execution.NewDummyExecutor()
 
 	// Create mock stores for P2P
-	mockHeaderStore := extmocks.NewMockStore[*types.SignedHeaderWithDAHint](t)
+	mockHeaderStore := extmocks.NewMockStore[*types.SignedHeader](t)
 	mockHeaderStore.EXPECT().Height().Return(uint64(0)).Maybe()
 
 	mockDataStore := extmocks.NewMockStore[*types.Data](t)
 	mockDataStore.EXPECT().Height().Return(uint64(0)).Maybe()
 
-	mockP2PHeaderStore := common.NewMockBroadcaster[*types.SignedHeaderWithDAHint](t)
-	mockP2PHeaderStore.EXPECT().Store().Return(mockHeaderStore).Maybe()
-
+	mockP2PHeaderStore := common.NewMockBroadcaster[*types.SignedHeader](t)
 	mockP2PDataStore := common.NewMockBroadcaster[*types.Data](t)
-	mockP2PDataStore.EXPECT().Store().Return(mockDataStore).Maybe()
 
 	errorCh := make(chan error, 1)
 	syncerInst1 := NewSyncer(

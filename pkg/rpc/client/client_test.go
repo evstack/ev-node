@@ -8,6 +8,7 @@ import (
 	"time"
 
 	goheader "github.com/celestiaorg/go-header"
+	"github.com/evstack/ev-node/pkg/sync"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/multiformats/go-multiaddr"
 	"github.com/rs/zerolog"
@@ -28,8 +29,8 @@ import (
 func setupTestServer(
 	t *testing.T,
 	mockStore *mocks.MockStore,
-	headerStore goheader.Store[*types.SignedHeaderWithDAHint],
-	dataStore goheader.Store[*types.Data],
+	headerStore goheader.Store[*sync.SignedHeaderWithDAHint],
+	dataStore goheader.Store[*sync.DataWithDAHint],
 	mockP2P *mocks.MockP2PRPC,
 ) (*httptest.Server, *Client) {
 	t.Helper()
@@ -106,19 +107,19 @@ func TestClientGetMetadata(t *testing.T) {
 func TestClientGetP2PStoreInfo(t *testing.T) {
 	mockStore := mocks.NewMockStore(t)
 	mockP2P := mocks.NewMockP2PRPC(t)
-	headerStore := headerstoremocks.NewMockStore[*types.SignedHeaderWithDAHint](t)
-	dataStore := headerstoremocks.NewMockStore[*types.Data](t)
+	headerStore := headerstoremocks.NewMockStore[*sync.SignedHeaderWithDAHint](t)
+	dataStore := headerstoremocks.NewMockStore[*sync.DataWithDAHint](t)
 
 	now := time.Now().UTC()
 
-	headerHead := &types.SignedHeaderWithDAHint{SignedHeader: testSignedHeader(10, now)}
-	headerTail := &types.SignedHeaderWithDAHint{SignedHeader: testSignedHeader(5, now.Add(-time.Minute))}
+	headerHead := &sync.SignedHeaderWithDAHint{Entry: testSignedHeader(10, now)}
+	headerTail := &sync.SignedHeaderWithDAHint{Entry: testSignedHeader(5, now.Add(-time.Minute))}
 	headerStore.On("Height").Return(uint64(10))
 	headerStore.On("Head", mock.Anything).Return(headerHead, nil)
 	headerStore.On("Tail", mock.Anything).Return(headerTail, nil)
 
-	dataHead := testData(8, now.Add(-30*time.Second))
-	dataTail := testData(4, now.Add(-2*time.Minute))
+	dataHead := &sync.DataWithDAHint{Entry: testData(8, now.Add(-30*time.Second))}
+	dataTail := &sync.DataWithDAHint{Entry: testData(4, now.Add(-2*time.Minute))}
 	dataStore.On("Height").Return(uint64(8))
 	dataStore.On("Head", mock.Anything).Return(dataHead, nil)
 	dataStore.On("Tail", mock.Anything).Return(dataTail, nil)

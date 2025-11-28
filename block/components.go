@@ -9,7 +9,6 @@ import (
 	"github.com/rs/zerolog"
 
 	"github.com/evstack/ev-node/block/internal/cache"
-	"github.com/evstack/ev-node/block/internal/common"
 	"github.com/evstack/ev-node/block/internal/executing"
 	"github.com/evstack/ev-node/block/internal/reaping"
 	"github.com/evstack/ev-node/block/internal/submitting"
@@ -158,8 +157,8 @@ func NewSyncComponents(
 		metrics,
 		config,
 		genesis,
-		common.NewDecorator[*types.SignedHeader](headerStore),
-		common.NewDecorator[*types.Data](dataStore),
+		headerStore,
+		dataStore,
 		logger,
 		blockOpts,
 		errorCh,
@@ -223,8 +222,8 @@ func NewAggregatorComponents(
 		metrics,
 		config,
 		genesis,
-		common.NewDecorator[*types.SignedHeader](headerBroadcaster),
-		common.NewDecorator[*types.Data](dataBroadcaster),
+		headerBroadcaster,
+		dataBroadcaster,
 		logger,
 		blockOpts,
 		errorCh,

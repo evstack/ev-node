@@ -47,7 +47,7 @@ func TestLazyMode_ProduceBlockLogic(t *testing.T) {
 
 	mockExec := testmocks.NewMockExecutor(t)
 	mockSeq := testmocks.NewMockSequencer(t)
-	hb := common.NewMockBroadcaster[*types.SignedHeaderWithDAHint](t)
+	hb := common.NewMockBroadcaster[*types.SignedHeader](t)
 	hb.EXPECT().WriteToStoreAndBroadcast(mock.Anything, mock.Anything).Return(nil).Maybe()
 	db := common.NewMockBroadcaster[*types.Data](t)
 	db.EXPECT().WriteToStoreAndBroadcast(mock.Anything, mock.Anything).Return(nil).Maybe()
@@ -157,7 +157,7 @@ func TestRegularMode_ProduceBlockLogic(t *testing.T) {
 
 	mockExec := testmocks.NewMockExecutor(t)
 	mockSeq := testmocks.NewMockSequencer(t)
-	hb := common.NewMockBroadcaster[*types.SignedHeaderWithDAHint](t)
+	hb := common.NewMockBroadcaster[*types.SignedHeader](t)
 	hb.EXPECT().WriteToStoreAndBroadcast(mock.Anything, mock.Anything).Return(nil).Maybe()
 	db := common.NewMockBroadcaster[*types.Data](t)
 	db.EXPECT().WriteToStoreAndBroadcast(mock.Anything, mock.Anything).Return(nil).Maybe()

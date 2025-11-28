@@ -14,9 +14,6 @@ var (
 	ErrLastHeaderHashMismatch = errors.New("last header hash mismatch")
 )
 
-type SignedHeaderWithDAHint = DAHeightHintContainer[*SignedHeader]
-type DataWithDAHint = DAHeightHintContainer[*Data]
-
 var _ header.Header[*SignedHeader] = &SignedHeader{}
 
 // SignedHeader combines Header and its signature.

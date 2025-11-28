@@ -77,19 +77,11 @@ func TestSyncer_BackoffOnDAError(t *testing.T) {
 			p2pHandler.On("SetProcessedHeight", mock.Anything).Return().Maybe()
 
 			// Create mock stores for P2P
-			mockHeaderStore := extmocks.NewMockStore[*types.SignedHeaderWithDAHint](t)
+			mockHeaderStore := extmocks.NewMockStore[*types.SignedHeader](t)
 			mockHeaderStore.EXPECT().Height().Return(uint64(0)).Maybe()
 
 			mockDataStore := extmocks.NewMockStore[*types.Data](t)
 			mockDataStore.EXPECT().Height().Return(uint64(0)).Maybe()
-
-			headerStore := common.NewMockBroadcaster[*types.SignedHeaderWithDAHint](t)
-			headerStore.EXPECT().Store().Return(mockHeaderStore).Maybe()
-			syncer.headerStore = headerStore
-
-			dataStore := common.NewMockBroadcaster[*types.Data](t)
-			dataStore.EXPECT().Store().Return(mockDataStore).Maybe()
-			syncer.dataStore = dataStore
 
 			var callTimes []time.Time
 			callCount := 0
@@ -173,19 +165,11 @@ func TestSyncer_BackoffResetOnSuccess(t *testing.T) {
 	p2pHandler.On("SetProcessedHeight", mock.Anything).Return().Maybe()
 
 	// Create mock stores for P2P
-	mockHeaderStore := extmocks.NewMockStore[*types.SignedHeaderWithDAHint](t)
+	mockHeaderStore := extmocks.NewMockStore[*types.SignedHeader](t)
 	mockHeaderStore.EXPECT().Height().Return(uint64(0)).Maybe()
 
 	mockDataStore := extmocks.NewMockStore[*types.Data](t)
 	mockDataStore.EXPECT().Height().Return(uint64(0)).Maybe()
-
-	headerStore := common.NewMockBroadcaster[*types.SignedHeaderWithDAHint](t)
-	headerStore.EXPECT().Store().Return(mockHeaderStore).Maybe()
-	syncer.headerStore = headerStore
-
-	dataStore := common.NewMockBroadcaster[*types.Data](t)
-	dataStore.EXPECT().Store().Return(mockDataStore).Maybe()
-	syncer.dataStore = dataStore
 
 	var callTimes []time.Time
 
@@ -263,19 +247,11 @@ func TestSyncer_BackoffBehaviorIntegration(t *testing.T) {
 	syncer.p2pHandler = p2pHandler
 
 	// Create mock stores for P2P
-	mockHeaderStore := extmocks.NewMockStore[*types.SignedHeaderWithDAHint](t)
+	mockHeaderStore := extmocks.NewMockStore[*types.SignedHeader](t)
 	mockHeaderStore.EXPECT().Height().Return(uint64(0)).Maybe()
 
 	mockDataStore := extmocks.NewMockStore[*types.Data](t)
 	mockDataStore.EXPECT().Height().Return(uint64(0)).Maybe()
-
-	headerStore := common.NewMockBroadcaster[*types.SignedHeaderWithDAHint](t)
-	headerStore.EXPECT().Store().Return(mockHeaderStore).Maybe()
-	syncer.headerStore = headerStore
-
-	dataStore := common.NewMockBroadcaster[*types.Data](t)
-	dataStore.EXPECT().Store().Return(mockDataStore).Maybe()
-	syncer.dataStore = dataStore
 
 	var callTimes []time.Time
 	p2pHandler.On("SetProcessedHeight", mock.Anything).Return().Maybe()
@@ -350,7 +326,7 @@ func setupTestSyncer(t *testing.T, daBlockTime time.Duration) *Syncer {
 		common.NopMetrics(),
 		cfg,
 		gen,
-		common.NewMockBroadcaster[*types.SignedHeaderWithDAHint](t),
+		common.NewMockBroadcaster[*types.SignedHeader](t),
 		common.NewMockBroadcaster[*types.Data](t),
 		zerolog.Nop(),
 		common.DefaultBlockOptions(),

@@ -39,7 +39,7 @@ func TestExecutor_BroadcasterIntegration(t *testing.T) {
 	}
 
 	// Create mock broadcasters
-	headerBroadcaster := common.NewMockBroadcaster[*types.SignedHeaderWithDAHint](t)
+	headerBroadcaster := common.NewMockBroadcaster[*types.SignedHeader](t)
 	dataBroadcaster := common.NewMockBroadcaster[*types.Data](t)
 
 	// Create executor with broadcasters

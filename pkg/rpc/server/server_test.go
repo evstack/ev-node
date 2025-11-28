@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"connectrpc.com/connect"
+	"github.com/evstack/ev-node/pkg/sync"
 	ds "github.com/ipfs/go-datastore"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/multiformats/go-multiaddr"
@@ -325,8 +326,8 @@ func TestGetGenesisDaHeight_InvalidLength(t *testing.T) {
 func TestGetP2PStoreInfo(t *testing.T) {
 	t.Run("returns snapshots for configured stores", func(t *testing.T) {
 		mockStore := mocks.NewMockStore(t)
-		headerStore := headerstoremocks.NewMockStore[*types.SignedHeaderWithDAHint](t)
-		dataStore := headerstoremocks.NewMockStore[*types.Data](t)
+		headerStore := headerstoremocks.NewMockStore[*sync.SignedHeaderWithDAHint](t)
+		dataStore := headerstoremocks.NewMockStore[*sync.DataWithDAHint](t)
 		logger := zerolog.Nop()
 		server := NewStoreServer(mockStore, headerStore, dataStore, logger)
 
@@ -354,10 +355,10 @@ func TestGetP2PStoreInfo(t *testing.T) {
 
 	t.Run("returns error when a store edge fails", func(t *testing.T) {
 		mockStore := mocks.NewMockStore(t)
-		headerStore := headerstoremocks.NewMockStore[*types.SignedHeaderWithDAHint](t)
+		headerStore := headerstoremocks.NewMockStore[*sync.SignedHeaderWithDAHint](t)
 		logger := zerolog.Nop()
 		headerStore.On("Height").Return(uint64(0))
-		headerStore.On("Head", mock.Anything).Return((*types.SignedHeaderWithDAHint)(nil), fmt.Errorf("boom"))
+		headerStore.On("Head", mock.Anything).Return((*sync.SignedHeaderWithDAHint)(nil), fmt.Errorf("boom"))
 
 		server := NewStoreServer(mockStore, headerStore, nil, logger)
 		resp, err := server.GetP2PStoreInfo(context.Background(), connect.NewRequest(&emptypb.Empty{}))
@@ -627,8 +628,8 @@ func TestHealthReadyEndpoint(t *testing.T) {
 	})
 }
 
-func makeTestSignedHeader(height uint64, ts time.Time) *types.SignedHeaderWithDAHint {
-	return &types.SignedHeaderWithDAHint{SignedHeader: &types.SignedHeader{
+func makeTestSignedHeader(height uint64, ts time.Time) *sync.SignedHeaderWithDAHint {
+	return &sync.SignedHeaderWithDAHint{Entry: &types.SignedHeader{
 		Header: types.Header{
 			BaseHeader: types.BaseHeader{
 				Height:  height,
@@ -643,12 +644,13 @@ func makeTestSignedHeader(height uint64, ts time.Time) *types.SignedHeaderWithDA
 	}
 }
 
-func makeTestData(height uint64, ts time.Time) *types.Data {
-	return &types.Data{
+func makeTestData(height uint64, ts time.Time) *sync.DataWithDAHint {
+	return &sync.DataWithDAHint{Entry: &types.Data{
 		Metadata: &types.Metadata{
 			ChainID: "test-chain",
 			Height:  height,
 			Time:    uint64(ts.UnixNano()),
 		},
+	},
 	}
 }

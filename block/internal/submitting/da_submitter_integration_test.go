@@ -93,7 +93,7 @@ func TestDASubmitter_SubmitHeadersAndData_MarksInclusionAndUpdatesLastSubmitted(
 		Namespace:     cfg.DA.Namespace,
 		DataNamespace: cfg.DA.DataNamespace,
 	})
-	daSubmitter := NewDASubmitter(daClient, cfg, gen, common.DefaultBlockOptions(), common.NopMetrics(), zerolog.Nop(), noopXXXer{})
+	daSubmitter := NewDASubmitter(daClient, cfg, gen, common.DefaultBlockOptions(), common.NopMetrics(), zerolog.Nop(), noopDAHintAppender{}, noopDAHintAppender{})
 
 	// Submit headers and data
 	require.NoError(t, daSubmitter.SubmitHeaders(context.Background(), cm))
@@ -111,8 +111,8 @@ func TestDASubmitter_SubmitHeadersAndData_MarksInclusionAndUpdatesLastSubmitted(
 
 }
 
-type noopXXXer struct{}
+type noopDAHintAppender struct{}
 
-func (n noopXXXer) AppendDAHint(ctx context.Context, header *types.SignedHeaderWithDAHint) error {
+func (n noopDAHintAppender) AppendDAHint(ctx context.Context, daHeight uint64, hash ...types.Hash) error {
 	return nil
 }

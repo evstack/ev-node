@@ -1,4 +1,4 @@
-package types
+package sync
 
 import (
 	"encoding/binary"
@@ -6,7 +6,11 @@ import (
 	"time"
 
 	"github.com/celestiaorg/go-header"
+	"github.com/evstack/ev-node/types"
 )
+
+type SignedHeaderWithDAHint = DAHeightHintContainer[*types.SignedHeader]
+type DataWithDAHint = DAHeightHintContainer[*types.Data]
 
 type DAHeightHintContainer[H header.Header[H]] struct {
 	Entry        H
@@ -48,6 +52,9 @@ func (sh *DAHeightHintContainer[H]) Verify(untrstH *DAHeightHintContainer[H]) er
 
 func (s *DAHeightHintContainer[H]) SetDAHint(daHeight uint64) {
 	s.DAHeightHint = daHeight
+}
+func (s *DAHeightHintContainer[H]) DAHint() uint64 {
+	return s.DAHeightHint
 }
 
 func (s *DAHeightHintContainer[H]) IsZero() bool {

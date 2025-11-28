@@ -116,48 +116,76 @@ func (_c *MockBroadcaster_AppendDAHint_Call[H]) RunAndReturn(run func(ctx contex
 	return _c
 }
 
-// Store provides a mock function for the type MockBroadcaster
-func (_mock *MockBroadcaster[H]) Store() header.Store[H] {
-	ret := _mock.Called()
+// GetByHeight provides a mock function for the type MockBroadcaster
+func (_mock *MockBroadcaster[H]) GetByHeight(ctx context.Context, height uint64) (H, uint64, error) {
+	ret := _mock.Called(ctx, height)
 
 	if len(ret) == 0 {
-		panic("no return value specified for Store")
+		panic("no return value specified for GetByHeight")
 	}
 
-	var r0 header.Store[H]
-	if returnFunc, ok := ret.Get(0).(func() header.Store[H]); ok {
-		r0 = returnFunc()
+	var r0 H
+	var r1 uint64
+	var r2 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, uint64) (H, uint64, error)); ok {
+		return returnFunc(ctx, height)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, uint64) H); ok {
+		r0 = returnFunc(ctx, height)
 	} else {
 		if ret.Get(0) != nil {
-			r0 = ret.Get(0).(header.Store[H])
+			r0 = ret.Get(0).(H)
 		}
 	}
-	return r0
+	if returnFunc, ok := ret.Get(1).(func(context.Context, uint64) uint64); ok {
+		r1 = returnFunc(ctx, height)
+	} else {
+		r1 = ret.Get(1).(uint64)
+	}
+	if returnFunc, ok := ret.Get(2).(func(context.Context, uint64) error); ok {
+		r2 = returnFunc(ctx, height)
+	} else {
+		r2 = ret.Error(2)
+	}
+	return r0, r1, r2
 }
 
-// MockBroadcaster_Store_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'Store'
-type MockBroadcaster_Store_Call[H header.Header[H]] struct {
+// MockBroadcaster_GetByHeight_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetByHeight'
+type MockBroadcaster_GetByHeight_Call[H header.Header[H]] struct {
 	*mock.Call
 }
 
-// Store is a helper method to define mock.On call
-func (_e *MockBroadcaster_Expecter[H]) Store() *MockBroadcaster_Store_Call[H] {
-	return &MockBroadcaster_Store_Call[H]{Call: _e.mock.On("Store")}
+// GetByHeight is a helper method to define mock.On call
+//   - ctx context.Context
+//   - height uint64
+func (_e *MockBroadcaster_Expecter[H]) GetByHeight(ctx interface{}, height interface{}) *MockBroadcaster_GetByHeight_Call[H] {
+	return &MockBroadcaster_GetByHeight_Call[H]{Call: _e.mock.On("GetByHeight", ctx, height)}
 }
 
-func (_c *MockBroadcaster_Store_Call[H]) Run(run func()) *MockBroadcaster_Store_Call[H] {
+func (_c *MockBroadcaster_GetByHeight_Call[H]) Run(run func(ctx context.Context, height uint64)) *MockBroadcaster_GetByHeight_Call[H] {
 	_c.Call.Run(func(args mock.Arguments) {
-		run()
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 uint64
+		if args[1] != nil {
+			arg1 = args[1].(uint64)
+		}
+		run(
+			arg0,
+			arg1,
+		)
 	})
 	return _c
 }
 
-func (_c *MockBroadcaster_Store_Call[H]) Return(store header.Store[H]) *MockBroadcaster_Store_Call[H] {
-	_c.Call.Return(store)
+func (_c *MockBroadcaster_GetByHeight_Call[H]) Return(v H, v1 uint64, err error) *MockBroadcaster_GetByHeight_Call[H] {
+	_c.Call.Return(v, v1, err)
 	return _c
 }
 
-func (_c *MockBroadcaster_Store_Call[H]) RunAndReturn(run func() header.Store[H]) *MockBroadcaster_Store_Call[H] {
+func (_c *MockBroadcaster_GetByHeight_Call[H]) RunAndReturn(run func(ctx context.Context, height uint64) (H, uint64, error)) *MockBroadcaster_GetByHeight_Call[H] {
 	_c.Call.Return(run)
 	return _c
 }
