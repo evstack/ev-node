@@ -33,18 +33,19 @@ func CalculateEpochNumber(daHeight, daStartHeight, daEpochSize uint64) uint64 {
 // Returns:
 //   - start: The first DA height in the epoch (inclusive)
 //   - end: The last DA height in the epoch (inclusive)
-func CalculateEpochBoundaries(daHeight, daStartHeight, daEpochSize uint64) (start, end uint64) {
+func CalculateEpochBoundaries(daHeight, daStartHeight, daEpochSize uint64) (start, end, epochNum uint64) {
+	epochNum = CalculateEpochNumber(daHeight, daStartHeight, daEpochSize)
+
 	if daEpochSize == 0 {
-		return daStartHeight, daStartHeight
+		return daStartHeight, daStartHeight, epochNum
 	}
 
 	if daHeight < daStartHeight {
-		return daStartHeight, daStartHeight + daEpochSize - 1
+		return daStartHeight, daStartHeight + daEpochSize - 1, epochNum
 	}
 
-	epochNum := CalculateEpochNumber(daHeight, daStartHeight, daEpochSize)
 	start = daStartHeight + (epochNum-1)*daEpochSize
 	end = daStartHeight + epochNum*daEpochSize - 1
 
-	return start, end
+	return start, end, epochNum
 }
