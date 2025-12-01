@@ -236,10 +236,8 @@ func TestBasedSequencer_GetNextBatch_NotConfigured(t *testing.T) {
 	}
 
 	resp, err := seq.GetNextBatch(context.Background(), req)
-	require.NoError(t, err)
-	require.NotNil(t, resp)
-	require.NotNil(t, resp.Batch)
-	assert.Equal(t, 0, len(resp.Batch.Transactions))
+	require.Error(t, err)
+	require.Nil(t, resp)
 }
 
 func TestBasedSequencer_GetNextBatch_WithMaxBytes(t *testing.T) {
