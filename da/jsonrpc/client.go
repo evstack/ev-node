@@ -32,6 +32,21 @@ type Client struct {
 
 // BlobAPI exposes the methods needed by block/internal/da.
 func (c *Client) Submit(ctx context.Context, blobs []*blob.Blob, opts *blob.SubmitOptions) (uint64, error) {
+	if c.API.MaxBlobSize > 0 {
+		for i, b := range blobs {
+			if b == nil {
+				return 0, fmt.Errorf("blob %d is nil", i)
+			}
+			if uint64(len(b.Data())) > c.API.MaxBlobSize {
+				c.API.Logger.Warn().
+					Int("index", i).
+					Int("size", len(b.Data())).
+					Uint64("max", c.API.MaxBlobSize).
+					Msg("blob rejected: size over limit")
+				return 0, fmt.Errorf("blob %d exceeds max blob size %d bytes", i, c.API.MaxBlobSize)
+			}
+		}
+	}
 	return c.API.Internal.Submit(ctx, blobs, opts)
 }
 
