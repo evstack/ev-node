@@ -39,7 +39,7 @@ func TestAsyncDARetriever_RequestRetrieval(t *testing.T) {
 	// 2. Test deduplication (idempotency)
 	// We'll block the retriever to simulate a slow request, then send multiple requests for the same height
 	height2 := uint64(200)
-	
+
 	// Create a channel to signal when the mock is called
 	calledCh := make(chan struct{})
 	// Create a channel to unblock the mock
@@ -98,7 +98,7 @@ func TestAsyncDARetriever_WorkerPoolLimit(t *testing.T) {
 
 	// We have 5 workers. We'll block them all.
 	unblockCh := make(chan struct{})
-	
+
 	// Expect 5 calls that block
 	for i := 0; i < 5; i++ {
 		h := uint64(1000 + i)

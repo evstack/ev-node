@@ -731,7 +731,7 @@ func TestProcessHeightEvent_TriggersAsyncDARetrieval(t *testing.T) {
 	// Mock AsyncDARetriever
 	mockRetriever := NewMockDARetriever(t)
 	asyncRetriever := NewAsyncDARetriever(mockRetriever, s.heightInCh, zerolog.Nop())
-	// We don't start the async retriever to avoid race conditions in test, 
+	// We don't start the async retriever to avoid race conditions in test,
 	// we just want to verify RequestRetrieval queues the request.
 	// However, RequestRetrieval writes to a channel, so we need a consumer or a buffered channel.
 	// The workCh is buffered (100), so we are good.
@@ -739,9 +739,9 @@ func TestProcessHeightEvent_TriggersAsyncDARetrieval(t *testing.T) {
 
 	// Create event with DA height hint
 	evt := common.DAHeightEvent{
-		Header: &types.SignedHeader{Header: types.Header{BaseHeader: types.BaseHeader{ChainID: "c", Height: 2}}},
-		Data:   &types.Data{Metadata: &types.Metadata{ChainID: "c", Height: 2}},
-		Source: common.SourceP2P,
+		Header:        &types.SignedHeader{Header: types.Header{BaseHeader: types.BaseHeader{ChainID: "c", Height: 2}}},
+		Data:          &types.Data{Metadata: &types.Metadata{ChainID: "c", Height: 2}},
+		Source:        common.SourceP2P,
 		DaHeightHints: [2]uint64{100, 100},
 	}
 
@@ -749,13 +749,13 @@ func TestProcessHeightEvent_TriggersAsyncDARetrieval(t *testing.T) {
 	// processHeightEvent checks:
 	// 1. height <= currentHeight (2 <= 0 -> false)
 	// 2. height != currentHeight+1 (2 != 1 -> true) -> stores as pending event
-	
+
 	// We need to simulate height 1 being processed first so height 2 is "next"
 	// OR we can just test that it DOES NOT trigger DA retrieval if it's pending.
 	// Wait, the logic for DA retrieval is BEFORE the "next block" check?
 	// Let's check syncer.go...
 	// Yes, "If this is a P2P event with a DA height hint, trigger targeted DA retrieval" block is AFTER "If this is not the next block in sequence... return"
-	
+
 	// So we need to be at height 1 to process height 2.
 	// Let's set the store height to 1.
 	batch, err := st.NewBatch(context.Background())
