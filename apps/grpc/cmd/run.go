@@ -63,7 +63,7 @@ The execution client must implement the Evolve execution gRPC interface.`,
 		}
 
 		// Create datastore
-		datastore, err := store.NewDefaultKVStore(nodeConfig.RootDir, nodeConfig.DBPath, "evgrpc")
+		datastore, err := store.NewDefaultKVStore(nodeConfig.RootDir, nodeConfig.DBPath, "grpc-single")
 		if err != nil {
 			return err
 		}
