@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/rs/zerolog"
@@ -551,9 +552,18 @@ func marshalItems[T any](
 	resultCh := make(chan error, len(items))
 
 	// Marshal items concurrently
+	var wg sync.WaitGroup
 	for i, item := range items {
+		wg.Add(1)
 		go func(idx int, itm T) {
-			sem <- struct{}{}
+			defer wg.Done()
+
+			select {
+			case <-ctx.Done():
+				resultCh <- ctx.Err()
+				return
+			case sem <- struct{}{}:
+			}
 			defer func() { <-sem }()
 
 			select {
@@ -563,6 +573,7 @@ func marshalItems[T any](
 				bz, err := marshalFn(itm)
 				if err != nil {
 					resultCh <- fmt.Errorf("failed to marshal %s item at index %d: %w", itemType, idx, err)
+					cancel()
 					return
 				}
 				marshaled[idx] = bz
@@ -572,6 +583,7 @@ func marshalItems[T any](
 	}
 
 	// Wait for all goroutines to complete and check for errors
+	defer wg.Wait()
 	for i := 0; i < len(items); i++ {
 		if err := <-resultCh; err != nil {
 			return nil, err
