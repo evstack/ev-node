@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"strings"
 	"time"
 
@@ -76,9 +77,34 @@ func NewClient(cfg Config) *client {
 
 // Submit submits blobs to the DA layer with the specified options.
 func (c *client) Submit(ctx context.Context, data [][]byte, namespace []byte, options []byte) datypes.ResultSubmit {
+	if data == nil {
+		return datypes.ResultSubmit{
+			BaseResult: datypes.BaseResult{
+				Code:    datypes.StatusError,
+				Message: "data cannot be nil",
+			},
+		}
+	}
+
 	// calculate blob size
 	var blobSize uint64
-	for _, b := range data {
+	for i, b := range data {
+		if b == nil {
+			return datypes.ResultSubmit{
+				BaseResult: datypes.BaseResult{
+					Code:    datypes.StatusError,
+					Message: fmt.Sprintf("data[%d] cannot be nil", i),
+				},
+			}
+		}
+		if uint64(len(b)) > math.MaxUint64-blobSize {
+			return datypes.ResultSubmit{
+				BaseResult: datypes.BaseResult{
+					Code:    datypes.StatusError,
+					Message: "blob size overflow",
+				},
+			}
+		}
 		blobSize += uint64(len(b))
 	}
 
