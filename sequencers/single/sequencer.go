@@ -134,8 +134,6 @@ func (c *Sequencer) GetNextBatch(ctx context.Context, req coresequencer.GetNextB
 
 	forcedEvent, err := c.fiRetriever.RetrieveForcedIncludedTxs(ctx, currentDAHeight)
 	if err != nil {
-		// Continue without forced txs. Add logging for clarity.
-
 		if errors.Is(err, coreda.ErrHeightFromFuture) {
 			c.logger.Debug().
 				Uint64("da_height", currentDAHeight).
@@ -362,11 +360,13 @@ func (c *Sequencer) processForcedInclusionTxs(event *block.ForcedInclusionEvent,
 			Msg("stored pending forced inclusion transactions for next epoch")
 	}
 
-	c.logger.Info().
-		Int("processed_tx_count", len(validatedTxs)).
-		Int("pending_tx_count", len(newPendingTxs)).
-		Int("current_size", currentSize).
-		Msg("completed processing forced inclusion transactions")
+	if len(validatedTxs) > 0 {
+		c.logger.Info().
+			Int("processed_tx_count", len(validatedTxs)).
+			Int("pending_tx_count", len(newPendingTxs)).
+			Int("current_size", currentSize).
+			Msg("completed processing forced inclusion transactions")
+	}
 
 	return validatedTxs
 }
