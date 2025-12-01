@@ -284,13 +284,18 @@ func (syncService *SyncService[V]) initStore(ctx context.Context, initial *DAHei
 // but does not start the Subscriber. Returns peer IDs for later use.
 func (syncService *SyncService[V]) setupP2PInfrastructure(ctx context.Context) ([]peer.ID, error) {
 	ps := syncService.p2p.PubSub()
-	var err error
+
+	_, _, chainID, err := syncService.p2p.Info()
+	if err != nil {
+		return nil, fmt.Errorf("error while fetching the network: %w", err)
+	}
+	networkID := syncService.getNetworkID(chainID)
 
 	// Create subscriber but DON'T start it yet
 	syncService.sub, err = goheaderp2p.NewSubscriber[*DAHeightHintContainer[V]](
 		ps,
 		pubsub.DefaultMsgIdFn,
-		goheaderp2p.WithSubscriberNetworkID(syncService.getChainID()),
+		goheaderp2p.WithSubscriberNetworkID(networkID),
 		goheaderp2p.WithSubscriberMetrics(),
 	)
 	if err != nil {
@@ -300,12 +305,6 @@ func (syncService *SyncService[V]) setupP2PInfrastructure(ctx context.Context) (
 	if err := syncService.store.Start(ctx); err != nil {
 		return nil, fmt.Errorf("error while starting store: %w", err)
 	}
-
-	_, _, network, err := syncService.p2p.Info()
-	if err != nil {
-		return nil, fmt.Errorf("error while fetching the network: %w", err)
-	}
-	networkID := syncService.getNetworkID(network)
 
 	if syncService.p2pServer, err = newP2PServer(syncService.p2p.Host(), syncService.store, networkID); err != nil {
 		return nil, fmt.Errorf("error while creating p2p server: %w", err)
@@ -476,10 +475,6 @@ func newSyncer[H header.Header[H]](
 
 func (syncService *SyncService[H]) getNetworkID(network string) string {
 	return network + "-" + string(syncService.syncType)
-}
-
-func (syncService *SyncService[H]) getChainID() string {
-	return syncService.genesis.ChainID + "-" + string(syncService.syncType)
 }
 
 func (syncService *SyncService[H]) getPeerIDs() []peer.ID {
