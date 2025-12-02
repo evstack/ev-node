@@ -26,6 +26,8 @@ import (
 	"github.com/evstack/ev-node/sequencers/single"
 )
 
+const testDbName = "testapp"
+
 var RunCmd = &cobra.Command{
 	Use:     "start",
 	Aliases: []string{"node", "run"},
@@ -68,7 +70,7 @@ var RunCmd = &cobra.Command{
 			return err
 		}
 
-		datastore, err := store.NewDefaultKVStore(nodeConfig.RootDir, nodeConfig.DBPath, "testapp")
+		datastore, err := store.NewDefaultKVStore(nodeConfig.RootDir, nodeConfig.DBPath, testDbName)
 		if err != nil {
 			return err
 		}

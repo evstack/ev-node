@@ -2,7 +2,6 @@ package block
 
 import (
 	"context"
-	"time"
 
 	"github.com/evstack/ev-node/block/internal/common"
 	"github.com/evstack/ev-node/block/internal/da"
@@ -43,12 +42,12 @@ func NewDAClient(
 	logger zerolog.Logger,
 ) DAClient {
 	return da.NewClient(da.Config{
-		DA:                       daLayer,
-		Logger:                   logger,
-		DefaultTimeout:           10 * time.Second,
-		Namespace:                config.DA.GetNamespace(),
-		DataNamespace:            config.DA.GetDataNamespace(),
-		ForcedInclusionNamespace: config.DA.GetForcedInclusionNamespace(),
+		DA:                daLayer,
+		Logger:            logger,
+		Namespace:         config.DA.GetNamespace(),
+		DefaultTimeout:    config.DA.RequestTimeout.Duration,
+		DataNamespace:     config.DA.GetDataNamespace(),
+		RetrieveBatchSize: config.DA.RetrieveBatchSize,
 	})
 }
 

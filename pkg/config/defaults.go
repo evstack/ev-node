@@ -73,6 +73,8 @@ func DefaultConfig() Config {
 			Address:                  "http://localhost:7980",
 			BlockTime:                DurationWrapper{6 * time.Second},
 			MaxSubmitAttempts:        30,
+			RetrieveBatchSize:        100,
+			RequestTimeout:           DurationWrapper{30 * time.Second},
 			Namespace:                randString(10),
 			DataNamespace:            "",
 			ForcedInclusionNamespace: "",

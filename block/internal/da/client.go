@@ -35,17 +35,23 @@ type client struct {
 	da                         coreda.DA
 	logger                     zerolog.Logger
 	defaultTimeout             time.Duration
+	batchSize                  int
 	namespaceBz                []byte
 	namespaceDataBz            []byte
 	namespaceForcedInclusionBz []byte
 	hasForcedInclusionNs       bool
 }
 
+const (
+	defaultRetrieveBatchSize = 150
+)
+
 // Config contains configuration for the DA client.
 type Config struct {
 	DA                       coreda.DA
 	Logger                   zerolog.Logger
 	DefaultTimeout           time.Duration
+	RetrieveBatchSize        int
 	Namespace                string
 	DataNamespace            string
 	ForcedInclusionNamespace string
@@ -55,6 +61,9 @@ type Config struct {
 func NewClient(cfg Config) *client {
 	if cfg.DefaultTimeout == 0 {
 		cfg.DefaultTimeout = 30 * time.Second
+	}
+	if cfg.RetrieveBatchSize <= 0 {
+		cfg.RetrieveBatchSize = defaultRetrieveBatchSize
 	}
 
 	hasForcedInclusionNs := cfg.ForcedInclusionNamespace != ""
@@ -67,6 +76,7 @@ func NewClient(cfg Config) *client {
 		da:                         cfg.DA,
 		logger:                     cfg.Logger.With().Str("component", "da_client").Logger(),
 		defaultTimeout:             cfg.DefaultTimeout,
+		batchSize:                  cfg.RetrieveBatchSize,
 		namespaceBz:                coreda.NamespaceFromString(cfg.Namespace).Bytes(),
 		namespaceDataBz:            coreda.NamespaceFromString(cfg.DataNamespace).Bytes(),
 		namespaceForcedInclusionBz: namespaceForcedInclusionBz,
@@ -217,7 +227,8 @@ func (c *client) Retrieve(ctx context.Context, height uint64, namespace []byte) 
 		}
 	}
 	// 2. Get Blobs using the retrieved IDs in batches
-	batchSize := 100
+	// Each batch has its own timeout while keeping the link to the parent context
+	batchSize := c.batchSize
 	blobs := make([][]byte, 0, len(idsResult.IDs))
 	for i := 0; i < len(idsResult.IDs); i += batchSize {
 		end := min(i+batchSize, len(idsResult.IDs))

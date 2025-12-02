@@ -490,6 +490,42 @@ _Example:_ `--rollkit.da.mempool_ttl 30`
 _Default:_ `20`
 _Constant:_ `FlagDAMempoolTTL`
 
+### DA Retrieve Batch Size
+
+**Description:**
+Number of blob IDs requested per DA `Get` call when the node retrieves blocks from the DA layer. Smaller batches help unreliable DA RPC endpoints return data before the per-request timeout, while larger batches reduce the total number of round trips for fast DA nodes.
+
+**YAML:**
+
+```yaml
+da:
+  retrieve_batch_size: 100
+```
+
+**Command-line Flag:**
+`--rollkit.da.retrieve_batch_size <int>`
+_Example:_ `--rollkit.da.retrieve_batch_size 50`
+_Default:_ `100`
+_Constant:_ `FlagDARetrieveBatchSize`
+
+### DA Request Timeout
+
+**Description:**
+Per-request timeout applied to DA `GetIDs` and `Get` RPC calls while retrieving blobs. Increase this value if your DA endpoint has high latency to avoid premature failures; decrease it to make the syncer fail fast and free resources sooner when the DA node becomes unresponsive.
+
+**YAML:**
+
+```yaml
+da:
+  request_timeout: "30s"
+```
+
+**Command-line Flag:**
+`--rollkit.da.request_timeout <duration>`
+_Example:_ `--rollkit.da.request_timeout 45s`
+_Default:_ `"30s"`
+_Constant:_ `FlagDARequestTimeout`
+
 ## P2P Configuration (`p2p`)
 
 Settings for peer-to-peer networking, enabling nodes to discover each other, exchange blocks, and share transactions.
