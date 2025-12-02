@@ -124,7 +124,7 @@ func (s *BasedSequencer) GetNextBatch(ctx context.Context, req coresequencer.Get
 
 	return &coresequencer.GetNextBatchResponse{
 		Batch:     batch,
-		Timestamp: time.Now(),
+		Timestamp: time.Time{}, // TODO(@julienrbrt): we need to use DA block timestamp for determinism
 		BatchData: req.LastBatchData,
 	}, nil
 }
