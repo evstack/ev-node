@@ -166,8 +166,8 @@ type DAConfig struct {
 	BlockTime         DurationWrapper `mapstructure:"block_time" yaml:"block_time" comment:"Average block time of the DA chain (duration). Determines frequency of DA layer syncing, maximum backoff time for retries, and is multiplied by MempoolTTL to calculate transaction expiration. Examples: \"15s\", \"30s\", \"1m\", \"2m30s\", \"10m\"."`
 	MempoolTTL        uint64          `mapstructure:"mempool_ttl" yaml:"mempool_ttl" comment:"Number of DA blocks after which a transaction is considered expired and dropped from the mempool. Controls retry backoff timing."`
 	MaxSubmitAttempts int             `mapstructure:"max_submit_attempts" yaml:"max_submit_attempts" comment:"Maximum number of attempts to submit data to the DA layer before giving up. Higher values provide more resilience but can delay error reporting."`
-	RetrieveBatchSize int             `mapstructure:"retrieve_batch_size" yaml:"retrieve_batch_size" comment:"Number of IDs to request per DA Get call when retrieving blobs. Smaller batches lower per-request latency; larger batches reduce the number of RPC round trips. Default: 100."`
-	RequestTimeout    DurationWrapper `mapstructure:"request_timeout" yaml:"request_timeout" comment:"Per-request timeout applied to DA GetIDs/Get calls when retrieving blobs. Larger values tolerate slower DA nodes at the cost of waiting longer before failing. Default: 30s."`
+	RetrieveBatchSize int             `mapstructure:"retrieve_batch_size" yaml:"retrieve_batch_size" comment:"Number of IDs to request per DA Get call when retrieving blobs. Smaller batches lower per-request latency; larger batches reduce the number of RPC round trips."`
+	RequestTimeout    DurationWrapper `mapstructure:"request_timeout" yaml:"request_timeout" comment:"Per-request timeout applied to DA interactions. Larger values tolerate slower DA nodes at the cost of waiting longer before failing."`
 }
 
 // GetNamespace returns the namespace for header submissions.
@@ -327,7 +327,7 @@ func AddFlags(cmd *cobra.Command) {
 	cmd.Flags().Uint64(FlagDAMempoolTTL, def.DA.MempoolTTL, "number of DA blocks until transaction is dropped from the mempool")
 	cmd.Flags().Int(FlagDAMaxSubmitAttempts, def.DA.MaxSubmitAttempts, "maximum number of attempts to submit data to the DA layer before giving up")
 	cmd.Flags().Int(FlagDARetrieveBatchSize, def.DA.RetrieveBatchSize, "number of IDs to request per DA Get call when retrieving blobs")
-	cmd.Flags().Duration(FlagDARequestTimeout, def.DA.RequestTimeout.Duration, "per-request timeout when retrieving blobs from the DA layer")
+	cmd.Flags().Duration(FlagDARequestTimeout, def.DA.RequestTimeout.Duration, "per-request timeout when interacting with the DA layer")
 
 	// P2P configuration flags
 	cmd.Flags().String(FlagP2PListenAddress, def.P2P.ListenAddress, "P2P listen address (host:port)")
