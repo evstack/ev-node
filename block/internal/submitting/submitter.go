@@ -131,11 +131,6 @@ func (s *Submitter) Stop() error {
 	return nil
 }
 
-// updateMetrics updates sync-related metrics
-func (s *Submitter) updateMetrics() {
-	s.metrics.DAInclusionHeight.Set(float64(s.GetDAIncludedHeight()))
-}
-
 // daSubmissionLoop handles submission of headers and data to DA layer (aggregator nodes only)
 func (s *Submitter) daSubmissionLoop() {
 	s.logger.Info().Msg("starting DA submission loop")
@@ -143,9 +138,6 @@ func (s *Submitter) daSubmissionLoop() {
 
 	ticker := time.NewTicker(s.config.DA.BlockTime.Duration)
 	defer ticker.Stop()
-
-	metricsTicker := time.NewTicker(30 * time.Second)
-	defer metricsTicker.Stop()
 
 	for {
 		select {
@@ -199,8 +191,8 @@ func (s *Submitter) daSubmissionLoop() {
 					}()
 				}
 			}
-		case <-metricsTicker.C:
-			s.updateMetrics()
+
+			s.metrics.DAInclusionHeight.Set(float64(s.GetDAIncludedHeight()))
 		}
 	}
 }
