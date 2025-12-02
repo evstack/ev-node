@@ -149,8 +149,9 @@ func (c *client) Submit(ctx context.Context, data [][]byte, gasPrice float64, na
 }
 
 // Retrieve retrieves blobs from the DA layer at the specified height and namespace.
-// Each request (GetIDs and each batch of Get) has its own independent timeout,
-// ensuring that retrieval of heights with many blobs doesn't fail due to an overall timeout.
+// Each request (GetIDs and each batch of Get) has its own per-request timeout
+// while still respecting parent cancellations, ensuring long retrievals don't ignore
+// upstream deadlines.
 func (c *client) Retrieve(ctx context.Context, height uint64, namespace []byte) coreda.ResultRetrieve {
 	// Check for parent context cancellation before starting
 	if err := ctx.Err(); err != nil {
@@ -164,8 +165,8 @@ func (c *client) Retrieve(ctx context.Context, height uint64, namespace []byte) 
 		}
 	}
 
-	// 1. Get IDs with per-request timeout (independent of parent context deadline)
-	getIDsCtx, cancel := context.WithTimeout(context.Background(), c.defaultTimeout)
+	// 1. Get IDs with per-request timeout that still respects parent cancellation
+	getIDsCtx, cancel := context.WithTimeout(ctx, c.defaultTimeout)
 	idsResult, err := c.da.GetIDs(getIDsCtx, height, namespace)
 	cancel()
 	if err != nil {
@@ -229,7 +230,7 @@ func (c *client) Retrieve(ctx context.Context, height uint64, namespace []byte) 
 	}
 
 	// 2. Get Blobs using the retrieved IDs in batches
-	// Each batch has its own independent timeout to ensure large retrievals don't timeout
+	// Each batch has its own timeout while keeping the link to the parent context
 	batchSize := 100
 	blobs := make([][]byte, 0, len(idsResult.IDs))
 	for i := 0; i < len(idsResult.IDs); i += batchSize {
@@ -248,9 +249,8 @@ func (c *client) Retrieve(ctx context.Context, height uint64, namespace []byte) 
 
 		end := min(i+batchSize, len(idsResult.IDs))
 
-		// Use context.Background() for timeout to ensure each batch gets a fresh timeout
-		// independent of any parent context deadline
-		getBlobsCtx, cancel := context.WithTimeout(context.Background(), c.defaultTimeout)
+		// Derive timeout from parent so cancellation still propagates
+		getBlobsCtx, cancel := context.WithTimeout(ctx, c.defaultTimeout)
 		batchBlobs, err := c.da.Get(getBlobsCtx, idsResult.IDs[i:end], namespace)
 		cancel()
 		if err != nil {
