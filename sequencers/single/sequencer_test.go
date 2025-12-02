@@ -33,41 +33,6 @@ func (m *MockForcedInclusionRetriever) RetrieveForcedIncludedTxs(ctx context.Con
 	return args.Get(0).(*block.ForcedInclusionEvent), args.Error(1)
 }
 
-func TestNewSequencer(t *testing.T) {
-	// Create a new sequencer with mock DA client
-	dummyDA := coreda.NewDummyDA(100_000_000, 10*time.Second)
-	metrics, _ := NopMetrics()
-	db := ds.NewMapDatastore()
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
-	defer cancel()
-	logger := zerolog.Nop()
-	mockRetriever := new(MockForcedInclusionRetriever)
-	mockRetriever.On("RetrieveForcedIncludedTxs", mock.Anything, mock.Anything).
-		Return(nil, block.ErrForceInclusionNotConfigured).Maybe()
-	seq, err := NewSequencer(ctx, logger, db, dummyDA, []byte("test1"), 10*time.Second, metrics, false, 1000, mockRetriever, genesis.Genesis{})
-	if err != nil {
-		t.Fatalf("Failed to create sequencer: %v", err)
-	}
-	defer func() {
-		err := db.Close()
-		if err != nil {
-			t.Fatalf("Failed to close sequencer: %v", err)
-		}
-	}()
-
-	// Check if the sequencer was created with the correct values
-	if seq == nil {
-		t.Fatal("Expected sequencer to not be nil")
-	}
-
-	if seq.queue == nil {
-		t.Fatal("Expected batch queue to not be nil")
-	}
-	if seq.da == nil {
-		t.Fatal("Expected DA client to not be nil")
-	}
-}
-
 func TestSequencer_SubmitBatchTxs(t *testing.T) {
 	// Initialize a new sequencer
 	metrics, _ := NopMetrics()

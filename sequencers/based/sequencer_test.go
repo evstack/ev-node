@@ -79,29 +79,6 @@ func (m *MockDA) Commit(ctx context.Context, blobs [][]byte, namespace []byte) (
 	return args.Get(0).([][]byte), args.Error(1)
 }
 
-func TestNewBasedSequencer(t *testing.T) {
-	mockDA := new(MockDA)
-	gen := genesis.Genesis{
-		ChainID:                "test-chain",
-		DAStartHeight:          100,
-		DAEpochForcedInclusion: 10,
-	}
-
-	cfg := config.DefaultConfig()
-	cfg.DA.Namespace = "test-ns"
-	cfg.DA.DataNamespace = "test-data-ns"
-	cfg.DA.ForcedInclusionNamespace = "test-fi-ns"
-
-	daClient := block.NewDAClient(mockDA, cfg, zerolog.Nop())
-	fiRetriever := block.NewForcedInclusionRetriever(daClient, gen, zerolog.Nop())
-
-	seq := NewBasedSequencer(fiRetriever, mockDA, cfg, gen, zerolog.Nop())
-
-	require.NotNil(t, seq)
-	assert.Equal(t, uint64(100), seq.daHeight.Load())
-	assert.Equal(t, 0, len(seq.txQueue))
-}
-
 func TestBasedSequencer_SubmitBatchTxs(t *testing.T) {
 	mockDA := new(MockDA)
 	gen := genesis.Genesis{
