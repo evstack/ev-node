@@ -26,6 +26,8 @@ func TestDefaultConfig(t *testing.T) {
 	assert.Equal(t, "", def.DA.AuthToken)
 	assert.Equal(t, "", def.DA.SubmitOptions)
 	assert.NotEmpty(t, def.DA.Namespace)
+	assert.Equal(t, 100, def.DA.RetrieveBatchSize)
+	assert.Equal(t, 30*time.Second, def.DA.RequestTimeout.Duration)
 	assert.Equal(t, 1*time.Second, def.Node.BlockTime.Duration)
 	assert.Equal(t, 6*time.Second, def.DA.BlockTime.Duration)
 	assert.Equal(t, uint64(0), def.DA.MempoolTTL)
@@ -70,6 +72,8 @@ func TestAddFlags(t *testing.T) {
 	assertFlagValue(t, flags, FlagDASigningAddresses, DefaultConfig().DA.SigningAddresses)
 	assertFlagValue(t, flags, FlagDAMempoolTTL, DefaultConfig().DA.MempoolTTL)
 	assertFlagValue(t, flags, FlagDAMaxSubmitAttempts, DefaultConfig().DA.MaxSubmitAttempts)
+	assertFlagValue(t, flags, FlagDARetrieveBatchSize, DefaultConfig().DA.RetrieveBatchSize)
+	assertFlagValue(t, flags, FlagDARequestTimeout, DefaultConfig().DA.RequestTimeout.Duration)
 
 	// P2P flags
 	assertFlagValue(t, flags, FlagP2PListenAddress, DefaultConfig().P2P.ListenAddress)
@@ -99,7 +103,7 @@ func TestAddFlags(t *testing.T) {
 	assertFlagValue(t, flags, FlagRPCAddress, DefaultConfig().RPC.Address)
 
 	// Count the number of flags we're explicitly checking
-	expectedFlagCount := 37 // Update this number if you add more flag checks above
+	expectedFlagCount := 39 // Update this number if you add more flag checks above
 
 	// Get the actual number of flags (both regular and persistent)
 	actualFlagCount := 0
