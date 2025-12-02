@@ -401,12 +401,9 @@ func submitToDA[T any](
 			s.logger.Debug().Str("signingAddress", signingAddress).Msg("using signing address for DA submission")
 		}
 
-		submitCtx, cancel := context.WithTimeout(ctx, submissionTimeout)
-		defer cancel()
-
 		// Perform submission
 		start := time.Now()
-		res := s.client.Submit(submitCtx, marshaled, -1, namespace, mergedOptions)
+		res := s.client.Submit(ctx, marshaled, -1, namespace, mergedOptions)
 		s.logger.Debug().Int("attempts", rs.Attempt).Dur("elapsed", time.Since(start)).Uint64("code", uint64(res.Code)).Msg("got SubmitWithHelpers response from celestia")
 
 		// Record submission result for observability
