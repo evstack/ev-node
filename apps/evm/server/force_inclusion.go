@@ -282,7 +282,7 @@ func (s *ForceInclusionServer) handleSendRawTransaction(w http.ResponseWriter, r
 		Uint64("da_height", daHeight).
 		Msg("transaction successfully submitted to DA layer")
 
-	_, epochEnd := types.CalculateEpochBoundaries(
+	_, epochEnd, _ := types.CalculateEpochBoundaries(
 		daHeight,
 		s.genesis.DAStartHeight,
 		s.genesis.DAEpochForcedInclusion,

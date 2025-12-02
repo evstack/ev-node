@@ -159,7 +159,7 @@ func postTxRunE(cmd *cobra.Command, args []string) error {
 			return fmt.Errorf("failed to load genesis: %w", err)
 		}
 
-		_, epochEnd := types.CalculateEpochBoundaries(result.Height, genesis.DAStartHeight, genesis.DAEpochForcedInclusion)
+		_, epochEnd, _ := types.CalculateEpochBoundaries(result.Height, genesis.DAStartHeight, genesis.DAEpochForcedInclusion)
 		cmd.Printf(
 			"DA Blocks until inclusion: %d (at DA height %d)\n",
 			epochEnd-(result.Height+1),
