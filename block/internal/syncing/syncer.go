@@ -705,7 +705,7 @@ func (s *Syncer) verifyForcedInclusionTxs(currentState types.State, data *types.
 
 	// Check if any pending forced inclusion txs from previous epochs are included
 	var stillPending []pendingForcedInclusionTx
-	s.pendingForcedInclusionTxs.Range(func(key, value interface{}) bool {
+	s.pendingForcedInclusionTxs.Range(func(key, value any) bool {
 		pending := value.(pendingForcedInclusionTx)
 		if _, ok := blockTxMap[pending.TxHash]; ok {
 			s.logger.Debug().
@@ -752,7 +752,7 @@ func (s *Syncer) verifyForcedInclusionTxs(currentState types.State, data *types.
 	}
 
 	// Update pending map - clear old entries and store only remaining pending
-	s.pendingForcedInclusionTxs.Range(func(key, value interface{}) bool {
+	s.pendingForcedInclusionTxs.Range(func(key, value any) bool {
 		s.pendingForcedInclusionTxs.Delete(key)
 		return true
 	})
@@ -774,7 +774,7 @@ func (s *Syncer) verifyForcedInclusionTxs(currentState types.State, data *types.
 	if len(forcedIncludedTxsEvent.Txs) > 0 {
 		if newPendingCount > 0 {
 			totalPending := 0
-			s.pendingForcedInclusionTxs.Range(func(key, value interface{}) bool {
+			s.pendingForcedInclusionTxs.Range(func(key, value any) bool {
 				totalPending++
 				return true
 			})

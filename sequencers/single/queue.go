@@ -85,8 +85,7 @@ func (bq *BatchQueue) AddBatch(ctx context.Context, batch coresequencer.Batch) e
 
 // Prepend adds a batch to the front of the queue (before head position).
 // This is used to return transactions that couldn't fit in the current batch.
-// The batch is NOT persisted to the DB since these are transactions that were
-// already in the queue or were just processed.
+// TODO(@julienrbrt): The batch is currently NOT persisted to the DB since these are transactions that were already in the queue or were just processed. -- FI txs are lost, this should be tackled.
 func (bq *BatchQueue) Prepend(ctx context.Context, batch coresequencer.Batch) error {
 	bq.mu.Lock()
 	defer bq.mu.Unlock()

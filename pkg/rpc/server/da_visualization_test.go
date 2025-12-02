@@ -46,7 +46,7 @@ func TestRecordSubmission(t *testing.T) {
 		},
 	}
 
-	server.RecordSubmission(result, -1, 2)
+	server.RecordSubmission(result, -1, 2, []byte("test-ns"))
 
 	assert.Equal(t, 1, len(server.submissions))
 	submission := server.submissions[0]
@@ -58,6 +58,7 @@ func TestRecordSubmission(t *testing.T) {
 	assert.Equal(t, 2, len(submission.BlobIDs))
 	assert.Equal(t, hex.EncodeToString([]byte("test-id-1")), submission.BlobIDs[0])
 	assert.Equal(t, hex.EncodeToString([]byte("test-id-2")), submission.BlobIDs[1])
+	assert.Equal(t, hex.EncodeToString([]byte("test-ns")), submission.Namespace)
 }
 
 func TestRecordSubmissionMemoryLimit(t *testing.T) {
@@ -75,7 +76,7 @@ func TestRecordSubmissionMemoryLimit(t *testing.T) {
 				Timestamp: time.Now(),
 			},
 		}
-		server.RecordSubmission(result, float64(i)*0.1, 1)
+		server.RecordSubmission(result, float64(i)*0.1, 1, []byte{})
 	}
 
 	// Should only keep the last 100 submissions
@@ -124,9 +125,7 @@ func TestHandleDASubmissions(t *testing.T) {
 			IDs:       [][]byte{[]byte("test-id")},
 		},
 	}
-	server.RecordSubmission(result, 0.5, 1)
-
-	// Create test request
+	server.RecordSubmission(result, 0.5, 1, []byte{})
 	req, err := http.NewRequest("GET", "/da/submissions", nil)
 	require.NoError(t, err)
 
@@ -197,7 +196,7 @@ func TestHandleDAVisualizationHTML(t *testing.T) {
 			Message:   "Test submission",
 		},
 	}
-	server.RecordSubmission(result, 0.5, 1)
+	server.RecordSubmission(result, 0.5, 1, []byte{})
 
 	req, err := http.NewRequest("GET", "/da", nil)
 	require.NoError(t, err)
@@ -247,7 +246,7 @@ func TestRegisterCustomHTTPEndpointsDAVisualization(t *testing.T) {
 			Timestamp: time.Now(),
 		},
 	}
-	server.RecordSubmission(result, 0.5, 1)
+	server.RecordSubmission(result, 0.5, 1, []byte{})
 
 	// Set global server
 	SetDAVisualizationServer(server)

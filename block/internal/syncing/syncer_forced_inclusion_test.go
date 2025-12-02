@@ -556,7 +556,7 @@ func TestVerifyForcedInclusionTxs_DeferralWithinEpoch(t *testing.T) {
 
 	// Verify that dataBin2 is now tracked as pending
 	pendingCount := 0
-	s.pendingForcedInclusionTxs.Range(func(key, value interface{}) bool {
+	s.pendingForcedInclusionTxs.Range(func(key, value any) bool {
 		pendingCount++
 		return true
 	})
@@ -593,7 +593,7 @@ func TestVerifyForcedInclusionTxs_DeferralWithinEpoch(t *testing.T) {
 
 	// Verify that pending queue is now empty (dataBin2 was included)
 	pendingCount = 0
-	s.pendingForcedInclusionTxs.Range(func(key, value interface{}) bool {
+	s.pendingForcedInclusionTxs.Range(func(key, value any) bool {
 		pendingCount++
 		return true
 	})
@@ -699,7 +699,7 @@ func TestVerifyForcedInclusionTxs_MaliciousAfterEpochEnd(t *testing.T) {
 
 	// Verify that the forced tx is tracked as pending
 	pendingCount := 0
-	s.pendingForcedInclusionTxs.Range(func(key, value interface{}) bool {
+	s.pendingForcedInclusionTxs.Range(func(key, value any) bool {
 		pendingCount++
 		return true
 	})

@@ -39,7 +39,7 @@ func NewRollbackCmd() *cobra.Command {
 			}
 
 			// evolve db
-			rawEvolveDB, err := store.NewDefaultKVStore(nodeConfig.RootDir, nodeConfig.DBPath, "testapp")
+			rawEvolveDB, err := store.NewDefaultKVStore(nodeConfig.RootDir, nodeConfig.DBPath, testDbName)
 			if err != nil {
 				return err
 			}

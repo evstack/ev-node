@@ -51,7 +51,7 @@ func (r *ForcedInclusionRetriever) RetrieveForcedIncludedTxs(ctx context.Context
 		return nil, ErrForceInclusionNotConfigured
 	}
 
-	epochStart, epochEnd := types.CalculateEpochBoundaries(daHeight, r.genesis.DAStartHeight, r.daEpochSize)
+	epochStart, epochEnd, currentEpochNumber := types.CalculateEpochBoundaries(daHeight, r.genesis.DAStartHeight, r.daEpochSize)
 
 	if daHeight != epochStart {
 		r.logger.Debug().
@@ -66,9 +66,6 @@ func (r *ForcedInclusionRetriever) RetrieveForcedIncludedTxs(ctx context.Context
 		}, nil
 	}
 
-	// We're at epoch start - fetch transactions from DA
-	currentEpochNumber := types.CalculateEpochNumber(daHeight, r.genesis.DAStartHeight, r.daEpochSize)
-
 	event := &ForcedInclusionEvent{
 		StartDaHeight: epochStart,
 		Txs:           [][]byte{},
@@ -81,22 +78,22 @@ func (r *ForcedInclusionRetriever) RetrieveForcedIncludedTxs(ctx context.Context
 		Uint64("epoch_num", currentEpochNumber).
 		Msg("retrieving forced included transactions from DA")
 
-	epochStartResult := r.client.RetrieveForcedInclusion(ctx, epochStart)
-	if epochStartResult.Code == coreda.StatusHeightFromFuture {
+	epochEndResult := r.client.RetrieveForcedInclusion(ctx, epochEnd)
+	if epochEndResult.Code == coreda.StatusHeightFromFuture {
 		r.logger.Debug().
-			Uint64("epoch_start", epochStart).
-			Msg("epoch start height not yet available on DA - backoff required")
-		return nil, fmt.Errorf("%w: epoch start height %d not yet available", coreda.ErrHeightFromFuture, epochStart)
+			Uint64("epoch_end", epochEnd).
+			Msg("epoch end height not yet available on DA - backoff required")
+		return nil, fmt.Errorf("%w: epoch end height %d not yet available", coreda.ErrHeightFromFuture, epochEnd)
 	}
 
-	epochEndResult := epochStartResult
+	epochStartResult := epochEndResult
 	if epochStart != epochEnd {
-		epochEndResult = r.client.RetrieveForcedInclusion(ctx, epochEnd)
-		if epochEndResult.Code == coreda.StatusHeightFromFuture {
+		epochStartResult = r.client.RetrieveForcedInclusion(ctx, epochStart)
+		if epochStartResult.Code == coreda.StatusHeightFromFuture {
 			r.logger.Debug().
-				Uint64("epoch_end", epochEnd).
-				Msg("epoch end height not yet available on DA - backoff required")
-			return nil, fmt.Errorf("%w: epoch end height %d not yet available", coreda.ErrHeightFromFuture, epochEnd)
+				Uint64("epoch_start", epochStart).
+				Msg("epoch start height not yet available on DA - backoff required")
+			return nil, fmt.Errorf("%w: epoch start height %d not yet available", coreda.ErrHeightFromFuture, epochStart)
 		}
 	}
 

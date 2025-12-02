@@ -218,7 +218,7 @@ func TestCalculateEpochBoundaries(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			start, end := CalculateEpochBoundaries(tt.daHeight, tt.daStartHeight, tt.daEpochSize)
+			start, end, _ := CalculateEpochBoundaries(tt.daHeight, tt.daStartHeight, tt.daEpochSize)
 			assert.Equal(t, tt.expectedStart, start, "start height mismatch")
 			assert.Equal(t, tt.expectedEnd, end, "end height mismatch")
 		})
@@ -262,7 +262,7 @@ func TestEpochConsistency(t *testing.T) {
 					epochNum := CalculateEpochNumber(h, tt.daStartHeight, tt.daEpochSize)
 					assert.Equal(t, epoch, epochNum, "height %d should be in epoch %d", h, epoch)
 
-					start, end := CalculateEpochBoundaries(h, tt.daStartHeight, tt.daEpochSize)
+					start, end, _ := CalculateEpochBoundaries(h, tt.daStartHeight, tt.daEpochSize)
 					assert.Equal(t, expectedStart, start, "height %d should have start %d", h, expectedStart)
 					assert.Equal(t, expectedEnd, end, "height %d should have end %d", h, expectedEnd)
 				}
@@ -293,7 +293,7 @@ func TestEpochBoundaryTransitions(t *testing.T) {
 		epoch := CalculateEpochNumber(tr.height, daStartHeight, daEpochSize)
 		assert.Equal(t, tr.expectedEpoch, epoch, "height %d epoch mismatch", tr.height)
 
-		start, end := CalculateEpochBoundaries(tr.height, daStartHeight, daEpochSize)
+		start, end, _ := CalculateEpochBoundaries(tr.height, daStartHeight, daEpochSize)
 		assert.Equal(t, tr.expectedStart, start, "height %d start mismatch", tr.height)
 		assert.Equal(t, tr.expectedEnd, end, "height %d end mismatch", tr.height)
 	}

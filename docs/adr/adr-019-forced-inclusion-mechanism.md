@@ -322,7 +322,7 @@ func (s *Syncer) verifyForcedInclusionTxs(currentState State, data *Data) error 
 
     // 3. Check if any pending forced inclusion txs from previous epochs are included
     var stillPending []pendingForcedInclusionTx
-    s.pendingForcedInclusionTxs.Range(func(key, value interface{}) bool {
+    s.pendingForcedInclusionTxs.Range(func(key, value any) bool {
         pending := value.(pendingForcedInclusionTx)
         if _, ok := blockTxMap[pending.TxHash]; ok {
             // Transaction was included - remove from pending
