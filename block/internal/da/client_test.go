@@ -114,7 +114,7 @@ func TestNewClient(t *testing.T) {
 
 			expectedTimeout := tt.cfg.DefaultTimeout
 			if expectedTimeout == 0 {
-				expectedTimeout = 30 * time.Second
+				expectedTimeout = 60 * time.Second
 			}
 			assert.Equal(t, client.defaultTimeout, expectedTimeout)
 		})
