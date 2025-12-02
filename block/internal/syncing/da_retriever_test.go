@@ -27,6 +27,11 @@ import (
 
 // newTestDARetriever creates a DA retriever for testing with the given DA implementation
 func newTestDARetriever(t *testing.T, mockDA coreda.DA, cfg config.Config, gen genesis.Genesis) *daRetriever {
+	return newTestDARetrieverWithTimeout(t, mockDA, cfg, gen, 0)
+}
+
+// newTestDARetrieverWithTimeout creates a DA retriever for testing with a custom timeout
+func newTestDARetrieverWithTimeout(t *testing.T, mockDA coreda.DA, cfg config.Config, gen genesis.Genesis, timeout time.Duration) *daRetriever {
 	t.Helper()
 	if cfg.DA.Namespace == "" {
 		cfg.DA.Namespace = "test-ns"
@@ -39,10 +44,11 @@ func newTestDARetriever(t *testing.T, mockDA coreda.DA, cfg config.Config, gen g
 	require.NoError(t, err)
 
 	daClient := da.NewClient(da.Config{
-		DA:            mockDA,
-		Logger:        zerolog.Nop(),
-		Namespace:     cfg.DA.Namespace,
-		DataNamespace: cfg.DA.DataNamespace,
+		DA:             mockDA,
+		Logger:         zerolog.Nop(),
+		DefaultTimeout: timeout, // 0 means use default (30s)
+		Namespace:      cfg.DA.Namespace,
+		DataNamespace:  cfg.DA.DataNamespace,
 	})
 
 	return NewDARetriever(daClient, cm, gen, zerolog.Nop())
@@ -111,9 +117,10 @@ func TestDARetriever_RetrieveFromDA_HeightFromFuture(t *testing.T) {
 }
 
 func TestDARetriever_RetrieveFromDA_Timeout(t *testing.T) {
-	t.Skip("Skipping flaky timeout test - timing is now controlled by DA client")
-
 	mockDA := testmocks.NewMockDA(t)
+
+	// Use a short timeout for testing
+	testTimeout := 50 * time.Millisecond
 
 	// Mock GetIDs to hang longer than the timeout
 	mockDA.EXPECT().GetIDs(mock.Anything, mock.Anything, mock.Anything).
@@ -122,7 +129,7 @@ func TestDARetriever_RetrieveFromDA_Timeout(t *testing.T) {
 		}).
 		Return(nil, context.DeadlineExceeded).Maybe()
 
-	r := newTestDARetriever(t, mockDA, config.DefaultConfig(), genesis.Genesis{})
+	r := newTestDARetrieverWithTimeout(t, mockDA, config.DefaultConfig(), genesis.Genesis{}, testTimeout)
 
 	start := time.Now()
 	events, err := r.RetrieveFromDA(context.Background(), 42)
@@ -135,9 +142,8 @@ func TestDARetriever_RetrieveFromDA_Timeout(t *testing.T) {
 	assert.Len(t, events, 0)
 
 	// Verify timeout occurred approximately at expected time (with some tolerance)
-	// DA client has a 30-second default timeout
-	assert.Greater(t, duration, 29*time.Second, "should timeout after approximately 30 seconds")
-	assert.Less(t, duration, 35*time.Second, "should not take much longer than timeout")
+	assert.GreaterOrEqual(t, duration, testTimeout, "should timeout after approximately the configured timeout")
+	assert.Less(t, duration, testTimeout*3, "should not take much longer than timeout")
 }
 
 func TestDARetriever_RetrieveFromDA_TimeoutFast(t *testing.T) {

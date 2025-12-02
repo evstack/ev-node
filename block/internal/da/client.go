@@ -149,11 +149,25 @@ func (c *client) Submit(ctx context.Context, data [][]byte, gasPrice float64, na
 }
 
 // Retrieve retrieves blobs from the DA layer at the specified height and namespace.
+// Each request (GetIDs and each batch of Get) has its own independent timeout,
+// ensuring that retrieval of heights with many blobs doesn't fail due to an overall timeout.
 func (c *client) Retrieve(ctx context.Context, height uint64, namespace []byte) coreda.ResultRetrieve {
-	// 1. Get IDs
-	getIDsCtx, cancel := context.WithTimeout(ctx, c.defaultTimeout)
-	defer cancel()
+	// Check for parent context cancellation before starting
+	if err := ctx.Err(); err != nil {
+		return coreda.ResultRetrieve{
+			BaseResult: coreda.BaseResult{
+				Code:      coreda.StatusError,
+				Message:   fmt.Sprintf("context cancelled before retrieval: %s", err.Error()),
+				Height:    height,
+				Timestamp: time.Now(),
+			},
+		}
+	}
+
+	// 1. Get IDs with per-request timeout (independent of parent context deadline)
+	getIDsCtx, cancel := context.WithTimeout(context.Background(), c.defaultTimeout)
 	idsResult, err := c.da.GetIDs(getIDsCtx, height, namespace)
+	cancel()
 	if err != nil {
 		// Handle specific "not found" error
 		if strings.Contains(err.Error(), coreda.ErrBlobNotFound.Error()) {
@@ -202,13 +216,41 @@ func (c *client) Retrieve(ctx context.Context, height uint64, namespace []byte) 
 			},
 		}
 	}
+	// Check for parent context cancellation after GetIDs
+	if err := ctx.Err(); err != nil {
+		return coreda.ResultRetrieve{
+			BaseResult: coreda.BaseResult{
+				Code:      coreda.StatusError,
+				Message:   fmt.Sprintf("context cancelled after GetIDs: %s", err.Error()),
+				Height:    height,
+				Timestamp: time.Now(),
+			},
+		}
+	}
+
 	// 2. Get Blobs using the retrieved IDs in batches
+	// Each batch has its own independent timeout to ensure large retrievals don't timeout
 	batchSize := 100
 	blobs := make([][]byte, 0, len(idsResult.IDs))
 	for i := 0; i < len(idsResult.IDs); i += batchSize {
+		// Check for parent context cancellation before each batch
+		if err := ctx.Err(); err != nil {
+			c.logger.Debug().Uint64("height", height).Int("batch_start", i).Err(err).Msg("Context cancelled during batch retrieval")
+			return coreda.ResultRetrieve{
+				BaseResult: coreda.BaseResult{
+					Code:      coreda.StatusError,
+					Message:   fmt.Sprintf("context cancelled during batch retrieval at %d: %s", i, err.Error()),
+					Height:    height,
+					Timestamp: time.Now(),
+				},
+			}
+		}
+
 		end := min(i+batchSize, len(idsResult.IDs))
 
-		getBlobsCtx, cancel := context.WithTimeout(ctx, c.defaultTimeout)
+		// Use context.Background() for timeout to ensure each batch gets a fresh timeout
+		// independent of any parent context deadline
+		getBlobsCtx, cancel := context.WithTimeout(context.Background(), c.defaultTimeout)
 		batchBlobs, err := c.da.Get(getBlobsCtx, idsResult.IDs[i:end], namespace)
 		cancel()
 		if err != nil {

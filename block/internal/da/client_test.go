@@ -3,6 +3,7 @@ package da
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 	"time"
 
@@ -451,6 +452,193 @@ func TestClient_Retrieve_Timeout(t *testing.T) {
 		})
 
 		result := client.Retrieve(context.Background(), dataLayerHeight, encodedNamespace.Bytes())
+
+		assert.Equal(t, coreda.StatusError, result.Code)
+		assert.Assert(t, result.Message != "")
+	})
+}
+
+func TestClient_Retrieve_PerRequestTimeout(t *testing.T) {
+	logger := zerolog.Nop()
+	dataLayerHeight := uint64(100)
+	encodedNamespace := coreda.NamespaceFromString("test-namespace")
+
+	t.Run("each batch gets independent timeout", func(t *testing.T) {
+		// Create 250 IDs to force 3 batches (100, 100, 50)
+		mockIDs := make([][]byte, 250)
+		for i := range mockIDs {
+			mockIDs[i] = []byte(fmt.Sprintf("id%d", i))
+		}
+		mockTimestamp := time.Now()
+
+		batchCount := 0
+		batchTimeout := 50 * time.Millisecond
+
+		mockDAInstance := &mockDA{
+			getIDsFunc: func(ctx context.Context, height uint64, namespace []byte) (*coreda.GetIDsResult, error) {
+				return &coreda.GetIDsResult{
+					IDs:       mockIDs,
+					Timestamp: mockTimestamp,
+				}, nil
+			},
+			getFunc: func(ctx context.Context, ids []coreda.ID, namespace []byte) ([]coreda.Blob, error) {
+				batchCount++
+				// Simulate some delay for each batch (less than timeout)
+				time.Sleep(20 * time.Millisecond)
+
+				// Verify each batch's context has its own deadline
+				deadline, ok := ctx.Deadline()
+				assert.Assert(t, ok, "batch should have a deadline")
+				// The deadline should be roughly batchTimeout from now (within tolerance)
+				remaining := time.Until(deadline)
+				assert.Assert(t, remaining > 0, "deadline should be in the future")
+				assert.Assert(t, remaining <= batchTimeout, "deadline should be at most batchTimeout")
+
+				// Return mock blobs
+				blobs := make([][]byte, len(ids))
+				for i := range blobs {
+					blobs[i] = []byte("blob")
+				}
+				return blobs, nil
+			},
+		}
+
+		client := NewClient(Config{
+			DA:             mockDAInstance,
+			Logger:         logger,
+			Namespace:      "test-namespace",
+			DataNamespace:  "test-data-namespace",
+			DefaultTimeout: batchTimeout,
+		})
+
+		result := client.Retrieve(context.Background(), dataLayerHeight, encodedNamespace.Bytes())
+
+		assert.Equal(t, coreda.StatusSuccess, result.Code)
+		assert.Equal(t, 3, batchCount, "should have made 3 batch requests")
+		assert.Equal(t, 250, len(result.Data), "should have retrieved all blobs")
+	})
+
+	t.Run("succeeds even when total time exceeds single timeout", func(t *testing.T) {
+		// This test verifies that even if the total operation takes longer than
+		// a single timeout period, it succeeds because each individual request
+		// gets its own fresh timeout.
+		mockIDs := make([][]byte, 300) // 3 batches
+		for i := range mockIDs {
+			mockIDs[i] = []byte(fmt.Sprintf("id%d", i))
+		}
+		mockTimestamp := time.Now()
+
+		perRequestTimeout := 100 * time.Millisecond
+		delayPerBatch := 40 * time.Millisecond // Each batch takes 40ms
+
+		mockDAInstance := &mockDA{
+			getIDsFunc: func(ctx context.Context, height uint64, namespace []byte) (*coreda.GetIDsResult, error) {
+				time.Sleep(delayPerBatch) // GetIDs also takes time
+				return &coreda.GetIDsResult{
+					IDs:       mockIDs,
+					Timestamp: mockTimestamp,
+				}, nil
+			},
+			getFunc: func(ctx context.Context, ids []coreda.ID, namespace []byte) ([]coreda.Blob, error) {
+				time.Sleep(delayPerBatch)
+				blobs := make([][]byte, len(ids))
+				for i := range blobs {
+					blobs[i] = []byte("blob")
+				}
+				return blobs, nil
+			},
+		}
+
+		client := NewClient(Config{
+			DA:             mockDAInstance,
+			Logger:         logger,
+			Namespace:      "test-namespace",
+			DataNamespace:  "test-data-namespace",
+			DefaultTimeout: perRequestTimeout,
+		})
+
+		start := time.Now()
+		result := client.Retrieve(context.Background(), dataLayerHeight, encodedNamespace.Bytes())
+		elapsed := time.Since(start)
+
+		// Total time: GetIDs (40ms) + 3 batches * 40ms = 160ms
+		// This is greater than perRequestTimeout (100ms), but should still succeed
+		// because each individual request completes within its timeout
+		assert.Equal(t, coreda.StatusSuccess, result.Code)
+		assert.Assert(t, elapsed > perRequestTimeout, "total time should exceed single timeout")
+		assert.Equal(t, 300, len(result.Data))
+	})
+
+	t.Run("respects parent context cancellation", func(t *testing.T) {
+		// Use 5 batches to ensure we have enough time to cancel mid-operation
+		mockIDs := make([][]byte, 500) // 5 batches of 100
+		for i := range mockIDs {
+			mockIDs[i] = []byte(fmt.Sprintf("id%d", i))
+		}
+		mockTimestamp := time.Now()
+		batchCount := 0
+
+		mockDAInstance := &mockDA{
+			getIDsFunc: func(ctx context.Context, height uint64, namespace []byte) (*coreda.GetIDsResult, error) {
+				return &coreda.GetIDsResult{
+					IDs:       mockIDs,
+					Timestamp: mockTimestamp,
+				}, nil
+			},
+			getFunc: func(ctx context.Context, ids []coreda.ID, namespace []byte) ([]coreda.Blob, error) {
+				batchCount++
+				time.Sleep(50 * time.Millisecond) // Each batch takes 50ms
+				blobs := make([][]byte, len(ids))
+				for i := range blobs {
+					blobs[i] = []byte("blob")
+				}
+				return blobs, nil
+			},
+		}
+
+		client := NewClient(Config{
+			DA:             mockDAInstance,
+			Logger:         logger,
+			Namespace:      "test-namespace",
+			DataNamespace:  "test-data-namespace",
+			DefaultTimeout: 1 * time.Second,
+		})
+
+		// Create a context that will be cancelled after the second batch completes
+		// but before all batches finish
+		ctx, cancel := context.WithCancel(context.Background())
+		go func() {
+			time.Sleep(120 * time.Millisecond) // Cancel after ~2 batches (2 * 50ms = 100ms)
+			cancel()
+		}()
+
+		result := client.Retrieve(ctx, dataLayerHeight, encodedNamespace.Bytes())
+
+		// Should fail due to context cancellation
+		assert.Equal(t, coreda.StatusError, result.Code)
+		assert.Assert(t, batchCount < 5, "should not complete all batches, got %d", batchCount)
+	})
+
+	t.Run("returns early if parent context already cancelled", func(t *testing.T) {
+		mockDAInstance := &mockDA{
+			getIDsFunc: func(ctx context.Context, height uint64, namespace []byte) (*coreda.GetIDsResult, error) {
+				t.Fatal("GetIDs should not be called if context is already cancelled")
+				return nil, nil
+			},
+		}
+
+		client := NewClient(Config{
+			DA:             mockDAInstance,
+			Logger:         logger,
+			Namespace:      "test-namespace",
+			DataNamespace:  "test-data-namespace",
+			DefaultTimeout: 1 * time.Second,
+		})
+
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel() // Cancel immediately
+
+		result := client.Retrieve(ctx, dataLayerHeight, encodedNamespace.Bytes())
 
 		assert.Equal(t, coreda.StatusError, result.Code)
 		assert.Assert(t, result.Message != "")
