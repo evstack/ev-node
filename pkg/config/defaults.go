@@ -76,7 +76,7 @@ func DefaultConfig() Config {
 			Namespace:         randString(10),
 			DataNamespace:     "",
 			RetrieveBatchSize: 100,
-			RequestTimeout:    DurationWrapper{30 * time.Second},
+			RequestTimeout:    DurationWrapper{60 * time.Second},
 		},
 		Instrumentation: DefaultInstrumentationConfig(),
 		Log: LogConfig{

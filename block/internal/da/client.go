@@ -54,7 +54,7 @@ type Config struct {
 // NewClient creates a new DA client with pre-calculated namespace bytes.
 func NewClient(cfg Config) *client {
 	if cfg.DefaultTimeout == 0 {
-		cfg.DefaultTimeout = 30 * time.Second
+		cfg.DefaultTimeout = 60 * time.Second
 	}
 	if cfg.RetrieveBatchSize <= 0 {
 		cfg.RetrieveBatchSize = defaultRetrieveBatchSize
@@ -72,7 +72,10 @@ func NewClient(cfg Config) *client {
 
 // Submit submits blobs to the DA layer with the specified options.
 func (c *client) Submit(ctx context.Context, data [][]byte, gasPrice float64, namespace []byte, options []byte) coreda.ResultSubmit {
-	ids, err := c.da.SubmitWithOptions(ctx, data, gasPrice, namespace, options)
+	submitCtx, cancel := context.WithTimeout(ctx, c.defaultTimeout)
+	defer cancel()
+
+	ids, err := c.da.SubmitWithOptions(submitCtx, data, gasPrice, namespace, options)
 
 	// calculate blob size
 	var blobSize uint64
@@ -160,9 +163,9 @@ func (c *client) Submit(ctx context.Context, data [][]byte, gasPrice float64, na
 
 // Retrieve retrieves blobs from the DA layer at the specified height and namespace.
 func (c *client) Retrieve(ctx context.Context, height uint64, namespace []byte) coreda.ResultRetrieve {
-	// 1. Get IDs
 	getIDsCtx, cancel := context.WithTimeout(ctx, c.defaultTimeout)
 	defer cancel()
+
 	idsResult, err := c.da.GetIDs(getIDsCtx, height, namespace)
 	if err != nil {
 		// Handle specific "not found" error

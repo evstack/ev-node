@@ -22,10 +22,7 @@ import (
 	"github.com/evstack/ev-node/types"
 )
 
-const (
-	submissionTimeout = 60 * time.Second
-	initialBackoff    = 100 * time.Millisecond
-)
+const initialBackoff = 100 * time.Millisecond
 
 // retryPolicy defines clamped bounds for retries and backoff.
 type retryPolicy struct {
