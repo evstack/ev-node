@@ -191,8 +191,6 @@ func (s *Submitter) daSubmissionLoop() {
 					}()
 				}
 			}
-
-			s.metrics.DAInclusionHeight.Set(float64(s.GetDAIncludedHeight()))
 		}
 	}
 }
@@ -211,6 +209,7 @@ func (s *Submitter) processDAInclusionLoop() {
 			return
 		case <-ticker.C:
 			currentDAIncluded := s.GetDAIncludedHeight()
+			s.metrics.DAInclusionHeight.Set(float64(s.GetDAIncludedHeight()))
 
 			for {
 				nextHeight := currentDAIncluded + 1
