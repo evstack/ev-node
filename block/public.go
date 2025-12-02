@@ -1,8 +1,6 @@
 package block
 
 import (
-	"time"
-
 	"github.com/evstack/ev-node/block/internal/common"
 	"github.com/evstack/ev-node/block/internal/da"
 	coreda "github.com/evstack/ev-node/core/da"
@@ -44,7 +42,7 @@ func NewDAClient(
 		DA:                daLayer,
 		Logger:            logger,
 		Namespace:         config.DA.GetNamespace(),
-		DefaultTimeout:    15 * time.Second,
+		DefaultTimeout:    config.DA.RequestTimeout.Duration,
 		DataNamespace:     config.DA.GetDataNamespace(),
 		RetrieveBatchSize: config.DA.RetrieveBatchSize,
 	})
