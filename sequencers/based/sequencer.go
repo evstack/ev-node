@@ -75,7 +75,7 @@ func (s *BasedSequencer) GetNextBatch(ctx context.Context, req coresequencer.Get
 	if err != nil {
 		// Check if forced inclusion is not configured
 		if errors.Is(err, block.ErrForceInclusionNotConfigured) {
-			return nil, errors.New("forced inclusion not configured, returning empty batch")
+			return nil, errors.New("forced inclusion not configured")
 		} else if errors.Is(err, coreda.ErrHeightFromFuture) {
 			// If we get a height from future error, keep the current DA height and return batch
 			// We'll retry the same height on the next call until DA produces that block
