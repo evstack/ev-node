@@ -1,5 +1,4 @@
 //go:build evm
-// +build evm
 
 // Package e2e contains shared utilities for EVM end-to-end tests.
 //

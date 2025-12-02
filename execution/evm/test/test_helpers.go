@@ -1,5 +1,4 @@
 //go:build evm
-// +build evm
 
 package test
 
