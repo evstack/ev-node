@@ -29,6 +29,7 @@ type DASubmissionInfo struct {
 	Message    string    `json:"message,omitempty"`
 	NumBlobs   uint64    `json:"num_blobs"`
 	BlobIDs    []string  `json:"blob_ids,omitempty"`
+	Namespace  string    `json:"namespace,omitempty"`
 }
 
 // DAVisualizationServer provides DA layer visualization endpoints
@@ -52,7 +53,7 @@ func NewDAVisualizationServer(da coreda.DA, logger zerolog.Logger, isAggregator 
 
 // RecordSubmission records a DA submission for visualization
 // Only keeps the last 100 submissions in memory for the dashboard display
-func (s *DAVisualizationServer) RecordSubmission(result *coreda.ResultSubmit, gasPrice float64, numBlobs uint64) {
+func (s *DAVisualizationServer) RecordSubmission(result *coreda.ResultSubmit, gasPrice float64, numBlobs uint64, namespace []byte) {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
 
@@ -72,6 +73,7 @@ func (s *DAVisualizationServer) RecordSubmission(result *coreda.ResultSubmit, ga
 		Message:    result.Message,
 		NumBlobs:   numBlobs,
 		BlobIDs:    blobIDs,
+		Namespace:  hex.EncodeToString(namespace),
 	}
 
 	// Keep only the last 100 submissions in memory to avoid memory growth
@@ -171,8 +173,49 @@ func (s *DAVisualizationServer) handleDABlobDetails(w http.ResponseWriter, r *ht
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
 
-	// Extract namespace - using empty namespace for now, could be parameterized
-	namespace := []byte{}
+	var namespace []byte
+	found := false
+
+	// 1. Check query parameter first
+	nsParam := r.URL.Query().Get("namespace")
+	if nsParam != "" {
+		if ns, err := coreda.ParseHexNamespace(nsParam); err == nil {
+			namespace = ns.Bytes()
+			found = true
+		} else {
+			ns := coreda.NamespaceFromString(nsParam)
+			namespace = ns.Bytes()
+			found = true
+		}
+	}
+
+	// 2. If not provided in query, try to find in recent submissions
+	if !found {
+		s.mutex.RLock()
+		for _, submission := range s.submissions {
+			for _, subBlobID := range submission.BlobIDs {
+				if subBlobID == blobID {
+					if submission.Namespace != "" {
+						if ns, err := hex.DecodeString(submission.Namespace); err == nil {
+							namespace = ns
+							found = true
+						}
+					}
+					break
+				}
+			}
+			if found {
+				break
+			}
+		}
+		s.mutex.RUnlock()
+	}
+
+	if !found || len(namespace) == 0 {
+		http.Error(w, "Namespace required to retrieve blob (not found in recent submissions and not provided in query)", http.StatusBadRequest)
+		return
+	}
+
 	blobs, err := s.da.Get(ctx, []coreda.ID{id}, namespace)
 	if err != nil {
 		s.logger.Error().Err(err).Str("blob_id", blobID).Msg("Failed to retrieve blob from DA")

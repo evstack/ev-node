@@ -26,6 +26,7 @@ import (
 )
 
 const (
+	grpcDbName = "grpc-single"
 	// FlagGrpcExecutorURL is the flag for the gRPC executor endpoint
 	FlagGrpcExecutorURL = "grpc-executor-url"
 )
@@ -63,7 +64,7 @@ The execution client must implement the Evolve execution gRPC interface.`,
 		}
 
 		// Create datastore
-		datastore, err := store.NewDefaultKVStore(nodeConfig.RootDir, nodeConfig.DBPath, "evgrpc")
+		datastore, err := store.NewDefaultKVStore(nodeConfig.RootDir, nodeConfig.DBPath, grpcDbName)
 		if err != nil {
 			return err
 		}
