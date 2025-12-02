@@ -119,11 +119,6 @@ func createSequencer(
 	nodeConfig config.Config,
 	genesis genesis.Genesis,
 ) (coresequencer.Sequencer, error) {
-	singleMetrics, err := single.NopMetrics()
-	if err != nil {
-		return nil, fmt.Errorf("failed to create single sequencer metrics: %w", err)
-	}
-
 	sequencer, err := single.NewSequencer(
 		ctx,
 		logger,
@@ -131,7 +126,6 @@ func createSequencer(
 		da,
 		[]byte(genesis.ChainID),
 		nodeConfig.Node.BlockTime.Duration,
-		singleMetrics,
 		nodeConfig.Node.Aggregator,
 	)
 	if err != nil {

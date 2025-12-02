@@ -68,11 +68,6 @@ var RunCmd = &cobra.Command{
 			return err
 		}
 
-		singleMetrics, err := single.NopMetrics()
-		if err != nil {
-			return err
-		}
-
 		// Start the KV executor HTTP server
 		if kvEndpoint != "" { // Only start if endpoint is provided
 			httpServer := kvexecutor.NewHTTPServer(executor, kvEndpoint)
@@ -101,7 +96,6 @@ var RunCmd = &cobra.Command{
 			&daJrpc.DA,
 			[]byte(genesis.ChainID),
 			nodeConfig.Node.BlockTime.Duration,
-			singleMetrics,
 			nodeConfig.Node.Aggregator,
 		)
 		if err != nil {
