@@ -75,6 +75,7 @@ func DefaultConfig() Config {
 			MaxSubmitAttempts: 30,
 			Namespace:         randString(10),
 			DataNamespace:     "",
+			RetrieveBatchSize: 150,
 		},
 		Instrumentation: DefaultInstrumentationConfig(),
 		Log: LogConfig{
