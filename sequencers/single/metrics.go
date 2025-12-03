@@ -35,10 +35,6 @@ type Metrics struct {
 	GasPrice metrics.Gauge
 	// Last submitted blob size
 	LastBlobSize metrics.Gauge
-	// cost / byte
-	// CostPerByte metrics.Gauge
-	// Wallet Balance
-	// WalletBalance metrics.Gauge
 	// Transaction Status
 	TransactionStatus metrics.Counter
 	// Number of pending blocks.

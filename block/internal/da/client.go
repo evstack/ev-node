@@ -59,7 +59,7 @@ type Config struct {
 // NewClient creates a new blob client wrapper with pre-calculated namespace bytes.
 func NewClient(cfg Config) *client {
 	if cfg.DefaultTimeout == 0 {
-		cfg.DefaultTimeout = 30 * time.Second
+		cfg.DefaultTimeout = 60 * time.Second
 	}
 	if cfg.MaxBlobSize == 0 {
 		cfg.MaxBlobSize = blob.DefaultMaxBlobSize

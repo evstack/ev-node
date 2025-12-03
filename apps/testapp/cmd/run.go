@@ -19,6 +19,8 @@ import (
 	"github.com/evstack/ev-node/sequencers/single"
 )
 
+const testDbName = "testapp"
+
 var RunCmd = &cobra.Command{
 	Use:     "start",
 	Aliases: []string{"node", "run"},
@@ -61,12 +63,7 @@ var RunCmd = &cobra.Command{
 			return err
 		}
 
-		datastore, err := store.NewDefaultKVStore(nodeConfig.RootDir, nodeConfig.DBPath, "testapp")
-		if err != nil {
-			return err
-		}
-
-		singleMetrics, err := single.NopMetrics()
+		datastore, err := store.NewDefaultKVStore(nodeConfig.RootDir, nodeConfig.DBPath, testDbName)
 		if err != nil {
 			return err
 		}
@@ -90,6 +87,11 @@ var RunCmd = &cobra.Command{
 
 		if genesis.DAStartHeight == 0 && !nodeConfig.Node.Aggregator {
 			logger.Warn().Msg("da_start_height is not set in genesis.json, ask your chain developer")
+		}
+
+		singleMetrics, err := single.NopMetrics()
+		if err != nil {
+			return fmt.Errorf("failed to create single sequencer metrics: %w", err)
 		}
 
 		sequencer, err := single.NewSequencer(
