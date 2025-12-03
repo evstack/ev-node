@@ -49,8 +49,6 @@ type Sequencer struct {
 
 	queue *BatchQueue // single queue for immediate availability
 
-	metrics *Metrics
-
 	// Forced inclusion support
 	fiRetriever               ForcedInclusionRetriever
 	genesis                   genesis.Genesis
@@ -66,7 +64,6 @@ func NewSequencer(
 	da coreda.DA,
 	id []byte,
 	batchTime time.Duration,
-	metrics *Metrics,
 	proposer bool,
 	maxQueueSize int,
 	fiRetriever ForcedInclusionRetriever,
@@ -78,7 +75,6 @@ func NewSequencer(
 		batchTime:                 batchTime,
 		Id:                        id,
 		queue:                     NewBatchQueue(db, "batches", maxQueueSize),
-		metrics:                   metrics,
 		proposer:                  proposer,
 		fiRetriever:               fiRetriever,
 		genesis:                   gen,
@@ -222,18 +218,6 @@ func (c *Sequencer) GetNextBatch(ctx context.Context, req coresequencer.GetNextB
 		Timestamp: time.Now(),
 		BatchData: req.LastBatchData,
 	}, nil
-}
-
-// RecordMetrics updates the metrics with the given values.
-// This method is intended to be called by the block manager after submitting data to the DA layer.
-func (c *Sequencer) RecordMetrics(gasPrice float64, blobSize uint64, statusCode coreda.StatusCode, numPendingBlocks uint64, includedBlockHeight uint64) {
-	if c.metrics != nil {
-		c.metrics.GasPrice.Set(gasPrice)
-		c.metrics.LastBlobSize.Set(float64(blobSize))
-		c.metrics.TransactionStatus.With("status", fmt.Sprintf("%d", statusCode)).Add(1)
-		c.metrics.NumPendingBlocks.Set(float64(numPendingBlocks))
-		c.metrics.IncludedBlockHeight.Set(float64(includedBlockHeight))
-	}
 }
 
 // VerifyBatch implements sequencing.Sequencer.

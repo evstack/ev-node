@@ -427,7 +427,6 @@ func (e *Executor) produceBlock() error {
 
 	// Update in-memory state after successful commit
 	e.setLastState(newState)
-	e.metrics.Height.Set(float64(newState.LastBlockHeight))
 
 	// broadcast header and data to P2P network
 	g, ctx := errgroup.WithContext(e.ctx)
@@ -438,7 +437,7 @@ func (e *Executor) produceBlock() error {
 		// don't fail block production on broadcast error
 	}
 
-	e.recordBlockMetrics(data)
+	e.recordBlockMetrics(newState, data)
 
 	e.logger.Info().
 		Uint64("height", newHeight).
@@ -678,12 +677,16 @@ func (e *Executor) sendCriticalError(err error) {
 }
 
 // recordBlockMetrics records metrics for the produced block
-func (e *Executor) recordBlockMetrics(data *types.Data) {
+func (e *Executor) recordBlockMetrics(newState types.State, data *types.Data) {
+	e.metrics.Height.Set(float64(newState.LastBlockHeight))
+
 	if data == nil || data.Metadata == nil {
 		return
 	}
+
 	e.metrics.NumTxs.Set(float64(len(data.Txs)))
 	e.metrics.TotalTxs.Add(float64(len(data.Txs)))
+	e.metrics.TxsPerBlock.Observe(float64(len(data.Txs)))
 	e.metrics.BlockSizeBytes.Set(float64(data.Size()))
 	e.metrics.CommittedHeight.Set(float64(data.Metadata.Height))
 }
