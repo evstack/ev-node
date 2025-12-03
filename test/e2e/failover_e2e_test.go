@@ -13,7 +13,6 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
-	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -230,7 +229,7 @@ func TestLeaseFailoverE2E(t *testing.T) {
 	}, 2*must(time.ParseDuration(DefaultDABlockTime)), 100*time.Millisecond)
 
 	t.Log("+++ Verifying no DA gaps...")
-	verifyBlocks(t, daStartHeight, lastDABlockNewLeader, jwtSecret, testEndpoints.GetDAAddress(), genesisHeight, state.LastBlockHeight)
+	verifyDABlocks(t, daStartHeight, lastDABlockNewLeader, jwtSecret, testEndpoints.GetDAAddress(), genesisHeight, state.LastBlockHeight)
 
 	// Cleanup processes
 	clusterNodes.killAll()
@@ -260,13 +259,13 @@ func verifyNoDoubleSigning(t *testing.T, clusterNodes *raftClusterNodes, genesis
 				require.NoError(t, err)
 				t.Logf("%s: %v", nodes[0], rsp.Block)
 			}
-			//t.FailNow()
+			t.FailNow()
 		}
 	}
 }
 
-// verifyBlocks checks that DA block heights form a continuous sequence without gaps
-func verifyBlocks(t *testing.T, daStartHeight, lastDABlock uint64, jwtSecret string, daAddress string, genesisHeight, lastEVBlock uint64) {
+// verifyDABlocks checks that DA block heights form a continuous sequence without gaps
+func verifyDABlocks(t *testing.T, daStartHeight, lastDABlock uint64, jwtSecret string, daAddress string, genesisHeight, lastEVBlock uint64) {
 	t.Helper()
 	rpcClient, err := jsonrpc.NewClient(t.Context(), zerolog.Nop(), daAddress, jwtSecret, defaultMaxBlobSize)
 	require.NoError(t, err)
@@ -287,8 +286,8 @@ func verifyBlocks(t *testing.T, daStartHeight, lastDABlock uint64, jwtSecret str
 		require.NoError(t, err)
 
 		for _, blob := range blobs {
-			if evHeight, hash := extractBlockHeight(t, blob); evHeight != 0 {
-				t.Logf("extracting block height from blob (da height %d): %x", daHeight, evHeight)
+			if evHeight, hash, blobType := extractBlockHeight(t, blob); evHeight != 0 {
+				t.Logf("extracting block height from blob (da height %d): %4d (%s)", daHeight, evHeight, blobType)
 				if height, ok := deduplicationCache[hash.String()]; ok {
 					require.Equal(t, evHeight, height)
 					continue
@@ -309,16 +308,21 @@ func verifyBlocks(t *testing.T, daStartHeight, lastDABlock uint64, jwtSecret str
 }
 
 // extractBlockHeight attempts to decode a blob as SignedHeader or SignedData and extract the block height
-func extractBlockHeight(t *testing.T, blob []byte) (uint64, types.Hash) {
+func extractBlockHeight(t *testing.T, blob []byte) (uint64, types.Hash, string) {
 	t.Helper()
+	if len(blob) == 0 {
+		t.Log("empty blob, skipping")
+		return 0, nil, ""
+	}
 	var headerPb pb.SignedHeader
 	if err := proto.Unmarshal(blob, &headerPb); err == nil {
 		var signedHeader types.SignedHeader
 		if err := signedHeader.FromProto(&headerPb); err == nil {
 			if err := signedHeader.Header.ValidateBasic(); err == nil {
-				return signedHeader.Height(), signedHeader.Hash()
+				return signedHeader.Height(), signedHeader.Hash(), "header"
 			} else {
-				t.Logf("invalid header: %v", err)
+				jsonBZ, _ := json.MarshalIndent(signedHeader.Header, "", "  ")
+				t.Logf("invalid header: %v: %s", err, string(jsonBZ))
 			}
 		} else {
 			t.Logf("failed to unmarshal signed header: %v", err)
@@ -330,12 +334,12 @@ func extractBlockHeight(t *testing.T, blob []byte) (uint64, types.Hash) {
 	var signedData types.SignedData
 	if err := signedData.UnmarshalBinary(blob); err == nil {
 		if signedData.Metadata != nil {
-			return signedData.Height(), signedData.Hash()
+			return signedData.Height(), signedData.Hash(), "data"
 		}
 	} else {
 		t.Logf("failed to unmarshal signed data: %v", err)
 	}
-	return 0, nil
+	return 0, nil, ""
 }
 
 func initChain(t *testing.T, sut *SystemUnderTest, workDir string) string {
@@ -399,7 +403,7 @@ func setupRaftSequencerNode(
 		"--evnode.raft.node_id="+nodeID,
 		"--evnode.raft.raft_addr="+raftAddr,
 		"--evnode.raft.raft_dir="+raftDir,
-		"--evnode.raft.bootstrap="+strconv.FormatBool(bootstrap),
+		"--evnode.raft.bootstrap=true",
 		"--evnode.raft.peers="+strings.Join(raftPeers, ","),
 		"--evnode.raft.snap_count=10",
 		"--evnode.raft.send_timeout=300ms",

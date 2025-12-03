@@ -22,12 +22,14 @@ func (e eventProcessorFn) handle(ctx context.Context, event common.DAHeightEvent
 	return e(ctx, event)
 }
 
+type raftStatePreProcessor func(ctx context.Context, state *raft.RaftBlockState) error
 type raftRetriever struct {
-	raftNode       common.RaftNode
-	wg             sync.WaitGroup
-	logger         zerolog.Logger
-	genesis        genesis.Genesis
-	eventProcessor eventProcessor
+	raftNode              common.RaftNode
+	wg                    sync.WaitGroup
+	logger                zerolog.Logger
+	genesis               genesis.Genesis
+	eventProcessor        eventProcessor
+	raftBlockPreProcessor raftStatePreProcessor
 
 	mtx    sync.Mutex
 	cancel context.CancelFunc
@@ -38,12 +40,14 @@ func newRaftRetriever(
 	genesis genesis.Genesis,
 	logger zerolog.Logger,
 	eventProcessor eventProcessor,
+	raftBlockPostProcessor raftStatePreProcessor,
 ) *raftRetriever {
 	return &raftRetriever{
-		raftNode:       raftNode,
-		genesis:        genesis,
-		logger:         logger,
-		eventProcessor: eventProcessor,
+		raftNode:              raftNode,
+		genesis:               genesis,
+		logger:                logger,
+		eventProcessor:        eventProcessor,
+		raftBlockPreProcessor: raftBlockPostProcessor,
 	}
 }
 
@@ -98,6 +102,9 @@ func (r *raftRetriever) raftApplyLoop(ctx context.Context, applyCh <-chan raft.R
 // consumeRaftBlock applies a block received from raft consensus
 func (r *raftRetriever) consumeRaftBlock(ctx context.Context, state *raft.RaftBlockState) error {
 	r.logger.Debug().Uint64("height", state.Height).Msg("applying raft block")
+	if err := r.raftBlockPreProcessor(ctx, state); err != nil {
+		return err
+	}
 
 	// Unmarshal header and data
 	var header types.SignedHeader
@@ -122,7 +129,7 @@ func (r *raftRetriever) consumeRaftBlock(ctx context.Context, state *raft.RaftBl
 	event := common.DAHeightEvent{
 		Header:   &header,
 		Data:     &data,
-		DaHeight: 0, // raft events don't have DA height context
+		DaHeight: 0, // raft events don't have DA height context, yet as DA submission is asynchronous
 	}
 	return r.eventProcessor.handle(ctx, event)
 }

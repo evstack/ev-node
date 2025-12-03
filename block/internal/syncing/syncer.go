@@ -11,6 +11,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/evstack/ev-node/pkg/raft"
 	pubsub "github.com/libp2p/go-libp2p-pubsub"
 	"github.com/rs/zerolog"
 	"golang.org/x/sync/errgroup"
@@ -79,7 +80,7 @@ func NewSyncer(
 	store store.Store,
 	exec coreexecutor.Executor,
 	daClient da.Client,
-	cache cache.CacheManager,
+	cache cache.Manager,
 	metrics *common.Metrics,
 	config config.Config,
 	genesis genesis.Genesis,
@@ -108,7 +109,12 @@ func NewSyncer(
 		logger:            logger.With().Str("component", "syncer").Logger(),
 	}
 	if raftNode != nil && !reflect.ValueOf(raftNode).IsNil() {
-		s.raftRetriever = newRaftRetriever(raftNode, genesis, logger, eventProcessorFn(s.pipeEvent))
+		s.raftRetriever = newRaftRetriever(raftNode, genesis, logger, eventProcessorFn(s.pipeEvent), func(ctx context.Context, state *raft.RaftBlockState) error {
+			s.logger.Info().Uint64("header_height", state.LastSubmittedDAHeaderHeight).Uint64("data_height", state.LastSubmittedDADataHeight).Msg("+++ received raft block state")
+			cache.SetLastSubmittedHeaderHeight(ctx, state.LastSubmittedDAHeaderHeight)
+			cache.SetLastSubmittedDataHeight(ctx, state.LastSubmittedDADataHeight)
+			return nil
+		})
 	}
 	return s
 }

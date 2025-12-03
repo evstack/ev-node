@@ -443,17 +443,18 @@ func (e *Executor) produceBlock() error {
 		}
 
 		raftState := &raft.RaftBlockState{
-			Height:    newHeight,
-			Hash:      header.Hash(),
-			Timestamp: header.BaseHeader.Time,
-			Header:    headerBytes,
-			Data:      dataBytes,
+			Height:                      newHeight,
+			Hash:                        header.Hash(),
+			Timestamp:                   header.BaseHeader.Time,
+			Header:                      headerBytes,
+			Data:                        dataBytes,
+			LastSubmittedDAHeaderHeight: e.cache.GetLastSubmittedHeaderHeight(),
+			LastSubmittedDADataHeight:   e.cache.GetLastSubmittedDataHeight(),
 		}
 		if err := e.raftNode.Broadcast(e.ctx, raftState); err != nil {
 			return fmt.Errorf("failed to propose block to raft: %w", err)
 		}
 		e.logger.Debug().Uint64("height", newHeight).Msg("proposed block to raft")
-
 	}
 	if err := batch.Commit(); err != nil {
 		return fmt.Errorf("failed to commit batch: %w", err)
