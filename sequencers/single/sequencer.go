@@ -31,10 +31,7 @@ type Sequencer struct {
 	da coreda.DA
 
 	batchTime time.Duration
-
-	queue *BatchQueue // single queue for immediate availability
-
-	metrics *Metrics
+	queue     *BatchQueue // single queue for immediate availability
 }
 
 // NewSequencer creates a new Single Sequencer
@@ -45,10 +42,9 @@ func NewSequencer(
 	da coreda.DA,
 	id []byte,
 	batchTime time.Duration,
-	metrics *Metrics,
 	proposer bool,
 ) (*Sequencer, error) {
-	return NewSequencerWithQueueSize(ctx, logger, db, da, id, batchTime, metrics, proposer, 1000)
+	return NewSequencerWithQueueSize(ctx, logger, db, da, id, batchTime, proposer, 1000)
 }
 
 // NewSequencerWithQueueSize creates a new Single Sequencer with configurable queue size
@@ -59,7 +55,6 @@ func NewSequencerWithQueueSize(
 	da coreda.DA,
 	id []byte,
 	batchTime time.Duration,
-	metrics *Metrics,
 	proposer bool,
 	maxQueueSize int,
 ) (*Sequencer, error) {
@@ -69,7 +64,6 @@ func NewSequencerWithQueueSize(
 		batchTime: batchTime,
 		Id:        id,
 		queue:     NewBatchQueue(db, "batches", maxQueueSize),
-		metrics:   metrics,
 		proposer:  proposer,
 	}
 
@@ -126,18 +120,6 @@ func (c *Sequencer) GetNextBatch(ctx context.Context, req coresequencer.GetNextB
 		Batch:     batch,
 		Timestamp: time.Now(),
 	}, nil
-}
-
-// RecordMetrics updates the metrics with the given values.
-// This method is intended to be called by the block manager after submitting data to the DA layer.
-func (c *Sequencer) RecordMetrics(gasPrice float64, blobSize uint64, statusCode coreda.StatusCode, numPendingBlocks uint64, includedBlockHeight uint64) {
-	if c.metrics != nil {
-		c.metrics.GasPrice.Set(gasPrice)
-		c.metrics.LastBlobSize.Set(float64(blobSize))
-		c.metrics.TransactionStatus.With("status", fmt.Sprintf("%d", statusCode)).Add(1)
-		c.metrics.NumPendingBlocks.Set(float64(numPendingBlocks))
-		c.metrics.IncludedBlockHeight.Set(float64(includedBlockHeight))
-	}
 }
 
 // VerifyBatch implements sequencing.Sequencer.
