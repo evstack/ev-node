@@ -27,7 +27,7 @@ func TestDefaultConfig(t *testing.T) {
 	assert.Equal(t, "", def.DA.SubmitOptions)
 	assert.NotEmpty(t, def.DA.Namespace)
 	assert.Equal(t, 100, def.DA.RetrieveBatchSize)
-	assert.Equal(t, 30*time.Second, def.DA.RequestTimeout.Duration)
+	assert.Equal(t, 60*time.Second, def.DA.RequestTimeout.Duration)
 	assert.Equal(t, 1*time.Second, def.Node.BlockTime.Duration)
 	assert.Equal(t, 6*time.Second, def.DA.BlockTime.Duration)
 	assert.Equal(t, uint64(0), def.DA.MempoolTTL)

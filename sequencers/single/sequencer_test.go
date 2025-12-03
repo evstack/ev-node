@@ -33,44 +33,7 @@ func (m *MockForcedInclusionRetriever) RetrieveForcedIncludedTxs(ctx context.Con
 	return args.Get(0).(*block.ForcedInclusionEvent), args.Error(1)
 }
 
-func TestNewSequencer(t *testing.T) {
-	// Create a new sequencer with mock DA client
-	dummyDA := coreda.NewDummyDA(100_000_000, 10*time.Second)
-	metrics, _ := NopMetrics()
-	db := ds.NewMapDatastore()
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
-	defer cancel()
-	logger := zerolog.Nop()
-	mockRetriever := new(MockForcedInclusionRetriever)
-	mockRetriever.On("RetrieveForcedIncludedTxs", mock.Anything, mock.Anything).
-		Return(nil, block.ErrForceInclusionNotConfigured).Maybe()
-	seq, err := NewSequencer(ctx, logger, db, dummyDA, []byte("test1"), 10*time.Second, metrics, false, 1000, mockRetriever, genesis.Genesis{})
-	if err != nil {
-		t.Fatalf("Failed to create sequencer: %v", err)
-	}
-	defer func() {
-		err := db.Close()
-		if err != nil {
-			t.Fatalf("Failed to close sequencer: %v", err)
-		}
-	}()
-
-	// Check if the sequencer was created with the correct values
-	if seq == nil {
-		t.Fatal("Expected sequencer to not be nil")
-	}
-
-	if seq.queue == nil {
-		t.Fatal("Expected batch queue to not be nil")
-	}
-	if seq.da == nil {
-		t.Fatal("Expected DA client to not be nil")
-	}
-}
-
 func TestSequencer_SubmitBatchTxs(t *testing.T) {
-	// Initialize a new sequencer
-	metrics, _ := NopMetrics()
 	dummyDA := coreda.NewDummyDA(100_000_000, 10*time.Second)
 	db := ds.NewMapDatastore()
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
@@ -80,7 +43,7 @@ func TestSequencer_SubmitBatchTxs(t *testing.T) {
 	mockRetriever := new(MockForcedInclusionRetriever)
 	mockRetriever.On("RetrieveForcedIncludedTxs", mock.Anything, mock.Anything).
 		Return(nil, block.ErrForceInclusionNotConfigured).Maybe()
-	seq, err := NewSequencer(ctx, logger, db, dummyDA, Id, 10*time.Second, metrics, false, 1000, mockRetriever, genesis.Genesis{})
+	seq, err := NewSequencer(ctx, logger, db, dummyDA, Id, 10*time.Second, false, 1000, mockRetriever, genesis.Genesis{})
 	if err != nil {
 		t.Fatalf("Failed to create sequencer: %v", err)
 	}
@@ -125,8 +88,6 @@ func TestSequencer_SubmitBatchTxs(t *testing.T) {
 }
 
 func TestSequencer_SubmitBatchTxs_EmptyBatch(t *testing.T) {
-	// Initialize a new sequencer
-	metrics, _ := NopMetrics()
 	dummyDA := coreda.NewDummyDA(100_000_000, 10*time.Second)
 	db := ds.NewMapDatastore()
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
@@ -136,7 +97,7 @@ func TestSequencer_SubmitBatchTxs_EmptyBatch(t *testing.T) {
 	mockRetriever := new(MockForcedInclusionRetriever)
 	mockRetriever.On("RetrieveForcedIncludedTxs", mock.Anything, mock.Anything).
 		Return(nil, block.ErrForceInclusionNotConfigured).Maybe()
-	seq, err := NewSequencer(ctx, logger, db, dummyDA, Id, 10*time.Second, metrics, false, 1000, mockRetriever, genesis.Genesis{})
+	seq, err := NewSequencer(ctx, logger, db, dummyDA, Id, 10*time.Second, false, 1000, mockRetriever, genesis.Genesis{})
 	require.NoError(t, err, "Failed to create sequencer")
 	defer func() {
 		err := db.Close()
@@ -435,7 +396,6 @@ func TestSequencer_VerifyBatch(t *testing.T) {
 func TestSequencer_GetNextBatch_BeforeDASubmission(t *testing.T) {
 	t.Skip()
 	// Initialize a new sequencer with mock DA
-	metrics, _ := NopMetrics()
 	mockDA := &damocks.MockDA{}
 	db := ds.NewMapDatastore()
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -444,7 +404,7 @@ func TestSequencer_GetNextBatch_BeforeDASubmission(t *testing.T) {
 	mockRetriever := new(MockForcedInclusionRetriever)
 	mockRetriever.On("RetrieveForcedIncludedTxs", mock.Anything, mock.Anything).
 		Return(nil, block.ErrForceInclusionNotConfigured).Maybe()
-	seq, err := NewSequencer(ctx, logger, db, mockDA, []byte("test1"), 1*time.Second, metrics, false, 1000, mockRetriever, genesis.Genesis{})
+	seq, err := NewSequencer(ctx, logger, db, mockDA, []byte("test1"), 1*time.Second, false, 1000, mockRetriever, genesis.Genesis{})
 	if err != nil {
 		t.Fatalf("Failed to create sequencer: %v", err)
 	}
@@ -519,7 +479,6 @@ func TestSequencer_GetNextBatch_ForcedInclusionAndBatch_MaxBytes(t *testing.T) {
 		nil,
 		[]byte("test-chain"),
 		1*time.Second,
-		nil,
 		true,
 		100,
 		mockFI,
@@ -589,11 +548,11 @@ func TestSequencer_GetNextBatch_ForcedInclusion_ExceedsMaxBytes(t *testing.T) {
 		EndDaHeight:   100,
 	}, nil).Once()
 
-	// Second call should process pending tx
-	mockFI.On("RetrieveForcedIncludedTxs", mock.Anything, uint64(100)).Return(&block.ForcedInclusionEvent{
+	// Second call should process pending tx at DA height 101 (after first call bumped it to epochEnd + 1)
+	mockFI.On("RetrieveForcedIncludedTxs", mock.Anything, uint64(101)).Return(&block.ForcedInclusionEvent{
 		Txs:           [][]byte{},
-		StartDaHeight: 100,
-		EndDaHeight:   100,
+		StartDaHeight: 101,
+		EndDaHeight:   101,
 	}, nil).Once()
 
 	gen := genesis.Genesis{
@@ -608,7 +567,6 @@ func TestSequencer_GetNextBatch_ForcedInclusion_ExceedsMaxBytes(t *testing.T) {
 		nil,
 		[]byte("test-chain"),
 		1*time.Second,
-		nil,
 		true,
 		100,
 		mockFI,
@@ -662,11 +620,11 @@ func TestSequencer_GetNextBatch_AlwaysCheckPendingForcedInclusion(t *testing.T) 
 		EndDaHeight:   100,
 	}, nil).Once()
 
-	// Second call returns no new forced txs, but pending should still be processed
-	mockFI.On("RetrieveForcedIncludedTxs", mock.Anything, uint64(100)).Return(&block.ForcedInclusionEvent{
+	// Second call returns no new forced txs at height 101 (after first call bumped DA height to epochEnd + 1), but pending should still be processed
+	mockFI.On("RetrieveForcedIncludedTxs", mock.Anything, uint64(101)).Return(&block.ForcedInclusionEvent{
 		Txs:           [][]byte{},
-		StartDaHeight: 100,
-		EndDaHeight:   100,
+		StartDaHeight: 101,
+		EndDaHeight:   101,
 	}, nil).Once()
 
 	gen := genesis.Genesis{
@@ -681,7 +639,6 @@ func TestSequencer_GetNextBatch_AlwaysCheckPendingForcedInclusion(t *testing.T) 
 		nil,
 		[]byte("test-chain"),
 		1*time.Second,
-		nil,
 		true,
 		100,
 		mockFI,
@@ -736,92 +693,6 @@ func TestSequencer_GetNextBatch_AlwaysCheckPendingForcedInclusion(t *testing.T) 
 	assert.Equal(t, 0, len(seq.pendingForcedInclusionTxs), "Pending queue should be empty")
 
 	mockFI.AssertExpectations(t)
-}
-
-// TestSequencer_RecordMetrics tests the RecordMetrics method to ensure it properly updates metrics.
-func TestSequencer_RecordMetrics(t *testing.T) {
-	t.Run("With Metrics", func(t *testing.T) {
-		// Create a sequencer with metrics enabled
-		metrics, err := NopMetrics()
-		require.NoError(t, err)
-		logger := zerolog.Nop()
-
-		seq := &Sequencer{
-			logger:  logger,
-			metrics: metrics,
-		}
-
-		// Test values
-		gasPrice := 1.5
-		blobSize := uint64(1024)
-		statusCode := coreda.StatusSuccess
-		numPendingBlocks := uint64(5)
-		includedBlockHeight := uint64(100)
-
-		// Call RecordMetrics - should not panic or error
-		seq.RecordMetrics(gasPrice, blobSize, statusCode, numPendingBlocks, includedBlockHeight)
-
-		// Since we're using NopMetrics (discard metrics), we can't verify the actual values
-		// but we can verify the method doesn't panic and completes successfully
-		assert.NotNil(t, seq.metrics)
-	})
-
-	t.Run("Without Metrics", func(t *testing.T) {
-		// Create a sequencer without metrics
-		logger := zerolog.Nop()
-		seq := &Sequencer{
-			logger:  logger,
-			metrics: nil, // No metrics
-		}
-
-		// Test values
-		gasPrice := 2.0
-		blobSize := uint64(2048)
-		statusCode := coreda.StatusNotIncludedInBlock
-		numPendingBlocks := uint64(3)
-		includedBlockHeight := uint64(200)
-
-		// Call RecordMetrics - should not panic even with nil metrics
-		seq.RecordMetrics(gasPrice, blobSize, statusCode, numPendingBlocks, includedBlockHeight)
-
-		// Verify metrics is still nil
-		assert.Nil(t, seq.metrics)
-	})
-
-	t.Run("With Different Status Codes", func(t *testing.T) {
-		// Create a sequencer with metrics
-		metrics, err := NopMetrics()
-		require.NoError(t, err)
-		logger := zerolog.Nop()
-
-		seq := &Sequencer{
-			logger:  logger,
-			metrics: metrics,
-		}
-
-		// Test different status codes
-		testCases := []struct {
-			name       string
-			statusCode coreda.StatusCode
-		}{
-			{"Success", coreda.StatusSuccess},
-			{"NotIncluded", coreda.StatusNotIncludedInBlock},
-			{"AlreadyInMempool", coreda.StatusAlreadyInMempool},
-			{"TooBig", coreda.StatusTooBig},
-			{"ContextCanceled", coreda.StatusContextCanceled},
-		}
-
-		for _, tc := range testCases {
-			t.Run(tc.name, func(t *testing.T) {
-				// Call RecordMetrics with different status codes
-				seq.RecordMetrics(1.0, 512, tc.statusCode, 2, 50)
-
-				// Verify no panic occurred
-				assert.NotNil(t, seq.metrics)
-			})
-		}
-	})
-
 }
 
 func TestSequencer_QueueLimit_Integration(t *testing.T) {
@@ -962,7 +833,6 @@ func TestSequencer_DAFailureAndQueueThrottling_Integration(t *testing.T) {
 		dummyDA,
 		[]byte("test-chain"),
 		100*time.Millisecond,
-		nil,  // metrics
 		true, // proposer
 		queueSize,
 		mockRetriever,     // fiRetriever

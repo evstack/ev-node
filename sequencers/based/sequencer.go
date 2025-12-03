@@ -67,7 +67,7 @@ func (s *BasedSequencer) SubmitBatchTxs(ctx context.Context, req coresequencer.S
 // GetNextBatch retrieves the next batch of transactions from the DA layer
 // It fetches forced inclusion transactions and returns them as the next batch
 func (s *BasedSequencer) GetNextBatch(ctx context.Context, req coresequencer.GetNextBatchRequest) (*coresequencer.GetNextBatchResponse, error) {
-	currentDAHeight := s.daHeight.Load()
+	currentDAHeight := s.GetDAHeight()
 
 	s.logger.Debug().Uint64("da_height", currentDAHeight).Msg("fetching forced inclusion transactions from DA")
 
@@ -75,7 +75,7 @@ func (s *BasedSequencer) GetNextBatch(ctx context.Context, req coresequencer.Get
 	if err != nil {
 		// Check if forced inclusion is not configured
 		if errors.Is(err, block.ErrForceInclusionNotConfigured) {
-			return nil, errors.New("forced inclusion not configured, returning empty batch")
+			return nil, errors.New("forced inclusion not configured")
 		} else if errors.Is(err, coreda.ErrHeightFromFuture) {
 			// If we get a height from future error, keep the current DA height and return batch
 			// We'll retry the same height on the next call until DA produces that block
@@ -86,13 +86,13 @@ func (s *BasedSequencer) GetNextBatch(ctx context.Context, req coresequencer.Get
 			s.logger.Error().Err(err).Uint64("da_height", currentDAHeight).Msg("failed to retrieve forced inclusion transactions")
 			return nil, err
 		}
-	}
-
-	// Update DA height based on the retrieved event
-	if forcedTxsEvent.EndDaHeight > currentDAHeight {
-		s.SetDAHeight(forcedTxsEvent.EndDaHeight)
-	} else if forcedTxsEvent.StartDaHeight > currentDAHeight {
-		s.SetDAHeight(forcedTxsEvent.StartDaHeight)
+	} else {
+		// Update DA height.
+		// If we are in between epochs, we still need to bump the da height.
+		// At the end of an epoch, we need to bump to go to the next epoch.
+		if forcedTxsEvent.EndDaHeight >= currentDAHeight {
+			s.SetDAHeight(forcedTxsEvent.EndDaHeight + 1)
+		}
 	}
 
 	// Add forced inclusion transactions to the queue with validation
@@ -124,7 +124,7 @@ func (s *BasedSequencer) GetNextBatch(ctx context.Context, req coresequencer.Get
 
 	return &coresequencer.GetNextBatchResponse{
 		Batch:     batch,
-		Timestamp: time.Now(),
+		Timestamp: time.Time{}, // TODO(@julienrbrt): we need to use DA block timestamp for determinism
 		BatchData: req.LastBatchData,
 	}, nil
 }

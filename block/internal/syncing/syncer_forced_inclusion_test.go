@@ -517,7 +517,7 @@ func TestVerifyForcedInclusionTxs_DeferralWithinEpoch(t *testing.T) {
 	dataBin1, _ := makeSignedDataBytes(t, gen.ChainID, 10, addr, pub, signer, 2)
 	dataBin2, _ := makeSignedDataBytes(t, gen.ChainID, 11, addr, pub, signer, 1)
 
-	// Mock DA retrieval for first block at DA height 100
+	// Mock DA retrieval for first block at DA height 104 (epoch end)
 	// Epoch boundaries: [100, 104] (epoch size is 5)
 	// The retriever will fetch all heights in the epoch: 100, 101, 102, 103, 104
 
@@ -548,7 +548,7 @@ func TestVerifyForcedInclusionTxs_DeferralWithinEpoch(t *testing.T) {
 	data1.Txs[1] = types.Tx([]byte("regular_tx_1"))
 
 	currentState := s.GetLastState()
-	currentState.DAHeight = 100
+	currentState.DAHeight = 104
 
 	// Verify - should pass since dataBin2 can be deferred within epoch
 	err = s.verifyForcedInclusionTxs(currentState, data1)
@@ -562,7 +562,7 @@ func TestVerifyForcedInclusionTxs_DeferralWithinEpoch(t *testing.T) {
 	})
 	require.Equal(t, 1, pendingCount, "should have 1 pending forced inclusion tx")
 
-	// Mock DA for second verification at same epoch (height 100)
+	// Mock DA for second verification at same epoch (height 104 - epoch end)
 	mockDA.EXPECT().GetIDs(mock.Anything, uint64(100), mock.MatchedBy(func(ns []byte) bool {
 		return bytes.Equal(ns, namespaceForcedInclusionBz)
 	})).Return(&coreda.GetIDsResult{IDs: [][]byte{[]byte("fi1"), []byte("fi2")}, Timestamp: time.Now()}, nil).Once()
@@ -691,7 +691,7 @@ func TestVerifyForcedInclusionTxs_MaliciousAfterEpochEnd(t *testing.T) {
 	data1.Txs[0] = types.Tx([]byte("regular_tx_1"))
 
 	currentState := s.GetLastState()
-	currentState.DAHeight = 100
+	currentState.DAHeight = 102
 
 	// Verify - should pass, tx can be deferred within epoch
 	err = s.verifyForcedInclusionTxs(currentState, data1)
@@ -706,7 +706,7 @@ func TestVerifyForcedInclusionTxs_MaliciousAfterEpochEnd(t *testing.T) {
 	require.Equal(t, 1, pendingCount, "should have 1 pending forced inclusion tx")
 
 	// Process another block within same epoch - forced tx still not included
-	// Mock DA for second verification at same epoch (height 100)
+	// Mock DA for second verification at same epoch (height 102 - epoch end)
 	mockDA.EXPECT().GetIDs(mock.Anything, uint64(100), mock.MatchedBy(func(ns []byte) bool {
 		return bytes.Equal(ns, namespaceForcedInclusionBz)
 	})).Return(&coreda.GetIDsResult{IDs: [][]byte{[]byte("fi1")}, Timestamp: time.Now()}, nil).Once()
@@ -730,7 +730,7 @@ func TestVerifyForcedInclusionTxs_MaliciousAfterEpochEnd(t *testing.T) {
 	err = s.verifyForcedInclusionTxs(currentState, data2)
 	require.NoError(t, err)
 
-	// Mock DA retrieval for next epoch (DA height 103)
+	// Mock DA retrieval for next epoch (DA height 105 - epoch end)
 	// Epoch boundaries: [103, 105]
 	// The retriever will fetch heights 103, 104, 105
 
@@ -749,11 +749,11 @@ func TestVerifyForcedInclusionTxs_MaliciousAfterEpochEnd(t *testing.T) {
 		return bytes.Equal(ns, namespaceForcedInclusionBz)
 	})).Return(&coreda.GetIDsResult{IDs: [][]byte{}, Timestamp: time.Now()}, nil).Once()
 
-	// Third block is in the next epoch (past 102) without including the forced tx
+	// Third block is in the next epoch (at epoch end 105) without including the forced tx
 	data3 := makeData(gen.ChainID, 3, 1)
 	data3.Txs[0] = types.Tx([]byte("regular_tx_3"))
 
-	currentState.DAHeight = 103 // Past epoch end [100, 102]
+	currentState.DAHeight = 105 // At epoch end [103, 105], past previous epoch [100, 102]
 
 	// Verify - should FAIL since forced tx from previous epoch was never included
 	err = s.verifyForcedInclusionTxs(currentState, data3)

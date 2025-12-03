@@ -21,6 +21,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Split cache interface in `CacheManager` and `PendingManager` and create `da` client to easy DA handling. [#2878](https://github.com/evstack/ev-node/pull/2878)
 - Improve startup da retrieval height when cache cleared or empty. [#2880](https://github.com/evstack/ev-node/pull/2880)
 
+### Removed
+
+- **BREAKING:** Removed unused and confusing metrics from sequencers and block processing, including sequencer-specific metrics (gas price, blob size, transaction status, pending blocks), channel buffer metrics, overly granular error metrics, block production categorization metrics, and sync lag metrics. Essential metrics for DA submission health, block production, and performance monitoring are retained. [#2904](https://github.com/evstack/ev-node/pull/2904)
+
 ## v1.0.0-beta.10
 
 ### Added
@@ -42,6 +46,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **BREAKING:** Removed `evnode.v1.HealthService` gRPC endpoint. Use HTTP endpoints: `GET /health/live` and `GET /health/ready`. ([#2800](https://github.com/evstack/ev-node/pull/2800))
 - **BREAKING:** Removed `TrustedHash` configuration option and `--evnode.node.trusted_hash` flag. Sync service now automatically determines starting height from local store state ([#2838](https://github.com/evstack/ev-node/pull/2838))
+- **BREAKING:** Removed unused and confusing metrics from sequencers and block processing, including sequencer-specific metrics (gas price, blob size, transaction status, pending blocks), channel buffer metrics, overly granular error metrics, block production categorization metrics, and sync lag metrics. Essential metrics for DA submission health, block production, and performance monitoring are retained. [#2904](https://github.com/evstack/ev-node/pull/2904)
 
 ### Fixed
 

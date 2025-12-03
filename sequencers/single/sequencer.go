@@ -49,8 +49,6 @@ type Sequencer struct {
 
 	queue *BatchQueue // single queue for immediate availability
 
-	metrics *Metrics
-
 	// Forced inclusion support
 	fiRetriever               ForcedInclusionRetriever
 	genesis                   genesis.Genesis
@@ -66,7 +64,6 @@ func NewSequencer(
 	da coreda.DA,
 	id []byte,
 	batchTime time.Duration,
-	metrics *Metrics,
 	proposer bool,
 	maxQueueSize int,
 	fiRetriever ForcedInclusionRetriever,
@@ -78,7 +75,6 @@ func NewSequencer(
 		batchTime:                 batchTime,
 		Id:                        id,
 		queue:                     NewBatchQueue(db, "batches", maxQueueSize),
-		metrics:                   metrics,
 		proposer:                  proposer,
 		fiRetriever:               fiRetriever,
 		genesis:                   gen,
@@ -130,9 +126,9 @@ func (c *Sequencer) GetNextBatch(ctx context.Context, req coresequencer.GetNextB
 		return nil, ErrInvalidId
 	}
 
-	currentDAHeight := c.daHeight.Load()
+	currentDAHeight := c.GetDAHeight()
 
-	forcedEvent, err := c.fiRetriever.RetrieveForcedIncludedTxs(ctx, currentDAHeight)
+	forcedTxsEvent, err := c.fiRetriever.RetrieveForcedIncludedTxs(ctx, currentDAHeight)
 	if err != nil {
 		if errors.Is(err, coreda.ErrHeightFromFuture) {
 			c.logger.Debug().
@@ -143,25 +139,27 @@ func (c *Sequencer) GetNextBatch(ctx context.Context, req coresequencer.GetNextB
 		}
 
 		// Still create an empty forced inclusion event
-		forcedEvent = &block.ForcedInclusionEvent{
+		forcedTxsEvent = &block.ForcedInclusionEvent{
 			Txs:           [][]byte{},
 			StartDaHeight: currentDAHeight,
 			EndDaHeight:   currentDAHeight,
 		}
+	} else {
+		// Update DA height.
+		// If we are in between epochs, we still need to bump the da height.
+		// At the end of an epoch, we need to bump to go to the next epoch.
+		if forcedTxsEvent.EndDaHeight >= currentDAHeight {
+			c.SetDAHeight(forcedTxsEvent.EndDaHeight + 1)
+		}
 	}
 
 	// Always try to process forced inclusion transactions (including pending from previous epochs)
-	forcedTxs := c.processForcedInclusionTxs(forcedEvent, req.MaxBytes)
-	if forcedEvent.EndDaHeight > currentDAHeight {
-		c.SetDAHeight(forcedEvent.EndDaHeight)
-	} else if forcedEvent.StartDaHeight > currentDAHeight {
-		c.SetDAHeight(forcedEvent.StartDaHeight)
-	}
+	forcedTxs := c.processForcedInclusionTxs(forcedTxsEvent, req.MaxBytes)
 
 	c.logger.Debug().
 		Int("tx_count", len(forcedTxs)).
-		Uint64("da_height_start", forcedEvent.StartDaHeight).
-		Uint64("da_height_end", forcedEvent.EndDaHeight).
+		Uint64("da_height_start", forcedTxsEvent.StartDaHeight).
+		Uint64("da_height_end", forcedTxsEvent.EndDaHeight).
 		Msg("retrieved forced inclusion transactions from DA")
 
 	// Calculate size used by forced inclusion transactions
@@ -220,18 +218,6 @@ func (c *Sequencer) GetNextBatch(ctx context.Context, req coresequencer.GetNextB
 		Timestamp: time.Now(),
 		BatchData: req.LastBatchData,
 	}, nil
-}
-
-// RecordMetrics updates the metrics with the given values.
-// This method is intended to be called by the block manager after submitting data to the DA layer.
-func (c *Sequencer) RecordMetrics(gasPrice float64, blobSize uint64, statusCode coreda.StatusCode, numPendingBlocks uint64, includedBlockHeight uint64) {
-	if c.metrics != nil {
-		c.metrics.GasPrice.Set(gasPrice)
-		c.metrics.LastBlobSize.Set(float64(blobSize))
-		c.metrics.TransactionStatus.With("status", fmt.Sprintf("%d", statusCode)).Add(1)
-		c.metrics.NumPendingBlocks.Set(float64(numPendingBlocks))
-		c.metrics.IncludedBlockHeight.Set(float64(includedBlockHeight))
-	}
 }
 
 // VerifyBatch implements sequencing.Sequencer.

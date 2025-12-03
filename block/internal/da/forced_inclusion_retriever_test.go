@@ -148,7 +148,8 @@ func TestForcedInclusionRetriever_RetrieveForcedIncludedTxs_EpochStartNotAvailab
 	retriever := NewForcedInclusionRetriever(client, gen, zerolog.Nop())
 	ctx := context.Background()
 
-	_, err := retriever.RetrieveForcedIncludedTxs(ctx, 100)
+	// Epoch boundaries: [100, 109] - retrieval happens at epoch end (109)
+	_, err := retriever.RetrieveForcedIncludedTxs(ctx, 109)
 	assert.Assert(t, err != nil)
 	assert.ErrorContains(t, err, "not yet available")
 }
@@ -237,7 +238,8 @@ func TestForcedInclusionRetriever_RetrieveForcedIncludedTxs_MultiHeightEpoch(t *
 	retriever := NewForcedInclusionRetriever(client, gen, zerolog.Nop())
 	ctx := context.Background()
 
-	event, err := retriever.RetrieveForcedIncludedTxs(ctx, 100)
+	// Epoch boundaries: [100, 102] - retrieval happens at epoch end (102)
+	event, err := retriever.RetrieveForcedIncludedTxs(ctx, 102)
 	assert.NilError(t, err)
 	assert.Assert(t, event != nil)
 	assert.Equal(t, event.StartDaHeight, uint64(100))
@@ -265,12 +267,11 @@ func TestForcedInclusionRetriever_processForcedInclusionBlobs(t *testing.T) {
 	retriever := NewForcedInclusionRetriever(client, gen, zerolog.Nop())
 
 	tests := []struct {
-		name               string
-		result             coreda.ResultRetrieve
-		height             uint64
-		expectedTxCount    int
-		expectedLastHeight uint64
-		expectError        bool
+		name            string
+		result          coreda.ResultRetrieve
+		height          uint64
+		expectedTxCount int
+		expectError     bool
 	}{
 		{
 			name: "success with blobs",
@@ -280,10 +281,9 @@ func TestForcedInclusionRetriever_processForcedInclusionBlobs(t *testing.T) {
 				},
 				Data: [][]byte{[]byte("tx1"), []byte("tx2")},
 			},
-			height:             100,
-			expectedTxCount:    2,
-			expectedLastHeight: 100,
-			expectError:        false,
+			height:          100,
+			expectedTxCount: 2,
+			expectError:     false,
 		},
 		{
 			name: "not found",
@@ -292,10 +292,9 @@ func TestForcedInclusionRetriever_processForcedInclusionBlobs(t *testing.T) {
 					Code: coreda.StatusNotFound,
 				},
 			},
-			height:             100,
-			expectedTxCount:    0,
-			expectedLastHeight: 100,
-			expectError:        false,
+			height:          100,
+			expectedTxCount: 0,
+			expectError:     false,
 		},
 		{
 			name: "error status",
@@ -316,10 +315,9 @@ func TestForcedInclusionRetriever_processForcedInclusionBlobs(t *testing.T) {
 				},
 				Data: [][]byte{[]byte("tx1"), {}, []byte("tx2")},
 			},
-			height:             100,
-			expectedTxCount:    2,
-			expectedLastHeight: 100,
-			expectError:        false,
+			height:          100,
+			expectedTxCount: 2,
+			expectError:     false,
 		},
 	}
 
@@ -328,16 +326,14 @@ func TestForcedInclusionRetriever_processForcedInclusionBlobs(t *testing.T) {
 			event := &ForcedInclusionEvent{
 				Txs: [][]byte{},
 			}
-			lastHeight := uint64(0)
 
-			err := retriever.processForcedInclusionBlobs(event, &lastHeight, tt.result, tt.height)
+			err := retriever.processForcedInclusionBlobs(event, tt.result, tt.height)
 
 			if tt.expectError {
 				assert.Assert(t, err != nil)
 			} else {
 				assert.NilError(t, err)
 				assert.Equal(t, len(event.Txs), tt.expectedTxCount)
-				assert.Equal(t, lastHeight, tt.expectedLastHeight)
 			}
 		})
 	}
