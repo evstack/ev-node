@@ -3,9 +3,11 @@ package based
 import (
 	"context"
 	"errors"
+	"fmt"
 	"sync/atomic"
 	"time"
 
+	ds "github.com/ipfs/go-datastore"
 	"github.com/rs/zerolog"
 
 	"github.com/evstack/ev-node/block"
@@ -33,28 +35,37 @@ type BasedSequencer struct {
 	logger      zerolog.Logger
 
 	daHeight atomic.Uint64
-	txQueue  [][]byte
+	txQueue  *TxQueue
 }
 
 // NewBasedSequencer creates a new based sequencer instance
 func NewBasedSequencer(
+	ctx context.Context,
 	fiRetriever ForcedInclusionRetriever,
 	da coreda.DA,
+	db ds.Batching,
 	config config.Config,
 	genesis genesis.Genesis,
 	logger zerolog.Logger,
-) *BasedSequencer {
+	maxQueueSize int,
+) (*BasedSequencer, error) {
 	bs := &BasedSequencer{
 		fiRetriever: fiRetriever,
 		da:          da,
 		config:      config,
 		genesis:     genesis,
 		logger:      logger.With().Str("component", "based_sequencer").Logger(),
-		txQueue:     make([][]byte, 0),
+		txQueue:     NewTxQueue(db, "based_txs", maxQueueSize),
 	}
 	bs.SetDAHeight(genesis.DAStartHeight) // will be overridden by the executor
 
-	return bs
+	loadCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if err := bs.txQueue.Load(loadCtx); err != nil {
+		return nil, fmt.Errorf("failed to load transaction queue from DB: %w", err)
+	}
+
+	return bs, nil
 }
 
 // SubmitBatchTxs does nothing for a based sequencer as it only pulls from DA
@@ -96,7 +107,7 @@ func (s *BasedSequencer) GetNextBatch(ctx context.Context, req coresequencer.Get
 	}
 
 	// Add forced inclusion transactions to the queue with validation
-	validTxs := 0
+	validTxs := make([][]byte, 0, len(forcedTxsEvent.Txs))
 	skippedTxs := 0
 	for _, tx := range forcedTxsEvent.Txs {
 		// Validate blob size against absolute maximum
@@ -108,14 +119,26 @@ func (s *BasedSequencer) GetNextBatch(ctx context.Context, req coresequencer.Get
 			skippedTxs++
 			continue
 		}
-		s.txQueue = append(s.txQueue, tx)
-		validTxs++
+		validTxs = append(validTxs, tx)
+	}
+
+	// Add valid transactions to the persistent queue
+	if len(validTxs) > 0 {
+		if err := s.txQueue.AddBatch(ctx, validTxs); err != nil {
+			if errors.Is(err, ErrQueueFull) {
+				s.logger.Warn().
+					Int("tx_count", len(validTxs)).
+					Msg("Transaction queue is full, rejecting forced inclusion transactions")
+				return nil, fmt.Errorf("transaction queue is full: %w", err)
+			}
+			return nil, fmt.Errorf("failed to add transactions to queue: %w", err)
+		}
 	}
 
 	s.logger.Info().
-		Int("valid_tx_count", validTxs).
+		Int("valid_tx_count", len(validTxs)).
 		Int("skipped_tx_count", skippedTxs).
-		Int("queue_size", len(s.txQueue)).
+		Int("queue_size", s.txQueue.Size()).
 		Uint64("da_height_start", forcedTxsEvent.StartDaHeight).
 		Uint64("da_height_end", forcedTxsEvent.EndDaHeight).
 		Msg("processed forced inclusion transactions from DA")
@@ -131,32 +154,29 @@ func (s *BasedSequencer) GetNextBatch(ctx context.Context, req coresequencer.Get
 
 // createBatchFromQueue creates a batch from the transaction queue respecting MaxBytes
 func (s *BasedSequencer) createBatchFromQueue(maxBytes uint64) *coresequencer.Batch {
-	if len(s.txQueue) == 0 {
+	if s.txQueue.Size() == 0 {
 		return &coresequencer.Batch{Transactions: nil}
 	}
 
-	var batch [][]byte
-	var totalBytes uint64
-
-	for i, tx := range s.txQueue {
-		txSize := uint64(len(tx))
-		// Always respect maxBytes, even for the first transaction
-		if totalBytes+txSize > maxBytes {
-			// Would exceed max bytes, stop here
-			s.txQueue = s.txQueue[i:]
-			break
-		}
-
-		batch = append(batch, tx)
-		totalBytes += txSize
-
-		// If this is the last transaction, clear the queue
-		if i == len(s.txQueue)-1 {
-			s.txQueue = s.txQueue[:0]
-		}
+	// Peek at transactions without removing them
+	txs := s.txQueue.Peek(maxBytes)
+	if len(txs) == 0 {
+		return &coresequencer.Batch{Transactions: nil}
 	}
 
-	return &coresequencer.Batch{Transactions: batch}
+	// Consume the transactions we're including in the batch
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	if err := s.txQueue.Consume(ctx, len(txs)); err != nil {
+		s.logger.Error().Err(err).
+			Int("tx_count", len(txs)).
+			Msg("failed to consume transactions from queue")
+		// Return empty batch on error to avoid data inconsistency
+		return &coresequencer.Batch{Transactions: nil}
+	}
+
+	return &coresequencer.Batch{Transactions: txs}
 }
 
 // VerifyBatch verifies a batch of transactions

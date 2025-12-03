@@ -125,7 +125,10 @@ func createSequencer(
 			return nil, fmt.Errorf("based sequencer mode requires aggregator mode to be enabled")
 		}
 
-		basedSeq := based.NewBasedSequencer(fiRetriever, da, nodeConfig, genesis, logger)
+		basedSeq, err := based.NewBasedSequencer(ctx, fiRetriever, da, datastore, nodeConfig, genesis, logger, 1000)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create based sequencer: %w", err)
+		}
 
 		logger.Info().
 			Str("forced_inclusion_namespace", nodeConfig.DA.GetForcedInclusionNamespace()).

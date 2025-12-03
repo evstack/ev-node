@@ -6,6 +6,8 @@ import (
 	"testing"
 	"time"
 
+	ds "github.com/ipfs/go-datastore"
+	syncds "github.com/ipfs/go-datastore/sync"
 	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
@@ -79,6 +81,20 @@ func (m *MockDA) Commit(ctx context.Context, blobs [][]byte, namespace []byte) (
 	return args.Get(0).([][]byte), args.Error(1)
 }
 
+// createTestSequencer is a helper function to create a sequencer for testing
+func createTestSequencer(t *testing.T, mockDA *MockDA, cfg config.Config, gen genesis.Genesis) *BasedSequencer {
+	t.Helper()
+	daClient := block.NewDAClient(mockDA, cfg, zerolog.Nop())
+	fiRetriever := block.NewForcedInclusionRetriever(daClient, gen, zerolog.Nop())
+
+	// Create in-memory datastore
+	db := syncds.MutexWrap(ds.NewMapDatastore())
+
+	seq, err := NewBasedSequencer(context.Background(), fiRetriever, mockDA, db, cfg, gen, zerolog.Nop(), 0)
+	require.NoError(t, err)
+	return seq
+}
+
 func TestBasedSequencer_SubmitBatchTxs(t *testing.T) {
 	mockDA := new(MockDA)
 	gen := genesis.Genesis{
@@ -91,10 +107,7 @@ func TestBasedSequencer_SubmitBatchTxs(t *testing.T) {
 	cfg.DA.DataNamespace = "test-data-ns"
 	cfg.DA.ForcedInclusionNamespace = "test-fi-ns"
 
-	daClient := block.NewDAClient(mockDA, cfg, zerolog.Nop())
-	fiRetriever := block.NewForcedInclusionRetriever(daClient, gen, zerolog.Nop())
-
-	seq := NewBasedSequencer(fiRetriever, mockDA, cfg, gen, zerolog.Nop())
+	seq := createTestSequencer(t, mockDA, cfg, gen)
 
 	// Submit should succeed but be ignored
 	req := coresequencer.SubmitBatchTxsRequest{
@@ -109,7 +122,7 @@ func TestBasedSequencer_SubmitBatchTxs(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, resp)
 	// Transactions should not be added to queue for based sequencer
-	assert.Equal(t, 0, len(seq.txQueue))
+	assert.Equal(t, 0, seq.txQueue.Size())
 }
 
 func TestBasedSequencer_GetNextBatch_WithForcedTxs(t *testing.T) {
@@ -133,10 +146,7 @@ func TestBasedSequencer_GetNextBatch_WithForcedTxs(t *testing.T) {
 	cfg.DA.DataNamespace = "test-data-ns"
 	cfg.DA.ForcedInclusionNamespace = "test-fi-ns"
 
-	daClient := block.NewDAClient(mockDA, cfg, zerolog.Nop())
-	fiRetriever := block.NewForcedInclusionRetriever(daClient, gen, zerolog.Nop())
-
-	seq := NewBasedSequencer(fiRetriever, mockDA, cfg, gen, zerolog.Nop())
+	seq := createTestSequencer(t, mockDA, cfg, gen)
 
 	req := coresequencer.GetNextBatchRequest{
 		MaxBytes:      1000000,
@@ -172,10 +182,7 @@ func TestBasedSequencer_GetNextBatch_EmptyDA(t *testing.T) {
 	cfg.DA.DataNamespace = "test-data-ns"
 	cfg.DA.ForcedInclusionNamespace = "test-fi-ns"
 
-	daClient := block.NewDAClient(mockDA, cfg, zerolog.Nop())
-	fiRetriever := block.NewForcedInclusionRetriever(daClient, gen, zerolog.Nop())
-
-	seq := NewBasedSequencer(fiRetriever, mockDA, cfg, gen, zerolog.Nop())
+	seq := createTestSequencer(t, mockDA, cfg, gen)
 
 	req := coresequencer.GetNextBatchRequest{
 		MaxBytes:      1000000,
@@ -202,10 +209,7 @@ func TestBasedSequencer_GetNextBatch_NotConfigured(t *testing.T) {
 	// Create config without forced inclusion namespace
 	cfgNoFI := config.DefaultConfig()
 	cfgNoFI.DA.ForcedInclusionNamespace = ""
-	daClient := block.NewDAClient(mockDA, cfgNoFI, zerolog.Nop())
-	fiRetriever := block.NewForcedInclusionRetriever(daClient, gen, zerolog.Nop())
-
-	seq := NewBasedSequencer(fiRetriever, mockDA, cfgNoFI, gen, zerolog.Nop())
+	seq := createTestSequencer(t, mockDA, cfgNoFI, gen)
 
 	req := coresequencer.GetNextBatchRequest{
 		MaxBytes:      1000000,
@@ -247,10 +251,7 @@ func TestBasedSequencer_GetNextBatch_WithMaxBytes(t *testing.T) {
 	cfg.DA.DataNamespace = "test-data-ns"
 	cfg.DA.ForcedInclusionNamespace = "test-fi-ns"
 
-	daClient := block.NewDAClient(mockDA, cfg, zerolog.Nop())
-	fiRetriever := block.NewForcedInclusionRetriever(daClient, gen, zerolog.Nop())
-
-	seq := NewBasedSequencer(fiRetriever, mockDA, cfg, gen, zerolog.Nop())
+	seq := createTestSequencer(t, mockDA, cfg, gen)
 
 	// First call with max 100 bytes - should get first 2 txs (50 + 60 = 110, but logic allows if batch has content)
 	req := coresequencer.GetNextBatchRequest{
@@ -264,7 +265,7 @@ func TestBasedSequencer_GetNextBatch_WithMaxBytes(t *testing.T) {
 	require.NotNil(t, resp.Batch)
 	// Should get first tx (50 bytes), second tx would exceed limit (50+60=110 > 100)
 	assert.Equal(t, 1, len(resp.Batch.Transactions))
-	assert.Equal(t, 2, len(seq.txQueue)) // 2 remaining in queue
+	assert.Equal(t, 2, seq.txQueue.Size()) // 2 remaining in queue
 
 	// Second call should get next tx from queue
 	resp2, err := seq.GetNextBatch(context.Background(), req)
@@ -272,7 +273,7 @@ func TestBasedSequencer_GetNextBatch_WithMaxBytes(t *testing.T) {
 	require.NotNil(t, resp2)
 	require.NotNil(t, resp2.Batch)
 	assert.Equal(t, 1, len(resp2.Batch.Transactions))
-	assert.Equal(t, 1, len(seq.txQueue)) // 1 remaining in queue
+	assert.Equal(t, 1, seq.txQueue.Size()) // 1 remaining in queue
 
 	// Third call with larger maxBytes to get the 100-byte tx
 	req3 := coresequencer.GetNextBatchRequest{
@@ -284,7 +285,7 @@ func TestBasedSequencer_GetNextBatch_WithMaxBytes(t *testing.T) {
 	require.NotNil(t, resp3)
 	require.NotNil(t, resp3.Batch)
 	assert.Equal(t, 1, len(resp3.Batch.Transactions))
-	assert.Equal(t, 0, len(seq.txQueue)) // Queue should be empty
+	assert.Equal(t, 0, seq.txQueue.Size()) // Queue should be empty
 
 	mockDA.AssertExpectations(t)
 }
@@ -304,13 +305,14 @@ func TestBasedSequencer_GetNextBatch_FromQueue(t *testing.T) {
 	cfg.DA.DataNamespace = "test-data-ns"
 	cfg.DA.ForcedInclusionNamespace = "test-fi-ns"
 
-	daClient := block.NewDAClient(mockDA, cfg, zerolog.Nop())
-	fiRetriever := block.NewForcedInclusionRetriever(daClient, gen, zerolog.Nop())
-
-	seq := NewBasedSequencer(fiRetriever, mockDA, cfg, gen, zerolog.Nop())
+	seq := createTestSequencer(t, mockDA, cfg, gen)
 
 	// Pre-populate the queue
-	seq.txQueue = [][]byte{[]byte("queued_tx1"), []byte("queued_tx2")}
+	ctx := context.Background()
+	err := seq.txQueue.Add(ctx, []byte("queued_tx1"))
+	require.NoError(t, err)
+	err = seq.txQueue.Add(ctx, []byte("queued_tx2"))
+	require.NoError(t, err)
 
 	req := coresequencer.GetNextBatchRequest{
 		MaxBytes:      1000000,
@@ -326,7 +328,7 @@ func TestBasedSequencer_GetNextBatch_FromQueue(t *testing.T) {
 	assert.Equal(t, []byte("queued_tx2"), resp.Batch.Transactions[1])
 
 	// Queue should be empty now
-	assert.Equal(t, 0, len(seq.txQueue))
+	assert.Equal(t, 0, seq.txQueue.Size())
 }
 
 func TestBasedSequencer_GetNextBatch_AlwaysCheckPendingForcedInclusion(t *testing.T) {
@@ -354,10 +356,7 @@ func TestBasedSequencer_GetNextBatch_AlwaysCheckPendingForcedInclusion(t *testin
 	cfg.DA.DataNamespace = "test-data-ns"
 	cfg.DA.ForcedInclusionNamespace = "test-fi-ns"
 
-	daClient := block.NewDAClient(mockDA, cfg, zerolog.Nop())
-	fiRetriever := block.NewForcedInclusionRetriever(daClient, gen, zerolog.Nop())
-
-	seq := NewBasedSequencer(fiRetriever, mockDA, cfg, gen, zerolog.Nop())
+	seq := createTestSequencer(t, mockDA, cfg, gen)
 
 	// First call with maxBytes = 100
 	// Forced tx (150 bytes) is added to queue, but batch will be empty since it exceeds maxBytes
@@ -373,7 +372,7 @@ func TestBasedSequencer_GetNextBatch_AlwaysCheckPendingForcedInclusion(t *testin
 	assert.Equal(t, 0, len(resp1.Batch.Transactions), "Should have no txs as forced tx exceeds maxBytes")
 
 	// Verify forced tx is in queue
-	assert.Equal(t, 1, len(seq.txQueue), "Forced tx should be in queue")
+	assert.Equal(t, 1, seq.txQueue.Size(), "Forced tx should be in queue")
 
 	// Second call with larger maxBytes = 200
 	// Should process tx from queue
@@ -390,7 +389,7 @@ func TestBasedSequencer_GetNextBatch_AlwaysCheckPendingForcedInclusion(t *testin
 	assert.Equal(t, 150, len(resp2.Batch.Transactions[0]))
 
 	// Queue should now be empty
-	assert.Equal(t, 0, len(seq.txQueue), "Queue should be empty")
+	assert.Equal(t, 0, seq.txQueue.Size(), "Queue should be empty")
 
 	mockDA.AssertExpectations(t)
 }
@@ -421,10 +420,7 @@ func TestBasedSequencer_GetNextBatch_ForcedInclusionExceedsMaxBytes(t *testing.T
 	cfg.DA.DataNamespace = "test-data-ns"
 	cfg.DA.ForcedInclusionNamespace = "test-fi-ns"
 
-	daClient := block.NewDAClient(mockDA, cfg, zerolog.Nop())
-	fiRetriever := block.NewForcedInclusionRetriever(daClient, gen, zerolog.Nop())
-
-	seq := NewBasedSequencer(fiRetriever, mockDA, cfg, gen, zerolog.Nop())
+	seq := createTestSequencer(t, mockDA, cfg, gen)
 
 	// First call with maxBytes = 120
 	// Should get only first forced tx (100 bytes), second stays in queue
@@ -441,7 +437,7 @@ func TestBasedSequencer_GetNextBatch_ForcedInclusionExceedsMaxBytes(t *testing.T
 	assert.Equal(t, 100, len(resp1.Batch.Transactions[0]))
 
 	// Verify second tx is still in queue
-	assert.Equal(t, 1, len(seq.txQueue), "Second tx should be in queue")
+	assert.Equal(t, 1, seq.txQueue.Size(), "Second tx should be in queue")
 
 	// Second call - should get the second tx from queue
 	req2 := coresequencer.GetNextBatchRequest{
@@ -457,7 +453,7 @@ func TestBasedSequencer_GetNextBatch_ForcedInclusionExceedsMaxBytes(t *testing.T
 	assert.Equal(t, 80, len(resp2.Batch.Transactions[0]))
 
 	// Queue should now be empty
-	assert.Equal(t, 0, len(seq.txQueue), "Queue should be empty")
+	assert.Equal(t, 0, seq.txQueue.Size(), "Queue should be empty")
 
 	mockDA.AssertExpectations(t)
 }
@@ -474,10 +470,7 @@ func TestBasedSequencer_VerifyBatch(t *testing.T) {
 	cfg.DA.DataNamespace = "test-data-ns"
 	cfg.DA.ForcedInclusionNamespace = "test-fi-ns"
 
-	daClient := block.NewDAClient(mockDA, cfg, zerolog.Nop())
-	fiRetriever := block.NewForcedInclusionRetriever(daClient, gen, zerolog.Nop())
-
-	seq := NewBasedSequencer(fiRetriever, mockDA, cfg, gen, zerolog.Nop())
+	seq := createTestSequencer(t, mockDA, cfg, gen)
 
 	req := coresequencer.VerifyBatchRequest{
 		Id:        []byte("test-chain"),
@@ -502,10 +495,7 @@ func TestBasedSequencer_SetDAHeight(t *testing.T) {
 	cfg.DA.DataNamespace = "test-data-ns"
 	cfg.DA.ForcedInclusionNamespace = "test-fi-ns"
 
-	daClient := block.NewDAClient(mockDA, cfg, zerolog.Nop())
-	fiRetriever := block.NewForcedInclusionRetriever(daClient, gen, zerolog.Nop())
-
-	seq := NewBasedSequencer(fiRetriever, mockDA, cfg, gen, zerolog.Nop())
+	seq := createTestSequencer(t, mockDA, cfg, gen)
 
 	assert.Equal(t, uint64(100), seq.GetDAHeight())
 
@@ -528,10 +518,7 @@ func TestBasedSequencer_GetNextBatch_ErrorHandling(t *testing.T) {
 	cfg.DA.DataNamespace = "test-data-ns"
 	cfg.DA.ForcedInclusionNamespace = "test-fi-ns"
 
-	daClient := block.NewDAClient(mockDA, cfg, zerolog.Nop())
-	fiRetriever := block.NewForcedInclusionRetriever(daClient, gen, zerolog.Nop())
-
-	seq := NewBasedSequencer(fiRetriever, mockDA, cfg, gen, zerolog.Nop())
+	seq := createTestSequencer(t, mockDA, cfg, gen)
 
 	req := coresequencer.GetNextBatchRequest{
 		MaxBytes:      1000000,
