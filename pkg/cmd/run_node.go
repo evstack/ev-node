@@ -22,7 +22,7 @@ import (
 	"github.com/evstack/ev-node/node"
 	rollconf "github.com/evstack/ev-node/pkg/config"
 	genesispkg "github.com/evstack/ev-node/pkg/genesis"
-	"github.com/evstack/ev-node/pkg/p2p"
+	"github.com/evstack/ev-node/pkg/p2p/key"
 	"github.com/evstack/ev-node/pkg/signer"
 	"github.com/evstack/ev-node/pkg/signer/file"
 )
@@ -83,7 +83,7 @@ func StartNode(
 	executor coreexecutor.Executor,
 	sequencer coresequencer.Sequencer,
 	da coreda.DA,
-	p2pClient *p2p.Client,
+	nodeKey *key.NodeKey,
 	datastore datastore.Batching,
 	nodeConfig rollconf.Config,
 	genesis genesispkg.Genesis,
@@ -139,7 +139,7 @@ func StartNode(
 		sequencer,
 		da,
 		signer,
-		p2pClient,
+		nodeKey,
 		genesis,
 		datastore,
 		metrics,

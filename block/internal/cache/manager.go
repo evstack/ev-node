@@ -81,7 +81,9 @@ type PendingManager interface {
 	GetPendingHeaders(ctx context.Context) ([]*types.SignedHeader, error)
 	GetPendingData(ctx context.Context) ([]*types.SignedData, error)
 	SetLastSubmittedHeaderHeight(ctx context.Context, height uint64)
+	GetLastSubmittedHeaderHeight() uint64
 	SetLastSubmittedDataHeight(ctx context.Context, height uint64)
+	GetLastSubmittedDataHeight() uint64
 	NumPendingHeaders() uint64
 	NumPendingData() uint64
 }
@@ -347,8 +349,16 @@ func (m *implementation) GetPendingData(ctx context.Context) ([]*types.SignedDat
 	return signedDataList, nil
 }
 
+func (m *implementation) GetLastSubmittedHeaderHeight() uint64 {
+	return m.pendingHeaders.GetLastSubmittedDataHeight()
+}
+
 func (m *implementation) SetLastSubmittedHeaderHeight(ctx context.Context, height uint64) {
 	m.pendingHeaders.SetLastSubmittedHeaderHeight(ctx, height)
+}
+
+func (m *implementation) GetLastSubmittedDataHeight() uint64 {
+	return m.pendingData.GetLastSubmittedDataHeight()
 }
 
 func (m *implementation) SetLastSubmittedDataHeight(ctx context.Context, height uint64) {

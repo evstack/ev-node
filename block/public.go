@@ -47,3 +47,6 @@ func NewDAClient(
 		RetrieveBatchSize: config.DA.RetrieveBatchSize,
 	})
 }
+
+// Expose Raft types for consensus integration
+type RaftNode = common.RaftNode
