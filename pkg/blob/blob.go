@@ -17,6 +17,9 @@ import (
 	"github.com/celestiaorg/nmt"
 )
 
+// Commitment is the Merkle subtree commitment for a blob.
+type Commitment []byte
+
 // Proof is a set of NMT proofs used to verify a blob inclusion.
 // This mirrors celestia-node's blob.Proof shape.
 type Proof []*nmt.Proof
