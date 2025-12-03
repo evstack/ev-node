@@ -12,7 +12,7 @@ const (
 // This checks against the DA layer limit, not the per-batch limit.
 // Returns true if the blob is within the absolute size limit, false otherwise.
 func ValidateBlobSize(blob []byte) bool {
-	return uint64(len(blob)) <= AbsoluteMaxBlobSize
+	return uint64(GetBlobSize(blob)) <= AbsoluteMaxBlobSize
 }
 
 // WouldExceedCumulativeSize checks if adding a blob would exceed the cumulative size limit for a batch.

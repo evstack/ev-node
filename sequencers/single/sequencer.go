@@ -130,9 +130,9 @@ func (c *Sequencer) GetNextBatch(ctx context.Context, req coresequencer.GetNextB
 		return nil, ErrInvalidId
 	}
 
-	currentDAHeight := c.daHeight.Load()
+	currentDAHeight := c.GetDAHeight()
 
-	forcedEvent, err := c.fiRetriever.RetrieveForcedIncludedTxs(ctx, currentDAHeight)
+	forcedTxsEvent, err := c.fiRetriever.RetrieveForcedIncludedTxs(ctx, currentDAHeight)
 	if err != nil {
 		if errors.Is(err, coreda.ErrHeightFromFuture) {
 			c.logger.Debug().
@@ -143,25 +143,27 @@ func (c *Sequencer) GetNextBatch(ctx context.Context, req coresequencer.GetNextB
 		}
 
 		// Still create an empty forced inclusion event
-		forcedEvent = &block.ForcedInclusionEvent{
+		forcedTxsEvent = &block.ForcedInclusionEvent{
 			Txs:           [][]byte{},
 			StartDaHeight: currentDAHeight,
 			EndDaHeight:   currentDAHeight,
 		}
+	} else {
+		// Update DA height.
+		// If we are in between epochs, we still need to bump the da height.
+		// At the end of an epoch, we need to bump to go to the next epoch.
+		if forcedTxsEvent.EndDaHeight >= currentDAHeight {
+			c.SetDAHeight(forcedTxsEvent.EndDaHeight + 1)
+		}
 	}
 
 	// Always try to process forced inclusion transactions (including pending from previous epochs)
-	forcedTxs := c.processForcedInclusionTxs(forcedEvent, req.MaxBytes)
-	if forcedEvent.EndDaHeight > currentDAHeight {
-		c.SetDAHeight(forcedEvent.EndDaHeight)
-	} else if forcedEvent.StartDaHeight > currentDAHeight {
-		c.SetDAHeight(forcedEvent.StartDaHeight)
-	}
+	forcedTxs := c.processForcedInclusionTxs(forcedTxsEvent, req.MaxBytes)
 
 	c.logger.Debug().
 		Int("tx_count", len(forcedTxs)).
-		Uint64("da_height_start", forcedEvent.StartDaHeight).
-		Uint64("da_height_end", forcedEvent.EndDaHeight).
+		Uint64("da_height_start", forcedTxsEvent.StartDaHeight).
+		Uint64("da_height_end", forcedTxsEvent.EndDaHeight).
 		Msg("retrieved forced inclusion transactions from DA")
 
 	// Calculate size used by forced inclusion transactions

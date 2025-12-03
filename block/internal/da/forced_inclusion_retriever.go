@@ -53,11 +53,11 @@ func (r *ForcedInclusionRetriever) RetrieveForcedIncludedTxs(ctx context.Context
 
 	epochStart, epochEnd, currentEpochNumber := types.CalculateEpochBoundaries(daHeight, r.genesis.DAStartHeight, r.daEpochSize)
 
-	if daHeight != epochStart {
+	if daHeight != epochEnd {
 		r.logger.Debug().
 			Uint64("da_height", daHeight).
-			Uint64("epoch_start", epochStart).
-			Msg("not at epoch start - returning empty transactions")
+			Uint64("epoch_end", epochEnd).
+			Msg("not at epoch end - returning empty transactions")
 
 		return &ForcedInclusionEvent{
 			StartDaHeight: daHeight,
@@ -68,15 +68,9 @@ func (r *ForcedInclusionRetriever) RetrieveForcedIncludedTxs(ctx context.Context
 
 	event := &ForcedInclusionEvent{
 		StartDaHeight: epochStart,
+		EndDaHeight:   epochEnd,
 		Txs:           [][]byte{},
 	}
-
-	r.logger.Debug().
-		Uint64("da_height", daHeight).
-		Uint64("epoch_start", epochStart).
-		Uint64("epoch_end", epochEnd).
-		Uint64("epoch_num", currentEpochNumber).
-		Msg("retrieving forced included transactions from DA")
 
 	epochEndResult := r.client.RetrieveForcedInclusion(ctx, epochEnd)
 	if epochEndResult.Code == coreda.StatusHeightFromFuture {
@@ -97,44 +91,47 @@ func (r *ForcedInclusionRetriever) RetrieveForcedIncludedTxs(ctx context.Context
 		}
 	}
 
-	lastProcessedHeight := epochStart
+	r.logger.Debug().
+		Uint64("da_height", daHeight).
+		Uint64("epoch_start", epochStart).
+		Uint64("epoch_end", epochEnd).
+		Uint64("epoch_num", currentEpochNumber).
+		Msg("retrieving forced included transactions from DA")
 
-	if err := r.processForcedInclusionBlobs(event, &lastProcessedHeight, epochStartResult, epochStart); err != nil {
-		return nil, err
-	}
+	var processErrs error
+	err := r.processForcedInclusionBlobs(event, epochStartResult, epochStart)
+	processErrs = errors.Join(processErrs, err)
 
 	// Process heights between start and end (exclusive)
 	for epochHeight := epochStart + 1; epochHeight < epochEnd; epochHeight++ {
 		result := r.client.RetrieveForcedInclusion(ctx, epochHeight)
 
-		// If any intermediate height is from future, break early
-		if result.Code == coreda.StatusHeightFromFuture {
-			r.logger.Debug().
-				Uint64("epoch_height", epochHeight).
-				Uint64("last_processed", lastProcessedHeight).
-				Msg("reached future DA height within epoch - stopping")
-			break
-		}
-
-		if err := r.processForcedInclusionBlobs(event, &lastProcessedHeight, result, epochHeight); err != nil {
-			return nil, err
-		}
+		err = r.processForcedInclusionBlobs(event, result, epochHeight)
+		processErrs = errors.Join(processErrs, err)
 	}
 
 	// Process epoch end (only if different from start)
 	if epochEnd != epochStart {
-		if err := r.processForcedInclusionBlobs(event, &lastProcessedHeight, epochEndResult, epochEnd); err != nil {
-			return nil, err
-		}
+		err = r.processForcedInclusionBlobs(event, epochEndResult, epochEnd)
+		processErrs = errors.Join(processErrs, err)
 	}
 
-	event.EndDaHeight = lastProcessedHeight
+	// any error during process, need to retry at next call
+	if processErrs != nil {
+		r.logger.Warn().
+			Uint64("da_height", daHeight).
+			Uint64("epoch_start", epochStart).
+			Uint64("epoch_end", epochEnd).
+			Uint64("epoch_num", currentEpochNumber).
+			Err(processErrs).
+			Msg("Failed to retrieve DA epoch.. retrying next iteration")
 
-	r.logger.Info().
-		Uint64("epoch_start", epochStart).
-		Uint64("epoch_end", lastProcessedHeight).
-		Int("tx_count", len(event.Txs)).
-		Msg("retrieved forced inclusion transactions")
+		return &ForcedInclusionEvent{
+			StartDaHeight: daHeight,
+			EndDaHeight:   daHeight,
+			Txs:           [][]byte{},
+		}, nil
+	}
 
 	return event, nil
 }
@@ -142,13 +139,11 @@ func (r *ForcedInclusionRetriever) RetrieveForcedIncludedTxs(ctx context.Context
 // processForcedInclusionBlobs processes blobs from a single DA height for forced inclusion.
 func (r *ForcedInclusionRetriever) processForcedInclusionBlobs(
 	event *ForcedInclusionEvent,
-	lastProcessedHeight *uint64,
 	result coreda.ResultRetrieve,
 	height uint64,
 ) error {
 	if result.Code == coreda.StatusNotFound {
 		r.logger.Debug().Uint64("height", height).Msg("no forced inclusion blobs at height")
-		*lastProcessedHeight = height
 		return nil
 	}
 
@@ -162,8 +157,6 @@ func (r *ForcedInclusionRetriever) processForcedInclusionBlobs(
 			event.Txs = append(event.Txs, blob)
 		}
 	}
-
-	*lastProcessedHeight = height
 
 	r.logger.Debug().
 		Uint64("height", height).

@@ -67,7 +67,7 @@ func (s *BasedSequencer) SubmitBatchTxs(ctx context.Context, req coresequencer.S
 // GetNextBatch retrieves the next batch of transactions from the DA layer
 // It fetches forced inclusion transactions and returns them as the next batch
 func (s *BasedSequencer) GetNextBatch(ctx context.Context, req coresequencer.GetNextBatchRequest) (*coresequencer.GetNextBatchResponse, error) {
-	currentDAHeight := s.daHeight.Load()
+	currentDAHeight := s.GetDAHeight()
 
 	s.logger.Debug().Uint64("da_height", currentDAHeight).Msg("fetching forced inclusion transactions from DA")
 
@@ -86,13 +86,13 @@ func (s *BasedSequencer) GetNextBatch(ctx context.Context, req coresequencer.Get
 			s.logger.Error().Err(err).Uint64("da_height", currentDAHeight).Msg("failed to retrieve forced inclusion transactions")
 			return nil, err
 		}
-	}
-
-	// Update DA height based on the retrieved event
-	if forcedTxsEvent.EndDaHeight > currentDAHeight {
-		s.SetDAHeight(forcedTxsEvent.EndDaHeight)
-	} else if forcedTxsEvent.StartDaHeight > currentDAHeight {
-		s.SetDAHeight(forcedTxsEvent.StartDaHeight)
+	} else {
+		// Update DA height.
+		// If we are in between epochs, we still need to bump the da height.
+		// At the end of an epoch, we need to bump to go to the next epoch.
+		if forcedTxsEvent.EndDaHeight >= currentDAHeight {
+			s.SetDAHeight(forcedTxsEvent.EndDaHeight + 1)
+		}
 	}
 
 	// Add forced inclusion transactions to the queue with validation
