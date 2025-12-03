@@ -37,8 +37,8 @@ type Executor struct {
 	metrics *common.Metrics
 
 	// Broadcasting
-	headerBroadcaster common.Broadcaster[*types.SignedHeader]
-	dataBroadcaster   common.Broadcaster[*types.Data]
+	headerBroadcaster common.HeaderP2PBroadcaster
+	dataBroadcaster   common.DataP2PBroadcaster
 
 	// Configuration
 	config  config.Config
@@ -76,8 +76,8 @@ func NewExecutor(
 	metrics *common.Metrics,
 	config config.Config,
 	genesis genesis.Genesis,
-	headerBroadcaster common.Broadcaster[*types.SignedHeader],
-	dataBroadcaster common.Broadcaster[*types.Data],
+	headerBroadcaster common.HeaderP2PBroadcaster,
+	dataBroadcaster common.DataP2PBroadcaster,
 	logger zerolog.Logger,
 	options common.BlockOptions,
 	errorCh chan<- error,

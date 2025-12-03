@@ -3,13 +3,20 @@ package common
 import (
 	"context"
 
+	"github.com/evstack/ev-node/types"
 	pubsub "github.com/libp2p/go-libp2p-pubsub"
 
 	"github.com/celestiaorg/go-header"
 )
 
-// broadcaster interface for P2P broadcasting
+type (
+	HeaderP2PBroadcaster = Broadcaster[*types.SignedHeader]
+	DataP2PBroadcaster   = Broadcaster[*types.Data]
+)
+
+// Broadcaster interface for P2P broadcasting
 type Broadcaster[H header.Header[H]] interface {
 	WriteToStoreAndBroadcast(ctx context.Context, payload H, opts ...pubsub.PubOpt) error
-	Store() header.Store[H]
+	AppendDAHint(ctx context.Context, daHeight uint64, hashes ...types.Hash) error
+	GetByHeight(ctx context.Context, height uint64) (H, uint64, error)
 }
