@@ -9,11 +9,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Implement forced inclusion and based sequencing ([#2797](https://github.com/evstack/ev-node/pull/2797))
+  This changes requires to add a `da_epoch_forced_inclusion` field in `genesis.json` file.
+  To enable this feature, set the force inclusion namespace in the `evnode.yaml`.
+
 ### Changed
 
 - Rename `evm-single` to `evm` and `grpc-single` to `evgrpc` for clarity. [#2839](https://github.com/evstack/ev-node/pull/2839)
 - Split cache interface in `CacheManager` and `PendingManager` and create `da` client to easy DA handling. [#2878](https://github.com/evstack/ev-node/pull/2878)
 - Improve startup da retrieval height when cache cleared or empty. [#2880](https://github.com/evstack/ev-node/pull/2880)
+
+### Removed
+
+- **BREAKING:** Removed unused and confusing metrics from sequencers and block processing, including sequencer-specific metrics (gas price, blob size, transaction status, pending blocks), channel buffer metrics, overly granular error metrics, block production categorization metrics, and sync lag metrics. Essential metrics for DA submission health, block production, and performance monitoring are retained. [#2904](https://github.com/evstack/ev-node/pull/2904)
 
 ## v1.0.0-beta.10
 

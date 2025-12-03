@@ -83,6 +83,25 @@ func (bq *BatchQueue) AddBatch(ctx context.Context, batch coresequencer.Batch) e
 	return nil
 }
 
+// Prepend adds a batch to the front of the queue (before head position).
+// This is used to return transactions that couldn't fit in the current batch.
+// TODO(@julienrbrt): The batch is currently NOT persisted to the DB since these are transactions that were already in the queue or were just processed. -- FI txs are lost, this should be tackled.
+func (bq *BatchQueue) Prepend(ctx context.Context, batch coresequencer.Batch) error {
+	bq.mu.Lock()
+	defer bq.mu.Unlock()
+
+	// If we have room before head, use it
+	if bq.head > 0 {
+		bq.head--
+		bq.queue[bq.head] = batch
+	} else {
+		// Need to expand the queue at the front
+		bq.queue = append([]coresequencer.Batch{batch}, bq.queue...)
+	}
+
+	return nil
+}
+
 // Next extracts a batch of transactions from the queue and marks it as processed in the WAL
 func (bq *BatchQueue) Next(ctx context.Context) (*coresequencer.Batch, error) {
 	bq.mu.Lock()

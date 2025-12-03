@@ -68,11 +68,12 @@ func TestNewClient(t *testing.T) {
 		{
 			name: "with all namespaces",
 			cfg: Config{
-				DA:             &mockDA{},
-				Logger:         zerolog.Nop(),
-				DefaultTimeout: 5 * time.Second,
-				Namespace:      "test-ns",
-				DataNamespace:  "test-data-ns",
+				DA:                       &mockDA{},
+				Logger:                   zerolog.Nop(),
+				DefaultTimeout:           5 * time.Second,
+				Namespace:                "test-ns",
+				DataNamespace:            "test-data-ns",
+				ForcedInclusionNamespace: "test-fi-ns",
 			},
 		},
 		{
@@ -104,6 +105,13 @@ func TestNewClient(t *testing.T) {
 			assert.Assert(t, len(client.namespaceBz) > 0)
 			assert.Assert(t, len(client.namespaceDataBz) > 0)
 
+			if tt.cfg.ForcedInclusionNamespace != "" {
+				assert.Assert(t, client.hasForcedInclusionNs)
+				assert.Assert(t, len(client.namespaceForcedInclusionBz) > 0)
+			} else {
+				assert.Assert(t, !client.hasForcedInclusionNs)
+			}
+
 			expectedTimeout := tt.cfg.DefaultTimeout
 			if expectedTimeout == 0 {
 				expectedTimeout = 60 * time.Second
@@ -113,12 +121,50 @@ func TestNewClient(t *testing.T) {
 	}
 }
 
+func TestClient_HasForcedInclusionNamespace(t *testing.T) {
+	tests := []struct {
+		name     string
+		cfg      Config
+		expected bool
+	}{
+		{
+			name: "with forced inclusion namespace",
+			cfg: Config{
+				DA:                       &mockDA{},
+				Logger:                   zerolog.Nop(),
+				Namespace:                "test-ns",
+				DataNamespace:            "test-data-ns",
+				ForcedInclusionNamespace: "test-fi-ns",
+			},
+			expected: true,
+		},
+		{
+			name: "without forced inclusion namespace",
+			cfg: Config{
+				DA:            &mockDA{},
+				Logger:        zerolog.Nop(),
+				Namespace:     "test-ns",
+				DataNamespace: "test-data-ns",
+			},
+			expected: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			client := NewClient(tt.cfg)
+			assert.Equal(t, client.HasForcedInclusionNamespace(), tt.expected)
+		})
+	}
+}
+
 func TestClient_GetNamespaces(t *testing.T) {
 	cfg := Config{
-		DA:            &mockDA{},
-		Logger:        zerolog.Nop(),
-		Namespace:     "test-header",
-		DataNamespace: "test-data",
+		DA:                       &mockDA{},
+		Logger:                   zerolog.Nop(),
+		Namespace:                "test-header",
+		DataNamespace:            "test-data",
+		ForcedInclusionNamespace: "test-fi",
 	}
 
 	client := NewClient(cfg)
@@ -129,8 +175,29 @@ func TestClient_GetNamespaces(t *testing.T) {
 	dataNs := client.GetDataNamespace()
 	assert.Assert(t, len(dataNs) > 0)
 
+	fiNs := client.GetForcedInclusionNamespace()
+	assert.Assert(t, len(fiNs) > 0)
+
 	// Namespaces should be different
 	assert.Assert(t, string(headerNs) != string(dataNs))
+	assert.Assert(t, string(headerNs) != string(fiNs))
+	assert.Assert(t, string(dataNs) != string(fiNs))
+}
+
+func TestClient_RetrieveForcedInclusion_NotConfigured(t *testing.T) {
+	cfg := Config{
+		DA:            &mockDA{},
+		Logger:        zerolog.Nop(),
+		Namespace:     "test-ns",
+		DataNamespace: "test-data-ns",
+	}
+
+	client := NewClient(cfg)
+	ctx := context.Background()
+
+	result := client.RetrieveForcedInclusion(ctx, 100)
+	assert.Equal(t, result.Code, coreda.StatusError)
+	assert.Assert(t, result.Message != "")
 }
 
 func TestClient_GetDA(t *testing.T) {
