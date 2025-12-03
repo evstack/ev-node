@@ -206,7 +206,7 @@ func (c *Sequencer) GetNextBatch(ctx context.Context, req coresequencer.GetNextB
 		// Create ForceIncludedMask: true for forced txs, false for mempool txs.
 		// Forced included txs are always first in the batch.
 		batch.ForceIncludedMask = make([]bool, len(batch.Transactions))
-		for i := 0; i < len(forcedTxs); i++ {
+		for i := range len(forcedTxs) {
 			batch.ForceIncludedMask[i] = true
 		}
 
