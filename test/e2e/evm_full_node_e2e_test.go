@@ -1,5 +1,4 @@
 //go:build evm
-// +build evm
 
 // Package e2e contains end-to-end tests for Evolve's EVM integration.
 //
