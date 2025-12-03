@@ -13,7 +13,6 @@ import (
 
 	celestia "github.com/evstack/ev-node/da/celestia"
 	"github.com/evstack/ev-node/pkg/blob"
-	datypes "github.com/evstack/ev-node/pkg/da/types"
 )
 
 type mockCelestiaBlobAPI struct {
@@ -67,20 +66,20 @@ func TestCelestiaClient_Submit_ErrorMapping(t *testing.T) {
 	testCases := []struct {
 		name       string
 		err        error
-		wantStatus datypes.StatusCode
+		wantStatus StatusCode
 	}{
-		{"timeout", datypes.ErrTxTimedOut, datypes.StatusNotIncludedInBlock},
-		{"alreadyInMempool", datypes.ErrTxAlreadyInMempool, datypes.StatusAlreadyInMempool},
-		{"seq", datypes.ErrTxIncorrectAccountSequence, datypes.StatusIncorrectAccountSequence},
-		{"tooBig", datypes.ErrBlobSizeOverLimit, datypes.StatusTooBig},
-		{"deadline", datypes.ErrContextDeadline, datypes.StatusContextDeadline},
-		{"canceled", context.Canceled, datypes.StatusContextCanceled},
-		{"other", errors.New("boom"), datypes.StatusError},
+		{"timeout", ErrTxTimedOut, StatusNotIncludedInBlock},
+		{"alreadyInMempool", ErrTxAlreadyInMempool, StatusAlreadyInMempool},
+		{"seq", ErrTxIncorrectAccountSequence, StatusIncorrectAccountSequence},
+		{"tooBig", ErrBlobSizeOverLimit, StatusTooBig},
+		{"deadline", ErrContextDeadline, StatusContextDeadline},
+		{"canceled", context.Canceled, StatusContextCanceled},
+		{"other", errors.New("boom"), StatusError},
 	}
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			cl := NewCelestiaClient(CelestiaBlobConfig{
+			cl := NewCelestiaBlob(CelestiaBlobConfig{
 				Celestia:      makeCelestiaClient(&mockCelestiaBlobAPI{submitErr: tc.err}),
 				Logger:        zerolog.Nop(),
 				Namespace:     "ns",
@@ -95,41 +94,41 @@ func TestCelestiaClient_Submit_ErrorMapping(t *testing.T) {
 func TestCelestiaClient_Submit_Success(t *testing.T) {
 	ns := share.MustNewV0Namespace([]byte("ns")).Bytes()
 	mockAPI := &mockCelestiaBlobAPI{height: 10}
-	cl := NewCelestiaClient(CelestiaBlobConfig{
+	cl := NewCelestiaBlob(CelestiaBlobConfig{
 		Celestia:      makeCelestiaClient(mockAPI),
 		Logger:        zerolog.Nop(),
 		Namespace:     "ns",
 		DataNamespace: "ns",
 	})
 	res := cl.Submit(context.Background(), [][]byte{[]byte("data")}, ns, nil)
-	require.Equal(t, datypes.StatusSuccess, res.Code)
+	require.Equal(t, StatusSuccess, res.Code)
 	require.Equal(t, uint64(10), res.Height)
 	require.Len(t, res.IDs, 1)
 }
 
 func TestCelestiaClient_Submit_InvalidNamespace(t *testing.T) {
 	mockAPI := &mockCelestiaBlobAPI{height: 10}
-	cl := NewCelestiaClient(CelestiaBlobConfig{
+	cl := NewCelestiaBlob(CelestiaBlobConfig{
 		Celestia:      makeCelestiaClient(mockAPI),
 		Logger:        zerolog.Nop(),
 		Namespace:     "ns",
 		DataNamespace: "ns",
 	})
 	res := cl.Submit(context.Background(), [][]byte{[]byte("data")}, []byte{0x01, 0x02}, nil)
-	require.Equal(t, datypes.StatusError, res.Code)
+	require.Equal(t, StatusError, res.Code)
 }
 
 func TestCelestiaClient_Retrieve_NotFound(t *testing.T) {
 	ns := share.MustNewV0Namespace([]byte("ns")).Bytes()
-	mockAPI := &mockCelestiaBlobAPI{submitErr: datypes.ErrBlobNotFound}
-	cl := NewCelestiaClient(CelestiaBlobConfig{
+	mockAPI := &mockCelestiaBlobAPI{submitErr: ErrBlobNotFound}
+	cl := NewCelestiaBlob(CelestiaBlobConfig{
 		Celestia:      makeCelestiaClient(mockAPI),
 		Logger:        zerolog.Nop(),
 		Namespace:     "ns",
 		DataNamespace: "ns",
 	})
 	res := cl.Retrieve(context.Background(), 5, ns)
-	require.Equal(t, datypes.StatusNotFound, res.Code)
+	require.Equal(t, StatusNotFound, res.Code)
 }
 
 func TestCelestiaClient_Retrieve_Success(t *testing.T) {
@@ -137,14 +136,14 @@ func TestCelestiaClient_Retrieve_Success(t *testing.T) {
 	b, err := blob.NewBlobV0(share.MustNewV0Namespace([]byte("ns")), []byte("payload"))
 	require.NoError(t, err)
 	mockAPI := &mockCelestiaBlobAPI{height: 7, blobs: []*blob.Blob{b}}
-	cl := NewCelestiaClient(CelestiaBlobConfig{
+	cl := NewCelestiaBlob(CelestiaBlobConfig{
 		Celestia:      makeCelestiaClient(mockAPI),
 		Logger:        zerolog.Nop(),
 		Namespace:     "ns",
 		DataNamespace: "ns",
 	})
 	res := cl.Retrieve(context.Background(), 7, ns)
-	require.Equal(t, datypes.StatusSuccess, res.Code)
+	require.Equal(t, StatusSuccess, res.Code)
 	require.Len(t, res.Data, 1)
 	require.Len(t, res.IDs, 1)
 }
@@ -152,7 +151,7 @@ func TestCelestiaClient_Retrieve_Success(t *testing.T) {
 func TestCelestiaClient_SubmitOptionsMerge(t *testing.T) {
 	ns := share.MustNewV0Namespace([]byte("ns")).Bytes()
 	mockAPI := &mockCelestiaBlobAPI{height: 1}
-	cl := NewCelestiaClient(CelestiaBlobConfig{
+	cl := NewCelestiaBlob(CelestiaBlobConfig{
 		Celestia:      makeCelestiaClient(mockAPI),
 		Logger:        zerolog.Nop(),
 		Namespace:     "ns",
@@ -164,7 +163,7 @@ func TestCelestiaClient_SubmitOptionsMerge(t *testing.T) {
 	require.NoError(t, err)
 
 	res := cl.Submit(context.Background(), [][]byte{[]byte("data")}, ns, raw)
-	require.Equal(t, datypes.StatusSuccess, res.Code)
+	require.Equal(t, StatusSuccess, res.Code)
 }
 
 func TestLocalBlobAPI_SubmitAndGetAll(t *testing.T) {

@@ -21,11 +21,7 @@ func (c *Client) Close() {
 	}
 }
 
-// NewClient connects to the celestia-node RPC endpoint (namespace "blob" by default).
-// addr should include scheme, e.g. http://127.0.0.1:26658.
-// token, if non-empty, is sent as Bearer token using perms.AuthKey header.
-// For future additional RPC namespaces, we would need one jsonrpc.Client per namespace
-// (mirroring celestia-node's api/rpc/client.moduleMap). Here we only wire "blob".
+// NewClient connects to the celestia-node RPC endpoint
 func NewClient(ctx context.Context, addr, token string, authHeaderName string) (*Client, error) {
 	var header http.Header
 	if token != "" {

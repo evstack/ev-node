@@ -13,7 +13,17 @@ import (
 
 	celestia "github.com/evstack/ev-node/da/celestia"
 	"github.com/evstack/ev-node/pkg/blob"
-	datypes "github.com/evstack/ev-node/pkg/da/types"
+)
+
+var (
+	ErrBlobNotFound               = errors.New("blob: not found")
+	ErrBlobSizeOverLimit          = errors.New("blob: over size limit")
+	ErrTxTimedOut                 = errors.New("timed out waiting for tx to be included in a block")
+	ErrTxAlreadyInMempool         = errors.New("tx already in mempool")
+	ErrTxIncorrectAccountSequence = errors.New("incorrect account sequence")
+	ErrContextDeadline            = errors.New("context deadline")
+	ErrHeightFromFuture           = errors.New("given height is from the future")
+	ErrContextCanceled            = errors.New("context canceled")
 )
 
 // CelestiaBlobConfig contains configuration for the Celestia blob client.
@@ -26,17 +36,6 @@ type CelestiaBlobConfig struct {
 	MaxBlobSize    uint64
 }
 
-// NewCelestiaBlobClient dials a celestia-node blob JSON-RPC endpoint and returns a concrete CelestiaBlobClient.
-// authHeaderName lets callers customize the header key (defaults to Authorization if empty).
-func NewCelestiaBlobClient(ctx context.Context, rpcAddr, token, authHeaderName string, cfg CelestiaBlobConfig) (*CelestiaBlobClient, error) {
-	cl, err := celestia.NewClient(ctx, rpcAddr, token, authHeaderName)
-	if err != nil {
-		return nil, err
-	}
-	cfg.Celestia = cl
-	return NewCelestiaClient(cfg), nil
-}
-
 // CelestiaBlobClient wraps the blob RPC with namespace handling and error mapping.
 type CelestiaBlobClient struct {
 	blobAPI         *celestia.BlobAPI
@@ -47,8 +46,8 @@ type CelestiaBlobClient struct {
 	maxBlobSize     uint64
 }
 
-// NewCelestiaClient creates a new blob client wrapper with pre-calculated namespace bytes.
-func NewCelestiaClient(cfg CelestiaBlobConfig) *CelestiaBlobClient {
+// NewCelestiaBlob creates a new blob client wrapper with pre-calculated namespace bytes.
+func NewCelestiaBlob(cfg CelestiaBlobConfig) *CelestiaBlobClient {
 	if cfg.Celestia == nil {
 		return nil
 	}
@@ -70,7 +69,7 @@ func NewCelestiaClient(cfg CelestiaBlobConfig) *CelestiaBlobClient {
 }
 
 // Submit submits blobs to the DA layer with the specified options.
-func (c *CelestiaBlobClient) Submit(ctx context.Context, data [][]byte, namespace []byte, options []byte) datypes.ResultSubmit {
+func (c *CelestiaBlobClient) Submit(ctx context.Context, data [][]byte, namespace []byte, options []byte) ResultSubmit {
 	// calculate blob size
 	var blobSize uint64
 	for _, b := range data {
@@ -79,9 +78,9 @@ func (c *CelestiaBlobClient) Submit(ctx context.Context, data [][]byte, namespac
 
 	ns, err := share.NewNamespaceFromBytes(namespace)
 	if err != nil {
-		return datypes.ResultSubmit{
-			BaseResult: datypes.BaseResult{
-				Code:    datypes.StatusError,
+		return ResultSubmit{
+			BaseResult: BaseResult{
+				Code:    StatusError,
 				Message: fmt.Sprintf("invalid namespace: %v", err),
 			},
 		}
@@ -90,18 +89,18 @@ func (c *CelestiaBlobClient) Submit(ctx context.Context, data [][]byte, namespac
 	blobs := make([]*blob.Blob, len(data))
 	for i, raw := range data {
 		if uint64(len(raw)) > c.maxBlobSize {
-			return datypes.ResultSubmit{
-				BaseResult: datypes.BaseResult{
-					Code:    datypes.StatusTooBig,
-					Message: datypes.ErrBlobSizeOverLimit.Error(),
+			return ResultSubmit{
+				BaseResult: BaseResult{
+					Code:    StatusTooBig,
+					Message: ErrBlobSizeOverLimit.Error(),
 				},
 			}
 		}
 		blobs[i], err = blob.NewBlobV0(ns, raw)
 		if err != nil {
-			return datypes.ResultSubmit{
-				BaseResult: datypes.BaseResult{
-					Code:    datypes.StatusError,
+			return ResultSubmit{
+				BaseResult: BaseResult{
+					Code:    StatusError,
 					Message: fmt.Sprintf("failed to build blob %d: %v", i, err),
 				},
 			}
@@ -111,9 +110,9 @@ func (c *CelestiaBlobClient) Submit(ctx context.Context, data [][]byte, namespac
 	var submitOpts blob.SubmitOptions
 	if len(options) > 0 {
 		if err := json.Unmarshal(options, &submitOpts); err != nil {
-			return datypes.ResultSubmit{
-				BaseResult: datypes.BaseResult{
-					Code:    datypes.StatusError,
+			return ResultSubmit{
+				BaseResult: BaseResult{
+					Code:    StatusError,
 					Message: fmt.Sprintf("failed to parse submit options: %v", err),
 				},
 			}
@@ -122,28 +121,28 @@ func (c *CelestiaBlobClient) Submit(ctx context.Context, data [][]byte, namespac
 
 	height, err := c.blobAPI.Submit(ctx, blobs, &submitOpts)
 	if err != nil {
-		code := datypes.StatusError
+		code := StatusError
 		switch {
 		case errors.Is(err, context.Canceled):
-			code = datypes.StatusContextCanceled
-		case strings.Contains(err.Error(), datypes.ErrTxTimedOut.Error()):
-			code = datypes.StatusNotIncludedInBlock
-		case strings.Contains(err.Error(), datypes.ErrTxAlreadyInMempool.Error()):
-			code = datypes.StatusAlreadyInMempool
-		case strings.Contains(err.Error(), datypes.ErrTxIncorrectAccountSequence.Error()):
-			code = datypes.StatusIncorrectAccountSequence
-		case strings.Contains(err.Error(), datypes.ErrBlobSizeOverLimit.Error()):
-			code = datypes.StatusTooBig
-		case strings.Contains(err.Error(), datypes.ErrContextDeadline.Error()):
-			code = datypes.StatusContextDeadline
+			code = StatusContextCanceled
+		case strings.Contains(err.Error(), ErrTxTimedOut.Error()):
+			code = StatusNotIncludedInBlock
+		case strings.Contains(err.Error(), ErrTxAlreadyInMempool.Error()):
+			code = StatusAlreadyInMempool
+		case strings.Contains(err.Error(), ErrTxIncorrectAccountSequence.Error()):
+			code = StatusIncorrectAccountSequence
+		case strings.Contains(err.Error(), ErrBlobSizeOverLimit.Error()):
+			code = StatusTooBig
+		case strings.Contains(err.Error(), ErrContextDeadline.Error()):
+			code = StatusContextDeadline
 		}
-		if code == datypes.StatusTooBig {
+		if code == StatusTooBig {
 			c.logger.Debug().Err(err).Uint64("status", uint64(code)).Msg("DA submission failed")
 		} else {
 			c.logger.Error().Err(err).Uint64("status", uint64(code)).Msg("DA submission failed")
 		}
-		return datypes.ResultSubmit{
-			BaseResult: datypes.BaseResult{
+		return ResultSubmit{
+			BaseResult: BaseResult{
 				Code:           code,
 				Message:        "failed to submit blobs: " + err.Error(),
 				SubmittedCount: 0,
@@ -155,23 +154,23 @@ func (c *CelestiaBlobClient) Submit(ctx context.Context, data [][]byte, namespac
 	}
 
 	if len(blobs) == 0 {
-		return datypes.ResultSubmit{
-			BaseResult: datypes.BaseResult{
-				Code:     datypes.StatusSuccess,
+		return ResultSubmit{
+			BaseResult: BaseResult{
+				Code:     StatusSuccess,
 				BlobSize: blobSize,
 				Height:   height,
 			},
 		}
 	}
 
-	ids := make([]datypes.ID, len(blobs))
+	ids := make([]ID, len(blobs))
 	for i, b := range blobs {
 		ids[i] = blob.MakeID(height, b.Commitment)
 	}
 
-	return datypes.ResultSubmit{
-		BaseResult: datypes.BaseResult{
-			Code:           datypes.StatusSuccess,
+	return ResultSubmit{
+		BaseResult: BaseResult{
+			Code:           StatusSuccess,
 			IDs:            ids,
 			SubmittedCount: uint64(len(ids)),
 			Height:         height,
@@ -182,12 +181,12 @@ func (c *CelestiaBlobClient) Submit(ctx context.Context, data [][]byte, namespac
 }
 
 // Retrieve retrieves blobs from the DA layer at the specified height and namespace.
-func (c *CelestiaBlobClient) Retrieve(ctx context.Context, height uint64, namespace []byte) datypes.ResultRetrieve {
+func (c *CelestiaBlobClient) Retrieve(ctx context.Context, height uint64, namespace []byte) ResultRetrieve {
 	ns, err := share.NewNamespaceFromBytes(namespace)
 	if err != nil {
-		return datypes.ResultRetrieve{
-			BaseResult: datypes.BaseResult{
-				Code:    datypes.StatusError,
+		return ResultRetrieve{
+			BaseResult: BaseResult{
+				Code:    StatusError,
 				Message: fmt.Sprintf("invalid namespace: %v", err),
 				Height:  height,
 			},
@@ -201,29 +200,29 @@ func (c *CelestiaBlobClient) Retrieve(ctx context.Context, height uint64, namesp
 	if err != nil {
 		// Handle known errors by substring because RPC may wrap them.
 		switch {
-		case strings.Contains(err.Error(), datypes.ErrBlobNotFound.Error()):
-			return datypes.ResultRetrieve{
-				BaseResult: datypes.BaseResult{
-					Code:      datypes.StatusNotFound,
-					Message:   datypes.ErrBlobNotFound.Error(),
+		case strings.Contains(err.Error(), ErrBlobNotFound.Error()):
+			return ResultRetrieve{
+				BaseResult: BaseResult{
+					Code:      StatusNotFound,
+					Message:   ErrBlobNotFound.Error(),
 					Height:    height,
 					Timestamp: time.Now(),
 				},
 			}
-		case strings.Contains(err.Error(), datypes.ErrHeightFromFuture.Error()):
-			return datypes.ResultRetrieve{
-				BaseResult: datypes.BaseResult{
-					Code:      datypes.StatusHeightFromFuture,
-					Message:   datypes.ErrHeightFromFuture.Error(),
+		case strings.Contains(err.Error(), ErrHeightFromFuture.Error()):
+			return ResultRetrieve{
+				BaseResult: BaseResult{
+					Code:      StatusHeightFromFuture,
+					Message:   ErrHeightFromFuture.Error(),
 					Height:    height,
 					Timestamp: time.Now(),
 				},
 			}
 		default:
 			c.logger.Error().Uint64("height", height).Err(err).Msg("failed to get blobs")
-			return datypes.ResultRetrieve{
-				BaseResult: datypes.BaseResult{
-					Code:      datypes.StatusError,
+			return ResultRetrieve{
+				BaseResult: BaseResult{
+					Code:      StatusError,
 					Message:   fmt.Sprintf("failed to get blobs: %s", err.Error()),
 					Height:    height,
 					Timestamp: time.Now(),
@@ -234,10 +233,10 @@ func (c *CelestiaBlobClient) Retrieve(ctx context.Context, height uint64, namesp
 
 	if len(blobs) == 0 {
 		c.logger.Debug().Uint64("height", height).Msg("No blobs found at height")
-		return datypes.ResultRetrieve{
-			BaseResult: datypes.BaseResult{
-				Code:      datypes.StatusNotFound,
-				Message:   datypes.ErrBlobNotFound.Error(),
+		return ResultRetrieve{
+			BaseResult: BaseResult{
+				Code:      StatusNotFound,
+				Message:   ErrBlobNotFound.Error(),
 				Height:    height,
 				Timestamp: time.Now(),
 			},
@@ -251,9 +250,9 @@ func (c *CelestiaBlobClient) Retrieve(ctx context.Context, height uint64, namesp
 		ids[i] = blob.MakeID(height, b.Commitment)
 	}
 
-	return datypes.ResultRetrieve{
-		BaseResult: datypes.BaseResult{
-			Code:      datypes.StatusSuccess,
+	return ResultRetrieve{
+		BaseResult: BaseResult{
+			Code:      StatusSuccess,
 			Height:    height,
 			IDs:       ids,
 			Timestamp: time.Now(),
@@ -263,12 +262,12 @@ func (c *CelestiaBlobClient) Retrieve(ctx context.Context, height uint64, namesp
 }
 
 // RetrieveHeaders retrieves blobs from the header namespace at the specified height.
-func (c *CelestiaBlobClient) RetrieveHeaders(ctx context.Context, height uint64) datypes.ResultRetrieve {
+func (c *CelestiaBlobClient) RetrieveHeaders(ctx context.Context, height uint64) ResultRetrieve {
 	return c.Retrieve(ctx, height, c.namespaceBz)
 }
 
 // RetrieveData retrieves blobs from the data namespace at the specified height.
-func (c *CelestiaBlobClient) RetrieveData(ctx context.Context, height uint64) datypes.ResultRetrieve {
+func (c *CelestiaBlobClient) RetrieveData(ctx context.Context, height uint64) ResultRetrieve {
 	return c.Retrieve(ctx, height, c.dataNamespaceBz)
 }
 
