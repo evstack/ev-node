@@ -203,6 +203,13 @@ func (c *Sequencer) GetNextBatch(ctx context.Context, req coresequencer.GetNextB
 
 		batch.Transactions = append(forcedTxs, trimmedBatchTxs...)
 
+		// Create ForceIncludedMask: true for forced txs, false for mempool txs.
+		// Forced included txs are always first in the batch.
+		batch.ForceIncludedMask = make([]bool, len(batch.Transactions))
+		for i := 0; i < len(forcedTxs); i++ {
+			batch.ForceIncludedMask[i] = true
+		}
+
 		c.logger.Debug().
 			Int("forced_tx_count", len(forcedTxs)).
 			Int("forced_txs_size", forcedTxsSize).
@@ -211,6 +218,9 @@ func (c *Sequencer) GetNextBatch(ctx context.Context, req coresequencer.GetNextB
 			Int("total_tx_count", len(batch.Transactions)).
 			Int("total_size", forcedTxsSize+currentBatchSize).
 			Msg("combined forced inclusion and batch transactions")
+	} else if len(batch.Transactions) > 0 {
+		// No forced txs, but we have mempool txs - mark all as non-force-included
+		batch.ForceIncludedMask = make([]bool, len(batch.Transactions))
 	}
 
 	return &coresequencer.GetNextBatchResponse{

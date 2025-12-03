@@ -251,6 +251,8 @@ func (c *EngineClient) GetTxs(ctx context.Context) ([][]byte, error) {
 
 // ExecuteTxs executes the given transactions at the specified block height and timestamp
 func (c *EngineClient) ExecuteTxs(ctx context.Context, txs [][]byte, blockHeight uint64, timestamp time.Time, prevStateRoot []byte) (updatedStateRoot []byte, maxBytes uint64, err error) {
+	forceIncludedMask := execution.GetForceIncludedMask(ctx)
+
 	// Filter out invalid transactions to handle gibberish gracefully
 	validTxs := make([]string, 0, len(txs))
 	for i, tx := range txs {
@@ -259,6 +261,13 @@ func (c *EngineClient) ExecuteTxs(ctx context.Context, txs [][]byte, blockHeight
 				Int("tx_index", i).
 				Uint64("block_height", blockHeight).
 				Msg("skipping empty transaction")
+			continue
+		}
+
+		// Skip validation for mempool transactions (already validated when added to mempool)
+		// Force-included transactions from DA MUST be validated as they come from untrusted sources
+		if forceIncludedMask != nil && i < len(forceIncludedMask) && !forceIncludedMask[i] {
+			validTxs = append(validTxs, "0x"+hex.EncodeToString(tx))
 			continue
 		}
 
