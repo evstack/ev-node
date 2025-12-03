@@ -151,8 +151,8 @@ func TestBasedSequencer_GetNextBatch_WithForcedTxs(t *testing.T) {
 	assert.Equal(t, []byte("tx1"), resp.Batch.Transactions[0])
 	assert.Equal(t, []byte("tx2"), resp.Batch.Transactions[1])
 
-	// DA height should be updated
-	assert.Equal(t, uint64(100), seq.GetDAHeight())
+	// DA height should be updated to epochEnd + 1
+	assert.Equal(t, uint64(101), seq.GetDAHeight())
 
 	mockDA.AssertExpectations(t)
 }
@@ -225,15 +225,16 @@ func TestBasedSequencer_GetNextBatch_WithMaxBytes(t *testing.T) {
 	}
 
 	mockDA := new(MockDA)
-	// First call returns forced txs
+	// First call returns forced txs at height 100
 	mockDA.On("GetIDs", mock.Anything, uint64(100), mock.Anything).Return(&coreda.GetIDsResult{
 		IDs:       []coreda.ID{[]byte("id1"), []byte("id2"), []byte("id3")},
 		Timestamp: time.Now(),
 	}, nil).Once()
 	mockDA.On("Get", mock.Anything, mock.Anything, mock.Anything).Return(testBlobs, nil).Once()
 
-	// Subsequent calls should return no new forced txs
-	mockDA.On("GetIDs", mock.Anything, uint64(100), mock.Anything).Return(nil, coreda.ErrBlobNotFound)
+	// Subsequent calls at height 101 and 102 (after DA height bumps) should return no new forced txs
+	mockDA.On("GetIDs", mock.Anything, uint64(101), mock.Anything).Return(nil, coreda.ErrBlobNotFound).Once()
+	mockDA.On("GetIDs", mock.Anything, uint64(102), mock.Anything).Return(nil, coreda.ErrBlobNotFound).Once()
 
 	gen := genesis.Genesis{
 		ChainID:                "test-chain",
@@ -339,8 +340,8 @@ func TestBasedSequencer_GetNextBatch_AlwaysCheckPendingForcedInclusion(t *testin
 	}, nil).Once()
 	mockDA.On("Get", mock.Anything, mock.Anything, mock.Anything).Return([][]byte{forcedTx}, nil).Once()
 
-	// Second call: no new forced txs
-	mockDA.On("GetIDs", mock.Anything, uint64(100), mock.Anything).Return(nil, coreda.ErrBlobNotFound).Once()
+	// Second call: no new forced txs at height 101 (after first call bumped DA height to epochEnd + 1)
+	mockDA.On("GetIDs", mock.Anything, uint64(101), mock.Anything).Return(nil, coreda.ErrBlobNotFound).Once()
 
 	gen := genesis.Genesis{
 		ChainID:                "test-chain",
@@ -406,8 +407,8 @@ func TestBasedSequencer_GetNextBatch_ForcedInclusionExceedsMaxBytes(t *testing.T
 	}, nil).Once()
 	mockDA.On("Get", mock.Anything, mock.Anything, mock.Anything).Return([][]byte{forcedTx1, forcedTx2}, nil).Once()
 
-	// Second call
-	mockDA.On("GetIDs", mock.Anything, uint64(100), mock.Anything).Return(nil, coreda.ErrBlobNotFound).Once()
+	// Second call at height 101 (after first call bumped DA height to epochEnd + 1)
+	mockDA.On("GetIDs", mock.Anything, uint64(101), mock.Anything).Return(nil, coreda.ErrBlobNotFound).Once()
 
 	gen := genesis.Genesis{
 		ChainID:                "test-chain",
@@ -537,8 +538,12 @@ func TestBasedSequencer_GetNextBatch_ErrorHandling(t *testing.T) {
 		LastBatchData: nil,
 	}
 
-	_, err := seq.GetNextBatch(context.Background(), req)
-	require.Error(t, err)
+	// With new error handling, errors during blob processing return empty batch instead of error
+	resp, err := seq.GetNextBatch(context.Background(), req)
+	require.NoError(t, err)
+	require.NotNil(t, resp)
+	require.NotNil(t, resp.Batch)
+	assert.Equal(t, 0, len(resp.Batch.Transactions), "Should return empty batch on DA error")
 
 	mockDA.AssertExpectations(t)
 }

@@ -554,11 +554,11 @@ func TestSequencer_GetNextBatch_ForcedInclusion_ExceedsMaxBytes(t *testing.T) {
 		EndDaHeight:   100,
 	}, nil).Once()
 
-	// Second call should process pending tx
-	mockFI.On("RetrieveForcedIncludedTxs", mock.Anything, uint64(100)).Return(&block.ForcedInclusionEvent{
+	// Second call should process pending tx at DA height 101 (after first call bumped it to epochEnd + 1)
+	mockFI.On("RetrieveForcedIncludedTxs", mock.Anything, uint64(101)).Return(&block.ForcedInclusionEvent{
 		Txs:           [][]byte{},
-		StartDaHeight: 100,
-		EndDaHeight:   100,
+		StartDaHeight: 101,
+		EndDaHeight:   101,
 	}, nil).Once()
 
 	gen := genesis.Genesis{
@@ -627,11 +627,11 @@ func TestSequencer_GetNextBatch_AlwaysCheckPendingForcedInclusion(t *testing.T) 
 		EndDaHeight:   100,
 	}, nil).Once()
 
-	// Second call returns no new forced txs, but pending should still be processed
-	mockFI.On("RetrieveForcedIncludedTxs", mock.Anything, uint64(100)).Return(&block.ForcedInclusionEvent{
+	// Second call returns no new forced txs at height 101 (after first call bumped DA height to epochEnd + 1), but pending should still be processed
+	mockFI.On("RetrieveForcedIncludedTxs", mock.Anything, uint64(101)).Return(&block.ForcedInclusionEvent{
 		Txs:           [][]byte{},
-		StartDaHeight: 100,
-		EndDaHeight:   100,
+		StartDaHeight: 101,
+		EndDaHeight:   101,
 	}, nil).Once()
 
 	gen := genesis.Genesis{
