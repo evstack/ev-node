@@ -15,7 +15,8 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 
-	coreda "github.com/evstack/ev-node/core/da"
+	"github.com/evstack/ev-node/block/internal/common"
+	blockda "github.com/evstack/ev-node/block/internal/da"
 	coresequencer "github.com/evstack/ev-node/core/sequencer"
 	"github.com/evstack/ev-node/pkg/config"
 	"github.com/evstack/ev-node/pkg/genesis"
@@ -92,7 +93,7 @@ func TestNewSyncComponents_Creation(t *testing.T) {
 	}
 
 	mockExec := testmocks.NewMockExecutor(t)
-	dummyDA := coreda.NewDummyDA(10_000_000, 10*time.Millisecond)
+	daClient := newTestDAClient(t, cfg)
 
 	// Just test that the constructor doesn't panic - don't start the components
 	// to avoid P2P store dependencies
@@ -101,7 +102,7 @@ func TestNewSyncComponents_Creation(t *testing.T) {
 		gen,
 		memStore,
 		mockExec,
-		dummyDA,
+		daClient,
 		nil,
 		nil,
 		zerolog.Nop(),
@@ -143,7 +144,7 @@ func TestNewAggregatorComponents_Creation(t *testing.T) {
 
 	mockExec := testmocks.NewMockExecutor(t)
 	mockSeq := testmocks.NewMockSequencer(t)
-	dummyDA := coreda.NewDummyDA(10_000_000, 10*time.Millisecond)
+	daClient := newTestDAClient(t, cfg)
 
 	components, err := NewAggregatorComponents(
 		cfg,
@@ -151,7 +152,7 @@ func TestNewAggregatorComponents_Creation(t *testing.T) {
 		memStore,
 		mockExec,
 		mockSeq,
-		dummyDA,
+		daClient,
 		mockSigner,
 		nil, // header broadcaster
 		nil, // data broadcaster
@@ -197,7 +198,7 @@ func TestExecutor_RealExecutionClientFailure_StopsNode(t *testing.T) {
 	// Create mock executor that will fail on ExecuteTxs
 	mockExec := testmocks.NewMockExecutor(t)
 	mockSeq := testmocks.NewMockSequencer(t)
-	dummyDA := coreda.NewDummyDA(10_000_000, 10*time.Millisecond)
+	daClient := newTestDAClient(t, cfg)
 
 	// Mock InitChain to succeed initially
 	mockExec.On("InitChain", mock.Anything, mock.Anything, mock.Anything, mock.Anything).
@@ -226,7 +227,7 @@ func TestExecutor_RealExecutionClientFailure_StopsNode(t *testing.T) {
 		memStore,
 		mockExec,
 		mockSeq,
-		dummyDA,
+		daClient,
 		testSigner,
 		nil, // header broadcaster
 		nil, // data broadcaster
@@ -261,4 +262,16 @@ func TestExecutor_RealExecutionClientFailure_StopsNode(t *testing.T) {
 	// Clean up
 	stopErr := components.Stop()
 	assert.NoError(t, stopErr)
+}
+
+func newTestDAClient(t *testing.T, cfg config.Config) DAClient {
+	t.Helper()
+	return blockda.NewClient(blockda.Config{
+		BlobAPI:        blockda.NewLocalBlobAPI(common.DefaultMaxBlobSize),
+		Logger:         zerolog.Nop(),
+		DefaultTimeout: time.Second,
+		Namespace:      cfg.DA.GetNamespace(),
+		DataNamespace:  cfg.DA.GetDataNamespace(),
+		MaxBlobSize:    common.DefaultMaxBlobSize,
+	})
 }

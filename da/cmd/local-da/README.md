@@ -110,5 +110,5 @@ output:
 
 [2] [xh][xh]
 
-[da]: https://github.com/evstack/ev-node/blob/main/core/da/da.go#L11
+[da]: https://github.com/evstack/ev-node/blob/main/block/internal/da/client.go#L41
 [xh]: https://github.com/ducaale/xh

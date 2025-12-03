@@ -2,18 +2,15 @@ package server
 
 import (
 	"context"
-	"fmt"
-
-	"net/http"
-	"time"
-
 	"encoding/binary"
 	"errors"
+	"fmt"
+	"net/http"
+	"time"
 
 	"connectrpc.com/connect"
 	"connectrpc.com/grpcreflect"
 	goheader "github.com/celestiaorg/go-header"
-	coreda "github.com/evstack/ev-node/core/da"
 	ds "github.com/ipfs/go-datastore"
 	"github.com/rs/zerolog"
 	"golang.org/x/net/http2"
@@ -22,6 +19,7 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/evstack/ev-node/pkg/config"
+	"github.com/evstack/ev-node/pkg/namespace"
 	"github.com/evstack/ev-node/pkg/p2p"
 	"github.com/evstack/ev-node/pkg/store"
 	"github.com/evstack/ev-node/types"
@@ -286,8 +284,8 @@ func (cs *ConfigServer) GetNamespace(
 	req *connect.Request[emptypb.Empty],
 ) (*connect.Response[pb.GetNamespaceResponse], error) {
 
-	hns := coreda.NamespaceFromString(cs.config.DA.GetNamespace())
-	dns := coreda.NamespaceFromString(cs.config.DA.GetDataNamespace())
+	hns := namespace.NamespaceFromString(cs.config.DA.GetNamespace())
+	dns := namespace.NamespaceFromString(cs.config.DA.GetDataNamespace())
 
 	return connect.NewResponse(&pb.GetNamespaceResponse{
 		HeaderNamespace: hns.HexString(),

@@ -17,8 +17,6 @@ import (
 	"github.com/rs/zerolog"
 
 	"github.com/evstack/ev-node/block"
-
-	coreda "github.com/evstack/ev-node/core/da"
 	coreexecutor "github.com/evstack/ev-node/core/execution"
 	coresequencer "github.com/evstack/ev-node/core/sequencer"
 	"github.com/evstack/ev-node/pkg/config"
@@ -53,8 +51,6 @@ type FullNode struct {
 
 	nodeConfig config.Config
 
-	da coreda.DA
-
 	p2pClient       *p2p.Client
 	hSyncService    *evsync.HeaderSyncService
 	dSyncService    *evsync.DataSyncService
@@ -75,7 +71,7 @@ func newFullNode(
 	database ds.Batching,
 	exec coreexecutor.Executor,
 	sequencer coresequencer.Sequencer,
-	da coreda.DA,
+	daClient block.DAClient,
 	metricsProvider MetricsProvider,
 	logger zerolog.Logger,
 	nodeOpts NodeOptions,
@@ -105,7 +101,7 @@ func newFullNode(
 			rktStore,
 			exec,
 			sequencer,
-			da,
+			daClient,
 			signer,
 			headerSyncService,
 			dataSyncService,
@@ -119,7 +115,7 @@ func newFullNode(
 			genesis,
 			rktStore,
 			exec,
-			da,
+			daClient,
 			headerSyncService,
 			dataSyncService,
 			logger,
@@ -136,7 +132,6 @@ func newFullNode(
 		nodeConfig:      nodeConfig,
 		p2pClient:       p2pClient,
 		blockComponents: blockComponents,
-		da:              da,
 		Store:           rktStore,
 		hSyncService:    headerSyncService,
 		dSyncService:    dataSyncService,

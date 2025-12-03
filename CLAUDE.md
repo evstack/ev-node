@@ -52,7 +52,7 @@ The project uses a zero-dependency core package pattern:
 
 - **Executor** (core/executor.go) - Handles state transitions
 - **Sequencer** (core/sequencer.go) - Orders transactions
-- **DA** (core/da.go) - Data availability layer abstraction
+- **Blob API** (block/internal/da/client.go) - Data availability client abstraction used by the node
 
 ### Modular Design
 
@@ -120,7 +120,7 @@ go test -race ./package/...
 
 ### Adding a New DA Layer
 
-1. Implement the `DA` interface from `core/da.go`
+1. Implement the `BlobAPI` interface from `block/internal/da/client.go` (or extend the shared helpers in `pkg/blob`)
 2. Add configuration in the appropriate config package
 3. Wire it up in the initialization code
 4. Add tests following existing patterns

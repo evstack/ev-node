@@ -11,8 +11,10 @@ import (
 	"sync"
 	"time"
 
-	coreda "github.com/evstack/ev-node/core/da"
 	"github.com/rs/zerolog"
+
+	"github.com/evstack/ev-node/pkg/blob"
+	datypes "github.com/evstack/ev-node/pkg/da/types"
 )
 
 //go:embed templates/da_visualization.html
@@ -29,12 +31,11 @@ type DASubmissionInfo struct {
 	Message    string    `json:"message,omitempty"`
 	NumBlobs   uint64    `json:"num_blobs"`
 	BlobIDs    []string  `json:"blob_ids,omitempty"`
-	Namespace  string    `json:"namespace,omitempty"`
 }
 
 // DAVisualizationServer provides DA layer visualization endpoints
 type DAVisualizationServer struct {
-	da           coreda.DA
+	getBlob      func(ctx context.Context, id []byte, ns []byte) ([]datypes.Blob, error)
 	logger       zerolog.Logger
 	submissions  []DASubmissionInfo
 	mutex        sync.RWMutex
@@ -42,9 +43,13 @@ type DAVisualizationServer struct {
 }
 
 // NewDAVisualizationServer creates a new DA visualization server
-func NewDAVisualizationServer(da coreda.DA, logger zerolog.Logger, isAggregator bool) *DAVisualizationServer {
+func NewDAVisualizationServer(
+	getBlob func(ctx context.Context, id []byte, ns []byte) ([]datypes.Blob, error),
+	logger zerolog.Logger,
+	isAggregator bool,
+) *DAVisualizationServer {
 	return &DAVisualizationServer{
-		da:           da,
+		getBlob:      getBlob,
 		logger:       logger,
 		submissions:  make([]DASubmissionInfo, 0),
 		isAggregator: isAggregator,
@@ -53,7 +58,7 @@ func NewDAVisualizationServer(da coreda.DA, logger zerolog.Logger, isAggregator 
 
 // RecordSubmission records a DA submission for visualization
 // Only keeps the last 100 submissions in memory for the dashboard display
-func (s *DAVisualizationServer) RecordSubmission(result *coreda.ResultSubmit, gasPrice float64, numBlobs uint64, namespace []byte) {
+func (s *DAVisualizationServer) RecordSubmission(result *datypes.ResultSubmit, gasPrice float64, numBlobs uint64) {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
 
@@ -73,7 +78,6 @@ func (s *DAVisualizationServer) RecordSubmission(result *coreda.ResultSubmit, ga
 		Message:    result.Message,
 		NumBlobs:   numBlobs,
 		BlobIDs:    blobIDs,
-		Namespace:  hex.EncodeToString(namespace),
 	}
 
 	// Keep only the last 100 submissions in memory to avoid memory growth
@@ -85,27 +89,27 @@ func (s *DAVisualizationServer) RecordSubmission(result *coreda.ResultSubmit, ga
 }
 
 // getStatusCodeString converts status code to human-readable string
-func (s *DAVisualizationServer) getStatusCodeString(code coreda.StatusCode) string {
+func (s *DAVisualizationServer) getStatusCodeString(code datypes.StatusCode) string {
 	switch code {
-	case coreda.StatusSuccess:
+	case datypes.StatusSuccess:
 		return "Success"
-	case coreda.StatusNotFound:
+	case datypes.StatusNotFound:
 		return "Not Found"
-	case coreda.StatusNotIncludedInBlock:
+	case datypes.StatusNotIncludedInBlock:
 		return "Not Included In Block"
-	case coreda.StatusAlreadyInMempool:
+	case datypes.StatusAlreadyInMempool:
 		return "Already In Mempool"
-	case coreda.StatusTooBig:
+	case datypes.StatusTooBig:
 		return "Too Big"
-	case coreda.StatusContextDeadline:
+	case datypes.StatusContextDeadline:
 		return "Context Deadline"
-	case coreda.StatusError:
+	case datypes.StatusError:
 		return "Error"
-	case coreda.StatusIncorrectAccountSequence:
+	case datypes.StatusIncorrectAccountSequence:
 		return "Incorrect Account Sequence"
-	case coreda.StatusContextCanceled:
+	case datypes.StatusContextCanceled:
 		return "Context Canceled"
-	case coreda.StatusHeightFromFuture:
+	case datypes.StatusHeightFromFuture:
 		return "Height From Future"
 	default:
 		return "Unknown"
@@ -173,50 +177,9 @@ func (s *DAVisualizationServer) handleDABlobDetails(w http.ResponseWriter, r *ht
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
 
-	var namespace []byte
-	found := false
-
-	// 1. Check query parameter first
-	nsParam := r.URL.Query().Get("namespace")
-	if nsParam != "" {
-		if ns, err := coreda.ParseHexNamespace(nsParam); err == nil {
-			namespace = ns.Bytes()
-			found = true
-		} else {
-			ns := coreda.NamespaceFromString(nsParam)
-			namespace = ns.Bytes()
-			found = true
-		}
-	}
-
-	// 2. If not provided in query, try to find in recent submissions
-	if !found {
-		s.mutex.RLock()
-		for _, submission := range s.submissions {
-			for _, subBlobID := range submission.BlobIDs {
-				if subBlobID == blobID {
-					if submission.Namespace != "" {
-						if ns, err := hex.DecodeString(submission.Namespace); err == nil {
-							namespace = ns
-							found = true
-						}
-					}
-					break
-				}
-			}
-			if found {
-				break
-			}
-		}
-		s.mutex.RUnlock()
-	}
-
-	if !found || len(namespace) == 0 {
-		http.Error(w, "Namespace required to retrieve blob (not found in recent submissions and not provided in query)", http.StatusBadRequest)
-		return
-	}
-
-	blobs, err := s.da.Get(ctx, []coreda.ID{id}, namespace)
+	// Extract namespace - using empty namespace for now, could be parameterized
+	namespace := []byte{}
+	blobs, err := s.getBlob(ctx, id, namespace)
 	if err != nil {
 		s.logger.Error().Err(err).Str("blob_id", blobID).Msg("Failed to retrieve blob from DA")
 		http.Error(w, fmt.Sprintf("Failed to retrieve blob: %v", err), http.StatusInternalServerError)
@@ -229,7 +192,7 @@ func (s *DAVisualizationServer) handleDABlobDetails(w http.ResponseWriter, r *ht
 	}
 
 	// Parse the blob ID to extract height and commitment
-	height, commitment, err := coreda.SplitID(id)
+	height, commitment := blob.SplitID(id)
 	if err != nil {
 		s.logger.Error().Err(err).Str("blob_id", blobID).Msg("Failed to split blob ID")
 	}
@@ -441,7 +404,7 @@ func (s *DAVisualizationServer) handleDAHealth(w http.ResponseWriter, r *http.Re
 		connectionStatus = "timeout"
 	default:
 		// DA layer is at least instantiated
-		if s.da != nil {
+		if s.getBlob != nil {
 			connectionStatus = "connected"
 			connectionHealthy = true
 		} else {

@@ -8,11 +8,11 @@ import (
 	"github.com/spf13/cobra"
 
 	kvexecutor "github.com/evstack/ev-node/apps/testapp/kv"
-	"github.com/evstack/ev-node/core/da"
 	"github.com/evstack/ev-node/da/jsonrpc"
 	"github.com/evstack/ev-node/node"
 	rollcmd "github.com/evstack/ev-node/pkg/cmd"
 	genesispkg "github.com/evstack/ev-node/pkg/genesis"
+	"github.com/evstack/ev-node/pkg/namespace"
 	"github.com/evstack/ev-node/pkg/p2p"
 	"github.com/evstack/ev-node/pkg/p2p/key"
 	"github.com/evstack/ev-node/pkg/store"
@@ -48,8 +48,8 @@ var RunCmd = &cobra.Command{
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 
-		headerNamespace := da.NamespaceFromString(nodeConfig.DA.GetNamespace())
-		dataNamespace := da.NamespaceFromString(nodeConfig.DA.GetDataNamespace())
+		headerNamespace := namespace.NamespaceFromString(nodeConfig.DA.GetNamespace())
+		dataNamespace := namespace.NamespaceFromString(nodeConfig.DA.GetDataNamespace())
 
 		logger.Info().Str("headerNamespace", headerNamespace.HexString()).Str("dataNamespace", dataNamespace.HexString()).Msg("namespaces")
 
@@ -89,13 +89,20 @@ var RunCmd = &cobra.Command{
 			logger.Warn().Msg("da_start_height is not set in genesis.json, ask your chain developer")
 		}
 
+		singleMetrics, err := single.NopMetrics()
+		if err != nil {
+			return fmt.Errorf("failed to create single sequencer metrics: %w", err)
+		}
+
 		sequencer, err := single.NewSequencer(
 			ctx,
 			logger,
 			datastore,
-			&daJrpc.DA,
+			daJrpc,
 			[]byte(genesis.ChainID),
+			dataNamespace.Bytes(),
 			nodeConfig.Node.BlockTime.Duration,
+			singleMetrics,
 			nodeConfig.Node.Aggregator,
 		)
 		if err != nil {
@@ -107,6 +114,6 @@ var RunCmd = &cobra.Command{
 			return err
 		}
 
-		return rollcmd.StartNode(logger, cmd, executor, sequencer, &daJrpc.DA, p2pClient, datastore, nodeConfig, genesis, node.NodeOptions{})
+		return rollcmd.StartNode(logger, cmd, executor, sequencer, p2pClient, datastore, nodeConfig, genesis, node.NodeOptions{})
 	},
 }

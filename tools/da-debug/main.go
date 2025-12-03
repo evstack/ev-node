@@ -3,29 +3,35 @@ package main
 import (
 	"context"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"os"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/celestiaorg/go-square/v3/share"
 	"github.com/rs/zerolog"
 	"github.com/spf13/cobra"
 	"google.golang.org/protobuf/proto"
 
-	coreda "github.com/evstack/ev-node/core/da"
 	"github.com/evstack/ev-node/da/jsonrpc"
+	"github.com/evstack/ev-node/pkg/blob"
+	datypes "github.com/evstack/ev-node/pkg/da/types"
+	"github.com/evstack/ev-node/pkg/namespace"
 	"github.com/evstack/ev-node/types"
 	pb "github.com/evstack/ev-node/types/pb/evnode/v1"
 )
 
 var (
-	daURL        string
-	authToken    string
-	timeout      time.Duration
-	verbose      bool
-	maxBlobSize  uint64
-	filterHeight uint64
+	daURL               string
+	authToken           string
+	timeout             time.Duration
+	verbose             bool
+	maxBlobSize         uint64
+	filterHeight        uint64
+	errBlobsNotFound    = errors.New("da: blobs not found")
+	errHeightFromFuture = errors.New("da: height from future")
 )
 
 func main() {
@@ -148,40 +154,31 @@ func searchForHeight(ctx context.Context, client *jsonrpc.Client, startHeight ui
 
 	foundBlobs := 0
 	for daHeight := startHeight; daHeight < startHeight+searchRange; daHeight++ {
-		result, err := client.DA.GetIDs(ctx, daHeight, namespace)
-		if err != nil {
-			if err.Error() == "blob: not found" || strings.Contains(err.Error(), "blob: not found") {
-				continue
-			}
-			if strings.Contains(err.Error(), "height") && strings.Contains(err.Error(), "future") {
-				fmt.Printf("Reached future height at DA height %d\n", daHeight)
-				break
-			}
+		batch, err := fetchBlobs(ctx, client, daHeight, namespace)
+		if errors.Is(err, errBlobsNotFound) {
 			continue
 		}
-
-		if result == nil || len(result.IDs) == 0 {
-			continue
+		if errors.Is(err, errHeightFromFuture) {
+			fmt.Printf("Reached future height at DA height %d\n", daHeight)
+			break
 		}
-
-		// Get the actual blob data
-		blobs, err := client.DA.Get(ctx, result.IDs, namespace)
 		if err != nil {
+			fmt.Printf("Failed to fetch blobs at DA height %d: %v\n", daHeight, err)
 			continue
 		}
 
 		// Check each blob for the target height
-		for i, blob := range blobs {
+		for i, blobBytes := range batch.data {
 			found := false
 			var blobHeight uint64
 
 			// Try to decode as header first
-			if header := tryDecodeHeader(blob); header != nil {
+			if header := tryDecodeHeader(blobBytes); header != nil {
 				blobHeight = header.Height()
 				if blobHeight == targetHeight {
 					found = true
 				}
-			} else if data := tryDecodeData(blob); data != nil {
+			} else if data := tryDecodeData(blobBytes); data != nil {
 				if data.Metadata != nil {
 					blobHeight = data.Height()
 					if blobHeight == targetHeight {
@@ -194,13 +191,13 @@ func searchForHeight(ctx context.Context, client *jsonrpc.Client, startHeight ui
 				foundBlobs++
 				fmt.Printf("FOUND at DA Height %d - BLOB %d\n", daHeight, foundBlobs)
 				fmt.Println(strings.Repeat("-", 80))
-				displayBlobInfo(result.IDs[i], blob)
+				displayBlobInfo(batch.ids[i], blobBytes)
 
 				// Display the decoded content
-				if header := tryDecodeHeader(blob); header != nil {
+				if header := tryDecodeHeader(blobBytes); header != nil {
 					printTypeHeader("SignedHeader", "")
 					displayHeader(header)
-				} else if data := tryDecodeData(blob); data != nil {
+				} else if data := tryDecodeData(blobBytes); data != nil {
 					printTypeHeader("SignedData", "")
 					displayData(data)
 				}
@@ -221,39 +218,25 @@ func searchForHeight(ctx context.Context, client *jsonrpc.Client, startHeight ui
 }
 
 func queryHeight(ctx context.Context, client *jsonrpc.Client, height uint64, namespace []byte) error {
-	result, err := client.DA.GetIDs(ctx, height, namespace)
-	if err != nil {
-		// Handle "blob not found" as a normal case
-		if err.Error() == "blob: not found" || strings.Contains(err.Error(), "blob: not found") {
-			fmt.Printf("No blobs found at height %d\n", height)
-			return nil
-		}
-		// Handle future height errors gracefully
-		if strings.Contains(err.Error(), "height") && strings.Contains(err.Error(), "future") {
-			fmt.Printf("Height %d is in the future (not yet available)\n", height)
-			return nil
-		}
-		return fmt.Errorf("failed to get IDs: %w", err)
-	}
-
-	if result == nil || len(result.IDs) == 0 {
+	batch, err := fetchBlobs(ctx, client, height, namespace)
+	if errors.Is(err, errBlobsNotFound) {
 		fmt.Printf("No blobs found at height %d\n", height)
 		return nil
 	}
-
-	fmt.Printf("Found %d blob(s) at height %d\n", len(result.IDs), height)
-	fmt.Printf("Timestamp: %s\n", result.Timestamp.Format(time.RFC3339))
-	fmt.Println()
-
-	// Get the actual blob data
-	blobs, err := client.DA.Get(ctx, result.IDs, namespace)
-	if err != nil {
-		return fmt.Errorf("failed to get blob data: %w", err)
+	if errors.Is(err, errHeightFromFuture) {
+		fmt.Printf("Height %d is in the future (not yet available)\n", height)
+		return nil
 	}
+	if err != nil {
+		return fmt.Errorf("failed to get blobs: %w", err)
+	}
+
+	fmt.Printf("Found %d blob(s) at height %d\n", len(batch.ids), height)
+	fmt.Println()
 
 	// Process each blob with optional height filtering
 	displayedBlobs := 0
-	for i, blob := range blobs {
+	for i, blobBytes := range batch.data {
 		shouldDisplay := true
 		var blobHeight uint64
 
@@ -262,12 +245,12 @@ func queryHeight(ctx context.Context, client *jsonrpc.Client, height uint64, nam
 			shouldDisplay = false
 
 			// Try to decode as header first to check height
-			if header := tryDecodeHeader(blob); header != nil {
+			if header := tryDecodeHeader(blobBytes); header != nil {
 				blobHeight = header.Height()
 				if blobHeight == filterHeight {
 					shouldDisplay = true
 				}
-			} else if data := tryDecodeData(blob); data != nil {
+			} else if data := tryDecodeData(blobBytes); data != nil {
 				if data.Metadata != nil {
 					blobHeight = data.Height()
 					if blobHeight == filterHeight {
@@ -283,18 +266,18 @@ func queryHeight(ctx context.Context, client *jsonrpc.Client, height uint64, nam
 
 		displayedBlobs++
 		printBlobHeader(displayedBlobs, -1) // -1 indicates filtered mode
-		displayBlobInfo(result.IDs[i], blob)
+		displayBlobInfo(batch.ids[i], blobBytes)
 
 		// Try to decode as header first
-		if header := tryDecodeHeader(blob); header != nil {
+		if header := tryDecodeHeader(blobBytes); header != nil {
 			printTypeHeader("SignedHeader", "")
 			displayHeader(header)
-		} else if data := tryDecodeData(blob); data != nil {
+		} else if data := tryDecodeData(blobBytes); data != nil {
 			printTypeHeader("SignedData", "")
 			displayData(data)
 		} else {
 			printTypeHeader("Raw Data", "")
-			displayRawData(blob)
+			displayRawData(blobBytes)
 		}
 
 		if displayedBlobs > 1 {
@@ -345,12 +328,12 @@ func printBlobHeader(current, total int) {
 	fmt.Println(strings.Repeat("-", 80))
 }
 
-func displayBlobInfo(id coreda.ID, blob []byte) {
+func displayBlobInfo(id []byte, blobData []byte) {
 	fmt.Printf("ID:           %s\n", formatHash(hex.EncodeToString(id)))
-	fmt.Printf("Size:         %s\n", formatSize(len(blob)))
+	fmt.Printf("Size:         %s\n", formatSize(len(blobData)))
 
 	// Try to parse the ID to show height and commitment
-	if idHeight, commitment, err := coreda.SplitID(id); err == nil {
+	if idHeight, commitment := blob.SplitID(id); commitment != nil {
 		fmt.Printf("ID Height:    %d\n", idHeight)
 		fmt.Printf("Commitment:   %s\n", formatHash(hex.EncodeToString(commitment)))
 	}
@@ -523,13 +506,13 @@ func createDAClient() (*jsonrpc.Client, error) {
 
 func parseNamespace(ns string) ([]byte, error) {
 	// Try to parse as hex first
-	if hex, err := parseHex(ns); err == nil && len(hex) == 29 {
-		return hex, nil
+	if hexBytes, err := parseHex(ns); err == nil && len(hexBytes) == namespace.NamespaceSize {
+		return hexBytes, nil
 	}
 
 	// If not valid hex or not 29 bytes, treat as string identifier
-	namespace := coreda.NamespaceFromString(ns)
-	return namespace.Bytes(), nil
+	parsed := namespace.NamespaceFromString(ns)
+	return parsed.Bytes(), nil
 }
 
 func parseHex(s string) ([]byte, error) {
@@ -554,4 +537,43 @@ func isPrintable(data []byte) bool {
 		}
 	}
 	return true
+}
+
+type blobBatch struct {
+	ids  [][]byte
+	data [][]byte
+}
+
+func fetchBlobs(ctx context.Context, client *jsonrpc.Client, height uint64, namespace []byte) (blobBatch, error) {
+	ns, err := share.NewNamespaceFromBytes(namespace)
+	if err != nil {
+		return blobBatch{}, fmt.Errorf("invalid namespace bytes: %w", err)
+	}
+
+	blobs, err := client.GetAll(ctx, height, []share.Namespace{ns})
+	if err != nil {
+		switch {
+		case strings.Contains(err.Error(), datypes.ErrBlobNotFound.Error()):
+			return blobBatch{}, errBlobsNotFound
+		case strings.Contains(err.Error(), datypes.ErrHeightFromFuture.Error()):
+			return blobBatch{}, errHeightFromFuture
+		default:
+			return blobBatch{}, fmt.Errorf("get blobs: %w", err)
+		}
+	}
+
+	if len(blobs) == 0 {
+		return blobBatch{}, errBlobsNotFound
+	}
+
+	batch := blobBatch{
+		ids:  make([][]byte, len(blobs)),
+		data: make([][]byte, len(blobs)),
+	}
+	for i, b := range blobs {
+		batch.ids[i] = blob.MakeID(height, b.Commitment)
+		batch.data[i] = append([]byte(nil), b.Data()...)
+	}
+
+	return batch, nil
 }

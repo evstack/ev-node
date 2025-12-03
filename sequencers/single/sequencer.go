@@ -7,11 +7,13 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/celestiaorg/go-square/v3/share"
 	ds "github.com/ipfs/go-datastore"
 	"github.com/rs/zerolog"
 
-	coreda "github.com/evstack/ev-node/core/da"
 	coresequencer "github.com/evstack/ev-node/core/sequencer"
+	"github.com/evstack/ev-node/pkg/blob"
+	datypes "github.com/evstack/ev-node/pkg/da/types"
 )
 
 // ErrInvalidId is returned when the chain id is invalid
@@ -21,17 +23,27 @@ var (
 
 var _ coresequencer.Sequencer = &Sequencer{}
 
+// blobProofVerifier captures the blob proof APIs needed to validate inclusion.
+type blobProofVerifier interface {
+	GetProof(ctx context.Context, height uint64, namespace share.Namespace, commitment blob.Commitment) (*blob.Proof, error)
+	Included(ctx context.Context, height uint64, namespace share.Namespace, proof *blob.Proof, commitment blob.Commitment) (bool, error)
+}
+
 // Sequencer implements core sequencing interface
 type Sequencer struct {
 	logger zerolog.Logger
 
 	proposer bool
 
-	Id []byte
-	da coreda.DA
+	Id        []byte
+	verifier  blobProofVerifier
+	namespace share.Namespace
 
 	batchTime time.Duration
-	queue     *BatchQueue // single queue for immediate availability
+
+	queue *BatchQueue // single queue for immediate availability
+
+	metrics *Metrics
 }
 
 // NewSequencer creates a new Single Sequencer
@@ -39,12 +51,14 @@ func NewSequencer(
 	ctx context.Context,
 	logger zerolog.Logger,
 	db ds.Batching,
-	da coreda.DA,
+	verifier blobProofVerifier,
 	id []byte,
+	namespace []byte,
 	batchTime time.Duration,
+	metrics *Metrics,
 	proposer bool,
 ) (*Sequencer, error) {
-	return NewSequencerWithQueueSize(ctx, logger, db, da, id, batchTime, proposer, 1000)
+	return NewSequencerWithQueueSize(ctx, logger, db, verifier, id, namespace, batchTime, metrics, proposer, 1000)
 }
 
 // NewSequencerWithQueueSize creates a new Single Sequencer with configurable queue size
@@ -52,18 +66,31 @@ func NewSequencerWithQueueSize(
 	ctx context.Context,
 	logger zerolog.Logger,
 	db ds.Batching,
-	da coreda.DA,
+	verifier blobProofVerifier,
 	id []byte,
+	namespace []byte,
 	batchTime time.Duration,
+	metrics *Metrics,
 	proposer bool,
 	maxQueueSize int,
 ) (*Sequencer, error) {
+	if verifier == nil {
+		return nil, fmt.Errorf("blob proof verifier is nil")
+	}
+
+	ns, err := share.NewNamespaceFromBytes(namespace)
+	if err != nil {
+		return nil, fmt.Errorf("invalid namespace: %w", err)
+	}
+
 	s := &Sequencer{
 		logger:    logger,
-		da:        da,
+		verifier:  verifier,
+		namespace: ns,
 		batchTime: batchTime,
 		Id:        id,
 		queue:     NewBatchQueue(db, "batches", maxQueueSize),
+		metrics:   metrics,
 		proposer:  proposer,
 	}
 
@@ -122,6 +149,18 @@ func (c *Sequencer) GetNextBatch(ctx context.Context, req coresequencer.GetNextB
 	}, nil
 }
 
+// RecordMetrics updates the metrics with the given values.
+// This method is intended to be called by the block manager after submitting data to the DA layer.
+func (c *Sequencer) RecordMetrics(gasPrice float64, blobSize uint64, statusCode datypes.StatusCode, numPendingBlocks uint64, includedBlockHeight uint64) {
+	if c.metrics != nil {
+		c.metrics.GasPrice.Set(gasPrice)
+		c.metrics.LastBlobSize.Set(float64(blobSize))
+		c.metrics.TransactionStatus.With("status", fmt.Sprintf("%d", statusCode)).Add(1)
+		c.metrics.NumPendingBlocks.Set(float64(numPendingBlocks))
+		c.metrics.IncludedBlockHeight.Set(float64(includedBlockHeight))
+	}
+}
+
 // VerifyBatch implements sequencing.Sequencer.
 func (c *Sequencer) VerifyBatch(ctx context.Context, req coresequencer.VerifyBatchRequest) (*coresequencer.VerifyBatchResponse, error) {
 	if !c.isValid(req.Id) {
@@ -129,19 +168,23 @@ func (c *Sequencer) VerifyBatch(ctx context.Context, req coresequencer.VerifyBat
 	}
 
 	if !c.proposer {
+		for _, id := range req.BatchData {
+			height, commitment := blob.SplitID(id)
+			if commitment == nil {
+				return nil, fmt.Errorf("invalid blob ID: %x", id)
+			}
 
-		proofs, err := c.da.GetProofs(ctx, req.BatchData, c.Id)
-		if err != nil {
-			return nil, fmt.Errorf("failed to get proofs: %w", err)
-		}
+			proof, err := c.verifier.GetProof(ctx, height, c.namespace, commitment)
+			if err != nil {
+				return nil, fmt.Errorf("failed to get proof: %w", err)
+			}
 
-		valid, err := c.da.Validate(ctx, req.BatchData, proofs, c.Id)
-		if err != nil {
-			return nil, fmt.Errorf("failed to validate proof: %w", err)
-		}
+			included, err := c.verifier.Included(ctx, height, c.namespace, proof, commitment)
+			if err != nil {
+				return nil, fmt.Errorf("failed to verify inclusion: %w", err)
+			}
 
-		for _, v := range valid {
-			if !v {
+			if !included {
 				return &coresequencer.VerifyBatchResponse{Status: false}, nil
 			}
 		}

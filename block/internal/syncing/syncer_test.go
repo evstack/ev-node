@@ -10,8 +10,8 @@ import (
 	"testing"
 	"time"
 
-	coreda "github.com/evstack/ev-node/core/da"
 	"github.com/evstack/ev-node/core/execution"
+	datypes "github.com/evstack/ev-node/pkg/da/types"
 	"github.com/evstack/ev-node/pkg/genesis"
 	signerpkg "github.com/evstack/ev-node/pkg/signer"
 	"github.com/evstack/ev-node/pkg/signer/noop"
@@ -412,7 +412,7 @@ func TestSyncLoopPersistState(t *testing.T) {
 			}, 1*time.Second, 10*time.Millisecond)
 			cancel()
 		}).
-		Return(nil, coreda.ErrHeightFromFuture)
+		Return(nil, datypes.ErrHeightFromFuture)
 
 	go syncerInst1.processLoop()
 	syncerInst1.startSyncWorkers()

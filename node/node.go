@@ -5,7 +5,6 @@ import (
 	"github.com/rs/zerolog"
 
 	"github.com/evstack/ev-node/block"
-	coreda "github.com/evstack/ev-node/core/da"
 	coreexecutor "github.com/evstack/ev-node/core/execution"
 	coresequencer "github.com/evstack/ev-node/core/sequencer"
 	"github.com/evstack/ev-node/pkg/config"
@@ -24,6 +23,7 @@ type Node interface {
 
 type NodeOptions struct {
 	BlockOptions block.BlockOptions
+	DAClient     block.DAClient
 }
 
 // NewNode returns a new Full or Light Node based on the config
@@ -33,7 +33,6 @@ func NewNode(
 	conf config.Config,
 	exec coreexecutor.Executor,
 	sequencer coresequencer.Sequencer,
-	da coreda.DA,
 	signer signer.Signer,
 	p2pClient *p2p.Client,
 	genesis genesis.Genesis,
@@ -50,6 +49,11 @@ func NewNode(
 		nodeOptions.BlockOptions = block.DefaultBlockOptions()
 	}
 
+	daClient := nodeOptions.DAClient
+	if daClient == nil {
+		daClient = block.NewDAClient(conf, logger)
+	}
+
 	return newFullNode(
 		conf,
 		p2pClient,
@@ -58,7 +62,7 @@ func NewNode(
 		database,
 		exec,
 		sequencer,
-		da,
+		daClient,
 		metricsProvider,
 		logger,
 		nodeOptions,

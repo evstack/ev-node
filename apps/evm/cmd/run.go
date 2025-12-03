@@ -12,7 +12,6 @@ import (
 	"github.com/rs/zerolog"
 	"github.com/spf13/cobra"
 
-	"github.com/evstack/ev-node/core/da"
 	"github.com/evstack/ev-node/core/execution"
 	coresequencer "github.com/evstack/ev-node/core/sequencer"
 	"github.com/evstack/ev-node/da/jsonrpc"
@@ -22,6 +21,7 @@ import (
 	"github.com/evstack/ev-node/pkg/config"
 	"github.com/evstack/ev-node/pkg/genesis"
 	genesispkg "github.com/evstack/ev-node/pkg/genesis"
+	"github.com/evstack/ev-node/pkg/namespace"
 	"github.com/evstack/ev-node/pkg/p2p"
 	"github.com/evstack/ev-node/pkg/p2p/key"
 	"github.com/evstack/ev-node/pkg/store"
@@ -52,8 +52,8 @@ var RunCmd = &cobra.Command{
 			ec.SetLogger(logger.With().Str("module", "engine_client").Logger())
 		}
 
-		headerNamespace := da.NamespaceFromString(nodeConfig.DA.GetNamespace())
-		dataNamespace := da.NamespaceFromString(nodeConfig.DA.GetDataNamespace())
+		headerNamespace := namespace.NamespaceFromString(nodeConfig.DA.GetNamespace())
+		dataNamespace := namespace.NamespaceFromString(nodeConfig.DA.GetDataNamespace())
 
 		logger.Info().Str("headerNamespace", headerNamespace.HexString()).Str("dataNamespace", dataNamespace.HexString()).Msg("namespaces")
 
@@ -78,7 +78,7 @@ var RunCmd = &cobra.Command{
 		}
 
 		// Create sequencer based on configuration
-		sequencer, err := createSequencer(context.Background(), logger, datastore, &daJrpc.DA, nodeConfig, genesis)
+		sequencer, err := createSequencer(context.Background(), logger, datastore, daJrpc, nodeConfig, genesis)
 		if err != nil {
 			return err
 		}
@@ -93,7 +93,7 @@ var RunCmd = &cobra.Command{
 			return err
 		}
 
-		return rollcmd.StartNode(logger, cmd, executor, sequencer, &daJrpc.DA, p2pClient, datastore, nodeConfig, genesis, node.NodeOptions{})
+		return rollcmd.StartNode(logger, cmd, executor, sequencer, p2pClient, datastore, nodeConfig, genesis, node.NodeOptions{})
 	},
 }
 
@@ -107,17 +107,25 @@ func createSequencer(
 	ctx context.Context,
 	logger zerolog.Logger,
 	datastore datastore.Batching,
-	da da.DA,
+	blobVerifier *jsonrpc.Client,
 	nodeConfig config.Config,
 	genesis genesis.Genesis,
 ) (coresequencer.Sequencer, error) {
+	singleMetrics, err := single.NopMetrics()
+	if err != nil {
+		return nil, fmt.Errorf("failed to create single sequencer metrics: %w", err)
+	}
+
+	dataNamespace := namespace.NamespaceFromString(nodeConfig.DA.GetDataNamespace())
 	sequencer, err := single.NewSequencer(
 		ctx,
 		logger,
 		datastore,
-		da,
+		blobVerifier,
 		[]byte(genesis.ChainID),
+		dataNamespace.Bytes(),
 		nodeConfig.Node.BlockTime.Duration,
+		singleMetrics,
 		nodeConfig.Node.Aggregator,
 	)
 	if err != nil {
