@@ -4,8 +4,6 @@ package blob
 // at release v0.28.4, pared down to avoid importing Cosmos-SDK and
 // celestia-app packages. See pkg/blob/README.md for rationale and sync tips.
 
-import "encoding/json"
-
 // TxPriority mirrors celestia-node/state.TxPriority to preserve JSON compatibility.
 type TxPriority int
 
