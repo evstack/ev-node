@@ -1,6 +1,6 @@
 # Sequencing
 
- Sequencing is the essential first step for handling your transactions. Think of it as an organizer that takes all incoming transactions, puts them in a clear order, and then groups them into batches. This process is vital for keeping everything consistent and making the chain run. Evolve uses a "Sequencing Interface" with key functions like submitting, retrieving, and verifying these transaction batches, ensuring smooth communication between the chain and the sequencing mechanism, which often acts as a bridge to the underlying network.
+Sequencing is the essential first step for handling your transactions. Think of it as an organizer that takes all incoming transactions, puts them in a clear order, and then groups them into batches. This process is vital for keeping everything consistent and making the chain run. Evolve uses a "Sequencing Interface" with key functions like submitting, retrieving, and verifying these transaction batches, ensuring smooth communication between the chain and the sequencing mechanism, which often acts as a bridge to the underlying network.
 
 ## Sequencing Interface {#sequencing-interface}
 
@@ -32,13 +32,14 @@ type Sequencer interface {
 
 It mainly consists of:
 
-* `SubmitBatchTxs` relays the chain transactions from Evolve chain to the sequencing network
-* `GetNextBatch` returns the next batch of transactions along with a deterministic timestamp
-* `VerifyBatch` validates the sequenced batch
+- `SubmitBatchTxs` relays the chain transactions from Evolve chain to the sequencing network
+- `GetNextBatch` returns the next batch of transactions along with a deterministic timestamp
+- `VerifyBatch` validates the sequenced batch
 
 ## Sequencing Implementations {#sequencing-implementations}
 
 An implementation of the sequencing interface mainly acts as a middleware that connects Evolve chain and the sequencing layer. It implements the sequencing interface functions described above.
-There are several implementations of the sequencer but for now only one is available in Evolve.
+There are several implementations of the sequencer available in Evolve:
 
-* [single-sequencer](./single.md) - The simplest and most widely used sequencing model, where a single node (the sequencer) is responsible for ordering transactions and producing blocks.
+- [single-sequencer](./single.md) - The simplest and most widely used sequencing model, where a single node (the sequencer) is responsible for ordering transactions and producing blocks.
+- [based-sequencer](./based.md) - A decentralized sequencing model where transaction ordering is determined by the base layer, and every full node acts as its own proposer.

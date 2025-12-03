@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/ipfs/go-datastore"
+	"github.com/libp2p/go-libp2p/core/crypto"
 	"github.com/rs/zerolog"
 	"golang.org/x/sync/errgroup"
 
@@ -67,6 +68,8 @@ type Executor struct {
 // - State transitions and validation
 // - P2P broadcasting of produced blocks
 // - DA submission of headers and data
+//
+// When BasedSequencer is enabled, signer can be nil as blocks are not signed.
 func NewExecutor(
 	store store.Store,
 	exec coreexecutor.Executor,
@@ -82,17 +85,20 @@ func NewExecutor(
 	options common.BlockOptions,
 	errorCh chan<- error,
 ) (*Executor, error) {
-	if signer == nil {
-		return nil, errors.New("signer cannot be nil")
-	}
+	// For based sequencer, signer is optional as blocks are not signed
+	if !config.Node.BasedSequencer {
+		if signer == nil {
+			return nil, errors.New("signer cannot be nil")
+		}
 
-	addr, err := signer.GetAddress()
-	if err != nil {
-		return nil, fmt.Errorf("failed to get address: %w", err)
-	}
+		addr, err := signer.GetAddress()
+		if err != nil {
+			return nil, fmt.Errorf("failed to get address: %w", err)
+		}
 
-	if !bytes.Equal(addr, genesis.ProposerAddress) {
-		return nil, common.ErrNotProposer
+		if !bytes.Equal(addr, genesis.ProposerAddress) {
+			return nil, common.ErrNotProposer
+		}
 	}
 
 	return &Executor{
@@ -204,6 +210,7 @@ func (e *Executor) initializeState() error {
 	}
 
 	e.setLastState(state)
+	e.sequencer.SetDAHeight(state.DAHeight)
 
 	// Initialize store height using batch for atomicity
 	batch, err := e.store.NewBatch(e.ctx)
@@ -379,8 +386,12 @@ func (e *Executor) produceBlock() error {
 		return fmt.Errorf("failed to apply block: %w", err)
 	}
 
+	// set the DA height in the sequencer
+	newState.DAHeight = e.sequencer.GetDAHeight()
+
 	// signing the header is done after applying the block
 	// as for signing, the state of the block may be required by the signature payload provider.
+	// For based sequencer, this will return an empty signature
 	signature, err := e.signHeader(header.Header)
 	if err != nil {
 		return fmt.Errorf("failed to sign header: %w", err)
@@ -439,8 +450,9 @@ func (e *Executor) produceBlock() error {
 // retrieveBatch gets the next batch of transactions from the sequencer
 func (e *Executor) retrieveBatch(ctx context.Context) (*BatchData, error) {
 	req := coresequencer.GetNextBatchRequest{
-		Id:       []byte(e.genesis.ChainID),
-		MaxBytes: common.DefaultMaxBlobSize,
+		Id:            []byte(e.genesis.ChainID),
+		MaxBytes:      common.DefaultMaxBlobSize,
+		LastBatchData: [][]byte{}, // Can be populated if needed for sequencer context
 	}
 
 	res, err := e.sequencer.GetNextBatch(ctx, req)
@@ -494,16 +506,28 @@ func (e *Executor) createBlock(ctx context.Context, height uint64, batchData *Ba
 		lastSignature = *lastSignaturePtr
 	}
 
-	// Get signer info
-	pubKey, err := e.signer.GetPublic()
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to get public key: %w", err)
-	}
+	// Get signer info and validator hash
+	var pubKey crypto.PubKey
+	var validatorHash types.Hash
 
-	// Get validator hash
-	validatorHash, err := e.options.ValidatorHasherProvider(e.genesis.ProposerAddress, pubKey)
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to get validator hash: %w", err)
+	if e.signer != nil {
+		var err error
+		pubKey, err = e.signer.GetPublic()
+		if err != nil {
+			return nil, nil, fmt.Errorf("failed to get public key: %w", err)
+		}
+
+		validatorHash, err = e.options.ValidatorHasherProvider(e.genesis.ProposerAddress, pubKey)
+		if err != nil {
+			return nil, nil, fmt.Errorf("failed to get validator hash: %w", err)
+		}
+	} else {
+		// For based sequencer without signer, use nil pubkey and compute validator hash
+		var err error
+		validatorHash, err = e.options.ValidatorHasherProvider(e.genesis.ProposerAddress, nil)
+		if err != nil {
+			return nil, nil, fmt.Errorf("failed to get validator hash: %w", err)
+		}
 	}
 
 	// Create header
@@ -585,6 +609,11 @@ func (e *Executor) applyBlock(ctx context.Context, header types.Header, data *ty
 
 // signHeader signs the block header
 func (e *Executor) signHeader(header types.Header) (types.Signature, error) {
+	// For based sequencer, return empty signature as there is no signer
+	if e.signer == nil {
+		return types.Signature{}, nil
+	}
+
 	bz, err := e.options.AggregatorNodeSignatureBytesProvider(&header)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get signature payload: %w", err)

@@ -20,21 +20,26 @@ type Client interface {
 	Retrieve(ctx context.Context, height uint64, namespace []byte) coreda.ResultRetrieve
 	RetrieveHeaders(ctx context.Context, height uint64) coreda.ResultRetrieve
 	RetrieveData(ctx context.Context, height uint64) coreda.ResultRetrieve
+	RetrieveForcedInclusion(ctx context.Context, height uint64) coreda.ResultRetrieve
 
 	GetHeaderNamespace() []byte
 	GetDataNamespace() []byte
+	GetForcedInclusionNamespace() []byte
+	HasForcedInclusionNamespace() bool
 	GetDA() coreda.DA
 }
 
 // client provides a reusable wrapper around the core DA interface
 // with common configuration for namespace handling and timeouts.
 type client struct {
-	da              coreda.DA
-	logger          zerolog.Logger
-	defaultTimeout  time.Duration
-	batchSize       int
-	namespaceBz     []byte
-	namespaceDataBz []byte
+	da                         coreda.DA
+	logger                     zerolog.Logger
+	defaultTimeout             time.Duration
+	batchSize                  int
+	namespaceBz                []byte
+	namespaceDataBz            []byte
+	namespaceForcedInclusionBz []byte
+	hasForcedInclusionNs       bool
 }
 
 const (
@@ -43,12 +48,13 @@ const (
 
 // Config contains configuration for the DA client.
 type Config struct {
-	DA                coreda.DA
-	Logger            zerolog.Logger
-	DefaultTimeout    time.Duration
-	Namespace         string
-	DataNamespace     string
-	RetrieveBatchSize int
+	DA                       coreda.DA
+	Logger                   zerolog.Logger
+	DefaultTimeout           time.Duration
+	RetrieveBatchSize        int
+	Namespace                string
+	DataNamespace            string
+	ForcedInclusionNamespace string
 }
 
 // NewClient creates a new DA client with pre-calculated namespace bytes.
@@ -60,13 +66,21 @@ func NewClient(cfg Config) *client {
 		cfg.RetrieveBatchSize = defaultRetrieveBatchSize
 	}
 
+	hasForcedInclusionNs := cfg.ForcedInclusionNamespace != ""
+	var namespaceForcedInclusionBz []byte
+	if hasForcedInclusionNs {
+		namespaceForcedInclusionBz = coreda.NamespaceFromString(cfg.ForcedInclusionNamespace).Bytes()
+	}
+
 	return &client{
-		da:              cfg.DA,
-		logger:          cfg.Logger.With().Str("component", "da_client").Logger(),
-		defaultTimeout:  cfg.DefaultTimeout,
-		batchSize:       cfg.RetrieveBatchSize,
-		namespaceBz:     coreda.NamespaceFromString(cfg.Namespace).Bytes(),
-		namespaceDataBz: coreda.NamespaceFromString(cfg.DataNamespace).Bytes(),
+		da:                         cfg.DA,
+		logger:                     cfg.Logger.With().Str("component", "da_client").Logger(),
+		defaultTimeout:             cfg.DefaultTimeout,
+		batchSize:                  cfg.RetrieveBatchSize,
+		namespaceBz:                coreda.NamespaceFromString(cfg.Namespace).Bytes(),
+		namespaceDataBz:            coreda.NamespaceFromString(cfg.DataNamespace).Bytes(),
+		namespaceForcedInclusionBz: namespaceForcedInclusionBz,
+		hasForcedInclusionNs:       hasForcedInclusionNs,
 	}
 }
 
@@ -262,6 +276,19 @@ func (c *client) RetrieveData(ctx context.Context, height uint64) coreda.ResultR
 	return c.Retrieve(ctx, height, c.namespaceDataBz)
 }
 
+// RetrieveForcedInclusion retrieves blobs from the forced inclusion namespace at the specified height.
+func (c *client) RetrieveForcedInclusion(ctx context.Context, height uint64) coreda.ResultRetrieve {
+	if !c.hasForcedInclusionNs {
+		return coreda.ResultRetrieve{
+			BaseResult: coreda.BaseResult{
+				Code:    coreda.StatusError,
+				Message: "forced inclusion namespace not configured",
+			},
+		}
+	}
+	return c.Retrieve(ctx, height, c.namespaceForcedInclusionBz)
+}
+
 // GetHeaderNamespace returns the header namespace bytes.
 func (c *client) GetHeaderNamespace() []byte {
 	return c.namespaceBz
@@ -270,6 +297,16 @@ func (c *client) GetHeaderNamespace() []byte {
 // GetDataNamespace returns the data namespace bytes.
 func (c *client) GetDataNamespace() []byte {
 	return c.namespaceDataBz
+}
+
+// GetForcedInclusionNamespace returns the forced inclusion namespace bytes.
+func (c *client) GetForcedInclusionNamespace() []byte {
+	return c.namespaceForcedInclusionBz
+}
+
+// HasForcedInclusionNamespace returns whether forced inclusion namespace is configured.
+func (c *client) HasForcedInclusionNamespace() bool {
+	return c.hasForcedInclusionNs
 }
 
 // GetDA returns the underlying DA interface for advanced usage.
