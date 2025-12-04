@@ -103,3 +103,69 @@ If you'd ever like to restart a fresh node, make sure to remove the originally c
 ```bash
     rm -rf ~/.evm-full-node
 ```
+
+## Force Inclusion API
+
+The EVM app includes a Force Inclusion API server that exposes an Ethereum-compatible JSON-RPC endpoint for submitting transactions directly to the DA layer for force inclusion.
+
+When enabling this server, the node operator will be paying for the gas costs of the transactions submitted through the API on the DA layer. The application costs are still paid by the transaction signer.
+
+### Enabling the Force Inclusion API
+
+To enable the Force Inclusion API server, add the following flag when starting the node:
+
+```bash
+./evm start \
+  --force-inclusion-server="127.0.0.1:8547" \
+  ... other flags ...
+```
+
+### Configuration Flag
+
+- `--force-inclusion-server`: Address for the force inclusion API server (e.g. `127.0.0.1:8547`). If set, enables the server for direct DA submission
+
+### Usage
+
+Once enabled, the server exposes a standard Ethereum JSON-RPC endpoint that accepts `eth_sendRawTransaction` calls:
+
+```bash
+# Send a raw transaction for force inclusion
+curl -X POST http://127.0.0.1:8547 \
+  -H "Content-Type: application/json" \
+  -d '{
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "eth_sendRawTransaction",
+    "params": ["0x02f873..."]
+  }'
+```
+
+The transaction will be submitted directly to the DA layer in the force inclusion namespace, bypassing the normal mempool. The response returns a pseudo-transaction hash based on the DA height:
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "result": "0x0000000000000000000000000000000000000000000000000000000000000064"
+}
+```
+
+### Using with Spamoor
+
+You can use this endpoint with [spamoor](https://github.com/ethpandaops/spamoor) for force inclusion testing:
+
+```bash
+spamoor \
+  --rpc-url http://127.0.0.1:8547 \
+  --private-key <your-private-key> \
+  ... other spamoor flags ...
+```
+
+### Force Inclusion Timing
+
+Transactions submitted to the Force Inclusion API are included in the chain at specific DA heights based on the `da_epoch_forced_inclusion` configuration in `genesis.json`. The API logs will show when the transaction will be force included:
+
+```
+INF transaction successfully submitted to DA layer da_height=100
+INF transaction will be force included blocks_until_inclusion=8 inclusion_at_height=110
+```
