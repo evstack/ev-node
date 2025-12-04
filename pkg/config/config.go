@@ -268,10 +268,10 @@ func (c *Config) Validate() error {
 	}
 
 	if len(c.DA.GetForcedInclusionNamespace()) > 0 {
-		if err := validateNamespace(c.DA.GetForcedInclusionNamespace()); err != nil {
-			return fmt.Errorf("could not validate forced inclusion namespace (%s): %w", c.DA.GetForcedInclusionNamespace(), err)
-		}
-		// return fmt.Errorf("forced inclusion is not yet live")
+		// if err := validateNamespace(c.DA.GetForcedInclusionNamespace()); err != nil {
+		// 	return fmt.Errorf("could not validate forced inclusion namespace (%s): %w", c.DA.GetForcedInclusionNamespace(), err)
+		// }
+		return fmt.Errorf("forced inclusion is not yet live")
 
 	}
 

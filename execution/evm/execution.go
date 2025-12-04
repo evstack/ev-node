@@ -257,10 +257,6 @@ func (c *EngineClient) ExecuteTxs(ctx context.Context, txs [][]byte, blockHeight
 	validTxs := make([]string, 0, len(txs))
 	for i, tx := range txs {
 		if len(tx) == 0 {
-			c.logger.Debug().
-				Int("tx_index", i).
-				Uint64("block_height", blockHeight).
-				Msg("skipping empty transaction")
 			continue
 		}
 
@@ -274,7 +270,7 @@ func (c *EngineClient) ExecuteTxs(ctx context.Context, txs [][]byte, blockHeight
 		// Validate that the transaction can be parsed as an Ethereum transaction
 		var ethTx types.Transaction
 		if err := ethTx.UnmarshalBinary(tx); err != nil {
-			c.logger.Warn().
+			c.logger.Debug().
 				Int("tx_index", i).
 				Uint64("block_height", blockHeight).
 				Err(err).
@@ -287,7 +283,7 @@ func (c *EngineClient) ExecuteTxs(ctx context.Context, txs [][]byte, blockHeight
 	}
 
 	if len(validTxs) < len(txs) {
-		c.logger.Info().
+		c.logger.Debug().
 			Int("total_txs", len(txs)).
 			Int("valid_txs", len(validTxs)).
 			Int("filtered_txs", len(txs)-len(validTxs)).

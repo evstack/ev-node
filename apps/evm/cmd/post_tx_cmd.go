@@ -21,9 +21,8 @@ import (
 )
 
 const (
-	flagNamespace  = "namespace"
-	flagGasPrice   = "gas-price"
-	flagSubmitOpts = "submit-options"
+	flagNamespace = "namespace"
+	flagGasPrice  = "gas-price"
 )
 
 // PostTxCmd returns a command to post a signed Ethereum transaction to the DA layer
@@ -61,7 +60,6 @@ Examples:
 	// Add command-specific flags
 	cobraCmd.Flags().String(flagNamespace, "", "DA namespace ID (if not provided, uses config namespace)")
 	cobraCmd.Flags().Float64(flagGasPrice, -1, "Gas price for DA submission (if not provided, uses config gas price)")
-	cobraCmd.Flags().String(flagSubmitOpts, "", "Additional DA submit options (if not provided, uses config submit options)")
 
 	return cobraCmd
 }
@@ -104,22 +102,17 @@ func postTxRunE(cmd *cobra.Command, args []string) error {
 	if namespace == "" {
 		namespace = nodeConfig.DA.GetForcedInclusionNamespace()
 	}
+
+	if namespace == "" {
+		return fmt.Errorf("forced inclusionnamespace cannot be empty")
+	}
+
 	namespaceBz := da.NamespaceFromString(namespace).Bytes()
 
 	// Get gas price (use flag if provided, otherwise use config)
 	gasPrice, err := cmd.Flags().GetFloat64(flagGasPrice)
 	if err != nil {
 		return fmt.Errorf("failed to get gas-price flag: %w", err)
-	}
-
-	// Get submit options (use flag if provided, otherwise use config)
-	submitOpts, err := cmd.Flags().GetString(flagSubmitOpts)
-	if err != nil {
-		return fmt.Errorf("failed to get submit-options flag: %w", err)
-	}
-
-	if submitOpts == "" {
-		submitOpts = nodeConfig.DA.SubmitOptions
 	}
 
 	logger.Info().Str("namespace", namespace).Float64("gas_price", gasPrice).Int("tx_size", len(txData)).Msg("posting transaction to DA layer")
@@ -139,7 +132,7 @@ func postTxRunE(cmd *cobra.Command, args []string) error {
 	logger.Info().Msg("submitting transaction to DA layer...")
 
 	blobs := [][]byte{txData}
-	options := []byte(submitOpts)
+	options := []byte(nodeConfig.DA.SubmitOptions)
 
 	dac := evblock.NewDAClient(&daClient.DA, nodeConfig, logger)
 	result := dac.Submit(cmd.Context(), blobs, gasPrice, namespaceBz, options)
@@ -156,7 +149,7 @@ func postTxRunE(cmd *cobra.Command, args []string) error {
 		genesisPath := filepath.Join(filepath.Dir(nodeConfig.ConfigPath()), "genesis.json")
 		genesis, err := genesispkg.LoadGenesis(genesisPath)
 		if err != nil {
-			return fmt.Errorf("failed to load genesis: %w", err)
+			return fmt.Errorf("failed to load genesis for calculating inclusion time estimate: %w", err)
 		}
 
 		_, epochEnd, _ := types.CalculateEpochBoundaries(result.Height, genesis.DAStartHeight, genesis.DAEpochForcedInclusion)
@@ -205,7 +198,7 @@ func decodeTxFromJSON(input string) ([]byte, error) {
 	input = strings.TrimSpace(input)
 
 	// Try to decode as JSON with "raw" field
-	var txJSON map[string]interface{}
+	var txJSON map[string]any
 	if err := json.Unmarshal([]byte(input), &txJSON); err == nil {
 		if rawTx, ok := txJSON["raw"].(string); ok {
 			return decodeHexTx(rawTx)
