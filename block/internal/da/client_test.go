@@ -10,6 +10,8 @@ import (
 	"gotest.tools/v3/assert"
 
 	coreda "github.com/evstack/ev-node/core/da"
+	datypes "github.com/evstack/ev-node/pkg/da/types"
+	"github.com/evstack/ev-node/pkg/namespace"
 )
 
 // mockDA is a simple mock implementation of coreda.DA for testing
@@ -196,7 +198,7 @@ func TestClient_RetrieveForcedInclusion_NotConfigured(t *testing.T) {
 	ctx := context.Background()
 
 	result := client.RetrieveForcedInclusion(ctx, 100)
-	assert.Equal(t, result.Code, coreda.StatusError)
+	assert.Equal(t, result.Code, datypes.StatusError)
 	assert.Assert(t, result.Message != "")
 }
 
@@ -224,7 +226,7 @@ func TestClient_Submit(t *testing.T) {
 		options        []byte
 		submitErr      error
 		submitIDs      [][]byte
-		expectedCode   coreda.StatusCode
+		expectedCode   datypes.StatusCode
 		expectedErrMsg string
 		expectedIDs    [][]byte
 		expectedCount  uint64
@@ -235,7 +237,7 @@ func TestClient_Submit(t *testing.T) {
 			gasPrice:      1.0,
 			options:       []byte("opts"),
 			submitIDs:     [][]byte{[]byte("id1"), []byte("id2")},
-			expectedCode:  coreda.StatusSuccess,
+			expectedCode:  datypes.StatusSuccess,
 			expectedIDs:   [][]byte{[]byte("id1"), []byte("id2")},
 			expectedCount: 2,
 		},
@@ -245,7 +247,7 @@ func TestClient_Submit(t *testing.T) {
 			gasPrice:       1.0,
 			options:        []byte("opts"),
 			submitErr:      context.Canceled,
-			expectedCode:   coreda.StatusContextCanceled,
+			expectedCode:   datypes.StatusContextCanceled,
 			expectedErrMsg: "submission canceled",
 		},
 		{
@@ -253,45 +255,45 @@ func TestClient_Submit(t *testing.T) {
 			data:           [][]byte{[]byte("blob1")},
 			gasPrice:       1.0,
 			options:        []byte("opts"),
-			submitErr:      coreda.ErrTxTimedOut,
-			expectedCode:   coreda.StatusNotIncludedInBlock,
-			expectedErrMsg: "failed to submit blobs: " + coreda.ErrTxTimedOut.Error(),
+			submitErr:      datypes.ErrTxTimedOut,
+			expectedCode:   datypes.StatusNotIncludedInBlock,
+			expectedErrMsg: "failed to submit blobs: " + datypes.ErrTxTimedOut.Error(),
 		},
 		{
 			name:           "tx already in mempool error",
 			data:           [][]byte{[]byte("blob1")},
 			gasPrice:       1.0,
 			options:        []byte("opts"),
-			submitErr:      coreda.ErrTxAlreadyInMempool,
-			expectedCode:   coreda.StatusAlreadyInMempool,
-			expectedErrMsg: "failed to submit blobs: " + coreda.ErrTxAlreadyInMempool.Error(),
+			submitErr:      datypes.ErrTxAlreadyInMempool,
+			expectedCode:   datypes.StatusAlreadyInMempool,
+			expectedErrMsg: "failed to submit blobs: " + datypes.ErrTxAlreadyInMempool.Error(),
 		},
 		{
 			name:           "incorrect account sequence error",
 			data:           [][]byte{[]byte("blob1")},
 			gasPrice:       1.0,
 			options:        []byte("opts"),
-			submitErr:      coreda.ErrTxIncorrectAccountSequence,
-			expectedCode:   coreda.StatusIncorrectAccountSequence,
-			expectedErrMsg: "failed to submit blobs: " + coreda.ErrTxIncorrectAccountSequence.Error(),
+			submitErr:      datypes.ErrTxIncorrectAccountSequence,
+			expectedCode:   datypes.StatusIncorrectAccountSequence,
+			expectedErrMsg: "failed to submit blobs: " + datypes.ErrTxIncorrectAccountSequence.Error(),
 		},
 		{
 			name:           "blob size over limit error",
 			data:           [][]byte{[]byte("blob1")},
 			gasPrice:       1.0,
 			options:        []byte("opts"),
-			submitErr:      coreda.ErrBlobSizeOverLimit,
-			expectedCode:   coreda.StatusTooBig,
-			expectedErrMsg: "failed to submit blobs: " + coreda.ErrBlobSizeOverLimit.Error(),
+			submitErr:      datypes.ErrBlobSizeOverLimit,
+			expectedCode:   datypes.StatusTooBig,
+			expectedErrMsg: "failed to submit blobs: " + datypes.ErrBlobSizeOverLimit.Error(),
 		},
 		{
 			name:           "context deadline error",
 			data:           [][]byte{[]byte("blob1")},
 			gasPrice:       1.0,
 			options:        []byte("opts"),
-			submitErr:      coreda.ErrContextDeadline,
-			expectedCode:   coreda.StatusContextDeadline,
-			expectedErrMsg: "failed to submit blobs: " + coreda.ErrContextDeadline.Error(),
+			submitErr:      datypes.ErrContextDeadline,
+			expectedCode:   datypes.StatusContextDeadline,
+			expectedErrMsg: "failed to submit blobs: " + datypes.ErrContextDeadline.Error(),
 		},
 		{
 			name:           "generic submission error",
@@ -299,7 +301,7 @@ func TestClient_Submit(t *testing.T) {
 			gasPrice:       1.0,
 			options:        []byte("opts"),
 			submitErr:      errors.New("some generic error"),
-			expectedCode:   coreda.StatusError,
+			expectedCode:   datypes.StatusError,
 			expectedErrMsg: "failed to submit blobs: some generic error",
 		},
 		{
@@ -308,7 +310,7 @@ func TestClient_Submit(t *testing.T) {
 			gasPrice:       1.0,
 			options:        []byte("opts"),
 			submitIDs:      [][]byte{},
-			expectedCode:   coreda.StatusError,
+			expectedCode:   datypes.StatusError,
 			expectedErrMsg: "failed to submit blobs: no IDs returned despite non-empty input",
 		},
 	}
@@ -328,7 +330,7 @@ func TestClient_Submit(t *testing.T) {
 				DataNamespace: "test-data-namespace",
 			})
 
-			encodedNamespace := coreda.NamespaceFromString("test-namespace")
+			encodedNamespace := namespace.NamespaceFromString("test-namespace")
 			result := client.Submit(context.Background(), tc.data, tc.gasPrice, encodedNamespace.Bytes(), tc.options)
 
 			assert.Equal(t, tc.expectedCode, result.Code)
@@ -357,7 +359,7 @@ func TestClient_Retrieve(t *testing.T) {
 		getIDsResult   *coreda.GetIDsResult
 		getIDsErr      error
 		getBlobsErr    error
-		expectedCode   coreda.StatusCode
+		expectedCode   datypes.StatusCode
 		expectedErrMsg string
 		expectedIDs    [][]byte
 		expectedData   [][]byte
@@ -369,37 +371,37 @@ func TestClient_Retrieve(t *testing.T) {
 				IDs:       mockIDs,
 				Timestamp: mockTimestamp,
 			},
-			expectedCode:   coreda.StatusSuccess,
+			expectedCode:   datypes.StatusSuccess,
 			expectedIDs:    mockIDs,
 			expectedData:   mockBlobs,
 			expectedHeight: dataLayerHeight,
 		},
 		{
 			name:           "blob not found error during GetIDs",
-			getIDsErr:      coreda.ErrBlobNotFound,
-			expectedCode:   coreda.StatusNotFound,
-			expectedErrMsg: coreda.ErrBlobNotFound.Error(),
+			getIDsErr:      datypes.ErrBlobNotFound,
+			expectedCode:   datypes.StatusNotFound,
+			expectedErrMsg: datypes.ErrBlobNotFound.Error(),
 			expectedHeight: dataLayerHeight,
 		},
 		{
 			name:           "height from future error during GetIDs",
-			getIDsErr:      coreda.ErrHeightFromFuture,
-			expectedCode:   coreda.StatusHeightFromFuture,
-			expectedErrMsg: coreda.ErrHeightFromFuture.Error(),
+			getIDsErr:      datypes.ErrHeightFromFuture,
+			expectedCode:   datypes.StatusHeightFromFuture,
+			expectedErrMsg: datypes.ErrHeightFromFuture.Error(),
 			expectedHeight: dataLayerHeight,
 		},
 		{
 			name:           "generic error during GetIDs",
 			getIDsErr:      errors.New("failed to connect to DA"),
-			expectedCode:   coreda.StatusError,
+			expectedCode:   datypes.StatusError,
 			expectedErrMsg: "failed to get IDs: failed to connect to DA",
 			expectedHeight: dataLayerHeight,
 		},
 		{
 			name:           "GetIDs returns nil result",
 			getIDsResult:   nil,
-			expectedCode:   coreda.StatusNotFound,
-			expectedErrMsg: coreda.ErrBlobNotFound.Error(),
+			expectedCode:   datypes.StatusNotFound,
+			expectedErrMsg: datypes.ErrBlobNotFound.Error(),
 			expectedHeight: dataLayerHeight,
 		},
 		{
@@ -408,8 +410,8 @@ func TestClient_Retrieve(t *testing.T) {
 				IDs:       [][]byte{},
 				Timestamp: mockTimestamp,
 			},
-			expectedCode:   coreda.StatusNotFound,
-			expectedErrMsg: coreda.ErrBlobNotFound.Error(),
+			expectedCode:   datypes.StatusNotFound,
+			expectedErrMsg: datypes.ErrBlobNotFound.Error(),
 			expectedHeight: dataLayerHeight,
 		},
 		{
@@ -419,7 +421,7 @@ func TestClient_Retrieve(t *testing.T) {
 				Timestamp: mockTimestamp,
 			},
 			getBlobsErr:    errors.New("network error during blob retrieval"),
-			expectedCode:   coreda.StatusError,
+			expectedCode:   datypes.StatusError,
 			expectedErrMsg: "failed to get blobs for batch 0-1: network error during blob retrieval",
 			expectedHeight: dataLayerHeight,
 		},
@@ -447,7 +449,7 @@ func TestClient_Retrieve(t *testing.T) {
 				DefaultTimeout: 5 * time.Second,
 			})
 
-			encodedNamespace := coreda.NamespaceFromString("test-namespace")
+			encodedNamespace := namespace.NamespaceFromString("test-namespace")
 			result := client.Retrieve(context.Background(), dataLayerHeight, encodedNamespace.Bytes())
 
 			assert.Equal(t, tc.expectedCode, result.Code)
@@ -468,7 +470,7 @@ func TestClient_Retrieve(t *testing.T) {
 func TestClient_Retrieve_Timeout(t *testing.T) {
 	logger := zerolog.Nop()
 	dataLayerHeight := uint64(100)
-	encodedNamespace := coreda.NamespaceFromString("test-namespace")
+	encodedNamespace := namespace.NamespaceFromString("test-namespace")
 
 	t.Run("timeout during GetIDs", func(t *testing.T) {
 		mockDAInstance := &mockDA{
@@ -488,7 +490,7 @@ func TestClient_Retrieve_Timeout(t *testing.T) {
 
 		result := client.Retrieve(context.Background(), dataLayerHeight, encodedNamespace.Bytes())
 
-		assert.Equal(t, coreda.StatusError, result.Code)
+		assert.Equal(t, datypes.StatusError, result.Code)
 		assert.Assert(t, result.Message != "")
 	})
 
@@ -519,7 +521,7 @@ func TestClient_Retrieve_Timeout(t *testing.T) {
 
 		result := client.Retrieve(context.Background(), dataLayerHeight, encodedNamespace.Bytes())
 
-		assert.Equal(t, coreda.StatusError, result.Code)
+		assert.Equal(t, datypes.StatusError, result.Code)
 		assert.Assert(t, result.Message != "")
 	})
 }

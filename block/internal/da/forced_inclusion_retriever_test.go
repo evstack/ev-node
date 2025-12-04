@@ -10,6 +10,7 @@ import (
 	"gotest.tools/v3/assert"
 
 	coreda "github.com/evstack/ev-node/core/da"
+	datypes "github.com/evstack/ev-node/pkg/da/types"
 	"github.com/evstack/ev-node/pkg/genesis"
 )
 
@@ -128,7 +129,7 @@ func TestForcedInclusionRetriever_RetrieveForcedIncludedTxs_EpochStartSuccess(t 
 func TestForcedInclusionRetriever_RetrieveForcedIncludedTxs_EpochStartNotAvailable(t *testing.T) {
 	mockDAInstance := &mockDA{
 		getIDsFunc: func(ctx context.Context, height uint64, namespace []byte) (*coreda.GetIDsResult, error) {
-			return nil, coreda.ErrHeightFromFuture
+			return nil, datypes.ErrHeightFromFuture
 		},
 	}
 
@@ -157,7 +158,7 @@ func TestForcedInclusionRetriever_RetrieveForcedIncludedTxs_EpochStartNotAvailab
 func TestForcedInclusionRetriever_RetrieveForcedIncludedTxs_NoBlobsAtHeight(t *testing.T) {
 	mockDAInstance := &mockDA{
 		getIDsFunc: func(ctx context.Context, height uint64, namespace []byte) (*coreda.GetIDsResult, error) {
-			return nil, coreda.ErrBlobNotFound
+			return nil, datypes.ErrBlobNotFound
 		},
 	}
 
@@ -196,7 +197,7 @@ func TestForcedInclusionRetriever_RetrieveForcedIncludedTxs_MultiHeightEpoch(t *
 			callCount++
 			blobs, exists := testBlobsByHeight[height]
 			if !exists {
-				return nil, coreda.ErrBlobNotFound
+				return nil, datypes.ErrBlobNotFound
 			}
 			ids := make([]coreda.ID, len(blobs))
 			for i := range blobs {
@@ -268,16 +269,16 @@ func TestForcedInclusionRetriever_processForcedInclusionBlobs(t *testing.T) {
 
 	tests := []struct {
 		name            string
-		result          coreda.ResultRetrieve
+		result          datypes.ResultRetrieve
 		height          uint64
 		expectedTxCount int
 		expectError     bool
 	}{
 		{
 			name: "success with blobs",
-			result: coreda.ResultRetrieve{
-				BaseResult: coreda.BaseResult{
-					Code: coreda.StatusSuccess,
+			result: datypes.ResultRetrieve{
+				BaseResult: datypes.BaseResult{
+					Code: datypes.StatusSuccess,
 				},
 				Data: [][]byte{[]byte("tx1"), []byte("tx2")},
 			},
@@ -287,9 +288,9 @@ func TestForcedInclusionRetriever_processForcedInclusionBlobs(t *testing.T) {
 		},
 		{
 			name: "not found",
-			result: coreda.ResultRetrieve{
-				BaseResult: coreda.BaseResult{
-					Code: coreda.StatusNotFound,
+			result: datypes.ResultRetrieve{
+				BaseResult: datypes.BaseResult{
+					Code: datypes.StatusNotFound,
 				},
 			},
 			height:          100,
@@ -298,9 +299,9 @@ func TestForcedInclusionRetriever_processForcedInclusionBlobs(t *testing.T) {
 		},
 		{
 			name: "error status",
-			result: coreda.ResultRetrieve{
-				BaseResult: coreda.BaseResult{
-					Code:    coreda.StatusError,
+			result: datypes.ResultRetrieve{
+				BaseResult: datypes.BaseResult{
+					Code:    datypes.StatusError,
 					Message: "test error",
 				},
 			},
@@ -309,9 +310,9 @@ func TestForcedInclusionRetriever_processForcedInclusionBlobs(t *testing.T) {
 		},
 		{
 			name: "empty blobs are skipped",
-			result: coreda.ResultRetrieve{
-				BaseResult: coreda.BaseResult{
-					Code: coreda.StatusSuccess,
+			result: datypes.ResultRetrieve{
+				BaseResult: datypes.BaseResult{
+					Code: datypes.StatusSuccess,
 				},
 				Data: [][]byte{[]byte("tx1"), {}, []byte("tx2")},
 			},
