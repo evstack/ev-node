@@ -386,8 +386,8 @@ func (e *Executor) produceBlock() error {
 	// Force-included txs (from DA) MUST be validated as they're from untrusted sources
 	// Mempool txs can skip validation as they were validated when added to mempool
 	ctx := e.ctx
-	if batchData != nil && batchData.Batch != nil && batchData.Batch.ForceIncludedMask != nil {
-		ctx = coreexecutor.WithForceIncludedMask(ctx, batchData.Batch.ForceIncludedMask)
+	if batchData != nil && batchData.Batch != nil && batchData.ForceIncludedMask != nil {
+		ctx = coreexecutor.WithForceIncludedMask(ctx, batchData.ForceIncludedMask)
 	}
 
 	newState, err := e.applyBlock(ctx, header.Header, data)
