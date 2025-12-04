@@ -18,6 +18,7 @@ import (
 	"github.com/evstack/ev-node/block/internal/da"
 	coreda "github.com/evstack/ev-node/core/da"
 	"github.com/evstack/ev-node/pkg/config"
+	datypes "github.com/evstack/ev-node/pkg/da/types"
 	"github.com/evstack/ev-node/pkg/genesis"
 	"github.com/evstack/ev-node/pkg/rpc/server"
 	"github.com/evstack/ev-node/pkg/signer"
@@ -100,7 +101,7 @@ func TestNewDASubmitterSetsVisualizerWhenEnabled(t *testing.T) {
 	cfg.RPC.EnableDAVisualization = true
 	cfg.Node.Aggregator = true
 
-	dummyDA := coreda.NewDummyDA(10_000_000, 10*time.Millisecond)
+	dummyDA := datypes.NewDummyDA(10_000_000, 10*time.Millisecond)
 
 	daClient := da.NewClient(da.Config{
 		DA:            dummyDA,

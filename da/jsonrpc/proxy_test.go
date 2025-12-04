@@ -10,7 +10,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/evstack/ev-node/da/internal/mocks"
 	proxy "github.com/evstack/ev-node/da/jsonrpc"
 	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/assert"
@@ -18,6 +17,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	coreda "github.com/evstack/ev-node/core/da"
+	datypes "github.com/evstack/ev-node/pkg/da/types"
 )
 
 const (
@@ -44,11 +44,40 @@ func getTestDABlockTime() time.Duration {
 	return 100 * time.Millisecond
 }
 
+// coreDAAdapter adapts the legacy core/da.DA to the new datypes-based interface.
+type coreDAAdapter struct{ core coreda.DA }
+
+func (a coreDAAdapter) Get(ctx context.Context, ids []datypes.ID, namespace []byte) ([]datypes.Blob, error) {
+	return a.core.Get(ctx, ids, namespace)
+}
+func (a coreDAAdapter) GetIDs(ctx context.Context, height uint64, namespace []byte) (*datypes.GetIDsResult, error) {
+	res, err := a.core.GetIDs(ctx, height, namespace)
+	if res == nil {
+		return nil, err
+	}
+	return &datypes.GetIDsResult{IDs: res.IDs, Timestamp: res.Timestamp}, err
+}
+func (a coreDAAdapter) GetProofs(ctx context.Context, ids []datypes.ID, namespace []byte) ([]datypes.Proof, error) {
+	return a.core.GetProofs(ctx, ids, namespace)
+}
+func (a coreDAAdapter) Commit(ctx context.Context, blobs []datypes.Blob, namespace []byte) ([]datypes.Commitment, error) {
+	return a.core.Commit(ctx, blobs, namespace)
+}
+func (a coreDAAdapter) Validate(ctx context.Context, ids []datypes.ID, proofs []datypes.Proof, namespace []byte) ([]bool, error) {
+	return a.core.Validate(ctx, ids, proofs, namespace)
+}
+func (a coreDAAdapter) Submit(ctx context.Context, blobs []datypes.Blob, gasPrice float64, namespace []byte) ([]datypes.ID, error) {
+	return a.core.Submit(ctx, blobs, gasPrice, namespace)
+}
+func (a coreDAAdapter) SubmitWithOptions(ctx context.Context, blobs []datypes.Blob, gasPrice float64, namespace []byte, options []byte) ([]datypes.ID, error) {
+	return a.core.SubmitWithOptions(ctx, blobs, gasPrice, namespace, options)
+}
+
 func TestProxy(t *testing.T) {
 	dummy := coreda.NewDummyDA(100_000, getTestDABlockTime())
 	dummy.StartHeightTicker()
 	logger := zerolog.Nop()
-	server := proxy.NewServer(logger, ServerHost, ServerPort, dummy)
+	server := proxy.NewServer(logger, ServerHost, ServerPort, coreDAAdapter{core: dummy})
 	err := server.Start(context.Background())
 	require.NoError(t, err)
 	defer func() {
@@ -79,22 +108,22 @@ func TestProxy(t *testing.T) {
 }
 
 // BasicDATest tests round trip of messages to DA and back.
-func BasicDATest(t *testing.T, d coreda.DA) {
+func BasicDATest(t *testing.T, d proxy.DA) {
 	msg1 := []byte("message 1")
 	msg2 := []byte("message 2")
 
 	ctx := t.Context()
-	id1, err := d.Submit(ctx, []coreda.Blob{msg1}, 0, testNamespace)
+	id1, err := d.Submit(ctx, []datypes.Blob{msg1}, 0, testNamespace)
 	assert.NoError(t, err)
 	assert.NotEmpty(t, id1)
 
-	id2, err := d.Submit(ctx, []coreda.Blob{msg2}, 0, testNamespace)
+	id2, err := d.Submit(ctx, []datypes.Blob{msg2}, 0, testNamespace)
 	assert.NoError(t, err)
 	assert.NotEmpty(t, id2)
 
 	time.Sleep(getTestDABlockTime())
 
-	id3, err := d.SubmitWithOptions(ctx, []coreda.Blob{msg1}, 0, testNamespace, []byte("random options"))
+	id3, err := d.SubmitWithOptions(ctx, []datypes.Blob{msg1}, 0, testNamespace, []byte("random options"))
 	assert.NoError(t, err)
 	assert.NotEmpty(t, id3)
 
@@ -103,17 +132,17 @@ func BasicDATest(t *testing.T, d coreda.DA) {
 
 	ret, err := d.Get(ctx, id1, testNamespace)
 	assert.NoError(t, err)
-	assert.Equal(t, []coreda.Blob{msg1}, ret)
+	assert.Equal(t, []datypes.Blob{msg1}, ret)
 
-	commitment1, err := d.Commit(ctx, []coreda.Blob{msg1}, []byte{})
+	commitment1, err := d.Commit(ctx, []datypes.Blob{msg1}, []byte{})
 	assert.NoError(t, err)
 	assert.NotEmpty(t, commitment1)
 
-	commitment2, err := d.Commit(ctx, []coreda.Blob{msg2}, []byte{})
+	commitment2, err := d.Commit(ctx, []datypes.Blob{msg2}, []byte{})
 	assert.NoError(t, err)
 	assert.NotEmpty(t, commitment2)
 
-	ids := []coreda.ID{id1[0], id2[0], id3[0]}
+	ids := []datypes.ID{id1[0], id2[0], id3[0]}
 	proofs, err := d.GetProofs(ctx, ids, testNamespace)
 	assert.NoError(t, err)
 	assert.NotEmpty(t, proofs)
@@ -126,17 +155,17 @@ func BasicDATest(t *testing.T, d coreda.DA) {
 }
 
 // CheckErrors ensures that errors are handled properly by DA.
-func CheckErrors(t *testing.T, d coreda.DA) {
+func CheckErrors(t *testing.T, d proxy.DA) {
 	ctx := t.Context()
-	blob, err := d.Get(ctx, []coreda.ID{[]byte("invalid blob id")}, testNamespace)
+	blob, err := d.Get(ctx, []datypes.ID{[]byte("invalid blob id")}, testNamespace)
 	assert.Error(t, err)
-	assert.ErrorContains(t, err, coreda.ErrBlobNotFound.Error())
+	assert.ErrorContains(t, err, datypes.ErrBlobNotFound.Error())
 	assert.Empty(t, blob)
 }
 
 // GetIDsTest tests iteration over DA
-func GetIDsTest(t *testing.T, d coreda.DA) {
-	msgs := []coreda.Blob{[]byte("msg1"), []byte("msg2"), []byte("msg3")}
+func GetIDsTest(t *testing.T, d proxy.DA) {
+	msgs := []datypes.Blob{[]byte("msg1"), []byte("msg2"), []byte("msg3")}
 
 	ctx := t.Context()
 	ids, err := d.Submit(ctx, msgs, 0, testNamespace)
@@ -152,7 +181,7 @@ func GetIDsTest(t *testing.T, d coreda.DA) {
 	for i := uint64(1); !found && !time.Now().After(end); i++ {
 		ret, err := d.GetIDs(ctx, i, testNamespace)
 		if err != nil {
-			if strings.Contains(err.Error(), coreda.ErrHeightFromFuture.Error()) {
+			if strings.Contains(err.Error(), datypes.ErrHeightFromFuture.Error()) {
 				break
 			}
 			t.Error("failed to get IDs:", err)
@@ -188,7 +217,7 @@ func GetIDsTest(t *testing.T, d coreda.DA) {
 }
 
 // ConcurrentReadWriteTest tests the use of mutex lock in DummyDA by calling separate methods that use `d.data` and making sure there's no race conditions
-func ConcurrentReadWriteTest(t *testing.T, d coreda.DA) {
+func ConcurrentReadWriteTest(t *testing.T, d proxy.DA) {
 	var wg sync.WaitGroup
 	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
 	defer cancel()
@@ -199,7 +228,7 @@ func ConcurrentReadWriteTest(t *testing.T, d coreda.DA) {
 	go func() {
 		defer wg.Done()
 		for i := uint64(1); i <= 50; i++ {
-			_, err := d.Submit(ctx, []coreda.Blob{[]byte(fmt.Sprintf("test-%d", i))}, 0, []byte("test"))
+			_, err := d.Submit(ctx, []datypes.Blob{[]byte(fmt.Sprintf("test-%d", i))}, 0, []byte("test"))
 			assert.NoError(t, err)
 		}
 		close(writeDone)
@@ -222,12 +251,12 @@ func ConcurrentReadWriteTest(t *testing.T, d coreda.DA) {
 }
 
 // HeightFromFutureTest tests the case when the given height is from the future
-func HeightFromFutureTest(t *testing.T, d coreda.DA) {
+func HeightFromFutureTest(t *testing.T, d proxy.DA) {
 	ctx := t.Context()
 	_, err := d.GetIDs(ctx, 999999999, []byte("test"))
 	assert.Error(t, err)
 	// Specifically check if the error contains the error message ErrHeightFromFuture
-	assert.ErrorContains(t, err, coreda.ErrHeightFromFuture.Error())
+	assert.ErrorContains(t, err, datypes.ErrHeightFromFuture.Error())
 }
 
 // TestSubmitWithOptions tests the SubmitWithOptions method with various scenarios
@@ -236,27 +265,21 @@ func TestSubmitWithOptions(t *testing.T) {
 	testNamespace := "options_test"
 	// The client will convert the namespace string to a proper Celestia namespace
 	// using SHA256 hashing and version 0 format (1 version byte + 28 ID bytes)
-	namespace := coreda.NamespaceFromString(testNamespace)
+	namespace := datypes.NamespaceFromString(testNamespace)
 	encodedNamespace := namespace.Bytes()
 	testOptions := []byte("test_options")
 	gasPrice := 0.0
 
-	// Helper function to create a client with a mocked internal API
-	createMockedClient := func(internalAPI *mocks.MockDA) *proxy.Client {
+	t.Run("Happy Path - All blobs fit", func(t *testing.T) {
 		client := &proxy.Client{}
-		client.DA.Internal.SubmitWithOptions = internalAPI.SubmitWithOptions
 		client.DA.MaxBlobSize = testMaxBlobSize
 		client.DA.Logger = zerolog.Nop()
-		// Test verbosity no longer needed with Nop logger
-		return client
-	}
 
-	t.Run("Happy Path - All blobs fit", func(t *testing.T) {
-		mockAPI := mocks.NewMockDA(t)
-		client := createMockedClient(mockAPI)
-
-		blobs := []coreda.Blob{[]byte("blob1"), []byte("blob2")}
-		expectedIDs := []coreda.ID{[]byte("id1"), []byte("id2")}
+		blobs := []datypes.Blob{[]byte("blob1"), []byte("blob2")}
+		expectedIDs := []datypes.ID{[]byte("id1"), []byte("id2")}
+		client.DA.Internal.SubmitWithOptions = func(ctx context.Context, blobs []datypes.Blob, gasPrice float64, namespace []byte, options []byte) ([]datypes.ID, error) {
+			return expectedIDs, nil
+		}
 
 		mockAPI.On("SubmitWithOptions", ctx, blobs, gasPrice, encodedNamespace, testOptions).Return(expectedIDs, nil).Once()
 
@@ -268,84 +291,79 @@ func TestSubmitWithOptions(t *testing.T) {
 	})
 
 	t.Run("Single Blob Too Large", func(t *testing.T) {
-		mockAPI := mocks.NewMockDA(t)
-		client := createMockedClient(mockAPI)
+		client := &proxy.Client{}
+		client.DA.MaxBlobSize = testMaxBlobSize
+		client.DA.Logger = zerolog.Nop()
 
 		largerBlob := make([]byte, testMaxBlobSize+1)
-		blobs := []coreda.Blob{largerBlob, []byte("this blob is definitely too large")}
+		blobs := []datypes.Blob{largerBlob, []byte("this blob is definitely too large")}
 
 		_, err := client.DA.SubmitWithOptions(ctx, blobs, gasPrice, encodedNamespace, testOptions)
 
 		require.Error(t, err)
-		mockAPI.AssertExpectations(t)
 	})
 
 	t.Run("Total Size Exceeded", func(t *testing.T) {
-		mockAPI := mocks.NewMockDA(t)
-		client := createMockedClient(mockAPI)
+		client := &proxy.Client{}
+		client.DA.MaxBlobSize = testMaxBlobSize
+		client.DA.Logger = zerolog.Nop()
 
 		blobsizes := make([]byte, testMaxBlobSize/3)
 		blobsizesOver := make([]byte, testMaxBlobSize)
 
-		blobs := []coreda.Blob{blobsizes, blobsizes, blobsizesOver}
+		blobs := []datypes.Blob{blobsizes, blobsizes, blobsizesOver}
 
 		ids, err := client.DA.SubmitWithOptions(ctx, blobs, gasPrice, encodedNamespace, testOptions)
 
 		require.Error(t, err)
-		assert.ErrorIs(t, err, coreda.ErrBlobSizeOverLimit)
+		assert.ErrorIs(t, err, datypes.ErrBlobSizeOverLimit)
 		assert.Nil(t, ids)
-
-		// Should not call internal RPC when validation fails
-		mockAPI.AssertNotCalled(t, "SubmitWithOptions", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything)
-		mockAPI.AssertExpectations(t)
 	})
 
 	t.Run("First Blob Too Large", func(t *testing.T) {
-		mockAPI := mocks.NewMockDA(t)
-		client := createMockedClient(mockAPI)
+		client := &proxy.Client{}
+		client.DA.MaxBlobSize = testMaxBlobSize
+		client.DA.Logger = zerolog.Nop()
 
 		largerBlob := make([]byte, testMaxBlobSize+1)
-		blobs := []coreda.Blob{largerBlob, []byte("small")}
+		blobs := []datypes.Blob{largerBlob, []byte("small")}
 
 		ids, err := client.DA.SubmitWithOptions(ctx, blobs, gasPrice, encodedNamespace, testOptions)
 
 		require.Error(t, err)
-		assert.ErrorIs(t, err, coreda.ErrBlobSizeOverLimit)
+		assert.ErrorIs(t, err, datypes.ErrBlobSizeOverLimit)
 		assert.Nil(t, ids)
-
-		mockAPI.AssertNotCalled(t, "SubmitWithOptions", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything)
-		mockAPI.AssertExpectations(t)
 	})
 
 	t.Run("Empty Input Blobs", func(t *testing.T) {
-		mockAPI := mocks.NewMockDA(t)
-		client := createMockedClient(mockAPI)
+		client := &proxy.Client{}
+		client.DA.MaxBlobSize = testMaxBlobSize
+		client.DA.Logger = zerolog.Nop()
 
-		var blobs []coreda.Blob
+		var blobs []datypes.Blob
 
 		ids, err := client.DA.SubmitWithOptions(ctx, blobs, gasPrice, encodedNamespace, testOptions)
 
 		require.NoError(t, err)
 		assert.Empty(t, ids)
-
-		mockAPI.AssertNotCalled(t, "SubmitWithOptions", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything)
-		mockAPI.AssertExpectations(t)
 	})
 
 	t.Run("Error During SubmitWithOptions RPC", func(t *testing.T) {
-		mockAPI := mocks.NewMockDA(t)
-		client := createMockedClient(mockAPI)
+		client := &proxy.Client{}
+		client.DA.MaxBlobSize = testMaxBlobSize
+		client.DA.Logger = zerolog.Nop()
 
-		blobs := []coreda.Blob{[]byte("blob1")}
+		blobs := []datypes.Blob{[]byte("blob1")}
 		expectedError := errors.New("rpc submit failed")
 
-		mockAPI.On("SubmitWithOptions", ctx, blobs, gasPrice, encodedNamespace, testOptions).Return(nil, expectedError).Once()
+		client.DA.Internal.SubmitWithOptions = func(ctx context.Context, blobs []datypes.Blob, gasPrice float64, namespace []byte, options []byte) ([]datypes.ID, error) {
+			return nil, expectedError
+		}
 
 		ids, err := client.DA.SubmitWithOptions(ctx, blobs, gasPrice, encodedNamespace, testOptions)
 
 		require.Error(t, err)
 		assert.ErrorIs(t, err, expectedError)
 		assert.Nil(t, ids)
-		mockAPI.AssertExpectations(t)
 	})
 }
