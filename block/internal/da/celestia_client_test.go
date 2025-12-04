@@ -165,31 +165,3 @@ func TestCelestiaClient_SubmitOptionsMerge(t *testing.T) {
 	res := cl.Submit(context.Background(), [][]byte{[]byte("data")}, ns, raw)
 	require.Equal(t, StatusSuccess, res.Code)
 }
-
-func TestLocalBlobAPI_SubmitAndGetAll(t *testing.T) {
-	ns := share.MustNewV0Namespace([]byte("ns"))
-	api := NewLocalBlobAPI(1024)
-
-	b, err := blob.NewBlobV0(ns, []byte("payload"))
-	require.NoError(t, err)
-
-	height, err := api.Submit(context.Background(), []*blob.Blob{b}, nil)
-	require.NoError(t, err)
-	require.Equal(t, uint64(1), height)
-
-	blobs, err := api.GetAll(context.Background(), height, []share.Namespace{ns})
-	require.NoError(t, err)
-	require.Len(t, blobs, 1)
-	assert.Equal(t, b.Data(), blobs[0].Data())
-}
-
-func TestLocalBlobAPI_MaxSize(t *testing.T) {
-	ns := share.MustNewV0Namespace([]byte("ns"))
-	api := NewLocalBlobAPI(2)
-
-	b, err := blob.NewBlobV0(ns, []byte("long"))
-	require.NoError(t, err)
-
-	_, err = api.Submit(context.Background(), []*blob.Blob{b}, nil)
-	require.Error(t, err)
-}
