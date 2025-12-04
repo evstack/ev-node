@@ -758,13 +758,13 @@ func TestBatchQueue_Prepend(t *testing.T) {
 		nextBatch, err := queue2.Next(ctx)
 		require.NoError(t, err)
 		assert.Equal(t, 1, len(nextBatch.Transactions))
-		assert.Equal(t, []byte("prepended"), nextBatch.Transactions[0])
+		assert.Contains(t, nextBatch.Transactions, []byte("prepended"))
 
 		// Then tx2
 		nextBatch, err = queue2.Next(ctx)
 		require.NoError(t, err)
 		assert.Equal(t, 1, len(nextBatch.Transactions))
-		assert.Equal(t, []byte("tx2"), nextBatch.Transactions[0])
+		assert.Contains(t, nextBatch.Transactions, []byte("tx2"))
 
 		// Queue should be empty now
 		assert.Equal(t, 0, queue2.Size())
