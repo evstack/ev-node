@@ -11,7 +11,6 @@ import (
 
 	coreda "github.com/evstack/ev-node/core/da"
 	datypes "github.com/evstack/ev-node/pkg/da/types"
-	"github.com/evstack/ev-node/pkg/namespace"
 )
 
 // mockDA is a simple mock implementation of coreda.DA for testing
@@ -330,7 +329,7 @@ func TestClient_Submit(t *testing.T) {
 				DataNamespace: "test-data-namespace",
 			})
 
-			encodedNamespace := namespace.NamespaceFromString("test-namespace")
+			encodedNamespace := datypes.NamespaceFromString("test-namespace")
 			result := client.Submit(context.Background(), tc.data, tc.gasPrice, encodedNamespace.Bytes(), tc.options)
 
 			assert.Equal(t, tc.expectedCode, result.Code)
@@ -449,7 +448,7 @@ func TestClient_Retrieve(t *testing.T) {
 				DefaultTimeout: 5 * time.Second,
 			})
 
-			encodedNamespace := namespace.NamespaceFromString("test-namespace")
+			encodedNamespace := datypes.NamespaceFromString("test-namespace")
 			result := client.Retrieve(context.Background(), dataLayerHeight, encodedNamespace.Bytes())
 
 			assert.Equal(t, tc.expectedCode, result.Code)
@@ -470,7 +469,7 @@ func TestClient_Retrieve(t *testing.T) {
 func TestClient_Retrieve_Timeout(t *testing.T) {
 	logger := zerolog.Nop()
 	dataLayerHeight := uint64(100)
-	encodedNamespace := namespace.NamespaceFromString("test-namespace")
+	encodedNamespace := datypes.NamespaceFromString("test-namespace")
 
 	t.Run("timeout during GetIDs", func(t *testing.T) {
 		mockDAInstance := &mockDA{

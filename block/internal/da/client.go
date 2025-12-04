@@ -14,7 +14,6 @@ import (
 	coreda "github.com/evstack/ev-node/core/da"
 	"github.com/evstack/ev-node/pkg/blob"
 	datypes "github.com/evstack/ev-node/pkg/da/types"
-	"github.com/evstack/ev-node/pkg/namespace"
 )
 
 // Client is the interface representing the DA client.
@@ -72,7 +71,7 @@ func NewClient(cfg Config) *client {
 	hasForcedInclusionNs := cfg.ForcedInclusionNamespace != ""
 	var namespaceForcedInclusionBz []byte
 	if hasForcedInclusionNs {
-		namespaceForcedInclusionBz = namespace.NamespaceFromString(cfg.ForcedInclusionNamespace).Bytes()
+		namespaceForcedInclusionBz = datypes.NamespaceFromString(cfg.ForcedInclusionNamespace).Bytes()
 	}
 
 	return &client{
@@ -80,8 +79,8 @@ func NewClient(cfg Config) *client {
 		logger:                     cfg.Logger.With().Str("component", "da_client").Logger(),
 		defaultTimeout:             cfg.DefaultTimeout,
 		batchSize:                  cfg.RetrieveBatchSize,
-		namespaceBz:                namespace.NamespaceFromString(cfg.Namespace).Bytes(),
-		namespaceDataBz:            namespace.NamespaceFromString(cfg.DataNamespace).Bytes(),
+		namespaceBz:                datypes.NamespaceFromString(cfg.Namespace).Bytes(),
+		namespaceDataBz:            datypes.NamespaceFromString(cfg.DataNamespace).Bytes(),
 		namespaceForcedInclusionBz: namespaceForcedInclusionBz,
 		hasForcedInclusionNs:       hasForcedInclusionNs,
 	}

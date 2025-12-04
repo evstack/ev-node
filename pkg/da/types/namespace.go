@@ -1,4 +1,4 @@
-package namespace
+package datypes
 
 import (
 	"crypto/sha256"
