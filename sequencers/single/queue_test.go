@@ -720,4 +720,53 @@ func TestBatchQueue_Prepend(t *testing.T) {
 		require.NoError(t, err)
 		assert.Equal(t, []byte("tx1"), nextBatch.Transactions[0])
 	})
+
+	t.Run("prepend persistence across restarts", func(t *testing.T) {
+		prefix := "test-prepend-persistence"
+		queue := NewBatchQueue(db, prefix, 0)
+		err := queue.Load(ctx)
+		require.NoError(t, err)
+
+		// Add some batches
+		batch1 := coresequencer.Batch{Transactions: [][]byte{[]byte("tx1")}}
+		batch2 := coresequencer.Batch{Transactions: [][]byte{[]byte("tx2")}}
+		err = queue.AddBatch(ctx, batch1)
+		require.NoError(t, err)
+		err = queue.AddBatch(ctx, batch2)
+		require.NoError(t, err)
+
+		// Consume first batch
+		_, err = queue.Next(ctx)
+		require.NoError(t, err)
+
+		// Prepend a batch (simulating transactions that couldn't fit)
+		prependedBatch := coresequencer.Batch{Transactions: [][]byte{[]byte("prepended")}}
+		err = queue.Prepend(ctx, prependedBatch)
+		require.NoError(t, err)
+
+		assert.Equal(t, 2, queue.Size())
+
+		// Simulate restart by creating a new queue with same prefix
+		queue2 := NewBatchQueue(db, prefix, 0)
+		err = queue2.Load(ctx)
+		require.NoError(t, err)
+
+		// Should have both the prepended batch and tx2
+		assert.Equal(t, 2, queue2.Size())
+
+		// First should be prepended batch
+		nextBatch, err := queue2.Next(ctx)
+		require.NoError(t, err)
+		assert.Equal(t, 1, len(nextBatch.Transactions))
+		assert.Contains(t, nextBatch.Transactions, []byte("prepended"))
+
+		// Then tx2
+		nextBatch, err = queue2.Next(ctx)
+		require.NoError(t, err)
+		assert.Equal(t, 1, len(nextBatch.Transactions))
+		assert.Contains(t, nextBatch.Transactions, []byte("tx2"))
+
+		// Queue should be empty now
+		assert.Equal(t, 0, queue2.Size())
+	})
 }
