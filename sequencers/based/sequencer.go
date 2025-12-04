@@ -156,7 +156,16 @@ func (s *BasedSequencer) createBatchFromQueue(maxBytes uint64) *coresequencer.Ba
 		}
 	}
 
-	return &coresequencer.Batch{Transactions: batch}
+	// Mark all transactions as force-included since based sequencer only pulls from DA
+	forceIncludedMask := make([]bool, len(batch))
+	for i := range forceIncludedMask {
+		forceIncludedMask[i] = true
+	}
+
+	return &coresequencer.Batch{
+		Transactions:      batch,
+		ForceIncludedMask: forceIncludedMask,
+	}
 }
 
 // VerifyBatch verifies a batch of transactions

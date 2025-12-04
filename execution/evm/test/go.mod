@@ -188,4 +188,7 @@ require (
 	sigs.k8s.io/yaml v1.4.0 // indirect
 )
 
-replace github.com/evstack/ev-node/execution/evm => ../
+replace (
+	github.com/evstack/ev-node/core => ../../../core
+	github.com/evstack/ev-node/execution/evm => ../
+)

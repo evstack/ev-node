@@ -39,6 +39,12 @@ type Sequencer interface {
 // Batch is a collection of transactions
 type Batch struct {
 	Transactions [][]byte
+	// ForceIncludedMask indicates which transactions are force-included from DA
+	// If nil, all transactions should be validated (backward compatibility)
+	// If set, ForceIncludedMask[i] == true means Transactions[i] is force-included from DA
+	// and MUST be validated (untrusted source). ForceIncludedMask[i] == false means the
+	// transaction is from mempool and can skip validation (already validated on submission)
+	ForceIncludedMask []bool
 }
 
 // Hash returns the cryptographic hash of the batch
