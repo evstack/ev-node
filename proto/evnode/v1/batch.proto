@@ -7,8 +7,3 @@ option go_package = "github.com/evstack/ev-node/types/pb/evnode/v1";
 message Batch {
   repeated bytes txs = 1;
 }
-
-// Tx is a single transaction.
-message Tx {
-  bytes data = 1;
-}

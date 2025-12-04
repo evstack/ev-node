@@ -27,6 +27,7 @@ var _ coresequencer.Sequencer = (*BasedSequencer)(nil)
 
 // BasedSequencer is a sequencer that only retrieves transactions from the DA layer
 // via the forced inclusion mechanism. It does not accept transactions from the reaper.
+// It uses DA as a queue and only persists a checkpoint of where it is in processing.
 type BasedSequencer struct {
 	fiRetriever ForcedInclusionRetriever
 	da          coreda.DA
@@ -34,8 +35,13 @@ type BasedSequencer struct {
 	genesis     genesis.Genesis
 	logger      zerolog.Logger
 
-	daHeight atomic.Uint64
-	txQueue  *TxQueue
+	daHeight        atomic.Uint64
+	checkpointStore *CheckpointStore
+	checkpoint      *Checkpoint
+
+	// Cached transactions from the current DA block being processed
+	currentBatchTxs [][]byte
+	currentBatchDA  *block.ForcedInclusionEvent
 }
 
 // NewBasedSequencer creates a new based sequencer instance
@@ -47,22 +53,46 @@ func NewBasedSequencer(
 	config config.Config,
 	genesis genesis.Genesis,
 	logger zerolog.Logger,
-	maxQueueSize int,
 ) (*BasedSequencer, error) {
 	bs := &BasedSequencer{
-		fiRetriever: fiRetriever,
-		da:          da,
-		config:      config,
-		genesis:     genesis,
-		logger:      logger.With().Str("component", "based_sequencer").Logger(),
-		txQueue:     NewTxQueue(db, "based_txs", maxQueueSize),
+		fiRetriever:     fiRetriever,
+		da:              da,
+		config:          config,
+		genesis:         genesis,
+		logger:          logger.With().Str("component", "based_sequencer").Logger(),
+		checkpointStore: NewCheckpointStore(db),
 	}
 	bs.SetDAHeight(genesis.DAStartHeight) // will be overridden by the executor
 
+	// Load checkpoint from DB, or initialize if none exists
 	loadCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	if err := bs.txQueue.Load(loadCtx); err != nil {
-		return nil, fmt.Errorf("failed to load transaction queue from DB: %w", err)
+
+	checkpoint, err := bs.checkpointStore.Load(loadCtx)
+	if err != nil {
+		if errors.Is(err, ErrCheckpointNotFound) {
+			// No checkpoint exists, initialize with genesis DA height
+			bs.checkpoint = &Checkpoint{
+				DAHeight: genesis.DAStartHeight,
+				TxIndex:  0,
+			}
+			bs.logger.Info().
+				Uint64("da_height", genesis.DAStartHeight).
+				Msg("initialized checkpoint from genesis")
+		} else {
+			return nil, fmt.Errorf("failed to load checkpoint from DB: %w", err)
+		}
+	} else {
+		bs.checkpoint = checkpoint
+		bs.logger.Info().
+			Uint64("da_height", checkpoint.DAHeight).
+			Uint64("tx_index", checkpoint.TxIndex).
+			Msg("loaded checkpoint from DB")
+	}
+
+	// Clean up any legacy queue data from previous implementation
+	if err := bs.checkpointStore.CleanupLegacyQueue(loadCtx); err != nil {
+		bs.logger.Warn().Err(err).Msg("failed to cleanup legacy queue data, continuing anyway")
 	}
 
 	return bs, nil
@@ -75,38 +105,77 @@ func (s *BasedSequencer) SubmitBatchTxs(ctx context.Context, req coresequencer.S
 	return &coresequencer.SubmitBatchTxsResponse{}, nil
 }
 
-// GetNextBatch retrieves the next batch of transactions from the DA layer
-// It fetches forced inclusion transactions and returns them as the next batch
+// GetNextBatch retrieves the next batch of transactions from the DA layer using the checkpoint
+// It treats DA as a queue and only persists where it is in processing
 func (s *BasedSequencer) GetNextBatch(ctx context.Context, req coresequencer.GetNextBatchRequest) (*coresequencer.GetNextBatchResponse, error) {
-	currentDAHeight := s.GetDAHeight()
+	// If we have no cached transactions or we've consumed all from the current DA block,
+	// fetch the next DA block
+	if len(s.currentBatchTxs) == 0 || s.checkpoint.TxIndex >= uint64(len(s.currentBatchTxs)) {
+		if err := s.fetchNextDABatch(ctx); err != nil {
+			return nil, err
+		}
+	}
 
-	s.logger.Debug().Uint64("da_height", currentDAHeight).Msg("fetching forced inclusion transactions from DA")
+	// Create batch from current position up to MaxBytes
+	batch := s.createBatchFromCheckpoint(req.MaxBytes)
+
+	// Update checkpoint with how many transactions we consumed
+	txCount := uint64(len(batch.Transactions))
+	if txCount > 0 {
+		s.checkpoint.TxIndex += txCount
+
+		// If we've consumed all transactions from this DA block, move to next
+		if s.checkpoint.TxIndex >= uint64(len(s.currentBatchTxs)) {
+			s.checkpoint.DAHeight++
+			s.checkpoint.TxIndex = 0
+			s.currentBatchTxs = nil
+			s.currentBatchDA = nil
+
+			// Update the global DA height
+			s.SetDAHeight(s.checkpoint.DAHeight)
+		}
+
+		// Persist checkpoint
+		if err := s.checkpointStore.Save(ctx, s.checkpoint); err != nil {
+			s.logger.Error().Err(err).Msg("failed to save checkpoint")
+			return nil, fmt.Errorf("failed to save checkpoint: %w", err)
+		}
+	}
+
+	return &coresequencer.GetNextBatchResponse{
+		Batch:     batch,
+		Timestamp: time.Time{}, // TODO(@julienrbrt): we need to use DA block timestamp for determinism
+		BatchData: req.LastBatchData,
+	}, nil
+}
+
+// fetchNextDABatch fetches transactions from the next DA block
+func (s *BasedSequencer) fetchNextDABatch(ctx context.Context) error {
+	currentDAHeight := s.checkpoint.DAHeight
+
+	s.logger.Debug().
+		Uint64("da_height", currentDAHeight).
+		Uint64("tx_index", s.checkpoint.TxIndex).
+		Msg("fetching forced inclusion transactions from DA")
 
 	forcedTxsEvent, err := s.fiRetriever.RetrieveForcedIncludedTxs(ctx, currentDAHeight)
 	if err != nil {
 		// Check if forced inclusion is not configured
 		if errors.Is(err, block.ErrForceInclusionNotConfigured) {
-			return nil, errors.New("forced inclusion not configured")
+			return errors.New("forced inclusion not configured")
 		} else if errors.Is(err, coreda.ErrHeightFromFuture) {
-			// If we get a height from future error, keep the current DA height and return batch
+			// If we get a height from future error, stay at current position
 			// We'll retry the same height on the next call until DA produces that block
 			s.logger.Debug().
 				Uint64("da_height", currentDAHeight).
 				Msg("DA height from future, waiting for DA to produce block")
-		} else {
-			s.logger.Error().Err(err).Uint64("da_height", currentDAHeight).Msg("failed to retrieve forced inclusion transactions")
-			return nil, err
+			return nil
 		}
-	} else {
-		// Update DA height.
-		// If we are in between epochs, we still need to bump the da height.
-		// At the end of an epoch, we need to bump to go to the next epoch.
-		if forcedTxsEvent.EndDaHeight >= currentDAHeight {
-			s.SetDAHeight(forcedTxsEvent.EndDaHeight + 1)
-		}
+		s.logger.Error().Err(err).Uint64("da_height", currentDAHeight).Msg("failed to retrieve forced inclusion transactions")
+		return err
 	}
 
-	// Add forced inclusion transactions to the queue with validation
+	// Validate and filter transactions
 	validTxs := make([][]byte, 0, len(forcedTxsEvent.Txs))
 	skippedTxs := 0
 	for _, tx := range forcedTxsEvent.Txs {
@@ -122,61 +191,51 @@ func (s *BasedSequencer) GetNextBatch(ctx context.Context, req coresequencer.Get
 		validTxs = append(validTxs, tx)
 	}
 
-	// Add valid transactions to the persistent queue
-	if len(validTxs) > 0 {
-		if err := s.txQueue.AddBatch(ctx, validTxs); err != nil {
-			if errors.Is(err, ErrQueueFull) {
-				s.logger.Warn().
-					Int("tx_count", len(validTxs)).
-					Msg("Transaction queue is full, rejecting forced inclusion transactions")
-				return nil, fmt.Errorf("transaction queue is full: %w", err)
-			}
-			return nil, fmt.Errorf("failed to add transactions to queue: %w", err)
-		}
-	}
-
 	s.logger.Info().
 		Int("valid_tx_count", len(validTxs)).
 		Int("skipped_tx_count", skippedTxs).
-		Int("queue_size", s.txQueue.Size()).
 		Uint64("da_height_start", forcedTxsEvent.StartDaHeight).
 		Uint64("da_height_end", forcedTxsEvent.EndDaHeight).
-		Msg("processed forced inclusion transactions from DA")
+		Msg("fetched forced inclusion transactions from DA")
 
-	batch := s.createBatchFromQueue(req.MaxBytes)
+	// Cache the transactions for this DA block
+	s.currentBatchTxs = validTxs
+	s.currentBatchDA = forcedTxsEvent
 
-	return &coresequencer.GetNextBatchResponse{
-		Batch:     batch,
-		Timestamp: time.Time{}, // TODO(@julienrbrt): we need to use DA block timestamp for determinism
-		BatchData: req.LastBatchData,
-	}, nil
+	// If we had a non-zero tx index, we're resuming from a crash mid-block
+	// The transactions starting from that index are what we need
+	if s.checkpoint.TxIndex > 0 {
+		s.logger.Info().
+			Uint64("tx_index", s.checkpoint.TxIndex).
+			Msg("resuming from checkpoint within DA block")
+	}
+
+	return nil
 }
 
-// createBatchFromQueue creates a batch from the transaction queue respecting MaxBytes
-func (s *BasedSequencer) createBatchFromQueue(maxBytes uint64) *coresequencer.Batch {
-	if s.txQueue.Size() == 0 {
+// createBatchFromCheckpoint creates a batch from the current checkpoint position respecting MaxBytes
+func (s *BasedSequencer) createBatchFromCheckpoint(maxBytes uint64) *coresequencer.Batch {
+	if len(s.currentBatchTxs) == 0 || s.checkpoint.TxIndex >= uint64(len(s.currentBatchTxs)) {
 		return &coresequencer.Batch{Transactions: nil}
 	}
 
-	// Peek at transactions without removing them
-	txs := s.txQueue.Peek(maxBytes)
-	if len(txs) == 0 {
-		return &coresequencer.Batch{Transactions: nil}
+	var result [][]byte
+	var totalBytes uint64
+
+	// Start from the checkpoint index
+	for i := s.checkpoint.TxIndex; i < uint64(len(s.currentBatchTxs)); i++ {
+		tx := s.currentBatchTxs[i]
+		txSize := uint64(len(tx))
+
+		if totalBytes+txSize > maxBytes {
+			break
+		}
+
+		result = append(result, tx)
+		totalBytes += txSize
 	}
 
-	// Consume the transactions we're including in the batch
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-
-	if err := s.txQueue.Consume(ctx, len(txs)); err != nil {
-		s.logger.Error().Err(err).
-			Int("tx_count", len(txs)).
-			Msg("failed to consume transactions from queue")
-		// Return empty batch on error to avoid data inconsistency
-		return &coresequencer.Batch{Transactions: nil}
-	}
-
-	return &coresequencer.Batch{Transactions: txs}
+	return &coresequencer.Batch{Transactions: result}
 }
 
 // VerifyBatch verifies a batch of transactions
@@ -189,12 +248,12 @@ func (s *BasedSequencer) VerifyBatch(ctx context.Context, req coresequencer.Veri
 
 // SetDAHeight sets the current DA height for the sequencer
 // This should be called when the sequencer needs to sync to a specific DA height
-func (c *BasedSequencer) SetDAHeight(height uint64) {
-	c.daHeight.Store(height)
-	c.logger.Debug().Uint64("da_height", height).Msg("DA height updated")
+func (s *BasedSequencer) SetDAHeight(height uint64) {
+	s.daHeight.Store(height)
+	s.logger.Debug().Uint64("da_height", height).Msg("DA height updated")
 }
 
 // GetDAHeight returns the current DA height
-func (c *BasedSequencer) GetDAHeight() uint64 {
-	return c.daHeight.Load()
+func (s *BasedSequencer) GetDAHeight() uint64 {
+	return s.daHeight.Load()
 }
