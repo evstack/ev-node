@@ -2,12 +2,10 @@ package based
 
 import (
 	"context"
-	"encoding/binary"
 	"errors"
 	"fmt"
 
 	ds "github.com/ipfs/go-datastore"
-	"github.com/ipfs/go-datastore/query"
 	"google.golang.org/protobuf/proto"
 
 	pb "github.com/evstack/ev-node/types/pb/evnode/v1"
@@ -92,57 +90,4 @@ func (cs *CheckpointStore) Delete(ctx context.Context) error {
 		return fmt.Errorf("failed to delete checkpoint: %w", err)
 	}
 	return nil
-}
-
-// Legacy key format for migration from old queue-based implementation
-// This allows us to detect and clean up old queue data
-func isLegacyQueueKey(key ds.Key) bool {
-	// Old queue keys had format "/based_txs/tx_..."
-	return key.String() != checkpointKey.String() &&
-		len(key.String()) > 0
-}
-
-// CleanupLegacyQueue removes all legacy queue entries from the datastore
-// This should be called during migration from the old queue-based implementation
-func (cs *CheckpointStore) CleanupLegacyQueue(ctx context.Context) error {
-	// Query all keys in the datastore
-	results, err := cs.db.Query(ctx, query.Query{KeysOnly: true})
-	if err != nil {
-		return fmt.Errorf("failed to query datastore: %w", err)
-	}
-	defer results.Close()
-
-	deletedCount := 0
-	for result := range results.Next() {
-		if result.Error != nil {
-			continue
-		}
-
-		key := ds.NewKey(result.Key)
-		// Only delete keys that are not the checkpoint
-		if key.String() != checkpointKey.String() {
-			if err := cs.db.Delete(ctx, key); err != nil {
-				// Log but continue - best effort cleanup
-				continue
-			}
-			deletedCount++
-		}
-	}
-
-	return nil
-}
-
-// Helper function to encode uint64 to bytes for potential future use
-func encodeUint64(v uint64) []byte {
-	b := make([]byte, 8)
-	binary.BigEndian.PutUint64(b, v)
-	return b
-}
-
-// Helper function to decode bytes to uint64 for potential future use
-func decodeUint64(b []byte) (uint64, error) {
-	if len(b) != 8 {
-		return 0, fmt.Errorf("invalid length for uint64: got %d, expected 8", len(b))
-	}
-	return binary.BigEndian.Uint64(b), nil
 }

@@ -69,48 +69,6 @@ func TestCheckpointStore_Delete(t *testing.T) {
 	require.NoError(t, err)
 }
 
-func TestCheckpointStore_CleanupLegacyQueue(t *testing.T) {
-	ctx := context.Background()
-	db := ds.NewMapDatastore()
-	store := NewCheckpointStore(db)
-
-	// Add some legacy queue keys (simulating old implementation)
-	legacyKeys := []string{
-		"/based_txs/tx_0_abc123",
-		"/based_txs/tx_1_def456",
-		"/based_txs/tx_2_ghi789",
-	}
-	for _, key := range legacyKeys {
-		err := db.Put(ctx, ds.NewKey(key), []byte("dummy data"))
-		require.NoError(t, err)
-	}
-
-	// Save a checkpoint (should not be cleaned up)
-	checkpoint := &Checkpoint{
-		DAHeight: 100,
-		TxIndex:  5,
-	}
-	err := store.Save(ctx, checkpoint)
-	require.NoError(t, err)
-
-	// Cleanup legacy queue
-	err = store.CleanupLegacyQueue(ctx)
-	require.NoError(t, err)
-
-	// Verify legacy keys are gone
-	for _, key := range legacyKeys {
-		has, err := db.Has(ctx, ds.NewKey(key))
-		require.NoError(t, err)
-		require.False(t, has, "legacy key should be deleted: %s", key)
-	}
-
-	// Verify checkpoint still exists
-	loaded, err := store.Load(ctx)
-	require.NoError(t, err)
-	require.Equal(t, checkpoint.DAHeight, loaded.DAHeight)
-	require.Equal(t, checkpoint.TxIndex, loaded.TxIndex)
-}
-
 func TestCheckpoint_EdgeCases(t *testing.T) {
 	ctx := context.Background()
 	db := ds.NewMapDatastore()
@@ -170,28 +128,4 @@ func TestCheckpointStore_ConcurrentAccess(t *testing.T) {
 	for i := 0; i < 10; i++ {
 		<-done
 	}
-}
-
-func TestEncodeDecodeUint64(t *testing.T) {
-	testCases := []uint64{
-		0,
-		1,
-		100,
-		1000000,
-		^uint64(0), // max uint64
-	}
-
-	for _, tc := range testCases {
-		encoded := encodeUint64(tc)
-		require.Equal(t, 8, len(encoded), "encoded length should be 8 bytes")
-
-		decoded, err := decodeUint64(encoded)
-		require.NoError(t, err)
-		require.Equal(t, tc, decoded)
-	}
-
-	// Test invalid length
-	_, err := decodeUint64([]byte{1, 2, 3})
-	require.Error(t, err)
-	require.Contains(t, err.Error(), "invalid length")
 }

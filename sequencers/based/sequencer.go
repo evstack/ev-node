@@ -41,7 +41,6 @@ type BasedSequencer struct {
 
 	// Cached transactions from the current DA block being processed
 	currentBatchTxs [][]byte
-	currentBatchDA  *block.ForcedInclusionEvent
 }
 
 // NewBasedSequencer creates a new based sequencer instance
@@ -73,12 +72,9 @@ func NewBasedSequencer(
 		if errors.Is(err, ErrCheckpointNotFound) {
 			// No checkpoint exists, initialize with genesis DA height
 			bs.checkpoint = &Checkpoint{
-				DAHeight: genesis.DAStartHeight,
+				DAHeight: bs.GetDAHeight(),
 				TxIndex:  0,
 			}
-			bs.logger.Info().
-				Uint64("da_height", genesis.DAStartHeight).
-				Msg("initialized checkpoint from genesis")
 		} else {
 			return nil, fmt.Errorf("failed to load checkpoint from DB: %w", err)
 		}
@@ -87,12 +83,7 @@ func NewBasedSequencer(
 		bs.logger.Info().
 			Uint64("da_height", checkpoint.DAHeight).
 			Uint64("tx_index", checkpoint.TxIndex).
-			Msg("loaded checkpoint from DB")
-	}
-
-	// Clean up any legacy queue data from previous implementation
-	if err := bs.checkpointStore.CleanupLegacyQueue(loadCtx); err != nil {
-		bs.logger.Warn().Err(err).Msg("failed to cleanup legacy queue data, continuing anyway")
+			Msg("loaded based sequencer checkpoint from DB")
 	}
 
 	return bs, nil
@@ -129,7 +120,6 @@ func (s *BasedSequencer) GetNextBatch(ctx context.Context, req coresequencer.Get
 			s.checkpoint.DAHeight++
 			s.checkpoint.TxIndex = 0
 			s.currentBatchTxs = nil
-			s.currentBatchDA = nil
 
 			// Update the global DA height
 			s.SetDAHeight(s.checkpoint.DAHeight)
@@ -200,7 +190,6 @@ func (s *BasedSequencer) fetchNextDABatch(ctx context.Context) error {
 
 	// Cache the transactions for this DA block
 	s.currentBatchTxs = validTxs
-	s.currentBatchDA = forcedTxsEvent
 
 	// If we had a non-zero tx index, we're resuming from a crash mid-block
 	// The transactions starting from that index are what we need
@@ -259,7 +248,6 @@ func (s *BasedSequencer) VerifyBatch(ctx context.Context, req coresequencer.Veri
 // This should be called when the sequencer needs to sync to a specific DA height
 func (s *BasedSequencer) SetDAHeight(height uint64) {
 	s.daHeight.Store(height)
-	s.logger.Debug().Uint64("da_height", height).Msg("DA height updated")
 }
 
 // GetDAHeight returns the current DA height

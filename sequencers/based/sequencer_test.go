@@ -379,11 +379,6 @@ func TestBasedSequencer_GetNextBatch_ResumesFromCheckpoint(t *testing.T) {
 	seq.checkpoint.DAHeight = 100
 	seq.checkpoint.TxIndex = 1
 	seq.currentBatchTxs = testBlobs
-	seq.currentBatchDA = &block.ForcedInclusionEvent{
-		StartDaHeight: 100,
-		EndDaHeight:   100,
-		Txs:           testBlobs,
-	}
 
 	req := coresequencer.GetNextBatchRequest{
 		MaxBytes:      1000000,
