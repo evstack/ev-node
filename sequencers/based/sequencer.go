@@ -29,8 +29,6 @@ var _ coresequencer.Sequencer = (*BasedSequencer)(nil)
 // It uses DA as a queue and only persists a checkpoint of where it is in processing.
 type BasedSequencer struct {
 	fiRetriever ForcedInclusionRetriever
-	da          coreda.DA
-	genesis     genesis.Genesis
 	logger      zerolog.Logger
 
 	daHeight        atomic.Uint64
@@ -45,15 +43,12 @@ type BasedSequencer struct {
 func NewBasedSequencer(
 	ctx context.Context,
 	fiRetriever ForcedInclusionRetriever,
-	da coreda.DA,
 	db ds.Batching,
 	genesis genesis.Genesis,
 	logger zerolog.Logger,
 ) (*BasedSequencer, error) {
 	bs := &BasedSequencer{
 		fiRetriever:     fiRetriever,
-		da:              da,
-		genesis:         genesis,
 		logger:          logger.With().Str("component", "based_sequencer").Logger(),
 		checkpointStore: seqcommon.NewCheckpointStore(db, ds.NewKey("/based/checkpoint")),
 	}
@@ -96,11 +91,15 @@ func (s *BasedSequencer) SubmitBatchTxs(ctx context.Context, req coresequencer.S
 // It treats DA as a queue and only persists where it is in processing
 func (s *BasedSequencer) GetNextBatch(ctx context.Context, req coresequencer.GetNextBatchRequest) (*coresequencer.GetNextBatchResponse, error) {
 	// If we have no cached transactions or we've consumed all from the current DA block,
-	// fetch the next DA block
+	// fetch the next DA epoch
+	daHeight := s.GetDAHeight()
 	if len(s.currentBatchTxs) == 0 || s.checkpoint.TxIndex >= uint64(len(s.currentBatchTxs)) {
-		if err := s.fetchNextDABatch(ctx); err != nil {
+		daEndHeight, err := s.fetchNextDAEpoch(ctx)
+		if err != nil {
 			return nil, err
 		}
+
+		daHeight = daEndHeight
 	}
 
 	// Create batch from current position up to MaxBytes
@@ -113,7 +112,7 @@ func (s *BasedSequencer) GetNextBatch(ctx context.Context, req coresequencer.Get
 
 		// If we've consumed all transactions from this DA block, move to next
 		if s.checkpoint.TxIndex >= uint64(len(s.currentBatchTxs)) {
-			s.checkpoint.DAHeight++
+			s.checkpoint.DAHeight = daHeight + 1
 			s.checkpoint.TxIndex = 0
 			s.currentBatchTxs = nil
 
@@ -135,8 +134,8 @@ func (s *BasedSequencer) GetNextBatch(ctx context.Context, req coresequencer.Get
 	}, nil
 }
 
-// fetchNextDABatch fetches transactions from the next DA block
-func (s *BasedSequencer) fetchNextDABatch(ctx context.Context) error {
+// fetchNextDAEpoch fetches transactions from the next DA epoch
+func (s *BasedSequencer) fetchNextDAEpoch(ctx context.Context) (uint64, error) {
 	currentDAHeight := s.checkpoint.DAHeight
 
 	s.logger.Debug().
@@ -148,17 +147,17 @@ func (s *BasedSequencer) fetchNextDABatch(ctx context.Context) error {
 	if err != nil {
 		// Check if forced inclusion is not configured
 		if errors.Is(err, block.ErrForceInclusionNotConfigured) {
-			return errors.New("forced inclusion not configured")
+			return currentDAHeight, block.ErrForceInclusionNotConfigured
 		} else if errors.Is(err, coreda.ErrHeightFromFuture) {
 			// If we get a height from future error, stay at current position
 			// We'll retry the same height on the next call until DA produces that block
 			s.logger.Debug().
 				Uint64("da_height", currentDAHeight).
 				Msg("DA height from future, waiting for DA to produce block")
-			return nil
+			return currentDAHeight, nil
 		}
 		s.logger.Error().Err(err).Uint64("da_height", currentDAHeight).Msg("failed to retrieve forced inclusion transactions")
-		return err
+		return currentDAHeight, err
 	}
 
 	// Validate and filter transactions
@@ -184,7 +183,7 @@ func (s *BasedSequencer) fetchNextDABatch(ctx context.Context) error {
 		Uint64("da_height_end", forcedTxsEvent.EndDaHeight).
 		Msg("fetched forced inclusion transactions from DA")
 
-	// Cache the transactions for this DA block
+	// Cache the transactions for this DA epoch
 	s.currentBatchTxs = validTxs
 
 	// If we had a non-zero tx index, we're resuming from a crash mid-block
@@ -192,10 +191,10 @@ func (s *BasedSequencer) fetchNextDABatch(ctx context.Context) error {
 	if s.checkpoint.TxIndex > 0 {
 		s.logger.Info().
 			Uint64("tx_index", s.checkpoint.TxIndex).
-			Msg("resuming from checkpoint within DA block")
+			Msg("resuming from checkpoint within DA epoch")
 	}
 
-	return nil
+	return forcedTxsEvent.EndDaHeight, nil
 }
 
 // createBatchFromCheckpoint creates a batch from the current checkpoint position respecting MaxBytes

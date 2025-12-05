@@ -19,29 +19,21 @@ import (
 	seqcommon "github.com/evstack/ev-node/sequencers/common"
 )
 
-var (
-	// ErrInvalidId is returned when the chain id is invalid
-	ErrInvalidId = errors.New("invalid chain id")
-)
+// ErrInvalidId is returned when the chain id is invalid
+var ErrInvalidId = errors.New("invalid chain id")
 
 // ForcedInclusionRetriever defines the interface for retrieving forced inclusion transactions from DA
 type ForcedInclusionRetriever interface {
 	RetrieveForcedIncludedTxs(ctx context.Context, daHeight uint64) (*block.ForcedInclusionEvent, error)
 }
 
-// pendingForcedInclusionTx represents a forced inclusion transaction that couldn't fit in the current epoch
-type pendingForcedInclusionTx struct {
-	Data           []byte
-	OriginalHeight uint64
-}
-
 var _ coresequencer.Sequencer = (*Sequencer)(nil)
 
 // Sequencer implements core sequencing interface
 type Sequencer struct {
-	logger zerolog.Logger
-
-	proposer bool
+	fiRetriever ForcedInclusionRetriever
+	logger      zerolog.Logger
+	proposer    bool
 
 	Id []byte
 	da coreda.DA
@@ -50,10 +42,12 @@ type Sequencer struct {
 	queue     *BatchQueue // single queue for immediate availability
 
 	// Forced inclusion support
-	fiRetriever               ForcedInclusionRetriever
-	genesis                   genesis.Genesis
-	daHeight                  atomic.Uint64
-	pendingForcedInclusionTxs []pendingForcedInclusionTx
+	daHeight        atomic.Uint64
+	checkpointStore *seqcommon.CheckpointStore
+	checkpoint      *seqcommon.Checkpoint
+
+	// Cached forced inclusion transactions from the current epoch
+	cachedForcedInclusionTxs [][]byte
 }
 
 // NewSequencer creates a new Single Sequencer
@@ -67,32 +61,53 @@ func NewSequencer(
 	proposer bool,
 	maxQueueSize int,
 	fiRetriever ForcedInclusionRetriever,
-	gen genesis.Genesis,
+	genesis genesis.Genesis,
 ) (*Sequencer, error) {
 	s := &Sequencer{
-		logger:                    logger,
-		da:                        da,
-		batchTime:                 batchTime,
-		Id:                        id,
-		queue:                     NewBatchQueue(db, "batches", maxQueueSize),
-		proposer:                  proposer,
-		fiRetriever:               fiRetriever,
-		genesis:                   gen,
-		pendingForcedInclusionTxs: make([]pendingForcedInclusionTx, 0),
+		logger:          logger,
+		da:              da,
+		batchTime:       batchTime,
+		Id:              id,
+		queue:           NewBatchQueue(db, "batches", maxQueueSize),
+		proposer:        proposer,
+		fiRetriever:     fiRetriever,
+		checkpointStore: seqcommon.NewCheckpointStore(db, ds.NewKey("/single/checkpoint")),
 	}
-	s.SetDAHeight(gen.DAStartHeight) // will be overridden by the executor
+	s.SetDAHeight(genesis.DAStartHeight) // will be overridden by the executor
 
 	loadCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
+
+	// Load batch queue from DB
 	if err := s.queue.Load(loadCtx); err != nil {
 		return nil, fmt.Errorf("failed to load batch queue from DB: %w", err)
 	}
 
-	// No DA submission loop here; handled by central manager
+	// Load checkpoint from DB, or initialize if none exists
+	checkpoint, err := s.checkpointStore.Load(loadCtx)
+	if err != nil {
+		if errors.Is(err, seqcommon.ErrCheckpointNotFound) {
+			// No checkpoint exists, initialize with current DA height
+			s.checkpoint = &seqcommon.Checkpoint{
+				DAHeight: s.GetDAHeight(),
+				TxIndex:  0,
+			}
+		} else {
+			return nil, fmt.Errorf("failed to load checkpoint from DB: %w", err)
+		}
+	} else {
+		s.checkpoint = checkpoint
+		logger.Info().
+			Uint64("da_height", checkpoint.DAHeight).
+			Uint64("tx_index", checkpoint.TxIndex).
+			Msg("loaded single sequencer checkpoint from DB")
+	}
+
 	return s, nil
 }
 
 // SubmitBatchTxs implements sequencing.Sequencer.
+// It adds mempool transactions to a batch.
 func (c *Sequencer) SubmitBatchTxs(ctx context.Context, req coresequencer.SubmitBatchTxsRequest) (*coresequencer.SubmitBatchTxsResponse, error) {
 	if !c.isValid(req.Id) {
 		return nil, ErrInvalidId
@@ -121,51 +136,58 @@ func (c *Sequencer) SubmitBatchTxs(ctx context.Context, req coresequencer.Submit
 }
 
 // GetNextBatch implements sequencing.Sequencer.
+// It gets the next batch of transactions and fetch for forced included transactions.
 func (c *Sequencer) GetNextBatch(ctx context.Context, req coresequencer.GetNextBatchRequest) (*coresequencer.GetNextBatchResponse, error) {
 	if !c.isValid(req.Id) {
 		return nil, ErrInvalidId
 	}
 
-	currentDAHeight := c.GetDAHeight()
-
-	forcedTxsEvent, err := c.fiRetriever.RetrieveForcedIncludedTxs(ctx, currentDAHeight)
-	if err != nil {
-		if errors.Is(err, coreda.ErrHeightFromFuture) {
-			c.logger.Debug().
-				Uint64("da_height", currentDAHeight).
-				Msg("DA height from future, waiting for DA to produce block")
-		} else if !errors.Is(err, block.ErrForceInclusionNotConfigured) {
-			c.logger.Error().Err(err).Uint64("da_height", currentDAHeight).Msg("failed to retrieve forced inclusion transactions")
+	// If we have no cached transactions or we've consumed all from the current cache,
+	// fetch the next DA epoch
+	daHeight := c.GetDAHeight()
+	if len(c.cachedForcedInclusionTxs) == 0 || c.checkpoint.TxIndex >= uint64(len(c.cachedForcedInclusionTxs)) {
+		daEndHeight, err := c.fetchNextDAEpoch(ctx)
+		if err != nil {
+			return nil, err
 		}
 
-		// Still create an empty forced inclusion event
-		forcedTxsEvent = &block.ForcedInclusionEvent{
-			Txs:           [][]byte{},
-			StartDaHeight: currentDAHeight,
-			EndDaHeight:   currentDAHeight,
-		}
-	} else {
-		// Update DA height.
-		// If we are in between epochs, we still need to bump the da height.
-		// At the end of an epoch, we need to bump to go to the next epoch.
-		if forcedTxsEvent.EndDaHeight >= currentDAHeight {
-			c.SetDAHeight(forcedTxsEvent.EndDaHeight + 1)
-		}
+		daHeight = daEndHeight
 	}
 
-	// Always try to process forced inclusion transactions (including pending from previous epochs)
-	forcedTxs := c.processForcedInclusionTxs(forcedTxsEvent, req.MaxBytes)
-
-	c.logger.Debug().
-		Int("tx_count", len(forcedTxs)).
-		Uint64("da_height_start", forcedTxsEvent.StartDaHeight).
-		Uint64("da_height_end", forcedTxsEvent.EndDaHeight).
-		Msg("retrieved forced inclusion transactions from DA")
+	// Process forced inclusion transactions from checkpoint position
+	forcedTxs := c.processForcedInclusionTxsFromCheckpoint(req.MaxBytes)
 
 	// Calculate size used by forced inclusion transactions
 	forcedTxsSize := 0
 	for _, tx := range forcedTxs {
 		forcedTxsSize += len(tx)
+	}
+
+	// Update checkpoint after consuming forced inclusion transactions
+	if len(forcedTxs) > 0 {
+		c.checkpoint.TxIndex += uint64(len(forcedTxs))
+
+		// If we've consumed all transactions from cache, move to next DA height
+		if c.checkpoint.TxIndex >= uint64(len(c.cachedForcedInclusionTxs)) {
+			c.checkpoint.DAHeight = daHeight + 1
+			c.checkpoint.TxIndex = 0
+			c.cachedForcedInclusionTxs = nil
+
+			// Update the global DA height
+			c.SetDAHeight(c.checkpoint.DAHeight)
+		}
+
+		// Persist checkpoint
+		if err := c.checkpointStore.Save(ctx, c.checkpoint); err != nil {
+			c.logger.Error().Err(err).Msg("failed to save checkpoint")
+			return nil, fmt.Errorf("failed to save checkpoint: %w", err)
+		}
+
+		c.logger.Debug().
+			Int("forced_tx_count", len(forcedTxs)).
+			Uint64("checkpoint_da_height", c.checkpoint.DAHeight).
+			Uint64("checkpoint_tx_index", c.checkpoint.TxIndex).
+			Msg("processed forced inclusion transactions and updated checkpoint")
 	}
 
 	batch, err := c.queue.Next(ctx)
@@ -237,7 +259,6 @@ func (c *Sequencer) VerifyBatch(ctx context.Context, req coresequencer.VerifyBat
 	}
 
 	if !c.proposer {
-
 		proofs, err := c.da.GetProofs(ctx, req.BatchData, c.Id)
 		if err != nil {
 			return nil, fmt.Errorf("failed to get proofs: %w", err)
@@ -255,6 +276,7 @@ func (c *Sequencer) VerifyBatch(ctx context.Context, req coresequencer.VerifyBat
 		}
 		return &coresequencer.VerifyBatchResponse{Status: true}, nil
 	}
+
 	return &coresequencer.VerifyBatchResponse{Status: true}, nil
 }
 
@@ -266,7 +288,6 @@ func (c *Sequencer) isValid(Id []byte) bool {
 // This should be called when the sequencer needs to sync to a specific DA height
 func (c *Sequencer) SetDAHeight(height uint64) {
 	c.daHeight.Store(height)
-	c.logger.Debug().Uint64("da_height", height).Msg("DA height updated")
 }
 
 // GetDAHeight returns the current DA height
@@ -274,95 +295,87 @@ func (c *Sequencer) GetDAHeight() uint64 {
 	return c.daHeight.Load()
 }
 
-// processForcedInclusionTxs processes forced inclusion transactions with size validation and pending queue management
-func (c *Sequencer) processForcedInclusionTxs(event *block.ForcedInclusionEvent, maxBytes uint64) [][]byte {
-	currentSize := 0
-	var newPendingTxs []pendingForcedInclusionTx
-	var validatedTxs [][]byte
+// fetchNextDAEpoch fetches transactions from the next DA epoch using checkpoint
+func (c *Sequencer) fetchNextDAEpoch(ctx context.Context) (uint64, error) {
+	currentDAHeight := c.checkpoint.DAHeight
 
-	// First, process any pending transactions from previous epochs
-	for _, pendingTx := range c.pendingForcedInclusionTxs {
-		txSize := seqcommon.GetBlobSize(pendingTx.Data)
+	c.logger.Debug().
+		Uint64("da_height", currentDAHeight).
+		Uint64("tx_index", c.checkpoint.TxIndex).
+		Msg("fetching forced inclusion transactions from DA")
 
-		if !seqcommon.ValidateBlobSize(pendingTx.Data) {
-			c.logger.Warn().
-				Uint64("original_height", pendingTx.OriginalHeight).
-				Int("blob_size", txSize).
-				Msg("pending forced inclusion blob exceeds absolute maximum size - skipping")
-			continue
-		}
-
-		if seqcommon.WouldExceedCumulativeSize(currentSize, txSize, maxBytes) {
+	forcedTxsEvent, err := c.fiRetriever.RetrieveForcedIncludedTxs(ctx, currentDAHeight)
+	if err != nil {
+		if errors.Is(err, coreda.ErrHeightFromFuture) {
 			c.logger.Debug().
-				Uint64("original_height", pendingTx.OriginalHeight).
-				Int("current_size", currentSize).
-				Int("blob_size", txSize).
-				Msg("pending blob would exceed max size for this epoch - deferring again")
-			newPendingTxs = append(newPendingTxs, pendingTx)
-			continue
+				Uint64("da_height", currentDAHeight).
+				Msg("DA height from future, waiting for DA to produce block")
+			return currentDAHeight, nil
+		} else if errors.Is(err, block.ErrForceInclusionNotConfigured) {
+			// Forced inclusion not configured, continue without forced txs
+			c.cachedForcedInclusionTxs = [][]byte{}
+			return currentDAHeight, nil
 		}
-
-		validatedTxs = append(validatedTxs, pendingTx.Data)
-		currentSize += txSize
-
-		c.logger.Debug().
-			Uint64("original_height", pendingTx.OriginalHeight).
-			Int("blob_size", txSize).
-			Int("current_size", currentSize).
-			Msg("processed pending forced inclusion transaction")
+		c.logger.Error().Err(err).Uint64("da_height", currentDAHeight).Msg("failed to retrieve forced inclusion transactions")
+		return currentDAHeight, err
 	}
 
-	// Now process new transactions from this epoch
-	for _, tx := range event.Txs {
-		txSize := seqcommon.GetBlobSize(tx)
-
+	// Validate and filter transactions
+	validTxs := make([][]byte, 0, len(forcedTxsEvent.Txs))
+	skippedTxs := 0
+	for _, tx := range forcedTxsEvent.Txs {
 		if !seqcommon.ValidateBlobSize(tx) {
 			c.logger.Warn().
-				Uint64("da_height", event.StartDaHeight).
-				Int("blob_size", txSize).
+				Uint64("da_height", forcedTxsEvent.StartDaHeight).
+				Int("blob_size", len(tx)).
 				Msg("forced inclusion blob exceeds absolute maximum size - skipping")
+			skippedTxs++
 			continue
 		}
+		validTxs = append(validTxs, tx)
+	}
 
-		if seqcommon.WouldExceedCumulativeSize(currentSize, txSize, maxBytes) {
-			c.logger.Debug().
-				Uint64("da_height", event.StartDaHeight).
-				Int("current_size", currentSize).
-				Int("blob_size", txSize).
-				Msg("blob would exceed max size for this epoch - deferring to pending queue")
+	c.logger.Info().
+		Int("valid_tx_count", len(validTxs)).
+		Int("skipped_tx_count", skippedTxs).
+		Uint64("da_height_start", forcedTxsEvent.StartDaHeight).
+		Uint64("da_height_end", forcedTxsEvent.EndDaHeight).
+		Msg("fetched forced inclusion transactions from DA")
 
-			// Store for next call
-			newPendingTxs = append(newPendingTxs, pendingForcedInclusionTx{
-				Data:           tx,
-				OriginalHeight: event.StartDaHeight,
-			})
-			continue
+	// Cache the transactions
+	c.cachedForcedInclusionTxs = validTxs
+
+	// If we had a non-zero tx index, we're resuming from a crash mid-processing
+	if c.checkpoint.TxIndex > 0 {
+		c.logger.Info().
+			Uint64("tx_index", c.checkpoint.TxIndex).
+			Msg("resuming from checkpoint within forced inclusion batch")
+	}
+
+	return forcedTxsEvent.EndDaHeight, nil
+}
+
+// processForcedInclusionTxsFromCheckpoint processes forced inclusion transactions from checkpoint position
+func (c *Sequencer) processForcedInclusionTxsFromCheckpoint(maxBytes uint64) [][]byte {
+	if len(c.cachedForcedInclusionTxs) == 0 || c.checkpoint.TxIndex >= uint64(len(c.cachedForcedInclusionTxs)) {
+		return [][]byte{}
+	}
+
+	var result [][]byte
+	var totalBytes uint64
+
+	// Start from the checkpoint index
+	for i := c.checkpoint.TxIndex; i < uint64(len(c.cachedForcedInclusionTxs)); i++ {
+		tx := c.cachedForcedInclusionTxs[i]
+		txSize := uint64(len(tx))
+
+		if totalBytes+txSize > maxBytes {
+			break
 		}
 
-		validatedTxs = append(validatedTxs, tx)
-		currentSize += txSize
-
-		c.logger.Debug().
-			Int("blob_size", txSize).
-			Int("current_size", currentSize).
-			Msg("processed forced inclusion transaction")
+		result = append(result, tx)
+		totalBytes += txSize
 	}
 
-	// Update pending queue
-	c.pendingForcedInclusionTxs = newPendingTxs
-	if len(newPendingTxs) > 0 {
-		c.logger.Info().
-			Int("new_pending_count", len(newPendingTxs)).
-			Msg("stored pending forced inclusion transactions for next epoch")
-	}
-
-	if len(validatedTxs) > 0 {
-		c.logger.Info().
-			Int("processed_tx_count", len(validatedTxs)).
-			Int("pending_tx_count", len(newPendingTxs)).
-			Int("current_size", currentSize).
-			Msg("completed processing forced inclusion transactions")
-	}
-
-	return validatedTxs
+	return result
 }

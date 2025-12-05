@@ -90,7 +90,7 @@ func createTestSequencer(t *testing.T, mockDA *MockDA, cfg config.Config, gen ge
 	// Create in-memory datastore
 	db := syncds.MutexWrap(ds.NewMapDatastore())
 
-	seq, err := NewBasedSequencer(context.Background(), fiRetriever, mockDA, db, gen, zerolog.Nop())
+	seq, err := NewBasedSequencer(context.Background(), fiRetriever, db, gen, zerolog.Nop())
 	require.NoError(t, err)
 	return seq
 }
@@ -223,7 +223,7 @@ func TestBasedSequencer_GetNextBatch_NotConfigured(t *testing.T) {
 	// Create in-memory datastore
 	db := syncds.MutexWrap(ds.NewMapDatastore())
 
-	seq, err := NewBasedSequencer(context.Background(), fiRetriever, mockDA, db, gen, zerolog.Nop())
+	seq, err := NewBasedSequencer(context.Background(), fiRetriever, db, gen, zerolog.Nop())
 	require.NoError(t, err)
 
 	req := coresequencer.GetNextBatchRequest{
@@ -580,7 +580,7 @@ func TestBasedSequencer_CheckpointPersistence(t *testing.T) {
 	daClient := block.NewDAClient(mockDA, cfg, zerolog.Nop())
 	fiRetriever := block.NewForcedInclusionRetriever(daClient, gen, zerolog.Nop())
 
-	seq1, err := NewBasedSequencer(context.Background(), fiRetriever, mockDA, db, gen, zerolog.Nop())
+	seq1, err := NewBasedSequencer(context.Background(), fiRetriever, db, gen, zerolog.Nop())
 	require.NoError(t, err)
 
 	req := coresequencer.GetNextBatchRequest{
@@ -595,7 +595,7 @@ func TestBasedSequencer_CheckpointPersistence(t *testing.T) {
 	assert.Equal(t, 2, len(resp.Batch.Transactions))
 
 	// Create a new sequencer with the same datastore (simulating restart)
-	seq2, err := NewBasedSequencer(context.Background(), fiRetriever, mockDA, db, gen, zerolog.Nop())
+	seq2, err := NewBasedSequencer(context.Background(), fiRetriever, db, gen, zerolog.Nop())
 	require.NoError(t, err)
 
 	// Checkpoint should be loaded from DB
