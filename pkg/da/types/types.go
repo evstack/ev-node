@@ -1,8 +1,8 @@
-package da
+package datypes
 
 import "time"
 
-// StatusCode mirrors DA status codes used in Celestia blob client.
+// StatusCode mirrors the blob RPC status codes shared with block/internal/da.
 type StatusCode uint64
 
 // Data Availability return codes.

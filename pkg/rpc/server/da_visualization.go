@@ -11,7 +11,8 @@ import (
 	"sync"
 	"time"
 
-	coreda "github.com/evstack/ev-node/core/da"
+	"github.com/evstack/ev-node/pkg/blob"
+	datypes "github.com/evstack/ev-node/pkg/da/types"
 	"github.com/rs/zerolog"
 )
 
@@ -34,15 +35,20 @@ type DASubmissionInfo struct {
 
 // DAVisualizationServer provides DA layer visualization endpoints
 type DAVisualizationServer struct {
-	da           coreda.DA
+	da           DAVizClient
 	logger       zerolog.Logger
 	submissions  []DASubmissionInfo
 	mutex        sync.RWMutex
 	isAggregator bool
 }
 
+// DAVizClient is the minimal DA surface needed by the visualization server.
+type DAVizClient interface {
+	Get(ctx context.Context, ids []datypes.ID, namespace []byte) ([]datypes.Blob, error)
+}
+
 // NewDAVisualizationServer creates a new DA visualization server
-func NewDAVisualizationServer(da coreda.DA, logger zerolog.Logger, isAggregator bool) *DAVisualizationServer {
+func NewDAVisualizationServer(da DAVizClient, logger zerolog.Logger, isAggregator bool) *DAVisualizationServer {
 	return &DAVisualizationServer{
 		da:           da,
 		logger:       logger,
@@ -53,7 +59,7 @@ func NewDAVisualizationServer(da coreda.DA, logger zerolog.Logger, isAggregator 
 
 // RecordSubmission records a DA submission for visualization
 // Only keeps the last 100 submissions in memory for the dashboard display
-func (s *DAVisualizationServer) RecordSubmission(result *coreda.ResultSubmit, gasPrice float64, numBlobs uint64, namespace []byte) {
+func (s *DAVisualizationServer) RecordSubmission(result *datypes.ResultSubmit, gasPrice float64, numBlobs uint64, namespace []byte) {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
 
@@ -85,27 +91,27 @@ func (s *DAVisualizationServer) RecordSubmission(result *coreda.ResultSubmit, ga
 }
 
 // getStatusCodeString converts status code to human-readable string
-func (s *DAVisualizationServer) getStatusCodeString(code coreda.StatusCode) string {
+func (s *DAVisualizationServer) getStatusCodeString(code datypes.StatusCode) string {
 	switch code {
-	case coreda.StatusSuccess:
+	case datypes.StatusSuccess:
 		return "Success"
-	case coreda.StatusNotFound:
+	case datypes.StatusNotFound:
 		return "Not Found"
-	case coreda.StatusNotIncludedInBlock:
+	case datypes.StatusNotIncludedInBlock:
 		return "Not Included In Block"
-	case coreda.StatusAlreadyInMempool:
+	case datypes.StatusAlreadyInMempool:
 		return "Already In Mempool"
-	case coreda.StatusTooBig:
+	case datypes.StatusTooBig:
 		return "Too Big"
-	case coreda.StatusContextDeadline:
+	case datypes.StatusContextDeadline:
 		return "Context Deadline"
-	case coreda.StatusError:
+	case datypes.StatusError:
 		return "Error"
-	case coreda.StatusIncorrectAccountSequence:
+	case datypes.StatusIncorrectAccountSequence:
 		return "Incorrect Account Sequence"
-	case coreda.StatusContextCanceled:
+	case datypes.StatusContextCanceled:
 		return "Context Canceled"
-	case coreda.StatusHeightFromFuture:
+	case datypes.StatusHeightFromFuture:
 		return "Height From Future"
 	default:
 		return "Unknown"
@@ -179,11 +185,11 @@ func (s *DAVisualizationServer) handleDABlobDetails(w http.ResponseWriter, r *ht
 	// 1. Check query parameter first
 	nsParam := r.URL.Query().Get("namespace")
 	if nsParam != "" {
-		if ns, err := coreda.ParseHexNamespace(nsParam); err == nil {
+		if ns, err := datypes.ParseHexNamespace(nsParam); err == nil {
 			namespace = ns.Bytes()
 			found = true
 		} else {
-			ns := coreda.NamespaceFromString(nsParam)
+			ns := datypes.NamespaceFromString(nsParam)
 			namespace = ns.Bytes()
 			found = true
 		}
@@ -216,7 +222,7 @@ func (s *DAVisualizationServer) handleDABlobDetails(w http.ResponseWriter, r *ht
 		return
 	}
 
-	blobs, err := s.da.Get(ctx, []coreda.ID{id}, namespace)
+	blobs, err := s.da.Get(ctx, []datypes.ID{id}, namespace)
 	if err != nil {
 		s.logger.Error().Err(err).Str("blob_id", blobID).Msg("Failed to retrieve blob from DA")
 		http.Error(w, fmt.Sprintf("Failed to retrieve blob: %v", err), http.StatusInternalServerError)
@@ -229,7 +235,7 @@ func (s *DAVisualizationServer) handleDABlobDetails(w http.ResponseWriter, r *ht
 	}
 
 	// Parse the blob ID to extract height and commitment
-	height, commitment, err := coreda.SplitID(id)
+	height, commitment := blob.SplitID(id)
 	if err != nil {
 		s.logger.Error().Err(err).Str("blob_id", blobID).Msg("Failed to split blob ID")
 	}

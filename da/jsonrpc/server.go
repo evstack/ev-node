@@ -10,7 +10,7 @@ import (
 	"github.com/filecoin-project/go-jsonrpc"
 	"github.com/rs/zerolog"
 
-	"github.com/evstack/ev-node/core/da"
+	datypes "github.com/evstack/ev-node/pkg/da/types"
 )
 
 // Server is a jsonrpc service that can serve the DA interface
@@ -19,61 +19,72 @@ type Server struct {
 	srv      *http.Server
 	rpc      *jsonrpc.RPCServer
 	listener net.Listener
-	daImpl   da.DA
+	daImpl   DA
 
 	started atomic.Bool
+}
+
+// DA captures the minimal surface served over RPC using datypes.
+type DA interface {
+	Get(ctx context.Context, ids []datypes.ID, namespace []byte) ([]datypes.Blob, error)
+	GetIDs(ctx context.Context, height uint64, namespace []byte) (*datypes.GetIDsResult, error)
+	GetProofs(ctx context.Context, ids []datypes.ID, namespace []byte) ([]datypes.Proof, error)
+	Commit(ctx context.Context, blobs []datypes.Blob, namespace []byte) ([]datypes.Commitment, error)
+	Validate(ctx context.Context, ids []datypes.ID, proofs []datypes.Proof, namespace []byte) ([]bool, error)
+	Submit(ctx context.Context, blobs []datypes.Blob, gasPrice float64, namespace []byte) ([]datypes.ID, error)
+	SubmitWithOptions(ctx context.Context, blobs []datypes.Blob, gasPrice float64, namespace []byte, options []byte) ([]datypes.ID, error)
 }
 
 // serverInternalAPI provides the actual RPC methods.
 type serverInternalAPI struct {
 	logger zerolog.Logger
-	daImpl da.DA
+	daImpl DA
 }
 
 // Get implements the RPC method.
-func (s *serverInternalAPI) Get(ctx context.Context, ids []da.ID, ns []byte) ([]da.Blob, error) {
+func (s *serverInternalAPI) Get(ctx context.Context, ids []datypes.ID, ns []byte) ([]datypes.Blob, error) {
 	s.logger.Debug().Int("num_ids", len(ids)).Str("namespace", string(ns)).Msg("RPC server: Get called")
 	return s.daImpl.Get(ctx, ids, ns)
 }
 
 // GetIDs implements the RPC method.
-func (s *serverInternalAPI) GetIDs(ctx context.Context, height uint64, ns []byte) (*da.GetIDsResult, error) {
+func (s *serverInternalAPI) GetIDs(ctx context.Context, height uint64, ns []byte) (*datypes.GetIDsResult, error) {
 	s.logger.Debug().Uint64("height", height).Str("namespace", string(ns)).Msg("RPC server: GetIDs called")
 	return s.daImpl.GetIDs(ctx, height, ns)
 }
 
 // GetProofs implements the RPC method.
-func (s *serverInternalAPI) GetProofs(ctx context.Context, ids []da.ID, ns []byte) ([]da.Proof, error) {
+func (s *serverInternalAPI) GetProofs(ctx context.Context, ids []datypes.ID, ns []byte) ([]datypes.Proof, error) {
 	s.logger.Debug().Int("num_ids", len(ids)).Str("namespace", string(ns)).Msg("RPC server: GetProofs called")
 	return s.daImpl.GetProofs(ctx, ids, ns)
 }
 
 // Commit implements the RPC method.
-func (s *serverInternalAPI) Commit(ctx context.Context, blobs []da.Blob, ns []byte) ([]da.Commitment, error) {
+func (s *serverInternalAPI) Commit(ctx context.Context, blobs []datypes.Blob, ns []byte) ([]datypes.Commitment, error) {
 	s.logger.Debug().Int("num_blobs", len(blobs)).Str("namespace", string(ns)).Msg("RPC server: Commit called")
 	return s.daImpl.Commit(ctx, blobs, ns)
 }
 
 // Validate implements the RPC method.
-func (s *serverInternalAPI) Validate(ctx context.Context, ids []da.ID, proofs []da.Proof, ns []byte) ([]bool, error) {
+func (s *serverInternalAPI) Validate(ctx context.Context, ids []datypes.ID, proofs []datypes.Proof, ns []byte) ([]bool, error) {
 	s.logger.Debug().Int("num_ids", len(ids)).Int("num_proofs", len(proofs)).Str("namespace", string(ns)).Msg("RPC server: Validate called")
 	return s.daImpl.Validate(ctx, ids, proofs, ns)
 }
 
 // Submit implements the RPC method. This is the primary submit method which includes options.
-func (s *serverInternalAPI) Submit(ctx context.Context, blobs []da.Blob, gasPrice float64, ns []byte) ([]da.ID, error) {
+func (s *serverInternalAPI) Submit(ctx context.Context, blobs []datypes.Blob, gasPrice float64, ns []byte) ([]datypes.ID, error) {
 	s.logger.Debug().Int("num_blobs", len(blobs)).Float64("gas_price", gasPrice).Str("namespace", string(ns)).Msg("RPC server: Submit called")
 	return s.daImpl.Submit(ctx, blobs, gasPrice, ns)
 }
 
 // SubmitWithOptions implements the RPC method.
-func (s *serverInternalAPI) SubmitWithOptions(ctx context.Context, blobs []da.Blob, gasPrice float64, ns []byte, options []byte) ([]da.ID, error) {
+func (s *serverInternalAPI) SubmitWithOptions(ctx context.Context, blobs []datypes.Blob, gasPrice float64, ns []byte, options []byte) ([]datypes.ID, error) {
 	s.logger.Debug().Int("num_blobs", len(blobs)).Float64("gas_price", gasPrice).Str("namespace", string(ns)).Str("options", string(options)).Msg("RPC server: SubmitWithOptions called")
 	return s.daImpl.SubmitWithOptions(ctx, blobs, gasPrice, ns, options)
 }
 
 // NewServer accepts the host address port and the DA implementation to serve as a jsonrpc service
-func NewServer(logger zerolog.Logger, address, port string, daImplementation da.DA) *Server {
+func NewServer(logger zerolog.Logger, address, port string, daImplementation DA) *Server {
 	rpc := jsonrpc.NewServer(jsonrpc.WithServerErrors(getKnownErrorsMapping()))
 	srv := &Server{
 		rpc:    rpc,

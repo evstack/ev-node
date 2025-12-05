@@ -9,8 +9,8 @@ import (
 	"testing"
 	"time"
 
-	coreda "github.com/evstack/ev-node/core/da"
 	"github.com/evstack/ev-node/pkg/config"
+	coreda "github.com/evstack/ev-node/pkg/da/types"
 	"github.com/evstack/ev-node/test/mocks"
 	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/assert"

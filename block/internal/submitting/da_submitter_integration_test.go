@@ -16,8 +16,8 @@ import (
 	"github.com/evstack/ev-node/block/internal/cache"
 	"github.com/evstack/ev-node/block/internal/common"
 	"github.com/evstack/ev-node/block/internal/da"
-	coreda "github.com/evstack/ev-node/core/da"
 	"github.com/evstack/ev-node/pkg/config"
+	datypes "github.com/evstack/ev-node/pkg/da/types"
 	"github.com/evstack/ev-node/pkg/genesis"
 	"github.com/evstack/ev-node/pkg/signer/noop"
 	"github.com/evstack/ev-node/pkg/store"
@@ -84,7 +84,7 @@ func TestDASubmitter_SubmitHeadersAndData_MarksInclusionAndUpdatesLastSubmitted(
 	require.NoError(t, batch2.Commit())
 
 	// Dummy DA
-	dummyDA := coreda.NewDummyDA(10_000_000, 10*time.Millisecond)
+	dummyDA := datypes.NewDummyDA(10_000_000, 10*time.Millisecond)
 
 	// Create DA submitter
 	daClient := da.NewClient(da.Config{

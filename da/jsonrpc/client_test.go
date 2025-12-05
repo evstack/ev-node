@@ -7,7 +7,7 @@ import (
 	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/assert"
 
-	"github.com/evstack/ev-node/core/da"
+	datypes "github.com/evstack/ev-node/pkg/da/types"
 )
 
 // TestSubmitWithOptions_SizeValidation tests the corrected behavior of SubmitWithOptions
@@ -19,7 +19,7 @@ func TestSubmitWithOptions_SizeValidation(t *testing.T) {
 	testCases := []struct {
 		name          string
 		maxBlobSize   uint64
-		inputBlobs    []da.Blob
+		inputBlobs    []datypes.Blob
 		expectError   bool
 		expectedError error
 		description   string
@@ -27,54 +27,54 @@ func TestSubmitWithOptions_SizeValidation(t *testing.T) {
 		{
 			name:        "Empty input",
 			maxBlobSize: 1000,
-			inputBlobs:  []da.Blob{},
+			inputBlobs:  []datypes.Blob{},
 			expectError: false,
 			description: "Empty input should return empty result without error",
 		},
 		{
 			name:        "Single blob within limit",
 			maxBlobSize: 1000,
-			inputBlobs:  []da.Blob{make([]byte, 500)},
+			inputBlobs:  []datypes.Blob{make([]byte, 500)},
 			expectError: false,
 			description: "Single blob smaller than limit should succeed",
 		},
 		{
 			name:          "Single blob exceeds limit",
 			maxBlobSize:   1000,
-			inputBlobs:    []da.Blob{make([]byte, 1500)},
+			inputBlobs:    []datypes.Blob{make([]byte, 1500)},
 			expectError:   true,
-			expectedError: da.ErrBlobSizeOverLimit,
+			expectedError: datypes.ErrBlobSizeOverLimit,
 			description:   "Single blob larger than limit should fail",
 		},
 		{
 			name:        "Multiple blobs within limit",
 			maxBlobSize: 1000,
-			inputBlobs:  []da.Blob{make([]byte, 300), make([]byte, 400), make([]byte, 200)},
+			inputBlobs:  []datypes.Blob{make([]byte, 300), make([]byte, 400), make([]byte, 200)},
 			expectError: false,
 			description: "Multiple blobs totaling less than limit should succeed",
 		},
 		{
 			name:          "Multiple blobs exceed total limit",
 			maxBlobSize:   1000,
-			inputBlobs:    []da.Blob{make([]byte, 400), make([]byte, 400), make([]byte, 400)},
+			inputBlobs:    []datypes.Blob{make([]byte, 400), make([]byte, 400), make([]byte, 400)},
 			expectError:   true,
-			expectedError: da.ErrBlobSizeOverLimit,
+			expectedError: datypes.ErrBlobSizeOverLimit,
 			description:   "Multiple blobs totaling more than limit should fail completely",
 		},
 		{
 			name:          "Mixed: some blobs fit, total exceeds limit",
 			maxBlobSize:   1000,
-			inputBlobs:    []da.Blob{make([]byte, 100), make([]byte, 200), make([]byte, 800)},
+			inputBlobs:    []datypes.Blob{make([]byte, 100), make([]byte, 200), make([]byte, 800)},
 			expectError:   true,
-			expectedError: da.ErrBlobSizeOverLimit,
+			expectedError: datypes.ErrBlobSizeOverLimit,
 			description:   "Should fail completely, not partially submit blobs that fit",
 		},
 		{
 			name:          "One blob exceeds limit individually",
 			maxBlobSize:   1000,
-			inputBlobs:    []da.Blob{make([]byte, 300), make([]byte, 1500), make([]byte, 200)},
+			inputBlobs:    []datypes.Blob{make([]byte, 300), make([]byte, 1500), make([]byte, 200)},
 			expectError:   true,
-			expectedError: da.ErrBlobSizeOverLimit,
+			expectedError: datypes.ErrBlobSizeOverLimit,
 			description:   "Should fail if any individual blob exceeds limit",
 		},
 	}
@@ -90,10 +90,10 @@ func TestSubmitWithOptions_SizeValidation(t *testing.T) {
 			// Mock the Internal.SubmitWithOptions to always succeed if called
 			// This tests that our validation logic works before reaching the actual RPC call
 			mockCalled := false
-			api.Internal.SubmitWithOptions = func(ctx context.Context, blobs []da.Blob, gasPrice float64, namespace []byte, options []byte) ([]da.ID, error) {
+			api.Internal.SubmitWithOptions = func(ctx context.Context, blobs []datypes.Blob, gasPrice float64, namespace []byte, options []byte) ([]datypes.ID, error) {
 				mockCalled = true
 				// Return mock IDs for successful submissions
-				ids := make([]da.ID, len(blobs))
+				ids := make([]datypes.ID, len(blobs))
 				for i := range blobs {
 					ids[i] = []byte{byte(i)}
 				}
