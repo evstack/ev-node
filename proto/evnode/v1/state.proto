@@ -27,8 +27,3 @@ message SequencerDACheckpoint {
   // Index of the next transaction to process within the DA block's forced inclusion batch
   uint64 tx_index = 2;
 }
-
-// Tx represents a transaction with its raw data
-message Tx {
-  bytes data = 1;
-}
