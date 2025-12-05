@@ -71,10 +71,14 @@ func NewBasedSequencer(
 		}
 	} else {
 		bs.checkpoint = checkpoint
-		bs.logger.Info().
-			Uint64("da_height", checkpoint.DAHeight).
-			Uint64("tx_index", checkpoint.TxIndex).
-			Msg("loaded based sequencer checkpoint from DB")
+		// If we had a non-zero tx index, we're resuming from a crash mid-block
+		// The transactions starting from that index are what we need
+		if checkpoint.TxIndex > 0 {
+			bs.logger.Debug().
+				Uint64("tx_index", checkpoint.TxIndex).
+				Uint64("da_height", checkpoint.DAHeight).
+				Msg("resuming from checkpoint within DA epoch")
+		}
 	}
 
 	return bs, nil
@@ -122,7 +126,6 @@ func (s *BasedSequencer) GetNextBatch(ctx context.Context, req coresequencer.Get
 
 		// Persist checkpoint
 		if err := s.checkpointStore.Save(ctx, s.checkpoint); err != nil {
-			s.logger.Error().Err(err).Msg("failed to save checkpoint")
 			return nil, fmt.Errorf("failed to save checkpoint: %w", err)
 		}
 	}
@@ -156,8 +159,7 @@ func (s *BasedSequencer) fetchNextDAEpoch(ctx context.Context, maxBytes uint64) 
 				Msg("DA height from future, waiting for DA to produce block")
 			return currentDAHeight, nil
 		}
-		s.logger.Error().Err(err).Uint64("da_height", currentDAHeight).Msg("failed to retrieve forced inclusion transactions")
-		return currentDAHeight, err
+		return currentDAHeight, fmt.Errorf("failed to retrieve forced inclusion transactions: %w", err)
 	}
 
 	// Validate and filter transactions
@@ -186,14 +188,6 @@ func (s *BasedSequencer) fetchNextDAEpoch(ctx context.Context, maxBytes uint64) 
 
 	// Cache the transactions for this DA epoch
 	s.currentBatchTxs = validTxs
-
-	// If we had a non-zero tx index, we're resuming from a crash mid-block
-	// The transactions starting from that index are what we need
-	if s.checkpoint.TxIndex > 0 {
-		s.logger.Info().
-			Uint64("tx_index", s.checkpoint.TxIndex).
-			Msg("resuming from checkpoint within DA epoch")
-	}
 
 	return forcedTxsEvent.EndDaHeight, nil
 }
