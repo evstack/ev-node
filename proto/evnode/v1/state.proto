@@ -19,3 +19,11 @@ message State {
 
   reserved 7;
 }
+
+// SequencerDACheckpoint tracks the position in the DA where transactions were last processed
+message SequencerDACheckpoint {
+  // DA block height being processed
+  uint64 da_height = 1;
+  // Index of the next transaction to process within the DA block's forced inclusion batch
+  uint64 tx_index = 2;
+}

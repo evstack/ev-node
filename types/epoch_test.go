@@ -91,6 +91,13 @@ func TestCalculateEpochNumber(t *testing.T) {
 			daHeight:      105,
 			expectedEpoch: 6,
 		},
+		{
+			name:          "epoch size 0",
+			daStartHeight: 100,
+			daEpochSize:   0,
+			daHeight:      105,
+			expectedEpoch: 1,
+		},
 	}
 
 	for _, tt := range tests {
