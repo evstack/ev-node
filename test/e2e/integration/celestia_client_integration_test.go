@@ -24,10 +24,10 @@ import (
 	banktypes "github.com/cosmos/cosmos-sdk/x/bank/types"
 	govmodule "github.com/cosmos/cosmos-sdk/x/gov"
 	"github.com/cosmos/ibc-go/v8/modules/apps/transfer"
+	"github.com/evstack/ev-node/da/newjsonrpc"
 	"github.com/stretchr/testify/require"
 
 	sdkmath "cosmossdk.io/math"
-	"github.com/evstack/ev-node/da/celestia"
 	"github.com/evstack/ev-node/pkg/blob"
 )
 
@@ -207,7 +207,7 @@ func TestClient_SubmitAndGetBlobAgainstRealNode(t *testing.T) {
 	})
 	require.NoError(t, err, "bridge RPC reachable")
 
-	client, err := celestia.NewClient(ctx, rpcAddr, "", "")
+	client, err := newjsonrpc.NewClient(ctx, rpcAddr, "", "")
 	require.NoError(t, err, "new da client")
 	t.Cleanup(client.Close)
 

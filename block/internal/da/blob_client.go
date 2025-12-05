@@ -9,9 +9,9 @@ import (
 	"time"
 
 	"github.com/celestiaorg/go-square/v3/share"
+	"github.com/evstack/ev-node/da/newjsonrpc"
 	"github.com/rs/zerolog"
 
-	celestia "github.com/evstack/ev-node/da/celestia"
 	"github.com/evstack/ev-node/pkg/blob"
 )
 
@@ -28,7 +28,7 @@ var (
 
 // CelestiaBlobConfig contains configuration for the Celestia blob client.
 type CelestiaBlobConfig struct {
-	Celestia       *celestia.Client
+	Celestia       *newjsonrpc.Client
 	Logger         zerolog.Logger
 	DefaultTimeout time.Duration
 	Namespace      string
@@ -38,7 +38,7 @@ type CelestiaBlobConfig struct {
 
 // CelestiaBlobClient wraps the blob RPC with namespace handling and error mapping.
 type CelestiaBlobClient struct {
-	blobAPI         *celestia.BlobAPI
+	blobAPI         *newjsonrpc.BlobAPI
 	logger          zerolog.Logger
 	defaultTimeout  time.Duration
 	namespaceBz     []byte

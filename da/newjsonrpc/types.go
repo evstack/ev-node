@@ -1,4 +1,4 @@
-package celestia
+package newjsonrpc
 
 import "github.com/evstack/ev-node/pkg/blob"
 

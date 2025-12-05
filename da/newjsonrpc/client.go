@@ -1,4 +1,4 @@
-package celestia
+package newjsonrpc
 
 import (
 	"context"

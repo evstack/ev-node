@@ -7,11 +7,11 @@ import (
 	"testing"
 
 	"github.com/celestiaorg/go-square/v3/share"
+	"github.com/evstack/ev-node/da/newjsonrpc"
 	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	celestia "github.com/evstack/ev-node/da/celestia"
 	"github.com/evstack/ev-node/pkg/blob"
 )
 
@@ -21,7 +21,7 @@ type mockCelestiaBlobAPI struct {
 	blobs       []*blob.Blob
 	proof       *blob.Proof
 	included    bool
-	commitProof *celestia.CommitmentProof
+	commitProof *newjsonrpc.CommitmentProof
 }
 
 func (m *mockCelestiaBlobAPI) Submit(ctx context.Context, blobs []*blob.Blob, opts *blob.SubmitOptions) (uint64, error) {
@@ -40,25 +40,25 @@ func (m *mockCelestiaBlobAPI) Included(ctx context.Context, height uint64, names
 	return m.included, m.submitErr
 }
 
-func (m *mockCelestiaBlobAPI) GetCommitmentProof(ctx context.Context, height uint64, namespace share.Namespace, shareCommitment []byte) (*celestia.CommitmentProof, error) {
+func (m *mockCelestiaBlobAPI) GetCommitmentProof(ctx context.Context, height uint64, namespace share.Namespace, shareCommitment []byte) (*newjsonrpc.CommitmentProof, error) {
 	return m.commitProof, m.submitErr
 }
 
-func (m *mockCelestiaBlobAPI) Subscribe(ctx context.Context, namespace share.Namespace) (<-chan *celestia.SubscriptionResponse, error) {
-	ch := make(chan *celestia.SubscriptionResponse)
+func (m *mockCelestiaBlobAPI) Subscribe(ctx context.Context, namespace share.Namespace) (<-chan *newjsonrpc.SubscriptionResponse, error) {
+	ch := make(chan *newjsonrpc.SubscriptionResponse)
 	close(ch)
 	return ch, nil
 }
 
-func makeCelestiaClient(m *mockCelestiaBlobAPI) *celestia.Client {
-	var api celestia.BlobAPI
+func makeCelestiaClient(m *mockCelestiaBlobAPI) *newjsonrpc.Client {
+	var api newjsonrpc.BlobAPI
 	api.Internal.Submit = m.Submit
 	api.Internal.GetAll = m.GetAll
 	api.Internal.GetProof = m.GetProof
 	api.Internal.Included = m.Included
 	api.Internal.GetCommitmentProof = m.GetCommitmentProof
 	api.Internal.Subscribe = m.Subscribe
-	return &celestia.Client{Blob: api}
+	return &newjsonrpc.Client{Blob: api}
 }
 
 func TestCelestiaClient_Submit_ErrorMapping(t *testing.T) {
