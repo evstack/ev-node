@@ -624,10 +624,10 @@ func TestSequencer_GetNextBatch_AlwaysCheckPendingForcedInclusion(t *testing.T) 
 
 	mockFI := &MockForcedInclusionRetriever{}
 
-	// First call returns a large forced tx that gets deferred
-	largeForcedTx := make([]byte, 150)
+	// First call returns a large forced tx that will get evicted
+	largeForcedTx1, largeForcedTx2 := make([]byte, 75), make([]byte, 75)
 	mockFI.On("RetrieveForcedIncludedTxs", mock.Anything, uint64(100)).Return(&block.ForcedInclusionEvent{
-		Txs:           [][]byte{largeForcedTx},
+		Txs:           [][]byte{largeForcedTx1, largeForcedTx2},
 		StartDaHeight: 100,
 		EndDaHeight:   100,
 	}, nil).Once()
@@ -671,23 +671,22 @@ func TestSequencer_GetNextBatch_AlwaysCheckPendingForcedInclusion(t *testing.T) 
 	require.NoError(t, err)
 
 	// First call with maxBytes = 100
-	// Large forced tx (150 bytes) won't fit, gets deferred
-	// Batch tx (50 bytes) should be returned
 	getReq := coresequencer.GetNextBatchRequest{
 		Id:            []byte("test-chain"),
-		MaxBytes:      100,
+		MaxBytes:      125,
 		LastBatchData: nil,
 	}
 
 	resp, err := seq.GetNextBatch(ctx, getReq)
 	require.NoError(t, err)
 	require.NotNil(t, resp.Batch)
-	assert.Equal(t, 1, len(resp.Batch.Transactions), "Should have batch tx only")
-	assert.Equal(t, 50, len(resp.Batch.Transactions[0]))
+	assert.Equal(t, 2, len(resp.Batch.Transactions), "Should have 1 batch tx + 1 forced tx")
+	assert.Equal(t, 75, len(resp.Batch.Transactions[0])) // forced tx is 75 bytes
+	assert.Equal(t, 50, len(resp.Batch.Transactions[1])) // batch tx is 50 bytes
 
 	// Verify checkpoint shows no forced tx was consumed (tx too large)
-	assert.Equal(t, uint64(0), seq.checkpoint.TxIndex, "No forced tx should be consumed yet")
-	assert.Equal(t, 1, len(seq.cachedForcedInclusionTxs), "Forced tx should still be cached")
+	assert.Equal(t, uint64(1), seq.checkpoint.TxIndex, "Only one forced tx should be consumed")
+	assert.Greater(t, len(seq.cachedForcedInclusionTxs), 1, "Remaining forced tx should still be cached")
 
 	// Second call with larger maxBytes = 200
 	// Should process pending forced tx first
@@ -701,7 +700,7 @@ func TestSequencer_GetNextBatch_AlwaysCheckPendingForcedInclusion(t *testing.T) 
 	require.NoError(t, err)
 	require.NotNil(t, resp2.Batch)
 	assert.Equal(t, 1, len(resp2.Batch.Transactions), "Should include pending forced tx")
-	assert.Equal(t, 150, len(resp2.Batch.Transactions[0]))
+	assert.Equal(t, 75, len(resp2.Batch.Transactions[0]))
 
 	// Checkpoint should reflect that forced tx was consumed
 	assert.Equal(t, uint64(101), seq.checkpoint.DAHeight, "Should have moved to next DA height")
