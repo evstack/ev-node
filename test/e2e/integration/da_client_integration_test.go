@@ -24,11 +24,10 @@ import (
 	banktypes "github.com/cosmos/cosmos-sdk/x/bank/types"
 	govmodule "github.com/cosmos/cosmos-sdk/x/gov"
 	"github.com/cosmos/ibc-go/v8/modules/apps/transfer"
-	"github.com/evstack/ev-node/da/newjsonrpc"
+	blobrpc "github.com/evstack/ev-node/da/jsonrpc/blob"
 	"github.com/stretchr/testify/require"
 
 	sdkmath "cosmossdk.io/math"
-	"github.com/evstack/ev-node/pkg/blob"
 )
 
 var configurePrefixOnce sync.Once
@@ -207,17 +206,17 @@ func TestClient_SubmitAndGetBlobAgainstRealNode(t *testing.T) {
 	})
 	require.NoError(t, err, "bridge RPC reachable")
 
-	client, err := newjsonrpc.NewClient(ctx, rpcAddr, "", "")
+	client, err := blobrpc.NewClient(ctx, rpcAddr, "", "")
 	require.NoError(t, err, "new da client")
 	t.Cleanup(client.Close)
 
 	ns := libshare.MustNewV0Namespace([]byte("evnode"))
-	blb, err := blob.NewBlobV0(ns, []byte("integration-data"))
+	blb, err := blobrpc.NewBlobV0(ns, []byte("integration-data"))
 	require.NoError(t, err, "build blob")
 
 	var height uint64
 	for attempt := 0; attempt < 3; attempt++ {
-		height, err = client.Blob.Submit(ctx, []*blob.Blob{blb}, &blob.SubmitOptions{
+		height, err = client.Blob.Submit(ctx, []*blobrpc.Blob{blb}, &blobrpc.SubmitOptions{
 			GasPrice:      0.1,
 			IsGasPriceSet: true,
 			Gas:           2_000_000,

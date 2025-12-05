@@ -9,10 +9,8 @@ import (
 	"time"
 
 	"github.com/celestiaorg/go-square/v3/share"
-	"github.com/evstack/ev-node/da/newjsonrpc"
+	blobrpc "github.com/evstack/ev-node/da/jsonrpc/blob"
 	"github.com/rs/zerolog"
-
-	"github.com/evstack/ev-node/pkg/blob"
 )
 
 var (
@@ -28,7 +26,7 @@ var (
 
 // CelestiaBlobConfig contains configuration for the Celestia blob client.
 type CelestiaBlobConfig struct {
-	Celestia       *newjsonrpc.Client
+	Celestia       *blobrpc.Client
 	Logger         zerolog.Logger
 	DefaultTimeout time.Duration
 	Namespace      string
@@ -38,7 +36,7 @@ type CelestiaBlobConfig struct {
 
 // CelestiaBlobClient wraps the blob RPC with namespace handling and error mapping.
 type CelestiaBlobClient struct {
-	blobAPI         *newjsonrpc.BlobAPI
+	blobAPI         *blobrpc.BlobAPI
 	logger          zerolog.Logger
 	defaultTimeout  time.Duration
 	namespaceBz     []byte
@@ -55,7 +53,7 @@ func NewCelestiaBlob(cfg CelestiaBlobConfig) *CelestiaBlobClient {
 		cfg.DefaultTimeout = 30 * time.Second
 	}
 	if cfg.MaxBlobSize == 0 {
-		cfg.MaxBlobSize = blob.DefaultMaxBlobSize
+		cfg.MaxBlobSize = blobrpc.DefaultMaxBlobSize
 	}
 
 	return &CelestiaBlobClient{
@@ -86,7 +84,7 @@ func (c *CelestiaBlobClient) Submit(ctx context.Context, data [][]byte, namespac
 		}
 	}
 
-	blobs := make([]*blob.Blob, len(data))
+	blobs := make([]*blobrpc.Blob, len(data))
 	for i, raw := range data {
 		if uint64(len(raw)) > c.maxBlobSize {
 			return ResultSubmit{
@@ -96,7 +94,7 @@ func (c *CelestiaBlobClient) Submit(ctx context.Context, data [][]byte, namespac
 				},
 			}
 		}
-		blobs[i], err = blob.NewBlobV0(ns, raw)
+		blobs[i], err = blobrpc.NewBlobV0(ns, raw)
 		if err != nil {
 			return ResultSubmit{
 				BaseResult: BaseResult{
@@ -107,7 +105,7 @@ func (c *CelestiaBlobClient) Submit(ctx context.Context, data [][]byte, namespac
 		}
 	}
 
-	var submitOpts blob.SubmitOptions
+	var submitOpts blobrpc.SubmitOptions
 	if len(options) > 0 {
 		if err := json.Unmarshal(options, &submitOpts); err != nil {
 			return ResultSubmit{
@@ -165,7 +163,7 @@ func (c *CelestiaBlobClient) Submit(ctx context.Context, data [][]byte, namespac
 
 	ids := make([]ID, len(blobs))
 	for i, b := range blobs {
-		ids[i] = blob.MakeID(height, b.Commitment)
+		ids[i] = blobrpc.MakeID(height, b.Commitment)
 	}
 
 	return ResultSubmit{
@@ -247,7 +245,7 @@ func (c *CelestiaBlobClient) Retrieve(ctx context.Context, height uint64, namesp
 	ids := make([][]byte, len(blobs))
 	for i, b := range blobs {
 		out[i] = b.Data()
-		ids[i] = blob.MakeID(height, b.Commitment)
+		ids[i] = blobrpc.MakeID(height, b.Commitment)
 	}
 
 	return ResultRetrieve{

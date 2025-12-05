@@ -7,58 +7,56 @@ import (
 	"testing"
 
 	"github.com/celestiaorg/go-square/v3/share"
-	"github.com/evstack/ev-node/da/newjsonrpc"
+	blobrpc "github.com/evstack/ev-node/da/jsonrpc/blob"
 	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-
-	"github.com/evstack/ev-node/pkg/blob"
 )
 
 type mockCelestiaBlobAPI struct {
 	submitErr   error
 	height      uint64
-	blobs       []*blob.Blob
-	proof       *blob.Proof
+	blobs       []*blobrpc.Blob
+	proof       *blobrpc.Proof
 	included    bool
-	commitProof *newjsonrpc.CommitmentProof
+	commitProof *blobrpc.CommitmentProof
 }
 
-func (m *mockCelestiaBlobAPI) Submit(ctx context.Context, blobs []*blob.Blob, opts *blob.SubmitOptions) (uint64, error) {
+func (m *mockCelestiaBlobAPI) Submit(ctx context.Context, blobs []*blobrpc.Blob, opts *blobrpc.SubmitOptions) (uint64, error) {
 	return m.height, m.submitErr
 }
 
-func (m *mockCelestiaBlobAPI) GetAll(ctx context.Context, height uint64, namespaces []share.Namespace) ([]*blob.Blob, error) {
+func (m *mockCelestiaBlobAPI) GetAll(ctx context.Context, height uint64, namespaces []share.Namespace) ([]*blobrpc.Blob, error) {
 	return m.blobs, m.submitErr
 }
 
-func (m *mockCelestiaBlobAPI) GetProof(ctx context.Context, height uint64, namespace share.Namespace, commitment blob.Commitment) (*blob.Proof, error) {
+func (m *mockCelestiaBlobAPI) GetProof(ctx context.Context, height uint64, namespace share.Namespace, commitment blobrpc.Commitment) (*blobrpc.Proof, error) {
 	return m.proof, m.submitErr
 }
 
-func (m *mockCelestiaBlobAPI) Included(ctx context.Context, height uint64, namespace share.Namespace, proof *blob.Proof, commitment blob.Commitment) (bool, error) {
+func (m *mockCelestiaBlobAPI) Included(ctx context.Context, height uint64, namespace share.Namespace, proof *blobrpc.Proof, commitment blobrpc.Commitment) (bool, error) {
 	return m.included, m.submitErr
 }
 
-func (m *mockCelestiaBlobAPI) GetCommitmentProof(ctx context.Context, height uint64, namespace share.Namespace, shareCommitment []byte) (*newjsonrpc.CommitmentProof, error) {
+func (m *mockCelestiaBlobAPI) GetCommitmentProof(ctx context.Context, height uint64, namespace share.Namespace, shareCommitment []byte) (*blobrpc.CommitmentProof, error) {
 	return m.commitProof, m.submitErr
 }
 
-func (m *mockCelestiaBlobAPI) Subscribe(ctx context.Context, namespace share.Namespace) (<-chan *newjsonrpc.SubscriptionResponse, error) {
-	ch := make(chan *newjsonrpc.SubscriptionResponse)
+func (m *mockCelestiaBlobAPI) Subscribe(ctx context.Context, namespace share.Namespace) (<-chan *blobrpc.SubscriptionResponse, error) {
+	ch := make(chan *blobrpc.SubscriptionResponse)
 	close(ch)
 	return ch, nil
 }
 
-func makeCelestiaClient(m *mockCelestiaBlobAPI) *newjsonrpc.Client {
-	var api newjsonrpc.BlobAPI
+func makeCelestiaClient(m *mockCelestiaBlobAPI) *blobrpc.Client {
+	var api blobrpc.BlobAPI
 	api.Internal.Submit = m.Submit
 	api.Internal.GetAll = m.GetAll
 	api.Internal.GetProof = m.GetProof
 	api.Internal.Included = m.Included
 	api.Internal.GetCommitmentProof = m.GetCommitmentProof
 	api.Internal.Subscribe = m.Subscribe
-	return &newjsonrpc.Client{Blob: api}
+	return &blobrpc.Client{Blob: api}
 }
 
 func TestCelestiaClient_Submit_ErrorMapping(t *testing.T) {
@@ -133,9 +131,9 @@ func TestCelestiaClient_Retrieve_NotFound(t *testing.T) {
 
 func TestCelestiaClient_Retrieve_Success(t *testing.T) {
 	ns := share.MustNewV0Namespace([]byte("ns")).Bytes()
-	b, err := blob.NewBlobV0(share.MustNewV0Namespace([]byte("ns")), []byte("payload"))
+	b, err := blobrpc.NewBlobV0(share.MustNewV0Namespace([]byte("ns")), []byte("payload"))
 	require.NoError(t, err)
-	mockAPI := &mockCelestiaBlobAPI{height: 7, blobs: []*blob.Blob{b}}
+	mockAPI := &mockCelestiaBlobAPI{height: 7, blobs: []*blobrpc.Blob{b}}
 	cl := NewCelestiaBlob(CelestiaBlobConfig{
 		Celestia:      makeCelestiaClient(mockAPI),
 		Logger:        zerolog.Nop(),
