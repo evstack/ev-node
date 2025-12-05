@@ -36,8 +36,8 @@ type BasedSequencer struct {
 	logger      zerolog.Logger
 
 	daHeight        atomic.Uint64
-	checkpointStore *CheckpointStore
-	checkpoint      *Checkpoint
+	checkpointStore *seqcommon.CheckpointStore
+	checkpoint      *seqcommon.Checkpoint
 
 	// Cached transactions from the current DA block being processed
 	currentBatchTxs [][]byte
@@ -59,7 +59,7 @@ func NewBasedSequencer(
 		config:          config,
 		genesis:         genesis,
 		logger:          logger.With().Str("component", "based_sequencer").Logger(),
-		checkpointStore: NewCheckpointStore(db),
+		checkpointStore: seqcommon.NewCheckpointStore(db, ds.NewKey("/based/checkpoint")),
 	}
 	bs.SetDAHeight(genesis.DAStartHeight) // will be overridden by the executor
 
@@ -69,9 +69,9 @@ func NewBasedSequencer(
 
 	checkpoint, err := bs.checkpointStore.Load(loadCtx)
 	if err != nil {
-		if errors.Is(err, ErrCheckpointNotFound) {
-			// No checkpoint exists, initialize with genesis DA height
-			bs.checkpoint = &Checkpoint{
+		if errors.Is(err, seqcommon.ErrCheckpointNotFound) {
+			// No checkpoint exists, initialize with current DA height
+			bs.checkpoint = &seqcommon.Checkpoint{
 				DAHeight: bs.GetDAHeight(),
 				TxIndex:  0,
 			}

@@ -1,4 +1,4 @@
-package based
+package common
 
 import (
 	"context"
@@ -8,10 +8,14 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+var (
+	checkpointKey = ds.NewKey("/checkpoint")
+)
+
 func TestCheckpointStore_SaveAndLoad(t *testing.T) {
 	ctx := context.Background()
 	db := ds.NewMapDatastore()
-	store := NewCheckpointStore(db)
+	store := NewCheckpointStore(db, checkpointKey)
 
 	// Test loading when no checkpoint exists
 	_, err := store.Load(ctx)
@@ -46,7 +50,7 @@ func TestCheckpointStore_SaveAndLoad(t *testing.T) {
 func TestCheckpointStore_Delete(t *testing.T) {
 	ctx := context.Background()
 	db := ds.NewMapDatastore()
-	store := NewCheckpointStore(db)
+	store := NewCheckpointStore(db, checkpointKey)
 
 	// Save a checkpoint
 	checkpoint := &Checkpoint{
@@ -72,7 +76,7 @@ func TestCheckpointStore_Delete(t *testing.T) {
 func TestCheckpoint_EdgeCases(t *testing.T) {
 	ctx := context.Background()
 	db := ds.NewMapDatastore()
-	store := NewCheckpointStore(db)
+	store := NewCheckpointStore(db, checkpointKey)
 
 	// Test with zero values
 	checkpoint := &Checkpoint{
@@ -104,7 +108,7 @@ func TestCheckpoint_EdgeCases(t *testing.T) {
 func TestCheckpointStore_ConcurrentAccess(t *testing.T) {
 	ctx := context.Background()
 	db := ds.NewMapDatastore()
-	store := NewCheckpointStore(db)
+	store := NewCheckpointStore(db, checkpointKey)
 
 	// Save initial checkpoint
 	checkpoint := &Checkpoint{

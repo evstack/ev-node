@@ -46,8 +46,7 @@ type Sequencer struct {
 	da coreda.DA
 
 	batchTime time.Duration
-
-	queue *BatchQueue // single queue for immediate availability
+	queue     *BatchQueue // single queue for immediate availability
 
 	// Forced inclusion support
 	fiRetriever               ForcedInclusionRetriever

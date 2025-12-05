@@ -1,4 +1,4 @@
-package based
+package common
 
 import (
 	"context"
@@ -11,13 +11,8 @@ import (
 	pb "github.com/evstack/ev-node/types/pb/evnode/v1"
 )
 
-var (
-	// checkpointKey is the datastore key for persisting the checkpoint
-	checkpointKey = ds.NewKey("/based/checkpoint")
-
-	// ErrCheckpointNotFound is returned when no checkpoint exists in the datastore
-	ErrCheckpointNotFound = errors.New("checkpoint not found")
-)
+// ErrCheckpointNotFound is returned when no checkpoint exists in the datastore
+var ErrCheckpointNotFound = errors.New("checkpoint not found")
 
 // Checkpoint tracks the position in the DA where we last processed transactions
 type Checkpoint struct {
@@ -30,20 +25,22 @@ type Checkpoint struct {
 
 // CheckpointStore manages persistence of the checkpoint
 type CheckpointStore struct {
-	db ds.Batching
+	db            ds.Batching
+	checkpointKey ds.Key
 }
 
 // NewCheckpointStore creates a new checkpoint store
-func NewCheckpointStore(db ds.Batching) *CheckpointStore {
+func NewCheckpointStore(db ds.Batching, checkpointkey ds.Key) *CheckpointStore {
 	return &CheckpointStore{
-		db: db,
+		db:            db,
+		checkpointKey: checkpointkey,
 	}
 }
 
 // Load loads the checkpoint from the datastore
 // Returns ErrCheckpointNotFound if no checkpoint exists
 func (cs *CheckpointStore) Load(ctx context.Context) (*Checkpoint, error) {
-	data, err := cs.db.Get(ctx, checkpointKey)
+	data, err := cs.db.Get(ctx, cs.checkpointKey)
 	if err != nil {
 		if errors.Is(err, ds.ErrNotFound) {
 			return nil, ErrCheckpointNotFound
@@ -51,7 +48,7 @@ func (cs *CheckpointStore) Load(ctx context.Context) (*Checkpoint, error) {
 		return nil, fmt.Errorf("failed to load checkpoint: %w", err)
 	}
 
-	pbCheckpoint := &pb.BasedCheckpoint{}
+	pbCheckpoint := &pb.SequencerDACheckpoint{}
 	if err := proto.Unmarshal(data, pbCheckpoint); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal checkpoint: %w", err)
 	}
@@ -64,7 +61,7 @@ func (cs *CheckpointStore) Load(ctx context.Context) (*Checkpoint, error) {
 
 // Save persists the checkpoint to the datastore
 func (cs *CheckpointStore) Save(ctx context.Context, checkpoint *Checkpoint) error {
-	pbCheckpoint := &pb.BasedCheckpoint{
+	pbCheckpoint := &pb.SequencerDACheckpoint{
 		DaHeight: checkpoint.DAHeight,
 		TxIndex:  checkpoint.TxIndex,
 	}
@@ -74,7 +71,7 @@ func (cs *CheckpointStore) Save(ctx context.Context, checkpoint *Checkpoint) err
 		return fmt.Errorf("failed to marshal checkpoint: %w", err)
 	}
 
-	if err := cs.db.Put(ctx, checkpointKey, data); err != nil {
+	if err := cs.db.Put(ctx, cs.checkpointKey, data); err != nil {
 		return fmt.Errorf("failed to save checkpoint: %w", err)
 	}
 
@@ -83,7 +80,7 @@ func (cs *CheckpointStore) Save(ctx context.Context, checkpoint *Checkpoint) err
 
 // Delete removes the checkpoint from the datastore
 func (cs *CheckpointStore) Delete(ctx context.Context) error {
-	if err := cs.db.Delete(ctx, checkpointKey); err != nil {
+	if err := cs.db.Delete(ctx, cs.checkpointKey); err != nil {
 		if errors.Is(err, ds.ErrNotFound) {
 			return nil // Already deleted
 		}

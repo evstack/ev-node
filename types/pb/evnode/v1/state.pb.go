@@ -123,8 +123,8 @@ func (x *State) GetLastHeaderHash() []byte {
 	return nil
 }
 
-// BasedCheckpoint tracks the position in the DA where transactions were last processed
-type BasedCheckpoint struct {
+// SequencerDACheckpoint tracks the position in the DA where transactions were last processed
+type SequencerDACheckpoint struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// DA block height being processed
 	DaHeight uint64 `protobuf:"varint,1,opt,name=da_height,json=daHeight,proto3" json:"da_height,omitempty"`
@@ -134,20 +134,20 @@ type BasedCheckpoint struct {
 	sizeCache     protoimpl.SizeCache
 }
 
-func (x *BasedCheckpoint) Reset() {
-	*x = BasedCheckpoint{}
+func (x *SequencerDACheckpoint) Reset() {
+	*x = SequencerDACheckpoint{}
 	mi := &file_evnode_v1_state_proto_msgTypes[1]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *BasedCheckpoint) String() string {
+func (x *SequencerDACheckpoint) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*BasedCheckpoint) ProtoMessage() {}
+func (*SequencerDACheckpoint) ProtoMessage() {}
 
-func (x *BasedCheckpoint) ProtoReflect() protoreflect.Message {
+func (x *SequencerDACheckpoint) ProtoReflect() protoreflect.Message {
 	mi := &file_evnode_v1_state_proto_msgTypes[1]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -159,19 +159,19 @@ func (x *BasedCheckpoint) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use BasedCheckpoint.ProtoReflect.Descriptor instead.
-func (*BasedCheckpoint) Descriptor() ([]byte, []int) {
+// Deprecated: Use SequencerDACheckpoint.ProtoReflect.Descriptor instead.
+func (*SequencerDACheckpoint) Descriptor() ([]byte, []int) {
 	return file_evnode_v1_state_proto_rawDescGZIP(), []int{1}
 }
 
-func (x *BasedCheckpoint) GetDaHeight() uint64 {
+func (x *SequencerDACheckpoint) GetDaHeight() uint64 {
 	if x != nil {
 		return x.DaHeight
 	}
 	return 0
 }
 
-func (x *BasedCheckpoint) GetTxIndex() uint64 {
+func (x *SequencerDACheckpoint) GetTxIndex() uint64 {
 	if x != nil {
 		return x.TxIndex
 	}
@@ -236,8 +236,8 @@ const file_evnode_v1_state_proto_rawDesc = "" +
 	"\x0flast_block_time\x18\x05 \x01(\v2\x1a.google.protobuf.TimestampR\rlastBlockTime\x12\x1b\n" +
 	"\tda_height\x18\x06 \x01(\x04R\bdaHeight\x12\x19\n" +
 	"\bapp_hash\x18\b \x01(\fR\aappHash\x12(\n" +
-	"\x10last_header_hash\x18\t \x01(\fR\x0elastHeaderHashJ\x04\b\a\x10\b\"I\n" +
-	"\x0fBasedCheckpoint\x12\x1b\n" +
+	"\x10last_header_hash\x18\t \x01(\fR\x0elastHeaderHashJ\x04\b\a\x10\b\"O\n" +
+	"\x15SequencerDACheckpoint\x12\x1b\n" +
 	"\tda_height\x18\x01 \x01(\x04R\bdaHeight\x12\x19\n" +
 	"\btx_index\x18\x02 \x01(\x04R\atxIndex\"\x18\n" +
 	"\x02Tx\x12\x12\n" +
@@ -258,7 +258,7 @@ func file_evnode_v1_state_proto_rawDescGZIP() []byte {
 var file_evnode_v1_state_proto_msgTypes = make([]protoimpl.MessageInfo, 3)
 var file_evnode_v1_state_proto_goTypes = []any{
 	(*State)(nil),                 // 0: evnode.v1.State
-	(*BasedCheckpoint)(nil),       // 1: evnode.v1.BasedCheckpoint
+	(*SequencerDACheckpoint)(nil), // 1: evnode.v1.SequencerDACheckpoint
 	(*Tx)(nil),                    // 2: evnode.v1.Tx
 	(*Version)(nil),               // 3: evnode.v1.Version
 	(*timestamppb.Timestamp)(nil), // 4: google.protobuf.Timestamp
