@@ -146,7 +146,7 @@ func (c *Sequencer) GetNextBatch(ctx context.Context, req coresequencer.GetNextB
 	// fetch the next DA epoch
 	daHeight := c.GetDAHeight()
 	if len(c.cachedForcedInclusionTxs) == 0 || c.checkpoint.TxIndex >= uint64(len(c.cachedForcedInclusionTxs)) {
-		daEndHeight, err := c.fetchNextDAEpoch(ctx)
+		daEndHeight, err := c.fetchNextDAEpoch(ctx, req.MaxBytes)
 		if err != nil {
 			return nil, err
 		}
@@ -296,7 +296,7 @@ func (c *Sequencer) GetDAHeight() uint64 {
 }
 
 // fetchNextDAEpoch fetches transactions from the next DA epoch using checkpoint
-func (c *Sequencer) fetchNextDAEpoch(ctx context.Context) (uint64, error) {
+func (c *Sequencer) fetchNextDAEpoch(ctx context.Context, maxBytes uint64) (uint64, error) {
 	currentDAHeight := c.checkpoint.DAHeight
 
 	c.logger.Debug().
@@ -324,11 +324,12 @@ func (c *Sequencer) fetchNextDAEpoch(ctx context.Context) (uint64, error) {
 	validTxs := make([][]byte, 0, len(forcedTxsEvent.Txs))
 	skippedTxs := 0
 	for _, tx := range forcedTxsEvent.Txs {
-		if !seqcommon.ValidateBlobSize(tx) {
+		if uint64(len(tx)) > maxBytes {
 			c.logger.Warn().
 				Uint64("da_height", forcedTxsEvent.StartDaHeight).
 				Int("blob_size", len(tx)).
-				Msg("forced inclusion blob exceeds absolute maximum size - skipping")
+				Uint64("max_bytes", maxBytes).
+				Msg("forced inclusion blob exceeds maximum size - skipping")
 			skippedTxs++
 			continue
 		}
