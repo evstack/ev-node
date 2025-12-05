@@ -1,3 +1,4 @@
+// Package single implements a single sequencer.
 package single
 
 import (

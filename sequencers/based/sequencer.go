@@ -13,7 +13,6 @@ import (
 	"github.com/evstack/ev-node/block"
 	coreda "github.com/evstack/ev-node/core/da"
 	coresequencer "github.com/evstack/ev-node/core/sequencer"
-	"github.com/evstack/ev-node/pkg/config"
 	"github.com/evstack/ev-node/pkg/genesis"
 	seqcommon "github.com/evstack/ev-node/sequencers/common"
 )
@@ -31,7 +30,6 @@ var _ coresequencer.Sequencer = (*BasedSequencer)(nil)
 type BasedSequencer struct {
 	fiRetriever ForcedInclusionRetriever
 	da          coreda.DA
-	config      config.Config
 	genesis     genesis.Genesis
 	logger      zerolog.Logger
 
@@ -49,14 +47,12 @@ func NewBasedSequencer(
 	fiRetriever ForcedInclusionRetriever,
 	da coreda.DA,
 	db ds.Batching,
-	config config.Config,
 	genesis genesis.Genesis,
 	logger zerolog.Logger,
 ) (*BasedSequencer, error) {
 	bs := &BasedSequencer{
 		fiRetriever:     fiRetriever,
 		da:              da,
-		config:          config,
 		genesis:         genesis,
 		logger:          logger.With().Str("component", "based_sequencer").Logger(),
 		checkpointStore: seqcommon.NewCheckpointStore(db, ds.NewKey("/based/checkpoint")),
