@@ -142,14 +142,46 @@ func TestExecuteTxs_Invalid(t *testing.T) {
 	}
 	ctx := context.Background()
 
-	// Prepare an invalid transaction (missing '=')
+	// According to the Executor interface: "Must handle gracefully gibberish transactions"
+	// Invalid transactions should be filtered out, not cause errors
+
+	// Prepare invalid transactions (missing '=')
 	txs := [][]byte{
 		[]byte("invalidformat"),
+		[]byte("another_invalid_one"),
+		[]byte(""),
 	}
 
-	_, _, err = exec.ExecuteTxs(ctx, txs, 1, time.Now(), []byte(""))
-	if err == nil {
-		t.Fatal("Expected error for malformed transaction, got nil")
+	stateRoot, maxBytes, err := exec.ExecuteTxs(ctx, txs, 1, time.Now(), []byte(""))
+	if err != nil {
+		t.Fatalf("ExecuteTxs should handle gibberish gracefully, got error: %v", err)
+	}
+	if maxBytes != 1024 {
+		t.Errorf("Expected maxBytes 1024, got %d", maxBytes)
+	}
+
+	// State root should still be computed (empty block is valid)
+	if stateRoot == nil {
+		t.Error("Expected non-nil state root even with all invalid transactions")
+	}
+
+	// Test mix of valid and invalid transactions
+	mixedTxs := [][]byte{
+		[]byte("valid_key=valid_value"),
+		[]byte("invalidformat"),
+		[]byte("another_valid=value2"),
+		[]byte(""),
+	}
+
+	stateRoot2, _, err := exec.ExecuteTxs(ctx, mixedTxs, 2, time.Now(), stateRoot)
+	if err != nil {
+		t.Fatalf("ExecuteTxs should filter invalid transactions and process valid ones, got error: %v", err)
+	}
+
+	// State root should contain only the valid transactions
+	rootStr := string(stateRoot2)
+	if !strings.Contains(rootStr, "valid_key:valid_value") || !strings.Contains(rootStr, "another_valid:value2") {
+		t.Errorf("State root should contain valid transactions: %s", rootStr)
 	}
 }
 

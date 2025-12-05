@@ -338,8 +338,9 @@ func (e *Executor) produceBlock() error {
 	}
 
 	var (
-		header *types.SignedHeader
-		data   *types.Data
+		header    *types.SignedHeader
+		data      *types.Data
+		batchData *BatchData
 	)
 
 	// Check if there's an already stored block at the newHeight
@@ -353,7 +354,7 @@ func (e *Executor) produceBlock() error {
 		return fmt.Errorf("failed to get block data: %w", err)
 	} else {
 		// get batch from sequencer
-		batchData, err := e.retrieveBatch(e.ctx)
+		batchData, err = e.retrieveBatch(e.ctx)
 		if errors.Is(err, common.ErrNoBatch) {
 			e.logger.Debug().Msg("no batch available")
 			return nil
@@ -381,7 +382,15 @@ func (e *Executor) produceBlock() error {
 		}
 	}
 
-	newState, err := e.applyBlock(e.ctx, header.Header, data)
+	// Pass force-included mask through context for execution optimization
+	// Force-included txs (from DA) MUST be validated as they're from untrusted sources
+	// Mempool txs can skip validation as they were validated when added to mempool
+	ctx := e.ctx
+	if batchData != nil && batchData.Batch != nil && batchData.ForceIncludedMask != nil {
+		ctx = coreexecutor.WithForceIncludedMask(ctx, batchData.ForceIncludedMask)
+	}
+
+	newState, err := e.applyBlock(ctx, header.Header, data)
 	if err != nil {
 		return fmt.Errorf("failed to apply block: %w", err)
 	}
