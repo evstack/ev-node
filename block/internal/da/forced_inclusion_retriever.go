@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/rs/zerolog"
 
@@ -25,6 +26,7 @@ type ForcedInclusionRetriever struct {
 
 // ForcedInclusionEvent contains forced inclusion transactions retrieved from DA.
 type ForcedInclusionEvent struct {
+	Timestamp     time.Time
 	StartDaHeight uint64
 	EndDaHeight   uint64
 	Txs           [][]byte
@@ -156,6 +158,10 @@ func (r *ForcedInclusionRetriever) processForcedInclusionBlobs(
 		if len(blob) > 0 {
 			event.Txs = append(event.Txs, blob)
 		}
+	}
+
+	if result.Timestamp.After(event.Timestamp) {
+		event.Timestamp = result.Timestamp
 	}
 
 	r.logger.Debug().
