@@ -8,9 +8,7 @@ require (
 	connectrpc.com/connect v1.19.1
 	connectrpc.com/grpcreflect v1.3.0
 	github.com/celestiaorg/go-header v0.7.4
-	github.com/celestiaorg/go-square/merkle v0.0.0-20240627094109-7d01436067a3
 	github.com/celestiaorg/go-square/v3 v3.0.2
-	github.com/celestiaorg/nmt v0.24.2
 	github.com/celestiaorg/utils v0.1.0
 	github.com/evstack/ev-node/core v1.0.0-beta.5
 	github.com/evstack/ev-node/da v0.0.0-00010101000000-000000000000
@@ -42,6 +40,8 @@ require (
 	github.com/benbjohnson/clock v1.3.5 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/celestiaorg/go-libp2p-messenger v0.2.2 // indirect
+	github.com/celestiaorg/go-square/merkle v0.0.0-20240627094109-7d01436067a3 // indirect
+	github.com/celestiaorg/nmt v0.24.2 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
 	github.com/davidlazar/go-crypto v0.0.0-20200604182044-b73af7476f6c // indirect
