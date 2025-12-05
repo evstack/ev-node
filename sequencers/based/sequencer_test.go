@@ -233,7 +233,7 @@ func TestBasedSequencer_GetNextBatch_NotConfigured(t *testing.T) {
 
 	_, err = seq.GetNextBatch(context.Background(), req)
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "forced inclusion not configured")
+	assert.Contains(t, err.Error(), "forced inclusion namespace not configured")
 }
 
 func TestBasedSequencer_GetNextBatch_WithMaxBytes(t *testing.T) {
