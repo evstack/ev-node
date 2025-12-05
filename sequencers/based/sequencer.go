@@ -110,7 +110,7 @@ func (s *BasedSequencer) GetNextBatch(ctx context.Context, req coresequencer.Get
 	if txCount > 0 {
 		s.checkpoint.TxIndex += txCount
 
-		// If we've consumed all transactions from this DA block, move to next
+		// If we've consumed all transactions from this DA epoch, move to next
 		if s.checkpoint.TxIndex >= uint64(len(s.currentBatchTxs)) {
 			s.checkpoint.DAHeight = daHeight + 1
 			s.checkpoint.TxIndex = 0
