@@ -4,6 +4,7 @@ package single
 import (
 	"bytes"
 	"context"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"sync/atomic"
@@ -97,10 +98,14 @@ func NewSequencer(
 		}
 	} else {
 		s.checkpoint = checkpoint
-		logger.Info().
-			Uint64("da_height", checkpoint.DAHeight).
-			Uint64("tx_index", checkpoint.TxIndex).
-			Msg("loaded single sequencer checkpoint from DB")
+		// If we had a non-zero tx index, we're resuming from a crash mid-block
+		// The transactions starting from that index are what we need
+		if checkpoint.TxIndex > 0 {
+			s.logger.Debug().
+				Uint64("tx_index", checkpoint.TxIndex).
+				Uint64("da_height", checkpoint.DAHeight).
+				Msg("resuming from checkpoint within DA epoch")
+		}
 	}
 
 	return s, nil
@@ -164,7 +169,7 @@ func (c *Sequencer) GetNextBatch(ctx context.Context, req coresequencer.GetNextB
 	}
 
 	// Update checkpoint after consuming forced inclusion transactions
-	if len(forcedTxs) > 0 {
+	if daHeight > 0 || len(forcedTxs) > 0 {
 		c.checkpoint.TxIndex += uint64(len(forcedTxs))
 
 		// If we've consumed all transactions from this DA epoch, move to next
@@ -179,7 +184,6 @@ func (c *Sequencer) GetNextBatch(ctx context.Context, req coresequencer.GetNextB
 
 		// Persist checkpoint
 		if err := c.checkpointStore.Save(ctx, c.checkpoint); err != nil {
-			c.logger.Error().Err(err).Msg("failed to save checkpoint")
 			return nil, fmt.Errorf("failed to save checkpoint: %w", err)
 		}
 
@@ -209,7 +213,10 @@ func (c *Sequencer) GetNextBatch(ctx context.Context, req coresequencer.GetNextB
 				// Would exceed limit, return remaining txs to the front of the queue
 				excludedBatch := coresequencer.Batch{Transactions: batch.Transactions[i:]}
 				if err := c.queue.Prepend(ctx, excludedBatch); err != nil {
+					// tx will be lost forever, but we shouldn't halt.
+					// halting doesn't not add any value.
 					c.logger.Error().Err(err).
+						Str("tx", hex.EncodeToString(tx)).
 						Int("excluded_count", len(batch.Transactions)-i).
 						Msg("failed to prepend excluded transactions back to queue")
 				} else {
@@ -310,14 +317,14 @@ func (c *Sequencer) fetchNextDAEpoch(ctx context.Context, maxBytes uint64) (uint
 			c.logger.Debug().
 				Uint64("da_height", currentDAHeight).
 				Msg("DA height from future, waiting for DA to produce block")
-			return currentDAHeight, nil
+			return 0, nil
 		} else if errors.Is(err, block.ErrForceInclusionNotConfigured) {
 			// Forced inclusion not configured, continue without forced txs
 			c.cachedForcedInclusionTxs = [][]byte{}
-			return currentDAHeight, nil
+			return 0, nil
 		}
-		c.logger.Error().Err(err).Uint64("da_height", currentDAHeight).Msg("failed to retrieve forced inclusion transactions")
-		return currentDAHeight, err
+
+		return 0, fmt.Errorf("failed to retrieve forced inclusion transactions: %w", err)
 	}
 
 	// Validate and filter transactions
@@ -345,13 +352,6 @@ func (c *Sequencer) fetchNextDAEpoch(ctx context.Context, maxBytes uint64) (uint
 
 	// Cache the transactions
 	c.cachedForcedInclusionTxs = validTxs
-
-	// If we had a non-zero tx index, we're resuming from a crash mid-processing
-	if c.checkpoint.TxIndex > 0 {
-		c.logger.Info().
-			Uint64("tx_index", c.checkpoint.TxIndex).
-			Msg("resuming from checkpoint within forced inclusion batch")
-	}
 
 	return forcedTxsEvent.EndDaHeight, nil
 }
