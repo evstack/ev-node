@@ -1062,3 +1062,89 @@ func TestSequencer_CheckpointPersistence_CrashRecovery(t *testing.T) {
 	t.Log("✅ Checkpoint system successfully prevented re-execution of DA transactions after crash")
 	mockFI.AssertExpectations(t)
 }
+
+func TestSequencer_GetNextBatch_EmptyDABatch_IncreasesDAHeight(t *testing.T) {
+	db := ds.NewMapDatastore()
+	ctx := context.Background()
+
+	mockRetriever := new(MockForcedInclusionRetriever)
+
+	// First DA epoch returns empty transactions
+	mockRetriever.On("RetrieveForcedIncludedTxs", mock.Anything, uint64(100)).
+		Return(&block.ForcedInclusionEvent{
+			Txs:           [][]byte{},
+			StartDaHeight: 100,
+			EndDaHeight:   105,
+		}, nil).Once()
+
+	// Second DA epoch also returns empty transactions
+	mockRetriever.On("RetrieveForcedIncludedTxs", mock.Anything, uint64(101)).
+		Return(&block.ForcedInclusionEvent{
+			Txs:           [][]byte{},
+			StartDaHeight: 106,
+			EndDaHeight:   111,
+		}, nil).Once()
+
+	gen := genesis.Genesis{
+		ChainID:                "test",
+		DAStartHeight:          100,
+		DAEpochForcedInclusion: 5,
+	}
+
+	seq, err := NewSequencer(
+		ctx,
+		zerolog.Nop(),
+		db,
+		nil,
+		[]byte("test"),
+		1*time.Second,
+		true,
+		1000,
+		mockRetriever,
+		gen,
+	)
+	require.NoError(t, err)
+
+	defer func() {
+		err := db.Close()
+		if err != nil {
+			t.Fatalf("Failed to close sequencer: %v", err)
+		}
+	}()
+
+	req := coresequencer.GetNextBatchRequest{
+		Id:            seq.Id,
+		MaxBytes:      1000000,
+		LastBatchData: nil,
+	}
+
+	// Initial DA height should be 100
+	assert.Equal(t, uint64(100), seq.GetDAHeight())
+	assert.Equal(t, uint64(100), seq.checkpoint.DAHeight)
+
+	// First batch - empty DA block at height 100
+	resp, err := seq.GetNextBatch(ctx, req)
+	require.NoError(t, err)
+	require.NotNil(t, resp)
+	require.NotNil(t, resp.Batch)
+	assert.Equal(t, 0, len(resp.Batch.Transactions))
+
+	// DA height should have increased to 106 even though no transactions were processed
+	assert.Equal(t, uint64(106), seq.GetDAHeight())
+	assert.Equal(t, uint64(106), seq.checkpoint.DAHeight)
+	assert.Equal(t, uint64(0), seq.checkpoint.TxIndex)
+
+	// Second batch - empty DA block at height 106
+	resp, err = seq.GetNextBatch(ctx, req)
+	require.NoError(t, err)
+	require.NotNil(t, resp)
+	require.NotNil(t, resp.Batch)
+	assert.Equal(t, 0, len(resp.Batch.Transactions))
+
+	// DA height should have increased to 112
+	assert.Equal(t, uint64(112), seq.GetDAHeight())
+	assert.Equal(t, uint64(112), seq.checkpoint.DAHeight)
+	assert.Equal(t, uint64(0), seq.checkpoint.TxIndex)
+
+	mockRetriever.AssertExpectations(t)
+}
