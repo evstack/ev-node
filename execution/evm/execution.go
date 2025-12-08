@@ -251,12 +251,46 @@ func (c *EngineClient) GetTxs(ctx context.Context) ([][]byte, error) {
 
 // ExecuteTxs executes the given transactions at the specified block height and timestamp
 func (c *EngineClient) ExecuteTxs(ctx context.Context, txs [][]byte, blockHeight uint64, timestamp time.Time, prevStateRoot []byte) (updatedStateRoot []byte, maxBytes uint64, err error) {
-	// convert evolve tx to hex strings for ev-reth
-	txsPayload := make([]string, len(txs))
+	forceIncludedMask := execution.GetForceIncludedMask(ctx)
+
+	// Filter out invalid transactions to handle gibberish gracefully
+	validTxs := make([]string, 0, len(txs))
 	for i, tx := range txs {
-		// Use the raw transaction bytes directly instead of re-encoding
-		txsPayload[i] = "0x" + hex.EncodeToString(tx)
+		if len(tx) == 0 {
+			continue
+		}
+
+		// Skip validation for mempool transactions (already validated when added to mempool)
+		// Force-included transactions from DA MUST be validated as they come from untrusted sources
+		if forceIncludedMask != nil && i < len(forceIncludedMask) && !forceIncludedMask[i] {
+			validTxs = append(validTxs, "0x"+hex.EncodeToString(tx))
+			continue
+		}
+
+		// Validate that the transaction can be parsed as an Ethereum transaction
+		var ethTx types.Transaction
+		if err := ethTx.UnmarshalBinary(tx); err != nil {
+			c.logger.Debug().
+				Int("tx_index", i).
+				Uint64("block_height", blockHeight).
+				Err(err).
+				Str("tx_hex", "0x"+hex.EncodeToString(tx)).
+				Msg("filtering out invalid transaction (gibberish)")
+			continue
+		}
+
+		validTxs = append(validTxs, "0x"+hex.EncodeToString(tx))
 	}
+
+	if len(validTxs) < len(txs) {
+		c.logger.Debug().
+			Int("total_txs", len(txs)).
+			Int("valid_txs", len(validTxs)).
+			Int("filtered_txs", len(txs)-len(validTxs)).
+			Uint64("block_height", blockHeight).
+			Msg("filtered out invalid transactions")
+	}
+	txsPayload := validTxs
 
 	prevBlockHash, _, prevGasLimit, _, err := c.getBlockInfo(ctx, blockHeight-1)
 	if err != nil {

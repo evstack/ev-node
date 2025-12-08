@@ -22,10 +22,7 @@ import (
 	"github.com/evstack/ev-node/types"
 )
 
-const (
-	submissionTimeout = 60 * time.Second
-	initialBackoff    = 100 * time.Millisecond
-)
+const initialBackoff = 100 * time.Millisecond
 
 // retryPolicy defines clamped bounds for retries and backoff.
 type retryPolicy struct {
@@ -424,17 +421,14 @@ func submitToDA[T any](
 			s.logger.Debug().Str("signingAddress", signingAddress).Msg("using signing address for DA submission")
 		}
 
-		submitCtx, cancel := context.WithTimeout(ctx, submissionTimeout)
-		defer cancel()
-
 		// Perform submission
 		start := time.Now()
-		res := s.client.Submit(submitCtx, marshaled, -1, namespace, mergedOptions)
+		res := s.client.Submit(ctx, marshaled, -1, namespace, mergedOptions)
 		s.logger.Debug().Int("attempts", rs.Attempt).Dur("elapsed", time.Since(start)).Uint64("code", uint64(res.Code)).Msg("got SubmitWithHelpers response from celestia")
 
 		// Record submission result for observability
 		if daVisualizationServer := server.GetDAVisualizationServer(); daVisualizationServer != nil {
-			daVisualizationServer.RecordSubmission(&res, 0, uint64(len(items)))
+			daVisualizationServer.RecordSubmission(&res, 0, uint64(len(items)), namespace)
 		}
 
 		switch res.Code {

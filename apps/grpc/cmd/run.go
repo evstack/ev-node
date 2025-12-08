@@ -9,6 +9,7 @@ import (
 	"github.com/rs/zerolog"
 	"github.com/spf13/cobra"
 
+	"github.com/evstack/ev-node/block"
 	"github.com/evstack/ev-node/core/da"
 	"github.com/evstack/ev-node/core/execution"
 	coresequencer "github.com/evstack/ev-node/core/sequencer"
@@ -22,10 +23,13 @@ import (
 	"github.com/evstack/ev-node/pkg/p2p"
 	"github.com/evstack/ev-node/pkg/p2p/key"
 	"github.com/evstack/ev-node/pkg/store"
+	"github.com/evstack/ev-node/sequencers/based"
+	seqcommon "github.com/evstack/ev-node/sequencers/common"
 	"github.com/evstack/ev-node/sequencers/single"
 )
 
 const (
+	grpcDbName = "grpc-single"
 	// FlagGrpcExecutorURL is the flag for the gRPC executor endpoint
 	FlagGrpcExecutorURL = "grpc-executor-url"
 )
@@ -57,13 +61,13 @@ The execution client must implement the Evolve execution gRPC interface.`,
 		logger.Info().Str("headerNamespace", headerNamespace.HexString()).Str("dataNamespace", dataNamespace.HexString()).Msg("namespaces")
 
 		// Create DA client
-		daJrpc, err := jsonrpc.NewClient(cmd.Context(), logger, nodeConfig.DA.Address, nodeConfig.DA.AuthToken, rollcmd.DefaultMaxBlobSize)
+		daJrpc, err := jsonrpc.NewClient(cmd.Context(), logger, nodeConfig.DA.Address, nodeConfig.DA.AuthToken, seqcommon.AbsoluteMaxBlobSize)
 		if err != nil {
 			return err
 		}
 
 		// Create datastore
-		datastore, err := store.NewDefaultKVStore(nodeConfig.RootDir, nodeConfig.DBPath, "evgrpc")
+		datastore, err := store.NewDefaultKVStore(nodeConfig.RootDir, nodeConfig.DBPath, grpcDbName)
 		if err != nil {
 			return err
 		}
@@ -118,9 +122,23 @@ func createSequencer(
 	nodeConfig config.Config,
 	genesis genesis.Genesis,
 ) (coresequencer.Sequencer, error) {
-	singleMetrics, err := single.NopMetrics()
-	if err != nil {
-		return nil, fmt.Errorf("failed to create single sequencer metrics: %w", err)
+	daClient := block.NewDAClient(da, nodeConfig, logger)
+	fiRetriever := block.NewForcedInclusionRetriever(daClient, genesis, logger)
+
+	if nodeConfig.Node.BasedSequencer {
+		// Based sequencer mode - fetch transactions only from DA
+		if !nodeConfig.Node.Aggregator {
+			return nil, fmt.Errorf("based sequencer mode requires aggregator mode to be enabled")
+		}
+
+		basedSeq := based.NewBasedSequencer(fiRetriever, da, nodeConfig, genesis, logger)
+
+		logger.Info().
+			Str("forced_inclusion_namespace", nodeConfig.DA.GetForcedInclusionNamespace()).
+			Uint64("da_epoch", genesis.DAEpochForcedInclusion).
+			Msg("based sequencer initialized")
+
+		return basedSeq, nil
 	}
 
 	sequencer, err := single.NewSequencer(
@@ -130,12 +148,18 @@ func createSequencer(
 		da,
 		[]byte(genesis.ChainID),
 		nodeConfig.Node.BlockTime.Duration,
-		singleMetrics,
 		nodeConfig.Node.Aggregator,
+		1000,
+		fiRetriever,
+		genesis,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create single sequencer: %w", err)
 	}
+
+	logger.Info().
+		Str("forced_inclusion_namespace", nodeConfig.DA.GetForcedInclusionNamespace()).
+		Msg("single sequencer initialized")
 
 	return sequencer, nil
 }

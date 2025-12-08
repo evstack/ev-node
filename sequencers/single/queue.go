@@ -57,28 +57,41 @@ func (bq *BatchQueue) AddBatch(ctx context.Context, batch coresequencer.Batch) e
 		return ErrQueueFull
 	}
 
-	hash, err := batch.Hash()
-	if err != nil {
-		return err
-	}
-	key := hex.EncodeToString(hash)
-
-	pbBatch := &pb.Batch{
-		Txs: batch.Transactions,
-	}
-
-	encodedBatch, err := proto.Marshal(pbBatch)
-	if err != nil {
-		return err
-	}
-
-	// First write to DB for durability
-	if err := bq.db.Put(ctx, ds.NewKey(key), encodedBatch); err != nil {
+	if err := bq.persistBatch(ctx, batch); err != nil {
 		return err
 	}
 
 	// Then add to in-memory queue
 	bq.queue = append(bq.queue, batch)
+
+	return nil
+}
+
+// Prepend adds a batch to the front of the queue (before head position).
+// This is used to return transactions that couldn't fit in the current batch.
+// The batch is persisted to the DB to ensure durability in case of crashes.
+//
+// NOTE: Prepend intentionally bypasses the maxQueueSize limit to ensure high-priority
+// transactions can always be re-queued. This means the effective queue size may temporarily
+// exceed the configured maximum when Prepend is used. This is by design to prevent loss
+// of transactions that have already been accepted but couldn't fit in the current batch.
+func (bq *BatchQueue) Prepend(ctx context.Context, batch coresequencer.Batch) error {
+	bq.mu.Lock()
+	defer bq.mu.Unlock()
+
+	if err := bq.persistBatch(ctx, batch); err != nil {
+		return err
+	}
+
+	// Then add to in-memory queue
+	// If we have room before head, use it
+	if bq.head > 0 {
+		bq.head--
+		bq.queue[bq.head] = batch
+	} else {
+		// Need to expand the queue at the front
+		bq.queue = append([]coresequencer.Batch{batch}, bq.queue...)
+	}
 
 	return nil
 }
@@ -167,4 +180,29 @@ func (bq *BatchQueue) Size() int {
 	bq.mu.Lock()
 	defer bq.mu.Unlock()
 	return len(bq.queue) - bq.head
+}
+
+// persistBatch persists a batch to the datastore
+func (bq *BatchQueue) persistBatch(ctx context.Context, batch coresequencer.Batch) error {
+	hash, err := batch.Hash()
+	if err != nil {
+		return err
+	}
+	key := hex.EncodeToString(hash)
+
+	pbBatch := &pb.Batch{
+		Txs: batch.Transactions,
+	}
+
+	encodedBatch, err := proto.Marshal(pbBatch)
+	if err != nil {
+		return err
+	}
+
+	// First write to DB for durability
+	if err := bq.db.Put(ctx, ds.NewKey(key), encodedBatch); err != nil {
+		return err
+	}
+
+	return nil
 }

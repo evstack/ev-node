@@ -110,38 +110,7 @@ func TestDARetriever_RetrieveFromDA_HeightFromFuture(t *testing.T) {
 	assert.Nil(t, events)
 }
 
-func TestDARetriever_RetrieveFromDA_Timeout(t *testing.T) {
-	t.Skip("Skipping flaky timeout test - timing is now controlled by DA client")
-
-	mockDA := testmocks.NewMockDA(t)
-
-	// Mock GetIDs to hang longer than the timeout
-	mockDA.EXPECT().GetIDs(mock.Anything, mock.Anything, mock.Anything).
-		Run(func(ctx context.Context, height uint64, namespace []byte) {
-			<-ctx.Done()
-		}).
-		Return(nil, context.DeadlineExceeded).Maybe()
-
-	r := newTestDARetriever(t, mockDA, config.DefaultConfig(), genesis.Genesis{})
-
-	start := time.Now()
-	events, err := r.RetrieveFromDA(context.Background(), 42)
-	duration := time.Since(start)
-
-	// Verify error is returned and contains deadline exceeded information
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "DA retrieval failed")
-	assert.Contains(t, err.Error(), "context deadline exceeded")
-	assert.Len(t, events, 0)
-
-	// Verify timeout occurred approximately at expected time (with some tolerance)
-	// DA client has a 30-second default timeout
-	assert.Greater(t, duration, 29*time.Second, "should timeout after approximately 30 seconds")
-	assert.Less(t, duration, 35*time.Second, "should not take much longer than timeout")
-}
-
 func TestDARetriever_RetrieveFromDA_TimeoutFast(t *testing.T) {
-
 	mockDA := testmocks.NewMockDA(t)
 
 	// Mock GetIDs to immediately return context deadline exceeded
