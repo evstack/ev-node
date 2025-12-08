@@ -169,7 +169,7 @@ func (c *Sequencer) GetNextBatch(ctx context.Context, req coresequencer.GetNextB
 	}
 
 	// Update checkpoint after consuming forced inclusion transactions
-	if daHeight > 0 {
+	if daHeight > 0 || len(forcedTxs) > 0 {
 		c.checkpoint.TxIndex += uint64(len(forcedTxs))
 
 		// If we've consumed all transactions from this DA epoch, move to next

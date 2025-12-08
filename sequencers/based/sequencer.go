@@ -110,7 +110,7 @@ func (s *BasedSequencer) GetNextBatch(ctx context.Context, req coresequencer.Get
 	batch := s.createBatchFromCheckpoint(req.MaxBytes)
 
 	// Update checkpoint with how many transactions we consumed
-	if daHeight > 0 {
+	if daHeight > 0 || len(batch.Transactions) > 0 {
 		s.checkpoint.TxIndex += uint64(len(batch.Transactions))
 
 		// If we've consumed all transactions from this DA epoch, move to next
