@@ -169,7 +169,7 @@ func (c *Sequencer) GetNextBatch(ctx context.Context, req coresequencer.GetNextB
 	}
 
 	// Update checkpoint after consuming forced inclusion transactions
-	if len(forcedTxs) > 0 {
+	if daHeight > 0 {
 		c.checkpoint.TxIndex += uint64(len(forcedTxs))
 
 		// If we've consumed all transactions from this DA epoch, move to next
@@ -317,14 +317,14 @@ func (c *Sequencer) fetchNextDAEpoch(ctx context.Context, maxBytes uint64) (uint
 			c.logger.Debug().
 				Uint64("da_height", currentDAHeight).
 				Msg("DA height from future, waiting for DA to produce block")
-			return currentDAHeight, nil
+			return 0, nil
 		} else if errors.Is(err, block.ErrForceInclusionNotConfigured) {
 			// Forced inclusion not configured, continue without forced txs
 			c.cachedForcedInclusionTxs = [][]byte{}
-			return currentDAHeight, nil
+			return 0, nil
 		}
 
-		return currentDAHeight, fmt.Errorf("failed to retrieve forced inclusion transactions: %w", err)
+		return 0, fmt.Errorf("failed to retrieve forced inclusion transactions: %w", err)
 	}
 
 	// Validate and filter transactions

@@ -1078,7 +1078,7 @@ func TestSequencer_GetNextBatch_EmptyDABatch_IncreasesDAHeight(t *testing.T) {
 		}, nil).Once()
 
 	// Second DA epoch also returns empty transactions
-	mockRetriever.On("RetrieveForcedIncludedTxs", mock.Anything, uint64(101)).
+	mockRetriever.On("RetrieveForcedIncludedTxs", mock.Anything, uint64(106)).
 		Return(&block.ForcedInclusionEvent{
 			Txs:           [][]byte{},
 			StartDaHeight: 106,
