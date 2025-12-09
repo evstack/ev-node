@@ -42,7 +42,7 @@ func createTestComponents(_ context.Context, t *testing.T) (coreexecutor.Executo
 	p2pClient := &p2p.Client{}
 	ds := datastore.NewMapDatastore()
 
-	return executor, sequencer, datypes.WrapCoreDA(coreDummyDA), keyProvider, p2pClient, ds, stopDAHeightTicker
+	return executor, sequencer, coreDummyDA, keyProvider, p2pClient, ds, stopDAHeightTicker
 }
 
 func TestParseFlags(t *testing.T) {

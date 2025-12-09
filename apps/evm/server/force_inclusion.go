@@ -15,8 +15,8 @@ import (
 
 	"github.com/rs/zerolog"
 
-	"github.com/evstack/ev-node/core/da"
 	"github.com/evstack/ev-node/pkg/config"
+	da "github.com/evstack/ev-node/pkg/da/types"
 	"github.com/evstack/ev-node/pkg/genesis"
 	"github.com/evstack/ev-node/types"
 )

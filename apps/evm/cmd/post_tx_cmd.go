@@ -11,10 +11,10 @@ import (
 	"github.com/spf13/cobra"
 
 	evblock "github.com/evstack/ev-node/block"
-	"github.com/evstack/ev-node/core/da"
 	"github.com/evstack/ev-node/da/jsonrpc"
 	rollcmd "github.com/evstack/ev-node/pkg/cmd"
 	rollconf "github.com/evstack/ev-node/pkg/config"
+	da "github.com/evstack/ev-node/pkg/da/types"
 	genesispkg "github.com/evstack/ev-node/pkg/genesis"
 	seqcommon "github.com/evstack/ev-node/sequencers/common"
 	"github.com/evstack/ev-node/types"

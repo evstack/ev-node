@@ -14,9 +14,9 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 
-	coreda "github.com/evstack/ev-node/core/da"
 	coreexecutor "github.com/evstack/ev-node/core/execution"
 	evconfig "github.com/evstack/ev-node/pkg/config"
+	datypes "github.com/evstack/ev-node/pkg/da/types"
 )
 
 // FullNodeTestSuite is a test suite for full node integration tests
@@ -321,7 +321,7 @@ func TestBatchQueueThrottlingWithDAFailure(t *testing.T) {
 	require.True(ok, "Expected DummyExecutor implementation")
 
 	// Cast dummyDA to our enhanced version so we can make it fail
-	dummyDAImpl, ok := dummyDA.(*coreda.DummyDA)
+	dummyDAImpl, ok := dummyDA.(*datypes.DummyDA)
 	require.True(ok, "Expected DummyDA implementation")
 
 	// Create node with components

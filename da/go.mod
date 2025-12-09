@@ -7,7 +7,6 @@ require (
 	github.com/celestiaorg/go-square/v3 v3.0.2
 	github.com/celestiaorg/nmt v0.24.2
 	github.com/evstack/ev-node v0.0.0-00010101000000-000000000000
-	github.com/evstack/ev-node/core v1.0.0-beta.5
 	github.com/filecoin-project/go-jsonrpc v0.9.0
 	github.com/rs/zerolog v1.34.0
 	github.com/stretchr/testify v1.11.1

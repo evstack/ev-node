@@ -102,6 +102,6 @@ See [full node]
 [Store]: https://github.com/evstack/ev-node/blob/main/pkg/store/store.go
 [store interface]: https://github.com/evstack/ev-node/blob/main/pkg/store/types.go
 [Block Components]: https://github.com/evstack/ev-node/blob/main/block/components.go
-[dalc]: https://github.com/evstack/ev-node/blob/main/core/da/da.go
+[dalc]: https://github.com/evstack/ev-node/blob/main/pkg/da/types/adapter.go
 [Header Sync Service]: https://github.com/evstack/ev-node/blob/main/pkg/sync/sync_service.go
 [Data Sync Service]: https://github.com/evstack/ev-node/blob/main/pkg/sync/sync_service.go

@@ -13,8 +13,9 @@ import (
 	"github.com/spf13/cobra"
 	"google.golang.org/protobuf/proto"
 
-	coreda "github.com/evstack/ev-node/core/da"
 	"github.com/evstack/ev-node/da/jsonrpc"
+	blobrpc "github.com/evstack/ev-node/da/jsonrpc/blob"
+	datypes "github.com/evstack/ev-node/pkg/da/types"
 	"github.com/evstack/ev-node/types"
 	pb "github.com/evstack/ev-node/types/pb/evnode/v1"
 )
@@ -345,12 +346,12 @@ func printBlobHeader(current, total int) {
 	fmt.Println(strings.Repeat("-", 80))
 }
 
-func displayBlobInfo(id coreda.ID, blob []byte) {
+func displayBlobInfo(id datypes.ID, blob []byte) {
 	fmt.Printf("ID:           %s\n", formatHash(hex.EncodeToString(id)))
 	fmt.Printf("Size:         %s\n", formatSize(len(blob)))
 
 	// Try to parse the ID to show height and commitment
-	if idHeight, commitment, err := coreda.SplitID(id); err == nil {
+	if idHeight, commitment := blobrpc.SplitID(id); commitment != nil {
 		fmt.Printf("ID Height:    %d\n", idHeight)
 		fmt.Printf("Commitment:   %s\n", formatHash(hex.EncodeToString(commitment)))
 	}
@@ -528,7 +529,7 @@ func parseNamespace(ns string) ([]byte, error) {
 	}
 
 	// If not valid hex or not 29 bytes, treat as string identifier
-	namespace := coreda.NamespaceFromString(ns)
+	namespace := datypes.NamespaceFromString(ns)
 	return namespace.Bytes(), nil
 }
 

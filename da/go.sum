@@ -18,8 +18,6 @@ github.com/envoyproxy/go-control-plane v0.9.0/go.mod h1:YTl/9mNaCwkRvm6d1a2C3ymF
 github.com/envoyproxy/go-control-plane v0.9.1-0.20191026205805-5f8ba28d4473/go.mod h1:YTl/9mNaCwkRvm6d1a2C3ymFceY/DCBVvsKhRF0iEA4=
 github.com/envoyproxy/go-control-plane v0.9.4/go.mod h1:6rpuAdCZL397s3pYoYcLgu1mIlRU8Am5FuJP05cCM98=
 github.com/envoyproxy/protoc-gen-validate v0.1.0/go.mod h1:iSmxcyjqTsJpI2R4NaDN7+kN2VEUnK/pcBlmesArF7c=
-github.com/evstack/ev-node/core v1.0.0-beta.5 h1:lgxE8XiF3U9pcFgh7xuKMgsOGvLBGRyd9kc9MR4WL0o=
-github.com/evstack/ev-node/core v1.0.0-beta.5/go.mod h1:n2w/LhYQTPsi48m6lMj16YiIqsaQw6gxwjyJvR+B3sY=
 github.com/filecoin-project/go-jsonrpc v0.9.0 h1:G47qEF52w7GholpI21vPSTVBFvsrip6geIoqNiqyZtQ=
 github.com/filecoin-project/go-jsonrpc v0.9.0/go.mod h1:OG7kVBVh/AbDFHIwx7Kw0l9ARmKOS6gGOr0LbdBpbLc=
 github.com/godbus/dbus/v5 v5.0.4/go.mod h1:xhWf0FNVPg57R7Z0UbKHbJfkEywrmjJnf7w5xrFpKfA=

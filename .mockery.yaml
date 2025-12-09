@@ -2,7 +2,7 @@ template: testify
 template-data:
   unroll-variadic: true
 packages:
-  github.com/evstack/ev-node/core/da:
+  github.com/evstack/ev-node/pkg/da/types:
     interfaces:
       DA:
         config:

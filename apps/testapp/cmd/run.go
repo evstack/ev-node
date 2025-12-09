@@ -11,12 +11,12 @@ import (
 
 	kvexecutor "github.com/evstack/ev-node/apps/testapp/kv"
 	"github.com/evstack/ev-node/block"
-	"github.com/evstack/ev-node/core/da"
 	coresequencer "github.com/evstack/ev-node/core/sequencer"
 	"github.com/evstack/ev-node/da/jsonrpc"
 	"github.com/evstack/ev-node/node"
 	"github.com/evstack/ev-node/pkg/cmd"
 	"github.com/evstack/ev-node/pkg/config"
+	da "github.com/evstack/ev-node/pkg/da/types"
 	"github.com/evstack/ev-node/pkg/genesis"
 	"github.com/evstack/ev-node/pkg/p2p"
 	"github.com/evstack/ev-node/pkg/p2p/key"

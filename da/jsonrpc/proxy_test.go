@@ -13,10 +13,8 @@ import (
 	proxy "github.com/evstack/ev-node/da/jsonrpc"
 	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 
-	coreda "github.com/evstack/ev-node/core/da"
 	datypes "github.com/evstack/ev-node/pkg/da/types"
 )
 
@@ -44,40 +42,11 @@ func getTestDABlockTime() time.Duration {
 	return 100 * time.Millisecond
 }
 
-// coreDAAdapter adapts the legacy core/da.DA to the new datypes-based interface.
-type coreDAAdapter struct{ core coreda.DA }
-
-func (a coreDAAdapter) Get(ctx context.Context, ids []datypes.ID, namespace []byte) ([]datypes.Blob, error) {
-	return a.core.Get(ctx, ids, namespace)
-}
-func (a coreDAAdapter) GetIDs(ctx context.Context, height uint64, namespace []byte) (*datypes.GetIDsResult, error) {
-	res, err := a.core.GetIDs(ctx, height, namespace)
-	if res == nil {
-		return nil, err
-	}
-	return &datypes.GetIDsResult{IDs: res.IDs, Timestamp: res.Timestamp}, err
-}
-func (a coreDAAdapter) GetProofs(ctx context.Context, ids []datypes.ID, namespace []byte) ([]datypes.Proof, error) {
-	return a.core.GetProofs(ctx, ids, namespace)
-}
-func (a coreDAAdapter) Commit(ctx context.Context, blobs []datypes.Blob, namespace []byte) ([]datypes.Commitment, error) {
-	return a.core.Commit(ctx, blobs, namespace)
-}
-func (a coreDAAdapter) Validate(ctx context.Context, ids []datypes.ID, proofs []datypes.Proof, namespace []byte) ([]bool, error) {
-	return a.core.Validate(ctx, ids, proofs, namespace)
-}
-func (a coreDAAdapter) Submit(ctx context.Context, blobs []datypes.Blob, gasPrice float64, namespace []byte) ([]datypes.ID, error) {
-	return a.core.Submit(ctx, blobs, gasPrice, namespace)
-}
-func (a coreDAAdapter) SubmitWithOptions(ctx context.Context, blobs []datypes.Blob, gasPrice float64, namespace []byte, options []byte) ([]datypes.ID, error) {
-	return a.core.SubmitWithOptions(ctx, blobs, gasPrice, namespace, options)
-}
-
 func TestProxy(t *testing.T) {
-	dummy := coreda.NewDummyDA(100_000, getTestDABlockTime())
+	dummy := datypes.NewDummyDA(100_000, getTestDABlockTime())
 	dummy.StartHeightTicker()
 	logger := zerolog.Nop()
-	server := proxy.NewServer(logger, ServerHost, ServerPort, coreDAAdapter{core: dummy})
+	server := proxy.NewServer(logger, ServerHost, ServerPort, dummy)
 	err := server.Start(context.Background())
 	require.NoError(t, err)
 	defer func() {
@@ -281,13 +250,10 @@ func TestSubmitWithOptions(t *testing.T) {
 			return expectedIDs, nil
 		}
 
-		mockAPI.On("SubmitWithOptions", ctx, blobs, gasPrice, encodedNamespace, testOptions).Return(expectedIDs, nil).Once()
-
 		ids, err := client.DA.SubmitWithOptions(ctx, blobs, gasPrice, encodedNamespace, testOptions)
 
 		require.NoError(t, err)
 		assert.Equal(t, expectedIDs, ids)
-		mockAPI.AssertExpectations(t)
 	})
 
 	t.Run("Single Blob Too Large", func(t *testing.T) {

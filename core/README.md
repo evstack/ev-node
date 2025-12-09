@@ -51,55 +51,23 @@ type Sequencer interface {
 
 ### Data Availability (DA)
 
-The `DA` interface specifies how data is submitted to and retrieved from the underlying data availability layer.
+The `DA` interface now lives in `pkg/da/types` and defines how blobs are submitted to and retrieved from the DA layer.
 
 ```go
-// core/da/da.go
+// pkg/da/types/adapter.go
 
-// DA defines the interface for the data availability layer.
 type DA interface {
-	// MaxBlobSize returns the max blob size.
-	MaxBlobSize(ctx context.Context) (uint64, error)
-	// Get returns Blobs for given IDs.
 	Get(ctx context.Context, ids []ID, namespace []byte) ([]Blob, error)
-	// GetIDs returns IDs of Blobs at given height.
 	GetIDs(ctx context.Context, height uint64, namespace []byte) (*GetIDsResult, error)
-	// GetProofs returns inclusion proofs for Blobs specified by IDs at given height.
 	GetProofs(ctx context.Context, ids []ID, namespace []byte) ([]Proof, error)
-	// Commit creates commitments for Blobs. Submit uses Commit internally.
 	Commit(ctx context.Context, blobs []Blob, namespace []byte) ([]Commitment, error)
-	// Submit submits Blobs to DA layer.
 	Submit(ctx context.Context, blobs []Blob, gasPrice float64, namespace []byte) ([]ID, error)
-	// Validate validates Commitments against the corresponding Proofs. This should be possible without retrieving the Blobs.
+	SubmitWithOptions(ctx context.Context, blobs []Blob, gasPrice float64, namespace []byte, options []byte) ([]ID, error)
 	Validate(ctx context.Context, ids []ID, proofs []Proof, namespace []byte) ([]bool, error)
-	// GasPrice returns the gas price.
-	GasPrice(ctx context.Context) (float64, error)
-	// GasMultiplier returns the gas multiplier.
-	GasMultiplier(ctx context.Context) (float64, error)
 }
 ```
 
-The `Client` interface provides a higher-level abstraction for interacting with the DA layer, often used by nodes.
-
-```go
-// core/da/client.go
-
-// Client is the interface for the DA layer client.
-type Client interface {
-	// Submit submits block data to DA layer.
-	Submit(ctx context.Context, data [][]byte, maxBlobSize uint64, gasPrice float64) ResultSubmit
-	// Retrieve retrieves block data from DA layer.
-	Retrieve(ctx context.Context, dataLayerHeight uint64) ResultRetrieve
-	// MaxBlobSize returns the maximum blob size for the DA layer.
-	MaxBlobSize(ctx context.Context) (uint64, error)
-	// GasPrice returns the gas price for the DA layer.
-	GasPrice(ctx context.Context) (float64, error)
-	// GasMultiplier returns the gas multiplier for the DA layer.
-	GasMultiplier(ctx context.Context) (float64, error)
-	// GetNamespace returns the namespace for the DA layer.
-	GetNamespace(ctx context.Context) ([]byte, error)
-}
-```
+The higher-level DA client and blob submission helpers live under `block/internal/da`.
 
 ## Contributing
 
