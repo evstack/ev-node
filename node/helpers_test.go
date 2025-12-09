@@ -22,6 +22,7 @@ import (
 	coresequencer "github.com/evstack/ev-node/core/sequencer"
 
 	evconfig "github.com/evstack/ev-node/pkg/config"
+	datypes "github.com/evstack/ev-node/pkg/da/types"
 	"github.com/evstack/ev-node/pkg/p2p"
 	"github.com/evstack/ev-node/pkg/p2p/key"
 	remote_signer "github.com/evstack/ev-node/pkg/signer/noop"
@@ -43,14 +44,14 @@ const (
 )
 
 // createTestComponents creates test components for node initialization
-func createTestComponents(t *testing.T, config evconfig.Config) (coreexecutor.Executor, coresequencer.Sequencer, coreda.DA, *p2p.Client, datastore.Batching, *key.NodeKey, func()) {
+func createTestComponents(t *testing.T, config evconfig.Config) (coreexecutor.Executor, coresequencer.Sequencer, datypes.DA, *p2p.Client, datastore.Batching, *key.NodeKey, func()) {
 	executor := coreexecutor.NewDummyExecutor()
 	sequencer := coresequencer.NewDummySequencer()
-	dummyDA := coreda.NewDummyDA(100_000, config.DA.BlockTime.Duration)
-	dummyDA.StartHeightTicker()
+	coreDummyDA := coreda.NewDummyDA(100_000, config.DA.BlockTime.Duration)
+	coreDummyDA.StartHeightTicker()
 
 	stopDAHeightTicker := func() {
-		dummyDA.StopHeightTicker()
+		coreDummyDA.StopHeightTicker()
 	}
 
 	// Create genesis and keys for P2P client
@@ -65,7 +66,7 @@ func createTestComponents(t *testing.T, config evconfig.Config) (coreexecutor.Ex
 	require.NotNil(t, p2pClient)
 	ds := dssync.MutexWrap(datastore.NewMapDatastore())
 
-	return executor, sequencer, dummyDA, p2pClient, ds, p2pKey, stopDAHeightTicker
+	return executor, sequencer, datypes.WrapCoreDA(coreDummyDA), p2pClient, ds, p2pKey, stopDAHeightTicker
 }
 
 func getTestConfig(t *testing.T, n int) evconfig.Config {
@@ -101,7 +102,7 @@ func newTestNode(
 	config evconfig.Config,
 	executor coreexecutor.Executor,
 	sequencer coresequencer.Sequencer,
-	dac coreda.DA,
+	dac datypes.DA,
 	p2pClient *p2p.Client,
 	ds datastore.Batching,
 	stopDAHeightTicker func(),
@@ -145,7 +146,7 @@ func createNodeWithCustomComponents(
 	config evconfig.Config,
 	executor coreexecutor.Executor,
 	sequencer coresequencer.Sequencer,
-	dac coreda.DA,
+	dac datypes.DA,
 	p2pClient *p2p.Client,
 	ds datastore.Batching,
 	stopDAHeightTicker func(),

@@ -9,10 +9,10 @@ import (
 	"strings"
 	"time"
 
+	"github.com/evstack/ev-node/da/jsonrpc/blob"
 	"github.com/rs/zerolog"
 
 	coreda "github.com/evstack/ev-node/core/da"
-	"github.com/evstack/ev-node/pkg/blob"
 	datypes "github.com/evstack/ev-node/pkg/da/types"
 )
 

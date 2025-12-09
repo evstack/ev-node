@@ -9,9 +9,9 @@ import (
 	"github.com/rs/zerolog"
 
 	"github.com/evstack/ev-node/block"
-	coreda "github.com/evstack/ev-node/core/da"
 	coresequencer "github.com/evstack/ev-node/core/sequencer"
 	"github.com/evstack/ev-node/pkg/config"
+	datypes "github.com/evstack/ev-node/pkg/da/types"
 	"github.com/evstack/ev-node/pkg/genesis"
 	seqcommon "github.com/evstack/ev-node/sequencers/common"
 )
@@ -27,7 +27,7 @@ var _ coresequencer.Sequencer = (*BasedSequencer)(nil)
 // via the forced inclusion mechanism. It does not accept transactions from the reaper.
 type BasedSequencer struct {
 	fiRetriever ForcedInclusionRetriever
-	da          coreda.DA
+	da          datypes.DA
 	config      config.Config
 	genesis     genesis.Genesis
 	logger      zerolog.Logger
@@ -39,7 +39,7 @@ type BasedSequencer struct {
 // NewBasedSequencer creates a new based sequencer instance
 func NewBasedSequencer(
 	fiRetriever ForcedInclusionRetriever,
-	da coreda.DA,
+	da datypes.DA,
 	config config.Config,
 	genesis genesis.Genesis,
 	logger zerolog.Logger,
@@ -76,7 +76,7 @@ func (s *BasedSequencer) GetNextBatch(ctx context.Context, req coresequencer.Get
 		// Check if forced inclusion is not configured
 		if errors.Is(err, block.ErrForceInclusionNotConfigured) {
 			return nil, errors.New("forced inclusion not configured")
-		} else if errors.Is(err, coreda.ErrHeightFromFuture) {
+		} else if errors.Is(err, datypes.ErrHeightFromFuture) {
 			// If we get a height from future error, keep the current DA height and return batch
 			// We'll retry the same height on the next call until DA produces that block
 			s.logger.Debug().

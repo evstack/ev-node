@@ -18,10 +18,10 @@ import (
 
 	"github.com/evstack/ev-node/block"
 
-	coreda "github.com/evstack/ev-node/core/da"
 	coreexecutor "github.com/evstack/ev-node/core/execution"
 	coresequencer "github.com/evstack/ev-node/core/sequencer"
 	"github.com/evstack/ev-node/pkg/config"
+	datypes "github.com/evstack/ev-node/pkg/da/types"
 	genesispkg "github.com/evstack/ev-node/pkg/genesis"
 	"github.com/evstack/ev-node/pkg/p2p"
 	rpcserver "github.com/evstack/ev-node/pkg/rpc/server"
@@ -53,7 +53,7 @@ type FullNode struct {
 
 	nodeConfig config.Config
 
-	da coreda.DA
+	da datypes.DA
 
 	p2pClient       *p2p.Client
 	hSyncService    *evsync.HeaderSyncService
@@ -75,7 +75,7 @@ func newFullNode(
 	database ds.Batching,
 	exec coreexecutor.Executor,
 	sequencer coresequencer.Sequencer,
-	da coreda.DA,
+	da datypes.DA,
 	metricsProvider MetricsProvider,
 	logger zerolog.Logger,
 	nodeOpts NodeOptions,

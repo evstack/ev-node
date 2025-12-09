@@ -18,6 +18,7 @@ import (
 	coresequencer "github.com/evstack/ev-node/core/sequencer"
 	"github.com/evstack/ev-node/node"
 	rollconf "github.com/evstack/ev-node/pkg/config"
+	datypes "github.com/evstack/ev-node/pkg/da/types"
 	genesis "github.com/evstack/ev-node/pkg/genesis"
 	"github.com/evstack/ev-node/pkg/p2p"
 	"github.com/evstack/ev-node/pkg/signer"
@@ -26,13 +27,13 @@ import (
 
 const MockDANamespace = "test"
 
-func createTestComponents(_ context.Context, t *testing.T) (coreexecutor.Executor, coresequencer.Sequencer, coreda.DA, signer.Signer, *p2p.Client, datastore.Batching, func()) {
+func createTestComponents(_ context.Context, t *testing.T) (coreexecutor.Executor, coresequencer.Sequencer, datypes.DA, signer.Signer, *p2p.Client, datastore.Batching, func()) {
 	executor := coreexecutor.NewDummyExecutor()
 	sequencer := coresequencer.NewDummySequencer()
-	dummyDA := coreda.NewDummyDA(100_000, 10*time.Second)
-	dummyDA.StartHeightTicker()
+	coreDummyDA := coreda.NewDummyDA(100_000, 10*time.Second)
+	coreDummyDA.StartHeightTicker()
 	stopDAHeightTicker := func() {
-		dummyDA.StopHeightTicker()
+		coreDummyDA.StopHeightTicker()
 	}
 	tmpDir := t.TempDir()
 	keyProvider, err := filesigner.CreateFileSystemSigner(filepath.Join(tmpDir, "config"), []byte{})
@@ -43,7 +44,7 @@ func createTestComponents(_ context.Context, t *testing.T) (coreexecutor.Executo
 	p2pClient := &p2p.Client{}
 	ds := datastore.NewMapDatastore()
 
-	return executor, sequencer, dummyDA, keyProvider, p2pClient, ds, stopDAHeightTicker
+	return executor, sequencer, datypes.WrapCoreDA(coreDummyDA), keyProvider, p2pClient, ds, stopDAHeightTicker
 }
 
 func TestParseFlags(t *testing.T) {
@@ -685,7 +686,7 @@ func newRunNodeCmd(
 	ctx context.Context,
 	executor coreexecutor.Executor,
 	sequencer coresequencer.Sequencer,
-	dac coreda.DA,
+	dac datypes.DA,
 	remoteSigner signer.Signer,
 	p2pClient *p2p.Client,
 	datastore datastore.Batching,

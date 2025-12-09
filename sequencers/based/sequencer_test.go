@@ -15,6 +15,7 @@ import (
 	coreda "github.com/evstack/ev-node/core/da"
 	coresequencer "github.com/evstack/ev-node/core/sequencer"
 	"github.com/evstack/ev-node/pkg/config"
+	datypes "github.com/evstack/ev-node/pkg/da/types"
 	"github.com/evstack/ev-node/pkg/genesis"
 )
 
@@ -94,7 +95,7 @@ func TestBasedSequencer_SubmitBatchTxs(t *testing.T) {
 	daClient := block.NewDAClient(mockDA, cfg, zerolog.Nop())
 	fiRetriever := block.NewForcedInclusionRetriever(daClient, gen, zerolog.Nop())
 
-	seq := NewBasedSequencer(fiRetriever, mockDA, cfg, gen, zerolog.Nop())
+	seq := NewBasedSequencer(fiRetriever, datypes.WrapCoreDA(mockDA), cfg, gen, zerolog.Nop())
 
 	// Submit should succeed but be ignored
 	req := coresequencer.SubmitBatchTxsRequest{
@@ -136,7 +137,7 @@ func TestBasedSequencer_GetNextBatch_WithForcedTxs(t *testing.T) {
 	daClient := block.NewDAClient(mockDA, cfg, zerolog.Nop())
 	fiRetriever := block.NewForcedInclusionRetriever(daClient, gen, zerolog.Nop())
 
-	seq := NewBasedSequencer(fiRetriever, mockDA, cfg, gen, zerolog.Nop())
+	seq := NewBasedSequencer(fiRetriever, datypes.WrapCoreDA(mockDA), cfg, gen, zerolog.Nop())
 
 	req := coresequencer.GetNextBatchRequest{
 		MaxBytes:      1000000,
@@ -175,7 +176,7 @@ func TestBasedSequencer_GetNextBatch_EmptyDA(t *testing.T) {
 	daClient := block.NewDAClient(mockDA, cfg, zerolog.Nop())
 	fiRetriever := block.NewForcedInclusionRetriever(daClient, gen, zerolog.Nop())
 
-	seq := NewBasedSequencer(fiRetriever, mockDA, cfg, gen, zerolog.Nop())
+	seq := NewBasedSequencer(fiRetriever, datypes.WrapCoreDA(mockDA), cfg, gen, zerolog.Nop())
 
 	req := coresequencer.GetNextBatchRequest{
 		MaxBytes:      1000000,
@@ -205,7 +206,7 @@ func TestBasedSequencer_GetNextBatch_NotConfigured(t *testing.T) {
 	daClient := block.NewDAClient(mockDA, cfgNoFI, zerolog.Nop())
 	fiRetriever := block.NewForcedInclusionRetriever(daClient, gen, zerolog.Nop())
 
-	seq := NewBasedSequencer(fiRetriever, mockDA, cfgNoFI, gen, zerolog.Nop())
+	seq := NewBasedSequencer(fiRetriever, datypes.WrapCoreDA(mockDA), cfgNoFI, gen, zerolog.Nop())
 
 	req := coresequencer.GetNextBatchRequest{
 		MaxBytes:      1000000,
@@ -250,7 +251,7 @@ func TestBasedSequencer_GetNextBatch_WithMaxBytes(t *testing.T) {
 	daClient := block.NewDAClient(mockDA, cfg, zerolog.Nop())
 	fiRetriever := block.NewForcedInclusionRetriever(daClient, gen, zerolog.Nop())
 
-	seq := NewBasedSequencer(fiRetriever, mockDA, cfg, gen, zerolog.Nop())
+	seq := NewBasedSequencer(fiRetriever, datypes.WrapCoreDA(mockDA), cfg, gen, zerolog.Nop())
 
 	// First call with max 100 bytes - should get first 2 txs (50 + 60 = 110, but logic allows if batch has content)
 	req := coresequencer.GetNextBatchRequest{
@@ -307,7 +308,7 @@ func TestBasedSequencer_GetNextBatch_FromQueue(t *testing.T) {
 	daClient := block.NewDAClient(mockDA, cfg, zerolog.Nop())
 	fiRetriever := block.NewForcedInclusionRetriever(daClient, gen, zerolog.Nop())
 
-	seq := NewBasedSequencer(fiRetriever, mockDA, cfg, gen, zerolog.Nop())
+	seq := NewBasedSequencer(fiRetriever, datypes.WrapCoreDA(mockDA), cfg, gen, zerolog.Nop())
 
 	// Pre-populate the queue
 	seq.txQueue = [][]byte{[]byte("queued_tx1"), []byte("queued_tx2")}
@@ -357,7 +358,7 @@ func TestBasedSequencer_GetNextBatch_AlwaysCheckPendingForcedInclusion(t *testin
 	daClient := block.NewDAClient(mockDA, cfg, zerolog.Nop())
 	fiRetriever := block.NewForcedInclusionRetriever(daClient, gen, zerolog.Nop())
 
-	seq := NewBasedSequencer(fiRetriever, mockDA, cfg, gen, zerolog.Nop())
+	seq := NewBasedSequencer(fiRetriever, datypes.WrapCoreDA(mockDA), cfg, gen, zerolog.Nop())
 
 	// First call with maxBytes = 100
 	// Forced tx (150 bytes) is added to queue, but batch will be empty since it exceeds maxBytes
@@ -424,7 +425,7 @@ func TestBasedSequencer_GetNextBatch_ForcedInclusionExceedsMaxBytes(t *testing.T
 	daClient := block.NewDAClient(mockDA, cfg, zerolog.Nop())
 	fiRetriever := block.NewForcedInclusionRetriever(daClient, gen, zerolog.Nop())
 
-	seq := NewBasedSequencer(fiRetriever, mockDA, cfg, gen, zerolog.Nop())
+	seq := NewBasedSequencer(fiRetriever, datypes.WrapCoreDA(mockDA), cfg, gen, zerolog.Nop())
 
 	// First call with maxBytes = 120
 	// Should get only first forced tx (100 bytes), second stays in queue
@@ -477,7 +478,7 @@ func TestBasedSequencer_VerifyBatch(t *testing.T) {
 	daClient := block.NewDAClient(mockDA, cfg, zerolog.Nop())
 	fiRetriever := block.NewForcedInclusionRetriever(daClient, gen, zerolog.Nop())
 
-	seq := NewBasedSequencer(fiRetriever, mockDA, cfg, gen, zerolog.Nop())
+	seq := NewBasedSequencer(fiRetriever, datypes.WrapCoreDA(mockDA), cfg, gen, zerolog.Nop())
 
 	req := coresequencer.VerifyBatchRequest{
 		Id:        []byte("test-chain"),
@@ -505,7 +506,7 @@ func TestBasedSequencer_SetDAHeight(t *testing.T) {
 	daClient := block.NewDAClient(mockDA, cfg, zerolog.Nop())
 	fiRetriever := block.NewForcedInclusionRetriever(daClient, gen, zerolog.Nop())
 
-	seq := NewBasedSequencer(fiRetriever, mockDA, cfg, gen, zerolog.Nop())
+	seq := NewBasedSequencer(fiRetriever, datypes.WrapCoreDA(mockDA), cfg, gen, zerolog.Nop())
 
 	assert.Equal(t, uint64(100), seq.GetDAHeight())
 
@@ -531,7 +532,7 @@ func TestBasedSequencer_GetNextBatch_ErrorHandling(t *testing.T) {
 	daClient := block.NewDAClient(mockDA, cfg, zerolog.Nop())
 	fiRetriever := block.NewForcedInclusionRetriever(daClient, gen, zerolog.Nop())
 
-	seq := NewBasedSequencer(fiRetriever, mockDA, cfg, gen, zerolog.Nop())
+	seq := NewBasedSequencer(fiRetriever, datypes.WrapCoreDA(mockDA), cfg, gen, zerolog.Nop())
 
 	req := coresequencer.GetNextBatchRequest{
 		MaxBytes:      1000000,
