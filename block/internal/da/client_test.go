@@ -9,55 +9,54 @@ import (
 	"github.com/rs/zerolog"
 	"gotest.tools/v3/assert"
 
-	coreda "github.com/evstack/ev-node/core/da"
 	datypes "github.com/evstack/ev-node/pkg/da/types"
 )
 
-// mockDA is a simple mock implementation of coreda.DA for testing
+// mockDA is a simple mock implementation of datypes.DA for testing
 type mockDA struct {
-	submitFunc        func(ctx context.Context, blobs []coreda.Blob, gasPrice float64, namespace []byte) ([]coreda.ID, error)
-	submitWithOptions func(ctx context.Context, blobs []coreda.Blob, gasPrice float64, namespace []byte, options []byte) ([]coreda.ID, error)
-	getIDsFunc        func(ctx context.Context, height uint64, namespace []byte) (*coreda.GetIDsResult, error)
-	getFunc           func(ctx context.Context, ids []coreda.ID, namespace []byte) ([]coreda.Blob, error)
+	submitFunc        func(ctx context.Context, blobs []datypes.Blob, gasPrice float64, namespace []byte) ([]datypes.ID, error)
+	submitWithOptions func(ctx context.Context, blobs []datypes.Blob, gasPrice float64, namespace []byte, options []byte) ([]datypes.ID, error)
+	getIDsFunc        func(ctx context.Context, height uint64, namespace []byte) (*datypes.GetIDsResult, error)
+	getFunc           func(ctx context.Context, ids []datypes.ID, namespace []byte) ([]datypes.Blob, error)
 }
 
-func (m *mockDA) Submit(ctx context.Context, blobs []coreda.Blob, gasPrice float64, namespace []byte) ([]coreda.ID, error) {
+func (m *mockDA) Submit(ctx context.Context, blobs []datypes.Blob, gasPrice float64, namespace []byte) ([]datypes.ID, error) {
 	if m.submitFunc != nil {
 		return m.submitFunc(ctx, blobs, gasPrice, namespace)
 	}
 	return nil, nil
 }
 
-func (m *mockDA) SubmitWithOptions(ctx context.Context, blobs []coreda.Blob, gasPrice float64, namespace []byte, options []byte) ([]coreda.ID, error) {
+func (m *mockDA) SubmitWithOptions(ctx context.Context, blobs []datypes.Blob, gasPrice float64, namespace []byte, options []byte) ([]datypes.ID, error) {
 	if m.submitWithOptions != nil {
 		return m.submitWithOptions(ctx, blobs, gasPrice, namespace, options)
 	}
 	return nil, nil
 }
 
-func (m *mockDA) GetIDs(ctx context.Context, height uint64, namespace []byte) (*coreda.GetIDsResult, error) {
+func (m *mockDA) GetIDs(ctx context.Context, height uint64, namespace []byte) (*datypes.GetIDsResult, error) {
 	if m.getIDsFunc != nil {
 		return m.getIDsFunc(ctx, height, namespace)
 	}
 	return nil, errors.New("not implemented")
 }
 
-func (m *mockDA) Get(ctx context.Context, ids []coreda.ID, namespace []byte) ([]coreda.Blob, error) {
+func (m *mockDA) Get(ctx context.Context, ids []datypes.ID, namespace []byte) ([]datypes.Blob, error) {
 	if m.getFunc != nil {
 		return m.getFunc(ctx, ids, namespace)
 	}
 	return nil, errors.New("not implemented")
 }
 
-func (m *mockDA) GetProofs(ctx context.Context, ids []coreda.ID, namespace []byte) ([]coreda.Proof, error) {
+func (m *mockDA) GetProofs(ctx context.Context, ids []datypes.ID, namespace []byte) ([]datypes.Proof, error) {
 	return nil, errors.New("not implemented")
 }
 
-func (m *mockDA) Commit(ctx context.Context, blobs []coreda.Blob, namespace []byte) ([]coreda.Commitment, error) {
+func (m *mockDA) Commit(ctx context.Context, blobs []datypes.Blob, namespace []byte) ([]datypes.Commitment, error) {
 	return nil, errors.New("not implemented")
 }
 
-func (m *mockDA) Validate(ctx context.Context, ids []coreda.ID, proofs []coreda.Proof, namespace []byte) ([]bool, error) {
+func (m *mockDA) Validate(ctx context.Context, ids []datypes.ID, proofs []datypes.Proof, namespace []byte) ([]bool, error) {
 	return nil, errors.New("not implemented")
 }
 
@@ -317,7 +316,7 @@ func TestClient_Submit(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			mockDAInstance := &mockDA{
-				submitWithOptions: func(ctx context.Context, blobs []coreda.Blob, gasPrice float64, namespace []byte, options []byte) ([]coreda.ID, error) {
+				submitWithOptions: func(ctx context.Context, blobs []datypes.Blob, gasPrice float64, namespace []byte, options []byte) ([]datypes.ID, error) {
 					return tc.submitIDs, tc.submitErr
 				},
 			}
@@ -355,7 +354,7 @@ func TestClient_Retrieve(t *testing.T) {
 
 	testCases := []struct {
 		name           string
-		getIDsResult   *coreda.GetIDsResult
+		getIDsResult   *datypes.GetIDsResult
 		getIDsErr      error
 		getBlobsErr    error
 		expectedCode   datypes.StatusCode
@@ -366,7 +365,7 @@ func TestClient_Retrieve(t *testing.T) {
 	}{
 		{
 			name: "successful retrieval",
-			getIDsResult: &coreda.GetIDsResult{
+			getIDsResult: &datypes.GetIDsResult{
 				IDs:       mockIDs,
 				Timestamp: mockTimestamp,
 			},
@@ -405,7 +404,7 @@ func TestClient_Retrieve(t *testing.T) {
 		},
 		{
 			name: "GetIDs returns empty IDs",
-			getIDsResult: &coreda.GetIDsResult{
+			getIDsResult: &datypes.GetIDsResult{
 				IDs:       [][]byte{},
 				Timestamp: mockTimestamp,
 			},
@@ -415,7 +414,7 @@ func TestClient_Retrieve(t *testing.T) {
 		},
 		{
 			name: "error during Get (blobs retrieval)",
-			getIDsResult: &coreda.GetIDsResult{
+			getIDsResult: &datypes.GetIDsResult{
 				IDs:       mockIDs,
 				Timestamp: mockTimestamp,
 			},
@@ -429,10 +428,10 @@ func TestClient_Retrieve(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			mockDAInstance := &mockDA{
-				getIDsFunc: func(ctx context.Context, height uint64, namespace []byte) (*coreda.GetIDsResult, error) {
+				getIDsFunc: func(ctx context.Context, height uint64, namespace []byte) (*datypes.GetIDsResult, error) {
 					return tc.getIDsResult, tc.getIDsErr
 				},
-				getFunc: func(ctx context.Context, ids []coreda.ID, namespace []byte) ([]coreda.Blob, error) {
+				getFunc: func(ctx context.Context, ids []datypes.ID, namespace []byte) ([]datypes.Blob, error) {
 					if tc.getBlobsErr != nil {
 						return nil, tc.getBlobsErr
 					}
@@ -473,7 +472,7 @@ func TestClient_Retrieve_Timeout(t *testing.T) {
 
 	t.Run("timeout during GetIDs", func(t *testing.T) {
 		mockDAInstance := &mockDA{
-			getIDsFunc: func(ctx context.Context, height uint64, namespace []byte) (*coreda.GetIDsResult, error) {
+			getIDsFunc: func(ctx context.Context, height uint64, namespace []byte) (*datypes.GetIDsResult, error) {
 				<-ctx.Done() // Wait for context cancellation
 				return nil, context.DeadlineExceeded
 			},
@@ -498,13 +497,13 @@ func TestClient_Retrieve_Timeout(t *testing.T) {
 		mockTimestamp := time.Now()
 
 		mockDAInstance := &mockDA{
-			getIDsFunc: func(ctx context.Context, height uint64, namespace []byte) (*coreda.GetIDsResult, error) {
-				return &coreda.GetIDsResult{
+			getIDsFunc: func(ctx context.Context, height uint64, namespace []byte) (*datypes.GetIDsResult, error) {
+				return &datypes.GetIDsResult{
 					IDs:       mockIDs,
 					Timestamp: mockTimestamp,
 				}, nil
 			},
-			getFunc: func(ctx context.Context, ids []coreda.ID, namespace []byte) ([]coreda.Blob, error) {
+			getFunc: func(ctx context.Context, ids []datypes.ID, namespace []byte) ([]datypes.Blob, error) {
 				<-ctx.Done() // Wait for context cancellation
 				return nil, context.DeadlineExceeded
 			},

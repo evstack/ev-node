@@ -24,17 +24,6 @@ type Server struct {
 	started atomic.Bool
 }
 
-// DA captures the minimal surface served over RPC using datypes.
-type DA interface {
-	Get(ctx context.Context, ids []datypes.ID, namespace []byte) ([]datypes.Blob, error)
-	GetIDs(ctx context.Context, height uint64, namespace []byte) (*datypes.GetIDsResult, error)
-	GetProofs(ctx context.Context, ids []datypes.ID, namespace []byte) ([]datypes.Proof, error)
-	Commit(ctx context.Context, blobs []datypes.Blob, namespace []byte) ([]datypes.Commitment, error)
-	Validate(ctx context.Context, ids []datypes.ID, proofs []datypes.Proof, namespace []byte) ([]bool, error)
-	Submit(ctx context.Context, blobs []datypes.Blob, gasPrice float64, namespace []byte) ([]datypes.ID, error)
-	SubmitWithOptions(ctx context.Context, blobs []datypes.Blob, gasPrice float64, namespace []byte, options []byte) ([]datypes.ID, error)
-}
-
 // serverInternalAPI provides the actual RPC methods.
 type serverInternalAPI struct {
 	logger zerolog.Logger

@@ -11,7 +11,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/evstack/ev-node/pkg/blob"
+	blobrpc "github.com/evstack/ev-node/da/jsonrpc/blob"
 	datypes "github.com/evstack/ev-node/pkg/da/types"
 	"github.com/rs/zerolog"
 )
@@ -235,10 +235,7 @@ func (s *DAVisualizationServer) handleDABlobDetails(w http.ResponseWriter, r *ht
 	}
 
 	// Parse the blob ID to extract height and commitment
-	height, commitment := blob.SplitID(id)
-	if err != nil {
-		s.logger.Error().Err(err).Str("blob_id", blobID).Msg("Failed to split blob ID")
-	}
+	height, commitment := blobrpc.SplitID(id)
 
 	blob := blobs[0]
 	response := map[string]any{

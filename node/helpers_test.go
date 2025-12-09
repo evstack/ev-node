@@ -11,15 +11,13 @@ import (
 	"time"
 
 	testutils "github.com/celestiaorg/utils/test"
+	coreexecutor "github.com/evstack/ev-node/core/execution"
+	coresequencer "github.com/evstack/ev-node/core/sequencer"
 	"github.com/ipfs/go-datastore"
 	dssync "github.com/ipfs/go-datastore/sync"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/require"
-
-	coreda "github.com/evstack/ev-node/core/da"
-	coreexecutor "github.com/evstack/ev-node/core/execution"
-	coresequencer "github.com/evstack/ev-node/core/sequencer"
 
 	evconfig "github.com/evstack/ev-node/pkg/config"
 	datypes "github.com/evstack/ev-node/pkg/da/types"
@@ -47,7 +45,7 @@ const (
 func createTestComponents(t *testing.T, config evconfig.Config) (coreexecutor.Executor, coresequencer.Sequencer, datypes.DA, *p2p.Client, datastore.Batching, *key.NodeKey, func()) {
 	executor := coreexecutor.NewDummyExecutor()
 	sequencer := coresequencer.NewDummySequencer()
-	coreDummyDA := coreda.NewDummyDA(100_000, config.DA.BlockTime.Duration)
+	coreDummyDA := datypes.NewDummyDA(100_000, config.DA.BlockTime.Duration)
 	coreDummyDA.StartHeightTicker()
 
 	stopDAHeightTicker := func() {
@@ -66,7 +64,7 @@ func createTestComponents(t *testing.T, config evconfig.Config) (coreexecutor.Ex
 	require.NotNil(t, p2pClient)
 	ds := dssync.MutexWrap(datastore.NewMapDatastore())
 
-	return executor, sequencer, datypes.WrapCoreDA(coreDummyDA), p2pClient, ds, p2pKey, stopDAHeightTicker
+	return executor, sequencer, coreDummyDA, p2pClient, ds, p2pKey, stopDAHeightTicker
 }
 
 func getTestConfig(t *testing.T, n int) evconfig.Config {

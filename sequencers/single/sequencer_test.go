@@ -14,8 +14,8 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/evstack/ev-node/block"
-	coreda "github.com/evstack/ev-node/core/da"
 	coresequencer "github.com/evstack/ev-node/core/sequencer"
+	datypes "github.com/evstack/ev-node/pkg/da/types"
 	"github.com/evstack/ev-node/pkg/genesis"
 	damocks "github.com/evstack/ev-node/test/mocks"
 )
@@ -34,7 +34,7 @@ func (m *MockForcedInclusionRetriever) RetrieveForcedIncludedTxs(ctx context.Con
 }
 
 func TestSequencer_SubmitBatchTxs(t *testing.T) {
-	dummyDA := coreda.NewDummyDA(100_000_000, 10*time.Second)
+	dummyDA := datypes.NewDummyDA(100_000_000, 10*time.Second)
 	db := ds.NewMapDatastore()
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
@@ -88,7 +88,7 @@ func TestSequencer_SubmitBatchTxs(t *testing.T) {
 }
 
 func TestSequencer_SubmitBatchTxs_EmptyBatch(t *testing.T) {
-	dummyDA := coreda.NewDummyDA(100_000_000, 10*time.Second)
+	dummyDA := datypes.NewDummyDA(100_000_000, 10*time.Second)
 	db := ds.NewMapDatastore()
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
@@ -816,7 +816,7 @@ func TestSequencer_DAFailureAndQueueThrottling_Integration(t *testing.T) {
 	defer db.Close()
 
 	// Create a dummy DA that we can make fail
-	dummyDA := coreda.NewDummyDA(100_000, 100*time.Millisecond)
+	dummyDA := datypes.NewDummyDA(100_000, 100*time.Millisecond)
 	dummyDA.StartHeightTicker()
 	defer dummyDA.StopHeightTicker()
 

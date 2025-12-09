@@ -12,7 +12,6 @@ import (
 	"github.com/evstack/ev-node/da/jsonrpc/blob"
 	"github.com/rs/zerolog"
 
-	coreda "github.com/evstack/ev-node/core/da"
 	datypes "github.com/evstack/ev-node/pkg/da/types"
 )
 
@@ -28,13 +27,13 @@ type Client interface {
 	GetDataNamespace() []byte
 	GetForcedInclusionNamespace() []byte
 	HasForcedInclusionNamespace() bool
-	GetDA() coreda.DA
+	GetDA() datypes.DA
 }
 
 // client provides a reusable wrapper around the core DA interface
 // with common configuration for namespace handling and timeouts.
 type client struct {
-	da                         coreda.DA
+	da                         datypes.DA
 	logger                     zerolog.Logger
 	defaultTimeout             time.Duration
 	batchSize                  int
@@ -50,7 +49,7 @@ const (
 
 // Config contains configuration for the DA client.
 type Config struct {
-	DA                       coreda.DA
+	DA                       datypes.DA
 	Logger                   zerolog.Logger
 	DefaultTimeout           time.Duration
 	RetrieveBatchSize        int
@@ -319,6 +318,6 @@ func (c *client) HasForcedInclusionNamespace() bool {
 }
 
 // GetDA returns the underlying DA interface for advanced usage.
-func (c *client) GetDA() coreda.DA {
+func (c *client) GetDA() datypes.DA {
 	return c.da
 }

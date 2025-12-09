@@ -13,7 +13,7 @@ import (
 	"sync"
 	"time"
 
-	coreda "github.com/evstack/ev-node/core/da"
+	datypes "github.com/evstack/ev-node/pkg/da/types"
 	"github.com/rs/zerolog"
 )
 
@@ -57,7 +57,7 @@ func NewLocalDA(logger zerolog.Logger, opts ...func(*LocalDA) *LocalDA) *LocalDA
 	return da
 }
 
-var _ coreda.DA = &LocalDA{}
+var _ datypes.DA = &LocalDA{}
 
 // validateNamespace checks that namespace is exactly 29 bytes
 func validateNamespace(ns []byte) error {
@@ -74,7 +74,7 @@ func (d *LocalDA) MaxBlobSize(ctx context.Context) (uint64, error) {
 }
 
 // Get returns Blobs for given IDs.
-func (d *LocalDA) Get(ctx context.Context, ids []coreda.ID, ns []byte) ([]coreda.Blob, error) {
+func (d *LocalDA) Get(ctx context.Context, ids []datypes.ID, ns []byte) ([]datypes.Blob, error) {
 	if err := validateNamespace(ns); err != nil {
 		d.logger.Error().Err(err).Msg("Get: invalid namespace")
 		return nil, err
@@ -82,7 +82,7 @@ func (d *LocalDA) Get(ctx context.Context, ids []coreda.ID, ns []byte) ([]coreda
 	d.logger.Debug().Interface("ids", ids).Msg("Get called")
 	d.mu.Lock()
 	defer d.mu.Unlock()
-	blobs := make([]coreda.Blob, len(ids))
+	blobs := make([]datypes.Blob, len(ids))
 	for i, id := range ids {
 		if len(id) < 8 {
 			d.logger.Error().Interface("id", id).Msg("Get: invalid ID length")
@@ -98,7 +98,7 @@ func (d *LocalDA) Get(ctx context.Context, ids []coreda.ID, ns []byte) ([]coreda
 		}
 		if !found {
 			d.logger.Warn().Interface("id", id).Uint64("height", height).Msg("Get: blob not found")
-			return nil, coreda.ErrBlobNotFound
+			return nil, datypes.ErrBlobNotFound
 		}
 	}
 	d.logger.Debug().Int("count", len(blobs)).Msg("Get successful")
@@ -106,7 +106,7 @@ func (d *LocalDA) Get(ctx context.Context, ids []coreda.ID, ns []byte) ([]coreda
 }
 
 // GetIDs returns IDs of Blobs at given DA height.
-func (d *LocalDA) GetIDs(ctx context.Context, height uint64, ns []byte) (*coreda.GetIDsResult, error) {
+func (d *LocalDA) GetIDs(ctx context.Context, height uint64, ns []byte) (*datypes.GetIDsResult, error) {
 	if err := validateNamespace(ns); err != nil {
 		d.logger.Error().Err(err).Msg("GetIDs: invalid namespace")
 		return nil, err
@@ -117,7 +117,7 @@ func (d *LocalDA) GetIDs(ctx context.Context, height uint64, ns []byte) (*coreda
 
 	if height > d.height {
 		d.logger.Error().Uint64("requested", height).Uint64("current", d.height).Msg("GetIDs: height in future")
-		return nil, fmt.Errorf("height %d is in the future: %w", height, coreda.ErrHeightFromFuture)
+		return nil, fmt.Errorf("height %d is in the future: %w", height, datypes.ErrHeightFromFuture)
 	}
 
 	kvps, ok := d.data[height]
@@ -126,16 +126,16 @@ func (d *LocalDA) GetIDs(ctx context.Context, height uint64, ns []byte) (*coreda
 		return nil, nil
 	}
 
-	ids := make([]coreda.ID, len(kvps))
+	ids := make([]datypes.ID, len(kvps))
 	for i, kv := range kvps {
 		ids[i] = kv.key
 	}
 	d.logger.Debug().Int("count", len(ids)).Msg("GetIDs successful")
-	return &coreda.GetIDsResult{IDs: ids, Timestamp: d.timestamps[height]}, nil
+	return &datypes.GetIDsResult{IDs: ids, Timestamp: d.timestamps[height]}, nil
 }
 
 // GetProofs returns inclusion Proofs for all Blobs located in DA at given height.
-func (d *LocalDA) GetProofs(ctx context.Context, ids []coreda.ID, ns []byte) ([]coreda.Proof, error) {
+func (d *LocalDA) GetProofs(ctx context.Context, ids []datypes.ID, ns []byte) ([]datypes.Proof, error) {
 	if err := validateNamespace(ns); err != nil {
 		d.logger.Error().Err(err).Msg("GetProofs: invalid namespace")
 		return nil, err
@@ -149,7 +149,7 @@ func (d *LocalDA) GetProofs(ctx context.Context, ids []coreda.ID, ns []byte) ([]
 
 	d.mu.Lock()
 	defer d.mu.Unlock()
-	proofs := make([]coreda.Proof, len(blobs))
+	proofs := make([]datypes.Proof, len(blobs))
 	for i, blob := range blobs {
 		proofs[i] = d.getProof(ids[i], blob)
 	}
@@ -158,13 +158,13 @@ func (d *LocalDA) GetProofs(ctx context.Context, ids []coreda.ID, ns []byte) ([]
 }
 
 // Commit returns cryptographic Commitments for given blobs.
-func (d *LocalDA) Commit(ctx context.Context, blobs []coreda.Blob, ns []byte) ([]coreda.Commitment, error) {
+func (d *LocalDA) Commit(ctx context.Context, blobs []datypes.Blob, ns []byte) ([]datypes.Commitment, error) {
 	if err := validateNamespace(ns); err != nil {
 		d.logger.Error().Err(err).Msg("Commit: invalid namespace")
 		return nil, err
 	}
 	d.logger.Debug().Int("numBlobs", len(blobs)).Msg("Commit called")
-	commits := make([]coreda.Commitment, len(blobs))
+	commits := make([]datypes.Commitment, len(blobs))
 	for i, blob := range blobs {
 		commits[i] = d.getHash(blob)
 	}
@@ -173,7 +173,7 @@ func (d *LocalDA) Commit(ctx context.Context, blobs []coreda.Blob, ns []byte) ([
 }
 
 // SubmitWithOptions stores blobs in DA layer (options are ignored).
-func (d *LocalDA) SubmitWithOptions(ctx context.Context, blobs []coreda.Blob, gasPrice float64, ns []byte, _ []byte) ([]coreda.ID, error) {
+func (d *LocalDA) SubmitWithOptions(ctx context.Context, blobs []datypes.Blob, gasPrice float64, ns []byte, _ []byte) ([]datypes.ID, error) {
 	if err := validateNamespace(ns); err != nil {
 		d.logger.Error().Err(err).Msg("SubmitWithOptions: invalid namespace")
 		return nil, err
@@ -184,13 +184,13 @@ func (d *LocalDA) SubmitWithOptions(ctx context.Context, blobs []coreda.Blob, ga
 	for i, blob := range blobs {
 		if uint64(len(blob)) > d.maxBlobSize {
 			d.logger.Error().Int("blobIndex", i).Int("blobSize", len(blob)).Uint64("maxBlobSize", d.maxBlobSize).Msg("SubmitWithOptions: blob size exceeds limit")
-			return nil, coreda.ErrBlobSizeOverLimit
+			return nil, datypes.ErrBlobSizeOverLimit
 		}
 	}
 
 	d.mu.Lock()
 	defer d.mu.Unlock()
-	ids := make([]coreda.ID, len(blobs))
+	ids := make([]datypes.ID, len(blobs))
 	d.height += 1
 	d.timestamps[d.height] = time.Now()
 	for i, blob := range blobs {
@@ -203,7 +203,7 @@ func (d *LocalDA) SubmitWithOptions(ctx context.Context, blobs []coreda.Blob, ga
 }
 
 // Submit stores blobs in DA layer (options are ignored).
-func (d *LocalDA) Submit(ctx context.Context, blobs []coreda.Blob, gasPrice float64, ns []byte) ([]coreda.ID, error) {
+func (d *LocalDA) Submit(ctx context.Context, blobs []datypes.Blob, gasPrice float64, ns []byte) ([]datypes.ID, error) {
 	if err := validateNamespace(ns); err != nil {
 		d.logger.Error().Err(err).Msg("Submit: invalid namespace")
 		return nil, err
@@ -214,13 +214,13 @@ func (d *LocalDA) Submit(ctx context.Context, blobs []coreda.Blob, gasPrice floa
 	for i, blob := range blobs {
 		if uint64(len(blob)) > d.maxBlobSize {
 			d.logger.Error().Int("blobIndex", i).Int("blobSize", len(blob)).Uint64("maxBlobSize", d.maxBlobSize).Msg("Submit: blob size exceeds limit")
-			return nil, coreda.ErrBlobSizeOverLimit
+			return nil, datypes.ErrBlobSizeOverLimit
 		}
 	}
 
 	d.mu.Lock()
 	defer d.mu.Unlock()
-	ids := make([]coreda.ID, len(blobs))
+	ids := make([]datypes.ID, len(blobs))
 	d.height += 1
 	d.timestamps[d.height] = time.Now()
 	for i, blob := range blobs {
@@ -233,7 +233,7 @@ func (d *LocalDA) Submit(ctx context.Context, blobs []coreda.Blob, gasPrice floa
 }
 
 // Validate checks the Proofs for given IDs.
-func (d *LocalDA) Validate(ctx context.Context, ids []coreda.ID, proofs []coreda.Proof, ns []byte) ([]bool, error) {
+func (d *LocalDA) Validate(ctx context.Context, ids []datypes.ID, proofs []datypes.Proof, ns []byte) ([]bool, error) {
 	if err := validateNamespace(ns); err != nil {
 		d.logger.Error().Err(err).Msg("Validate: invalid namespace")
 		return nil, err

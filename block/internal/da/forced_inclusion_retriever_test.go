@@ -9,7 +9,6 @@ import (
 	"github.com/rs/zerolog"
 	"gotest.tools/v3/assert"
 
-	coreda "github.com/evstack/ev-node/core/da"
 	datypes "github.com/evstack/ev-node/pkg/da/types"
 	"github.com/evstack/ev-node/pkg/genesis"
 )
@@ -89,13 +88,13 @@ func TestForcedInclusionRetriever_RetrieveForcedIncludedTxs_EpochStartSuccess(t 
 	}
 
 	mockDAInstance := &mockDA{
-		getIDsFunc: func(ctx context.Context, height uint64, namespace []byte) (*coreda.GetIDsResult, error) {
-			return &coreda.GetIDsResult{
-				IDs:       []coreda.ID{[]byte("id1"), []byte("id2"), []byte("id3")},
+		getIDsFunc: func(ctx context.Context, height uint64, namespace []byte) (*datypes.GetIDsResult, error) {
+			return &datypes.GetIDsResult{
+				IDs:       []datypes.ID{[]byte("id1"), []byte("id2"), []byte("id3")},
 				Timestamp: time.Now(),
 			}, nil
 		},
-		getFunc: func(ctx context.Context, ids []coreda.ID, namespace []byte) ([]coreda.Blob, error) {
+		getFunc: func(ctx context.Context, ids []datypes.ID, namespace []byte) ([]datypes.Blob, error) {
 			return testBlobs, nil
 		},
 	}
@@ -128,7 +127,7 @@ func TestForcedInclusionRetriever_RetrieveForcedIncludedTxs_EpochStartSuccess(t 
 
 func TestForcedInclusionRetriever_RetrieveForcedIncludedTxs_EpochStartNotAvailable(t *testing.T) {
 	mockDAInstance := &mockDA{
-		getIDsFunc: func(ctx context.Context, height uint64, namespace []byte) (*coreda.GetIDsResult, error) {
+		getIDsFunc: func(ctx context.Context, height uint64, namespace []byte) (*datypes.GetIDsResult, error) {
 			return nil, datypes.ErrHeightFromFuture
 		},
 	}
@@ -157,7 +156,7 @@ func TestForcedInclusionRetriever_RetrieveForcedIncludedTxs_EpochStartNotAvailab
 
 func TestForcedInclusionRetriever_RetrieveForcedIncludedTxs_NoBlobsAtHeight(t *testing.T) {
 	mockDAInstance := &mockDA{
-		getIDsFunc: func(ctx context.Context, height uint64, namespace []byte) (*coreda.GetIDsResult, error) {
+		getIDsFunc: func(ctx context.Context, height uint64, namespace []byte) (*datypes.GetIDsResult, error) {
 			return nil, datypes.ErrBlobNotFound
 		},
 	}
@@ -193,22 +192,22 @@ func TestForcedInclusionRetriever_RetrieveForcedIncludedTxs_MultiHeightEpoch(t *
 	}
 
 	mockDAInstance := &mockDA{
-		getIDsFunc: func(ctx context.Context, height uint64, namespace []byte) (*coreda.GetIDsResult, error) {
+		getIDsFunc: func(ctx context.Context, height uint64, namespace []byte) (*datypes.GetIDsResult, error) {
 			callCount++
 			blobs, exists := testBlobsByHeight[height]
 			if !exists {
 				return nil, datypes.ErrBlobNotFound
 			}
-			ids := make([]coreda.ID, len(blobs))
+			ids := make([]datypes.ID, len(blobs))
 			for i := range blobs {
 				ids[i] = []byte("id")
 			}
-			return &coreda.GetIDsResult{
+			return &datypes.GetIDsResult{
 				IDs:       ids,
 				Timestamp: time.Now(),
 			}, nil
 		},
-		getFunc: func(ctx context.Context, ids []coreda.ID, namespace []byte) ([]coreda.Blob, error) {
+		getFunc: func(ctx context.Context, ids []datypes.ID, namespace []byte) ([]datypes.Blob, error) {
 			// Return blobs based on current call count
 			switch callCount {
 			case 1:

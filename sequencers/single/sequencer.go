@@ -12,8 +12,8 @@ import (
 	"github.com/rs/zerolog"
 
 	"github.com/evstack/ev-node/block"
-	coreda "github.com/evstack/ev-node/core/da"
 	coresequencer "github.com/evstack/ev-node/core/sequencer"
+	datypes "github.com/evstack/ev-node/pkg/da/types"
 	"github.com/evstack/ev-node/pkg/genesis"
 	seqcommon "github.com/evstack/ev-node/sequencers/common"
 )
@@ -43,7 +43,7 @@ type Sequencer struct {
 	proposer bool
 
 	Id []byte
-	da coreda.DA
+	da datypes.DA
 
 	batchTime time.Duration
 
@@ -61,7 +61,7 @@ func NewSequencer(
 	ctx context.Context,
 	logger zerolog.Logger,
 	db ds.Batching,
-	da coreda.DA,
+	da datypes.DA,
 	id []byte,
 	batchTime time.Duration,
 	proposer bool,
@@ -130,7 +130,7 @@ func (c *Sequencer) GetNextBatch(ctx context.Context, req coresequencer.GetNextB
 
 	forcedTxsEvent, err := c.fiRetriever.RetrieveForcedIncludedTxs(ctx, currentDAHeight)
 	if err != nil {
-		if errors.Is(err, coreda.ErrHeightFromFuture) {
+		if errors.Is(err, datypes.ErrHeightFromFuture) {
 			c.logger.Debug().
 				Uint64("da_height", currentDAHeight).
 				Msg("DA height from future, waiting for DA to produce block")

@@ -16,7 +16,6 @@ import (
 	"github.com/evstack/ev-node/block/internal/cache"
 	"github.com/evstack/ev-node/block/internal/common"
 	"github.com/evstack/ev-node/block/internal/da"
-	coreda "github.com/evstack/ev-node/core/da"
 	"github.com/evstack/ev-node/pkg/config"
 	datypes "github.com/evstack/ev-node/pkg/da/types"
 	"github.com/evstack/ev-node/pkg/genesis"
@@ -27,7 +26,7 @@ import (
 	"github.com/evstack/ev-node/types"
 )
 
-func setupDASubmitterTest(t *testing.T) (*DASubmitter, store.Store, cache.Manager, coreda.DA, genesis.Genesis) {
+func setupDASubmitterTest(t *testing.T) (*DASubmitter, store.Store, cache.Manager, datypes.DA, genesis.Genesis) {
 	t.Helper()
 
 	// Create store and cache
@@ -37,7 +36,7 @@ func setupDASubmitterTest(t *testing.T) (*DASubmitter, store.Store, cache.Manage
 	require.NoError(t, err)
 
 	// Create dummy DA
-	dummyDA := coreda.NewDummyDA(10_000_000, 10*time.Millisecond)
+	dummyDA := datypes.NewDummyDA(10_000_000, 10*time.Millisecond)
 
 	// Create config
 	cfg := config.DefaultConfig()

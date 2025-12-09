@@ -5,8 +5,8 @@ import (
 
 	"github.com/evstack/ev-node/block/internal/common"
 	"github.com/evstack/ev-node/block/internal/da"
-	coreda "github.com/evstack/ev-node/core/da"
 	"github.com/evstack/ev-node/pkg/config"
+	datypes "github.com/evstack/ev-node/pkg/da/types"
 	"github.com/evstack/ev-node/pkg/genesis"
 	"github.com/rs/zerolog"
 )
@@ -37,7 +37,7 @@ type DAClient = da.Client
 
 // NewDAClient creates a new DA client with configuration
 func NewDAClient(
-	daLayer coreda.DA,
+	daLayer datypes.DA,
 	config config.Config,
 	logger zerolog.Logger,
 ) DAClient {

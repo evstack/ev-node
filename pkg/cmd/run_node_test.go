@@ -8,12 +8,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ipfs/go-datastore"
-	"github.com/rs/zerolog"
-	"github.com/spf13/cobra"
-	"github.com/stretchr/testify/assert"
-
-	coreda "github.com/evstack/ev-node/core/da"
 	coreexecutor "github.com/evstack/ev-node/core/execution"
 	coresequencer "github.com/evstack/ev-node/core/sequencer"
 	"github.com/evstack/ev-node/node"
@@ -23,6 +17,10 @@ import (
 	"github.com/evstack/ev-node/pkg/p2p"
 	"github.com/evstack/ev-node/pkg/signer"
 	filesigner "github.com/evstack/ev-node/pkg/signer/file"
+	"github.com/ipfs/go-datastore"
+	"github.com/rs/zerolog"
+	"github.com/spf13/cobra"
+	"github.com/stretchr/testify/assert"
 )
 
 const MockDANamespace = "test"
@@ -30,7 +28,7 @@ const MockDANamespace = "test"
 func createTestComponents(_ context.Context, t *testing.T) (coreexecutor.Executor, coresequencer.Sequencer, datypes.DA, signer.Signer, *p2p.Client, datastore.Batching, func()) {
 	executor := coreexecutor.NewDummyExecutor()
 	sequencer := coresequencer.NewDummySequencer()
-	coreDummyDA := coreda.NewDummyDA(100_000, 10*time.Second)
+	coreDummyDA := datypes.NewDummyDA(100_000, 10*time.Second)
 	coreDummyDA.StartHeightTicker()
 	stopDAHeightTicker := func() {
 		coreDummyDA.StopHeightTicker()

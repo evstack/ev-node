@@ -12,7 +12,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/evstack/ev-node/block"
-	coreda "github.com/evstack/ev-node/core/da"
 	coresequencer "github.com/evstack/ev-node/core/sequencer"
 	"github.com/evstack/ev-node/pkg/config"
 	datypes "github.com/evstack/ev-node/pkg/da/types"
@@ -24,47 +23,47 @@ type MockDA struct {
 	mock.Mock
 }
 
-func (m *MockDA) Submit(ctx context.Context, blobs [][]byte, gasPrice float64, namespace []byte) ([][]byte, error) {
+func (m *MockDA) Submit(ctx context.Context, blobs [][]byte, gasPrice float64, namespace []byte) ([]datypes.ID, error) {
 	args := m.Called(ctx, blobs, gasPrice, namespace)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
 	}
-	return args.Get(0).([][]byte), args.Error(1)
+	return args.Get(0).([]datypes.ID), args.Error(1)
 }
 
-func (m *MockDA) SubmitWithOptions(ctx context.Context, blobs [][]byte, gasPrice float64, namespace []byte, options []byte) ([][]byte, error) {
+func (m *MockDA) SubmitWithOptions(ctx context.Context, blobs [][]byte, gasPrice float64, namespace []byte, options []byte) ([]datypes.ID, error) {
 	args := m.Called(ctx, blobs, gasPrice, namespace, options)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
 	}
-	return args.Get(0).([][]byte), args.Error(1)
+	return args.Get(0).([]datypes.ID), args.Error(1)
 }
 
-func (m *MockDA) GetIDs(ctx context.Context, height uint64, namespace []byte) (*coreda.GetIDsResult, error) {
+func (m *MockDA) GetIDs(ctx context.Context, height uint64, namespace []byte) (*datypes.GetIDsResult, error) {
 	args := m.Called(ctx, height, namespace)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
 	}
-	return args.Get(0).(*coreda.GetIDsResult), args.Error(1)
+	return args.Get(0).(*datypes.GetIDsResult), args.Error(1)
 }
 
-func (m *MockDA) Get(ctx context.Context, ids [][]byte, namespace []byte) ([][]byte, error) {
+func (m *MockDA) Get(ctx context.Context, ids [][]byte, namespace []byte) ([]datypes.Blob, error) {
 	args := m.Called(ctx, ids, namespace)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
 	}
-	return args.Get(0).([][]byte), args.Error(1)
+	return args.Get(0).([]datypes.Blob), args.Error(1)
 }
 
-func (m *MockDA) GetProofs(ctx context.Context, ids [][]byte, namespace []byte) ([]coreda.Proof, error) {
+func (m *MockDA) GetProofs(ctx context.Context, ids [][]byte, namespace []byte) ([]datypes.Proof, error) {
 	args := m.Called(ctx, ids, namespace)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
 	}
-	return args.Get(0).([]coreda.Proof), args.Error(1)
+	return args.Get(0).([]datypes.Proof), args.Error(1)
 }
 
-func (m *MockDA) Validate(ctx context.Context, ids [][]byte, proofs []coreda.Proof, namespace []byte) ([]bool, error) {
+func (m *MockDA) Validate(ctx context.Context, ids [][]byte, proofs []datypes.Proof, namespace []byte) ([]bool, error) {
 	args := m.Called(ctx, ids, proofs, namespace)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
@@ -72,13 +71,16 @@ func (m *MockDA) Validate(ctx context.Context, ids [][]byte, proofs []coreda.Pro
 	return args.Get(0).([]bool), args.Error(1)
 }
 
-func (m *MockDA) Commit(ctx context.Context, blobs [][]byte, namespace []byte) ([][]byte, error) {
+func (m *MockDA) Commit(ctx context.Context, blobs [][]byte, namespace []byte) ([]datypes.Commitment, error) {
 	args := m.Called(ctx, blobs, namespace)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
 	}
-	return args.Get(0).([][]byte), args.Error(1)
+	return args.Get(0).([]datypes.Commitment), args.Error(1)
 }
+
+// Ensure mock implements datypes.DA
+var _ datypes.DA = (*MockDA)(nil)
 
 func TestBasedSequencer_SubmitBatchTxs(t *testing.T) {
 	mockDA := new(MockDA)
@@ -95,7 +97,7 @@ func TestBasedSequencer_SubmitBatchTxs(t *testing.T) {
 	daClient := block.NewDAClient(mockDA, cfg, zerolog.Nop())
 	fiRetriever := block.NewForcedInclusionRetriever(daClient, gen, zerolog.Nop())
 
-	seq := NewBasedSequencer(fiRetriever, datypes.WrapCoreDA(mockDA), cfg, gen, zerolog.Nop())
+	seq := NewBasedSequencer(fiRetriever, mockDA, cfg, gen, zerolog.Nop())
 
 	// Submit should succeed but be ignored
 	req := coresequencer.SubmitBatchTxsRequest{
@@ -117,8 +119,8 @@ func TestBasedSequencer_GetNextBatch_WithForcedTxs(t *testing.T) {
 	testBlobs := [][]byte{[]byte("tx1"), []byte("tx2")}
 
 	mockDA := new(MockDA)
-	mockDA.On("GetIDs", mock.Anything, uint64(100), mock.Anything).Return(&coreda.GetIDsResult{
-		IDs:       []coreda.ID{[]byte("id1"), []byte("id2")},
+	mockDA.On("GetIDs", mock.Anything, uint64(100), mock.Anything).Return(&datypes.GetIDsResult{
+		IDs:       []datypes.ID{[]byte("id1"), []byte("id2")},
 		Timestamp: time.Now(),
 	}, nil)
 	mockDA.On("Get", mock.Anything, mock.Anything, mock.Anything).Return(testBlobs, nil)
@@ -137,7 +139,7 @@ func TestBasedSequencer_GetNextBatch_WithForcedTxs(t *testing.T) {
 	daClient := block.NewDAClient(mockDA, cfg, zerolog.Nop())
 	fiRetriever := block.NewForcedInclusionRetriever(daClient, gen, zerolog.Nop())
 
-	seq := NewBasedSequencer(fiRetriever, datypes.WrapCoreDA(mockDA), cfg, gen, zerolog.Nop())
+	seq := NewBasedSequencer(fiRetriever, mockDA, cfg, gen, zerolog.Nop())
 
 	req := coresequencer.GetNextBatchRequest{
 		MaxBytes:      1000000,
@@ -160,7 +162,7 @@ func TestBasedSequencer_GetNextBatch_WithForcedTxs(t *testing.T) {
 
 func TestBasedSequencer_GetNextBatch_EmptyDA(t *testing.T) {
 	mockDA := new(MockDA)
-	mockDA.On("GetIDs", mock.Anything, uint64(100), mock.Anything).Return(nil, coreda.ErrBlobNotFound)
+	mockDA.On("GetIDs", mock.Anything, uint64(100), mock.Anything).Return(nil, datypes.ErrBlobNotFound)
 
 	gen := genesis.Genesis{
 		ChainID:                "test-chain",
@@ -176,7 +178,7 @@ func TestBasedSequencer_GetNextBatch_EmptyDA(t *testing.T) {
 	daClient := block.NewDAClient(mockDA, cfg, zerolog.Nop())
 	fiRetriever := block.NewForcedInclusionRetriever(daClient, gen, zerolog.Nop())
 
-	seq := NewBasedSequencer(fiRetriever, datypes.WrapCoreDA(mockDA), cfg, gen, zerolog.Nop())
+	seq := NewBasedSequencer(fiRetriever, mockDA, cfg, gen, zerolog.Nop())
 
 	req := coresequencer.GetNextBatchRequest{
 		MaxBytes:      1000000,
@@ -206,7 +208,7 @@ func TestBasedSequencer_GetNextBatch_NotConfigured(t *testing.T) {
 	daClient := block.NewDAClient(mockDA, cfgNoFI, zerolog.Nop())
 	fiRetriever := block.NewForcedInclusionRetriever(daClient, gen, zerolog.Nop())
 
-	seq := NewBasedSequencer(fiRetriever, datypes.WrapCoreDA(mockDA), cfgNoFI, gen, zerolog.Nop())
+	seq := NewBasedSequencer(fiRetriever, mockDA, cfgNoFI, gen, zerolog.Nop())
 
 	req := coresequencer.GetNextBatchRequest{
 		MaxBytes:      1000000,
@@ -227,15 +229,15 @@ func TestBasedSequencer_GetNextBatch_WithMaxBytes(t *testing.T) {
 
 	mockDA := new(MockDA)
 	// First call returns forced txs at height 100
-	mockDA.On("GetIDs", mock.Anything, uint64(100), mock.Anything).Return(&coreda.GetIDsResult{
-		IDs:       []coreda.ID{[]byte("id1"), []byte("id2"), []byte("id3")},
+	mockDA.On("GetIDs", mock.Anything, uint64(100), mock.Anything).Return(&datypes.GetIDsResult{
+		IDs:       []datypes.ID{[]byte("id1"), []byte("id2"), []byte("id3")},
 		Timestamp: time.Now(),
 	}, nil).Once()
 	mockDA.On("Get", mock.Anything, mock.Anything, mock.Anything).Return(testBlobs, nil).Once()
 
 	// Subsequent calls at height 101 and 102 (after DA height bumps) should return no new forced txs
-	mockDA.On("GetIDs", mock.Anything, uint64(101), mock.Anything).Return(nil, coreda.ErrBlobNotFound).Once()
-	mockDA.On("GetIDs", mock.Anything, uint64(102), mock.Anything).Return(nil, coreda.ErrBlobNotFound).Once()
+	mockDA.On("GetIDs", mock.Anything, uint64(101), mock.Anything).Return(nil, datypes.ErrBlobNotFound).Once()
+	mockDA.On("GetIDs", mock.Anything, uint64(102), mock.Anything).Return(nil, datypes.ErrBlobNotFound).Once()
 
 	gen := genesis.Genesis{
 		ChainID:                "test-chain",
@@ -251,7 +253,7 @@ func TestBasedSequencer_GetNextBatch_WithMaxBytes(t *testing.T) {
 	daClient := block.NewDAClient(mockDA, cfg, zerolog.Nop())
 	fiRetriever := block.NewForcedInclusionRetriever(daClient, gen, zerolog.Nop())
 
-	seq := NewBasedSequencer(fiRetriever, datypes.WrapCoreDA(mockDA), cfg, gen, zerolog.Nop())
+	seq := NewBasedSequencer(fiRetriever, mockDA, cfg, gen, zerolog.Nop())
 
 	// First call with max 100 bytes - should get first 2 txs (50 + 60 = 110, but logic allows if batch has content)
 	req := coresequencer.GetNextBatchRequest{
@@ -292,7 +294,7 @@ func TestBasedSequencer_GetNextBatch_WithMaxBytes(t *testing.T) {
 
 func TestBasedSequencer_GetNextBatch_FromQueue(t *testing.T) {
 	mockDA := new(MockDA)
-	mockDA.On("GetIDs", mock.Anything, mock.Anything, mock.Anything).Return(nil, coreda.ErrBlobNotFound)
+	mockDA.On("GetIDs", mock.Anything, mock.Anything, mock.Anything).Return(nil, datypes.ErrBlobNotFound)
 
 	gen := genesis.Genesis{
 		ChainID:                "test-chain",
@@ -308,7 +310,7 @@ func TestBasedSequencer_GetNextBatch_FromQueue(t *testing.T) {
 	daClient := block.NewDAClient(mockDA, cfg, zerolog.Nop())
 	fiRetriever := block.NewForcedInclusionRetriever(daClient, gen, zerolog.Nop())
 
-	seq := NewBasedSequencer(fiRetriever, datypes.WrapCoreDA(mockDA), cfg, gen, zerolog.Nop())
+	seq := NewBasedSequencer(fiRetriever, mockDA, cfg, gen, zerolog.Nop())
 
 	// Pre-populate the queue
 	seq.txQueue = [][]byte{[]byte("queued_tx1"), []byte("queued_tx2")}
@@ -335,14 +337,14 @@ func TestBasedSequencer_GetNextBatch_AlwaysCheckPendingForcedInclusion(t *testin
 
 	// First call: return a forced tx that will be added to queue
 	forcedTx := make([]byte, 150)
-	mockDA.On("GetIDs", mock.Anything, uint64(100), mock.Anything).Return(&coreda.GetIDsResult{
-		IDs:       []coreda.ID{[]byte("id1")},
+	mockDA.On("GetIDs", mock.Anything, uint64(100), mock.Anything).Return(&datypes.GetIDsResult{
+		IDs:       []datypes.ID{[]byte("id1")},
 		Timestamp: time.Now(),
 	}, nil).Once()
 	mockDA.On("Get", mock.Anything, mock.Anything, mock.Anything).Return([][]byte{forcedTx}, nil).Once()
 
 	// Second call: no new forced txs at height 101 (after first call bumped DA height to epochEnd + 1)
-	mockDA.On("GetIDs", mock.Anything, uint64(101), mock.Anything).Return(nil, coreda.ErrBlobNotFound).Once()
+	mockDA.On("GetIDs", mock.Anything, uint64(101), mock.Anything).Return(nil, datypes.ErrBlobNotFound).Once()
 
 	gen := genesis.Genesis{
 		ChainID:                "test-chain",
@@ -358,7 +360,7 @@ func TestBasedSequencer_GetNextBatch_AlwaysCheckPendingForcedInclusion(t *testin
 	daClient := block.NewDAClient(mockDA, cfg, zerolog.Nop())
 	fiRetriever := block.NewForcedInclusionRetriever(daClient, gen, zerolog.Nop())
 
-	seq := NewBasedSequencer(fiRetriever, datypes.WrapCoreDA(mockDA), cfg, gen, zerolog.Nop())
+	seq := NewBasedSequencer(fiRetriever, mockDA, cfg, gen, zerolog.Nop())
 
 	// First call with maxBytes = 100
 	// Forced tx (150 bytes) is added to queue, but batch will be empty since it exceeds maxBytes
@@ -402,14 +404,14 @@ func TestBasedSequencer_GetNextBatch_ForcedInclusionExceedsMaxBytes(t *testing.T
 	// Return forced txs where combined they exceed maxBytes
 	forcedTx1 := make([]byte, 100)
 	forcedTx2 := make([]byte, 80)
-	mockDA.On("GetIDs", mock.Anything, uint64(100), mock.Anything).Return(&coreda.GetIDsResult{
-		IDs:       []coreda.ID{[]byte("id1"), []byte("id2")},
+	mockDA.On("GetIDs", mock.Anything, uint64(100), mock.Anything).Return(&datypes.GetIDsResult{
+		IDs:       []datypes.ID{[]byte("id1"), []byte("id2")},
 		Timestamp: time.Now(),
 	}, nil).Once()
 	mockDA.On("Get", mock.Anything, mock.Anything, mock.Anything).Return([][]byte{forcedTx1, forcedTx2}, nil).Once()
 
 	// Second call at height 101 (after first call bumped DA height to epochEnd + 1)
-	mockDA.On("GetIDs", mock.Anything, uint64(101), mock.Anything).Return(nil, coreda.ErrBlobNotFound).Once()
+	mockDA.On("GetIDs", mock.Anything, uint64(101), mock.Anything).Return(nil, datypes.ErrBlobNotFound).Once()
 
 	gen := genesis.Genesis{
 		ChainID:                "test-chain",
@@ -425,7 +427,7 @@ func TestBasedSequencer_GetNextBatch_ForcedInclusionExceedsMaxBytes(t *testing.T
 	daClient := block.NewDAClient(mockDA, cfg, zerolog.Nop())
 	fiRetriever := block.NewForcedInclusionRetriever(daClient, gen, zerolog.Nop())
 
-	seq := NewBasedSequencer(fiRetriever, datypes.WrapCoreDA(mockDA), cfg, gen, zerolog.Nop())
+	seq := NewBasedSequencer(fiRetriever, mockDA, cfg, gen, zerolog.Nop())
 
 	// First call with maxBytes = 120
 	// Should get only first forced tx (100 bytes), second stays in queue
@@ -478,7 +480,7 @@ func TestBasedSequencer_VerifyBatch(t *testing.T) {
 	daClient := block.NewDAClient(mockDA, cfg, zerolog.Nop())
 	fiRetriever := block.NewForcedInclusionRetriever(daClient, gen, zerolog.Nop())
 
-	seq := NewBasedSequencer(fiRetriever, datypes.WrapCoreDA(mockDA), cfg, gen, zerolog.Nop())
+	seq := NewBasedSequencer(fiRetriever, mockDA, cfg, gen, zerolog.Nop())
 
 	req := coresequencer.VerifyBatchRequest{
 		Id:        []byte("test-chain"),
@@ -506,7 +508,7 @@ func TestBasedSequencer_SetDAHeight(t *testing.T) {
 	daClient := block.NewDAClient(mockDA, cfg, zerolog.Nop())
 	fiRetriever := block.NewForcedInclusionRetriever(daClient, gen, zerolog.Nop())
 
-	seq := NewBasedSequencer(fiRetriever, datypes.WrapCoreDA(mockDA), cfg, gen, zerolog.Nop())
+	seq := NewBasedSequencer(fiRetriever, mockDA, cfg, gen, zerolog.Nop())
 
 	assert.Equal(t, uint64(100), seq.GetDAHeight())
 
@@ -532,7 +534,7 @@ func TestBasedSequencer_GetNextBatch_ErrorHandling(t *testing.T) {
 	daClient := block.NewDAClient(mockDA, cfg, zerolog.Nop())
 	fiRetriever := block.NewForcedInclusionRetriever(daClient, gen, zerolog.Nop())
 
-	seq := NewBasedSequencer(fiRetriever, datypes.WrapCoreDA(mockDA), cfg, gen, zerolog.Nop())
+	seq := NewBasedSequencer(fiRetriever, mockDA, cfg, gen, zerolog.Nop())
 
 	req := coresequencer.GetNextBatchRequest{
 		MaxBytes:      1000000,
