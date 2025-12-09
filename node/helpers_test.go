@@ -71,7 +71,15 @@ func (noopDAClient) GetForcedInclusionNamespace() []byte {
 	return nil
 }
 func (noopDAClient) HasForcedInclusionNamespace() bool { return false }
-func (noopDAClient) Get(ctx context.Context, ids [][]byte, namespace []byte) ([][]byte, error) {
+func (noopDAClient) Get(ctx context.Context, ids []datypes.ID, namespace []byte) ([]datypes.Blob, error) {
+	return nil, nil
+}
+
+func (noopDAClient) GetProofs(ctx context.Context, ids []datypes.ID, namespace []byte) ([]datypes.Proof, error) {
+	return nil, nil
+}
+
+func (noopDAClient) Validate(ctx context.Context, ids []datypes.ID, proofs []datypes.Proof, namespace []byte) ([]bool, error) {
 	return nil, nil
 }
 

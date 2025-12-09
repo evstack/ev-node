@@ -16,7 +16,6 @@ import (
 
 	"github.com/evstack/ev-node/block/internal/cache"
 	"github.com/evstack/ev-node/block/internal/common"
-	da "github.com/evstack/ev-node/block/internal/da"
 	"github.com/evstack/ev-node/block/internal/da/testclient"
 	"github.com/evstack/ev-node/pkg/config"
 	datypes "github.com/evstack/ev-node/pkg/da/types"
@@ -39,9 +38,8 @@ func newTestDARetriever(t *testing.T, mockDA datypes.DA, cfg config.Config, gen 
 	cm, err := cache.NewCacheManager(cfg, zerolog.Nop())
 	require.NoError(t, err)
 
-	daClient := testclient.New(da.Config{
+	daClient := testclient.New(testclient.Config{
 		DA:            mockDA,
-		Logger:        zerolog.Nop(),
 		Namespace:     cfg.DA.Namespace,
 		DataNamespace: cfg.DA.DataNamespace,
 	})

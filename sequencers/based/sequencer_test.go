@@ -47,6 +47,14 @@ func (m mockDAClient) Get(ctx context.Context, ids []datypes.ID, namespace []byt
 	return nil, nil
 }
 
+func (m mockDAClient) GetProofs(ctx context.Context, ids []datypes.ID, namespace []byte) ([]datypes.Proof, error) {
+	return nil, nil
+}
+
+func (m mockDAClient) Validate(ctx context.Context, ids []datypes.ID, proofs []datypes.Proof, namespace []byte) ([]bool, error) {
+	return nil, nil
+}
+
 func (m mockDAClient) GetHeaderNamespace() []byte { return []byte("hdr") }
 func (m mockDAClient) GetDataNamespace() []byte   { return []byte("data") }
 func (m mockDAClient) GetForcedInclusionNamespace() []byte {

@@ -21,7 +21,7 @@ type client struct {
 }
 
 // New builds a DA client suitable for tests using the provided backend and config.
-func New(cfg da.Config) da.Client {
+func New(cfg Config) da.Client {
 	hasForced := cfg.ForcedInclusionNamespace != ""
 	var forced []byte
 	if hasForced {

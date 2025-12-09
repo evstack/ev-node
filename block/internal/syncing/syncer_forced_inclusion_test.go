@@ -50,9 +50,8 @@ func TestVerifyForcedInclusionTxs_AllTransactionsIncluded(t *testing.T) {
 
 	mockDA := testmocks.NewMockDA(t)
 
-	daClient := datestclient.New(da.Config{
+	daClient := datestclient.New(datestclient.Config{
 		DA:                       mockDA,
-		Logger:                   zerolog.Nop(),
 		Namespace:                cfg.DA.Namespace,
 		DataNamespace:            cfg.DA.DataNamespace,
 		ForcedInclusionNamespace: cfg.DA.ForcedInclusionNamespace,
@@ -135,9 +134,8 @@ func TestVerifyForcedInclusionTxs_MissingTransactions(t *testing.T) {
 
 	mockDA := testmocks.NewMockDA(t)
 
-	daClient := datestclient.New(da.Config{
+	daClient := datestclient.New(datestclient.Config{
 		DA:                       mockDA,
-		Logger:                   zerolog.Nop(),
 		Namespace:                cfg.DA.Namespace,
 		DataNamespace:            cfg.DA.DataNamespace,
 		ForcedInclusionNamespace: cfg.DA.ForcedInclusionNamespace,
@@ -236,9 +234,8 @@ func TestVerifyForcedInclusionTxs_PartiallyIncluded(t *testing.T) {
 
 	mockDA := testmocks.NewMockDA(t)
 
-	daClient := datestclient.New(da.Config{
+	daClient := datestclient.New(datestclient.Config{
 		DA:                       mockDA,
-		Logger:                   zerolog.Nop(),
 		Namespace:                cfg.DA.Namespace,
 		DataNamespace:            cfg.DA.DataNamespace,
 		ForcedInclusionNamespace: cfg.DA.ForcedInclusionNamespace,
@@ -339,9 +336,8 @@ func TestVerifyForcedInclusionTxs_NoForcedTransactions(t *testing.T) {
 
 	mockDA := testmocks.NewMockDA(t)
 
-	daClient := datestclient.New(da.Config{
+	daClient := datestclient.New(datestclient.Config{
 		DA:                       mockDA,
-		Logger:                   zerolog.Nop(),
 		Namespace:                cfg.DA.Namespace,
 		DataNamespace:            cfg.DA.DataNamespace,
 		ForcedInclusionNamespace: cfg.DA.ForcedInclusionNamespace,
@@ -413,9 +409,8 @@ func TestVerifyForcedInclusionTxs_NamespaceNotConfigured(t *testing.T) {
 
 	mockDA := testmocks.NewMockDA(t)
 
-	daClient := datestclient.New(da.Config{
+	daClient := datestclient.New(datestclient.Config{
 		DA:            mockDA,
-		Logger:        zerolog.Nop(),
 		Namespace:     cfg.DA.Namespace,
 		DataNamespace: cfg.DA.DataNamespace,
 		// No ForcedInclusionNamespace - not configured
@@ -482,9 +477,8 @@ func TestVerifyForcedInclusionTxs_DeferralWithinEpoch(t *testing.T) {
 
 	mockDA := testmocks.NewMockDA(t)
 
-	daClient := datestclient.New(da.Config{
+	daClient := datestclient.New(datestclient.Config{
 		DA:                       mockDA,
-		Logger:                   zerolog.Nop(),
 		Namespace:                cfg.DA.Namespace,
 		DataNamespace:            cfg.DA.DataNamespace,
 		ForcedInclusionNamespace: cfg.DA.ForcedInclusionNamespace,
@@ -629,9 +623,8 @@ func TestVerifyForcedInclusionTxs_MaliciousAfterEpochEnd(t *testing.T) {
 
 	mockDA := testmocks.NewMockDA(t)
 
-	daClient := datestclient.New(da.Config{
+	daClient := datestclient.New(datestclient.Config{
 		DA:                       mockDA,
-		Logger:                   zerolog.Nop(),
 		Namespace:                cfg.DA.Namespace,
 		DataNamespace:            cfg.DA.DataNamespace,
 		ForcedInclusionNamespace: cfg.DA.ForcedInclusionNamespace,
