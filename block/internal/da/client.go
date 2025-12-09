@@ -23,6 +23,8 @@ type Client interface {
 	RetrieveData(ctx context.Context, height uint64) datypes.ResultRetrieve
 	RetrieveForcedInclusion(ctx context.Context, height uint64) datypes.ResultRetrieve
 	Get(ctx context.Context, ids []datypes.ID, namespace []byte) ([]datypes.Blob, error)
+	GetProofs(ctx context.Context, ids []datypes.ID, namespace []byte) ([]datypes.Proof, error)
+	Validate(ctx context.Context, ids []datypes.ID, proofs []datypes.Proof, namespace []byte) ([]bool, error)
 
 	GetHeaderNamespace() []byte
 	GetDataNamespace() []byte
@@ -158,9 +160,6 @@ func (c *client) Submit(ctx context.Context, data [][]byte, gasPrice float64, na
 	var height uint64
 	if len(ids) > 0 {
 		height, _ = blob.SplitID(ids[0])
-		if err != nil {
-			c.logger.Error().Err(err).Msg("failed to split ID")
-		}
 	}
 
 	c.logger.Debug().Int("num_ids", len(ids)).Msg("DA submission successful")
@@ -300,6 +299,16 @@ func (c *client) RetrieveForcedInclusion(ctx context.Context, height uint64) dat
 // Get retrieves blobs by IDs using the underlying DA interface.
 func (c *client) Get(ctx context.Context, ids []datypes.ID, namespace []byte) ([]datypes.Blob, error) {
 	return c.da.Get(ctx, ids, namespace)
+}
+
+// GetProofs proxies proof retrieval to the underlying DA implementation.
+func (c *client) GetProofs(ctx context.Context, ids []datypes.ID, namespace []byte) ([]datypes.Proof, error) {
+	return c.da.GetProofs(ctx, ids, namespace)
+}
+
+// Validate proxies proof validation to the underlying DA implementation.
+func (c *client) Validate(ctx context.Context, ids []datypes.ID, proofs []datypes.Proof, namespace []byte) ([]bool, error) {
+	return c.da.Validate(ctx, ids, proofs, namespace)
 }
 
 // GetHeaderNamespace returns the header namespace bytes.

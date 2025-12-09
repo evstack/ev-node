@@ -15,7 +15,8 @@ import (
 
 	"github.com/evstack/ev-node/block/internal/cache"
 	"github.com/evstack/ev-node/block/internal/common"
-	"github.com/evstack/ev-node/block/internal/da"
+	da "github.com/evstack/ev-node/block/internal/da"
+	"github.com/evstack/ev-node/block/internal/da/testclient"
 	"github.com/evstack/ev-node/pkg/config"
 	datypes "github.com/evstack/ev-node/pkg/da/types"
 	"github.com/evstack/ev-node/pkg/genesis"
@@ -87,7 +88,7 @@ func TestDASubmitter_SubmitHeadersAndData_MarksInclusionAndUpdatesLastSubmitted(
 	dummyDA := datypes.NewDummyDA(10_000_000, 10*time.Millisecond)
 
 	// Create DA submitter
-	daClient := da.NewClient(da.Config{
+	daClient := testclient.New(da.Config{
 		DA:            dummyDA,
 		Logger:        zerolog.Nop(),
 		Namespace:     cfg.DA.Namespace,

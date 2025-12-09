@@ -12,7 +12,6 @@ import (
 	kvexecutor "github.com/evstack/ev-node/apps/testapp/kv"
 	"github.com/evstack/ev-node/block"
 	coresequencer "github.com/evstack/ev-node/core/sequencer"
-	"github.com/evstack/ev-node/da/jsonrpc"
 	blobrpc "github.com/evstack/ev-node/da/jsonrpc/blob"
 	"github.com/evstack/ev-node/node"
 	"github.com/evstack/ev-node/pkg/cmd"
@@ -23,7 +22,6 @@ import (
 	"github.com/evstack/ev-node/pkg/p2p/key"
 	"github.com/evstack/ev-node/pkg/store"
 	"github.com/evstack/ev-node/sequencers/based"
-	seqcommon "github.com/evstack/ev-node/sequencers/common"
 	"github.com/evstack/ev-node/sequencers/single"
 )
 
@@ -61,11 +59,6 @@ var RunCmd = &cobra.Command{
 
 		logger.Info().Str("headerNamespace", headerNamespace.HexString()).Str("dataNamespace", dataNamespace.HexString()).Msg("namespaces")
 
-		daJrpc, err := jsonrpc.NewClient(ctx, logger, nodeConfig.DA.Address, nodeConfig.DA.AuthToken, seqcommon.AbsoluteMaxBlobSize)
-		if err != nil {
-			return err
-		}
-
 		nodeKey, err := key.LoadNodeKey(filepath.Dir(nodeConfig.ConfigPath()))
 		if err != nil {
 			return err
@@ -98,7 +91,7 @@ var RunCmd = &cobra.Command{
 		}
 
 		// Create sequencer based on configuration
-		sequencer, err := createSequencer(ctx, logger, datastore, &daJrpc.DA, nodeConfig, genesis)
+		sequencer, err := createSequencer(ctx, logger, datastore, nodeConfig, genesis)
 		if err != nil {
 			return err
 		}
@@ -119,7 +112,6 @@ func createSequencer(
 	ctx context.Context,
 	logger zerolog.Logger,
 	datastore datastore.Batching,
-	da da.DA,
 	nodeConfig config.Config,
 	genesis genesis.Genesis,
 ) (coresequencer.Sequencer, error) {
@@ -151,7 +143,7 @@ func createSequencer(
 		ctx,
 		logger,
 		datastore,
-		da,
+		daClient,
 		[]byte(genesis.ChainID),
 		nodeConfig.Node.BlockTime.Duration,
 		nodeConfig.Node.Aggregator,

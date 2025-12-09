@@ -12,7 +12,6 @@ import (
 	"github.com/evstack/ev-node/block"
 	"github.com/evstack/ev-node/core/execution"
 	coresequencer "github.com/evstack/ev-node/core/sequencer"
-	"github.com/evstack/ev-node/da/jsonrpc"
 	blobrpc "github.com/evstack/ev-node/da/jsonrpc/blob"
 	executiongrpc "github.com/evstack/ev-node/execution/grpc"
 	"github.com/evstack/ev-node/node"
@@ -25,7 +24,6 @@ import (
 	"github.com/evstack/ev-node/pkg/p2p/key"
 	"github.com/evstack/ev-node/pkg/store"
 	"github.com/evstack/ev-node/sequencers/based"
-	seqcommon "github.com/evstack/ev-node/sequencers/common"
 	"github.com/evstack/ev-node/sequencers/single"
 )
 
@@ -61,12 +59,6 @@ The execution client must implement the Evolve execution gRPC interface.`,
 
 		logger.Info().Str("headerNamespace", headerNamespace.HexString()).Str("dataNamespace", dataNamespace.HexString()).Msg("namespaces")
 
-		// Create DA client
-		daJrpc, err := jsonrpc.NewClient(cmd.Context(), logger, nodeConfig.DA.Address, nodeConfig.DA.AuthToken, seqcommon.AbsoluteMaxBlobSize)
-		if err != nil {
-			return err
-		}
-
 		// Create datastore
 		datastore, err := store.NewDefaultKVStore(nodeConfig.RootDir, nodeConfig.DBPath, grpcDbName)
 		if err != nil {
@@ -84,7 +76,7 @@ The execution client must implement the Evolve execution gRPC interface.`,
 		}
 
 		// Create sequencer based on configuration
-		sequencer, err := createSequencer(cmd.Context(), logger, datastore, &daJrpc.DA, nodeConfig, genesis)
+		sequencer, err := createSequencer(cmd.Context(), logger, datastore, nodeConfig, genesis)
 		if err != nil {
 			return err
 		}
@@ -119,7 +111,6 @@ func createSequencer(
 	ctx context.Context,
 	logger zerolog.Logger,
 	datastore datastore.Batching,
-	da da.DA,
 	nodeConfig config.Config,
 	genesis genesis.Genesis,
 ) (coresequencer.Sequencer, error) {
@@ -151,7 +142,7 @@ func createSequencer(
 		ctx,
 		logger,
 		datastore,
-		da,
+		daClient,
 		[]byte(genesis.ChainID),
 		nodeConfig.Node.BlockTime.Duration,
 		nodeConfig.Node.Aggregator,

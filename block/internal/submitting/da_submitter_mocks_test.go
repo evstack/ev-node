@@ -11,7 +11,8 @@ import (
 	"github.com/stretchr/testify/mock"
 
 	"github.com/evstack/ev-node/block/internal/common"
-	"github.com/evstack/ev-node/block/internal/da"
+	da "github.com/evstack/ev-node/block/internal/da"
+	"github.com/evstack/ev-node/block/internal/da/testclient"
 	"github.com/evstack/ev-node/pkg/config"
 	datypes "github.com/evstack/ev-node/pkg/da/types"
 	"github.com/evstack/ev-node/pkg/genesis"
@@ -30,7 +31,7 @@ func newTestSubmitter(mockDA *mocks.MockDA, override func(*config.Config)) *DASu
 	if override != nil {
 		override(&cfg)
 	}
-	daClient := da.NewClient(da.Config{
+	daClient := testclient.New(da.Config{
 		DA:            mockDA,
 		Logger:        zerolog.Nop(),
 		Namespace:     cfg.DA.Namespace,

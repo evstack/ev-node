@@ -43,7 +43,7 @@ type Sequencer struct {
 	proposer bool
 
 	Id []byte
-	da datypes.DA
+	da block.DAClient
 
 	batchTime time.Duration
 
@@ -61,7 +61,7 @@ func NewSequencer(
 	ctx context.Context,
 	logger zerolog.Logger,
 	db ds.Batching,
-	da datypes.DA,
+	da block.DAClient,
 	id []byte,
 	batchTime time.Duration,
 	proposer bool,

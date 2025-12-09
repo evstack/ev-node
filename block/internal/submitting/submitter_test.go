@@ -18,7 +18,8 @@ import (
 
 	"github.com/evstack/ev-node/block/internal/cache"
 	"github.com/evstack/ev-node/block/internal/common"
-	"github.com/evstack/ev-node/block/internal/da"
+	da "github.com/evstack/ev-node/block/internal/da"
+	datestclient "github.com/evstack/ev-node/block/internal/da/testclient"
 	"github.com/evstack/ev-node/pkg/config"
 	"github.com/evstack/ev-node/pkg/genesis"
 	"github.com/evstack/ev-node/pkg/rpc/server"
@@ -162,7 +163,7 @@ func TestSubmitter_setSequencerHeightToDAHeight(t *testing.T) {
 	cfg.DA.Namespace = "test-ns"
 	cfg.DA.DataNamespace = "test-data-ns"
 	metrics := common.NopMetrics()
-	daClient := da.NewClient(da.Config{
+	daClient := datestclient.New(da.Config{
 		DA:            nil,
 		Logger:        zerolog.Nop(),
 		Namespace:     cfg.DA.Namespace,
@@ -247,7 +248,7 @@ func TestSubmitter_processDAInclusionLoop_advances(t *testing.T) {
 	exec.On("SetFinal", mock.Anything, uint64(1)).Return(nil).Once()
 	exec.On("SetFinal", mock.Anything, uint64(2)).Return(nil).Once()
 
-	daClient := da.NewClient(da.Config{
+	daClient := datestclient.New(da.Config{
 		DA:            nil,
 		Logger:        zerolog.Nop(),
 		Namespace:     cfg.DA.Namespace,
@@ -438,7 +439,7 @@ func TestSubmitter_CacheClearedOnHeightInclusion(t *testing.T) {
 	exec.On("SetFinal", mock.Anything, uint64(1)).Return(nil).Once()
 	exec.On("SetFinal", mock.Anything, uint64(2)).Return(nil).Once()
 
-	daClient := da.NewClient(da.Config{
+	daClient := datestclient.New(da.Config{
 		DA:            nil,
 		Logger:        zerolog.Nop(),
 		Namespace:     cfg.DA.Namespace,

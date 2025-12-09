@@ -88,7 +88,7 @@ var RunCmd = &cobra.Command{
 		}
 
 		// Create sequencer based on configuration
-		sequencer, err := createSequencer(context.Background(), logger, datastore, &daJrpc.DA, nodeConfig, genesis)
+		sequencer, err := createSequencer(context.Background(), logger, datastore, nodeConfig, genesis)
 		if err != nil {
 			return err
 		}
@@ -157,7 +157,6 @@ func createSequencer(
 	ctx context.Context,
 	logger zerolog.Logger,
 	datastore datastore.Batching,
-	da da.DA,
 	nodeConfig config.Config,
 	genesis genesis.Genesis,
 ) (coresequencer.Sequencer, error) {
@@ -189,7 +188,7 @@ func createSequencer(
 		ctx,
 		logger,
 		datastore,
-		da,
+		daClient,
 		[]byte(genesis.ChainID),
 		nodeConfig.Node.BlockTime.Duration,
 		nodeConfig.Node.Aggregator,

@@ -33,8 +33,139 @@ func (m *MockForcedInclusionRetriever) RetrieveForcedIncludedTxs(ctx context.Con
 	return args.Get(0).(*block.ForcedInclusionEvent), args.Error(1)
 }
 
+// testDAClient is a lightweight adapter implementing block.DAClient for tests.
+type testDAClient struct {
+	da       datypes.DA
+	headerNS []byte
+	dataNS   []byte
+	forcedNS []byte
+}
+
+func newTestDAClient(da datypes.DA) *testDAClient {
+	return &testDAClient{
+		da:       da,
+		headerNS: []byte("h"),
+		dataNS:   []byte("d"),
+		forcedNS: []byte("f"),
+	}
+}
+
+func (t *testDAClient) Submit(ctx context.Context, data [][]byte, gasPrice float64, namespace []byte, options []byte) datypes.ResultSubmit {
+	return datypes.ResultSubmit{}
+}
+
+func (t *testDAClient) Retrieve(ctx context.Context, height uint64, namespace []byte) datypes.ResultRetrieve {
+	return datypes.ResultRetrieve{}
+}
+
+func (t *testDAClient) RetrieveHeaders(ctx context.Context, height uint64) datypes.ResultRetrieve {
+	return t.Retrieve(ctx, height, t.headerNS)
+}
+
+func (t *testDAClient) RetrieveData(ctx context.Context, height uint64) datypes.ResultRetrieve {
+	return t.Retrieve(ctx, height, t.dataNS)
+}
+
+func (t *testDAClient) RetrieveForcedInclusion(ctx context.Context, height uint64) datypes.ResultRetrieve {
+	return t.Retrieve(ctx, height, t.forcedNS)
+}
+
+func (t *testDAClient) Get(ctx context.Context, ids []datypes.ID, namespace []byte) ([]datypes.Blob, error) {
+	if t.da == nil {
+		return nil, nil
+	}
+	return t.da.Get(ctx, ids, namespace)
+}
+
+func (t *testDAClient) GetProofs(ctx context.Context, ids []datypes.ID, namespace []byte) ([]datypes.Proof, error) {
+	if t.da == nil {
+		return []datypes.Proof{}, nil
+	}
+	return t.da.GetProofs(ctx, ids, namespace)
+}
+
+func (t *testDAClient) Validate(ctx context.Context, ids []datypes.ID, proofs []datypes.Proof, namespace []byte) ([]bool, error) {
+	if t.da == nil {
+		return []bool{}, nil
+	}
+	return t.da.Validate(ctx, ids, proofs, namespace)
+}
+
+func (t *testDAClient) GetHeaderNamespace() []byte {
+	return t.headerNS
+}
+
+func (t *testDAClient) GetDataNamespace() []byte {
+	return t.dataNS
+}
+
+func (t *testDAClient) GetForcedInclusionNamespace() []byte {
+	return t.forcedNS
+}
+
+func (t *testDAClient) HasForcedInclusionNamespace() bool {
+	return len(t.forcedNS) > 0
+}
+
+// mockDAAdapter wraps the generated DA mock to satisfy block.DAClient.
+type mockDAAdapter struct {
+	*damocks.MockDA
+}
+
+func (m *mockDAAdapter) Submit(ctx context.Context, data [][]byte, gasPrice float64, namespace []byte, options []byte) datypes.ResultSubmit {
+	return datypes.ResultSubmit{}
+}
+
+func (m *mockDAAdapter) Retrieve(ctx context.Context, height uint64, namespace []byte) datypes.ResultRetrieve {
+	return datypes.ResultRetrieve{}
+}
+
+func (m *mockDAAdapter) RetrieveHeaders(ctx context.Context, height uint64) datypes.ResultRetrieve {
+	return datypes.ResultRetrieve{}
+}
+
+func (m *mockDAAdapter) RetrieveData(ctx context.Context, height uint64) datypes.ResultRetrieve {
+	return datypes.ResultRetrieve{}
+}
+
+func (m *mockDAAdapter) RetrieveForcedInclusion(ctx context.Context, height uint64) datypes.ResultRetrieve {
+	return datypes.ResultRetrieve{}
+}
+
+func (m *mockDAAdapter) Get(ctx context.Context, ids []datypes.ID, namespace []byte) ([]datypes.Blob, error) {
+	args := m.Called(ctx, ids, namespace)
+	if blobs, ok := args.Get(0).([]datypes.Blob); ok {
+		return blobs, args.Error(1)
+	}
+	return nil, args.Error(1)
+}
+
+func (m *mockDAAdapter) GetProofs(ctx context.Context, ids []datypes.ID, namespace []byte) ([]datypes.Proof, error) {
+	args := m.Called(ctx, ids, namespace)
+	if proofs, ok := args.Get(0).([]datypes.Proof); ok {
+		return proofs, args.Error(1)
+	}
+	return nil, args.Error(1)
+}
+
+func (m *mockDAAdapter) Validate(ctx context.Context, ids []datypes.ID, proofs []datypes.Proof, namespace []byte) ([]bool, error) {
+	args := m.Called(ctx, ids, proofs, namespace)
+	if results, ok := args.Get(0).([]bool); ok {
+		return results, args.Error(1)
+	}
+	return nil, args.Error(1)
+}
+
+func (m *mockDAAdapter) GetHeaderNamespace() []byte { return []byte("h") }
+func (m *mockDAAdapter) GetDataNamespace() []byte   { return []byte("d") }
+func (m *mockDAAdapter) GetForcedInclusionNamespace() []byte {
+	return []byte("f")
+}
+func (m *mockDAAdapter) HasForcedInclusionNamespace() bool { return true }
+
 func TestSequencer_SubmitBatchTxs(t *testing.T) {
 	dummyDA := datypes.NewDummyDA(100_000_000, 10*time.Second)
+	daClient := newTestDAClient(dummyDA)
 	db := ds.NewMapDatastore()
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
@@ -43,7 +174,7 @@ func TestSequencer_SubmitBatchTxs(t *testing.T) {
 	mockRetriever := new(MockForcedInclusionRetriever)
 	mockRetriever.On("RetrieveForcedIncludedTxs", mock.Anything, mock.Anything).
 		Return(nil, block.ErrForceInclusionNotConfigured).Maybe()
-	seq, err := NewSequencer(ctx, logger, db, dummyDA, Id, 10*time.Second, false, 1000, mockRetriever, genesis.Genesis{})
+	seq, err := NewSequencer(ctx, logger, db, daClient, Id, 10*time.Second, false, 1000, mockRetriever, genesis.Genesis{})
 	if err != nil {
 		t.Fatalf("Failed to create sequencer: %v", err)
 	}
@@ -89,6 +220,7 @@ func TestSequencer_SubmitBatchTxs(t *testing.T) {
 
 func TestSequencer_SubmitBatchTxs_EmptyBatch(t *testing.T) {
 	dummyDA := datypes.NewDummyDA(100_000_000, 10*time.Second)
+	daClient := newTestDAClient(dummyDA)
 	db := ds.NewMapDatastore()
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
@@ -97,7 +229,7 @@ func TestSequencer_SubmitBatchTxs_EmptyBatch(t *testing.T) {
 	mockRetriever := new(MockForcedInclusionRetriever)
 	mockRetriever.On("RetrieveForcedIncludedTxs", mock.Anything, mock.Anything).
 		Return(nil, block.ErrForceInclusionNotConfigured).Maybe()
-	seq, err := NewSequencer(ctx, logger, db, dummyDA, Id, 10*time.Second, false, 1000, mockRetriever, genesis.Genesis{})
+	seq, err := NewSequencer(ctx, logger, db, daClient, Id, 10*time.Second, false, 1000, mockRetriever, genesis.Genesis{})
 	require.NoError(t, err, "Failed to create sequencer")
 	defer func() {
 		err := db.Close()
@@ -248,7 +380,7 @@ func TestSequencer_VerifyBatch(t *testing.T) {
 			logger:      logger,
 			Id:          Id,
 			proposer:    true,
-			da:          mockDA,
+			da:          &mockDAAdapter{MockDA: mockDA},
 			queue:       NewBatchQueue(db, "proposer_queue", 0), // 0 = unlimited for test
 			fiRetriever: mockRetriever,
 		}
@@ -273,7 +405,7 @@ func TestSequencer_VerifyBatch(t *testing.T) {
 				logger:      logger,
 				Id:          Id,
 				proposer:    false,
-				da:          mockDA,
+				da:          &mockDAAdapter{MockDA: mockDA},
 				queue:       NewBatchQueue(db, "valid_proofs_queue", 0),
 				fiRetriever: mockRetriever,
 			}
@@ -298,7 +430,7 @@ func TestSequencer_VerifyBatch(t *testing.T) {
 				logger:      logger,
 				Id:          Id,
 				proposer:    false,
-				da:          mockDA,
+				da:          &mockDAAdapter{MockDA: mockDA},
 				queue:       NewBatchQueue(db, "invalid_proof_queue", 0),
 				fiRetriever: mockRetriever,
 			}
@@ -323,7 +455,7 @@ func TestSequencer_VerifyBatch(t *testing.T) {
 				logger:      logger,
 				Id:          Id,
 				proposer:    false,
-				da:          mockDA,
+				da:          &mockDAAdapter{MockDA: mockDA},
 				queue:       NewBatchQueue(db, "getproofs_err_queue", 0),
 				fiRetriever: mockRetriever,
 			}
@@ -349,7 +481,7 @@ func TestSequencer_VerifyBatch(t *testing.T) {
 				logger:      logger,
 				Id:          Id,
 				proposer:    false,
-				da:          mockDA,
+				da:          &mockDAAdapter{MockDA: mockDA},
 				queue:       NewBatchQueue(db, "validate_err_queue", 0),
 				fiRetriever: mockRetriever,
 			}
@@ -376,7 +508,7 @@ func TestSequencer_VerifyBatch(t *testing.T) {
 				logger:      logger,
 				Id:          Id,
 				proposer:    false,
-				da:          mockDA,
+				da:          &mockDAAdapter{MockDA: mockDA},
 				queue:       NewBatchQueue(db, "invalid_queue", 0),
 				fiRetriever: mockRetriever,
 			}
@@ -404,7 +536,7 @@ func TestSequencer_GetNextBatch_BeforeDASubmission(t *testing.T) {
 	mockRetriever := new(MockForcedInclusionRetriever)
 	mockRetriever.On("RetrieveForcedIncludedTxs", mock.Anything, mock.Anything).
 		Return(nil, block.ErrForceInclusionNotConfigured).Maybe()
-	seq, err := NewSequencer(ctx, logger, db, mockDA, []byte("test1"), 1*time.Second, false, 1000, mockRetriever, genesis.Genesis{})
+	seq, err := NewSequencer(ctx, logger, db, &mockDAAdapter{MockDA: mockDA}, []byte("test1"), 1*time.Second, false, 1000, mockRetriever, genesis.Genesis{})
 	if err != nil {
 		t.Fatalf("Failed to create sequencer: %v", err)
 	}
@@ -709,7 +841,7 @@ func TestSequencer_QueueLimit_Integration(t *testing.T) {
 	logger := zerolog.Nop()
 	seq := &Sequencer{
 		logger:      logger,
-		da:          mockDA,
+		da:          &mockDAAdapter{MockDA: mockDA},
 		batchTime:   time.Second,
 		Id:          []byte("test"),
 		queue:       NewBatchQueue(db, "test_queue", 2), // Very small limit for testing
@@ -819,6 +951,7 @@ func TestSequencer_DAFailureAndQueueThrottling_Integration(t *testing.T) {
 	dummyDA := datypes.NewDummyDA(100_000, 100*time.Millisecond)
 	dummyDA.StartHeightTicker()
 	defer dummyDA.StopHeightTicker()
+	daClient := newTestDAClient(dummyDA)
 
 	// Create sequencer with small queue size to trigger throttling quickly
 	queueSize := 3 // Small for testing
@@ -830,7 +963,7 @@ func TestSequencer_DAFailureAndQueueThrottling_Integration(t *testing.T) {
 		context.Background(),
 		logger,
 		db,
-		dummyDA,
+		daClient,
 		[]byte("test-chain"),
 		100*time.Millisecond,
 		true, // proposer

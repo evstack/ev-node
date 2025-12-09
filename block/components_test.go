@@ -16,6 +16,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	da "github.com/evstack/ev-node/block/internal/da"
+	datestclient "github.com/evstack/ev-node/block/internal/da/testclient"
 	coresequencer "github.com/evstack/ev-node/core/sequencer"
 	"github.com/evstack/ev-node/pkg/config"
 	datypes "github.com/evstack/ev-node/pkg/da/types"
@@ -94,7 +95,7 @@ func TestNewSyncComponents_Creation(t *testing.T) {
 
 	mockExec := testmocks.NewMockExecutor(t)
 	dummyDA := datypes.NewDummyDA(10_000_000, 10*time.Millisecond)
-	daClient := da.NewClient(da.Config{
+	daClient := datestclient.New(da.Config{
 		DA:            dummyDA,
 		Logger:        zerolog.Nop(),
 		Namespace:     "ns",
@@ -151,7 +152,7 @@ func TestNewAggregatorComponents_Creation(t *testing.T) {
 	mockExec := testmocks.NewMockExecutor(t)
 	mockSeq := testmocks.NewMockSequencer(t)
 	dummyDA := datypes.NewDummyDA(10_000_000, 10*time.Millisecond)
-	daClient := da.NewClient(da.Config{
+	daClient := datestclient.New(da.Config{
 		DA:            dummyDA,
 		Logger:        zerolog.Nop(),
 		Namespace:     "ns",
@@ -235,7 +236,7 @@ func TestExecutor_RealExecutionClientFailure_StopsNode(t *testing.T) {
 	mockExec.On("ExecuteTxs", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 		Return(nil, uint64(0), criticalError).Maybe()
 
-	daClient := da.NewClient(da.Config{DA: dummyDA})
+	daClient := datestclient.New(da.Config{DA: dummyDA})
 
 	// Create aggregator node
 	components, err := NewAggregatorComponents(

@@ -350,3 +350,75 @@ func (c *CelestiaBlobClient) Get(ctx context.Context, ids []datypes.ID, namespac
 
 	return res, nil
 }
+
+// GetProofs returns inclusion proofs for the provided IDs.
+func (c *CelestiaBlobClient) GetProofs(ctx context.Context, ids []datypes.ID, namespace []byte) ([]datypes.Proof, error) {
+	if len(ids) == 0 {
+		return []datypes.Proof{}, nil
+	}
+
+	getCtx, cancel := context.WithTimeout(ctx, c.defaultTimeout)
+	defer cancel()
+
+	ns, err := share.NewNamespaceFromBytes(namespace)
+	if err != nil {
+		return nil, fmt.Errorf("invalid namespace: %w", err)
+	}
+
+	proofs := make([]datypes.Proof, len(ids))
+	for i, id := range ids {
+		height, commitment := blobrpc.SplitID(id)
+		if commitment == nil {
+			return nil, fmt.Errorf("invalid blob id: %x", id)
+		}
+
+		proof, err := c.blobAPI.GetProof(getCtx, height, ns, commitment)
+		if err != nil {
+			return nil, err
+		}
+
+		bz, err := json.Marshal(proof)
+		if err != nil {
+			return nil, err
+		}
+		proofs[i] = bz
+	}
+
+	return proofs, nil
+}
+
+// Validate mirrors the deprecated DA server logic: it unmarshals proofs and calls Included.
+func (c *CelestiaBlobClient) Validate(ctx context.Context, ids []datypes.ID, proofs []datypes.Proof, namespace []byte) ([]bool, error) {
+	if len(ids) != len(proofs) {
+		return nil, errors.New("number of IDs and proofs must match")
+	}
+
+	validateCtx, cancel := context.WithTimeout(ctx, c.defaultTimeout)
+	defer cancel()
+
+	ns, err := share.NewNamespaceFromBytes(namespace)
+	if err != nil {
+		return nil, fmt.Errorf("invalid namespace: %w", err)
+	}
+
+	results := make([]bool, len(ids))
+	for i, id := range ids {
+		var proof blobrpc.Proof
+		if err := json.Unmarshal(proofs[i], &proof); err != nil {
+			return nil, err
+		}
+
+		height, commitment := blobrpc.SplitID(id)
+		if commitment == nil {
+			return nil, fmt.Errorf("invalid blob id: %x", id)
+		}
+
+		included, err := c.blobAPI.Included(validateCtx, height, ns, &proof, commitment)
+		if err != nil {
+			c.logger.Debug().Err(err).Uint64("height", height).Msg("blob inclusion check returned error")
+		}
+		results[i] = included
+	}
+
+	return results, nil
+}
