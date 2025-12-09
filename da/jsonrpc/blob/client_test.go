@@ -1,4 +1,4 @@
-package celestia
+package blob
 
 import (
 	"context"
@@ -9,37 +9,35 @@ import (
 	"github.com/stretchr/testify/require"
 
 	libshare "github.com/celestiaorg/go-square/v3/share"
-
-	"github.com/evstack/ev-node/pkg/blob"
 )
 
 type mockBlobModule struct {
 	submitHeight uint64
 	submitErr    error
 
-	blob        *blob.Blob
-	proof       *blob.Proof
+	blob        *Blob
+	proof       *Proof
 	included    bool
 	commitProof *CommitmentProof
 }
 
-func (m *mockBlobModule) Submit(_ context.Context, _ []*blob.Blob, _ *blob.SubmitOptions) (uint64, error) {
+func (m *mockBlobModule) Submit(_ context.Context, _ []*Blob, _ *SubmitOptions) (uint64, error) {
 	return m.submitHeight, m.submitErr
 }
 
-func (m *mockBlobModule) Get(_ context.Context, _ uint64, _ libshare.Namespace, _ blob.Commitment) (*blob.Blob, error) {
+func (m *mockBlobModule) Get(_ context.Context, _ uint64, _ libshare.Namespace, _ Commitment) (*Blob, error) {
 	return m.blob, nil
 }
 
-func (m *mockBlobModule) GetAll(_ context.Context, _ uint64, _ []libshare.Namespace) ([]*blob.Blob, error) {
-	return []*blob.Blob{m.blob}, nil
+func (m *mockBlobModule) GetAll(_ context.Context, _ uint64, _ []libshare.Namespace) ([]*Blob, error) {
+	return []*Blob{m.blob}, nil
 }
 
-func (m *mockBlobModule) GetProof(_ context.Context, _ uint64, _ libshare.Namespace, _ blob.Commitment) (*blob.Proof, error) {
+func (m *mockBlobModule) GetProof(_ context.Context, _ uint64, _ libshare.Namespace, _ Commitment) (*Proof, error) {
 	return m.proof, nil
 }
 
-func (m *mockBlobModule) Included(_ context.Context, _ uint64, _ libshare.Namespace, _ *blob.Proof, _ blob.Commitment) (bool, error) {
+func (m *mockBlobModule) Included(_ context.Context, _ uint64, _ libshare.Namespace, _ *Proof, _ Commitment) (bool, error) {
 	return m.included, nil
 }
 
@@ -63,13 +61,13 @@ func newTestServer(t *testing.T, module any) *httptest.Server {
 
 func TestClient_CallsAreForwarded(t *testing.T) {
 	ns := libshare.MustNewV0Namespace([]byte("namespace"))
-	blb, err := blob.NewBlobV0(ns, []byte("data"))
+	blb, err := NewBlobV0(ns, []byte("data"))
 	require.NoError(t, err)
 
 	module := &mockBlobModule{
 		submitHeight: 7,
 		blob:         blb,
-		proof:        &blob.Proof{},
+		proof:        &Proof{},
 		included:     true,
 		commitProof:  &CommitmentProof{},
 	}
@@ -80,7 +78,7 @@ func TestClient_CallsAreForwarded(t *testing.T) {
 	require.NoError(t, err)
 	t.Cleanup(client.Close)
 
-	height, err := client.Blob.Submit(context.Background(), []*blob.Blob{blb}, nil)
+	height, err := client.Blob.Submit(context.Background(), []*Blob{blb}, nil)
 	require.NoError(t, err)
 	require.Equal(t, uint64(7), height)
 

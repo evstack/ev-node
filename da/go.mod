@@ -3,8 +3,9 @@ module github.com/evstack/ev-node/da
 go 1.24.6
 
 require (
+	github.com/celestiaorg/go-square/merkle v0.0.0-20240627094109-7d01436067a3
 	github.com/celestiaorg/go-square/v3 v3.0.2
-	github.com/evstack/ev-node v1.0.0-beta.10
+	github.com/celestiaorg/nmt v0.24.2
 	github.com/evstack/ev-node/core v1.0.0-beta.5
 	github.com/filecoin-project/go-jsonrpc v0.9.0
 	github.com/rs/zerolog v1.34.0
@@ -12,8 +13,6 @@ require (
 )
 
 require (
-	github.com/celestiaorg/go-square/merkle v0.0.0-20240627094109-7d01436067a3 // indirect
-	github.com/celestiaorg/nmt v0.24.2 // indirect
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
 	github.com/gogo/protobuf v1.3.2 // indirect
 	github.com/golang/groupcache v0.0.0-20241129210726-2c02b8208cf8 // indirect

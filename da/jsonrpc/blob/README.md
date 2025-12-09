@@ -1,4 +1,4 @@
-# pkg/blob
+# blob package
 
 This package is a **trimmed copy** of code from `celestia-node` to stay JSON-compatible with the blob RPC without importing the full Cosmos/Celestia dependency set.
 
