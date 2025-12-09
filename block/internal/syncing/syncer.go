@@ -741,15 +741,43 @@ func (s *Syncer) verifyForcedInclusionTxs(currentState types.State, data *types.
 	}
 
 	// Check if we've moved past any epoch boundaries with pending txs
+	// Grace period: Allow forced inclusion txs from epoch N to be included in epoch N+1, N+2, etc.
+	// Only flag as malicious if past grace boundary to prevent false positives during DA unavailability.
 	var maliciousTxs, remainingPending []pendingForcedInclusionTx
+	var txsInGracePeriod int
 	for _, pending := range stillPending {
-		// If current DA height is past this epoch's end, these txs should have been included
-		if currentState.DAHeight > pending.EpochEnd {
+		// Calculate grace boundary: epoch end + (grace periods × epoch size)
+		graceBoundary := pending.EpochEnd + (s.genesis.ForcedInclusionGracePeriod * s.genesis.DAEpochForcedInclusion)
+
+		// If current DA height is past the grace boundary, these txs should have been included
+		if currentState.DAHeight > graceBoundary {
 			maliciousTxs = append(maliciousTxs, pending)
+			s.logger.Warn().
+				Uint64("current_da_height", currentState.DAHeight).
+				Uint64("epoch_end", pending.EpochEnd).
+				Uint64("grace_boundary", graceBoundary).
+				Uint64("grace_periods", s.genesis.ForcedInclusionGracePeriod).
+				Str("tx_hash", pending.TxHash[:16]).
+				Msg("forced inclusion transaction past grace boundary - marking as malicious")
 		} else {
 			remainingPending = append(remainingPending, pending)
+
+			// Track if we're in the grace period (past epoch end but within grace boundary)
+			if currentState.DAHeight > pending.EpochEnd {
+				txsInGracePeriod++
+				s.logger.Info().
+					Uint64("current_da_height", currentState.DAHeight).
+					Uint64("epoch_end", pending.EpochEnd).
+					Uint64("grace_boundary", graceBoundary).
+					Uint64("grace_periods", s.genesis.ForcedInclusionGracePeriod).
+					Str("tx_hash", pending.TxHash[:16]).
+					Msg("forced inclusion transaction in grace period - not yet malicious")
+			}
 		}
 	}
+
+	// Update metrics for grace period tracking
+	s.metrics.ForcedInclusionTxsInGracePeriod.Set(float64(txsInGracePeriod))
 
 	// Update pending map - clear old entries and store only remaining pending
 	s.pendingForcedInclusionTxs.Range(func(key, value any) bool {
@@ -760,14 +788,18 @@ func (s *Syncer) verifyForcedInclusionTxs(currentState types.State, data *types.
 		s.pendingForcedInclusionTxs.Store(pending.TxHash, pending)
 	}
 
-	// If there are transactions from past epochs that weren't included, sequencer is malicious
+	// If there are transactions past grace boundary that weren't included, sequencer is malicious
 	if len(maliciousTxs) > 0 {
+		// Update metrics for malicious detection
+		s.metrics.ForcedInclusionTxsMalicious.Add(float64(len(maliciousTxs)))
+
 		s.logger.Error().
 			Uint64("height", data.Height()).
 			Uint64("current_da_height", currentState.DAHeight).
 			Int("malicious_count", len(maliciousTxs)).
-			Msg("SEQUENCER IS MALICIOUS: forced inclusion transactions from past epoch(s) not included")
-		return errors.Join(errMaliciousProposer, fmt.Errorf("sequencer is malicious: %d forced inclusion transactions from past epoch(s) not included", len(maliciousTxs)))
+			Uint64("grace_periods", s.genesis.ForcedInclusionGracePeriod).
+			Msg("SEQUENCER IS MALICIOUS: forced inclusion transactions past grace boundary not included")
+		return errors.Join(errMaliciousProposer, fmt.Errorf("sequencer is malicious: %d forced inclusion transactions past grace boundary (grace_periods=%d) not included", len(maliciousTxs), s.genesis.ForcedInclusionGracePeriod))
 	}
 
 	// Log current state

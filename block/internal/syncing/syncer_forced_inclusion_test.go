@@ -206,7 +206,7 @@ func TestVerifyForcedInclusionTxs_MissingTransactions(t *testing.T) {
 	err = s.verifyForcedInclusionTxs(currentState, data2)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "sequencer is malicious")
-	require.Contains(t, err.Error(), "forced inclusion transactions from past epoch(s) not included")
+	require.Contains(t, err.Error(), "past grace boundary")
 }
 
 func TestVerifyForcedInclusionTxs_PartiallyIncluded(t *testing.T) {
@@ -309,7 +309,7 @@ func TestVerifyForcedInclusionTxs_PartiallyIncluded(t *testing.T) {
 	err = s.verifyForcedInclusionTxs(currentState, data2)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "sequencer is malicious")
-	require.Contains(t, err.Error(), "forced inclusion transactions from past epoch(s) not included")
+	require.Contains(t, err.Error(), "past grace boundary")
 }
 
 func TestVerifyForcedInclusionTxs_NoForcedTransactions(t *testing.T) {
@@ -759,5 +759,137 @@ func TestVerifyForcedInclusionTxs_MaliciousAfterEpochEnd(t *testing.T) {
 	err = s.verifyForcedInclusionTxs(currentState, data3)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "sequencer is malicious")
-	require.Contains(t, err.Error(), "forced inclusion transactions from past epoch(s) not included")
+	require.Contains(t, err.Error(), "past grace boundary")
+}
+
+// TestVerifyForcedInclusionTxs_SmoothingExceedsEpoch tests the critical scenario where
+// forced inclusion transactions cannot all be included before an epoch ends.
+// This demonstrates that the system correctly detects malicious behavior when
+// transactions remain pending after the epoch boundary.
+func TestVerifyForcedInclusionTxs_SmoothingExceedsEpoch(t *testing.T) {
+	ds := dssync.MutexWrap(datastore.NewMapDatastore())
+	st := store.New(ds)
+
+	cm, err := cache.NewCacheManager(config.DefaultConfig(), zerolog.Nop())
+	require.NoError(t, err)
+
+	addr, pub, signer := buildSyncTestSigner(t)
+	gen := genesis.Genesis{
+		ChainID:                "tchain",
+		InitialHeight:          1,
+		StartTime:              time.Now().Add(-time.Second),
+		ProposerAddress:        addr,
+		DAStartHeight:          100,
+		DAEpochForcedInclusion: 3, // Epoch: [100, 102]
+	}
+
+	cfg := config.DefaultConfig()
+	cfg.DA.ForcedInclusionNamespace = "nsForcedInclusion"
+
+	mockExec := testmocks.NewMockExecutor(t)
+	mockExec.EXPECT().InitChain(mock.Anything, mock.Anything, uint64(1), "tchain").
+		Return([]byte("app0"), uint64(1024), nil).Once()
+
+	mockDA := testmocks.NewMockDA(t)
+
+	daClient := da.NewClient(da.Config{
+		DA:                       mockDA,
+		Logger:                   zerolog.Nop(),
+		Namespace:                cfg.DA.Namespace,
+		DataNamespace:            cfg.DA.DataNamespace,
+		ForcedInclusionNamespace: cfg.DA.ForcedInclusionNamespace,
+	})
+	daRetriever := NewDARetriever(daClient, cm, gen, zerolog.Nop())
+	fiRetriever := da.NewForcedInclusionRetriever(daClient, gen, zerolog.Nop())
+
+	s := NewSyncer(
+		st,
+		mockExec,
+		daClient,
+		cm,
+		common.NopMetrics(),
+		cfg,
+		gen,
+		common.NewMockBroadcaster[*types.SignedHeader](t),
+		common.NewMockBroadcaster[*types.Data](t),
+		zerolog.Nop(),
+		common.DefaultBlockOptions(),
+		make(chan error, 1),
+	)
+	s.daRetriever = daRetriever
+	s.fiRetriever = fiRetriever
+
+	require.NoError(t, s.initializeState())
+	s.ctx = context.Background()
+
+	namespaceForcedInclusionBz := coreda.NamespaceFromString(cfg.DA.GetForcedInclusionNamespace()).Bytes()
+
+	// Create 3 forced inclusion transactions
+	dataBin1, _ := makeSignedDataBytes(t, gen.ChainID, 10, addr, pub, signer, 2)
+	dataBin2, _ := makeSignedDataBytes(t, gen.ChainID, 11, addr, pub, signer, 2)
+	dataBin3, _ := makeSignedDataBytes(t, gen.ChainID, 12, addr, pub, signer, 2)
+
+	// Mock DA retrieval for Epoch 1: [100, 102]
+	mockDA.EXPECT().GetIDs(mock.Anything, uint64(100), mock.MatchedBy(func(ns []byte) bool {
+		return bytes.Equal(ns, namespaceForcedInclusionBz)
+	})).Return(&coreda.GetIDsResult{
+		IDs:       [][]byte{[]byte("fi1"), []byte("fi2"), []byte("fi3")},
+		Timestamp: time.Now(),
+	}, nil).Once()
+
+	mockDA.EXPECT().Get(mock.Anything, mock.Anything, mock.MatchedBy(func(ns []byte) bool {
+		return bytes.Equal(ns, namespaceForcedInclusionBz)
+	})).Return([][]byte{dataBin1, dataBin2, dataBin3}, nil).Once()
+
+	for height := uint64(101); height <= 102; height++ {
+		mockDA.EXPECT().GetIDs(mock.Anything, height, mock.MatchedBy(func(ns []byte) bool {
+			return bytes.Equal(ns, namespaceForcedInclusionBz)
+		})).Return(&coreda.GetIDsResult{IDs: [][]byte{}, Timestamp: time.Now()}, nil).Once()
+	}
+
+	// Block at DA height 102 (epoch end): Only includes 2 of 3 txs
+	// The third tx remains pending - legitimate within the epoch
+	data1 := makeData(gen.ChainID, 1, 2)
+	data1.Txs[0] = types.Tx(dataBin1)
+	data1.Txs[1] = types.Tx(dataBin2)
+
+	currentState := s.GetLastState()
+	currentState.DAHeight = 102 // At epoch end
+
+	err = s.verifyForcedInclusionTxs(currentState, data1)
+	require.NoError(t, err, "smoothing within epoch should be allowed")
+
+	// Verify 1 tx still pending
+	pendingCount := 0
+	s.pendingForcedInclusionTxs.Range(func(key, value any) bool {
+		pendingCount++
+		return true
+	})
+	require.Equal(t, 1, pendingCount, "should have 1 pending forced inclusion tx")
+
+	// === CRITICAL TEST: Move to next epoch WITHOUT including the pending tx ===
+	// Mock DA for next epoch [103, 105] with no forced txs
+	mockDA.EXPECT().GetIDs(mock.Anything, uint64(103), mock.MatchedBy(func(ns []byte) bool {
+		return bytes.Equal(ns, namespaceForcedInclusionBz)
+	})).Return(&coreda.GetIDsResult{IDs: [][]byte{}, Timestamp: time.Now()}, nil).Once()
+
+	mockDA.EXPECT().GetIDs(mock.Anything, uint64(104), mock.MatchedBy(func(ns []byte) bool {
+		return bytes.Equal(ns, namespaceForcedInclusionBz)
+	})).Return(&coreda.GetIDsResult{IDs: [][]byte{}, Timestamp: time.Now()}, nil).Once()
+
+	mockDA.EXPECT().GetIDs(mock.Anything, uint64(105), mock.MatchedBy(func(ns []byte) bool {
+		return bytes.Equal(ns, namespaceForcedInclusionBz)
+	})).Return(&coreda.GetIDsResult{IDs: [][]byte{}, Timestamp: time.Now()}, nil).Once()
+
+	// Block at DA height 105 (next epoch end): Doesn't include the pending tx
+	data2 := makeData(gen.ChainID, 2, 1)
+	data2.Txs[0] = types.Tx([]byte("regular_tx_only"))
+
+	currentState.DAHeight = 105 // Past previous epoch boundary [100, 102]
+
+	// Should FAIL - forced tx from previous epoch wasn't included before epoch ended
+	err = s.verifyForcedInclusionTxs(currentState, data2)
+	require.Error(t, err, "should detect malicious sequencer when forced tx exceeds epoch")
+	require.Contains(t, err.Error(), "sequencer is malicious")
+	require.Contains(t, err.Error(), "past grace boundary")
 }

@@ -21,6 +21,12 @@ type Genesis struct {
 	// DaEpochForcedInclusion corresponds to the amount of DA blocks are considered an epochs
 	// When forced inclusion is enabled, the epoch size determines at what frequency the forced included transactions are executed by the application.
 	DAEpochForcedInclusion uint64 `json:"da_epoch_forced_inclusion"`
+	// ForcedInclusionGracePeriod is the number of additional epochs allowed for including forced inclusion transactions
+	// before marking the sequencer as malicious. This provides tolerance for temporary DA unavailability.
+	// A value of 0 means strict enforcement (no grace period).
+	// A value of 1 means transactions from epoch N can be included in epoch N+1 without being marked malicious.
+	// Recommended: 1 epoch (tolerates ~50s DA outages while maintaining censorship resistance).
+	ForcedInclusionGracePeriod uint64 `json:"forced_inclusion_grace_period"`
 }
 
 // NewGenesis creates a new Genesis instance.
@@ -31,12 +37,13 @@ func NewGenesis(
 	proposerAddress []byte,
 ) Genesis {
 	genesis := Genesis{
-		ChainID:                chainID,
-		StartTime:              startTime,
-		InitialHeight:          initialHeight,
-		ProposerAddress:        proposerAddress,
-		DAStartHeight:          0,
-		DAEpochForcedInclusion: 50, // Default epoch size
+		ChainID:                    chainID,
+		StartTime:                  startTime,
+		InitialHeight:              initialHeight,
+		ProposerAddress:            proposerAddress,
+		DAStartHeight:              0,
+		DAEpochForcedInclusion:     50, // Default epoch size
+		ForcedInclusionGracePeriod: 1,  // Default: 1 epoch grace period (recommended for production)
 	}
 
 	return genesis
@@ -63,6 +70,10 @@ func (g Genesis) Validate() error {
 	if g.DAEpochForcedInclusion < 1 {
 		return fmt.Errorf("da_epoch_forced_inclusion must be at least 1, got %d", g.DAEpochForcedInclusion)
 	}
+
+	// Note: ForcedInclusionGracePeriod can be 0 (strict mode) or positive (grace period enabled)
+	// A value of 0 means no tolerance for DA unavailability (halt or flag malicious immediately)
+	// A value of 1+ provides tolerance for temporary DA outages (recommended for production)
 
 	return nil
 }
