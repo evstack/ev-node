@@ -27,7 +27,6 @@ var _ coresequencer.Sequencer = (*BasedSequencer)(nil)
 // via the forced inclusion mechanism. It does not accept transactions from the reaper.
 type BasedSequencer struct {
 	fiRetriever ForcedInclusionRetriever
-	da          datypes.DA
 	config      config.Config
 	genesis     genesis.Genesis
 	logger      zerolog.Logger
@@ -39,14 +38,12 @@ type BasedSequencer struct {
 // NewBasedSequencer creates a new based sequencer instance
 func NewBasedSequencer(
 	fiRetriever ForcedInclusionRetriever,
-	da datypes.DA,
 	config config.Config,
 	genesis genesis.Genesis,
 	logger zerolog.Logger,
 ) *BasedSequencer {
 	bs := &BasedSequencer{
 		fiRetriever: fiRetriever,
-		da:          da,
 		config:      config,
 		genesis:     genesis,
 		logger:      logger.With().Str("component", "based_sequencer").Logger(),

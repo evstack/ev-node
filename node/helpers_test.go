@@ -11,8 +11,10 @@ import (
 	"time"
 
 	testutils "github.com/celestiaorg/utils/test"
+	"github.com/evstack/ev-node/block"
 	coreexecutor "github.com/evstack/ev-node/core/execution"
 	coresequencer "github.com/evstack/ev-node/core/sequencer"
+	datypes "github.com/evstack/ev-node/pkg/da/types"
 	"github.com/ipfs/go-datastore"
 	dssync "github.com/ipfs/go-datastore/sync"
 	"github.com/libp2p/go-libp2p/core/peer"
@@ -20,7 +22,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	evconfig "github.com/evstack/ev-node/pkg/config"
-	datypes "github.com/evstack/ev-node/pkg/da/types"
 	"github.com/evstack/ev-node/pkg/p2p"
 	"github.com/evstack/ev-node/pkg/p2p/key"
 	remote_signer "github.com/evstack/ev-node/pkg/signer/noop"
@@ -42,15 +43,42 @@ const (
 )
 
 // createTestComponents creates test components for node initialization
-func createTestComponents(t *testing.T, config evconfig.Config) (coreexecutor.Executor, coresequencer.Sequencer, datypes.DA, *p2p.Client, datastore.Batching, *key.NodeKey, func()) {
+type noopDAClient struct{}
+
+func (noopDAClient) Submit(ctx context.Context, data [][]byte, gasPrice float64, namespace []byte, options []byte) datypes.ResultSubmit {
+	return datypes.ResultSubmit{BaseResult: datypes.BaseResult{Code: datypes.StatusSuccess}}
+}
+
+func (noopDAClient) Retrieve(ctx context.Context, height uint64, namespace []byte) datypes.ResultRetrieve {
+	return datypes.ResultRetrieve{BaseResult: datypes.BaseResult{Code: datypes.StatusNotFound, Height: height}}
+}
+
+func (noopDAClient) RetrieveHeaders(ctx context.Context, height uint64) datypes.ResultRetrieve {
+	return datypes.ResultRetrieve{BaseResult: datypes.BaseResult{Code: datypes.StatusNotFound, Height: height}}
+}
+
+func (noopDAClient) RetrieveData(ctx context.Context, height uint64) datypes.ResultRetrieve {
+	return datypes.ResultRetrieve{BaseResult: datypes.BaseResult{Code: datypes.StatusNotFound, Height: height}}
+}
+
+func (noopDAClient) RetrieveForcedInclusion(ctx context.Context, height uint64) datypes.ResultRetrieve {
+	return datypes.ResultRetrieve{BaseResult: datypes.BaseResult{Code: datypes.StatusNotFound, Height: height}}
+}
+
+func (noopDAClient) GetHeaderNamespace() []byte { return []byte("hdr") }
+func (noopDAClient) GetDataNamespace() []byte   { return []byte("data") }
+func (noopDAClient) GetForcedInclusionNamespace() []byte {
+	return nil
+}
+func (noopDAClient) HasForcedInclusionNamespace() bool { return false }
+func (noopDAClient) Get(ctx context.Context, ids [][]byte, namespace []byte) ([][]byte, error) {
+	return nil, nil
+}
+
+func createTestComponents(t *testing.T, config evconfig.Config) (coreexecutor.Executor, coresequencer.Sequencer, block.DAClient, *p2p.Client, datastore.Batching, *key.NodeKey, func()) {
 	executor := coreexecutor.NewDummyExecutor()
 	sequencer := coresequencer.NewDummySequencer()
-	coreDummyDA := datypes.NewDummyDA(100_000, config.DA.BlockTime.Duration)
-	coreDummyDA.StartHeightTicker()
-
-	stopDAHeightTicker := func() {
-		coreDummyDA.StopHeightTicker()
-	}
+	daClient := noopDAClient{}
 
 	// Create genesis and keys for P2P client
 	_, genesisValidatorKey, _ := types.GetGenesisWithPrivkey("test-chain")
@@ -64,7 +92,7 @@ func createTestComponents(t *testing.T, config evconfig.Config) (coreexecutor.Ex
 	require.NotNil(t, p2pClient)
 	ds := dssync.MutexWrap(datastore.NewMapDatastore())
 
-	return executor, sequencer, coreDummyDA, p2pClient, ds, p2pKey, stopDAHeightTicker
+	return executor, sequencer, daClient, p2pClient, ds, p2pKey, nil
 }
 
 func getTestConfig(t *testing.T, n int) evconfig.Config {
@@ -100,7 +128,7 @@ func newTestNode(
 	config evconfig.Config,
 	executor coreexecutor.Executor,
 	sequencer coresequencer.Sequencer,
-	dac datypes.DA,
+	daClient block.DAClient,
 	p2pClient *p2p.Client,
 	ds datastore.Batching,
 	stopDAHeightTicker func(),
@@ -114,7 +142,7 @@ func newTestNode(
 		config,
 		executor,
 		sequencer,
-		dac,
+		daClient,
 		remoteSigner,
 		p2pClient,
 		genesis,
@@ -135,8 +163,8 @@ func newTestNode(
 }
 
 func createNodeWithCleanup(t *testing.T, config evconfig.Config) (*FullNode, func()) {
-	executor, sequencer, dac, p2pClient, ds, _, stopDAHeightTicker := createTestComponents(t, config)
-	return newTestNode(t, config, executor, sequencer, dac, p2pClient, ds, stopDAHeightTicker)
+	executor, sequencer, daClient, p2pClient, ds, _, stopDAHeightTicker := createTestComponents(t, config)
+	return newTestNode(t, config, executor, sequencer, daClient, p2pClient, ds, stopDAHeightTicker)
 }
 
 func createNodeWithCustomComponents(
@@ -144,12 +172,12 @@ func createNodeWithCustomComponents(
 	config evconfig.Config,
 	executor coreexecutor.Executor,
 	sequencer coresequencer.Sequencer,
-	dac datypes.DA,
+	daClient block.DAClient,
 	p2pClient *p2p.Client,
 	ds datastore.Batching,
 	stopDAHeightTicker func(),
 ) (*FullNode, func()) {
-	return newTestNode(t, config, executor, sequencer, dac, p2pClient, ds, stopDAHeightTicker)
+	return newTestNode(t, config, executor, sequencer, daClient, p2pClient, ds, stopDAHeightTicker)
 }
 
 // Creates the given number of nodes the given nodes using the given wait group to synchronize them
@@ -167,7 +195,7 @@ func createNodesWithCleanup(t *testing.T, num int, config evconfig.Config) ([]*F
 
 	aggListenAddress := config.P2P.ListenAddress
 	aggPeers := config.P2P.Peers
-	executor, sequencer, dac, p2pClient, ds, aggP2PKey, stopDAHeightTicker := createTestComponents(t, config)
+	executor, sequencer, daClient, p2pClient, ds, aggP2PKey, stopDAHeightTicker := createTestComponents(t, config)
 	aggPeerID, err := peer.IDFromPrivateKey(aggP2PKey.PrivKey)
 	require.NoError(err)
 
@@ -179,7 +207,7 @@ func createNodesWithCleanup(t *testing.T, num int, config evconfig.Config) ([]*F
 		config,
 		executor,
 		sequencer,
-		dac,
+		daClient,
 		remoteSigner,
 		p2pClient,
 		genesis,
@@ -208,12 +236,12 @@ func createNodesWithCleanup(t *testing.T, num int, config evconfig.Config) ([]*F
 		}
 		config.P2P.ListenAddress = fmt.Sprintf("/ip4/127.0.0.1/tcp/%d", 40001+i)
 		config.RPC.Address = fmt.Sprintf("127.0.0.1:%d", 8001+i)
-		executor, sequencer, _, p2pClient, _, nodeP2PKey, stopDAHeightTicker := createTestComponents(t, config)
+		executor, sequencer, daClient, p2pClient, _, nodeP2PKey, stopDAHeightTicker := createTestComponents(t, config)
 		node, err := NewNode(
 			config,
 			executor,
 			sequencer,
-			dac,
+			daClient,
 			nil,
 			p2pClient,
 			genesis,

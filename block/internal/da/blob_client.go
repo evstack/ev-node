@@ -28,23 +28,29 @@ var (
 
 // CelestiaBlobConfig contains configuration for the Celestia blob client.
 type CelestiaBlobConfig struct {
-	Celestia       *blobrpc.Client
-	Logger         zerolog.Logger
-	DefaultTimeout time.Duration
-	Namespace      string
-	DataNamespace  string
-	MaxBlobSize    uint64
+	Celestia                 *blobrpc.Client
+	Logger                   zerolog.Logger
+	DefaultTimeout           time.Duration
+	Namespace                string
+	DataNamespace            string
+	ForcedInclusionNamespace string
+	MaxBlobSize              uint64
 }
 
 // CelestiaBlobClient wraps the blob RPC with namespace handling and error mapping.
 type CelestiaBlobClient struct {
-	blobAPI         *blobrpc.BlobAPI
-	logger          zerolog.Logger
-	defaultTimeout  time.Duration
-	namespaceBz     []byte
-	dataNamespaceBz []byte
-	maxBlobSize     uint64
+	blobAPI            *blobrpc.BlobAPI
+	logger             zerolog.Logger
+	defaultTimeout     time.Duration
+	namespaceBz        []byte
+	dataNamespaceBz    []byte
+	forcedNamespaceBz  []byte
+	hasForcedNamespace bool
+	maxBlobSize        uint64
 }
+
+// Ensure CelestiaBlobClient implements the block DA client interface.
+var _ Client = (*CelestiaBlobClient)(nil)
 
 // NewCelestiaBlob creates a new blob client wrapper with pre-calculated namespace bytes.
 func NewCelestiaBlob(cfg CelestiaBlobConfig) *CelestiaBlobClient {
@@ -64,12 +70,19 @@ func NewCelestiaBlob(cfg CelestiaBlobConfig) *CelestiaBlobClient {
 		defaultTimeout:  cfg.DefaultTimeout,
 		namespaceBz:     share.MustNewV0Namespace([]byte(cfg.Namespace)).Bytes(),
 		dataNamespaceBz: share.MustNewV0Namespace([]byte(cfg.DataNamespace)).Bytes(),
-		maxBlobSize:     cfg.MaxBlobSize,
+		forcedNamespaceBz: func() []byte {
+			if cfg.ForcedInclusionNamespace == "" {
+				return nil
+			}
+			return share.MustNewV0Namespace([]byte(cfg.ForcedInclusionNamespace)).Bytes()
+		}(),
+		hasForcedNamespace: cfg.ForcedInclusionNamespace != "",
+		maxBlobSize:        cfg.MaxBlobSize,
 	}
 }
 
 // Submit submits blobs to the DA layer with the specified options.
-func (c *CelestiaBlobClient) Submit(ctx context.Context, data [][]byte, namespace []byte, options []byte) datypes.ResultSubmit {
+func (c *CelestiaBlobClient) Submit(ctx context.Context, data [][]byte, _ float64, namespace []byte, options []byte) datypes.ResultSubmit {
 	// calculate blob size
 	var blobSize uint64
 	for _, b := range data {
@@ -271,6 +284,20 @@ func (c *CelestiaBlobClient) RetrieveData(ctx context.Context, height uint64) da
 	return c.Retrieve(ctx, height, c.dataNamespaceBz)
 }
 
+// RetrieveForcedInclusion retrieves blobs from the forced inclusion namespace at the specified height.
+func (c *CelestiaBlobClient) RetrieveForcedInclusion(ctx context.Context, height uint64) datypes.ResultRetrieve {
+	if !c.hasForcedNamespace {
+		return datypes.ResultRetrieve{
+			BaseResult: datypes.BaseResult{
+				Code:    datypes.StatusError,
+				Message: "forced inclusion namespace not configured",
+				Height:  height,
+			},
+		}
+	}
+	return c.Retrieve(ctx, height, c.forcedNamespaceBz)
+}
+
 // GetHeaderNamespace returns the header namespace bytes.
 func (c *CelestiaBlobClient) GetHeaderNamespace() []byte {
 	return c.namespaceBz
@@ -279,4 +306,47 @@ func (c *CelestiaBlobClient) GetHeaderNamespace() []byte {
 // GetDataNamespace returns the data namespace bytes.
 func (c *CelestiaBlobClient) GetDataNamespace() []byte {
 	return c.dataNamespaceBz
+}
+
+// GetForcedInclusionNamespace returns the forced inclusion namespace bytes.
+func (c *CelestiaBlobClient) GetForcedInclusionNamespace() []byte {
+	return c.forcedNamespaceBz
+}
+
+// HasForcedInclusionNamespace reports whether forced inclusion namespace is configured.
+func (c *CelestiaBlobClient) HasForcedInclusionNamespace() bool {
+	return c.hasForcedNamespace
+}
+
+// Get implements a minimal DA surface used by visualization: fetch blobs by IDs.
+func (c *CelestiaBlobClient) Get(ctx context.Context, ids []datypes.ID, namespace []byte) ([]datypes.Blob, error) {
+	if len(ids) == 0 {
+		return nil, nil
+	}
+	getCtx, cancel := context.WithTimeout(ctx, c.defaultTimeout)
+	defer cancel()
+
+	res := make([]datypes.Blob, 0, len(ids))
+	for _, id := range ids {
+		height, commitment := blobrpc.SplitID(id)
+		if commitment == nil {
+			return nil, fmt.Errorf("invalid blob id: %x", id)
+		}
+
+		ns, err := share.NewNamespaceFromBytes(namespace)
+		if err != nil {
+			return nil, fmt.Errorf("invalid namespace: %w", err)
+		}
+
+		b, err := c.blobAPI.Get(getCtx, height, ns, commitment)
+		if err != nil {
+			return nil, err
+		}
+		if b == nil {
+			continue
+		}
+		res = append(res, b.Data())
+	}
+
+	return res, nil
 }

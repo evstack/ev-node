@@ -15,6 +15,7 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 
+	da "github.com/evstack/ev-node/block/internal/da"
 	coresequencer "github.com/evstack/ev-node/core/sequencer"
 	"github.com/evstack/ev-node/pkg/config"
 	datypes "github.com/evstack/ev-node/pkg/da/types"
@@ -93,6 +94,12 @@ func TestNewSyncComponents_Creation(t *testing.T) {
 
 	mockExec := testmocks.NewMockExecutor(t)
 	dummyDA := datypes.NewDummyDA(10_000_000, 10*time.Millisecond)
+	daClient := da.NewClient(da.Config{
+		DA:            dummyDA,
+		Logger:        zerolog.Nop(),
+		Namespace:     "ns",
+		DataNamespace: "data-ns",
+	})
 
 	// Just test that the constructor doesn't panic - don't start the components
 	// to avoid P2P store dependencies
@@ -101,7 +108,7 @@ func TestNewSyncComponents_Creation(t *testing.T) {
 		gen,
 		memStore,
 		mockExec,
-		dummyDA,
+		daClient,
 		nil,
 		nil,
 		zerolog.Nop(),
@@ -144,6 +151,12 @@ func TestNewAggregatorComponents_Creation(t *testing.T) {
 	mockExec := testmocks.NewMockExecutor(t)
 	mockSeq := testmocks.NewMockSequencer(t)
 	dummyDA := datypes.NewDummyDA(10_000_000, 10*time.Millisecond)
+	daClient := da.NewClient(da.Config{
+		DA:            dummyDA,
+		Logger:        zerolog.Nop(),
+		Namespace:     "ns",
+		DataNamespace: "data-ns",
+	})
 
 	components, err := NewAggregatorComponents(
 		cfg,
@@ -151,7 +164,7 @@ func TestNewAggregatorComponents_Creation(t *testing.T) {
 		memStore,
 		mockExec,
 		mockSeq,
-		dummyDA,
+		daClient,
 		mockSigner,
 		nil, // header broadcaster
 		nil, // data broadcaster
@@ -222,6 +235,8 @@ func TestExecutor_RealExecutionClientFailure_StopsNode(t *testing.T) {
 	mockExec.On("ExecuteTxs", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 		Return(nil, uint64(0), criticalError).Maybe()
 
+	daClient := da.NewClient(da.Config{DA: dummyDA})
+
 	// Create aggregator node
 	components, err := NewAggregatorComponents(
 		cfg,
@@ -229,7 +244,7 @@ func TestExecutor_RealExecutionClientFailure_StopsNode(t *testing.T) {
 		memStore,
 		mockExec,
 		mockSeq,
-		dummyDA,
+		daClient,
 		testSigner,
 		nil, // header broadcaster
 		nil, // data broadcaster

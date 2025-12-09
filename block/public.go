@@ -5,8 +5,8 @@ import (
 
 	"github.com/evstack/ev-node/block/internal/common"
 	"github.com/evstack/ev-node/block/internal/da"
+	blobrpc "github.com/evstack/ev-node/da/jsonrpc/blob"
 	"github.com/evstack/ev-node/pkg/config"
-	datypes "github.com/evstack/ev-node/pkg/da/types"
 	"github.com/evstack/ev-node/pkg/genesis"
 	"github.com/rs/zerolog"
 )
@@ -35,20 +35,19 @@ func NopMetrics() *Metrics {
 // DAClient is the interface representing the DA client for public use.
 type DAClient = da.Client
 
-// NewDAClient creates a new DA client with configuration
+// NewDAClient creates a new DA client backed by the Celestia blob JSON-RPC API.
 func NewDAClient(
-	daLayer datypes.DA,
+	blobRPC *blobrpc.Client,
 	config config.Config,
 	logger zerolog.Logger,
 ) DAClient {
-	return da.NewClient(da.Config{
-		DA:                       daLayer,
+	return da.NewCelestiaBlob(da.CelestiaBlobConfig{
+		Celestia:                 blobRPC,
 		Logger:                   logger,
 		Namespace:                config.DA.GetNamespace(),
 		DefaultTimeout:           config.DA.RequestTimeout.Duration,
 		DataNamespace:            config.DA.GetDataNamespace(),
 		ForcedInclusionNamespace: config.DA.GetForcedInclusionNamespace(),
-		RetrieveBatchSize:        config.DA.RetrieveBatchSize,
 	})
 }
 

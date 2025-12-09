@@ -17,6 +17,7 @@ import (
 	"github.com/evstack/ev-node/core/execution"
 	coresequencer "github.com/evstack/ev-node/core/sequencer"
 	"github.com/evstack/ev-node/da/jsonrpc"
+	blobrpc "github.com/evstack/ev-node/da/jsonrpc/blob"
 	"github.com/evstack/ev-node/execution/evm"
 	"github.com/evstack/ev-node/node"
 	rollcmd "github.com/evstack/ev-node/pkg/cmd"
@@ -140,7 +141,7 @@ var RunCmd = &cobra.Command{
 			}()
 		}
 
-		return rollcmd.StartNode(logger, cmd, executor, sequencer, &daJrpc.DA, p2pClient, datastore, nodeConfig, genesis, node.NodeOptions{})
+		return rollcmd.StartNode(logger, cmd, executor, sequencer, p2pClient, datastore, nodeConfig, genesis, node.NodeOptions{})
 	},
 }
 
@@ -160,7 +161,12 @@ func createSequencer(
 	nodeConfig config.Config,
 	genesis genesis.Genesis,
 ) (coresequencer.Sequencer, error) {
-	daClient := block.NewDAClient(da, nodeConfig, logger)
+	blobClient, err := blobrpc.NewClient(ctx, nodeConfig.DA.Address, nodeConfig.DA.AuthToken, "")
+	if err != nil {
+		return nil, fmt.Errorf("failed to create blob client: %w", err)
+	}
+
+	daClient := block.NewDAClient(blobClient, nodeConfig, logger)
 	fiRetriever := block.NewForcedInclusionRetriever(daClient, genesis, logger)
 
 	if nodeConfig.Node.BasedSequencer {
@@ -169,7 +175,7 @@ func createSequencer(
 			return nil, fmt.Errorf("based sequencer mode requires aggregator mode to be enabled")
 		}
 
-		basedSeq := based.NewBasedSequencer(fiRetriever, da, nodeConfig, genesis, logger)
+		basedSeq := based.NewBasedSequencer(fiRetriever, nodeConfig, genesis, logger)
 
 		logger.Info().
 			Str("forced_inclusion_namespace", nodeConfig.DA.GetForcedInclusionNamespace()).

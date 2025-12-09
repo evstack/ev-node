@@ -200,20 +200,6 @@ func TestClient_RetrieveForcedInclusion_NotConfigured(t *testing.T) {
 	assert.Assert(t, result.Message != "")
 }
 
-func TestClient_GetDA(t *testing.T) {
-	mockDAInstance := &mockDA{}
-	cfg := Config{
-		DA:            mockDAInstance,
-		Logger:        zerolog.Nop(),
-		Namespace:     "test-ns",
-		DataNamespace: "test-data-ns",
-	}
-
-	client := NewClient(cfg)
-	da := client.GetDA()
-	assert.Equal(t, da, mockDAInstance)
-}
-
 func TestClient_Submit(t *testing.T) {
 	logger := zerolog.Nop()
 

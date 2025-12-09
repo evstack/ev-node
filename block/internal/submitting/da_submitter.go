@@ -116,7 +116,7 @@ func NewDASubmitter(
 
 	if config.RPC.EnableDAVisualization {
 		visualizerLogger := logger.With().Str("component", "da_visualization").Logger()
-		server.SetDAVisualizationServer(server.NewDAVisualizationServer(client.GetDA(), visualizerLogger, config.Node.Aggregator))
+		server.SetDAVisualizationServer(server.NewDAVisualizationServer(client, visualizerLogger, config.Node.Aggregator))
 	}
 
 	// Use NoOp metrics if nil to avoid nil checks throughout the code

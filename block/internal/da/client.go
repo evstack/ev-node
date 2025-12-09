@@ -22,12 +22,12 @@ type Client interface {
 	RetrieveHeaders(ctx context.Context, height uint64) datypes.ResultRetrieve
 	RetrieveData(ctx context.Context, height uint64) datypes.ResultRetrieve
 	RetrieveForcedInclusion(ctx context.Context, height uint64) datypes.ResultRetrieve
+	Get(ctx context.Context, ids []datypes.ID, namespace []byte) ([]datypes.Blob, error)
 
 	GetHeaderNamespace() []byte
 	GetDataNamespace() []byte
 	GetForcedInclusionNamespace() []byte
 	HasForcedInclusionNamespace() bool
-	GetDA() datypes.DA
 }
 
 // client provides a reusable wrapper around the core DA interface
@@ -297,6 +297,11 @@ func (c *client) RetrieveForcedInclusion(ctx context.Context, height uint64) dat
 	return c.Retrieve(ctx, height, c.namespaceForcedInclusionBz)
 }
 
+// Get retrieves blobs by IDs using the underlying DA interface.
+func (c *client) Get(ctx context.Context, ids []datypes.ID, namespace []byte) ([]datypes.Blob, error) {
+	return c.da.Get(ctx, ids, namespace)
+}
+
 // GetHeaderNamespace returns the header namespace bytes.
 func (c *client) GetHeaderNamespace() []byte {
 	return c.namespaceBz
@@ -315,9 +320,4 @@ func (c *client) GetForcedInclusionNamespace() []byte {
 // HasForcedInclusionNamespace returns whether forced inclusion namespace is configured.
 func (c *client) HasForcedInclusionNamespace() bool {
 	return c.hasForcedInclusionNs
-}
-
-// GetDA returns the underlying DA interface for advanced usage.
-func (c *client) GetDA() datypes.DA {
-	return c.da
 }

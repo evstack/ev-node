@@ -84,7 +84,7 @@ func TestCelestiaClient_Submit_ErrorMapping(t *testing.T) {
 				Namespace:     "ns",
 				DataNamespace: "ns",
 			})
-			res := cl.Submit(context.Background(), [][]byte{[]byte("data")}, ns, nil)
+			res := cl.Submit(context.Background(), [][]byte{[]byte("data")}, 0, ns, nil)
 			assert.Equal(t, tc.wantStatus, res.Code)
 		})
 	}
@@ -99,7 +99,7 @@ func TestCelestiaClient_Submit_Success(t *testing.T) {
 		Namespace:     "ns",
 		DataNamespace: "ns",
 	})
-	res := cl.Submit(context.Background(), [][]byte{[]byte("data")}, ns, nil)
+	res := cl.Submit(context.Background(), [][]byte{[]byte("data")}, 0, ns, nil)
 	require.Equal(t, datypes.StatusSuccess, res.Code)
 	require.Equal(t, uint64(10), res.Height)
 	require.Len(t, res.IDs, 1)
@@ -113,7 +113,7 @@ func TestCelestiaClient_Submit_InvalidNamespace(t *testing.T) {
 		Namespace:     "ns",
 		DataNamespace: "ns",
 	})
-	res := cl.Submit(context.Background(), [][]byte{[]byte("data")}, []byte{0x01, 0x02}, nil)
+	res := cl.Submit(context.Background(), [][]byte{[]byte("data")}, 0, []byte{0x01, 0x02}, nil)
 	require.Equal(t, datypes.StatusError, res.Code)
 }
 
@@ -161,6 +161,6 @@ func TestCelestiaClient_SubmitOptionsMerge(t *testing.T) {
 	raw, err := json.Marshal(opts)
 	require.NoError(t, err)
 
-	res := cl.Submit(context.Background(), [][]byte{[]byte("data")}, ns, raw)
+	res := cl.Submit(context.Background(), [][]byte{[]byte("data")}, 0, ns, raw)
 	require.Equal(t, datypes.StatusSuccess, res.Code)
 }

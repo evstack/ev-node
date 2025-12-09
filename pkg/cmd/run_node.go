@@ -16,11 +16,12 @@ import (
 	"github.com/rs/zerolog"
 	"github.com/spf13/cobra"
 
+	"github.com/evstack/ev-node/block"
 	coreexecutor "github.com/evstack/ev-node/core/execution"
 	coresequencer "github.com/evstack/ev-node/core/sequencer"
+	blobrpc "github.com/evstack/ev-node/da/jsonrpc/blob"
 	"github.com/evstack/ev-node/node"
 	rollconf "github.com/evstack/ev-node/pkg/config"
-	datypes "github.com/evstack/ev-node/pkg/da/types"
 	genesispkg "github.com/evstack/ev-node/pkg/genesis"
 	"github.com/evstack/ev-node/pkg/p2p"
 	"github.com/evstack/ev-node/pkg/signer"
@@ -80,7 +81,6 @@ func StartNode(
 	cmd *cobra.Command,
 	executor coreexecutor.Executor,
 	sequencer coresequencer.Sequencer,
-	da datypes.DA,
 	p2pClient *p2p.Client,
 	datastore datastore.Batching,
 	nodeConfig rollconf.Config,
@@ -89,6 +89,13 @@ func StartNode(
 ) error {
 	ctx, cancel := context.WithCancel(cmd.Context())
 	defer cancel()
+
+	blobClient, err := blobrpc.NewClient(ctx, nodeConfig.DA.Address, nodeConfig.DA.AuthToken, "")
+	if err != nil {
+		return fmt.Errorf("failed to create blob client: %w", err)
+	}
+	defer blobClient.Close()
+	daClient := block.NewDAClient(blobClient, nodeConfig, logger)
 
 	// create a new remote signer
 	var signer signer.Signer
@@ -135,7 +142,7 @@ func StartNode(
 		nodeConfig,
 		executor,
 		sequencer,
-		da,
+		daClient,
 		signer,
 		p2pClient,
 		genesis,
