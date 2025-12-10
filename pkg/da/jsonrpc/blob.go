@@ -3,7 +3,7 @@ package blob
 // NOTE: This file is a trimmed copy of celestia-node's blob/blob.go
 // at release v0.28.4 (commit tag v0.28.4). We keep only the JSON-
 // compatible surface used by ev-node to avoid pulling celestia-app /
-// Cosmos-SDK dependencies. See pkg/da/blob/README.md for update guidance.
+// Cosmos-SDK dependencies. See pkg/da/jsonrpc/README.md for update guidance.
 
 import (
 	"bytes"
