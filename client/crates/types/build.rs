@@ -64,11 +64,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     // 2. Generate full code with gRPC services (always generate, conditionally include)
-    tonic_build::configure()
+    tonic_prost_build::configure()
         .build_server(true)
         .build_client(true)
         .out_dir(&proto_dir)
-        .compile(&proto_files, &[proto_root.as_path()])?;
+        .compile_protos(&proto_files, &[proto_root.clone()])?;
 
     // Rename to services.rs
     let generated_file_2 = proto_dir.join("evnode.v1.rs");
