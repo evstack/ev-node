@@ -59,7 +59,7 @@ func makeCelestiaClient(m *mockCelestiaBlobAPI) *blobrpc.Client {
 	return &blobrpc.Client{Blob: api}
 }
 
-func TestCelestiaClient_Submit_ErrorMapping(t *testing.T) {
+func TestBlobClient_Submit_ErrorMapping(t *testing.T) {
 	ns := share.MustNewV0Namespace([]byte("ns")).Bytes()
 	testCases := []struct {
 		name       string
@@ -77,8 +77,8 @@ func TestCelestiaClient_Submit_ErrorMapping(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			cl := NewCelestiaBlob(CelestiaBlobConfig{
-				Celestia:      makeCelestiaClient(&mockCelestiaBlobAPI{submitErr: tc.err}),
+			cl := NewBlobClient(BlobConfig{
+				Client:        makeCelestiaClient(&mockCelestiaBlobAPI{submitErr: tc.err}),
 				Logger:        zerolog.Nop(),
 				Namespace:     "ns",
 				DataNamespace: "ns",
@@ -89,11 +89,11 @@ func TestCelestiaClient_Submit_ErrorMapping(t *testing.T) {
 	}
 }
 
-func TestCelestiaClient_Submit_Success(t *testing.T) {
+func TestBlobClient_Submit_Success(t *testing.T) {
 	ns := share.MustNewV0Namespace([]byte("ns")).Bytes()
 	mockAPI := &mockCelestiaBlobAPI{height: 10}
-	cl := NewCelestiaBlob(CelestiaBlobConfig{
-		Celestia:      makeCelestiaClient(mockAPI),
+	cl := NewBlobClient(BlobConfig{
+		Client:        makeCelestiaClient(mockAPI),
 		Logger:        zerolog.Nop(),
 		Namespace:     "ns",
 		DataNamespace: "ns",
@@ -104,10 +104,10 @@ func TestCelestiaClient_Submit_Success(t *testing.T) {
 	require.Len(t, res.IDs, 1)
 }
 
-func TestCelestiaClient_Submit_InvalidNamespace(t *testing.T) {
+func TestBlobClient_Submit_InvalidNamespace(t *testing.T) {
 	mockAPI := &mockCelestiaBlobAPI{height: 10}
-	cl := NewCelestiaBlob(CelestiaBlobConfig{
-		Celestia:      makeCelestiaClient(mockAPI),
+	cl := NewBlobClient(BlobConfig{
+		Client:        makeCelestiaClient(mockAPI),
 		Logger:        zerolog.Nop(),
 		Namespace:     "ns",
 		DataNamespace: "ns",
@@ -116,11 +116,11 @@ func TestCelestiaClient_Submit_InvalidNamespace(t *testing.T) {
 	require.Equal(t, StatusError, res.Code)
 }
 
-func TestCelestiaClient_Retrieve_NotFound(t *testing.T) {
+func TestBlobClient_Retrieve_NotFound(t *testing.T) {
 	ns := share.MustNewV0Namespace([]byte("ns")).Bytes()
 	mockAPI := &mockCelestiaBlobAPI{submitErr: ErrBlobNotFound}
-	cl := NewCelestiaBlob(CelestiaBlobConfig{
-		Celestia:      makeCelestiaClient(mockAPI),
+	cl := NewBlobClient(BlobConfig{
+		Client:        makeCelestiaClient(mockAPI),
 		Logger:        zerolog.Nop(),
 		Namespace:     "ns",
 		DataNamespace: "ns",
@@ -129,13 +129,13 @@ func TestCelestiaClient_Retrieve_NotFound(t *testing.T) {
 	require.Equal(t, StatusNotFound, res.Code)
 }
 
-func TestCelestiaClient_Retrieve_Success(t *testing.T) {
+func TestBlobClient_Retrieve_Success(t *testing.T) {
 	ns := share.MustNewV0Namespace([]byte("ns")).Bytes()
 	b, err := blobrpc.NewBlobV0(share.MustNewV0Namespace([]byte("ns")), []byte("payload"))
 	require.NoError(t, err)
 	mockAPI := &mockCelestiaBlobAPI{height: 7, blobs: []*blobrpc.Blob{b}}
-	cl := NewCelestiaBlob(CelestiaBlobConfig{
-		Celestia:      makeCelestiaClient(mockAPI),
+	cl := NewBlobClient(BlobConfig{
+		Client:        makeCelestiaClient(mockAPI),
 		Logger:        zerolog.Nop(),
 		Namespace:     "ns",
 		DataNamespace: "ns",
@@ -146,11 +146,11 @@ func TestCelestiaClient_Retrieve_Success(t *testing.T) {
 	require.Len(t, res.IDs, 1)
 }
 
-func TestCelestiaClient_SubmitOptionsMerge(t *testing.T) {
+func TestBlobClient_SubmitOptionsMerge(t *testing.T) {
 	ns := share.MustNewV0Namespace([]byte("ns")).Bytes()
 	mockAPI := &mockCelestiaBlobAPI{height: 1}
-	cl := NewCelestiaBlob(CelestiaBlobConfig{
-		Celestia:      makeCelestiaClient(mockAPI),
+	cl := NewBlobClient(BlobConfig{
+		Client:        makeCelestiaClient(mockAPI),
 		Logger:        zerolog.Nop(),
 		Namespace:     "ns",
 		DataNamespace: "ns",

@@ -24,9 +24,9 @@ var (
 	ErrContextCanceled            = errors.New("context canceled")
 )
 
-// CelestiaBlobConfig contains configuration for the Celestia blob client.
-type CelestiaBlobConfig struct {
-	Celestia       *blobrpc.Client
+// BlobConfig contains configuration for the Celestia blob client.
+type BlobConfig struct {
+	Client         *blobrpc.Client
 	Logger         zerolog.Logger
 	DefaultTimeout time.Duration
 	Namespace      string
@@ -34,8 +34,8 @@ type CelestiaBlobConfig struct {
 	MaxBlobSize    uint64
 }
 
-// CelestiaBlobClient wraps the blob RPC with namespace handling and error mapping.
-type CelestiaBlobClient struct {
+// BlobClient wraps the blob RPC with namespace handling and error mapping.
+type BlobClient struct {
 	blobAPI         *blobrpc.BlobAPI
 	logger          zerolog.Logger
 	defaultTimeout  time.Duration
@@ -44,9 +44,9 @@ type CelestiaBlobClient struct {
 	maxBlobSize     uint64
 }
 
-// NewCelestiaBlob creates a new blob client wrapper with pre-calculated namespace bytes.
-func NewCelestiaBlob(cfg CelestiaBlobConfig) *CelestiaBlobClient {
-	if cfg.Celestia == nil {
+// NewBlobClient creates a new blob client wrapper with pre-calculated namespace bytes.
+func NewBlobClient(cfg BlobConfig) *BlobClient {
+	if cfg.Client == nil {
 		return nil
 	}
 	if cfg.DefaultTimeout == 0 {
@@ -56,8 +56,8 @@ func NewCelestiaBlob(cfg CelestiaBlobConfig) *CelestiaBlobClient {
 		cfg.MaxBlobSize = blobrpc.DefaultMaxBlobSize
 	}
 
-	return &CelestiaBlobClient{
-		blobAPI:         &cfg.Celestia.Blob,
+	return &BlobClient{
+		blobAPI:         &cfg.Client.Blob,
 		logger:          cfg.Logger.With().Str("component", "blob_da_client").Logger(),
 		defaultTimeout:  cfg.DefaultTimeout,
 		namespaceBz:     share.MustNewV0Namespace([]byte(cfg.Namespace)).Bytes(),
@@ -67,7 +67,7 @@ func NewCelestiaBlob(cfg CelestiaBlobConfig) *CelestiaBlobClient {
 }
 
 // Submit submits blobs to the DA layer with the specified options.
-func (c *CelestiaBlobClient) Submit(ctx context.Context, data [][]byte, namespace []byte, options []byte) ResultSubmit {
+func (c *BlobClient) Submit(ctx context.Context, data [][]byte, namespace []byte, options []byte) ResultSubmit {
 	// calculate blob size
 	var blobSize uint64
 	for _, b := range data {
@@ -179,7 +179,7 @@ func (c *CelestiaBlobClient) Submit(ctx context.Context, data [][]byte, namespac
 }
 
 // Retrieve retrieves blobs from the DA layer at the specified height and namespace.
-func (c *CelestiaBlobClient) Retrieve(ctx context.Context, height uint64, namespace []byte) ResultRetrieve {
+func (c *BlobClient) Retrieve(ctx context.Context, height uint64, namespace []byte) ResultRetrieve {
 	ns, err := share.NewNamespaceFromBytes(namespace)
 	if err != nil {
 		return ResultRetrieve{
@@ -260,21 +260,21 @@ func (c *CelestiaBlobClient) Retrieve(ctx context.Context, height uint64, namesp
 }
 
 // RetrieveHeaders retrieves blobs from the header namespace at the specified height.
-func (c *CelestiaBlobClient) RetrieveHeaders(ctx context.Context, height uint64) ResultRetrieve {
+func (c *BlobClient) RetrieveHeaders(ctx context.Context, height uint64) ResultRetrieve {
 	return c.Retrieve(ctx, height, c.namespaceBz)
 }
 
 // RetrieveData retrieves blobs from the data namespace at the specified height.
-func (c *CelestiaBlobClient) RetrieveData(ctx context.Context, height uint64) ResultRetrieve {
+func (c *BlobClient) RetrieveData(ctx context.Context, height uint64) ResultRetrieve {
 	return c.Retrieve(ctx, height, c.dataNamespaceBz)
 }
 
 // GetHeaderNamespace returns the header namespace bytes.
-func (c *CelestiaBlobClient) GetHeaderNamespace() []byte {
+func (c *BlobClient) GetHeaderNamespace() []byte {
 	return c.namespaceBz
 }
 
 // GetDataNamespace returns the data namespace bytes.
-func (c *CelestiaBlobClient) GetDataNamespace() []byte {
+func (c *BlobClient) GetDataNamespace() []byte {
 	return c.dataNamespaceBz
 }
