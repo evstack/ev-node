@@ -9,9 +9,11 @@ members = ["client/crates/types", "client/crates/client"]
 resolver = "2"
 
 [workspace.dependencies]
-prost = "0.12"
-prost-build = "0.12"
-prost-types = "0.12"
-tonic = { version = "0.10", features = ["transport"] }
-tonic-build = "0.10"
-walkdir = "2.5.0"
+prost = "0.14"
+prost-build = "0.14"
+prost-types = "0.14"
+tonic = { version = "0.14", features = ["transport"] }
+tonic-build = "0.14"
+tonic-prost = "0.14"
+tonic-prost-build = "0.14"
+walkdir = "2.5"
