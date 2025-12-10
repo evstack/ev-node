@@ -1,4 +1,4 @@
-package blob
+package jsonrpc
 
 // NOTE: This file is a trimmed copy of celestia-node's blob/blob.go
 // at release v0.28.4 (commit tag v0.28.4). We keep only the JSON-

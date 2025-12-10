@@ -1,4 +1,4 @@
-package blob
+package jsonrpc
 
 import (
 	"encoding/json"

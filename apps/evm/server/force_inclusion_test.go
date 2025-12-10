@@ -3,7 +3,6 @@ package server
 import (
 	"bytes"
 	"context"
-	"encoding/binary"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -17,35 +16,36 @@ import (
 	"gotest.tools/v3/assert"
 )
 
-// mockDA implements da.DA interface for testing
+// mockDA implements block/internal/da.Client for testing
 type mockDA struct {
-	submitFunc func(ctx context.Context, blobs []da.Blob, gasPrice float64, namespace []byte, options []byte) ([]da.ID, error)
+	submitFunc func(ctx context.Context, data [][]byte, gasPrice float64, namespace []byte, options []byte) da.ResultSubmit
 }
 
-func (m *mockDA) Submit(ctx context.Context, blobs []da.Blob, gasPrice float64, namespace []byte) ([]da.ID, error) {
-	return m.SubmitWithOptions(ctx, blobs, gasPrice, namespace, nil)
-}
-
-func (m *mockDA) SubmitWithOptions(ctx context.Context, blobs []da.Blob, gasPrice float64, namespace []byte, options []byte) ([]da.ID, error) {
+func (m *mockDA) Submit(ctx context.Context, data [][]byte, gasPrice float64, namespace []byte, options []byte) da.ResultSubmit {
 	if m.submitFunc != nil {
-		return m.submitFunc(ctx, blobs, gasPrice, namespace, options)
+		return m.submitFunc(ctx, data, gasPrice, namespace, options)
 	}
-	return nil, nil
+
+	return da.ResultSubmit{BaseResult: da.BaseResult{Code: da.StatusSuccess, Height: 1}}
+}
+
+func (m *mockDA) Retrieve(ctx context.Context, height uint64, namespace []byte) da.ResultRetrieve {
+	return da.ResultRetrieve{}
+}
+
+func (m *mockDA) RetrieveHeaders(ctx context.Context, height uint64) da.ResultRetrieve {
+	return da.ResultRetrieve{}
+}
+
+func (m *mockDA) RetrieveData(ctx context.Context, height uint64) da.ResultRetrieve {
+	return da.ResultRetrieve{}
+}
+
+func (m *mockDA) RetrieveForcedInclusion(ctx context.Context, height uint64) da.ResultRetrieve {
+	return da.ResultRetrieve{}
 }
 
 func (m *mockDA) Get(ctx context.Context, ids []da.ID, namespace []byte) ([]da.Blob, error) {
-	return nil, nil
-}
-
-func (m *mockDA) GetIDs(ctx context.Context, height uint64, namespace []byte) (*da.GetIDsResult, error) {
-	return nil, nil
-}
-
-func (m *mockDA) GetProofs(ctx context.Context, ids []da.ID, namespace []byte) ([]da.Proof, error) {
-	return nil, nil
-}
-
-func (m *mockDA) Commit(ctx context.Context, blobs []da.Blob, namespace []byte) ([]da.Commitment, error) {
 	return nil, nil
 }
 
@@ -53,24 +53,33 @@ func (m *mockDA) Validate(ctx context.Context, ids []da.ID, proofs []da.Proof, n
 	return nil, nil
 }
 
-func (m *mockDA) MaxBlobSize(ctx context.Context) (uint64, error) {
-	return 2 * 1024 * 1024, nil
+func (m *mockDA) GetProofs(ctx context.Context, ids []da.ID, namespace []byte) ([]da.Proof, error) {
+	return nil, nil
 }
 
-// createTestID creates a test DA ID with the given height
-func createTestID(height uint64) da.ID {
-	id := make([]byte, 8)
-	binary.LittleEndian.PutUint64(id, height)
-	return id
+func (m *mockDA) GetHeaderNamespace() []byte {
+	return []byte("header")
+}
+
+func (m *mockDA) GetDataNamespace() []byte {
+	return []byte("data")
+}
+
+func (m *mockDA) GetForcedInclusionNamespace() []byte {
+	return []byte("forced")
+}
+
+func (m *mockDA) HasForcedInclusionNamespace() bool {
+	return true
 }
 
 func TestForceInclusionServer_handleSendRawTransaction_Success(t *testing.T) {
 	testHeight := uint64(100)
 
 	mockDAClient := &mockDA{
-		submitFunc: func(ctx context.Context, blobs []da.Blob, gasPrice float64, namespace []byte, options []byte) ([]da.ID, error) {
-			assert.Equal(t, 1, len(blobs))
-			return []da.ID{createTestID(testHeight)}, nil
+		submitFunc: func(ctx context.Context, data [][]byte, gasPrice float64, namespace []byte, options []byte) da.ResultSubmit {
+			assert.Equal(t, 1, len(data))
+			return da.ResultSubmit{BaseResult: da.BaseResult{Code: da.StatusSuccess, Height: testHeight}}
 		},
 	}
 
@@ -183,8 +192,8 @@ func TestForceInclusionServer_handleSendRawTransaction_InvalidParams(t *testing.
 
 func TestForceInclusionServer_handleSendRawTransaction_DAError(t *testing.T) {
 	mockDAClient := &mockDA{
-		submitFunc: func(ctx context.Context, blobs []da.Blob, gasPrice float64, namespace []byte, options []byte) ([]da.ID, error) {
-			return nil, da.ErrBlobSizeOverLimit
+		submitFunc: func(ctx context.Context, data [][]byte, gasPrice float64, namespace []byte, options []byte) da.ResultSubmit {
+			return da.ResultSubmit{BaseResult: da.BaseResult{Code: da.StatusError, Message: da.ErrBlobSizeOverLimit.Error()}}
 		},
 	}
 

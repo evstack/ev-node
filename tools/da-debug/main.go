@@ -13,8 +13,8 @@ import (
 	"github.com/spf13/cobra"
 	"google.golang.org/protobuf/proto"
 
-	"github.com/evstack/ev-node/da/jsonrpc"
-	blobrpc "github.com/evstack/ev-node/da/jsonrpc/blob"
+	"github.com/celestiaorg/go-square/v3/share"
+	blobrpc "github.com/evstack/ev-node/da/jsonrpc"
 	datypes "github.com/evstack/ev-node/pkg/da/types"
 	"github.com/evstack/ev-node/types"
 	pb "github.com/evstack/ev-node/types/pb/evnode/v1"
@@ -25,7 +25,6 @@ var (
 	authToken    string
 	timeout      time.Duration
 	verbose      bool
-	maxBlobSize  uint64
 	filterHeight uint64
 )
 
@@ -42,7 +41,6 @@ A powerful DA debugging tool for inspecting blockchain data availability layers.
 	rootCmd.PersistentFlags().StringVar(&authToken, "auth-token", "", "Authentication token for DA layer")
 	rootCmd.PersistentFlags().DurationVar(&timeout, "timeout", 30*time.Second, "Request timeout")
 	rootCmd.PersistentFlags().BoolVar(&verbose, "verbose", false, "Enable verbose logging")
-	rootCmd.PersistentFlags().Uint64Var(&maxBlobSize, "max-blob-size", 1970176, "Maximum blob size in bytes")
 
 	// Add subcommands
 	rootCmd.AddCommand(queryCmd())
@@ -105,11 +103,11 @@ func runQuery(cmd *cobra.Command, args []string) error {
 	printBanner()
 	printQueryInfo(height, namespace)
 
-	client, err := createDAClient()
+	client, closeFn, err := createDAClient()
 	if err != nil {
 		return err
 	}
-	defer client.Close()
+	defer closeFn()
 
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
@@ -131,11 +129,11 @@ func runSearch(cmd *cobra.Command, args []string, searchHeight, searchRange uint
 	printBanner()
 	printSearchInfo(startHeight, namespace, searchHeight, searchRange)
 
-	client, err := createDAClient()
+	client, closeFn, err := createDAClient()
 	if err != nil {
 		return err
 	}
-	defer client.Close()
+	defer closeFn()
 
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
@@ -143,46 +141,39 @@ func runSearch(cmd *cobra.Command, args []string, searchHeight, searchRange uint
 	return searchForHeight(ctx, client, startHeight, namespace, searchHeight, searchRange)
 }
 
-func searchForHeight(ctx context.Context, client *jsonrpc.Client, startHeight uint64, namespace []byte, targetHeight, searchRange uint64) error {
+func searchForHeight(ctx context.Context, client *blobrpc.Client, startHeight uint64, namespace []byte, targetHeight, searchRange uint64) error {
 	fmt.Printf("Searching for height %d in DA heights %d-%d...\n", targetHeight, startHeight, startHeight+searchRange-1)
 	fmt.Println()
 
+	ns, err := share.NewNamespaceFromBytes(namespace)
+	if err != nil {
+		return fmt.Errorf("invalid namespace: %w", err)
+	}
+
 	foundBlobs := 0
 	for daHeight := startHeight; daHeight < startHeight+searchRange; daHeight++ {
-		result, err := client.DA.GetIDs(ctx, daHeight, namespace)
+		blobs, err := client.Blob.GetAll(ctx, daHeight, []share.Namespace{ns})
 		if err != nil {
-			if err.Error() == "blob: not found" || strings.Contains(err.Error(), "blob: not found") {
-				continue
-			}
-			if strings.Contains(err.Error(), "height") && strings.Contains(err.Error(), "future") {
+			if strings.Contains(err.Error(), "future") {
 				fmt.Printf("Reached future height at DA height %d\n", daHeight)
 				break
 			}
 			continue
 		}
 
-		if result == nil || len(result.IDs) == 0 {
-			continue
-		}
-
-		// Get the actual blob data
-		blobs, err := client.DA.Get(ctx, result.IDs, namespace)
-		if err != nil {
-			continue
-		}
-
 		// Check each blob for the target height
-		for i, blob := range blobs {
+		for _, blob := range blobs {
+			blobData := blob.Data()
 			found := false
 			var blobHeight uint64
 
 			// Try to decode as header first
-			if header := tryDecodeHeader(blob); header != nil {
+			if header := tryDecodeHeader(blobData); header != nil {
 				blobHeight = header.Height()
 				if blobHeight == targetHeight {
 					found = true
 				}
-			} else if data := tryDecodeData(blob); data != nil {
+			} else if data := tryDecodeData(blobData); data != nil {
 				if data.Metadata != nil {
 					blobHeight = data.Height()
 					if blobHeight == targetHeight {
@@ -195,13 +186,13 @@ func searchForHeight(ctx context.Context, client *jsonrpc.Client, startHeight ui
 				foundBlobs++
 				fmt.Printf("FOUND at DA Height %d - BLOB %d\n", daHeight, foundBlobs)
 				fmt.Println(strings.Repeat("-", 80))
-				displayBlobInfo(result.IDs[i], blob)
+				displayBlobInfo(blobData)
 
 				// Display the decoded content
-				if header := tryDecodeHeader(blob); header != nil {
+				if header := tryDecodeHeader(blobData); header != nil {
 					printTypeHeader("SignedHeader", "")
 					displayHeader(header)
-				} else if data := tryDecodeData(blob); data != nil {
+				} else if data := tryDecodeData(blobData); data != nil {
 					printTypeHeader("SignedData", "")
 					displayData(data)
 				}
@@ -221,40 +212,37 @@ func searchForHeight(ctx context.Context, client *jsonrpc.Client, startHeight ui
 	return nil
 }
 
-func queryHeight(ctx context.Context, client *jsonrpc.Client, height uint64, namespace []byte) error {
-	result, err := client.DA.GetIDs(ctx, height, namespace)
+func queryHeight(ctx context.Context, client *blobrpc.Client, height uint64, namespace []byte) error {
+	ns, err := share.NewNamespaceFromBytes(namespace)
 	if err != nil {
-		// Handle "blob not found" as a normal case
-		if err.Error() == "blob: not found" || strings.Contains(err.Error(), "blob: not found") {
-			fmt.Printf("No blobs found at height %d\n", height)
-			return nil
-		}
-		// Handle future height errors gracefully
-		if strings.Contains(err.Error(), "height") && strings.Contains(err.Error(), "future") {
+		return fmt.Errorf("invalid namespace: %w", err)
+	}
+
+	blobs, err := client.Blob.GetAll(ctx, height, []share.Namespace{ns})
+	if err != nil {
+		if strings.Contains(err.Error(), "future") {
 			fmt.Printf("Height %d is in the future (not yet available)\n", height)
 			return nil
 		}
-		return fmt.Errorf("failed to get IDs: %w", err)
+		if strings.Contains(err.Error(), "not found") {
+			fmt.Printf("No blobs found at height %d\n", height)
+			return nil
+		}
+		return fmt.Errorf("failed to get blobs: %w", err)
 	}
 
-	if result == nil || len(result.IDs) == 0 {
+	if len(blobs) == 0 {
 		fmt.Printf("No blobs found at height %d\n", height)
 		return nil
 	}
 
-	fmt.Printf("Found %d blob(s) at height %d\n", len(result.IDs), height)
-	fmt.Printf("Timestamp: %s\n", result.Timestamp.Format(time.RFC3339))
+	fmt.Printf("Found %d blob(s) at height %d\n", len(blobs), height)
 	fmt.Println()
-
-	// Get the actual blob data
-	blobs, err := client.DA.Get(ctx, result.IDs, namespace)
-	if err != nil {
-		return fmt.Errorf("failed to get blob data: %w", err)
-	}
 
 	// Process each blob with optional height filtering
 	displayedBlobs := 0
-	for i, blob := range blobs {
+	for _, blob := range blobs {
+		blobData := blob.Data()
 		shouldDisplay := true
 		var blobHeight uint64
 
@@ -263,12 +251,12 @@ func queryHeight(ctx context.Context, client *jsonrpc.Client, height uint64, nam
 			shouldDisplay = false
 
 			// Try to decode as header first to check height
-			if header := tryDecodeHeader(blob); header != nil {
+			if header := tryDecodeHeader(blobData); header != nil {
 				blobHeight = header.Height()
 				if blobHeight == filterHeight {
 					shouldDisplay = true
 				}
-			} else if data := tryDecodeData(blob); data != nil {
+			} else if data := tryDecodeData(blobData); data != nil {
 				if data.Metadata != nil {
 					blobHeight = data.Height()
 					if blobHeight == filterHeight {
@@ -284,18 +272,18 @@ func queryHeight(ctx context.Context, client *jsonrpc.Client, height uint64, nam
 
 		displayedBlobs++
 		printBlobHeader(displayedBlobs, -1) // -1 indicates filtered mode
-		displayBlobInfo(result.IDs[i], blob)
+		displayBlobInfo(blobData)
 
 		// Try to decode as header first
-		if header := tryDecodeHeader(blob); header != nil {
+		if header := tryDecodeHeader(blobData); header != nil {
 			printTypeHeader("SignedHeader", "")
 			displayHeader(header)
-		} else if data := tryDecodeData(blob); data != nil {
+		} else if data := tryDecodeData(blobData); data != nil {
 			printTypeHeader("SignedData", "")
 			displayData(data)
 		} else {
 			printTypeHeader("Raw Data", "")
-			displayRawData(blob)
+			displayRawData(blobData)
 		}
 
 		if displayedBlobs > 1 {
@@ -346,15 +334,8 @@ func printBlobHeader(current, total int) {
 	fmt.Println(strings.Repeat("-", 80))
 }
 
-func displayBlobInfo(id datypes.ID, blob []byte) {
-	fmt.Printf("ID:           %s\n", formatHash(hex.EncodeToString(id)))
+func displayBlobInfo(blob []byte) {
 	fmt.Printf("Size:         %s\n", formatSize(len(blob)))
-
-	// Try to parse the ID to show height and commitment
-	if idHeight, commitment := blobrpc.SplitID(id); commitment != nil {
-		fmt.Printf("ID Height:    %d\n", idHeight)
-		fmt.Printf("Commitment:   %s\n", formatHash(hex.EncodeToString(commitment)))
-	}
 }
 
 func printTypeHeader(title, color string) {
@@ -505,7 +486,7 @@ func tryDecodeData(bz []byte) *types.SignedData {
 	return &signedData
 }
 
-func createDAClient() (*jsonrpc.Client, error) {
+func createDAClient() (*blobrpc.Client, func(), error) {
 	logger := zerolog.New(zerolog.ConsoleWriter{Out: os.Stderr}).Level(zerolog.InfoLevel)
 	if verbose {
 		logger = logger.Level(zerolog.DebugLevel)
@@ -514,12 +495,13 @@ func createDAClient() (*jsonrpc.Client, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 
-	client, err := jsonrpc.NewClient(ctx, logger, daURL, authToken, maxBlobSize)
+	client, err := blobrpc.NewClient(ctx, daURL, authToken, "")
 	if err != nil {
-		return nil, fmt.Errorf("failed to create DA client: %w", err)
+		return nil, func() {}, fmt.Errorf("failed to create DA client: %w", err)
 	}
 
-	return client, nil
+	closeFn := func() { client.Close() }
+	return client, closeFn, nil
 }
 
 func parseNamespace(ns string) ([]byte, error) {

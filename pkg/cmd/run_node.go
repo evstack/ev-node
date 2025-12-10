@@ -19,7 +19,7 @@ import (
 	"github.com/evstack/ev-node/block"
 	coreexecutor "github.com/evstack/ev-node/core/execution"
 	coresequencer "github.com/evstack/ev-node/core/sequencer"
-	blobrpc "github.com/evstack/ev-node/da/jsonrpc/blob"
+	blobrpc "github.com/evstack/ev-node/da/jsonrpc"
 	"github.com/evstack/ev-node/node"
 	rollconf "github.com/evstack/ev-node/pkg/config"
 	genesispkg "github.com/evstack/ev-node/pkg/genesis"

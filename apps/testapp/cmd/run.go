@@ -12,7 +12,7 @@ import (
 	kvexecutor "github.com/evstack/ev-node/apps/testapp/kv"
 	"github.com/evstack/ev-node/block"
 	coresequencer "github.com/evstack/ev-node/core/sequencer"
-	blobrpc "github.com/evstack/ev-node/da/jsonrpc/blob"
+	blobrpc "github.com/evstack/ev-node/da/jsonrpc"
 	"github.com/evstack/ev-node/node"
 	"github.com/evstack/ev-node/pkg/cmd"
 	"github.com/evstack/ev-node/pkg/config"

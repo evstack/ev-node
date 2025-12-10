@@ -11,7 +11,7 @@ import (
 	"github.com/spf13/cobra"
 
 	evblock "github.com/evstack/ev-node/block"
-	blobrpc "github.com/evstack/ev-node/da/jsonrpc/blob"
+	blobrpc "github.com/evstack/ev-node/da/jsonrpc"
 	rollcmd "github.com/evstack/ev-node/pkg/cmd"
 	rollconf "github.com/evstack/ev-node/pkg/config"
 	da "github.com/evstack/ev-node/pkg/da/types"

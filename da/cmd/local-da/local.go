@@ -13,6 +13,7 @@ import (
 	"sync"
 	"time"
 
+	blobrpc "github.com/evstack/ev-node/da/jsonrpc"
 	datypes "github.com/evstack/ev-node/pkg/da/types"
 	"github.com/rs/zerolog"
 )
@@ -28,6 +29,7 @@ type LocalDA struct {
 	mu          *sync.Mutex // protects data and height
 	data        map[uint64][]kvp
 	timestamps  map[uint64]time.Time
+	blobData    map[uint64][]*blobrpc.Blob
 	maxBlobSize uint64
 	height      uint64
 	privKey     ed25519.PrivateKey
@@ -46,6 +48,7 @@ func NewLocalDA(logger zerolog.Logger, opts ...func(*LocalDA) *LocalDA) *LocalDA
 		mu:          new(sync.Mutex),
 		data:        make(map[uint64][]kvp),
 		timestamps:  make(map[uint64]time.Time),
+		blobData:    make(map[uint64][]*blobrpc.Blob),
 		maxBlobSize: DefaultMaxBlobSize,
 		logger:      logger,
 	}

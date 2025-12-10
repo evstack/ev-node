@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/evstack/ev-node/block/internal/da"
-	"github.com/evstack/ev-node/da/jsonrpc/blob"
+	blob "github.com/evstack/ev-node/da/jsonrpc"
 	datypes "github.com/evstack/ev-node/pkg/da/types"
 )
 

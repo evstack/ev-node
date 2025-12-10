@@ -11,7 +11,7 @@ import (
 	"sync"
 	"time"
 
-	blobrpc "github.com/evstack/ev-node/da/jsonrpc/blob"
+	blobrpc "github.com/evstack/ev-node/da/jsonrpc"
 	datypes "github.com/evstack/ev-node/pkg/da/types"
 	"github.com/rs/zerolog"
 )

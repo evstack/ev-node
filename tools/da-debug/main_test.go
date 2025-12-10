@@ -4,7 +4,7 @@ import (
 	"encoding/hex"
 	"testing"
 
-	blobrpc "github.com/evstack/ev-node/da/jsonrpc/blob"
+	blobrpc "github.com/evstack/ev-node/da/jsonrpc"
 )
 
 func TestParseNamespace(t *testing.T) {
