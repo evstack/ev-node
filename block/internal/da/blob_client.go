@@ -26,7 +26,6 @@ var (
 
 // BlobConfig contains configuration for the Celestia blob client.
 type BlobConfig struct {
-	Client         *blobrpc.Client
 	Logger         zerolog.Logger
 	DefaultTimeout time.Duration
 	Namespace      string
@@ -34,9 +33,19 @@ type BlobConfig struct {
 	MaxBlobSize    uint64
 }
 
+// BlobAPI captures the subset of blobrpc.BlobAPI used by BlobClient.
+type BlobAPI interface {
+	Submit(ctx context.Context, blobs []*blobrpc.Blob, opts *blobrpc.SubmitOptions) (uint64, error)
+	GetAll(ctx context.Context, height uint64, namespaces []share.Namespace) ([]*blobrpc.Blob, error)
+	GetProof(ctx context.Context, height uint64, namespace share.Namespace, commitment blobrpc.Commitment) (*blobrpc.Proof, error)
+	Included(ctx context.Context, height uint64, namespace share.Namespace, proof *blobrpc.Proof, commitment blobrpc.Commitment) (bool, error)
+	GetCommitmentProof(ctx context.Context, height uint64, namespace share.Namespace, shareCommitment []byte) (*blobrpc.CommitmentProof, error)
+	Subscribe(ctx context.Context, namespace share.Namespace) (<-chan *blobrpc.SubscriptionResponse, error)
+}
+
 // BlobClient wraps the blob RPC with namespace handling and error mapping.
 type BlobClient struct {
-	blobAPI         *blobrpc.BlobAPI
+	blobAPI         BlobAPI
 	logger          zerolog.Logger
 	defaultTimeout  time.Duration
 	namespaceBz     []byte
@@ -45,8 +54,8 @@ type BlobClient struct {
 }
 
 // NewBlobClient creates a new blob client wrapper with pre-calculated namespace bytes.
-func NewBlobClient(cfg BlobConfig) *BlobClient {
-	if cfg.Client == nil {
+func NewBlobClient(api BlobAPI, cfg BlobConfig) *BlobClient {
+	if api == nil {
 		return nil
 	}
 	if cfg.DefaultTimeout == 0 {
@@ -57,7 +66,7 @@ func NewBlobClient(cfg BlobConfig) *BlobClient {
 	}
 
 	return &BlobClient{
-		blobAPI:         &cfg.Client.Blob,
+		blobAPI:         api,
 		logger:          cfg.Logger.With().Str("component", "blob_da_client").Logger(),
 		defaultTimeout:  cfg.DefaultTimeout,
 		namespaceBz:     share.MustNewV0Namespace([]byte(cfg.Namespace)).Bytes(),
