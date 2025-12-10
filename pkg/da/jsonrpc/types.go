@@ -9,5 +9,5 @@ type CommitmentProof struct {
 // SubscriptionResponse mirrors celestia-node's blob.SubscriptionResponse.
 type SubscriptionResponse struct {
 	Blobs  []*Blob `json:"blobs"`
-	Height uint64       `json:"height"`
+	Height uint64  `json:"height"`
 }
