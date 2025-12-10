@@ -93,12 +93,11 @@ func TestNewSyncComponents_Creation(t *testing.T) {
 	}
 
 	mockExec := testmocks.NewMockExecutor(t)
-	dummyDA := datypes.NewDummyDA(10_000_000, 10*time.Millisecond)
-	daClient := datestclient.New(datestclient.Config{
-		DA:            dummyDA,
-		Namespace:     "ns",
-		DataNamespace: "data-ns",
-	})
+	daClient := datestclient.NewMockClient(t)
+	daClient.On("GetHeaderNamespace").Return(datypes.NamespaceFromString("ns").Bytes()).Maybe()
+	daClient.On("GetDataNamespace").Return(datypes.NamespaceFromString("data-ns").Bytes()).Maybe()
+	daClient.On("GetForcedInclusionNamespace").Return([]byte(nil)).Maybe()
+	daClient.On("HasForcedInclusionNamespace").Return(false).Maybe()
 
 	// Just test that the constructor doesn't panic - don't start the components
 	// to avoid P2P store dependencies
@@ -149,12 +148,11 @@ func TestNewAggregatorComponents_Creation(t *testing.T) {
 
 	mockExec := testmocks.NewMockExecutor(t)
 	mockSeq := testmocks.NewMockSequencer(t)
-	dummyDA := datypes.NewDummyDA(10_000_000, 10*time.Millisecond)
-	daClient := datestclient.New(datestclient.Config{
-		DA:            dummyDA,
-		Namespace:     "ns",
-		DataNamespace: "data-ns",
-	})
+	daClient := datestclient.NewMockClient(t)
+	daClient.On("GetHeaderNamespace").Return(datypes.NamespaceFromString("ns").Bytes()).Maybe()
+	daClient.On("GetDataNamespace").Return(datypes.NamespaceFromString("data-ns").Bytes()).Maybe()
+	daClient.On("GetForcedInclusionNamespace").Return([]byte(nil)).Maybe()
+	daClient.On("HasForcedInclusionNamespace").Return(false).Maybe()
 
 	components, err := NewAggregatorComponents(
 		cfg,
@@ -208,7 +206,11 @@ func TestExecutor_RealExecutionClientFailure_StopsNode(t *testing.T) {
 	// Create mock executor that will fail on ExecuteTxs
 	mockExec := testmocks.NewMockExecutor(t)
 	mockSeq := testmocks.NewMockSequencer(t)
-	dummyDA := datypes.NewDummyDA(10_000_000, 10*time.Millisecond)
+	daClient := datestclient.NewMockClient(t)
+	daClient.On("GetHeaderNamespace").Return(datypes.NamespaceFromString("ns").Bytes()).Maybe()
+	daClient.On("GetDataNamespace").Return(datypes.NamespaceFromString("data-ns").Bytes()).Maybe()
+	daClient.On("GetForcedInclusionNamespace").Return([]byte(nil)).Maybe()
+	daClient.On("HasForcedInclusionNamespace").Return(false).Maybe()
 
 	// Mock InitChain to succeed initially
 	mockExec.On("InitChain", mock.Anything, mock.Anything, mock.Anything, mock.Anything).
@@ -232,8 +234,6 @@ func TestExecutor_RealExecutionClientFailure_StopsNode(t *testing.T) {
 	criticalError := errors.New("execution client RPC connection failed")
 	mockExec.On("ExecuteTxs", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 		Return(nil, uint64(0), criticalError).Maybe()
-
-	daClient := datestclient.New(datestclient.Config{DA: dummyDA})
 
 	// Create aggregator node
 	components, err := NewAggregatorComponents(

@@ -65,3 +65,10 @@ packages:
           dir: ./block/internal/common
           pkgname: common
           filename: broadcaster_mock.go
+  github.com/evstack/ev-node/block/internal/da:
+    interfaces:
+      Client:
+        config:
+          dir: ./block/internal/da/testclient
+          pkgname: testclient
+          filename: mock_da_client.go

@@ -2,11 +2,11 @@ package da_test
 
 import (
 	"context"
-	"errors"
 	"testing"
 	"time"
 
 	"github.com/rs/zerolog"
+	"github.com/stretchr/testify/mock"
 	"gotest.tools/v3/assert"
 
 	da "github.com/evstack/ev-node/block/internal/da"
@@ -15,61 +15,10 @@ import (
 	"github.com/evstack/ev-node/pkg/genesis"
 )
 
-// mockDA is a lightweight datypes.DA implementation for forced inclusion tests.
-type mockDA struct {
-	submitFunc        func(ctx context.Context, blobs []datypes.Blob, gasPrice float64, namespace []byte) ([]datypes.ID, error)
-	submitWithOptions func(ctx context.Context, blobs []datypes.Blob, gasPrice float64, namespace []byte, options []byte) ([]datypes.ID, error)
-	getIDsFunc        func(ctx context.Context, height uint64, namespace []byte) (*datypes.GetIDsResult, error)
-	getFunc           func(ctx context.Context, ids []datypes.ID, namespace []byte) ([]datypes.Blob, error)
-}
-
-func (m *mockDA) Submit(ctx context.Context, blobs []datypes.Blob, gasPrice float64, namespace []byte) ([]datypes.ID, error) {
-	if m.submitFunc != nil {
-		return m.submitFunc(ctx, blobs, gasPrice, namespace)
-	}
-	return nil, nil
-}
-
-func (m *mockDA) SubmitWithOptions(ctx context.Context, blobs []datypes.Blob, gasPrice float64, namespace []byte, options []byte) ([]datypes.ID, error) {
-	if m.submitWithOptions != nil {
-		return m.submitWithOptions(ctx, blobs, gasPrice, namespace, options)
-	}
-	return nil, nil
-}
-
-func (m *mockDA) GetIDs(ctx context.Context, height uint64, namespace []byte) (*datypes.GetIDsResult, error) {
-	if m.getIDsFunc != nil {
-		return m.getIDsFunc(ctx, height, namespace)
-	}
-	return nil, errors.New("getIDs not implemented")
-}
-
-func (m *mockDA) Get(ctx context.Context, ids []datypes.ID, namespace []byte) ([]datypes.Blob, error) {
-	if m.getFunc != nil {
-		return m.getFunc(ctx, ids, namespace)
-	}
-	return nil, errors.New("get not implemented")
-}
-
-func (m *mockDA) GetProofs(ctx context.Context, ids []datypes.ID, namespace []byte) ([]datypes.Proof, error) {
-	return nil, errors.New("getProofs not implemented")
-}
-
-func (m *mockDA) Commit(ctx context.Context, blobs []datypes.Blob, namespace []byte) ([]datypes.Commitment, error) {
-	return nil, errors.New("commit not implemented")
-}
-
-func (m *mockDA) Validate(ctx context.Context, ids []datypes.ID, proofs []datypes.Proof, namespace []byte) ([]bool, error) {
-	return nil, errors.New("validate not implemented")
-}
-
 func TestNewForcedInclusionRetriever(t *testing.T) {
-	client := testclient.New(testclient.Config{
-		DA:                       &mockDA{},
-		Namespace:                "test-ns",
-		DataNamespace:            "test-data-ns",
-		ForcedInclusionNamespace: "test-fi-ns",
-	})
+	client := testclient.NewMockClient(t)
+	client.On("HasForcedInclusionNamespace").Return(true).Maybe()
+	client.On("GetForcedInclusionNamespace").Return(datypes.NamespaceFromString("test-fi-ns").Bytes()).Maybe()
 
 	gen := genesis.Genesis{
 		DAStartHeight:          100,
@@ -81,12 +30,8 @@ func TestNewForcedInclusionRetriever(t *testing.T) {
 }
 
 func TestForcedInclusionRetriever_RetrieveForcedIncludedTxs_NoNamespace(t *testing.T) {
-	client := testclient.New(testclient.Config{
-		DA:            &mockDA{},
-		Namespace:     "test-ns",
-		DataNamespace: "test-data-ns",
-		// No forced inclusion namespace
-	})
+	client := testclient.NewMockClient(t)
+	client.On("HasForcedInclusionNamespace").Return(false).Once()
 
 	gen := genesis.Genesis{
 		DAStartHeight:          100,
@@ -102,12 +47,10 @@ func TestForcedInclusionRetriever_RetrieveForcedIncludedTxs_NoNamespace(t *testi
 }
 
 func TestForcedInclusionRetriever_RetrieveForcedIncludedTxs_NotAtEpochStart(t *testing.T) {
-	client := testclient.New(testclient.Config{
-		DA:                       &mockDA{},
-		Namespace:                "test-ns",
-		DataNamespace:            "test-data-ns",
-		ForcedInclusionNamespace: "test-fi-ns",
-	})
+	client := testclient.NewMockClient(t)
+	fiNs := datypes.NamespaceFromString("test-fi-ns").Bytes()
+	client.On("HasForcedInclusionNamespace").Return(true).Once()
+	client.On("GetForcedInclusionNamespace").Return(fiNs).Maybe()
 
 	gen := genesis.Genesis{
 		DAStartHeight:          100,
@@ -133,24 +76,14 @@ func TestForcedInclusionRetriever_RetrieveForcedIncludedTxs_EpochStartSuccess(t 
 		[]byte("tx3"),
 	}
 
-    mockDAInstance := &mockDA{
-		getIDsFunc: func(ctx context.Context, height uint64, namespace []byte) (*datypes.GetIDsResult, error) {
-			return &datypes.GetIDsResult{
-				IDs:       []datypes.ID{[]byte("id1"), []byte("id2"), []byte("id3")},
-				Timestamp: time.Now(),
-			}, nil
-		},
-		getFunc: func(ctx context.Context, ids []datypes.ID, namespace []byte) ([]datypes.Blob, error) {
-			return testBlobs, nil
-		},
-	}
-
-	client := testclient.New(testclient.Config{
-		DA:                       mockDAInstance,
-		Namespace:                "test-ns",
-		DataNamespace:            "test-data-ns",
-		ForcedInclusionNamespace: "test-fi-ns",
-	})
+	client := testclient.NewMockClient(t)
+	fiNs := datypes.NamespaceFromString("test-fi-ns").Bytes()
+	client.On("HasForcedInclusionNamespace").Return(true).Once()
+	client.On("GetForcedInclusionNamespace").Return(fiNs).Maybe()
+	client.On("RetrieveForcedInclusion", mock.Anything, mock.Anything).Return(datypes.ResultRetrieve{
+		BaseResult: datypes.BaseResult{Code: datypes.StatusSuccess, IDs: []datypes.ID{[]byte("id1"), []byte("id2"), []byte("id3")}, Timestamp: time.Now()},
+		Data:       testBlobs,
+	}).Once()
 
 	gen := genesis.Genesis{
 		DAStartHeight:          100,
@@ -171,18 +104,13 @@ func TestForcedInclusionRetriever_RetrieveForcedIncludedTxs_EpochStartSuccess(t 
 }
 
 func TestForcedInclusionRetriever_RetrieveForcedIncludedTxs_EpochStartNotAvailable(t *testing.T) {
-    mockDAInstance := &mockDA{
-		getIDsFunc: func(ctx context.Context, height uint64, namespace []byte) (*datypes.GetIDsResult, error) {
-			return nil, datypes.ErrHeightFromFuture
-		},
-	}
-
-	client := testclient.New(testclient.Config{
-		DA:                       mockDAInstance,
-		Namespace:                "test-ns",
-		DataNamespace:            "test-data-ns",
-		ForcedInclusionNamespace: "test-fi-ns",
-	})
+	client := testclient.NewMockClient(t)
+	fiNs := datypes.NamespaceFromString("test-fi-ns").Bytes()
+	client.On("HasForcedInclusionNamespace").Return(true).Once()
+	client.On("GetForcedInclusionNamespace").Return(fiNs).Maybe()
+	client.On("RetrieveForcedInclusion", mock.Anything, uint64(109)).Return(datypes.ResultRetrieve{
+		BaseResult: datypes.BaseResult{Code: datypes.StatusHeightFromFuture},
+	}).Once()
 
 	gen := genesis.Genesis{
 		DAStartHeight:          100,
@@ -199,18 +127,13 @@ func TestForcedInclusionRetriever_RetrieveForcedIncludedTxs_EpochStartNotAvailab
 }
 
 func TestForcedInclusionRetriever_RetrieveForcedIncludedTxs_NoBlobsAtHeight(t *testing.T) {
-    mockDAInstance := &mockDA{
-		getIDsFunc: func(ctx context.Context, height uint64, namespace []byte) (*datypes.GetIDsResult, error) {
-			return nil, datypes.ErrBlobNotFound
-		},
-	}
-
-	client := testclient.New(testclient.Config{
-		DA:                       mockDAInstance,
-		Namespace:                "test-ns",
-		DataNamespace:            "test-data-ns",
-		ForcedInclusionNamespace: "test-fi-ns",
-	})
+	client := testclient.NewMockClient(t)
+	fiNs := datypes.NamespaceFromString("test-fi-ns").Bytes()
+	client.On("HasForcedInclusionNamespace").Return(true).Once()
+	client.On("GetForcedInclusionNamespace").Return(fiNs).Maybe()
+	client.On("RetrieveForcedInclusion", mock.Anything, uint64(100)).Return(datypes.ResultRetrieve{
+		BaseResult: datypes.BaseResult{Code: datypes.StatusNotFound},
+	}).Once()
 
 	gen := genesis.Genesis{
 		DAStartHeight:          100,
@@ -227,50 +150,28 @@ func TestForcedInclusionRetriever_RetrieveForcedIncludedTxs_NoBlobsAtHeight(t *t
 }
 
 func TestForcedInclusionRetriever_RetrieveForcedIncludedTxs_MultiHeightEpoch(t *testing.T) {
-	callCount := 0
 	testBlobsByHeight := map[uint64][][]byte{
 		100: {[]byte("tx1"), []byte("tx2")},
 		101: {[]byte("tx3")},
 		102: {[]byte("tx4"), []byte("tx5"), []byte("tx6")},
 	}
 
-    mockDAInstance := &mockDA{
-		getIDsFunc: func(ctx context.Context, height uint64, namespace []byte) (*datypes.GetIDsResult, error) {
-			callCount++
-			blobs, exists := testBlobsByHeight[height]
-			if !exists {
-				return nil, datypes.ErrBlobNotFound
-			}
-			ids := make([]datypes.ID, len(blobs))
-			for i := range blobs {
-				ids[i] = []byte("id")
-			}
-			return &datypes.GetIDsResult{
-				IDs:       ids,
-				Timestamp: time.Now(),
-			}, nil
-		},
-		getFunc: func(ctx context.Context, ids []datypes.ID, namespace []byte) ([]datypes.Blob, error) {
-			// Return blobs based on current call count
-			switch callCount {
-			case 1:
-				return testBlobsByHeight[100], nil
-			case 2:
-				return testBlobsByHeight[101], nil
-			case 3:
-				return testBlobsByHeight[102], nil
-			default:
-				return nil, errors.New("unexpected call")
-			}
-		},
-	}
-
-	client := testclient.New(testclient.Config{
-		DA:                       mockDAInstance,
-		Namespace:                "test-ns",
-		DataNamespace:            "test-data-ns",
-		ForcedInclusionNamespace: "test-fi-ns",
-	})
+	client := testclient.NewMockClient(t)
+	fiNs := datypes.NamespaceFromString("test-fi-ns").Bytes()
+	client.On("HasForcedInclusionNamespace").Return(true).Once()
+	client.On("GetForcedInclusionNamespace").Return(fiNs).Maybe()
+	client.On("RetrieveForcedInclusion", mock.Anything, uint64(102)).Return(datypes.ResultRetrieve{
+		BaseResult: datypes.BaseResult{Code: datypes.StatusSuccess, Timestamp: time.Now()},
+		Data:       testBlobsByHeight[102],
+	}).Once()
+	client.On("RetrieveForcedInclusion", mock.Anything, uint64(100)).Return(datypes.ResultRetrieve{
+		BaseResult: datypes.BaseResult{Code: datypes.StatusSuccess, Timestamp: time.Now()},
+		Data:       testBlobsByHeight[100],
+	}).Once()
+	client.On("RetrieveForcedInclusion", mock.Anything, uint64(101)).Return(datypes.ResultRetrieve{
+		BaseResult: datypes.BaseResult{Code: datypes.StatusSuccess, Timestamp: time.Now()},
+		Data:       testBlobsByHeight[101],
+	}).Once()
 
 	gen := genesis.Genesis{
 		DAStartHeight:          100,

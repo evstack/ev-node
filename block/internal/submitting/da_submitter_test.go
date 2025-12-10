@@ -11,6 +11,7 @@ import (
 	"github.com/libp2p/go-libp2p/core/crypto"
 	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 
 	"github.com/evstack/ev-node/block/internal/cache"
@@ -26,7 +27,12 @@ import (
 	"github.com/evstack/ev-node/types"
 )
 
-func setupDASubmitterTest(t *testing.T) (*DASubmitter, store.Store, cache.Manager, datypes.DA, genesis.Genesis) {
+const (
+	testHeaderNamespace = "test-headers"
+	testDataNamespace   = "test-data"
+)
+
+func setupDASubmitterTest(t *testing.T) (*DASubmitter, store.Store, cache.Manager, *testclient.MockClient, genesis.Genesis) {
 	t.Helper()
 
 	// Create store and cache
@@ -35,13 +41,19 @@ func setupDASubmitterTest(t *testing.T) (*DASubmitter, store.Store, cache.Manage
 	cm, err := cache.NewManager(config.DefaultConfig(), st, zerolog.Nop())
 	require.NoError(t, err)
 
-	// Create dummy DA
-	dummyDA := datypes.NewDummyDA(10_000_000, 10*time.Millisecond)
-
 	// Create config
 	cfg := config.DefaultConfig()
-	cfg.DA.Namespace = "test-headers"
-	cfg.DA.DataNamespace = "test-data"
+	cfg.DA.Namespace = testHeaderNamespace
+	cfg.DA.DataNamespace = testDataNamespace
+
+	// Mock DA client
+	mockDA := testclient.NewMockClient(t)
+	headerNamespace := datypes.NamespaceFromString(cfg.DA.Namespace).Bytes()
+	dataNamespace := datypes.NamespaceFromString(cfg.DA.DataNamespace).Bytes()
+	mockDA.On("GetHeaderNamespace").Return(headerNamespace).Maybe()
+	mockDA.On("GetDataNamespace").Return(dataNamespace).Maybe()
+	mockDA.On("GetForcedInclusionNamespace").Return([]byte(nil)).Maybe()
+	mockDA.On("HasForcedInclusionNamespace").Return(false).Maybe()
 
 	// Create genesis
 	gen := genesis.Genesis{
@@ -52,13 +64,8 @@ func setupDASubmitterTest(t *testing.T) (*DASubmitter, store.Store, cache.Manage
 	}
 
 	// Create DA submitter
-	daClient := testclient.New(testclient.Config{
-		DA:            dummyDA,
-		Namespace:     cfg.DA.Namespace,
-		DataNamespace: cfg.DA.DataNamespace,
-	})
 	daSubmitter := NewDASubmitter(
-		daClient,
+		mockDA,
 		cfg,
 		gen,
 		common.DefaultBlockOptions(),
@@ -66,7 +73,7 @@ func setupDASubmitterTest(t *testing.T) (*DASubmitter, store.Store, cache.Manage
 		zerolog.Nop(),
 	)
 
-	return daSubmitter, st, cm, dummyDA, gen
+	return daSubmitter, st, cm, mockDA, gen
 }
 
 func createTestSigner(t *testing.T) ([]byte, crypto.PubKey, signer.Signer) {
@@ -99,13 +106,11 @@ func TestNewDASubmitterSetsVisualizerWhenEnabled(t *testing.T) {
 	cfg.RPC.EnableDAVisualization = true
 	cfg.Node.Aggregator = true
 
-	dummyDA := datypes.NewDummyDA(10_000_000, 10*time.Millisecond)
-
-	daClient := testclient.New(testclient.Config{
-		DA:            dummyDA,
-		Namespace:     cfg.DA.Namespace,
-		DataNamespace: cfg.DA.DataNamespace,
-	})
+	daClient := testclient.NewMockClient(t)
+	daClient.On("GetHeaderNamespace").Return(datypes.NamespaceFromString(cfg.DA.Namespace).Bytes()).Maybe()
+	daClient.On("GetDataNamespace").Return(datypes.NamespaceFromString(cfg.DA.DataNamespace).Bytes()).Maybe()
+	daClient.On("GetForcedInclusionNamespace").Return([]byte(nil)).Maybe()
+	daClient.On("HasForcedInclusionNamespace").Return(false).Maybe()
 	NewDASubmitter(
 		daClient,
 		cfg,
@@ -119,8 +124,20 @@ func TestNewDASubmitterSetsVisualizerWhenEnabled(t *testing.T) {
 }
 
 func TestDASubmitter_SubmitHeaders_Success(t *testing.T) {
-	submitter, st, cm, _, gen := setupDASubmitterTest(t)
+	submitter, st, cm, mockDA, gen := setupDASubmitterTest(t)
 	ctx := context.Background()
+	headerNamespace := datypes.NamespaceFromString(testHeaderNamespace).Bytes()
+
+	mockDA.On(
+		"Submit",
+		mock.Anything,
+		mock.AnythingOfType("[][]uint8"),
+		mock.AnythingOfType("float64"),
+		headerNamespace,
+		mock.Anything,
+	).Return(func(_ context.Context, blobs [][]byte, _ float64, _ []byte, _ []byte) datypes.ResultSubmit {
+		return datypes.ResultSubmit{BaseResult: datypes.BaseResult{Code: datypes.StatusSuccess, SubmittedCount: uint64(len(blobs)), Height: 1}}
+	}).Once()
 
 	// Create test signer
 	addr, pub, signer := createTestSigner(t)
@@ -209,17 +226,30 @@ func TestDASubmitter_SubmitHeaders_Success(t *testing.T) {
 }
 
 func TestDASubmitter_SubmitHeaders_NoPendingHeaders(t *testing.T) {
-	submitter, _, cm, _, _ := setupDASubmitterTest(t)
+	submitter, _, cm, mockDA, _ := setupDASubmitterTest(t)
 	ctx := context.Background()
 
 	// Submit headers when none are pending
 	err := submitter.SubmitHeaders(ctx, cm)
 	require.NoError(t, err) // Should succeed with no action
+	mockDA.AssertNotCalled(t, "Submit", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything)
 }
 
 func TestDASubmitter_SubmitData_Success(t *testing.T) {
-	submitter, st, cm, _, gen := setupDASubmitterTest(t)
+	submitter, st, cm, mockDA, gen := setupDASubmitterTest(t)
 	ctx := context.Background()
+	dataNamespace := datypes.NamespaceFromString(testDataNamespace).Bytes()
+
+	mockDA.On(
+		"Submit",
+		mock.Anything,
+		mock.AnythingOfType("[][]uint8"),
+		mock.AnythingOfType("float64"),
+		dataNamespace,
+		mock.Anything,
+	).Return(func(_ context.Context, blobs [][]byte, _ float64, _ []byte, _ []byte) datypes.ResultSubmit {
+		return datypes.ResultSubmit{BaseResult: datypes.BaseResult{Code: datypes.StatusSuccess, SubmittedCount: uint64(len(blobs)), Height: 2}}
+	}).Once()
 
 	// Create test signer
 	addr, pub, signer := createTestSigner(t)
@@ -304,7 +334,7 @@ func TestDASubmitter_SubmitData_Success(t *testing.T) {
 }
 
 func TestDASubmitter_SubmitData_SkipsEmptyData(t *testing.T) {
-	submitter, st, cm, _, gen := setupDASubmitterTest(t)
+	submitter, st, cm, mockDA, gen := setupDASubmitterTest(t)
 	ctx := context.Background()
 
 	// Create test signer
@@ -346,6 +376,7 @@ func TestDASubmitter_SubmitData_SkipsEmptyData(t *testing.T) {
 	// Submit data - should succeed but skip empty data
 	err = submitter.SubmitData(ctx, cm, signer, gen)
 	require.NoError(t, err)
+	mockDA.AssertNotCalled(t, "Submit", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything)
 
 	// Empty data should not be marked as DA included (it's implicitly included)
 	_, ok := cm.GetDataDAIncluded(emptyData.DACommitment().String())
@@ -353,7 +384,7 @@ func TestDASubmitter_SubmitData_SkipsEmptyData(t *testing.T) {
 }
 
 func TestDASubmitter_SubmitData_NoPendingData(t *testing.T) {
-	submitter, _, cm, _, gen := setupDASubmitterTest(t)
+	submitter, _, cm, mockDA, gen := setupDASubmitterTest(t)
 	ctx := context.Background()
 
 	// Create test signer
@@ -362,10 +393,11 @@ func TestDASubmitter_SubmitData_NoPendingData(t *testing.T) {
 	// Submit data when none are pending
 	err := submitter.SubmitData(ctx, cm, signer, gen)
 	require.NoError(t, err) // Should succeed with no action
+	mockDA.AssertNotCalled(t, "Submit", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything)
 }
 
 func TestDASubmitter_SubmitData_NilSigner(t *testing.T) {
-	submitter, st, cm, _, gen := setupDASubmitterTest(t)
+	submitter, st, cm, mockDA, gen := setupDASubmitterTest(t)
 	ctx := context.Background()
 
 	// Create test data with transactions
@@ -401,6 +433,7 @@ func TestDASubmitter_SubmitData_NilSigner(t *testing.T) {
 	err = submitter.SubmitData(ctx, cm, nil, gen)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "signer is nil")
+	mockDA.AssertNotCalled(t, "Submit", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything)
 }
 
 func TestDASubmitter_CreateSignedData(t *testing.T) {

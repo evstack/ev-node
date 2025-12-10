@@ -7,7 +7,7 @@ package mocks
 import (
 	"context"
 
-	da "github.com/evstack/ev-node/pkg/da/types"
+	"github.com/evstack/ev-node/pkg/da/types"
 	mock "github.com/stretchr/testify/mock"
 )
 
@@ -39,26 +39,26 @@ func (_m *MockDA) EXPECT() *MockDA_Expecter {
 }
 
 // Commit provides a mock function for the type MockDA
-func (_mock *MockDA) Commit(ctx context.Context, blobs []da.Blob, namespace []byte) ([]da.Commitment, error) {
+func (_mock *MockDA) Commit(ctx context.Context, blobs []datypes.Blob, namespace []byte) ([]datypes.Commitment, error) {
 	ret := _mock.Called(ctx, blobs, namespace)
 
 	if len(ret) == 0 {
 		panic("no return value specified for Commit")
 	}
 
-	var r0 []da.Commitment
+	var r0 []datypes.Commitment
 	var r1 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, []da.Blob, []byte) ([]da.Commitment, error)); ok {
+	if returnFunc, ok := ret.Get(0).(func(context.Context, []datypes.Blob, []byte) ([]datypes.Commitment, error)); ok {
 		return returnFunc(ctx, blobs, namespace)
 	}
-	if returnFunc, ok := ret.Get(0).(func(context.Context, []da.Blob, []byte) []da.Commitment); ok {
+	if returnFunc, ok := ret.Get(0).(func(context.Context, []datypes.Blob, []byte) []datypes.Commitment); ok {
 		r0 = returnFunc(ctx, blobs, namespace)
 	} else {
 		if ret.Get(0) != nil {
-			r0 = ret.Get(0).([]da.Commitment)
+			r0 = ret.Get(0).([]datypes.Commitment)
 		}
 	}
-	if returnFunc, ok := ret.Get(1).(func(context.Context, []da.Blob, []byte) error); ok {
+	if returnFunc, ok := ret.Get(1).(func(context.Context, []datypes.Blob, []byte) error); ok {
 		r1 = returnFunc(ctx, blobs, namespace)
 	} else {
 		r1 = ret.Error(1)
@@ -73,21 +73,21 @@ type MockDA_Commit_Call struct {
 
 // Commit is a helper method to define mock.On call
 //   - ctx context.Context
-//   - blobs []da.Blob
+//   - blobs []datypes.Blob
 //   - namespace []byte
 func (_e *MockDA_Expecter) Commit(ctx interface{}, blobs interface{}, namespace interface{}) *MockDA_Commit_Call {
 	return &MockDA_Commit_Call{Call: _e.mock.On("Commit", ctx, blobs, namespace)}
 }
 
-func (_c *MockDA_Commit_Call) Run(run func(ctx context.Context, blobs []da.Blob, namespace []byte)) *MockDA_Commit_Call {
+func (_c *MockDA_Commit_Call) Run(run func(ctx context.Context, blobs []datypes.Blob, namespace []byte)) *MockDA_Commit_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
 			arg0 = args[0].(context.Context)
 		}
-		var arg1 []da.Blob
+		var arg1 []datypes.Blob
 		if args[1] != nil {
-			arg1 = args[1].([]da.Blob)
+			arg1 = args[1].([]datypes.Blob)
 		}
 		var arg2 []byte
 		if args[2] != nil {
@@ -102,37 +102,37 @@ func (_c *MockDA_Commit_Call) Run(run func(ctx context.Context, blobs []da.Blob,
 	return _c
 }
 
-func (_c *MockDA_Commit_Call) Return(vs []da.Commitment, err error) *MockDA_Commit_Call {
+func (_c *MockDA_Commit_Call) Return(vs []datypes.Commitment, err error) *MockDA_Commit_Call {
 	_c.Call.Return(vs, err)
 	return _c
 }
 
-func (_c *MockDA_Commit_Call) RunAndReturn(run func(ctx context.Context, blobs []da.Blob, namespace []byte) ([]da.Commitment, error)) *MockDA_Commit_Call {
+func (_c *MockDA_Commit_Call) RunAndReturn(run func(ctx context.Context, blobs []datypes.Blob, namespace []byte) ([]datypes.Commitment, error)) *MockDA_Commit_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
 // Get provides a mock function for the type MockDA
-func (_mock *MockDA) Get(ctx context.Context, ids []da.ID, namespace []byte) ([]da.Blob, error) {
+func (_mock *MockDA) Get(ctx context.Context, ids []datypes.ID, namespace []byte) ([]datypes.Blob, error) {
 	ret := _mock.Called(ctx, ids, namespace)
 
 	if len(ret) == 0 {
 		panic("no return value specified for Get")
 	}
 
-	var r0 []da.Blob
+	var r0 []datypes.Blob
 	var r1 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, []da.ID, []byte) ([]da.Blob, error)); ok {
+	if returnFunc, ok := ret.Get(0).(func(context.Context, []datypes.ID, []byte) ([]datypes.Blob, error)); ok {
 		return returnFunc(ctx, ids, namespace)
 	}
-	if returnFunc, ok := ret.Get(0).(func(context.Context, []da.ID, []byte) []da.Blob); ok {
+	if returnFunc, ok := ret.Get(0).(func(context.Context, []datypes.ID, []byte) []datypes.Blob); ok {
 		r0 = returnFunc(ctx, ids, namespace)
 	} else {
 		if ret.Get(0) != nil {
-			r0 = ret.Get(0).([]da.Blob)
+			r0 = ret.Get(0).([]datypes.Blob)
 		}
 	}
-	if returnFunc, ok := ret.Get(1).(func(context.Context, []da.ID, []byte) error); ok {
+	if returnFunc, ok := ret.Get(1).(func(context.Context, []datypes.ID, []byte) error); ok {
 		r1 = returnFunc(ctx, ids, namespace)
 	} else {
 		r1 = ret.Error(1)
@@ -147,21 +147,21 @@ type MockDA_Get_Call struct {
 
 // Get is a helper method to define mock.On call
 //   - ctx context.Context
-//   - ids []da.ID
+//   - ids []datypes.ID
 //   - namespace []byte
 func (_e *MockDA_Expecter) Get(ctx interface{}, ids interface{}, namespace interface{}) *MockDA_Get_Call {
 	return &MockDA_Get_Call{Call: _e.mock.On("Get", ctx, ids, namespace)}
 }
 
-func (_c *MockDA_Get_Call) Run(run func(ctx context.Context, ids []da.ID, namespace []byte)) *MockDA_Get_Call {
+func (_c *MockDA_Get_Call) Run(run func(ctx context.Context, ids []datypes.ID, namespace []byte)) *MockDA_Get_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
 			arg0 = args[0].(context.Context)
 		}
-		var arg1 []da.ID
+		var arg1 []datypes.ID
 		if args[1] != nil {
-			arg1 = args[1].([]da.ID)
+			arg1 = args[1].([]datypes.ID)
 		}
 		var arg2 []byte
 		if args[2] != nil {
@@ -176,34 +176,34 @@ func (_c *MockDA_Get_Call) Run(run func(ctx context.Context, ids []da.ID, namesp
 	return _c
 }
 
-func (_c *MockDA_Get_Call) Return(vs []da.Blob, err error) *MockDA_Get_Call {
+func (_c *MockDA_Get_Call) Return(vs []datypes.Blob, err error) *MockDA_Get_Call {
 	_c.Call.Return(vs, err)
 	return _c
 }
 
-func (_c *MockDA_Get_Call) RunAndReturn(run func(ctx context.Context, ids []da.ID, namespace []byte) ([]da.Blob, error)) *MockDA_Get_Call {
+func (_c *MockDA_Get_Call) RunAndReturn(run func(ctx context.Context, ids []datypes.ID, namespace []byte) ([]datypes.Blob, error)) *MockDA_Get_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
 // GetIDs provides a mock function for the type MockDA
-func (_mock *MockDA) GetIDs(ctx context.Context, height uint64, namespace []byte) (*da.GetIDsResult, error) {
+func (_mock *MockDA) GetIDs(ctx context.Context, height uint64, namespace []byte) (*datypes.GetIDsResult, error) {
 	ret := _mock.Called(ctx, height, namespace)
 
 	if len(ret) == 0 {
 		panic("no return value specified for GetIDs")
 	}
 
-	var r0 *da.GetIDsResult
+	var r0 *datypes.GetIDsResult
 	var r1 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, uint64, []byte) (*da.GetIDsResult, error)); ok {
+	if returnFunc, ok := ret.Get(0).(func(context.Context, uint64, []byte) (*datypes.GetIDsResult, error)); ok {
 		return returnFunc(ctx, height, namespace)
 	}
-	if returnFunc, ok := ret.Get(0).(func(context.Context, uint64, []byte) *da.GetIDsResult); ok {
+	if returnFunc, ok := ret.Get(0).(func(context.Context, uint64, []byte) *datypes.GetIDsResult); ok {
 		r0 = returnFunc(ctx, height, namespace)
 	} else {
 		if ret.Get(0) != nil {
-			r0 = ret.Get(0).(*da.GetIDsResult)
+			r0 = ret.Get(0).(*datypes.GetIDsResult)
 		}
 	}
 	if returnFunc, ok := ret.Get(1).(func(context.Context, uint64, []byte) error); ok {
@@ -250,37 +250,37 @@ func (_c *MockDA_GetIDs_Call) Run(run func(ctx context.Context, height uint64, n
 	return _c
 }
 
-func (_c *MockDA_GetIDs_Call) Return(getIDsResult *da.GetIDsResult, err error) *MockDA_GetIDs_Call {
+func (_c *MockDA_GetIDs_Call) Return(getIDsResult *datypes.GetIDsResult, err error) *MockDA_GetIDs_Call {
 	_c.Call.Return(getIDsResult, err)
 	return _c
 }
 
-func (_c *MockDA_GetIDs_Call) RunAndReturn(run func(ctx context.Context, height uint64, namespace []byte) (*da.GetIDsResult, error)) *MockDA_GetIDs_Call {
+func (_c *MockDA_GetIDs_Call) RunAndReturn(run func(ctx context.Context, height uint64, namespace []byte) (*datypes.GetIDsResult, error)) *MockDA_GetIDs_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
 // GetProofs provides a mock function for the type MockDA
-func (_mock *MockDA) GetProofs(ctx context.Context, ids []da.ID, namespace []byte) ([]da.Proof, error) {
+func (_mock *MockDA) GetProofs(ctx context.Context, ids []datypes.ID, namespace []byte) ([]datypes.Proof, error) {
 	ret := _mock.Called(ctx, ids, namespace)
 
 	if len(ret) == 0 {
 		panic("no return value specified for GetProofs")
 	}
 
-	var r0 []da.Proof
+	var r0 []datypes.Proof
 	var r1 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, []da.ID, []byte) ([]da.Proof, error)); ok {
+	if returnFunc, ok := ret.Get(0).(func(context.Context, []datypes.ID, []byte) ([]datypes.Proof, error)); ok {
 		return returnFunc(ctx, ids, namespace)
 	}
-	if returnFunc, ok := ret.Get(0).(func(context.Context, []da.ID, []byte) []da.Proof); ok {
+	if returnFunc, ok := ret.Get(0).(func(context.Context, []datypes.ID, []byte) []datypes.Proof); ok {
 		r0 = returnFunc(ctx, ids, namespace)
 	} else {
 		if ret.Get(0) != nil {
-			r0 = ret.Get(0).([]da.Proof)
+			r0 = ret.Get(0).([]datypes.Proof)
 		}
 	}
-	if returnFunc, ok := ret.Get(1).(func(context.Context, []da.ID, []byte) error); ok {
+	if returnFunc, ok := ret.Get(1).(func(context.Context, []datypes.ID, []byte) error); ok {
 		r1 = returnFunc(ctx, ids, namespace)
 	} else {
 		r1 = ret.Error(1)
@@ -295,21 +295,21 @@ type MockDA_GetProofs_Call struct {
 
 // GetProofs is a helper method to define mock.On call
 //   - ctx context.Context
-//   - ids []da.ID
+//   - ids []datypes.ID
 //   - namespace []byte
 func (_e *MockDA_Expecter) GetProofs(ctx interface{}, ids interface{}, namespace interface{}) *MockDA_GetProofs_Call {
 	return &MockDA_GetProofs_Call{Call: _e.mock.On("GetProofs", ctx, ids, namespace)}
 }
 
-func (_c *MockDA_GetProofs_Call) Run(run func(ctx context.Context, ids []da.ID, namespace []byte)) *MockDA_GetProofs_Call {
+func (_c *MockDA_GetProofs_Call) Run(run func(ctx context.Context, ids []datypes.ID, namespace []byte)) *MockDA_GetProofs_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
 			arg0 = args[0].(context.Context)
 		}
-		var arg1 []da.ID
+		var arg1 []datypes.ID
 		if args[1] != nil {
-			arg1 = args[1].([]da.ID)
+			arg1 = args[1].([]datypes.ID)
 		}
 		var arg2 []byte
 		if args[2] != nil {
@@ -324,37 +324,37 @@ func (_c *MockDA_GetProofs_Call) Run(run func(ctx context.Context, ids []da.ID, 
 	return _c
 }
 
-func (_c *MockDA_GetProofs_Call) Return(vs []da.Proof, err error) *MockDA_GetProofs_Call {
+func (_c *MockDA_GetProofs_Call) Return(vs []datypes.Proof, err error) *MockDA_GetProofs_Call {
 	_c.Call.Return(vs, err)
 	return _c
 }
 
-func (_c *MockDA_GetProofs_Call) RunAndReturn(run func(ctx context.Context, ids []da.ID, namespace []byte) ([]da.Proof, error)) *MockDA_GetProofs_Call {
+func (_c *MockDA_GetProofs_Call) RunAndReturn(run func(ctx context.Context, ids []datypes.ID, namespace []byte) ([]datypes.Proof, error)) *MockDA_GetProofs_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
 // Submit provides a mock function for the type MockDA
-func (_mock *MockDA) Submit(ctx context.Context, blobs []da.Blob, gasPrice float64, namespace []byte) ([]da.ID, error) {
+func (_mock *MockDA) Submit(ctx context.Context, blobs []datypes.Blob, gasPrice float64, namespace []byte) ([]datypes.ID, error) {
 	ret := _mock.Called(ctx, blobs, gasPrice, namespace)
 
 	if len(ret) == 0 {
 		panic("no return value specified for Submit")
 	}
 
-	var r0 []da.ID
+	var r0 []datypes.ID
 	var r1 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, []da.Blob, float64, []byte) ([]da.ID, error)); ok {
+	if returnFunc, ok := ret.Get(0).(func(context.Context, []datypes.Blob, float64, []byte) ([]datypes.ID, error)); ok {
 		return returnFunc(ctx, blobs, gasPrice, namespace)
 	}
-	if returnFunc, ok := ret.Get(0).(func(context.Context, []da.Blob, float64, []byte) []da.ID); ok {
+	if returnFunc, ok := ret.Get(0).(func(context.Context, []datypes.Blob, float64, []byte) []datypes.ID); ok {
 		r0 = returnFunc(ctx, blobs, gasPrice, namespace)
 	} else {
 		if ret.Get(0) != nil {
-			r0 = ret.Get(0).([]da.ID)
+			r0 = ret.Get(0).([]datypes.ID)
 		}
 	}
-	if returnFunc, ok := ret.Get(1).(func(context.Context, []da.Blob, float64, []byte) error); ok {
+	if returnFunc, ok := ret.Get(1).(func(context.Context, []datypes.Blob, float64, []byte) error); ok {
 		r1 = returnFunc(ctx, blobs, gasPrice, namespace)
 	} else {
 		r1 = ret.Error(1)
@@ -369,22 +369,22 @@ type MockDA_Submit_Call struct {
 
 // Submit is a helper method to define mock.On call
 //   - ctx context.Context
-//   - blobs []da.Blob
+//   - blobs []datypes.Blob
 //   - gasPrice float64
 //   - namespace []byte
 func (_e *MockDA_Expecter) Submit(ctx interface{}, blobs interface{}, gasPrice interface{}, namespace interface{}) *MockDA_Submit_Call {
 	return &MockDA_Submit_Call{Call: _e.mock.On("Submit", ctx, blobs, gasPrice, namespace)}
 }
 
-func (_c *MockDA_Submit_Call) Run(run func(ctx context.Context, blobs []da.Blob, gasPrice float64, namespace []byte)) *MockDA_Submit_Call {
+func (_c *MockDA_Submit_Call) Run(run func(ctx context.Context, blobs []datypes.Blob, gasPrice float64, namespace []byte)) *MockDA_Submit_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
 			arg0 = args[0].(context.Context)
 		}
-		var arg1 []da.Blob
+		var arg1 []datypes.Blob
 		if args[1] != nil {
-			arg1 = args[1].([]da.Blob)
+			arg1 = args[1].([]datypes.Blob)
 		}
 		var arg2 float64
 		if args[2] != nil {
@@ -404,37 +404,37 @@ func (_c *MockDA_Submit_Call) Run(run func(ctx context.Context, blobs []da.Blob,
 	return _c
 }
 
-func (_c *MockDA_Submit_Call) Return(vs []da.ID, err error) *MockDA_Submit_Call {
+func (_c *MockDA_Submit_Call) Return(vs []datypes.ID, err error) *MockDA_Submit_Call {
 	_c.Call.Return(vs, err)
 	return _c
 }
 
-func (_c *MockDA_Submit_Call) RunAndReturn(run func(ctx context.Context, blobs []da.Blob, gasPrice float64, namespace []byte) ([]da.ID, error)) *MockDA_Submit_Call {
+func (_c *MockDA_Submit_Call) RunAndReturn(run func(ctx context.Context, blobs []datypes.Blob, gasPrice float64, namespace []byte) ([]datypes.ID, error)) *MockDA_Submit_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
 // SubmitWithOptions provides a mock function for the type MockDA
-func (_mock *MockDA) SubmitWithOptions(ctx context.Context, blobs []da.Blob, gasPrice float64, namespace []byte, options []byte) ([]da.ID, error) {
+func (_mock *MockDA) SubmitWithOptions(ctx context.Context, blobs []datypes.Blob, gasPrice float64, namespace []byte, options []byte) ([]datypes.ID, error) {
 	ret := _mock.Called(ctx, blobs, gasPrice, namespace, options)
 
 	if len(ret) == 0 {
 		panic("no return value specified for SubmitWithOptions")
 	}
 
-	var r0 []da.ID
+	var r0 []datypes.ID
 	var r1 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, []da.Blob, float64, []byte, []byte) ([]da.ID, error)); ok {
+	if returnFunc, ok := ret.Get(0).(func(context.Context, []datypes.Blob, float64, []byte, []byte) ([]datypes.ID, error)); ok {
 		return returnFunc(ctx, blobs, gasPrice, namespace, options)
 	}
-	if returnFunc, ok := ret.Get(0).(func(context.Context, []da.Blob, float64, []byte, []byte) []da.ID); ok {
+	if returnFunc, ok := ret.Get(0).(func(context.Context, []datypes.Blob, float64, []byte, []byte) []datypes.ID); ok {
 		r0 = returnFunc(ctx, blobs, gasPrice, namespace, options)
 	} else {
 		if ret.Get(0) != nil {
-			r0 = ret.Get(0).([]da.ID)
+			r0 = ret.Get(0).([]datypes.ID)
 		}
 	}
-	if returnFunc, ok := ret.Get(1).(func(context.Context, []da.Blob, float64, []byte, []byte) error); ok {
+	if returnFunc, ok := ret.Get(1).(func(context.Context, []datypes.Blob, float64, []byte, []byte) error); ok {
 		r1 = returnFunc(ctx, blobs, gasPrice, namespace, options)
 	} else {
 		r1 = ret.Error(1)
@@ -449,7 +449,7 @@ type MockDA_SubmitWithOptions_Call struct {
 
 // SubmitWithOptions is a helper method to define mock.On call
 //   - ctx context.Context
-//   - blobs []da.Blob
+//   - blobs []datypes.Blob
 //   - gasPrice float64
 //   - namespace []byte
 //   - options []byte
@@ -457,15 +457,15 @@ func (_e *MockDA_Expecter) SubmitWithOptions(ctx interface{}, blobs interface{},
 	return &MockDA_SubmitWithOptions_Call{Call: _e.mock.On("SubmitWithOptions", ctx, blobs, gasPrice, namespace, options)}
 }
 
-func (_c *MockDA_SubmitWithOptions_Call) Run(run func(ctx context.Context, blobs []da.Blob, gasPrice float64, namespace []byte, options []byte)) *MockDA_SubmitWithOptions_Call {
+func (_c *MockDA_SubmitWithOptions_Call) Run(run func(ctx context.Context, blobs []datypes.Blob, gasPrice float64, namespace []byte, options []byte)) *MockDA_SubmitWithOptions_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
 			arg0 = args[0].(context.Context)
 		}
-		var arg1 []da.Blob
+		var arg1 []datypes.Blob
 		if args[1] != nil {
-			arg1 = args[1].([]da.Blob)
+			arg1 = args[1].([]datypes.Blob)
 		}
 		var arg2 float64
 		if args[2] != nil {
@@ -490,18 +490,18 @@ func (_c *MockDA_SubmitWithOptions_Call) Run(run func(ctx context.Context, blobs
 	return _c
 }
 
-func (_c *MockDA_SubmitWithOptions_Call) Return(vs []da.ID, err error) *MockDA_SubmitWithOptions_Call {
+func (_c *MockDA_SubmitWithOptions_Call) Return(vs []datypes.ID, err error) *MockDA_SubmitWithOptions_Call {
 	_c.Call.Return(vs, err)
 	return _c
 }
 
-func (_c *MockDA_SubmitWithOptions_Call) RunAndReturn(run func(ctx context.Context, blobs []da.Blob, gasPrice float64, namespace []byte, options []byte) ([]da.ID, error)) *MockDA_SubmitWithOptions_Call {
+func (_c *MockDA_SubmitWithOptions_Call) RunAndReturn(run func(ctx context.Context, blobs []datypes.Blob, gasPrice float64, namespace []byte, options []byte) ([]datypes.ID, error)) *MockDA_SubmitWithOptions_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
 // Validate provides a mock function for the type MockDA
-func (_mock *MockDA) Validate(ctx context.Context, ids []da.ID, proofs []da.Proof, namespace []byte) ([]bool, error) {
+func (_mock *MockDA) Validate(ctx context.Context, ids []datypes.ID, proofs []datypes.Proof, namespace []byte) ([]bool, error) {
 	ret := _mock.Called(ctx, ids, proofs, namespace)
 
 	if len(ret) == 0 {
@@ -510,17 +510,17 @@ func (_mock *MockDA) Validate(ctx context.Context, ids []da.ID, proofs []da.Proo
 
 	var r0 []bool
 	var r1 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, []da.ID, []da.Proof, []byte) ([]bool, error)); ok {
+	if returnFunc, ok := ret.Get(0).(func(context.Context, []datypes.ID, []datypes.Proof, []byte) ([]bool, error)); ok {
 		return returnFunc(ctx, ids, proofs, namespace)
 	}
-	if returnFunc, ok := ret.Get(0).(func(context.Context, []da.ID, []da.Proof, []byte) []bool); ok {
+	if returnFunc, ok := ret.Get(0).(func(context.Context, []datypes.ID, []datypes.Proof, []byte) []bool); ok {
 		r0 = returnFunc(ctx, ids, proofs, namespace)
 	} else {
 		if ret.Get(0) != nil {
 			r0 = ret.Get(0).([]bool)
 		}
 	}
-	if returnFunc, ok := ret.Get(1).(func(context.Context, []da.ID, []da.Proof, []byte) error); ok {
+	if returnFunc, ok := ret.Get(1).(func(context.Context, []datypes.ID, []datypes.Proof, []byte) error); ok {
 		r1 = returnFunc(ctx, ids, proofs, namespace)
 	} else {
 		r1 = ret.Error(1)
@@ -535,26 +535,26 @@ type MockDA_Validate_Call struct {
 
 // Validate is a helper method to define mock.On call
 //   - ctx context.Context
-//   - ids []da.ID
-//   - proofs []da.Proof
+//   - ids []datypes.ID
+//   - proofs []datypes.Proof
 //   - namespace []byte
 func (_e *MockDA_Expecter) Validate(ctx interface{}, ids interface{}, proofs interface{}, namespace interface{}) *MockDA_Validate_Call {
 	return &MockDA_Validate_Call{Call: _e.mock.On("Validate", ctx, ids, proofs, namespace)}
 }
 
-func (_c *MockDA_Validate_Call) Run(run func(ctx context.Context, ids []da.ID, proofs []da.Proof, namespace []byte)) *MockDA_Validate_Call {
+func (_c *MockDA_Validate_Call) Run(run func(ctx context.Context, ids []datypes.ID, proofs []datypes.Proof, namespace []byte)) *MockDA_Validate_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
 			arg0 = args[0].(context.Context)
 		}
-		var arg1 []da.ID
+		var arg1 []datypes.ID
 		if args[1] != nil {
-			arg1 = args[1].([]da.ID)
+			arg1 = args[1].([]datypes.ID)
 		}
-		var arg2 []da.Proof
+		var arg2 []datypes.Proof
 		if args[2] != nil {
-			arg2 = args[2].([]da.Proof)
+			arg2 = args[2].([]datypes.Proof)
 		}
 		var arg3 []byte
 		if args[3] != nil {
@@ -575,7 +575,7 @@ func (_c *MockDA_Validate_Call) Return(bools []bool, err error) *MockDA_Validate
 	return _c
 }
 
-func (_c *MockDA_Validate_Call) RunAndReturn(run func(ctx context.Context, ids []da.ID, proofs []da.Proof, namespace []byte) ([]bool, error)) *MockDA_Validate_Call {
+func (_c *MockDA_Validate_Call) RunAndReturn(run func(ctx context.Context, ids []datypes.ID, proofs []datypes.Proof, namespace []byte) ([]bool, error)) *MockDA_Validate_Call {
 	_c.Call.Return(run)
 	return _c
 }
