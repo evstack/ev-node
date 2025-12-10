@@ -16,12 +16,12 @@ import (
 
 	"github.com/evstack/ev-node/block/internal/cache"
 	"github.com/evstack/ev-node/block/internal/common"
-	"github.com/evstack/ev-node/block/internal/da/testclient"
 	"github.com/evstack/ev-node/pkg/config"
 	datypes "github.com/evstack/ev-node/pkg/da/types"
 	"github.com/evstack/ev-node/pkg/genesis"
 	"github.com/evstack/ev-node/pkg/signer/noop"
 	"github.com/evstack/ev-node/pkg/store"
+	"github.com/evstack/ev-node/test/mocks"
 	"github.com/evstack/ev-node/types"
 )
 
@@ -85,7 +85,7 @@ func TestDASubmitter_SubmitHeadersAndData_MarksInclusionAndUpdatesLastSubmitted(
 	require.NoError(t, batch2.Commit())
 
 	// Mock DA client
-	client := testclient.NewMockClient(t)
+	client := mocks.NewMockClient(t)
 	headerNs := datypes.NamespaceFromString(cfg.DA.Namespace).Bytes()
 	dataNs := datypes.NamespaceFromString(cfg.DA.DataNamespace).Bytes()
 	client.On("GetHeaderNamespace").Return(headerNs).Maybe()

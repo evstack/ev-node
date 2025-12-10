@@ -10,13 +10,13 @@ import (
 	"gotest.tools/v3/assert"
 
 	da "github.com/evstack/ev-node/block/internal/da"
-	"github.com/evstack/ev-node/block/internal/da/testclient"
 	datypes "github.com/evstack/ev-node/pkg/da/types"
 	"github.com/evstack/ev-node/pkg/genesis"
+	"github.com/evstack/ev-node/test/mocks"
 )
 
 func TestNewForcedInclusionRetriever(t *testing.T) {
-	client := testclient.NewMockClient(t)
+	client := mocks.NewMockClient(t)
 	client.On("HasForcedInclusionNamespace").Return(true).Maybe()
 	client.On("GetForcedInclusionNamespace").Return(datypes.NamespaceFromString("test-fi-ns").Bytes()).Maybe()
 
@@ -30,7 +30,7 @@ func TestNewForcedInclusionRetriever(t *testing.T) {
 }
 
 func TestForcedInclusionRetriever_RetrieveForcedIncludedTxs_NoNamespace(t *testing.T) {
-	client := testclient.NewMockClient(t)
+	client := mocks.NewMockClient(t)
 	client.On("HasForcedInclusionNamespace").Return(false).Once()
 
 	gen := genesis.Genesis{
@@ -47,7 +47,7 @@ func TestForcedInclusionRetriever_RetrieveForcedIncludedTxs_NoNamespace(t *testi
 }
 
 func TestForcedInclusionRetriever_RetrieveForcedIncludedTxs_NotAtEpochStart(t *testing.T) {
-	client := testclient.NewMockClient(t)
+	client := mocks.NewMockClient(t)
 	fiNs := datypes.NamespaceFromString("test-fi-ns").Bytes()
 	client.On("HasForcedInclusionNamespace").Return(true).Once()
 	client.On("GetForcedInclusionNamespace").Return(fiNs).Maybe()
@@ -76,7 +76,7 @@ func TestForcedInclusionRetriever_RetrieveForcedIncludedTxs_EpochStartSuccess(t 
 		[]byte("tx3"),
 	}
 
-	client := testclient.NewMockClient(t)
+	client := mocks.NewMockClient(t)
 	fiNs := datypes.NamespaceFromString("test-fi-ns").Bytes()
 	client.On("HasForcedInclusionNamespace").Return(true).Once()
 	client.On("GetForcedInclusionNamespace").Return(fiNs).Maybe()
@@ -104,7 +104,7 @@ func TestForcedInclusionRetriever_RetrieveForcedIncludedTxs_EpochStartSuccess(t 
 }
 
 func TestForcedInclusionRetriever_RetrieveForcedIncludedTxs_EpochStartNotAvailable(t *testing.T) {
-	client := testclient.NewMockClient(t)
+	client := mocks.NewMockClient(t)
 	fiNs := datypes.NamespaceFromString("test-fi-ns").Bytes()
 	client.On("HasForcedInclusionNamespace").Return(true).Once()
 	client.On("GetForcedInclusionNamespace").Return(fiNs).Maybe()
@@ -127,7 +127,7 @@ func TestForcedInclusionRetriever_RetrieveForcedIncludedTxs_EpochStartNotAvailab
 }
 
 func TestForcedInclusionRetriever_RetrieveForcedIncludedTxs_NoBlobsAtHeight(t *testing.T) {
-	client := testclient.NewMockClient(t)
+	client := mocks.NewMockClient(t)
 	fiNs := datypes.NamespaceFromString("test-fi-ns").Bytes()
 	client.On("HasForcedInclusionNamespace").Return(true).Once()
 	client.On("GetForcedInclusionNamespace").Return(fiNs).Maybe()
@@ -156,7 +156,7 @@ func TestForcedInclusionRetriever_RetrieveForcedIncludedTxs_MultiHeightEpoch(t *
 		102: {[]byte("tx4"), []byte("tx5"), []byte("tx6")},
 	}
 
-	client := testclient.NewMockClient(t)
+	client := mocks.NewMockClient(t)
 	fiNs := datypes.NamespaceFromString("test-fi-ns").Bytes()
 	client.On("HasForcedInclusionNamespace").Return(true).Once()
 	client.On("GetForcedInclusionNamespace").Return(fiNs).Maybe()

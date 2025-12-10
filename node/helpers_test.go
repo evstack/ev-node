@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -43,50 +44,90 @@ const (
 )
 
 // createTestComponents creates test components for node initialization
-type noopDAClient struct{}
-
-func (noopDAClient) Submit(ctx context.Context, data [][]byte, gasPrice float64, namespace []byte, options []byte) datypes.ResultSubmit {
-	return datypes.ResultSubmit{BaseResult: datypes.BaseResult{Code: datypes.StatusSuccess}}
+type dummyDAClient struct {
+	height     uint64
+	maxBlobSz  uint64
+	mu         sync.Mutex
+	failSubmit atomic.Bool
+	tickerStop chan struct{}
 }
 
-func (noopDAClient) Retrieve(ctx context.Context, height uint64, namespace []byte) datypes.ResultRetrieve {
+func newDummyDAClient(maxBlobSize uint64) *dummyDAClient {
+	if maxBlobSize == 0 {
+		maxBlobSize = 2 * 1024 * 1024
+	}
+	return &dummyDAClient{maxBlobSz: maxBlobSize, tickerStop: make(chan struct{})}
+}
+
+func (d *dummyDAClient) Submit(ctx context.Context, data [][]byte, gasPrice float64, namespace []byte, options []byte) datypes.ResultSubmit {
+	if d.failSubmit.Load() {
+		return datypes.ResultSubmit{BaseResult: datypes.BaseResult{Code: datypes.StatusError, Message: "simulated DA failure"}}
+	}
+	var blobSz uint64
+	for _, b := range data {
+		if uint64(len(b)) > d.maxBlobSz {
+			return datypes.ResultSubmit{BaseResult: datypes.BaseResult{Code: datypes.StatusTooBig, Message: datypes.ErrBlobSizeOverLimit.Error()}}
+		}
+		blobSz += uint64(len(b))
+	}
+	d.mu.Lock()
+	d.height++
+	height := d.height
+	d.mu.Unlock()
+	return datypes.ResultSubmit{BaseResult: datypes.BaseResult{Code: datypes.StatusSuccess, Height: height, BlobSize: blobSz, SubmittedCount: uint64(len(data)), Timestamp: time.Now()}}
+}
+
+func (d *dummyDAClient) Retrieve(ctx context.Context, height uint64, namespace []byte) datypes.ResultRetrieve {
 	return datypes.ResultRetrieve{BaseResult: datypes.BaseResult{Code: datypes.StatusNotFound, Height: height}}
 }
-
-func (noopDAClient) RetrieveHeaders(ctx context.Context, height uint64) datypes.ResultRetrieve {
-	return datypes.ResultRetrieve{BaseResult: datypes.BaseResult{Code: datypes.StatusNotFound, Height: height}}
+func (d *dummyDAClient) RetrieveHeaders(ctx context.Context, height uint64) datypes.ResultRetrieve {
+	return d.Retrieve(ctx, height, nil)
+}
+func (d *dummyDAClient) RetrieveData(ctx context.Context, height uint64) datypes.ResultRetrieve {
+	return d.Retrieve(ctx, height, nil)
+}
+func (d *dummyDAClient) RetrieveForcedInclusion(ctx context.Context, height uint64) datypes.ResultRetrieve {
+	return d.Retrieve(ctx, height, nil)
 }
 
-func (noopDAClient) RetrieveData(ctx context.Context, height uint64) datypes.ResultRetrieve {
-	return datypes.ResultRetrieve{BaseResult: datypes.BaseResult{Code: datypes.StatusNotFound, Height: height}}
+func (d *dummyDAClient) GetHeaderNamespace() []byte          { return []byte("hdr") }
+func (d *dummyDAClient) GetDataNamespace() []byte            { return []byte("data") }
+func (d *dummyDAClient) GetForcedInclusionNamespace() []byte { return nil }
+func (d *dummyDAClient) HasForcedInclusionNamespace() bool   { return false }
+func (d *dummyDAClient) Get(ctx context.Context, ids []datypes.ID, namespace []byte) ([]datypes.Blob, error) {
+	return nil, nil
 }
-
-func (noopDAClient) RetrieveForcedInclusion(ctx context.Context, height uint64) datypes.ResultRetrieve {
-	return datypes.ResultRetrieve{BaseResult: datypes.BaseResult{Code: datypes.StatusNotFound, Height: height}}
+func (d *dummyDAClient) GetProofs(ctx context.Context, ids []datypes.ID, namespace []byte) ([]datypes.Proof, error) {
+	return nil, nil
 }
-
-func (noopDAClient) GetHeaderNamespace() []byte { return []byte("hdr") }
-func (noopDAClient) GetDataNamespace() []byte   { return []byte("data") }
-func (noopDAClient) GetForcedInclusionNamespace() []byte {
-	return nil
-}
-func (noopDAClient) HasForcedInclusionNamespace() bool { return false }
-func (noopDAClient) Get(ctx context.Context, ids []datypes.ID, namespace []byte) ([]datypes.Blob, error) {
+func (d *dummyDAClient) Validate(ctx context.Context, ids []datypes.ID, proofs []datypes.Proof, namespace []byte) ([]bool, error) {
 	return nil, nil
 }
 
-func (noopDAClient) GetProofs(ctx context.Context, ids []datypes.ID, namespace []byte) ([]datypes.Proof, error) {
-	return nil, nil
-}
+func (d *dummyDAClient) SetSubmitFailure(shouldFail bool) { d.failSubmit.Store(shouldFail) }
 
-func (noopDAClient) Validate(ctx context.Context, ids []datypes.ID, proofs []datypes.Proof, namespace []byte) ([]bool, error) {
-	return nil, nil
+func (d *dummyDAClient) StartHeightTicker(interval time.Duration) func() {
+	go func() {
+		ticker := time.NewTicker(interval)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ticker.C:
+				d.mu.Lock()
+				d.height++
+				d.mu.Unlock()
+			case <-d.tickerStop:
+				return
+			}
+		}
+	}()
+	return func() { close(d.tickerStop) }
 }
 
 func createTestComponents(t *testing.T, config evconfig.Config) (coreexecutor.Executor, coresequencer.Sequencer, block.DAClient, *p2p.Client, datastore.Batching, *key.NodeKey, func()) {
 	executor := coreexecutor.NewDummyExecutor()
 	sequencer := coresequencer.NewDummySequencer()
-	daClient := noopDAClient{}
+	daClient := newDummyDAClient(0)
 
 	// Create genesis and keys for P2P client
 	_, genesisValidatorKey, _ := types.GetGenesisWithPrivkey("test-chain")
@@ -100,7 +141,8 @@ func createTestComponents(t *testing.T, config evconfig.Config) (coreexecutor.Ex
 	require.NotNil(t, p2pClient)
 	ds := dssync.MutexWrap(datastore.NewMapDatastore())
 
-	return executor, sequencer, daClient, p2pClient, ds, p2pKey, nil
+	stop := daClient.StartHeightTicker(config.DA.BlockTime.Duration)
+	return executor, sequencer, daClient, p2pClient, ds, p2pKey, stop
 }
 
 func getTestConfig(t *testing.T, n int) evconfig.Config {

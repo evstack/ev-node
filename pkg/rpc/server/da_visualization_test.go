@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"encoding/hex"
 	"encoding/json"
 	"net/http"
@@ -16,8 +17,14 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+type stubDAVizClient struct{}
+
+func (s *stubDAVizClient) Get(_ context.Context, _ []coreda.ID, _ []byte) ([]coreda.Blob, error) {
+	return nil, nil
+}
+
 func TestNewDAVisualizationServer(t *testing.T) {
-	da := coreda.NewDummyDA(1, time.Second)
+	da := &stubDAVizClient{}
 	logger := zerolog.New(nil)
 
 	server := NewDAVisualizationServer(da, logger, true)
@@ -28,7 +35,7 @@ func TestNewDAVisualizationServer(t *testing.T) {
 }
 
 func TestRecordSubmission(t *testing.T) {
-	da := coreda.NewDummyDA(1, time.Second)
+	da := &stubDAVizClient{}
 	logger := zerolog.New(nil)
 	server := NewDAVisualizationServer(da, logger, true)
 
@@ -61,7 +68,7 @@ func TestRecordSubmission(t *testing.T) {
 }
 
 func TestRecordSubmissionMemoryLimit(t *testing.T) {
-	da := coreda.NewDummyDA(1, time.Second)
+	da := &stubDAVizClient{}
 	logger := zerolog.New(nil)
 	server := NewDAVisualizationServer(da, logger, true)
 
@@ -87,7 +94,7 @@ func TestRecordSubmissionMemoryLimit(t *testing.T) {
 }
 
 func TestGetStatusCodeString(t *testing.T) {
-	da := coreda.NewDummyDA(1, time.Second)
+	da := &stubDAVizClient{}
 	logger := zerolog.New(nil)
 	server := NewDAVisualizationServer(da, logger, true)
 
@@ -110,7 +117,7 @@ func TestGetStatusCodeString(t *testing.T) {
 }
 
 func TestHandleDASubmissions(t *testing.T) {
-	da := coreda.NewDummyDA(1, time.Second)
+	da := &stubDAVizClient{}
 	logger := zerolog.New(nil)
 	server := NewDAVisualizationServer(da, logger, true)
 
@@ -151,7 +158,7 @@ func TestHandleDASubmissions(t *testing.T) {
 }
 
 func TestHandleDABlobDetailsMissingID(t *testing.T) {
-	da := coreda.NewDummyDA(1, time.Second)
+	da := &stubDAVizClient{}
 	logger := zerolog.New(nil)
 	server := NewDAVisualizationServer(da, logger, true)
 
@@ -166,7 +173,7 @@ func TestHandleDABlobDetailsMissingID(t *testing.T) {
 }
 
 func TestHandleDABlobDetailsInvalidID(t *testing.T) {
-	da := coreda.NewDummyDA(1, time.Second)
+	da := &stubDAVizClient{}
 	logger := zerolog.New(nil)
 	server := NewDAVisualizationServer(da, logger, true)
 
@@ -181,7 +188,7 @@ func TestHandleDABlobDetailsInvalidID(t *testing.T) {
 }
 
 func TestHandleDAVisualizationHTML(t *testing.T) {
-	da := coreda.NewDummyDA(1, time.Second)
+	da := &stubDAVizClient{}
 	logger := zerolog.New(nil)
 	server := NewDAVisualizationServer(da, logger, true)
 
@@ -215,7 +222,7 @@ func TestHandleDAVisualizationHTML(t *testing.T) {
 }
 
 func TestGlobalDAVisualizationServer(t *testing.T) {
-	da := coreda.NewDummyDA(1, time.Second)
+	da := &stubDAVizClient{}
 	logger := zerolog.New(nil)
 	server := NewDAVisualizationServer(da, logger, true)
 
@@ -232,7 +239,7 @@ func TestGlobalDAVisualizationServer(t *testing.T) {
 }
 
 func TestRegisterCustomHTTPEndpointsDAVisualization(t *testing.T) {
-	da := coreda.NewDummyDA(1, time.Second)
+	da := &stubDAVizClient{}
 	logger := zerolog.New(nil)
 	server := NewDAVisualizationServer(da, logger, true)
 

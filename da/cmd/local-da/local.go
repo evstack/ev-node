@@ -42,7 +42,7 @@ type kvp struct {
 	key, value []byte
 }
 
-// NewLocalDA create new instance of DummyDA
+// NewLocalDA creates a new in-memory LocalDA instance (testing only).
 func NewLocalDA(logger zerolog.Logger, opts ...func(*LocalDA) *LocalDA) *LocalDA {
 	da := &LocalDA{
 		mu:          new(sync.Mutex),
@@ -59,8 +59,6 @@ func NewLocalDA(logger zerolog.Logger, opts ...func(*LocalDA) *LocalDA) *LocalDA
 	da.logger.Info().Msg("NewLocalDA: initialized LocalDA")
 	return da
 }
-
-var _ datypes.DA = &LocalDA{}
 
 // validateNamespace checks that namespace is exactly 29 bytes
 func validateNamespace(ns []byte) error {

@@ -15,16 +15,16 @@ import (
 
 	"github.com/evstack/ev-node/block/internal/cache"
 	"github.com/evstack/ev-node/block/internal/common"
-	"github.com/evstack/ev-node/block/internal/da/testclient"
 	"github.com/evstack/ev-node/pkg/config"
 	datypes "github.com/evstack/ev-node/pkg/da/types"
 	"github.com/evstack/ev-node/pkg/genesis"
 	signerpkg "github.com/evstack/ev-node/pkg/signer"
+	"github.com/evstack/ev-node/test/mocks"
 	"github.com/evstack/ev-node/types"
 )
 
 // newTestDARetriever creates a DA retriever for testing with the given DA implementation
-func newTestDARetriever(t *testing.T, mockClient *testclient.MockClient, cfg config.Config, gen genesis.Genesis) *daRetriever {
+func newTestDARetriever(t *testing.T, mockClient *mocks.MockClient, cfg config.Config, gen genesis.Genesis) *daRetriever {
 	t.Helper()
 	if cfg.DA.Namespace == "" {
 		cfg.DA.Namespace = "test-ns"
@@ -37,7 +37,7 @@ func newTestDARetriever(t *testing.T, mockClient *testclient.MockClient, cfg con
 	require.NoError(t, err)
 
 	if mockClient == nil {
-		mockClient = testclient.NewMockClient(t)
+		mockClient = mocks.NewMockClient(t)
 	}
 	// default namespace helpers
 	mockClient.On("GetHeaderNamespace").Return([]byte(cfg.DA.Namespace)).Maybe()
@@ -73,7 +73,7 @@ func makeSignedDataBytesWithTime(t *testing.T, chainID string, height uint64, pr
 }
 
 func TestDARetriever_RetrieveFromDA_Invalid(t *testing.T) {
-	client := testclient.NewMockClient(t)
+	client := mocks.NewMockClient(t)
 	client.On("GetHeaderNamespace").Return([]byte("test-ns")).Maybe()
 	client.On("GetDataNamespace").Return([]byte("test-data-ns")).Maybe()
 	client.On("GetForcedInclusionNamespace").Return([]byte(nil)).Maybe()
@@ -88,7 +88,7 @@ func TestDARetriever_RetrieveFromDA_Invalid(t *testing.T) {
 }
 
 func TestDARetriever_RetrieveFromDA_NotFound(t *testing.T) {
-	client := testclient.NewMockClient(t)
+	client := mocks.NewMockClient(t)
 	client.On("GetHeaderNamespace").Return([]byte("test-ns")).Maybe()
 	client.On("GetDataNamespace").Return([]byte("test-data-ns")).Maybe()
 	client.On("GetForcedInclusionNamespace").Return([]byte(nil)).Maybe()
@@ -103,7 +103,7 @@ func TestDARetriever_RetrieveFromDA_NotFound(t *testing.T) {
 }
 
 func TestDARetriever_RetrieveFromDA_HeightFromFuture(t *testing.T) {
-	client := testclient.NewMockClient(t)
+	client := mocks.NewMockClient(t)
 	client.On("GetHeaderNamespace").Return([]byte("test-ns")).Maybe()
 	client.On("GetDataNamespace").Return([]byte("test-data-ns")).Maybe()
 	client.On("GetForcedInclusionNamespace").Return([]byte(nil)).Maybe()
@@ -119,7 +119,7 @@ func TestDARetriever_RetrieveFromDA_HeightFromFuture(t *testing.T) {
 }
 
 func TestDARetriever_RetrieveFromDA_TimeoutFast(t *testing.T) {
-	client := testclient.NewMockClient(t)
+	client := mocks.NewMockClient(t)
 	client.On("GetHeaderNamespace").Return([]byte("test-ns")).Maybe()
 	client.On("GetDataNamespace").Return([]byte("test-data-ns")).Maybe()
 	client.On("GetForcedInclusionNamespace").Return([]byte(nil)).Maybe()
@@ -247,7 +247,7 @@ func TestDARetriever_RetrieveFromDA_TwoNamespaces_Success(t *testing.T) {
 	cfg.DA.Namespace = "nsHdr"
 	cfg.DA.DataNamespace = "nsData"
 
-	client := testclient.NewMockClient(t)
+	client := mocks.NewMockClient(t)
 	client.On("GetHeaderNamespace").Return([]byte("nsHdr")).Maybe()
 	client.On("GetDataNamespace").Return([]byte("nsData")).Maybe()
 	client.On("GetForcedInclusionNamespace").Return([]byte(nil)).Maybe()

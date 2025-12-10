@@ -10,14 +10,14 @@ import (
 	"github.com/stretchr/testify/mock"
 
 	"github.com/evstack/ev-node/block/internal/common"
-	"github.com/evstack/ev-node/block/internal/da/testclient"
 	"github.com/evstack/ev-node/pkg/config"
 	datypes "github.com/evstack/ev-node/pkg/da/types"
 	"github.com/evstack/ev-node/pkg/genesis"
+	"github.com/evstack/ev-node/test/mocks"
 )
 
 // helper to build a basic submitter with provided DA mock client and config overrides
-func newTestSubmitter(t *testing.T, mockClient *testclient.MockClient, override func(*config.Config)) *DASubmitter {
+func newTestSubmitter(t *testing.T, mockClient *mocks.MockClient, override func(*config.Config)) *DASubmitter {
 	cfg := config.Config{}
 	// Keep retries small and backoffs minimal
 	cfg.DA.BlockTime.Duration = 1 * time.Millisecond
@@ -29,7 +29,7 @@ func newTestSubmitter(t *testing.T, mockClient *testclient.MockClient, override 
 		override(&cfg)
 	}
 	if mockClient == nil {
-		mockClient = testclient.NewMockClient(t)
+		mockClient = mocks.NewMockClient(t)
 	}
 	mockClient.On("GetHeaderNamespace").Return([]byte(cfg.DA.Namespace)).Maybe()
 	mockClient.On("GetDataNamespace").Return([]byte(cfg.DA.DataNamespace)).Maybe()
@@ -44,7 +44,7 @@ func marshalString(s string) ([]byte, error) { return []byte(s), nil }
 func TestSubmitToDA_MempoolRetry_IncreasesGasAndSucceeds(t *testing.T) {
 	t.Parallel()
 
-	client := testclient.NewMockClient(t)
+	client := mocks.NewMockClient(t)
 
 	nsBz := datypes.NamespaceFromString("ns").Bytes()
 	opts := []byte("opts")
@@ -89,7 +89,7 @@ func TestSubmitToDA_MempoolRetry_IncreasesGasAndSucceeds(t *testing.T) {
 func TestSubmitToDA_UnknownError_RetriesSameGasThenSucceeds(t *testing.T) {
 	t.Parallel()
 
-	client := testclient.NewMockClient(t)
+	client := mocks.NewMockClient(t)
 
 	nsBz := datypes.NamespaceFromString("ns").Bytes()
 
@@ -131,7 +131,7 @@ func TestSubmitToDA_UnknownError_RetriesSameGasThenSucceeds(t *testing.T) {
 func TestSubmitToDA_TooBig_HalvesBatch(t *testing.T) {
 	t.Parallel()
 
-	client := testclient.NewMockClient(t)
+	client := mocks.NewMockClient(t)
 
 	nsBz := datypes.NamespaceFromString("ns").Bytes()
 
@@ -177,7 +177,7 @@ func TestSubmitToDA_TooBig_HalvesBatch(t *testing.T) {
 func TestSubmitToDA_SentinelNoGas_PreservesGasAcrossRetries(t *testing.T) {
 	t.Parallel()
 
-	client := testclient.NewMockClient(t)
+	client := mocks.NewMockClient(t)
 
 	nsBz := datypes.NamespaceFromString("ns").Bytes()
 
@@ -217,7 +217,7 @@ func TestSubmitToDA_SentinelNoGas_PreservesGasAcrossRetries(t *testing.T) {
 func TestSubmitToDA_PartialSuccess_AdvancesWindow(t *testing.T) {
 	t.Parallel()
 
-	client := testclient.NewMockClient(t)
+	client := mocks.NewMockClient(t)
 
 	nsBz := datypes.NamespaceFromString("ns").Bytes()
 

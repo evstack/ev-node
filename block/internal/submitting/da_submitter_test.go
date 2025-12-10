@@ -16,7 +16,6 @@ import (
 
 	"github.com/evstack/ev-node/block/internal/cache"
 	"github.com/evstack/ev-node/block/internal/common"
-	"github.com/evstack/ev-node/block/internal/da/testclient"
 	"github.com/evstack/ev-node/pkg/config"
 	datypes "github.com/evstack/ev-node/pkg/da/types"
 	"github.com/evstack/ev-node/pkg/genesis"
@@ -24,6 +23,7 @@ import (
 	"github.com/evstack/ev-node/pkg/signer"
 	"github.com/evstack/ev-node/pkg/signer/noop"
 	"github.com/evstack/ev-node/pkg/store"
+	"github.com/evstack/ev-node/test/mocks"
 	"github.com/evstack/ev-node/types"
 )
 
@@ -32,7 +32,7 @@ const (
 	testDataNamespace   = "test-data"
 )
 
-func setupDASubmitterTest(t *testing.T) (*DASubmitter, store.Store, cache.Manager, *testclient.MockClient, genesis.Genesis) {
+func setupDASubmitterTest(t *testing.T) (*DASubmitter, store.Store, cache.Manager, *mocks.MockClient, genesis.Genesis) {
 	t.Helper()
 
 	// Create store and cache
@@ -47,7 +47,7 @@ func setupDASubmitterTest(t *testing.T) (*DASubmitter, store.Store, cache.Manage
 	cfg.DA.DataNamespace = testDataNamespace
 
 	// Mock DA client
-	mockDA := testclient.NewMockClient(t)
+	mockDA := mocks.NewMockClient(t)
 	headerNamespace := datypes.NamespaceFromString(cfg.DA.Namespace).Bytes()
 	dataNamespace := datypes.NamespaceFromString(cfg.DA.DataNamespace).Bytes()
 	mockDA.On("GetHeaderNamespace").Return(headerNamespace).Maybe()
@@ -106,7 +106,7 @@ func TestNewDASubmitterSetsVisualizerWhenEnabled(t *testing.T) {
 	cfg.RPC.EnableDAVisualization = true
 	cfg.Node.Aggregator = true
 
-	daClient := testclient.NewMockClient(t)
+	daClient := mocks.NewMockClient(t)
 	daClient.On("GetHeaderNamespace").Return(datypes.NamespaceFromString(cfg.DA.Namespace).Bytes()).Maybe()
 	daClient.On("GetDataNamespace").Return(datypes.NamespaceFromString(cfg.DA.DataNamespace).Bytes()).Maybe()
 	daClient.On("GetForcedInclusionNamespace").Return([]byte(nil)).Maybe()

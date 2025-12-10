@@ -15,7 +15,6 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 
-	datestclient "github.com/evstack/ev-node/block/internal/da/testclient"
 	coresequencer "github.com/evstack/ev-node/core/sequencer"
 	"github.com/evstack/ev-node/pkg/config"
 	datypes "github.com/evstack/ev-node/pkg/da/types"
@@ -93,7 +92,7 @@ func TestNewSyncComponents_Creation(t *testing.T) {
 	}
 
 	mockExec := testmocks.NewMockExecutor(t)
-	daClient := datestclient.NewMockClient(t)
+	daClient := testmocks.NewMockClient(t)
 	daClient.On("GetHeaderNamespace").Return(datypes.NamespaceFromString("ns").Bytes()).Maybe()
 	daClient.On("GetDataNamespace").Return(datypes.NamespaceFromString("data-ns").Bytes()).Maybe()
 	daClient.On("GetForcedInclusionNamespace").Return([]byte(nil)).Maybe()
@@ -148,7 +147,7 @@ func TestNewAggregatorComponents_Creation(t *testing.T) {
 
 	mockExec := testmocks.NewMockExecutor(t)
 	mockSeq := testmocks.NewMockSequencer(t)
-	daClient := datestclient.NewMockClient(t)
+	daClient := testmocks.NewMockClient(t)
 	daClient.On("GetHeaderNamespace").Return(datypes.NamespaceFromString("ns").Bytes()).Maybe()
 	daClient.On("GetDataNamespace").Return(datypes.NamespaceFromString("data-ns").Bytes()).Maybe()
 	daClient.On("GetForcedInclusionNamespace").Return([]byte(nil)).Maybe()
@@ -206,7 +205,7 @@ func TestExecutor_RealExecutionClientFailure_StopsNode(t *testing.T) {
 	// Create mock executor that will fail on ExecuteTxs
 	mockExec := testmocks.NewMockExecutor(t)
 	mockSeq := testmocks.NewMockSequencer(t)
-	daClient := datestclient.NewMockClient(t)
+	daClient := testmocks.NewMockClient(t)
 	daClient.On("GetHeaderNamespace").Return(datypes.NamespaceFromString("ns").Bytes()).Maybe()
 	daClient.On("GetDataNamespace").Return(datypes.NamespaceFromString("data-ns").Bytes()).Maybe()
 	daClient.On("GetForcedInclusionNamespace").Return([]byte(nil)).Maybe()

@@ -17,6 +17,7 @@ import (
 	coresequencer "github.com/evstack/ev-node/core/sequencer"
 	datypes "github.com/evstack/ev-node/pkg/da/types"
 	"github.com/evstack/ev-node/pkg/genesis"
+	testmocks "github.com/evstack/ev-node/test/mocks"
 )
 
 // MockForcedInclusionRetriever is a mock implementation of DARetriever for testing
@@ -32,78 +33,20 @@ func (m *MockForcedInclusionRetriever) RetrieveForcedIncludedTxs(ctx context.Con
 	return args.Get(0).(*block.ForcedInclusionEvent), args.Error(1)
 }
 
-// testDAClient is a lightweight adapter implementing block.DAClient for tests.
-type testDAClient struct {
-	da       datypes.DA
-	headerNS []byte
-	dataNS   []byte
-	forcedNS []byte
-}
-
-func newTestDAClient(da datypes.DA) *testDAClient {
-	return &testDAClient{
-		da:       da,
-		headerNS: []byte("h"),
-		dataNS:   []byte("d"),
-		forcedNS: []byte("f"),
-	}
-}
-
-func (t *testDAClient) Submit(ctx context.Context, data [][]byte, gasPrice float64, namespace []byte, options []byte) datypes.ResultSubmit {
-	return datypes.ResultSubmit{}
-}
-
-func (t *testDAClient) Retrieve(ctx context.Context, height uint64, namespace []byte) datypes.ResultRetrieve {
-	return datypes.ResultRetrieve{}
-}
-
-func (t *testDAClient) RetrieveHeaders(ctx context.Context, height uint64) datypes.ResultRetrieve {
-	return t.Retrieve(ctx, height, t.headerNS)
-}
-
-func (t *testDAClient) RetrieveData(ctx context.Context, height uint64) datypes.ResultRetrieve {
-	return t.Retrieve(ctx, height, t.dataNS)
-}
-
-func (t *testDAClient) RetrieveForcedInclusion(ctx context.Context, height uint64) datypes.ResultRetrieve {
-	return t.Retrieve(ctx, height, t.forcedNS)
-}
-
-func (t *testDAClient) Get(ctx context.Context, ids []datypes.ID, namespace []byte) ([]datypes.Blob, error) {
-	if t.da == nil {
-		return nil, nil
-	}
-	return t.da.Get(ctx, ids, namespace)
-}
-
-func (t *testDAClient) GetProofs(ctx context.Context, ids []datypes.ID, namespace []byte) ([]datypes.Proof, error) {
-	if t.da == nil {
-		return []datypes.Proof{}, nil
-	}
-	return t.da.GetProofs(ctx, ids, namespace)
-}
-
-func (t *testDAClient) Validate(ctx context.Context, ids []datypes.ID, proofs []datypes.Proof, namespace []byte) ([]bool, error) {
-	if t.da == nil {
-		return []bool{}, nil
-	}
-	return t.da.Validate(ctx, ids, proofs, namespace)
-}
-
-func (t *testDAClient) GetHeaderNamespace() []byte {
-	return t.headerNS
-}
-
-func (t *testDAClient) GetDataNamespace() []byte {
-	return t.dataNS
-}
-
-func (t *testDAClient) GetForcedInclusionNamespace() []byte {
-	return t.forcedNS
-}
-
-func (t *testDAClient) HasForcedInclusionNamespace() bool {
-	return len(t.forcedNS) > 0
+// newStubDAClient returns a DA mock preloaded with permissive defaults used by most tests.
+func newStubDAClient(t *testing.T) *testmocks.MockInterface {
+	da := testmocks.NewMockClient(t)
+	da.On("Submit", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		Return(datypes.ResultSubmit{BaseResult: datypes.BaseResult{Code: datypes.StatusSuccess}}).
+		Maybe()
+	da.On("Get", mock.Anything, mock.Anything, mock.Anything).Return([]datypes.Blob{}, nil).Maybe()
+	da.On("GetProofs", mock.Anything, mock.Anything, mock.Anything).Return([]datypes.Proof{}, nil).Maybe()
+	da.On("Validate", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return([]bool{}, nil).Maybe()
+	da.On("GetHeaderNamespace").Return([]byte("h")).Maybe()
+	da.On("GetDataNamespace").Return([]byte("d")).Maybe()
+	da.On("GetForcedInclusionNamespace").Return([]byte("f")).Maybe()
+	da.On("HasForcedInclusionNamespace").Return(true).Maybe()
+	return da
 }
 
 // mockDAAdapter implements block.DAClient using testify mock.
@@ -173,8 +116,7 @@ func (m *mockDAAdapter) GetForcedInclusionNamespace() []byte {
 func (m *mockDAAdapter) HasForcedInclusionNamespace() bool { return true }
 
 func TestSequencer_SubmitBatchTxs(t *testing.T) {
-	dummyDA := datypes.NewDummyDA(100_000_000, 10*time.Second)
-	daClient := newTestDAClient(dummyDA)
+	daClient := newStubDAClient(t)
 	db := ds.NewMapDatastore()
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
@@ -228,8 +170,7 @@ func TestSequencer_SubmitBatchTxs(t *testing.T) {
 }
 
 func TestSequencer_SubmitBatchTxs_EmptyBatch(t *testing.T) {
-	dummyDA := datypes.NewDummyDA(100_000_000, 10*time.Second)
-	daClient := newTestDAClient(dummyDA)
+	daClient := newStubDAClient(t)
 	db := ds.NewMapDatastore()
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
@@ -956,11 +897,7 @@ func TestSequencer_DAFailureAndQueueThrottling_Integration(t *testing.T) {
 	db := ds.NewMapDatastore()
 	defer db.Close()
 
-	// Create a dummy DA that we can make fail
-	dummyDA := datypes.NewDummyDA(100_000, 100*time.Millisecond)
-	dummyDA.StartHeightTicker()
-	defer dummyDA.StopHeightTicker()
-	daClient := newTestDAClient(dummyDA)
+	daClient := newStubDAClient(t)
 
 	// Create sequencer with small queue size to trigger throttling quickly
 	queueSize := 3 // Small for testing
@@ -1015,9 +952,8 @@ func TestSequencer_DAFailureAndQueueThrottling_Integration(t *testing.T) {
 
 	t.Log("✅ Successfully demonstrated ErrQueueFull when queue reaches limit")
 
-	// Phase 3: Simulate DA layer going down (this would be used in block manager)
-	t.Log("Phase 3: Simulating DA layer failure")
-	dummyDA.SetSubmitFailure(true)
+	// Phase 3: Simulate DA layer going down (skipped here; DA interactions happen in block manager tests)
+	t.Log("Phase 3: Simulating DA layer failure (not exercised in this unit test)")
 
 	// Phase 4: Process one batch to free up space, simulating block manager getting batches
 	t.Log("Phase 4: Process one batch to free up space")

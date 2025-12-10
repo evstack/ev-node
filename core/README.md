@@ -51,23 +51,7 @@ type Sequencer interface {
 
 ### Data Availability (DA)
 
-The `DA` interface now lives in `pkg/da/types` and defines how blobs are submitted to and retrieved from the DA layer.
-
-```go
-// pkg/da/types/adapter.go
-
-type DA interface {
-	Get(ctx context.Context, ids []ID, namespace []byte) ([]Blob, error)
-	GetIDs(ctx context.Context, height uint64, namespace []byte) (*GetIDsResult, error)
-	GetProofs(ctx context.Context, ids []ID, namespace []byte) ([]Proof, error)
-	Commit(ctx context.Context, blobs []Blob, namespace []byte) ([]Commitment, error)
-	Submit(ctx context.Context, blobs []Blob, gasPrice float64, namespace []byte) ([]ID, error)
-	SubmitWithOptions(ctx context.Context, blobs []Blob, gasPrice float64, namespace []byte, options []byte) ([]ID, error)
-	Validate(ctx context.Context, ids []ID, proofs []Proof, namespace []byte) ([]bool, error)
-}
-```
-
-The higher-level DA client and blob submission helpers live under `block/internal/da`.
+Consume the DA client via the public alias in `block/public.go` (type `block.DAClient`, implemented by `block/internal/da.Interface`). It defines submission/retrieval plus namespace helpers used across node components. A convenience constructor `block.NewDAClient` wraps the Celestia blob JSON-RPC API.
 
 ## Contributing
 

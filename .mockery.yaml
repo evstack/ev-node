@@ -58,8 +58,8 @@ packages:
           filename: broadcaster_mock.go
   github.com/evstack/ev-node/block/internal/da:
     interfaces:
-      Client:
+      Interface:
         config:
-          dir: ./block/internal/da/testclient
-          pkgname: testclient
+          dir: ./test/mocks
+          pkgname: mocks
           filename: mock_da_client.go

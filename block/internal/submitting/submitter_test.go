@@ -18,7 +18,6 @@ import (
 
 	"github.com/evstack/ev-node/block/internal/cache"
 	"github.com/evstack/ev-node/block/internal/common"
-	datestclient "github.com/evstack/ev-node/block/internal/da/testclient"
 	"github.com/evstack/ev-node/pkg/config"
 	"github.com/evstack/ev-node/pkg/genesis"
 	"github.com/evstack/ev-node/pkg/rpc/server"
@@ -162,7 +161,7 @@ func TestSubmitter_setSequencerHeightToDAHeight(t *testing.T) {
 	cfg.DA.Namespace = "test-ns"
 	cfg.DA.DataNamespace = "test-data-ns"
 	metrics := common.NopMetrics()
-	daClient := datestclient.NewMockClient(t)
+	daClient := testmocks.NewMockClient(t)
 	// Namespace getters may be called implicitly; allow optional returns
 	daClient.On("GetHeaderNamespace").Return([]byte(cfg.DA.Namespace)).Maybe()
 	daClient.On("GetDataNamespace").Return([]byte(cfg.DA.DataNamespace)).Maybe()
@@ -247,7 +246,7 @@ func TestSubmitter_processDAInclusionLoop_advances(t *testing.T) {
 	exec.On("SetFinal", mock.Anything, uint64(1)).Return(nil).Once()
 	exec.On("SetFinal", mock.Anything, uint64(2)).Return(nil).Once()
 
-	daClient := datestclient.NewMockClient(t)
+	daClient := testmocks.NewMockClient(t)
 	daClient.On("GetHeaderNamespace").Return([]byte(cfg.DA.Namespace)).Maybe()
 	daClient.On("GetDataNamespace").Return([]byte(cfg.DA.DataNamespace)).Maybe()
 	daClient.On("GetForcedInclusionNamespace").Return([]byte(nil)).Maybe()
@@ -437,7 +436,7 @@ func TestSubmitter_CacheClearedOnHeightInclusion(t *testing.T) {
 	exec.On("SetFinal", mock.Anything, uint64(1)).Return(nil).Once()
 	exec.On("SetFinal", mock.Anything, uint64(2)).Return(nil).Once()
 
-	daClient := datestclient.NewMockClient(t)
+	daClient := testmocks.NewMockClient(t)
 	daClient.On("GetHeaderNamespace").Return([]byte(cfg.DA.Namespace)).Maybe()
 	daClient.On("GetDataNamespace").Return([]byte(cfg.DA.DataNamespace)).Maybe()
 	daClient.On("GetForcedInclusionNamespace").Return([]byte(nil)).Maybe()

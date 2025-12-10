@@ -110,5 +110,5 @@ output:
 
 [2] [xh][xh]
 
-[da]: https://github.com/evstack/ev-node/blob/main/pkg/da/types/adapter.go#L17
+[da]: https://github.com/evstack/ev-node/blob/main/block/public.go
 [xh]: https://github.com/ducaale/xh

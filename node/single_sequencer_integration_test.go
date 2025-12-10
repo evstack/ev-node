@@ -320,9 +320,9 @@ func TestBatchQueueThrottlingWithDAFailure(t *testing.T) {
 	dummyExecutor, ok := executor.(*coreexecutor.DummyExecutor)
 	require.True(ok, "Expected DummyExecutor implementation")
 
-	// Cast dummyDA to our enhanced version so we can make it fail
-	dummyDAImpl, ok := dummyDA.(*datypes.DummyDA)
-	require.True(ok, "Expected DummyDA implementation")
+	// Cast dummyDA to our test double so we can simulate failures
+	dummyDAImpl, ok := dummyDA.(*dummyDAClient)
+	require.True(ok, "Expected dummyDAClient implementation")
 
 	// Create node with components
 	node, cleanup := createNodeWithCustomComponents(t, config, executor, sequencer, dummyDAImpl, p2pClient, ds, func() {})
