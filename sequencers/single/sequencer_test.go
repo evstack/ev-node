@@ -17,7 +17,6 @@ import (
 	coresequencer "github.com/evstack/ev-node/core/sequencer"
 	datypes "github.com/evstack/ev-node/pkg/da/types"
 	"github.com/evstack/ev-node/pkg/genesis"
-	damocks "github.com/evstack/ev-node/test/mocks"
 )
 
 // MockForcedInclusionRetriever is a mock implementation of DARetriever for testing
@@ -107,29 +106,39 @@ func (t *testDAClient) HasForcedInclusionNamespace() bool {
 	return len(t.forcedNS) > 0
 }
 
-// mockDAAdapter wraps the generated DA mock to satisfy block.DAClient.
+// mockDAAdapter implements block.DAClient using testify mock.
 type mockDAAdapter struct {
-	*damocks.MockDA
+	mock.Mock
 }
 
+func newMockDAAdapter() *mockDAAdapter { return &mockDAAdapter{} }
+
 func (m *mockDAAdapter) Submit(ctx context.Context, data [][]byte, gasPrice float64, namespace []byte, options []byte) datypes.ResultSubmit {
+	args := m.Called(ctx, data, gasPrice, namespace, options)
+	if res, ok := args.Get(0).(datypes.ResultSubmit); ok {
+		return res
+	}
 	return datypes.ResultSubmit{}
 }
 
 func (m *mockDAAdapter) Retrieve(ctx context.Context, height uint64, namespace []byte) datypes.ResultRetrieve {
+	args := m.Called(ctx, height, namespace)
+	if res, ok := args.Get(0).(datypes.ResultRetrieve); ok {
+		return res
+	}
 	return datypes.ResultRetrieve{}
 }
 
 func (m *mockDAAdapter) RetrieveHeaders(ctx context.Context, height uint64) datypes.ResultRetrieve {
-	return datypes.ResultRetrieve{}
+	return m.Retrieve(ctx, height, m.GetHeaderNamespace())
 }
 
 func (m *mockDAAdapter) RetrieveData(ctx context.Context, height uint64) datypes.ResultRetrieve {
-	return datypes.ResultRetrieve{}
+	return m.Retrieve(ctx, height, m.GetDataNamespace())
 }
 
 func (m *mockDAAdapter) RetrieveForcedInclusion(ctx context.Context, height uint64) datypes.ResultRetrieve {
-	return datypes.ResultRetrieve{}
+	return m.Retrieve(ctx, height, m.GetForcedInclusionNamespace())
 }
 
 func (m *mockDAAdapter) Get(ctx context.Context, ids []datypes.ID, namespace []byte) ([]datypes.Blob, error) {
@@ -370,7 +379,7 @@ func TestSequencer_VerifyBatch(t *testing.T) {
 	proofs := [][]byte{[]byte("proof1"), []byte("proof2")}
 
 	t.Run("Proposer Mode", func(t *testing.T) {
-		mockDA := damocks.NewMockDA(t)
+		mockDA := newMockDAAdapter()
 		logger := zerolog.Nop()
 		mockRetriever := new(MockForcedInclusionRetriever)
 		mockRetriever.On("RetrieveForcedIncludedTxs", mock.Anything, mock.Anything).
@@ -380,7 +389,7 @@ func TestSequencer_VerifyBatch(t *testing.T) {
 			logger:      logger,
 			Id:          Id,
 			proposer:    true,
-			da:          &mockDAAdapter{MockDA: mockDA},
+			da:          mockDA,
 			queue:       NewBatchQueue(db, "proposer_queue", 0), // 0 = unlimited for test
 			fiRetriever: mockRetriever,
 		}
@@ -396,7 +405,7 @@ func TestSequencer_VerifyBatch(t *testing.T) {
 
 	t.Run("Non-Proposer Mode", func(t *testing.T) {
 		t.Run("Valid Proofs", func(t *testing.T) {
-			mockDA := damocks.NewMockDA(t)
+			mockDA := newMockDAAdapter()
 			logger := zerolog.Nop()
 			mockRetriever := new(MockForcedInclusionRetriever)
 			mockRetriever.On("RetrieveForcedIncludedTxs", mock.Anything, mock.Anything).
@@ -405,7 +414,7 @@ func TestSequencer_VerifyBatch(t *testing.T) {
 				logger:      logger,
 				Id:          Id,
 				proposer:    false,
-				da:          &mockDAAdapter{MockDA: mockDA},
+				da:          mockDA,
 				queue:       NewBatchQueue(db, "valid_proofs_queue", 0),
 				fiRetriever: mockRetriever,
 			}
@@ -421,7 +430,7 @@ func TestSequencer_VerifyBatch(t *testing.T) {
 		})
 
 		t.Run("Invalid Proof", func(t *testing.T) {
-			mockDA := damocks.NewMockDA(t)
+			mockDA := newMockDAAdapter()
 			logger := zerolog.Nop()
 			mockRetriever := new(MockForcedInclusionRetriever)
 			mockRetriever.On("RetrieveForcedIncludedTxs", mock.Anything, mock.Anything).
@@ -430,7 +439,7 @@ func TestSequencer_VerifyBatch(t *testing.T) {
 				logger:      logger,
 				Id:          Id,
 				proposer:    false,
-				da:          &mockDAAdapter{MockDA: mockDA},
+				da:          mockDA,
 				queue:       NewBatchQueue(db, "invalid_proof_queue", 0),
 				fiRetriever: mockRetriever,
 			}
@@ -446,7 +455,7 @@ func TestSequencer_VerifyBatch(t *testing.T) {
 		})
 
 		t.Run("GetProofs Error", func(t *testing.T) {
-			mockDA := damocks.NewMockDA(t)
+			mockDA := newMockDAAdapter()
 			logger := zerolog.Nop()
 			mockRetriever := new(MockForcedInclusionRetriever)
 			mockRetriever.On("RetrieveForcedIncludedTxs", mock.Anything, mock.Anything).
@@ -455,7 +464,7 @@ func TestSequencer_VerifyBatch(t *testing.T) {
 				logger:      logger,
 				Id:          Id,
 				proposer:    false,
-				da:          &mockDAAdapter{MockDA: mockDA},
+				da:          mockDA,
 				queue:       NewBatchQueue(db, "getproofs_err_queue", 0),
 				fiRetriever: mockRetriever,
 			}
@@ -472,7 +481,7 @@ func TestSequencer_VerifyBatch(t *testing.T) {
 		})
 
 		t.Run("Validate Error", func(t *testing.T) {
-			mockDA := damocks.NewMockDA(t)
+			mockDA := newMockDAAdapter()
 			logger := zerolog.Nop()
 			mockRetriever := new(MockForcedInclusionRetriever)
 			mockRetriever.On("RetrieveForcedIncludedTxs", mock.Anything, mock.Anything).
@@ -481,7 +490,7 @@ func TestSequencer_VerifyBatch(t *testing.T) {
 				logger:      logger,
 				Id:          Id,
 				proposer:    false,
-				da:          &mockDAAdapter{MockDA: mockDA},
+				da:          mockDA,
 				queue:       NewBatchQueue(db, "validate_err_queue", 0),
 				fiRetriever: mockRetriever,
 			}
@@ -498,7 +507,7 @@ func TestSequencer_VerifyBatch(t *testing.T) {
 		})
 
 		t.Run("Invalid ID", func(t *testing.T) {
-			mockDA := damocks.NewMockDA(t)
+			mockDA := newMockDAAdapter()
 			logger := zerolog.Nop()
 			mockRetriever := new(MockForcedInclusionRetriever)
 			mockRetriever.On("RetrieveForcedIncludedTxs", mock.Anything, mock.Anything).
@@ -508,7 +517,7 @@ func TestSequencer_VerifyBatch(t *testing.T) {
 				logger:      logger,
 				Id:          Id,
 				proposer:    false,
-				da:          &mockDAAdapter{MockDA: mockDA},
+				da:          mockDA,
 				queue:       NewBatchQueue(db, "invalid_queue", 0),
 				fiRetriever: mockRetriever,
 			}
@@ -528,7 +537,7 @@ func TestSequencer_VerifyBatch(t *testing.T) {
 func TestSequencer_GetNextBatch_BeforeDASubmission(t *testing.T) {
 	t.Skip()
 	// Initialize a new sequencer with mock DA
-	mockDA := &damocks.MockDA{}
+	mockDA := newMockDAAdapter()
 	db := ds.NewMapDatastore()
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
@@ -536,7 +545,7 @@ func TestSequencer_GetNextBatch_BeforeDASubmission(t *testing.T) {
 	mockRetriever := new(MockForcedInclusionRetriever)
 	mockRetriever.On("RetrieveForcedIncludedTxs", mock.Anything, mock.Anything).
 		Return(nil, block.ErrForceInclusionNotConfigured).Maybe()
-	seq, err := NewSequencer(ctx, logger, db, &mockDAAdapter{MockDA: mockDA}, []byte("test1"), 1*time.Second, false, 1000, mockRetriever, genesis.Genesis{})
+	seq, err := NewSequencer(ctx, logger, db, mockDA, []byte("test1"), 1*time.Second, false, 1000, mockRetriever, genesis.Genesis{})
 	if err != nil {
 		t.Fatalf("Failed to create sequencer: %v", err)
 	}
@@ -548,8 +557,8 @@ func TestSequencer_GetNextBatch_BeforeDASubmission(t *testing.T) {
 	}()
 
 	// Set up mock expectations
-	mockDA.On("Submit", mock.Anything, mock.Anything, mock.Anything, mock.Anything).
-		Return(nil, errors.New("mock DA always rejects submissions"))
+	mockDA.On("Submit", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		Return(datypes.ResultSubmit{BaseResult: datypes.BaseResult{Code: datypes.StatusError, Message: "mock DA always rejects submissions"}})
 
 	// Submit a batch
 	Id := []byte("test1")
@@ -832,7 +841,7 @@ func TestSequencer_QueueLimit_Integration(t *testing.T) {
 	db := ds.NewMapDatastore()
 	defer db.Close()
 
-	mockDA := &damocks.MockDA{}
+	mockDA := newMockDAAdapter()
 	mockRetriever := new(MockForcedInclusionRetriever)
 	mockRetriever.On("RetrieveForcedIncludedTxs", mock.Anything, mock.Anything).
 		Return(nil, block.ErrForceInclusionNotConfigured).Maybe()
@@ -841,7 +850,7 @@ func TestSequencer_QueueLimit_Integration(t *testing.T) {
 	logger := zerolog.Nop()
 	seq := &Sequencer{
 		logger:      logger,
-		da:          &mockDAAdapter{MockDA: mockDA},
+		da:          mockDA,
 		batchTime:   time.Second,
 		Id:          []byte("test"),
 		queue:       NewBatchQueue(db, "test_queue", 2), // Very small limit for testing

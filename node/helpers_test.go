@@ -29,14 +29,14 @@ import (
 )
 
 const (
-	// MockDAAddress is the address used by the mock gRPC service
+	// TestDAAddress is the address used by the dummy gRPC service
 	// NOTE: this should be unique per test package to avoid
 	// "bind: listen address already in use" because multiple packages
 	// are tested in parallel
-	MockDAAddress = "grpc://localhost:7990"
+	TestDAAddress = "grpc://localhost:7990"
 
-	// MockDANamespace is a sample namespace used by the mock DA client
-	MockDANamespace = "mock-namespace"
+	// TestDANamespace is a sample namespace used by the dummy DA client
+	TestDANamespace = "mock-namespace"
 
 	// MockExecutorAddress is a sample address used by the mock executor
 	MockExecutorAddress = "127.0.0.1:40041"
@@ -116,8 +116,8 @@ func getTestConfig(t *testing.T, n int) evconfig.Config {
 		},
 		DA: evconfig.DAConfig{
 			BlockTime:         evconfig.DurationWrapper{Duration: 200 * time.Millisecond},
-			Address:           MockDAAddress,
-			Namespace:         MockDANamespace,
+			Address:           TestDAAddress,
+			Namespace:         TestDANamespace,
 			MaxSubmitAttempts: 30,
 		},
 		P2P: evconfig.P2PConfig{

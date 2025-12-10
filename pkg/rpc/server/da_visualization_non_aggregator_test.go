@@ -6,15 +6,16 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
-	"github.com/evstack/ev-node/test/mocks"
+	coreda "github.com/evstack/ev-node/pkg/da/types"
 	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
 func TestNonAggregatorDAVisualizationServer(t *testing.T) {
-	da := &mocks.MockDA{}
+	da := coreda.NewDummyDA(1, time.Second)
 	logger := zerolog.New(nil)
 
 	// Create a non-aggregator server
@@ -27,7 +28,7 @@ func TestNonAggregatorDAVisualizationServer(t *testing.T) {
 }
 
 func TestNonAggregatorHandleDASubmissions(t *testing.T) {
-	da := &mocks.MockDA{}
+	da := coreda.NewDummyDA(1, time.Second)
 	logger := zerolog.New(nil)
 
 	// Create a non-aggregator server
@@ -57,7 +58,7 @@ func TestNonAggregatorHandleDASubmissions(t *testing.T) {
 }
 
 func TestNonAggregatorHandleDAStats(t *testing.T) {
-	da := &mocks.MockDA{}
+	da := coreda.NewDummyDA(1, time.Second)
 	logger := zerolog.New(nil)
 
 	// Create a non-aggregator server
@@ -83,7 +84,7 @@ func TestNonAggregatorHandleDAStats(t *testing.T) {
 }
 
 func TestNonAggregatorHandleDAHealth(t *testing.T) {
-	da := &mocks.MockDA{}
+	da := coreda.NewDummyDA(1, time.Second)
 	logger := zerolog.New(nil)
 
 	// Create a non-aggregator server
@@ -110,7 +111,7 @@ func TestNonAggregatorHandleDAHealth(t *testing.T) {
 }
 
 func TestNonAggregatorHandleDAVisualizationHTML(t *testing.T) {
-	da := &mocks.MockDA{}
+	da := coreda.NewDummyDA(1, time.Second)
 	logger := zerolog.New(nil)
 
 	// Create a non-aggregator server
@@ -139,7 +140,7 @@ func TestNonAggregatorHandleDAVisualizationHTML(t *testing.T) {
 }
 
 func TestAggregatorWithNoSubmissionsHTML(t *testing.T) {
-	da := &mocks.MockDA{}
+	da := coreda.NewDummyDA(1, time.Second)
 	logger := zerolog.New(nil)
 
 	// Create an aggregator server but don't add any submissions

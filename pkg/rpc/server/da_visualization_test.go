@@ -11,14 +11,13 @@ import (
 
 	"github.com/evstack/ev-node/pkg/config"
 	coreda "github.com/evstack/ev-node/pkg/da/types"
-	"github.com/evstack/ev-node/test/mocks"
 	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
 func TestNewDAVisualizationServer(t *testing.T) {
-	da := &mocks.MockDA{}
+	da := coreda.NewDummyDA(1, time.Second)
 	logger := zerolog.New(nil)
 
 	server := NewDAVisualizationServer(da, logger, true)
@@ -29,7 +28,7 @@ func TestNewDAVisualizationServer(t *testing.T) {
 }
 
 func TestRecordSubmission(t *testing.T) {
-	da := &mocks.MockDA{}
+	da := coreda.NewDummyDA(1, time.Second)
 	logger := zerolog.New(nil)
 	server := NewDAVisualizationServer(da, logger, true)
 
@@ -62,7 +61,7 @@ func TestRecordSubmission(t *testing.T) {
 }
 
 func TestRecordSubmissionMemoryLimit(t *testing.T) {
-	da := &mocks.MockDA{}
+	da := coreda.NewDummyDA(1, time.Second)
 	logger := zerolog.New(nil)
 	server := NewDAVisualizationServer(da, logger, true)
 
@@ -88,7 +87,7 @@ func TestRecordSubmissionMemoryLimit(t *testing.T) {
 }
 
 func TestGetStatusCodeString(t *testing.T) {
-	da := &mocks.MockDA{}
+	da := coreda.NewDummyDA(1, time.Second)
 	logger := zerolog.New(nil)
 	server := NewDAVisualizationServer(da, logger, true)
 
@@ -111,7 +110,7 @@ func TestGetStatusCodeString(t *testing.T) {
 }
 
 func TestHandleDASubmissions(t *testing.T) {
-	da := &mocks.MockDA{}
+	da := coreda.NewDummyDA(1, time.Second)
 	logger := zerolog.New(nil)
 	server := NewDAVisualizationServer(da, logger, true)
 
@@ -152,7 +151,7 @@ func TestHandleDASubmissions(t *testing.T) {
 }
 
 func TestHandleDABlobDetailsMissingID(t *testing.T) {
-	da := &mocks.MockDA{}
+	da := coreda.NewDummyDA(1, time.Second)
 	logger := zerolog.New(nil)
 	server := NewDAVisualizationServer(da, logger, true)
 
@@ -167,7 +166,7 @@ func TestHandleDABlobDetailsMissingID(t *testing.T) {
 }
 
 func TestHandleDABlobDetailsInvalidID(t *testing.T) {
-	da := &mocks.MockDA{}
+	da := coreda.NewDummyDA(1, time.Second)
 	logger := zerolog.New(nil)
 	server := NewDAVisualizationServer(da, logger, true)
 
@@ -182,7 +181,7 @@ func TestHandleDABlobDetailsInvalidID(t *testing.T) {
 }
 
 func TestHandleDAVisualizationHTML(t *testing.T) {
-	da := &mocks.MockDA{}
+	da := coreda.NewDummyDA(1, time.Second)
 	logger := zerolog.New(nil)
 	server := NewDAVisualizationServer(da, logger, true)
 
@@ -216,7 +215,7 @@ func TestHandleDAVisualizationHTML(t *testing.T) {
 }
 
 func TestGlobalDAVisualizationServer(t *testing.T) {
-	da := &mocks.MockDA{}
+	da := coreda.NewDummyDA(1, time.Second)
 	logger := zerolog.New(nil)
 	server := NewDAVisualizationServer(da, logger, true)
 
@@ -233,7 +232,7 @@ func TestGlobalDAVisualizationServer(t *testing.T) {
 }
 
 func TestRegisterCustomHTTPEndpointsDAVisualization(t *testing.T) {
-	da := &mocks.MockDA{}
+	da := coreda.NewDummyDA(1, time.Second)
 	logger := zerolog.New(nil)
 	server := NewDAVisualizationServer(da, logger, true)
 

@@ -22,8 +22,6 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-const MockDANamespace = "test"
-
 func createTestComponents(_ context.Context, t *testing.T) (coreexecutor.Executor, coresequencer.Sequencer, signer.Signer, *p2p.Client, datastore.Batching, func()) {
 	executor := coreexecutor.NewDummyExecutor()
 	sequencer := coresequencer.NewDummySequencer()
