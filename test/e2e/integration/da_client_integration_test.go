@@ -24,7 +24,7 @@ import (
 	banktypes "github.com/cosmos/cosmos-sdk/x/bank/types"
 	govmodule "github.com/cosmos/cosmos-sdk/x/gov"
 	"github.com/cosmos/ibc-go/v8/modules/apps/transfer"
-	blobrpc "github.com/evstack/ev-node/da/jsonrpc/blob"
+	blobrpc "github.com/evstack/ev-node/pkg/da/blob"
 	"github.com/stretchr/testify/require"
 
 	sdkmath "cosmossdk.io/math"

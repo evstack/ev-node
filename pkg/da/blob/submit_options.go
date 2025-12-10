@@ -2,7 +2,7 @@ package blob
 
 // NOTE: This mirrors the exported JSON shape of celestia-node/state/tx_config.go
 // at release v0.28.4, pared down to avoid importing Cosmos-SDK and
-// celestia-app packages. See pkg/blob/README.md for rationale and sync tips.
+// celestia-app packages. See pkg/da/blob/README.md for rationale and sync tips.
 
 // TxPriority mirrors celestia-node/state.TxPriority to preserve JSON compatibility.
 type TxPriority int

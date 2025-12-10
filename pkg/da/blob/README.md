@@ -15,7 +15,7 @@ This package is a **trimmed copy** of code from `celestia-node` to stay JSON-com
 ## Keeping it in sync
 
 - When celestia-node changes blob JSON or tx config fields, update this package manually:
-  1. `diff -u pkg/blob/blob.go ../Celestia/celestia-node/blob/blob.go`
-  2. `diff -u pkg/blob/submit_options.go ../Celestia/celestia-node/state/tx_config.go`
+  1. `diff -u pkg/da/blob/blob.go ../Celestia/celestia-node/blob/blob.go`
+  2. `diff -u pkg/da/blob/submit_options.go ../Celestia/celestia-node/state/tx_config.go`
   3. Port only the fields/logic required for our RPC surface.
 - Consider adding a CI check that diffs these files against upstream to detect drift.

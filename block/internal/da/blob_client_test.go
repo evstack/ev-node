@@ -7,7 +7,7 @@ import (
 	"testing"
 
 	"github.com/celestiaorg/go-square/v3/share"
-	blobrpc "github.com/evstack/ev-node/da/jsonrpc/blob"
+	blobrpc "github.com/evstack/ev-node/pkg/da/blob"
 	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"

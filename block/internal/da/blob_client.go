@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/celestiaorg/go-square/v3/share"
-	blobrpc "github.com/evstack/ev-node/da/jsonrpc/blob"
+	blobrpc "github.com/evstack/ev-node/pkg/da/blob"
 	"github.com/rs/zerolog"
 )
 
