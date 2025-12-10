@@ -13,10 +13,10 @@ categories = ["api-bindings", "network-programming"]
 
 [dependencies]
 ev-types = { version = "0.0.1", path = "../types" }
-tonic = { workspace = true, features = ["transport", "tls"] }
-tokio = { version = "1.45", features = ["full"] }
-tower = { version = "0.4", features = ["full"] }
-thiserror = "1.0"
+tonic = { workspace = true, features = ["transport", "tls-native-roots"] }
+tokio = { version = "1.48", features = ["full"] }
+tower = { version = "0.5", features = ["full"] }
+thiserror = "2.0"
 tracing = "0.1"
 futures = "0.3"
 async-trait = "0.1"
