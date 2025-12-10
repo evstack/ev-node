@@ -68,11 +68,12 @@ func TestNewClient(t *testing.T) {
 		{
 			name: "with all namespaces",
 			cfg: Config{
-				DA:             &mockDA{},
-				Logger:         zerolog.Nop(),
-				DefaultTimeout: 5 * time.Second,
-				Namespace:      "test-ns",
-				DataNamespace:  "test-data-ns",
+				DA:                       &mockDA{},
+				Logger:                   zerolog.Nop(),
+				DefaultTimeout:           5 * time.Second,
+				Namespace:                "test-ns",
+				DataNamespace:            "test-data-ns",
+				ForcedInclusionNamespace: "test-fi-ns",
 			},
 		},
 		{
@@ -104,21 +105,66 @@ func TestNewClient(t *testing.T) {
 			assert.Assert(t, len(client.namespaceBz) > 0)
 			assert.Assert(t, len(client.namespaceDataBz) > 0)
 
+			if tt.cfg.ForcedInclusionNamespace != "" {
+				assert.Assert(t, client.hasForcedInclusionNs)
+				assert.Assert(t, len(client.namespaceForcedInclusionBz) > 0)
+			} else {
+				assert.Assert(t, !client.hasForcedInclusionNs)
+			}
+
 			expectedTimeout := tt.cfg.DefaultTimeout
 			if expectedTimeout == 0 {
-				expectedTimeout = 30 * time.Second
+				expectedTimeout = 60 * time.Second
 			}
 			assert.Equal(t, client.defaultTimeout, expectedTimeout)
 		})
 	}
 }
 
+func TestClient_HasForcedInclusionNamespace(t *testing.T) {
+	tests := []struct {
+		name     string
+		cfg      Config
+		expected bool
+	}{
+		{
+			name: "with forced inclusion namespace",
+			cfg: Config{
+				DA:                       &mockDA{},
+				Logger:                   zerolog.Nop(),
+				Namespace:                "test-ns",
+				DataNamespace:            "test-data-ns",
+				ForcedInclusionNamespace: "test-fi-ns",
+			},
+			expected: true,
+		},
+		{
+			name: "without forced inclusion namespace",
+			cfg: Config{
+				DA:            &mockDA{},
+				Logger:        zerolog.Nop(),
+				Namespace:     "test-ns",
+				DataNamespace: "test-data-ns",
+			},
+			expected: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			client := NewClient(tt.cfg)
+			assert.Equal(t, client.HasForcedInclusionNamespace(), tt.expected)
+		})
+	}
+}
+
 func TestClient_GetNamespaces(t *testing.T) {
 	cfg := Config{
-		DA:            &mockDA{},
-		Logger:        zerolog.Nop(),
-		Namespace:     "test-header",
-		DataNamespace: "test-data",
+		DA:                       &mockDA{},
+		Logger:                   zerolog.Nop(),
+		Namespace:                "test-header",
+		DataNamespace:            "test-data",
+		ForcedInclusionNamespace: "test-fi",
 	}
 
 	client := NewClient(cfg)
@@ -129,8 +175,29 @@ func TestClient_GetNamespaces(t *testing.T) {
 	dataNs := client.GetDataNamespace()
 	assert.Assert(t, len(dataNs) > 0)
 
+	fiNs := client.GetForcedInclusionNamespace()
+	assert.Assert(t, len(fiNs) > 0)
+
 	// Namespaces should be different
 	assert.Assert(t, string(headerNs) != string(dataNs))
+	assert.Assert(t, string(headerNs) != string(fiNs))
+	assert.Assert(t, string(dataNs) != string(fiNs))
+}
+
+func TestClient_RetrieveForcedInclusion_NotConfigured(t *testing.T) {
+	cfg := Config{
+		DA:            &mockDA{},
+		Logger:        zerolog.Nop(),
+		Namespace:     "test-ns",
+		DataNamespace: "test-data-ns",
+	}
+
+	client := NewClient(cfg)
+	ctx := context.Background()
+
+	result := client.RetrieveForcedInclusion(ctx, 100)
+	assert.Equal(t, result.Code, coreda.StatusError)
+	assert.Assert(t, result.Message != "")
 }
 
 func TestClient_GetDA(t *testing.T) {
@@ -455,4 +522,227 @@ func TestClient_Retrieve_Timeout(t *testing.T) {
 		assert.Equal(t, coreda.StatusError, result.Code)
 		assert.Assert(t, result.Message != "")
 	})
+}
+
+func TestClient_RetrieveHeaders(t *testing.T) {
+	logger := zerolog.Nop()
+	dataLayerHeight := uint64(100)
+	mockIDs := [][]byte{[]byte("id1")}
+	mockBlobs := [][]byte{[]byte("header-blob")}
+	mockTimestamp := time.Now()
+
+	mockDAInstance := &mockDA{
+		getIDsFunc: func(ctx context.Context, height uint64, namespace []byte) (*coreda.GetIDsResult, error) {
+			return &coreda.GetIDsResult{
+				IDs:       mockIDs,
+				Timestamp: mockTimestamp,
+			}, nil
+		},
+		getFunc: func(ctx context.Context, ids []coreda.ID, namespace []byte) ([]coreda.Blob, error) {
+			return mockBlobs, nil
+		},
+	}
+
+	client := NewClient(Config{
+		DA:            mockDAInstance,
+		Logger:        logger,
+		Namespace:     "test-header-ns",
+		DataNamespace: "test-data-ns",
+	})
+
+	result := client.RetrieveHeaders(context.Background(), dataLayerHeight)
+
+	assert.Equal(t, coreda.StatusSuccess, result.Code)
+	assert.Equal(t, dataLayerHeight, result.Height)
+	assert.Equal(t, len(mockBlobs), len(result.Data))
+}
+
+func TestClient_RetrieveData(t *testing.T) {
+	logger := zerolog.Nop()
+	dataLayerHeight := uint64(200)
+	mockIDs := [][]byte{[]byte("id1"), []byte("id2")}
+	mockBlobs := [][]byte{[]byte("data-blob-1"), []byte("data-blob-2")}
+	mockTimestamp := time.Now()
+
+	mockDAInstance := &mockDA{
+		getIDsFunc: func(ctx context.Context, height uint64, namespace []byte) (*coreda.GetIDsResult, error) {
+			return &coreda.GetIDsResult{
+				IDs:       mockIDs,
+				Timestamp: mockTimestamp,
+			}, nil
+		},
+		getFunc: func(ctx context.Context, ids []coreda.ID, namespace []byte) ([]coreda.Blob, error) {
+			return mockBlobs, nil
+		},
+	}
+
+	client := NewClient(Config{
+		DA:            mockDAInstance,
+		Logger:        logger,
+		Namespace:     "test-header-ns",
+		DataNamespace: "test-data-ns",
+	})
+
+	result := client.RetrieveData(context.Background(), dataLayerHeight)
+
+	assert.Equal(t, coreda.StatusSuccess, result.Code)
+	assert.Equal(t, dataLayerHeight, result.Height)
+	assert.Equal(t, len(mockBlobs), len(result.Data))
+}
+
+func TestClient_RetrieveBatched(t *testing.T) {
+	logger := zerolog.Nop()
+	dataLayerHeight := uint64(100)
+
+	// Create 200 IDs to exceed default batch size
+	numIDs := 200
+	mockIDs := make([][]byte, numIDs)
+	for i := range numIDs {
+		mockIDs[i] = []byte{byte(i)}
+	}
+
+	// Track which batches were requested
+	batchCalls := []int{}
+
+	mockDAInstance := &mockDA{
+		getIDsFunc: func(ctx context.Context, height uint64, namespace []byte) (*coreda.GetIDsResult, error) {
+			return &coreda.GetIDsResult{
+				IDs:       mockIDs,
+				Timestamp: time.Now(),
+			}, nil
+		},
+		getFunc: func(ctx context.Context, ids []coreda.ID, namespace []byte) ([]coreda.Blob, error) {
+			batchCalls = append(batchCalls, len(ids))
+			// Return a blob for each ID in the batch
+			blobs := make([][]byte, len(ids))
+			for i := range ids {
+				blobs[i] = []byte("blob")
+			}
+			return blobs, nil
+		},
+	}
+
+	client := NewClient(Config{
+		DA:                mockDAInstance,
+		Logger:            logger,
+		Namespace:         "test-ns",
+		DataNamespace:     "test-data-ns",
+		RetrieveBatchSize: 50, // Set smaller batch size for testing
+	})
+
+	encodedNamespace := coreda.NamespaceFromString("test-ns")
+	result := client.Retrieve(context.Background(), dataLayerHeight, encodedNamespace.Bytes())
+
+	assert.Equal(t, coreda.StatusSuccess, result.Code)
+	assert.Equal(t, numIDs, len(result.Data))
+
+	// Should have made 4 batches: 50 + 50 + 50 + 50 = 200
+	assert.Equal(t, 4, len(batchCalls))
+	assert.Equal(t, 50, batchCalls[0])
+	assert.Equal(t, 50, batchCalls[1])
+	assert.Equal(t, 50, batchCalls[2])
+	assert.Equal(t, 50, batchCalls[3])
+}
+
+func TestClient_RetrieveBatched_PartialBatch(t *testing.T) {
+	logger := zerolog.Nop()
+	dataLayerHeight := uint64(100)
+
+	// Create 175 IDs to test partial batch at the end
+	numIDs := 175
+	mockIDs := make([][]byte, numIDs)
+	for i := range numIDs {
+		mockIDs[i] = []byte{byte(i)}
+	}
+
+	batchCalls := []int{}
+
+	mockDAInstance := &mockDA{
+		getIDsFunc: func(ctx context.Context, height uint64, namespace []byte) (*coreda.GetIDsResult, error) {
+			return &coreda.GetIDsResult{
+				IDs:       mockIDs,
+				Timestamp: time.Now(),
+			}, nil
+		},
+		getFunc: func(ctx context.Context, ids []coreda.ID, namespace []byte) ([]coreda.Blob, error) {
+			batchCalls = append(batchCalls, len(ids))
+			blobs := make([][]byte, len(ids))
+			for i := range ids {
+				blobs[i] = []byte("blob")
+			}
+			return blobs, nil
+		},
+	}
+
+	client := NewClient(Config{
+		DA:                mockDAInstance,
+		Logger:            logger,
+		Namespace:         "test-ns",
+		DataNamespace:     "test-data-ns",
+		RetrieveBatchSize: 50,
+	})
+
+	encodedNamespace := coreda.NamespaceFromString("test-ns")
+	result := client.Retrieve(context.Background(), dataLayerHeight, encodedNamespace.Bytes())
+
+	assert.Equal(t, coreda.StatusSuccess, result.Code)
+	assert.Equal(t, numIDs, len(result.Data))
+
+	// Should have made 4 batches: 50 + 50 + 50 + 25 = 175
+	assert.Equal(t, 4, len(batchCalls))
+	assert.Equal(t, 50, batchCalls[0])
+	assert.Equal(t, 50, batchCalls[1])
+	assert.Equal(t, 50, batchCalls[2])
+	assert.Equal(t, 25, batchCalls[3]) // Partial batch
+}
+
+func TestClient_RetrieveBatched_ErrorInSecondBatch(t *testing.T) {
+	logger := zerolog.Nop()
+	dataLayerHeight := uint64(100)
+
+	// Create 200 IDs to require multiple batches
+	numIDs := 200
+	mockIDs := make([][]byte, numIDs)
+	for i := range numIDs {
+		mockIDs[i] = []byte{byte(i)}
+	}
+
+	batchCallCount := 0
+
+	mockDAInstance := &mockDA{
+		getIDsFunc: func(ctx context.Context, height uint64, namespace []byte) (*coreda.GetIDsResult, error) {
+			return &coreda.GetIDsResult{
+				IDs:       mockIDs,
+				Timestamp: time.Now(),
+			}, nil
+		},
+		getFunc: func(ctx context.Context, ids []coreda.ID, namespace []byte) ([]coreda.Blob, error) {
+			batchCallCount++
+			// Fail on second batch
+			if batchCallCount == 2 {
+				return nil, errors.New("network error in batch 2")
+			}
+			blobs := make([][]byte, len(ids))
+			for i := range ids {
+				blobs[i] = []byte("blob")
+			}
+			return blobs, nil
+		},
+	}
+
+	client := NewClient(Config{
+		DA:                mockDAInstance,
+		Logger:            logger,
+		Namespace:         "test-ns",
+		DataNamespace:     "test-data-ns",
+		RetrieveBatchSize: 50,
+	})
+
+	encodedNamespace := coreda.NamespaceFromString("test-ns")
+	result := client.Retrieve(context.Background(), dataLayerHeight, encodedNamespace.Bytes())
+
+	assert.Equal(t, coreda.StatusError, result.Code)
+	assert.Assert(t, result.Message != "")
+	// Error message should mention the batch range
+	assert.Assert(t, len(result.Message) > 0)
 }

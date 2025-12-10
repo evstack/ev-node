@@ -4,435 +4,764 @@
 
 - 2025-03-24: Initial draft
 - 2025-04-23: Renumbered from ADR-018 to ADR-019 to maintain chronological order.
+- 2025-11-10: Updated to reflect actual implementation
 
 ## Context
 
-Evolve currently supports a single sequencer implementation as described in ADR-013. While this approach provides a simple and efficient solution, it introduces a single point of failure that can impact the liveness of the network. If the sequencer goes down or becomes unresponsive, the chain cannot progress.
+In a single-sequencer rollup architecture, users depend entirely on the sequencer to include their transactions in blocks. This creates several problems:
 
-To address this limitation and improve the liveness properties of applications built with Evolve, we propose implementing a forced inclusion mechanism. This mechanism will allow transactions to be included directly from the Data Availability (DA) layer when the sequencer is unresponsive, creating an "unstoppable" property for Evolve-based chains.
+1. **Censorship Risk**: A malicious or coerced sequencer can selectively exclude transactions
+2. **Liveness Failure**: If the sequencer goes offline, no new transactions can be processed
+3. **Centralization**: Users must trust a single entity to behave honestly
+4. **No Recourse**: Users have no alternative path to submit transactions if the sequencer refuses them
 
-This enhancement aligns with the requirements defined in the [L2 Beat framework](https://forum.l2beat.com/t/the-stages-framework/291#p-516-stage-1-requirements-3) for Stage 1 L2s, advancing Evolve's capabilities as a robust sequencer library.
+While eventual solutions like decentralized sequencer networks exist, they introduce significant complexity. We need a simpler mechanism that provides censorship resistance and liveness guarantees while maintaining the performance benefits of a single sequencer.
 
 ## Alternative Approaches
 
 ### Decentralized Sequencer
 
-A fully decentralized sequencer could solve the liveness issue by distributing sequencing responsibilities across multiple nodes. However, this approach introduces significant complexity in terms of consensus, leader election, and coordination between nodes. It would require substantial development effort and resources, making it less suitable as an immediate solution.
+A fully decentralized sequencer network would eliminate single points of failure but requires:
+
+- Complex consensus mechanisms
+- Increased latency due to coordination
+- More infrastructure and operational complexity
 
 ### Automatic Sequencer Failover
 
-Another approach would be to implement an automatic failover mechanism where backup sequencers take over when the primary sequencer fails. While simpler than a fully decentralized solution, this approach still requires managing multiple sequencers and introduces complexity in coordination and state transfer between them.
+Implementing automatic failover to backup sequencers when the primary goes down requires:
+
+- Complex monitoring and health checks
+- Coordination between sequencers to prevent forks
+- Does not solve censorship issues with a malicious sequencer
 
 ## Decision
 
-We will implement a forced inclusion mechanism for the Evolve single sequencer architecture that uses a time-based inclusion delay approach. This approach will:
+We implement a **forced inclusion mechanism** that allows users to submit transactions directly to the Data Availability (DA) layer. This approach provides:
 
-1. Track when transactions are first seen in terms of DA block time
-2. Require a minimum number of DA blocks to pass before including a direct transaction
-3. Let full nodes enforce inclusion within a fixed period of time window
-
-The mechanism will be designed to maintain backward compatibility with existing Evolve deployments while providing enhanced liveness guarantees.
+1. **Censorship Resistance**: Users can always bypass the sequencer by posting to DA
+2. **Verifiable Inclusion**: Full nodes verify that sequencers include all forced transactions
+3. **Based Rollup Option**: A based sequencer mode for fully DA-driven transaction ordering
+4. **Simplicity**: No complex timing mechanisms or fallback modes
 
 ### High-Level Architecture
 
-The following diagram illustrates the high-level architecture of the forced inclusion mechanism:
-
-```mermaid
-flowchart TB
-    subgraph DAL["Data Availability Layer"]
-    end
-
-    subgraph SEQ["Single Sequencer"]
-        subgraph NO["Normal Operation"]
-            direction TB
-            process["Process user txs"]
-            create["Create batches"]
-            include["Include direct txs from DA"]
-            checkDelay["Check MinDADelay"]
-        end
-    end
-
-    subgraph FN["Full Nodes"]
-        subgraph NormalOp["Normal Operation"]
-            follow["Follow sequencer produced blocks"]
-            validate["Validate time windows"]
-            validateDelay["Validate MinDADelay"]
-        end
-
-        subgraph FallbackMode["Fallback Mode"]
-            detect["Detect sequencer down"]
-            scan["Scan DA for direct txs"]
-            createBlocks["Create deterministic blocks from direct txs"]
-        end
-    end
-
-    SEQ -->|"Publish Batches"| DAL
-    DAL -->|"Direct Txs"| SEQ
-    DAL -->|"Direct Txs"| FN
-    SEQ -->|"Blocks"| FN
-    NormalOp <--> FallbackMode
 ```
+┌─────────────────────────────────────────────────────────────────┐
+│                         User Actions                             │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                  │
+│  Normal Path:                    Forced Inclusion Path:         │
+│  Submit tx to Sequencer  ────►   Submit tx directly to DA       │
+│       (Fast)                          (Censorship-resistant)     │
+│                                                                  │
+└──────────┬────────────────────────────────────┬─────────────────┘
+           │                                     │
+           ▼                                     ▼
+    ┌─────────────┐                    ┌──────────────────┐
+    │  Sequencer  │                    │    DA Layer      │
+    │  (Mempool)  │                    │ (Forced Inc. NS) │
+    └──────┬──────┘                    └─────────┬────────┘
+           │                                     │
+           │  1. Fetch forced inc. txs           │
+           │◄────────────────────────────────────┘
+           │
+           │  2. Prepend forced txs to batch
+           │
+           ▼
+    ┌─────────────┐
+    │    Block    │
+    │  Production │
+    └──────┬──────┘
+           │
+           │  3. Submit block to DA
+           │
+           ▼
+    ┌─────────────┐
+    │  DA Layer   │
+    └──────┬──────┘
+           │
+           │  4. Full nodes retrieve block
+           │
+           ▼
+    ┌─────────────────────┐
+    │   Full Nodes        │
+    │  (Verification)     │
+    │                     │
+    │  5. Verify forced   │
+    │     inc. txs are    │
+    │     included        │
+    └─────────────────────┘
+```
+
+### Key Components
+
+1. **Forced Inclusion Namespace**: A dedicated DA namespace where users can post transactions
+2. **DA Retriever**: Fetches forced inclusion transactions from DA using epoch-based scanning
+3. **Single Sequencer**: Enhanced to include forced transactions from DA in every batch
+4. **Based Sequencer**: Alternative sequencer that ONLY retrieves transactions from DA
+5. **Verification**: Full nodes validate that blocks include all forced transactions
 
 ## Detailed Design
 
 ### User Requirements
 
-- Developers need a mechanism to ensure their chains can progress even when the single sequencer is unavailable
-- The system should maintain a deterministic and consistent state regardless of sequencer availability
-- The transition between sequencer-led and forced inclusion modes should be seamless
-- Transactions must be included within a fixed time window from when they are first seen
-- Direct transactions must wait for a minimum number of DA blocks before inclusion
+Users can submit transactions in two ways:
+
+1. **Normal Path**: Submit to sequencer's mempool/RPC (fast, low cost)
+2. **Forced Inclusion Path**: Submit directly to DA forced inclusion namespace (censorship-resistant)
+
+No additional requirements or monitoring needed from users.
 
 ### Systems Affected
 
-The implementation of the forced inclusion mechanism will affect several components of the Evolve framework:
-
-1. **Single Sequencer**: Must be modified to track and include direct transactions from the DA layer within the time window and after minimum DA block delay
-2. **Full Node**: Must be updated to recognize and validate blocks with forced inclusions
-3. **Block Processing Logic**: Must implement the modified fork choice rule
-4. **DA Client**: Must be enhanced to scan for direct transactions
-5. **Transaction Validation**: Must validate both sequencer-batched and direct transactions
+1. **DA Layer**: New namespace for forced inclusion transactions
+2. **Sequencer (Single)**: Fetches and includes forced transactions
+3. **Sequencer (Based)**: New sequencer type that only uses DA transactions
+4. **DA Retriever**: New component for fetching forced transactions
+5. **Syncer**: Verifies forced transaction inclusion in blocks
+6. **Configuration**: New fields for forced inclusion settings
 
 ### Data Structures
 
-#### Direct Transaction Tracking
+#### Forced Inclusion Event
 
 ```go
-type ForcedInclusionConfig struct {
-    MaxInclusionDelay uint64    // Max inclusion time in DA block time units
-    MinDADelay       uint64    // Minimum number of DA blocks before including a direct tx
-}
-
-type DirectTransaction struct {
-    TxHash          common.Hash
-    FirstSeenAt     uint64      // DA block time when the tx was seen
-    Included        bool        // Whether it has been included in a block
-    IncludedAt      uint64      // Height at which it was included
-}
-
-type DirectTxTracker struct {
-    txs             map[common.Hash]DirectTransaction  // Map of direct transactions
-    mu              sync.RWMutex                       // Mutex for thread-safe access
-    latestSeenTime  uint64                            // Latest DA block time scanned
-    latestDAHeight  uint64                            // Latest DA block height
+type ForcedIncludedEvent struct {
+    Txs           [][]byte  // Forced inclusion transactions
+    StartDaHeight uint64    // Start of DA height range
+    EndDaHeight   uint64    // End of DA height range
 }
 ```
 
-#### Sequencer Status Tracking
+#### DA Retriever Interface
 
 ```go
-type SequencerStatus struct {
-    IsActive          bool      // Whether the sequencer is considered active
-    LastActiveTime    uint64    // Last DA block time where sequencer posted a batch
-    InactiveTime      uint64    // Time since last sequencer activity
+type DARetriever interface {
+    // Retrieve forced inclusion transactions from DA at specified height
+    RetrieveForcedIncludedTxsFromDA(ctx context.Context, daHeight uint64) (*ForcedIncludedEvent, error)
 }
 ```
 
 ### APIs and Interfaces
 
-#### Enhanced DA Client Interface
+#### DA Retriever
+
+The DA Retriever component handles fetching forced inclusion transactions:
 
 ```go
-type DAClient interface {
-    // Existing methods
-    // ...
+type daRetriever struct {
+    da                         coreda.DA
+    cache                      cache.CacheManager
+    genesis                    genesis.Genesis
+    logger                     zerolog.Logger
+    namespaceForcedInclusionBz []byte
+    hasForcedInclusionNs       bool
+    daEpochSize                uint64
+}
 
-    // New method for forced inclusion
-    GetDirectTransactions(ctx context.Context, fromTime, toTime uint64) ([][]byte, error)
-    // Note: SubmitDirectTransaction is removed as it's not a responsibility of the node
+// RetrieveForcedIncludedTxsFromDA fetches forced inclusion transactions
+// Only fetches at epoch boundaries to prevent redundant DA queries
+func (r *daRetriever) RetrieveForcedIncludedTxsFromDA(
+    ctx context.Context,
+    daHeight uint64,
+) (*ForcedIncludedEvent, error)
+```
+
+#### Single Sequencer Extension
+
+The single sequencer is enhanced to fetch and include forced transactions:
+
+```go
+type Sequencer struct {
+    // ... existing fields ...
+    fiRetriever               ForcedInclusionRetriever
+    genesis                   genesis.Genesis
+    daHeight                  atomic.Uint64
+    pendingForcedInclusionTxs []pendingForcedInclusionTx
+    queue                     *BatchQueue
+}
+
+type pendingForcedInclusionTx struct {
+    Data           []byte
+    OriginalHeight uint64
+}
+
+func (s *Sequencer) GetNextBatch(ctx context.Context, req GetNextBatchRequest) (*GetNextBatchResponse, error) {
+    // 1. Fetch forced inclusion transactions from DA
+    forcedEvent, err := s.fiRetriever.RetrieveForcedIncludedTxs(ctx, s.daHeight.Load())
+
+    // 2. Process forced txs with size validation and pending queue
+    forcedTxs := s.processForcedInclusionTxs(forcedEvent, req.MaxBytes)
+
+    // 3. Get batch from mempool queue
+    batch, err := s.queue.Next(ctx)
+
+    // 4. Prepend forced txs and trim batch to fit MaxBytes
+    if len(forcedTxs) > 0 {
+        forcedTxsSize := calculateSize(forcedTxs)
+        remainingBytes := req.MaxBytes - forcedTxsSize
+
+        // Trim batch transactions to fit
+        trimmedBatchTxs := trimToSize(batch.Transactions, remainingBytes)
+
+        // Return excluded txs to front of queue
+        if len(trimmedBatchTxs) < len(batch.Transactions) {
+            excludedBatch := batch.Transactions[len(trimmedBatchTxs):]
+            s.queue.Prepend(ctx, Batch{Transactions: excludedBatch})
+        }
+
+        batch.Transactions = append(forcedTxs, trimmedBatchTxs...)
+    }
+
+    return &GetNextBatchResponse{Batch: batch}
+}
+
+// processForcedInclusionTxs validates and queues forced txs
+func (s *Sequencer) processForcedInclusionTxs(event *ForcedInclusionEvent, maxBytes uint64) [][]byte {
+    var validatedTxs [][]byte
+    var newPendingTxs []pendingForcedInclusionTx
+    currentSize := 0
+
+    // Process pending txs from previous epochs first
+    for _, pendingTx := range s.pendingForcedInclusionTxs {
+        if !ValidateBlobSize(pendingTx.Data) {
+            continue // Skip blobs exceeding absolute DA limit
+        }
+        if WouldExceedCumulativeSize(currentSize, len(pendingTx.Data), maxBytes) {
+            newPendingTxs = append(newPendingTxs, pendingTx)
+            continue
+        }
+        validatedTxs = append(validatedTxs, pendingTx.Data)
+        currentSize += len(pendingTx.Data)
+    }
+
+    // Process new txs from this epoch
+    for _, tx := range event.Txs {
+        if !ValidateBlobSize(tx) {
+            continue // Skip blobs exceeding absolute DA limit
+        }
+        if WouldExceedCumulativeSize(currentSize, len(tx), maxBytes) {
+            newPendingTxs = append(newPendingTxs, pendingForcedInclusionTx{
+                Data:           tx,
+                OriginalHeight: event.StartDaHeight,
+            })
+            continue
+        }
+        validatedTxs = append(validatedTxs, tx)
+        currentSize += len(tx)
+    }
+
+    s.pendingForcedInclusionTxs = newPendingTxs
+    return validatedTxs
 }
 ```
 
-#### Sequencer Interface Extensions
+#### Based Sequencer
+
+A new sequencer implementation that ONLY retrieves transactions from DA:
 
 ```go
-// New methods added to the Sequencer interface
-func (s *Sequencer) ScanDALayerForDirectTxs(ctx context.Context) error
-func (s *Sequencer) IncludeDirectTransactions(ctx context.Context, batch *Batch) error
+type BasedSequencer struct {
+    fiRetriever ForcedInclusionRetriever
+    da          coreda.DA
+    config      config.Config
+    genesis     genesis.Genesis
+    logger      zerolog.Logger
+    mu          sync.RWMutex
+    daHeight    uint64
+    txQueue     [][]byte  // Buffer for transactions exceeding batch size
+}
+
+func (s *BasedSequencer) GetNextBatch(ctx context.Context, req GetNextBatchRequest) (*GetNextBatchResponse, error) {
+
+
+    // Always fetch forced inclusion transactions from DA
+    forcedEvent, err := s.fiRetriever.RetrieveForcedIncludedTxs(ctx, s.daHeight)
+    if err != nil && !errors.Is(err, ErrHeightFromFuture) {
+        return nil, err
+    }
+
+    // Validate and add transactions to queue
+    for _, tx := range forcedEvent.Txs {
+        if ValidateBlobSize(tx) {
+            s.txQueue = append(s.txQueue, tx)
+        }
+    }
+
+    // Create batch from queue respecting MaxBytes
+    batch := s.createBatchFromQueue(req.MaxBytes)
+
+    return &GetNextBatchResponse{Batch: batch}
+}
+
+// SubmitBatchTxs is a no-op for based sequencer
+func (s *BasedSequencer) SubmitBatchTxs(ctx context.Context, req SubmitBatchTxsRequest) (*SubmitBatchTxsResponse, error) {
+    // Based sequencer ignores submitted transactions
+    return &SubmitBatchTxsResponse{}, nil
+}
 ```
 
-#### Full Node Interface Extensions
+#### Syncer Verification
+
+Full nodes verify forced inclusion in the sync process with support for transaction smoothing across multiple blocks:
 
 ```go
-// New methods added to the Node interface
-func (n *Node) CheckSequencerStatus(ctx context.Context) (bool, error)
-func (n *Node) ProcessDirectTransactions(ctx context.Context) error
-func (n *Node) ValidateBlockTimeWindow(ctx context.Context, block *types.Block) error
+func (s *Syncer) verifyForcedInclusionTxs(currentState State, data *Data) error {
+    // 1. Retrieve forced inclusion transactions from DA for current epoch
+    forcedEvent, err := s.daRetriever.RetrieveForcedIncludedTxsFromDA(s.ctx, currentState.DAHeight)
+    if err != nil {
+        return err
+    }
+
+    // 2. Build map of transactions in current block
+    blockTxMap := make(map[string]struct{})
+    for _, tx := range data.Txs {
+        blockTxMap[hashTx(tx)] = struct{}{}
+    }
+
+    // 3. Check if any pending forced inclusion txs from previous epochs are included
+    var stillPending []pendingForcedInclusionTx
+    s.pendingForcedInclusionTxs.Range(func(key, value any) bool {
+        pending := value.(pendingForcedInclusionTx)
+        if _, ok := blockTxMap[pending.TxHash]; ok {
+            // Transaction was included - remove from pending
+            s.pendingForcedInclusionTxs.Delete(key)
+        } else {
+            stillPending = append(stillPending, pending)
+        }
+        return true
+    })
+
+    // 4. Process new forced inclusion transactions from current epoch
+    for _, forcedTx := range forcedEvent.Txs {
+        txHash := hashTx(forcedTx)
+        if _, ok := blockTxMap[txHash]; !ok {
+            // Transaction not included yet - add to pending for deferral within epoch
+            stillPending = append(stillPending, pendingForcedInclusionTx{
+                Data:       forcedTx,
+                EpochStart: forcedEvent.StartDaHeight,
+                EpochEnd:   forcedEvent.EndDaHeight,
+                TxHash:     txHash,
+            })
+        }
+    }
+
+    // 5. Check for malicious behavior: pending txs past their epoch boundary
+    var maliciousTxs, remainingPending []pendingForcedInclusionTx
+    for _, pending := range stillPending {
+        // If current DA height is past this epoch's end, these txs MUST have been included
+        if currentState.DAHeight > pending.EpochEnd {
+            maliciousTxs = append(maliciousTxs, pending)
+        } else {
+            remainingPending = append(remainingPending, pending)
+        }
+    }
+
+    // 6. Update pending map with only remaining valid pending txs
+    pendingForcedInclusionTxs = remainingPending
+
+    // 7. Reject block if sequencer censored forced txs past epoch boundary
+    if len(maliciousTxs) > 0 {
+        return fmt.Errorf("sequencer is malicious: %d forced inclusion transactions from past epoch(s) not included", len(maliciousTxs))
+    }
+
+    return nil
+}
 ```
 
-### Implementation Changes
+**Key Verification Features**:
 
-#### Single Sequencer Node Changes
+1. **Pending Transaction Tracking**: Maintains a map of forced inclusion transactions that haven't been included yet
+2. **Epoch-Based Deferral**: Allows transactions to be deferred (smoothed) across multiple blocks within the same epoch
+3. **Strict Epoch Boundary Enforcement**: Once `currentState.DAHeight > pending.EpochEnd`, all pending transactions from that epoch MUST have been included
+4. **Censorship Detection**: Identifies malicious sequencers that fail to include forced transactions after epoch boundaries
 
-1. **DA Layer Scanner**:
-   - Implement a periodic scanner that queries the DA layer for direct transactions
-   - Track all direct transactions in the DirectTxTracker data structure
-   - Update the latest seen DA block time and height after each scan
+**Smoothing Example**:
 
-2. **Transaction Inclusion Logic**:
-   - Modify the batch creation process to include direct transactions from the DA layer
-   - Ensure all direct transactions are included within the MaxInclusionDelay time window
-   - Check that transactions have waited for MinDADelay DA blocks
-   - Track transaction inclusion times and enforce both delay constraints
+```
+Epoch [100-109] contains 3MB of forced inclusion transactions
 
-3. **Validation Rules**:
-   - Implement time window validation to ensure transactions are included within MaxInclusionDelay
-   - Implement DA block delay validation to ensure transactions wait for MinDADelay blocks
-   - Track both time-based and DA block-based delays for each transaction
+Block at DA height 100:
+  - Includes 2MB of forced txs (partial)
+  - Remaining 1MB added to pending map with EpochEnd=109
+  - ✅ Valid - within epoch boundary
 
-4. **Recovery Mechanism**:
-   - Add logic to detect when the sequencer comes back online after downtime
-   - Implement state synchronization to catch up with any forced inclusions that occurred during downtime
-   - Resume normal operation by building on top of the canonical chain tip
+Block at DA height 105:
+  - Includes remaining 1MB from pending
+  - Pending map cleared for those txs
+  - ✅ Valid - within epoch boundary
 
-#### Sequencer Operation Flow
-
-The following diagram illustrates the operation flow for the sequencer with forced inclusion:
-
-```txt
-┌─────────────────────────────────────────────────────────────────────────────────┐
-│                           Sequencer Operation Flow                              │
-└─────────────────┬───────────────────────────────────────────────────────────────┘
-                  │
-                  ▼
-┌─────────────────────────────────┐      ┌────────────────────────────────────────┐
-│ 1. Process User Transactions    │      │ 2. Periodic DA Layer Scanning          │
-│                                 │      │                                        │
-│ - Accept transactions from users│      │ - Query DA layer for direct txs        │
-│ - Validate and queue txs        │      │ - Update DirectTxTracker               │
-│ - Process queue based on policy │      │ - Track latest seen DA block time      │
-└─────────────────┬───────────────┘      └────────────────────┬───────────────────┘
-                  │                                           │
-                  ▼                                           ▼
-┌─────────────────────────────────┐      ┌────────────────────────────────────────┐
-│ 3. Batch Creation               │      │ 4. Direct Transaction Inclusion        │
-│                                 │      │                                        │
-│ - Create batch of txs           │◄─────┤ - Include unprocessed direct txs       │
-│ - Apply ordering policy         │      │ - Prioritize by first seen             │
-│ - Calculate batch metadata      │      │ - Mark included txs as processed       │
-└─────────────────┬───────────────┘      └────────────────────────────────────────┘
-                  │
-                  ▼
-┌──────────────────────────────────┐      ┌────────────────────────────────────────┐
-│ 5. Time Window Validation        │      │ 6. Block Production                    │
-│                                  │      │                                        │
-│ - Check transaction timestamps   │      │ - Create block with batch       │
-│ - Ensure within MaxInclusionDelay│─────►│ - Sign and publish block               │
-│ - Track inclusion times          │      │                                        │
-└──────────────────────────────────┘      └─────────────────┬──────────────────────┘
-                                                            │
-                                                            ▼
-                                          ┌────────────────────────────────────────┐
-                                          │ 7. DA Batch Submission                 │
-                                          │                                        │
-                                          │ - Submit batch to DA layer             │
-                                          │ - Track submission status              │
-                                          │ - Handle retry on failure              │
-                                          └────────────────────────────────────────┘
+Block at DA height 110 (next epoch):
+  - If any txs from epoch [100-109] still pending
+  - ❌ MALICIOUS - epoch boundary violated
+  - Block rejected, sequencer flagged
 ```
 
-#### Full Node Operation Flow
+### Implementation Details
 
-The following diagram illustrates the operation flow for full nodes with forced inclusion support:
+#### Epoch-Based Fetching
 
-```txt
-┌─────────────────────────────────────────────────────────────────────────────────┐
-│                           Full Node Operation Flow                              │
-└─────────────────────────────────────────────────────────────────────────────────┘
-                                        │
-                                        ▼
-┌─────────────────────────────────┐     ┌────────────────────────────────────────┐
-│ 1. Normal Operation Mode        │     │ 2. Sequencer Status Monitoring         │
-│                                 │     │                                        │
-│ - Receive blocks from sequencer │     │ - Monitor sequencer activity on DA     │
-│ - Validate time windows         │◄───►│ - Track time since last sequencer batch│
-│ - Apply state transitions       │     │ - Check against downtime threshold     │
-└─────────────────────────────────┘     └───────────────────┬────────────────────┘
-                                                            │
-                                                            ▼
-                                        ┌────────────────────────────────────────┐
-                                        │ Is Sequencer Down?                     │
-                                        │ (Based on configurable threshold)      │
-                                        └───────────┬───────────────┬────────────┘
-                                                    │               │
-                                                    │ Yes           │ No
-                                                    ▼               │
-                                        ┌────────────────────────┐  │
-                                        │ 3. Enter Fallback Mode │  │
-                                        │                        │  │
-                                        │ - Switch to direct tx  │  │
-                                        │   processing           │  │
-                                        │ - Notify subsystems    │  │
-                                        └──────────┬─────────────┘  │
-                                                  │                 │
-                                                  ▼                 │
-                                        ┌────────────────────────┐  │
-                                        │ 4. DA Layer Scanning   │  │
-                                        │                        │  │
-                                        │ - Scan DA for direct   │  │
-                                        │   transactions         │  │
-                                        │ - Track latest seen    │  │
-                                        │   DA block time        │  │
-                                        └──────────┬─────────────┘  │
-                                                   │                │
-                                                   ▼                │
-                                        ┌────────────────────────┐  │
-                                        │ 5. Deterministic Block │  │
-                                        │    Creation            │  │
-                                        │                        │  │
-                                        │ - Create blocks with   │  │
-                                        │   direct txs only      │  │
-                                        │ - Apply deterministic  │  │
-                                        │   ordering rules       │  │
-                                        └──────────┬─────────────┘  │
-                                                   │                │
-                                                   ▼                ▼
-┌─────────────────────────────────────────────────────────────────────────────────┐
-│ 6. Block Processing and State Update                                            │
-│                                                                                 │
-│ - Execute transactions                                                          │
-│ - Update state                                                                  │
-│ - Persist blocks and state                                                      │
-└─────────────────────────────────────────────────────────────────────────────────┘
+To avoid excessive DA queries, the DA Retriever uses epoch-based fetching:
+
+- **Epoch Size**: Configurable number of DA blocks (e.g., 10)
+- **Epoch Boundaries**: Deterministically calculated based on `DAStartHeight`
+- **Fetch Timing**: Only fetch at epoch start to prevent duplicate fetches
+
+```go
+// Calculate epoch boundaries
+func (r *daRetriever) calculateEpochBoundaries(daHeight uint64) (start, end uint64) {
+    epochNum := r.calculateEpochNumber(daHeight)
+    start = r.genesis.DAStartHeight + (epochNum-1)*r.daEpochSize
+    end = r.genesis.DAStartHeight + epochNum*r.daEpochSize - 1
+    return start, end
+}
+
+// Only fetch at epoch start
+if daHeight != epochStart {
+    return &ForcedIncludedEvent{Txs: [][]byte{}}
+}
+
+// Fetch all heights in epoch range
+for height := epochStart; height <= epochEnd; height++ {
+    // Fetch forced inclusion blobs from this DA height
+}
 ```
 
-### Fallback Mode Transition
+#### Height From Future Handling
 
-The following diagram illustrates the transition between normal operation and fallback mode:
+When DA height is not yet available:
 
-```mermaid
-sequenceDiagram
-    participant DA as Data Availability Layer
-    participant S as Sequencer
-    participant R as Chain
-
-    Note over S,R: Normal Operation
-    DA->>S: DA Block N
-    S->>R: Sequencer Block N
-    DA->>S: DA Block N+1
-    S->>R: Sequencer Block N+1
-    DA->>S: DA Block N+2
-    S->>R: Sequencer Block N+2
-
-    Note over S,R: Sequencer Down
-    DA->>R: DA Block N+3 (Direct Txs)
-    Note over R: Fallback Mode Start
-    R->>R: Create Block from Direct Txs
-    DA->>R: DA Block N+4 (Direct Txs)
-    R->>R: Create Block from Direct Txs
-    DA->>R: DA Block N+5 (Direct Txs)
-    R->>R: Create Block from Direct Txs
-
-    Note over S,R: Sequencer Back Online
-    DA->>S: DA Block N+6
-    S->>R: Sequencer Block N+6
-    DA->>S: DA Block N+7
-    S->>R: Sequencer Block N+7
-
-    Note over R: Timeline shows:
-    Note over R: 1. Normal sequencer operation
-    Note over R: 2. Sequencer downtime & fallback
-    Note over R: 3. Sequencer recovery
+```go
+if errors.Is(err, coreda.ErrHeightFromFuture) {
+    // Keep current DA height, return empty batch
+    // Retry same height on next call
+    return &ForcedIncludedEvent{Txs: [][]byte{}}, nil
+}
 ```
+
+#### Size Validation and Max Bytes Handling
+
+Both sequencers enforce strict size limits to prevent DoS and ensure batches never exceed the DA layer's limits:
+
+```go
+// Size validation utilities
+const AbsoluteMaxBlobSize = 1.5 * 1024 * 1024 // 1.5MB DA layer limit
+
+// ValidateBlobSize checks against absolute DA layer limit
+func ValidateBlobSize(blob []byte) bool {
+    return uint64(len(blob)) <= AbsoluteMaxBlobSize
+}
+
+// WouldExceedCumulativeSize checks against per-batch limit
+func WouldExceedCumulativeSize(currentSize int, blobSize int, maxBytes uint64) bool {
+    return uint64(currentSize)+uint64(blobSize) > maxBytes
+}
+```
+
+**Key Behaviors**:
+
+- **Absolute validation**: Blobs exceeding 2MB are permanently rejected
+- **Batch size limits**: `req.MaxBytes` is NEVER exceeded in any batch
+- **Transaction preservation**:
+  - Single sequencer: Trimmed batch txs returned to queue via `Prepend()`
+  - Based sequencer: Excess txs remain in `txQueue` for next batch
+  - Forced txs that don't fit go to `pendingForcedInclusionTxs` (single) or stay in `txQueue` (based)
+
+#### Transaction Queue Management
+
+The based sequencer uses a simplified queue to handle transactions:
+
+```go
+func (s *BasedSequencer) createBatchFromQueue(maxBytes uint64) *Batch {
+    var batch [][]byte
+    var totalBytes uint64
+
+    for i, tx := range s.txQueue {
+        txSize := uint64(len(tx))
+        // Always respect maxBytes, even for first transaction
+        if totalBytes+txSize > maxBytes {
+            // Would exceed max bytes, keep remaining in queue
+            s.txQueue = s.txQueue[i:]
+            break
+        }
+
+        batch = append(batch, tx)
+        totalBytes += txSize
+
+        // Clear queue if we processed everything
+        if i == len(s.txQueue)-1 {
+            s.txQueue = s.txQueue[:0]
+        }
+    }
+
+    return &Batch{Transactions: batch}
+}
+```
+
+**Note**: The based sequencer is simpler than the single sequencer - it doesn't need a separate pending queue because `txQueue` naturally handles all transaction buffering.
 
 ### Configuration
 
-The forced inclusion mechanism will be configurable with the following parameters:
-
 ```go
-type ForcedInclusionConfig struct {
-    Enabled                   bool          // Whether forced inclusion is enabled
-    MaxInclusionDelay         uint64        // Maximum time window for transaction inclusion
-    SequencerDownTime         uint64        // Time after which the sequencer is considered down
-    MinDADelay               uint64        // Minimum number of DA blocks before including a direct tx
+type Genesis struct {
+    ChainID                string
+    StartTime              time.Time
+    InitialHeight          uint64
+    ProposerAddress        []byte
+    DAStartHeight          uint64
+    // Number of DA blocks to scan per forced inclusion fetch
+    // Higher values reduce DA queries but increase latency
+    // Lower values increase DA queries but improve responsiveness
+    DAEpochForcedInclusion uint64
 }
+
+type DAConfig struct {
+    // ... existing fields ...
+
+    // Namespace for forced inclusion transactions
+    ForcedInclusionNamespace string
+}
+
+type NodeConfig struct {
+    // ... existing fields ...
+
+    // Run node with based sequencer (requires aggregator mode)
+    BasedSequencer bool
+}
+```
+
+### Configuration Examples
+
+#### Traditional Sequencer with Forced Inclusion
+
+```yaml
+# genesis.json
+{
+  "chain_id": "my-rollup",
+  "forced_inclusion_da_epoch": 10  # Scan 10 DA blocks at a time
+}
+
+# config.toml
+[da]
+forced_inclusion_namespace = "0x0000000000000000000000000000000000000000000000000000666f72636564"
+
+[node]
+aggregator = true
+based_sequencer = false # Use traditional sequencer
+```
+
+#### Based Sequencer (DA-Only)
+
+```yaml
+# genesis.json
+{
+  "chain_id": "my-rollup",
+  "forced_inclusion_da_epoch": 5  # Scan 5 DA blocks at a time
+}
+
+# config.toml
+[da]
+forced_inclusion_namespace = "0x0000000000000000000000000000000000000000000000000000666f72636564"
+
+[node]
+aggregator = true
+based_sequencer = true # Use based sequencer
+```
+
+### Sequencer Operation Flows
+
+#### Single Sequencer Flow
+
+```
+1. Timer triggers GetNextBatch
+2. Fetch forced inclusion txs from DA (via DA Retriever)
+   - Only at epoch boundaries
+   - Scan epoch range for forced transactions
+3. Get batch from mempool queue
+4. Prepend forced txs to batch
+5. Return batch for block production
+```
+
+#### Based Sequencer Flow
+
+```
+1. Timer triggers GetNextBatch
+2. Check transaction queue for buffered txs
+3. If queue empty or epoch boundary:
+   - Fetch forced inclusion txs from DA
+   - Add to queue
+4. Create batch from queue (respecting MaxBytes)
+5. Return batch for block production
+```
+
+### Full Node Verification Flow
+
+```
+1. Receive block from DA or P2P
+2. Before applying block:
+   a. Fetch forced inclusion txs from DA at block's DA height
+   b. Build map of transactions in block
+   c. Verify all forced txs are in block
+   d. If missing: reject block, flag malicious proposer
+3. Apply block if verification passes
 ```
 
 ### Efficiency Considerations
 
-- DA layer scanning is integrated into the core block processing pipeline for continuous monitoring
-- Direct transactions are indexed by hash for quick lookups
-- The sequencer status is tracked by DA block time rather than block heights
-- Time-based tracking simplifies the implementation and reduces overhead
-- DA block height tracking adds minimal overhead to existing block processing
+1. **Epoch-Based Fetching**: Reduces DA queries by batching multiple DA heights
+2. **Deterministic Epochs**: All nodes calculate same epoch boundaries
+3. **Fetch at Epoch Start**: Prevents duplicate fetches as DA height progresses
+4. **Transaction Queue**: Buffers excess transactions across multiple blocks
+5. **Conditional Fetching**: Only when forced inclusion namespace is configured
+6. **Size Pre-validation**: Invalid blobs rejected early, before batch construction
+7. **Efficient Queue Operations**:
+   - Single sequencer: `Prepend()` reuses space before head position
+   - Based sequencer: Simple slice operations for queue management
+
+**DA Query Frequency**:
+
+Every `DAEpochForcedInclusion` DA blocks
 
 ### Security Considerations
 
-- The mechanism ensures that only valid direct transactions can be included in the chain
-- Time window validation prevents delayed inclusion of transactions
-- The configurable time threshold prevents premature switching to fallback mode due to temporary sequencer issues
-- All transactions, whether sequencer-batched or direct, undergo the same validation rules
-- MinDADelay provides protection against DA layer censorship by requiring multiple block proposers to collude
-- Block-based delay prevents single block proposer censorship by ensuring transactions must be visible across multiple DA layer blocks
-- The delay mechanism is inspired by the "Based Sequencing with Soft Confirmations" design from [Sovereign SDK #408](https://github.com/Sovereign-Labs/sovereign-sdk/issues/408), which uses deferred execution to prevent DA layer block proposers from censoring transactions
+1. **Malicious Proposer Detection**: Full nodes reject blocks missing forced transactions
+2. **No Timing Attacks**: Epoch boundaries are deterministic, no time-based logic
+3. **Blob Size Limits**: Two-tier size validation prevents DoS
+   - Absolute limit (1.5MB): Blobs exceeding this are permanently rejected
+   - Batch limit (`MaxBytes`): Ensures no batch exceeds DA submission limits
+4. **Graceful Degradation**: Continues operation if forced inclusion not configured
+5. **Height Validation**: Handles "height from future" errors without state corruption
+6. **Transaction Preservation**: No valid transactions are lost due to size constraints
+7. **Strict MaxBytes Enforcement**: Batches NEVER exceed `req.MaxBytes`, preventing DA layer rejections
 
-### Privacy Considerations
+**Attack Vectors**:
 
-- Direct transactions posted to the DA layer are publicly visible, just like sequencer-batched transactions
-- No additional privacy concerns are introduced beyond the existing model
+- **Censorship**: Mitigated by forced inclusion verification
+- **DA Spam**: Limited by DA layer's native spam protection and two-tier blob size limits
+- **Block Withholding**: Full nodes can fetch and verify from DA independently
+- **Oversized Batches**: Prevented by strict size validation at multiple levels
 
 ### Testing Strategy
 
-1. **Unit Tests**:
-   - Test individual components of the forced inclusion mechanism
-   - Verify time window validation logic
-   - Test the DA scanner functionality
-   - Test transaction inclusion timing constraints
-   - Test MinDADelay validation
+#### Unit Tests
 
-2. **Integration Tests**:
-   - Test the interaction between the sequencer and the DA layer
-   - Verify correct inclusion of direct transactions within time windows
-   - Test DA block delay validation
-   - Verify both time and block delay constraints
+1. **DA Retriever**:
+   - Epoch boundary calculations
+   - Height from future handling
+   - Blob size validation
+   - Empty epoch handling
 
-3. **End-to-End Tests**:
-   - Simulate sequencer downtime and verify chain progression
-   - Test the transition between normal and fallback modes
-   - Verify the sequencer's recovery process after downtime
-   - Test transaction inclusion with various delay configurations
+2. **Size Validation**:
+   - Individual blob size validation (absolute limit)
+   - Cumulative size checking (batch limit)
+   - Edge cases (empty blobs, exact limits, exceeding limits)
 
-4. **Performance Testing**:
-   - Measure the overhead introduced by the DA scanner
-   - Benchmark the system's performance in fallback mode
-   - Evaluate the impact of time-based tracking
-   - Measure the performance impact of DA block delay validation
+3. **Single Sequencer**:
+   - Forced transaction prepending with size constraints
+   - Batch trimming when forced + batch exceeds MaxBytes
+   - Trimmed transactions returned to queue via Prepend
+   - Pending forced inclusion queue management
+   - DA height tracking
+   - Error handling
+
+4. **BatchQueue**:
+   - Prepend operation (empty queue, with items, after consuming)
+   - Multiple prepends (LIFO ordering)
+   - Space reuse before head position
+
+5. **Based Sequencer**:
+   - Queue management with size validation
+   - Batch size limits strictly enforced
+   - Transaction buffering across batches
+   - DA-only operation
+   - Always checking for new forced txs
+
+6. **Syncer Verification**:
+   - All forced txs included (pass)
+   - Missing forced txs (fail)
+   - No forced txs (pass)
+
+#### Integration Tests
+
+1. **Single Sequencer Integration**:
+   - Submit to mempool and forced inclusion
+   - Verify both included in block
+   - Forced txs appear first
+
+2. **Based Sequencer Integration**:
+   - Submit only to DA forced inclusion
+   - Verify block production
+   - Mempool submissions ignored
+
+3. **Verification Flow**:
+   - Full node rejects block missing forced tx
+   - Full node accepts block with all forced txs
+
+#### End-to-End Tests
+
+1. **User Flow**:
+   - User submits tx to forced inclusion namespace
+   - Sequencer includes tx in next epoch
+   - Full nodes verify inclusion
+
+2. **Based Rollup**:
+   - Start network with based sequencer
+   - Submit transactions to DA
+   - Verify block production and finalization
+
+3. **Censorship Resistance**:
+   - Sequencer ignores specific transaction
+   - User submits to forced inclusion
+   - Transaction included in next epoch
+   - Attempting to exclude causes block rejection
 
 ### Breaking Changes
 
-This enhancement introduces no breaking changes to the existing API or data structures. It extends the current functionality by implementing time-based transaction tracking and inclusion rules, along with DA block-based delay validation, without modifying the core interfaces that developers interact with.
+1. **Sequencer Initialization**: Requires `DARetriever` and `Genesis` parameters
+2. **Configuration**: New fields in `DAConfig` and `NodeConfig`
+3. **Syncer**: New verification step in block processing
+
+**Migration Path**:
+
+- Forced inclusion is optional (enabled when namespace configured)
+- Existing deployments work without configuration changes
+- Can enable incrementally per network
 
 ## Status
 
-Proposed
+Accepted and Implemented
 
 ## Consequences
 
 ### Positive
 
-- Improves the liveness guarantees of Evolve-based chains
-- Provides a path for Evolve to meet Stage 1 L2 requirements per the L2 Beat framework
-- Creates an "unstoppable" property for applications, enhancing their reliability
-- Maintains a deterministic chain state regardless of sequencer availability
-- More predictable deadlines in DA time
-- Easier to reason about for users and developers
-- Prevents DA layer censorship by requiring multiple block proposers to collude
+1. **Censorship Resistance**: Users have guaranteed path to include transactions
+2. **Verifiable**: Full nodes enforce forced inclusion, detecting malicious sequencers
+3. **Simple Design**: No complex timing mechanisms or fallback modes
+4. **Based Rollup Option**: Fully DA-driven transaction ordering available (simplified implementation)
+5. **Optional**: Forced inclusion can be disabled for permissioned deployments
+6. **Efficient**: Epoch-based fetching minimizes DA queries
+7. **Flexible**: Configurable epoch size allows tuning latency vs efficiency
+8. **Robust Size Handling**: Two-tier size validation prevents DoS and DA rejections
+9. **Transaction Preservation**: All valid transactions are preserved in queues, nothing is lost
+10. **Strict MaxBytes Compliance**: Batches never exceed limits, preventing DA submission failures
 
 ### Negative
 
-- Adds complexity to the block processing and validation logic
-- Introduces overhead from scanning the DA layer for direct transactions
-- Could potentially slow block production during fallback mode
-- May need careful tuning of time window parameters
-- Could be affected by variations in block production rate
-- Additional complexity from tracking DA block heights for delay validation
+1. **Increased Latency**: Forced transactions subject to epoch boundaries
+2. **DA Dependency**: Requires DA layer to support multiple namespaces
+3. **Higher DA Costs**: Users pay DA posting fees for forced inclusion
+4. **Additional Complexity**: New component (DA Retriever) and verification logic
+5. **Epoch Configuration**: Requires setting `DAEpochForcedInclusion` in genesis (consensus parameter)
 
 ### Neutral
 
-- Requires application developers to consider both sequencer-batched and direct transaction flows
-- Introduces configuration options that developers need to understand and set appropriately
-- Changes the mental model of how the chain progresses, from purely sequencer-driven to a hybrid approach
-- Users will need to use external tools or services to submit direct transactions to the DA layer during sequencer downtime
+1. **Two Sequencer Types**: Choice between single (hybrid) and based (DA-only)
+2. **Privacy Model Unchanged**: Forced inclusion has same privacy as normal path
+3. **Monitoring**: Operators should monitor forced inclusion namespace usage
+4. **Documentation**: Users need guidance on when to use forced inclusion
+5. **Genesis Parameter**: `DAEpochForcedInclusion` is a consensus parameter fixed at genesis
 
 ## References
 

@@ -167,6 +167,8 @@ The block components share a common configuration:
 | Namespace                | da.Namespace  | DA namespace ID for block submissions (deprecated, use HeaderNamespace and DataNamespace instead)                                                    |
 | HeaderNamespace          | string        | namespace ID for submitting headers to DA layer (automatically encoded by the node)                                                                  |
 | DataNamespace            | string        | namespace ID for submitting data to DA layer (automatically encoded by the node)                                                                     |
+| RetrieveBatchSize        | int           | number of blob IDs fetched per DA `Get` call, trading off payload size vs. number of RPC round trips (default: 100)                                  |
+| RequestTimeout           | duration      | per-request timeout for DA `GetIDs`/`Get` calls; higher values tolerate slow DA nodes, lower values fail faster (default: 30s)                     |
 
 ### Block Production (Executor Component)
 

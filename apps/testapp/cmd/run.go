@@ -5,17 +5,24 @@ import (
 	"fmt"
 	"path/filepath"
 
+	"github.com/ipfs/go-datastore"
+	"github.com/rs/zerolog"
 	"github.com/spf13/cobra"
 
 	kvexecutor "github.com/evstack/ev-node/apps/testapp/kv"
+	"github.com/evstack/ev-node/block"
 	"github.com/evstack/ev-node/core/da"
+	coresequencer "github.com/evstack/ev-node/core/sequencer"
 	"github.com/evstack/ev-node/da/jsonrpc"
 	"github.com/evstack/ev-node/node"
-	rollcmd "github.com/evstack/ev-node/pkg/cmd"
-	genesispkg "github.com/evstack/ev-node/pkg/genesis"
+	"github.com/evstack/ev-node/pkg/cmd"
+	"github.com/evstack/ev-node/pkg/config"
+	"github.com/evstack/ev-node/pkg/genesis"
 	"github.com/evstack/ev-node/pkg/p2p"
 	"github.com/evstack/ev-node/pkg/p2p/key"
 	"github.com/evstack/ev-node/pkg/store"
+	"github.com/evstack/ev-node/sequencers/based"
+	seqcommon "github.com/evstack/ev-node/sequencers/common"
 	"github.com/evstack/ev-node/sequencers/single"
 )
 
@@ -25,16 +32,16 @@ var RunCmd = &cobra.Command{
 	Use:     "start",
 	Aliases: []string{"node", "run"},
 	Short:   "Run the testapp node",
-	RunE: func(cmd *cobra.Command, args []string) error {
-		nodeConfig, err := rollcmd.ParseConfig(cmd)
+	RunE: func(command *cobra.Command, args []string) error {
+		nodeConfig, err := cmd.ParseConfig(command)
 		if err != nil {
 			return err
 		}
 
-		logger := rollcmd.SetupLogger(nodeConfig.Log)
+		logger := cmd.SetupLogger(nodeConfig.Log)
 
 		// Get KV endpoint flag
-		kvEndpoint, _ := cmd.Flags().GetString(flagKVEndpoint)
+		kvEndpoint, _ := command.Flags().GetString(flagKVEndpoint)
 		if kvEndpoint == "" {
 			logger.Info().Msg("KV endpoint flag not set, using default from http_server")
 		}
@@ -53,7 +60,7 @@ var RunCmd = &cobra.Command{
 
 		logger.Info().Str("headerNamespace", headerNamespace.HexString()).Str("dataNamespace", dataNamespace.HexString()).Msg("namespaces")
 
-		daJrpc, err := jsonrpc.NewClient(ctx, logger, nodeConfig.DA.Address, nodeConfig.DA.AuthToken, rollcmd.DefaultMaxBlobSize)
+		daJrpc, err := jsonrpc.NewClient(ctx, logger, nodeConfig.DA.Address, nodeConfig.DA.AuthToken, seqcommon.AbsoluteMaxBlobSize)
 		if err != nil {
 			return err
 		}
@@ -64,11 +71,6 @@ var RunCmd = &cobra.Command{
 		}
 
 		datastore, err := store.NewDefaultKVStore(nodeConfig.RootDir, nodeConfig.DBPath, testDbName)
-		if err != nil {
-			return err
-		}
-
-		singleMetrics, err := single.NopMetrics()
 		if err != nil {
 			return err
 		}
@@ -85,7 +87,7 @@ var RunCmd = &cobra.Command{
 		}
 
 		genesisPath := filepath.Join(filepath.Dir(nodeConfig.ConfigPath()), "genesis.json")
-		genesis, err := genesispkg.LoadGenesis(genesisPath)
+		genesis, err := genesis.LoadGenesis(genesisPath)
 		if err != nil {
 			return fmt.Errorf("failed to load genesis: %w", err)
 		}
@@ -94,16 +96,8 @@ var RunCmd = &cobra.Command{
 			logger.Warn().Msg("da_start_height is not set in genesis.json, ask your chain developer")
 		}
 
-		sequencer, err := single.NewSequencer(
-			ctx,
-			logger,
-			datastore,
-			&daJrpc.DA,
-			[]byte(genesis.ChainID),
-			nodeConfig.Node.BlockTime.Duration,
-			singleMetrics,
-			nodeConfig.Node.Aggregator,
-		)
+		// Create sequencer based on configuration
+		sequencer, err := createSequencer(ctx, logger, datastore, &daJrpc.DA, nodeConfig, genesis)
 		if err != nil {
 			return err
 		}
@@ -113,6 +107,62 @@ var RunCmd = &cobra.Command{
 			return err
 		}
 
-		return rollcmd.StartNode(logger, cmd, executor, sequencer, &daJrpc.DA, p2pClient, datastore, nodeConfig, genesis, node.NodeOptions{})
+		return cmd.StartNode(logger, command, executor, sequencer, &daJrpc.DA, p2pClient, datastore, nodeConfig, genesis, node.NodeOptions{})
 	},
+}
+
+// createSequencer creates a sequencer based on the configuration.
+// If BasedSequencer is enabled, it creates a based sequencer that fetches transactions from DA.
+// Otherwise, it creates a single (traditional) sequencer.
+func createSequencer(
+	ctx context.Context,
+	logger zerolog.Logger,
+	datastore datastore.Batching,
+	da da.DA,
+	nodeConfig config.Config,
+	genesis genesis.Genesis,
+) (coresequencer.Sequencer, error) {
+	daClient := block.NewDAClient(da, nodeConfig, logger)
+	fiRetriever := block.NewForcedInclusionRetriever(daClient, genesis, logger)
+
+	if nodeConfig.Node.BasedSequencer {
+		// Based sequencer mode - fetch transactions only from DA
+		if !nodeConfig.Node.Aggregator {
+			return nil, fmt.Errorf("based sequencer mode requires aggregator mode to be enabled")
+		}
+
+		basedSeq, err := based.NewBasedSequencer(ctx, fiRetriever, datastore, genesis, logger)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create based sequencer: %w", err)
+		}
+
+		logger.Info().
+			Str("forced_inclusion_namespace", nodeConfig.DA.GetForcedInclusionNamespace()).
+			Uint64("da_epoch", genesis.DAEpochForcedInclusion).
+			Msg("based sequencer initialized")
+
+		return basedSeq, nil
+	}
+
+	sequencer, err := single.NewSequencer(
+		ctx,
+		logger,
+		datastore,
+		da,
+		[]byte(genesis.ChainID),
+		nodeConfig.Node.BlockTime.Duration,
+		nodeConfig.Node.Aggregator,
+		1000,
+		fiRetriever,
+		genesis,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create single sequencer: %w", err)
+	}
+
+	logger.Info().
+		Str("forced_inclusion_namespace", nodeConfig.DA.GetForcedInclusionNamespace()).
+		Msg("single sequencer initialized")
+
+	return sequencer, nil
 }
