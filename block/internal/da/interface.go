@@ -6,8 +6,8 @@ import (
 	datypes "github.com/evstack/ev-node/pkg/da/types"
 )
 
-// Client is the interface representing the DA client.
-type Client interface {
+// Interface represents the DA client contract.
+type Interface interface {
 	Submit(ctx context.Context, data [][]byte, gasPrice float64, namespace []byte, options []byte) datypes.ResultSubmit
 	Retrieve(ctx context.Context, height uint64, namespace []byte) datypes.ResultRetrieve
 	RetrieveHeaders(ctx context.Context, height uint64) datypes.ResultRetrieve

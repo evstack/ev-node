@@ -47,7 +47,7 @@ type Syncer struct {
 	lastState *atomic.Pointer[types.State]
 
 	// DA retriever
-	daClient          da.Client
+	daClient          da.Interface
 	daRetrieverHeight *atomic.Uint64
 
 	// P2P stores
@@ -87,7 +87,7 @@ type pendingForcedInclusionTx struct {
 func NewSyncer(
 	store store.Store,
 	exec coreexecutor.Executor,
-	daClient da.Client,
+	daClient da.Interface,
 	cache cache.CacheManager,
 	metrics *common.Metrics,
 	config config.Config,

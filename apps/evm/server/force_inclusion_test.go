@@ -16,7 +16,7 @@ import (
 	"gotest.tools/v3/assert"
 )
 
-// mockDA implements block/internal/da.Client for testing
+// mockDA implements block/internal/da.Interface for testing
 type mockDA struct {
 	submitFunc func(ctx context.Context, data [][]byte, gasPrice float64, namespace []byte, options []byte) da.ResultSubmit
 }

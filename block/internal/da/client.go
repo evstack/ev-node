@@ -26,9 +26,9 @@ var (
 	ErrContextCanceled            = datypes.ErrContextCanceled
 )
 
-// CelestiaBlobConfig contains configuration for the Celestia blob client.
-type CelestiaBlobConfig struct {
-	Celestia                 *blobrpc.Client
+// Config contains configuration for the Celestia blob client.
+type Config struct {
+	Client                   *blobrpc.Client
 	Logger                   zerolog.Logger
 	DefaultTimeout           time.Duration
 	Namespace                string
@@ -37,8 +37,8 @@ type CelestiaBlobConfig struct {
 	MaxBlobSize              uint64
 }
 
-// CelestiaBlobClient wraps the blob RPC with namespace handling and error mapping.
-type CelestiaBlobClient struct {
+// Client wraps the blob RPC with namespace handling and error mapping.
+type Client struct {
 	blobAPI            *blobrpc.BlobAPI
 	logger             zerolog.Logger
 	defaultTimeout     time.Duration
@@ -49,12 +49,12 @@ type CelestiaBlobClient struct {
 	maxBlobSize        uint64
 }
 
-// Ensure CelestiaBlobClient implements the block DA client interface.
-var _ Client = (*CelestiaBlobClient)(nil)
+// Ensure Client implements the block DA client interface.
+var _ Interface = (*Client)(nil)
 
-// NewCelestiaBlob creates a new blob client wrapper with pre-calculated namespace bytes.
-func NewCelestiaBlob(cfg CelestiaBlobConfig) *CelestiaBlobClient {
-	if cfg.Celestia == nil {
+// NewClient creates a new blob client wrapper with pre-calculated namespace bytes.
+func NewClient(cfg Config) *Client {
+	if cfg.Client == nil {
 		return nil
 	}
 	if cfg.DefaultTimeout == 0 {
@@ -64,8 +64,8 @@ func NewCelestiaBlob(cfg CelestiaBlobConfig) *CelestiaBlobClient {
 		cfg.MaxBlobSize = blobrpc.DefaultMaxBlobSize
 	}
 
-	return &CelestiaBlobClient{
-		blobAPI:         &cfg.Celestia.Blob,
+	return &Client{
+		blobAPI:         &cfg.Client.Blob,
 		logger:          cfg.Logger.With().Str("component", "blob_da_client").Logger(),
 		defaultTimeout:  cfg.DefaultTimeout,
 		namespaceBz:     share.MustNewV0Namespace([]byte(cfg.Namespace)).Bytes(),
@@ -82,7 +82,7 @@ func NewCelestiaBlob(cfg CelestiaBlobConfig) *CelestiaBlobClient {
 }
 
 // Submit submits blobs to the DA layer with the specified options.
-func (c *CelestiaBlobClient) Submit(ctx context.Context, data [][]byte, _ float64, namespace []byte, options []byte) datypes.ResultSubmit {
+func (c *Client) Submit(ctx context.Context, data [][]byte, _ float64, namespace []byte, options []byte) datypes.ResultSubmit {
 	// calculate blob size
 	var blobSize uint64
 	for _, b := range data {
@@ -194,7 +194,7 @@ func (c *CelestiaBlobClient) Submit(ctx context.Context, data [][]byte, _ float6
 }
 
 // Retrieve retrieves blobs from the DA layer at the specified height and namespace.
-func (c *CelestiaBlobClient) Retrieve(ctx context.Context, height uint64, namespace []byte) datypes.ResultRetrieve {
+func (c *Client) Retrieve(ctx context.Context, height uint64, namespace []byte) datypes.ResultRetrieve {
 	ns, err := share.NewNamespaceFromBytes(namespace)
 	if err != nil {
 		return datypes.ResultRetrieve{
@@ -275,17 +275,17 @@ func (c *CelestiaBlobClient) Retrieve(ctx context.Context, height uint64, namesp
 }
 
 // RetrieveHeaders retrieves blobs from the header namespace at the specified height.
-func (c *CelestiaBlobClient) RetrieveHeaders(ctx context.Context, height uint64) datypes.ResultRetrieve {
+func (c *Client) RetrieveHeaders(ctx context.Context, height uint64) datypes.ResultRetrieve {
 	return c.Retrieve(ctx, height, c.namespaceBz)
 }
 
 // RetrieveData retrieves blobs from the data namespace at the specified height.
-func (c *CelestiaBlobClient) RetrieveData(ctx context.Context, height uint64) datypes.ResultRetrieve {
+func (c *Client) RetrieveData(ctx context.Context, height uint64) datypes.ResultRetrieve {
 	return c.Retrieve(ctx, height, c.dataNamespaceBz)
 }
 
 // RetrieveForcedInclusion retrieves blobs from the forced inclusion namespace at the specified height.
-func (c *CelestiaBlobClient) RetrieveForcedInclusion(ctx context.Context, height uint64) datypes.ResultRetrieve {
+func (c *Client) RetrieveForcedInclusion(ctx context.Context, height uint64) datypes.ResultRetrieve {
 	if !c.hasForcedNamespace {
 		return datypes.ResultRetrieve{
 			BaseResult: datypes.BaseResult{
@@ -299,27 +299,27 @@ func (c *CelestiaBlobClient) RetrieveForcedInclusion(ctx context.Context, height
 }
 
 // GetHeaderNamespace returns the header namespace bytes.
-func (c *CelestiaBlobClient) GetHeaderNamespace() []byte {
+func (c *Client) GetHeaderNamespace() []byte {
 	return c.namespaceBz
 }
 
 // GetDataNamespace returns the data namespace bytes.
-func (c *CelestiaBlobClient) GetDataNamespace() []byte {
+func (c *Client) GetDataNamespace() []byte {
 	return c.dataNamespaceBz
 }
 
 // GetForcedInclusionNamespace returns the forced inclusion namespace bytes.
-func (c *CelestiaBlobClient) GetForcedInclusionNamespace() []byte {
+func (c *Client) GetForcedInclusionNamespace() []byte {
 	return c.forcedNamespaceBz
 }
 
 // HasForcedInclusionNamespace reports whether forced inclusion namespace is configured.
-func (c *CelestiaBlobClient) HasForcedInclusionNamespace() bool {
+func (c *Client) HasForcedInclusionNamespace() bool {
 	return c.hasForcedNamespace
 }
 
 // Get implements a minimal DA surface used by visualization: fetch blobs by IDs.
-func (c *CelestiaBlobClient) Get(ctx context.Context, ids []datypes.ID, namespace []byte) ([]datypes.Blob, error) {
+func (c *Client) Get(ctx context.Context, ids []datypes.ID, namespace []byte) ([]datypes.Blob, error) {
 	if len(ids) == 0 {
 		return nil, nil
 	}
@@ -352,7 +352,7 @@ func (c *CelestiaBlobClient) Get(ctx context.Context, ids []datypes.ID, namespac
 }
 
 // GetProofs returns inclusion proofs for the provided IDs.
-func (c *CelestiaBlobClient) GetProofs(ctx context.Context, ids []datypes.ID, namespace []byte) ([]datypes.Proof, error) {
+func (c *Client) GetProofs(ctx context.Context, ids []datypes.ID, namespace []byte) ([]datypes.Proof, error) {
 	if len(ids) == 0 {
 		return []datypes.Proof{}, nil
 	}
@@ -388,7 +388,7 @@ func (c *CelestiaBlobClient) GetProofs(ctx context.Context, ids []datypes.ID, na
 }
 
 // Validate mirrors the deprecated DA server logic: it unmarshals proofs and calls Included.
-func (c *CelestiaBlobClient) Validate(ctx context.Context, ids []datypes.ID, proofs []datypes.Proof, namespace []byte) ([]bool, error) {
+func (c *Client) Validate(ctx context.Context, ids []datypes.ID, proofs []datypes.Proof, namespace []byte) ([]bool, error) {
 	if len(ids) != len(proofs) {
 		return nil, errors.New("number of IDs and proofs must match")
 	}
