@@ -68,7 +68,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .build_server(true)
         .build_client(true)
         .out_dir(&proto_dir)
-        .compile_protos(&proto_files, &[proto_root.clone()])?;
+        .compile_protos(&proto_files, std::slice::from_ref(&proto_root))?;
 
     // Rename to services.rs
     let generated_file_2 = proto_dir.join("evnode.v1.rs");
