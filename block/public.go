@@ -5,8 +5,8 @@ import (
 
 	"github.com/evstack/ev-node/block/internal/common"
 	"github.com/evstack/ev-node/block/internal/da"
-	blobrpc "github.com/evstack/ev-node/da/jsonrpc"
 	"github.com/evstack/ev-node/pkg/config"
+	blobrpc "github.com/evstack/ev-node/pkg/da/jsonrpc"
 	"github.com/evstack/ev-node/pkg/genesis"
 	"github.com/rs/zerolog"
 )

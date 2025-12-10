@@ -10,7 +10,7 @@ import (
 	fjrpc "github.com/filecoin-project/go-jsonrpc"
 	"github.com/rs/zerolog"
 
-	jsonrpc "github.com/evstack/ev-node/da/jsonrpc"
+	jsonrpc "github.com/evstack/ev-node/pkg/da/jsonrpc"
 	datypes "github.com/evstack/ev-node/pkg/da/types"
 )
 
