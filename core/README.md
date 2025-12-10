@@ -49,10 +49,6 @@ type Sequencer interface {
 }
 ```
 
-### Data Availability (DA)
-
-Consume the DA client via the public alias in `block/public.go` (type `block.DAClient`, implemented by `block/internal/da.Interface`). It defines submission/retrieval plus namespace helpers used across node components. A convenience constructor `block.NewDAClient` wraps the Celestia blob JSON-RPC API.
-
 ## Contributing
 
 The `core` package is central to Evolve's architecture. Modifications here can have wide-ranging effects. Please adhere to the following guidelines when contributing:
