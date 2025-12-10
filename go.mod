@@ -34,6 +34,7 @@ require (
 	gotest.tools/v3 v3.5.2
 )
 
+// for reviewer, this module is planned to be removed in part 3
 replace github.com/evstack/ev-node/da => ./da
 
 require (
