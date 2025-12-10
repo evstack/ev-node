@@ -244,6 +244,7 @@ func TestForcedInclusionRetriever_RetrieveForcedIncludedTxs_MultiHeightEpoch(t *
 	assert.Assert(t, event != nil)
 	assert.Equal(t, event.StartDaHeight, uint64(100))
 	assert.Equal(t, event.EndDaHeight, uint64(102))
+	assert.Assert(t, event.Timestamp.After(time.Time{}))
 
 	// Should have collected all txs from all heights
 	expectedTxCount := len(testBlobsByHeight[100]) + len(testBlobsByHeight[101]) + len(testBlobsByHeight[102])
@@ -334,6 +335,7 @@ func TestForcedInclusionRetriever_processForcedInclusionBlobs(t *testing.T) {
 			} else {
 				assert.NilError(t, err)
 				assert.Equal(t, len(event.Txs), tt.expectedTxCount)
+				assert.Equal(t, event.Timestamp, time.Time{})
 			}
 		})
 	}

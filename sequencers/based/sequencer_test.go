@@ -3,6 +3,7 @@ package based
 import (
 	"context"
 	"testing"
+	"time"
 
 	ds "github.com/ipfs/go-datastore"
 	syncds "github.com/ipfs/go-datastore/sync"
@@ -536,6 +537,145 @@ func TestBasedSequencer_GetNextBatch_EmptyDABatch_IncreasesDAHeight(t *testing.T
 	assert.Equal(t, uint64(102), seq.GetDAHeight())
 	assert.Equal(t, uint64(102), seq.checkpoint.DAHeight)
 	assert.Equal(t, uint64(0), seq.checkpoint.TxIndex)
+
+	mockRetriever.AssertExpectations(t)
+}
+
+func TestBasedSequencer_GetNextBatch_TimestampAdjustment(t *testing.T) {
+	// Test that timestamp is adjusted based on the number of transactions in the batch
+	// The timestamp should be: daEndTime - (len(batch.Transactions) * 1ms)
+
+	testBlobs := [][]byte{[]byte("tx1"), []byte("tx2"), []byte("tx3")}
+	daEndTime := time.Date(2024, 1, 1, 12, 0, 0, 0, time.UTC)
+
+	mockRetriever := new(MockForcedInclusionRetriever)
+	mockRetriever.On("RetrieveForcedIncludedTxs", mock.Anything, uint64(100)).Return(&block.ForcedInclusionEvent{
+		Txs:           testBlobs,
+		StartDaHeight: 100,
+		EndDaHeight:   100,
+		Timestamp:     daEndTime,
+	}, nil)
+
+	gen := genesis.Genesis{
+		ChainID:                "test-chain",
+		DAStartHeight:          100,
+		DAEpochForcedInclusion: 1,
+	}
+
+	seq := createTestSequencer(t, mockRetriever, gen)
+
+	req := coresequencer.GetNextBatchRequest{
+		MaxBytes:      1000000,
+		LastBatchData: nil,
+	}
+
+	resp, err := seq.GetNextBatch(context.Background(), req)
+	require.NoError(t, err)
+	require.NotNil(t, resp)
+	require.NotNil(t, resp.Batch)
+	assert.Equal(t, 3, len(resp.Batch.Transactions))
+
+	// After taking all 3 txs, there are 0 remaining, so timestamp = daEndTime - 0ms = daEndTime
+	expectedTimestamp := daEndTime
+	assert.Equal(t, expectedTimestamp, resp.Timestamp)
+
+	mockRetriever.AssertExpectations(t)
+}
+
+func TestBasedSequencer_GetNextBatch_TimestampAdjustment_PartialBatch(t *testing.T) {
+	// Test timestamp adjustment when MaxBytes limits the batch size
+	tx1 := make([]byte, 100)
+	tx2 := make([]byte, 150)
+	tx3 := make([]byte, 200)
+	testBlobs := [][]byte{tx1, tx2, tx3}
+	daEndTime := time.Date(2024, 1, 1, 12, 0, 0, 0, time.UTC)
+
+	mockRetriever := new(MockForcedInclusionRetriever)
+	mockRetriever.On("RetrieveForcedIncludedTxs", mock.Anything, uint64(100)).Return(&block.ForcedInclusionEvent{
+		Txs:           testBlobs,
+		StartDaHeight: 100,
+		EndDaHeight:   100,
+		Timestamp:     daEndTime,
+	}, nil)
+
+	gen := genesis.Genesis{
+		ChainID:                "test-chain",
+		DAStartHeight:          100,
+		DAEpochForcedInclusion: 1,
+	}
+
+	seq := createTestSequencer(t, mockRetriever, gen)
+
+	// First call with MaxBytes that fits only first 2 transactions
+	req := coresequencer.GetNextBatchRequest{
+		MaxBytes:      250,
+		LastBatchData: nil,
+	}
+
+	resp, err := seq.GetNextBatch(context.Background(), req)
+	require.NoError(t, err)
+	require.NotNil(t, resp)
+	require.NotNil(t, resp.Batch)
+	assert.Equal(t, 2, len(resp.Batch.Transactions))
+
+	// After taking 2 txs, there is 1 remaining, so timestamp = daEndTime - 1ms
+	expectedTimestamp := daEndTime.Add(-1 * time.Millisecond)
+	assert.Equal(t, expectedTimestamp, resp.Timestamp)
+
+	// Second call should get the remaining transaction
+	req = coresequencer.GetNextBatchRequest{
+		MaxBytes:      1000,
+		LastBatchData: nil,
+	}
+
+	// The second call uses cached transactions - timestamp should be based on remaining txs
+	resp, err = seq.GetNextBatch(context.Background(), req)
+	require.NoError(t, err)
+	require.NotNil(t, resp)
+	require.NotNil(t, resp.Batch)
+	assert.Equal(t, 1, len(resp.Batch.Transactions))
+
+	// After taking this 1 tx, there are 0 remaining, so timestamp = daEndTime - 0ms = daEndTime
+	expectedTimestamp2 := daEndTime
+	assert.Equal(t, expectedTimestamp2, resp.Timestamp)
+
+	mockRetriever.AssertExpectations(t)
+}
+
+func TestBasedSequencer_GetNextBatch_TimestampAdjustment_EmptyBatch(t *testing.T) {
+	// Test that timestamp is zero when batch is empty
+	daEndTime := time.Date(2024, 1, 1, 12, 0, 0, 0, time.UTC)
+
+	mockRetriever := new(MockForcedInclusionRetriever)
+	mockRetriever.On("RetrieveForcedIncludedTxs", mock.Anything, uint64(100)).Return(&block.ForcedInclusionEvent{
+		Txs:           [][]byte{},
+		StartDaHeight: 100,
+		EndDaHeight:   100,
+		Timestamp:     daEndTime,
+	}, nil)
+
+	gen := genesis.Genesis{
+		ChainID:                "test-chain",
+		DAStartHeight:          100,
+		DAEpochForcedInclusion: 1,
+	}
+
+	seq := createTestSequencer(t, mockRetriever, gen)
+
+	req := coresequencer.GetNextBatchRequest{
+		MaxBytes:      1000000,
+		LastBatchData: nil,
+	}
+
+	resp, err := seq.GetNextBatch(context.Background(), req)
+	require.NoError(t, err)
+	require.NotNil(t, resp)
+	require.NotNil(t, resp.Batch)
+	assert.Equal(t, 0, len(resp.Batch.Transactions))
+
+	// When batch is empty, there are 0 remaining txs, so timestamp = daEndTime
+	expectedTimestamp := daEndTime
+	assert.Equal(t, expectedTimestamp, resp.Timestamp)
 
 	mockRetriever.AssertExpectations(t)
 }
