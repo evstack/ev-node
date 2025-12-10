@@ -31,7 +31,7 @@ import (
 	evsync "github.com/evstack/ev-node/pkg/sync"
 )
 
-// prefixes used in KV store to separate rollkit data from execution environment data (if the same data base is reused)
+// EvPrefix used in KV store to separate rollkit data from execution environment data (if the same data base is reused)
 var EvPrefix = "0"
 
 const (

@@ -12,20 +12,18 @@ import (
 	"sync/atomic"
 	"time"
 
-	pubsub "github.com/libp2p/go-libp2p-pubsub"
-	"github.com/rs/zerolog"
-	"golang.org/x/sync/errgroup"
-
-	coreda "github.com/evstack/ev-node/core/da"
-	coreexecutor "github.com/evstack/ev-node/core/execution"
-
 	"github.com/evstack/ev-node/block/internal/cache"
 	"github.com/evstack/ev-node/block/internal/common"
 	"github.com/evstack/ev-node/block/internal/da"
+	coreda "github.com/evstack/ev-node/core/da"
+	coreexecutor "github.com/evstack/ev-node/core/execution"
 	"github.com/evstack/ev-node/pkg/config"
 	"github.com/evstack/ev-node/pkg/genesis"
 	"github.com/evstack/ev-node/pkg/store"
 	"github.com/evstack/ev-node/types"
+	pubsub "github.com/libp2p/go-libp2p-pubsub"
+	"github.com/rs/zerolog"
+	"golang.org/x/sync/errgroup"
 )
 
 // Syncer handles block synchronization from DA and P2P sources.
@@ -52,8 +50,8 @@ type Syncer struct {
 	daRetrieverHeight *atomic.Uint64
 
 	// P2P stores
-	headerStore common.Broadcaster[*types.SignedHeader]
-	dataStore   common.Broadcaster[*types.Data]
+	headerStore common.HeaderP2PBroadcaster
+	dataStore   common.DataP2PBroadcaster
 
 	// Channels for coordination
 	heightInCh chan common.DAHeightEvent
@@ -74,6 +72,9 @@ type Syncer struct {
 
 	// P2P wait coordination
 	p2pWaitState atomic.Value // stores p2pWaitState
+
+	// Async DA retriever
+	asyncDARetriever *AsyncDARetriever
 }
 
 // pendingForcedInclusionTx represents a forced inclusion transaction that hasn't been included yet
@@ -93,8 +94,8 @@ func NewSyncer(
 	metrics *common.Metrics,
 	config config.Config,
 	genesis genesis.Genesis,
-	headerStore common.Broadcaster[*types.SignedHeader],
-	dataStore common.Broadcaster[*types.Data],
+	headerStore common.HeaderP2PBroadcaster,
+	dataStore common.DataP2PBroadcaster,
 	logger zerolog.Logger,
 	options common.BlockOptions,
 	errorCh chan<- error,
@@ -131,8 +132,10 @@ func (s *Syncer) Start(ctx context.Context) error {
 
 	// Initialize handlers
 	s.daRetriever = NewDARetriever(s.daClient, s.cache, s.genesis, s.logger)
+	s.asyncDARetriever = NewAsyncDARetriever(s.daRetriever, s.heightInCh, s.logger)
+	s.asyncDARetriever.Start(s.ctx)
 	s.fiRetriever = da.NewForcedInclusionRetriever(s.daClient, s.genesis, s.logger)
-	s.p2pHandler = NewP2PHandler(s.headerStore.Store(), s.dataStore.Store(), s.cache, s.genesis, s.logger)
+	s.p2pHandler = NewP2PHandler(s.headerStore, s.dataStore, s.cache, s.genesis, s.logger)
 	if currentHeight, err := s.store.Height(s.ctx); err != nil {
 		s.logger.Error().Err(err).Msg("failed to set initial processed height for p2p handler")
 	} else {
@@ -161,6 +164,9 @@ func (s *Syncer) Start(ctx context.Context) error {
 func (s *Syncer) Stop() error {
 	if s.cancel != nil {
 		s.cancel()
+	}
+	if s.asyncDARetriever != nil {
+		s.asyncDARetriever.Stop()
 	}
 	s.cancelP2PWait(0)
 	s.wg.Wait()
@@ -446,6 +452,48 @@ func (s *Syncer) processHeightEvent(event *common.DAHeightEvent) {
 		s.cache.SetPendingEvent(height, event)
 		s.logger.Debug().Uint64("height", height).Uint64("current_height", currentHeight).Msg("stored as pending event")
 		return
+	}
+
+	// If this is a P2P event with a DA height hint, trigger targeted DA retrieval
+	// This allows us to fetch the block directly from the specified DA height instead of sequential scanning
+	if event.Source == common.SourceP2P {
+		var daHeightHints []uint64
+		switch {
+		case event.DaHeightHints == [2]uint64{0, 0}:
+		// empty, nothing to do
+		case event.DaHeightHints[0] == 0:
+			// check only data
+			if _, exists := s.cache.GetDataDAIncluded(event.Data.Hash().String()); !exists {
+				daHeightHints = []uint64{event.DaHeightHints[1]}
+			}
+		case event.DaHeightHints[1] == 0:
+			// check only header
+			if _, exists := s.cache.GetHeaderDAIncluded(event.Header.Hash().String()); !exists {
+				daHeightHints = []uint64{event.DaHeightHints[0]}
+			}
+		default:
+			// check both
+			if _, exists := s.cache.GetHeaderDAIncluded(event.Header.Hash().String()); !exists {
+				daHeightHints = []uint64{event.DaHeightHints[0]}
+			}
+			if _, exists := s.cache.GetDataDAIncluded(event.Data.Hash().String()); !exists {
+				daHeightHints = append(daHeightHints, event.DaHeightHints[1])
+			}
+			if len(daHeightHints) == 2 && daHeightHints[0] == daHeightHints[1] {
+				daHeightHints = daHeightHints[0:1]
+			}
+		}
+		if len(daHeightHints) > 0 {
+			for _, daHeightHint := range daHeightHints {
+				s.logger.Debug().
+					Uint64("height", height).
+					Uint64("da_height_hint", daHeightHint).
+					Msg("P2P event with DA height hint, triggering targeted DA retrieval")
+
+				// Trigger targeted DA retrieval in background via worker pool
+				s.asyncDARetriever.RequestRetrieval(daHeightHint)
+			}
+		}
 	}
 
 	// Last data must be got from store if the event comes from DA and the data hash is empty.

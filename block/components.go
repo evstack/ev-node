@@ -5,10 +5,10 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/evstack/ev-node/pkg/sync"
 	"github.com/rs/zerolog"
 
 	"github.com/evstack/ev-node/block/internal/cache"
-	"github.com/evstack/ev-node/block/internal/common"
 	"github.com/evstack/ev-node/block/internal/executing"
 	"github.com/evstack/ev-node/block/internal/reaping"
 	"github.com/evstack/ev-node/block/internal/submitting"
@@ -132,8 +132,8 @@ func NewSyncComponents(
 	store store.Store,
 	exec coreexecutor.Executor,
 	da coreda.DA,
-	headerStore common.Broadcaster[*types.SignedHeader],
-	dataStore common.Broadcaster[*types.Data],
+	headerStore *sync.HeaderSyncService,
+	dataStore *sync.DataSyncService,
 	logger zerolog.Logger,
 	metrics *Metrics,
 	blockOpts BlockOptions,
@@ -165,7 +165,7 @@ func NewSyncComponents(
 	)
 
 	// Create submitter for sync nodes (no signer, only DA inclusion processing)
-	daSubmitter := submitting.NewDASubmitter(daClient, config, genesis, blockOpts, metrics, logger)
+	daSubmitter := submitting.NewDASubmitter(daClient, config, genesis, blockOpts, metrics, logger, headerStore, dataStore)
 	submitter := submitting.NewSubmitter(
 		store,
 		exec,
@@ -198,8 +198,8 @@ func NewAggregatorComponents(
 	sequencer coresequencer.Sequencer,
 	da coreda.DA,
 	signer signer.Signer,
-	headerBroadcaster common.Broadcaster[*types.SignedHeader],
-	dataBroadcaster common.Broadcaster[*types.Data],
+	headerBroadcaster *sync.HeaderSyncService,
+	dataBroadcaster *sync.DataSyncService,
 	logger zerolog.Logger,
 	metrics *Metrics,
 	blockOpts BlockOptions,
@@ -256,7 +256,7 @@ func NewAggregatorComponents(
 
 	// Create DA client and submitter for aggregator nodes (with signer for submission)
 	daClient := NewDAClient(da, config, logger)
-	daSubmitter := submitting.NewDASubmitter(daClient, config, genesis, blockOpts, metrics, logger)
+	daSubmitter := submitting.NewDASubmitter(daClient, config, genesis, blockOpts, metrics, logger, headerBroadcaster, dataBroadcaster)
 	submitter := submitting.NewSubmitter(
 		store,
 		exec,
