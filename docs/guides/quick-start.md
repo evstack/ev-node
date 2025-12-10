@@ -57,7 +57,7 @@ Now that we have our testapp generated and installed, we can launch our chain al
 First lets start the local DA network:
 
 ```bash
-go install github.com/evstack/ev-node/da/cmd/local-da@latest
+go install github.com/evstack/ev-node/apps/local-da@latest
 local-da
 ```
 

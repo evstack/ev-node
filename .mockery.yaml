@@ -62,4 +62,4 @@ packages:
         config:
           dir: ./test/mocks
           pkgname: mocks
-          filename: mock_da_client.go
+          filename: da.go

@@ -7,7 +7,7 @@ import constants from '../../.vitepress/constants/constants.js'
 
 ## Introduction {#introduction}
 
-This tutorial serves as a comprehensive guide for using the [local-da](https://github.com/evstack/ev-node/tree/main/da/cmd/local-da) with your chain.
+This tutorial serves as a comprehensive guide for using the [local-da](https://github.com/evstack/ev-node/tree/main/apps/local-da) with your chain.
 
 Before proceeding, ensure that you have completed the [build a chain](../gm-world.md) tutorial, which covers setting-up, building and running your chain.
 
@@ -16,7 +16,7 @@ Before proceeding, ensure that you have completed the [build a chain](../gm-worl
 To set up a local DA network node on your machine, run the following script to install and start the local DA node:
 
 ```bash-vue
-go install github.com/evstack/ev-node/da/cmd/local-da@latest
+go install github.com/evstack/ev-node/apps/local-da@latest
 ```
 
 This script will build and run the node, which will then listen on port `7980`.
@@ -53,4 +53,4 @@ You should see the following log message indicating that your chain is connected
 
 ## Summary
 
-By following these steps, you will set up a local DA network node and configure your chain to post data to it. This setup is useful for testing and development in a controlled environment. You can find more information on running the local-da binary [here](https://github.com/evstack/ev-node/blob/main/da/cmd/local-da/README.md)
+By following these steps, you will set up a local DA network node and configure your chain to post data to it. This setup is useful for testing and development in a controlled environment. You can find more information on running the local-da binary [here](https://github.com/evstack/ev-node/blob/main/apps/local-da/README.md)
