@@ -7,14 +7,12 @@ replace github.com/celestiaorg/go-header => github.com/julienrbrt/go-header v0.0
 replace (
 	github.com/evstack/ev-node => ../../.
 	github.com/evstack/ev-node/core => ../../core
-	github.com/evstack/ev-node/da => ../../da
 )
 
 require (
 	github.com/celestiaorg/go-header v0.7.4
 	github.com/evstack/ev-node v1.0.0-beta.10
 	github.com/evstack/ev-node/core v1.0.0-beta.5
-	github.com/evstack/ev-node/da v0.0.0-00010101000000-000000000000
 	github.com/ipfs/go-datastore v0.9.0
 	github.com/rs/zerolog v1.34.0
 	github.com/spf13/cobra v1.10.1

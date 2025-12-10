@@ -12,7 +12,6 @@ require (
 	github.com/cosmos/ibc-go/v8 v8.7.0
 	github.com/ethereum/go-ethereum v1.16.7
 	github.com/evstack/ev-node v1.0.0-beta.10
-	github.com/evstack/ev-node/da v0.0.0-00010101000000-000000000000
 	github.com/evstack/ev-node/execution/evm v0.0.0-20250602130019-2a732cf903a5
 	github.com/evstack/ev-node/execution/evm/test v0.0.0-00010101000000-000000000000
 	github.com/libp2p/go-libp2p v0.45.0
@@ -22,7 +21,6 @@ require (
 replace (
 	github.com/evstack/ev-node => ../../
 	github.com/evstack/ev-node/core => ../../core
-	github.com/evstack/ev-node/da => ../../da
 	github.com/evstack/ev-node/execution/evm => ../../execution/evm
 	github.com/evstack/ev-node/execution/evm/test => ../../execution/evm/test
 )

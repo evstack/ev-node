@@ -3,8 +3,8 @@ module github.com/evstack/ev-node/tools/da-debug
 go 1.24.6
 
 require (
+	github.com/celestiaorg/go-square/v3 v3.0.2
 	github.com/evstack/ev-node v1.0.0-beta.6
-	github.com/evstack/ev-node/da v1.0.0-beta.6
 	github.com/rs/zerolog v1.34.0
 	github.com/spf13/cobra v1.10.1
 	google.golang.org/protobuf v1.36.10
@@ -13,7 +13,6 @@ require (
 require (
 	github.com/celestiaorg/go-header v0.7.4 // indirect
 	github.com/celestiaorg/go-square/merkle v0.0.0-20240627094109-7d01436067a3 // indirect
-	github.com/celestiaorg/go-square/v3 v3.0.2 // indirect
 	github.com/celestiaorg/nmt v0.24.2 // indirect
 	github.com/decred/dcrd/dcrec/secp256k1/v4 v4.4.0 // indirect
 	github.com/filecoin-project/go-jsonrpc v0.9.0 // indirect
@@ -57,5 +56,3 @@ require (
 )
 
 replace github.com/evstack/ev-node => ../..
-
-replace github.com/evstack/ev-node/da => ../../da

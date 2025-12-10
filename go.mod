@@ -8,10 +8,12 @@ require (
 	connectrpc.com/connect v1.19.1
 	connectrpc.com/grpcreflect v1.3.0
 	github.com/celestiaorg/go-header v0.7.4
+	github.com/celestiaorg/go-square/merkle v0.0.0-20240627094109-7d01436067a3
 	github.com/celestiaorg/go-square/v3 v3.0.2
+	github.com/celestiaorg/nmt v0.24.2
 	github.com/celestiaorg/utils v0.1.0
 	github.com/evstack/ev-node/core v1.0.0-beta.5
-	github.com/evstack/ev-node/da v0.0.0-00010101000000-000000000000
+	github.com/filecoin-project/go-jsonrpc v0.9.0
 	github.com/go-kit/kit v0.13.0
 	github.com/goccy/go-yaml v1.19.0
 	github.com/ipfs/go-datastore v0.9.0
@@ -34,14 +36,10 @@ require (
 	gotest.tools/v3 v3.5.2
 )
 
-replace github.com/evstack/ev-node/da => ./da
-
 require (
 	github.com/benbjohnson/clock v1.3.5 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/celestiaorg/go-libp2p-messenger v0.2.2 // indirect
-	github.com/celestiaorg/go-square/merkle v0.0.0-20240627094109-7d01436067a3 // indirect
-	github.com/celestiaorg/nmt v0.24.2 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
 	github.com/davidlazar/go-crypto v0.0.0-20200604182044-b73af7476f6c // indirect
@@ -50,7 +48,6 @@ require (
 	github.com/dgraph-io/ristretto/v2 v2.1.0 // indirect
 	github.com/dustin/go-humanize v1.0.1 // indirect
 	github.com/filecoin-project/go-clock v0.1.0 // indirect
-	github.com/filecoin-project/go-jsonrpc v0.9.0 // indirect
 	github.com/flynn/noise v1.1.0 // indirect
 	github.com/francoispqt/gojay v1.2.13 // indirect
 	github.com/fsnotify/fsnotify v1.9.0 // indirect
