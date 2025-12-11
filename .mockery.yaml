@@ -65,3 +65,17 @@ packages:
           dir: ./block/internal/common
           pkgname: common
           filename: broadcaster_mock.go
+  github.com/evstack/ev-node/block/internal/da:
+    interfaces:
+      BlobAPI:
+        config:
+          dir: ./block/internal/da
+          pkgname: da
+          filename: blob_api_mock.go
+  github.com/evstack/ev-node/pkg/da/jsonrpc:
+    interfaces:
+      BlobModule:
+        config:
+          dir: ./pkg/da/jsonrpc/mocks
+          pkgname: mocks
+          filename: blob_module_mock.go
