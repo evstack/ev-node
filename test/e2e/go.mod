@@ -12,9 +12,11 @@ require (
 	github.com/cosmos/ibc-go/v8 v8.7.0
 	github.com/ethereum/go-ethereum v1.16.7
 	github.com/evstack/ev-node v1.0.0-beta.10
+	github.com/evstack/ev-node/da v0.0.0-00010101000000-000000000000
 	github.com/evstack/ev-node/execution/evm v0.0.0-20250602130019-2a732cf903a5
 	github.com/evstack/ev-node/execution/evm/test v0.0.0-00010101000000-000000000000
 	github.com/libp2p/go-libp2p v0.45.0
+	github.com/rs/zerolog v1.34.0
 	github.com/stretchr/testify v1.11.1
 )
 
@@ -195,7 +197,6 @@ require (
 	github.com/rivo/uniseg v0.2.0 // indirect
 	github.com/rogpeppe/go-internal v1.14.1 // indirect
 	github.com/rs/cors v1.11.1 // indirect
-	github.com/rs/zerolog v1.34.0 // indirect
 	github.com/sagikazarmark/locafero v0.11.0 // indirect
 	github.com/sasha-s/go-deadlock v0.3.5 // indirect
 	github.com/shirou/gopsutil v3.21.4-0.20210419000835-c7a38de76ee5+incompatible // indirect
