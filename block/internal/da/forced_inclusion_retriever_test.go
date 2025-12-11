@@ -187,8 +187,99 @@ func TestForcedInclusionRetriever_RetrieveForcedIncludedTxs_MultiHeightEpoch(t *
 	assert.Assert(t, event != nil)
 	assert.Equal(t, event.StartDaHeight, uint64(100))
 	assert.Equal(t, event.EndDaHeight, uint64(102))
+	assert.Assert(t, event.Timestamp.After(time.Time{}))
 
 	// Should have collected all txs from all heights
 	expectedTxCount := len(testBlobsByHeight[100]) + len(testBlobsByHeight[101]) + len(testBlobsByHeight[102])
 	assert.Equal(t, len(event.Txs), expectedTxCount)
+}
+
+func TestForcedInclusionRetriever_processForcedInclusionBlobs(t *testing.T) {
+	client := NewClient(Config{
+		DA:                       &mockDA{},
+		Logger:                   zerolog.Nop(),
+		Namespace:                "test-ns",
+		DataNamespace:            "test-data-ns",
+		ForcedInclusionNamespace: "test-fi-ns",
+	})
+
+	gen := genesis.Genesis{
+		DAStartHeight:          100,
+		DAEpochForcedInclusion: 10,
+	}
+
+	retriever := NewForcedInclusionRetriever(client, gen, zerolog.Nop())
+
+	tests := []struct {
+		name            string
+		result          coreda.ResultRetrieve
+		height          uint64
+		expectedTxCount int
+		expectError     bool
+	}{
+		{
+			name: "success with blobs",
+			result: coreda.ResultRetrieve{
+				BaseResult: coreda.BaseResult{
+					Code: coreda.StatusSuccess,
+				},
+				Data: [][]byte{[]byte("tx1"), []byte("tx2")},
+			},
+			height:          100,
+			expectedTxCount: 2,
+			expectError:     false,
+		},
+		{
+			name: "not found",
+			result: coreda.ResultRetrieve{
+				BaseResult: coreda.BaseResult{
+					Code: coreda.StatusNotFound,
+				},
+			},
+			height:          100,
+			expectedTxCount: 0,
+			expectError:     false,
+		},
+		{
+			name: "error status",
+			result: coreda.ResultRetrieve{
+				BaseResult: coreda.BaseResult{
+					Code:    coreda.StatusError,
+					Message: "test error",
+				},
+			},
+			height:      100,
+			expectError: true,
+		},
+		{
+			name: "empty blobs are skipped",
+			result: coreda.ResultRetrieve{
+				BaseResult: coreda.BaseResult{
+					Code: coreda.StatusSuccess,
+				},
+				Data: [][]byte{[]byte("tx1"), {}, []byte("tx2")},
+			},
+			height:          100,
+			expectedTxCount: 2,
+			expectError:     false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			event := &ForcedInclusionEvent{
+				Txs: [][]byte{},
+			}
+
+			err := retriever.processForcedInclusionBlobs(event, tt.result, tt.height)
+
+			if tt.expectError {
+				assert.Assert(t, err != nil)
+			} else {
+				assert.NilError(t, err)
+				assert.Equal(t, len(event.Txs), tt.expectedTxCount)
+				assert.Equal(t, event.Timestamp, time.Time{})
+			}
+		})
+	}
 }

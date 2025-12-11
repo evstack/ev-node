@@ -21,6 +21,7 @@ require (
 replace (
 	github.com/evstack/ev-node => ../../
 	github.com/evstack/ev-node/core => ../../core
+	github.com/evstack/ev-node/da => ../../da
 	github.com/evstack/ev-node/execution/evm => ../../execution/evm
 	github.com/evstack/ev-node/execution/evm/test => ../../execution/evm/test
 )

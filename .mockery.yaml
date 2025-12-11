@@ -63,3 +63,17 @@ packages:
           dir: ./test/mocks
           pkgname: mocks
           filename: da.go
+  github.com/evstack/ev-node/block/internal/da:
+    interfaces:
+      BlobAPI:
+        config:
+          dir: ./block/internal/da
+          pkgname: da
+          filename: blob_api_mock.go
+  github.com/evstack/ev-node/pkg/da/jsonrpc:
+    interfaces:
+      BlobModule:
+        config:
+          dir: ./pkg/da/jsonrpc/mocks
+          pkgname: mocks
+          filename: blob_module_mock.go
