@@ -31,7 +31,7 @@ type State struct {
 	LastHeaderHash Hash
 
 	// DAHeight identifies DA block containing the latest applied Evolve block for a syncing node.
-	// In the case of an aggregator, this corresponds as the last fetched DA block height for forced inclused transactions.
+	// In the case of an aggregator, this corresponds as the last fetched DA block height for forced included transactions.
 	DAHeight uint64
 
 	// the latest AppHash we've received from calling abci.Commit()
