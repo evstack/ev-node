@@ -5,11 +5,12 @@ package docker_e2e
 import (
 	"context"
 	"fmt"
-	tastoratypes "github.com/celestiaorg/tastora/framework/types"
 	"io"
 	"strings"
 	"testing"
 	"time"
+
+	tastoratypes "github.com/celestiaorg/tastora/framework/types"
 
 	da "github.com/celestiaorg/tastora/framework/docker/dataavailability"
 	"github.com/celestiaorg/tastora/framework/docker/evstack"

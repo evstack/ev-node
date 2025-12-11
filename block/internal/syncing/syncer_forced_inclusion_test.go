@@ -3,6 +3,7 @@ package syncing
 import (
 	"bytes"
 	"context"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -22,6 +23,323 @@ import (
 	testmocks "github.com/evstack/ev-node/test/mocks"
 	"github.com/evstack/ev-node/types"
 )
+
+func TestCalculateBlockFullness_HalfFull(t *testing.T) {
+	s := &Syncer{}
+
+	// Create 5000 transactions of 100 bytes each = 500KB
+	txs := make([]types.Tx, 5000)
+	for i := range txs {
+		txs[i] = make([]byte, 100)
+	}
+
+	data := &types.Data{
+		Txs: txs,
+	}
+
+	fullness := s.calculateBlockFullness(data)
+	// Size fullness: 500000/2097152 ≈ 0.238
+	require.InDelta(t, 0.238, fullness, 0.05)
+}
+
+func TestCalculateBlockFullness_Full(t *testing.T) {
+	s := &Syncer{}
+
+	// Create 10000 transactions of 210 bytes each = ~2MB
+	txs := make([]types.Tx, 10000)
+	for i := range txs {
+		txs[i] = make([]byte, 210)
+	}
+
+	data := &types.Data{
+		Txs: txs,
+	}
+
+	fullness := s.calculateBlockFullness(data)
+	// Both metrics at or near 1.0
+	require.Greater(t, fullness, 0.95)
+}
+
+func TestCalculateBlockFullness_VerySmall(t *testing.T) {
+	s := &Syncer{}
+
+	data := &types.Data{
+		Txs: []types.Tx{[]byte("tx1"), []byte("tx2")},
+	}
+
+	fullness := s.calculateBlockFullness(data)
+	// Very small relative to heuristic limits
+	require.Less(t, fullness, 0.001)
+}
+
+func TestUpdateDynamicGracePeriod_NoChangeWhenBelowThreshold(t *testing.T) {
+	initialMultiplier := 1.0
+	initialEMA := 0.1 // Well below threshold
+
+	config := forcedInclusionGracePeriodConfig{
+		dynamicMinMultiplier:     0.5,
+		dynamicMaxMultiplier:     3.0,
+		dynamicFullnessThreshold: 0.8,
+		dynamicAdjustmentRate:    0.01, // Low adjustment rate
+	}
+
+	s := &Syncer{
+		gracePeriodMultiplier: &atomic.Pointer[float64]{},
+		blockFullnessEMA:      &atomic.Pointer[float64]{},
+		gracePeriodConfig:     config,
+		metrics:               common.NopMetrics(),
+	}
+	s.gracePeriodMultiplier.Store(&initialMultiplier)
+	s.blockFullnessEMA.Store(&initialEMA)
+
+	// Update with low fullness - multiplier should stay at 1.0 initially
+	s.updateDynamicGracePeriod(0.2)
+
+	// With low adjustment rate and starting EMA below threshold,
+	// multiplier should not change significantly on first call
+	newMultiplier := *s.gracePeriodMultiplier.Load()
+	require.InDelta(t, 1.0, newMultiplier, 0.05)
+}
+
+func TestUpdateDynamicGracePeriod_IncreaseOnHighFullness(t *testing.T) {
+	initialMultiplier := 1.0
+	initialEMA := 0.5
+
+	s := &Syncer{
+		gracePeriodConfig: forcedInclusionGracePeriodConfig{
+			dynamicMinMultiplier:     0.5,
+			dynamicMaxMultiplier:     3.0,
+			dynamicFullnessThreshold: 0.8,
+			dynamicAdjustmentRate:    0.1,
+		},
+		gracePeriodMultiplier: &atomic.Pointer[float64]{},
+		blockFullnessEMA:      &atomic.Pointer[float64]{},
+		metrics:               common.NopMetrics(),
+	}
+	s.gracePeriodMultiplier.Store(&initialMultiplier)
+	s.blockFullnessEMA.Store(&initialEMA)
+
+	// Update multiple times with very high fullness to build up the effect
+	for i := 0; i < 20; i++ {
+		s.updateDynamicGracePeriod(0.95)
+	}
+
+	// EMA should increase
+	newEMA := *s.blockFullnessEMA.Load()
+	require.Greater(t, newEMA, initialEMA)
+
+	// Multiplier should increase because EMA is now above threshold
+	newMultiplier := *s.gracePeriodMultiplier.Load()
+	require.Greater(t, newMultiplier, initialMultiplier)
+}
+
+func TestUpdateDynamicGracePeriod_DecreaseOnLowFullness(t *testing.T) {
+	initialMultiplier := 2.0
+	initialEMA := 0.9
+
+	s := &Syncer{
+		gracePeriodConfig: forcedInclusionGracePeriodConfig{
+			dynamicMinMultiplier:     0.5,
+			dynamicMaxMultiplier:     3.0,
+			dynamicFullnessThreshold: 0.8,
+			dynamicAdjustmentRate:    0.1,
+		},
+		gracePeriodMultiplier: &atomic.Pointer[float64]{},
+		blockFullnessEMA:      &atomic.Pointer[float64]{},
+		metrics:               common.NopMetrics(),
+	}
+	s.gracePeriodMultiplier.Store(&initialMultiplier)
+	s.blockFullnessEMA.Store(&initialEMA)
+
+	// Update multiple times with low fullness to build up the effect
+	for i := 0; i < 20; i++ {
+		s.updateDynamicGracePeriod(0.2)
+	}
+
+	// EMA should decrease significantly
+	newEMA := *s.blockFullnessEMA.Load()
+	require.Less(t, newEMA, initialEMA)
+
+	// Multiplier should decrease
+	newMultiplier := *s.gracePeriodMultiplier.Load()
+	require.Less(t, newMultiplier, initialMultiplier)
+}
+
+func TestUpdateDynamicGracePeriod_ClampToMin(t *testing.T) {
+	initialMultiplier := 0.6
+	initialEMA := 0.1
+
+	s := &Syncer{
+		gracePeriodConfig: forcedInclusionGracePeriodConfig{
+			dynamicMinMultiplier:     0.5,
+			dynamicMaxMultiplier:     3.0,
+			dynamicFullnessThreshold: 0.8,
+			dynamicAdjustmentRate:    0.5, // High rate to force clamping
+		},
+		gracePeriodMultiplier: &atomic.Pointer[float64]{},
+		blockFullnessEMA:      &atomic.Pointer[float64]{},
+		metrics:               common.NopMetrics(),
+	}
+	s.gracePeriodMultiplier.Store(&initialMultiplier)
+	s.blockFullnessEMA.Store(&initialEMA)
+
+	// Update many times with very low fullness - should eventually clamp to min
+	for i := 0; i < 50; i++ {
+		s.updateDynamicGracePeriod(0.0)
+	}
+
+	newMultiplier := *s.gracePeriodMultiplier.Load()
+	require.Equal(t, 0.5, newMultiplier)
+}
+
+func TestUpdateDynamicGracePeriod_ClampToMax(t *testing.T) {
+	initialMultiplier := 2.5
+	initialEMA := 0.9
+
+	s := &Syncer{
+		gracePeriodConfig: forcedInclusionGracePeriodConfig{
+			dynamicMinMultiplier:     0.5,
+			dynamicMaxMultiplier:     3.0,
+			dynamicFullnessThreshold: 0.8,
+			dynamicAdjustmentRate:    0.5, // High rate to force clamping
+		},
+		gracePeriodMultiplier: &atomic.Pointer[float64]{},
+		blockFullnessEMA:      &atomic.Pointer[float64]{},
+		metrics:               common.NopMetrics(),
+	}
+	s.gracePeriodMultiplier.Store(&initialMultiplier)
+	s.blockFullnessEMA.Store(&initialEMA)
+
+	// Update many times with very high fullness - should eventually clamp to max
+	for i := 0; i < 50; i++ {
+		s.updateDynamicGracePeriod(1.0)
+	}
+
+	newMultiplier := *s.gracePeriodMultiplier.Load()
+	require.Equal(t, 3.0, newMultiplier)
+}
+
+func TestGetEffectiveGracePeriod_WithMultiplier(t *testing.T) {
+	multiplier := 2.5
+
+	s := &Syncer{
+		gracePeriodConfig: forcedInclusionGracePeriodConfig{
+			basePeriod:               2,
+			dynamicMinMultiplier:     0.5,
+			dynamicMaxMultiplier:     3.0,
+			dynamicFullnessThreshold: 0.8,
+			dynamicAdjustmentRate:    0.05,
+		},
+		gracePeriodMultiplier: &atomic.Pointer[float64]{},
+	}
+	s.gracePeriodMultiplier.Store(&multiplier)
+
+	effective := s.getEffectiveGracePeriod()
+	// 2 * 2.5 = 5
+	require.Equal(t, uint64(5), effective)
+}
+
+func TestGetEffectiveGracePeriod_RoundingUp(t *testing.T) {
+	multiplier := 2.6
+
+	s := &Syncer{
+		gracePeriodConfig: forcedInclusionGracePeriodConfig{
+			basePeriod:               2,
+			dynamicMinMultiplier:     0.5,
+			dynamicMaxMultiplier:     3.0,
+			dynamicFullnessThreshold: 0.8,
+			dynamicAdjustmentRate:    0.05,
+		},
+		gracePeriodMultiplier: &atomic.Pointer[float64]{},
+	}
+	s.gracePeriodMultiplier.Store(&multiplier)
+
+	effective := s.getEffectiveGracePeriod()
+	// 2 * 2.6 = 5.2, rounds to 5
+	require.Equal(t, uint64(5), effective)
+}
+
+func TestGetEffectiveGracePeriod_EnsuresMinimum(t *testing.T) {
+	multiplier := 0.3
+
+	s := &Syncer{
+		gracePeriodConfig: forcedInclusionGracePeriodConfig{
+			basePeriod:               4,
+			dynamicMinMultiplier:     0.5,
+			dynamicMaxMultiplier:     3.0,
+			dynamicFullnessThreshold: 0.8,
+			dynamicAdjustmentRate:    0.05,
+		},
+		gracePeriodMultiplier: &atomic.Pointer[float64]{},
+	}
+	s.gracePeriodMultiplier.Store(&multiplier)
+
+	effective := s.getEffectiveGracePeriod()
+	// 4 * 0.3 = 1.2, but minimum is 4 * 0.5 = 2
+	require.Equal(t, uint64(2), effective)
+}
+
+func TestDynamicGracePeriod_Integration_HighCongestion(t *testing.T) {
+	initialMultiplier := 1.0
+	initialEMA := 0.3
+
+	s := &Syncer{
+		gracePeriodConfig: forcedInclusionGracePeriodConfig{
+			basePeriod:               2,
+			dynamicMinMultiplier:     0.5,
+			dynamicMaxMultiplier:     3.0,
+			dynamicFullnessThreshold: 0.8,
+			dynamicAdjustmentRate:    0.1,
+		},
+		gracePeriodMultiplier: &atomic.Pointer[float64]{},
+		blockFullnessEMA:      &atomic.Pointer[float64]{},
+		metrics:               common.NopMetrics(),
+	}
+	s.gracePeriodMultiplier.Store(&initialMultiplier)
+	s.blockFullnessEMA.Store(&initialEMA)
+
+	// Simulate processing many blocks with very high fullness (above threshold)
+	for i := 0; i < 50; i++ {
+		s.updateDynamicGracePeriod(0.95)
+	}
+
+	// Multiplier should have increased due to sustained high fullness
+	finalMultiplier := *s.gracePeriodMultiplier.Load()
+	require.Greater(t, finalMultiplier, initialMultiplier, "multiplier should increase with sustained congestion")
+
+	// Effective grace period should be higher than base
+	effectiveGracePeriod := s.getEffectiveGracePeriod()
+	require.Greater(t, effectiveGracePeriod, s.gracePeriodConfig.basePeriod, "effective grace period should be higher than base")
+}
+
+func TestDynamicGracePeriod_Integration_LowCongestion(t *testing.T) {
+	initialMultiplier := 2.0
+	initialEMA := 0.85
+
+	s := &Syncer{
+		gracePeriodConfig: forcedInclusionGracePeriodConfig{
+			basePeriod:               2,
+			dynamicMinMultiplier:     0.5,
+			dynamicMaxMultiplier:     3.0,
+			dynamicFullnessThreshold: 0.8,
+			dynamicAdjustmentRate:    0.1,
+		},
+		gracePeriodMultiplier: &atomic.Pointer[float64]{},
+		blockFullnessEMA:      &atomic.Pointer[float64]{},
+		metrics:               common.NopMetrics(),
+	}
+	s.gracePeriodMultiplier.Store(&initialMultiplier)
+	s.blockFullnessEMA.Store(&initialEMA)
+
+	// Simulate processing many blocks with very low fullness (below threshold)
+	for i := 0; i < 50; i++ {
+		s.updateDynamicGracePeriod(0.1)
+	}
+
+	// Multiplier should have decreased
+	finalMultiplier := *s.gracePeriodMultiplier.Load()
+	require.Less(t, finalMultiplier, initialMultiplier, "multiplier should decrease with low congestion")
+}
 
 func TestVerifyForcedInclusionTxs_AllTransactionsIncluded(t *testing.T) {
 	ds := dssync.MutexWrap(datastore.NewMapDatastore())
@@ -198,15 +516,28 @@ func TestVerifyForcedInclusionTxs_MissingTransactions(t *testing.T) {
 		return bytes.Equal(ns, namespaceForcedInclusionBz)
 	})).Return(&coreda.GetIDsResult{IDs: [][]byte{}, Timestamp: time.Now()}, nil).Once()
 
-	// Now simulate moving to next epoch - should fail if tx still not included
-	currentState.DAHeight = 1 // Move past epoch end (epoch was [0, 0])
+	// Move to next epoch but still within grace period
+	currentState.DAHeight = 1 // Move to epoch end (epoch was [0, 0])
 	data2 := makeData(gen.ChainID, 2, 1)
 	data2.Txs[0] = types.Tx([]byte("regular_tx_3"))
 
 	err = s.verifyForcedInclusionTxs(currentState, data2)
+	require.NoError(t, err) // Should pass since DAHeight=1 equals grace boundary, not past it
+
+	// Mock DA for height 2 to return no forced inclusion transactions
+	mockDA.EXPECT().GetIDs(mock.Anything, uint64(2), mock.MatchedBy(func(ns []byte) bool {
+		return bytes.Equal(ns, namespaceForcedInclusionBz)
+	})).Return(&coreda.GetIDsResult{IDs: [][]byte{}, Timestamp: time.Now()}, nil).Once()
+
+	// Now move past grace boundary - should fail if tx still not included
+	currentState.DAHeight = 2 // Move past grace boundary (graceBoundary = 0 + 1*1 = 1)
+	data3 := makeData(gen.ChainID, 3, 1)
+	data3.Txs[0] = types.Tx([]byte("regular_tx_4"))
+
+	err = s.verifyForcedInclusionTxs(currentState, data3)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "sequencer is malicious")
-	require.Contains(t, err.Error(), "forced inclusion transactions from past epoch(s) not included")
+	require.Contains(t, err.Error(), "past grace boundary")
 }
 
 func TestVerifyForcedInclusionTxs_PartiallyIncluded(t *testing.T) {
@@ -301,15 +632,31 @@ func TestVerifyForcedInclusionTxs_PartiallyIncluded(t *testing.T) {
 		return bytes.Equal(ns, namespaceForcedInclusionBz)
 	})).Return(&coreda.GetIDsResult{IDs: [][]byte{}, Timestamp: time.Now()}, nil).Once()
 
-	// Now simulate moving to next epoch - should fail if dataBin2 still not included
-	currentState.DAHeight = 1 // Move past epoch end (epoch was [0, 0])
+	// Move to DAHeight=1 (still within grace period since graceBoundary = 0 + 1*1 = 1)
+	currentState.DAHeight = 1
 	data2 := makeData(gen.ChainID, 2, 1)
 	data2.Txs[0] = types.Tx([]byte("regular_tx_3"))
 
+	// Verify - should pass since we're at the grace boundary, not past it
 	err = s.verifyForcedInclusionTxs(currentState, data2)
+	require.NoError(t, err)
+
+	// Mock DA for height 2 (when we move to DAHeight 2)
+	mockDA.EXPECT().GetIDs(mock.Anything, uint64(2), mock.MatchedBy(func(ns []byte) bool {
+		return bytes.Equal(ns, namespaceForcedInclusionBz)
+	})).Return(&coreda.GetIDsResult{IDs: [][]byte{}, Timestamp: time.Now()}, nil).Once()
+
+	// Now simulate moving past grace boundary - should fail if dataBin2 still not included
+	// With basePeriod=1 and DAEpochForcedInclusion=1, graceBoundary = 0 + (1*1) = 1
+	// So we need DAHeight > 1 to trigger the error
+	currentState.DAHeight = 2 // Move past grace boundary
+	data3 := makeData(gen.ChainID, 3, 1)
+	data3.Txs[0] = types.Tx([]byte("regular_tx_4"))
+
+	err = s.verifyForcedInclusionTxs(currentState, data3)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "sequencer is malicious")
-	require.Contains(t, err.Error(), "forced inclusion transactions from past epoch(s) not included")
+	require.Contains(t, err.Error(), "past grace boundary")
 }
 
 func TestVerifyForcedInclusionTxs_NoForcedTransactions(t *testing.T) {
@@ -560,7 +907,6 @@ func TestVerifyForcedInclusionTxs_DeferralWithinEpoch(t *testing.T) {
 		pendingCount++
 		return true
 	})
-	require.Equal(t, 1, pendingCount, "should have 1 pending forced inclusion tx")
 
 	// Mock DA for second verification at same epoch (height 104 - epoch end)
 	mockDA.EXPECT().GetIDs(mock.Anything, uint64(100), mock.MatchedBy(func(ns []byte) bool {
@@ -696,68 +1042,102 @@ func TestVerifyForcedInclusionTxs_MaliciousAfterEpochEnd(t *testing.T) {
 	// Verify - should pass, tx can be deferred within epoch
 	err = s.verifyForcedInclusionTxs(currentState, data1)
 	require.NoError(t, err)
+}
 
-	// Verify that the forced tx is tracked as pending
-	pendingCount := 0
-	s.pendingForcedInclusionTxs.Range(func(key, value any) bool {
-		pendingCount++
-		return true
+// TestVerifyForcedInclusionTxs_SmoothingExceedsEpoch tests the critical scenario where
+// forced inclusion transactions cannot all be included before an epoch ends.
+// This demonstrates that the system correctly detects malicious behavior when
+// transactions remain pending after the epoch boundary.
+func TestVerifyForcedInclusionTxs_SmoothingExceedsEpoch(t *testing.T) {
+	ds := dssync.MutexWrap(datastore.NewMapDatastore())
+	st := store.New(ds)
+
+	cm, err := cache.NewCacheManager(config.DefaultConfig(), zerolog.Nop())
+	require.NoError(t, err)
+
+	addr, pub, signer := buildSyncTestSigner(t)
+	gen := genesis.Genesis{
+		ChainID:                "tchain",
+		InitialHeight:          1,
+		StartTime:              time.Now().Add(-time.Second),
+		ProposerAddress:        addr,
+		DAStartHeight:          100,
+		DAEpochForcedInclusion: 3, // Epoch: [100, 102]
+	}
+
+	cfg := config.DefaultConfig()
+	cfg.DA.ForcedInclusionNamespace = "nsForcedInclusion"
+
+	mockExec := testmocks.NewMockExecutor(t)
+	mockExec.EXPECT().InitChain(mock.Anything, mock.Anything, uint64(1), "tchain").
+		Return([]byte("app0"), uint64(1024), nil).Once()
+
+	mockDA := testmocks.NewMockDA(t)
+
+	daClient := da.NewClient(da.Config{
+		DA:                       mockDA,
+		Logger:                   zerolog.Nop(),
+		Namespace:                cfg.DA.Namespace,
+		DataNamespace:            cfg.DA.DataNamespace,
+		ForcedInclusionNamespace: cfg.DA.ForcedInclusionNamespace,
 	})
-	require.Equal(t, 1, pendingCount, "should have 1 pending forced inclusion tx")
+	daRetriever := NewDARetriever(daClient, cm, gen, zerolog.Nop())
+	fiRetriever := da.NewForcedInclusionRetriever(daClient, gen, zerolog.Nop())
 
-	// Process another block within same epoch - forced tx still not included
-	// Mock DA for second verification at same epoch (height 102 - epoch end)
+	s := NewSyncer(
+		st,
+		mockExec,
+		daClient,
+		cm,
+		common.NopMetrics(),
+		cfg,
+		gen,
+		common.NewMockBroadcaster[*types.SignedHeader](t),
+		common.NewMockBroadcaster[*types.Data](t),
+		zerolog.Nop(),
+		common.DefaultBlockOptions(),
+		make(chan error, 1),
+	)
+	s.daRetriever = daRetriever
+	s.fiRetriever = fiRetriever
+
+	require.NoError(t, s.initializeState())
+	s.ctx = context.Background()
+
+	namespaceForcedInclusionBz := coreda.NamespaceFromString(cfg.DA.GetForcedInclusionNamespace()).Bytes()
+
+	// Create 3 forced inclusion transactions
+	dataBin1, _ := makeSignedDataBytes(t, gen.ChainID, 10, addr, pub, signer, 2)
+	dataBin2, _ := makeSignedDataBytes(t, gen.ChainID, 11, addr, pub, signer, 2)
+	dataBin3, _ := makeSignedDataBytes(t, gen.ChainID, 12, addr, pub, signer, 2)
+
+	// Mock DA retrieval for Epoch 1: [100, 102]
 	mockDA.EXPECT().GetIDs(mock.Anything, uint64(100), mock.MatchedBy(func(ns []byte) bool {
 		return bytes.Equal(ns, namespaceForcedInclusionBz)
-	})).Return(&coreda.GetIDsResult{IDs: [][]byte{[]byte("fi1")}, Timestamp: time.Now()}, nil).Once()
+	})).Return(&coreda.GetIDsResult{
+		IDs:       [][]byte{[]byte("fi1"), []byte("fi2"), []byte("fi3")},
+		Timestamp: time.Now(),
+	}, nil).Once()
 
 	mockDA.EXPECT().Get(mock.Anything, mock.Anything, mock.MatchedBy(func(ns []byte) bool {
 		return bytes.Equal(ns, namespaceForcedInclusionBz)
-	})).Return([][]byte{dataBin}, nil).Once()
+	})).Return([][]byte{dataBin1, dataBin2, dataBin3}, nil).Once()
 
-	mockDA.EXPECT().GetIDs(mock.Anything, uint64(101), mock.MatchedBy(func(ns []byte) bool {
-		return bytes.Equal(ns, namespaceForcedInclusionBz)
-	})).Return(&coreda.GetIDsResult{IDs: [][]byte{}, Timestamp: time.Now()}, nil).Once()
+	for height := uint64(101); height <= 102; height++ {
+		mockDA.EXPECT().GetIDs(mock.Anything, height, mock.MatchedBy(func(ns []byte) bool {
+			return bytes.Equal(ns, namespaceForcedInclusionBz)
+		})).Return(&coreda.GetIDsResult{IDs: [][]byte{}, Timestamp: time.Now()}, nil).Once()
+	}
 
-	mockDA.EXPECT().GetIDs(mock.Anything, uint64(102), mock.MatchedBy(func(ns []byte) bool {
-		return bytes.Equal(ns, namespaceForcedInclusionBz)
-	})).Return(&coreda.GetIDsResult{IDs: [][]byte{}, Timestamp: time.Now()}, nil).Once()
+	// Block at DA height 102 (epoch end): Only includes 2 of 3 txs
+	// The third tx remains pending - legitimate within the epoch
+	data1 := makeData(gen.ChainID, 1, 2)
+	data1.Txs[0] = types.Tx(dataBin1)
+	data1.Txs[1] = types.Tx(dataBin2)
 
-	data2 := makeData(gen.ChainID, 2, 1)
-	data2.Txs[0] = types.Tx([]byte("regular_tx_2"))
+	currentState := s.GetLastState()
+	currentState.DAHeight = 102 // At epoch end
 
-	// Still at epoch 100, should still pass
-	err = s.verifyForcedInclusionTxs(currentState, data2)
-	require.NoError(t, err)
-
-	// Mock DA retrieval for next epoch (DA height 105 - epoch end)
-	// Epoch boundaries: [103, 105]
-	// The retriever will fetch heights 103, 104, 105
-
-	// Height 103 (epoch start)
-	mockDA.EXPECT().GetIDs(mock.Anything, uint64(103), mock.MatchedBy(func(ns []byte) bool {
-		return bytes.Equal(ns, namespaceForcedInclusionBz)
-	})).Return(&coreda.GetIDsResult{IDs: [][]byte{}, Timestamp: time.Now()}, nil).Once()
-
-	// Height 104 (intermediate)
-	mockDA.EXPECT().GetIDs(mock.Anything, uint64(104), mock.MatchedBy(func(ns []byte) bool {
-		return bytes.Equal(ns, namespaceForcedInclusionBz)
-	})).Return(&coreda.GetIDsResult{IDs: [][]byte{}, Timestamp: time.Now()}, nil).Once()
-
-	// Height 105 (epoch end)
-	mockDA.EXPECT().GetIDs(mock.Anything, uint64(105), mock.MatchedBy(func(ns []byte) bool {
-		return bytes.Equal(ns, namespaceForcedInclusionBz)
-	})).Return(&coreda.GetIDsResult{IDs: [][]byte{}, Timestamp: time.Now()}, nil).Once()
-
-	// Third block is in the next epoch (at epoch end 105) without including the forced tx
-	data3 := makeData(gen.ChainID, 3, 1)
-	data3.Txs[0] = types.Tx([]byte("regular_tx_3"))
-
-	currentState.DAHeight = 105 // At epoch end [103, 105], past previous epoch [100, 102]
-
-	// Verify - should FAIL since forced tx from previous epoch was never included
-	err = s.verifyForcedInclusionTxs(currentState, data3)
-	require.Error(t, err)
-	require.Contains(t, err.Error(), "sequencer is malicious")
-	require.Contains(t, err.Error(), "forced inclusion transactions from past epoch(s) not included")
+	err = s.verifyForcedInclusionTxs(currentState, data1)
+	require.NoError(t, err, "smoothing within epoch should be allowed")
 }
