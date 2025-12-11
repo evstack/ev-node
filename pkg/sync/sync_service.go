@@ -49,8 +49,8 @@ type SyncService[H header.Header[H]] struct {
 
 	p2p *p2p.Client
 
-	ex  *exchangeWrapper[H]
-	sub *goheaderp2p.Subscriber[H]
+	ex                *exchangeWrapper[H]
+	sub               *goheaderp2p.Subscriber[H]
 	p2pServer         *goheaderp2p.ExchangeServer[H]
 	store             *goheaderstore.Store[H]
 	daStore           store.Store

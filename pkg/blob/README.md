@@ -7,7 +7,7 @@ This package is a **trimmed copy** of code from `celestia-node` to stay JSON-com
 - `blob.go` comes from `celestia-node/blob/blob.go` @ tag `v0.28.4` (release v0.28.4), with unused pieces removed (blob v1, proof helpers, share length calc, appconsts dependency, etc.).
 - `submit_options.go` mirrors the exported JSON fields of `celestia-node/state/tx_config.go` @ the same tag, leaving out functional options, defaults, and Cosmos keyring helpers.
 
-## Why copy instead of import?
+## Why copy instead of import
 
 - Avoids pulling Cosmos SDK / celestia-app dependencies into ev-node for the small surface we need (blob JSON and commitment for v0).
 - Keeps binary size and module graph smaller while remaining wire-compatible with celestia-node's blob service.
