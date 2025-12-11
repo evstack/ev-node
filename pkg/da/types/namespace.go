@@ -1,4 +1,4 @@
-package datypes
+package da
 
 import (
 	"crypto/sha256"

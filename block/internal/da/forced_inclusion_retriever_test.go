@@ -1,4 +1,4 @@
-package da_test
+package da
 
 import (
 	"context"
@@ -9,7 +9,6 @@ import (
 	"github.com/stretchr/testify/mock"
 	"gotest.tools/v3/assert"
 
-	da "github.com/evstack/ev-node/block/internal/da"
 	datypes "github.com/evstack/ev-node/pkg/da/types"
 	"github.com/evstack/ev-node/pkg/genesis"
 	"github.com/evstack/ev-node/test/mocks"
@@ -25,7 +24,7 @@ func TestNewForcedInclusionRetriever(t *testing.T) {
 		DAEpochForcedInclusion: 10,
 	}
 
-	retriever := da.NewForcedInclusionRetriever(client, gen, zerolog.Nop())
+	retriever := NewForcedInclusionRetriever(client, gen, zerolog.Nop())
 	assert.Assert(t, retriever != nil)
 }
 
@@ -38,7 +37,7 @@ func TestForcedInclusionRetriever_RetrieveForcedIncludedTxs_NoNamespace(t *testi
 		DAEpochForcedInclusion: 10,
 	}
 
-	retriever := da.NewForcedInclusionRetriever(client, gen, zerolog.Nop())
+	retriever := NewForcedInclusionRetriever(client, gen, zerolog.Nop())
 	ctx := context.Background()
 
 	_, err := retriever.RetrieveForcedIncludedTxs(ctx, 100)
@@ -57,7 +56,7 @@ func TestForcedInclusionRetriever_RetrieveForcedIncludedTxs_NotAtEpochStart(t *t
 		DAEpochForcedInclusion: 10,
 	}
 
-	retriever := da.NewForcedInclusionRetriever(client, gen, zerolog.Nop())
+	retriever := NewForcedInclusionRetriever(client, gen, zerolog.Nop())
 	ctx := context.Background()
 
 	// Height 105 is not an epoch start (100, 110, 120, etc. are epoch starts)
@@ -90,7 +89,7 @@ func TestForcedInclusionRetriever_RetrieveForcedIncludedTxs_EpochStartSuccess(t 
 		DAEpochForcedInclusion: 1, // Single height epoch
 	}
 
-	retriever := da.NewForcedInclusionRetriever(client, gen, zerolog.Nop())
+	retriever := NewForcedInclusionRetriever(client, gen, zerolog.Nop())
 	ctx := context.Background()
 
 	// Height 100 is an epoch start
@@ -117,7 +116,7 @@ func TestForcedInclusionRetriever_RetrieveForcedIncludedTxs_EpochStartNotAvailab
 		DAEpochForcedInclusion: 10,
 	}
 
-	retriever := da.NewForcedInclusionRetriever(client, gen, zerolog.Nop())
+	retriever := NewForcedInclusionRetriever(client, gen, zerolog.Nop())
 	ctx := context.Background()
 
 	// Epoch boundaries: [100, 109] - retrieval happens at epoch end (109)
@@ -140,7 +139,7 @@ func TestForcedInclusionRetriever_RetrieveForcedIncludedTxs_NoBlobsAtHeight(t *t
 		DAEpochForcedInclusion: 1, // Single height epoch
 	}
 
-	retriever := da.NewForcedInclusionRetriever(client, gen, zerolog.Nop())
+	retriever := NewForcedInclusionRetriever(client, gen, zerolog.Nop())
 	ctx := context.Background()
 
 	event, err := retriever.RetrieveForcedIncludedTxs(ctx, 100)
@@ -178,7 +177,7 @@ func TestForcedInclusionRetriever_RetrieveForcedIncludedTxs_MultiHeightEpoch(t *
 		DAEpochForcedInclusion: 3, // Epoch: 100-102
 	}
 
-	retriever := da.NewForcedInclusionRetriever(client, gen, zerolog.Nop())
+	retriever := NewForcedInclusionRetriever(client, gen, zerolog.Nop())
 	ctx := context.Background()
 
 	// Epoch boundaries: [100, 102] - retrieval happens at epoch end (102)
@@ -195,13 +194,7 @@ func TestForcedInclusionRetriever_RetrieveForcedIncludedTxs_MultiHeightEpoch(t *
 }
 
 func TestForcedInclusionRetriever_processForcedInclusionBlobs(t *testing.T) {
-	client := NewClient(Config{
-		DA:                       &mockDA{},
-		Logger:                   zerolog.Nop(),
-		Namespace:                "test-ns",
-		DataNamespace:            "test-data-ns",
-		ForcedInclusionNamespace: "test-fi-ns",
-	})
+	client := mocks.NewMockInterface(t)
 
 	gen := genesis.Genesis{
 		DAStartHeight:          100,
@@ -212,16 +205,16 @@ func TestForcedInclusionRetriever_processForcedInclusionBlobs(t *testing.T) {
 
 	tests := []struct {
 		name            string
-		result          coreda.ResultRetrieve
+		result          datypes.ResultRetrieve
 		height          uint64
 		expectedTxCount int
 		expectError     bool
 	}{
 		{
 			name: "success with blobs",
-			result: coreda.ResultRetrieve{
-				BaseResult: coreda.BaseResult{
-					Code: coreda.StatusSuccess,
+			result: datypes.ResultRetrieve{
+				BaseResult: datypes.BaseResult{
+					Code: datypes.StatusSuccess,
 				},
 				Data: [][]byte{[]byte("tx1"), []byte("tx2")},
 			},
@@ -231,9 +224,9 @@ func TestForcedInclusionRetriever_processForcedInclusionBlobs(t *testing.T) {
 		},
 		{
 			name: "not found",
-			result: coreda.ResultRetrieve{
-				BaseResult: coreda.BaseResult{
-					Code: coreda.StatusNotFound,
+			result: datypes.ResultRetrieve{
+				BaseResult: datypes.BaseResult{
+					Code: datypes.StatusNotFound,
 				},
 			},
 			height:          100,
@@ -242,9 +235,9 @@ func TestForcedInclusionRetriever_processForcedInclusionBlobs(t *testing.T) {
 		},
 		{
 			name: "error status",
-			result: coreda.ResultRetrieve{
-				BaseResult: coreda.BaseResult{
-					Code:    coreda.StatusError,
+			result: datypes.ResultRetrieve{
+				BaseResult: datypes.BaseResult{
+					Code:    datypes.StatusError,
 					Message: "test error",
 				},
 			},
@@ -253,9 +246,9 @@ func TestForcedInclusionRetriever_processForcedInclusionBlobs(t *testing.T) {
 		},
 		{
 			name: "empty blobs are skipped",
-			result: coreda.ResultRetrieve{
-				BaseResult: coreda.BaseResult{
-					Code: coreda.StatusSuccess,
+			result: datypes.ResultRetrieve{
+				BaseResult: datypes.BaseResult{
+					Code: datypes.StatusSuccess,
 				},
 				Data: [][]byte{[]byte("tx1"), {}, []byte("tx2")},
 			},

@@ -88,27 +88,6 @@ type ResultRetrieve struct {
 	Data [][]byte
 }
 
-// StatusCode is a type for DA layer return status.
-// TODO: define an enum of different non-happy-path cases
-// that might need to be handled by Evolve independent of
-// the underlying DA chain.
-type StatusCode uint64
-
-// Data Availability return codes.
-const (
-	StatusUnknown StatusCode = iota
-	StatusSuccess
-	StatusNotFound
-	StatusNotIncludedInBlock
-	StatusAlreadyInMempool
-	StatusTooBig
-	StatusContextDeadline
-	StatusError
-	StatusIncorrectAccountSequence
-	StatusContextCanceled
-	StatusHeightFromFuture
-)
-
 // BaseResult contains basic information returned by DA layer.
 type BaseResult struct {
 	// Code is to determine if the action succeeded.

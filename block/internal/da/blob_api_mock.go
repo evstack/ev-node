@@ -40,23 +40,23 @@ func (_m *MockBlobAPI) EXPECT() *MockBlobAPI_Expecter {
 }
 
 // GetAll provides a mock function for the type MockBlobAPI
-func (_mock *MockBlobAPI) GetAll(ctx context.Context, height uint64, namespaces []share.Namespace) ([]*blob.Blob, error) {
+func (_mock *MockBlobAPI) GetAll(ctx context.Context, height uint64, namespaces []share.Namespace) ([]*jsonrpc.Blob, error) {
 	ret := _mock.Called(ctx, height, namespaces)
 
 	if len(ret) == 0 {
 		panic("no return value specified for GetAll")
 	}
 
-	var r0 []*blob.Blob
+	var r0 []*jsonrpc.Blob
 	var r1 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, uint64, []share.Namespace) ([]*blob.Blob, error)); ok {
+	if returnFunc, ok := ret.Get(0).(func(context.Context, uint64, []share.Namespace) ([]*jsonrpc.Blob, error)); ok {
 		return returnFunc(ctx, height, namespaces)
 	}
-	if returnFunc, ok := ret.Get(0).(func(context.Context, uint64, []share.Namespace) []*blob.Blob); ok {
+	if returnFunc, ok := ret.Get(0).(func(context.Context, uint64, []share.Namespace) []*jsonrpc.Blob); ok {
 		r0 = returnFunc(ctx, height, namespaces)
 	} else {
 		if ret.Get(0) != nil {
-			r0 = ret.Get(0).([]*blob.Blob)
+			r0 = ret.Get(0).([]*jsonrpc.Blob)
 		}
 	}
 	if returnFunc, ok := ret.Get(1).(func(context.Context, uint64, []share.Namespace) error); ok {
@@ -103,34 +103,34 @@ func (_c *MockBlobAPI_GetAll_Call) Run(run func(ctx context.Context, height uint
 	return _c
 }
 
-func (_c *MockBlobAPI_GetAll_Call) Return(blobs []*blob.Blob, err error) *MockBlobAPI_GetAll_Call {
+func (_c *MockBlobAPI_GetAll_Call) Return(blobs []*jsonrpc.Blob, err error) *MockBlobAPI_GetAll_Call {
 	_c.Call.Return(blobs, err)
 	return _c
 }
 
-func (_c *MockBlobAPI_GetAll_Call) RunAndReturn(run func(ctx context.Context, height uint64, namespaces []share.Namespace) ([]*blob.Blob, error)) *MockBlobAPI_GetAll_Call {
+func (_c *MockBlobAPI_GetAll_Call) RunAndReturn(run func(ctx context.Context, height uint64, namespaces []share.Namespace) ([]*jsonrpc.Blob, error)) *MockBlobAPI_GetAll_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
 // GetCommitmentProof provides a mock function for the type MockBlobAPI
-func (_mock *MockBlobAPI) GetCommitmentProof(ctx context.Context, height uint64, namespace share.Namespace, shareCommitment []byte) (*blob.CommitmentProof, error) {
+func (_mock *MockBlobAPI) GetCommitmentProof(ctx context.Context, height uint64, namespace share.Namespace, shareCommitment []byte) (*jsonrpc.CommitmentProof, error) {
 	ret := _mock.Called(ctx, height, namespace, shareCommitment)
 
 	if len(ret) == 0 {
 		panic("no return value specified for GetCommitmentProof")
 	}
 
-	var r0 *blob.CommitmentProof
+	var r0 *jsonrpc.CommitmentProof
 	var r1 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, uint64, share.Namespace, []byte) (*blob.CommitmentProof, error)); ok {
+	if returnFunc, ok := ret.Get(0).(func(context.Context, uint64, share.Namespace, []byte) (*jsonrpc.CommitmentProof, error)); ok {
 		return returnFunc(ctx, height, namespace, shareCommitment)
 	}
-	if returnFunc, ok := ret.Get(0).(func(context.Context, uint64, share.Namespace, []byte) *blob.CommitmentProof); ok {
+	if returnFunc, ok := ret.Get(0).(func(context.Context, uint64, share.Namespace, []byte) *jsonrpc.CommitmentProof); ok {
 		r0 = returnFunc(ctx, height, namespace, shareCommitment)
 	} else {
 		if ret.Get(0) != nil {
-			r0 = ret.Get(0).(*blob.CommitmentProof)
+			r0 = ret.Get(0).(*jsonrpc.CommitmentProof)
 		}
 	}
 	if returnFunc, ok := ret.Get(1).(func(context.Context, uint64, share.Namespace, []byte) error); ok {
@@ -183,37 +183,37 @@ func (_c *MockBlobAPI_GetCommitmentProof_Call) Run(run func(ctx context.Context,
 	return _c
 }
 
-func (_c *MockBlobAPI_GetCommitmentProof_Call) Return(commitmentProof *blob.CommitmentProof, err error) *MockBlobAPI_GetCommitmentProof_Call {
+func (_c *MockBlobAPI_GetCommitmentProof_Call) Return(commitmentProof *jsonrpc.CommitmentProof, err error) *MockBlobAPI_GetCommitmentProof_Call {
 	_c.Call.Return(commitmentProof, err)
 	return _c
 }
 
-func (_c *MockBlobAPI_GetCommitmentProof_Call) RunAndReturn(run func(ctx context.Context, height uint64, namespace share.Namespace, shareCommitment []byte) (*blob.CommitmentProof, error)) *MockBlobAPI_GetCommitmentProof_Call {
+func (_c *MockBlobAPI_GetCommitmentProof_Call) RunAndReturn(run func(ctx context.Context, height uint64, namespace share.Namespace, shareCommitment []byte) (*jsonrpc.CommitmentProof, error)) *MockBlobAPI_GetCommitmentProof_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
 // GetProof provides a mock function for the type MockBlobAPI
-func (_mock *MockBlobAPI) GetProof(ctx context.Context, height uint64, namespace share.Namespace, commitment blob.Commitment) (*blob.Proof, error) {
+func (_mock *MockBlobAPI) GetProof(ctx context.Context, height uint64, namespace share.Namespace, commitment jsonrpc.Commitment) (*jsonrpc.Proof, error) {
 	ret := _mock.Called(ctx, height, namespace, commitment)
 
 	if len(ret) == 0 {
 		panic("no return value specified for GetProof")
 	}
 
-	var r0 *blob.Proof
+	var r0 *jsonrpc.Proof
 	var r1 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, uint64, share.Namespace, blob.Commitment) (*blob.Proof, error)); ok {
+	if returnFunc, ok := ret.Get(0).(func(context.Context, uint64, share.Namespace, jsonrpc.Commitment) (*jsonrpc.Proof, error)); ok {
 		return returnFunc(ctx, height, namespace, commitment)
 	}
-	if returnFunc, ok := ret.Get(0).(func(context.Context, uint64, share.Namespace, blob.Commitment) *blob.Proof); ok {
+	if returnFunc, ok := ret.Get(0).(func(context.Context, uint64, share.Namespace, jsonrpc.Commitment) *jsonrpc.Proof); ok {
 		r0 = returnFunc(ctx, height, namespace, commitment)
 	} else {
 		if ret.Get(0) != nil {
-			r0 = ret.Get(0).(*blob.Proof)
+			r0 = ret.Get(0).(*jsonrpc.Proof)
 		}
 	}
-	if returnFunc, ok := ret.Get(1).(func(context.Context, uint64, share.Namespace, blob.Commitment) error); ok {
+	if returnFunc, ok := ret.Get(1).(func(context.Context, uint64, share.Namespace, jsonrpc.Commitment) error); ok {
 		r1 = returnFunc(ctx, height, namespace, commitment)
 	} else {
 		r1 = ret.Error(1)
@@ -230,12 +230,12 @@ type MockBlobAPI_GetProof_Call struct {
 //   - ctx context.Context
 //   - height uint64
 //   - namespace share.Namespace
-//   - commitment blob.Commitment
+//   - commitment jsonrpc.Commitment
 func (_e *MockBlobAPI_Expecter) GetProof(ctx interface{}, height interface{}, namespace interface{}, commitment interface{}) *MockBlobAPI_GetProof_Call {
 	return &MockBlobAPI_GetProof_Call{Call: _e.mock.On("GetProof", ctx, height, namespace, commitment)}
 }
 
-func (_c *MockBlobAPI_GetProof_Call) Run(run func(ctx context.Context, height uint64, namespace share.Namespace, commitment blob.Commitment)) *MockBlobAPI_GetProof_Call {
+func (_c *MockBlobAPI_GetProof_Call) Run(run func(ctx context.Context, height uint64, namespace share.Namespace, commitment jsonrpc.Commitment)) *MockBlobAPI_GetProof_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
@@ -249,9 +249,9 @@ func (_c *MockBlobAPI_GetProof_Call) Run(run func(ctx context.Context, height ui
 		if args[2] != nil {
 			arg2 = args[2].(share.Namespace)
 		}
-		var arg3 blob.Commitment
+		var arg3 jsonrpc.Commitment
 		if args[3] != nil {
-			arg3 = args[3].(blob.Commitment)
+			arg3 = args[3].(jsonrpc.Commitment)
 		}
 		run(
 			arg0,
@@ -263,18 +263,18 @@ func (_c *MockBlobAPI_GetProof_Call) Run(run func(ctx context.Context, height ui
 	return _c
 }
 
-func (_c *MockBlobAPI_GetProof_Call) Return(proof *blob.Proof, err error) *MockBlobAPI_GetProof_Call {
+func (_c *MockBlobAPI_GetProof_Call) Return(proof *jsonrpc.Proof, err error) *MockBlobAPI_GetProof_Call {
 	_c.Call.Return(proof, err)
 	return _c
 }
 
-func (_c *MockBlobAPI_GetProof_Call) RunAndReturn(run func(ctx context.Context, height uint64, namespace share.Namespace, commitment blob.Commitment) (*blob.Proof, error)) *MockBlobAPI_GetProof_Call {
+func (_c *MockBlobAPI_GetProof_Call) RunAndReturn(run func(ctx context.Context, height uint64, namespace share.Namespace, commitment jsonrpc.Commitment) (*jsonrpc.Proof, error)) *MockBlobAPI_GetProof_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
 // Included provides a mock function for the type MockBlobAPI
-func (_mock *MockBlobAPI) Included(ctx context.Context, height uint64, namespace share.Namespace, proof *blob.Proof, commitment blob.Commitment) (bool, error) {
+func (_mock *MockBlobAPI) Included(ctx context.Context, height uint64, namespace share.Namespace, proof *jsonrpc.Proof, commitment jsonrpc.Commitment) (bool, error) {
 	ret := _mock.Called(ctx, height, namespace, proof, commitment)
 
 	if len(ret) == 0 {
@@ -283,15 +283,15 @@ func (_mock *MockBlobAPI) Included(ctx context.Context, height uint64, namespace
 
 	var r0 bool
 	var r1 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, uint64, share.Namespace, *blob.Proof, blob.Commitment) (bool, error)); ok {
+	if returnFunc, ok := ret.Get(0).(func(context.Context, uint64, share.Namespace, *jsonrpc.Proof, jsonrpc.Commitment) (bool, error)); ok {
 		return returnFunc(ctx, height, namespace, proof, commitment)
 	}
-	if returnFunc, ok := ret.Get(0).(func(context.Context, uint64, share.Namespace, *blob.Proof, blob.Commitment) bool); ok {
+	if returnFunc, ok := ret.Get(0).(func(context.Context, uint64, share.Namespace, *jsonrpc.Proof, jsonrpc.Commitment) bool); ok {
 		r0 = returnFunc(ctx, height, namespace, proof, commitment)
 	} else {
 		r0 = ret.Get(0).(bool)
 	}
-	if returnFunc, ok := ret.Get(1).(func(context.Context, uint64, share.Namespace, *blob.Proof, blob.Commitment) error); ok {
+	if returnFunc, ok := ret.Get(1).(func(context.Context, uint64, share.Namespace, *jsonrpc.Proof, jsonrpc.Commitment) error); ok {
 		r1 = returnFunc(ctx, height, namespace, proof, commitment)
 	} else {
 		r1 = ret.Error(1)
@@ -308,13 +308,13 @@ type MockBlobAPI_Included_Call struct {
 //   - ctx context.Context
 //   - height uint64
 //   - namespace share.Namespace
-//   - proof *blob.Proof
-//   - commitment blob.Commitment
+//   - proof *jsonrpc.Proof
+//   - commitment jsonrpc.Commitment
 func (_e *MockBlobAPI_Expecter) Included(ctx interface{}, height interface{}, namespace interface{}, proof interface{}, commitment interface{}) *MockBlobAPI_Included_Call {
 	return &MockBlobAPI_Included_Call{Call: _e.mock.On("Included", ctx, height, namespace, proof, commitment)}
 }
 
-func (_c *MockBlobAPI_Included_Call) Run(run func(ctx context.Context, height uint64, namespace share.Namespace, proof *blob.Proof, commitment blob.Commitment)) *MockBlobAPI_Included_Call {
+func (_c *MockBlobAPI_Included_Call) Run(run func(ctx context.Context, height uint64, namespace share.Namespace, proof *jsonrpc.Proof, commitment jsonrpc.Commitment)) *MockBlobAPI_Included_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
@@ -328,13 +328,13 @@ func (_c *MockBlobAPI_Included_Call) Run(run func(ctx context.Context, height ui
 		if args[2] != nil {
 			arg2 = args[2].(share.Namespace)
 		}
-		var arg3 *blob.Proof
+		var arg3 *jsonrpc.Proof
 		if args[3] != nil {
-			arg3 = args[3].(*blob.Proof)
+			arg3 = args[3].(*jsonrpc.Proof)
 		}
-		var arg4 blob.Commitment
+		var arg4 jsonrpc.Commitment
 		if args[4] != nil {
-			arg4 = args[4].(blob.Commitment)
+			arg4 = args[4].(jsonrpc.Commitment)
 		}
 		run(
 			arg0,
@@ -352,13 +352,13 @@ func (_c *MockBlobAPI_Included_Call) Return(b bool, err error) *MockBlobAPI_Incl
 	return _c
 }
 
-func (_c *MockBlobAPI_Included_Call) RunAndReturn(run func(ctx context.Context, height uint64, namespace share.Namespace, proof *blob.Proof, commitment blob.Commitment) (bool, error)) *MockBlobAPI_Included_Call {
+func (_c *MockBlobAPI_Included_Call) RunAndReturn(run func(ctx context.Context, height uint64, namespace share.Namespace, proof *jsonrpc.Proof, commitment jsonrpc.Commitment) (bool, error)) *MockBlobAPI_Included_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
 // Submit provides a mock function for the type MockBlobAPI
-func (_mock *MockBlobAPI) Submit(ctx context.Context, blobs []*blob.Blob, opts *blob.SubmitOptions) (uint64, error) {
+func (_mock *MockBlobAPI) Submit(ctx context.Context, blobs []*jsonrpc.Blob, opts *jsonrpc.SubmitOptions) (uint64, error) {
 	ret := _mock.Called(ctx, blobs, opts)
 
 	if len(ret) == 0 {
@@ -367,15 +367,15 @@ func (_mock *MockBlobAPI) Submit(ctx context.Context, blobs []*blob.Blob, opts *
 
 	var r0 uint64
 	var r1 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, []*blob.Blob, *blob.SubmitOptions) (uint64, error)); ok {
+	if returnFunc, ok := ret.Get(0).(func(context.Context, []*jsonrpc.Blob, *jsonrpc.SubmitOptions) (uint64, error)); ok {
 		return returnFunc(ctx, blobs, opts)
 	}
-	if returnFunc, ok := ret.Get(0).(func(context.Context, []*blob.Blob, *blob.SubmitOptions) uint64); ok {
+	if returnFunc, ok := ret.Get(0).(func(context.Context, []*jsonrpc.Blob, *jsonrpc.SubmitOptions) uint64); ok {
 		r0 = returnFunc(ctx, blobs, opts)
 	} else {
 		r0 = ret.Get(0).(uint64)
 	}
-	if returnFunc, ok := ret.Get(1).(func(context.Context, []*blob.Blob, *blob.SubmitOptions) error); ok {
+	if returnFunc, ok := ret.Get(1).(func(context.Context, []*jsonrpc.Blob, *jsonrpc.SubmitOptions) error); ok {
 		r1 = returnFunc(ctx, blobs, opts)
 	} else {
 		r1 = ret.Error(1)
@@ -390,25 +390,25 @@ type MockBlobAPI_Submit_Call struct {
 
 // Submit is a helper method to define mock.On call
 //   - ctx context.Context
-//   - blobs []*blob.Blob
-//   - opts *blob.SubmitOptions
+//   - blobs []*jsonrpc.Blob
+//   - opts *jsonrpc.SubmitOptions
 func (_e *MockBlobAPI_Expecter) Submit(ctx interface{}, blobs interface{}, opts interface{}) *MockBlobAPI_Submit_Call {
 	return &MockBlobAPI_Submit_Call{Call: _e.mock.On("Submit", ctx, blobs, opts)}
 }
 
-func (_c *MockBlobAPI_Submit_Call) Run(run func(ctx context.Context, blobs []*blob.Blob, opts *blob.SubmitOptions)) *MockBlobAPI_Submit_Call {
+func (_c *MockBlobAPI_Submit_Call) Run(run func(ctx context.Context, blobs []*jsonrpc.Blob, opts *jsonrpc.SubmitOptions)) *MockBlobAPI_Submit_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
 			arg0 = args[0].(context.Context)
 		}
-		var arg1 []*blob.Blob
+		var arg1 []*jsonrpc.Blob
 		if args[1] != nil {
-			arg1 = args[1].([]*blob.Blob)
+			arg1 = args[1].([]*jsonrpc.Blob)
 		}
-		var arg2 *blob.SubmitOptions
+		var arg2 *jsonrpc.SubmitOptions
 		if args[2] != nil {
-			arg2 = args[2].(*blob.SubmitOptions)
+			arg2 = args[2].(*jsonrpc.SubmitOptions)
 		}
 		run(
 			arg0,
@@ -424,29 +424,29 @@ func (_c *MockBlobAPI_Submit_Call) Return(v uint64, err error) *MockBlobAPI_Subm
 	return _c
 }
 
-func (_c *MockBlobAPI_Submit_Call) RunAndReturn(run func(ctx context.Context, blobs []*blob.Blob, opts *blob.SubmitOptions) (uint64, error)) *MockBlobAPI_Submit_Call {
+func (_c *MockBlobAPI_Submit_Call) RunAndReturn(run func(ctx context.Context, blobs []*jsonrpc.Blob, opts *jsonrpc.SubmitOptions) (uint64, error)) *MockBlobAPI_Submit_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
 // Subscribe provides a mock function for the type MockBlobAPI
-func (_mock *MockBlobAPI) Subscribe(ctx context.Context, namespace share.Namespace) (<-chan *blob.SubscriptionResponse, error) {
+func (_mock *MockBlobAPI) Subscribe(ctx context.Context, namespace share.Namespace) (<-chan *jsonrpc.SubscriptionResponse, error) {
 	ret := _mock.Called(ctx, namespace)
 
 	if len(ret) == 0 {
 		panic("no return value specified for Subscribe")
 	}
 
-	var r0 <-chan *blob.SubscriptionResponse
+	var r0 <-chan *jsonrpc.SubscriptionResponse
 	var r1 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, share.Namespace) (<-chan *blob.SubscriptionResponse, error)); ok {
+	if returnFunc, ok := ret.Get(0).(func(context.Context, share.Namespace) (<-chan *jsonrpc.SubscriptionResponse, error)); ok {
 		return returnFunc(ctx, namespace)
 	}
-	if returnFunc, ok := ret.Get(0).(func(context.Context, share.Namespace) <-chan *blob.SubscriptionResponse); ok {
+	if returnFunc, ok := ret.Get(0).(func(context.Context, share.Namespace) <-chan *jsonrpc.SubscriptionResponse); ok {
 		r0 = returnFunc(ctx, namespace)
 	} else {
 		if ret.Get(0) != nil {
-			r0 = ret.Get(0).(<-chan *blob.SubscriptionResponse)
+			r0 = ret.Get(0).(<-chan *jsonrpc.SubscriptionResponse)
 		}
 	}
 	if returnFunc, ok := ret.Get(1).(func(context.Context, share.Namespace) error); ok {
@@ -487,12 +487,12 @@ func (_c *MockBlobAPI_Subscribe_Call) Run(run func(ctx context.Context, namespac
 	return _c
 }
 
-func (_c *MockBlobAPI_Subscribe_Call) Return(subscriptionResponseCh <-chan *blob.SubscriptionResponse, err error) *MockBlobAPI_Subscribe_Call {
+func (_c *MockBlobAPI_Subscribe_Call) Return(subscriptionResponseCh <-chan *jsonrpc.SubscriptionResponse, err error) *MockBlobAPI_Subscribe_Call {
 	_c.Call.Return(subscriptionResponseCh, err)
 	return _c
 }
 
-func (_c *MockBlobAPI_Subscribe_Call) RunAndReturn(run func(ctx context.Context, namespace share.Namespace) (<-chan *blob.SubscriptionResponse, error)) *MockBlobAPI_Subscribe_Call {
+func (_c *MockBlobAPI_Subscribe_Call) RunAndReturn(run func(ctx context.Context, namespace share.Namespace) (<-chan *jsonrpc.SubscriptionResponse, error)) *MockBlobAPI_Subscribe_Call {
 	_c.Call.Return(run)
 	return _c
 }

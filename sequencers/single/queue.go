@@ -57,7 +57,7 @@ func (bq *BatchQueue) AddBatch(ctx context.Context, batch coresequencer.Batch) e
 		return ErrQueueFull
 	}
 
-	if err := bq.persistBatch(ctx, batch); err != nil {
+	if err := bq.persistBatch(ctx, batch, false); err != nil {
 		return err
 	}
 
@@ -79,7 +79,7 @@ func (bq *BatchQueue) Prepend(ctx context.Context, batch coresequencer.Batch) er
 	bq.mu.Lock()
 	defer bq.mu.Unlock()
 
-	if err := bq.persistBatch(ctx, batch); err != nil {
+	if err := bq.persistBatch(ctx, batch, true); err != nil {
 		return err
 	}
 
@@ -128,13 +128,13 @@ func (bq *BatchQueue) Next(ctx context.Context) (*coresequencer.Batch, error) {
 	if err != nil {
 		return &coresequencer.Batch{Transactions: nil}, err
 	}
-	key := hex.EncodeToString(hash)
-
-	// Delete the batch from the WAL since it's been processed
-	err = bq.db.Delete(ctx, ds.NewKey(key))
-	if err != nil {
-		// Log the error but continue
-		fmt.Printf("Error deleting processed batch: %v\n", err)
+	keySuffix := hex.EncodeToString(hash)
+	for _, prefix := range []string{"0_", "1_"} {
+		// Delete the batch from the WAL since it's been processed
+		if err := bq.db.Delete(ctx, ds.NewKey(prefix+keySuffix)); err != nil {
+			// Log the error but continue
+			fmt.Printf("Error deleting processed batch with key %s: %v\n", prefix+keySuffix, err)
+		}
 	}
 
 	return &batch, nil
@@ -149,7 +149,9 @@ func (bq *BatchQueue) Load(ctx context.Context) error {
 	bq.queue = make([]coresequencer.Batch, 0)
 	bq.head = 0
 
-	q := query.Query{}
+	q := query.Query{
+		Orders: []query.Order{query.OrderByKey{}},
+	}
 	results, err := bq.db.Query(ctx, q)
 	if err != nil {
 		return fmt.Errorf("error querying datastore: %w", err)
@@ -183,12 +185,16 @@ func (bq *BatchQueue) Size() int {
 }
 
 // persistBatch persists a batch to the datastore
-func (bq *BatchQueue) persistBatch(ctx context.Context, batch coresequencer.Batch) error {
+func (bq *BatchQueue) persistBatch(ctx context.Context, batch coresequencer.Batch, prepend bool) error {
 	hash, err := batch.Hash()
 	if err != nil {
 		return err
 	}
-	key := hex.EncodeToString(hash)
+	prefix := "1"
+	if prepend {
+		prefix = "0"
+	}
+	key := fmt.Sprintf("%s_%s", prefix, hex.EncodeToString(hash))
 
 	pbBatch := &pb.Batch{
 		Txs: batch.Transactions,

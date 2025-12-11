@@ -40,26 +40,26 @@ func (_m *MockBlobModule) EXPECT() *MockBlobModule_Expecter {
 }
 
 // Get provides a mock function for the type MockBlobModule
-func (_mock *MockBlobModule) Get(context1 context.Context, v uint64, namespace share.Namespace, commitment blob.Commitment) (*blob.Blob, error) {
+func (_mock *MockBlobModule) Get(context1 context.Context, v uint64, namespace share.Namespace, commitment jsonrpc.Commitment) (*jsonrpc.Blob, error) {
 	ret := _mock.Called(context1, v, namespace, commitment)
 
 	if len(ret) == 0 {
 		panic("no return value specified for Get")
 	}
 
-	var r0 *blob.Blob
+	var r0 *jsonrpc.Blob
 	var r1 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, uint64, share.Namespace, blob.Commitment) (*blob.Blob, error)); ok {
+	if returnFunc, ok := ret.Get(0).(func(context.Context, uint64, share.Namespace, jsonrpc.Commitment) (*jsonrpc.Blob, error)); ok {
 		return returnFunc(context1, v, namespace, commitment)
 	}
-	if returnFunc, ok := ret.Get(0).(func(context.Context, uint64, share.Namespace, blob.Commitment) *blob.Blob); ok {
+	if returnFunc, ok := ret.Get(0).(func(context.Context, uint64, share.Namespace, jsonrpc.Commitment) *jsonrpc.Blob); ok {
 		r0 = returnFunc(context1, v, namespace, commitment)
 	} else {
 		if ret.Get(0) != nil {
-			r0 = ret.Get(0).(*blob.Blob)
+			r0 = ret.Get(0).(*jsonrpc.Blob)
 		}
 	}
-	if returnFunc, ok := ret.Get(1).(func(context.Context, uint64, share.Namespace, blob.Commitment) error); ok {
+	if returnFunc, ok := ret.Get(1).(func(context.Context, uint64, share.Namespace, jsonrpc.Commitment) error); ok {
 		r1 = returnFunc(context1, v, namespace, commitment)
 	} else {
 		r1 = ret.Error(1)
@@ -76,12 +76,12 @@ type MockBlobModule_Get_Call struct {
 //   - context1 context.Context
 //   - v uint64
 //   - namespace share.Namespace
-//   - commitment blob.Commitment
+//   - commitment jsonrpc.Commitment
 func (_e *MockBlobModule_Expecter) Get(context1 interface{}, v interface{}, namespace interface{}, commitment interface{}) *MockBlobModule_Get_Call {
 	return &MockBlobModule_Get_Call{Call: _e.mock.On("Get", context1, v, namespace, commitment)}
 }
 
-func (_c *MockBlobModule_Get_Call) Run(run func(context1 context.Context, v uint64, namespace share.Namespace, commitment blob.Commitment)) *MockBlobModule_Get_Call {
+func (_c *MockBlobModule_Get_Call) Run(run func(context1 context.Context, v uint64, namespace share.Namespace, commitment jsonrpc.Commitment)) *MockBlobModule_Get_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
@@ -95,9 +95,9 @@ func (_c *MockBlobModule_Get_Call) Run(run func(context1 context.Context, v uint
 		if args[2] != nil {
 			arg2 = args[2].(share.Namespace)
 		}
-		var arg3 blob.Commitment
+		var arg3 jsonrpc.Commitment
 		if args[3] != nil {
-			arg3 = args[3].(blob.Commitment)
+			arg3 = args[3].(jsonrpc.Commitment)
 		}
 		run(
 			arg0,
@@ -109,34 +109,34 @@ func (_c *MockBlobModule_Get_Call) Run(run func(context1 context.Context, v uint
 	return _c
 }
 
-func (_c *MockBlobModule_Get_Call) Return(blob1 *blob.Blob, err error) *MockBlobModule_Get_Call {
+func (_c *MockBlobModule_Get_Call) Return(blob1 *jsonrpc.Blob, err error) *MockBlobModule_Get_Call {
 	_c.Call.Return(blob1, err)
 	return _c
 }
 
-func (_c *MockBlobModule_Get_Call) RunAndReturn(run func(context1 context.Context, v uint64, namespace share.Namespace, commitment blob.Commitment) (*blob.Blob, error)) *MockBlobModule_Get_Call {
+func (_c *MockBlobModule_Get_Call) RunAndReturn(run func(context1 context.Context, v uint64, namespace share.Namespace, commitment jsonrpc.Commitment) (*jsonrpc.Blob, error)) *MockBlobModule_Get_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
 // GetAll provides a mock function for the type MockBlobModule
-func (_mock *MockBlobModule) GetAll(context1 context.Context, v uint64, namespaces []share.Namespace) ([]*blob.Blob, error) {
+func (_mock *MockBlobModule) GetAll(context1 context.Context, v uint64, namespaces []share.Namespace) ([]*jsonrpc.Blob, error) {
 	ret := _mock.Called(context1, v, namespaces)
 
 	if len(ret) == 0 {
 		panic("no return value specified for GetAll")
 	}
 
-	var r0 []*blob.Blob
+	var r0 []*jsonrpc.Blob
 	var r1 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, uint64, []share.Namespace) ([]*blob.Blob, error)); ok {
+	if returnFunc, ok := ret.Get(0).(func(context.Context, uint64, []share.Namespace) ([]*jsonrpc.Blob, error)); ok {
 		return returnFunc(context1, v, namespaces)
 	}
-	if returnFunc, ok := ret.Get(0).(func(context.Context, uint64, []share.Namespace) []*blob.Blob); ok {
+	if returnFunc, ok := ret.Get(0).(func(context.Context, uint64, []share.Namespace) []*jsonrpc.Blob); ok {
 		r0 = returnFunc(context1, v, namespaces)
 	} else {
 		if ret.Get(0) != nil {
-			r0 = ret.Get(0).([]*blob.Blob)
+			r0 = ret.Get(0).([]*jsonrpc.Blob)
 		}
 	}
 	if returnFunc, ok := ret.Get(1).(func(context.Context, uint64, []share.Namespace) error); ok {
@@ -183,34 +183,34 @@ func (_c *MockBlobModule_GetAll_Call) Run(run func(context1 context.Context, v u
 	return _c
 }
 
-func (_c *MockBlobModule_GetAll_Call) Return(blobs []*blob.Blob, err error) *MockBlobModule_GetAll_Call {
+func (_c *MockBlobModule_GetAll_Call) Return(blobs []*jsonrpc.Blob, err error) *MockBlobModule_GetAll_Call {
 	_c.Call.Return(blobs, err)
 	return _c
 }
 
-func (_c *MockBlobModule_GetAll_Call) RunAndReturn(run func(context1 context.Context, v uint64, namespaces []share.Namespace) ([]*blob.Blob, error)) *MockBlobModule_GetAll_Call {
+func (_c *MockBlobModule_GetAll_Call) RunAndReturn(run func(context1 context.Context, v uint64, namespaces []share.Namespace) ([]*jsonrpc.Blob, error)) *MockBlobModule_GetAll_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
 // GetCommitmentProof provides a mock function for the type MockBlobModule
-func (_mock *MockBlobModule) GetCommitmentProof(context1 context.Context, v uint64, namespace share.Namespace, bytes []byte) (*blob.CommitmentProof, error) {
+func (_mock *MockBlobModule) GetCommitmentProof(context1 context.Context, v uint64, namespace share.Namespace, bytes []byte) (*jsonrpc.CommitmentProof, error) {
 	ret := _mock.Called(context1, v, namespace, bytes)
 
 	if len(ret) == 0 {
 		panic("no return value specified for GetCommitmentProof")
 	}
 
-	var r0 *blob.CommitmentProof
+	var r0 *jsonrpc.CommitmentProof
 	var r1 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, uint64, share.Namespace, []byte) (*blob.CommitmentProof, error)); ok {
+	if returnFunc, ok := ret.Get(0).(func(context.Context, uint64, share.Namespace, []byte) (*jsonrpc.CommitmentProof, error)); ok {
 		return returnFunc(context1, v, namespace, bytes)
 	}
-	if returnFunc, ok := ret.Get(0).(func(context.Context, uint64, share.Namespace, []byte) *blob.CommitmentProof); ok {
+	if returnFunc, ok := ret.Get(0).(func(context.Context, uint64, share.Namespace, []byte) *jsonrpc.CommitmentProof); ok {
 		r0 = returnFunc(context1, v, namespace, bytes)
 	} else {
 		if ret.Get(0) != nil {
-			r0 = ret.Get(0).(*blob.CommitmentProof)
+			r0 = ret.Get(0).(*jsonrpc.CommitmentProof)
 		}
 	}
 	if returnFunc, ok := ret.Get(1).(func(context.Context, uint64, share.Namespace, []byte) error); ok {
@@ -263,37 +263,37 @@ func (_c *MockBlobModule_GetCommitmentProof_Call) Run(run func(context1 context.
 	return _c
 }
 
-func (_c *MockBlobModule_GetCommitmentProof_Call) Return(commitmentProof *blob.CommitmentProof, err error) *MockBlobModule_GetCommitmentProof_Call {
+func (_c *MockBlobModule_GetCommitmentProof_Call) Return(commitmentProof *jsonrpc.CommitmentProof, err error) *MockBlobModule_GetCommitmentProof_Call {
 	_c.Call.Return(commitmentProof, err)
 	return _c
 }
 
-func (_c *MockBlobModule_GetCommitmentProof_Call) RunAndReturn(run func(context1 context.Context, v uint64, namespace share.Namespace, bytes []byte) (*blob.CommitmentProof, error)) *MockBlobModule_GetCommitmentProof_Call {
+func (_c *MockBlobModule_GetCommitmentProof_Call) RunAndReturn(run func(context1 context.Context, v uint64, namespace share.Namespace, bytes []byte) (*jsonrpc.CommitmentProof, error)) *MockBlobModule_GetCommitmentProof_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
 // GetProof provides a mock function for the type MockBlobModule
-func (_mock *MockBlobModule) GetProof(context1 context.Context, v uint64, namespace share.Namespace, commitment blob.Commitment) (*blob.Proof, error) {
+func (_mock *MockBlobModule) GetProof(context1 context.Context, v uint64, namespace share.Namespace, commitment jsonrpc.Commitment) (*jsonrpc.Proof, error) {
 	ret := _mock.Called(context1, v, namespace, commitment)
 
 	if len(ret) == 0 {
 		panic("no return value specified for GetProof")
 	}
 
-	var r0 *blob.Proof
+	var r0 *jsonrpc.Proof
 	var r1 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, uint64, share.Namespace, blob.Commitment) (*blob.Proof, error)); ok {
+	if returnFunc, ok := ret.Get(0).(func(context.Context, uint64, share.Namespace, jsonrpc.Commitment) (*jsonrpc.Proof, error)); ok {
 		return returnFunc(context1, v, namespace, commitment)
 	}
-	if returnFunc, ok := ret.Get(0).(func(context.Context, uint64, share.Namespace, blob.Commitment) *blob.Proof); ok {
+	if returnFunc, ok := ret.Get(0).(func(context.Context, uint64, share.Namespace, jsonrpc.Commitment) *jsonrpc.Proof); ok {
 		r0 = returnFunc(context1, v, namespace, commitment)
 	} else {
 		if ret.Get(0) != nil {
-			r0 = ret.Get(0).(*blob.Proof)
+			r0 = ret.Get(0).(*jsonrpc.Proof)
 		}
 	}
-	if returnFunc, ok := ret.Get(1).(func(context.Context, uint64, share.Namespace, blob.Commitment) error); ok {
+	if returnFunc, ok := ret.Get(1).(func(context.Context, uint64, share.Namespace, jsonrpc.Commitment) error); ok {
 		r1 = returnFunc(context1, v, namespace, commitment)
 	} else {
 		r1 = ret.Error(1)
@@ -310,12 +310,12 @@ type MockBlobModule_GetProof_Call struct {
 //   - context1 context.Context
 //   - v uint64
 //   - namespace share.Namespace
-//   - commitment blob.Commitment
+//   - commitment jsonrpc.Commitment
 func (_e *MockBlobModule_Expecter) GetProof(context1 interface{}, v interface{}, namespace interface{}, commitment interface{}) *MockBlobModule_GetProof_Call {
 	return &MockBlobModule_GetProof_Call{Call: _e.mock.On("GetProof", context1, v, namespace, commitment)}
 }
 
-func (_c *MockBlobModule_GetProof_Call) Run(run func(context1 context.Context, v uint64, namespace share.Namespace, commitment blob.Commitment)) *MockBlobModule_GetProof_Call {
+func (_c *MockBlobModule_GetProof_Call) Run(run func(context1 context.Context, v uint64, namespace share.Namespace, commitment jsonrpc.Commitment)) *MockBlobModule_GetProof_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
@@ -329,9 +329,9 @@ func (_c *MockBlobModule_GetProof_Call) Run(run func(context1 context.Context, v
 		if args[2] != nil {
 			arg2 = args[2].(share.Namespace)
 		}
-		var arg3 blob.Commitment
+		var arg3 jsonrpc.Commitment
 		if args[3] != nil {
-			arg3 = args[3].(blob.Commitment)
+			arg3 = args[3].(jsonrpc.Commitment)
 		}
 		run(
 			arg0,
@@ -343,18 +343,18 @@ func (_c *MockBlobModule_GetProof_Call) Run(run func(context1 context.Context, v
 	return _c
 }
 
-func (_c *MockBlobModule_GetProof_Call) Return(proof *blob.Proof, err error) *MockBlobModule_GetProof_Call {
+func (_c *MockBlobModule_GetProof_Call) Return(proof *jsonrpc.Proof, err error) *MockBlobModule_GetProof_Call {
 	_c.Call.Return(proof, err)
 	return _c
 }
 
-func (_c *MockBlobModule_GetProof_Call) RunAndReturn(run func(context1 context.Context, v uint64, namespace share.Namespace, commitment blob.Commitment) (*blob.Proof, error)) *MockBlobModule_GetProof_Call {
+func (_c *MockBlobModule_GetProof_Call) RunAndReturn(run func(context1 context.Context, v uint64, namespace share.Namespace, commitment jsonrpc.Commitment) (*jsonrpc.Proof, error)) *MockBlobModule_GetProof_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
 // Included provides a mock function for the type MockBlobModule
-func (_mock *MockBlobModule) Included(context1 context.Context, v uint64, namespace share.Namespace, proof *blob.Proof, commitment blob.Commitment) (bool, error) {
+func (_mock *MockBlobModule) Included(context1 context.Context, v uint64, namespace share.Namespace, proof *jsonrpc.Proof, commitment jsonrpc.Commitment) (bool, error) {
 	ret := _mock.Called(context1, v, namespace, proof, commitment)
 
 	if len(ret) == 0 {
@@ -363,15 +363,15 @@ func (_mock *MockBlobModule) Included(context1 context.Context, v uint64, namesp
 
 	var r0 bool
 	var r1 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, uint64, share.Namespace, *blob.Proof, blob.Commitment) (bool, error)); ok {
+	if returnFunc, ok := ret.Get(0).(func(context.Context, uint64, share.Namespace, *jsonrpc.Proof, jsonrpc.Commitment) (bool, error)); ok {
 		return returnFunc(context1, v, namespace, proof, commitment)
 	}
-	if returnFunc, ok := ret.Get(0).(func(context.Context, uint64, share.Namespace, *blob.Proof, blob.Commitment) bool); ok {
+	if returnFunc, ok := ret.Get(0).(func(context.Context, uint64, share.Namespace, *jsonrpc.Proof, jsonrpc.Commitment) bool); ok {
 		r0 = returnFunc(context1, v, namespace, proof, commitment)
 	} else {
 		r0 = ret.Get(0).(bool)
 	}
-	if returnFunc, ok := ret.Get(1).(func(context.Context, uint64, share.Namespace, *blob.Proof, blob.Commitment) error); ok {
+	if returnFunc, ok := ret.Get(1).(func(context.Context, uint64, share.Namespace, *jsonrpc.Proof, jsonrpc.Commitment) error); ok {
 		r1 = returnFunc(context1, v, namespace, proof, commitment)
 	} else {
 		r1 = ret.Error(1)
@@ -388,13 +388,13 @@ type MockBlobModule_Included_Call struct {
 //   - context1 context.Context
 //   - v uint64
 //   - namespace share.Namespace
-//   - proof *blob.Proof
-//   - commitment blob.Commitment
+//   - proof *jsonrpc.Proof
+//   - commitment jsonrpc.Commitment
 func (_e *MockBlobModule_Expecter) Included(context1 interface{}, v interface{}, namespace interface{}, proof interface{}, commitment interface{}) *MockBlobModule_Included_Call {
 	return &MockBlobModule_Included_Call{Call: _e.mock.On("Included", context1, v, namespace, proof, commitment)}
 }
 
-func (_c *MockBlobModule_Included_Call) Run(run func(context1 context.Context, v uint64, namespace share.Namespace, proof *blob.Proof, commitment blob.Commitment)) *MockBlobModule_Included_Call {
+func (_c *MockBlobModule_Included_Call) Run(run func(context1 context.Context, v uint64, namespace share.Namespace, proof *jsonrpc.Proof, commitment jsonrpc.Commitment)) *MockBlobModule_Included_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
@@ -408,13 +408,13 @@ func (_c *MockBlobModule_Included_Call) Run(run func(context1 context.Context, v
 		if args[2] != nil {
 			arg2 = args[2].(share.Namespace)
 		}
-		var arg3 *blob.Proof
+		var arg3 *jsonrpc.Proof
 		if args[3] != nil {
-			arg3 = args[3].(*blob.Proof)
+			arg3 = args[3].(*jsonrpc.Proof)
 		}
-		var arg4 blob.Commitment
+		var arg4 jsonrpc.Commitment
 		if args[4] != nil {
-			arg4 = args[4].(blob.Commitment)
+			arg4 = args[4].(jsonrpc.Commitment)
 		}
 		run(
 			arg0,
@@ -432,13 +432,13 @@ func (_c *MockBlobModule_Included_Call) Return(b bool, err error) *MockBlobModul
 	return _c
 }
 
-func (_c *MockBlobModule_Included_Call) RunAndReturn(run func(context1 context.Context, v uint64, namespace share.Namespace, proof *blob.Proof, commitment blob.Commitment) (bool, error)) *MockBlobModule_Included_Call {
+func (_c *MockBlobModule_Included_Call) RunAndReturn(run func(context1 context.Context, v uint64, namespace share.Namespace, proof *jsonrpc.Proof, commitment jsonrpc.Commitment) (bool, error)) *MockBlobModule_Included_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
 // Submit provides a mock function for the type MockBlobModule
-func (_mock *MockBlobModule) Submit(context1 context.Context, blobs []*blob.Blob, submitOptions *blob.SubmitOptions) (uint64, error) {
+func (_mock *MockBlobModule) Submit(context1 context.Context, blobs []*jsonrpc.Blob, submitOptions *jsonrpc.SubmitOptions) (uint64, error) {
 	ret := _mock.Called(context1, blobs, submitOptions)
 
 	if len(ret) == 0 {
@@ -447,15 +447,15 @@ func (_mock *MockBlobModule) Submit(context1 context.Context, blobs []*blob.Blob
 
 	var r0 uint64
 	var r1 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, []*blob.Blob, *blob.SubmitOptions) (uint64, error)); ok {
+	if returnFunc, ok := ret.Get(0).(func(context.Context, []*jsonrpc.Blob, *jsonrpc.SubmitOptions) (uint64, error)); ok {
 		return returnFunc(context1, blobs, submitOptions)
 	}
-	if returnFunc, ok := ret.Get(0).(func(context.Context, []*blob.Blob, *blob.SubmitOptions) uint64); ok {
+	if returnFunc, ok := ret.Get(0).(func(context.Context, []*jsonrpc.Blob, *jsonrpc.SubmitOptions) uint64); ok {
 		r0 = returnFunc(context1, blobs, submitOptions)
 	} else {
 		r0 = ret.Get(0).(uint64)
 	}
-	if returnFunc, ok := ret.Get(1).(func(context.Context, []*blob.Blob, *blob.SubmitOptions) error); ok {
+	if returnFunc, ok := ret.Get(1).(func(context.Context, []*jsonrpc.Blob, *jsonrpc.SubmitOptions) error); ok {
 		r1 = returnFunc(context1, blobs, submitOptions)
 	} else {
 		r1 = ret.Error(1)
@@ -470,25 +470,25 @@ type MockBlobModule_Submit_Call struct {
 
 // Submit is a helper method to define mock.On call
 //   - context1 context.Context
-//   - blobs []*blob.Blob
-//   - submitOptions *blob.SubmitOptions
+//   - blobs []*jsonrpc.Blob
+//   - submitOptions *jsonrpc.SubmitOptions
 func (_e *MockBlobModule_Expecter) Submit(context1 interface{}, blobs interface{}, submitOptions interface{}) *MockBlobModule_Submit_Call {
 	return &MockBlobModule_Submit_Call{Call: _e.mock.On("Submit", context1, blobs, submitOptions)}
 }
 
-func (_c *MockBlobModule_Submit_Call) Run(run func(context1 context.Context, blobs []*blob.Blob, submitOptions *blob.SubmitOptions)) *MockBlobModule_Submit_Call {
+func (_c *MockBlobModule_Submit_Call) Run(run func(context1 context.Context, blobs []*jsonrpc.Blob, submitOptions *jsonrpc.SubmitOptions)) *MockBlobModule_Submit_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
 			arg0 = args[0].(context.Context)
 		}
-		var arg1 []*blob.Blob
+		var arg1 []*jsonrpc.Blob
 		if args[1] != nil {
-			arg1 = args[1].([]*blob.Blob)
+			arg1 = args[1].([]*jsonrpc.Blob)
 		}
-		var arg2 *blob.SubmitOptions
+		var arg2 *jsonrpc.SubmitOptions
 		if args[2] != nil {
-			arg2 = args[2].(*blob.SubmitOptions)
+			arg2 = args[2].(*jsonrpc.SubmitOptions)
 		}
 		run(
 			arg0,
@@ -504,29 +504,29 @@ func (_c *MockBlobModule_Submit_Call) Return(v uint64, err error) *MockBlobModul
 	return _c
 }
 
-func (_c *MockBlobModule_Submit_Call) RunAndReturn(run func(context1 context.Context, blobs []*blob.Blob, submitOptions *blob.SubmitOptions) (uint64, error)) *MockBlobModule_Submit_Call {
+func (_c *MockBlobModule_Submit_Call) RunAndReturn(run func(context1 context.Context, blobs []*jsonrpc.Blob, submitOptions *jsonrpc.SubmitOptions) (uint64, error)) *MockBlobModule_Submit_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
 // Subscribe provides a mock function for the type MockBlobModule
-func (_mock *MockBlobModule) Subscribe(context1 context.Context, namespace share.Namespace) (<-chan *blob.SubscriptionResponse, error) {
+func (_mock *MockBlobModule) Subscribe(context1 context.Context, namespace share.Namespace) (<-chan *jsonrpc.SubscriptionResponse, error) {
 	ret := _mock.Called(context1, namespace)
 
 	if len(ret) == 0 {
 		panic("no return value specified for Subscribe")
 	}
 
-	var r0 <-chan *blob.SubscriptionResponse
+	var r0 <-chan *jsonrpc.SubscriptionResponse
 	var r1 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, share.Namespace) (<-chan *blob.SubscriptionResponse, error)); ok {
+	if returnFunc, ok := ret.Get(0).(func(context.Context, share.Namespace) (<-chan *jsonrpc.SubscriptionResponse, error)); ok {
 		return returnFunc(context1, namespace)
 	}
-	if returnFunc, ok := ret.Get(0).(func(context.Context, share.Namespace) <-chan *blob.SubscriptionResponse); ok {
+	if returnFunc, ok := ret.Get(0).(func(context.Context, share.Namespace) <-chan *jsonrpc.SubscriptionResponse); ok {
 		r0 = returnFunc(context1, namespace)
 	} else {
 		if ret.Get(0) != nil {
-			r0 = ret.Get(0).(<-chan *blob.SubscriptionResponse)
+			r0 = ret.Get(0).(<-chan *jsonrpc.SubscriptionResponse)
 		}
 	}
 	if returnFunc, ok := ret.Get(1).(func(context.Context, share.Namespace) error); ok {
@@ -567,12 +567,12 @@ func (_c *MockBlobModule_Subscribe_Call) Run(run func(context1 context.Context, 
 	return _c
 }
 
-func (_c *MockBlobModule_Subscribe_Call) Return(subscriptionResponseCh <-chan *blob.SubscriptionResponse, err error) *MockBlobModule_Subscribe_Call {
+func (_c *MockBlobModule_Subscribe_Call) Return(subscriptionResponseCh <-chan *jsonrpc.SubscriptionResponse, err error) *MockBlobModule_Subscribe_Call {
 	_c.Call.Return(subscriptionResponseCh, err)
 	return _c
 }
 
-func (_c *MockBlobModule_Subscribe_Call) RunAndReturn(run func(context1 context.Context, namespace share.Namespace) (<-chan *blob.SubscriptionResponse, error)) *MockBlobModule_Subscribe_Call {
+func (_c *MockBlobModule_Subscribe_Call) RunAndReturn(run func(context1 context.Context, namespace share.Namespace) (<-chan *jsonrpc.SubscriptionResponse, error)) *MockBlobModule_Subscribe_Call {
 	_c.Call.Return(run)
 	return _c
 }

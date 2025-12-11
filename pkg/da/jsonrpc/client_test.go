@@ -1,4 +1,4 @@
-package jsonrpc
+package jsonrpc_test
 
 import (
 	"context"
@@ -7,10 +7,11 @@ import (
 
 	fcjsonrpc "github.com/filecoin-project/go-jsonrpc"
 	"github.com/stretchr/testify/mock"
-	"github.com/filecoin-project/go-jsonrpc"
 	"github.com/stretchr/testify/require"
 
 	libshare "github.com/celestiaorg/go-square/v3/share"
+	blobrpc "github.com/evstack/ev-node/pkg/da/jsonrpc"
+	"github.com/evstack/ev-node/pkg/da/jsonrpc/mocks"
 )
 
 func newTestServer(t *testing.T, module any) *httptest.Server {
@@ -22,25 +23,25 @@ func newTestServer(t *testing.T, module any) *httptest.Server {
 
 func TestClient_CallsAreForwarded(t *testing.T) {
 	ns := libshare.MustNewV0Namespace([]byte("namespace"))
-	blb, err := blob.NewBlobV0(ns, []byte("data"))
+	blb, err := blobrpc.NewBlobV0(ns, []byte("data"))
 	require.NoError(t, err)
 
 	module := mocks.NewMockBlobModule(t)
 	module.On("Submit", mock.Anything, mock.Anything, mock.Anything).Return(uint64(7), nil)
 	module.On("Get", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(blb, nil)
-	module.On("GetAll", mock.Anything, mock.Anything, mock.Anything).Return([]*blob.Blob{blb}, nil)
-	module.On("GetProof", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(&blob.Proof{}, nil)
+	module.On("GetAll", mock.Anything, mock.Anything, mock.Anything).Return([]*blobrpc.Blob{blb}, nil)
+	module.On("GetProof", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(&blobrpc.Proof{}, nil)
 	module.On("Included", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(true, nil)
-	module.On("GetCommitmentProof", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(&blob.CommitmentProof{}, nil)
+	module.On("GetCommitmentProof", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(&blobrpc.CommitmentProof{}, nil)
 
 	srv := newTestServer(t, module)
 	t.Cleanup(srv.Close)
 
-	client, err := blob.NewClient(context.Background(), srv.URL, "", "")
+	client, err := blobrpc.NewClient(context.Background(), srv.URL, "", "")
 	require.NoError(t, err)
 	t.Cleanup(client.Close)
 
-	height, err := client.Blob.Submit(context.Background(), []*blob.Blob{blb}, nil)
+	height, err := client.Blob.Submit(context.Background(), []*blobrpc.Blob{blb}, nil)
 	require.NoError(t, err)
 	require.Equal(t, uint64(7), height)
 
