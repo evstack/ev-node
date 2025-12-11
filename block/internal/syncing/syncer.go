@@ -802,13 +802,10 @@ func (s *Syncer) updateDynamicGracePeriod(blockFullness float64) {
 // getEffectiveGracePeriod returns the current effective grace period considering dynamic adjustment.
 func (s *Syncer) getEffectiveGracePeriod() uint64 {
 	multiplier := *s.gracePeriodMultiplier.Load()
-	effectivePeriod := float64(s.gracePeriodConfig.basePeriod) * multiplier
+	effectivePeriod := math.Round(float64(s.gracePeriodConfig.basePeriod) * multiplier)
+	minPeriod := float64(s.gracePeriodConfig.basePeriod) * s.gracePeriodConfig.dynamicMinMultiplier
 
-	// Round to nearest integer, but ensure at least the minimum
-	rounded := uint64(effectivePeriod + 0.5)
-	minPeriod := uint64(float64(s.gracePeriodConfig.basePeriod) * s.gracePeriodConfig.dynamicMinMultiplier)
-
-	return max(rounded, minPeriod)
+	return uint64(max(effectivePeriod, minPeriod))
 }
 
 // verifyForcedInclusionTxs verifies that forced inclusion transactions from DA are properly handled.
