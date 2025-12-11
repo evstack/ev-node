@@ -5,7 +5,6 @@
 - 2025-03-24: Initial draft
 - 2025-04-23: Renumbered from ADR-018 to ADR-019 to maintain chronological order.
 - 2025-11-10: Updated to reflect actual implementation
-- 2025-12-09: Added documentation for ForcedInclusionGracePeriod parameter
 
 ## Context
 
@@ -352,8 +351,9 @@ func (s *Syncer) verifyForcedInclusionTxs(currentState State, data *Data) error 
     // Grace period provides tolerance for temporary DA unavailability
     var maliciousTxs, remainingPending []pendingForcedInclusionTx
     for _, pending := range stillPending {
-        // Calculate grace boundary: epoch end + (grace periods × epoch size)
-        graceBoundary := pending.EpochEnd + (s.genesis.ForcedInclusionGracePeriod * s.genesis.DAEpochForcedInclusion)
+        // Calculate grace boundary: epoch end + (effective grace periods × epoch size)
+        effectiveGracePeriod := s.getEffectiveGracePeriod()
+        graceBoundary := pending.EpochEnd + (effectiveGracePeriod * s.genesis.DAEpochForcedInclusion)
 
         // If current DA height is past the grace boundary, these txs MUST have been included
         if currentState.DAHeight > graceBoundary {
@@ -368,7 +368,7 @@ func (s *Syncer) verifyForcedInclusionTxs(currentState State, data *Data) error 
 
     // 7. Reject block if sequencer censored forced txs past grace boundary
     if len(maliciousTxs) > 0 {
-        return fmt.Errorf("sequencer is malicious: %d forced inclusion transactions past grace boundary (grace_periods=%d) not included", len(maliciousTxs), s.genesis.ForcedInclusionGracePeriod)
+        return fmt.Errorf("sequencer is malicious: %d forced inclusion transactions past grace boundary not included", len(maliciousTxs))
     }
 
     return nil
@@ -451,40 +451,40 @@ The grace period mechanism provides tolerance for chain congestion while maintai
 
 **Problem**: If the DA layer experiences temporary unavailability or the chain congestion, the sequencer may be unable to fetch forced inclusion transactions from a completed epoch. Without a grace period, full nodes would immediately flag the sequencer as malicious.
 
-**Solution**: The `ForcedInclusionGracePeriod` parameter allows forced inclusion transactions from epoch N to be included during epochs N+1 through N+k (where k is the grace period) before being flagged as malicious.
+**Solution**: The grace period mechanism allows forced inclusion transactions from epoch N to be included in subsequent epochs before being flagged as malicious. The grace period is dynamically adjusted based on chain fullness.
 
 **Grace Boundary Calculation**:
 
 ```go
-graceBoundary := epochEnd + (ForcedInclusionGracePeriod * DAEpochForcedInclusion)
+graceBoundary := epochEnd + (effectiveGracePeriod * DAEpochForcedInclusion)
 
-// Example with ForcedInclusionGracePeriod = 1, DAEpochForcedInclusion = 50:
+// Example with base grace period = 1 epoch, DAEpochForcedInclusion = 50:
 // - Epoch N ends at DA height 100
-// - Grace boundary = 100 + (1 * 50) = 150
-// - Transaction must be included by DA height 150
-// - If not included by height 151+, sequencer is malicious
+// - Grace boundary = 100 + (1 * 50) = 150 (adjusted dynamically by chain fullness)
+// - Transaction must be included while currentDAHeight <= graceBoundary
+// - If currentDAHeight > graceBoundary without inclusion, sequencer is malicious
 ```
 
 **Configuration Recommendations**:
 
-- **Production (default)**: `ForcedInclusionGracePeriod = 1`
-  - Tolerates ~1 epoch of DA unavailability (e.g., 50 DA blocks)
+- **Production (default)**: Base grace period of 1 epoch
+  - Automatically adjusted based on chain fullness
   - Balances censorship resistance with reliability
-- **High Security / Reliable DA**: `ForcedInclusionGracePeriod = 0`
-  - Strict enforcement, no tolerance
+- **High Security / Reliable DA**: Minimum grace period
+  - Stricter enforcement when block space is available
   - Requires 99.9%+ DA uptime
-  - Immediate detection of censorship
-- **Unreliable DA**: `ForcedInclusionGracePeriod = 2+`
-  - Higher tolerance for DA outages
-  - Reduced censorship resistance (longer time to detect malicious behavior)
+  - Faster detection of censorship
+- **Unreliable DA**: Network adjusts grace period dynamically
+  - Higher tolerance (up to 3x base period) when chain is congested
+  - Reduced censorship resistance temporarily to avoid false positives
 
 **Verification Logic**:
 
 1. Forced inclusion transactions from epoch N are tracked with their epoch boundaries
 2. Transactions not immediately included are added to pending queue
 3. Each block, full nodes check if pending transactions are past their grace boundary
-4. If `currentDAHeight > graceBoundary`, the sequencer is flagged as malicious
-5. Transactions within the grace period remain in pending queue without error
+4. If `currentDAHeight > graceBoundary`, the sequencer is flagged as malicious (strictly greater than)
+5. Transactions within the grace period (where `currentDAHeight <= graceBoundary`) remain in pending queue without error
 
 **Benefits**:
 
@@ -495,7 +495,7 @@ graceBoundary := epochEnd + (ForcedInclusionGracePeriod * DAEpochForcedInclusion
 
 **Examples and Edge Cases**:
 
-Configuration: `DAEpochForcedInclusion = 50`, `ForcedInclusionGracePeriod = 1`
+Configuration: `DAEpochForcedInclusion = 50`, Base grace period of 1 epoch (dynamically adjusted)
 
 _Example 1: Normal Inclusion (Within Same Epoch)_
 
@@ -528,14 +528,15 @@ _Example 3: Malicious Sequencer (Past Grace Boundary)_
 - Result: ❌ Block rejected, sequencer flagged as malicious
 ```
 
-_Example 4: Strict Mode (Grace Period = 0)_
+_Example 4: Low Chain Activity (Minimum Grace Period)_
 
 ```
-- ForcedInclusionGracePeriod = 0
+- Chain is mostly empty (<20% full)
+- Grace period is at minimum (0.5x base period)
 - Forced tx submitted at height 75 (epoch 51-100)
-- Sequencer must include by height 100 (epoch end)
-- Block at height 101 without tx is rejected
-- Result: Immediate censorship detection, requires high DA reliability
+- Grace boundary ≈ 100 + (0.5 × 50) = 125
+- Stricter enforcement applied when chain is empty
+- Result: Faster censorship detection when block space is available
 ```
 
 _Example 5: Multiple Pending Transactions_
@@ -549,14 +550,15 @@ _Example 5: Multiple Pending Transactions_
 - Result: Block rejected due to Tx A
 ```
 
-_Example 6: Extended Grace Period (Grace Period = 2)_
+_Example 6: High Chain Activity (Extended Grace Period)_
 
 ```
-- ForcedInclusionGracePeriod = 2
+- Chain is highly congested (>80% full)
+- Grace period is extended (up to 3x base period)
 - Forced tx submitted at height 75 (epoch 51-100)
-- Grace boundary = 100 + (2 × 50) = 200
-- Sequencer has until DA height 200 to include tx
-- Result: More tolerance but delayed censorship detection
+- Grace boundary ≈ 100 + (3 × 50) = 250
+- Higher tolerance during congestion to avoid false positives
+- Result: Better operational reliability when block space is scarce
 ```
 
 #### Size Validation and Max Bytes Handling
@@ -633,12 +635,6 @@ type Genesis struct {
     // Higher values reduce DA queries but increase latency
     // Lower values increase DA queries but improve responsiveness
     DAEpochForcedInclusion uint64
-    // Number of additional epochs allowed for including forced inclusion transactions
-    // before marking the sequencer as malicious. Provides tolerance for temporary DA unavailability.
-    // Value of 0: Strict enforcement (no grace period) - requires 99.9% DA uptime
-    // Value of 1: Transactions from epoch N can be included through epoch N+1 (recommended)
-    // Value of 2+: Higher tolerance for unreliable DA environments
-    ForcedInclusionGracePeriod uint64
 }
 
 type DAConfig struct {
@@ -664,8 +660,7 @@ type NodeConfig struct {
 # genesis.json
 {
   "chain_id": "my-rollup",
-  "forced_inclusion_da_epoch": 10,  # Scan 10 DA blocks at a time
-  "forced_inclusion_grace_period": 1  # Allow 1 epoch grace period (recommended for production)
+  "da_epoch_forced_inclusion": 10  # Scan 10 DA blocks at a time
 }
 
 # config.toml
@@ -683,8 +678,7 @@ based_sequencer = false # Use traditional sequencer
 # genesis.json
 {
   "chain_id": "my-rollup",
-  "forced_inclusion_da_epoch": 5,  # Scan 5 DA blocks at a time
-  "forced_inclusion_grace_period": 1  # Allow 1 epoch grace period (balances reliability and censorship detection)
+  "da_epoch_forced_inclusion": 5  # Scan 5 DA blocks at a time
 }
 
 # config.toml
@@ -726,19 +720,19 @@ based_sequencer = true # Use based sequencer
    b. Build map of transactions in block
    c. Check if pending forced txs from previous epochs are included
    d. Add any new forced txs not yet included to pending queue
-   e. Calculate grace boundary for each pending tx:
-   graceBoundary = epochEnd + (ForcedInclusionGracePeriod × DAEpochForcedInclusion)
+   e. Calculate grace boundary for each pending tx (dynamically adjusted by chain fullness):
+   graceBoundary = epochEnd + (effectiveGracePeriod × DAEpochForcedInclusion)
    f. Check if any pending txs are past their grace boundary
    g. If txs past grace boundary are not included: reject block, flag malicious proposer
    h. If txs within grace period: keep in pending queue, allow block
 3. Apply block if verification passes
 
-**Grace Period Example** (with `ForcedInclusionGracePeriod = 1`, `DAEpochForcedInclusion = 50`):
+**Grace Period Example** (with base grace period = 1 epoch, `DAEpochForcedInclusion = 50`):
 
 - Forced tx appears in epoch ending at DA height 100
 - Grace boundary = 100 + (1 × 50) = 150
 - Transaction can be included at any DA height from 101 to 150
-- At DA height 151+, if not included, sequencer is flagged as malicious
+- When currentDAHeight > 150 without inclusion, sequencer is flagged as malicious
 
 ### Efficiency Considerations
 
@@ -811,8 +805,8 @@ Accepted and Implemented
 2. **DA Dependency**: Requires DA layer to support multiple namespaces
 3. **Higher DA Costs**: Users pay DA posting fees for forced inclusion
 4. **Additional Complexity**: New component (DA Retriever) and verification logic with grace period tracking
-5. **Epoch Configuration**: Requires setting `DAEpochForcedInclusion` and `ForcedInclusionGracePeriod` in genesis (consensus parameters)
-6. **Grace Period Trade-off**: Longer grace periods delay censorship detection but improve operational reliability
+5. **Epoch Configuration**: Requires setting `DAEpochForcedInclusion` in genesis (consensus parameter)
+6. **Grace Period Adjustment**: Grace period is dynamically adjusted based on block fullness to balance censorship detection with operational reliability
 
 ### Neutral
 
@@ -820,7 +814,7 @@ Accepted and Implemented
 2. **Privacy Model Unchanged**: Forced inclusion has same privacy as normal path
 3. **Monitoring**: Operators should monitor forced inclusion namespace usage and grace period metrics
 4. **Documentation**: Users need guidance on when to use forced inclusion and grace period implications
-5. **Genesis Parameters**: `DAEpochForcedInclusion` and `ForcedInclusionGracePeriod` are consensus parameters fixed at genesis
+5. **Genesis Parameters**: `DAEpochForcedInclusion` is a consensus parameter fixed at genesis; grace period adjustment is dynamic
 
 ## References
 
