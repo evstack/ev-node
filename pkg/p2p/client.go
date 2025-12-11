@@ -361,7 +361,7 @@ func (c *Client) setupGossiping(ctx context.Context) error {
 	return nil
 }
 
-// parseAddrInfoList parses a comma separated string of multiaddrs into a list of peer.AddrInfo structs
+// parseAddrInfoList parses a comma-separated string of multiaddrs into a list of peer.AddrInfo structs
 func (c *Client) parseAddrInfoList(addrInfoStr string) []peer.AddrInfo {
 	if len(addrInfoStr) == 0 {
 		return []peer.AddrInfo{}
