@@ -402,17 +402,17 @@ func (e *Executor) produceBlock() error {
 	// Update header's AppHash if needed and recompute state's LastHeaderHash to match
 	headerModified := false
 	switch {
-	case len(header.Header.AppHash) == 0:
-		header.Header.AppHash = bytes.Clone(newState.AppHash)
+	case len(header.AppHash) == 0:
+		header.AppHash = bytes.Clone(newState.AppHash)
 		headerModified = true
-	case bytes.Equal(header.Header.AppHash, newState.AppHash):
+	case bytes.Equal(header.AppHash, newState.AppHash):
 		// already matches expected state root
-	case bytes.Equal(header.Header.AppHash, currentState.AppHash):
+	case bytes.Equal(header.AppHash, currentState.AppHash):
 		// header still carries previous state's apphash; update it to the new post-state value
-		header.Header.AppHash = bytes.Clone(newState.AppHash)
+		header.AppHash = bytes.Clone(newState.AppHash)
 		headerModified = true
 	default:
-		return fmt.Errorf("header app hash mismatch - got: %x, want: %x", header.Header.AppHash, newState.AppHash)
+		return fmt.Errorf("header app hash mismatch - got: %x, want: %x", header.AppHash, newState.AppHash)
 	}
 
 	// If we modified the header's AppHash, we need to update the state's LastHeaderHash

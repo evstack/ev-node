@@ -554,8 +554,8 @@ func (s *Syncer) trySyncNextBlock(event *common.DAHeightEvent) error {
 	if len(newState.AppHash) == 0 {
 		return fmt.Errorf("execution client returned empty app hash")
 	}
-	if len(header.Header.AppHash) != 0 && !bytes.Equal(header.Header.AppHash, newState.AppHash) {
-		return fmt.Errorf("header app hash mismatch - got: %x, want: %x", header.Header.AppHash, newState.AppHash)
+	if len(header.AppHash) != 0 && !bytes.Equal(header.AppHash, newState.AppHash) {
+		return fmt.Errorf("header app hash mismatch - got: %x, want: %x", header.AppHash, newState.AppHash)
 	}
 
 	// Update DA height if needed
