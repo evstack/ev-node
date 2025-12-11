@@ -249,3 +249,41 @@ func TestRetryWithBackoffOnPayloadStatus_WrappedRPCErrors(t *testing.T) {
 	// Should fail immediately without retries on non-syncing errors
 	assert.Equal(t, 1, attempts, "expected exactly 1 attempt, got %d", attempts)
 }
+
+func TestBuildHashCandidates(t *testing.T) {
+	t.Parallel()
+
+	hashA := common.HexToHash("0x01")
+	hashB := common.HexToHash("0x02")
+	var zeroHash common.Hash
+
+	tests := []struct {
+		name    string
+		hashes  []common.Hash
+		expects []common.Hash
+	}{
+		{
+			name:    "deduplicates while preserving order",
+			hashes:  []common.Hash{hashA, hashB, hashA},
+			expects: []common.Hash{hashA, hashB},
+		},
+		{
+			name:    "skips zero hash",
+			hashes:  []common.Hash{zeroHash, hashB},
+			expects: []common.Hash{hashB},
+		},
+		{
+			name:    "handles empty input",
+			hashes:  []common.Hash{},
+			expects: []common.Hash{},
+		},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			require.Equal(t, tt.expects, buildHashCandidates(tt.hashes...))
+		})
+	}
+}

@@ -551,6 +551,13 @@ func (s *Syncer) trySyncNextBlock(event *common.DAHeightEvent) error {
 		return fmt.Errorf("failed to apply block: %w", err)
 	}
 
+	if len(newState.AppHash) == 0 {
+		return fmt.Errorf("execution client returned empty app hash")
+	}
+	if len(header.Header.AppHash) != 0 && !bytes.Equal(header.Header.AppHash, newState.AppHash) {
+		return fmt.Errorf("header app hash mismatch - got: %x, want: %x", header.Header.AppHash, newState.AppHash)
+	}
+
 	// Update DA height if needed
 	// This height is only updated when a height is processed from DA as P2P
 	// events do not contain DA height information

@@ -187,11 +187,13 @@ func TestProcessHeightEvent_SyncsAndUpdatesState(t *testing.T) {
 	// Create signed header & data for height 1
 	lastState := s.GetLastState()
 	data := makeData(gen.ChainID, 1, 0)
-	_, hdr := makeSignedHeaderBytes(t, gen.ChainID, 1, addr, pub, signer, lastState.AppHash, data, nil)
+	// Header should have post-execution AppHash (what the producer would set after execution)
+	postExecAppHash := []byte("app1")
+	_, hdr := makeSignedHeaderBytes(t, gen.ChainID, 1, addr, pub, signer, postExecAppHash, data, nil)
 
 	// Expect ExecuteTxs call for height 1
 	mockExec.EXPECT().ExecuteTxs(mock.Anything, mock.Anything, uint64(1), mock.Anything, lastState.AppHash).
-		Return([]byte("app1"), uint64(1024), nil).Once()
+		Return(postExecAppHash, uint64(1024), nil).Once()
 
 	evt := common.DAHeightEvent{Header: hdr, Data: data, DaHeight: 1}
 	s.processHeightEvent(&evt)
@@ -240,19 +242,23 @@ func TestSequentialBlockSync(t *testing.T) {
 	// Sync two consecutive blocks via processHeightEvent so ExecuteTxs is called and state stored
 	st0 := s.GetLastState()
 	data1 := makeData(gen.ChainID, 1, 1) // non-empty
-	_, hdr1 := makeSignedHeaderBytes(t, gen.ChainID, 1, addr, pub, signer, st0.AppHash, data1, st0.LastHeaderHash)
+	// Header should have post-execution AppHash (what the producer would set after execution)
+	postExecAppHash1 := []byte("app1")
+	_, hdr1 := makeSignedHeaderBytes(t, gen.ChainID, 1, addr, pub, signer, postExecAppHash1, data1, st0.LastHeaderHash)
 	// Expect ExecuteTxs call for height 1
 	mockExec.EXPECT().ExecuteTxs(mock.Anything, mock.Anything, uint64(1), mock.Anything, st0.AppHash).
-		Return([]byte("app1"), uint64(1024), nil).Once()
+		Return(postExecAppHash1, uint64(1024), nil).Once()
 	evt1 := common.DAHeightEvent{Header: hdr1, Data: data1, DaHeight: 10}
 	s.processHeightEvent(&evt1)
 
 	st1, _ := st.GetState(context.Background())
 	data2 := makeData(gen.ChainID, 2, 0) // empty data
-	_, hdr2 := makeSignedHeaderBytes(t, gen.ChainID, 2, addr, pub, signer, st1.AppHash, data2, st1.LastHeaderHash)
+	// Header should have post-execution AppHash (what the producer would set after execution)
+	postExecAppHash2 := []byte("app2")
+	_, hdr2 := makeSignedHeaderBytes(t, gen.ChainID, 2, addr, pub, signer, postExecAppHash2, data2, st1.LastHeaderHash)
 	// Expect ExecuteTxs call for height 2
 	mockExec.EXPECT().ExecuteTxs(mock.Anything, mock.Anything, uint64(2), mock.Anything, st1.AppHash).
-		Return([]byte("app2"), uint64(1024), nil).Once()
+		Return(postExecAppHash2, uint64(1024), nil).Once()
 	evt2 := common.DAHeightEvent{Header: hdr2, Data: data2, DaHeight: 11}
 	s.processHeightEvent(&evt2)
 
@@ -389,7 +395,12 @@ func TestSyncLoopPersistState(t *testing.T) {
 				Time:    uint64(blockTime.UnixNano()),
 			},
 		}
-		_, sigHeader := makeSignedHeaderBytes(t, gen.ChainID, chainHeight, addr, pub, signer, prevAppHash, emptyData, prevHeaderHash)
+		// Compute post-execution AppHash (same as DummyExecutor.ExecuteTxs does)
+		// This is what the producer would set in the header after execution
+		hasher := sha512.New()
+		hasher.Write(prevAppHash)
+		postExecAppHash := hasher.Sum(nil)
+		_, sigHeader := makeSignedHeaderBytes(t, gen.ChainID, chainHeight, addr, pub, signer, postExecAppHash, emptyData, prevHeaderHash)
 		evts := []common.DAHeightEvent{{
 			Header:   sigHeader,
 			Data:     emptyData,
@@ -397,9 +408,7 @@ func TestSyncLoopPersistState(t *testing.T) {
 		}}
 		daRtrMock.On("RetrieveFromDA", mock.Anything, daHeight).Return(evts, nil)
 		prevHeaderHash = sigHeader.Hash()
-		hasher := sha512.New()
-		hasher.Write(prevAppHash)
-		prevAppHash = hasher.Sum(nil)
+		prevAppHash = postExecAppHash
 	}
 
 	// stop at next height
