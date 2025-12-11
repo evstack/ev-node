@@ -10,8 +10,15 @@ import (
 type storeGetter[H header.Header[H]] func(context.Context, store.Store, header.Hash) (H, error)
 type storeGetterByHeight[H header.Header[H]] func(context.Context, store.Store, uint64) (H, error)
 
-type exchangeWrapper[H header.Header[H]] struct {
+// P2PExchange defines the interface for the underlying P2P exchange.
+type P2PExchange[H header.Header[H]] interface {
 	header.Exchange[H]
+	Start(context.Context) error
+	Stop(context.Context) error
+}
+
+type exchangeWrapper[H header.Header[H]] struct {
+	p2pExchange    P2PExchange[H]
 	daStore        store.Store
 	getter         storeGetter[H]
 	getterByHeight storeGetterByHeight[H]
@@ -26,7 +33,7 @@ func (ew *exchangeWrapper[H]) Get(ctx context.Context, hash header.Hash) (H, err
 	}
 
 	// Fallback to network exchange
-	return ew.Exchange.Get(ctx, hash)
+	return ew.p2pExchange.Get(ctx, hash)
 }
 
 func (ew *exchangeWrapper[H]) GetByHeight(ctx context.Context, height uint64) (H, error) {
@@ -38,5 +45,21 @@ func (ew *exchangeWrapper[H]) GetByHeight(ctx context.Context, height uint64) (H
 	}
 
 	// Fallback to network exchange
-	return ew.Exchange.GetByHeight(ctx, height)
+	return ew.p2pExchange.GetByHeight(ctx, height)
+}
+
+func (ew *exchangeWrapper[H]) Head(ctx context.Context, opts ...header.HeadOption[H]) (H, error) {
+	return ew.p2pExchange.Head(ctx, opts...)
+}
+
+func (ew *exchangeWrapper[H]) GetRangeByHeight(ctx context.Context, from H, to uint64) ([]H, error) {
+	return ew.p2pExchange.GetRangeByHeight(ctx, from, to)
+}
+
+func (ew *exchangeWrapper[H]) Start(ctx context.Context) error {
+	return ew.p2pExchange.Start(ctx)
+}
+
+func (ew *exchangeWrapper[H]) Stop(ctx context.Context) error {
+	return ew.p2pExchange.Stop(ctx)
 }

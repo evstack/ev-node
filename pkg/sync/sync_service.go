@@ -49,9 +49,8 @@ type SyncService[H header.Header[H]] struct {
 
 	p2p *p2p.Client
 
-	ex                header.Exchange[H]
-	p2pExchange       *goheaderp2p.Exchange[H]
-	sub               *goheaderp2p.Subscriber[H]
+	ex  *exchangeWrapper[H]
+	sub *goheaderp2p.Subscriber[H]
 	p2pServer         *goheaderp2p.ExchangeServer[H]
 	store             *goheaderstore.Store[H]
 	daStore           store.Store
@@ -312,19 +311,20 @@ func (syncService *SyncService[H]) setupP2PInfrastructure(ctx context.Context) (
 
 	peerIDs := syncService.getPeerIDs()
 
-	if syncService.p2pExchange, err = newP2PExchange[H](syncService.p2p.Host(), peerIDs, networkID, syncService.genesis.ChainID, syncService.p2p.ConnectionGater()); err != nil {
+	p2pExchange, err := newP2PExchange[H](syncService.p2p.Host(), peerIDs, networkID, syncService.genesis.ChainID, syncService.p2p.ConnectionGater())
+	if err != nil {
 		return nil, fmt.Errorf("error while creating exchange: %w", err)
 	}
-	if err := syncService.p2pExchange.Start(ctx); err != nil {
-		return nil, fmt.Errorf("error while starting exchange: %w", err)
-	}
 
-	// Wrap the exchange with the DA store check
+	// Create exchange wrapper with DA store check
 	syncService.ex = &exchangeWrapper[H]{
-		Exchange:       syncService.p2pExchange,
+		p2pExchange:    p2pExchange,
 		daStore:        syncService.daStore,
 		getter:         syncService.getter,
 		getterByHeight: syncService.getterByHeight,
+	}
+	if err := syncService.ex.Start(ctx); err != nil {
+		return nil, fmt.Errorf("error while starting exchange: %w", err)
 	}
 
 	return peerIDs, nil
@@ -425,7 +425,7 @@ func (syncService *SyncService[H]) Stop(ctx context.Context) error {
 	syncService.topicSubscription.Cancel()
 	err := errors.Join(
 		syncService.p2pServer.Stop(ctx),
-		syncService.p2pExchange.Stop(ctx),
+		syncService.ex.Stop(ctx),
 		syncService.sub.Stop(ctx),
 	)
 	if syncService.syncerStatus.isStarted() {
