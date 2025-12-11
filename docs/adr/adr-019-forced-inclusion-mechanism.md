@@ -348,7 +348,7 @@ func (s *Syncer) verifyForcedInclusionTxs(currentState State, data *Data) error 
     }
 
     // 5. Check for malicious behavior: pending txs past their grace boundary
-    // Grace period provides tolerance for temporary DA unavailability
+    // Grace period provides tolerance for temporary chain congestion
     var maliciousTxs, remainingPending []pendingForcedInclusionTx
     for _, pending := range stillPending {
         // Calculate grace boundary: epoch end + (effective grace periods × epoch size)
@@ -797,7 +797,7 @@ Accepted and Implemented
 8. **Robust Size Handling**: Two-tier size validation prevents DoS and DA rejections
 9. **Transaction Preservation**: All valid transactions are preserved in queues, nothing is lost
 10. **Strict MaxBytes Compliance**: Batches never exceed limits, preventing DA submission failures
-11. **DA Fault Tolerance**: Grace period prevents false positives during temporary DA unavailability
+11. **DA Fault Tolerance**: Grace period prevents false positives during temporary chain congestion
 
 ### Negative
 

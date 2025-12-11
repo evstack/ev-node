@@ -815,7 +815,6 @@ func (s *Syncer) getEffectiveGracePeriod() uint64 {
 // Note: Due to block size constraints (MaxBytes), sequencers may defer forced inclusion transactions
 // to future blocks (smoothing). This is legitimate behavior within an epoch.
 // However, ALL forced inclusion txs from an epoch MUST be included before the next epoch begins or grace boundary (whichever comes later).
-// verifyForcedInclusionTxs checks if all forced inclusion transactions from DA are present in the block
 func (s *Syncer) verifyForcedInclusionTxs(currentState types.State, data *types.Data) error {
 	if s.fiRetriever == nil {
 		return nil
@@ -881,7 +880,7 @@ func (s *Syncer) verifyForcedInclusionTxs(currentState types.State, data *types.
 
 	// Check if we've moved past any epoch boundaries with pending txs
 	// Grace period: Allow forced inclusion txs from epoch N to be included in epoch N+1, N+2, etc.
-	// Only flag as malicious if past grace boundary to prevent false positives during DA unavailability.
+	// Only flag as malicious if past grace boundary to prevent false positives during chain congestion.
 	var maliciousTxs, remainingPending []pendingForcedInclusionTx
 	var txsInGracePeriod int
 	for _, pending := range stillPending {
