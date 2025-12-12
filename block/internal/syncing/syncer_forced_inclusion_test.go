@@ -418,7 +418,7 @@ func TestVerifyForcedInclusionTxs_AllTransactionsIncluded(t *testing.T) {
 	data := makeData(gen.ChainID, 1, 1)
 	data.Txs[0] = types.Tx(dataBin)
 
-	currentState := s.GetLastState()
+	currentState := s.getLastState()
 	currentState.DAHeight = 0
 
 	// Verify - should pass since all forced txs are included
@@ -504,7 +504,7 @@ func TestVerifyForcedInclusionTxs_MissingTransactions(t *testing.T) {
 	data.Txs[0] = types.Tx([]byte("regular_tx_1"))
 	data.Txs[1] = types.Tx([]byte("regular_tx_2"))
 
-	currentState := s.GetLastState()
+	currentState := s.getLastState()
 	currentState.DAHeight = 0
 
 	// Verify - should pass since forced tx blob may be legitimately deferred within the epoch
@@ -620,7 +620,7 @@ func TestVerifyForcedInclusionTxs_PartiallyIncluded(t *testing.T) {
 	data.Txs[1] = types.Tx([]byte("regular_tx"))
 	// dataBin2 is missing
 
-	currentState := s.GetLastState()
+	currentState := s.getLastState()
 	currentState.DAHeight = 0
 
 	// Verify - should pass since dataBin2 may be legitimately deferred within the epoch
@@ -727,7 +727,7 @@ func TestVerifyForcedInclusionTxs_NoForcedTransactions(t *testing.T) {
 	// Create block data
 	data := makeData(gen.ChainID, 1, 2)
 
-	currentState := s.GetLastState()
+	currentState := s.getLastState()
 	currentState.DAHeight = 0
 
 	// Verify - should pass since no forced txs to verify
@@ -792,7 +792,7 @@ func TestVerifyForcedInclusionTxs_NamespaceNotConfigured(t *testing.T) {
 	// Create block data
 	data := makeData(gen.ChainID, 1, 2)
 
-	currentState := s.GetLastState()
+	currentState := s.getLastState()
 	currentState.DAHeight = 0
 
 	// Verify - should pass since namespace not configured
@@ -894,7 +894,7 @@ func TestVerifyForcedInclusionTxs_DeferralWithinEpoch(t *testing.T) {
 	data1.Txs[0] = types.Tx(dataBin1)
 	data1.Txs[1] = types.Tx([]byte("regular_tx_1"))
 
-	currentState := s.GetLastState()
+	currentState := s.getLastState()
 	currentState.DAHeight = 104
 
 	// Verify - should pass since dataBin2 can be deferred within epoch
@@ -1036,7 +1036,7 @@ func TestVerifyForcedInclusionTxs_MaliciousAfterEpochEnd(t *testing.T) {
 	data1 := makeData(gen.ChainID, 1, 1)
 	data1.Txs[0] = types.Tx([]byte("regular_tx_1"))
 
-	currentState := s.GetLastState()
+	currentState := s.getLastState()
 	currentState.DAHeight = 102
 
 	// Verify - should pass, tx can be deferred within epoch
@@ -1135,7 +1135,7 @@ func TestVerifyForcedInclusionTxs_SmoothingExceedsEpoch(t *testing.T) {
 	data1.Txs[0] = types.Tx(dataBin1)
 	data1.Txs[1] = types.Tx(dataBin2)
 
-	currentState := s.GetLastState()
+	currentState := s.getLastState()
 	currentState.DAHeight = 102 // At epoch end
 
 	err = s.verifyForcedInclusionTxs(currentState, data1)
