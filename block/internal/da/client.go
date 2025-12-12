@@ -48,7 +48,7 @@ func NewClient(cfg Config) Client {
 		return nil
 	}
 	if cfg.DefaultTimeout == 0 {
-		cfg.DefaultTimeout = 30 * time.Second
+		cfg.DefaultTimeout = 60 * time.Second
 	}
 	if cfg.MaxBlobSize == 0 {
 		cfg.MaxBlobSize = blobrpc.DefaultMaxBlobSize
