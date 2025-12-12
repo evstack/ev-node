@@ -395,10 +395,6 @@ func (e *Executor) produceBlock() error {
 		return fmt.Errorf("failed to apply block: %w", err)
 	}
 
-	if len(newState.AppHash) == 0 {
-		return fmt.Errorf("execution client returned empty app hash")
-	}
-
 	// Update header's AppHash if needed and recompute state's LastHeaderHash to match
 	headerModified := false
 	switch {

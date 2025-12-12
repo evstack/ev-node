@@ -551,9 +551,7 @@ func (s *Syncer) trySyncNextBlock(event *common.DAHeightEvent) error {
 		return fmt.Errorf("failed to apply block: %w", err)
 	}
 
-	if len(newState.AppHash) == 0 {
-		return fmt.Errorf("execution client returned empty app hash")
-	}
+	// Validate header's AppHash against execution result (if header has an AppHash set)
 	if len(header.AppHash) != 0 && !bytes.Equal(header.AppHash, newState.AppHash) {
 		return fmt.Errorf("header app hash mismatch - got: %x, want: %x", header.AppHash, newState.AppHash)
 	}
