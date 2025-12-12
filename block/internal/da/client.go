@@ -57,13 +57,13 @@ func NewClient(cfg Config) *Client {
 		blobAPI:         &cfg.Client.Blob,
 		logger:          cfg.Logger.With().Str("component", "blob_da_client").Logger(),
 		defaultTimeout:  cfg.DefaultTimeout,
-		namespaceBz:     share.MustNewV0Namespace([]byte(cfg.Namespace)).Bytes(),
-		dataNamespaceBz: share.MustNewV0Namespace([]byte(cfg.DataNamespace)).Bytes(),
+		namespaceBz:     datypes.NamespaceFromString(cfg.Namespace).Bytes(),
+		dataNamespaceBz: datypes.NamespaceFromString(cfg.DataNamespace).Bytes(),
 		forcedNamespaceBz: func() []byte {
 			if cfg.ForcedInclusionNamespace == "" {
 				return nil
 			}
-			return share.MustNewV0Namespace([]byte(cfg.ForcedInclusionNamespace)).Bytes()
+			return datypes.NamespaceFromString(cfg.ForcedInclusionNamespace).Bytes()
 		}(),
 		hasForcedNamespace: cfg.ForcedInclusionNamespace != "",
 		maxBlobSize:        cfg.MaxBlobSize,
