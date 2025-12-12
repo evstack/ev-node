@@ -387,6 +387,28 @@ func (e *Executor) produceBlock() error {
 		return fmt.Errorf("failed to apply block: %w", err)
 	}
 
+	// Update header's AppHash if needed and recompute state's LastHeaderHash to match
+	headerModified := false
+	switch {
+	case len(header.AppHash) == 0:
+		header.AppHash = bytes.Clone(newState.AppHash)
+		headerModified = true
+	case bytes.Equal(header.AppHash, newState.AppHash):
+		// already matches expected state root
+	case bytes.Equal(header.AppHash, currentState.AppHash):
+		// header still carries previous state's apphash; update it to the new post-state value
+		header.AppHash = bytes.Clone(newState.AppHash)
+		headerModified = true
+	default:
+		return fmt.Errorf("header app hash mismatch - got: %x, want: %x", header.AppHash, newState.AppHash)
+	}
+
+	// If we modified the header's AppHash, we need to update the state's LastHeaderHash
+	// to match the new header hash (since the hash includes AppHash)
+	if headerModified {
+		newState.LastHeaderHash = header.Hash()
+	}
+
 	// set the DA height in the sequencer
 	newState.DAHeight = e.sequencer.GetDAHeight()
 

@@ -131,28 +131,6 @@ func TestAssertValidForNextState(t *testing.T) {
 			data:          &Data{},
 			expectedError: "invalid last header hash",
 		},
-		"app hash mismatch": {
-			state: State{
-				ChainID:         "test-chain",
-				LastHeaderHash:  []byte("expected-hash"),
-				LastBlockHeight: 1,
-				LastBlockTime:   now,
-				AppHash:         []byte("expected-app-hash"),
-			},
-			header: &SignedHeader{
-				Header: Header{
-					BaseHeader: BaseHeader{
-						ChainID: "test-chain", Height: 2,
-						Time: nowUnixNano,
-					},
-					DataHash:       dataHashForEmptyTxs,
-					LastHeaderHash: []byte("expected-hash"),
-					AppHash:        []byte("wrong-app-hash"),
-				},
-			},
-			data:          &Data{},
-			expectedError: "invalid last app hash",
-		},
 	}
 	for name, tc := range testCases {
 		t.Run(name, func(t *testing.T) {

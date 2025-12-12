@@ -110,6 +110,30 @@ func retryWithBackoffOnPayloadStatus(ctx context.Context, fn func() error, maxRe
 	return fmt.Errorf("max retries (%d) exceeded for %s", maxRetries, operation)
 }
 
+// appendUniqueHash ensures we only keep unique, non-zero hash candidates while
+// preserving order so we can try canonical first before falling back to legacy.
+func appendUniqueHash(candidates []common.Hash, candidate common.Hash) []common.Hash {
+	if candidate == (common.Hash{}) {
+		return candidates
+	}
+	for _, existing := range candidates {
+		if existing == candidate {
+			return candidates
+		}
+	}
+	return append(candidates, candidate)
+}
+
+// buildHashCandidates returns a deduplicated list of hash candidates in the
+// order they should be tried.
+func buildHashCandidates(hashes ...common.Hash) []common.Hash {
+	candidates := make([]common.Hash, 0, len(hashes))
+	for _, h := range hashes {
+		candidates = appendUniqueHash(candidates, h)
+	}
+	return candidates
+}
+
 // EngineClient represents a client that interacts with an Ethereum execution engine
 // through the Engine API. It manages connections to both the engine and standard Ethereum
 // APIs, and maintains state related to block processing.
@@ -185,42 +209,63 @@ func (c *EngineClient) InitChain(ctx context.Context, genesisTime time.Time, ini
 		return nil, 0, fmt.Errorf("initialHeight must be 1, got %d", initialHeight)
 	}
 
-	// Acknowledge the genesis block with retry logic for SYNCING status
-	err := retryWithBackoffOnPayloadStatus(ctx, func() error {
-		var forkchoiceResult engine.ForkChoiceResponse
-		err := c.engineClient.CallContext(ctx, &forkchoiceResult, "engine_forkchoiceUpdatedV3",
-			engine.ForkchoiceStateV1{
-				HeadBlockHash:      c.genesisHash,
-				SafeBlockHash:      c.genesisHash,
-				FinalizedBlockHash: c.genesisHash,
-			},
-			nil,
-		)
-		if err != nil {
-			return fmt.Errorf("engine_forkchoiceUpdatedV3 failed: %w", err)
-		}
-
-		// Validate payload status
-		if err := validatePayloadStatus(forkchoiceResult.PayloadStatus); err != nil {
-			c.logger.Warn().
-				Str("status", forkchoiceResult.PayloadStatus.Status).
-				Str("latestValidHash", forkchoiceResult.PayloadStatus.LatestValidHash.Hex()).
-				Interface("validationError", forkchoiceResult.PayloadStatus.ValidationError).
-				Msg("InitChain: engine_forkchoiceUpdatedV3 returned non-VALID status")
-			return err
-		}
-
-		return nil
-	}, MaxPayloadStatusRetries, InitialRetryBackoff, "InitChain")
-	if err != nil {
-		return nil, 0, err
-	}
-
-	_, stateRoot, gasLimit, _, err := c.getBlockInfo(ctx, 0)
+	genesisBlockHash, stateRoot, gasLimit, _, err := c.getBlockInfo(ctx, 0)
 	if err != nil {
 		return nil, 0, fmt.Errorf("failed to get block info: %w", err)
 	}
 
+	candidates := buildHashCandidates(c.genesisHash, genesisBlockHash, stateRoot)
+	var selectedGenesisHash common.Hash
+
+	for idx, candidate := range candidates {
+		args := engine.ForkchoiceStateV1{
+			HeadBlockHash:      candidate,
+			SafeBlockHash:      candidate,
+			FinalizedBlockHash: candidate,
+		}
+
+		err = retryWithBackoffOnPayloadStatus(ctx, func() error {
+			var forkchoiceResult engine.ForkChoiceResponse
+			err := c.engineClient.CallContext(ctx, &forkchoiceResult, "engine_forkchoiceUpdatedV3", args, nil)
+			if err != nil {
+				return fmt.Errorf("engine_forkchoiceUpdatedV3 failed: %w", err)
+			}
+
+			if err := validatePayloadStatus(forkchoiceResult.PayloadStatus); err != nil {
+				c.logger.Warn().
+					Str("status", forkchoiceResult.PayloadStatus.Status).
+					Str("latestValidHash", forkchoiceResult.PayloadStatus.LatestValidHash.Hex()).
+					Interface("validationError", forkchoiceResult.PayloadStatus.ValidationError).
+					Msg("InitChain: engine_forkchoiceUpdatedV3 returned non-VALID status")
+				return err
+			}
+
+			return nil
+		}, MaxPayloadStatusRetries, InitialRetryBackoff, "InitChain")
+
+		if err == nil {
+			selectedGenesisHash = candidate
+			break
+		}
+
+		if errors.Is(err, ErrInvalidPayloadStatus) && idx+1 < len(candidates) {
+			c.logger.Warn().
+				Str("blockHash", candidate.Hex()).
+				Msg("InitChain: execution engine rejected hash candidate, trying alternate")
+			continue
+		}
+
+		return nil, 0, err
+	}
+
+	if selectedGenesisHash == (common.Hash{}) {
+		return nil, 0, fmt.Errorf("execution engine rejected all genesis hash candidates")
+	}
+
+	c.genesisHash = selectedGenesisHash
+	c.currentHeadBlockHash = selectedGenesisHash
+	c.currentSafeBlockHash = selectedGenesisHash
+	c.currentFinalizedBlockHash = selectedGenesisHash
 	c.initialHeight = initialHeight
 
 	return stateRoot[:], gasLimit, nil
@@ -292,16 +337,12 @@ func (c *EngineClient) ExecuteTxs(ctx context.Context, txs [][]byte, blockHeight
 	}
 	txsPayload := validTxs
 
-	prevBlockHash, _, prevGasLimit, _, err := c.getBlockInfo(ctx, blockHeight-1)
+	prevBlockHash, prevBlockStateRoot, prevGasLimit, _, err := c.getBlockInfo(ctx, blockHeight-1)
 	if err != nil {
 		return nil, 0, fmt.Errorf("failed to get block info: %w", err)
 	}
 
-	args := engine.ForkchoiceStateV1{
-		HeadBlockHash:      prevBlockHash,
-		SafeBlockHash:      prevBlockHash,
-		FinalizedBlockHash: prevBlockHash,
-	}
+	parentHashCandidates := buildHashCandidates(prevBlockHash, prevBlockStateRoot)
 
 	// update forkchoice to get the next payload id
 	// Create evolve-compatible payloadtimestamp.Unix()
@@ -325,44 +366,67 @@ func (c *EngineClient) ExecuteTxs(ctx context.Context, txs [][]byte, blockHeight
 
 	// Call forkchoice update with retry logic for SYNCING status
 	var payloadID *engine.PayloadID
-	err = retryWithBackoffOnPayloadStatus(ctx, func() error {
-		var forkchoiceResult engine.ForkChoiceResponse
-		err := c.engineClient.CallContext(ctx, &forkchoiceResult, "engine_forkchoiceUpdatedV3", args, evPayloadAttrs)
-		if err != nil {
-			return fmt.Errorf("forkchoice update failed: %w", err)
+	for idx, candidate := range parentHashCandidates {
+		args := engine.ForkchoiceStateV1{
+			HeadBlockHash:      candidate,
+			SafeBlockHash:      candidate,
+			FinalizedBlockHash: candidate,
 		}
 
-		// Validate payload status
-		if err := validatePayloadStatus(forkchoiceResult.PayloadStatus); err != nil {
+		err = retryWithBackoffOnPayloadStatus(ctx, func() error {
+			var forkchoiceResult engine.ForkChoiceResponse
+			err := c.engineClient.CallContext(ctx, &forkchoiceResult, "engine_forkchoiceUpdatedV3", args, evPayloadAttrs)
+			if err != nil {
+				return fmt.Errorf("forkchoice update failed: %w", err)
+			}
+
+			// Validate payload status
+			if err := validatePayloadStatus(forkchoiceResult.PayloadStatus); err != nil {
+				c.logger.Warn().
+					Str("status", forkchoiceResult.PayloadStatus.Status).
+					Str("latestValidHash", forkchoiceResult.PayloadStatus.LatestValidHash.Hex()).
+					Interface("validationError", forkchoiceResult.PayloadStatus.ValidationError).
+					Uint64("blockHeight", blockHeight).
+					Msg("ExecuteTxs: engine_forkchoiceUpdatedV3 returned non-VALID status")
+				return err
+			}
+
+			if forkchoiceResult.PayloadID == nil {
+				c.logger.Error().
+					Str("status", forkchoiceResult.PayloadStatus.Status).
+					Str("latestValidHash", forkchoiceResult.PayloadStatus.LatestValidHash.Hex()).
+					Interface("validationError", forkchoiceResult.PayloadStatus.ValidationError).
+					Interface("forkchoiceState", args).
+					Interface("payloadAttributes", evPayloadAttrs).
+					Uint64("blockHeight", blockHeight).
+					Msg("returned nil PayloadID")
+
+				return fmt.Errorf("returned nil PayloadID - (status: %s, latestValidHash: %s)",
+					forkchoiceResult.PayloadStatus.Status,
+					forkchoiceResult.PayloadStatus.LatestValidHash.Hex())
+			}
+
+			payloadID = forkchoiceResult.PayloadID
+			return nil
+		}, MaxPayloadStatusRetries, InitialRetryBackoff, "ExecuteTxs forkchoice")
+
+		if err == nil {
+			break
+		}
+
+		if errors.Is(err, ErrInvalidPayloadStatus) && idx+1 < len(parentHashCandidates) {
 			c.logger.Warn().
-				Str("status", forkchoiceResult.PayloadStatus.Status).
-				Str("latestValidHash", forkchoiceResult.PayloadStatus.LatestValidHash.Hex()).
-				Interface("validationError", forkchoiceResult.PayloadStatus.ValidationError).
-				Uint64("blockHeight", blockHeight).
-				Msg("ExecuteTxs: engine_forkchoiceUpdatedV3 returned non-VALID status")
-			return err
+				Str("blockHash", candidate.Hex()).
+				Uint64("blockHeight", blockHeight-1).
+				Msg("ExecuteTxs: execution engine rejected parent hash candidate, trying alternate")
+			continue
 		}
 
-		if forkchoiceResult.PayloadID == nil {
-			c.logger.Error().
-				Str("status", forkchoiceResult.PayloadStatus.Status).
-				Str("latestValidHash", forkchoiceResult.PayloadStatus.LatestValidHash.Hex()).
-				Interface("validationError", forkchoiceResult.PayloadStatus.ValidationError).
-				Interface("forkchoiceState", args).
-				Interface("payloadAttributes", evPayloadAttrs).
-				Uint64("blockHeight", blockHeight).
-				Msg("returned nil PayloadID")
-
-			return fmt.Errorf("returned nil PayloadID - (status: %s, latestValidHash: %s)",
-				forkchoiceResult.PayloadStatus.Status,
-				forkchoiceResult.PayloadStatus.LatestValidHash.Hex())
-		}
-
-		payloadID = forkchoiceResult.PayloadID
-		return nil
-	}, MaxPayloadStatusRetries, InitialRetryBackoff, "ExecuteTxs forkchoice")
-	if err != nil {
 		return nil, 0, err
+	}
+
+	if payloadID == nil {
+		return nil, 0, fmt.Errorf("engine returned nil PayloadID after trying %d parent hash candidates", len(parentHashCandidates))
 	}
 
 	// get payload

@@ -78,9 +78,5 @@ func (s State) AssertValidForNextState(header *SignedHeader, data *Data) error {
 	if !bytes.Equal(header.LastHeaderHash, s.LastHeaderHash) {
 		return fmt.Errorf("invalid last header hash - got: %x, want: %x", header.LastHeaderHash, s.LastHeaderHash)
 	}
-	if !bytes.Equal(header.AppHash, s.AppHash) {
-		return fmt.Errorf("invalid last app hash - got: %x, want: %x", header.AppHash, s.AppHash)
-	}
-
 	return nil
 }
