@@ -226,24 +226,14 @@ func (s *Syncer) Stop() error {
 	return nil
 }
 
-// GetLastState returns the current state
-func (s *Syncer) GetLastState() types.State {
+// getLastState returns the current state
+func (s *Syncer) getLastState() types.State {
 	state := s.lastState.Load()
 	if state == nil {
-		// fallback to store
-		state, err := s.store.GetState(context.Background())
-		if err != nil {
-			s.logger.Warn().Err(err).Msg("failed to get state from store, returning empty state")
-			return types.State{}
-		}
-		s.lastState.Store(&state)
+		return types.State{}
 	}
 
-	stateCopy := *state
-	stateCopy.AppHash = bytes.Clone(state.AppHash)
-	stateCopy.LastHeaderHash = bytes.Clone(state.LastHeaderHash)
-
-	return stateCopy
+	return *state
 }
 
 // SetLastState updates the current state
@@ -538,7 +528,7 @@ func (s *Syncer) processHeightEvent(event *common.DAHeightEvent) {
 		case errors.Is(err, errInvalidState):
 			s.sendCriticalError(fmt.Errorf("invalid state detected (block-height %d, state-height %d) "+
 				"- block references do not match local state. Manual intervention required: %w", event.Header.Height(),
-				s.GetLastState().LastBlockHeight, err))
+				s.getLastState().LastBlockHeight, err))
 		default:
 			s.cache.SetPendingEvent(height, event)
 		}
@@ -583,7 +573,7 @@ func (s *Syncer) trySyncNextBlock(event *common.DAHeightEvent) error {
 	header := event.Header
 	data := event.Data
 	nextHeight := event.Header.Height()
-	currentState := s.GetLastState()
+	currentState := s.getLastState()
 	headerHash := header.Hash().String()
 
 	s.logger.Info().Uint64("height", nextHeight).Msg("syncing block")

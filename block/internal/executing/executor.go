@@ -151,26 +151,12 @@ func (e *Executor) Stop() error {
 	return nil
 }
 
-// GetLastState returns the current state.
-func (e *Executor) GetLastState() types.State {
-	state := e.getLastState()
-	state.AppHash = bytes.Clone(state.AppHash)
-
-	return state
-}
-
 // getLastState returns the current state.
 // getLastState should never directly mutate.
 func (e *Executor) getLastState() types.State {
 	state := e.lastState.Load()
 	if state == nil {
-		// fallback to store
-		state, err := e.store.GetState(context.Background())
-		if err != nil {
-			e.logger.Warn().Err(err).Msg("failed to get state from store, returning empty state")
-			return types.State{}
-		}
-		e.lastState.Store(&state)
+		return types.State{}
 	}
 
 	return *state
