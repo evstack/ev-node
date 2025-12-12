@@ -15,7 +15,7 @@ import (
 	datypes "github.com/evstack/ev-node/pkg/da/types"
 )
 
-// Config contains configuration for the Celestia blob client.
+// Config contains configuration for the blob DA client.
 type Config struct {
 	Client                   *blobrpc.Client
 	Logger                   zerolog.Logger

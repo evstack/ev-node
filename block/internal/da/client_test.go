@@ -60,7 +60,7 @@ func makeBlobRPCClient(m *mockBlobAPI) *blobrpc.Client {
 	return &blobrpc.Client{Blob: api}
 }
 
-func TestCelestiaClient_Submit_ErrorMapping(t *testing.T) {
+func TestClient_Submit_ErrorMapping(t *testing.T) {
 	ns := share.MustNewV0Namespace([]byte("ns")).Bytes()
 	testCases := []struct {
 		name       string
@@ -90,7 +90,7 @@ func TestCelestiaClient_Submit_ErrorMapping(t *testing.T) {
 	}
 }
 
-func TestCelestiaClient_Submit_Success(t *testing.T) {
+func TestClient_Submit_Success(t *testing.T) {
 	ns := share.MustNewV0Namespace([]byte("ns")).Bytes()
 	mockAPI := &mockBlobAPI{height: 10}
 	cl := NewClient(Config{
@@ -105,7 +105,7 @@ func TestCelestiaClient_Submit_Success(t *testing.T) {
 	require.Len(t, res.IDs, 1)
 }
 
-func TestCelestiaClient_Submit_InvalidNamespace(t *testing.T) {
+func TestClient_Submit_InvalidNamespace(t *testing.T) {
 	mockAPI := &mockBlobAPI{height: 10}
 	cl := NewClient(Config{
 		Client:        makeBlobRPCClient(mockAPI),
@@ -117,7 +117,7 @@ func TestCelestiaClient_Submit_InvalidNamespace(t *testing.T) {
 	require.Equal(t, datypes.StatusError, res.Code)
 }
 
-func TestCelestiaClient_Retrieve_NotFound(t *testing.T) {
+func TestClient_Retrieve_NotFound(t *testing.T) {
 	ns := share.MustNewV0Namespace([]byte("ns")).Bytes()
 	mockAPI := &mockBlobAPI{submitErr: datypes.ErrBlobNotFound}
 	cl := NewClient(Config{
@@ -130,7 +130,7 @@ func TestCelestiaClient_Retrieve_NotFound(t *testing.T) {
 	require.Equal(t, datypes.StatusNotFound, res.Code)
 }
 
-func TestCelestiaClient_Retrieve_Success(t *testing.T) {
+func TestClient_Retrieve_Success(t *testing.T) {
 	ns := share.MustNewV0Namespace([]byte("ns")).Bytes()
 	b, err := blobrpc.NewBlobV0(share.MustNewV0Namespace([]byte("ns")), []byte("payload"))
 	require.NoError(t, err)
@@ -147,7 +147,7 @@ func TestCelestiaClient_Retrieve_Success(t *testing.T) {
 	require.Len(t, res.IDs, 1)
 }
 
-func TestCelestiaClient_SubmitOptionsMerge(t *testing.T) {
+func TestClient_SubmitOptionsMerge(t *testing.T) {
 	ns := share.MustNewV0Namespace([]byte("ns")).Bytes()
 	mockAPI := &mockBlobAPI{height: 1}
 	cl := NewClient(Config{
@@ -157,7 +157,7 @@ func TestCelestiaClient_SubmitOptionsMerge(t *testing.T) {
 		DataNamespace: "ns",
 	})
 
-	opts := map[string]any{"signer_address": "celestia1xyz"}
+	opts := map[string]any{"signer_address": "signer1xyz"}
 	raw, err := json.Marshal(opts)
 	require.NoError(t, err)
 

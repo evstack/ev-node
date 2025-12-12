@@ -35,7 +35,7 @@ func NopMetrics() *Metrics {
 // DAClient is the interface representing the DA client for public use.
 type DAClient = da.Interface
 
-// NewDAClient creates a new DA client backed by the Celestia blob JSON-RPC API.
+// NewDAClient creates a new DA client backed by the blob JSON-RPC API.
 func NewDAClient(
 	blobRPC *blobrpc.Client,
 	config config.Config,
