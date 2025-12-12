@@ -26,8 +26,9 @@ type Config struct {
 	MaxBlobSize              uint64
 }
 
-// Client wraps the blob RPC with namespace handling and error mapping.
-type Client struct {
+// client wraps the blob RPC with namespace handling and error mapping.
+// It is unexported; callers should use the exported Client interface.
+type client struct {
 	blobAPI            *blobrpc.BlobAPI
 	logger             zerolog.Logger
 	defaultTimeout     time.Duration
@@ -38,11 +39,11 @@ type Client struct {
 	maxBlobSize        uint64
 }
 
-// Ensure Client implements the block DA client interface.
-var _ Interface = (*Client)(nil)
+// Ensure client implements the block DA client interface.
+var _ Client = (*client)(nil)
 
 // NewClient creates a new blob client wrapper with pre-calculated namespace bytes.
-func NewClient(cfg Config) *Client {
+func NewClient(cfg Config) Client {
 	if cfg.Client == nil {
 		return nil
 	}
@@ -53,25 +54,26 @@ func NewClient(cfg Config) *Client {
 		cfg.MaxBlobSize = blobrpc.DefaultMaxBlobSize
 	}
 
-	return &Client{
-		blobAPI:         &cfg.Client.Blob,
-		logger:          cfg.Logger.With().Str("component", "blob_da_client").Logger(),
-		defaultTimeout:  cfg.DefaultTimeout,
-		namespaceBz:     datypes.NamespaceFromString(cfg.Namespace).Bytes(),
-		dataNamespaceBz: datypes.NamespaceFromString(cfg.DataNamespace).Bytes(),
-		forcedNamespaceBz: func() []byte {
-			if cfg.ForcedInclusionNamespace == "" {
-				return nil
-			}
-			return datypes.NamespaceFromString(cfg.ForcedInclusionNamespace).Bytes()
-		}(),
-		hasForcedNamespace: cfg.ForcedInclusionNamespace != "",
+	hasForcedNamespace := cfg.ForcedInclusionNamespace != ""
+	var forcedNamespaceBz []byte
+	if hasForcedNamespace {
+		forcedNamespaceBz = datypes.NamespaceFromString(cfg.ForcedInclusionNamespace).Bytes()
+	}
+
+	return &client{
+		blobAPI:            &cfg.Client.Blob,
+		logger:             cfg.Logger.With().Str("component", "blob_da_client").Logger(),
+		defaultTimeout:     cfg.DefaultTimeout,
+		namespaceBz:        datypes.NamespaceFromString(cfg.Namespace).Bytes(),
+		dataNamespaceBz:    datypes.NamespaceFromString(cfg.DataNamespace).Bytes(),
+		forcedNamespaceBz:  forcedNamespaceBz,
+		hasForcedNamespace: hasForcedNamespace,
 		maxBlobSize:        cfg.MaxBlobSize,
 	}
 }
 
 // Submit submits blobs to the DA layer with the specified options.
-func (c *Client) Submit(ctx context.Context, data [][]byte, _ float64, namespace []byte, options []byte) datypes.ResultSubmit {
+func (c *client) Submit(ctx context.Context, data [][]byte, _ float64, namespace []byte, options []byte) datypes.ResultSubmit {
 	// calculate blob size
 	var blobSize uint64
 	for _, b := range data {
@@ -183,7 +185,7 @@ func (c *Client) Submit(ctx context.Context, data [][]byte, _ float64, namespace
 }
 
 // Retrieve retrieves blobs from the DA layer at the specified height and namespace.
-func (c *Client) Retrieve(ctx context.Context, height uint64, namespace []byte) datypes.ResultRetrieve {
+func (c *client) Retrieve(ctx context.Context, height uint64, namespace []byte) datypes.ResultRetrieve {
 	ns, err := share.NewNamespaceFromBytes(namespace)
 	if err != nil {
 		return datypes.ResultRetrieve{
@@ -264,17 +266,17 @@ func (c *Client) Retrieve(ctx context.Context, height uint64, namespace []byte) 
 }
 
 // RetrieveHeaders retrieves blobs from the header namespace at the specified height.
-func (c *Client) RetrieveHeaders(ctx context.Context, height uint64) datypes.ResultRetrieve {
+func (c *client) RetrieveHeaders(ctx context.Context, height uint64) datypes.ResultRetrieve {
 	return c.Retrieve(ctx, height, c.namespaceBz)
 }
 
 // RetrieveData retrieves blobs from the data namespace at the specified height.
-func (c *Client) RetrieveData(ctx context.Context, height uint64) datypes.ResultRetrieve {
+func (c *client) RetrieveData(ctx context.Context, height uint64) datypes.ResultRetrieve {
 	return c.Retrieve(ctx, height, c.dataNamespaceBz)
 }
 
 // RetrieveForcedInclusion retrieves blobs from the forced inclusion namespace at the specified height.
-func (c *Client) RetrieveForcedInclusion(ctx context.Context, height uint64) datypes.ResultRetrieve {
+func (c *client) RetrieveForcedInclusion(ctx context.Context, height uint64) datypes.ResultRetrieve {
 	if !c.hasForcedNamespace {
 		return datypes.ResultRetrieve{
 			BaseResult: datypes.BaseResult{
@@ -288,27 +290,27 @@ func (c *Client) RetrieveForcedInclusion(ctx context.Context, height uint64) dat
 }
 
 // GetHeaderNamespace returns the header namespace bytes.
-func (c *Client) GetHeaderNamespace() []byte {
+func (c *client) GetHeaderNamespace() []byte {
 	return c.namespaceBz
 }
 
 // GetDataNamespace returns the data namespace bytes.
-func (c *Client) GetDataNamespace() []byte {
+func (c *client) GetDataNamespace() []byte {
 	return c.dataNamespaceBz
 }
 
 // GetForcedInclusionNamespace returns the forced inclusion namespace bytes.
-func (c *Client) GetForcedInclusionNamespace() []byte {
+func (c *client) GetForcedInclusionNamespace() []byte {
 	return c.forcedNamespaceBz
 }
 
 // HasForcedInclusionNamespace reports whether forced inclusion namespace is configured.
-func (c *Client) HasForcedInclusionNamespace() bool {
+func (c *client) HasForcedInclusionNamespace() bool {
 	return c.hasForcedNamespace
 }
 
 // Get implements a minimal DA surface used by visualization: fetch blobs by IDs.
-func (c *Client) Get(ctx context.Context, ids []datypes.ID, namespace []byte) ([]datypes.Blob, error) {
+func (c *client) Get(ctx context.Context, ids []datypes.ID, namespace []byte) ([]datypes.Blob, error) {
 	if len(ids) == 0 {
 		return nil, nil
 	}
@@ -341,7 +343,7 @@ func (c *Client) Get(ctx context.Context, ids []datypes.ID, namespace []byte) ([
 }
 
 // GetProofs returns inclusion proofs for the provided IDs.
-func (c *Client) GetProofs(ctx context.Context, ids []datypes.ID, namespace []byte) ([]datypes.Proof, error) {
+func (c *client) GetProofs(ctx context.Context, ids []datypes.ID, namespace []byte) ([]datypes.Proof, error) {
 	if len(ids) == 0 {
 		return []datypes.Proof{}, nil
 	}
@@ -377,7 +379,7 @@ func (c *Client) GetProofs(ctx context.Context, ids []datypes.ID, namespace []by
 }
 
 // Validate mirrors the deprecated DA server logic: it unmarshals proofs and calls Included.
-func (c *Client) Validate(ctx context.Context, ids []datypes.ID, proofs []datypes.Proof, namespace []byte) ([]bool, error) {
+func (c *client) Validate(ctx context.Context, ids []datypes.ID, proofs []datypes.Proof, namespace []byte) ([]bool, error) {
 	if len(ids) != len(proofs) {
 		return nil, errors.New("number of IDs and proofs must match")
 	}

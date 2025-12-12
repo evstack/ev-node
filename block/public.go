@@ -33,7 +33,7 @@ func NopMetrics() *Metrics {
 }
 
 // DAClient is the interface representing the DA client for public use.
-type DAClient = da.Interface
+type DAClient = da.Client
 
 // NewDAClient creates a new DA client backed by the blob JSON-RPC API.
 func NewDAClient(

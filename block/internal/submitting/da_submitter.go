@@ -92,7 +92,7 @@ func clamp(v, min, max time.Duration) time.Duration {
 
 // DASubmitter handles DA submission operations
 type DASubmitter struct {
-	client  da.Interface
+	client  da.Client
 	config  config.Config
 	genesis genesis.Genesis
 	options common.BlockOptions
@@ -105,7 +105,7 @@ type DASubmitter struct {
 
 // NewDASubmitter creates a new DA submitter
 func NewDASubmitter(
-	client da.Interface,
+	client da.Client,
 	config config.Config,
 	genesis genesis.Genesis,
 	options common.BlockOptions,

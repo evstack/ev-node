@@ -60,7 +60,7 @@ build-da:
 ## docker-build: Build Docker image for local testing
 docker-build:
 	@echo "--> Building Docker image for local testing"
-	@docker build -t evstack:local-dev .
+	@docker build -f apps/testapp/Dockerfile -t evstack:local-dev .
 	@echo "--> Docker image built: evstack:local-dev"
 	@echo "--> Checking if image exists locally..."
 	@docker images evstack:local-dev

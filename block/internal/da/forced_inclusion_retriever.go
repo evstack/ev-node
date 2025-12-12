@@ -18,7 +18,7 @@ var ErrForceInclusionNotConfigured = errors.New("forced inclusion namespace not 
 
 // ForcedInclusionRetriever handles retrieval of forced inclusion transactions from DA.
 type ForcedInclusionRetriever struct {
-	client      Interface
+	client      Client
 	genesis     genesis.Genesis
 	logger      zerolog.Logger
 	daEpochSize uint64
@@ -34,7 +34,7 @@ type ForcedInclusionEvent struct {
 
 // NewForcedInclusionRetriever creates a new forced inclusion retriever.
 func NewForcedInclusionRetriever(
-	client Interface,
+	client Client,
 	genesis genesis.Genesis,
 	logger zerolog.Logger,
 ) *ForcedInclusionRetriever {
