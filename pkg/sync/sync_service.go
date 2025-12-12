@@ -23,6 +23,7 @@ import (
 	"github.com/evstack/ev-node/pkg/config"
 	"github.com/evstack/ev-node/pkg/genesis"
 	"github.com/evstack/ev-node/pkg/p2p"
+	"github.com/evstack/ev-node/pkg/store"
 	"github.com/evstack/ev-node/types"
 )
 
@@ -48,14 +49,18 @@ type SyncService[H header.Header[H]] struct {
 
 	p2p *p2p.Client
 
-	ex                *goheaderp2p.Exchange[H]
+	ex                *exchangeWrapper[H]
 	sub               *goheaderp2p.Subscriber[H]
 	p2pServer         *goheaderp2p.ExchangeServer[H]
 	store             *goheaderstore.Store[H]
+	daStore           store.Store
 	syncer            *goheadersync.Syncer[H]
 	syncerStatus      *SyncerStatus
 	topicSubscription header.Subscription[H]
-	storeInitialized  atomic.Bool
+
+	getter           storeGetter[H]
+	getterByHeight   storeGetterByHeight[H]
+	storeInitialized atomic.Bool
 }
 
 // DataSyncService is the P2P Sync Service for blocks.
@@ -66,28 +71,48 @@ type HeaderSyncService = SyncService[*types.SignedHeader]
 
 // NewDataSyncService returns a new DataSyncService.
 func NewDataSyncService(
-	store ds.Batching,
+	dsStore ds.Batching,
+	daStore store.Store,
 	conf config.Config,
 	genesis genesis.Genesis,
 	p2p *p2p.Client,
 	logger zerolog.Logger,
 ) (*DataSyncService, error) {
-	return newSyncService[*types.Data](store, dataSync, conf, genesis, p2p, logger)
+	getter := func(ctx context.Context, s store.Store, hash header.Hash) (*types.Data, error) {
+		_, d, err := s.GetBlockByHash(ctx, hash)
+		return d, err
+	}
+	getterByHeight := func(ctx context.Context, s store.Store, height uint64) (*types.Data, error) {
+		_, d, err := s.GetBlockData(ctx, height)
+		return d, err
+	}
+	return newSyncService[*types.Data](dsStore, daStore, getter, getterByHeight, dataSync, conf, genesis, p2p, logger)
 }
 
 // NewHeaderSyncService returns a new HeaderSyncService.
 func NewHeaderSyncService(
-	store ds.Batching,
+	dsStore ds.Batching,
+	daStore store.Store,
 	conf config.Config,
 	genesis genesis.Genesis,
 	p2p *p2p.Client,
 	logger zerolog.Logger,
 ) (*HeaderSyncService, error) {
-	return newSyncService[*types.SignedHeader](store, headerSync, conf, genesis, p2p, logger)
+	getter := func(ctx context.Context, s store.Store, hash header.Hash) (*types.SignedHeader, error) {
+		h, _, err := s.GetBlockByHash(ctx, hash)
+		return h, err
+	}
+	getterByHeight := func(ctx context.Context, s store.Store, height uint64) (*types.SignedHeader, error) {
+		return s.GetHeader(ctx, height)
+	}
+	return newSyncService[*types.SignedHeader](dsStore, daStore, getter, getterByHeight, headerSync, conf, genesis, p2p, logger)
 }
 
 func newSyncService[H header.Header[H]](
-	store ds.Batching,
+	dsStore ds.Batching,
+	daStore store.Store,
+	getter storeGetter[H],
+	getterByHeight storeGetterByHeight[H],
 	syncType syncType,
 	conf config.Config,
 	genesis genesis.Genesis,
@@ -99,7 +124,7 @@ func newSyncService[H header.Header[H]](
 	}
 
 	ss, err := goheaderstore.NewStore[H](
-		store,
+		dsStore,
 		goheaderstore.WithStorePrefix(string(syncType)),
 		goheaderstore.WithMetrics(),
 	)
@@ -108,13 +133,16 @@ func newSyncService[H header.Header[H]](
 	}
 
 	svc := &SyncService[H]{
-		conf:         conf,
-		genesis:      genesis,
-		p2p:          p2p,
-		store:        ss,
-		syncType:     syncType,
-		logger:       logger,
-		syncerStatus: new(SyncerStatus),
+		conf:           conf,
+		genesis:        genesis,
+		p2p:            p2p,
+		store:          ss,
+		daStore:        daStore,
+		getter:         getter,
+		getterByHeight: getterByHeight,
+		syncType:       syncType,
+		logger:         logger,
+		syncerStatus:   new(SyncerStatus),
 	}
 
 	return svc, nil
@@ -283,12 +311,22 @@ func (syncService *SyncService[H]) setupP2PInfrastructure(ctx context.Context) (
 
 	peerIDs := syncService.getPeerIDs()
 
-	if syncService.ex, err = newP2PExchange[H](syncService.p2p.Host(), peerIDs, networkID, syncService.genesis.ChainID, syncService.p2p.ConnectionGater()); err != nil {
+	p2pExchange, err := newP2PExchange[H](syncService.p2p.Host(), peerIDs, networkID, syncService.genesis.ChainID, syncService.p2p.ConnectionGater())
+	if err != nil {
 		return nil, fmt.Errorf("error while creating exchange: %w", err)
+	}
+
+	// Create exchange wrapper with DA store check
+	syncService.ex = &exchangeWrapper[H]{
+		p2pExchange:    p2pExchange,
+		daStore:        syncService.daStore,
+		getter:         syncService.getter,
+		getterByHeight: syncService.getterByHeight,
 	}
 	if err := syncService.ex.Start(ctx); err != nil {
 		return nil, fmt.Errorf("error while starting exchange: %w", err)
 	}
+
 	return peerIDs, nil
 }
 
