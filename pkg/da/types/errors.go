@@ -1,8 +1,6 @@
 package da
 
-import (
-	"errors"
-)
+import "errors"
 
 var (
 	ErrBlobNotFound               = errors.New("blob: not found")

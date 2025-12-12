@@ -9,11 +9,11 @@ import (
 
 	"github.com/evstack/ev-node/block/internal/cache"
 	"github.com/evstack/ev-node/block/internal/common"
+	da "github.com/evstack/ev-node/block/internal/da"
 	"github.com/evstack/ev-node/block/internal/executing"
 	"github.com/evstack/ev-node/block/internal/reaping"
 	"github.com/evstack/ev-node/block/internal/submitting"
 	"github.com/evstack/ev-node/block/internal/syncing"
-	coreda "github.com/evstack/ev-node/core/da"
 	coreexecutor "github.com/evstack/ev-node/core/execution"
 	coresequencer "github.com/evstack/ev-node/core/sequencer"
 	"github.com/evstack/ev-node/pkg/config"
@@ -120,7 +120,7 @@ func NewSyncComponents(
 	genesis genesis.Genesis,
 	store store.Store,
 	exec coreexecutor.Executor,
-	da coreda.DA,
+	daClient da.Client,
 	headerStore common.Broadcaster[*types.SignedHeader],
 	dataStore common.Broadcaster[*types.Data],
 	logger zerolog.Logger,
@@ -132,8 +132,6 @@ func NewSyncComponents(
 	if err != nil {
 		return nil, fmt.Errorf("failed to create cache manager: %w", err)
 	}
-
-	daClient := NewDAClient(da, config, logger)
 
 	// error channel for critical failures
 	errorCh := make(chan error, 1)
@@ -185,7 +183,7 @@ func NewAggregatorComponents(
 	store store.Store,
 	exec coreexecutor.Executor,
 	sequencer coresequencer.Sequencer,
-	da coreda.DA,
+	daClient da.Client,
 	signer signer.Signer,
 	headerBroadcaster common.Broadcaster[*types.SignedHeader],
 	dataBroadcaster common.Broadcaster[*types.Data],
@@ -243,8 +241,6 @@ func NewAggregatorComponents(
 		}, nil
 	}
 
-	// Create DA client and submitter for aggregator nodes (with signer for submission)
-	daClient := NewDAClient(da, config, logger)
 	daSubmitter := submitting.NewDASubmitter(daClient, config, genesis, blockOpts, metrics, logger)
 	submitter := submitting.NewSubmitter(
 		store,

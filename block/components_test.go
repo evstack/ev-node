@@ -15,9 +15,9 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 
-	coreda "github.com/evstack/ev-node/core/da"
 	coresequencer "github.com/evstack/ev-node/core/sequencer"
 	"github.com/evstack/ev-node/pkg/config"
+	datypes "github.com/evstack/ev-node/pkg/da/types"
 	"github.com/evstack/ev-node/pkg/genesis"
 	"github.com/evstack/ev-node/pkg/signer/noop"
 	"github.com/evstack/ev-node/pkg/store"
@@ -80,7 +80,11 @@ func TestNewSyncComponents_Creation(t *testing.T) {
 	}
 
 	mockExec := testmocks.NewMockExecutor(t)
-	dummyDA := coreda.NewDummyDA(10_000_000, 10*time.Millisecond)
+	daClient := testmocks.NewMockClient(t)
+	daClient.On("GetHeaderNamespace").Return(datypes.NamespaceFromString("ns").Bytes()).Maybe()
+	daClient.On("GetDataNamespace").Return(datypes.NamespaceFromString("data-ns").Bytes()).Maybe()
+	daClient.On("GetForcedInclusionNamespace").Return([]byte(nil)).Maybe()
+	daClient.On("HasForcedInclusionNamespace").Return(false).Maybe()
 
 	// Just test that the constructor doesn't panic - don't start the components
 	// to avoid P2P store dependencies
@@ -89,7 +93,7 @@ func TestNewSyncComponents_Creation(t *testing.T) {
 		gen,
 		memStore,
 		mockExec,
-		dummyDA,
+		daClient,
 		nil,
 		nil,
 		zerolog.Nop(),
@@ -131,7 +135,11 @@ func TestNewAggregatorComponents_Creation(t *testing.T) {
 
 	mockExec := testmocks.NewMockExecutor(t)
 	mockSeq := testmocks.NewMockSequencer(t)
-	dummyDA := coreda.NewDummyDA(10_000_000, 10*time.Millisecond)
+	daClient := testmocks.NewMockClient(t)
+	daClient.On("GetHeaderNamespace").Return(datypes.NamespaceFromString("ns").Bytes()).Maybe()
+	daClient.On("GetDataNamespace").Return(datypes.NamespaceFromString("data-ns").Bytes()).Maybe()
+	daClient.On("GetForcedInclusionNamespace").Return([]byte(nil)).Maybe()
+	daClient.On("HasForcedInclusionNamespace").Return(false).Maybe()
 
 	components, err := NewAggregatorComponents(
 		cfg,
@@ -139,7 +147,7 @@ func TestNewAggregatorComponents_Creation(t *testing.T) {
 		memStore,
 		mockExec,
 		mockSeq,
-		dummyDA,
+		daClient,
 		mockSigner,
 		nil, // header broadcaster
 		nil, // data broadcaster
@@ -185,7 +193,11 @@ func TestExecutor_RealExecutionClientFailure_StopsNode(t *testing.T) {
 	// Create mock executor that will fail on ExecuteTxs
 	mockExec := testmocks.NewMockExecutor(t)
 	mockSeq := testmocks.NewMockSequencer(t)
-	dummyDA := coreda.NewDummyDA(10_000_000, 10*time.Millisecond)
+	daClient := testmocks.NewMockClient(t)
+	daClient.On("GetHeaderNamespace").Return(datypes.NamespaceFromString("ns").Bytes()).Maybe()
+	daClient.On("GetDataNamespace").Return(datypes.NamespaceFromString("data-ns").Bytes()).Maybe()
+	daClient.On("GetForcedInclusionNamespace").Return([]byte(nil)).Maybe()
+	daClient.On("HasForcedInclusionNamespace").Return(false).Maybe()
 
 	// Mock InitChain to succeed initially
 	mockExec.On("InitChain", mock.Anything, mock.Anything, mock.Anything, mock.Anything).
@@ -217,7 +229,7 @@ func TestExecutor_RealExecutionClientFailure_StopsNode(t *testing.T) {
 		memStore,
 		mockExec,
 		mockSeq,
-		dummyDA,
+		daClient,
 		testSigner,
 		nil, // header broadcaster
 		nil, // data broadcaster

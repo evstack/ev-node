@@ -2,747 +2,213 @@ package da
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"testing"
-	"time"
 
+	"github.com/celestiaorg/go-square/v3/share"
+	blobrpc "github.com/evstack/ev-node/pkg/da/jsonrpc"
+	datypes "github.com/evstack/ev-node/pkg/da/types"
 	"github.com/rs/zerolog"
-	"gotest.tools/v3/assert"
-
-	coreda "github.com/evstack/ev-node/core/da"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
-// mockDA is a simple mock implementation of coreda.DA for testing
-type mockDA struct {
-	submitFunc        func(ctx context.Context, blobs []coreda.Blob, gasPrice float64, namespace []byte) ([]coreda.ID, error)
-	submitWithOptions func(ctx context.Context, blobs []coreda.Blob, gasPrice float64, namespace []byte, options []byte) ([]coreda.ID, error)
-	getIDsFunc        func(ctx context.Context, height uint64, namespace []byte) (*coreda.GetIDsResult, error)
-	getFunc           func(ctx context.Context, ids []coreda.ID, namespace []byte) ([]coreda.Blob, error)
+type mockBlobAPI struct {
+	submitErr   error
+	height      uint64
+	blobs       []*blobrpc.Blob
+	proof       *blobrpc.Proof
+	included    bool
+	commitProof *blobrpc.CommitmentProof
 }
 
-func (m *mockDA) Submit(ctx context.Context, blobs []coreda.Blob, gasPrice float64, namespace []byte) ([]coreda.ID, error) {
-	if m.submitFunc != nil {
-		return m.submitFunc(ctx, blobs, gasPrice, namespace)
-	}
-	return nil, nil
+func (m *mockBlobAPI) Submit(ctx context.Context, blobs []*blobrpc.Blob, opts *blobrpc.SubmitOptions) (uint64, error) {
+	return m.height, m.submitErr
 }
 
-func (m *mockDA) SubmitWithOptions(ctx context.Context, blobs []coreda.Blob, gasPrice float64, namespace []byte, options []byte) ([]coreda.ID, error) {
-	if m.submitWithOptions != nil {
-		return m.submitWithOptions(ctx, blobs, gasPrice, namespace, options)
-	}
-	return nil, nil
+func (m *mockBlobAPI) GetAll(ctx context.Context, height uint64, namespaces []share.Namespace) ([]*blobrpc.Blob, error) {
+	return m.blobs, m.submitErr
 }
 
-func (m *mockDA) GetIDs(ctx context.Context, height uint64, namespace []byte) (*coreda.GetIDsResult, error) {
-	if m.getIDsFunc != nil {
-		return m.getIDsFunc(ctx, height, namespace)
-	}
-	return nil, errors.New("not implemented")
+func (m *mockBlobAPI) GetProof(ctx context.Context, height uint64, namespace share.Namespace, commitment blobrpc.Commitment) (*blobrpc.Proof, error) {
+	return m.proof, m.submitErr
 }
 
-func (m *mockDA) Get(ctx context.Context, ids []coreda.ID, namespace []byte) ([]coreda.Blob, error) {
-	if m.getFunc != nil {
-		return m.getFunc(ctx, ids, namespace)
-	}
-	return nil, errors.New("not implemented")
+func (m *mockBlobAPI) Included(ctx context.Context, height uint64, namespace share.Namespace, proof *blobrpc.Proof, commitment blobrpc.Commitment) (bool, error) {
+	return m.included, m.submitErr
 }
 
-func (m *mockDA) GetProofs(ctx context.Context, ids []coreda.ID, namespace []byte) ([]coreda.Proof, error) {
-	return nil, errors.New("not implemented")
+func (m *mockBlobAPI) GetCommitmentProof(ctx context.Context, height uint64, namespace share.Namespace, shareCommitment []byte) (*blobrpc.CommitmentProof, error) {
+	return m.commitProof, m.submitErr
 }
 
-func (m *mockDA) Commit(ctx context.Context, blobs []coreda.Blob, namespace []byte) ([]coreda.Commitment, error) {
-	return nil, errors.New("not implemented")
+func (m *mockBlobAPI) Subscribe(ctx context.Context, namespace share.Namespace) (<-chan *blobrpc.SubscriptionResponse, error) {
+	ch := make(chan *blobrpc.SubscriptionResponse)
+	close(ch)
+	return ch, nil
 }
 
-func (m *mockDA) Validate(ctx context.Context, ids []coreda.ID, proofs []coreda.Proof, namespace []byte) ([]bool, error) {
-	return nil, errors.New("not implemented")
+func makeBlobRPCClient(m *mockBlobAPI) *blobrpc.Client {
+	var api blobrpc.BlobAPI
+	api.Internal.Submit = m.Submit
+	api.Internal.GetAll = m.GetAll
+	api.Internal.GetProof = m.GetProof
+	api.Internal.Included = m.Included
+	api.Internal.GetCommitmentProof = m.GetCommitmentProof
+	api.Internal.Subscribe = m.Subscribe
+	return &blobrpc.Client{Blob: api}
 }
 
-func TestNewClient(t *testing.T) {
-	tests := []struct {
-		name string
-		cfg  Config
-	}{
-		{
-			name: "with all namespaces",
-			cfg: Config{
-				DA:                       &mockDA{},
-				Logger:                   zerolog.Nop(),
-				DefaultTimeout:           5 * time.Second,
-				Namespace:                "test-ns",
-				DataNamespace:            "test-data-ns",
-				ForcedInclusionNamespace: "test-fi-ns",
-			},
-		},
-		{
-			name: "without forced inclusion namespace",
-			cfg: Config{
-				DA:             &mockDA{},
-				Logger:         zerolog.Nop(),
-				DefaultTimeout: 5 * time.Second,
-				Namespace:      "test-ns",
-				DataNamespace:  "test-data-ns",
-			},
-		},
-		{
-			name: "with default timeout",
-			cfg: Config{
-				DA:            &mockDA{},
-				Logger:        zerolog.Nop(),
-				Namespace:     "test-ns",
-				DataNamespace: "test-data-ns",
-			},
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			client := NewClient(tt.cfg)
-			assert.Assert(t, client != nil)
-			assert.Assert(t, client.da != nil)
-			assert.Assert(t, len(client.namespaceBz) > 0)
-			assert.Assert(t, len(client.namespaceDataBz) > 0)
-
-			if tt.cfg.ForcedInclusionNamespace != "" {
-				assert.Assert(t, client.hasForcedInclusionNs)
-				assert.Assert(t, len(client.namespaceForcedInclusionBz) > 0)
-			} else {
-				assert.Assert(t, !client.hasForcedInclusionNs)
-			}
-
-			expectedTimeout := tt.cfg.DefaultTimeout
-			if expectedTimeout == 0 {
-				expectedTimeout = 60 * time.Second
-			}
-			assert.Equal(t, client.defaultTimeout, expectedTimeout)
-		})
-	}
-}
-
-func TestClient_HasForcedInclusionNamespace(t *testing.T) {
-	tests := []struct {
-		name     string
-		cfg      Config
-		expected bool
-	}{
-		{
-			name: "with forced inclusion namespace",
-			cfg: Config{
-				DA:                       &mockDA{},
-				Logger:                   zerolog.Nop(),
-				Namespace:                "test-ns",
-				DataNamespace:            "test-data-ns",
-				ForcedInclusionNamespace: "test-fi-ns",
-			},
-			expected: true,
-		},
-		{
-			name: "without forced inclusion namespace",
-			cfg: Config{
-				DA:            &mockDA{},
-				Logger:        zerolog.Nop(),
-				Namespace:     "test-ns",
-				DataNamespace: "test-data-ns",
-			},
-			expected: false,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			client := NewClient(tt.cfg)
-			assert.Equal(t, client.HasForcedInclusionNamespace(), tt.expected)
-		})
-	}
-}
-
-func TestClient_GetNamespaces(t *testing.T) {
-	cfg := Config{
-		DA:                       &mockDA{},
-		Logger:                   zerolog.Nop(),
-		Namespace:                "test-header",
-		DataNamespace:            "test-data",
-		ForcedInclusionNamespace: "test-fi",
-	}
-
-	client := NewClient(cfg)
-
-	headerNs := client.GetHeaderNamespace()
-	assert.Assert(t, len(headerNs) > 0)
-
-	dataNs := client.GetDataNamespace()
-	assert.Assert(t, len(dataNs) > 0)
-
-	fiNs := client.GetForcedInclusionNamespace()
-	assert.Assert(t, len(fiNs) > 0)
-
-	// Namespaces should be different
-	assert.Assert(t, string(headerNs) != string(dataNs))
-	assert.Assert(t, string(headerNs) != string(fiNs))
-	assert.Assert(t, string(dataNs) != string(fiNs))
-}
-
-func TestClient_RetrieveForcedInclusion_NotConfigured(t *testing.T) {
-	cfg := Config{
-		DA:            &mockDA{},
-		Logger:        zerolog.Nop(),
-		Namespace:     "test-ns",
-		DataNamespace: "test-data-ns",
-	}
-
-	client := NewClient(cfg)
-	ctx := context.Background()
-
-	result := client.RetrieveForcedInclusion(ctx, 100)
-	assert.Equal(t, result.Code, coreda.StatusError)
-	assert.Assert(t, result.Message != "")
-}
-
-func TestClient_GetDA(t *testing.T) {
-	mockDAInstance := &mockDA{}
-	cfg := Config{
-		DA:            mockDAInstance,
-		Logger:        zerolog.Nop(),
-		Namespace:     "test-ns",
-		DataNamespace: "test-data-ns",
-	}
-
-	client := NewClient(cfg)
-	da := client.GetDA()
-	assert.Equal(t, da, mockDAInstance)
-}
-
-func TestClient_Submit(t *testing.T) {
-	logger := zerolog.Nop()
-
+func TestClient_Submit_ErrorMapping(t *testing.T) {
+	ns := share.MustNewV0Namespace([]byte("ns")).Bytes()
 	testCases := []struct {
-		name           string
-		data           [][]byte
-		gasPrice       float64
-		options        []byte
-		submitErr      error
-		submitIDs      [][]byte
-		expectedCode   coreda.StatusCode
-		expectedErrMsg string
-		expectedIDs    [][]byte
-		expectedCount  uint64
+		name       string
+		err        error
+		wantStatus datypes.StatusCode
 	}{
-		{
-			name:          "successful submission",
-			data:          [][]byte{[]byte("blob1"), []byte("blob2")},
-			gasPrice:      1.0,
-			options:       []byte("opts"),
-			submitIDs:     [][]byte{[]byte("id1"), []byte("id2")},
-			expectedCode:  coreda.StatusSuccess,
-			expectedIDs:   [][]byte{[]byte("id1"), []byte("id2")},
-			expectedCount: 2,
-		},
-		{
-			name:           "context canceled error",
-			data:           [][]byte{[]byte("blob1")},
-			gasPrice:       1.0,
-			options:        []byte("opts"),
-			submitErr:      context.Canceled,
-			expectedCode:   coreda.StatusContextCanceled,
-			expectedErrMsg: "submission canceled",
-		},
-		{
-			name:           "tx timed out error",
-			data:           [][]byte{[]byte("blob1")},
-			gasPrice:       1.0,
-			options:        []byte("opts"),
-			submitErr:      coreda.ErrTxTimedOut,
-			expectedCode:   coreda.StatusNotIncludedInBlock,
-			expectedErrMsg: "failed to submit blobs: " + coreda.ErrTxTimedOut.Error(),
-		},
-		{
-			name:           "tx already in mempool error",
-			data:           [][]byte{[]byte("blob1")},
-			gasPrice:       1.0,
-			options:        []byte("opts"),
-			submitErr:      coreda.ErrTxAlreadyInMempool,
-			expectedCode:   coreda.StatusAlreadyInMempool,
-			expectedErrMsg: "failed to submit blobs: " + coreda.ErrTxAlreadyInMempool.Error(),
-		},
-		{
-			name:           "incorrect account sequence error",
-			data:           [][]byte{[]byte("blob1")},
-			gasPrice:       1.0,
-			options:        []byte("opts"),
-			submitErr:      coreda.ErrTxIncorrectAccountSequence,
-			expectedCode:   coreda.StatusIncorrectAccountSequence,
-			expectedErrMsg: "failed to submit blobs: " + coreda.ErrTxIncorrectAccountSequence.Error(),
-		},
-		{
-			name:           "blob size over limit error",
-			data:           [][]byte{[]byte("blob1")},
-			gasPrice:       1.0,
-			options:        []byte("opts"),
-			submitErr:      coreda.ErrBlobSizeOverLimit,
-			expectedCode:   coreda.StatusTooBig,
-			expectedErrMsg: "failed to submit blobs: " + coreda.ErrBlobSizeOverLimit.Error(),
-		},
-		{
-			name:           "context deadline error",
-			data:           [][]byte{[]byte("blob1")},
-			gasPrice:       1.0,
-			options:        []byte("opts"),
-			submitErr:      coreda.ErrContextDeadline,
-			expectedCode:   coreda.StatusContextDeadline,
-			expectedErrMsg: "failed to submit blobs: " + coreda.ErrContextDeadline.Error(),
-		},
-		{
-			name:           "generic submission error",
-			data:           [][]byte{[]byte("blob1")},
-			gasPrice:       1.0,
-			options:        []byte("opts"),
-			submitErr:      errors.New("some generic error"),
-			expectedCode:   coreda.StatusError,
-			expectedErrMsg: "failed to submit blobs: some generic error",
-		},
-		{
-			name:           "no IDs returned for non-empty data",
-			data:           [][]byte{[]byte("blob1")},
-			gasPrice:       1.0,
-			options:        []byte("opts"),
-			submitIDs:      [][]byte{},
-			expectedCode:   coreda.StatusError,
-			expectedErrMsg: "failed to submit blobs: no IDs returned despite non-empty input",
-		},
+		{"timeout", datypes.ErrTxTimedOut, datypes.StatusNotIncludedInBlock},
+		{"alreadyInMempool", datypes.ErrTxAlreadyInMempool, datypes.StatusAlreadyInMempool},
+		{"seq", datypes.ErrTxIncorrectAccountSequence, datypes.StatusIncorrectAccountSequence},
+		{"tooBig", datypes.ErrBlobSizeOverLimit, datypes.StatusTooBig},
+		{"deadline", datypes.ErrContextDeadline, datypes.StatusContextDeadline},
+		{"canceled", context.Canceled, datypes.StatusContextCanceled},
+		{"other", errors.New("boom"), datypes.StatusError},
 	}
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			mockDAInstance := &mockDA{
-				submitWithOptions: func(ctx context.Context, blobs []coreda.Blob, gasPrice float64, namespace []byte, options []byte) ([]coreda.ID, error) {
-					return tc.submitIDs, tc.submitErr
-				},
-			}
-
-			client := NewClient(Config{
-				DA:            mockDAInstance,
-				Logger:        logger,
-				Namespace:     "test-namespace",
-				DataNamespace: "test-data-namespace",
+			cl := NewClient(Config{
+				Client:        makeBlobRPCClient(&mockBlobAPI{submitErr: tc.err}),
+				Logger:        zerolog.Nop(),
+				Namespace:     "ns",
+				DataNamespace: "ns",
 			})
-
-			encodedNamespace := coreda.NamespaceFromString("test-namespace")
-			result := client.Submit(context.Background(), tc.data, tc.gasPrice, encodedNamespace.Bytes(), tc.options)
-
-			assert.Equal(t, tc.expectedCode, result.Code)
-			if tc.expectedErrMsg != "" {
-				assert.Assert(t, result.Message != "")
-			}
-			if tc.expectedIDs != nil {
-				assert.Equal(t, len(tc.expectedIDs), len(result.IDs))
-			}
-			if tc.expectedCount != 0 {
-				assert.Equal(t, tc.expectedCount, result.SubmittedCount)
-			}
+			res := cl.Submit(context.Background(), [][]byte{[]byte("data")}, 0, ns, nil)
+			assert.Equal(t, tc.wantStatus, res.Code)
 		})
 	}
 }
 
-func TestClient_Retrieve(t *testing.T) {
-	logger := zerolog.Nop()
-	dataLayerHeight := uint64(100)
-	mockIDs := [][]byte{[]byte("id1"), []byte("id2")}
-	mockBlobs := [][]byte{[]byte("blobA"), []byte("blobB")}
-	mockTimestamp := time.Now()
-
-	testCases := []struct {
-		name           string
-		getIDsResult   *coreda.GetIDsResult
-		getIDsErr      error
-		getBlobsErr    error
-		expectedCode   coreda.StatusCode
-		expectedErrMsg string
-		expectedIDs    [][]byte
-		expectedData   [][]byte
-		expectedHeight uint64
-	}{
-		{
-			name: "successful retrieval",
-			getIDsResult: &coreda.GetIDsResult{
-				IDs:       mockIDs,
-				Timestamp: mockTimestamp,
-			},
-			expectedCode:   coreda.StatusSuccess,
-			expectedIDs:    mockIDs,
-			expectedData:   mockBlobs,
-			expectedHeight: dataLayerHeight,
-		},
-		{
-			name:           "blob not found error during GetIDs",
-			getIDsErr:      coreda.ErrBlobNotFound,
-			expectedCode:   coreda.StatusNotFound,
-			expectedErrMsg: coreda.ErrBlobNotFound.Error(),
-			expectedHeight: dataLayerHeight,
-		},
-		{
-			name:           "height from future error during GetIDs",
-			getIDsErr:      coreda.ErrHeightFromFuture,
-			expectedCode:   coreda.StatusHeightFromFuture,
-			expectedErrMsg: coreda.ErrHeightFromFuture.Error(),
-			expectedHeight: dataLayerHeight,
-		},
-		{
-			name:           "generic error during GetIDs",
-			getIDsErr:      errors.New("failed to connect to DA"),
-			expectedCode:   coreda.StatusError,
-			expectedErrMsg: "failed to get IDs: failed to connect to DA",
-			expectedHeight: dataLayerHeight,
-		},
-		{
-			name:           "GetIDs returns nil result",
-			getIDsResult:   nil,
-			expectedCode:   coreda.StatusNotFound,
-			expectedErrMsg: coreda.ErrBlobNotFound.Error(),
-			expectedHeight: dataLayerHeight,
-		},
-		{
-			name: "GetIDs returns empty IDs",
-			getIDsResult: &coreda.GetIDsResult{
-				IDs:       [][]byte{},
-				Timestamp: mockTimestamp,
-			},
-			expectedCode:   coreda.StatusNotFound,
-			expectedErrMsg: coreda.ErrBlobNotFound.Error(),
-			expectedHeight: dataLayerHeight,
-		},
-		{
-			name: "error during Get (blobs retrieval)",
-			getIDsResult: &coreda.GetIDsResult{
-				IDs:       mockIDs,
-				Timestamp: mockTimestamp,
-			},
-			getBlobsErr:    errors.New("network error during blob retrieval"),
-			expectedCode:   coreda.StatusError,
-			expectedErrMsg: "failed to get blobs for batch 0-1: network error during blob retrieval",
-			expectedHeight: dataLayerHeight,
-		},
-	}
-
-	for _, tc := range testCases {
-		t.Run(tc.name, func(t *testing.T) {
-			mockDAInstance := &mockDA{
-				getIDsFunc: func(ctx context.Context, height uint64, namespace []byte) (*coreda.GetIDsResult, error) {
-					return tc.getIDsResult, tc.getIDsErr
-				},
-				getFunc: func(ctx context.Context, ids []coreda.ID, namespace []byte) ([]coreda.Blob, error) {
-					if tc.getBlobsErr != nil {
-						return nil, tc.getBlobsErr
-					}
-					return mockBlobs, nil
-				},
-			}
-
-			client := NewClient(Config{
-				DA:             mockDAInstance,
-				Logger:         logger,
-				Namespace:      "test-namespace",
-				DataNamespace:  "test-data-namespace",
-				DefaultTimeout: 5 * time.Second,
-			})
-
-			encodedNamespace := coreda.NamespaceFromString("test-namespace")
-			result := client.Retrieve(context.Background(), dataLayerHeight, encodedNamespace.Bytes())
-
-			assert.Equal(t, tc.expectedCode, result.Code)
-			assert.Equal(t, tc.expectedHeight, result.Height)
-			if tc.expectedErrMsg != "" {
-				assert.Assert(t, result.Message != "")
-			}
-			if tc.expectedIDs != nil {
-				assert.Equal(t, len(tc.expectedIDs), len(result.IDs))
-			}
-			if tc.expectedData != nil {
-				assert.Equal(t, len(tc.expectedData), len(result.Data))
-			}
-		})
-	}
+func TestClient_Submit_Success(t *testing.T) {
+	ns := share.MustNewV0Namespace([]byte("ns")).Bytes()
+	mockAPI := &mockBlobAPI{height: 10}
+	cl := NewClient(Config{
+		Client:        makeBlobRPCClient(mockAPI),
+		Logger:        zerolog.Nop(),
+		Namespace:     "ns",
+		DataNamespace: "ns",
+	})
+	res := cl.Submit(context.Background(), [][]byte{[]byte("data")}, 0, ns, nil)
+	require.Equal(t, datypes.StatusSuccess, res.Code)
+	require.Equal(t, uint64(10), res.Height)
+	require.Len(t, res.IDs, 1)
 }
 
-func TestClient_Retrieve_Timeout(t *testing.T) {
-	logger := zerolog.Nop()
-	dataLayerHeight := uint64(100)
-	encodedNamespace := coreda.NamespaceFromString("test-namespace")
+func TestClient_Submit_InvalidNamespace(t *testing.T) {
+	mockAPI := &mockBlobAPI{height: 10}
+	cl := NewClient(Config{
+		Client:        makeBlobRPCClient(mockAPI),
+		Logger:        zerolog.Nop(),
+		Namespace:     "ns",
+		DataNamespace: "ns",
+	})
+	res := cl.Submit(context.Background(), [][]byte{[]byte("data")}, 0, []byte{0x01, 0x02}, nil)
+	require.Equal(t, datypes.StatusError, res.Code)
+}
 
-	t.Run("timeout during GetIDs", func(t *testing.T) {
-		mockDAInstance := &mockDA{
-			getIDsFunc: func(ctx context.Context, height uint64, namespace []byte) (*coreda.GetIDsResult, error) {
-				<-ctx.Done() // Wait for context cancellation
-				return nil, context.DeadlineExceeded
-			},
-		}
+func TestClient_Retrieve_NotFound(t *testing.T) {
+	ns := share.MustNewV0Namespace([]byte("ns")).Bytes()
+	mockAPI := &mockBlobAPI{submitErr: datypes.ErrBlobNotFound}
+	cl := NewClient(Config{
+		Client:        makeBlobRPCClient(mockAPI),
+		Logger:        zerolog.Nop(),
+		Namespace:     "ns",
+		DataNamespace: "ns",
+	})
+	res := cl.Retrieve(context.Background(), 5, ns)
+	require.Equal(t, datypes.StatusNotFound, res.Code)
+}
 
-		client := NewClient(Config{
-			DA:             mockDAInstance,
-			Logger:         logger,
-			Namespace:      "test-namespace",
-			DataNamespace:  "test-data-namespace",
-			DefaultTimeout: 1 * time.Millisecond,
-		})
+func TestClient_Retrieve_Success(t *testing.T) {
+	ns := share.MustNewV0Namespace([]byte("ns")).Bytes()
+	b, err := blobrpc.NewBlobV0(share.MustNewV0Namespace([]byte("ns")), []byte("payload"))
+	require.NoError(t, err)
+	mockAPI := &mockBlobAPI{height: 7, blobs: []*blobrpc.Blob{b}}
+	cl := NewClient(Config{
+		Client:        makeBlobRPCClient(mockAPI),
+		Logger:        zerolog.Nop(),
+		Namespace:     "ns",
+		DataNamespace: "ns",
+	})
+	res := cl.Retrieve(context.Background(), 7, ns)
+	require.Equal(t, datypes.StatusSuccess, res.Code)
+	require.Len(t, res.Data, 1)
+	require.Len(t, res.IDs, 1)
+}
 
-		result := client.Retrieve(context.Background(), dataLayerHeight, encodedNamespace.Bytes())
-
-		assert.Equal(t, coreda.StatusError, result.Code)
-		assert.Assert(t, result.Message != "")
+func TestClient_SubmitOptionsMerge(t *testing.T) {
+	ns := share.MustNewV0Namespace([]byte("ns")).Bytes()
+	mockAPI := &mockBlobAPI{height: 1}
+	cl := NewClient(Config{
+		Client:        makeBlobRPCClient(mockAPI),
+		Logger:        zerolog.Nop(),
+		Namespace:     "ns",
+		DataNamespace: "ns",
 	})
 
-	t.Run("timeout during Get", func(t *testing.T) {
-		mockIDs := [][]byte{[]byte("id1")}
-		mockTimestamp := time.Now()
+	opts := map[string]any{"signer_address": "signer1xyz"}
+	raw, err := json.Marshal(opts)
+	require.NoError(t, err)
 
-		mockDAInstance := &mockDA{
-			getIDsFunc: func(ctx context.Context, height uint64, namespace []byte) (*coreda.GetIDsResult, error) {
-				return &coreda.GetIDsResult{
-					IDs:       mockIDs,
-					Timestamp: mockTimestamp,
-				}, nil
-			},
-			getFunc: func(ctx context.Context, ids []coreda.ID, namespace []byte) ([]coreda.Blob, error) {
-				<-ctx.Done() // Wait for context cancellation
-				return nil, context.DeadlineExceeded
-			},
-		}
-
-		client := NewClient(Config{
-			DA:             mockDAInstance,
-			Logger:         logger,
-			Namespace:      "test-namespace",
-			DataNamespace:  "test-data-namespace",
-			DefaultTimeout: 1 * time.Millisecond,
-		})
-
-		result := client.Retrieve(context.Background(), dataLayerHeight, encodedNamespace.Bytes())
-
-		assert.Equal(t, coreda.StatusError, result.Code)
-		assert.Assert(t, result.Message != "")
-	})
+	res := cl.Submit(context.Background(), [][]byte{[]byte("data")}, 0, ns, raw)
+	require.Equal(t, datypes.StatusSuccess, res.Code)
 }
 
 func TestClient_RetrieveHeaders(t *testing.T) {
-	logger := zerolog.Nop()
-	dataLayerHeight := uint64(100)
-	mockIDs := [][]byte{[]byte("id1")}
-	mockBlobs := [][]byte{[]byte("header-blob")}
-	mockTimestamp := time.Now()
+	ns := share.MustNewV0Namespace([]byte("header-ns"))
+	blb, err := blobrpc.NewBlobV0(ns, []byte("header-blob"))
+	require.NoError(t, err)
 
-	mockDAInstance := &mockDA{
-		getIDsFunc: func(ctx context.Context, height uint64, namespace []byte) (*coreda.GetIDsResult, error) {
-			return &coreda.GetIDsResult{
-				IDs:       mockIDs,
-				Timestamp: mockTimestamp,
-			}, nil
-		},
-		getFunc: func(ctx context.Context, ids []coreda.ID, namespace []byte) ([]coreda.Blob, error) {
-			return mockBlobs, nil
-		},
+	mockAPI := &mockBlobAPI{
+		blobs: []*blobrpc.Blob{blb},
 	}
 
 	client := NewClient(Config{
-		DA:            mockDAInstance,
-		Logger:        logger,
-		Namespace:     "test-header-ns",
-		DataNamespace: "test-data-ns",
+		Client:        makeBlobRPCClient(mockAPI),
+		Logger:        zerolog.Nop(),
+		Namespace:     "header-ns",
+		DataNamespace: "data-ns",
 	})
 
-	result := client.RetrieveHeaders(context.Background(), dataLayerHeight)
+	result := client.RetrieveHeaders(context.Background(), 42)
 
-	assert.Equal(t, coreda.StatusSuccess, result.Code)
-	assert.Equal(t, dataLayerHeight, result.Height)
-	assert.Equal(t, len(mockBlobs), len(result.Data))
+	assert.Equal(t, datypes.StatusSuccess, result.Code)
+	assert.Equal(t, uint64(42), result.Height)
+	assert.Equal(t, 1, len(result.Data))
 }
 
 func TestClient_RetrieveData(t *testing.T) {
-	logger := zerolog.Nop()
-	dataLayerHeight := uint64(200)
-	mockIDs := [][]byte{[]byte("id1"), []byte("id2")}
-	mockBlobs := [][]byte{[]byte("data-blob-1"), []byte("data-blob-2")}
-	mockTimestamp := time.Now()
+	ns := share.MustNewV0Namespace([]byte("data-ns"))
+	blb1, err := blobrpc.NewBlobV0(ns, []byte("data-blob-1"))
+	require.NoError(t, err)
+	blb2, err := blobrpc.NewBlobV0(ns, []byte("data-blob-2"))
+	require.NoError(t, err)
 
-	mockDAInstance := &mockDA{
-		getIDsFunc: func(ctx context.Context, height uint64, namespace []byte) (*coreda.GetIDsResult, error) {
-			return &coreda.GetIDsResult{
-				IDs:       mockIDs,
-				Timestamp: mockTimestamp,
-			}, nil
-		},
-		getFunc: func(ctx context.Context, ids []coreda.ID, namespace []byte) ([]coreda.Blob, error) {
-			return mockBlobs, nil
-		},
+	mockAPI := &mockBlobAPI{
+		blobs: []*blobrpc.Blob{blb1, blb2},
 	}
 
 	client := NewClient(Config{
-		DA:            mockDAInstance,
-		Logger:        logger,
-		Namespace:     "test-header-ns",
-		DataNamespace: "test-data-ns",
+		Client:        makeBlobRPCClient(mockAPI),
+		Logger:        zerolog.Nop(),
+		Namespace:     "header-ns",
+		DataNamespace: "data-ns",
 	})
 
-	result := client.RetrieveData(context.Background(), dataLayerHeight)
+	result := client.RetrieveData(context.Background(), 99)
 
-	assert.Equal(t, coreda.StatusSuccess, result.Code)
-	assert.Equal(t, dataLayerHeight, result.Height)
-	assert.Equal(t, len(mockBlobs), len(result.Data))
-}
-
-func TestClient_RetrieveBatched(t *testing.T) {
-	logger := zerolog.Nop()
-	dataLayerHeight := uint64(100)
-
-	// Create 200 IDs to exceed default batch size
-	numIDs := 200
-	mockIDs := make([][]byte, numIDs)
-	for i := range numIDs {
-		mockIDs[i] = []byte{byte(i)}
-	}
-
-	// Track which batches were requested
-	batchCalls := []int{}
-
-	mockDAInstance := &mockDA{
-		getIDsFunc: func(ctx context.Context, height uint64, namespace []byte) (*coreda.GetIDsResult, error) {
-			return &coreda.GetIDsResult{
-				IDs:       mockIDs,
-				Timestamp: time.Now(),
-			}, nil
-		},
-		getFunc: func(ctx context.Context, ids []coreda.ID, namespace []byte) ([]coreda.Blob, error) {
-			batchCalls = append(batchCalls, len(ids))
-			// Return a blob for each ID in the batch
-			blobs := make([][]byte, len(ids))
-			for i := range ids {
-				blobs[i] = []byte("blob")
-			}
-			return blobs, nil
-		},
-	}
-
-	client := NewClient(Config{
-		DA:                mockDAInstance,
-		Logger:            logger,
-		Namespace:         "test-ns",
-		DataNamespace:     "test-data-ns",
-		RetrieveBatchSize: 50, // Set smaller batch size for testing
-	})
-
-	encodedNamespace := coreda.NamespaceFromString("test-ns")
-	result := client.Retrieve(context.Background(), dataLayerHeight, encodedNamespace.Bytes())
-
-	assert.Equal(t, coreda.StatusSuccess, result.Code)
-	assert.Equal(t, numIDs, len(result.Data))
-
-	// Should have made 4 batches: 50 + 50 + 50 + 50 = 200
-	assert.Equal(t, 4, len(batchCalls))
-	assert.Equal(t, 50, batchCalls[0])
-	assert.Equal(t, 50, batchCalls[1])
-	assert.Equal(t, 50, batchCalls[2])
-	assert.Equal(t, 50, batchCalls[3])
-}
-
-func TestClient_RetrieveBatched_PartialBatch(t *testing.T) {
-	logger := zerolog.Nop()
-	dataLayerHeight := uint64(100)
-
-	// Create 175 IDs to test partial batch at the end
-	numIDs := 175
-	mockIDs := make([][]byte, numIDs)
-	for i := range numIDs {
-		mockIDs[i] = []byte{byte(i)}
-	}
-
-	batchCalls := []int{}
-
-	mockDAInstance := &mockDA{
-		getIDsFunc: func(ctx context.Context, height uint64, namespace []byte) (*coreda.GetIDsResult, error) {
-			return &coreda.GetIDsResult{
-				IDs:       mockIDs,
-				Timestamp: time.Now(),
-			}, nil
-		},
-		getFunc: func(ctx context.Context, ids []coreda.ID, namespace []byte) ([]coreda.Blob, error) {
-			batchCalls = append(batchCalls, len(ids))
-			blobs := make([][]byte, len(ids))
-			for i := range ids {
-				blobs[i] = []byte("blob")
-			}
-			return blobs, nil
-		},
-	}
-
-	client := NewClient(Config{
-		DA:                mockDAInstance,
-		Logger:            logger,
-		Namespace:         "test-ns",
-		DataNamespace:     "test-data-ns",
-		RetrieveBatchSize: 50,
-	})
-
-	encodedNamespace := coreda.NamespaceFromString("test-ns")
-	result := client.Retrieve(context.Background(), dataLayerHeight, encodedNamespace.Bytes())
-
-	assert.Equal(t, coreda.StatusSuccess, result.Code)
-	assert.Equal(t, numIDs, len(result.Data))
-
-	// Should have made 4 batches: 50 + 50 + 50 + 25 = 175
-	assert.Equal(t, 4, len(batchCalls))
-	assert.Equal(t, 50, batchCalls[0])
-	assert.Equal(t, 50, batchCalls[1])
-	assert.Equal(t, 50, batchCalls[2])
-	assert.Equal(t, 25, batchCalls[3]) // Partial batch
-}
-
-func TestClient_RetrieveBatched_ErrorInSecondBatch(t *testing.T) {
-	logger := zerolog.Nop()
-	dataLayerHeight := uint64(100)
-
-	// Create 200 IDs to require multiple batches
-	numIDs := 200
-	mockIDs := make([][]byte, numIDs)
-	for i := range numIDs {
-		mockIDs[i] = []byte{byte(i)}
-	}
-
-	batchCallCount := 0
-
-	mockDAInstance := &mockDA{
-		getIDsFunc: func(ctx context.Context, height uint64, namespace []byte) (*coreda.GetIDsResult, error) {
-			return &coreda.GetIDsResult{
-				IDs:       mockIDs,
-				Timestamp: time.Now(),
-			}, nil
-		},
-		getFunc: func(ctx context.Context, ids []coreda.ID, namespace []byte) ([]coreda.Blob, error) {
-			batchCallCount++
-			// Fail on second batch
-			if batchCallCount == 2 {
-				return nil, errors.New("network error in batch 2")
-			}
-			blobs := make([][]byte, len(ids))
-			for i := range ids {
-				blobs[i] = []byte("blob")
-			}
-			return blobs, nil
-		},
-	}
-
-	client := NewClient(Config{
-		DA:                mockDAInstance,
-		Logger:            logger,
-		Namespace:         "test-ns",
-		DataNamespace:     "test-data-ns",
-		RetrieveBatchSize: 50,
-	})
-
-	encodedNamespace := coreda.NamespaceFromString("test-ns")
-	result := client.Retrieve(context.Background(), dataLayerHeight, encodedNamespace.Bytes())
-
-	assert.Equal(t, coreda.StatusError, result.Code)
-	assert.Assert(t, result.Message != "")
-	// Error message should mention the batch range
-	assert.Assert(t, len(result.Message) > 0)
+	assert.Equal(t, datypes.StatusSuccess, result.Code)
+	assert.Equal(t, uint64(99), result.Height)
+	assert.Equal(t, 2, len(result.Data))
 }

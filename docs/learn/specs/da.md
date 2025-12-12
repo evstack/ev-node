@@ -59,5 +59,5 @@ The separation of headers and data into different namespaces provides several ad
 
 [2] [jsonrpc][jsonrpc]
 
-[da-interface]: https://github.com/evstack/ev-node/blob/main/core/da/da.go#L11
-[jsonrpc]: https://github.com/evstack/ev-node/tree/main/da/jsonrpc
+[da-interface]: https://github.com/evstack/ev-node/blob/main/block/public.go
+[jsonrpc]: https://github.com/evstack/ev-node/tree/main/pkg/da/jsonrpc

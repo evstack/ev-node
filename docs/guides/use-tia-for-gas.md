@@ -27,7 +27,7 @@ import constants from '../.vitepress/constants/constants.js'
 Your local DA network is already running if you followed the [quick start guide](./quick-start.md) or the [build a chain](./gm-world.md). If not, you can start it with the following command:
 
 ```bash
-go install github.com/evstack/ev-node/da/cmd/local-da@latest
+go install github.com/evstack/ev-node/apps/local-da@latest
 local-da
 ```
 

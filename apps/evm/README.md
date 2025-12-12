@@ -11,7 +11,7 @@ This directory contains the implementation of a single EVM sequencer using Ev-no
 
 1. Both EVM and DA layers must be running before starting the sequencer
    1. For the EVM layer, Reth can be conveniently run using `docker compose` from <path_to>/execution/evm/docker.
-   2. For the DA layer, local-da can be built and run from the `ev-node/da/cmd/local-da` directory.
+   2. For the DA layer, local-da can be built and run from the `ev-node/apps/local-da` directory.
 
 2. Build the sequencer:
 

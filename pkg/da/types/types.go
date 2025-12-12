@@ -37,15 +37,35 @@ type DA interface {
 	Validate(ctx context.Context, ids []ID, proofs []Proof, namespace []byte) ([]bool, error)
 }
 
-// Blob is the data submitted/received from DA interface.
+// StatusCode mirrors the blob RPC status codes shared with block/internal/da.
+type StatusCode uint64
+
+// Data Availability return codes.
+const (
+	StatusUnknown StatusCode = iota
+	StatusSuccess
+	StatusNotFound
+	StatusNotIncludedInBlock
+	StatusAlreadyInMempool
+	StatusTooBig
+	StatusContextDeadline
+	StatusError
+	StatusIncorrectAccountSequence
+	StatusContextCanceled
+	StatusHeightFromFuture
+)
+
+// Blob is the data submitted/received from the DA layer.
 type Blob = []byte
 
+// ID should contain serialized data required by the implementation to find blob in DA.
 // ID should contain serialized data required by the implementation to find blob in Data Availability layer.
 type ID = []byte
 
 // Commitment should contain serialized cryptographic commitment to Blob value.
 type Commitment = []byte
 
+// Proof should contain serialized proof of inclusion (publication) of Blob in DA.
 // Proof should contain serialized proof of inclusion (publication) of Blob in Data Availability layer.
 type Proof = []byte
 
@@ -68,27 +88,6 @@ type ResultRetrieve struct {
 	Data [][]byte
 }
 
-// StatusCode is a type for DA layer return status.
-// TODO: define an enum of different non-happy-path cases
-// that might need to be handled by Evolve independent of
-// the underlying DA chain.
-type StatusCode uint64
-
-// Data Availability return codes.
-const (
-	StatusUnknown StatusCode = iota
-	StatusSuccess
-	StatusNotFound
-	StatusNotIncludedInBlock
-	StatusAlreadyInMempool
-	StatusTooBig
-	StatusContextDeadline
-	StatusError
-	StatusIncorrectAccountSequence
-	StatusContextCanceled
-	StatusHeightFromFuture
-)
-
 // BaseResult contains basic information returned by DA layer.
 type BaseResult struct {
 	// Code is to determine if the action succeeded.
@@ -105,14 +104,6 @@ type BaseResult struct {
 	IDs [][]byte
 	// Timestamp is the timestamp of the posted data on Data Availability Layer.
 	Timestamp time.Time
-}
-
-// makeID creates an ID from a height and a commitment.
-func makeID(height uint64, commitment []byte) []byte {
-	id := make([]byte, len(commitment)+8)
-	binary.LittleEndian.PutUint64(id, height)
-	copy(id[8:], commitment)
-	return id
 }
 
 // SplitID splits an ID into a height and a commitment.

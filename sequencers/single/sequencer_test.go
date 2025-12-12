@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -14,8 +15,8 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/evstack/ev-node/block"
-	coreda "github.com/evstack/ev-node/core/da"
 	coresequencer "github.com/evstack/ev-node/core/sequencer"
+	datypes "github.com/evstack/ev-node/pkg/da/types"
 	"github.com/evstack/ev-node/pkg/genesis"
 	damocks "github.com/evstack/ev-node/test/mocks"
 )
@@ -31,6 +32,103 @@ func (m *MockForcedInclusionRetriever) RetrieveForcedIncludedTxs(ctx context.Con
 		return nil, args.Error(1)
 	}
 	return args.Get(0).(*block.ForcedInclusionEvent), args.Error(1)
+}
+
+type dummyDA struct {
+	failSubmit  atomic.Bool
+	daHeight    atomic.Uint64
+	tickerStop  chan struct{}
+	tickerDur   time.Duration
+	maxBlobSize uint64
+}
+
+func newDummyDA(maxBlobSize uint64, tick time.Duration) *dummyDA {
+	return &dummyDA{
+		tickerStop:  make(chan struct{}),
+		tickerDur:   tick,
+		maxBlobSize: maxBlobSize,
+	}
+}
+
+func (d *dummyDA) Submit(ctx context.Context, data [][]byte, gasPrice float64, namespace []byte, options []byte) datypes.ResultSubmit {
+	if d.failSubmit.Load() {
+		return datypes.ResultSubmit{BaseResult: datypes.BaseResult{Code: datypes.StatusError, Message: "submit failed"}}
+	}
+	height := d.daHeight.Load()
+	return datypes.ResultSubmit{
+		BaseResult: datypes.BaseResult{
+			Code:   datypes.StatusSuccess,
+			Height: height,
+			IDs:    [][]byte{},
+		},
+	}
+}
+
+func (d *dummyDA) Retrieve(ctx context.Context, height uint64, namespace []byte) datypes.ResultRetrieve {
+	return datypes.ResultRetrieve{BaseResult: datypes.BaseResult{Code: datypes.StatusSuccess, Height: height}}
+}
+
+func (d *dummyDA) RetrieveHeaders(ctx context.Context, height uint64) datypes.ResultRetrieve {
+	return datypes.ResultRetrieve{BaseResult: datypes.BaseResult{Code: datypes.StatusSuccess, Height: height}}
+}
+
+func (d *dummyDA) RetrieveData(ctx context.Context, height uint64) datypes.ResultRetrieve {
+	return datypes.ResultRetrieve{BaseResult: datypes.BaseResult{Code: datypes.StatusSuccess, Height: height}}
+}
+
+func (d *dummyDA) RetrieveForcedInclusion(ctx context.Context, height uint64) datypes.ResultRetrieve {
+	return datypes.ResultRetrieve{BaseResult: datypes.BaseResult{Code: datypes.StatusNotFound, Height: height}}
+}
+
+func (d *dummyDA) Get(ctx context.Context, ids []datypes.ID, namespace []byte) ([]datypes.Blob, error) {
+	return nil, nil
+}
+
+func (d *dummyDA) GetProofs(ctx context.Context, ids []datypes.ID, namespace []byte) ([]datypes.Proof, error) {
+	return nil, nil
+}
+
+func (d *dummyDA) Validate(ctx context.Context, ids []datypes.ID, proofs []datypes.Proof, namespace []byte) ([]bool, error) {
+	res := make([]bool, len(ids))
+	for i := range res {
+		res[i] = true
+	}
+	return res, nil
+}
+
+func (d *dummyDA) GetHeaderNamespace() []byte          { return []byte("hdr") }
+func (d *dummyDA) GetDataNamespace() []byte            { return []byte("data") }
+func (d *dummyDA) GetForcedInclusionNamespace() []byte { return nil }
+func (d *dummyDA) HasForcedInclusionNamespace() bool   { return false }
+
+func (d *dummyDA) StartHeightTicker() {
+	if d.tickerDur == 0 {
+		return
+	}
+	ticker := time.NewTicker(d.tickerDur)
+	go func() {
+		for {
+			select {
+			case <-ticker.C:
+				d.daHeight.Add(1)
+			case <-d.tickerStop:
+				ticker.Stop()
+				return
+			}
+		}
+	}()
+}
+
+func (d *dummyDA) StopHeightTicker() {
+	select {
+	case <-d.tickerStop:
+	default:
+		close(d.tickerStop)
+	}
+}
+
+func (d *dummyDA) SetSubmitFailure(shouldFail bool) {
+	d.failSubmit.Store(shouldFail)
 }
 
 // newTestSequencer creates a sequencer for tests that don't need full initialization
@@ -60,7 +158,7 @@ func newTestSequencer(t *testing.T, db ds.Batching, fiRetriever ForcedInclusionR
 }
 
 func TestSequencer_SubmitBatchTxs(t *testing.T) {
-	dummyDA := coreda.NewDummyDA(100_000_000, 10*time.Second)
+	dummyDA := newDummyDA(100_000_000, 10*time.Second)
 	db := ds.NewMapDatastore()
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
@@ -114,7 +212,7 @@ func TestSequencer_SubmitBatchTxs(t *testing.T) {
 }
 
 func TestSequencer_SubmitBatchTxs_EmptyBatch(t *testing.T) {
-	dummyDA := coreda.NewDummyDA(100_000_000, 10*time.Second)
+	dummyDA := newDummyDA(100_000_000, 10*time.Second)
 	db := ds.NewMapDatastore()
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
@@ -274,7 +372,7 @@ func TestSequencer_VerifyBatch(t *testing.T) {
 	proofs := [][]byte{[]byte("proof1"), []byte("proof2")}
 
 	t.Run("Proposer Mode", func(t *testing.T) {
-		mockDA := damocks.NewMockDA(t)
+		mockDA := damocks.NewMockInterface(t)
 		mockRetriever := new(MockForcedInclusionRetriever)
 		mockRetriever.On("RetrieveForcedIncludedTxs", mock.Anything, mock.Anything).
 			Return(nil, block.ErrForceInclusionNotConfigured).Maybe()
@@ -295,7 +393,7 @@ func TestSequencer_VerifyBatch(t *testing.T) {
 
 	t.Run("Non-Proposer Mode", func(t *testing.T) {
 		t.Run("Valid Proofs", func(t *testing.T) {
-			mockDA := damocks.NewMockDA(t)
+			mockDA := damocks.NewMockInterface(t)
 			mockRetriever := new(MockForcedInclusionRetriever)
 			mockRetriever.On("RetrieveForcedIncludedTxs", mock.Anything, mock.Anything).
 				Return(nil, block.ErrForceInclusionNotConfigured).Maybe()
@@ -316,7 +414,7 @@ func TestSequencer_VerifyBatch(t *testing.T) {
 		})
 
 		t.Run("Invalid Proof", func(t *testing.T) {
-			mockDA := damocks.NewMockDA(t)
+			mockDA := damocks.NewMockInterface(t)
 			mockRetriever := new(MockForcedInclusionRetriever)
 			mockRetriever.On("RetrieveForcedIncludedTxs", mock.Anything, mock.Anything).
 				Return(nil, block.ErrForceInclusionNotConfigured).Maybe()
@@ -337,7 +435,7 @@ func TestSequencer_VerifyBatch(t *testing.T) {
 		})
 
 		t.Run("GetProofs Error", func(t *testing.T) {
-			mockDA := damocks.NewMockDA(t)
+			mockDA := damocks.NewMockInterface(t)
 			mockRetriever := new(MockForcedInclusionRetriever)
 			mockRetriever.On("RetrieveForcedIncludedTxs", mock.Anything, mock.Anything).
 				Return(nil, block.ErrForceInclusionNotConfigured).Maybe()
@@ -359,7 +457,7 @@ func TestSequencer_VerifyBatch(t *testing.T) {
 		})
 
 		t.Run("Validate Error", func(t *testing.T) {
-			mockDA := damocks.NewMockDA(t)
+			mockDA := damocks.NewMockInterface(t)
 			mockRetriever := new(MockForcedInclusionRetriever)
 			mockRetriever.On("RetrieveForcedIncludedTxs", mock.Anything, mock.Anything).
 				Return(nil, block.ErrForceInclusionNotConfigured).Maybe()
@@ -381,7 +479,7 @@ func TestSequencer_VerifyBatch(t *testing.T) {
 		})
 
 		t.Run("Invalid ID", func(t *testing.T) {
-			mockDA := damocks.NewMockDA(t)
+			mockDA := damocks.NewMockInterface(t)
 			mockRetriever := new(MockForcedInclusionRetriever)
 			mockRetriever.On("RetrieveForcedIncludedTxs", mock.Anything, mock.Anything).
 				Return(nil, block.ErrForceInclusionNotConfigured).Maybe()
@@ -406,7 +504,7 @@ func TestSequencer_VerifyBatch(t *testing.T) {
 func TestSequencer_GetNextBatch_BeforeDASubmission(t *testing.T) {
 	t.Skip()
 	// Initialize a new sequencer with mock DA
-	mockDA := &damocks.MockDA{}
+	mockDA := &damocks.MockInterface{}
 	db := ds.NewMapDatastore()
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
@@ -714,7 +812,7 @@ func TestSequencer_QueueLimit_Integration(t *testing.T) {
 	db := ds.NewMapDatastore()
 	defer db.Close()
 
-	mockDA := &damocks.MockDA{}
+	mockDA := &damocks.MockInterface{}
 	mockRetriever := new(MockForcedInclusionRetriever)
 	mockRetriever.On("RetrieveForcedIncludedTxs", mock.Anything, mock.Anything).
 		Return(nil, block.ErrForceInclusionNotConfigured).Maybe()
@@ -839,7 +937,7 @@ func TestSequencer_DAFailureAndQueueThrottling_Integration(t *testing.T) {
 	defer db.Close()
 
 	// Create a dummy DA that we can make fail
-	dummyDA := coreda.NewDummyDA(100_000, 100*time.Millisecond)
+	dummyDA := newDummyDA(100_000, 100*time.Millisecond)
 	dummyDA.StartHeightTicker()
 	defer dummyDA.StopHeightTicker()
 

@@ -11,8 +11,8 @@ import (
 	"github.com/rs/zerolog"
 
 	"github.com/evstack/ev-node/block"
-	coreda "github.com/evstack/ev-node/core/da"
 	coresequencer "github.com/evstack/ev-node/core/sequencer"
+	datypes "github.com/evstack/ev-node/pkg/da/types"
 	"github.com/evstack/ev-node/pkg/genesis"
 	seqcommon "github.com/evstack/ev-node/sequencers/common"
 )
@@ -160,7 +160,7 @@ func (s *BasedSequencer) fetchNextDAEpoch(ctx context.Context, maxBytes uint64) 
 		// Check if forced inclusion is not configured
 		if errors.Is(err, block.ErrForceInclusionNotConfigured) {
 			return time.Time{}, 0, block.ErrForceInclusionNotConfigured
-		} else if errors.Is(err, coreda.ErrHeightFromFuture) {
+		} else if errors.Is(err, datypes.ErrHeightFromFuture) {
 			// If we get a height from future error, stay at current position
 			// We'll retry the same height on the next call until DA produces that block
 			s.logger.Debug().

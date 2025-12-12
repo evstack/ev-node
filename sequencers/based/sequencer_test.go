@@ -13,8 +13,8 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/evstack/ev-node/block"
-	coreda "github.com/evstack/ev-node/core/da"
 	coresequencer "github.com/evstack/ev-node/core/sequencer"
+	datypes "github.com/evstack/ev-node/pkg/da/types"
 	"github.com/evstack/ev-node/pkg/genesis"
 )
 
@@ -408,7 +408,7 @@ func TestBasedSequencer_GetNextBatch_ErrorHandling(t *testing.T) {
 
 func TestBasedSequencer_GetNextBatch_HeightFromFuture(t *testing.T) {
 	mockRetriever := new(MockForcedInclusionRetriever)
-	mockRetriever.On("RetrieveForcedIncludedTxs", mock.Anything, uint64(100)).Return(nil, coreda.ErrHeightFromFuture)
+	mockRetriever.On("RetrieveForcedIncludedTxs", mock.Anything, uint64(100)).Return(nil, datypes.ErrHeightFromFuture)
 
 	gen := genesis.Genesis{
 		ChainID:                "test-chain",

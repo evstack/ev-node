@@ -79,8 +79,8 @@ Start the Evolve node with:
 1. Start the local DA service:
 
    ```bash
-   cd da/cmd/local-da
-   go run main.go
+   cd apps/local-da
+   go run .
    ```
 
 2. Start your gRPC execution service:
