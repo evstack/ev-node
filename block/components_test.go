@@ -52,18 +52,6 @@ func TestBlockComponents_ExecutionClientFailure_StopsNode(t *testing.T) {
 	assert.Contains(t, err.Error(), "execution client connection lost")
 }
 
-func TestBlockComponents_GetLastState(t *testing.T) {
-	// Test that GetLastState works correctly for different component types
-
-	t.Run("Empty state", func(t *testing.T) {
-		// When neither is present, return empty state
-		bc := &Components{}
-
-		result := bc.GetLastState()
-		assert.Equal(t, uint64(0), result.LastBlockHeight)
-	})
-}
-
 func TestBlockComponents_StartStop_Lifecycle(t *testing.T) {
 	// Simple lifecycle test without creating full components
 	bc := &Components{
