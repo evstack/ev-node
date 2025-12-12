@@ -230,7 +230,13 @@ func (s *Syncer) Stop() error {
 func (s *Syncer) GetLastState() types.State {
 	state := s.lastState.Load()
 	if state == nil {
-		return types.State{}
+		// fallback to store
+		state, err := s.store.GetState(s.ctx)
+		if err != nil {
+			s.logger.Error().Err(err).Msg("failed to get state from store")
+			return types.State{}
+		}
+		s.lastState.Store(&state)
 	}
 
 	stateCopy := *state
