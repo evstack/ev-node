@@ -233,7 +233,7 @@ func (s *Syncer) GetLastState() types.State {
 		// fallback to store
 		state, err := s.store.GetState(context.Background())
 		if err != nil {
-			s.logger.Error().Err(err).Msg("failed to get state from store")
+			s.logger.Warn().Err(err).Msg("failed to get state from store, returning empty state")
 			return types.State{}
 		}
 		s.lastState.Store(&state)

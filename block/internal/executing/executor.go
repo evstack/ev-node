@@ -167,7 +167,7 @@ func (e *Executor) getLastState() types.State {
 		// fallback to store
 		state, err := e.store.GetState(context.Background())
 		if err != nil {
-			e.logger.Error().Err(err).Msg("failed to get state from store")
+			e.logger.Warn().Err(err).Msg("failed to get state from store, returning empty state")
 			return types.State{}
 		}
 		e.lastState.Store(&state)
