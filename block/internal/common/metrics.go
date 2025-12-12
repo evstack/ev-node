@@ -65,6 +65,10 @@ type Metrics struct {
 	DAInclusionHeight       metrics.Gauge
 	PendingHeadersCount     metrics.Gauge
 	PendingDataCount        metrics.Gauge
+
+	// Forced inclusion metrics
+	ForcedInclusionTxsInGracePeriod metrics.Gauge   // Number of forced inclusion txs currently in grace period
+	ForcedInclusionTxsMalicious     metrics.Counter // Total number of forced inclusion txs marked as malicious
 }
 
 // PrometheusMetrics returns Metrics built using Prometheus client library
@@ -182,6 +186,21 @@ func PrometheusMetrics(namespace string, labelsAndValues ...string) *Metrics {
 		Help:      "Number of data blocks pending DA submission",
 	}, labels).With(labelsAndValues...)
 
+	// Forced inclusion metrics
+	m.ForcedInclusionTxsInGracePeriod = prometheus.NewGaugeFrom(stdprometheus.GaugeOpts{
+		Namespace: namespace,
+		Subsystem: MetricsSubsystem,
+		Name:      "forced_inclusion_txs_in_grace_period",
+		Help:      "Number of forced inclusion transactions currently in grace period (past epoch end but within grace boundary)",
+	}, labels).With(labelsAndValues...)
+
+	m.ForcedInclusionTxsMalicious = prometheus.NewCounterFrom(stdprometheus.CounterOpts{
+		Namespace: namespace,
+		Subsystem: MetricsSubsystem,
+		Name:      "forced_inclusion_txs_malicious_total",
+		Help:      "Total number of forced inclusion transactions marked as malicious (past grace boundary)",
+	}, labels).With(labelsAndValues...)
+
 	// DA Submitter metrics
 	m.DASubmitterPendingBlobs = prometheus.NewGaugeFrom(stdprometheus.GaugeOpts{
 		Namespace: namespace,
@@ -246,6 +265,10 @@ func NopMetrics() *Metrics {
 		DASubmitterLastFailure:  make(map[DASubmitterFailureReason]metrics.Gauge),
 		DASubmitterPendingBlobs: discard.NewGauge(),
 		DASubmitterResends:      discard.NewCounter(),
+
+		// Forced inclusion metrics
+		ForcedInclusionTxsInGracePeriod: discard.NewGauge(),
+		ForcedInclusionTxsMalicious:     discard.NewCounter(),
 	}
 
 	// Initialize maps with no-op metrics
