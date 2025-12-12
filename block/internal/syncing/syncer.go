@@ -267,7 +267,7 @@ func (s *Syncer) initializeState() error {
 			AppHash:         stateRoot,
 		}
 	}
-	if state.DAHeight < s.genesis.DAStartHeight {
+	if state.DAHeight != 0 && state.DAHeight < s.genesis.DAStartHeight {
 		return fmt.Errorf("DA height (%d) is lower than DA start height (%d)", state.DAHeight, s.genesis.DAStartHeight)
 	}
 	s.SetLastState(state)
