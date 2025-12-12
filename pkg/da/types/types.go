@@ -106,14 +106,6 @@ type BaseResult struct {
 	Timestamp time.Time
 }
 
-// makeID creates an ID from a height and a commitment.
-func makeID(height uint64, commitment []byte) []byte {
-	id := make([]byte, len(commitment)+8)
-	binary.LittleEndian.PutUint64(id, height)
-	copy(id[8:], commitment)
-	return id
-}
-
 // SplitID splits an ID into a height and a commitment.
 // if len(id) <= 8, it returns 0 and nil.
 func SplitID(id []byte) (uint64, []byte, error) {

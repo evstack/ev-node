@@ -135,7 +135,7 @@ func newFullNode(
 		nodeConfig:      nodeConfig,
 		p2pClient:       p2pClient,
 		blockComponents: blockComponents,
-		daClient:       daClient,
+		daClient:        daClient,
 		Store:           rktStore,
 		hSyncService:    headerSyncService,
 		dSyncService:    dataSyncService,
