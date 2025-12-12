@@ -54,7 +54,9 @@ func NewBasedSequencer(
 		logger:          logger.With().Str("component", "based_sequencer").Logger(),
 		checkpointStore: seqcommon.NewCheckpointStore(db, ds.NewKey("/based/checkpoint")),
 	}
-	bs.SetDAHeight(genesis.DAStartHeight) // will be overridden by the executor
+
+	// will be overridden by the executor or submitter (at genesis)
+	bs.SetDAHeight(genesis.DAStartHeight)
 
 	// Load checkpoint from DB, or initialize if none exists
 	loadCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)

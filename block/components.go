@@ -258,6 +258,8 @@ func NewAggregatorComponents(
 		logger,
 		errorCh,
 	)
+	// Set sequencer on submitter so it can initialize sequencer DA height from genesis inclusion
+	submitter.SetSequencer(sequencer)
 
 	return &Components{
 		Executor:  executor,
