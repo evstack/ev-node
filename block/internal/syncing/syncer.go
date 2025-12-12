@@ -595,11 +595,13 @@ func (s *Syncer) trySyncNextBlock(event *common.DAHeightEvent) error {
 	}
 
 	// Verify forced inclusion transactions if configured
-	if err := s.verifyForcedInclusionTxs(currentState, data); err != nil {
-		s.logger.Error().Err(err).Uint64("height", nextHeight).Msg("forced inclusion verification failed")
-		if errors.Is(err, errMaliciousProposer) {
-			s.cache.RemoveHeaderDAIncluded(headerHash)
-			return err
+	if event.Source == common.SourceDA {
+		if err := s.verifyForcedInclusionTxs(currentState, data); err != nil {
+			s.logger.Error().Err(err).Uint64("height", nextHeight).Msg("forced inclusion verification failed")
+			if errors.Is(err, errMaliciousProposer) {
+				s.cache.RemoveHeaderDAIncluded(headerHash)
+				return err
+			}
 		}
 	}
 
