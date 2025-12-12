@@ -18,10 +18,10 @@ var ErrForceInclusionNotConfigured = errors.New("forced inclusion namespace not 
 
 // ForcedInclusionRetriever handles retrieval of forced inclusion transactions from DA.
 type ForcedInclusionRetriever struct {
-	client      Client
-	genesis     genesis.Genesis
-	logger      zerolog.Logger
-	daEpochSize uint64
+	client        Client
+	logger        zerolog.Logger
+	daEpochSize   uint64
+	daStartHeight uint64
 }
 
 // ForcedInclusionEvent contains forced inclusion transactions retrieved from DA.
@@ -39,10 +39,10 @@ func NewForcedInclusionRetriever(
 	logger zerolog.Logger,
 ) *ForcedInclusionRetriever {
 	return &ForcedInclusionRetriever{
-		client:      client,
-		genesis:     genesis,
-		logger:      logger.With().Str("component", "forced_inclusion_retriever").Logger(),
-		daEpochSize: genesis.DAEpochForcedInclusion,
+		client:        client,
+		daStartHeight: genesis.DAStartHeight, // TODO: this should be genesis da start height (for full nodes) or store metadata da start height (for sequencers)
+		logger:        logger.With().Str("component", "forced_inclusion_retriever").Logger(),
+		daEpochSize:   genesis.DAEpochForcedInclusion,
 	}
 }
 
@@ -53,7 +53,7 @@ func (r *ForcedInclusionRetriever) RetrieveForcedIncludedTxs(ctx context.Context
 		return nil, ErrForceInclusionNotConfigured
 	}
 
-	epochStart, epochEnd, currentEpochNumber := types.CalculateEpochBoundaries(daHeight, r.genesis.DAStartHeight, r.daEpochSize)
+	epochStart, epochEnd, currentEpochNumber := types.CalculateEpochBoundaries(daHeight, r.daStartHeight /* this should be fetch from store once */, r.daEpochSize)
 
 	if daHeight != epochEnd {
 		r.logger.Debug().

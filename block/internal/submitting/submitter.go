@@ -15,6 +15,7 @@ import (
 	"github.com/evstack/ev-node/block/internal/cache"
 	"github.com/evstack/ev-node/block/internal/common"
 	coreexecutor "github.com/evstack/ev-node/core/execution"
+	coresequencer "github.com/evstack/ev-node/core/sequencer"
 	"github.com/evstack/ev-node/pkg/config"
 	"github.com/evstack/ev-node/pkg/genesis"
 	"github.com/evstack/ev-node/pkg/signer"
@@ -31,10 +32,11 @@ type daSubmitterAPI interface {
 // Submitter handles DA submission and inclusion processing for both sync and aggregator nodes
 type Submitter struct {
 	// Core components
-	store   store.Store
-	exec    coreexecutor.Executor
-	config  config.Config
-	genesis genesis.Genesis
+	store     store.Store
+	exec      coreexecutor.Executor
+	sequencer coresequencer.Sequencer
+	config    config.Config
+	genesis   genesis.Genesis
 
 	// Shared components
 	cache   cache.Manager
@@ -91,6 +93,13 @@ func NewSubmitter(
 		errorCh:          errorCh,
 		logger:           logger.With().Str("component", "submitter").Logger(),
 	}
+}
+
+// SetSequencer assigns the sequencer instance to the submitter.
+// This allows the submitter to update the sequencer's DA height when the first
+// DA inclusion (genesis) is observed.
+func (s *Submitter) SetSequencer(seq coresequencer.Sequencer) {
+	s.sequencer = seq
 }
 
 // Start begins the submitting component
@@ -363,6 +372,12 @@ func (s *Submitter) setSequencerHeightToDAHeight(ctx context.Context, height uin
 
 		if err := s.store.SetMetadata(ctx, store.GenesisDAHeightKey, genesisDAIncludedHeightBytes); err != nil {
 			return err
+		}
+
+		// the sequencer will process DA epochs from this height.
+		if s.sequencer != nil {
+			s.sequencer.SetDAHeight(genesisDAIncludedHeight)
+			s.logger.Debug().Uint64("genesis_da_height", genesisDAIncludedHeight).Msg("initialized sequencer DA height from persisted genesis DA height")
 		}
 	}
 

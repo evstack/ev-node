@@ -74,7 +74,10 @@ func NewSequencer(
 		fiRetriever:     fiRetriever,
 		checkpointStore: seqcommon.NewCheckpointStore(db, ds.NewKey("/single/checkpoint")),
 	}
-	s.SetDAHeight(genesis.DAStartHeight) // will be overridden by the executor
+	// will be overridden by the executor or submitter (at genesis)
+	// during genesis time, the sequencer will fetch unnecessary heights from DA genesis
+	// this is kept on purpose as some DAs (like local-da), do start at genesis.
+	s.SetDAHeight(genesis.DAStartHeight)
 
 	loadCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
