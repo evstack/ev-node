@@ -79,7 +79,7 @@ Start the Evolve node with:
 1. Start the local DA service:
 
    ```bash
-   cd apps/local-da
+   cd tools/local-da
    go run .
    ```
 

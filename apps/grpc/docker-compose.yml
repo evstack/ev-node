@@ -5,7 +5,7 @@ services:
   local-da:
     build:
       context: ../../../
-      dockerfile: apps/local-da/Dockerfile
+      dockerfile: tools/local-da/Dockerfile
     ports:
       - "7980:7980"
     environment:

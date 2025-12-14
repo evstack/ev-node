@@ -495,7 +495,7 @@ func TestVerifyForcedInclusionTxs_MissingTransactions(t *testing.T) {
 	// Move to next epoch but still within grace period
 	currentState.DAHeight = 1 // Move to epoch end (epoch was [0, 0])
 	data2 := makeData(gen.ChainID, 2, 1)
-	data2.Txs[0] = types.Tx([]byte("regular_tx_3"))
+	data2.Txs[0] = []byte("regular_tx_3")
 
 	err = s.verifyForcedInclusionTxs(currentState, data2)
 	require.NoError(t, err) // Should pass since DAHeight=1 equals grace boundary, not past it
