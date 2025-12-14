@@ -63,8 +63,6 @@ packages:
           dir: ./test/mocks
           pkgname: mocks
           filename: da.go
-  github.com/evstack/ev-node/block/internal/da:
-    interfaces:
       BlobAPI:
         config:
           dir: ./block/internal/da

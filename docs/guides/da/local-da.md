@@ -7,7 +7,7 @@ import constants from '../../.vitepress/constants/constants.js'
 
 ## Introduction {#introduction}
 
-This tutorial serves as a comprehensive guide for using the [local-da](https://github.com/evstack/ev-node/tree/main/tools/local-da) with your chain.
+This tutorial serves as a comprehensive guide for using the [local-da](../../../tools/local-da) with your chain.
 
 Before proceeding, ensure that you have completed the [build a chain](../gm-world.md) tutorial, which covers setting-up, building and running your chain.
 
@@ -53,4 +53,4 @@ You should see the following log message indicating that your chain is connected
 
 ## Summary
 
-By following these steps, you will set up a local DA network node and configure your chain to post data to it. This setup is useful for testing and development in a controlled environment. You can find more information on running the local-da binary [here](https://github.com/evstack/ev-node/blob/main/tools/local-da/README.md)
+By following these steps, you will set up a local DA network node and configure your chain to post data to it. This setup is useful for testing and development in a controlled environment. You can find more information in the [local-da README](../../../tools/local-da/README.md)
