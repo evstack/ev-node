@@ -8,55 +8,23 @@ import (
 
 	"github.com/celestiaorg/go-square/v3/share"
 	blobrpc "github.com/evstack/ev-node/pkg/da/jsonrpc"
+	"github.com/evstack/ev-node/pkg/da/jsonrpc/mocks"
 	datypes "github.com/evstack/ev-node/pkg/da/types"
 	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 )
 
-type mockBlobAPI struct {
-	submitErr   error
-	height      uint64
-	blobs       []*blobrpc.Blob
-	proof       *blobrpc.Proof
-	included    bool
-	commitProof *blobrpc.CommitmentProof
-}
-
-func (m *mockBlobAPI) Submit(ctx context.Context, blobs []*blobrpc.Blob, opts *blobrpc.SubmitOptions) (uint64, error) {
-	return m.height, m.submitErr
-}
-
-func (m *mockBlobAPI) GetAll(ctx context.Context, height uint64, namespaces []share.Namespace) ([]*blobrpc.Blob, error) {
-	return m.blobs, m.submitErr
-}
-
-func (m *mockBlobAPI) GetProof(ctx context.Context, height uint64, namespace share.Namespace, commitment blobrpc.Commitment) (*blobrpc.Proof, error) {
-	return m.proof, m.submitErr
-}
-
-func (m *mockBlobAPI) Included(ctx context.Context, height uint64, namespace share.Namespace, proof *blobrpc.Proof, commitment blobrpc.Commitment) (bool, error) {
-	return m.included, m.submitErr
-}
-
-func (m *mockBlobAPI) GetCommitmentProof(ctx context.Context, height uint64, namespace share.Namespace, shareCommitment []byte) (*blobrpc.CommitmentProof, error) {
-	return m.commitProof, m.submitErr
-}
-
-func (m *mockBlobAPI) Subscribe(ctx context.Context, namespace share.Namespace) (<-chan *blobrpc.SubscriptionResponse, error) {
-	ch := make(chan *blobrpc.SubscriptionResponse)
-	close(ch)
-	return ch, nil
-}
-
-func makeBlobRPCClient(m *mockBlobAPI) *blobrpc.Client {
+func makeBlobRPCClient(module *mocks.MockBlobModule) *blobrpc.Client {
 	var api blobrpc.BlobAPI
-	api.Internal.Submit = m.Submit
-	api.Internal.GetAll = m.GetAll
-	api.Internal.GetProof = m.GetProof
-	api.Internal.Included = m.Included
-	api.Internal.GetCommitmentProof = m.GetCommitmentProof
-	api.Internal.Subscribe = m.Subscribe
+	api.Internal.Submit = module.Submit
+	api.Internal.Get = module.Get
+	api.Internal.GetAll = module.GetAll
+	api.Internal.GetProof = module.GetProof
+	api.Internal.Included = module.Included
+	api.Internal.GetCommitmentProof = module.GetCommitmentProof
+	api.Internal.Subscribe = module.Subscribe
 	return &blobrpc.Client{Blob: api}
 }
 
@@ -78,8 +46,11 @@ func TestClient_Submit_ErrorMapping(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
+			module := mocks.NewMockBlobModule(t)
+			module.On("Submit", mock.Anything, mock.Anything, mock.Anything).Return(uint64(0), tc.err)
+
 			cl := NewClient(Config{
-				Client:        makeBlobRPCClient(&mockBlobAPI{submitErr: tc.err}),
+				Client:        makeBlobRPCClient(module),
 				Logger:        zerolog.Nop(),
 				Namespace:     "ns",
 				DataNamespace: "ns",
@@ -92,9 +63,11 @@ func TestClient_Submit_ErrorMapping(t *testing.T) {
 
 func TestClient_Submit_Success(t *testing.T) {
 	ns := share.MustNewV0Namespace([]byte("ns")).Bytes()
-	mockAPI := &mockBlobAPI{height: 10}
+	module := mocks.NewMockBlobModule(t)
+	module.On("Submit", mock.Anything, mock.Anything, mock.Anything).Return(uint64(10), nil)
+
 	cl := NewClient(Config{
-		Client:        makeBlobRPCClient(mockAPI),
+		Client:        makeBlobRPCClient(module),
 		Logger:        zerolog.Nop(),
 		Namespace:     "ns",
 		DataNamespace: "ns",
@@ -106,9 +79,9 @@ func TestClient_Submit_Success(t *testing.T) {
 }
 
 func TestClient_Submit_InvalidNamespace(t *testing.T) {
-	mockAPI := &mockBlobAPI{height: 10}
+	module := mocks.NewMockBlobModule(t)
 	cl := NewClient(Config{
-		Client:        makeBlobRPCClient(mockAPI),
+		Client:        makeBlobRPCClient(module),
 		Logger:        zerolog.Nop(),
 		Namespace:     "ns",
 		DataNamespace: "ns",
@@ -119,9 +92,11 @@ func TestClient_Submit_InvalidNamespace(t *testing.T) {
 
 func TestClient_Retrieve_NotFound(t *testing.T) {
 	ns := share.MustNewV0Namespace([]byte("ns")).Bytes()
-	mockAPI := &mockBlobAPI{submitErr: datypes.ErrBlobNotFound}
+	module := mocks.NewMockBlobModule(t)
+	module.On("GetAll", mock.Anything, mock.Anything, mock.Anything).Return([]*blobrpc.Blob(nil), datypes.ErrBlobNotFound)
+
 	cl := NewClient(Config{
-		Client:        makeBlobRPCClient(mockAPI),
+		Client:        makeBlobRPCClient(module),
 		Logger:        zerolog.Nop(),
 		Namespace:     "ns",
 		DataNamespace: "ns",
@@ -134,9 +109,11 @@ func TestClient_Retrieve_Success(t *testing.T) {
 	ns := share.MustNewV0Namespace([]byte("ns")).Bytes()
 	b, err := blobrpc.NewBlobV0(share.MustNewV0Namespace([]byte("ns")), []byte("payload"))
 	require.NoError(t, err)
-	mockAPI := &mockBlobAPI{height: 7, blobs: []*blobrpc.Blob{b}}
+	module := mocks.NewMockBlobModule(t)
+	module.On("GetAll", mock.Anything, uint64(7), mock.Anything).Return([]*blobrpc.Blob{b}, nil)
+
 	cl := NewClient(Config{
-		Client:        makeBlobRPCClient(mockAPI),
+		Client:        makeBlobRPCClient(module),
 		Logger:        zerolog.Nop(),
 		Namespace:     "ns",
 		DataNamespace: "ns",
@@ -149,9 +126,11 @@ func TestClient_Retrieve_Success(t *testing.T) {
 
 func TestClient_SubmitOptionsMerge(t *testing.T) {
 	ns := share.MustNewV0Namespace([]byte("ns")).Bytes()
-	mockAPI := &mockBlobAPI{height: 1}
+	module := mocks.NewMockBlobModule(t)
+	module.On("Submit", mock.Anything, mock.Anything, mock.Anything).Return(uint64(1), nil)
+
 	cl := NewClient(Config{
-		Client:        makeBlobRPCClient(mockAPI),
+		Client:        makeBlobRPCClient(module),
 		Logger:        zerolog.Nop(),
 		Namespace:     "ns",
 		DataNamespace: "ns",
@@ -169,13 +148,11 @@ func TestClient_RetrieveHeaders(t *testing.T) {
 	ns := share.MustNewV0Namespace([]byte("header-ns"))
 	blb, err := blobrpc.NewBlobV0(ns, []byte("header-blob"))
 	require.NoError(t, err)
-
-	mockAPI := &mockBlobAPI{
-		blobs: []*blobrpc.Blob{blb},
-	}
+	module := mocks.NewMockBlobModule(t)
+	module.On("GetAll", mock.Anything, uint64(42), mock.Anything).Return([]*blobrpc.Blob{blb}, nil)
 
 	client := NewClient(Config{
-		Client:        makeBlobRPCClient(mockAPI),
+		Client:        makeBlobRPCClient(module),
 		Logger:        zerolog.Nop(),
 		Namespace:     "header-ns",
 		DataNamespace: "data-ns",
@@ -194,13 +171,11 @@ func TestClient_RetrieveData(t *testing.T) {
 	require.NoError(t, err)
 	blb2, err := blobrpc.NewBlobV0(ns, []byte("data-blob-2"))
 	require.NoError(t, err)
-
-	mockAPI := &mockBlobAPI{
-		blobs: []*blobrpc.Blob{blb1, blb2},
-	}
+	module := mocks.NewMockBlobModule(t)
+	module.On("GetAll", mock.Anything, uint64(99), mock.Anything).Return([]*blobrpc.Blob{blb1, blb2}, nil)
 
 	client := NewClient(Config{
-		Client:        makeBlobRPCClient(mockAPI),
+		Client:        makeBlobRPCClient(module),
 		Logger:        zerolog.Nop(),
 		Namespace:     "header-ns",
 		DataNamespace: "data-ns",
