@@ -35,12 +35,20 @@ func NopMetrics() *Metrics {
 // DAClient is the interface representing the DA client for public use.
 type DAClient = da.Client
 
+// DAVerifier is the interface for DA proof verification operations.
+type DAVerifier = da.Verifier
+
+// FullDAClient combines DAClient and DAVerifier interfaces.
+// This is the complete interface implemented by the concrete DA client.
+type FullDAClient = da.FullClient
+
 // NewDAClient creates a new DA client backed by the blob JSON-RPC API.
+// The returned client implements both DAClient and DAVerifier interfaces.
 func NewDAClient(
 	blobRPC *blobrpc.Client,
 	config config.Config,
 	logger zerolog.Logger,
-) DAClient {
+) FullDAClient {
 	return da.NewClient(da.Config{
 		Client:                   blobRPC,
 		Logger:                   logger,

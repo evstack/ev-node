@@ -396,7 +396,7 @@ func TestVerifyForcedInclusionTxs_AllTransactionsIncluded(t *testing.T) {
 	// Create forced inclusion transaction blob (SignedData) in DA
 	dataBin, _ := makeSignedDataBytes(t, gen.ChainID, 10, addr, pub, signer, 2)
 
-	client.On("RetrieveForcedInclusion", mock.Anything, uint64(0)).Return(datypes.ResultRetrieve{
+	client.On("Retrieve", mock.Anything, uint64(0), []byte("nsForcedInclusion")).Return(datypes.ResultRetrieve{
 		BaseResult: datypes.BaseResult{Code: datypes.StatusSuccess, IDs: [][]byte{[]byte("fi1")}, Timestamp: time.Now()},
 		Data:       [][]byte{dataBin},
 	}).Once()
@@ -470,7 +470,7 @@ func TestVerifyForcedInclusionTxs_MissingTransactions(t *testing.T) {
 	dataBin, _ := makeSignedDataBytes(t, gen.ChainID, 10, addr, pub, signer, 2)
 
 	// With DAStartHeight=0, epoch size=1, daHeight=0 -> epoch boundaries are [0, 0]
-	client.On("RetrieveForcedInclusion", mock.Anything, uint64(0)).Return(datypes.ResultRetrieve{
+	client.On("Retrieve", mock.Anything, uint64(0), []byte("nsForcedInclusion")).Return(datypes.ResultRetrieve{
 		BaseResult: datypes.BaseResult{Code: datypes.StatusSuccess, IDs: [][]byte{[]byte("fi1")}, Timestamp: time.Now()},
 		Data:       [][]byte{dataBin},
 	}).Once()
@@ -488,7 +488,7 @@ func TestVerifyForcedInclusionTxs_MissingTransactions(t *testing.T) {
 	require.NoError(t, err)
 
 	// Mock DA for next epoch to return no forced inclusion transactions
-	client.On("RetrieveForcedInclusion", mock.Anything, uint64(1)).Return(datypes.ResultRetrieve{
+	client.On("Retrieve", mock.Anything, uint64(1), []byte("nsForcedInclusion")).Return(datypes.ResultRetrieve{
 		BaseResult: datypes.BaseResult{Code: datypes.StatusNotFound, Timestamp: time.Now()},
 	}).Once()
 
@@ -501,7 +501,7 @@ func TestVerifyForcedInclusionTxs_MissingTransactions(t *testing.T) {
 	require.NoError(t, err) // Should pass since DAHeight=1 equals grace boundary, not past it
 
 	// Mock DA for height 2 to return no forced inclusion transactions
-	client.On("RetrieveForcedInclusion", mock.Anything, uint64(2)).Return(datypes.ResultRetrieve{
+	client.On("Retrieve", mock.Anything, uint64(2), []byte("nsForcedInclusion")).Return(datypes.ResultRetrieve{
 		BaseResult: datypes.BaseResult{Code: datypes.StatusNotFound, Timestamp: time.Now()},
 	}).Once()
 
@@ -573,7 +573,7 @@ func TestVerifyForcedInclusionTxs_PartiallyIncluded(t *testing.T) {
 	dataBin2, _ := makeSignedDataBytes(t, gen.ChainID, 11, addr, pub, signer, 1)
 
 	// With DAStartHeight=0, epoch size=1, daHeight=0 -> epoch boundaries are [0, 0]
-	client.On("RetrieveForcedInclusion", mock.Anything, uint64(0)).Return(datypes.ResultRetrieve{
+	client.On("Retrieve", mock.Anything, uint64(0), []byte("nsForcedInclusion")).Return(datypes.ResultRetrieve{
 		BaseResult: datypes.BaseResult{Code: datypes.StatusSuccess, IDs: [][]byte{[]byte("fi1"), []byte("fi2")}, Timestamp: time.Now()},
 		Data:       [][]byte{dataBin1, dataBin2},
 	}).Once()
@@ -592,7 +592,7 @@ func TestVerifyForcedInclusionTxs_PartiallyIncluded(t *testing.T) {
 	require.NoError(t, err)
 
 	// Mock DA for next epoch to return no forced inclusion transactions
-	client.On("RetrieveForcedInclusion", mock.Anything, uint64(1)).Return(datypes.ResultRetrieve{
+	client.On("Retrieve", mock.Anything, uint64(1), []byte("nsForcedInclusion")).Return(datypes.ResultRetrieve{
 		BaseResult: datypes.BaseResult{Code: datypes.StatusNotFound, Timestamp: time.Now()},
 	}).Once()
 
@@ -606,7 +606,7 @@ func TestVerifyForcedInclusionTxs_PartiallyIncluded(t *testing.T) {
 	require.NoError(t, err)
 
 	// Mock DA for height 2 (when we move to DAHeight 2)
-	client.On("RetrieveForcedInclusion", mock.Anything, uint64(2)).Return(datypes.ResultRetrieve{
+	client.On("Retrieve", mock.Anything, uint64(2), []byte("nsForcedInclusion")).Return(datypes.ResultRetrieve{
 		BaseResult: datypes.BaseResult{Code: datypes.StatusNotFound, Timestamp: time.Now()},
 	}).Once()
 
@@ -676,7 +676,7 @@ func TestVerifyForcedInclusionTxs_NoForcedTransactions(t *testing.T) {
 	s.ctx = context.Background()
 
 	// Mock DA to return no forced inclusion transactions at height 0
-	client.On("RetrieveForcedInclusion", mock.Anything, uint64(0)).Return(datypes.ResultRetrieve{
+	client.On("Retrieve", mock.Anything, uint64(0), []byte("nsForcedInclusion")).Return(datypes.ResultRetrieve{
 		BaseResult: datypes.BaseResult{Code: datypes.StatusNotFound, Timestamp: time.Now()},
 	}).Once()
 
@@ -814,13 +814,13 @@ func TestVerifyForcedInclusionTxs_DeferralWithinEpoch(t *testing.T) {
 	// Epoch boundaries: [100, 104] (epoch size is 5)
 	// The retriever will fetch all heights in the epoch: 100, 101, 102, 103, 104
 
-	client.On("RetrieveForcedInclusion", mock.Anything, uint64(100)).Return(datypes.ResultRetrieve{
+	client.On("Retrieve", mock.Anything, uint64(100), []byte("nsForcedInclusion")).Return(datypes.ResultRetrieve{
 		BaseResult: datypes.BaseResult{Code: datypes.StatusSuccess, IDs: [][]byte{[]byte("fi1"), []byte("fi2")}, Timestamp: time.Now()},
 		Data:       [][]byte{dataBin1, dataBin2},
 	}).Once()
 
 	for height := uint64(101); height <= 104; height++ {
-		client.On("RetrieveForcedInclusion", mock.Anything, height).Return(datypes.ResultRetrieve{
+		client.On("Retrieve", mock.Anything, height, []byte("nsForcedInclusion")).Return(datypes.ResultRetrieve{
 			BaseResult: datypes.BaseResult{Code: datypes.StatusNotFound, Timestamp: time.Now()},
 		}).Once()
 	}
@@ -846,12 +846,12 @@ func TestVerifyForcedInclusionTxs_DeferralWithinEpoch(t *testing.T) {
 
 	// Mock DA for second verification at same epoch (height 104 - epoch end)
 	for height := uint64(101); height <= 104; height++ {
-		client.On("RetrieveForcedInclusion", mock.Anything, height).Return(datypes.ResultRetrieve{
+		client.On("Retrieve", mock.Anything, height, []byte("nsForcedInclusion")).Return(datypes.ResultRetrieve{
 			BaseResult: datypes.BaseResult{Code: datypes.StatusNotFound, Timestamp: time.Now()},
 		}).Once()
 	}
 
-	client.On("RetrieveForcedInclusion", mock.Anything, uint64(100)).Return(datypes.ResultRetrieve{
+	client.On("Retrieve", mock.Anything, uint64(100), []byte("nsForcedInclusion")).Return(datypes.ResultRetrieve{
 		BaseResult: datypes.BaseResult{Code: datypes.StatusSuccess, IDs: [][]byte{[]byte("fi1"), []byte("fi2")}, Timestamp: time.Now()},
 		Data:       [][]byte{dataBin1, dataBin2},
 	}).Once()
@@ -936,16 +936,16 @@ func TestVerifyForcedInclusionTxs_MaliciousAfterEpochEnd(t *testing.T) {
 	// Epoch boundaries: [100, 102] (epoch size is 3)
 	// The retriever will fetch heights 100, 101, 102
 
-	client.On("RetrieveForcedInclusion", mock.Anything, uint64(100)).Return(datypes.ResultRetrieve{
+	client.On("Retrieve", mock.Anything, uint64(100), []byte("nsForcedInclusion")).Return(datypes.ResultRetrieve{
 		BaseResult: datypes.BaseResult{Code: datypes.StatusSuccess, IDs: [][]byte{[]byte("fi1")}, Timestamp: time.Now()},
 		Data:       [][]byte{dataBin},
 	}).Once()
 
-	client.On("RetrieveForcedInclusion", mock.Anything, uint64(101)).Return(datypes.ResultRetrieve{
+	client.On("Retrieve", mock.Anything, uint64(101), []byte("nsForcedInclusion")).Return(datypes.ResultRetrieve{
 		BaseResult: datypes.BaseResult{Code: datypes.StatusNotFound, Timestamp: time.Now()},
 	}).Once()
 
-	client.On("RetrieveForcedInclusion", mock.Anything, uint64(102)).Return(datypes.ResultRetrieve{
+	client.On("Retrieve", mock.Anything, uint64(102), []byte("nsForcedInclusion")).Return(datypes.ResultRetrieve{
 		BaseResult: datypes.BaseResult{Code: datypes.StatusNotFound, Timestamp: time.Now()},
 	}).Once()
 
@@ -1024,7 +1024,7 @@ func TestVerifyForcedInclusionTxs_SmoothingExceedsEpoch(t *testing.T) {
 	dataBin3, _ := makeSignedDataBytes(t, gen.ChainID, 12, addr, pub, signer, 2)
 
 	// Mock DA retrieval for Epoch 1: [100, 102]
-	client.On("RetrieveForcedInclusion", mock.Anything, uint64(100)).Return(datypes.ResultRetrieve{
+	client.On("Retrieve", mock.Anything, uint64(100), []byte("nsForcedInclusion")).Return(datypes.ResultRetrieve{
 		BaseResult: datypes.BaseResult{
 			Code:      datypes.StatusSuccess,
 			IDs:       [][]byte{[]byte("fi1"), []byte("fi2"), []byte("fi3")},
@@ -1033,11 +1033,11 @@ func TestVerifyForcedInclusionTxs_SmoothingExceedsEpoch(t *testing.T) {
 		Data: [][]byte{dataBin1, dataBin2, dataBin3},
 	}).Once()
 
-	client.On("RetrieveForcedInclusion", mock.Anything, uint64(101)).Return(datypes.ResultRetrieve{
+	client.On("Retrieve", mock.Anything, uint64(101), []byte("nsForcedInclusion")).Return(datypes.ResultRetrieve{
 		BaseResult: datypes.BaseResult{Code: datypes.StatusNotFound, Timestamp: time.Now()},
 	}).Once()
 
-	client.On("RetrieveForcedInclusion", mock.Anything, uint64(102)).Return(datypes.ResultRetrieve{
+	client.On("Retrieve", mock.Anything, uint64(102), []byte("nsForcedInclusion")).Return(datypes.ResultRetrieve{
 		BaseResult: datypes.BaseResult{Code: datypes.StatusNotFound, Timestamp: time.Now()},
 	}).Once()
 

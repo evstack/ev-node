@@ -36,8 +36,8 @@ type Sequencer struct {
 	logger      zerolog.Logger
 	proposer    bool
 
-	Id []byte
-	da block.DAClient
+	Id         []byte
+	daVerifier block.DAVerifier
 
 	batchTime time.Duration
 	queue     *BatchQueue // single queue for immediate availability
@@ -56,7 +56,7 @@ func NewSequencer(
 	ctx context.Context,
 	logger zerolog.Logger,
 	db ds.Batching,
-	da block.DAClient,
+	daVerifier block.DAVerifier,
 	id []byte,
 	batchTime time.Duration,
 	proposer bool,
@@ -66,7 +66,7 @@ func NewSequencer(
 ) (*Sequencer, error) {
 	s := &Sequencer{
 		logger:          logger,
-		da:              da,
+		daVerifier:      daVerifier,
 		batchTime:       batchTime,
 		Id:              id,
 		queue:           NewBatchQueue(db, "batches", maxQueueSize),
@@ -266,12 +266,12 @@ func (c *Sequencer) VerifyBatch(ctx context.Context, req coresequencer.VerifyBat
 	}
 
 	if !c.proposer {
-		proofs, err := c.da.GetProofs(ctx, req.BatchData, c.Id)
+		proofs, err := c.daVerifier.GetProofs(ctx, req.BatchData, c.Id)
 		if err != nil {
 			return nil, fmt.Errorf("failed to get proofs: %w", err)
 		}
 
-		valid, err := c.da.Validate(ctx, req.BatchData, proofs, c.Id)
+		valid, err := c.daVerifier.Validate(ctx, req.BatchData, proofs, c.Id)
 		if err != nil {
 			return nil, fmt.Errorf("failed to validate proof: %w", err)
 		}

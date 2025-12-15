@@ -79,7 +79,7 @@ func TestForcedInclusionRetriever_RetrieveForcedIncludedTxs_EpochStartSuccess(t 
 	fiNs := datypes.NamespaceFromString("test-fi-ns").Bytes()
 	client.On("HasForcedInclusionNamespace").Return(true).Once()
 	client.On("GetForcedInclusionNamespace").Return(fiNs).Maybe()
-	client.On("RetrieveForcedInclusion", mock.Anything, mock.Anything).Return(datypes.ResultRetrieve{
+	client.On("Retrieve", mock.Anything, mock.Anything, fiNs).Return(datypes.ResultRetrieve{
 		BaseResult: datypes.BaseResult{Code: datypes.StatusSuccess, IDs: []datypes.ID{[]byte("id1"), []byte("id2"), []byte("id3")}, Timestamp: time.Now()},
 		Data:       testBlobs,
 	}).Once()
@@ -107,7 +107,7 @@ func TestForcedInclusionRetriever_RetrieveForcedIncludedTxs_EpochStartNotAvailab
 	fiNs := datypes.NamespaceFromString("test-fi-ns").Bytes()
 	client.On("HasForcedInclusionNamespace").Return(true).Once()
 	client.On("GetForcedInclusionNamespace").Return(fiNs).Maybe()
-	client.On("RetrieveForcedInclusion", mock.Anything, uint64(109)).Return(datypes.ResultRetrieve{
+	client.On("Retrieve", mock.Anything, uint64(109), fiNs).Return(datypes.ResultRetrieve{
 		BaseResult: datypes.BaseResult{Code: datypes.StatusHeightFromFuture},
 	}).Once()
 
@@ -130,7 +130,7 @@ func TestForcedInclusionRetriever_RetrieveForcedIncludedTxs_NoBlobsAtHeight(t *t
 	fiNs := datypes.NamespaceFromString("test-fi-ns").Bytes()
 	client.On("HasForcedInclusionNamespace").Return(true).Once()
 	client.On("GetForcedInclusionNamespace").Return(fiNs).Maybe()
-	client.On("RetrieveForcedInclusion", mock.Anything, uint64(100)).Return(datypes.ResultRetrieve{
+	client.On("Retrieve", mock.Anything, uint64(100), fiNs).Return(datypes.ResultRetrieve{
 		BaseResult: datypes.BaseResult{Code: datypes.StatusNotFound},
 	}).Once()
 
@@ -159,15 +159,15 @@ func TestForcedInclusionRetriever_RetrieveForcedIncludedTxs_MultiHeightEpoch(t *
 	fiNs := datypes.NamespaceFromString("test-fi-ns").Bytes()
 	client.On("HasForcedInclusionNamespace").Return(true).Once()
 	client.On("GetForcedInclusionNamespace").Return(fiNs).Maybe()
-	client.On("RetrieveForcedInclusion", mock.Anything, uint64(102)).Return(datypes.ResultRetrieve{
+	client.On("Retrieve", mock.Anything, uint64(102), fiNs).Return(datypes.ResultRetrieve{
 		BaseResult: datypes.BaseResult{Code: datypes.StatusSuccess, Timestamp: time.Now()},
 		Data:       testBlobsByHeight[102],
 	}).Once()
-	client.On("RetrieveForcedInclusion", mock.Anything, uint64(100)).Return(datypes.ResultRetrieve{
+	client.On("Retrieve", mock.Anything, uint64(100), fiNs).Return(datypes.ResultRetrieve{
 		BaseResult: datypes.BaseResult{Code: datypes.StatusSuccess, Timestamp: time.Now()},
 		Data:       testBlobsByHeight[100],
 	}).Once()
-	client.On("RetrieveForcedInclusion", mock.Anything, uint64(101)).Return(datypes.ResultRetrieve{
+	client.On("Retrieve", mock.Anything, uint64(101), fiNs).Return(datypes.ResultRetrieve{
 		BaseResult: datypes.BaseResult{Code: datypes.StatusSuccess, Timestamp: time.Now()},
 		Data:       testBlobsByHeight[101],
 	}).Once()

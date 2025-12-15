@@ -74,7 +74,7 @@ func (r *ForcedInclusionRetriever) RetrieveForcedIncludedTxs(ctx context.Context
 		Txs:           [][]byte{},
 	}
 
-	epochEndResult := r.client.RetrieveForcedInclusion(ctx, epochEnd)
+	epochEndResult := r.client.Retrieve(ctx, epochEnd, r.client.GetForcedInclusionNamespace())
 	if epochEndResult.Code == datypes.StatusHeightFromFuture {
 		r.logger.Debug().
 			Uint64("epoch_end", epochEnd).
@@ -84,7 +84,7 @@ func (r *ForcedInclusionRetriever) RetrieveForcedIncludedTxs(ctx context.Context
 
 	epochStartResult := epochEndResult
 	if epochStart != epochEnd {
-		epochStartResult = r.client.RetrieveForcedInclusion(ctx, epochStart)
+		epochStartResult = r.client.Retrieve(ctx, epochStart, r.client.GetForcedInclusionNamespace())
 		if epochStartResult.Code == datypes.StatusHeightFromFuture {
 			r.logger.Debug().
 				Uint64("epoch_start", epochStart).
@@ -106,7 +106,7 @@ func (r *ForcedInclusionRetriever) RetrieveForcedIncludedTxs(ctx context.Context
 
 	// Process heights between start and end (exclusive)
 	for epochHeight := epochStart + 1; epochHeight < epochEnd; epochHeight++ {
-		result := r.client.RetrieveForcedInclusion(ctx, epochHeight)
+		result := r.client.Retrieve(ctx, epochHeight, r.client.GetForcedInclusionNamespace())
 
 		err = r.processForcedInclusionBlobs(event, result, epochHeight)
 		processErrs = errors.Join(processErrs, err)

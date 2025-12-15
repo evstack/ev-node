@@ -106,11 +106,15 @@ func TestClient_Retrieve_NotFound(t *testing.T) {
 }
 
 func TestClient_Retrieve_Success(t *testing.T) {
-	ns := share.MustNewV0Namespace([]byte("ns")).Bytes()
-	b, err := blobrpc.NewBlobV0(share.MustNewV0Namespace([]byte("ns")), []byte("payload"))
+	ns := share.MustNewV0Namespace([]byte("ns"))
+	nsBz := ns.Bytes()
+	b, err := blobrpc.NewBlobV0(ns, []byte("payload"))
 	require.NoError(t, err)
 	module := mocks.NewMockBlobModule(t)
+	// GetIDs calls GetAll to get blob IDs
 	module.On("GetAll", mock.Anything, uint64(7), mock.Anything).Return([]*blobrpc.Blob{b}, nil)
+	// Retrieve then calls Get in batches to fetch the actual data
+	module.On("Get", mock.Anything, uint64(7), ns, b.Commitment).Return(b, nil)
 
 	cl := NewClient(Config{
 		Client:        makeBlobRPCClient(module),
@@ -118,7 +122,7 @@ func TestClient_Retrieve_Success(t *testing.T) {
 		Namespace:     "ns",
 		DataNamespace: "ns",
 	})
-	res := cl.Retrieve(context.Background(), 7, ns)
+	res := cl.Retrieve(context.Background(), 7, nsBz)
 	require.Equal(t, datypes.StatusSuccess, res.Code)
 	require.Len(t, res.Data, 1)
 	require.Len(t, res.IDs, 1)
@@ -144,53 +148,11 @@ func TestClient_SubmitOptionsMerge(t *testing.T) {
 	require.Equal(t, datypes.StatusSuccess, res.Code)
 }
 
-func TestClient_RetrieveHeaders(t *testing.T) {
-	ns := share.MustNewV0Namespace([]byte("header-ns"))
-	blb, err := blobrpc.NewBlobV0(ns, []byte("header-blob"))
-	require.NoError(t, err)
-	module := mocks.NewMockBlobModule(t)
-	module.On("GetAll", mock.Anything, uint64(42), mock.Anything).Return([]*blobrpc.Blob{blb}, nil)
-
-	client := NewClient(Config{
-		Client:        makeBlobRPCClient(module),
-		Logger:        zerolog.Nop(),
-		Namespace:     "header-ns",
-		DataNamespace: "data-ns",
-	})
-
-	result := client.RetrieveHeaders(context.Background(), 42)
-
-	assert.Equal(t, datypes.StatusSuccess, result.Code)
-	assert.Equal(t, uint64(42), result.Height)
-	assert.Equal(t, 1, len(result.Data))
-}
-
-func TestClient_RetrieveData(t *testing.T) {
-	ns := share.MustNewV0Namespace([]byte("data-ns"))
-	blb1, err := blobrpc.NewBlobV0(ns, []byte("data-blob-1"))
-	require.NoError(t, err)
-	blb2, err := blobrpc.NewBlobV0(ns, []byte("data-blob-2"))
-	require.NoError(t, err)
-	module := mocks.NewMockBlobModule(t)
-	module.On("GetAll", mock.Anything, uint64(99), mock.Anything).Return([]*blobrpc.Blob{blb1, blb2}, nil)
-
-	client := NewClient(Config{
-		Client:        makeBlobRPCClient(module),
-		Logger:        zerolog.Nop(),
-		Namespace:     "header-ns",
-		DataNamespace: "data-ns",
-	})
-
-	result := client.RetrieveData(context.Background(), 99)
-
-	assert.Equal(t, datypes.StatusSuccess, result.Code)
-	assert.Equal(t, uint64(99), result.Height)
-	assert.Equal(t, 2, len(result.Data))
-}
 
 // TestClient_BatchProcessing tests the batching behavior for Get, GetProofs, and Validate.
 // Tests core batching logic (multiple batches, context cancellation, error propagation)
 // once using Get, then verifies GetProofs and Validate work correctly with batching.
+// Note: These test internal methods on the concrete client type, not the interface.
 func TestClient_BatchProcessing(t *testing.T) {
 	ns := share.MustNewV0Namespace([]byte("ns"))
 	nsBz := ns.Bytes()
@@ -215,7 +177,7 @@ func TestClient_BatchProcessing(t *testing.T) {
 			Namespace:         "ns",
 			DataNamespace:     "ns",
 			RetrieveBatchSize: 2,
-		})
+		}).(*client)
 
 		result, err := cl.Get(context.Background(), ids, nsBz)
 		require.NoError(t, err)
@@ -236,7 +198,7 @@ func TestClient_BatchProcessing(t *testing.T) {
 			Namespace:         "ns",
 			DataNamespace:     "ns",
 			RetrieveBatchSize: 2,
-		})
+		}).(*client)
 
 		ctx, cancel := context.WithCancel(context.Background())
 		cancel()
@@ -256,7 +218,7 @@ func TestClient_BatchProcessing(t *testing.T) {
 			Logger:        zerolog.Nop(),
 			Namespace:     "ns",
 			DataNamespace: "ns",
-		})
+		}).(*client)
 
 		_, err := cl.Get(context.Background(), ids, nsBz)
 		require.Error(t, err)
@@ -279,7 +241,7 @@ func TestClient_BatchProcessing(t *testing.T) {
 			Namespace:         "ns",
 			DataNamespace:     "ns",
 			RetrieveBatchSize: 2,
-		})
+		}).(*client)
 
 		proofs, err := cl.GetProofs(context.Background(), ids, nsBz)
 		require.NoError(t, err)
@@ -305,7 +267,7 @@ func TestClient_BatchProcessing(t *testing.T) {
 			Namespace:         "ns",
 			DataNamespace:     "ns",
 			RetrieveBatchSize: 2,
-		})
+		}).(*client)
 
 		results, err := cl.Validate(context.Background(), ids, proofs, nsBz)
 		require.NoError(t, err)
@@ -337,7 +299,7 @@ func TestClient_BatchProcessing(t *testing.T) {
 			Logger:        zerolog.Nop(),
 			Namespace:     "ns",
 			DataNamespace: "ns",
-		})
+		}).(*client)
 
 		results, err := cl.Validate(context.Background(), ids, proofs, nsBz)
 		require.NoError(t, err) // Validate logs errors but doesn't fail
@@ -352,7 +314,7 @@ func TestClient_BatchProcessing(t *testing.T) {
 			Logger:        zerolog.Nop(),
 			Namespace:     "ns",
 			DataNamespace: "ns",
-		})
+		}).(*client)
 
 		_, err := cl.Validate(context.Background(), make([]datypes.ID, 3), make([]datypes.Proof, 2), nsBz)
 		require.Error(t, err)

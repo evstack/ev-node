@@ -1,41 +1,10 @@
 package da
 
 import (
-	"context"
 	"encoding/binary"
 	"fmt"
 	"time"
 )
-
-// DA defines very generic interface for interaction with Data Availability layers.
-type DA interface {
-	// Get returns Blob for each given ID, or an error.
-	//
-	// Error should be returned if ID is not formatted properly, there is no Blob for given ID or any other client-level
-	// error occurred (dropped connection, timeout, etc).
-	Get(ctx context.Context, ids []ID, namespace []byte) ([]Blob, error)
-
-	// GetIDs returns IDs of all Blobs located in DA at given height.
-	GetIDs(ctx context.Context, height uint64, namespace []byte) (*GetIDsResult, error)
-
-	// GetProofs returns inclusion Proofs for Blobs specified by their IDs.
-	GetProofs(ctx context.Context, ids []ID, namespace []byte) ([]Proof, error)
-
-	// Commit creates a Commitment for each given Blob.
-	Commit(ctx context.Context, blobs []Blob, namespace []byte) ([]Commitment, error)
-
-	// Submit submits the Blobs to Data Availability layer.
-	//
-	// This method is synchronous. Upon successful submission to Data Availability layer, it returns the IDs identifying blobs
-	// in DA.
-	Submit(ctx context.Context, blobs []Blob, gasPrice float64, namespace []byte) ([]ID, error)
-
-	// SubmitWithOptions submits the Blobs to Data Availability layer with additional options.
-	SubmitWithOptions(ctx context.Context, blobs []Blob, gasPrice float64, namespace []byte, options []byte) ([]ID, error)
-
-	// Validate validates Commitments against the corresponding Proofs. This should be possible without retrieving the Blobs.
-	Validate(ctx context.Context, ids []ID, proofs []Proof, namespace []byte) ([]bool, error)
-}
 
 // StatusCode mirrors the blob RPC status codes shared with block/internal/da.
 type StatusCode uint64

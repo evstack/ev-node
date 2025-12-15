@@ -44,11 +44,11 @@ type client struct {
 	batchSize          int
 }
 
-// Ensure client implements the block DA client interface.
-var _ Client = (*client)(nil)
+// Ensure client implements the FullClient interface (Client + BlobGetter + Verifier).
+var _ FullClient = (*client)(nil)
 
 // NewClient creates a new blob client wrapper with pre-calculated namespace bytes.
-func NewClient(cfg Config) Client {
+func NewClient(cfg Config) FullClient {
 	if cfg.Client == nil {
 		return nil
 	}
@@ -193,17 +193,12 @@ func (c *client) Submit(ctx context.Context, data [][]byte, _ float64, namespace
 	}
 }
 
-// Retrieve retrieves blobs from the DA layer at the specified height and namespace.
-func (c *client) Retrieve(ctx context.Context, height uint64, namespace []byte) datypes.ResultRetrieve {
+// getIDs retrieves blob IDs from the DA layer at the specified height and namespace.
+// This uses GetAll internally to fetch blob metadata, then extracts the IDs.
+func (c *client) getIDs(ctx context.Context, height uint64, namespace []byte) ([]datypes.ID, error) {
 	ns, err := share.NewNamespaceFromBytes(namespace)
 	if err != nil {
-		return datypes.ResultRetrieve{
-			BaseResult: datypes.BaseResult{
-				Code:    datypes.StatusError,
-				Message: fmt.Sprintf("invalid namespace: %v", err),
-				Height:  height,
-			},
-		}
+		return nil, fmt.Errorf("invalid namespace: %w", err)
 	}
 
 	getCtx, cancel := context.WithTimeout(ctx, c.defaultTimeout)
@@ -214,15 +209,34 @@ func (c *client) Retrieve(ctx context.Context, height uint64, namespace []byte) 
 		// Handle known errors by substring because RPC may wrap them.
 		switch {
 		case strings.Contains(err.Error(), datypes.ErrBlobNotFound.Error()):
-			return datypes.ResultRetrieve{
-				BaseResult: datypes.BaseResult{
-					Code:      datypes.StatusNotFound,
-					Message:   datypes.ErrBlobNotFound.Error(),
-					Height:    height,
-					Timestamp: time.Now(),
-				},
-			}
+			return nil, nil // No blobs at this height is not an error
 		case strings.Contains(err.Error(), datypes.ErrHeightFromFuture.Error()):
+			return nil, fmt.Errorf("%w", datypes.ErrHeightFromFuture)
+		default:
+			c.logger.Error().Uint64("height", height).Err(err).Msg("failed to get blob IDs")
+			return nil, fmt.Errorf("failed to get blob IDs: %w", err)
+		}
+	}
+
+	if len(blobs) == 0 {
+		return nil, nil
+	}
+
+	ids := make([]datypes.ID, len(blobs))
+	for i, b := range blobs {
+		ids[i] = blobrpc.MakeID(height, b.Commitment)
+	}
+
+	return ids, nil
+}
+
+// Retrieve retrieves blobs from the DA layer at the specified height and namespace.
+// It first fetches blob IDs, then retrieves blob data in batches.
+func (c *client) Retrieve(ctx context.Context, height uint64, namespace []byte) datypes.ResultRetrieve {
+	// First, get all blob IDs at this height/namespace.
+	ids, err := c.getIDs(ctx, height, namespace)
+	if err != nil {
+		if errors.Is(err, datypes.ErrHeightFromFuture) {
 			return datypes.ResultRetrieve{
 				BaseResult: datypes.BaseResult{
 					Code:      datypes.StatusHeightFromFuture,
@@ -231,20 +245,19 @@ func (c *client) Retrieve(ctx context.Context, height uint64, namespace []byte) 
 					Timestamp: time.Now(),
 				},
 			}
-		default:
-			c.logger.Error().Uint64("height", height).Err(err).Msg("failed to get blobs")
-			return datypes.ResultRetrieve{
-				BaseResult: datypes.BaseResult{
-					Code:      datypes.StatusError,
-					Message:   fmt.Sprintf("failed to get blobs: %s", err.Error()),
-					Height:    height,
-					Timestamp: time.Now(),
-				},
-			}
+		}
+		c.logger.Error().Uint64("height", height).Err(err).Msg("failed to get blob IDs")
+		return datypes.ResultRetrieve{
+			BaseResult: datypes.BaseResult{
+				Code:      datypes.StatusError,
+				Message:   fmt.Sprintf("failed to get blob IDs: %s", err.Error()),
+				Height:    height,
+				Timestamp: time.Now(),
+			},
 		}
 	}
 
-	if len(blobs) == 0 {
+	if len(ids) == 0 {
 		c.logger.Debug().Uint64("height", height).Msg("No blobs found at height")
 		return datypes.ResultRetrieve{
 			BaseResult: datypes.BaseResult{
@@ -256,11 +269,18 @@ func (c *client) Retrieve(ctx context.Context, height uint64, namespace []byte) 
 		}
 	}
 
-	out := make([][]byte, len(blobs))
-	ids := make([][]byte, len(blobs))
-	for i, b := range blobs {
-		out[i] = b.Data()
-		ids[i] = blobrpc.MakeID(height, b.Commitment)
+	// Now fetch blob data in batches using Get.
+	blobs, err := c.Get(ctx, ids, namespace)
+	if err != nil {
+		c.logger.Error().Uint64("height", height).Err(err).Msg("failed to get blobs")
+		return datypes.ResultRetrieve{
+			BaseResult: datypes.BaseResult{
+				Code:      datypes.StatusError,
+				Message:   fmt.Sprintf("failed to get blobs: %s", err.Error()),
+				Height:    height,
+				Timestamp: time.Now(),
+			},
+		}
 	}
 
 	return datypes.ResultRetrieve{
@@ -270,18 +290,8 @@ func (c *client) Retrieve(ctx context.Context, height uint64, namespace []byte) 
 			IDs:       ids,
 			Timestamp: time.Now(),
 		},
-		Data: out,
+		Data: blobs,
 	}
-}
-
-// RetrieveHeaders retrieves blobs from the header namespace at the specified height.
-func (c *client) RetrieveHeaders(ctx context.Context, height uint64) datypes.ResultRetrieve {
-	return c.Retrieve(ctx, height, c.namespaceBz)
-}
-
-// RetrieveData retrieves blobs from the data namespace at the specified height.
-func (c *client) RetrieveData(ctx context.Context, height uint64) datypes.ResultRetrieve {
-	return c.Retrieve(ctx, height, c.dataNamespaceBz)
 }
 
 // RetrieveForcedInclusion retrieves blobs from the forced inclusion namespace at the specified height.

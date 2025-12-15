@@ -159,7 +159,7 @@ func createSequencer(
 	datastore datastore.Batching,
 	nodeConfig config.Config,
 	genesis genesis.Genesis,
-	daClient block.DAClient,
+	daClient block.FullDAClient,
 ) (coresequencer.Sequencer, error) {
 	fiRetriever := block.NewForcedInclusionRetriever(daClient, genesis, logger)
 

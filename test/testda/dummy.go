@@ -134,20 +134,6 @@ func (d *DummyDA) Retrieve(_ context.Context, height uint64, namespace []byte) d
 	}
 }
 
-// RetrieveHeaders retrieves blobs from the header namespace.
-func (d *DummyDA) RetrieveHeaders(ctx context.Context, height uint64) datypes.ResultRetrieve {
-	return d.Retrieve(ctx, height, d.GetHeaderNamespace())
-}
-
-// RetrieveData retrieves blobs from the data namespace.
-func (d *DummyDA) RetrieveData(ctx context.Context, height uint64) datypes.ResultRetrieve {
-	return d.Retrieve(ctx, height, d.GetDataNamespace())
-}
-
-// RetrieveForcedInclusion retrieves blobs from the forced inclusion namespace.
-func (d *DummyDA) RetrieveForcedInclusion(ctx context.Context, height uint64) datypes.ResultRetrieve {
-	return d.Retrieve(ctx, height, d.GetForcedInclusionNamespace())
-}
 
 // GetHeaderNamespace returns the header namespace.
 func (d *DummyDA) GetHeaderNamespace() []byte { return []byte("hdr") }
