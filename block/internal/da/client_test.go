@@ -50,7 +50,7 @@ func TestClient_Submit_ErrorMapping(t *testing.T) {
 			module.On("Submit", mock.Anything, mock.Anything, mock.Anything).Return(uint64(0), tc.err)
 
 			cl := NewClient(Config{
-				Client:        makeBlobRPCClient(module),
+				DA:            makeBlobRPCClient(module),
 				Logger:        zerolog.Nop(),
 				Namespace:     "ns",
 				DataNamespace: "ns",
@@ -67,7 +67,7 @@ func TestClient_Submit_Success(t *testing.T) {
 	module.On("Submit", mock.Anything, mock.Anything, mock.Anything).Return(uint64(10), nil)
 
 	cl := NewClient(Config{
-		Client:        makeBlobRPCClient(module),
+		DA:            makeBlobRPCClient(module),
 		Logger:        zerolog.Nop(),
 		Namespace:     "ns",
 		DataNamespace: "ns",
@@ -81,7 +81,7 @@ func TestClient_Submit_Success(t *testing.T) {
 func TestClient_Submit_InvalidNamespace(t *testing.T) {
 	module := mocks.NewMockBlobModule(t)
 	cl := NewClient(Config{
-		Client:        makeBlobRPCClient(module),
+		DA:            makeBlobRPCClient(module),
 		Logger:        zerolog.Nop(),
 		Namespace:     "ns",
 		DataNamespace: "ns",
@@ -96,7 +96,7 @@ func TestClient_Retrieve_NotFound(t *testing.T) {
 	module.On("GetAll", mock.Anything, mock.Anything, mock.Anything).Return([]*blobrpc.Blob(nil), datypes.ErrBlobNotFound)
 
 	cl := NewClient(Config{
-		Client:        makeBlobRPCClient(module),
+		DA:            makeBlobRPCClient(module),
 		Logger:        zerolog.Nop(),
 		Namespace:     "ns",
 		DataNamespace: "ns",
@@ -117,7 +117,7 @@ func TestClient_Retrieve_Success(t *testing.T) {
 	module.On("Get", mock.Anything, uint64(7), ns, b.Commitment).Return(b, nil)
 
 	cl := NewClient(Config{
-		Client:        makeBlobRPCClient(module),
+		DA:            makeBlobRPCClient(module),
 		Logger:        zerolog.Nop(),
 		Namespace:     "ns",
 		DataNamespace: "ns",
@@ -134,7 +134,7 @@ func TestClient_SubmitOptionsMerge(t *testing.T) {
 	module.On("Submit", mock.Anything, mock.Anything, mock.Anything).Return(uint64(1), nil)
 
 	cl := NewClient(Config{
-		Client:        makeBlobRPCClient(module),
+		DA:            makeBlobRPCClient(module),
 		Logger:        zerolog.Nop(),
 		Namespace:     "ns",
 		DataNamespace: "ns",
@@ -171,7 +171,7 @@ func TestClient_BatchProcessing(t *testing.T) {
 		}
 
 		cl := NewClient(Config{
-			Client:            makeBlobRPCClient(module),
+			DA:                makeBlobRPCClient(module),
 			Logger:            zerolog.Nop(),
 			Namespace:         "ns",
 			DataNamespace:     "ns",
@@ -192,7 +192,7 @@ func TestClient_BatchProcessing(t *testing.T) {
 		ids := []datypes.ID{blobrpc.MakeID(100, blb.Commitment)}
 
 		cl := NewClient(Config{
-			Client:            makeBlobRPCClient(module),
+			DA:                makeBlobRPCClient(module),
 			Logger:            zerolog.Nop(),
 			Namespace:         "ns",
 			DataNamespace:     "ns",
@@ -213,7 +213,7 @@ func TestClient_BatchProcessing(t *testing.T) {
 		module.On("Get", mock.Anything, uint64(100), ns, blb.Commitment).Return(nil, errors.New("network error")).Once()
 
 		cl := NewClient(Config{
-			Client:        makeBlobRPCClient(module),
+			DA:            makeBlobRPCClient(module),
 			Logger:        zerolog.Nop(),
 			Namespace:     "ns",
 			DataNamespace: "ns",
@@ -235,7 +235,7 @@ func TestClient_BatchProcessing(t *testing.T) {
 		}
 
 		cl := NewClient(Config{
-			Client:            makeBlobRPCClient(module),
+			DA:                makeBlobRPCClient(module),
 			Logger:            zerolog.Nop(),
 			Namespace:         "ns",
 			DataNamespace:     "ns",
@@ -261,7 +261,7 @@ func TestClient_BatchProcessing(t *testing.T) {
 		}
 
 		cl := NewClient(Config{
-			Client:            makeBlobRPCClient(module),
+			DA:                makeBlobRPCClient(module),
 			Logger:            zerolog.Nop(),
 			Namespace:         "ns",
 			DataNamespace:     "ns",
@@ -294,7 +294,7 @@ func TestClient_BatchProcessing(t *testing.T) {
 		module.On("Included", mock.Anything, uint64(401), ns, mock.Anything, blb1.Commitment).Return(false, errors.New("check failed")).Once()
 
 		cl := NewClient(Config{
-			Client:        makeBlobRPCClient(module),
+			DA:            makeBlobRPCClient(module),
 			Logger:        zerolog.Nop(),
 			Namespace:     "ns",
 			DataNamespace: "ns",
@@ -309,7 +309,7 @@ func TestClient_BatchProcessing(t *testing.T) {
 	t.Run("Validate rejects mismatched ids and proofs", func(t *testing.T) {
 		module := mocks.NewMockBlobModule(t)
 		cl := NewClient(Config{
-			Client:        makeBlobRPCClient(module),
+			DA:            makeBlobRPCClient(module),
 			Logger:        zerolog.Nop(),
 			Namespace:     "ns",
 			DataNamespace: "ns",
@@ -325,7 +325,7 @@ func TestClient_BatchSize_Configuration(t *testing.T) {
 	t.Run("defaults to DefaultRetrieveBatchSize", func(t *testing.T) {
 		module := mocks.NewMockBlobModule(t)
 		cl := NewClient(Config{
-			Client:        makeBlobRPCClient(module),
+			DA:            makeBlobRPCClient(module),
 			Logger:        zerolog.Nop(),
 			Namespace:     "ns",
 			DataNamespace: "ns",
@@ -336,7 +336,7 @@ func TestClient_BatchSize_Configuration(t *testing.T) {
 	t.Run("respects custom batch size", func(t *testing.T) {
 		module := mocks.NewMockBlobModule(t)
 		cl := NewClient(Config{
-			Client:            makeBlobRPCClient(module),
+			DA:                makeBlobRPCClient(module),
 			Logger:            zerolog.Nop(),
 			Namespace:         "ns",
 			DataNamespace:     "ns",
@@ -348,7 +348,7 @@ func TestClient_BatchSize_Configuration(t *testing.T) {
 	t.Run("negative batch size defaults", func(t *testing.T) {
 		module := mocks.NewMockBlobModule(t)
 		cl := NewClient(Config{
-			Client:            makeBlobRPCClient(module),
+			DA:                makeBlobRPCClient(module),
 			Logger:            zerolog.Nop(),
 			Namespace:         "ns",
 			DataNamespace:     "ns",

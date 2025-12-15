@@ -50,7 +50,7 @@ func NewDAClient(
 	logger zerolog.Logger,
 ) FullDAClient {
 	return da.NewClient(da.Config{
-		Client:                   blobRPC,
+		DA:                       blobRPC,
 		Logger:                   logger,
 		Namespace:                config.DA.GetNamespace(),
 		DefaultTimeout:           config.DA.RequestTimeout.Duration,

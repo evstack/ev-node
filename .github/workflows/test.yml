@@ -44,31 +44,6 @@ jobs:
         uses: actions/setup-go@v6
         with:
           go-version-file: ./go.mod
-      - name: Compute image tag
-        id: image-tag
-        shell: bash
-        run: |
-          if [ -n "${{ github.event.pull_request.number }}" ]; then
-            TAG="pr-${{ github.event.pull_request.number }}"
-          else
-            TAG="${{ github.ref_name }}"
-            TAG="${TAG//\//-}"
-          fi
-          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
-      - name: Log in to GHCR
-        uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-      - name: Pull and tag ev-node-testapp image for tests
-        shell: bash
-        run: |
-          set -euo pipefail
-          SRC_IMAGE="ghcr.io/${{ github.repository_owner }}/ev-node-testapp:${{ steps.image-tag.outputs.tag }}"
-          echo "Pulling $SRC_IMAGE"
-          docker pull "$SRC_IMAGE"
-          docker tag "$SRC_IMAGE" evstack:local-dev
       - name: Run unit test
         run: make test-cover
       - name: Upload unit test coverage report

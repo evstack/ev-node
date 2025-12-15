@@ -20,13 +20,12 @@ const DefaultRetrieveBatchSize = 150
 
 // Config contains configuration for the blob DA client.
 type Config struct {
-	Client                   *blobrpc.Client
+	DA                       *blobrpc.Client
 	Logger                   zerolog.Logger
 	DefaultTimeout           time.Duration
 	Namespace                string
 	DataNamespace            string
 	ForcedInclusionNamespace string
-	MaxBlobSize              uint64
 	RetrieveBatchSize        int
 }
 
@@ -40,7 +39,6 @@ type client struct {
 	dataNamespaceBz    []byte
 	forcedNamespaceBz  []byte
 	hasForcedNamespace bool
-	maxBlobSize        uint64
 	batchSize          int
 }
 
@@ -49,14 +47,11 @@ var _ FullClient = (*client)(nil)
 
 // NewClient creates a new blob client wrapper with pre-calculated namespace bytes.
 func NewClient(cfg Config) FullClient {
-	if cfg.Client == nil {
+	if cfg.DA == nil {
 		return nil
 	}
 	if cfg.DefaultTimeout == 0 {
 		cfg.DefaultTimeout = 60 * time.Second
-	}
-	if cfg.MaxBlobSize == 0 {
-		cfg.MaxBlobSize = blobrpc.DefaultMaxBlobSize
 	}
 	if cfg.RetrieveBatchSize <= 0 {
 		cfg.RetrieveBatchSize = DefaultRetrieveBatchSize
@@ -69,14 +64,13 @@ func NewClient(cfg Config) FullClient {
 	}
 
 	return &client{
-		blobAPI:            &cfg.Client.Blob,
+		blobAPI:            &cfg.DA.Blob,
 		logger:             cfg.Logger.With().Str("component", "da_client").Logger(),
 		defaultTimeout:     cfg.DefaultTimeout,
 		namespaceBz:        datypes.NamespaceFromString(cfg.Namespace).Bytes(),
 		dataNamespaceBz:    datypes.NamespaceFromString(cfg.DataNamespace).Bytes(),
 		forcedNamespaceBz:  forcedNamespaceBz,
 		hasForcedNamespace: hasForcedNamespace,
-		maxBlobSize:        cfg.MaxBlobSize,
 		batchSize:          cfg.RetrieveBatchSize,
 	}
 }
@@ -101,7 +95,7 @@ func (c *client) Submit(ctx context.Context, data [][]byte, _ float64, namespace
 
 	blobs := make([]*blobrpc.Blob, len(data))
 	for i, raw := range data {
-		if uint64(len(raw)) > c.maxBlobSize {
+		if uint64(len(raw)) > blobrpc.DefaultMaxBlobSize {
 			return datypes.ResultSubmit{
 				BaseResult: datypes.BaseResult{
 					Code:    datypes.StatusTooBig,
