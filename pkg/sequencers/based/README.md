@@ -59,7 +59,7 @@ When at an epoch end, the retriever fetches transactions from **all DA blocks in
 3. Fetches forced inclusion blobs from `epochEnd`
 4. Returns all transactions as a single `ForcedInclusionEvent`
 
-### Why Epoch-Based?
+### Why Epoch-Based
 
 - **Efficiency**: Reduces the number of DA queries
 - **Batching**: Allows processing multiple DA blocks worth of transactions together

@@ -35,6 +35,9 @@ jobs:
   unit_test:
     name: Run Unit Tests
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: read
     steps:
       - uses: actions/checkout@v6
       - name: set up go
@@ -44,7 +47,7 @@ jobs:
       - name: Run unit test
         run: make test-cover
       - name: Upload unit test coverage report
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v6
         with:
           name: unit-test-coverage-report-${{ github.sha }}
           path: ./coverage.txt
@@ -61,7 +64,7 @@ jobs:
       - name: Run integration test
         run: make test-integration-cover
       - name: Upload integration test coverage report
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v6
         with:
           name: integration-test-coverage-report-${{ github.sha }}
           path: ./node/coverage.txt
@@ -70,12 +73,26 @@ jobs:
     name: Run E2E System Tests
     needs: build_all-apps
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: read
     steps:
       - uses: actions/checkout@v6
       - name: set up go
         uses: actions/setup-go@v6
         with:
           go-version-file: ./go.mod
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+      - name: Build evstack:local-dev (cached)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: apps/testapp/Dockerfile
+          load: true
+          tags: evstack:local-dev
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
       - name: E2E Tests
         run: make test-e2e
 
@@ -101,12 +118,12 @@ jobs:
     steps:
       - uses: actions/checkout@v6
       - name: Download unit test coverage report
-        uses: actions/download-artifact@v6
+        uses: actions/download-artifact@v7
         with:
           name: unit-test-coverage-report-${{ github.sha }}
           path: ./unit-coverage
       - name: Download integration test coverage report
-        uses: actions/download-artifact@v6
+        uses: actions/download-artifact@v7
         with:
           name: integration-test-coverage-report-${{ github.sha }}
           path: ./integration-coverage

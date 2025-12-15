@@ -50,9 +50,9 @@ The project uses a zero-dependency core package pattern:
 
 ### Key Interfaces
 
-- **Execution** (`core/execution/execution.go`) - State transition interface and types
-- **Sequencer** (`core/sequencer/sequencing.go`) - Orders transactions
-- **DA** (`core/da/types.go`) - Data availability layer abstraction
+- **Executor** (`core/executor.go`) - Handles state transitions
+- **Sequencer** (`core/sequencer.go`) - Orders transactions
+- **DA** (`pkg/da/types`) - Data availability layer abstraction
 
 ### Modular Design
 
@@ -120,7 +120,7 @@ go test -race ./package/...
 
 ### Adding a New DA Layer
 
-1. Implement the `DA` interface from `core/da/types.go`
+1. Implement the `DA` interface from `pkg/da/types`
 2. Add configuration in the appropriate config package
 3. Wire it up in the initialization code
 4. Add tests following existing patterns

@@ -14,8 +14,8 @@ import (
 	"github.com/rs/zerolog"
 
 	"github.com/evstack/ev-node/block"
-	coreda "github.com/evstack/ev-node/core/da"
 	coresequencer "github.com/evstack/ev-node/core/sequencer"
+	datypes "github.com/evstack/ev-node/pkg/da/types"
 	"github.com/evstack/ev-node/pkg/genesis"
 	seqcommon "github.com/evstack/ev-node/pkg/sequencers/common"
 )
@@ -36,8 +36,8 @@ type Sequencer struct {
 	logger      zerolog.Logger
 	proposer    bool
 
-	Id []byte
-	da coreda.DA
+	Id         []byte
+	daVerifier block.DAVerifier
 
 	batchTime time.Duration
 	queue     *BatchQueue // single queue for immediate availability
@@ -56,7 +56,7 @@ func NewSequencer(
 	ctx context.Context,
 	logger zerolog.Logger,
 	db ds.Batching,
-	da coreda.DA,
+	daVerifier block.DAVerifier,
 	id []byte,
 	batchTime time.Duration,
 	proposer bool,
@@ -66,7 +66,7 @@ func NewSequencer(
 ) (*Sequencer, error) {
 	s := &Sequencer{
 		logger:          logger,
-		da:              da,
+		daVerifier:      daVerifier,
 		batchTime:       batchTime,
 		Id:              id,
 		queue:           NewBatchQueue(db, "batches", maxQueueSize),
@@ -266,12 +266,12 @@ func (c *Sequencer) VerifyBatch(ctx context.Context, req coresequencer.VerifyBat
 	}
 
 	if !c.proposer {
-		proofs, err := c.da.GetProofs(ctx, req.BatchData, c.Id)
+		proofs, err := c.daVerifier.GetProofs(ctx, req.BatchData, c.Id)
 		if err != nil {
 			return nil, fmt.Errorf("failed to get proofs: %w", err)
 		}
 
-		valid, err := c.da.Validate(ctx, req.BatchData, proofs, c.Id)
+		valid, err := c.daVerifier.Validate(ctx, req.BatchData, proofs, c.Id)
 		if err != nil {
 			return nil, fmt.Errorf("failed to validate proof: %w", err)
 		}
@@ -313,7 +313,7 @@ func (c *Sequencer) fetchNextDAEpoch(ctx context.Context, maxBytes uint64) (uint
 
 	forcedTxsEvent, err := c.fiRetriever.RetrieveForcedIncludedTxs(ctx, currentDAHeight)
 	if err != nil {
-		if errors.Is(err, coreda.ErrHeightFromFuture) {
+		if errors.Is(err, datypes.ErrHeightFromFuture) {
 			c.logger.Debug().
 				Uint64("da_height", currentDAHeight).
 				Msg("DA height from future, waiting for DA to produce block")
