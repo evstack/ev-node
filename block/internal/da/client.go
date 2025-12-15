@@ -174,6 +174,7 @@ func (c *client) Submit(ctx context.Context, data [][]byte, _ float64, namespace
 	for i, b := range blobs {
 		ids[i] = blobrpc.MakeID(height, b.Commitment)
 	}
+	c.logger.Debug().Int("num_ids", len(ids)).Msg("DA submission successful")
 
 	return datypes.ResultSubmit{
 		BaseResult: datypes.BaseResult{
@@ -220,6 +221,8 @@ func (c *client) getIDs(ctx context.Context, height uint64, namespace []byte) ([
 	for i, b := range blobs {
 		ids[i] = blobrpc.MakeID(height, b.Commitment)
 	}
+
+	c.logger.Debug().Int("num_ids", len(ids)).Msg("fetched blob IDs")
 
 	return ids, nil
 }
