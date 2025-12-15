@@ -20,7 +20,6 @@ import (
 	"github.com/evstack/ev-node/pkg/genesis"
 	"github.com/evstack/ev-node/pkg/signer"
 	"github.com/evstack/ev-node/pkg/store"
-	"github.com/evstack/ev-node/types"
 )
 
 // Components represents the block-related components
