@@ -200,7 +200,7 @@ func (s *Syncer) initializeState() error {
 			AppHash:         stateRoot,
 		}
 	}
-	if state.DAHeight < s.genesis.DAStartHeight {
+	if state.DAHeight != 0 && state.DAHeight < s.genesis.DAStartHeight { // state.DaHeight can be 0 if the node starts from sequencer state
 		return fmt.Errorf("DA height (%d) is lower than DA start height (%d)", state.DAHeight, s.genesis.DAStartHeight)
 	}
 	s.SetLastState(state)
