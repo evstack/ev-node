@@ -194,7 +194,7 @@ func TestForcedInclusionRetriever_RetrieveForcedIncludedTxs_MultiHeightEpoch(t *
 }
 
 func TestForcedInclusionRetriever_processForcedInclusionBlobs(t *testing.T) {
-	client := mocks.NewMockInterface(t)
+	client := mocks.NewMockClient(t)
 
 	gen := genesis.Genesis{
 		DAStartHeight:          100,
