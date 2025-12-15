@@ -1,16 +1,10 @@
 package sync
 
 import (
-	"encoding/binary"
-	"fmt"
 	"time"
 
 	"github.com/celestiaorg/go-header"
-	"github.com/evstack/ev-node/types"
 )
-
-type SignedHeaderWithDAHint = DAHeightHintContainer[*types.SignedHeader]
-type DataWithDAHint = DAHeightHintContainer[*types.Data]
 
 type DAHeightHintContainer[H header.Header[H]] struct {
 	Entry        H
@@ -62,20 +56,9 @@ func (s *DAHeightHintContainer[H]) IsZero() bool {
 }
 
 func (s *DAHeightHintContainer[H]) MarshalBinary() ([]byte, error) {
-	bz, err := s.Entry.MarshalBinary()
-	if err != nil {
-		return nil, err
-	}
-	out := make([]byte, 8+len(bz))
-	binary.BigEndian.PutUint64(out, s.DAHeightHint)
-	copy(out[8:], bz)
-	return out, nil
+	return s.Entry.MarshalBinary()
 }
 
 func (s *DAHeightHintContainer[H]) UnmarshalBinary(data []byte) error {
-	if len(data) < 8 {
-		return fmt.Errorf("invalid length: %d", len(data))
-	}
-	s.DAHeightHint = binary.BigEndian.Uint64(data)
-	return s.Entry.UnmarshalBinary(data[8:])
+	return s.Entry.UnmarshalBinary(data)
 }

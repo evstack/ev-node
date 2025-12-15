@@ -39,8 +39,8 @@ func TestExecutor_BroadcasterIntegration(t *testing.T) {
 	}
 
 	// Create mock broadcasters
-	headerBroadcaster := common.NewMockBroadcaster[*types.SignedHeader](t)
-	dataBroadcaster := common.NewMockBroadcaster[*types.Data](t)
+	headerBroadcaster := common.NewMockBroadcaster[*types.P2PSignedHeader](t)
+	dataBroadcaster := common.NewMockBroadcaster[*types.P2PData](t)
 
 	// Create executor with broadcasters
 	executor, err := NewExecutor(

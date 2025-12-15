@@ -10,8 +10,8 @@ import (
 )
 
 type (
-	HeaderP2PBroadcaster = Broadcaster[*types.SignedHeader]
-	DataP2PBroadcaster   = Broadcaster[*types.Data]
+	HeaderP2PBroadcaster = Broadcaster[*types.P2PSignedHeader]
+	DataP2PBroadcaster   = Broadcaster[*types.P2PData]
 )
 
 // Broadcaster interface for P2P broadcasting

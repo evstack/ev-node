@@ -535,12 +535,12 @@ func (s *Syncer) processHeightEvent(event *common.DAHeightEvent) {
 		g.Go(func() error {
 			// broadcast header locally only — prevents spamming the p2p network with old height notifications,
 			// allowing the syncer to update its target and fill missing blocks
-			return s.headerStore.WriteToStoreAndBroadcast(ctx, event.Header, pubsub.WithLocalPublication(true))
+			return s.headerStore.WriteToStoreAndBroadcast(ctx, &types.P2PSignedHeader{SignedHeader: *event.Header}, pubsub.WithLocalPublication(true))
 		})
 		g.Go(func() error {
 			// broadcast data locally only — prevents spamming the p2p network with old height notifications,
 			// allowing the syncer to update its target and fill missing blocks
-			return s.dataStore.WriteToStoreAndBroadcast(ctx, event.Data, pubsub.WithLocalPublication(true))
+			return s.dataStore.WriteToStoreAndBroadcast(ctx, &types.P2PData{Data: *event.Data}, pubsub.WithLocalPublication(true))
 		})
 		if err := g.Wait(); err != nil {
 			s.logger.Error().Err(err).Msg("failed to append event header and/or data to p2p store")

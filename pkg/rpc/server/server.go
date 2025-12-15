@@ -14,7 +14,6 @@ import (
 	"connectrpc.com/grpcreflect"
 	goheader "github.com/celestiaorg/go-header"
 	coreda "github.com/evstack/ev-node/core/da"
-	"github.com/evstack/ev-node/pkg/sync"
 	ds "github.com/ipfs/go-datastore"
 	"github.com/rs/zerolog"
 	"golang.org/x/net/http2"
@@ -35,16 +34,16 @@ var _ rpc.StoreServiceHandler = (*StoreServer)(nil)
 // StoreServer implements the StoreService defined in the proto file
 type StoreServer struct {
 	store       store.Store
-	headerStore goheader.Store[*sync.SignedHeaderWithDAHint]
-	dataStore   goheader.Store[*sync.DataWithDAHint]
+	headerStore goheader.Store[*types.P2PSignedHeader]
+	dataStore   goheader.Store[*types.P2PData]
 	logger      zerolog.Logger
 }
 
 // NewStoreServer creates a new StoreServer instance
 func NewStoreServer(
 	store store.Store,
-	headerStore goheader.Store[*sync.SignedHeaderWithDAHint],
-	dataStore goheader.Store[*sync.DataWithDAHint],
+	headerStore goheader.Store[*types.P2PSignedHeader],
+	dataStore goheader.Store[*types.P2PData],
 	logger zerolog.Logger,
 ) *StoreServer {
 	return &StoreServer{
@@ -371,8 +370,8 @@ func (p *P2PServer) GetNetInfo(
 // NewServiceHandler creates a new HTTP handler for Store, P2P and Config services
 func NewServiceHandler(
 	store store.Store,
-	headerStore goheader.Store[*sync.SignedHeaderWithDAHint],
-	dataStore goheader.Store[*sync.DataWithDAHint],
+	headerStore goheader.Store[*types.P2PSignedHeader],
+	dataStore goheader.Store[*types.P2PData],
 	peerManager p2p.P2PRPC,
 	proposerAddress []byte,
 	logger zerolog.Logger,

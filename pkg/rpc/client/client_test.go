@@ -8,7 +8,6 @@ import (
 	"time"
 
 	goheader "github.com/celestiaorg/go-header"
-	"github.com/evstack/ev-node/pkg/sync"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/multiformats/go-multiaddr"
 	"github.com/rs/zerolog"
@@ -29,8 +28,8 @@ import (
 func setupTestServer(
 	t *testing.T,
 	mockStore *mocks.MockStore,
-	headerStore goheader.Store[*sync.SignedHeaderWithDAHint],
-	dataStore goheader.Store[*sync.DataWithDAHint],
+	headerStore goheader.Store[*types.P2PSignedHeader],
+	dataStore goheader.Store[*types.P2PData],
 	mockP2P *mocks.MockP2PRPC,
 ) (*httptest.Server, *Client) {
 	t.Helper()
@@ -107,19 +106,19 @@ func TestClientGetMetadata(t *testing.T) {
 func TestClientGetP2PStoreInfo(t *testing.T) {
 	mockStore := mocks.NewMockStore(t)
 	mockP2P := mocks.NewMockP2PRPC(t)
-	headerStore := headerstoremocks.NewMockStore[*sync.SignedHeaderWithDAHint](t)
-	dataStore := headerstoremocks.NewMockStore[*sync.DataWithDAHint](t)
+	headerStore := headerstoremocks.NewMockStore[*types.P2PSignedHeader](t)
+	dataStore := headerstoremocks.NewMockStore[*types.P2PData](t)
 
 	now := time.Now().UTC()
 
-	headerHead := &sync.SignedHeaderWithDAHint{Entry: testSignedHeader(10, now)}
-	headerTail := &sync.SignedHeaderWithDAHint{Entry: testSignedHeader(5, now.Add(-time.Minute))}
+	headerHead := testSignedHeader(10, now)
+	headerTail := testSignedHeader(5, now.Add(-time.Minute))
 	headerStore.On("Height").Return(uint64(10))
 	headerStore.On("Head", mock.Anything).Return(headerHead, nil)
 	headerStore.On("Tail", mock.Anything).Return(headerTail, nil)
 
-	dataHead := &sync.DataWithDAHint{Entry: testData(8, now.Add(-30*time.Second))}
-	dataTail := &sync.DataWithDAHint{Entry: testData(4, now.Add(-2*time.Minute))}
+	dataHead := testData(8, now.Add(-30*time.Second))
+	dataTail := testData(4, now.Add(-2*time.Minute))
 	dataStore.On("Height").Return(uint64(8))
 	dataStore.On("Head", mock.Anything).Return(dataHead, nil)
 	dataStore.On("Tail", mock.Anything).Return(dataTail, nil)
@@ -252,27 +251,31 @@ func TestClientGetNamespace(t *testing.T) {
 	require.NotEmpty(t, namespaceResp.DataNamespace)
 }
 
-func testSignedHeader(height uint64, ts time.Time) *types.SignedHeader {
-	return &types.SignedHeader{
-		Header: types.Header{
-			BaseHeader: types.BaseHeader{
-				Height:  height,
-				Time:    uint64(ts.UnixNano()),
-				ChainID: "test-chain",
+func testSignedHeader(height uint64, ts time.Time) *types.P2PSignedHeader {
+	return &types.P2PSignedHeader{
+		SignedHeader: types.SignedHeader{
+			Header: types.Header{
+				BaseHeader: types.BaseHeader{
+					Height:  height,
+					Time:    uint64(ts.UnixNano()),
+					ChainID: "test-chain",
+				},
+				ProposerAddress: []byte{0x01},
+				DataHash:        []byte{0x02},
+				AppHash:         []byte{0x03},
 			},
-			ProposerAddress: []byte{0x01},
-			DataHash:        []byte{0x02},
-			AppHash:         []byte{0x03},
 		},
 	}
 }
 
-func testData(height uint64, ts time.Time) *types.Data {
-	return &types.Data{
-		Metadata: &types.Metadata{
-			ChainID: "test-chain",
-			Height:  height,
-			Time:    uint64(ts.UnixNano()),
+func testData(height uint64, ts time.Time) *types.P2PData {
+	return &types.P2PData{
+		Data: types.Data{
+			Metadata: &types.Metadata{
+				ChainID: "test-chain",
+				Height:  height,
+				Time:    uint64(ts.UnixNano()),
+			},
 		},
 	}
 }

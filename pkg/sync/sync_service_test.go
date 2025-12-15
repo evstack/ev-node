@@ -73,12 +73,12 @@ func TestHeaderSyncServiceRestart(t *testing.T) {
 	signedHeader, err := types.GetRandomSignedHeaderCustom(&headerConfig, genesisDoc.ChainID)
 	require.NoError(t, err)
 	require.NoError(t, signedHeader.Validate())
-	require.NoError(t, svc.WriteToStoreAndBroadcast(ctx, signedHeader))
+	require.NoError(t, svc.WriteToStoreAndBroadcast(ctx, &types.P2PSignedHeader{SignedHeader: *signedHeader}))
 
 	for i := genesisDoc.InitialHeight + 1; i < 2; i++ {
 		signedHeader = nextHeader(t, signedHeader, genesisDoc.ChainID, noopSigner)
 		t.Logf("signed header: %d", i)
-		require.NoError(t, svc.WriteToStoreAndBroadcast(ctx, signedHeader))
+		require.NoError(t, svc.WriteToStoreAndBroadcast(ctx, &types.P2PSignedHeader{SignedHeader: *signedHeader}))
 	}
 
 	// then stop and restart service
@@ -109,7 +109,7 @@ func TestHeaderSyncServiceRestart(t *testing.T) {
 	for i := signedHeader.Height() + 1; i < 2; i++ {
 		signedHeader = nextHeader(t, signedHeader, genesisDoc.ChainID, noopSigner)
 		t.Logf("signed header: %d", i)
-		require.NoError(t, svc.WriteToStoreAndBroadcast(ctx, signedHeader))
+		require.NoError(t, svc.WriteToStoreAndBroadcast(ctx, &types.P2PSignedHeader{SignedHeader: *signedHeader}))
 	}
 	cancel()
 }
@@ -164,7 +164,7 @@ func TestHeaderSyncServiceInitFromHigherHeight(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, signedHeader.Validate())
 
-	require.NoError(t, svc.WriteToStoreAndBroadcast(ctx, signedHeader))
+	require.NoError(t, svc.WriteToStoreAndBroadcast(ctx, &types.P2PSignedHeader{SignedHeader: *signedHeader}))
 }
 
 func TestDAHintStorageHeader(t *testing.T) {
@@ -215,7 +215,7 @@ func TestDAHintStorageHeader(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, signedHeader.Validate())
 
-	require.NoError(t, headerSvc.WriteToStoreAndBroadcast(ctx, signedHeader))
+	require.NoError(t, headerSvc.WriteToStoreAndBroadcast(ctx, &types.P2PSignedHeader{SignedHeader: *signedHeader}))
 
 	daHeight := uint64(100)
 	require.NoError(t, headerSvc.AppendDAHint(ctx, daHeight, signedHeader.Hash()))
@@ -306,7 +306,7 @@ func TestDAHintStorageData(t *testing.T) {
 		},
 	}
 
-	require.NoError(t, dataSvc.WriteToStoreAndBroadcast(ctx, &data))
+	require.NoError(t, dataSvc.WriteToStoreAndBroadcast(ctx, &types.P2PData{Data: data}))
 
 	daHeight := uint64(100)
 	require.NoError(t, dataSvc.AppendDAHint(ctx, daHeight, data.Hash()))
