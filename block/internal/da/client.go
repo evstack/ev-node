@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/celestiaorg/go-square/v3/share"
+	"github.com/evstack/ev-node/block/internal/common"
 	blobrpc "github.com/evstack/ev-node/pkg/da/jsonrpc"
 	"github.com/rs/zerolog"
 
@@ -86,7 +87,7 @@ func (c *client) Submit(ctx context.Context, data [][]byte, _ float64, namespace
 
 	blobs := make([]*blobrpc.Blob, len(data))
 	for i, raw := range data {
-		if uint64(len(raw)) > blobrpc.DefaultMaxBlobSize {
+		if uint64(len(raw)) > common.DefaultMaxBlobSize {
 			return datypes.ResultSubmit{
 				BaseResult: datypes.BaseResult{
 					Code:    datypes.StatusTooBig,

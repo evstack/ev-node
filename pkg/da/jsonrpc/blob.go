@@ -24,9 +24,6 @@ type Commitment []byte
 // This mirrors celestia-node's blob.Proof shape.
 type Proof []*nmt.Proof
 
-// DefaultMaxBlobSize is the default maximum blob size used by celestia-app (32 MiB).
-const DefaultMaxBlobSize = 32 * 1_048_576 // bytes
-
 // subtreeRootThreshold is copied from celestia-app/v6 appconsts.SubtreeRootThreshold.
 // It controls the branching factor when generating commitments.
 const subtreeRootThreshold = 64
