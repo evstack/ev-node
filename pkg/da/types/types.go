@@ -28,14 +28,12 @@ const (
 type Blob = []byte
 
 // ID should contain serialized data required by the implementation to find blob in DA.
-// ID should contain serialized data required by the implementation to find blob in Data Availability layer.
 type ID = []byte
 
 // Commitment should contain serialized cryptographic commitment to Blob value.
 type Commitment = []byte
 
 // Proof should contain serialized proof of inclusion (publication) of Blob in DA.
-// Proof should contain serialized proof of inclusion (publication) of Blob in Data Availability layer.
 type Proof = []byte
 
 // GetIDsResult holds the result of GetIDs call: IDs and timestamp of corresponding block.
@@ -49,7 +47,7 @@ type ResultSubmit struct {
 	BaseResult
 }
 
-// ResultRetrieveHeaders contains batch of block headers returned from DA layer client.
+// ResultRetrieve contains batch of block data returned from DA layer client.
 type ResultRetrieve struct {
 	BaseResult
 	// Data is the block data retrieved from Data Availability Layer.

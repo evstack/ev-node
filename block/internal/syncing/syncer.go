@@ -18,8 +18,6 @@ import (
 	"github.com/rs/zerolog"
 	"golang.org/x/sync/errgroup"
 
-	seqcommon "github.com/evstack/ev-node/sequencers/common"
-
 	"github.com/evstack/ev-node/block/internal/cache"
 	"github.com/evstack/ev-node/block/internal/common"
 	"github.com/evstack/ev-node/block/internal/da"
@@ -737,7 +735,7 @@ func hashTx(tx []byte) string {
 // It estimates fullness based on total data size.
 // This is a heuristic - actual limits may vary by execution layer.
 func (s *Syncer) calculateBlockFullness(data *types.Data) float64 {
-	const maxDataSize = seqcommon.AbsoluteMaxBlobSize
+	const maxDataSize = common.DefaultMaxBlobSize
 
 	var fullness float64
 	count := 0
