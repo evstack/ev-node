@@ -5,20 +5,18 @@ import (
 	"encoding/base64"
 	"fmt"
 	"io"
-	"net"
 	"net/http"
 	"os"
 	"strings"
 	"testing"
 	"time"
 
-	cosmosmath "cosmossdk.io/math"
 	tastoradocker "github.com/celestiaorg/tastora/framework/docker"
 	"github.com/celestiaorg/tastora/framework/docker/container"
 	tastoracosmos "github.com/celestiaorg/tastora/framework/docker/cosmos"
 	tastorada "github.com/celestiaorg/tastora/framework/docker/dataavailability"
 	"github.com/celestiaorg/tastora/framework/docker/evstack"
-	"github.com/celestiaorg/tastora/framework/testutil/wait"
+	"github.com/celestiaorg/tastora/framework/testutil/query"
 	tastoratypes "github.com/celestiaorg/tastora/framework/types"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	"github.com/cosmos/cosmos-sdk/types/module/testutil"
@@ -123,75 +121,25 @@ func TestEvNode_PostsToDA(t *testing.T) {
 	bridgeWallet, err := bridge.GetWallet()
 	require.NoError(t, err, "bridge wallet")
 
-	// 3) Wait for chain to be live then fund bridge wallet
-	validatorNode := chain.GetNodes()[0].(*tastoracosmos.ChainNode)
-
-	err = wait.ForCondition(ctx, 2*time.Minute, time.Second, func() (bool, error) {
-		c, err := validatorNode.GetRPCClient()
-		if err != nil {
-			return false, nil
-		}
-		if _, err := c.Status(ctx); err != nil {
-			return false, nil
-		}
-		h, err := validatorNode.Height(ctx)
-		if err != nil {
-			return false, nil
-		}
-		return h >= 3, nil
-	})
-	require.NoError(t, err, "validator RPC ready")
-
-	// fund the bridge wallet via CLI to avoid JSON-RPC decoding issues
-	faucetKey := "faucet"
+	faucet := chain.GetFaucetWallet()
 	sendAmt := sdk.NewInt64Coin(chain.Config.Denom, 5_000_000_000)
-	rpcNode := fmt.Sprintf("tcp://%s:26657", coreHost)
 
-	cmd := []string{
-		validatorNode.BinaryName,
-		"tx", "bank", "send",
-		faucetKey,
-		bridgeWallet.FormattedAddress,
-		sendAmt.String(),
-		"--chain-id", chainID,
-		"--home", validatorNode.HomeDir(),
-		"--keyring-backend", "test",
-		"--node", rpcNode,
-		"--fees", fmt.Sprintf("1000%s", chain.Config.Denom),
-		"--broadcast-mode", "sync",
-		"--yes",
-	}
-	stdout, stderr, err := validatorNode.Exec(ctx, cmd, nil)
-	require.NoErrorf(t, err, "fund bridge wallet via CLI: %s", string(stderr))
-	require.Contains(t, string(stdout), "code: 0", "bank send succeeded")
+	bankSend := banktypes.NewMsgSend(
+		faucet.Address,
+		bridgeWallet.Address,
+		sdk.NewCoins(sendAmt),
+	)
 
-	bankQuery := banktypes.NewQueryClient(chain.GetNode().GrpcConn)
-	err = wait.ForCondition(ctx, 2*time.Minute, time.Second, func() (bool, error) {
-		bal, err := bankQuery.Balance(ctx, &banktypes.QueryBalanceRequest{
-			Address: bridgeWallet.FormattedAddress,
-			Denom:   chain.Config.Denom,
-		})
-		if err != nil {
-			return false, nil
-		}
-		return bal.Balance != nil && bal.Balance.Amount.GT(cosmosmath.NewInt(0)), nil
-	})
-	require.NoError(t, err, "bridge wallet funded")
+	resp, err := chain.BroadcastMessages(ctx, faucet, bankSend)
+	require.NotZero(t, resp.Code, "broadcast response error should not be zero")
+	require.NoErrorf(t, err, "fund bridge wallet")
+
+	amnt, err := query.Balance(ctx, chain.GetNode().GrpcConn, bridgeWallet.FormattedAddress, chain.Config.Denom)
+	require.NoError(t, err)
+	require.NotZero(t, amnt.Int64(), "bridge wallet should have balance")
 
 	bridgeNetInfo, err := bridge.GetNetworkInfo(ctx)
 	require.NoError(t, err, "bridge network info")
-
-	// wait for celestia-node RPC port to become reachable
-	err = wait.ForCondition(ctx, 2*time.Minute, time.Second, func() (bool, error) {
-		hostPort := fmt.Sprintf("127.0.0.1:%s", bridgeNetInfo.External.Ports.RPC)
-		conn, err := net.DialTimeout("tcp", hostPort, 2*time.Second)
-		if err != nil {
-			return false, nil
-		}
-		_ = conn.Close()
-		return true, nil
-	})
-	require.NoError(t, err, "bridge RPC reachable")
 
 	// 4) Start EV Node (aggregator) pointing at DA
 	evNodeChain, err := evstack.NewChainBuilderWithTestName(t, uniqueTestName).
