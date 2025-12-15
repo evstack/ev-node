@@ -16,7 +16,7 @@ This design ensures that all transactions are force-included from DA, making the
 
 ### Key Interfaces
 
-The Based Sequencer implements the `Sequencer` interface from `core/sequencer.go`:
+The Based Sequencer implements the `Sequencer` interface from `core/sequencer/sequencing.go`:
 
 - `SubmitBatchTxs()` - No-op for based sequencer (transactions are not accepted)
 - `GetNextBatch()` - Retrieves the next batch from DA via forced inclusion

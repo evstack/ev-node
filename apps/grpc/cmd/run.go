@@ -23,9 +23,9 @@ import (
 	"github.com/evstack/ev-node/pkg/p2p"
 	"github.com/evstack/ev-node/pkg/p2p/key"
 	"github.com/evstack/ev-node/pkg/store"
-	"github.com/evstack/ev-node/sequencers/based"
-	seqcommon "github.com/evstack/ev-node/sequencers/common"
-	"github.com/evstack/ev-node/sequencers/single"
+	"github.com/evstack/ev-node/pkg/sequencers/based"
+	seqcommon "github.com/evstack/ev-node/pkg/sequencers/common"
+	"github.com/evstack/ev-node/pkg/sequencers/single"
 )
 
 const (

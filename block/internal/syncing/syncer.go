@@ -19,7 +19,7 @@ import (
 
 	coreda "github.com/evstack/ev-node/core/da"
 	coreexecutor "github.com/evstack/ev-node/core/execution"
-	seqcommon "github.com/evstack/ev-node/sequencers/common"
+	seqcommon "github.com/evstack/ev-node/pkg/sequencers/common"
 
 	"github.com/evstack/ev-node/block/internal/cache"
 	"github.com/evstack/ev-node/block/internal/common"

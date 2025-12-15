@@ -16,7 +16,7 @@ import (
 	rollcmd "github.com/evstack/ev-node/pkg/cmd"
 	rollconf "github.com/evstack/ev-node/pkg/config"
 	genesispkg "github.com/evstack/ev-node/pkg/genesis"
-	seqcommon "github.com/evstack/ev-node/sequencers/common"
+	seqcommon "github.com/evstack/ev-node/pkg/sequencers/common"
 	"github.com/evstack/ev-node/types"
 )
 
