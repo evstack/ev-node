@@ -134,7 +134,6 @@ func (d *DummyDA) Retrieve(_ context.Context, height uint64, namespace []byte) d
 	}
 }
 
-
 // GetHeaderNamespace returns the header namespace.
 func (d *DummyDA) GetHeaderNamespace() []byte { return []byte("hdr") }
 

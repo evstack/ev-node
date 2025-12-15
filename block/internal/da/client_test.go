@@ -148,7 +148,6 @@ func TestClient_SubmitOptionsMerge(t *testing.T) {
 	require.Equal(t, datypes.StatusSuccess, res.Code)
 }
 
-
 // TestClient_BatchProcessing tests the batching behavior for Get, GetProofs, and Validate.
 // Tests core batching logic (multiple batches, context cancellation, error propagation)
 // once using Get, then verifies GetProofs and Validate work correctly with batching.
