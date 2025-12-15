@@ -45,7 +45,7 @@ func TestEvNode_PostsToDA(t *testing.T) {
 
 	configurePrefixOnce.Do(configureCelestiaBech32Prefix)
 
-	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Minute)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	defer cancel()
 
 	uniqueTestName := fmt.Sprintf("%s-%d", t.Name(), time.Now().UnixNano())
@@ -133,7 +133,7 @@ func TestEvNode_PostsToDA(t *testing.T) {
 	)
 
 	resp, err := chain.BroadcastMessages(ctx, faucet, bankSend)
-	require.NotZero(t, resp.Code, "broadcast response error should not be zero")
+	require.Zero(t, resp.Code, "broadcast response error should not be zero")
 	require.NoErrorf(t, err, "fund bridge wallet")
 
 	amnt, err := query.Balance(ctx, chain.GetNode().GrpcConn, bridgeWallet.FormattedAddress, chain.Config.Denom)

@@ -1,4 +1,4 @@
-//go:build ev2e
+//go:build e2e
 
 package e2e
 
