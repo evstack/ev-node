@@ -16,6 +16,7 @@ import (
 
 	coreexecutor "github.com/evstack/ev-node/core/execution"
 	evconfig "github.com/evstack/ev-node/pkg/config"
+	"github.com/evstack/ev-node/test/testda"
 )
 
 // FullNodeTestSuite is a test suite for full node integration tests
@@ -321,8 +322,8 @@ func TestBatchQueueThrottlingWithDAFailure(t *testing.T) {
 	require.True(ok, "Expected DummyExecutor implementation")
 
 	// Cast dummyDA to our test double so we can simulate failures
-	dummyDAImpl, ok := dummyDA.(*dummyDAClient)
-	require.True(ok, "Expected dummyDAClient implementation")
+	dummyDAImpl, ok := dummyDA.(*testda.DummyDA)
+	require.True(ok, "Expected testda.DummyDA implementation")
 
 	// Create node with components
 	node, cleanup := createNodeWithCustomComponents(t, config, executor, sequencer, dummyDAImpl, p2pClient, ds, func() {})

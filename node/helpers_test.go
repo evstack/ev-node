@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"strings"
 	"sync"
-	"sync/atomic"
 	"testing"
 	"time"
 
@@ -15,7 +14,7 @@ import (
 	"github.com/evstack/ev-node/block"
 	coreexecutor "github.com/evstack/ev-node/core/execution"
 	coresequencer "github.com/evstack/ev-node/core/sequencer"
-	datypes "github.com/evstack/ev-node/pkg/da/types"
+	"github.com/evstack/ev-node/test/testda"
 	"github.com/ipfs/go-datastore"
 	dssync "github.com/ipfs/go-datastore/sync"
 	"github.com/libp2p/go-libp2p/core/peer"
@@ -43,182 +42,30 @@ const (
 	MockExecutorAddress = "127.0.0.1:40041"
 )
 
-// createTestComponents creates test components for node initialization
-type dummyDAClient struct {
-	backend *dummyDABackend
-}
-
-type dummyDABackend struct {
-	mu         sync.Mutex
-	height     uint64
-	maxBlobSz  uint64
-	blobs      map[uint64]map[string][][]byte // height -> namespace -> blobs
-	failSubmit atomic.Bool
-
-	tickerMu   sync.Mutex
-	tickerStop chan struct{}
-	tickerRefs atomic.Int32
-}
-
+// sharedDummyDA is a shared DummyDA instance for multi-node tests.
 var (
-	sharedDABackend     *dummyDABackend
-	sharedDABackendOnce sync.Once
+	sharedDummyDA     *testda.DummyDA
+	sharedDummyDAOnce sync.Once
 )
 
-func getSharedDABackend(maxBlobSize uint64) *dummyDABackend {
-	sharedDABackendOnce.Do(func() {
-		sharedDABackend = &dummyDABackend{
-			maxBlobSz: maxBlobSize,
-			blobs:     make(map[uint64]map[string][][]byte),
-		}
+func getSharedDummyDA(maxBlobSize uint64) *testda.DummyDA {
+	sharedDummyDAOnce.Do(func() {
+		sharedDummyDA = testda.New(testda.WithMaxBlobSize(maxBlobSize))
 	})
-
-	if maxBlobSize > 0 {
-		sharedDABackend.mu.Lock()
-		if sharedDABackend.maxBlobSz == 0 || maxBlobSize > sharedDABackend.maxBlobSz {
-			sharedDABackend.maxBlobSz = maxBlobSize
-		}
-		sharedDABackend.mu.Unlock()
-	}
-
-	return sharedDABackend
-}
-
-func (b *dummyDABackend) reset() {
-	b.mu.Lock()
-	b.height = 0
-	b.blobs = make(map[uint64]map[string][][]byte)
-	b.failSubmit.Store(false)
-	b.mu.Unlock()
-
-	b.tickerMu.Lock()
-	if b.tickerStop != nil {
-		close(b.tickerStop)
-		b.tickerStop = nil
-	}
-	b.tickerRefs.Store(0)
-	b.tickerMu.Unlock()
+	return sharedDummyDA
 }
 
 func resetSharedDummyDA() {
-	if sharedDABackend != nil {
-		sharedDABackend.reset()
+	if sharedDummyDA != nil {
+		sharedDummyDA.Reset()
 	}
 }
 
-func newDummyDAClient(maxBlobSize uint64) *dummyDAClient {
+func newDummyDAClient(maxBlobSize uint64) *testda.DummyDA {
 	if maxBlobSize == 0 {
-		maxBlobSize = 2 * 1024 * 1024
+		maxBlobSize = testda.DefaultMaxBlobSize
 	}
-	return &dummyDAClient{backend: getSharedDABackend(maxBlobSize)}
-}
-
-func (d *dummyDAClient) Submit(ctx context.Context, data [][]byte, gasPrice float64, namespace []byte, options []byte) datypes.ResultSubmit {
-	_ = ctx
-	_ = gasPrice
-	_ = options
-	if d.backend.failSubmit.Load() {
-		return datypes.ResultSubmit{BaseResult: datypes.BaseResult{Code: datypes.StatusError, Message: "simulated DA failure"}}
-	}
-	var blobSz uint64
-	for _, b := range data {
-		if uint64(len(b)) > d.backend.maxBlobSz {
-			return datypes.ResultSubmit{BaseResult: datypes.BaseResult{Code: datypes.StatusTooBig, Message: datypes.ErrBlobSizeOverLimit.Error()}}
-		}
-		blobSz += uint64(len(b))
-	}
-	d.backend.mu.Lock()
-	d.backend.height++
-	height := d.backend.height
-	if d.backend.blobs[height] == nil {
-		d.backend.blobs[height] = make(map[string][][]byte)
-	}
-	nsKey := string(namespace)
-	d.backend.blobs[height][nsKey] = append(d.backend.blobs[height][nsKey], data...)
-	d.backend.mu.Unlock()
-	return datypes.ResultSubmit{BaseResult: datypes.BaseResult{Code: datypes.StatusSuccess, Height: height, BlobSize: blobSz, SubmittedCount: uint64(len(data)), Timestamp: time.Now()}}
-}
-
-func (d *dummyDAClient) Retrieve(ctx context.Context, height uint64, namespace []byte) datypes.ResultRetrieve {
-	_ = ctx
-	d.backend.mu.Lock()
-	byHeight := d.backend.blobs[height]
-	var blobs [][]byte
-	if byHeight != nil {
-		blobs = byHeight[string(namespace)]
-	}
-	d.backend.mu.Unlock()
-
-	if len(blobs) == 0 {
-		return datypes.ResultRetrieve{BaseResult: datypes.BaseResult{Code: datypes.StatusNotFound, Height: height, Message: datypes.ErrBlobNotFound.Error(), Timestamp: time.Now()}}
-	}
-
-	ids := make([][]byte, len(blobs))
-	return datypes.ResultRetrieve{
-		BaseResult: datypes.BaseResult{Code: datypes.StatusSuccess, Height: height, IDs: ids, Timestamp: time.Now()},
-		Data:       blobs,
-	}
-}
-func (d *dummyDAClient) RetrieveHeaders(ctx context.Context, height uint64) datypes.ResultRetrieve {
-	return d.Retrieve(ctx, height, d.GetHeaderNamespace())
-}
-func (d *dummyDAClient) RetrieveData(ctx context.Context, height uint64) datypes.ResultRetrieve {
-	return d.Retrieve(ctx, height, d.GetDataNamespace())
-}
-func (d *dummyDAClient) RetrieveForcedInclusion(ctx context.Context, height uint64) datypes.ResultRetrieve {
-	return d.Retrieve(ctx, height, d.GetForcedInclusionNamespace())
-}
-
-func (d *dummyDAClient) GetHeaderNamespace() []byte          { return []byte("hdr") }
-func (d *dummyDAClient) GetDataNamespace() []byte            { return []byte("data") }
-func (d *dummyDAClient) GetForcedInclusionNamespace() []byte { return nil }
-func (d *dummyDAClient) HasForcedInclusionNamespace() bool   { return false }
-func (d *dummyDAClient) Get(ctx context.Context, ids []datypes.ID, namespace []byte) ([]datypes.Blob, error) {
-	return nil, nil
-}
-func (d *dummyDAClient) GetProofs(ctx context.Context, ids []datypes.ID, namespace []byte) ([]datypes.Proof, error) {
-	return nil, nil
-}
-func (d *dummyDAClient) Validate(ctx context.Context, ids []datypes.ID, proofs []datypes.Proof, namespace []byte) ([]bool, error) {
-	return nil, nil
-}
-
-func (d *dummyDAClient) SetSubmitFailure(shouldFail bool) { d.backend.failSubmit.Store(shouldFail) }
-
-func (d *dummyDAClient) StartHeightTicker(interval time.Duration) func() {
-	d.backend.tickerMu.Lock()
-	if d.backend.tickerStop == nil {
-		d.backend.tickerStop = make(chan struct{})
-		stopCh := d.backend.tickerStop
-		go func() {
-			ticker := time.NewTicker(interval)
-			defer ticker.Stop()
-			for {
-				select {
-				case <-ticker.C:
-					d.backend.mu.Lock()
-					d.backend.height++
-					d.backend.mu.Unlock()
-				case <-stopCh:
-					return
-				}
-			}
-		}()
-	}
-	d.backend.tickerRefs.Add(1)
-	d.backend.tickerMu.Unlock()
-
-	return func() {
-		if d.backend.tickerRefs.Add(-1) != 0 {
-			return
-		}
-		d.backend.tickerMu.Lock()
-		defer d.backend.tickerMu.Unlock()
-		if d.backend.tickerStop != nil {
-			close(d.backend.tickerStop)
-			d.backend.tickerStop = nil
-		}
-	}
+	return getSharedDummyDA(maxBlobSize)
 }
 
 func createTestComponents(t *testing.T, config evconfig.Config) (coreexecutor.Executor, coresequencer.Sequencer, block.DAClient, *p2p.Client, datastore.Batching, *key.NodeKey, func()) {
