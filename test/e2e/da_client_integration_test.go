@@ -1,3 +1,5 @@
+//go:build ev2e
+
 package e2e
 
 import (
