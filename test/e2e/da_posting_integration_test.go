@@ -19,6 +19,7 @@ import (
 	tastorada "github.com/celestiaorg/tastora/framework/docker/dataavailability"
 	"github.com/celestiaorg/tastora/framework/docker/evstack"
 	"github.com/celestiaorg/tastora/framework/testutil/query"
+	"github.com/celestiaorg/tastora/framework/testutil/wait"
 	tastoratypes "github.com/celestiaorg/tastora/framework/types"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	"github.com/cosmos/cosmos-sdk/types/module/testutil"
@@ -193,16 +194,16 @@ func TestEvNode_PostsToDA(t *testing.T) {
 	_, err = cli.Post(ctx, "/tx", key, value)
 	require.NoError(t, err)
 
-	waitFor(ctx, t, 30*time.Second, 2*time.Second, func() bool {
+	wait.ForCondition(ctx, 30*time.Second, 2*time.Second, func() (bool, error) {
 		res, err := cli.Get(ctx, "/kv?key="+key)
 		if err != nil {
-			return false
+			return false, nil
 		}
-		return string(res) == value
-	}, "ev-node should serve the kv value")
+		return string(res) == value, nil
+	})
 
 	// 6) Assert data landed on DA via celestia-node blob RPC (namespace ev-data)
-	daRPCAddr := fmt.Sprintf("http://127.0.0.1:%s", bridgeNetInfo.External.Ports.RPC)
+	daRPCAddr := fmt.Sprintf("http://%s", bridgeNetInfo.Internal.RPCAddress())
 	daClient, err := jsonrpc.NewClient(ctx, zerolog.Nop(), daRPCAddr, authToken, seqcommon.AbsoluteMaxBlobSize)
 	require.NoError(t, err, "new da client")
 	defer daClient.Close()
@@ -212,10 +213,10 @@ func TestEvNode_PostsToDA(t *testing.T) {
 	require.NoError(t, err, "tm rpc client")
 
 	var pfbHeight int64
-	waitFor(ctx, t, time.Minute, 5*time.Second, func() bool {
+	wait.ForCondition(ctx, time.Minute, 5*time.Second, func() (bool, error) {
 		res, err := tmRPC.TxSearch(ctx, "message.action='/celestia.blob.v1.MsgPayForBlobs'", false, nil, nil, "desc")
 		if err != nil || len(res.Txs) == 0 {
-			return false
+			return false, nil
 		}
 		dataNSB64 := base64.StdEncoding.EncodeToString(dataNamespace.Bytes())
 		for _, tx := range res.Txs {
@@ -229,17 +230,17 @@ func TestEvNode_PostsToDA(t *testing.T) {
 				for _, attr := range ev.Attributes {
 					if string(attr.Key) == "namespaces" && strings.Contains(string(attr.Value), dataNSB64) {
 						pfbHeight = tx.Height
-						return true
+						return true, nil
 					}
 				}
 			}
 		}
-		return false
-	}, "expected a PayForBlobs tx on celestia-app")
+		return false, nil
+	})
 
-	waitFor(ctx, t, time.Minute, 5*time.Second, func() bool {
+	wait.ForCondition(ctx, time.Minute, 5*time.Second, func() (bool, error) {
 		if pfbHeight == 0 {
-			return false
+			return false, nil
 		}
 		for h := pfbHeight; h <= pfbHeight+10; h++ {
 			ids, err := daClient.DA.GetIDs(ctx, uint64(h), dataNamespace.Bytes())
@@ -248,11 +249,11 @@ func TestEvNode_PostsToDA(t *testing.T) {
 				continue
 			}
 			if ids != nil && len(ids.IDs) > 0 {
-				return true
+				return true, nil
 			}
 		}
-		return false
-	}, "expected blob in DA for namespace ev-data")
+		return false, nil
+	})
 }
 
 // newHTTPClient is a small helper to avoid importing the docker_e2e client.
@@ -308,26 +309,4 @@ func getEnvDefault(key, def string) string {
 		return v
 	}
 	return def
-}
-
-// waitFor polls condition until it returns true, context is cancelled, or timeout expires.
-func waitFor(ctx context.Context, t *testing.T, timeout, interval time.Duration, condition func() bool, msg string) {
-	t.Helper()
-	deadline := time.Now().Add(timeout)
-	ticker := time.NewTicker(interval)
-	defer ticker.Stop()
-
-	for {
-		select {
-		case <-ctx.Done():
-			t.Fatalf("%s: context cancelled: %v", msg, ctx.Err())
-		case <-ticker.C:
-			if time.Now().After(deadline) {
-				t.Fatalf("%s: timed out after %v", msg, timeout)
-			}
-			if condition() {
-				return
-			}
-		}
-	}
 }
