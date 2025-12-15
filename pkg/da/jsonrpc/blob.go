@@ -45,12 +45,13 @@ type Blob struct {
 
 // NewBlobV0 builds a version 0 blob (the only version we currently need).
 func NewBlobV0(namespace libshare.Namespace, data []byte) (*Blob, error) {
-	return NewBlob(libshare.ShareVersionZero, namespace, data, nil)
+	return NewBlob(libshare.ShareVersionZero, namespace, data, nil, nil)
 }
 
 // NewBlob constructs a new blob from the provided namespace, data, signer, and share version.
+// If commitment is provided, it is used directly; otherwise it is computed.
 // This is a lightly adapted copy of celestia-node/blob.NewBlob.
-func NewBlob(shareVersion uint8, namespace libshare.Namespace, data, signer []byte) (*Blob, error) {
+func NewBlob(shareVersion uint8, namespace libshare.Namespace, data, signer, commitment []byte) (*Blob, error) {
 	if err := namespace.ValidateForBlob(); err != nil {
 		return nil, fmt.Errorf("invalid namespace: %w", err)
 	}
@@ -60,9 +61,15 @@ func NewBlob(shareVersion uint8, namespace libshare.Namespace, data, signer []by
 		return nil, fmt.Errorf("build blob: %w", err)
 	}
 
-	com, err := inclusion.CreateCommitment(libBlob, merkle.HashFromByteSlices, subtreeRootThreshold)
-	if err != nil {
-		return nil, fmt.Errorf("create commitment: %w", err)
+	var com Commitment
+	if len(commitment) > 0 {
+		com = commitment
+	} else {
+		c, err := inclusion.CreateCommitment(libBlob, merkle.HashFromByteSlices, subtreeRootThreshold)
+		if err != nil {
+			return nil, fmt.Errorf("create commitment: %w", err)
+		}
+		com = c
 	}
 
 	return &Blob{
@@ -125,7 +132,7 @@ func (b *Blob) UnmarshalJSON(data []byte) error {
 		return err
 	}
 
-	blob, err := NewBlob(jb.ShareVersion, ns, jb.Data, jb.Signer)
+	blob, err := NewBlob(jb.ShareVersion, ns, jb.Data, jb.Signer, jb.Commitment)
 	if err != nil {
 		return err
 	}

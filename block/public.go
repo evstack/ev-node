@@ -48,6 +48,7 @@ func NewDAClient(
 		DefaultTimeout:           config.DA.RequestTimeout.Duration,
 		DataNamespace:            config.DA.GetDataNamespace(),
 		ForcedInclusionNamespace: config.DA.GetForcedInclusionNamespace(),
+		RetrieveBatchSize:        config.DA.RetrieveBatchSize,
 	})
 }
 

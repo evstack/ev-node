@@ -15,6 +15,9 @@ import (
 	datypes "github.com/evstack/ev-node/pkg/da/types"
 )
 
+// DefaultRetrieveBatchSize is the default number of blob IDs to fetch per batch.
+const DefaultRetrieveBatchSize = 150
+
 // Config contains configuration for the blob DA client.
 type Config struct {
 	Client                   *blobrpc.Client
@@ -24,6 +27,7 @@ type Config struct {
 	DataNamespace            string
 	ForcedInclusionNamespace string
 	MaxBlobSize              uint64
+	RetrieveBatchSize        int
 }
 
 // client wraps the blob RPC with namespace handling and error mapping.
@@ -37,6 +41,7 @@ type client struct {
 	forcedNamespaceBz  []byte
 	hasForcedNamespace bool
 	maxBlobSize        uint64
+	batchSize          int
 }
 
 // Ensure client implements the block DA client interface.
@@ -52,6 +57,9 @@ func NewClient(cfg Config) Client {
 	}
 	if cfg.MaxBlobSize == 0 {
 		cfg.MaxBlobSize = blobrpc.DefaultMaxBlobSize
+	}
+	if cfg.RetrieveBatchSize <= 0 {
+		cfg.RetrieveBatchSize = DefaultRetrieveBatchSize
 	}
 
 	hasForcedNamespace := cfg.ForcedInclusionNamespace != ""
@@ -69,6 +77,7 @@ func NewClient(cfg Config) Client {
 		forcedNamespaceBz:  forcedNamespaceBz,
 		hasForcedNamespace: hasForcedNamespace,
 		maxBlobSize:        cfg.MaxBlobSize,
+		batchSize:          cfg.RetrieveBatchSize,
 	}
 }
 
@@ -310,26 +319,58 @@ func (c *client) HasForcedInclusionNamespace() bool {
 }
 
 // Get implements a minimal DA surface used by visualization: fetch blobs by IDs.
+// IDs are fetched in batches to avoid timeout issues with large ID sets.
+// Each batch gets its own timeout context to prevent cumulative timeout exhaustion.
 func (c *client) Get(ctx context.Context, ids []datypes.ID, namespace []byte) ([]datypes.Blob, error) {
 	if len(ids) == 0 {
 		return nil, nil
 	}
-	getCtx, cancel := context.WithTimeout(ctx, c.defaultTimeout)
-	defer cancel()
+
+	ns, err := share.NewNamespaceFromBytes(namespace)
+	if err != nil {
+		return nil, fmt.Errorf("invalid namespace: %w", err)
+	}
 
 	res := make([]datypes.Blob, 0, len(ids))
+
+	// Process IDs in batches to avoid timeout issues with large ID sets.
+	for i := 0; i < len(ids); i += c.batchSize {
+		// Check if parent context was cancelled between batches.
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+
+		end := i + c.batchSize
+		if end > len(ids) {
+			end = len(ids)
+		}
+		batch := ids[i:end]
+
+		// Each batch gets its own timeout to prevent cumulative timeout exhaustion.
+		batchCtx, cancel := context.WithTimeout(ctx, c.defaultTimeout)
+		batchRes, err := c.getBatch(batchCtx, batch, ns)
+		cancel()
+
+		if err != nil {
+			return nil, err
+		}
+		res = append(res, batchRes...)
+	}
+
+	return res, nil
+}
+
+// getBatch fetches a single batch of blobs by their IDs.
+func (c *client) getBatch(ctx context.Context, ids []datypes.ID, ns share.Namespace) ([]datypes.Blob, error) {
+	res := make([]datypes.Blob, 0, len(ids))
+
 	for _, id := range ids {
 		height, commitment := blobrpc.SplitID(id)
 		if commitment == nil {
 			return nil, fmt.Errorf("invalid blob id: %x", id)
 		}
 
-		ns, err := share.NewNamespaceFromBytes(namespace)
-		if err != nil {
-			return nil, fmt.Errorf("invalid namespace: %w", err)
-		}
-
-		b, err := c.blobAPI.Get(getCtx, height, ns, commitment)
+		b, err := c.blobAPI.Get(ctx, height, ns, commitment)
 		if err != nil {
 			return nil, err
 		}
@@ -343,13 +384,11 @@ func (c *client) Get(ctx context.Context, ids []datypes.ID, namespace []byte) ([
 }
 
 // GetProofs returns inclusion proofs for the provided IDs.
+// IDs are processed in batches to avoid timeout issues with large ID sets.
 func (c *client) GetProofs(ctx context.Context, ids []datypes.ID, namespace []byte) ([]datypes.Proof, error) {
 	if len(ids) == 0 {
 		return []datypes.Proof{}, nil
 	}
-
-	getCtx, cancel := context.WithTimeout(ctx, c.defaultTimeout)
-	defer cancel()
 
 	ns, err := share.NewNamespaceFromBytes(namespace)
 	if err != nil {
@@ -357,13 +396,47 @@ func (c *client) GetProofs(ctx context.Context, ids []datypes.ID, namespace []by
 	}
 
 	proofs := make([]datypes.Proof, len(ids))
+
+	// Process IDs in batches to avoid timeout issues with large ID sets.
+	for i := 0; i < len(ids); i += c.batchSize {
+		// Check if parent context was cancelled between batches.
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+
+		end := i + c.batchSize
+		if end > len(ids) {
+			end = len(ids)
+		}
+		batch := ids[i:end]
+
+		// Each batch gets its own timeout to prevent cumulative timeout exhaustion.
+		batchCtx, cancel := context.WithTimeout(ctx, c.defaultTimeout)
+		batchProofs, err := c.getProofsBatch(batchCtx, batch, ns)
+		cancel()
+
+		if err != nil {
+			return nil, err
+		}
+
+		// Copy batch results to the correct position in the output slice.
+		copy(proofs[i:end], batchProofs)
+	}
+
+	return proofs, nil
+}
+
+// getProofsBatch fetches proofs for a single batch of IDs.
+func (c *client) getProofsBatch(ctx context.Context, ids []datypes.ID, ns share.Namespace) ([]datypes.Proof, error) {
+	proofs := make([]datypes.Proof, len(ids))
+
 	for i, id := range ids {
 		height, commitment := blobrpc.SplitID(id)
 		if commitment == nil {
 			return nil, fmt.Errorf("invalid blob id: %x", id)
 		}
 
-		proof, err := c.blobAPI.GetProof(getCtx, height, ns, commitment)
+		proof, err := c.blobAPI.GetProof(ctx, height, ns, commitment)
 		if err != nil {
 			return nil, err
 		}
@@ -379,13 +452,15 @@ func (c *client) GetProofs(ctx context.Context, ids []datypes.ID, namespace []by
 }
 
 // Validate mirrors the deprecated DA server logic: it unmarshals proofs and calls Included.
+// IDs and proofs are processed in batches to avoid timeout issues with large sets.
 func (c *client) Validate(ctx context.Context, ids []datypes.ID, proofs []datypes.Proof, namespace []byte) ([]bool, error) {
 	if len(ids) != len(proofs) {
 		return nil, errors.New("number of IDs and proofs must match")
 	}
 
-	validateCtx, cancel := context.WithTimeout(ctx, c.defaultTimeout)
-	defer cancel()
+	if len(ids) == 0 {
+		return []bool{}, nil
+	}
 
 	ns, err := share.NewNamespaceFromBytes(namespace)
 	if err != nil {
@@ -393,6 +468,41 @@ func (c *client) Validate(ctx context.Context, ids []datypes.ID, proofs []datype
 	}
 
 	results := make([]bool, len(ids))
+
+	// Process IDs in batches to avoid timeout issues with large ID sets.
+	for i := 0; i < len(ids); i += c.batchSize {
+		// Check if parent context was cancelled between batches.
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+
+		end := i + c.batchSize
+		if end > len(ids) {
+			end = len(ids)
+		}
+		batchIDs := ids[i:end]
+		batchProofs := proofs[i:end]
+
+		// Each batch gets its own timeout to prevent cumulative timeout exhaustion.
+		batchCtx, cancel := context.WithTimeout(ctx, c.defaultTimeout)
+		batchResults, err := c.validateBatch(batchCtx, batchIDs, batchProofs, ns)
+		cancel()
+
+		if err != nil {
+			return nil, err
+		}
+
+		// Copy batch results to the correct position in the output slice.
+		copy(results[i:end], batchResults)
+	}
+
+	return results, nil
+}
+
+// validateBatch validates a single batch of IDs and proofs.
+func (c *client) validateBatch(ctx context.Context, ids []datypes.ID, proofs []datypes.Proof, ns share.Namespace) ([]bool, error) {
+	results := make([]bool, len(ids))
+
 	for i, id := range ids {
 		var proof blobrpc.Proof
 		if err := json.Unmarshal(proofs[i], &proof); err != nil {
@@ -404,7 +514,7 @@ func (c *client) Validate(ctx context.Context, ids []datypes.ID, proofs []datype
 			return nil, fmt.Errorf("invalid blob id: %x", id)
 		}
 
-		included, err := c.blobAPI.Included(validateCtx, height, ns, &proof, commitment)
+		included, err := c.blobAPI.Included(ctx, height, ns, &proof, commitment)
 		if err != nil {
 			c.logger.Debug().Err(err).Uint64("height", height).Msg("blob inclusion check returned error")
 		}

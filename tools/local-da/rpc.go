@@ -39,7 +39,7 @@ func (s *blobServer) Submit(_ context.Context, blobs []*jsonrpc.Blob, _ *jsonrpc
 		}
 		if b.Commitment == nil {
 			// ensure commitment exists, compute from blob
-			if rebuilt, err := jsonrpc.NewBlob(b.ShareVersion(), b.Namespace(), b.Data(), b.Signer()); err == nil {
+			if rebuilt, err := jsonrpc.NewBlob(b.ShareVersion(), b.Namespace(), b.Data(), b.Signer(), nil); err == nil {
 				blobs[i] = rebuilt
 				b = rebuilt
 			}

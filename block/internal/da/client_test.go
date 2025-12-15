@@ -187,3 +187,212 @@ func TestClient_RetrieveData(t *testing.T) {
 	assert.Equal(t, uint64(99), result.Height)
 	assert.Equal(t, 2, len(result.Data))
 }
+
+// TestClient_BatchProcessing tests the batching behavior for Get, GetProofs, and Validate.
+// Tests core batching logic (multiple batches, context cancellation, error propagation)
+// once using Get, then verifies GetProofs and Validate work correctly with batching.
+func TestClient_BatchProcessing(t *testing.T) {
+	ns := share.MustNewV0Namespace([]byte("ns"))
+	nsBz := ns.Bytes()
+
+	t.Run("Get processes multiple batches in order", func(t *testing.T) {
+		module := mocks.NewMockBlobModule(t)
+
+		// Create 5 blobs with batch size of 2 (3 batches: 2+2+1)
+		blobs := make([]*blobrpc.Blob, 5)
+		ids := make([]datypes.ID, 5)
+		for i := 0; i < 5; i++ {
+			blb, err := blobrpc.NewBlobV0(ns, []byte{byte(i)})
+			require.NoError(t, err)
+			blobs[i] = blb
+			ids[i] = blobrpc.MakeID(uint64(100+i), blb.Commitment)
+			module.On("Get", mock.Anything, uint64(100+i), ns, blb.Commitment).Return(blb, nil).Once()
+		}
+
+		cl := NewClient(Config{
+			Client:            makeBlobRPCClient(module),
+			Logger:            zerolog.Nop(),
+			Namespace:         "ns",
+			DataNamespace:     "ns",
+			RetrieveBatchSize: 2,
+		})
+
+		result, err := cl.Get(context.Background(), ids, nsBz)
+		require.NoError(t, err)
+		require.Len(t, result, 5)
+		for i := 0; i < 5; i++ {
+			assert.Equal(t, blobs[i].Data(), result[i])
+		}
+	})
+
+	t.Run("Get respects context cancellation", func(t *testing.T) {
+		module := mocks.NewMockBlobModule(t)
+		blb, _ := blobrpc.NewBlobV0(ns, []byte{0})
+		ids := []datypes.ID{blobrpc.MakeID(100, blb.Commitment)}
+
+		cl := NewClient(Config{
+			Client:            makeBlobRPCClient(module),
+			Logger:            zerolog.Nop(),
+			Namespace:         "ns",
+			DataNamespace:     "ns",
+			RetrieveBatchSize: 2,
+		})
+
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel()
+
+		_, err := cl.Get(ctx, ids, nsBz)
+		require.ErrorIs(t, err, context.Canceled)
+	})
+
+	t.Run("Get propagates errors from batch", func(t *testing.T) {
+		module := mocks.NewMockBlobModule(t)
+		blb, _ := blobrpc.NewBlobV0(ns, []byte{0})
+		ids := []datypes.ID{blobrpc.MakeID(100, blb.Commitment)}
+		module.On("Get", mock.Anything, uint64(100), ns, blb.Commitment).Return(nil, errors.New("network error")).Once()
+
+		cl := NewClient(Config{
+			Client:        makeBlobRPCClient(module),
+			Logger:        zerolog.Nop(),
+			Namespace:     "ns",
+			DataNamespace: "ns",
+		})
+
+		_, err := cl.Get(context.Background(), ids, nsBz)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "network error")
+	})
+
+	t.Run("GetProofs batches correctly", func(t *testing.T) {
+		module := mocks.NewMockBlobModule(t)
+
+		ids := make([]datypes.ID, 5)
+		for i := 0; i < 5; i++ {
+			blb, _ := blobrpc.NewBlobV0(ns, []byte{byte(i)})
+			ids[i] = blobrpc.MakeID(uint64(200+i), blb.Commitment)
+			module.On("GetProof", mock.Anything, uint64(200+i), ns, blb.Commitment).Return(&blobrpc.Proof{}, nil).Once()
+		}
+
+		cl := NewClient(Config{
+			Client:            makeBlobRPCClient(module),
+			Logger:            zerolog.Nop(),
+			Namespace:         "ns",
+			DataNamespace:     "ns",
+			RetrieveBatchSize: 2,
+		})
+
+		proofs, err := cl.GetProofs(context.Background(), ids, nsBz)
+		require.NoError(t, err)
+		require.Len(t, proofs, 5)
+	})
+
+	t.Run("Validate batches correctly with mixed results", func(t *testing.T) {
+		module := mocks.NewMockBlobModule(t)
+
+		ids := make([]datypes.ID, 5)
+		proofs := make([]datypes.Proof, 5)
+		for i := 0; i < 5; i++ {
+			blb, _ := blobrpc.NewBlobV0(ns, []byte{byte(i)})
+			ids[i] = blobrpc.MakeID(uint64(300+i), blb.Commitment)
+			proofBz, _ := json.Marshal(&blobrpc.Proof{})
+			proofs[i] = proofBz
+			module.On("Included", mock.Anything, uint64(300+i), ns, mock.Anything, blb.Commitment).Return(i%2 == 0, nil).Once()
+		}
+
+		cl := NewClient(Config{
+			Client:            makeBlobRPCClient(module),
+			Logger:            zerolog.Nop(),
+			Namespace:         "ns",
+			DataNamespace:     "ns",
+			RetrieveBatchSize: 2,
+		})
+
+		results, err := cl.Validate(context.Background(), ids, proofs, nsBz)
+		require.NoError(t, err)
+		require.Len(t, results, 5)
+		for i := 0; i < 5; i++ {
+			assert.Equal(t, i%2 == 0, results[i])
+		}
+	})
+
+	t.Run("Validate continues on inclusion check error", func(t *testing.T) {
+		module := mocks.NewMockBlobModule(t)
+
+		blb0, _ := blobrpc.NewBlobV0(ns, []byte{0})
+		blb1, _ := blobrpc.NewBlobV0(ns, []byte{1})
+		ids := []datypes.ID{
+			blobrpc.MakeID(400, blb0.Commitment),
+			blobrpc.MakeID(401, blb1.Commitment),
+		}
+		proofs := make([]datypes.Proof, 2)
+		for i := range proofs {
+			proofs[i], _ = json.Marshal(&blobrpc.Proof{})
+		}
+
+		module.On("Included", mock.Anything, uint64(400), ns, mock.Anything, blb0.Commitment).Return(true, nil).Once()
+		module.On("Included", mock.Anything, uint64(401), ns, mock.Anything, blb1.Commitment).Return(false, errors.New("check failed")).Once()
+
+		cl := NewClient(Config{
+			Client:        makeBlobRPCClient(module),
+			Logger:        zerolog.Nop(),
+			Namespace:     "ns",
+			DataNamespace: "ns",
+		})
+
+		results, err := cl.Validate(context.Background(), ids, proofs, nsBz)
+		require.NoError(t, err) // Validate logs errors but doesn't fail
+		assert.True(t, results[0])
+		assert.False(t, results[1])
+	})
+
+	t.Run("Validate rejects mismatched ids and proofs", func(t *testing.T) {
+		module := mocks.NewMockBlobModule(t)
+		cl := NewClient(Config{
+			Client:        makeBlobRPCClient(module),
+			Logger:        zerolog.Nop(),
+			Namespace:     "ns",
+			DataNamespace: "ns",
+		})
+
+		_, err := cl.Validate(context.Background(), make([]datypes.ID, 3), make([]datypes.Proof, 2), nsBz)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "must match")
+	})
+}
+
+func TestClient_BatchSize_Configuration(t *testing.T) {
+	t.Run("defaults to DefaultRetrieveBatchSize", func(t *testing.T) {
+		module := mocks.NewMockBlobModule(t)
+		cl := NewClient(Config{
+			Client:        makeBlobRPCClient(module),
+			Logger:        zerolog.Nop(),
+			Namespace:     "ns",
+			DataNamespace: "ns",
+		})
+		assert.Equal(t, DefaultRetrieveBatchSize, cl.(*client).batchSize)
+	})
+
+	t.Run("respects custom batch size", func(t *testing.T) {
+		module := mocks.NewMockBlobModule(t)
+		cl := NewClient(Config{
+			Client:            makeBlobRPCClient(module),
+			Logger:            zerolog.Nop(),
+			Namespace:         "ns",
+			DataNamespace:     "ns",
+			RetrieveBatchSize: 50,
+		})
+		assert.Equal(t, 50, cl.(*client).batchSize)
+	})
+
+	t.Run("negative batch size defaults", func(t *testing.T) {
+		module := mocks.NewMockBlobModule(t)
+		cl := NewClient(Config{
+			Client:            makeBlobRPCClient(module),
+			Logger:            zerolog.Nop(),
+			Namespace:         "ns",
+			DataNamespace:     "ns",
+			RetrieveBatchSize: -1,
+		})
+		assert.Equal(t, DefaultRetrieveBatchSize, cl.(*client).batchSize)
+	})
+}
