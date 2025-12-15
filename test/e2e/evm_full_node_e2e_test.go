@@ -414,8 +414,8 @@ func TestEvmSequencerWithFullNodeE2E(t *testing.T) {
 
 	t.Log("Verifying DA inclusion for latest block height...")
 
-	// Create RPC client for full node
-	fullNodeRPCClient := client.NewClient(endpoints.GetFullNodeRPCAddress())
+	// DA inclusion metadata is tracked on the sequencer (the node that submits to DA).
+	sequencerRPCClient := client.NewClient(endpoints.GetRollkitRPCAddress())
 
 	// Get the full node's current block height before waiting
 	fnHeader, err = fullNodeClient.HeaderByNumber(fnCtx, nil)
@@ -425,25 +425,25 @@ func TestEvmSequencerWithFullNodeE2E(t *testing.T) {
 	t.Logf("Full node block height before DA inclusion wait: %d", fnBlockHeightBeforeWait)
 
 	// Wait until DA inclusion metadata exists and has caught up.
-	var fnDAIncludedHeight uint64
+	var sequencerDAIncludedHeight uint64
 	require.Eventually(t, func() bool {
-		fnDAIncludedHeightBytes, err := fullNodeRPCClient.GetMetadata(fnCtx, store.DAIncludedHeightKey)
+		daIncludedHeightBytes, err := sequencerRPCClient.GetMetadata(fnCtx, store.DAIncludedHeightKey)
 		if err != nil {
 			return false
 		}
-		if len(fnDAIncludedHeightBytes) != 8 {
+		if len(daIncludedHeightBytes) != 8 {
 			return false
 		}
-		fnDAIncludedHeight = binary.LittleEndian.Uint64(fnDAIncludedHeightBytes)
-		return fnDAIncludedHeight >= fnBlockHeightBeforeWait
+		sequencerDAIncludedHeight = binary.LittleEndian.Uint64(daIncludedHeightBytes)
+		return sequencerDAIncludedHeight >= fnBlockHeightBeforeWait
 	}, DefaultTestTimeout, 500*time.Millisecond,
-		"Full node DA included height should be >= block height before wait")
+		"Sequencer DA included height should be >= full node block height before wait")
 
-	t.Logf("After waiting, full node DA included height: %d", fnDAIncludedHeight)
+	t.Logf("After waiting, sequencer DA included height: %d", sequencerDAIncludedHeight)
 
 	t.Logf("✅ DA inclusion verification passed:")
 	t.Logf("   - Full node block height before wait: %d", fnBlockHeightBeforeWait)
-	t.Logf("   - Full node DA included height after wait: %d", fnDAIncludedHeight)
+	t.Logf("   - Sequencer DA included height after wait: %d", sequencerDAIncludedHeight)
 	t.Logf("   - DA inclusion caught up to full node's block height ✓")
 
 	// === COMPREHENSIVE TEST SUMMARY ===
@@ -456,7 +456,7 @@ func TestEvmSequencerWithFullNodeE2E(t *testing.T) {
 	t.Logf("      • Final sequencer height: %d", seqHeight)
 	t.Logf("      • Final full node height: %d", fnHeight)
 	t.Logf("      • State root verification range: blocks %d-%d", startHeight, endHeight)
-	t.Logf("      • Full node DA included height after wait: %d", fnDAIncludedHeight)
+	t.Logf("      • Sequencer DA included height after wait: %d", sequencerDAIncludedHeight)
 	t.Logf("")
 	t.Logf("   ✅ Verified Components:")
 	t.Logf("      • P2P connection establishment between sequencer and full node")
