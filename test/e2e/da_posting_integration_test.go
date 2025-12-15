@@ -4,34 +4,35 @@ package e2e
 
 import (
 	"context"
-	"crypto/sha256"
 	"encoding/base64"
 	"fmt"
 	"io"
-	"net"
 	"net/http"
 	"os"
+	"os/exec"
 	"strings"
 	"testing"
 	"time"
 
-	cosmosmath "cosmossdk.io/math"
-	libshare "github.com/celestiaorg/go-square/v3/share"
 	tastoradocker "github.com/celestiaorg/tastora/framework/docker"
+	tastoraconsts "github.com/celestiaorg/tastora/framework/docker/consts"
 	"github.com/celestiaorg/tastora/framework/docker/container"
 	tastoracosmos "github.com/celestiaorg/tastora/framework/docker/cosmos"
 	tastorada "github.com/celestiaorg/tastora/framework/docker/dataavailability"
 	"github.com/celestiaorg/tastora/framework/docker/evstack"
+	"github.com/celestiaorg/tastora/framework/testutil/query"
 	"github.com/celestiaorg/tastora/framework/testutil/wait"
 	tastoratypes "github.com/celestiaorg/tastora/framework/types"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	"github.com/cosmos/cosmos-sdk/types/module/testutil"
 	"github.com/cosmos/cosmos-sdk/x/auth"
 	"github.com/cosmos/cosmos-sdk/x/bank"
-	banktypes "github.com/cosmos/cosmos-sdk/x/bank/types"
 	"github.com/cosmos/cosmos-sdk/x/gov"
 	"github.com/cosmos/ibc-go/v8/modules/apps/transfer"
-	blobrpc "github.com/evstack/ev-node/pkg/da/jsonrpc"
+	coreda "github.com/evstack/ev-node/core/da"
+	"github.com/evstack/ev-node/da/jsonrpc"
+	seqcommon "github.com/evstack/ev-node/sequencers/common"
+	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/require"
 )
 
@@ -46,7 +47,7 @@ func TestEvNode_PostsToDA(t *testing.T) {
 
 	configurePrefixOnce.Do(configureCelestiaBech32Prefix)
 
-	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Minute)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	defer cancel()
 
 	uniqueTestName := fmt.Sprintf("%s-%d", t.Name(), time.Now().UnixNano())
@@ -124,9 +125,12 @@ func TestEvNode_PostsToDA(t *testing.T) {
 	bridgeWallet, err := bridge.GetWallet()
 	require.NoError(t, err, "bridge wallet")
 
-	// 3) Wait for chain to be live then fund bridge wallet
+	faucet := chain.GetFaucetWallet()
+	require.NotNil(t, faucet, "faucet wallet")
+
 	validatorNode := chain.GetNodes()[0].(*tastoracosmos.ChainNode)
 
+	// Wait for the node to serve RPC before funding.
 	err = wait.ForCondition(ctx, 2*time.Minute, time.Second, func() (bool, error) {
 		c, err := validatorNode.GetRPCClient()
 		if err != nil {
@@ -143,11 +147,10 @@ func TestEvNode_PostsToDA(t *testing.T) {
 	})
 	require.NoError(t, err, "validator RPC ready")
 
-	// fund the bridge wallet via CLI to avoid JSON-RPC decoding issues
-	faucetKey := "faucet"
+	// Fund the bridge wallet via CLI to avoid `BroadcastMessages` JSON-RPC decoding issues.
+	faucetKey := tastoraconsts.FaucetAccountKeyName
 	sendAmt := sdk.NewInt64Coin(chain.Config.Denom, 5_000_000_000)
 	rpcNode := fmt.Sprintf("tcp://%s:26657", coreHost)
-
 	cmd := []string{
 		validatorNode.BinaryName,
 		"tx", "bank", "send",
@@ -166,40 +169,24 @@ func TestEvNode_PostsToDA(t *testing.T) {
 	require.NoErrorf(t, err, "fund bridge wallet via CLI: %s", string(stderr))
 	require.Contains(t, string(stdout), "code: 0", "bank send succeeded")
 
-	bankQuery := banktypes.NewQueryClient(chain.GetNode().GrpcConn)
 	err = wait.ForCondition(ctx, 2*time.Minute, time.Second, func() (bool, error) {
-		bal, err := bankQuery.Balance(ctx, &banktypes.QueryBalanceRequest{
-			Address: bridgeWallet.FormattedAddress,
-			Denom:   chain.Config.Denom,
-		})
+		amnt, err := query.Balance(ctx, chain.GetNode().GrpcConn, bridgeWallet.FormattedAddress, chain.Config.Denom)
 		if err != nil {
 			return false, nil
 		}
-		return bal.Balance != nil && bal.Balance.Amount.GT(cosmosmath.NewInt(0)), nil
+		return amnt.Int64() > 0, nil
 	})
-	require.NoError(t, err, "bridge wallet funded")
+	require.NoError(t, err, "bridge wallet should have balance")
 
 	bridgeNetInfo, err := bridge.GetNetworkInfo(ctx)
 	require.NoError(t, err, "bridge network info")
-
-	// wait for celestia-node RPC port to become reachable
-	err = wait.ForCondition(ctx, 2*time.Minute, time.Second, func() (bool, error) {
-		hostPort := fmt.Sprintf("127.0.0.1:%s", bridgeNetInfo.External.Ports.RPC)
-		conn, err := net.DialTimeout("tcp", hostPort, 2*time.Second)
-		if err != nil {
-			return false, nil
-		}
-		_ = conn.Close()
-		return true, nil
-	})
-	require.NoError(t, err, "bridge RPC reachable")
 
 	// 4) Start EV Node (aggregator) pointing at DA
 	evNodeChain, err := evstack.NewChainBuilderWithTestName(t, uniqueTestName).
 		WithChainID("evchain-test").
 		WithBinaryName("testapp").
 		WithAggregatorPassphrase("12345678").
-		WithImage(getEvNodeImage()).
+		WithImage(getEvNodeImage(t)).
 		WithDockerClient(dockerClient).
 		WithDockerNetworkID(networkID).
 		WithNode(evstack.NewNodeBuilder().WithAggregator(true).Build()).
@@ -215,8 +202,7 @@ func TestEvNode_PostsToDA(t *testing.T) {
 	daAddress := fmt.Sprintf("http://%s", bridgeNetInfo.Internal.RPCAddress())
 	headerNamespaceStr := "ev-header"
 	dataNamespaceStr := "ev-data"
-	dataNamespaceHash := sha256.Sum256([]byte(dataNamespaceStr))
-	dataNamespace := libshare.MustNewV0Namespace(dataNamespaceHash[:10])
+	dataNamespace := coreda.NamespaceFromString(dataNamespaceStr)
 
 	require.NoError(t, evNode.Start(ctx,
 		"--evnode.da.address", daAddress,
@@ -245,17 +231,17 @@ func TestEvNode_PostsToDA(t *testing.T) {
 	_, err = cli.Post(ctx, "/tx", key, value)
 	require.NoError(t, err)
 
-	require.Eventually(t, func() bool {
+	wait.ForCondition(ctx, 30*time.Second, 2*time.Second, func() (bool, error) {
 		res, err := cli.Get(ctx, "/kv?key="+key)
 		if err != nil {
-			return false
+			return false, nil
 		}
-		return string(res) == value
-	}, 30*time.Second, time.Second, "ev-node should serve the kv value")
+		return string(res) == value, nil
+	})
 
 	// 6) Assert data landed on DA via celestia-node blob RPC (namespace ev-data)
-	daRPCAddr := fmt.Sprintf("http://127.0.0.1:%s", bridgeNetInfo.External.Ports.RPC)
-	daClient, err := blobrpc.NewClient(ctx, daRPCAddr, authToken, "")
+	daRPCAddr := fmt.Sprintf("http://%s", bridgeNetInfo.Internal.RPCAddress())
+	daClient, err := jsonrpc.NewClient(ctx, zerolog.Nop(), daRPCAddr, authToken, seqcommon.AbsoluteMaxBlobSize)
 	require.NoError(t, err, "new da client")
 	defer daClient.Close()
 
@@ -264,10 +250,10 @@ func TestEvNode_PostsToDA(t *testing.T) {
 	require.NoError(t, err, "tm rpc client")
 
 	var pfbHeight int64
-	require.Eventually(t, func() bool {
+	wait.ForCondition(ctx, time.Minute, 5*time.Second, func() (bool, error) {
 		res, err := tmRPC.TxSearch(ctx, "message.action='/celestia.blob.v1.MsgPayForBlobs'", false, nil, nil, "desc")
 		if err != nil || len(res.Txs) == 0 {
-			return false
+			return false, nil
 		}
 		dataNSB64 := base64.StdEncoding.EncodeToString(dataNamespace.Bytes())
 		for _, tx := range res.Txs {
@@ -281,30 +267,30 @@ func TestEvNode_PostsToDA(t *testing.T) {
 				for _, attr := range ev.Attributes {
 					if string(attr.Key) == "namespaces" && strings.Contains(string(attr.Value), dataNSB64) {
 						pfbHeight = tx.Height
-						return true
+						return true, nil
 					}
 				}
 			}
 		}
-		return false
-	}, 2*time.Minute, 5*time.Second, "expected a PayForBlobs tx on celestia-app")
+		return false, nil
+	})
 
-	require.Eventually(t, func() bool {
+	wait.ForCondition(ctx, time.Minute, 5*time.Second, func() (bool, error) {
 		if pfbHeight == 0 {
-			return false
+			return false, nil
 		}
 		for h := pfbHeight; h <= pfbHeight+10; h++ {
-			blobs, err := daClient.Blob.GetAll(ctx, uint64(h), []libshare.Namespace{dataNamespace})
+			ids, err := daClient.DA.GetIDs(ctx, uint64(h), dataNamespace.Bytes())
 			if err != nil {
-				t.Logf("GetAll data height=%d err=%v", h, err)
+				t.Logf("GetIDs data height=%d err=%v", h, err)
 				continue
 			}
-			if len(blobs) > 0 {
-				return true
+			if ids != nil && len(ids.IDs) > 0 {
+				return true, nil
 			}
 		}
-		return false
-	}, 6*time.Minute, 5*time.Second, "expected blob in DA for namespace ev-data")
+		return false, nil
+	})
 }
 
 // newHTTPClient is a small helper to avoid importing the docker_e2e client.
@@ -349,9 +335,19 @@ func (c *httpClient) Post(ctx context.Context, path, key, value string) ([]byte,
 
 // getEvNodeImage resolves the EV Node image to use for the test.
 // Falls back to EV_NODE_IMAGE_REPO:EV_NODE_IMAGE_TAG or evstack:local-dev.
-func getEvNodeImage() container.Image {
+func getEvNodeImage(t *testing.T) container.Image {
+	t.Helper()
+
 	repo := strings.TrimSpace(getEnvDefault("EV_NODE_IMAGE_REPO", "evstack"))
 	tag := strings.TrimSpace(getEnvDefault("EV_NODE_IMAGE_TAG", "local-dev"))
+
+	// When using the default local image, fail fast with a clear message if the image is missing.
+	if repo == "evstack" && tag == "local-dev" {
+		if err := exec.Command("docker", "image", "inspect", "evstack:local-dev").Run(); err != nil {
+			t.Fatalf("missing docker image evstack:local-dev; run `make docker-build` (or set `EV_NODE_IMAGE_REPO`/`EV_NODE_IMAGE_TAG` to a pullable image): %v", err)
+		}
+	}
+
 	return container.NewImage(repo, tag, "10001:10001")
 }
 
