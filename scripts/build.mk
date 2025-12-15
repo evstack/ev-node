@@ -32,7 +32,7 @@ build-all:
 	@echo "--> Building evm"
 	@cd apps/evm && go build -ldflags "$(LDFLAGS)" -o $(CURDIR)/build/evm .
 	@echo "--> Building local-da"
-	@cd da && go build -ldflags "$(LDFLAGS)" -o $(CURDIR)/build/local-da ./cmd/local-da
+	@cd tools/local-da && go build -ldflags "$(LDFLAGS)" -o $(CURDIR)/build/local-da .
 	@echo "--> All ev-node binaries built!"
 
 ## build-testapp-bench:
@@ -53,7 +53,7 @@ build-evm:
 build-da:
 	@echo "--> Building local-da"
 	@mkdir -p $(CURDIR)/build
-	@cd da && go build -ldflags "$(LDFLAGS)" -o $(CURDIR)/build/local-da ./cmd/local-da
+	@cd tools/local-da && go build -ldflags "$(LDFLAGS)" -o $(CURDIR)/build/local-da .
         @echo "    Check the binary with: $(CURDIR)/build/local-da"
 .PHONY: build-da
 

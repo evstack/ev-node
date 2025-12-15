@@ -1,7 +1,6 @@
 package syncing
 
 import (
-	"bytes"
 	"context"
 	"sync/atomic"
 	"testing"
@@ -15,9 +14,9 @@ import (
 
 	"github.com/evstack/ev-node/block/internal/cache"
 	"github.com/evstack/ev-node/block/internal/common"
-	"github.com/evstack/ev-node/block/internal/da"
-	coreda "github.com/evstack/ev-node/core/da"
+	da "github.com/evstack/ev-node/block/internal/da"
 	"github.com/evstack/ev-node/pkg/config"
+	datypes "github.com/evstack/ev-node/pkg/da/types"
 	"github.com/evstack/ev-node/pkg/genesis"
 	"github.com/evstack/ev-node/pkg/store"
 	testmocks "github.com/evstack/ev-node/test/mocks"
@@ -365,22 +364,18 @@ func TestVerifyForcedInclusionTxs_AllTransactionsIncluded(t *testing.T) {
 	mockExec.EXPECT().InitChain(mock.Anything, mock.Anything, uint64(1), "tchain").
 		Return([]byte("app0"), uint64(1024), nil).Once()
 
-	mockDA := testmocks.NewMockDA(t)
-
-	daClient := da.NewClient(da.Config{
-		DA:                       mockDA,
-		Logger:                   zerolog.Nop(),
-		Namespace:                cfg.DA.Namespace,
-		DataNamespace:            cfg.DA.DataNamespace,
-		ForcedInclusionNamespace: cfg.DA.ForcedInclusionNamespace,
-	})
-	daRetriever := NewDARetriever(daClient, cm, gen, zerolog.Nop())
-	fiRetriever := da.NewForcedInclusionRetriever(daClient, gen, zerolog.Nop())
+	client := testmocks.NewMockClient(t)
+	client.On("GetHeaderNamespace").Return([]byte(cfg.DA.Namespace)).Maybe()
+	client.On("GetDataNamespace").Return([]byte(cfg.DA.DataNamespace)).Maybe()
+	client.On("GetForcedInclusionNamespace").Return([]byte(cfg.DA.ForcedInclusionNamespace)).Maybe()
+	client.On("HasForcedInclusionNamespace").Return(true).Maybe()
+	daRetriever := NewDARetriever(client, cm, gen, zerolog.Nop())
+	fiRetriever := da.NewForcedInclusionRetriever(client, gen, zerolog.Nop())
 
 	s := NewSyncer(
 		st,
 		mockExec,
-		daClient,
+		client,
 		cm,
 		common.NopMetrics(),
 		cfg,
@@ -398,21 +393,13 @@ func TestVerifyForcedInclusionTxs_AllTransactionsIncluded(t *testing.T) {
 	s.ctx = context.Background()
 
 	// Mock DA to return forced inclusion transactions
-	namespaceForcedInclusionBz := coreda.NamespaceFromString(cfg.DA.GetForcedInclusionNamespace()).Bytes()
-
 	// Create forced inclusion transaction blob (SignedData) in DA
 	dataBin, _ := makeSignedDataBytes(t, gen.ChainID, 10, addr, pub, signer, 2)
 
-	// With DAStartHeight=0, epoch size=1, daHeight=0 -> epoch boundaries are [0, 0]
-	// Check epoch start only (end check is skipped when same as start)
-	mockDA.EXPECT().GetIDs(mock.Anything, uint64(0), mock.MatchedBy(func(ns []byte) bool {
-		return bytes.Equal(ns, namespaceForcedInclusionBz)
-	})).Return(&coreda.GetIDsResult{IDs: [][]byte{[]byte("fi1")}, Timestamp: time.Now()}, nil).Once()
-
-	// Fetch epoch start data
-	mockDA.EXPECT().Get(mock.Anything, mock.Anything, mock.MatchedBy(func(ns []byte) bool {
-		return bytes.Equal(ns, namespaceForcedInclusionBz)
-	})).Return([][]byte{dataBin}, nil).Once()
+	client.On("Retrieve", mock.Anything, uint64(0), []byte("nsForcedInclusion")).Return(datypes.ResultRetrieve{
+		BaseResult: datypes.BaseResult{Code: datypes.StatusSuccess, IDs: [][]byte{[]byte("fi1")}, Timestamp: time.Now()},
+		Data:       [][]byte{dataBin},
+	}).Once()
 
 	// Create block data that includes the forced transaction blob
 	data := makeData(gen.ChainID, 1, 1)
@@ -450,22 +437,18 @@ func TestVerifyForcedInclusionTxs_MissingTransactions(t *testing.T) {
 	mockExec.EXPECT().InitChain(mock.Anything, mock.Anything, uint64(1), "tchain").
 		Return([]byte("app0"), uint64(1024), nil).Once()
 
-	mockDA := testmocks.NewMockDA(t)
-
-	daClient := da.NewClient(da.Config{
-		DA:                       mockDA,
-		Logger:                   zerolog.Nop(),
-		Namespace:                cfg.DA.Namespace,
-		DataNamespace:            cfg.DA.DataNamespace,
-		ForcedInclusionNamespace: cfg.DA.ForcedInclusionNamespace,
-	})
-	daRetriever := NewDARetriever(daClient, cm, gen, zerolog.Nop())
-	fiRetriever := da.NewForcedInclusionRetriever(daClient, gen, zerolog.Nop())
+	client := testmocks.NewMockClient(t)
+	client.On("GetHeaderNamespace").Return([]byte(cfg.DA.Namespace)).Maybe()
+	client.On("GetDataNamespace").Return([]byte(cfg.DA.DataNamespace)).Maybe()
+	client.On("GetForcedInclusionNamespace").Return([]byte(cfg.DA.ForcedInclusionNamespace)).Maybe()
+	client.On("HasForcedInclusionNamespace").Return(true).Maybe()
+	daRetriever := NewDARetriever(client, cm, gen, zerolog.Nop())
+	fiRetriever := da.NewForcedInclusionRetriever(client, gen, zerolog.Nop())
 
 	s := NewSyncer(
 		st,
 		mockExec,
-		daClient,
+		client,
 		cm,
 		common.NopMetrics(),
 		cfg,
@@ -483,21 +466,14 @@ func TestVerifyForcedInclusionTxs_MissingTransactions(t *testing.T) {
 	s.ctx = context.Background()
 
 	// Mock DA to return forced inclusion transactions
-	namespaceForcedInclusionBz := coreda.NamespaceFromString(cfg.DA.GetForcedInclusionNamespace()).Bytes()
-
 	// Create forced inclusion transaction blob (SignedData) in DA
 	dataBin, _ := makeSignedDataBytes(t, gen.ChainID, 10, addr, pub, signer, 2)
 
 	// With DAStartHeight=0, epoch size=1, daHeight=0 -> epoch boundaries are [0, 0]
-	// Check epoch start only (end check is skipped when same as start)
-	mockDA.EXPECT().GetIDs(mock.Anything, uint64(0), mock.MatchedBy(func(ns []byte) bool {
-		return bytes.Equal(ns, namespaceForcedInclusionBz)
-	})).Return(&coreda.GetIDsResult{IDs: [][]byte{[]byte("fi1")}, Timestamp: time.Now()}, nil).Once()
-
-	// Fetch epoch start data
-	mockDA.EXPECT().Get(mock.Anything, mock.Anything, mock.MatchedBy(func(ns []byte) bool {
-		return bytes.Equal(ns, namespaceForcedInclusionBz)
-	})).Return([][]byte{dataBin}, nil).Once()
+	client.On("Retrieve", mock.Anything, uint64(0), []byte("nsForcedInclusion")).Return(datypes.ResultRetrieve{
+		BaseResult: datypes.BaseResult{Code: datypes.StatusSuccess, IDs: [][]byte{[]byte("fi1")}, Timestamp: time.Now()},
+		Data:       [][]byte{dataBin},
+	}).Once()
 
 	// Create block data that does NOT include the forced transaction blob
 	data := makeData(gen.ChainID, 1, 2)
@@ -512,22 +488,22 @@ func TestVerifyForcedInclusionTxs_MissingTransactions(t *testing.T) {
 	require.NoError(t, err)
 
 	// Mock DA for next epoch to return no forced inclusion transactions
-	mockDA.EXPECT().GetIDs(mock.Anything, uint64(1), mock.MatchedBy(func(ns []byte) bool {
-		return bytes.Equal(ns, namespaceForcedInclusionBz)
-	})).Return(&coreda.GetIDsResult{IDs: [][]byte{}, Timestamp: time.Now()}, nil).Once()
+	client.On("Retrieve", mock.Anything, uint64(1), []byte("nsForcedInclusion")).Return(datypes.ResultRetrieve{
+		BaseResult: datypes.BaseResult{Code: datypes.StatusNotFound, Timestamp: time.Now()},
+	}).Once()
 
 	// Move to next epoch but still within grace period
 	currentState.DAHeight = 1 // Move to epoch end (epoch was [0, 0])
 	data2 := makeData(gen.ChainID, 2, 1)
-	data2.Txs[0] = types.Tx([]byte("regular_tx_3"))
+	data2.Txs[0] = []byte("regular_tx_3")
 
 	err = s.verifyForcedInclusionTxs(currentState, data2)
 	require.NoError(t, err) // Should pass since DAHeight=1 equals grace boundary, not past it
 
 	// Mock DA for height 2 to return no forced inclusion transactions
-	mockDA.EXPECT().GetIDs(mock.Anything, uint64(2), mock.MatchedBy(func(ns []byte) bool {
-		return bytes.Equal(ns, namespaceForcedInclusionBz)
-	})).Return(&coreda.GetIDsResult{IDs: [][]byte{}, Timestamp: time.Now()}, nil).Once()
+	client.On("Retrieve", mock.Anything, uint64(2), []byte("nsForcedInclusion")).Return(datypes.ResultRetrieve{
+		BaseResult: datypes.BaseResult{Code: datypes.StatusNotFound, Timestamp: time.Now()},
+	}).Once()
 
 	// Now move past grace boundary - should fail if tx still not included
 	currentState.DAHeight = 2 // Move past grace boundary (graceBoundary = 0 + 1*1 = 1)
@@ -564,22 +540,18 @@ func TestVerifyForcedInclusionTxs_PartiallyIncluded(t *testing.T) {
 	mockExec.EXPECT().InitChain(mock.Anything, mock.Anything, uint64(1), "tchain").
 		Return([]byte("app0"), uint64(1024), nil).Once()
 
-	mockDA := testmocks.NewMockDA(t)
-
-	daClient := da.NewClient(da.Config{
-		DA:                       mockDA,
-		Logger:                   zerolog.Nop(),
-		Namespace:                cfg.DA.Namespace,
-		DataNamespace:            cfg.DA.DataNamespace,
-		ForcedInclusionNamespace: cfg.DA.ForcedInclusionNamespace,
-	})
-	daRetriever := NewDARetriever(daClient, cm, gen, zerolog.Nop())
-	fiRetriever := da.NewForcedInclusionRetriever(daClient, gen, zerolog.Nop())
+	client := testmocks.NewMockClient(t)
+	client.On("GetHeaderNamespace").Return([]byte(cfg.DA.Namespace)).Maybe()
+	client.On("GetDataNamespace").Return([]byte(cfg.DA.DataNamespace)).Maybe()
+	client.On("GetForcedInclusionNamespace").Return([]byte(cfg.DA.ForcedInclusionNamespace)).Maybe()
+	client.On("HasForcedInclusionNamespace").Return(true).Maybe()
+	daRetriever := NewDARetriever(client, cm, gen, zerolog.Nop())
+	fiRetriever := da.NewForcedInclusionRetriever(client, gen, zerolog.Nop())
 
 	s := NewSyncer(
 		st,
 		mockExec,
-		daClient,
+		client,
 		cm,
 		common.NopMetrics(),
 		cfg,
@@ -596,23 +568,15 @@ func TestVerifyForcedInclusionTxs_PartiallyIncluded(t *testing.T) {
 	require.NoError(t, s.initializeState())
 	s.ctx = context.Background()
 
-	// Mock DA to return two forced inclusion transaction blobs
-	namespaceForcedInclusionBz := coreda.NamespaceFromString(cfg.DA.GetForcedInclusionNamespace()).Bytes()
-
 	// Create two forced inclusion transaction blobs in DA
 	dataBin1, _ := makeSignedDataBytes(t, gen.ChainID, 10, addr, pub, signer, 2)
 	dataBin2, _ := makeSignedDataBytes(t, gen.ChainID, 11, addr, pub, signer, 1)
 
 	// With DAStartHeight=0, epoch size=1, daHeight=0 -> epoch boundaries are [0, 0]
-	// Check epoch start only (end check is skipped when same as start)
-	mockDA.EXPECT().GetIDs(mock.Anything, uint64(0), mock.MatchedBy(func(ns []byte) bool {
-		return bytes.Equal(ns, namespaceForcedInclusionBz)
-	})).Return(&coreda.GetIDsResult{IDs: [][]byte{[]byte("fi1"), []byte("fi2")}, Timestamp: time.Now()}, nil).Once()
-
-	// Fetch epoch start data
-	mockDA.EXPECT().Get(mock.Anything, mock.Anything, mock.MatchedBy(func(ns []byte) bool {
-		return bytes.Equal(ns, namespaceForcedInclusionBz)
-	})).Return([][]byte{dataBin1, dataBin2}, nil).Once()
+	client.On("Retrieve", mock.Anything, uint64(0), []byte("nsForcedInclusion")).Return(datypes.ResultRetrieve{
+		BaseResult: datypes.BaseResult{Code: datypes.StatusSuccess, IDs: [][]byte{[]byte("fi1"), []byte("fi2")}, Timestamp: time.Now()},
+		Data:       [][]byte{dataBin1, dataBin2},
+	}).Once()
 
 	// Create block data that includes only one of the forced transaction blobs
 	data := makeData(gen.ChainID, 1, 2)
@@ -628,9 +592,9 @@ func TestVerifyForcedInclusionTxs_PartiallyIncluded(t *testing.T) {
 	require.NoError(t, err)
 
 	// Mock DA for next epoch to return no forced inclusion transactions
-	mockDA.EXPECT().GetIDs(mock.Anything, uint64(1), mock.MatchedBy(func(ns []byte) bool {
-		return bytes.Equal(ns, namespaceForcedInclusionBz)
-	})).Return(&coreda.GetIDsResult{IDs: [][]byte{}, Timestamp: time.Now()}, nil).Once()
+	client.On("Retrieve", mock.Anything, uint64(1), []byte("nsForcedInclusion")).Return(datypes.ResultRetrieve{
+		BaseResult: datypes.BaseResult{Code: datypes.StatusNotFound, Timestamp: time.Now()},
+	}).Once()
 
 	// Move to DAHeight=1 (still within grace period since graceBoundary = 0 + 1*1 = 1)
 	currentState.DAHeight = 1
@@ -642,9 +606,9 @@ func TestVerifyForcedInclusionTxs_PartiallyIncluded(t *testing.T) {
 	require.NoError(t, err)
 
 	// Mock DA for height 2 (when we move to DAHeight 2)
-	mockDA.EXPECT().GetIDs(mock.Anything, uint64(2), mock.MatchedBy(func(ns []byte) bool {
-		return bytes.Equal(ns, namespaceForcedInclusionBz)
-	})).Return(&coreda.GetIDsResult{IDs: [][]byte{}, Timestamp: time.Now()}, nil).Once()
+	client.On("Retrieve", mock.Anything, uint64(2), []byte("nsForcedInclusion")).Return(datypes.ResultRetrieve{
+		BaseResult: datypes.BaseResult{Code: datypes.StatusNotFound, Timestamp: time.Now()},
+	}).Once()
 
 	// Now simulate moving past grace boundary - should fail if dataBin2 still not included
 	// With basePeriod=1 and DAEpochForcedInclusion=1, graceBoundary = 0 + (1*1) = 1
@@ -683,22 +647,18 @@ func TestVerifyForcedInclusionTxs_NoForcedTransactions(t *testing.T) {
 	mockExec.EXPECT().InitChain(mock.Anything, mock.Anything, uint64(1), "tchain").
 		Return([]byte("app0"), uint64(1024), nil).Once()
 
-	mockDA := testmocks.NewMockDA(t)
-
-	daClient := da.NewClient(da.Config{
-		DA:                       mockDA,
-		Logger:                   zerolog.Nop(),
-		Namespace:                cfg.DA.Namespace,
-		DataNamespace:            cfg.DA.DataNamespace,
-		ForcedInclusionNamespace: cfg.DA.ForcedInclusionNamespace,
-	})
-	daRetriever := NewDARetriever(daClient, cm, gen, zerolog.Nop())
-	fiRetriever := da.NewForcedInclusionRetriever(daClient, gen, zerolog.Nop())
+	client := testmocks.NewMockClient(t)
+	client.On("GetHeaderNamespace").Return([]byte(cfg.DA.Namespace)).Maybe()
+	client.On("GetDataNamespace").Return([]byte(cfg.DA.DataNamespace)).Maybe()
+	client.On("GetForcedInclusionNamespace").Return([]byte(cfg.DA.ForcedInclusionNamespace)).Maybe()
+	client.On("HasForcedInclusionNamespace").Return(true).Maybe()
+	daRetriever := NewDARetriever(client, cm, gen, zerolog.Nop())
+	fiRetriever := da.NewForcedInclusionRetriever(client, gen, zerolog.Nop())
 
 	s := NewSyncer(
 		st,
 		mockExec,
-		daClient,
+		client,
 		cm,
 		common.NopMetrics(),
 		cfg,
@@ -715,14 +675,10 @@ func TestVerifyForcedInclusionTxs_NoForcedTransactions(t *testing.T) {
 	require.NoError(t, s.initializeState())
 	s.ctx = context.Background()
 
-	// Mock DA to return no forced inclusion transactions
-	namespaceForcedInclusionBz := coreda.NamespaceFromString(cfg.DA.GetForcedInclusionNamespace()).Bytes()
-
-	// With DAStartHeight=0, epoch size=1, daHeight=0 -> epoch boundaries are [0, 0]
-	// Check epoch start only (end check is skipped when same as start)
-	mockDA.EXPECT().GetIDs(mock.Anything, uint64(0), mock.MatchedBy(func(ns []byte) bool {
-		return bytes.Equal(ns, namespaceForcedInclusionBz)
-	})).Return(&coreda.GetIDsResult{IDs: [][]byte{}, Timestamp: time.Now()}, nil).Once()
+	// Mock DA to return no forced inclusion transactions at height 0
+	client.On("Retrieve", mock.Anything, uint64(0), []byte("nsForcedInclusion")).Return(datypes.ResultRetrieve{
+		BaseResult: datypes.BaseResult{Code: datypes.StatusNotFound, Timestamp: time.Now()},
+	}).Once()
 
 	// Create block data
 	data := makeData(gen.ChainID, 1, 2)
@@ -757,22 +713,18 @@ func TestVerifyForcedInclusionTxs_NamespaceNotConfigured(t *testing.T) {
 	mockExec.EXPECT().InitChain(mock.Anything, mock.Anything, uint64(1), "tchain").
 		Return([]byte("app0"), uint64(1024), nil).Once()
 
-	mockDA := testmocks.NewMockDA(t)
-
-	daClient := da.NewClient(da.Config{
-		DA:            mockDA,
-		Logger:        zerolog.Nop(),
-		Namespace:     cfg.DA.Namespace,
-		DataNamespace: cfg.DA.DataNamespace,
-		// No ForcedInclusionNamespace - not configured
-	})
-	daRetriever := NewDARetriever(daClient, cm, gen, zerolog.Nop())
-	fiRetriever := da.NewForcedInclusionRetriever(daClient, gen, zerolog.Nop())
+	client := testmocks.NewMockClient(t)
+	client.On("GetHeaderNamespace").Return([]byte(cfg.DA.Namespace)).Maybe()
+	client.On("GetDataNamespace").Return([]byte(cfg.DA.DataNamespace)).Maybe()
+	client.On("GetForcedInclusionNamespace").Return([]byte(nil)).Maybe()
+	client.On("HasForcedInclusionNamespace").Return(false).Maybe()
+	daRetriever := NewDARetriever(client, cm, gen, zerolog.Nop())
+	fiRetriever := da.NewForcedInclusionRetriever(client, gen, zerolog.Nop())
 
 	s := NewSyncer(
 		st,
 		mockExec,
-		daClient,
+		client,
 		cm,
 		common.NopMetrics(),
 		cfg,
@@ -826,22 +778,18 @@ func TestVerifyForcedInclusionTxs_DeferralWithinEpoch(t *testing.T) {
 	mockExec.EXPECT().InitChain(mock.Anything, mock.Anything, uint64(1), "tchain").
 		Return([]byte("app0"), uint64(1024), nil).Once()
 
-	mockDA := testmocks.NewMockDA(t)
-
-	daClient := da.NewClient(da.Config{
-		DA:                       mockDA,
-		Logger:                   zerolog.Nop(),
-		Namespace:                cfg.DA.Namespace,
-		DataNamespace:            cfg.DA.DataNamespace,
-		ForcedInclusionNamespace: cfg.DA.ForcedInclusionNamespace,
-	})
-	daRetriever := NewDARetriever(daClient, cm, gen, zerolog.Nop())
-	fiRetriever := da.NewForcedInclusionRetriever(daClient, gen, zerolog.Nop())
+	client := testmocks.NewMockClient(t)
+	client.On("GetHeaderNamespace").Return([]byte(cfg.DA.Namespace)).Maybe()
+	client.On("GetDataNamespace").Return([]byte(cfg.DA.DataNamespace)).Maybe()
+	client.On("GetForcedInclusionNamespace").Return([]byte(cfg.DA.ForcedInclusionNamespace)).Maybe()
+	client.On("HasForcedInclusionNamespace").Return(true).Maybe()
+	daRetriever := NewDARetriever(client, cm, gen, zerolog.Nop())
+	fiRetriever := da.NewForcedInclusionRetriever(client, gen, zerolog.Nop())
 
 	s := NewSyncer(
 		st,
 		mockExec,
-		daClient,
+		client,
 		cm,
 		common.NopMetrics(),
 		cfg,
@@ -858,8 +806,6 @@ func TestVerifyForcedInclusionTxs_DeferralWithinEpoch(t *testing.T) {
 	require.NoError(t, s.initializeState())
 	s.ctx = context.Background()
 
-	namespaceForcedInclusionBz := coreda.NamespaceFromString(cfg.DA.GetForcedInclusionNamespace()).Bytes()
-
 	// Create forced inclusion transaction blobs
 	dataBin1, _ := makeSignedDataBytes(t, gen.ChainID, 10, addr, pub, signer, 2)
 	dataBin2, _ := makeSignedDataBytes(t, gen.ChainID, 11, addr, pub, signer, 1)
@@ -868,26 +814,16 @@ func TestVerifyForcedInclusionTxs_DeferralWithinEpoch(t *testing.T) {
 	// Epoch boundaries: [100, 104] (epoch size is 5)
 	// The retriever will fetch all heights in the epoch: 100, 101, 102, 103, 104
 
-	// Height 100 (epoch start)
-	mockDA.EXPECT().GetIDs(mock.Anything, uint64(100), mock.MatchedBy(func(ns []byte) bool {
-		return bytes.Equal(ns, namespaceForcedInclusionBz)
-	})).Return(&coreda.GetIDsResult{IDs: [][]byte{[]byte("fi1"), []byte("fi2")}, Timestamp: time.Now()}, nil).Once()
+	client.On("Retrieve", mock.Anything, uint64(100), []byte("nsForcedInclusion")).Return(datypes.ResultRetrieve{
+		BaseResult: datypes.BaseResult{Code: datypes.StatusSuccess, IDs: [][]byte{[]byte("fi1"), []byte("fi2")}, Timestamp: time.Now()},
+		Data:       [][]byte{dataBin1, dataBin2},
+	}).Once()
 
-	mockDA.EXPECT().Get(mock.Anything, mock.Anything, mock.MatchedBy(func(ns []byte) bool {
-		return bytes.Equal(ns, namespaceForcedInclusionBz)
-	})).Return([][]byte{dataBin1, dataBin2}, nil).Once()
-
-	// Heights 101, 102, 103 (intermediate heights in epoch)
-	for height := uint64(101); height <= 103; height++ {
-		mockDA.EXPECT().GetIDs(mock.Anything, height, mock.MatchedBy(func(ns []byte) bool {
-			return bytes.Equal(ns, namespaceForcedInclusionBz)
-		})).Return(&coreda.GetIDsResult{IDs: [][]byte{}, Timestamp: time.Now()}, nil).Once()
+	for height := uint64(101); height <= 104; height++ {
+		client.On("Retrieve", mock.Anything, height, []byte("nsForcedInclusion")).Return(datypes.ResultRetrieve{
+			BaseResult: datypes.BaseResult{Code: datypes.StatusNotFound, Timestamp: time.Now()},
+		}).Once()
 	}
-
-	// Height 104 (epoch end)
-	mockDA.EXPECT().GetIDs(mock.Anything, uint64(104), mock.MatchedBy(func(ns []byte) bool {
-		return bytes.Equal(ns, namespaceForcedInclusionBz)
-	})).Return(&coreda.GetIDsResult{IDs: [][]byte{}, Timestamp: time.Now()}, nil).Once()
 
 	// First block only includes dataBin1 (dataBin2 deferred due to size constraints)
 	data1 := makeData(gen.ChainID, 1, 2)
@@ -909,23 +845,16 @@ func TestVerifyForcedInclusionTxs_DeferralWithinEpoch(t *testing.T) {
 	})
 
 	// Mock DA for second verification at same epoch (height 104 - epoch end)
-	mockDA.EXPECT().GetIDs(mock.Anything, uint64(100), mock.MatchedBy(func(ns []byte) bool {
-		return bytes.Equal(ns, namespaceForcedInclusionBz)
-	})).Return(&coreda.GetIDsResult{IDs: [][]byte{[]byte("fi1"), []byte("fi2")}, Timestamp: time.Now()}, nil).Once()
-
-	mockDA.EXPECT().Get(mock.Anything, mock.Anything, mock.MatchedBy(func(ns []byte) bool {
-		return bytes.Equal(ns, namespaceForcedInclusionBz)
-	})).Return([][]byte{dataBin1, dataBin2}, nil).Once()
-
-	for height := uint64(101); height <= 103; height++ {
-		mockDA.EXPECT().GetIDs(mock.Anything, height, mock.MatchedBy(func(ns []byte) bool {
-			return bytes.Equal(ns, namespaceForcedInclusionBz)
-		})).Return(&coreda.GetIDsResult{IDs: [][]byte{}, Timestamp: time.Now()}, nil).Once()
+	for height := uint64(101); height <= 104; height++ {
+		client.On("Retrieve", mock.Anything, height, []byte("nsForcedInclusion")).Return(datypes.ResultRetrieve{
+			BaseResult: datypes.BaseResult{Code: datypes.StatusNotFound, Timestamp: time.Now()},
+		}).Once()
 	}
 
-	mockDA.EXPECT().GetIDs(mock.Anything, uint64(104), mock.MatchedBy(func(ns []byte) bool {
-		return bytes.Equal(ns, namespaceForcedInclusionBz)
-	})).Return(&coreda.GetIDsResult{IDs: [][]byte{}, Timestamp: time.Now()}, nil).Once()
+	client.On("Retrieve", mock.Anything, uint64(100), []byte("nsForcedInclusion")).Return(datypes.ResultRetrieve{
+		BaseResult: datypes.BaseResult{Code: datypes.StatusSuccess, IDs: [][]byte{[]byte("fi1"), []byte("fi2")}, Timestamp: time.Now()},
+		Data:       [][]byte{dataBin1, dataBin2},
+	}).Once()
 
 	// Second block includes BOTH the previously included dataBin1 AND the deferred dataBin2
 	// This simulates the block containing both forced inclusion txs
@@ -972,22 +901,18 @@ func TestVerifyForcedInclusionTxs_MaliciousAfterEpochEnd(t *testing.T) {
 	mockExec.EXPECT().InitChain(mock.Anything, mock.Anything, uint64(1), "tchain").
 		Return([]byte("app0"), uint64(1024), nil).Once()
 
-	mockDA := testmocks.NewMockDA(t)
-
-	daClient := da.NewClient(da.Config{
-		DA:                       mockDA,
-		Logger:                   zerolog.Nop(),
-		Namespace:                cfg.DA.Namespace,
-		DataNamespace:            cfg.DA.DataNamespace,
-		ForcedInclusionNamespace: cfg.DA.ForcedInclusionNamespace,
-	})
-	daRetriever := NewDARetriever(daClient, cm, gen, zerolog.Nop())
-	fiRetriever := da.NewForcedInclusionRetriever(daClient, gen, zerolog.Nop())
+	client := testmocks.NewMockClient(t)
+	client.On("GetHeaderNamespace").Return([]byte(cfg.DA.Namespace)).Maybe()
+	client.On("GetDataNamespace").Return([]byte(cfg.DA.DataNamespace)).Maybe()
+	client.On("GetForcedInclusionNamespace").Return([]byte(cfg.DA.ForcedInclusionNamespace)).Maybe()
+	client.On("HasForcedInclusionNamespace").Return(true).Maybe()
+	daRetriever := NewDARetriever(client, cm, gen, zerolog.Nop())
+	fiRetriever := da.NewForcedInclusionRetriever(client, gen, zerolog.Nop())
 
 	s := NewSyncer(
 		st,
 		mockExec,
-		daClient,
+		client,
 		cm,
 		common.NopMetrics(),
 		cfg,
@@ -1004,8 +929,6 @@ func TestVerifyForcedInclusionTxs_MaliciousAfterEpochEnd(t *testing.T) {
 	require.NoError(t, s.initializeState())
 	s.ctx = context.Background()
 
-	namespaceForcedInclusionBz := coreda.NamespaceFromString(cfg.DA.GetForcedInclusionNamespace()).Bytes()
-
 	// Create forced inclusion transaction blob
 	dataBin, _ := makeSignedDataBytes(t, gen.ChainID, 10, addr, pub, signer, 2)
 
@@ -1013,24 +936,18 @@ func TestVerifyForcedInclusionTxs_MaliciousAfterEpochEnd(t *testing.T) {
 	// Epoch boundaries: [100, 102] (epoch size is 3)
 	// The retriever will fetch heights 100, 101, 102
 
-	// Height 100 (epoch start)
-	mockDA.EXPECT().GetIDs(mock.Anything, uint64(100), mock.MatchedBy(func(ns []byte) bool {
-		return bytes.Equal(ns, namespaceForcedInclusionBz)
-	})).Return(&coreda.GetIDsResult{IDs: [][]byte{[]byte("fi1")}, Timestamp: time.Now()}, nil).Once()
+	client.On("Retrieve", mock.Anything, uint64(100), []byte("nsForcedInclusion")).Return(datypes.ResultRetrieve{
+		BaseResult: datypes.BaseResult{Code: datypes.StatusSuccess, IDs: [][]byte{[]byte("fi1")}, Timestamp: time.Now()},
+		Data:       [][]byte{dataBin},
+	}).Once()
 
-	mockDA.EXPECT().Get(mock.Anything, mock.Anything, mock.MatchedBy(func(ns []byte) bool {
-		return bytes.Equal(ns, namespaceForcedInclusionBz)
-	})).Return([][]byte{dataBin}, nil).Once()
+	client.On("Retrieve", mock.Anything, uint64(101), []byte("nsForcedInclusion")).Return(datypes.ResultRetrieve{
+		BaseResult: datypes.BaseResult{Code: datypes.StatusNotFound, Timestamp: time.Now()},
+	}).Once()
 
-	// Height 101 (intermediate)
-	mockDA.EXPECT().GetIDs(mock.Anything, uint64(101), mock.MatchedBy(func(ns []byte) bool {
-		return bytes.Equal(ns, namespaceForcedInclusionBz)
-	})).Return(&coreda.GetIDsResult{IDs: [][]byte{}, Timestamp: time.Now()}, nil).Once()
-
-	// Height 102 (epoch end)
-	mockDA.EXPECT().GetIDs(mock.Anything, uint64(102), mock.MatchedBy(func(ns []byte) bool {
-		return bytes.Equal(ns, namespaceForcedInclusionBz)
-	})).Return(&coreda.GetIDsResult{IDs: [][]byte{}, Timestamp: time.Now()}, nil).Once()
+	client.On("Retrieve", mock.Anything, uint64(102), []byte("nsForcedInclusion")).Return(datypes.ResultRetrieve{
+		BaseResult: datypes.BaseResult{Code: datypes.StatusNotFound, Timestamp: time.Now()},
+	}).Once()
 
 	// First block doesn't include the forced inclusion tx
 	data1 := makeData(gen.ChainID, 1, 1)
@@ -1072,22 +989,19 @@ func TestVerifyForcedInclusionTxs_SmoothingExceedsEpoch(t *testing.T) {
 	mockExec.EXPECT().InitChain(mock.Anything, mock.Anything, uint64(1), "tchain").
 		Return([]byte("app0"), uint64(1024), nil).Once()
 
-	mockDA := testmocks.NewMockDA(t)
+	client := testmocks.NewMockClient(t)
+	client.On("GetHeaderNamespace").Return([]byte(cfg.DA.Namespace)).Maybe()
+	client.On("GetDataNamespace").Return([]byte(cfg.DA.DataNamespace)).Maybe()
+	client.On("GetForcedInclusionNamespace").Return([]byte(cfg.DA.ForcedInclusionNamespace)).Maybe()
+	client.On("HasForcedInclusionNamespace").Return(true).Maybe()
 
-	daClient := da.NewClient(da.Config{
-		DA:                       mockDA,
-		Logger:                   zerolog.Nop(),
-		Namespace:                cfg.DA.Namespace,
-		DataNamespace:            cfg.DA.DataNamespace,
-		ForcedInclusionNamespace: cfg.DA.ForcedInclusionNamespace,
-	})
-	daRetriever := NewDARetriever(daClient, cm, gen, zerolog.Nop())
-	fiRetriever := da.NewForcedInclusionRetriever(daClient, gen, zerolog.Nop())
+	daRetriever := NewDARetriever(client, cm, gen, zerolog.Nop())
+	fiRetriever := da.NewForcedInclusionRetriever(client, gen, zerolog.Nop())
 
 	s := NewSyncer(
 		st,
 		mockExec,
-		daClient,
+		client,
 		cm,
 		common.NopMetrics(),
 		cfg,
@@ -1104,30 +1018,28 @@ func TestVerifyForcedInclusionTxs_SmoothingExceedsEpoch(t *testing.T) {
 	require.NoError(t, s.initializeState())
 	s.ctx = context.Background()
 
-	namespaceForcedInclusionBz := coreda.NamespaceFromString(cfg.DA.GetForcedInclusionNamespace()).Bytes()
-
 	// Create 3 forced inclusion transactions
 	dataBin1, _ := makeSignedDataBytes(t, gen.ChainID, 10, addr, pub, signer, 2)
 	dataBin2, _ := makeSignedDataBytes(t, gen.ChainID, 11, addr, pub, signer, 2)
 	dataBin3, _ := makeSignedDataBytes(t, gen.ChainID, 12, addr, pub, signer, 2)
 
 	// Mock DA retrieval for Epoch 1: [100, 102]
-	mockDA.EXPECT().GetIDs(mock.Anything, uint64(100), mock.MatchedBy(func(ns []byte) bool {
-		return bytes.Equal(ns, namespaceForcedInclusionBz)
-	})).Return(&coreda.GetIDsResult{
-		IDs:       [][]byte{[]byte("fi1"), []byte("fi2"), []byte("fi3")},
-		Timestamp: time.Now(),
-	}, nil).Once()
+	client.On("Retrieve", mock.Anything, uint64(100), []byte("nsForcedInclusion")).Return(datypes.ResultRetrieve{
+		BaseResult: datypes.BaseResult{
+			Code:      datypes.StatusSuccess,
+			IDs:       [][]byte{[]byte("fi1"), []byte("fi2"), []byte("fi3")},
+			Timestamp: time.Now(),
+		},
+		Data: [][]byte{dataBin1, dataBin2, dataBin3},
+	}).Once()
 
-	mockDA.EXPECT().Get(mock.Anything, mock.Anything, mock.MatchedBy(func(ns []byte) bool {
-		return bytes.Equal(ns, namespaceForcedInclusionBz)
-	})).Return([][]byte{dataBin1, dataBin2, dataBin3}, nil).Once()
+	client.On("Retrieve", mock.Anything, uint64(101), []byte("nsForcedInclusion")).Return(datypes.ResultRetrieve{
+		BaseResult: datypes.BaseResult{Code: datypes.StatusNotFound, Timestamp: time.Now()},
+	}).Once()
 
-	for height := uint64(101); height <= 102; height++ {
-		mockDA.EXPECT().GetIDs(mock.Anything, height, mock.MatchedBy(func(ns []byte) bool {
-			return bytes.Equal(ns, namespaceForcedInclusionBz)
-		})).Return(&coreda.GetIDsResult{IDs: [][]byte{}, Timestamp: time.Now()}, nil).Once()
-	}
+	client.On("Retrieve", mock.Anything, uint64(102), []byte("nsForcedInclusion")).Return(datypes.ResultRetrieve{
+		BaseResult: datypes.BaseResult{Code: datypes.StatusNotFound, Timestamp: time.Now()},
+	}).Once()
 
 	// Block at DA height 102 (epoch end): Only includes 2 of 3 txs
 	// The third tx remains pending - legitimate within the epoch

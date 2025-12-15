@@ -29,10 +29,9 @@ import (
 	"github.com/cosmos/cosmos-sdk/x/bank"
 	"github.com/cosmos/cosmos-sdk/x/gov"
 	"github.com/cosmos/ibc-go/v8/modules/apps/transfer"
-	coreda "github.com/evstack/ev-node/core/da"
-	"github.com/evstack/ev-node/da/jsonrpc"
-	seqcommon "github.com/evstack/ev-node/sequencers/common"
-	"github.com/rs/zerolog"
+	libshare "github.com/celestiaorg/go-square/v3/share"
+	"github.com/evstack/ev-node/pkg/da/jsonrpc"
+	datypes "github.com/evstack/ev-node/pkg/da/types"
 	"github.com/stretchr/testify/require"
 )
 
@@ -202,7 +201,7 @@ func TestEvNode_PostsToDA(t *testing.T) {
 	daAddress := fmt.Sprintf("http://%s", bridgeNetInfo.Internal.RPCAddress())
 	headerNamespaceStr := "ev-header"
 	dataNamespaceStr := "ev-data"
-	dataNamespace := coreda.NamespaceFromString(dataNamespaceStr)
+	dataNamespace := datypes.NamespaceFromString(dataNamespaceStr)
 
 	require.NoError(t, evNode.Start(ctx,
 		"--evnode.da.address", daAddress,
@@ -241,7 +240,7 @@ func TestEvNode_PostsToDA(t *testing.T) {
 
 	// 6) Assert data landed on DA via celestia-node blob RPC (namespace ev-data)
 	daRPCAddr := fmt.Sprintf("http://%s", bridgeNetInfo.Internal.RPCAddress())
-	daClient, err := jsonrpc.NewClient(ctx, zerolog.Nop(), daRPCAddr, authToken, seqcommon.AbsoluteMaxBlobSize)
+	daClient, err := jsonrpc.NewClient(ctx, daRPCAddr, authToken, "")
 	require.NoError(t, err, "new da client")
 	defer daClient.Close()
 
@@ -275,17 +274,20 @@ func TestEvNode_PostsToDA(t *testing.T) {
 		return false, nil
 	})
 
+	ns, err := libshare.NewNamespaceFromBytes(dataNamespace.Bytes())
+	require.NoError(t, err, "create libshare namespace")
+
 	wait.ForCondition(ctx, time.Minute, 5*time.Second, func() (bool, error) {
 		if pfbHeight == 0 {
 			return false, nil
 		}
 		for h := pfbHeight; h <= pfbHeight+10; h++ {
-			ids, err := daClient.DA.GetIDs(ctx, uint64(h), dataNamespace.Bytes())
+			blobs, err := daClient.Blob.GetAll(ctx, uint64(h), []libshare.Namespace{ns})
 			if err != nil {
-				t.Logf("GetIDs data height=%d err=%v", h, err)
+				t.Logf("GetAll data height=%d err=%v", h, err)
 				continue
 			}
-			if ids != nil && len(ids.IDs) > 0 {
+			if len(blobs) > 0 {
 				return true, nil
 			}
 		}

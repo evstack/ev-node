@@ -7,10 +7,9 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"github.com/rs/zerolog"
-
-	proxy "github.com/evstack/ev-node/da/jsonrpc"
 )
 
 const (
@@ -46,15 +45,24 @@ func main() {
 	}
 	da := NewLocalDA(logger, opts...)
 
-	srv := proxy.NewServer(logger, host, port, da)
-	logger.Info().Str("host", host).Str("port", port).Uint64("maxBlobSize", maxBlobSize).Msg("Listening on")
-	if err := srv.Start(context.Background()); err != nil {
-		logger.Error().Err(err).Msg("error while serving")
+	addr := fmt.Sprintf("%s:%s", host, port)
+	srv, err := startBlobServer(logger, addr, da)
+	if err != nil {
+		logger.Error().Err(err).Msg("error while creating blob RPC server")
+		os.Exit(1)
 	}
+
+	logger.Info().Str("host", host).Str("port", port).Uint64("maxBlobSize", maxBlobSize).Msg("Listening on")
 
 	interrupt := make(chan os.Signal, 1)
 	signal.Notify(interrupt, os.Interrupt, syscall.SIGINT)
 	<-interrupt
 	fmt.Println("\nCtrl+C pressed. Exiting...")
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if err := srv.Shutdown(ctx); err != nil {
+		logger.Error().Err(err).Msg("error shutting down server")
+	}
 	os.Exit(0)
 }

@@ -561,34 +561,6 @@ _Example 6: High Chain Activity (Extended Grace Period)_
 - Result: Better operational reliability when block space is scarce
 ```
 
-#### Size Validation and Max Bytes Handling
-
-Both sequencers enforce strict size limits to prevent DoS and ensure batches never exceed the DA layer's limits:
-
-```go
-// Size validation utilities
-const AbsoluteMaxBlobSize = 1.5 * 1024 * 1024 // 1.5MB DA layer limit
-
-// ValidateBlobSize checks against absolute DA layer limit
-func ValidateBlobSize(blob []byte) bool {
-    return uint64(len(blob)) <= AbsoluteMaxBlobSize
-}
-
-// WouldExceedCumulativeSize checks against per-batch limit
-func WouldExceedCumulativeSize(currentSize int, blobSize int, maxBytes uint64) bool {
-    return uint64(currentSize)+uint64(blobSize) > maxBytes
-}
-```
-
-**Key Behaviors**:
-
-- **Absolute validation**: Blobs exceeding 2MB are permanently rejected
-- **Batch size limits**: `req.MaxBytes` is NEVER exceeded in any batch
-- **Transaction preservation**:
-  - Single sequencer: Trimmed batch txs returned to queue via `Prepend()`
-  - Based sequencer: Excess txs remain in `txQueue` for next batch
-  - Forced txs that don't fit go to `pendingForcedInclusionTxs` (single) or stay in `txQueue` (based)
-
 #### Transaction Queue Management
 
 The based sequencer uses a simplified queue to handle transactions:

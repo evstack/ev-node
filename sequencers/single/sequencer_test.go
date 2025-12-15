@@ -14,10 +14,10 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/evstack/ev-node/block"
-	coreda "github.com/evstack/ev-node/core/da"
 	coresequencer "github.com/evstack/ev-node/core/sequencer"
 	"github.com/evstack/ev-node/pkg/genesis"
 	damocks "github.com/evstack/ev-node/test/mocks"
+	"github.com/evstack/ev-node/test/testda"
 )
 
 // MockForcedInclusionRetriever is a mock implementation of DARetriever for testing
@@ -31,6 +31,10 @@ func (m *MockForcedInclusionRetriever) RetrieveForcedIncludedTxs(ctx context.Con
 		return nil, args.Error(1)
 	}
 	return args.Get(0).(*block.ForcedInclusionEvent), args.Error(1)
+}
+
+func newDummyDA(maxBlobSize uint64) *testda.DummyDA {
+	return testda.New(testda.WithMaxBlobSize(maxBlobSize))
 }
 
 // newTestSequencer creates a sequencer for tests that don't need full initialization
@@ -60,7 +64,7 @@ func newTestSequencer(t *testing.T, db ds.Batching, fiRetriever ForcedInclusionR
 }
 
 func TestSequencer_SubmitBatchTxs(t *testing.T) {
-	dummyDA := coreda.NewDummyDA(100_000_000, 10*time.Second)
+	dummyDA := newDummyDA(100_000_000)
 	db := ds.NewMapDatastore()
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
@@ -114,7 +118,7 @@ func TestSequencer_SubmitBatchTxs(t *testing.T) {
 }
 
 func TestSequencer_SubmitBatchTxs_EmptyBatch(t *testing.T) {
-	dummyDA := coreda.NewDummyDA(100_000_000, 10*time.Second)
+	dummyDA := newDummyDA(100_000_000)
 	db := ds.NewMapDatastore()
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
@@ -274,14 +278,14 @@ func TestSequencer_VerifyBatch(t *testing.T) {
 	proofs := [][]byte{[]byte("proof1"), []byte("proof2")}
 
 	t.Run("Proposer Mode", func(t *testing.T) {
-		mockDA := damocks.NewMockDA(t)
+		mockDAVerifier := damocks.NewMockVerifier(t)
 		mockRetriever := new(MockForcedInclusionRetriever)
 		mockRetriever.On("RetrieveForcedIncludedTxs", mock.Anything, mock.Anything).
 			Return(nil, block.ErrForceInclusionNotConfigured).Maybe()
 
 		db := ds.NewMapDatastore()
 		seq := newTestSequencer(t, db, mockRetriever, true)
-		seq.da = mockDA
+		seq.daVerifier = mockDAVerifier
 		defer db.Close()
 
 		res, err := seq.VerifyBatch(context.Background(), coresequencer.VerifyBatchRequest{Id: seq.Id, BatchData: batchData})
@@ -289,106 +293,106 @@ func TestSequencer_VerifyBatch(t *testing.T) {
 		assert.NotNil(res)
 		assert.True(res.Status, "Expected status to be true in proposer mode")
 
-		mockDA.AssertNotCalled(t, "GetProofs", context.Background(), mock.Anything)
-		mockDA.AssertNotCalled(t, "Validate", mock.Anything, mock.Anything, mock.Anything)
+		mockDAVerifier.AssertNotCalled(t, "GetProofs", context.Background(), mock.Anything)
+		mockDAVerifier.AssertNotCalled(t, "Validate", mock.Anything, mock.Anything, mock.Anything)
 	})
 
 	t.Run("Non-Proposer Mode", func(t *testing.T) {
 		t.Run("Valid Proofs", func(t *testing.T) {
-			mockDA := damocks.NewMockDA(t)
+			mockDAVerifier := damocks.NewMockVerifier(t)
 			mockRetriever := new(MockForcedInclusionRetriever)
 			mockRetriever.On("RetrieveForcedIncludedTxs", mock.Anything, mock.Anything).
 				Return(nil, block.ErrForceInclusionNotConfigured).Maybe()
 
 			db := ds.NewMapDatastore()
 			seq := newTestSequencer(t, db, mockRetriever, false)
-			seq.da = mockDA
+			seq.daVerifier = mockDAVerifier
 			defer db.Close()
 
-			mockDA.On("GetProofs", context.Background(), batchData, Id).Return(proofs, nil).Once()
-			mockDA.On("Validate", mock.Anything, batchData, proofs, Id).Return([]bool{true, true}, nil).Once()
+			mockDAVerifier.On("GetProofs", context.Background(), batchData, Id).Return(proofs, nil).Once()
+			mockDAVerifier.On("Validate", mock.Anything, batchData, proofs, Id).Return([]bool{true, true}, nil).Once()
 
 			res, err := seq.VerifyBatch(context.Background(), coresequencer.VerifyBatchRequest{Id: seq.Id, BatchData: batchData})
 			assert.NoError(err)
 			assert.NotNil(res)
 			assert.True(res.Status, "Expected status to be true for valid proofs")
-			mockDA.AssertExpectations(t)
+			mockDAVerifier.AssertExpectations(t)
 		})
 
 		t.Run("Invalid Proof", func(t *testing.T) {
-			mockDA := damocks.NewMockDA(t)
+			mockDAVerifier := damocks.NewMockVerifier(t)
 			mockRetriever := new(MockForcedInclusionRetriever)
 			mockRetriever.On("RetrieveForcedIncludedTxs", mock.Anything, mock.Anything).
 				Return(nil, block.ErrForceInclusionNotConfigured).Maybe()
 
 			db := ds.NewMapDatastore()
 			seq := newTestSequencer(t, db, mockRetriever, false)
-			seq.da = mockDA
+			seq.daVerifier = mockDAVerifier
 			defer db.Close()
 
-			mockDA.On("GetProofs", context.Background(), batchData, Id).Return(proofs, nil).Once()
-			mockDA.On("Validate", mock.Anything, batchData, proofs, Id).Return([]bool{true, false}, nil).Once()
+			mockDAVerifier.On("GetProofs", context.Background(), batchData, Id).Return(proofs, nil).Once()
+			mockDAVerifier.On("Validate", mock.Anything, batchData, proofs, Id).Return([]bool{true, false}, nil).Once()
 
 			res, err := seq.VerifyBatch(context.Background(), coresequencer.VerifyBatchRequest{Id: seq.Id, BatchData: batchData})
 			assert.NoError(err)
 			assert.NotNil(res)
 			assert.False(res.Status, "Expected status to be false for invalid proof")
-			mockDA.AssertExpectations(t)
+			mockDAVerifier.AssertExpectations(t)
 		})
 
 		t.Run("GetProofs Error", func(t *testing.T) {
-			mockDA := damocks.NewMockDA(t)
+			mockDAVerifier := damocks.NewMockVerifier(t)
 			mockRetriever := new(MockForcedInclusionRetriever)
 			mockRetriever.On("RetrieveForcedIncludedTxs", mock.Anything, mock.Anything).
 				Return(nil, block.ErrForceInclusionNotConfigured).Maybe()
 
 			db := ds.NewMapDatastore()
 			seq := newTestSequencer(t, db, mockRetriever, false)
-			seq.da = mockDA
+			seq.daVerifier = mockDAVerifier
 			defer db.Close()
 			expectedErr := errors.New("get proofs failed")
 
-			mockDA.On("GetProofs", context.Background(), batchData, Id).Return(nil, expectedErr).Once()
+			mockDAVerifier.On("GetProofs", context.Background(), batchData, Id).Return(nil, expectedErr).Once()
 
 			res, err := seq.VerifyBatch(context.Background(), coresequencer.VerifyBatchRequest{Id: seq.Id, BatchData: batchData})
 			assert.Error(err)
 			assert.Nil(res)
 			assert.Contains(err.Error(), expectedErr.Error())
-			mockDA.AssertExpectations(t)
-			mockDA.AssertNotCalled(t, "Validate", mock.Anything, mock.Anything, mock.Anything)
+			mockDAVerifier.AssertExpectations(t)
+			mockDAVerifier.AssertNotCalled(t, "Validate", mock.Anything, mock.Anything, mock.Anything)
 		})
 
 		t.Run("Validate Error", func(t *testing.T) {
-			mockDA := damocks.NewMockDA(t)
+			mockDAVerifier := damocks.NewMockVerifier(t)
 			mockRetriever := new(MockForcedInclusionRetriever)
 			mockRetriever.On("RetrieveForcedIncludedTxs", mock.Anything, mock.Anything).
 				Return(nil, block.ErrForceInclusionNotConfigured).Maybe()
 
 			db := ds.NewMapDatastore()
 			seq := newTestSequencer(t, db, mockRetriever, false)
-			seq.da = mockDA
+			seq.daVerifier = mockDAVerifier
 			defer db.Close()
 			expectedErr := errors.New("validate failed")
 
-			mockDA.On("GetProofs", context.Background(), batchData, Id).Return(proofs, nil).Once()
-			mockDA.On("Validate", mock.Anything, batchData, proofs, Id).Return(nil, expectedErr).Once()
+			mockDAVerifier.On("GetProofs", context.Background(), batchData, Id).Return(proofs, nil).Once()
+			mockDAVerifier.On("Validate", mock.Anything, batchData, proofs, Id).Return(nil, expectedErr).Once()
 
 			res, err := seq.VerifyBatch(context.Background(), coresequencer.VerifyBatchRequest{Id: seq.Id, BatchData: batchData})
 			assert.Error(err)
 			assert.Nil(res)
 			assert.Contains(err.Error(), expectedErr.Error())
-			mockDA.AssertExpectations(t)
+			mockDAVerifier.AssertExpectations(t)
 		})
 
 		t.Run("Invalid ID", func(t *testing.T) {
-			mockDA := damocks.NewMockDA(t)
+			mockDAVerifier := damocks.NewMockVerifier(t)
 			mockRetriever := new(MockForcedInclusionRetriever)
 			mockRetriever.On("RetrieveForcedIncludedTxs", mock.Anything, mock.Anything).
 				Return(nil, block.ErrForceInclusionNotConfigured).Maybe()
 
 			db := ds.NewMapDatastore()
 			seq := newTestSequencer(t, db, mockRetriever, false)
-			seq.da = mockDA
+			seq.daVerifier = mockDAVerifier
 			defer db.Close()
 
 			invalidId := []byte("invalid")
@@ -397,8 +401,8 @@ func TestSequencer_VerifyBatch(t *testing.T) {
 			assert.Nil(res)
 			assert.ErrorIs(err, ErrInvalidId)
 
-			mockDA.AssertNotCalled(t, "GetProofs", context.Background(), mock.Anything)
-			mockDA.AssertNotCalled(t, "Validate", mock.Anything, mock.Anything, mock.Anything)
+			mockDAVerifier.AssertNotCalled(t, "GetProofs", context.Background(), mock.Anything)
+			mockDAVerifier.AssertNotCalled(t, "Validate", mock.Anything, mock.Anything, mock.Anything)
 		})
 	})
 }
@@ -406,7 +410,7 @@ func TestSequencer_VerifyBatch(t *testing.T) {
 func TestSequencer_GetNextBatch_BeforeDASubmission(t *testing.T) {
 	t.Skip()
 	// Initialize a new sequencer with mock DA
-	mockDA := &damocks.MockDA{}
+	mockDA := damocks.NewMockVerifier(t)
 	db := ds.NewMapDatastore()
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
@@ -424,10 +428,6 @@ func TestSequencer_GetNextBatch_BeforeDASubmission(t *testing.T) {
 			t.Fatalf("Failed to close sequencer: %v", err)
 		}
 	}()
-
-	// Set up mock expectations
-	mockDA.On("Submit", mock.Anything, mock.Anything, mock.Anything, mock.Anything).
-		Return(nil, errors.New("mock DA always rejects submissions"))
 
 	// Submit a batch
 	Id := []byte("test1")
@@ -714,7 +714,7 @@ func TestSequencer_QueueLimit_Integration(t *testing.T) {
 	db := ds.NewMapDatastore()
 	defer db.Close()
 
-	mockDA := &damocks.MockDA{}
+	mockDA := damocks.NewMockVerifier(t)
 	mockRetriever := new(MockForcedInclusionRetriever)
 	mockRetriever.On("RetrieveForcedIncludedTxs", mock.Anything, mock.Anything).
 		Return(nil, block.ErrForceInclusionNotConfigured).Maybe()
@@ -839,9 +839,9 @@ func TestSequencer_DAFailureAndQueueThrottling_Integration(t *testing.T) {
 	defer db.Close()
 
 	// Create a dummy DA that we can make fail
-	dummyDA := coreda.NewDummyDA(100_000, 100*time.Millisecond)
-	dummyDA.StartHeightTicker()
-	defer dummyDA.StopHeightTicker()
+	dummyDA := newDummyDA(100_000)
+	stopTicker := dummyDA.StartHeightTicker(100 * time.Millisecond)
+	defer stopTicker()
 
 	// Create sequencer with small queue size to trigger throttling quickly
 	queueSize := 3 // Small for testing
