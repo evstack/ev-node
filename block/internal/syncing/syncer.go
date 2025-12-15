@@ -536,7 +536,7 @@ func (s *Syncer) processHeightEvent(event *common.DAHeightEvent) {
 	}
 
 	// only save to p2p stores if the event came from DA
-	if event.Source == common.SourceDA {
+	if event.Source == common.SourceDA { // TODO(@julienrbrt): To be reverted once DA Hints are merged (https://github.com/evstack/ev-node/pull/2891)
 		g, ctx := errgroup.WithContext(s.ctx)
 		g.Go(func() error {
 			// broadcast header locally only — prevents spamming the p2p network with old height notifications,
@@ -591,11 +591,13 @@ func (s *Syncer) trySyncNextBlock(event *common.DAHeightEvent) error {
 	}
 
 	// Verify forced inclusion transactions if configured
-	if err := s.verifyForcedInclusionTxs(currentState, data); err != nil {
-		s.logger.Error().Err(err).Uint64("height", nextHeight).Msg("forced inclusion verification failed")
-		if errors.Is(err, errMaliciousProposer) {
-			s.cache.RemoveHeaderDAIncluded(headerHash)
-			return err
+	if event.Source == common.SourceDA {
+		if err := s.verifyForcedInclusionTxs(currentState, data); err != nil {
+			s.logger.Error().Err(err).Uint64("height", nextHeight).Msg("forced inclusion verification failed")
+			if errors.Is(err, errMaliciousProposer) {
+				s.cache.RemoveHeaderDAIncluded(headerHash)
+				return err
+			}
 		}
 	}
 
