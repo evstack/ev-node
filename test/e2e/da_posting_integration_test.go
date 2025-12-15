@@ -29,8 +29,8 @@ import (
 	"github.com/cosmos/cosmos-sdk/x/bank"
 	"github.com/cosmos/cosmos-sdk/x/gov"
 	"github.com/cosmos/ibc-go/v8/modules/apps/transfer"
-	coreda "github.com/evstack/ev-node/core/da"
-	"github.com/evstack/ev-node/da/jsonrpc"
+	"github.com/evstack/ev-node/pkg/da/jsonrpc"
+	datypes "github.com/evstack/ev-node/pkg/da/types"
 	seqcommon "github.com/evstack/ev-node/sequencers/common"
 	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/require"
@@ -202,7 +202,7 @@ func TestEvNode_PostsToDA(t *testing.T) {
 	daAddress := fmt.Sprintf("http://%s", bridgeNetInfo.Internal.RPCAddress())
 	headerNamespaceStr := "ev-header"
 	dataNamespaceStr := "ev-data"
-	dataNamespace := coreda.NamespaceFromString(dataNamespaceStr)
+	dataNamespace := datypes.NamespaceFromString(dataNamespaceStr)
 
 	require.NoError(t, evNode.Start(ctx,
 		"--evnode.da.address", daAddress,
