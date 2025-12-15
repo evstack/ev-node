@@ -9,11 +9,13 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"os/exec"
 	"strings"
 	"testing"
 	"time"
 
 	tastoradocker "github.com/celestiaorg/tastora/framework/docker"
+	tastoraconsts "github.com/celestiaorg/tastora/framework/docker/consts"
 	"github.com/celestiaorg/tastora/framework/docker/container"
 	tastoracosmos "github.com/celestiaorg/tastora/framework/docker/cosmos"
 	tastorada "github.com/celestiaorg/tastora/framework/docker/dataavailability"
@@ -25,7 +27,6 @@ import (
 	"github.com/cosmos/cosmos-sdk/types/module/testutil"
 	"github.com/cosmos/cosmos-sdk/x/auth"
 	"github.com/cosmos/cosmos-sdk/x/bank"
-	banktypes "github.com/cosmos/cosmos-sdk/x/bank/types"
 	"github.com/cosmos/cosmos-sdk/x/gov"
 	"github.com/cosmos/ibc-go/v8/modules/apps/transfer"
 	coreda "github.com/evstack/ev-node/core/da"
@@ -125,21 +126,57 @@ func TestEvNode_PostsToDA(t *testing.T) {
 	require.NoError(t, err, "bridge wallet")
 
 	faucet := chain.GetFaucetWallet()
+	require.NotNil(t, faucet, "faucet wallet")
+
+	validatorNode := chain.GetNodes()[0].(*tastoracosmos.ChainNode)
+
+	// Wait for the node to serve RPC before funding.
+	err = wait.ForCondition(ctx, 2*time.Minute, time.Second, func() (bool, error) {
+		c, err := validatorNode.GetRPCClient()
+		if err != nil {
+			return false, nil
+		}
+		if _, err := c.Status(ctx); err != nil {
+			return false, nil
+		}
+		h, err := validatorNode.Height(ctx)
+		if err != nil {
+			return false, nil
+		}
+		return h >= 3, nil
+	})
+	require.NoError(t, err, "validator RPC ready")
+
+	// Fund the bridge wallet via CLI to avoid `BroadcastMessages` JSON-RPC decoding issues.
+	faucetKey := tastoraconsts.FaucetAccountKeyName
 	sendAmt := sdk.NewInt64Coin(chain.Config.Denom, 5_000_000_000)
+	rpcNode := fmt.Sprintf("tcp://%s:26657", coreHost)
+	cmd := []string{
+		validatorNode.BinaryName,
+		"tx", "bank", "send",
+		faucetKey,
+		bridgeWallet.FormattedAddress,
+		sendAmt.String(),
+		"--chain-id", chainID,
+		"--home", validatorNode.HomeDir(),
+		"--keyring-backend", "test",
+		"--node", rpcNode,
+		"--fees", fmt.Sprintf("1000%s", chain.Config.Denom),
+		"--broadcast-mode", "sync",
+		"--yes",
+	}
+	stdout, stderr, err := validatorNode.Exec(ctx, cmd, nil)
+	require.NoErrorf(t, err, "fund bridge wallet via CLI: %s", string(stderr))
+	require.Contains(t, string(stdout), "code: 0", "bank send succeeded")
 
-	bankSend := banktypes.NewMsgSend(
-		faucet.Address,
-		bridgeWallet.Address,
-		sdk.NewCoins(sendAmt),
-	)
-
-	resp, err := chain.BroadcastMessages(ctx, faucet, bankSend)
-	require.Zero(t, resp.Code, "broadcast response error should not be zero")
-	require.NoErrorf(t, err, "fund bridge wallet")
-
-	amnt, err := query.Balance(ctx, chain.GetNode().GrpcConn, bridgeWallet.FormattedAddress, chain.Config.Denom)
-	require.NoError(t, err)
-	require.NotZero(t, amnt.Int64(), "bridge wallet should have balance")
+	err = wait.ForCondition(ctx, 2*time.Minute, time.Second, func() (bool, error) {
+		amnt, err := query.Balance(ctx, chain.GetNode().GrpcConn, bridgeWallet.FormattedAddress, chain.Config.Denom)
+		if err != nil {
+			return false, nil
+		}
+		return amnt.Int64() > 0, nil
+	})
+	require.NoError(t, err, "bridge wallet should have balance")
 
 	bridgeNetInfo, err := bridge.GetNetworkInfo(ctx)
 	require.NoError(t, err, "bridge network info")
@@ -149,7 +186,7 @@ func TestEvNode_PostsToDA(t *testing.T) {
 		WithChainID("evchain-test").
 		WithBinaryName("testapp").
 		WithAggregatorPassphrase("12345678").
-		WithImage(getEvNodeImage()).
+		WithImage(getEvNodeImage(t)).
 		WithDockerClient(dockerClient).
 		WithDockerNetworkID(networkID).
 		WithNode(evstack.NewNodeBuilder().WithAggregator(true).Build()).
@@ -298,9 +335,19 @@ func (c *httpClient) Post(ctx context.Context, path, key, value string) ([]byte,
 
 // getEvNodeImage resolves the EV Node image to use for the test.
 // Falls back to EV_NODE_IMAGE_REPO:EV_NODE_IMAGE_TAG or evstack:local-dev.
-func getEvNodeImage() container.Image {
+func getEvNodeImage(t *testing.T) container.Image {
+	t.Helper()
+
 	repo := strings.TrimSpace(getEnvDefault("EV_NODE_IMAGE_REPO", "evstack"))
 	tag := strings.TrimSpace(getEnvDefault("EV_NODE_IMAGE_TAG", "local-dev"))
+
+	// When using the default local image, fail fast with a clear message if the image is missing.
+	if repo == "evstack" && tag == "local-dev" {
+		if err := exec.Command("docker", "image", "inspect", "evstack:local-dev").Run(); err != nil {
+			t.Fatalf("missing docker image evstack:local-dev; run `make docker-build` (or set `EV_NODE_IMAGE_REPO`/`EV_NODE_IMAGE_TAG` to a pullable image): %v", err)
+		}
+	}
+
 	return container.NewImage(repo, tag, "10001:10001")
 }
 
