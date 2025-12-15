@@ -304,7 +304,7 @@ func (s *BasedSequencer) SubmitBatchTxs(ctx context.Context, req SubmitBatchTxsR
 
 #### Syncer Verification
 
-Full nodes verify forced inclusion in the sync process with support for transaction smoothing across multiple blocks:
+Full nodes verify forced inclusion in the sync process with support for transaction smoothing across multiple blocks and a configurable grace period:
 
 ```go
 func (s *Syncer) verifyForcedInclusionTxs(currentState State, data *Data) error {
@@ -347,11 +347,16 @@ func (s *Syncer) verifyForcedInclusionTxs(currentState State, data *Data) error 
         }
     }
 
-    // 5. Check for malicious behavior: pending txs past their epoch boundary
+    // 5. Check for malicious behavior: pending txs past their grace boundary
+    // Grace period provides tolerance for temporary chain congestion
     var maliciousTxs, remainingPending []pendingForcedInclusionTx
     for _, pending := range stillPending {
-        // If current DA height is past this epoch's end, these txs MUST have been included
-        if currentState.DAHeight > pending.EpochEnd {
+        // Calculate grace boundary: epoch end + (effective grace periods × epoch size)
+        effectiveGracePeriod := s.getEffectiveGracePeriod()
+        graceBoundary := pending.EpochEnd + (effectiveGracePeriod * s.genesis.DAEpochForcedInclusion)
+
+        // If current DA height is past the grace boundary, these txs MUST have been included
+        if currentState.DAHeight > graceBoundary {
             maliciousTxs = append(maliciousTxs, pending)
         } else {
             remainingPending = append(remainingPending, pending)
@@ -361,9 +366,9 @@ func (s *Syncer) verifyForcedInclusionTxs(currentState State, data *Data) error 
     // 6. Update pending map with only remaining valid pending txs
     pendingForcedInclusionTxs = remainingPending
 
-    // 7. Reject block if sequencer censored forced txs past epoch boundary
+    // 7. Reject block if sequencer censored forced txs past grace boundary
     if len(maliciousTxs) > 0 {
-        return fmt.Errorf("sequencer is malicious: %d forced inclusion transactions from past epoch(s) not included", len(maliciousTxs))
+        return fmt.Errorf("sequencer is malicious: %d forced inclusion transactions past grace boundary not included", len(maliciousTxs))
     }
 
     return nil
@@ -438,6 +443,122 @@ if errors.Is(err, coreda.ErrHeightFromFuture) {
     // Retry same height on next call
     return &ForcedIncludedEvent{Txs: [][]byte{}}, nil
 }
+```
+
+#### Grace Period for Forced Inclusion
+
+The grace period mechanism provides tolerance for chain congestion while maintaining censorship resistance:
+
+**Problem**: If the DA layer experiences temporary unavailability or the chain congestion, the sequencer may be unable to fetch forced inclusion transactions from a completed epoch. Without a grace period, full nodes would immediately flag the sequencer as malicious.
+
+**Solution**: The grace period mechanism allows forced inclusion transactions from epoch N to be included in subsequent epochs before being flagged as malicious. The grace period is dynamically adjusted based on chain fullness.
+
+**Grace Boundary Calculation**:
+
+```go
+graceBoundary := epochEnd + (effectiveGracePeriod * DAEpochForcedInclusion)
+
+// Example with base grace period = 1 epoch, DAEpochForcedInclusion = 50:
+// - Epoch N ends at DA height 100
+// - Grace boundary = 100 + (1 * 50) = 150 (adjusted dynamically by chain fullness)
+// - Transaction must be included while currentDAHeight <= graceBoundary
+// - If currentDAHeight > graceBoundary without inclusion, sequencer is malicious
+```
+
+**Configuration Recommendations**:
+
+- **Production (default)**: Base grace period of 1 epoch
+  - Automatically adjusted based on chain fullness
+  - Balances censorship resistance with reliability
+- **High Security / Reliable DA**: Minimum grace period
+  - Stricter enforcement when block space is available
+  - Requires 99.9%+ DA uptime
+  - Faster detection of censorship
+- **Unreliable DA**: Network adjusts grace period dynamically
+  - Higher tolerance (up to 3x base period) when chain is congested
+  - Reduced censorship resistance temporarily to avoid false positives
+
+**Verification Logic**:
+
+1. Forced inclusion transactions from epoch N are tracked with their epoch boundaries
+2. Transactions not immediately included are added to pending queue
+3. Each block, full nodes check if pending transactions are past their grace boundary
+4. If `currentDAHeight > graceBoundary`, the sequencer is flagged as malicious (strictly greater than)
+5. Transactions within the grace period (where `currentDAHeight <= graceBoundary`) remain in pending queue without error
+
+**Benefits**:
+
+- Prevents false positives during temporary DA outages
+- Maintains censorship resistance (transactions must be included within grace window)
+- Configurable trade-off between reliability and security
+- Allows networks to adapt to their DA layer's reliability characteristics
+
+**Examples and Edge Cases**:
+
+Configuration: `DAEpochForcedInclusion = 50`, Base grace period of 1 epoch (dynamically adjusted)
+
+_Example 1: Normal Inclusion (Within Same Epoch)_
+
+```
+- Forced tx submitted to DA at height 75 (epoch 51-100)
+- Sequencer fetches at height 101 (next epoch start)
+- Sequencer includes tx in block at DA height 105
+- Result: ✅ Valid - included within same epoch
+```
+
+_Example 2: Grace Period Usage (Included in Next Epoch)_
+
+```
+- Forced tx submitted to DA at height 75 (epoch 51-100)
+- Sequencer fetches at height 101
+- DA temporarily unavailable, sequencer cannot fetch
+- Sequencer includes tx at DA height 125 (epoch 101-150)
+- Grace boundary = 100 + (1 × 50) = 150
+- Result: ✅ Valid - within grace period
+```
+
+_Example 3: Malicious Sequencer (Past Grace Boundary)_
+
+```
+- Forced tx submitted to DA at height 75 (epoch 51-100)
+- Sequencer fetches at height 101
+- Sequencer deliberately omits tx
+- Block produced at DA height 151 (past grace boundary 150)
+- Full node detects: currentDAHeight (151) > graceBoundary (150)
+- Result: ❌ Block rejected, sequencer flagged as malicious
+```
+
+_Example 4: Low Chain Activity (Minimum Grace Period)_
+
+```
+- Chain is mostly empty (<20% full)
+- Grace period is at minimum (0.5x base period)
+- Forced tx submitted at height 75 (epoch 51-100)
+- Grace boundary ≈ 100 + (0.5 × 50) = 125
+- Stricter enforcement applied when chain is empty
+- Result: Faster censorship detection when block space is available
+```
+
+_Example 5: Multiple Pending Transactions_
+
+```
+- Tx A from epoch ending at height 100, grace boundary 150
+- Tx B from epoch ending at height 150, grace boundary 200
+- Current DA height: 155
+- Tx A not included: ❌ Past grace boundary - malicious
+- Tx B not included: ✅ Within grace period - still pending
+- Result: Block rejected due to Tx A
+```
+
+_Example 6: High Chain Activity (Extended Grace Period)_
+
+```
+- Chain is highly congested (>80% full)
+- Grace period is extended (up to 3x base period)
+- Forced tx submitted at height 75 (epoch 51-100)
+- Grace boundary ≈ 100 + (3 × 50) = 250
+- Higher tolerance during congestion to avoid false positives
+- Result: Better operational reliability when block space is scarce
 ```
 
 #### Size Validation and Max Bytes Handling
@@ -539,7 +660,7 @@ type NodeConfig struct {
 # genesis.json
 {
   "chain_id": "my-rollup",
-  "forced_inclusion_da_epoch": 10  # Scan 10 DA blocks at a time
+  "da_epoch_forced_inclusion": 10  # Scan 10 DA blocks at a time
 }
 
 # config.toml
@@ -557,7 +678,7 @@ based_sequencer = false # Use traditional sequencer
 # genesis.json
 {
   "chain_id": "my-rollup",
-  "forced_inclusion_da_epoch": 5  # Scan 5 DA blocks at a time
+  "da_epoch_forced_inclusion": 5  # Scan 5 DA blocks at a time
 }
 
 # config.toml
@@ -573,7 +694,6 @@ based_sequencer = true # Use based sequencer
 
 #### Single Sequencer Flow
 
-```
 1. Timer triggers GetNextBatch
 2. Fetch forced inclusion txs from DA (via DA Retriever)
    - Only at epoch boundaries
@@ -581,11 +701,9 @@ based_sequencer = true # Use based sequencer
 3. Get batch from mempool queue
 4. Prepend forced txs to batch
 5. Return batch for block production
-```
 
 #### Based Sequencer Flow
 
-```
 1. Timer triggers GetNextBatch
 2. Check transaction queue for buffered txs
 3. If queue empty or epoch boundary:
@@ -593,19 +711,28 @@ based_sequencer = true # Use based sequencer
    - Add to queue
 4. Create batch from queue (respecting MaxBytes)
 5. Return batch for block production
-```
 
 ### Full Node Verification Flow
 
-```
 1. Receive block from DA or P2P
 2. Before applying block:
-   a. Fetch forced inclusion txs from DA at block's DA height
+   a. Fetch forced inclusion txs from DA at block's DA height (epoch-based)
    b. Build map of transactions in block
-   c. Verify all forced txs are in block
-   d. If missing: reject block, flag malicious proposer
+   c. Check if pending forced txs from previous epochs are included
+   d. Add any new forced txs not yet included to pending queue
+   e. Calculate grace boundary for each pending tx (dynamically adjusted by chain fullness):
+   graceBoundary = epochEnd + (effectiveGracePeriod × DAEpochForcedInclusion)
+   f. Check if any pending txs are past their grace boundary
+   g. If txs past grace boundary are not included: reject block, flag malicious proposer
+   h. If txs within grace period: keep in pending queue, allow block
 3. Apply block if verification passes
-```
+
+**Grace Period Example** (with base grace period = 1 epoch, `DAEpochForcedInclusion = 50`):
+
+- Forced tx appears in epoch ending at DA height 100
+- Grace boundary = 100 + (1 × 50) = 150
+- Transaction can be included at any DA height from 101 to 150
+- When currentDAHeight > 150 without inclusion, sequencer is flagged as malicious
 
 ### Efficiency Considerations
 
@@ -637,96 +764,20 @@ Every `DAEpochForcedInclusion` DA blocks
 
 **Attack Vectors**:
 
-- **Censorship**: Mitigated by forced inclusion verification
+### Security Considerations
+
+- **Censorship**: Mitigated by forced inclusion verification with grace period
+  - Transactions must be included within grace window (epoch + grace period)
+  - Full nodes detect and reject blocks from malicious sequencers
+  - Grace period = 0 provides immediate detection but requires high DA reliability
+  - Grace period = 1+ balances censorship resistance with operational tolerance
 - **DA Spam**: Limited by DA layer's native spam protection and two-tier blob size limits
 - **Block Withholding**: Full nodes can fetch and verify from DA independently
 - **Oversized Batches**: Prevented by strict size validation at multiple levels
-
-### Testing Strategy
-
-#### Unit Tests
-
-1. **DA Retriever**:
-   - Epoch boundary calculations
-   - Height from future handling
-   - Blob size validation
-   - Empty epoch handling
-
-2. **Size Validation**:
-   - Individual blob size validation (absolute limit)
-   - Cumulative size checking (batch limit)
-   - Edge cases (empty blobs, exact limits, exceeding limits)
-
-3. **Single Sequencer**:
-   - Forced transaction prepending with size constraints
-   - Batch trimming when forced + batch exceeds MaxBytes
-   - Trimmed transactions returned to queue via Prepend
-   - Pending forced inclusion queue management
-   - DA height tracking
-   - Error handling
-
-4. **BatchQueue**:
-   - Prepend operation (empty queue, with items, after consuming)
-   - Multiple prepends (LIFO ordering)
-   - Space reuse before head position
-
-5. **Based Sequencer**:
-   - Queue management with size validation
-   - Batch size limits strictly enforced
-   - Transaction buffering across batches
-   - DA-only operation
-   - Always checking for new forced txs
-
-6. **Syncer Verification**:
-   - All forced txs included (pass)
-   - Missing forced txs (fail)
-   - No forced txs (pass)
-
-#### Integration Tests
-
-1. **Single Sequencer Integration**:
-   - Submit to mempool and forced inclusion
-   - Verify both included in block
-   - Forced txs appear first
-
-2. **Based Sequencer Integration**:
-   - Submit only to DA forced inclusion
-   - Verify block production
-   - Mempool submissions ignored
-
-3. **Verification Flow**:
-   - Full node rejects block missing forced tx
-   - Full node accepts block with all forced txs
-
-#### End-to-End Tests
-
-1. **User Flow**:
-   - User submits tx to forced inclusion namespace
-   - Sequencer includes tx in next epoch
-   - Full nodes verify inclusion
-
-2. **Based Rollup**:
-   - Start network with based sequencer
-   - Submit transactions to DA
-   - Verify block production and finalization
-
-3. **Censorship Resistance**:
-   - Sequencer ignores specific transaction
-   - User submits to forced inclusion
-   - Transaction included in next epoch
-   - Attempting to exclude causes block rejection
-
-### Breaking Changes
-
-1. **Sequencer Initialization**: Requires `DARetriever` and `Genesis` parameters
-2. **Configuration**: New fields in `DAConfig` and `NodeConfig`
-3. **Syncer**: New verification step in block processing
-
-**Migration Path**:
-
-- Forced inclusion is optional (enabled when namespace configured)
-- Existing deployments work without configuration changes
-- Can enable incrementally per network
+- **Grace Period Attacks**:
+  - Malicious sequencer cannot indefinitely delay forced transactions
+  - Grace boundary is deterministic and enforced by all full nodes
+  - Longer grace periods extend time to detect censorship (trade-off)
 
 ## Status
 
@@ -742,26 +793,28 @@ Accepted and Implemented
 4. **Based Rollup Option**: Fully DA-driven transaction ordering available (simplified implementation)
 5. **Optional**: Forced inclusion can be disabled for permissioned deployments
 6. **Efficient**: Epoch-based fetching minimizes DA queries
-7. **Flexible**: Configurable epoch size allows tuning latency vs efficiency
+7. **Flexible**: Configurable epoch size and grace period allow tuning latency vs reliability
 8. **Robust Size Handling**: Two-tier size validation prevents DoS and DA rejections
 9. **Transaction Preservation**: All valid transactions are preserved in queues, nothing is lost
 10. **Strict MaxBytes Compliance**: Batches never exceed limits, preventing DA submission failures
+11. **DA Fault Tolerance**: Grace period prevents false positives during temporary chain congestion
 
 ### Negative
 
 1. **Increased Latency**: Forced transactions subject to epoch boundaries
 2. **DA Dependency**: Requires DA layer to support multiple namespaces
 3. **Higher DA Costs**: Users pay DA posting fees for forced inclusion
-4. **Additional Complexity**: New component (DA Retriever) and verification logic
+4. **Additional Complexity**: New component (DA Retriever) and verification logic with grace period tracking
 5. **Epoch Configuration**: Requires setting `DAEpochForcedInclusion` in genesis (consensus parameter)
+6. **Grace Period Adjustment**: Grace period is dynamically adjusted based on block fullness to balance censorship detection with operational reliability
 
 ### Neutral
 
 1. **Two Sequencer Types**: Choice between single (hybrid) and based (DA-only)
 2. **Privacy Model Unchanged**: Forced inclusion has same privacy as normal path
-3. **Monitoring**: Operators should monitor forced inclusion namespace usage
-4. **Documentation**: Users need guidance on when to use forced inclusion
-5. **Genesis Parameter**: `DAEpochForcedInclusion` is a consensus parameter fixed at genesis
+3. **Monitoring**: Operators should monitor forced inclusion namespace usage and grace period metrics
+4. **Documentation**: Users need guidance on when to use forced inclusion and grace period implications
+5. **Genesis Parameters**: `DAEpochForcedInclusion` is a consensus parameter fixed at genesis; grace period adjustment is dynamic
 
 ## References
 
