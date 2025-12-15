@@ -62,7 +62,7 @@ func NewClient(cfg Config) Client {
 
 	return &client{
 		blobAPI:            &cfg.Client.Blob,
-		logger:             cfg.Logger.With().Str("component", "blob_da_client").Logger(),
+		logger:             cfg.Logger.With().Str("component", "da_client").Logger(),
 		defaultTimeout:     cfg.DefaultTimeout,
 		namespaceBz:        datypes.NamespaceFromString(cfg.Namespace).Bytes(),
 		dataNamespaceBz:    datypes.NamespaceFromString(cfg.DataNamespace).Bytes(),

@@ -97,7 +97,7 @@ func waitForAtLeastNBlocks(node Node, n uint64, source Source) error {
 
 // waitForAtLeastNDAIncludedHeight waits for the DA included height to be at least n
 func waitForAtLeastNDAIncludedHeight(node Node, n uint64) error {
-	return Retry(600, 100*time.Millisecond, func() error {
+	return Retry(300, 100*time.Millisecond, func() error {
 		if fn, ok := node.(*FullNode); ok {
 			if fn.blockComponents != nil && fn.blockComponents.Submitter != nil {
 				nHeight := fn.blockComponents.Submitter.GetDAIncludedHeight()

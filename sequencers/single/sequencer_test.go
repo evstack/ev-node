@@ -372,7 +372,7 @@ func TestSequencer_VerifyBatch(t *testing.T) {
 	proofs := [][]byte{[]byte("proof1"), []byte("proof2")}
 
 	t.Run("Proposer Mode", func(t *testing.T) {
-		mockDA := damocks.NewMockInterface(t)
+		mockDA := damocks.NewMockClient(t)
 		mockRetriever := new(MockForcedInclusionRetriever)
 		mockRetriever.On("RetrieveForcedIncludedTxs", mock.Anything, mock.Anything).
 			Return(nil, block.ErrForceInclusionNotConfigured).Maybe()
@@ -393,7 +393,7 @@ func TestSequencer_VerifyBatch(t *testing.T) {
 
 	t.Run("Non-Proposer Mode", func(t *testing.T) {
 		t.Run("Valid Proofs", func(t *testing.T) {
-			mockDA := damocks.NewMockInterface(t)
+			mockDA := damocks.NewMockClient(t)
 			mockRetriever := new(MockForcedInclusionRetriever)
 			mockRetriever.On("RetrieveForcedIncludedTxs", mock.Anything, mock.Anything).
 				Return(nil, block.ErrForceInclusionNotConfigured).Maybe()
@@ -414,7 +414,7 @@ func TestSequencer_VerifyBatch(t *testing.T) {
 		})
 
 		t.Run("Invalid Proof", func(t *testing.T) {
-			mockDA := damocks.NewMockInterface(t)
+			mockDA := damocks.NewMockClient(t)
 			mockRetriever := new(MockForcedInclusionRetriever)
 			mockRetriever.On("RetrieveForcedIncludedTxs", mock.Anything, mock.Anything).
 				Return(nil, block.ErrForceInclusionNotConfigured).Maybe()
@@ -435,7 +435,7 @@ func TestSequencer_VerifyBatch(t *testing.T) {
 		})
 
 		t.Run("GetProofs Error", func(t *testing.T) {
-			mockDA := damocks.NewMockInterface(t)
+			mockDA := damocks.NewMockClient(t)
 			mockRetriever := new(MockForcedInclusionRetriever)
 			mockRetriever.On("RetrieveForcedIncludedTxs", mock.Anything, mock.Anything).
 				Return(nil, block.ErrForceInclusionNotConfigured).Maybe()
@@ -457,7 +457,7 @@ func TestSequencer_VerifyBatch(t *testing.T) {
 		})
 
 		t.Run("Validate Error", func(t *testing.T) {
-			mockDA := damocks.NewMockInterface(t)
+			mockDA := damocks.NewMockClient(t)
 			mockRetriever := new(MockForcedInclusionRetriever)
 			mockRetriever.On("RetrieveForcedIncludedTxs", mock.Anything, mock.Anything).
 				Return(nil, block.ErrForceInclusionNotConfigured).Maybe()
@@ -479,7 +479,7 @@ func TestSequencer_VerifyBatch(t *testing.T) {
 		})
 
 		t.Run("Invalid ID", func(t *testing.T) {
-			mockDA := damocks.NewMockInterface(t)
+			mockDA := damocks.NewMockClient(t)
 			mockRetriever := new(MockForcedInclusionRetriever)
 			mockRetriever.On("RetrieveForcedIncludedTxs", mock.Anything, mock.Anything).
 				Return(nil, block.ErrForceInclusionNotConfigured).Maybe()
@@ -504,7 +504,7 @@ func TestSequencer_VerifyBatch(t *testing.T) {
 func TestSequencer_GetNextBatch_BeforeDASubmission(t *testing.T) {
 	t.Skip()
 	// Initialize a new sequencer with mock DA
-	mockDA := &damocks.MockInterface{}
+	mockDA := &damocks.MockClient{}
 	db := ds.NewMapDatastore()
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
@@ -812,7 +812,7 @@ func TestSequencer_QueueLimit_Integration(t *testing.T) {
 	db := ds.NewMapDatastore()
 	defer db.Close()
 
-	mockDA := &damocks.MockInterface{}
+	mockDA := &damocks.MockClient{}
 	mockRetriever := new(MockForcedInclusionRetriever)
 	mockRetriever.On("RetrieveForcedIncludedTxs", mock.Anything, mock.Anything).
 		Return(nil, block.ErrForceInclusionNotConfigured).Maybe()

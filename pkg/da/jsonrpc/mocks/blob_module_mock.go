@@ -109,8 +109,8 @@ func (_c *MockBlobModule_Get_Call) Run(run func(context1 context.Context, v uint
 	return _c
 }
 
-func (_c *MockBlobModule_Get_Call) Return(blob1 *jsonrpc.Blob, err error) *MockBlobModule_Get_Call {
-	_c.Call.Return(blob1, err)
+func (_c *MockBlobModule_Get_Call) Return(blob *jsonrpc.Blob, err error) *MockBlobModule_Get_Call {
+	_c.Call.Return(blob, err)
 	return _c
 }
 
