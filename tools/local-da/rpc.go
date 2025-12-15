@@ -53,6 +53,13 @@ func (s *blobServer) Submit(_ context.Context, blobs []*jsonrpc.Blob, _ *jsonrpc
 
 // Get returns a blob by height/namespace/commitment.
 func (s *blobServer) Get(_ context.Context, height uint64, namespace libshare.Namespace, commitment jsonrpc.Commitment) (*jsonrpc.Blob, error) {
+	s.da.mu.Lock()
+	defer s.da.mu.Unlock()
+
+	if height > s.da.height {
+		return nil, datypes.ErrHeightFromFuture
+	}
+
 	blobs, ok := s.da.blobData[height]
 	if !ok {
 		return nil, datypes.ErrBlobNotFound
@@ -67,6 +74,13 @@ func (s *blobServer) Get(_ context.Context, height uint64, namespace libshare.Na
 
 // GetAll returns blobs matching any of the provided namespaces at the given height.
 func (s *blobServer) GetAll(_ context.Context, height uint64, namespaces []libshare.Namespace) ([]*jsonrpc.Blob, error) {
+	s.da.mu.Lock()
+	defer s.da.mu.Unlock()
+
+	if height > s.da.height {
+		return nil, datypes.ErrHeightFromFuture
+	}
+
 	blobs, ok := s.da.blobData[height]
 	if !ok {
 		return nil, datypes.ErrBlobNotFound
