@@ -193,13 +193,13 @@ func TestEvNode_PostsToDA(t *testing.T) {
 	_, err = cli.Post(ctx, "/tx", key, value)
 	require.NoError(t, err)
 
-	require.Eventually(t, func() bool {
+	waitFor(ctx, t, 30*time.Second, 2*time.Second, func() bool {
 		res, err := cli.Get(ctx, "/kv?key="+key)
 		if err != nil {
 			return false
 		}
 		return string(res) == value
-	}, 30*time.Second, time.Second, "ev-node should serve the kv value")
+	}, "ev-node should serve the kv value")
 
 	// 6) Assert data landed on DA via celestia-node blob RPC (namespace ev-data)
 	daRPCAddr := fmt.Sprintf("http://127.0.0.1:%s", bridgeNetInfo.External.Ports.RPC)
@@ -212,7 +212,7 @@ func TestEvNode_PostsToDA(t *testing.T) {
 	require.NoError(t, err, "tm rpc client")
 
 	var pfbHeight int64
-	require.Eventually(t, func() bool {
+	waitFor(ctx, t, time.Minute, 5*time.Second, func() bool {
 		res, err := tmRPC.TxSearch(ctx, "message.action='/celestia.blob.v1.MsgPayForBlobs'", false, nil, nil, "desc")
 		if err != nil || len(res.Txs) == 0 {
 			return false
@@ -235,9 +235,9 @@ func TestEvNode_PostsToDA(t *testing.T) {
 			}
 		}
 		return false
-	}, 2*time.Minute, 5*time.Second, "expected a PayForBlobs tx on celestia-app")
+	}, "expected a PayForBlobs tx on celestia-app")
 
-	require.Eventually(t, func() bool {
+	waitFor(ctx, t, time.Minute, 5*time.Second, func() bool {
 		if pfbHeight == 0 {
 			return false
 		}
@@ -252,7 +252,7 @@ func TestEvNode_PostsToDA(t *testing.T) {
 			}
 		}
 		return false
-	}, 6*time.Minute, 5*time.Second, "expected blob in DA for namespace ev-data")
+	}, "expected blob in DA for namespace ev-data")
 }
 
 // newHTTPClient is a small helper to avoid importing the docker_e2e client.
@@ -308,4 +308,26 @@ func getEnvDefault(key, def string) string {
 		return v
 	}
 	return def
+}
+
+// waitFor polls condition until it returns true, context is cancelled, or timeout expires.
+func waitFor(ctx context.Context, t *testing.T, timeout, interval time.Duration, condition func() bool, msg string) {
+	t.Helper()
+	deadline := time.Now().Add(timeout)
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			t.Fatalf("%s: context cancelled: %v", msg, ctx.Err())
+		case <-ticker.C:
+			if time.Now().After(deadline) {
+				t.Fatalf("%s: timed out after %v", msg, timeout)
+			}
+			if condition() {
+				return
+			}
+		}
+	}
 }
