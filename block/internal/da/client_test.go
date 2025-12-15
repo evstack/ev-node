@@ -523,3 +523,226 @@ func TestClient_Retrieve_Timeout(t *testing.T) {
 		assert.Assert(t, result.Message != "")
 	})
 }
+
+func TestClient_RetrieveHeaders(t *testing.T) {
+	logger := zerolog.Nop()
+	dataLayerHeight := uint64(100)
+	mockIDs := [][]byte{[]byte("id1")}
+	mockBlobs := [][]byte{[]byte("header-blob")}
+	mockTimestamp := time.Now()
+
+	mockDAInstance := &mockDA{
+		getIDsFunc: func(ctx context.Context, height uint64, namespace []byte) (*coreda.GetIDsResult, error) {
+			return &coreda.GetIDsResult{
+				IDs:       mockIDs,
+				Timestamp: mockTimestamp,
+			}, nil
+		},
+		getFunc: func(ctx context.Context, ids []coreda.ID, namespace []byte) ([]coreda.Blob, error) {
+			return mockBlobs, nil
+		},
+	}
+
+	client := NewClient(Config{
+		DA:            mockDAInstance,
+		Logger:        logger,
+		Namespace:     "test-header-ns",
+		DataNamespace: "test-data-ns",
+	})
+
+	result := client.RetrieveHeaders(context.Background(), dataLayerHeight)
+
+	assert.Equal(t, coreda.StatusSuccess, result.Code)
+	assert.Equal(t, dataLayerHeight, result.Height)
+	assert.Equal(t, len(mockBlobs), len(result.Data))
+}
+
+func TestClient_RetrieveData(t *testing.T) {
+	logger := zerolog.Nop()
+	dataLayerHeight := uint64(200)
+	mockIDs := [][]byte{[]byte("id1"), []byte("id2")}
+	mockBlobs := [][]byte{[]byte("data-blob-1"), []byte("data-blob-2")}
+	mockTimestamp := time.Now()
+
+	mockDAInstance := &mockDA{
+		getIDsFunc: func(ctx context.Context, height uint64, namespace []byte) (*coreda.GetIDsResult, error) {
+			return &coreda.GetIDsResult{
+				IDs:       mockIDs,
+				Timestamp: mockTimestamp,
+			}, nil
+		},
+		getFunc: func(ctx context.Context, ids []coreda.ID, namespace []byte) ([]coreda.Blob, error) {
+			return mockBlobs, nil
+		},
+	}
+
+	client := NewClient(Config{
+		DA:            mockDAInstance,
+		Logger:        logger,
+		Namespace:     "test-header-ns",
+		DataNamespace: "test-data-ns",
+	})
+
+	result := client.RetrieveData(context.Background(), dataLayerHeight)
+
+	assert.Equal(t, coreda.StatusSuccess, result.Code)
+	assert.Equal(t, dataLayerHeight, result.Height)
+	assert.Equal(t, len(mockBlobs), len(result.Data))
+}
+
+func TestClient_RetrieveBatched(t *testing.T) {
+	logger := zerolog.Nop()
+	dataLayerHeight := uint64(100)
+
+	// Create 200 IDs to exceed default batch size
+	numIDs := 200
+	mockIDs := make([][]byte, numIDs)
+	for i := range numIDs {
+		mockIDs[i] = []byte{byte(i)}
+	}
+
+	// Track which batches were requested
+	batchCalls := []int{}
+
+	mockDAInstance := &mockDA{
+		getIDsFunc: func(ctx context.Context, height uint64, namespace []byte) (*coreda.GetIDsResult, error) {
+			return &coreda.GetIDsResult{
+				IDs:       mockIDs,
+				Timestamp: time.Now(),
+			}, nil
+		},
+		getFunc: func(ctx context.Context, ids []coreda.ID, namespace []byte) ([]coreda.Blob, error) {
+			batchCalls = append(batchCalls, len(ids))
+			// Return a blob for each ID in the batch
+			blobs := make([][]byte, len(ids))
+			for i := range ids {
+				blobs[i] = []byte("blob")
+			}
+			return blobs, nil
+		},
+	}
+
+	client := NewClient(Config{
+		DA:                mockDAInstance,
+		Logger:            logger,
+		Namespace:         "test-ns",
+		DataNamespace:     "test-data-ns",
+		RetrieveBatchSize: 50, // Set smaller batch size for testing
+	})
+
+	encodedNamespace := coreda.NamespaceFromString("test-ns")
+	result := client.Retrieve(context.Background(), dataLayerHeight, encodedNamespace.Bytes())
+
+	assert.Equal(t, coreda.StatusSuccess, result.Code)
+	assert.Equal(t, numIDs, len(result.Data))
+
+	// Should have made 4 batches: 50 + 50 + 50 + 50 = 200
+	assert.Equal(t, 4, len(batchCalls))
+	assert.Equal(t, 50, batchCalls[0])
+	assert.Equal(t, 50, batchCalls[1])
+	assert.Equal(t, 50, batchCalls[2])
+	assert.Equal(t, 50, batchCalls[3])
+}
+
+func TestClient_RetrieveBatched_PartialBatch(t *testing.T) {
+	logger := zerolog.Nop()
+	dataLayerHeight := uint64(100)
+
+	// Create 175 IDs to test partial batch at the end
+	numIDs := 175
+	mockIDs := make([][]byte, numIDs)
+	for i := range numIDs {
+		mockIDs[i] = []byte{byte(i)}
+	}
+
+	batchCalls := []int{}
+
+	mockDAInstance := &mockDA{
+		getIDsFunc: func(ctx context.Context, height uint64, namespace []byte) (*coreda.GetIDsResult, error) {
+			return &coreda.GetIDsResult{
+				IDs:       mockIDs,
+				Timestamp: time.Now(),
+			}, nil
+		},
+		getFunc: func(ctx context.Context, ids []coreda.ID, namespace []byte) ([]coreda.Blob, error) {
+			batchCalls = append(batchCalls, len(ids))
+			blobs := make([][]byte, len(ids))
+			for i := range ids {
+				blobs[i] = []byte("blob")
+			}
+			return blobs, nil
+		},
+	}
+
+	client := NewClient(Config{
+		DA:                mockDAInstance,
+		Logger:            logger,
+		Namespace:         "test-ns",
+		DataNamespace:     "test-data-ns",
+		RetrieveBatchSize: 50,
+	})
+
+	encodedNamespace := coreda.NamespaceFromString("test-ns")
+	result := client.Retrieve(context.Background(), dataLayerHeight, encodedNamespace.Bytes())
+
+	assert.Equal(t, coreda.StatusSuccess, result.Code)
+	assert.Equal(t, numIDs, len(result.Data))
+
+	// Should have made 4 batches: 50 + 50 + 50 + 25 = 175
+	assert.Equal(t, 4, len(batchCalls))
+	assert.Equal(t, 50, batchCalls[0])
+	assert.Equal(t, 50, batchCalls[1])
+	assert.Equal(t, 50, batchCalls[2])
+	assert.Equal(t, 25, batchCalls[3]) // Partial batch
+}
+
+func TestClient_RetrieveBatched_ErrorInSecondBatch(t *testing.T) {
+	logger := zerolog.Nop()
+	dataLayerHeight := uint64(100)
+
+	// Create 200 IDs to require multiple batches
+	numIDs := 200
+	mockIDs := make([][]byte, numIDs)
+	for i := range numIDs {
+		mockIDs[i] = []byte{byte(i)}
+	}
+
+	batchCallCount := 0
+
+	mockDAInstance := &mockDA{
+		getIDsFunc: func(ctx context.Context, height uint64, namespace []byte) (*coreda.GetIDsResult, error) {
+			return &coreda.GetIDsResult{
+				IDs:       mockIDs,
+				Timestamp: time.Now(),
+			}, nil
+		},
+		getFunc: func(ctx context.Context, ids []coreda.ID, namespace []byte) ([]coreda.Blob, error) {
+			batchCallCount++
+			// Fail on second batch
+			if batchCallCount == 2 {
+				return nil, errors.New("network error in batch 2")
+			}
+			blobs := make([][]byte, len(ids))
+			for i := range ids {
+				blobs[i] = []byte("blob")
+			}
+			return blobs, nil
+		},
+	}
+
+	client := NewClient(Config{
+		DA:                mockDAInstance,
+		Logger:            logger,
+		Namespace:         "test-ns",
+		DataNamespace:     "test-data-ns",
+		RetrieveBatchSize: 50,
+	})
+
+	encodedNamespace := coreda.NamespaceFromString("test-ns")
+	result := client.Retrieve(context.Background(), dataLayerHeight, encodedNamespace.Bytes())
+
+	assert.Equal(t, coreda.StatusError, result.Code)
+	assert.Assert(t, result.Message != "")
+	// Error message should mention the batch range
+	assert.Assert(t, len(result.Message) > 0)
+}

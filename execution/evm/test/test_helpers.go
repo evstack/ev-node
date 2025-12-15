@@ -6,8 +6,6 @@ import (
 	"context"
 	"encoding/hex"
 	"fmt"
-	"github.com/celestiaorg/tastora/framework/types"
-	"github.com/golang-jwt/jwt/v5"
 	mathrand "math/rand"
 	"net/http"
 	"strings"
@@ -15,10 +13,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/stretchr/testify/require"
-
 	"github.com/celestiaorg/tastora/framework/docker"
 	"github.com/celestiaorg/tastora/framework/docker/evstack/reth"
+	"github.com/celestiaorg/tastora/framework/types"
+	"github.com/golang-jwt/jwt/v5"
+	"github.com/stretchr/testify/require"
 )
 
 // Test-scoped Docker client/network mapping to avoid conflicts between tests
