@@ -22,7 +22,7 @@ test-integration:
 .PHONY: test-integration
 
 ## test-e2e: Running e2e tests
-test-e2e: build build-da build-evm
+test-e2e: build build-da build-evm docker-build-if-local
 	@echo "--> Running e2e tests"
 	@cd test/e2e && go test -mod=readonly -failfast -timeout=15m -tags='e2e evm' ./... --binary=../../build/testapp --evm-binary=../../build/evm
 .PHONY: test-e2e
@@ -69,8 +69,12 @@ test-docker-upgrade-e2e:
 ## docker-build-if-local: Build Docker image if using local repository
 docker-build-if-local:
 	@if [ -z "$(EV_NODE_IMAGE_REPO)" ] || [ "$(EV_NODE_IMAGE_REPO)" = "evstack" ]; then \
-		echo "--> Local repository detected, building Docker image..."; \
-		$(MAKE) docker-build; \
+		if docker image inspect evstack:local-dev >/dev/null 2>&1; then \
+			echo "--> Found local Docker image: evstack:local-dev (skipping build)"; \
+		else \
+			echo "--> Local repository detected, building Docker image..."; \
+			$(MAKE) docker-build; \
+		fi; \
 	else \
 		echo "--> Using remote repository: $(EV_NODE_IMAGE_REPO)"; \
 	fi

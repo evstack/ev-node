@@ -1,4 +1,4 @@
-package blob
+package jsonrpc
 
 // CommitmentProof matches celestia-node's blob.CommitmentProof JSON shape.
 // We keep only the fields we need on the client side.

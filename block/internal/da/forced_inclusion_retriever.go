@@ -8,7 +8,7 @@ import (
 
 	"github.com/rs/zerolog"
 
-	coreda "github.com/evstack/ev-node/core/da"
+	datypes "github.com/evstack/ev-node/pkg/da/types"
 	"github.com/evstack/ev-node/pkg/genesis"
 	"github.com/evstack/ev-node/types"
 )
@@ -74,22 +74,22 @@ func (r *ForcedInclusionRetriever) RetrieveForcedIncludedTxs(ctx context.Context
 		Txs:           [][]byte{},
 	}
 
-	epochEndResult := r.client.RetrieveForcedInclusion(ctx, epochEnd)
-	if epochEndResult.Code == coreda.StatusHeightFromFuture {
+	epochEndResult := r.client.Retrieve(ctx, epochEnd, r.client.GetForcedInclusionNamespace())
+	if epochEndResult.Code == datypes.StatusHeightFromFuture {
 		r.logger.Debug().
 			Uint64("epoch_end", epochEnd).
 			Msg("epoch end height not yet available on DA - backoff required")
-		return nil, fmt.Errorf("%w: epoch end height %d not yet available", coreda.ErrHeightFromFuture, epochEnd)
+		return nil, fmt.Errorf("%w: epoch end height %d not yet available", datypes.ErrHeightFromFuture, epochEnd)
 	}
 
 	epochStartResult := epochEndResult
 	if epochStart != epochEnd {
-		epochStartResult = r.client.RetrieveForcedInclusion(ctx, epochStart)
-		if epochStartResult.Code == coreda.StatusHeightFromFuture {
+		epochStartResult = r.client.Retrieve(ctx, epochStart, r.client.GetForcedInclusionNamespace())
+		if epochStartResult.Code == datypes.StatusHeightFromFuture {
 			r.logger.Debug().
 				Uint64("epoch_start", epochStart).
 				Msg("epoch start height not yet available on DA - backoff required")
-			return nil, fmt.Errorf("%w: epoch start height %d not yet available", coreda.ErrHeightFromFuture, epochStart)
+			return nil, fmt.Errorf("%w: epoch start height %d not yet available", datypes.ErrHeightFromFuture, epochStart)
 		}
 	}
 
@@ -106,7 +106,7 @@ func (r *ForcedInclusionRetriever) RetrieveForcedIncludedTxs(ctx context.Context
 
 	// Process heights between start and end (exclusive)
 	for epochHeight := epochStart + 1; epochHeight < epochEnd; epochHeight++ {
-		result := r.client.RetrieveForcedInclusion(ctx, epochHeight)
+		result := r.client.Retrieve(ctx, epochHeight, r.client.GetForcedInclusionNamespace())
 
 		err = r.processForcedInclusionBlobs(event, result, epochHeight)
 		processErrs = errors.Join(processErrs, err)
@@ -141,15 +141,15 @@ func (r *ForcedInclusionRetriever) RetrieveForcedIncludedTxs(ctx context.Context
 // processForcedInclusionBlobs processes blobs from a single DA height for forced inclusion.
 func (r *ForcedInclusionRetriever) processForcedInclusionBlobs(
 	event *ForcedInclusionEvent,
-	result coreda.ResultRetrieve,
+	result datypes.ResultRetrieve,
 	height uint64,
 ) error {
-	if result.Code == coreda.StatusNotFound {
+	if result.Code == datypes.StatusNotFound {
 		r.logger.Debug().Uint64("height", height).Msg("no forced inclusion blobs at height")
 		return nil
 	}
 
-	if result.Code != coreda.StatusSuccess {
+	if result.Code != datypes.StatusSuccess {
 		return fmt.Errorf("failed to retrieve forced inclusion blobs at height %d: %s", height, result.Message)
 	}
 
