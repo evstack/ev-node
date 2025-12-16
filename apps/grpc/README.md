@@ -151,4 +151,4 @@ If you have issues connecting to the DA layer:
 
 - [Evolve Documentation](https://ev.xyz)
 - [gRPC Execution Interface](../../execution/grpc/README.md)
-- [Single Sequencer Documentation](../../sequencers/single/README.md)
+- [Single Sequencer Documentation](../../pkg/sequencers/single/README.md)
