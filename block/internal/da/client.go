@@ -30,6 +30,7 @@ type Config struct {
 // It is unexported; callers should use the exported Client interface.
 type client struct {
 	blobAPI            *blobrpc.BlobAPI
+	headerAPI          *blobrpc.HeaderAPI
 	logger             zerolog.Logger
 	defaultTimeout     time.Duration
 	namespaceBz        []byte
@@ -58,6 +59,7 @@ func NewClient(cfg Config) FullClient {
 
 	return &client{
 		blobAPI:            &cfg.DA.Blob,
+		headerAPI:          &cfg.DA.Header,
 		logger:             cfg.Logger.With().Str("component", "da_client").Logger(),
 		defaultTimeout:     cfg.DefaultTimeout,
 		namespaceBz:        datypes.NamespaceFromString(cfg.Namespace).Bytes(),
@@ -180,8 +182,32 @@ func (c *client) Submit(ctx context.Context, data [][]byte, _ float64, namespace
 	}
 }
 
+// getBlockTimestamp fetches the block timestamp from the DA layer header.
+// If the header fetch fails, it falls back to time.Now() and logs a warning.
+func (c *client) getBlockTimestamp(ctx context.Context, height uint64) time.Time {
+	if c.headerAPI == nil {
+		c.logger.Warn().Uint64("height", height).Msg("header API not available, using current time")
+		return time.Now()
+	}
+
+	header, err := c.headerAPI.GetByHeight(ctx, height)
+	if err != nil {
+		c.logger.Warn().Uint64("height", height).Err(err).Msg("failed to get header timestamp, using current time")
+		return time.Now()
+	}
+
+	blockTime := header.Time()
+	if blockTime.IsZero() {
+		c.logger.Warn().Uint64("height", height).Msg("header timestamp is zero, using current time")
+		return time.Now()
+	}
+
+	return blockTime
+}
+
 // Retrieve retrieves blobs from the DA layer at the specified height and namespace.
 // It uses GetAll to fetch all blobs at once.
+// The timestamp is derived from the DA block header to ensure determinism.
 func (c *client) Retrieve(ctx context.Context, height uint64, namespace []byte) datypes.ResultRetrieve {
 	ns, err := share.NewNamespaceFromBytes(namespace)
 	if err != nil {
@@ -204,12 +230,14 @@ func (c *client) Retrieve(ctx context.Context, height uint64, namespace []byte) 
 		switch {
 		case strings.Contains(err.Error(), datypes.ErrBlobNotFound.Error()):
 			c.logger.Debug().Uint64("height", height).Msg("No blobs found at height")
+			// Fetch block timestamp for deterministic responses
+			blockTime := c.getBlockTimestamp(ctx, height)
 			return datypes.ResultRetrieve{
 				BaseResult: datypes.BaseResult{
 					Code:      datypes.StatusNotFound,
 					Message:   datypes.ErrBlobNotFound.Error(),
 					Height:    height,
-					Timestamp: time.Now(),
+					Timestamp: blockTime,
 				},
 			}
 		case strings.Contains(err.Error(), datypes.ErrHeightFromFuture.Error()):
@@ -234,6 +262,9 @@ func (c *client) Retrieve(ctx context.Context, height uint64, namespace []byte) 
 		}
 	}
 
+	// Fetch block timestamp for deterministic responses
+	blockTime := c.getBlockTimestamp(ctx, height)
+
 	if len(blobs) == 0 {
 		c.logger.Debug().Uint64("height", height).Msg("No blobs found at height")
 		return datypes.ResultRetrieve{
@@ -241,7 +272,7 @@ func (c *client) Retrieve(ctx context.Context, height uint64, namespace []byte) 
 				Code:      datypes.StatusNotFound,
 				Message:   datypes.ErrBlobNotFound.Error(),
 				Height:    height,
-				Timestamp: time.Now(),
+				Timestamp: blockTime,
 			},
 		}
 	}
@@ -261,7 +292,7 @@ func (c *client) Retrieve(ctx context.Context, height uint64, namespace []byte) 
 			Code:      datypes.StatusSuccess,
 			Height:    height,
 			IDs:       ids,
-			Timestamp: time.Now(),
+			Timestamp: blockTime,
 		},
 		Data: data,
 	}
