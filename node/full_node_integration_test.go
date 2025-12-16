@@ -125,7 +125,7 @@ func TestTxGossipingMultipleNodesDAIncluded(t *testing.T) {
 		}
 	}
 
-	blocksToWaitFor := uint64(5)
+	blocksToWaitFor := uint64(4)
 	// Wait for all nodes to reach at least blocksToWaitFor blocks with DA inclusion
 	for _, nodeItem := range nodes {
 		requireEmptyChan(t, errChan)

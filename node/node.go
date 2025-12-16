@@ -5,7 +5,6 @@ import (
 	"github.com/rs/zerolog"
 
 	"github.com/evstack/ev-node/block"
-	coreda "github.com/evstack/ev-node/core/da"
 	coreexecutor "github.com/evstack/ev-node/core/execution"
 	coresequencer "github.com/evstack/ev-node/core/sequencer"
 	"github.com/evstack/ev-node/pkg/config"
@@ -33,7 +32,7 @@ func NewNode(
 	conf config.Config,
 	exec coreexecutor.Executor,
 	sequencer coresequencer.Sequencer,
-	da coreda.DA,
+	daClient block.DAClient,
 	signer signer.Signer,
 	p2pClient *p2p.Client,
 	genesis genesis.Genesis,
@@ -58,7 +57,7 @@ func NewNode(
 		database,
 		exec,
 		sequencer,
-		da,
+		daClient,
 		metricsProvider,
 		logger,
 		nodeOptions,

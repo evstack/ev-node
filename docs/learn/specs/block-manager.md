@@ -167,8 +167,7 @@ The block components share a common configuration:
 | Namespace                | da.Namespace  | DA namespace ID for block submissions (deprecated, use HeaderNamespace and DataNamespace instead)                                                    |
 | HeaderNamespace          | string        | namespace ID for submitting headers to DA layer (automatically encoded by the node)                                                                  |
 | DataNamespace            | string        | namespace ID for submitting data to DA layer (automatically encoded by the node)                                                                     |
-| RetrieveBatchSize        | int           | number of blob IDs fetched per DA `Get` call, trading off payload size vs. number of RPC round trips (default: 100)                                  |
-| RequestTimeout           | duration      | per-request timeout for DA `GetIDs`/`Get` calls; higher values tolerate slow DA nodes, lower values fail faster (default: 30s)                     |
+| RequestTimeout           | duration      | per-request timeout for DA `GetIDs`/`Get` calls; higher values tolerate slow DA nodes, lower values fail faster (default: 30s)                       |
 
 ### Block Production (Executor Component)
 
@@ -746,7 +745,7 @@ See [tutorial] for running a multi-node network with both aggregator and non-agg
 [9] [Lazy Aggregation with DA Layer Consistency ADR](../../adr/adr-021-lazy-aggregation.md)
 
 [defaultBlockTime]: https://github.com/evstack/ev-node/blob/main/pkg/config/defaults.go#L50
-[defaultDABlockTime]:https://github.com/evstack/ev-node/blob/main/pkg/config/defaults.go#L59
+[defaultDABlockTime]: https://github.com/evstack/ev-node/blob/main/pkg/config/defaults.go#L59
 [defaultLazyBlockTime]: https://github.com/evstack/ev-node/blob/main/pkg/config/defaults.go#L52
 [go-header]: https://github.com/celestiaorg/go-header
 [block-sync]: https://github.com/evstack/ev-node/blob/main/pkg/sync/sync_service.go

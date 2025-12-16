@@ -10,8 +10,8 @@ import (
 	"testing"
 	"time"
 
-	coreda "github.com/evstack/ev-node/core/da"
 	"github.com/evstack/ev-node/core/execution"
+	datypes "github.com/evstack/ev-node/pkg/da/types"
 	"github.com/evstack/ev-node/pkg/genesis"
 	signerpkg "github.com/evstack/ev-node/pkg/signer"
 	"github.com/evstack/ev-node/pkg/signer/noop"
@@ -134,19 +134,19 @@ func TestSyncer_validateBlock_DataHashMismatch(t *testing.T) {
 	data := makeData(gen.ChainID, 1, 2) // non-empty
 	_, header := makeSignedHeaderBytes(t, gen.ChainID, 1, addr, pub, signer, nil, data, nil)
 
-	err = s.validateBlock(s.GetLastState(), data, header)
+	err = s.validateBlock(s.getLastState(), data, header)
 	require.NoError(t, err)
 
 	// Create header and data with mismatched hash
 	data = makeData(gen.ChainID, 1, 2) // non-empty
 	_, header = makeSignedHeaderBytes(t, gen.ChainID, 1, addr, pub, signer, nil, nil, nil)
-	err = s.validateBlock(s.GetLastState(), data, header)
+	err = s.validateBlock(s.getLastState(), data, header)
 	require.Error(t, err)
 
 	// Create header and empty data
 	data = makeData(gen.ChainID, 1, 0) // empty
 	_, header = makeSignedHeaderBytes(t, gen.ChainID, 2, addr, pub, signer, nil, nil, nil)
-	err = s.validateBlock(s.GetLastState(), data, header)
+	err = s.validateBlock(s.getLastState(), data, header)
 	require.Error(t, err)
 }
 
@@ -185,7 +185,7 @@ func TestProcessHeightEvent_SyncsAndUpdatesState(t *testing.T) {
 	// set a context for internal loops that expect it
 	s.ctx = context.Background()
 	// Create signed header & data for height 1
-	lastState := s.GetLastState()
+	lastState := s.getLastState()
 	data := makeData(gen.ChainID, 1, 0)
 	// Header should have post-execution AppHash (what the producer would set after execution)
 	postExecAppHash := []byte("app1")
@@ -240,7 +240,7 @@ func TestSequentialBlockSync(t *testing.T) {
 	s.ctx = context.Background()
 
 	// Sync two consecutive blocks via processHeightEvent so ExecuteTxs is called and state stored
-	st0 := s.GetLastState()
+	st0 := s.getLastState()
 	data1 := makeData(gen.ChainID, 1, 1) // non-empty
 	// Header should have post-execution AppHash (what the producer would set after execution)
 	postExecAppHash1 := []byte("app1")
@@ -421,7 +421,7 @@ func TestSyncLoopPersistState(t *testing.T) {
 			}, 1*time.Second, 10*time.Millisecond)
 			cancel()
 		}).
-		Return(nil, coreda.ErrHeightFromFuture)
+		Return(nil, datypes.ErrHeightFromFuture)
 
 	go syncerInst1.processLoop()
 	syncerInst1.startSyncWorkers()
@@ -638,7 +638,7 @@ func TestSyncer_InitializeState_CallsReplayer(t *testing.T) {
 	require.NoError(t, err)
 
 	// Verify state was initialized correctly
-	state := syncer.GetLastState()
+	state := syncer.getLastState()
 	assert.Equal(t, storeHeight, state.LastBlockHeight)
 	assert.Equal(t, gen.ChainID, state.ChainID)
 

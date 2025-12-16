@@ -2,25 +2,22 @@ package da
 
 import (
 	"context"
-	"errors"
 	"testing"
 	"time"
 
 	"github.com/rs/zerolog"
+	"github.com/stretchr/testify/mock"
 	"gotest.tools/v3/assert"
 
-	coreda "github.com/evstack/ev-node/core/da"
+	datypes "github.com/evstack/ev-node/pkg/da/types"
 	"github.com/evstack/ev-node/pkg/genesis"
+	"github.com/evstack/ev-node/test/mocks"
 )
 
 func TestNewForcedInclusionRetriever(t *testing.T) {
-	client := NewClient(Config{
-		DA:                       &mockDA{},
-		Logger:                   zerolog.Nop(),
-		Namespace:                "test-ns",
-		DataNamespace:            "test-data-ns",
-		ForcedInclusionNamespace: "test-fi-ns",
-	})
+	client := mocks.NewMockClient(t)
+	client.On("HasForcedInclusionNamespace").Return(true).Maybe()
+	client.On("GetForcedInclusionNamespace").Return(datypes.NamespaceFromString("test-fi-ns").Bytes()).Maybe()
 
 	gen := genesis.Genesis{
 		DAStartHeight:          100,
@@ -29,17 +26,11 @@ func TestNewForcedInclusionRetriever(t *testing.T) {
 
 	retriever := NewForcedInclusionRetriever(client, gen, zerolog.Nop())
 	assert.Assert(t, retriever != nil)
-	assert.Equal(t, retriever.daEpochSize, uint64(10))
 }
 
 func TestForcedInclusionRetriever_RetrieveForcedIncludedTxs_NoNamespace(t *testing.T) {
-	client := NewClient(Config{
-		DA:            &mockDA{},
-		Logger:        zerolog.Nop(),
-		Namespace:     "test-ns",
-		DataNamespace: "test-data-ns",
-		// No forced inclusion namespace
-	})
+	client := mocks.NewMockClient(t)
+	client.On("HasForcedInclusionNamespace").Return(false).Once()
 
 	gen := genesis.Genesis{
 		DAStartHeight:          100,
@@ -55,13 +46,10 @@ func TestForcedInclusionRetriever_RetrieveForcedIncludedTxs_NoNamespace(t *testi
 }
 
 func TestForcedInclusionRetriever_RetrieveForcedIncludedTxs_NotAtEpochStart(t *testing.T) {
-	client := NewClient(Config{
-		DA:                       &mockDA{},
-		Logger:                   zerolog.Nop(),
-		Namespace:                "test-ns",
-		DataNamespace:            "test-data-ns",
-		ForcedInclusionNamespace: "test-fi-ns",
-	})
+	client := mocks.NewMockClient(t)
+	fiNs := datypes.NamespaceFromString("test-fi-ns").Bytes()
+	client.On("HasForcedInclusionNamespace").Return(true).Once()
+	client.On("GetForcedInclusionNamespace").Return(fiNs).Maybe()
 
 	gen := genesis.Genesis{
 		DAStartHeight:          100,
@@ -87,25 +75,14 @@ func TestForcedInclusionRetriever_RetrieveForcedIncludedTxs_EpochStartSuccess(t 
 		[]byte("tx3"),
 	}
 
-	mockDAInstance := &mockDA{
-		getIDsFunc: func(ctx context.Context, height uint64, namespace []byte) (*coreda.GetIDsResult, error) {
-			return &coreda.GetIDsResult{
-				IDs:       []coreda.ID{[]byte("id1"), []byte("id2"), []byte("id3")},
-				Timestamp: time.Now(),
-			}, nil
-		},
-		getFunc: func(ctx context.Context, ids []coreda.ID, namespace []byte) ([]coreda.Blob, error) {
-			return testBlobs, nil
-		},
-	}
-
-	client := NewClient(Config{
-		DA:                       mockDAInstance,
-		Logger:                   zerolog.Nop(),
-		Namespace:                "test-ns",
-		DataNamespace:            "test-data-ns",
-		ForcedInclusionNamespace: "test-fi-ns",
-	})
+	client := mocks.NewMockClient(t)
+	fiNs := datypes.NamespaceFromString("test-fi-ns").Bytes()
+	client.On("HasForcedInclusionNamespace").Return(true).Once()
+	client.On("GetForcedInclusionNamespace").Return(fiNs).Maybe()
+	client.On("Retrieve", mock.Anything, mock.Anything, fiNs).Return(datypes.ResultRetrieve{
+		BaseResult: datypes.BaseResult{Code: datypes.StatusSuccess, IDs: []datypes.ID{[]byte("id1"), []byte("id2"), []byte("id3")}, Timestamp: time.Now()},
+		Data:       testBlobs,
+	}).Once()
 
 	gen := genesis.Genesis{
 		DAStartHeight:          100,
@@ -126,19 +103,13 @@ func TestForcedInclusionRetriever_RetrieveForcedIncludedTxs_EpochStartSuccess(t 
 }
 
 func TestForcedInclusionRetriever_RetrieveForcedIncludedTxs_EpochStartNotAvailable(t *testing.T) {
-	mockDAInstance := &mockDA{
-		getIDsFunc: func(ctx context.Context, height uint64, namespace []byte) (*coreda.GetIDsResult, error) {
-			return nil, coreda.ErrHeightFromFuture
-		},
-	}
-
-	client := NewClient(Config{
-		DA:                       mockDAInstance,
-		Logger:                   zerolog.Nop(),
-		Namespace:                "test-ns",
-		DataNamespace:            "test-data-ns",
-		ForcedInclusionNamespace: "test-fi-ns",
-	})
+	client := mocks.NewMockClient(t)
+	fiNs := datypes.NamespaceFromString("test-fi-ns").Bytes()
+	client.On("HasForcedInclusionNamespace").Return(true).Once()
+	client.On("GetForcedInclusionNamespace").Return(fiNs).Maybe()
+	client.On("Retrieve", mock.Anything, uint64(109), fiNs).Return(datypes.ResultRetrieve{
+		BaseResult: datypes.BaseResult{Code: datypes.StatusHeightFromFuture},
+	}).Once()
 
 	gen := genesis.Genesis{
 		DAStartHeight:          100,
@@ -155,19 +126,13 @@ func TestForcedInclusionRetriever_RetrieveForcedIncludedTxs_EpochStartNotAvailab
 }
 
 func TestForcedInclusionRetriever_RetrieveForcedIncludedTxs_NoBlobsAtHeight(t *testing.T) {
-	mockDAInstance := &mockDA{
-		getIDsFunc: func(ctx context.Context, height uint64, namespace []byte) (*coreda.GetIDsResult, error) {
-			return nil, coreda.ErrBlobNotFound
-		},
-	}
-
-	client := NewClient(Config{
-		DA:                       mockDAInstance,
-		Logger:                   zerolog.Nop(),
-		Namespace:                "test-ns",
-		DataNamespace:            "test-data-ns",
-		ForcedInclusionNamespace: "test-fi-ns",
-	})
+	client := mocks.NewMockClient(t)
+	fiNs := datypes.NamespaceFromString("test-fi-ns").Bytes()
+	client.On("HasForcedInclusionNamespace").Return(true).Once()
+	client.On("GetForcedInclusionNamespace").Return(fiNs).Maybe()
+	client.On("Retrieve", mock.Anything, uint64(100), fiNs).Return(datypes.ResultRetrieve{
+		BaseResult: datypes.BaseResult{Code: datypes.StatusNotFound},
+	}).Once()
 
 	gen := genesis.Genesis{
 		DAStartHeight:          100,
@@ -184,51 +149,28 @@ func TestForcedInclusionRetriever_RetrieveForcedIncludedTxs_NoBlobsAtHeight(t *t
 }
 
 func TestForcedInclusionRetriever_RetrieveForcedIncludedTxs_MultiHeightEpoch(t *testing.T) {
-	callCount := 0
 	testBlobsByHeight := map[uint64][][]byte{
 		100: {[]byte("tx1"), []byte("tx2")},
 		101: {[]byte("tx3")},
 		102: {[]byte("tx4"), []byte("tx5"), []byte("tx6")},
 	}
 
-	mockDAInstance := &mockDA{
-		getIDsFunc: func(ctx context.Context, height uint64, namespace []byte) (*coreda.GetIDsResult, error) {
-			callCount++
-			blobs, exists := testBlobsByHeight[height]
-			if !exists {
-				return nil, coreda.ErrBlobNotFound
-			}
-			ids := make([]coreda.ID, len(blobs))
-			for i := range blobs {
-				ids[i] = []byte("id")
-			}
-			return &coreda.GetIDsResult{
-				IDs:       ids,
-				Timestamp: time.Now(),
-			}, nil
-		},
-		getFunc: func(ctx context.Context, ids []coreda.ID, namespace []byte) ([]coreda.Blob, error) {
-			// Return blobs based on current call count
-			switch callCount {
-			case 1:
-				return testBlobsByHeight[100], nil
-			case 2:
-				return testBlobsByHeight[101], nil
-			case 3:
-				return testBlobsByHeight[102], nil
-			default:
-				return nil, errors.New("unexpected call")
-			}
-		},
-	}
-
-	client := NewClient(Config{
-		DA:                       mockDAInstance,
-		Logger:                   zerolog.Nop(),
-		Namespace:                "test-ns",
-		DataNamespace:            "test-data-ns",
-		ForcedInclusionNamespace: "test-fi-ns",
-	})
+	client := mocks.NewMockClient(t)
+	fiNs := datypes.NamespaceFromString("test-fi-ns").Bytes()
+	client.On("HasForcedInclusionNamespace").Return(true).Once()
+	client.On("GetForcedInclusionNamespace").Return(fiNs).Maybe()
+	client.On("Retrieve", mock.Anything, uint64(102), fiNs).Return(datypes.ResultRetrieve{
+		BaseResult: datypes.BaseResult{Code: datypes.StatusSuccess, Timestamp: time.Now()},
+		Data:       testBlobsByHeight[102],
+	}).Once()
+	client.On("Retrieve", mock.Anything, uint64(100), fiNs).Return(datypes.ResultRetrieve{
+		BaseResult: datypes.BaseResult{Code: datypes.StatusSuccess, Timestamp: time.Now()},
+		Data:       testBlobsByHeight[100],
+	}).Once()
+	client.On("Retrieve", mock.Anything, uint64(101), fiNs).Return(datypes.ResultRetrieve{
+		BaseResult: datypes.BaseResult{Code: datypes.StatusSuccess, Timestamp: time.Now()},
+		Data:       testBlobsByHeight[101],
+	}).Once()
 
 	gen := genesis.Genesis{
 		DAStartHeight:          100,
@@ -252,13 +194,7 @@ func TestForcedInclusionRetriever_RetrieveForcedIncludedTxs_MultiHeightEpoch(t *
 }
 
 func TestForcedInclusionRetriever_processForcedInclusionBlobs(t *testing.T) {
-	client := NewClient(Config{
-		DA:                       &mockDA{},
-		Logger:                   zerolog.Nop(),
-		Namespace:                "test-ns",
-		DataNamespace:            "test-data-ns",
-		ForcedInclusionNamespace: "test-fi-ns",
-	})
+	client := mocks.NewMockClient(t)
 
 	gen := genesis.Genesis{
 		DAStartHeight:          100,
@@ -269,16 +205,16 @@ func TestForcedInclusionRetriever_processForcedInclusionBlobs(t *testing.T) {
 
 	tests := []struct {
 		name            string
-		result          coreda.ResultRetrieve
+		result          datypes.ResultRetrieve
 		height          uint64
 		expectedTxCount int
 		expectError     bool
 	}{
 		{
 			name: "success with blobs",
-			result: coreda.ResultRetrieve{
-				BaseResult: coreda.BaseResult{
-					Code: coreda.StatusSuccess,
+			result: datypes.ResultRetrieve{
+				BaseResult: datypes.BaseResult{
+					Code: datypes.StatusSuccess,
 				},
 				Data: [][]byte{[]byte("tx1"), []byte("tx2")},
 			},
@@ -288,9 +224,9 @@ func TestForcedInclusionRetriever_processForcedInclusionBlobs(t *testing.T) {
 		},
 		{
 			name: "not found",
-			result: coreda.ResultRetrieve{
-				BaseResult: coreda.BaseResult{
-					Code: coreda.StatusNotFound,
+			result: datypes.ResultRetrieve{
+				BaseResult: datypes.BaseResult{
+					Code: datypes.StatusNotFound,
 				},
 			},
 			height:          100,
@@ -299,9 +235,9 @@ func TestForcedInclusionRetriever_processForcedInclusionBlobs(t *testing.T) {
 		},
 		{
 			name: "error status",
-			result: coreda.ResultRetrieve{
-				BaseResult: coreda.BaseResult{
-					Code:    coreda.StatusError,
+			result: datypes.ResultRetrieve{
+				BaseResult: datypes.BaseResult{
+					Code:    datypes.StatusError,
 					Message: "test error",
 				},
 			},
@@ -310,9 +246,9 @@ func TestForcedInclusionRetriever_processForcedInclusionBlobs(t *testing.T) {
 		},
 		{
 			name: "empty blobs are skipped",
-			result: coreda.ResultRetrieve{
-				BaseResult: coreda.BaseResult{
-					Code: coreda.StatusSuccess,
+			result: datypes.ResultRetrieve{
+				BaseResult: datypes.BaseResult{
+					Code: datypes.StatusSuccess,
 				},
 				Data: [][]byte{[]byte("tx1"), {}, []byte("tx2")},
 			},

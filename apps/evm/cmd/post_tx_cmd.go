@@ -11,12 +11,11 @@ import (
 	"github.com/spf13/cobra"
 
 	evblock "github.com/evstack/ev-node/block"
-	"github.com/evstack/ev-node/core/da"
-	"github.com/evstack/ev-node/da/jsonrpc"
 	rollcmd "github.com/evstack/ev-node/pkg/cmd"
 	rollconf "github.com/evstack/ev-node/pkg/config"
+	blobrpc "github.com/evstack/ev-node/pkg/da/jsonrpc"
+	da "github.com/evstack/ev-node/pkg/da/types"
 	genesispkg "github.com/evstack/ev-node/pkg/genesis"
-	seqcommon "github.com/evstack/ev-node/sequencers/common"
 	"github.com/evstack/ev-node/types"
 )
 
@@ -117,12 +116,11 @@ func postTxRunE(cmd *cobra.Command, args []string) error {
 
 	logger.Info().Str("namespace", namespace).Float64("gas_price", gasPrice).Int("tx_size", len(txData)).Msg("posting transaction to DA layer")
 
-	daClient, err := jsonrpc.NewClient(
+	daClient, err := blobrpc.NewClient(
 		cmd.Context(),
-		logger,
 		nodeConfig.DA.Address,
 		nodeConfig.DA.AuthToken,
-		seqcommon.AbsoluteMaxBlobSize,
+		"",
 	)
 	if err != nil {
 		return fmt.Errorf("failed to create DA client: %w", err)
@@ -134,7 +132,7 @@ func postTxRunE(cmd *cobra.Command, args []string) error {
 	blobs := [][]byte{txData}
 	options := []byte(nodeConfig.DA.SubmitOptions)
 
-	dac := evblock.NewDAClient(&daClient.DA, nodeConfig, logger)
+	dac := evblock.NewDAClient(daClient, nodeConfig, logger)
 	result := dac.Submit(cmd.Context(), blobs, gasPrice, namespaceBz, options)
 
 	// Check result

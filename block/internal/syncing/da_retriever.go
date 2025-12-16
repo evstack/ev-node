@@ -12,7 +12,7 @@ import (
 	"github.com/evstack/ev-node/block/internal/cache"
 	"github.com/evstack/ev-node/block/internal/common"
 	"github.com/evstack/ev-node/block/internal/da"
-	coreda "github.com/evstack/ev-node/core/da"
+	datypes "github.com/evstack/ev-node/pkg/da/types"
 	"github.com/evstack/ev-node/pkg/genesis"
 	"github.com/evstack/ev-node/types"
 	pb "github.com/evstack/ev-node/types/pb/evnode/v1"
@@ -71,45 +71,45 @@ func (r *daRetriever) RetrieveFromDA(ctx context.Context, daHeight uint64) ([]co
 }
 
 // fetchBlobs retrieves blobs from both header and data namespaces
-func (r *daRetriever) fetchBlobs(ctx context.Context, daHeight uint64) (coreda.ResultRetrieve, error) {
+func (r *daRetriever) fetchBlobs(ctx context.Context, daHeight uint64) (datypes.ResultRetrieve, error) {
 	// Retrieve from both namespaces using the DA client
-	headerRes := r.client.RetrieveHeaders(ctx, daHeight)
+	headerRes := r.client.Retrieve(ctx, daHeight, r.client.GetHeaderNamespace())
 
 	// If namespaces are the same, return header result
 	if bytes.Equal(r.client.GetHeaderNamespace(), r.client.GetDataNamespace()) {
 		return headerRes, r.validateBlobResponse(headerRes, daHeight)
 	}
 
-	dataRes := r.client.RetrieveData(ctx, daHeight)
+	dataRes := r.client.Retrieve(ctx, daHeight, r.client.GetDataNamespace())
 
 	// Validate responses
 	headerErr := r.validateBlobResponse(headerRes, daHeight)
 	// ignoring error not found, as data can have data
-	if headerErr != nil && !errors.Is(headerErr, coreda.ErrBlobNotFound) {
+	if headerErr != nil && !errors.Is(headerErr, datypes.ErrBlobNotFound) {
 		return headerRes, headerErr
 	}
 
 	dataErr := r.validateBlobResponse(dataRes, daHeight)
 	// ignoring error not found, as header can have data
-	if dataErr != nil && !errors.Is(dataErr, coreda.ErrBlobNotFound) {
+	if dataErr != nil && !errors.Is(dataErr, datypes.ErrBlobNotFound) {
 		return dataRes, dataErr
 	}
 
 	// Combine successful results
-	combinedResult := coreda.ResultRetrieve{
-		BaseResult: coreda.BaseResult{
-			Code:   coreda.StatusSuccess,
+	combinedResult := datypes.ResultRetrieve{
+		BaseResult: datypes.BaseResult{
+			Code:   datypes.StatusSuccess,
 			Height: daHeight,
 		},
 		Data: make([][]byte, 0),
 	}
 
-	if headerRes.Code == coreda.StatusSuccess {
+	if headerRes.Code == datypes.StatusSuccess {
 		combinedResult.Data = append(combinedResult.Data, headerRes.Data...)
 		combinedResult.IDs = append(combinedResult.IDs, headerRes.IDs...)
 	}
 
-	if dataRes.Code == coreda.StatusSuccess {
+	if dataRes.Code == datypes.StatusSuccess {
 		combinedResult.Data = append(combinedResult.Data, dataRes.Data...)
 		combinedResult.IDs = append(combinedResult.IDs, dataRes.IDs...)
 	}
@@ -117,9 +117,9 @@ func (r *daRetriever) fetchBlobs(ctx context.Context, daHeight uint64) (coreda.R
 	// Re-throw error not found if both were not found.
 	if len(combinedResult.Data) == 0 && len(combinedResult.IDs) == 0 {
 		r.logger.Debug().Uint64("da_height", daHeight).Msg("no blob data found")
-		combinedResult.Code = coreda.StatusNotFound
-		combinedResult.Message = coreda.ErrBlobNotFound.Error()
-		return combinedResult, coreda.ErrBlobNotFound
+		combinedResult.Code = datypes.StatusNotFound
+		combinedResult.Message = datypes.ErrBlobNotFound.Error()
+		return combinedResult, datypes.ErrBlobNotFound
 	}
 
 	return combinedResult, nil
@@ -127,15 +127,15 @@ func (r *daRetriever) fetchBlobs(ctx context.Context, daHeight uint64) (coreda.R
 
 // validateBlobResponse validates a blob response from DA layer
 // those are the only error code returned by da.RetrieveWithHelpers
-func (r *daRetriever) validateBlobResponse(res coreda.ResultRetrieve, daHeight uint64) error {
+func (r *daRetriever) validateBlobResponse(res datypes.ResultRetrieve, daHeight uint64) error {
 	switch res.Code {
-	case coreda.StatusError:
+	case datypes.StatusError:
 		return fmt.Errorf("DA retrieval failed: %s", res.Message)
-	case coreda.StatusHeightFromFuture:
-		return fmt.Errorf("%w: height from future", coreda.ErrHeightFromFuture)
-	case coreda.StatusNotFound:
-		return fmt.Errorf("%w: blob not found", coreda.ErrBlobNotFound)
-	case coreda.StatusSuccess:
+	case datypes.StatusHeightFromFuture:
+		return fmt.Errorf("%w: height from future", datypes.ErrHeightFromFuture)
+	case datypes.StatusNotFound:
+		return fmt.Errorf("%w: blob not found", datypes.ErrBlobNotFound)
+	case datypes.StatusSuccess:
 		r.logger.Debug().Uint64("da_height", daHeight).Msg("successfully retrieved from DA")
 		return nil
 	default:

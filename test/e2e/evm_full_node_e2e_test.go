@@ -424,26 +424,22 @@ func TestEvmSequencerWithFullNodeE2E(t *testing.T) {
 
 	t.Logf("Full node block height before DA inclusion wait: %d", fnBlockHeightBeforeWait)
 
-	// Wait a few seconds to allow DA inclusion to process
-	waitTime := 4 * time.Second
-	t.Logf("Waiting %v for DA inclusion to process...", waitTime)
-	time.Sleep(waitTime)
-
-	// Get the DA included height from full node after the wait
-	fnDAIncludedHeightBytes, err := fullNodeRPCClient.GetMetadata(fnCtx, store.DAIncludedHeightKey)
-	require.NoError(t, err, "Should get DA included height from full node")
-
-	// Decode the DA included height
-	require.Equal(t, 8, len(fnDAIncludedHeightBytes), "DA included height should be 8 bytes")
-	fnDAIncludedHeight := binary.LittleEndian.Uint64(fnDAIncludedHeightBytes)
+	// Wait until DA inclusion metadata exists and has caught up.
+	var fnDAIncludedHeight uint64
+	require.Eventually(t, func() bool {
+		fnDAIncludedHeightBytes, err := fullNodeRPCClient.GetMetadata(fnCtx, store.DAIncludedHeightKey)
+		if err != nil {
+			return false
+		}
+		if len(fnDAIncludedHeightBytes) != 8 {
+			return false
+		}
+		fnDAIncludedHeight = binary.LittleEndian.Uint64(fnDAIncludedHeightBytes)
+		return fnDAIncludedHeight >= fnBlockHeightBeforeWait
+	}, DefaultTestTimeout, 500*time.Millisecond,
+		"Full node DA included height should be >= block height before wait")
 
 	t.Logf("After waiting, full node DA included height: %d", fnDAIncludedHeight)
-
-	// Verify that the DA included height is >= the full node's block height before wait
-	// This ensures that the blocks that existed before the wait have been DA included
-	require.GreaterOrEqual(t, fnDAIncludedHeight, fnBlockHeightBeforeWait,
-		"Full node DA included height (%d) should be >= block height before wait (%d)",
-		fnDAIncludedHeight, fnBlockHeightBeforeWait)
 
 	t.Logf("✅ DA inclusion verification passed:")
 	t.Logf("   - Full node block height before wait: %d", fnBlockHeightBeforeWait)

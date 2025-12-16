@@ -2,7 +2,6 @@ package server
 
 import (
 	"context"
-	"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -15,8 +14,9 @@ import (
 
 	"github.com/rs/zerolog"
 
-	"github.com/evstack/ev-node/core/da"
+	"github.com/evstack/ev-node/block"
 	"github.com/evstack/ev-node/pkg/config"
+	da "github.com/evstack/ev-node/pkg/da/types"
 	"github.com/evstack/ev-node/pkg/genesis"
 	"github.com/evstack/ev-node/types"
 )
@@ -31,7 +31,7 @@ const (
 // that accepts transactions and submits them directly to the DA layer for force inclusion
 type ForceInclusionServer struct {
 	server          *http.Server
-	daClient        da.DA
+	daClient        block.DAClient
 	config          config.Config
 	genesis         genesis.Genesis
 	logger          zerolog.Logger
@@ -43,7 +43,7 @@ type ForceInclusionServer struct {
 // NewForceInclusionServer creates a new force inclusion server
 func NewForceInclusionServer(
 	addr string,
-	daClient da.DA,
+	daClient block.DAClient,
 	cfg config.Config,
 	gen genesis.Genesis,
 	logger zerolog.Logger,
@@ -259,24 +259,17 @@ func (s *ForceInclusionServer) handleSendRawTransaction(w http.ResponseWriter, r
 	options := []byte(s.config.DA.SubmitOptions)
 	gasPrice := -1.0 // auto gas price
 
-	ids, err := s.daClient.SubmitWithOptions(ctx, blobs, gasPrice, s.namespace, options)
-	if err != nil {
-		s.writeError(w, req.ID, InternalError, fmt.Sprintf("failed to submit to DA: %v", err))
+	result := s.daClient.Submit(ctx, blobs, gasPrice, s.namespace, options)
+	if result.Code != da.StatusSuccess {
+		s.writeError(w, req.ID, InternalError, fmt.Sprintf("failed to submit to DA: %s", result.Message))
 		return
 	}
 
-	if len(ids) == 0 {
-		s.writeError(w, req.ID, InternalError, "no DA IDs returned")
+	daHeight := result.Height
+	if daHeight == 0 {
+		s.writeError(w, req.ID, InternalError, "invalid DA height returned")
 		return
 	}
-
-	// Extract height from the first ID
-	// IDs are structured with height in the first 8 bytes (little-endian uint64)
-	if len(ids[0]) < 8 {
-		s.writeError(w, req.ID, InternalError, "invalid DA ID format")
-		return
-	}
-	daHeight := binary.LittleEndian.Uint64(ids[0][:8])
 
 	s.logger.Info().
 		Uint64("da_height", daHeight).
