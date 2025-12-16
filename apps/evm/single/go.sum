@@ -103,6 +103,8 @@ github.com/ethereum/go-ethereum v1.16.5 h1:GZI995PZkzP7ySCxEFaOPzS8+bd8NldE//1qv
 github.com/ethereum/go-ethereum v1.16.5/go.mod h1:kId9vOtlYg3PZk9VwKbGlQmSACB5ESPTBGT+M9zjmok=
 github.com/ethereum/go-verkle v0.2.2 h1:I2W0WjnrFUIzzVPwm8ykY+7pL2d4VhlsePn4j7cnFk8=
 github.com/ethereum/go-verkle v0.2.2/go.mod h1:M3b90YRnzqKyyzBEWJGqj8Qff4IDeXnzFw0P9bFw3uk=
+github.com/evstack/ev-node v1.0.0-beta.10 h1:AgdUV6GUaJKUSHl5WJYS9mhfSQRDzLkidcuDmbewkk4=
+github.com/evstack/ev-node v1.0.0-beta.10/go.mod h1:BNQb29H/34/PgOB25Tn3+SuVhjdfZs3GsQz++bo8iHQ=
 github.com/evstack/ev-node/core v1.0.0-beta.5 h1:lgxE8XiF3U9pcFgh7xuKMgsOGvLBGRyd9kc9MR4WL0o=
 github.com/evstack/ev-node/core v1.0.0-beta.5/go.mod h1:n2w/LhYQTPsi48m6lMj16YiIqsaQw6gxwjyJvR+B3sY=
 github.com/evstack/ev-node/da v1.0.0-beta.6 h1:htzm4bbIGzNeuue4+/fEZTtjqpieLQWCtOWWnsNZvrY=
