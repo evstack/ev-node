@@ -2,7 +2,6 @@ package submitting
 
 import (
 	"context"
-	"errors"
 	"testing"
 	"time"
 
@@ -11,15 +10,14 @@ import (
 	"github.com/stretchr/testify/mock"
 
 	"github.com/evstack/ev-node/block/internal/common"
-	"github.com/evstack/ev-node/block/internal/da"
-	coreda "github.com/evstack/ev-node/core/da"
 	"github.com/evstack/ev-node/pkg/config"
+	datypes "github.com/evstack/ev-node/pkg/da/types"
 	"github.com/evstack/ev-node/pkg/genesis"
 	"github.com/evstack/ev-node/test/mocks"
 )
 
-// helper to build a basic submitter with provided DA mock and config overrides
-func newTestSubmitter(mockDA *mocks.MockDA, override func(*config.Config)) *DASubmitter {
+// helper to build a basic submitter with provided DA mock client and config overrides
+func newTestSubmitter(t *testing.T, mockClient *mocks.MockClient, override func(*config.Config)) *DASubmitter {
 	cfg := config.Config{}
 	// Keep retries small and backoffs minimal
 	cfg.DA.BlockTime.Duration = 1 * time.Millisecond
@@ -30,13 +28,14 @@ func newTestSubmitter(mockDA *mocks.MockDA, override func(*config.Config)) *DASu
 	if override != nil {
 		override(&cfg)
 	}
-	daClient := da.NewClient(da.Config{
-		DA:            mockDA,
-		Logger:        zerolog.Nop(),
-		Namespace:     cfg.DA.Namespace,
-		DataNamespace: cfg.DA.DataNamespace,
-	})
-	return NewDASubmitter(daClient, cfg, genesis.Genesis{} /*options=*/, common.BlockOptions{}, common.NopMetrics(), zerolog.Nop(), nil, nil)
+	if mockClient == nil {
+		mockClient = mocks.NewMockClient(t)
+	}
+	mockClient.On("GetHeaderNamespace").Return([]byte(cfg.DA.Namespace)).Maybe()
+	mockClient.On("GetDataNamespace").Return([]byte(cfg.DA.DataNamespace)).Maybe()
+	mockClient.On("GetForcedInclusionNamespace").Return([]byte(nil)).Maybe()
+	mockClient.On("HasForcedInclusionNamespace").Return(false).Maybe()
+	return NewDASubmitter(mockClient, cfg, genesis.Genesis{} /*options=*/, common.BlockOptions{}, common.NopMetrics(), zerolog.Nop(), nil, nil)
 }
 
 // marshal helper for simple items
@@ -45,29 +44,28 @@ func marshalString(s string) ([]byte, error) { return []byte(s), nil }
 func TestSubmitToDA_MempoolRetry_IncreasesGasAndSucceeds(t *testing.T) {
 	t.Parallel()
 
-	mockDA := mocks.NewMockDA(t)
+	client := mocks.NewMockClient(t)
 
-	nsBz := coreda.NamespaceFromString("ns").Bytes()
+	nsBz := datypes.NamespaceFromString("ns").Bytes()
 	opts := []byte("opts")
 	var usedGas []float64
-	mockDA.
-		On("SubmitWithOptions", mock.Anything, mock.Anything, mock.AnythingOfType("float64"), nsBz, opts).
+
+	client.On("Submit", mock.Anything, mock.Anything, mock.AnythingOfType("float64"), nsBz, opts).
 		Run(func(args mock.Arguments) {
 			usedGas = append(usedGas, args.Get(2).(float64))
 		}).
-		Return(nil, coreda.ErrTxTimedOut).
+		Return(datypes.ResultSubmit{BaseResult: datypes.BaseResult{Code: datypes.StatusNotIncludedInBlock, SubmittedCount: 0}}).
 		Once()
 
 	ids := [][]byte{[]byte("id1"), []byte("id2"), []byte("id3")}
-	mockDA.
-		On("SubmitWithOptions", mock.Anything, mock.Anything, mock.AnythingOfType("float64"), nsBz, opts).
+	client.On("Submit", mock.Anything, mock.Anything, mock.AnythingOfType("float64"), nsBz, opts).
 		Run(func(args mock.Arguments) {
 			usedGas = append(usedGas, args.Get(2).(float64))
 		}).
-		Return(ids, nil).
+		Return(datypes.ResultSubmit{BaseResult: datypes.BaseResult{Code: datypes.StatusSuccess, IDs: ids, SubmittedCount: uint64(len(ids))}}).
 		Once()
 
-	s := newTestSubmitter(mockDA, nil)
+	s := newTestSubmitter(t, client, nil)
 
 	items := []string{"a", "b", "c"}
 	ctx := context.Background()
@@ -76,7 +74,7 @@ func TestSubmitToDA_MempoolRetry_IncreasesGasAndSucceeds(t *testing.T) {
 		ctx,
 		items,
 		marshalString,
-		func(_ []string, _ *coreda.ResultSubmit) {},
+		func(_ []string, _ *datypes.ResultSubmit) {},
 		"item",
 		nsBz,
 		opts,
@@ -86,35 +84,32 @@ func TestSubmitToDA_MempoolRetry_IncreasesGasAndSucceeds(t *testing.T) {
 
 	// Sentinel value is preserved on retry
 	assert.Equal(t, []float64{-1, -1}, usedGas)
-	mockDA.AssertExpectations(t)
 }
 
 func TestSubmitToDA_UnknownError_RetriesSameGasThenSucceeds(t *testing.T) {
 	t.Parallel()
 
-	mockDA := mocks.NewMockDA(t)
+	client := mocks.NewMockClient(t)
 
-	nsBz := coreda.NamespaceFromString("ns").Bytes()
+	nsBz := datypes.NamespaceFromString("ns").Bytes()
 
 	opts := []byte("opts")
 	var usedGas []float64
 
 	// First attempt: unknown failure -> reasonFailure, gas unchanged for next attempt
-	mockDA.
-		On("SubmitWithOptions", mock.Anything, mock.Anything, mock.AnythingOfType("float64"), nsBz, opts).
+	client.On("Submit", mock.Anything, mock.Anything, mock.AnythingOfType("float64"), nsBz, opts).
 		Run(func(args mock.Arguments) { usedGas = append(usedGas, args.Get(2).(float64)) }).
-		Return(nil, errors.New("boom")).
+		Return(datypes.ResultSubmit{BaseResult: datypes.BaseResult{Code: datypes.StatusError, Message: "boom"}}).
 		Once()
 
 	// Second attempt: same gas, success
 	ids := [][]byte{[]byte("id1")}
-	mockDA.
-		On("SubmitWithOptions", mock.Anything, mock.Anything, mock.AnythingOfType("float64"), nsBz, opts).
+	client.On("Submit", mock.Anything, mock.Anything, mock.AnythingOfType("float64"), nsBz, opts).
 		Run(func(args mock.Arguments) { usedGas = append(usedGas, args.Get(2).(float64)) }).
-		Return(ids, nil).
+		Return(datypes.ResultSubmit{BaseResult: datypes.BaseResult{Code: datypes.StatusSuccess, IDs: ids, SubmittedCount: uint64(len(ids))}}).
 		Once()
 
-	s := newTestSubmitter(mockDA, nil)
+	s := newTestSubmitter(t, client, nil)
 
 	items := []string{"x"}
 	ctx := context.Background()
@@ -123,7 +118,7 @@ func TestSubmitToDA_UnknownError_RetriesSameGasThenSucceeds(t *testing.T) {
 		ctx,
 		items,
 		marshalString,
-		func(_ []string, _ *coreda.ResultSubmit) {},
+		func(_ []string, _ *datypes.ResultSubmit) {},
 		"item",
 		nsBz,
 		opts,
@@ -131,42 +126,36 @@ func TestSubmitToDA_UnknownError_RetriesSameGasThenSucceeds(t *testing.T) {
 	)
 	assert.NoError(t, err)
 	assert.Equal(t, []float64{-1, -1}, usedGas)
-	mockDA.AssertExpectations(t)
 }
 
 func TestSubmitToDA_TooBig_HalvesBatch(t *testing.T) {
 	t.Parallel()
 
-	mockDA := mocks.NewMockDA(t)
+	client := mocks.NewMockClient(t)
 
-	nsBz := coreda.NamespaceFromString("ns").Bytes()
+	nsBz := datypes.NamespaceFromString("ns").Bytes()
 
 	opts := []byte("opts")
-	// record sizes of batches sent to DA
 	var batchSizes []int
 
-	// First attempt: too big -> should halve and retry
-	mockDA.
-		On("SubmitWithOptions", mock.Anything, mock.Anything, mock.Anything, nsBz, opts).
+	client.On("Submit", mock.Anything, mock.Anything, mock.Anything, nsBz, opts).
 		Run(func(args mock.Arguments) {
 			blobs := args.Get(1).([][]byte)
 			batchSizes = append(batchSizes, len(blobs))
 		}).
-		Return(nil, coreda.ErrBlobSizeOverLimit).
+		Return(datypes.ResultSubmit{BaseResult: datypes.BaseResult{Code: datypes.StatusTooBig}}).
 		Once()
 
-	// Second attempt: expect half the size, succeed
 	ids := [][]byte{[]byte("id1"), []byte("id2")}
-	mockDA.
-		On("SubmitWithOptions", mock.Anything, mock.Anything, mock.Anything, nsBz, opts).
+	client.On("Submit", mock.Anything, mock.Anything, mock.Anything, nsBz, opts).
 		Run(func(args mock.Arguments) {
 			blobs := args.Get(1).([][]byte)
 			batchSizes = append(batchSizes, len(blobs))
 		}).
-		Return(ids, nil).
+		Return(datypes.ResultSubmit{BaseResult: datypes.BaseResult{Code: datypes.StatusSuccess, IDs: ids, SubmittedCount: uint64(len(ids))}}).
 		Once()
 
-	s := newTestSubmitter(mockDA, nil)
+	s := newTestSubmitter(t, client, nil)
 
 	items := []string{"a", "b", "c", "d"}
 	ctx := context.Background()
@@ -175,7 +164,7 @@ func TestSubmitToDA_TooBig_HalvesBatch(t *testing.T) {
 		ctx,
 		items,
 		marshalString,
-		func(_ []string, _ *coreda.ResultSubmit) {},
+		func(_ []string, _ *datypes.ResultSubmit) {},
 		"item",
 		nsBz,
 		opts,
@@ -183,35 +172,30 @@ func TestSubmitToDA_TooBig_HalvesBatch(t *testing.T) {
 	)
 	assert.NoError(t, err)
 	assert.Equal(t, []int{4, 2}, batchSizes)
-	mockDA.AssertExpectations(t)
 }
 
 func TestSubmitToDA_SentinelNoGas_PreservesGasAcrossRetries(t *testing.T) {
 	t.Parallel()
 
-	mockDA := mocks.NewMockDA(t)
+	client := mocks.NewMockClient(t)
 
-	nsBz := coreda.NamespaceFromString("ns").Bytes()
+	nsBz := datypes.NamespaceFromString("ns").Bytes()
 
 	opts := []byte("opts")
 	var usedGas []float64
 
-	// First attempt: mempool-ish error
-	mockDA.
-		On("SubmitWithOptions", mock.Anything, mock.Anything, mock.AnythingOfType("float64"), nsBz, opts).
+	client.On("Submit", mock.Anything, mock.Anything, mock.AnythingOfType("float64"), nsBz, opts).
 		Run(func(args mock.Arguments) { usedGas = append(usedGas, args.Get(2).(float64)) }).
-		Return(nil, coreda.ErrTxAlreadyInMempool).
+		Return(datypes.ResultSubmit{BaseResult: datypes.BaseResult{Code: datypes.StatusAlreadyInMempool}}).
 		Once()
 
-	// Second attempt: should use same sentinel gas (-1), succeed
 	ids := [][]byte{[]byte("id1")}
-	mockDA.
-		On("SubmitWithOptions", mock.Anything, mock.Anything, mock.AnythingOfType("float64"), nsBz, opts).
+	client.On("Submit", mock.Anything, mock.Anything, mock.AnythingOfType("float64"), nsBz, opts).
 		Run(func(args mock.Arguments) { usedGas = append(usedGas, args.Get(2).(float64)) }).
-		Return(ids, nil).
+		Return(datypes.ResultSubmit{BaseResult: datypes.BaseResult{Code: datypes.StatusSuccess, IDs: ids, SubmittedCount: uint64(len(ids))}}).
 		Once()
 
-	s := newTestSubmitter(mockDA, nil)
+	s := newTestSubmitter(t, client, nil)
 
 	items := []string{"only"}
 	ctx := context.Background()
@@ -220,7 +204,7 @@ func TestSubmitToDA_SentinelNoGas_PreservesGasAcrossRetries(t *testing.T) {
 		ctx,
 		items,
 		marshalString,
-		func(_ []string, _ *coreda.ResultSubmit) {},
+		func(_ []string, _ *datypes.ResultSubmit) {},
 		"item",
 		nsBz,
 		opts,
@@ -228,29 +212,29 @@ func TestSubmitToDA_SentinelNoGas_PreservesGasAcrossRetries(t *testing.T) {
 	)
 	assert.NoError(t, err)
 	assert.Equal(t, []float64{-1, -1}, usedGas)
-	mockDA.AssertExpectations(t)
 }
 
 func TestSubmitToDA_PartialSuccess_AdvancesWindow(t *testing.T) {
 	t.Parallel()
 
-	mockDA := mocks.NewMockDA(t)
+	client := mocks.NewMockClient(t)
 
-	nsBz := coreda.NamespaceFromString("ns").Bytes()
+	nsBz := datypes.NamespaceFromString("ns").Bytes()
 
 	opts := []byte("opts")
-	// track how many items postSubmit sees across attempts
 	var totalSubmitted int
 
-	// First attempt: success for first 2 of 3
 	firstIDs := [][]byte{[]byte("id1"), []byte("id2")}
-	mockDA.On("SubmitWithOptions", mock.Anything, mock.Anything, mock.Anything, nsBz, opts).Return(firstIDs, nil).Once()
+	client.On("Submit", mock.Anything, mock.Anything, mock.Anything, nsBz, opts).
+		Return(datypes.ResultSubmit{BaseResult: datypes.BaseResult{Code: datypes.StatusSuccess, IDs: firstIDs, SubmittedCount: uint64(len(firstIDs))}}).
+		Once()
 
-	// Second attempt: success for remaining 1
 	secondIDs := [][]byte{[]byte("id3")}
-	mockDA.On("SubmitWithOptions", mock.Anything, mock.Anything, mock.Anything, nsBz, opts).Return(secondIDs, nil).Once()
+	client.On("Submit", mock.Anything, mock.Anything, mock.Anything, nsBz, opts).
+		Return(datypes.ResultSubmit{BaseResult: datypes.BaseResult{Code: datypes.StatusSuccess, IDs: secondIDs, SubmittedCount: uint64(len(secondIDs))}}).
+		Once()
 
-	s := newTestSubmitter(mockDA, nil)
+	s := newTestSubmitter(t, client, nil)
 
 	items := []string{"a", "b", "c"}
 	ctx := context.Background()
@@ -259,7 +243,7 @@ func TestSubmitToDA_PartialSuccess_AdvancesWindow(t *testing.T) {
 		ctx,
 		items,
 		marshalString,
-		func(submitted []string, _ *coreda.ResultSubmit) { totalSubmitted += len(submitted) },
+		func(submitted []string, _ *datypes.ResultSubmit) { totalSubmitted += len(submitted) },
 		"item",
 		nsBz,
 		opts,
@@ -267,5 +251,4 @@ func TestSubmitToDA_PartialSuccess_AdvancesWindow(t *testing.T) {
 	)
 	assert.NoError(t, err)
 	assert.Equal(t, 3, totalSubmitted)
-	mockDA.AssertExpectations(t)
 }

@@ -13,18 +13,16 @@ import (
 	"sync/atomic"
 	"time"
 
+	coreexecutor "github.com/evstack/ev-node/core/execution"
 	pubsub "github.com/libp2p/go-libp2p-pubsub"
 	"github.com/rs/zerolog"
 	"golang.org/x/sync/errgroup"
-
-	coreda "github.com/evstack/ev-node/core/da"
-	coreexecutor "github.com/evstack/ev-node/core/execution"
-	seqcommon "github.com/evstack/ev-node/sequencers/common"
 
 	"github.com/evstack/ev-node/block/internal/cache"
 	"github.com/evstack/ev-node/block/internal/common"
 	"github.com/evstack/ev-node/block/internal/da"
 	"github.com/evstack/ev-node/pkg/config"
+	datypes "github.com/evstack/ev-node/pkg/da/types"
 	"github.com/evstack/ev-node/pkg/genesis"
 	"github.com/evstack/ev-node/pkg/store"
 	"github.com/evstack/ev-node/types"
@@ -360,10 +358,10 @@ func (s *Syncer) fetchDAUntilCaughtUp() error {
 		events, err := s.daRetriever.RetrieveFromDA(s.ctx, daHeight)
 		if err != nil {
 			switch {
-			case errors.Is(err, coreda.ErrBlobNotFound):
+			case errors.Is(err, datypes.ErrBlobNotFound):
 				s.daRetrieverHeight.Store(daHeight + 1)
 				continue // Fetch next height immediately
-			case errors.Is(err, coreda.ErrHeightFromFuture):
+			case errors.Is(err, datypes.ErrHeightFromFuture):
 				s.logger.Debug().Err(err).Uint64("da_height", daHeight).Msg("DA is ahead of local target; backing off future height requests")
 				return nil // Caught up
 			default:
@@ -784,7 +782,7 @@ func hashTx(tx []byte) string {
 // It estimates fullness based on total data size.
 // This is a heuristic - actual limits may vary by execution layer.
 func (s *Syncer) calculateBlockFullness(data *types.Data) float64 {
-	const maxDataSize = seqcommon.AbsoluteMaxBlobSize
+	const maxDataSize = common.DefaultMaxBlobSize
 
 	var fullness float64
 	count := 0

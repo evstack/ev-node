@@ -490,24 +490,6 @@ _Example:_ `--rollkit.da.mempool_ttl 30`
 _Default:_ `20`
 _Constant:_ `FlagDAMempoolTTL`
 
-### DA Retrieve Batch Size
-
-**Description:**
-Number of blob IDs requested per DA `Get` call when the node retrieves blocks from the DA layer. Smaller batches help unreliable DA RPC endpoints return data before the per-request timeout, while larger batches reduce the total number of round trips for fast DA nodes.
-
-**YAML:**
-
-```yaml
-da:
-  retrieve_batch_size: 100
-```
-
-**Command-line Flag:**
-`--rollkit.da.retrieve_batch_size <int>`
-_Example:_ `--rollkit.da.retrieve_batch_size 50`
-_Default:_ `100`
-_Constant:_ `FlagDARetrieveBatchSize`
-
 ### DA Request Timeout
 
 **Description:**

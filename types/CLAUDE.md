@@ -86,7 +86,7 @@ The types package defines the core data structures and types used throughout ev-
   - Namespace support
   - Gas price configuration
   - Submission options handling
-- **Status Codes** (defined in `core/da`):
+- **Status Codes** (defined in `pkg/da/types`):
   - `StatusContextCanceled`: Submission canceled
   - `StatusNotIncludedInBlock`: Transaction timeout
   - `StatusAlreadyInMempool`: Duplicate transaction

@@ -106,7 +106,7 @@ First lets start the local DA network:
 
 ```bash
 cd gm
-go tool github.com/evstack/ev-node/da/cmd/local-da
+go run github.com/evstack/ev-node/tools/local-da
 ```
 
 you should see logs like:

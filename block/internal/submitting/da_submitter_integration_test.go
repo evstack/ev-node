@@ -11,16 +11,17 @@ import (
 	"github.com/libp2p/go-libp2p/core/crypto"
 	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 
 	"github.com/evstack/ev-node/block/internal/cache"
 	"github.com/evstack/ev-node/block/internal/common"
-	"github.com/evstack/ev-node/block/internal/da"
-	coreda "github.com/evstack/ev-node/core/da"
 	"github.com/evstack/ev-node/pkg/config"
+	datypes "github.com/evstack/ev-node/pkg/da/types"
 	"github.com/evstack/ev-node/pkg/genesis"
 	"github.com/evstack/ev-node/pkg/signer/noop"
 	"github.com/evstack/ev-node/pkg/store"
+	"github.com/evstack/ev-node/test/mocks"
 	"github.com/evstack/ev-node/types"
 )
 
@@ -83,17 +84,19 @@ func TestDASubmitter_SubmitHeadersAndData_MarksInclusionAndUpdatesLastSubmitted(
 	require.NoError(t, batch2.SetHeight(2))
 	require.NoError(t, batch2.Commit())
 
-	// Dummy DA
-	dummyDA := coreda.NewDummyDA(10_000_000, 10*time.Millisecond)
-
-	// Create DA submitter
-	daClient := da.NewClient(da.Config{
-		DA:            dummyDA,
-		Logger:        zerolog.Nop(),
-		Namespace:     cfg.DA.Namespace,
-		DataNamespace: cfg.DA.DataNamespace,
-	})
-	daSubmitter := NewDASubmitter(daClient, cfg, gen, common.DefaultBlockOptions(), common.NopMetrics(), zerolog.Nop(), noopDAHintAppender{}, noopDAHintAppender{})
+	// Mock DA client
+	client := mocks.NewMockClient(t)
+	headerNs := datypes.NamespaceFromString(cfg.DA.Namespace).Bytes()
+	dataNs := datypes.NamespaceFromString(cfg.DA.DataNamespace).Bytes()
+	client.On("GetHeaderNamespace").Return(headerNs).Maybe()
+	client.On("GetDataNamespace").Return(dataNs).Maybe()
+	client.On("GetForcedInclusionNamespace").Return([]byte(nil)).Maybe()
+	client.On("HasForcedInclusionNamespace").Return(false).Maybe()
+	client.On("Submit", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		Return(func(_ context.Context, blobs [][]byte, _ float64, _ []byte, _ []byte) datypes.ResultSubmit {
+			return datypes.ResultSubmit{BaseResult: datypes.BaseResult{Code: datypes.StatusSuccess, SubmittedCount: uint64(len(blobs)), Height: 1}}
+		}).Twice()
+	daSubmitter := NewDASubmitter(client, cfg, gen, common.DefaultBlockOptions(), common.NopMetrics(), zerolog.Nop(), noopDAHintAppender{}, noopDAHintAppender{})
 
 	// Submit headers and data
 	require.NoError(t, daSubmitter.SubmitHeaders(context.Background(), cm))
