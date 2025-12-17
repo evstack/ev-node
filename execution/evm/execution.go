@@ -144,12 +144,7 @@ type EngineClient struct {
 	currentHeadHeight         uint64                 // Height of the current head block (for safe lag calculation)
 	currentSafeBlockHash      common.Hash            // Store last non-finalized SafeBlockHash
 	currentFinalizedBlockHash common.Hash            // Store last finalized block hash
-	blockHashCache            map[uint64]common.Hash // height -> hash cache for safe block lookups
-
-	// executeMu serializes all ExecuteTxs calls to prevent concurrent block builds
-	// that could create sibling blocks (fork explosion). This is separate from mu
-	// to avoid holding locks during long RPC calls.
-	executeMu sync.Mutex
+	blockHashCache map[uint64]common.Hash // height -> hash cache for safe block lookups
 
 	logger zerolog.Logger
 }
@@ -288,17 +283,12 @@ func (c *EngineClient) GetTxs(ctx context.Context) ([][]byte, error) {
 }
 
 // ExecuteTxs executes the given transactions at the specified block height and timestamp.
-// This method is serialized via executeMu to prevent concurrent block builds that could
-// create sibling blocks (fork explosion).
 //
 // ExecMeta tracking (if store is configured):
 // - Checks for already-promoted blocks to enable idempotent execution
 // - Saves ExecMeta with payloadID after forkchoiceUpdatedV3 for crash recovery
 // - Updates ExecMeta to "promoted" after successful execution
 func (c *EngineClient) ExecuteTxs(ctx context.Context, txs [][]byte, blockHeight uint64, timestamp time.Time, prevStateRoot []byte) (updatedStateRoot []byte, maxBytes uint64, err error) {
-	// Serialize all ExecuteTxs calls to prevent concurrent sibling block creation
-	c.executeMu.Lock()
-	defer c.executeMu.Unlock()
 
 	// 1. Check for idempotent execution
 	stateRoot, payloadID, found, err := c.checkIdempotency(ctx, blockHeight, timestamp, txs)
@@ -610,9 +600,6 @@ func (c *EngineClient) SetFinalized(ctx context.Context, blockHash common.Hash) 
 // Returns the state root from the payload, or an error if resumption fails.
 // Implements the execution.PayloadResumer interface.
 func (c *EngineClient) ResumePayload(ctx context.Context, payloadIDBytes []byte) (stateRoot []byte, err error) {
-	// Serialize to prevent concurrent block builds
-	c.executeMu.Lock()
-	defer c.executeMu.Unlock()
 
 	// Convert bytes to PayloadID
 	if len(payloadIDBytes) != 8 {
