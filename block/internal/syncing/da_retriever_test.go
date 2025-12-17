@@ -220,6 +220,21 @@ func TestDARetriever_tryDecodeData_InvalidSignatureOrProposer(t *testing.T) {
 	assert.Nil(t, r.tryDecodeData(db, 55))
 }
 
+func TestDARetriever_tryDecodeHeader_InvalidSignature(t *testing.T) {
+	addr, pub, signer := buildSyncTestSigner(t)
+	gen := genesis.Genesis{ChainID: "tchain", InitialHeight: 1, StartTime: time.Now().Add(-time.Second), ProposerAddress: addr}
+	r := newTestDARetriever(t, nil, config.DefaultConfig(), gen)
+
+	_, sh := makeSignedHeaderBytes(t, gen.ChainID, 10, addr, pub, signer, nil, nil, nil)
+	sh.Signature = []byte("invalid-signature")
+
+	hbInvalid, err := sh.MarshalBinary()
+	require.NoError(t, err)
+
+	gotH := r.tryDecodeHeader(hbInvalid, 123)
+	assert.Nil(t, gotH, "Header with invalid signature should be rejected (returned nil)")
+}
+
 func TestDARetriever_validateBlobResponse(t *testing.T) {
 	r := &daRetriever{logger: zerolog.Nop()}
 	// StatusSuccess -> nil

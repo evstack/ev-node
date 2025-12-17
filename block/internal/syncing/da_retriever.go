@@ -238,9 +238,9 @@ func (r *daRetriever) tryDecodeHeader(bz []byte, daHeight uint64) *types.SignedH
 		return nil
 	}
 
-	// Basic validation
-	if err := header.Header.ValidateBasic(); err != nil {
-		r.logger.Debug().Err(err).Msg("invalid header structure")
+	// Basic validation (including signature check)
+	if err := header.ValidateBasic(); err != nil {
+		r.logger.Debug().Err(err).Msg("invalid header structure or signature")
 		return nil
 	}
 
