@@ -3,6 +3,7 @@ package executing
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"errors"
 	"fmt"
 	"sync"
@@ -24,6 +25,15 @@ import (
 	"github.com/evstack/ev-node/pkg/store"
 	"github.com/evstack/ev-node/types"
 )
+
+// payloadResumer is an optional interface that EVM execution clients can implement
+// to support resuming in-progress payload builds after crashes.
+// This is defined locally to avoid coupling the core interface to EVM-specific concepts.
+type payloadResumer interface {
+	// ResumePayload resumes an in-progress payload build using a stored payloadID.
+	// This allows crash recovery without creating sibling blocks.
+	ResumePayload(ctx context.Context, payloadID []byte) (stateRoot []byte, err error)
+}
 
 // Executor handles block production, transaction processing, and state management
 type Executor struct {
@@ -369,6 +379,26 @@ func (e *Executor) produceBlock() error {
 		if err = batch.SaveBlockData(header, data, &types.Signature{}); err != nil {
 			return fmt.Errorf("failed to save block data: %w", err)
 		}
+
+		// Save ExecMeta with Stage="started" for crash recovery and idempotent execution
+		execMeta := &store.ExecMeta{
+			Height:        newHeight,
+			Timestamp:     header.Time().Unix(),
+			Stage:         store.ExecStageStarted,
+			UpdatedAtUnix: time.Now().Unix(),
+		}
+		// Compute tx hash for sanity checks on retry
+		if len(data.Txs) > 0 {
+			h := sha256.New()
+			for _, tx := range data.Txs {
+				h.Write(tx)
+			}
+			execMeta.TxHash = h.Sum(nil)
+		}
+		if err = batch.SaveExecMeta(execMeta); err != nil {
+			return fmt.Errorf("failed to save exec meta: %w", err)
+		}
+
 		if err = batch.Commit(); err != nil {
 			return fmt.Errorf("failed to commit early save batch: %w", err)
 		}
@@ -420,6 +450,18 @@ func (e *Executor) produceBlock() error {
 
 	if err := batch.UpdateState(newState); err != nil {
 		return fmt.Errorf("failed to update state: %w", err)
+	}
+
+	// Update ExecMeta to Stage="promoted" after successful execution
+	execMeta := &store.ExecMeta{
+		Height:        newHeight,
+		Timestamp:     header.Time().Unix(),
+		StateRoot:     newState.AppHash,
+		Stage:         store.ExecStagePromoted,
+		UpdatedAtUnix: time.Now().Unix(),
+	}
+	if err := batch.SaveExecMeta(execMeta); err != nil {
+		return fmt.Errorf("failed to update exec meta to promoted: %w", err)
 	}
 
 	if err := batch.Commit(); err != nil {
@@ -624,8 +666,63 @@ func (e *Executor) signHeader(header types.Header) (types.Signature, error) {
 }
 
 // executeTxsWithRetry executes transactions with retry logic.
+// It first checks ExecMeta for idempotent execution - if a block was already built
+// at this height, it returns the stored StateRoot instead of rebuilding.
+// If a payloadID exists (started but not promoted), it attempts to resume the payload
+// using the PayloadResumer interface if available.
 // NOTE: the function retries the execution client call regardless of the error. Some execution clients errors are irrecoverable, and will eventually halt the node, as expected.
 func (e *Executor) executeTxsWithRetry(ctx context.Context, rawTxs [][]byte, header types.Header, currentState types.State) ([]byte, error) {
+	height := header.Height()
+
+	// Check ExecMeta for idempotent execution
+	// If we already have a promoted block at this height, return the stored StateRoot
+	execMeta, err := e.store.GetExecMeta(ctx, height)
+	if err == nil && execMeta != nil {
+		if execMeta.Stage == store.ExecStagePromoted && len(execMeta.StateRoot) > 0 {
+			e.logger.Info().
+				Uint64("height", height).
+				Str("stage", execMeta.Stage).
+				Msg("executeTxsWithRetry: reusing already-promoted execution (idempotent)")
+			return execMeta.StateRoot, nil
+		}
+
+		// If we have a started execution with a payloadID, try to resume
+		// This handles crash recovery where we got a payloadID but didn't complete the build
+		if execMeta.Stage == store.ExecStageStarted && len(execMeta.PayloadID) > 0 {
+			e.logger.Info().
+				Uint64("height", height).
+				Str("stage", execMeta.Stage).
+				Msg("executeTxsWithRetry: found in-progress execution with payloadID, attempting resume")
+
+			// Check if the executor implements payloadResumer (EVM-specific)
+			if resumer, ok := e.exec.(payloadResumer); ok {
+				stateRoot, err := resumer.ResumePayload(ctx, execMeta.PayloadID)
+				if err == nil {
+					e.logger.Info().
+						Uint64("height", height).
+						Msg("executeTxsWithRetry: successfully resumed payload")
+					return stateRoot, nil
+				}
+				// Resume failed - log and fall through to normal execution
+				// The EL-level idempotency check will handle if the block was already built
+				e.logger.Warn().Err(err).
+					Uint64("height", height).
+					Msg("executeTxsWithRetry: failed to resume payload, falling back to normal execution")
+			} else {
+				e.logger.Debug().
+					Uint64("height", height).
+					Msg("executeTxsWithRetry: executor does not support PayloadResumer, using normal execution")
+			}
+		} else if execMeta.Stage == store.ExecStageStarted {
+			// Started but no payloadID - log and proceed normally
+			// The EL-level idempotency check in ExecuteTxs will handle reusing the block
+			e.logger.Debug().
+				Uint64("height", height).
+				Str("stage", execMeta.Stage).
+				Msg("executeTxsWithRetry: found in-progress execution without payloadID, will attempt EL-level idempotency")
+		}
+	}
+
 	for attempt := 1; attempt <= common.MaxRetriesBeforeHalt; attempt++ {
 		newAppHash, _, err := e.exec.ExecuteTxs(ctx, rawTxs, header.Height(), header.Time(), currentState.AppHash)
 		if err != nil {

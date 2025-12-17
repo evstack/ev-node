@@ -27,3 +27,26 @@ message SequencerDACheckpoint {
   // Index of the next transaction to process within the DA block's forced inclusion batch
   uint64 tx_index = 2;
 }
+
+// ExecMeta tracks execution state per height for idempotent execution.
+// This enables crash recovery and prevents sibling block creation on retries.
+message ExecMeta {
+  // Block height this execution metadata is for
+  uint64 height = 1;
+  // EL parent block hash used for this execution
+  bytes parent_hash = 2;
+  // Engine API payload ID (optional, set after forkchoiceUpdatedV3)
+  bytes payload_id = 3;
+  // EL block hash once built (set after getPayloadV4)
+  bytes block_hash = 4;
+  // State root from the execution payload
+  bytes state_root = 5;
+  // Hash of the transaction list for sanity checks
+  bytes tx_hash = 6;
+  // Block timestamp
+  int64 timestamp = 7;
+  // Current execution stage: "started", "built", "submitted", "promoted"
+  string stage = 8;
+  // Unix timestamp when this metadata was last updated
+  int64 updated_at_unix = 9;
+}

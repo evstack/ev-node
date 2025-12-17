@@ -235,6 +235,74 @@ func (_c *MockStore_GetBlockData_Call) RunAndReturn(run func(ctx context.Context
 	return _c
 }
 
+// GetExecMeta provides a mock function for the type MockStore
+func (_mock *MockStore) GetExecMeta(ctx context.Context, height uint64) (*store.ExecMeta, error) {
+	ret := _mock.Called(ctx, height)
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetExecMeta")
+	}
+
+	var r0 *store.ExecMeta
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, uint64) (*store.ExecMeta, error)); ok {
+		return returnFunc(ctx, height)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, uint64) *store.ExecMeta); ok {
+		r0 = returnFunc(ctx, height)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*store.ExecMeta)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, uint64) error); ok {
+		r1 = returnFunc(ctx, height)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}
+
+// MockStore_GetExecMeta_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetExecMeta'
+type MockStore_GetExecMeta_Call struct {
+	*mock.Call
+}
+
+// GetExecMeta is a helper method to define mock.On call
+//   - ctx context.Context
+//   - height uint64
+func (_e *MockStore_Expecter) GetExecMeta(ctx interface{}, height interface{}) *MockStore_GetExecMeta_Call {
+	return &MockStore_GetExecMeta_Call{Call: _e.mock.On("GetExecMeta", ctx, height)}
+}
+
+func (_c *MockStore_GetExecMeta_Call) Run(run func(ctx context.Context, height uint64)) *MockStore_GetExecMeta_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 uint64
+		if args[1] != nil {
+			arg1 = args[1].(uint64)
+		}
+		run(
+			arg0,
+			arg1,
+		)
+	})
+	return _c
+}
+
+func (_c *MockStore_GetExecMeta_Call) Return(execMeta *store.ExecMeta, err error) *MockStore_GetExecMeta_Call {
+	_c.Call.Return(execMeta, err)
+	return _c
+}
+
+func (_c *MockStore_GetExecMeta_Call) RunAndReturn(run func(ctx context.Context, height uint64) (*store.ExecMeta, error)) *MockStore_GetExecMeta_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // GetHeader provides a mock function for the type MockStore
 func (_mock *MockStore) GetHeader(ctx context.Context, height uint64) (*types.SignedHeader, error) {
 	ret := _mock.Called(ctx, height)

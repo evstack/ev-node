@@ -297,8 +297,13 @@ func TestExecutor_executeTxsWithRetry(t *testing.T) {
 			mockExec := testmocks.NewMockExecutor(t)
 			tt.setupMock(mockExec)
 
+			// Use an in-memory store for the test (needed for GetExecMeta)
+			ds := sync.MutexWrap(datastore.NewMapDatastore())
+			memStore := store.New(ds)
+
 			e := &Executor{
 				exec:   mockExec,
+				store:  memStore,
 				ctx:    execCtx,
 				logger: zerolog.Nop(),
 			}

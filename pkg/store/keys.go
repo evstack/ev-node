@@ -32,6 +32,7 @@ const (
 	metaPrefix      = "m"
 	indexPrefix     = "i"
 	heightPrefix    = "t"
+	execMetaPrefix  = "e"
 )
 
 func getHeaderKey(height uint64) string {
@@ -60,6 +61,10 @@ func getIndexKey(hash types.Hash) string {
 
 func getHeightKey() string {
 	return GenerateKey([]string{heightPrefix})
+}
+
+func getExecMetaKey(height uint64) string {
+	return GenerateKey([]string{execMetaPrefix, strconv.FormatUint(height, 10)})
 }
 
 // GetHeightToDAHeightHeaderKey returns the metadata key for storing the DA height
