@@ -161,6 +161,7 @@ func NewSyncComponents(
 		config,
 		genesis,
 		daSubmitter,
+		nil, // No sequencer for sync nodes
 		nil, // No signer for sync nodes
 		logger,
 		errorCh,
@@ -250,12 +251,11 @@ func NewAggregatorComponents(
 		config,
 		genesis,
 		daSubmitter,
+		sequencer,
 		signer, // Signer for aggregator nodes to submit to DA
 		logger,
 		errorCh,
 	)
-	// Set sequencer on submitter so it can initialize sequencer DA height from genesis inclusion
-	submitter.SetSequencer(sequencer)
 
 	return &Components{
 		Executor:  executor,

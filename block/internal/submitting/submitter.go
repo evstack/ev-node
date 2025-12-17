@@ -76,6 +76,7 @@ func NewSubmitter(
 	config config.Config,
 	genesis genesis.Genesis,
 	daSubmitter daSubmitterAPI,
+	sequencer coresequencer.Sequencer, // Can be nil for sync nodes
 	signer signer.Signer, // Can be nil for sync nodes
 	logger zerolog.Logger,
 	errorCh chan<- error,
@@ -88,18 +89,12 @@ func NewSubmitter(
 		config:           config,
 		genesis:          genesis,
 		daSubmitter:      daSubmitter,
+		sequencer:        sequencer,
 		signer:           signer,
 		daIncludedHeight: &atomic.Uint64{},
 		errorCh:          errorCh,
 		logger:           logger.With().Str("component", "submitter").Logger(),
 	}
-}
-
-// SetSequencer assigns the sequencer instance to the submitter.
-// This allows the submitter to update the sequencer's DA height when the first
-// DA inclusion (genesis) is observed.
-func (s *Submitter) SetSequencer(seq coresequencer.Sequencer) {
-	s.sequencer = seq
 }
 
 // Start begins the submitting component
