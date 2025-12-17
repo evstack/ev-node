@@ -8,7 +8,7 @@ import (
 	"math/big"
 	"net/http"
 	"strings"
-	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/ethereum/go-ethereum/beacon/engine"
@@ -110,6 +110,14 @@ func retryWithBackoffOnPayloadStatus(ctx context.Context, fn func() error, maxRe
 	return fmt.Errorf("max retries (%d) exceeded for %s", maxRetries, operation)
 }
 
+// forkchoiceState holds the current forkchoice anchors as an immutable snapshot.
+// Updates are performed by atomically swapping the entire struct.
+type forkchoiceState struct {
+	head      common.Hash // Current head block hash
+	safe      common.Hash // Current safe block hash
+	finalized common.Hash // Current finalized block hash
+}
+
 // EngineClient represents a client that interacts with an Ethereum execution engine
 // through the Engine API. It manages connections to both the engine and standard Ethereum
 // APIs, and maintains state related to block processing.
@@ -120,10 +128,7 @@ type EngineClient struct {
 	initialHeight uint64
 	feeRecipient  common.Address // Address to receive transaction fees
 
-	mu                        sync.Mutex  // Mutex to protect concurrent access to block hashes
-	currentHeadBlockHash      common.Hash // Store last non-finalized HeadBlockHash
-	currentSafeBlockHash      common.Hash // Store last non-finalized SafeBlockHash
-	currentFinalizedBlockHash common.Hash // Store last finalized block hash
+	forkchoice atomic.Pointer[forkchoiceState] // Lock-free forkchoice state
 
 	logger zerolog.Logger
 }
@@ -162,16 +167,19 @@ func NewEngineExecutionClient(
 		return nil, err
 	}
 
-	return &EngineClient{
-		engineClient:              engineClient,
-		ethClient:                 ethClient,
-		genesisHash:               genesisHash,
-		feeRecipient:              feeRecipient,
-		currentHeadBlockHash:      genesisHash,
-		currentSafeBlockHash:      genesisHash,
-		currentFinalizedBlockHash: genesisHash,
-		logger:                    zerolog.Nop(),
-	}, nil
+	client := &EngineClient{
+		engineClient: engineClient,
+		ethClient:    ethClient,
+		genesisHash:  genesisHash,
+		feeRecipient: feeRecipient,
+		logger:       zerolog.Nop(),
+	}
+	client.forkchoice.Store(&forkchoiceState{
+		head:      genesisHash,
+		safe:      genesisHash,
+		finalized: genesisHash,
+	})
+	return client, nil
 }
 
 // SetLogger allows callers to attach a structured logger.
@@ -216,14 +224,15 @@ func (c *EngineClient) InitChain(ctx context.Context, genesisTime time.Time, ini
 		return nil, 0, err
 	}
 
-	_, stateRoot, gasLimit, _, err := c.getBlockInfo(ctx, 0)
+	// Get genesis block info for state root and gas limit
+	header, err := c.ethClient.HeaderByNumber(ctx, big.NewInt(0))
 	if err != nil {
-		return nil, 0, fmt.Errorf("failed to get block info: %w", err)
+		return nil, 0, fmt.Errorf("failed to get genesis block: %w", err)
 	}
 
 	c.initialHeight = initialHeight
 
-	return stateRoot[:], gasLimit, nil
+	return header.Root[:], header.GasLimit, nil
 }
 
 // GetTxs retrieves transactions from the current execution payload
@@ -292,19 +301,16 @@ func (c *EngineClient) ExecuteTxs(ctx context.Context, txs [][]byte, blockHeight
 	}
 	txsPayload := validTxs
 
-	prevBlockHash, _, prevGasLimit, _, err := c.getBlockInfo(ctx, blockHeight-1)
-	if err != nil {
-		return nil, 0, fmt.Errorf("failed to get block info: %w", err)
-	}
-
+	// Use cached forkchoice state instead of RPC call
+	state := c.forkchoice.Load()
 	args := engine.ForkchoiceStateV1{
-		HeadBlockHash:      prevBlockHash,
-		SafeBlockHash:      prevBlockHash,
-		FinalizedBlockHash: prevBlockHash,
+		HeadBlockHash:      state.head,
+		SafeBlockHash:      state.safe,
+		FinalizedBlockHash: state.finalized,
 	}
 
 	// update forkchoice to get the next payload id
-	// Create evolve-compatible payloadtimestamp.Unix()
+	// Create evolve-compatible payload attributes
 	evPayloadAttrs := map[string]any{
 		// Standard Ethereum payload attributes (flattened) - using camelCase as expected by JSON
 		"timestamp":             timestamp.Unix(),
@@ -315,7 +321,6 @@ func (c *EngineClient) ExecuteTxs(ctx context.Context, txs [][]byte, blockHeight
 		"parentBeaconBlockRoot": common.Hash{}.Hex(), // Use zero hash for evolve
 		// evolve-specific fields
 		"transactions": txsPayload,
-		"gasLimit":     prevGasLimit, // Use camelCase to match JSON conventions
 	}
 
 	c.logger.Debug().
@@ -412,22 +417,30 @@ func (c *EngineClient) ExecuteTxs(ctx context.Context, txs [][]byte, blockHeight
 }
 
 func (c *EngineClient) setFinal(ctx context.Context, blockHash common.Hash, isFinal bool) error {
-	c.mu.Lock()
-	// Update block hashes based on finalization status
+	// Atomically update forkchoice state
+	current := c.forkchoice.Load()
+	var newState *forkchoiceState
 	if isFinal {
-		c.currentFinalizedBlockHash = blockHash
+		newState = &forkchoiceState{
+			head:      current.head,
+			safe:      current.safe,
+			finalized: blockHash,
+		}
 	} else {
-		c.currentHeadBlockHash = blockHash
-		c.currentSafeBlockHash = blockHash
+		newState = &forkchoiceState{
+			head:      blockHash,
+			safe:      blockHash,
+			finalized: current.finalized,
+		}
 	}
+	c.forkchoice.Store(newState)
 
-	// Construct forkchoice state
+	// Construct forkchoice state for RPC call
 	args := engine.ForkchoiceStateV1{
-		HeadBlockHash:      c.currentHeadBlockHash,
-		SafeBlockHash:      c.currentSafeBlockHash,
-		FinalizedBlockHash: c.currentFinalizedBlockHash,
+		HeadBlockHash:      newState.head,
+		SafeBlockHash:      newState.safe,
+		FinalizedBlockHash: newState.finalized,
 	}
-	c.mu.Unlock()
 
 	// Call forkchoice update with retry logic for SYNCING status
 	err := retryWithBackoffOnPayloadStatus(ctx, func() error {
@@ -457,25 +470,15 @@ func (c *EngineClient) setFinal(ctx context.Context, blockHash common.Hash, isFi
 
 // SetFinal marks the block at the given height as finalized
 func (c *EngineClient) SetFinal(ctx context.Context, blockHeight uint64) error {
-	blockHash, _, _, _, err := c.getBlockInfo(ctx, blockHeight)
+	header, err := c.ethClient.HeaderByNumber(ctx, big.NewInt(int64(blockHeight)))
 	if err != nil {
-		return fmt.Errorf("failed to get block info: %w", err)
+		return fmt.Errorf("failed to get block at height %d: %w", blockHeight, err)
 	}
-	return c.setFinal(ctx, blockHash, true)
+	return c.setFinal(ctx, header.Hash(), true)
 }
 
 func (c *EngineClient) derivePrevRandao(blockHeight uint64) common.Hash {
 	return common.BigToHash(new(big.Int).SetUint64(blockHeight))
-}
-
-func (c *EngineClient) getBlockInfo(ctx context.Context, height uint64) (common.Hash, common.Hash, uint64, uint64, error) {
-	header, err := c.ethClient.HeaderByNumber(ctx, new(big.Int).SetUint64(height))
-
-	if err != nil {
-		return common.Hash{}, common.Hash{}, 0, 0, fmt.Errorf("failed to get block at height %d: %w", height, err)
-	}
-
-	return header.Hash(), header.Root, header.GasLimit, header.Time, nil
 }
 
 // GetLatestHeight returns the current block height of the execution layer
