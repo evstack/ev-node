@@ -14,7 +14,7 @@ require (
 	github.com/evstack/ev-node v1.0.0-beta.10
 	github.com/evstack/ev-node/execution/evm v0.0.0-20250602130019-2a732cf903a5
 	github.com/evstack/ev-node/execution/evm/test v0.0.0-00010101000000-000000000000
-	github.com/libp2p/go-libp2p v0.45.0
+	github.com/libp2p/go-libp2p v0.46.0
 	github.com/stretchr/testify v1.11.1
 )
 
