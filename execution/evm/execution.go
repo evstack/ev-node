@@ -2,6 +2,7 @@ package evm
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -20,6 +21,7 @@ import (
 	"github.com/rs/zerolog"
 
 	"github.com/evstack/ev-node/core/execution"
+	"github.com/evstack/ev-node/pkg/store"
 )
 
 const (
@@ -125,6 +127,10 @@ type EngineClient struct {
 	initialHeight uint64
 	feeRecipient  common.Address // Address to receive transaction fees
 
+	// store provides persistence for ExecMeta to enable idempotent execution
+	// and crash recovery. Optional - if nil, ExecMeta tracking is disabled.
+	store store.Store
+
 	mu                        sync.Mutex  // Mutex to protect concurrent access to block hashes
 	currentHeadBlockHash      common.Hash // Store last non-finalized HeadBlockHash
 	currentHeadHeight         uint64      // Height of the current head block (for safe lag calculation)
@@ -139,13 +145,16 @@ type EngineClient struct {
 	logger zerolog.Logger
 }
 
-// NewEngineExecutionClient creates a new instance of EngineAPIExecutionClient
+// NewEngineExecutionClient creates a new instance of EngineAPIExecutionClient.
+// The store parameter is optional - if provided, ExecMeta tracking is enabled
+// for idempotent execution and crash recovery.
 func NewEngineExecutionClient(
 	ethURL,
 	engineURL string,
 	jwtSecret string,
 	genesisHash common.Hash,
 	feeRecipient common.Address,
+	evStore store.Store,
 ) (*EngineClient, error) {
 	ethClient, err := ethclient.Dial(ethURL)
 	if err != nil {
@@ -178,6 +187,7 @@ func NewEngineExecutionClient(
 		ethClient:                 ethClient,
 		genesisHash:               genesisHash,
 		feeRecipient:              feeRecipient,
+		store:                     evStore,
 		currentHeadBlockHash:      genesisHash,
 		currentSafeBlockHash:      genesisHash,
 		currentFinalizedBlockHash: genesisHash,
@@ -188,6 +198,13 @@ func NewEngineExecutionClient(
 // SetLogger allows callers to attach a structured logger.
 func (c *EngineClient) SetLogger(l zerolog.Logger) {
 	c.logger = l
+}
+
+// SetStore allows callers to attach a store for ExecMeta tracking.
+// This enables idempotent execution and crash recovery features.
+// Must be called before ExecuteTxs if ExecMeta tracking is desired.
+func (c *EngineClient) SetStore(s store.Store) {
+	c.store = s
 }
 
 // InitChain initializes the blockchain with the given genesis parameters
@@ -263,10 +280,50 @@ func (c *EngineClient) GetTxs(ctx context.Context) ([][]byte, error) {
 // ExecuteTxs executes the given transactions at the specified block height and timestamp.
 // This method is serialized via executeMu to prevent concurrent block builds that could
 // create sibling blocks (fork explosion).
+//
+// ExecMeta tracking (if store is configured):
+// - Checks for already-promoted blocks to enable idempotent execution
+// - Saves ExecMeta with payloadID after forkchoiceUpdatedV3 for crash recovery
+// - Updates ExecMeta to "promoted" after successful execution
 func (c *EngineClient) ExecuteTxs(ctx context.Context, txs [][]byte, blockHeight uint64, timestamp time.Time, prevStateRoot []byte) (updatedStateRoot []byte, maxBytes uint64, err error) {
 	// Serialize all ExecuteTxs calls to prevent concurrent sibling block creation
 	c.executeMu.Lock()
 	defer c.executeMu.Unlock()
+
+	// Check ExecMeta for idempotent execution (if store is configured)
+	if c.store != nil {
+		execMeta, err := c.store.GetExecMeta(ctx, blockHeight)
+		if err == nil && execMeta != nil {
+			// If we already have a promoted block at this height, return the stored StateRoot
+			if execMeta.Stage == store.ExecStagePromoted && len(execMeta.StateRoot) > 0 {
+				c.logger.Info().
+					Uint64("height", blockHeight).
+					Str("stage", execMeta.Stage).
+					Msg("ExecuteTxs: reusing already-promoted execution (idempotent)")
+				return execMeta.StateRoot, 0, nil
+			}
+
+			// If we have a started execution with a payloadID, try to resume
+			if execMeta.Stage == store.ExecStageStarted && len(execMeta.PayloadID) > 0 {
+				c.logger.Info().
+					Uint64("height", blockHeight).
+					Str("stage", execMeta.Stage).
+					Msg("ExecuteTxs: found in-progress execution with payloadID, attempting resume")
+
+				stateRoot, err := c.ResumePayload(ctx, execMeta.PayloadID)
+				if err == nil {
+					c.logger.Info().
+						Uint64("height", blockHeight).
+						Msg("ExecuteTxs: successfully resumed payload")
+					return stateRoot, 0, nil
+				}
+				// Resume failed - log and fall through to EL-level idempotency check
+				c.logger.Warn().Err(err).
+					Uint64("height", blockHeight).
+					Msg("ExecuteTxs: failed to resume payload, falling back to EL-level check")
+			}
+		}
+	}
 
 	// Idempotency check: if EL already has a block at this height with matching
 	// timestamp, return its state root instead of building a new block.
@@ -279,12 +336,17 @@ func (c *EngineClient) ExecuteTxs(ctx context.Context, txs [][]byte, blockHeight
 				Uint64("height", blockHeight).
 				Str("blockHash", existingBlockHash.Hex()).
 				Str("stateRoot", existingStateRoot.Hex()).
-				Msg("ExecuteTxs: reusing existing block at height (idempotency)")
+				Msg("ExecuteTxs: reusing existing block at height (EL idempotency)")
 
 			// Update head to point to this existing block
 			if err := c.setHead(ctx, existingBlockHash); err != nil {
 				c.logger.Warn().Err(err).Msg("ExecuteTxs: failed to update head to existing block")
 				// Continue anyway - the block exists and we can return its state root
+			}
+
+			// Update ExecMeta to promoted if store is configured
+			if c.store != nil {
+				c.saveExecMeta(ctx, blockHeight, timestamp.Unix(), nil, existingBlockHash[:], existingStateRoot.Bytes(), txs, store.ExecStagePromoted)
 			}
 
 			return existingStateRoot.Bytes(), 0, nil
@@ -416,6 +478,12 @@ func (c *EngineClient) ExecuteTxs(ctx context.Context, txs [][]byte, blockHeight
 		return nil, 0, err
 	}
 
+	// Save ExecMeta with payloadID for crash recovery (Stage="started")
+	// This allows resuming the payload build if we crash before completing
+	if c.store != nil {
+		c.saveExecMeta(ctx, blockHeight, timestamp.Unix(), payloadID[:], nil, nil, txs, store.ExecStageStarted)
+	}
+
 	// get payload
 	var payloadResult engine.ExecutionPayloadEnvelope
 	err = c.engineClient.CallContext(ctx, &payloadResult, "engine_getPayloadV4", *payloadID)
@@ -457,6 +525,11 @@ func (c *EngineClient) ExecuteTxs(ctx context.Context, txs [][]byte, blockHeight
 	err = c.setFinalWithHeight(ctx, blockHash, blockHeight, false)
 	if err != nil {
 		return nil, 0, err
+	}
+
+	// Update ExecMeta to "promoted" after successful execution
+	if c.store != nil {
+		c.saveExecMeta(ctx, blockHeight, timestamp.Unix(), payloadID[:], blockHash[:], payloadResult.ExecutionPayload.StateRoot.Bytes(), txs, store.ExecStagePromoted)
 	}
 
 	return payloadResult.ExecutionPayload.StateRoot.Bytes(), payloadResult.ExecutionPayload.GasUsed, nil
@@ -689,6 +762,11 @@ func (c *EngineClient) ResumePayload(ctx context.Context, payloadIDBytes []byte)
 		Uint64("blockHeight", blockHeight).
 		Msg("ResumePayload: successfully resumed payload")
 
+	// Update ExecMeta to "promoted" after successful resume
+	if c.store != nil {
+		c.saveExecMeta(ctx, blockHeight, int64(payloadResult.ExecutionPayload.Timestamp), payloadIDBytes, blockHash[:], payloadResult.ExecutionPayload.StateRoot.Bytes(), nil, store.ExecStagePromoted)
+	}
+
 	return payloadResult.ExecutionPayload.StateRoot.Bytes(), nil
 }
 
@@ -704,6 +782,54 @@ func (c *EngineClient) getBlockInfo(ctx context.Context, height uint64) (common.
 	}
 
 	return header.Hash(), header.Root, header.GasLimit, header.Time, nil
+}
+
+// saveExecMeta persists execution metadata to the store for crash recovery.
+// This is a best-effort operation - failures are logged but don't fail the execution.
+func (c *EngineClient) saveExecMeta(ctx context.Context, height uint64, timestamp int64, payloadID []byte, blockHash []byte, stateRoot []byte, txs [][]byte, stage string) {
+	if c.store == nil {
+		return
+	}
+
+	execMeta := &store.ExecMeta{
+		Height:        height,
+		Timestamp:     timestamp,
+		PayloadID:     payloadID,
+		BlockHash:     blockHash,
+		StateRoot:     stateRoot,
+		Stage:         stage,
+		UpdatedAtUnix: time.Now().Unix(),
+	}
+
+	// Compute tx hash for sanity checks on retry
+	if len(txs) > 0 {
+		h := sha256.New()
+		for _, tx := range txs {
+			h.Write(tx)
+		}
+		execMeta.TxHash = h.Sum(nil)
+	}
+
+	batch, err := c.store.NewBatch(ctx)
+	if err != nil {
+		c.logger.Warn().Err(err).Uint64("height", height).Msg("saveExecMeta: failed to create batch")
+		return
+	}
+
+	if err := batch.SaveExecMeta(execMeta); err != nil {
+		c.logger.Warn().Err(err).Uint64("height", height).Msg("saveExecMeta: failed to save exec meta")
+		return
+	}
+
+	if err := batch.Commit(); err != nil {
+		c.logger.Warn().Err(err).Uint64("height", height).Msg("saveExecMeta: failed to commit batch")
+		return
+	}
+
+	c.logger.Debug().
+		Uint64("height", height).
+		Str("stage", stage).
+		Msg("saveExecMeta: saved execution metadata")
 }
 
 // GetLatestHeight returns the current block height of the execution layer

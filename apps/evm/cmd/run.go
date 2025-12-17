@@ -77,6 +77,11 @@ var RunCmd = &cobra.Command{
 			return err
 		}
 
+		// Attach store to the EVM engine client for ExecMeta tracking (idempotent execution)
+		if ec, ok := executor.(*evm.EngineClient); ok {
+			ec.SetStore(store.New(datastore))
+		}
+
 		genesisPath := filepath.Join(filepath.Dir(nodeConfig.ConfigPath()), "genesis.json")
 		genesis, err := genesispkg.LoadGenesis(genesisPath)
 		if err != nil {
@@ -250,7 +255,7 @@ func createExecutionClient(cmd *cobra.Command) (execution.Executor, error) {
 	genesisHash := common.HexToHash(genesisHashStr)
 	feeRecipient := common.HexToAddress(feeRecipientStr)
 
-	return evm.NewEngineExecutionClient(ethURL, engineURL, jwtSecret, genesisHash, feeRecipient)
+	return evm.NewEngineExecutionClient(ethURL, engineURL, jwtSecret, genesisHash, feeRecipient, nil)
 }
 
 // addFlags adds flags related to the EVM execution client

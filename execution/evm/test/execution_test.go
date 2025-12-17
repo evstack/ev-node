@@ -70,6 +70,7 @@ func TestEngineExecution(t *testing.T) {
 			rethNode.JWTSecretHex(),
 			genesisHash,
 			common.Address{},
+			nil, // store - ExecMeta tracking disabled for tests
 		)
 		require.NoError(t, err)
 
@@ -168,6 +169,7 @@ func TestEngineExecution(t *testing.T) {
 			rethNode.JWTSecretHex(),
 			genesisHash,
 			common.Address{},
+			nil, // store - ExecMeta tracking disabled for tests
 		)
 		require.NoError(t, err)
 
