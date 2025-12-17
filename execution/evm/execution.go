@@ -131,11 +131,12 @@ type EngineClient struct {
 	// and crash recovery. Optional - if nil, ExecMeta tracking is disabled.
 	store store.Store
 
-	mu                        sync.Mutex  // Mutex to protect concurrent access to block hashes
-	currentHeadBlockHash      common.Hash // Store last non-finalized HeadBlockHash
-	currentHeadHeight         uint64      // Height of the current head block (for safe lag calculation)
-	currentSafeBlockHash      common.Hash // Store last non-finalized SafeBlockHash
-	currentFinalizedBlockHash common.Hash // Store last finalized block hash
+	mu                        sync.Mutex             // Mutex to protect concurrent access to block hashes
+	currentHeadBlockHash      common.Hash            // Store last non-finalized HeadBlockHash
+	currentHeadHeight         uint64                 // Height of the current head block (for safe lag calculation)
+	currentSafeBlockHash      common.Hash            // Store last non-finalized SafeBlockHash
+	currentFinalizedBlockHash common.Hash            // Store last finalized block hash
+	blockHashCache            map[uint64]common.Hash // height -> hash cache for safe block lookups
 
 	// executeMu serializes all ExecuteTxs calls to prevent concurrent block builds
 	// that could create sibling blocks (fork explosion). This is separate from mu
@@ -191,6 +192,7 @@ func NewEngineExecutionClient(
 		currentHeadBlockHash:      genesisHash,
 		currentSafeBlockHash:      genesisHash,
 		currentFinalizedBlockHash: genesisHash,
+		blockHashCache:            make(map[uint64]common.Hash),
 		logger:                    zerolog.Nop(),
 	}, nil
 }
@@ -522,6 +524,10 @@ func (c *EngineClient) ExecuteTxs(ctx context.Context, txs [][]byte, blockHeight
 
 	// forkchoice update - advance head and lag safe by SafeBlockLag blocks
 	blockHash := payloadResult.ExecutionPayload.BlockHash
+
+	// Cache block hash for safe block lookups (avoids RPC calls in SetSafeByHeight)
+	c.cacheBlockHash(blockHeight, blockHash)
+
 	err = c.setFinalWithHeight(ctx, blockHash, blockHeight, false)
 	if err != nil {
 		return nil, 0, err
@@ -652,18 +658,50 @@ func (c *EngineClient) SetSafe(ctx context.Context, blockHash common.Hash) error
 }
 
 // SetSafeByHeight sets the safe block by looking up the block hash at the given height.
+// Uses cached block hashes when available to avoid RPC calls. Falls back to RPC on cache miss
+// (e.g., during restart before cache is warmed).
 // Returns nil if the height doesn't exist yet (block not produced).
 func (c *EngineClient) SetSafeByHeight(ctx context.Context, height uint64) error {
-	blockHash, _, _, _, err := c.getBlockInfo(ctx, height)
-	if err != nil {
-		// Block doesn't exist yet - this is expected during early blocks
-		c.logger.Debug().
-			Uint64("height", height).
-			Err(err).
-			Msg("SetSafeByHeight: block not found, skipping safe update")
-		return nil
+	// Try cache first (avoids RPC call in normal operation)
+	c.mu.Lock()
+	blockHash, ok := c.blockHashCache[height]
+	c.mu.Unlock()
+
+	if !ok {
+		// Cache miss - fallback to RPC (happens during restart/recovery)
+		var err error
+		blockHash, _, _, _, err = c.getBlockInfo(ctx, height)
+		if err != nil {
+			// Block doesn't exist yet - this is expected during early blocks
+			c.logger.Debug().
+				Uint64("height", height).
+				Err(err).
+				Msg("SetSafeByHeight: block not found, skipping safe update")
+			return nil
+		}
 	}
 	return c.SetSafe(ctx, blockHash)
+}
+
+// cacheBlockHash stores a block hash in the cache for later safe block lookups.
+// The cache is bounded to prevent unbounded memory growth - old entries are pruned.
+func (c *EngineClient) cacheBlockHash(height uint64, hash common.Hash) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	c.blockHashCache[height] = hash
+
+	// Prune old entries to keep cache bounded (keep last ~10 blocks)
+	// This is sufficient since SafeBlockLag is only 2
+	const maxCacheSize = 10
+	if len(c.blockHashCache) > maxCacheSize {
+		minHeight := height - maxCacheSize
+		for h := range c.blockHashCache {
+			if h < minHeight {
+				delete(c.blockHashCache, h)
+			}
+		}
+	}
 }
 
 // SetFinalized explicitly sets the finalized block hash.
