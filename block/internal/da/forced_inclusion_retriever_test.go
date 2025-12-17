@@ -5,12 +5,15 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ipfs/go-datastore"
+	dssync "github.com/ipfs/go-datastore/sync"
 	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/mock"
 	"gotest.tools/v3/assert"
 
 	datypes "github.com/evstack/ev-node/pkg/da/types"
 	"github.com/evstack/ev-node/pkg/genesis"
+	"github.com/evstack/ev-node/pkg/store"
 	"github.com/evstack/ev-node/test/mocks"
 )
 
@@ -24,7 +27,10 @@ func TestNewForcedInclusionRetriever(t *testing.T) {
 		DAEpochForcedInclusion: 10,
 	}
 
-	retriever := NewForcedInclusionRetriever(client, gen, zerolog.Nop())
+	ds := dssync.MutexWrap(datastore.NewMapDatastore())
+	st := store.New(ds)
+
+	retriever := NewForcedInclusionRetriever(client, gen, st, zerolog.Nop())
 	assert.Assert(t, retriever != nil)
 }
 
@@ -37,7 +43,10 @@ func TestForcedInclusionRetriever_RetrieveForcedIncludedTxs_NoNamespace(t *testi
 		DAEpochForcedInclusion: 10,
 	}
 
-	retriever := NewForcedInclusionRetriever(client, gen, zerolog.Nop())
+	ds := dssync.MutexWrap(datastore.NewMapDatastore())
+	st := store.New(ds)
+
+	retriever := NewForcedInclusionRetriever(client, gen, st, zerolog.Nop())
 	ctx := context.Background()
 
 	_, err := retriever.RetrieveForcedIncludedTxs(ctx, 100)
@@ -56,7 +65,10 @@ func TestForcedInclusionRetriever_RetrieveForcedIncludedTxs_NotAtEpochStart(t *t
 		DAEpochForcedInclusion: 10,
 	}
 
-	retriever := NewForcedInclusionRetriever(client, gen, zerolog.Nop())
+	ds := dssync.MutexWrap(datastore.NewMapDatastore())
+	st := store.New(ds)
+
+	retriever := NewForcedInclusionRetriever(client, gen, st, zerolog.Nop())
 	ctx := context.Background()
 
 	// Height 105 is not an epoch start (100, 110, 120, etc. are epoch starts)
@@ -89,7 +101,10 @@ func TestForcedInclusionRetriever_RetrieveForcedIncludedTxs_EpochStartSuccess(t 
 		DAEpochForcedInclusion: 1, // Single height epoch
 	}
 
-	retriever := NewForcedInclusionRetriever(client, gen, zerolog.Nop())
+	ds := dssync.MutexWrap(datastore.NewMapDatastore())
+	st := store.New(ds)
+
+	retriever := NewForcedInclusionRetriever(client, gen, st, zerolog.Nop())
 	ctx := context.Background()
 
 	// Height 100 is an epoch start
@@ -116,7 +131,10 @@ func TestForcedInclusionRetriever_RetrieveForcedIncludedTxs_EpochStartNotAvailab
 		DAEpochForcedInclusion: 10,
 	}
 
-	retriever := NewForcedInclusionRetriever(client, gen, zerolog.Nop())
+	ds := dssync.MutexWrap(datastore.NewMapDatastore())
+	st := store.New(ds)
+
+	retriever := NewForcedInclusionRetriever(client, gen, st, zerolog.Nop())
 	ctx := context.Background()
 
 	// Epoch boundaries: [100, 109] - retrieval happens at epoch end (109)
@@ -139,7 +157,10 @@ func TestForcedInclusionRetriever_RetrieveForcedIncludedTxs_NoBlobsAtHeight(t *t
 		DAEpochForcedInclusion: 1, // Single height epoch
 	}
 
-	retriever := NewForcedInclusionRetriever(client, gen, zerolog.Nop())
+	ds := dssync.MutexWrap(datastore.NewMapDatastore())
+	st := store.New(ds)
+
+	retriever := NewForcedInclusionRetriever(client, gen, st, zerolog.Nop())
 	ctx := context.Background()
 
 	event, err := retriever.RetrieveForcedIncludedTxs(ctx, 100)
@@ -177,7 +198,10 @@ func TestForcedInclusionRetriever_RetrieveForcedIncludedTxs_MultiHeightEpoch(t *
 		DAEpochForcedInclusion: 3, // Epoch: 100-102
 	}
 
-	retriever := NewForcedInclusionRetriever(client, gen, zerolog.Nop())
+	ds := dssync.MutexWrap(datastore.NewMapDatastore())
+	st := store.New(ds)
+
+	retriever := NewForcedInclusionRetriever(client, gen, st, zerolog.Nop())
 	ctx := context.Background()
 
 	// Epoch boundaries: [100, 102] - retrieval happens at epoch end (102)
@@ -201,7 +225,10 @@ func TestForcedInclusionRetriever_processForcedInclusionBlobs(t *testing.T) {
 		DAEpochForcedInclusion: 10,
 	}
 
-	retriever := NewForcedInclusionRetriever(client, gen, zerolog.Nop())
+	ds := dssync.MutexWrap(datastore.NewMapDatastore())
+	st := store.New(ds)
+
+	retriever := NewForcedInclusionRetriever(client, gen, st, zerolog.Nop())
 
 	tests := []struct {
 		name            string

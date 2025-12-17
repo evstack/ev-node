@@ -120,7 +120,7 @@ func createSequencer(
 	}
 
 	daClient := block.NewDAClient(blobClient, nodeConfig, logger)
-	fiRetriever := block.NewForcedInclusionRetriever(daClient, genesis, logger)
+	fiRetriever := block.NewForcedInclusionRetriever(daClient, genesis, datastore, logger)
 
 	if nodeConfig.Node.BasedSequencer {
 		// Based sequencer mode - fetch transactions only from DA

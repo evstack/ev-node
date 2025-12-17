@@ -161,7 +161,7 @@ func createSequencer(
 	genesis genesis.Genesis,
 	daClient block.FullDAClient,
 ) (coresequencer.Sequencer, error) {
-	fiRetriever := block.NewForcedInclusionRetriever(daClient, genesis, logger)
+	fiRetriever := block.NewForcedInclusionRetriever(daClient, genesis, datastore, logger)
 
 	if nodeConfig.Node.BasedSequencer {
 		// Based sequencer mode - fetch transactions only from DA

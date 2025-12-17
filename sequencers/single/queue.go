@@ -8,21 +8,17 @@ import (
 	"sync"
 
 	ds "github.com/ipfs/go-datastore"
-	ktds "github.com/ipfs/go-datastore/keytransform"
 	"github.com/ipfs/go-datastore/query"
 	"google.golang.org/protobuf/proto"
 
 	coresequencer "github.com/evstack/ev-node/core/sequencer"
+	"github.com/evstack/ev-node/pkg/store"
 
 	pb "github.com/evstack/ev-node/types/pb/evnode/v1"
 )
 
 // ErrQueueFull is returned when the batch queue has reached its maximum size
 var ErrQueueFull = errors.New("batch queue is full")
-
-func newPrefixKV(kvStore ds.Batching, prefix string) ds.Batching {
-	return ktds.Wrap(kvStore, ktds.PrefixTransform{Prefix: ds.NewKey(prefix)})
-}
 
 // BatchQueue implements a persistent queue for transaction batches
 type BatchQueue struct {
@@ -40,7 +36,7 @@ func NewBatchQueue(db ds.Batching, prefix string, maxSize int) *BatchQueue {
 		queue:        make([]coresequencer.Batch, 0),
 		head:         0,
 		maxQueueSize: maxSize,
-		db:           newPrefixKV(db, prefix),
+		db:           store.NewPrefixKVStore(db, prefix),
 	}
 }
 

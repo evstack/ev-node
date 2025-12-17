@@ -370,7 +370,7 @@ func TestVerifyForcedInclusionTxs_AllTransactionsIncluded(t *testing.T) {
 	client.On("GetForcedInclusionNamespace").Return([]byte(cfg.DA.ForcedInclusionNamespace)).Maybe()
 	client.On("HasForcedInclusionNamespace").Return(true).Maybe()
 	daRetriever := NewDARetriever(client, cm, gen, zerolog.Nop())
-	fiRetriever := da.NewForcedInclusionRetriever(client, gen, zerolog.Nop())
+	fiRetriever := da.NewForcedInclusionRetriever(client, gen, st, zerolog.Nop())
 
 	s := NewSyncer(
 		st,
@@ -443,7 +443,7 @@ func TestVerifyForcedInclusionTxs_MissingTransactions(t *testing.T) {
 	client.On("GetForcedInclusionNamespace").Return([]byte(cfg.DA.ForcedInclusionNamespace)).Maybe()
 	client.On("HasForcedInclusionNamespace").Return(true).Maybe()
 	daRetriever := NewDARetriever(client, cm, gen, zerolog.Nop())
-	fiRetriever := da.NewForcedInclusionRetriever(client, gen, zerolog.Nop())
+	fiRetriever := da.NewForcedInclusionRetriever(client, gen, st, zerolog.Nop())
 
 	s := NewSyncer(
 		st,
@@ -546,7 +546,7 @@ func TestVerifyForcedInclusionTxs_PartiallyIncluded(t *testing.T) {
 	client.On("GetForcedInclusionNamespace").Return([]byte(cfg.DA.ForcedInclusionNamespace)).Maybe()
 	client.On("HasForcedInclusionNamespace").Return(true).Maybe()
 	daRetriever := NewDARetriever(client, cm, gen, zerolog.Nop())
-	fiRetriever := da.NewForcedInclusionRetriever(client, gen, zerolog.Nop())
+	fiRetriever := da.NewForcedInclusionRetriever(client, gen, st, zerolog.Nop())
 
 	s := NewSyncer(
 		st,
@@ -653,7 +653,7 @@ func TestVerifyForcedInclusionTxs_NoForcedTransactions(t *testing.T) {
 	client.On("GetForcedInclusionNamespace").Return([]byte(cfg.DA.ForcedInclusionNamespace)).Maybe()
 	client.On("HasForcedInclusionNamespace").Return(true).Maybe()
 	daRetriever := NewDARetriever(client, cm, gen, zerolog.Nop())
-	fiRetriever := da.NewForcedInclusionRetriever(client, gen, zerolog.Nop())
+	fiRetriever := da.NewForcedInclusionRetriever(client, gen, st, zerolog.Nop())
 
 	s := NewSyncer(
 		st,
@@ -719,7 +719,7 @@ func TestVerifyForcedInclusionTxs_NamespaceNotConfigured(t *testing.T) {
 	client.On("GetForcedInclusionNamespace").Return([]byte(nil)).Maybe()
 	client.On("HasForcedInclusionNamespace").Return(false).Maybe()
 	daRetriever := NewDARetriever(client, cm, gen, zerolog.Nop())
-	fiRetriever := da.NewForcedInclusionRetriever(client, gen, zerolog.Nop())
+	fiRetriever := da.NewForcedInclusionRetriever(client, gen, st, zerolog.Nop())
 
 	s := NewSyncer(
 		st,
@@ -784,7 +784,7 @@ func TestVerifyForcedInclusionTxs_DeferralWithinEpoch(t *testing.T) {
 	client.On("GetForcedInclusionNamespace").Return([]byte(cfg.DA.ForcedInclusionNamespace)).Maybe()
 	client.On("HasForcedInclusionNamespace").Return(true).Maybe()
 	daRetriever := NewDARetriever(client, cm, gen, zerolog.Nop())
-	fiRetriever := da.NewForcedInclusionRetriever(client, gen, zerolog.Nop())
+	fiRetriever := da.NewForcedInclusionRetriever(client, gen, st, zerolog.Nop())
 
 	s := NewSyncer(
 		st,
@@ -907,7 +907,7 @@ func TestVerifyForcedInclusionTxs_MaliciousAfterEpochEnd(t *testing.T) {
 	client.On("GetForcedInclusionNamespace").Return([]byte(cfg.DA.ForcedInclusionNamespace)).Maybe()
 	client.On("HasForcedInclusionNamespace").Return(true).Maybe()
 	daRetriever := NewDARetriever(client, cm, gen, zerolog.Nop())
-	fiRetriever := da.NewForcedInclusionRetriever(client, gen, zerolog.Nop())
+	fiRetriever := da.NewForcedInclusionRetriever(client, gen, st, zerolog.Nop())
 
 	s := NewSyncer(
 		st,
@@ -996,7 +996,7 @@ func TestVerifyForcedInclusionTxs_SmoothingExceedsEpoch(t *testing.T) {
 	client.On("HasForcedInclusionNamespace").Return(true).Maybe()
 
 	daRetriever := NewDARetriever(client, cm, gen, zerolog.Nop())
-	fiRetriever := da.NewForcedInclusionRetriever(client, gen, zerolog.Nop())
+	fiRetriever := da.NewForcedInclusionRetriever(client, gen, st, zerolog.Nop())
 
 	s := NewSyncer(
 		st,
