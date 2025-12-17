@@ -1,6 +1,7 @@
 package evm
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -11,7 +12,6 @@ import (
 	"strings"
 	"sync"
 	"time"
-	"bytes"
 
 	"github.com/ethereum/go-ethereum/beacon/engine"
 	"github.com/ethereum/go-ethereum/common"
@@ -73,6 +73,13 @@ func validatePayloadStatus(status engine.PayloadStatusV1) error {
 		// Unknown status - treat as invalid
 		return ErrInvalidPayloadStatus
 	}
+}
+
+func latestValidHashHex(latestValidHash *common.Hash) string {
+	if latestValidHash == nil {
+		return ""
+	}
+	return latestValidHash.Hex()
 }
 
 // retryWithBackoffOnPayloadStatus executes a function with exponential backoff retry logic.
@@ -235,7 +242,7 @@ func (c *EngineClient) InitChain(ctx context.Context, genesisTime time.Time, ini
 		if err := validatePayloadStatus(forkchoiceResult.PayloadStatus); err != nil {
 			c.logger.Warn().
 				Str("status", forkchoiceResult.PayloadStatus.Status).
-				Str("latestValidHash", forkchoiceResult.PayloadStatus.LatestValidHash.Hex()).
+				Str("latestValidHash", latestValidHashHex(forkchoiceResult.PayloadStatus.LatestValidHash)).
 				Interface("validationError", forkchoiceResult.PayloadStatus.ValidationError).
 				Msg("InitChain: engine_forkchoiceUpdatedV3 returned non-VALID status")
 			return err
@@ -367,7 +374,7 @@ func (c *EngineClient) ExecuteTxs(ctx context.Context, txs [][]byte, blockHeight
 		if err := validatePayloadStatus(forkchoiceResult.PayloadStatus); err != nil {
 			c.logger.Warn().
 				Str("status", forkchoiceResult.PayloadStatus.Status).
-				Str("latestValidHash", forkchoiceResult.PayloadStatus.LatestValidHash.Hex()).
+				Str("latestValidHash", latestValidHashHex(forkchoiceResult.PayloadStatus.LatestValidHash)).
 				Interface("validationError", forkchoiceResult.PayloadStatus.ValidationError).
 				Uint64("blockHeight", blockHeight).
 				Msg("ExecuteTxs: engine_forkchoiceUpdatedV3 returned non-VALID status")
@@ -377,7 +384,7 @@ func (c *EngineClient) ExecuteTxs(ctx context.Context, txs [][]byte, blockHeight
 		if forkchoiceResult.PayloadID == nil {
 			c.logger.Error().
 				Str("status", forkchoiceResult.PayloadStatus.Status).
-				Str("latestValidHash", forkchoiceResult.PayloadStatus.LatestValidHash.Hex()).
+				Str("latestValidHash", latestValidHashHex(forkchoiceResult.PayloadStatus.LatestValidHash)).
 				Interface("validationError", forkchoiceResult.PayloadStatus.ValidationError).
 				Interface("forkchoiceState", args).
 				Interface("payloadAttributes", evPayloadAttrs).
@@ -386,7 +393,7 @@ func (c *EngineClient) ExecuteTxs(ctx context.Context, txs [][]byte, blockHeight
 
 			return fmt.Errorf("returned nil PayloadID - (status: %s, latestValidHash: %s)",
 				forkchoiceResult.PayloadStatus.Status,
-				forkchoiceResult.PayloadStatus.LatestValidHash.Hex())
+				latestValidHashHex(forkchoiceResult.PayloadStatus.LatestValidHash))
 		}
 
 		newPayloadID = forkchoiceResult.PayloadID
@@ -430,34 +437,40 @@ func (c *EngineClient) setFinal(ctx context.Context, blockHash common.Hash, isFi
 // When isFinal=false and headHeight > SafeBlockLag, the safe block is automatically
 // set to headHeight - SafeBlockLag blocks behind head.
 func (c *EngineClient) setFinalWithHeight(ctx context.Context, blockHash common.Hash, headHeight uint64, isFinal bool) error {
-	c.mu.Lock()
-	// Update block hashes based on finalization status
-	if isFinal {
-		// When finalizing, also advance safe to at least the finalized block
-		c.currentFinalizedBlockHash = blockHash
-		c.currentSafeBlockHash = blockHash
-	} else {
-		// Update head
-		c.currentHeadBlockHash = blockHash
-		c.currentHeadHeight = headHeight
-	}
-	c.mu.Unlock()
-
-	// If advancing head (not finalizing) and we have height info, update safe with lag
-	if !isFinal && headHeight > SafeBlockLag {
+	var safeHash common.Hash
+	updateSafe := !isFinal && headHeight > SafeBlockLag
+	if updateSafe {
 		safeHeight := headHeight - SafeBlockLag
-		if err := c.SetSafeByHeight(ctx, safeHeight); err != nil {
-			c.logger.Warn().
-				Err(err).
-				Uint64("headHeight", headHeight).
-				Uint64("safeHeight", safeHeight).
-				Msg("setFinalWithHeight: failed to update safe block (continuing)")
-			// Don't fail - safe update is best-effort
+
+		c.mu.Lock()
+		cachedSafeHash, ok := c.blockHashCache[safeHeight]
+		c.mu.Unlock()
+		if ok {
+			safeHash = cachedSafeHash
+		} else {
+			var err error
+			safeHash, _, _, _, err = c.getBlockInfo(ctx, safeHeight)
+			if err != nil {
+				c.logger.Debug().
+					Uint64("safeHeight", safeHeight).
+					Err(err).
+					Msg("setFinalWithHeight: safe block not found, skipping safe update")
+				updateSafe = false
+			}
 		}
 	}
 
 	c.mu.Lock()
-	// Construct forkchoice state
+	if isFinal {
+		c.currentFinalizedBlockHash = blockHash
+		c.currentSafeBlockHash = blockHash
+	} else {
+		c.currentHeadBlockHash = blockHash
+		c.currentHeadHeight = headHeight
+		if updateSafe {
+			c.currentSafeBlockHash = safeHash
+		}
+	}
 	args := engine.ForkchoiceStateV1{
 		HeadBlockHash:      c.currentHeadBlockHash,
 		SafeBlockHash:      c.currentSafeBlockHash,
@@ -482,7 +495,7 @@ func (c *EngineClient) doForkchoiceUpdate(ctx context.Context, args engine.Forkc
 		if err := validatePayloadStatus(forkchoiceResult.PayloadStatus); err != nil {
 			c.logger.Warn().
 				Str("status", forkchoiceResult.PayloadStatus.Status).
-				Str("latestValidHash", forkchoiceResult.PayloadStatus.LatestValidHash.Hex()).
+				Str("latestValidHash", latestValidHashHex(forkchoiceResult.PayloadStatus.LatestValidHash)).
 				Interface("validationError", forkchoiceResult.PayloadStatus.ValidationError).
 				Str("operation", operation).
 				Msg("forkchoiceUpdatedV3 returned non-VALID status")
@@ -560,7 +573,10 @@ func (c *EngineClient) cacheBlockHash(height uint64, hash common.Hash) {
 	// This is sufficient since SafeBlockLag is only 2
 	const maxCacheSize = 10
 	if len(c.blockHashCache) > maxCacheSize {
-		minHeight := height - maxCacheSize
+		var minHeight uint64
+		if height >= maxCacheSize-1 {
+			minHeight = height - (maxCacheSize - 1)
+		}
 		for h := range c.blockHashCache {
 			if h < minHeight {
 				delete(c.blockHashCache, h)
@@ -575,10 +591,8 @@ func (c *EngineClient) cacheBlockHash(height uint64, hash common.Hash) {
 func (c *EngineClient) SetFinalized(ctx context.Context, blockHash common.Hash) error {
 	c.mu.Lock()
 	c.currentFinalizedBlockHash = blockHash
-	// When finalizing, also ensure safe is at least at finalized
-	if c.currentSafeBlockHash == (common.Hash{}) || c.currentSafeBlockHash == c.genesisHash {
-		c.currentSafeBlockHash = blockHash
-	}
+	// Finalized implies safe.
+	c.currentSafeBlockHash = blockHash
 	args := engine.ForkchoiceStateV1{
 		HeadBlockHash:      c.currentHeadBlockHash,
 		SafeBlockHash:      c.currentSafeBlockHash,
@@ -755,7 +769,7 @@ func (c *EngineClient) processPayload(ctx context.Context, payloadID engine.Payl
 		if err := validatePayloadStatus(newPayloadResult); err != nil {
 			c.logger.Warn().
 				Str("status", newPayloadResult.Status).
-				Str("latestValidHash", newPayloadResult.LatestValidHash.Hex()).
+				Str("latestValidHash", latestValidHashHex(newPayloadResult.LatestValidHash)).
 				Interface("validationError", newPayloadResult.ValidationError).
 				Uint64("blockHeight", blockHeight).
 				Msg("processPayload: engine_newPayloadV4 returned non-VALID status")
