@@ -187,6 +187,7 @@ func (bq *BatchQueue) Load(ctx context.Context) error {
 	}
 	defer results.Close()
 
+	var legacyItems []queuedItem
 	for result := range results.Next() {
 		if result.Error != nil {
 			fmt.Printf("Error reading entry from datastore: %v\n", result.Error)
@@ -194,27 +195,56 @@ func (bq *BatchQueue) Load(ctx context.Context) error {
 		}
 		// We care about the last part of the key (the sequence number)
 		// ds.Key usually has a leading slash.
-		key := ds.NewKey(result.Key).Name()
+		keyName := ds.NewKey(result.Key).Name()
 
-		pbBatch := &pb.Batch{}
-		err := proto.Unmarshal(result.Value, pbBatch)
+		var pbBatch pb.Batch
+		err := proto.Unmarshal(result.Value, &pbBatch)
 		if err != nil {
-			fmt.Printf("Error decoding batch for key '%s': %v. Skipping entry.\n", key, err)
+			fmt.Printf("Error decoding batch for key '%s': %v. Skipping entry.\n", keyName, err)
 			continue
 		}
 
 		batch := coresequencer.Batch{Transactions: pbBatch.Txs}
-		bq.queue = append(bq.queue, queuedItem{Batch: batch, Key: key})
 
-		// Update sequences based on loaded keys to avoid collisions
-		if seq, err := strconv.ParseUint(key, 16, 64); err == nil {
-			if seq >= bq.nextAddSeq {
-				bq.nextAddSeq = seq + 1
-			}
-			if seq <= bq.nextPrependSeq {
-				bq.nextPrependSeq = seq - 1
+		// Check if key is valid hex sequence number (16 hex chars)
+		// We use strict 16 check because seqToKey always produces 16 hex chars.
+		isValid := false
+		if len(keyName) == 16 {
+			if seq, err := strconv.ParseUint(keyName, 16, 64); err == nil {
+				isValid = true
+				if seq >= bq.nextAddSeq {
+					bq.nextAddSeq = seq + 1
+				}
+				if seq <= bq.nextPrependSeq {
+					bq.nextPrependSeq = seq - 1
+				}
 			}
 		}
+		if isValid {
+			bq.queue = append(bq.queue, queuedItem{Batch: batch, Key: keyName})
+		} else {
+			legacyItems = append(legacyItems, queuedItem{Batch: batch, Key: result.Key})
+		}
+	}
+	if len(legacyItems) == 0 {
+		return nil
+	}
+	fmt.Printf("Found %d legacy items to migrate...\n", len(legacyItems))
+
+	for _, item := range legacyItems {
+		newKeyName := seqToKey(bq.nextAddSeq)
+
+		if err := bq.persistBatch(ctx, item.Batch, newKeyName); err != nil {
+			fmt.Printf("Failed to migrate legacy item %s: %v\n", item.Key, err)
+			continue
+		}
+
+		if err := bq.db.Delete(ctx, ds.NewKey(item.Key)); err != nil {
+			fmt.Printf("Failed to delete legacy key %s after migration: %v\n", item.Key, err)
+		}
+
+		bq.queue = append(bq.queue, queuedItem{Batch: item.Batch, Key: newKeyName})
+		bq.nextAddSeq++
 	}
 
 	return nil
