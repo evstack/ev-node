@@ -11,6 +11,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"bytes"
 
 	"github.com/ethereum/go-ethereum/beacon/engine"
 	"github.com/ethereum/go-ethereum/common"
@@ -292,121 +293,36 @@ func (c *EngineClient) ExecuteTxs(ctx context.Context, txs [][]byte, blockHeight
 	c.executeMu.Lock()
 	defer c.executeMu.Unlock()
 
-	// Check ExecMeta for idempotent execution (if store is configured)
-	if c.store != nil {
-		execMeta, err := c.store.GetExecMeta(ctx, blockHeight)
-		if err == nil && execMeta != nil {
-			// If we already have a promoted block at this height, return the stored StateRoot
-			if execMeta.Stage == store.ExecStagePromoted && len(execMeta.StateRoot) > 0 {
-				c.logger.Info().
-					Uint64("height", blockHeight).
-					Str("stage", execMeta.Stage).
-					Msg("ExecuteTxs: reusing already-promoted execution (idempotent)")
-				return execMeta.StateRoot, 0, nil
-			}
-
-			// If we have a started execution with a payloadID, try to resume
-			if execMeta.Stage == store.ExecStageStarted && len(execMeta.PayloadID) > 0 {
-				c.logger.Info().
-					Uint64("height", blockHeight).
-					Str("stage", execMeta.Stage).
-					Msg("ExecuteTxs: found in-progress execution with payloadID, attempting resume")
-
-				stateRoot, err := c.ResumePayload(ctx, execMeta.PayloadID)
-				if err == nil {
-					c.logger.Info().
-						Uint64("height", blockHeight).
-						Msg("ExecuteTxs: successfully resumed payload")
-					return stateRoot, 0, nil
-				}
-				// Resume failed - log and fall through to EL-level idempotency check
-				c.logger.Warn().Err(err).
-					Uint64("height", blockHeight).
-					Msg("ExecuteTxs: failed to resume payload, falling back to EL-level check")
-			}
+	// 1. Check for idempotent execution
+	stateRoot, payloadID, found, err := c.checkIdempotency(ctx, blockHeight, timestamp, txs)
+	if err != nil {
+		c.logger.Warn().Err(err).Uint64("height", blockHeight).Msg("ExecuteTxs: idempotency check failed")
+		// Continue execution on error, as it might be transient
+	} else if found {
+		if stateRoot != nil {
+			return stateRoot, 0, nil
+		}
+		if payloadID != nil {
+			// Found in-progress execution, attempt to resume
+			return c.processPayload(ctx, *payloadID, txs)
 		}
 	}
 
-	// Idempotency check: if EL already has a block at this height with matching
-	// timestamp, return its state root instead of building a new block.
-	// This handles retries and crash recovery without creating sibling blocks.
-	existingBlockHash, existingStateRoot, _, existingTimestamp, err := c.getBlockInfo(ctx, blockHeight)
-	if err == nil && existingBlockHash != (common.Hash{}) {
-		// Block exists at this height - check if timestamp matches
-		if existingTimestamp == uint64(timestamp.Unix()) {
-			c.logger.Info().
-				Uint64("height", blockHeight).
-				Str("blockHash", existingBlockHash.Hex()).
-				Str("stateRoot", existingStateRoot.Hex()).
-				Msg("ExecuteTxs: reusing existing block at height (EL idempotency)")
-
-			// Update head to point to this existing block
-			if err := c.setHead(ctx, existingBlockHash); err != nil {
-				c.logger.Warn().Err(err).Msg("ExecuteTxs: failed to update head to existing block")
-				// Continue anyway - the block exists and we can return its state root
-			}
-
-			// Update ExecMeta to promoted if store is configured
-			if c.store != nil {
-				c.saveExecMeta(ctx, blockHeight, timestamp.Unix(), nil, existingBlockHash[:], existingStateRoot.Bytes(), txs, store.ExecStagePromoted)
-			}
-
-			return existingStateRoot.Bytes(), 0, nil
-		}
-		// Timestamp mismatch - this is unexpected, log a warning but proceed
-		// This could happen if there's a genuine reorg needed
-		c.logger.Warn().
-			Uint64("height", blockHeight).
-			Uint64("existingTimestamp", existingTimestamp).
-			Int64("requestedTimestamp", timestamp.Unix()).
-			Msg("ExecuteTxs: block exists at height but timestamp differs")
-	}
-
-	forceIncludedMask := execution.GetForceIncludedMask(ctx)
-
-	// Filter out invalid transactions to handle gibberish gracefully
-	validTxs := make([]string, 0, len(txs))
-	for i, tx := range txs {
-		if len(tx) == 0 {
-			continue
-		}
-
-		// Skip validation for mempool transactions (already validated when added to mempool)
-		// Force-included transactions from DA MUST be validated as they come from untrusted sources
-		if forceIncludedMask != nil && i < len(forceIncludedMask) && !forceIncludedMask[i] {
-			validTxs = append(validTxs, "0x"+hex.EncodeToString(tx))
-			continue
-		}
-
-		// Validate that the transaction can be parsed as an Ethereum transaction
-		var ethTx types.Transaction
-		if err := ethTx.UnmarshalBinary(tx); err != nil {
-			c.logger.Debug().
-				Int("tx_index", i).
-				Uint64("block_height", blockHeight).
-				Err(err).
-				Str("tx_hex", "0x"+hex.EncodeToString(tx)).
-				Msg("filtering out invalid transaction (gibberish)")
-			continue
-		}
-
-		validTxs = append(validTxs, "0x"+hex.EncodeToString(tx))
-	}
-
-	if len(validTxs) < len(txs) {
-		c.logger.Debug().
-			Int("total_txs", len(txs)).
-			Int("valid_txs", len(validTxs)).
-			Int("filtered_txs", len(txs)-len(validTxs)).
-			Uint64("block_height", blockHeight).
-			Msg("filtered out invalid transactions")
-	}
-	txsPayload := validTxs
-
-	prevBlockHash, _, prevGasLimit, _, err := c.getBlockInfo(ctx, blockHeight-1)
+	prevBlockHash, prevHeaderStateRoot, prevGasLimit, _, err := c.getBlockInfo(ctx, blockHeight-1)
 	if err != nil {
 		return nil, 0, fmt.Errorf("failed to get block info: %w", err)
 	}
+	// It's possible that the prev state root passed in is nil if this is the first block.
+	// If so, we can't do a comparison. Otherwise, we compare the roots.
+	if len(prevStateRoot) > 0 && !bytes.Equal(prevStateRoot, prevHeaderStateRoot.Bytes()) {
+		return nil, 0, fmt.Errorf("prevStateRoot mismatch at height %d: consensus=%x execution=%x", blockHeight-1, prevStateRoot, prevHeaderStateRoot.Bytes())
+	}
+
+	// 2. Prepare payload attributes
+	txsPayload := c.filterTransactions(ctx, txs, blockHeight)
+
+	// Cache parent block hash for safe-block lookups.
+	c.cacheBlockHash(blockHeight-1, prevBlockHash)
 
 	// Use tracked safe/finalized state rather than prevBlockHash to avoid
 	// regressing these values. Head must be prevBlockHash to build on top of it.
@@ -438,8 +354,8 @@ func (c *EngineClient) ExecuteTxs(ctx context.Context, txs [][]byte, blockHeight
 		Int("tx_count", len(txs)).
 		Msg("engine_forkchoiceUpdatedV3")
 
-	// Call forkchoice update with retry logic for SYNCING status
-	var payloadID *engine.PayloadID
+	// 3. Call forkchoice update to get PayloadID
+	var newPayloadID *engine.PayloadID
 	err = retryWithBackoffOnPayloadStatus(ctx, func() error {
 		var forkchoiceResult engine.ForkChoiceResponse
 		err := c.engineClient.CallContext(ctx, &forkchoiceResult, "engine_forkchoiceUpdatedV3", args, evPayloadAttrs)
@@ -473,7 +389,7 @@ func (c *EngineClient) ExecuteTxs(ctx context.Context, txs [][]byte, blockHeight
 				forkchoiceResult.PayloadStatus.LatestValidHash.Hex())
 		}
 
-		payloadID = forkchoiceResult.PayloadID
+		newPayloadID = forkchoiceResult.PayloadID
 		return nil
 	}, MaxPayloadStatusRetries, InitialRetryBackoff, "ExecuteTxs forkchoice")
 	if err != nil {
@@ -483,62 +399,11 @@ func (c *EngineClient) ExecuteTxs(ctx context.Context, txs [][]byte, blockHeight
 	// Save ExecMeta with payloadID for crash recovery (Stage="started")
 	// This allows resuming the payload build if we crash before completing
 	if c.store != nil {
-		c.saveExecMeta(ctx, blockHeight, timestamp.Unix(), payloadID[:], nil, nil, txs, store.ExecStageStarted)
+		c.saveExecMeta(ctx, blockHeight, timestamp.Unix(), newPayloadID[:], nil, nil, txs, store.ExecStageStarted)
 	}
 
-	// get payload
-	var payloadResult engine.ExecutionPayloadEnvelope
-	err = c.engineClient.CallContext(ctx, &payloadResult, "engine_getPayloadV4", *payloadID)
-	if err != nil {
-		return nil, 0, fmt.Errorf("get payload failed: %w", err)
-	}
-
-	// Submit payload with retry logic for SYNCING status
-	var newPayloadResult engine.PayloadStatusV1
-	err = retryWithBackoffOnPayloadStatus(ctx, func() error {
-		err := c.engineClient.CallContext(ctx, &newPayloadResult, "engine_newPayloadV4",
-			payloadResult.ExecutionPayload,
-			[]string{},          // No blob hashes
-			common.Hash{}.Hex(), // Use zero hash for parentBeaconBlockRoot (same as in payload attributes)
-			[][]byte{},          // No execution requests
-		)
-		if err != nil {
-			return fmt.Errorf("new payload submission failed: %w", err)
-		}
-
-		// Validate payload status
-		if err := validatePayloadStatus(newPayloadResult); err != nil {
-			c.logger.Warn().
-				Str("status", newPayloadResult.Status).
-				Str("latestValidHash", newPayloadResult.LatestValidHash.Hex()).
-				Interface("validationError", newPayloadResult.ValidationError).
-				Uint64("blockHeight", blockHeight).
-				Msg("engine_newPayloadV4 returned non-VALID status")
-			return err
-		}
-		return nil
-	}, MaxPayloadStatusRetries, InitialRetryBackoff, "ExecuteTxs newPayload")
-	if err != nil {
-		return nil, 0, err
-	}
-
-	// forkchoice update - advance head and lag safe by SafeBlockLag blocks
-	blockHash := payloadResult.ExecutionPayload.BlockHash
-
-	// Cache block hash for safe block lookups (avoids RPC calls in SetSafeByHeight)
-	c.cacheBlockHash(blockHeight, blockHash)
-
-	err = c.setFinalWithHeight(ctx, blockHash, blockHeight, false)
-	if err != nil {
-		return nil, 0, err
-	}
-
-	// Update ExecMeta to "promoted" after successful execution
-	if c.store != nil {
-		c.saveExecMeta(ctx, blockHeight, timestamp.Unix(), payloadID[:], blockHash[:], payloadResult.ExecutionPayload.StateRoot.Bytes(), txs, store.ExecStagePromoted)
-	}
-
-	return payloadResult.ExecutionPayload.StateRoot.Bytes(), payloadResult.ExecutionPayload.GasUsed, nil
+	// 4. Process the payload (get, submit, finalize)
+	return c.processPayload(ctx, *newPayloadID, txs)
 }
 
 // setHead updates the head block hash without changing safe or finalized.
@@ -728,11 +593,6 @@ func (c *EngineClient) SetFinalized(ctx context.Context, blockHash common.Hash) 
 // This is used for crash recovery when we have a payloadID but haven't yet
 // retrieved and submitted the payload to the EL.
 //
-// The method:
-// 1. Calls engine_getPayloadV4 with the stored payloadID
-// 2. Submits the payload via engine_newPayloadV4
-// 3. Updates forkchoice to set the new block as head
-//
 // Returns the state root from the payload, or an error if resumption fails.
 // Implements the execution.PayloadResumer interface.
 func (c *EngineClient) ResumePayload(ctx context.Context, payloadIDBytes []byte) (stateRoot []byte, err error) {
@@ -751,14 +611,135 @@ func (c *EngineClient) ResumePayload(ctx context.Context, payloadIDBytes []byte)
 		Str("payloadID", payloadID.String()).
 		Msg("ResumePayload: attempting to resume in-progress payload")
 
-	// Step 1: Get the payload using the stored payloadID
-	var payloadResult engine.ExecutionPayloadEnvelope
-	err = c.engineClient.CallContext(ctx, &payloadResult, "engine_getPayloadV4", payloadID)
-	if err != nil {
-		return nil, fmt.Errorf("ResumePayload: get payload failed: %w", err)
+	stateRoot, _, err = c.processPayload(ctx, payloadID, nil) // txs = nil for resume
+	return stateRoot, err
+}
+
+// checkIdempotency checks if the block at the given height and timestamp has already been executed.
+// It returns:
+// - stateRoot: non-nil if block is already promoted/finalized (idempotent success)
+// - payloadID: non-nil if block execution was started but not finished (resume needed)
+// - found: true if either of the above is true
+// - err: error during checks
+func (c *EngineClient) checkIdempotency(ctx context.Context, height uint64, timestamp time.Time, txs [][]byte) (stateRoot []byte, payloadID *engine.PayloadID, found bool, err error) {
+	// 1. Check ExecMeta (if store is configured)
+	if c.store != nil {
+		execMeta, err := c.store.GetExecMeta(ctx, height)
+		if err == nil && execMeta != nil {
+			// If we already have a promoted block at this height, return the stored StateRoot
+			if execMeta.Stage == store.ExecStagePromoted && len(execMeta.StateRoot) > 0 {
+				c.logger.Info().
+					Uint64("height", height).
+					Str("stage", execMeta.Stage).
+					Msg("ExecuteTxs: reusing already-promoted execution (idempotent)")
+				return execMeta.StateRoot, nil, true, nil
+			}
+
+			// If we have a started execution with a payloadID, return it to resume
+			if execMeta.Stage == store.ExecStageStarted && len(execMeta.PayloadID) == 8 {
+				c.logger.Info().
+					Uint64("height", height).
+					Str("stage", execMeta.Stage).
+					Msg("ExecuteTxs: found in-progress execution with payloadID, returning payloadID for resume")
+
+				var pid engine.PayloadID
+				copy(pid[:], execMeta.PayloadID)
+				return nil, &pid, true, nil
+			}
+		}
 	}
 
-	// Step 2: Submit the payload with retry logic for SYNCING status
+	// 2. Check EL for existing block (EL-level idempotency)
+	existingBlockHash, existingStateRoot, _, existingTimestamp, err := c.getBlockInfo(ctx, height)
+	if err == nil && existingBlockHash != (common.Hash{}) {
+		// Block exists at this height - check if timestamp matches
+		if existingTimestamp == uint64(timestamp.Unix()) {
+			c.logger.Info().
+				Uint64("height", height).
+				Str("blockHash", existingBlockHash.Hex()).
+				Str("stateRoot", existingStateRoot.Hex()).
+				Msg("ExecuteTxs: reusing existing block at height (EL idempotency)")
+
+			// Update head to point to this existing block
+			if err := c.setHead(ctx, existingBlockHash); err != nil {
+				c.logger.Warn().Err(err).Msg("ExecuteTxs: failed to update head to existing block")
+				// Continue anyway - the block exists and we can return its state root
+			}
+
+			// Update ExecMeta to promoted if store is configured
+			if c.store != nil {
+				c.saveExecMeta(ctx, height, timestamp.Unix(), nil, existingBlockHash[:], existingStateRoot.Bytes(), txs, store.ExecStagePromoted)
+			}
+
+			return existingStateRoot.Bytes(), nil, true, nil
+		}
+		// Timestamp mismatch - log warning but proceed
+		c.logger.Warn().
+			Uint64("height", height).
+			Uint64("existingTimestamp", existingTimestamp).
+			Int64("requestedTimestamp", timestamp.Unix()).
+			Msg("ExecuteTxs: block exists at height but timestamp differs")
+	}
+
+	return nil, nil, false, nil
+}
+
+// filterTransactions filters out invalid transactions and formats them for the payload.
+func (c *EngineClient) filterTransactions(ctx context.Context, txs [][]byte, blockHeight uint64) []string {
+	forceIncludedMask := execution.GetForceIncludedMask(ctx)
+
+	validTxs := make([]string, 0, len(txs))
+	for i, tx := range txs {
+		if len(tx) == 0 {
+			continue
+		}
+
+		// Force-included transactions (from DA) MUST be validated as they come from untrusted sources
+		// Skip validation for mempool transactions (already validated when added to mempool)
+		if forceIncludedMask != nil && i < len(forceIncludedMask) && !forceIncludedMask[i] {
+			validTxs = append(validTxs, "0x"+hex.EncodeToString(tx))
+			continue
+		}
+
+		// Validate that the transaction can be parsed as an Ethereum transaction
+		var ethTx types.Transaction
+		if err := ethTx.UnmarshalBinary(tx); err != nil {
+			c.logger.Debug().
+				Int("tx_index", i).
+				Uint64("block_height", blockHeight).
+				Err(err).
+				Str("tx_hex", "0x"+hex.EncodeToString(tx)).
+				Msg("filtering out invalid transaction (gibberish)")
+			continue
+		}
+
+		validTxs = append(validTxs, "0x"+hex.EncodeToString(tx))
+	}
+
+	if len(validTxs) < len(txs) {
+		c.logger.Debug().
+			Int("total_txs", len(txs)).
+			Int("valid_txs", len(validTxs)).
+			Int("filtered_txs", len(txs)-len(validTxs)).
+			Uint64("block_height", blockHeight).
+			Msg("filtered out invalid transactions")
+	}
+	return validTxs
+}
+
+// processPayload handles the common logic of getting, submitting, and finalizing a payload.
+func (c *EngineClient) processPayload(ctx context.Context, payloadID engine.PayloadID, txs [][]byte) ([]byte, uint64, error) {
+	// 1. Get Payload
+	var payloadResult engine.ExecutionPayloadEnvelope
+	err := c.engineClient.CallContext(ctx, &payloadResult, "engine_getPayloadV4", payloadID)
+	if err != nil {
+		return nil, 0, fmt.Errorf("get payload failed: %w", err)
+	}
+
+	blockHeight := payloadResult.ExecutionPayload.Number
+	blockTimestamp := int64(payloadResult.ExecutionPayload.Timestamp)
+
+	// 2. Submit Payload (newPayload)
 	var newPayloadResult engine.PayloadStatusV1
 	err = retryWithBackoffOnPayloadStatus(ctx, func() error {
 		err := c.engineClient.CallContext(ctx, &newPayloadResult, "engine_newPayloadV4",
@@ -771,41 +752,36 @@ func (c *EngineClient) ResumePayload(ctx context.Context, payloadIDBytes []byte)
 			return fmt.Errorf("new payload submission failed: %w", err)
 		}
 
-		// Validate payload status
 		if err := validatePayloadStatus(newPayloadResult); err != nil {
 			c.logger.Warn().
 				Str("status", newPayloadResult.Status).
 				Str("latestValidHash", newPayloadResult.LatestValidHash.Hex()).
 				Interface("validationError", newPayloadResult.ValidationError).
-				Msg("ResumePayload: engine_newPayloadV4 returned non-VALID status")
+				Uint64("blockHeight", blockHeight).
+				Msg("processPayload: engine_newPayloadV4 returned non-VALID status")
 			return err
 		}
 		return nil
-	}, MaxPayloadStatusRetries, InitialRetryBackoff, "ResumePayload newPayload")
+	}, MaxPayloadStatusRetries, InitialRetryBackoff, "processPayload newPayload")
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 
-	// Step 3: Update forkchoice to set the new block as head (with safe lag)
+	// 3. Update Forkchoice
 	blockHash := payloadResult.ExecutionPayload.BlockHash
-	blockHeight := payloadResult.ExecutionPayload.Number
+	c.cacheBlockHash(blockHeight, blockHash)
+
 	err = c.setFinalWithHeight(ctx, blockHash, blockHeight, false)
 	if err != nil {
-		return nil, fmt.Errorf("ResumePayload: forkchoice update failed: %w", err)
+		return nil, 0, fmt.Errorf("forkchoice update failed: %w", err)
 	}
 
-	c.logger.Info().
-		Str("blockHash", blockHash.Hex()).
-		Str("stateRoot", payloadResult.ExecutionPayload.StateRoot.Hex()).
-		Uint64("blockHeight", blockHeight).
-		Msg("ResumePayload: successfully resumed payload")
-
-	// Update ExecMeta to "promoted" after successful resume
+	// 4. Save ExecMeta (Promoted)
 	if c.store != nil {
-		c.saveExecMeta(ctx, blockHeight, int64(payloadResult.ExecutionPayload.Timestamp), payloadIDBytes, blockHash[:], payloadResult.ExecutionPayload.StateRoot.Bytes(), nil, store.ExecStagePromoted)
+		c.saveExecMeta(ctx, blockHeight, blockTimestamp, payloadID[:], blockHash[:], payloadResult.ExecutionPayload.StateRoot.Bytes(), txs, store.ExecStagePromoted)
 	}
 
-	return payloadResult.ExecutionPayload.StateRoot.Bytes(), nil
+	return payloadResult.ExecutionPayload.StateRoot.Bytes(), payloadResult.ExecutionPayload.GasUsed, nil
 }
 
 func (c *EngineClient) derivePrevRandao(blockHeight uint64) common.Hash {
