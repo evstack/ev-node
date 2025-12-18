@@ -183,7 +183,6 @@ func (c *client) Submit(ctx context.Context, data [][]byte, _ float64, namespace
 }
 
 // getBlockTimestamp fetches the block timestamp from the DA layer header.
-// If the header fetch fails, it falls back to time.Now() and logs a warning.
 func (c *client) getBlockTimestamp(ctx context.Context, height uint64) (time.Time, error) {
 	headerCtx, cancel := context.WithTimeout(ctx, c.defaultTimeout)
 	defer cancel()
@@ -225,7 +224,8 @@ func (c *client) Retrieve(ctx context.Context, height uint64, namespace []byte) 
 			blockTime, err := c.getBlockTimestamp(ctx, height)
 			if err != nil {
 				c.logger.Error().Uint64("height", height).Err(err).Msg("failed to get block timestamp")
-				// TODO: we should retry fetching the timestamp.
+				blockTime = time.Now()
+				// TODO: we should retry fetching the timestamp. Current time may mess block time consistency for based sequencers.
 			}
 
 			return datypes.ResultRetrieve{
@@ -262,7 +262,8 @@ func (c *client) Retrieve(ctx context.Context, height uint64, namespace []byte) 
 	blockTime, err := c.getBlockTimestamp(ctx, height)
 	if err != nil {
 		c.logger.Error().Uint64("height", height).Err(err).Msg("failed to get block timestamp")
-		// TODO: we should retry fetching the timestamp.
+		blockTime = time.Now()
+		// TODO: we should retry fetching the timestamp. Current time may mess block time consistency for based sequencers.
 	}
 
 	if len(blobs) == 0 {
