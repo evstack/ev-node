@@ -190,7 +190,10 @@ func (c *client) getBlockTimestamp(ctx context.Context, height uint64) time.Time
 		return time.Now()
 	}
 
-	header, err := c.headerAPI.GetByHeight(ctx, height)
+	headerCtx, cancel := context.WithTimeout(ctx, c.defaultTimeout)
+	defer cancel()
+
+	header, err := c.headerAPI.GetByHeight(headerCtx, height)
 	if err != nil {
 		c.logger.Warn().Uint64("height", height).Err(err).Msg("failed to get header timestamp, using current time")
 		return time.Now()
@@ -221,16 +224,16 @@ func (c *client) Retrieve(ctx context.Context, height uint64, namespace []byte) 
 		}
 	}
 
-	getCtx, cancel := context.WithTimeout(ctx, c.defaultTimeout)
-	defer cancel()
+	blobCtx, blobCancel := context.WithTimeout(ctx, c.defaultTimeout)
+	defer blobCancel()
 
-	blobs, err := c.blobAPI.GetAll(getCtx, height, []share.Namespace{ns})
+	blobs, err := c.blobAPI.GetAll(blobCtx, height, []share.Namespace{ns})
 	if err != nil {
 		// Handle known errors by substring because RPC may wrap them.
 		switch {
 		case strings.Contains(err.Error(), datypes.ErrBlobNotFound.Error()):
 			c.logger.Debug().Uint64("height", height).Msg("No blobs found at height")
-			// Fetch block timestamp for deterministic responses
+			// Fetch block timestamp for deterministic responses using parent context
 			blockTime := c.getBlockTimestamp(ctx, height)
 			return datypes.ResultRetrieve{
 				BaseResult: datypes.BaseResult{
@@ -262,7 +265,7 @@ func (c *client) Retrieve(ctx context.Context, height uint64, namespace []byte) 
 		}
 	}
 
-	// Fetch block timestamp for deterministic responses
+	// Fetch block timestamp for deterministic responses using parent context
 	blockTime := c.getBlockTimestamp(ctx, height)
 
 	if len(blobs) == 0 {
