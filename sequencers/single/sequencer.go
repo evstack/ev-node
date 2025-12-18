@@ -86,7 +86,7 @@ func NewSequencer(
 
 	// Load checkpoint from DB, or initialize if none exists
 	checkpoint, err := s.checkpointStore.Load(loadCtx)
-	if err != nil && errors.Is(err, seqcommon.ErrCheckpointNotFound) {
+	if err != nil && !errors.Is(err, seqcommon.ErrCheckpointNotFound) {
 		return nil, fmt.Errorf("failed to load checkpoint from DB: %w", err)
 	} else {
 		s.checkpoint = checkpoint
