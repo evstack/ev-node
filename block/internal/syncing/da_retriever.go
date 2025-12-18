@@ -345,7 +345,7 @@ func createEmptyDataForHeader(ctx context.Context, header *types.SignedHeader) *
 			ChainID:      header.ChainID(),
 			Height:       header.Height(),
 			Time:         header.BaseHeader.Time,
-			LastDataHash: nil, // LastDataHash must be filled in the syncer, as it is not available here, block n-1 has not been processed yet.
+			LastDataHash: nil, // LastDataHash must be filled in the syncer, as it is not available here since block n-1 has not been processed yet.
 		},
 	}
 }

@@ -182,7 +182,7 @@ func TestDARetriever_ProcessBlobs_HeaderOnly_EmptyDataExpected(t *testing.T) {
 	assert.True(t, ok)
 	assert.Equal(t, uint64(88), hHeight)
 
-	// empty data is not marked as data included (the submitter components does handle the empty data case)
+	// empty data is not marked as data included (the submitter component does handle the empty data case)
 	_, ok = r.cache.GetDataDAIncluded(events[0].Data.DACommitment().String())
 	assert.False(t, ok)
 }

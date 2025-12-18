@@ -134,7 +134,7 @@ func (s *BasedSequencer) GetNextBatch(ctx context.Context, req coresequencer.Get
 	}
 
 	// Calculate timestamp based on remaining transactions after this batch
-	// timestamp correspond to the last block time of a DA epoch, based on the remaining transactions to be executed
+	// timestamp corresponds to the last block time of a DA epoch, based on the remaining transactions to be executed
 	// this is done in order to handle the case where a DA epoch must fit in multiple blocks
 	remainingTxs := uint64(len(s.currentBatchTxs)) - s.checkpoint.TxIndex
 	timestamp := s.currentDAEndTime.Add(-time.Duration(remainingTxs) * time.Millisecond)
