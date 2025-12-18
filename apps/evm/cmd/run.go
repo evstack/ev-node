@@ -79,7 +79,7 @@ var RunCmd = &cobra.Command{
 
 		// Attach store to the EVM engine client for ExecMeta tracking (idempotent execution)
 		if ec, ok := executor.(*evm.EngineClient); ok {
-			ec.SetStore(store.New(datastore))
+			ec.SetStore(evm.NewEVMStore(datastore))
 		}
 
 		genesisPath := filepath.Join(filepath.Dir(nodeConfig.ConfigPath()), "genesis.json")

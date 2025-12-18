@@ -18,8 +18,8 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/ethereum/go-ethereum/rpc"
-	ds "github.com/ipfs/go-datastore"
 	"github.com/golang-jwt/jwt/v5"
+	ds "github.com/ipfs/go-datastore"
 	"github.com/rs/zerolog"
 
 	"github.com/evstack/ev-node/core/execution"
@@ -144,7 +144,7 @@ type EngineClient struct {
 	currentHeadHeight         uint64                 // Height of the current head block (for safe lag calculation)
 	currentSafeBlockHash      common.Hash            // Store last non-finalized SafeBlockHash
 	currentFinalizedBlockHash common.Hash            // Store last finalized block hash
-	blockHashCache map[uint64]common.Hash // height -> hash cache for safe block lookups
+	blockHashCache            map[uint64]common.Hash // height -> hash cache for safe block lookups
 
 	logger zerolog.Logger
 }
@@ -204,6 +204,12 @@ func NewEngineExecutionClient(
 // SetLogger allows callers to attach a structured logger.
 func (c *EngineClient) SetLogger(l zerolog.Logger) {
 	c.logger = l
+}
+
+// SetStore allows callers to attach a store for ExecMeta tracking.
+// This enables idempotent execution and crash recovery.
+func (c *EngineClient) SetStore(s *EVMStore) {
+	c.store = s
 }
 
 // InitChain initializes the blockchain with the given genesis parameters
