@@ -184,28 +184,16 @@ func (c *client) Submit(ctx context.Context, data [][]byte, _ float64, namespace
 
 // getBlockTimestamp fetches the block timestamp from the DA layer header.
 // If the header fetch fails, it falls back to time.Now() and logs a warning.
-func (c *client) getBlockTimestamp(ctx context.Context, height uint64) time.Time {
-	if c.headerAPI == nil {
-		c.logger.Warn().Uint64("height", height).Msg("header API not available, using current time")
-		return time.Now()
-	}
-
+func (c *client) getBlockTimestamp(ctx context.Context, height uint64) (time.Time, error) {
 	headerCtx, cancel := context.WithTimeout(ctx, c.defaultTimeout)
 	defer cancel()
 
 	header, err := c.headerAPI.GetByHeight(headerCtx, height)
 	if err != nil {
-		c.logger.Warn().Uint64("height", height).Err(err).Msg("failed to get header timestamp, using current time")
-		return time.Now()
+		return time.Time{}, fmt.Errorf("failed to get header timestamp for block %d: %w", height, err)
 	}
 
-	blockTime := header.Time()
-	if blockTime.IsZero() {
-		c.logger.Warn().Uint64("height", height).Msg("header timestamp is zero, using current time")
-		return time.Now()
-	}
-
-	return blockTime
+	return header.Time(), nil
 }
 
 // Retrieve retrieves blobs from the DA layer at the specified height and namespace.
@@ -234,7 +222,12 @@ func (c *client) Retrieve(ctx context.Context, height uint64, namespace []byte) 
 		case strings.Contains(err.Error(), datypes.ErrBlobNotFound.Error()):
 			c.logger.Debug().Uint64("height", height).Msg("No blobs found at height")
 			// Fetch block timestamp for deterministic responses using parent context
-			blockTime := c.getBlockTimestamp(ctx, height)
+			blockTime, err := c.getBlockTimestamp(ctx, height)
+			if err != nil {
+				c.logger.Error().Uint64("height", height).Err(err).Msg("failed to get block timestamp")
+				// TODO: we should retry fetching the timestamp.
+			}
+
 			return datypes.ResultRetrieve{
 				BaseResult: datypes.BaseResult{
 					Code:      datypes.StatusNotFound,
@@ -266,7 +259,11 @@ func (c *client) Retrieve(ctx context.Context, height uint64, namespace []byte) 
 	}
 
 	// Fetch block timestamp for deterministic responses using parent context
-	blockTime := c.getBlockTimestamp(ctx, height)
+	blockTime, err := c.getBlockTimestamp(ctx, height)
+	if err != nil {
+		c.logger.Error().Uint64("height", height).Err(err).Msg("failed to get block timestamp")
+		// TODO: we should retry fetching the timestamp.
+	}
 
 	if len(blobs) == 0 {
 		c.logger.Debug().Uint64("height", height).Msg("No blobs found at height")
