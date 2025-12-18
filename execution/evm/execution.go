@@ -136,7 +136,7 @@ type EngineClient struct {
 	feeRecipient  common.Address // Address to receive transaction fees
 
 	// store provides persistence for ExecMeta to enable idempotent execution
-	// and crash recovery. Optional - if nil, ExecMeta tracking is disabled.
+	// and crash recovery.
 	store *EVMStore
 
 	mu                        sync.Mutex             // Mutex to protect concurrent access to block hashes
@@ -161,6 +161,10 @@ func NewEngineExecutionClient(
 	feeRecipient common.Address,
 	db ds.Batching,
 ) (*EngineClient, error) {
+	if db == nil {
+		return nil, errors.New("db is required for EVM execution client")
+	}
+
 	ethClient, err := ethclient.Dial(ethURL)
 	if err != nil {
 		return nil, err
@@ -204,12 +208,6 @@ func NewEngineExecutionClient(
 // SetLogger allows callers to attach a structured logger.
 func (c *EngineClient) SetLogger(l zerolog.Logger) {
 	c.logger = l
-}
-
-// SetStore allows callers to attach a store for ExecMeta tracking.
-// This enables idempotent execution and crash recovery.
-func (c *EngineClient) SetStore(s *EVMStore) {
-	c.store = s
 }
 
 // InitChain initializes the blockchain with the given genesis parameters
@@ -395,9 +393,7 @@ func (c *EngineClient) ExecuteTxs(ctx context.Context, txs [][]byte, blockHeight
 
 	// Save ExecMeta with payloadID for crash recovery (Stage="started")
 	// This allows resuming the payload build if we crash before completing
-	if c.store != nil {
-		c.saveExecMeta(ctx, blockHeight, timestamp.Unix(), newPayloadID[:], nil, nil, txs, ExecStageStarted)
-	}
+	c.saveExecMeta(ctx, blockHeight, timestamp.Unix(), newPayloadID[:], nil, nil, txs, ExecStageStarted)
 
 	// 4. Process the payload (get, submit, finalize)
 	return c.processPayload(ctx, *newPayloadID, txs)
@@ -623,30 +619,28 @@ func (c *EngineClient) ResumePayload(ctx context.Context, payloadIDBytes []byte)
 // - found: true if either of the above is true
 // - err: error during checks
 func (c *EngineClient) checkIdempotency(ctx context.Context, height uint64, timestamp time.Time, txs [][]byte) (stateRoot []byte, payloadID *engine.PayloadID, found bool, err error) {
-	// 1. Check ExecMeta (if store is configured)
-	if c.store != nil {
-		execMeta, err := c.store.GetExecMeta(ctx, height)
-		if err == nil && execMeta != nil {
-			// If we already have a promoted block at this height, return the stored StateRoot
-			if execMeta.Stage == ExecStagePromoted && len(execMeta.StateRoot) > 0 {
-				c.logger.Info().
-					Uint64("height", height).
-					Str("stage", execMeta.Stage).
-					Msg("ExecuteTxs: reusing already-promoted execution (idempotent)")
-				return execMeta.StateRoot, nil, true, nil
-			}
+	// 1. Check ExecMeta from store
+	execMeta, err := c.store.GetExecMeta(ctx, height)
+	if err == nil && execMeta != nil {
+		// If we already have a promoted block at this height, return the stored StateRoot
+		if execMeta.Stage == ExecStagePromoted && len(execMeta.StateRoot) > 0 {
+			c.logger.Info().
+				Uint64("height", height).
+				Str("stage", execMeta.Stage).
+				Msg("ExecuteTxs: reusing already-promoted execution (idempotent)")
+			return execMeta.StateRoot, nil, true, nil
+		}
 
-			// If we have a started execution with a payloadID, return it to resume
-			if execMeta.Stage == ExecStageStarted && len(execMeta.PayloadID) == 8 {
-				c.logger.Info().
-					Uint64("height", height).
-					Str("stage", execMeta.Stage).
-					Msg("ExecuteTxs: found in-progress execution with payloadID, returning payloadID for resume")
+		// If we have a started execution with a payloadID, return it to resume
+		if execMeta.Stage == ExecStageStarted && len(execMeta.PayloadID) == 8 {
+			c.logger.Info().
+				Uint64("height", height).
+				Str("stage", execMeta.Stage).
+				Msg("ExecuteTxs: found in-progress execution with payloadID, returning payloadID for resume")
 
-				var pid engine.PayloadID
-				copy(pid[:], execMeta.PayloadID)
-				return nil, &pid, true, nil
-			}
+			var pid engine.PayloadID
+			copy(pid[:], execMeta.PayloadID)
+			return nil, &pid, true, nil
 		}
 	}
 
@@ -667,10 +661,8 @@ func (c *EngineClient) checkIdempotency(ctx context.Context, height uint64, time
 				// Continue anyway - the block exists and we can return its state root
 			}
 
-			// Update ExecMeta to promoted if store is configured
-			if c.store != nil {
-				c.saveExecMeta(ctx, height, timestamp.Unix(), nil, existingBlockHash[:], existingStateRoot.Bytes(), txs, ExecStagePromoted)
-			}
+			// Update ExecMeta to promoted
+			c.saveExecMeta(ctx, height, timestamp.Unix(), nil, existingBlockHash[:], existingStateRoot.Bytes(), txs, ExecStagePromoted)
 
 			return existingStateRoot.Bytes(), nil, true, nil
 		}
@@ -778,9 +770,7 @@ func (c *EngineClient) processPayload(ctx context.Context, payloadID engine.Payl
 	}
 
 	// 4. Save ExecMeta (Promoted)
-	if c.store != nil {
-		c.saveExecMeta(ctx, blockHeight, blockTimestamp, payloadID[:], blockHash[:], payloadResult.ExecutionPayload.StateRoot.Bytes(), txs, ExecStagePromoted)
-	}
+	c.saveExecMeta(ctx, blockHeight, blockTimestamp, payloadID[:], blockHash[:], payloadResult.ExecutionPayload.StateRoot.Bytes(), txs, ExecStagePromoted)
 
 	return payloadResult.ExecutionPayload.StateRoot.Bytes(), payloadResult.ExecutionPayload.GasUsed, nil
 }
@@ -802,10 +792,6 @@ func (c *EngineClient) getBlockInfo(ctx context.Context, height uint64) (common.
 // saveExecMeta persists execution metadata to the store for crash recovery.
 // This is a best-effort operation - failures are logged but don't fail the execution.
 func (c *EngineClient) saveExecMeta(ctx context.Context, height uint64, timestamp int64, payloadID []byte, blockHash []byte, stateRoot []byte, txs [][]byte, stage string) {
-	if c.store == nil {
-		return
-	}
-
 	execMeta := &ExecMeta{
 		Height:        height,
 		Timestamp:     timestamp,

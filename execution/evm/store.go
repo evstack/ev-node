@@ -3,6 +3,7 @@ package evm
 import (
 	"context"
 	"encoding/binary"
+	"errors"
 	"fmt"
 
 	ds "github.com/ipfs/go-datastore"
@@ -105,7 +106,7 @@ func (s *EVMStore) GetExecMeta(ctx context.Context, height uint64) (*ExecMeta, e
 	key := execMetaKey(height)
 	data, err := s.db.Get(ctx, key)
 	if err != nil {
-		if err == ds.ErrNotFound {
+		if errors.Is(err, ds.ErrNotFound) {
 			return nil, nil
 		}
 		return nil, fmt.Errorf("failed to get exec meta: %w", err)
