@@ -369,7 +369,6 @@ func (e *Executor) produceBlock() error {
 		if err = batch.SaveBlockData(header, data, &types.Signature{}); err != nil {
 			return fmt.Errorf("failed to save block data: %w", err)
 		}
-
 		if err = batch.Commit(); err != nil {
 			return fmt.Errorf("failed to commit early save batch: %w", err)
 		}
@@ -625,10 +624,7 @@ func (e *Executor) signHeader(header types.Header) (types.Signature, error) {
 }
 
 // executeTxsWithRetry executes transactions with retry logic.
-// Idempotent execution and crash recovery are handled by the execution client
-// (e.g., EngineClient) via ExecMeta tracking.
-// NOTE: the function retries the execution client call regardless of the error.
-// Some execution client errors are irrecoverable, and will eventually halt the node, as expected.
+// NOTE: the function retries the execution client call regardless of the error. Some execution clients errors are irrecoverable, and will eventually halt the node, as expected.
 func (e *Executor) executeTxsWithRetry(ctx context.Context, rawTxs [][]byte, header types.Header, currentState types.State) ([]byte, error) {
 	for attempt := 1; attempt <= common.MaxRetriesBeforeHalt; attempt++ {
 		newAppHash, _, err := e.exec.ExecuteTxs(ctx, rawTxs, header.Height(), header.Time(), currentState.AppHash)

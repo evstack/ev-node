@@ -96,21 +96,6 @@ func (b *DefaultBatch) UpdateState(state types.State) error {
 	return b.batch.Put(b.ctx, ds.NewKey(getStateAtHeightKey(height)), data)
 }
 
-// SaveExecMeta saves execution metadata in the batch
-func (b *DefaultBatch) SaveExecMeta(meta *ExecMeta) error {
-	if meta == nil {
-		return fmt.Errorf("exec meta is nil")
-	}
-
-	pbMeta := meta.ToProto()
-	data, err := proto.Marshal(pbMeta)
-	if err != nil {
-		return fmt.Errorf("failed to marshal exec meta to protobuf: %w", err)
-	}
-
-	return b.batch.Put(b.ctx, ds.NewKey(getExecMetaKey(meta.Height)), data)
-}
-
 // Commit commits all batched operations atomically
 func (b *DefaultBatch) Commit() error {
 	if err := b.batch.Commit(b.ctx); err != nil {

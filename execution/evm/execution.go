@@ -18,11 +18,11 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/ethereum/go-ethereum/rpc"
+	ds "github.com/ipfs/go-datastore"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/rs/zerolog"
 
 	"github.com/evstack/ev-node/core/execution"
-	"github.com/evstack/ev-node/pkg/store"
 )
 
 const (
@@ -137,7 +137,7 @@ type EngineClient struct {
 
 	// store provides persistence for ExecMeta to enable idempotent execution
 	// and crash recovery. Optional - if nil, ExecMeta tracking is disabled.
-	store store.Store
+	store *EVMStore
 
 	mu                        sync.Mutex             // Mutex to protect concurrent access to block hashes
 	currentHeadBlockHash      common.Hash            // Store last non-finalized HeadBlockHash
@@ -150,15 +150,16 @@ type EngineClient struct {
 }
 
 // NewEngineExecutionClient creates a new instance of EngineAPIExecutionClient.
-// The store parameter is optional - if provided, ExecMeta tracking is enabled
-// for idempotent execution and crash recovery.
+// The db parameter is required for ExecMeta tracking which enables idempotent
+// execution and crash recovery. The db is wrapped with a prefix to isolate
+// EVM execution data from other ev-node data.
 func NewEngineExecutionClient(
 	ethURL,
 	engineURL string,
 	jwtSecret string,
 	genesisHash common.Hash,
 	feeRecipient common.Address,
-	evStore store.Store,
+	db ds.Batching,
 ) (*EngineClient, error) {
 	ethClient, err := ethclient.Dial(ethURL)
 	if err != nil {
@@ -191,7 +192,7 @@ func NewEngineExecutionClient(
 		ethClient:                 ethClient,
 		genesisHash:               genesisHash,
 		feeRecipient:              feeRecipient,
-		store:                     evStore,
+		store:                     NewEVMStore(db),
 		currentHeadBlockHash:      genesisHash,
 		currentSafeBlockHash:      genesisHash,
 		currentFinalizedBlockHash: genesisHash,
@@ -203,13 +204,6 @@ func NewEngineExecutionClient(
 // SetLogger allows callers to attach a structured logger.
 func (c *EngineClient) SetLogger(l zerolog.Logger) {
 	c.logger = l
-}
-
-// SetStore allows callers to attach a store for ExecMeta tracking.
-// This enables idempotent execution and crash recovery features.
-// Must be called before ExecuteTxs if ExecMeta tracking is desired.
-func (c *EngineClient) SetStore(s store.Store) {
-	c.store = s
 }
 
 // InitChain initializes the blockchain with the given genesis parameters
@@ -396,7 +390,7 @@ func (c *EngineClient) ExecuteTxs(ctx context.Context, txs [][]byte, blockHeight
 	// Save ExecMeta with payloadID for crash recovery (Stage="started")
 	// This allows resuming the payload build if we crash before completing
 	if c.store != nil {
-		c.saveExecMeta(ctx, blockHeight, timestamp.Unix(), newPayloadID[:], nil, nil, txs, store.ExecStageStarted)
+		c.saveExecMeta(ctx, blockHeight, timestamp.Unix(), newPayloadID[:], nil, nil, txs, ExecStageStarted)
 	}
 
 	// 4. Process the payload (get, submit, finalize)
@@ -628,7 +622,7 @@ func (c *EngineClient) checkIdempotency(ctx context.Context, height uint64, time
 		execMeta, err := c.store.GetExecMeta(ctx, height)
 		if err == nil && execMeta != nil {
 			// If we already have a promoted block at this height, return the stored StateRoot
-			if execMeta.Stage == store.ExecStagePromoted && len(execMeta.StateRoot) > 0 {
+			if execMeta.Stage == ExecStagePromoted && len(execMeta.StateRoot) > 0 {
 				c.logger.Info().
 					Uint64("height", height).
 					Str("stage", execMeta.Stage).
@@ -637,7 +631,7 @@ func (c *EngineClient) checkIdempotency(ctx context.Context, height uint64, time
 			}
 
 			// If we have a started execution with a payloadID, return it to resume
-			if execMeta.Stage == store.ExecStageStarted && len(execMeta.PayloadID) == 8 {
+			if execMeta.Stage == ExecStageStarted && len(execMeta.PayloadID) == 8 {
 				c.logger.Info().
 					Uint64("height", height).
 					Str("stage", execMeta.Stage).
@@ -669,7 +663,7 @@ func (c *EngineClient) checkIdempotency(ctx context.Context, height uint64, time
 
 			// Update ExecMeta to promoted if store is configured
 			if c.store != nil {
-				c.saveExecMeta(ctx, height, timestamp.Unix(), nil, existingBlockHash[:], existingStateRoot.Bytes(), txs, store.ExecStagePromoted)
+				c.saveExecMeta(ctx, height, timestamp.Unix(), nil, existingBlockHash[:], existingStateRoot.Bytes(), txs, ExecStagePromoted)
 			}
 
 			return existingStateRoot.Bytes(), nil, true, nil
@@ -779,7 +773,7 @@ func (c *EngineClient) processPayload(ctx context.Context, payloadID engine.Payl
 
 	// 4. Save ExecMeta (Promoted)
 	if c.store != nil {
-		c.saveExecMeta(ctx, blockHeight, blockTimestamp, payloadID[:], blockHash[:], payloadResult.ExecutionPayload.StateRoot.Bytes(), txs, store.ExecStagePromoted)
+		c.saveExecMeta(ctx, blockHeight, blockTimestamp, payloadID[:], blockHash[:], payloadResult.ExecutionPayload.StateRoot.Bytes(), txs, ExecStagePromoted)
 	}
 
 	return payloadResult.ExecutionPayload.StateRoot.Bytes(), payloadResult.ExecutionPayload.GasUsed, nil
@@ -806,7 +800,7 @@ func (c *EngineClient) saveExecMeta(ctx context.Context, height uint64, timestam
 		return
 	}
 
-	execMeta := &store.ExecMeta{
+	execMeta := &ExecMeta{
 		Height:        height,
 		Timestamp:     timestamp,
 		PayloadID:     payloadID,
@@ -825,19 +819,8 @@ func (c *EngineClient) saveExecMeta(ctx context.Context, height uint64, timestam
 		execMeta.TxHash = h.Sum(nil)
 	}
 
-	batch, err := c.store.NewBatch(ctx)
-	if err != nil {
-		c.logger.Warn().Err(err).Uint64("height", height).Msg("saveExecMeta: failed to create batch")
-		return
-	}
-
-	if err := batch.SaveExecMeta(execMeta); err != nil {
+	if err := c.store.SaveExecMeta(ctx, execMeta); err != nil {
 		c.logger.Warn().Err(err).Uint64("height", height).Msg("saveExecMeta: failed to save exec meta")
-		return
-	}
-
-	if err := batch.Commit(); err != nil {
-		c.logger.Warn().Err(err).Uint64("height", height).Msg("saveExecMeta: failed to commit batch")
 		return
 	}
 
