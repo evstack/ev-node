@@ -53,8 +53,8 @@ func NewBasedSequencer(
 		fiRetriever:     fiRetriever,
 		logger:          logger.With().Str("component", "based_sequencer").Logger(),
 		checkpointStore: seqcommon.NewCheckpointStore(db, ds.NewKey("/based/checkpoint")),
-		daHeight:        atomic.Uint64{}, // empty, set by executor or submitter
 	}
+	bs.SetDAHeight(genesis.DAStartHeight) // based sequencers need community approval of da start height given no submission are done
 
 	// Load checkpoint from DB, or initialize if none exists
 	loadCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -96,11 +96,11 @@ func (s *BasedSequencer) SubmitBatchTxs(ctx context.Context, req coresequencer.S
 // GetNextBatch retrieves the next batch of transactions from the DA layer using the checkpoint
 // It treats DA as a queue and only persists where it is in processing
 func (s *BasedSequencer) GetNextBatch(ctx context.Context, req coresequencer.GetNextBatchRequest) (*coresequencer.GetNextBatchResponse, error) {
-	// If we have no cached transactions or we've consumed all from the current DA block,
-	// fetch the next DA epoch
 	daHeight := s.GetDAHeight()
 
-	if len(s.currentBatchTxs) == 0 || s.checkpoint.TxIndex >= uint64(len(s.currentBatchTxs)) {
+	// If we have no cached transactions or we've consumed all from the current DA block,
+	// fetch the next DA epoch
+	if daHeight > 0 && (len(s.currentBatchTxs) == 0 || s.checkpoint.TxIndex >= uint64(len(s.currentBatchTxs))) {
 		daEndTime, daEndHeight, err := s.fetchNextDAEpoch(ctx, req.MaxBytes)
 		if err != nil {
 			return nil, err

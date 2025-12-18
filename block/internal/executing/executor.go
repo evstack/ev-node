@@ -197,21 +197,13 @@ func (e *Executor) initializeState() error {
 			LastBlockHeight: e.genesis.InitialHeight - 1,
 			LastBlockTime:   e.genesis.StartTime,
 			AppHash:         stateRoot,
-			// DA start height is usually 0 at InitChain unless it is a re-genesis.
-			// The sequencer does not know at which DA block its first block will be included.
+			// DA start height is usually 0 at InitChain unless it is a re-genesis or a based sequencer.
 			DAHeight: e.genesis.DAStartHeight,
 		}
 	}
 
 	e.setLastState(state)
-	// Defer setting sequencer DA height at genesis. At chain genesis there are no
-	// included DA blocks yet, so the sequencer shouldn't be updated with the
-	// state's DA height until we've produced/observed at least the first included
-	// block. Only set the sequencer DA height when the chain has progressed past
-	// the initial genesis height.
-	if state.LastBlockHeight >= e.genesis.InitialHeight {
-		e.sequencer.SetDAHeight(state.DAHeight)
-	}
+	e.sequencer.SetDAHeight(state.DAHeight)
 
 	// Initialize store height using batch for atomicity
 	batch, err := e.store.NewBatch(e.ctx)

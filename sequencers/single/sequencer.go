@@ -86,16 +86,8 @@ func NewSequencer(
 
 	// Load checkpoint from DB, or initialize if none exists
 	checkpoint, err := s.checkpointStore.Load(loadCtx)
-	if err != nil {
-		if errors.Is(err, seqcommon.ErrCheckpointNotFound) {
-			// No checkpoint exists, initialize with current DA height
-			s.checkpoint = &seqcommon.Checkpoint{
-				DAHeight: s.GetDAHeight(),
-				TxIndex:  0,
-			}
-		} else {
-			return nil, fmt.Errorf("failed to load checkpoint from DB: %w", err)
-		}
+	if err != nil && errors.Is(err, seqcommon.ErrCheckpointNotFound) {
+		return nil, fmt.Errorf("failed to load checkpoint from DB: %w", err)
 	} else {
 		s.checkpoint = checkpoint
 		// If we had a non-zero tx index, we're resuming from a crash mid-block
@@ -147,10 +139,19 @@ func (c *Sequencer) GetNextBatch(ctx context.Context, req coresequencer.GetNextB
 		return nil, ErrInvalidId
 	}
 
+	daHeight := c.GetDAHeight()
+
+	// checkpoint init path, only hit when sequencer is bootstrapping
+	if daHeight > 0 && c.checkpoint == nil {
+		c.checkpoint = &seqcommon.Checkpoint{
+			DAHeight: daHeight,
+			TxIndex:  0,
+		}
+	}
+
 	// If we have no cached transactions or we've consumed all from the current cache,
 	// fetch the next DA epoch
-	daHeight := c.GetDAHeight()
-	if len(c.cachedForcedInclusionTxs) == 0 || c.checkpoint.TxIndex >= uint64(len(c.cachedForcedInclusionTxs)) {
+	if daHeight > 0 && (len(c.cachedForcedInclusionTxs) == 0 || c.checkpoint.TxIndex >= uint64(len(c.cachedForcedInclusionTxs))) {
 		daEndHeight, err := c.fetchNextDAEpoch(ctx, req.MaxBytes)
 		if err != nil {
 			return nil, err

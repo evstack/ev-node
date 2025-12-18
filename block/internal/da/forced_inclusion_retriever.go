@@ -62,6 +62,10 @@ func (r *ForcedInclusionRetriever) RetrieveForcedIncludedTxs(ctx context.Context
 		return nil, ErrForceInclusionNotConfigured
 	}
 
+	if daHeight < r.daStartHeight {
+		return nil, ErrForceInclusionNotConfigured
+	}
+
 	epochStart, epochEnd, currentEpochNumber := types.CalculateEpochBoundaries(daHeight, r.daStartHeight, r.daEpochSize)
 
 	if daHeight != epochEnd {
