@@ -104,7 +104,7 @@ func NewSequencer(
 				Msg("resuming from checkpoint within DA epoch")
 		}
 
-		s.fiRetriever = block.NewForcedInclusionRetriever(daClient, logger, s.GetDAHeight(), genesis.DAEpochForcedInclusion)
+		s.fiRetriever = block.NewForcedInclusionRetriever(daClient, logger, getInitialDAStartHeight(context.Background(), s.db), genesis.DAEpochForcedInclusion)
 	}
 
 	return s, nil
