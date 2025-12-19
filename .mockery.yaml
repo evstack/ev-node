@@ -75,3 +75,8 @@ packages:
           dir: ./pkg/da/jsonrpc/mocks
           pkgname: mocks
           filename: blob_module_mock.go
+      HeaderModule:
+        config:
+          dir: ./pkg/da/jsonrpc/mocks
+          pkgname: mocks
+          filename: header_module_mock.go
