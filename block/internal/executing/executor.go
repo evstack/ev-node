@@ -197,7 +197,8 @@ func (e *Executor) initializeState() error {
 			LastBlockHeight: e.genesis.InitialHeight - 1,
 			LastBlockTime:   e.genesis.StartTime,
 			AppHash:         stateRoot,
-			DAHeight:        e.genesis.DAStartHeight,
+			// DA start height is usually 0 at InitChain unless it is a re-genesis or a based sequencer.
+			DAHeight: e.genesis.DAStartHeight,
 		}
 	}
 

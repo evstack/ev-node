@@ -17,6 +17,7 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	coresequencer "github.com/evstack/ev-node/core/sequencer"
+	"github.com/evstack/ev-node/pkg/store"
 	pb "github.com/evstack/ev-node/types/pb/evnode/v1"
 )
 
@@ -31,7 +32,7 @@ func createTestBatch(t *testing.T, txCount int) coresequencer.Batch {
 
 func setupTestQueue(t *testing.T) *BatchQueue {
 	// Create an in-memory thread-safe datastore
-	memdb := newPrefixKV(ds.NewMapDatastore(), "single")
+	memdb := store.NewPrefixKVStore(ds.NewMapDatastore(), "single")
 	return NewBatchQueue(memdb, "batching", 0) // 0 = unlimited for existing tests
 }
 
@@ -406,7 +407,7 @@ func TestBatchQueue_QueueLimit(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			// Create in-memory datastore and queue with specified limit
-			memdb := newPrefixKV(ds.NewMapDatastore(), "single")
+			memdb := store.NewPrefixKVStore(ds.NewMapDatastore(), "single")
 			bq := NewBatchQueue(memdb, "batching", tc.maxSize)
 			ctx := context.Background()
 
@@ -454,7 +455,7 @@ func TestBatchQueue_QueueLimit(t *testing.T) {
 func TestBatchQueue_QueueLimit_WithNext(t *testing.T) {
 	// Test that removing batches with Next() allows adding more batches
 	maxSize := 3
-	memdb := newPrefixKV(ds.NewMapDatastore(), "single")
+	memdb := store.NewPrefixKVStore(ds.NewMapDatastore(), "single")
 	bq := NewBatchQueue(memdb, "batching", maxSize)
 	ctx := context.Background()
 

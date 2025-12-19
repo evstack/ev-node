@@ -7,9 +7,13 @@ import (
 	"strings"
 
 	ds "github.com/ipfs/go-datastore"
+	ktds "github.com/ipfs/go-datastore/keytransform"
 	dsq "github.com/ipfs/go-datastore/query"
 	badger4 "github.com/ipfs/go-ds-badger4"
 )
+
+// EvPrefix is used in KV store to separate ev-node data from execution environment data (if the same data base is reused)
+const EvPrefix = "0"
 
 // NewDefaultKVStore creates instance of default key-value store.
 func NewDefaultKVStore(rootDir, dbPath, dbName string) (ds.Batching, error) {
@@ -17,8 +21,18 @@ func NewDefaultKVStore(rootDir, dbPath, dbName string) (ds.Batching, error) {
 	return badger4.NewDatastore(path, nil)
 }
 
-// PrefixEntries retrieves all entries in the datastore whose keys have the supplied prefix
-func PrefixEntries(ctx context.Context, store ds.Datastore, prefix string) (dsq.Results, error) {
+// NewPrefixKVStore creates a new key-value store with a prefix applied to all keys.
+func NewPrefixKVStore(kvStore ds.Batching, prefix string) ds.Batching {
+	return ktds.Wrap(kvStore, ktds.PrefixTransform{Prefix: ds.NewKey(prefix)})
+}
+
+// NewEvNodeKVStore creates a new key-value store with EvPrefix prefix applied to all keys.
+func NewEvNodeKVStore(kvStore ds.Batching) ds.Batching {
+	return NewPrefixKVStore(kvStore, EvPrefix)
+}
+
+// GetPrefixEntries retrieves all entries in the datastore whose keys have the supplied prefix
+func GetPrefixEntries(ctx context.Context, store ds.Datastore, prefix string) (dsq.Results, error) {
 	results, err := store.Query(ctx, dsq.Query{Prefix: prefix})
 	if err != nil {
 		return nil, err
