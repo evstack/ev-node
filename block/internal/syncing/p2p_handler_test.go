@@ -50,7 +50,7 @@ func p2pMakeSignedHeader(t *testing.T, chainID string, height uint64, proposer [
 	sig, err := signer.Sign(bz)
 	require.NoError(t, err, "failed to sign header bytes")
 	hdr.Signature = sig
-	return &types.P2PSignedHeader{SignedHeader: *hdr}
+	return &types.P2PSignedHeader{Message: hdr}
 }
 
 // P2PTestData aggregates dependencies used by P2P handler tests.
@@ -128,13 +128,13 @@ func TestP2PHandler_ProcessHeight_EmitsEventWhenHeaderAndDataPresent(t *testing.
 	require.Equal(t, string(p.Genesis.ProposerAddress), string(p.ProposerAddr))
 
 	header := p2pMakeSignedHeader(t, p.Genesis.ChainID, 5, p.ProposerAddr, p.ProposerPub, p.Signer)
-	data := &types.P2PData{Data: *makeData(p.Genesis.ChainID, 5, 1)}
-	header.DataHash = data.DACommitment()
-	bz, err := types.DefaultAggregatorNodeSignatureBytesProvider(&header.Header)
+	data := &types.P2PData{Message: makeData(p.Genesis.ChainID, 5, 1)}
+	header.Message.DataHash = data.Message.DACommitment()
+	bz, err := types.DefaultAggregatorNodeSignatureBytesProvider(&header.Message.Header)
 	require.NoError(t, err)
 	sig, err := p.Signer.Sign(bz)
 	require.NoError(t, err)
-	header.Signature = sig
+	header.Message.Signature = sig
 
 	p.HeaderStore.EXPECT().GetByHeight(mock.Anything, uint64(5)).Return(header, 0, nil).Once()
 	p.DataStore.EXPECT().GetByHeight(mock.Anything, uint64(5)).Return(data, 0, nil).Once()
@@ -154,13 +154,13 @@ func TestP2PHandler_ProcessHeight_SkipsWhenDataMissing(t *testing.T) {
 	ctx := context.Background()
 
 	header := p2pMakeSignedHeader(t, p.Genesis.ChainID, 7, p.ProposerAddr, p.ProposerPub, p.Signer)
-	data := &types.P2PData{Data: *makeData(p.Genesis.ChainID, 7, 1)}
-	header.DataHash = data.DACommitment()
-	bz, err := types.DefaultAggregatorNodeSignatureBytesProvider(&header.Header)
+	data := &types.P2PData{Message: makeData(p.Genesis.ChainID, 7, 1)}
+	header.Message.DataHash = data.Message.DACommitment()
+	bz, err := types.DefaultAggregatorNodeSignatureBytesProvider(&header.Message.Header)
 	require.NoError(t, err)
 	sig, err := p.Signer.Sign(bz)
 	require.NoError(t, err)
-	header.Signature = sig
+	header.Message.Signature = sig
 
 	p.HeaderStore.EXPECT().GetByHeight(mock.Anything, uint64(7)).Return(header, 0, nil).Once()
 	p.DataStore.EXPECT().GetByHeight(mock.Anything, uint64(7)).Return(nil, 0, errors.New("missing")).Once()
@@ -195,7 +195,7 @@ func TestP2PHandler_ProcessHeight_SkipsOnProposerMismatch(t *testing.T) {
 	require.NotEqual(t, string(p.Genesis.ProposerAddress), string(badAddr))
 
 	header := p2pMakeSignedHeader(t, p.Genesis.ChainID, 11, badAddr, pub, signer)
-	header.DataHash = common.DataHashForEmptyTxs
+	header.Message.DataHash = common.DataHashForEmptyTxs
 
 	p.HeaderStore.EXPECT().GetByHeight(mock.Anything, uint64(11)).Return(header, 0, nil).Once()
 
@@ -224,13 +224,13 @@ func TestP2PHandler_ProcessedHeightSkipsPreviouslyHandledBlocks(t *testing.T) {
 
 	// Height 6 should be fetched normally.
 	header := p2pMakeSignedHeader(t, p.Genesis.ChainID, 6, p.ProposerAddr, p.ProposerPub, p.Signer)
-	data := &types.P2PData{Data: *makeData(p.Genesis.ChainID, 6, 1)}
-	header.DataHash = data.DACommitment()
-	bz, err := types.DefaultAggregatorNodeSignatureBytesProvider(&header.Header)
+	data := &types.P2PData{Message: makeData(p.Genesis.ChainID, 6, 1)}
+	header.Message.DataHash = data.Message.DACommitment()
+	bz, err := types.DefaultAggregatorNodeSignatureBytesProvider(&header.Message.Header)
 	require.NoError(t, err)
 	sig, err := p.Signer.Sign(bz)
 	require.NoError(t, err)
-	header.Signature = sig
+	header.Message.Signature = sig
 
 	p.HeaderStore.EXPECT().GetByHeight(mock.Anything, uint64(6)).Return(header, 0, nil).Once()
 	p.DataStore.EXPECT().GetByHeight(mock.Anything, uint64(6)).Return(data, 0, nil).Once()
@@ -247,13 +247,13 @@ func TestP2PHandler_SetProcessedHeightPreventsDuplicates(t *testing.T) {
 	ctx := context.Background()
 
 	header := p2pMakeSignedHeader(t, p.Genesis.ChainID, 8, p.ProposerAddr, p.ProposerPub, p.Signer)
-	data := &types.P2PData{Data: *makeData(p.Genesis.ChainID, 8, 0)}
-	header.DataHash = data.DACommitment()
-	bz, err := types.DefaultAggregatorNodeSignatureBytesProvider(&header.Header)
+	data := &types.P2PData{Message: makeData(p.Genesis.ChainID, 8, 0)}
+	header.Message.DataHash = data.Message.DACommitment()
+	bz, err := types.DefaultAggregatorNodeSignatureBytesProvider(&header.Message.Header)
 	require.NoError(t, err)
 	sig, err := p.Signer.Sign(bz)
 	require.NoError(t, err)
-	header.Signature = sig
+	header.Message.Signature = sig
 
 	p.HeaderStore.EXPECT().GetByHeight(mock.Anything, uint64(8)).Return(header, 0, nil).Once()
 	p.DataStore.EXPECT().GetByHeight(mock.Anything, uint64(8)).Return(data, 0, nil).Once()

@@ -86,7 +86,7 @@ func (h *P2PHandler) ProcessHeight(ctx context.Context, height uint64, heightInC
 		}
 		return err
 	}
-	header := &p2pHeader.SignedHeader
+	header := p2pHeader.Message
 	if err := h.assertExpectedProposer(header.ProposerAddress); err != nil {
 		h.logger.Debug().Uint64("height", height).Err(err).Msg("invalid header from P2P")
 		return err
@@ -99,7 +99,7 @@ func (h *P2PHandler) ProcessHeight(ctx context.Context, height uint64, heightInC
 		}
 		return err
 	}
-	data := &p2pData.Data
+	data := p2pData.Message
 	dataCommitment := data.DACommitment()
 	if !bytes.Equal(header.DataHash[:], dataCommitment[:]) {
 		err := fmt.Errorf("data hash mismatch: header %x, data %x", header.DataHash, dataCommitment)

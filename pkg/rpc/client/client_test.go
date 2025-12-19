@@ -253,7 +253,7 @@ func TestClientGetNamespace(t *testing.T) {
 
 func testSignedHeader(height uint64, ts time.Time) *types.P2PSignedHeader {
 	return &types.P2PSignedHeader{
-		SignedHeader: types.SignedHeader{
+		Message: &types.SignedHeader{
 			Header: types.Header{
 				BaseHeader: types.BaseHeader{
 					Height:  height,
@@ -270,7 +270,7 @@ func testSignedHeader(height uint64, ts time.Time) *types.P2PSignedHeader {
 
 func testData(height uint64, ts time.Time) *types.P2PData {
 	return &types.P2PData{
-		Data: types.Data{
+		Message: &types.Data{
 			Metadata: &types.Metadata{
 				ChainID: "test-chain",
 				Height:  height,
