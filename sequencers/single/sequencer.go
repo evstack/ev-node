@@ -328,8 +328,7 @@ func (c *Sequencer) fetchNextDAEpoch(ctx context.Context, maxBytes uint64) (uint
 		Uint64("tx_index", c.checkpoint.TxIndex).
 		Msg("fetching forced inclusion transactions from DA")
 
-	fiRetriever := block.NewForcedInclusionRetriever(c.daClient, c.logger, currentDAHeight, currentDAHeight+1)
-	forcedTxsEvent, err := fiRetriever.RetrieveForcedIncludedTxs(ctx, currentDAHeight)
+	forcedTxsEvent, err := c.fiRetriever.RetrieveForcedIncludedTxs(ctx, currentDAHeight)
 	if err != nil {
 		if errors.Is(err, datypes.ErrHeightFromFuture) {
 			c.logger.Debug().
