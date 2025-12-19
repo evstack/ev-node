@@ -26,7 +26,7 @@ require (
 	github.com/ipfs/go-log/v2 v2.9.0 // indirect
 	github.com/klauspost/cpuid/v2 v2.3.0 // indirect
 	github.com/libp2p/go-buffer-pool v0.1.0 // indirect
-	github.com/libp2p/go-libp2p v0.45.0 // indirect
+	github.com/libp2p/go-libp2p v0.46.0 // indirect
 	github.com/libp2p/go-libp2p-pubsub v0.15.0 // indirect
 	github.com/libp2p/go-msgio v0.3.0 // indirect
 	github.com/mattn/go-colorable v0.1.14 // indirect
