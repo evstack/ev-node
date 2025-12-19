@@ -137,7 +137,7 @@ func StartNode(
 
 	// sanity check for based sequencer
 	if nodeConfig.Node.BasedSequencer && genesis.DAStartHeight == 0 {
-		return fmt.Errorf("A based sequencer requires DAStartHeight to be set in genesis. This value should be identical for all nodes of the chain")
+		return fmt.Errorf("based sequencing requires DAStartHeight to be set in genesis. This value should be identical for all nodes of the chain")
 	}
 
 	metrics := node.DefaultMetricsProvider(nodeConfig.Instrumentation)
