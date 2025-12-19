@@ -43,17 +43,23 @@ var RunCmd = &cobra.Command{
 	Aliases: []string{"node", "run"},
 	Short:   "Run the evolve node with EVM execution client",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		executor, err := createExecutionClient(cmd)
-		if err != nil {
-			return err
-		}
-
 		nodeConfig, err := rollcmd.ParseConfig(cmd)
 		if err != nil {
 			return err
 		}
 
 		logger := rollcmd.SetupLogger(nodeConfig.Log)
+
+		// Create datastore first - needed by execution client for ExecMeta tracking
+		datastore, err := store.NewDefaultKVStore(nodeConfig.RootDir, nodeConfig.DBPath, evmDbName)
+		if err != nil {
+			return err
+		}
+
+		executor, err := createExecutionClient(cmd, datastore)
+		if err != nil {
+			return err
+		}
 
 		blobClient, err := blobrpc.NewClient(context.Background(), nodeConfig.DA.Address, nodeConfig.DA.AuthToken, "")
 		if err != nil {
@@ -71,11 +77,6 @@ var RunCmd = &cobra.Command{
 		dataNamespace := da.NamespaceFromString(nodeConfig.DA.GetDataNamespace())
 
 		logger.Info().Str("headerNamespace", headerNamespace.HexString()).Str("dataNamespace", dataNamespace.HexString()).Msg("namespaces")
-
-		datastore, err := store.NewDefaultKVStore(nodeConfig.RootDir, nodeConfig.DBPath, evmDbName)
-		if err != nil {
-			return err
-		}
 
 		genesisPath := filepath.Join(filepath.Dir(nodeConfig.ConfigPath()), "genesis.json")
 		genesis, err := genesispkg.LoadGenesis(genesisPath)
@@ -200,7 +201,7 @@ func createSequencer(
 	return sequencer, nil
 }
 
-func createExecutionClient(cmd *cobra.Command) (execution.Executor, error) {
+func createExecutionClient(cmd *cobra.Command, db datastore.Batching) (execution.Executor, error) {
 	// Read execution client parameters from flags
 	ethURL, err := cmd.Flags().GetString(evm.FlagEvmEthURL)
 	if err != nil {
@@ -245,7 +246,7 @@ func createExecutionClient(cmd *cobra.Command) (execution.Executor, error) {
 	genesisHash := common.HexToHash(genesisHashStr)
 	feeRecipient := common.HexToAddress(feeRecipientStr)
 
-	return evm.NewEngineExecutionClient(ethURL, engineURL, jwtSecret, genesisHash, feeRecipient)
+	return evm.NewEngineExecutionClient(ethURL, engineURL, jwtSecret, genesisHash, feeRecipient, db)
 }
 
 // addFlags adds flags related to the EVM execution client
