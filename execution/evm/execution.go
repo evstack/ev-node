@@ -38,6 +38,10 @@ const (
 	// under normal operation. A value of 2 means when head is at block N,
 	// safe is at block N-2.
 	SafeBlockLag = 2
+	// FinalizedBlockLag is the number of blocks the finalized block lags behind head.
+	// This is a temporary mock value until proper DA-based finalization is wired up.
+	// A value of 3 means when head is at block N, finalized is at block N-3.
+	FinalizedBlockLag = 3
 )
 
 var (
@@ -419,12 +423,18 @@ func (c *EngineClient) setFinal(ctx context.Context, blockHash common.Hash, isFi
 	return c.setFinalWithHeight(ctx, blockHash, 0, isFinal)
 }
 
-// setFinalWithHeight updates forkchoice state with optional safe block lagging.
-// When isFinal=false and headHeight > SafeBlockLag, the safe block is automatically
-// set to headHeight - SafeBlockLag blocks behind head.
+// setFinalWithHeight updates forkchoice state with safe and finalized block lagging.
+// When isFinal=false:
+//   - Safe block is set to headHeight - SafeBlockLag (when headHeight > SafeBlockLag)
+//   - Finalized block is set to headHeight - FinalizedBlockLag (when headHeight > FinalizedBlockLag)
+//
+// Note: The finalized lag is a temporary mock until proper DA-based finalization is wired up.
 func (c *EngineClient) setFinalWithHeight(ctx context.Context, blockHash common.Hash, headHeight uint64, isFinal bool) error {
-	var safeHash common.Hash
+	var safeHash, finalizedHash common.Hash
 	updateSafe := !isFinal && headHeight > SafeBlockLag
+	updateFinalized := !isFinal && headHeight > FinalizedBlockLag
+
+	// Look up safe block hash
 	if updateSafe {
 		safeHeight := headHeight - SafeBlockLag
 
@@ -446,6 +456,28 @@ func (c *EngineClient) setFinalWithHeight(ctx context.Context, blockHash common.
 		}
 	}
 
+	// Look up finalized block hash
+	if updateFinalized {
+		finalizedHeight := headHeight - FinalizedBlockLag
+
+		c.mu.Lock()
+		cachedFinalizedHash, ok := c.blockHashCache[finalizedHeight]
+		c.mu.Unlock()
+		if ok {
+			finalizedHash = cachedFinalizedHash
+		} else {
+			var err error
+			finalizedHash, _, _, _, err = c.getBlockInfo(ctx, finalizedHeight)
+			if err != nil {
+				c.logger.Debug().
+					Uint64("finalizedHeight", finalizedHeight).
+					Err(err).
+					Msg("setFinalWithHeight: finalized block not found, skipping finalized update")
+				updateFinalized = false
+			}
+		}
+	}
+
 	c.mu.Lock()
 	if isFinal {
 		c.currentFinalizedBlockHash = blockHash
@@ -455,6 +487,9 @@ func (c *EngineClient) setFinalWithHeight(ctx context.Context, blockHash common.
 		c.currentHeadHeight = headHeight
 		if updateSafe {
 			c.currentSafeBlockHash = safeHash
+		}
+		if updateFinalized {
+			c.currentFinalizedBlockHash = finalizedHash
 		}
 	}
 	args := engine.ForkchoiceStateV1{
