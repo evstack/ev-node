@@ -7,9 +7,6 @@ import (
 	"github.com/evstack/ev-node/block/internal/da"
 	"github.com/evstack/ev-node/pkg/config"
 	blobrpc "github.com/evstack/ev-node/pkg/da/jsonrpc"
-	"github.com/evstack/ev-node/pkg/genesis"
-	"github.com/evstack/ev-node/pkg/store"
-	"github.com/ipfs/go-datastore"
 	"github.com/rs/zerolog"
 )
 
@@ -76,10 +73,8 @@ type ForcedInclusionRetriever interface {
 // NewForcedInclusionRetriever creates a new forced inclusion retriever
 func NewForcedInclusionRetriever(
 	client DAClient,
-	genesis genesis.Genesis,
-	ds datastore.Batching,
 	logger zerolog.Logger,
+	daStartHeight, daEpochSize uint64,
 ) ForcedInclusionRetriever {
-	mainKV := store.NewEvNodeKVStore(ds)
-	return da.NewForcedInclusionRetriever(client, genesis, store.New(mainKV), logger)
+	return da.NewForcedInclusionRetriever(client, logger, daStartHeight, daEpochSize)
 }

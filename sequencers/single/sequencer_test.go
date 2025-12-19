@@ -38,7 +38,7 @@ func newDummyDA(maxBlobSize uint64) *testda.DummyDA {
 }
 
 // newTestSequencer creates a sequencer for tests that don't need full initialization
-func newTestSequencer(t *testing.T, db ds.Batching, fiRetriever ForcedInclusionRetriever, proposer bool) *Sequencer {
+func newTestSequencer(t *testing.T, db ds.Batching, daClient block.FullDAClient) *Sequencer {
 	ctx := context.Background()
 	logger := zerolog.Nop()
 
@@ -51,12 +51,10 @@ func newTestSequencer(t *testing.T, db ds.Batching, fiRetriever ForcedInclusionR
 		ctx,
 		logger,
 		db,
-		nil,
+		daClient,
 		[]byte("test"),
 		1*time.Second,
-		proposer,
 		0, // unlimited queue
-		fiRetriever,
 		gen,
 	)
 	require.NoError(t, err)
@@ -73,7 +71,7 @@ func TestSequencer_SubmitBatchTxs(t *testing.T) {
 	mockRetriever := new(MockForcedInclusionRetriever)
 	mockRetriever.On("RetrieveForcedIncludedTxs", mock.Anything, mock.Anything).
 		Return(nil, block.ErrForceInclusionNotConfigured).Maybe()
-	seq, err := NewSequencer(ctx, logger, db, dummyDA, Id, 10*time.Second, false, 1000, mockRetriever, genesis.Genesis{})
+	seq, err := NewSequencer(ctx, logger, db, dummyDA, Id, 10*time.Second, 1000, genesis.Genesis{})
 	if err != nil {
 		t.Fatalf("Failed to create sequencer: %v", err)
 	}
@@ -127,7 +125,7 @@ func TestSequencer_SubmitBatchTxs_EmptyBatch(t *testing.T) {
 	mockRetriever := new(MockForcedInclusionRetriever)
 	mockRetriever.On("RetrieveForcedIncludedTxs", mock.Anything, mock.Anything).
 		Return(nil, block.ErrForceInclusionNotConfigured).Maybe()
-	seq, err := NewSequencer(ctx, logger, db, dummyDA, Id, 10*time.Second, false, 1000, mockRetriever, genesis.Genesis{})
+	seq, err := NewSequencer(ctx, logger, db, dummyDA, Id, 10*time.Second, 1000, genesis.Genesis{})
 	require.NoError(t, err, "Failed to create sequencer")
 	defer func() {
 		err := db.Close()

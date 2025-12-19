@@ -2,7 +2,6 @@ package da
 
 import (
 	"context"
-	"encoding/binary"
 	"errors"
 	"fmt"
 	"time"
@@ -10,8 +9,6 @@ import (
 	"github.com/rs/zerolog"
 
 	datypes "github.com/evstack/ev-node/pkg/da/types"
-	"github.com/evstack/ev-node/pkg/genesis"
-	"github.com/evstack/ev-node/pkg/store"
 	"github.com/evstack/ev-node/types"
 )
 
@@ -22,7 +19,6 @@ var ErrForceInclusionNotConfigured = errors.New("forced inclusion namespace not 
 type ForcedInclusionRetriever struct {
 	client        Client
 	logger        zerolog.Logger
-	store         store.Store
 	daEpochSize   uint64
 	daStartHeight uint64
 }
@@ -38,32 +34,27 @@ type ForcedInclusionEvent struct {
 // NewForcedInclusionRetriever creates a new forced inclusion retriever.
 func NewForcedInclusionRetriever(
 	client Client,
-	genesis genesis.Genesis,
-	store store.Store,
 	logger zerolog.Logger,
+	daStartHeight, daEpochSize uint64,
 ) *ForcedInclusionRetriever {
-	r := &ForcedInclusionRetriever{
-		client:      client,
-		store:       store,
-		logger:      logger.With().Str("component", "forced_inclusion_retriever").Logger(),
-		daEpochSize: genesis.DAEpochForcedInclusion,
+	return &ForcedInclusionRetriever{
+		client:        client,
+		logger:        logger.With().Str("component", "forced_inclusion_retriever").Logger(),
+		daStartHeight: daStartHeight,
+		daEpochSize:   daEpochSize,
 	}
-
-	// check for inclusion da height on store (sequencer) or genesis da height (full nodes)
-	r.daStartHeight = max(r.getInitialDAStartHeight(context.Background()), genesis.DAStartHeight)
-	return r
 }
 
 // RetrieveForcedIncludedTxs retrieves forced inclusion transactions at the given DA height.
 // It respects epoch boundaries and only fetches at epoch start.
 func (r *ForcedInclusionRetriever) RetrieveForcedIncludedTxs(ctx context.Context, daHeight uint64) (*ForcedInclusionEvent, error) {
 	// when daStartHeight is not set or no namespace is configured, we retrieve nothing.
-	if !r.client.HasForcedInclusionNamespace() || r.daStartHeight == 0 {
+	if !r.client.HasForcedInclusionNamespace() {
 		return nil, ErrForceInclusionNotConfigured
 	}
 
 	if daHeight < r.daStartHeight {
-		return nil, ErrForceInclusionNotConfigured
+		return nil, fmt.Errorf("DA height %d is before the configured start height %d", daHeight, r.daStartHeight)
 	}
 
 	epochStart, epochEnd, currentEpochNumber := types.CalculateEpochBoundaries(daHeight, r.daStartHeight, r.daEpochSize)
@@ -183,14 +174,4 @@ func (r *ForcedInclusionRetriever) processForcedInclusionBlobs(
 		Msg("processed forced inclusion blobs")
 
 	return nil
-}
-
-// getInitialDAStartHeight retrieves the DA height of the first included chain height from store.
-func (r *ForcedInclusionRetriever) getInitialDAStartHeight(ctx context.Context) uint64 {
-	daIncludedHeightBytes, err := r.store.GetMetadata(ctx, store.GenesisDAHeightKey)
-	if err != nil || len(daIncludedHeightBytes) != 8 {
-		return 0
-	}
-
-	return binary.LittleEndian.Uint64(daIncludedHeightBytes)
 }

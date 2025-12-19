@@ -17,20 +17,15 @@ import (
 	seqcommon "github.com/evstack/ev-node/sequencers/common"
 )
 
-// ForcedInclusionRetriever defines the interface for retrieving forced inclusion transactions from DA
-type ForcedInclusionRetriever interface {
-	RetrieveForcedIncludedTxs(ctx context.Context, daHeight uint64) (*block.ForcedInclusionEvent, error)
-}
-
 var _ coresequencer.Sequencer = (*BasedSequencer)(nil)
 
 // BasedSequencer is a sequencer that only retrieves transactions from the DA layer
 // via the forced inclusion mechanism. It does not accept transactions from the reaper.
 // It uses DA as a queue and only persists a checkpoint of where it is in processing.
 type BasedSequencer struct {
-	fiRetriever ForcedInclusionRetriever
-	logger      zerolog.Logger
+	logger zerolog.Logger
 
+	fiRetriever     block.ForcedInclusionRetriever
 	daHeight        atomic.Uint64
 	checkpointStore *seqcommon.CheckpointStore
 	checkpoint      *seqcommon.Checkpoint
@@ -43,18 +38,18 @@ type BasedSequencer struct {
 
 // NewBasedSequencer creates a new based sequencer instance
 func NewBasedSequencer(
-	ctx context.Context,
-	fiRetriever ForcedInclusionRetriever,
+	fiRetriever block.ForcedInclusionRetriever,
 	db ds.Batching,
 	genesis genesis.Genesis,
 	logger zerolog.Logger,
 ) (*BasedSequencer, error) {
 	bs := &BasedSequencer{
-		fiRetriever:     fiRetriever,
 		logger:          logger.With().Str("component", "based_sequencer").Logger(),
 		checkpointStore: seqcommon.NewCheckpointStore(db, ds.NewKey("/based/checkpoint")),
+		fiRetriever:     fiRetriever,
 	}
-	bs.SetDAHeight(genesis.DAStartHeight) // based sequencers need community consensus about the da start height given no submission are done
+	// based sequencers need community consensus about the da start height given no submission are done
+	bs.SetDAHeight(genesis.DAStartHeight)
 
 	// Load checkpoint from DB, or initialize if none exists
 	loadCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
