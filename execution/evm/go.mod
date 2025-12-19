@@ -4,7 +4,6 @@ go 1.24.6
 
 require (
 	github.com/ethereum/go-ethereum v1.16.7
-	github.com/evstack/ev-node v0.0.0-00010101000000-000000000000
 	github.com/evstack/ev-node/core v1.0.0-beta.5
 	github.com/golang-jwt/jwt/v5 v5.3.0
 	github.com/ipfs/go-datastore v0.9.0
@@ -60,5 +59,3 @@ require (
 )
 
 replace github.com/evstack/ev-node/core => ../../core
-
-replace github.com/evstack/ev-node => ../../

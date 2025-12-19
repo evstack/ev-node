@@ -9,7 +9,7 @@ import (
 	ds "github.com/ipfs/go-datastore"
 	"google.golang.org/protobuf/proto"
 
-	pb "github.com/evstack/ev-node/types/pb/evnode/v1"
+	pb "github.com/evstack/ev-node/execution/evm/types/pb/execution/evm/v1"
 )
 
 // Store prefix for execution/evm data - keeps it isolated from other ev-node data
