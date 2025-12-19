@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/libp2p/go-libp2p/core/crypto"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -42,6 +43,9 @@ func TestP2PEnvelope_MarshalUnmarshal(t *testing.T) {
 }
 
 func TestP2PSignedHeader_MarshalUnmarshal(t *testing.T) {
+	_, pubKey, err := crypto.GenerateEd25519Key(nil)
+	require.NoError(t, err)
+
 	header := &SignedHeader{
 		Header: Header{
 			BaseHeader: BaseHeader{
@@ -59,7 +63,11 @@ func TestP2PSignedHeader_MarshalUnmarshal(t *testing.T) {
 			ProposerAddress: GetRandomBytes(32),
 			ValidatorHash:   GetRandomBytes(32),
 		},
-		// Signature and Signer are transient
+		Signature: GetRandomBytes(64),
+		Signer: Signer{
+			PubKey:  pubKey,
+			Address: GetRandomBytes(20),
+		},
 	}
 
 	envelope := &P2PSignedHeader{
@@ -77,6 +85,7 @@ func TestP2PSignedHeader_MarshalUnmarshal(t *testing.T) {
 	err = newEnvelope.UnmarshalBinary(bz)
 	require.NoError(t, err)
 	assert.Equal(t, envelope.DAHeightHint, newEnvelope.DAHeightHint)
+	assert.Equal(t, envelope.Message.Signer, newEnvelope.Message.Signer)
 	assert.Equal(t, envelope, newEnvelope)
 }
 
