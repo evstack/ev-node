@@ -120,14 +120,16 @@ func TestLoad_Migration_DBCheck(t *testing.T) {
 	validBatch := coresequencer.Batch{Transactions: [][]byte{[]byte("valid-data")}}
 	pbValid := &pb.Batch{Txs: validBatch.Transactions}
 	validBytes, _ := proto.Marshal(pbValid)
-	memdb.Put(ctx, ds.NewKey("/"+prefix+"/"+validKey), validBytes)
+	err := memdb.Put(ctx, ds.NewKey("/"+prefix+"/"+validKey), validBytes)
+	require.NoError(err)
 
 	// Setup legacy key
 	legacyHash := "aabbccddeeff00112233445566778899aabbccddeeff00112233445566778899"
 	legacyBatch := coresequencer.Batch{Transactions: [][]byte{[]byte("legacy-data")}}
 	pbLegacy := &pb.Batch{Txs: legacyBatch.Transactions}
 	legacyBytes, _ := proto.Marshal(pbLegacy)
-	memdb.Put(ctx, ds.NewKey("/"+prefix+"/"+legacyHash), legacyBytes)
+	err = memdb.Put(ctx, ds.NewKey("/"+prefix+"/"+legacyHash), legacyBytes)
+	require.NoError(err)
 
 	// Load
 	bq := NewBatchQueue(memdb, prefix, 0)
@@ -152,7 +154,7 @@ func TestLoad_Migration_DBCheck(t *testing.T) {
 		if k == expectedKey {
 			foundLegacy = true
 			var pbCheck pb.Batch
-			proto.Unmarshal(res.Value, &pbCheck)
+			_ = proto.Unmarshal(res.Value, &pbCheck)
 			require.Equal(legacyBatch.Transactions, pbCheck.Txs)
 		}
 		if k == validKey {

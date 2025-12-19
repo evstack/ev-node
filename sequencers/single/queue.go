@@ -10,11 +10,11 @@ import (
 	"sync"
 
 	ds "github.com/ipfs/go-datastore"
-	ktds "github.com/ipfs/go-datastore/keytransform"
 	"github.com/ipfs/go-datastore/query"
 	"google.golang.org/protobuf/proto"
 
 	coresequencer "github.com/evstack/ev-node/core/sequencer"
+	"github.com/evstack/ev-node/pkg/store"
 
 	pb "github.com/evstack/ev-node/types/pb/evnode/v1"
 )
@@ -26,10 +26,6 @@ var ErrQueueFull = errors.New("batch queue is full")
 // It is set to the middle of the uint64 range to allow for both
 // appending (incrementing) and prepending (decrementing) transactions.
 const initialSeqNum = uint64(0x8000000000000000)
-
-func newPrefixKV(kvStore ds.Batching, prefix string) ds.Batching {
-	return ktds.Wrap(kvStore, ktds.PrefixTransform{Prefix: ds.NewKey(prefix)})
-}
 
 // queuedItem holds a batch and its associated persistence key
 type queuedItem struct {
@@ -58,7 +54,7 @@ func NewBatchQueue(db ds.Batching, prefix string, maxSize int) *BatchQueue {
 		queue:          make([]queuedItem, 0),
 		head:           0,
 		maxQueueSize:   maxSize,
-		db:             newPrefixKV(db, prefix),
+		db:             store.NewPrefixKVStore(db, prefix),
 		nextAddSeq:     initialSeqNum,
 		nextPrependSeq: initialSeqNum - 1,
 	}
