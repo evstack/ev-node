@@ -54,7 +54,7 @@ func NewBasedSequencer(
 		logger:          logger.With().Str("component", "based_sequencer").Logger(),
 		checkpointStore: seqcommon.NewCheckpointStore(db, ds.NewKey("/based/checkpoint")),
 	}
-	bs.SetDAHeight(genesis.DAStartHeight) // based sequencers need community approval of da start height given no submission are done
+	bs.SetDAHeight(genesis.DAStartHeight) // based sequencers need community consensus about the da start height given no submission are done
 
 	// Load checkpoint from DB, or initialize if none exists
 	loadCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)

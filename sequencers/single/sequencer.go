@@ -73,8 +73,8 @@ func NewSequencer(
 		proposer:        proposer,
 		fiRetriever:     fiRetriever,
 		checkpointStore: seqcommon.NewCheckpointStore(db, ds.NewKey("/single/checkpoint")),
-		daHeight:        atomic.Uint64{}, // empty, set by executor or submitter
 	}
+	s.SetDAHeight(genesis.DAStartHeight) // default value, will be overriden by executor or submitter
 
 	loadCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
@@ -86,8 +86,16 @@ func NewSequencer(
 
 	// Load checkpoint from DB, or initialize if none exists
 	checkpoint, err := s.checkpointStore.Load(loadCtx)
-	if err != nil && !errors.Is(err, seqcommon.ErrCheckpointNotFound) {
-		return nil, fmt.Errorf("failed to load checkpoint from DB: %w", err)
+	if err != nil {
+		if errors.Is(err, seqcommon.ErrCheckpointNotFound) {
+			// No checkpoint exists, initialize with current DA height
+			s.checkpoint = &seqcommon.Checkpoint{
+				DAHeight: s.GetDAHeight(),
+				TxIndex:  0,
+			}
+		} else {
+			return nil, fmt.Errorf("failed to load checkpoint from DB: %w", err)
+		}
 	} else {
 		s.checkpoint = checkpoint
 		// If we had a non-zero tx index, we're resuming from a crash mid-block
@@ -142,7 +150,7 @@ func (c *Sequencer) GetNextBatch(ctx context.Context, req coresequencer.GetNextB
 	daHeight := c.GetDAHeight()
 
 	// checkpoint init path, only hit when sequencer is bootstrapping
-	if daHeight > 0 && c.checkpoint == nil {
+	if c.checkpoint.DAHeight == 0 {
 		c.checkpoint = &seqcommon.Checkpoint{
 			DAHeight: daHeight,
 			TxIndex:  0,
