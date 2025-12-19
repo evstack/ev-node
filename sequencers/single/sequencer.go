@@ -69,7 +69,7 @@ func NewSequencer(
 		checkpointStore: seqcommon.NewCheckpointStore(db, ds.NewKey("/single/checkpoint")),
 		genesis:         genesis,
 	}
-	s.SetDAHeight(genesis.DAStartHeight) // default value, will be overriden by executor or submitter
+	s.SetDAHeight(genesis.DAStartHeight) // default value, will be overridden by executor or submitter
 
 	loadCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
