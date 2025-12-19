@@ -9,7 +9,6 @@ import (
 	"github.com/rs/zerolog"
 
 	datypes "github.com/evstack/ev-node/pkg/da/types"
-	"github.com/evstack/ev-node/pkg/genesis"
 	"github.com/evstack/ev-node/types"
 )
 
@@ -18,10 +17,10 @@ var ErrForceInclusionNotConfigured = errors.New("forced inclusion namespace not 
 
 // ForcedInclusionRetriever handles retrieval of forced inclusion transactions from DA.
 type ForcedInclusionRetriever struct {
-	client      Client
-	genesis     genesis.Genesis
-	logger      zerolog.Logger
-	daEpochSize uint64
+	client        Client
+	logger        zerolog.Logger
+	daEpochSize   uint64
+	daStartHeight uint64
 }
 
 // ForcedInclusionEvent contains forced inclusion transactions retrieved from DA.
@@ -35,25 +34,30 @@ type ForcedInclusionEvent struct {
 // NewForcedInclusionRetriever creates a new forced inclusion retriever.
 func NewForcedInclusionRetriever(
 	client Client,
-	genesis genesis.Genesis,
 	logger zerolog.Logger,
+	daStartHeight, daEpochSize uint64,
 ) *ForcedInclusionRetriever {
 	return &ForcedInclusionRetriever{
-		client:      client,
-		genesis:     genesis,
-		logger:      logger.With().Str("component", "forced_inclusion_retriever").Logger(),
-		daEpochSize: genesis.DAEpochForcedInclusion,
+		client:        client,
+		logger:        logger.With().Str("component", "forced_inclusion_retriever").Logger(),
+		daStartHeight: daStartHeight,
+		daEpochSize:   daEpochSize,
 	}
 }
 
 // RetrieveForcedIncludedTxs retrieves forced inclusion transactions at the given DA height.
 // It respects epoch boundaries and only fetches at epoch start.
 func (r *ForcedInclusionRetriever) RetrieveForcedIncludedTxs(ctx context.Context, daHeight uint64) (*ForcedInclusionEvent, error) {
+	// when daStartHeight is not set or no namespace is configured, we retrieve nothing.
 	if !r.client.HasForcedInclusionNamespace() {
 		return nil, ErrForceInclusionNotConfigured
 	}
 
-	epochStart, epochEnd, currentEpochNumber := types.CalculateEpochBoundaries(daHeight, r.genesis.DAStartHeight, r.daEpochSize)
+	if daHeight < r.daStartHeight {
+		return nil, fmt.Errorf("DA height %d is before the configured start height %d", daHeight, r.daStartHeight)
+	}
+
+	epochStart, epochEnd, currentEpochNumber := types.CalculateEpochBoundaries(daHeight, r.daStartHeight, r.daEpochSize)
 
 	if daHeight != epochEnd {
 		r.logger.Debug().

@@ -17,6 +17,7 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	coresequencer "github.com/evstack/ev-node/core/sequencer"
+	"github.com/evstack/ev-node/pkg/store"
 	pb "github.com/evstack/ev-node/types/pb/evnode/v1"
 )
 
@@ -31,7 +32,7 @@ func createTestBatch(t *testing.T, txCount int) coresequencer.Batch {
 
 func setupTestQueue(t *testing.T) *BatchQueue {
 	// Create an in-memory thread-safe datastore
-	memdb := newPrefixKV(ds.NewMapDatastore(), "single")
+	memdb := store.NewPrefixKVStore(ds.NewMapDatastore(), "single")
 	return NewBatchQueue(memdb, "batching", 0) // 0 = unlimited for existing tests
 }
 
@@ -227,6 +228,8 @@ func TestLoad_WithMixedData(t *testing.T) {
 	require.NotNil(bq)
 
 	// 1. Add valid batch data under the correct prefix
+	// Use valid hex sequence keys to ensure Load parses them correctly if needed
+	key1 := "8000000000000001"
 	validBatch1 := createTestBatch(t, 3)
 	hash1, err := validBatch1.Hash()
 	require.NoError(err)
@@ -234,9 +237,10 @@ func TestLoad_WithMixedData(t *testing.T) {
 	pbBatch1 := &pb.Batch{Txs: validBatch1.Transactions}
 	encodedBatch1, err := proto.Marshal(pbBatch1)
 	require.NoError(err)
-	err = rawDB.Put(ctx, ds.NewKey(queuePrefix+hexHash1), encodedBatch1)
+	err = rawDB.Put(ctx, ds.NewKey(queuePrefix+key1), encodedBatch1)
 	require.NoError(err)
 
+	key2 := "8000000000000002"
 	validBatch2 := createTestBatch(t, 5)
 	hash2, err := validBatch2.Hash()
 	require.NoError(err)
@@ -244,7 +248,7 @@ func TestLoad_WithMixedData(t *testing.T) {
 	pbBatch2 := &pb.Batch{Txs: validBatch2.Transactions}
 	encodedBatch2, err := proto.Marshal(pbBatch2)
 	require.NoError(err)
-	err = rawDB.Put(ctx, ds.NewKey(queuePrefix+hexHash2), encodedBatch2)
+	err = rawDB.Put(ctx, ds.NewKey(queuePrefix+key2), encodedBatch2)
 	require.NoError(err)
 
 	// 3. Add data outside the queue's prefix
@@ -257,8 +261,8 @@ func TestLoad_WithMixedData(t *testing.T) {
 
 	// Ensure all data is initially present in the raw DB
 	initialKeys := map[string]bool{
-		queuePrefix + hexHash1: true,
-		queuePrefix + hexHash2: true,
+		queuePrefix + key1:     true,
+		queuePrefix + key2:     true,
 		otherDataKey1.String(): true,
 		otherDataKey2.String(): true,
 	}
@@ -286,7 +290,7 @@ func TestLoad_WithMixedData(t *testing.T) {
 	loadedHashes := make(map[string]bool)
 	bq.mu.Lock()
 	for i := bq.head; i < len(bq.queue); i++ {
-		h, _ := bq.queue[i].Hash()
+		h, _ := bq.queue[i].Batch.Hash()
 		loadedHashes[hex.EncodeToString(h)] = true
 	}
 	bq.mu.Unlock()
@@ -300,6 +304,42 @@ func TestLoad_WithMixedData(t *testing.T) {
 	val, err = rawDB.Get(ctx, otherDataKey2)
 	require.NoError(err)
 	require.Equal([]byte("more data"), val)
+}
+
+func TestBatchQueue_Load_SetsSequencesProperly(t *testing.T) {
+	ctx := context.Background()
+	db := ds.NewMapDatastore()
+	prefix := "test-load-sequences"
+
+	// Build some persisted state with both AddBatch and Prepend so we have
+	// keys on both sides of the initialSeqNum.
+	q1 := NewBatchQueue(db, prefix, 0)
+	require.NoError(t, q1.Load(ctx))
+
+	require.NoError(t, q1.AddBatch(ctx, coresequencer.Batch{Transactions: [][]byte{[]byte("add-1")}})) // initialSeqNum
+	require.NoError(t, q1.AddBatch(ctx, coresequencer.Batch{Transactions: [][]byte{[]byte("add-2")}})) // initialSeqNum+1
+
+	require.NoError(t, q1.Prepend(ctx, coresequencer.Batch{Transactions: [][]byte{[]byte("pre-1")}})) // initialSeqNum-1
+	require.NoError(t, q1.Prepend(ctx, coresequencer.Batch{Transactions: [][]byte{[]byte("pre-2")}})) // initialSeqNum-2
+
+	// Simulate restart.
+	q2 := NewBatchQueue(db, prefix, 0)
+	require.NoError(t, q2.Load(ctx))
+
+	// After Load(), the sequencers should be positioned to avoid collisions:
+	// - nextAddSeq should be (maxSeq + 1)
+	// - nextPrependSeq should be (minSeq - 1)
+	require.Equal(t, initialSeqNum+2, q2.nextAddSeq, "nextAddSeq should continue after the max loaded key")
+	require.Equal(t, initialSeqNum-3, q2.nextPrependSeq, "nextPrependSeq should continue before the min loaded key")
+
+	// Verify we actually use those sequences when persisting new items.
+	require.NoError(t, q2.AddBatch(ctx, coresequencer.Batch{Transactions: [][]byte{[]byte("add-after-load")}}))
+	_, err := q2.db.Get(ctx, ds.NewKey(seqToKey(initialSeqNum+2)))
+	require.NoError(t, err, "expected AddBatch after Load to persist using nextAddSeq key")
+
+	require.NoError(t, q2.Prepend(ctx, coresequencer.Batch{Transactions: [][]byte{[]byte("pre-after-load")}}))
+	_, err = q2.db.Get(ctx, ds.NewKey(seqToKey(initialSeqNum-3)))
+	require.NoError(t, err, "expected Prepend after Load to persist using nextPrependSeq key")
 }
 
 func TestConcurrency(t *testing.T) {
@@ -406,7 +446,7 @@ func TestBatchQueue_QueueLimit(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			// Create in-memory datastore and queue with specified limit
-			memdb := newPrefixKV(ds.NewMapDatastore(), "single")
+			memdb := store.NewPrefixKVStore(ds.NewMapDatastore(), "single")
 			bq := NewBatchQueue(memdb, "batching", tc.maxSize)
 			ctx := context.Background()
 
@@ -454,7 +494,7 @@ func TestBatchQueue_QueueLimit(t *testing.T) {
 func TestBatchQueue_QueueLimit_WithNext(t *testing.T) {
 	// Test that removing batches with Next() allows adding more batches
 	maxSize := 3
-	memdb := newPrefixKV(ds.NewMapDatastore(), "single")
+	memdb := store.NewPrefixKVStore(ds.NewMapDatastore(), "single")
 	bq := NewBatchQueue(memdb, "batching", maxSize)
 	ctx := context.Background()
 
