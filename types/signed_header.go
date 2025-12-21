@@ -185,7 +185,7 @@ func (sh *SignedHeader) ValidateBasic() error {
 	return ErrSignatureVerificationFailed
 }
 
-// ValidateBasicWithData performs basic validator of a signed header, granted data for syncing node.
+// ValidateBasicWithData performs basic validation of a signed header, given data for syncing node.
 func (sh *SignedHeader) ValidateBasicWithData(data *Data) error {
 	if err := sh.Header.ValidateBasic(); err != nil {
 		return err
