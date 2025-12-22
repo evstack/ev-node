@@ -5,12 +5,12 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/evstack/ev-node/types"
 	"github.com/spf13/cobra"
 
 	goheaderstore "github.com/celestiaorg/go-header/store"
 	rollcmd "github.com/evstack/ev-node/pkg/cmd"
 	"github.com/evstack/ev-node/pkg/store"
-	"github.com/evstack/ev-node/types"
 )
 
 // NewRollbackCmd creates a command to rollback ev-node state by one height.
@@ -64,7 +64,7 @@ func NewRollbackCmd() *cobra.Command {
 			}
 
 			// rollback ev-node goheader state
-			headerStore, err := goheaderstore.NewStore[*types.SignedHeader](
+			headerStore, err := goheaderstore.NewStore[*types.P2PSignedHeader](
 				evolveDB,
 				goheaderstore.WithStorePrefix("headerSync"),
 				goheaderstore.WithMetrics(),
@@ -73,7 +73,7 @@ func NewRollbackCmd() *cobra.Command {
 				return err
 			}
 
-			dataStore, err := goheaderstore.NewStore[*types.Data](
+			dataStore, err := goheaderstore.NewStore[*types.P2PData](
 				evolveDB,
 				goheaderstore.WithStorePrefix("dataSync"),
 				goheaderstore.WithMetrics(),

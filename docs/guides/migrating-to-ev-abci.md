@@ -41,9 +41,9 @@ import (
 )
 ```
 
-2. Add the migration manager keeper to your app struct
-3. Register the module in your module manager
-4. Configure the migration manager in your app initialization
+1. Add the migration manager keeper to your app struct
+2. Register the module in your module manager
+3. Configure the migration manager in your app initialization
 
 ### Step 2: Replace Staking Module with Wrapper
 

@@ -5,10 +5,10 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/evstack/ev-node/pkg/sync"
 	"github.com/rs/zerolog"
 
 	"github.com/evstack/ev-node/block/internal/cache"
-	"github.com/evstack/ev-node/block/internal/common"
 	da "github.com/evstack/ev-node/block/internal/da"
 	"github.com/evstack/ev-node/block/internal/executing"
 	"github.com/evstack/ev-node/block/internal/reaping"
@@ -20,7 +20,6 @@ import (
 	"github.com/evstack/ev-node/pkg/genesis"
 	"github.com/evstack/ev-node/pkg/signer"
 	"github.com/evstack/ev-node/pkg/store"
-	"github.com/evstack/ev-node/types"
 )
 
 // Components represents the block-related components
@@ -121,8 +120,8 @@ func NewSyncComponents(
 	store store.Store,
 	exec coreexecutor.Executor,
 	daClient da.Client,
-	headerStore common.Broadcaster[*types.SignedHeader],
-	dataStore common.Broadcaster[*types.Data],
+	headerStore *sync.HeaderSyncService,
+	dataStore *sync.DataSyncService,
 	logger zerolog.Logger,
 	metrics *Metrics,
 	blockOpts BlockOptions,
@@ -152,7 +151,7 @@ func NewSyncComponents(
 	)
 
 	// Create submitter for sync nodes (no signer, only DA inclusion processing)
-	daSubmitter := submitting.NewDASubmitter(daClient, config, genesis, blockOpts, metrics, logger)
+	daSubmitter := submitting.NewDASubmitter(daClient, config, genesis, blockOpts, metrics, logger, headerStore, dataStore)
 	submitter := submitting.NewSubmitter(
 		store,
 		exec,
@@ -186,8 +185,8 @@ func NewAggregatorComponents(
 	sequencer coresequencer.Sequencer,
 	daClient da.Client,
 	signer signer.Signer,
-	headerBroadcaster common.Broadcaster[*types.SignedHeader],
-	dataBroadcaster common.Broadcaster[*types.Data],
+	headerBroadcaster *sync.HeaderSyncService,
+	dataBroadcaster *sync.DataSyncService,
 	logger zerolog.Logger,
 	metrics *Metrics,
 	blockOpts BlockOptions,
@@ -242,7 +241,7 @@ func NewAggregatorComponents(
 		}, nil
 	}
 
-	daSubmitter := submitting.NewDASubmitter(daClient, config, genesis, blockOpts, metrics, logger)
+	daSubmitter := submitting.NewDASubmitter(daClient, config, genesis, blockOpts, metrics, logger, headerBroadcaster, dataBroadcaster)
 	submitter := submitting.NewSubmitter(
 		store,
 		exec,
