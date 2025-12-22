@@ -21,6 +21,8 @@ import (
 	mocknet "github.com/libp2p/go-libp2p/p2p/net/mock"
 	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/require"
+
+	"github.com/evstack/ev-node/pkg/store"
 )
 
 func TestHeaderSyncServiceRestart(t *testing.T) {
@@ -58,7 +60,8 @@ func TestHeaderSyncServiceRestart(t *testing.T) {
 	defer cancel()
 	require.NoError(t, p2pClient.Start(ctx))
 
-	svc, err := NewHeaderSyncService(mainKV, conf, genesisDoc, p2pClient, logger)
+	rktStore := store.New(mainKV)
+	svc, err := NewHeaderSyncService(mainKV, rktStore, conf, genesisDoc, p2pClient, logger)
 	require.NoError(t, err)
 	err = svc.Start(ctx)
 	require.NoError(t, err)
@@ -98,7 +101,7 @@ func TestHeaderSyncServiceRestart(t *testing.T) {
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = p2pClient.Close() })
 
-	svc, err = NewHeaderSyncService(mainKV, conf, genesisDoc, p2pClient, logger)
+	svc, err = NewHeaderSyncService(mainKV, rktStore, conf, genesisDoc, p2pClient, logger)
 	require.NoError(t, err)
 	err = svc.Start(ctx)
 	require.NoError(t, err)
@@ -149,7 +152,8 @@ func TestHeaderSyncServiceInitFromHigherHeight(t *testing.T) {
 	require.NoError(t, p2pClient.Start(ctx))
 	t.Cleanup(func() { _ = p2pClient.Close() })
 
-	svc, err := NewHeaderSyncService(mainKV, conf, genesisDoc, p2pClient, logger)
+	rktStore := store.New(mainKV)
+	svc, err := NewHeaderSyncService(mainKV, rktStore, conf, genesisDoc, p2pClient, logger)
 	require.NoError(t, err)
 	require.NoError(t, svc.Start(ctx))
 	t.Cleanup(func() { _ = svc.Stop(context.Background()) })
