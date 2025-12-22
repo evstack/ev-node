@@ -5,14 +5,12 @@ import (
 	"errors"
 	"fmt"
 
-	goheaderstore "github.com/celestiaorg/go-header/store"
 	kvexecutor "github.com/evstack/ev-node/apps/testapp/kv"
-	"github.com/evstack/ev-node/node"
 	rollcmd "github.com/evstack/ev-node/pkg/cmd"
 	"github.com/evstack/ev-node/pkg/store"
 	"github.com/evstack/ev-node/types"
-	ds "github.com/ipfs/go-datastore"
-	kt "github.com/ipfs/go-datastore/keytransform"
+
+	goheaderstore "github.com/celestiaorg/go-header/store"
 	"github.com/spf13/cobra"
 )
 
@@ -50,10 +48,7 @@ func NewRollbackCmd() *cobra.Command {
 			}()
 
 			// prefixed evolve db
-			evolveDB := kt.Wrap(rawEvolveDB, &kt.PrefixTransform{
-				Prefix: ds.NewKey(node.EvPrefix),
-			})
-
+			evolveDB := store.NewEvNodeKVStore(rawEvolveDB)
 			evolveStore := store.New(evolveDB)
 			if height == 0 {
 				currentHeight, err := evolveStore.Height(goCtx)

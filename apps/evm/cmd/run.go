@@ -43,17 +43,23 @@ var RunCmd = &cobra.Command{
 	Aliases: []string{"node", "run"},
 	Short:   "Run the evolve node with EVM execution client",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		executor, err := createExecutionClient(cmd)
-		if err != nil {
-			return err
-		}
-
 		nodeConfig, err := rollcmd.ParseConfig(cmd)
 		if err != nil {
 			return err
 		}
 
 		logger := rollcmd.SetupLogger(nodeConfig.Log)
+
+		// Create datastore first - needed by execution client for ExecMeta tracking
+		datastore, err := store.NewDefaultKVStore(nodeConfig.RootDir, nodeConfig.DBPath, evmDbName)
+		if err != nil {
+			return err
+		}
+
+		executor, err := createExecutionClient(cmd, datastore)
+		if err != nil {
+			return err
+		}
 
 		blobClient, err := blobrpc.NewClient(context.Background(), nodeConfig.DA.Address, nodeConfig.DA.AuthToken, "")
 		if err != nil {
@@ -72,11 +78,6 @@ var RunCmd = &cobra.Command{
 
 		logger.Info().Str("headerNamespace", headerNamespace.HexString()).Str("dataNamespace", dataNamespace.HexString()).Msg("namespaces")
 
-		datastore, err := store.NewDefaultKVStore(nodeConfig.RootDir, nodeConfig.DBPath, evmDbName)
-		if err != nil {
-			return err
-		}
-
 		genesisPath := filepath.Join(filepath.Dir(nodeConfig.ConfigPath()), "genesis.json")
 		genesis, err := genesispkg.LoadGenesis(genesisPath)
 		if err != nil {
@@ -88,7 +89,7 @@ var RunCmd = &cobra.Command{
 		}
 
 		// Create sequencer based on configuration
-		sequencer, err := createSequencer(context.Background(), logger, datastore, nodeConfig, genesis, daClient)
+		sequencer, err := createSequencer(logger, datastore, nodeConfig, genesis, daClient)
 		if err != nil {
 			return err
 		}
@@ -154,22 +155,20 @@ func init() {
 // If BasedSequencer is enabled, it creates a based sequencer that fetches transactions from DA.
 // Otherwise, it creates a single (traditional) sequencer.
 func createSequencer(
-	ctx context.Context,
 	logger zerolog.Logger,
 	datastore datastore.Batching,
 	nodeConfig config.Config,
 	genesis genesis.Genesis,
 	daClient block.FullDAClient,
 ) (coresequencer.Sequencer, error) {
-	fiRetriever := block.NewForcedInclusionRetriever(daClient, genesis, logger)
-
 	if nodeConfig.Node.BasedSequencer {
 		// Based sequencer mode - fetch transactions only from DA
 		if !nodeConfig.Node.Aggregator {
 			return nil, fmt.Errorf("based sequencer mode requires aggregator mode to be enabled")
 		}
 
-		basedSeq, err := based.NewBasedSequencer(ctx, fiRetriever, datastore, genesis, logger)
+		fiRetriever := block.NewForcedInclusionRetriever(daClient, logger, genesis.DAStartHeight, genesis.DAEpochForcedInclusion)
+		basedSeq, err := based.NewBasedSequencer(fiRetriever, datastore, genesis, logger)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create based sequencer: %w", err)
 		}
@@ -183,15 +182,12 @@ func createSequencer(
 	}
 
 	sequencer, err := single.NewSequencer(
-		ctx,
 		logger,
 		datastore,
 		daClient,
 		[]byte(genesis.ChainID),
 		nodeConfig.Node.BlockTime.Duration,
-		nodeConfig.Node.Aggregator,
 		1000,
-		fiRetriever,
 		genesis,
 	)
 	if err != nil {
@@ -205,7 +201,7 @@ func createSequencer(
 	return sequencer, nil
 }
 
-func createExecutionClient(cmd *cobra.Command) (execution.Executor, error) {
+func createExecutionClient(cmd *cobra.Command, db datastore.Batching) (execution.Executor, error) {
 	// Read execution client parameters from flags
 	ethURL, err := cmd.Flags().GetString(evm.FlagEvmEthURL)
 	if err != nil {
@@ -250,7 +246,7 @@ func createExecutionClient(cmd *cobra.Command) (execution.Executor, error) {
 	genesisHash := common.HexToHash(genesisHashStr)
 	feeRecipient := common.HexToAddress(feeRecipientStr)
 
-	return evm.NewEngineExecutionClient(ethURL, engineURL, jwtSecret, genesisHash, feeRecipient)
+	return evm.NewEngineExecutionClient(ethURL, engineURL, jwtSecret, genesisHash, feeRecipient, db)
 }
 
 // addFlags adds flags related to the EVM execution client

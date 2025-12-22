@@ -68,13 +68,11 @@ packages:
           dir: ./test/mocks
           pkgname: mocks
           filename: da.go
-  github.com/evstack/ev-node/pkg/da/types:
-    interfaces:
       Verifier:
         config:
           dir: ./test/mocks
           pkgname: mocks
-          filename: da_verifier.go
+          filename: da.go
   github.com/evstack/ev-node/pkg/da/jsonrpc:
     interfaces:
       BlobModule:
