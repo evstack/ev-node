@@ -25,7 +25,7 @@ import (
 
 // daSubmitterAPI defines minimal methods needed by Submitter for DA submissions.
 type daSubmitterAPI interface {
-	SubmitHeaders(ctx context.Context, cache cache.Manager) error
+	SubmitHeaders(ctx context.Context, cache cache.Manager, signer signer.Signer) error
 	SubmitData(ctx context.Context, cache cache.Manager, signer signer.Signer, genesis genesis.Genesis) error
 }
 
@@ -158,7 +158,7 @@ func (s *Submitter) daSubmissionLoop() {
 							s.logger.Debug().Time("t", time.Now()).Uint64("headers", headersNb).Msg("Header submission completed")
 							s.headerSubmissionMtx.Unlock()
 						}()
-						if err := s.daSubmitter.SubmitHeaders(s.ctx, s.cache); err != nil {
+						if err := s.daSubmitter.SubmitHeaders(s.ctx, s.cache, s.signer); err != nil {
 							// Check for unrecoverable errors that indicate a critical issue
 							if errors.Is(err, common.ErrOversizedItem) {
 								s.logger.Error().Err(err).
