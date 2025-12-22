@@ -160,7 +160,7 @@ const file_execution_evm_v1_state_proto_rawDesc = "" +
 	"\atx_hash\x18\x06 \x01(\fR\x06txHash\x12\x1c\n" +
 	"\ttimestamp\x18\a \x01(\x03R\ttimestamp\x12\x14\n" +
 	"\x05stage\x18\b \x01(\tR\x05stage\x12&\n" +
-	"\x0fupdated_at_unix\x18\t \x01(\x03R\rupdatedAtUnixB6Z4github.com/evstack/ev-node/execution/evm/types/pb/v1b\x06proto3"
+	"\x0fupdated_at_unix\x18\t \x01(\x03R\rupdatedAtUnixBDZBgithub.com/evstack/ev-node/execution/evm/types/pb/execution/evm/v1b\x06proto3"
 
 var (
 	file_execution_evm_v1_state_proto_rawDescOnce sync.Once

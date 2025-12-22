@@ -146,6 +146,88 @@ func (sh *SignedHeader) UnmarshalBinary(data []byte) error {
 	return nil
 }
 
+// ToDAEnvelopeProto converts SignedHeader into DAHeaderEnvelope protobuf representation.
+func (sh *SignedHeader) ToDAEnvelopeProto(envelopeSignature []byte) (*pb.DAHeaderEnvelope, error) {
+	if sh.Signer.PubKey == nil {
+		return &pb.DAHeaderEnvelope{
+			Header:            sh.Header.ToProto(),
+			Signature:         sh.Signature[:],
+			Signer:            &pb.Signer{},
+			EnvelopeSignature: envelopeSignature,
+		}, nil
+	}
+
+	pubKey, err := crypto.MarshalPublicKey(sh.Signer.PubKey)
+	if err != nil {
+		return nil, err
+	}
+	return &pb.DAHeaderEnvelope{
+		Header:    sh.Header.ToProto(),
+		Signature: sh.Signature[:],
+		Signer: &pb.Signer{
+			Address: sh.Signer.Address,
+			PubKey:  pubKey,
+		},
+		EnvelopeSignature: envelopeSignature,
+	}, nil
+}
+
+// FromDAEnvelopeProto fills SignedHeader with data from DAHeaderEnvelope protobuf representation.
+// It assumes the envelope signature has already been extracted/verified if needed.
+func (sh *SignedHeader) FromDAEnvelopeProto(envelope *pb.DAHeaderEnvelope) error {
+	if envelope == nil {
+		return errors.New("da header envelope is nil")
+	}
+	if envelope.Header == nil {
+		return errors.New("da header envelope's Header is nil")
+	}
+	if err := sh.Header.FromProto(envelope.Header); err != nil {
+		return err
+	}
+	if envelope.Signature != nil {
+		sh.Signature = make([]byte, len(envelope.Signature))
+		copy(sh.Signature, envelope.Signature)
+	} else {
+		sh.Signature = nil
+	}
+	if envelope.Signer != nil && len(envelope.Signer.PubKey) > 0 {
+		pubKey, err := crypto.UnmarshalPublicKey(envelope.Signer.PubKey)
+		if err != nil {
+			return err
+		}
+		sh.Signer = Signer{
+			Address: append([]byte(nil), envelope.Signer.Address...),
+			PubKey:  pubKey,
+		}
+	} else {
+		sh.Signer = Signer{}
+	}
+	return nil
+}
+
+// MarshalDAEnvelope encodes SignedHeader into DAHeaderEnvelope binary form.
+func (sh *SignedHeader) MarshalDAEnvelope(envelopeSignature []byte) ([]byte, error) {
+	envelope, err := sh.ToDAEnvelopeProto(envelopeSignature)
+	if err != nil {
+		return nil, err
+	}
+	return proto.Marshal(envelope)
+}
+
+// UnmarshalDAEnvelope decodes binary form of DAHeaderEnvelope into object and returns the envelope signature.
+func (sh *SignedHeader) UnmarshalDAEnvelope(data []byte) ([]byte, error) {
+	var envelope pb.DAHeaderEnvelope
+	err := proto.Unmarshal(data, &envelope)
+	if err != nil {
+		return nil, err
+	}
+	err = sh.FromDAEnvelopeProto(&envelope)
+	if err != nil {
+		return nil, err
+	}
+	return envelope.EnvelopeSignature, nil
+}
+
 // ToProto converts Header into protobuf representation and returns it.
 func (h *Header) ToProto() *pb.Header {
 	pHeader := &pb.Header{

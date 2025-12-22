@@ -34,6 +34,10 @@ type daRetriever struct {
 	// on restart, will be refetch as da height is updated by syncer
 	pendingHeaders map[uint64]*types.SignedHeader
 	pendingData    map[uint64]*types.Data
+
+	// strictMode indicates if the node has seen a valid DAHeaderEnvelope
+	// and should now reject all legacy/unsigned headers.
+	strictMode bool
 }
 
 // NewDARetriever creates a new DA retriever
@@ -50,6 +54,7 @@ func NewDARetriever(
 		logger:         logger.With().Str("component", "da_retriever").Logger(),
 		pendingHeaders: make(map[uint64]*types.SignedHeader),
 		pendingData:    make(map[uint64]*types.Data),
+		strictMode:     false,
 	}
 }
 
@@ -228,15 +233,58 @@ func (r *daRetriever) processBlobs(ctx context.Context, blobs [][]byte, daHeight
 // tryDecodeHeader attempts to decode a blob as a header
 func (r *daRetriever) tryDecodeHeader(bz []byte, daHeight uint64) *types.SignedHeader {
 	header := new(types.SignedHeader)
-	var headerPb pb.SignedHeader
 
-	if err := proto.Unmarshal(bz, &headerPb); err != nil {
+	isValidEnvelope := false
+
+	// Attempt to unmarshal as DAHeaderEnvelope and get the envelope signature
+	if envelopeSignature, err := header.UnmarshalDAEnvelope(bz); err != nil {
+		// If in strict mode, we REQUIRE an envelope.
+		if r.strictMode {
+			r.logger.Warn().Err(err).Msg("strict mode is enabled, rejecting non-envelope blob")
+			return nil
+		}
+
+		// Fallback for backward compatibility (only if NOT in strict mode)
+		r.logger.Debug().Msg("trying legacy decoding")
+		var headerPb pb.SignedHeader
+		if errLegacy := proto.Unmarshal(bz, &headerPb); errLegacy != nil {
+			return nil
+		}
+		if errLegacy := header.FromProto(&headerPb); errLegacy != nil {
+			return nil
+		}
+	} else {
+		// We have a structurally valid envelope (or at least it parsed)
+		if len(envelopeSignature) > 0 {
+			if header.Signer.PubKey == nil {
+				r.logger.Debug().Msg("header signer has no pubkey, cannot verify envelope")
+				return nil
+			}
+			payload, err := header.MarshalBinary()
+			if err != nil {
+				r.logger.Debug().Err(err).Msg("failed to marshal header for verification")
+				return nil
+			}
+			if valid, err := header.Signer.PubKey.Verify(payload, envelopeSignature); err != nil || !valid {
+				r.logger.Info().Err(err).Msg("DA envelope signature verification failed")
+				return nil
+			}
+			r.logger.Debug().Uint64("height", header.Height()).Msg("DA envelope signature verified")
+			isValidEnvelope = true
+		}
+	}
+	if r.strictMode && !isValidEnvelope {
+		r.logger.Warn().Msg("strict mode: rejecting block that is not a fully valid envelope")
 		return nil
 	}
-
-	if err := header.FromProto(&headerPb); err != nil {
-		return nil
+	// Mode Switch Logic
+	if isValidEnvelope && !r.strictMode {
+		r.logger.Info().Uint64("height", header.Height()).Msg("valid DA envelope detected, switching to STRICT MODE")
+		r.strictMode = true
 	}
+
+	// Legacy blob support implies: strictMode == false AND (!isValidEnvelope).
+	// We fall through here.
 
 	// Basic validation
 	if err := header.Header.ValidateBasic(); err != nil {
