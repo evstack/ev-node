@@ -271,12 +271,6 @@ func (r *daRetriever) tryDecodeHeader(bz []byte, daHeight uint64) *types.SignedH
 			}
 			r.logger.Debug().Uint64("height", header.Height()).Msg("DA envelope signature verified")
 			isValidEnvelope = true
-		} else {
-			// No signature in envelope? Treat as legacy or invalid.
-			if r.strictMode {
-				r.logger.Warn().Msg("strict mode is enabled, rejecting envelope without signature")
-				return nil
-			}
 		}
 	}
 	if r.strictMode && !isValidEnvelope {
