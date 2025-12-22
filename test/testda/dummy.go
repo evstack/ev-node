@@ -133,10 +133,10 @@ func (d *DummyDA) Retrieve(_ context.Context, height uint64, namespace []byte) d
 		blobs = byHeight[string(namespace)]
 	}
 	// Get timestamp from header if available, otherwise use current time
-	timestamp := time.Now()
-	if header := d.headers[height]; header != nil {
-		timestamp = header.Timestamp
-	}
+var timestamp time.Time
+if header := d.headers[height]; header != nil {
+	timestamp = header.Timestamp
+}
 	d.mu.Unlock()
 
 	if len(blobs) == 0 {
