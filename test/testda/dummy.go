@@ -282,16 +282,11 @@ func (d *DummyDA) GetHeaderByHeight(_ context.Context, height uint64) (*Header, 
 	d.mu.Unlock()
 
 	if header == nil {
-		// Return a header with current time if height is within known range
-		// This mimics the behavior of a real DA layer where empty blocks still have headers
 		currentHeight := d.height.Load()
-		if height <= currentHeight && height > 0 {
-			return &Header{
-				Height:    height,
-				Timestamp: time.Now(),
-			}, nil
+		if height > currentHeight {
+			return nil, datypes.ErrHeightFromFuture
 		}
-		return nil, datypes.ErrHeightFromFuture
+		return nil, datypes.ErrBlobNotFound
 	}
 	return header, nil
 }
