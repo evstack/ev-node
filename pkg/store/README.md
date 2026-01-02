@@ -6,6 +6,8 @@ The `store` package provides a persistent storage solution for Evolve, designed 
 
 The storage system consists of a key-value store interface that allows for the persistence of blockchain data. It leverages the IPFS Datastore interface (`go-datastore`) with a Badger database implementation by default.
 
+Badger options are tuned for the ev-node write pattern (append-heavy with periodic overwrites) via `store.BadgerOptions()`. Use `tools/db-bench` to validate performance against Badger defaults.
+
 ## Core Components
 
 ### Storage Interface

@@ -18,7 +18,7 @@ const EvPrefix = "0"
 // NewDefaultKVStore creates instance of default key-value store.
 func NewDefaultKVStore(rootDir, dbPath, dbName string) (ds.Batching, error) {
 	path := filepath.Join(rootify(rootDir, dbPath), dbName)
-	return badger4.NewDatastore(path, nil)
+	return badger4.NewDatastore(path, BadgerOptions())
 }
 
 // NewPrefixKVStore creates a new key-value store with a prefix applied to all keys.
@@ -56,8 +56,7 @@ func rootify(rootDir, dbPath string) string {
 
 // NewTestInMemoryKVStore builds KVStore that works in-memory (without accessing disk).
 func NewTestInMemoryKVStore() (ds.Batching, error) {
-	inMemoryOptions := &badger4.Options{
-		Options: badger4.DefaultOptions.WithInMemory(true),
-	}
+	inMemoryOptions := BadgerOptions()
+	inMemoryOptions.Options = inMemoryOptions.Options.WithInMemory(true)
 	return badger4.NewDatastore("", inMemoryOptions)
 }
