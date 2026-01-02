@@ -264,7 +264,7 @@ func (s *Submitter) processDAInclusionLoop() {
 }
 
 // setFinalWithRetry sets the final height in executor with retry logic.
-// NOTE: the function retries the execution client call regardless of the error. Some execution clients errors are irrecoverable, and will eventually halt the node, as expected.
+// NOTE: the function retries the execution client call regardless of the error. Some execution client errors are irrecoverable, and will eventually halt the node, as expected.
 func (s *Submitter) setFinalWithRetry(nextHeight uint64) error {
 	for attempt := 1; attempt <= common.MaxRetriesBeforeHalt; attempt++ {
 		if err := s.exec.SetFinal(s.ctx, nextHeight); err != nil {

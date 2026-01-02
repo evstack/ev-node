@@ -42,6 +42,7 @@ type Sequencer struct {
 	// Forced inclusion support
 	fiRetriever     block.ForcedInclusionRetriever
 	daHeight        atomic.Uint64
+	daStartHeight   atomic.Uint64
 	checkpointStore *seqcommon.CheckpointStore
 	checkpoint      *seqcommon.Checkpoint
 
@@ -70,6 +71,7 @@ func NewSequencer(
 		genesis:         genesis,
 	}
 	s.SetDAHeight(genesis.DAStartHeight) // default value, will be overridden by executor or submitter
+	s.daStartHeight.Store(genesis.DAStartHeight)
 
 	loadCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
@@ -104,21 +106,28 @@ func NewSequencer(
 				Msg("resuming from checkpoint within DA epoch")
 		}
 
-		s.fiRetriever = block.NewForcedInclusionRetriever(daClient, logger, getInitialDAStartHeight(context.Background(), s.db), genesis.DAEpochForcedInclusion)
+		s.fiRetriever = block.NewForcedInclusionRetriever(daClient, logger, s.getInitialDAStartHeight(context.Background()), genesis.DAEpochForcedInclusion)
 	}
 
 	return s, nil
 }
 
 // getInitialDAStartHeight retrieves the DA height of the first included chain height from store.
-func getInitialDAStartHeight(ctx context.Context, db ds.Batching) uint64 {
-	s := store.New(store.NewEvNodeKVStore(db))
+func (c *Sequencer) getInitialDAStartHeight(ctx context.Context) uint64 {
+	if daStartHeight := c.daStartHeight.Load(); daStartHeight != 0 {
+		return daStartHeight
+	}
+
+	s := store.New(store.NewEvNodeKVStore(c.db))
 	daIncludedHeightBytes, err := s.GetMetadata(ctx, store.GenesisDAHeightKey)
 	if err != nil || len(daIncludedHeightBytes) != 8 {
 		return 0
 	}
 
-	return binary.LittleEndian.Uint64(daIncludedHeightBytes)
+	daStartHeight := binary.LittleEndian.Uint64(daIncludedHeightBytes)
+	c.daStartHeight.Store(daStartHeight)
+
+	return daStartHeight
 }
 
 // SubmitBatchTxs implements sequencing.Sequencer.
@@ -166,7 +175,7 @@ func (c *Sequencer) GetNextBatch(ctx context.Context, req coresequencer.GetNextB
 			TxIndex:  0,
 		}
 
-		c.fiRetriever = block.NewForcedInclusionRetriever(c.daClient, c.logger, getInitialDAStartHeight(ctx, c.db), c.genesis.DAEpochForcedInclusion)
+		c.fiRetriever = block.NewForcedInclusionRetriever(c.daClient, c.logger, c.getInitialDAStartHeight(ctx), c.genesis.DAEpochForcedInclusion)
 	}
 
 	// If we have no cached transactions or we've consumed all from the current cache,
