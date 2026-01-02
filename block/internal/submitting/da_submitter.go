@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/rs/zerolog"
-	"google.golang.org/protobuf/proto"
 
 	"github.com/evstack/ev-node/block/internal/cache"
 	"github.com/evstack/ev-node/block/internal/common"
@@ -161,7 +160,7 @@ func (s *DASubmitter) recordFailure(reason common.DASubmitterFailureReason) {
 }
 
 // SubmitHeaders submits pending headers to DA layer
-func (s *DASubmitter) SubmitHeaders(ctx context.Context, cache cache.Manager) error {
+func (s *DASubmitter) SubmitHeaders(ctx context.Context, cache cache.Manager, signer signer.Signer) error {
 	headers, err := cache.GetPendingHeaders(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to get pending headers: %w", err)
@@ -171,15 +170,29 @@ func (s *DASubmitter) SubmitHeaders(ctx context.Context, cache cache.Manager) er
 		return nil
 	}
 
+	if signer == nil {
+		return fmt.Errorf("signer is nil")
+	}
+
 	s.logger.Info().Int("count", len(headers)).Msg("submitting headers to DA")
 
 	return submitToDA(s, ctx, headers,
 		func(header *types.SignedHeader) ([]byte, error) {
-			headerPb, err := header.ToProto()
+			// A. Marshal the inner SignedHeader content to bytes (canonical representation for signing)
+			//    This effectively signs "Fields 1-3" of the intended DAHeaderEnvelope.
+			contentBytes, err := header.MarshalBinary()
 			if err != nil {
-				return nil, fmt.Errorf("failed to convert header to proto: %w", err)
+				return nil, fmt.Errorf("failed to marshal signed header for envelope signing: %w", err)
 			}
-			return proto.Marshal(headerPb)
+
+			// B. Sign the contentBytes with the envelope signer (aggregator)
+			envelopeSignature, err := signer.Sign(contentBytes)
+			if err != nil {
+				return nil, fmt.Errorf("failed to sign envelope: %w", err)
+			}
+
+			// C. Create the envelope and marshal it
+			return header.MarshalDAEnvelope(envelopeSignature)
 		},
 		func(submitted []*types.SignedHeader, res *datypes.ResultSubmit) {
 			for _, header := range submitted {
