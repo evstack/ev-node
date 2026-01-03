@@ -4,6 +4,7 @@ package single
 import (
 	"bytes"
 	"context"
+	"encoding/binary"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -18,32 +19,30 @@ import (
 	datypes "github.com/evstack/ev-node/pkg/da/types"
 	"github.com/evstack/ev-node/pkg/genesis"
 	seqcommon "github.com/evstack/ev-node/pkg/sequencers/common"
+	"github.com/evstack/ev-node/pkg/store"
 )
 
 // ErrInvalidId is returned when the chain id is invalid
 var ErrInvalidId = errors.New("invalid chain id")
 
-// ForcedInclusionRetriever defines the interface for retrieving forced inclusion transactions from DA
-type ForcedInclusionRetriever interface {
-	RetrieveForcedIncludedTxs(ctx context.Context, daHeight uint64) (*block.ForcedInclusionEvent, error)
-}
-
 var _ coresequencer.Sequencer = (*Sequencer)(nil)
 
 // Sequencer implements core sequencing interface
 type Sequencer struct {
-	fiRetriever ForcedInclusionRetriever
-	logger      zerolog.Logger
-	proposer    bool
+	logger  zerolog.Logger
+	genesis genesis.Genesis
+	db      ds.Batching
 
-	Id         []byte
-	daVerifier block.DAVerifier
+	Id       []byte
+	daClient block.FullDAClient
 
 	batchTime time.Duration
 	queue     *BatchQueue // single queue for immediate availability
 
 	// Forced inclusion support
+	fiRetriever     block.ForcedInclusionRetriever
 	daHeight        atomic.Uint64
+	daStartHeight   atomic.Uint64
 	checkpointStore *seqcommon.CheckpointStore
 	checkpoint      *seqcommon.Checkpoint
 
@@ -53,28 +52,26 @@ type Sequencer struct {
 
 // NewSequencer creates a new Single Sequencer
 func NewSequencer(
-	ctx context.Context,
 	logger zerolog.Logger,
 	db ds.Batching,
-	daVerifier block.DAVerifier,
+	daClient block.FullDAClient,
 	id []byte,
 	batchTime time.Duration,
-	proposer bool,
 	maxQueueSize int,
-	fiRetriever ForcedInclusionRetriever,
 	genesis genesis.Genesis,
 ) (*Sequencer, error) {
 	s := &Sequencer{
+		db:              db,
 		logger:          logger,
-		daVerifier:      daVerifier,
+		daClient:        daClient,
 		batchTime:       batchTime,
 		Id:              id,
 		queue:           NewBatchQueue(db, "batches", maxQueueSize),
-		proposer:        proposer,
-		fiRetriever:     fiRetriever,
 		checkpointStore: seqcommon.NewCheckpointStore(db, ds.NewKey("/single/checkpoint")),
+		genesis:         genesis,
 	}
-	s.SetDAHeight(genesis.DAStartHeight) // will be overridden by the executor
+	s.SetDAHeight(genesis.DAStartHeight) // default value, will be overridden by executor or submitter
+	s.daStartHeight.Store(genesis.DAStartHeight)
 
 	loadCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
@@ -93,6 +90,8 @@ func NewSequencer(
 				DAHeight: s.GetDAHeight(),
 				TxIndex:  0,
 			}
+
+			s.fiRetriever = block.NewForcedInclusionRetriever(daClient, logger, s.GetDAHeight(), genesis.DAEpochForcedInclusion)
 		} else {
 			return nil, fmt.Errorf("failed to load checkpoint from DB: %w", err)
 		}
@@ -106,9 +105,29 @@ func NewSequencer(
 				Uint64("da_height", checkpoint.DAHeight).
 				Msg("resuming from checkpoint within DA epoch")
 		}
+
+		s.fiRetriever = block.NewForcedInclusionRetriever(daClient, logger, s.getInitialDAStartHeight(context.Background()), genesis.DAEpochForcedInclusion)
 	}
 
 	return s, nil
+}
+
+// getInitialDAStartHeight retrieves the DA height of the first included chain height from store.
+func (c *Sequencer) getInitialDAStartHeight(ctx context.Context) uint64 {
+	if daStartHeight := c.daStartHeight.Load(); daStartHeight != 0 {
+		return daStartHeight
+	}
+
+	s := store.New(store.NewEvNodeKVStore(c.db))
+	daIncludedHeightBytes, err := s.GetMetadata(ctx, store.GenesisDAHeightKey)
+	if err != nil || len(daIncludedHeightBytes) != 8 {
+		return 0
+	}
+
+	daStartHeight := binary.LittleEndian.Uint64(daIncludedHeightBytes)
+	c.daStartHeight.Store(daStartHeight)
+
+	return daStartHeight
 }
 
 // SubmitBatchTxs implements sequencing.Sequencer.
@@ -147,10 +166,21 @@ func (c *Sequencer) GetNextBatch(ctx context.Context, req coresequencer.GetNextB
 		return nil, ErrInvalidId
 	}
 
+	daHeight := c.GetDAHeight()
+
+	// checkpoint init path, only hit when sequencer is bootstrapping
+	if daHeight > 0 && c.checkpoint.DAHeight == 0 {
+		c.checkpoint = &seqcommon.Checkpoint{
+			DAHeight: daHeight,
+			TxIndex:  0,
+		}
+
+		c.fiRetriever = block.NewForcedInclusionRetriever(c.daClient, c.logger, c.getInitialDAStartHeight(ctx), c.genesis.DAEpochForcedInclusion)
+	}
+
 	// If we have no cached transactions or we've consumed all from the current cache,
 	// fetch the next DA epoch
-	daHeight := c.GetDAHeight()
-	if len(c.cachedForcedInclusionTxs) == 0 || c.checkpoint.TxIndex >= uint64(len(c.cachedForcedInclusionTxs)) {
+	if daHeight > 0 && (len(c.cachedForcedInclusionTxs) == 0 || c.checkpoint.TxIndex >= uint64(len(c.cachedForcedInclusionTxs))) {
 		daEndHeight, err := c.fetchNextDAEpoch(ctx, req.MaxBytes)
 		if err != nil {
 			return nil, err
@@ -265,25 +295,21 @@ func (c *Sequencer) VerifyBatch(ctx context.Context, req coresequencer.VerifyBat
 		return nil, ErrInvalidId
 	}
 
-	if !c.proposer {
-		proofs, err := c.daVerifier.GetProofs(ctx, req.BatchData, c.Id)
-		if err != nil {
-			return nil, fmt.Errorf("failed to get proofs: %w", err)
-		}
-
-		valid, err := c.daVerifier.Validate(ctx, req.BatchData, proofs, c.Id)
-		if err != nil {
-			return nil, fmt.Errorf("failed to validate proof: %w", err)
-		}
-
-		for _, v := range valid {
-			if !v {
-				return &coresequencer.VerifyBatchResponse{Status: false}, nil
-			}
-		}
-		return &coresequencer.VerifyBatchResponse{Status: true}, nil
+	proofs, err := c.daClient.GetProofs(ctx, req.BatchData, c.Id)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get proofs: %w", err)
 	}
 
+	valid, err := c.daClient.Validate(ctx, req.BatchData, proofs, c.Id)
+	if err != nil {
+		return nil, fmt.Errorf("failed to validate proof: %w", err)
+	}
+
+	for _, v := range valid {
+		if !v {
+			return &coresequencer.VerifyBatchResponse{Status: false}, nil
+		}
+	}
 	return &coresequencer.VerifyBatchResponse{Status: true}, nil
 }
 

@@ -17,20 +17,15 @@ import (
 	seqcommon "github.com/evstack/ev-node/pkg/sequencers/common"
 )
 
-// ForcedInclusionRetriever defines the interface for retrieving forced inclusion transactions from DA
-type ForcedInclusionRetriever interface {
-	RetrieveForcedIncludedTxs(ctx context.Context, daHeight uint64) (*block.ForcedInclusionEvent, error)
-}
-
 var _ coresequencer.Sequencer = (*BasedSequencer)(nil)
 
 // BasedSequencer is a sequencer that only retrieves transactions from the DA layer
 // via the forced inclusion mechanism. It does not accept transactions from the reaper.
 // It uses DA as a queue and only persists a checkpoint of where it is in processing.
 type BasedSequencer struct {
-	fiRetriever ForcedInclusionRetriever
-	logger      zerolog.Logger
+	logger zerolog.Logger
 
+	fiRetriever     block.ForcedInclusionRetriever
 	daHeight        atomic.Uint64
 	checkpointStore *seqcommon.CheckpointStore
 	checkpoint      *seqcommon.Checkpoint
@@ -43,18 +38,18 @@ type BasedSequencer struct {
 
 // NewBasedSequencer creates a new based sequencer instance
 func NewBasedSequencer(
-	ctx context.Context,
-	fiRetriever ForcedInclusionRetriever,
+	fiRetriever block.ForcedInclusionRetriever,
 	db ds.Batching,
 	genesis genesis.Genesis,
 	logger zerolog.Logger,
 ) (*BasedSequencer, error) {
 	bs := &BasedSequencer{
-		fiRetriever:     fiRetriever,
 		logger:          logger.With().Str("component", "based_sequencer").Logger(),
 		checkpointStore: seqcommon.NewCheckpointStore(db, ds.NewKey("/based/checkpoint")),
+		fiRetriever:     fiRetriever,
 	}
-	bs.SetDAHeight(genesis.DAStartHeight) // will be overridden by the executor
+	// based sequencers need community consensus about the da start height given no submission are done
+	bs.SetDAHeight(genesis.DAStartHeight)
 
 	// Load checkpoint from DB, or initialize if none exists
 	loadCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -96,11 +91,11 @@ func (s *BasedSequencer) SubmitBatchTxs(ctx context.Context, req coresequencer.S
 // GetNextBatch retrieves the next batch of transactions from the DA layer using the checkpoint
 // It treats DA as a queue and only persists where it is in processing
 func (s *BasedSequencer) GetNextBatch(ctx context.Context, req coresequencer.GetNextBatchRequest) (*coresequencer.GetNextBatchResponse, error) {
-	// If we have no cached transactions or we've consumed all from the current DA block,
-	// fetch the next DA epoch
 	daHeight := s.GetDAHeight()
 
-	if len(s.currentBatchTxs) == 0 || s.checkpoint.TxIndex >= uint64(len(s.currentBatchTxs)) {
+	// If we have no cached transactions or we've consumed all from the current DA block,
+	// fetch the next DA epoch
+	if daHeight > 0 && (len(s.currentBatchTxs) == 0 || s.checkpoint.TxIndex >= uint64(len(s.currentBatchTxs))) {
 		daEndTime, daEndHeight, err := s.fetchNextDAEpoch(ctx, req.MaxBytes)
 		if err != nil {
 			return nil, err
@@ -134,7 +129,7 @@ func (s *BasedSequencer) GetNextBatch(ctx context.Context, req coresequencer.Get
 	}
 
 	// Calculate timestamp based on remaining transactions after this batch
-	// timestamp correspond to the last block time of a DA epoch, based on the remaining transactions to be executed
+	// timestamp corresponds to the last block time of a DA epoch, based on the remaining transactions to be executed
 	// this is done in order to handle the case where a DA epoch must fit in multiple blocks
 	remainingTxs := uint64(len(s.currentBatchTxs)) - s.checkpoint.TxIndex
 	timestamp := s.currentDAEndTime.Add(-time.Duration(remainingTxs) * time.Millisecond)

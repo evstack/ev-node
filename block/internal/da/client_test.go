@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/celestiaorg/go-square/v3/share"
 	blobrpc "github.com/evstack/ev-node/pkg/da/jsonrpc"
@@ -16,16 +17,36 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func makeBlobRPCClient(module *mocks.MockBlobModule) *blobrpc.Client {
-	var api blobrpc.BlobAPI
-	api.Internal.Submit = module.Submit
-	api.Internal.Get = module.Get
-	api.Internal.GetAll = module.GetAll
-	api.Internal.GetProof = module.GetProof
-	api.Internal.Included = module.Included
-	api.Internal.GetCommitmentProof = module.GetCommitmentProof
-	api.Internal.Subscribe = module.Subscribe
-	return &blobrpc.Client{Blob: api}
+func makeBlobRPCClient(blobModule *mocks.MockBlobModule, headerModule *mocks.MockHeaderModule) *blobrpc.Client {
+	var blobAPI blobrpc.BlobAPI
+	blobAPI.Internal.Submit = blobModule.Submit
+	blobAPI.Internal.Get = blobModule.Get
+	blobAPI.Internal.GetAll = blobModule.GetAll
+	blobAPI.Internal.GetProof = blobModule.GetProof
+	blobAPI.Internal.Included = blobModule.Included
+	blobAPI.Internal.GetCommitmentProof = blobModule.GetCommitmentProof
+	blobAPI.Internal.Subscribe = blobModule.Subscribe
+
+	var headerAPI blobrpc.HeaderAPI
+	if headerModule != nil {
+		headerAPI.Internal.GetByHeight = headerModule.GetByHeight
+		headerAPI.Internal.LocalHead = headerModule.LocalHead
+		headerAPI.Internal.NetworkHead = headerModule.NetworkHead
+	}
+
+	return &blobrpc.Client{Blob: blobAPI, Header: headerAPI}
+}
+
+// makeDefaultHeaderModule creates a header module mock that returns a fixed timestamp.
+func makeDefaultHeaderModule(t *testing.T) *mocks.MockHeaderModule {
+	headerModule := mocks.NewMockHeaderModule(t)
+	fixedTime := time.Date(2024, 1, 1, 12, 0, 0, 0, time.UTC)
+	headerModule.On("GetByHeight", mock.Anything, mock.Anything).Return(&blobrpc.Header{
+		Header: blobrpc.RawHeader{
+			Time: fixedTime,
+		},
+	}, nil).Maybe()
+	return headerModule
 }
 
 func TestClient_Submit_ErrorMapping(t *testing.T) {
@@ -46,11 +67,11 @@ func TestClient_Submit_ErrorMapping(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			module := mocks.NewMockBlobModule(t)
-			module.On("Submit", mock.Anything, mock.Anything, mock.Anything).Return(uint64(0), tc.err)
+			blobModule := mocks.NewMockBlobModule(t)
+			blobModule.On("Submit", mock.Anything, mock.Anything, mock.Anything).Return(uint64(0), tc.err)
 
 			cl := NewClient(Config{
-				DA:            makeBlobRPCClient(module),
+				DA:            makeBlobRPCClient(blobModule, nil),
 				Logger:        zerolog.Nop(),
 				Namespace:     "ns",
 				DataNamespace: "ns",
@@ -63,11 +84,11 @@ func TestClient_Submit_ErrorMapping(t *testing.T) {
 
 func TestClient_Submit_Success(t *testing.T) {
 	ns := share.MustNewV0Namespace([]byte("ns")).Bytes()
-	module := mocks.NewMockBlobModule(t)
-	module.On("Submit", mock.Anything, mock.Anything, mock.Anything).Return(uint64(10), nil)
+	blobModule := mocks.NewMockBlobModule(t)
+	blobModule.On("Submit", mock.Anything, mock.Anything, mock.Anything).Return(uint64(10), nil)
 
 	cl := NewClient(Config{
-		DA:            makeBlobRPCClient(module),
+		DA:            makeBlobRPCClient(blobModule, nil),
 		Logger:        zerolog.Nop(),
 		Namespace:     "ns",
 		DataNamespace: "ns",
@@ -79,9 +100,9 @@ func TestClient_Submit_Success(t *testing.T) {
 }
 
 func TestClient_Submit_InvalidNamespace(t *testing.T) {
-	module := mocks.NewMockBlobModule(t)
+	blobModule := mocks.NewMockBlobModule(t)
 	cl := NewClient(Config{
-		DA:            makeBlobRPCClient(module),
+		DA:            makeBlobRPCClient(blobModule, nil),
 		Logger:        zerolog.Nop(),
 		Namespace:     "ns",
 		DataNamespace: "ns",
@@ -92,17 +113,21 @@ func TestClient_Submit_InvalidNamespace(t *testing.T) {
 
 func TestClient_Retrieve_NotFound(t *testing.T) {
 	ns := share.MustNewV0Namespace([]byte("ns")).Bytes()
-	module := mocks.NewMockBlobModule(t)
-	module.On("GetAll", mock.Anything, mock.Anything, mock.Anything).Return([]*blobrpc.Blob(nil), datypes.ErrBlobNotFound)
+	blobModule := mocks.NewMockBlobModule(t)
+	blobModule.On("GetAll", mock.Anything, mock.Anything, mock.Anything).Return([]*blobrpc.Blob(nil), datypes.ErrBlobNotFound)
+	headerModule := makeDefaultHeaderModule(t)
 
 	cl := NewClient(Config{
-		DA:            makeBlobRPCClient(module),
+		DA:            makeBlobRPCClient(blobModule, headerModule),
 		Logger:        zerolog.Nop(),
 		Namespace:     "ns",
 		DataNamespace: "ns",
 	})
 	res := cl.Retrieve(context.Background(), 5, ns)
 	require.Equal(t, datypes.StatusNotFound, res.Code)
+	// Verify timestamp is the fixed time from the header module
+	expectedTime := time.Date(2024, 1, 1, 12, 0, 0, 0, time.UTC)
+	require.Equal(t, expectedTime, res.Timestamp)
 }
 
 func TestClient_Retrieve_Success(t *testing.T) {
@@ -110,12 +135,13 @@ func TestClient_Retrieve_Success(t *testing.T) {
 	nsBz := ns.Bytes()
 	b, err := blobrpc.NewBlobV0(ns, []byte("payload"))
 	require.NoError(t, err)
-	module := mocks.NewMockBlobModule(t)
+	blobModule := mocks.NewMockBlobModule(t)
 	// GetAll returns all blobs at the height/namespace
-	module.On("GetAll", mock.Anything, uint64(7), mock.Anything).Return([]*blobrpc.Blob{b}, nil)
+	blobModule.On("GetAll", mock.Anything, uint64(7), mock.Anything).Return([]*blobrpc.Blob{b}, nil)
+	headerModule := makeDefaultHeaderModule(t)
 
 	cl := NewClient(Config{
-		DA:            makeBlobRPCClient(module),
+		DA:            makeBlobRPCClient(blobModule, headerModule),
 		Logger:        zerolog.Nop(),
 		Namespace:     "ns",
 		DataNamespace: "ns",
@@ -124,15 +150,18 @@ func TestClient_Retrieve_Success(t *testing.T) {
 	require.Equal(t, datypes.StatusSuccess, res.Code)
 	require.Len(t, res.Data, 1)
 	require.Len(t, res.IDs, 1)
+	// Verify timestamp is the fixed time from the header module
+	expectedTime := time.Date(2024, 1, 1, 12, 0, 0, 0, time.UTC)
+	require.Equal(t, expectedTime, res.Timestamp)
 }
 
 func TestClient_SubmitOptionsMerge(t *testing.T) {
 	ns := share.MustNewV0Namespace([]byte("ns")).Bytes()
-	module := mocks.NewMockBlobModule(t)
-	module.On("Submit", mock.Anything, mock.Anything, mock.Anything).Return(uint64(1), nil)
+	blobModule := mocks.NewMockBlobModule(t)
+	blobModule.On("Submit", mock.Anything, mock.Anything, mock.Anything).Return(uint64(1), nil)
 
 	cl := NewClient(Config{
-		DA:            makeBlobRPCClient(module),
+		DA:            makeBlobRPCClient(blobModule, nil),
 		Logger:        zerolog.Nop(),
 		Namespace:     "ns",
 		DataNamespace: "ns",
@@ -152,7 +181,7 @@ func TestClient_Get(t *testing.T) {
 	nsBz := ns.Bytes()
 
 	t.Run("Get fetches blobs by IDs", func(t *testing.T) {
-		module := mocks.NewMockBlobModule(t)
+		blobModule := mocks.NewMockBlobModule(t)
 
 		blobs := make([]*blobrpc.Blob, 3)
 		ids := make([]datypes.ID, 3)
@@ -161,11 +190,11 @@ func TestClient_Get(t *testing.T) {
 			require.NoError(t, err)
 			blobs[i] = blb
 			ids[i] = blobrpc.MakeID(uint64(100+i), blb.Commitment)
-			module.On("Get", mock.Anything, uint64(100+i), ns, blb.Commitment).Return(blb, nil).Once()
+			blobModule.On("Get", mock.Anything, uint64(100+i), ns, blb.Commitment).Return(blb, nil).Once()
 		}
 
 		cl := NewClient(Config{
-			DA:            makeBlobRPCClient(module),
+			DA:            makeBlobRPCClient(blobModule, nil),
 			Logger:        zerolog.Nop(),
 			Namespace:     "ns",
 			DataNamespace: "ns",
@@ -180,13 +209,13 @@ func TestClient_Get(t *testing.T) {
 	})
 
 	t.Run("Get propagates errors", func(t *testing.T) {
-		module := mocks.NewMockBlobModule(t)
+		blobModule := mocks.NewMockBlobModule(t)
 		blb, _ := blobrpc.NewBlobV0(ns, []byte{0})
 		ids := []datypes.ID{blobrpc.MakeID(100, blb.Commitment)}
-		module.On("Get", mock.Anything, uint64(100), ns, blb.Commitment).Return(nil, errors.New("network error")).Once()
+		blobModule.On("Get", mock.Anything, uint64(100), ns, blb.Commitment).Return(nil, errors.New("network error")).Once()
 
 		cl := NewClient(Config{
-			DA:            makeBlobRPCClient(module),
+			DA:            makeBlobRPCClient(blobModule, nil),
 			Logger:        zerolog.Nop(),
 			Namespace:     "ns",
 			DataNamespace: "ns",
@@ -203,17 +232,17 @@ func TestClient_GetProofs(t *testing.T) {
 	ns := share.MustNewV0Namespace([]byte("ns"))
 	nsBz := ns.Bytes()
 
-	module := mocks.NewMockBlobModule(t)
+	blobModule := mocks.NewMockBlobModule(t)
 
 	ids := make([]datypes.ID, 3)
 	for i := 0; i < 3; i++ {
 		blb, _ := blobrpc.NewBlobV0(ns, []byte{byte(i)})
 		ids[i] = blobrpc.MakeID(uint64(200+i), blb.Commitment)
-		module.On("GetProof", mock.Anything, uint64(200+i), ns, blb.Commitment).Return(&blobrpc.Proof{}, nil).Once()
+		blobModule.On("GetProof", mock.Anything, uint64(200+i), ns, blb.Commitment).Return(&blobrpc.Proof{}, nil).Once()
 	}
 
 	cl := NewClient(Config{
-		DA:            makeBlobRPCClient(module),
+		DA:            makeBlobRPCClient(blobModule, nil),
 		Logger:        zerolog.Nop(),
 		Namespace:     "ns",
 		DataNamespace: "ns",
@@ -230,7 +259,7 @@ func TestClient_Validate(t *testing.T) {
 	nsBz := ns.Bytes()
 
 	t.Run("Validate with mixed results", func(t *testing.T) {
-		module := mocks.NewMockBlobModule(t)
+		blobModule := mocks.NewMockBlobModule(t)
 
 		ids := make([]datypes.ID, 3)
 		proofs := make([]datypes.Proof, 3)
@@ -239,11 +268,11 @@ func TestClient_Validate(t *testing.T) {
 			ids[i] = blobrpc.MakeID(uint64(300+i), blb.Commitment)
 			proofBz, _ := json.Marshal(&blobrpc.Proof{})
 			proofs[i] = proofBz
-			module.On("Included", mock.Anything, uint64(300+i), ns, mock.Anything, blb.Commitment).Return(i%2 == 0, nil).Once()
+			blobModule.On("Included", mock.Anything, uint64(300+i), ns, mock.Anything, blb.Commitment).Return(i%2 == 0, nil).Once()
 		}
 
 		cl := NewClient(Config{
-			DA:            makeBlobRPCClient(module),
+			DA:            makeBlobRPCClient(blobModule, nil),
 			Logger:        zerolog.Nop(),
 			Namespace:     "ns",
 			DataNamespace: "ns",
@@ -258,7 +287,7 @@ func TestClient_Validate(t *testing.T) {
 	})
 
 	t.Run("Validate continues on inclusion check error", func(t *testing.T) {
-		module := mocks.NewMockBlobModule(t)
+		blobModule := mocks.NewMockBlobModule(t)
 
 		blb0, _ := blobrpc.NewBlobV0(ns, []byte{0})
 		blb1, _ := blobrpc.NewBlobV0(ns, []byte{1})
@@ -271,11 +300,11 @@ func TestClient_Validate(t *testing.T) {
 			proofs[i], _ = json.Marshal(&blobrpc.Proof{})
 		}
 
-		module.On("Included", mock.Anything, uint64(400), ns, mock.Anything, blb0.Commitment).Return(true, nil).Once()
-		module.On("Included", mock.Anything, uint64(401), ns, mock.Anything, blb1.Commitment).Return(false, errors.New("check failed")).Once()
+		blobModule.On("Included", mock.Anything, uint64(400), ns, mock.Anything, blb0.Commitment).Return(true, nil).Once()
+		blobModule.On("Included", mock.Anything, uint64(401), ns, mock.Anything, blb1.Commitment).Return(false, errors.New("check failed")).Once()
 
 		cl := NewClient(Config{
-			DA:            makeBlobRPCClient(module),
+			DA:            makeBlobRPCClient(blobModule, nil),
 			Logger:        zerolog.Nop(),
 			Namespace:     "ns",
 			DataNamespace: "ns",
@@ -288,9 +317,9 @@ func TestClient_Validate(t *testing.T) {
 	})
 
 	t.Run("Validate rejects mismatched ids and proofs", func(t *testing.T) {
-		module := mocks.NewMockBlobModule(t)
+		blobModule := mocks.NewMockBlobModule(t)
 		cl := NewClient(Config{
-			DA:            makeBlobRPCClient(module),
+			DA:            makeBlobRPCClient(blobModule, nil),
 			Logger:        zerolog.Nop(),
 			Namespace:     "ns",
 			DataNamespace: "ns",

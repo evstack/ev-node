@@ -30,6 +30,7 @@ type Config struct {
 // It is unexported; callers should use the exported Client interface.
 type client struct {
 	blobAPI            *blobrpc.BlobAPI
+	headerAPI          *blobrpc.HeaderAPI
 	logger             zerolog.Logger
 	defaultTimeout     time.Duration
 	namespaceBz        []byte
@@ -58,6 +59,7 @@ func NewClient(cfg Config) FullClient {
 
 	return &client{
 		blobAPI:            &cfg.DA.Blob,
+		headerAPI:          &cfg.DA.Header,
 		logger:             cfg.Logger.With().Str("component", "da_client").Logger(),
 		defaultTimeout:     cfg.DefaultTimeout,
 		namespaceBz:        datypes.NamespaceFromString(cfg.Namespace).Bytes(),
@@ -180,8 +182,22 @@ func (c *client) Submit(ctx context.Context, data [][]byte, _ float64, namespace
 	}
 }
 
+// getBlockTimestamp fetches the block timestamp from the DA layer header.
+func (c *client) getBlockTimestamp(ctx context.Context, height uint64) (time.Time, error) {
+	headerCtx, cancel := context.WithTimeout(ctx, c.defaultTimeout)
+	defer cancel()
+
+	header, err := c.headerAPI.GetByHeight(headerCtx, height)
+	if err != nil {
+		return time.Time{}, fmt.Errorf("failed to get header timestamp for block %d: %w", height, err)
+	}
+
+	return header.Time(), nil
+}
+
 // Retrieve retrieves blobs from the DA layer at the specified height and namespace.
 // It uses GetAll to fetch all blobs at once.
+// The timestamp is derived from the DA block header to ensure determinism.
 func (c *client) Retrieve(ctx context.Context, height uint64, namespace []byte) datypes.ResultRetrieve {
 	ns, err := share.NewNamespaceFromBytes(namespace)
 	if err != nil {
@@ -195,21 +211,29 @@ func (c *client) Retrieve(ctx context.Context, height uint64, namespace []byte) 
 		}
 	}
 
-	getCtx, cancel := context.WithTimeout(ctx, c.defaultTimeout)
-	defer cancel()
+	blobCtx, blobCancel := context.WithTimeout(ctx, c.defaultTimeout)
+	defer blobCancel()
 
-	blobs, err := c.blobAPI.GetAll(getCtx, height, []share.Namespace{ns})
+	blobs, err := c.blobAPI.GetAll(blobCtx, height, []share.Namespace{ns})
 	if err != nil {
 		// Handle known errors by substring because RPC may wrap them.
 		switch {
 		case strings.Contains(err.Error(), datypes.ErrBlobNotFound.Error()):
 			c.logger.Debug().Uint64("height", height).Msg("No blobs found at height")
+			// Fetch block timestamp for deterministic responses using parent context
+			blockTime, err := c.getBlockTimestamp(ctx, height)
+			if err != nil {
+				c.logger.Error().Uint64("height", height).Err(err).Msg("failed to get block timestamp")
+				blockTime = time.Now()
+				// TODO: we should retry fetching the timestamp. Current time may mess block time consistency for based sequencers.
+			}
+
 			return datypes.ResultRetrieve{
 				BaseResult: datypes.BaseResult{
 					Code:      datypes.StatusNotFound,
 					Message:   datypes.ErrBlobNotFound.Error(),
 					Height:    height,
-					Timestamp: time.Now(),
+					Timestamp: blockTime,
 				},
 			}
 		case strings.Contains(err.Error(), datypes.ErrHeightFromFuture.Error()):
@@ -234,6 +258,14 @@ func (c *client) Retrieve(ctx context.Context, height uint64, namespace []byte) 
 		}
 	}
 
+	// Fetch block timestamp for deterministic responses using parent context
+	blockTime, err := c.getBlockTimestamp(ctx, height)
+	if err != nil {
+		c.logger.Error().Uint64("height", height).Err(err).Msg("failed to get block timestamp")
+		blockTime = time.Now()
+		// TODO: we should retry fetching the timestamp. Current time may mess block time consistency for based sequencers.
+	}
+
 	if len(blobs) == 0 {
 		c.logger.Debug().Uint64("height", height).Msg("No blobs found at height")
 		return datypes.ResultRetrieve{
@@ -241,7 +273,7 @@ func (c *client) Retrieve(ctx context.Context, height uint64, namespace []byte) 
 				Code:      datypes.StatusNotFound,
 				Message:   datypes.ErrBlobNotFound.Error(),
 				Height:    height,
-				Timestamp: time.Now(),
+				Timestamp: blockTime,
 			},
 		}
 	}
@@ -261,7 +293,7 @@ func (c *client) Retrieve(ctx context.Context, height uint64, namespace []byte) 
 			Code:      datypes.StatusSuccess,
 			Height:    height,
 			IDs:       ids,
-			Timestamp: time.Now(),
+			Timestamp: blockTime,
 		},
 		Data: data,
 	}
