@@ -99,6 +99,7 @@ func getTestConfig(t *testing.T, n int) evconfig.Config {
 			BlockTime:                evconfig.DurationWrapper{Duration: 100 * time.Millisecond},
 			MaxPendingHeadersAndData: 1000,
 			LazyBlockInterval:        evconfig.DurationWrapper{Duration: 5 * time.Second},
+			ScrapeInterval:           evconfig.DurationWrapper{Duration: time.Second},
 		},
 		DA: evconfig.DAConfig{
 			BlockTime:         evconfig.DurationWrapper{Duration: 200 * time.Millisecond},
