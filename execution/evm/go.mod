@@ -9,7 +9,7 @@ require (
 	github.com/ipfs/go-datastore v0.9.0
 	github.com/rs/zerolog v1.34.0
 	github.com/stretchr/testify v1.11.1
-	google.golang.org/protobuf v1.36.10
+	google.golang.org/protobuf v1.36.11
 )
 
 require (

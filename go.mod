@@ -15,7 +15,7 @@ require (
 	github.com/evstack/ev-node/core v1.0.0-beta.5
 	github.com/filecoin-project/go-jsonrpc v0.9.0
 	github.com/go-kit/kit v0.13.0
-	github.com/goccy/go-yaml v1.19.0
+	github.com/goccy/go-yaml v1.19.1
 	github.com/ipfs/go-datastore v0.9.0
 	github.com/ipfs/go-ds-badger4 v0.1.8
 	github.com/libp2p/go-libp2p v0.46.0
@@ -32,7 +32,7 @@ require (
 	golang.org/x/crypto v0.46.0
 	golang.org/x/net v0.48.0
 	golang.org/x/sync v0.19.0
-	google.golang.org/protobuf v1.36.10
+	google.golang.org/protobuf v1.36.11
 	gotest.tools/v3 v3.5.2
 )
 
