@@ -21,6 +21,7 @@ type ForcedInclusionRetriever struct {
 	logger        zerolog.Logger
 	daEpochSize   uint64
 	daStartHeight uint64
+	asyncFetcher  *AsyncEpochFetcher // Required for async prefetching
 }
 
 // ForcedInclusionEvent contains forced inclusion transactions retrieved from DA.
@@ -32,21 +33,25 @@ type ForcedInclusionEvent struct {
 }
 
 // NewForcedInclusionRetriever creates a new forced inclusion retriever.
+// The asyncFetcher parameter is required for background prefetching of DA epoch data.
 func NewForcedInclusionRetriever(
 	client Client,
 	logger zerolog.Logger,
 	daStartHeight, daEpochSize uint64,
+	asyncFetcher *AsyncEpochFetcher,
 ) *ForcedInclusionRetriever {
 	return &ForcedInclusionRetriever{
 		client:        client,
 		logger:        logger.With().Str("component", "forced_inclusion_retriever").Logger(),
 		daStartHeight: daStartHeight,
 		daEpochSize:   daEpochSize,
+		asyncFetcher:  asyncFetcher,
 	}
 }
 
 // RetrieveForcedIncludedTxs retrieves forced inclusion transactions at the given DA height.
 // It respects epoch boundaries and only fetches at epoch start.
+// If an async fetcher is configured, it will try to use cached data first for better performance.
 func (r *ForcedInclusionRetriever) RetrieveForcedIncludedTxs(ctx context.Context, daHeight uint64) (*ForcedInclusionEvent, error) {
 	// when daStartHeight is not set or no namespace is configured, we retrieve nothing.
 	if !r.client.HasForcedInclusionNamespace() {
@@ -70,6 +75,25 @@ func (r *ForcedInclusionRetriever) RetrieveForcedIncludedTxs(ctx context.Context
 			EndDaHeight:   daHeight,
 			Txs:           [][]byte{},
 		}, nil
+	}
+
+	// Try to get from async fetcher cache first
+	cachedEvent, err := r.asyncFetcher.GetCachedEpoch(ctx, daHeight)
+	if err == nil && cachedEvent != nil {
+		r.logger.Debug().
+			Uint64("da_height", daHeight).
+			Uint64("epoch_start", epochStart).
+			Uint64("epoch_end", epochEnd).
+			Int("tx_count", len(cachedEvent.Txs)).
+			Msg("using cached epoch data from async fetcher")
+		return cachedEvent, nil
+	}
+	// Cache miss or error, fall through to sync fetch
+	if err != nil {
+		r.logger.Debug().
+			Err(err).
+			Uint64("da_height", daHeight).
+			Msg("failed to get cached epoch, falling back to sync fetch")
 	}
 
 	event := &ForcedInclusionEvent{
@@ -105,7 +129,7 @@ func (r *ForcedInclusionRetriever) RetrieveForcedIncludedTxs(ctx context.Context
 		Msg("retrieving forced included transactions from DA")
 
 	var processErrs error
-	err := r.processForcedInclusionBlobs(event, epochStartResult, epochStart)
+	err = r.processForcedInclusionBlobs(event, epochStartResult, epochStart)
 	processErrs = errors.Join(processErrs, err)
 
 	// Process heights between start and end (exclusive)

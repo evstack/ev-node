@@ -2,6 +2,7 @@ package block
 
 import (
 	"context"
+	"time"
 
 	"github.com/evstack/ev-node/block/internal/common"
 	"github.com/evstack/ev-node/block/internal/da"
@@ -65,16 +66,39 @@ var ErrForceInclusionNotConfigured = da.ErrForceInclusionNotConfigured
 // ForcedInclusionEvent represents forced inclusion transactions retrieved from DA
 type ForcedInclusionEvent = da.ForcedInclusionEvent
 
+// AsyncEpochFetcher provides background prefetching of DA epoch data
+type AsyncEpochFetcher = da.AsyncEpochFetcher
+
 // ForcedInclusionRetriever defines the interface for retrieving forced inclusion transactions from DA
 type ForcedInclusionRetriever interface {
 	RetrieveForcedIncludedTxs(ctx context.Context, daHeight uint64) (*da.ForcedInclusionEvent, error)
 }
 
-// NewForcedInclusionRetriever creates a new forced inclusion retriever
+// NewAsyncEpochFetcher creates a new async epoch fetcher for background prefetching.
+// Parameters:
+//   - client: DA client for fetching data
+//   - logger: structured logger
+//   - daStartHeight: genesis DA start height
+//   - daEpochSize: number of DA blocks per epoch
+//   - prefetchWindow: how many epochs ahead to prefetch (1-2 recommended)
+//   - pollInterval: how often to check for new epochs to prefetch
+func NewAsyncEpochFetcher(
+	client DAClient,
+	logger zerolog.Logger,
+	daStartHeight, daEpochSize uint64,
+	prefetchWindow uint64,
+	pollInterval time.Duration,
+) *AsyncEpochFetcher {
+	return da.NewAsyncEpochFetcher(client, logger, daStartHeight, daEpochSize, prefetchWindow, pollInterval)
+}
+
+// NewForcedInclusionRetriever creates a new forced inclusion retriever.
+// The asyncFetcher parameter is required for background prefetching of DA epoch data.
 func NewForcedInclusionRetriever(
 	client DAClient,
 	logger zerolog.Logger,
 	daStartHeight, daEpochSize uint64,
+	asyncFetcher *AsyncEpochFetcher,
 ) ForcedInclusionRetriever {
-	return da.NewForcedInclusionRetriever(client, logger, daStartHeight, daEpochSize)
+	return da.NewForcedInclusionRetriever(client, logger, daStartHeight, daEpochSize, asyncFetcher)
 }

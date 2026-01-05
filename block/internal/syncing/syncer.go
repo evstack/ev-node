@@ -187,7 +187,19 @@ func (s *Syncer) Start(ctx context.Context) error {
 
 	// Initialize handlers
 	s.daRetriever = NewDARetriever(s.daClient, s.cache, s.genesis, s.logger)
-	s.fiRetriever = da.NewForcedInclusionRetriever(s.daClient, s.logger, s.genesis.DAStartHeight, s.genesis.DAEpochForcedInclusion)
+
+	// Create async epoch fetcher for background prefetching
+	asyncFetcher := da.NewAsyncEpochFetcher(
+		s.daClient,
+		s.logger,
+		s.genesis.DAStartHeight,
+		s.genesis.DAEpochForcedInclusion,
+		1,             // prefetch 1 epoch ahead
+		2*time.Second, // check every 2 seconds
+	)
+	asyncFetcher.Start()
+
+	s.fiRetriever = da.NewForcedInclusionRetriever(s.daClient, s.logger, s.genesis.DAStartHeight, s.genesis.DAEpochForcedInclusion, asyncFetcher)
 	s.p2pHandler = NewP2PHandler(s.headerStore.Store(), s.dataStore.Store(), s.cache, s.genesis, s.logger)
 	if currentHeight, err := s.store.Height(s.ctx); err != nil {
 		s.logger.Error().Err(err).Msg("failed to set initial processed height for p2p handler")

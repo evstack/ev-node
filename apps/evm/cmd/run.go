@@ -167,7 +167,18 @@ func createSequencer(
 			return nil, fmt.Errorf("based sequencer mode requires aggregator mode to be enabled")
 		}
 
-		fiRetriever := block.NewForcedInclusionRetriever(daClient, logger, genesis.DAStartHeight, genesis.DAEpochForcedInclusion)
+		// Create async epoch fetcher for background prefetching
+		asyncFetcher := block.NewAsyncEpochFetcher(
+			daClient,
+			logger,
+			genesis.DAStartHeight,
+			genesis.DAEpochForcedInclusion,
+			2,             // prefetch 2 epochs ahead for based sequencer
+			1*time.Second, // check frequently
+		)
+		asyncFetcher.Start()
+
+		fiRetriever := block.NewForcedInclusionRetriever(daClient, logger, genesis.DAStartHeight, genesis.DAEpochForcedInclusion, asyncFetcher)
 		basedSeq, err := based.NewBasedSequencer(fiRetriever, datastore, genesis, logger)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create based sequencer: %w", err)
