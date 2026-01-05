@@ -18,8 +18,8 @@ import (
 	coresequencer "github.com/evstack/ev-node/core/sequencer"
 	datypes "github.com/evstack/ev-node/pkg/da/types"
 	"github.com/evstack/ev-node/pkg/genesis"
+	seqcommon "github.com/evstack/ev-node/pkg/sequencers/common"
 	"github.com/evstack/ev-node/pkg/store"
-	seqcommon "github.com/evstack/ev-node/sequencers/common"
 )
 
 // ErrInvalidId is returned when the chain id is invalid
