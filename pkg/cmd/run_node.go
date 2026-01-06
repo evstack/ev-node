@@ -26,6 +26,7 @@ import (
 	"github.com/evstack/ev-node/pkg/p2p"
 	"github.com/evstack/ev-node/pkg/signer"
 	"github.com/evstack/ev-node/pkg/signer/file"
+	"github.com/evstack/ev-node/pkg/telemetry"
 )
 
 // ParseConfig is an helpers that loads the node configuration and validates it.
@@ -90,6 +91,18 @@ func StartNode(
 	ctx, cancel := context.WithCancel(cmd.Context())
 	defer cancel()
 
+	// Initialize OpenTelemetry tracing if enabled
+	shutdownTracing, err := telemetry.InitTracing(ctx, nodeConfig.Instrumentation, logger)
+	if err != nil {
+		return fmt.Errorf("failed to initialize tracing: %w", err)
+	}
+	defer func() {
+		// best-effort shutdown within a short timeout
+		c, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		_ = shutdownTracing(c)
+	}()
+
 	blobClient, err := blobrpc.NewClient(ctx, nodeConfig.DA.Address, nodeConfig.DA.AuthToken, "")
 	if err != nil {
 		return fmt.Errorf("failed to create blob client: %w", err)
@@ -141,6 +154,10 @@ func StartNode(
 	}
 
 	metrics := node.DefaultMetricsProvider(nodeConfig.Instrumentation)
+
+	if nodeConfig.Instrumentation.IsTracingEnabled() {
+		executor = coreexecutor.WithTracing(executor)
+	}
 
 	// Create and start the node
 	rollnode, err := node.NewNode(

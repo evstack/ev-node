@@ -19,10 +19,13 @@ import (
 	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/ethereum/go-ethereum/rpc"
 	"github.com/golang-jwt/jwt/v5"
-	ds "github.com/ipfs/go-datastore"
-	"github.com/rs/zerolog"
+    ds "github.com/ipfs/go-datastore"
+    "github.com/rs/zerolog"
 
-	"github.com/evstack/ev-node/core/execution"
+    "github.com/evstack/ev-node/core/execution"
+    "go.opentelemetry.io/otel"
+    "go.opentelemetry.io/otel/attribute"
+    "go.opentelemetry.io/otel/trace"
 )
 
 const (
@@ -150,7 +153,9 @@ type EngineClient struct {
 	currentFinalizedBlockHash common.Hash            // Store last finalized block hash
 	blockHashCache            map[uint64]common.Hash // height -> hash cache for safe block lookups
 
-	logger zerolog.Logger
+    logger zerolog.Logger
+
+    tracer trace.Tracer
 }
 
 // NewEngineExecutionClient creates a new instance of EngineAPIExecutionClient.
@@ -195,18 +200,19 @@ func NewEngineExecutionClient(
 		return nil, err
 	}
 
-	return &EngineClient{
-		engineClient:              engineClient,
-		ethClient:                 ethClient,
-		genesisHash:               genesisHash,
-		feeRecipient:              feeRecipient,
-		store:                     NewEVMStore(db),
-		currentHeadBlockHash:      genesisHash,
-		currentSafeBlockHash:      genesisHash,
-		currentFinalizedBlockHash: genesisHash,
-		blockHashCache:            make(map[uint64]common.Hash),
-		logger:                    zerolog.Nop(),
-	}, nil
+    return &EngineClient{
+        engineClient:              engineClient,
+        ethClient:                 ethClient,
+        genesisHash:               genesisHash,
+        feeRecipient:              feeRecipient,
+        store:                     NewEVMStore(db),
+        currentHeadBlockHash:      genesisHash,
+        currentSafeBlockHash:      genesisHash,
+        currentFinalizedBlockHash: genesisHash,
+        blockHashCache:            make(map[uint64]common.Hash),
+        logger:                    zerolog.Nop(),
+        tracer:                    otel.Tracer("ev-node/execution/evm"),
+    }, nil
 }
 
 // SetLogger allows callers to attach a structured logger.
@@ -216,24 +222,33 @@ func (c *EngineClient) SetLogger(l zerolog.Logger) {
 
 // InitChain initializes the blockchain with the given genesis parameters
 func (c *EngineClient) InitChain(ctx context.Context, genesisTime time.Time, initialHeight uint64, chainID string) ([]byte, uint64, error) {
-	if initialHeight != 1 {
-		return nil, 0, fmt.Errorf("initialHeight must be 1, got %d", initialHeight)
-	}
+    ctx, span := c.tracer.Start(ctx, "evm.InitChain",
+        trace.WithAttributes(
+            attribute.Int64("initial.height", int64(initialHeight)),
+            attribute.String("chain.id", chainID),
+        ),
+    )
+    defer span.End()
+    if initialHeight != 1 {
+        return nil, 0, fmt.Errorf("initialHeight must be 1, got %d", initialHeight)
+    }
 
 	// Acknowledge the genesis block with retry logic for SYNCING status
-	err := retryWithBackoffOnPayloadStatus(ctx, func() error {
-		var forkchoiceResult engine.ForkChoiceResponse
-		err := c.engineClient.CallContext(ctx, &forkchoiceResult, "engine_forkchoiceUpdatedV3",
-			engine.ForkchoiceStateV1{
-				HeadBlockHash:      c.genesisHash,
-				SafeBlockHash:      c.genesisHash,
-				FinalizedBlockHash: c.genesisHash,
-			},
-			nil,
-		)
-		if err != nil {
-			return fmt.Errorf("engine_forkchoiceUpdatedV3 failed: %w", err)
-		}
+    err := retryWithBackoffOnPayloadStatus(ctx, func() error {
+        innerCtx, innerSpan := c.tracer.Start(ctx, "engine_forkchoiceUpdatedV3")
+        defer innerSpan.End()
+        var forkchoiceResult engine.ForkChoiceResponse
+        err := c.engineClient.CallContext(innerCtx, &forkchoiceResult, "engine_forkchoiceUpdatedV3",
+            engine.ForkchoiceStateV1{
+                HeadBlockHash:      c.genesisHash,
+                SafeBlockHash:      c.genesisHash,
+                FinalizedBlockHash: c.genesisHash,
+            },
+            nil,
+        )
+        if err != nil {
+            return fmt.Errorf("engine_forkchoiceUpdatedV3 failed: %w", err)
+        }
 
 		// Validate payload status
 		if err := validatePayloadStatus(forkchoiceResult.PayloadStatus); err != nil {
@@ -263,11 +278,13 @@ func (c *EngineClient) InitChain(ctx context.Context, genesisTime time.Time, ini
 
 // GetTxs retrieves transactions from the current execution payload
 func (c *EngineClient) GetTxs(ctx context.Context) ([][]byte, error) {
-	var result []string
-	err := c.ethClient.Client().CallContext(ctx, &result, "txpoolExt_getTxs")
-	if err != nil {
-		return nil, fmt.Errorf("failed to get tx pool content: %w", err)
-	}
+    ctx, span := c.tracer.Start(ctx, "evm.GetTxs")
+    defer span.End()
+    var result []string
+    err := c.ethClient.Client().CallContext(ctx, &result, "txpoolExt_getTxs")
+    if err != nil {
+        return nil, fmt.Errorf("failed to get tx pool content: %w", err)
+    }
 
 	txs := make([][]byte, 0, len(result))
 	for _, rlpHex := range result {
@@ -281,7 +298,8 @@ func (c *EngineClient) GetTxs(ctx context.Context) ([][]byte, error) {
 		txs = append(txs, txBytes)
 	}
 
-	return txs, nil
+    span.SetAttributes(attribute.Int("tx.count", len(txs)))
+    return txs, nil
 }
 
 // ExecuteTxs executes the given transactions at the specified block height and timestamp.
@@ -355,12 +373,14 @@ func (c *EngineClient) ExecuteTxs(ctx context.Context, txs [][]byte, blockHeight
 
 	// 3. Call forkchoice update to get PayloadID
 	var newPayloadID *engine.PayloadID
-	err = retryWithBackoffOnPayloadStatus(ctx, func() error {
-		var forkchoiceResult engine.ForkChoiceResponse
-		err := c.engineClient.CallContext(ctx, &forkchoiceResult, "engine_forkchoiceUpdatedV3", args, evPayloadAttrs)
-		if err != nil {
-			return fmt.Errorf("forkchoice update failed: %w", err)
-		}
+    err = retryWithBackoffOnPayloadStatus(ctx, func() error {
+        innerCtx, innerSpan := c.tracer.Start(ctx, "engine_forkchoiceUpdatedV3")
+        defer innerSpan.End()
+        var forkchoiceResult engine.ForkChoiceResponse
+        err := c.engineClient.CallContext(innerCtx, &forkchoiceResult, "engine_forkchoiceUpdatedV3", args, evPayloadAttrs)
+        if err != nil {
+            return fmt.Errorf("forkchoice update failed: %w", err)
+        }
 
 		// Validate payload status
 		if err := validatePayloadStatus(forkchoiceResult.PayloadStatus); err != nil {
@@ -504,13 +524,16 @@ func (c *EngineClient) setFinalWithHeight(ctx context.Context, blockHash common.
 
 // doForkchoiceUpdate performs the actual forkchoice update RPC call with retry logic.
 func (c *EngineClient) doForkchoiceUpdate(ctx context.Context, args engine.ForkchoiceStateV1, operation string) error {
-	// Call forkchoice update with retry logic for SYNCING status
-	err := retryWithBackoffOnPayloadStatus(ctx, func() error {
-		var forkchoiceResult engine.ForkChoiceResponse
-		err := c.engineClient.CallContext(ctx, &forkchoiceResult, "engine_forkchoiceUpdatedV3", args, nil)
-		if err != nil {
-			return fmt.Errorf("forkchoice update failed: %w", err)
-		}
+    // Call forkchoice update with retry logic for SYNCING status
+    err := retryWithBackoffOnPayloadStatus(ctx, func() error {
+        innerCtx, innerSpan := c.tracer.Start(ctx, "engine_forkchoiceUpdatedV3",
+            trace.WithAttributes(attribute.String("operation", operation)))
+        defer innerSpan.End()
+        var forkchoiceResult engine.ForkChoiceResponse
+        err := c.engineClient.CallContext(innerCtx, &forkchoiceResult, "engine_forkchoiceUpdatedV3", args, nil)
+        if err != nil {
+            return fmt.Errorf("forkchoice update failed: %w", err)
+        }
 
 		// Validate payload status
 		if err := validatePayloadStatus(forkchoiceResult.PayloadStatus); err != nil {
@@ -757,25 +780,31 @@ func (c *EngineClient) filterTransactions(ctx context.Context, txs [][]byte, blo
 
 // processPayload handles the common logic of getting, submitting, and finalizing a payload.
 func (c *EngineClient) processPayload(ctx context.Context, payloadID engine.PayloadID, txs [][]byte) ([]byte, uint64, error) {
-	// 1. Get Payload
-	var payloadResult engine.ExecutionPayloadEnvelope
-	err := c.engineClient.CallContext(ctx, &payloadResult, "engine_getPayloadV4", payloadID)
-	if err != nil {
-		return nil, 0, fmt.Errorf("get payload failed: %w", err)
-	}
+    // 1. Get Payload
+    ctx, span := c.tracer.Start(ctx, "evm.processPayload")
+    defer span.End()
+    var payloadResult engine.ExecutionPayloadEnvelope
+    getCtx, getSpan := c.tracer.Start(ctx, "engine_getPayloadV4")
+    err := c.engineClient.CallContext(getCtx, &payloadResult, "engine_getPayloadV4", payloadID)
+    getSpan.End()
+    if err != nil {
+        return nil, 0, fmt.Errorf("get payload failed: %w", err)
+    }
 
 	blockHeight := payloadResult.ExecutionPayload.Number
 	blockTimestamp := int64(payloadResult.ExecutionPayload.Timestamp)
 
 	// 2. Submit Payload (newPayload)
 	var newPayloadResult engine.PayloadStatusV1
-	err = retryWithBackoffOnPayloadStatus(ctx, func() error {
-		err := c.engineClient.CallContext(ctx, &newPayloadResult, "engine_newPayloadV4",
-			payloadResult.ExecutionPayload,
-			[]string{},          // No blob hashes
-			common.Hash{}.Hex(), // Use zero hash for parentBeaconBlockRoot
-			[][]byte{},          // No execution requests
-		)
+    err = retryWithBackoffOnPayloadStatus(ctx, func() error {
+        submitCtx, submitSpan := c.tracer.Start(ctx, "engine_newPayloadV4")
+        defer submitSpan.End()
+        err := c.engineClient.CallContext(submitCtx, &newPayloadResult, "engine_newPayloadV4",
+            payloadResult.ExecutionPayload,
+            []string{},          // No blob hashes
+            common.Hash{}.Hex(), // Use zero hash for parentBeaconBlockRoot
+            [][]byte{},          // No execution requests
+        )
 		if err != nil {
 			return fmt.Errorf("new payload submission failed: %w", err)
 		}
