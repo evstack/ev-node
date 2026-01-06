@@ -179,6 +179,7 @@ const (
 	DefaultBlockTime   = "150ms"
 	DefaultDABlockTime = "1s"
 	DefaultTestTimeout = 20 * time.Second
+	DefaultDANamespace = "evm-e2e"
 	DefaultChainID     = "1234"
 	DefaultGasLimit    = 22000
 
@@ -187,8 +188,6 @@ const (
 	TestToAddress  = "0x944fDcD1c868E3cC566C78023CcB38A32cDA836E"
 	TestPassphrase = "secret"
 )
-
-var DefaultDANamespace = DefaultChainID
 
 const (
 	SlowPollingInterval = 250 * time.Millisecond // Reduced from 500ms
@@ -322,6 +321,7 @@ func setupSequencerNode(t *testing.T, sut *SystemUnderTest, sequencerHome, jwtSe
 		"--home", sequencerHome,
 		"--evnode.da.block_time", DefaultDABlockTime,
 		"--evnode.da.address", endpoints.GetDAAddress(),
+		"--evnode.da.namespace", DefaultDANamespace,
 		"--evnode.rpc.address", endpoints.GetRollkitRPCListen(),
 		"--evnode.p2p.listen_address", endpoints.GetRollkitP2PAddress(),
 		"--evm.engine-url", endpoints.GetSequencerEngineURL(),
@@ -366,6 +366,7 @@ func setupSequencerNodeLazy(t *testing.T, sut *SystemUnderTest, sequencerHome, j
 		"--home", sequencerHome,
 		"--evnode.da.block_time", DefaultDABlockTime,
 		"--evnode.da.address", endpoints.GetDAAddress(),
+		"--evnode.da.namespace", DefaultDANamespace,
 		"--evnode.rpc.address", endpoints.GetRollkitRPCListen(),
 		"--evnode.p2p.listen_address", endpoints.GetRollkitP2PAddress(),
 		"--evm.engine-url", endpoints.GetSequencerEngineURL(),
@@ -424,6 +425,7 @@ func setupFullNode(t *testing.T, sut *SystemUnderTest, fullNodeHome, sequencerHo
 		"--evm.eth-url", endpoints.GetFullNodeEthURL(),
 		"--rollkit.da.block_time", DefaultDABlockTime,
 		"--rollkit.da.address", endpoints.GetDAAddress(),
+		"--rollkit.da.namespace", DefaultDANamespace,
 		"--rollkit.rpc.address", endpoints.GetFullNodeRPCListen(),
 		"--rollkit.p2p.listen_address", endpoints.GetFullNodeP2PAddress(),
 	}
@@ -633,6 +635,7 @@ func restartDAAndSequencer(t *testing.T, sut *SystemUnderTest, sequencerHome, jw
 		"--home", sequencerHome,
 		"--evnode.da.address", endpoints.GetDAAddress(),
 		"--evnode.da.block_time", DefaultDABlockTime,
+		"--evnode.da.namespace", DefaultDANamespace,
 		"--evnode.rpc.address", endpoints.GetRollkitRPCListen(),
 		"--evnode.p2p.listen_address", endpoints.GetRollkitP2PAddress(),
 		"--evm.engine-url", endpoints.GetSequencerEngineURL(),
@@ -683,6 +686,7 @@ func restartDAAndSequencerLazy(t *testing.T, sut *SystemUnderTest, sequencerHome
 		"--home", sequencerHome,
 		"--evnode.da.address", endpoints.GetDAAddress(),
 		"--evnode.da.block_time", DefaultDABlockTime,
+		"--evnode.da.namespace", DefaultDANamespace,
 		"--evnode.rpc.address", endpoints.GetRollkitRPCListen(),
 		"--evnode.p2p.listen_address", endpoints.GetRollkitP2PAddress(),
 		"--evm.engine-url", endpoints.GetSequencerEngineURL(),
@@ -693,6 +697,39 @@ func restartDAAndSequencerLazy(t *testing.T, sut *SystemUnderTest, sequencerHome
 
 	// Use AwaitNodeLive for lazy mode since the node won't be ready (producing blocks) immediately
 	sut.AwaitNodeLive(t, endpoints.GetRollkitRPCAddress(), NodeStartupTimeout)
+}
+
+// restartSequencerNode starts an existing sequencer node without initialization.
+// This is used for restart scenarios where the node has already been initialized.
+//
+// Parameters:
+// - sut: SystemUnderTest instance for managing test processes
+// - sequencerHome: Directory path for sequencer node data
+// - jwtSecret: JWT secret for sequencer's EVM engine authentication
+// - genesisHash: Hash of the genesis block for chain validation
+func restartSequencerNode(t *testing.T, sut *SystemUnderTest, sequencerHome, jwtSecret, genesisHash string) {
+	t.Helper()
+
+	// Start sequencer node (without init - node already exists)
+	// The passphrase file and JWT secret file should still exist from the initial setup
+	passphraseFile := filepath.Join(sequencerHome, "passphrase.txt")
+	jwtSecretFile := filepath.Join(sequencerHome, "jwt-secret.hex")
+	sut.ExecCmd(evmSingleBinaryPath,
+		"start",
+		"--evm.jwt-secret-file", jwtSecretFile,
+		"--evm.genesis-hash", genesisHash,
+		"--evnode.node.block_time", DefaultBlockTime,
+		"--evnode.node.aggregator=true",
+		"--evnode.signer.passphrase_file", passphraseFile,
+		"--home", sequencerHome,
+		"--evnode.da.address", DAAddress,
+		"--evnode.da.block_time", DefaultDABlockTime,
+		"--evnode.da.namespace", DefaultDANamespace,
+	)
+
+	time.Sleep(SlowPollingInterval)
+
+	sut.AwaitNodeUp(t, RollkitRPCAddress, NodeStartupTimeout)
 }
 
 // verifyNoBlockProduction verifies that no new blocks are being produced over a specified duration.

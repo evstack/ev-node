@@ -77,17 +77,16 @@ The types package defines the core data structures and types used throughout ev-
   - Signature verification
   - Identity validation
 
-### DA Integration (`da.go`, `da_test.go`)
+### DA Integration
 
-- **Purpose**: Data Availability layer helpers
-- **Key Functions**:
-  - `SubmitWithHelpers`: DA submission with error handling
+- **Purpose**: Data Availability layer helpers moved to `block/internal/da` package
+- **See**: `block/internal/da/client.go` for DA submission and retrieval logic
 - **Key Features**:
-  - Error mapping to status codes
+  - Error mapping to status codes (in DA Client)
   - Namespace support
   - Gas price configuration
   - Submission options handling
-- **Status Codes**:
+- **Status Codes** (defined in `pkg/da/types`):
   - `StatusContextCanceled`: Submission canceled
   - `StatusNotIncludedInBlock`: Transaction timeout
   - `StatusAlreadyInMempool`: Duplicate transaction

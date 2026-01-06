@@ -15,7 +15,12 @@ type Genesis struct {
 	StartTime       time.Time `json:"start_time"`
 	InitialHeight   uint64    `json:"initial_height"`
 	ProposerAddress []byte    `json:"proposer_address"`
-	DAStartHeight   uint64    `json:"da_start_height"`
+	// DAStartHeight corresponds to the height at which the first DA header/data has been published.
+	// This value is meant to be updated after genesis and shared to all syncing nodes for speeding up syncing via DA.
+	DAStartHeight uint64 `json:"da_start_height"`
+	// DaEpochForcedInclusion corresponds to the amount of DA blocks are considered an epoch
+	// When forced inclusion is enabled, the epoch size determines at what frequency the forced included transactions are executed by the application.
+	DAEpochForcedInclusion uint64 `json:"da_epoch_forced_inclusion"`
 }
 
 // NewGenesis creates a new Genesis instance.
@@ -26,11 +31,12 @@ func NewGenesis(
 	proposerAddress []byte,
 ) Genesis {
 	genesis := Genesis{
-		ChainID:         chainID,
-		StartTime:       startTime,
-		InitialHeight:   initialHeight,
-		ProposerAddress: proposerAddress,
-		DAStartHeight:   0,
+		ChainID:                chainID,
+		StartTime:              startTime,
+		InitialHeight:          initialHeight,
+		ProposerAddress:        proposerAddress,
+		DAStartHeight:          0,
+		DAEpochForcedInclusion: 50, // Default epoch size
 	}
 
 	return genesis
@@ -52,6 +58,10 @@ func (g Genesis) Validate() error {
 
 	if g.ProposerAddress == nil {
 		return fmt.Errorf("proposer_address cannot be nil")
+	}
+
+	if g.DAEpochForcedInclusion < 1 {
+		return fmt.Errorf("da_epoch_forced_inclusion must be at least 1, got %d", g.DAEpochForcedInclusion)
 	}
 
 	return nil

@@ -11,15 +11,15 @@ import (
 	"time"
 
 	testutils "github.com/celestiaorg/utils/test"
+	"github.com/evstack/ev-node/block"
+	coreexecutor "github.com/evstack/ev-node/core/execution"
+	coresequencer "github.com/evstack/ev-node/core/sequencer"
+	"github.com/evstack/ev-node/test/testda"
 	"github.com/ipfs/go-datastore"
 	dssync "github.com/ipfs/go-datastore/sync"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/require"
-
-	coreda "github.com/evstack/ev-node/core/da"
-	coreexecutor "github.com/evstack/ev-node/core/execution"
-	coresequencer "github.com/evstack/ev-node/core/sequencer"
 
 	evconfig "github.com/evstack/ev-node/pkg/config"
 	"github.com/evstack/ev-node/pkg/p2p/key"
@@ -28,29 +28,49 @@ import (
 )
 
 const (
-	// MockDAAddress is the address used by the mock gRPC service
+	// TestDAAddress is the address used by the dummy gRPC service
 	// NOTE: this should be unique per test package to avoid
 	// "bind: listen address already in use" because multiple packages
 	// are tested in parallel
-	MockDAAddress = "grpc://localhost:7990"
+	TestDAAddress = "grpc://localhost:7990"
 
-	// MockDANamespace is a sample namespace used by the mock DA client
-	MockDANamespace = "mock-namespace"
+	// TestDANamespace is a sample namespace used by the dummy DA client
+	TestDANamespace = "mock-namespace"
 
 	// MockExecutorAddress is a sample address used by the mock executor
 	MockExecutorAddress = "127.0.0.1:40041"
 )
 
-// createTestComponents creates test components for node initialization
-func createTestComponents(t *testing.T, config evconfig.Config) (coreexecutor.Executor, coresequencer.Sequencer, coreda.DA, datastore.Batching, *key.NodeKey, func()) {
+// sharedDummyDA is a shared DummyDA instance for multi-node tests.
+var (
+	sharedDummyDA     *testda.DummyDA
+	sharedDummyDAOnce sync.Once
+)
+
+func getSharedDummyDA(maxBlobSize uint64) *testda.DummyDA {
+	sharedDummyDAOnce.Do(func() {
+		sharedDummyDA = testda.New(testda.WithMaxBlobSize(maxBlobSize))
+	})
+	return sharedDummyDA
+}
+
+func resetSharedDummyDA() {
+	if sharedDummyDA != nil {
+		sharedDummyDA.Reset()
+	}
+}
+
+func newDummyDAClient(maxBlobSize uint64) *testda.DummyDA {
+	if maxBlobSize == 0 {
+		maxBlobSize = testda.DefaultMaxBlobSize
+	}
+	return getSharedDummyDA(maxBlobSize)
+}
+
+func createTestComponents(t *testing.T, config evconfig.Config) (coreexecutor.Executor, coresequencer.Sequencer, block.DAClient, *key.NodeKey, datastore.Batching, func()) {
 	executor := coreexecutor.NewDummyExecutor()
 	sequencer := coresequencer.NewDummySequencer()
-	dummyDA := coreda.NewDummyDA(100_000, config.DA.BlockTime.Duration)
-	dummyDA.StartHeightTicker()
-
-	stopDAHeightTicker := func() {
-		dummyDA.StopHeightTicker()
-	}
+	daClient := newDummyDAClient(0)
 
 	// Create genesis and keys for P2P client
 	_, genesisValidatorKey, _ := types.GetGenesisWithPrivkey("test-chain")
@@ -60,7 +80,8 @@ func createTestComponents(t *testing.T, config evconfig.Config) (coreexecutor.Ex
 	}
 	ds := dssync.MutexWrap(datastore.NewMapDatastore())
 
-	return executor, sequencer, dummyDA, ds, p2pKey, stopDAHeightTicker
+	stop := daClient.StartHeightTicker(config.DA.BlockTime.Duration)
+	return executor, sequencer, daClient, p2pKey, ds, stop
 }
 
 func getTestConfig(t *testing.T, n int) evconfig.Config {
@@ -74,11 +95,12 @@ func getTestConfig(t *testing.T, n int) evconfig.Config {
 			BlockTime:                evconfig.DurationWrapper{Duration: 100 * time.Millisecond},
 			MaxPendingHeadersAndData: 1000,
 			LazyBlockInterval:        evconfig.DurationWrapper{Duration: 5 * time.Second},
+			ScrapeInterval:           evconfig.DurationWrapper{Duration: time.Second},
 		},
 		DA: evconfig.DAConfig{
 			BlockTime:         evconfig.DurationWrapper{Duration: 200 * time.Millisecond},
-			Address:           MockDAAddress,
-			Namespace:         MockDANamespace,
+			Address:           TestDAAddress,
+			Namespace:         TestDANamespace,
 			MaxSubmitAttempts: 30,
 		},
 		P2P: evconfig.P2PConfig{
@@ -97,7 +119,7 @@ func newTestNode(
 	config evconfig.Config,
 	executor coreexecutor.Executor,
 	sequencer coresequencer.Sequencer,
-	dac coreda.DA,
+	daClient block.DAClient,
 	nodeKey *key.NodeKey,
 	ds datastore.Batching,
 	stopDAHeightTicker func(),
@@ -115,7 +137,7 @@ func newTestNode(
 		config,
 		executor,
 		sequencer,
-		dac,
+		daClient,
 		remoteSigner,
 		nodeKey,
 		genesis,
@@ -136,8 +158,9 @@ func newTestNode(
 }
 
 func createNodeWithCleanup(t *testing.T, config evconfig.Config) (*FullNode, func()) {
-	executor, sequencer, dac, ds, nodeKey, stopDAHeightTicker := createTestComponents(t, config)
-	return newTestNode(t, config, executor, sequencer, dac, nodeKey, ds, stopDAHeightTicker)
+	resetSharedDummyDA()
+	executor, sequencer, daClient, ds, nodeKey, stopDAHeightTicker := createTestComponents(t, config)
+	return newTestNode(t, config, executor, sequencer, daClient, nodeKey, ds, stopDAHeightTicker)
 }
 
 func createNodeWithCustomComponents(
@@ -145,18 +168,19 @@ func createNodeWithCustomComponents(
 	config evconfig.Config,
 	executor coreexecutor.Executor,
 	sequencer coresequencer.Sequencer,
-	dac coreda.DA,
+	daClient block.DAClient,
 	nodeKey *key.NodeKey,
 	ds datastore.Batching,
 	stopDAHeightTicker func(),
 ) (*FullNode, func()) {
-	return newTestNode(t, config, executor, sequencer, dac, nodeKey, ds, stopDAHeightTicker)
+	return newTestNode(t, config, executor, sequencer, daClient, nodeKey, ds, stopDAHeightTicker)
 }
 
 // Creates the given number of nodes the given nodes using the given wait group to synchronize them
 func createNodesWithCleanup(t *testing.T, num int, config evconfig.Config) ([]*FullNode, []func()) {
 	t.Helper()
 	require := require.New(t)
+	resetSharedDummyDA()
 
 	nodes := make([]*FullNode, num)
 	cleanups := make([]func(), num)
@@ -168,7 +192,7 @@ func createNodesWithCleanup(t *testing.T, num int, config evconfig.Config) ([]*F
 
 	aggListenAddress := config.P2P.ListenAddress
 	aggPeers := config.P2P.Peers
-	executor, sequencer, dac, ds, aggP2PKey, stopDAHeightTicker := createTestComponents(t, config)
+	executor, sequencer, daClient, aggP2PKey, ds, aggP2PKey, stopDAHeightTicker := createTestComponents(t, config)
 	aggPeerID, err := peer.IDFromPrivateKey(aggP2PKey.PrivKey)
 	require.NoError(err)
 
@@ -180,7 +204,7 @@ func createNodesWithCleanup(t *testing.T, num int, config evconfig.Config) ([]*F
 		config,
 		executor,
 		sequencer,
-		dac,
+		daClient,
 		remoteSigner,
 		aggP2PKey,
 		genesis,
@@ -209,12 +233,12 @@ func createNodesWithCleanup(t *testing.T, num int, config evconfig.Config) ([]*F
 		}
 		config.P2P.ListenAddress = fmt.Sprintf("/ip4/127.0.0.1/tcp/%d", 40001+i)
 		config.RPC.Address = fmt.Sprintf("127.0.0.1:%d", 8001+i)
-		executor, sequencer, _, _, nodeP2PKey, stopDAHeightTicker := createTestComponents(t, config)
+		executor, sequencer, daClient, _, nodeP2PKey, stopDAHeightTicker := createTestComponents(t, config)
 		node, err := NewNode(
 			config,
 			executor,
 			sequencer,
-			dac,
+			daClient,
 			nil,
 			nodeP2PKey,
 			genesis,

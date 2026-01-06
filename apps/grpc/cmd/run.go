@@ -9,19 +9,21 @@ import (
 	"github.com/rs/zerolog"
 	"github.com/spf13/cobra"
 
-	"github.com/evstack/ev-node/core/da"
+	"github.com/evstack/ev-node/block"
 	"github.com/evstack/ev-node/core/execution"
 	coresequencer "github.com/evstack/ev-node/core/sequencer"
-	"github.com/evstack/ev-node/da/jsonrpc"
 	executiongrpc "github.com/evstack/ev-node/execution/grpc"
 	"github.com/evstack/ev-node/node"
 	rollcmd "github.com/evstack/ev-node/pkg/cmd"
 	"github.com/evstack/ev-node/pkg/config"
+	blobrpc "github.com/evstack/ev-node/pkg/da/jsonrpc"
+	da "github.com/evstack/ev-node/pkg/da/types"
 	"github.com/evstack/ev-node/pkg/genesis"
 	rollgenesis "github.com/evstack/ev-node/pkg/genesis"
 	"github.com/evstack/ev-node/pkg/p2p/key"
+	"github.com/evstack/ev-node/pkg/sequencers/based"
+	"github.com/evstack/ev-node/pkg/sequencers/single"
 	"github.com/evstack/ev-node/pkg/store"
-	"github.com/evstack/ev-node/sequencers/single"
 )
 
 const (
@@ -56,12 +58,6 @@ The execution client must implement the Evolve execution gRPC interface.`,
 
 		logger.Info().Str("headerNamespace", headerNamespace.HexString()).Str("dataNamespace", dataNamespace.HexString()).Msg("namespaces")
 
-		// Create DA client
-		daJrpc, err := jsonrpc.NewClient(cmd.Context(), logger, nodeConfig.DA.Address, nodeConfig.DA.AuthToken, rollcmd.DefaultMaxBlobSize)
-		if err != nil {
-			return err
-		}
-
 		// Create datastore
 		datastore, err := store.NewDefaultKVStore(nodeConfig.RootDir, nodeConfig.DBPath, grpcDbName)
 		if err != nil {
@@ -79,7 +75,7 @@ The execution client must implement the Evolve execution gRPC interface.`,
 		}
 
 		// Create sequencer based on configuration
-		sequencer, err := createSequencer(cmd.Context(), logger, datastore, &daJrpc.DA, nodeConfig, genesis)
+		sequencer, err := createSequencer(cmd.Context(), logger, datastore, nodeConfig, genesis)
 		if err != nil {
 			return err
 		}
@@ -91,7 +87,7 @@ The execution client must implement the Evolve execution gRPC interface.`,
 		}
 
 		// Start the node
-		return rollcmd.StartNode(logger, cmd, executor, sequencer, &daJrpc.DA, nodeKey, datastore, nodeConfig, genesis, node.NodeOptions{})
+		return rollcmd.StartNode(logger, cmd, executor, sequencer, nodeKey, datastore, nodeConfig, genesis, node.NodeOptions{})
 	},
 }
 
@@ -108,28 +104,52 @@ func createSequencer(
 	ctx context.Context,
 	logger zerolog.Logger,
 	datastore datastore.Batching,
-	da da.DA,
 	nodeConfig config.Config,
 	genesis genesis.Genesis,
 ) (coresequencer.Sequencer, error) {
-	singleMetrics, err := single.NopMetrics()
+	blobClient, err := blobrpc.NewClient(ctx, nodeConfig.DA.Address, nodeConfig.DA.AuthToken, "")
 	if err != nil {
-		return nil, fmt.Errorf("failed to create single sequencer metrics: %w", err)
+		return nil, fmt.Errorf("failed to create blob client: %w", err)
+	}
+
+	daClient := block.NewDAClient(blobClient, nodeConfig, logger)
+
+	if nodeConfig.Node.BasedSequencer {
+		// Based sequencer mode - fetch transactions only from DA
+		if !nodeConfig.Node.Aggregator {
+			return nil, fmt.Errorf("based sequencer mode requires aggregator mode to be enabled")
+		}
+
+		fiRetriever := block.NewForcedInclusionRetriever(daClient, logger, genesis.DAStartHeight, genesis.DAEpochForcedInclusion)
+		basedSeq, err := based.NewBasedSequencer(fiRetriever, datastore, genesis, logger)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create based sequencer: %w", err)
+		}
+
+		logger.Info().
+			Str("forced_inclusion_namespace", nodeConfig.DA.GetForcedInclusionNamespace()).
+			Uint64("da_epoch", genesis.DAEpochForcedInclusion).
+			Msg("based sequencer initialized")
+
+		return basedSeq, nil
 	}
 
 	sequencer, err := single.NewSequencer(
-		ctx,
 		logger,
 		datastore,
-		da,
+		daClient,
 		[]byte(genesis.ChainID),
 		nodeConfig.Node.BlockTime.Duration,
-		singleMetrics,
-		nodeConfig.Node.Aggregator,
+		1000,
+		genesis,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create single sequencer: %w", err)
 	}
+
+	logger.Info().
+		Str("forced_inclusion_namespace", nodeConfig.DA.GetForcedInclusionNamespace()).
+		Msg("single sequencer initialized")
 
 	return sequencer, nil
 }

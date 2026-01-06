@@ -11,7 +11,7 @@ import (
 	"time"
 
 	"github.com/celestiaorg/go-square/v3/share"
-	"github.com/evstack/ev-node/core/da"
+	datypes "github.com/evstack/ev-node/pkg/da/types"
 	"github.com/mitchellh/mapstructure"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
@@ -33,6 +33,8 @@ const (
 
 	// FlagAggregator is a flag for running node in aggregator mode
 	FlagAggregator = FlagPrefixEvnode + "node.aggregator"
+	// FlagBasedSequencer is a flag for enabling based sequencer mode (requires aggregator mode)
+	FlagBasedSequencer = FlagPrefixEvnode + "node.based_sequencer"
 	// FlagLight is a flag for running the node in light mode
 	FlagLight = FlagPrefixEvnode + "node.light"
 	// FlagBlockTime is a flag for specifying the block time
@@ -47,6 +49,8 @@ const (
 	FlagReadinessWindowSeconds = FlagPrefixEvnode + "node.readiness_window_seconds"
 	// FlagReadinessMaxBlocksBehind configures how many blocks behind best-known head is still considered ready
 	FlagReadinessMaxBlocksBehind = FlagPrefixEvnode + "node.readiness_max_blocks_behind"
+	// FlagScrapeInterval is a flag for specifying the reaper scrape interval
+	FlagScrapeInterval = FlagPrefixEvnode + "node.scrape_interval"
 	// FlagClearCache is a flag for clearing the cache
 	FlagClearCache = FlagPrefixEvnode + "clear_cache"
 
@@ -62,6 +66,8 @@ const (
 	FlagDANamespace = FlagPrefixEvnode + "da.namespace"
 	// FlagDADataNamespace is a flag for specifying the DA data namespace ID
 	FlagDADataNamespace = FlagPrefixEvnode + "da.data_namespace"
+	// FlagDAForcedInclusionNamespace is a flag for specifying the DA forced inclusion namespace ID
+	FlagDAForcedInclusionNamespace = FlagPrefixEvnode + "da.forced_inclusion_namespace"
 	// FlagDASubmitOptions is a flag for data availability submit options
 	FlagDASubmitOptions = FlagPrefixEvnode + "da.submit_options"
 	// FlagDASigningAddresses is a flag for specifying multiple DA signing addresses
@@ -70,8 +76,6 @@ const (
 	FlagDAMempoolTTL = FlagPrefixEvnode + "da.mempool_ttl"
 	// FlagDAMaxSubmitAttempts is a flag for specifying the maximum DA submit attempts
 	FlagDAMaxSubmitAttempts = FlagPrefixEvnode + "da.max_submit_attempts"
-	// FlagDARetrieveBatchSize configures how many IDs are fetched per DA Get request
-	FlagDARetrieveBatchSize = FlagPrefixEvnode + "da.retrieve_batch_size"
 	// FlagDARequestTimeout controls the per-request timeout when talking to the DA layer
 	FlagDARequestTimeout = FlagPrefixEvnode + "da.request_timeout"
 
@@ -181,17 +185,17 @@ type Config struct {
 
 // DAConfig contains all Data Availability configuration parameters
 type DAConfig struct {
-	Address           string          `mapstructure:"address" yaml:"address" comment:"Address of the data availability layer service (host:port). This is the endpoint where Rollkit will connect to submit and retrieve data."`
-	AuthToken         string          `mapstructure:"auth_token" yaml:"auth_token" comment:"Authentication token for the data availability layer service. Required if the DA service needs authentication."`
-	SubmitOptions     string          `mapstructure:"submit_options" yaml:"submit_options" comment:"Additional options passed to the DA layer when submitting data. Format depends on the specific DA implementation being used."`
-	SigningAddresses  []string        `mapstructure:"signing_addresses" yaml:"signing_addresses" comment:"List of addresses to use for DA submissions. When multiple addresses are provided, they will be used in round-robin fashion to prevent sequence mismatches. Useful for high-throughput chains."`
-	Namespace         string          `mapstructure:"namespace" yaml:"namespace" comment:"Namespace ID used when submitting blobs to the DA layer. When a DataNamespace is provided, only the header is sent to this namespace."`
-	DataNamespace     string          `mapstructure:"data_namespace" yaml:"data_namespace" comment:"Namespace ID for submitting data to DA layer. Use this to speed-up light clients."`
-	BlockTime         DurationWrapper `mapstructure:"block_time" yaml:"block_time" comment:"Average block time of the DA chain (duration). Determines frequency of DA layer syncing, maximum backoff time for retries, and is multiplied by MempoolTTL to calculate transaction expiration. Examples: \"15s\", \"30s\", \"1m\", \"2m30s\", \"10m\"."`
-	MempoolTTL        uint64          `mapstructure:"mempool_ttl" yaml:"mempool_ttl" comment:"Number of DA blocks after which a transaction is considered expired and dropped from the mempool. Controls retry backoff timing."`
-	MaxSubmitAttempts int             `mapstructure:"max_submit_attempts" yaml:"max_submit_attempts" comment:"Maximum number of attempts to submit data to the DA layer before giving up. Higher values provide more resilience but can delay error reporting."`
-	RetrieveBatchSize int             `mapstructure:"retrieve_batch_size" yaml:"retrieve_batch_size" comment:"Number of IDs to request per DA Get call when retrieving blobs. Smaller batches lower per-request latency; larger batches reduce the number of RPC round trips."`
-	RequestTimeout    DurationWrapper `mapstructure:"request_timeout" yaml:"request_timeout" comment:"Per-request timeout applied to DA interactions. Larger values tolerate slower DA nodes at the cost of waiting longer before failing."`
+	Address                  string          `mapstructure:"address" yaml:"address" comment:"Address of the data availability layer service (host:port). This is the endpoint where Rollkit will connect to submit and retrieve data."`
+	AuthToken                string          `mapstructure:"auth_token" yaml:"auth_token" comment:"Authentication token for the data availability layer service. Required if the DA service needs authentication."`
+	SubmitOptions            string          `mapstructure:"submit_options" yaml:"submit_options" comment:"Additional options passed to the DA layer when submitting data. Format depends on the specific DA implementation being used."`
+	SigningAddresses         []string        `mapstructure:"signing_addresses" yaml:"signing_addresses" comment:"List of addresses to use for DA submissions. When multiple addresses are provided, they will be used in round-robin fashion to prevent sequence mismatches. Useful for high-throughput chains."`
+	Namespace                string          `mapstructure:"namespace" yaml:"namespace" comment:"Namespace ID used when submitting blobs to the DA layer. When a DataNamespace is provided, only the header is sent to this namespace."`
+	DataNamespace            string          `mapstructure:"data_namespace" yaml:"data_namespace" comment:"Namespace ID for submitting data to DA layer. Use this to speed-up light clients."`
+	ForcedInclusionNamespace string          `mapstructure:"forced_inclusion_namespace" yaml:"forced_inclusion_namespace" comment:"Namespace ID for forced inclusion transactions on the DA layer."`
+	BlockTime                DurationWrapper `mapstructure:"block_time" yaml:"block_time" comment:"Average block time of the DA chain (duration). Determines frequency of DA layer syncing, maximum backoff time for retries, and is multiplied by MempoolTTL to calculate transaction expiration. Examples: \"15s\", \"30s\", \"1m\", \"2m30s\", \"10m\"."`
+	MempoolTTL               uint64          `mapstructure:"mempool_ttl" yaml:"mempool_ttl" comment:"Number of DA blocks after which a transaction is considered expired and dropped from the mempool. Controls retry backoff timing."`
+	MaxSubmitAttempts        int             `mapstructure:"max_submit_attempts" yaml:"max_submit_attempts" comment:"Maximum number of attempts to submit data to the DA layer before giving up. Higher values provide more resilience but can delay error reporting."`
+	RequestTimeout           DurationWrapper `mapstructure:"request_timeout" yaml:"request_timeout" comment:"Per-request timeout applied to DA interactions. Larger values tolerate slower DA nodes at the cost of waiting longer before failing."`
 }
 
 // GetNamespace returns the namespace for header submissions.
@@ -208,17 +212,24 @@ func (d *DAConfig) GetDataNamespace() string {
 	return d.GetNamespace()
 }
 
+// GetForcedInclusionNamespace returns the namespace for forced inclusion transactions
+func (d *DAConfig) GetForcedInclusionNamespace() string {
+	return d.ForcedInclusionNamespace
+}
+
 // NodeConfig contains all Rollkit specific configuration parameters
 type NodeConfig struct {
 	// Node mode configuration
-	Aggregator bool `yaml:"aggregator" comment:"Run node in aggregator mode"`
-	Light      bool `yaml:"light" comment:"Run node in light mode"`
+	Aggregator     bool `yaml:"aggregator" comment:"Run node in aggregator mode"`
+	BasedSequencer bool `yaml:"based_sequencer" comment:"Run node with based sequencer (fetches transactions only from DA forced inclusion namespace). Requires aggregator mode to be enabled."`
+	Light          bool `yaml:"light" comment:"Run node in light mode"`
 
 	// Block management configuration
 	BlockTime                DurationWrapper `mapstructure:"block_time" yaml:"block_time" comment:"Block time (duration). Examples: \"500ms\", \"1s\", \"5s\", \"1m\", \"2m30s\", \"10m\"."`
 	MaxPendingHeadersAndData uint64          `mapstructure:"max_pending_headers_and_data" yaml:"max_pending_headers_and_data" comment:"Maximum number of headers or data pending DA submission. When this limit is reached, the aggregator pauses block production until some headers or data are confirmed. Use 0 for no limit."`
 	LazyMode                 bool            `mapstructure:"lazy_mode" yaml:"lazy_mode" comment:"Enables lazy aggregation mode, where blocks are only produced when transactions are available or after LazyBlockTime. Optimizes resources by avoiding empty block creation during periods of inactivity."`
 	LazyBlockInterval        DurationWrapper `mapstructure:"lazy_block_interval" yaml:"lazy_block_interval" comment:"Maximum interval between blocks in lazy aggregation mode (LazyAggregator). Ensures blocks are produced periodically even without transactions to keep the chain active. Generally larger than BlockTime."`
+	ScrapeInterval           DurationWrapper `mapstructure:"scrape_interval" yaml:"scrape_interval" comment:"Interval at which the reaper polls the execution layer for new transactions. Lower values reduce transaction detection latency but increase RPC load. Examples: \"250ms\", \"500ms\", \"1s\"."`
 
 	// Readiness / health configuration
 	ReadinessWindowSeconds   uint64 `mapstructure:"readiness_window_seconds" yaml:"readiness_window_seconds" comment:"Time window in seconds used to calculate ReadinessMaxBlocksBehind based on block time. Default: 15 seconds."`
@@ -235,9 +246,9 @@ type LogConfig struct {
 // P2PConfig contains all peer-to-peer networking configuration parameters
 type P2PConfig struct {
 	ListenAddress string `mapstructure:"listen_address" yaml:"listen_address" comment:"Address to listen for incoming connections (host:port)"`
-	Peers         string `mapstructure:"peers" yaml:"peers" comment:"Comma separated list of peers to connect to"`
-	BlockedPeers  string `mapstructure:"blocked_peers" yaml:"blocked_peers" comment:"Comma separated list of peer IDs to block from connecting"`
-	AllowedPeers  string `mapstructure:"allowed_peers" yaml:"allowed_peers" comment:"Comma separated list of peer IDs to allow connections from"`
+	Peers         string `mapstructure:"peers" yaml:"peers" comment:"Comma-separated list of peers to connect to"`
+	BlockedPeers  string `mapstructure:"blocked_peers" yaml:"blocked_peers" comment:"Comma-separated list of peer IDs to block from connecting"`
+	AllowedPeers  string `mapstructure:"allowed_peers" yaml:"allowed_peers" comment:"Comma-separated list of peer IDs to allow connections from"`
 }
 
 // SignerConfig contains all signer configuration parameters
@@ -303,6 +314,11 @@ func (c *Config) Validate() error {
 		return fmt.Errorf("could not create directory %q: %w", fullDir, err)
 	}
 
+	// Validate based sequencer requires aggregator mode
+	if c.Node.BasedSequencer && !c.Node.Aggregator {
+		return fmt.Errorf("based sequencer mode requires aggregator mode to be enabled")
+	}
+
 	// Validate namespaces
 	if err := validateNamespace(c.DA.GetNamespace()); err != nil {
 		return fmt.Errorf("could not validate namespace (%s): %w", c.DA.GetNamespace(), err)
@@ -312,6 +328,14 @@ func (c *Config) Validate() error {
 		if err := validateNamespace(c.DA.GetDataNamespace()); err != nil {
 			return fmt.Errorf("could not validate data namespace (%s): %w", c.DA.GetDataNamespace(), err)
 		}
+	}
+
+	if len(c.DA.GetForcedInclusionNamespace()) > 0 {
+		// if err := validateNamespace(c.DA.GetForcedInclusionNamespace()); err != nil {
+		// 	return fmt.Errorf("could not validate forced inclusion namespace (%s): %w", c.DA.GetForcedInclusionNamespace(), err)
+		// }
+		return fmt.Errorf("forced inclusion is not yet live")
+
 	}
 
 	// Validate lazy mode configuration
@@ -330,7 +354,7 @@ func validateNamespace(namespace string) error {
 		return fmt.Errorf("namespace cannot be empty")
 	}
 
-	ns := da.NamespaceFromString(namespace)
+	ns := datypes.NamespaceFromString(namespace)
 	if _, err := share.NewNamespaceFromBytes(ns.Bytes()); err != nil {
 		return fmt.Errorf("could not validate namespace (%s): %w", namespace, err)
 	}
@@ -372,14 +396,16 @@ func AddFlags(cmd *cobra.Command) {
 	cmd.Flags().Bool(FlagClearCache, def.ClearCache, "clear the cache")
 
 	// Node configuration flags
-	cmd.Flags().Bool(FlagAggregator, def.Node.Aggregator, "run node in aggregator mode")
-	cmd.Flags().Bool(FlagLight, def.Node.Light, "run light client")
+	cmd.Flags().Bool(FlagAggregator, def.Node.Aggregator, "run node as an aggregator")
+	cmd.Flags().Bool(FlagBasedSequencer, def.Node.BasedSequencer, "run node with based sequencer (requires aggregator mode)")
+	cmd.Flags().Bool(FlagLight, def.Node.Light, "run node in light mode")
 	cmd.Flags().Duration(FlagBlockTime, def.Node.BlockTime.Duration, "block time (for aggregator mode)")
 	cmd.Flags().Bool(FlagLazyAggregator, def.Node.LazyMode, "produce blocks only when transactions are available or after lazy block time")
 	cmd.Flags().Uint64(FlagMaxPendingHeadersAndData, def.Node.MaxPendingHeadersAndData, "maximum headers or data pending DA confirmation before pausing block production (0 for no limit)")
 	cmd.Flags().Duration(FlagLazyBlockTime, def.Node.LazyBlockInterval.Duration, "maximum interval between blocks in lazy aggregation mode")
 	cmd.Flags().Uint64(FlagReadinessWindowSeconds, def.Node.ReadinessWindowSeconds, "time window in seconds for calculating readiness threshold based on block time (default: 15s)")
 	cmd.Flags().Uint64(FlagReadinessMaxBlocksBehind, def.Node.ReadinessMaxBlocksBehind, "how many blocks behind best-known head the node can be and still be considered ready (0 = must be at head)")
+	cmd.Flags().Duration(FlagScrapeInterval, def.Node.ScrapeInterval.Duration, "interval at which the reaper polls the execution layer for new transactions")
 
 	// Data Availability configuration flags
 	cmd.Flags().String(FlagDAAddress, def.DA.Address, "DA address (host:port)")
@@ -387,11 +413,11 @@ func AddFlags(cmd *cobra.Command) {
 	cmd.Flags().Duration(FlagDABlockTime, def.DA.BlockTime.Duration, "DA chain block time (for syncing)")
 	cmd.Flags().String(FlagDANamespace, def.DA.Namespace, "DA namespace for header (or blob) submissions")
 	cmd.Flags().String(FlagDADataNamespace, def.DA.DataNamespace, "DA namespace for data submissions")
+	cmd.Flags().String(FlagDAForcedInclusionNamespace, def.DA.ForcedInclusionNamespace, "DA namespace for forced inclusion transactions")
 	cmd.Flags().String(FlagDASubmitOptions, def.DA.SubmitOptions, "DA submit options")
 	cmd.Flags().StringSlice(FlagDASigningAddresses, def.DA.SigningAddresses, "Comma-separated list of addresses for DA submissions (used in round-robin)")
 	cmd.Flags().Uint64(FlagDAMempoolTTL, def.DA.MempoolTTL, "number of DA blocks until transaction is dropped from the mempool")
 	cmd.Flags().Int(FlagDAMaxSubmitAttempts, def.DA.MaxSubmitAttempts, "maximum number of attempts to submit data to the DA layer before giving up")
-	cmd.Flags().Int(FlagDARetrieveBatchSize, def.DA.RetrieveBatchSize, "number of IDs to request per DA Get call when retrieving blobs")
 	cmd.Flags().Duration(FlagDARequestTimeout, def.DA.RequestTimeout.Duration, "per-request timeout when interacting with the DA layer")
 
 	// P2P configuration flags
@@ -416,6 +442,9 @@ func AddFlags(cmd *cobra.Command) {
 	cmd.Flags().String(FlagSignerType, def.Signer.SignerType, "type of signer to use (file, grpc)")
 	cmd.Flags().String(FlagSignerPath, def.Signer.SignerPath, "path to the signer file or address")
 	cmd.Flags().String(FlagSignerPassphraseFile, "", "path to file containing the signer passphrase (required for file signer and if aggregator is enabled)")
+
+	// flag constraints
+	cmd.MarkFlagsMutuallyExclusive(FlagLight, FlagAggregator)
 
 	// Raft configuration flags
 	cmd.Flags().Bool(FlagRaftEnable, def.Raft.Enable, "enable Raft consensus for leader election and state replication")

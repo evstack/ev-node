@@ -12,7 +12,7 @@ import (
 	"github.com/evstack/ev-node/block/internal/cache"
 	"github.com/evstack/ev-node/block/internal/common"
 	"github.com/evstack/ev-node/block/internal/da"
-	coreda "github.com/evstack/ev-node/core/da"
+	datypes "github.com/evstack/ev-node/pkg/da/types"
 	"github.com/evstack/ev-node/pkg/genesis"
 	"github.com/evstack/ev-node/types"
 	pb "github.com/evstack/ev-node/types/pb/evnode/v1"
@@ -34,6 +34,10 @@ type daRetriever struct {
 	// on restart, will be refetch as da height is updated by syncer
 	pendingHeaders map[uint64]*types.SignedHeader
 	pendingData    map[uint64]*types.Data
+
+	// strictMode indicates if the node has seen a valid DAHeaderEnvelope
+	// and should now reject all legacy/unsigned headers.
+	strictMode bool
 }
 
 // NewDARetriever creates a new DA retriever
@@ -50,6 +54,7 @@ func NewDARetriever(
 		logger:         logger.With().Str("component", "da_retriever").Logger(),
 		pendingHeaders: make(map[uint64]*types.SignedHeader),
 		pendingData:    make(map[uint64]*types.Data),
+		strictMode:     false,
 	}
 }
 
@@ -71,45 +76,45 @@ func (r *daRetriever) RetrieveFromDA(ctx context.Context, daHeight uint64) ([]co
 }
 
 // fetchBlobs retrieves blobs from both header and data namespaces
-func (r *daRetriever) fetchBlobs(ctx context.Context, daHeight uint64) (coreda.ResultRetrieve, error) {
+func (r *daRetriever) fetchBlobs(ctx context.Context, daHeight uint64) (datypes.ResultRetrieve, error) {
 	// Retrieve from both namespaces using the DA client
-	headerRes := r.client.RetrieveHeaders(ctx, daHeight)
+	headerRes := r.client.Retrieve(ctx, daHeight, r.client.GetHeaderNamespace())
 
 	// If namespaces are the same, return header result
 	if bytes.Equal(r.client.GetHeaderNamespace(), r.client.GetDataNamespace()) {
 		return headerRes, r.validateBlobResponse(headerRes, daHeight)
 	}
 
-	dataRes := r.client.RetrieveData(ctx, daHeight)
+	dataRes := r.client.Retrieve(ctx, daHeight, r.client.GetDataNamespace())
 
 	// Validate responses
 	headerErr := r.validateBlobResponse(headerRes, daHeight)
 	// ignoring error not found, as data can have data
-	if headerErr != nil && !errors.Is(headerErr, coreda.ErrBlobNotFound) {
+	if headerErr != nil && !errors.Is(headerErr, datypes.ErrBlobNotFound) {
 		return headerRes, headerErr
 	}
 
 	dataErr := r.validateBlobResponse(dataRes, daHeight)
 	// ignoring error not found, as header can have data
-	if dataErr != nil && !errors.Is(dataErr, coreda.ErrBlobNotFound) {
+	if dataErr != nil && !errors.Is(dataErr, datypes.ErrBlobNotFound) {
 		return dataRes, dataErr
 	}
 
 	// Combine successful results
-	combinedResult := coreda.ResultRetrieve{
-		BaseResult: coreda.BaseResult{
-			Code:   coreda.StatusSuccess,
+	combinedResult := datypes.ResultRetrieve{
+		BaseResult: datypes.BaseResult{
+			Code:   datypes.StatusSuccess,
 			Height: daHeight,
 		},
 		Data: make([][]byte, 0),
 	}
 
-	if headerRes.Code == coreda.StatusSuccess {
+	if headerRes.Code == datypes.StatusSuccess {
 		combinedResult.Data = append(combinedResult.Data, headerRes.Data...)
 		combinedResult.IDs = append(combinedResult.IDs, headerRes.IDs...)
 	}
 
-	if dataRes.Code == coreda.StatusSuccess {
+	if dataRes.Code == datypes.StatusSuccess {
 		combinedResult.Data = append(combinedResult.Data, dataRes.Data...)
 		combinedResult.IDs = append(combinedResult.IDs, dataRes.IDs...)
 	}
@@ -117,9 +122,9 @@ func (r *daRetriever) fetchBlobs(ctx context.Context, daHeight uint64) (coreda.R
 	// Re-throw error not found if both were not found.
 	if len(combinedResult.Data) == 0 && len(combinedResult.IDs) == 0 {
 		r.logger.Debug().Uint64("da_height", daHeight).Msg("no blob data found")
-		combinedResult.Code = coreda.StatusNotFound
-		combinedResult.Message = coreda.ErrBlobNotFound.Error()
-		return combinedResult, coreda.ErrBlobNotFound
+		combinedResult.Code = datypes.StatusNotFound
+		combinedResult.Message = datypes.ErrBlobNotFound.Error()
+		return combinedResult, datypes.ErrBlobNotFound
 	}
 
 	return combinedResult, nil
@@ -127,15 +132,15 @@ func (r *daRetriever) fetchBlobs(ctx context.Context, daHeight uint64) (coreda.R
 
 // validateBlobResponse validates a blob response from DA layer
 // those are the only error code returned by da.RetrieveWithHelpers
-func (r *daRetriever) validateBlobResponse(res coreda.ResultRetrieve, daHeight uint64) error {
+func (r *daRetriever) validateBlobResponse(res datypes.ResultRetrieve, daHeight uint64) error {
 	switch res.Code {
-	case coreda.StatusError:
+	case datypes.StatusError:
 		return fmt.Errorf("DA retrieval failed: %s", res.Message)
-	case coreda.StatusHeightFromFuture:
-		return fmt.Errorf("%w: height from future", coreda.ErrHeightFromFuture)
-	case coreda.StatusNotFound:
-		return fmt.Errorf("%w: blob not found", coreda.ErrBlobNotFound)
-	case coreda.StatusSuccess:
+	case datypes.StatusHeightFromFuture:
+		return fmt.Errorf("%w: height from future", datypes.ErrHeightFromFuture)
+	case datypes.StatusNotFound:
+		return fmt.Errorf("%w: blob not found", datypes.ErrBlobNotFound)
+	case datypes.StatusSuccess:
 		r.logger.Debug().Uint64("da_height", daHeight).Msg("successfully retrieved from DA")
 		return nil
 	default:
@@ -228,15 +233,58 @@ func (r *daRetriever) processBlobs(ctx context.Context, blobs [][]byte, daHeight
 // tryDecodeHeader attempts to decode a blob as a header
 func (r *daRetriever) tryDecodeHeader(bz []byte, daHeight uint64) *types.SignedHeader {
 	header := new(types.SignedHeader)
-	var headerPb pb.SignedHeader
 
-	if err := proto.Unmarshal(bz, &headerPb); err != nil {
+	isValidEnvelope := false
+
+	// Attempt to unmarshal as DAHeaderEnvelope and get the envelope signature
+	if envelopeSignature, err := header.UnmarshalDAEnvelope(bz); err != nil {
+		// If in strict mode, we REQUIRE an envelope.
+		if r.strictMode {
+			r.logger.Warn().Err(err).Msg("strict mode is enabled, rejecting non-envelope blob")
+			return nil
+		}
+
+		// Fallback for backward compatibility (only if NOT in strict mode)
+		r.logger.Debug().Msg("trying legacy decoding")
+		var headerPb pb.SignedHeader
+		if errLegacy := proto.Unmarshal(bz, &headerPb); errLegacy != nil {
+			return nil
+		}
+		if errLegacy := header.FromProto(&headerPb); errLegacy != nil {
+			return nil
+		}
+	} else {
+		// We have a structurally valid envelope (or at least it parsed)
+		if len(envelopeSignature) > 0 {
+			if header.Signer.PubKey == nil {
+				r.logger.Debug().Msg("header signer has no pubkey, cannot verify envelope")
+				return nil
+			}
+			payload, err := header.MarshalBinary()
+			if err != nil {
+				r.logger.Debug().Err(err).Msg("failed to marshal header for verification")
+				return nil
+			}
+			if valid, err := header.Signer.PubKey.Verify(payload, envelopeSignature); err != nil || !valid {
+				r.logger.Info().Err(err).Msg("DA envelope signature verification failed")
+				return nil
+			}
+			r.logger.Debug().Uint64("height", header.Height()).Msg("DA envelope signature verified")
+			isValidEnvelope = true
+		}
+	}
+	if r.strictMode && !isValidEnvelope {
+		r.logger.Warn().Msg("strict mode: rejecting block that is not a fully valid envelope")
 		return nil
 	}
-
-	if err := header.FromProto(&headerPb); err != nil {
-		return nil
+	// Mode Switch Logic
+	if isValidEnvelope && !r.strictMode {
+		r.logger.Info().Uint64("height", header.Height()).Msg("valid DA envelope detected, switching to STRICT MODE")
+		r.strictMode = true
 	}
+
+	// Legacy blob support implies: strictMode == false AND (!isValidEnvelope).
+	// We fall through here.
 
 	// Basic validation
 	if err := header.Header.ValidateBasic(); err != nil {
@@ -319,7 +367,7 @@ func createEmptyDataForHeader(ctx context.Context, header *types.SignedHeader) *
 			ChainID:      header.ChainID(),
 			Height:       header.Height(),
 			Time:         header.BaseHeader.Time,
-			LastDataHash: nil, // LastDataHash must be filled in the syncer, as it is not available here, block n-1 has not been processed yet.
+			LastDataHash: nil, // LastDataHash must be filled in the syncer, as it is not available here since block n-1 has not been processed yet.
 		},
 	}
 }

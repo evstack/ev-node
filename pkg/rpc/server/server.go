@@ -13,7 +13,7 @@ import (
 	"connectrpc.com/connect"
 	"connectrpc.com/grpcreflect"
 	goheader "github.com/celestiaorg/go-header"
-	coreda "github.com/evstack/ev-node/core/da"
+	datypes "github.com/evstack/ev-node/pkg/da/types"
 	ds "github.com/ipfs/go-datastore"
 	"github.com/rs/zerolog"
 	"golang.org/x/net/http2"
@@ -286,8 +286,8 @@ func (cs *ConfigServer) GetNamespace(
 	req *connect.Request[emptypb.Empty],
 ) (*connect.Response[pb.GetNamespaceResponse], error) {
 
-	hns := coreda.NamespaceFromString(cs.config.DA.GetNamespace())
-	dns := coreda.NamespaceFromString(cs.config.DA.GetDataNamespace())
+	hns := datypes.NamespaceFromString(cs.config.DA.GetNamespace())
+	dns := datypes.NamespaceFromString(cs.config.DA.GetDataNamespace())
 
 	return connect.NewResponse(&pb.GetNamespaceResponse{
 		HeaderNamespace: hns.HexString(),

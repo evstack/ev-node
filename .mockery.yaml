@@ -2,15 +2,6 @@ template: testify
 template-data:
   unroll-variadic: true
 packages:
-  github.com/evstack/ev-node/core/da:
-    interfaces:
-      DA:
-        config:
-          pkgname: mocks
-          filename: da.go
-        configs:
-          - dir: ./da/internal/mocks
-          - dir: ./test/mocks
   github.com/evstack/ev-node/core/execution:
     interfaces:
       Executor:
@@ -72,3 +63,27 @@ packages:
           dir: ./block/internal/common
           pkgname: common
           filename: broadcaster_mock.go
+  github.com/evstack/ev-node/block/internal/da:
+    interfaces:
+      Client:
+        config:
+          dir: ./test/mocks
+          pkgname: mocks
+          filename: da.go
+      Verifier:
+        config:
+          dir: ./test/mocks
+          pkgname: mocks
+          filename: da.go
+  github.com/evstack/ev-node/pkg/da/jsonrpc:
+    interfaces:
+      BlobModule:
+        config:
+          dir: ./pkg/da/jsonrpc/mocks
+          pkgname: mocks
+          filename: blob_module_mock.go
+      HeaderModule:
+        config:
+          dir: ./pkg/da/jsonrpc/mocks
+          pkgname: mocks
+          filename: header_module_mock.go

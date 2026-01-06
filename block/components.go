@@ -9,11 +9,11 @@ import (
 
 	"github.com/evstack/ev-node/block/internal/cache"
 	"github.com/evstack/ev-node/block/internal/common"
+	da "github.com/evstack/ev-node/block/internal/da"
 	"github.com/evstack/ev-node/block/internal/executing"
 	"github.com/evstack/ev-node/block/internal/reaping"
 	"github.com/evstack/ev-node/block/internal/submitting"
 	"github.com/evstack/ev-node/block/internal/syncing"
-	coreda "github.com/evstack/ev-node/core/da"
 	coreexecutor "github.com/evstack/ev-node/core/execution"
 	coresequencer "github.com/evstack/ev-node/core/sequencer"
 	"github.com/evstack/ev-node/pkg/config"
@@ -33,17 +33,6 @@ type Components struct {
 
 	// Error channel for critical failures that should stop the node
 	errorCh chan error
-}
-
-// GetLastState returns the current blockchain state
-func (bc *Components) GetLastState() types.State {
-	if bc.Executor != nil {
-		return bc.Executor.GetLastState()
-	}
-	if bc.Syncer != nil {
-		return bc.Syncer.GetLastState()
-	}
-	return types.State{}
 }
 
 // Start starts all components and monitors for critical errors.
@@ -136,7 +125,7 @@ func NewSyncComponents(
 	genesis genesis.Genesis,
 	store store.Store,
 	exec coreexecutor.Executor,
-	da coreda.DA,
+	daClient da.Client,
 	headerStore common.Broadcaster[*types.SignedHeader],
 	dataStore common.Broadcaster[*types.Data],
 	logger zerolog.Logger,
@@ -148,8 +137,6 @@ func NewSyncComponents(
 	if err != nil {
 		return nil, fmt.Errorf("failed to create cache manager: %w", err)
 	}
-
-	daClient := NewDAClient(da, config, logger)
 
 	// error channel for critical failures
 	errorCh := make(chan error, 1)
@@ -180,6 +167,7 @@ func NewSyncComponents(
 		config,
 		genesis,
 		daSubmitter,
+		nil, // No sequencer for sync nodes
 		nil, // No signer for sync nodes
 		logger,
 		errorCh,
@@ -202,7 +190,7 @@ func NewAggregatorComponents(
 	store store.Store,
 	exec coreexecutor.Executor,
 	sequencer coresequencer.Sequencer,
-	da coreda.DA,
+	daClient da.Client,
 	signer signer.Signer,
 	headerBroadcaster common.Broadcaster[*types.SignedHeader],
 	dataBroadcaster common.Broadcaster[*types.Data],
@@ -246,14 +234,21 @@ func NewAggregatorComponents(
 		logger,
 		executor,
 		cacheManager,
-		reaping.DefaultInterval,
+		config.Node.ScrapeInterval.Duration,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create reaper: %w", err)
 	}
 
-	// Create DA client and submitter for aggregator nodes (with signer for submission)
-	daClient := NewDAClient(da, config, logger)
+	if config.Node.BasedSequencer { // no submissions needed for bases sequencer
+		return &Components{
+			Executor: executor,
+			Reaper:   reaper,
+			Cache:    cacheManager,
+			errorCh:  errorCh,
+		}, nil
+	}
+
 	daSubmitter := submitting.NewDASubmitter(daClient, config, genesis, blockOpts, metrics, logger)
 	submitter := submitting.NewSubmitter(
 		store,
@@ -263,6 +258,7 @@ func NewAggregatorComponents(
 		config,
 		genesis,
 		daSubmitter,
+		sequencer,
 		signer, // Signer for aggregator nodes to submit to DA
 		logger,
 		errorCh,

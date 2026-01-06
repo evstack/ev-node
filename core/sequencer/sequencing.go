@@ -7,15 +7,15 @@ import (
 	"time"
 )
 
-// Sequencer is a generic interface for a sequencer
+// Sequencer defines the minimal sequencing interface used by the block executor.
 type Sequencer interface {
-	// SubmitBatchTxs submits a batch of transactions to the sequencer
+	// SubmitBatchTxs submits a batch of transactions from executor to sequencer
 	// Id is the unique identifier for the target chain
 	// Batch is the batch of transactions to submit
 	// returns an error if any from the sequencer
 	SubmitBatchTxs(ctx context.Context, req SubmitBatchTxsRequest) (*SubmitBatchTxsResponse, error)
 
-	// GetNextBatch returns the next batch of transactions from sequencer to
+	// GetNextBatch returns the next batch of transactions from sequencer and from DA to
 	// Id is the unique identifier for the target chain
 	// LastBatchHash is the cryptographic hash of the last batch received by the
 	// MaxBytes is the maximum number of bytes to return in the batch
@@ -27,11 +27,24 @@ type Sequencer interface {
 	// BatchHash is the cryptographic hash of the batch to verify
 	// returns a boolean indicating if the batch is valid and an error if any from the sequencer
 	VerifyBatch(ctx context.Context, req VerifyBatchRequest) (*VerifyBatchResponse, error)
+
+	// SetDAHeight sets the current DA height for the sequencer
+	// This allows the sequencer to track DA height for forced inclusion retrieval
+	SetDAHeight(height uint64)
+
+	// GetDAHeight returns the current DA height for the sequencer
+	GetDAHeight() uint64
 }
 
 // Batch is a collection of transactions
 type Batch struct {
 	Transactions [][]byte
+	// ForceIncludedMask indicates which transactions are force-included from DA
+	// If nil, all transactions should be validated (backward compatibility)
+	// If set, ForceIncludedMask[i] == true means Transactions[i] is force-included from DA
+	// and MUST be validated (untrusted source). ForceIncludedMask[i] == false means the
+	// transaction is from mempool and can skip validation (already validated on submission)
+	ForceIncludedMask []bool
 }
 
 // Hash returns the cryptographic hash of the batch

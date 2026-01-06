@@ -15,9 +15,9 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 
-	coreda "github.com/evstack/ev-node/core/da"
 	coresequencer "github.com/evstack/ev-node/core/sequencer"
 	"github.com/evstack/ev-node/pkg/config"
+	datypes "github.com/evstack/ev-node/pkg/da/types"
 	"github.com/evstack/ev-node/pkg/genesis"
 	"github.com/evstack/ev-node/pkg/signer/noop"
 	"github.com/evstack/ev-node/pkg/store"
@@ -52,18 +52,6 @@ func TestBlockComponents_ExecutionClientFailure_StopsNode(t *testing.T) {
 	assert.Contains(t, err.Error(), "execution client connection lost")
 }
 
-func TestBlockComponents_GetLastState(t *testing.T) {
-	// Test that GetLastState works correctly for different component types
-
-	t.Run("Empty state", func(t *testing.T) {
-		// When neither is present, return empty state
-		bc := &Components{}
-
-		result := bc.GetLastState()
-		assert.Equal(t, uint64(0), result.LastBlockHeight)
-	})
-}
-
 func TestBlockComponents_StartStop_Lifecycle(t *testing.T) {
 	// Simple lifecycle test without creating full components
 	bc := &Components{
@@ -92,7 +80,11 @@ func TestNewSyncComponents_Creation(t *testing.T) {
 	}
 
 	mockExec := testmocks.NewMockExecutor(t)
-	dummyDA := coreda.NewDummyDA(10_000_000, 10*time.Millisecond)
+	daClient := testmocks.NewMockClient(t)
+	daClient.On("GetHeaderNamespace").Return(datypes.NamespaceFromString("ns").Bytes()).Maybe()
+	daClient.On("GetDataNamespace").Return(datypes.NamespaceFromString("data-ns").Bytes()).Maybe()
+	daClient.On("GetForcedInclusionNamespace").Return([]byte(nil)).Maybe()
+	daClient.On("HasForcedInclusionNamespace").Return(false).Maybe()
 
 	// Just test that the constructor doesn't panic - don't start the components
 	// to avoid P2P store dependencies
@@ -101,7 +93,7 @@ func TestNewSyncComponents_Creation(t *testing.T) {
 		gen,
 		memStore,
 		mockExec,
-		dummyDA,
+		daClient,
 		nil,
 		nil,
 		zerolog.Nop(),
@@ -144,7 +136,11 @@ func TestNewAggregatorComponents_Creation(t *testing.T) {
 
 	mockExec := testmocks.NewMockExecutor(t)
 	mockSeq := testmocks.NewMockSequencer(t)
-	dummyDA := coreda.NewDummyDA(10_000_000, 10*time.Millisecond)
+	daClient := testmocks.NewMockClient(t)
+	daClient.On("GetHeaderNamespace").Return(datypes.NamespaceFromString("ns").Bytes()).Maybe()
+	daClient.On("GetDataNamespace").Return(datypes.NamespaceFromString("data-ns").Bytes()).Maybe()
+	daClient.On("GetForcedInclusionNamespace").Return([]byte(nil)).Maybe()
+	daClient.On("HasForcedInclusionNamespace").Return(false).Maybe()
 
 	components, err := NewAggregatorComponents(
 		cfg,
@@ -152,7 +148,7 @@ func TestNewAggregatorComponents_Creation(t *testing.T) {
 		memStore,
 		mockExec,
 		mockSeq,
-		dummyDA,
+		daClient,
 		mockSigner,
 		nil, // header broadcaster
 		nil, // data broadcaster
@@ -199,11 +195,18 @@ func TestExecutor_RealExecutionClientFailure_StopsNode(t *testing.T) {
 	// Create mock executor that will fail on ExecuteTxs
 	mockExec := testmocks.NewMockExecutor(t)
 	mockSeq := testmocks.NewMockSequencer(t)
-	dummyDA := coreda.NewDummyDA(10_000_000, 10*time.Millisecond)
+	daClient := testmocks.NewMockClient(t)
+	daClient.On("GetHeaderNamespace").Return(datypes.NamespaceFromString("ns").Bytes()).Maybe()
+	daClient.On("GetDataNamespace").Return(datypes.NamespaceFromString("data-ns").Bytes()).Maybe()
+	daClient.On("GetForcedInclusionNamespace").Return([]byte(nil)).Maybe()
+	daClient.On("HasForcedInclusionNamespace").Return(false).Maybe()
 
 	// Mock InitChain to succeed initially
 	mockExec.On("InitChain", mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 		Return([]byte("state-root"), uint64(1024), nil).Once()
+
+	// Mock SetDAHeight to be called during initialization
+	mockSeq.On("SetDAHeight", uint64(0)).Return().Once()
 
 	// Mock GetNextBatch to return empty batch
 	mockSeq.On("GetNextBatch", mock.Anything, mock.Anything).
@@ -228,7 +231,7 @@ func TestExecutor_RealExecutionClientFailure_StopsNode(t *testing.T) {
 		memStore,
 		mockExec,
 		mockSeq,
-		dummyDA,
+		daClient,
 		testSigner,
 		nil, // header broadcaster
 		nil, // data broadcaster

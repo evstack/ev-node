@@ -26,7 +26,6 @@ func TestDefaultConfig(t *testing.T) {
 	assert.Equal(t, "", def.DA.AuthToken)
 	assert.Equal(t, "", def.DA.SubmitOptions)
 	assert.NotEmpty(t, def.DA.Namespace)
-	assert.Equal(t, 100, def.DA.RetrieveBatchSize)
 	assert.Equal(t, 60*time.Second, def.DA.RequestTimeout.Duration)
 	assert.Equal(t, 1*time.Second, def.Node.BlockTime.Duration)
 	assert.Equal(t, 6*time.Second, def.DA.BlockTime.Duration)
@@ -52,9 +51,11 @@ func TestAddFlags(t *testing.T) {
 
 	// Test specific flags
 	assertFlagValue(t, flags, FlagDBPath, DefaultConfig().DBPath)
+	assertFlagValue(t, flags, FlagClearCache, DefaultConfig().ClearCache)
 
 	// Node flags
 	assertFlagValue(t, flags, FlagAggregator, DefaultConfig().Node.Aggregator)
+	assertFlagValue(t, flags, FlagBasedSequencer, DefaultConfig().Node.BasedSequencer)
 	assertFlagValue(t, flags, FlagLight, DefaultConfig().Node.Light)
 	assertFlagValue(t, flags, FlagBlockTime, DefaultConfig().Node.BlockTime.Duration)
 	assertFlagValue(t, flags, FlagLazyAggregator, DefaultConfig().Node.LazyMode)
@@ -62,17 +63,19 @@ func TestAddFlags(t *testing.T) {
 	assertFlagValue(t, flags, FlagLazyBlockTime, DefaultConfig().Node.LazyBlockInterval.Duration)
 	assertFlagValue(t, flags, FlagReadinessWindowSeconds, DefaultConfig().Node.ReadinessWindowSeconds)
 	assertFlagValue(t, flags, FlagReadinessMaxBlocksBehind, DefaultConfig().Node.ReadinessMaxBlocksBehind)
+	assertFlagValue(t, flags, FlagScrapeInterval, DefaultConfig().Node.ScrapeInterval)
 
 	// DA flags
 	assertFlagValue(t, flags, FlagDAAddress, DefaultConfig().DA.Address)
 	assertFlagValue(t, flags, FlagDAAuthToken, DefaultConfig().DA.AuthToken)
 	assertFlagValue(t, flags, FlagDABlockTime, DefaultConfig().DA.BlockTime.Duration)
 	assertFlagValue(t, flags, FlagDANamespace, DefaultConfig().DA.Namespace)
+	assertFlagValue(t, flags, FlagDADataNamespace, DefaultConfig().DA.DataNamespace)
+	assertFlagValue(t, flags, FlagDAForcedInclusionNamespace, DefaultConfig().DA.ForcedInclusionNamespace)
 	assertFlagValue(t, flags, FlagDASubmitOptions, DefaultConfig().DA.SubmitOptions)
 	assertFlagValue(t, flags, FlagDASigningAddresses, DefaultConfig().DA.SigningAddresses)
 	assertFlagValue(t, flags, FlagDAMempoolTTL, DefaultConfig().DA.MempoolTTL)
 	assertFlagValue(t, flags, FlagDAMaxSubmitAttempts, DefaultConfig().DA.MaxSubmitAttempts)
-	assertFlagValue(t, flags, FlagDARetrieveBatchSize, DefaultConfig().DA.RetrieveBatchSize)
 	assertFlagValue(t, flags, FlagDARequestTimeout, DefaultConfig().DA.RequestTimeout.Duration)
 
 	// P2P flags
@@ -93,6 +96,7 @@ func TestAddFlags(t *testing.T) {
 	assertFlagValue(t, persistentFlags, FlagLogLevel, DefaultConfig().Log.Level)
 	assertFlagValue(t, persistentFlags, FlagLogFormat, "text")
 	assertFlagValue(t, persistentFlags, FlagLogTrace, false)
+	assertFlagValue(t, persistentFlags, FlagRootDir, DefaultRootDirWithName("test"))
 
 	// Signer flags
 	assertFlagValue(t, flags, FlagSignerPassphraseFile, "")
@@ -101,9 +105,10 @@ func TestAddFlags(t *testing.T) {
 
 	// RPC flags
 	assertFlagValue(t, flags, FlagRPCAddress, DefaultConfig().RPC.Address)
+	assertFlagValue(t, flags, FlagRPCEnableDAVisualization, DefaultConfig().RPC.EnableDAVisualization)
 
 	// Count the number of flags we're explicitly checking
-	expectedFlagCount := 48 // Update this number if you add more flag checks above
+	expectedFlagCount := 54 // Update this number if you add more flag checks above
 
 	// Get the actual number of flags (both regular and persistent)
 	actualFlagCount := 0
@@ -442,5 +447,59 @@ func assertFlagValue(t *testing.T, flags *pflag.FlagSet, name string, expectedVa
 		default:
 			assert.Equal(t, fmt.Sprintf("%v", v), flag.DefValue, "Flag %s should have default value %v", name, v)
 		}
+	}
+}
+
+func TestBasedSequencerValidation(t *testing.T) {
+	tests := []struct {
+		name        string
+		aggregator  bool
+		basedSeq    bool
+		expectError bool
+		errorMsg    string
+	}{
+		{
+			name:        "based sequencer without aggregator should fail",
+			aggregator:  false,
+			basedSeq:    true,
+			expectError: true,
+			errorMsg:    "based sequencer mode requires aggregator mode to be enabled",
+		},
+		{
+			name:        "based sequencer with aggregator should pass",
+			aggregator:  true,
+			basedSeq:    true,
+			expectError: false,
+		},
+		{
+			name:        "aggregator without based sequencer should pass",
+			aggregator:  true,
+			basedSeq:    false,
+			expectError: false,
+		},
+		{
+			name:        "neither aggregator nor based sequencer should pass",
+			aggregator:  false,
+			basedSeq:    false,
+			expectError: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := DefaultConfig()
+			cfg.RootDir = t.TempDir()
+			cfg.Node.Aggregator = tt.aggregator
+			cfg.Node.BasedSequencer = tt.basedSeq
+
+			err := cfg.Validate()
+
+			if tt.expectError {
+				require.Error(t, err)
+				assert.Contains(t, err.Error(), tt.errorMsg)
+			} else {
+				require.NoError(t, err)
+			}
+		})
 	}
 }

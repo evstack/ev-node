@@ -1,8 +1,8 @@
 syntax = "proto3";
 package evnode.v1;
 
-import "google/protobuf/timestamp.proto";
 import "evnode/v1/evnode.proto";
+import "google/protobuf/timestamp.proto";
 
 option go_package = "github.com/evstack/ev-node/types/pb/evnode/v1";
 
@@ -18,4 +18,12 @@ message State {
   bytes last_header_hash = 9;
 
   reserved 7;
+}
+
+// SequencerDACheckpoint tracks the position in the DA where transactions were last processed
+message SequencerDACheckpoint {
+  // DA block height being processed
+  uint64 da_height = 1;
+  // Index of the next transaction to process within the DA block's forced inclusion batch
+  uint64 tx_index = 2;
 }

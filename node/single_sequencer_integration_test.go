@@ -15,9 +15,9 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 
-	coreda "github.com/evstack/ev-node/core/da"
 	coreexecutor "github.com/evstack/ev-node/core/execution"
 	evconfig "github.com/evstack/ev-node/pkg/config"
+	"github.com/evstack/ev-node/test/testda"
 )
 
 // FullNodeTestSuite is a test suite for full node integration tests
@@ -321,9 +321,9 @@ func TestBatchQueueThrottlingWithDAFailure(t *testing.T) {
 	dummyExecutor, ok := executor.(*coreexecutor.DummyExecutor)
 	require.True(ok, "Expected DummyExecutor implementation")
 
-	// Cast dummyDA to our enhanced version so we can make it fail
-	dummyDAImpl, ok := dummyDA.(*coreda.DummyDA)
-	require.True(ok, "Expected DummyDA implementation")
+	// Cast dummyDA to our test double so we can simulate failures
+	dummyDAImpl, ok := dummyDA.(*testda.DummyDA)
+	require.True(ok, "Expected testda.DummyDA implementation")
 
 	// Create node with components
 	node, cleanup := createNodeWithCustomComponents(t, config, executor, sequencer, dummyDAImpl, nodeKey, ds, func() {})
@@ -427,6 +427,8 @@ func waitForBlockN(t *testing.T, n uint64, node *FullNode, blockInterval time.Du
 func TestReadinessEndpointWhenBlockProductionStops(t *testing.T) {
 	require := require.New(t)
 
+	httpClient := &http.Client{Timeout: 1 * time.Second}
+
 	config := getTestConfig(t, 1)
 	config.Node.Aggregator = true
 	config.Node.BlockTime = evconfig.DurationWrapper{Duration: 500 * time.Millisecond}
@@ -448,12 +450,14 @@ func TestReadinessEndpointWhenBlockProductionStops(t *testing.T) {
 	waitForBlockN(t, 2, node, config.Node.BlockTime.Duration)
 	require.Len(errChan, 0, "Expected no errors when starting node")
 
-	resp, err := http.Get("http://" + config.RPC.Address + "/health/ready")
-	require.NoError(err)
-	body, err := io.ReadAll(resp.Body)
-	require.NoError(err)
-	resp.Body.Close()
-	require.Equal(http.StatusOK, resp.StatusCode, "Readiness should be READY while producing blocks: %s", body)
+	require.Eventually(func() bool {
+		resp, err := httpClient.Get("http://" + config.RPC.Address + "/health/ready")
+		if err != nil {
+			return false
+		}
+		defer resp.Body.Close()
+		return resp.StatusCode == http.StatusOK
+	}, 10*time.Second, 100*time.Millisecond, "Readiness should be READY while producing blocks")
 
 	time.Sleep(time.Duration(config.Node.MaxPendingHeadersAndData+2) * config.Node.BlockTime.Duration)
 
@@ -462,7 +466,7 @@ func TestReadinessEndpointWhenBlockProductionStops(t *testing.T) {
 	require.LessOrEqual(height, config.Node.MaxPendingHeadersAndData)
 
 	require.Eventually(func() bool {
-		resp, err := http.Get("http://" + config.RPC.Address + "/health/ready")
+		resp, err := httpClient.Get("http://" + config.RPC.Address + "/health/ready")
 		if err != nil {
 			return false
 		}

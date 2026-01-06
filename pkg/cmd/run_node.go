@@ -16,18 +16,17 @@ import (
 	"github.com/rs/zerolog"
 	"github.com/spf13/cobra"
 
-	coreda "github.com/evstack/ev-node/core/da"
+	"github.com/evstack/ev-node/block"
 	coreexecutor "github.com/evstack/ev-node/core/execution"
 	coresequencer "github.com/evstack/ev-node/core/sequencer"
 	"github.com/evstack/ev-node/node"
 	rollconf "github.com/evstack/ev-node/pkg/config"
+	blobrpc "github.com/evstack/ev-node/pkg/da/jsonrpc"
 	genesispkg "github.com/evstack/ev-node/pkg/genesis"
 	"github.com/evstack/ev-node/pkg/p2p/key"
 	"github.com/evstack/ev-node/pkg/signer"
 	"github.com/evstack/ev-node/pkg/signer/file"
 )
-
-const DefaultMaxBlobSize = 2 * 1024 * 1024 // 2MB
 
 // ParseConfig is an helpers that loads the node configuration and validates it.
 func ParseConfig(cmd *cobra.Command) (rollconf.Config, error) {
@@ -82,7 +81,6 @@ func StartNode(
 	cmd *cobra.Command,
 	executor coreexecutor.Executor,
 	sequencer coresequencer.Sequencer,
-	da coreda.DA,
 	nodeKey *key.NodeKey,
 	datastore datastore.Batching,
 	nodeConfig rollconf.Config,
@@ -92,9 +90,16 @@ func StartNode(
 	ctx, cancel := context.WithCancel(cmd.Context())
 	defer cancel()
 
+	blobClient, err := blobrpc.NewClient(ctx, nodeConfig.DA.Address, nodeConfig.DA.AuthToken, "")
+	if err != nil {
+		return fmt.Errorf("failed to create blob client: %w", err)
+	}
+	defer blobClient.Close()
+	daClient := block.NewDAClient(blobClient, nodeConfig, logger)
+
 	// create a new remote signer
 	var signer signer.Signer
-	if nodeConfig.Signer.SignerType == "file" && nodeConfig.Node.Aggregator {
+	if nodeConfig.Signer.SignerType == "file" && (nodeConfig.Node.Aggregator && !nodeConfig.Node.BasedSequencer) {
 		// Get passphrase file path
 		passphraseFile, err := cmd.Flags().GetString(rollconf.FlagSignerPassphraseFile)
 		if err != nil {
@@ -130,6 +135,11 @@ func StartNode(
 		return fmt.Errorf("unknown signer type: %s", nodeConfig.Signer.SignerType)
 	}
 
+	// sanity check for based sequencer
+	if nodeConfig.Node.BasedSequencer && genesis.DAStartHeight == 0 {
+		return fmt.Errorf("based sequencing requires DAStartHeight to be set in genesis. This value should be identical for all nodes of the chain")
+	}
+
 	metrics := node.DefaultMetricsProvider(nodeConfig.Instrumentation)
 
 	// Create and start the node
@@ -137,7 +147,7 @@ func StartNode(
 		nodeConfig,
 		executor,
 		sequencer,
-		da,
+		daClient,
 		signer,
 		nodeKey,
 		genesis,

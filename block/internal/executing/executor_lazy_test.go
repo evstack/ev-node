@@ -74,6 +74,7 @@ func TestLazyMode_ProduceBlockLogic(t *testing.T) {
 	initStateRoot := []byte("init_root")
 	mockExec.EXPECT().InitChain(mock.Anything, mock.AnythingOfType("time.Time"), gen.InitialHeight, gen.ChainID).
 		Return(initStateRoot, uint64(1024), nil).Once()
+	mockSeq.EXPECT().SetDAHeight(uint64(0)).Return().Once()
 	require.NoError(t, exec.initializeState())
 
 	// Set up context for the executor (normally done in Start method)
@@ -91,6 +92,8 @@ func TestLazyMode_ProduceBlockLogic(t *testing.T) {
 
 	mockExec.EXPECT().ExecuteTxs(mock.Anything, mock.Anything, uint64(1), mock.AnythingOfType("time.Time"), initStateRoot).
 		Return([]byte("new_root_1"), uint64(1024), nil).Once()
+
+	mockSeq.EXPECT().GetDAHeight().Return(uint64(0)).Once()
 
 	// Direct call to produceBlock should work (this is what lazy timer does)
 	err = exec.produceBlock()
@@ -113,6 +116,8 @@ func TestLazyMode_ProduceBlockLogic(t *testing.T) {
 
 	mockExec.EXPECT().ExecuteTxs(mock.Anything, mock.Anything, uint64(2), mock.AnythingOfType("time.Time"), []byte("new_root_1")).
 		Return([]byte("new_root_2"), uint64(1024), nil).Once()
+
+	mockSeq.EXPECT().GetDAHeight().Return(uint64(0)).Once()
 
 	err = exec.produceBlock()
 	require.NoError(t, err)
@@ -185,6 +190,7 @@ func TestRegularMode_ProduceBlockLogic(t *testing.T) {
 	initStateRoot := []byte("init_root")
 	mockExec.EXPECT().InitChain(mock.Anything, mock.AnythingOfType("time.Time"), gen.InitialHeight, gen.ChainID).
 		Return(initStateRoot, uint64(1024), nil).Once()
+	mockSeq.EXPECT().SetDAHeight(uint64(0)).Return().Once()
 	require.NoError(t, exec.initializeState())
 
 	// Set up context for the executor (normally done in Start method)
@@ -202,6 +208,8 @@ func TestRegularMode_ProduceBlockLogic(t *testing.T) {
 
 	mockExec.EXPECT().ExecuteTxs(mock.Anything, mock.Anything, uint64(1), mock.AnythingOfType("time.Time"), initStateRoot).
 		Return([]byte("new_root_1"), uint64(1024), nil).Once()
+
+	mockSeq.EXPECT().GetDAHeight().Return(uint64(0)).Once()
 
 	err = exec.produceBlock()
 	require.NoError(t, err)

@@ -11,7 +11,13 @@ import (
 	"strings"
 	"time"
 
-	coreda "github.com/evstack/ev-node/core/da"
+	ds "github.com/ipfs/go-datastore"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
+	"github.com/rs/zerolog"
+
+	"github.com/evstack/ev-node/block"
+
 	coreexecutor "github.com/evstack/ev-node/core/execution"
 	coresequencer "github.com/evstack/ev-node/core/sequencer"
 	"github.com/evstack/ev-node/pkg/config"
@@ -21,15 +27,7 @@ import (
 	"github.com/evstack/ev-node/pkg/service"
 	"github.com/evstack/ev-node/pkg/signer"
 	"github.com/evstack/ev-node/pkg/store"
-	ds "github.com/ipfs/go-datastore"
-	ktds "github.com/ipfs/go-datastore/keytransform"
-	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/client_golang/prometheus/promhttp"
-	"github.com/rs/zerolog"
 )
-
-// EvPrefix used in KV store to separate rollkit data from execution environment data (if the same data base is reused)
-var EvPrefix = "0"
 
 const (
 	// genesisChunkSize is the maximum size, in bytes, of each
@@ -55,7 +53,7 @@ type FullNode struct {
 
 	nodeConfig config.Config
 
-	da coreda.DA
+	daClient block.DAClient
 
 	Store    store.Store
 	raftNode *raftpkg.Node
@@ -74,7 +72,7 @@ func newFullNode(
 	database ds.Batching,
 	exec coreexecutor.Executor,
 	sequencer coresequencer.Sequencer,
-	da coreda.DA,
+	daClient block.DAClient,
 	metricsProvider MetricsProvider,
 	logger zerolog.Logger,
 	nodeOpts NodeOptions,
@@ -83,8 +81,8 @@ func newFullNode(
 
 	blockMetrics, _ := metricsProvider(genesis.ChainID)
 
-	mainKV := newPrefixKV(database, EvPrefix)
-	rktStore := store.New(mainKV)
+	mainKV := store.NewEvNodeKVStore(database)
+	evstore := store.New(mainKV)
 
 	var raftNode *raftpkg.Node
 	if nodeConfig.Node.Aggregator && nodeConfig.Raft.Enable {
@@ -126,8 +124,8 @@ func newFullNode(
 	node := &FullNode{
 		genesis:        genesis,
 		nodeConfig:     nodeConfig,
-		da:             da,
-		Store:          rktStore,
+		daClient:       daClient,
+		Store:          evstore,
 		leaderElection: leaderElection,
 		raftNode:       raftNode,
 	}
@@ -362,8 +360,4 @@ func (n *FullNode) GetGenesisChunks() ([]string, error) {
 // IsRunning returns true if the node is running.
 func (n *FullNode) IsRunning() bool {
 	return n.leaderElection.IsRunning()
-}
-
-func newPrefixKV(kvStore ds.Batching, prefix string) ds.Batching {
-	return ktds.Wrap(kvStore, ktds.PrefixTransform{Prefix: ds.NewKey(prefix)})
 }

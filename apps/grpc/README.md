@@ -79,8 +79,8 @@ Start the Evolve node with:
 1. Start the local DA service:
 
    ```bash
-   cd da/cmd/local-da
-   go run main.go
+   cd tools/local-da
+   go run .
    ```
 
 2. Start your gRPC execution service:
@@ -150,5 +150,5 @@ If you have issues connecting to the DA layer:
 ## See Also
 
 - [Evolve Documentation](https://ev.xyz)
-- [gRPC Execution Interface](../../../execution/grpc/README.md)
-- [Single Sequencer Documentation](../../../sequencers/single/README.md)
+- [gRPC Execution Interface](../../execution/grpc/README.md)
+- [Single Sequencer Documentation](../../pkg/sequencers/single/README.md)

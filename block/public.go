@@ -1,10 +1,12 @@
 package block
 
 import (
+	"context"
+
 	"github.com/evstack/ev-node/block/internal/common"
 	"github.com/evstack/ev-node/block/internal/da"
-	coreda "github.com/evstack/ev-node/core/da"
 	"github.com/evstack/ev-node/pkg/config"
+	blobrpc "github.com/evstack/ev-node/pkg/da/jsonrpc"
 	"github.com/rs/zerolog"
 )
 
@@ -32,20 +34,49 @@ func NopMetrics() *Metrics {
 // DAClient is the interface representing the DA client for public use.
 type DAClient = da.Client
 
-// NewDAClient creates a new DA client with configuration
+// DAVerifier is the interface for DA proof verification operations.
+type DAVerifier = da.Verifier
+
+// FullDAClient combines DAClient and DAVerifier interfaces.
+// This is the complete interface implemented by the concrete DA client.
+type FullDAClient = da.FullClient
+
+// NewDAClient creates a new DA client backed by the blob JSON-RPC API.
+// The returned client implements both DAClient and DAVerifier interfaces.
 func NewDAClient(
-	daLayer coreda.DA,
+	blobRPC *blobrpc.Client,
 	config config.Config,
 	logger zerolog.Logger,
-) DAClient {
+) FullDAClient {
 	return da.NewClient(da.Config{
-		DA:                daLayer,
-		Logger:            logger,
-		Namespace:         config.DA.GetNamespace(),
-		DefaultTimeout:    config.DA.RequestTimeout.Duration,
-		DataNamespace:     config.DA.GetDataNamespace(),
-		RetrieveBatchSize: config.DA.RetrieveBatchSize,
+		DA:                       blobRPC,
+		Logger:                   logger,
+		Namespace:                config.DA.GetNamespace(),
+		DefaultTimeout:           config.DA.RequestTimeout.Duration,
+		DataNamespace:            config.DA.GetDataNamespace(),
+		ForcedInclusionNamespace: config.DA.GetForcedInclusionNamespace(),
 	})
+}
+
+// ErrForceInclusionNotConfigured is returned when force inclusion is not configured.
+// It is exported because sequencers needs to check for this error.
+var ErrForceInclusionNotConfigured = da.ErrForceInclusionNotConfigured
+
+// ForcedInclusionEvent represents forced inclusion transactions retrieved from DA
+type ForcedInclusionEvent = da.ForcedInclusionEvent
+
+// ForcedInclusionRetriever defines the interface for retrieving forced inclusion transactions from DA
+type ForcedInclusionRetriever interface {
+	RetrieveForcedIncludedTxs(ctx context.Context, daHeight uint64) (*da.ForcedInclusionEvent, error)
+}
+
+// NewForcedInclusionRetriever creates a new forced inclusion retriever
+func NewForcedInclusionRetriever(
+	client DAClient,
+	logger zerolog.Logger,
+	daStartHeight, daEpochSize uint64,
+) ForcedInclusionRetriever {
+	return da.NewForcedInclusionRetriever(client, logger, daStartHeight, daEpochSize)
 }
 
 // Expose Raft types for consensus integration

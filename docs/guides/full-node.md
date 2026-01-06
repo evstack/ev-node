@@ -4,7 +4,7 @@
 
 This guide covers how to set up a full node to run alongside a sequencer node in a Evolve-based blockchain network. A full node maintains a complete copy of the blockchain and helps validate transactions, improving the network's decentralization and security.
 
-> **Note: The guide on how to run an evolve EVM full node can be found [in the evm section](./evm/single#setting-up-a-full-node).**
+> **Note: The guide on how to run an evolve EVM full node can be found [in the evm section](./evm/single.md#setting-up-a-full-node).**
 
 ## Prerequisites
 
@@ -41,7 +41,7 @@ cp $HOME/.$CHAIN_ID/config/genesis.json $HOME/.${CHAIN_ID}_fn/config/genesis.jso
 
 Identify the sequencer node's P2P address from its logs. It will look similar to:
 
-```
+```text
 1:55PM INF listening on address=/ip4/127.0.0.1/tcp/7676/p2p/12D3KooWJbD9TQoMSSSUyfhHMmgVY3LqCjxYFz8wQ92Qa6DAqtmh module=p2p
 ```
 

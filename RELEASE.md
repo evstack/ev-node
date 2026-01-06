@@ -97,7 +97,6 @@ Packages must be released in the following order:
 
 These packages only depend on `core` and can be released in parallel after `core`:
 
-1. **github.com/evstack/ev-node/da** - Path: `./da`
 2. **github.com/evstack/ev-node** - Path: `./` (root)
 3. **github.com/evstack/ev-node/execution/evm** - Path: `./execution/evm`
 
@@ -157,7 +156,6 @@ git tag execution/evm/v0.3.0
 git push origin execution/evm/v0.3.0
 
 # Verify all are available
-go list -m github.com/evstack/ev-node/da@v0.3.0
 go list -m github.com/evstack/ev-node@v0.3.0
 go list -m github.com/evstack/ev-node/execution/evm@v0.3.0
 ```
@@ -170,7 +168,6 @@ After all dependencies are available:
 
 # Update and release apps/evm
 go get github.com/evstack/ev-node/core@v0.3.0
-go get github.com/evstack/ev-node/da@v0.3.0
 go get github.com/evstack/ev-node/execution/evm@v0.3.0
 go get github.com/evstack/ev-node@v0.3.0
 go mod tidy

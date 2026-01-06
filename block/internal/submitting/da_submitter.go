@@ -8,14 +8,13 @@ import (
 	"time"
 
 	"github.com/rs/zerolog"
-	"google.golang.org/protobuf/proto"
 
 	"github.com/evstack/ev-node/block/internal/cache"
 	"github.com/evstack/ev-node/block/internal/common"
 	"github.com/evstack/ev-node/block/internal/da"
-	coreda "github.com/evstack/ev-node/core/da"
 	"github.com/evstack/ev-node/pkg/config"
 	pkgda "github.com/evstack/ev-node/pkg/da"
+	datypes "github.com/evstack/ev-node/pkg/da/types"
 	"github.com/evstack/ev-node/pkg/genesis"
 	"github.com/evstack/ev-node/pkg/rpc/server"
 	"github.com/evstack/ev-node/pkg/signer"
@@ -116,7 +115,7 @@ func NewDASubmitter(
 
 	if config.RPC.EnableDAVisualization {
 		visualizerLogger := logger.With().Str("component", "da_visualization").Logger()
-		server.SetDAVisualizationServer(server.NewDAVisualizationServer(client.GetDA(), visualizerLogger, config.Node.Aggregator))
+		server.SetDAVisualizationServer(server.NewDAVisualizationServer(client, visualizerLogger, config.Node.Aggregator))
 	}
 
 	// Use NoOp metrics if nil to avoid nil checks throughout the code
@@ -161,7 +160,7 @@ func (s *DASubmitter) recordFailure(reason common.DASubmitterFailureReason) {
 }
 
 // SubmitHeaders submits pending headers to DA layer
-func (s *DASubmitter) SubmitHeaders(ctx context.Context, cache cache.Manager) error {
+func (s *DASubmitter) SubmitHeaders(ctx context.Context, cache cache.Manager, signer signer.Signer) error {
 	headers, err := cache.GetPendingHeaders(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to get pending headers: %w", err)
@@ -171,17 +170,31 @@ func (s *DASubmitter) SubmitHeaders(ctx context.Context, cache cache.Manager) er
 		return nil
 	}
 
+	if signer == nil {
+		return fmt.Errorf("signer is nil")
+	}
+
 	s.logger.Info().Int("count", len(headers)).Msg("submitting headers to DA")
 
 	return submitToDA(s, ctx, headers,
 		func(header *types.SignedHeader) ([]byte, error) {
-			headerPb, err := header.ToProto()
+			// A. Marshal the inner SignedHeader content to bytes (canonical representation for signing)
+			//    This effectively signs "Fields 1-3" of the intended DAHeaderEnvelope.
+			contentBytes, err := header.MarshalBinary()
 			if err != nil {
-				return nil, fmt.Errorf("failed to convert header to proto: %w", err)
+				return nil, fmt.Errorf("failed to marshal signed header for envelope signing: %w", err)
 			}
-			return proto.Marshal(headerPb)
+
+			// B. Sign the contentBytes with the envelope signer (aggregator)
+			envelopeSignature, err := signer.Sign(contentBytes)
+			if err != nil {
+				return nil, fmt.Errorf("failed to sign envelope: %w", err)
+			}
+
+			// C. Create the envelope and marshal it
+			return header.MarshalDAEnvelope(envelopeSignature)
 		},
-		func(submitted []*types.SignedHeader, res *coreda.ResultSubmit) {
+		func(submitted []*types.SignedHeader, res *datypes.ResultSubmit) {
 			for _, header := range submitted {
 				cache.SetHeaderDAIncluded(header.Hash().String(), res.Height, header.Height())
 			}
@@ -224,7 +237,7 @@ func (s *DASubmitter) SubmitData(ctx context.Context, cache cache.Manager, signe
 		func(signedData *types.SignedData) ([]byte, error) {
 			return signedData.MarshalBinary()
 		},
-		func(submitted []*types.SignedData, res *coreda.ResultSubmit) {
+		func(submitted []*types.SignedData, res *datypes.ResultSubmit) {
 			for _, sd := range submitted {
 				cache.SetDataDAIncluded(sd.Data.DACommitment().String(), res.Height, sd.Height())
 			}
@@ -340,7 +353,7 @@ func submitToDA[T any](
 	ctx context.Context,
 	items []T,
 	marshalFn func(T) ([]byte, error),
-	postSubmit func([]T, *coreda.ResultSubmit),
+	postSubmit func([]T, *datypes.ResultSubmit),
 	itemType string,
 	namespace []byte,
 	options []byte,
@@ -409,7 +422,7 @@ func submitToDA[T any](
 		}
 
 		switch res.Code {
-		case coreda.StatusSuccess:
+		case datypes.StatusSuccess:
 			submitted := items[:res.SubmittedCount]
 			postSubmit(submitted, &res)
 			s.logger.Info().Str("itemType", itemType).Uint64("count", res.SubmittedCount).Msg("successfully submitted items to DA layer")
@@ -430,7 +443,7 @@ func submitToDA[T any](
 				s.metrics.DASubmitterPendingBlobs.Set(float64(getTotalPendingFn()))
 			}
 
-		case coreda.StatusTooBig:
+		case datypes.StatusTooBig:
 			// Record failure metric
 			s.recordFailure(common.DASubmitterFailureReasonTooBig)
 			// Iteratively halve until it fits or single-item too big
@@ -454,19 +467,19 @@ func submitToDA[T any](
 				s.metrics.DASubmitterPendingBlobs.Set(float64(getTotalPendingFn()))
 			}
 
-		case coreda.StatusNotIncludedInBlock:
+		case datypes.StatusNotIncludedInBlock:
 			// Record failure metric
 			s.recordFailure(common.DASubmitterFailureReasonNotIncludedInBlock)
 			s.logger.Info().Dur("backoff", pol.MaxBackoff).Msg("retrying due to mempool state")
 			rs.Next(reasonMempool, pol)
 
-		case coreda.StatusAlreadyInMempool:
+		case datypes.StatusAlreadyInMempool:
 			// Record failure metric
 			s.recordFailure(common.DASubmitterFailureReasonAlreadyInMempool)
 			s.logger.Info().Dur("backoff", pol.MaxBackoff).Msg("retrying due to mempool state")
 			rs.Next(reasonMempool, pol)
 
-		case coreda.StatusContextCanceled:
+		case datypes.StatusContextCanceled:
 			// Record failure metric
 			s.recordFailure(common.DASubmitterFailureReasonContextCanceled)
 			s.logger.Info().Msg("DA layer submission canceled due to context cancellation")
