@@ -161,7 +161,6 @@ func (e *Executor) Stop() error {
 	return nil
 }
 
-// getLastState returns the current state.
 // getLastState should never directly mutate.
 func (e *Executor) getLastState() types.State {
 	state := e.lastState.Load()

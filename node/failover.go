@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/evstack/ev-node/block"
-	coreda "github.com/evstack/ev-node/core/da"
 	coreexecutor "github.com/evstack/ev-node/core/execution"
 	coresequencer "github.com/evstack/ev-node/core/sequencer"
 	"github.com/evstack/ev-node/pkg/config"
@@ -43,7 +42,7 @@ func newSyncMode(
 	genesis genesispkg.Genesis,
 	database ds.Batching,
 	exec coreexecutor.Executor,
-	da coreda.DA,
+	da block.DAClient,
 	logger zerolog.Logger,
 	rktStore store.Store,
 	mainKV ds.Batching,
@@ -76,7 +75,7 @@ func newAggregatorMode(
 	database ds.Batching,
 	exec coreexecutor.Executor,
 	sequencer coresequencer.Sequencer,
-	da coreda.DA,
+	da block.DAClient,
 	logger zerolog.Logger,
 	rktStore store.Store,
 	mainKV ds.Batching,

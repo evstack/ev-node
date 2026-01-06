@@ -317,20 +317,18 @@ func TestExecutor_RestartNoPendingHeader(t *testing.T) {
 			}, nil
 		}).Times(numBlocks)
 
+	mockSeq1.EXPECT().GetDAHeight().Return(uint64(0)).Times(numBlocks)
+
 	lastStateRoot := initStateRoot
 	for i := range numBlocks {
 		newStateRoot := []byte(fmt.Sprintf("new_root_%d", i+1))
 		mockExec1.EXPECT().ExecuteTxs(mock.Anything, mock.Anything, gen.InitialHeight+uint64(i), mock.AnythingOfType("time.Time"), lastStateRoot).
 			Return(newStateRoot, uint64(1024), nil).Once()
 		lastStateRoot = newStateRoot
+
 		require.NoError(t, exec1.produceBlock())
 	}
-	require.Equal(t, uint64(numBlocks), exec1.GetLastState().LastBlockHeight)
-
-	mockSeq1.EXPECT().GetDAHeight().Return(uint64(0)).Once()
-
-	err = exec1.produceBlock()
-	require.NoError(t, err)
+	require.Equal(t, uint64(numBlocks), exec1.getLastState().LastBlockHeight)
 
 	// Stop first executor
 	exec1.cancel()

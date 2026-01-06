@@ -18,7 +18,6 @@ import (
 	blobrpc "github.com/evstack/ev-node/pkg/da/jsonrpc"
 	da "github.com/evstack/ev-node/pkg/da/types"
 	"github.com/evstack/ev-node/pkg/genesis"
-	"github.com/evstack/ev-node/pkg/p2p"
 	"github.com/evstack/ev-node/pkg/p2p/key"
 	"github.com/evstack/ev-node/pkg/sequencers/based"
 	"github.com/evstack/ev-node/pkg/sequencers/single"
@@ -96,12 +95,7 @@ var RunCmd = &cobra.Command{
 			return err
 		}
 
-		p2pClient, err := p2p.NewClient(nodeConfig.P2P, nodeKey.PrivKey, datastore, genesis.ChainID, logger, p2p.NopMetrics())
-		if err != nil {
-			return err
-		}
-
-		return cmd.StartNode(logger, command, executor, sequencer, p2pClient, datastore, nodeConfig, genesis, node.NodeOptions{})
+		return cmd.StartNode(logger, command, executor, sequencer, nodeKey, datastore, nodeConfig, genesis, node.NodeOptions{})
 	},
 }
 

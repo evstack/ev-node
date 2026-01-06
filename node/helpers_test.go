@@ -159,7 +159,7 @@ func newTestNode(
 
 func createNodeWithCleanup(t *testing.T, config evconfig.Config) (*FullNode, func()) {
 	resetSharedDummyDA()
-	executor, sequencer, daClient, ds, nodeKey, stopDAHeightTicker := createTestComponents(t, config)
+	executor, sequencer, daClient, nodeKey, ds, stopDAHeightTicker := createTestComponents(t, config)
 	return newTestNode(t, config, executor, sequencer, daClient, nodeKey, ds, stopDAHeightTicker)
 }
 
@@ -192,7 +192,7 @@ func createNodesWithCleanup(t *testing.T, num int, config evconfig.Config) ([]*F
 
 	aggListenAddress := config.P2P.ListenAddress
 	aggPeers := config.P2P.Peers
-	executor, sequencer, daClient, aggP2PKey, ds, aggP2PKey, stopDAHeightTicker := createTestComponents(t, config)
+	executor, sequencer, daClient, aggP2PKey, ds, stopDAHeightTicker := createTestComponents(t, config)
 	aggPeerID, err := peer.IDFromPrivateKey(aggP2PKey.PrivKey)
 	require.NoError(err)
 
@@ -233,14 +233,14 @@ func createNodesWithCleanup(t *testing.T, num int, config evconfig.Config) ([]*F
 		}
 		config.P2P.ListenAddress = fmt.Sprintf("/ip4/127.0.0.1/tcp/%d", 40001+i)
 		config.RPC.Address = fmt.Sprintf("127.0.0.1:%d", 8001+i)
-		executor, sequencer, daClient, _, nodeP2PKey, stopDAHeightTicker := createTestComponents(t, config)
+		executor, sequencer, daClient, nodeP2PKey, _, stopDAHeightTicker := createTestComponents(t, config)
 		node, err := NewNode(
 			config,
 			executor,
 			sequencer,
 			daClient,
 			nil,
-			nodeP2PKey,
+			aggP2PKey,
 			genesis,
 			dssync.MutexWrap(datastore.NewMapDatastore()),
 			DefaultMetricsProvider(evconfig.DefaultInstrumentationConfig()),

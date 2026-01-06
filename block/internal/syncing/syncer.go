@@ -3,15 +3,19 @@ package syncing
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"encoding/binary"
+	"encoding/hex"
 	"errors"
 	"fmt"
-	"sync"
+	"math"
 	"reflect"
+	"sync"
 	"sync/atomic"
 	"time"
 
 	coreexecutor "github.com/evstack/ev-node/core/execution"
+	datypes "github.com/evstack/ev-node/pkg/da/types"
 	"github.com/evstack/ev-node/pkg/raft"
 	pubsub "github.com/libp2p/go-libp2p-pubsub"
 	"github.com/rs/zerolog"
@@ -156,21 +160,21 @@ func NewSyncer(
 	blockFullnessEMA.Store(&initialFullness)
 
 	s := &Syncer{
-		store:             store,
-		exec:              exec,
-		cache:             cache,
-		metrics:           metrics,
-		config:            config,
-		genesis:           genesis,
-		options:           options,
-		lastState:         &atomic.Pointer[types.State]{},
-		daClient:          daClient,
-		daRetrieverHeight: daRetrieverHeight,
-		headerStore:       headerStore,
-		dataStore:         dataStore,
-		heightInCh:        make(chan common.DAHeightEvent, 1_000),
-		errorCh:           errorCh,
-		logger:            logger.With().Str("component", "syncer").Logger(),
+		store:                 store,
+		exec:                  exec,
+		cache:                 cache,
+		metrics:               metrics,
+		config:                config,
+		genesis:               genesis,
+		options:               options,
+		lastState:             &atomic.Pointer[types.State]{},
+		daClient:              daClient,
+		daRetrieverHeight:     daRetrieverHeight,
+		headerStore:           headerStore,
+		dataStore:             dataStore,
+		heightInCh:            make(chan common.DAHeightEvent, 1_000),
+		errorCh:               errorCh,
+		logger:                logger.With().Str("component", "syncer").Logger(),
 		gracePeriodMultiplier: gracePeriodMultiplier,
 		blockFullnessEMA:      blockFullnessEMA,
 		gracePeriodConfig:     newForcedInclusionGracePeriodConfig(),
@@ -241,6 +245,7 @@ func (s *Syncer) Stop() error {
 	s.cancel = nil
 	return nil
 }
+
 // isCatchingUpState returns true if the syncer has pending events or is behind the current raft height
 func (s *Syncer) isCatchingUpState() bool {
 	return len(s.heightInCh) != 0 || func() bool {
@@ -562,7 +567,7 @@ func (s *Syncer) processHeightEvent(event *common.DAHeightEvent) {
 	if err := s.trySyncNextBlock(event); err != nil {
 		s.logger.Error().Err(err).
 			Uint64("event-height", event.Header.Height()).
-			Uint64("state-height", s.GetLastState().LastBlockHeight).
+			Uint64("state-height", s.getLastState().LastBlockHeight).
 			Msg("failed to sync next block")
 		// If the error is not due to a validation error, re-store the event as pending
 		switch {

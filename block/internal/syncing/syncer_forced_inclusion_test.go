@@ -344,7 +344,7 @@ func TestVerifyForcedInclusionTxs_AllTransactionsIncluded(t *testing.T) {
 	ds := dssync.MutexWrap(datastore.NewMapDatastore())
 	st := store.New(ds)
 
-	cm, err := cache.NewCacheManager(config.DefaultConfig(), zerolog.Nop())
+	cm, err := cache.NewManager(config.DefaultConfig(), st, zerolog.Nop())
 	require.NoError(t, err)
 
 	addr, pub, signer := buildSyncTestSigner(t)
@@ -385,6 +385,7 @@ func TestVerifyForcedInclusionTxs_AllTransactionsIncluded(t *testing.T) {
 		zerolog.Nop(),
 		common.DefaultBlockOptions(),
 		make(chan error, 1),
+		nil,
 	)
 	s.daRetriever = daRetriever
 	s.fiRetriever = fiRetriever
@@ -417,7 +418,7 @@ func TestVerifyForcedInclusionTxs_MissingTransactions(t *testing.T) {
 	ds := dssync.MutexWrap(datastore.NewMapDatastore())
 	st := store.New(ds)
 
-	cm, err := cache.NewCacheManager(config.DefaultConfig(), zerolog.Nop())
+	cm, err := cache.NewManager(config.DefaultConfig(), st, zerolog.Nop())
 	require.NoError(t, err)
 
 	addr, pub, signer := buildSyncTestSigner(t)
@@ -458,6 +459,7 @@ func TestVerifyForcedInclusionTxs_MissingTransactions(t *testing.T) {
 		zerolog.Nop(),
 		common.DefaultBlockOptions(),
 		make(chan error, 1),
+		nil,
 	)
 	s.daRetriever = daRetriever
 	s.fiRetriever = fiRetriever
@@ -520,7 +522,7 @@ func TestVerifyForcedInclusionTxs_PartiallyIncluded(t *testing.T) {
 	ds := dssync.MutexWrap(datastore.NewMapDatastore())
 	st := store.New(ds)
 
-	cm, err := cache.NewCacheManager(config.DefaultConfig(), zerolog.Nop())
+	cm, err := cache.NewManager(config.DefaultConfig(), st, zerolog.Nop())
 	require.NoError(t, err)
 
 	addr, pub, signer := buildSyncTestSigner(t)
@@ -561,6 +563,7 @@ func TestVerifyForcedInclusionTxs_PartiallyIncluded(t *testing.T) {
 		zerolog.Nop(),
 		common.DefaultBlockOptions(),
 		make(chan error, 1),
+		nil,
 	)
 	s.daRetriever = daRetriever
 	s.fiRetriever = fiRetriever
@@ -627,7 +630,7 @@ func TestVerifyForcedInclusionTxs_NoForcedTransactions(t *testing.T) {
 	ds := dssync.MutexWrap(datastore.NewMapDatastore())
 	st := store.New(ds)
 
-	cm, err := cache.NewCacheManager(config.DefaultConfig(), zerolog.Nop())
+	cm, err := cache.NewManager(config.DefaultConfig(), st, zerolog.Nop())
 	require.NoError(t, err)
 
 	addr, _, _ := buildSyncTestSigner(t)
@@ -668,6 +671,7 @@ func TestVerifyForcedInclusionTxs_NoForcedTransactions(t *testing.T) {
 		zerolog.Nop(),
 		common.DefaultBlockOptions(),
 		make(chan error, 1),
+		nil,
 	)
 	s.daRetriever = daRetriever
 	s.fiRetriever = fiRetriever
@@ -695,7 +699,7 @@ func TestVerifyForcedInclusionTxs_NamespaceNotConfigured(t *testing.T) {
 	ds := dssync.MutexWrap(datastore.NewMapDatastore())
 	st := store.New(ds)
 
-	cm, err := cache.NewCacheManager(config.DefaultConfig(), zerolog.Nop())
+	cm, err := cache.NewManager(config.DefaultConfig(), st, zerolog.Nop())
 	require.NoError(t, err)
 
 	addr, _, _ := buildSyncTestSigner(t)
@@ -734,6 +738,7 @@ func TestVerifyForcedInclusionTxs_NamespaceNotConfigured(t *testing.T) {
 		zerolog.Nop(),
 		common.DefaultBlockOptions(),
 		make(chan error, 1),
+		nil,
 	)
 	s.daRetriever = daRetriever
 	s.fiRetriever = fiRetriever
@@ -758,7 +763,7 @@ func TestVerifyForcedInclusionTxs_DeferralWithinEpoch(t *testing.T) {
 	ds := dssync.MutexWrap(datastore.NewMapDatastore())
 	st := store.New(ds)
 
-	cm, err := cache.NewCacheManager(config.DefaultConfig(), zerolog.Nop())
+	cm, err := cache.NewManager(config.DefaultConfig(), st, zerolog.Nop())
 	require.NoError(t, err)
 
 	addr, pub, signer := buildSyncTestSigner(t)
@@ -799,6 +804,7 @@ func TestVerifyForcedInclusionTxs_DeferralWithinEpoch(t *testing.T) {
 		zerolog.Nop(),
 		common.DefaultBlockOptions(),
 		make(chan error, 1),
+		nil,
 	)
 	s.daRetriever = daRetriever
 	s.fiRetriever = fiRetriever
@@ -881,7 +887,7 @@ func TestVerifyForcedInclusionTxs_MaliciousAfterEpochEnd(t *testing.T) {
 	ds := dssync.MutexWrap(datastore.NewMapDatastore())
 	st := store.New(ds)
 
-	cm, err := cache.NewCacheManager(config.DefaultConfig(), zerolog.Nop())
+	cm, err := cache.NewManager(config.DefaultConfig(), st, zerolog.Nop())
 	require.NoError(t, err)
 
 	addr, pub, signer := buildSyncTestSigner(t)
@@ -922,6 +928,7 @@ func TestVerifyForcedInclusionTxs_MaliciousAfterEpochEnd(t *testing.T) {
 		zerolog.Nop(),
 		common.DefaultBlockOptions(),
 		make(chan error, 1),
+		nil,
 	)
 	s.daRetriever = daRetriever
 	s.fiRetriever = fiRetriever
@@ -969,7 +976,7 @@ func TestVerifyForcedInclusionTxs_SmoothingExceedsEpoch(t *testing.T) {
 	ds := dssync.MutexWrap(datastore.NewMapDatastore())
 	st := store.New(ds)
 
-	cm, err := cache.NewCacheManager(config.DefaultConfig(), zerolog.Nop())
+	cm, err := cache.NewManager(config.DefaultConfig(), st, zerolog.Nop())
 	require.NoError(t, err)
 
 	addr, pub, signer := buildSyncTestSigner(t)
@@ -1011,6 +1018,7 @@ func TestVerifyForcedInclusionTxs_SmoothingExceedsEpoch(t *testing.T) {
 		zerolog.Nop(),
 		common.DefaultBlockOptions(),
 		make(chan error, 1),
+		nil,
 	)
 	s.daRetriever = daRetriever
 	s.fiRetriever = fiRetriever
