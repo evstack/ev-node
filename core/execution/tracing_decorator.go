@@ -6,6 +6,7 @@ import (
 
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/trace"
 )
 
@@ -41,6 +42,8 @@ func (t *TracedExecutor) GetTxs(ctx context.Context) ([][]byte, error) {
 	txs, err := t.inner.GetTxs(ctx)
 	if err == nil {
 		span.SetAttributes(attribute.Int("tx.count", len(txs)))
+	} else {
+		span.SetStatus(codes.Error, err.Error())
 	}
 	return txs, err
 }
@@ -54,7 +57,13 @@ func (t *TracedExecutor) ExecuteTxs(ctx context.Context, txs [][]byte, blockHeig
 		),
 	)
 	defer span.End()
-	return t.inner.ExecuteTxs(ctx, txs, blockHeight, timestamp, prevStateRoot)
+
+	stateRoot, maxBytes, err := t.inner.ExecuteTxs(ctx, txs, blockHeight, timestamp, prevStateRoot)
+	if err != nil {
+		span.SetStatus(codes.Error, err.Error())
+	}
+    
+	return stateRoot, maxBytes, err
 }
 
 func (t *TracedExecutor) SetFinal(ctx context.Context, blockHeight uint64) error {
@@ -62,7 +71,13 @@ func (t *TracedExecutor) SetFinal(ctx context.Context, blockHeight uint64) error
 		trace.WithAttributes(attribute.Int64("block.height", int64(blockHeight))),
 	)
 	defer span.End()
-	return t.inner.SetFinal(ctx, blockHeight)
+
+	err := t.inner.SetFinal(ctx, blockHeight)
+	if err != nil {
+		span.SetStatus(codes.Error, err.Error())
+	}
+
+	return err
 }
 
 func (t *TracedExecutor) GetLatestHeight(ctx context.Context) (uint64, error) {
@@ -72,5 +87,11 @@ func (t *TracedExecutor) GetLatestHeight(ctx context.Context) (uint64, error) {
 	}
 	ctx, span := t.tracer.Start(ctx, "Executor.GetLatestHeight")
 	defer span.End()
-	return hp.GetLatestHeight(ctx)
+
+	h, err := hp.GetLatestHeight(ctx)
+	if err != nil {
+		span.SetStatus(codes.Error, err.Error())
+	}
+
+	return h, err
 }

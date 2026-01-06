@@ -19,16 +19,16 @@ import (
 // InitTracing initializes a global OpenTelemetry tracer provider if enabled.
 // Returns a shutdown function that should be called on process exit.
 func InitTracing(ctx context.Context, cfg *config.InstrumentationConfig, logger zerolog.Logger) (func(context.Context) error, error) {
-	if cfg == nil || !cfg.IsTracingEnabled() {
+	if !cfg.IsTracingEnabled() {
 		return func(context.Context) error { return nil }, nil
 	}
 
-	// Build resource with service attributes
 	res, err := resource.New(ctx,
 		resource.WithAttributes(
 			semconv.ServiceName(cfg.TracingServiceName),
 		),
 	)
+
 	if err != nil {
 		return nil, fmt.Errorf("failed to create otel resource: %w", err)
 	}
@@ -39,7 +39,7 @@ func InitTracing(ctx context.Context, cfg *config.InstrumentationConfig, logger 
 		endpoint = "http://" + endpoint
 	}
 	exp, err := otlptracehttp.New(ctx,
-		otlptracehttp.WithEndpoint(endpoint),
+		otlptracehttp.WithEndpointURL(endpoint),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create otlp exporter: %w", err)

@@ -91,17 +91,18 @@ func StartNode(
 	ctx, cancel := context.WithCancel(cmd.Context())
 	defer cancel()
 
-	// Initialize OpenTelemetry tracing if enabled
-	shutdownTracing, err := telemetry.InitTracing(ctx, nodeConfig.Instrumentation, logger)
-	if err != nil {
-		return fmt.Errorf("failed to initialize tracing: %w", err)
+	if nodeConfig.Instrumentation.IsTracingEnabled() {
+		shutdownTracing, err := telemetry.InitTracing(ctx, nodeConfig.Instrumentation, logger)
+		if err != nil {
+			return fmt.Errorf("failed to initialize tracing: %w", err)
+		}
+		defer func() {
+			// best-effort shutdown within a short timeout
+			c, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			_ = shutdownTracing(c)
+		}()
 	}
-	defer func() {
-		// best-effort shutdown within a short timeout
-		c, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
-		_ = shutdownTracing(c)
-	}()
 
 	blobClient, err := blobrpc.NewClient(ctx, nodeConfig.DA.Address, nodeConfig.DA.AuthToken, "")
 	if err != nil {
@@ -155,6 +156,7 @@ func StartNode(
 
 	metrics := node.DefaultMetricsProvider(nodeConfig.Instrumentation)
 
+	// wrap executor with tracing decorator if tracing enabled
 	if nodeConfig.Instrumentation.IsTracingEnabled() {
 		executor = coreexecutor.WithTracing(executor)
 	}
