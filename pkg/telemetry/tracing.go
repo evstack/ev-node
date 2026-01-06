@@ -33,7 +33,6 @@ func InitTracing(ctx context.Context, cfg *config.InstrumentationConfig, logger 
 		return nil, fmt.Errorf("failed to create otel resource: %w", err)
 	}
 
-	// Create OTLP HTTP exporter (avoids pulling gRPC/genproto)
 	endpoint := cfg.TracingEndpoint
 	if !strings.HasPrefix(endpoint, "http://") && !strings.HasPrefix(endpoint, "https://") {
 		endpoint = "http://" + endpoint
