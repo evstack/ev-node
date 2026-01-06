@@ -156,10 +156,10 @@ func StartNode(
 
 	metrics := node.DefaultMetricsProvider(nodeConfig.Instrumentation)
 
-	// wrap executor with tracing decorator if tracing enabled
-	if nodeConfig.Instrumentation.IsTracingEnabled() {
-		executor = coreexecutor.WithTracing(executor)
-	}
+    // wrap executor with tracing decorator if tracing enabled (outside core to keep it zero-dep)
+    if nodeConfig.Instrumentation.IsTracingEnabled() {
+        executor = telemetry.WithTracingExecutor(executor)
+    }
 
 	// Create and start the node
 	rollnode, err := node.NewNode(
