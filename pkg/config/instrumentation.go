@@ -1,6 +1,9 @@
 package config
 
-import "errors"
+import (
+	"errors"
+	"strings"
+)
 
 // InstrumentationConfig defines the configuration for metrics reporting.
 type InstrumentationConfig struct {
@@ -76,6 +79,14 @@ func DefaultInstrumentationConfig() *InstrumentationConfig {
 func (cfg *InstrumentationConfig) ValidateBasic() error {
 	if cfg.MaxOpenConnections < 0 {
 		return errors.New("max_open_connections can't be negative")
+	}
+	if cfg.IsTracingEnabled() {
+		if cfg.TracingSampleRate < 0 || cfg.TracingSampleRate > 1 {
+			return errors.New("tracing_sample_rate must be between 0 and 1")
+		}
+		if strings.TrimSpace(cfg.TracingEndpoint) == "" {
+			return errors.New("tracing_endpoint cannot be empty")
+		}
 	}
 	return nil
 }
