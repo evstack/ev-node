@@ -47,7 +47,6 @@ type InstrumentationConfig struct {
 	Tracing bool `mapstructure:"tracing" yaml:"tracing" comment:"Enable OpenTelemetry tracing"`
 
 	// TracingEndpoint is the OTLP endpoint (host:port) for exporting traces.
-	// Common defaults are "localhost:4317" for OTLP/gRPC or "localhost:4318" for OTLP/HTTP.
 	TracingEndpoint string `mapstructure:"tracing_endpoint" yaml:"tracing_endpoint" comment:"OTLP endpoint for traces (host:port)"`
 
 	// TracingServiceName is the service.name resource attribute for this node.
@@ -70,7 +69,7 @@ func DefaultInstrumentationConfig() *InstrumentationConfig {
 		Tracing:              false,
 		TracingEndpoint:      "localhost:4317",
 		TracingServiceName:   "ev-node",
-		TracingSampleRate:    1.0,
+		TracingSampleRate:    0.1,
 	}
 }
 
