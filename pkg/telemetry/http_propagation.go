@@ -22,7 +22,6 @@ func (t *otelRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) 
 
 // NewPropagatingHTTPClient returns an http.Client whose Transport injects
 // W3C Trace Context headers (traceparent, tracestate) from the request context.
-// If base is nil, http.DefaultTransport is used.
 func NewPropagatingHTTPClient(base http.RoundTripper) *http.Client {
 	prop := propagation.NewCompositeTextMapPropagator(
 		propagation.TraceContext{}, // carries trace_id/span_id and sampling

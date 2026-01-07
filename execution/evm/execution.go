@@ -170,11 +170,8 @@ func NewEngineExecutionClient(
 		return nil, errors.New("db is required for EVM execution client")
 	}
 
-	ethOpts := make([]rpc.ClientOption, len(rpcOpts))
-	copy(ethOpts, rpcOpts)
-
 	// Create ETH RPC client with optional custom HTTP client, then ethclient from it
-	ethRPC, err := rpc.DialOptions(context.Background(), ethURL, ethOpts...)
+	ethRPC, err := rpc.DialOptions(context.Background(), ethURL, rpcOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -188,7 +185,7 @@ func NewEngineExecutionClient(
 	// Create Engine RPC with optional HTTP client and JWT auth
 	// Compose engine options: pass-through rpcOpts plus JWT auth
 	engineOptions := make([]rpc.ClientOption, len(rpcOpts))
-	copy(engineOptions, rpcOpts)
+	copy(engineOptions, rpcOpts) // copy to avoid using same backing array from rpcOpts.
 	engineOptions = append(engineOptions, rpc.WithHTTPAuth(func(h http.Header) error {
 		authToken, err := getAuthToken(secret)
 		if err != nil {
