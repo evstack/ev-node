@@ -67,7 +67,7 @@ func DefaultInstrumentationConfig() *InstrumentationConfig {
 		Pprof:                false,
 		PprofListenAddr:      ":6060",
 		Tracing:              false,
-		TracingEndpoint:      "localhost:4317",
+		TracingEndpoint:      "localhost:4318",
 		TracingServiceName:   "ev-node",
 		TracingSampleRate:    0.1,
 	}
