@@ -9,7 +9,7 @@ import (
 // RaftNode interface for raft consensus integration
 type RaftNode interface {
 	IsLeader() bool
-	GetState() raft.RaftBlockState
+	GetState() *raft.RaftBlockState
 
 	Broadcast(ctx context.Context, state *raft.RaftBlockState) error
 

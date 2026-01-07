@@ -2,7 +2,6 @@ package raft
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -13,6 +12,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/gogo/protobuf/proto"
 	"github.com/hashicorp/raft"
 	raftboltdb "github.com/hashicorp/raft-boltdb"
 	"github.com/rs/zerolog"
@@ -209,7 +209,7 @@ func (n *Node) Broadcast(_ context.Context, state *RaftBlockState) error {
 		return fmt.Errorf("not leader")
 	}
 
-	data, err := json.Marshal(state) // todo:use protobuf
+	data, err := proto.Marshal(state)
 	if err != nil {
 		return fmt.Errorf("marshal block state: %w", err)
 	}
@@ -223,8 +223,8 @@ func (n *Node) Broadcast(_ context.Context, state *RaftBlockState) error {
 }
 
 // GetState returns the current replicated state
-func (n *Node) GetState() RaftBlockState {
-	return *n.fsm.state.Load()
+func (n *Node) GetState() *RaftBlockState {
+	return proto.Clone(n.fsm.state.Load()).(*RaftBlockState)
 }
 
 // AddPeer adds a peer to the raft cluster
@@ -279,11 +279,11 @@ func (n *Node) SetApplyCallback(ch chan<- RaftApplyMsg) {
 // Apply implements raft.FSM
 func (f *FSM) Apply(log *raft.Log) interface{} {
 	var state RaftBlockState
-	if err := json.Unmarshal(log.Data, &state); err != nil {
+	if err := proto.Unmarshal(log.Data, &state); err != nil {
 		f.logger.Error().Err(err).Msg("unmarshal block state")
 		return err
 	}
-	if err := f.state.Load().assertValid(state); err != nil {
+	if err := assertValid(f.state.Load(), &state); err != nil {
 		return err
 	}
 	f.state.Store(&state)
@@ -310,8 +310,13 @@ func (f *FSM) Snapshot() (raft.FSMSnapshot, error) {
 func (f *FSM) Restore(rc io.ReadCloser) error {
 	defer rc.Close()
 
+	data, err := io.ReadAll(rc)
+	if err != nil {
+		return fmt.Errorf("read snapshot: %w", err)
+	}
+
 	var state RaftBlockState
-	if err := json.NewDecoder(rc).Decode(&state); err != nil {
+	if err := proto.Unmarshal(data, &state); err != nil {
 		return fmt.Errorf("decode snapshot: %w", err)
 	}
 
@@ -326,7 +331,11 @@ type fsmSnapshot struct {
 
 func (s *fsmSnapshot) Persist(sink raft.SnapshotSink) error {
 	err := func() error {
-		if err := json.NewEncoder(sink).Encode(s.state); err != nil {
+		data, err := proto.Marshal(&s.state)
+		if err != nil {
+			return err
+		}
+		if _, err := sink.Write(data); err != nil {
 			return err
 		}
 		return sink.Close()

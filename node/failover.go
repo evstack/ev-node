@@ -230,7 +230,7 @@ func (f *failoverState) Run(pCtx context.Context) (multiErr error) {
 	return wg.Wait()
 }
 
-func (f *failoverState) IsSynced(s raft.RaftBlockState) bool {
+func (f *failoverState) IsSynced(s *raft.RaftBlockState) bool {
 	if s.Height == 0 {
 		return true
 	}

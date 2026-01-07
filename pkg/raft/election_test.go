@@ -112,11 +112,11 @@ func TestDynamicLeaderElectionRun(t *testing.T) {
 				m.EXPECT().waitForMsgsLanded(2 * time.Millisecond).Return(nil)
 				m.EXPECT().NodeID().Return("self")
 				m.EXPECT().leaderID().Return("self")
-				m.EXPECT().GetState().Return(RaftBlockState{Height: 1})
+				m.EXPECT().GetState().Return(&RaftBlockState{Height: 1})
 				m.EXPECT().leadershipTransfer().Return(nil)
 
 				fStarted := make(chan struct{})
-				follower := &testRunnable{startedCh: fStarted, isSyncedFn: func(RaftBlockState) bool { return false }}
+				follower := &testRunnable{startedCh: fStarted, isSyncedFn: func(*RaftBlockState) bool { return false }}
 				leader := &testRunnable{runFn: func(ctx context.Context) error {
 					t.Fatal("leader should not be running")
 					return nil
@@ -192,7 +192,7 @@ func TestDynamicLeaderElectionRun(t *testing.T) {
 				m.EXPECT().waitForMsgsLanded(2 * time.Millisecond).Return(nil)
 				m.EXPECT().NodeID().Return("self")
 				m.EXPECT().leaderID().Return("self")
-				m.EXPECT().GetState().Return(RaftBlockState{Height: 1})
+				m.EXPECT().GetState().Return(&RaftBlockState{Height: 1})
 
 				fStarted := make(chan struct{})
 				lStarted := make(chan struct{})
@@ -255,7 +255,7 @@ func testCfg() Config {
 // These channels are used only by tests to observe state.
 type testRunnable struct {
 	runFn      func(ctx context.Context) error
-	isSyncedFn func(RaftBlockState) bool
+	isSyncedFn func(*RaftBlockState) bool
 	startedCh  chan struct{}
 	doneCh     chan struct{}
 }
@@ -282,7 +282,7 @@ func (t *testRunnable) Run(ctx context.Context) error {
 	return ctx.Err()
 }
 
-func (t *testRunnable) IsSynced(s RaftBlockState) bool {
+func (t *testRunnable) IsSynced(s *RaftBlockState) bool {
 	if t.isSyncedFn != nil {
 		return t.isSyncedFn(s)
 	}

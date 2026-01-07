@@ -19,7 +19,7 @@ var ErrLeadershipLost = fmt.Errorf("leader lock lost")
 // IsSynced checks whether the component is synced with the given RaftBlockState.
 type Runnable interface {
 	Run(ctx context.Context) error
-	IsSynced(RaftBlockState) bool
+	IsSynced(*RaftBlockState) bool
 }
 
 type sourceNode interface {
@@ -27,7 +27,7 @@ type sourceNode interface {
 	leaderCh() <-chan bool
 	leaderID() string
 	NodeID() string
-	GetState() RaftBlockState
+	GetState() *RaftBlockState
 	leadershipTransfer() error
 	waitForMsgsLanded(duration time.Duration) error
 }

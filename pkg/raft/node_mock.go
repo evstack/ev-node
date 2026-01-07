@@ -82,18 +82,20 @@ func (_c *mocksourceNode_Config_Call) RunAndReturn(run func() Config) *mocksourc
 }
 
 // GetState provides a mock function for the type mocksourceNode
-func (_mock *mocksourceNode) GetState() RaftBlockState {
+func (_mock *mocksourceNode) GetState() *RaftBlockState {
 	ret := _mock.Called()
 
 	if len(ret) == 0 {
 		panic("no return value specified for GetState")
 	}
 
-	var r0 RaftBlockState
-	if returnFunc, ok := ret.Get(0).(func() RaftBlockState); ok {
+	var r0 *RaftBlockState
+	if returnFunc, ok := ret.Get(0).(func() *RaftBlockState); ok {
 		r0 = returnFunc()
 	} else {
-		r0 = ret.Get(0).(RaftBlockState)
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*RaftBlockState)
+		}
 	}
 	return r0
 }
@@ -115,12 +117,12 @@ func (_c *mocksourceNode_GetState_Call) Run(run func()) *mocksourceNode_GetState
 	return _c
 }
 
-func (_c *mocksourceNode_GetState_Call) Return(raftBlockState RaftBlockState) *mocksourceNode_GetState_Call {
+func (_c *mocksourceNode_GetState_Call) Return(raftBlockState *RaftBlockState) *mocksourceNode_GetState_Call {
 	_c.Call.Return(raftBlockState)
 	return _c
 }
 
-func (_c *mocksourceNode_GetState_Call) RunAndReturn(run func() RaftBlockState) *mocksourceNode_GetState_Call {
+func (_c *mocksourceNode_GetState_Call) RunAndReturn(run func() *RaftBlockState) *mocksourceNode_GetState_Call {
 	_c.Call.Return(run)
 	return _c
 }

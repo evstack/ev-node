@@ -468,8 +468,8 @@ func (e *Executor) produceBlock() error {
 			Timestamp:                   header.BaseHeader.Time,
 			Header:                      headerBytes,
 			Data:                        dataBytes,
-			LastSubmittedDAHeaderHeight: e.cache.GetLastSubmittedHeaderHeight(),
-			LastSubmittedDADataHeight:   e.cache.GetLastSubmittedDataHeight(),
+			LastSubmittedDaHeaderHeight: e.cache.GetLastSubmittedHeaderHeight(),
+			LastSubmittedDaDataHeight:   e.cache.GetLastSubmittedDataHeight(),
 		}
 		if err := e.raftNode.Broadcast(e.ctx, raftState); err != nil {
 			return fmt.Errorf("failed to propose block to raft: %w", err)
