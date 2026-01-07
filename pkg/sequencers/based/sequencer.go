@@ -25,6 +25,7 @@ var _ coresequencer.Sequencer = (*BasedSequencer)(nil)
 type BasedSequencer struct {
 	logger zerolog.Logger
 
+	asyncFetcher    *block.AsyncEpochFetcher
 	fiRetriever     block.ForcedInclusionRetriever
 	daHeight        atomic.Uint64
 	checkpointStore *seqcommon.CheckpointStore
@@ -38,7 +39,7 @@ type BasedSequencer struct {
 
 // NewBasedSequencer creates a new based sequencer instance
 func NewBasedSequencer(
-	fiRetriever block.ForcedInclusionRetriever,
+	daClient block.FullDAClient,
 	db ds.Batching,
 	genesis genesis.Genesis,
 	logger zerolog.Logger,
@@ -46,7 +47,6 @@ func NewBasedSequencer(
 	bs := &BasedSequencer{
 		logger:          logger.With().Str("component", "based_sequencer").Logger(),
 		checkpointStore: seqcommon.NewCheckpointStore(db, ds.NewKey("/based/checkpoint")),
-		fiRetriever:     fiRetriever,
 	}
 	// based sequencers need community consensus about the da start height given no submission are done
 	bs.SetDAHeight(genesis.DAStartHeight)
@@ -77,6 +77,19 @@ func NewBasedSequencer(
 				Msg("resuming from checkpoint within DA epoch")
 		}
 	}
+
+	// Create async epoch fetcher for background prefetching (created once)
+	bs.asyncFetcher = block.NewAsyncEpochFetcher(
+		daClient,
+		logger,
+		genesis.DAStartHeight,
+		genesis.DAEpochForcedInclusion,
+		2,             // prefetch 2 epochs ahead for based sequencer
+		1*time.Second, // check frequently
+	)
+	bs.asyncFetcher.Start()
+
+	bs.fiRetriever = block.NewForcedInclusionRetriever(daClient, logger, genesis.DAStartHeight, genesis.DAEpochForcedInclusion, bs.asyncFetcher)
 
 	return bs, nil
 }

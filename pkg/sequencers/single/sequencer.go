@@ -91,19 +91,6 @@ func NewSequencer(
 				DAHeight: s.GetDAHeight(),
 				TxIndex:  0,
 			}
-
-			// Create async epoch fetcher for background prefetching
-			s.asyncFetcher = block.NewAsyncEpochFetcher(
-				daClient,
-				logger,
-				s.GetDAHeight(),
-				genesis.DAEpochForcedInclusion,
-				1,             // prefetch 1 epoch ahead
-				3*time.Second, // check every 3 seconds
-			)
-			s.asyncFetcher.Start()
-
-			s.fiRetriever = block.NewForcedInclusionRetriever(daClient, logger, s.GetDAHeight(), genesis.DAEpochForcedInclusion, s.asyncFetcher)
 		} else {
 			return nil, fmt.Errorf("failed to load checkpoint from DB: %w", err)
 		}
@@ -117,22 +104,26 @@ func NewSequencer(
 				Uint64("da_height", checkpoint.DAHeight).
 				Msg("resuming from checkpoint within DA epoch")
 		}
-
-		initialDAHeight := s.getInitialDAStartHeight(context.Background())
-
-		// Create async epoch fetcher for background prefetching
-		s.asyncFetcher = block.NewAsyncEpochFetcher(
-			daClient,
-			logger,
-			initialDAHeight,
-			genesis.DAEpochForcedInclusion,
-			1,             // prefetch 1 epoch ahead
-			3*time.Second, // check every 3 seconds
-		)
-		s.asyncFetcher.Start()
-
-		s.fiRetriever = block.NewForcedInclusionRetriever(daClient, logger, initialDAHeight, genesis.DAEpochForcedInclusion, s.asyncFetcher)
 	}
+
+	// Determine initial DA height for forced inclusion
+	initialDAHeight := s.getInitialDAStartHeight(context.Background())
+	if initialDAHeight == 0 {
+		initialDAHeight = s.GetDAHeight()
+	}
+
+	// Create async epoch fetcher for background prefetching (created once)
+	s.asyncFetcher = block.NewAsyncEpochFetcher(
+		daClient,
+		logger,
+		initialDAHeight,
+		genesis.DAEpochForcedInclusion,
+		1,             // prefetch 1 epoch ahead
+		3*time.Second, // check every 3 seconds
+	)
+	s.asyncFetcher.Start()
+
+	s.fiRetriever = block.NewForcedInclusionRetriever(daClient, logger, initialDAHeight, genesis.DAEpochForcedInclusion, s.asyncFetcher)
 
 	return s, nil
 }
@@ -199,23 +190,6 @@ func (c *Sequencer) GetNextBatch(ctx context.Context, req coresequencer.GetNextB
 			DAHeight: daHeight,
 			TxIndex:  0,
 		}
-
-		initialDAHeight := c.getInitialDAStartHeight(ctx)
-
-		// Create async epoch fetcher if not already created
-		if c.asyncFetcher == nil {
-			c.asyncFetcher = block.NewAsyncEpochFetcher(
-				c.daClient,
-				c.logger,
-				initialDAHeight,
-				c.genesis.DAEpochForcedInclusion,
-				1,             // prefetch 1 epoch ahead
-				3*time.Second, // check every 3 seconds
-			)
-			c.asyncFetcher.Start()
-		}
-
-		c.fiRetriever = block.NewForcedInclusionRetriever(c.daClient, c.logger, initialDAHeight, c.genesis.DAEpochForcedInclusion, c.asyncFetcher)
 	}
 
 	// If we have no cached transactions or we've consumed all from the current cache,

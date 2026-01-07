@@ -31,6 +31,71 @@ func (m *MockForcedInclusionRetriever) RetrieveForcedIncludedTxs(ctx context.Con
 	return args.Get(0).(*block.ForcedInclusionEvent), args.Error(1)
 }
 
+// MockDAClient is a mock implementation of block.FullDAClient for testing
+type MockDAClient struct {
+	mock.Mock
+	retriever *MockForcedInclusionRetriever
+}
+
+// Client interface methods
+func (m *MockDAClient) Submit(ctx context.Context, data [][]byte, gasPrice float64, namespace []byte, options []byte) datypes.ResultSubmit {
+	args := m.Called(ctx, data, gasPrice, namespace, options)
+	return args.Get(0).(datypes.ResultSubmit)
+}
+
+func (m *MockDAClient) Retrieve(ctx context.Context, height uint64, namespace []byte) datypes.ResultRetrieve {
+	args := m.Called(ctx, height, namespace)
+	return args.Get(0).(datypes.ResultRetrieve)
+}
+
+func (m *MockDAClient) Get(ctx context.Context, ids []datypes.ID, namespace []byte) ([]datypes.Blob, error) {
+	args := m.Called(ctx, ids, namespace)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).([]datypes.Blob), args.Error(1)
+}
+
+func (m *MockDAClient) GetHeaderNamespace() []byte {
+	args := m.Called()
+	if args.Get(0) == nil {
+		return nil
+	}
+	return args.Get(0).([]byte)
+}
+
+func (m *MockDAClient) GetDataNamespace() []byte {
+	args := m.Called()
+	if args.Get(0) == nil {
+		return nil
+	}
+	return args.Get(0).([]byte)
+}
+
+func (m *MockDAClient) GetForcedInclusionNamespace() []byte {
+	args := m.Called()
+	if args.Get(0) == nil {
+		return nil
+	}
+	return args.Get(0).([]byte)
+}
+
+func (m *MockDAClient) HasForcedInclusionNamespace() bool {
+	args := m.Called()
+	return args.Get(0).(bool)
+}
+
+// Verifier interface methods
+func (m *MockDAClient) GetProofs(ctx context.Context, ids []datypes.ID, namespace []byte) ([]datypes.Proof, error) {
+	args := m.Called(ctx, ids, namespace)
+	return args.Get(0).([]datypes.Proof), args.Error(1)
+}
+
+func (m *MockDAClient) Validate(ctx context.Context, ids []datypes.ID, proofs []datypes.Proof, namespace []byte) ([]bool, error) {
+	args := m.Called(ctx, ids, proofs, namespace)
+	return args.Get(0).([]bool), args.Error(1)
+}
+
 // createTestSequencer is a helper function to create a sequencer for testing
 func createTestSequencer(t *testing.T, mockRetriever *MockForcedInclusionRetriever, gen genesis.Genesis) *BasedSequencer {
 	t.Helper()
@@ -38,8 +103,15 @@ func createTestSequencer(t *testing.T, mockRetriever *MockForcedInclusionRetriev
 	// Create in-memory datastore
 	db := syncds.MutexWrap(ds.NewMapDatastore())
 
-	seq, err := NewBasedSequencer(mockRetriever, db, gen, zerolog.Nop())
+	// Create mock DA client that wraps the retriever
+	mockDAClient := &MockDAClient{retriever: mockRetriever}
+
+	seq, err := NewBasedSequencer(mockDAClient, db, gen, zerolog.Nop())
 	require.NoError(t, err)
+
+	// Replace the fiRetriever with our mock so tests work as before
+	seq.fiRetriever = mockRetriever
+
 	return seq
 }
 
@@ -454,9 +526,15 @@ func TestBasedSequencer_CheckpointPersistence(t *testing.T) {
 	// Create persistent datastore
 	db := syncds.MutexWrap(ds.NewMapDatastore())
 
+	// Create mock DA client
+	mockDAClient := &MockDAClient{retriever: mockRetriever}
+
 	// Create first sequencer
-	seq1, err := NewBasedSequencer(mockRetriever, db, gen, zerolog.Nop())
+	seq1, err := NewBasedSequencer(mockDAClient, db, gen, zerolog.Nop())
 	require.NoError(t, err)
+
+	// Replace the fiRetriever with our mock so tests work as before
+	seq1.fiRetriever = mockRetriever
 
 	req := coresequencer.GetNextBatchRequest{
 		MaxBytes:      1000000,
@@ -470,8 +548,12 @@ func TestBasedSequencer_CheckpointPersistence(t *testing.T) {
 	assert.Equal(t, 2, len(resp.Batch.Transactions))
 
 	// Create a new sequencer with the same datastore (simulating restart)
-	seq2, err := NewBasedSequencer(mockRetriever, db, gen, zerolog.Nop())
+	mockDAClient2 := &MockDAClient{retriever: mockRetriever}
+	seq2, err := NewBasedSequencer(mockDAClient2, db, gen, zerolog.Nop())
 	require.NoError(t, err)
+
+	// Replace the fiRetriever with our mock so tests work as before
+	seq2.fiRetriever = mockRetriever
 
 	// Checkpoint should be loaded from DB
 	assert.Equal(t, uint64(101), seq2.checkpoint.DAHeight)
