@@ -7,6 +7,7 @@ import (
     coreexec "github.com/evstack/ev-node/core/execution"
     "go.opentelemetry.io/otel"
     "go.opentelemetry.io/otel/attribute"
+    "go.opentelemetry.io/otel/codes"
     "go.opentelemetry.io/otel/trace"
 )
 
@@ -33,14 +34,24 @@ func (t *tracedExecutor) InitChain(ctx context.Context, genesisTime time.Time, i
         ),
     )
     defer span.End()
-    return t.inner.InitChain(ctx, genesisTime, initialHeight, chainID)
+
+    stateRoot, maxBytes, err := t.inner.InitChain(ctx, genesisTime, initialHeight, chainID)
+    if err != nil {
+        span.RecordError(err)
+        span.SetStatus(codes.Error, err.Error())
+    }
+    return stateRoot, maxBytes, err
 }
 
 func (t *tracedExecutor) GetTxs(ctx context.Context) ([][]byte, error) {
     ctx, span := t.tracer.Start(ctx, "Executor.GetTxs")
     defer span.End()
+
     txs, err := t.inner.GetTxs(ctx)
-    if err == nil {
+    if err != nil {
+        span.RecordError(err)
+        span.SetStatus(codes.Error, err.Error())
+    } else {
         span.SetAttributes(attribute.Int("tx.count", len(txs)))
     }
     return txs, err
@@ -55,7 +66,13 @@ func (t *tracedExecutor) ExecuteTxs(ctx context.Context, txs [][]byte, blockHeig
         ),
     )
     defer span.End()
-    return t.inner.ExecuteTxs(ctx, txs, blockHeight, timestamp, prevStateRoot)
+
+    stateRoot, maxBytes, err := t.inner.ExecuteTxs(ctx, txs, blockHeight, timestamp, prevStateRoot)
+    if err != nil {
+        span.RecordError(err)
+        span.SetStatus(codes.Error, err.Error())
+    }
+    return stateRoot, maxBytes, err
 }
 
 func (t *tracedExecutor) SetFinal(ctx context.Context, blockHeight uint64) error {
@@ -63,7 +80,13 @@ func (t *tracedExecutor) SetFinal(ctx context.Context, blockHeight uint64) error
         trace.WithAttributes(attribute.Int64("block.height", int64(blockHeight))),
     )
     defer span.End()
-    return t.inner.SetFinal(ctx, blockHeight)
+
+    err := t.inner.SetFinal(ctx, blockHeight)
+    if err != nil {
+        span.RecordError(err)
+        span.SetStatus(codes.Error, err.Error())
+    }
+    return err
 }
 
 // If the underlying executor implements HeightProvider, forward it while tracing.
@@ -74,6 +97,12 @@ func (t *tracedExecutor) GetLatestHeight(ctx context.Context) (uint64, error) {
     }
     ctx, span := t.tracer.Start(ctx, "Executor.GetLatestHeight")
     defer span.End()
-    return hp.GetLatestHeight(ctx)
+
+    height, err := hp.GetLatestHeight(ctx)
+    if err != nil {
+        span.RecordError(err)
+        span.SetStatus(codes.Error, err.Error())
+    }
+    return height, err
 }
 
