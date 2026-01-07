@@ -179,7 +179,7 @@ func (s *DASubmitter) SubmitHeaders(ctx context.Context, cache cache.Manager, si
 	return submitToDA(s, ctx, headers,
 		func(header *types.SignedHeader) ([]byte, error) {
 			// A. Marshal the inner SignedHeader content to bytes (canonical representation for signing)
-			//    This effectively signs "Fields 1-3" of the intended DAHeaderEnvelope.
+			// This effectively signs "Fields 1-3" of the intended DAHeaderEnvelope.
 			contentBytes, err := header.MarshalBinary()
 			if err != nil {
 				return nil, fmt.Errorf("failed to marshal signed header for envelope signing: %w", err)
