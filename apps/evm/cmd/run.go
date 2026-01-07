@@ -4,12 +4,13 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"net/http"
 	"os"
 	"path/filepath"
 	"time"
 
-    "github.com/ethereum/go-ethereum/common"
-    gethrpc "github.com/ethereum/go-ethereum/rpc"
+	"github.com/ethereum/go-ethereum/common"
+	gethrpc "github.com/ethereum/go-ethereum/rpc"
 	"github.com/ipfs/go-datastore"
 	"github.com/rs/zerolog"
 	"github.com/spf13/cobra"
@@ -58,12 +59,13 @@ var RunCmd = &cobra.Command{
 			return err
 		}
 
-        // Build RPC client options for propagation based on instrumentation config
-        var rpcOpts []gethrpc.ClientOption
-        if httpClient := telemetry.RPCHTTPClientFromConfig(nodeConfig.Instrumentation); httpClient != nil {
-            rpcOpts = append(rpcOpts, gethrpc.WithHTTPClient(httpClient))
-        }
-        executor, err := createExecutionClient(cmd, datastore, rpcOpts...)
+		var rpcOpts []gethrpc.ClientOption
+		if nodeConfig.Instrumentation.IsTracingEnabled() {
+			// if tracing is enabled, we wrap the http client and inject W3C headers.
+			rpcOpts = append(rpcOpts, gethrpc.WithHTTPClient(telemetry.NewPropagatingHTTPClient(http.DefaultTransport)))
+		}
+
+		executor, err := createExecutionClient(cmd, datastore, rpcOpts...)
 		if err != nil {
 			return err
 		}
@@ -253,7 +255,7 @@ func createExecutionClient(cmd *cobra.Command, db datastore.Batching, rpcOpts ..
 	genesisHash := common.HexToHash(genesisHashStr)
 	feeRecipient := common.HexToAddress(feeRecipientStr)
 
-    return evm.NewEngineExecutionClient(ethURL, engineURL, jwtSecret, genesisHash, feeRecipient, db, rpcOpts...)
+	return evm.NewEngineExecutionClient(ethURL, engineURL, jwtSecret, genesisHash, feeRecipient, db, rpcOpts...)
 }
 
 // addFlags adds flags related to the EVM execution client

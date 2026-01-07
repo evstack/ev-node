@@ -3,8 +3,6 @@ package telemetry
 import (
 	"net/http"
 
-	"github.com/evstack/ev-node/pkg/config"
-	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/propagation"
 )
 
@@ -26,20 +24,14 @@ func (t *otelRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) 
 // W3C Trace Context headers (traceparent, tracestate) from the request context.
 // If base is nil, http.DefaultTransport is used.
 func NewPropagatingHTTPClient(base http.RoundTripper) *http.Client {
+	prop := propagation.NewCompositeTextMapPropagator(
+		propagation.TraceContext{}, // carries trace_id/span_id and sampling
+		propagation.Baggage{},      // optional key/value context that can flow with the trace
+	)
 	return &http.Client{
 		Transport: &otelRoundTripper{
 			base:       base,
-			propagator: otel.GetTextMapPropagator(),
+			propagator: prop,
 		},
 	}
-}
-
-// RPCHTTPClientFromConfig returns an HTTP client that injects W3C trace context
-// headers when tracing is enabled in the provided config. Returns nil if
-// tracing is disabled so callers can decide how to build RPC client options.
-func RPCHTTPClientFromConfig(cfg *config.InstrumentationConfig) *http.Client {
-	if cfg == nil || !cfg.IsTracingEnabled() {
-		return nil
-	}
-	return NewPropagatingHTTPClient(http.DefaultTransport)
 }
