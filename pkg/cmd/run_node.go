@@ -98,9 +98,11 @@ func StartNode(
 		}
 		defer func() {
 			// best-effort shutdown within a short timeout
-			c, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			c, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 			defer cancel()
-			_ = shutdownTracing(c)
+			if err := shutdownTracing(c); err != nil {
+				logger.Error().Err(err).Msg("failed to shutdown tracing")
+			}
 		}()
 	}
 
