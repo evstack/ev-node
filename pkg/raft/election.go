@@ -94,6 +94,10 @@ func (d *DynamicLeaderElection) Run(ctx context.Context) error {
 					d.logger.Info().Msg("became leader, stopping follower operations")
 					// wait for in flight raft msgs to land, this is critical to avoid double sign on old state
 					raftSynced := d.node.waitForMsgsLanded(d.node.Config().SendTimeout) == nil
+					if d.node.leaderID() != d.node.NodeID() {
+						d.logger.Info().Msg("lost leadership during sync wait")
+						continue
+					}
 					if !raftSynced || !runnable.IsSynced(d.node.GetState()) {
 						d.logger.Info().Msg("became leader, but not synced. Pass on leadership")
 						if err := d.node.leadershipTransfer(); err != nil && !errors.Is(err, raft.ErrNotLeader) {

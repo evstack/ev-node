@@ -350,7 +350,7 @@ func (m *implementation) GetPendingData(ctx context.Context) ([]*types.SignedDat
 }
 
 func (m *implementation) GetLastSubmittedHeaderHeight() uint64 {
-	return m.pendingHeaders.GetLastSubmittedDataHeight()
+	return m.pendingHeaders.GetLastSubmittedHeaderHeight()
 }
 
 func (m *implementation) SetLastSubmittedHeaderHeight(ctx context.Context, height uint64) {

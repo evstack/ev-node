@@ -140,10 +140,10 @@ func RegisterCustomHTTPEndpoints(mux *http.ServeMux, s store.Store, pm p2p.P2PRP
 			}
 			rsp := struct {
 				IsLeader bool   `json:"is_leader"`
-				NodeId   string `json:"node_id"`
+				NodeID   string `json:"node_id"`
 			}{
 				IsLeader: raftNode.IsLeader(),
-				NodeId:   raftNode.NodeID(),
+				NodeID:   raftNode.NodeID(),
 			}
 			w.Header().Set("Content-Type", "application/json")
 			if err := json.NewEncoder(w).Encode(rsp); err != nil {

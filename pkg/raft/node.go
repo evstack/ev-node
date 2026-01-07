@@ -109,6 +109,7 @@ func (n *Node) Start(_ context.Context) error {
 		return nil
 	}
 	if !n.config.Bootstrap {
+		// it is intended to fail fast here. at this stage only bootstrap mode is supported.
 		return fmt.Errorf("raft cluster requires bootstrap mode")
 	}
 

@@ -181,7 +181,7 @@ func NewSyncer(
 	}
 	if raftNode != nil && !reflect.ValueOf(raftNode).IsNil() {
 		s.raftRetriever = newRaftRetriever(raftNode, genesis, logger, eventProcessorFn(s.pipeEvent), func(ctx context.Context, state *raft.RaftBlockState) error {
-			s.logger.Info().Uint64("header_height", state.LastSubmittedDAHeaderHeight).Uint64("data_height", state.LastSubmittedDADataHeight).Msg("+++ received raft block state")
+			s.logger.Debug().Uint64("header_height", state.LastSubmittedDAHeaderHeight).Uint64("data_height", state.LastSubmittedDADataHeight).Msg("received raft block state")
 			cache.SetLastSubmittedHeaderHeight(ctx, state.LastSubmittedDAHeaderHeight)
 			cache.SetLastSubmittedDataHeight(ctx, state.LastSubmittedDADataHeight)
 			return nil

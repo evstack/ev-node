@@ -111,11 +111,11 @@ func newFullNode(
 		leaderElection = raftpkg.NewDynamicLeaderElection(logger, leaderFactory, followerFactory, raftNode)
 	case nodeConfig.Node.Aggregator && !nodeConfig.Raft.Enable:
 		if leaderElection, err = newSingleRoleElector(leaderFactory); err != nil {
-			return
+			return nil, err
 		}
 	case !nodeConfig.Node.Aggregator && !nodeConfig.Raft.Enable:
 		if leaderElection, err = newSingleRoleElector(followerFactory); err != nil {
-			return
+			return nil, err
 		}
 	default:
 		return nil, fmt.Errorf("raft config must be used in sequencer setup only")

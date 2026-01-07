@@ -110,6 +110,8 @@ func TestDynamicLeaderElectionRun(t *testing.T) {
 				m.EXPECT().leaderCh().Return((<-chan bool)(leaderCh))
 				m.EXPECT().Config().Return(testCfg())
 				m.EXPECT().waitForMsgsLanded(2 * time.Millisecond).Return(nil)
+				m.EXPECT().NodeID().Return("self")
+				m.EXPECT().leaderID().Return("self")
 				m.EXPECT().GetState().Return(RaftBlockState{Height: 1})
 				m.EXPECT().leadershipTransfer().Return(nil)
 
@@ -142,6 +144,44 @@ func TestDynamicLeaderElectionRun(t *testing.T) {
 				assert.ErrorIs(t, err, context.Canceled)
 			},
 		},
+		"lost leadership during sync wait": {
+			setup: func(t *testing.T) (*DynamicLeaderElection, context.Context, context.CancelFunc) {
+				m := newMocksourceNode(t)
+				leaderCh := make(chan bool, 2)
+				m.EXPECT().leaderCh().Return((<-chan bool)(leaderCh))
+				m.EXPECT().Config().Return(testCfg())
+				m.EXPECT().waitForMsgsLanded(2 * time.Millisecond).Return(nil)
+				m.EXPECT().NodeID().Return("self")
+				m.EXPECT().leaderID().Return("other") // Simulate leadership lost
+
+				fStarted := make(chan struct{})
+				follower := &testRunnable{startedCh: fStarted}
+				// Leader should not be started
+				leader := &testRunnable{runFn: func(ctx context.Context) error {
+					t.Fatal("leader should not be running")
+					return nil
+				}}
+
+				logger := zerolog.Nop()
+				d := &DynamicLeaderElection{logger: logger, node: m,
+					leaderFactory:   func() (Runnable, error) { return leader, nil },
+					followerFactory: func() (Runnable, error) { return follower, nil },
+				}
+				ctx, cancel := context.WithCancel(t.Context())
+				go func() {
+					leaderCh <- false
+					<-fStarted
+					leaderCh <- true
+					time.Sleep(3 * time.Millisecond)
+					cancel()
+				}()
+				return d, ctx, cancel
+			},
+			assertF: func(t *testing.T, err error) {
+				require.Error(t, err)
+				assert.ErrorIs(t, err, context.Canceled)
+			},
+		},
 		"follower starts then becomes leader": {
 			setup: func(t *testing.T) (*DynamicLeaderElection, context.Context, context.CancelFunc) {
 				m := newMocksourceNode(t)
@@ -150,6 +190,8 @@ func TestDynamicLeaderElectionRun(t *testing.T) {
 				// On leadership change to true, election will sleep SendTimeout, then check sync against state
 				m.EXPECT().Config().Return(testCfg())
 				m.EXPECT().waitForMsgsLanded(2 * time.Millisecond).Return(nil)
+				m.EXPECT().NodeID().Return("self")
+				m.EXPECT().leaderID().Return("self")
 				m.EXPECT().GetState().Return(RaftBlockState{Height: 1})
 
 				fStarted := make(chan struct{})
