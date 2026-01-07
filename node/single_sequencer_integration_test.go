@@ -6,7 +6,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"net/http"
 	"sync"
 	"testing"
@@ -17,6 +16,7 @@ import (
 
 	coreexecutor "github.com/evstack/ev-node/core/execution"
 	evconfig "github.com/evstack/ev-node/pkg/config"
+	"github.com/evstack/ev-node/pkg/store"
 	"github.com/evstack/ev-node/test/testda"
 )
 
@@ -233,7 +233,9 @@ func TestStateRecovery(t *testing.T) {
 
 	// Set up one sequencer
 	config := getTestConfig(t, 1)
-	executor, sequencer, dac, ds, nodeKey, stopDAHeightTicker := createTestComponents(t, config)
+	executor, sequencer, dac, nodeKey, _, stopDAHeightTicker := createTestComponents(t, config)
+	ds, err := store.NewDefaultKVStore(config.RootDir, "db", "test")
+	require.NoError(err)
 	node, cleanup := createNodeWithCustomComponents(t, config, executor, sequencer, dac, nodeKey, ds, stopDAHeightTicker)
 	defer cleanup()
 
@@ -259,7 +261,9 @@ func TestStateRecovery(t *testing.T) {
 	shutdownAndWait(t, []context.CancelFunc{cancel}, &runningWg, 60*time.Second)
 
 	// Create a new node instance using the same components
-	executor, sequencer, dac, _, nodeKey, stopDAHeightTicker = createTestComponents(t, config)
+	executor, sequencer, dac, nodeKey, _, stopDAHeightTicker = createTestComponents(t, config)
+	ds, err = store.NewDefaultKVStore(config.RootDir, "db", "test")
+	require.NoError(err)
 	node, cleanup = createNodeWithCustomComponents(t, config, executor, sequencer, dac, nodeKey, ds, stopDAHeightTicker)
 	defer cleanup()
 
@@ -326,7 +330,7 @@ func TestBatchQueueThrottlingWithDAFailure(t *testing.T) {
 	require.True(ok, "Expected testda.DummyDA implementation")
 
 	// Create node with components
-	node, cleanup := createNodeWithCustomComponents(t, config, executor, sequencer, dummyDAImpl, nodeKey, ds, func() {})
+	node, cleanup := createNodeWithCustomComponents(t, config, executor, sequencer, dummyDAImpl, ds, nodeKey, func() {})
 	defer cleanup()
 
 	ctx, cancel := context.WithCancel(t.Context())

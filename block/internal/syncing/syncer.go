@@ -260,6 +260,13 @@ func (s *Syncer) isCatchingUpState() bool {
 	}()
 }
 
+// GetLastState returns the current state.
+func (e *Syncer) GetLastState() types.State {
+	state := e.getLastState()
+	state.AppHash = bytes.Clone(state.AppHash)
+	return state
+}
+
 // getLastState returns the current state
 func (s *Syncer) getLastState() types.State {
 	state := s.lastState.Load()

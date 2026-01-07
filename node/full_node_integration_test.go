@@ -67,11 +67,11 @@ func TestTxGossipingMultipleNodesNoDA(t *testing.T) {
 		require.NoError(waitForAtLeastNBlocks(nodeItem, blocksToWaitFor, Store), "node %d", i)
 	}
 
-	// Shutdown all nodes and wait
-	shutdownAndWait(t, cancels, &runningWg, 10*time.Second)
-
 	// Assert that all nodes have the same block up to height blocksToWaitFor
 	assertAllNodesSynced(t, nodes, blocksToWaitFor)
+
+	// Shutdown all nodes and wait
+	shutdownAndWait(t, cancels, &runningWg, 10*time.Second)
 }
 
 // TestTxGossipingMultipleNodesDAIncluded tests that transactions are gossiped and blocks are sequenced and synced across multiple nodes only using DA. P2P gossiping is disabled.
@@ -125,18 +125,18 @@ func TestTxGossipingMultipleNodesDAIncluded(t *testing.T) {
 		}
 	}
 
-	blocksToWaitFor := uint64(4)
+	blocksToWaitFor := uint64(5)
 	// Wait for all nodes to reach at least blocksToWaitFor blocks with DA inclusion
 	for _, nodeItem := range nodes {
 		requireEmptyChan(t, errChan)
 		require.NoError(waitForAtLeastNDAIncludedHeight(nodeItem, blocksToWaitFor))
 	}
 
-	// Shutdown all nodes and wait
-	shutdownAndWait(t, cancels, &runningWg, 5*time.Second)
-
 	// Assert that all nodes have the same block up to height blocksToWaitFor
 	assertAllNodesSynced(t, nodes, blocksToWaitFor)
+
+	// Shutdown all nodes and wait
+	shutdownAndWait(t, cancels, &runningWg, 5*time.Second)
 }
 
 func castState(t *testing.T, node *FullNode) *failoverState {

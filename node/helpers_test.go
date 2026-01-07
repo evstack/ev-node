@@ -16,7 +16,6 @@ import (
 	coresequencer "github.com/evstack/ev-node/core/sequencer"
 	"github.com/evstack/ev-node/test/testda"
 	"github.com/ipfs/go-datastore"
-	dssync "github.com/ipfs/go-datastore/sync"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/require"
@@ -24,6 +23,7 @@ import (
 	evconfig "github.com/evstack/ev-node/pkg/config"
 	"github.com/evstack/ev-node/pkg/p2p/key"
 	remote_signer "github.com/evstack/ev-node/pkg/signer/noop"
+	"github.com/evstack/ev-node/pkg/store"
 	"github.com/evstack/ev-node/types"
 )
 
@@ -78,7 +78,8 @@ func createTestComponents(t *testing.T, config evconfig.Config) (coreexecutor.Ex
 		PrivKey: genesisValidatorKey,
 		PubKey:  genesisValidatorKey.GetPublic(),
 	}
-	ds := dssync.MutexWrap(datastore.NewMapDatastore())
+	ds, err := store.NewTestInMemoryKVStore()
+	require.NoError(t, err)
 
 	stop := daClient.StartHeightTicker(config.DA.BlockTime.Duration)
 	return executor, sequencer, daClient, p2pKey, ds, stop
@@ -233,16 +234,16 @@ func createNodesWithCleanup(t *testing.T, num int, config evconfig.Config) ([]*F
 		}
 		config.P2P.ListenAddress = fmt.Sprintf("/ip4/127.0.0.1/tcp/%d", 40001+i)
 		config.RPC.Address = fmt.Sprintf("127.0.0.1:%d", 8001+i)
-		executor, sequencer, daClient, nodeP2PKey, _, stopDAHeightTicker := createTestComponents(t, config)
+		executor, sequencer, daClient, nodeP2PKey, ds, stopDAHeightTicker := createTestComponents(t, config)
 		node, err := NewNode(
 			config,
 			executor,
 			sequencer,
 			daClient,
 			nil,
-			aggP2PKey,
+			nodeP2PKey,
 			genesis,
-			dssync.MutexWrap(datastore.NewMapDatastore()),
+			ds,
 			DefaultMetricsProvider(evconfig.DefaultInstrumentationConfig()),
 			logger,
 			NodeOptions{},
