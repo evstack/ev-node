@@ -41,7 +41,7 @@
 //!         .connect_timeout(Duration::from_secs(10))
 //!         .build()
 //!         .await?;
-//!     
+//!
 //!     Ok(())
 //! }
 //! ```
@@ -60,17 +60,17 @@
 //!         .tls()  // Enable TLS with default configuration
 //!         .build()
 //!         .await?;
-//!     
+//!
 //!     // Or with custom TLS configuration
 //!     let tls_config = ClientTlsConfig::new()
 //!         .domain_name("secure-node.ev.xyz");
-//!     
+//!
 //!     let client = Client::builder()
 //!         .endpoint("https://secure-node.ev.xyz")
 //!         .tls_config(tls_config)
 //!         .build()
 //!         .await?;
-//!     
+//!
 //!     Ok(())
 //! }
 //! ```
