@@ -133,13 +133,13 @@ func runProfile(p profile, dir string, cfg config) (result, error) {
 	if err != nil {
 		return result{}, fmt.Errorf("failed to open db: %w", err)
 	}
+	defer kv.Close()
 
 	ctx := context.Background()
 	start := time.Now()
 
 	batch, err := kv.Batch(ctx)
 	if err != nil {
-		_ = kv.Close()
 		return result{}, fmt.Errorf("failed to create batch: %w", err)
 	}
 
