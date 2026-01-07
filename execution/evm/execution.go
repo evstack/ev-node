@@ -164,33 +164,42 @@ func NewEngineExecutionClient(
 	genesisHash common.Hash,
 	feeRecipient common.Address,
 	db ds.Batching,
+	rpcOpts ...rpc.ClientOption,
 ) (*EngineClient, error) {
 	if db == nil {
 		return nil, errors.New("db is required for EVM execution client")
 	}
 
-	ethClient, err := ethclient.Dial(ethURL)
+	ethOpts := make([]rpc.ClientOption, len(rpcOpts))
+	copy(ethOpts, rpcOpts)
+
+	// Create ETH RPC client with optional custom HTTP client, then ethclient from it
+	ethRPC, err := rpc.DialOptions(context.Background(), ethURL, ethOpts...)
 	if err != nil {
 		return nil, err
 	}
+	ethClient := ethclient.NewClient(ethRPC)
 
 	secret, err := decodeSecret(jwtSecret)
 	if err != nil {
 		return nil, err
 	}
 
-	engineClient, err := rpc.DialOptions(context.Background(), engineURL,
-		rpc.WithHTTPAuth(func(h http.Header) error {
-			authToken, err := getAuthToken(secret)
-			if err != nil {
-				return err
-			}
-
-			if authToken != "" {
-				h.Set("Authorization", "Bearer "+authToken)
-			}
-			return nil
-		}))
+	// Create Engine RPC with optional HTTP client and JWT auth
+	// Compose engine options: pass-through rpcOpts plus JWT auth
+	engineOptions := make([]rpc.ClientOption, len(rpcOpts))
+	copy(engineOptions, rpcOpts)
+	engineOptions = append(engineOptions, rpc.WithHTTPAuth(func(h http.Header) error {
+		authToken, err := getAuthToken(secret)
+		if err != nil {
+			return err
+		}
+		if authToken != "" {
+			h.Set("Authorization", "Bearer "+authToken)
+		}
+		return nil
+	}))
+	engineClient, err := rpc.DialOptions(context.Background(), engineURL, engineOptions...)
 	if err != nil {
 		return nil, err
 	}

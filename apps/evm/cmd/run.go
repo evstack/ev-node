@@ -8,7 +8,8 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/ethereum/go-ethereum/common"
+    "github.com/ethereum/go-ethereum/common"
+    gethrpc "github.com/ethereum/go-ethereum/rpc"
 	"github.com/ipfs/go-datastore"
 	"github.com/rs/zerolog"
 	"github.com/spf13/cobra"
@@ -29,6 +30,7 @@ import (
 	"github.com/evstack/ev-node/pkg/sequencers/based"
 	"github.com/evstack/ev-node/pkg/sequencers/single"
 	"github.com/evstack/ev-node/pkg/store"
+	"github.com/evstack/ev-node/pkg/telemetry"
 
 	"github.com/evstack/ev-node/apps/evm/server"
 )
@@ -56,7 +58,12 @@ var RunCmd = &cobra.Command{
 			return err
 		}
 
-		executor, err := createExecutionClient(cmd, datastore)
+        // Build RPC client options for propagation based on instrumentation config
+        var rpcOpts []gethrpc.ClientOption
+        if httpClient := telemetry.RPCHTTPClientFromConfig(nodeConfig.Instrumentation); httpClient != nil {
+            rpcOpts = append(rpcOpts, gethrpc.WithHTTPClient(httpClient))
+        }
+        executor, err := createExecutionClient(cmd, datastore, rpcOpts...)
 		if err != nil {
 			return err
 		}
@@ -201,7 +208,7 @@ func createSequencer(
 	return sequencer, nil
 }
 
-func createExecutionClient(cmd *cobra.Command, db datastore.Batching) (execution.Executor, error) {
+func createExecutionClient(cmd *cobra.Command, db datastore.Batching, rpcOpts ...gethrpc.ClientOption) (execution.Executor, error) {
 	// Read execution client parameters from flags
 	ethURL, err := cmd.Flags().GetString(evm.FlagEvmEthURL)
 	if err != nil {
@@ -246,7 +253,7 @@ func createExecutionClient(cmd *cobra.Command, db datastore.Batching) (execution
 	genesisHash := common.HexToHash(genesisHashStr)
 	feeRecipient := common.HexToAddress(feeRecipientStr)
 
-	return evm.NewEngineExecutionClient(ethURL, engineURL, jwtSecret, genesisHash, feeRecipient, db)
+    return evm.NewEngineExecutionClient(ethURL, engineURL, jwtSecret, genesisHash, feeRecipient, db, rpcOpts...)
 }
 
 // addFlags adds flags related to the EVM execution client
