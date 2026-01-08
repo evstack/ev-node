@@ -22,6 +22,9 @@ type Client interface {
 	GetDataNamespace() []byte
 	GetForcedInclusionNamespace() []byte
 	HasForcedInclusionNamespace() bool
+
+	// Subscribe subscribes to the DA layer for new blobs at the specified namespace.
+	Subscribe(ctx context.Context, namespace []byte) (<-chan datypes.ResultRetrieve, error)
 }
 
 // Verifier defines the interface for DA proof verification operations.

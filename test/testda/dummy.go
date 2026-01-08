@@ -40,6 +40,9 @@ type DummyDA struct {
 
 	tickerMu   sync.Mutex
 	tickerStop chan struct{}
+
+	subsMu sync.Mutex
+	subs   []chan datypes.ResultRetrieve
 }
 
 // Option configures a DummyDA instance.
@@ -112,6 +115,8 @@ func (d *DummyDA) Submit(_ context.Context, data [][]byte, _ float64, namespace 
 		}
 	}
 	d.mu.Unlock()
+
+	d.notifySubscribers(height, now)
 
 	return datypes.ResultSubmit{
 		BaseResult: datypes.BaseResult{
@@ -240,6 +245,7 @@ func (d *DummyDA) StartHeightTicker(interval time.Duration) func() {
 					}
 				}
 				d.mu.Unlock()
+				d.notifySubscribers(height, now)
 			case <-stopCh:
 				return
 			}
@@ -289,4 +295,48 @@ func (d *DummyDA) GetHeaderByHeight(_ context.Context, height uint64) (*Header, 
 		return nil, datypes.ErrBlobNotFound
 	}
 	return header, nil
+}
+
+// Subscribe simulates a subscription to the DA layer.
+// It returns a channel that receives events when new blocks are produced or blobs are submitted.
+func (d *DummyDA) Subscribe(ctx context.Context, _ []byte) (<-chan datypes.ResultRetrieve, error) {
+	d.subsMu.Lock()
+	defer d.subsMu.Unlock()
+
+	ch := make(chan datypes.ResultRetrieve, 100)
+	d.subs = append(d.subs, ch)
+
+	// cleanup on context done
+	go func() {
+		<-ctx.Done()
+		d.subsMu.Lock()
+		defer d.subsMu.Unlock()
+		for i, sub := range d.subs {
+			if sub == ch {
+				d.subs = append(d.subs[:i], d.subs[i+1:]...)
+				close(ch)
+				break
+			}
+		}
+	}()
+
+	return ch, nil
+}
+
+func (d *DummyDA) notifySubscribers(height uint64, timestamp time.Time) {
+	d.subsMu.Lock()
+	defer d.subsMu.Unlock()
+
+	for _, sub := range d.subs {
+		select {
+		case sub <- datypes.ResultRetrieve{
+			BaseResult: datypes.BaseResult{
+				Code:      datypes.StatusSuccess,
+				Height:    height,
+				Timestamp: timestamp,
+			},
+		}:
+		default:
+		}
+	}
 }

@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sync"
 
 	"github.com/rs/zerolog"
 	"google.golang.org/protobuf/proto"
@@ -21,6 +22,7 @@ import (
 // DARetriever defines the interface for retrieving events from the DA layer
 type DARetriever interface {
 	RetrieveFromDA(ctx context.Context, daHeight uint64) ([]common.DAHeightEvent, error)
+	Subscribe(ctx context.Context) (<-chan common.DAHeightEvent, error)
 }
 
 // daRetriever handles DA retrieval operations for syncing
@@ -34,6 +36,7 @@ type daRetriever struct {
 	// on restart, will be refetch as da height is updated by syncer
 	pendingHeaders map[uint64]*types.SignedHeader
 	pendingData    map[uint64]*types.Data
+	mu             sync.Mutex
 
 	// strictMode indicates if the node has seen a valid DAHeaderEnvelope
 	// and should now reject all legacy/unsigned headers.
@@ -73,6 +76,67 @@ func (r *daRetriever) RetrieveFromDA(ctx context.Context, daHeight uint64) ([]co
 
 	r.logger.Debug().Int("blobs", len(blobsResp.Data)).Uint64("da_height", daHeight).Msg("retrieved blob data")
 	return r.processBlobs(ctx, blobsResp.Data, daHeight), nil
+}
+
+// Subscribe subscribes to specific DA namespace and returns a channel of height events
+func (r *daRetriever) Subscribe(ctx context.Context) (<-chan common.DAHeightEvent, error) {
+	// Subscribe to header namespace
+	// Note: We currently only subscribe to header namespace.
+	// If header and data namespaces are different, we might need to subscribe to both or fetch data on demand.
+	// For now, assuming header subscription is sufficient to trigger catchup or process full blocks if namespaces are same.
+	// Actually, if we follow the "Subscribe" API from recent changes, we likely want to subscribe to *headers*.
+	// However, processBlobs expects blobs.
+	// Let's subscribe to the header namespace.
+
+	// Use combined channel for output
+	outCh := make(chan common.DAHeightEvent, 100)
+
+	subCh, err := r.client.Subscribe(ctx, r.client.GetHeaderNamespace())
+	if err != nil {
+		return nil, fmt.Errorf("failed to subscribe to headers: %w", err)
+	}
+
+	go func() {
+		defer close(outCh)
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case res, ok := <-subCh:
+				if !ok {
+					return
+				}
+				if res.Code != datypes.StatusSuccess {
+					r.logger.Error().Uint64("code", uint64(res.Code)).Msg("subscription error")
+					continue
+				}
+
+				// We received some blobs (headers) via subscription.
+				// We process them similar to RetrieveFromDA, but we might need to fetch data if namespaces differ.
+				// If namespaces differ, data might not be in the subscription result.
+				// For the "Follow" case, we want to emit an event.
+				// If we have just headers, we might need to fetch data corresponding to these headers.
+
+				// However, `processBlobs` handles pending headers/data.
+				// If we only get headers, they will be stored in pendingHeaders.
+				// If we need data, we might need to fetch it.
+
+				// IMPORTANT: processBlobs takes "blobs" [][]byte. `res.Data` is []byte (aliases to Blob).
+				// So we can pass res.Data directly.
+
+				events := r.processBlobs(ctx, res.Data, res.Height)
+				for _, ev := range events {
+					select {
+					case <-ctx.Done():
+						return
+					case outCh <- ev:
+					}
+				}
+			}
+		}
+	}()
+
+	return outCh, nil
 }
 
 // fetchBlobs retrieves blobs from both header and data namespaces
@@ -150,6 +214,9 @@ func (r *daRetriever) validateBlobResponse(res datypes.ResultRetrieve, daHeight 
 
 // processBlobs processes retrieved blobs to extract headers and data and returns height events
 func (r *daRetriever) processBlobs(ctx context.Context, blobs [][]byte, daHeight uint64) []common.DAHeightEvent {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
 	// Decode all blobs
 	for _, bz := range blobs {
 		if len(bz) == 0 {

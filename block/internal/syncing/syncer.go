@@ -186,7 +186,9 @@ func (s *Syncer) Start(ctx context.Context) error {
 	}
 
 	// Initialize handlers
-	s.daRetriever = NewDARetriever(s.daClient, s.cache, s.genesis, s.logger)
+	if s.daRetriever == nil {
+		s.daRetriever = NewDARetriever(s.daClient, s.cache, s.genesis, s.logger)
+	}
 	s.fiRetriever = da.NewForcedInclusionRetriever(s.daClient, s.logger, s.genesis.DAStartHeight, s.genesis.DAEpochForcedInclusion)
 	s.p2pHandler = NewP2PHandler(s.headerStore.Store(), s.dataStore.Store(), s.cache, s.genesis, s.logger)
 	if currentHeight, err := s.store.Height(s.ctx); err != nil {
@@ -318,24 +320,84 @@ func (s *Syncer) daWorkerLoop() {
 	defer s.logger.Info().Msg("DA worker stopped")
 
 	for {
-		err := s.fetchDAUntilCaughtUp()
+		// 1. Catch up mode: fetch sequentially until we are up to date
+		if err := s.fetchDAUntilCaughtUp(); err != nil {
+			s.logger.Error().Err(err).Msg("DA catchup failed, retrying after backoff")
 
-		var backoff time.Duration
-		if err == nil {
-			// No error, means we are caught up.
-			backoff = s.config.DA.BlockTime.Duration
-		} else {
-			// Error, back off for a shorter duration.
-			backoff = s.config.DA.BlockTime.Duration
+			backoff := s.config.DA.BlockTime.Duration
 			if backoff <= 0 {
 				backoff = 2 * time.Second
 			}
+
+			select {
+			case <-s.ctx.Done():
+				return
+			case <-time.After(backoff):
+			}
+			continue
 		}
 
+		// 2. Follow mode: use subscription to receive new blocks
+		// If subscription fails or gap is detected, we fall back to catchup mode
+		if err := s.followDA(); err != nil {
+			if errors.Is(err, context.Canceled) {
+				return
+			}
+			s.logger.Warn().Err(err).Msg("DA follow disrupted, switching to catchup")
+			// We don't need explicit backoff here as we'll switch to catchup immediately,
+			// checking if there are new blocks to fetch.
+		}
+	}
+}
+
+// followDA subscribes to DA events and processes them until a gap is detected or error occurs
+func (s *Syncer) followDA() error {
+	s.logger.Info().Msg("entering DA follow mode")
+	subCh, err := s.daRetriever.Subscribe(s.ctx)
+	if err != nil {
+		return fmt.Errorf("failed to subscribe to DA: %w", err)
+	}
+
+	for {
 		select {
 		case <-s.ctx.Done():
-			return
-		case <-time.After(backoff):
+			return s.ctx.Err()
+		case event, ok := <-subCh:
+			if !ok {
+				return errors.New("DA subscription channel closed")
+			}
+
+			// Calculate expected height
+			nextExpectedHeight := max(s.daRetrieverHeight.Load(), s.cache.DaHeight())
+
+			// If we receive an event for a future height (gap), break to trigger catchup
+			if event.DaHeight > nextExpectedHeight {
+				s.logger.Info().
+					Uint64("event_da_height", event.DaHeight).
+					Uint64("expected_da_height", nextExpectedHeight).
+					Msg("gap detected in DA stream, switching to catchup")
+				return nil
+			}
+
+			// If event is old/duplicate, log and ignore (or just update height if needed)
+			if event.DaHeight < nextExpectedHeight {
+				s.logger.Debug().
+					Uint64("event_da_height", event.DaHeight).
+					Uint64("expected_da_height", nextExpectedHeight).
+					Msg("received old DA event, ignoring")
+				continue
+			}
+
+			// Process event (same conceptual logic as catchup)
+			select {
+			case s.heightInCh <- event:
+			default:
+				// If channel is full, use cache as backup/buffer
+				s.cache.SetPendingEvent(event.Header.Height(), &event)
+			}
+
+			// Update expected height
+			s.daRetrieverHeight.Store(event.DaHeight + 1)
 		}
 	}
 }

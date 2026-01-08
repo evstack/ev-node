@@ -105,3 +105,65 @@ func (_c *MockDARetriever_RetrieveFromDA_Call) RunAndReturn(run func(ctx context
 	_c.Call.Return(run)
 	return _c
 }
+
+// Subscribe provides a mock function for the type MockDARetriever
+func (_mock *MockDARetriever) Subscribe(ctx context.Context) (<-chan common.DAHeightEvent, error) {
+	ret := _mock.Called(ctx)
+
+	if len(ret) == 0 {
+		panic("no return value specified for Subscribe")
+	}
+
+	var r0 <-chan common.DAHeightEvent
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context) (<-chan common.DAHeightEvent, error)); ok {
+		return returnFunc(ctx)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context) <-chan common.DAHeightEvent); ok {
+		r0 = returnFunc(ctx)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(<-chan common.DAHeightEvent)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context) error); ok {
+		r1 = returnFunc(ctx)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}
+
+// MockDARetriever_Subscribe_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'Subscribe'
+type MockDARetriever_Subscribe_Call struct {
+	*mock.Call
+}
+
+// Subscribe is a helper method to define mock.On call
+//   - ctx context.Context
+func (_e *MockDARetriever_Expecter) Subscribe(ctx interface{}) *MockDARetriever_Subscribe_Call {
+	return &MockDARetriever_Subscribe_Call{Call: _e.mock.On("Subscribe", ctx)}
+}
+
+func (_c *MockDARetriever_Subscribe_Call) Run(run func(ctx context.Context)) *MockDARetriever_Subscribe_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		run(
+			arg0,
+		)
+	})
+	return _c
+}
+
+func (_c *MockDARetriever_Subscribe_Call) Return(_a0 <-chan common.DAHeightEvent, _a1 error) *MockDARetriever_Subscribe_Call {
+	_c.Call.Return(_a0, _a1)
+	return _c
+}
+
+func (_c *MockDARetriever_Subscribe_Call) RunAndReturn(run func(context.Context) (<-chan common.DAHeightEvent, error)) *MockDARetriever_Subscribe_Call {
+	_c.Call.Return(run)
+	return _c
+}

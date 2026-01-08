@@ -442,3 +442,61 @@ func (c *client) Validate(ctx context.Context, ids []datypes.ID, proofs []datype
 
 	return results, nil
 }
+
+// Subscribe subscribes to the DA layer for new blobs at the specified namespace.
+// It bridges the jsonrpc subscription to the ResultRetrieve channel for internal consumption.
+func (c *client) Subscribe(ctx context.Context, namespace []byte) (<-chan datypes.ResultRetrieve, error) {
+	ns, err := share.NewNamespaceFromBytes(namespace)
+	if err != nil {
+		return nil, fmt.Errorf("invalid namespace: %w", err)
+	}
+
+	subCh, err := c.blobAPI.Internal.Subscribe(ctx, ns)
+	if err != nil {
+		return nil, fmt.Errorf("failed to subscribe to blob namespace: %w", err)
+	}
+
+	outCh := make(chan datypes.ResultRetrieve, 10)
+
+	// Start a goroutine to bridge events
+	go func() {
+		defer close(outCh)
+
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case resp, ok := <-subCh:
+				if !ok {
+					return
+				}
+				if resp == nil {
+					continue
+				}
+
+				// Convert Blobs to ResultRetrieve
+				ids := make([]datypes.ID, len(resp.Blobs))
+				data := make([]datypes.Blob, len(resp.Blobs))
+				for i, b := range resp.Blobs {
+					ids[i] = blobrpc.MakeID(resp.Height, b.Commitment)
+					data[i] = b.Data()
+				}
+
+				// Ideally we would get the block timestamp here but that would require an extra RPC call.
+				// For subscription feed, we might use local time or 0 as it's mostly for triggering catchup.
+				// Using 0 or Now() is a trade-off. Let's use Now() for liveness.
+				outCh <- datypes.ResultRetrieve{
+					BaseResult: datypes.BaseResult{
+						Code:      datypes.StatusSuccess,
+						IDs:       ids,
+						Height:    resp.Height,
+						Timestamp: time.Now(),
+					},
+					Data: data,
+				}
+			}
+		}
+	}()
+
+	return outCh, nil
+}
