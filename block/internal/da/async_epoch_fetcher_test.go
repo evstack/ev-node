@@ -11,50 +11,12 @@ import (
 	"github.com/stretchr/testify/require"
 
 	datypes "github.com/evstack/ev-node/pkg/da/types"
+
+	mocks "github.com/evstack/ev-node/test/mocks"
 )
 
-// MockClient is a mock implementation of the Client interface
-type MockClient struct {
-	mock.Mock
-}
-
-func (m *MockClient) Submit(ctx context.Context, data [][]byte, gasPrice float64, namespace []byte, options []byte) datypes.ResultSubmit {
-	args := m.Called(ctx, data, gasPrice, namespace, options)
-	return args.Get(0).(datypes.ResultSubmit)
-}
-
-func (m *MockClient) Retrieve(ctx context.Context, height uint64, namespace []byte) datypes.ResultRetrieve {
-	args := m.Called(ctx, height, namespace)
-	return args.Get(0).(datypes.ResultRetrieve)
-}
-
-func (m *MockClient) Get(ctx context.Context, ids []datypes.ID, namespace []byte) ([]datypes.Blob, error) {
-	args := m.Called(ctx, ids, namespace)
-	return args.Get(0).([]datypes.Blob), args.Error(1)
-}
-
-func (m *MockClient) GetHeaderNamespace() []byte {
-	args := m.Called()
-	return args.Get(0).([]byte)
-}
-
-func (m *MockClient) GetDataNamespace() []byte {
-	args := m.Called()
-	return args.Get(0).([]byte)
-}
-
-func (m *MockClient) GetForcedInclusionNamespace() []byte {
-	args := m.Called()
-	return args.Get(0).([]byte)
-}
-
-func (m *MockClient) HasForcedInclusionNamespace() bool {
-	args := m.Called()
-	return args.Bool(0)
-}
-
 func TestAsyncEpochFetcher_Creation(t *testing.T) {
-	client := &MockClient{}
+	client := &mocks.MockClient{}
 	logger := zerolog.Nop()
 
 	fetcher := NewAsyncEpochFetcher(client, logger, 100, 10, 2, 100*time.Millisecond)
@@ -66,7 +28,7 @@ func TestAsyncEpochFetcher_Creation(t *testing.T) {
 }
 
 func TestAsyncEpochFetcher_SetAndGetDAHeight(t *testing.T) {
-	client := &MockClient{}
+	client := &mocks.MockClient{}
 	logger := zerolog.Nop()
 
 	fetcher := NewAsyncEpochFetcher(client, logger, 100, 10, 1, time.Second)
@@ -82,7 +44,7 @@ func TestAsyncEpochFetcher_SetAndGetDAHeight(t *testing.T) {
 }
 
 func TestAsyncEpochFetcher_GetCachedEpoch_NotAtEpochEnd(t *testing.T) {
-	client := &MockClient{}
+	client := &mocks.MockClient{}
 	fiNs := datypes.NamespaceFromString("test-fi-ns").Bytes()
 	client.On("HasForcedInclusionNamespace").Return(true)
 	client.On("GetForcedInclusionNamespace").Return(fiNs)
@@ -102,7 +64,7 @@ func TestAsyncEpochFetcher_GetCachedEpoch_NotAtEpochEnd(t *testing.T) {
 }
 
 func TestAsyncEpochFetcher_GetCachedEpoch_NoNamespace(t *testing.T) {
-	client := &MockClient{}
+	client := &mocks.MockClient{}
 	client.On("HasForcedInclusionNamespace").Return(false)
 
 	logger := zerolog.Nop()
@@ -114,7 +76,7 @@ func TestAsyncEpochFetcher_GetCachedEpoch_NoNamespace(t *testing.T) {
 }
 
 func TestAsyncEpochFetcher_GetCachedEpoch_CacheMiss(t *testing.T) {
-	client := &MockClient{}
+	client := &mocks.MockClient{}
 	fiNs := datypes.NamespaceFromString("test-fi-ns").Bytes()
 	client.On("HasForcedInclusionNamespace").Return(true)
 	client.On("GetForcedInclusionNamespace").Return(fiNs)
@@ -137,7 +99,7 @@ func TestAsyncEpochFetcher_FetchAndCache(t *testing.T) {
 		[]byte("tx3"),
 	}
 
-	client := &MockClient{}
+	client := &mocks.MockClient{}
 	fiNs := datypes.NamespaceFromString("test-fi-ns").Bytes()
 	client.On("HasForcedInclusionNamespace").Return(true)
 	client.On("GetForcedInclusionNamespace").Return(fiNs)
@@ -182,7 +144,7 @@ func TestAsyncEpochFetcher_BackgroundPrefetch(t *testing.T) {
 		[]byte("tx2"),
 	}
 
-	client := &MockClient{}
+	client := &mocks.MockClient{}
 	fiNs := datypes.NamespaceFromString("test-fi-ns").Bytes()
 	client.On("HasForcedInclusionNamespace").Return(true)
 	client.On("GetForcedInclusionNamespace").Return(fiNs)
@@ -276,7 +238,7 @@ func TestAsyncEpochFetcher_SerializationEmpty(t *testing.T) {
 }
 
 func TestAsyncEpochFetcher_HeightFromFuture(t *testing.T) {
-	client := &MockClient{}
+	client := &mocks.MockClient{}
 	fiNs := datypes.NamespaceFromString("test-fi-ns").Bytes()
 	client.On("HasForcedInclusionNamespace").Return(true)
 	client.On("GetForcedInclusionNamespace").Return(fiNs)
@@ -300,7 +262,7 @@ func TestAsyncEpochFetcher_HeightFromFuture(t *testing.T) {
 }
 
 func TestAsyncEpochFetcher_StopGracefully(t *testing.T) {
-	client := &MockClient{}
+	client := &mocks.MockClient{}
 	client.On("HasForcedInclusionNamespace").Return(false)
 
 	logger := zerolog.Nop()
