@@ -46,7 +46,10 @@ func (t *tracedEngineRPCClient) ForkchoiceUpdated(ctx context.Context, state eng
 
 	attributes := []attribute.KeyValue{
 		attribute.String("payload_status", result.PayloadStatus.Status),
-		attribute.Bool("has_payload_id", result.PayloadID != nil),
+	}
+
+	if result.PayloadID != nil {
+		attributes = append(attributes, attribute.String("payload_id", result.PayloadID.String()))
 	}
 
 	if result.PayloadStatus.LatestValidHash != nil {
