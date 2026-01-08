@@ -95,15 +95,14 @@ func (f *asyncBlockRetriever) Start() {
 		Uint64("da_start_height", f.daStartHeight).
 		Uint64("prefetch_window", f.prefetchWindow).
 		Dur("poll_interval", f.pollInterval).
-		Msg("async block fetcher started")
+		Msg("async block retriever started")
 }
 
 // Stop gracefully stops the background prefetching process.
 func (f *asyncBlockRetriever) Stop() {
-	f.logger.Info().Msg("stopping async block fetcher")
+	f.logger.Info().Msg("stopping async block retriever")
 	f.cancel()
 	f.wg.Wait()
-	f.logger.Info().Msg("async block fetcher stopped")
 }
 
 // UpdateCurrentHeight updates the current DA height for prefetching.
@@ -289,7 +288,6 @@ func (f *asyncBlockRetriever) fetchAndCacheBlock(height uint64) {
 // cleanupOldBlocks removes blocks older than a threshold from cache.
 func (f *asyncBlockRetriever) cleanupOldBlocks(currentHeight uint64) {
 	// Remove blocks older than current - prefetchWindow
-	// Keep some history in case of reorgs or restarts
 	if currentHeight < f.prefetchWindow {
 		return
 	}
