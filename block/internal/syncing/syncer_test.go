@@ -859,23 +859,23 @@ func TestSyncer_modeSwitching(t *testing.T) {
 // mockCacheManager is a minimal implementation for testing
 type mockCacheManager struct{}
 
-func (m *mockCacheManager) DaHeight() uint64                        { return 0 }
+func (m *mockCacheManager) DaHeight() uint64 { return 0 }
 func (m *mockCacheManager) SetHeaderSeen(hash string, height uint64) {
 }
 func (m *mockCacheManager) IsHeaderSeen(hash string) bool { return false }
 func (m *mockCacheManager) SetDataSeen(hash string, height uint64) {
 }
-func (m *mockCacheManager) IsDataSeen(hash string) bool                            { return false }
+func (m *mockCacheManager) IsDataSeen(hash string) bool { return false }
 func (m *mockCacheManager) SetHeaderDAIncluded(hash string, daHeight, height uint64) {
 }
 func (m *mockCacheManager) GetHeaderDAIncluded(hash string) (uint64, bool) { return 0, false }
 func (m *mockCacheManager) RemoveHeaderDAIncluded(hash string)             {}
 func (m *mockCacheManager) SetDataDAIncluded(hash string, daHeight, height uint64) {
 }
-func (m *mockCacheManager) GetDataDAIncluded(hash string) (uint64, bool)             { return 0, false }
-func (m *mockCacheManager) IsTxSeen(hash string) bool                                { return false }
-func (m *mockCacheManager) SetTxSeen(hash string)                                    {}
-func (m *mockCacheManager) CleanupOldTxs(olderThan time.Duration) int                { return 0 }
+func (m *mockCacheManager) GetDataDAIncluded(hash string) (uint64, bool) { return 0, false }
+func (m *mockCacheManager) IsTxSeen(hash string) bool                    { return false }
+func (m *mockCacheManager) SetTxSeen(hash string)                        {}
+func (m *mockCacheManager) CleanupOldTxs(olderThan time.Duration) int    { return 0 }
 func (m *mockCacheManager) SetPendingEvent(height uint64, event *common.DAHeightEvent) {
 }
 func (m *mockCacheManager) GetNextPendingEvent(height uint64) *common.DAHeightEvent { return nil }

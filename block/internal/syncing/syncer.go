@@ -446,7 +446,7 @@ func (s *Syncer) runFollowMode() {
 }
 
 // subscribeAndFollow uses the DA subscription API to receive real-time blob notifications.
-// It subscribes to both header and data namespaces and processes incoming blobs.
+// It subscribes to header, data, and forced inclusion namespaces and processes incoming blobs.
 // Returns when subscription fails, context is cancelled, or node falls behind.
 func (s *Syncer) subscribeAndFollow() error {
 	// Get namespaces
@@ -472,6 +472,20 @@ func (s *Syncer) subscribeAndFollow() error {
 		}
 	}
 
+	// Subscribe to forced inclusion namespace if configured
+	var forcedInclusionCh <-chan *blobrpc.SubscriptionResponse
+	if s.daClient.HasForcedInclusionNamespace() {
+		fiNS := s.daClient.GetForcedInclusionNamespace()
+		// Only subscribe if it's different from both header and data namespaces
+		if !bytes.Equal(fiNS, headerNS) && !bytes.Equal(fiNS, dataNS) {
+			forcedInclusionCh, err = s.daClient.Subscribe(subCtx, fiNS)
+			if err != nil {
+				return fmt.Errorf("failed to subscribe to forced inclusion namespace: %w", err)
+			}
+			s.logger.Info().Msg("subscribed to forced inclusion namespace for follow mode")
+		}
+	}
+
 	s.logger.Info().Msg("subscribed to DA namespaces for follow mode")
 
 	// Calculate watchdog timeout
@@ -481,6 +495,7 @@ func (s *Syncer) subscribeAndFollow() error {
 	}
 
 	// Process subscription events
+	// Note: Select on a nil channel blocks forever, so nil channels are effectively disabled
 	for {
 		select {
 		case <-s.ctx.Done():
@@ -495,16 +510,25 @@ func (s *Syncer) subscribeAndFollow() error {
 			}
 
 		case resp, ok := <-dataCh:
-			if dataCh == nil {
-				// Data channel not used (same namespace), continue
-				continue
-			}
+			// Note: if dataCh is nil (same namespace as header), this case never fires
 			if !ok {
 				return errors.New("data subscription closed")
 			}
 			if err := s.processSubscriptionResponse(resp); err != nil {
 				s.logger.Error().Err(err).Uint64("height", resp.Height).Msg("failed to process data subscription")
 			}
+
+		case resp, ok := <-forcedInclusionCh:
+			// Note: if forcedInclusionCh is nil (not configured), this case never fires
+			if !ok {
+				return errors.New("forced inclusion subscription closed")
+			}
+			// Forced inclusion responses are logged but not processed through processSubscriptionResponse
+			// They are handled separately by the forced inclusion retriever during block verification
+			s.logger.Debug().
+				Uint64("da_height", resp.Height).
+				Int("blobs", len(resp.Blobs)).
+				Msg("received forced inclusion subscription notification")
 
 		case <-time.After(watchdogTimeout):
 			// Watchdog: if no events for watchdogTimeout, recheck mode
@@ -534,8 +558,8 @@ func (s *Syncer) processSubscriptionResponse(resp *blobrpc.SubscriptionResponse)
 		blobs[i] = blob.Data()
 	}
 
-	// Process blobs using the DA retriever's processBlobs method
-	events := s.daRetriever.(*daRetriever).processBlobs(s.ctx, blobs, resp.Height)
+	// Process blobs using the DA retriever's ProcessBlobs method
+	events := s.daRetriever.ProcessBlobs(s.ctx, blobs, resp.Height)
 
 	// Send events to the processing channel
 	for _, event := range events {
