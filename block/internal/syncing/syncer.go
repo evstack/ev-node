@@ -186,9 +186,7 @@ func (s *Syncer) Start(ctx context.Context) error {
 	}
 
 	// Initialize handlers
-	if s.daRetriever == nil {
-		s.daRetriever = NewDARetriever(s.daClient, s.cache, s.genesis, s.logger)
-	}
+	s.daRetriever = NewDARetriever(s.daClient, s.cache, s.genesis, s.logger)
 	s.fiRetriever = da.NewForcedInclusionRetriever(s.daClient, s.logger, s.genesis.DAStartHeight, s.genesis.DAEpochForcedInclusion)
 	s.p2pHandler = NewP2PHandler(s.headerStore.Store(), s.dataStore.Store(), s.cache, s.genesis, s.logger)
 	if currentHeight, err := s.store.Height(s.ctx); err != nil {
@@ -318,17 +316,15 @@ func (s *Syncer) daWorkerLoop() {
 
 	s.logger.Info().Msg("starting DA worker")
 	defer s.logger.Info().Msg("DA worker stopped")
+	backoff := s.config.DA.BlockTime.Duration
+	if backoff <= 0 {
+		backoff = 2 * time.Second
+	}
 
 	for {
 		// 1. Catch up mode: fetch sequentially until we are up to date
 		if err := s.fetchDAUntilCaughtUp(); err != nil {
 			s.logger.Error().Err(err).Msg("DA catchup failed, retrying after backoff")
-
-			backoff := s.config.DA.BlockTime.Duration
-			if backoff <= 0 {
-				backoff = 2 * time.Second
-			}
-
 			select {
 			case <-s.ctx.Done():
 				return
@@ -343,25 +339,30 @@ func (s *Syncer) daWorkerLoop() {
 			if errors.Is(err, context.Canceled) {
 				return
 			}
-			s.logger.Warn().Err(err).Msg("DA follow disrupted, switching to catchup")
+			s.logger.Warn().Err(err).Msg("DA follow disrupted")
 			// We don't need explicit backoff here as we'll switch to catchup immediately,
 			// checking if there are new blocks to fetch.
 		}
+		s.logger.Info().Msg("DA follow mode resumed")
 	}
 }
 
 // followDA subscribes to DA events and processes them until a gap is detected or error occurs
 func (s *Syncer) followDA() error {
 	s.logger.Info().Msg("entering DA follow mode")
-	subCh, err := s.daRetriever.Subscribe(s.ctx)
-	if err != nil {
-		return fmt.Errorf("failed to subscribe to DA: %w", err)
+
+	ctx, cancel := context.WithCancel(s.ctx)
+	defer cancel()
+	subCh := make(chan common.DAHeightEvent, 1)
+
+	if err := s.daRetriever.Subscribe(ctx, subCh); err != nil {
+		return fmt.Errorf("subscribe to DA: %w", err)
 	}
 
 	for {
 		select {
-		case <-s.ctx.Done():
-			return s.ctx.Err()
+		case <-ctx.Done():
+			return ctx.Err()
 		case event, ok := <-subCh:
 			if !ok {
 				return errors.New("DA subscription channel closed")

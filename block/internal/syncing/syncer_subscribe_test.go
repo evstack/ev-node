@@ -42,8 +42,6 @@ func TestSyncer_DAWorker_CatchupThenFollow(t *testing.T) {
 	}
 	syncer.daRetrieverHeight.Store(1)
 
-	// Defines
-
 	// Expectations:
 	// 1. fetchDAUntilCaughtUp called initially.
 	//    It calls RetrieveFromDA. We Simulate 1 block retrieved, then caught up.
@@ -129,9 +127,6 @@ func TestSyncer_DAWorker_GapDetection(t *testing.T) {
 	mockDARetriever.On("Subscribe", mock.Anything).Return((<-chan common.DAHeightEvent)(subCh), nil)
 
 	// 3. Gap handling
-	// We send event with DA height 15 (expected 10). Should trigger catchup.
-	// Catchup should call RetrieveFromDA(10), then 11...
-	// We simulate RetrieveFromDA(10) returning an event, then caught up again.
 
 	evtGap := common.DAHeightEvent{
 		Header:   &types.SignedHeader{Header: types.Header{BaseHeader: types.BaseHeader{Height: 15}}},
@@ -159,13 +154,6 @@ func TestSyncer_DAWorker_GapDetection(t *testing.T) {
 	subCh <- evtGap
 
 	// Verify that we received the "Fill" event (height 10)
-	// Note: The gap event (15) is DROPPED/Ignored in the current logic?
-	// Logic:
-	// if event.DaHeight > nextExpectedHeight {
-	//    return nil // break follow loop, go to catchup
-	// }
-	// So 15 is dropped. Catchup starts at 10. Fetch 10.
-
 	select {
 	case e := <-syncer.heightInCh:
 		assert.Equal(t, uint64(10), e.DaHeight)
@@ -174,6 +162,59 @@ func TestSyncer_DAWorker_GapDetection(t *testing.T) {
 	}
 
 	// Cleanup
+	cancel()
+	syncer.wg.Wait()
+}
+
+func TestSyncer_DAWorker_SplitNamespace_OutOfOrder(t *testing.T) {
+	// Setup
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	mockDARetriever := NewMockDARetriever(t)
+
+	c, err := cache.NewCacheManager(config.DefaultConfig(), zerolog.Nop())
+	require.NoError(t, err)
+
+	syncer := &Syncer{
+		logger:            zerolog.Nop(),
+		daRetriever:       mockDARetriever,
+		ctx:               ctx,
+		daRetrieverHeight: &atomic.Uint64{},
+		cache:             c,
+		config:            config.DefaultConfig(),
+		heightInCh:        make(chan common.DAHeightEvent, 100),
+		wg:                sync.WaitGroup{},
+	}
+	syncer.daRetrieverHeight.Store(10)
+
+	// Expectations:
+	// 1. Initial Catchup
+	mockDARetriever.On("RetrieveFromDA", mock.Anything, uint64(10)).Return(nil, datypes.ErrHeightFromFuture).Once()
+
+	// 2. Subscribe
+	subCh := make(chan common.DAHeightEvent, 10)
+	mockDARetriever.On("Subscribe", mock.Anything).Return((<-chan common.DAHeightEvent)(subCh), nil)
+
+	// Run daWorkerLoop
+	syncer.wg.Add(1)
+	go syncer.daWorkerLoop()
+
+	// Send an event
+	evt := common.DAHeightEvent{
+		Header:   &types.SignedHeader{Header: types.Header{BaseHeader: types.BaseHeader{Height: 10}}},
+		DaHeight: 10,
+	}
+	subCh <- evt
+
+	// Verify
+	select {
+	case e := <-syncer.heightInCh:
+		assert.Equal(t, uint64(10), e.DaHeight)
+	case <-time.After(1 * time.Second):
+		t.Fatal("timed out waiting for event")
+	}
+
 	cancel()
 	syncer.wg.Wait()
 }

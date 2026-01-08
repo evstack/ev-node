@@ -18,7 +18,8 @@ import (
 
 // mockDA implements block/internal/da.Client for testing
 type mockDA struct {
-	submitFunc func(ctx context.Context, data [][]byte, gasPrice float64, namespace []byte, options []byte) da.ResultSubmit
+	submitFunc    func(ctx context.Context, data [][]byte, gasPrice float64, namespace []byte, options []byte) da.ResultSubmit
+	subscribeFunc func(ctx context.Context, namespace []byte) (<-chan da.ResultRetrieve, error)
 }
 
 func (m *mockDA) Submit(ctx context.Context, data [][]byte, gasPrice float64, namespace []byte, options []byte) da.ResultSubmit {
@@ -27,6 +28,13 @@ func (m *mockDA) Submit(ctx context.Context, data [][]byte, gasPrice float64, na
 	}
 
 	return da.ResultSubmit{BaseResult: da.BaseResult{Code: da.StatusSuccess, Height: 1}}
+}
+
+func (m *mockDA) Subscribe(ctx context.Context, namespace []byte) (<-chan da.ResultRetrieve, error) {
+	if m.subscribeFunc != nil {
+		return m.subscribeFunc(ctx, namespace)
+	}
+	return nil, nil
 }
 
 func (m *mockDA) Retrieve(ctx context.Context, height uint64, namespace []byte) da.ResultRetrieve {

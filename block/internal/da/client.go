@@ -487,10 +487,10 @@ func (c *client) Subscribe(ctx context.Context, namespace []byte) (<-chan datype
 				// Using 0 or Now() is a trade-off. Let's use Now() for liveness.
 				outCh <- datypes.ResultRetrieve{
 					BaseResult: datypes.BaseResult{
-						Code:      datypes.StatusSuccess,
-						IDs:       ids,
-						Height:    resp.Height,
-						Timestamp: time.Now(),
+						Code:   datypes.StatusSuccess,
+						IDs:    ids,
+						Height: resp.Height,
+						//Timestamp: // TODO: set proper value
 					},
 					Data: data,
 				}
