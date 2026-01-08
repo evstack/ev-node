@@ -185,10 +185,10 @@ func (c *Sequencer) GetNextBatch(ctx context.Context, req coresequencer.GetNextB
 			DAHeight: daHeight,
 			TxIndex:  0,
 		}
-	}
 
-	// override forced inclusion retriever, as the da start height could have been updated
-	c.fiRetriever = block.NewForcedInclusionRetriever(c.daClient, c.logger, c.getInitialDAStartHeight(ctx), c.genesis.DAEpochForcedInclusion, c.asyncFetcher)
+		// override forced inclusion retriever, as the da start height have been updated
+		c.fiRetriever = block.NewForcedInclusionRetriever(c.daClient, c.logger, c.getInitialDAStartHeight(ctx), c.genesis.DAEpochForcedInclusion, c.asyncFetcher)
+	}
 
 	// If we have no cached transactions or we've consumed all from the current cache,
 	// fetch the next DA epoch
