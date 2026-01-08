@@ -213,8 +213,10 @@ func NewEngineExecutionClient(
 		return nil, err
 	}
 
+	// Create Engine RPC with optional HTTP client and JWT auth
+	// Compose engine options: pass-through rpcOpts plus JWT auth
 	engineOptions := make([]rpc.ClientOption, len(rpcOpts))
-	copy(engineOptions, rpcOpts)
+	copy(engineOptions, rpcOpts) // copy to avoid using same backing array from rpcOpts.
 	engineOptions = append(engineOptions, rpc.WithHTTPAuth(func(h http.Header) error {
 		authToken, err := getAuthToken(secret)
 		if err != nil {
