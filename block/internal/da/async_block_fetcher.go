@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	ds "github.com/ipfs/go-datastore"
@@ -42,16 +43,14 @@ type asyncBlockFetcher struct {
 
 	// In-memory cache for prefetched block data
 	cache ds.Batching
-	mu    sync.RWMutex
 
 	// Background fetcher control
 	ctx    context.Context
 	cancel context.CancelFunc
 	wg     sync.WaitGroup
 
-	// Current DA height tracking
-	currentDAHeight uint64
-	heightMu        sync.RWMutex
+	// Current DA height tracking (accessed atomically)
+	currentDAHeight atomic.Uint64
 
 	// Prefetch window - how many blocks ahead to prefetch
 	prefetchWindow uint64
@@ -74,17 +73,18 @@ func NewAsyncBlockFetcher(
 
 	ctx, cancel := context.WithCancel(context.Background())
 
-	return &asyncBlockFetcher{
-		client:          client,
-		logger:          logger.With().Str("component", "async_block_fetcher").Logger(),
-		daStartHeight:   daStartHeight,
-		cache:           dsync.MutexWrap(ds.NewMapDatastore()),
-		ctx:             ctx,
-		cancel:          cancel,
-		currentDAHeight: daStartHeight,
-		prefetchWindow:  prefetchWindow,
-		pollInterval:    config.DA.BlockTime.Duration,
+	fetcher := &asyncBlockFetcher{
+		client:         client,
+		logger:         logger.With().Str("component", "async_block_fetcher").Logger(),
+		daStartHeight:  daStartHeight,
+		cache:          dsync.MutexWrap(ds.NewMapDatastore()),
+		ctx:            ctx,
+		cancel:         cancel,
+		prefetchWindow: prefetchWindow,
+		pollInterval:   config.DA.BlockTime.Duration,
 	}
+	fetcher.currentDAHeight.Store(daStartHeight)
+	return fetcher
 }
 
 // Start begins the background prefetching process.
@@ -108,14 +108,18 @@ func (f *asyncBlockFetcher) Stop() {
 
 // UpdateCurrentHeight updates the current DA height for prefetching.
 func (f *asyncBlockFetcher) UpdateCurrentHeight(height uint64) {
-	f.heightMu.Lock()
-	defer f.heightMu.Unlock()
-
-	if height > f.currentDAHeight {
-		f.currentDAHeight = height
-		f.logger.Debug().
-			Uint64("new_height", height).
-			Msg("updated current DA height")
+	// Use atomic compare-and-swap to update only if the new height is greater
+	for {
+		current := f.currentDAHeight.Load()
+		if height <= current {
+			return
+		}
+		if f.currentDAHeight.CompareAndSwap(current, height) {
+			f.logger.Debug().
+				Uint64("new_height", height).
+				Msg("updated current DA height")
+			return
+		}
 	}
 }
 
@@ -133,10 +137,7 @@ func (f *asyncBlockFetcher) GetCachedBlock(ctx context.Context, daHeight uint64)
 	// Try to get from cache
 	key := ds.NewKey(fmt.Sprintf("/block/%d", daHeight))
 
-	f.mu.RLock()
 	data, err := f.cache.Get(ctx, key)
-	f.mu.RUnlock()
-
 	if err != nil {
 		if errors.Is(err, ds.ErrNotFound) {
 			return nil, nil // Not cached yet
@@ -187,9 +188,7 @@ func (f *asyncBlockFetcher) prefetchBlocks() {
 		return
 	}
 
-	f.heightMu.RLock()
-	currentHeight := f.currentDAHeight
-	f.heightMu.RUnlock()
+	currentHeight := f.currentDAHeight.Load()
 
 	// Prefetch upcoming blocks
 	for i := uint64(0); i < f.prefetchWindow; i++ {
@@ -197,10 +196,7 @@ func (f *asyncBlockFetcher) prefetchBlocks() {
 
 		// Check if already cached
 		key := ds.NewKey(fmt.Sprintf("/block/%d", targetHeight))
-		f.mu.RLock()
 		_, err := f.cache.Get(f.ctx, key)
-		f.mu.RUnlock()
-
 		if err == nil {
 			// Already cached
 			continue
@@ -274,9 +270,7 @@ func (f *asyncBlockFetcher) fetchAndCacheBlock(height uint64) {
 	}
 
 	key := ds.NewKey(fmt.Sprintf("/block/%d", height))
-	f.mu.Lock()
 	err = f.cache.Put(f.ctx, key, data)
-	f.mu.Unlock()
 
 	if err != nil {
 		f.logger.Error().
@@ -301,9 +295,6 @@ func (f *asyncBlockFetcher) cleanupOldBlocks(currentHeight uint64) {
 	}
 
 	cleanupThreshold := currentHeight - f.prefetchWindow
-
-	f.mu.Lock()
-	defer f.mu.Unlock()
 
 	// Query all keys
 	query := dsq.Query{Prefix: "/block/"}

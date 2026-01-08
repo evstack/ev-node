@@ -80,13 +80,13 @@ func NewBasedSequencer(
 		}
 	}
 
-	// Create async epoch fetcher for background prefetching (created once)
+	// Create async epoch fetcher for background prefetching
 	bs.asyncFetcher = block.NewAsyncBlockFetcher(
 		daClient,
 		cfg,
 		logger,
 		genesis.DAStartHeight,
-		genesis.DAEpochForcedInclusion,
+		genesis.DAEpochForcedInclusion*2,
 	)
 	bs.asyncFetcher.Start()
 

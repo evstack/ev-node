@@ -194,7 +194,7 @@ func (s *Syncer) Start(ctx context.Context) error {
 		s.logger,
 		s.config,
 		s.genesis.DAStartHeight,
-		s.genesis.DAEpochForcedInclusion, // prefetch window: blocks ahead to prefetch
+		s.genesis.DAEpochForcedInclusion*2, // prefetch window: blocks ahead to prefetch
 	)
 	asyncFetcher.Start()
 

@@ -114,7 +114,7 @@ func NewSequencer(
 		cfg,
 		logger,
 		initialDAHeight,
-		genesis.DAEpochForcedInclusion,
+		genesis.DAEpochForcedInclusion*2,
 	)
 	s.asyncFetcher.Start()
 
