@@ -56,7 +56,10 @@ func InitTracing(ctx context.Context, cfg *config.InstrumentationConfig, logger 
 
 	// Set global provider and W3C propagator
 	otel.SetTracerProvider(tp)
-	otel.SetTextMapPropagator(propagation.TraceContext{})
+	otel.SetTextMapPropagator(propagation.NewCompositeTextMapPropagator(
+		propagation.TraceContext{}, // carries trace_id/span_id and sampling
+		propagation.Baggage{},      // optional key/value context that can flow with the trace
+	))
 
 	logger.Info().Str("endpoint", cfg.TracingEndpoint).Str("service", cfg.TracingServiceName).Float64("sample_rate", ratio).Msg("OpenTelemetry tracing initialized")
 
