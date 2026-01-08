@@ -23,6 +23,7 @@ import (
 	"github.com/rs/zerolog"
 
 	"github.com/evstack/ev-node/core/execution"
+	"github.com/evstack/ev-node/pkg/telemetry"
 )
 
 const (
@@ -129,11 +130,23 @@ func retryWithBackoffOnPayloadStatus(ctx context.Context, fn func() error, maxRe
 	return fmt.Errorf("max retries (%d) exceeded for %s", maxRetries, operation)
 }
 
+// EngineRPCClient abstracts Engine API RPC calls for tracing and testing.
+type EngineRPCClient interface {
+	// ForkchoiceUpdated updates the forkchoice state and optionally starts payload building.
+	ForkchoiceUpdated(ctx context.Context, state engine.ForkchoiceStateV1, args map[string]any) (*engine.ForkChoiceResponse, error)
+
+	// GetPayload retrieves a previously requested execution payload.
+	GetPayload(ctx context.Context, payloadID engine.PayloadID) (*engine.ExecutionPayloadEnvelope, error)
+
+	// NewPayload submits a new execution payload for validation.
+	NewPayload(ctx context.Context, payload *engine.ExecutableData, blobHashes []string, parentBeaconBlockRoot string, executionRequests [][]byte) (*engine.PayloadStatusV1, error)
+}
+
 // EngineClient represents a client that interacts with an Ethereum execution engine
 // through the Engine API. It manages connections to both the engine and standard Ethereum
 // APIs, and maintains state related to block processing.
 type EngineClient struct {
-	engineClient  *rpc.Client       // Client for Engine API calls
+	engineClient  EngineRPCClient   // Client for Engine API calls
 	ethClient     *ethclient.Client // Client for standard Ethereum API calls
 	genesisHash   common.Hash       // Hash of the genesis block
 	initialHeight uint64
@@ -157,6 +170,8 @@ type EngineClient struct {
 // The db parameter is required for ExecMeta tracking which enables idempotent
 // execution and crash recovery. The db is wrapped with a prefix to isolate
 // EVM execution data from other ev-node data.
+// When tracingEnabled is true, the client will inject W3C trace context headers
+// and wrap Engine API calls with OpenTelemetry spans.
 func NewEngineExecutionClient(
 	ethURL,
 	engineURL string,
@@ -164,13 +179,20 @@ func NewEngineExecutionClient(
 	genesisHash common.Hash,
 	feeRecipient common.Address,
 	db ds.Batching,
-	rpcOpts ...rpc.ClientOption,
+	tracingEnabled bool,
 ) (*EngineClient, error) {
 	if db == nil {
 		return nil, errors.New("db is required for EVM execution client")
 	}
 
-	// Create ETH RPC client with optional custom HTTP client, then ethclient from it
+	var rpcOpts []rpc.ClientOption
+	// If tracing enabled, add W3C header propagation to rpcOpts
+	if tracingEnabled {
+		rpcOpts = append(rpcOpts, rpc.WithHTTPClient(
+			telemetry.NewPropagatingHTTPClient(http.DefaultTransport)))
+	}
+
+	// Create ETH RPC client with HTTP options
 	ethRPC, err := rpc.DialOptions(context.Background(), ethURL, rpcOpts...)
 	if err != nil {
 		return nil, err
@@ -182,10 +204,8 @@ func NewEngineExecutionClient(
 		return nil, err
 	}
 
-	// Create Engine RPC with optional HTTP client and JWT auth
-	// Compose engine options: pass-through rpcOpts plus JWT auth
 	engineOptions := make([]rpc.ClientOption, len(rpcOpts))
-	copy(engineOptions, rpcOpts) // copy to avoid using same backing array from rpcOpts.
+	copy(engineOptions, rpcOpts)
 	engineOptions = append(engineOptions, rpc.WithHTTPAuth(func(h http.Header) error {
 		authToken, err := getAuthToken(secret)
 		if err != nil {
@@ -196,9 +216,17 @@ func NewEngineExecutionClient(
 		}
 		return nil
 	}))
-	engineClient, err := rpc.DialOptions(context.Background(), engineURL, engineOptions...)
+	rawEngineClient, err := rpc.DialOptions(context.Background(), engineURL, engineOptions...)
 	if err != nil {
 		return nil, err
+	}
+
+	// raw engine client
+	engineClient := NewEngineRPCClient(rawEngineClient)
+
+	// if tracing enabled, wrap with traced decorator
+	if tracingEnabled {
+		engineClient = withTracingEngineRPCClient(engineClient)
 	}
 
 	return &EngineClient{
@@ -228,8 +256,7 @@ func (c *EngineClient) InitChain(ctx context.Context, genesisTime time.Time, ini
 
 	// Acknowledge the genesis block with retry logic for SYNCING status
 	err := retryWithBackoffOnPayloadStatus(ctx, func() error {
-		var forkchoiceResult engine.ForkChoiceResponse
-		err := c.engineClient.CallContext(ctx, &forkchoiceResult, "engine_forkchoiceUpdatedV3",
+		forkchoiceResult, err := c.engineClient.ForkchoiceUpdated(ctx,
 			engine.ForkchoiceStateV1{
 				HeadBlockHash:      c.genesisHash,
 				SafeBlockHash:      c.genesisHash,
@@ -362,8 +389,7 @@ func (c *EngineClient) ExecuteTxs(ctx context.Context, txs [][]byte, blockHeight
 	// 3. Call forkchoice update to get PayloadID
 	var newPayloadID *engine.PayloadID
 	err = retryWithBackoffOnPayloadStatus(ctx, func() error {
-		var forkchoiceResult engine.ForkChoiceResponse
-		err := c.engineClient.CallContext(ctx, &forkchoiceResult, "engine_forkchoiceUpdatedV3", args, evPayloadAttrs)
+		forkchoiceResult, err := c.engineClient.ForkchoiceUpdated(ctx, args, evPayloadAttrs)
 		if err != nil {
 			return fmt.Errorf("forkchoice update failed: %w", err)
 		}
@@ -512,8 +538,7 @@ func (c *EngineClient) setFinalWithHeight(ctx context.Context, blockHash common.
 func (c *EngineClient) doForkchoiceUpdate(ctx context.Context, args engine.ForkchoiceStateV1, operation string) error {
 	// Call forkchoice update with retry logic for SYNCING status
 	err := retryWithBackoffOnPayloadStatus(ctx, func() error {
-		var forkchoiceResult engine.ForkChoiceResponse
-		err := c.engineClient.CallContext(ctx, &forkchoiceResult, "engine_forkchoiceUpdatedV3", args, nil)
+		forkchoiceResult, err := c.engineClient.ForkchoiceUpdated(ctx, args, nil)
 		if err != nil {
 			return fmt.Errorf("forkchoice update failed: %w", err)
 		}
@@ -764,8 +789,7 @@ func (c *EngineClient) filterTransactions(ctx context.Context, txs [][]byte, blo
 // processPayload handles the common logic of getting, submitting, and finalizing a payload.
 func (c *EngineClient) processPayload(ctx context.Context, payloadID engine.PayloadID, txs [][]byte) ([]byte, uint64, error) {
 	// 1. Get Payload
-	var payloadResult engine.ExecutionPayloadEnvelope
-	err := c.engineClient.CallContext(ctx, &payloadResult, "engine_getPayloadV4", payloadID)
+	payloadResult, err := c.engineClient.GetPayload(ctx, payloadID)
 	if err != nil {
 		return nil, 0, fmt.Errorf("get payload failed: %w", err)
 	}
@@ -774,9 +798,8 @@ func (c *EngineClient) processPayload(ctx context.Context, payloadID engine.Payl
 	blockTimestamp := int64(payloadResult.ExecutionPayload.Timestamp)
 
 	// 2. Submit Payload (newPayload)
-	var newPayloadResult engine.PayloadStatusV1
 	err = retryWithBackoffOnPayloadStatus(ctx, func() error {
-		err := c.engineClient.CallContext(ctx, &newPayloadResult, "engine_newPayloadV4",
+		newPayloadResult, err := c.engineClient.NewPayload(ctx,
 			payloadResult.ExecutionPayload,
 			[]string{},          // No blob hashes
 			common.Hash{}.Hex(), // Use zero hash for parentBeaconBlockRoot
@@ -786,7 +809,7 @@ func (c *EngineClient) processPayload(ctx context.Context, payloadID engine.Payl
 			return fmt.Errorf("new payload submission failed: %w", err)
 		}
 
-		if err := validatePayloadStatus(newPayloadResult); err != nil {
+		if err := validatePayloadStatus(*newPayloadResult); err != nil {
 			c.logger.Warn().
 				Str("status", newPayloadResult.Status).
 				Str("latestValidHash", latestValidHashHex(newPayloadResult.LatestValidHash)).
