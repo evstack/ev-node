@@ -21,7 +21,7 @@ type ForcedInclusionRetriever struct {
 	logger        zerolog.Logger
 	daEpochSize   uint64
 	daStartHeight uint64
-	asyncFetcher  *AsyncEpochFetcher // Required for async prefetching
+	asyncFetcher  AsyncEpochFetcher // Required for async prefetching
 }
 
 // ForcedInclusionEvent contains forced inclusion transactions retrieved from DA.
@@ -33,12 +33,11 @@ type ForcedInclusionEvent struct {
 }
 
 // NewForcedInclusionRetriever creates a new forced inclusion retriever.
-// The asyncFetcher parameter is required for background prefetching of DA epoch data.
 func NewForcedInclusionRetriever(
 	client Client,
 	logger zerolog.Logger,
 	daStartHeight, daEpochSize uint64,
-	asyncFetcher *AsyncEpochFetcher,
+	asyncFetcher AsyncEpochFetcher,
 ) *ForcedInclusionRetriever {
 	return &ForcedInclusionRetriever{
 		client:        client,
@@ -51,7 +50,6 @@ func NewForcedInclusionRetriever(
 
 // RetrieveForcedIncludedTxs retrieves forced inclusion transactions at the given DA height.
 // It respects epoch boundaries and only fetches at epoch start.
-// If an async fetcher is configured, it will try to use cached data first for better performance.
 func (r *ForcedInclusionRetriever) RetrieveForcedIncludedTxs(ctx context.Context, daHeight uint64) (*ForcedInclusionEvent, error) {
 	// when daStartHeight is not set or no namespace is configured, we retrieve nothing.
 	if !r.client.HasForcedInclusionNamespace() {

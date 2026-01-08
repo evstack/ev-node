@@ -25,7 +25,7 @@ var _ coresequencer.Sequencer = (*BasedSequencer)(nil)
 type BasedSequencer struct {
 	logger zerolog.Logger
 
-	asyncFetcher    *block.AsyncEpochFetcher
+	asyncFetcher    block.AsyncEpochFetcher
 	fiRetriever     block.ForcedInclusionRetriever
 	daHeight        atomic.Uint64
 	checkpointStore *seqcommon.CheckpointStore

@@ -14,8 +14,8 @@ import (
 	"github.com/evstack/ev-node/test/mocks"
 )
 
-// createTestAsyncFetcher creates a minimal async fetcher for tests (without starting it)
-func createTestAsyncFetcher(client Client, gen genesis.Genesis) *AsyncEpochFetcher {
+// createTestAsyncFetcher creates a minimal async fetcher for tests
+func createTestAsyncFetcher(client Client, gen genesis.Genesis) AsyncEpochFetcher {
 	return NewAsyncEpochFetcher(
 		client,
 		zerolog.Nop(),

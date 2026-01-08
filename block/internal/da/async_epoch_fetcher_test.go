@@ -15,34 +15,6 @@ import (
 	mocks "github.com/evstack/ev-node/test/mocks"
 )
 
-func TestAsyncEpochFetcher_Creation(t *testing.T) {
-	client := &mocks.MockClient{}
-	logger := zerolog.Nop()
-
-	fetcher := NewAsyncEpochFetcher(client, logger, 100, 10, 2, 100*time.Millisecond)
-	assert.NotNil(t, fetcher)
-	assert.Equal(t, uint64(100), fetcher.daStartHeight)
-	assert.Equal(t, uint64(10), fetcher.daEpochSize)
-	assert.Equal(t, uint64(2), fetcher.prefetchWindow)
-	assert.Equal(t, 100*time.Millisecond, fetcher.pollInterval)
-}
-
-func TestAsyncEpochFetcher_SetAndGetDAHeight(t *testing.T) {
-	client := &mocks.MockClient{}
-	logger := zerolog.Nop()
-
-	fetcher := NewAsyncEpochFetcher(client, logger, 100, 10, 1, time.Second)
-
-	assert.Equal(t, uint64(100), fetcher.GetDAHeight())
-
-	fetcher.SetDAHeight(150)
-	assert.Equal(t, uint64(150), fetcher.GetDAHeight())
-
-	// Should not decrease
-	fetcher.SetDAHeight(120)
-	assert.Equal(t, uint64(150), fetcher.GetDAHeight())
-}
-
 func TestAsyncEpochFetcher_GetCachedEpoch_NotAtEpochEnd(t *testing.T) {
 	client := &mocks.MockClient{}
 	fiNs := datypes.NamespaceFromString("test-fi-ns").Bytes()
@@ -122,16 +94,27 @@ func TestAsyncEpochFetcher_FetchAndCache(t *testing.T) {
 	}
 
 	logger := zerolog.Nop()
-	fetcher := NewAsyncEpochFetcher(client, logger, 100, 10, 1, time.Second)
+	// Use a short poll interval for faster test execution
+	fetcher := NewAsyncEpochFetcher(client, logger, 100, 10, 1, 50*time.Millisecond)
+	fetcher.Start()
+	defer fetcher.Stop()
 
-	// Manually trigger fetch
-	fetcher.fetchAndCacheEpoch(109)
-
-	// Now try to get from cache
+	// Wait for the background fetch to complete by polling the cache
 	ctx := context.Background()
-	event, err := fetcher.GetCachedEpoch(ctx, 109)
-	require.NoError(t, err)
-	assert.NotNil(t, event)
+	var event *ForcedInclusionEvent
+	var err error
+
+	// Poll for up to 2 seconds for the epoch to be cached
+	for i := 0; i < 40; i++ {
+		event, err = fetcher.GetCachedEpoch(ctx, 109)
+		require.NoError(t, err)
+		if event != nil {
+			break
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+
+	require.NotNil(t, event, "epoch should be cached after background fetch")
 	assert.Equal(t, 3, len(event.Txs))
 	assert.Equal(t, testBlobs[0], event.Txs[0])
 	assert.Equal(t, uint64(100), event.StartDaHeight)
@@ -176,7 +159,6 @@ func TestAsyncEpochFetcher_BackgroundPrefetch(t *testing.T) {
 	logger := zerolog.Nop()
 	fetcher := NewAsyncEpochFetcher(client, logger, 100, 10, 1, 50*time.Millisecond)
 
-	fetcher.SetDAHeight(100)
 	fetcher.Start()
 	defer fetcher.Stop()
 
@@ -250,9 +232,8 @@ func TestAsyncEpochFetcher_HeightFromFuture(t *testing.T) {
 
 	logger := zerolog.Nop()
 	fetcher := NewAsyncEpochFetcher(client, logger, 100, 10, 1, time.Second)
-
-	// This should not panic and should handle gracefully
-	fetcher.fetchAndCacheEpoch(109)
+	fetcher.Start()
+	defer fetcher.Stop()
 
 	// Cache should be empty
 	ctx := context.Background()

@@ -67,7 +67,11 @@ var ErrForceInclusionNotConfigured = da.ErrForceInclusionNotConfigured
 type ForcedInclusionEvent = da.ForcedInclusionEvent
 
 // AsyncEpochFetcher provides background prefetching of DA epoch data
-type AsyncEpochFetcher = da.AsyncEpochFetcher
+type AsyncEpochFetcher interface {
+	Start()
+	Stop()
+	GetCachedEpoch(ctx context.Context, daHeight uint64) (*da.ForcedInclusionEvent, error)
+}
 
 // ForcedInclusionRetriever defines the interface for retrieving forced inclusion transactions from DA
 type ForcedInclusionRetriever interface {
@@ -88,7 +92,7 @@ func NewAsyncEpochFetcher(
 	daStartHeight, daEpochSize uint64,
 	prefetchWindow uint64,
 	pollInterval time.Duration,
-) *AsyncEpochFetcher {
+) AsyncEpochFetcher {
 	return da.NewAsyncEpochFetcher(client, logger, daStartHeight, daEpochSize, prefetchWindow, pollInterval)
 }
 
@@ -98,7 +102,7 @@ func NewForcedInclusionRetriever(
 	client DAClient,
 	logger zerolog.Logger,
 	daStartHeight, daEpochSize uint64,
-	asyncFetcher *AsyncEpochFetcher,
+	asyncFetcher AsyncEpochFetcher,
 ) ForcedInclusionRetriever {
 	return da.NewForcedInclusionRetriever(client, logger, daStartHeight, daEpochSize, asyncFetcher)
 }

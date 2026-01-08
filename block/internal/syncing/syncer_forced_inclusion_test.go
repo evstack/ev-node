@@ -24,7 +24,7 @@ import (
 )
 
 // createTestAsyncFetcher creates a minimal async fetcher for tests (without starting it)
-func createTestAsyncFetcherForSyncer(client da.Client, gen genesis.Genesis) *da.AsyncEpochFetcher {
+func createTestAsyncFetcherForSyncer(client da.Client, gen genesis.Genesis) da.AsyncEpochFetcher {
 	return da.NewAsyncEpochFetcher(
 		client,
 		zerolog.Nop(),

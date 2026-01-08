@@ -40,7 +40,7 @@ type Sequencer struct {
 	queue     *BatchQueue // single queue for immediate availability
 
 	// Forced inclusion support
-	asyncFetcher    *block.AsyncEpochFetcher
+	asyncFetcher    block.AsyncEpochFetcher
 	fiRetriever     block.ForcedInclusionRetriever
 	daHeight        atomic.Uint64
 	daStartHeight   atomic.Uint64

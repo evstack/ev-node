@@ -16,9 +16,16 @@ import (
 	"github.com/evstack/ev-node/types"
 )
 
-// AsyncEpochFetcher handles background prefetching of DA epoch data
+// AsyncEpochFetcher provides background prefetching of DA epoch data
+type AsyncEpochFetcher interface {
+	Start()
+	Stop()
+	GetCachedEpoch(ctx context.Context, daHeight uint64) (*ForcedInclusionEvent, error)
+}
+
+// asyncEpochFetcher handles background prefetching of DA epoch data
 // to speed up processing at epoch boundaries.
-type AsyncEpochFetcher struct {
+type asyncEpochFetcher struct {
 	client        Client
 	logger        zerolog.Logger
 	daEpochSize   uint64
@@ -35,7 +42,6 @@ type AsyncEpochFetcher struct {
 
 	// Current DA height tracking
 	currentDAHeight uint64
-	heightMu        sync.RWMutex
 
 	// Prefetch window - how many epochs ahead to prefetch
 	prefetchWindow uint64
@@ -51,7 +57,7 @@ func NewAsyncEpochFetcher(
 	daStartHeight, daEpochSize uint64,
 	prefetchWindow uint64,
 	pollInterval time.Duration,
-) *AsyncEpochFetcher {
+) AsyncEpochFetcher {
 	if prefetchWindow == 0 {
 		prefetchWindow = 1 // Default: prefetch next epoch
 	}
@@ -61,7 +67,7 @@ func NewAsyncEpochFetcher(
 
 	ctx, cancel := context.WithCancel(context.Background())
 
-	return &AsyncEpochFetcher{
+	return &asyncEpochFetcher{
 		client:          client,
 		logger:          logger.With().Str("component", "async_epoch_fetcher").Logger(),
 		daStartHeight:   daStartHeight,
@@ -76,7 +82,7 @@ func NewAsyncEpochFetcher(
 }
 
 // Start begins the background prefetching process.
-func (f *AsyncEpochFetcher) Start() {
+func (f *asyncEpochFetcher) Start() {
 	f.wg.Add(1)
 	go f.backgroundFetchLoop()
 	f.logger.Info().
@@ -88,35 +94,16 @@ func (f *AsyncEpochFetcher) Start() {
 }
 
 // Stop gracefully stops the background prefetching process.
-func (f *AsyncEpochFetcher) Stop() {
+func (f *asyncEpochFetcher) Stop() {
 	f.logger.Info().Msg("stopping async epoch fetcher")
 	f.cancel()
 	f.wg.Wait()
 	f.logger.Info().Msg("async epoch fetcher stopped")
 }
 
-// SetDAHeight updates the current DA height being processed.
-// This is called by sequencers to inform the fetcher of progress.
-func (f *AsyncEpochFetcher) SetDAHeight(height uint64) {
-	f.heightMu.Lock()
-	defer f.heightMu.Unlock()
-
-	if height > f.currentDAHeight {
-		f.currentDAHeight = height
-		f.logger.Debug().Uint64("da_height", height).Msg("updated current DA height")
-	}
-}
-
-// GetDAHeight returns the current DA height.
-func (f *AsyncEpochFetcher) GetDAHeight() uint64 {
-	f.heightMu.RLock()
-	defer f.heightMu.RUnlock()
-	return f.currentDAHeight
-}
-
 // GetCachedEpoch retrieves a cached epoch from memory.
 // Returns nil if the epoch is not cached.
-func (f *AsyncEpochFetcher) GetCachedEpoch(ctx context.Context, daHeight uint64) (*ForcedInclusionEvent, error) {
+func (f *asyncEpochFetcher) GetCachedEpoch(ctx context.Context, daHeight uint64) (*ForcedInclusionEvent, error) {
 	if !f.client.HasForcedInclusionNamespace() {
 		return nil, ErrForceInclusionNotConfigured
 	}
@@ -167,7 +154,7 @@ func (f *AsyncEpochFetcher) GetCachedEpoch(ctx context.Context, daHeight uint64)
 }
 
 // backgroundFetchLoop runs in the background and prefetches epochs ahead of time.
-func (f *AsyncEpochFetcher) backgroundFetchLoop() {
+func (f *asyncEpochFetcher) backgroundFetchLoop() {
 	defer f.wg.Done()
 
 	ticker := time.NewTicker(f.pollInterval)
@@ -184,15 +171,13 @@ func (f *AsyncEpochFetcher) backgroundFetchLoop() {
 }
 
 // prefetchEpochs prefetches epochs within the prefetch window.
-func (f *AsyncEpochFetcher) prefetchEpochs() {
+func (f *asyncEpochFetcher) prefetchEpochs() {
 	if !f.client.HasForcedInclusionNamespace() {
 		return
 	}
 
-	currentHeight := f.GetDAHeight()
-
 	// Calculate the current epoch and epochs to prefetch
-	_, currentEpochEnd, _ := types.CalculateEpochBoundaries(currentHeight, f.daStartHeight, f.daEpochSize)
+	_, currentEpochEnd, _ := types.CalculateEpochBoundaries(f.currentDAHeight, f.daStartHeight, f.daEpochSize)
 
 	// Prefetch upcoming epochs
 	for i := uint64(0); i < f.prefetchWindow; i++ {
@@ -218,7 +203,7 @@ func (f *AsyncEpochFetcher) prefetchEpochs() {
 }
 
 // fetchAndCacheEpoch fetches an epoch and stores it in the cache.
-func (f *AsyncEpochFetcher) fetchAndCacheEpoch(epochEnd uint64) {
+func (f *asyncEpochFetcher) fetchAndCacheEpoch(epochEnd uint64) {
 	epochStart := epochEnd - (f.daEpochSize - 1)
 	if epochStart < f.daStartHeight {
 		epochStart = f.daStartHeight
@@ -313,7 +298,7 @@ func (f *AsyncEpochFetcher) fetchAndCacheEpoch(epochEnd uint64) {
 }
 
 // processForcedInclusionBlobs processes blobs from a single DA height for forced inclusion.
-func (f *AsyncEpochFetcher) processForcedInclusionBlobs(
+func (f *asyncEpochFetcher) processForcedInclusionBlobs(
 	event *ForcedInclusionEvent,
 	result datypes.ResultRetrieve,
 	height uint64,
@@ -347,7 +332,7 @@ func (f *AsyncEpochFetcher) processForcedInclusionBlobs(
 }
 
 // cleanupOldEpochs removes epochs older than the current epoch from cache.
-func (f *AsyncEpochFetcher) cleanupOldEpochs(currentEpochEnd uint64) {
+func (f *asyncEpochFetcher) cleanupOldEpochs(currentEpochEnd uint64) {
 	// Remove epochs older than current - 1
 	// Keep current and previous in case of reorgs or restarts
 	cleanupThreshold := currentEpochEnd - f.daEpochSize
