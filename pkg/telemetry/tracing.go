@@ -19,7 +19,7 @@ import (
 // InitTracing initializes a global OpenTelemetry tracer provider if enabled.
 // Returns a shutdown function that should be called on process exit.
 func InitTracing(ctx context.Context, cfg *config.InstrumentationConfig, logger zerolog.Logger) (func(context.Context) error, error) {
-	if cfg == nil || !cfg.IsTracingEnabled() {
+	if !cfg.IsTracingEnabled() {
 		return func(context.Context) error { return nil }, nil
 	}
 
