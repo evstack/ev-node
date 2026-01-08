@@ -1,4 +1,5 @@
 coverage.txt
+*.out
 proto/pb
 proto/tendermint
 types/pb/tendermint
