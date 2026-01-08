@@ -23,6 +23,7 @@ import (
 	"github.com/rs/zerolog"
 
 	"github.com/evstack/ev-node/core/execution"
+	"github.com/evstack/ev-node/pkg/telemetry"
 )
 
 const (
@@ -157,6 +158,8 @@ type EngineClient struct {
 // The db parameter is required for ExecMeta tracking which enables idempotent
 // execution and crash recovery. The db is wrapped with a prefix to isolate
 // EVM execution data from other ev-node data.
+// When tracingEnabled is true, the client will inject W3C trace context headers
+// and wrap Engine API calls with OpenTelemetry spans.
 func NewEngineExecutionClient(
 	ethURL,
 	engineURL string,
@@ -164,33 +167,46 @@ func NewEngineExecutionClient(
 	genesisHash common.Hash,
 	feeRecipient common.Address,
 	db ds.Batching,
+	tracingEnabled bool,
 ) (*EngineClient, error) {
 	if db == nil {
 		return nil, errors.New("db is required for EVM execution client")
 	}
 
-	ethClient, err := ethclient.Dial(ethURL)
+	var rpcOpts []rpc.ClientOption
+	// If tracing enabled, add W3C header propagation to rpcOpts
+	if tracingEnabled {
+		rpcOpts = append(rpcOpts, rpc.WithHTTPClient(
+			telemetry.NewPropagatingHTTPClient(http.DefaultTransport)))
+	}
+
+	// Create ETH RPC client with HTTP options
+	ethRPC, err := rpc.DialOptions(context.Background(), ethURL, rpcOpts...)
 	if err != nil {
 		return nil, err
 	}
+	ethClient := ethclient.NewClient(ethRPC)
 
 	secret, err := decodeSecret(jwtSecret)
 	if err != nil {
 		return nil, err
 	}
 
-	engineClient, err := rpc.DialOptions(context.Background(), engineURL,
-		rpc.WithHTTPAuth(func(h http.Header) error {
-			authToken, err := getAuthToken(secret)
-			if err != nil {
-				return err
-			}
-
-			if authToken != "" {
-				h.Set("Authorization", "Bearer "+authToken)
-			}
-			return nil
-		}))
+	// Create Engine RPC with optional HTTP client and JWT auth
+	// Compose engine options: pass-through rpcOpts plus JWT auth
+	engineOptions := make([]rpc.ClientOption, len(rpcOpts))
+	copy(engineOptions, rpcOpts) // copy to avoid using same backing array from rpcOpts.
+	engineOptions = append(engineOptions, rpc.WithHTTPAuth(func(h http.Header) error {
+		authToken, err := getAuthToken(secret)
+		if err != nil {
+			return err
+		}
+		if authToken != "" {
+			h.Set("Authorization", "Bearer "+authToken)
+		}
+		return nil
+	}))
+	engineClient, err := rpc.DialOptions(context.Background(), engineURL, engineOptions...)
 	if err != nil {
 		return nil, err
 	}
