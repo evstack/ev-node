@@ -700,3 +700,186 @@ func TestSyncer_getHighestStoredDAHeight(t *testing.T) {
 	highestDA = syncer.getHighestStoredDAHeight()
 	assert.Equal(t, uint64(200), highestDA, "should return highest DA height from most recent included height")
 }
+
+func TestSyncMode_String(t *testing.T) {
+	tests := []struct {
+		mode     SyncMode
+		expected string
+	}{
+		{SyncModeCatchup, "catchup"},
+		{SyncModeFollow, "follow"},
+		{SyncMode(99), "unknown"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.expected, func(t *testing.T) {
+			assert.Equal(t, tt.expected, tt.mode.String())
+		})
+	}
+}
+
+func TestSyncer_determineSyncMode(t *testing.T) {
+	tests := []struct {
+		name          string
+		localHead     uint64
+		localHeadErr  error
+		currentHeight uint64
+		expectedMode  SyncMode
+	}{
+		{
+			name:          "caught up - at head",
+			localHead:     100,
+			localHeadErr:  nil,
+			currentHeight: 100,
+			expectedMode:  SyncModeFollow,
+		},
+		{
+			name:          "caught up - within threshold",
+			localHead:     100,
+			localHeadErr:  nil,
+			currentHeight: 99, // within catchupThreshold (2)
+			expectedMode:  SyncModeFollow,
+		},
+		{
+			name:          "caught up - at threshold boundary",
+			localHead:     100,
+			localHeadErr:  nil,
+			currentHeight: 98, // exactly at threshold
+			expectedMode:  SyncModeFollow,
+		},
+		{
+			name:          "behind - just past threshold",
+			localHead:     100,
+			localHeadErr:  nil,
+			currentHeight: 97, // 3 behind, past threshold of 2
+			expectedMode:  SyncModeCatchup,
+		},
+		{
+			name:          "behind - significantly behind",
+			localHead:     100,
+			localHeadErr:  nil,
+			currentHeight: 50,
+			expectedMode:  SyncModeCatchup,
+		},
+		{
+			name:          "error getting local head - defaults to catchup",
+			localHead:     0,
+			localHeadErr:  errors.New("connection failed"),
+			currentHeight: 100,
+			expectedMode:  SyncModeCatchup,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mockDA := testmocks.NewMockClient(t)
+			if tt.localHeadErr != nil {
+				mockDA.EXPECT().LocalHead(mock.Anything).Return(uint64(0), tt.localHeadErr)
+			} else {
+				mockDA.EXPECT().LocalHead(mock.Anything).Return(tt.localHead, nil)
+			}
+
+			syncer := &Syncer{
+				daClient:          mockDA,
+				daRetrieverHeight: &atomic.Uint64{},
+				ctx:               context.Background(),
+				logger:            zerolog.Nop(),
+			}
+			syncer.daRetrieverHeight.Store(tt.currentHeight)
+
+			mode := syncer.determineSyncMode()
+			assert.Equal(t, tt.expectedMode, mode)
+		})
+	}
+}
+
+func TestSyncer_runCatchupMode(t *testing.T) {
+	// Test that runCatchupMode correctly sets metrics and calls fetchDAUntilCaughtUp
+	mockDA := testmocks.NewMockClient(t)
+	// Use same namespace for header and data to simplify the test
+	namespace := []byte("namespace")
+	mockDA.EXPECT().GetHeaderNamespace().Return(namespace).Maybe()
+	mockDA.EXPECT().GetDataNamespace().Return(namespace).Maybe()
+	mockDA.EXPECT().Retrieve(mock.Anything, mock.Anything, namespace).
+		Return(datypes.ResultRetrieve{
+			BaseResult: datypes.BaseResult{
+				Code:    datypes.StatusHeightFromFuture,
+				Message: datypes.ErrHeightFromFuture.Error(),
+			},
+		}).Once()
+
+	cfg := config.DefaultConfig()
+	cfg.DA.BlockTime.Duration = 10 * time.Millisecond
+
+	metrics := common.NopMetrics()
+
+	syncer := &Syncer{
+		daClient:          mockDA,
+		daRetrieverHeight: &atomic.Uint64{},
+		ctx:               context.Background(),
+		logger:            zerolog.Nop(),
+		config:            cfg,
+		metrics:           metrics,
+		cache:             &mockCacheManager{},
+	}
+	syncer.daRetrieverHeight.Store(1)
+	syncer.daRetriever = NewDARetriever(mockDA, &mockCacheManager{}, genesis.Genesis{}, zerolog.Nop())
+
+	// Run catchup mode - should return when caught up (ErrHeightFromFuture)
+	syncer.runCatchupMode()
+
+	mockDA.AssertExpectations(t)
+}
+
+func TestSyncer_modeSwitching(t *testing.T) {
+	// Test that mode switches are tracked correctly
+	mockDA := testmocks.NewMockClient(t)
+
+	syncer := &Syncer{
+		daClient:          mockDA,
+		daRetrieverHeight: &atomic.Uint64{},
+		ctx:               context.Background(),
+		logger:            zerolog.Nop(),
+		metrics:           common.NopMetrics(),
+		currentSyncMode:   atomic.Int32{},
+	}
+
+	// Initial mode should be catchup (0)
+	assert.Equal(t, SyncModeCatchup, SyncMode(syncer.currentSyncMode.Load()))
+
+	// Simulate switching to follow mode
+	syncer.currentSyncMode.Store(int32(SyncModeFollow))
+	assert.Equal(t, SyncModeFollow, SyncMode(syncer.currentSyncMode.Load()))
+
+	// Switch back to catchup
+	syncer.currentSyncMode.Store(int32(SyncModeCatchup))
+	assert.Equal(t, SyncModeCatchup, SyncMode(syncer.currentSyncMode.Load()))
+}
+
+// mockCacheManager is a minimal implementation for testing
+type mockCacheManager struct{}
+
+func (m *mockCacheManager) DaHeight() uint64                        { return 0 }
+func (m *mockCacheManager) SetHeaderSeen(hash string, height uint64) {
+}
+func (m *mockCacheManager) IsHeaderSeen(hash string) bool { return false }
+func (m *mockCacheManager) SetDataSeen(hash string, height uint64) {
+}
+func (m *mockCacheManager) IsDataSeen(hash string) bool                            { return false }
+func (m *mockCacheManager) SetHeaderDAIncluded(hash string, daHeight, height uint64) {
+}
+func (m *mockCacheManager) GetHeaderDAIncluded(hash string) (uint64, bool) { return 0, false }
+func (m *mockCacheManager) RemoveHeaderDAIncluded(hash string)             {}
+func (m *mockCacheManager) SetDataDAIncluded(hash string, daHeight, height uint64) {
+}
+func (m *mockCacheManager) GetDataDAIncluded(hash string) (uint64, bool)             { return 0, false }
+func (m *mockCacheManager) IsTxSeen(hash string) bool                                { return false }
+func (m *mockCacheManager) SetTxSeen(hash string)                                    {}
+func (m *mockCacheManager) CleanupOldTxs(olderThan time.Duration) int                { return 0 }
+func (m *mockCacheManager) SetPendingEvent(height uint64, event *common.DAHeightEvent) {
+}
+func (m *mockCacheManager) GetNextPendingEvent(height uint64) *common.DAHeightEvent { return nil }
+func (m *mockCacheManager) SaveToDisk() error                                       { return nil }
+func (m *mockCacheManager) LoadFromDisk() error                                     { return nil }
+func (m *mockCacheManager) ClearFromDisk() error                                    { return nil }
+func (m *mockCacheManager) DeleteHeight(blockHeight uint64)                         {}

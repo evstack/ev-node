@@ -7,6 +7,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	blobrpc "github.com/evstack/ev-node/pkg/da/jsonrpc"
 	datypes "github.com/evstack/ev-node/pkg/da/types"
 )
 
@@ -289,4 +290,19 @@ func (d *DummyDA) GetHeaderByHeight(_ context.Context, height uint64) (*Header, 
 		return nil, datypes.ErrBlobNotFound
 	}
 	return header, nil
+}
+
+// Subscribe returns a channel that receives subscription responses.
+// This is a stub implementation that returns an empty channel.
+// In tests, callers should not rely on actual subscription behavior.
+func (d *DummyDA) Subscribe(_ context.Context, _ []byte) (<-chan *blobrpc.SubscriptionResponse, error) {
+	// Return a channel that will never receive anything - tests should use mocks for subscription behavior
+	ch := make(chan *blobrpc.SubscriptionResponse)
+	return ch, nil
+}
+
+// LocalHead returns the current DA height.
+// This mirrors the HeaderAPI.LocalHead method and is used to determine sync mode.
+func (d *DummyDA) LocalHead(_ context.Context) (uint64, error) {
+	return d.height.Load(), nil
 }

@@ -69,6 +69,11 @@ type Metrics struct {
 	// Forced inclusion metrics
 	ForcedInclusionTxsInGracePeriod metrics.Gauge   // Number of forced inclusion txs currently in grace period
 	ForcedInclusionTxsMalicious     metrics.Counter // Total number of forced inclusion txs marked as malicious
+
+	// Sync mode metrics
+	SyncMode        metrics.Gauge   // Current sync mode: 0=catchup, 1=follow
+	SubscribeErrors metrics.Counter // Number of subscription failures
+	ModeSwitches    metrics.Counter // Number of catchup<->follow mode transitions
 }
 
 // PrometheusMetrics returns Metrics built using Prometheus client library
@@ -201,6 +206,28 @@ func PrometheusMetrics(namespace string, labelsAndValues ...string) *Metrics {
 		Help:      "Total number of forced inclusion transactions marked as malicious (past grace boundary)",
 	}, labels).With(labelsAndValues...)
 
+	// Sync mode metrics
+	m.SyncMode = prometheus.NewGaugeFrom(stdprometheus.GaugeOpts{
+		Namespace: namespace,
+		Subsystem: MetricsSubsystem,
+		Name:      "sync_mode",
+		Help:      "Current sync mode: 0=catchup (polling), 1=follow (subscription)",
+	}, labels).With(labelsAndValues...)
+
+	m.SubscribeErrors = prometheus.NewCounterFrom(stdprometheus.CounterOpts{
+		Namespace: namespace,
+		Subsystem: MetricsSubsystem,
+		Name:      "subscribe_errors_total",
+		Help:      "Total number of DA subscription failures",
+	}, labels).With(labelsAndValues...)
+
+	m.ModeSwitches = prometheus.NewCounterFrom(stdprometheus.CounterOpts{
+		Namespace: namespace,
+		Subsystem: MetricsSubsystem,
+		Name:      "mode_switches_total",
+		Help:      "Total number of sync mode transitions between catchup and follow",
+	}, labels).With(labelsAndValues...)
+
 	// DA Submitter metrics
 	m.DASubmitterPendingBlobs = prometheus.NewGaugeFrom(stdprometheus.GaugeOpts{
 		Namespace: namespace,
@@ -269,6 +296,11 @@ func NopMetrics() *Metrics {
 		// Forced inclusion metrics
 		ForcedInclusionTxsInGracePeriod: discard.NewGauge(),
 		ForcedInclusionTxsMalicious:     discard.NewCounter(),
+
+		// Sync mode metrics
+		SyncMode:        discard.NewGauge(),
+		SubscribeErrors: discard.NewCounter(),
+		ModeSwitches:    discard.NewCounter(),
 	}
 
 	// Initialize maps with no-op metrics
