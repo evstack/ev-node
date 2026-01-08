@@ -64,6 +64,7 @@ func TestBasic(t *testing.T) {
 	)
 	require.NoError(t, err, "failed to init aggregator", output)
 
+	kvPort := mustGetAvailablePort(t)
 	// start aggregator
 	sut.ExecCmd(binaryPath,
 		"start",
@@ -72,7 +73,7 @@ func TestBasic(t *testing.T) {
 		"--evnode.signer.passphrase_file="+passphraseFile,
 		"--evnode.node.block_time=5ms",
 		"--evnode.da.block_time=15ms",
-		"--kv-endpoint=127.0.0.1:9090",
+		fmt.Sprintf("--kv-endpoint=127.0.0.1:%d", kvPort),
 	)
 
 	sut.AwaitNodeUp(t, "http://127.0.0.1:7331", 2*time.Second)
@@ -111,7 +112,7 @@ func TestBasic(t *testing.T) {
 	const myKey = "foo"
 	myValue := fmt.Sprintf("bar%d", time.Now().UnixNano())
 	tx := fmt.Sprintf("%s=%s", myKey, myValue)
-	kvStoreEndpoint := "http://127.0.0.1:9090/tx" // Assuming this is the endpoint based on init flag
+	kvStoreEndpoint := fmt.Sprintf("http://127.0.0.1:%d/tx", kvPort) // Assuming this is the endpoint based on init flag
 
 	ctx, done := context.WithTimeout(context.Background(), 5*time.Second) // Increased timeout for HTTP request
 	defer done()
@@ -165,6 +166,7 @@ func TestNodeRestartPersistence(t *testing.T) {
 	)
 	require.NoError(t, err, "failed to init node", output)
 
+	kvPort := mustGetAvailablePort(t)
 	// Start node
 	sut.ExecCmd(binaryPath,
 		"start",
@@ -173,7 +175,7 @@ func TestNodeRestartPersistence(t *testing.T) {
 		"--evnode.signer.passphrase_file="+passphraseFile,
 		"--evnode.node.block_time=5ms",
 		"--evnode.da.block_time=15ms",
-		"--kv-endpoint=127.0.0.1:9090",
+		fmt.Sprintf("--kv-endpoint=127.0.0.1:%d", kvPort),
 	)
 	sut.AwaitNodeUp(t, "http://127.0.0.1:7331", 2*time.Second)
 	t.Log("Node started and is up.")
@@ -213,7 +215,7 @@ func TestNodeRestartPersistence(t *testing.T) {
 		"--evnode.signer.passphrase_file="+passphraseFile,
 		"--evnode.node.block_time=5ms",
 		"--evnode.da.block_time=15ms",
-		"--kv-endpoint=127.0.0.1:9090",
+		fmt.Sprintf("--kv-endpoint=127.0.0.1:%d", kvPort),
 	)
 	sut.AwaitNodeUp(t, "http://127.0.0.1:7331", 2*time.Second)
 	t.Log("Node restarted and is up.")

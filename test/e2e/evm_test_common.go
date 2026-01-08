@@ -174,6 +174,12 @@ func generateTestEndpoints() (*TestEndpoints, error) {
 
 // Common constants used across EVM tests
 const (
+	// Port configurations
+	DAPort         = "7980"
+	RollkitRPCPort = "7331"
+
+	DAAddress         = "http://127.0.0.1:" + DAPort
+	RollkitRPCAddress = "http://127.0.0.1:" + RollkitRPCPort
 
 	// Test configuration
 	DefaultBlockTime   = "150ms"

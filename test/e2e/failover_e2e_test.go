@@ -19,15 +19,15 @@ import (
 	"testing"
 	"time"
 
+	libshare "github.com/celestiaorg/go-square/v3/share"
 	"github.com/ethereum/go-ethereum/common"
 	ethtypes "github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/ethclient"
 	evmtest "github.com/evstack/ev-node/execution/evm/test"
-	coreda "github.com/evstack/ev-node/pkg/da"
-	"github.com/evstack/ev-node/pkg/da/jsonrpc"
+	blobrpc "github.com/evstack/ev-node/pkg/da/jsonrpc"
+	coreda "github.com/evstack/ev-node/pkg/da/types"
 	rpcclient "github.com/evstack/ev-node/pkg/rpc/client"
-	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/proto"
@@ -267,26 +267,24 @@ func verifyNoDoubleSigning(t *testing.T, clusterNodes *raftClusterNodes, genesis
 // verifyDABlocks checks that DA block heights form a continuous sequence without gaps
 func verifyDABlocks(t *testing.T, daStartHeight, lastDABlock uint64, jwtSecret string, daAddress string, genesisHeight, lastEVBlock uint64) {
 	t.Helper()
-	rpcClient, err := jsonrpc.NewClient(t.Context(), zerolog.Nop(), daAddress, jwtSecret, defaultMaxBlobSize)
+	blobClient, err := blobrpc.NewClient(t.Context(), daAddress, jwtSecret, "")
 	require.NoError(t, err)
-	defer rpcClient.Close()
+	defer blobClient.Close()
 
-	namespace := coreda.NamespaceFromString(DefaultDANamespace).Bytes()
+	ns, err := libshare.NewNamespaceFromBytes(coreda.NamespaceFromString(DefaultDANamespace).Bytes())
+	require.NoError(t, err)
 	evHeightsToEvBlockParts := make(map[uint64]int)
 	deduplicationCache := make(map[string]uint64) // mixed header and data hashes
 
 	lastEVHeight := genesisHeight
 	// Verify each block is present exactly once
 	for daHeight := daStartHeight; daHeight <= lastDABlock; daHeight++ {
-		res, err := rpcClient.DA.GetIDs(t.Context(), daHeight, namespace)
+		blobs, err := blobClient.Blob.GetAll(t.Context(), daHeight, []libshare.Namespace{ns})
 		require.NoError(t, err, "height %d/%d", daHeight, lastDABlock)
-		require.NotEmpty(t, res.IDs)
-
-		blobs, err := rpcClient.DA.Get(t.Context(), res.IDs, namespace)
-		require.NoError(t, err)
+		require.NotEmpty(t, blobs)
 
 		for _, blob := range blobs {
-			if evHeight, hash, blobType := extractBlockHeight(t, blob); evHeight != 0 {
+			if evHeight, hash, blobType := extractBlockHeight(t, blob.Data()); evHeight != 0 {
 				t.Logf("extracting block height from blob (da height %d): %4d (%s)", daHeight, evHeight, blobType)
 				if height, ok := deduplicationCache[hash.String()]; ok {
 					require.Equal(t, evHeight, height)
@@ -455,24 +453,22 @@ const defaultMaxBlobSize = 2 * 1024 * 1024 // 2MB
 
 func queryLastDAHeight(t *testing.T, startHeight uint64, jwtSecret string, daAddress string) uint64 {
 	t.Helper()
-	logger := zerolog.Nop()
-	if testing.Verbose() {
-		logger = zerolog.New(zerolog.NewTestWriter(t)).Level(zerolog.DebugLevel)
-	}
-	client, err := jsonrpc.NewClient(t.Context(), logger, daAddress, jwtSecret, defaultMaxBlobSize)
+	blobClient, err := blobrpc.NewClient(t.Context(), daAddress, jwtSecret, "")
 	require.NoError(t, err)
-	defer client.Close()
+	defer blobClient.Close()
+	ns, err := libshare.NewNamespaceFromBytes(coreda.NamespaceFromString(DefaultDANamespace).Bytes())
+	require.NoError(t, err)
 	var lastDABlock = startHeight
 	for {
-		res, err := client.DA.GetIDs(t.Context(), lastDABlock, coreda.NamespaceFromString(DefaultDANamespace).Bytes())
+		blobs, err := blobClient.Blob.GetAll(t.Context(), lastDABlock, []libshare.Namespace{ns})
 		if err != nil {
 			if strings.Contains(err.Error(), "future") {
 				return lastDABlock - 1
 			}
-			t.Fatal("failed to get IDs:", err)
+			t.Fatal("failed to get blobs:", err)
 		}
-		if len(res.IDs) != 0 && testing.Verbose() {
-			t.Log("+++ DA block: ", lastDABlock, " ids: ", len(res.IDs))
+		if len(blobs) != 0 && testing.Verbose() {
+			t.Log("+++ DA block: ", lastDABlock, " blobs: ", len(blobs))
 		}
 		lastDABlock++
 	}
