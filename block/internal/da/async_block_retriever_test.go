@@ -20,24 +20,22 @@ import (
 
 func TestAsyncBlockRetriever_GetCachedBlock_NoNamespace(t *testing.T) {
 	client := &mocks.MockClient{}
-	client.On("HasForcedInclusionNamespace").Return(false)
 
 	logger := zerolog.Nop()
-	fetcher := NewAsyncBlockRetriever(client, logger, config.DefaultConfig(), 100, 10)
+	fetcher := NewAsyncBlockRetriever(client, logger, nil, config.DefaultConfig(), 100, 10)
 
 	ctx := context.Background()
-	_, err := fetcher.GetCachedBlock(ctx, 100)
-	assert.ErrorIs(t, err, ErrForceInclusionNotConfigured)
+	block, err := fetcher.GetCachedBlock(ctx, 100)
+	assert.NoError(t, err)
+	assert.Nil(t, block)
 }
 
 func TestAsyncBlockRetriever_GetCachedBlock_CacheMiss(t *testing.T) {
 	client := &mocks.MockClient{}
 	fiNs := datypes.NamespaceFromString("test-fi-ns").Bytes()
-	client.On("HasForcedInclusionNamespace").Return(true)
-	client.On("GetForcedInclusionNamespace").Return(fiNs)
 
 	logger := zerolog.Nop()
-	fetcher := NewAsyncBlockRetriever(client, logger, config.DefaultConfig(), 100, 10)
+	fetcher := NewAsyncBlockRetriever(client, logger, fiNs, config.DefaultConfig(), 100, 10)
 
 	ctx := context.Background()
 
@@ -56,8 +54,6 @@ func TestAsyncBlockRetriever_FetchAndCache(t *testing.T) {
 
 	client := &mocks.MockClient{}
 	fiNs := datypes.NamespaceFromString("test-fi-ns").Bytes()
-	client.On("HasForcedInclusionNamespace").Return(true)
-	client.On("GetForcedInclusionNamespace").Return(fiNs)
 
 	// Mock Retrieve call for height 100
 	client.On("Retrieve", mock.Anything, uint64(100), fiNs).Return(datypes.ResultRetrieve{
@@ -79,7 +75,7 @@ func TestAsyncBlockRetriever_FetchAndCache(t *testing.T) {
 	// Use a short poll interval for faster test execution
 	cfg := config.DefaultConfig()
 	cfg.DA.BlockTime.Duration = 100 * time.Millisecond
-	fetcher := NewAsyncBlockRetriever(client, logger, cfg, 100, 10)
+	fetcher := NewAsyncBlockRetriever(client, logger, fiNs, cfg, 100, 10)
 	fetcher.Start()
 	defer fetcher.Stop()
 
@@ -117,8 +113,6 @@ func TestAsyncBlockRetriever_BackgroundPrefetch(t *testing.T) {
 
 	client := &mocks.MockClient{}
 	fiNs := datypes.NamespaceFromString("test-fi-ns").Bytes()
-	client.On("HasForcedInclusionNamespace").Return(true)
-	client.On("GetForcedInclusionNamespace").Return(fiNs)
 
 	// Mock for heights 100-110 (current + prefetch window)
 	for height := uint64(100); height <= 110; height++ {
@@ -140,7 +134,7 @@ func TestAsyncBlockRetriever_BackgroundPrefetch(t *testing.T) {
 	logger := zerolog.Nop()
 	cfg := config.DefaultConfig()
 	cfg.DA.BlockTime.Duration = 100 * time.Millisecond
-	fetcher := NewAsyncBlockRetriever(client, logger, cfg, 100, 10)
+	fetcher := NewAsyncBlockRetriever(client, logger, fiNs, cfg, 100, 10)
 
 	fetcher.Start()
 	defer fetcher.Stop()
@@ -164,8 +158,6 @@ func TestAsyncBlockRetriever_BackgroundPrefetch(t *testing.T) {
 func TestAsyncBlockRetriever_HeightFromFuture(t *testing.T) {
 	client := &mocks.MockClient{}
 	fiNs := datypes.NamespaceFromString("test-fi-ns").Bytes()
-	client.On("HasForcedInclusionNamespace").Return(true)
-	client.On("GetForcedInclusionNamespace").Return(fiNs)
 
 	// All heights in prefetch window not available yet
 	for height := uint64(100); height <= 109; height++ {
@@ -177,7 +169,7 @@ func TestAsyncBlockRetriever_HeightFromFuture(t *testing.T) {
 	logger := zerolog.Nop()
 	cfg := config.DefaultConfig()
 	cfg.DA.BlockTime.Duration = 100 * time.Millisecond
-	fetcher := NewAsyncBlockRetriever(client, logger, cfg, 100, 10)
+	fetcher := NewAsyncBlockRetriever(client, logger, fiNs, cfg, 100, 10)
 	fetcher.Start()
 	defer fetcher.Stop()
 
@@ -195,10 +187,10 @@ func TestAsyncBlockRetriever_HeightFromFuture(t *testing.T) {
 
 func TestAsyncBlockRetriever_StopGracefully(t *testing.T) {
 	client := &mocks.MockClient{}
-	client.On("HasForcedInclusionNamespace").Return(false)
+	fiNs := datypes.NamespaceFromString("test-fi-ns").Bytes()
 
 	logger := zerolog.Nop()
-	fetcher := NewAsyncBlockRetriever(client, logger, config.DefaultConfig(), 100, 10)
+	fetcher := NewAsyncBlockRetriever(client, logger, fiNs, config.DefaultConfig(), 100, 10)
 
 	fetcher.Start()
 	time.Sleep(100 * time.Millisecond)

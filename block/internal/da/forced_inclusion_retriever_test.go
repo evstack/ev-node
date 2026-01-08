@@ -15,20 +15,8 @@ import (
 	"github.com/evstack/ev-node/test/mocks"
 )
 
-// createTestAsyncFetcher creates a minimal async fetcher for tests
-func createTestAsyncFetcher(client Client, gen genesis.Genesis) AsyncBlockRetriever {
-	return NewAsyncBlockRetriever(
-		client,
-		zerolog.Nop(),
-		config.DefaultConfig(),
-		gen.DAStartHeight,
-		10, // prefetch 10 blocks
-	)
-}
-
 func TestNewForcedInclusionRetriever(t *testing.T) {
 	client := mocks.NewMockClient(t)
-	client.On("HasForcedInclusionNamespace").Return(true).Maybe()
 	client.On("GetForcedInclusionNamespace").Return(datypes.NamespaceFromString("test-fi-ns").Bytes()).Maybe()
 
 	gen := genesis.Genesis{
@@ -36,22 +24,23 @@ func TestNewForcedInclusionRetriever(t *testing.T) {
 		DAEpochForcedInclusion: 10,
 	}
 
-	asyncFetcher := createTestAsyncFetcher(client, gen)
-	retriever := NewForcedInclusionRetriever(client, zerolog.Nop(), gen.DAStartHeight, gen.DAEpochForcedInclusion, asyncFetcher)
+	retriever := NewForcedInclusionRetriever(client, zerolog.Nop(), config.DefaultConfig(), gen.DAStartHeight, gen.DAEpochForcedInclusion)
 	assert.Assert(t, retriever != nil)
+	retriever.Stop()
 }
 
 func TestForcedInclusionRetriever_RetrieveForcedIncludedTxs_NoNamespace(t *testing.T) {
 	client := mocks.NewMockClient(t)
-	client.On("HasForcedInclusionNamespace").Return(false).Once()
+	client.On("HasForcedInclusionNamespace").Return(false).Maybe()
+	client.On("GetForcedInclusionNamespace").Return([]byte(nil)).Maybe()
 
 	gen := genesis.Genesis{
 		DAStartHeight:          100,
 		DAEpochForcedInclusion: 10,
 	}
 
-	asyncFetcher := createTestAsyncFetcher(client, gen)
-	retriever := NewForcedInclusionRetriever(client, zerolog.Nop(), gen.DAStartHeight, gen.DAEpochForcedInclusion, asyncFetcher)
+	retriever := NewForcedInclusionRetriever(client, zerolog.Nop(), config.DefaultConfig(), gen.DAStartHeight, gen.DAEpochForcedInclusion)
+	defer retriever.Stop()
 	ctx := context.Background()
 
 	_, err := retriever.RetrieveForcedIncludedTxs(ctx, 100)
@@ -62,7 +51,7 @@ func TestForcedInclusionRetriever_RetrieveForcedIncludedTxs_NoNamespace(t *testi
 func TestForcedInclusionRetriever_RetrieveForcedIncludedTxs_NotAtEpochStart(t *testing.T) {
 	client := mocks.NewMockClient(t)
 	fiNs := datypes.NamespaceFromString("test-fi-ns").Bytes()
-	client.On("HasForcedInclusionNamespace").Return(true).Once()
+	client.On("HasForcedInclusionNamespace").Return(true).Maybe()
 	client.On("GetForcedInclusionNamespace").Return(fiNs).Maybe()
 
 	gen := genesis.Genesis{
@@ -70,8 +59,8 @@ func TestForcedInclusionRetriever_RetrieveForcedIncludedTxs_NotAtEpochStart(t *t
 		DAEpochForcedInclusion: 10,
 	}
 
-	asyncFetcher := createTestAsyncFetcher(client, gen)
-	retriever := NewForcedInclusionRetriever(client, zerolog.Nop(), gen.DAStartHeight, gen.DAEpochForcedInclusion, asyncFetcher)
+	retriever := NewForcedInclusionRetriever(client, zerolog.Nop(), config.DefaultConfig(), gen.DAStartHeight, gen.DAEpochForcedInclusion)
+	defer retriever.Stop()
 	ctx := context.Background()
 
 	// Height 105 is not an epoch start (100, 110, 120, etc. are epoch starts)
@@ -104,8 +93,8 @@ func TestForcedInclusionRetriever_RetrieveForcedIncludedTxs_EpochStartSuccess(t 
 		DAEpochForcedInclusion: 1, // Single height epoch
 	}
 
-	asyncFetcher := createTestAsyncFetcher(client, gen)
-	retriever := NewForcedInclusionRetriever(client, zerolog.Nop(), gen.DAStartHeight, gen.DAEpochForcedInclusion, asyncFetcher)
+	retriever := NewForcedInclusionRetriever(client, zerolog.Nop(), config.DefaultConfig(), gen.DAStartHeight, gen.DAEpochForcedInclusion)
+	defer retriever.Stop()
 	ctx := context.Background()
 
 	// Height 100 is an epoch start
@@ -134,8 +123,8 @@ func TestForcedInclusionRetriever_RetrieveForcedIncludedTxs_EpochStartNotAvailab
 		DAEpochForcedInclusion: 10,
 	}
 
-	asyncFetcher := createTestAsyncFetcher(client, gen)
-	retriever := NewForcedInclusionRetriever(client, zerolog.Nop(), gen.DAStartHeight, gen.DAEpochForcedInclusion, asyncFetcher)
+	retriever := NewForcedInclusionRetriever(client, zerolog.Nop(), config.DefaultConfig(), gen.DAStartHeight, gen.DAEpochForcedInclusion)
+	defer retriever.Stop()
 	ctx := context.Background()
 
 	// Epoch boundaries: [100, 109] - now tries to fetch all blocks in epoch
@@ -158,8 +147,8 @@ func TestForcedInclusionRetriever_RetrieveForcedIncludedTxs_NoBlobsAtHeight(t *t
 		DAEpochForcedInclusion: 1, // Single height epoch
 	}
 
-	asyncFetcher := createTestAsyncFetcher(client, gen)
-	retriever := NewForcedInclusionRetriever(client, zerolog.Nop(), gen.DAStartHeight, gen.DAEpochForcedInclusion, asyncFetcher)
+	retriever := NewForcedInclusionRetriever(client, zerolog.Nop(), config.DefaultConfig(), gen.DAStartHeight, gen.DAEpochForcedInclusion)
+	defer retriever.Stop()
 	ctx := context.Background()
 
 	event, err := retriever.RetrieveForcedIncludedTxs(ctx, 100)
@@ -197,8 +186,8 @@ func TestForcedInclusionRetriever_RetrieveForcedIncludedTxs_MultiHeightEpoch(t *
 		DAEpochForcedInclusion: 3, // Epoch: 100-102
 	}
 
-	asyncFetcher := createTestAsyncFetcher(client, gen)
-	retriever := NewForcedInclusionRetriever(client, zerolog.Nop(), gen.DAStartHeight, gen.DAEpochForcedInclusion, asyncFetcher)
+	retriever := NewForcedInclusionRetriever(client, zerolog.Nop(), config.DefaultConfig(), gen.DAStartHeight, gen.DAEpochForcedInclusion)
+	defer retriever.Stop()
 	ctx := context.Background()
 
 	// Epoch boundaries: [100, 102] - retrieval happens at epoch end (102)
@@ -216,14 +205,15 @@ func TestForcedInclusionRetriever_RetrieveForcedIncludedTxs_MultiHeightEpoch(t *
 
 func TestForcedInclusionRetriever_processForcedInclusionBlobs(t *testing.T) {
 	client := mocks.NewMockClient(t)
+	client.On("GetForcedInclusionNamespace").Return(datypes.NamespaceFromString("test-fi-ns").Bytes()).Maybe()
 
 	gen := genesis.Genesis{
 		DAStartHeight:          100,
 		DAEpochForcedInclusion: 10,
 	}
 
-	asyncFetcher := createTestAsyncFetcher(client, gen)
-	retriever := NewForcedInclusionRetriever(client, zerolog.Nop(), gen.DAStartHeight, gen.DAEpochForcedInclusion, asyncFetcher)
+	retriever := NewForcedInclusionRetriever(client, zerolog.Nop(), config.DefaultConfig(), gen.DAStartHeight, gen.DAEpochForcedInclusion)
+	defer retriever.Stop()
 
 	tests := []struct {
 		name            string

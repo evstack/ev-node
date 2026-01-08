@@ -33,6 +33,7 @@ type Sequencer struct {
 	logger  zerolog.Logger
 	genesis genesis.Genesis
 	db      ds.Batching
+	cfg     config.Config
 
 	Id       []byte
 	daClient block.FullDAClient
@@ -41,7 +42,6 @@ type Sequencer struct {
 	queue     *BatchQueue // single queue for immediate availability
 
 	// Forced inclusion support
-	asyncFetcher    block.AsyncBlockRetriever
 	fiRetriever     block.ForcedInclusionRetriever
 	daHeight        atomic.Uint64
 	daStartHeight   atomic.Uint64
@@ -66,6 +66,7 @@ func NewSequencer(
 		db:              db,
 		logger:          logger,
 		daClient:        daClient,
+		cfg:             cfg,
 		batchTime:       cfg.Node.BlockTime.Duration,
 		Id:              id,
 		queue:           NewBatchQueue(db, "batches", maxQueueSize),
@@ -109,16 +110,8 @@ func NewSequencer(
 
 	// Determine initial DA height for forced inclusion
 	initialDAHeight := s.getInitialDAStartHeight(context.Background())
-	s.asyncFetcher = block.NewAsyncBlockRetriever(
-		daClient,
-		cfg,
-		logger,
-		initialDAHeight,
-		genesis.DAEpochForcedInclusion*2,
-	)
-	s.asyncFetcher.Start()
 
-	s.fiRetriever = block.NewForcedInclusionRetriever(daClient, logger, initialDAHeight, genesis.DAEpochForcedInclusion, s.asyncFetcher)
+	s.fiRetriever = block.NewForcedInclusionRetriever(daClient, cfg, logger, initialDAHeight, genesis.DAEpochForcedInclusion)
 
 	return s, nil
 }
@@ -187,7 +180,11 @@ func (c *Sequencer) GetNextBatch(ctx context.Context, req coresequencer.GetNextB
 		}
 
 		// override forced inclusion retriever, as the da start height have been updated
-		c.fiRetriever = block.NewForcedInclusionRetriever(c.daClient, c.logger, c.getInitialDAStartHeight(ctx), c.genesis.DAEpochForcedInclusion, c.asyncFetcher)
+		// Stop the old retriever first
+		if c.fiRetriever != nil {
+			c.fiRetriever.Stop()
+		}
+		c.fiRetriever = block.NewForcedInclusionRetriever(c.daClient, c.cfg, c.logger, c.getInitialDAStartHeight(ctx), c.genesis.DAEpochForcedInclusion)
 	}
 
 	// If we have no cached transactions or we've consumed all from the current cache,

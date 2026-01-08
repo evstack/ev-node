@@ -23,17 +23,6 @@ import (
 	"github.com/evstack/ev-node/types"
 )
 
-// createTestAsyncFetcher creates a minimal async fetcher for tests (without starting it)
-func createTestAsyncFetcherForSyncer(client da.Client, gen genesis.Genesis) da.AsyncBlockRetriever {
-	return da.NewAsyncBlockRetriever(
-		client,
-		zerolog.Nop(),
-		config.DefaultConfig(),
-		gen.DAStartHeight,
-		10, // prefetch 10 blocks
-	)
-}
-
 func TestCalculateBlockFullness_HalfFull(t *testing.T) {
 	s := &Syncer{}
 
@@ -381,8 +370,8 @@ func TestVerifyForcedInclusionTxs_AllTransactionsIncluded(t *testing.T) {
 	client.On("GetForcedInclusionNamespace").Return([]byte(cfg.DA.ForcedInclusionNamespace)).Maybe()
 	client.On("HasForcedInclusionNamespace").Return(true).Maybe()
 	daRetriever := NewDARetriever(client, cm, gen, zerolog.Nop())
-	asyncFetcher := createTestAsyncFetcherForSyncer(client, gen)
-	fiRetriever := da.NewForcedInclusionRetriever(client, zerolog.Nop(), gen.DAStartHeight, gen.DAEpochForcedInclusion, asyncFetcher)
+	fiRetriever := da.NewForcedInclusionRetriever(client, zerolog.Nop(), config.DefaultConfig(), gen.DAStartHeight, gen.DAEpochForcedInclusion)
+	defer fiRetriever.Stop()
 
 	s := NewSyncer(
 		st,
@@ -455,8 +444,8 @@ func TestVerifyForcedInclusionTxs_MissingTransactions(t *testing.T) {
 	client.On("GetForcedInclusionNamespace").Return([]byte(cfg.DA.ForcedInclusionNamespace)).Maybe()
 	client.On("HasForcedInclusionNamespace").Return(true).Maybe()
 	daRetriever := NewDARetriever(client, cm, gen, zerolog.Nop())
-	asyncFetcher := createTestAsyncFetcherForSyncer(client, gen)
-	fiRetriever := da.NewForcedInclusionRetriever(client, zerolog.Nop(), gen.DAStartHeight, gen.DAEpochForcedInclusion, asyncFetcher)
+	fiRetriever := da.NewForcedInclusionRetriever(client, zerolog.Nop(), config.DefaultConfig(), gen.DAStartHeight, gen.DAEpochForcedInclusion)
+	defer fiRetriever.Stop()
 
 	s := NewSyncer(
 		st,
@@ -559,8 +548,8 @@ func TestVerifyForcedInclusionTxs_PartiallyIncluded(t *testing.T) {
 	client.On("GetForcedInclusionNamespace").Return([]byte(cfg.DA.ForcedInclusionNamespace)).Maybe()
 	client.On("HasForcedInclusionNamespace").Return(true).Maybe()
 	daRetriever := NewDARetriever(client, cm, gen, zerolog.Nop())
-	asyncFetcher := createTestAsyncFetcherForSyncer(client, gen)
-	fiRetriever := da.NewForcedInclusionRetriever(client, zerolog.Nop(), gen.DAStartHeight, gen.DAEpochForcedInclusion, asyncFetcher)
+	fiRetriever := da.NewForcedInclusionRetriever(client, zerolog.Nop(), config.DefaultConfig(), gen.DAStartHeight, gen.DAEpochForcedInclusion)
+	defer fiRetriever.Stop()
 
 	s := NewSyncer(
 		st,
@@ -667,8 +656,8 @@ func TestVerifyForcedInclusionTxs_NoForcedTransactions(t *testing.T) {
 	client.On("GetForcedInclusionNamespace").Return([]byte(cfg.DA.ForcedInclusionNamespace)).Maybe()
 	client.On("HasForcedInclusionNamespace").Return(true).Maybe()
 	daRetriever := NewDARetriever(client, cm, gen, zerolog.Nop())
-	asyncFetcher := createTestAsyncFetcherForSyncer(client, gen)
-	fiRetriever := da.NewForcedInclusionRetriever(client, zerolog.Nop(), gen.DAStartHeight, gen.DAEpochForcedInclusion, asyncFetcher)
+	fiRetriever := da.NewForcedInclusionRetriever(client, zerolog.Nop(), config.DefaultConfig(), gen.DAStartHeight, gen.DAEpochForcedInclusion)
+	defer fiRetriever.Stop()
 
 	s := NewSyncer(
 		st,
@@ -733,9 +722,10 @@ func TestVerifyForcedInclusionTxs_NamespaceNotConfigured(t *testing.T) {
 	client.On("GetDataNamespace").Return([]byte(cfg.DA.DataNamespace)).Maybe()
 	client.On("GetForcedInclusionNamespace").Return([]byte(nil)).Maybe()
 	client.On("HasForcedInclusionNamespace").Return(false).Maybe()
+	client.On("GetForcedInclusionNamespace").Return([]byte(nil)).Maybe()
 	daRetriever := NewDARetriever(client, cm, gen, zerolog.Nop())
-	asyncFetcher := createTestAsyncFetcherForSyncer(client, gen)
-	fiRetriever := da.NewForcedInclusionRetriever(client, zerolog.Nop(), gen.DAStartHeight, gen.DAEpochForcedInclusion, asyncFetcher)
+	fiRetriever := da.NewForcedInclusionRetriever(client, zerolog.Nop(), config.DefaultConfig(), gen.DAStartHeight, gen.DAEpochForcedInclusion)
+	defer fiRetriever.Stop()
 
 	s := NewSyncer(
 		st,
@@ -800,8 +790,8 @@ func TestVerifyForcedInclusionTxs_DeferralWithinEpoch(t *testing.T) {
 	client.On("GetForcedInclusionNamespace").Return([]byte(cfg.DA.ForcedInclusionNamespace)).Maybe()
 	client.On("HasForcedInclusionNamespace").Return(true).Maybe()
 	daRetriever := NewDARetriever(client, cm, gen, zerolog.Nop())
-	asyncFetcher := createTestAsyncFetcherForSyncer(client, gen)
-	fiRetriever := da.NewForcedInclusionRetriever(client, zerolog.Nop(), gen.DAStartHeight, gen.DAEpochForcedInclusion, asyncFetcher)
+	fiRetriever := da.NewForcedInclusionRetriever(client, zerolog.Nop(), config.DefaultConfig(), gen.DAStartHeight, gen.DAEpochForcedInclusion)
+	defer fiRetriever.Stop()
 
 	s := NewSyncer(
 		st,
@@ -924,8 +914,8 @@ func TestVerifyForcedInclusionTxs_MaliciousAfterEpochEnd(t *testing.T) {
 	client.On("GetForcedInclusionNamespace").Return([]byte(cfg.DA.ForcedInclusionNamespace)).Maybe()
 	client.On("HasForcedInclusionNamespace").Return(true).Maybe()
 	daRetriever := NewDARetriever(client, cm, gen, zerolog.Nop())
-	asyncFetcher := createTestAsyncFetcherForSyncer(client, gen)
-	fiRetriever := da.NewForcedInclusionRetriever(client, zerolog.Nop(), gen.DAStartHeight, gen.DAEpochForcedInclusion, asyncFetcher)
+	fiRetriever := da.NewForcedInclusionRetriever(client, zerolog.Nop(), config.DefaultConfig(), gen.DAStartHeight, gen.DAEpochForcedInclusion)
+	defer fiRetriever.Stop()
 
 	s := NewSyncer(
 		st,
@@ -1014,8 +1004,8 @@ func TestVerifyForcedInclusionTxs_SmoothingExceedsEpoch(t *testing.T) {
 	client.On("HasForcedInclusionNamespace").Return(true).Maybe()
 
 	daRetriever := NewDARetriever(client, cm, gen, zerolog.Nop())
-	asyncFetcher := createTestAsyncFetcherForSyncer(client, gen)
-	fiRetriever := da.NewForcedInclusionRetriever(client, zerolog.Nop(), gen.DAStartHeight, gen.DAEpochForcedInclusion, asyncFetcher)
+	fiRetriever := da.NewForcedInclusionRetriever(client, zerolog.Nop(), config.DefaultConfig(), gen.DAStartHeight, gen.DAEpochForcedInclusion)
+	defer fiRetriever.Stop()
 
 	s := NewSyncer(
 		st,

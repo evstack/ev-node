@@ -35,10 +35,11 @@ type BlockData struct {
 }
 
 // asyncBlockRetriever handles background prefetching of individual DA blocks
-// to speed up forced inclusion processing.
+// from a specific namespace.
 type asyncBlockRetriever struct {
 	client        Client
 	logger        zerolog.Logger
+	namespace     []byte
 	daStartHeight uint64
 
 	// In-memory cache for prefetched block data
@@ -63,6 +64,7 @@ type asyncBlockRetriever struct {
 func NewAsyncBlockRetriever(
 	client Client,
 	logger zerolog.Logger,
+	namespace []byte,
 	config config.Config,
 	daStartHeight uint64,
 	prefetchWindow uint64,
@@ -76,6 +78,7 @@ func NewAsyncBlockRetriever(
 	fetcher := &asyncBlockRetriever{
 		client:         client,
 		logger:         logger.With().Str("component", "async_block_retriever").Logger(),
+		namespace:      namespace,
 		daStartHeight:  daStartHeight,
 		cache:          dsync.MutexWrap(ds.NewMapDatastore()),
 		ctx:            ctx,
@@ -125,8 +128,8 @@ func (f *asyncBlockRetriever) UpdateCurrentHeight(height uint64) {
 // GetCachedBlock retrieves a cached block from memory.
 // Returns nil if the block is not cached.
 func (f *asyncBlockRetriever) GetCachedBlock(ctx context.Context, daHeight uint64) (*BlockData, error) {
-	if !f.client.HasForcedInclusionNamespace() {
-		return nil, ErrForceInclusionNotConfigured
+	if len(f.namespace) == 0 {
+		return nil, nil
 	}
 
 	if daHeight < f.daStartHeight {
@@ -183,7 +186,7 @@ func (f *asyncBlockRetriever) backgroundFetchLoop() {
 
 // prefetchBlocks prefetches blocks within the prefetch window.
 func (f *asyncBlockRetriever) prefetchBlocks() {
-	if !f.client.HasForcedInclusionNamespace() {
+	if len(f.namespace) == 0 {
 		return
 	}
 
@@ -215,7 +218,7 @@ func (f *asyncBlockRetriever) fetchAndCacheBlock(height uint64) {
 		Uint64("height", height).
 		Msg("prefetching block")
 
-	result := f.client.Retrieve(f.ctx, height, f.client.GetForcedInclusionNamespace())
+	result := f.client.Retrieve(f.ctx, height, f.namespace)
 
 	block := &BlockData{
 		Height:    height,

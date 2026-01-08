@@ -65,44 +65,19 @@ var ErrForceInclusionNotConfigured = da.ErrForceInclusionNotConfigured
 // ForcedInclusionEvent represents forced inclusion transactions retrieved from DA
 type ForcedInclusionEvent = da.ForcedInclusionEvent
 
-// AsyncBlockRetriever provides background prefetching of individual DA blocks
-type AsyncBlockRetriever interface {
-	Start()
-	Stop()
-	GetCachedBlock(ctx context.Context, daHeight uint64) (*da.BlockData, error)
-	UpdateCurrentHeight(height uint64)
-}
-
 // ForcedInclusionRetriever defines the interface for retrieving forced inclusion transactions from DA
 type ForcedInclusionRetriever interface {
 	RetrieveForcedIncludedTxs(ctx context.Context, daHeight uint64) (*da.ForcedInclusionEvent, error)
-}
-
-// NewAsyncBlockRetriever creates a new async block retriever for background prefetching.
-// Parameters:
-//   - client: DA client for fetching data
-//   - config: Ev-node config
-//   - logger: structured logger
-//   - daStartHeight: genesis DA start height
-//   - prefetchWindow: how many blocks ahead to prefetch (10-20 recommended)
-func NewAsyncBlockRetriever(
-	client DAClient,
-	cfg config.Config,
-	logger zerolog.Logger,
-	daStartHeight uint64,
-	prefetchWindow uint64,
-) AsyncBlockRetriever {
-	return da.NewAsyncBlockRetriever(client, logger, cfg, daStartHeight, prefetchWindow)
+	Stop()
 }
 
 // NewForcedInclusionRetriever creates a new forced inclusion retriever.
-// The asyncFetcher parameter is required for background prefetching of DA block data.
-// It accepts either AsyncBlockRetriever (recommended) or AsyncEpochFetcher (deprecated) for backward compatibility.
+// It internally creates and manages an AsyncBlockRetriever for background prefetching.
 func NewForcedInclusionRetriever(
 	client DAClient,
+	cfg config.Config,
 	logger zerolog.Logger,
 	daStartHeight, daEpochSize uint64,
-	asyncFetcher AsyncBlockRetriever,
 ) ForcedInclusionRetriever {
-	return da.NewForcedInclusionRetriever(client, logger, daStartHeight, daEpochSize, asyncFetcher)
+	return da.NewForcedInclusionRetriever(client, logger, cfg, daStartHeight, daEpochSize)
 }

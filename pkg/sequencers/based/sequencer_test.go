@@ -32,6 +32,10 @@ func (m *MockForcedInclusionRetriever) RetrieveForcedIncludedTxs(ctx context.Con
 	return args.Get(0).(*block.ForcedInclusionEvent), args.Error(1)
 }
 
+func (m *MockForcedInclusionRetriever) Stop() {
+	// No-op for mock
+}
+
 // MockDAClient is a mock implementation of block.FullDAClient for testing
 type MockDAClient struct {
 	mock.Mock
@@ -106,6 +110,9 @@ func createTestSequencer(t *testing.T, mockRetriever *MockForcedInclusionRetriev
 
 	// Create mock DA client that wraps the retriever
 	mockDAClient := &MockDAClient{retriever: mockRetriever}
+	// Mock the forced inclusion namespace call
+	mockDAClient.On("GetForcedInclusionNamespace").Return([]byte("test-forced-inclusion-ns")).Maybe()
+	mockDAClient.On("HasForcedInclusionNamespace").Return(true).Maybe()
 
 	seq, err := NewBasedSequencer(mockDAClient, config.DefaultConfig(), db, gen, zerolog.Nop())
 	require.NoError(t, err)
@@ -529,6 +536,8 @@ func TestBasedSequencer_CheckpointPersistence(t *testing.T) {
 
 	// Create mock DA client
 	mockDAClient := &MockDAClient{retriever: mockRetriever}
+	mockDAClient.On("GetForcedInclusionNamespace").Return([]byte("test-forced-inclusion-ns")).Maybe()
+	mockDAClient.On("HasForcedInclusionNamespace").Return(true).Maybe()
 
 	// Create first sequencer
 	seq1, err := NewBasedSequencer(mockDAClient, config.DefaultConfig(), db, gen, zerolog.Nop())
@@ -550,6 +559,8 @@ func TestBasedSequencer_CheckpointPersistence(t *testing.T) {
 
 	// Create a new sequencer with the same datastore (simulating restart)
 	mockDAClient2 := &MockDAClient{retriever: mockRetriever}
+	mockDAClient2.On("GetForcedInclusionNamespace").Return([]byte("test-forced-inclusion-ns")).Maybe()
+	mockDAClient2.On("HasForcedInclusionNamespace").Return(true).Maybe()
 	seq2, err := NewBasedSequencer(mockDAClient2, config.DefaultConfig(), db, gen, zerolog.Nop())
 	require.NoError(t, err)
 

@@ -6,10 +6,10 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/rs/zerolog"
-
+	"github.com/evstack/ev-node/pkg/config"
 	datypes "github.com/evstack/ev-node/pkg/da/types"
 	"github.com/evstack/ev-node/types"
+	"github.com/rs/zerolog"
 )
 
 // ErrForceInclusionNotConfigured is returned when the forced inclusion namespace is not configured.
@@ -33,18 +33,39 @@ type ForcedInclusionEvent struct {
 }
 
 // NewForcedInclusionRetriever creates a new forced inclusion retriever.
+// It internally creates and manages an AsyncBlockRetriever for background prefetching.
 func NewForcedInclusionRetriever(
 	client Client,
 	logger zerolog.Logger,
+	cfg config.Config,
 	daStartHeight, daEpochSize uint64,
-	asyncFetcher AsyncBlockRetriever,
 ) *ForcedInclusionRetriever {
+	retrieverLogger := logger.With().Str("component", "forced_inclusion_retriever").Logger()
+
+	// Create async block retriever for background prefetching
+	asyncFetcher := NewAsyncBlockRetriever(
+		client,
+		logger,
+		client.GetForcedInclusionNamespace(),
+		cfg,
+		daStartHeight,
+		daEpochSize*2, // prefetch window: 2x epoch size
+	)
+	asyncFetcher.Start()
+
 	return &ForcedInclusionRetriever{
 		client:        client,
-		logger:        logger.With().Str("component", "forced_inclusion_retriever").Logger(),
+		logger:        retrieverLogger,
 		daStartHeight: daStartHeight,
 		daEpochSize:   daEpochSize,
 		asyncFetcher:  asyncFetcher,
+	}
+}
+
+// Stop stops the background prefetcher.
+func (r *ForcedInclusionRetriever) Stop() {
+	if r.asyncFetcher != nil {
+		r.asyncFetcher.Stop()
 	}
 }
 
