@@ -41,7 +41,7 @@ type Sequencer struct {
 	queue     *BatchQueue // single queue for immediate availability
 
 	// Forced inclusion support
-	asyncFetcher    block.AsyncEpochFetcher
+	asyncFetcher    block.AsyncBlockFetcher
 	fiRetriever     block.ForcedInclusionRetriever
 	daHeight        atomic.Uint64
 	daStartHeight   atomic.Uint64
@@ -109,18 +109,12 @@ func NewSequencer(
 
 	// Determine initial DA height for forced inclusion
 	initialDAHeight := s.getInitialDAStartHeight(context.Background())
-	if initialDAHeight == 0 {
-		initialDAHeight = s.GetDAHeight()
-	}
-
-	// Create async epoch fetcher for background prefetching (created once)
-	s.asyncFetcher = block.NewAsyncEpochFetcher(
+	s.asyncFetcher = block.NewAsyncBlockFetcher(
 		daClient,
 		cfg,
 		logger,
 		initialDAHeight,
 		genesis.DAEpochForcedInclusion,
-		1, // prefetch 1 epoch ahead
 	)
 	s.asyncFetcher.Start()
 
@@ -192,6 +186,9 @@ func (c *Sequencer) GetNextBatch(ctx context.Context, req coresequencer.GetNextB
 			TxIndex:  0,
 		}
 	}
+
+	// override forced inclusion retriever, as the da start height could have been updated
+	c.fiRetriever = block.NewForcedInclusionRetriever(c.daClient, c.logger, c.getInitialDAStartHeight(ctx), c.genesis.DAEpochForcedInclusion, c.asyncFetcher)
 
 	// If we have no cached transactions or we've consumed all from the current cache,
 	// fetch the next DA epoch

@@ -24,14 +24,13 @@ import (
 )
 
 // createTestAsyncFetcher creates a minimal async fetcher for tests (without starting it)
-func createTestAsyncFetcherForSyncer(client da.Client, gen genesis.Genesis) da.AsyncEpochFetcher {
-	return da.NewAsyncEpochFetcher(
+func createTestAsyncFetcherForSyncer(client da.Client, gen genesis.Genesis) da.AsyncBlockFetcher {
+	return da.NewAsyncBlockFetcher(
 		client,
 		zerolog.Nop(),
+		config.DefaultConfig(),
 		gen.DAStartHeight,
-		gen.DAEpochForcedInclusion,
-		1,             // prefetch 1 epoch
-		1*time.Second, // poll interval (doesn't matter for tests)
+		10, // prefetch 10 blocks
 	)
 }
 

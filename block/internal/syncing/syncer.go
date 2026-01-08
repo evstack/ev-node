@@ -188,14 +188,13 @@ func (s *Syncer) Start(ctx context.Context) error {
 	// Initialize handlers
 	s.daRetriever = NewDARetriever(s.daClient, s.cache, s.genesis, s.logger)
 
-	// Create async epoch fetcher for background prefetching
-	asyncFetcher := da.NewAsyncEpochFetcher(
+	// Create async block fetcher for background prefetching
+	asyncFetcher := da.NewAsyncBlockFetcher(
 		s.daClient,
 		s.logger,
+		s.config,
 		s.genesis.DAStartHeight,
-		s.genesis.DAEpochForcedInclusion,
-		1, // prefetch 1 epoch ahead
-		s.config.DA.BlockTime.Duration,
+		s.genesis.DAEpochForcedInclusion, // prefetch window: blocks ahead to prefetch
 	)
 	asyncFetcher.Start()
 

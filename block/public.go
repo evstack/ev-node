@@ -65,11 +65,12 @@ var ErrForceInclusionNotConfigured = da.ErrForceInclusionNotConfigured
 // ForcedInclusionEvent represents forced inclusion transactions retrieved from DA
 type ForcedInclusionEvent = da.ForcedInclusionEvent
 
-// AsyncEpochFetcher provides background prefetching of DA epoch data
-type AsyncEpochFetcher interface {
+// AsyncBlockFetcher provides background prefetching of individual DA blocks
+type AsyncBlockFetcher interface {
 	Start()
 	Stop()
-	GetCachedEpoch(ctx context.Context, daHeight uint64) (*da.ForcedInclusionEvent, error)
+	GetCachedBlock(ctx context.Context, daHeight uint64) (*da.BlockData, error)
+	UpdateCurrentHeight(height uint64)
 }
 
 // ForcedInclusionRetriever defines the interface for retrieving forced inclusion transactions from DA
@@ -77,31 +78,31 @@ type ForcedInclusionRetriever interface {
 	RetrieveForcedIncludedTxs(ctx context.Context, daHeight uint64) (*da.ForcedInclusionEvent, error)
 }
 
-// NewAsyncEpochFetcher creates a new async epoch fetcher for background prefetching.
+// NewAsyncBlockFetcher creates a new async block fetcher for background prefetching.
 // Parameters:
 //   - client: DA client for fetching data
 //   - config: Ev-node config
 //   - logger: structured logger
 //   - daStartHeight: genesis DA start height
-//   - daEpochSize: number of DA blocks per epoch
-//   - prefetchWindow: how many epochs ahead to prefetch (1-2 recommended)
-func NewAsyncEpochFetcher(
+//   - prefetchWindow: how many blocks ahead to prefetch (10-20 recommended)
+func NewAsyncBlockFetcher(
 	client DAClient,
 	cfg config.Config,
 	logger zerolog.Logger,
-	daStartHeight, daEpochSize uint64,
+	daStartHeight uint64,
 	prefetchWindow uint64,
-) AsyncEpochFetcher {
-	return da.NewAsyncEpochFetcher(client, logger, daStartHeight, daEpochSize, prefetchWindow, cfg.DA.BlockTime.Duration)
+) AsyncBlockFetcher {
+	return da.NewAsyncBlockFetcher(client, logger, cfg, daStartHeight, prefetchWindow)
 }
 
 // NewForcedInclusionRetriever creates a new forced inclusion retriever.
-// The asyncFetcher parameter is required for background prefetching of DA epoch data.
+// The asyncFetcher parameter is required for background prefetching of DA block data.
+// It accepts either AsyncBlockFetcher (recommended) or AsyncEpochFetcher (deprecated) for backward compatibility.
 func NewForcedInclusionRetriever(
 	client DAClient,
 	logger zerolog.Logger,
 	daStartHeight, daEpochSize uint64,
-	asyncFetcher AsyncEpochFetcher,
+	asyncFetcher AsyncBlockFetcher,
 ) ForcedInclusionRetriever {
 	return da.NewForcedInclusionRetriever(client, logger, daStartHeight, daEpochSize, asyncFetcher)
 }

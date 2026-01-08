@@ -26,7 +26,7 @@ var _ coresequencer.Sequencer = (*BasedSequencer)(nil)
 type BasedSequencer struct {
 	logger zerolog.Logger
 
-	asyncFetcher    block.AsyncEpochFetcher
+	asyncFetcher    block.AsyncBlockFetcher
 	fiRetriever     block.ForcedInclusionRetriever
 	daHeight        atomic.Uint64
 	checkpointStore *seqcommon.CheckpointStore
@@ -81,13 +81,12 @@ func NewBasedSequencer(
 	}
 
 	// Create async epoch fetcher for background prefetching (created once)
-	bs.asyncFetcher = block.NewAsyncEpochFetcher(
+	bs.asyncFetcher = block.NewAsyncBlockFetcher(
 		daClient,
 		cfg,
 		logger,
 		genesis.DAStartHeight,
 		genesis.DAEpochForcedInclusion,
-		2, // prefetch 2 epochs ahead for based sequencer
 	)
 	bs.asyncFetcher.Start()
 

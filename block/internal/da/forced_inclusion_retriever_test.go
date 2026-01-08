@@ -9,20 +9,20 @@ import (
 	"github.com/stretchr/testify/mock"
 	"gotest.tools/v3/assert"
 
+	"github.com/evstack/ev-node/pkg/config"
 	datypes "github.com/evstack/ev-node/pkg/da/types"
 	"github.com/evstack/ev-node/pkg/genesis"
 	"github.com/evstack/ev-node/test/mocks"
 )
 
 // createTestAsyncFetcher creates a minimal async fetcher for tests
-func createTestAsyncFetcher(client Client, gen genesis.Genesis) AsyncEpochFetcher {
-	return NewAsyncEpochFetcher(
+func createTestAsyncFetcher(client Client, gen genesis.Genesis) AsyncBlockFetcher {
+	return NewAsyncBlockFetcher(
 		client,
 		zerolog.Nop(),
+		config.DefaultConfig(),
 		gen.DAStartHeight,
-		gen.DAEpochForcedInclusion,
-		1,             // prefetch 1 epoch
-		1*time.Second, // poll interval (doesn't matter for tests)
+		10, // prefetch 10 blocks
 	)
 }
 
@@ -123,7 +123,9 @@ func TestForcedInclusionRetriever_RetrieveForcedIncludedTxs_EpochStartNotAvailab
 	fiNs := datypes.NamespaceFromString("test-fi-ns").Bytes()
 	client.On("HasForcedInclusionNamespace").Return(true).Maybe()
 	client.On("GetForcedInclusionNamespace").Return(fiNs).Maybe()
-	client.On("Retrieve", mock.Anything, uint64(109), fiNs).Return(datypes.ResultRetrieve{
+
+	// Mock the first height in epoch as not available
+	client.On("Retrieve", mock.Anything, uint64(100), fiNs).Return(datypes.ResultRetrieve{
 		BaseResult: datypes.BaseResult{Code: datypes.StatusHeightFromFuture},
 	}).Once()
 
@@ -136,7 +138,7 @@ func TestForcedInclusionRetriever_RetrieveForcedIncludedTxs_EpochStartNotAvailab
 	retriever := NewForcedInclusionRetriever(client, zerolog.Nop(), gen.DAStartHeight, gen.DAEpochForcedInclusion, asyncFetcher)
 	ctx := context.Background()
 
-	// Epoch boundaries: [100, 109] - retrieval happens at epoch end (109)
+	// Epoch boundaries: [100, 109] - now tries to fetch all blocks in epoch
 	_, err := retriever.RetrieveForcedIncludedTxs(ctx, 109)
 	assert.Assert(t, err != nil)
 	assert.ErrorContains(t, err, "not yet available")
@@ -284,7 +286,7 @@ func TestForcedInclusionRetriever_processForcedInclusionBlobs(t *testing.T) {
 				Txs: [][]byte{},
 			}
 
-			err := retriever.processForcedInclusionBlobs(event, tt.result, tt.height)
+			err := retriever.processRetrieveResult(event, tt.result, tt.height)
 
 			if tt.expectError {
 				assert.Assert(t, err != nil)
