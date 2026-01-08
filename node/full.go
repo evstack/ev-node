@@ -137,13 +137,14 @@ func newFullNode(
 
 func initRaftNode(nodeConfig config.Config, logger zerolog.Logger) (*raftpkg.Node, error) {
 	raftCfg := &raftpkg.Config{
-		NodeID:           nodeConfig.Raft.NodeID,
-		RaftAddr:         nodeConfig.Raft.RaftAddr,
-		RaftDir:          nodeConfig.Raft.RaftDir,
-		Bootstrap:        nodeConfig.Raft.Bootstrap,
-		SnapCount:        nodeConfig.Raft.SnapCount,
-		SendTimeout:      nodeConfig.Raft.SendTimeout,
-		HeartbeatTimeout: nodeConfig.Raft.HeartbeatTimeout,
+		NodeID:             nodeConfig.Raft.NodeID,
+		RaftAddr:           nodeConfig.Raft.RaftAddr,
+		RaftDir:            nodeConfig.Raft.RaftDir,
+		Bootstrap:          nodeConfig.Raft.Bootstrap,
+		SnapCount:          nodeConfig.Raft.SnapCount,
+		SendTimeout:        nodeConfig.Raft.SendTimeout,
+		HeartbeatTimeout:   nodeConfig.Raft.HeartbeatTimeout,
+		LeaderLeaseTimeout: nodeConfig.Raft.LeaderLeaseTimeout,
 	}
 
 	if nodeConfig.Raft.Peers != "" {

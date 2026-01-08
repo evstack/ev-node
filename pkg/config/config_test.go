@@ -108,7 +108,7 @@ func TestAddFlags(t *testing.T) {
 	assertFlagValue(t, flags, FlagRPCEnableDAVisualization, DefaultConfig().RPC.EnableDAVisualization)
 
 	// Count the number of flags we're explicitly checking
-	expectedFlagCount := 54 // Update this number if you add more flag checks above
+	expectedFlagCount := 55 // Update this number if you add more flag checks above
 
 	// Get the actual number of flags (both regular and persistent)
 	actualFlagCount := 0
@@ -361,15 +361,16 @@ func TestRaftConfig_Validate(t *testing.T) {
 	// helper to build a valid base config per test (temp dir varies per subtest)
 	newValid := func() RaftConfig {
 		return RaftConfig{
-			Enable:           true,
-			NodeID:           "node-1",
-			RaftAddr:         "127.0.0.1:9000",
-			RaftDir:          t.TempDir(),
-			Bootstrap:        false,
-			Peers:            "",
-			SnapCount:        1,
-			SendTimeout:      1 * time.Second,
-			HeartbeatTimeout: 1 * time.Second,
+			Enable:             true,
+			NodeID:             "node-1",
+			RaftAddr:           "127.0.0.1:9000",
+			RaftDir:            t.TempDir(),
+			Bootstrap:          false,
+			Peers:              "",
+			SnapCount:          1,
+			SendTimeout:        1 * time.Second,
+			HeartbeatTimeout:   1 * time.Second,
+			LeaderLeaseTimeout: 1 * time.Second,
 		}
 	}
 
@@ -403,13 +404,18 @@ func TestRaftConfig_Validate(t *testing.T) {
 			mutate: func(c *RaftConfig) { c.HeartbeatTimeout = 0 },
 			expErr: "heartbeat timeout must be positive",
 		},
+		"non-positive leader lease timeout": {
+			mutate: func(c *RaftConfig) { c.LeaderLeaseTimeout = 0 },
+			expErr: "leader lease timeout must be positive",
+		},
 		"multiple invalid returns last": {
 			mutate: func(c *RaftConfig) {
 				c.NodeID = ""
 				c.RaftAddr = ""
 				c.HeartbeatTimeout = 0
+				c.LeaderLeaseTimeout = 0
 			},
-			expErr: "node ID is required\nraft address is required\nheartbeat timeout must be positive",
+			expErr: "node ID is required\nraft address is required\nheartbeat timeout must be positive\nleader lease timeout must be positive",
 		},
 	}
 

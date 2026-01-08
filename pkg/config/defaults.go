@@ -94,9 +94,10 @@ func DefaultConfig() Config {
 			EnableDAVisualization: false,
 		},
 		Raft: RaftConfig{
-			SendTimeout:      200 * time.Millisecond,
-			HeartbeatTimeout: 350 * time.Millisecond,
-			RaftDir:          filepath.Join(DefaultRootDir, "raft"),
+			SendTimeout:        200 * time.Millisecond,
+			HeartbeatTimeout:   350 * time.Millisecond,
+			LeaderLeaseTimeout: 175 * time.Millisecond,
+			RaftDir:            filepath.Join(DefaultRootDir, "raft"),
 		},
 	}
 }
