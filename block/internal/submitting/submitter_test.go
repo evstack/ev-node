@@ -251,7 +251,7 @@ func TestSubmitter_processDAInclusionLoop_advances(t *testing.T) {
 	daClient.On("GetDataNamespace").Return([]byte(cfg.DA.DataNamespace)).Maybe()
 	daClient.On("GetForcedInclusionNamespace").Return([]byte(nil)).Maybe()
 	daClient.On("HasForcedInclusionNamespace").Return(false).Maybe()
-	daSub := NewDASubmitter(daClient, cfg, genesis.Genesis{}, common.BlockOptions{}, metrics, zerolog.Nop(), nil ,nil)
+	daSub := NewDASubmitter(daClient, cfg, genesis.Genesis{}, common.BlockOptions{}, metrics, zerolog.Nop(), nil, nil)
 	s := NewSubmitter(st, exec, cm, metrics, cfg, genesis.Genesis{}, daSub, nil, nil, zerolog.Nop(), nil)
 
 	// prepare two consecutive blocks in store with DA included in cache
