@@ -20,9 +20,9 @@ import (
 	"github.com/evstack/ev-node/pkg/genesis"
 	"github.com/evstack/ev-node/pkg/p2p"
 	"github.com/evstack/ev-node/pkg/p2p/key"
+	"github.com/evstack/ev-node/pkg/sequencers/based"
+	"github.com/evstack/ev-node/pkg/sequencers/single"
 	"github.com/evstack/ev-node/pkg/store"
-	"github.com/evstack/ev-node/sequencers/based"
-	"github.com/evstack/ev-node/sequencers/single"
 )
 
 const testDbName = "testapp"

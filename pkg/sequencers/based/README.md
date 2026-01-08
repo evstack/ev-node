@@ -16,7 +16,7 @@ This design ensures that all transactions are force-included from DA, making the
 
 ### Key Interfaces
 
-The Based Sequencer implements the `Sequencer` interface from `core/sequencer.go`:
+The Based Sequencer implements the `Sequencer` interface from `core/sequencer/sequencing.go`:
 
 - `SubmitBatchTxs()` - No-op for based sequencer (transactions are not accepted)
 - `GetNextBatch()` - Retrieves the next batch from DA via forced inclusion
@@ -89,7 +89,7 @@ type Checkpoint struct {
 
 #### 1. Initial State
 
-```
+```bash
 Checkpoint: (DAHeight: 100, TxIndex: 0)
 - Ready to fetch epoch starting at DA height 100
 ```
@@ -98,7 +98,7 @@ Checkpoint: (DAHeight: 100, TxIndex: 0)
 
 When `GetNextBatch()` is called and we're at an epoch end:
 
-```
+```bash
 Request: GetNextBatch(maxBytes: 1MB)
 Action: Fetch all transactions from epoch (DA heights 100-109)
 Result: currentBatchTxs = [tx1, tx2, tx3, ..., txN] (from entire epoch)
@@ -108,7 +108,7 @@ Result: currentBatchTxs = [tx1, tx2, tx3, ..., txN] (from entire epoch)
 
 Transactions are processed incrementally, respecting `maxBytes`:
 
-```
+```bash
 Batch 1: [tx1, tx2] (fits in maxBytes)
 Checkpoint: (DAHeight: 100, TxIndex: 2)
 

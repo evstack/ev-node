@@ -14,7 +14,7 @@ import (
 	coresequencer "github.com/evstack/ev-node/core/sequencer"
 	datypes "github.com/evstack/ev-node/pkg/da/types"
 	"github.com/evstack/ev-node/pkg/genesis"
-	seqcommon "github.com/evstack/ev-node/sequencers/common"
+	seqcommon "github.com/evstack/ev-node/pkg/sequencers/common"
 )
 
 var _ coresequencer.Sequencer = (*BasedSequencer)(nil)

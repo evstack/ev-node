@@ -217,7 +217,7 @@ func TestDASubmitter_SubmitHeaders_Success(t *testing.T) {
 	require.NoError(t, batch2.Commit())
 
 	// Submit headers
-	err = submitter.SubmitHeaders(ctx, cm)
+	err = submitter.SubmitHeaders(ctx, cm, signer)
 	require.NoError(t, err)
 
 	// Verify headers are marked as DA included
@@ -233,8 +233,11 @@ func TestDASubmitter_SubmitHeaders_NoPendingHeaders(t *testing.T) {
 	submitter, _, cm, mockDA, _ := setupDASubmitterTest(t)
 	ctx := context.Background()
 
+	// Create test signer
+	_, _, signer := createTestSigner(t)
+
 	// Submit headers when none are pending
-	err := submitter.SubmitHeaders(ctx, cm)
+	err := submitter.SubmitHeaders(ctx, cm, signer)
 	require.NoError(t, err) // Should succeed with no action
 	mockDA.AssertNotCalled(t, "Submit", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything)
 }

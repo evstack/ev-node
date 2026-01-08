@@ -177,6 +177,7 @@ const (
 	DefaultBlockTime   = "150ms"
 	DefaultDABlockTime = "1s"
 	DefaultTestTimeout = 20 * time.Second
+	DefaultDANamespace = "evm-e2e"
 	DefaultChainID     = "1234"
 	DefaultGasLimit    = 22000
 
@@ -317,6 +318,7 @@ func setupSequencerNode(t *testing.T, sut *SystemUnderTest, sequencerHome, jwtSe
 		"--home", sequencerHome,
 		"--evnode.da.block_time", DefaultDABlockTime,
 		"--evnode.da.address", endpoints.GetDAAddress(),
+		"--evnode.da.namespace", DefaultDANamespace,
 		"--evnode.rpc.address", endpoints.GetRollkitRPCListen(),
 		"--evnode.p2p.listen_address", endpoints.GetRollkitP2PAddress(),
 		"--evm.engine-url", endpoints.GetSequencerEngineURL(),
@@ -360,6 +362,7 @@ func setupSequencerNodeLazy(t *testing.T, sut *SystemUnderTest, sequencerHome, j
 		"--home", sequencerHome,
 		"--evnode.da.block_time", DefaultDABlockTime,
 		"--evnode.da.address", endpoints.GetDAAddress(),
+		"--evnode.da.namespace", DefaultDANamespace,
 		"--evnode.rpc.address", endpoints.GetRollkitRPCListen(),
 		"--evnode.p2p.listen_address", endpoints.GetRollkitP2PAddress(),
 		"--evm.engine-url", endpoints.GetSequencerEngineURL(),
@@ -417,6 +420,7 @@ func setupFullNode(t *testing.T, sut *SystemUnderTest, fullNodeHome, sequencerHo
 		"--evm.eth-url", endpoints.GetFullNodeEthURL(),
 		"--rollkit.da.block_time", DefaultDABlockTime,
 		"--rollkit.da.address", endpoints.GetDAAddress(),
+		"--rollkit.da.namespace", DefaultDANamespace,
 		"--rollkit.rpc.address", endpoints.GetFullNodeRPCListen(),
 		"--rollkit.p2p.listen_address", endpoints.GetFullNodeP2PAddress(),
 	}
@@ -621,6 +625,7 @@ func restartDAAndSequencer(t *testing.T, sut *SystemUnderTest, sequencerHome, jw
 		"--home", sequencerHome,
 		"--evnode.da.address", endpoints.GetDAAddress(),
 		"--evnode.da.block_time", DefaultDABlockTime,
+		"--evnode.da.namespace", DefaultDANamespace,
 		"--evnode.rpc.address", endpoints.GetRollkitRPCListen(),
 		"--evnode.p2p.listen_address", endpoints.GetRollkitP2PAddress(),
 		"--evm.engine-url", endpoints.GetSequencerEngineURL(),
@@ -670,6 +675,7 @@ func restartDAAndSequencerLazy(t *testing.T, sut *SystemUnderTest, sequencerHome
 		"--home", sequencerHome,
 		"--evnode.da.address", endpoints.GetDAAddress(),
 		"--evnode.da.block_time", DefaultDABlockTime,
+		"--evnode.da.namespace", DefaultDANamespace,
 		"--evnode.rpc.address", endpoints.GetRollkitRPCListen(),
 		"--evnode.p2p.listen_address", endpoints.GetRollkitP2PAddress(),
 		"--evm.engine-url", endpoints.GetSequencerEngineURL(),
@@ -707,6 +713,7 @@ func restartSequencerNode(t *testing.T, sut *SystemUnderTest, sequencerHome, jwt
 		"--home", sequencerHome,
 		"--evnode.da.address", DAAddress,
 		"--evnode.da.block_time", DefaultDABlockTime,
+		"--evnode.da.namespace", DefaultDANamespace,
 	)
 
 	time.Sleep(SlowPollingInterval)

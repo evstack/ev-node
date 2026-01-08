@@ -956,6 +956,7 @@ func restartSequencerAndFullNode(t *testing.T, sut *SystemUnderTest, sequencerHo
 		"--evm.eth-url", endpoints.GetFullNodeEthURL(),
 		"--rollkit.da.address", endpoints.GetDAAddress(),
 		"--rollkit.da.block_time", DefaultDABlockTime,
+		"--rollkit.da.namespace", DefaultDANamespace,
 	)
 
 	// Give both nodes time to establish P2P connections

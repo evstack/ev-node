@@ -226,7 +226,7 @@ func NewAggregatorComponents(
 		logger,
 		executor,
 		cacheManager,
-		reaping.DefaultInterval,
+		config.Node.ScrapeInterval.Duration,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create reaper: %w", err)
