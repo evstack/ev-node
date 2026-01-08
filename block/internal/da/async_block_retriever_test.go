@@ -18,26 +18,26 @@ import (
 	mocks "github.com/evstack/ev-node/test/mocks"
 )
 
-func TestAsyncBlockFetcher_GetCachedBlock_NoNamespace(t *testing.T) {
+func TestAsyncBlockRetriever_GetCachedBlock_NoNamespace(t *testing.T) {
 	client := &mocks.MockClient{}
 	client.On("HasForcedInclusionNamespace").Return(false)
 
 	logger := zerolog.Nop()
-	fetcher := NewAsyncBlockFetcher(client, logger, config.DefaultConfig(), 100, 10)
+	fetcher := NewAsyncBlockRetriever(client, logger, config.DefaultConfig(), 100, 10)
 
 	ctx := context.Background()
 	_, err := fetcher.GetCachedBlock(ctx, 100)
 	assert.ErrorIs(t, err, ErrForceInclusionNotConfigured)
 }
 
-func TestAsyncBlockFetcher_GetCachedBlock_CacheMiss(t *testing.T) {
+func TestAsyncBlockRetriever_GetCachedBlock_CacheMiss(t *testing.T) {
 	client := &mocks.MockClient{}
 	fiNs := datypes.NamespaceFromString("test-fi-ns").Bytes()
 	client.On("HasForcedInclusionNamespace").Return(true)
 	client.On("GetForcedInclusionNamespace").Return(fiNs)
 
 	logger := zerolog.Nop()
-	fetcher := NewAsyncBlockFetcher(client, logger, config.DefaultConfig(), 100, 10)
+	fetcher := NewAsyncBlockRetriever(client, logger, config.DefaultConfig(), 100, 10)
 
 	ctx := context.Background()
 
@@ -47,7 +47,7 @@ func TestAsyncBlockFetcher_GetCachedBlock_CacheMiss(t *testing.T) {
 	assert.Nil(t, block) // Cache miss
 }
 
-func TestAsyncBlockFetcher_FetchAndCache(t *testing.T) {
+func TestAsyncBlockRetriever_FetchAndCache(t *testing.T) {
 	testBlobs := [][]byte{
 		[]byte("tx1"),
 		[]byte("tx2"),
@@ -79,7 +79,7 @@ func TestAsyncBlockFetcher_FetchAndCache(t *testing.T) {
 	// Use a short poll interval for faster test execution
 	cfg := config.DefaultConfig()
 	cfg.DA.BlockTime.Duration = 100 * time.Millisecond
-	fetcher := NewAsyncBlockFetcher(client, logger, cfg, 100, 10)
+	fetcher := NewAsyncBlockRetriever(client, logger, cfg, 100, 10)
 	fetcher.Start()
 	defer fetcher.Stop()
 
@@ -109,7 +109,7 @@ func TestAsyncBlockFetcher_FetchAndCache(t *testing.T) {
 	}
 }
 
-func TestAsyncBlockFetcher_BackgroundPrefetch(t *testing.T) {
+func TestAsyncBlockRetriever_BackgroundPrefetch(t *testing.T) {
 	testBlobs := [][]byte{
 		[]byte("tx1"),
 		[]byte("tx2"),
@@ -140,7 +140,7 @@ func TestAsyncBlockFetcher_BackgroundPrefetch(t *testing.T) {
 	logger := zerolog.Nop()
 	cfg := config.DefaultConfig()
 	cfg.DA.BlockTime.Duration = 100 * time.Millisecond
-	fetcher := NewAsyncBlockFetcher(client, logger, cfg, 100, 10)
+	fetcher := NewAsyncBlockRetriever(client, logger, cfg, 100, 10)
 
 	fetcher.Start()
 	defer fetcher.Stop()
@@ -161,7 +161,7 @@ func TestAsyncBlockFetcher_BackgroundPrefetch(t *testing.T) {
 
 }
 
-func TestAsyncBlockFetcher_HeightFromFuture(t *testing.T) {
+func TestAsyncBlockRetriever_HeightFromFuture(t *testing.T) {
 	client := &mocks.MockClient{}
 	fiNs := datypes.NamespaceFromString("test-fi-ns").Bytes()
 	client.On("HasForcedInclusionNamespace").Return(true)
@@ -177,7 +177,7 @@ func TestAsyncBlockFetcher_HeightFromFuture(t *testing.T) {
 	logger := zerolog.Nop()
 	cfg := config.DefaultConfig()
 	cfg.DA.BlockTime.Duration = 100 * time.Millisecond
-	fetcher := NewAsyncBlockFetcher(client, logger, cfg, 100, 10)
+	fetcher := NewAsyncBlockRetriever(client, logger, cfg, 100, 10)
 	fetcher.Start()
 	defer fetcher.Stop()
 
@@ -193,12 +193,12 @@ func TestAsyncBlockFetcher_HeightFromFuture(t *testing.T) {
 	assert.Nil(t, block)
 }
 
-func TestAsyncBlockFetcher_StopGracefully(t *testing.T) {
+func TestAsyncBlockRetriever_StopGracefully(t *testing.T) {
 	client := &mocks.MockClient{}
 	client.On("HasForcedInclusionNamespace").Return(false)
 
 	logger := zerolog.Nop()
-	fetcher := NewAsyncBlockFetcher(client, logger, config.DefaultConfig(), 100, 10)
+	fetcher := NewAsyncBlockRetriever(client, logger, config.DefaultConfig(), 100, 10)
 
 	fetcher.Start()
 	time.Sleep(100 * time.Millisecond)

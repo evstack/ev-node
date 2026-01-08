@@ -41,7 +41,7 @@ type Sequencer struct {
 	queue     *BatchQueue // single queue for immediate availability
 
 	// Forced inclusion support
-	asyncFetcher    block.AsyncBlockFetcher
+	asyncFetcher    block.AsyncBlockRetriever
 	fiRetriever     block.ForcedInclusionRetriever
 	daHeight        atomic.Uint64
 	daStartHeight   atomic.Uint64
@@ -109,7 +109,7 @@ func NewSequencer(
 
 	// Determine initial DA height for forced inclusion
 	initialDAHeight := s.getInitialDAStartHeight(context.Background())
-	s.asyncFetcher = block.NewAsyncBlockFetcher(
+	s.asyncFetcher = block.NewAsyncBlockRetriever(
 		daClient,
 		cfg,
 		logger,

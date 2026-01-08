@@ -19,8 +19,8 @@ import (
 	pb "github.com/evstack/ev-node/types/pb/evnode/v1"
 )
 
-// AsyncBlockFetcher provides background prefetching of DA blocks
-type AsyncBlockFetcher interface {
+// AsyncBlockRetriever provides background prefetching of DA blocks
+type AsyncBlockRetriever interface {
 	Start()
 	Stop()
 	GetCachedBlock(ctx context.Context, daHeight uint64) (*BlockData, error)
@@ -34,9 +34,9 @@ type BlockData struct {
 	Blobs     [][]byte
 }
 
-// asyncBlockFetcher handles background prefetching of individual DA blocks
+// asyncBlockRetriever handles background prefetching of individual DA blocks
 // to speed up forced inclusion processing.
-type asyncBlockFetcher struct {
+type asyncBlockRetriever struct {
 	client        Client
 	logger        zerolog.Logger
 	daStartHeight uint64
@@ -59,23 +59,23 @@ type asyncBlockFetcher struct {
 	pollInterval time.Duration
 }
 
-// NewAsyncBlockFetcher creates a new async block fetcher with in-memory cache.
-func NewAsyncBlockFetcher(
+// NewAsyncBlockRetriever creates a new async block retriever with in-memory cache.
+func NewAsyncBlockRetriever(
 	client Client,
 	logger zerolog.Logger,
 	config config.Config,
 	daStartHeight uint64,
 	prefetchWindow uint64,
-) AsyncBlockFetcher {
+) AsyncBlockRetriever {
 	if prefetchWindow == 0 {
 		prefetchWindow = 10 // Default: prefetch next 10 blocks
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
 
-	fetcher := &asyncBlockFetcher{
+	fetcher := &asyncBlockRetriever{
 		client:         client,
-		logger:         logger.With().Str("component", "async_block_fetcher").Logger(),
+		logger:         logger.With().Str("component", "async_block_retriever").Logger(),
 		daStartHeight:  daStartHeight,
 		cache:          dsync.MutexWrap(ds.NewMapDatastore()),
 		ctx:            ctx,
@@ -88,7 +88,7 @@ func NewAsyncBlockFetcher(
 }
 
 // Start begins the background prefetching process.
-func (f *asyncBlockFetcher) Start() {
+func (f *asyncBlockRetriever) Start() {
 	f.wg.Add(1)
 	go f.backgroundFetchLoop()
 	f.logger.Info().
@@ -99,7 +99,7 @@ func (f *asyncBlockFetcher) Start() {
 }
 
 // Stop gracefully stops the background prefetching process.
-func (f *asyncBlockFetcher) Stop() {
+func (f *asyncBlockRetriever) Stop() {
 	f.logger.Info().Msg("stopping async block fetcher")
 	f.cancel()
 	f.wg.Wait()
@@ -107,7 +107,7 @@ func (f *asyncBlockFetcher) Stop() {
 }
 
 // UpdateCurrentHeight updates the current DA height for prefetching.
-func (f *asyncBlockFetcher) UpdateCurrentHeight(height uint64) {
+func (f *asyncBlockRetriever) UpdateCurrentHeight(height uint64) {
 	// Use atomic compare-and-swap to update only if the new height is greater
 	for {
 		current := f.currentDAHeight.Load()
@@ -125,7 +125,7 @@ func (f *asyncBlockFetcher) UpdateCurrentHeight(height uint64) {
 
 // GetCachedBlock retrieves a cached block from memory.
 // Returns nil if the block is not cached.
-func (f *asyncBlockFetcher) GetCachedBlock(ctx context.Context, daHeight uint64) (*BlockData, error) {
+func (f *asyncBlockRetriever) GetCachedBlock(ctx context.Context, daHeight uint64) (*BlockData, error) {
 	if !f.client.HasForcedInclusionNamespace() {
 		return nil, ErrForceInclusionNotConfigured
 	}
@@ -166,7 +166,7 @@ func (f *asyncBlockFetcher) GetCachedBlock(ctx context.Context, daHeight uint64)
 }
 
 // backgroundFetchLoop runs in the background and prefetches blocks ahead of time.
-func (f *asyncBlockFetcher) backgroundFetchLoop() {
+func (f *asyncBlockRetriever) backgroundFetchLoop() {
 	defer f.wg.Done()
 
 	ticker := time.NewTicker(f.pollInterval)
@@ -183,7 +183,7 @@ func (f *asyncBlockFetcher) backgroundFetchLoop() {
 }
 
 // prefetchBlocks prefetches blocks within the prefetch window.
-func (f *asyncBlockFetcher) prefetchBlocks() {
+func (f *asyncBlockRetriever) prefetchBlocks() {
 	if !f.client.HasForcedInclusionNamespace() {
 		return
 	}
@@ -211,7 +211,7 @@ func (f *asyncBlockFetcher) prefetchBlocks() {
 }
 
 // fetchAndCacheBlock fetches a block and stores it in the cache.
-func (f *asyncBlockFetcher) fetchAndCacheBlock(height uint64) {
+func (f *asyncBlockRetriever) fetchAndCacheBlock(height uint64) {
 	f.logger.Debug().
 		Uint64("height", height).
 		Msg("prefetching block")
@@ -287,7 +287,7 @@ func (f *asyncBlockFetcher) fetchAndCacheBlock(height uint64) {
 }
 
 // cleanupOldBlocks removes blocks older than a threshold from cache.
-func (f *asyncBlockFetcher) cleanupOldBlocks(currentHeight uint64) {
+func (f *asyncBlockRetriever) cleanupOldBlocks(currentHeight uint64) {
 	// Remove blocks older than current - prefetchWindow
 	// Keep some history in case of reorgs or restarts
 	if currentHeight < f.prefetchWindow {

@@ -21,7 +21,7 @@ type ForcedInclusionRetriever struct {
 	logger        zerolog.Logger
 	daEpochSize   uint64
 	daStartHeight uint64
-	asyncFetcher  AsyncBlockFetcher // Fetches individual blocks in background
+	asyncFetcher  AsyncBlockRetriever // Fetches individual blocks in background
 }
 
 // ForcedInclusionEvent contains forced inclusion transactions retrieved from DA.
@@ -37,7 +37,7 @@ func NewForcedInclusionRetriever(
 	client Client,
 	logger zerolog.Logger,
 	daStartHeight, daEpochSize uint64,
-	asyncFetcher AsyncBlockFetcher,
+	asyncFetcher AsyncBlockRetriever,
 ) *ForcedInclusionRetriever {
 	return &ForcedInclusionRetriever{
 		client:        client,

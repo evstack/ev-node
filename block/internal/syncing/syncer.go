@@ -188,8 +188,8 @@ func (s *Syncer) Start(ctx context.Context) error {
 	// Initialize handlers
 	s.daRetriever = NewDARetriever(s.daClient, s.cache, s.genesis, s.logger)
 
-	// Create async block fetcher for background prefetching
-	asyncFetcher := da.NewAsyncBlockFetcher(
+	// Create async block retriever for background prefetching
+	asyncFetcher := da.NewAsyncBlockRetriever(
 		s.daClient,
 		s.logger,
 		s.config,

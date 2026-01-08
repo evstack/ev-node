@@ -16,8 +16,8 @@ import (
 )
 
 // createTestAsyncFetcher creates a minimal async fetcher for tests
-func createTestAsyncFetcher(client Client, gen genesis.Genesis) AsyncBlockFetcher {
-	return NewAsyncBlockFetcher(
+func createTestAsyncFetcher(client Client, gen genesis.Genesis) AsyncBlockRetriever {
+	return NewAsyncBlockRetriever(
 		client,
 		zerolog.Nop(),
 		config.DefaultConfig(),
