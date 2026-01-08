@@ -204,11 +204,7 @@ func (f *asyncEpochFetcher) prefetchEpochs() {
 
 // fetchAndCacheEpoch fetches an epoch and stores it in the cache.
 func (f *asyncEpochFetcher) fetchAndCacheEpoch(epochEnd uint64) {
-	epochStart := epochEnd - (f.daEpochSize - 1)
-	if epochStart < f.daStartHeight {
-		epochStart = f.daStartHeight
-	}
-
+	epochStart := max(epochEnd-(f.daEpochSize-1), f.daStartHeight)
 	f.logger.Debug().
 		Uint64("epoch_start", epochStart).
 		Uint64("epoch_end", epochEnd).

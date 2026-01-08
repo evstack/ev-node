@@ -2,7 +2,6 @@ package block
 
 import (
 	"context"
-	"time"
 
 	"github.com/evstack/ev-node/block/internal/common"
 	"github.com/evstack/ev-node/block/internal/da"
@@ -81,19 +80,19 @@ type ForcedInclusionRetriever interface {
 // NewAsyncEpochFetcher creates a new async epoch fetcher for background prefetching.
 // Parameters:
 //   - client: DA client for fetching data
+//   - config: Ev-node config
 //   - logger: structured logger
 //   - daStartHeight: genesis DA start height
 //   - daEpochSize: number of DA blocks per epoch
 //   - prefetchWindow: how many epochs ahead to prefetch (1-2 recommended)
-//   - pollInterval: how often to check for new epochs to prefetch
 func NewAsyncEpochFetcher(
 	client DAClient,
+	cfg config.Config,
 	logger zerolog.Logger,
 	daStartHeight, daEpochSize uint64,
 	prefetchWindow uint64,
-	pollInterval time.Duration,
 ) AsyncEpochFetcher {
-	return da.NewAsyncEpochFetcher(client, logger, daStartHeight, daEpochSize, prefetchWindow, pollInterval)
+	return da.NewAsyncEpochFetcher(client, logger, daStartHeight, daEpochSize, prefetchWindow, cfg.DA.BlockTime.Duration)
 }
 
 // NewForcedInclusionRetriever creates a new forced inclusion retriever.

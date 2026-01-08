@@ -14,6 +14,7 @@ import (
 
 	"github.com/evstack/ev-node/block"
 	coresequencer "github.com/evstack/ev-node/core/sequencer"
+	"github.com/evstack/ev-node/pkg/config"
 	datypes "github.com/evstack/ev-node/pkg/da/types"
 	"github.com/evstack/ev-node/pkg/genesis"
 )
@@ -106,7 +107,7 @@ func createTestSequencer(t *testing.T, mockRetriever *MockForcedInclusionRetriev
 	// Create mock DA client that wraps the retriever
 	mockDAClient := &MockDAClient{retriever: mockRetriever}
 
-	seq, err := NewBasedSequencer(mockDAClient, db, gen, zerolog.Nop())
+	seq, err := NewBasedSequencer(mockDAClient, config.DefaultConfig(), db, gen, zerolog.Nop())
 	require.NoError(t, err)
 
 	// Replace the fiRetriever with our mock so tests work as before
@@ -530,7 +531,7 @@ func TestBasedSequencer_CheckpointPersistence(t *testing.T) {
 	mockDAClient := &MockDAClient{retriever: mockRetriever}
 
 	// Create first sequencer
-	seq1, err := NewBasedSequencer(mockDAClient, db, gen, zerolog.Nop())
+	seq1, err := NewBasedSequencer(mockDAClient, config.DefaultConfig(), db, gen, zerolog.Nop())
 	require.NoError(t, err)
 
 	// Replace the fiRetriever with our mock so tests work as before
@@ -549,7 +550,7 @@ func TestBasedSequencer_CheckpointPersistence(t *testing.T) {
 
 	// Create a new sequencer with the same datastore (simulating restart)
 	mockDAClient2 := &MockDAClient{retriever: mockRetriever}
-	seq2, err := NewBasedSequencer(mockDAClient2, db, gen, zerolog.Nop())
+	seq2, err := NewBasedSequencer(mockDAClient2, config.DefaultConfig(), db, gen, zerolog.Nop())
 	require.NoError(t, err)
 
 	// Replace the fiRetriever with our mock so tests work as before

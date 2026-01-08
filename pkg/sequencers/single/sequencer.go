@@ -16,6 +16,7 @@ import (
 
 	"github.com/evstack/ev-node/block"
 	coresequencer "github.com/evstack/ev-node/core/sequencer"
+	"github.com/evstack/ev-node/pkg/config"
 	datypes "github.com/evstack/ev-node/pkg/da/types"
 	"github.com/evstack/ev-node/pkg/genesis"
 	seqcommon "github.com/evstack/ev-node/pkg/sequencers/common"
@@ -56,8 +57,8 @@ func NewSequencer(
 	logger zerolog.Logger,
 	db ds.Batching,
 	daClient block.FullDAClient,
+	cfg config.Config,
 	id []byte,
-	batchTime time.Duration,
 	maxQueueSize int,
 	genesis genesis.Genesis,
 ) (*Sequencer, error) {
@@ -65,7 +66,7 @@ func NewSequencer(
 		db:              db,
 		logger:          logger,
 		daClient:        daClient,
-		batchTime:       batchTime,
+		batchTime:       cfg.Node.BlockTime.Duration,
 		Id:              id,
 		queue:           NewBatchQueue(db, "batches", maxQueueSize),
 		checkpointStore: seqcommon.NewCheckpointStore(db, ds.NewKey("/single/checkpoint")),
@@ -115,11 +116,11 @@ func NewSequencer(
 	// Create async epoch fetcher for background prefetching (created once)
 	s.asyncFetcher = block.NewAsyncEpochFetcher(
 		daClient,
+		cfg,
 		logger,
 		initialDAHeight,
 		genesis.DAEpochForcedInclusion,
-		1,             // prefetch 1 epoch ahead
-		3*time.Second, // check every 3 seconds
+		1, // prefetch 1 epoch ahead
 	)
 	s.asyncFetcher.Start()
 

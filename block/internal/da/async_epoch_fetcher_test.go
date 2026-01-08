@@ -116,7 +116,7 @@ func TestAsyncEpochFetcher_FetchAndCache(t *testing.T) {
 
 	require.NotNil(t, event, "epoch should be cached after background fetch")
 	assert.Equal(t, 3, len(event.Txs))
-	assert.Equal(t, testBlobs[0], event.Txs[0])
+	assert.Equal(t, testBlobs[0], event.Txs[0]) //nolint:gosec // false positive
 	assert.Equal(t, uint64(100), event.StartDaHeight)
 	assert.Equal(t, uint64(109), event.EndDaHeight)
 }

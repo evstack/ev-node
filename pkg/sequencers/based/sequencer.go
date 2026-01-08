@@ -12,6 +12,7 @@ import (
 
 	"github.com/evstack/ev-node/block"
 	coresequencer "github.com/evstack/ev-node/core/sequencer"
+	"github.com/evstack/ev-node/pkg/config"
 	datypes "github.com/evstack/ev-node/pkg/da/types"
 	"github.com/evstack/ev-node/pkg/genesis"
 	seqcommon "github.com/evstack/ev-node/pkg/sequencers/common"
@@ -40,6 +41,7 @@ type BasedSequencer struct {
 // NewBasedSequencer creates a new based sequencer instance
 func NewBasedSequencer(
 	daClient block.FullDAClient,
+	cfg config.Config,
 	db ds.Batching,
 	genesis genesis.Genesis,
 	logger zerolog.Logger,
@@ -81,11 +83,11 @@ func NewBasedSequencer(
 	// Create async epoch fetcher for background prefetching (created once)
 	bs.asyncFetcher = block.NewAsyncEpochFetcher(
 		daClient,
+		cfg,
 		logger,
 		genesis.DAStartHeight,
 		genesis.DAEpochForcedInclusion,
-		2,             // prefetch 2 epochs ahead for based sequencer
-		1*time.Second, // check frequently
+		2, // prefetch 2 epochs ahead for based sequencer
 	)
 	bs.asyncFetcher.Start()
 

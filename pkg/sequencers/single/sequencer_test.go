@@ -15,6 +15,7 @@ import (
 
 	"github.com/evstack/ev-node/block"
 	coresequencer "github.com/evstack/ev-node/core/sequencer"
+	"github.com/evstack/ev-node/pkg/config"
 	datypes "github.com/evstack/ev-node/pkg/da/types"
 	"github.com/evstack/ev-node/pkg/genesis"
 	damocks "github.com/evstack/ev-node/test/mocks"
@@ -64,8 +65,8 @@ func newTestSequencer(t *testing.T, db ds.Batching, daClient block.FullDAClient)
 		logger,
 		db,
 		daClient,
+		config.DefaultConfig(),
 		[]byte("test"),
-		1*time.Second,
 		0, // unlimited queue
 		gen,
 	)
@@ -78,7 +79,7 @@ func TestSequencer_SubmitBatchTxs(t *testing.T) {
 	db := ds.NewMapDatastore()
 	Id := []byte("test1")
 	logger := zerolog.Nop()
-	seq, err := NewSequencer(logger, db, dummyDA, Id, 10*time.Second, 1000, genesis.Genesis{})
+	seq, err := NewSequencer(logger, db, dummyDA, config.DefaultConfig(), Id, 1000, genesis.Genesis{})
 	if err != nil {
 		t.Fatalf("Failed to create sequencer: %v", err)
 	}
@@ -127,7 +128,7 @@ func TestSequencer_SubmitBatchTxs_EmptyBatch(t *testing.T) {
 	db := ds.NewMapDatastore()
 	Id := []byte("test1")
 	logger := zerolog.Nop()
-	seq, err := NewSequencer(logger, db, dummyDA, Id, 10*time.Second, 1000, genesis.Genesis{})
+	seq, err := NewSequencer(logger, db, dummyDA, config.DefaultConfig(), Id, 1000, genesis.Genesis{})
 	require.NoError(t, err, "Failed to create sequencer")
 	defer func() {
 		err := db.Close()
@@ -178,8 +179,8 @@ func TestSequencer_GetNextBatch_NoLastBatch(t *testing.T) {
 		logger,
 		db,
 		dummyDA,
+		config.DefaultConfig(),
 		[]byte("test"),
-		1*time.Second,
 		0, // unlimited queue
 		gen,
 	)
@@ -298,7 +299,7 @@ func TestSequencer_GetNextBatch_BeforeDASubmission(t *testing.T) {
 	dummyDA := newDummyDA(100_000_000)
 	db := ds.NewMapDatastore()
 	logger := zerolog.Nop()
-	seq, err := NewSequencer(logger, db, dummyDA, []byte("test1"), 1*time.Second, 1000, genesis.Genesis{})
+	seq, err := NewSequencer(logger, db, dummyDA, config.DefaultConfig(), []byte("test1"), 1000, genesis.Genesis{})
 	if err != nil {
 		t.Fatalf("Failed to create sequencer: %v", err)
 	}
@@ -376,8 +377,8 @@ func TestSequencer_GetNextBatch_ForcedInclusionAndBatch_MaxBytes(t *testing.T) {
 		logger,
 		db,
 		mockDA,
+		config.DefaultConfig(),
 		[]byte("test-chain"),
-		1*time.Second,
 		100,
 		gen,
 	)
@@ -469,8 +470,8 @@ func TestSequencer_GetNextBatch_ForcedInclusion_ExceedsMaxBytes(t *testing.T) {
 		logger,
 		db,
 		mockDA,
+		config.DefaultConfig(),
 		[]byte("test-chain"),
-		1*time.Second,
 		100,
 		gen,
 	)
@@ -544,8 +545,8 @@ func TestSequencer_GetNextBatch_AlwaysCheckPendingForcedInclusion(t *testing.T) 
 		logger,
 		db,
 		mockDA,
+		config.DefaultConfig(),
 		[]byte("test-chain"),
-		1*time.Second,
 		100,
 		gen,
 	)
@@ -618,8 +619,8 @@ func TestSequencer_QueueLimit_Integration(t *testing.T) {
 		logger,
 		db,
 		dummyDA,
+		config.DefaultConfig(),
 		[]byte("test"),
-		time.Second,
 		2, // Very small limit for testing
 		gen,
 	)
@@ -733,8 +734,8 @@ func TestSequencer_DAFailureAndQueueThrottling_Integration(t *testing.T) {
 		logger,
 		db,
 		dummyDA,
+		config.DefaultConfig(),
 		[]byte("test-chain"),
-		100*time.Millisecond,
 		queueSize,
 		genesis.Genesis{},
 	)
@@ -878,8 +879,8 @@ func TestSequencer_CheckpointPersistence_CrashRecovery(t *testing.T) {
 		logger,
 		db,
 		mockDA,
+		config.DefaultConfig(),
 		[]byte("test-chain"),
-		1*time.Second,
 		100,
 		gen,
 	)
@@ -918,8 +919,8 @@ func TestSequencer_CheckpointPersistence_CrashRecovery(t *testing.T) {
 		logger,
 		db,
 		mockDA,
+		config.DefaultConfig(),
 		[]byte("test-chain"),
-		1*time.Second,
 		100,
 		gen,
 	)
@@ -979,8 +980,8 @@ func TestSequencer_GetNextBatch_EmptyDABatch_IncreasesDAHeight(t *testing.T) {
 		zerolog.Nop(),
 		db,
 		mockDA,
+		config.DefaultConfig(),
 		[]byte("test"),
-		1*time.Second,
 		1000,
 		gen,
 	)
