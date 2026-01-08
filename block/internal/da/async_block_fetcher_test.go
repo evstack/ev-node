@@ -104,9 +104,9 @@ func TestAsyncBlockFetcher_FetchAndCache(t *testing.T) {
 	require.NotNil(t, block, "block should be cached after background fetch")
 	assert.Equal(t, uint64(100), block.Height)
 	assert.Equal(t, 3, len(block.Blobs))
-	assert.Equal(t, testBlobs[0], block.Blobs[0])
-	assert.Equal(t, testBlobs[1], block.Blobs[1])
-	assert.Equal(t, testBlobs[2], block.Blobs[2])
+	for i, tb := range testBlobs {
+		assert.Equal(t, tb, block.Blobs[i])
+	}
 }
 
 func TestAsyncBlockFetcher_BackgroundPrefetch(t *testing.T) {
