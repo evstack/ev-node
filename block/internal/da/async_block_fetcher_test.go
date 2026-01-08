@@ -9,9 +9,11 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/protobuf/proto"
 
 	"github.com/evstack/ev-node/pkg/config"
 	datypes "github.com/evstack/ev-node/pkg/da/types"
+	pb "github.com/evstack/ev-node/types/pb/evnode/v1"
 
 	mocks "github.com/evstack/ev-node/test/mocks"
 )
@@ -75,7 +77,9 @@ func TestAsyncBlockFetcher_FetchAndCache(t *testing.T) {
 
 	logger := zerolog.Nop()
 	// Use a short poll interval for faster test execution
-	fetcher := NewAsyncBlockFetcher(client, logger, config.DefaultConfig(), 100, 10)
+	cfg := config.DefaultConfig()
+	cfg.DA.BlockTime.Duration = 100 * time.Millisecond
+	fetcher := NewAsyncBlockFetcher(client, logger, cfg, 100, 10)
 	fetcher.Start()
 	defer fetcher.Stop()
 
@@ -134,7 +138,9 @@ func TestAsyncBlockFetcher_BackgroundPrefetch(t *testing.T) {
 	}
 
 	logger := zerolog.Nop()
-	fetcher := NewAsyncBlockFetcher(client, logger, config.DefaultConfig(), 100, 10)
+	cfg := config.DefaultConfig()
+	cfg.DA.BlockTime.Duration = 100 * time.Millisecond
+	fetcher := NewAsyncBlockFetcher(client, logger, cfg, 100, 10)
 
 	fetcher.Start()
 	defer fetcher.Stop()
@@ -142,8 +148,8 @@ func TestAsyncBlockFetcher_BackgroundPrefetch(t *testing.T) {
 	// Update current height to trigger prefetch
 	fetcher.UpdateCurrentHeight(100)
 
-	// Wait for background prefetch to happen
-	time.Sleep(200 * time.Millisecond)
+	// Wait for background prefetch to happen (wait for at least one poll cycle)
+	time.Sleep(250 * time.Millisecond)
 
 	// Check if block was prefetched
 	ctx := context.Background()
@@ -152,6 +158,7 @@ func TestAsyncBlockFetcher_BackgroundPrefetch(t *testing.T) {
 	assert.NotNil(t, block)
 	assert.Equal(t, uint64(105), block.Height)
 	assert.Equal(t, 2, len(block.Blobs))
+
 }
 
 func TestAsyncBlockFetcher_HeightFromFuture(t *testing.T) {
@@ -160,20 +167,24 @@ func TestAsyncBlockFetcher_HeightFromFuture(t *testing.T) {
 	client.On("HasForcedInclusionNamespace").Return(true)
 	client.On("GetForcedInclusionNamespace").Return(fiNs)
 
-	// Height not available yet
-	client.On("Retrieve", mock.Anything, uint64(100), fiNs).Return(datypes.ResultRetrieve{
-		BaseResult: datypes.BaseResult{Code: datypes.StatusHeightFromFuture},
-	}).Maybe()
+	// All heights in prefetch window not available yet
+	for height := uint64(100); height <= 109; height++ {
+		client.On("Retrieve", mock.Anything, height, fiNs).Return(datypes.ResultRetrieve{
+			BaseResult: datypes.BaseResult{Code: datypes.StatusHeightFromFuture},
+		}).Maybe()
+	}
 
 	logger := zerolog.Nop()
-	fetcher := NewAsyncBlockFetcher(client, logger, config.DefaultConfig(), 100, 10)
+	cfg := config.DefaultConfig()
+	cfg.DA.BlockTime.Duration = 100 * time.Millisecond
+	fetcher := NewAsyncBlockFetcher(client, logger, cfg, 100, 10)
 	fetcher.Start()
 	defer fetcher.Stop()
 
 	fetcher.UpdateCurrentHeight(100)
 
-	// Wait a bit
-	time.Sleep(100 * time.Millisecond)
+	// Wait for at least one poll cycle
+	time.Sleep(250 * time.Millisecond)
 
 	// Cache should be empty
 	ctx := context.Background()
@@ -207,14 +218,27 @@ func TestBlockData_Serialization(t *testing.T) {
 		},
 	}
 
-	// Serialize
-	data, err := serializeBlockData(block)
+	// Serialize using protobuf
+	pbBlock := &pb.BlockData{
+		Height:    block.Height,
+		Timestamp: block.Timestamp.Unix(),
+		Blobs:     block.Blobs,
+	}
+	data, err := proto.Marshal(pbBlock)
 	require.NoError(t, err)
 	assert.Greater(t, len(data), 0)
 
-	// Deserialize
-	decoded, err := deserializeBlockData(data)
+	// Deserialize using protobuf
+	var decodedPb pb.BlockData
+	err = proto.Unmarshal(data, &decodedPb)
 	require.NoError(t, err)
+
+	decoded := &BlockData{
+		Height:    decodedPb.Height,
+		Timestamp: time.Unix(decodedPb.Timestamp, 0).UTC(),
+		Blobs:     decodedPb.Blobs,
+	}
+
 	assert.Equal(t, block.Timestamp.Unix(), decoded.Timestamp.Unix())
 	assert.Equal(t, block.Height, decoded.Height)
 	assert.Equal(t, len(block.Blobs), len(decoded.Blobs))
@@ -230,11 +254,26 @@ func TestBlockData_SerializationEmpty(t *testing.T) {
 		Blobs:     [][]byte{},
 	}
 
-	data, err := serializeBlockData(block)
+	// Serialize using protobuf
+	pbBlock := &pb.BlockData{
+		Height:    block.Height,
+		Timestamp: block.Timestamp.Unix(),
+		Blobs:     block.Blobs,
+	}
+	data, err := proto.Marshal(pbBlock)
 	require.NoError(t, err)
 
-	decoded, err := deserializeBlockData(data)
+	// Deserialize using protobuf
+	var decodedPb pb.BlockData
+	err = proto.Unmarshal(data, &decodedPb)
 	require.NoError(t, err)
+
+	decoded := &BlockData{
+		Height:    decodedPb.Height,
+		Timestamp: time.Unix(decodedPb.Timestamp, 0).UTC(),
+		Blobs:     decodedPb.Blobs,
+	}
+
 	assert.Equal(t, uint64(100), decoded.Height)
 	assert.Equal(t, 0, len(decoded.Blobs))
 }
