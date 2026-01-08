@@ -7,6 +7,8 @@ import (
 	"github.com/ethereum/go-ethereum/rpc"
 )
 
+var _ EngineRPCClient = (*engineRPCClient)(nil)
+
 // engineRPCClient is the concrete implementation wrapping *rpc.Client.
 type engineRPCClient struct {
 	client *rpc.Client

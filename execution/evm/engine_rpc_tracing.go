@@ -10,6 +10,8 @@ import (
 	"go.opentelemetry.io/otel/trace"
 )
 
+var _ EngineRPCClient = (*tracedEngineRPCClient)(nil)
+
 // tracedEngineRPCClient wraps an EngineRPCClient and records spans.
 type tracedEngineRPCClient struct {
 	inner  EngineRPCClient
@@ -42,13 +44,18 @@ func (t *tracedEngineRPCClient) ForkchoiceUpdated(ctx context.Context, state eng
 		return nil, err
 	}
 
-	span.SetAttributes(
+	attributes := []attribute.KeyValue{
 		attribute.String("payload_status", result.PayloadStatus.Status),
 		attribute.Bool("has_payload_id", result.PayloadID != nil),
-	)
-	if result.PayloadStatus.LatestValidHash != nil {
-		span.SetAttributes(attribute.String("latest_valid_hash", result.PayloadStatus.LatestValidHash.Hex()))
 	}
+
+	if result.PayloadStatus.LatestValidHash != nil {
+		attributes = append(attributes, attribute.String("latest_valid_hash", result.PayloadStatus.LatestValidHash.Hex()))
+	}
+
+	span.SetAttributes(
+		attributes...,
+	)
 
 	return result, nil
 }
@@ -100,12 +107,13 @@ func (t *tracedEngineRPCClient) NewPayload(ctx context.Context, payload *engine.
 		return nil, err
 	}
 
-	span.SetAttributes(
-		attribute.String("payload_status", result.Status),
-	)
+	attributes := []attribute.KeyValue{attribute.String("payload_status", result.Status)}
+
 	if result.LatestValidHash != nil {
-		span.SetAttributes(attribute.String("latest_valid_hash", result.LatestValidHash.Hex()))
+		attributes = append(attributes, attribute.String("latest_valid_hash", result.LatestValidHash.Hex()))
 	}
+
+	span.SetAttributes(attributes...)
 
 	return result, nil
 }
