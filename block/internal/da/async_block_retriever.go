@@ -94,7 +94,7 @@ func NewAsyncBlockRetriever(
 func (f *asyncBlockRetriever) Start() {
 	f.wg.Add(1)
 	go f.backgroundFetchLoop()
-	f.logger.Info().
+	f.logger.Debug().
 		Uint64("da_start_height", f.daStartHeight).
 		Uint64("prefetch_window", f.prefetchWindow).
 		Dur("poll_interval", f.pollInterval).
@@ -103,7 +103,7 @@ func (f *asyncBlockRetriever) Start() {
 
 // Stop gracefully stops the background prefetching process.
 func (f *asyncBlockRetriever) Stop() {
-	f.logger.Info().Msg("stopping async block retriever")
+	f.logger.Debug().Msg("stopping async block retriever")
 	f.cancel()
 	f.wg.Wait()
 }
@@ -125,6 +125,10 @@ func (f *asyncBlockRetriever) UpdateCurrentHeight(height uint64) {
 	}
 }
 
+func newBlockDataKey(height uint64) ds.Key {
+	return ds.NewKey(fmt.Sprintf("/block/%d", height))
+}
+
 // GetCachedBlock retrieves a cached block from memory.
 // Returns nil if the block is not cached.
 func (f *asyncBlockRetriever) GetCachedBlock(ctx context.Context, daHeight uint64) (*BlockData, error) {
@@ -136,9 +140,7 @@ func (f *asyncBlockRetriever) GetCachedBlock(ctx context.Context, daHeight uint6
 		return nil, fmt.Errorf("DA height %d is before the configured start height %d", daHeight, f.daStartHeight)
 	}
 
-	// Try to get from cache
-	key := ds.NewKey(fmt.Sprintf("/block/%d", daHeight))
-
+	key := newBlockDataKey(daHeight)
 	data, err := f.cache.Get(ctx, key)
 	if err != nil {
 		if errors.Is(err, ds.ErrNotFound) {
@@ -197,7 +199,7 @@ func (f *asyncBlockRetriever) prefetchBlocks() {
 		targetHeight := currentHeight + i
 
 		// Check if already cached
-		key := ds.NewKey(fmt.Sprintf("/block/%d", targetHeight))
+		key := newBlockDataKey(targetHeight)
 		_, err := f.cache.Get(f.ctx, key)
 		if err == nil {
 			// Already cached
@@ -235,7 +237,7 @@ func (f *asyncBlockRetriever) fetchAndCacheBlock(height uint64) {
 	case datypes.StatusNotFound:
 		f.logger.Debug().
 			Uint64("height", height).
-			Msg("no forced inclusion blobs at height")
+			Msg("no blobs at height")
 		// Cache empty result to avoid re-fetching
 	case datypes.StatusSuccess:
 		// Process each blob
@@ -247,9 +249,9 @@ func (f *asyncBlockRetriever) fetchAndCacheBlock(height uint64) {
 		f.logger.Debug().
 			Uint64("height", height).
 			Int("blob_count", len(result.Data)).
-			Msg("processed forced inclusion blobs for prefetch")
+			Msg("processed blobs for prefetch")
 	default:
-		f.logger.Warn().
+		f.logger.Debug().
 			Uint64("height", height).
 			Str("status", result.Message).
 			Msg("failed to retrieve block - will retry")
@@ -271,9 +273,8 @@ func (f *asyncBlockRetriever) fetchAndCacheBlock(height uint64) {
 		return
 	}
 
-	key := ds.NewKey(fmt.Sprintf("/block/%d", height))
+	key := newBlockDataKey(height)
 	err = f.cache.Put(f.ctx, key, data)
-
 	if err != nil {
 		f.logger.Error().
 			Err(err).
@@ -282,7 +283,7 @@ func (f *asyncBlockRetriever) fetchAndCacheBlock(height uint64) {
 		return
 	}
 
-	f.logger.Info().
+	f.logger.Debug().
 		Uint64("height", height).
 		Int("blob_count", len(block.Blobs)).
 		Msg("successfully prefetched and cached block")
@@ -301,7 +302,7 @@ func (f *asyncBlockRetriever) cleanupOldBlocks(currentHeight uint64) {
 	query := dsq.Query{Prefix: "/block/"}
 	results, err := f.cache.Query(f.ctx, query)
 	if err != nil {
-		f.logger.Warn().Err(err).Msg("failed to query cache for cleanup")
+		f.logger.Debug().Err(err).Msg("failed to query cache for cleanup")
 		return
 	}
 	defer results.Close()
@@ -321,14 +322,10 @@ func (f *asyncBlockRetriever) cleanupOldBlocks(currentHeight uint64) {
 
 		if height < cleanupThreshold {
 			if err := f.cache.Delete(f.ctx, key); err != nil {
-				f.logger.Warn().
+				f.logger.Debug().
 					Err(err).
 					Uint64("height", height).
 					Msg("failed to delete old block from cache")
-			} else {
-				f.logger.Debug().
-					Uint64("height", height).
-					Msg("cleaned up old block from cache")
 			}
 		}
 	}
