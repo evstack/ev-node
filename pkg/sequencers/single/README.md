@@ -150,7 +150,7 @@ The checkpoint system ensures that **forced inclusion transactions from DA are n
 
 ### Example
 
-```
+```bash
 Initial state: Checkpoint(DAHeight: 100, TxIndex: 0)
 DA returns 3 transactions at height 100
 

@@ -49,6 +49,8 @@ const (
 	FlagReadinessWindowSeconds = FlagPrefixEvnode + "node.readiness_window_seconds"
 	// FlagReadinessMaxBlocksBehind configures how many blocks behind best-known head is still considered ready
 	FlagReadinessMaxBlocksBehind = FlagPrefixEvnode + "node.readiness_max_blocks_behind"
+	// FlagScrapeInterval is a flag for specifying the reaper scrape interval
+	FlagScrapeInterval = FlagPrefixEvnode + "node.scrape_interval"
 	// FlagClearCache is a flag for clearing the cache
 	FlagClearCache = FlagPrefixEvnode + "clear_cache"
 
@@ -100,6 +102,17 @@ const (
 	FlagPprof = FlagPrefixEvnode + "instrumentation.pprof"
 	// FlagPprofListenAddr is a flag for specifying the pprof listen address
 	FlagPprofListenAddr = FlagPrefixEvnode + "instrumentation.pprof_listen_addr"
+
+	// Tracing configuration flags
+
+	// FlagTracing enables OpenTelemetry tracing
+	FlagTracing = FlagPrefixEvnode + "instrumentation.tracing"
+	// FlagTracingEndpoint configures the OTLP endpoint (host:port)
+	FlagTracingEndpoint = FlagPrefixEvnode + "instrumentation.tracing_endpoint"
+	// FlagTracingServiceName configures the service.name resource attribute
+	FlagTracingServiceName = FlagPrefixEvnode + "instrumentation.tracing_service_name"
+	// FlagTracingSampleRate configures the TraceID ratio-based sampler
+	FlagTracingSampleRate = FlagPrefixEvnode + "instrumentation.tracing_sample_rate"
 
 	// Logging configuration flags
 
@@ -203,6 +216,7 @@ type NodeConfig struct {
 	MaxPendingHeadersAndData uint64          `mapstructure:"max_pending_headers_and_data" yaml:"max_pending_headers_and_data" comment:"Maximum number of headers or data pending DA submission. When this limit is reached, the aggregator pauses block production until some headers or data are confirmed. Use 0 for no limit."`
 	LazyMode                 bool            `mapstructure:"lazy_mode" yaml:"lazy_mode" comment:"Enables lazy aggregation mode, where blocks are only produced when transactions are available or after LazyBlockTime. Optimizes resources by avoiding empty block creation during periods of inactivity."`
 	LazyBlockInterval        DurationWrapper `mapstructure:"lazy_block_interval" yaml:"lazy_block_interval" comment:"Maximum interval between blocks in lazy aggregation mode (LazyAggregator). Ensures blocks are produced periodically even without transactions to keep the chain active. Generally larger than BlockTime."`
+	ScrapeInterval           DurationWrapper `mapstructure:"scrape_interval" yaml:"scrape_interval" comment:"Interval at which the reaper polls the execution layer for new transactions. Lower values reduce transaction detection latency but increase RPC load. Examples: \"250ms\", \"500ms\", \"1s\"."`
 
 	// Readiness / health configuration
 	ReadinessWindowSeconds   uint64 `mapstructure:"readiness_window_seconds" yaml:"readiness_window_seconds" comment:"Time window in seconds used to calculate ReadinessMaxBlocksBehind based on block time. Default: 15 seconds."`
@@ -337,6 +351,7 @@ func AddFlags(cmd *cobra.Command) {
 	cmd.Flags().Duration(FlagLazyBlockTime, def.Node.LazyBlockInterval.Duration, "maximum interval between blocks in lazy aggregation mode")
 	cmd.Flags().Uint64(FlagReadinessWindowSeconds, def.Node.ReadinessWindowSeconds, "time window in seconds for calculating readiness threshold based on block time (default: 15s)")
 	cmd.Flags().Uint64(FlagReadinessMaxBlocksBehind, def.Node.ReadinessMaxBlocksBehind, "how many blocks behind best-known head the node can be and still be considered ready (0 = must be at head)")
+	cmd.Flags().Duration(FlagScrapeInterval, def.Node.ScrapeInterval.Duration, "interval at which the reaper polls the execution layer for new transactions")
 
 	// Data Availability configuration flags
 	cmd.Flags().String(FlagDAAddress, def.DA.Address, "DA address (host:port)")
@@ -368,6 +383,10 @@ func AddFlags(cmd *cobra.Command) {
 	cmd.Flags().Int(FlagMaxOpenConnections, instrDef.MaxOpenConnections, "maximum number of simultaneous connections for metrics")
 	cmd.Flags().Bool(FlagPprof, instrDef.Pprof, "enable pprof HTTP endpoint")
 	cmd.Flags().String(FlagPprofListenAddr, instrDef.PprofListenAddr, "pprof HTTP server listening address")
+	cmd.Flags().Bool(FlagTracing, instrDef.Tracing, "enable OpenTelemetry tracing")
+	cmd.Flags().String(FlagTracingEndpoint, instrDef.TracingEndpoint, "OTLP endpoint for traces (host:port)")
+	cmd.Flags().String(FlagTracingServiceName, instrDef.TracingServiceName, "OpenTelemetry service.name")
+	cmd.Flags().Float64(FlagTracingSampleRate, instrDef.TracingSampleRate, "trace sampling rate (0.0-1.0)")
 
 	// Signer configuration flags
 	cmd.Flags().String(FlagSignerType, def.Signer.SignerType, "type of signer to use (file, grpc)")

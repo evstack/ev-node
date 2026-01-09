@@ -63,6 +63,7 @@ func TestAddFlags(t *testing.T) {
 	assertFlagValue(t, flags, FlagLazyBlockTime, DefaultConfig().Node.LazyBlockInterval.Duration)
 	assertFlagValue(t, flags, FlagReadinessWindowSeconds, DefaultConfig().Node.ReadinessWindowSeconds)
 	assertFlagValue(t, flags, FlagReadinessMaxBlocksBehind, DefaultConfig().Node.ReadinessMaxBlocksBehind)
+	assertFlagValue(t, flags, FlagScrapeInterval, DefaultConfig().Node.ScrapeInterval)
 
 	// DA flags
 	assertFlagValue(t, flags, FlagDAAddress, DefaultConfig().DA.Address)
@@ -90,6 +91,10 @@ func TestAddFlags(t *testing.T) {
 	assertFlagValue(t, flags, FlagMaxOpenConnections, instrDef.MaxOpenConnections)
 	assertFlagValue(t, flags, FlagPprof, instrDef.Pprof)
 	assertFlagValue(t, flags, FlagPprofListenAddr, instrDef.PprofListenAddr)
+	assertFlagValue(t, flags, FlagTracing, instrDef.Tracing)
+	assertFlagValue(t, flags, FlagTracingEndpoint, instrDef.TracingEndpoint)
+	assertFlagValue(t, flags, FlagTracingSampleRate, instrDef.TracingSampleRate)
+	assertFlagValue(t, flags, FlagTracingServiceName, instrDef.TracingServiceName)
 
 	// Logging flags (in persistent flags)
 	assertFlagValue(t, persistentFlags, FlagLogLevel, DefaultConfig().Log.Level)
@@ -107,7 +112,7 @@ func TestAddFlags(t *testing.T) {
 	assertFlagValue(t, flags, FlagRPCEnableDAVisualization, DefaultConfig().RPC.EnableDAVisualization)
 
 	// Count the number of flags we're explicitly checking
-	expectedFlagCount := 44 // Update this number if you add more flag checks above
+	expectedFlagCount := 49 // Update this number if you add more flag checks above
 
 	// Get the actual number of flags (both regular and persistent)
 	actualFlagCount := 0
