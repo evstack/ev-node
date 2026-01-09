@@ -97,8 +97,8 @@ Packages must be released in the following order:
 
 These packages only depend on `core` and can be released in parallel after `core`:
 
-2. **github.com/evstack/ev-node** - Path: `./` (root)
-3. **github.com/evstack/ev-node/execution/evm** - Path: `./execution/evm`
+1. **github.com/evstack/ev-node** - Path: `./` (root)
+2. **github.com/evstack/ev-node/execution/evm** - Path: `./execution/evm`
 
 #### Phase 3: Application Packages
 

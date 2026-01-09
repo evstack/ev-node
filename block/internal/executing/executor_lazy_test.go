@@ -66,6 +66,7 @@ func TestLazyMode_ProduceBlockLogic(t *testing.T) {
 		zerolog.Nop(),
 		common.DefaultBlockOptions(),
 		make(chan error, 1),
+		nil,
 	)
 	require.NoError(t, err)
 
@@ -181,6 +182,7 @@ func TestRegularMode_ProduceBlockLogic(t *testing.T) {
 		zerolog.Nop(),
 		common.DefaultBlockOptions(),
 		make(chan error, 1),
+		nil,
 	)
 	require.NoError(t, err)
 

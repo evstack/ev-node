@@ -2,6 +2,7 @@ package cache
 
 import (
 	"context"
+	"errors"
 
 	"github.com/rs/zerolog"
 
@@ -28,8 +29,17 @@ type PendingData struct {
 	base *pendingBase[*types.Data]
 }
 
+var errInFlightData = errors.New("inflight data")
+
 func fetchData(ctx context.Context, store store.Store, height uint64) (*types.Data, error) {
 	_, data, err := store.GetBlockData(ctx, height)
+	if err != nil {
+		return nil, err
+	}
+	// in the executor, WIP data is temporary stored. skip them until the process is completed
+	if data.Height() == 0 {
+		return nil, errInFlightData
+	}
 	return data, err
 }
 
@@ -57,4 +67,7 @@ func (pd *PendingData) NumPendingData() uint64 {
 
 func (pd *PendingData) SetLastSubmittedDataHeight(ctx context.Context, newLastSubmittedDataHeight uint64) {
 	pd.base.setLastSubmittedHeight(ctx, newLastSubmittedDataHeight)
+}
+func (pd *PendingData) GetLastSubmittedDataHeight() uint64 {
+	return pd.base.getLastSubmittedHeight()
 }

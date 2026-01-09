@@ -1,6 +1,7 @@
 package server
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"time"
@@ -15,7 +16,7 @@ import (
 type BestKnownHeightProvider func() uint64
 
 // RegisterCustomHTTPEndpoints registers custom HTTP handlers on the mux.
-func RegisterCustomHTTPEndpoints(mux *http.ServeMux, s store.Store, pm p2p.P2PRPC, cfg config.Config, bestKnownHeightProvider BestKnownHeightProvider, logger zerolog.Logger) {
+func RegisterCustomHTTPEndpoints(mux *http.ServeMux, s store.Store, pm p2p.P2PRPC, cfg config.Config, bestKnownHeightProvider BestKnownHeightProvider, logger zerolog.Logger, raftNode RaftNodeSource) {
 	// /health/live performs a basic liveness check to determine if the process is alive and responsive.
 	// Returns 200 if the process can access its store, 503 otherwise.
 	// This is a lightweight check suitable for Kubernetes liveness probes.
@@ -129,6 +130,28 @@ func RegisterCustomHTTPEndpoints(mux *http.ServeMux, s store.Store, pm p2p.P2PRP
 		w.WriteHeader(http.StatusOK)
 		fmt.Fprintln(w, "READY")
 	})
+
+	// optional Raft node details
+	if raftNode != nil {
+		mux.HandleFunc("/raft/node", func(w http.ResponseWriter, r *http.Request) {
+			if r.Method != http.MethodGet {
+				http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+				return
+			}
+			rsp := struct {
+				IsLeader bool   `json:"is_leader"`
+				NodeID   string `json:"node_id"`
+			}{
+				IsLeader: raftNode.IsLeader(),
+				NodeID:   raftNode.NodeID(),
+			}
+			w.Header().Set("Content-Type", "application/json")
+			if err := json.NewEncoder(w).Encode(rsp); err != nil {
+				http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+			}
+		})
+
+	}
 
 	// DA Visualization endpoints
 	mux.HandleFunc("/da", func(w http.ResponseWriter, r *http.Request) {

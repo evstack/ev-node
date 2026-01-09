@@ -71,6 +71,10 @@ func (pb *pendingBase[T]) numPending() uint64 {
 	return height - pb.lastHeight.Load()
 }
 
+func (pb *pendingBase[T]) getLastSubmittedHeight() uint64 {
+	return pb.lastHeight.Load()
+}
+
 func (pb *pendingBase[T]) setLastSubmittedHeight(ctx context.Context, newLastSubmittedHeight uint64) {
 	lsh := pb.lastHeight.Load()
 	if newLastSubmittedHeight > lsh && pb.lastHeight.CompareAndSwap(lsh, newLastSubmittedHeight) {

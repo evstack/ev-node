@@ -23,7 +23,7 @@ import (
 	rollconf "github.com/evstack/ev-node/pkg/config"
 	blobrpc "github.com/evstack/ev-node/pkg/da/jsonrpc"
 	genesispkg "github.com/evstack/ev-node/pkg/genesis"
-	"github.com/evstack/ev-node/pkg/p2p"
+	"github.com/evstack/ev-node/pkg/p2p/key"
 	"github.com/evstack/ev-node/pkg/signer"
 	"github.com/evstack/ev-node/pkg/signer/file"
 	"github.com/evstack/ev-node/pkg/telemetry"
@@ -82,7 +82,7 @@ func StartNode(
 	cmd *cobra.Command,
 	executor coreexecutor.Executor,
 	sequencer coresequencer.Sequencer,
-	p2pClient *p2p.Client,
+	nodeKey *key.NodeKey,
 	datastore datastore.Batching,
 	nodeConfig rollconf.Config,
 	genesis genesispkg.Genesis,
@@ -170,7 +170,7 @@ func StartNode(
 		sequencer,
 		daClient,
 		signer,
-		p2pClient,
+		nodeKey,
 		genesis,
 		datastore,
 		metrics,

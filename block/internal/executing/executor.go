@@ -5,10 +5,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"reflect"
 	"sync"
 	"sync/atomic"
 	"time"
 
+	"github.com/evstack/ev-node/pkg/raft"
 	"github.com/ipfs/go-datastore"
 	"github.com/libp2p/go-libp2p/core/crypto"
 	"github.com/rs/zerolog"
@@ -45,6 +47,9 @@ type Executor struct {
 	config  config.Config
 	genesis genesis.Genesis
 	options common.BlockOptions
+
+	// Raft consensus
+	raftNode common.RaftNode
 
 	// State management
 	lastState *atomic.Pointer[types.State]
@@ -84,6 +89,7 @@ func NewExecutor(
 	logger zerolog.Logger,
 	options common.BlockOptions,
 	errorCh chan<- error,
+	raftNode common.RaftNode,
 ) (*Executor, error) {
 	// For based sequencer, signer is optional as blocks are not signed
 	if !config.Node.BasedSequencer {
@@ -100,6 +106,9 @@ func NewExecutor(
 			return nil, common.ErrNotProposer
 		}
 	}
+	if raftNode != nil && reflect.ValueOf(raftNode).IsNil() {
+		raftNode = nil
+	}
 
 	return &Executor{
 		store:             store,
@@ -114,6 +123,7 @@ func NewExecutor(
 		dataBroadcaster:   dataBroadcaster,
 		options:           options,
 		lastState:         &atomic.Pointer[types.State]{},
+		raftNode:          raftNode,
 		txNotifyCh:        make(chan struct{}, 1),
 		errorCh:           errorCh,
 		logger:            logger.With().Str("component", "executor").Logger(),
@@ -149,6 +159,13 @@ func (e *Executor) Stop() error {
 
 	e.logger.Info().Msg("executor stopped")
 	return nil
+}
+
+// GetLastState returns the current state.
+func (e *Executor) GetLastState() types.State {
+	state := e.getLastState()
+	state.AppHash = bytes.Clone(state.AppHash)
+	return state
 }
 
 // getLastState returns the current state.
@@ -202,6 +219,12 @@ func (e *Executor) initializeState() error {
 		}
 	}
 
+	if e.raftNode != nil {
+		// ensure node is fully synced before producing any blocks
+		if raftState := e.raftNode.GetState(); raftState.Height != 0 && raftState.Height != state.LastBlockHeight {
+			return fmt.Errorf("invalid state: node is not synced with the chain: raft %d != %d state", raftState.Height, state.LastBlockHeight)
+		}
+	}
 	e.setLastState(state)
 	e.sequencer.SetDAHeight(state.DAHeight)
 
@@ -309,6 +332,11 @@ func (e *Executor) produceBlock() error {
 			e.metrics.OperationDuration["block_production"].Observe(duration)
 		}
 	}()
+
+	// Check raft leadership if raft is enabled
+	if e.raftNode != nil && !e.raftNode.IsLeader() {
+		return errors.New("not raft leader")
+	}
 
 	currentState := e.getLastState()
 	newHeight := currentState.LastBlockHeight + 1
@@ -423,6 +451,31 @@ func (e *Executor) produceBlock() error {
 		return fmt.Errorf("failed to update state: %w", err)
 	}
 
+	// Propose block to raft to share state in the cluster
+	if e.raftNode != nil {
+		headerBytes, err := header.MarshalBinary()
+		if err != nil {
+			return fmt.Errorf("failed to marshal header: %w", err)
+		}
+		dataBytes, err := data.MarshalBinary()
+		if err != nil {
+			return fmt.Errorf("failed to marshal data: %w", err)
+		}
+
+		raftState := &raft.RaftBlockState{
+			Height:                      newHeight,
+			Hash:                        header.Hash(),
+			Timestamp:                   header.BaseHeader.Time,
+			Header:                      headerBytes,
+			Data:                        dataBytes,
+			LastSubmittedDaHeaderHeight: e.cache.GetLastSubmittedHeaderHeight(),
+			LastSubmittedDaDataHeight:   e.cache.GetLastSubmittedDataHeight(),
+		}
+		if err := e.raftNode.Broadcast(e.ctx, raftState); err != nil {
+			return fmt.Errorf("failed to propose block to raft: %w", err)
+		}
+		e.logger.Debug().Uint64("height", newHeight).Msg("proposed block to raft")
+	}
 	if err := batch.Commit(); err != nil {
 		return fmt.Errorf("failed to commit batch: %w", err)
 	}
@@ -568,7 +621,7 @@ func (e *Executor) createBlock(ctx context.Context, height uint64, batchData *Ba
 	}
 
 	for i, tx := range batchData.Transactions {
-		data.Txs[i] = types.Tx(tx)
+		data.Txs[i] = tx
 	}
 
 	// Set data hash
@@ -691,6 +744,15 @@ func (e *Executor) recordBlockMetrics(newState types.State, data *types.Data) {
 	e.metrics.TxsPerBlock.Observe(float64(len(data.Txs)))
 	e.metrics.BlockSizeBytes.Set(float64(data.Size()))
 	e.metrics.CommittedHeight.Set(float64(data.Metadata.Height))
+}
+
+// IsSynced checks if the last block height in the stored state matches the expected height and returns true if they are equal.
+func (e *Executor) IsSynced(expHeight uint64) bool {
+	state, err := e.store.GetState(e.ctx)
+	if err != nil {
+		return false
+	}
+	return state.LastBlockHeight == expHeight
 }
 
 // BatchData represents batch data from sequencer

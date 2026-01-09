@@ -49,27 +49,29 @@ func TestTxGossipingMultipleNodesNoDA(t *testing.T) {
 	}
 
 	// Inject a transaction into the sequencer's executor
-	if nodes[0].blockComponents != nil && nodes[0].blockComponents.Executor != nil {
+	if state := castState(t, nodes[0]); state.bc.Executor != nil {
 		// Access the core executor from the block executor
-		coreExec := nodes[0].blockComponents.Executor.GetCoreExecutor()
+		coreExec := state.bc.Executor.GetCoreExecutor()
 		if dummyExec, ok := coreExec.(interface{ InjectTx([]byte) }); ok {
 			dummyExec.InjectTx([]byte("test tx"))
 		} else {
 			t.Fatal("Warning: Could not cast core executor to DummyExecutor")
 		}
+	} else {
+		t.Fatal("executor empty")
 	}
 	blocksToWaitFor := uint64(3)
 	// Wait for all nodes to reach at least blocksToWaitFor blocks
-	for _, nodeItem := range nodes {
+	for i, nodeItem := range nodes {
 		requireEmptyChan(t, errChan)
-		require.NoError(waitForAtLeastNBlocks(nodeItem, blocksToWaitFor, Store))
+		require.NoError(waitForAtLeastNBlocks(nodeItem, blocksToWaitFor, Store), "node %d", i)
 	}
-
-	// Shutdown all nodes and wait
-	shutdownAndWait(t, cancels, &runningWg, 10*time.Second)
 
 	// Assert that all nodes have the same block up to height blocksToWaitFor
 	assertAllNodesSynced(t, nodes, blocksToWaitFor)
+
+	// Shutdown all nodes and wait
+	shutdownAndWait(t, cancels, &runningWg, 10*time.Second)
 }
 
 // TestTxGossipingMultipleNodesDAIncluded tests that transactions are gossiped and blocks are sequenced and synced across multiple nodes only using DA. P2P gossiping is disabled.
@@ -82,9 +84,6 @@ func TestTxGossipingMultipleNodesDAIncluded(t *testing.T) {
 
 	numNodes := 4
 	nodes, cleanups := createNodesWithCleanup(t, numNodes, config)
-	for _, cleanup := range cleanups {
-		defer cleanup()
-	}
 
 	ctxs, cancels := createNodeContexts(numNodes)
 	var runningWg sync.WaitGroup
@@ -92,6 +91,7 @@ func TestTxGossipingMultipleNodesDAIncluded(t *testing.T) {
 	errChan := make(chan error, numNodes)
 	// Start only the sequencer first
 	startNodeInBackground(t, nodes, ctxs, &runningWg, 0, errChan)
+	t.Cleanup(func() { shutdownAndWait(t, cleanups, &runningWg, 10*time.Second) })
 
 	// Wait for the first block to be produced by the sequencer
 	err := waitForFirstBlock(nodes[0], Header)
@@ -113,9 +113,9 @@ func TestTxGossipingMultipleNodesDAIncluded(t *testing.T) {
 	}
 
 	// Inject transactions into the sequencer's executor
-	if nodes[0].blockComponents != nil && nodes[0].blockComponents.Executor != nil {
+	if state := castState(t, nodes[0]); state != nil && state.bc.Executor != nil {
 		// Access the core executor from the block executor
-		coreExec := nodes[0].blockComponents.Executor.GetCoreExecutor()
+		coreExec := state.bc.Executor.GetCoreExecutor()
 		if dummyExec, ok := coreExec.(interface{ InjectTx([]byte) }); ok {
 			dummyExec.InjectTx([]byte("test tx 1"))
 			dummyExec.InjectTx([]byte("test tx 2"))
@@ -125,18 +125,26 @@ func TestTxGossipingMultipleNodesDAIncluded(t *testing.T) {
 		}
 	}
 
-	blocksToWaitFor := uint64(4)
+	blocksToWaitFor := uint64(5)
 	// Wait for all nodes to reach at least blocksToWaitFor blocks with DA inclusion
 	for _, nodeItem := range nodes {
 		requireEmptyChan(t, errChan)
 		require.NoError(waitForAtLeastNDAIncludedHeight(nodeItem, blocksToWaitFor))
 	}
 
-	// Shutdown all nodes and wait
-	shutdownAndWait(t, cancels, &runningWg, 5*time.Second)
-
 	// Assert that all nodes have the same block up to height blocksToWaitFor
 	assertAllNodesSynced(t, nodes, blocksToWaitFor)
+
+	// Shutdown all nodes and wait
+	shutdownAndWait(t, cancels, &runningWg, 5*time.Second)
+}
+
+func castState(t *testing.T, node *FullNode) *failoverState {
+	v, ok := node.leaderElection.(testSupportElection)
+	require.True(t, ok)
+	state := v.state()
+	require.NotNil(t, state)
+	return state
 }
 
 // TestFastDASync verifies that a new node can quickly synchronize with the DA layer using fast sync.
@@ -155,16 +163,13 @@ func TestFastDASync(t *testing.T) {
 	config.DA.BlockTime = evconfig.DurationWrapper{Duration: 200 * time.Millisecond}
 
 	nodes, cleanups := createNodesWithCleanup(t, 2, config)
-	for _, cleanup := range cleanups {
-		defer cleanup()
-	}
-
 	ctxs, cancels := createNodeContexts(len(nodes))
 	var runningWg sync.WaitGroup
 
 	errChan := make(chan error, len(nodes))
 	// Start only the first node
 	startNodeInBackground(t, nodes, ctxs, &runningWg, 0, errChan)
+	t.Cleanup(func() { shutdownAndWait(t, cleanups, &runningWg, 10*time.Second) })
 
 	// Wait for the first node to produce a few blocks
 	blocksToWaitFor := uint64(2)
@@ -175,6 +180,7 @@ func TestFastDASync(t *testing.T) {
 
 	// Now start the second node and time its sync
 	startNodeInBackground(t, nodes, ctxs, &runningWg, 1, errChan)
+
 	start := time.Now()
 	// Wait for the second node to catch up to the first node
 	require.NoError(waitForAtLeastNBlocks(nodes[1], blocksToWaitFor, Store))
@@ -309,6 +315,7 @@ func testSingleSequencerSingleFullNode(t *testing.T, source Source) {
 
 	// Start the sequencer first
 	startNodeInBackground(t, nodes, ctxs, &runningWg, 0, errChan)
+	t.Cleanup(func() { shutdownAndWait(t, cancels, &runningWg, 10*time.Second) })
 
 	// Wait for the sequencer to produce at first block
 	require.NoError(waitForFirstBlock(nodes[0], source))
@@ -328,9 +335,6 @@ func testSingleSequencerSingleFullNode(t *testing.T, source Source) {
 
 	// Verify both nodes are synced using the helper
 	require.NoError(verifyNodesSynced(nodes[0], nodes[1], source))
-
-	// Cancel all node contexts to signal shutdown and wait
-	shutdownAndWait(t, cancels, &runningWg, 5*time.Second)
 }
 
 // testSingleSequencerTwoFullNodes sets up a single sequencer and two full nodes, starts the sequencer, waits for it to produce a block, then starts the full nodes.
@@ -352,6 +356,7 @@ func testSingleSequencerTwoFullNodes(t *testing.T, source Source) {
 
 	// Start the sequencer first
 	startNodeInBackground(t, nodes, ctxs, &runningWg, 0, errChan)
+	t.Cleanup(func() { shutdownAndWait(t, cancels, &runningWg, 10*time.Second) })
 
 	// Wait for the sequencer to produce at first block
 	require.NoError(waitForFirstBlock(nodes[0], source))

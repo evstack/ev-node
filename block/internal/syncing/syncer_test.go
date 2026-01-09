@@ -105,7 +105,7 @@ func TestSyncer_validateBlock_DataHashMismatch(t *testing.T) {
 	ds := dssync.MutexWrap(datastore.NewMapDatastore())
 	st := store.New(ds)
 
-	cm, err := cache.NewCacheManager(config.DefaultConfig(), zerolog.Nop())
+	cm, err := cache.NewManager(config.DefaultConfig(), st, zerolog.Nop())
 	require.NoError(t, err)
 
 	addr, pub, signer := buildSyncTestSigner(t)
@@ -128,6 +128,7 @@ func TestSyncer_validateBlock_DataHashMismatch(t *testing.T) {
 		zerolog.Nop(),
 		common.DefaultBlockOptions(),
 		make(chan error, 1),
+		nil,
 	)
 	require.NoError(t, s.initializeState())
 	// Create header and data with correct hash
@@ -154,7 +155,7 @@ func TestProcessHeightEvent_SyncsAndUpdatesState(t *testing.T) {
 	ds := dssync.MutexWrap(datastore.NewMapDatastore())
 	st := store.New(ds)
 
-	cm, err := cache.NewCacheManager(config.DefaultConfig(), zerolog.Nop())
+	cm, err := cache.NewManager(config.DefaultConfig(), st, zerolog.Nop())
 	require.NoError(t, err)
 
 	addr, pub, signer := buildSyncTestSigner(t)
@@ -179,6 +180,7 @@ func TestProcessHeightEvent_SyncsAndUpdatesState(t *testing.T) {
 		zerolog.Nop(),
 		common.DefaultBlockOptions(),
 		errChan,
+		nil,
 	)
 
 	require.NoError(t, s.initializeState())
@@ -209,7 +211,7 @@ func TestSequentialBlockSync(t *testing.T) {
 	ds := dssync.MutexWrap(datastore.NewMapDatastore())
 	st := store.New(ds)
 
-	cm, err := cache.NewCacheManager(config.DefaultConfig(), zerolog.Nop())
+	cm, err := cache.NewManager(config.DefaultConfig(), st, zerolog.Nop())
 	require.NoError(t, err)
 
 	addr, pub, signer := buildSyncTestSigner(t)
@@ -233,6 +235,7 @@ func TestSequentialBlockSync(t *testing.T) {
 		zerolog.Nop(),
 		common.DefaultBlockOptions(),
 		errChan,
+		nil,
 	)
 	require.NoError(t, s.initializeState())
 	s.ctx = context.Background()
@@ -328,7 +331,7 @@ func TestSyncLoopPersistState(t *testing.T) {
 	cfg.RootDir = t.TempDir()
 	cfg.ClearCache = true
 
-	cacheMgr, err := cache.NewCacheManager(cfg, zerolog.Nop())
+	cm, err := cache.NewManager(config.DefaultConfig(), st, zerolog.Nop())
 	require.NoError(t, err)
 
 	const myDAHeightOffset = uint64(1)
@@ -357,7 +360,7 @@ func TestSyncLoopPersistState(t *testing.T) {
 		st,
 		dummyExec,
 		nil,
-		cacheMgr,
+		cm,
 		common.NopMetrics(),
 		cfg,
 		gen,
@@ -366,6 +369,7 @@ func TestSyncLoopPersistState(t *testing.T) {
 		zerolog.Nop(),
 		common.DefaultBlockOptions(),
 		errorCh,
+		nil,
 	)
 	require.NoError(t, syncerInst1.initializeState())
 
@@ -423,7 +427,7 @@ func TestSyncLoopPersistState(t *testing.T) {
 	require.Equal(t, myFutureDAHeight, syncerInst1.daRetrieverHeight.Load())
 
 	// wait for all events consumed
-	require.NoError(t, cacheMgr.SaveToDisk())
+	require.NoError(t, cm.SaveToDisk())
 	t.Log("processLoop on instance1 completed")
 
 	// then
@@ -438,15 +442,15 @@ func TestSyncLoopPersistState(t *testing.T) {
 		require.Nil(t, event, "event at height %d should have been removed", blockHeight)
 	}
 	// and when new instance is up on restart
-	cacheMgr, err = cache.NewCacheManager(cfg, zerolog.Nop())
+	cm, err = cache.NewManager(config.DefaultConfig(), st, zerolog.Nop())
 	require.NoError(t, err)
-	require.NoError(t, cacheMgr.LoadFromDisk())
+	require.NoError(t, cm.LoadFromDisk())
 
 	syncerInst2 := NewSyncer(
 		st,
 		dummyExec,
 		nil,
-		cacheMgr,
+		cm,
 		common.NopMetrics(),
 		cfg,
 		gen,
@@ -455,6 +459,7 @@ func TestSyncLoopPersistState(t *testing.T) {
 		zerolog.Nop(),
 		common.DefaultBlockOptions(),
 		make(chan error, 1),
+		nil,
 	)
 	require.NoError(t, syncerInst2.initializeState())
 

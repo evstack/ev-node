@@ -20,6 +20,17 @@ message State {
   reserved 7;
 }
 
+// RaftBlockState represents a replicated block state
+message RaftBlockState {
+  uint64 height = 1;
+  uint64 last_submitted_da_header_height = 2;
+  uint64 last_submitted_da_data_height = 3;
+  bytes hash = 4;
+  uint64 timestamp = 5;
+  bytes header = 6;
+  bytes data = 7;
+}
+
 // SequencerDACheckpoint tracks the position in the DA where transactions were last processed
 message SequencerDACheckpoint {
   // DA block height being processed
