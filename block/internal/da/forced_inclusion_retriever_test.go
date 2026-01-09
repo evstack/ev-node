@@ -203,88 +203,112 @@ func TestForcedInclusionRetriever_RetrieveForcedIncludedTxs_MultiHeightEpoch(t *
 	assert.Equal(t, len(event.Txs), expectedTxCount)
 }
 
-func TestForcedInclusionRetriever_processForcedInclusionBlobs(t *testing.T) {
+func TestForcedInclusionRetriever_RetrieveForcedIncludedTxs_ErrorHandling(t *testing.T) {
 	client := mocks.NewMockClient(t)
-	client.On("GetForcedInclusionNamespace").Return(datypes.NamespaceFromString("test-fi-ns").Bytes()).Maybe()
+	fiNs := datypes.NamespaceFromString("test-fi-ns").Bytes()
+	client.On("HasForcedInclusionNamespace").Return(true).Maybe()
+	client.On("GetForcedInclusionNamespace").Return(fiNs).Maybe()
+	client.On("Retrieve", mock.Anything, uint64(100), fiNs).Return(datypes.ResultRetrieve{
+		BaseResult: datypes.BaseResult{
+			Code:    datypes.StatusError,
+			Message: "test error",
+		},
+	}).Once()
 
 	gen := genesis.Genesis{
 		DAStartHeight:          100,
-		DAEpochForcedInclusion: 10,
+		DAEpochForcedInclusion: 1, // Single height epoch
 	}
 
 	retriever := NewForcedInclusionRetriever(client, zerolog.Nop(), config.DefaultConfig(), gen.DAStartHeight, gen.DAEpochForcedInclusion)
 	defer retriever.Stop()
+	ctx := context.Background()
 
-	tests := []struct {
-		name            string
-		result          datypes.ResultRetrieve
-		height          uint64
-		expectedTxCount int
-		expectError     bool
-	}{
-		{
-			name: "success with blobs",
-			result: datypes.ResultRetrieve{
-				BaseResult: datypes.BaseResult{
-					Code: datypes.StatusSuccess,
-				},
-				Data: [][]byte{[]byte("tx1"), []byte("tx2")},
-			},
-			height:          100,
-			expectedTxCount: 2,
-			expectError:     false,
-		},
-		{
-			name: "not found",
-			result: datypes.ResultRetrieve{
-				BaseResult: datypes.BaseResult{
-					Code: datypes.StatusNotFound,
-				},
-			},
-			height:          100,
-			expectedTxCount: 0,
-			expectError:     false,
-		},
-		{
-			name: "error status",
-			result: datypes.ResultRetrieve{
-				BaseResult: datypes.BaseResult{
-					Code:    datypes.StatusError,
-					Message: "test error",
-				},
-			},
-			height:      100,
-			expectError: true,
-		},
-		{
-			name: "empty blobs are skipped",
-			result: datypes.ResultRetrieve{
-				BaseResult: datypes.BaseResult{
-					Code: datypes.StatusSuccess,
-				},
-				Data: [][]byte{[]byte("tx1"), {}, []byte("tx2")},
-			},
-			height:          100,
-			expectedTxCount: 2,
-			expectError:     false,
-		},
+	// Should return empty event with no error (errors are logged and retried later)
+	event, err := retriever.RetrieveForcedIncludedTxs(ctx, 100)
+	assert.NilError(t, err)
+	assert.Assert(t, event != nil)
+	assert.Equal(t, len(event.Txs), 0)
+}
+
+func TestForcedInclusionRetriever_RetrieveForcedIncludedTxs_EmptyBlobsSkipped(t *testing.T) {
+	client := mocks.NewMockClient(t)
+	fiNs := datypes.NamespaceFromString("test-fi-ns").Bytes()
+	client.On("HasForcedInclusionNamespace").Return(true).Maybe()
+	client.On("GetForcedInclusionNamespace").Return(fiNs).Maybe()
+	client.On("Retrieve", mock.Anything, uint64(100), fiNs).Return(datypes.ResultRetrieve{
+		BaseResult: datypes.BaseResult{Code: datypes.StatusSuccess, Timestamp: time.Now()},
+		Data:       [][]byte{[]byte("tx1"), {}, []byte("tx2"), nil, []byte("tx3")},
+	}).Once()
+
+	gen := genesis.Genesis{
+		DAStartHeight:          100,
+		DAEpochForcedInclusion: 1, // Single height epoch
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			event := &ForcedInclusionEvent{
-				Txs: [][]byte{},
-			}
+	retriever := NewForcedInclusionRetriever(client, zerolog.Nop(), config.DefaultConfig(), gen.DAStartHeight, gen.DAEpochForcedInclusion)
+	defer retriever.Stop()
+	ctx := context.Background()
 
-			err := retriever.processRetrieveResult(event, tt.result, tt.height)
+	event, err := retriever.RetrieveForcedIncludedTxs(ctx, 100)
+	assert.NilError(t, err)
+	assert.Assert(t, event != nil)
+	// Should skip empty and nil blobs
+	assert.Equal(t, len(event.Txs), 3)
+	assert.DeepEqual(t, event.Txs[0], []byte("tx1"))
+	assert.DeepEqual(t, event.Txs[1], []byte("tx2"))
+	assert.DeepEqual(t, event.Txs[2], []byte("tx3"))
+}
 
-			if tt.expectError {
-				assert.Assert(t, err != nil)
-			} else {
-				assert.NilError(t, err)
-				assert.Equal(t, len(event.Txs), tt.expectedTxCount)
-				assert.Equal(t, event.Timestamp, time.Time{})
-			}
-		})
+func TestForcedInclusionRetriever_RetrieveForcedIncludedTxs_OrderPreserved(t *testing.T) {
+	// Test that transactions are returned in height order even when fetched out of order
+	testBlobsByHeight := map[uint64][][]byte{
+		100: {[]byte("tx-100-1"), []byte("tx-100-2")},
+		101: {[]byte("tx-101-1")},
+		102: {[]byte("tx-102-1"), []byte("tx-102-2")},
+	}
+
+	client := mocks.NewMockClient(t)
+	fiNs := datypes.NamespaceFromString("test-fi-ns").Bytes()
+	client.On("HasForcedInclusionNamespace").Return(true).Maybe()
+	client.On("GetForcedInclusionNamespace").Return(fiNs).Maybe()
+	// Return heights out of order to test ordering is preserved
+	client.On("Retrieve", mock.Anything, uint64(102), fiNs).Return(datypes.ResultRetrieve{
+		BaseResult: datypes.BaseResult{Code: datypes.StatusSuccess, Timestamp: time.Now()},
+		Data:       testBlobsByHeight[102],
+	}).Once()
+	client.On("Retrieve", mock.Anything, uint64(100), fiNs).Return(datypes.ResultRetrieve{
+		BaseResult: datypes.BaseResult{Code: datypes.StatusSuccess, Timestamp: time.Now()},
+		Data:       testBlobsByHeight[100],
+	}).Once()
+	client.On("Retrieve", mock.Anything, uint64(101), fiNs).Return(datypes.ResultRetrieve{
+		BaseResult: datypes.BaseResult{Code: datypes.StatusSuccess, Timestamp: time.Now()},
+		Data:       testBlobsByHeight[101],
+	}).Once()
+
+	gen := genesis.Genesis{
+		DAStartHeight:          100,
+		DAEpochForcedInclusion: 3, // Epoch: 100-102
+	}
+
+	retriever := NewForcedInclusionRetriever(client, zerolog.Nop(), config.DefaultConfig(), gen.DAStartHeight, gen.DAEpochForcedInclusion)
+	defer retriever.Stop()
+	ctx := context.Background()
+
+	event, err := retriever.RetrieveForcedIncludedTxs(ctx, 102)
+	assert.NilError(t, err)
+	assert.Assert(t, event != nil)
+
+	// Verify transactions are in height order: 100, 100, 101, 102, 102
+	expectedOrder := [][]byte{
+		[]byte("tx-100-1"),
+		[]byte("tx-100-2"),
+		[]byte("tx-101-1"),
+		[]byte("tx-102-1"),
+		[]byte("tx-102-2"),
+	}
+	assert.Equal(t, len(event.Txs), len(expectedOrder))
+	for i, expected := range expectedOrder {
+		assert.DeepEqual(t, event.Txs[i], expected)
 	}
 }
