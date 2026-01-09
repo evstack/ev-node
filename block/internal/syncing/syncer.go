@@ -110,6 +110,7 @@ type Syncer struct {
 	gracePeriodMultiplier     *atomic.Pointer[float64]
 	blockFullnessEMA          *atomic.Pointer[float64]
 	gracePeriodConfig         forcedInclusionGracePeriodConfig
+	p2pHeightHints            map[uint64]uint64 // map[height]daHeight
 
 	// Lifecycle
 	ctx    context.Context
@@ -177,6 +178,7 @@ func NewSyncer(
 		gracePeriodMultiplier: gracePeriodMultiplier,
 		blockFullnessEMA:      blockFullnessEMA,
 		gracePeriodConfig:     newForcedInclusionGracePeriodConfig(),
+		p2pHeightHints:        make(map[uint64]uint64),
 	}
 }
 
@@ -541,6 +543,8 @@ func (s *Syncer) processHeightEvent(event *common.DAHeightEvent) {
 					Uint64("da_height_hint", daHeightHint).
 					Msg("P2P event with DA height hint, triggering targeted DA retrieval")
 
+				s.p2pHeightHints[height] = daHeightHint
+
 				// Trigger targeted DA retrieval in background via worker pool
 				s.asyncDARetriever.RequestRetrieval(daHeightHint)
 			}
@@ -581,7 +585,7 @@ func (s *Syncer) processHeightEvent(event *common.DAHeightEvent) {
 	}
 
 	// only save to p2p stores if the event came from DA
-	if event.Source == common.SourceDA { // TODO(@julienrbrt): To be reverted once DA Hints are merged (https://github.com/evstack/ev-node/pull/2891)
+	if event.Source == common.SourceDA {
 		g, ctx := errgroup.WithContext(s.ctx)
 		g.Go(func() error {
 			// broadcast header locally only — prevents spamming the p2p network with old height notifications,
@@ -636,13 +640,17 @@ func (s *Syncer) trySyncNextBlock(event *common.DAHeightEvent) error {
 	}
 
 	// Verify forced inclusion transactions if configured
-	if event.Source == common.SourceDA {
-		if err := s.verifyForcedInclusionTxs(currentState, data); err != nil {
-			s.logger.Error().Err(err).Uint64("height", nextHeight).Msg("forced inclusion verification failed")
-			if errors.Is(err, errMaliciousProposer) {
-				s.cache.RemoveHeaderDAIncluded(headerHash)
-				return err
-			}
+	currentDaHeight, ok := s.p2pHeightHints[nextHeight]
+	if !ok {
+		currentDaHeight = currentState.DAHeight
+	} else {
+		delete(s.p2pHeightHints, nextHeight)
+	}
+	if err := s.verifyForcedInclusionTxs(currentDaHeight, data); err != nil {
+		s.logger.Error().Err(err).Uint64("height", nextHeight).Msg("forced inclusion verification failed")
+		if errors.Is(err, errMaliciousProposer) {
+			s.cache.RemoveHeaderDAIncluded(headerHash)
+			return err
 		}
 	}
 
@@ -855,7 +863,7 @@ func (s *Syncer) getEffectiveGracePeriod() uint64 {
 // Note: Due to block size constraints (MaxBytes), sequencers may defer forced inclusion transactions
 // to future blocks (smoothing). This is legitimate behavior within an epoch.
 // However, ALL forced inclusion txs from an epoch MUST be included before the next epoch begins or grace boundary (whichever comes later).
-func (s *Syncer) verifyForcedInclusionTxs(currentState types.State, data *types.Data) error {
+func (s *Syncer) verifyForcedInclusionTxs(daHeight uint64, data *types.Data) error {
 	if s.fiRetriever == nil {
 		return nil
 	}
@@ -865,7 +873,7 @@ func (s *Syncer) verifyForcedInclusionTxs(currentState types.State, data *types.
 	s.updateDynamicGracePeriod(blockFullness)
 
 	// Retrieve forced inclusion transactions from DA for current epoch
-	forcedIncludedTxsEvent, err := s.fiRetriever.RetrieveForcedIncludedTxs(s.ctx, currentState.DAHeight)
+	forcedIncludedTxsEvent, err := s.fiRetriever.RetrieveForcedIncludedTxs(s.ctx, daHeight)
 	if err != nil {
 		if errors.Is(err, da.ErrForceInclusionNotConfigured) {
 			s.logger.Debug().Msg("forced inclusion namespace not configured, skipping verification")
@@ -928,10 +936,10 @@ func (s *Syncer) verifyForcedInclusionTxs(currentState types.State, data *types.
 		effectiveGracePeriod := s.getEffectiveGracePeriod()
 		graceBoundary := pending.EpochEnd + (effectiveGracePeriod * s.genesis.DAEpochForcedInclusion)
 
-		if currentState.DAHeight > graceBoundary {
+		if daHeight > graceBoundary {
 			maliciousTxs = append(maliciousTxs, pending)
 			s.logger.Warn().
-				Uint64("current_da_height", currentState.DAHeight).
+				Uint64("current_da_height", daHeight).
 				Uint64("epoch_end", pending.EpochEnd).
 				Uint64("grace_boundary", graceBoundary).
 				Uint64("base_grace_periods", s.gracePeriodConfig.basePeriod).
@@ -941,7 +949,7 @@ func (s *Syncer) verifyForcedInclusionTxs(currentState types.State, data *types.
 				Msg("forced inclusion transaction past grace boundary - marking as malicious")
 		} else {
 			remainingPending = append(remainingPending, pending)
-			if currentState.DAHeight > pending.EpochEnd {
+			if daHeight > pending.EpochEnd {
 				txsInGracePeriod++
 			}
 		}
@@ -965,7 +973,7 @@ func (s *Syncer) verifyForcedInclusionTxs(currentState types.State, data *types.
 		effectiveGracePeriod := s.getEffectiveGracePeriod()
 		s.logger.Error().
 			Uint64("height", data.Height()).
-			Uint64("current_da_height", currentState.DAHeight).
+			Uint64("current_da_height", daHeight).
 			Int("malicious_count", len(maliciousTxs)).
 			Uint64("base_grace_periods", s.gracePeriodConfig.basePeriod).
 			Uint64("effective_grace_periods", effectiveGracePeriod).
@@ -985,7 +993,7 @@ func (s *Syncer) verifyForcedInclusionTxs(currentState types.State, data *types.
 
 			s.logger.Info().
 				Uint64("height", data.Height()).
-				Uint64("da_height", currentState.DAHeight).
+				Uint64("da_height", daHeight).
 				Uint64("epoch_start", forcedIncludedTxsEvent.StartDaHeight).
 				Uint64("epoch_end", forcedIncludedTxsEvent.EndDaHeight).
 				Int("included_count", includedCount).
