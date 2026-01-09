@@ -12,6 +12,7 @@ require (
 	github.com/celestiaorg/go-square/v3 v3.0.2
 	github.com/celestiaorg/nmt v0.24.2
 	github.com/celestiaorg/utils v0.1.0
+	github.com/ethereum/go-ethereum v1.16.7
 	github.com/evstack/ev-node/core v1.0.0-beta.5
 	github.com/filecoin-project/go-jsonrpc v0.9.0
 	github.com/go-kit/kit v0.13.0
@@ -63,6 +64,7 @@ require (
 	github.com/gorilla/websocket v1.5.3 // indirect
 	github.com/hashicorp/golang-lru v1.0.2 // indirect
 	github.com/hashicorp/golang-lru/v2 v2.0.7 // indirect
+	github.com/holiman/uint256 v1.3.2 // indirect
 	github.com/huin/goupnp v1.3.0 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/ipfs/boxo v0.35.2 // indirect

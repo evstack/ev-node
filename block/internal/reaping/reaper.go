@@ -6,9 +6,11 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/rs/zerolog"
 
 	"github.com/evstack/ev-node/block/internal/cache"
@@ -159,11 +161,29 @@ func (r *Reaper) SubmitTxs() error {
 		return nil
 	}
 
+	// Decode hex-encoded transactions and deduplicate in a single pass over
+	// txs to minimize iterations. We assume txs are hex strings ("0x...")
+	// returned as bytes from the execution client and apply the same checks
+	// as the original EngineClient.GetTxs implementation.
 	var newTxs [][]byte
-	for _, tx := range txs {
-		txHash := hashTx(tx)
+	for _, raw := range txs {
+		if len(raw) == 0 {
+			continue
+		}
+
+		var decoded []byte
+		rlpHex := string(raw)
+		if !strings.HasPrefix(rlpHex, "0x") || len(rlpHex) < 3 {
+			return fmt.Errorf("invalid hex format for transaction: %s", rlpHex)
+		}
+		decoded = common.FromHex(rlpHex)
+		if len(decoded) == 0 && len(rlpHex) > 2 {
+			return fmt.Errorf("failed to decode hex transaction: %s", rlpHex)
+		}
+
+		txHash := hashTx(decoded)
 		if !r.cache.IsTxSeen(txHash) {
-			newTxs = append(newTxs, tx)
+			newTxs = append(newTxs, decoded)
 		}
 	}
 

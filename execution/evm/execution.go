@@ -269,16 +269,14 @@ func (c *EngineClient) GetTxs(ctx context.Context) ([][]byte, error) {
 		return nil, fmt.Errorf("failed to get tx pool content: %w", err)
 	}
 
+	// Return the raw hex-encoded transactions as bytes. Decoding and
+	// validation are performed at a higher layer (reaper) so that the
+	// iteration and checks can be shared across execution backends.
 	txs := make([][]byte, 0, len(result))
 	for _, rlpHex := range result {
-		if !strings.HasPrefix(rlpHex, "0x") || len(rlpHex) < 3 {
-			return nil, fmt.Errorf("invalid hex format for transaction: %s", rlpHex)
-		}
-		txBytes := common.FromHex(rlpHex)
-		if len(txBytes) == 0 && len(rlpHex) > 2 {
-			return nil, fmt.Errorf("failed to decode hex transaction: %s", rlpHex)
-		}
-		txs = append(txs, txBytes)
+		// Preserve the original representation; callers that need decoded
+		// bytes are responsible for validating and decoding.
+		txs = append(txs, []byte(rlpHex))
 	}
 
 	return txs, nil
