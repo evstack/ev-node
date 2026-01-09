@@ -103,6 +103,17 @@ const (
 	// FlagPprofListenAddr is a flag for specifying the pprof listen address
 	FlagPprofListenAddr = FlagPrefixEvnode + "instrumentation.pprof_listen_addr"
 
+	// Tracing configuration flags
+
+	// FlagTracing enables OpenTelemetry tracing
+	FlagTracing = FlagPrefixEvnode + "instrumentation.tracing"
+	// FlagTracingEndpoint configures the OTLP endpoint (host:port)
+	FlagTracingEndpoint = FlagPrefixEvnode + "instrumentation.tracing_endpoint"
+	// FlagTracingServiceName configures the service.name resource attribute
+	FlagTracingServiceName = FlagPrefixEvnode + "instrumentation.tracing_service_name"
+	// FlagTracingSampleRate configures the TraceID ratio-based sampler
+	FlagTracingSampleRate = FlagPrefixEvnode + "instrumentation.tracing_sample_rate"
+
 	// Logging configuration flags
 
 	// FlagLogLevel is a flag for specifying the log level
@@ -444,6 +455,10 @@ func AddFlags(cmd *cobra.Command) {
 	cmd.Flags().Int(FlagMaxOpenConnections, instrDef.MaxOpenConnections, "maximum number of simultaneous connections for metrics")
 	cmd.Flags().Bool(FlagPprof, instrDef.Pprof, "enable pprof HTTP endpoint")
 	cmd.Flags().String(FlagPprofListenAddr, instrDef.PprofListenAddr, "pprof HTTP server listening address")
+	cmd.Flags().Bool(FlagTracing, instrDef.Tracing, "enable OpenTelemetry tracing")
+	cmd.Flags().String(FlagTracingEndpoint, instrDef.TracingEndpoint, "OTLP endpoint for traces (host:port)")
+	cmd.Flags().String(FlagTracingServiceName, instrDef.TracingServiceName, "OpenTelemetry service.name")
+	cmd.Flags().Float64(FlagTracingSampleRate, instrDef.TracingSampleRate, "trace sampling rate (0.0-1.0)")
 
 	// Signer configuration flags
 	cmd.Flags().String(FlagSignerType, def.Signer.SignerType, "type of signer to use (file, grpc)")

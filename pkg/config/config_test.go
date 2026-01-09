@@ -91,6 +91,10 @@ func TestAddFlags(t *testing.T) {
 	assertFlagValue(t, flags, FlagMaxOpenConnections, instrDef.MaxOpenConnections)
 	assertFlagValue(t, flags, FlagPprof, instrDef.Pprof)
 	assertFlagValue(t, flags, FlagPprofListenAddr, instrDef.PprofListenAddr)
+	assertFlagValue(t, flags, FlagTracing, instrDef.Tracing)
+	assertFlagValue(t, flags, FlagTracingEndpoint, instrDef.TracingEndpoint)
+	assertFlagValue(t, flags, FlagTracingSampleRate, instrDef.TracingSampleRate)
+	assertFlagValue(t, flags, FlagTracingServiceName, instrDef.TracingServiceName)
 
 	// Logging flags (in persistent flags)
 	assertFlagValue(t, persistentFlags, FlagLogLevel, DefaultConfig().Log.Level)
@@ -108,7 +112,7 @@ func TestAddFlags(t *testing.T) {
 	assertFlagValue(t, flags, FlagRPCEnableDAVisualization, DefaultConfig().RPC.EnableDAVisualization)
 
 	// Count the number of flags we're explicitly checking
-	expectedFlagCount := 55 // Update this number if you add more flag checks above
+	expectedFlagCount := 59 // Update this number if you add more flag checks above
 
 	// Get the actual number of flags (both regular and persistent)
 	actualFlagCount := 0

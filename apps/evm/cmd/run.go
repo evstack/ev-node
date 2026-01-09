@@ -13,6 +13,7 @@ import (
 	"github.com/rs/zerolog"
 	"github.com/spf13/cobra"
 
+	"github.com/evstack/ev-node/apps/evm/server"
 	"github.com/evstack/ev-node/block"
 	"github.com/evstack/ev-node/core/execution"
 	coresequencer "github.com/evstack/ev-node/core/sequencer"
@@ -28,8 +29,6 @@ import (
 	"github.com/evstack/ev-node/pkg/sequencers/based"
 	"github.com/evstack/ev-node/pkg/sequencers/single"
 	"github.com/evstack/ev-node/pkg/store"
-
-	"github.com/evstack/ev-node/apps/evm/server"
 )
 
 const (
@@ -55,7 +54,8 @@ var RunCmd = &cobra.Command{
 			return err
 		}
 
-		executor, err := createExecutionClient(cmd, datastore)
+		tracingEnabled := nodeConfig.Instrumentation.IsTracingEnabled()
+		executor, err := createExecutionClient(cmd, datastore, tracingEnabled)
 		if err != nil {
 			return err
 		}
@@ -195,7 +195,7 @@ func createSequencer(
 	return sequencer, nil
 }
 
-func createExecutionClient(cmd *cobra.Command, db datastore.Batching) (execution.Executor, error) {
+func createExecutionClient(cmd *cobra.Command, db datastore.Batching, tracingEnabled bool) (execution.Executor, error) {
 	// Read execution client parameters from flags
 	ethURL, err := cmd.Flags().GetString(evm.FlagEvmEthURL)
 	if err != nil {
@@ -240,7 +240,7 @@ func createExecutionClient(cmd *cobra.Command, db datastore.Batching) (execution
 	genesisHash := common.HexToHash(genesisHashStr)
 	feeRecipient := common.HexToAddress(feeRecipientStr)
 
-	return evm.NewEngineExecutionClient(ethURL, engineURL, jwtSecret, genesisHash, feeRecipient, db)
+	return evm.NewEngineExecutionClient(ethURL, engineURL, jwtSecret, genesisHash, feeRecipient, db, tracingEnabled)
 }
 
 // addFlags adds flags related to the EVM execution client
