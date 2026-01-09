@@ -99,7 +99,8 @@ func (d *DynamicLeaderElection) Run(ctx context.Context) error {
 						continue
 					}
 					if !raftSynced || !runnable.IsSynced(d.node.GetState()) {
-						d.logger.Info().Msg("became leader, but not synced. Pass on leadership")
+						d.logger.Info().Uint64("raft_state_height", d.node.GetState().Height).
+							Msg("became leader, but not synced. Pass on leadership")
 						if err := d.node.leadershipTransfer(); err != nil && !errors.Is(err, raft.ErrNotLeader) {
 							// the leadership transfer can fail due to no suitable leader. Better stop than double sign on old state
 							return err
