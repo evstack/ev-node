@@ -115,7 +115,7 @@ func runProfile(p profile, dir string, cfg config) (result, error) {
 	}
 	actualBytes := int64(totalWrites) * int64(cfg.valueSize)
 
-	rng := rand.New(rand.NewSource(1)) // Deterministic data for comparable runs.
+	rng := rand.New(rand.NewSource(1)) // nolint:gosec
 	value := make([]byte, cfg.valueSize)
 	if _, err := rng.Read(value); err != nil {
 		return result{}, fmt.Errorf("failed to seed value bytes: %w", err)

@@ -13,13 +13,13 @@ func BadgerOptions() *badger4.Options {
 
 	// Disable conflict detection to reduce write overhead; ev-node does not rely
 	// on Badger's multi-writer conflict checks for correctness.
-	opts.Options = opts.Options.WithDetectConflicts(false)
+	opts.Options = opts.WithDetectConflicts(false)
 	// Allow more L0 tables before compaction kicks in to smooth bursty ingest.
-	opts.Options = opts.Options.WithNumLevelZeroTables(10)
+	opts.Options = opts.WithNumLevelZeroTables(10)
 	// Stall threshold is raised to avoid write throttling under heavy load.
-	opts.Options = opts.Options.WithNumLevelZeroTablesStall(20)
+	opts.Options = opts.WithNumLevelZeroTablesStall(20)
 	// Scale compaction workers to available CPUs without over-saturating.
-	opts.Options = opts.Options.WithNumCompactors(compactorCount())
+	opts.Options = opts.WithNumCompactors(compactorCount())
 
 	return &opts
 }

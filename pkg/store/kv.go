@@ -57,6 +57,6 @@ func rootify(rootDir, dbPath string) string {
 // NewTestInMemoryKVStore builds KVStore that works in-memory (without accessing disk).
 func NewTestInMemoryKVStore() (ds.Batching, error) {
 	inMemoryOptions := BadgerOptions()
-	inMemoryOptions.Options = inMemoryOptions.Options.WithInMemory(true)
+	inMemoryOptions.Options = inMemoryOptions.WithInMemory(true)
 	return badger4.NewDatastore("", inMemoryOptions)
 }
