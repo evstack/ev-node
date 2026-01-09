@@ -9,6 +9,7 @@ import (
 	"github.com/stretchr/testify/mock"
 	"gotest.tools/v3/assert"
 
+	"github.com/evstack/ev-node/pkg/config"
 	datypes "github.com/evstack/ev-node/pkg/da/types"
 	"github.com/evstack/ev-node/pkg/genesis"
 	"github.com/evstack/ev-node/test/mocks"
@@ -16,7 +17,6 @@ import (
 
 func TestNewForcedInclusionRetriever(t *testing.T) {
 	client := mocks.NewMockClient(t)
-	client.On("HasForcedInclusionNamespace").Return(true).Maybe()
 	client.On("GetForcedInclusionNamespace").Return(datypes.NamespaceFromString("test-fi-ns").Bytes()).Maybe()
 
 	gen := genesis.Genesis{
@@ -24,20 +24,23 @@ func TestNewForcedInclusionRetriever(t *testing.T) {
 		DAEpochForcedInclusion: 10,
 	}
 
-	retriever := NewForcedInclusionRetriever(client, zerolog.Nop(), gen.DAStartHeight, gen.DAEpochForcedInclusion)
+	retriever := NewForcedInclusionRetriever(client, zerolog.Nop(), config.DefaultConfig(), gen.DAStartHeight, gen.DAEpochForcedInclusion)
 	assert.Assert(t, retriever != nil)
+	retriever.Stop()
 }
 
 func TestForcedInclusionRetriever_RetrieveForcedIncludedTxs_NoNamespace(t *testing.T) {
 	client := mocks.NewMockClient(t)
-	client.On("HasForcedInclusionNamespace").Return(false).Once()
+	client.On("HasForcedInclusionNamespace").Return(false).Maybe()
+	client.On("GetForcedInclusionNamespace").Return([]byte(nil)).Maybe()
 
 	gen := genesis.Genesis{
 		DAStartHeight:          100,
 		DAEpochForcedInclusion: 10,
 	}
 
-	retriever := NewForcedInclusionRetriever(client, zerolog.Nop(), gen.DAStartHeight, gen.DAEpochForcedInclusion)
+	retriever := NewForcedInclusionRetriever(client, zerolog.Nop(), config.DefaultConfig(), gen.DAStartHeight, gen.DAEpochForcedInclusion)
+	defer retriever.Stop()
 	ctx := context.Background()
 
 	_, err := retriever.RetrieveForcedIncludedTxs(ctx, 100)
@@ -48,7 +51,7 @@ func TestForcedInclusionRetriever_RetrieveForcedIncludedTxs_NoNamespace(t *testi
 func TestForcedInclusionRetriever_RetrieveForcedIncludedTxs_NotAtEpochStart(t *testing.T) {
 	client := mocks.NewMockClient(t)
 	fiNs := datypes.NamespaceFromString("test-fi-ns").Bytes()
-	client.On("HasForcedInclusionNamespace").Return(true).Once()
+	client.On("HasForcedInclusionNamespace").Return(true).Maybe()
 	client.On("GetForcedInclusionNamespace").Return(fiNs).Maybe()
 
 	gen := genesis.Genesis{
@@ -56,7 +59,8 @@ func TestForcedInclusionRetriever_RetrieveForcedIncludedTxs_NotAtEpochStart(t *t
 		DAEpochForcedInclusion: 10,
 	}
 
-	retriever := NewForcedInclusionRetriever(client, zerolog.Nop(), gen.DAStartHeight, gen.DAEpochForcedInclusion)
+	retriever := NewForcedInclusionRetriever(client, zerolog.Nop(), config.DefaultConfig(), gen.DAStartHeight, gen.DAEpochForcedInclusion)
+	defer retriever.Stop()
 	ctx := context.Background()
 
 	// Height 105 is not an epoch start (100, 110, 120, etc. are epoch starts)
@@ -77,19 +81,20 @@ func TestForcedInclusionRetriever_RetrieveForcedIncludedTxs_EpochStartSuccess(t 
 
 	client := mocks.NewMockClient(t)
 	fiNs := datypes.NamespaceFromString("test-fi-ns").Bytes()
-	client.On("HasForcedInclusionNamespace").Return(true).Once()
+	client.On("HasForcedInclusionNamespace").Return(true).Maybe()
 	client.On("GetForcedInclusionNamespace").Return(fiNs).Maybe()
 	client.On("Retrieve", mock.Anything, mock.Anything, fiNs).Return(datypes.ResultRetrieve{
 		BaseResult: datypes.BaseResult{Code: datypes.StatusSuccess, IDs: []datypes.ID{[]byte("id1"), []byte("id2"), []byte("id3")}, Timestamp: time.Now()},
 		Data:       testBlobs,
-	}).Once()
+	}).Maybe()
 
 	gen := genesis.Genesis{
 		DAStartHeight:          100,
 		DAEpochForcedInclusion: 1, // Single height epoch
 	}
 
-	retriever := NewForcedInclusionRetriever(client, zerolog.Nop(), gen.DAStartHeight, gen.DAEpochForcedInclusion)
+	retriever := NewForcedInclusionRetriever(client, zerolog.Nop(), config.DefaultConfig(), gen.DAStartHeight, gen.DAEpochForcedInclusion)
+	defer retriever.Stop()
 	ctx := context.Background()
 
 	// Height 100 is an epoch start
@@ -105,9 +110,11 @@ func TestForcedInclusionRetriever_RetrieveForcedIncludedTxs_EpochStartSuccess(t 
 func TestForcedInclusionRetriever_RetrieveForcedIncludedTxs_EpochStartNotAvailable(t *testing.T) {
 	client := mocks.NewMockClient(t)
 	fiNs := datypes.NamespaceFromString("test-fi-ns").Bytes()
-	client.On("HasForcedInclusionNamespace").Return(true).Once()
+	client.On("HasForcedInclusionNamespace").Return(true).Maybe()
 	client.On("GetForcedInclusionNamespace").Return(fiNs).Maybe()
-	client.On("Retrieve", mock.Anything, uint64(109), fiNs).Return(datypes.ResultRetrieve{
+
+	// Mock the first height in epoch as not available
+	client.On("Retrieve", mock.Anything, uint64(100), fiNs).Return(datypes.ResultRetrieve{
 		BaseResult: datypes.BaseResult{Code: datypes.StatusHeightFromFuture},
 	}).Once()
 
@@ -116,10 +123,11 @@ func TestForcedInclusionRetriever_RetrieveForcedIncludedTxs_EpochStartNotAvailab
 		DAEpochForcedInclusion: 10,
 	}
 
-	retriever := NewForcedInclusionRetriever(client, zerolog.Nop(), gen.DAStartHeight, gen.DAEpochForcedInclusion)
+	retriever := NewForcedInclusionRetriever(client, zerolog.Nop(), config.DefaultConfig(), gen.DAStartHeight, gen.DAEpochForcedInclusion)
+	defer retriever.Stop()
 	ctx := context.Background()
 
-	// Epoch boundaries: [100, 109] - retrieval happens at epoch end (109)
+	// Epoch boundaries: [100, 109] - now tries to fetch all blocks in epoch
 	_, err := retriever.RetrieveForcedIncludedTxs(ctx, 109)
 	assert.Assert(t, err != nil)
 	assert.ErrorContains(t, err, "not yet available")
@@ -128,7 +136,7 @@ func TestForcedInclusionRetriever_RetrieveForcedIncludedTxs_EpochStartNotAvailab
 func TestForcedInclusionRetriever_RetrieveForcedIncludedTxs_NoBlobsAtHeight(t *testing.T) {
 	client := mocks.NewMockClient(t)
 	fiNs := datypes.NamespaceFromString("test-fi-ns").Bytes()
-	client.On("HasForcedInclusionNamespace").Return(true).Once()
+	client.On("HasForcedInclusionNamespace").Return(true).Maybe()
 	client.On("GetForcedInclusionNamespace").Return(fiNs).Maybe()
 	client.On("Retrieve", mock.Anything, uint64(100), fiNs).Return(datypes.ResultRetrieve{
 		BaseResult: datypes.BaseResult{Code: datypes.StatusNotFound},
@@ -139,7 +147,8 @@ func TestForcedInclusionRetriever_RetrieveForcedIncludedTxs_NoBlobsAtHeight(t *t
 		DAEpochForcedInclusion: 1, // Single height epoch
 	}
 
-	retriever := NewForcedInclusionRetriever(client, zerolog.Nop(), gen.DAStartHeight, gen.DAEpochForcedInclusion)
+	retriever := NewForcedInclusionRetriever(client, zerolog.Nop(), config.DefaultConfig(), gen.DAStartHeight, gen.DAEpochForcedInclusion)
+	defer retriever.Stop()
 	ctx := context.Background()
 
 	event, err := retriever.RetrieveForcedIncludedTxs(ctx, 100)
@@ -157,7 +166,7 @@ func TestForcedInclusionRetriever_RetrieveForcedIncludedTxs_MultiHeightEpoch(t *
 
 	client := mocks.NewMockClient(t)
 	fiNs := datypes.NamespaceFromString("test-fi-ns").Bytes()
-	client.On("HasForcedInclusionNamespace").Return(true).Once()
+	client.On("HasForcedInclusionNamespace").Return(true).Maybe()
 	client.On("GetForcedInclusionNamespace").Return(fiNs).Maybe()
 	client.On("Retrieve", mock.Anything, uint64(102), fiNs).Return(datypes.ResultRetrieve{
 		BaseResult: datypes.BaseResult{Code: datypes.StatusSuccess, Timestamp: time.Now()},
@@ -177,7 +186,8 @@ func TestForcedInclusionRetriever_RetrieveForcedIncludedTxs_MultiHeightEpoch(t *
 		DAEpochForcedInclusion: 3, // Epoch: 100-102
 	}
 
-	retriever := NewForcedInclusionRetriever(client, zerolog.Nop(), gen.DAStartHeight, gen.DAEpochForcedInclusion)
+	retriever := NewForcedInclusionRetriever(client, zerolog.Nop(), config.DefaultConfig(), gen.DAStartHeight, gen.DAEpochForcedInclusion)
+	defer retriever.Stop()
 	ctx := context.Background()
 
 	// Epoch boundaries: [100, 102] - retrieval happens at epoch end (102)
@@ -193,86 +203,112 @@ func TestForcedInclusionRetriever_RetrieveForcedIncludedTxs_MultiHeightEpoch(t *
 	assert.Equal(t, len(event.Txs), expectedTxCount)
 }
 
-func TestForcedInclusionRetriever_processForcedInclusionBlobs(t *testing.T) {
+func TestForcedInclusionRetriever_RetrieveForcedIncludedTxs_ErrorHandling(t *testing.T) {
 	client := mocks.NewMockClient(t)
+	fiNs := datypes.NamespaceFromString("test-fi-ns").Bytes()
+	client.On("HasForcedInclusionNamespace").Return(true).Maybe()
+	client.On("GetForcedInclusionNamespace").Return(fiNs).Maybe()
+	client.On("Retrieve", mock.Anything, uint64(100), fiNs).Return(datypes.ResultRetrieve{
+		BaseResult: datypes.BaseResult{
+			Code:    datypes.StatusError,
+			Message: "test error",
+		},
+	}).Once()
 
 	gen := genesis.Genesis{
 		DAStartHeight:          100,
-		DAEpochForcedInclusion: 10,
+		DAEpochForcedInclusion: 1, // Single height epoch
 	}
 
-	retriever := NewForcedInclusionRetriever(client, zerolog.Nop(), gen.DAStartHeight, gen.DAEpochForcedInclusion)
+	retriever := NewForcedInclusionRetriever(client, zerolog.Nop(), config.DefaultConfig(), gen.DAStartHeight, gen.DAEpochForcedInclusion)
+	defer retriever.Stop()
+	ctx := context.Background()
 
-	tests := []struct {
-		name            string
-		result          datypes.ResultRetrieve
-		height          uint64
-		expectedTxCount int
-		expectError     bool
-	}{
-		{
-			name: "success with blobs",
-			result: datypes.ResultRetrieve{
-				BaseResult: datypes.BaseResult{
-					Code: datypes.StatusSuccess,
-				},
-				Data: [][]byte{[]byte("tx1"), []byte("tx2")},
-			},
-			height:          100,
-			expectedTxCount: 2,
-			expectError:     false,
-		},
-		{
-			name: "not found",
-			result: datypes.ResultRetrieve{
-				BaseResult: datypes.BaseResult{
-					Code: datypes.StatusNotFound,
-				},
-			},
-			height:          100,
-			expectedTxCount: 0,
-			expectError:     false,
-		},
-		{
-			name: "error status",
-			result: datypes.ResultRetrieve{
-				BaseResult: datypes.BaseResult{
-					Code:    datypes.StatusError,
-					Message: "test error",
-				},
-			},
-			height:      100,
-			expectError: true,
-		},
-		{
-			name: "empty blobs are skipped",
-			result: datypes.ResultRetrieve{
-				BaseResult: datypes.BaseResult{
-					Code: datypes.StatusSuccess,
-				},
-				Data: [][]byte{[]byte("tx1"), {}, []byte("tx2")},
-			},
-			height:          100,
-			expectedTxCount: 2,
-			expectError:     false,
-		},
+	// Should return empty event with no error (errors are logged and retried later)
+	event, err := retriever.RetrieveForcedIncludedTxs(ctx, 100)
+	assert.NilError(t, err)
+	assert.Assert(t, event != nil)
+	assert.Equal(t, len(event.Txs), 0)
+}
+
+func TestForcedInclusionRetriever_RetrieveForcedIncludedTxs_EmptyBlobsSkipped(t *testing.T) {
+	client := mocks.NewMockClient(t)
+	fiNs := datypes.NamespaceFromString("test-fi-ns").Bytes()
+	client.On("HasForcedInclusionNamespace").Return(true).Maybe()
+	client.On("GetForcedInclusionNamespace").Return(fiNs).Maybe()
+	client.On("Retrieve", mock.Anything, uint64(100), fiNs).Return(datypes.ResultRetrieve{
+		BaseResult: datypes.BaseResult{Code: datypes.StatusSuccess, Timestamp: time.Now()},
+		Data:       [][]byte{[]byte("tx1"), {}, []byte("tx2"), nil, []byte("tx3")},
+	}).Once()
+
+	gen := genesis.Genesis{
+		DAStartHeight:          100,
+		DAEpochForcedInclusion: 1, // Single height epoch
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			event := &ForcedInclusionEvent{
-				Txs: [][]byte{},
-			}
+	retriever := NewForcedInclusionRetriever(client, zerolog.Nop(), config.DefaultConfig(), gen.DAStartHeight, gen.DAEpochForcedInclusion)
+	defer retriever.Stop()
+	ctx := context.Background()
 
-			err := retriever.processForcedInclusionBlobs(event, tt.result, tt.height)
+	event, err := retriever.RetrieveForcedIncludedTxs(ctx, 100)
+	assert.NilError(t, err)
+	assert.Assert(t, event != nil)
+	// Should skip empty and nil blobs
+	assert.Equal(t, len(event.Txs), 3)
+	assert.DeepEqual(t, event.Txs[0], []byte("tx1"))
+	assert.DeepEqual(t, event.Txs[1], []byte("tx2"))
+	assert.DeepEqual(t, event.Txs[2], []byte("tx3"))
+}
 
-			if tt.expectError {
-				assert.Assert(t, err != nil)
-			} else {
-				assert.NilError(t, err)
-				assert.Equal(t, len(event.Txs), tt.expectedTxCount)
-				assert.Equal(t, event.Timestamp, time.Time{})
-			}
-		})
+func TestForcedInclusionRetriever_RetrieveForcedIncludedTxs_OrderPreserved(t *testing.T) {
+	// Test that transactions are returned in height order even when fetched out of order
+	testBlobsByHeight := map[uint64][][]byte{
+		100: {[]byte("tx-100-1"), []byte("tx-100-2")},
+		101: {[]byte("tx-101-1")},
+		102: {[]byte("tx-102-1"), []byte("tx-102-2")},
+	}
+
+	client := mocks.NewMockClient(t)
+	fiNs := datypes.NamespaceFromString("test-fi-ns").Bytes()
+	client.On("HasForcedInclusionNamespace").Return(true).Maybe()
+	client.On("GetForcedInclusionNamespace").Return(fiNs).Maybe()
+	// Return heights out of order to test ordering is preserved
+	client.On("Retrieve", mock.Anything, uint64(102), fiNs).Return(datypes.ResultRetrieve{
+		BaseResult: datypes.BaseResult{Code: datypes.StatusSuccess, Timestamp: time.Now()},
+		Data:       testBlobsByHeight[102],
+	}).Once()
+	client.On("Retrieve", mock.Anything, uint64(100), fiNs).Return(datypes.ResultRetrieve{
+		BaseResult: datypes.BaseResult{Code: datypes.StatusSuccess, Timestamp: time.Now()},
+		Data:       testBlobsByHeight[100],
+	}).Once()
+	client.On("Retrieve", mock.Anything, uint64(101), fiNs).Return(datypes.ResultRetrieve{
+		BaseResult: datypes.BaseResult{Code: datypes.StatusSuccess, Timestamp: time.Now()},
+		Data:       testBlobsByHeight[101],
+	}).Once()
+
+	gen := genesis.Genesis{
+		DAStartHeight:          100,
+		DAEpochForcedInclusion: 3, // Epoch: 100-102
+	}
+
+	retriever := NewForcedInclusionRetriever(client, zerolog.Nop(), config.DefaultConfig(), gen.DAStartHeight, gen.DAEpochForcedInclusion)
+	defer retriever.Stop()
+	ctx := context.Background()
+
+	event, err := retriever.RetrieveForcedIncludedTxs(ctx, 102)
+	assert.NilError(t, err)
+	assert.Assert(t, event != nil)
+
+	// Verify transactions are in height order: 100, 100, 101, 102, 102
+	expectedOrder := [][]byte{
+		[]byte("tx-100-1"),
+		[]byte("tx-100-2"),
+		[]byte("tx-101-1"),
+		[]byte("tx-102-1"),
+		[]byte("tx-102-2"),
+	}
+	assert.Equal(t, len(event.Txs), len(expectedOrder))
+	for i, expected := range expectedOrder {
+		assert.DeepEqual(t, event.Txs[i], expected)
 	}
 }
