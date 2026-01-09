@@ -17,102 +17,30 @@ import (
 	"github.com/evstack/ev-node/pkg/config"
 	datypes "github.com/evstack/ev-node/pkg/da/types"
 	"github.com/evstack/ev-node/pkg/genesis"
+	"github.com/evstack/ev-node/pkg/sequencers/common"
+	"github.com/evstack/ev-node/test/mocks"
 )
 
-// MockForcedInclusionRetriever is a mock implementation of ForcedInclusionRetriever for testing
-type MockForcedInclusionRetriever struct {
-	mock.Mock
+// MockFullDAClient combines MockClient and MockVerifier to implement FullDAClient
+type MockFullDAClient struct {
+	*mocks.MockClient
+	*mocks.MockVerifier
 }
 
-func (m *MockForcedInclusionRetriever) RetrieveForcedIncludedTxs(ctx context.Context, daHeight uint64) (*block.ForcedInclusionEvent, error) {
-	args := m.Called(ctx, daHeight)
-	if args.Get(0) == nil {
-		return nil, args.Error(1)
-	}
-	return args.Get(0).(*block.ForcedInclusionEvent), args.Error(1)
-}
-
-func (m *MockForcedInclusionRetriever) Stop() {
-	// No-op for mock
-}
-
-// MockDAClient is a mock implementation of block.FullDAClient for testing
-type MockDAClient struct {
-	mock.Mock
-	retriever *MockForcedInclusionRetriever
-}
-
-// Client interface methods
-func (m *MockDAClient) Submit(ctx context.Context, data [][]byte, gasPrice float64, namespace []byte, options []byte) datypes.ResultSubmit {
-	args := m.Called(ctx, data, gasPrice, namespace, options)
-	return args.Get(0).(datypes.ResultSubmit)
-}
-
-func (m *MockDAClient) Retrieve(ctx context.Context, height uint64, namespace []byte) datypes.ResultRetrieve {
-	args := m.Called(ctx, height, namespace)
-	return args.Get(0).(datypes.ResultRetrieve)
-}
-
-func (m *MockDAClient) Get(ctx context.Context, ids []datypes.ID, namespace []byte) ([]datypes.Blob, error) {
-	args := m.Called(ctx, ids, namespace)
-	if args.Get(0) == nil {
-		return nil, args.Error(1)
-	}
-	return args.Get(0).([]datypes.Blob), args.Error(1)
-}
-
-func (m *MockDAClient) GetHeaderNamespace() []byte {
-	args := m.Called()
-	if args.Get(0) == nil {
-		return nil
-	}
-	return args.Get(0).([]byte)
-}
-
-func (m *MockDAClient) GetDataNamespace() []byte {
-	args := m.Called()
-	if args.Get(0) == nil {
-		return nil
-	}
-	return args.Get(0).([]byte)
-}
-
-func (m *MockDAClient) GetForcedInclusionNamespace() []byte {
-	args := m.Called()
-	if args.Get(0) == nil {
-		return nil
-	}
-	return args.Get(0).([]byte)
-}
-
-func (m *MockDAClient) HasForcedInclusionNamespace() bool {
-	args := m.Called()
-	return args.Get(0).(bool)
-}
-
-// Verifier interface methods
-func (m *MockDAClient) GetProofs(ctx context.Context, ids []datypes.ID, namespace []byte) ([]datypes.Proof, error) {
-	args := m.Called(ctx, ids, namespace)
-	return args.Get(0).([]datypes.Proof), args.Error(1)
-}
-
-func (m *MockDAClient) Validate(ctx context.Context, ids []datypes.ID, proofs []datypes.Proof, namespace []byte) ([]bool, error) {
-	args := m.Called(ctx, ids, proofs, namespace)
-	return args.Get(0).([]bool), args.Error(1)
-}
-
-// createTestSequencer is a helper function to create a sequencer for testing
-func createTestSequencer(t *testing.T, mockRetriever *MockForcedInclusionRetriever, gen genesis.Genesis) *BasedSequencer {
+func createTestSequencer(t *testing.T, mockRetriever *common.MockForcedInclusionRetriever, gen genesis.Genesis) *BasedSequencer {
 	t.Helper()
 
 	// Create in-memory datastore
 	db := syncds.MutexWrap(ds.NewMapDatastore())
 
-	// Create mock DA client that wraps the retriever
-	mockDAClient := &MockDAClient{retriever: mockRetriever}
+	// Create mock DA client
+	mockDAClient := &MockFullDAClient{
+		MockClient:   mocks.NewMockClient(t),
+		MockVerifier: mocks.NewMockVerifier(t),
+	}
 	// Mock the forced inclusion namespace call
-	mockDAClient.On("GetForcedInclusionNamespace").Return([]byte("test-forced-inclusion-ns")).Maybe()
-	mockDAClient.On("HasForcedInclusionNamespace").Return(true).Maybe()
+	mockDAClient.MockClient.On("GetForcedInclusionNamespace").Return([]byte("test-forced-inclusion-ns")).Maybe()
+	mockDAClient.MockClient.On("HasForcedInclusionNamespace").Return(true).Maybe()
 
 	seq, err := NewBasedSequencer(mockDAClient, config.DefaultConfig(), db, gen, zerolog.Nop())
 	require.NoError(t, err)
@@ -124,7 +52,7 @@ func createTestSequencer(t *testing.T, mockRetriever *MockForcedInclusionRetriev
 }
 
 func TestBasedSequencer_SubmitBatchTxs(t *testing.T) {
-	mockRetriever := new(MockForcedInclusionRetriever)
+	mockRetriever := common.NewMockForcedInclusionRetriever(t)
 	gen := genesis.Genesis{
 		ChainID:                "test-chain",
 		DAEpochForcedInclusion: 10,
@@ -151,7 +79,7 @@ func TestBasedSequencer_SubmitBatchTxs(t *testing.T) {
 func TestBasedSequencer_GetNextBatch_WithForcedTxs(t *testing.T) {
 	testBlobs := [][]byte{[]byte("tx1"), []byte("tx2")}
 
-	mockRetriever := new(MockForcedInclusionRetriever)
+	mockRetriever := common.NewMockForcedInclusionRetriever(t)
 	mockRetriever.On("RetrieveForcedIncludedTxs", mock.Anything, uint64(100)).Return(&block.ForcedInclusionEvent{
 		Txs:           testBlobs,
 		StartDaHeight: 100,
@@ -187,7 +115,7 @@ func TestBasedSequencer_GetNextBatch_WithForcedTxs(t *testing.T) {
 }
 
 func TestBasedSequencer_GetNextBatch_EmptyDA(t *testing.T) {
-	mockRetriever := new(MockForcedInclusionRetriever)
+	mockRetriever := common.NewMockForcedInclusionRetriever(t)
 	mockRetriever.On("RetrieveForcedIncludedTxs", mock.Anything, uint64(100)).Return(&block.ForcedInclusionEvent{
 		Txs:           [][]byte{},
 		StartDaHeight: 100,
@@ -218,7 +146,7 @@ func TestBasedSequencer_GetNextBatch_EmptyDA(t *testing.T) {
 }
 
 func TestBasedSequencer_GetNextBatch_NotConfigured(t *testing.T) {
-	mockRetriever := new(MockForcedInclusionRetriever)
+	mockRetriever := common.NewMockForcedInclusionRetriever(t)
 	mockRetriever.On("RetrieveForcedIncludedTxs", mock.Anything, uint64(100)).Return(nil, block.ErrForceInclusionNotConfigured)
 
 	gen := genesis.Genesis{
@@ -249,7 +177,7 @@ func TestBasedSequencer_GetNextBatch_WithMaxBytes(t *testing.T) {
 	tx3 := make([]byte, 200)
 	testBlobs := [][]byte{tx1, tx2, tx3}
 
-	mockRetriever := new(MockForcedInclusionRetriever)
+	mockRetriever := common.NewMockForcedInclusionRetriever(t)
 	mockRetriever.On("RetrieveForcedIncludedTxs", mock.Anything, uint64(100)).Return(&block.ForcedInclusionEvent{
 		Txs:           testBlobs,
 		StartDaHeight: 100,
@@ -303,7 +231,7 @@ func TestBasedSequencer_GetNextBatch_MultipleDABlocks(t *testing.T) {
 	testBlobs1 := [][]byte{[]byte("tx1"), []byte("tx2")}
 	testBlobs2 := [][]byte{[]byte("tx3"), []byte("tx4")}
 
-	mockRetriever := new(MockForcedInclusionRetriever)
+	mockRetriever := common.NewMockForcedInclusionRetriever(t)
 	// First DA block
 	mockRetriever.On("RetrieveForcedIncludedTxs", mock.Anything, uint64(100)).Return(&block.ForcedInclusionEvent{
 		Txs:           testBlobs1,
@@ -354,7 +282,7 @@ func TestBasedSequencer_GetNextBatch_MultipleDABlocks(t *testing.T) {
 
 func TestBasedSequencer_GetNextBatch_ResumesFromCheckpoint(t *testing.T) {
 	testBlobs := [][]byte{[]byte("tx1"), []byte("tx2"), []byte("tx3")}
-	mockRetriever := new(MockForcedInclusionRetriever)
+	mockRetriever := common.NewMockForcedInclusionRetriever(t)
 
 	gen := genesis.Genesis{
 		ChainID:                "test-chain",
@@ -392,7 +320,7 @@ func TestBasedSequencer_GetNextBatch_ForcedInclusionExceedsMaxBytes(t *testing.T
 	largeTx := make([]byte, 2000)
 	testBlobs := [][]byte{largeTx}
 
-	mockRetriever := new(MockForcedInclusionRetriever)
+	mockRetriever := common.NewMockForcedInclusionRetriever(t)
 	mockRetriever.On("RetrieveForcedIncludedTxs", mock.Anything, uint64(100)).Return(&block.ForcedInclusionEvent{
 		Txs:           testBlobs,
 		StartDaHeight: 100,
@@ -423,7 +351,7 @@ func TestBasedSequencer_GetNextBatch_ForcedInclusionExceedsMaxBytes(t *testing.T
 }
 
 func TestBasedSequencer_VerifyBatch(t *testing.T) {
-	mockRetriever := new(MockForcedInclusionRetriever)
+	mockRetriever := common.NewMockForcedInclusionRetriever(t)
 	gen := genesis.Genesis{
 		ChainID:                "test-chain",
 		DAEpochForcedInclusion: 10,
@@ -444,7 +372,7 @@ func TestBasedSequencer_VerifyBatch(t *testing.T) {
 }
 
 func TestBasedSequencer_SetDAHeight(t *testing.T) {
-	mockRetriever := new(MockForcedInclusionRetriever)
+	mockRetriever := common.NewMockForcedInclusionRetriever(t)
 	gen := genesis.Genesis{
 		ChainID:                "test-chain",
 		DAStartHeight:          100,
@@ -462,7 +390,7 @@ func TestBasedSequencer_SetDAHeight(t *testing.T) {
 }
 
 func TestBasedSequencer_GetNextBatch_ErrorHandling(t *testing.T) {
-	mockRetriever := new(MockForcedInclusionRetriever)
+	mockRetriever := common.NewMockForcedInclusionRetriever(t)
 	mockRetriever.On("RetrieveForcedIncludedTxs", mock.Anything, uint64(100)).Return(nil, block.ErrForceInclusionNotConfigured)
 
 	gen := genesis.Genesis{
@@ -487,7 +415,7 @@ func TestBasedSequencer_GetNextBatch_ErrorHandling(t *testing.T) {
 }
 
 func TestBasedSequencer_GetNextBatch_HeightFromFuture(t *testing.T) {
-	mockRetriever := new(MockForcedInclusionRetriever)
+	mockRetriever := common.NewMockForcedInclusionRetriever(t)
 	mockRetriever.On("RetrieveForcedIncludedTxs", mock.Anything, uint64(100)).Return(nil, datypes.ErrHeightFromFuture)
 
 	gen := genesis.Genesis{
@@ -518,7 +446,7 @@ func TestBasedSequencer_GetNextBatch_HeightFromFuture(t *testing.T) {
 func TestBasedSequencer_CheckpointPersistence(t *testing.T) {
 	testBlobs := [][]byte{[]byte("tx1"), []byte("tx2")}
 
-	mockRetriever := new(MockForcedInclusionRetriever)
+	mockRetriever := common.NewMockForcedInclusionRetriever(t)
 	mockRetriever.On("RetrieveForcedIncludedTxs", mock.Anything, uint64(100)).Return(&block.ForcedInclusionEvent{
 		Txs:           testBlobs,
 		StartDaHeight: 100,
@@ -535,9 +463,12 @@ func TestBasedSequencer_CheckpointPersistence(t *testing.T) {
 	db := syncds.MutexWrap(ds.NewMapDatastore())
 
 	// Create mock DA client
-	mockDAClient := &MockDAClient{retriever: mockRetriever}
-	mockDAClient.On("GetForcedInclusionNamespace").Return([]byte("test-forced-inclusion-ns")).Maybe()
-	mockDAClient.On("HasForcedInclusionNamespace").Return(true).Maybe()
+	mockDAClient := &MockFullDAClient{
+		MockClient:   mocks.NewMockClient(t),
+		MockVerifier: mocks.NewMockVerifier(t),
+	}
+	mockDAClient.MockClient.On("GetForcedInclusionNamespace").Return([]byte("test-forced-inclusion-ns")).Maybe()
+	mockDAClient.MockClient.On("HasForcedInclusionNamespace").Return(true).Maybe()
 
 	// Create first sequencer
 	seq1, err := NewBasedSequencer(mockDAClient, config.DefaultConfig(), db, gen, zerolog.Nop())
@@ -558,9 +489,12 @@ func TestBasedSequencer_CheckpointPersistence(t *testing.T) {
 	assert.Equal(t, 2, len(resp.Batch.Transactions))
 
 	// Create a new sequencer with the same datastore (simulating restart)
-	mockDAClient2 := &MockDAClient{retriever: mockRetriever}
-	mockDAClient2.On("GetForcedInclusionNamespace").Return([]byte("test-forced-inclusion-ns")).Maybe()
-	mockDAClient2.On("HasForcedInclusionNamespace").Return(true).Maybe()
+	mockDAClient2 := &MockFullDAClient{
+		MockClient:   mocks.NewMockClient(t),
+		MockVerifier: mocks.NewMockVerifier(t),
+	}
+	mockDAClient2.MockClient.On("GetForcedInclusionNamespace").Return([]byte("test-forced-inclusion-ns")).Maybe()
+	mockDAClient2.MockClient.On("HasForcedInclusionNamespace").Return(true).Maybe()
 	seq2, err := NewBasedSequencer(mockDAClient2, config.DefaultConfig(), db, gen, zerolog.Nop())
 	require.NoError(t, err)
 
@@ -575,7 +509,7 @@ func TestBasedSequencer_CheckpointPersistence(t *testing.T) {
 }
 
 func TestBasedSequencer_GetNextBatch_EmptyDABatch_IncreasesDAHeight(t *testing.T) {
-	mockRetriever := new(MockForcedInclusionRetriever)
+	mockRetriever := common.NewMockForcedInclusionRetriever(t)
 
 	// First DA block returns empty transactions
 	mockRetriever.On("RetrieveForcedIncludedTxs", mock.Anything, uint64(100)).Return(&block.ForcedInclusionEvent{
@@ -642,7 +576,7 @@ func TestBasedSequencer_GetNextBatch_TimestampAdjustment(t *testing.T) {
 	testBlobs := [][]byte{[]byte("tx1"), []byte("tx2"), []byte("tx3")}
 	daEndTime := time.Date(2024, 1, 1, 12, 0, 0, 0, time.UTC)
 
-	mockRetriever := new(MockForcedInclusionRetriever)
+	mockRetriever := common.NewMockForcedInclusionRetriever(t)
 	mockRetriever.On("RetrieveForcedIncludedTxs", mock.Anything, uint64(100)).Return(&block.ForcedInclusionEvent{
 		Txs:           testBlobs,
 		StartDaHeight: 100,
@@ -684,7 +618,7 @@ func TestBasedSequencer_GetNextBatch_TimestampAdjustment_PartialBatch(t *testing
 	testBlobs := [][]byte{tx1, tx2, tx3}
 	daEndTime := time.Date(2024, 1, 1, 12, 0, 0, 0, time.UTC)
 
-	mockRetriever := new(MockForcedInclusionRetriever)
+	mockRetriever := common.NewMockForcedInclusionRetriever(t)
 	mockRetriever.On("RetrieveForcedIncludedTxs", mock.Anything, uint64(100)).Return(&block.ForcedInclusionEvent{
 		Txs:           testBlobs,
 		StartDaHeight: 100,
@@ -740,7 +674,7 @@ func TestBasedSequencer_GetNextBatch_TimestampAdjustment_EmptyBatch(t *testing.T
 	// Test that timestamp is zero when batch is empty
 	daEndTime := time.Date(2024, 1, 1, 12, 0, 0, 0, time.UTC)
 
-	mockRetriever := new(MockForcedInclusionRetriever)
+	mockRetriever := common.NewMockForcedInclusionRetriever(t)
 	mockRetriever.On("RetrieveForcedIncludedTxs", mock.Anything, uint64(100)).Return(&block.ForcedInclusionEvent{
 		Txs:           [][]byte{},
 		StartDaHeight: 100,

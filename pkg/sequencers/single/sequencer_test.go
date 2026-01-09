@@ -18,33 +18,20 @@ import (
 	"github.com/evstack/ev-node/pkg/config"
 	datypes "github.com/evstack/ev-node/pkg/da/types"
 	"github.com/evstack/ev-node/pkg/genesis"
-	damocks "github.com/evstack/ev-node/test/mocks"
+	"github.com/evstack/ev-node/test/mocks"
 	"github.com/evstack/ev-node/test/testda"
 )
 
-// MockForcedInclusionRetriever is a mock implementation of DARetriever for testing
-type MockForcedInclusionRetriever struct {
-	mock.Mock
-}
-
-func (m *MockForcedInclusionRetriever) RetrieveForcedIncludedTxs(ctx context.Context, daHeight uint64) (*block.ForcedInclusionEvent, error) {
-	args := m.Called(ctx, daHeight)
-	if args.Get(0) == nil {
-		return nil, args.Error(1)
-	}
-	return args.Get(0).(*block.ForcedInclusionEvent), args.Error(1)
-}
-
 // MockFullDAClient combines MockClient and MockVerifier to implement FullDAClient
 type MockFullDAClient struct {
-	*damocks.MockClient
-	*damocks.MockVerifier
+	*mocks.MockClient
+	*mocks.MockVerifier
 }
 
 func newMockFullDAClient(t *testing.T) *MockFullDAClient {
 	return &MockFullDAClient{
-		MockClient:   damocks.NewMockClient(t),
-		MockVerifier: damocks.NewMockVerifier(t),
+		MockClient:   mocks.NewMockClient(t),
+		MockVerifier: mocks.NewMockVerifier(t),
 	}
 }
 
