@@ -132,24 +132,18 @@ func (r *ForcedInclusionRetriever) RetrieveForcedIncludedTxs(ctx context.Context
 			missingHeights = append(missingHeights, h)
 			continue
 		}
-		if block == nil {
-			// Cache miss
+		if block == nil { // Cache miss
 			missingHeights = append(missingHeights, h)
-		} else {
-			// Cache hit
+		} else { // Cache hit
 			cachedBlocks[h] = block
-			r.logger.Debug().
-				Uint64("height", h).
-				Int("blob_count", len(block.Blobs)).
-				Msg("using cached block from async fetcher")
 		}
 	}
 
-	// Fetch missing heights synchronously
+	// Fetch missing heights synchronously and store in map
+	syncFetchedBlocks := make(map[uint64]*BlockData)
 	var processErrs error
 	for _, h := range missingHeights {
 		result := r.client.Retrieve(ctx, h, r.client.GetForcedInclusionNamespace())
-
 		if result.Code == datypes.StatusHeightFromFuture {
 			r.logger.Debug().
 				Uint64("height", h).
@@ -157,14 +151,40 @@ func (r *ForcedInclusionRetriever) RetrieveForcedIncludedTxs(ctx context.Context
 			return nil, fmt.Errorf("%w: height %d not yet available", datypes.ErrHeightFromFuture, h)
 		}
 
-		err := r.processRetrieveResult(event, result, h)
-		processErrs = errors.Join(processErrs, err)
+		if result.Code == datypes.StatusNotFound {
+			r.logger.Debug().Uint64("height", h).Msg("no forced inclusion blobs at height")
+			continue
+		}
+
+		if result.Code != datypes.StatusSuccess {
+			err := fmt.Errorf("failed to retrieve forced inclusion blobs at height %d: %s", h, result.Message)
+			processErrs = errors.Join(processErrs, err)
+			continue
+		}
+
+		// Store the sync-fetched block data
+		syncFetchedBlocks[h] = &BlockData{
+			Blobs:     result.Data,
+			Timestamp: result.Timestamp,
+		}
 	}
 
-	// Process cached blocks in order
+	// Process all blocks in height order
 	for _, h := range heights {
-		if block, ok := cachedBlocks[h]; ok {
-			// Add blobs from cached block
+		var block *BlockData
+		var source string
+
+		// Check cached blocks first, then sync-fetched
+		if cachedBlock, ok := cachedBlocks[h]; ok {
+			block = cachedBlock
+			source = "cache"
+		} else if syncBlock, ok := syncFetchedBlocks[h]; ok {
+			block = syncBlock
+			source = "sync"
+		}
+
+		if block != nil {
+			// Add blobs from block
 			for _, blob := range block.Blobs {
 				if len(blob) > 0 {
 					event.Txs = append(event.Txs, blob)
@@ -179,8 +199,13 @@ func (r *ForcedInclusionRetriever) RetrieveForcedIncludedTxs(ctx context.Context
 			r.logger.Debug().
 				Uint64("height", h).
 				Int("blob_count", len(block.Blobs)).
-				Msg("added blobs from cached block")
+				Str("source", source).
+				Msg("added blobs from block")
 		}
+
+		// Clean up maps to prevent unbounded memory growth
+		delete(cachedBlocks, h)
+		delete(syncFetchedBlocks, h)
 	}
 
 	// any error during process, need to retry at next call
@@ -200,48 +225,5 @@ func (r *ForcedInclusionRetriever) RetrieveForcedIncludedTxs(ctx context.Context
 		}, nil
 	}
 
-	r.logger.Info().
-		Uint64("da_height", daHeight).
-		Uint64("epoch_start", epochStart).
-		Uint64("epoch_end", epochEnd).
-		Int("tx_count", len(event.Txs)).
-		Int("cached_blocks", len(cachedBlocks)).
-		Int("sync_fetched_blocks", len(missingHeights)).
-		Msg("successfully retrieved forced inclusion epoch")
-
 	return event, nil
-}
-
-// processRetrieveResult processes the result from a DA retrieve operation.
-func (r *ForcedInclusionRetriever) processRetrieveResult(
-	event *ForcedInclusionEvent,
-	result datypes.ResultRetrieve,
-	height uint64,
-) error {
-	if result.Code == datypes.StatusNotFound {
-		r.logger.Debug().Uint64("height", height).Msg("no forced inclusion blobs at height")
-		return nil
-	}
-
-	if result.Code != datypes.StatusSuccess {
-		return fmt.Errorf("failed to retrieve forced inclusion blobs at height %d: %s", height, result.Message)
-	}
-
-	// Process each blob as a transaction
-	for _, blob := range result.Data {
-		if len(blob) > 0 {
-			event.Txs = append(event.Txs, blob)
-		}
-	}
-
-	if result.Timestamp.After(event.Timestamp) {
-		event.Timestamp = result.Timestamp
-	}
-
-	r.logger.Debug().
-		Uint64("height", height).
-		Int("blob_count", len(result.Data)).
-		Msg("processed forced inclusion blobs")
-
-	return nil
 }
