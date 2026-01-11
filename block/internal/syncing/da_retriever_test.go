@@ -148,7 +148,7 @@ func TestDARetriever_ProcessBlobs_HeaderAndData_Success(t *testing.T) {
 	dataBin, data := makeSignedDataBytes(t, gen.ChainID, 2, addr, pub, signer, 2)
 	hdrBin, _ := makeSignedHeaderBytes(t, gen.ChainID, 2, addr, pub, signer, nil, &data.Data, nil)
 
-	events := r.processBlobs(context.Background(), [][]byte{hdrBin, dataBin}, 77)
+	events := r.ProcessBlobs(context.Background(), [][]byte{hdrBin, dataBin}, 77)
 	require.Len(t, events, 1)
 	assert.Equal(t, uint64(2), events[0].Header.Height())
 	assert.Equal(t, uint64(2), events[0].Data.Height())
@@ -172,7 +172,7 @@ func TestDARetriever_ProcessBlobs_HeaderOnly_EmptyDataExpected(t *testing.T) {
 	// Header with no data hash present should trigger empty data creation (per current logic)
 	hb, _ := makeSignedHeaderBytes(t, gen.ChainID, 3, addr, pub, signer, nil, nil, nil)
 
-	events := r.processBlobs(context.Background(), [][]byte{hb}, 88)
+	events := r.ProcessBlobs(context.Background(), [][]byte{hb}, 88)
 	require.Len(t, events, 1)
 	assert.Equal(t, uint64(3), events[0].Header.Height())
 	assert.NotNil(t, events[0].Data)
@@ -282,14 +282,14 @@ func TestDARetriever_ProcessBlobs_CrossDAHeightMatching(t *testing.T) {
 	hdrBin, _ := makeSignedHeaderBytes(t, gen.ChainID, 5, addr, pub, signer, nil, &data.Data, nil)
 
 	// Process header from DA height 100 first
-	events1 := r.processBlobs(context.Background(), [][]byte{hdrBin}, 100)
+	events1 := r.ProcessBlobs(context.Background(), [][]byte{hdrBin}, 100)
 	require.Len(t, events1, 0, "should not create event yet - data is missing")
 
 	// Verify header is stored in pending headers
 	require.Contains(t, r.pendingHeaders, uint64(5), "header should be stored as pending")
 
 	// Process data from DA height 102
-	events2 := r.processBlobs(context.Background(), [][]byte{dataBin}, 102)
+	events2 := r.ProcessBlobs(context.Background(), [][]byte{dataBin}, 102)
 	require.Len(t, events2, 1, "should create event when matching data arrives")
 
 	event := events2[0]
@@ -319,7 +319,7 @@ func TestDARetriever_ProcessBlobs_MultipleHeadersCrossDAHeightMatching(t *testin
 	hdr5Bin, _ := makeSignedHeaderBytes(t, gen.ChainID, 5, addr, pub, signer, nil, &data5.Data, nil)
 
 	// Process multiple headers from DA height 200 - should be stored as pending
-	events1 := r.processBlobs(context.Background(), [][]byte{hdr3Bin, hdr4Bin, hdr5Bin}, 200)
+	events1 := r.ProcessBlobs(context.Background(), [][]byte{hdr3Bin, hdr4Bin, hdr5Bin}, 200)
 	require.Len(t, events1, 0, "should not create events yet - all data is missing")
 
 	// Verify all headers are stored in pending
@@ -328,7 +328,7 @@ func TestDARetriever_ProcessBlobs_MultipleHeadersCrossDAHeightMatching(t *testin
 	require.Contains(t, r.pendingHeaders, uint64(5), "header 5 should be pending")
 
 	// Process some data from DA height 203 - should create partial events
-	events2 := r.processBlobs(context.Background(), [][]byte{data3Bin, data5Bin}, 203)
+	events2 := r.ProcessBlobs(context.Background(), [][]byte{data3Bin, data5Bin}, 203)
 	require.Len(t, events2, 2, "should create events for heights 3 and 5")
 
 	// Sort events by height for consistent testing
@@ -352,7 +352,7 @@ func TestDARetriever_ProcessBlobs_MultipleHeadersCrossDAHeightMatching(t *testin
 	require.NotContains(t, r.pendingHeaders, uint64(5), "header 5 should be removed from pending")
 
 	// Process remaining data from DA height 205
-	events3 := r.processBlobs(context.Background(), [][]byte{data4Bin}, 205)
+	events3 := r.ProcessBlobs(context.Background(), [][]byte{data4Bin}, 205)
 	require.Len(t, events3, 1, "should create event for height 4")
 
 	// Verify final event for height 4
