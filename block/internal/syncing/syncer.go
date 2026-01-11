@@ -316,26 +316,89 @@ func (s *Syncer) daWorkerLoop() {
 
 	s.logger.Info().Msg("starting DA worker")
 	defer s.logger.Info().Msg("DA worker stopped")
+	backoff := s.config.DA.BlockTime.Duration
+	if backoff <= 0 {
+		backoff = 2 * time.Second
+	}
 
 	for {
-		err := s.fetchDAUntilCaughtUp()
-
-		var backoff time.Duration
-		if err == nil {
-			// No error, means we are caught up.
-			backoff = s.config.DA.BlockTime.Duration
-		} else {
-			// Error, back off for a shorter duration.
-			backoff = s.config.DA.BlockTime.Duration
-			if backoff <= 0 {
-				backoff = 2 * time.Second
+		// 1. Catch up mode: fetch sequentially until we are up to date
+		if err := s.fetchDAUntilCaughtUp(); err != nil {
+			s.logger.Error().Err(err).Msg("DA catchup failed, retrying after backoff")
+			select {
+			case <-s.ctx.Done():
+				return
+			case <-time.After(backoff):
 			}
+			continue
 		}
 
+		// 2. Follow mode: use subscription to receive new blocks
+		// If subscription fails or gap is detected, we fall back to catchup mode
+		if err := s.followDA(); err != nil {
+			if errors.Is(err, context.Canceled) {
+				return
+			}
+			s.logger.Warn().Err(err).Msg("DA follow disrupted")
+			// We don't need explicit backoff here as we'll switch to catchup immediately,
+			// checking if there are new blocks to fetch.
+		}
+		s.logger.Info().Msg("DA follow mode resumed")
+	}
+}
+
+// followDA subscribes to DA events and processes them until a gap is detected or error occurs
+func (s *Syncer) followDA() error {
+	s.logger.Info().Msg("entering DA follow mode")
+
+	ctx, cancel := context.WithCancel(s.ctx)
+	defer cancel()
+	subCh := make(chan common.DAHeightEvent, 1)
+
+	if err := s.daRetriever.Subscribe(ctx, subCh); err != nil {
+		return fmt.Errorf("subscribe to DA: %w", err)
+	}
+
+	for {
 		select {
-		case <-s.ctx.Done():
-			return
-		case <-time.After(backoff):
+		case <-ctx.Done():
+			return ctx.Err()
+		case event, ok := <-subCh:
+			if !ok {
+				return errors.New("DA subscription channel closed")
+			}
+
+			// Calculate expected height
+			nextExpectedHeight := max(s.daRetrieverHeight.Load(), s.cache.DaHeight())
+
+			// If we receive an event for a future height (gap), break to trigger catchup
+			if event.DaHeight > nextExpectedHeight {
+				s.logger.Info().
+					Uint64("event_da_height", event.DaHeight).
+					Uint64("expected_da_height", nextExpectedHeight).
+					Msg("gap detected in DA stream, switching to catchup")
+				return nil
+			}
+
+			// If event is old/duplicate, log and ignore (or just update height if needed)
+			if event.DaHeight < nextExpectedHeight {
+				s.logger.Debug().
+					Uint64("event_da_height", event.DaHeight).
+					Uint64("expected_da_height", nextExpectedHeight).
+					Msg("received old DA event, ignoring")
+				continue
+			}
+
+			// Process event (same conceptual logic as catchup)
+			select {
+			case s.heightInCh <- event:
+			default:
+				// If channel is full, use cache as backup/buffer
+				s.cache.SetPendingEvent(event.Header.Height(), &event)
+			}
+
+			// Update expected height
+			s.daRetrieverHeight.Store(event.DaHeight + 1)
 		}
 	}
 }

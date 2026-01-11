@@ -5,6 +5,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sort"
+	"sync"
 
 	"github.com/rs/zerolog"
 	"google.golang.org/protobuf/proto"
@@ -21,6 +23,7 @@ import (
 // DARetriever defines the interface for retrieving events from the DA layer
 type DARetriever interface {
 	RetrieveFromDA(ctx context.Context, daHeight uint64) ([]common.DAHeightEvent, error)
+	Subscribe(ctx context.Context, ch chan common.DAHeightEvent) error
 }
 
 // daRetriever handles DA retrieval operations for syncing
@@ -34,6 +37,7 @@ type daRetriever struct {
 	// on restart, will be refetch as da height is updated by syncer
 	pendingHeaders map[uint64]*types.SignedHeader
 	pendingData    map[uint64]*types.Data
+	mu             sync.Mutex
 
 	// strictMode indicates if the node has seen a valid DAHeaderEnvelope
 	// and should now reject all legacy/unsigned headers.
@@ -73,6 +77,70 @@ func (r *daRetriever) RetrieveFromDA(ctx context.Context, daHeight uint64) ([]co
 
 	r.logger.Debug().Int("blobs", len(blobsResp.Data)).Uint64("da_height", daHeight).Msg("retrieved blob data")
 	return r.processBlobs(ctx, blobsResp.Data, daHeight), nil
+}
+
+// Subscribe subscribes to specific DA namespace
+func (r *daRetriever) Subscribe(ctx context.Context, outCh chan common.DAHeightEvent) error {
+	subChHeader, err := r.client.Subscribe(ctx, r.client.GetHeaderNamespace())
+	if err != nil {
+		return fmt.Errorf("subscribe to headers: %w", err)
+	}
+
+	var subChData <-chan datypes.ResultRetrieve
+	if !bytes.Equal(r.client.GetHeaderNamespace(), r.client.GetDataNamespace()) {
+		var err error
+		subChData, err = r.client.Subscribe(ctx, r.client.GetDataNamespace())
+		if err != nil {
+			return fmt.Errorf("subscribe to data: %w", err)
+		}
+	}
+
+	go func() {
+		defer close(outCh)
+		for {
+			var blobs [][]byte
+			var height uint64
+			var errCode datypes.StatusCode
+
+			select {
+			case <-ctx.Done():
+				return
+			case res, ok := <-subChHeader:
+				if !ok {
+					return
+				}
+				blobs = res.Data
+				height = res.Height
+				errCode = res.Code
+			case res, ok := <-subChData:
+				if subChData == nil {
+					continue
+				}
+				if !ok {
+					return
+				}
+				blobs = res.Data
+				height = res.Height
+				errCode = res.Code
+			}
+
+			if errCode != datypes.StatusSuccess {
+				r.logger.Error().Uint64("code", uint64(errCode)).Msg("subscription error")
+				continue
+			}
+
+			events := r.processBlobs(ctx, blobs, height)
+			for _, ev := range events {
+				select {
+				case <-ctx.Done():
+					return
+				case outCh <- ev:
+				}
+			}
+		}
+	}()
+
+	return nil
 }
 
 // fetchBlobs retrieves blobs from both header and data namespaces
@@ -150,6 +218,9 @@ func (r *daRetriever) validateBlobResponse(res datypes.ResultRetrieve, daHeight 
 
 // processBlobs processes retrieved blobs to extract headers and data and returns height events
 func (r *daRetriever) processBlobs(ctx context.Context, blobs [][]byte, daHeight uint64) []common.DAHeightEvent {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
 	// Decode all blobs
 	for _, bz := range blobs {
 		if len(bz) == 0 {
@@ -212,18 +283,17 @@ func (r *daRetriever) processBlobs(ctx context.Context, blobs [][]byte, daHeight
 		events = append(events, event)
 	}
 
+	// Sort events by height to match execution order
+	sort.Slice(events, func(i, j int) bool {
+		if events[i].DaHeight != events[j].DaHeight {
+			return events[i].DaHeight < events[j].DaHeight
+		}
+		return events[i].Header.Height() < events[j].Header.Height()
+	})
+
 	if len(events) > 0 {
 		startHeight := events[0].Header.Height()
-		endHeight := events[0].Header.Height()
-		for _, event := range events {
-			h := event.Header.Height()
-			if h < startHeight {
-				startHeight = h
-			}
-			if h > endHeight {
-				endHeight = h
-			}
-		}
+		endHeight := events[len(events)-1].Header.Height()
 		r.logger.Info().Uint64("da_height", daHeight).Uint64("start_height", startHeight).Uint64("end_height", endHeight).Msg("processed blocks from DA")
 	}
 

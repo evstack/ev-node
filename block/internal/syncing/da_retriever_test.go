@@ -374,3 +374,32 @@ func Test_isEmptyDataExpected(t *testing.T) {
 	h.DataHash = common.DataHashForEmptyTxs
 	assert.True(t, isEmptyDataExpected(h))
 }
+
+func TestDARetriever_ProcessBlobs_Sorting(t *testing.T) {
+	addr, pub, signer := buildSyncTestSigner(t)
+	gen := genesis.Genesis{ChainID: "tchain", InitialHeight: 1, StartTime: time.Now().Add(-time.Second), ProposerAddress: addr}
+	r := newTestDARetriever(t, nil, config.DefaultConfig(), gen)
+
+	// Event A: Block Height 10
+	// Event B: Block Height 5
+	// Although DaHeight is currently identical for all events in a single processBlobs call,
+	// this test ensures that the secondary sort key (Block Height) behaves correctly.
+
+	data1Bin, data1 := makeSignedDataBytes(t, gen.ChainID, 10, addr, pub, signer, 1)
+	data2Bin, data2 := makeSignedDataBytes(t, gen.ChainID, 5, addr, pub, signer, 1)
+
+	hdr1Bin, _ := makeSignedHeaderBytes(t, gen.ChainID, 10, addr, pub, signer, nil, &data1.Data, nil)
+	hdr2Bin, _ := makeSignedHeaderBytes(t, gen.ChainID, 5, addr, pub, signer, nil, &data2.Data, nil)
+
+	// Process blobs.
+	daHeight := uint64(100)
+	// We pass them in mixed order to ensure sorting happens.
+	events := r.processBlobs(context.Background(), [][]byte{hdr1Bin, data1Bin, hdr2Bin, data2Bin}, daHeight)
+
+	require.Len(t, events, 2)
+	assert.Equal(t, uint64(5), events[0].Header.Height(), "Events should be sorted by block height asc")
+	assert.Equal(t, uint64(10), events[1].Header.Height())
+
+	assert.Equal(t, daHeight, events[0].DaHeight)
+	assert.Equal(t, daHeight, events[1].DaHeight)
+}
