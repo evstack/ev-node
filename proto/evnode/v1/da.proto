@@ -1,0 +1,11 @@
+syntax = "proto3";
+package evnode.v1;
+
+option go_package = "github.com/evstack/ev-node/types/pb/evnode/v1";
+
+// BlockData contains data retrieved from a single DA height.
+message BlockData {
+  uint64 height = 1;
+  int64 timestamp = 2; // Unix timestamp in seconds
+  repeated bytes blobs = 3;
+}
