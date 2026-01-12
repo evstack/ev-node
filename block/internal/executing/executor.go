@@ -755,6 +755,21 @@ func (e *Executor) IsSynced(expHeight uint64) bool {
 	return state.LastBlockHeight == expHeight
 }
 
+// IsSyncedWithRaft checks if the local state is synced with the given raft state, including hash check.
+func (e *Executor) IsSyncedWithRaft(raftState *raft.RaftBlockState) bool {
+	if !e.IsSynced(raftState.Height) {
+		return false
+	}
+
+	header, err := e.store.GetHeader(e.ctx, raftState.Height)
+	if err != nil {
+		e.logger.Error().Err(err).Uint64("height", raftState.Height).Msg("failed to get header for sync check")
+		return false
+	}
+
+	return bytes.Equal(header.Hash(), raftState.Hash)
+}
+
 // BatchData represents batch data from sequencer
 type BatchData struct {
 	*coresequencer.Batch

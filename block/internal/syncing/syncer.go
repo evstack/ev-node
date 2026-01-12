@@ -1164,6 +1164,21 @@ func (s *Syncer) IsSynced(expHeight uint64) bool {
 	return state.LastBlockHeight == expHeight && !s.isCatchingUpState()
 }
 
+// IsSyncedWithRaft checks if the local state is synced with the given raft state, including hash check.
+func (s *Syncer) IsSyncedWithRaft(raftState *raft.RaftBlockState) bool {
+	if !s.IsSynced(raftState.Height) {
+		return false
+	}
+
+	header, err := s.store.GetHeader(s.ctx, raftState.Height)
+	if err != nil {
+		s.logger.Error().Err(err).Uint64("height", raftState.Height).Msg("failed to get header for sync check")
+		return false
+	}
+
+	return bytes.Equal(header.Hash(), raftState.Hash)
+}
+
 // RecoverFromRaft attempts to recover the state from a raft block state
 func (s *Syncer) RecoverFromRaft(ctx context.Context, raftState *raft.RaftBlockState) error {
 	s.logger.Info().Uint64("height", raftState.Height).Msg("recovering state from raft")
@@ -1184,6 +1199,30 @@ func (s *Syncer) RecoverFromRaft(ctx context.Context, raftState *raft.RaftBlockS
 	}
 
 	currentState := s.getLastState()
+
+	// If the current state matches the raft state height, but hashes mismatch (implied by calling Recover),
+	// we need to rollback the local state to the previous height to accept the new block.
+	if currentState.LastBlockHeight >= raftState.Height {
+		targetRollbackHeight := raftState.Height - 1
+		s.logger.Warn().
+			Uint64("current_height", currentState.LastBlockHeight).
+			Uint64("raft_height", raftState.Height).
+			Msg("local state diverges from raft state; performing rollback")
+
+		// Rollback to the previous height
+		if err := s.store.Rollback(ctx, targetRollbackHeight, s.config.Node.Aggregator); err != nil {
+			return fmt.Errorf("rollback failed: %w", err)
+		}
+
+		// Reload state from store after rollback
+		var err error
+		currentState, err = s.store.GetState(ctx)
+		if err != nil {
+			return fmt.Errorf("reload state failed: %w", err)
+		}
+		s.SetLastState(currentState)
+	}
+
 	// Validation
 	if err := s.validateBlock(currentState, &data, &header); err != nil {
 		return fmt.Errorf("validate block: %w", err)

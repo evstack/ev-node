@@ -235,10 +235,10 @@ func (f *failoverState) IsSynced(s *raft.RaftBlockState) bool {
 		return true
 	}
 	if f.bc.Syncer != nil {
-		return f.bc.Syncer.IsSynced(s.Height)
+		return f.bc.Syncer.IsSyncedWithRaft(s)
 	}
 	if f.bc.Executor != nil {
-		return f.bc.Executor.IsSynced(s.Height)
+		return f.bc.Executor.IsSyncedWithRaft(s)
 	}
 	return false
 }
