@@ -6,6 +6,7 @@ types/pb/tendermint
 .vscode/launch.json
 .vscode/settings.json
 vendor
+*.test
 */**.html
 *.idea
 *.env
