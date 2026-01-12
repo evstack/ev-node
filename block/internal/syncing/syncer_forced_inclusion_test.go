@@ -14,7 +14,7 @@ import (
 
 	"github.com/evstack/ev-node/block/internal/cache"
 	"github.com/evstack/ev-node/block/internal/common"
-	da "github.com/evstack/ev-node/block/internal/da"
+	"github.com/evstack/ev-node/block/internal/da"
 	"github.com/evstack/ev-node/pkg/config"
 	datypes "github.com/evstack/ev-node/pkg/da/types"
 	"github.com/evstack/ev-node/pkg/genesis"
@@ -370,7 +370,8 @@ func TestVerifyForcedInclusionTxs_AllTransactionsIncluded(t *testing.T) {
 	client.On("GetForcedInclusionNamespace").Return([]byte(cfg.DA.ForcedInclusionNamespace)).Maybe()
 	client.On("HasForcedInclusionNamespace").Return(true).Maybe()
 	daRetriever := NewDARetriever(client, cm, gen, zerolog.Nop())
-	fiRetriever := da.NewForcedInclusionRetriever(client, zerolog.Nop(), gen.DAStartHeight, gen.DAEpochForcedInclusion)
+	fiRetriever := da.NewForcedInclusionRetriever(client, zerolog.Nop(), config.DefaultConfig(), gen.DAStartHeight, gen.DAEpochForcedInclusion)
+	defer fiRetriever.Stop()
 
 	s := NewSyncer(
 		st,
@@ -443,7 +444,8 @@ func TestVerifyForcedInclusionTxs_MissingTransactions(t *testing.T) {
 	client.On("GetForcedInclusionNamespace").Return([]byte(cfg.DA.ForcedInclusionNamespace)).Maybe()
 	client.On("HasForcedInclusionNamespace").Return(true).Maybe()
 	daRetriever := NewDARetriever(client, cm, gen, zerolog.Nop())
-	fiRetriever := da.NewForcedInclusionRetriever(client, zerolog.Nop(), gen.DAStartHeight, gen.DAEpochForcedInclusion)
+	fiRetriever := da.NewForcedInclusionRetriever(client, zerolog.Nop(), config.DefaultConfig(), gen.DAStartHeight, gen.DAEpochForcedInclusion)
+	defer fiRetriever.Stop()
 
 	s := NewSyncer(
 		st,
@@ -546,7 +548,8 @@ func TestVerifyForcedInclusionTxs_PartiallyIncluded(t *testing.T) {
 	client.On("GetForcedInclusionNamespace").Return([]byte(cfg.DA.ForcedInclusionNamespace)).Maybe()
 	client.On("HasForcedInclusionNamespace").Return(true).Maybe()
 	daRetriever := NewDARetriever(client, cm, gen, zerolog.Nop())
-	fiRetriever := da.NewForcedInclusionRetriever(client, zerolog.Nop(), gen.DAStartHeight, gen.DAEpochForcedInclusion)
+	fiRetriever := da.NewForcedInclusionRetriever(client, zerolog.Nop(), config.DefaultConfig(), gen.DAStartHeight, gen.DAEpochForcedInclusion)
+	defer fiRetriever.Stop()
 
 	s := NewSyncer(
 		st,
@@ -653,7 +656,8 @@ func TestVerifyForcedInclusionTxs_NoForcedTransactions(t *testing.T) {
 	client.On("GetForcedInclusionNamespace").Return([]byte(cfg.DA.ForcedInclusionNamespace)).Maybe()
 	client.On("HasForcedInclusionNamespace").Return(true).Maybe()
 	daRetriever := NewDARetriever(client, cm, gen, zerolog.Nop())
-	fiRetriever := da.NewForcedInclusionRetriever(client, zerolog.Nop(), gen.DAStartHeight, gen.DAEpochForcedInclusion)
+	fiRetriever := da.NewForcedInclusionRetriever(client, zerolog.Nop(), config.DefaultConfig(), gen.DAStartHeight, gen.DAEpochForcedInclusion)
+	defer fiRetriever.Stop()
 
 	s := NewSyncer(
 		st,
@@ -718,8 +722,10 @@ func TestVerifyForcedInclusionTxs_NamespaceNotConfigured(t *testing.T) {
 	client.On("GetDataNamespace").Return([]byte(cfg.DA.DataNamespace)).Maybe()
 	client.On("GetForcedInclusionNamespace").Return([]byte(nil)).Maybe()
 	client.On("HasForcedInclusionNamespace").Return(false).Maybe()
+	client.On("GetForcedInclusionNamespace").Return([]byte(nil)).Maybe()
 	daRetriever := NewDARetriever(client, cm, gen, zerolog.Nop())
-	fiRetriever := da.NewForcedInclusionRetriever(client, zerolog.Nop(), gen.DAStartHeight, gen.DAEpochForcedInclusion)
+	fiRetriever := da.NewForcedInclusionRetriever(client, zerolog.Nop(), config.DefaultConfig(), gen.DAStartHeight, gen.DAEpochForcedInclusion)
+	defer fiRetriever.Stop()
 
 	s := NewSyncer(
 		st,
@@ -784,7 +790,8 @@ func TestVerifyForcedInclusionTxs_DeferralWithinEpoch(t *testing.T) {
 	client.On("GetForcedInclusionNamespace").Return([]byte(cfg.DA.ForcedInclusionNamespace)).Maybe()
 	client.On("HasForcedInclusionNamespace").Return(true).Maybe()
 	daRetriever := NewDARetriever(client, cm, gen, zerolog.Nop())
-	fiRetriever := da.NewForcedInclusionRetriever(client, zerolog.Nop(), gen.DAStartHeight, gen.DAEpochForcedInclusion)
+	fiRetriever := da.NewForcedInclusionRetriever(client, zerolog.Nop(), config.DefaultConfig(), gen.DAStartHeight, gen.DAEpochForcedInclusion)
+	defer fiRetriever.Stop()
 
 	s := NewSyncer(
 		st,
@@ -907,7 +914,8 @@ func TestVerifyForcedInclusionTxs_MaliciousAfterEpochEnd(t *testing.T) {
 	client.On("GetForcedInclusionNamespace").Return([]byte(cfg.DA.ForcedInclusionNamespace)).Maybe()
 	client.On("HasForcedInclusionNamespace").Return(true).Maybe()
 	daRetriever := NewDARetriever(client, cm, gen, zerolog.Nop())
-	fiRetriever := da.NewForcedInclusionRetriever(client, zerolog.Nop(), gen.DAStartHeight, gen.DAEpochForcedInclusion)
+	fiRetriever := da.NewForcedInclusionRetriever(client, zerolog.Nop(), config.DefaultConfig(), gen.DAStartHeight, gen.DAEpochForcedInclusion)
+	defer fiRetriever.Stop()
 
 	s := NewSyncer(
 		st,
@@ -996,7 +1004,8 @@ func TestVerifyForcedInclusionTxs_SmoothingExceedsEpoch(t *testing.T) {
 	client.On("HasForcedInclusionNamespace").Return(true).Maybe()
 
 	daRetriever := NewDARetriever(client, cm, gen, zerolog.Nop())
-	fiRetriever := da.NewForcedInclusionRetriever(client, zerolog.Nop(), gen.DAStartHeight, gen.DAEpochForcedInclusion)
+	fiRetriever := da.NewForcedInclusionRetriever(client, zerolog.Nop(), config.DefaultConfig(), gen.DAStartHeight, gen.DAEpochForcedInclusion)
+	defer fiRetriever.Stop()
 
 	s := NewSyncer(
 		st,

@@ -128,8 +128,7 @@ func createSequencer(
 			return nil, fmt.Errorf("based sequencer mode requires aggregator mode to be enabled")
 		}
 
-		fiRetriever := block.NewForcedInclusionRetriever(daClient, logger, genesis.DAStartHeight, genesis.DAEpochForcedInclusion)
-		basedSeq, err := based.NewBasedSequencer(fiRetriever, datastore, genesis, logger)
+		basedSeq, err := based.NewBasedSequencer(daClient, nodeConfig, datastore, genesis, logger)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create based sequencer: %w", err)
 		}
@@ -146,8 +145,8 @@ func createSequencer(
 		logger,
 		datastore,
 		daClient,
+		nodeConfig,
 		[]byte(genesis.ChainID),
-		nodeConfig.Node.BlockTime.Duration,
 		1000,
 		genesis,
 	)
