@@ -11,14 +11,12 @@ import (
 	"time"
 
 	ds "github.com/ipfs/go-datastore"
-	ktds "github.com/ipfs/go-datastore/keytransform"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/rs/zerolog"
 
 	"github.com/evstack/ev-node/block"
 
-	coreda "github.com/evstack/ev-node/core/da"
 	coreexecutor "github.com/evstack/ev-node/core/execution"
 	coresequencer "github.com/evstack/ev-node/core/sequencer"
 	"github.com/evstack/ev-node/pkg/config"
@@ -30,9 +28,6 @@ import (
 	"github.com/evstack/ev-node/pkg/store"
 	evsync "github.com/evstack/ev-node/pkg/sync"
 )
-
-// prefixes used in KV store to separate rollkit data from execution environment data (if the same data base is reused)
-var EvPrefix = "0"
 
 const (
 	// genesisChunkSize is the maximum size, in bytes, of each
@@ -53,7 +48,7 @@ type FullNode struct {
 
 	nodeConfig config.Config
 
-	da coreda.DA
+	daClient block.DAClient
 
 	p2pClient       *p2p.Client
 	hSyncService    *evsync.HeaderSyncService
@@ -75,7 +70,7 @@ func newFullNode(
 	database ds.Batching,
 	exec coreexecutor.Executor,
 	sequencer coresequencer.Sequencer,
-	da coreda.DA,
+	daClient block.DAClient,
 	metricsProvider MetricsProvider,
 	logger zerolog.Logger,
 	nodeOpts NodeOptions,
@@ -84,8 +79,8 @@ func newFullNode(
 
 	blockMetrics, _ := metricsProvider(genesis.ChainID)
 
-	mainKV := newPrefixKV(database, EvPrefix)
-	rktStore := store.New(mainKV)
+	mainKV := store.NewEvNodeKVStore(database)
+	evstore := store.New(mainKV)
 
 	headerSyncService, err := initHeaderSyncService(mainKV, rktStore, nodeConfig, genesis, p2pClient, logger)
 	if err != nil {
@@ -102,10 +97,10 @@ func newFullNode(
 		blockComponents, err = block.NewAggregatorComponents(
 			nodeConfig,
 			genesis,
-			rktStore,
+			evstore,
 			exec,
 			sequencer,
-			da,
+			daClient,
 			signer,
 			headerSyncService,
 			dataSyncService,
@@ -117,9 +112,9 @@ func newFullNode(
 		blockComponents, err = block.NewSyncComponents(
 			nodeConfig,
 			genesis,
-			rktStore,
+			evstore,
 			exec,
-			da,
+			daClient,
 			headerSyncService,
 			dataSyncService,
 			logger,
@@ -136,8 +131,8 @@ func newFullNode(
 		nodeConfig:      nodeConfig,
 		p2pClient:       p2pClient,
 		blockComponents: blockComponents,
-		da:              da,
-		Store:           rktStore,
+		daClient:        daClient,
+		Store:           evstore,
 		hSyncService:    headerSyncService,
 		dSyncService:    dataSyncService,
 	}
@@ -473,8 +468,4 @@ func (n *FullNode) GetGenesisChunks() ([]string, error) {
 // IsRunning returns true if the node is running.
 func (n *FullNode) IsRunning() bool {
 	return n.blockComponents != nil
-}
-
-func newPrefixKV(kvStore ds.Batching, prefix string) ds.Batching {
-	return ktds.Wrap(kvStore, ktds.PrefixTransform{Prefix: ds.NewKey(prefix)})
 }

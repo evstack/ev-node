@@ -8,8 +8,8 @@ import (
 
 	"github.com/rs/zerolog"
 
-	coreda "github.com/evstack/ev-node/core/da"
-	"github.com/evstack/ev-node/pkg/genesis"
+	"github.com/evstack/ev-node/pkg/config"
+	datypes "github.com/evstack/ev-node/pkg/da/types"
 	"github.com/evstack/ev-node/types"
 )
 
@@ -18,10 +18,11 @@ var ErrForceInclusionNotConfigured = errors.New("forced inclusion namespace not 
 
 // ForcedInclusionRetriever handles retrieval of forced inclusion transactions from DA.
 type ForcedInclusionRetriever struct {
-	client      Client
-	genesis     genesis.Genesis
-	logger      zerolog.Logger
-	daEpochSize uint64
+	client        Client
+	logger        zerolog.Logger
+	daEpochSize   uint64
+	daStartHeight uint64
+	asyncFetcher  AsyncBlockRetriever
 }
 
 // ForcedInclusionEvent contains forced inclusion transactions retrieved from DA.
@@ -33,27 +34,57 @@ type ForcedInclusionEvent struct {
 }
 
 // NewForcedInclusionRetriever creates a new forced inclusion retriever.
+// It internally creates and manages an AsyncBlockRetriever for background prefetching.
 func NewForcedInclusionRetriever(
 	client Client,
-	genesis genesis.Genesis,
 	logger zerolog.Logger,
+	cfg config.Config,
+	daStartHeight, daEpochSize uint64,
 ) *ForcedInclusionRetriever {
+	retrieverLogger := logger.With().Str("component", "forced_inclusion_retriever").Logger()
+
+	// Create async block retriever for background prefetching
+	asyncFetcher := NewAsyncBlockRetriever(
+		client,
+		logger,
+		client.GetForcedInclusionNamespace(),
+		cfg,
+		daStartHeight,
+		daEpochSize*2, // prefetch window: 2x epoch size
+	)
+	asyncFetcher.Start()
+
 	return &ForcedInclusionRetriever{
-		client:      client,
-		genesis:     genesis,
-		logger:      logger.With().Str("component", "forced_inclusion_retriever").Logger(),
-		daEpochSize: genesis.DAEpochForcedInclusion,
+		client:        client,
+		logger:        retrieverLogger,
+		daStartHeight: daStartHeight,
+		daEpochSize:   daEpochSize,
+		asyncFetcher:  asyncFetcher,
 	}
 }
 
+// Stop stops the background prefetcher.
+func (r *ForcedInclusionRetriever) Stop() {
+	r.asyncFetcher.Stop()
+}
+
 // RetrieveForcedIncludedTxs retrieves forced inclusion transactions at the given DA height.
-// It respects epoch boundaries and only fetches at epoch start.
+// It respects epoch boundaries and only fetches at epoch end.
+// It tries to get blocks from the async fetcher cache first, then falls back to sync fetching.
 func (r *ForcedInclusionRetriever) RetrieveForcedIncludedTxs(ctx context.Context, daHeight uint64) (*ForcedInclusionEvent, error) {
+	// when daStartHeight is not set or no namespace is configured, we retrieve nothing.
 	if !r.client.HasForcedInclusionNamespace() {
 		return nil, ErrForceInclusionNotConfigured
 	}
 
-	epochStart, epochEnd, currentEpochNumber := types.CalculateEpochBoundaries(daHeight, r.genesis.DAStartHeight, r.daEpochSize)
+	if daHeight < r.daStartHeight {
+		return nil, fmt.Errorf("DA height %d is before the configured start height %d", daHeight, r.daStartHeight)
+	}
+
+	epochStart, epochEnd, currentEpochNumber := types.CalculateEpochBoundaries(daHeight, r.daStartHeight, r.daEpochSize)
+
+	// Update the async fetcher's current height so it knows what to prefetch
+	r.asyncFetcher.UpdateCurrentHeight(daHeight)
 
 	if daHeight != epochEnd {
 		r.logger.Debug().
@@ -68,54 +99,113 @@ func (r *ForcedInclusionRetriever) RetrieveForcedIncludedTxs(ctx context.Context
 		}, nil
 	}
 
+	r.logger.Debug().
+		Uint64("da_height", daHeight).
+		Uint64("epoch_start", epochStart).
+		Uint64("epoch_end", epochEnd).
+		Uint64("epoch_num", currentEpochNumber).
+		Msg("retrieving forced included transactions from DA epoch")
+
 	event := &ForcedInclusionEvent{
 		StartDaHeight: epochStart,
 		EndDaHeight:   epochEnd,
 		Txs:           [][]byte{},
 	}
 
-	epochEndResult := r.client.RetrieveForcedInclusion(ctx, epochEnd)
-	if epochEndResult.Code == coreda.StatusHeightFromFuture {
-		r.logger.Debug().
-			Uint64("epoch_end", epochEnd).
-			Msg("epoch end height not yet available on DA - backoff required")
-		return nil, fmt.Errorf("%w: epoch end height %d not yet available", coreda.ErrHeightFromFuture, epochEnd)
+	// Collect all heights in this epoch
+	var heights []uint64
+	for h := epochStart; h <= epochEnd; h++ {
+		heights = append(heights, h)
 	}
 
-	epochStartResult := epochEndResult
-	if epochStart != epochEnd {
-		epochStartResult = r.client.RetrieveForcedInclusion(ctx, epochStart)
-		if epochStartResult.Code == coreda.StatusHeightFromFuture {
+	// Try to get blocks from cache first
+	cachedBlocks := make(map[uint64]*BlockData)
+	var missingHeights []uint64
+
+	for _, h := range heights {
+		block, err := r.asyncFetcher.GetCachedBlock(ctx, h)
+		if err != nil {
 			r.logger.Debug().
-				Uint64("epoch_start", epochStart).
-				Msg("epoch start height not yet available on DA - backoff required")
-			return nil, fmt.Errorf("%w: epoch start height %d not yet available", coreda.ErrHeightFromFuture, epochStart)
+				Err(err).
+				Uint64("height", h).
+				Msg("error getting cached block, will fetch synchronously")
+			missingHeights = append(missingHeights, h)
+			continue
+		}
+		if block == nil { // Cache miss
+			missingHeights = append(missingHeights, h)
+		} else { // Cache hit
+			cachedBlocks[h] = block
 		}
 	}
 
-	r.logger.Debug().
-		Uint64("da_height", daHeight).
-		Uint64("epoch_start", epochStart).
-		Uint64("epoch_end", epochEnd).
-		Uint64("epoch_num", currentEpochNumber).
-		Msg("retrieving forced included transactions from DA")
-
+	// Fetch missing heights synchronously and store in map
+	syncFetchedBlocks := make(map[uint64]*BlockData)
 	var processErrs error
-	err := r.processForcedInclusionBlobs(event, epochStartResult, epochStart)
-	processErrs = errors.Join(processErrs, err)
+	for _, h := range missingHeights {
+		result := r.client.Retrieve(ctx, h, r.client.GetForcedInclusionNamespace())
+		if result.Code == datypes.StatusHeightFromFuture {
+			r.logger.Debug().
+				Uint64("height", h).
+				Msg("height not yet available on DA - backoff required")
+			return nil, fmt.Errorf("%w: height %d not yet available", datypes.ErrHeightFromFuture, h)
+		}
 
-	// Process heights between start and end (exclusive)
-	for epochHeight := epochStart + 1; epochHeight < epochEnd; epochHeight++ {
-		result := r.client.RetrieveForcedInclusion(ctx, epochHeight)
+		if result.Code == datypes.StatusNotFound {
+			r.logger.Debug().Uint64("height", h).Msg("no forced inclusion blobs at height")
+			continue
+		}
 
-		err = r.processForcedInclusionBlobs(event, result, epochHeight)
-		processErrs = errors.Join(processErrs, err)
+		if result.Code != datypes.StatusSuccess {
+			err := fmt.Errorf("failed to retrieve forced inclusion blobs at height %d: %s", h, result.Message)
+			processErrs = errors.Join(processErrs, err)
+			continue
+		}
+
+		// Store the sync-fetched block data
+		syncFetchedBlocks[h] = &BlockData{
+			Blobs:     result.Data,
+			Timestamp: result.Timestamp,
+		}
 	}
 
-	// Process epoch end (only if different from start)
-	if epochEnd != epochStart {
-		err = r.processForcedInclusionBlobs(event, epochEndResult, epochEnd)
-		processErrs = errors.Join(processErrs, err)
+	// Process all blocks in height order
+	for _, h := range heights {
+		var block *BlockData
+		var source string
+
+		// Check cached blocks first, then sync-fetched
+		if cachedBlock, ok := cachedBlocks[h]; ok {
+			block = cachedBlock
+			source = "cache"
+		} else if syncBlock, ok := syncFetchedBlocks[h]; ok {
+			block = syncBlock
+			source = "sync"
+		}
+
+		if block != nil {
+			// Add blobs from block
+			for _, blob := range block.Blobs {
+				if len(blob) > 0 {
+					event.Txs = append(event.Txs, blob)
+				}
+			}
+
+			// Update timestamp if newer
+			if block.Timestamp.After(event.Timestamp) {
+				event.Timestamp = block.Timestamp
+			}
+
+			r.logger.Debug().
+				Uint64("height", h).
+				Int("blob_count", len(block.Blobs)).
+				Str("source", source).
+				Msg("added blobs from block")
+		}
+
+		// Clean up maps to prevent unbounded memory growth
+		delete(cachedBlocks, h)
+		delete(syncFetchedBlocks, h)
 	}
 
 	// any error during process, need to retry at next call
@@ -136,38 +226,4 @@ func (r *ForcedInclusionRetriever) RetrieveForcedIncludedTxs(ctx context.Context
 	}
 
 	return event, nil
-}
-
-// processForcedInclusionBlobs processes blobs from a single DA height for forced inclusion.
-func (r *ForcedInclusionRetriever) processForcedInclusionBlobs(
-	event *ForcedInclusionEvent,
-	result coreda.ResultRetrieve,
-	height uint64,
-) error {
-	if result.Code == coreda.StatusNotFound {
-		r.logger.Debug().Uint64("height", height).Msg("no forced inclusion blobs at height")
-		return nil
-	}
-
-	if result.Code != coreda.StatusSuccess {
-		return fmt.Errorf("failed to retrieve forced inclusion blobs at height %d: %s", height, result.Message)
-	}
-
-	// Process each blob as a transaction
-	for _, blob := range result.Data {
-		if len(blob) > 0 {
-			event.Txs = append(event.Txs, blob)
-		}
-	}
-
-	if result.Timestamp.After(event.Timestamp) {
-		event.Timestamp = result.Timestamp
-	}
-
-	r.logger.Debug().
-		Uint64("height", height).
-		Int("blob_count", len(result.Data)).
-		Msg("processed forced inclusion blobs")
-
-	return nil
 }

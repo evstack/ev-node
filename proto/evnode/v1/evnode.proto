@@ -47,6 +47,17 @@ message SignedHeader {
   Header header = 1;
   bytes signature = 2;
   Signer signer = 3;
+  // Reserved for DAHeaderEnvelope envelope_signature
+  reserved 4;
+}
+
+// DAHeaderEnvelope is a wrapper around SignedHeader for DA submission.
+// It is binary compatible with SignedHeader (fields 1-3) but adds an envelope signature.
+message DAHeaderEnvelope {
+  Header header = 1;
+  bytes signature = 2;
+  Signer signer = 3;
+  bytes envelope_signature = 4;
 }
 
 // Signer is a signer of a block in the blockchain.

@@ -19,12 +19,8 @@ import (
 )
 
 const (
-	// DefaultInterval is the default reaper interval
-	DefaultInterval = 1 * time.Second
 	// MaxBackoffInterval is the maximum backoff interval for retries
 	MaxBackoffInterval = 30 * time.Second
-	// BackoffMultiplier is the multiplier for exponential backoff
-	BackoffMultiplier = 2
 )
 
 // Reaper is responsible for periodically retrieving transactions from the executor,

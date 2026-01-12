@@ -17,7 +17,7 @@ import (
 // - DA submission of multiple headers is atomic - it's impossible to submit only part of a batch
 //
 // lastSubmittedHeaderHeight is updated only after receiving confirmation from DA.
-// Worst case scenario is when headers was successfully submitted to DA, but confirmation was not received (e.g. node was
+// Worst case scenario is when headers were successfully submitted to DA, but confirmation was not received (e.g. node was
 // restarted, networking issue occurred). In this case headers are re-submitted to DA (it's extra cost).
 // evolve is able to skip duplicate headers so this shouldn't affect full nodes.
 // TODO(tzdybal): we shouldn't try to push all pending headers at once; this should depend on max blob size

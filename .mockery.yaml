@@ -2,15 +2,6 @@ template: testify
 template-data:
   unroll-variadic: true
 packages:
-  github.com/evstack/ev-node/core/da:
-    interfaces:
-      DA:
-        config:
-          pkgname: mocks
-          filename: da.go
-        configs:
-          - dir: ./da/internal/mocks
-          - dir: ./test/mocks
   github.com/evstack/ev-node/core/execution:
     interfaces:
       Executor:
@@ -79,11 +70,16 @@ packages:
           filename: broadcaster_mock.go
   github.com/evstack/ev-node/block/internal/da:
     interfaces:
-      BlobAPI:
+      Client:
         config:
-          dir: ./block/internal/da
-          pkgname: da
-          filename: blob_api_mock.go
+          dir: ./test/mocks
+          pkgname: mocks
+          filename: da.go
+      Verifier:
+        config:
+          dir: ./test/mocks
+          pkgname: mocks
+          filename: da.go
   github.com/evstack/ev-node/pkg/da/jsonrpc:
     interfaces:
       BlobModule:
@@ -91,3 +87,15 @@ packages:
           dir: ./pkg/da/jsonrpc/mocks
           pkgname: mocks
           filename: blob_module_mock.go
+      HeaderModule:
+        config:
+          dir: ./pkg/da/jsonrpc/mocks
+          pkgname: mocks
+          filename: header_module_mock.go
+  github.com/evstack/ev-node/block:
+    interfaces:
+      ForcedInclusionRetriever:
+        config:
+          dir: ./pkg/sequencers/common
+          pkgname: common
+          filename: forced_inclusion_retriever_mock.go

@@ -151,14 +151,6 @@ func (e *Executor) Stop() error {
 	return nil
 }
 
-// GetLastState returns the current state.
-func (e *Executor) GetLastState() types.State {
-	state := e.getLastState()
-	state.AppHash = bytes.Clone(state.AppHash)
-
-	return state
-}
-
 // getLastState returns the current state.
 // getLastState should never directly mutate.
 func (e *Executor) getLastState() types.State {
@@ -205,7 +197,8 @@ func (e *Executor) initializeState() error {
 			LastBlockHeight: e.genesis.InitialHeight - 1,
 			LastBlockTime:   e.genesis.StartTime,
 			AppHash:         stateRoot,
-			DAHeight:        e.genesis.DAStartHeight,
+			// DA start height is usually 0 at InitChain unless it is a re-genesis or a based sequencer.
+			DAHeight: e.genesis.DAStartHeight,
 		}
 	}
 

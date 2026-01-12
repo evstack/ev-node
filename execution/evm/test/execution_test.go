@@ -10,6 +10,8 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	ethTypes "github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/ethclient"
+	ds "github.com/ipfs/go-datastore"
+	dssync "github.com/ipfs/go-datastore/sync"
 	"github.com/stretchr/testify/require"
 
 	"github.com/evstack/ev-node/execution/evm"
@@ -64,14 +66,17 @@ func TestEngineExecution(t *testing.T) {
 		ethURL := "http://127.0.0.1:" + ni.External.Ports.RPC
 		engineURL := "http://127.0.0.1:" + ni.External.Ports.Engine
 
+		store := dssync.MutexWrap(ds.NewMapDatastore())
 		executionClient, err := evm.NewEngineExecutionClient(
 			ethURL,
 			engineURL,
 			rethNode.JWTSecretHex(),
 			genesisHash,
 			common.Address{},
+			store,
+			false,
 		)
-		require.NoError(t, err)
+		require.NoError(tt, err)
 
 		ctx, cancel := context.WithTimeout(context.Background(), 300*time.Second)
 		defer cancel()
@@ -162,14 +167,17 @@ func TestEngineExecution(t *testing.T) {
 		ethURL := "http://127.0.0.1:" + ni.External.Ports.RPC
 		engineURL := "http://127.0.0.1:" + ni.External.Ports.Engine
 
+		store := dssync.MutexWrap(ds.NewMapDatastore())
 		executionClient, err := evm.NewEngineExecutionClient(
 			ethURL,
 			engineURL,
 			rethNode.JWTSecretHex(),
 			genesisHash,
 			common.Address{},
+			store,
+			false,
 		)
-		require.NoError(t, err)
+		require.NoError(tt, err)
 
 		ctx, cancel := context.WithTimeout(context.Background(), 300*time.Second)
 		defer cancel()

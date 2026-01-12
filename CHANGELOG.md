@@ -27,6 +27,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Removed
 
 - **BREAKING:** Removed unused and confusing metrics from sequencers and block processing, including sequencer-specific metrics (gas price, blob size, transaction status, pending blocks), channel buffer metrics, overly granular error metrics, block production categorization metrics, and sync lag metrics. Essential metrics for DA submission health, block production, and performance monitoring are retained. [#2904](https://github.com/evstack/ev-node/pull/2904)
+- **BREAKING**: Removed `core/da` package and replaced DAClient with internal implementation. The DA client is exposed as `block.FullDAClient`, `block.DAClient`, `block.DAVerifier` without leaking implementation details. [#2910](https://github.com/evstack/ev-node/pull/2910)
+
+## v1.0.0-beta.11
+
+### Improvements
+
+- Loosen syncer validation for allowing swapping sequencer and full node state [#2925](https://github.com/evstack/ev-node/pull/2925)
 
 ## v1.0.0-beta.10
 

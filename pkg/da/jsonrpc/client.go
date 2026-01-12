@@ -1,4 +1,4 @@
-package blob
+package jsonrpc
 
 import (
 	"context"
@@ -9,9 +9,10 @@ import (
 	"github.com/filecoin-project/go-jsonrpc"
 )
 
-// Client dials the celestia-node RPC "blob" namespace.
+// Client dials the celestia-node RPC "blob" and "header" namespaces.
 type Client struct {
 	Blob   BlobAPI
+	Header HeaderAPI
 	closer jsonrpc.ClientCloser
 }
 
@@ -24,20 +25,35 @@ func (c *Client) Close() {
 
 // NewClient connects to the celestia-node RPC endpoint
 func NewClient(ctx context.Context, addr, token string, authHeaderName string) (*Client, error) {
-	var header http.Header
+	var httpHeader http.Header
 	if token != "" {
 		if authHeaderName == "" {
 			authHeaderName = "Authorization"
 		}
-		header = http.Header{authHeaderName: []string{fmt.Sprintf("Bearer %s", token)}}
+		httpHeader = http.Header{authHeaderName: []string{fmt.Sprintf("Bearer %s", token)}}
 	}
 
 	var cl Client
-	closer, err := jsonrpc.NewClient(ctx, addr, "blob", &cl.Blob.Internal, header)
+
+	// Connect to the blob namespace
+	blobCloser, err := jsonrpc.NewClient(ctx, addr, "blob", &cl.Blob.Internal, httpHeader)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to connect to blob namespace: %w", err)
 	}
-	cl.closer = closer
+
+	// Connect to the header namespace
+	headerCloser, err := jsonrpc.NewClient(ctx, addr, "header", &cl.Header.Internal, httpHeader)
+	if err != nil {
+		blobCloser()
+		return nil, fmt.Errorf("failed to connect to header namespace: %w", err)
+	}
+
+	// Create a combined closer that closes both connections
+	cl.closer = func() {
+		blobCloser()
+		headerCloser()
+	}
+
 	return &cl, nil
 }
 

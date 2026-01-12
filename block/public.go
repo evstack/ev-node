@@ -5,9 +5,8 @@ import (
 
 	"github.com/evstack/ev-node/block/internal/common"
 	"github.com/evstack/ev-node/block/internal/da"
-	coreda "github.com/evstack/ev-node/core/da"
 	"github.com/evstack/ev-node/pkg/config"
-	"github.com/evstack/ev-node/pkg/genesis"
+	blobrpc "github.com/evstack/ev-node/pkg/da/jsonrpc"
 	"github.com/rs/zerolog"
 )
 
@@ -35,20 +34,27 @@ func NopMetrics() *Metrics {
 // DAClient is the interface representing the DA client for public use.
 type DAClient = da.Client
 
-// NewDAClient creates a new DA client with configuration
+// DAVerifier is the interface for DA proof verification operations.
+type DAVerifier = da.Verifier
+
+// FullDAClient combines DAClient and DAVerifier interfaces.
+// This is the complete interface implemented by the concrete DA client.
+type FullDAClient = da.FullClient
+
+// NewDAClient creates a new DA client backed by the blob JSON-RPC API.
+// The returned client implements both DAClient and DAVerifier interfaces.
 func NewDAClient(
-	daLayer coreda.DA,
+	blobRPC *blobrpc.Client,
 	config config.Config,
 	logger zerolog.Logger,
-) DAClient {
+) FullDAClient {
 	return da.NewClient(da.Config{
-		DA:                       daLayer,
+		DA:                       blobRPC,
 		Logger:                   logger,
 		Namespace:                config.DA.GetNamespace(),
 		DefaultTimeout:           config.DA.RequestTimeout.Duration,
 		DataNamespace:            config.DA.GetDataNamespace(),
 		ForcedInclusionNamespace: config.DA.GetForcedInclusionNamespace(),
-		RetrieveBatchSize:        config.DA.RetrieveBatchSize,
 	})
 }
 
@@ -61,14 +67,17 @@ type ForcedInclusionEvent = da.ForcedInclusionEvent
 
 // ForcedInclusionRetriever defines the interface for retrieving forced inclusion transactions from DA
 type ForcedInclusionRetriever interface {
-	RetrieveForcedIncludedTxs(ctx context.Context, daHeight uint64) (*da.ForcedInclusionEvent, error)
+	RetrieveForcedIncludedTxs(ctx context.Context, daHeight uint64) (*ForcedInclusionEvent, error)
+	Stop()
 }
 
-// NewForcedInclusionRetriever creates a new forced inclusion retriever
+// NewForcedInclusionRetriever creates a new forced inclusion retriever.
+// It internally creates and manages an AsyncBlockRetriever for background prefetching.
 func NewForcedInclusionRetriever(
 	client DAClient,
-	genesis genesis.Genesis,
+	cfg config.Config,
 	logger zerolog.Logger,
+	daStartHeight, daEpochSize uint64,
 ) ForcedInclusionRetriever {
-	return da.NewForcedInclusionRetriever(client, genesis, logger)
+	return da.NewForcedInclusionRetriever(client, logger, cfg, daStartHeight, daEpochSize)
 }

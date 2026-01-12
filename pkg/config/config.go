@@ -11,7 +11,7 @@ import (
 	"time"
 
 	"github.com/celestiaorg/go-square/v3/share"
-	"github.com/evstack/ev-node/core/da"
+	datypes "github.com/evstack/ev-node/pkg/da/types"
 	"github.com/mitchellh/mapstructure"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
@@ -49,6 +49,8 @@ const (
 	FlagReadinessWindowSeconds = FlagPrefixEvnode + "node.readiness_window_seconds"
 	// FlagReadinessMaxBlocksBehind configures how many blocks behind best-known head is still considered ready
 	FlagReadinessMaxBlocksBehind = FlagPrefixEvnode + "node.readiness_max_blocks_behind"
+	// FlagScrapeInterval is a flag for specifying the reaper scrape interval
+	FlagScrapeInterval = FlagPrefixEvnode + "node.scrape_interval"
 	// FlagClearCache is a flag for clearing the cache
 	FlagClearCache = FlagPrefixEvnode + "clear_cache"
 
@@ -74,8 +76,6 @@ const (
 	FlagDAMempoolTTL = FlagPrefixEvnode + "da.mempool_ttl"
 	// FlagDAMaxSubmitAttempts is a flag for specifying the maximum DA submit attempts
 	FlagDAMaxSubmitAttempts = FlagPrefixEvnode + "da.max_submit_attempts"
-	// FlagDARetrieveBatchSize configures how many IDs are fetched per DA Get request
-	FlagDARetrieveBatchSize = FlagPrefixEvnode + "da.retrieve_batch_size"
 	// FlagDARequestTimeout controls the per-request timeout when talking to the DA layer
 	FlagDARequestTimeout = FlagPrefixEvnode + "da.request_timeout"
 
@@ -102,6 +102,17 @@ const (
 	FlagPprof = FlagPrefixEvnode + "instrumentation.pprof"
 	// FlagPprofListenAddr is a flag for specifying the pprof listen address
 	FlagPprofListenAddr = FlagPrefixEvnode + "instrumentation.pprof_listen_addr"
+
+	// Tracing configuration flags
+
+	// FlagTracing enables OpenTelemetry tracing
+	FlagTracing = FlagPrefixEvnode + "instrumentation.tracing"
+	// FlagTracingEndpoint configures the OTLP endpoint (host:port)
+	FlagTracingEndpoint = FlagPrefixEvnode + "instrumentation.tracing_endpoint"
+	// FlagTracingServiceName configures the service.name resource attribute
+	FlagTracingServiceName = FlagPrefixEvnode + "instrumentation.tracing_service_name"
+	// FlagTracingSampleRate configures the TraceID ratio-based sampler
+	FlagTracingSampleRate = FlagPrefixEvnode + "instrumentation.tracing_sample_rate"
 
 	// Logging configuration flags
 
@@ -171,7 +182,6 @@ type DAConfig struct {
 	BlockTime                DurationWrapper `mapstructure:"block_time" yaml:"block_time" comment:"Average block time of the DA chain (duration). Determines frequency of DA layer syncing, maximum backoff time for retries, and is multiplied by MempoolTTL to calculate transaction expiration. Examples: \"15s\", \"30s\", \"1m\", \"2m30s\", \"10m\"."`
 	MempoolTTL               uint64          `mapstructure:"mempool_ttl" yaml:"mempool_ttl" comment:"Number of DA blocks after which a transaction is considered expired and dropped from the mempool. Controls retry backoff timing."`
 	MaxSubmitAttempts        int             `mapstructure:"max_submit_attempts" yaml:"max_submit_attempts" comment:"Maximum number of attempts to submit data to the DA layer before giving up. Higher values provide more resilience but can delay error reporting."`
-	RetrieveBatchSize        int             `mapstructure:"retrieve_batch_size" yaml:"retrieve_batch_size" comment:"Number of IDs to request per DA Get call when retrieving blobs. Smaller batches lower per-request latency; larger batches reduce the number of RPC round trips."`
 	RequestTimeout           DurationWrapper `mapstructure:"request_timeout" yaml:"request_timeout" comment:"Per-request timeout applied to DA interactions. Larger values tolerate slower DA nodes at the cost of waiting longer before failing."`
 }
 
@@ -206,6 +216,7 @@ type NodeConfig struct {
 	MaxPendingHeadersAndData uint64          `mapstructure:"max_pending_headers_and_data" yaml:"max_pending_headers_and_data" comment:"Maximum number of headers or data pending DA submission. When this limit is reached, the aggregator pauses block production until some headers or data are confirmed. Use 0 for no limit."`
 	LazyMode                 bool            `mapstructure:"lazy_mode" yaml:"lazy_mode" comment:"Enables lazy aggregation mode, where blocks are only produced when transactions are available or after LazyBlockTime. Optimizes resources by avoiding empty block creation during periods of inactivity."`
 	LazyBlockInterval        DurationWrapper `mapstructure:"lazy_block_interval" yaml:"lazy_block_interval" comment:"Maximum interval between blocks in lazy aggregation mode (LazyAggregator). Ensures blocks are produced periodically even without transactions to keep the chain active. Generally larger than BlockTime."`
+	ScrapeInterval           DurationWrapper `mapstructure:"scrape_interval" yaml:"scrape_interval" comment:"Interval at which the reaper polls the execution layer for new transactions. Lower values reduce transaction detection latency but increase RPC load. Examples: \"250ms\", \"500ms\", \"1s\"."`
 
 	// Readiness / health configuration
 	ReadinessWindowSeconds   uint64 `mapstructure:"readiness_window_seconds" yaml:"readiness_window_seconds" comment:"Time window in seconds used to calculate ReadinessMaxBlocksBehind based on block time. Default: 15 seconds."`
@@ -289,7 +300,7 @@ func validateNamespace(namespace string) error {
 		return fmt.Errorf("namespace cannot be empty")
 	}
 
-	ns := da.NamespaceFromString(namespace)
+	ns := datypes.NamespaceFromString(namespace)
 	if _, err := share.NewNamespaceFromBytes(ns.Bytes()); err != nil {
 		return fmt.Errorf("could not validate namespace (%s): %w", namespace, err)
 	}
@@ -340,6 +351,7 @@ func AddFlags(cmd *cobra.Command) {
 	cmd.Flags().Duration(FlagLazyBlockTime, def.Node.LazyBlockInterval.Duration, "maximum interval between blocks in lazy aggregation mode")
 	cmd.Flags().Uint64(FlagReadinessWindowSeconds, def.Node.ReadinessWindowSeconds, "time window in seconds for calculating readiness threshold based on block time (default: 15s)")
 	cmd.Flags().Uint64(FlagReadinessMaxBlocksBehind, def.Node.ReadinessMaxBlocksBehind, "how many blocks behind best-known head the node can be and still be considered ready (0 = must be at head)")
+	cmd.Flags().Duration(FlagScrapeInterval, def.Node.ScrapeInterval.Duration, "interval at which the reaper polls the execution layer for new transactions")
 
 	// Data Availability configuration flags
 	cmd.Flags().String(FlagDAAddress, def.DA.Address, "DA address (host:port)")
@@ -352,7 +364,6 @@ func AddFlags(cmd *cobra.Command) {
 	cmd.Flags().StringSlice(FlagDASigningAddresses, def.DA.SigningAddresses, "Comma-separated list of addresses for DA submissions (used in round-robin)")
 	cmd.Flags().Uint64(FlagDAMempoolTTL, def.DA.MempoolTTL, "number of DA blocks until transaction is dropped from the mempool")
 	cmd.Flags().Int(FlagDAMaxSubmitAttempts, def.DA.MaxSubmitAttempts, "maximum number of attempts to submit data to the DA layer before giving up")
-	cmd.Flags().Int(FlagDARetrieveBatchSize, def.DA.RetrieveBatchSize, "number of IDs to request per DA Get call when retrieving blobs")
 	cmd.Flags().Duration(FlagDARequestTimeout, def.DA.RequestTimeout.Duration, "per-request timeout when interacting with the DA layer")
 
 	// P2P configuration flags
@@ -372,6 +383,10 @@ func AddFlags(cmd *cobra.Command) {
 	cmd.Flags().Int(FlagMaxOpenConnections, instrDef.MaxOpenConnections, "maximum number of simultaneous connections for metrics")
 	cmd.Flags().Bool(FlagPprof, instrDef.Pprof, "enable pprof HTTP endpoint")
 	cmd.Flags().String(FlagPprofListenAddr, instrDef.PprofListenAddr, "pprof HTTP server listening address")
+	cmd.Flags().Bool(FlagTracing, instrDef.Tracing, "enable OpenTelemetry tracing")
+	cmd.Flags().String(FlagTracingEndpoint, instrDef.TracingEndpoint, "OTLP endpoint for traces (host:port)")
+	cmd.Flags().String(FlagTracingServiceName, instrDef.TracingServiceName, "OpenTelemetry service.name")
+	cmd.Flags().Float64(FlagTracingSampleRate, instrDef.TracingSampleRate, "trace sampling rate (0.0-1.0)")
 
 	// Signer configuration flags
 	cmd.Flags().String(FlagSignerType, def.Signer.SignerType, "type of signer to use (file, grpc)")

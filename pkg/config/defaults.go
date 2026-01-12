@@ -68,12 +68,12 @@ func DefaultConfig() Config {
 			Light:                    false,
 			ReadinessWindowSeconds:   defaultReadinessWindowSeconds,
 			ReadinessMaxBlocksBehind: calculateReadinessMaxBlocksBehind(defaultBlockTime.Duration, defaultReadinessWindowSeconds),
+			ScrapeInterval:           DurationWrapper{1 * time.Second},
 		},
 		DA: DAConfig{
 			Address:                  "http://localhost:7980",
 			BlockTime:                DurationWrapper{6 * time.Second},
 			MaxSubmitAttempts:        30,
-			RetrieveBatchSize:        100,
 			RequestTimeout:           DurationWrapper{60 * time.Second},
 			Namespace:                randString(10),
 			DataNamespace:            "",

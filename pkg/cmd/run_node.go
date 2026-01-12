@@ -16,15 +16,17 @@ import (
 	"github.com/rs/zerolog"
 	"github.com/spf13/cobra"
 
-	coreda "github.com/evstack/ev-node/core/da"
+	"github.com/evstack/ev-node/block"
 	coreexecutor "github.com/evstack/ev-node/core/execution"
 	coresequencer "github.com/evstack/ev-node/core/sequencer"
 	"github.com/evstack/ev-node/node"
 	rollconf "github.com/evstack/ev-node/pkg/config"
+	blobrpc "github.com/evstack/ev-node/pkg/da/jsonrpc"
 	genesispkg "github.com/evstack/ev-node/pkg/genesis"
 	"github.com/evstack/ev-node/pkg/p2p"
 	"github.com/evstack/ev-node/pkg/signer"
 	"github.com/evstack/ev-node/pkg/signer/file"
+	"github.com/evstack/ev-node/pkg/telemetry"
 )
 
 // ParseConfig is an helpers that loads the node configuration and validates it.
@@ -80,7 +82,6 @@ func StartNode(
 	cmd *cobra.Command,
 	executor coreexecutor.Executor,
 	sequencer coresequencer.Sequencer,
-	da coreda.DA,
 	p2pClient *p2p.Client,
 	datastore datastore.Batching,
 	nodeConfig rollconf.Config,
@@ -89,6 +90,28 @@ func StartNode(
 ) error {
 	ctx, cancel := context.WithCancel(cmd.Context())
 	defer cancel()
+
+	if nodeConfig.Instrumentation.IsTracingEnabled() {
+		shutdownTracing, err := telemetry.InitTracing(ctx, nodeConfig.Instrumentation, logger)
+		if err != nil {
+			return fmt.Errorf("failed to initialize tracing: %w", err)
+		}
+		defer func() {
+			// best-effort shutdown within a short timeout
+			c, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer cancel()
+			if err := shutdownTracing(c); err != nil {
+				logger.Error().Err(err).Msg("failed to shutdown tracing")
+			}
+		}()
+	}
+
+	blobClient, err := blobrpc.NewClient(ctx, nodeConfig.DA.Address, nodeConfig.DA.AuthToken, "")
+	if err != nil {
+		return fmt.Errorf("failed to create blob client: %w", err)
+	}
+	defer blobClient.Close()
+	daClient := block.NewDAClient(blobClient, nodeConfig, logger)
 
 	// create a new remote signer
 	var signer signer.Signer
@@ -128,14 +151,24 @@ func StartNode(
 		return fmt.Errorf("unknown signer type: %s", nodeConfig.Signer.SignerType)
 	}
 
+	// sanity check for based sequencer
+	if nodeConfig.Node.BasedSequencer && genesis.DAStartHeight == 0 {
+		return fmt.Errorf("based sequencing requires DAStartHeight to be set in genesis. This value should be identical for all nodes of the chain")
+	}
+
 	metrics := node.DefaultMetricsProvider(nodeConfig.Instrumentation)
+
+	// wrap executor with tracing decorator if tracing enabled (outside core to keep it zero-dep)
+	if nodeConfig.Instrumentation.IsTracingEnabled() {
+		executor = telemetry.WithTracingExecutor(executor)
+	}
 
 	// Create and start the node
 	rollnode, err := node.NewNode(
 		nodeConfig,
 		executor,
 		sequencer,
-		da,
+		daClient,
 		signer,
 		p2pClient,
 		genesis,

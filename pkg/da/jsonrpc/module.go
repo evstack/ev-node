@@ -1,4 +1,4 @@
-package blob
+package jsonrpc
 
 import (
 	"context"
@@ -15,4 +15,11 @@ type BlobModule interface {
 	Included(context.Context, uint64, libshare.Namespace, *Proof, Commitment) (bool, error)
 	GetCommitmentProof(context.Context, uint64, libshare.Namespace, []byte) (*CommitmentProof, error)
 	Subscribe(context.Context, libshare.Namespace) (<-chan *SubscriptionResponse, error)
+}
+
+// HeaderModule is the server-side "header" JSON-RPC interface used by tests/mocks.
+type HeaderModule interface {
+	GetByHeight(context.Context, uint64) (*Header, error)
+	LocalHead(context.Context) (*Header, error)
+	NetworkHead(context.Context) (*Header, error)
 }
