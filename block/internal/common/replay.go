@@ -67,15 +67,15 @@ func (s *Replayer) SyncToHeight(ctx context.Context, targetHeight uint64) error 
 		Uint64("exec_layer_height", execHeight).
 		Msg("execution layer height check")
 
-	// If execution layer is ahead, skip syncing and continue. This can happen if execution
-	// progressed independently (e.g. after manual intervention). We log it for visibility but
-	// do not treat it as fatal.
+	// If execution layer is ahead, we cannot proceed safely as this indicates state divergence.
+	// The execution layer must be rolled back before the node can continue.
 	if execHeight > targetHeight {
-		s.logger.Warn().
+		s.logger.Error().
 			Uint64("target_height", targetHeight).
 			Uint64("exec_layer_height", execHeight).
-			Msg("execution layer is ahead of target height - skipping replay")
-		return nil
+			Msg("execution layer ahead of target - manual rollback required")
+		return fmt.Errorf("execution layer height (%d) ahead of target height (%d): manually rollback execution layer to height %d",
+			execHeight, targetHeight, targetHeight)
 	}
 
 	// If execution layer is behind, sync the missing blocks
