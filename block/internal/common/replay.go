@@ -70,10 +70,6 @@ func (s *Replayer) SyncToHeight(ctx context.Context, targetHeight uint64) error 
 	// If execution layer is ahead, we cannot proceed safely as this indicates state divergence.
 	// The execution layer must be rolled back before the node can continue.
 	if execHeight > targetHeight {
-		s.logger.Error().
-			Uint64("target_height", targetHeight).
-			Uint64("exec_layer_height", execHeight).
-			Msg("execution layer ahead of target - manual rollback required")
 		return fmt.Errorf("execution layer height (%d) ahead of target height (%d): manually rollback execution layer to height %d",
 			execHeight, targetHeight, targetHeight)
 	}
