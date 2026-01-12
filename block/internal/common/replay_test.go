@@ -135,15 +135,16 @@ func TestReplayer_SyncToHeight_ExecutorAhead(t *testing.T) {
 
 	syncer := NewReplayer(mockStore, mockExec, gen, logger)
 
-	// Setup: target height is 100, execution layer is at 101 (unexpected!)
+	// Setup: execution layer is ahead of target (indicates state divergence)
 	targetHeight := uint64(100)
 	execHeight := uint64(101)
 
 	mockExec.On("GetLatestHeight", mock.Anything).Return(execHeight, nil)
 
-	// Execute sync - should just log and continue without error
+	// Should return error to prevent proceeding with divergent state
 	err := syncer.SyncToHeight(ctx, targetHeight)
-	require.NoError(t, err)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "ahead of target height")
 
 	// No replay should be attempted
 	mockExec.AssertNotCalled(t, "ExecuteTxs", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything)

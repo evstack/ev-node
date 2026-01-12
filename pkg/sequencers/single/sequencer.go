@@ -16,6 +16,7 @@ import (
 
 	"github.com/evstack/ev-node/block"
 	coresequencer "github.com/evstack/ev-node/core/sequencer"
+	"github.com/evstack/ev-node/pkg/config"
 	datypes "github.com/evstack/ev-node/pkg/da/types"
 	"github.com/evstack/ev-node/pkg/genesis"
 	seqcommon "github.com/evstack/ev-node/pkg/sequencers/common"
@@ -32,6 +33,7 @@ type Sequencer struct {
 	logger  zerolog.Logger
 	genesis genesis.Genesis
 	db      ds.Batching
+	cfg     config.Config
 
 	Id       []byte
 	daClient block.FullDAClient
@@ -55,8 +57,8 @@ func NewSequencer(
 	logger zerolog.Logger,
 	db ds.Batching,
 	daClient block.FullDAClient,
+	cfg config.Config,
 	id []byte,
-	batchTime time.Duration,
 	maxQueueSize int,
 	genesis genesis.Genesis,
 ) (*Sequencer, error) {
@@ -64,7 +66,8 @@ func NewSequencer(
 		db:              db,
 		logger:          logger,
 		daClient:        daClient,
-		batchTime:       batchTime,
+		cfg:             cfg,
+		batchTime:       cfg.Node.BlockTime.Duration,
 		Id:              id,
 		queue:           NewBatchQueue(db, "batches", maxQueueSize),
 		checkpointStore: seqcommon.NewCheckpointStore(db, ds.NewKey("/single/checkpoint")),
@@ -90,8 +93,6 @@ func NewSequencer(
 				DAHeight: s.GetDAHeight(),
 				TxIndex:  0,
 			}
-
-			s.fiRetriever = block.NewForcedInclusionRetriever(daClient, logger, s.GetDAHeight(), genesis.DAEpochForcedInclusion)
 		} else {
 			return nil, fmt.Errorf("failed to load checkpoint from DB: %w", err)
 		}
@@ -105,9 +106,12 @@ func NewSequencer(
 				Uint64("da_height", checkpoint.DAHeight).
 				Msg("resuming from checkpoint within DA epoch")
 		}
-
-		s.fiRetriever = block.NewForcedInclusionRetriever(daClient, logger, s.getInitialDAStartHeight(context.Background()), genesis.DAEpochForcedInclusion)
 	}
+
+	// Determine initial DA height for forced inclusion
+	initialDAHeight := s.getInitialDAStartHeight(context.Background())
+
+	s.fiRetriever = block.NewForcedInclusionRetriever(daClient, cfg, logger, initialDAHeight, genesis.DAEpochForcedInclusion)
 
 	return s, nil
 }
@@ -175,7 +179,12 @@ func (c *Sequencer) GetNextBatch(ctx context.Context, req coresequencer.GetNextB
 			TxIndex:  0,
 		}
 
-		c.fiRetriever = block.NewForcedInclusionRetriever(c.daClient, c.logger, c.getInitialDAStartHeight(ctx), c.genesis.DAEpochForcedInclusion)
+		// override forced inclusion retriever, as the da start height have been updated
+		// Stop the old retriever first
+		if c.fiRetriever != nil {
+			c.fiRetriever.Stop()
+		}
+		c.fiRetriever = block.NewForcedInclusionRetriever(c.daClient, c.cfg, c.logger, c.getInitialDAStartHeight(ctx), c.genesis.DAEpochForcedInclusion)
 	}
 
 	// If we have no cached transactions or we've consumed all from the current cache,

@@ -113,13 +113,19 @@ func startTestNetwork(ctx context.Context, t *testing.T, n int, conf map[int]hos
 		nodeKey, err := key.GenerateNodeKey()
 		require.NoError(err)
 
+		// Use chainID from conf if specified, otherwise default to "test-chain"
+		chainID := "test-chain"
+		if descr, ok := conf[i]; ok && descr.chainID != "" {
+			chainID = descr.chainID
+		}
+
 		client, err := NewClient(
 			config.P2PConfig{
 				Peers: seeds[i],
 			},
 			nodeKey.PrivKey,
 			sync.MutexWrap(datastore.NewMapDatastore()),
-			"test-chain",
+			chainID,
 			logger,
 			NopMetrics(),
 		)
