@@ -1163,3 +1163,64 @@ func (s *Syncer) IsSynced(expHeight uint64) bool {
 	}
 	return state.LastBlockHeight == expHeight && !s.isCatchingUpState()
 }
+
+// RecoverFromRaft attempts to recover the state from a raft block state
+func (s *Syncer) RecoverFromRaft(ctx context.Context, raftState *raft.RaftBlockState) error {
+	s.logger.Info().Uint64("height", raftState.Height).Msg("recovering state from raft")
+
+	var header types.SignedHeader
+	if err := header.UnmarshalBinary(raftState.Header); err != nil {
+		return fmt.Errorf("unmarshal header: %w", err)
+	}
+
+	// Verify header hash matches raft state hash
+	if !bytes.Equal(header.Hash(), raftState.Hash) {
+		return fmt.Errorf("header hash mismatch: %X != %X", header.Hash(), raftState.Hash)
+	}
+
+	var data types.Data
+	if err := data.UnmarshalBinary(raftState.Data); err != nil {
+		return fmt.Errorf("unmarshal data: %w", err)
+	}
+
+	currentState := s.getLastState()
+	// Validation
+	if err := s.validateBlock(currentState, &data, &header); err != nil {
+		return fmt.Errorf("validate block: %w", err)
+	}
+
+	// Apply block
+	newState, err := s.applyBlock(header.Header, &data, currentState)
+	if err != nil {
+		return fmt.Errorf("apply block: %w", err)
+	}
+
+	// Update store atomically
+	batch, err := s.store.NewBatch(ctx)
+	if err != nil {
+		return fmt.Errorf("create batch: %w", err)
+	}
+
+	if err := batch.SaveBlockData(&header, &data, &header.Signature); err != nil {
+		return fmt.Errorf("save block data: %w", err)
+	}
+
+	if err := batch.SetHeight(header.Height()); err != nil {
+		return fmt.Errorf("set height: %w", err)
+	}
+
+	if err := batch.UpdateState(newState); err != nil {
+		return fmt.Errorf("update state: %w", err)
+	}
+
+	if err := batch.Commit(); err != nil {
+		return fmt.Errorf("commit batch: %w", err)
+	}
+
+	// Update in-memory state
+	s.SetLastState(newState)
+	s.metrics.Height.Set(float64(newState.LastBlockHeight))
+
+	s.logger.Info().Uint64("height", newState.LastBlockHeight).Msg("recovered from raft state")
+	return nil
+}

@@ -22,6 +22,11 @@ type Runnable interface {
 	IsSynced(*RaftBlockState) bool
 }
 
+// Recoverable represents a component that can recover its state from a RaftBlockState
+type Recoverable interface {
+	Recover(ctx context.Context, state *RaftBlockState) error
+}
+
 type sourceNode interface {
 	Config() Config
 	leaderCh() <-chan bool
@@ -98,14 +103,25 @@ func (d *DynamicLeaderElection) Run(ctx context.Context) error {
 						d.logger.Info().Msg("lost leadership during sync wait")
 						continue
 					}
-					if !raftSynced || !runnable.IsSynced(d.node.GetState()) {
-						d.logger.Info().Uint64("raft_state_height", d.node.GetState().Height).
-							Msg("became leader, but not synced. Pass on leadership")
-						if err := d.node.leadershipTransfer(); err != nil && !errors.Is(err, raft.ErrNotLeader) {
-							// the leadership transfer can fail due to no suitable leader. Better stop than double sign on old state
-							return err
+					// Obtain the latest state from the Raft node
+					raftState := d.node.GetState()
+					if !raftSynced || !runnable.IsSynced(raftState) {
+						if recoverable, ok := runnable.(Recoverable); ok {
+							d.logger.Info().Msg("became leader but not synced, attempting recovery")
+							if err := recoverable.Recover(ctx, raftState); err != nil {
+								d.logger.Error().Err(err).Msg("recovery failed")
+								return err
+							}
+							d.logger.Info().Msg("recovery successful")
+						} else {
+							d.logger.Info().Uint64("raft_state_height", raftState.Height).
+								Msg("became leader, but not synced. Pass on leadership")
+							if err := d.node.leadershipTransfer(); err != nil && !errors.Is(err, raft.ErrNotLeader) {
+								// the leadership transfer can fail due to no suitable leader. Better stop than double sign on old state
+								return err
+							}
+							continue
 						}
-						continue
 					}
 					d.logger.Info().Msg("became leader, stopping follower operations")
 					workerCancel()

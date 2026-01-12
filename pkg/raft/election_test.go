@@ -116,7 +116,8 @@ func TestDynamicLeaderElectionRun(t *testing.T) {
 				m.EXPECT().leadershipTransfer().Return(nil)
 
 				fStarted := make(chan struct{})
-				follower := &testRunnable{startedCh: fStarted, isSyncedFn: func(*RaftBlockState) bool { return false }}
+				follower := &nonRecoverableRunnable{r: &testRunnable{startedCh: fStarted, isSyncedFn: func(*RaftBlockState) bool { return false }}}
+				// Verify fallback when Recoverable is NOT implemented
 				leader := &testRunnable{runFn: func(ctx context.Context) error {
 					t.Fatal("leader should not be running")
 					return nil
@@ -135,6 +136,66 @@ func TestDynamicLeaderElectionRun(t *testing.T) {
 					leaderCh <- true
 					// allow time for SendTimeout sleep and transfer
 					time.Sleep(3 * time.Millisecond)
+					cancel()
+				}()
+				return d, ctx, cancel
+			},
+			assertF: func(t *testing.T, err error) {
+				require.Error(t, err)
+				assert.ErrorIs(t, err, context.Canceled)
+			},
+		},
+		"single node not synced wraps recovery": {
+			setup: func(t *testing.T) (*DynamicLeaderElection, context.Context, context.CancelFunc) {
+				m := newMocksourceNode(t)
+				leaderCh := make(chan bool, 2)
+				m.EXPECT().leaderCh().Return((<-chan bool)(leaderCh))
+				m.EXPECT().Config().Return(testCfg())
+				m.EXPECT().waitForMsgsLanded(2 * time.Millisecond).Return(nil)
+				m.EXPECT().NodeID().Return("self")
+				m.EXPECT().leaderID().Return("self")
+				m.EXPECT().GetState().Return(&RaftBlockState{Height: 1})
+
+				fStarted := make(chan struct{})
+				lStarted := make(chan struct{})
+				recoverCalled := make(chan struct{})
+
+				follower := &testRunnable{
+					startedCh:  fStarted,
+					isSyncedFn: func(*RaftBlockState) bool { return false },
+					recoverFn: func(ctx context.Context, state *RaftBlockState) error {
+						close(recoverCalled)
+						return nil
+					},
+				}
+				leader := &testRunnable{startedCh: lStarted}
+
+				logger := zerolog.Nop()
+				d := &DynamicLeaderElection{logger: logger, node: m,
+					leaderFactory:   func() (Runnable, error) { return leader, nil },
+					followerFactory: func() (Runnable, error) { return follower, nil },
+				}
+				ctx, cancel := context.WithCancel(t.Context())
+				// Start as follower via false, then signal leader true
+				go func() {
+					leaderCh <- false
+					<-fStarted // ensure follower started
+					leaderCh <- true
+
+					// Wait for recovery to be called
+					select {
+					case <-recoverCalled:
+					case <-time.After(50 * time.Millisecond):
+						t.Error("timed out waiting for recover")
+					}
+
+					// Wait for leader to start
+					select {
+					case <-lStarted:
+					case <-time.After(50 * time.Millisecond):
+						t.Error("timed out waiting for leader start")
+					}
+
 					cancel()
 				}()
 				return d, ctx, cancel
@@ -258,6 +319,7 @@ type testRunnable struct {
 	isSyncedFn func(*RaftBlockState) bool
 	startedCh  chan struct{}
 	doneCh     chan struct{}
+	recoverFn  func(ctx context.Context, state *RaftBlockState) error
 }
 
 func (t *testRunnable) Run(ctx context.Context) error {
@@ -287,4 +349,23 @@ func (t *testRunnable) IsSynced(s *RaftBlockState) bool {
 		return t.isSyncedFn(s)
 	}
 	return true
+}
+
+func (t *testRunnable) Recover(ctx context.Context, state *RaftBlockState) error {
+	if t.recoverFn != nil {
+		return t.recoverFn(ctx, state)
+	}
+	return nil
+}
+
+type nonRecoverableRunnable struct {
+	r *testRunnable
+}
+
+func (n *nonRecoverableRunnable) Run(ctx context.Context) error {
+	return n.r.Run(ctx)
+}
+
+func (n *nonRecoverableRunnable) IsSynced(s *RaftBlockState) bool {
+	return n.r.IsSynced(s)
 }

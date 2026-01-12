@@ -243,6 +243,15 @@ func (f *failoverState) IsSynced(s *raft.RaftBlockState) bool {
 	return false
 }
 
+func (f *failoverState) Recover(ctx context.Context, state *raft.RaftBlockState) error {
+	if f.bc.Syncer != nil {
+		return f.bc.Syncer.RecoverFromRaft(ctx, state)
+	}
+	// For aggregator mode without syncer (e.g. based sequencer only?), recovery logic might differ or be implicit.
+	// But failure to recover means we are stuck.
+	return errors.New("recovery not supported in this mode")
+}
+
 var _ leaderElection = &singleRoleElector{}
 var _ testSupportElection = &singleRoleElector{}
 

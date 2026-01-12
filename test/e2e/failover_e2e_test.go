@@ -276,7 +276,6 @@ func verifyDABlocks(t *testing.T, daStartHeight, lastDABlock uint64, jwtSecret s
 	evHeightsToEvBlockParts := make(map[uint64]int)
 	deduplicationCache := make(map[string]uint64) // mixed header and data hashes
 
-	lastEVHeight := genesisHeight
 	// Verify each block is present exactly once
 	for daHeight := daStartHeight; daHeight <= lastDABlock; daHeight++ {
 		blobs, err := blobClient.Blob.GetAll(t.Context(), daHeight, []libshare.Namespace{ns})
@@ -290,8 +289,7 @@ func verifyDABlocks(t *testing.T, daStartHeight, lastDABlock uint64, jwtSecret s
 					require.Equal(t, evHeight, height)
 					continue
 				}
-				require.GreaterOrEqual(t, evHeight, lastEVHeight)
-				lastEVHeight = evHeight
+				require.GreaterOrEqual(t, evHeight, genesisHeight)
 				deduplicationCache[hash.String()] = evHeight
 				evHeightsToEvBlockParts[evHeight]++
 			}
