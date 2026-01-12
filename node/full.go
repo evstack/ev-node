@@ -82,12 +82,12 @@ func newFullNode(
 	mainKV := store.NewEvNodeKVStore(database)
 	evstore := store.New(mainKV)
 
-	headerSyncService, err := initHeaderSyncService(mainKV, rktStore, nodeConfig, genesis, p2pClient, logger)
+	headerSyncService, err := initHeaderSyncService(mainKV, evstore, nodeConfig, genesis, p2pClient, logger)
 	if err != nil {
 		return nil, err
 	}
 
-	dataSyncService, err := initDataSyncService(mainKV, rktStore, nodeConfig, genesis, p2pClient, logger)
+	dataSyncService, err := initDataSyncService(mainKV, evstore, nodeConfig, genesis, p2pClient, logger)
 	if err != nil {
 		return nil, err
 	}
