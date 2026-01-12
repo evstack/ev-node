@@ -831,9 +831,13 @@ func TestSyncer_runCatchupMode(t *testing.T) {
 	mockDA.AssertExpectations(t)
 }
 
-func TestSyncer_modeSwitching(t *testing.T) {
-	// Test that mode switches are tracked correctly
+func TestSyncer_runFollowMode_SubscribeFailureReturnsForModeCheck(t *testing.T) {
 	mockDA := testmocks.NewMockClient(t)
+	namespace := []byte("namespace")
+	mockDA.EXPECT().GetHeaderNamespace().Return(namespace).Once()
+	mockDA.EXPECT().GetDataNamespace().Return(namespace).Once()
+	mockDA.EXPECT().Subscribe(mock.Anything, namespace).
+		Return(nil, errors.New("subscribe failed")).Once()
 
 	syncer := &Syncer{
 		daClient:          mockDA,
@@ -841,7 +845,20 @@ func TestSyncer_modeSwitching(t *testing.T) {
 		ctx:               context.Background(),
 		logger:            zerolog.Nop(),
 		metrics:           common.NopMetrics(),
-		currentSyncMode:   atomic.Int32{},
+	}
+	syncer.daRetrieverHeight.Store(100)
+
+	// runFollowMode should return after subscribe failure,
+	// allowing daWorkerLoop to call determineSyncMode() next iteration
+	syncer.runFollowMode()
+
+	mockDA.AssertExpectations(t)
+}
+
+func TestSyncer_modeSwitching(t *testing.T) {
+	// Test that mode switches are tracked correctly
+	syncer := &Syncer{
+		currentSyncMode: atomic.Int32{},
 	}
 
 	// Initial mode should be catchup (0)

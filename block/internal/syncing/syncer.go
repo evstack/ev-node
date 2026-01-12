@@ -440,8 +440,9 @@ func (s *Syncer) runFollowMode() {
 	err := s.subscribeAndFollow()
 	if err != nil && !errors.Is(err, context.Canceled) {
 		s.metrics.SubscribeErrors.Add(1)
-		s.logger.Warn().Err(err).Msg("subscribe failed, falling back to catchup")
-		// Don't sleep - go straight to catchup mode to recover
+		s.logger.Warn().Err(err).Msg("subscribe failed, will retry via mode check")
+		// No explicit catchup call needed - daWorkerLoop will call determineSyncMode()
+		// which defaults to catchup on error or when behind
 	}
 }
 
@@ -977,25 +978,15 @@ func hashTx(tx []byte) string {
 }
 
 // calculateBlockFullness returns a value between 0.0 and 1.0 indicating how full the block is.
-// It estimates fullness based on total data size.
+// It estimates fullness based on total data size relative to max blob size.
 // This is a heuristic - actual limits may vary by execution layer.
 func (s *Syncer) calculateBlockFullness(data *types.Data) float64 {
-	const maxDataSize = common.DefaultMaxBlobSize
-
-	var fullness float64
-	count := 0
-
-	// Check data size fullness
-	dataSize := uint64(0)
+	var dataSize uint64
 	for _, tx := range data.Txs {
 		dataSize += uint64(len(tx))
 	}
-	sizeFullness := float64(dataSize) / float64(maxDataSize)
-	fullness += min(sizeFullness, 1.0)
-	count++
-
-	// Return average fullness
-	return fullness / float64(count)
+	fullness := float64(dataSize) / float64(common.DefaultMaxBlobSize)
+	return min(fullness, 1.0)
 }
 
 // updateDynamicGracePeriod updates the grace period multiplier based on block fullness.
