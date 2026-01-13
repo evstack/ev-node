@@ -58,6 +58,25 @@ TestApp serves as a reference implementation to help you get started with your o
 
 Check out our tutorials on our [website][docs].
 
+## Onboarding with Claude Code
+
+Use [Claude Code](https://claude.ai/code) to explore the codebase:
+
+```bash
+cd ev-node && claude
+```
+
+Example prompts:
+
+| Goal | Prompt |
+|------|--------|
+| Overview | "How does ev-node work?" |
+| Block package | "Explain block production flow" |
+| DA layer | "How does the DA layer work?" |
+| Sequencing | "Explain single vs based sequencer" |
+
+The `.claude/skills/ev-node-explainer/` skill provides architecture docs for block, DA, and sequencing systems.
+
 ## Contributing
 
 We welcome your contributions! Everyone is welcome to contribute, whether it's
