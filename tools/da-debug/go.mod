@@ -15,7 +15,7 @@ require (
 	github.com/celestiaorg/go-square/merkle v0.0.0-20240627094109-7d01436067a3 // indirect
 	github.com/celestiaorg/nmt v0.24.2 // indirect
 	github.com/decred/dcrd/dcrec/secp256k1/v4 v4.4.0 // indirect
-	github.com/filecoin-project/go-jsonrpc v0.9.0 // indirect
+	github.com/filecoin-project/go-jsonrpc v0.10.0 // indirect
 	github.com/gogo/protobuf v1.3.2 // indirect
 	github.com/golang/groupcache v0.0.0-20241129210726-2c02b8208cf8 // indirect
 	github.com/google/uuid v1.6.0 // indirect

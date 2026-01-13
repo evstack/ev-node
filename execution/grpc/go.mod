@@ -5,7 +5,7 @@ go 1.24.6
 require (
 	connectrpc.com/connect v1.19.1
 	connectrpc.com/grpcreflect v1.3.0
-	github.com/evstack/ev-node v1.0.0-beta.10
+	github.com/evstack/ev-node v1.0.0-beta.11
 	github.com/evstack/ev-node/core v1.0.0-beta.5
 	github.com/stretchr/testify v1.11.1
 	go.opentelemetry.io/otel v1.39.0
