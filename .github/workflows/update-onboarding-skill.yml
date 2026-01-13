@@ -1,0 +1,127 @@
+---
+name: Update Onboarding Skill
+
+"on":
+  schedule:
+    - cron: '0 9 * * 6'  # Run every Saturday at 09:00 UTC
+  workflow_dispatch:  # Allow manual trigger
+
+jobs:
+  update-skill:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+      id-token: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0  # Full history for commit analysis
+
+      - name: Get commits from last week
+        id: commits
+        env:
+          LOOKBACK_DAYS: "7"
+        run: |
+          SINCE=$(date -d "${LOOKBACK_DAYS} days ago" --iso-8601)
+          echo "since=${SINCE}" >> "$GITHUB_OUTPUT"
+
+          # Get commit summary for the prompt
+          # Get commit log for relevant paths
+          COMMIT_LOG=$(git log --since="${SINCE}" --oneline --no-merges \
+            -- '*.go' 'block/' 'core/' 'types/' 'pkg/' 2>/dev/null || echo "")
+
+          if [ -z "$COMMIT_LOG" ]; then
+            echo "No relevant commits in the last week"
+            echo "has_commits=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_commits=true" >> "$GITHUB_OUTPUT"
+            # Save to file for Claude to read
+            echo "${COMMIT_LOG}" > /tmp/weekly_commits.txt
+            echo "Found $(echo "${COMMIT_LOG}" | wc -l) commits"
+          fi
+
+      - name: Run Claude to update skill
+        if: steps.commits.outputs.has_commits == 'true'
+        id: claude
+        uses: anthropics/claude-code-action@v1
+        env:
+          SINCE_DATE: ${{ steps.commits.outputs.since }}
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          direct_prompt: |
+            You are updating the ev-node-explainer skill based on recent code changes.
+
+            ## Task
+            1. Read the commits from the last week using the SINCE_DATE environment variable
+            2. For significant changes, read the actual diffs in block/, core/, types/
+            3. Analyze what changed in the block package, core interfaces, or types
+            4. Update `.claude/skills/ev-node-explainer/SKILL.md` and/or `block-architecture.md` if needed
+
+            ## Guidelines
+            - Only update if there are meaningful architectural changes
+            - Keep documentation accurate to the current codebase
+            - Add new sections for new components
+            - Update state machines if flows changed
+            - Update file lists if new files were added
+            - Do NOT make changes if commits are just bug fixes or minor tweaks
+
+            ## Output
+            - If updates were made, commit changes with message "docs: update ev-node-explainer skill based on weekly changes"
+            - If no meaningful updates needed, output "No skill updates required"
+
+          allowed_tools: |
+            Bash(git:*)
+            Bash(date:*)
+            Read
+            Edit
+            Write
+            Glob
+            Grep
+
+      - name: Create Pull Request
+        if: steps.commits.outputs.has_commits == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Check if there are changes
+          if git diff --quiet HEAD; then
+            echo "No changes to commit"
+            exit 0
+          fi
+
+          # Configure git
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          BRANCH="docs/update-onboarding-skill-$(date +%Y%m%d)"
+          git checkout -b "${BRANCH}" 2>/dev/null || git checkout "${BRANCH}"
+
+          # Stage and commit any changes Claude made
+          git add -A
+          git commit -m "docs: update ev-node-explainer skill based on weekly changes
+
+          Co-Authored-By: Claude <noreply@anthropic.com>" || {
+            echo "Nothing to commit"
+            exit 0
+          }
+
+          git push -u origin "${BRANCH}"
+
+          # Create PR
+          gh pr create \
+            --title "docs: weekly update to ev-node-explainer skill" \
+            --body "## Summary
+          Automated weekly update to the ev-node-explainer skill based on code changes from the past week.
+
+          ## Changes
+          This PR updates the onboarding documentation to reflect recent architectural changes.
+
+          ## Review
+          Please review the documentation changes for accuracy.
+
+          ---
+          Generated automatically by the weekly skill update workflow" \
+            --base main \
+            --head "${BRANCH}"
