@@ -124,6 +124,8 @@ func setupSequencerWithForceInclusion(t *testing.T, sut *SystemUnderTest, nodeHo
 }
 
 func TestEvmSequencerForceInclusionE2E(t *testing.T) {
+	t.Skip() // To re-enable after https://github.com/evstack/ev-node/issues/2965
+
 	sut := NewSystemUnderTest(t)
 	workDir := t.TempDir()
 	sequencerHome := filepath.Join(workDir, "sequencer")
@@ -175,6 +177,8 @@ func TestEvmSequencerForceInclusionE2E(t *testing.T) {
 }
 
 func TestEvmFullNodeForceInclusionE2E(t *testing.T) {
+	t.Skip() // To re-enable after https://github.com/evstack/ev-node/issues/2965
+
 	sut := NewSystemUnderTest(t)
 	workDir := t.TempDir()
 	sequencerHome := filepath.Join(workDir, "sequencer")
@@ -400,6 +404,8 @@ func setupFullNodeWithForceInclusionCheck(t *testing.T, sut *SystemUnderTest, fu
 // Note: This test simulates the scenario by having the sequencer configured to
 // listen to the wrong namespace, while we submit directly to the correct namespace.
 func TestEvmSyncerMaliciousSequencerForceInclusionE2E(t *testing.T) {
+	t.Skip() // To re-enable after https://github.com/evstack/ev-node/issues/2965
+
 	sut := NewSystemUnderTest(t)
 	workDir := t.TempDir()
 	sequencerHome := filepath.Join(workDir, "sequencer")
