@@ -10,7 +10,7 @@ require (
 	github.com/celestiaorg/tastora v0.8.0
 	github.com/cosmos/cosmos-sdk v0.53.5
 	github.com/cosmos/ibc-go/v8 v8.8.0
-	github.com/ethereum/go-ethereum v1.16.7
+	github.com/ethereum/go-ethereum v1.16.8
 	github.com/evstack/ev-node v1.0.0-beta.10
 	github.com/evstack/ev-node/execution/evm v0.0.0-20250602130019-2a732cf903a5
 	github.com/evstack/ev-node/execution/evm/test v0.0.0-00010101000000-000000000000
