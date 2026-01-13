@@ -55,6 +55,11 @@ type Submitter struct {
 	headerSubmissionMtx sync.Mutex
 	dataSubmissionMtx   sync.Mutex
 
+	// Batching strategy state
+	lastHeaderSubmit time.Time
+	lastDataSubmit   time.Time
+	batchingStrategy BatchingStrategy
+
 	// Channels for coordination
 	errorCh chan<- error // Channel to report critical execution client failures
 
@@ -81,6 +86,19 @@ func NewSubmitter(
 	logger zerolog.Logger,
 	errorCh chan<- error,
 ) *Submitter {
+	submitterLogger := logger.With().Str("component", "submitter").Logger()
+
+	// Initialize batching strategy
+	strategy, err := BatchingStrategyFactory(config.DA)
+	if err != nil {
+		submitterLogger.Warn().Err(err).Msg("failed to create batching strategy, using time-based default")
+		strategy = NewTimeBasedStrategy(config.DA.BlockTime.Duration, 1)
+	}
+
+	submitterLogger.Info().
+		Str("batching_strategy", strategy.Name()).
+		Msg("initialized DA submission batching strategy")
+
 	return &Submitter{
 		store:            store,
 		exec:             exec,
@@ -92,8 +110,11 @@ func NewSubmitter(
 		sequencer:        sequencer,
 		signer:           signer,
 		daIncludedHeight: &atomic.Uint64{},
+		lastHeaderSubmit: time.Now(),
+		lastDataSubmit:   time.Now(),
+		batchingStrategy: strategy,
 		errorCh:          errorCh,
-		logger:           logger.With().Str("component", "submitter").Logger(),
+		logger:           submitterLogger,
 	}
 }
 
@@ -140,7 +161,12 @@ func (s *Submitter) daSubmissionLoop() {
 	s.logger.Info().Msg("starting DA submission loop")
 	defer s.logger.Info().Msg("DA submission loop stopped")
 
-	ticker := time.NewTicker(s.config.DA.BlockTime.Duration)
+	// Use a shorter ticker interval to check batching strategy more frequently
+	checkInterval := s.config.DA.BlockTime.Duration / 4
+	if checkInterval < 100*time.Millisecond {
+		checkInterval = 100 * time.Millisecond
+	}
+	ticker := time.NewTicker(checkInterval)
 	defer ticker.Stop()
 
 	for {
@@ -148,49 +174,119 @@ func (s *Submitter) daSubmissionLoop() {
 		case <-s.ctx.Done():
 			return
 		case <-ticker.C:
-			// Submit headers
-			if headersNb := s.cache.NumPendingHeaders(); headersNb != 0 {
-				s.logger.Debug().Time("t", time.Now()).Uint64("headers", headersNb).Msg("Submitting headers")
+			// Check if we should submit headers based on batching strategy
+			headersNb := s.cache.NumPendingHeaders()
+			if headersNb > 0 {
+				timeSinceLastSubmit := time.Since(s.lastHeaderSubmit)
+
+				// For strategy decision, we need to estimate the size
+				// We'll fetch headers to check, but only submit if strategy approves
 				if s.headerSubmissionMtx.TryLock() {
-					s.logger.Debug().Time("t", time.Now()).Uint64("headers", headersNb).Msg("Header submission in progress")
 					go func() {
-						defer func() {
-							s.logger.Debug().Time("t", time.Now()).Uint64("headers", headersNb).Msg("Header submission completed")
-							s.headerSubmissionMtx.Unlock()
-						}()
-						if err := s.daSubmitter.SubmitHeaders(s.ctx, s.cache, s.signer); err != nil {
-							// Check for unrecoverable errors that indicate a critical issue
-							if errors.Is(err, common.ErrOversizedItem) {
-								s.logger.Error().Err(err).
-									Msg("CRITICAL: Header exceeds DA blob size limit - halting to prevent live lock")
-								s.sendCriticalError(fmt.Errorf("unrecoverable DA submission error: %w", err))
-								return
+						defer s.headerSubmissionMtx.Unlock()
+
+						// Get pending headers to estimate size
+						headers, err := s.cache.GetPendingHeaders(s.ctx)
+						if err != nil {
+							s.logger.Error().Err(err).Msg("failed to get pending headers for batching decision")
+							return
+						}
+
+						// Estimate total size
+						totalSize := 0
+						for _, h := range headers {
+							data, err := h.MarshalBinary()
+							if err == nil {
+								totalSize += len(data)
 							}
-							s.logger.Error().Err(err).Msg("failed to submit headers")
+						}
+
+						shouldSubmit := s.batchingStrategy.ShouldSubmit(
+							uint64(len(headers)),
+							totalSize,
+							common.DefaultMaxBlobSize,
+							timeSinceLastSubmit,
+						)
+
+						if shouldSubmit {
+							s.logger.Debug().
+								Time("t", time.Now()).
+								Uint64("headers", headersNb).
+								Int("total_size_kb", totalSize/1024).
+								Dur("time_since_last", timeSinceLastSubmit).
+								Str("strategy", s.batchingStrategy.Name()).
+								Msg("batching strategy triggered header submission")
+
+							if err := s.daSubmitter.SubmitHeaders(s.ctx, s.cache, s.signer); err != nil {
+								// Check for unrecoverable errors that indicate a critical issue
+								if errors.Is(err, common.ErrOversizedItem) {
+									s.logger.Error().Err(err).
+										Msg("CRITICAL: Header exceeds DA blob size limit - halting to prevent live lock")
+									s.sendCriticalError(fmt.Errorf("unrecoverable DA submission error: %w", err))
+									return
+								}
+								s.logger.Error().Err(err).Msg("failed to submit headers")
+							} else {
+								s.lastHeaderSubmit = time.Now()
+							}
 						}
 					}()
 				}
 			}
 
-			// Submit data
-			if dataNb := s.cache.NumPendingData(); dataNb != 0 {
-				s.logger.Debug().Time("t", time.Now()).Uint64("data", dataNb).Msg("Submitting data")
+			// Check if we should submit data based on batching strategy
+			dataNb := s.cache.NumPendingData()
+			if dataNb > 0 {
+				timeSinceLastSubmit := time.Since(s.lastDataSubmit)
+
 				if s.dataSubmissionMtx.TryLock() {
-					s.logger.Debug().Time("t", time.Now()).Uint64("data", dataNb).Msg("Data submission in progress")
 					go func() {
-						defer func() {
-							s.logger.Debug().Time("t", time.Now()).Uint64("data", dataNb).Msg("Data submission completed")
-							s.dataSubmissionMtx.Unlock()
-						}()
-						if err := s.daSubmitter.SubmitData(s.ctx, s.cache, s.signer, s.genesis); err != nil {
-							// Check for unrecoverable errors that indicate a critical issue
-							if errors.Is(err, common.ErrOversizedItem) {
-								s.logger.Error().Err(err).
-									Msg("CRITICAL: Data exceeds DA blob size limit - halting to prevent live lock")
-								s.sendCriticalError(fmt.Errorf("unrecoverable DA submission error: %w", err))
-								return
+						defer s.dataSubmissionMtx.Unlock()
+
+						// Get pending data to estimate size
+						dataList, err := s.cache.GetPendingData(s.ctx)
+						if err != nil {
+							s.logger.Error().Err(err).Msg("failed to get pending data for batching decision")
+							return
+						}
+
+						// Estimate total size
+						totalSize := 0
+						for _, d := range dataList {
+							data, err := d.MarshalBinary()
+							if err == nil {
+								totalSize += len(data)
 							}
-							s.logger.Error().Err(err).Msg("failed to submit data")
+						}
+
+						shouldSubmit := s.batchingStrategy.ShouldSubmit(
+							uint64(len(dataList)),
+							totalSize,
+							common.DefaultMaxBlobSize,
+							timeSinceLastSubmit,
+						)
+
+						if shouldSubmit {
+							s.logger.Debug().
+								Time("t", time.Now()).
+								Uint64("data", dataNb).
+								Int("total_size_kb", totalSize/1024).
+								Dur("time_since_last", timeSinceLastSubmit).
+								Str("strategy", s.batchingStrategy.Name()).
+								Msg("batching strategy triggered data submission")
+
+							if err := s.daSubmitter.SubmitData(s.ctx, s.cache, s.signer, s.genesis); err != nil {
+								// Check for unrecoverable errors that indicate a critical issue
+								if errors.Is(err, common.ErrOversizedItem) {
+									s.logger.Error().Err(err).
+										Msg("CRITICAL: Data exceeds DA blob size limit - halting to prevent live lock")
+									s.sendCriticalError(fmt.Errorf("unrecoverable DA submission error: %w", err))
+									return
+								}
+								s.logger.Error().Err(err).Msg("failed to submit data")
+							} else {
+								s.lastDataSubmit = time.Now()
+							}
 						}
 					}()
 				}

@@ -338,6 +338,8 @@ func TestSubmitter_daSubmissionLoop(t *testing.T) {
 	// Set a small block time so the ticker fires quickly
 	cfg := config.DefaultConfig()
 	cfg.DA.BlockTime.Duration = 5 * time.Millisecond
+	// Use immediate batching strategy so submissions happen right away
+	cfg.DA.BatchingStrategy = "immediate"
 	metrics := common.NopMetrics()
 
 	// Prepare fake DA submitter capturing calls
@@ -350,6 +352,10 @@ func TestSubmitter_daSubmissionLoop(t *testing.T) {
 	exec := testmocks.NewMockExecutor(t)
 
 	// Provide a minimal signer implementation
+	// Initialize batching strategy (immediate for this test)
+	batchingStrategy, err := BatchingStrategyFactory(cfg.DA)
+	require.NoError(t, err)
+
 	s := &Submitter{
 		store:            st,
 		exec:             exec,
@@ -360,12 +366,21 @@ func TestSubmitter_daSubmissionLoop(t *testing.T) {
 		daSubmitter:      fakeDA,
 		signer:           &fakeSigner{},
 		daIncludedHeight: &atomic.Uint64{},
+		lastHeaderSubmit: time.Now().Add(-time.Hour), // Set far in past so strategy allows submission
+		lastDataSubmit:   time.Now().Add(-time.Hour),
+		batchingStrategy: batchingStrategy,
 		logger:           zerolog.Nop(),
 	}
 
 	// Make there be pending headers and data by setting store height > last submitted
+	h1, d1 := newHeaderAndData("test-chain", 1, true)
+	h2, d2 := newHeaderAndData("test-chain", 2, true)
+
+	// Store the blocks
 	batch, err := st.NewBatch(ctx)
 	require.NoError(t, err)
+	require.NoError(t, batch.SaveBlockData(h1, d1, &types.Signature{}))
+	require.NoError(t, batch.SaveBlockData(h2, d2, &types.Signature{}))
 	require.NoError(t, batch.SetHeight(2))
 	require.NoError(t, batch.Commit())
 
