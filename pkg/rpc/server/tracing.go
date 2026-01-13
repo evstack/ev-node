@@ -161,11 +161,6 @@ func (t *tracedStoreServer) GetP2PStoreInfo(
 	span.SetAttributes(
 		attribute.Int("store_count", len(res.Msg.Stores)),
 	)
-	for i, store := range res.Msg.Stores {
-		span.SetAttributes(
-			attribute.Int64("store_"+string(rune(i))+"_height", int64(store.Height)),
-		)
-	}
 	return res, nil
 }
 
