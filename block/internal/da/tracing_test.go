@@ -83,22 +83,22 @@ func TestTracedDA_Submit_Success(t *testing.T) {
 	spans := sr.Ended()
 	require.Len(t, spans, 1)
 	span := spans[0]
-    require.Equal(t, "DA.Submit", span.Name())
+	require.Equal(t, "DA.Submit", span.Name())
 	require.Equal(t, codes.Unset, span.Status().Code)
 
-    attrs := span.Attributes()
-    requireAttribute(t, attrs, "blob.count", 2)
-    requireAttribute(t, attrs, "blob.total_size_bytes", 3)
-    // namespace length assertion for local behavior
-    // look for da.namespace and assert byte-length
-    foundNS := false
-    for _, a := range attrs {
-        if string(a.Key) == "da.namespace" {
-            foundNS = true
-            require.Equal(t, 2, len(a.Value.AsString()))
-        }
-    }
-    require.True(t, foundNS, "attribute da.namespace not found")
+	attrs := span.Attributes()
+	requireAttribute(t, attrs, "blob.count", 2)
+	requireAttribute(t, attrs, "blob.total_size_bytes", 3)
+	// namespace hex string length assertion
+	// 2 bytes = 4 hex characters
+	foundNS := false
+	for _, a := range attrs {
+		if string(a.Key) == "da.namespace" {
+			foundNS = true
+			require.Equal(t, 4, len(a.Value.AsString()))
+		}
+	}
+	require.True(t, foundNS, "attribute da.namespace not found")
 }
 
 func TestTracedDA_Submit_Error(t *testing.T) {
@@ -132,10 +132,10 @@ func TestTracedDA_Retrieve_Success(t *testing.T) {
 	spans := sr.Ended()
 	require.Len(t, spans, 1)
 	span := spans[0]
-    require.Equal(t, "DA.Retrieve", span.Name())
-    attrs := span.Attributes()
-    requireAttribute(t, attrs, "ns.length", 1)
-    requireAttribute(t, attrs, "blob.count", 2)
+	require.Equal(t, "DA.Retrieve", span.Name())
+	attrs := span.Attributes()
+	requireAttribute(t, attrs, "ns.length", 1)
+	requireAttribute(t, attrs, "blob.count", 2)
 }
 
 func TestTracedDA_Retrieve_Error(t *testing.T) {
@@ -172,7 +172,7 @@ func TestTracedDA_Get_Success(t *testing.T) {
 	spans := sr.Ended()
 	require.Len(t, spans, 1)
 	span := spans[0]
-    require.Equal(t, "DA.Get", span.Name())
+	require.Equal(t, "DA.Get", span.Name())
 	attrs := span.Attributes()
 	requireAttribute(t, attrs, "id.count", 2)
 	requireAttribute(t, attrs, "blob.count", 2)

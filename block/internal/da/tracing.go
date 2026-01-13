@@ -2,6 +2,7 @@ package da
 
 import (
 	"context"
+	"encoding/hex"
 
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
@@ -31,7 +32,7 @@ func (t *tracedClient) Submit(ctx context.Context, data [][]byte, gasPrice float
 		trace.WithAttributes(
 			attribute.Int("blob.count", len(data)),
 			attribute.Int("blob.total_size_bytes", total),
-			attribute.String("da.namespace", string(namespace)),
+			attribute.String("da.namespace", hex.EncodeToString(namespace)),
 		),
 	)
 	defer span.End()
@@ -50,7 +51,7 @@ func (t *tracedClient) Retrieve(ctx context.Context, height uint64, namespace []
 	ctx, span := t.tracer.Start(ctx, "DA.Retrieve",
 		trace.WithAttributes(
 			attribute.Int("ns.length", len(namespace)),
-			attribute.String("da.namespace", string(namespace)),
+			attribute.String("da.namespace", hex.EncodeToString(namespace)),
 		),
 	)
 	defer span.End()
@@ -70,7 +71,7 @@ func (t *tracedClient) Get(ctx context.Context, ids []datypes.ID, namespace []by
 	ctx, span := t.tracer.Start(ctx, "DA.Get",
 		trace.WithAttributes(
 			attribute.Int("id.count", len(ids)),
-			attribute.String("da.namespace", string(namespace)),
+			attribute.String("da.namespace", hex.EncodeToString(namespace)),
 		),
 	)
 	defer span.End()
@@ -89,7 +90,7 @@ func (t *tracedClient) GetProofs(ctx context.Context, ids []datypes.ID, namespac
 	ctx, span := t.tracer.Start(ctx, "DA.GetProofs",
 		trace.WithAttributes(
 			attribute.Int("id.count", len(ids)),
-			attribute.String("da.namespace", string(namespace)),
+			attribute.String("da.namespace", hex.EncodeToString(namespace)),
 		),
 	)
 	defer span.End()
@@ -108,7 +109,7 @@ func (t *tracedClient) Validate(ctx context.Context, ids []datypes.ID, proofs []
 	ctx, span := t.tracer.Start(ctx, "DA.Validate",
 		trace.WithAttributes(
 			attribute.Int("id.count", len(ids)),
-			attribute.String("da.namespace", string(namespace)),
+			attribute.String("da.namespace", hex.EncodeToString(namespace)),
 		),
 	)
 	defer span.End()
