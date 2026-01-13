@@ -7,6 +7,69 @@ description: Explains ev-node architecture, components, and internal workings. U
 
 ev-node is a sovereign rollup framework that allows building rollups on any Data Availability (DA) layer. It follows a modular architecture where components can be swapped.
 
+## Onboarding with Claude Code
+
+New to ev-node? Use Claude Code to get up to speed quickly.
+
+### Getting Started
+
+```bash
+# Install Claude Code
+npm install -g @anthropic-ai/claude-code
+
+# Navigate to the repo and start Claude
+cd ev-node
+claude
+```
+
+### Example Prompts
+
+Ask Claude these questions to understand the codebase:
+
+| Goal | Prompt |
+|------|--------|
+| High-level overview | "How does ev-node work?" |
+| Block package deep dive | "Explain the block package architecture" |
+| Understand a flow | "Walk me through block production" |
+| DA layer | "How does the DA layer work?" |
+| Sequencing | "Explain single vs based sequencer" |
+| Forced inclusion | "How does forced inclusion prevent censorship?" |
+| Namespaces | "How do DA namespaces work?" |
+| Find code | "Where is forced inclusion implemented?" |
+| Understand a file | "Explain block/internal/syncing/syncer.go" |
+| Debug help | "How does state recovery work after a crash?" |
+
+### Guided Exploration
+
+For a structured onboarding, ask Claude to guide you:
+
+```
+Guide me through the ev-node codebase. Start with the core
+interfaces, then show me how block production works, and
+finally explain how syncing operates.
+```
+
+### Working on a Feature
+
+When starting work on a new feature:
+
+```
+I need to add a new DA layer implementation. Walk me through
+the existing DA interface and show me an example implementation.
+```
+
+### This Skill
+
+This skill activates automatically when you ask about ev-node architecture. It provides:
+
+- Package overview and responsibilities
+- Block package internals (the most complex part)
+- Data flow diagrams
+- State machines
+- Common Q&A
+
+For the full technical reference, Claude will reference [block-architecture.md](block-architecture.md).
+
 ## Core Principles
 
 1. **Zero-dependency core** - `core/` contains only interfaces, no external deps
