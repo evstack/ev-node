@@ -27,7 +27,6 @@ jobs:
           SINCE=$(date -d "${LOOKBACK_DAYS} days ago" --iso-8601)
           echo "since=${SINCE}" >> "$GITHUB_OUTPUT"
 
-          # Get commit summary for the prompt
           # Get commit log for relevant paths
           COMMIT_LOG=$(git log --since="${SINCE}" --oneline --no-merges \
             -- '*.go' 'block/' 'core/' 'types/' 'pkg/' 2>/dev/null || echo "")
@@ -68,7 +67,7 @@ jobs:
             - Do NOT make changes if commits are just bug fixes or minor tweaks
 
             ## Output
-            - If updates were made, commit changes with message "docs: update ev-node-explainer skill based on weekly changes"
+            - If updates were made, commit with message "docs: update ev-node-explainer skill"
             - If no meaningful updates needed, output "No skill updates required"
 
           allowed_tools: |
