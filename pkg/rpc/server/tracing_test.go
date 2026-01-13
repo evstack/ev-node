@@ -22,11 +22,11 @@ import (
 
 // mock implementations for StoreService
 type mockStoreServiceHandler struct {
-	getBlockFn          func(context.Context, *connect.Request[pb.GetBlockRequest]) (*connect.Response[pb.GetBlockResponse], error)
-	getStateFn          func(context.Context, *connect.Request[emptypb.Empty]) (*connect.Response[pb.GetStateResponse], error)
-	getMetadataFn       func(context.Context, *connect.Request[pb.GetMetadataRequest]) (*connect.Response[pb.GetMetadataResponse], error)
+	getBlockFn           func(context.Context, *connect.Request[pb.GetBlockRequest]) (*connect.Response[pb.GetBlockResponse], error)
+	getStateFn           func(context.Context, *connect.Request[emptypb.Empty]) (*connect.Response[pb.GetStateResponse], error)
+	getMetadataFn        func(context.Context, *connect.Request[pb.GetMetadataRequest]) (*connect.Response[pb.GetMetadataResponse], error)
 	getGenesisDaHeightFn func(context.Context, *connect.Request[emptypb.Empty]) (*connect.Response[pb.GetGenesisDaHeightResponse], error)
-	getP2PStoreInfoFn   func(context.Context, *connect.Request[emptypb.Empty]) (*connect.Response[pb.GetP2PStoreInfoResponse], error)
+	getP2PStoreInfoFn    func(context.Context, *connect.Request[emptypb.Empty]) (*connect.Response[pb.GetP2PStoreInfoResponse], error)
 }
 
 func (m *mockStoreServiceHandler) GetBlock(ctx context.Context, req *connect.Request[pb.GetBlockRequest]) (*connect.Response[pb.GetBlockResponse], error) {
