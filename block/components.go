@@ -17,6 +17,7 @@ import (
 	coreexecutor "github.com/evstack/ev-node/core/execution"
 	coresequencer "github.com/evstack/ev-node/core/sequencer"
 	"github.com/evstack/ev-node/pkg/config"
+	"github.com/evstack/ev-node/pkg/telemetry"
 	"github.com/evstack/ev-node/pkg/genesis"
 	"github.com/evstack/ev-node/pkg/signer"
 	"github.com/evstack/ev-node/pkg/store"
@@ -204,6 +205,11 @@ func NewAggregatorComponents(
 
 	// error channel for critical failures
 	errorCh := make(chan error, 1)
+
+	// wrap sequencer with tracing if enabled
+	if config.Instrumentation.IsTracingEnabled() {
+		sequencer = telemetry.WithTracingSequencer(sequencer)
+	}
 
 	executor, err := executing.NewExecutor(
 		store,
