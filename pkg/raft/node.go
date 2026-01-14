@@ -172,6 +172,11 @@ func (n *Node) Stop() error {
 	if n == nil {
 		return nil
 	}
+	// Wait for FSM to apply all committed logs before shutdown to prevent state loss.
+	// This ensures pending raft messages are processed before the node stops.
+	if err := n.waitForMsgsLanded(n.config.SendTimeout); err != nil {
+		n.logger.Warn().Err(err).Msg("timed out waiting for raft messages to land during shutdown")
+	}
 	return n.raft.Shutdown().Error()
 }
 
