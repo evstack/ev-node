@@ -188,6 +188,22 @@ func (n *Node) IsLeader() bool {
 	return n.raft.State() == raft.Leader
 }
 
+// HasQuorum checks if the leader can still contact a quorum of peers.
+// This should be called before producing a block to ensure consensus is possible.
+// Returns false if the leader cannot verify its leadership with the cluster.
+func (n *Node) HasQuorum() bool {
+	if n == nil || n.raft == nil {
+		return false
+	}
+	if n.raft.State() != raft.Leader {
+		return false
+	}
+	// VerifyLeader is used to ensure the current node is still the leader
+	// It returns an error if the leader cannot contact a quorum of peers
+	future := n.raft.VerifyLeader()
+	return future.Error() == nil
+}
+
 func (n *Node) NodeID() string {
 	return n.config.NodeID
 }

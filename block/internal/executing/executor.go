@@ -381,9 +381,9 @@ func (e *Executor) ProduceBlock(ctx context.Context) error {
 		}
 	}()
 
-	// Check raft leadership if raft is enabled
-	if e.raftNode != nil && !e.raftNode.IsLeader() {
-		return errors.New("not raft leader")
+	// Check raft cluster health before producing block - ensures quorum is available
+	if e.raftNode != nil && !e.raftNode.HasQuorum() {
+		return errors.New("raft cluster does not have quorum")
 	}
 
 	currentState := e.getLastState()
@@ -526,6 +526,11 @@ func (e *Executor) ProduceBlock(ctx context.Context) error {
 	}
 	if err := batch.Commit(); err != nil {
 		return fmt.Errorf("failed to commit batch: %w", err)
+	}
+
+	// Sync db to disk after each block
+	if err := e.store.Sync(e.ctx); err != nil {
+		return fmt.Errorf("failed to sync store: %w", err)
 	}
 
 	// Update in-memory state after successful commit
