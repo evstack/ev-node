@@ -117,7 +117,7 @@ func TestProduceBlock_EmptyBatch_SetsEmptyDataHash(t *testing.T) {
 	mockSeq.EXPECT().GetDAHeight().Return(uint64(0)).Once()
 
 	// produce one block
-	err = exec.produceBlock()
+	err = exec.ProduceBlock(exec.ctx)
 	require.NoError(t, err)
 
 	// Verify height and stored block
@@ -202,14 +202,14 @@ func TestPendingLimit_SkipsProduction(t *testing.T) {
 
 	mockSeq.EXPECT().GetDAHeight().Return(uint64(0)).Once()
 
-	require.NoError(t, exec.produceBlock())
+	require.NoError(t, exec.ProduceBlock(exec.ctx))
 	h1, err := memStore.Height(context.Background())
 	require.NoError(t, err)
 	assert.Equal(t, uint64(1), h1)
 
 	// With limit=1 and lastSubmitted default 0, pending >= 1 so next production should be skipped
-	// No new expectations; produceBlock should return early before hitting sequencer
-	require.NoError(t, exec.produceBlock())
+	// No new expectations; ProduceBlock should return early before hitting sequencer
+	require.NoError(t, exec.ProduceBlock(exec.ctx))
 	h2, err := memStore.Height(context.Background())
 	require.NoError(t, err)
 	assert.Equal(t, h1, h2, "height should not change when production is skipped")
