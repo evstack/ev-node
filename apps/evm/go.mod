@@ -12,7 +12,7 @@ replace (
 
 require (
 	github.com/celestiaorg/go-header v0.7.4
-	github.com/ethereum/go-ethereum v1.16.7
+	github.com/ethereum/go-ethereum v1.16.8
 	github.com/evstack/ev-node v1.0.0-beta.10
 	github.com/evstack/ev-node/core v1.0.0-beta.5
 	github.com/evstack/ev-node/execution/evm v1.0.0-beta.3

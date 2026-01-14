@@ -3,7 +3,7 @@ module github.com/evstack/ev-node/execution/evm
 go 1.24.6
 
 require (
-	github.com/ethereum/go-ethereum v1.16.7
+	github.com/ethereum/go-ethereum v1.16.8
 	github.com/evstack/ev-node v1.0.0-beta.10
 	github.com/evstack/ev-node/core v1.0.0-beta.5
 	github.com/golang-jwt/jwt/v5 v5.3.0
