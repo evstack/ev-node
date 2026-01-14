@@ -234,9 +234,30 @@ func (e *Executor) initializeState() error {
 	}
 
 	if e.raftNode != nil {
-		// ensure node is fully synced before producing any blocks
-		if raftState := e.raftNode.GetState(); raftState.Height != 0 && raftState.Height != state.LastBlockHeight {
-			return fmt.Errorf("invalid state: node is not synced with the chain: raft %d != %d state", raftState.Height, state.LastBlockHeight)
+		// Ensure node is fully synced before producing any blocks
+		raftState := e.raftNode.GetState()
+		if raftState.Height != 0 {
+			// Node cannot be ahead of raft - that indicates divergence
+			if state.LastBlockHeight > raftState.Height {
+				return fmt.Errorf("invalid state: local height (%d) ahead of raft (%d)", state.LastBlockHeight, raftState.Height)
+			}
+			// Node behind raft is OK - the replayer will catch it up
+			if state.LastBlockHeight < raftState.Height {
+				e.logger.Warn().
+					Uint64("local", state.LastBlockHeight).
+					Uint64("raft", raftState.Height).
+					Msg("local state behind raft, will sync during startup")
+			}
+			// If heights match, verify hashes as well (to detect divergence)
+			if state.LastBlockHeight > 0 && state.LastBlockHeight == raftState.Height {
+				header, err := e.store.GetHeader(e.ctx, state.LastBlockHeight)
+				if err != nil {
+					return fmt.Errorf("failed to get header at %d for sync check: %w", state.LastBlockHeight, err)
+				}
+				if !bytes.Equal(header.Hash(), raftState.Hash) {
+					return fmt.Errorf("invalid state: block hash mismatch at height %d: raft=%x local=%x", state.LastBlockHeight, raftState.Hash, header.Hash())
+				}
+			}
 		}
 	}
 	e.setLastState(state)
@@ -257,9 +278,22 @@ func (e *Executor) initializeState() error {
 	e.logger.Info().Uint64("height", state.LastBlockHeight).
 		Str("chain_id", state.ChainID).Msg("initialized state")
 
-	// Sync execution layer with store on startup
+	// Determine sync target: use Raft height if node is behind Raft consensus
+	syncTargetHeight := state.LastBlockHeight
+	if e.raftNode != nil {
+		raftState := e.raftNode.GetState()
+		if raftState.Height > syncTargetHeight {
+			syncTargetHeight = raftState.Height
+			e.logger.Info().
+				Uint64("local_height", state.LastBlockHeight).
+				Uint64("raft_height", raftState.Height).
+				Msg("using raft height as sync target")
+		}
+	}
+
+	// Sync execution layer to the target height (Raft height if behind, local height otherwise)
 	execReplayer := common.NewReplayer(e.store, e.exec, e.genesis, e.logger)
-	if err := execReplayer.SyncToHeight(e.ctx, state.LastBlockHeight); err != nil {
+	if err := execReplayer.SyncToHeight(e.ctx, syncTargetHeight); err != nil {
 		e.sendCriticalError(fmt.Errorf("failed to sync execution layer: %w", err))
 		return fmt.Errorf("failed to sync execution layer: %w", err)
 	}
@@ -770,18 +804,31 @@ func (e *Executor) IsSynced(expHeight uint64) bool {
 }
 
 // IsSyncedWithRaft checks if the local state is synced with the given raft state, including hash check.
-func (e *Executor) IsSyncedWithRaft(raftState *raft.RaftBlockState) bool {
-	if !e.IsSynced(raftState.Height) {
-		return false
+func (e *Executor) IsSyncedWithRaft(raftState *raft.RaftBlockState) (int, error) {
+	state, err := e.store.GetState(e.ctx)
+	if err != nil {
+		return 0, err
 	}
 
+	diff := int64(state.LastBlockHeight) - int64(raftState.Height)
+	if diff != 0 {
+		return int(diff), nil
+	}
+
+	if raftState.Height == 0 { // initial
+		return 0, nil
+	}
 	header, err := e.store.GetHeader(e.ctx, raftState.Height)
 	if err != nil {
 		e.logger.Error().Err(err).Uint64("height", raftState.Height).Msg("failed to get header for sync check")
-		return false
+		return 0, fmt.Errorf("get header for sync check: %w", err)
 	}
 
-	return bytes.Equal(header.Hash(), raftState.Hash)
+	if !bytes.Equal(header.Hash(), raftState.Hash) {
+		return 0, fmt.Errorf("block hash mismatch: %s != %s", header.Hash(), raftState.Hash)
+	}
+
+	return 0, nil
 }
 
 // BatchData represents batch data from sequencer

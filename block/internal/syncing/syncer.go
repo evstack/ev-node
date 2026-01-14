@@ -250,6 +250,34 @@ func (s *Syncer) Stop() error {
 	if s.cancel == nil {
 		return nil
 	}
+
+	// Drain pending events from the buffer before shutdown to prevent state loss.
+	// Process remaining events with a timeout to prevent hanging indefinitely.
+	drainCtx, drainCancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer drainCancel()
+
+	drained := 0
+drainLoop:
+	for {
+		select {
+		case event, ok := <-s.heightInCh:
+			if !ok {
+				break drainLoop
+			}
+			s.processHeightEvent(&event)
+			drained++
+		case <-drainCtx.Done():
+			s.logger.Warn().Int("remaining", len(s.heightInCh)).Msg("timeout draining height events during shutdown")
+			break drainLoop
+		default:
+			// No more events in buffer
+			break drainLoop
+		}
+	}
+	if drained > 0 {
+		s.logger.Info().Int("count", drained).Msg("drained pending height events during shutdown")
+	}
+
 	s.cancel()
 	s.cancelP2PWait(0)
 	s.wg.Wait()
@@ -1178,18 +1206,27 @@ func (s *Syncer) IsSynced(expHeight uint64) bool {
 }
 
 // IsSyncedWithRaft checks if the local state is synced with the given raft state, including hash check.
-func (s *Syncer) IsSyncedWithRaft(raftState *raft.RaftBlockState) bool {
-	if !s.IsSynced(raftState.Height) {
-		return false
+func (s *Syncer) IsSyncedWithRaft(raftState *raft.RaftBlockState) (int, error) {
+	state, err := s.store.GetState(s.ctx)
+	if err != nil {
+		return 0, err
+	}
+
+	diff := int64(state.LastBlockHeight) - int64(raftState.Height)
+	if diff != 0 {
+		return int(diff), nil
 	}
 
 	header, err := s.store.GetHeader(s.ctx, raftState.Height)
 	if err != nil {
 		s.logger.Error().Err(err).Uint64("height", raftState.Height).Msg("failed to get header for sync check")
-		return false
+		return 0, fmt.Errorf("get header for sync check: %w", err)
+	}
+	if !bytes.Equal(header.Hash(), raftState.Hash) {
+		return 0, fmt.Errorf("header hash mismatch: %x vs %x", header.Hash(), raftState.Hash)
 	}
 
-	return bytes.Equal(header.Hash(), raftState.Hash)
+	return 0, nil
 }
 
 // RecoverFromRaft attempts to recover the state from a raft block state
@@ -1201,11 +1238,6 @@ func (s *Syncer) RecoverFromRaft(ctx context.Context, raftState *raft.RaftBlockS
 		return fmt.Errorf("unmarshal header: %w", err)
 	}
 
-	// Verify header hash matches raft state hash
-	if !bytes.Equal(header.Hash(), raftState.Hash) {
-		return fmt.Errorf("header hash mismatch: %X != %X", header.Hash(), raftState.Hash)
-	}
-
 	var data types.Data
 	if err := data.UnmarshalBinary(raftState.Data); err != nil {
 		return fmt.Errorf("unmarshal data: %w", err)
@@ -1213,16 +1245,85 @@ func (s *Syncer) RecoverFromRaft(ctx context.Context, raftState *raft.RaftBlockS
 
 	currentState := s.getLastState()
 
-	// If the current state matches the raft state height, but hashes mismatch (implied by calling Recover),
-	// we need to rollback the local state to the previous height to accept the new block.
-	if currentState.LastBlockHeight >= raftState.Height {
+	// Defensive: if lastState is not yet initialized (e.g., RecoverFromRaft called before Start),
+	// load it from the store to ensure we have valid state for validation.
+	if currentState.ChainID == "" {
+		s.logger.Debug().Msg("lastState not initialized, loading from store for recovery")
+		var err error
+		currentState, err = s.store.GetState(ctx)
+		if err != nil {
+			// If store has no state either, initialize from genesis
+			s.logger.Debug().Err(err).Msg("no state in store, using genesis defaults for recovery")
+			currentState = types.State{
+				ChainID:         s.genesis.ChainID,
+				InitialHeight:   s.genesis.InitialHeight,
+				LastBlockHeight: s.genesis.InitialHeight - 1,
+				LastBlockTime:   s.genesis.StartTime,
+				DAHeight:        s.genesis.DAStartHeight,
+			}
+		}
+	}
+
+	if currentState.LastBlockHeight == raftState.Height {
+		if !bytes.Equal(currentState.LastHeaderHash, raftState.Hash) {
+			return fmt.Errorf("header hash mismatch: %x vs %x", currentState.LastHeaderHash, raftState.Hash)
+		}
+		s.logger.Debug().Msg("header hash matches")
+		return nil
+	} else if currentState.LastBlockHeight+1 == raftState.Height { // raft is 1 block ahead
+		// apply block
+		err := s.trySyncNextBlock(&common.DAHeightEvent{
+			Header: &header,
+			Data:   &data,
+			Source: "",
+		})
+		if err != nil {
+			return err
+		}
+		s.logger.Info().Uint64("height", raftState.Height).Msg("recovered from raft state")
+		return nil
+	}
+
+	if true {
+		return fmt.Errorf("invalid block height: %d (expected %d)", raftState.Height, currentState.LastBlockHeight+1)
+	}
+
+	// todo: delete or fix the following code
+	if currentState.LastBlockHeight > raftState.Height {
+		heightDiff := currentState.LastBlockHeight - raftState.Height
+
+		// Fail fast if local state is ahead by more than 1 block
+		if heightDiff > 1 {
+			return fmt.Errorf("local state is ahead of raft by %d blocks (local: %d, raft: %d); manual intervention required",
+				heightDiff, currentState.LastBlockHeight, raftState.Height)
+		}
+
+		// If exactly 1 block ahead, rollback to accept raft block
 		targetRollbackHeight := raftState.Height - 1
 		s.logger.Warn().
 			Uint64("current_height", currentState.LastBlockHeight).
 			Uint64("raft_height", raftState.Height).
-			Msg("local state diverges from raft state; performing rollback")
+			Msg("local state is 1 block ahead of raft state; performing rollback")
 
-		// Rollback to the previous height
+		if err := s.store.Rollback(ctx, targetRollbackHeight, s.config.Node.Aggregator); err != nil {
+			return fmt.Errorf("rollback failed: %w", err)
+		}
+
+		// Reload state from store after rollback
+		var err error
+		currentState, err = s.store.GetState(ctx)
+		if err != nil {
+			return fmt.Errorf("reload state failed: %w", err)
+		}
+		s.SetLastState(currentState)
+	} else if currentState.LastBlockHeight == raftState.Height {
+		// If heights match but hashes differ (implied by calling Recover), rollback to accept raft block
+		targetRollbackHeight := raftState.Height - 1
+		s.logger.Warn().
+			Uint64("current_height", currentState.LastBlockHeight).
+			Uint64("raft_height", raftState.Height).
+			Msg("local state hash diverges from raft state; performing rollback")
+
 		if err := s.store.Rollback(ctx, targetRollbackHeight, s.config.Node.Aggregator); err != nil {
 			return fmt.Errorf("rollback failed: %w", err)
 		}
@@ -1235,6 +1336,7 @@ func (s *Syncer) RecoverFromRaft(ctx context.Context, raftState *raft.RaftBlockS
 		}
 		s.SetLastState(currentState)
 	}
+	// If currentState.LastBlockHeight < raftState.Height, we can proceed to apply the block from raft
 
 	// Validation
 	if err := s.ValidateBlock(ctx, currentState, &data, &header); err != nil {

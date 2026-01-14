@@ -58,6 +58,12 @@ var (
 // Ensure EngineAPIExecutionClient implements the execution.Execute interface
 var _ execution.Executor = (*EngineClient)(nil)
 
+// Ensure EngineClient implements the execution.HeightProvider interface
+var _ execution.HeightProvider = (*EngineClient)(nil)
+
+// Ensure EngineClient implements the execution.Rollbackable interface
+var _ execution.Rollbackable = (*EngineClient)(nil)
+
 // validatePayloadStatus checks the payload status and returns appropriate errors.
 // It implements the Engine API specification's status handling:
 //   - VALID: Operation succeeded, return nil
@@ -905,6 +911,48 @@ func (c *EngineClient) GetLatestHeight(ctx context.Context) (uint64, error) {
 		return 0, fmt.Errorf("failed to get latest block: %w", err)
 	}
 	return header.Number.Uint64(), nil
+}
+
+// Rollback resets the execution layer head to the specified height using forkchoice update.
+// This is used for recovery when the EL is ahead of the consensus layer (e.g., during rolling restarts
+// where the EL committed blocks that were not replicated to Raft).
+//
+// Implements the execution.Rollbackable interface.
+func (c *EngineClient) Rollback(ctx context.Context, targetHeight uint64) error {
+	// Get block hash at target height
+	blockHash, _, _, _, err := c.getBlockInfo(ctx, targetHeight)
+	if err != nil {
+		return fmt.Errorf("get block at height %d: %w", targetHeight, err)
+	}
+
+	c.logger.Info().
+		Uint64("target_height", targetHeight).
+		Str("block_hash", blockHash.Hex()).
+		Msg("rolling back execution layer via forkchoice update")
+
+	// Reset head, safe, and finalized to target block
+	// This forces the EL to reorg its canonical chain to the target height
+	c.mu.Lock()
+	c.currentHeadBlockHash = blockHash
+	c.currentHeadHeight = targetHeight
+	c.currentSafeBlockHash = blockHash
+	c.currentFinalizedBlockHash = blockHash
+	args := engine.ForkchoiceStateV1{
+		HeadBlockHash:      blockHash,
+		SafeBlockHash:      blockHash,
+		FinalizedBlockHash: blockHash,
+	}
+	c.mu.Unlock()
+
+	if err := c.doForkchoiceUpdate(ctx, args, "Rollback"); err != nil {
+		return fmt.Errorf("forkchoice update for rollback failed: %w", err)
+	}
+
+	c.logger.Info().
+		Uint64("target_height", targetHeight).
+		Msg("execution layer rollback completed")
+
+	return nil
 }
 
 // decodeSecret decodes a hex-encoded JWT secret string into a byte slice.

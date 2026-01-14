@@ -67,9 +67,22 @@ func (s *Replayer) SyncToHeight(ctx context.Context, targetHeight uint64) error 
 		Uint64("exec_layer_height", execHeight).
 		Msg("execution layer height check")
 
-	// If execution layer is ahead, we cannot proceed safely as this indicates state divergence.
-	// The execution layer must be rolled back before the node can continue.
+	// If execution layer is ahead, attempt automatic rollback or fail
 	if execHeight > targetHeight {
+		// Attempt automatic rollback if supported
+		if rollbackable, ok := s.exec.(coreexecutor.Rollbackable); ok {
+			s.logger.Warn().
+				Uint64("exec_height", execHeight).
+				Uint64("target_height", targetHeight).
+				Msg("execution layer ahead, attempting automatic rollback")
+			if err := rollbackable.Rollback(ctx, targetHeight); err != nil {
+				return fmt.Errorf("failed to rollback execution layer from %d to %d: %w",
+					execHeight, targetHeight, err)
+			}
+			s.logger.Info().Uint64("target_height", targetHeight).Msg("execution layer rollback successful")
+			return nil
+		}
+		// Fallback to manual intervention if rollback not supported
 		return fmt.Errorf("execution layer height (%d) ahead of target height (%d): manually rollback execution layer to height %d",
 			execHeight, targetHeight, targetHeight)
 	}
@@ -81,6 +94,12 @@ func (s *Replayer) SyncToHeight(ctx context.Context, targetHeight uint64) error 
 			Uint64("exec_layer_height", execHeight).
 			Uint64("blocks_to_sync", targetHeight-execHeight).
 			Msg("execution layer is behind, syncing blocks")
+
+		// Verify the target block exists in the store before attempting sync
+		// This catches the case where Raft is ahead but blocks haven't been applied to the store yet
+		if _, _, err := s.store.GetBlockData(ctx, targetHeight); err != nil {
+			return fmt.Errorf("cannot sync to height %d: block not found in store (store may be behind Raft consensus): %w", targetHeight, err)
+		}
 
 		// Sync blocks from execHeight+1 to targetHeight
 		for height := execHeight + 1; height <= targetHeight; height++ {

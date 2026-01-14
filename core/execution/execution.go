@@ -102,3 +102,20 @@ type HeightProvider interface {
 	// - error: Any errors during height retrieval
 	GetLatestHeight(ctx context.Context) (uint64, error)
 }
+
+// Rollbackable is an optional interface that execution clients can implement
+// to support automatic rollback when the execution layer is ahead of the target height.
+// This enables automatic recovery during rolling restarts when the EL has committed
+// blocks that were not replicated to Raft.
+type Rollbackable interface {
+	// Rollback resets the execution layer head to the specified height.
+	// This is used for recovery when the EL is ahead of the consensus layer.
+	//
+	// Parameters:
+	// - ctx: Context for timeout/cancellation control
+	// - targetHeight: Height to rollback to (must be <= current height)
+	//
+	// Returns:
+	// - error: Any errors during rollback
+	Rollback(ctx context.Context, targetHeight uint64) error
+}

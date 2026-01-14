@@ -16,6 +16,7 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"syscall"
 	"testing"
 	"time"
 
@@ -234,6 +235,292 @@ func TestLeaseFailoverE2E(t *testing.T) {
 	// Cleanup processes
 	clusterNodes.killAll()
 	t.Logf("Completed leader change in: %s", time.Since(leaderElectionStart))
+}
+
+// TestHASequencerRollingRestartE2E tests graceful rolling restart of a 3-node HA sequencer cluster.
+// It starts 3 nodes, gracefully stops them one at a time with ~100 blocks downtime each,
+// then restarts them sequentially and verifies cluster health, no double-signing, and no DA gaps.
+func TestHASequencerRollingRestartE2E(t *testing.T) {
+	flag.Parse()
+	sut := NewSystemUnderTest(t)
+	if testing.Verbose() {
+		os.Setenv("GOLOG_LOG_LEVEL", "DEBUG")
+		t.Cleanup(func() {
+			os.Unsetenv("GOLOG_LOG_LEVEL")
+		})
+	}
+
+	workDir := t.TempDir()
+
+	// Get JWT secrets and setup common components first
+	jwtSecret, fullNodeJwtSecret, genesisHash, testEndpoints := setupCommonEVMTest(t, sut, true)
+	rethFn := evmtest.SetupTestRethNode(t)
+	jwtSecret3 := rethFn.JWTSecretHex()
+	fnInfo, err := rethFn.GetNetworkInfo(context.Background())
+	require.NoError(t, err, "failed to get full node reth network info")
+	fullNode3EthPort := fnInfo.External.Ports.RPC
+	fullNode3EnginePort := fnInfo.External.Ports.Engine
+
+	// Allocate raft ports for all nodes
+	node1RaftPort := mustGetAvailablePort(t)
+	node2RaftPort := mustGetAvailablePort(t)
+	node3RaftPort := mustGetAvailablePort(t)
+
+	// Setup raft addresses
+	node1RaftAddr := fmt.Sprintf("127.0.0.1:%d", node1RaftPort)
+	node2RaftAddr := fmt.Sprintf("127.0.0.1:%d", node2RaftPort)
+	node3RaftAddr := fmt.Sprintf("127.0.0.1:%d", node3RaftPort)
+	raftCluster := []string{"node1@" + node1RaftAddr, "node2@" + node2RaftAddr, "node3@" + node3RaftAddr}
+
+	bootstrapDir := filepath.Join(workDir, "bootstrap")
+	passphraseFile := initChain(t, sut, bootstrapDir)
+
+	clusterNodes := &raftClusterNodes{
+		nodes: make(map[string]*nodeDetails),
+	}
+	node1P2PAddr := testEndpoints.GetRollkitP2PAddress()
+	node2P2PAddr := testEndpoints.GetFullNodeP2PAddress()
+	node3P2PAddr := fmt.Sprintf("/ip4/127.0.0.1/tcp/%d", mustGetAvailablePort(t))
+
+	// Start node1 (bootstrap mode)
+	go func() {
+		p2pPeers := node2P2PAddr + "," + node3P2PAddr
+		proc := setupRaftSequencerNode(t, sut, workDir, "node1", node1RaftAddr, jwtSecret, genesisHash, testEndpoints.GetDAAddress(),
+			bootstrapDir, raftCluster, p2pPeers, testEndpoints.GetRollkitRPCListen(), testEndpoints.GetRollkitP2PAddress(),
+			testEndpoints.GetSequencerEngineURL(), testEndpoints.GetSequencerEthURL(), true, passphraseFile)
+		clusterNodes.Set("node1", testEndpoints.GetRollkitRPCAddress(), proc, testEndpoints.GetSequencerEthURL(), node1RaftAddr, testEndpoints.GetRollkitP2PAddress(), testEndpoints.GetSequencerEngineURL(), testEndpoints.GetSequencerEthURL())
+		t.Log("Node1 is up")
+	}()
+
+	// Start node2 (bootstrap node)
+	go func() {
+		t.Log("Starting Node2")
+		p2pPeers := node1P2PAddr + "," + node3P2PAddr
+		proc := setupRaftSequencerNode(t, sut, workDir, "node2", node2RaftAddr, fullNodeJwtSecret, genesisHash, testEndpoints.GetDAAddress(), bootstrapDir, raftCluster, p2pPeers, testEndpoints.GetFullNodeRPCListen(), testEndpoints.GetFullNodeP2PAddress(), testEndpoints.GetFullNodeEngineURL(), testEndpoints.GetFullNodeEthURL(), true, passphraseFile)
+		clusterNodes.Set("node2", testEndpoints.GetFullNodeRPCAddress(), proc, testEndpoints.GetFullNodeEthURL(), node2RaftAddr, testEndpoints.GetFullNodeP2PAddress(), testEndpoints.GetFullNodeEngineURL(), testEndpoints.GetFullNodeEthURL())
+		t.Log("Node2 is up")
+	}()
+
+	// Start node3 (bootstrap node)
+	node3EthAddr := fmt.Sprintf("http://127.0.0.1:%s", fullNode3EthPort)
+	go func() {
+		t.Log("Starting Node3")
+		p2pPeers := node1P2PAddr + "," + node2P2PAddr
+		node3RPCListen := fmt.Sprintf("127.0.0.1:%d", mustGetAvailablePort(t))
+		ethEngineURL := fmt.Sprintf("http://127.0.0.1:%s", fullNode3EnginePort)
+		proc := setupRaftSequencerNode(t, sut, workDir, "node3", node3RaftAddr, jwtSecret3, genesisHash, testEndpoints.GetDAAddress(), bootstrapDir, raftCluster, p2pPeers, node3RPCListen, node3P2PAddr, ethEngineURL, node3EthAddr, true, passphraseFile)
+		clusterNodes.Set("node3", "http://"+node3RPCListen, proc, node3EthAddr, node3RaftAddr, node3P2PAddr, ethEngineURL, node3EthAddr)
+		t.Log("Node3 is up")
+	}()
+
+	var leaderNode string
+	require.EventuallyWithT(t, func(collect *assert.CollectT) {
+		leaderNode = clusterNodes.Leader(collect)
+	}, 5*time.Second, 200*time.Millisecond)
+
+	sut.AwaitNodeUp(t, clusterNodes.Details(leaderNode).rpcAddr, NodeStartupTimeout)
+	// Wait for at least 5 blocks to be produced before starting shutdown sequence
+	sut.AwaitNBlocks(t, 5, clusterNodes.Details(leaderNode).rpcAddr, 10*time.Second)
+
+	const daStartHeight = 1
+	initialDAHeight := queryLastDAHeight(t, daStartHeight, jwtSecret, testEndpoints.GetDAAddress())
+	t.Logf("+++ Initial DA height: %d", initialDAHeight)
+
+	// Calculate downtime per node
+	const blocksPerDowntime = 30
+	downtimePerNode := time.Duration(blocksPerDowntime) * 150 * time.Millisecond
+
+	// ===== ROLLING SHUTDOWN PHASE =====
+	t.Log("+++ Starting rolling shutdown phase...")
+	nodeOrder := []string{"node1", "node2", "node3"}
+
+	for i, nodeName := range nodeOrder {
+		nodeDetails := clusterNodes.Details(nodeName)
+		if nodeDetails == nil || !nodeDetails.IsRunning() {
+			t.Logf("Node %s not running, skipping shutdown", nodeName)
+			continue
+		}
+
+		t.Logf("+++ [%d/3] Gracefully stopping %s", i+1, nodeName)
+		_ = nodeDetails.GracefulStop()
+
+		// Wait for ~100 blocks worth of time
+		t.Logf("+++ Waiting %v (~%d blocks) before next action", downtimePerNode, blocksPerDowntime)
+		time.Sleep(downtimePerNode)
+	}
+
+	t.Log("+++ All nodes stopped. Starting rolling restart phase...")
+
+	// ===== ROLLING RESTART PHASE =====
+	// Helper to get JWT secret for a node
+	getNodeJWT := func(nodeName string) string {
+		switch nodeName {
+		case "node1":
+			return jwtSecret
+		case "node2":
+			return fullNodeJwtSecret
+		case "node3":
+			return jwtSecret3
+		}
+		return ""
+	}
+
+	// Helper to get P2P peers for a node
+	getP2PPeers := func(nodeName string) string {
+		switch nodeName {
+		case "node1":
+			return node2P2PAddr + "," + node3P2PAddr
+		case "node2":
+			return node1P2PAddr + "," + node3P2PAddr
+		case "node3":
+			return node1P2PAddr + "," + node2P2PAddr
+		}
+		return ""
+	}
+
+	// Helper to restart a node
+	restartNode := func(nodeName string) {
+		nodeDetails := clusterNodes.Details(nodeName)
+		nodeJWT := getNodeJWT(nodeName)
+		p2pPeers := getP2PPeers(nodeName)
+
+		restartedProc := setupRaftSequencerNode(t, sut, workDir, nodeName, nodeDetails.raftAddr, nodeJWT, genesisHash,
+			testEndpoints.GetDAAddress(), "", raftCluster, p2pPeers,
+			strings.TrimPrefix(nodeDetails.rpcAddr, "http://"), nodeDetails.p2pAddr,
+			nodeDetails.engineURL, nodeDetails.ethAddr, false, passphraseFile)
+
+		clusterNodes.Set(nodeName, nodeDetails.rpcAddr, restartedProc, nodeDetails.ethAddr,
+			nodeDetails.raftAddr, nodeDetails.p2pAddr, nodeDetails.engineURL, nodeDetails.ethAddr)
+	}
+
+	// Initial restart of all nodes
+	for i, nodeName := range nodeOrder {
+		t.Logf("+++ [%d/3] Restarting %s", i+1, nodeName)
+		restartNode(nodeName)
+
+		// Wait for node to come up
+		if IsNodeUp(t, clusterNodes.Details(nodeName).rpcAddr, NodeStartupTimeout) {
+			t.Logf("+++ %s is back up", nodeName)
+		} else {
+			t.Logf("+++ %s did not recover on initial restart (expected for state mismatch)", nodeName)
+		}
+
+		// Brief pause between restarts
+		time.Sleep(2 * time.Second)
+	}
+
+	// Retry loop: keep restarting any nodes that are not responsive until all are online
+	// This handles the expected case where nodes may die due to state mismatch
+	// Note: We use IsNodeUp to check actual responsiveness, not IsRunning() which only
+	// tracks if we started the process (doesn't detect crashes)
+	const maxRestartAttempts = 10
+	const restartRetryInterval = 3 * time.Second
+	const nodeCheckTimeout = 5 * time.Second
+
+	for attempt := 1; attempt <= maxRestartAttempts; attempt++ {
+		// Check which nodes are not actually responsive (using IsNodeUp, not IsRunning)
+		var deadNodes []string
+		for _, nodeName := range nodeOrder {
+			nodeDetails := clusterNodes.Details(nodeName)
+			if nodeDetails == nil || !IsNodeUp(t, nodeDetails.rpcAddr, nodeCheckTimeout) {
+				deadNodes = append(deadNodes, nodeName)
+			}
+		}
+
+		if len(deadNodes) == 0 {
+			t.Log("+++ All nodes are responsive")
+			break
+		}
+
+		t.Logf("+++ Attempt %d/%d: Nodes not responsive: %v, restarting...", attempt, maxRestartAttempts, deadNodes)
+
+		for _, nodeName := range deadNodes {
+			restartNode(nodeName)
+			t.Logf("+++ Restarted %s", nodeName)
+		}
+
+		// Wait a bit before checking again
+		time.Sleep(restartRetryInterval)
+	}
+
+	// Final check: ensure all nodes are actually responsive
+	var finalDeadNodes []string
+	for _, nodeName := range nodeOrder {
+		nodeDetails := clusterNodes.Details(nodeName)
+		if nodeDetails == nil || !IsNodeUp(t, nodeDetails.rpcAddr, nodeCheckTimeout) {
+			finalDeadNodes = append(finalDeadNodes, nodeName)
+		}
+	}
+	require.Empty(t, finalDeadNodes, "some nodes failed to come online after %d restart attempts: %v", maxRestartAttempts, finalDeadNodes)
+
+	// Wait for leader election after all nodes are up
+	t.Log("+++ Waiting for leader election after restarts...")
+	var newLeader string
+	require.EventuallyWithT(t, func(collect *assert.CollectT) {
+		newLeader = clusterNodes.Leader(collect)
+	}, 10*time.Second, 500*time.Millisecond)
+	t.Logf("+++ New leader after restart: %s", newLeader)
+
+	// Submit a transaction to verify block production is working
+	t.Log("+++ Verifying block production by submitting transaction...")
+	txHash, txBlock := submitTxToURL(t, clusterNodes.Details(newLeader).ethClient(t))
+	t.Logf("+++ Transaction %s included in block %d", txHash.Hex(), txBlock)
+
+	// ===== VERIFICATION PHASE =====
+	t.Log("+++ Starting verification phase...")
+
+	// Ensure all three nodes are actually producing/serving blocks
+	minReady, ready := 3, 0
+	running := make(map[string]struct{})
+	require.Eventually(t, func() bool {
+		ready = 0
+		for name, n := range clusterNodes.AllNodes() {
+			if !n.IsRunning() {
+				continue
+			}
+			bn, err := n.ethClient(t).BlockNumber(t.Context())
+			if err != nil {
+				t.Logf("err node %s : %s", name, err)
+				continue
+			}
+			if bn >= txBlock {
+				ready++
+				running[name] = struct{}{}
+			}
+		}
+		return ready >= minReady
+	}, 30*time.Second, 500*time.Millisecond, "expected all 3 raft nodes serving height >= %d", txBlock)
+	t.Logf("+++ %d/3 nodes are up and running: %s", ready, slices.Collect(maps.Keys(running)))
+
+	// Verify no double-signing
+	t.Log("+++ Verifying no double-signing...")
+	var state *pb.State
+	require.Eventually(t, func() bool {
+		state, err = clusterNodes.Details(newLeader).rpcClient(t).GetState(t.Context())
+		return err == nil
+	}, time.Second, 100*time.Millisecond)
+
+	lastDABlock := queryLastDAHeight(t, initialDAHeight, jwtSecret, testEndpoints.GetDAAddress())
+
+	genesisHeight := state.InitialHeight
+	verifyNoDoubleSigning(t, clusterNodes, genesisHeight, state.LastBlockHeight)
+	t.Log("+++ No double-signing detected ✓")
+
+	// Wait for the next DA block to ensure all blocks are propagated
+	require.Eventually(t, func() bool {
+		before := lastDABlock
+		lastDABlock = queryLastDAHeight(t, lastDABlock, jwtSecret, testEndpoints.GetDAAddress())
+		return before < lastDABlock
+	}, 2*must(time.ParseDuration(DefaultDABlockTime)), 100*time.Millisecond)
+
+	// Verify no DA gaps
+	t.Log("+++ Verifying no DA gaps...")
+	verifyDABlocks(t, daStartHeight, lastDABlock, jwtSecret, testEndpoints.GetDAAddress(), genesisHeight, state.LastBlockHeight)
+	t.Log("+++ No DA gaps detected ✓")
+
+	// Cleanup processes
+	clusterNodes.killAll()
+	t.Log("+++ TestHASequencerRollingRestartE2E completed successfully")
 }
 
 // verifyNoDoubleSigning checks that no two blocks at the same height have different hashes across nodes
@@ -519,6 +806,13 @@ func (d *nodeDetails) IsRunning() bool {
 
 func (d *nodeDetails) Kill() (err error) {
 	err = d.process.Kill()
+	d.running.Store(false)
+	return
+}
+
+// GracefulStop sends SIGTERM to the process for a graceful shutdown
+func (d *nodeDetails) GracefulStop() (err error) {
+	err = d.process.Signal(syscall.SIGTERM)
 	d.running.Store(false)
 	return
 }

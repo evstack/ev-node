@@ -230,17 +230,14 @@ func (f *failoverState) Run(pCtx context.Context) (multiErr error) {
 	return wg.Wait()
 }
 
-func (f *failoverState) IsSynced(s *raft.RaftBlockState) bool {
-	if s.Height == 0 {
-		return true
-	}
+func (f *failoverState) IsSynced(s *raft.RaftBlockState) (int, error) {
 	if f.bc.Syncer != nil {
 		return f.bc.Syncer.IsSyncedWithRaft(s)
 	}
 	if f.bc.Executor != nil {
 		return f.bc.Executor.IsSyncedWithRaft(s)
 	}
-	return false
+	return 0, errors.New("sync check not supported in this mode")
 }
 
 func (f *failoverState) Recover(ctx context.Context, state *raft.RaftBlockState) error {
