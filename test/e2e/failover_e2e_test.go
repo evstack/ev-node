@@ -690,7 +690,8 @@ func setupRaftSequencerNode(
 		"--evnode.raft.peers="+strings.Join(raftPeers, ","),
 		"--evnode.raft.snap_count=10",
 		"--evnode.raft.send_timeout=300ms",
-		"--evnode.raft.heartbeat_timeout=300ms",
+		"--evnode.raft.heartbeat_timeout=150ms",
+		"--evnode.raft.leader_lease_timeout=150ms",
 
 		"--rollkit.p2p.peers", p2pPeers,
 		"--rollkit.rpc.address", rpcAddr,
