@@ -151,6 +151,10 @@ func NewSyncComponents(
 		errorCh,
 	)
 
+	if config.Instrumentation.IsTracingEnabled() {
+		syncer.SetBlockSyncer(syncing.WithTracingBlockSyncer(syncer))
+	}
+
 	// Create submitter for sync nodes (no signer, only DA inclusion processing)
 	daSubmitter := submitting.NewDASubmitter(daClient, config, genesis, blockOpts, metrics, logger)
 	submitter := submitting.NewSubmitter(
