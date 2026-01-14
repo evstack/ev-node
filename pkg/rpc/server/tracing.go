@@ -33,25 +33,18 @@ func (t *tracedStoreServer) GetBlock(
 	ctx context.Context,
 	req *connect.Request[pb.GetBlockRequest],
 ) (*connect.Response[pb.GetBlockResponse], error) {
-	var height uint64
+	var attrs []attribute.KeyValue
 	switch identifier := req.Msg.Identifier.(type) {
 	case *pb.GetBlockRequest_Height:
-		height = identifier.Height
+		attrs = append(attrs, attribute.Int64("height", int64(identifier.Height)))
 	case *pb.GetBlockRequest_Hash:
-		// for hash-based queries, we'll add the hash as an attribute
+		if identifier.Hash != nil {
+			attrs = append(attrs, attribute.String("hash", hex.EncodeToString(identifier.Hash)))
+		}
 	}
 
-	ctx, span := t.tracer.Start(ctx, "StoreService.GetBlock",
-		trace.WithAttributes(
-			attribute.Int64("height", int64(height)),
-		),
-	)
+	ctx, span := t.tracer.Start(ctx, "StoreService.GetBlock", trace.WithAttributes(attrs...))
 	defer span.End()
-
-	// add hash attribute if hash-based query
-	if hashIdentifier, ok := req.Msg.Identifier.(*pb.GetBlockRequest_Hash); ok {
-		span.SetAttributes(attribute.String("hash", hex.EncodeToString(hashIdentifier.Hash)))
-	}
 
 	res, err := t.inner.GetBlock(ctx, req)
 	if err != nil {
