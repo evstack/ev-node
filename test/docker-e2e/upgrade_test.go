@@ -186,6 +186,7 @@ func (s *EVMSingleUpgradeTestSuite) setupEVMSingle(ctx context.Context, image co
 		WithDockerClient(s.dockerClient).
 		WithDockerNetworkID(s.dockerNetworkID).
 		WithImage(image).
+		WithBinary("evm").
 		WithNode(nodeConfig).
 		Build(ctx)
 
