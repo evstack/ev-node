@@ -251,7 +251,7 @@ drainLoop:
 			if !ok {
 				break drainLoop
 			}
-			s.processHeightEvent(&event)
+			s.processHeightEvent(drainCtx, &event)
 			drained++
 		case <-drainCtx.Done():
 			s.logger.Warn().Int("remaining", len(s.heightInCh)).Msg("timeout draining height events during shutdown")
@@ -339,6 +339,21 @@ func (s *Syncer) initializeState() error {
 	if state.DAHeight != 0 && state.DAHeight < s.genesis.DAStartHeight {
 		return fmt.Errorf("DA height (%d) is lower than DA start height (%d)", state.DAHeight, s.genesis.DAStartHeight)
 	}
+
+	// Persist the initialized state to the store
+	batch, err := s.store.NewBatch(s.ctx)
+	if err != nil {
+		return fmt.Errorf("failed to create batch: %w", err)
+	}
+	if err := batch.SetHeight(state.LastBlockHeight); err != nil {
+		return fmt.Errorf("failed to set store height: %w", err)
+	}
+	if err := batch.UpdateState(state); err != nil {
+		return fmt.Errorf("failed to update state: %w", err)
+	}
+	if err := batch.Commit(); err != nil {
+		return fmt.Errorf("failed to commit batch: %w", err)
+	}
 	s.SetLastState(state)
 
 	// Set DA height to the maximum of the genesis start height, the state's DA height, the cached DA height, and the highest stored included DA height.
@@ -371,7 +386,7 @@ func (s *Syncer) processLoop() {
 			return
 		case heightEvent, ok := <-s.heightInCh:
 			if ok {
-				s.processHeightEvent(&heightEvent)
+				s.processHeightEvent(s.ctx, &heightEvent)
 			}
 		}
 	}
@@ -554,7 +569,7 @@ func (s *Syncer) pipeEvent(ctx context.Context, event common.DAHeightEvent) erro
 	return nil
 }
 
-func (s *Syncer) processHeightEvent(event *common.DAHeightEvent) {
+func (s *Syncer) processHeightEvent(ctx context.Context, event *common.DAHeightEvent) {
 	height := event.Header.Height()
 	headerHash := event.Header.Hash().String()
 
@@ -564,7 +579,7 @@ func (s *Syncer) processHeightEvent(event *common.DAHeightEvent) {
 		Str("hash", headerHash).
 		Msg("processing height event")
 
-	currentHeight, err := s.store.Height(s.ctx)
+	currentHeight, err := s.store.Height(ctx)
 	if err != nil {
 		s.logger.Error().Err(err).Msg("failed to get current height")
 		return
@@ -587,7 +602,7 @@ func (s *Syncer) processHeightEvent(event *common.DAHeightEvent) {
 	// Last data must be got from store if the event comes from DA and the data hash is empty.
 	// When if the event comes from P2P, the sequencer and then all the full nodes contains the data.
 	if event.Source == common.SourceDA && bytes.Equal(event.Header.DataHash, common.DataHashForEmptyTxs) && currentHeight > 0 {
-		_, lastData, err := s.store.GetBlockData(s.ctx, currentHeight)
+		_, lastData, err := s.store.GetBlockData(ctx, currentHeight)
 		if err != nil {
 			s.logger.Error().Err(err).Msg("failed to get last data")
 			return
@@ -599,7 +614,7 @@ func (s *Syncer) processHeightEvent(event *common.DAHeightEvent) {
 	s.cancelP2PWait(height)
 
 	// Try to sync the next block
-	if err := s.trySyncNextBlock(event); err != nil {
+	if err := s.trySyncNextBlock(ctx, event); err != nil {
 		s.logger.Error().Err(err).
 			Uint64("event-height", event.Header.Height()).
 			Uint64("state-height", s.getLastState().LastBlockHeight).
@@ -622,7 +637,7 @@ func (s *Syncer) processHeightEvent(event *common.DAHeightEvent) {
 
 	// only save to p2p stores if the event came from DA
 	if event.Source == common.SourceDA { // TODO(@julienrbrt): To be reverted once DA Hints are merged (https://github.com/evstack/ev-node/pull/2891)
-		g, ctx := errgroup.WithContext(s.ctx)
+		g, ctx := errgroup.WithContext(ctx)
 		g.Go(func() error {
 			// broadcast header locally only — prevents spamming the p2p network with old height notifications,
 			// allowing the syncer to update its target and fill missing blocks
@@ -648,10 +663,10 @@ var (
 
 // trySyncNextBlock attempts to sync the next available block
 // the event is always the next block in sequence as processHeightEvent ensures it.
-func (s *Syncer) trySyncNextBlock(event *common.DAHeightEvent) error {
+func (s *Syncer) trySyncNextBlock(ctx context.Context, event *common.DAHeightEvent) error {
 	select {
-	case <-s.ctx.Done():
-		return s.ctx.Err()
+	case <-ctx.Done():
+		return ctx.Err()
 	default:
 	}
 
@@ -677,7 +692,7 @@ func (s *Syncer) trySyncNextBlock(event *common.DAHeightEvent) error {
 
 	// Verify forced inclusion transactions if configured
 	if event.Source == common.SourceDA {
-		if err := s.verifyForcedInclusionTxs(currentState, data); err != nil {
+		if err := s.verifyForcedInclusionTxs(ctx, currentState, data); err != nil {
 			s.logger.Error().Err(err).Uint64("height", nextHeight).Msg("forced inclusion verification failed")
 			if errors.Is(err, errMaliciousProposer) {
 				s.cache.RemoveHeaderDAIncluded(headerHash)
@@ -687,7 +702,7 @@ func (s *Syncer) trySyncNextBlock(event *common.DAHeightEvent) error {
 	}
 
 	// Apply block
-	newState, err := s.applyBlock(header.Header, data, currentState)
+	newState, err := s.applyBlock(ctx, header.Header, data, currentState)
 	if err != nil {
 		return fmt.Errorf("failed to apply block: %w", err)
 	}
@@ -699,7 +714,7 @@ func (s *Syncer) trySyncNextBlock(event *common.DAHeightEvent) error {
 		newState.DAHeight = event.DaHeight
 	}
 
-	batch, err := s.store.NewBatch(s.ctx)
+	batch, err := s.store.NewBatch(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to create batch: %w", err)
 	}
@@ -738,7 +753,7 @@ func (s *Syncer) trySyncNextBlock(event *common.DAHeightEvent) error {
 }
 
 // applyBlock applies a block to get the new state
-func (s *Syncer) applyBlock(header types.Header, data *types.Data, currentState types.State) (types.State, error) {
+func (s *Syncer) applyBlock(ctx context.Context, header types.Header, data *types.Data, currentState types.State) (types.State, error) {
 	// Prepare transactions
 	rawTxs := make([][]byte, len(data.Txs))
 	for i, tx := range data.Txs {
@@ -746,7 +761,7 @@ func (s *Syncer) applyBlock(header types.Header, data *types.Data, currentState 
 	}
 
 	// Execute transactions
-	ctx := context.WithValue(s.ctx, types.HeaderContextKey, header)
+	ctx = context.WithValue(ctx, types.HeaderContextKey, header)
 	newAppHash, err := s.executeTxsWithRetry(ctx, rawTxs, header, currentState)
 	if err != nil {
 		s.sendCriticalError(fmt.Errorf("failed to execute transactions: %w", err))
@@ -895,7 +910,7 @@ func (s *Syncer) getEffectiveGracePeriod() uint64 {
 // Note: Due to block size constraints (MaxBytes), sequencers may defer forced inclusion transactions
 // to future blocks (smoothing). This is legitimate behavior within an epoch.
 // However, ALL forced inclusion txs from an epoch MUST be included before the next epoch begins or grace boundary (whichever comes later).
-func (s *Syncer) verifyForcedInclusionTxs(currentState types.State, data *types.Data) error {
+func (s *Syncer) verifyForcedInclusionTxs(ctx context.Context, currentState types.State, data *types.Data) error {
 	if s.fiRetriever == nil {
 		return nil
 	}
@@ -905,7 +920,7 @@ func (s *Syncer) verifyForcedInclusionTxs(currentState types.State, data *types.
 	s.updateDynamicGracePeriod(blockFullness)
 
 	// Retrieve forced inclusion transactions from DA for current epoch
-	forcedIncludedTxsEvent, err := s.fiRetriever.RetrieveForcedIncludedTxs(s.ctx, currentState.DAHeight)
+	forcedIncludedTxsEvent, err := s.fiRetriever.RetrieveForcedIncludedTxs(ctx, currentState.DAHeight)
 	if err != nil {
 		if errors.Is(err, da.ErrForceInclusionNotConfigured) {
 			s.logger.Debug().Msg("forced inclusion namespace not configured, skipping verification")
@@ -1204,10 +1219,14 @@ func (s *Syncer) IsSyncedWithRaft(raftState *raft.RaftBlockState) (int, error) {
 		return int(diff), nil
 	}
 
+	if raftState.Height == 0 { // initial
+		return 0, nil
+	}
+
 	header, err := s.store.GetHeader(s.ctx, raftState.Height)
 	if err != nil {
 		s.logger.Error().Err(err).Uint64("height", raftState.Height).Msg("failed to get header for sync check")
-		return 0, fmt.Errorf("get header for sync check: %w", err)
+		return 0, fmt.Errorf("get header for sync check at height %d: %w", raftState.Height, err)
 	}
 	if !bytes.Equal(header.Hash(), raftState.Hash) {
 		return 0, fmt.Errorf("header hash mismatch: %x vs %x", header.Hash(), raftState.Hash)
@@ -1259,7 +1278,7 @@ func (s *Syncer) RecoverFromRaft(ctx context.Context, raftState *raft.RaftBlockS
 		return nil
 	} else if currentState.LastBlockHeight+1 == raftState.Height { // raft is 1 block ahead
 		// apply block
-		err := s.trySyncNextBlock(&common.DAHeightEvent{
+		err := s.trySyncNextBlock(ctx, &common.DAHeightEvent{
 			Header: &header,
 			Data:   &data,
 			Source: "",
@@ -1271,97 +1290,9 @@ func (s *Syncer) RecoverFromRaft(ctx context.Context, raftState *raft.RaftBlockS
 		return nil
 	}
 
-	if true {
+	if currentState.LastBlockHeight > raftState.Height {
 		return fmt.Errorf("invalid block height: %d (expected %d)", raftState.Height, currentState.LastBlockHeight+1)
 	}
 
-	// todo: delete or fix the following code
-	if currentState.LastBlockHeight > raftState.Height {
-		heightDiff := currentState.LastBlockHeight - raftState.Height
-
-		// Fail fast if local state is ahead by more than 1 block
-		if heightDiff > 1 {
-			return fmt.Errorf("local state is ahead of raft by %d blocks (local: %d, raft: %d); manual intervention required",
-				heightDiff, currentState.LastBlockHeight, raftState.Height)
-		}
-
-		// If exactly 1 block ahead, rollback to accept raft block
-		targetRollbackHeight := raftState.Height - 1
-		s.logger.Warn().
-			Uint64("current_height", currentState.LastBlockHeight).
-			Uint64("raft_height", raftState.Height).
-			Msg("local state is 1 block ahead of raft state; performing rollback")
-
-		if err := s.store.Rollback(ctx, targetRollbackHeight, s.config.Node.Aggregator); err != nil {
-			return fmt.Errorf("rollback failed: %w", err)
-		}
-
-		// Reload state from store after rollback
-		var err error
-		currentState, err = s.store.GetState(ctx)
-		if err != nil {
-			return fmt.Errorf("reload state failed: %w", err)
-		}
-		s.SetLastState(currentState)
-	} else if currentState.LastBlockHeight == raftState.Height {
-		// If heights match but hashes differ (implied by calling Recover), rollback to accept raft block
-		targetRollbackHeight := raftState.Height - 1
-		s.logger.Warn().
-			Uint64("current_height", currentState.LastBlockHeight).
-			Uint64("raft_height", raftState.Height).
-			Msg("local state hash diverges from raft state; performing rollback")
-
-		if err := s.store.Rollback(ctx, targetRollbackHeight, s.config.Node.Aggregator); err != nil {
-			return fmt.Errorf("rollback failed: %w", err)
-		}
-
-		// Reload state from store after rollback
-		var err error
-		currentState, err = s.store.GetState(ctx)
-		if err != nil {
-			return fmt.Errorf("reload state failed: %w", err)
-		}
-		s.SetLastState(currentState)
-	}
-	// If currentState.LastBlockHeight < raftState.Height, we can proceed to apply the block from raft
-
-	// Validation
-	if err := s.validateBlock(currentState, &data, &header); err != nil {
-		return fmt.Errorf("validate block: %w", err)
-	}
-
-	// Apply block
-	newState, err := s.applyBlock(header.Header, &data, currentState)
-	if err != nil {
-		return fmt.Errorf("apply block: %w", err)
-	}
-
-	// Update store atomically
-	batch, err := s.store.NewBatch(ctx)
-	if err != nil {
-		return fmt.Errorf("create batch: %w", err)
-	}
-
-	if err := batch.SaveBlockData(&header, &data, &header.Signature); err != nil {
-		return fmt.Errorf("save block data: %w", err)
-	}
-
-	if err := batch.SetHeight(header.Height()); err != nil {
-		return fmt.Errorf("set height: %w", err)
-	}
-
-	if err := batch.UpdateState(newState); err != nil {
-		return fmt.Errorf("update state: %w", err)
-	}
-
-	if err := batch.Commit(); err != nil {
-		return fmt.Errorf("commit batch: %w", err)
-	}
-
-	// Update in-memory state
-	s.SetLastState(newState)
-	s.metrics.Height.Set(float64(newState.LastBlockHeight))
-
-	s.logger.Info().Uint64("height", newState.LastBlockHeight).Msg("recovered from raft state")
 	return nil
 }

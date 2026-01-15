@@ -328,7 +328,7 @@ func TestHASequencerRollingRestartE2E(t *testing.T) {
 
 	// Calculate downtime per node
 	const blocksPerDowntime = 30
-	downtimePerNode := time.Duration(blocksPerDowntime) * 150 * time.Millisecond
+	downtimePerNode := time.Duration(blocksPerDowntime) * must(time.ParseDuration(DefaultBlockTime))
 
 	// ===== ROLLING SHUTDOWN PHASE =====
 	t.Log("+++ Starting rolling shutdown phase...")
@@ -529,6 +529,7 @@ func verifyNoDoubleSigning(t *testing.T, clusterNodes *raftClusterNodes, genesis
 	// Compare block hashes across nodes
 	for height := genesisHeight; height <= lastBlockHeight; height++ {
 		nodeByHash := make(map[common.Hash][]string, 1)
+		headerByNode := make(map[string]*ethtypes.Header)
 		for nodeName, node := range clusterNodes.AllNodes() {
 			if !node.running.Load() {
 				continue
@@ -539,12 +540,16 @@ func verifyNoDoubleSigning(t *testing.T, clusterNodes *raftClusterNodes, genesis
 				return header != nil
 			}, 2*time.Second, 100*time.Millisecond, nodeName)
 			nodeByHash[header.Hash()] = append(nodeByHash[header.Hash()], nodeName)
+			headerByNode[nodeName] = header
 		}
 		if !assert.Len(t, nodeByHash, 1, "double signing detected at height %d: %v", height, nodeByHash) {
-			for _, nodes := range nodeByHash {
-				rsp, err := clusterNodes.Details(nodes[0]).rpcClient(t).GetBlockByHeight(t.Context(), height)
-				require.NoError(t, err)
-				t.Logf("%s: %v", nodes[0], rsp.Block)
+			for hash, nodes := range nodeByHash {
+				for _, nodeName := range nodes {
+					hdr := headerByNode[nodeName]
+					t.Logf("%s (hash=%s): Number=%d Time=%d ParentHash=%s Root=%s TxHash=%s ReceiptHash=%s GasLimit=%d GasUsed=%d BaseFee=%v ExtraData=%x",
+						nodeName, hash.Hex(), hdr.Number.Uint64(), hdr.Time, hdr.ParentHash.Hex(), hdr.Root.Hex(),
+						hdr.TxHash.Hex(), hdr.ReceiptHash.Hex(), hdr.GasLimit, hdr.GasUsed, hdr.BaseFee, hdr.Extra)
+				}
 			}
 			t.FailNow()
 		}
@@ -689,9 +694,9 @@ func setupRaftSequencerNode(
 		"--evnode.raft.bootstrap=true",
 		"--evnode.raft.peers="+strings.Join(raftPeers, ","),
 		"--evnode.raft.snap_count=10",
-		"--evnode.raft.send_timeout=300ms",
-		"--evnode.raft.heartbeat_timeout=150ms",
-		"--evnode.raft.leader_lease_timeout=150ms",
+		"--evnode.raft.send_timeout=100ms",
+		"--evnode.raft.leader_lease_timeout=500ms", // 5x heatbeat interval (we use block time)
+		"--evnode.raft.heartbeat_timeout=1000ms",   // 2x lease timeout
 
 		"--rollkit.p2p.peers", p2pPeers,
 		"--rollkit.rpc.address", rpcAddr,

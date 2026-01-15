@@ -75,6 +75,7 @@ func (d *DynamicLeaderElection) Run(ctx context.Context) error {
 		go func(childCtx context.Context) {
 			defer wg.Done()
 			if err := workerFunc(childCtx); err != nil && !errors.Is(err, context.Canceled) {
+				_ = d.node.leadershipTransfer()
 				select {
 				case errCh <- fmt.Errorf(name+" worker exited unexpectedly: %s", err):
 				default: // do not block

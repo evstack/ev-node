@@ -59,7 +59,7 @@ func (r *raftRetriever) Start(ctx context.Context) error {
 		return errors.New("syncer already started")
 	}
 	ctx, r.cancel = context.WithCancel(ctx)
-	applyCh := make(chan raft.RaftApplyMsg, 1)
+	applyCh := make(chan raft.RaftApplyMsg, 100)
 	r.raftNode.SetApplyCallback(applyCh)
 
 	r.wg.Add(1)
@@ -101,7 +101,11 @@ func (r *raftRetriever) raftApplyLoop(ctx context.Context, applyCh <-chan raft.R
 
 // consumeRaftBlock applies a block received from raft consensus
 func (r *raftRetriever) consumeRaftBlock(ctx context.Context, state *raft.RaftBlockState) error {
-	r.logger.Debug().Uint64("height", state.Height).Msg("applying raft block")
+	r.logger.Debug().
+		Uint64("height", state.Height).
+		Hex("raft_hash", state.Hash).
+		Uint64("timestamp", state.Timestamp).
+		Msg("consuming raft block")
 	if err := r.raftBlockPreProcessor(ctx, state); err != nil {
 		return err
 	}
@@ -111,6 +115,16 @@ func (r *raftRetriever) consumeRaftBlock(ctx context.Context, state *raft.RaftBl
 	if err := header.UnmarshalBinary(state.Header); err != nil {
 		return fmt.Errorf("unmarshal header: %w", err)
 	}
+
+	// Log the unmarshalled header hash for comparison with raft state hash
+	r.logger.Debug().
+		Uint64("height", state.Height).
+		Hex("raft_hash", state.Hash).
+		Hex("header_hash", header.Hash()).
+		Str("chain_id", header.ChainID()).
+		Hex("data_hash", header.DataHash).
+		Hex("app_hash", header.AppHash).
+		Msg("raft block hash comparison")
 
 	if err := header.Header.ValidateBasic(); err != nil {
 		r.logger.Debug().Err(err).Msg("invalid header structure")

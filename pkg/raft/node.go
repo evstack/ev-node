@@ -177,6 +177,9 @@ func (n *Node) Stop() error {
 	if err := n.waitForMsgsLanded(n.config.SendTimeout); err != nil {
 		n.logger.Warn().Err(err).Msg("timed out waiting for raft messages to land during shutdown")
 	}
+	if n.IsLeader() {
+		_ = n.leadershipTransfer()
+	}
 	return n.raft.Shutdown().Error()
 }
 
@@ -200,7 +203,9 @@ func (n *Node) HasQuorum() bool {
 	}
 	// VerifyLeader is used to ensure the current node is still the leader
 	// It returns an error if the leader cannot contact a quorum of peers
-	future := n.raft.VerifyLeader()
+	// We use Barrier to enforce a strict check that ensures the leader has applied all logs
+	// and is currently maintained as leader by the quorum.
+	future := n.raft.Barrier(n.config.SendTimeout)
 	return future.Error() == nil
 }
 
@@ -226,7 +231,7 @@ func (n *Node) Config() Config {
 }
 
 // Broadcast proposes a block state to be replicated via raft
-func (n *Node) Broadcast(_ context.Context, state *RaftBlockState) error {
+func (n *Node) Broadcast(ctx context.Context, state *RaftBlockState) error {
 	if !n.IsLeader() {
 		return fmt.Errorf("not leader")
 	}
@@ -235,7 +240,9 @@ func (n *Node) Broadcast(_ context.Context, state *RaftBlockState) error {
 	if err != nil {
 		return fmt.Errorf("marshal block state: %w", err)
 	}
-
+	if ctx.Err() != nil {
+		return ctx.Err()
+	}
 	future := n.raft.Apply(data, n.config.SendTimeout)
 	if err := future.Error(); err != nil {
 		return fmt.Errorf("apply log: %w", err)
@@ -309,7 +316,13 @@ func (f *FSM) Apply(log *raft.Log) interface{} {
 		return err
 	}
 	f.state.Store(&state)
-	f.logger.Debug().Uint64("height", state.Height).Msg("received block state")
+	f.logger.Debug().
+		Uint64("height", state.Height).
+		Hex("hash", state.Hash).
+		Uint64("timestamp", state.Timestamp).
+		Int("header_bytes", len(state.Header)).
+		Int("data_bytes", len(state.Data)).
+		Msg("applied raft block state")
 
 	if f.applyCh != nil {
 		select {
