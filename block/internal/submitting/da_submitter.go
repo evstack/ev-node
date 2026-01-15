@@ -160,7 +160,7 @@ func (s *DASubmitter) recordFailure(reason common.DASubmitterFailureReason) {
 }
 
 // SubmitHeaders submits pending headers to DA layer
-func (s *DASubmitter) SubmitHeaders(ctx context.Context, headers []*types.SignedHeader, cache cache.Manager, signer signer.Signer) error {
+func (s *DASubmitter) SubmitHeaders(ctx context.Context, headers []*types.SignedHeader, marshalledHeaders [][]byte, cache cache.Manager, signer signer.Signer) error {
 	if len(headers) == 0 {
 		return nil
 	}
@@ -169,26 +169,30 @@ func (s *DASubmitter) SubmitHeaders(ctx context.Context, headers []*types.Signed
 		return fmt.Errorf("signer is nil")
 	}
 
+	if len(marshalledHeaders) != len(headers) {
+		return fmt.Errorf("marshalledHeaders length (%d) does not match headers length (%d)", len(marshalledHeaders), len(headers))
+	}
+
 	s.logger.Info().Int("count", len(headers)).Msg("submitting headers to DA")
 
-	return submitToDA(s, ctx, headers,
-		func(header *types.SignedHeader) ([]byte, error) {
-			// A. Marshal the inner SignedHeader content to bytes (canonical representation for signing)
-			// This effectively signs "Fields 1-3" of the intended DAHeaderEnvelope.
-			contentBytes, err := header.MarshalBinary()
-			if err != nil {
-				return nil, fmt.Errorf("failed to marshal signed header for envelope signing: %w", err)
-			}
+	// Create DA envelopes from pre-marshalled headers
+	envelopes := make([][]byte, len(headers))
+	for i, header := range headers {
+		// Sign the pre-marshalled header content
+		envelopeSignature, err := signer.Sign(marshalledHeaders[i])
+		if err != nil {
+			return fmt.Errorf("failed to sign envelope for header %d: %w", i, err)
+		}
 
-			// B. Sign the contentBytes with the envelope signer (aggregator)
-			envelopeSignature, err := signer.Sign(contentBytes)
-			if err != nil {
-				return nil, fmt.Errorf("failed to sign envelope: %w", err)
-			}
+		// Create the envelope and marshal it
+		envelope, err := header.MarshalDAEnvelope(envelopeSignature)
+		if err != nil {
+			return fmt.Errorf("failed to marshal DA envelope for header %d: %w", i, err)
+		}
+		envelopes[i] = envelope
+	}
 
-			// C. Create the envelope and marshal it
-			return header.MarshalDAEnvelope(envelopeSignature)
-		},
+	return submitToDA(s, ctx, headers, envelopes,
 		func(submitted []*types.SignedHeader, res *datypes.ResultSubmit) {
 			for _, header := range submitted {
 				cache.SetHeaderDAIncluded(header.Hash().String(), res.Height, header.Height())
@@ -206,9 +210,13 @@ func (s *DASubmitter) SubmitHeaders(ctx context.Context, headers []*types.Signed
 }
 
 // SubmitData submits pending data to DA layer
-func (s *DASubmitter) SubmitData(ctx context.Context, unsignedDataList []*types.SignedData, cache cache.Manager, signer signer.Signer, genesis genesis.Genesis) error {
+func (s *DASubmitter) SubmitData(ctx context.Context, unsignedDataList []*types.SignedData, marshalledData [][]byte, cache cache.Manager, signer signer.Signer, genesis genesis.Genesis) error {
 	if len(unsignedDataList) == 0 {
 		return nil
+	}
+
+	if len(marshalledData) != len(unsignedDataList) {
+		return fmt.Errorf("marshalledData length (%d) does not match unsignedDataList length (%d)", len(marshalledData), len(unsignedDataList))
 	}
 
 	// Sign the data (cache returns unsigned SignedData structs)
@@ -223,10 +231,17 @@ func (s *DASubmitter) SubmitData(ctx context.Context, unsignedDataList []*types.
 
 	s.logger.Info().Int("count", len(signedDataList)).Msg("submitting data to DA")
 
-	return submitToDA(s, ctx, signedDataList,
-		func(signedData *types.SignedData) ([]byte, error) {
-			return signedData.MarshalBinary()
-		},
+	// Filter marshalledData to match signedDataList (removes empty data)
+	filteredMarshalledData := make([][]byte, 0, len(signedDataList))
+	signedIdx := 0
+	for i, unsigned := range unsignedDataList {
+		if signedIdx < len(signedDataList) && unsigned.Height() == signedDataList[signedIdx].Height() {
+			filteredMarshalledData = append(filteredMarshalledData, marshalledData[i])
+			signedIdx++
+		}
+	}
+
+	return submitToDA(s, ctx, signedDataList, filteredMarshalledData,
 		func(submitted []*types.SignedData, res *datypes.ResultSubmit) {
 			for _, sd := range submitted {
 				cache.SetDataDAIncluded(sd.Data.DACommitment().String(), res.Height, sd.Height())
@@ -342,16 +357,15 @@ func submitToDA[T any](
 	s *DASubmitter,
 	ctx context.Context,
 	items []T,
-	marshalFn func(T) ([]byte, error),
+	marshaled [][]byte,
 	postSubmit func([]T, *datypes.ResultSubmit),
 	itemType string,
 	namespace []byte,
 	options []byte,
 	getTotalPendingFn func() uint64,
 ) error {
-	marshaled, err := marshalItems(ctx, items, marshalFn, itemType)
-	if err != nil {
-		return err
+	if len(items) != len(marshaled) {
+		return fmt.Errorf("items length (%d) does not match marshaled length (%d)", len(items), len(marshaled))
 	}
 
 	pol := defaultRetryPolicy(s.config.DA.MaxSubmitAttempts, s.config.DA.BlockTime.Duration)
@@ -511,55 +525,6 @@ func limitBatchBySize[T any](items []T, marshaled [][]byte, maxBytes int) ([]T, 
 		return nil, nil, fmt.Errorf("no items fit within %d bytes", maxBytes)
 	}
 	return items[:count], marshaled[:count], nil
-}
-
-func marshalItems[T any](
-	parentCtx context.Context,
-	items []T,
-	marshalFn func(T) ([]byte, error),
-	itemType string,
-) ([][]byte, error) {
-	if len(items) == 0 {
-		return nil, nil
-	}
-	marshaled := make([][]byte, len(items))
-	ctx, cancel := context.WithCancel(parentCtx)
-	defer cancel()
-
-	// Semaphore to limit concurrency to 32 workers
-	sem := make(chan struct{}, 32)
-
-	// Use a channel to collect results from goroutines
-	resultCh := make(chan error, len(items))
-
-	// Marshal items concurrently
-	for i, item := range items {
-		go func(idx int, itm T) {
-			sem <- struct{}{}
-			defer func() { <-sem }()
-
-			select {
-			case <-ctx.Done():
-				resultCh <- ctx.Err()
-			default:
-				bz, err := marshalFn(itm)
-				if err != nil {
-					resultCh <- fmt.Errorf("failed to marshal %s item at index %d: %w", itemType, idx, err)
-					return
-				}
-				marshaled[idx] = bz
-				resultCh <- nil
-			}
-		}(i, item)
-	}
-
-	// Wait for all goroutines to complete and check for errors
-	for i := 0; i < len(items); i++ {
-		if err := <-resultCh; err != nil {
-			return nil, err
-		}
-	}
-	return marshaled, nil
 }
 
 func waitForBackoffOrContext(ctx context.Context, backoff time.Duration) error {

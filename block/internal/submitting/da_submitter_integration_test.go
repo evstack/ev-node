@@ -101,11 +101,27 @@ func TestDASubmitter_SubmitHeadersAndData_MarksInclusionAndUpdatesLastSubmitted(
 	// Submit headers and data
 	headers, err := cm.GetPendingHeaders(context.Background())
 	require.NoError(t, err)
-	require.NoError(t, daSubmitter.SubmitHeaders(context.Background(), headers, cm, n))
+
+	// Marshal headers
+	marshalledHeaders := make([][]byte, len(headers))
+	for i, h := range headers {
+		data, err := h.MarshalBinary()
+		require.NoError(t, err)
+		marshalledHeaders[i] = data
+	}
+	require.NoError(t, daSubmitter.SubmitHeaders(context.Background(), headers, marshalledHeaders, cm, n))
 
 	dataList, err := cm.GetPendingData(context.Background())
 	require.NoError(t, err)
-	require.NoError(t, daSubmitter.SubmitData(context.Background(), dataList, cm, n, gen))
+
+	// Marshal data
+	marshalledData := make([][]byte, len(dataList))
+	for i, d := range dataList {
+		data, err := d.MarshalBinary()
+		require.NoError(t, err)
+		marshalledData[i] = data
+	}
+	require.NoError(t, daSubmitter.SubmitData(context.Background(), dataList, marshalledData, cm, n, gen))
 
 	// After submission, inclusion markers should be set
 	_, ok := cm.GetHeaderDAIncluded(hdr1.Hash().String())
