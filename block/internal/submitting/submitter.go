@@ -25,8 +25,8 @@ import (
 
 // daSubmitterAPI defines minimal methods needed by Submitter for DA submissions.
 type daSubmitterAPI interface {
-	SubmitHeaders(ctx context.Context, cache cache.Manager, signer signer.Signer) error
-	SubmitData(ctx context.Context, cache cache.Manager, signer signer.Signer, genesis genesis.Genesis) error
+	SubmitHeaders(ctx context.Context, headers []*types.SignedHeader, cache cache.Manager, signer signer.Signer) error
+	SubmitData(ctx context.Context, signedDataList []*types.SignedData, cache cache.Manager, signer signer.Signer, genesis genesis.Genesis) error
 }
 
 // Submitter handles DA submission and inclusion processing for both sync and aggregator nodes
@@ -185,7 +185,7 @@ func (s *Submitter) daSubmissionLoop() {
 							return
 						}
 
-						// Estimate total size
+						// Marshal headers once and estimate total size
 						totalSize := 0
 						for _, h := range headers {
 							data, err := h.MarshalBinary()
@@ -209,7 +209,7 @@ func (s *Submitter) daSubmissionLoop() {
 								Dur("time_since_last", timeSinceLastSubmit).
 								Msg("batching strategy triggered header submission")
 
-							if err := s.daSubmitter.SubmitHeaders(s.ctx, s.cache, s.signer); err != nil {
+							if err := s.daSubmitter.SubmitHeaders(s.ctx, headers, s.cache, s.signer); err != nil {
 								// Check for unrecoverable errors that indicate a critical issue
 								if errors.Is(err, common.ErrOversizedItem) {
 									s.logger.Error().Err(err).
@@ -236,23 +236,23 @@ func (s *Submitter) daSubmissionLoop() {
 						defer s.dataSubmissionMtx.Unlock()
 
 						// Get pending data to estimate size
-						dataList, err := s.cache.GetPendingData(s.ctx)
+						signedDataList, err := s.cache.GetPendingData(s.ctx)
 						if err != nil {
 							s.logger.Error().Err(err).Msg("failed to get pending data for batching decision")
 							return
 						}
 
-						// Estimate total size
+						// Marshal data once and estimate total size
 						totalSize := 0
-						for _, d := range dataList {
-							data, err := d.MarshalBinary()
+						for _, sd := range signedDataList {
+							data, err := sd.MarshalBinary()
 							if err == nil {
 								totalSize += len(data)
 							}
 						}
 
 						shouldSubmit := s.batchingStrategy.ShouldSubmit(
-							uint64(len(dataList)),
+							uint64(len(signedDataList)),
 							totalSize,
 							common.DefaultMaxBlobSize,
 							timeSinceLastSubmit,
@@ -266,7 +266,7 @@ func (s *Submitter) daSubmissionLoop() {
 								Dur("time_since_last", timeSinceLastSubmit).
 								Msg("batching strategy triggered data submission")
 
-							if err := s.daSubmitter.SubmitData(s.ctx, s.cache, s.signer, s.genesis); err != nil {
+							if err := s.daSubmitter.SubmitData(s.ctx, signedDataList, s.cache, s.signer, s.genesis); err != nil {
 								// Check for unrecoverable errors that indicate a critical issue
 								if errors.Is(err, common.ErrOversizedItem) {
 									s.logger.Error().Err(err).

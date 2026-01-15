@@ -99,8 +99,13 @@ func TestDASubmitter_SubmitHeadersAndData_MarksInclusionAndUpdatesLastSubmitted(
 	daSubmitter := NewDASubmitter(client, cfg, gen, common.DefaultBlockOptions(), common.NopMetrics(), zerolog.Nop())
 
 	// Submit headers and data
-	require.NoError(t, daSubmitter.SubmitHeaders(context.Background(), cm, n))
-	require.NoError(t, daSubmitter.SubmitData(context.Background(), cm, n, gen))
+	headers, err := cm.GetPendingHeaders(context.Background())
+	require.NoError(t, err)
+	require.NoError(t, daSubmitter.SubmitHeaders(context.Background(), headers, cm, n))
+
+	dataList, err := cm.GetPendingData(context.Background())
+	require.NoError(t, err)
+	require.NoError(t, daSubmitter.SubmitData(context.Background(), dataList, cm, n, gen))
 
 	// After submission, inclusion markers should be set
 	_, ok := cm.GetHeaderDAIncluded(hdr1.Hash().String())

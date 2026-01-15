@@ -160,12 +160,7 @@ func (s *DASubmitter) recordFailure(reason common.DASubmitterFailureReason) {
 }
 
 // SubmitHeaders submits pending headers to DA layer
-func (s *DASubmitter) SubmitHeaders(ctx context.Context, cache cache.Manager, signer signer.Signer) error {
-	headers, err := cache.GetPendingHeaders(ctx)
-	if err != nil {
-		return fmt.Errorf("failed to get pending headers: %w", err)
-	}
-
+func (s *DASubmitter) SubmitHeaders(ctx context.Context, headers []*types.SignedHeader, cache cache.Manager, signer signer.Signer) error {
 	if len(headers) == 0 {
 		return nil
 	}
@@ -211,20 +206,15 @@ func (s *DASubmitter) SubmitHeaders(ctx context.Context, cache cache.Manager, si
 }
 
 // SubmitData submits pending data to DA layer
-func (s *DASubmitter) SubmitData(ctx context.Context, cache cache.Manager, signer signer.Signer, genesis genesis.Genesis) error {
-	dataList, err := cache.GetPendingData(ctx)
-	if err != nil {
-		return fmt.Errorf("failed to get pending data: %w", err)
-	}
-
-	if len(dataList) == 0 {
+func (s *DASubmitter) SubmitData(ctx context.Context, unsignedDataList []*types.SignedData, cache cache.Manager, signer signer.Signer, genesis genesis.Genesis) error {
+	if len(unsignedDataList) == 0 {
 		return nil
 	}
 
-	// Sign the data
-	signedDataList, err := s.createSignedData(dataList, signer, genesis)
+	// Sign the data (cache returns unsigned SignedData structs)
+	signedDataList, err := s.signData(unsignedDataList, signer, genesis)
 	if err != nil {
-		return fmt.Errorf("failed to create signed data: %w", err)
+		return fmt.Errorf("failed to sign data: %w", err)
 	}
 
 	if len(signedDataList) == 0 {
@@ -253,8 +243,8 @@ func (s *DASubmitter) SubmitData(ctx context.Context, cache cache.Manager, signe
 	)
 }
 
-// createSignedData creates signed data from raw data
-func (s *DASubmitter) createSignedData(dataList []*types.SignedData, signer signer.Signer, genesis genesis.Genesis) ([]*types.SignedData, error) {
+// signData signs unsigned SignedData structs returned from cache
+func (s *DASubmitter) signData(unsignedDataList []*types.SignedData, signer signer.Signer, genesis genesis.Genesis) ([]*types.SignedData, error) {
 	if signer == nil {
 		return nil, fmt.Errorf("signer is nil")
 	}
@@ -278,16 +268,16 @@ func (s *DASubmitter) createSignedData(dataList []*types.SignedData, signer sign
 		Address: addr,
 	}
 
-	signedDataList := make([]*types.SignedData, 0, len(dataList))
+	signedDataList := make([]*types.SignedData, 0, len(unsignedDataList))
 
-	for _, data := range dataList {
+	for _, unsignedData := range unsignedDataList {
 		// Skip empty data
-		if len(data.Txs) == 0 {
+		if len(unsignedData.Data.Txs) == 0 {
 			continue
 		}
 
 		// Sign the data
-		dataBytes, err := data.Data.MarshalBinary()
+		dataBytes, err := unsignedData.Data.MarshalBinary()
 		if err != nil {
 			return nil, fmt.Errorf("failed to marshal data: %w", err)
 		}
@@ -298,9 +288,9 @@ func (s *DASubmitter) createSignedData(dataList []*types.SignedData, signer sign
 		}
 
 		signedData := &types.SignedData{
-			Data:      data.Data,
-			Signature: signature,
+			Data:      unsignedData.Data,
 			Signer:    signerInfo,
+			Signature: signature,
 		}
 
 		signedDataList = append(signedDataList, signedData)

@@ -412,7 +412,7 @@ type fakeDASubmitter struct {
 	chData chan struct{}
 }
 
-func (f *fakeDASubmitter) SubmitHeaders(ctx context.Context, _ cache.Manager, _ signer.Signer) error {
+func (f *fakeDASubmitter) SubmitHeaders(ctx context.Context, _ []*types.SignedHeader, _ cache.Manager, _ signer.Signer) error {
 	select {
 	case f.chHdr <- struct{}{}:
 	default:
@@ -420,7 +420,7 @@ func (f *fakeDASubmitter) SubmitHeaders(ctx context.Context, _ cache.Manager, _ 
 	return nil
 }
 
-func (f *fakeDASubmitter) SubmitData(ctx context.Context, _ cache.Manager, _ signer.Signer, _ genesis.Genesis) error {
+func (f *fakeDASubmitter) SubmitData(ctx context.Context, _ []*types.SignedData, _ cache.Manager, _ signer.Signer, _ genesis.Genesis) error {
 	select {
 	case f.chData <- struct{}{}:
 	default:
