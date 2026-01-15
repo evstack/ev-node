@@ -364,11 +364,14 @@ func TestSubmitter_daSubmissionLoop(t *testing.T) {
 		daSubmitter:      fakeDA,
 		signer:           &fakeSigner{},
 		daIncludedHeight: &atomic.Uint64{},
-		lastHeaderSubmit: time.Now().Add(-time.Hour), // Set far in past so strategy allows submission
-		lastDataSubmit:   time.Now().Add(-time.Hour),
 		batchingStrategy: batchingStrategy,
 		logger:           zerolog.Nop(),
 	}
+
+	// Set last submit times far in past so strategy allows submission
+	pastTime := time.Now().Add(-time.Hour).UnixNano()
+	s.lastHeaderSubmit.Store(pastTime)
+	s.lastDataSubmit.Store(pastTime)
 
 	// Make there be pending headers and data by setting store height > last submitted
 	h1, d1 := newHeaderAndData("test-chain", 1, true)

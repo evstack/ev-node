@@ -56,8 +56,8 @@ type Submitter struct {
 	dataSubmissionMtx   sync.Mutex
 
 	// Batching strategy state
-	lastHeaderSubmit time.Time
-	lastDataSubmit   time.Time
+	lastHeaderSubmit atomic.Int64 // stores Unix nanoseconds
+	lastDataSubmit   atomic.Int64 // stores Unix nanoseconds
 	batchingStrategy BatchingStrategy
 
 	// Channels for coordination
@@ -94,7 +94,7 @@ func NewSubmitter(
 		strategy = NewTimeBasedStrategy(config.DA.BlockTime.Duration, 0, 1)
 	}
 
-	return &Submitter{
+	submitter := &Submitter{
 		store:            store,
 		exec:             exec,
 		cache:            cache,
@@ -105,12 +105,16 @@ func NewSubmitter(
 		sequencer:        sequencer,
 		signer:           signer,
 		daIncludedHeight: &atomic.Uint64{},
-		lastHeaderSubmit: time.Now(),
-		lastDataSubmit:   time.Now(),
 		batchingStrategy: strategy,
 		errorCh:          errorCh,
 		logger:           submitterLogger,
 	}
+
+	now := time.Now().UnixNano()
+	submitter.lastHeaderSubmit.Store(now)
+	submitter.lastDataSubmit.Store(now)
+
+	return submitter
 }
 
 // Start begins the submitting component
@@ -170,7 +174,8 @@ func (s *Submitter) daSubmissionLoop() {
 			// Check if we should submit headers based on batching strategy
 			headersNb := s.cache.NumPendingHeaders()
 			if headersNb > 0 {
-				timeSinceLastSubmit := time.Since(s.lastHeaderSubmit)
+				lastSubmitNanos := s.lastHeaderSubmit.Load()
+				timeSinceLastSubmit := time.Since(time.Unix(0, lastSubmitNanos))
 
 				// For strategy decision, we need to estimate the size
 				// We'll fetch headers to check, but only submit if strategy approves
@@ -218,7 +223,7 @@ func (s *Submitter) daSubmissionLoop() {
 								}
 								s.logger.Error().Err(err).Msg("failed to submit headers")
 							} else {
-								s.lastHeaderSubmit = time.Now()
+								s.lastHeaderSubmit.Store(time.Now().UnixNano())
 							}
 						}
 					}()
@@ -228,7 +233,8 @@ func (s *Submitter) daSubmissionLoop() {
 			// Check if we should submit data based on batching strategy
 			dataNb := s.cache.NumPendingData()
 			if dataNb > 0 {
-				timeSinceLastSubmit := time.Since(s.lastDataSubmit)
+				lastSubmitNanos := s.lastDataSubmit.Load()
+				timeSinceLastSubmit := time.Since(time.Unix(0, lastSubmitNanos))
 
 				if s.dataSubmissionMtx.TryLock() {
 					go func() {
@@ -274,7 +280,7 @@ func (s *Submitter) daSubmissionLoop() {
 								}
 								s.logger.Error().Err(err).Msg("failed to submit data")
 							} else {
-								s.lastDataSubmit = time.Now()
+								s.lastDataSubmit.Store(time.Now().UnixNano())
 							}
 						}
 					}()
