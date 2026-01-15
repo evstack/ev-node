@@ -55,9 +55,9 @@ type TimeBasedStrategy struct {
 	minItems uint64
 }
 
-func NewTimeBasedStrategy(maxDelay time.Duration, minItems uint64) *TimeBasedStrategy {
+func NewTimeBasedStrategy(daBlockTime time.Duration, maxDelay time.Duration, minItems uint64) *TimeBasedStrategy {
 	if maxDelay == 0 {
-		maxDelay = 6 * time.Second // default to DA block time
+		maxDelay = daBlockTime
 	}
 	if minItems == 0 {
 		minItems = 1
@@ -86,12 +86,12 @@ type AdaptiveStrategy struct {
 	minItems      uint64
 }
 
-func NewAdaptiveStrategy(sizeThreshold float64, maxDelay time.Duration, minItems uint64) *AdaptiveStrategy {
+func NewAdaptiveStrategy(daBlockTime time.Duration, sizeThreshold float64, maxDelay time.Duration, minItems uint64) *AdaptiveStrategy {
 	if sizeThreshold <= 0 || sizeThreshold > 1.0 {
 		sizeThreshold = 0.8 // default to 80%
 	}
 	if maxDelay == 0 {
-		maxDelay = 6 * time.Second // default to DA block time
+		maxDelay = daBlockTime
 	}
 	if minItems == 0 {
 		minItems = 1
@@ -130,9 +130,9 @@ func NewBatchingStrategy(cfg config.DAConfig) (BatchingStrategy, error) {
 	case "size":
 		return NewSizeBasedStrategy(cfg.BatchSizeThreshold, cfg.BatchMinItems), nil
 	case "time":
-		return NewTimeBasedStrategy(cfg.BatchMaxDelay.Duration, cfg.BatchMinItems), nil
+		return NewTimeBasedStrategy(cfg.BlockTime.Duration, cfg.BatchMaxDelay.Duration, cfg.BatchMinItems), nil
 	case "adaptive":
-		return NewAdaptiveStrategy(cfg.BatchSizeThreshold, cfg.BatchMaxDelay.Duration, cfg.BatchMinItems), nil
+		return NewAdaptiveStrategy(cfg.BlockTime.Duration, cfg.BatchSizeThreshold, cfg.BatchMaxDelay.Duration, cfg.BatchMinItems), nil
 	default:
 		return nil, fmt.Errorf("unknown batching strategy: %s", cfg.BatchingStrategy)
 	}

@@ -164,7 +164,7 @@ func TestTimeBasedStrategy(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			strategy := NewTimeBasedStrategy(maxDelay, tt.minItems)
+			strategy := NewTimeBasedStrategy(6*time.Second, maxDelay, tt.minItems)
 			result := strategy.ShouldSubmit(tt.pendingCount, tt.totalSize, maxBlobSize, tt.timeSinceLastSubmit)
 			assert.Equal(t, tt.expectedSubmit, result)
 		})
@@ -234,14 +234,14 @@ func TestAdaptiveStrategy(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			strategy := NewAdaptiveStrategy(sizeThreshold, maxDelay, tt.minItems)
+			strategy := NewAdaptiveStrategy(6*time.Second, sizeThreshold, maxDelay, tt.minItems)
 			result := strategy.ShouldSubmit(tt.pendingCount, tt.totalSize, maxBlobSize, tt.timeSinceLastSubmit)
 			assert.Equal(t, tt.expectedSubmit, result, "reason: %s", tt.reason)
 		})
 	}
 
 	// Test defaults
-	strategy := NewAdaptiveStrategy(0, 0, 0)
+	strategy := NewAdaptiveStrategy(6*time.Second, 0, 0, 0)
 	assert.Equal(t, 0.8, strategy.sizeThreshold)
 	assert.Equal(t, 6*time.Second, strategy.maxDelay)
 	assert.Equal(t, uint64(1), strategy.minItems)
@@ -539,8 +539,8 @@ func TestBatchingStrategiesComparison(t *testing.T) {
 
 	immediate := &ImmediateStrategy{}
 	size := NewSizeBasedStrategy(0.8, 1)
-	timeBased := NewTimeBasedStrategy(6*time.Second, 1)
-	adaptive := NewAdaptiveStrategy(0.8, 6*time.Second, 1)
+	timeBased := NewTimeBasedStrategy(6*time.Second, 6*time.Second, 1)
+	adaptive := NewAdaptiveStrategy(6*time.Second, 0.8, 6*time.Second, 1)
 
 	// Immediate should always submit if there are items
 	assert.True(t, immediate.ShouldSubmit(pendingCount, totalSize, maxBlobSize, timeSinceLastSubmit))

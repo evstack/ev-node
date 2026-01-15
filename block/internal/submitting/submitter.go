@@ -92,7 +92,7 @@ func NewSubmitter(
 	strategy, err := NewBatchingStrategy(config.DA)
 	if err != nil {
 		submitterLogger.Warn().Err(err).Msg("failed to create batching strategy, using time-based default")
-		strategy = NewTimeBasedStrategy(config.DA.BlockTime.Duration, 1)
+		strategy = NewTimeBasedStrategy(config.DA.BlockTime.Duration, 0, 1)
 	}
 
 	return &Submitter{
