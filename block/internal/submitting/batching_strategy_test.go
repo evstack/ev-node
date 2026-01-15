@@ -45,8 +45,6 @@ func TestImmediateStrategy(t *testing.T) {
 			assert.Equal(t, tt.expected, result)
 		})
 	}
-
-	assert.Equal(t, "immediate", strategy.Name())
 }
 
 func TestSizeBasedStrategy(t *testing.T) {
@@ -116,8 +114,6 @@ func TestSizeBasedStrategy(t *testing.T) {
 
 	strategy = NewSizeBasedStrategy(0, 1)
 	assert.Equal(t, 0.8, strategy.sizeThreshold)
-
-	assert.Equal(t, "size", strategy.Name())
 }
 
 func TestTimeBasedStrategy(t *testing.T) {
@@ -173,8 +169,6 @@ func TestTimeBasedStrategy(t *testing.T) {
 			assert.Equal(t, tt.expectedSubmit, result)
 		})
 	}
-
-	assert.Equal(t, "time", NewTimeBasedStrategy(maxDelay, 1).Name())
 }
 
 func TestAdaptiveStrategy(t *testing.T) {
@@ -251,11 +245,9 @@ func TestAdaptiveStrategy(t *testing.T) {
 	assert.Equal(t, 0.8, strategy.sizeThreshold)
 	assert.Equal(t, 6*time.Second, strategy.maxDelay)
 	assert.Equal(t, uint64(1), strategy.minItems)
-
-	assert.Equal(t, "adaptive", strategy.Name())
 }
 
-func TestBatchingStrategyFactory(t *testing.T) {
+func TestNewBatchingStrategy(t *testing.T) {
 	tests := []struct {
 		name         string
 		strategyName string
@@ -265,25 +257,21 @@ func TestBatchingStrategyFactory(t *testing.T) {
 		{
 			name:         "immediate strategy",
 			strategyName: "immediate",
-			expectedType: "immediate",
 			expectError:  false,
 		},
 		{
 			name:         "size strategy",
 			strategyName: "size",
-			expectedType: "size",
 			expectError:  false,
 		},
 		{
 			name:         "time strategy",
 			strategyName: "time",
-			expectedType: "time",
 			expectError:  false,
 		},
 		{
 			name:         "adaptive strategy",
 			strategyName: "adaptive",
-			expectedType: "adaptive",
 			expectError:  false,
 		},
 		{
@@ -302,7 +290,7 @@ func TestBatchingStrategyFactory(t *testing.T) {
 				BatchMinItems:      1,
 			}
 
-			strategy, err := BatchingStrategyFactory(cfg)
+			strategy, err := NewBatchingStrategy(cfg)
 
 			if tt.expectError {
 				assert.Error(t, err)
@@ -310,7 +298,6 @@ func TestBatchingStrategyFactory(t *testing.T) {
 			} else {
 				require.NoError(t, err)
 				require.NotNil(t, strategy)
-				assert.Equal(t, tt.expectedType, strategy.Name())
 			}
 		})
 	}
@@ -541,23 +528,6 @@ func TestShouldWaitForMoreItems(t *testing.T) {
 			assert.Equal(t, tt.expectedWait, result)
 		})
 	}
-}
-
-func TestNewBatchingConfig(t *testing.T) {
-	cfg := config.DAConfig{
-		BatchingStrategy:   "adaptive",
-		BatchSizeThreshold: 0.85,
-		BatchMaxDelay:      config.DurationWrapper{Duration: 12 * time.Second},
-		BatchMinItems:      5,
-	}
-
-	batchConfig, err := NewBatchingConfig(cfg)
-	require.NoError(t, err)
-	require.NotNil(t, batchConfig)
-
-	assert.Equal(t, common.DefaultMaxBlobSize, batchConfig.MaxBlobSize)
-	assert.Equal(t, "adaptive", batchConfig.Strategy.Name())
-	assert.Equal(t, 0.85, batchConfig.TargetUtilization)
 }
 
 func TestBatchingStrategiesComparison(t *testing.T) {

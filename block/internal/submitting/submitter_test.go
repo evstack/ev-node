@@ -351,9 +351,7 @@ func TestSubmitter_daSubmissionLoop(t *testing.T) {
 	// Provide a non-nil executor; it won't be used because DA inclusion won't advance
 	exec := testmocks.NewMockExecutor(t)
 
-	// Provide a minimal signer implementation
-	// Initialize batching strategy (immediate for this test)
-	batchingStrategy, err := BatchingStrategyFactory(cfg.DA)
+	batchingStrategy, err := NewBatchingStrategy(cfg.DA)
 	require.NoError(t, err)
 
 	s := &Submitter{

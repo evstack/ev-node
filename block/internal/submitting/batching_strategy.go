@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/evstack/ev-node/block/internal/common"
 	"github.com/evstack/ev-node/pkg/config"
 )
 
@@ -13,9 +12,6 @@ type BatchingStrategy interface {
 	// ShouldSubmit determines if a batch should be submitted based on the strategy
 	// Returns true if submission should happen now
 	ShouldSubmit(pendingCount uint64, totalSize int, maxBlobSize int, timeSinceLastSubmit time.Duration) bool
-
-	// Name returns the name of the strategy
-	Name() string
 }
 
 // ImmediateStrategy submits as soon as any items are available
@@ -23,10 +19,6 @@ type ImmediateStrategy struct{}
 
 func (s *ImmediateStrategy) ShouldSubmit(pendingCount uint64, totalSize int, maxBlobSize int, timeSinceLastSubmit time.Duration) bool {
 	return pendingCount > 0
-}
-
-func (s *ImmediateStrategy) Name() string {
-	return "immediate"
 }
 
 // SizeBasedStrategy waits until the batch reaches a certain size threshold
@@ -57,10 +49,6 @@ func (s *SizeBasedStrategy) ShouldSubmit(pendingCount uint64, totalSize int, max
 	return totalSize >= threshold
 }
 
-func (s *SizeBasedStrategy) Name() string {
-	return "size"
-}
-
 // TimeBasedStrategy submits after a certain time interval
 type TimeBasedStrategy struct {
 	maxDelay time.Duration
@@ -86,10 +74,6 @@ func (s *TimeBasedStrategy) ShouldSubmit(pendingCount uint64, totalSize int, max
 	}
 
 	return timeSinceLastSubmit >= s.maxDelay
-}
-
-func (s *TimeBasedStrategy) Name() string {
-	return "time"
 }
 
 // AdaptiveStrategy balances between size and time constraints
@@ -138,12 +122,8 @@ func (s *AdaptiveStrategy) ShouldSubmit(pendingCount uint64, totalSize int, maxB
 	return false
 }
 
-func (s *AdaptiveStrategy) Name() string {
-	return "adaptive"
-}
-
-// BatchingStrategyFactory creates a batching strategy based on configuration
-func BatchingStrategyFactory(cfg config.DAConfig) (BatchingStrategy, error) {
+// NewBatchingStrategy creates a batching strategy based on configuration
+func NewBatchingStrategy(cfg config.DAConfig) (BatchingStrategy, error) {
 	switch cfg.BatchingStrategy {
 	case "immediate":
 		return &ImmediateStrategy{}, nil
@@ -256,11 +236,8 @@ func ShouldWaitForMoreItems(
 	// Use epsilon for floating point comparison
 	const epsilon = 0.001
 	currentUtilization := float64(currentSize) / float64(maxBlobSize)
-	if currentUtilization < minUtilization-epsilon {
-		return true
-	}
 
-	return false
+	return currentUtilization < minUtilization-epsilon
 }
 
 // BatchingConfig holds configuration for batch optimization
@@ -268,18 +245,4 @@ type BatchingConfig struct {
 	MaxBlobSize       int
 	Strategy          BatchingStrategy
 	TargetUtilization float64
-}
-
-// NewBatchingConfig creates a new batching configuration
-func NewBatchingConfig(cfg config.DAConfig) (*BatchingConfig, error) {
-	strategy, err := BatchingStrategyFactory(cfg)
-	if err != nil {
-		return nil, err
-	}
-
-	return &BatchingConfig{
-		MaxBlobSize:       common.DefaultMaxBlobSize,
-		Strategy:          strategy,
-		TargetUtilization: cfg.BatchSizeThreshold,
-	}, nil
 }

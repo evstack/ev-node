@@ -89,15 +89,11 @@ func NewSubmitter(
 	submitterLogger := logger.With().Str("component", "submitter").Logger()
 
 	// Initialize batching strategy
-	strategy, err := BatchingStrategyFactory(config.DA)
+	strategy, err := NewBatchingStrategy(config.DA)
 	if err != nil {
 		submitterLogger.Warn().Err(err).Msg("failed to create batching strategy, using time-based default")
 		strategy = NewTimeBasedStrategy(config.DA.BlockTime.Duration, 1)
 	}
-
-	submitterLogger.Info().
-		Str("batching_strategy", strategy.Name()).
-		Msg("initialized DA submission batching strategy")
 
 	return &Submitter{
 		store:            store,
@@ -162,10 +158,8 @@ func (s *Submitter) daSubmissionLoop() {
 	defer s.logger.Info().Msg("DA submission loop stopped")
 
 	// Use a shorter ticker interval to check batching strategy more frequently
-	checkInterval := s.config.DA.BlockTime.Duration / 4
-	if checkInterval < 100*time.Millisecond {
-		checkInterval = 100 * time.Millisecond
-	}
+	checkInterval := min(s.config.DA.BlockTime.Duration/4, 100*time.Millisecond)
+
 	ticker := time.NewTicker(checkInterval)
 	defer ticker.Stop()
 
@@ -214,7 +208,6 @@ func (s *Submitter) daSubmissionLoop() {
 								Uint64("headers", headersNb).
 								Int("total_size_kb", totalSize/1024).
 								Dur("time_since_last", timeSinceLastSubmit).
-								Str("strategy", s.batchingStrategy.Name()).
 								Msg("batching strategy triggered header submission")
 
 							if err := s.daSubmitter.SubmitHeaders(s.ctx, s.cache, s.signer); err != nil {
@@ -272,7 +265,6 @@ func (s *Submitter) daSubmissionLoop() {
 								Uint64("data", dataNb).
 								Int("total_size_kb", totalSize/1024).
 								Dur("time_since_last", timeSinceLastSubmit).
-								Str("strategy", s.batchingStrategy.Name()).
 								Msg("batching strategy triggered data submission")
 
 							if err := s.daSubmitter.SubmitData(s.ctx, s.cache, s.signer, s.genesis); err != nil {
