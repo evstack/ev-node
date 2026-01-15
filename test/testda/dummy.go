@@ -11,8 +11,8 @@ import (
 )
 
 const (
-	// DefaultMaxBlobSize is the default maximum blob size (8MB).
-	DefaultMaxBlobSize = 8 * 1024 * 1024
+	// DefaultMaxBlobSize is the default maximum blob size (7MB).
+	DefaultMaxBlobSize = 7 * 1024 * 1024
 )
 
 // Header contains DA layer header information for a given height.
