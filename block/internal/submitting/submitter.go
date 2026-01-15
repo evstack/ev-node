@@ -178,7 +178,6 @@ func (s *Submitter) daSubmissionLoop() {
 					go func() {
 						defer s.headerSubmissionMtx.Unlock()
 
-						// Get pending headers to estimate size
 						headers, err := s.cache.GetPendingHeaders(s.ctx)
 						if err != nil {
 							s.logger.Error().Err(err).Msg("failed to get pending headers for batching decision")
@@ -235,7 +234,6 @@ func (s *Submitter) daSubmissionLoop() {
 					go func() {
 						defer s.dataSubmissionMtx.Unlock()
 
-						// Get pending data to estimate size
 						signedDataList, err := s.cache.GetPendingData(s.ctx)
 						if err != nil {
 							s.logger.Error().Err(err).Msg("failed to get pending data for batching decision")

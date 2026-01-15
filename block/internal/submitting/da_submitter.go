@@ -272,7 +272,7 @@ func (s *DASubmitter) signData(unsignedDataList []*types.SignedData, signer sign
 
 	for _, unsignedData := range unsignedDataList {
 		// Skip empty data
-		if len(unsignedData.Data.Txs) == 0 {
+		if len(unsignedData.Txs) == 0 {
 			continue
 		}
 
