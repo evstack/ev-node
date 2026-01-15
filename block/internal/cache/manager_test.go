@@ -183,14 +183,14 @@ func TestPendingHeadersAndData_Flow(t *testing.T) {
 	require.NoError(t, err)
 
 	// headers: all 3 should be pending initially
-	headers, err := cm.GetPendingHeaders(ctx)
+	headers, _, err := cm.GetPendingHeaders(ctx)
 	require.NoError(t, err)
 	require.Len(t, headers, 3)
 	assert.Equal(t, uint64(1), headers[0].Height())
 	assert.Equal(t, uint64(3), headers[2].Height())
 
 	// data: empty one filtered, so 2 and 3 only
-	signedData, err := cm.GetPendingData(ctx)
+	signedData, _, err := cm.GetPendingData(ctx)
 	require.NoError(t, err)
 	require.Len(t, signedData, 2)
 	assert.Equal(t, uint64(2), signedData[0].Height())
@@ -200,12 +200,12 @@ func TestPendingHeadersAndData_Flow(t *testing.T) {
 	cm.SetLastSubmittedHeaderHeight(ctx, 1)
 	cm.SetLastSubmittedDataHeight(ctx, 2)
 
-	headers, err = cm.GetPendingHeaders(ctx)
+	headers, _, err = cm.GetPendingHeaders(ctx)
 	require.NoError(t, err)
 	require.Len(t, headers, 2)
 	assert.Equal(t, uint64(2), headers[0].Height())
 
-	signedData, err = cm.GetPendingData(ctx)
+	signedData, _, err = cm.GetPendingData(ctx)
 	require.NoError(t, err)
 	require.Len(t, signedData, 1)
 	assert.Equal(t, uint64(3), signedData[0].Height())

@@ -183,19 +183,17 @@ func (s *Submitter) daSubmissionLoop() {
 					go func() {
 						defer s.headerSubmissionMtx.Unlock()
 
-						headers, err := s.cache.GetPendingHeaders(s.ctx)
+						// Get headers with marshalled bytes from cache
+						headers, marshalledHeaders, err := s.cache.GetPendingHeaders(s.ctx)
 						if err != nil {
 							s.logger.Error().Err(err).Msg("failed to get pending headers for batching decision")
 							return
 						}
 
-						// Marshal headers concurrently for both size estimation and submission
-						marshalledHeaders, totalSize, err := marshalItems(s.ctx, headers, func(h *types.SignedHeader) ([]byte, error) {
-							return h.MarshalBinary()
-						})
-						if err != nil {
-							s.logger.Error().Err(err).Msg("failed to marshal headers")
-							return
+						// Calculate total size
+						totalSize := 0
+						for _, marshalled := range marshalledHeaders {
+							totalSize += len(marshalled)
 						}
 
 						shouldSubmit := s.batchingStrategy.ShouldSubmit(
@@ -240,19 +238,17 @@ func (s *Submitter) daSubmissionLoop() {
 					go func() {
 						defer s.dataSubmissionMtx.Unlock()
 
-						signedDataList, err := s.cache.GetPendingData(s.ctx)
+						// Get data with marshalled bytes from cache
+						signedDataList, marshalledData, err := s.cache.GetPendingData(s.ctx)
 						if err != nil {
 							s.logger.Error().Err(err).Msg("failed to get pending data for batching decision")
 							return
 						}
 
-						// Marshal data concurrently for both size estimation and submission
-						marshalledData, totalSize, err := marshalItems(s.ctx, signedDataList, func(sd *types.SignedData) ([]byte, error) {
-							return sd.MarshalBinary()
-						})
-						if err != nil {
-							s.logger.Error().Err(err).Msg("failed to marshal data")
-							return
+						// Calculate total size
+						totalSize := 0
+						for _, marshalled := range marshalledData {
+							totalSize += len(marshalled)
 						}
 
 						shouldSubmit := s.batchingStrategy.ShouldSubmit(

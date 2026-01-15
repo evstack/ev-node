@@ -213,15 +213,8 @@ func TestDASubmitter_SubmitHeaders_Success(t *testing.T) {
 	require.NoError(t, batch2.Commit())
 
 	// Get headers from cache and submit
-	headers, err := cm.GetPendingHeaders(ctx)
+	headers, marshalledHeaders, err := cm.GetPendingHeaders(ctx)
 	require.NoError(t, err)
-	// Marshal headers
-	marshalledHeaders := make([][]byte, len(headers))
-	for i, h := range headers {
-		data, err := h.MarshalBinary()
-		require.NoError(t, err)
-		marshalledHeaders[i] = data
-	}
 	err = submitter.SubmitHeaders(ctx, headers, marshalledHeaders, cm, signer)
 	require.NoError(t, err)
 
@@ -242,9 +235,8 @@ func TestDASubmitter_SubmitHeaders_NoPendingHeaders(t *testing.T) {
 	_, _, signer := createTestSigner(t)
 
 	// Get headers from cache (should be empty) and submit
-	headers, err := cm.GetPendingHeaders(ctx)
+	headers, marshalledHeaders, err := cm.GetPendingHeaders(ctx)
 	require.NoError(t, err)
-	var marshalledHeaders [][]byte
 	err = submitter.SubmitHeaders(ctx, headers, marshalledHeaders, cm, signer)
 	require.NoError(t, err) // Should succeed with no action
 	mockDA.AssertNotCalled(t, "Submit", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything)
@@ -338,15 +330,8 @@ func TestDASubmitter_SubmitData_Success(t *testing.T) {
 	require.NoError(t, batch2.Commit())
 
 	// Get data from cache and submit
-	signedDataList, err := cm.GetPendingData(ctx)
+	signedDataList, marshalledData, err := cm.GetPendingData(ctx)
 	require.NoError(t, err)
-	// Marshal data
-	marshalledData := make([][]byte, len(signedDataList))
-	for i, d := range signedDataList {
-		data, err := d.MarshalBinary()
-		require.NoError(t, err)
-		marshalledData[i] = data
-	}
 	err = submitter.SubmitData(ctx, signedDataList, marshalledData, cm, signer, gen)
 	require.NoError(t, err)
 
@@ -399,15 +384,8 @@ func TestDASubmitter_SubmitData_SkipsEmptyData(t *testing.T) {
 
 	// Get data from cache and submit - should succeed but skip empty data
 	// Get data from cache and submit
-	signedDataList, err := cm.GetPendingData(ctx)
+	signedDataList, marshalledData, err := cm.GetPendingData(ctx)
 	require.NoError(t, err)
-	// Marshal data
-	marshalledData := make([][]byte, len(signedDataList))
-	for i, d := range signedDataList {
-		data, err := d.MarshalBinary()
-		require.NoError(t, err)
-		marshalledData[i] = data
-	}
 	err = submitter.SubmitData(ctx, signedDataList, marshalledData, cm, signer, gen)
 	require.NoError(t, err)
 	mockDA.AssertNotCalled(t, "Submit", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything)
@@ -425,9 +403,8 @@ func TestDASubmitter_SubmitData_NoPendingData(t *testing.T) {
 	_, _, signer := createTestSigner(t)
 
 	// Get data from cache (should be empty) and submit
-	dataList, err := cm.GetPendingData(ctx)
+	dataList, marshalledData, err := cm.GetPendingData(ctx)
 	require.NoError(t, err)
-	var marshalledData [][]byte
 	err = submitter.SubmitData(ctx, dataList, marshalledData, cm, signer, gen)
 	require.NoError(t, err) // Should succeed with no action
 	mockDA.AssertNotCalled(t, "Submit", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything)
@@ -467,15 +444,8 @@ func TestDASubmitter_SubmitData_NilSigner(t *testing.T) {
 	require.NoError(t, batch.Commit())
 
 	// Get data from cache and submit with nil signer - should fail
-	signedDataList, err := cm.GetPendingData(ctx)
+	signedDataList, marshalledData, err := cm.GetPendingData(ctx)
 	require.NoError(t, err)
-	// Marshal data
-	marshalledData := make([][]byte, len(signedDataList))
-	for i, d := range signedDataList {
-		data, err := d.MarshalBinary()
-		require.NoError(t, err)
-		marshalledData[i] = data
-	}
 	err = submitter.SubmitData(ctx, signedDataList, marshalledData, cm, nil, gen)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "signer is nil")
