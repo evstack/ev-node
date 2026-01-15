@@ -161,7 +161,7 @@ func (s *Submitter) daSubmissionLoop() {
 	defer s.logger.Info().Msg("DA submission loop stopped")
 
 	// Use a shorter ticker interval to check batching strategy more frequently
-	checkInterval := min(s.config.DA.BlockTime.Duration/4, 100*time.Millisecond)
+	checkInterval := max(s.config.DA.BlockTime.Duration/4, 100*time.Millisecond)
 
 	ticker := time.NewTicker(checkInterval)
 	defer ticker.Stop()
