@@ -25,6 +25,7 @@ type AsyncBlockRetriever interface {
 	Stop()
 	GetCachedBlock(ctx context.Context, daHeight uint64) (*BlockData, error)
 	UpdateCurrentHeight(height uint64)
+	StoreBlock(ctx context.Context, height uint64, blobs [][]byte, timestamp time.Time)
 }
 
 // BlockData contains data retrieved from a single DA height
@@ -123,6 +124,68 @@ func (f *asyncBlockRetriever) UpdateCurrentHeight(height uint64) {
 			return
 		}
 	}
+}
+
+// StoreBlock caches a block's blobs, favoring existing data to avoid churn.
+func (f *asyncBlockRetriever) StoreBlock(ctx context.Context, height uint64, blobs [][]byte, timestamp time.Time) {
+	if len(f.namespace) == 0 {
+		return
+	}
+	if height < f.daStartHeight {
+		return
+	}
+	if len(blobs) == 0 {
+		return
+	}
+
+	filtered := make([][]byte, 0, len(blobs))
+	for _, blob := range blobs {
+		if len(blob) > 0 {
+			filtered = append(filtered, blob)
+		}
+	}
+	if len(filtered) == 0 {
+		return
+	}
+
+	if timestamp.IsZero() {
+		timestamp = time.Now().UTC()
+	}
+
+	key := newBlockDataKey(height)
+	if existing, err := f.cache.Get(ctx, key); err == nil {
+		var pbBlock pb.BlockData
+		if err := proto.Unmarshal(existing, &pbBlock); err == nil && len(pbBlock.Blobs) > 0 {
+			return
+		}
+	}
+
+	pbBlock := &pb.BlockData{
+		Height:    height,
+		Timestamp: timestamp.Unix(),
+		Blobs:     filtered,
+	}
+	data, err := proto.Marshal(pbBlock)
+	if err != nil {
+		f.logger.Error().
+			Err(err).
+			Uint64("height", height).
+			Msg("failed to marshal block for caching")
+		return
+	}
+
+	if err := f.cache.Put(ctx, key, data); err != nil {
+		f.logger.Error().
+			Err(err).
+			Uint64("height", height).
+			Msg("failed to cache block")
+		return
+	}
+
+	f.logger.Debug().
+		Uint64("height", height).
+		Int("blob_count", len(filtered)).
+		Msg("cached block from subscription")
 }
 
 func newBlockDataKey(height uint64) ds.Key {

@@ -224,11 +224,9 @@ func TestForcedInclusionRetriever_RetrieveForcedIncludedTxs_ErrorHandling(t *tes
 	defer retriever.Stop()
 	ctx := context.Background()
 
-	// Should return empty event with no error (errors are logged and retried later)
-	event, err := retriever.RetrieveForcedIncludedTxs(ctx, 100)
-	assert.NilError(t, err)
-	assert.Assert(t, event != nil)
-	assert.Equal(t, len(event.Txs), 0)
+	// Should return error so caller can retry without skipping the epoch
+	_, err := retriever.RetrieveForcedIncludedTxs(ctx, 100)
+	assert.Assert(t, err != nil)
 }
 
 func TestForcedInclusionRetriever_RetrieveForcedIncludedTxs_EmptyBlobsSkipped(t *testing.T) {

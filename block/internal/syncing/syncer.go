@@ -254,6 +254,9 @@ func (s *Syncer) Stop() error {
 	if s.cancel != nil {
 		s.cancel()
 	}
+	if s.fiRetriever != nil {
+		s.fiRetriever.Stop()
+	}
 	s.cancelP2PWait(0)
 	s.wg.Wait()
 	s.logger.Info().Msg("syncer stopped")
@@ -524,12 +527,10 @@ func (s *Syncer) subscribeAndFollow() error {
 			if !ok {
 				return errors.New("forced inclusion subscription closed")
 			}
-			// Forced inclusion responses are logged but not processed through processSubscriptionResponse
-			// They are handled separately by the forced inclusion retriever during block verification
-			s.logger.Debug().
-				Uint64("da_height", resp.Height).
-				Int("blobs", len(resp.Blobs)).
-				Msg("received forced inclusion subscription notification")
+			// Cache forced inclusion blobs for epoch retrieval.
+			if s.fiRetriever != nil {
+				s.fiRetriever.HandleSubscriptionResponse(resp)
+			}
 
 		case <-time.After(watchdogTimeout):
 			// Watchdog: if no events for watchdogTimeout, recheck mode
@@ -544,7 +545,7 @@ func (s *Syncer) subscribeAndFollow() error {
 
 // processSubscriptionResponse processes a subscription response and sends events to the processing channel.
 func (s *Syncer) processSubscriptionResponse(resp *blobrpc.SubscriptionResponse) error {
-	if resp == nil || len(resp.Blobs) == 0 {
+	if resp == nil {
 		return nil
 	}
 
@@ -554,9 +555,9 @@ func (s *Syncer) processSubscriptionResponse(resp *blobrpc.SubscriptionResponse)
 		Msg("processing subscription response")
 
 	// Convert blobs to raw byte slices for processing
-	blobs := make([][]byte, len(resp.Blobs))
-	for i, blob := range resp.Blobs {
-		blobs[i] = blob.Data()
+	blobs := common.BlobsFromSubscription(resp)
+	if len(blobs) == 0 {
+		return nil
 	}
 
 	// Process blobs using the DA retriever's ProcessBlobs method
@@ -836,7 +837,11 @@ func (s *Syncer) trySyncNextBlock(event *common.DAHeightEvent) error {
 
 	// Verify forced inclusion transactions if configured
 	if event.Source == common.SourceDA {
-		if err := s.verifyForcedInclusionTxs(currentState, data); err != nil {
+		verifyState := currentState
+		if event.DaHeight > verifyState.DAHeight {
+			verifyState.DAHeight = event.DaHeight
+		}
+		if err := s.verifyForcedInclusionTxs(verifyState, data); err != nil {
 			s.logger.Error().Err(err).Uint64("height", nextHeight).Msg("forced inclusion verification failed")
 			if errors.Is(err, errMaliciousProposer) {
 				s.cache.RemoveHeaderDAIncluded(headerHash)

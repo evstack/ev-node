@@ -851,18 +851,6 @@ func TestVerifyForcedInclusionTxs_DeferralWithinEpoch(t *testing.T) {
 		return true
 	})
 
-	// Mock DA for second verification at same epoch (height 104 - epoch end)
-	for height := uint64(101); height <= 104; height++ {
-		client.On("Retrieve", mock.Anything, height, []byte("nsForcedInclusion")).Return(datypes.ResultRetrieve{
-			BaseResult: datypes.BaseResult{Code: datypes.StatusNotFound, Timestamp: time.Now()},
-		}).Once()
-	}
-
-	client.On("Retrieve", mock.Anything, uint64(100), []byte("nsForcedInclusion")).Return(datypes.ResultRetrieve{
-		BaseResult: datypes.BaseResult{Code: datypes.StatusSuccess, IDs: [][]byte{[]byte("fi1"), []byte("fi2")}, Timestamp: time.Now()},
-		Data:       [][]byte{dataBin1, dataBin2},
-	}).Once()
-
 	// Second block includes BOTH the previously included dataBin1 AND the deferred dataBin2
 	// This simulates the block containing both forced inclusion txs
 	data2 := makeData(gen.ChainID, 2, 2)
