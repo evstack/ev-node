@@ -1,7 +1,6 @@
 package syncing
 
 import (
-	"context"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -392,7 +391,7 @@ func TestVerifyForcedInclusionTxs_AllTransactionsIncluded(t *testing.T) {
 	s.fiRetriever = fiRetriever
 
 	require.NoError(t, s.initializeState())
-	s.ctx = context.Background()
+	s.ctx = t.Context()
 
 	// Mock DA to return forced inclusion transactions
 	// Create forced inclusion transaction blob (SignedData) in DA
@@ -411,7 +410,7 @@ func TestVerifyForcedInclusionTxs_AllTransactionsIncluded(t *testing.T) {
 	currentState.DAHeight = 0
 
 	// Verify - should pass since all forced txs are included
-	err = s.VerifyForcedInclusionTxs(context.Background(), currentState, data)
+	err = s.VerifyForcedInclusionTxs(t.Context(), currentState, data)
 	require.NoError(t, err)
 }
 
@@ -467,7 +466,7 @@ func TestVerifyForcedInclusionTxs_MissingTransactions(t *testing.T) {
 	s.fiRetriever = fiRetriever
 
 	require.NoError(t, s.initializeState())
-	s.ctx = context.Background()
+	s.ctx = t.Context()
 
 	// Mock DA to return forced inclusion transactions
 	// Create forced inclusion transaction blob (SignedData) in DA
@@ -488,7 +487,7 @@ func TestVerifyForcedInclusionTxs_MissingTransactions(t *testing.T) {
 	currentState.DAHeight = 0
 
 	// Verify - should pass since forced tx blob may be legitimately deferred within the epoch
-	err = s.VerifyForcedInclusionTxs(context.Background(), currentState, data)
+	err = s.VerifyForcedInclusionTxs(t.Context(), currentState, data)
 	require.NoError(t, err)
 
 	// Mock DA for next epoch to return no forced inclusion transactions
@@ -501,7 +500,7 @@ func TestVerifyForcedInclusionTxs_MissingTransactions(t *testing.T) {
 	data2 := makeData(gen.ChainID, 2, 1)
 	data2.Txs[0] = []byte("regular_tx_3")
 
-	err = s.VerifyForcedInclusionTxs(context.Background(), currentState, data2)
+	err = s.VerifyForcedInclusionTxs(t.Context(), currentState, data2)
 	require.NoError(t, err) // Should pass since DAHeight=1 equals grace boundary, not past it
 
 	// Mock DA for height 2 to return no forced inclusion transactions
@@ -514,7 +513,7 @@ func TestVerifyForcedInclusionTxs_MissingTransactions(t *testing.T) {
 	data3 := makeData(gen.ChainID, 3, 1)
 	data3.Txs[0] = types.Tx([]byte("regular_tx_4"))
 
-	err = s.VerifyForcedInclusionTxs(context.Background(), currentState, data3)
+	err = s.VerifyForcedInclusionTxs(t.Context(), currentState, data3)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "sequencer is malicious")
 	require.Contains(t, err.Error(), "past grace boundary")
@@ -572,7 +571,7 @@ func TestVerifyForcedInclusionTxs_PartiallyIncluded(t *testing.T) {
 	s.fiRetriever = fiRetriever
 
 	require.NoError(t, s.initializeState())
-	s.ctx = context.Background()
+	s.ctx = t.Context()
 
 	// Create two forced inclusion transaction blobs in DA
 	dataBin1, _ := makeSignedDataBytes(t, gen.ChainID, 10, addr, pub, signer, 2)
@@ -594,7 +593,7 @@ func TestVerifyForcedInclusionTxs_PartiallyIncluded(t *testing.T) {
 	currentState.DAHeight = 0
 
 	// Verify - should pass since dataBin2 may be legitimately deferred within the epoch
-	err = s.VerifyForcedInclusionTxs(context.Background(), currentState, data)
+	err = s.VerifyForcedInclusionTxs(t.Context(), currentState, data)
 	require.NoError(t, err)
 
 	// Mock DA for next epoch to return no forced inclusion transactions
@@ -608,7 +607,7 @@ func TestVerifyForcedInclusionTxs_PartiallyIncluded(t *testing.T) {
 	data2.Txs[0] = types.Tx([]byte("regular_tx_3"))
 
 	// Verify - should pass since we're at the grace boundary, not past it
-	err = s.VerifyForcedInclusionTxs(context.Background(), currentState, data2)
+	err = s.VerifyForcedInclusionTxs(t.Context(), currentState, data2)
 	require.NoError(t, err)
 
 	// Mock DA for height 2 (when we move to DAHeight 2)
@@ -623,7 +622,7 @@ func TestVerifyForcedInclusionTxs_PartiallyIncluded(t *testing.T) {
 	data3 := makeData(gen.ChainID, 3, 1)
 	data3.Txs[0] = types.Tx([]byte("regular_tx_4"))
 
-	err = s.VerifyForcedInclusionTxs(context.Background(), currentState, data3)
+	err = s.VerifyForcedInclusionTxs(t.Context(), currentState, data3)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "sequencer is malicious")
 	require.Contains(t, err.Error(), "past grace boundary")
@@ -681,7 +680,7 @@ func TestVerifyForcedInclusionTxs_NoForcedTransactions(t *testing.T) {
 	s.fiRetriever = fiRetriever
 
 	require.NoError(t, s.initializeState())
-	s.ctx = context.Background()
+	s.ctx = t.Context()
 
 	// Mock DA to return no forced inclusion transactions at height 0
 	client.On("Retrieve", mock.Anything, uint64(0), []byte("nsForcedInclusion")).Return(datypes.ResultRetrieve{
@@ -695,7 +694,7 @@ func TestVerifyForcedInclusionTxs_NoForcedTransactions(t *testing.T) {
 	currentState.DAHeight = 0
 
 	// Verify - should pass since no forced txs to verify
-	err = s.VerifyForcedInclusionTxs(context.Background(), currentState, data)
+	err = s.VerifyForcedInclusionTxs(t.Context(), currentState, data)
 	require.NoError(t, err)
 }
 
@@ -750,7 +749,7 @@ func TestVerifyForcedInclusionTxs_NamespaceNotConfigured(t *testing.T) {
 	s.fiRetriever = fiRetriever
 
 	require.NoError(t, s.initializeState())
-	s.ctx = context.Background()
+	s.ctx = t.Context()
 
 	// Create block data
 	data := makeData(gen.ChainID, 1, 2)
@@ -759,7 +758,7 @@ func TestVerifyForcedInclusionTxs_NamespaceNotConfigured(t *testing.T) {
 	currentState.DAHeight = 0
 
 	// Verify - should pass since namespace not configured
-	err = s.VerifyForcedInclusionTxs(context.Background(), currentState, data)
+	err = s.VerifyForcedInclusionTxs(t.Context(), currentState, data)
 	require.NoError(t, err)
 }
 
@@ -817,7 +816,7 @@ func TestVerifyForcedInclusionTxs_DeferralWithinEpoch(t *testing.T) {
 	s.fiRetriever = fiRetriever
 
 	require.NoError(t, s.initializeState())
-	s.ctx = context.Background()
+	s.ctx = t.Context()
 
 	// Create forced inclusion transaction blobs
 	dataBin1, _ := makeSignedDataBytes(t, gen.ChainID, 10, addr, pub, signer, 2)
@@ -847,7 +846,7 @@ func TestVerifyForcedInclusionTxs_DeferralWithinEpoch(t *testing.T) {
 	currentState.DAHeight = 104
 
 	// Verify - should pass since dataBin2 can be deferred within epoch
-	err = s.VerifyForcedInclusionTxs(context.Background(), currentState, data1)
+	err = s.VerifyForcedInclusionTxs(t.Context(), currentState, data1)
 	require.NoError(t, err)
 
 	// Verify that dataBin2 is now tracked as pending
@@ -876,7 +875,7 @@ func TestVerifyForcedInclusionTxs_DeferralWithinEpoch(t *testing.T) {
 	data2.Txs[1] = types.Tx(dataBin2) // The deferred one we're waiting for
 
 	// Verify - should pass since dataBin2 is now included and clears pending
-	err = s.VerifyForcedInclusionTxs(context.Background(), currentState, data2)
+	err = s.VerifyForcedInclusionTxs(t.Context(), currentState, data2)
 	require.NoError(t, err)
 
 	// Verify that pending queue is now empty (dataBin2 was included)
@@ -942,7 +941,7 @@ func TestVerifyForcedInclusionTxs_MaliciousAfterEpochEnd(t *testing.T) {
 	s.fiRetriever = fiRetriever
 
 	require.NoError(t, s.initializeState())
-	s.ctx = context.Background()
+	s.ctx = t.Context()
 
 	// Create forced inclusion transaction blob
 	dataBin, _ := makeSignedDataBytes(t, gen.ChainID, 10, addr, pub, signer, 2)
@@ -972,7 +971,7 @@ func TestVerifyForcedInclusionTxs_MaliciousAfterEpochEnd(t *testing.T) {
 	currentState.DAHeight = 102
 
 	// Verify - should pass, tx can be deferred within epoch
-	err = s.VerifyForcedInclusionTxs(context.Background(), currentState, data1)
+	err = s.VerifyForcedInclusionTxs(t.Context(), currentState, data1)
 	require.NoError(t, err)
 }
 
@@ -1033,7 +1032,7 @@ func TestVerifyForcedInclusionTxs_SmoothingExceedsEpoch(t *testing.T) {
 	s.fiRetriever = fiRetriever
 
 	require.NoError(t, s.initializeState())
-	s.ctx = context.Background()
+	s.ctx = t.Context()
 
 	// Create 3 forced inclusion transactions
 	dataBin1, _ := makeSignedDataBytes(t, gen.ChainID, 10, addr, pub, signer, 2)
@@ -1067,6 +1066,6 @@ func TestVerifyForcedInclusionTxs_SmoothingExceedsEpoch(t *testing.T) {
 	currentState := s.getLastState()
 	currentState.DAHeight = 102 // At epoch end
 
-	err = s.VerifyForcedInclusionTxs(context.Background(), currentState, data1)
+	err = s.VerifyForcedInclusionTxs(t.Context(), currentState, data1)
 	require.NoError(t, err, "smoothing within epoch should be allowed")
 }

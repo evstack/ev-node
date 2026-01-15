@@ -134,6 +134,19 @@ func (s *Replayer) replayBlock(ctx context.Context, height uint64) error {
 		return fmt.Errorf("failed to get block data from store: %w", err)
 	}
 
+	// DEBUG: Log full header details for double-signing investigation
+	s.logger.Debug().
+		Uint64("height", height).
+		Str("chain_id", header.ChainID()).
+		Int64("timestamp_unix", header.Time().Unix()).
+		Str("timestamp", header.Time().String()).
+		Str("app_hash", hex.EncodeToString(header.AppHash)).
+		Str("data_hash", hex.EncodeToString(header.DataHash)).
+		Str("last_header_hash", hex.EncodeToString(header.LastHeaderHash)).
+		Str("proposer_address", hex.EncodeToString(header.ProposerAddress)).
+		Int("tx_count", len(data.Txs)).
+		Msg("replayBlock: loaded block from store")
+
 	// Get the previous state
 	var prevState types.State
 	if height == s.genesis.InitialHeight {
@@ -147,7 +160,7 @@ func (s *Replayer) replayBlock(ctx context.Context, height uint64) error {
 		}
 	} else {
 		// Get previous state from store
-		prevState, err = s.store.GetState(ctx)
+		prevState, err = s.store.GetStateAtHeight(ctx, height-1)
 		if err != nil {
 			return fmt.Errorf("failed to get previous state: %w", err)
 		}
@@ -166,16 +179,18 @@ func (s *Replayer) replayBlock(ctx context.Context, height uint64) error {
 		rawTxs[i] = []byte(tx)
 	}
 
-	// Execute transactions on the execution layer
-	s.logger.Debug().
-		Uint64("height", height).
-		Int("tx_count", len(rawTxs)).
-		Msg("executing transactions on execution layer")
-
 	newAppHash, _, err := s.exec.ExecuteTxs(ctx, rawTxs, height, header.Time(), prevState.AppHash)
 	if err != nil {
 		return fmt.Errorf("failed to execute transactions: %w", err)
 	}
+
+	// DEBUG: Log comparison of expected vs actual app hash
+	s.logger.Debug().
+		Uint64("height", height).
+		Str("expected_app_hash", hex.EncodeToString(header.AppHash)).
+		Str("actual_app_hash", hex.EncodeToString(newAppHash)).
+		Bool("hashes_match", bytes.Equal(newAppHash, header.AppHash)).
+		Msg("replayBlock: ExecuteTxs completed")
 
 	// Verify the app hash matches
 	if !bytes.Equal(newAppHash, header.AppHash) {
@@ -190,6 +205,27 @@ func (s *Replayer) replayBlock(ctx context.Context, height uint64) error {
 			Err(err).
 			Msg("app hash mismatch during replay")
 		return err
+	}
+
+	// Calculate new state
+	newState, err := prevState.NextState(header.Header, newAppHash)
+	if err != nil {
+		return fmt.Errorf("calculate next state: %w", err)
+	}
+
+	// Persist the new state
+	batch, err := s.store.NewBatch(ctx)
+	if err != nil {
+		return fmt.Errorf("create batch: %w", err)
+	}
+	if err := batch.UpdateState(newState); err != nil {
+		return fmt.Errorf("update state in batch: %w", err)
+	}
+	// We don't need to SetHeight here because the store already has the block height (we fetched the block from it)
+	// But we MUST persist the State blob so that GetState() can find it on restart.
+
+	if err := batch.Commit(); err != nil {
+		return fmt.Errorf("commit batch with new state: %w", err)
 	}
 
 	s.logger.Info().

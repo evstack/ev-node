@@ -271,6 +271,9 @@ func (e *Executor) initializeState() error {
 	if err := batch.SetHeight(state.LastBlockHeight); err != nil {
 		return fmt.Errorf("failed to set store height: %w", err)
 	}
+	if err := batch.UpdateState(state); err != nil {
+		return fmt.Errorf("failed to update state: %w", err)
+	}
 	if err := batch.Commit(); err != nil {
 		return fmt.Errorf("failed to commit batch: %w", err)
 	}
@@ -296,6 +299,25 @@ func (e *Executor) initializeState() error {
 	if err := execReplayer.SyncToHeight(e.ctx, syncTargetHeight); err != nil {
 		e.sendCriticalError(fmt.Errorf("failed to sync execution layer: %w", err))
 		return fmt.Errorf("failed to sync execution layer: %w", err)
+	}
+
+	// Double-check state against Raft after replay
+	if e.raftNode != nil {
+		raftState := e.raftNode.GetState()
+		newState, err := e.store.GetState(e.ctx)
+		if err != nil {
+			return fmt.Errorf("get state after sync: %w", err)
+		}
+
+		if newState.LastBlockHeight > 0 && newState.LastBlockHeight == raftState.Height {
+			header, err := e.store.GetHeader(e.ctx, newState.LastBlockHeight)
+			if err != nil {
+				return fmt.Errorf("get header at %d: %w", newState.LastBlockHeight, err)
+			}
+			if !bytes.Equal(header.Hash(), raftState.Hash) {
+				return fmt.Errorf("CRITICAL: content mismatch after replay! local=%x raft=%x. This indicates a 'Dual-Store Conflict' where data diverged from Raft", header.Hash(), raftState.Hash)
+			}
+		}
 	}
 
 	return nil
@@ -458,7 +480,9 @@ func (e *Executor) ProduceBlock(ctx context.Context) error {
 	if batchData != nil && batchData.Batch != nil && batchData.ForceIncludedMask != nil {
 		applyCtx = coreexecutor.WithForceIncludedMask(applyCtx, batchData.ForceIncludedMask)
 	}
-
+	if e.raftNode != nil && !e.raftNode.HasQuorum() {
+		return errors.New("raft cluster does not have quorum")
+	}
 	newState, err := e.blockProducer.ApplyBlock(applyCtx, header.Header, data)
 	if err != nil {
 		return fmt.Errorf("failed to apply block: %w", err)
@@ -826,7 +850,7 @@ func (e *Executor) IsSyncedWithRaft(raftState *raft.RaftBlockState) (int, error)
 	header, err := e.store.GetHeader(e.ctx, raftState.Height)
 	if err != nil {
 		e.logger.Error().Err(err).Uint64("height", raftState.Height).Msg("failed to get header for sync check")
-		return 0, fmt.Errorf("get header for sync check: %w", err)
+		return 0, fmt.Errorf("get header for sync check at height %d: %w", raftState.Height, err)
 	}
 
 	if !bytes.Equal(header.Hash(), raftState.Hash) {

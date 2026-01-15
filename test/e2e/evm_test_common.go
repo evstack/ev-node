@@ -182,7 +182,7 @@ const (
 	RollkitRPCAddress = "http://127.0.0.1:" + RollkitRPCPort
 
 	// Test configuration
-	DefaultBlockTime   = "150ms"
+	DefaultBlockTime   = "100ms"
 	DefaultDABlockTime = "1s"
 	DefaultTestTimeout = 20 * time.Second
 	DefaultDANamespace = "evm-e2e"

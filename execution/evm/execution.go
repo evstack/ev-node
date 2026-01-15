@@ -706,25 +706,47 @@ func (c *EngineClient) checkIdempotency(ctx context.Context, height uint64, time
 	// 1. Check ExecMeta from store
 	execMeta, err := c.store.GetExecMeta(ctx, height)
 	if err == nil && execMeta != nil {
-		// If we already have a promoted block at this height, return the stored StateRoot
+		// If we already have a promoted block at this height, verify timestamp matches
+		// to catch Dual-Store Conflicts where ExecMeta was saved for an old block
+		// that was later replaced via Raft consensus.
 		if execMeta.Stage == ExecStagePromoted && len(execMeta.StateRoot) > 0 {
-			c.logger.Info().
+			if execMeta.Timestamp == timestamp.Unix() {
+				c.logger.Info().
+					Uint64("height", height).
+					Str("stage", execMeta.Stage).
+					Msg("ExecuteTxs: reusing already-promoted execution (idempotent)")
+				return execMeta.StateRoot, nil, true, nil
+			}
+			// Timestamp mismatch - ExecMeta is stale from an old block that was replaced.
+			// Ignore it and proceed to EL check which will handle rollback if needed.
+			c.logger.Warn().
 				Uint64("height", height).
-				Str("stage", execMeta.Stage).
-				Msg("ExecuteTxs: reusing already-promoted execution (idempotent)")
-			return execMeta.StateRoot, nil, true, nil
+				Int64("execmeta_timestamp", execMeta.Timestamp).
+				Int64("requested_timestamp", timestamp.Unix()).
+				Msg("ExecuteTxs: ExecMeta timestamp mismatch, ignoring stale promoted record")
 		}
 
-		// If we have a started execution with a payloadID, return it to resume
+		// If we have a started execution with a payloadID, validate it still exists before resuming.
+		// After node restart, the EL's payload cache is ephemeral and the payloadID may be stale.
 		if execMeta.Stage == ExecStageStarted && len(execMeta.PayloadID) == 8 {
-			c.logger.Info().
-				Uint64("height", height).
-				Str("stage", execMeta.Stage).
-				Msg("ExecuteTxs: found in-progress execution with payloadID, returning payloadID for resume")
-
 			var pid engine.PayloadID
 			copy(pid[:], execMeta.PayloadID)
-			return nil, &pid, true, nil
+
+			// Validate payload still exists by attempting to retrieve it
+			if _, err := c.engineClient.GetPayload(ctx, pid); err == nil {
+				c.logger.Info().
+					Uint64("height", height).
+					Str("stage", execMeta.Stage).
+					Msg("ExecuteTxs: found in-progress execution with payloadID, returning payloadID for resume")
+				return nil, &pid, true, nil
+			}
+			// Payload is stale (expired or node restarted) - proceed with fresh execution
+			c.logger.Warn().
+				Uint64("height", height).
+				Str("payloadID", pid.String()).
+				Err(err).
+				Msg("ExecuteTxs: stale ExecMeta payloadID no longer valid in EL, will re-execute")
+			// Don't return - fall through to fresh execution
 		}
 	}
 
@@ -750,12 +772,31 @@ func (c *EngineClient) checkIdempotency(ctx context.Context, height uint64, time
 
 			return existingStateRoot.Bytes(), nil, true, nil
 		}
-		// Timestamp mismatch - log warning but proceed
+		// Timestamp mismatch - this indicates a Dual-Store Conflict where the EL produced a block
+		// that was not replicated via Raft before leadership changed. The new leader created a
+		// different block at the same height with a different timestamp, and that block is now
+		// the authoritative version. We need to rollback the EL to height-1 so it can re-execute
+		// with the correct timestamp from the Raft-replicated block.
 		c.logger.Warn().
 			Uint64("height", height).
 			Uint64("existingTimestamp", existingTimestamp).
 			Int64("requestedTimestamp", timestamp.Unix()).
-			Msg("ExecuteTxs: block exists at height but timestamp differs")
+			Msg("ExecuteTxs: block exists at height but timestamp differs - rolling back EL to re-sync")
+
+		// Rollback to height-1 to allow re-execution with correct timestamp
+		if height > 0 {
+			if err := c.Rollback(ctx, height-1); err != nil {
+				c.logger.Error().Err(err).
+					Uint64("height", height).
+					Uint64("rollback_target", height-1).
+					Msg("ExecuteTxs: failed to rollback EL for timestamp mismatch")
+				return nil, nil, false, fmt.Errorf("failed to rollback EL for timestamp mismatch at height %d: %w", height, err)
+			}
+			c.logger.Info().
+				Uint64("height", height).
+				Uint64("rollback_target", height-1).
+				Msg("ExecuteTxs: EL rolled back successfully, will re-execute with correct timestamp")
+		}
 	}
 
 	return nil, nil, false, nil

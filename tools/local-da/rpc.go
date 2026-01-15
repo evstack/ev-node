@@ -137,9 +137,53 @@ func (s *blobServer) Subscribe(_ context.Context, _ libshare.Namespace) (<-chan 
 }
 
 // startBlobServer starts an HTTP JSON-RPC server on addr serving the blob namespace.
+// headerServer exposes a minimal Celestia-like header RPC surface backed by LocalDA.
+type headerServer struct {
+	da     *LocalDA
+	logger zerolog.Logger
+}
+
+// GetByHeight returns a mock header for the given height.
+func (s *headerServer) GetByHeight(_ context.Context, height uint64) (*jsonrpc.Header, error) {
+	s.da.mu.Lock()
+	defer s.da.mu.Unlock()
+
+	if height > s.da.height {
+		return nil, datypes.ErrHeightFromFuture
+	}
+
+	ts, ok := s.da.timestamps[height]
+	if !ok {
+		// Fallback to current time if not found (should not happen if submitted)
+		ts = time.Now()
+	}
+
+	return &jsonrpc.Header{
+		Height:    height,
+		BlockTime: ts,
+		ChainID:   "local-da",
+	}, nil
+}
+
+// LocalHead returns the latest local header.
+func (s *headerServer) LocalHead(ctx context.Context) (*jsonrpc.Header, error) {
+	s.da.mu.Lock()
+	headHeight := s.da.height
+	s.da.mu.Unlock()
+
+	return s.GetByHeight(ctx, headHeight)
+}
+
+// NetworkHead returns the latest network header.
+func (s *headerServer) NetworkHead(ctx context.Context) (*jsonrpc.Header, error) {
+	return s.LocalHead(ctx)
+}
+
+// startBlobServer starts an HTTP JSON-RPC server on addr serving the blob namespace.
 func startBlobServer(logger zerolog.Logger, addr string, da *LocalDA) (*http.Server, error) {
 	rpc := fjrpc.NewServer()
 	rpc.Register("blob", &blobServer{da: da, logger: logger})
+	rpc.Register("header", &headerServer{da: da, logger: logger})
 
 	srv := &http.Server{
 		Addr:              addr,

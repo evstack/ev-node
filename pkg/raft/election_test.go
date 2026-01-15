@@ -116,7 +116,7 @@ func TestDynamicLeaderElectionRun(t *testing.T) {
 				m.EXPECT().leadershipTransfer().Return(nil)
 
 				fStarted := make(chan struct{})
-				follower := &nonRecoverableRunnable{r: &testRunnable{startedCh: fStarted, isSyncedFn: func(*RaftBlockState) bool { return false }}}
+				follower := &nonRecoverableRunnable{r: &testRunnable{startedCh: fStarted, isSyncedFn: func(*RaftBlockState) (int, error) { return -1, nil }}}
 				// Verify fallback when Recoverable is NOT implemented
 				leader := &testRunnable{runFn: func(ctx context.Context) error {
 					t.Fatal("leader should not be running")
@@ -162,7 +162,7 @@ func TestDynamicLeaderElectionRun(t *testing.T) {
 
 				follower := &testRunnable{
 					startedCh:  fStarted,
-					isSyncedFn: func(*RaftBlockState) bool { return false },
+					isSyncedFn: func(*RaftBlockState) (int, error) { return -1, nil },
 					recoverFn: func(ctx context.Context, state *RaftBlockState) error {
 						close(recoverCalled)
 						return nil
@@ -316,7 +316,7 @@ func testCfg() Config {
 // These channels are used only by tests to observe state.
 type testRunnable struct {
 	runFn      func(ctx context.Context) error
-	isSyncedFn func(*RaftBlockState) bool
+	isSyncedFn func(*RaftBlockState) (int, error)
 	startedCh  chan struct{}
 	doneCh     chan struct{}
 	recoverFn  func(ctx context.Context, state *RaftBlockState) error
@@ -344,11 +344,11 @@ func (t *testRunnable) Run(ctx context.Context) error {
 	return ctx.Err()
 }
 
-func (t *testRunnable) IsSynced(s *RaftBlockState) bool {
+func (t *testRunnable) IsSynced(s *RaftBlockState) (int, error) {
 	if t.isSyncedFn != nil {
 		return t.isSyncedFn(s)
 	}
-	return true
+	return 0, nil
 }
 
 func (t *testRunnable) Recover(ctx context.Context, state *RaftBlockState) error {
@@ -366,6 +366,10 @@ func (n *nonRecoverableRunnable) Run(ctx context.Context) error {
 	return n.r.Run(ctx)
 }
 
-func (n *nonRecoverableRunnable) IsSynced(s *RaftBlockState) bool {
+func (n *nonRecoverableRunnable) IsSynced(s *RaftBlockState) (int, error) {
 	return n.r.IsSynced(s)
+}
+
+func (n *nonRecoverableRunnable) Recover(ctx context.Context, state *RaftBlockState) error {
+	return n.r.Recover(ctx, state)
 }
