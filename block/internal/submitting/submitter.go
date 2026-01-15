@@ -190,7 +190,7 @@ func (s *Submitter) daSubmissionLoop() {
 							return
 						}
 
-						// Calculate total size
+						// Calculate total size (excluding signature)
 						totalSize := 0
 						for _, marshalled := range marshalledHeaders {
 							totalSize += len(marshalled)
@@ -245,7 +245,7 @@ func (s *Submitter) daSubmissionLoop() {
 							return
 						}
 
-						// Calculate total size
+						// Calculate total size (excluding signature)
 						totalSize := 0
 						for _, marshalled := range marshalledData {
 							totalSize += len(marshalled)
@@ -284,65 +284,6 @@ func (s *Submitter) daSubmissionLoop() {
 			}
 		}
 	}
-}
-
-// marshalItems marshals items concurrently with a worker pool
-func marshalItems[T any](
-	ctx context.Context,
-	items []T,
-	marshalFn func(T) ([]byte, error),
-) ([][]byte, int, error) {
-	if len(items) == 0 {
-		return nil, 0, nil
-	}
-
-	marshaled := make([][]byte, len(items))
-	workerCtx, cancel := context.WithCancel(ctx)
-	defer cancel()
-
-	// Semaphore to limit concurrency to 32 workers
-	sem := make(chan struct{}, 32)
-
-	// Use a channel to collect results from goroutines
-	type result struct {
-		idx  int
-		err  error
-		size int
-	}
-	resultCh := make(chan result, len(items))
-
-	// Marshal items concurrently
-	for i, item := range items {
-		go func(idx int, itm T) {
-			sem <- struct{}{}
-			defer func() { <-sem }()
-
-			select {
-			case <-workerCtx.Done():
-				resultCh <- result{idx: idx, err: workerCtx.Err()}
-			default:
-				bz, err := marshalFn(itm)
-				if err != nil {
-					resultCh <- result{idx: idx, err: fmt.Errorf("failed to marshal item at index %d: %w", idx, err)}
-					return
-				}
-				marshaled[idx] = bz
-				resultCh <- result{idx: idx, size: len(bz)}
-			}
-		}(i, item)
-	}
-
-	// Wait for all goroutines to complete and accumulate total size
-	totalSize := 0
-	for range items {
-		res := <-resultCh
-		if res.err != nil {
-			return nil, 0, res.err
-		}
-		totalSize += res.size
-	}
-
-	return marshaled, totalSize, nil
 }
 
 // processDAInclusionLoop handles DA inclusion processing (both sync and aggregator nodes)

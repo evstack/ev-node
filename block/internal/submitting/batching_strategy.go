@@ -8,10 +8,11 @@ import (
 )
 
 // BatchingStrategy defines the interface for different batching strategies
+// Batching strategies always go through the da submitter which does extra size checks and possible further splitting for batches above the DA layer blob size.
 type BatchingStrategy interface {
 	// ShouldSubmit determines if a batch should be submitted based on the strategy
 	// Returns true if submission should happen now
-	ShouldSubmit(pendingCount uint64, totalSize int, maxBlobSize int, timeSinceLastSubmit time.Duration) bool
+	ShouldSubmit(pendingCount uint64, totalSizeBeforeSig int, maxBlobSize int, timeSinceLastSubmit time.Duration) bool
 }
 
 // NewBatchingStrategy creates a batching strategy based on configuration
