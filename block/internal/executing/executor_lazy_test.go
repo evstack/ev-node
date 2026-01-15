@@ -95,8 +95,8 @@ func TestLazyMode_ProduceBlockLogic(t *testing.T) {
 
 	mockSeq.EXPECT().GetDAHeight().Return(uint64(0)).Once()
 
-	// Direct call to produceBlock should work (this is what lazy timer does)
-	err = exec.produceBlock()
+	// Direct call to ProduceBlock should work (this is what lazy timer does)
+	err = exec.ProduceBlock(exec.ctx)
 	require.NoError(t, err)
 
 	h1, err := memStore.Height(context.Background())
@@ -119,7 +119,7 @@ func TestLazyMode_ProduceBlockLogic(t *testing.T) {
 
 	mockSeq.EXPECT().GetDAHeight().Return(uint64(0)).Once()
 
-	err = exec.produceBlock()
+	err = exec.ProduceBlock(exec.ctx)
 	require.NoError(t, err)
 
 	h2, err := memStore.Height(context.Background())
@@ -211,7 +211,7 @@ func TestRegularMode_ProduceBlockLogic(t *testing.T) {
 
 	mockSeq.EXPECT().GetDAHeight().Return(uint64(0)).Once()
 
-	err = exec.produceBlock()
+	err = exec.ProduceBlock(exec.ctx)
 	require.NoError(t, err)
 
 	h1, err := memStore.Height(context.Background())

@@ -142,13 +142,22 @@ type EngineRPCClient interface {
 	NewPayload(ctx context.Context, payload *engine.ExecutableData, blobHashes []string, parentBeaconBlockRoot string, executionRequests [][]byte) (*engine.PayloadStatusV1, error)
 }
 
+// EthRPCClient abstracts Ethereum JSON-RPC calls for tracing and testing.
+type EthRPCClient interface {
+	// HeaderByNumber retrieves a block header by number (nil = latest).
+	HeaderByNumber(ctx context.Context, number *big.Int) (*types.Header, error)
+
+	// GetTxs retrieves pending transactions from the transaction pool.
+	GetTxs(ctx context.Context) ([]string, error)
+}
+
 // EngineClient represents a client that interacts with an Ethereum execution engine
 // through the Engine API. It manages connections to both the engine and standard Ethereum
 // APIs, and maintains state related to block processing.
 type EngineClient struct {
-	engineClient  EngineRPCClient   // Client for Engine API calls
-	ethClient     *ethclient.Client // Client for standard Ethereum API calls
-	genesisHash   common.Hash       // Hash of the genesis block
+	engineClient  EngineRPCClient // Client for Engine API calls
+	ethClient     EthRPCClient    // Client for standard Ethereum API calls
+	genesisHash   common.Hash     // Hash of the genesis block
 	initialHeight uint64
 	feeRecipient  common.Address // Address to receive transaction fees
 
@@ -171,7 +180,7 @@ type EngineClient struct {
 // execution and crash recovery. The db is wrapped with a prefix to isolate
 // EVM execution data from other ev-node data.
 // When tracingEnabled is true, the client will inject W3C trace context headers
-// and wrap Engine API calls with OpenTelemetry spans.
+// and wrap Engine API and Eth API calls with OpenTelemetry spans.
 func NewEngineExecutionClient(
 	ethURL,
 	engineURL string,
@@ -197,7 +206,7 @@ func NewEngineExecutionClient(
 	if err != nil {
 		return nil, err
 	}
-	ethClient := ethclient.NewClient(ethRPC)
+	rawEthClient := ethclient.NewClient(ethRPC)
 
 	secret, err := decodeSecret(jwtSecret)
 	if err != nil {
@@ -223,12 +232,14 @@ func NewEngineExecutionClient(
 		return nil, err
 	}
 
-	// raw engine client
+	// wrap raw clients with interfaces
 	engineClient := NewEngineRPCClient(rawEngineClient)
+	ethClient := NewEthRPCClient(rawEthClient)
 
-	// if tracing enabled, wrap with traced decorator
+	// if tracing enabled, wrap with traced decorators
 	if tracingEnabled {
 		engineClient = withTracingEngineRPCClient(engineClient)
+		ethClient = withTracingEthRPCClient(ethClient)
 	}
 
 	return &EngineClient{
@@ -298,8 +309,7 @@ func (c *EngineClient) InitChain(ctx context.Context, genesisTime time.Time, ini
 
 // GetTxs retrieves transactions from the current execution payload
 func (c *EngineClient) GetTxs(ctx context.Context) ([][]byte, error) {
-	var result []string
-	err := c.ethClient.Client().CallContext(ctx, &result, "txpoolExt_getTxs")
+	result, err := c.ethClient.GetTxs(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get tx pool content: %w", err)
 	}

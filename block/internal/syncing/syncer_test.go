@@ -135,19 +135,19 @@ func TestSyncer_validateBlock_DataHashMismatch(t *testing.T) {
 	data := makeData(gen.ChainID, 1, 2) // non-empty
 	_, header := makeSignedHeaderBytes(t, gen.ChainID, 1, addr, pub, signer, nil, data, nil)
 
-	err = s.validateBlock(s.getLastState(), data, header)
+	err = s.ValidateBlock(context.Background(), s.getLastState(), data, header)
 	require.NoError(t, err)
 
 	// Create header and data with mismatched hash
 	data = makeData(gen.ChainID, 1, 2) // non-empty
 	_, header = makeSignedHeaderBytes(t, gen.ChainID, 1, addr, pub, signer, nil, nil, nil)
-	err = s.validateBlock(s.getLastState(), data, header)
+	err = s.ValidateBlock(context.Background(), s.getLastState(), data, header)
 	require.Error(t, err)
 
 	// Create header and empty data
 	data = makeData(gen.ChainID, 1, 0) // empty
 	_, header = makeSignedHeaderBytes(t, gen.ChainID, 2, addr, pub, signer, nil, nil, nil)
-	err = s.validateBlock(s.getLastState(), data, header)
+	err = s.ValidateBlock(context.Background(), s.getLastState(), data, header)
 	require.Error(t, err)
 }
 

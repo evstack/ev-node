@@ -97,7 +97,7 @@ func TestExecutor_RestartUsesPendingHeader(t *testing.T) {
 
 	mockSeq1.EXPECT().GetDAHeight().Return(uint64(0)).Once()
 
-	err = exec1.produceBlock()
+	err = exec1.ProduceBlock(exec1.ctx)
 	require.NoError(t, err)
 
 	// Verify first block was produced
@@ -217,7 +217,7 @@ func TestExecutor_RestartUsesPendingHeader(t *testing.T) {
 
 	// Note: mockSeq2 should NOT receive GetNextBatch calls because pending block should be used
 
-	err = exec2.produceBlock()
+	err = exec2.ProduceBlock(exec2.ctx)
 	require.NoError(t, err)
 
 	// Verify height advanced to 2
@@ -326,7 +326,8 @@ func TestExecutor_RestartNoPendingHeader(t *testing.T) {
 			Return(newStateRoot, uint64(1024), nil).Once()
 		lastStateRoot = newStateRoot
 
-		require.NoError(t, exec1.produceBlock())
+		err = exec1.ProduceBlock(exec1.ctx)
+		require.NoError(t, err)
 	}
 	require.Equal(t, uint64(numBlocks), exec1.getLastState().LastBlockHeight)
 
@@ -384,7 +385,7 @@ func TestExecutor_RestartNoPendingHeader(t *testing.T) {
 
 	mockSeq2.EXPECT().GetDAHeight().Return(uint64(0)).Once()
 
-	err = exec2.produceBlock()
+	err = exec2.ProduceBlock(exec2.ctx)
 	require.NoError(t, err)
 
 	// Verify normal operation

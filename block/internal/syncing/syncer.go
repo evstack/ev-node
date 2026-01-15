@@ -30,6 +30,8 @@ import (
 	"github.com/evstack/ev-node/types"
 )
 
+var _ BlockSyncer = (*Syncer)(nil)
+
 // forcedInclusionGracePeriodConfig contains internal configuration for forced inclusion grace periods.
 type forcedInclusionGracePeriodConfig struct {
 	// basePeriod is the base number of additional epochs allowed for including forced inclusion transactions
@@ -121,6 +123,10 @@ type Syncer struct {
 
 	// P2P wait coordination
 	p2pWaitState atomic.Value // stores p2pWaitState
+
+	// blockSyncer is the interface used for block sync operations.
+	// defaults to self, but can be wrapped with tracing.
+	blockSyncer BlockSyncer
 }
 
 // pendingForcedInclusionTx represents a forced inclusion transaction that hasn't been included yet
@@ -179,6 +185,7 @@ func NewSyncer(
 		blockFullnessEMA:      blockFullnessEMA,
 		gracePeriodConfig:     newForcedInclusionGracePeriodConfig(),
 	}
+	s.blockSyncer = s
 	if raftNode != nil && !reflect.ValueOf(raftNode).IsNil() {
 		s.raftRetriever = newRaftRetriever(raftNode, genesis, logger, eventProcessorFn(s.pipeEvent), func(ctx context.Context, state *raft.RaftBlockState) error {
 			s.logger.Debug().Uint64("header_height", state.LastSubmittedDaHeaderHeight).Uint64("data_height", state.LastSubmittedDaDataHeight).Msg("received raft block state")
@@ -188,6 +195,12 @@ func NewSyncer(
 		})
 	}
 	return s
+}
+
+// SetBlockSyncer sets the block syncer interface, allowing injection of
+// a tracing wrapper or other decorator.
+func (s *Syncer) SetBlockSyncer(bs BlockSyncer) {
+	s.blockSyncer = bs
 }
 
 // Start begins the syncing component
@@ -571,7 +584,7 @@ func (s *Syncer) processHeightEvent(event *common.DAHeightEvent) {
 	s.cancelP2PWait(height)
 
 	// Try to sync the next block
-	if err := s.trySyncNextBlock(event); err != nil {
+	if err := s.blockSyncer.TrySyncNextBlock(s.ctx, event); err != nil {
 		s.logger.Error().Err(err).
 			Uint64("event-height", event.Header.Height()).
 			Uint64("state-height", s.getLastState().LastBlockHeight).
@@ -618,12 +631,12 @@ var (
 	errInvalidState = errors.New("invalid state")
 )
 
-// trySyncNextBlock attempts to sync the next available block
+// TrySyncNextBlock attempts to sync the next available block
 // the event is always the next block in sequence as processHeightEvent ensures it.
-func (s *Syncer) trySyncNextBlock(event *common.DAHeightEvent) error {
+func (s *Syncer) TrySyncNextBlock(ctx context.Context, event *common.DAHeightEvent) error {
 	select {
-	case <-s.ctx.Done():
-		return s.ctx.Err()
+	case <-ctx.Done():
+		return ctx.Err()
 	default:
 	}
 
@@ -638,7 +651,7 @@ func (s *Syncer) trySyncNextBlock(event *common.DAHeightEvent) error {
 	// Compared to the executor logic where the current block needs to be applied first,
 	// here only the previous block needs to be applied to proceed to the verification.
 	// The header validation must be done before applying the block to avoid executing gibberish
-	if err := s.validateBlock(currentState, data, header); err != nil {
+	if err := s.ValidateBlock(ctx, currentState, data, header); err != nil {
 		// remove header as da included (not per se needed, but keep cache clean)
 		s.cache.RemoveHeaderDAIncluded(headerHash)
 		if !errors.Is(err, errInvalidState) && !errors.Is(err, errInvalidBlock) {
@@ -649,7 +662,7 @@ func (s *Syncer) trySyncNextBlock(event *common.DAHeightEvent) error {
 
 	// Verify forced inclusion transactions if configured
 	if event.Source == common.SourceDA {
-		if err := s.verifyForcedInclusionTxs(currentState, data); err != nil {
+		if err := s.VerifyForcedInclusionTxs(ctx, currentState, data); err != nil {
 			s.logger.Error().Err(err).Uint64("height", nextHeight).Msg("forced inclusion verification failed")
 			if errors.Is(err, errMaliciousProposer) {
 				s.cache.RemoveHeaderDAIncluded(headerHash)
@@ -659,7 +672,7 @@ func (s *Syncer) trySyncNextBlock(event *common.DAHeightEvent) error {
 	}
 
 	// Apply block
-	newState, err := s.applyBlock(header.Header, data, currentState)
+	newState, err := s.ApplyBlock(ctx, header.Header, data, currentState)
 	if err != nil {
 		return fmt.Errorf("failed to apply block: %w", err)
 	}
@@ -709,8 +722,8 @@ func (s *Syncer) trySyncNextBlock(event *common.DAHeightEvent) error {
 	return nil
 }
 
-// applyBlock applies a block to get the new state
-func (s *Syncer) applyBlock(header types.Header, data *types.Data, currentState types.State) (types.State, error) {
+// ApplyBlock applies a block to get the new state
+func (s *Syncer) ApplyBlock(ctx context.Context, header types.Header, data *types.Data, currentState types.State) (types.State, error) {
 	// Prepare transactions
 	rawTxs := make([][]byte, len(data.Txs))
 	for i, tx := range data.Txs {
@@ -718,7 +731,7 @@ func (s *Syncer) applyBlock(header types.Header, data *types.Data, currentState 
 	}
 
 	// Execute transactions
-	ctx := context.WithValue(s.ctx, types.HeaderContextKey, header)
+	ctx = context.WithValue(ctx, types.HeaderContextKey, header)
 	newAppHash, err := s.executeTxsWithRetry(ctx, rawTxs, header, currentState)
 	if err != nil {
 		s.sendCriticalError(fmt.Errorf("failed to execute transactions: %w", err))
@@ -764,11 +777,11 @@ func (s *Syncer) executeTxsWithRetry(ctx context.Context, rawTxs [][]byte, heade
 	return nil, nil
 }
 
-// validateBlock validates a synced block
+// ValidateBlock validates a synced block
 // NOTE: if the header was gibberish and somehow passed all validation prior but the data was correct
 // or if the data was gibberish and somehow passed all validation prior but the header was correct
 // we are still losing both in the pending event. This should never happen.
-func (s *Syncer) validateBlock(currState types.State, data *types.Data, header *types.SignedHeader) error {
+func (s *Syncer) ValidateBlock(_ context.Context, currState types.State, data *types.Data, header *types.SignedHeader) error {
 	// Set custom verifier for aggregator node signature
 	header.SetCustomVerifierForSyncNode(s.options.SyncNodeSignatureBytesProvider)
 
@@ -863,11 +876,11 @@ func (s *Syncer) getEffectiveGracePeriod() uint64 {
 	return uint64(max(effectivePeriod, minPeriod))
 }
 
-// verifyForcedInclusionTxs verifies that forced inclusion transactions from DA are properly handled.
+// VerifyForcedInclusionTxs verifies that forced inclusion transactions from DA are properly handled.
 // Note: Due to block size constraints (MaxBytes), sequencers may defer forced inclusion transactions
 // to future blocks (smoothing). This is legitimate behavior within an epoch.
 // However, ALL forced inclusion txs from an epoch MUST be included before the next epoch begins or grace boundary (whichever comes later).
-func (s *Syncer) verifyForcedInclusionTxs(currentState types.State, data *types.Data) error {
+func (s *Syncer) VerifyForcedInclusionTxs(_ context.Context, currentState types.State, data *types.Data) error {
 	if s.fiRetriever == nil {
 		return nil
 	}
@@ -1224,12 +1237,12 @@ func (s *Syncer) RecoverFromRaft(ctx context.Context, raftState *raft.RaftBlockS
 	}
 
 	// Validation
-	if err := s.validateBlock(currentState, &data, &header); err != nil {
+	if err := s.ValidateBlock(ctx, currentState, &data, &header); err != nil {
 		return fmt.Errorf("validate block: %w", err)
 	}
 
 	// Apply block
-	newState, err := s.applyBlock(header.Header, &data, currentState)
+	newState, err := s.ApplyBlock(ctx, header.Header, &data, currentState)
 	if err != nil {
 		return fmt.Errorf("apply block: %w", err)
 	}
