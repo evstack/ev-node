@@ -14,6 +14,22 @@ type BatchingStrategy interface {
 	ShouldSubmit(pendingCount uint64, totalSize int, maxBlobSize int, timeSinceLastSubmit time.Duration) bool
 }
 
+// NewBatchingStrategy creates a batching strategy based on configuration
+func NewBatchingStrategy(cfg config.DAConfig) (BatchingStrategy, error) {
+	switch cfg.BatchingStrategy {
+	case "immediate":
+		return &ImmediateStrategy{}, nil
+	case "size":
+		return NewSizeBasedStrategy(cfg.BatchSizeThreshold, cfg.BatchMinItems), nil
+	case "time":
+		return NewTimeBasedStrategy(cfg.BlockTime.Duration, cfg.BatchMaxDelay.Duration, cfg.BatchMinItems), nil
+	case "adaptive":
+		return NewAdaptiveStrategy(cfg.BlockTime.Duration, cfg.BatchSizeThreshold, cfg.BatchMaxDelay.Duration, cfg.BatchMinItems), nil
+	default:
+		return nil, fmt.Errorf("unknown batching strategy: %s", cfg.BatchingStrategy)
+	}
+}
+
 // ImmediateStrategy submits as soon as any items are available
 type ImmediateStrategy struct{}
 
@@ -122,22 +138,6 @@ func (s *AdaptiveStrategy) ShouldSubmit(pendingCount uint64, totalSize int, maxB
 	return false
 }
 
-// NewBatchingStrategy creates a batching strategy based on configuration
-func NewBatchingStrategy(cfg config.DAConfig) (BatchingStrategy, error) {
-	switch cfg.BatchingStrategy {
-	case "immediate":
-		return &ImmediateStrategy{}, nil
-	case "size":
-		return NewSizeBasedStrategy(cfg.BatchSizeThreshold, cfg.BatchMinItems), nil
-	case "time":
-		return NewTimeBasedStrategy(cfg.BlockTime.Duration, cfg.BatchMaxDelay.Duration, cfg.BatchMinItems), nil
-	case "adaptive":
-		return NewAdaptiveStrategy(cfg.BlockTime.Duration, cfg.BatchSizeThreshold, cfg.BatchMaxDelay.Duration, cfg.BatchMinItems), nil
-	default:
-		return nil, fmt.Errorf("unknown batching strategy: %s", cfg.BatchingStrategy)
-	}
-}
-
 // estimateBatchSize estimates the total size of pending items
 // This is a helper function that can be used by the submitter
 func estimateBatchSize(marshaled [][]byte) int {
@@ -180,39 +180,6 @@ func optimizeBatchSize(marshaled [][]byte, maxBlobSize int, targetUtilization fl
 	return count
 }
 
-// BatchMetrics provides information about batch efficiency
-type BatchMetrics struct {
-	ItemCount     int
-	TotalBytes    int
-	MaxBlobBytes  int
-	Utilization   float64 // percentage of max blob size used
-	EstimatedCost float64 // estimated cost relative to single full blob
-}
-
-// calculateBatchMetrics computes metrics for a batch
-func calculateBatchMetrics(itemCount int, totalBytes int, maxBlobBytes int) BatchMetrics {
-	utilization := 0.0
-	if maxBlobBytes > 0 {
-		utilization = float64(totalBytes) / float64(maxBlobBytes)
-	}
-
-	// Rough cost estimate: each blob submission has a fixed cost
-	// Higher utilization = better cost efficiency
-	estimatedCost := 1.0
-	if utilization > 0 {
-		// If we're only using 50% of the blob, we're paying 2x per byte effectively
-		estimatedCost = 1.0 / utilization
-	}
-
-	return BatchMetrics{
-		ItemCount:     itemCount,
-		TotalBytes:    totalBytes,
-		MaxBlobBytes:  maxBlobBytes,
-		Utilization:   utilization,
-		EstimatedCost: estimatedCost,
-	}
-}
-
 // ShouldWaitForMoreItems determines if we should wait for more items
 // to improve batch efficiency
 func ShouldWaitForMoreItems(
@@ -238,11 +205,4 @@ func ShouldWaitForMoreItems(
 	currentUtilization := float64(currentSize) / float64(maxBlobSize)
 
 	return currentUtilization < minUtilization-epsilon
-}
-
-// BatchingConfig holds configuration for batch optimization
-type BatchingConfig struct {
-	MaxBlobSize       int
-	Strategy          BatchingStrategy
-	TargetUtilization float64
 }

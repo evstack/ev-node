@@ -88,7 +88,6 @@ func NewSubmitter(
 ) *Submitter {
 	submitterLogger := logger.With().Str("component", "submitter").Logger()
 
-	// Initialize batching strategy
 	strategy, err := NewBatchingStrategy(config.DA)
 	if err != nil {
 		submitterLogger.Warn().Err(err).Msg("failed to create batching strategy, using time-based default")

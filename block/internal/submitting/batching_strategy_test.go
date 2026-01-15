@@ -406,63 +406,6 @@ func TestOptimizeBatchSize(t *testing.T) {
 	}
 }
 
-func TestCalculateBatchMetrics(t *testing.T) {
-	maxBlobSize := 8 * 1024 * 1024
-
-	tests := []struct {
-		name              string
-		itemCount         int
-		totalBytes        int
-		expectedUtil      float64
-		expectedCostRange [2]float64 // min, max
-	}{
-		{
-			name:              "empty batch",
-			itemCount:         0,
-			totalBytes:        0,
-			expectedUtil:      0.0,
-			expectedCostRange: [2]float64{0, 999999}, // cost is undefined for empty
-		},
-		{
-			name:              "half full",
-			itemCount:         10,
-			totalBytes:        4 * 1024 * 1024,
-			expectedUtil:      0.5,
-			expectedCostRange: [2]float64{2.0, 2.0}, // 1/0.5 = 2.0x cost
-		},
-		{
-			name:              "80% full",
-			itemCount:         20,
-			totalBytes:        int(float64(maxBlobSize) * 0.8),
-			expectedUtil:      0.8,
-			expectedCostRange: [2]float64{1.25, 1.25}, // 1/0.8 = 1.25x cost
-		},
-		{
-			name:              "nearly full",
-			itemCount:         50,
-			totalBytes:        int(float64(maxBlobSize) * 0.95),
-			expectedUtil:      0.95,
-			expectedCostRange: [2]float64{1.05, 1.06}, // ~1.05x cost
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			metrics := calculateBatchMetrics(tt.itemCount, tt.totalBytes, maxBlobSize)
-
-			assert.Equal(t, tt.itemCount, metrics.ItemCount)
-			assert.Equal(t, tt.totalBytes, metrics.TotalBytes)
-			assert.Equal(t, maxBlobSize, metrics.MaxBlobBytes)
-			assert.InDelta(t, tt.expectedUtil, metrics.Utilization, 0.01)
-
-			if tt.totalBytes > 0 {
-				assert.InEpsilon(t, (tt.expectedCostRange[0]+tt.expectedCostRange[1])/2,
-					metrics.EstimatedCost, 0.01, "cost should be within range")
-			}
-		})
-	}
-}
-
 func TestShouldWaitForMoreItems(t *testing.T) {
 	maxBlobSize := 8 * 1024 * 1024
 
