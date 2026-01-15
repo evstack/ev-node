@@ -360,11 +360,10 @@ func (e *Executor) executionLoop() {
 	}
 	txsAvailable := false
 
-	for {
+	for e.ctx.Err() == nil {
 		select {
 		case <-e.ctx.Done():
 			return
-
 		case <-blockTimer.C:
 			if e.config.Node.LazyMode && !txsAvailable {
 				// In lazy mode without transactions, just continue ticking
@@ -395,6 +394,10 @@ func (e *Executor) executionLoop() {
 
 // ProduceBlock creates, validates, and stores a new block.
 func (e *Executor) ProduceBlock(ctx context.Context) error {
+	if ctx.Err() != nil {
+		return ctx.Err()
+	}
+
 	start := time.Now()
 	defer func() {
 		if e.metrics.OperationDuration["block_production"] != nil {
@@ -550,11 +553,6 @@ func (e *Executor) ProduceBlock(ctx context.Context) error {
 	}
 	if err := batch.Commit(); err != nil {
 		return fmt.Errorf("failed to commit batch: %w", err)
-	}
-
-	// Sync db to disk after each block
-	if err := e.store.Sync(e.ctx); err != nil {
-		return fmt.Errorf("failed to sync store: %w", err)
 	}
 
 	// Update in-memory state after successful commit

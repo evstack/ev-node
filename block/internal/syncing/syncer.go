@@ -178,7 +178,7 @@ func NewSyncer(
 		daRetrieverHeight:     daRetrieverHeight,
 		headerStore:           headerStore,
 		dataStore:             dataStore,
-		heightInCh:            make(chan common.DAHeightEvent, 1_000),
+		heightInCh:            make(chan common.DAHeightEvent, 100),
 		errorCh:               errorCh,
 		logger:                logger.With().Str("component", "syncer").Logger(),
 		gracePeriodMultiplier: gracePeriodMultiplier,
@@ -270,7 +270,6 @@ drainLoop:
 			s.logger.Warn().Int("remaining", len(s.heightInCh)).Msg("timeout draining height events during shutdown")
 			break drainLoop
 		default:
-			// No more events in buffer
 			break drainLoop
 		}
 	}

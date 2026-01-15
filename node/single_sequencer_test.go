@@ -15,7 +15,7 @@ func TestStartup(t *testing.T) {
 	// Get the node and cleanup function
 	node, cleanup := createNodeWithCleanup(t, getTestConfig(t, 1))
 	require.IsType(t, new(FullNode), node)
-
+	t.Cleanup(cleanup)
 	// Create a context with cancel function for node operation
 	ctx, cancel := context.WithCancel(context.Background())
 
@@ -47,8 +47,4 @@ func TestStartup(t *testing.T) {
 	case <-time.After(8 * time.Second):
 		t.Fatal("Node did not stop after context cancellation")
 	}
-
-	// Run the cleanup function from setupTestNodeWithCleanup
-	cleanup()
-	time.Sleep(time.Second) // shutdown takes some time to persist caches
 }

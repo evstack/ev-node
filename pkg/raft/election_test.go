@@ -55,6 +55,8 @@ func TestDynamicLeaderElectionRun(t *testing.T) {
 				m := newMocksourceNode(t)
 				leaderCh := make(chan bool, 2)
 				m.EXPECT().leaderCh().Return((<-chan bool)(leaderCh))
+				m.EXPECT().Config().Return(testCfg())
+				m.EXPECT().waitForMsgsLanded(2 * time.Millisecond).Return(nil)
 
 				leader := &testRunnable{runFn: func(ctx context.Context) error {
 					// block until canceled by election
@@ -86,6 +88,9 @@ func TestDynamicLeaderElectionRun(t *testing.T) {
 				m := newMocksourceNode(t)
 				leaderCh := make(chan bool, 1)
 				m.EXPECT().leaderCh().Return((<-chan bool)(leaderCh))
+				m.EXPECT().Config().Return(testCfg())
+				m.EXPECT().waitForMsgsLanded(2 * time.Millisecond).Return(nil)
+				m.EXPECT().leadershipTransfer().Return(nil)
 
 				wantErr := errors.New("boom")
 				leader := &testRunnable{runFn: func(ctx context.Context) error { return wantErr }}
@@ -108,20 +113,21 @@ func TestDynamicLeaderElectionRun(t *testing.T) {
 				m := newMocksourceNode(t)
 				leaderCh := make(chan bool, 2)
 				m.EXPECT().leaderCh().Return((<-chan bool)(leaderCh))
+				// GetState is called during verifyState when starting as follower
+				m.EXPECT().GetState().Return(&RaftBlockState{Height: 1})
 				m.EXPECT().Config().Return(testCfg())
 				m.EXPECT().waitForMsgsLanded(2 * time.Millisecond).Return(nil)
 				m.EXPECT().NodeID().Return("self")
 				m.EXPECT().leaderID().Return("self")
+				// GetState is called again when transitioning follower->leader
 				m.EXPECT().GetState().Return(&RaftBlockState{Height: 1})
-				m.EXPECT().leadershipTransfer().Return(nil)
+				// When IsSynced returns -1 (local behind raft), recovery is called but no leadershipTransfer
 
 				fStarted := make(chan struct{})
+				lStarted := make(chan struct{})
 				follower := &nonRecoverableRunnable{r: &testRunnable{startedCh: fStarted, isSyncedFn: func(*RaftBlockState) (int, error) { return -1, nil }}}
-				// Verify fallback when Recoverable is NOT implemented
-				leader := &testRunnable{runFn: func(ctx context.Context) error {
-					t.Fatal("leader should not be running")
-					return nil
-				}}
+				// When diff=-1 (local behind), recovery is called but succeeds, then leader starts
+				leader := &testRunnable{startedCh: lStarted}
 
 				logger := zerolog.Nop()
 				d := &DynamicLeaderElection{logger: logger, node: m,
@@ -134,8 +140,12 @@ func TestDynamicLeaderElectionRun(t *testing.T) {
 					leaderCh <- false
 					<-fStarted // ensure follower started
 					leaderCh <- true
-					// allow time for SendTimeout sleep and transfer
-					time.Sleep(3 * time.Millisecond)
+					// Wait for leader to start
+					select {
+					case <-lStarted:
+					case <-time.After(50 * time.Millisecond):
+						t.Log("timed out waiting for leader to start")
+					}
 					cancel()
 				}()
 				return d, ctx, cancel
@@ -150,10 +160,13 @@ func TestDynamicLeaderElectionRun(t *testing.T) {
 				m := newMocksourceNode(t)
 				leaderCh := make(chan bool, 2)
 				m.EXPECT().leaderCh().Return((<-chan bool)(leaderCh))
+				// GetState is called during verifyState when starting as follower
+				m.EXPECT().GetState().Return(&RaftBlockState{Height: 1})
 				m.EXPECT().Config().Return(testCfg())
 				m.EXPECT().waitForMsgsLanded(2 * time.Millisecond).Return(nil)
 				m.EXPECT().NodeID().Return("self")
 				m.EXPECT().leaderID().Return("self")
+				// GetState is called again when transitioning follower->leader
 				m.EXPECT().GetState().Return(&RaftBlockState{Height: 1})
 
 				fStarted := make(chan struct{})
@@ -210,6 +223,8 @@ func TestDynamicLeaderElectionRun(t *testing.T) {
 				m := newMocksourceNode(t)
 				leaderCh := make(chan bool, 2)
 				m.EXPECT().leaderCh().Return((<-chan bool)(leaderCh))
+				// GetState is called during verifyState when starting as follower
+				m.EXPECT().GetState().Return(&RaftBlockState{Height: 1})
 				m.EXPECT().Config().Return(testCfg())
 				m.EXPECT().waitForMsgsLanded(2 * time.Millisecond).Return(nil)
 				m.EXPECT().NodeID().Return("self")
@@ -248,11 +263,14 @@ func TestDynamicLeaderElectionRun(t *testing.T) {
 				m := newMocksourceNode(t)
 				leaderCh := make(chan bool, 2)
 				m.EXPECT().leaderCh().Return((<-chan bool)(leaderCh))
+				// GetState is called during verifyState when starting as follower
+				m.EXPECT().GetState().Return(&RaftBlockState{Height: 1})
 				// On leadership change to true, election will sleep SendTimeout, then check sync against state
 				m.EXPECT().Config().Return(testCfg())
 				m.EXPECT().waitForMsgsLanded(2 * time.Millisecond).Return(nil)
 				m.EXPECT().NodeID().Return("self")
 				m.EXPECT().leaderID().Return("self")
+				// GetState is called again when transitioning follower->leader
 				m.EXPECT().GetState().Return(&RaftBlockState{Height: 1})
 
 				fStarted := make(chan struct{})

@@ -131,7 +131,18 @@ func (s *Submitter) Stop() error {
 	if s.cancel != nil {
 		s.cancel()
 	}
-	s.wg.Wait()
+	// Wait for goroutines to finish with a timeout to prevent hanging
+	done := make(chan struct{})
+	go func() {
+		s.wg.Wait()
+		close(done)
+	}()
+	select {
+	case <-done:
+		// All goroutines finished cleanly
+	case <-time.After(5 * time.Second):
+		s.logger.Warn().Msg("submitter shutdown timed out waiting for goroutines, proceeding anyway")
+	}
 	s.logger.Info().Msg("submitter stopped")
 	return nil
 }
@@ -154,7 +165,9 @@ func (s *Submitter) daSubmissionLoop() {
 				s.logger.Debug().Time("t", time.Now()).Uint64("headers", headersNb).Msg("Submitting headers")
 				if s.headerSubmissionMtx.TryLock() {
 					s.logger.Debug().Time("t", time.Now()).Uint64("headers", headersNb).Msg("Header submission in progress")
+					s.wg.Add(1)
 					go func() {
+						defer s.wg.Done()
 						defer func() {
 							s.logger.Debug().Time("t", time.Now()).Uint64("headers", headersNb).Msg("Header submission completed")
 							s.headerSubmissionMtx.Unlock()
@@ -178,7 +191,9 @@ func (s *Submitter) daSubmissionLoop() {
 				s.logger.Debug().Time("t", time.Now()).Uint64("data", dataNb).Msg("Submitting data")
 				if s.dataSubmissionMtx.TryLock() {
 					s.logger.Debug().Time("t", time.Now()).Uint64("data", dataNb).Msg("Data submission in progress")
+					s.wg.Add(1)
 					go func() {
+						defer s.wg.Done()
 						defer func() {
 							s.logger.Debug().Time("t", time.Now()).Uint64("data", dataNb).Msg("Data submission completed")
 							s.dataSubmissionMtx.Unlock()

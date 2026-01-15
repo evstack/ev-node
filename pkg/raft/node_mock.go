@@ -117,8 +117,8 @@ func (_c *mocksourceNode_GetState_Call) Run(run func()) *mocksourceNode_GetState
 	return _c
 }
 
-func (_c *mocksourceNode_GetState_Call) Return(raftBlockState *RaftBlockState) *mocksourceNode_GetState_Call {
-	_c.Call.Return(raftBlockState)
+func (_c *mocksourceNode_GetState_Call) Return(v *RaftBlockState) *mocksourceNode_GetState_Call {
+	_c.Call.Return(v)
 	return _c
 }
 

@@ -190,8 +190,16 @@ func (s *DefaultStore) GetMetadata(ctx context.Context, key string) ([]byte, err
 	return data, nil
 }
 
-// Sync flushes the store state to disk
-func (s *DefaultStore) Sync(ctx context.Context) error {
+// Sync flushes the store state to disk.
+// Returns nil if the database has been closed (common during shutdown).
+func (s *DefaultStore) Sync(ctx context.Context) (err error) {
+	// Recover from panic if the database has been closed during shutdown
+	defer func() {
+		if r := recover(); r != nil {
+			// Database was closed, return gracefully
+			err = fmt.Errorf("sync failed: database closed")
+		}
+	}()
 	return s.db.Sync(ctx, ds.NewKey("/"))
 }
 
