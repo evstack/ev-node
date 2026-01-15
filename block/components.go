@@ -220,6 +220,10 @@ func NewAggregatorComponents(
 		return nil, fmt.Errorf("failed to create executor: %w", err)
 	}
 
+	if config.Instrumentation.IsTracingEnabled() {
+		executor.SetBlockProducer(executing.WithTracingBlockProducer(executor))
+	}
+
 	reaper, err := reaping.NewReaper(
 		exec,
 		sequencer,
