@@ -65,7 +65,7 @@ func TestSubmitToDA_MempoolRetry_IncreasesGasAndSucceeds(t *testing.T) {
 	s := newTestSubmitter(t, client, nil)
 
 	items := []string{"a", "b", "c"}
-	marshalledItems := make([][]byte, 0, len(items))
+	marshalledItems := make([][]byte, len(items))
 	for idx, item := range items {
 		marshalledItems[idx] = []byte(item)
 	}
@@ -114,7 +114,7 @@ func TestSubmitToDA_UnknownError_RetriesSameGasThenSucceeds(t *testing.T) {
 	s := newTestSubmitter(t, client, nil)
 
 	items := []string{"x"}
-	marshalledItems := make([][]byte, 0, len(items))
+	marshalledItems := make([][]byte, len(items))
 	for idx, item := range items {
 		marshalledItems[idx] = []byte(item)
 	}
@@ -165,7 +165,7 @@ func TestSubmitToDA_TooBig_HalvesBatch(t *testing.T) {
 	s := newTestSubmitter(t, client, nil)
 
 	items := []string{"a", "b", "c", "d"}
-	marshalledItems := make([][]byte, 0, len(items))
+	marshalledItems := make([][]byte, len(items))
 	for idx, item := range items {
 		marshalledItems[idx] = []byte(item)
 	}
@@ -210,7 +210,7 @@ func TestSubmitToDA_SentinelNoGas_PreservesGasAcrossRetries(t *testing.T) {
 	s := newTestSubmitter(t, client, nil)
 
 	items := []string{"only"}
-	marshalledItems := make([][]byte, 0, len(items))
+	marshalledItems := make([][]byte, len(items))
 	for idx, item := range items {
 		marshalledItems[idx] = []byte(item)
 	}
@@ -254,7 +254,7 @@ func TestSubmitToDA_PartialSuccess_AdvancesWindow(t *testing.T) {
 	s := newTestSubmitter(t, client, nil)
 
 	items := []string{"a", "b", "c"}
-	marshalledItems := make([][]byte, 0, len(items))
+	marshalledItems := make([][]byte, len(items))
 	for idx, item := range items {
 		marshalledItems[idx] = []byte(item)
 	}
