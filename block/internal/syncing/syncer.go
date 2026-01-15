@@ -476,20 +476,6 @@ func (s *Syncer) subscribeAndFollow() error {
 		}
 	}
 
-	// Subscribe to forced inclusion namespace if configured
-	var forcedInclusionCh <-chan *blobrpc.SubscriptionResponse
-	if s.daClient.HasForcedInclusionNamespace() {
-		fiNS := s.daClient.GetForcedInclusionNamespace()
-		// Only subscribe if it's different from both header and data namespaces
-		if !bytes.Equal(fiNS, headerNS) && !bytes.Equal(fiNS, dataNS) {
-			forcedInclusionCh, err = s.daClient.Subscribe(subCtx, fiNS)
-			if err != nil {
-				return fmt.Errorf("failed to subscribe to forced inclusion namespace: %w", err)
-			}
-			s.logger.Info().Msg("subscribed to forced inclusion namespace for follow mode")
-		}
-	}
-
 	s.logger.Info().Msg("subscribed to DA namespaces for follow mode")
 
 	// Calculate watchdog timeout
@@ -520,16 +506,6 @@ func (s *Syncer) subscribeAndFollow() error {
 			}
 			if err := s.processSubscriptionResponse(resp); err != nil {
 				s.logger.Error().Err(err).Uint64("height", resp.Height).Msg("failed to process data subscription")
-			}
-
-		case resp, ok := <-forcedInclusionCh:
-			// Note: if forcedInclusionCh is nil (not configured), this case never fires
-			if !ok {
-				return errors.New("forced inclusion subscription closed")
-			}
-			// Cache forced inclusion blobs for epoch retrieval.
-			if s.fiRetriever != nil {
-				s.fiRetriever.HandleSubscriptionResponse(resp)
 			}
 
 		case <-time.After(watchdogTimeout):
