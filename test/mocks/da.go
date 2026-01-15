@@ -7,6 +7,7 @@ package mocks
 import (
 	"context"
 
+	"github.com/evstack/ev-node/pkg/da/jsonrpc"
 	"github.com/evstack/ev-node/pkg/da/types"
 	mock "github.com/stretchr/testify/mock"
 )
@@ -294,6 +295,66 @@ func (_c *MockClient_HasForcedInclusionNamespace_Call) RunAndReturn(run func() b
 	return _c
 }
 
+// LocalHead provides a mock function for the type MockClient
+func (_mock *MockClient) LocalHead(ctx context.Context) (uint64, error) {
+	ret := _mock.Called(ctx)
+
+	if len(ret) == 0 {
+		panic("no return value specified for LocalHead")
+	}
+
+	var r0 uint64
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context) (uint64, error)); ok {
+		return returnFunc(ctx)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context) uint64); ok {
+		r0 = returnFunc(ctx)
+	} else {
+		r0 = ret.Get(0).(uint64)
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context) error); ok {
+		r1 = returnFunc(ctx)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}
+
+// MockClient_LocalHead_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'LocalHead'
+type MockClient_LocalHead_Call struct {
+	*mock.Call
+}
+
+// LocalHead is a helper method to define mock.On call
+//   - ctx context.Context
+func (_e *MockClient_Expecter) LocalHead(ctx interface{}) *MockClient_LocalHead_Call {
+	return &MockClient_LocalHead_Call{Call: _e.mock.On("LocalHead", ctx)}
+}
+
+func (_c *MockClient_LocalHead_Call) Run(run func(ctx context.Context)) *MockClient_LocalHead_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		run(
+			arg0,
+		)
+	})
+	return _c
+}
+
+func (_c *MockClient_LocalHead_Call) Return(v uint64, err error) *MockClient_LocalHead_Call {
+	_c.Call.Return(v, err)
+	return _c
+}
+
+func (_c *MockClient_LocalHead_Call) RunAndReturn(run func(ctx context.Context) (uint64, error)) *MockClient_LocalHead_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // Retrieve provides a mock function for the type MockClient
 func (_mock *MockClient) Retrieve(ctx context.Context, height uint64, namespace []byte) da.ResultRetrieve {
 	ret := _mock.Called(ctx, height, namespace)
@@ -428,6 +489,74 @@ func (_c *MockClient_Submit_Call) Return(resultSubmit da.ResultSubmit) *MockClie
 }
 
 func (_c *MockClient_Submit_Call) RunAndReturn(run func(ctx context.Context, data [][]byte, gasPrice float64, namespace []byte, options []byte) da.ResultSubmit) *MockClient_Submit_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// Subscribe provides a mock function for the type MockClient
+func (_mock *MockClient) Subscribe(ctx context.Context, namespace []byte) (<-chan *jsonrpc.SubscriptionResponse, error) {
+	ret := _mock.Called(ctx, namespace)
+
+	if len(ret) == 0 {
+		panic("no return value specified for Subscribe")
+	}
+
+	var r0 <-chan *jsonrpc.SubscriptionResponse
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, []byte) (<-chan *jsonrpc.SubscriptionResponse, error)); ok {
+		return returnFunc(ctx, namespace)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, []byte) <-chan *jsonrpc.SubscriptionResponse); ok {
+		r0 = returnFunc(ctx, namespace)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(<-chan *jsonrpc.SubscriptionResponse)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, []byte) error); ok {
+		r1 = returnFunc(ctx, namespace)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}
+
+// MockClient_Subscribe_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'Subscribe'
+type MockClient_Subscribe_Call struct {
+	*mock.Call
+}
+
+// Subscribe is a helper method to define mock.On call
+//   - ctx context.Context
+//   - namespace []byte
+func (_e *MockClient_Expecter) Subscribe(ctx interface{}, namespace interface{}) *MockClient_Subscribe_Call {
+	return &MockClient_Subscribe_Call{Call: _e.mock.On("Subscribe", ctx, namespace)}
+}
+
+func (_c *MockClient_Subscribe_Call) Run(run func(ctx context.Context, namespace []byte)) *MockClient_Subscribe_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 []byte
+		if args[1] != nil {
+			arg1 = args[1].([]byte)
+		}
+		run(
+			arg0,
+			arg1,
+		)
+	})
+	return _c
+}
+
+func (_c *MockClient_Subscribe_Call) Return(subscriptionResponseCh <-chan *jsonrpc.SubscriptionResponse, err error) *MockClient_Subscribe_Call {
+	_c.Call.Return(subscriptionResponseCh, err)
+	return _c
+}
+
+func (_c *MockClient_Subscribe_Call) RunAndReturn(run func(ctx context.Context, namespace []byte) (<-chan *jsonrpc.SubscriptionResponse, error)) *MockClient_Subscribe_Call {
 	_c.Call.Return(run)
 	return _c
 }

@@ -9,6 +9,7 @@ import (
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/trace"
 
+	blobrpc "github.com/evstack/ev-node/pkg/da/jsonrpc"
 	datypes "github.com/evstack/ev-node/pkg/da/types"
 )
 
@@ -130,6 +131,14 @@ func (t *tracedClient) GetForcedInclusionNamespace() []byte {
 }
 func (t *tracedClient) HasForcedInclusionNamespace() bool {
 	return t.inner.HasForcedInclusionNamespace()
+}
+
+func (t *tracedClient) Subscribe(ctx context.Context, namespace []byte) (<-chan *blobrpc.SubscriptionResponse, error) {
+	return t.inner.Subscribe(ctx, namespace)
+}
+
+func (t *tracedClient) LocalHead(ctx context.Context) (uint64, error) {
+	return t.inner.LocalHead(ctx)
 }
 
 type submitError struct{ msg string }

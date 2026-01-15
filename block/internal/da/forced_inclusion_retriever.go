@@ -4,11 +4,14 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/rs/zerolog"
 
+	"github.com/evstack/ev-node/block/internal/common"
 	"github.com/evstack/ev-node/pkg/config"
+	blobrpc "github.com/evstack/ev-node/pkg/da/jsonrpc"
 	datypes "github.com/evstack/ev-node/pkg/da/types"
 	"github.com/evstack/ev-node/types"
 )
@@ -23,6 +26,12 @@ type ForcedInclusionRetriever struct {
 	daEpochSize   uint64
 	daStartHeight uint64
 	asyncFetcher  AsyncBlockRetriever
+
+	mu                    sync.Mutex
+	pendingEpochStart     uint64
+	pendingEpochEnd       uint64
+	lastProcessedEpochEnd uint64
+	hasProcessedEpoch     bool
 }
 
 // ForcedInclusionEvent contains forced inclusion transactions retrieved from DA.
@@ -68,6 +77,25 @@ func (r *ForcedInclusionRetriever) Stop() {
 	r.asyncFetcher.Stop()
 }
 
+// HandleSubscriptionResponse caches forced inclusion blobs from subscription updates.
+func (r *ForcedInclusionRetriever) HandleSubscriptionResponse(resp *blobrpc.SubscriptionResponse) {
+	if resp == nil {
+		return
+	}
+	if !r.client.HasForcedInclusionNamespace() {
+		return
+	}
+
+	r.asyncFetcher.UpdateCurrentHeight(resp.Height)
+
+	blobs := common.BlobsFromSubscription(resp)
+	if len(blobs) == 0 {
+		return
+	}
+
+	r.asyncFetcher.StoreBlock(context.Background(), resp.Height, blobs, time.Now().UTC())
+}
+
 // RetrieveForcedIncludedTxs retrieves forced inclusion transactions at the given DA height.
 // It respects epoch boundaries and only fetches at epoch end.
 // It tries to get blocks from the async fetcher cache first, then falls back to sync fetching.
@@ -86,12 +114,50 @@ func (r *ForcedInclusionRetriever) RetrieveForcedIncludedTxs(ctx context.Context
 	// Update the async fetcher's current height so it knows what to prefetch
 	r.asyncFetcher.UpdateCurrentHeight(daHeight)
 
+	r.mu.Lock()
+	pendingStart := r.pendingEpochStart
+	pendingEnd := r.pendingEpochEnd
+	lastProcessed := r.lastProcessedEpochEnd
+	hasProcessed := r.hasProcessedEpoch
+	r.mu.Unlock()
+
+	if pendingEnd != 0 {
+		if daHeight < pendingEnd {
+			return &ForcedInclusionEvent{
+				StartDaHeight: daHeight,
+				EndDaHeight:   daHeight,
+				Txs:           [][]byte{},
+			}, nil
+		}
+
+		event, err := r.retrieveEpoch(ctx, pendingStart, pendingEnd)
+		if err != nil {
+			return nil, err
+		}
+
+		r.mu.Lock()
+		r.pendingEpochStart = 0
+		r.pendingEpochEnd = 0
+		r.lastProcessedEpochEnd = pendingEnd
+		r.hasProcessedEpoch = true
+		r.mu.Unlock()
+
+		return event, nil
+	}
+
 	if daHeight != epochEnd {
 		r.logger.Debug().
 			Uint64("da_height", daHeight).
 			Uint64("epoch_end", epochEnd).
 			Msg("not at epoch end - returning empty transactions")
+		return &ForcedInclusionEvent{
+			StartDaHeight: daHeight,
+			EndDaHeight:   daHeight,
+			Txs:           [][]byte{},
+		}, nil
+	}
 
+	if hasProcessed && epochEnd <= lastProcessed {
 		return &ForcedInclusionEvent{
 			StartDaHeight: daHeight,
 			EndDaHeight:   daHeight,
@@ -106,6 +172,24 @@ func (r *ForcedInclusionRetriever) RetrieveForcedIncludedTxs(ctx context.Context
 		Uint64("epoch_num", currentEpochNumber).
 		Msg("retrieving forced included transactions from DA epoch")
 
+	event, err := r.retrieveEpoch(ctx, epochStart, epochEnd)
+	if err != nil {
+		r.mu.Lock()
+		r.pendingEpochStart = epochStart
+		r.pendingEpochEnd = epochEnd
+		r.mu.Unlock()
+		return nil, err
+	}
+
+	r.mu.Lock()
+	r.lastProcessedEpochEnd = epochEnd
+	r.hasProcessedEpoch = true
+	r.mu.Unlock()
+
+	return event, nil
+}
+
+func (r *ForcedInclusionRetriever) retrieveEpoch(ctx context.Context, epochStart, epochEnd uint64) (*ForcedInclusionEvent, error) {
 	event := &ForcedInclusionEvent{
 		StartDaHeight: epochStart,
 		EndDaHeight:   epochEnd,
@@ -211,18 +295,12 @@ func (r *ForcedInclusionRetriever) RetrieveForcedIncludedTxs(ctx context.Context
 	// any error during process, need to retry at next call
 	if processErrs != nil {
 		r.logger.Warn().
-			Uint64("da_height", daHeight).
 			Uint64("epoch_start", epochStart).
 			Uint64("epoch_end", epochEnd).
-			Uint64("epoch_num", currentEpochNumber).
 			Err(processErrs).
-			Msg("Failed to retrieve DA epoch.. retrying next iteration")
+			Msg("failed to retrieve DA epoch")
 
-		return &ForcedInclusionEvent{
-			StartDaHeight: daHeight,
-			EndDaHeight:   daHeight,
-			Txs:           [][]byte{},
-		}, nil
+		return nil, processErrs
 	}
 
 	return event, nil

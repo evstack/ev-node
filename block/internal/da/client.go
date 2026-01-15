@@ -442,3 +442,27 @@ func (c *client) Validate(ctx context.Context, ids []datypes.ID, proofs []datype
 
 	return results, nil
 }
+
+// Subscribe subscribes to blobs in the specified namespace.
+// Returns a channel that receives subscription responses as new blobs are included.
+func (c *client) Subscribe(ctx context.Context, namespace []byte) (<-chan *blobrpc.SubscriptionResponse, error) {
+	ns, err := share.NewNamespaceFromBytes(namespace)
+	if err != nil {
+		return nil, fmt.Errorf("invalid namespace: %w", err)
+	}
+
+	return c.blobAPI.Subscribe(ctx, ns)
+}
+
+// LocalHead returns the height of the locally synced DA head.
+func (c *client) LocalHead(ctx context.Context) (uint64, error) {
+	headCtx, cancel := context.WithTimeout(ctx, c.defaultTimeout)
+	defer cancel()
+
+	header, err := c.headerAPI.LocalHead(headCtx)
+	if err != nil {
+		return 0, fmt.Errorf("failed to get local head: %w", err)
+	}
+
+	return header.Height, nil
+}

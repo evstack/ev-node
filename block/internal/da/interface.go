@@ -3,6 +3,7 @@ package da
 import (
 	"context"
 
+	blobrpc "github.com/evstack/ev-node/pkg/da/jsonrpc"
 	datypes "github.com/evstack/ev-node/pkg/da/types"
 )
 
@@ -22,6 +23,15 @@ type Client interface {
 	GetDataNamespace() []byte
 	GetForcedInclusionNamespace() []byte
 	HasForcedInclusionNamespace() bool
+
+	// Subscribe subscribes to blobs in the specified namespace.
+	// Returns a channel that receives subscription responses as new blobs are included.
+	// Used for follow mode to receive real-time blob notifications.
+	Subscribe(ctx context.Context, namespace []byte) (<-chan *blobrpc.SubscriptionResponse, error)
+
+	// LocalHead returns the height of the locally synced DA head.
+	// Used to determine if the node is caught up with the DA layer.
+	LocalHead(ctx context.Context) (uint64, error)
 }
 
 // Verifier defines the interface for DA proof verification operations.

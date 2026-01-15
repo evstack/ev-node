@@ -38,6 +38,71 @@ func (_m *MockDARetriever) EXPECT() *MockDARetriever_Expecter {
 	return &MockDARetriever_Expecter{mock: &_m.Mock}
 }
 
+// ProcessBlobs provides a mock function for the type MockDARetriever
+func (_mock *MockDARetriever) ProcessBlobs(ctx context.Context, blobs [][]byte, daHeight uint64) []common.DAHeightEvent {
+	ret := _mock.Called(ctx, blobs, daHeight)
+
+	if len(ret) == 0 {
+		panic("no return value specified for ProcessBlobs")
+	}
+
+	var r0 []common.DAHeightEvent
+	if returnFunc, ok := ret.Get(0).(func(context.Context, [][]byte, uint64) []common.DAHeightEvent); ok {
+		r0 = returnFunc(ctx, blobs, daHeight)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).([]common.DAHeightEvent)
+		}
+	}
+	return r0
+}
+
+// MockDARetriever_ProcessBlobs_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'ProcessBlobs'
+type MockDARetriever_ProcessBlobs_Call struct {
+	*mock.Call
+}
+
+// ProcessBlobs is a helper method to define mock.On call
+//   - ctx context.Context
+//   - blobs [][]byte
+//   - daHeight uint64
+func (_e *MockDARetriever_Expecter) ProcessBlobs(ctx interface{}, blobs interface{}, daHeight interface{}) *MockDARetriever_ProcessBlobs_Call {
+	return &MockDARetriever_ProcessBlobs_Call{Call: _e.mock.On("ProcessBlobs", ctx, blobs, daHeight)}
+}
+
+func (_c *MockDARetriever_ProcessBlobs_Call) Run(run func(ctx context.Context, blobs [][]byte, daHeight uint64)) *MockDARetriever_ProcessBlobs_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 [][]byte
+		if args[1] != nil {
+			arg1 = args[1].([][]byte)
+		}
+		var arg2 uint64
+		if args[2] != nil {
+			arg2 = args[2].(uint64)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+		)
+	})
+	return _c
+}
+
+func (_c *MockDARetriever_ProcessBlobs_Call) Return(dAHeightEvents []common.DAHeightEvent) *MockDARetriever_ProcessBlobs_Call {
+	_c.Call.Return(dAHeightEvents)
+	return _c
+}
+
+func (_c *MockDARetriever_ProcessBlobs_Call) RunAndReturn(run func(ctx context.Context, blobs [][]byte, daHeight uint64) []common.DAHeightEvent) *MockDARetriever_ProcessBlobs_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // RetrieveFromDA provides a mock function for the type MockDARetriever
 func (_mock *MockDARetriever) RetrieveFromDA(ctx context.Context, daHeight uint64) ([]common.DAHeightEvent, error) {
 	ret := _mock.Called(ctx, daHeight)

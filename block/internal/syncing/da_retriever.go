@@ -21,6 +21,9 @@ import (
 // DARetriever defines the interface for retrieving events from the DA layer
 type DARetriever interface {
 	RetrieveFromDA(ctx context.Context, daHeight uint64) ([]common.DAHeightEvent, error)
+	// ProcessBlobs processes raw blobs from subscription and returns height events.
+	// Used by follow mode to process real-time blob notifications.
+	ProcessBlobs(ctx context.Context, blobs [][]byte, daHeight uint64) []common.DAHeightEvent
 }
 
 // daRetriever handles DA retrieval operations for syncing
@@ -72,7 +75,7 @@ func (r *daRetriever) RetrieveFromDA(ctx context.Context, daHeight uint64) ([]co
 	}
 
 	r.logger.Debug().Int("blobs", len(blobsResp.Data)).Uint64("da_height", daHeight).Msg("retrieved blob data")
-	return r.processBlobs(ctx, blobsResp.Data, daHeight), nil
+	return r.ProcessBlobs(ctx, blobsResp.Data, daHeight), nil
 }
 
 // fetchBlobs retrieves blobs from both header and data namespaces
@@ -148,8 +151,9 @@ func (r *daRetriever) validateBlobResponse(res datypes.ResultRetrieve, daHeight 
 	}
 }
 
-// processBlobs processes retrieved blobs to extract headers and data and returns height events
-func (r *daRetriever) processBlobs(ctx context.Context, blobs [][]byte, daHeight uint64) []common.DAHeightEvent {
+// ProcessBlobs processes retrieved blobs to extract headers and data and returns height events.
+// This method implements the DARetriever interface and is used by both polling and subscription modes.
+func (r *daRetriever) ProcessBlobs(ctx context.Context, blobs [][]byte, daHeight uint64) []common.DAHeightEvent {
 	// Decode all blobs
 	for _, bz := range blobs {
 		if len(bz) == 0 {
