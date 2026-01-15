@@ -22,7 +22,7 @@ type mockBlockProducer struct {
 	retrieveBatchFn func(ctx context.Context) (*BatchData, error)
 	createBlockFn   func(ctx context.Context, height uint64, batchData *BatchData) (*types.SignedHeader, *types.Data, error)
 	applyBlockFn    func(ctx context.Context, header types.Header, data *types.Data) (types.State, error)
-	validateBlockFn func(lastState types.State, header *types.SignedHeader, data *types.Data) error
+	validateBlockFn func(ctx context.Context, lastState types.State, header *types.SignedHeader, data *types.Data) error
 }
 
 func (m *mockBlockProducer) ProduceBlock(ctx context.Context) error {
@@ -53,9 +53,9 @@ func (m *mockBlockProducer) ApplyBlock(ctx context.Context, header types.Header,
 	return types.State{}, nil
 }
 
-func (m *mockBlockProducer) ValidateBlock(lastState types.State, header *types.SignedHeader, data *types.Data) error {
+func (m *mockBlockProducer) ValidateBlock(ctx context.Context, lastState types.State, header *types.SignedHeader, data *types.Data) error {
 	if m.validateBlockFn != nil {
-		return m.validateBlockFn(lastState, header, data)
+		return m.validateBlockFn(ctx, lastState, header, data)
 	}
 	return nil
 }
@@ -266,11 +266,12 @@ func TestTracedBlockProducer_ApplyBlock_Error(t *testing.T) {
 
 func TestTracedBlockProducer_ValidateBlock_Success(t *testing.T) {
 	mock := &mockBlockProducer{
-		validateBlockFn: func(lastState types.State, header *types.SignedHeader, data *types.Data) error {
+		validateBlockFn: func(ctx context.Context, lastState types.State, header *types.SignedHeader, data *types.Data) error {
 			return nil
 		},
 	}
 	producer, sr := setupBlockProducerTrace(t, mock)
+	ctx := context.Background()
 
 	header := &types.SignedHeader{
 		Header: types.Header{
@@ -280,7 +281,7 @@ func TestTracedBlockProducer_ValidateBlock_Success(t *testing.T) {
 		},
 	}
 
-	err := producer.ValidateBlock(types.State{}, header, &types.Data{})
+	err := producer.ValidateBlock(ctx, types.State{}, header, &types.Data{})
 	require.NoError(t, err)
 
 	spans := sr.Ended()
@@ -295,11 +296,12 @@ func TestTracedBlockProducer_ValidateBlock_Success(t *testing.T) {
 
 func TestTracedBlockProducer_ValidateBlock_Error(t *testing.T) {
 	mock := &mockBlockProducer{
-		validateBlockFn: func(lastState types.State, header *types.SignedHeader, data *types.Data) error {
+		validateBlockFn: func(ctx context.Context, lastState types.State, header *types.SignedHeader, data *types.Data) error {
 			return errors.New("validation failed")
 		},
 	}
 	producer, sr := setupBlockProducerTrace(t, mock)
+	ctx := context.Background()
 
 	header := &types.SignedHeader{
 		Header: types.Header{
@@ -309,7 +311,7 @@ func TestTracedBlockProducer_ValidateBlock_Error(t *testing.T) {
 		},
 	}
 
-	err := producer.ValidateBlock(types.State{}, header, &types.Data{})
+	err := producer.ValidateBlock(ctx, types.State{}, header, &types.Data{})
 	require.Error(t, err)
 
 	spans := sr.Ended()
