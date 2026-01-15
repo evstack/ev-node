@@ -414,7 +414,7 @@ func (e *Executor) ProduceBlock(ctx context.Context) error {
 	}
 	header.Signature = signature
 
-	if err := e.blockProducer.ValidateBlock(currentState, header, data); err != nil {
+	if err := e.blockProducer.ValidateBlock(ctx, currentState, header, data); err != nil {
 		e.sendCriticalError(fmt.Errorf("failed to validate block: %w", err))
 		e.logger.Error().Err(err).Msg("CRITICAL: Permanent block validation error - halting block production")
 		return fmt.Errorf("failed to validate block: %w", err)
@@ -669,7 +669,7 @@ func (e *Executor) executeTxsWithRetry(ctx context.Context, rawTxs [][]byte, hea
 }
 
 // ValidateBlock validates the created block.
-func (e *Executor) ValidateBlock(lastState types.State, header *types.SignedHeader, data *types.Data) error {
+func (e *Executor) ValidateBlock(_ context.Context, lastState types.State, header *types.SignedHeader, data *types.Data) error {
 	// Set custom verifier for aggregator node signature
 	header.SetCustomVerifierForAggregator(e.options.AggregatorNodeSignatureBytesProvider)
 

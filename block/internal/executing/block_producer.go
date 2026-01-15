@@ -23,5 +23,5 @@ type BlockProducer interface {
 	ApplyBlock(ctx context.Context, header types.Header, data *types.Data) (types.State, error)
 
 	// ValidateBlock validates block structure and state transitions.
-	ValidateBlock(lastState types.State, header *types.SignedHeader, data *types.Data) error
+	ValidateBlock(ctx context.Context, lastState types.State, header *types.SignedHeader, data *types.Data) error
 }
