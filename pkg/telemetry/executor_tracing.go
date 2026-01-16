@@ -25,7 +25,7 @@ func WithTracingExecutor(inner coreexec.Executor) coreexec.Executor {
 	}
 }
 
-func (t *tracedExecutor) InitChain(ctx context.Context, genesisTime time.Time, initialHeight uint64, chainID string) ([]byte, uint64, error) {
+func (t *tracedExecutor) InitChain(ctx context.Context, genesisTime time.Time, initialHeight uint64, chainID string) ([]byte, error) {
 	ctx, span := t.tracer.Start(ctx, "Executor.InitChain",
 		trace.WithAttributes(
 			attribute.String("chain.id", chainID),
@@ -35,12 +35,12 @@ func (t *tracedExecutor) InitChain(ctx context.Context, genesisTime time.Time, i
 	)
 	defer span.End()
 
-	stateRoot, maxBytes, err := t.inner.InitChain(ctx, genesisTime, initialHeight, chainID)
+	stateRoot, err := t.inner.InitChain(ctx, genesisTime, initialHeight, chainID)
 	if err != nil {
 		span.RecordError(err)
 		span.SetStatus(codes.Error, err.Error())
 	}
-	return stateRoot, maxBytes, err
+	return stateRoot, err
 }
 
 func (t *tracedExecutor) GetTxs(ctx context.Context) ([][]byte, error) {
@@ -57,7 +57,7 @@ func (t *tracedExecutor) GetTxs(ctx context.Context) ([][]byte, error) {
 	return txs, err
 }
 
-func (t *tracedExecutor) ExecuteTxs(ctx context.Context, txs [][]byte, blockHeight uint64, timestamp time.Time, prevStateRoot []byte) ([]byte, uint64, error) {
+func (t *tracedExecutor) ExecuteTxs(ctx context.Context, txs [][]byte, blockHeight uint64, timestamp time.Time, prevStateRoot []byte) ([]byte, error) {
 	ctx, span := t.tracer.Start(ctx, "Executor.ExecuteTxs",
 		trace.WithAttributes(
 			attribute.Int("tx.count", len(txs)),
@@ -67,12 +67,12 @@ func (t *tracedExecutor) ExecuteTxs(ctx context.Context, txs [][]byte, blockHeig
 	)
 	defer span.End()
 
-	stateRoot, maxBytes, err := t.inner.ExecuteTxs(ctx, txs, blockHeight, timestamp, prevStateRoot)
+	stateRoot, err := t.inner.ExecuteTxs(ctx, txs, blockHeight, timestamp, prevStateRoot)
 	if err != nil {
 		span.RecordError(err)
 		span.SetStatus(codes.Error, err.Error())
 	}
-	return stateRoot, maxBytes, err
+	return stateRoot, err
 }
 
 func (t *tracedExecutor) SetFinal(ctx context.Context, blockHeight uint64) error {
@@ -104,4 +104,53 @@ func (t *tracedExecutor) GetLatestHeight(ctx context.Context) (uint64, error) {
 		span.SetStatus(codes.Error, err.Error())
 	}
 	return height, err
+}
+
+// If the underlying executor implements ExecutionInfoProvider, forward it while tracing.
+func (t *tracedExecutor) GetExecutionInfo(ctx context.Context, height uint64) (coreexec.ExecutionInfo, error) {
+	eip, ok := t.inner.(coreexec.ExecutionInfoProvider)
+	if !ok {
+		return coreexec.ExecutionInfo{}, nil
+	}
+	ctx, span := t.tracer.Start(ctx, "Executor.GetExecutionInfo",
+		trace.WithAttributes(attribute.Int64("height", int64(height))),
+	)
+	defer span.End()
+
+	info, err := eip.GetExecutionInfo(ctx, height)
+	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
+	} else {
+		span.SetAttributes(attribute.Int64("max_gas", int64(info.MaxGas)))
+	}
+	return info, err
+}
+
+// If the underlying executor implements DATransactionFilter, forward it while tracing.
+func (t *tracedExecutor) FilterDATransactions(ctx context.Context, txs [][]byte, maxGas uint64) ([][]byte, [][]byte, error) {
+	filter, ok := t.inner.(coreexec.DATransactionFilter)
+	if !ok {
+		// If not implemented, return all transactions as valid (no filtering)
+		return txs, nil, nil
+	}
+	ctx, span := t.tracer.Start(ctx, "Executor.FilterDATransactions",
+		trace.WithAttributes(
+			attribute.Int("input_tx_count", len(txs)),
+			attribute.Int64("max_gas", int64(maxGas)),
+		),
+	)
+	defer span.End()
+
+	validTxs, remainingTxs, err := filter.FilterDATransactions(ctx, txs, maxGas)
+	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
+	} else {
+		span.SetAttributes(
+			attribute.Int("valid_tx_count", len(validTxs)),
+			attribute.Int("remaining_tx_count", len(remainingTxs)),
+		)
+	}
+	return validTxs, remainingTxs, err
 }

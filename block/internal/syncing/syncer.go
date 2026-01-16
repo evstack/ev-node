@@ -260,7 +260,7 @@ func (s *Syncer) initializeState() error {
 	if err != nil {
 		// Initialize new chain state for a fresh full node (no prior state on disk)
 		// Mirror executor initialization to ensure AppHash matches headers produced by the sequencer.
-		stateRoot, _, initErr := s.exec.InitChain(
+		stateRoot, initErr := s.exec.InitChain(
 			s.ctx,
 			s.genesis.StartTime,
 			s.genesis.InitialHeight,
@@ -693,7 +693,7 @@ func (s *Syncer) ApplyBlock(ctx context.Context, header types.Header, data *type
 // NOTE: the function retries the execution client call regardless of the error. Some execution clients errors are irrecoverable, and will eventually halt the node, as expected.
 func (s *Syncer) executeTxsWithRetry(ctx context.Context, rawTxs [][]byte, header types.Header, currentState types.State) ([]byte, error) {
 	for attempt := 1; attempt <= common.MaxRetriesBeforeHalt; attempt++ {
-		newAppHash, _, err := s.exec.ExecuteTxs(ctx, rawTxs, header.Height(), header.Time(), currentState.AppHash)
+		newAppHash, err := s.exec.ExecuteTxs(ctx, rawTxs, header.Height(), header.Time(), currentState.AppHash)
 		if err != nil {
 			if attempt == common.MaxRetriesBeforeHalt {
 				return nil, fmt.Errorf("failed to execute transactions: %w", err)

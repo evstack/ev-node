@@ -14,12 +14,11 @@ import (
 // DummyExecutor
 //---------------------
 
-// DummyExecutor is a dummy implementation of the DummyExecutor interface for testing
+// DummyExecutor is a dummy implementation of the Executor interface for testing
 type DummyExecutor struct {
 	mu           sync.RWMutex // Add mutex for thread safety
 	stateRoot    []byte
 	pendingRoots map[uint64][]byte
-	maxBytes     uint64
 	injectedTxs  [][]byte
 }
 
@@ -28,23 +27,22 @@ func NewDummyExecutor() *DummyExecutor {
 	return &DummyExecutor{
 		stateRoot:    []byte{1, 2, 3},
 		pendingRoots: make(map[uint64][]byte),
-		maxBytes:     1000000,
 	}
 }
 
 // InitChain initializes the chain state with the given genesis time, initial height, and chain ID.
-// It returns the state root hash, the maximum byte size, and an error if the initialization fails.
-func (e *DummyExecutor) InitChain(ctx context.Context, genesisTime time.Time, initialHeight uint64, chainID string) ([]byte, uint64, error) {
+// It returns the state root hash and an error if the initialization fails.
+func (e *DummyExecutor) InitChain(ctx context.Context, genesisTime time.Time, initialHeight uint64, chainID string) ([]byte, error) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 
 	hash := sha512.New()
 	hash.Write(e.stateRoot)
 	e.stateRoot = hash.Sum(nil)
-	return e.stateRoot, e.maxBytes, nil
+	return e.stateRoot, nil
 }
 
-// GetTxs returns the list of transactions (types.Tx) within the DummyExecutor instance and an error if any.
+// GetTxs returns the list of transactions within the DummyExecutor instance and an error if any.
 func (e *DummyExecutor) GetTxs(context.Context) ([][]byte, error) {
 	e.mu.RLock()
 	defer e.mu.RUnlock()
@@ -63,7 +61,7 @@ func (e *DummyExecutor) InjectTx(tx []byte) {
 }
 
 // ExecuteTxs simulate execution of transactions.
-func (e *DummyExecutor) ExecuteTxs(ctx context.Context, txs [][]byte, blockHeight uint64, timestamp time.Time, prevStateRoot []byte) ([]byte, uint64, error) {
+func (e *DummyExecutor) ExecuteTxs(ctx context.Context, txs [][]byte, blockHeight uint64, timestamp time.Time, prevStateRoot []byte) ([]byte, error) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 
@@ -75,7 +73,7 @@ func (e *DummyExecutor) ExecuteTxs(ctx context.Context, txs [][]byte, blockHeigh
 	pending := hash.Sum(nil)
 	e.pendingRoots[blockHeight] = pending
 	e.removeExecutedTxs(txs)
-	return pending, e.maxBytes, nil
+	return pending, nil
 }
 
 // SetFinal marks block at given height as finalized.
@@ -103,4 +101,17 @@ func (e *DummyExecutor) GetStateRoot() []byte {
 	defer e.mu.RUnlock()
 
 	return e.stateRoot
+}
+
+// GetExecutionInfo returns execution layer parameters.
+// For DummyExecutor, returns MaxGas=0 indicating no gas-based filtering.
+func (e *DummyExecutor) GetExecutionInfo(ctx context.Context, height uint64) (ExecutionInfo, error) {
+	return ExecutionInfo{MaxGas: 0}, nil
+}
+
+// FilterDATransactions validates and filters force-included transactions from DA.
+// For DummyExecutor, all transactions are considered valid (no parsing/gas checks).
+func (e *DummyExecutor) FilterDATransactions(ctx context.Context, txs [][]byte, maxGas uint64) ([][]byte, [][]byte, error) {
+	// DummyExecutor doesn't do any filtering - return all txs as valid
+	return txs, nil, nil
 }

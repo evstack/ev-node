@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/evstack/ev-node/core/execution"
 	ds "github.com/ipfs/go-datastore"
 	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/assert"
@@ -1007,4 +1008,196 @@ func TestSequencer_GetNextBatch_EmptyDABatch_IncreasesDAHeight(t *testing.T) {
 	assert.Equal(t, uint64(102), seq.GetDAHeight())
 	assert.Equal(t, uint64(102), seq.checkpoint.DAHeight)
 	assert.Equal(t, uint64(0), seq.checkpoint.TxIndex)
+}
+
+// mockDATransactionFilter is a mock implementation of execution.DATransactionFilter
+type mockDATransactionFilter struct {
+	filterFunc func(ctx context.Context, txs [][]byte, maxGas uint64) ([][]byte, [][]byte, error)
+}
+
+func (m *mockDATransactionFilter) FilterDATransactions(ctx context.Context, txs [][]byte, maxGas uint64) ([][]byte, [][]byte, error) {
+	if m.filterFunc != nil {
+		return m.filterFunc(ctx, txs, maxGas)
+	}
+	return txs, nil, nil
+}
+
+// mockExecutionInfoProvider is a mock implementation of execution.ExecutionInfoProvider
+type mockExecutionInfoProvider struct {
+	maxGas uint64
+	err    error
+}
+
+func (m *mockExecutionInfoProvider) GetExecutionInfo(ctx context.Context, height uint64) (execution.ExecutionInfo, error) {
+	return execution.ExecutionInfo{MaxGas: m.maxGas}, m.err
+}
+
+func TestSequencer_GetNextBatch_WithGasFiltering(t *testing.T) {
+	db := ds.NewMapDatastore()
+	logger := zerolog.Nop()
+
+	gen := genesis.Genesis{
+		ChainID:                "test-gas-filter",
+		DAStartHeight:          100,
+		DAEpochForcedInclusion: 1,
+	}
+
+	mockDA := newMockFullDAClient(t)
+
+	// Setup DA to return forced inclusion transactions
+	forcedTxs := [][]byte{
+		[]byte("tx1-low-gas"),  // Will fit
+		[]byte("tx2-low-gas"),  // Will fit
+		[]byte("tx3-high-gas"), // Won't fit due to gas
+	}
+
+	mockDA.MockClient.On("GetBlobs", mock.Anything, mock.Anything, mock.Anything).
+		Return(forcedTxs, nil).Maybe()
+	mockDA.MockClient.On("GetBlobsAtHeight", mock.Anything, mock.Anything, mock.Anything).
+		Return(forcedTxs, nil).Maybe()
+	mockDA.MockClient.On("HasForcedInclusionNamespace").Return(true).Maybe()
+	mockDA.MockClient.On("GetForcedInclusionNamespace").Return([]byte("forced")).Maybe()
+	mockDA.MockClient.On("MaxBlobSize", mock.Anything).Return(uint64(1000000), nil).Maybe()
+
+	seq, err := NewSequencer(
+		logger,
+		db,
+		mockDA,
+		config.DefaultConfig(),
+		[]byte("test-gas-filter"),
+		1000,
+		gen,
+	)
+	require.NoError(t, err)
+
+	// Configure the gas filter mock
+	filterCallCount := 0
+	mockFilter := &mockDATransactionFilter{
+		filterFunc: func(ctx context.Context, txs [][]byte, maxGas uint64) ([][]byte, [][]byte, error) {
+			filterCallCount++
+			// Simulate: first 2 txs fit, third one doesn't
+			if len(txs) >= 3 {
+				return txs[:2], txs[2:], nil
+			}
+			return txs, nil, nil
+		},
+	}
+
+	mockInfoProvider := &mockExecutionInfoProvider{
+		maxGas: 1000000, // 1M gas limit
+	}
+
+	// Set the filter
+	seq.SetDATransactionFilter(mockFilter, mockInfoProvider)
+
+	// Manually set up cached forced txs to simulate DA fetch
+	seq.cachedForcedInclusionTxs = forcedTxs
+	seq.checkpoint.DAHeight = 100
+	seq.checkpoint.TxIndex = 0
+	seq.SetDAHeight(100)
+
+	ctx := context.Background()
+	req := coresequencer.GetNextBatchRequest{
+		Id:       []byte("test-gas-filter"),
+		MaxBytes: 1000000,
+	}
+
+	// First call should return filtered txs (only first 2)
+	resp, err := seq.GetNextBatch(ctx, req)
+	require.NoError(t, err)
+	require.NotNil(t, resp)
+	require.NotNil(t, resp.Batch)
+
+	// Should have 2 forced txs (the ones that fit within gas limit)
+	assert.Equal(t, 2, len(resp.Batch.Transactions))
+	assert.True(t, resp.Batch.ForceIncludedMask[0])
+	assert.True(t, resp.Batch.ForceIncludedMask[1])
+
+	// The remaining tx should be cached for next block
+	assert.Equal(t, 1, len(seq.cachedForcedInclusionTxs))
+	assert.Equal(t, uint64(0), seq.checkpoint.TxIndex) // Reset because we replaced the cache
+
+	// Filter should have been called
+	assert.Equal(t, 1, filterCallCount)
+
+	// Second call should return the remaining tx
+	mockFilter.filterFunc = func(ctx context.Context, txs [][]byte, maxGas uint64) ([][]byte, [][]byte, error) {
+		filterCallCount++
+		// Now all remaining txs fit
+		return txs, nil, nil
+	}
+
+	resp, err = seq.GetNextBatch(ctx, req)
+	require.NoError(t, err)
+	require.NotNil(t, resp)
+	require.NotNil(t, resp.Batch)
+
+	// Should have the remaining forced tx
+	assert.Equal(t, 1, len(resp.Batch.Transactions))
+	assert.True(t, resp.Batch.ForceIncludedMask[0])
+
+	// Cache should now be empty, DA height should advance
+	assert.Nil(t, seq.cachedForcedInclusionTxs)
+	assert.Equal(t, uint64(101), seq.checkpoint.DAHeight)
+}
+
+func TestSequencer_GetNextBatch_GasFilterError(t *testing.T) {
+	db := ds.NewMapDatastore()
+	logger := zerolog.Nop()
+
+	gen := genesis.Genesis{
+		ChainID:                "test-gas-error",
+		DAStartHeight:          100,
+		DAEpochForcedInclusion: 1,
+	}
+
+	mockDA := newMockFullDAClient(t)
+	mockDA.MockClient.On("HasForcedInclusionNamespace").Return(true).Maybe()
+	mockDA.MockClient.On("GetForcedInclusionNamespace").Return([]byte("forced")).Maybe()
+	mockDA.MockClient.On("MaxBlobSize", mock.Anything).Return(uint64(1000000), nil).Maybe()
+
+	seq, err := NewSequencer(
+		logger,
+		db,
+		mockDA,
+		config.DefaultConfig(),
+		[]byte("test-gas-error"),
+		1000,
+		gen,
+	)
+	require.NoError(t, err)
+
+	// Configure filter that returns error
+	mockFilter := &mockDATransactionFilter{
+		filterFunc: func(ctx context.Context, txs [][]byte, maxGas uint64) ([][]byte, [][]byte, error) {
+			return nil, nil, errors.New("filter error")
+		},
+	}
+
+	mockInfoProvider := &mockExecutionInfoProvider{
+		maxGas: 1000000,
+	}
+
+	seq.SetDATransactionFilter(mockFilter, mockInfoProvider)
+
+	// Set up cached txs
+	forcedTxs := [][]byte{[]byte("tx1"), []byte("tx2")}
+	seq.cachedForcedInclusionTxs = forcedTxs
+	seq.checkpoint.DAHeight = 100
+	seq.checkpoint.TxIndex = 0
+	seq.SetDAHeight(100)
+
+	ctx := context.Background()
+	req := coresequencer.GetNextBatchRequest{
+		Id:       []byte("test-gas-error"),
+		MaxBytes: 1000000,
+	}
+
+	// Should succeed but fall back to unfiltered txs on error
+	resp, err := seq.GetNextBatch(ctx, req)
+	require.NoError(t, err)
+	require.NotNil(t, resp)
+
+	// Should have all txs (filter error means no filtering)
+	assert.Equal(t, 2, len(resp.Batch.Transactions))
 }

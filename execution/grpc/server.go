@@ -50,7 +50,7 @@ func (s *Server) InitChain(
 		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("chain_id is required"))
 	}
 
-	stateRoot, maxBytes, err := s.executor.InitChain(
+	stateRoot, err := s.executor.InitChain(
 		ctx,
 		req.Msg.GenesisTime.AsTime(),
 		req.Msg.InitialHeight,
@@ -62,7 +62,6 @@ func (s *Server) InitChain(
 
 	return connect.NewResponse(&pb.InitChainResponse{
 		StateRoot: stateRoot,
-		MaxBytes:  maxBytes,
 	}), nil
 }
 
@@ -103,7 +102,7 @@ func (s *Server) ExecuteTxs(
 		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("prev_state_root is required"))
 	}
 
-	updatedStateRoot, maxBytes, err := s.executor.ExecuteTxs(
+	updatedStateRoot, err := s.executor.ExecuteTxs(
 		ctx,
 		req.Msg.Txs,
 		req.Msg.BlockHeight,
@@ -116,7 +115,6 @@ func (s *Server) ExecuteTxs(
 
 	return connect.NewResponse(&pb.ExecuteTxsResponse{
 		UpdatedStateRoot: updatedStateRoot,
-		MaxBytes:         maxBytes,
 	}), nil
 }
 

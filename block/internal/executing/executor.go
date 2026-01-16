@@ -198,7 +198,7 @@ func (e *Executor) initializeState() error {
 		// Initialize new chain
 		e.logger.Info().Msg("initializing new blockchain state")
 
-		stateRoot, _, err := e.exec.InitChain(e.ctx, e.genesis.StartTime,
+		stateRoot, err := e.exec.InitChain(e.ctx, e.genesis.StartTime,
 			e.genesis.InitialHeight, e.genesis.ChainID)
 		if err != nil {
 			e.sendCriticalError(fmt.Errorf("failed to initialize chain: %w", err))
@@ -642,7 +642,7 @@ func (e *Executor) signHeader(header types.Header) (types.Signature, error) {
 // NOTE: the function retries the execution client call regardless of the error. Some execution clients errors are irrecoverable, and will eventually halt the node, as expected.
 func (e *Executor) executeTxsWithRetry(ctx context.Context, rawTxs [][]byte, header types.Header, currentState types.State) ([]byte, error) {
 	for attempt := 1; attempt <= common.MaxRetriesBeforeHalt; attempt++ {
-		newAppHash, _, err := e.exec.ExecuteTxs(ctx, rawTxs, header.Height(), header.Time(), currentState.AppHash)
+		newAppHash, err := e.exec.ExecuteTxs(ctx, rawTxs, header.Height(), header.Time(), currentState.AppHash)
 		if err != nil {
 			if attempt == common.MaxRetriesBeforeHalt {
 				return nil, fmt.Errorf("failed to execute transactions: %w", err)

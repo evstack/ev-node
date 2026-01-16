@@ -30,9 +30,9 @@ type MockHeightAwareExecutor struct {
 }
 
 // InitChain implements the Executor interface.
-func (m *MockHeightAwareExecutor) InitChain(ctx context.Context, genesisTime time.Time, initialHeight uint64, chainID string) ([]byte, uint64, error) {
+func (m *MockHeightAwareExecutor) InitChain(ctx context.Context, genesisTime time.Time, initialHeight uint64, chainID string) ([]byte, error) {
 	args := m.Called(ctx, genesisTime, initialHeight, chainID)
-	return args.Get(0).([]byte), args.Get(1).(uint64), args.Error(2)
+	return args.Get(0).([]byte), args.Error(1)
 }
 
 // GetTxs implements the Executor interface.
@@ -42,9 +42,9 @@ func (m *MockHeightAwareExecutor) GetTxs(ctx context.Context) ([][]byte, error) 
 }
 
 // ExecuteTxs implements the Executor interface.
-func (m *MockHeightAwareExecutor) ExecuteTxs(ctx context.Context, txs [][]byte, blockHeight uint64, timestamp time.Time, prevStateRoot []byte) ([]byte, uint64, error) {
+func (m *MockHeightAwareExecutor) ExecuteTxs(ctx context.Context, txs [][]byte, blockHeight uint64, timestamp time.Time, prevStateRoot []byte) ([]byte, error) {
 	args := m.Called(ctx, txs, blockHeight, timestamp, prevStateRoot)
-	return args.Get(0).([]byte), args.Get(1).(uint64), args.Error(2)
+	return args.Get(0).([]byte), args.Error(1)
 }
 
 // SetFinal implements the Executor interface.

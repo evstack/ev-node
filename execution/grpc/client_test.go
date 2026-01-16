@@ -9,17 +9,17 @@ import (
 
 // mockExecutor is a mock implementation of execution.Executor for testing
 type mockExecutor struct {
-	initChainFunc  func(ctx context.Context, genesisTime time.Time, initialHeight uint64, chainID string) ([]byte, uint64, error)
+	initChainFunc  func(ctx context.Context, genesisTime time.Time, initialHeight uint64, chainID string) ([]byte, error)
 	getTxsFunc     func(ctx context.Context) ([][]byte, error)
-	executeTxsFunc func(ctx context.Context, txs [][]byte, blockHeight uint64, timestamp time.Time, prevStateRoot []byte) ([]byte, uint64, error)
+	executeTxsFunc func(ctx context.Context, txs [][]byte, blockHeight uint64, timestamp time.Time, prevStateRoot []byte) ([]byte, error)
 	setFinalFunc   func(ctx context.Context, blockHeight uint64) error
 }
 
-func (m *mockExecutor) InitChain(ctx context.Context, genesisTime time.Time, initialHeight uint64, chainID string) ([]byte, uint64, error) {
+func (m *mockExecutor) InitChain(ctx context.Context, genesisTime time.Time, initialHeight uint64, chainID string) ([]byte, error) {
 	if m.initChainFunc != nil {
 		return m.initChainFunc(ctx, genesisTime, initialHeight, chainID)
 	}
-	return []byte("mock_state_root"), 1000000, nil
+	return []byte("mock_state_root"), nil
 }
 
 func (m *mockExecutor) GetTxs(ctx context.Context) ([][]byte, error) {
@@ -29,11 +29,11 @@ func (m *mockExecutor) GetTxs(ctx context.Context) ([][]byte, error) {
 	return [][]byte{[]byte("tx1"), []byte("tx2")}, nil
 }
 
-func (m *mockExecutor) ExecuteTxs(ctx context.Context, txs [][]byte, blockHeight uint64, timestamp time.Time, prevStateRoot []byte) ([]byte, uint64, error) {
+func (m *mockExecutor) ExecuteTxs(ctx context.Context, txs [][]byte, blockHeight uint64, timestamp time.Time, prevStateRoot []byte) ([]byte, error) {
 	if m.executeTxsFunc != nil {
 		return m.executeTxsFunc(ctx, txs, blockHeight, timestamp, prevStateRoot)
 	}
-	return []byte("updated_state_root"), 1000000, nil
+	return []byte("updated_state_root"), nil
 }
 
 func (m *mockExecutor) SetFinal(ctx context.Context, blockHeight uint64) error {
@@ -46,13 +46,12 @@ func (m *mockExecutor) SetFinal(ctx context.Context, blockHeight uint64) error {
 func TestClient_InitChain(t *testing.T) {
 	ctx := context.Background()
 	expectedStateRoot := []byte("test_state_root")
-	expectedMaxBytes := uint64(2000000)
 	genesisTime := time.Now()
 	initialHeight := uint64(1)
 	chainID := "test-chain"
 
 	mockExec := &mockExecutor{
-		initChainFunc: func(ctx context.Context, gt time.Time, ih uint64, cid string) ([]byte, uint64, error) {
+		initChainFunc: func(ctx context.Context, gt time.Time, ih uint64, cid string) ([]byte, error) {
 			if !gt.Equal(genesisTime) {
 				t.Errorf("expected genesis time %v, got %v", genesisTime, gt)
 			}
@@ -62,7 +61,7 @@ func TestClient_InitChain(t *testing.T) {
 			if cid != chainID {
 				t.Errorf("expected chain ID %s, got %s", chainID, cid)
 			}
-			return expectedStateRoot, expectedMaxBytes, nil
+			return expectedStateRoot, nil
 		},
 	}
 
@@ -75,16 +74,13 @@ func TestClient_InitChain(t *testing.T) {
 	client := NewClient(server.URL)
 
 	// Test InitChain
-	stateRoot, maxBytes, err := client.InitChain(ctx, genesisTime, initialHeight, chainID)
+	stateRoot, err := client.InitChain(ctx, genesisTime, initialHeight, chainID)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
 	if string(stateRoot) != string(expectedStateRoot) {
 		t.Errorf("expected state root %s, got %s", expectedStateRoot, stateRoot)
-	}
-	if maxBytes != expectedMaxBytes {
-		t.Errorf("expected max bytes %d, got %d", expectedMaxBytes, maxBytes)
 	}
 }
 
@@ -130,10 +126,9 @@ func TestClient_ExecuteTxs(t *testing.T) {
 	timestamp := time.Now()
 	prevStateRoot := []byte("prev_state_root")
 	expectedStateRoot := []byte("new_state_root")
-	expectedMaxBytes := uint64(3000000)
 
 	mockExec := &mockExecutor{
-		executeTxsFunc: func(ctx context.Context, txsIn [][]byte, bh uint64, ts time.Time, psr []byte) ([]byte, uint64, error) {
+		executeTxsFunc: func(ctx context.Context, txsIn [][]byte, bh uint64, ts time.Time, psr []byte) ([]byte, error) {
 			if len(txsIn) != len(txs) {
 				t.Errorf("expected %d txs, got %d", len(txs), len(txsIn))
 			}
@@ -146,7 +141,7 @@ func TestClient_ExecuteTxs(t *testing.T) {
 			if string(psr) != string(prevStateRoot) {
 				t.Errorf("expected prev state root %s, got %s", prevStateRoot, psr)
 			}
-			return expectedStateRoot, expectedMaxBytes, nil
+			return expectedStateRoot, nil
 		},
 	}
 
@@ -159,16 +154,13 @@ func TestClient_ExecuteTxs(t *testing.T) {
 	client := NewClient(server.URL)
 
 	// Test ExecuteTxs
-	stateRoot, maxBytes, err := client.ExecuteTxs(ctx, txs, blockHeight, timestamp, prevStateRoot)
+	stateRoot, err := client.ExecuteTxs(ctx, txs, blockHeight, timestamp, prevStateRoot)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
 	if string(stateRoot) != string(expectedStateRoot) {
 		t.Errorf("expected state root %s, got %s", expectedStateRoot, stateRoot)
-	}
-	if maxBytes != expectedMaxBytes {
-		t.Errorf("expected max bytes %d, got %d", expectedMaxBytes, maxBytes)
 	}
 }
 

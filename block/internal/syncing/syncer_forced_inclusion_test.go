@@ -362,7 +362,7 @@ func TestVerifyForcedInclusionTxs_AllTransactionsIncluded(t *testing.T) {
 
 	mockExec := testmocks.NewMockExecutor(t)
 	mockExec.EXPECT().InitChain(mock.Anything, mock.Anything, uint64(1), "tchain").
-		Return([]byte("app0"), uint64(1024), nil).Once()
+		Return([]byte("app0"), nil).Once()
 
 	client := testmocks.NewMockClient(t)
 	client.On("GetHeaderNamespace").Return([]byte(cfg.DA.Namespace)).Maybe()
@@ -436,7 +436,7 @@ func TestVerifyForcedInclusionTxs_MissingTransactions(t *testing.T) {
 
 	mockExec := testmocks.NewMockExecutor(t)
 	mockExec.EXPECT().InitChain(mock.Anything, mock.Anything, uint64(1), "tchain").
-		Return([]byte("app0"), uint64(1024), nil).Once()
+		Return([]byte("app0"), nil).Once()
 
 	client := testmocks.NewMockClient(t)
 	client.On("GetHeaderNamespace").Return([]byte(cfg.DA.Namespace)).Maybe()
@@ -540,7 +540,7 @@ func TestVerifyForcedInclusionTxs_PartiallyIncluded(t *testing.T) {
 
 	mockExec := testmocks.NewMockExecutor(t)
 	mockExec.EXPECT().InitChain(mock.Anything, mock.Anything, uint64(1), "tchain").
-		Return([]byte("app0"), uint64(1024), nil).Once()
+		Return([]byte("app0"), nil).Once()
 
 	client := testmocks.NewMockClient(t)
 	client.On("GetHeaderNamespace").Return([]byte(cfg.DA.Namespace)).Maybe()
@@ -648,7 +648,7 @@ func TestVerifyForcedInclusionTxs_NoForcedTransactions(t *testing.T) {
 
 	mockExec := testmocks.NewMockExecutor(t)
 	mockExec.EXPECT().InitChain(mock.Anything, mock.Anything, uint64(1), "tchain").
-		Return([]byte("app0"), uint64(1024), nil).Once()
+		Return([]byte("app0"), nil).Once()
 
 	client := testmocks.NewMockClient(t)
 	client.On("GetHeaderNamespace").Return([]byte(cfg.DA.Namespace)).Maybe()
@@ -715,7 +715,7 @@ func TestVerifyForcedInclusionTxs_NamespaceNotConfigured(t *testing.T) {
 
 	mockExec := testmocks.NewMockExecutor(t)
 	mockExec.EXPECT().InitChain(mock.Anything, mock.Anything, uint64(1), "tchain").
-		Return([]byte("app0"), uint64(1024), nil).Once()
+		Return([]byte("app0"), nil).Once()
 
 	client := testmocks.NewMockClient(t)
 	client.On("GetHeaderNamespace").Return([]byte(cfg.DA.Namespace)).Maybe()
@@ -782,7 +782,7 @@ func TestVerifyForcedInclusionTxs_DeferralWithinEpoch(t *testing.T) {
 
 	mockExec := testmocks.NewMockExecutor(t)
 	mockExec.EXPECT().InitChain(mock.Anything, mock.Anything, uint64(1), "tchain").
-		Return([]byte("app0"), uint64(1024), nil).Once()
+		Return([]byte("app0"), nil).Once()
 
 	client := testmocks.NewMockClient(t)
 	client.On("GetHeaderNamespace").Return([]byte(cfg.DA.Namespace)).Maybe()
@@ -906,7 +906,7 @@ func TestVerifyForcedInclusionTxs_MaliciousAfterEpochEnd(t *testing.T) {
 
 	mockExec := testmocks.NewMockExecutor(t)
 	mockExec.EXPECT().InitChain(mock.Anything, mock.Anything, uint64(1), "tchain").
-		Return([]byte("app0"), uint64(1024), nil).Once()
+		Return([]byte("app0"), nil).Once()
 
 	client := testmocks.NewMockClient(t)
 	client.On("GetHeaderNamespace").Return([]byte(cfg.DA.Namespace)).Maybe()
@@ -995,7 +995,7 @@ func TestVerifyForcedInclusionTxs_SmoothingExceedsEpoch(t *testing.T) {
 
 	mockExec := testmocks.NewMockExecutor(t)
 	mockExec.EXPECT().InitChain(mock.Anything, mock.Anything, uint64(1), "tchain").
-		Return([]byte("app0"), uint64(1024), nil).Once()
+		Return([]byte("app0"), nil).Once()
 
 	client := testmocks.NewMockClient(t)
 	client.On("GetHeaderNamespace").Return([]byte(cfg.DA.Namespace)).Maybe()

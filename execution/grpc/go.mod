@@ -12,3 +12,5 @@ require (
 )
 
 require golang.org/x/text v0.31.0 // indirect
+
+replace github.com/evstack/ev-node/core => ../../core

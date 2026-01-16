@@ -113,7 +113,7 @@ func TestSyncer_validateBlock_DataHashMismatch(t *testing.T) {
 	cfg := config.DefaultConfig()
 	gen := genesis.Genesis{ChainID: "tchain", InitialHeight: 1, StartTime: time.Now().Add(-time.Second), ProposerAddress: addr}
 	mockExec := testmocks.NewMockExecutor(t)
-	mockExec.EXPECT().InitChain(mock.Anything, mock.Anything, uint64(1), "tchain").Return([]byte("app0"), uint64(1024), nil).Once()
+	mockExec.EXPECT().InitChain(mock.Anything, mock.Anything, uint64(1), "tchain").Return([]byte("app0"), nil).Once()
 
 	s := NewSyncer(
 		st,
@@ -163,7 +163,7 @@ func TestProcessHeightEvent_SyncsAndUpdatesState(t *testing.T) {
 	gen := genesis.Genesis{ChainID: "tchain", InitialHeight: 1, StartTime: time.Now().Add(-time.Second), ProposerAddress: addr}
 
 	mockExec := testmocks.NewMockExecutor(t)
-	mockExec.EXPECT().InitChain(mock.Anything, mock.Anything, uint64(1), "tchain").Return([]byte("app0"), uint64(1024), nil).Once()
+	mockExec.EXPECT().InitChain(mock.Anything, mock.Anything, uint64(1), "tchain").Return([]byte("app0"), nil).Once()
 
 	errChan := make(chan error, 1)
 	s := NewSyncer(
@@ -191,7 +191,7 @@ func TestProcessHeightEvent_SyncsAndUpdatesState(t *testing.T) {
 
 	// Expect ExecuteTxs call for height 1
 	mockExec.EXPECT().ExecuteTxs(mock.Anything, mock.Anything, uint64(1), mock.Anything, lastState.AppHash).
-		Return([]byte("app1"), uint64(1024), nil).Once()
+		Return([]byte("app1"), nil).Once()
 
 	evt := common.DAHeightEvent{Header: hdr, Data: data, DaHeight: 1}
 	s.processHeightEvent(&evt)
@@ -217,7 +217,7 @@ func TestSequentialBlockSync(t *testing.T) {
 	gen := genesis.Genesis{ChainID: "tchain", InitialHeight: 1, StartTime: time.Now().Add(-time.Second), ProposerAddress: addr}
 
 	mockExec := testmocks.NewMockExecutor(t)
-	mockExec.EXPECT().InitChain(mock.Anything, mock.Anything, uint64(1), "tchain").Return([]byte("app0"), uint64(1024), nil).Once()
+	mockExec.EXPECT().InitChain(mock.Anything, mock.Anything, uint64(1), "tchain").Return([]byte("app0"), nil).Once()
 
 	errChan := make(chan error, 1)
 	s := NewSyncer(
@@ -243,7 +243,7 @@ func TestSequentialBlockSync(t *testing.T) {
 	_, hdr1 := makeSignedHeaderBytes(t, gen.ChainID, 1, addr, pub, signer, st0.AppHash, data1, st0.LastHeaderHash)
 	// Expect ExecuteTxs call for height 1
 	mockExec.EXPECT().ExecuteTxs(mock.Anything, mock.Anything, uint64(1), mock.Anything, st0.AppHash).
-		Return([]byte("app1"), uint64(1024), nil).Once()
+		Return([]byte("app1"), nil).Once()
 	evt1 := common.DAHeightEvent{Header: hdr1, Data: data1, DaHeight: 10}
 	s.processHeightEvent(&evt1)
 
@@ -252,7 +252,7 @@ func TestSequentialBlockSync(t *testing.T) {
 	_, hdr2 := makeSignedHeaderBytes(t, gen.ChainID, 2, addr, pub, signer, st1.AppHash, data2, st1.LastHeaderHash)
 	// Expect ExecuteTxs call for height 2
 	mockExec.EXPECT().ExecuteTxs(mock.Anything, mock.Anything, uint64(2), mock.Anything, st1.AppHash).
-		Return([]byte("app2"), uint64(1024), nil).Once()
+		Return([]byte("app2"), nil).Once()
 	evt2 := common.DAHeightEvent{Header: hdr2, Data: data2, DaHeight: 11}
 	s.processHeightEvent(&evt2)
 
@@ -378,7 +378,7 @@ func TestSyncLoopPersistState(t *testing.T) {
 
 	// with n da blobs fetched
 	var prevHeaderHash, prevAppHash []byte
-	prevAppHash, _, _ = execution.NewDummyExecutor().InitChain(t.Context(), gen.StartTime, gen.DAStartHeight, gen.ChainID)
+	prevAppHash, _ = execution.NewDummyExecutor().InitChain(t.Context(), gen.StartTime, gen.DAStartHeight, gen.ChainID)
 	for i := range numBlocks {
 		chainHeight, daHeight := gen.InitialHeight+i, i+myDAHeightOffset
 		blockTime := gen.StartTime.Add(time.Duration(chainHeight+1) * time.Second)
@@ -496,7 +496,7 @@ func TestSyncer_executeTxsWithRetry(t *testing.T) {
 			name: "success on first attempt",
 			setupMock: func(exec *testmocks.MockExecutor) {
 				exec.On("ExecuteTxs", mock.Anything, mock.Anything, uint64(100), mock.Anything, mock.Anything).
-					Return([]byte("new-hash"), uint64(0), nil).Once()
+					Return([]byte("new-hash"), nil).Once()
 			},
 			expectSuccess: true,
 			expectHash:    []byte("new-hash"),
@@ -505,9 +505,9 @@ func TestSyncer_executeTxsWithRetry(t *testing.T) {
 			name: "success on second attempt",
 			setupMock: func(exec *testmocks.MockExecutor) {
 				exec.On("ExecuteTxs", mock.Anything, mock.Anything, uint64(100), mock.Anything, mock.Anything).
-					Return([]byte(nil), uint64(0), errors.New("temporary failure")).Once()
+					Return([]byte(nil), errors.New("temporary failure")).Once()
 				exec.On("ExecuteTxs", mock.Anything, mock.Anything, uint64(100), mock.Anything, mock.Anything).
-					Return([]byte("new-hash"), uint64(0), nil).Once()
+					Return([]byte("new-hash"), nil).Once()
 			},
 			expectSuccess: true,
 			expectHash:    []byte("new-hash"),
@@ -516,9 +516,9 @@ func TestSyncer_executeTxsWithRetry(t *testing.T) {
 			name: "success on third attempt",
 			setupMock: func(exec *testmocks.MockExecutor) {
 				exec.On("ExecuteTxs", mock.Anything, mock.Anything, uint64(100), mock.Anything, mock.Anything).
-					Return([]byte(nil), uint64(0), errors.New("temporary failure")).Times(2)
+					Return([]byte(nil), errors.New("temporary failure")).Times(2)
 				exec.On("ExecuteTxs", mock.Anything, mock.Anything, uint64(100), mock.Anything, mock.Anything).
-					Return([]byte("new-hash"), uint64(0), nil).Once()
+					Return([]byte("new-hash"), nil).Once()
 			},
 			expectSuccess: true,
 			expectHash:    []byte("new-hash"),
@@ -527,7 +527,7 @@ func TestSyncer_executeTxsWithRetry(t *testing.T) {
 			name: "failure after max retries",
 			setupMock: func(exec *testmocks.MockExecutor) {
 				exec.On("ExecuteTxs", mock.Anything, mock.Anything, uint64(100), mock.Anything, mock.Anything).
-					Return([]byte(nil), uint64(0), errors.New("persistent failure")).Times(common.MaxRetriesBeforeHalt)
+					Return([]byte(nil), errors.New("persistent failure")).Times(common.MaxRetriesBeforeHalt)
 			},
 			expectSuccess: false,
 			expectError:   "failed to execute transactions",

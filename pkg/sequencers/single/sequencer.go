@@ -15,6 +15,7 @@ import (
 	"github.com/rs/zerolog"
 
 	"github.com/evstack/ev-node/block"
+	"github.com/evstack/ev-node/core/execution"
 	coresequencer "github.com/evstack/ev-node/core/sequencer"
 	"github.com/evstack/ev-node/pkg/config"
 	datypes "github.com/evstack/ev-node/pkg/da/types"
@@ -50,6 +51,11 @@ type Sequencer struct {
 
 	// Cached forced inclusion transactions from the current epoch
 	cachedForcedInclusionTxs [][]byte
+
+	// DA transaction filtering support (optional)
+	// When set, forced inclusion transactions are filtered by gas limit
+	txFilter     execution.DATransactionFilter
+	infoProvider execution.ExecutionInfoProvider
 }
 
 // NewSequencer creates a new Single Sequencer
@@ -114,6 +120,15 @@ func NewSequencer(
 	s.fiRetriever = block.NewForcedInclusionRetriever(daClient, cfg, logger, initialDAHeight, genesis.DAEpochForcedInclusion)
 
 	return s, nil
+}
+
+// SetDATransactionFilter sets the optional DA transaction filter and execution info provider.
+// When set, forced inclusion transactions will be filtered by gas limit before being included in batches.
+// This should be called after NewSequencer and before Start if filtering is desired.
+func (c *Sequencer) SetDATransactionFilter(filter execution.DATransactionFilter, infoProvider execution.ExecutionInfoProvider) {
+	c.txFilter = filter
+	c.infoProvider = infoProvider
+	c.logger.Info().Msg("DA transaction filter configured for gas-based filtering")
 }
 
 // getInitialDAStartHeight retrieves the DA height of the first included chain height from store.
@@ -201,18 +216,66 @@ func (c *Sequencer) GetNextBatch(ctx context.Context, req coresequencer.GetNextB
 	// Process forced inclusion transactions from checkpoint position
 	forcedTxs := c.processForcedInclusionTxsFromCheckpoint(req.MaxBytes)
 
+	// Apply gas-based filtering if filter is configured
+	var filteredForcedTxs [][]byte
+	var remainingGasFilteredTxs [][]byte
+	if c.txFilter != nil && c.infoProvider != nil && len(forcedTxs) > 0 {
+		// Get current gas limit from execution layer
+		info, err := c.infoProvider.GetExecutionInfo(ctx, 0) // 0 = latest/next block
+		if err != nil {
+			c.logger.Warn().Err(err).Msg("failed to get execution info for gas filtering, proceeding without gas filter")
+			filteredForcedTxs = forcedTxs
+		} else if info.MaxGas > 0 {
+			// Filter by gas limit
+			filteredForcedTxs, remainingGasFilteredTxs, err = c.txFilter.FilterDATransactions(ctx, forcedTxs, info.MaxGas)
+			if err != nil {
+				c.logger.Warn().Err(err).Msg("failed to filter DA transactions by gas, proceeding without gas filter")
+				filteredForcedTxs = forcedTxs
+			} else {
+				c.logger.Debug().
+					Int("input_forced_txs", len(forcedTxs)).
+					Int("filtered_forced_txs", len(filteredForcedTxs)).
+					Int("remaining_for_next_block", len(remainingGasFilteredTxs)).
+					Uint64("max_gas", info.MaxGas).
+					Msg("filtered forced inclusion transactions by gas limit")
+			}
+		} else {
+			// MaxGas is 0, no gas-based filtering
+			filteredForcedTxs = forcedTxs
+		}
+	} else {
+		filteredForcedTxs = forcedTxs
+	}
+
 	// Calculate size used by forced inclusion transactions
 	forcedTxsSize := 0
-	for _, tx := range forcedTxs {
+	for _, tx := range filteredForcedTxs {
 		forcedTxsSize += len(tx)
 	}
 
 	// Update checkpoint after consuming forced inclusion transactions
+	// Only advance checkpoint by the number of txs actually included (after gas filtering)
+	// Note: gibberish txs filtered by FilterDATransactions are permanently skipped,
+	// but gas-filtered valid txs (remainingGasFilteredTxs) stay in cache for next block
 	if daHeight > 0 || len(forcedTxs) > 0 {
-		c.checkpoint.TxIndex += uint64(len(forcedTxs))
+		// Count how many txs we're actually consuming from the checkpoint
+		// This is: filteredForcedTxs + (original forcedTxs - filteredForcedTxs - remainingGasFilteredTxs)
+		// The difference (original - filtered - remaining) represents gibberish that was filtered out
+		txsConsumed := uint64(len(forcedTxs) - len(remainingGasFilteredTxs))
+		c.checkpoint.TxIndex += txsConsumed
 
-		// If we've consumed all transactions from this DA epoch, move to next
-		if c.checkpoint.TxIndex >= uint64(len(c.cachedForcedInclusionTxs)) {
+		// If we have remaining gas-filtered txs, don't advance to next epoch yet
+		// These will be picked up in the next GetNextBatch call
+		if len(remainingGasFilteredTxs) > 0 {
+			// Update cached txs to only contain the remaining ones
+			c.cachedForcedInclusionTxs = remainingGasFilteredTxs
+			c.checkpoint.TxIndex = 0 // Reset index since we're replacing the cache
+
+			c.logger.Debug().
+				Int("remaining_txs", len(remainingGasFilteredTxs)).
+				Msg("keeping gas-filtered transactions for next block")
+		} else if c.checkpoint.TxIndex >= uint64(len(c.cachedForcedInclusionTxs)) {
+			// If we've consumed all transactions from this DA epoch, move to next
 			c.checkpoint.DAHeight = daHeight + 1
 			c.checkpoint.TxIndex = 0
 			c.cachedForcedInclusionTxs = nil
@@ -227,11 +290,14 @@ func (c *Sequencer) GetNextBatch(ctx context.Context, req coresequencer.GetNextB
 		}
 
 		c.logger.Debug().
-			Int("forced_tx_count", len(forcedTxs)).
+			Int("forced_tx_count", len(filteredForcedTxs)).
 			Uint64("checkpoint_da_height", c.checkpoint.DAHeight).
 			Uint64("checkpoint_tx_index", c.checkpoint.TxIndex).
 			Msg("processed forced inclusion transactions and updated checkpoint")
 	}
+
+	// Use filtered forced txs for the rest of the function
+	forcedTxs = filteredForcedTxs
 
 	batch, err := c.queue.Next(ctx)
 	if err != nil {

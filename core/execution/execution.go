@@ -5,11 +5,18 @@ import (
 	"time"
 )
 
+// ExecutionInfo contains execution layer parameters that may change per block.
+type ExecutionInfo struct {
+	// MaxGas is the maximum gas allowed for transactions in a block.
+	// For non-gas-based execution layers, this should be 0.
+	MaxGas uint64
+}
+
 // Executor defines the interface that execution clients must implement to be compatible with Evolve.
 // This interface enables the separation between consensus and execution layers, allowing for modular
 // and pluggable execution environments.
 //
-// Note: if you are modifying this interface, ensure that all implementations are compatible (evm, abci, protobuf/grpc, etc..
+// Note: if you are modifying this interface, ensure that all implementations are compatible (evm, abci, protobuf/grpc, etc.)
 type Executor interface {
 	// InitChain initializes a new blockchain instance with genesis parameters.
 	// Requirements:
@@ -17,7 +24,6 @@ type Executor interface {
 	// - Must validate and store genesis parameters for future reference
 	// - Must ensure idempotency (repeated calls with identical parameters should return same results)
 	// - Must return error if genesis parameters are invalid
-	// - Must return maxBytes indicating maximum allowed bytes for a set of transactions in a block
 	//
 	// Parameters:
 	// - ctx: Context for timeout/cancellation control
@@ -27,9 +33,8 @@ type Executor interface {
 	//
 	// Returns:
 	// - stateRoot: Hash representing initial state
-	// - maxBytes: Maximum allowed bytes for transactions in a block
 	// - err: Any initialization errors
-	InitChain(ctx context.Context, genesisTime time.Time, initialHeight uint64, chainID string) (stateRoot []byte, maxBytes uint64, err error)
+	InitChain(ctx context.Context, genesisTime time.Time, initialHeight uint64, chainID string) (stateRoot []byte, err error)
 
 	// GetTxs fetches available transactions from the execution layer's mempool.
 	// Requirements:
@@ -44,7 +49,7 @@ type Executor interface {
 	// - ctx: Context for timeout/cancellation control
 	//
 	// Returns:
-	// - []types.Tx: Slice of valid transactions
+	// - [][]byte: Slice of valid transactions
 	// - error: Any errors during transaction retrieval
 	GetTxs(ctx context.Context) ([][]byte, error)
 
@@ -66,9 +71,8 @@ type Executor interface {
 	//
 	// Returns:
 	// - updatedStateRoot: New state root after executing transactions
-	// - maxBytes: Maximum allowed transaction size (may change with protocol updates)
 	// - err: Any execution errors
-	ExecuteTxs(ctx context.Context, txs [][]byte, blockHeight uint64, timestamp time.Time, prevStateRoot []byte) (updatedStateRoot []byte, maxBytes uint64, err error)
+	ExecuteTxs(ctx context.Context, txs [][]byte, blockHeight uint64, timestamp time.Time, prevStateRoot []byte) (updatedStateRoot []byte, err error)
 
 	// SetFinal marks a block as finalized at the specified height.
 	// Requirements:
@@ -85,6 +89,42 @@ type Executor interface {
 	// Returns:
 	// - error: Any errors during finalization
 	SetFinal(ctx context.Context, blockHeight uint64) error
+
+	// GetExecutionInfo returns current execution layer parameters.
+	// The height parameter allows querying info for a specific block height.
+	// Use height=0 to get parameters for the next block (based on latest state).
+	//
+	// For non-gas-based execution layers, return ExecutionInfo{MaxGas: 0}.
+	//
+	// Parameters:
+	// - ctx: Context for timeout/cancellation control
+	// - height: Block height to query (0 for next block parameters)
+	//
+	// Returns:
+	// - info: Current execution parameters
+	// - error: Any errors during retrieval
+	GetExecutionInfo(ctx context.Context, height uint64) (ExecutionInfo, error)
+
+	// FilterDATransactions validates and filters force-included transactions from DA.
+	// It performs execution-layer specific validation (e.g., EVM tx parsing, gas checks)
+	// and returns transactions that are valid and fit within the gas limit.
+	//
+	// The function filters out:
+	// - Invalid/unparseable transactions (gibberish)
+	// - Transactions that would exceed the cumulative gas limit
+	//
+	// For non-gas-based execution layers, return all valid transactions with nil remainingTxs.
+	//
+	// Parameters:
+	// - ctx: Context for timeout/cancellation control
+	// - txs: Raw transactions from DA to validate
+	// - maxGas: Maximum cumulative gas allowed for these transactions
+	//
+	// Returns:
+	// - validTxs: Transactions that passed validation and fit within maxGas
+	// - remainingTxs: Valid transactions that didn't fit due to gas limit (for re-queuing)
+	// - err: Any errors during filtering (not validation errors, which result in filtering)
+	FilterDATransactions(ctx context.Context, txs [][]byte, maxGas uint64) (validTxs [][]byte, remainingTxs [][]byte, err error)
 }
 
 // HeightProvider is an optional interface that execution clients can implement
