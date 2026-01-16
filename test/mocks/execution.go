@@ -8,6 +8,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/evstack/ev-node/core/execution"
 	mock "github.com/stretchr/testify/mock"
 )
 
@@ -120,6 +121,154 @@ func (_c *MockExecutor_ExecuteTxs_Call) Return(updatedStateRoot []byte, err erro
 }
 
 func (_c *MockExecutor_ExecuteTxs_Call) RunAndReturn(run func(ctx context.Context, txs [][]byte, blockHeight uint64, timestamp time.Time, prevStateRoot []byte) ([]byte, error)) *MockExecutor_ExecuteTxs_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// FilterDATransactions provides a mock function for the type MockExecutor
+func (_mock *MockExecutor) FilterDATransactions(ctx context.Context, txs [][]byte, maxGas uint64) ([][]byte, [][]byte, error) {
+	ret := _mock.Called(ctx, txs, maxGas)
+
+	if len(ret) == 0 {
+		panic("no return value specified for FilterDATransactions")
+	}
+
+	var r0 [][]byte
+	var r1 [][]byte
+	var r2 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, [][]byte, uint64) ([][]byte, [][]byte, error)); ok {
+		return returnFunc(ctx, txs, maxGas)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, [][]byte, uint64) [][]byte); ok {
+		r0 = returnFunc(ctx, txs, maxGas)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).([][]byte)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, [][]byte, uint64) [][]byte); ok {
+		r1 = returnFunc(ctx, txs, maxGas)
+	} else {
+		if ret.Get(1) != nil {
+			r1 = ret.Get(1).([][]byte)
+		}
+	}
+	if returnFunc, ok := ret.Get(2).(func(context.Context, [][]byte, uint64) error); ok {
+		r2 = returnFunc(ctx, txs, maxGas)
+	} else {
+		r2 = ret.Error(2)
+	}
+	return r0, r1, r2
+}
+
+// MockExecutor_FilterDATransactions_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'FilterDATransactions'
+type MockExecutor_FilterDATransactions_Call struct {
+	*mock.Call
+}
+
+// FilterDATransactions is a helper method to define mock.On call
+//   - ctx context.Context
+//   - txs [][]byte
+//   - maxGas uint64
+func (_e *MockExecutor_Expecter) FilterDATransactions(ctx interface{}, txs interface{}, maxGas interface{}) *MockExecutor_FilterDATransactions_Call {
+	return &MockExecutor_FilterDATransactions_Call{Call: _e.mock.On("FilterDATransactions", ctx, txs, maxGas)}
+}
+
+func (_c *MockExecutor_FilterDATransactions_Call) Run(run func(ctx context.Context, txs [][]byte, maxGas uint64)) *MockExecutor_FilterDATransactions_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 [][]byte
+		if args[1] != nil {
+			arg1 = args[1].([][]byte)
+		}
+		var arg2 uint64
+		if args[2] != nil {
+			arg2 = args[2].(uint64)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+		)
+	})
+	return _c
+}
+
+func (_c *MockExecutor_FilterDATransactions_Call) Return(validTxs [][]byte, remainingTxs [][]byte, err error) *MockExecutor_FilterDATransactions_Call {
+	_c.Call.Return(validTxs, remainingTxs, err)
+	return _c
+}
+
+func (_c *MockExecutor_FilterDATransactions_Call) RunAndReturn(run func(ctx context.Context, txs [][]byte, maxGas uint64) ([][]byte, [][]byte, error)) *MockExecutor_FilterDATransactions_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// GetExecutionInfo provides a mock function for the type MockExecutor
+func (_mock *MockExecutor) GetExecutionInfo(ctx context.Context, height uint64) (execution.ExecutionInfo, error) {
+	ret := _mock.Called(ctx, height)
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetExecutionInfo")
+	}
+
+	var r0 execution.ExecutionInfo
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, uint64) (execution.ExecutionInfo, error)); ok {
+		return returnFunc(ctx, height)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, uint64) execution.ExecutionInfo); ok {
+		r0 = returnFunc(ctx, height)
+	} else {
+		r0 = ret.Get(0).(execution.ExecutionInfo)
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, uint64) error); ok {
+		r1 = returnFunc(ctx, height)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}
+
+// MockExecutor_GetExecutionInfo_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetExecutionInfo'
+type MockExecutor_GetExecutionInfo_Call struct {
+	*mock.Call
+}
+
+// GetExecutionInfo is a helper method to define mock.On call
+//   - ctx context.Context
+//   - height uint64
+func (_e *MockExecutor_Expecter) GetExecutionInfo(ctx interface{}, height interface{}) *MockExecutor_GetExecutionInfo_Call {
+	return &MockExecutor_GetExecutionInfo_Call{Call: _e.mock.On("GetExecutionInfo", ctx, height)}
+}
+
+func (_c *MockExecutor_GetExecutionInfo_Call) Run(run func(ctx context.Context, height uint64)) *MockExecutor_GetExecutionInfo_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 uint64
+		if args[1] != nil {
+			arg1 = args[1].(uint64)
+		}
+		run(
+			arg0,
+			arg1,
+		)
+	})
+	return _c
+}
+
+func (_c *MockExecutor_GetExecutionInfo_Call) Return(executionInfo execution.ExecutionInfo, err error) *MockExecutor_GetExecutionInfo_Call {
+	_c.Call.Return(executionInfo, err)
+	return _c
+}
+
+func (_c *MockExecutor_GetExecutionInfo_Call) RunAndReturn(run func(ctx context.Context, height uint64) (execution.ExecutionInfo, error)) *MockExecutor_GetExecutionInfo_Call {
 	_c.Call.Return(run)
 	return _c
 }

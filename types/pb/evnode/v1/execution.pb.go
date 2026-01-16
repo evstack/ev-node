@@ -435,6 +435,209 @@ func (*SetFinalResponse) Descriptor() ([]byte, []int) {
 	return file_evnode_v1_execution_proto_rawDescGZIP(), []int{7}
 }
 
+// GetExecutionInfoRequest requests execution layer parameters
+type GetExecutionInfoRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Block height to query (0 for next block parameters)
+	Height        uint64 `protobuf:"varint,1,opt,name=height,proto3" json:"height,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetExecutionInfoRequest) Reset() {
+	*x = GetExecutionInfoRequest{}
+	mi := &file_evnode_v1_execution_proto_msgTypes[8]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetExecutionInfoRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetExecutionInfoRequest) ProtoMessage() {}
+
+func (x *GetExecutionInfoRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_evnode_v1_execution_proto_msgTypes[8]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetExecutionInfoRequest.ProtoReflect.Descriptor instead.
+func (*GetExecutionInfoRequest) Descriptor() ([]byte, []int) {
+	return file_evnode_v1_execution_proto_rawDescGZIP(), []int{8}
+}
+
+func (x *GetExecutionInfoRequest) GetHeight() uint64 {
+	if x != nil {
+		return x.Height
+	}
+	return 0
+}
+
+// GetExecutionInfoResponse contains execution layer parameters
+type GetExecutionInfoResponse struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Maximum gas allowed for transactions in a block
+	// For non-gas-based execution layers, this should be 0
+	MaxGas        uint64 `protobuf:"varint,1,opt,name=max_gas,json=maxGas,proto3" json:"max_gas,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetExecutionInfoResponse) Reset() {
+	*x = GetExecutionInfoResponse{}
+	mi := &file_evnode_v1_execution_proto_msgTypes[9]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetExecutionInfoResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetExecutionInfoResponse) ProtoMessage() {}
+
+func (x *GetExecutionInfoResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_evnode_v1_execution_proto_msgTypes[9]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetExecutionInfoResponse.ProtoReflect.Descriptor instead.
+func (*GetExecutionInfoResponse) Descriptor() ([]byte, []int) {
+	return file_evnode_v1_execution_proto_rawDescGZIP(), []int{9}
+}
+
+func (x *GetExecutionInfoResponse) GetMaxGas() uint64 {
+	if x != nil {
+		return x.MaxGas
+	}
+	return 0
+}
+
+// FilterDATransactionsRequest contains transactions to validate and filter
+type FilterDATransactionsRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Raw transactions from DA to validate
+	Txs [][]byte `protobuf:"bytes,1,rep,name=txs,proto3" json:"txs,omitempty"`
+	// Maximum cumulative gas allowed for these transactions
+	MaxGas        uint64 `protobuf:"varint,2,opt,name=max_gas,json=maxGas,proto3" json:"max_gas,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *FilterDATransactionsRequest) Reset() {
+	*x = FilterDATransactionsRequest{}
+	mi := &file_evnode_v1_execution_proto_msgTypes[10]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *FilterDATransactionsRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*FilterDATransactionsRequest) ProtoMessage() {}
+
+func (x *FilterDATransactionsRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_evnode_v1_execution_proto_msgTypes[10]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use FilterDATransactionsRequest.ProtoReflect.Descriptor instead.
+func (*FilterDATransactionsRequest) Descriptor() ([]byte, []int) {
+	return file_evnode_v1_execution_proto_rawDescGZIP(), []int{10}
+}
+
+func (x *FilterDATransactionsRequest) GetTxs() [][]byte {
+	if x != nil {
+		return x.Txs
+	}
+	return nil
+}
+
+func (x *FilterDATransactionsRequest) GetMaxGas() uint64 {
+	if x != nil {
+		return x.MaxGas
+	}
+	return 0
+}
+
+// FilterDATransactionsResponse contains the filtered transactions
+type FilterDATransactionsResponse struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Transactions that passed validation and fit within maxGas
+	ValidTxs [][]byte `protobuf:"bytes,1,rep,name=valid_txs,json=validTxs,proto3" json:"valid_txs,omitempty"`
+	// Valid transactions that didn't fit due to gas limit (for re-queuing)
+	RemainingTxs  [][]byte `protobuf:"bytes,2,rep,name=remaining_txs,json=remainingTxs,proto3" json:"remaining_txs,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *FilterDATransactionsResponse) Reset() {
+	*x = FilterDATransactionsResponse{}
+	mi := &file_evnode_v1_execution_proto_msgTypes[11]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *FilterDATransactionsResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*FilterDATransactionsResponse) ProtoMessage() {}
+
+func (x *FilterDATransactionsResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_evnode_v1_execution_proto_msgTypes[11]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use FilterDATransactionsResponse.ProtoReflect.Descriptor instead.
+func (*FilterDATransactionsResponse) Descriptor() ([]byte, []int) {
+	return file_evnode_v1_execution_proto_rawDescGZIP(), []int{11}
+}
+
+func (x *FilterDATransactionsResponse) GetValidTxs() [][]byte {
+	if x != nil {
+		return x.ValidTxs
+	}
+	return nil
+}
+
+func (x *FilterDATransactionsResponse) GetRemainingTxs() [][]byte {
+	if x != nil {
+		return x.RemainingTxs
+	}
+	return nil
+}
+
 var File_evnode_v1_execution_proto protoreflect.FileDescriptor
 
 const file_evnode_v1_execution_proto_rawDesc = "" +
@@ -461,13 +664,25 @@ const file_evnode_v1_execution_proto_rawDesc = "" +
 	"\tmax_bytes\x18\x02 \x01(\x04R\bmaxBytes\"4\n" +
 	"\x0fSetFinalRequest\x12!\n" +
 	"\fblock_height\x18\x01 \x01(\x04R\vblockHeight\"\x12\n" +
-	"\x10SetFinalResponse2\xb0\x02\n" +
+	"\x10SetFinalResponse\"1\n" +
+	"\x17GetExecutionInfoRequest\x12\x16\n" +
+	"\x06height\x18\x01 \x01(\x04R\x06height\"3\n" +
+	"\x18GetExecutionInfoResponse\x12\x17\n" +
+	"\amax_gas\x18\x01 \x01(\x04R\x06maxGas\"H\n" +
+	"\x1bFilterDATransactionsRequest\x12\x10\n" +
+	"\x03txs\x18\x01 \x03(\fR\x03txs\x12\x17\n" +
+	"\amax_gas\x18\x02 \x01(\x04R\x06maxGas\"`\n" +
+	"\x1cFilterDATransactionsResponse\x12\x1b\n" +
+	"\tvalid_txs\x18\x01 \x03(\fR\bvalidTxs\x12#\n" +
+	"\rremaining_txs\x18\x02 \x03(\fR\fremainingTxs2\xfa\x03\n" +
 	"\x0fExecutorService\x12H\n" +
 	"\tInitChain\x12\x1b.evnode.v1.InitChainRequest\x1a\x1c.evnode.v1.InitChainResponse\"\x00\x12?\n" +
 	"\x06GetTxs\x12\x18.evnode.v1.GetTxsRequest\x1a\x19.evnode.v1.GetTxsResponse\"\x00\x12K\n" +
 	"\n" +
 	"ExecuteTxs\x12\x1c.evnode.v1.ExecuteTxsRequest\x1a\x1d.evnode.v1.ExecuteTxsResponse\"\x00\x12E\n" +
-	"\bSetFinal\x12\x1a.evnode.v1.SetFinalRequest\x1a\x1b.evnode.v1.SetFinalResponse\"\x00B/Z-github.com/evstack/ev-node/types/pb/evnode/v1b\x06proto3"
+	"\bSetFinal\x12\x1a.evnode.v1.SetFinalRequest\x1a\x1b.evnode.v1.SetFinalResponse\"\x00\x12]\n" +
+	"\x10GetExecutionInfo\x12\".evnode.v1.GetExecutionInfoRequest\x1a#.evnode.v1.GetExecutionInfoResponse\"\x00\x12i\n" +
+	"\x14FilterDATransactions\x12&.evnode.v1.FilterDATransactionsRequest\x1a'.evnode.v1.FilterDATransactionsResponse\"\x00B/Z-github.com/evstack/ev-node/types/pb/evnode/v1b\x06proto3"
 
 var (
 	file_evnode_v1_execution_proto_rawDescOnce sync.Once
@@ -481,34 +696,42 @@ func file_evnode_v1_execution_proto_rawDescGZIP() []byte {
 	return file_evnode_v1_execution_proto_rawDescData
 }
 
-var file_evnode_v1_execution_proto_msgTypes = make([]protoimpl.MessageInfo, 8)
+var file_evnode_v1_execution_proto_msgTypes = make([]protoimpl.MessageInfo, 12)
 var file_evnode_v1_execution_proto_goTypes = []any{
-	(*InitChainRequest)(nil),      // 0: evnode.v1.InitChainRequest
-	(*InitChainResponse)(nil),     // 1: evnode.v1.InitChainResponse
-	(*GetTxsRequest)(nil),         // 2: evnode.v1.GetTxsRequest
-	(*GetTxsResponse)(nil),        // 3: evnode.v1.GetTxsResponse
-	(*ExecuteTxsRequest)(nil),     // 4: evnode.v1.ExecuteTxsRequest
-	(*ExecuteTxsResponse)(nil),    // 5: evnode.v1.ExecuteTxsResponse
-	(*SetFinalRequest)(nil),       // 6: evnode.v1.SetFinalRequest
-	(*SetFinalResponse)(nil),      // 7: evnode.v1.SetFinalResponse
-	(*timestamppb.Timestamp)(nil), // 8: google.protobuf.Timestamp
+	(*InitChainRequest)(nil),             // 0: evnode.v1.InitChainRequest
+	(*InitChainResponse)(nil),            // 1: evnode.v1.InitChainResponse
+	(*GetTxsRequest)(nil),                // 2: evnode.v1.GetTxsRequest
+	(*GetTxsResponse)(nil),               // 3: evnode.v1.GetTxsResponse
+	(*ExecuteTxsRequest)(nil),            // 4: evnode.v1.ExecuteTxsRequest
+	(*ExecuteTxsResponse)(nil),           // 5: evnode.v1.ExecuteTxsResponse
+	(*SetFinalRequest)(nil),              // 6: evnode.v1.SetFinalRequest
+	(*SetFinalResponse)(nil),             // 7: evnode.v1.SetFinalResponse
+	(*GetExecutionInfoRequest)(nil),      // 8: evnode.v1.GetExecutionInfoRequest
+	(*GetExecutionInfoResponse)(nil),     // 9: evnode.v1.GetExecutionInfoResponse
+	(*FilterDATransactionsRequest)(nil),  // 10: evnode.v1.FilterDATransactionsRequest
+	(*FilterDATransactionsResponse)(nil), // 11: evnode.v1.FilterDATransactionsResponse
+	(*timestamppb.Timestamp)(nil),        // 12: google.protobuf.Timestamp
 }
 var file_evnode_v1_execution_proto_depIdxs = []int32{
-	8, // 0: evnode.v1.InitChainRequest.genesis_time:type_name -> google.protobuf.Timestamp
-	8, // 1: evnode.v1.ExecuteTxsRequest.timestamp:type_name -> google.protobuf.Timestamp
-	0, // 2: evnode.v1.ExecutorService.InitChain:input_type -> evnode.v1.InitChainRequest
-	2, // 3: evnode.v1.ExecutorService.GetTxs:input_type -> evnode.v1.GetTxsRequest
-	4, // 4: evnode.v1.ExecutorService.ExecuteTxs:input_type -> evnode.v1.ExecuteTxsRequest
-	6, // 5: evnode.v1.ExecutorService.SetFinal:input_type -> evnode.v1.SetFinalRequest
-	1, // 6: evnode.v1.ExecutorService.InitChain:output_type -> evnode.v1.InitChainResponse
-	3, // 7: evnode.v1.ExecutorService.GetTxs:output_type -> evnode.v1.GetTxsResponse
-	5, // 8: evnode.v1.ExecutorService.ExecuteTxs:output_type -> evnode.v1.ExecuteTxsResponse
-	7, // 9: evnode.v1.ExecutorService.SetFinal:output_type -> evnode.v1.SetFinalResponse
-	6, // [6:10] is the sub-list for method output_type
-	2, // [2:6] is the sub-list for method input_type
-	2, // [2:2] is the sub-list for extension type_name
-	2, // [2:2] is the sub-list for extension extendee
-	0, // [0:2] is the sub-list for field type_name
+	12, // 0: evnode.v1.InitChainRequest.genesis_time:type_name -> google.protobuf.Timestamp
+	12, // 1: evnode.v1.ExecuteTxsRequest.timestamp:type_name -> google.protobuf.Timestamp
+	0,  // 2: evnode.v1.ExecutorService.InitChain:input_type -> evnode.v1.InitChainRequest
+	2,  // 3: evnode.v1.ExecutorService.GetTxs:input_type -> evnode.v1.GetTxsRequest
+	4,  // 4: evnode.v1.ExecutorService.ExecuteTxs:input_type -> evnode.v1.ExecuteTxsRequest
+	6,  // 5: evnode.v1.ExecutorService.SetFinal:input_type -> evnode.v1.SetFinalRequest
+	8,  // 6: evnode.v1.ExecutorService.GetExecutionInfo:input_type -> evnode.v1.GetExecutionInfoRequest
+	10, // 7: evnode.v1.ExecutorService.FilterDATransactions:input_type -> evnode.v1.FilterDATransactionsRequest
+	1,  // 8: evnode.v1.ExecutorService.InitChain:output_type -> evnode.v1.InitChainResponse
+	3,  // 9: evnode.v1.ExecutorService.GetTxs:output_type -> evnode.v1.GetTxsResponse
+	5,  // 10: evnode.v1.ExecutorService.ExecuteTxs:output_type -> evnode.v1.ExecuteTxsResponse
+	7,  // 11: evnode.v1.ExecutorService.SetFinal:output_type -> evnode.v1.SetFinalResponse
+	9,  // 12: evnode.v1.ExecutorService.GetExecutionInfo:output_type -> evnode.v1.GetExecutionInfoResponse
+	11, // 13: evnode.v1.ExecutorService.FilterDATransactions:output_type -> evnode.v1.FilterDATransactionsResponse
+	8,  // [8:14] is the sub-list for method output_type
+	2,  // [2:8] is the sub-list for method input_type
+	2,  // [2:2] is the sub-list for extension type_name
+	2,  // [2:2] is the sub-list for extension extendee
+	0,  // [0:2] is the sub-list for field type_name
 }
 
 func init() { file_evnode_v1_execution_proto_init() }
@@ -522,7 +745,7 @@ func file_evnode_v1_execution_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_evnode_v1_execution_proto_rawDesc), len(file_evnode_v1_execution_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   8,
+			NumMessages:   12,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

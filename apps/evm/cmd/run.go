@@ -194,13 +194,8 @@ func createSequencer(
 		return nil, fmt.Errorf("failed to create single sequencer: %w", err)
 	}
 
-	// Configure DA transaction filter if executor supports it
-	if filter, ok := executor.(execution.DATransactionFilter); ok {
-		if infoProvider, ok := executor.(execution.ExecutionInfoProvider); ok {
-			sequencer.SetDATransactionFilter(filter, infoProvider)
-			logger.Info().Msg("DA transaction filter configured for gas-based filtering")
-		}
-	}
+	// Configure executor for DA transaction gas-based filtering
+	sequencer.SetExecutor(executor)
 
 	logger.Info().
 		Str("forced_inclusion_namespace", nodeConfig.DA.GetForcedInclusionNamespace()).

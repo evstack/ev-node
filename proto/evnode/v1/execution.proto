@@ -18,6 +18,12 @@ service ExecutorService {
 
   // SetFinal marks a block as finalized at the specified height
   rpc SetFinal(SetFinalRequest) returns (SetFinalResponse) {}
+
+  // GetExecutionInfo returns current execution layer parameters
+  rpc GetExecutionInfo(GetExecutionInfoRequest) returns (GetExecutionInfoResponse) {}
+
+  // FilterDATransactions validates and filters force-included transactions from DA
+  rpc FilterDATransactions(FilterDATransactionsRequest) returns (FilterDATransactionsResponse) {}
 }
 
 // InitChainRequest contains the genesis parameters for chain initialization
@@ -85,4 +91,35 @@ message SetFinalRequest {
 // SetFinalResponse indicates whether finalization was successful
 message SetFinalResponse {
   // Empty response, errors are returned via gRPC status
+}
+
+// GetExecutionInfoRequest requests execution layer parameters
+message GetExecutionInfoRequest {
+  // Block height to query (0 for next block parameters)
+  uint64 height = 1;
+}
+
+// GetExecutionInfoResponse contains execution layer parameters
+message GetExecutionInfoResponse {
+  // Maximum gas allowed for transactions in a block
+  // For non-gas-based execution layers, this should be 0
+  uint64 max_gas = 1;
+}
+
+// FilterDATransactionsRequest contains transactions to validate and filter
+message FilterDATransactionsRequest {
+  // Raw transactions from DA to validate
+  repeated bytes txs = 1;
+
+  // Maximum cumulative gas allowed for these transactions
+  uint64 max_gas = 2;
+}
+
+// FilterDATransactionsResponse contains the filtered transactions
+message FilterDATransactionsResponse {
+  // Transactions that passed validation and fit within maxGas
+  repeated bytes valid_txs = 1;
+
+  // Valid transactions that didn't fit due to gas limit (for re-queuing)
+  repeated bytes remaining_txs = 2;
 }

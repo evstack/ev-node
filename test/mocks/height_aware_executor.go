@@ -6,6 +6,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/evstack/ev-node/core/execution"
 	"github.com/stretchr/testify/mock"
 )
 
@@ -57,4 +58,23 @@ func (m *MockHeightAwareExecutor) SetFinal(ctx context.Context, blockHeight uint
 func (m *MockHeightAwareExecutor) GetLatestHeight(ctx context.Context) (uint64, error) {
 	args := m.Called(ctx)
 	return args.Get(0).(uint64), args.Error(1)
+}
+
+// GetExecutionInfo implements the Executor interface.
+func (m *MockHeightAwareExecutor) GetExecutionInfo(ctx context.Context, height uint64) (execution.ExecutionInfo, error) {
+	args := m.Called(ctx, height)
+	return args.Get(0).(execution.ExecutionInfo), args.Error(1)
+}
+
+// FilterDATransactions implements the Executor interface.
+func (m *MockHeightAwareExecutor) FilterDATransactions(ctx context.Context, txs [][]byte, maxGas uint64) ([][]byte, [][]byte, error) {
+	args := m.Called(ctx, txs, maxGas)
+	var validTxs, remainingTxs [][]byte
+	if args.Get(0) != nil {
+		validTxs = args.Get(0).([][]byte)
+	}
+	if args.Get(1) != nil {
+		remainingTxs = args.Get(1).([][]byte)
+	}
+	return validTxs, remainingTxs, args.Error(2)
 }

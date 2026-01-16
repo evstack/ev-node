@@ -44,6 +44,12 @@ const (
 	// ExecutorServiceSetFinalProcedure is the fully-qualified name of the ExecutorService's SetFinal
 	// RPC.
 	ExecutorServiceSetFinalProcedure = "/evnode.v1.ExecutorService/SetFinal"
+	// ExecutorServiceGetExecutionInfoProcedure is the fully-qualified name of the ExecutorService's
+	// GetExecutionInfo RPC.
+	ExecutorServiceGetExecutionInfoProcedure = "/evnode.v1.ExecutorService/GetExecutionInfo"
+	// ExecutorServiceFilterDATransactionsProcedure is the fully-qualified name of the ExecutorService's
+	// FilterDATransactions RPC.
+	ExecutorServiceFilterDATransactionsProcedure = "/evnode.v1.ExecutorService/FilterDATransactions"
 )
 
 // ExecutorServiceClient is a client for the evnode.v1.ExecutorService service.
@@ -56,6 +62,10 @@ type ExecutorServiceClient interface {
 	ExecuteTxs(context.Context, *connect.Request[v1.ExecuteTxsRequest]) (*connect.Response[v1.ExecuteTxsResponse], error)
 	// SetFinal marks a block as finalized at the specified height
 	SetFinal(context.Context, *connect.Request[v1.SetFinalRequest]) (*connect.Response[v1.SetFinalResponse], error)
+	// GetExecutionInfo returns current execution layer parameters
+	GetExecutionInfo(context.Context, *connect.Request[v1.GetExecutionInfoRequest]) (*connect.Response[v1.GetExecutionInfoResponse], error)
+	// FilterDATransactions validates and filters force-included transactions from DA
+	FilterDATransactions(context.Context, *connect.Request[v1.FilterDATransactionsRequest]) (*connect.Response[v1.FilterDATransactionsResponse], error)
 }
 
 // NewExecutorServiceClient constructs a client for the evnode.v1.ExecutorService service. By
@@ -93,15 +103,29 @@ func NewExecutorServiceClient(httpClient connect.HTTPClient, baseURL string, opt
 			connect.WithSchema(executorServiceMethods.ByName("SetFinal")),
 			connect.WithClientOptions(opts...),
 		),
+		getExecutionInfo: connect.NewClient[v1.GetExecutionInfoRequest, v1.GetExecutionInfoResponse](
+			httpClient,
+			baseURL+ExecutorServiceGetExecutionInfoProcedure,
+			connect.WithSchema(executorServiceMethods.ByName("GetExecutionInfo")),
+			connect.WithClientOptions(opts...),
+		),
+		filterDATransactions: connect.NewClient[v1.FilterDATransactionsRequest, v1.FilterDATransactionsResponse](
+			httpClient,
+			baseURL+ExecutorServiceFilterDATransactionsProcedure,
+			connect.WithSchema(executorServiceMethods.ByName("FilterDATransactions")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
 // executorServiceClient implements ExecutorServiceClient.
 type executorServiceClient struct {
-	initChain  *connect.Client[v1.InitChainRequest, v1.InitChainResponse]
-	getTxs     *connect.Client[v1.GetTxsRequest, v1.GetTxsResponse]
-	executeTxs *connect.Client[v1.ExecuteTxsRequest, v1.ExecuteTxsResponse]
-	setFinal   *connect.Client[v1.SetFinalRequest, v1.SetFinalResponse]
+	initChain            *connect.Client[v1.InitChainRequest, v1.InitChainResponse]
+	getTxs               *connect.Client[v1.GetTxsRequest, v1.GetTxsResponse]
+	executeTxs           *connect.Client[v1.ExecuteTxsRequest, v1.ExecuteTxsResponse]
+	setFinal             *connect.Client[v1.SetFinalRequest, v1.SetFinalResponse]
+	getExecutionInfo     *connect.Client[v1.GetExecutionInfoRequest, v1.GetExecutionInfoResponse]
+	filterDATransactions *connect.Client[v1.FilterDATransactionsRequest, v1.FilterDATransactionsResponse]
 }
 
 // InitChain calls evnode.v1.ExecutorService.InitChain.
@@ -124,6 +148,16 @@ func (c *executorServiceClient) SetFinal(ctx context.Context, req *connect.Reque
 	return c.setFinal.CallUnary(ctx, req)
 }
 
+// GetExecutionInfo calls evnode.v1.ExecutorService.GetExecutionInfo.
+func (c *executorServiceClient) GetExecutionInfo(ctx context.Context, req *connect.Request[v1.GetExecutionInfoRequest]) (*connect.Response[v1.GetExecutionInfoResponse], error) {
+	return c.getExecutionInfo.CallUnary(ctx, req)
+}
+
+// FilterDATransactions calls evnode.v1.ExecutorService.FilterDATransactions.
+func (c *executorServiceClient) FilterDATransactions(ctx context.Context, req *connect.Request[v1.FilterDATransactionsRequest]) (*connect.Response[v1.FilterDATransactionsResponse], error) {
+	return c.filterDATransactions.CallUnary(ctx, req)
+}
+
 // ExecutorServiceHandler is an implementation of the evnode.v1.ExecutorService service.
 type ExecutorServiceHandler interface {
 	// InitChain initializes a new blockchain instance with genesis parameters
@@ -134,6 +168,10 @@ type ExecutorServiceHandler interface {
 	ExecuteTxs(context.Context, *connect.Request[v1.ExecuteTxsRequest]) (*connect.Response[v1.ExecuteTxsResponse], error)
 	// SetFinal marks a block as finalized at the specified height
 	SetFinal(context.Context, *connect.Request[v1.SetFinalRequest]) (*connect.Response[v1.SetFinalResponse], error)
+	// GetExecutionInfo returns current execution layer parameters
+	GetExecutionInfo(context.Context, *connect.Request[v1.GetExecutionInfoRequest]) (*connect.Response[v1.GetExecutionInfoResponse], error)
+	// FilterDATransactions validates and filters force-included transactions from DA
+	FilterDATransactions(context.Context, *connect.Request[v1.FilterDATransactionsRequest]) (*connect.Response[v1.FilterDATransactionsResponse], error)
 }
 
 // NewExecutorServiceHandler builds an HTTP handler from the service implementation. It returns the
@@ -167,6 +205,18 @@ func NewExecutorServiceHandler(svc ExecutorServiceHandler, opts ...connect.Handl
 		connect.WithSchema(executorServiceMethods.ByName("SetFinal")),
 		connect.WithHandlerOptions(opts...),
 	)
+	executorServiceGetExecutionInfoHandler := connect.NewUnaryHandler(
+		ExecutorServiceGetExecutionInfoProcedure,
+		svc.GetExecutionInfo,
+		connect.WithSchema(executorServiceMethods.ByName("GetExecutionInfo")),
+		connect.WithHandlerOptions(opts...),
+	)
+	executorServiceFilterDATransactionsHandler := connect.NewUnaryHandler(
+		ExecutorServiceFilterDATransactionsProcedure,
+		svc.FilterDATransactions,
+		connect.WithSchema(executorServiceMethods.ByName("FilterDATransactions")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/evnode.v1.ExecutorService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case ExecutorServiceInitChainProcedure:
@@ -177,6 +227,10 @@ func NewExecutorServiceHandler(svc ExecutorServiceHandler, opts ...connect.Handl
 			executorServiceExecuteTxsHandler.ServeHTTP(w, r)
 		case ExecutorServiceSetFinalProcedure:
 			executorServiceSetFinalHandler.ServeHTTP(w, r)
+		case ExecutorServiceGetExecutionInfoProcedure:
+			executorServiceGetExecutionInfoHandler.ServeHTTP(w, r)
+		case ExecutorServiceFilterDATransactionsProcedure:
+			executorServiceFilterDATransactionsHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -200,4 +254,12 @@ func (UnimplementedExecutorServiceHandler) ExecuteTxs(context.Context, *connect.
 
 func (UnimplementedExecutorServiceHandler) SetFinal(context.Context, *connect.Request[v1.SetFinalRequest]) (*connect.Response[v1.SetFinalResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("evnode.v1.ExecutorService.SetFinal is not implemented"))
+}
+
+func (UnimplementedExecutorServiceHandler) GetExecutionInfo(context.Context, *connect.Request[v1.GetExecutionInfoRequest]) (*connect.Response[v1.GetExecutionInfoResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("evnode.v1.ExecutorService.GetExecutionInfo is not implemented"))
+}
+
+func (UnimplementedExecutorServiceHandler) FilterDATransactions(context.Context, *connect.Request[v1.FilterDATransactionsRequest]) (*connect.Response[v1.FilterDATransactionsResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("evnode.v1.ExecutorService.FilterDATransactions is not implemented"))
 }

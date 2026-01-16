@@ -112,3 +112,41 @@ func (c *Client) SetFinal(ctx context.Context, blockHeight uint64) error {
 
 	return nil
 }
+
+// GetExecutionInfo returns current execution layer parameters.
+//
+// This method retrieves execution parameters such as the block gas limit
+// from the remote execution service.
+func (c *Client) GetExecutionInfo(ctx context.Context, height uint64) (execution.ExecutionInfo, error) {
+	req := connect.NewRequest(&pb.GetExecutionInfoRequest{
+		Height: height,
+	})
+
+	resp, err := c.client.GetExecutionInfo(ctx, req)
+	if err != nil {
+		return execution.ExecutionInfo{}, fmt.Errorf("grpc client: failed to get execution info: %w", err)
+	}
+
+	return execution.ExecutionInfo{
+		MaxGas: resp.Msg.MaxGas,
+	}, nil
+}
+
+// FilterDATransactions validates and filters force-included transactions from DA.
+//
+// This method sends DA transactions to the remote execution service for validation
+// and gas-based filtering. It returns transactions that are valid and fit within
+// the gas limit, plus any remaining valid transactions for re-queuing.
+func (c *Client) FilterDATransactions(ctx context.Context, txs [][]byte, maxGas uint64) ([][]byte, [][]byte, error) {
+	req := connect.NewRequest(&pb.FilterDATransactionsRequest{
+		Txs:    txs,
+		MaxGas: maxGas,
+	})
+
+	resp, err := c.client.FilterDATransactions(ctx, req)
+	if err != nil {
+		return nil, nil, fmt.Errorf("grpc client: failed to filter DA transactions: %w", err)
+	}
+
+	return resp.Msg.ValidTxs, resp.Msg.RemainingTxs, nil
+}

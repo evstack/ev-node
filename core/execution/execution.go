@@ -142,3 +142,19 @@ type HeightProvider interface {
 	// - error: Any errors during height retrieval
 	GetLatestHeight(ctx context.Context) (uint64, error)
 }
+
+// ExecutionInfoProvider is an interface for components that can provide execution layer parameters.
+// This is useful for type assertions when an Executor implementation supports gas-based filtering.
+type ExecutionInfoProvider interface {
+	// GetExecutionInfo returns current execution layer parameters.
+	// See Executor.GetExecutionInfo for full documentation.
+	GetExecutionInfo(ctx context.Context, height uint64) (ExecutionInfo, error)
+}
+
+// DATransactionFilter is an interface for components that can filter DA transactions.
+// This is useful for type assertions when an Executor implementation supports gas-based filtering.
+type DATransactionFilter interface {
+	// FilterDATransactions validates and filters force-included transactions from DA.
+	// See Executor.FilterDATransactions for full documentation.
+	FilterDATransactions(ctx context.Context, txs [][]byte, maxGas uint64) (validTxs [][]byte, remainingTxs [][]byte, err error)
+}

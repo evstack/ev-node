@@ -1010,26 +1010,40 @@ func TestSequencer_GetNextBatch_EmptyDABatch_IncreasesDAHeight(t *testing.T) {
 	assert.Equal(t, uint64(0), seq.checkpoint.TxIndex)
 }
 
-// mockDATransactionFilter is a mock implementation of execution.DATransactionFilter
-type mockDATransactionFilter struct {
-	filterFunc func(ctx context.Context, txs [][]byte, maxGas uint64) ([][]byte, [][]byte, error)
+// mockExecutor is a mock implementation of execution.Executor for testing gas filtering
+type mockExecutor struct {
+	maxGas          uint64
+	getInfoErr      error
+	filterFunc      func(ctx context.Context, txs [][]byte, maxGas uint64) ([][]byte, [][]byte, error)
+	filterCallCount int
 }
 
-func (m *mockDATransactionFilter) FilterDATransactions(ctx context.Context, txs [][]byte, maxGas uint64) ([][]byte, [][]byte, error) {
+func (m *mockExecutor) InitChain(ctx context.Context, genesisTime time.Time, initialHeight uint64, chainID string) ([]byte, error) {
+	return []byte("state-root"), nil
+}
+
+func (m *mockExecutor) GetTxs(ctx context.Context) ([][]byte, error) {
+	return nil, nil
+}
+
+func (m *mockExecutor) ExecuteTxs(ctx context.Context, txs [][]byte, blockHeight uint64, timestamp time.Time, prevStateRoot []byte) ([]byte, error) {
+	return []byte("new-state-root"), nil
+}
+
+func (m *mockExecutor) SetFinal(ctx context.Context, blockHeight uint64) error {
+	return nil
+}
+
+func (m *mockExecutor) GetExecutionInfo(ctx context.Context, height uint64) (execution.ExecutionInfo, error) {
+	return execution.ExecutionInfo{MaxGas: m.maxGas}, m.getInfoErr
+}
+
+func (m *mockExecutor) FilterDATransactions(ctx context.Context, txs [][]byte, maxGas uint64) ([][]byte, [][]byte, error) {
+	m.filterCallCount++
 	if m.filterFunc != nil {
 		return m.filterFunc(ctx, txs, maxGas)
 	}
 	return txs, nil, nil
-}
-
-// mockExecutionInfoProvider is a mock implementation of execution.ExecutionInfoProvider
-type mockExecutionInfoProvider struct {
-	maxGas uint64
-	err    error
-}
-
-func (m *mockExecutionInfoProvider) GetExecutionInfo(ctx context.Context, height uint64) (execution.ExecutionInfo, error) {
-	return execution.ExecutionInfo{MaxGas: m.maxGas}, m.err
 }
 
 func TestSequencer_GetNextBatch_WithGasFiltering(t *testing.T) {
@@ -1070,11 +1084,10 @@ func TestSequencer_GetNextBatch_WithGasFiltering(t *testing.T) {
 	)
 	require.NoError(t, err)
 
-	// Configure the gas filter mock
-	filterCallCount := 0
-	mockFilter := &mockDATransactionFilter{
+	// Configure the executor mock
+	mockExec := &mockExecutor{
+		maxGas: 1000000, // 1M gas limit
 		filterFunc: func(ctx context.Context, txs [][]byte, maxGas uint64) ([][]byte, [][]byte, error) {
-			filterCallCount++
 			// Simulate: first 2 txs fit, third one doesn't
 			if len(txs) >= 3 {
 				return txs[:2], txs[2:], nil
@@ -1083,12 +1096,8 @@ func TestSequencer_GetNextBatch_WithGasFiltering(t *testing.T) {
 		},
 	}
 
-	mockInfoProvider := &mockExecutionInfoProvider{
-		maxGas: 1000000, // 1M gas limit
-	}
-
-	// Set the filter
-	seq.SetDATransactionFilter(mockFilter, mockInfoProvider)
+	// Set the executor
+	seq.SetExecutor(mockExec)
 
 	// Manually set up cached forced txs to simulate DA fetch
 	seq.cachedForcedInclusionTxs = forcedTxs
@@ -1118,11 +1127,10 @@ func TestSequencer_GetNextBatch_WithGasFiltering(t *testing.T) {
 	assert.Equal(t, uint64(0), seq.checkpoint.TxIndex) // Reset because we replaced the cache
 
 	// Filter should have been called
-	assert.Equal(t, 1, filterCallCount)
+	assert.Equal(t, 1, mockExec.filterCallCount)
 
 	// Second call should return the remaining tx
-	mockFilter.filterFunc = func(ctx context.Context, txs [][]byte, maxGas uint64) ([][]byte, [][]byte, error) {
-		filterCallCount++
+	mockExec.filterFunc = func(ctx context.Context, txs [][]byte, maxGas uint64) ([][]byte, [][]byte, error) {
 		// Now all remaining txs fit
 		return txs, nil, nil
 	}
@@ -1167,18 +1175,15 @@ func TestSequencer_GetNextBatch_GasFilterError(t *testing.T) {
 	)
 	require.NoError(t, err)
 
-	// Configure filter that returns error
-	mockFilter := &mockDATransactionFilter{
+	// Configure executor that returns filter error
+	mockExec := &mockExecutor{
+		maxGas: 1000000,
 		filterFunc: func(ctx context.Context, txs [][]byte, maxGas uint64) ([][]byte, [][]byte, error) {
 			return nil, nil, errors.New("filter error")
 		},
 	}
 
-	mockInfoProvider := &mockExecutionInfoProvider{
-		maxGas: 1000000,
-	}
-
-	seq.SetDATransactionFilter(mockFilter, mockInfoProvider)
+	seq.SetExecutor(mockExec)
 
 	// Set up cached txs
 	forcedTxs := [][]byte{[]byte("tx1"), []byte("tx2")}

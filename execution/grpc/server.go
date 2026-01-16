@@ -136,3 +136,39 @@ func (s *Server) SetFinal(
 
 	return connect.NewResponse(&pb.SetFinalResponse{}), nil
 }
+
+// GetExecutionInfo handles the GetExecutionInfo RPC request.
+//
+// It returns current execution layer parameters such as the block gas limit.
+func (s *Server) GetExecutionInfo(
+	ctx context.Context,
+	req *connect.Request[pb.GetExecutionInfoRequest],
+) (*connect.Response[pb.GetExecutionInfoResponse], error) {
+	info, err := s.executor.GetExecutionInfo(ctx, req.Msg.Height)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to get execution info: %w", err))
+	}
+
+	return connect.NewResponse(&pb.GetExecutionInfoResponse{
+		MaxGas: info.MaxGas,
+	}), nil
+}
+
+// FilterDATransactions handles the FilterDATransactions RPC request.
+//
+// It validates and filters force-included transactions from DA, returning
+// transactions that are valid and fit within the gas limit.
+func (s *Server) FilterDATransactions(
+	ctx context.Context,
+	req *connect.Request[pb.FilterDATransactionsRequest],
+) (*connect.Response[pb.FilterDATransactionsResponse], error) {
+	validTxs, remainingTxs, err := s.executor.FilterDATransactions(ctx, req.Msg.Txs, req.Msg.MaxGas)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to filter DA transactions: %w", err))
+	}
+
+	return connect.NewResponse(&pb.FilterDATransactionsResponse{
+		ValidTxs:     validTxs,
+		RemainingTxs: remainingTxs,
+	}), nil
+}

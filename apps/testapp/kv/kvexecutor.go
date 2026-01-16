@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/evstack/ev-node/core/execution"
 	"github.com/evstack/ev-node/pkg/store"
 	ds "github.com/ipfs/go-datastore"
 	"github.com/ipfs/go-datastore/query"
@@ -421,4 +422,31 @@ func (k *KVExecutor) Rollback(ctx context.Context, height uint64) error {
 
 func getTxKey(height uint64, txKey string) ds.Key {
 	return heightKeyPrefix.Child(ds.NewKey(fmt.Sprintf("%d/%s", height, txKey)))
+}
+
+// GetExecutionInfo returns execution layer parameters.
+// For KVExecutor, returns MaxGas=0 indicating no gas-based filtering.
+func (k *KVExecutor) GetExecutionInfo(ctx context.Context, height uint64) (execution.ExecutionInfo, error) {
+	return execution.ExecutionInfo{MaxGas: 0}, nil
+}
+
+// FilterDATransactions validates and filters force-included transactions from DA.
+// For KVExecutor, all transactions are considered valid (no gas-based filtering).
+// Invalid transactions (not in key=value format) are filtered out.
+func (k *KVExecutor) FilterDATransactions(ctx context.Context, txs [][]byte, maxGas uint64) ([][]byte, [][]byte, error) {
+	// KVExecutor doesn't do gas filtering but does basic validation
+	validTxs := make([][]byte, 0, len(txs))
+	for _, tx := range txs {
+		if len(tx) == 0 {
+			continue // Skip empty transactions
+		}
+		// Basic format validation: must be key=value
+		parts := strings.SplitN(string(tx), "=", 2)
+		if len(parts) != 2 || strings.TrimSpace(parts[0]) == "" {
+			continue // Filter out malformed transactions
+		}
+		validTxs = append(validTxs, tx)
+	}
+	// No gas-based filtering, so no remaining transactions
+	return validTxs, nil, nil
 }
