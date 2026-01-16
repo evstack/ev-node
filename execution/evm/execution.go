@@ -709,7 +709,7 @@ func (c *EngineClient) reconcileExecutionAtHeight(ctx context.Context, height ui
 	if err == nil && execMeta != nil {
 		// If we already have a promoted block at this height, verify timestamp matches
 		// to catch Dual-Store Conflicts where ExecMeta was saved for an old block
-		// that was later replaced via Raft consensus.
+		// that was later replaced via consensus.
 		if execMeta.Stage == ExecStagePromoted && len(execMeta.StateRoot) > 0 {
 			if execMeta.Timestamp == timestamp.Unix() {
 				c.logger.Info().
@@ -953,7 +953,6 @@ func (c *EngineClient) GetLatestHeight(ctx context.Context) (uint64, error) {
 
 // Rollback resets the execution layer head to the specified height using forkchoice update.
 // This is used for recovery when the EL is ahead of the consensus layer (e.g., during rolling restarts
-// where the EL committed blocks that were not replicated to Raft).
 //
 // Implements the execution.Rollbackable interface.
 func (c *EngineClient) Rollback(ctx context.Context, targetHeight uint64) error {
