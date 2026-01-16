@@ -17,6 +17,9 @@ import (
 // Ensure Client implements the execution.Executor interface
 var _ execution.Executor = (*Client)(nil)
 
+// Ensure Client implements the optional DATransactionFilter interface
+var _ execution.DATransactionFilter = (*Client)(nil)
+
 // Client is a gRPC client that implements the execution.Executor interface.
 // It communicates with a remote execution service via gRPC using Connect-RPC.
 type Client struct {

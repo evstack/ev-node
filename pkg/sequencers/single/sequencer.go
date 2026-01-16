@@ -53,9 +53,11 @@ type Sequencer struct {
 	cachedForcedInclusionTxs [][]byte
 
 	// Executor for DA transaction filtering (optional)
-	// When set, forced inclusion transactions are filtered by gas limit
-	// using the executor's GetExecutionInfo and FilterDATransactions methods
+	// When set, forced inclusion transactions are filtered by gas limit.
+	// GetExecutionInfo is called directly on the executor.
+	// FilterDATransactions is called via type assertion to DATransactionFilter.
 	executor execution.Executor
+	txFilter execution.DATransactionFilter // cached type assertion result
 }
 
 // NewSequencer creates a new Single Sequencer
@@ -127,7 +129,13 @@ func NewSequencer(
 // This should be called after NewSequencer and before Start if filtering is desired.
 func (c *Sequencer) SetExecutor(executor execution.Executor) {
 	c.executor = executor
-	c.logger.Info().Msg("Executor configured for DA transaction gas-based filtering")
+	// Check if executor implements the optional DATransactionFilter interface
+	if filter, ok := executor.(execution.DATransactionFilter); ok {
+		c.txFilter = filter
+		c.logger.Info().Msg("Executor configured for DA transaction gas-based filtering")
+	} else {
+		c.logger.Info().Msg("Executor configured (no DA transaction filtering support)")
+	}
 }
 
 // getInitialDAStartHeight retrieves the DA height of the first included chain height from store.
@@ -215,18 +223,18 @@ func (c *Sequencer) GetNextBatch(ctx context.Context, req coresequencer.GetNextB
 	// Process forced inclusion transactions from checkpoint position
 	forcedTxs := c.processForcedInclusionTxsFromCheckpoint(req.MaxBytes)
 
-	// Apply gas-based filtering if executor is configured
+	// Apply gas-based filtering if executor and filter are configured
 	var filteredForcedTxs [][]byte
 	var remainingGasFilteredTxs [][]byte
-	if c.executor != nil && len(forcedTxs) > 0 {
+	if c.executor != nil && c.txFilter != nil && len(forcedTxs) > 0 {
 		// Get current gas limit from execution layer
 		info, err := c.executor.GetExecutionInfo(ctx, 0) // 0 = latest/next block
 		if err != nil {
 			c.logger.Warn().Err(err).Msg("failed to get execution info for gas filtering, proceeding without gas filter")
 			filteredForcedTxs = forcedTxs
 		} else if info.MaxGas > 0 {
-			// Filter by gas limit
-			filteredForcedTxs, remainingGasFilteredTxs, err = c.executor.FilterDATransactions(ctx, forcedTxs, info.MaxGas)
+			// Filter by gas limit using the DATransactionFilter interface
+			filteredForcedTxs, remainingGasFilteredTxs, err = c.txFilter.FilterDATransactions(ctx, forcedTxs, info.MaxGas)
 			if err != nil {
 				c.logger.Warn().Err(err).Msg("failed to filter DA transactions by gas, proceeding without gas filter")
 				filteredForcedTxs = forcedTxs

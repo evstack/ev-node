@@ -123,8 +123,13 @@ func (t *tracedExecutor) GetExecutionInfo(ctx context.Context, height uint64) (c
 	return info, err
 }
 
-// FilterDATransactions forwards to the inner executor with tracing.
+// FilterDATransactions forwards to the inner executor with tracing if it implements DATransactionFilter.
 func (t *tracedExecutor) FilterDATransactions(ctx context.Context, txs [][]byte, maxGas uint64) ([][]byte, [][]byte, error) {
+	filter, ok := t.inner.(coreexec.DATransactionFilter)
+	if !ok {
+		// If not implemented, return all transactions as valid (no filtering)
+		return txs, nil, nil
+	}
 	ctx, span := t.tracer.Start(ctx, "Executor.FilterDATransactions",
 		trace.WithAttributes(
 			attribute.Int("input_tx_count", len(txs)),
@@ -133,7 +138,7 @@ func (t *tracedExecutor) FilterDATransactions(ctx context.Context, txs [][]byte,
 	)
 	defer span.End()
 
-	validTxs, remainingTxs, err := t.inner.FilterDATransactions(ctx, txs, maxGas)
+	validTxs, remainingTxs, err := filter.FilterDATransactions(ctx, txs, maxGas)
 	if err != nil {
 		span.RecordError(err)
 		span.SetStatus(codes.Error, err.Error())

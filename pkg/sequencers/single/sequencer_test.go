@@ -1010,7 +1010,8 @@ func TestSequencer_GetNextBatch_EmptyDABatch_IncreasesDAHeight(t *testing.T) {
 	assert.Equal(t, uint64(0), seq.checkpoint.TxIndex)
 }
 
-// mockExecutor is a mock implementation of execution.Executor for testing gas filtering
+// mockExecutor is a mock implementation of execution.Executor and the optional
+// execution.DATransactionFilter interface for testing gas filtering
 type mockExecutor struct {
 	maxGas          uint64
 	getInfoErr      error
