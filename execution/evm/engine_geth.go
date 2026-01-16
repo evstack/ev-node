@@ -137,6 +137,18 @@ func newGethBackend(genesis *core.Genesis, logger zerolog.Logger) (*GethBackend,
 	// Create trie database
 	trieDB := triedb.NewDatabase(memdb, nil)
 
+	// Ensure blobSchedule is set if Cancun/Prague are enabled
+	// This is required by go-ethereum v1.16+
+	if genesis.Config != nil && genesis.Config.BlobScheduleConfig == nil {
+		// Check if Cancun or Prague are enabled (time-based forks)
+		if genesis.Config.CancunTime != nil || genesis.Config.PragueTime != nil {
+			genesis.Config.BlobScheduleConfig = &params.BlobScheduleConfig{
+				Cancun: params.DefaultCancunBlobConfig,
+				Prague: params.DefaultPragueBlobConfig,
+			}
+		}
+	}
+
 	// Initialize the genesis block
 	chainConfig, genesisHash, _, genesisErr := core.SetupGenesisBlockWithOverride(memdb, trieDB, genesis, nil)
 	if genesisErr != nil {
