@@ -134,19 +134,19 @@ func TestSyncer_validateBlock_DataHashMismatch(t *testing.T) {
 	data := makeData(gen.ChainID, 1, 2) // non-empty
 	_, header := makeSignedHeaderBytes(t, gen.ChainID, 1, addr, pub, signer, nil, data, nil)
 
-	err = s.ValidateBlock(context.Background(), s.getLastState(), data, header)
+	err = s.ValidateBlock(t.Context(), s.getLastState(), data, header)
 	require.NoError(t, err)
 
 	// Create header and data with mismatched hash
 	data = makeData(gen.ChainID, 1, 2) // non-empty
 	_, header = makeSignedHeaderBytes(t, gen.ChainID, 1, addr, pub, signer, nil, nil, nil)
-	err = s.ValidateBlock(context.Background(), s.getLastState(), data, header)
+	err = s.ValidateBlock(t.Context(), s.getLastState(), data, header)
 	require.Error(t, err)
 
 	// Create header and empty data
 	data = makeData(gen.ChainID, 1, 0) // empty
 	_, header = makeSignedHeaderBytes(t, gen.ChainID, 2, addr, pub, signer, nil, nil, nil)
-	err = s.ValidateBlock(context.Background(), s.getLastState(), data, header)
+	err = s.ValidateBlock(t.Context(), s.getLastState(), data, header)
 	require.Error(t, err)
 }
 
@@ -183,7 +183,7 @@ func TestProcessHeightEvent_SyncsAndUpdatesState(t *testing.T) {
 
 	require.NoError(t, s.initializeState())
 	// set a context for internal loops that expect it
-	s.ctx = context.Background()
+	s.ctx = t.Context()
 	// Create signed header & data for height 1
 	lastState := s.getLastState()
 	data := makeData(gen.ChainID, 1, 0)
@@ -194,13 +194,13 @@ func TestProcessHeightEvent_SyncsAndUpdatesState(t *testing.T) {
 		Return([]byte("app1"), uint64(1024), nil).Once()
 
 	evt := common.DAHeightEvent{Header: hdr, Data: data, DaHeight: 1}
-	s.processHeightEvent(&evt)
+	s.processHeightEvent(t.Context(), &evt)
 
 	requireEmptyChan(t, errChan)
-	h, err := st.Height(context.Background())
+	h, err := st.Height(t.Context())
 	require.NoError(t, err)
 	assert.Equal(t, uint64(1), h)
-	st1, err := st.GetState(context.Background())
+	st1, err := st.GetState(t.Context())
 	require.NoError(t, err)
 	assert.Equal(t, uint64(1), st1.LastBlockHeight)
 }
@@ -235,7 +235,7 @@ func TestSequentialBlockSync(t *testing.T) {
 		errChan,
 	)
 	require.NoError(t, s.initializeState())
-	s.ctx = context.Background()
+	s.ctx = t.Context()
 
 	// Sync two consecutive blocks via processHeightEvent so ExecuteTxs is called and state stored
 	st0 := s.getLastState()
@@ -245,16 +245,16 @@ func TestSequentialBlockSync(t *testing.T) {
 	mockExec.EXPECT().ExecuteTxs(mock.Anything, mock.Anything, uint64(1), mock.Anything, st0.AppHash).
 		Return([]byte("app1"), uint64(1024), nil).Once()
 	evt1 := common.DAHeightEvent{Header: hdr1, Data: data1, DaHeight: 10}
-	s.processHeightEvent(&evt1)
+	s.processHeightEvent(t.Context(), &evt1)
 
-	st1, _ := st.GetState(context.Background())
+	st1, _ := st.GetState(t.Context())
 	data2 := makeData(gen.ChainID, 2, 0) // empty data
 	_, hdr2 := makeSignedHeaderBytes(t, gen.ChainID, 2, addr, pub, signer, st1.AppHash, data2, st1.LastHeaderHash)
 	// Expect ExecuteTxs call for height 2
 	mockExec.EXPECT().ExecuteTxs(mock.Anything, mock.Anything, uint64(2), mock.Anything, st1.AppHash).
 		Return([]byte("app2"), uint64(1024), nil).Once()
 	evt2 := common.DAHeightEvent{Header: hdr2, Data: data2, DaHeight: 11}
-	s.processHeightEvent(&evt2)
+	s.processHeightEvent(t.Context(), &evt2)
 
 	// Mark DA inclusion in cache (as DA retrieval would)
 	cm.SetDataDAIncluded(data1.DACommitment().String(), 10, 1)
@@ -263,7 +263,7 @@ func TestSequentialBlockSync(t *testing.T) {
 	cm.SetHeaderDAIncluded(hdr2.Header.Hash().String(), 11, 2)
 
 	// Verify both blocks were synced correctly
-	finalState, _ := st.GetState(context.Background())
+	finalState, _ := st.GetState(t.Context())
 	assert.Equal(t, uint64(2), finalState.LastBlockHeight)
 
 	// Verify DA inclusion markers are set
@@ -286,7 +286,7 @@ func TestSyncer_processPendingEvents(t *testing.T) {
 	require.NoError(t, err)
 
 	// current height 1
-	batch, err := st.NewBatch(context.Background())
+	batch, err := st.NewBatch(t.Context())
 	require.NoError(t, err)
 	require.NoError(t, batch.SetHeight(1))
 	require.NoError(t, batch.Commit())
@@ -294,7 +294,7 @@ func TestSyncer_processPendingEvents(t *testing.T) {
 	s := &Syncer{
 		store:      st,
 		cache:      cm,
-		ctx:        context.Background(),
+		ctx:        t.Context(),
 		heightInCh: make(chan common.DAHeightEvent, 2),
 		logger:     zerolog.Nop(),
 	}
@@ -538,7 +538,7 @@ func TestSyncer_executeTxsWithRetry(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			ctx := context.Background()
+			ctx := t.Context()
 			exec := testmocks.NewMockExecutor(t)
 			tt.setupMock(exec)
 
@@ -612,7 +612,13 @@ func TestSyncer_InitializeState_CallsReplayer(t *testing.T) {
 	// Setup execution layer to be in sync
 	mockExec.On("GetLatestHeight", mock.Anything).Return(storeHeight, nil)
 
-	// Create syncer with minimal dependencies
+	// Mock batch operations
+	mockBatch := new(testmocks.MockBatch)
+	mockBatch.On("SetHeight", storeHeight).Return(nil)
+	mockBatch.On("UpdateState", mock.Anything).Return(nil)
+	mockBatch.On("Commit").Return(nil)
+	mockStore.EXPECT().NewBatch(mock.Anything).Return(mockBatch, nil)
+
 	syncer := &Syncer{
 		store:             mockStore,
 		exec:              mockExec,
@@ -620,7 +626,7 @@ func TestSyncer_InitializeState_CallsReplayer(t *testing.T) {
 		lastState:         &atomic.Pointer[types.State]{},
 		daRetrieverHeight: &atomic.Uint64{},
 		logger:            zerolog.Nop(),
-		ctx:               context.Background(),
+		ctx:               t.Context(),
 		cache:             cm,
 	}
 
@@ -649,7 +655,7 @@ func requireEmptyChan(t *testing.T, errorCh chan error) {
 func TestSyncer_getHighestStoredDAHeight(t *testing.T) {
 	ds := dssync.MutexWrap(datastore.NewMapDatastore())
 	st := store.New(ds)
-	ctx := context.Background()
+	ctx := t.Context()
 
 	syncer := &Syncer{
 		store:  st,
