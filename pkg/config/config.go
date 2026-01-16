@@ -147,6 +147,29 @@ const (
 	FlagRPCAddress = FlagPrefixEvnode + "rpc.address"
 	// FlagRPCEnableDAVisualization is a flag for enabling DA visualization endpoints
 	FlagRPCEnableDAVisualization = FlagPrefixEvnode + "rpc.enable_da_visualization"
+
+	// Raft configuration flags
+
+	// FlagRaftEnable is a flag for enabling Raft consensus
+	FlagRaftEnable = FlagPrefixEvnode + "raft.enable"
+	// FlagRaftNodeID is a flag for specifying the Raft node ID
+	FlagRaftNodeID = FlagPrefixEvnode + "raft.node_id"
+	// FlagRaftAddr is a flag for specifying the Raft communication address
+	FlagRaftAddr = FlagPrefixEvnode + "raft.raft_addr"
+	// FlagRaftDir is a flag for specifying the Raft data directory
+	FlagRaftDir = FlagPrefixEvnode + "raft.raft_dir"
+	// FlagRaftBootstrap is a flag for bootstrapping a new Raft cluster
+	FlagRaftBootstrap = FlagPrefixEvnode + "raft.bootstrap"
+	// FlagRaftPeers is a flag for specifying Raft peer addresses
+	FlagRaftPeers = FlagPrefixEvnode + "raft.peers"
+	// FlagRaftSnapCount is a flag for specifying snapshot frequency
+	FlagRaftSnapCount = FlagPrefixEvnode + "raft.snap_count"
+	// FlagRaftSendTimeout max time to wait for a message to be sent to a peer
+	FlagRaftSendTimeout = FlagPrefixEvnode + "raft.send_timeout"
+	// FlagRaftHeartbeatTimeout is a flag for specifying heartbeat timeout
+	FlagRaftHeartbeatTimeout = FlagPrefixEvnode + "raft.heartbeat_timeout"
+	// FlagRaftLeaderLeaseTimeout is a flag for specifying leader lease timeout
+	FlagRaftLeaderLeaseTimeout = FlagPrefixEvnode + "raft.leader_lease_timeout"
 )
 
 // Config stores Rollkit configuration.
@@ -176,6 +199,9 @@ type Config struct {
 
 	// Remote signer configuration
 	Signer SignerConfig `mapstructure:"signer" yaml:"signer"`
+
+	// Raft consensus configuration
+	Raft RaftConfig `mapstructure:"raft" yaml:"raft"`
 }
 
 // DAConfig contains all Data Availability configuration parameters
@@ -264,6 +290,50 @@ type RPCConfig struct {
 	EnableDAVisualization bool   `mapstructure:"enable_da_visualization" yaml:"enable_da_visualization" comment:"Enable DA visualization endpoints for monitoring blob submissions. Default: false"`
 }
 
+// RaftConfig contains all Raft consensus configuration parameters
+type RaftConfig struct {
+	Enable             bool          `mapstructure:"enable" yaml:"enable" comment:"Enable Raft consensus for leader election and state replication"`
+	NodeID             string        `mapstructure:"node_id" yaml:"node_id" comment:"Unique identifier for this node in the Raft cluster"`
+	RaftAddr           string        `mapstructure:"raft_addr" yaml:"raft_addr" comment:"Address for Raft communication (host:port)"`
+	RaftDir            string        `mapstructure:"raft_dir" yaml:"raft_dir" comment:"Directory for Raft logs and snapshots"`
+	Bootstrap          bool          `mapstructure:"bootstrap" yaml:"bootstrap" comment:"Bootstrap a new Raft cluster (only for the first node)"`
+	Peers              string        `mapstructure:"peers" yaml:"peers" comment:"Comma-separated list of peer Raft addresses (nodeID@host:port)"`
+	SnapCount          uint64        `mapstructure:"snap_count" yaml:"snap_count" comment:"Number of log entries between snapshots"`
+	SendTimeout        time.Duration `mapstructure:"send_timeout" yaml:"send_timeout" comment:"Max duration to wait for a message to be sent to a peer"`
+	HeartbeatTimeout   time.Duration `mapstructure:"heartbeat_timeout" yaml:"heartbeat_timeout" comment:"Time between leader heartbeats to followers"`
+	LeaderLeaseTimeout time.Duration `mapstructure:"leader_lease_timeout" yaml:"leader_lease_timeout" comment:"Duration of the leader lease"`
+}
+
+func (c RaftConfig) Validate() error {
+	if !c.Enable {
+		return nil
+	}
+	var multiErr error
+	if c.NodeID == "" {
+		multiErr = fmt.Errorf("node ID is required")
+	}
+	if c.RaftAddr == "" {
+		multiErr = errors.Join(multiErr, fmt.Errorf("raft address is required"))
+	}
+	if c.RaftDir == "" {
+		multiErr = errors.Join(multiErr, fmt.Errorf("raft directory is required"))
+	}
+
+	if c.SendTimeout <= 0 {
+		multiErr = errors.Join(multiErr, fmt.Errorf("send timeout must be positive"))
+	}
+
+	if c.HeartbeatTimeout <= 0 {
+		multiErr = errors.Join(multiErr, fmt.Errorf("heartbeat timeout must be positive"))
+	}
+
+	if c.LeaderLeaseTimeout <= 0 {
+		multiErr = errors.Join(multiErr, fmt.Errorf("leader lease timeout must be positive"))
+	}
+
+	return multiErr
+}
+
 // Validate validates the config and ensures that the root directory exists.
 // It creates the directory if it does not exist.
 func (c *Config) Validate() error {
@@ -305,7 +375,9 @@ func (c *Config) Validate() error {
 		return fmt.Errorf("LazyBlockInterval (%v) must be greater than BlockTime (%v) in lazy mode",
 			c.Node.LazyBlockInterval.Duration, c.Node.BlockTime.Duration)
 	}
-
+	if err := c.Raft.Validate(); err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -413,6 +485,18 @@ func AddFlags(cmd *cobra.Command) {
 
 	// flag constraints
 	cmd.MarkFlagsMutuallyExclusive(FlagLight, FlagAggregator)
+
+	// Raft configuration flags
+	cmd.Flags().Bool(FlagRaftEnable, def.Raft.Enable, "enable Raft consensus for leader election and state replication")
+	cmd.Flags().String(FlagRaftNodeID, def.Raft.NodeID, "unique identifier for this node in the Raft cluster")
+	cmd.Flags().String(FlagRaftAddr, def.Raft.RaftAddr, "address for Raft communication (host:port)")
+	cmd.Flags().String(FlagRaftDir, def.Raft.RaftDir, "directory for Raft logs and snapshots")
+	cmd.Flags().Bool(FlagRaftBootstrap, def.Raft.Bootstrap, "bootstrap a new Raft cluster (only for the first node)")
+	cmd.Flags().String(FlagRaftPeers, def.Raft.Peers, "comma-separated list of peer Raft addresses (nodeID@host:port)")
+	cmd.Flags().Uint64(FlagRaftSnapCount, def.Raft.SnapCount, "number of log entries between snapshots")
+	cmd.Flags().Duration(FlagRaftSendTimeout, def.Raft.SendTimeout, "max duration to wait for a message to be sent to a peer")
+	cmd.Flags().Duration(FlagRaftHeartbeatTimeout, def.Raft.HeartbeatTimeout, "time between leader heartbeats to followers")
+	cmd.Flags().Duration(FlagRaftLeaderLeaseTimeout, def.Raft.LeaderLeaseTimeout, "duration of the leader lease")
 }
 
 // Load loads the node configuration in the following order of precedence:

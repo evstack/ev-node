@@ -97,6 +97,12 @@ func DefaultConfig() Config {
 			Address:               "127.0.0.1:7331",
 			EnableDAVisualization: false,
 		},
+		Raft: RaftConfig{
+			SendTimeout:        200 * time.Millisecond,
+			HeartbeatTimeout:   350 * time.Millisecond,
+			LeaderLeaseTimeout: 175 * time.Millisecond,
+			RaftDir:            filepath.Join(DefaultRootDir, "raft"),
+		},
 	}
 }
 

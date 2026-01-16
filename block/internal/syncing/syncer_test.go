@@ -105,7 +105,7 @@ func TestSyncer_validateBlock_DataHashMismatch(t *testing.T) {
 	ds := dssync.MutexWrap(datastore.NewMapDatastore())
 	st := store.New(ds)
 
-	cm, err := cache.NewCacheManager(config.DefaultConfig(), zerolog.Nop())
+	cm, err := cache.NewManager(config.DefaultConfig(), st, zerolog.Nop())
 	require.NoError(t, err)
 
 	addr, pub, signer := buildSyncTestSigner(t)
@@ -128,6 +128,7 @@ func TestSyncer_validateBlock_DataHashMismatch(t *testing.T) {
 		zerolog.Nop(),
 		common.DefaultBlockOptions(),
 		make(chan error, 1),
+		nil,
 	)
 	require.NoError(t, s.initializeState())
 	// Create header and data with correct hash
@@ -154,7 +155,7 @@ func TestProcessHeightEvent_SyncsAndUpdatesState(t *testing.T) {
 	ds := dssync.MutexWrap(datastore.NewMapDatastore())
 	st := store.New(ds)
 
-	cm, err := cache.NewCacheManager(config.DefaultConfig(), zerolog.Nop())
+	cm, err := cache.NewManager(config.DefaultConfig(), st, zerolog.Nop())
 	require.NoError(t, err)
 
 	addr, pub, signer := buildSyncTestSigner(t)
@@ -179,6 +180,7 @@ func TestProcessHeightEvent_SyncsAndUpdatesState(t *testing.T) {
 		zerolog.Nop(),
 		common.DefaultBlockOptions(),
 		errChan,
+		nil,
 	)
 
 	require.NoError(t, s.initializeState())
@@ -209,7 +211,7 @@ func TestSequentialBlockSync(t *testing.T) {
 	ds := dssync.MutexWrap(datastore.NewMapDatastore())
 	st := store.New(ds)
 
-	cm, err := cache.NewCacheManager(config.DefaultConfig(), zerolog.Nop())
+	cm, err := cache.NewManager(config.DefaultConfig(), st, zerolog.Nop())
 	require.NoError(t, err)
 
 	addr, pub, signer := buildSyncTestSigner(t)
@@ -233,6 +235,7 @@ func TestSequentialBlockSync(t *testing.T) {
 		zerolog.Nop(),
 		common.DefaultBlockOptions(),
 		errChan,
+		nil,
 	)
 	require.NoError(t, s.initializeState())
 	s.ctx = t.Context()
@@ -328,7 +331,7 @@ func TestSyncLoopPersistState(t *testing.T) {
 	cfg.RootDir = t.TempDir()
 	cfg.ClearCache = true
 
-	cacheMgr, err := cache.NewCacheManager(cfg, zerolog.Nop())
+	cm, err := cache.NewManager(config.DefaultConfig(), st, zerolog.Nop())
 	require.NoError(t, err)
 
 	const myDAHeightOffset = uint64(1)
@@ -357,7 +360,7 @@ func TestSyncLoopPersistState(t *testing.T) {
 		st,
 		dummyExec,
 		nil,
-		cacheMgr,
+		cm,
 		common.NopMetrics(),
 		cfg,
 		gen,
@@ -366,6 +369,7 @@ func TestSyncLoopPersistState(t *testing.T) {
 		zerolog.Nop(),
 		common.DefaultBlockOptions(),
 		errorCh,
+		nil,
 	)
 	require.NoError(t, syncerInst1.initializeState())
 
@@ -423,7 +427,7 @@ func TestSyncLoopPersistState(t *testing.T) {
 	require.Equal(t, myFutureDAHeight, syncerInst1.daRetrieverHeight.Load())
 
 	// wait for all events consumed
-	require.NoError(t, cacheMgr.SaveToDisk())
+	require.NoError(t, cm.SaveToDisk())
 	t.Log("processLoop on instance1 completed")
 
 	// then
@@ -438,15 +442,15 @@ func TestSyncLoopPersistState(t *testing.T) {
 		require.Nil(t, event, "event at height %d should have been removed", blockHeight)
 	}
 	// and when new instance is up on restart
-	cacheMgr, err = cache.NewCacheManager(cfg, zerolog.Nop())
+	cm, err = cache.NewManager(config.DefaultConfig(), st, zerolog.Nop())
 	require.NoError(t, err)
-	require.NoError(t, cacheMgr.LoadFromDisk())
+	require.NoError(t, cm.LoadFromDisk())
 
 	syncerInst2 := NewSyncer(
 		st,
 		dummyExec,
 		nil,
-		cacheMgr,
+		cm,
 		common.NopMetrics(),
 		cfg,
 		gen,
@@ -455,6 +459,7 @@ func TestSyncLoopPersistState(t *testing.T) {
 		zerolog.Nop(),
 		common.DefaultBlockOptions(),
 		make(chan error, 1),
+		nil,
 	)
 	require.NoError(t, syncerInst2.initializeState())
 
@@ -609,15 +614,16 @@ func TestSyncer_InitializeState_CallsReplayer(t *testing.T) {
 	// Mock GetMetadata calls for DA included height retrieval
 	mockStore.EXPECT().GetMetadata(mock.Anything, store.DAIncludedHeightKey).Return(nil, datastore.ErrNotFound)
 
-	// Setup execution layer to be in sync
-	mockExec.On("GetLatestHeight", mock.Anything).Return(storeHeight, nil)
-
-	// Mock batch operations
-	mockBatch := new(testmocks.MockBatch)
+	// Mock Batch operations
+	mockBatch := &MockBatch{}
+	mockBatch.Test(t)
+	mockStore.EXPECT().NewBatch(mock.Anything).Return(mockBatch, nil)
 	mockBatch.On("SetHeight", storeHeight).Return(nil)
 	mockBatch.On("UpdateState", mock.Anything).Return(nil)
 	mockBatch.On("Commit").Return(nil)
-	mockStore.EXPECT().NewBatch(mock.Anything).Return(mockBatch, nil)
+
+	// Setup execution layer to be in sync
+	mockExec.On("GetLatestHeight", mock.Anything).Return(storeHeight, nil)
 
 	syncer := &Syncer{
 		store:             mockStore,
@@ -705,4 +711,39 @@ func TestSyncer_getHighestStoredDAHeight(t *testing.T) {
 
 	highestDA = syncer.getHighestStoredDAHeight()
 	assert.Equal(t, uint64(200), highestDA, "should return highest DA height from most recent included height")
+}
+
+// MockBatch is a mock implementation of store.Batch
+type MockBatch struct {
+	mock.Mock
+}
+
+func (m *MockBatch) SaveBlockData(header *types.SignedHeader, data *types.Data, signature *types.Signature) error {
+	args := m.Called(header, data, signature)
+	return args.Error(0)
+}
+
+func (m *MockBatch) SetHeight(height uint64) error {
+	args := m.Called(height)
+	return args.Error(0)
+}
+
+func (m *MockBatch) UpdateState(state types.State) error {
+	args := m.Called(state)
+	return args.Error(0)
+}
+
+func (m *MockBatch) Commit() error {
+	args := m.Called()
+	return args.Error(0)
+}
+
+func (m *MockBatch) Put(key datastore.Key, value []byte) error {
+	args := m.Called(key, value)
+	return args.Error(0)
+}
+
+func (m *MockBatch) Delete(key datastore.Key) error {
+	args := m.Called(key)
+	return args.Error(0)
 }

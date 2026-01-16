@@ -35,6 +35,17 @@ type Components struct {
 	errorCh chan error
 }
 
+// GetLastState returns the current blockchain state
+func (bc *Components) GetLastState() types.State {
+	if bc.Executor != nil {
+		return bc.Executor.GetLastState()
+	}
+	if bc.Syncer != nil {
+		return bc.Syncer.GetLastState()
+	}
+	return types.State{}
+}
+
 // Start starts all components and monitors for critical errors.
 // It is blocking and returns when the context is cancelled or an error occurs
 func (bc *Components) Start(ctx context.Context) error {
@@ -108,6 +119,11 @@ func (bc *Components) Stop() error {
 			errs = errors.Join(errs, fmt.Errorf("failed to stop submitter: %w", err))
 		}
 	}
+	if bc.Cache != nil {
+		if err := bc.Cache.SaveToDisk(); err != nil {
+			errs = errors.Join(errs, fmt.Errorf("failed to save caches: %w", err))
+		}
+	}
 
 	return errs
 }
@@ -126,8 +142,8 @@ func NewSyncComponents(
 	logger zerolog.Logger,
 	metrics *Metrics,
 	blockOpts BlockOptions,
+	raftNode common.RaftNode,
 ) (*Components, error) {
-	logger.Info().Msg("Starting in sync-mode")
 	cacheManager, err := cache.NewManager(config, store, logger)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create cache manager: %w", err)
@@ -149,6 +165,7 @@ func NewSyncComponents(
 		logger,
 		blockOpts,
 		errorCh,
+		raftNode,
 	)
 
 	if config.Instrumentation.IsTracingEnabled() {
@@ -195,8 +212,8 @@ func NewAggregatorComponents(
 	logger zerolog.Logger,
 	metrics *Metrics,
 	blockOpts BlockOptions,
+	raftNode common.RaftNode,
 ) (*Components, error) {
-	logger.Info().Msg("Starting in aggregator-mode")
 	cacheManager, err := cache.NewManager(config, store, logger)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create cache manager: %w", err)
@@ -219,6 +236,7 @@ func NewAggregatorComponents(
 		logger,
 		blockOpts,
 		errorCh,
+		raftNode,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create executor: %w", err)

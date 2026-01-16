@@ -9,7 +9,7 @@ import (
 	coresequencer "github.com/evstack/ev-node/core/sequencer"
 	"github.com/evstack/ev-node/pkg/config"
 	"github.com/evstack/ev-node/pkg/genesis"
-	"github.com/evstack/ev-node/pkg/p2p"
+	"github.com/evstack/ev-node/pkg/p2p/key"
 	"github.com/evstack/ev-node/pkg/service"
 	"github.com/evstack/ev-node/pkg/signer"
 )
@@ -34,7 +34,7 @@ func NewNode(
 	sequencer coresequencer.Sequencer,
 	daClient block.DAClient,
 	signer signer.Signer,
-	p2pClient *p2p.Client,
+	nodeKey *key.NodeKey,
 	genesis genesis.Genesis,
 	database ds.Batching,
 	metricsProvider MetricsProvider,
@@ -42,7 +42,7 @@ func NewNode(
 	nodeOptions NodeOptions,
 ) (Node, error) {
 	if conf.Node.Light {
-		return newLightNode(conf, genesis, p2pClient, database, logger)
+		return newLightNode(conf, genesis, nodeKey, database, logger)
 	}
 
 	if err := nodeOptions.BlockOptions.Validate(); err != nil {
@@ -51,7 +51,7 @@ func NewNode(
 
 	return newFullNode(
 		conf,
-		p2pClient,
+		nodeKey,
 		signer,
 		genesis,
 		database,
