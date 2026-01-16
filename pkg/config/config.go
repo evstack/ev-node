@@ -78,6 +78,14 @@ const (
 	FlagDAMaxSubmitAttempts = FlagPrefixEvnode + "da.max_submit_attempts"
 	// FlagDARequestTimeout controls the per-request timeout when talking to the DA layer
 	FlagDARequestTimeout = FlagPrefixEvnode + "da.request_timeout"
+	// FlagDABatchingStrategy is a flag for specifying the batching strategy
+	FlagDABatchingStrategy = FlagPrefixEvnode + "da.batching_strategy"
+	// FlagDABatchSizeThreshold is a flag for specifying the batch size threshold
+	FlagDABatchSizeThreshold = FlagPrefixEvnode + "da.batch_size_threshold"
+	// FlagDABatchMaxDelay is a flag for specifying the maximum batch delay
+	FlagDABatchMaxDelay = FlagPrefixEvnode + "da.batch_max_delay"
+	// FlagDABatchMinItems is a flag for specifying the minimum batch items
+	FlagDABatchMinItems = FlagPrefixEvnode + "da.batch_min_items"
 
 	// P2P configuration flags
 
@@ -208,7 +216,13 @@ type DAConfig struct {
 	BlockTime                DurationWrapper `mapstructure:"block_time" yaml:"block_time" comment:"Average block time of the DA chain (duration). Determines frequency of DA layer syncing, maximum backoff time for retries, and is multiplied by MempoolTTL to calculate transaction expiration. Examples: \"15s\", \"30s\", \"1m\", \"2m30s\", \"10m\"."`
 	MempoolTTL               uint64          `mapstructure:"mempool_ttl" yaml:"mempool_ttl" comment:"Number of DA blocks after which a transaction is considered expired and dropped from the mempool. Controls retry backoff timing."`
 	MaxSubmitAttempts        int             `mapstructure:"max_submit_attempts" yaml:"max_submit_attempts" comment:"Maximum number of attempts to submit data to the DA layer before giving up. Higher values provide more resilience but can delay error reporting."`
-	RequestTimeout           DurationWrapper `mapstructure:"request_timeout" yaml:"request_timeout" comment:"Per-request timeout applied to DA interactions. Larger values tolerate slower DA nodes at the cost of waiting longer before failing."`
+	RequestTimeout           DurationWrapper `mapstructure:"request_timeout" yaml:"request_timeout" comment:"Timeout for requests to DA layer"`
+
+	// Batching strategy configuration
+	BatchingStrategy   string          `mapstructure:"batching_strategy" yaml:"batching_strategy" comment:"Batching strategy for DA submissions. Options: 'immediate' (submit as soon as items are available), 'size' (wait until batch reaches size threshold), 'time' (wait for time interval), 'adaptive' (balance between size and time). Default: 'time'."`
+	BatchSizeThreshold float64         `mapstructure:"batch_size_threshold" yaml:"batch_size_threshold" comment:"Minimum blob size threshold (as fraction of max blob size, 0.0-1.0) before submitting. Only applies to 'size' and 'adaptive' strategies. Example: 0.8 means wait until batch is 80% full. Default: 0.8."`
+	BatchMaxDelay      DurationWrapper `mapstructure:"batch_max_delay" yaml:"batch_max_delay" comment:"Maximum time to wait before submitting a batch regardless of size. Applies to 'time' and 'adaptive' strategies. Lower values reduce latency but may increase costs. Examples: \"6s\", \"12s\", \"30s\". Default: DA BlockTime."`
+	BatchMinItems      uint64          `mapstructure:"batch_min_items" yaml:"batch_min_items" comment:"Minimum number of items (headers or data) to accumulate before considering submission. Helps avoid submitting single items when more are expected soon. Default: 1."`
 }
 
 // GetNamespace returns the namespace for header submissions.
@@ -437,6 +451,10 @@ func AddFlags(cmd *cobra.Command) {
 	cmd.Flags().Uint64(FlagDAMempoolTTL, def.DA.MempoolTTL, "number of DA blocks until transaction is dropped from the mempool")
 	cmd.Flags().Int(FlagDAMaxSubmitAttempts, def.DA.MaxSubmitAttempts, "maximum number of attempts to submit data to the DA layer before giving up")
 	cmd.Flags().Duration(FlagDARequestTimeout, def.DA.RequestTimeout.Duration, "per-request timeout when interacting with the DA layer")
+	cmd.Flags().String(FlagDABatchingStrategy, def.DA.BatchingStrategy, "batching strategy for DA submissions (immediate, size, time, adaptive)")
+	cmd.Flags().Float64(FlagDABatchSizeThreshold, def.DA.BatchSizeThreshold, "batch size threshold as fraction of max blob size (0.0-1.0)")
+	cmd.Flags().Duration(FlagDABatchMaxDelay, def.DA.BatchMaxDelay.Duration, "maximum time to wait before submitting a batch")
+	cmd.Flags().Uint64(FlagDABatchMinItems, def.DA.BatchMinItems, "minimum number of items to accumulate before submission")
 
 	// P2P configuration flags
 	cmd.Flags().String(FlagP2PListenAddress, def.P2P.ListenAddress, "P2P listen address (host:port)")

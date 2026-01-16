@@ -296,6 +296,7 @@ func (e *Executor) initializeState() error {
 
 	// Sync execution layer to the target height (Raft height if behind, local height otherwise)
 	execReplayer := common.NewReplayer(e.store, e.exec, e.genesis, e.logger)
+	syncTargetHeight := state.LastBlockHeight
 	if err := execReplayer.SyncToHeight(e.ctx, syncTargetHeight); err != nil {
 		e.sendCriticalError(fmt.Errorf("failed to sync execution layer: %w", err))
 		return fmt.Errorf("failed to sync execution layer: %w", err)
@@ -364,6 +365,7 @@ func (e *Executor) executionLoop() {
 		select {
 		case <-e.ctx.Done():
 			return
+
 		case <-blockTimer.C:
 			if e.config.Node.LazyMode && !txsAvailable {
 				// In lazy mode without transactions, just continue ticking

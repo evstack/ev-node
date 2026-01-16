@@ -135,19 +135,19 @@ func TestSyncer_validateBlock_DataHashMismatch(t *testing.T) {
 	data := makeData(gen.ChainID, 1, 2) // non-empty
 	_, header := makeSignedHeaderBytes(t, gen.ChainID, 1, addr, pub, signer, nil, data, nil)
 
-	err = s.ValidateBlock(context.Background(), s.getLastState(), data, header)
+	err = s.ValidateBlock(t.Context(), s.getLastState(), data, header)
 	require.NoError(t, err)
 
 	// Create header and data with mismatched hash
 	data = makeData(gen.ChainID, 1, 2) // non-empty
 	_, header = makeSignedHeaderBytes(t, gen.ChainID, 1, addr, pub, signer, nil, nil, nil)
-	err = s.ValidateBlock(context.Background(), s.getLastState(), data, header)
+	err = s.ValidateBlock(t.Context(), s.getLastState(), data, header)
 	require.Error(t, err)
 
 	// Create header and empty data
 	data = makeData(gen.ChainID, 1, 0) // empty
 	_, header = makeSignedHeaderBytes(t, gen.ChainID, 2, addr, pub, signer, nil, nil, nil)
-	err = s.ValidateBlock(context.Background(), s.getLastState(), data, header)
+	err = s.ValidateBlock(t.Context(), s.getLastState(), data, header)
 	require.Error(t, err)
 }
 
@@ -625,7 +625,13 @@ func TestSyncer_InitializeState_CallsReplayer(t *testing.T) {
 	// Setup execution layer to be in sync
 	mockExec.On("GetLatestHeight", mock.Anything).Return(storeHeight, nil)
 
-	// Create syncer with minimal dependencies
+	// Mock batch operations
+	mockBatch := new(testmocks.MockBatch)
+	mockBatch.On("SetHeight", storeHeight).Return(nil)
+	mockBatch.On("UpdateState", mock.Anything).Return(nil)
+	mockBatch.On("Commit").Return(nil)
+	mockStore.EXPECT().NewBatch(mock.Anything).Return(mockBatch, nil)
+
 	syncer := &Syncer{
 		store:             mockStore,
 		exec:              mockExec,

@@ -344,7 +344,7 @@ func (c *EngineClient) GetTxs(ctx context.Context) ([][]byte, error) {
 func (c *EngineClient) ExecuteTxs(ctx context.Context, txs [][]byte, blockHeight uint64, timestamp time.Time, prevStateRoot []byte) (updatedStateRoot []byte, maxBytes uint64, err error) {
 
 	// 1. Check for idempotent execution
-	stateRoot, payloadID, found, err := c.checkIdempotency(ctx, blockHeight, timestamp, txs)
+	stateRoot, payloadID, found, err := c.reconcileExecutionAtHeight(ctx, blockHeight, timestamp, txs)
 	if err != nil {
 		c.logger.Warn().Err(err).Uint64("height", blockHeight).Msg("ExecuteTxs: idempotency check failed")
 		// Continue execution on error, as it might be transient
@@ -554,6 +554,7 @@ func (c *EngineClient) setFinalWithHeight(ctx context.Context, blockHash common.
 
 // doForkchoiceUpdate performs the actual forkchoice update RPC call with retry logic.
 func (c *EngineClient) doForkchoiceUpdate(ctx context.Context, args engine.ForkchoiceStateV1, operation string) error {
+
 	// Call forkchoice update with retry logic for SYNCING status
 	err := retryWithBackoffOnPayloadStatus(ctx, func() error {
 		forkchoiceResult, err := c.engineClient.ForkchoiceUpdated(ctx, args, nil)
@@ -696,19 +697,19 @@ func (c *EngineClient) ResumePayload(ctx context.Context, payloadIDBytes []byte)
 	return stateRoot, err
 }
 
-// checkIdempotency checks if the block at the given height and timestamp has already been executed.
+// reconcileExecutionAtHeight checks if the block at the given height and timestamp has already been executed.
 // It returns:
 // - stateRoot: non-nil if block is already promoted/finalized (idempotent success)
 // - payloadID: non-nil if block execution was started but not finished (resume needed)
 // - found: true if either of the above is true
 // - err: error during checks
-func (c *EngineClient) checkIdempotency(ctx context.Context, height uint64, timestamp time.Time, txs [][]byte) (stateRoot []byte, payloadID *engine.PayloadID, found bool, err error) {
+func (c *EngineClient) reconcileExecutionAtHeight(ctx context.Context, height uint64, timestamp time.Time, txs [][]byte) (stateRoot []byte, payloadID *engine.PayloadID, found bool, err error) {
 	// 1. Check ExecMeta from store
 	execMeta, err := c.store.GetExecMeta(ctx, height)
 	if err == nil && execMeta != nil {
 		// If we already have a promoted block at this height, verify timestamp matches
 		// to catch Dual-Store Conflicts where ExecMeta was saved for an old block
-		// that was later replaced via Raft consensus.
+		// that was later replaced via consensus.
 		if execMeta.Stage == ExecStagePromoted && len(execMeta.StateRoot) > 0 {
 			if execMeta.Timestamp == timestamp.Unix() {
 				c.logger.Info().
@@ -733,7 +734,7 @@ func (c *EngineClient) checkIdempotency(ctx context.Context, height uint64, time
 			copy(pid[:], execMeta.PayloadID)
 
 			// Validate payload still exists by attempting to retrieve it
-			if _, err := c.engineClient.GetPayload(ctx, pid); err == nil {
+			if _, err = c.engineClient.GetPayload(ctx, pid); err == nil {
 				c.logger.Info().
 					Uint64("height", height).
 					Str("stage", execMeta.Stage).
@@ -772,11 +773,7 @@ func (c *EngineClient) checkIdempotency(ctx context.Context, height uint64, time
 
 			return existingStateRoot.Bytes(), nil, true, nil
 		}
-		// Timestamp mismatch - this indicates a Dual-Store Conflict where the EL produced a block
-		// that was not replicated via Raft before leadership changed. The new leader created a
-		// different block at the same height with a different timestamp, and that block is now
-		// the authoritative version. We need to rollback the EL to height-1 so it can re-execute
-		// with the correct timestamp from the Raft-replicated block.
+		// We need to rollback the EL to height-1 so it can re-execute
 		c.logger.Warn().
 			Uint64("height", height).
 			Uint64("existingTimestamp", existingTimestamp).
@@ -956,7 +953,6 @@ func (c *EngineClient) GetLatestHeight(ctx context.Context) (uint64, error) {
 
 // Rollback resets the execution layer head to the specified height using forkchoice update.
 // This is used for recovery when the EL is ahead of the consensus layer (e.g., during rolling restarts
-// where the EL committed blocks that were not replicated to Raft).
 //
 // Implements the execution.Rollbackable interface.
 func (c *EngineClient) Rollback(ctx context.Context, targetHeight uint64) error {

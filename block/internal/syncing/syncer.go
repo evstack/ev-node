@@ -251,8 +251,10 @@ func (s *Syncer) Stop() error {
 		return nil
 	}
 
-	// Drain pending events from the buffer before shutdown to prevent state loss.
-	// Process remaining events with a timeout to prevent hanging indefinitely.
+	s.cancel()
+	s.cancelP2PWait(0)
+	s.wg.Wait()
+
 	drainCtx, drainCancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer drainCancel()
 
@@ -277,9 +279,6 @@ drainLoop:
 		s.logger.Info().Int("count", drained).Msg("drained pending height events during shutdown")
 	}
 
-	s.cancel()
-	s.cancelP2PWait(0)
-	s.wg.Wait()
 	s.logger.Info().Msg("syncer stopped")
 	close(s.heightInCh)
 	s.cancel = nil
@@ -808,8 +807,8 @@ func (s *Syncer) executeTxsWithRetry(ctx context.Context, rawTxs [][]byte, heade
 			select {
 			case <-time.After(common.MaxRetriesTimeout):
 				continue
-			case <-s.ctx.Done():
-				return nil, fmt.Errorf("context cancelled during retry: %w", s.ctx.Err())
+			case <-ctx.Done():
+				return nil, fmt.Errorf("context cancelled during retry: %w", ctx.Err())
 			}
 		}
 
