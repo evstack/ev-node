@@ -546,6 +546,23 @@ func (e *Executor) ProduceBlock(ctx context.Context) error {
 	// Update in-memory state after successful commit
 	e.setLastState(newState)
 
+	// Run height-based pruning of stored block data if enabled. This is a
+	// best-effort background maintenance step and should not cause block
+	// production to fail, but it does run in the critical path and may add
+	// some latency when large ranges are pruned.
+	if e.config.Node.PruningEnabled && e.config.Node.PruningKeepRecent > 0 && e.config.Node.PruningInterval > 0 {
+		if newHeight%e.config.Node.PruningInterval == 0 {
+			// Compute the prune floor: all heights <= targetHeight are candidates
+			// for pruning of header/data/signature/index entries.
+			if newHeight > e.config.Node.PruningKeepRecent {
+				targetHeight := newHeight - e.config.Node.PruningKeepRecent
+				if err := e.store.PruneBlocks(e.ctx, targetHeight); err != nil {
+					e.logger.Error().Err(err).Uint64("target_height", targetHeight).Msg("failed to prune old block data")
+				}
+			}
+		}
+	}
+
 	// broadcast header and data to P2P network
 	g, broadcastCtx := errgroup.WithContext(e.ctx)
 	g.Go(func() error {
