@@ -488,8 +488,8 @@ func (g *gethEngineClient) buildPayload(ctx context.Context, ps *payloadBuildSta
 	// Validate block number continuity
 	expectedNumber := new(big.Int).Add(parent.Number(), big.NewInt(1))
 
-	// Validate timestamp
-	if ps.timestamp <= parent.Time() {
+	// Validate timestamp allow equal time to allow sub seconds blocks
+	if ps.timestamp < parent.Time() {
 		return nil, fmt.Errorf("invalid timestamp: %d must be greater than parent timestamp %d", ps.timestamp, parent.Time())
 	}
 
@@ -704,7 +704,7 @@ func (g *gethEngineClient) NewPayload(ctx context.Context, payload *engine.Execu
 	}
 
 	// Validate timestamp
-	if payload.Timestamp <= parent.Time() {
+	if payload.Timestamp < parent.Time() {
 		g.logger.Warn().
 			Uint64("payload_timestamp", payload.Timestamp).
 			Uint64("parent_timestamp", parent.Time()).
