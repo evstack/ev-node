@@ -7,7 +7,7 @@ const (
 	FlagEvmGenesisHash   = "evm.genesis-hash"
 	FlagEvmFeeRecipient  = "evm.fee-recipient"
 
-	FlagEVMGenesisPath   = "evm.geth.genesis-path"
 	FlagEVMInProcessGeth = "evm.geth"
+	FlagEVMGenesisPath   = "evm.geth.genesis-path"
 	FlagEVMRPCAddress    = "evm.geth.rpc-address"
 )

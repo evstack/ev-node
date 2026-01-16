@@ -59,14 +59,28 @@ var RunCmd = &cobra.Command{
 
 		tracingEnabled := nodeConfig.Instrumentation.IsTracingEnabled()
 
-		executor, err := createExecutionClient(
-			cmd,
-			datastore,
-			tracingEnabled,
-			logger.With().Str("module", "engine_client").Logger(),
-		)
-		if err != nil {
-			return err
+		var executor execution.Executor
+		useGeth, _ := cmd.Flags().GetBool(evm.FlagEVMInProcessGeth)
+		if useGeth {
+			executor, err = createGethExecutionClient(
+				cmd,
+				datastore,
+				tracingEnabled,
+				logger.With().Str("module", "geth_client").Logger(),
+			)
+			if err != nil {
+				return err
+			}
+		} else {
+			executor, err = createRethExecutionClient(
+				cmd,
+				datastore,
+				tracingEnabled,
+				logger.With().Str("module", "engine_client").Logger(),
+			)
+			if err != nil {
+				return err
+			}
 		}
 
 		blobClient, err := blobrpc.NewClient(context.Background(), nodeConfig.DA.Address, nodeConfig.DA.AuthToken, "")
@@ -202,33 +216,12 @@ func createSequencer(
 	return sequencer, nil
 }
 
-func createExecutionClient(cmd *cobra.Command, db datastore.Batching, tracingEnabled bool, logger zerolog.Logger) (execution.Executor, error) {
+func createRethExecutionClient(cmd *cobra.Command, db datastore.Batching, tracingEnabled bool, logger zerolog.Logger) (execution.Executor, error) {
 	feeRecipientStr, err := cmd.Flags().GetString(evm.FlagEvmFeeRecipient)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get '%s' flag: %w", evm.FlagEvmFeeRecipient, err)
 	}
 	feeRecipient := common.HexToAddress(feeRecipientStr)
-
-	useGeth, _ := cmd.Flags().GetBool(evm.FlagEVMInProcessGeth)
-	if useGeth {
-		genesisPath, _ := cmd.Flags().GetString(evm.FlagEVMGenesisPath)
-		if len(genesisPath) == 0 {
-			return nil, fmt.Errorf("genesis path must be provided when using in-process Geth")
-		}
-
-		genesisBz, err := os.ReadFile(genesisPath)
-		if err != nil {
-			return nil, fmt.Errorf("failed to read genesis: %w", err)
-		}
-
-		var genesis core.Genesis
-		if err := json.Unmarshal(genesisBz, &genesis); err != nil {
-			return nil, fmt.Errorf("failed to unmarshal genesis: %w", err)
-		}
-
-		rpcAddress, _ := cmd.Flags().GetString(evm.FlagEVMRPCAddress)
-		return evm.NewEngineExecutionClientWithGeth(&genesis, feeRecipient, db, rpcAddress, logger)
-	}
 
 	// Read execution client parameters from flags
 	ethURL, err := cmd.Flags().GetString(evm.FlagEvmEthURL)
@@ -272,6 +265,32 @@ func createExecutionClient(cmd *cobra.Command, db datastore.Batching, tracingEna
 	return evm.NewEngineExecutionClient(ethURL, engineURL, jwtSecret, genesisHash, feeRecipient, db, tracingEnabled, logger)
 }
 
+func createGethExecutionClient(cmd *cobra.Command, db datastore.Batching, tracingEnabled bool, logger zerolog.Logger) (execution.Executor, error) {
+	feeRecipientStr, err := cmd.Flags().GetString(evm.FlagEvmFeeRecipient)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get '%s' flag: %w", evm.FlagEvmFeeRecipient, err)
+	}
+	feeRecipient := common.HexToAddress(feeRecipientStr)
+
+	genesisPath, _ := cmd.Flags().GetString(evm.FlagEVMGenesisPath)
+	if len(genesisPath) == 0 {
+		return nil, fmt.Errorf("genesis path must be provided when using in-process Geth")
+	}
+
+	genesisBz, err := os.ReadFile(genesisPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read genesis: %w", err)
+	}
+
+	var genesis core.Genesis
+	if err := json.Unmarshal(genesisBz, &genesis); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal genesis: %w", err)
+	}
+
+	rpcAddress, _ := cmd.Flags().GetString(evm.FlagEVMRPCAddress)
+	return evm.NewEngineExecutionClientWithGeth(&genesis, feeRecipient, db, rpcAddress, logger)
+}
+
 // addFlags adds flags related to the EVM execution client
 func addFlags(cmd *cobra.Command) {
 	cmd.Flags().String(evm.FlagEvmEthURL, "http://localhost:8545", "URL of the Ethereum JSON-RPC endpoint")
@@ -284,4 +303,6 @@ func addFlags(cmd *cobra.Command) {
 	cmd.Flags().Bool(evm.FlagEVMInProcessGeth, false, "Use in-process Geth for EVM execution instead of external execution client")
 	cmd.Flags().String(evm.FlagEVMGenesisPath, "", "EVM genesis path for Geth")
 	cmd.Flags().String(evm.FlagEVMRPCAddress, "", "Address for in-process Geth JSON-RPC server (e.g., 127.0.0.1:8545)")
+
+	cmd.MarkFlagsMutuallyExclusive(evm.FlagEVMInProcessGeth, evm.FlagEvmEthURL, evm.FlagEvmEngineURL, evm.FlagEvmJWTSecretFile, evm.FlagEvmGenesisHash)
 }
