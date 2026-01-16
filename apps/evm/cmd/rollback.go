@@ -9,6 +9,7 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	ds "github.com/ipfs/go-datastore"
+	"github.com/rs/zerolog"
 	"github.com/spf13/cobra"
 
 	goheaderstore "github.com/celestiaorg/go-header/store"
@@ -166,5 +167,5 @@ func createRollbackEngineClient(cmd *cobra.Command, db ds.Batching) (*evm.Engine
 		return nil, fmt.Errorf("JWT secret file '%s' is empty", jwtSecretFile)
 	}
 
-	return evm.NewEngineExecutionClient(ethURL, engineURL, jwtSecret, common.Hash{}, common.Address{}, db, false)
+	return evm.NewEngineExecutionClient(ethURL, engineURL, jwtSecret, common.Hash{}, common.Address{}, db, false, zerolog.Nop())
 }

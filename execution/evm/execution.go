@@ -195,6 +195,7 @@ func NewEngineExecutionClient(
 	feeRecipient common.Address,
 	db ds.Batching,
 	tracingEnabled bool,
+	logger zerolog.Logger,
 ) (*EngineClient, error) {
 	if db == nil {
 		return nil, errors.New("db is required for EVM execution client")
@@ -258,13 +259,8 @@ func NewEngineExecutionClient(
 		currentSafeBlockHash:      genesisHash,
 		currentFinalizedBlockHash: genesisHash,
 		blockHashCache:            make(map[uint64]common.Hash),
-		logger:                    zerolog.Nop(),
+		logger:                    logger,
 	}, nil
-}
-
-// SetLogger allows callers to attach a structured logger.
-func (c *EngineClient) SetLogger(l zerolog.Logger) {
-	c.logger = l
 }
 
 // InitChain initializes the blockchain with the given genesis parameters
