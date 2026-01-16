@@ -251,9 +251,9 @@ func (s *Submitter) daSubmissionLoop() {
 			if dataNb > 0 {
 				lastSubmitNanos := s.lastDataSubmit.Load()
 				timeSinceLastSubmit := time.Since(time.Unix(0, lastSubmitNanos))
-				s.logger.Debug().Time("t", time.Now()).Uint64("data", dataNb).Msg("Data submission in progress")
-				s.wg.Add(1)
 				if s.dataSubmissionMtx.TryLock() {
+					s.logger.Debug().Time("t", time.Now()).Uint64("data", dataNb).Msg("Data submission in progress")
+					s.wg.Add(1)
 					go func() {
 						defer func() {
 							s.dataSubmissionMtx.Unlock()
