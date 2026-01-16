@@ -30,6 +30,11 @@ packages:
           dir: ./test/mocks
           pkgname: mocks
           filename: store.go
+      Batch:
+        config:
+          dir: ./test/mocks
+          pkgname: mocks
+          filename: batch.go
   github.com/celestiaorg/go-header:
     interfaces:
       Store:

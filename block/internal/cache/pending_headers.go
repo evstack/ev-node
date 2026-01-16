@@ -2,6 +2,7 @@ package cache
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/rs/zerolog"
@@ -26,8 +27,17 @@ type PendingHeaders struct {
 	base *pendingBase[*types.SignedHeader]
 }
 
+var errInFlightHeader = errors.New("inflight header")
+
 func fetchSignedHeader(ctx context.Context, store storepkg.Store, height uint64) (*types.SignedHeader, error) {
 	header, err := store.GetHeader(ctx, height)
+	if err != nil {
+		return nil, err
+	}
+	// in the executor, WIP headers are temporary stored. skip them until the process is completed
+	if header.Height() == 0 {
+		return nil, errInFlightHeader
+	}
 	return header, err
 }
 
