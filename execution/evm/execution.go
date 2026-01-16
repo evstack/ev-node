@@ -172,6 +172,7 @@ type EngineClient struct {
 	store *EVMStore
 
 	mu                        sync.Mutex             // Mutex to protect concurrent access to block hashes
+	forkchoiceMu              sync.Mutex             // Serializes forkchoice RPC calls to ensure EL state matches internal state
 	currentHeadBlockHash      common.Hash            // Store last non-finalized HeadBlockHash
 	currentHeadHeight         uint64                 // Height of the current head block (for safe lag calculation)
 	currentSafeBlockHash      common.Hash            // Store last non-finalized SafeBlockHash
@@ -553,7 +554,11 @@ func (c *EngineClient) setFinalWithHeight(ctx context.Context, blockHash common.
 }
 
 // doForkchoiceUpdate performs the actual forkchoice update RPC call with retry logic.
+// It acquires forkchoiceMu to serialize RPC calls and ensure EL state matches internal state.
 func (c *EngineClient) doForkchoiceUpdate(ctx context.Context, args engine.ForkchoiceStateV1, operation string) error {
+	c.forkchoiceMu.Lock()
+	defer c.forkchoiceMu.Unlock()
+
 	// Call forkchoice update with retry logic for SYNCING status
 	err := retryWithBackoffOnPayloadStatus(ctx, func() error {
 		forkchoiceResult, err := c.engineClient.ForkchoiceUpdated(ctx, args, nil)
