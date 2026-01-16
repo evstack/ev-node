@@ -20,24 +20,18 @@ func TestInitChain_Idempotency(t *testing.T) {
 	chainID := "test-chain"
 
 	// First call initializes genesis state
-	stateRoot1, maxBytes1, err := exec.InitChain(ctx, genesisTime, initialHeight, chainID)
+	stateRoot1, err := exec.InitChain(ctx, genesisTime, initialHeight, chainID)
 	if err != nil {
 		t.Fatalf("InitChain failed on first call: %v", err)
 	}
-	if maxBytes1 != 1024 {
-		t.Errorf("Expected maxBytes 1024, got %d", maxBytes1)
-	}
 
 	// Second call should return the same genesis state root
-	stateRoot2, maxBytes2, err := exec.InitChain(ctx, genesisTime, initialHeight, chainID)
+	stateRoot2, err := exec.InitChain(ctx, genesisTime, initialHeight, chainID)
 	if err != nil {
 		t.Fatalf("InitChain failed on second call: %v", err)
 	}
 	if !bytes.Equal(stateRoot1, stateRoot2) {
 		t.Errorf("Genesis state roots do not match: %s vs %s", stateRoot1, stateRoot2)
-	}
-	if maxBytes2 != 1024 {
-		t.Errorf("Expected maxBytes 1024, got %d", maxBytes2)
 	}
 }
 
@@ -58,43 +52,34 @@ func TestGetTxs(t *testing.T) {
 	// though for buffered channels it should be immediate unless full.
 	time.Sleep(10 * time.Millisecond)
 
-	// First call to GetTxs should retrieve the injected transactions
 	txs, err := exec.GetTxs(ctx)
 	if err != nil {
-		t.Fatalf("GetTxs returned error on first call: %v", err)
+		t.Fatalf("GetTxs returned error: %v", err)
 	}
 	if len(txs) != 2 {
-		t.Errorf("Expected 2 transactions on first call, got %d", len(txs))
+		t.Errorf("Expected 2 transactions, got %d", len(txs))
+	}
+	if !reflect.DeepEqual(txs[0], tx1) {
+		t.Errorf("Expected first tx 'a=1', got %s", string(txs[0]))
+	}
+	if !reflect.DeepEqual(txs[1], tx2) {
+		t.Errorf("Expected second tx 'b=2', got %s", string(txs[1]))
 	}
 
-	// Verify the content (order might not be guaranteed depending on channel internals, but likely FIFO here)
-	foundTx1 := false
-	foundTx2 := false
-	for _, tx := range txs {
-		if reflect.DeepEqual(tx, tx1) {
-			foundTx1 = true
-		}
-		if reflect.DeepEqual(tx, tx2) {
-			foundTx2 = true
-		}
-	}
-	if !foundTx1 || !foundTx2 {
-		t.Errorf("Did not retrieve expected transactions. Got: %v", txs)
-	}
-
-	// Second call to GetTxs should return no transactions as the channel was drained
-	txsAfterDrain, err := exec.GetTxs(ctx)
+	// GetTxs should drain the channel, so a second call should return empty or nil
+	txsAgain, err := exec.GetTxs(ctx)
 	if err != nil {
-		t.Fatalf("GetTxs returned error on second call: %v", err)
+		t.Fatalf("GetTxs (second call) returned error: %v", err)
 	}
-	if len(txsAfterDrain) != 0 {
-		t.Errorf("Expected 0 transactions after drain, got %d", len(txsAfterDrain))
+	if len(txsAgain) != 0 {
+		t.Errorf("Expected 0 transactions on second call (drained), got %d", len(txsAgain))
 	}
 
-	// Test injecting again after draining
+	// Inject another transaction and verify it's available
 	tx3 := []byte("c=3")
 	exec.InjectTx(tx3)
 	time.Sleep(10 * time.Millisecond)
+
 	txsAfterReinject, err := exec.GetTxs(ctx)
 	if err != nil {
 		t.Fatalf("GetTxs returned error after re-inject: %v", err)
@@ -120,12 +105,9 @@ func TestExecuteTxs_Valid(t *testing.T) {
 		[]byte("key2=value2"),
 	}
 
-	stateRoot, maxBytes, err := exec.ExecuteTxs(ctx, txs, 1, time.Now(), []byte(""))
+	stateRoot, err := exec.ExecuteTxs(ctx, txs, 1, time.Now(), []byte(""))
 	if err != nil {
 		t.Fatalf("ExecuteTxs failed: %v", err)
-	}
-	if maxBytes != 1024 {
-		t.Errorf("Expected maxBytes 1024, got %d", maxBytes)
 	}
 
 	// Check that stateRoot contains the updated key-value pairs
@@ -152,12 +134,9 @@ func TestExecuteTxs_Invalid(t *testing.T) {
 		[]byte(""),
 	}
 
-	stateRoot, maxBytes, err := exec.ExecuteTxs(ctx, txs, 1, time.Now(), []byte(""))
+	stateRoot, err := exec.ExecuteTxs(ctx, txs, 1, time.Now(), []byte(""))
 	if err != nil {
 		t.Fatalf("ExecuteTxs should handle gibberish gracefully, got error: %v", err)
-	}
-	if maxBytes != 1024 {
-		t.Errorf("Expected maxBytes 1024, got %d", maxBytes)
 	}
 
 	// State root should still be computed (empty block is valid)
@@ -173,7 +152,7 @@ func TestExecuteTxs_Invalid(t *testing.T) {
 		[]byte(""),
 	}
 
-	stateRoot2, _, err := exec.ExecuteTxs(ctx, mixedTxs, 2, time.Now(), stateRoot)
+	stateRoot2, err := exec.ExecuteTxs(ctx, mixedTxs, 2, time.Now(), stateRoot)
 	if err != nil {
 		t.Fatalf("ExecuteTxs should filter invalid transactions and process valid ones, got error: %v", err)
 	}
@@ -213,7 +192,7 @@ func TestReservedKeysExcludedFromAppHash(t *testing.T) {
 	ctx := context.Background()
 
 	// Initialize chain to set up genesis state (this writes genesis reserved keys)
-	_, _, err = exec.InitChain(ctx, time.Now(), 1, "test-chain")
+	_, err = exec.InitChain(ctx, time.Now(), 1, "test-chain")
 	if err != nil {
 		t.Fatalf("Failed to initialize chain: %v", err)
 	}
@@ -223,7 +202,7 @@ func TestReservedKeysExcludedFromAppHash(t *testing.T) {
 		[]byte("user/key1=value1"),
 		[]byte("user/key2=value2"),
 	}
-	_, _, err = exec.ExecuteTxs(ctx, txs, 1, time.Now(), []byte(""))
+	_, err = exec.ExecuteTxs(ctx, txs, 1, time.Now(), []byte(""))
 	if err != nil {
 		t.Fatalf("Failed to execute transactions: %v", err)
 	}
@@ -279,7 +258,7 @@ func TestReservedKeysExcludedFromAppHash(t *testing.T) {
 	moreTxs := [][]byte{
 		[]byte("user/key3=value3"),
 	}
-	_, _, err = exec.ExecuteTxs(ctx, moreTxs, 2, time.Now(), stateRootAfterReservedKeyWrite)
+	_, err = exec.ExecuteTxs(ctx, moreTxs, 2, time.Now(), stateRootAfterReservedKeyWrite)
 	if err != nil {
 		t.Fatalf("Failed to execute more transactions: %v", err)
 	}

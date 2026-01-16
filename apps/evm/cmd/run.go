@@ -89,7 +89,7 @@ var RunCmd = &cobra.Command{
 		}
 
 		// Create sequencer based on configuration
-		sequencer, err := createSequencer(logger, datastore, nodeConfig, genesis, daClient)
+		sequencer, err := createSequencer(logger, datastore, nodeConfig, genesis, daClient, executor)
 		if err != nil {
 			return err
 		}
@@ -160,6 +160,7 @@ func createSequencer(
 	nodeConfig config.Config,
 	genesis genesis.Genesis,
 	daClient block.FullDAClient,
+	executor execution.Executor,
 ) (coresequencer.Sequencer, error) {
 	if nodeConfig.Node.BasedSequencer {
 		// Based sequencer mode - fetch transactions only from DA
@@ -192,6 +193,9 @@ func createSequencer(
 	if err != nil {
 		return nil, fmt.Errorf("failed to create single sequencer: %w", err)
 	}
+
+	// Configure executor for DA transaction gas-based filtering
+	sequencer.SetExecutor(executor)
 
 	logger.Info().
 		Str("forced_inclusion_namespace", nodeConfig.DA.GetForcedInclusionNamespace()).

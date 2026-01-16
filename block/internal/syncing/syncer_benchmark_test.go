@@ -98,7 +98,7 @@ func newBenchFixture(b *testing.B, totalHeights uint64, shuffledTx bool, daDelay
 				time.Sleep(execDelay)
 			}
 		}).
-		Return([]byte("app"), uint64(1024), nil).Maybe()
+		Return([]byte("app"), nil).Maybe()
 
 	// Build syncer with mocks
 	s := NewSyncer(

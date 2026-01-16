@@ -19,10 +19,6 @@ func TestNewDummyExecutor(t *testing.T) {
 		t.Errorf("Expected initial stateRoot to be [1, 2, 3], got %v", executor.stateRoot)
 	}
 
-	if executor.maxBytes != 1000000 {
-		t.Errorf("Expected maxBytes to be 1000000, got %d", executor.maxBytes)
-	}
-
 	if executor.pendingRoots == nil {
 		t.Error("pendingRoots map was not initialized")
 	}
@@ -42,14 +38,10 @@ func TestInitChain(t *testing.T) {
 	initialStateRoot := make([]byte, len(executor.stateRoot))
 	copy(initialStateRoot, executor.stateRoot)
 
-	stateRoot, maxBytes, err := executor.InitChain(ctx, genesisTime, initialHeight, chainID)
+	stateRoot, err := executor.InitChain(ctx, genesisTime, initialHeight, chainID)
 
 	if err != nil {
 		t.Fatalf("InitChain returned error: %v", err)
-	}
-
-	if maxBytes != executor.maxBytes {
-		t.Errorf("Expected maxBytes %d, got %d", executor.maxBytes, maxBytes)
 	}
 
 	if bytes.Equal(stateRoot, initialStateRoot) {
@@ -139,14 +131,10 @@ func TestExecuteTxs(t *testing.T) {
 	prevStateRoot := executor.GetStateRoot()
 
 	txsToExecute := [][]byte{tx1, tx3}
-	newStateRoot, maxBytes, err := executor.ExecuteTxs(ctx, txsToExecute, blockHeight, timestamp, prevStateRoot)
+	newStateRoot, err := executor.ExecuteTxs(ctx, txsToExecute, blockHeight, timestamp, prevStateRoot)
 
 	if err != nil {
 		t.Fatalf("ExecuteTxs returned error: %v", err)
-	}
-
-	if maxBytes != executor.maxBytes {
-		t.Errorf("Expected maxBytes %d, got %d", executor.maxBytes, maxBytes)
 	}
 
 	if bytes.Equal(newStateRoot, prevStateRoot) {
@@ -179,7 +167,7 @@ func TestSetFinal(t *testing.T) {
 	prevStateRoot := executor.GetStateRoot()
 	txs := [][]byte{[]byte("tx1"), []byte("tx2")}
 
-	pendingRoot, _, _ := executor.ExecuteTxs(ctx, txs, blockHeight, timestamp, prevStateRoot)
+	pendingRoot, _ := executor.ExecuteTxs(ctx, txs, blockHeight, timestamp, prevStateRoot)
 
 	// Set the block as final
 	err := executor.SetFinal(ctx, blockHeight)
@@ -304,7 +292,7 @@ func TestExecuteTxsAndSetFinal(t *testing.T) {
 		timestamp := time.Now()
 		txs := [][]byte{[]byte(string(rune(i)))}
 
-		_, _, err := executor.ExecuteTxs(ctx, txs, blockHeight, timestamp, prevStateRoot)
+		_, err := executor.ExecuteTxs(ctx, txs, blockHeight, timestamp, prevStateRoot)
 		if err != nil {
 			t.Fatalf("ExecuteTxs returned error: %v", err)
 		}
@@ -410,7 +398,7 @@ func TestExecuteTxsWithInvalidPrevStateRoot(t *testing.T) {
 	timestamp := time.Now()
 	txs := [][]byte{[]byte("tx1"), []byte("tx2")}
 
-	newStateRoot, maxBytes, err := executor.ExecuteTxs(ctx, txs, blockHeight, timestamp, invalidPrevStateRoot)
+	newStateRoot, err := executor.ExecuteTxs(ctx, txs, blockHeight, timestamp, invalidPrevStateRoot)
 
 	// The dummy executor doesn't validate the previous state root, so it should still work
 	// This is a characteristic of the dummy implementation
@@ -420,10 +408,6 @@ func TestExecuteTxsWithInvalidPrevStateRoot(t *testing.T) {
 
 	if len(newStateRoot) == 0 {
 		t.Error("Expected non-empty state root even with invalid prevStateRoot")
-	}
-
-	if maxBytes != executor.maxBytes {
-		t.Errorf("Expected maxBytes %d, got %d", executor.maxBytes, maxBytes)
 	}
 
 	// Verify that the pending root was stored

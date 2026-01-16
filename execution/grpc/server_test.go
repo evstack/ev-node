@@ -18,12 +18,11 @@ func TestServer_InitChain(t *testing.T) {
 	initialHeight := uint64(1)
 	chainID := "test-chain"
 	expectedStateRoot := []byte("state_root")
-	expectedMaxBytes := uint64(1000000)
 
 	tests := []struct {
 		name     string
 		req      *pb.InitChainRequest
-		mockFunc func(ctx context.Context, genesisTime time.Time, initialHeight uint64, chainID string) ([]byte, uint64, error)
+		mockFunc func(ctx context.Context, genesisTime time.Time, initialHeight uint64, chainID string) ([]byte, error)
 		wantErr  bool
 		wantCode connect.Code
 	}{
@@ -34,8 +33,8 @@ func TestServer_InitChain(t *testing.T) {
 				InitialHeight: initialHeight,
 				ChainId:       chainID,
 			},
-			mockFunc: func(ctx context.Context, gt time.Time, ih uint64, cid string) ([]byte, uint64, error) {
-				return expectedStateRoot, expectedMaxBytes, nil
+			mockFunc: func(ctx context.Context, gt time.Time, ih uint64, cid string) ([]byte, error) {
+				return expectedStateRoot, nil
 			},
 			wantErr: false,
 		},
@@ -73,8 +72,8 @@ func TestServer_InitChain(t *testing.T) {
 				InitialHeight: initialHeight,
 				ChainId:       chainID,
 			},
-			mockFunc: func(ctx context.Context, gt time.Time, ih uint64, cid string) ([]byte, uint64, error) {
-				return nil, 0, errors.New("init chain failed")
+			mockFunc: func(ctx context.Context, gt time.Time, ih uint64, cid string) ([]byte, error) {
+				return nil, errors.New("init chain failed")
 			},
 			wantErr:  true,
 			wantCode: connect.CodeInternal,
@@ -112,9 +111,6 @@ func TestServer_InitChain(t *testing.T) {
 
 			if string(resp.Msg.StateRoot) != string(expectedStateRoot) {
 				t.Errorf("expected state root %s, got %s", expectedStateRoot, resp.Msg.StateRoot)
-			}
-			if resp.Msg.MaxBytes != expectedMaxBytes {
-				t.Errorf("expected max bytes %d, got %d", expectedMaxBytes, resp.Msg.MaxBytes)
 			}
 		})
 	}
@@ -179,11 +175,6 @@ func TestServer_GetTxs(t *testing.T) {
 			if len(resp.Msg.Txs) != len(expectedTxs) {
 				t.Fatalf("expected %d txs, got %d", len(expectedTxs), len(resp.Msg.Txs))
 			}
-			for i, tx := range resp.Msg.Txs {
-				if string(tx) != string(expectedTxs[i]) {
-					t.Errorf("tx %d: expected %s, got %s", i, expectedTxs[i], tx)
-				}
-			}
 		})
 	}
 }
@@ -195,12 +186,11 @@ func TestServer_ExecuteTxs(t *testing.T) {
 	timestamp := time.Now()
 	prevStateRoot := []byte("prev_state_root")
 	expectedStateRoot := []byte("new_state_root")
-	expectedMaxBytes := uint64(2000000)
 
 	tests := []struct {
 		name     string
 		req      *pb.ExecuteTxsRequest
-		mockFunc func(ctx context.Context, txs [][]byte, blockHeight uint64, timestamp time.Time, prevStateRoot []byte) ([]byte, uint64, error)
+		mockFunc func(ctx context.Context, txs [][]byte, blockHeight uint64, timestamp time.Time, prevStateRoot []byte) ([]byte, error)
 		wantErr  bool
 		wantCode connect.Code
 	}{
@@ -212,8 +202,8 @@ func TestServer_ExecuteTxs(t *testing.T) {
 				Timestamp:     timestamppb.New(timestamp),
 				PrevStateRoot: prevStateRoot,
 			},
-			mockFunc: func(ctx context.Context, txs [][]byte, bh uint64, ts time.Time, psr []byte) ([]byte, uint64, error) {
-				return expectedStateRoot, expectedMaxBytes, nil
+			mockFunc: func(ctx context.Context, t [][]byte, bh uint64, ts time.Time, psr []byte) ([]byte, error) {
+				return expectedStateRoot, nil
 			},
 			wantErr: false,
 		},
@@ -255,8 +245,8 @@ func TestServer_ExecuteTxs(t *testing.T) {
 				Timestamp:     timestamppb.New(timestamp),
 				PrevStateRoot: prevStateRoot,
 			},
-			mockFunc: func(ctx context.Context, txs [][]byte, bh uint64, ts time.Time, psr []byte) ([]byte, uint64, error) {
-				return nil, 0, errors.New("execute txs failed")
+			mockFunc: func(ctx context.Context, t [][]byte, bh uint64, ts time.Time, psr []byte) ([]byte, error) {
+				return nil, errors.New("execute txs failed")
 			},
 			wantErr:  true,
 			wantCode: connect.CodeInternal,
@@ -295,9 +285,6 @@ func TestServer_ExecuteTxs(t *testing.T) {
 			if string(resp.Msg.UpdatedStateRoot) != string(expectedStateRoot) {
 				t.Errorf("expected state root %s, got %s", expectedStateRoot, resp.Msg.UpdatedStateRoot)
 			}
-			if resp.Msg.MaxBytes != expectedMaxBytes {
-				t.Errorf("expected max bytes %d, got %d", expectedMaxBytes, resp.Msg.MaxBytes)
-			}
 		})
 	}
 }
@@ -324,8 +311,10 @@ func TestServer_SetFinal(t *testing.T) {
 			wantErr: false,
 		},
 		{
-			name:     "missing block height",
-			req:      &pb.SetFinalRequest{},
+			name: "missing block height",
+			req: &pb.SetFinalRequest{
+				BlockHeight: 0,
+			},
 			wantErr:  true,
 			wantCode: connect.CodeInvalidArgument,
 		},

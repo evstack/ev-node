@@ -72,7 +72,7 @@ func TestLazyMode_ProduceBlockLogic(t *testing.T) {
 	// Initialize state
 	initStateRoot := []byte("init_root")
 	mockExec.EXPECT().InitChain(mock.Anything, mock.AnythingOfType("time.Time"), gen.InitialHeight, gen.ChainID).
-		Return(initStateRoot, uint64(1024), nil).Once()
+		Return(initStateRoot, nil).Once()
 	mockSeq.EXPECT().SetDAHeight(uint64(0)).Return().Once()
 	require.NoError(t, exec.initializeState())
 
@@ -90,7 +90,7 @@ func TestLazyMode_ProduceBlockLogic(t *testing.T) {
 		}).Once()
 
 	mockExec.EXPECT().ExecuteTxs(mock.Anything, mock.Anything, uint64(1), mock.AnythingOfType("time.Time"), initStateRoot).
-		Return([]byte("new_root_1"), uint64(1024), nil).Once()
+		Return([]byte("new_root_1"), nil).Once()
 
 	mockSeq.EXPECT().GetDAHeight().Return(uint64(0)).Once()
 
@@ -114,7 +114,7 @@ func TestLazyMode_ProduceBlockLogic(t *testing.T) {
 		}).Once()
 
 	mockExec.EXPECT().ExecuteTxs(mock.Anything, mock.Anything, uint64(2), mock.AnythingOfType("time.Time"), []byte("new_root_1")).
-		Return([]byte("new_root_2"), uint64(1024), nil).Once()
+		Return([]byte("new_root_2"), nil).Once()
 
 	mockSeq.EXPECT().GetDAHeight().Return(uint64(0)).Once()
 
@@ -187,7 +187,7 @@ func TestRegularMode_ProduceBlockLogic(t *testing.T) {
 	// Initialize state
 	initStateRoot := []byte("init_root")
 	mockExec.EXPECT().InitChain(mock.Anything, mock.AnythingOfType("time.Time"), gen.InitialHeight, gen.ChainID).
-		Return(initStateRoot, uint64(1024), nil).Once()
+		Return(initStateRoot, nil).Once()
 	mockSeq.EXPECT().SetDAHeight(uint64(0)).Return().Once()
 	require.NoError(t, exec.initializeState())
 
@@ -205,7 +205,7 @@ func TestRegularMode_ProduceBlockLogic(t *testing.T) {
 		}).Once()
 
 	mockExec.EXPECT().ExecuteTxs(mock.Anything, mock.Anything, uint64(1), mock.AnythingOfType("time.Time"), initStateRoot).
-		Return([]byte("new_root_1"), uint64(1024), nil).Once()
+		Return([]byte("new_root_1"), nil).Once()
 
 	mockSeq.EXPECT().GetDAHeight().Return(uint64(0)).Once()
 

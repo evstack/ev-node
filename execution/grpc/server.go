@@ -50,7 +50,7 @@ func (s *Server) InitChain(
 		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("chain_id is required"))
 	}
 
-	stateRoot, maxBytes, err := s.executor.InitChain(
+	stateRoot, err := s.executor.InitChain(
 		ctx,
 		req.Msg.GenesisTime.AsTime(),
 		req.Msg.InitialHeight,
@@ -62,7 +62,6 @@ func (s *Server) InitChain(
 
 	return connect.NewResponse(&pb.InitChainResponse{
 		StateRoot: stateRoot,
-		MaxBytes:  maxBytes,
 	}), nil
 }
 
@@ -103,7 +102,7 @@ func (s *Server) ExecuteTxs(
 		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("prev_state_root is required"))
 	}
 
-	updatedStateRoot, maxBytes, err := s.executor.ExecuteTxs(
+	updatedStateRoot, err := s.executor.ExecuteTxs(
 		ctx,
 		req.Msg.Txs,
 		req.Msg.BlockHeight,
@@ -116,7 +115,6 @@ func (s *Server) ExecuteTxs(
 
 	return connect.NewResponse(&pb.ExecuteTxsResponse{
 		UpdatedStateRoot: updatedStateRoot,
-		MaxBytes:         maxBytes,
 	}), nil
 }
 
@@ -137,4 +135,46 @@ func (s *Server) SetFinal(
 	}
 
 	return connect.NewResponse(&pb.SetFinalResponse{}), nil
+}
+
+// GetExecutionInfo handles the GetExecutionInfo RPC request.
+//
+// It returns current execution layer parameters such as the block gas limit.
+func (s *Server) GetExecutionInfo(
+	ctx context.Context,
+	req *connect.Request[pb.GetExecutionInfoRequest],
+) (*connect.Response[pb.GetExecutionInfoResponse], error) {
+	info, err := s.executor.GetExecutionInfo(ctx, req.Msg.Height)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to get execution info: %w", err))
+	}
+
+	return connect.NewResponse(&pb.GetExecutionInfoResponse{
+		MaxGas: info.MaxGas,
+	}), nil
+}
+
+// FilterDATransactions handles the FilterDATransactions RPC request.
+//
+// It validates and filters force-included transactions from DA, returning
+// transactions that are valid and fit within the gas limit.
+// Returns an error if the executor does not implement DATransactionFilter.
+func (s *Server) FilterDATransactions(
+	ctx context.Context,
+	req *connect.Request[pb.FilterDATransactionsRequest],
+) (*connect.Response[pb.FilterDATransactionsResponse], error) {
+	filter, ok := s.executor.(execution.DATransactionFilter)
+	if !ok {
+		return nil, connect.NewError(connect.CodeUnimplemented, fmt.Errorf("executor does not support DA transaction filtering"))
+	}
+
+	validTxs, remainingTxs, err := filter.FilterDATransactions(ctx, req.Msg.Txs, req.Msg.MaxGas)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to filter DA transactions: %w", err))
+	}
+
+	return connect.NewResponse(&pb.FilterDATransactionsResponse{
+		ValidTxs:     validTxs,
+		RemainingTxs: remainingTxs,
+	}), nil
 }

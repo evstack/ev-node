@@ -8,6 +8,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/evstack/ev-node/core/execution"
 	mock "github.com/stretchr/testify/mock"
 )
 
@@ -39,7 +40,7 @@ func (_m *MockExecutor) EXPECT() *MockExecutor_Expecter {
 }
 
 // ExecuteTxs provides a mock function for the type MockExecutor
-func (_mock *MockExecutor) ExecuteTxs(ctx context.Context, txs [][]byte, blockHeight uint64, timestamp time.Time, prevStateRoot []byte) ([]byte, uint64, error) {
+func (_mock *MockExecutor) ExecuteTxs(ctx context.Context, txs [][]byte, blockHeight uint64, timestamp time.Time, prevStateRoot []byte) ([]byte, error) {
 	ret := _mock.Called(ctx, txs, blockHeight, timestamp, prevStateRoot)
 
 	if len(ret) == 0 {
@@ -47,9 +48,8 @@ func (_mock *MockExecutor) ExecuteTxs(ctx context.Context, txs [][]byte, blockHe
 	}
 
 	var r0 []byte
-	var r1 uint64
-	var r2 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, [][]byte, uint64, time.Time, []byte) ([]byte, uint64, error)); ok {
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, [][]byte, uint64, time.Time, []byte) ([]byte, error)); ok {
 		return returnFunc(ctx, txs, blockHeight, timestamp, prevStateRoot)
 	}
 	if returnFunc, ok := ret.Get(0).(func(context.Context, [][]byte, uint64, time.Time, []byte) []byte); ok {
@@ -59,17 +59,12 @@ func (_mock *MockExecutor) ExecuteTxs(ctx context.Context, txs [][]byte, blockHe
 			r0 = ret.Get(0).([]byte)
 		}
 	}
-	if returnFunc, ok := ret.Get(1).(func(context.Context, [][]byte, uint64, time.Time, []byte) uint64); ok {
+	if returnFunc, ok := ret.Get(1).(func(context.Context, [][]byte, uint64, time.Time, []byte) error); ok {
 		r1 = returnFunc(ctx, txs, blockHeight, timestamp, prevStateRoot)
 	} else {
-		r1 = ret.Get(1).(uint64)
+		r1 = ret.Error(1)
 	}
-	if returnFunc, ok := ret.Get(2).(func(context.Context, [][]byte, uint64, time.Time, []byte) error); ok {
-		r2 = returnFunc(ctx, txs, blockHeight, timestamp, prevStateRoot)
-	} else {
-		r2 = ret.Error(2)
-	}
-	return r0, r1, r2
+	return r0, r1
 }
 
 // MockExecutor_ExecuteTxs_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'ExecuteTxs'
@@ -120,12 +115,78 @@ func (_c *MockExecutor_ExecuteTxs_Call) Run(run func(ctx context.Context, txs []
 	return _c
 }
 
-func (_c *MockExecutor_ExecuteTxs_Call) Return(updatedStateRoot []byte, maxBytes uint64, err error) *MockExecutor_ExecuteTxs_Call {
-	_c.Call.Return(updatedStateRoot, maxBytes, err)
+func (_c *MockExecutor_ExecuteTxs_Call) Return(updatedStateRoot []byte, err error) *MockExecutor_ExecuteTxs_Call {
+	_c.Call.Return(updatedStateRoot, err)
 	return _c
 }
 
-func (_c *MockExecutor_ExecuteTxs_Call) RunAndReturn(run func(ctx context.Context, txs [][]byte, blockHeight uint64, timestamp time.Time, prevStateRoot []byte) ([]byte, uint64, error)) *MockExecutor_ExecuteTxs_Call {
+func (_c *MockExecutor_ExecuteTxs_Call) RunAndReturn(run func(ctx context.Context, txs [][]byte, blockHeight uint64, timestamp time.Time, prevStateRoot []byte) ([]byte, error)) *MockExecutor_ExecuteTxs_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// GetExecutionInfo provides a mock function for the type MockExecutor
+func (_mock *MockExecutor) GetExecutionInfo(ctx context.Context, height uint64) (execution.ExecutionInfo, error) {
+	ret := _mock.Called(ctx, height)
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetExecutionInfo")
+	}
+
+	var r0 execution.ExecutionInfo
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, uint64) (execution.ExecutionInfo, error)); ok {
+		return returnFunc(ctx, height)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, uint64) execution.ExecutionInfo); ok {
+		r0 = returnFunc(ctx, height)
+	} else {
+		r0 = ret.Get(0).(execution.ExecutionInfo)
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, uint64) error); ok {
+		r1 = returnFunc(ctx, height)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}
+
+// MockExecutor_GetExecutionInfo_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetExecutionInfo'
+type MockExecutor_GetExecutionInfo_Call struct {
+	*mock.Call
+}
+
+// GetExecutionInfo is a helper method to define mock.On call
+//   - ctx context.Context
+//   - height uint64
+func (_e *MockExecutor_Expecter) GetExecutionInfo(ctx interface{}, height interface{}) *MockExecutor_GetExecutionInfo_Call {
+	return &MockExecutor_GetExecutionInfo_Call{Call: _e.mock.On("GetExecutionInfo", ctx, height)}
+}
+
+func (_c *MockExecutor_GetExecutionInfo_Call) Run(run func(ctx context.Context, height uint64)) *MockExecutor_GetExecutionInfo_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 uint64
+		if args[1] != nil {
+			arg1 = args[1].(uint64)
+		}
+		run(
+			arg0,
+			arg1,
+		)
+	})
+	return _c
+}
+
+func (_c *MockExecutor_GetExecutionInfo_Call) Return(executionInfo execution.ExecutionInfo, err error) *MockExecutor_GetExecutionInfo_Call {
+	_c.Call.Return(executionInfo, err)
+	return _c
+}
+
+func (_c *MockExecutor_GetExecutionInfo_Call) RunAndReturn(run func(ctx context.Context, height uint64) (execution.ExecutionInfo, error)) *MockExecutor_GetExecutionInfo_Call {
 	_c.Call.Return(run)
 	return _c
 }
@@ -193,7 +254,7 @@ func (_c *MockExecutor_GetTxs_Call) RunAndReturn(run func(ctx context.Context) (
 }
 
 // InitChain provides a mock function for the type MockExecutor
-func (_mock *MockExecutor) InitChain(ctx context.Context, genesisTime time.Time, initialHeight uint64, chainID string) ([]byte, uint64, error) {
+func (_mock *MockExecutor) InitChain(ctx context.Context, genesisTime time.Time, initialHeight uint64, chainID string) ([]byte, error) {
 	ret := _mock.Called(ctx, genesisTime, initialHeight, chainID)
 
 	if len(ret) == 0 {
@@ -201,9 +262,8 @@ func (_mock *MockExecutor) InitChain(ctx context.Context, genesisTime time.Time,
 	}
 
 	var r0 []byte
-	var r1 uint64
-	var r2 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, time.Time, uint64, string) ([]byte, uint64, error)); ok {
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, time.Time, uint64, string) ([]byte, error)); ok {
 		return returnFunc(ctx, genesisTime, initialHeight, chainID)
 	}
 	if returnFunc, ok := ret.Get(0).(func(context.Context, time.Time, uint64, string) []byte); ok {
@@ -213,17 +273,12 @@ func (_mock *MockExecutor) InitChain(ctx context.Context, genesisTime time.Time,
 			r0 = ret.Get(0).([]byte)
 		}
 	}
-	if returnFunc, ok := ret.Get(1).(func(context.Context, time.Time, uint64, string) uint64); ok {
+	if returnFunc, ok := ret.Get(1).(func(context.Context, time.Time, uint64, string) error); ok {
 		r1 = returnFunc(ctx, genesisTime, initialHeight, chainID)
 	} else {
-		r1 = ret.Get(1).(uint64)
+		r1 = ret.Error(1)
 	}
-	if returnFunc, ok := ret.Get(2).(func(context.Context, time.Time, uint64, string) error); ok {
-		r2 = returnFunc(ctx, genesisTime, initialHeight, chainID)
-	} else {
-		r2 = ret.Error(2)
-	}
-	return r0, r1, r2
+	return r0, r1
 }
 
 // MockExecutor_InitChain_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'InitChain'
@@ -268,12 +323,12 @@ func (_c *MockExecutor_InitChain_Call) Run(run func(ctx context.Context, genesis
 	return _c
 }
 
-func (_c *MockExecutor_InitChain_Call) Return(stateRoot []byte, maxBytes uint64, err error) *MockExecutor_InitChain_Call {
-	_c.Call.Return(stateRoot, maxBytes, err)
+func (_c *MockExecutor_InitChain_Call) Return(stateRoot []byte, err error) *MockExecutor_InitChain_Call {
+	_c.Call.Return(stateRoot, err)
 	return _c
 }
 
-func (_c *MockExecutor_InitChain_Call) RunAndReturn(run func(ctx context.Context, genesisTime time.Time, initialHeight uint64, chainID string) ([]byte, uint64, error)) *MockExecutor_InitChain_Call {
+func (_c *MockExecutor_InitChain_Call) RunAndReturn(run func(ctx context.Context, genesisTime time.Time, initialHeight uint64, chainID string) ([]byte, error)) *MockExecutor_InitChain_Call {
 	_c.Call.Return(run)
 	return _c
 }

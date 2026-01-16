@@ -49,17 +49,15 @@ func TestWithTracingExecutor_InitChain_Success(t *testing.T) {
 	initialHeight := uint64(1)
 	chainID := "test-chain"
 	expectedStateRoot := []byte("state-root")
-	expectedMaxBytes := uint64(1000000)
 
 	mockExec.EXPECT().
 		InitChain(mock.Anything, genesisTime, initialHeight, chainID).
-		Return(expectedStateRoot, expectedMaxBytes, nil)
+		Return(expectedStateRoot, nil)
 
-	stateRoot, maxBytes, err := traced.InitChain(ctx, genesisTime, initialHeight, chainID)
+	stateRoot, err := traced.InitChain(ctx, genesisTime, initialHeight, chainID)
 
 	require.NoError(t, err)
 	require.Equal(t, expectedStateRoot, stateRoot)
-	require.Equal(t, expectedMaxBytes, maxBytes)
 
 	// verify span was created
 	spans := sr.Ended()
@@ -89,9 +87,9 @@ func TestWithTracingExecutor_InitChain_Error(t *testing.T) {
 
 	mockExec.EXPECT().
 		InitChain(mock.Anything, genesisTime, initialHeight, chainID).
-		Return(nil, uint64(0), expectedErr)
+		Return(nil, expectedErr)
 
-	_, _, err := traced.InitChain(ctx, genesisTime, initialHeight, chainID)
+	_, err := traced.InitChain(ctx, genesisTime, initialHeight, chainID)
 
 	require.Error(t, err)
 	require.Equal(t, expectedErr, err)
@@ -179,18 +177,16 @@ func TestWithTracingExecutor_ExecuteTxs_Success(t *testing.T) {
 	blockHeight := uint64(100)
 	timestamp := time.Now()
 	prevStateRoot := []byte("prev-state")
-	expectedStateRoot := []byte("new-state")
-	expectedMaxBytes := uint64(1000000)
+	expectedStateRoot := []byte("new-state-root")
 
 	mockExec.EXPECT().
 		ExecuteTxs(mock.Anything, txs, blockHeight, timestamp, prevStateRoot).
-		Return(expectedStateRoot, expectedMaxBytes, nil)
+		Return(expectedStateRoot, nil)
 
-	stateRoot, maxBytes, err := traced.ExecuteTxs(ctx, txs, blockHeight, timestamp, prevStateRoot)
+	stateRoot, err := traced.ExecuteTxs(ctx, txs, blockHeight, timestamp, prevStateRoot)
 
 	require.NoError(t, err)
 	require.Equal(t, expectedStateRoot, stateRoot)
-	require.Equal(t, expectedMaxBytes, maxBytes)
 
 	// verify span
 	spans := sr.Ended()
@@ -220,9 +216,9 @@ func TestWithTracingExecutor_ExecuteTxs_Error(t *testing.T) {
 
 	mockExec.EXPECT().
 		ExecuteTxs(mock.Anything, txs, blockHeight, timestamp, prevStateRoot).
-		Return(nil, uint64(0), expectedErr)
+		Return(nil, expectedErr)
 
-	_, _, err := traced.ExecuteTxs(ctx, txs, blockHeight, timestamp, prevStateRoot)
+	_, err := traced.ExecuteTxs(ctx, txs, blockHeight, timestamp, prevStateRoot)
 
 	require.Error(t, err)
 	require.Equal(t, expectedErr, err)

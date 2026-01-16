@@ -141,7 +141,7 @@ func TestHandleKV_Get(t *testing.T) {
 				// Create and execute the transaction directly
 				tx := []byte(fmt.Sprintf("%s=%s", tt.key, tt.value))
 				ctx := context.Background()
-				_, _, err := exec.ExecuteTxs(ctx, [][]byte{tx}, 1, time.Now(), []byte(""))
+				_, err := exec.ExecuteTxs(ctx, [][]byte{tx}, 1, time.Now(), []byte(""))
 				if err != nil {
 					t.Fatalf("Failed to execute setup transaction: %v", err)
 				}
@@ -287,13 +287,13 @@ func TestHTTPIntegration_GetKVWithMultipleHeights(t *testing.T) {
 
 	// Execute transactions at different heights for the same key
 	txsHeight1 := [][]byte{[]byte("testkey=original_value")}
-	_, _, err = exec.ExecuteTxs(ctx, txsHeight1, 1, time.Now(), []byte(""))
+	_, err = exec.ExecuteTxs(ctx, txsHeight1, 1, time.Now(), []byte(""))
 	if err != nil {
 		t.Fatalf("ExecuteTxs failed for height 1: %v", err)
 	}
 
 	txsHeight2 := [][]byte{[]byte("testkey=updated_value")}
-	_, _, err = exec.ExecuteTxs(ctx, txsHeight2, 2, time.Now(), []byte(""))
+	_, err = exec.ExecuteTxs(ctx, txsHeight2, 2, time.Now(), []byte(""))
 	if err != nil {
 		t.Fatalf("ExecuteTxs failed for height 2: %v", err)
 	}

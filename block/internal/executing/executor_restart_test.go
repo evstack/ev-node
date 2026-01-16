@@ -72,7 +72,7 @@ func TestExecutor_RestartUsesPendingHeader(t *testing.T) {
 	// Initialize state for first executor
 	initStateRoot := []byte("init_root")
 	mockExec1.EXPECT().InitChain(mock.Anything, mock.AnythingOfType("time.Time"), gen.InitialHeight, gen.ChainID).
-		Return(initStateRoot, uint64(1024), nil).Once()
+		Return(initStateRoot, nil).Once()
 	mockSeq1.EXPECT().SetDAHeight(uint64(0)).Return().Once()
 	require.NoError(t, exec1.initializeState())
 
@@ -91,7 +91,7 @@ func TestExecutor_RestartUsesPendingHeader(t *testing.T) {
 		}).Once()
 
 	mockExec1.EXPECT().ExecuteTxs(mock.Anything, mock.Anything, uint64(1), mock.AnythingOfType("time.Time"), initStateRoot).
-		Return([]byte("new_root_1"), uint64(1024), nil).Once()
+		Return([]byte("new_root_1"), nil).Once()
 
 	mockSeq1.EXPECT().GetDAHeight().Return(uint64(0)).Once()
 
@@ -208,7 +208,7 @@ func TestExecutor_RestartUsesPendingHeader(t *testing.T) {
 	// The executor should be called to apply the pending block
 
 	mockExec2.EXPECT().ExecuteTxs(mock.Anything, mock.Anything, uint64(2), mock.AnythingOfType("time.Time"), currentState2.AppHash).
-		Return([]byte("new_root_2"), uint64(1024), nil).Once()
+		Return([]byte("new_root_2"), nil).Once()
 
 	mockSeq2.EXPECT().GetDAHeight().Return(uint64(0)).Once()
 
@@ -294,7 +294,7 @@ func TestExecutor_RestartNoPendingHeader(t *testing.T) {
 
 	initStateRoot := []byte("init_root")
 	mockExec1.EXPECT().InitChain(mock.Anything, mock.AnythingOfType("time.Time"), gen.InitialHeight, gen.ChainID).
-		Return(initStateRoot, uint64(1024), nil).Once()
+		Return(initStateRoot, nil).Once()
 	mockSeq1.EXPECT().SetDAHeight(uint64(0)).Return().Once()
 	require.NoError(t, exec1.initializeState())
 
@@ -312,7 +312,7 @@ func TestExecutor_RestartNoPendingHeader(t *testing.T) {
 		}).Once()
 
 	mockExec1.EXPECT().ExecuteTxs(mock.Anything, mock.Anything, uint64(1), mock.AnythingOfType("time.Time"), initStateRoot).
-		Return([]byte("new_root_1"), uint64(1024), nil).Once()
+		Return([]byte("new_root_1"), nil).Once()
 
 	mockSeq1.EXPECT().GetDAHeight().Return(uint64(0)).Once()
 
@@ -368,7 +368,7 @@ func TestExecutor_RestartNoPendingHeader(t *testing.T) {
 		}).Once()
 
 	mockExec2.EXPECT().ExecuteTxs(mock.Anything, mock.Anything, uint64(2), mock.AnythingOfType("time.Time"), []byte("new_root_1")).
-		Return([]byte("new_root_2"), uint64(1024), nil).Once()
+		Return([]byte("new_root_2"), nil).Once()
 
 	mockSeq2.EXPECT().GetDAHeight().Return(uint64(0)).Once()
 
