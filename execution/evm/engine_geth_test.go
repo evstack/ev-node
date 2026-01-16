@@ -187,7 +187,7 @@ func TestGethEngineClient_ForkchoiceUpdated(t *testing.T) {
 	genesis := testGenesis()
 	logger := zerolog.Nop()
 
-	backend, err := newGethBackend(genesis, logger)
+	backend, err := newGethBackend(genesis, ds.NewMapDatastore(), logger)
 	require.NoError(t, err)
 	defer backend.Close()
 
@@ -214,7 +214,7 @@ func TestGethEngineClient_ForkchoiceUpdated_WithPayloadAttributes(t *testing.T) 
 	genesis := testGenesis()
 	logger := zerolog.Nop()
 
-	backend, err := newGethBackend(genesis, logger)
+	backend, err := newGethBackend(genesis, ds.NewMapDatastore(), logger)
 	require.NoError(t, err)
 	defer backend.Close()
 
@@ -251,7 +251,7 @@ func TestGethEngineClient_GetPayload(t *testing.T) {
 	genesis := testGenesis()
 	logger := zerolog.Nop()
 
-	backend, err := newGethBackend(genesis, logger)
+	backend, err := newGethBackend(genesis, ds.NewMapDatastore(), logger)
 	require.NoError(t, err)
 	defer backend.Close()
 
@@ -295,7 +295,7 @@ func TestGethEngineClient_NewPayload(t *testing.T) {
 	genesis := testGenesis()
 	logger := zerolog.Nop()
 
-	backend, err := newGethBackend(genesis, logger)
+	backend, err := newGethBackend(genesis, ds.NewMapDatastore(), logger)
 	require.NoError(t, err)
 	defer backend.Close()
 
@@ -339,7 +339,7 @@ func TestGethEngineClient_ForkchoiceUpdated_UnknownHead(t *testing.T) {
 	genesis := testGenesis()
 	logger := zerolog.Nop()
 
-	backend, err := newGethBackend(genesis, logger)
+	backend, err := newGethBackend(genesis, ds.NewMapDatastore(), logger)
 	require.NoError(t, err)
 	defer backend.Close()
 
@@ -365,7 +365,7 @@ func TestGethBackend_Close(t *testing.T) {
 	genesis := testGenesis()
 	logger := zerolog.Nop()
 
-	backend, err := newGethBackend(genesis, logger)
+	backend, err := newGethBackend(genesis, ds.NewMapDatastore(), logger)
 	require.NoError(t, err)
 
 	// Close should not error

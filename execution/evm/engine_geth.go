@@ -97,7 +97,7 @@ func NewEngineExecutionClientWithGeth(
 		return nil, errors.New("genesis configuration is required")
 	}
 
-	backend, err := newGethBackend(genesis, logger)
+	backend, err := newGethBackend(genesis, db, logger)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create geth backend: %w", err)
 	}
@@ -130,12 +130,11 @@ func NewEngineExecutionClientWithGeth(
 }
 
 // newGethBackend creates a new in-process geth backend.
-func newGethBackend(genesis *core.Genesis, logger zerolog.Logger) (*GethBackend, error) {
-	// Create in-memory database
-	memdb := rawdb.NewMemoryDatabase()
+func newGethBackend(genesis *core.Genesis, db ds.Batching, logger zerolog.Logger) (*GethBackend, error) {
+	ethdb := rawdb.NewDatabase(db)
 
 	// Create trie database
-	trieDB := triedb.NewDatabase(memdb, nil)
+	trieDB := triedb.NewDatabase(ethdb, nil)
 
 	// Ensure blobSchedule is set if Cancun/Prague are enabled
 	// This is required by go-ethereum v1.16+
@@ -150,7 +149,7 @@ func newGethBackend(genesis *core.Genesis, logger zerolog.Logger) (*GethBackend,
 	}
 
 	// Initialize the genesis block
-	chainConfig, genesisHash, _, genesisErr := core.SetupGenesisBlockWithOverride(memdb, trieDB, genesis, nil)
+	chainConfig, genesisHash, _, genesisErr := core.SetupGenesisBlockWithOverride(ethdb, trieDB, genesis, nil)
 	if genesisErr != nil {
 		return nil, fmt.Errorf("failed to setup genesis: %w", genesisErr)
 	}
@@ -167,13 +166,13 @@ func newGethBackend(genesis *core.Genesis, logger zerolog.Logger) (*GethBackend,
 	bcConfig := core.DefaultConfig().WithStateScheme(rawdb.HashScheme)
 
 	// Create the blockchain
-	blockchain, err := core.NewBlockChain(memdb, genesis, consensusEngine, bcConfig)
+	blockchain, err := core.NewBlockChain(ethdb, genesis, consensusEngine, bcConfig)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create blockchain: %w", err)
 	}
 
 	backend := &GethBackend{
-		db:          memdb,
+		db:          ethdb,
 		chainConfig: chainConfig,
 		blockchain:  blockchain,
 		payloads:    make(map[engine.PayloadID]*payloadBuildState),
@@ -256,7 +255,7 @@ func (g *gethEngineClient) ForkchoiceUpdated(ctx context.Context, fcState engine
 		g.backend.payloads[payloadID] = payloadState
 		response.PayloadID = &payloadID
 
-		g.logger.Debug().
+		g.logger.Info().
 			Str("payload_id", payloadID.String()).
 			Uint64("timestamp", payloadState.timestamp).
 			Int("tx_count", len(payloadState.transactions)).
