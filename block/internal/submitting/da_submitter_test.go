@@ -494,16 +494,23 @@ func TestDASubmitter_SignData(t *testing.T) {
 	}
 
 	dataList := []*types.SignedData{signedData1, signedData2, signedData3}
+	dataListBz := make([][]byte, 0, len(dataList))
+	for _, d := range dataList {
+		dataBz, err := d.MarshalBinary()
+		require.NoError(t, err)
+		dataListBz = append(dataListBz, dataBz)
+	}
 
 	// Create signed data
-	result, err := submitter.signData(dataList, signer, gen)
+	resultData, resultDataBz, err := submitter.signData(dataList, dataListBz, signer, gen)
 	require.NoError(t, err)
 
 	// Should have 2 items (empty data skipped)
-	assert.Len(t, result, 2)
+	assert.Len(t, resultData, 2)
+	assert.Len(t, resultDataBz, 2)
 
 	// Verify signatures are set
-	for _, signedData := range result {
+	for _, signedData := range resultData {
 		assert.NotEmpty(t, signedData.Signature)
 		assert.NotNil(t, signedData.Signer.PubKey)
 		assert.Equal(t, gen.ProposerAddress, signedData.Signer.Address)
@@ -526,8 +533,15 @@ func TestDASubmitter_SignData_NilSigner(t *testing.T) {
 
 	dataList := []*types.SignedData{signedData}
 
+	dataListBz := make([][]byte, 0, len(dataList))
+	for _, d := range dataList {
+		dataBz, err := d.MarshalBinary()
+		require.NoError(t, err)
+		dataListBz = append(dataListBz, dataBz)
+	}
+
 	// Create signed data with nil signer - should fail
-	_, err := submitter.signData(dataList, nil, gen)
+	_, _, err := submitter.signData(dataList, dataListBz, nil, gen)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "signer is nil")
 }

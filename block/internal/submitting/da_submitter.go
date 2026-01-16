@@ -220,7 +220,7 @@ func (s *DASubmitter) SubmitData(ctx context.Context, unsignedDataList []*types.
 	}
 
 	// Sign the data (cache returns unsigned SignedData structs)
-	signedDataList, err := s.signData(unsignedDataList, signer, genesis)
+	signedDataList, signedDataListBz, err := s.signData(unsignedDataList, marshalledData, signer, genesis)
 	if err != nil {
 		return fmt.Errorf("failed to sign data: %w", err)
 	}
@@ -231,17 +231,7 @@ func (s *DASubmitter) SubmitData(ctx context.Context, unsignedDataList []*types.
 
 	s.logger.Info().Int("count", len(signedDataList)).Msg("submitting data to DA")
 
-	// Filter marshalledData to match signedDataList (removes empty data)
-	filteredMarshalledData := make([][]byte, 0, len(signedDataList))
-	signedIdx := 0
-	for i, unsigned := range unsignedDataList {
-		if signedIdx < len(signedDataList) && unsigned.Height() == signedDataList[signedIdx].Height() {
-			filteredMarshalledData = append(filteredMarshalledData, marshalledData[i])
-			signedIdx++
-		}
-	}
-
-	return submitToDA(s, ctx, signedDataList, filteredMarshalledData,
+	return submitToDA(s, ctx, signedDataList, signedDataListBz,
 		func(submitted []*types.SignedData, res *datypes.ResultSubmit) {
 			for _, sd := range submitted {
 				cache.SetDataDAIncluded(sd.Data.DACommitment().String(), res.Height, sd.Height())
@@ -259,23 +249,23 @@ func (s *DASubmitter) SubmitData(ctx context.Context, unsignedDataList []*types.
 }
 
 // signData signs unsigned SignedData structs returned from cache
-func (s *DASubmitter) signData(unsignedDataList []*types.SignedData, signer signer.Signer, genesis genesis.Genesis) ([]*types.SignedData, error) {
+func (s *DASubmitter) signData(unsignedDataList []*types.SignedData, unsignedDataListBz [][]byte, signer signer.Signer, genesis genesis.Genesis) ([]*types.SignedData, [][]byte, error) {
 	if signer == nil {
-		return nil, fmt.Errorf("signer is nil")
+		return nil, nil, fmt.Errorf("signer is nil")
 	}
 
 	pubKey, err := signer.GetPublic()
 	if err != nil {
-		return nil, fmt.Errorf("failed to get public key: %w", err)
+		return nil, nil, fmt.Errorf("failed to get public key: %w", err)
 	}
 
 	addr, err := signer.GetAddress()
 	if err != nil {
-		return nil, fmt.Errorf("failed to get address: %w", err)
+		return nil, nil, fmt.Errorf("failed to get address: %w", err)
 	}
 
 	if len(genesis.ProposerAddress) > 0 && !bytes.Equal(addr, genesis.ProposerAddress) {
-		return nil, fmt.Errorf("signer address mismatch with genesis proposer")
+		return nil, nil, fmt.Errorf("signer address mismatch with genesis proposer")
 	}
 
 	signerInfo := types.Signer{
@@ -284,22 +274,17 @@ func (s *DASubmitter) signData(unsignedDataList []*types.SignedData, signer sign
 	}
 
 	signedDataList := make([]*types.SignedData, 0, len(unsignedDataList))
+	signedDataListBz := make([][]byte, 0, len(unsignedDataListBz))
 
-	for _, unsignedData := range unsignedDataList {
+	for i, unsignedData := range unsignedDataList {
 		// Skip empty data
 		if len(unsignedData.Txs) == 0 {
 			continue
 		}
 
-		// Sign the data
-		dataBytes, err := unsignedData.Data.MarshalBinary()
+		signature, err := signer.Sign(unsignedDataListBz[i])
 		if err != nil {
-			return nil, fmt.Errorf("failed to marshal data: %w", err)
-		}
-
-		signature, err := signer.Sign(dataBytes)
-		if err != nil {
-			return nil, fmt.Errorf("failed to sign data: %w", err)
+			return nil, nil, fmt.Errorf("failed to sign data: %w", err)
 		}
 
 		signedData := &types.SignedData{
@@ -309,9 +294,16 @@ func (s *DASubmitter) signData(unsignedDataList []*types.SignedData, signer sign
 		}
 
 		signedDataList = append(signedDataList, signedData)
+
+		signedDataBz, err := signedData.MarshalBinary()
+		if err != nil {
+			return nil, nil, fmt.Errorf("failed to marshal signed data: %w", err)
+		}
+
+		signedDataListBz = append(signedDataListBz, signedDataBz)
 	}
 
-	return signedDataList, nil
+	return signedDataList, signedDataListBz, nil
 }
 
 // mergeSubmitOptions merges the base submit options with a signing address.
