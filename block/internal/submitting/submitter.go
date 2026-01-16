@@ -195,7 +195,6 @@ func (s *Submitter) daSubmissionLoop() {
 					s.logger.Debug().Time("t", time.Now()).Uint64("headers", headersNb).Msg("Header submission in progress")
 					s.wg.Add(1)
 					go func() {
-						defer s.wg.Done()
 						defer func() {
 							s.headerSubmissionMtx.Unlock()
 							s.logger.Debug().Time("t", time.Now()).Uint64("headers", headersNb).Msg("Header submission completed")
@@ -256,7 +255,6 @@ func (s *Submitter) daSubmissionLoop() {
 					s.logger.Debug().Time("t", time.Now()).Uint64("data", dataNb).Msg("Data submission in progress")
 					s.wg.Add(1)
 					go func() {
-						defer s.wg.Done()
 						defer func() {
 							s.dataSubmissionMtx.Unlock()
 							s.logger.Debug().Time("t", time.Now()).Uint64("data", dataNb).Msg("Data submission completed")

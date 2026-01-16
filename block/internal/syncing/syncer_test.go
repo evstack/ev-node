@@ -625,13 +625,6 @@ func TestSyncer_InitializeState_CallsReplayer(t *testing.T) {
 	// Setup execution layer to be in sync
 	mockExec.On("GetLatestHeight", mock.Anything).Return(storeHeight, nil)
 
-	// Mock batch operations
-	mockBatch := new(testmocks.MockBatch)
-	mockBatch.On("SetHeight", storeHeight).Return(nil)
-	mockBatch.On("UpdateState", mock.Anything).Return(nil)
-	mockBatch.On("Commit").Return(nil)
-	mockStore.EXPECT().NewBatch(mock.Anything).Return(mockBatch, nil)
-
 	syncer := &Syncer{
 		store:             mockStore,
 		exec:              mockExec,
