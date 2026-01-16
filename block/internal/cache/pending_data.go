@@ -2,6 +2,7 @@ package cache
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/rs/zerolog"
@@ -29,8 +30,17 @@ type PendingData struct {
 	base *pendingBase[*types.Data]
 }
 
+var errInFlightData = errors.New("inflight data")
+
 func fetchData(ctx context.Context, store store.Store, height uint64) (*types.Data, error) {
 	_, data, err := store.GetBlockData(ctx, height)
+	if err != nil {
+		return nil, err
+	}
+	// in the executor, WIP data is temporary stored. skip them until the process is completed
+	if data.Height() == 0 {
+		return nil, errInFlightData
+	}
 	return data, err
 }
 
