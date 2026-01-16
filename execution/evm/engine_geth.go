@@ -131,7 +131,7 @@ func NewEngineExecutionClientWithGeth(
 
 // newGethBackend creates a new in-process geth backend.
 func newGethBackend(genesis *core.Genesis, db ds.Batching, logger zerolog.Logger) (*GethBackend, error) {
-	ethdb := rawdb.NewDatabase(db)
+	ethdb := rawdb.NewDatabase(&wrapper{db})
 
 	// Create trie database
 	trieDB := triedb.NewDatabase(ethdb, nil)
