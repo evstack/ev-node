@@ -3,12 +3,14 @@ package cmd
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/core"
 	"github.com/ipfs/go-datastore"
 	"github.com/rs/zerolog"
 	"github.com/spf13/cobra"
@@ -56,7 +58,13 @@ var RunCmd = &cobra.Command{
 		}
 
 		tracingEnabled := nodeConfig.Instrumentation.IsTracingEnabled()
-		executor, err := createExecutionClient(cmd, datastore, tracingEnabled)
+
+		executor, err := createExecutionClient(
+			cmd,
+			datastore,
+			tracingEnabled,
+			logger.With().Str("module", "engine_client").Logger(),
+		)
 		if err != nil {
 			return err
 		}
@@ -67,12 +75,6 @@ var RunCmd = &cobra.Command{
 		}
 
 		daClient := block.NewDAClient(blobClient, nodeConfig, logger)
-
-		// Attach logger to the EVM engine client if available
-		if ec, ok := executor.(*evm.EngineClient); ok {
-			ec.SetLogger(logger.With().Str("module", "engine_client").Logger())
-		}
-
 		headerNamespace := da.NamespaceFromString(nodeConfig.DA.GetNamespace())
 		dataNamespace := da.NamespaceFromString(nodeConfig.DA.GetDataNamespace())
 
@@ -200,7 +202,33 @@ func createSequencer(
 	return sequencer, nil
 }
 
-func createExecutionClient(cmd *cobra.Command, db datastore.Batching, tracingEnabled bool) (execution.Executor, error) {
+func createExecutionClient(cmd *cobra.Command, db datastore.Batching, tracingEnabled bool, logger zerolog.Logger) (execution.Executor, error) {
+	feeRecipientStr, err := cmd.Flags().GetString(evm.FlagEvmFeeRecipient)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get '%s' flag: %w", evm.FlagEvmFeeRecipient, err)
+	}
+	feeRecipient := common.HexToAddress(feeRecipientStr)
+
+	useGeth, _ := cmd.Flags().GetBool(evm.FlagEVMInProcessGeth)
+	if useGeth {
+		genesisPath, _ := cmd.Flags().GetString(evm.FlagEVMGenesisPath)
+		if len(genesisPath) == 0 {
+			return nil, fmt.Errorf("genesis path must be provided when using in-process Geth")
+		}
+
+		genesisBz, err := os.ReadFile(genesisPath)
+		if err != nil {
+			return nil, fmt.Errorf("failed to read genesis: %w", err)
+		}
+
+		var genesis core.Genesis
+		if err := json.Unmarshal(genesisBz, &genesis); err != nil {
+			return nil, fmt.Errorf("failed to unmarshal genesis: %w", err)
+		}
+
+		return evm.NewEngineExecutionClientWithGeth(&genesis, feeRecipient, db, logger)
+	}
+
 	// Read execution client parameters from flags
 	ethURL, err := cmd.Flags().GetString(evm.FlagEvmEthURL)
 	if err != nil {
@@ -236,16 +264,11 @@ func createExecutionClient(cmd *cobra.Command, db datastore.Batching, tracingEna
 	if err != nil {
 		return nil, fmt.Errorf("failed to get '%s' flag: %w", evm.FlagEvmGenesisHash, err)
 	}
-	feeRecipientStr, err := cmd.Flags().GetString(evm.FlagEvmFeeRecipient)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get '%s' flag: %w", evm.FlagEvmFeeRecipient, err)
-	}
 
 	// Convert string parameters to Ethereum types
 	genesisHash := common.HexToHash(genesisHashStr)
-	feeRecipient := common.HexToAddress(feeRecipientStr)
 
-	return evm.NewEngineExecutionClient(ethURL, engineURL, jwtSecret, genesisHash, feeRecipient, db, tracingEnabled)
+	return evm.NewEngineExecutionClient(ethURL, engineURL, jwtSecret, genesisHash, feeRecipient, db, tracingEnabled, logger)
 }
 
 // addFlags adds flags related to the EVM execution client
@@ -256,4 +279,7 @@ func addFlags(cmd *cobra.Command) {
 	cmd.Flags().String(evm.FlagEvmGenesisHash, "", "Hash of the genesis block")
 	cmd.Flags().String(evm.FlagEvmFeeRecipient, "", "Address that will receive transaction fees")
 	cmd.Flags().String(flagForceInclusionServer, "", "Address for force inclusion API server (e.g. 127.0.0.1:8547). If set, enables the server for direct DA submission")
+
+	cmd.Flags().Bool(evm.FlagEVMInProcessGeth, false, "Use in-process Geth for EVM execution instead of external execution client")
+	cmd.Flags().String(evm.FlagEVMGenesisPath, "", "EVM genesis path for Geth")
 }
