@@ -72,7 +72,7 @@ func BenchmarkManager_GetPendingHeaders(b *testing.B) {
 			b.ReportAllocs()
 			b.ResetTimer()
 			for b.Loop() {
-				hs, err := m.GetPendingHeaders(ctx)
+				hs, _, err := m.GetPendingHeaders(ctx)
 				if err != nil {
 					b.Fatal(err)
 				}
@@ -93,7 +93,7 @@ func BenchmarkManager_GetPendingData(b *testing.B) {
 			b.ReportAllocs()
 			b.ResetTimer()
 			for b.Loop() {
-				ds, err := m.GetPendingData(ctx)
+				ds, _, err := m.GetPendingData(ctx)
 				if err != nil {
 					b.Fatal(err)
 				}

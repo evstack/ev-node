@@ -338,6 +338,8 @@ func TestSubmitter_daSubmissionLoop(t *testing.T) {
 	// Set a small block time so the ticker fires quickly
 	cfg := config.DefaultConfig()
 	cfg.DA.BlockTime.Duration = 5 * time.Millisecond
+	// Use immediate batching strategy so submissions happen right away
+	cfg.DA.BatchingStrategy = "immediate"
 	metrics := common.NopMetrics()
 
 	// Prepare fake DA submitter capturing calls
@@ -349,7 +351,9 @@ func TestSubmitter_daSubmissionLoop(t *testing.T) {
 	// Provide a non-nil executor; it won't be used because DA inclusion won't advance
 	exec := testmocks.NewMockExecutor(t)
 
-	// Provide a minimal signer implementation
+	batchingStrategy, err := NewBatchingStrategy(cfg.DA)
+	require.NoError(t, err)
+
 	s := &Submitter{
 		store:            st,
 		exec:             exec,
@@ -360,12 +364,24 @@ func TestSubmitter_daSubmissionLoop(t *testing.T) {
 		daSubmitter:      fakeDA,
 		signer:           &fakeSigner{},
 		daIncludedHeight: &atomic.Uint64{},
+		batchingStrategy: batchingStrategy,
 		logger:           zerolog.Nop(),
 	}
 
+	// Set last submit times far in past so strategy allows submission
+	pastTime := time.Now().Add(-time.Hour).UnixNano()
+	s.lastHeaderSubmit.Store(pastTime)
+	s.lastDataSubmit.Store(pastTime)
+
 	// Make there be pending headers and data by setting store height > last submitted
+	h1, d1 := newHeaderAndData("test-chain", 1, true)
+	h2, d2 := newHeaderAndData("test-chain", 2, true)
+
+	// Store the blocks
 	batch, err := st.NewBatch(ctx)
 	require.NoError(t, err)
+	require.NoError(t, batch.SaveBlockData(h1, d1, &types.Signature{}))
+	require.NoError(t, batch.SaveBlockData(h2, d2, &types.Signature{}))
 	require.NoError(t, batch.SetHeight(2))
 	require.NoError(t, batch.Commit())
 
@@ -399,7 +415,7 @@ type fakeDASubmitter struct {
 	chData chan struct{}
 }
 
-func (f *fakeDASubmitter) SubmitHeaders(ctx context.Context, _ cache.Manager, _ signer.Signer) error {
+func (f *fakeDASubmitter) SubmitHeaders(ctx context.Context, _ []*types.SignedHeader, _ [][]byte, _ cache.Manager, _ signer.Signer) error {
 	select {
 	case f.chHdr <- struct{}{}:
 	default:
@@ -407,7 +423,7 @@ func (f *fakeDASubmitter) SubmitHeaders(ctx context.Context, _ cache.Manager, _ 
 	return nil
 }
 
-func (f *fakeDASubmitter) SubmitData(ctx context.Context, _ cache.Manager, _ signer.Signer, _ genesis.Genesis) error {
+func (f *fakeDASubmitter) SubmitData(ctx context.Context, _ []*types.SignedData, _ [][]byte, _ cache.Manager, _ signer.Signer, _ genesis.Genesis) error {
 	select {
 	case f.chData <- struct{}{}:
 	default:

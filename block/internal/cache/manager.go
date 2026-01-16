@@ -78,8 +78,8 @@ type CacheManager interface {
 
 // PendingManager provides operations for managing pending headers and data
 type PendingManager interface {
-	GetPendingHeaders(ctx context.Context) ([]*types.SignedHeader, error)
-	GetPendingData(ctx context.Context) ([]*types.SignedData, error)
+	GetPendingHeaders(ctx context.Context) ([]*types.SignedHeader, [][]byte, error)
+	GetPendingData(ctx context.Context) ([]*types.SignedData, [][]byte, error)
 	SetLastSubmittedHeaderHeight(ctx context.Context, height uint64)
 	SetLastSubmittedDataHeight(ctx context.Context, height uint64)
 	NumPendingHeaders() uint64
@@ -318,20 +318,21 @@ func (m *implementation) DeleteHeight(blockHeight uint64) {
 }
 
 // Pending operations
-func (m *implementation) GetPendingHeaders(ctx context.Context) ([]*types.SignedHeader, error) {
+func (m *implementation) GetPendingHeaders(ctx context.Context) ([]*types.SignedHeader, [][]byte, error) {
 	return m.pendingHeaders.GetPendingHeaders(ctx)
 }
 
-func (m *implementation) GetPendingData(ctx context.Context) ([]*types.SignedData, error) {
-	// Get pending raw data
-	dataList, err := m.pendingData.GetPendingData(ctx)
+func (m *implementation) GetPendingData(ctx context.Context) ([]*types.SignedData, [][]byte, error) {
+	// Get pending raw data with marshalled bytes
+	dataList, marshalledData, err := m.pendingData.GetPendingData(ctx)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	// Convert to SignedData (this logic was in manager.go)
 	signedDataList := make([]*types.SignedData, 0, len(dataList))
-	for _, data := range dataList {
+	marshalledSignedData := make([][]byte, 0, len(dataList))
+	for i, data := range dataList {
 		if len(data.Txs) == 0 {
 			continue // Skip empty data
 		}
@@ -342,9 +343,10 @@ func (m *implementation) GetPendingData(ctx context.Context) ([]*types.SignedDat
 			Data: *data,
 			// Signature and Signer will be set by executing component
 		})
+		marshalledSignedData = append(marshalledSignedData, marshalledData[i])
 	}
 
-	return signedDataList, nil
+	return signedDataList, marshalledSignedData, nil
 }
 
 func (m *implementation) SetLastSubmittedHeaderHeight(ctx context.Context, height uint64) {
