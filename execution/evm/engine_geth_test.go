@@ -48,7 +48,7 @@ func TestNewEngineExecutionClientWithGeth(t *testing.T) {
 	logger := zerolog.Nop()
 	feeRecipient := common.HexToAddress("0x1234567890123456789012345678901234567890")
 
-	client, err := NewEngineExecutionClientWithGeth(genesis, feeRecipient, db, logger)
+	client, err := NewEngineExecutionClientWithGeth(genesis, feeRecipient, db, "", logger)
 	require.NoError(t, err)
 	require.NotNil(t, client)
 
@@ -64,7 +64,7 @@ func TestNewEngineExecutionClientWithGeth_NilDB(t *testing.T) {
 	logger := zerolog.Nop()
 	feeRecipient := common.HexToAddress("0x1234567890123456789012345678901234567890")
 
-	_, err := NewEngineExecutionClientWithGeth(genesis, feeRecipient, nil, logger)
+	_, err := NewEngineExecutionClientWithGeth(genesis, feeRecipient, nil, "", logger)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "db is required")
 }
@@ -74,7 +74,7 @@ func TestNewEngineExecutionClientWithGeth_NilGenesis(t *testing.T) {
 	logger := zerolog.Nop()
 	feeRecipient := common.HexToAddress("0x1234567890123456789012345678901234567890")
 
-	_, err := NewEngineExecutionClientWithGeth(nil, feeRecipient, db, logger)
+	_, err := NewEngineExecutionClientWithGeth(nil, feeRecipient, db, "", logger)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "genesis configuration is required")
 }
@@ -85,7 +85,7 @@ func TestGethEngineClient_InitChain(t *testing.T) {
 	logger := zerolog.Nop()
 	feeRecipient := common.HexToAddress("0x1234567890123456789012345678901234567890")
 
-	client, err := NewEngineExecutionClientWithGeth(genesis, feeRecipient, db, logger)
+	client, err := NewEngineExecutionClientWithGeth(genesis, feeRecipient, db, "", logger)
 	require.NoError(t, err)
 
 	ctx := context.Background()
@@ -104,7 +104,7 @@ func TestGethEngineClient_GetLatestHeight(t *testing.T) {
 	logger := zerolog.Nop()
 	feeRecipient := common.HexToAddress("0x1234567890123456789012345678901234567890")
 
-	client, err := NewEngineExecutionClientWithGeth(genesis, feeRecipient, db, logger)
+	client, err := NewEngineExecutionClientWithGeth(genesis, feeRecipient, db, "", logger)
 	require.NoError(t, err)
 
 	ctx := context.Background()
@@ -120,7 +120,7 @@ func TestGethEthClient_HeaderByNumber(t *testing.T) {
 	logger := zerolog.Nop()
 	feeRecipient := common.HexToAddress("0x1234567890123456789012345678901234567890")
 
-	client, err := NewEngineExecutionClientWithGeth(genesis, feeRecipient, db, logger)
+	client, err := NewEngineExecutionClientWithGeth(genesis, feeRecipient, db, "", logger)
 	require.NoError(t, err)
 
 	ctx := context.Background()
@@ -143,7 +143,7 @@ func TestGethEthClient_GetTxs_EmptyPool(t *testing.T) {
 	logger := zerolog.Nop()
 	feeRecipient := common.HexToAddress("0x1234567890123456789012345678901234567890")
 
-	client, err := NewEngineExecutionClientWithGeth(genesis, feeRecipient, db, logger)
+	client, err := NewEngineExecutionClientWithGeth(genesis, feeRecipient, db, "", logger)
 	require.NoError(t, err)
 
 	ctx := context.Background()
@@ -160,7 +160,7 @@ func TestGethEngineClient_ExecuteTxs_EmptyBlock(t *testing.T) {
 	logger := zerolog.Nop()
 	feeRecipient := common.HexToAddress("0x1234567890123456789012345678901234567890")
 
-	client, err := NewEngineExecutionClientWithGeth(genesis, feeRecipient, db, logger)
+	client, err := NewEngineExecutionClientWithGeth(genesis, feeRecipient, db, "", logger)
 	require.NoError(t, err)
 
 	ctx := context.Background()
