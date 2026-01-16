@@ -261,6 +261,13 @@ type NodeConfig struct {
 	// Readiness / health configuration
 	ReadinessWindowSeconds   uint64 `mapstructure:"readiness_window_seconds" yaml:"readiness_window_seconds" comment:"Time window in seconds used to calculate ReadinessMaxBlocksBehind based on block time. Default: 15 seconds."`
 	ReadinessMaxBlocksBehind uint64 `mapstructure:"readiness_max_blocks_behind" yaml:"readiness_max_blocks_behind" comment:"How many blocks behind best-known head the node can be and still be considered ready. 0 means must be exactly at head."`
+
+	// Pruning configuration
+	// When enabled, the node will periodically prune old block data (headers, data,
+	// signatures, and hash index) from the local store while keeping recent history.
+	PruningEnabled    bool   `mapstructure:"pruning_enabled" yaml:"pruning_enabled" comment:"Enable height-based pruning of stored block data. When disabled, all blocks are kept (archive mode)."`
+	PruningKeepRecent uint64 `mapstructure:"pruning_keep_recent" yaml:"pruning_keep_recent" comment:"Number of most recent blocks to retain. Older blocks will have their header/data/signature removed from the local store. 0 means keep all blocks."`
+	PruningInterval   uint64 `mapstructure:"pruning_interval" yaml:"pruning_interval" comment:"Run pruning every N blocks. Must be >= 1 when pruning is enabled."`
 }
 
 // LogConfig contains all logging configuration parameters
@@ -436,6 +443,10 @@ func AddFlags(cmd *cobra.Command) {
 	cmd.Flags().Uint64(FlagReadinessWindowSeconds, def.Node.ReadinessWindowSeconds, "time window in seconds for calculating readiness threshold based on block time (default: 15s)")
 	cmd.Flags().Uint64(FlagReadinessMaxBlocksBehind, def.Node.ReadinessMaxBlocksBehind, "how many blocks behind best-known head the node can be and still be considered ready (0 = must be at head)")
 	cmd.Flags().Duration(FlagScrapeInterval, def.Node.ScrapeInterval.Duration, "interval at which the reaper polls the execution layer for new transactions")
+	// Pruning configuration flags
+	cmd.Flags().Bool(FlagPrefixEvnode+"node.pruning_enabled", def.Node.PruningEnabled, "enable height-based pruning of stored block data (headers, data, signatures, index)")
+	cmd.Flags().Uint64(FlagPrefixEvnode+"node.pruning_keep_recent", def.Node.PruningKeepRecent, "number of most recent blocks to retain when pruning is enabled (0 = keep all)")
+	cmd.Flags().Uint64(FlagPrefixEvnode+"node.pruning_interval", def.Node.PruningInterval, "run pruning every N blocks (must be >= 1 when pruning is enabled)")
 
 	// Data Availability configuration flags
 	cmd.Flags().String(FlagDAAddress, def.DA.Address, "DA address (host:port)")

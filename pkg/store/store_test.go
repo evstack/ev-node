@@ -789,6 +789,57 @@ func TestRollback(t *testing.T) {
 	require.Equal(rollbackToHeight, state.LastBlockHeight)
 }
 
+func TestPruneBlocks_RemovesOldBlockDataOnly(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	ds, err := NewTestInMemoryKVStore()
+	require.NoError(t, err)
+
+	s := New(ds).(*DefaultStore)
+
+	// create and store a few blocks with headers, data, signatures and state
+	batch, err := s.NewBatch(ctx)
+	require.NoError(t, err)
+
+	var lastState types.State
+	for h := uint64(1); h <= 5; h++ {
+		header := &types.SignedHeader{Header: types.Header{BaseHeader: types.BaseHeader{Height: h}}}
+		data := &types.Data{}
+		sig := types.Signature([]byte{byte(h)})
+
+		require.NoError(t, batch.SaveBlockData(header, data, &sig))
+
+		// fake state snapshot per height
+		lastState = types.State{LastBlockHeight: h}
+		require.NoError(t, batch.UpdateState(lastState))
+	}
+	require.NoError(t, batch.SetHeight(5))
+	require.NoError(t, batch.Commit())
+
+	// prune everything up to height 3
+	require.NoError(t, s.PruneBlocks(ctx, 3))
+
+	// old block data should be gone
+	for h := uint64(1); h <= 3; h++ {
+		_, _, err := s.GetBlockData(ctx, h)
+		assert.Error(t, err, "expected block data at height %d to be pruned", h)
+	}
+
+	// recent block data should remain
+	for h := uint64(4); h <= 5; h++ {
+		_, _, err := s.GetBlockData(ctx, h)
+		assert.NoError(t, err, "expected block data at height %d to be kept", h)
+	}
+
+	// state snapshots are not pruned by PruneBlocks
+	for h := uint64(1); h <= 5; h++ {
+		st, err := s.GetStateAtHeight(ctx, h)
+		assert.NoError(t, err, "expected state at height %d to remain", h)
+		assert.Equal(t, h, st.LastBlockHeight)
+	}
+}
+
 // TestRollbackToSameHeight verifies that rollback to same height is a no-op
 func TestRollbackToSameHeight(t *testing.T) {
 	t.Parallel()
