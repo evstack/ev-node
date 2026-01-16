@@ -63,7 +63,6 @@ var RunCmd = &cobra.Command{
 			cmd,
 			datastore,
 			tracingEnabled,
-			nodeConfig.RootDir,
 			logger.With().Str("module", "engine_client").Logger(),
 		)
 		if err != nil {
@@ -203,7 +202,7 @@ func createSequencer(
 	return sequencer, nil
 }
 
-func createExecutionClient(cmd *cobra.Command, db datastore.Batching, tracingEnabled bool, rootDir string, logger zerolog.Logger) (execution.Executor, error) {
+func createExecutionClient(cmd *cobra.Command, db datastore.Batching, tracingEnabled bool, logger zerolog.Logger) (execution.Executor, error) {
 	feeRecipientStr, err := cmd.Flags().GetString(evm.FlagEvmFeeRecipient)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get '%s' flag: %w", evm.FlagEvmFeeRecipient, err)

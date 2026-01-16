@@ -2,10 +2,12 @@ package evm
 
 import (
 	"context"
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"math/big"
 	"sync"
+	"time"
 
 	"github.com/ethereum/go-ethereum/beacon/engine"
 	"github.com/ethereum/go-ethereum/common"
@@ -30,6 +32,11 @@ var (
 	_ EthRPCClient    = (*gethEthClient)(nil)
 )
 
+const (
+	// baseFeeChangeDenominator is the EIP-1559 base fee change denominator.
+	baseFeeChangeDenominator = 8
+)
+
 // GethBackend holds the in-process geth components.
 type GethBackend struct {
 	db          ethdb.Database
@@ -38,9 +45,11 @@ type GethBackend struct {
 	txPool      *txpool.TxPool
 
 	mu sync.Mutex
-	// payloadBuilding tracks in-flight payload builds
+	// payloads tracks in-flight payload builds
 	payloads      map[engine.PayloadID]*payloadBuildState
 	nextPayloadID uint64
+
+	logger zerolog.Logger
 }
 
 // payloadBuildState tracks the state of a payload being built.
@@ -52,6 +61,7 @@ type payloadBuildState struct {
 	withdrawals  []*types.Withdrawal
 	transactions [][]byte
 	gasLimit     uint64
+
 	// built payload (populated after getPayload)
 	payload *engine.ExecutableData
 }
@@ -68,7 +78,8 @@ type gethEthClient struct {
 	logger  zerolog.Logger
 }
 
-// NewEngineExecutionClientWithGeth creates an EngineClient that uses an in-process Geth.
+// NewEngineExecutionClientWithGeth creates an EngineClient that uses an in-process
+// go-ethereum instance instead of connecting to an external execution engine via RPC.
 func NewEngineExecutionClientWithGeth(
 	genesis *core.Genesis,
 	feeRecipient common.Address,
@@ -78,7 +89,7 @@ func NewEngineExecutionClientWithGeth(
 	if db == nil {
 		return nil, errors.New("db is required for EVM execution client")
 	}
-	if genesis == nil {
+	if genesis == nil || genesis.Config == nil {
 		return nil, errors.New("genesis configuration is required")
 	}
 
@@ -100,6 +111,12 @@ func NewEngineExecutionClientWithGeth(
 	genesisBlock := backend.blockchain.Genesis()
 	genesisHash := genesisBlock.Hash()
 
+	logger.Info().
+		Str("genesis_hash", genesisHash.Hex()).
+		Str("chain_id", genesis.Config.ChainID.String()).
+		Uint64("genesis_gas_limit", genesis.GasLimit).
+		Msg("created in-process geth execution client")
+
 	return &EngineClient{
 		engineClient:              engineClient,
 		ethClient:                 ethClient,
@@ -114,22 +131,23 @@ func NewEngineExecutionClientWithGeth(
 	}, nil
 }
 
-// newGethBackend creates a new in-process geth backend.
+// newGethBackend creates a new in-process geth backend with persistent storage.
 func newGethBackend(genesis *core.Genesis, db ds.Batching, logger zerolog.Logger) (*GethBackend, error) {
+	// Wrap the datastore as an ethdb.Database
 	ethdb := rawdb.NewDatabase(&wrapper{db})
 
 	// Create trie database
 	trieDB := triedb.NewDatabase(ethdb, nil)
 
 	// Ensure blobSchedule is set if Cancun/Prague are enabled
-	// This is required by go-ethereum v1.16+
+	// TODO: remove and fix genesis.
 	if genesis.Config != nil && genesis.Config.BlobScheduleConfig == nil {
-		// Check if Cancun or Prague are enabled (time-based forks)
 		if genesis.Config.CancunTime != nil || genesis.Config.PragueTime != nil {
 			genesis.Config.BlobScheduleConfig = &params.BlobScheduleConfig{
 				Cancun: params.DefaultCancunBlobConfig,
 				Prague: params.DefaultPragueBlobConfig,
 			}
+			logger.Debug().Msg("auto-populated blobSchedule config for Cancun/Prague forks")
 		}
 	}
 
@@ -144,11 +162,9 @@ func newGethBackend(genesis *core.Genesis, db ds.Batching, logger zerolog.Logger
 		Str("chain_id", chainConfig.ChainID.String()).
 		Msg("initialized in-process geth with genesis")
 
-	// Create the consensus engine (beacon/PoS)
-	consensusEngine := beacon.New(nil)
-
 	// Create blockchain config
 	bcConfig := core.DefaultConfig().WithStateScheme(rawdb.HashScheme)
+	consensusEngine := beacon.New(nil)
 
 	// Create the blockchain
 	blockchain, err := core.NewBlockChain(ethdb, genesis, consensusEngine, bcConfig)
@@ -156,11 +172,21 @@ func newGethBackend(genesis *core.Genesis, db ds.Batching, logger zerolog.Logger
 		return nil, fmt.Errorf("failed to create blockchain: %w", err)
 	}
 
+	// Log current chain head
+	currentHead := blockchain.CurrentBlock()
+	if currentHead != nil {
+		logger.Info().
+			Uint64("height", currentHead.Number.Uint64()).
+			Str("hash", currentHead.Hash().Hex()).
+			Msg("resuming from existing chain state")
+	}
+
 	backend := &GethBackend{
 		db:          ethdb,
 		chainConfig: chainConfig,
 		blockchain:  blockchain,
 		payloads:    make(map[engine.PayloadID]*payloadBuildState),
+		logger:      logger,
 	}
 
 	// Create transaction pool
@@ -177,8 +203,12 @@ func newGethBackend(genesis *core.Genesis, db ds.Batching, logger zerolog.Logger
 	return backend, nil
 }
 
-// Close shuts down the geth backend.
+// Close shuts down the geth backend gracefully.
 func (b *GethBackend) Close() error {
+	b.logger.Info().Msg("shutting down geth backend")
+
+	var errs []error
+
 	if b.txPool != nil {
 		b.txPool.Close()
 	}
@@ -186,19 +216,33 @@ func (b *GethBackend) Close() error {
 		b.blockchain.Stop()
 	}
 	if b.db != nil {
-		b.db.Close()
+		if err := b.db.Close(); err != nil {
+			errs = append(errs, fmt.Errorf("failed to close database: %w", err))
+		}
+	}
+
+	if len(errs) > 0 {
+		return errors.Join(errs...)
 	}
 	return nil
 }
 
 // ForkchoiceUpdated implements EngineRPCClient.
 func (g *gethEngineClient) ForkchoiceUpdated(ctx context.Context, fcState engine.ForkchoiceStateV1, attrs map[string]any) (*engine.ForkChoiceResponse, error) {
+	// Check context before acquiring lock
+	if err := ctx.Err(); err != nil {
+		return nil, fmt.Errorf("context cancelled: %w", err)
+	}
+
 	g.backend.mu.Lock()
 	defer g.backend.mu.Unlock()
 
 	// Validate the forkchoice state
 	headBlock := g.backend.blockchain.GetBlockByHash(fcState.HeadBlockHash)
 	if headBlock == nil {
+		g.logger.Debug().
+			Str("head_hash", fcState.HeadBlockHash.Hex()).
+			Msg("head block not found, returning SYNCING")
 		return &engine.ForkChoiceResponse{
 			PayloadStatus: engine.PayloadStatusV1{
 				Status: engine.SYNCING,
@@ -210,6 +254,11 @@ func (g *gethEngineClient) ForkchoiceUpdated(ctx context.Context, fcState engine
 	if _, err := g.backend.blockchain.SetCanonical(headBlock); err != nil {
 		return nil, fmt.Errorf("failed to set canonical head: %w", err)
 	}
+
+	g.logger.Debug().
+		Uint64("height", headBlock.NumberU64()).
+		Str("hash", headBlock.Hash().Hex()).
+		Msg("updated canonical head")
 
 	response := &engine.ForkChoiceResponse{
 		PayloadStatus: engine.PayloadStatusV1{
@@ -225,29 +274,30 @@ func (g *gethEngineClient) ForkchoiceUpdated(ctx context.Context, fcState engine
 			return nil, fmt.Errorf("failed to parse payload attributes: %w", err)
 		}
 
-		// Generate payload ID
-		g.backend.nextPayloadID++
-		var payloadID engine.PayloadID
-		payloadID[0] = byte(g.backend.nextPayloadID >> 56)
-		payloadID[1] = byte(g.backend.nextPayloadID >> 48)
-		payloadID[2] = byte(g.backend.nextPayloadID >> 40)
-		payloadID[3] = byte(g.backend.nextPayloadID >> 32)
-		payloadID[4] = byte(g.backend.nextPayloadID >> 24)
-		payloadID[5] = byte(g.backend.nextPayloadID >> 16)
-		payloadID[6] = byte(g.backend.nextPayloadID >> 8)
-		payloadID[7] = byte(g.backend.nextPayloadID)
+		// Generate payload ID deterministically from attributes
+		payloadID := g.generatePayloadID(fcState.HeadBlockHash, payloadState)
 
 		g.backend.payloads[payloadID] = payloadState
 		response.PayloadID = &payloadID
 
 		g.logger.Info().
 			Str("payload_id", payloadID.String()).
+			Str("parent_hash", fcState.HeadBlockHash.Hex()).
 			Uint64("timestamp", payloadState.timestamp).
 			Int("tx_count", len(payloadState.transactions)).
+			Str("fee_recipient", payloadState.feeRecipient.Hex()).
 			Msg("started payload build")
 	}
 
 	return response, nil
+}
+
+// generatePayloadID creates a deterministic payload ID from the build parameters.
+func (g *gethEngineClient) generatePayloadID(parentHash common.Hash, ps *payloadBuildState) engine.PayloadID {
+	g.backend.nextPayloadID++
+	var payloadID engine.PayloadID
+	binary.BigEndian.PutUint64(payloadID[:], g.backend.nextPayloadID)
+	return payloadID
 }
 
 // parsePayloadAttributes extracts payload attributes from the map format.
@@ -257,7 +307,7 @@ func (g *gethEngineClient) parsePayloadAttributes(parentHash common.Hash, attrs 
 		withdrawals: []*types.Withdrawal{},
 	}
 
-	// Parse timestamp
+	// Parse timestamp (required)
 	if ts, ok := attrs["timestamp"]; ok {
 		switch v := ts.(type) {
 		case int64:
@@ -269,46 +319,59 @@ func (g *gethEngineClient) parsePayloadAttributes(parentHash common.Hash, attrs 
 		default:
 			return nil, fmt.Errorf("invalid timestamp type: %T", ts)
 		}
+	} else {
+		return nil, errors.New("timestamp is required in payload attributes")
 	}
 
-	// Parse prevRandao
+	// Parse prevRandao (required for PoS)
 	if pr, ok := attrs["prevRandao"]; ok {
 		switch v := pr.(type) {
 		case common.Hash:
 			ps.prevRandao = v
 		case string:
 			ps.prevRandao = common.HexToHash(v)
+		case []byte:
+			ps.prevRandao = common.BytesToHash(v)
 		default:
 			return nil, fmt.Errorf("invalid prevRandao type: %T", pr)
 		}
 	}
 
-	// Parse suggestedFeeRecipient
+	// Parse suggestedFeeRecipient (required)
 	if fr, ok := attrs["suggestedFeeRecipient"]; ok {
 		switch v := fr.(type) {
 		case common.Address:
 			ps.feeRecipient = v
 		case string:
 			ps.feeRecipient = common.HexToAddress(v)
+		case []byte:
+			ps.feeRecipient = common.BytesToAddress(v)
 		default:
 			return nil, fmt.Errorf("invalid suggestedFeeRecipient type: %T", fr)
 		}
+	} else {
+		return nil, errors.New("suggestedFeeRecipient is required in payload attributes")
 	}
 
-	// Parse transactions
+	// Parse transactions (optional)
 	if txs, ok := attrs["transactions"]; ok {
 		switch v := txs.(type) {
 		case []string:
-			ps.transactions = make([][]byte, len(v))
-			for i, txHex := range v {
-				ps.transactions[i] = common.FromHex(txHex)
+			ps.transactions = make([][]byte, 0, len(v))
+			for _, txHex := range v {
+				txBytes := common.FromHex(txHex)
+				if len(txBytes) > 0 {
+					ps.transactions = append(ps.transactions, txBytes)
+				}
 			}
 		case [][]byte:
 			ps.transactions = v
+		default:
+			return nil, fmt.Errorf("invalid transactions type: %T", txs)
 		}
 	}
 
-	// Parse gasLimit
+	// Parse gasLimit (optional)
 	if gl, ok := attrs["gasLimit"]; ok {
 		switch v := gl.(type) {
 		case uint64:
@@ -317,6 +380,10 @@ func (g *gethEngineClient) parsePayloadAttributes(parentHash common.Hash, attrs 
 			ps.gasLimit = uint64(v)
 		case float64:
 			ps.gasLimit = uint64(v)
+		case *uint64:
+			if v != nil {
+				ps.gasLimit = *v
+			}
 		default:
 			return nil, fmt.Errorf("invalid gasLimit type: %T", gl)
 		}
@@ -324,8 +391,13 @@ func (g *gethEngineClient) parsePayloadAttributes(parentHash common.Hash, attrs 
 
 	// Parse withdrawals (optional)
 	if w, ok := attrs["withdrawals"]; ok {
-		if withdrawals, ok := w.([]*types.Withdrawal); ok {
-			ps.withdrawals = withdrawals
+		switch v := w.(type) {
+		case []*types.Withdrawal:
+			ps.withdrawals = v
+		case nil:
+			// Keep empty slice
+		default:
+			return nil, fmt.Errorf("invalid withdrawals type: %T", w)
 		}
 	}
 
@@ -334,6 +406,10 @@ func (g *gethEngineClient) parsePayloadAttributes(parentHash common.Hash, attrs 
 
 // GetPayload implements EngineRPCClient.
 func (g *gethEngineClient) GetPayload(ctx context.Context, payloadID engine.PayloadID) (*engine.ExecutionPayloadEnvelope, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, fmt.Errorf("context cancelled: %w", err)
+	}
+
 	g.backend.mu.Lock()
 	defer g.backend.mu.Unlock()
 
@@ -344,12 +420,25 @@ func (g *gethEngineClient) GetPayload(ctx context.Context, payloadID engine.Payl
 
 	// Build the block if not already built
 	if payloadState.payload == nil {
-		payload, err := g.buildPayload(payloadState)
+		startTime := time.Now()
+		payload, err := g.buildPayload(ctx, payloadState)
 		if err != nil {
 			return nil, fmt.Errorf("failed to build payload: %w", err)
 		}
 		payloadState.payload = payload
+
+		g.logger.Info().
+			Str("payload_id", payloadID.String()).
+			Uint64("block_number", payload.Number).
+			Str("block_hash", payload.BlockHash.Hex()).
+			Int("tx_count", len(payload.Transactions)).
+			Uint64("gas_used", payload.GasUsed).
+			Dur("build_time", time.Since(startTime)).
+			Msg("built payload")
 	}
+
+	// Remove the payload from pending after retrieval
+	delete(g.backend.payloads, payloadID)
 
 	return &engine.ExecutionPayloadEnvelope{
 		ExecutionPayload: payloadState.payload,
@@ -360,15 +449,23 @@ func (g *gethEngineClient) GetPayload(ctx context.Context, payloadID engine.Payl
 }
 
 // buildPayload constructs an execution payload from the pending state.
-func (g *gethEngineClient) buildPayload(ps *payloadBuildState) (*engine.ExecutableData, error) {
+func (g *gethEngineClient) buildPayload(ctx context.Context, ps *payloadBuildState) (*engine.ExecutableData, error) {
 	parent := g.backend.blockchain.GetBlockByHash(ps.parentHash)
 	if parent == nil {
 		return nil, fmt.Errorf("parent block not found: %s", ps.parentHash.Hex())
 	}
 
+	// Validate block number continuity
+	expectedNumber := new(big.Int).Add(parent.Number(), big.NewInt(1))
+
+	// Validate timestamp
+	if ps.timestamp <= parent.Time() {
+		return nil, fmt.Errorf("invalid timestamp: %d must be greater than parent timestamp %d", ps.timestamp, parent.Time())
+	}
+
 	// Calculate base fee for the new block
 	var baseFee *big.Int
-	if g.backend.chainConfig.IsLondon(new(big.Int).Add(parent.Number(), big.NewInt(1))) {
+	if g.backend.chainConfig.IsLondon(expectedNumber) {
 		baseFee = calcBaseFee(g.backend.chainConfig, parent.Header())
 	}
 
@@ -386,7 +483,7 @@ func (g *gethEngineClient) buildPayload(ps *payloadBuildState) (*engine.Executab
 		ReceiptHash:      types.EmptyReceiptsHash,
 		Bloom:            types.Bloom{},
 		Difficulty:       big.NewInt(0),
-		Number:           new(big.Int).Add(parent.Number(), big.NewInt(1)),
+		Number:           expectedNumber,
 		GasLimit:         gasLimit,
 		GasUsed:          0,
 		Time:             ps.timestamp,
@@ -408,9 +505,11 @@ func (g *gethEngineClient) buildPayload(ps *payloadBuildState) (*engine.Executab
 	}
 
 	var (
-		txs      types.Transactions
-		receipts []*types.Receipt
-		gasUsed  uint64
+		txs         types.Transactions
+		receipts    []*types.Receipt
+		gasUsed     uint64
+		txsExecuted int
+		txsSkipped  int
 	)
 
 	// Create EVM context
@@ -419,7 +518,15 @@ func (g *gethEngineClient) buildPayload(ps *payloadBuildState) (*engine.Executab
 	// Execute transactions
 	gp := new(core.GasPool).AddGas(gasLimit)
 	for i, txBytes := range ps.transactions {
+		// Check context periodically
+		if i%100 == 0 {
+			if err := ctx.Err(); err != nil {
+				return nil, fmt.Errorf("context cancelled during tx execution: %w", err)
+			}
+		}
+
 		if len(txBytes) == 0 {
+			txsSkipped++
 			continue
 		}
 
@@ -428,7 +535,8 @@ func (g *gethEngineClient) buildPayload(ps *payloadBuildState) (*engine.Executab
 			g.logger.Debug().
 				Int("index", i).
 				Err(err).
-				Msg("skipping invalid transaction")
+				Msg("skipping invalid transaction encoding")
+			txsSkipped++
 			continue
 		}
 
@@ -450,11 +558,20 @@ func (g *gethEngineClient) buildPayload(ps *payloadBuildState) (*engine.Executab
 				Str("tx_hash", tx.Hash().Hex()).
 				Err(err).
 				Msg("transaction execution failed, skipping")
+			txsSkipped++
 			continue
 		}
 
 		txs = append(txs, &tx)
 		receipts = append(receipts, receipt)
+		txsExecuted++
+	}
+
+	if txsSkipped > 0 {
+		g.logger.Debug().
+			Int("executed", txsExecuted).
+			Int("skipped", txsSkipped).
+			Msg("transaction execution summary")
 	}
 
 	// Finalize state
@@ -486,7 +603,7 @@ func (g *gethEngineClient) buildPayload(ps *payloadBuildState) (*engine.Executab
 	for i, tx := range txs {
 		data, err := tx.MarshalBinary()
 		if err != nil {
-			return nil, fmt.Errorf("failed to marshal tx: %w", err)
+			return nil, fmt.Errorf("failed to marshal tx %d: %w", i, err)
 		}
 		txData[i] = data
 	}
@@ -516,24 +633,72 @@ func (g *gethEngineClient) buildPayload(ps *payloadBuildState) (*engine.Executab
 
 // NewPayload implements EngineRPCClient.
 func (g *gethEngineClient) NewPayload(ctx context.Context, payload *engine.ExecutableData, blobHashes []string, parentBeaconBlockRoot string, executionRequests [][]byte) (*engine.PayloadStatusV1, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, fmt.Errorf("context cancelled: %w", err)
+	}
+
 	g.backend.mu.Lock()
 	defer g.backend.mu.Unlock()
+
+	startTime := time.Now()
+
+	// Validate payload
+	if payload == nil {
+		return nil, errors.New("payload is required")
+	}
 
 	// Verify parent exists
 	parent := g.backend.blockchain.GetBlockByHash(payload.ParentHash)
 	if parent == nil {
+		g.logger.Debug().
+			Str("parent_hash", payload.ParentHash.Hex()).
+			Uint64("block_number", payload.Number).
+			Msg("parent block not found, returning SYNCING")
 		return &engine.PayloadStatusV1{
 			Status: engine.SYNCING,
 		}, nil
 	}
 
+	// Validate block number
+	expectedNumber := parent.NumberU64() + 1
+	if payload.Number != expectedNumber {
+		g.logger.Warn().
+			Uint64("expected", expectedNumber).
+			Uint64("got", payload.Number).
+			Msg("invalid block number")
+		parentHash := parent.Hash()
+		return &engine.PayloadStatusV1{
+			Status:          engine.INVALID,
+			LatestValidHash: &parentHash,
+		}, nil
+	}
+
+	// Validate timestamp
+	if payload.Timestamp <= parent.Time() {
+		g.logger.Warn().
+			Uint64("payload_timestamp", payload.Timestamp).
+			Uint64("parent_timestamp", parent.Time()).
+			Msg("invalid timestamp")
+		parentHash := parent.Hash()
+		return &engine.PayloadStatusV1{
+			Status:          engine.INVALID,
+			LatestValidHash: &parentHash,
+		}, nil
+	}
+
 	// Decode transactions
 	var txs types.Transactions
-	for _, txData := range payload.Transactions {
+	for i, txData := range payload.Transactions {
 		var tx types.Transaction
 		if err := tx.UnmarshalBinary(txData); err != nil {
+			g.logger.Warn().
+				Int("tx_index", i).
+				Err(err).
+				Msg("failed to decode transaction")
+			parentHash := parent.Hash()
 			return &engine.PayloadStatusV1{
-				Status: engine.INVALID,
+				Status:          engine.INVALID,
+				LatestValidHash: &parentHash,
 			}, nil
 		}
 		txs = append(txs, &tx)
@@ -586,6 +751,7 @@ func (g *gethEngineClient) NewPayload(ctx context.Context, payload *engine.Execu
 		g.logger.Warn().
 			Str("expected", payload.BlockHash.Hex()).
 			Str("calculated", block.Hash().Hex()).
+			Uint64("block_number", payload.Number).
 			Msg("block hash mismatch")
 		parentHash := parent.Hash()
 		return &engine.PayloadStatusV1{
@@ -611,6 +777,16 @@ func (g *gethEngineClient) NewPayload(ctx context.Context, payload *engine.Execu
 	}
 
 	blockHash := block.Hash()
+
+	g.logger.Info().
+		Uint64("block_number", block.NumberU64()).
+		Str("block_hash", blockHash.Hex()).
+		Str("parent_hash", payload.ParentHash.Hex()).
+		Int("tx_count", len(txs)).
+		Uint64("gas_used", payload.GasUsed).
+		Dur("process_time", time.Since(startTime)).
+		Msg("new payload validated and inserted")
+
 	return &engine.PayloadStatusV1{
 		Status:          engine.VALID,
 		LatestValidHash: &blockHash,
@@ -619,6 +795,10 @@ func (g *gethEngineClient) NewPayload(ctx context.Context, payload *engine.Execu
 
 // HeaderByNumber implements EthRPCClient.
 func (g *gethEthClient) HeaderByNumber(ctx context.Context, number *big.Int) (*types.Header, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, fmt.Errorf("context cancelled: %w", err)
+	}
+
 	if number == nil {
 		// Return current head
 		header := g.backend.blockchain.CurrentBlock()
@@ -627,6 +807,7 @@ func (g *gethEthClient) HeaderByNumber(ctx context.Context, number *big.Int) (*t
 		}
 		return header, nil
 	}
+
 	block := g.backend.blockchain.GetBlockByNumber(number.Uint64())
 	if block == nil {
 		return nil, fmt.Errorf("block not found at height %d", number.Uint64())
@@ -636,17 +817,24 @@ func (g *gethEthClient) HeaderByNumber(ctx context.Context, number *big.Int) (*t
 
 // GetTxs implements EthRPCClient.
 func (g *gethEthClient) GetTxs(ctx context.Context) ([]string, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, fmt.Errorf("context cancelled: %w", err)
+	}
+
 	pending := g.backend.txPool.Pending(txpool.PendingFilter{})
 	var result []string
 	for _, txs := range pending {
 		for _, lazyTx := range txs {
-			// Resolve the lazy transaction to get the actual transaction
 			tx := lazyTx.Tx
 			if tx == nil {
 				continue
 			}
 			data, err := tx.MarshalBinary()
 			if err != nil {
+				g.logger.Debug().
+					Str("tx_hash", tx.Hash().Hex()).
+					Err(err).
+					Msg("failed to marshal pending tx")
 				continue
 			}
 			result = append(result, "0x"+common.Bytes2Hex(data))
@@ -655,15 +843,22 @@ func (g *gethEthClient) GetTxs(ctx context.Context) ([]string, error) {
 	return result, nil
 }
 
-// calcBaseFee calculates the base fee for the next block.
+// calcBaseFee calculates the base fee for the next block according to EIP-1559.
 func calcBaseFee(config *params.ChainConfig, parent *types.Header) *big.Int {
+	nextBlockNumber := new(big.Int).Add(parent.Number, big.NewInt(1))
+
 	// If we're before London, return nil
-	if !config.IsLondon(new(big.Int).Add(parent.Number, big.NewInt(1))) {
+	if !config.IsLondon(nextBlockNumber) {
 		return nil
 	}
 
 	// Use genesis base fee if this is the first London block
 	if !config.IsLondon(parent.Number) {
+		return big.NewInt(params.InitialBaseFee)
+	}
+
+	// Parent must have base fee
+	if parent.BaseFee == nil {
 		return big.NewInt(params.InitialBaseFee)
 	}
 
@@ -673,6 +868,11 @@ func calcBaseFee(config *params.ChainConfig, parent *types.Header) *big.Int {
 		parentGasUsed   = parent.GasUsed
 		baseFee         = new(big.Int).Set(parent.BaseFee)
 	)
+
+	// Prevent division by zero
+	if parentGasTarget == 0 {
+		return baseFee
+	}
 
 	if parentGasUsed == parentGasTarget {
 		return baseFee
@@ -684,8 +884,8 @@ func calcBaseFee(config *params.ChainConfig, parent *types.Header) *big.Int {
 		x := new(big.Int).Mul(parent.BaseFee, gasUsedDelta)
 		y := new(big.Int).SetUint64(parentGasTarget)
 		z := new(big.Int).Div(x, y)
-		baseFeeChangeDenominator := new(big.Int).SetUint64(8)
-		delta := new(big.Int).Div(z, baseFeeChangeDenominator)
+		baseFeeChangeDenominatorInt := new(big.Int).SetUint64(baseFeeChangeDenominator)
+		delta := new(big.Int).Div(z, baseFeeChangeDenominatorInt)
 		if delta.Sign() == 0 {
 			delta = big.NewInt(1)
 		}
@@ -697,8 +897,8 @@ func calcBaseFee(config *params.ChainConfig, parent *types.Header) *big.Int {
 	x := new(big.Int).Mul(parent.BaseFee, gasUsedDelta)
 	y := new(big.Int).SetUint64(parentGasTarget)
 	z := new(big.Int).Div(x, y)
-	baseFeeChangeDenominator := new(big.Int).SetUint64(8)
-	delta := new(big.Int).Div(z, baseFeeChangeDenominator)
+	baseFeeChangeDenominatorInt := new(big.Int).SetUint64(baseFeeChangeDenominator)
+	delta := new(big.Int).Div(z, baseFeeChangeDenominatorInt)
 	baseFee = new(big.Int).Sub(baseFee, delta)
 	if baseFee.Cmp(big.NewInt(0)) < 0 {
 		baseFee = big.NewInt(0)
@@ -718,7 +918,7 @@ func applyTransaction(
 ) (*types.Receipt, error) {
 	msg, err := core.TransactionToMessage(tx, types.LatestSigner(config), header.BaseFee)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to convert tx to message: %w", err)
 	}
 
 	// Create EVM instance
@@ -729,7 +929,7 @@ func applyTransaction(
 	// Apply the transaction
 	result, err := core.ApplyMessage(evmInstance, msg, gp)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to apply message: %w", err)
 	}
 
 	*usedGas += result.UsedGas
@@ -756,7 +956,7 @@ func applyTransaction(
 
 	// Set contract address if this was a contract creation
 	if msg.To == nil {
-		receipt.ContractAddress = evmInstance.Origin
+		receipt.ContractAddress = evmInstance.TxContext.Origin
 	}
 
 	return receipt, nil

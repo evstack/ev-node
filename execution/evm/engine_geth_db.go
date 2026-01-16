@@ -9,6 +9,7 @@ import (
 	"github.com/ethereum/go-ethereum/ethdb"
 	"github.com/ipfs/go-datastore"
 	"github.com/ipfs/go-datastore/query"
+	"github.com/syndtr/goleveldb/leveldb"
 )
 
 var _ ethdb.KeyValueStore = &wrapper{}
@@ -73,7 +74,7 @@ func (w *wrapper) DeleteRange(start []byte, end []byte) error {
 func (w *wrapper) Get(key []byte) ([]byte, error) {
 	val, err := w.ds.Get(context.Background(), keyToDatastoreKey(key))
 	if err == datastore.ErrNotFound {
-		return nil, nil
+		return nil, leveldb.ErrNotFound
 	}
 	return val, err
 }
