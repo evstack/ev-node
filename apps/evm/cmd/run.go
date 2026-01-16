@@ -226,7 +226,8 @@ func createExecutionClient(cmd *cobra.Command, db datastore.Batching, tracingEna
 			return nil, fmt.Errorf("failed to unmarshal genesis: %w", err)
 		}
 
-		return evm.NewEngineExecutionClientWithGeth(&genesis, feeRecipient, db, logger)
+		rpcAddress, _ := cmd.Flags().GetString(evm.FlagEVMRPCAddress)
+		return evm.NewEngineExecutionClientWithGeth(&genesis, feeRecipient, db, rpcAddress, logger)
 	}
 
 	// Read execution client parameters from flags
@@ -282,4 +283,5 @@ func addFlags(cmd *cobra.Command) {
 
 	cmd.Flags().Bool(evm.FlagEVMInProcessGeth, false, "Use in-process Geth for EVM execution instead of external execution client")
 	cmd.Flags().String(evm.FlagEVMGenesisPath, "", "EVM genesis path for Geth")
+	cmd.Flags().String(evm.FlagEVMRPCAddress, "", "Address for in-process Geth JSON-RPC server (e.g., 127.0.0.1:8545)")
 }

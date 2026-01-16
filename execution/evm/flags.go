@@ -9,4 +9,5 @@ const (
 
 	FlagEVMGenesisPath   = "evm.geth.genesis-path"
 	FlagEVMInProcessGeth = "evm.geth"
+	FlagEVMRPCAddress    = "evm.geth.rpc-address"
 )
