@@ -68,22 +68,7 @@ type gethEthClient struct {
 	logger  zerolog.Logger
 }
 
-// NewEngineExecutionClientWithGeth creates an EngineClient that uses an in-process
-// go-ethereum instance instead of connecting to an external execution engine via RPC.
-//
-// This is useful for:
-// - Testing without needing to run a separate geth/reth process
-// - Embedded rollup nodes that want a single binary
-// - Development and debugging with full control over the EVM
-//
-// Parameters:
-//   - genesis: The genesis configuration for the chain
-//   - feeRecipient: Address to receive transaction fees
-//   - db: Datastore for execution metadata (crash recovery)
-//   - logger: Logger for the client
-//
-// Returns an EngineClient that behaves identically to the RPC-based client
-// but executes everything in-process.
+// NewEngineExecutionClientWithGeth creates an EngineClient that uses an in-process Geth.
 func NewEngineExecutionClientWithGeth(
 	genesis *core.Genesis,
 	feeRecipient common.Address,
