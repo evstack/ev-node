@@ -1,12 +1,12 @@
-FROM golang:1.24 AS base
+FROM golang:1.25 AS base
 
 #hadolint ignore=DL3018
 RUN apt-get update && \
-	apt-get install -y --no-install-recommends \
-	build-essential \
-	ca-certificates \
-	curl \
-	&& rm -rf /var/lib/apt/lists/*
+    apt-get install -y --no-install-recommends \
+    build-essential \
+    ca-certificates \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
 
 # enable faster module downloading.
 ENV GOPROXY=https://proxy.golang.org
