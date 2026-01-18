@@ -194,6 +194,9 @@ func createNodesWithCleanup(t *testing.T, num int, config evconfig.Config) ([]*F
 	aggListenAddress := config.P2P.ListenAddress
 	aggPeers := config.P2P.Peers
 	executor, sequencer, daClient, aggP2PKey, ds, stopDAHeightTicker := createTestComponents(t, config)
+	if d, ok := daClient.(*testda.DummyDA); ok {
+		d.Reset()
+	}
 	aggPeerID, err := peer.IDFromPrivateKey(aggP2PKey.PrivKey)
 	require.NoError(err)
 
@@ -235,6 +238,8 @@ func createNodesWithCleanup(t *testing.T, num int, config evconfig.Config) ([]*F
 		config.P2P.ListenAddress = fmt.Sprintf("/ip4/127.0.0.1/tcp/%d", 40001+i)
 		config.RPC.Address = fmt.Sprintf("127.0.0.1:%d", 8001+i)
 		executor, sequencer, daClient, nodeP2PKey, ds, stopDAHeightTicker := createTestComponents(t, config)
+		stopDAHeightTicker()
+
 		node, err := NewNode(
 			config,
 			executor,
@@ -249,9 +254,8 @@ func createNodesWithCleanup(t *testing.T, num int, config evconfig.Config) ([]*F
 			NodeOptions{},
 		)
 		require.NoError(err)
-		// Update cleanup to cancel the context instead of calling Stop
 		cleanup := func() {
-			stopDAHeightTicker()
+			// No-op: ticker already stopped
 		}
 		nodes[i], cleanups[i] = node.(*FullNode), cleanup
 		nodePeerID, err := peer.IDFromPrivateKey(nodeP2PKey.PrivKey)
