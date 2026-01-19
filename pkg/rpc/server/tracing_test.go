@@ -9,13 +9,13 @@ import (
 	"connectrpc.com/connect"
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/otel"
-	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 	"google.golang.org/protobuf/types/known/emptypb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
+	"github.com/evstack/ev-node/pkg/telemetry/testutil"
 	pb "github.com/evstack/ev-node/types/pb/evnode/v1"
 	"github.com/evstack/ev-node/types/pb/evnode/v1/v1connect"
 )
@@ -174,9 +174,9 @@ func TestTracedStoreService_GetBlock_Success(t *testing.T) {
 	require.Equal(t, codes.Unset, span.Status().Code)
 
 	attrs := span.Attributes()
-	requireAttribute(t, attrs, "height", int64(10))
-	requireAttribute(t, attrs, "found", true)
-	requireAttribute(t, attrs, "tx_count", 2)
+	testutil.RequireAttribute(t, attrs, "height", int64(10))
+	testutil.RequireAttribute(t, attrs, "found", true)
+	testutil.RequireAttribute(t, attrs, "tx_count", 2)
 }
 
 func TestTracedStoreService_GetBlock_Error(t *testing.T) {
@@ -228,9 +228,9 @@ func TestTracedStoreService_GetState_Success(t *testing.T) {
 	require.Equal(t, "StoreService.GetState", span.Name())
 
 	attrs := span.Attributes()
-	requireAttribute(t, attrs, "height", int64(100))
-	requireAttribute(t, attrs, "app_hash", "aabb")
-	requireAttribute(t, attrs, "da_height", int64(50))
+	testutil.RequireAttribute(t, attrs, "height", int64(100))
+	testutil.RequireAttribute(t, attrs, "app_hash", "aabb")
+	testutil.RequireAttribute(t, attrs, "da_height", int64(50))
 }
 
 func TestTracedStoreService_GetMetadata_Success(t *testing.T) {
@@ -258,8 +258,8 @@ func TestTracedStoreService_GetMetadata_Success(t *testing.T) {
 	require.Equal(t, "StoreService.GetMetadata", span.Name())
 
 	attrs := span.Attributes()
-	requireAttribute(t, attrs, "key", "test_key")
-	requireAttribute(t, attrs, "value_size_bytes", 14)
+	testutil.RequireAttribute(t, attrs, "key", "test_key")
+	testutil.RequireAttribute(t, attrs, "value_size_bytes", 14)
 }
 
 func TestTracedStoreService_GetGenesisDaHeight_Success(t *testing.T) {
@@ -284,7 +284,7 @@ func TestTracedStoreService_GetGenesisDaHeight_Success(t *testing.T) {
 	require.Equal(t, "StoreService.GetGenesisDaHeight", span.Name())
 
 	attrs := span.Attributes()
-	requireAttribute(t, attrs, "genesis_da_height", int64(1000))
+	testutil.RequireAttribute(t, attrs, "genesis_da_height", int64(1000))
 }
 
 func TestTracedStoreService_GetP2PStoreInfo_Success(t *testing.T) {
@@ -312,7 +312,7 @@ func TestTracedStoreService_GetP2PStoreInfo_Success(t *testing.T) {
 	require.Equal(t, "StoreService.GetP2PStoreInfo", span.Name())
 
 	attrs := span.Attributes()
-	requireAttribute(t, attrs, "store_count", 2)
+	testutil.RequireAttribute(t, attrs, "store_count", 2)
 }
 
 // P2PService tests
@@ -342,7 +342,7 @@ func TestTracedP2PService_GetPeerInfo_Success(t *testing.T) {
 	require.Equal(t, "P2PService.GetPeerInfo", span.Name())
 
 	attrs := span.Attributes()
-	requireAttribute(t, attrs, "peer_count", 2)
+	testutil.RequireAttribute(t, attrs, "peer_count", 2)
 }
 
 func TestTracedP2PService_GetPeerInfo_Error(t *testing.T) {
@@ -389,8 +389,8 @@ func TestTracedP2PService_GetNetInfo_Success(t *testing.T) {
 	require.Equal(t, "P2PService.GetNetInfo", span.Name())
 
 	attrs := span.Attributes()
-	requireAttribute(t, attrs, "node_id", "node123")
-	requireAttribute(t, attrs, "listen_address_count", 1)
+	testutil.RequireAttribute(t, attrs, "node_id", "node123")
+	testutil.RequireAttribute(t, attrs, "listen_address_count", 1)
 }
 
 // ConfigService tests
@@ -418,8 +418,8 @@ func TestTracedConfigService_GetNamespace_Success(t *testing.T) {
 	require.Equal(t, "ConfigService.GetNamespace", span.Name())
 
 	attrs := span.Attributes()
-	requireAttribute(t, attrs, "header_namespace", "0x0001020304050607")
-	requireAttribute(t, attrs, "data_namespace", "0x08090a0b0c0d0e0f")
+	testutil.RequireAttribute(t, attrs, "header_namespace", "0x0001020304050607")
+	testutil.RequireAttribute(t, attrs, "data_namespace", "0x08090a0b0c0d0e0f")
 }
 
 func TestTracedConfigService_GetNamespace_Error(t *testing.T) {
@@ -463,7 +463,7 @@ func TestTracedConfigService_GetSignerInfo_Success(t *testing.T) {
 	require.Equal(t, "ConfigService.GetSignerInfo", span.Name())
 
 	attrs := span.Attributes()
-	requireAttribute(t, attrs, "signer_address", "01020304")
+	testutil.RequireAttribute(t, attrs, "signer_address", "01020304")
 }
 
 func TestTracedConfigService_GetSignerInfo_Error(t *testing.T) {
@@ -483,28 +483,4 @@ func TestTracedConfigService_GetSignerInfo_Error(t *testing.T) {
 	require.Len(t, spans, 1)
 	span := spans[0]
 	require.Equal(t, codes.Error, span.Status().Code)
-}
-
-func requireAttribute(t *testing.T, attrs []attribute.KeyValue, key string, expected interface{}) {
-	t.Helper()
-	found := false
-	for _, attr := range attrs {
-		if string(attr.Key) == key {
-			found = true
-			switch v := expected.(type) {
-			case string:
-				require.Equal(t, v, attr.Value.AsString())
-			case int64:
-				require.Equal(t, v, attr.Value.AsInt64())
-			case int:
-				require.Equal(t, int64(v), attr.Value.AsInt64())
-			case bool:
-				require.Equal(t, v, attr.Value.AsBool())
-			default:
-				t.Fatalf("unsupported attribute type: %T", expected)
-			}
-			break
-		}
-	}
-	require.True(t, found, "attribute %s not found", key)
 }

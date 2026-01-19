@@ -7,12 +7,12 @@ import (
 
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/otel"
-	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 
 	coresequencer "github.com/evstack/ev-node/core/sequencer"
+	"github.com/evstack/ev-node/pkg/telemetry/testutil"
 	"github.com/evstack/ev-node/types"
 )
 
@@ -131,7 +131,7 @@ func TestTracedBlockProducer_RetrieveBatch_Success(t *testing.T) {
 	require.Equal(t, codes.Unset, span.Status().Code)
 
 	attrs := span.Attributes()
-	requireAttribute(t, attrs, "batch.tx_count", 2)
+	testutil.RequireAttribute(t, attrs, "batch.tx_count", 2)
 }
 
 func TestTracedBlockProducer_RetrieveBatch_Error(t *testing.T) {
@@ -180,8 +180,8 @@ func TestTracedBlockProducer_CreateBlock_Success(t *testing.T) {
 	require.Equal(t, codes.Unset, span.Status().Code)
 
 	attrs := span.Attributes()
-	requireAttribute(t, attrs, "block.height", int64(100))
-	requireAttribute(t, attrs, "tx.count", 3)
+	testutil.RequireAttribute(t, attrs, "block.height", int64(100))
+	testutil.RequireAttribute(t, attrs, "tx.count", 3)
 }
 
 func TestTracedBlockProducer_CreateBlock_Error(t *testing.T) {
@@ -234,9 +234,9 @@ func TestTracedBlockProducer_ApplyBlock_Success(t *testing.T) {
 	require.Equal(t, codes.Unset, span.Status().Code)
 
 	attrs := span.Attributes()
-	requireAttribute(t, attrs, "block.height", int64(50))
-	requireAttribute(t, attrs, "tx.count", 2)
-	requireAttribute(t, attrs, "state_root", "deadbeef")
+	testutil.RequireAttribute(t, attrs, "block.height", int64(50))
+	testutil.RequireAttribute(t, attrs, "tx.count", 2)
+	testutil.RequireAttribute(t, attrs, "state_root", "deadbeef")
 }
 
 func TestTracedBlockProducer_ApplyBlock_Error(t *testing.T) {
@@ -291,7 +291,7 @@ func TestTracedBlockProducer_ValidateBlock_Success(t *testing.T) {
 	require.Equal(t, codes.Unset, span.Status().Code)
 
 	attrs := span.Attributes()
-	requireAttribute(t, attrs, "block.height", int64(75))
+	testutil.RequireAttribute(t, attrs, "block.height", int64(75))
 }
 
 func TestTracedBlockProducer_ValidateBlock_Error(t *testing.T) {
@@ -319,26 +319,4 @@ func TestTracedBlockProducer_ValidateBlock_Error(t *testing.T) {
 	span := spans[0]
 	require.Equal(t, codes.Error, span.Status().Code)
 	require.Equal(t, "validation failed", span.Status().Description)
-}
-
-func requireAttribute(t *testing.T, attrs []attribute.KeyValue, key string, expected interface{}) {
-	t.Helper()
-	found := false
-	for _, attr := range attrs {
-		if string(attr.Key) == key {
-			found = true
-			switch v := expected.(type) {
-			case string:
-				require.Equal(t, v, attr.Value.AsString())
-			case int64:
-				require.Equal(t, v, attr.Value.AsInt64())
-			case int:
-				require.Equal(t, int64(v), attr.Value.AsInt64())
-			default:
-				t.Fatalf("unsupported attribute type: %T", expected)
-			}
-			break
-		}
-	}
-	require.True(t, found, "attribute %s not found", key)
 }

@@ -7,9 +7,9 @@ import (
 	"time"
 
 	coresequencer "github.com/evstack/ev-node/core/sequencer"
+	"github.com/evstack/ev-node/pkg/telemetry/testutil"
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/otel"
-	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	"go.opentelemetry.io/otel/sdk/trace/tracetest"
@@ -92,8 +92,8 @@ func TestTracedSequencer_SubmitBatchTxs_Success(t *testing.T) {
 	require.Equal(t, codes.Unset, span.Status().Code)
 
 	attrs := span.Attributes()
-	requireSequencerAttribute(t, attrs, "tx.count", 3)
-	requireSequencerAttribute(t, attrs, "batch.size_bytes", 9) // "tx1" + "tx2" + "tx3" = 9 bytes
+	testutil.RequireAttribute(t, attrs, "tx.count", 3)
+	testutil.RequireAttribute(t, attrs, "batch.size_bytes", 9) // "tx1" + "tx2" + "tx3" = 9 bytes
 }
 
 func TestTracedSequencer_SubmitBatchTxs_Error(t *testing.T) {
@@ -150,9 +150,9 @@ func TestTracedSequencer_GetNextBatch_Success(t *testing.T) {
 	require.Equal(t, codes.Unset, span.Status().Code)
 
 	attrs := span.Attributes()
-	requireSequencerAttribute(t, attrs, "tx.count", 2)
-	requireSequencerAttribute(t, attrs, "forced_inclusion.count", 1)
-	requireSequencerAttribute(t, attrs, "max_bytes", int64(1000))
+	testutil.RequireAttribute(t, attrs, "tx.count", 2)
+	testutil.RequireAttribute(t, attrs, "forced_inclusion.count", 1)
+	testutil.RequireAttribute(t, attrs, "max_bytes", int64(1000))
 }
 
 func TestTracedSequencer_GetNextBatch_Error(t *testing.T) {
@@ -203,8 +203,8 @@ func TestTracedSequencer_VerifyBatch_Success(t *testing.T) {
 	require.Equal(t, "Sequencer.VerifyBatch", span.Name())
 
 	attrs := span.Attributes()
-	requireSequencerAttribute(t, attrs, "batch_data.count", 2)
-	requireSequencerAttribute(t, attrs, "verified", true)
+	testutil.RequireAttribute(t, attrs, "batch_data.count", 2)
+	testutil.RequireAttribute(t, attrs, "verified", true)
 }
 
 func TestTracedSequencer_VerifyBatch_Failure(t *testing.T) {
@@ -231,7 +231,7 @@ func TestTracedSequencer_VerifyBatch_Failure(t *testing.T) {
 	span := spans[0]
 
 	attrs := span.Attributes()
-	requireSequencerAttribute(t, attrs, "verified", false)
+	testutil.RequireAttribute(t, attrs, "verified", false)
 }
 
 func TestTracedSequencer_VerifyBatch_Error(t *testing.T) {
@@ -266,28 +266,4 @@ func TestTracedSequencer_DAHeightPassthrough(t *testing.T) {
 
 	seq.SetDAHeight(200)
 	require.Equal(t, uint64(200), seq.GetDAHeight())
-}
-
-func requireSequencerAttribute(t *testing.T, attrs []attribute.KeyValue, key string, expected interface{}) {
-	t.Helper()
-	found := false
-	for _, attr := range attrs {
-		if string(attr.Key) == key {
-			found = true
-			switch v := expected.(type) {
-			case string:
-				require.Equal(t, v, attr.Value.AsString())
-			case int64:
-				require.Equal(t, v, attr.Value.AsInt64())
-			case int:
-				require.Equal(t, int64(v), attr.Value.AsInt64())
-			case bool:
-				require.Equal(t, v, attr.Value.AsBool())
-			default:
-				t.Fatalf("unsupported attribute type: %T", expected)
-			}
-			break
-		}
-	}
-	require.True(t, found, "attribute %s not found", key)
 }

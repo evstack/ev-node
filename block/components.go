@@ -17,10 +17,10 @@ import (
 	coreexecutor "github.com/evstack/ev-node/core/execution"
 	coresequencer "github.com/evstack/ev-node/core/sequencer"
 	"github.com/evstack/ev-node/pkg/config"
-	"github.com/evstack/ev-node/pkg/telemetry"
 	"github.com/evstack/ev-node/pkg/genesis"
 	"github.com/evstack/ev-node/pkg/signer"
 	"github.com/evstack/ev-node/pkg/store"
+	"github.com/evstack/ev-node/pkg/telemetry"
 	"github.com/evstack/ev-node/types"
 )
 
