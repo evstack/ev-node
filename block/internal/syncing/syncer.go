@@ -201,6 +201,9 @@ func (s *Syncer) Start(ctx context.Context) error {
 
 	// Initialize handlers
 	s.daRetriever = NewDARetriever(s.daClient, s.cache, s.genesis, s.logger)
+	if s.config.Instrumentation.IsTracingEnabled() {
+		s.daRetriever = WithTracingDARetriever(s.daRetriever)
+	}
 	s.fiRetriever = da.NewForcedInclusionRetriever(s.daClient, s.logger, s.config, s.genesis.DAStartHeight, s.genesis.DAEpochForcedInclusion)
 	s.p2pHandler = NewP2PHandler(s.headerStore.Store(), s.dataStore.Store(), s.cache, s.genesis, s.logger)
 	if currentHeight, err := s.store.Height(s.ctx); err != nil {
