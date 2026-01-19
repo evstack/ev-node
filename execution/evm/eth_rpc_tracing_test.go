@@ -9,10 +9,11 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/otel"
-	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/sdk/trace"
 	"go.opentelemetry.io/otel/sdk/trace/tracetest"
+
+	"github.com/evstack/ev-node/pkg/telemetry/testutil"
 )
 
 // setupTestEthRPCTracing creates a traced eth RPC client with an in-memory span recorder
@@ -90,13 +91,13 @@ func TestTracedEthRPCClient_HeaderByNumber_Success(t *testing.T) {
 
 	// verify attributes
 	attrs := span.Attributes()
-	requireAttribute(t, attrs, "method", "eth_getBlockByNumber")
-	requireAttribute(t, attrs, "block_number", "100")
-	requireAttribute(t, attrs, "block_hash", expectedHeader.Hash().Hex())
-	requireAttribute(t, attrs, "state_root", expectedHeader.Root.Hex())
-	requireAttribute(t, attrs, "gas_limit", int64(expectedHeader.GasLimit))
-	requireAttribute(t, attrs, "gas_used", int64(expectedHeader.GasUsed))
-	requireAttribute(t, attrs, "timestamp", int64(expectedHeader.Time))
+	testutil.RequireAttribute(t, attrs, "method", "eth_getBlockByNumber")
+	testutil.RequireAttribute(t, attrs, "block_number", "100")
+	testutil.RequireAttribute(t, attrs, "block_hash", expectedHeader.Hash().Hex())
+	testutil.RequireAttribute(t, attrs, "state_root", expectedHeader.Root.Hex())
+	testutil.RequireAttribute(t, attrs, "gas_limit", int64(expectedHeader.GasLimit))
+	testutil.RequireAttribute(t, attrs, "gas_used", int64(expectedHeader.GasUsed))
+	testutil.RequireAttribute(t, attrs, "timestamp", int64(expectedHeader.Time))
 }
 
 func TestTracedEthRPCClient_HeaderByNumber_Latest(t *testing.T) {
@@ -131,7 +132,7 @@ func TestTracedEthRPCClient_HeaderByNumber_Latest(t *testing.T) {
 
 	// verify block_number is "latest" when nil
 	attrs := span.Attributes()
-	requireAttribute(t, attrs, "block_number", "latest")
+	testutil.RequireAttribute(t, attrs, "block_number", "latest")
 }
 
 func TestTracedEthRPCClient_HeaderByNumber_Error(t *testing.T) {
@@ -206,8 +207,8 @@ func TestTracedEthRPCClient_GetTxs_Success(t *testing.T) {
 
 	// verify attributes
 	attrs := span.Attributes()
-	requireAttribute(t, attrs, "method", "txpoolExt_getTxs")
-	requireAttribute(t, attrs, "tx_count", len(expectedTxs))
+	testutil.RequireAttribute(t, attrs, "method", "txpoolExt_getTxs")
+	testutil.RequireAttribute(t, attrs, "tx_count", len(expectedTxs))
 }
 
 func TestTracedEthRPCClient_GetTxs_EmptyPool(t *testing.T) {
@@ -235,7 +236,7 @@ func TestTracedEthRPCClient_GetTxs_EmptyPool(t *testing.T) {
 
 	// verify tx_count is 0
 	attrs := span.Attributes()
-	requireAttribute(t, attrs, "tx_count", 0)
+	testutil.RequireAttribute(t, attrs, "tx_count", 0)
 }
 
 func TestTracedEthRPCClient_GetTxs_Error(t *testing.T) {
@@ -275,27 +276,4 @@ func TestTracedEthRPCClient_GetTxs_Error(t *testing.T) {
 	for _, attr := range attrs {
 		require.NotEqual(t, "tx_count", string(attr.Key))
 	}
-}
-
-// requireAttribute is a helper to check span attributes
-func requireAttribute(t *testing.T, attrs []attribute.KeyValue, key string, expected interface{}) {
-	t.Helper()
-	found := false
-	for _, attr := range attrs {
-		if string(attr.Key) == key {
-			found = true
-			switch v := expected.(type) {
-			case string:
-				require.Equal(t, v, attr.Value.AsString())
-			case int64:
-				require.Equal(t, v, attr.Value.AsInt64())
-			case int:
-				require.Equal(t, int64(v), attr.Value.AsInt64())
-			default:
-				t.Fatalf("unsupported attribute type: %T", expected)
-			}
-			break
-		}
-	}
-	require.True(t, found, "attribute %s not found", key)
 }

@@ -1,5 +1,5 @@
 const constants = Object.freeze({
-  golangVersion: "go1.24.0",
+  golangVersion: "go1.25.0",
 
   evolveLatestTag: "v1.0.0-beta.4",
   evolveIgniteAppVersion: "evolve/v0.4.0",

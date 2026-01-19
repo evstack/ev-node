@@ -1,6 +1,6 @@
 module github.com/evstack/ev-node/test/docker-e2e
 
-go 1.24.6
+go 1.25.0
 
 require (
 	cosmossdk.io/math v1.5.3
