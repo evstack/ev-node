@@ -83,5 +83,9 @@ func NewForcedInclusionRetriever(
 	logger zerolog.Logger,
 	daStartHeight, daEpochSize uint64,
 ) ForcedInclusionRetriever {
-	return da.NewForcedInclusionRetriever(client, logger, cfg, daStartHeight, daEpochSize)
+	base := da.NewForcedInclusionRetriever(client, logger, cfg, daStartHeight, daEpochSize)
+	if cfg.Instrumentation.IsTracingEnabled() {
+		return WithTracingForcedInclusionRetriever(base)
+	}
+	return base
 }
