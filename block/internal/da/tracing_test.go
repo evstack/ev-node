@@ -7,12 +7,12 @@ import (
 
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/otel"
-	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 
 	datypes "github.com/evstack/ev-node/pkg/da/types"
+	"github.com/evstack/ev-node/pkg/telemetry/testutil"
 )
 
 // mockFullClient provides function hooks for testing the tracing decorator.
@@ -87,8 +87,8 @@ func TestTracedDA_Submit_Success(t *testing.T) {
 	require.Equal(t, codes.Unset, span.Status().Code)
 
 	attrs := span.Attributes()
-	requireAttribute(t, attrs, "blob.count", 2)
-	requireAttribute(t, attrs, "blob.total_size_bytes", 3)
+	testutil.RequireAttribute(t, attrs, "blob.count", 2)
+	testutil.RequireAttribute(t, attrs, "blob.total_size_bytes", 3)
 	// namespace hex string length assertion
 	// 2 bytes = 4 hex characters
 	foundNS := false
@@ -134,8 +134,8 @@ func TestTracedDA_Retrieve_Success(t *testing.T) {
 	span := spans[0]
 	require.Equal(t, "DA.Retrieve", span.Name())
 	attrs := span.Attributes()
-	requireAttribute(t, attrs, "ns.length", 1)
-	requireAttribute(t, attrs, "blob.count", 2)
+	testutil.RequireAttribute(t, attrs, "ns.length", 1)
+	testutil.RequireAttribute(t, attrs, "blob.count", 2)
 }
 
 func TestTracedDA_Retrieve_Error(t *testing.T) {
@@ -174,8 +174,8 @@ func TestTracedDA_Get_Success(t *testing.T) {
 	span := spans[0]
 	require.Equal(t, "DA.Get", span.Name())
 	attrs := span.Attributes()
-	requireAttribute(t, attrs, "id.count", 2)
-	requireAttribute(t, attrs, "blob.count", 2)
+	testutil.RequireAttribute(t, attrs, "id.count", 2)
+	testutil.RequireAttribute(t, attrs, "blob.count", 2)
 }
 
 func TestTracedDA_Get_Error(t *testing.T) {
@@ -196,27 +196,4 @@ func TestTracedDA_Get_Error(t *testing.T) {
 	span := spans[0]
 	require.Equal(t, codes.Error, span.Status().Code)
 	require.Equal(t, "get failed", span.Status().Description)
-}
-
-// helper copied from eth tracing tests
-func requireAttribute(t *testing.T, attrs []attribute.KeyValue, key string, expected interface{}) {
-	t.Helper()
-	found := false
-	for _, attr := range attrs {
-		if string(attr.Key) == key {
-			found = true
-			switch v := expected.(type) {
-			case string:
-				require.Equal(t, v, attr.Value.AsString())
-			case int64:
-				require.Equal(t, v, attr.Value.AsInt64())
-			case int:
-				require.Equal(t, int64(v), attr.Value.AsInt64())
-			default:
-				t.Fatalf("unsupported attribute type: %T", expected)
-			}
-			break
-		}
-	}
-	require.True(t, found, "attribute %s not found", key)
 }
