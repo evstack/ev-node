@@ -40,7 +40,7 @@ func NewForcedInclusionRetriever(
 	logger zerolog.Logger,
 	cfg config.Config,
 	daStartHeight, daEpochSize uint64,
-) *ForcedInclusionRetriever {
+) ForcedInclusionRetrieverAPI {
 	retrieverLogger := logger.With().Str("component", "forced_inclusion_retriever").Logger()
 
 	// Create async block retriever for background prefetching
@@ -54,13 +54,17 @@ func NewForcedInclusionRetriever(
 	)
 	asyncFetcher.Start()
 
-	return &ForcedInclusionRetriever{
+	base := &ForcedInclusionRetriever{
 		client:        client,
 		logger:        retrieverLogger,
 		daStartHeight: daStartHeight,
 		daEpochSize:   daEpochSize,
 		asyncFetcher:  asyncFetcher,
 	}
+	if cfg.Instrumentation.IsTracingEnabled() {
+		return withTracingForcedInclusionRetriever(base)
+	}
+	return base
 }
 
 // Stop stops the background prefetcher.

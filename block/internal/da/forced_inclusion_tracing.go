@@ -1,4 +1,4 @@
-package syncing
+package da
 
 import (
 	"context"
@@ -7,34 +7,29 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/trace"
-
-	"github.com/evstack/ev-node/block/internal/da"
 )
 
-// forcedInclusionRetriever defines the interface for retrieving forced inclusion
-// transactions from DA. This local interface is defined to avoid import cycles
-// since block/ imports syncing/.
-type forcedInclusionRetriever interface {
-	RetrieveForcedIncludedTxs(ctx context.Context, daHeight uint64) (*da.ForcedInclusionEvent, error)
+// ForcedInclusionRetrieverAPI defines the interface for retrieving forced inclusion transactions from DA.
+type ForcedInclusionRetrieverAPI interface {
+	RetrieveForcedIncludedTxs(ctx context.Context, daHeight uint64) (*ForcedInclusionEvent, error)
 	Stop()
 }
 
-var _ forcedInclusionRetriever = (*tracedForcedInclusionRetriever)(nil)
+var _ ForcedInclusionRetrieverAPI = (*tracedForcedInclusionRetriever)(nil)
 
 type tracedForcedInclusionRetriever struct {
-	inner  forcedInclusionRetriever
+	inner  ForcedInclusionRetrieverAPI
 	tracer trace.Tracer
 }
 
-// withTracingForcedInclusionRetriever wraps a forcedInclusionRetriever with OpenTelemetry tracing.
-func withTracingForcedInclusionRetriever(inner forcedInclusionRetriever) forcedInclusionRetriever {
+func withTracingForcedInclusionRetriever(inner ForcedInclusionRetrieverAPI) ForcedInclusionRetrieverAPI {
 	return &tracedForcedInclusionRetriever{
 		inner:  inner,
 		tracer: otel.Tracer("ev-node/forced-inclusion"),
 	}
 }
 
-func (t *tracedForcedInclusionRetriever) RetrieveForcedIncludedTxs(ctx context.Context, daHeight uint64) (*da.ForcedInclusionEvent, error) {
+func (t *tracedForcedInclusionRetriever) RetrieveForcedIncludedTxs(ctx context.Context, daHeight uint64) (*ForcedInclusionEvent, error) {
 	ctx, span := t.tracer.Start(ctx, "ForcedInclusionRetriever.RetrieveForcedIncludedTxs",
 		trace.WithAttributes(
 			attribute.Int64("da.height", int64(daHeight)),
