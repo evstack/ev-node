@@ -1,7 +1,7 @@
 <template>
     <div class="calculator">
         <section class="panel data-workload">
-            <h2>Header cadence</h2>
+            <h2>Block production</h2>
             <div class="field-row">
                 <label for="header-bytes">Header size (bytes)</label>
                 <input
@@ -9,16 +9,6 @@
                     type="number"
                     :value="HEADER_BYTES"
                     readonly
-                />
-            </div>
-            <div class="field-row">
-                <label for="header-count">Headers per submission</label>
-                <input
-                    id="header-count"
-                    type="number"
-                    min="1"
-                    step="1"
-                    v-model.number="headerCountInput"
                 />
             </div>
             <div class="field-row">
@@ -38,6 +28,101 @@
                 </div>
             </div>
             <ul class="derived">
+                <li>
+                    <span>Blocks / second</span>
+                    <strong>{{ formatNumber(blocksPerSecond, 4) }}</strong>
+                </li>
+            </ul>
+        </section>
+
+        <section class="panel batching-strategy">
+            <h2>Batching strategy</h2>
+            <p class="hint">
+                Controls how blocks are batched before submission to the DA layer. Different strategies offer trade-offs between latency, cost efficiency, and throughput.
+            </p>
+            <div class="field-row">
+                <label for="strategy">Strategy</label>
+                <select id="strategy" v-model="batchingStrategy">
+                    <option value="immediate">Immediate</option>
+                    <option value="size">Size-based</option>
+                    <option value="time">Time-based</option>
+                    <option value="adaptive">Adaptive (Recommended)</option>
+                </select>
+            </div>
+            <div class="strategy-description">
+                <p v-if="batchingStrategy === 'immediate'">
+                    <strong>Immediate:</strong> Submits as soon as any blocks are available. Best for low-latency requirements where cost is not a concern.
+                </p>
+                <p v-else-if="batchingStrategy === 'size'">
+                    <strong>Size-based:</strong> Waits until the batch reaches a size threshold (fraction of max blob size). Best for maximizing blob utilization and minimizing costs when latency is flexible.
+                </p>
+                <p v-else-if="batchingStrategy === 'time'">
+                    <strong>Time-based:</strong> Waits for a time interval before submitting. Provides predictable submission timing aligned with DA block times.
+                </p>
+                <p v-else-if="batchingStrategy === 'adaptive'">
+                    <strong>Adaptive:</strong> Balances between size and time constraints—submits when either the size threshold is reached OR the max delay expires. Recommended for most production deployments.
+                </p>
+            </div>
+
+            <div class="field-row">
+                <label for="da-block-time">DA block time</label>
+                <div class="field-group">
+                    <input
+                        id="da-block-time"
+                        type="number"
+                        min="1"
+                        step="1"
+                        v-model.number="daBlockTimeSeconds"
+                    />
+                    <span class="unit-label">seconds</span>
+                </div>
+            </div>
+
+            <div v-if="batchingStrategy === 'size' || batchingStrategy === 'adaptive'" class="field-row">
+                <label for="size-threshold">Batch size threshold</label>
+                <div class="field-group">
+                    <input
+                        id="size-threshold"
+                        type="number"
+                        min="0.1"
+                        max="1.0"
+                        step="0.05"
+                        v-model.number="batchSizeThreshold"
+                    />
+                    <span class="unit-label">of max blob ({{ formatNumber(batchSizeThreshold * 100, 0) }}%)</span>
+                </div>
+            </div>
+
+            <div v-if="batchingStrategy === 'time' || batchingStrategy === 'adaptive'" class="field-row">
+                <label for="max-delay">Batch max delay</label>
+                <div class="field-group">
+                    <input
+                        id="max-delay"
+                        type="number"
+                        min="0"
+                        step="1"
+                        v-model.number="batchMaxDelaySeconds"
+                    />
+                    <span class="unit-label">seconds (0 = DA block time)</span>
+                </div>
+            </div>
+
+            <div class="field-row">
+                <label for="min-items">Batch minimum items</label>
+                <input
+                    id="min-items"
+                    type="number"
+                    min="1"
+                    step="1"
+                    v-model.number="batchMinItems"
+                />
+            </div>
+
+            <ul class="derived">
+                <li>
+                    <span>Effective max delay (s)</span>
+                    <strong>{{ formatNumber(effectiveMaxDelaySeconds, 2) }}</strong>
+                </li>
                 <li>
                     <span>Headers / submission</span>
                     <strong>{{ formatInteger(normalizedHeaderCount) }}</strong>
@@ -59,10 +144,6 @@
                 <li>
                     <span>Submissions / minute</span>
                     <strong>{{ formatNumber(submissionsPerMinute, 2) }}</strong>
-                </li>
-                <li>
-                    <span>Blocks / second</span>
-                    <strong>{{ formatNumber(blocksPerSecond, 4) }}</strong>
                 </li>
             </ul>
         </section>
@@ -477,6 +558,7 @@ const FIRST_TX_SURCHARGE = 10_000;
 const SECONDS_PER_MONTH = 30 * 24 * 60 * 60;
 const SECONDS_PER_YEAR = 365 * 24 * 60 * 60;
 const DATA_CHUNK_BYTES = 500 * 1024; // 500 KiB chunk limit per blob
+const MAX_BLOB_SIZE = 2 * 1024 * 1024; // 2 MiB max blob size for Celestia
 
 const GAS_PARAMS = Object.freeze({
     fixedCost: 65_000,
@@ -485,6 +567,7 @@ const GAS_PARAMS = Object.freeze({
     shareSizeBytes: 482,
 });
 
+type BatchingStrategy = "immediate" | "size" | "time" | "adaptive";
 type ExecutionEnv = "evm" | "cosmos";
 
 type EvmTxType = {
@@ -588,14 +671,12 @@ const evmMix = reactive<EvmMixEntry[]>(
     })),
 );
 
-const headerCount = ref(15);
-const headerCountInput = computed({
-    get: () => headerCount.value,
-    set: (value: number) => {
-        const sanitized = sanitizeInteger(value, 1);
-        headerCount.value = sanitized;
-    },
-});
+// Batching strategy configuration
+const batchingStrategy = ref<BatchingStrategy>("time");
+const daBlockTimeSeconds = ref(6); // Celestia default block time
+const batchSizeThreshold = ref(0.8); // 80% of max blob size
+const batchMaxDelaySeconds = ref(0); // 0 means use DA block time
+const batchMinItems = ref(1);
 
 const blockTime = ref(0.25);
 const blockTimeUnit = ref<"s" | "ms">("s");
@@ -624,25 +705,70 @@ const blockTimeSeconds = computed(() => {
     return blockTimeUnit.value === "ms" ? value / 1000 : value;
 });
 
-const normalizedHeaderCount = computed(() =>
-    Math.max(
-        1,
-        Math.round(isFinite(headerCount.value) ? headerCount.value : 1),
-    ),
-);
+// Effective max delay: use DA block time if batchMaxDelaySeconds is 0
+const effectiveMaxDelaySeconds = computed(() => {
+    if (batchMaxDelaySeconds.value <= 0) {
+        return daBlockTimeSeconds.value;
+    }
+    return batchMaxDelaySeconds.value;
+});
+
+// Calculate submission interval based on batching strategy
+const submissionIntervalSeconds = computed(() => {
+    const blockSeconds = blockTimeSeconds.value;
+    if (!isFinite(blockSeconds) || blockSeconds <= 0) {
+        return NaN;
+    }
+
+    const strategy = batchingStrategy.value;
+    const minItems = Math.max(1, batchMinItems.value);
+
+    if (strategy === "immediate") {
+        // Submit every block (respecting min items)
+        return blockSeconds * minItems;
+    }
+
+    if (strategy === "time") {
+        // Submit after max delay, but at least min items
+        const delayBlocks = Math.ceil(effectiveMaxDelaySeconds.value / blockSeconds);
+        return blockSeconds * Math.max(minItems, delayBlocks);
+    }
+
+    if (strategy === "size") {
+        // Estimate how many headers needed to reach size threshold
+        const targetBytes = MAX_BLOB_SIZE * batchSizeThreshold.value;
+        const headersToThreshold = Math.ceil(targetBytes / HEADER_BYTES);
+        return blockSeconds * Math.max(minItems, headersToThreshold);
+    }
+
+    if (strategy === "adaptive") {
+        // Adaptive: whichever comes first - size threshold or max delay
+        const delayBlocks = Math.ceil(effectiveMaxDelaySeconds.value / blockSeconds);
+        const targetBytes = MAX_BLOB_SIZE * batchSizeThreshold.value;
+        const headersToThreshold = Math.ceil(targetBytes / HEADER_BYTES);
+        // In practice, for headers, time-based usually triggers first
+        // Use the smaller of the two intervals
+        const timeBasedBlocks = Math.max(minItems, delayBlocks);
+        const sizeBasedBlocks = Math.max(minItems, headersToThreshold);
+        return blockSeconds * Math.min(timeBasedBlocks, sizeBasedBlocks);
+    }
+
+    return blockSeconds * minItems;
+});
+
+// Calculate header count from submission interval
+const normalizedHeaderCount = computed(() => {
+    const blockSeconds = blockTimeSeconds.value;
+    const interval = submissionIntervalSeconds.value;
+    if (!isFinite(blockSeconds) || blockSeconds <= 0 || !isFinite(interval)) {
+        return 1;
+    }
+    return Math.max(1, Math.round(interval / blockSeconds));
+});
 
 const headerBytesTotal = computed(
     () => normalizedHeaderCount.value * HEADER_BYTES,
 );
-
-const submissionIntervalSeconds = computed(() => {
-    const blockSeconds = blockTimeSeconds.value;
-    const count = normalizedHeaderCount.value;
-    if (!isFinite(blockSeconds) || blockSeconds <= 0 || count <= 0) {
-        return NaN;
-    }
-    return blockSeconds * count;
-});
 
 const submissionsPerSecond = computed(() => {
     const interval = submissionIntervalSeconds.value;
@@ -983,6 +1109,14 @@ function formatInteger(value: number) {
     min-width: 120px;
 }
 
+.field-group .unit-label {
+    display: flex;
+    align-items: center;
+    font-size: 0.85rem;
+    color: var(--vp-c-text-2);
+    white-space: nowrap;
+}
+
 input,
 select {
     border: 1px solid var(--vp-c-divider);
@@ -1081,6 +1215,20 @@ button.ghost:hover {
     margin: 0 0 1.25rem;
     font-size: 0.85rem;
     color: var(--vp-c-text-2);
+}
+
+.strategy-description {
+    margin: 0.5rem 0 1.25rem;
+    padding: 0.75rem 1rem;
+    background: var(--vp-c-bg);
+    border-radius: 8px;
+    border-left: 3px solid var(--vp-c-brand-1);
+}
+
+.strategy-description p {
+    margin: 0;
+    font-size: 0.9rem;
+    line-height: 1.5;
 }
 
 strong {
