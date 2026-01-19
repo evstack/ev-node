@@ -1024,7 +1024,7 @@ const headerFeePerYearTIA = computed(
 // ===== DATA COSTS =====
 // Each data submission may have multiple blobs (chunks), each is a separate PFB
 const dataFixedGasPerSubmission = computed(
-    () => Math.max(1, dataBlobCount.value) * GAS_PARAMS.fixedCost,
+    () => dataBlobCount.value * GAS_PARAMS.fixedCost,
 );
 
 const dataRecurringGasPerSubmission = computed(
