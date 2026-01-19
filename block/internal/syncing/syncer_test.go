@@ -769,7 +769,7 @@ func TestProcessHeightEvent_TriggersAsyncDARetrieval(t *testing.T) {
 	require.NoError(t, batch.SetHeight(1))
 	require.NoError(t, batch.Commit())
 
-	s.processHeightEvent(&evt)
+	s.processHeightEvent(t.Context(), &evt)
 
 	// Verify that the request was queued in the async retriever
 	select {
