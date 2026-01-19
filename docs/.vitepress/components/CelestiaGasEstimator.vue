@@ -79,17 +79,17 @@
             </div>
 
             <div v-if="batchingStrategy === 'size' || batchingStrategy === 'adaptive'" class="field-row">
-                <label for="size-threshold">Batch size threshold</label>
+                <label for="size-threshold">Batch size threshold (%)</label>
                 <div class="field-group">
                     <input
                         id="size-threshold"
                         type="number"
-                        min="0.1"
-                        max="1.0"
-                        step="0.05"
-                        v-model.number="batchSizeThreshold"
+                        min="10"
+                        max="100"
+                        step="5"
+                        v-model.number="batchSizeThresholdPercent"
                     />
-                    <span class="unit-label">of max blob ({{ formatNumber(batchSizeThreshold * 100, 0) }}%)</span>
+                    <span class="unit-label">% of 7 MB max blob</span>
                 </div>
             </div>
 
@@ -118,34 +118,9 @@
                 />
             </div>
 
-            <ul class="derived">
-                <li>
-                    <span>Effective max delay (s)</span>
-                    <strong>{{ formatNumber(effectiveMaxDelaySeconds, 2) }}</strong>
-                </li>
-                <li>
-                    <span>Headers / submission</span>
-                    <strong>{{ formatInteger(normalizedHeaderCount) }}</strong>
-                </li>
-                <li>
-                    <span>Header bytes / submission</span>
-                    <strong>{{ formatInteger(headerBytesTotal) }}</strong>
-                </li>
-                <li>
-                    <span>Submission interval (s)</span>
-                    <strong>{{
-                        formatNumber(submissionIntervalSeconds, 3)
-                    }}</strong>
-                </li>
-                <li>
-                    <span>Submissions / second</span>
-                    <strong>{{ formatNumber(submissionsPerSecond, 4) }}</strong>
-                </li>
-                <li>
-                    <span>Submissions / minute</span>
-                    <strong>{{ formatNumber(submissionsPerMinute, 2) }}</strong>
-                </li>
-            </ul>
+            <p class="hint" style="margin-top: 1rem;">
+                Header and data submission rates are shown in the Estimation section below, based on your data workload configuration.
+            </p>
         </section>
 
         <section class="panel data-workload">
@@ -415,6 +390,22 @@
                 <summary>Header costs</summary>
                 <ul class="breakdown">
                     <li>
+                        <span>Header submission interval (s)</span>
+                        <strong>{{ formatNumber(headerSubmissionIntervalSeconds, 2) }}</strong>
+                    </li>
+                    <li>
+                        <span>Headers / submission</span>
+                        <strong>{{ formatInteger(normalizedHeaderCount) }}</strong>
+                    </li>
+                    <li>
+                        <span>Header bytes / submission</span>
+                        <strong>{{ formatInteger(headerBytesTotal) }}</strong>
+                    </li>
+                    <li>
+                        <span>Header submissions / year</span>
+                        <strong>{{ formatNumber(headerSubmissionsPerYear, 0) }}</strong>
+                    </li>
+                    <li>
                         <span>Header gas / submission</span>
                         <strong>{{ formatInteger(headerGas) }}</strong>
                     </li>
@@ -441,32 +432,42 @@
                 </p>
                 <ul v-else class="breakdown">
                     <li>
+                        <span>Data bytes / second</span>
+                        <strong>{{
+                            formatNumber(dataBytesPerSecond, 2)
+                        }}</strong>
+                    </li>
+                    <li>
+                        <span>Data submission interval (s)</span>
+                        <strong>{{
+                            formatNumber(dataSubmissionIntervalSeconds, 2)
+                        }}</strong>
+                    </li>
+                    <li>
+                        <span>Data submissions / year</span>
+                        <strong>{{
+                            formatNumber(dataSubmissionsPerYear, 0)
+                        }}</strong>
+                    </li>
+                    <li>
                         <span>Average calldata bytes / tx</span>
                         <strong>{{
                             formatNumber(averageCalldataBytes, 2)
                         }}</strong>
                     </li>
                     <li>
-                        <span>Data blobs / submission</span>
-                        <strong>{{ formatInteger(dataBlobCount) }}</strong>
-                    </li>
-                    <li>
-                        <span>Average blob size (bytes)</span>
-                        <strong>{{
-                            formatNumber(averageDataBlobBytes, 2)
-                        }}</strong>
+                        <span>Transactions / data submission</span>
+                        <strong>{{ formatNumber(transactionsPerSubmission, 0) }}</strong>
                     </li>
                     <li>
                         <span>Data bytes / submission</span>
                         <strong>{{
-                            formatNumber(dataBytesPerSubmission, 2)
+                            formatNumber(dataBytesPerSubmission, 0)
                         }}</strong>
                     </li>
                     <li>
-                        <span>Data shares / submission</span>
-                        <strong>{{
-                            formatInteger(dataSharesPerSubmission)
-                        }}</strong>
+                        <span>Data blobs / submission</span>
+                        <strong>{{ formatInteger(dataBlobCount) }}</strong>
                     </li>
                     <li>
                         <span>Data gas / submission</span>
@@ -558,7 +559,7 @@ const FIRST_TX_SURCHARGE = 10_000;
 const SECONDS_PER_MONTH = 30 * 24 * 60 * 60;
 const SECONDS_PER_YEAR = 365 * 24 * 60 * 60;
 const DATA_CHUNK_BYTES = 500 * 1024; // 500 KiB chunk limit per blob
-const MAX_BLOB_SIZE = 2 * 1024 * 1024; // 2 MiB max blob size for Celestia
+const MAX_BLOB_SIZE = 7 * 1024 * 1024; // 7 MB max blob size (from common/consts.go)
 
 const GAS_PARAMS = Object.freeze({
     fixedCost: 65_000,
@@ -674,9 +675,18 @@ const evmMix = reactive<EvmMixEntry[]>(
 // Batching strategy configuration
 const batchingStrategy = ref<BatchingStrategy>("time");
 const daBlockTimeSeconds = ref(6); // Celestia default block time
-const batchSizeThreshold = ref(0.8); // 80% of max blob size
+const batchSizeThreshold = ref(0.8); // 80% of max blob size (internal: 0.0-1.0)
 const batchMaxDelaySeconds = ref(0); // 0 means use DA block time
 const batchMinItems = ref(1);
+
+// User-facing percentage (10-100) that syncs with internal threshold (0.1-1.0)
+const batchSizeThresholdPercent = computed({
+    get: () => Math.round(batchSizeThreshold.value * 100),
+    set: (value: number) => {
+        const clamped = Math.max(10, Math.min(100, value));
+        batchSizeThreshold.value = clamped / 100;
+    },
+});
 
 const blockTime = ref(0.25);
 const blockTimeUnit = ref<"s" | "ms">("s");
@@ -713,8 +723,12 @@ const effectiveMaxDelaySeconds = computed(() => {
     return batchMaxDelaySeconds.value;
 });
 
-// Calculate submission interval based on batching strategy
-const submissionIntervalSeconds = computed(() => {
+// Target bytes for size-based batching
+const targetBlobBytes = computed(() => MAX_BLOB_SIZE * batchSizeThreshold.value);
+
+// ===== HEADER SUBMISSION INTERVAL =====
+// Calculate header submission interval based on batching strategy
+const headerSubmissionIntervalSeconds = computed(() => {
     const blockSeconds = blockTimeSeconds.value;
     if (!isFinite(blockSeconds) || blockSeconds <= 0) {
         return NaN;
@@ -722,44 +736,42 @@ const submissionIntervalSeconds = computed(() => {
 
     const strategy = batchingStrategy.value;
     const minItems = Math.max(1, batchMinItems.value);
+    const headerBytesPerBlock = HEADER_BYTES;
 
     if (strategy === "immediate") {
-        // Submit every block (respecting min items)
         return blockSeconds * minItems;
     }
 
     if (strategy === "time") {
-        // Submit after max delay, but at least min items
         const delayBlocks = Math.ceil(effectiveMaxDelaySeconds.value / blockSeconds);
         return blockSeconds * Math.max(minItems, delayBlocks);
     }
 
     if (strategy === "size") {
-        // Estimate how many headers needed to reach size threshold
-        const targetBytes = MAX_BLOB_SIZE * batchSizeThreshold.value;
-        const headersToThreshold = Math.ceil(targetBytes / HEADER_BYTES);
-        return blockSeconds * Math.max(minItems, headersToThreshold);
+        // How many blocks until headers fill the target blob size
+        const blocksToThreshold = Math.ceil(targetBlobBytes.value / headerBytesPerBlock);
+        return blockSeconds * Math.max(minItems, blocksToThreshold);
     }
 
     if (strategy === "adaptive") {
-        // Adaptive: whichever comes first - size threshold or max delay
         const delayBlocks = Math.ceil(effectiveMaxDelaySeconds.value / blockSeconds);
-        const targetBytes = MAX_BLOB_SIZE * batchSizeThreshold.value;
-        const headersToThreshold = Math.ceil(targetBytes / HEADER_BYTES);
-        // In practice, for headers, time-based usually triggers first
-        // Use the smaller of the two intervals
-        const timeBasedBlocks = Math.max(minItems, delayBlocks);
-        const sizeBasedBlocks = Math.max(minItems, headersToThreshold);
-        return blockSeconds * Math.min(timeBasedBlocks, sizeBasedBlocks);
+        const blocksToThreshold = Math.ceil(targetBlobBytes.value / headerBytesPerBlock);
+        return blockSeconds * Math.min(
+            Math.max(minItems, delayBlocks),
+            Math.max(minItems, blocksToThreshold)
+        );
     }
 
     return blockSeconds * minItems;
 });
 
+// For backward compatibility, alias to submissionIntervalSeconds
+const submissionIntervalSeconds = headerSubmissionIntervalSeconds;
+
 // Calculate header count from submission interval
 const normalizedHeaderCount = computed(() => {
     const blockSeconds = blockTimeSeconds.value;
-    const interval = submissionIntervalSeconds.value;
+    const interval = headerSubmissionIntervalSeconds.value;
     if (!isFinite(blockSeconds) || blockSeconds <= 0 || !isFinite(interval)) {
         return 1;
     }
@@ -770,19 +782,20 @@ const headerBytesTotal = computed(
     () => normalizedHeaderCount.value * HEADER_BYTES,
 );
 
-const submissionsPerSecond = computed(() => {
-    const interval = submissionIntervalSeconds.value;
+const headerSubmissionsPerSecond = computed(() => {
+    const interval = headerSubmissionIntervalSeconds.value;
     if (!isFinite(interval) || interval <= 0) {
         return 0;
     }
     return 1 / interval;
 });
 
-const submissionsPerMinute = computed(() => submissionsPerSecond.value * 60);
-
-const submissionsPerYear = computed(
-    () => submissionsPerSecond.value * SECONDS_PER_YEAR,
+const submissionsPerSecond = headerSubmissionsPerSecond; // alias
+const submissionsPerMinute = computed(() => headerSubmissionsPerSecond.value * 60);
+const headerSubmissionsPerYear = computed(
+    () => headerSubmissionsPerSecond.value * SECONDS_PER_YEAR,
 );
+const submissionsPerYear = headerSubmissionsPerYear; // alias
 
 const blocksPerSecond = computed(() => {
     const seconds = blockTimeSeconds.value;
@@ -876,8 +889,71 @@ const averageCalldataBytes = computed(() => {
 const txPerMonth = computed(() => txPerSecond.value * SECONDS_PER_MONTH);
 const txPerYear = computed(() => txPerSecond.value * SECONDS_PER_YEAR);
 
+// Data bytes generated per second
+const dataBytesPerSecond = computed(() => {
+    if (executionEnv.value !== "evm") {
+        return 0;
+    }
+    return txPerSecond.value * averageCalldataBytes.value;
+});
+
+// ===== DATA SUBMISSION INTERVAL =====
+// Calculate data submission interval based on batching strategy
+const dataSubmissionIntervalSeconds = computed(() => {
+    const blockSeconds = blockTimeSeconds.value;
+    const bytesPerSecond = dataBytesPerSecond.value;
+
+    if (!isFinite(blockSeconds) || blockSeconds <= 0) {
+        return NaN;
+    }
+
+    // If no data throughput, fall back to header interval
+    if (bytesPerSecond <= 0) {
+        return headerSubmissionIntervalSeconds.value;
+    }
+
+    const strategy = batchingStrategy.value;
+    const minItems = Math.max(1, batchMinItems.value);
+    const minInterval = blockSeconds * minItems;
+
+    if (strategy === "immediate") {
+        return minInterval;
+    }
+
+    if (strategy === "time") {
+        return Math.max(minInterval, effectiveMaxDelaySeconds.value);
+    }
+
+    if (strategy === "size") {
+        // Time to accumulate enough data to reach size threshold
+        const timeToThreshold = targetBlobBytes.value / bytesPerSecond;
+        return Math.max(minInterval, timeToThreshold);
+    }
+
+    if (strategy === "adaptive") {
+        // Whichever comes first: size threshold or max delay
+        const timeToThreshold = targetBlobBytes.value / bytesPerSecond;
+        return Math.max(minInterval, Math.min(timeToThreshold, effectiveMaxDelaySeconds.value));
+    }
+
+    return minInterval;
+});
+
+const dataSubmissionsPerSecond = computed(() => {
+    const interval = dataSubmissionIntervalSeconds.value;
+    if (!isFinite(interval) || interval <= 0) {
+        return 0;
+    }
+    return 1 / interval;
+});
+
+const dataSubmissionsPerYear = computed(
+    () => dataSubmissionsPerSecond.value * SECONDS_PER_YEAR,
+);
+
+// Transactions included per data submission
 const transactionsPerSubmission = computed(() => {
-    const interval = submissionIntervalSeconds.value;
+    const interval = dataSubmissionIntervalSeconds.value;
     if (!isFinite(interval) || interval <= 0) {
         return 0;
     }
@@ -933,77 +1009,75 @@ const averageDataBlobBytes = computed(() => {
 const gasPriceUTIA = computed(() => Math.max(gasPriceValue.value, 0));
 const gasPriceTIA = computed(() => gasPriceUTIA.value / 1_000_000);
 
-const headerTransactionCount = computed(() =>
-    normalizedHeaderCount.value > 0 ? 1 : 0,
-);
-
-const totalTransactionsPerSubmission = computed(
-    () => headerTransactionCount.value + dataBlobCount.value,
-);
-
-const fixedGasPerSubmission = computed(
-    () => totalTransactionsPerSubmission.value * GAS_PARAMS.fixedCost,
-);
-
-const fixedFeePerSubmissionTIA = computed(
-    () => fixedGasPerSubmission.value * gasPriceTIA.value,
-);
+// ===== HEADER COSTS =====
+// 1 PFB transaction per header submission
+const headerFixedGasPerSubmission = computed(() => GAS_PARAMS.fixedCost);
 
 const headerFeePerSubmissionTIA = computed(
-    () => headerGas.value * gasPriceTIA.value,
+    () => (headerGas.value + headerFixedGasPerSubmission.value) * gasPriceTIA.value,
+);
+
+const headerFeePerYearTIA = computed(
+    () => headerFeePerSubmissionTIA.value * headerSubmissionsPerYear.value,
+);
+
+// ===== DATA COSTS =====
+// Each data submission may have multiple blobs (chunks), each is a separate PFB
+const dataFixedGasPerSubmission = computed(
+    () => Math.max(1, dataBlobCount.value) * GAS_PARAMS.fixedCost,
 );
 
 const dataRecurringGasPerSubmission = computed(
-    () => dataGasPerSubmission.value + dataStaticGasPerSubmission.value,
+    () => dataGasPerSubmission.value + dataStaticGasPerSubmission.value + dataFixedGasPerSubmission.value,
 );
 
 const dataFeePerSubmissionTIA = computed(
     () => dataRecurringGasPerSubmission.value * gasPriceTIA.value,
 );
 
-const recurringGasPerSubmission = computed(
-    () =>
-        fixedGasPerSubmission.value +
-        headerGas.value +
-        dataRecurringGasPerSubmission.value,
+const dataFeePerYearTIA = computed(
+    () => dataFeePerSubmissionTIA.value * dataSubmissionsPerYear.value,
 );
 
+// ===== TOTALS =====
 const firstTxGas = computed(() => (firstTx.value ? FIRST_TX_SURCHARGE : 0));
 const firstTxFeeTIA = computed(() => firstTxGas.value * gasPriceTIA.value);
 
+// Combined totals (for display, assumes one combined "submission" event)
 const totalGasPerSubmission = computed(
-    () => recurringGasPerSubmission.value + firstTxGas.value,
+    () => headerGas.value + headerFixedGasPerSubmission.value +
+          dataRecurringGasPerSubmission.value + firstTxGas.value,
 );
 
 const totalFeePerSubmissionTIA = computed(
     () => totalGasPerSubmission.value * gasPriceTIA.value,
 );
 
-const headerFeePerYearTIA = computed(
-    () => headerFeePerSubmissionTIA.value * submissionsPerYear.value,
+// Backward compat aliases
+const fixedGasPerSubmission = computed(
+    () => headerFixedGasPerSubmission.value + dataFixedGasPerSubmission.value,
 );
-
-const dataFeePerYearTIA = computed(
-    () => dataFeePerSubmissionTIA.value * submissionsPerYear.value,
+const fixedFeePerSubmissionTIA = computed(
+    () => fixedGasPerSubmission.value * gasPriceTIA.value,
+);
+const totalTransactionsPerSubmission = computed(
+    () => 1 + dataBlobCount.value, // 1 header PFB + N data PFBs
 );
 
 const fixedFeePerYearTIA = computed(
-    () => fixedFeePerSubmissionTIA.value * submissionsPerYear.value,
+    () => (headerFixedGasPerSubmission.value * headerSubmissionsPerYear.value +
+           dataFixedGasPerSubmission.value * dataSubmissionsPerYear.value) * gasPriceTIA.value,
 );
 
 const totalRecurringFeePerYearTIA = computed(
-    () =>
-        headerFeePerYearTIA.value +
-        dataFeePerYearTIA.value +
-        fixedFeePerYearTIA.value,
+    () => headerFeePerYearTIA.value + dataFeePerYearTIA.value,
 );
 
 const feePerSecondTIA = computed(() => {
-    const interval = submissionIntervalSeconds.value;
-    if (!isFinite(interval) || interval <= 0) {
-        return 0;
-    }
-    return (recurringGasPerSubmission.value * gasPriceTIA.value) / interval;
+    // Sum of header fee rate + data fee rate
+    const headerFeePerSecond = headerFeePerSubmissionTIA.value * headerSubmissionsPerSecond.value;
+    const dataFeePerSecond = dataFeePerSubmissionTIA.value * dataSubmissionsPerSecond.value;
+    return headerFeePerSecond + dataFeePerSecond;
 });
 
 function randomizeMix() {
@@ -1181,6 +1255,17 @@ button.ghost:hover {
     justify-content: space-between;
     gap: 1rem;
     font-size: 0.95rem;
+}
+
+.derived-header {
+    font-weight: 600;
+    font-size: 0.8rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--vp-c-text-2);
+    margin-top: 0.5rem;
+    padding-top: 0.5rem;
+    border-top: 1px solid var(--vp-c-divider);
 }
 
 .param-list {
