@@ -8,7 +8,7 @@ replace (
 )
 
 require (
-	github.com/celestiaorg/go-header v0.7.5-0.20260116211018-3f61d145c9d2
+	github.com/celestiaorg/go-header v0.8.0
 	github.com/evstack/ev-node v1.0.0-beta.10
 	github.com/evstack/ev-node/core v1.0.0-beta.5
 	github.com/ipfs/go-datastore v0.9.0
@@ -69,7 +69,7 @@ require (
 	github.com/libp2p/go-flow-metrics v0.3.0 // indirect
 	github.com/libp2p/go-libp2p v0.46.0 // indirect
 	github.com/libp2p/go-libp2p-asn-util v0.4.1 // indirect
-	github.com/libp2p/go-libp2p-kad-dht v0.36.0 // indirect
+	github.com/libp2p/go-libp2p-kad-dht v0.37.0 // indirect
 	github.com/libp2p/go-libp2p-kbucket v0.8.0 // indirect
 	github.com/libp2p/go-libp2p-pubsub v0.15.0 // indirect
 	github.com/libp2p/go-libp2p-record v0.3.1 // indirect
