@@ -364,14 +364,10 @@
         <section class="panel results">
             <h2>Estimation</h2>
             <div class="summary">
-                <div class="summary-item">
-                    <span>Total gas / submission</span>
-                    <strong>{{ formatInteger(totalGasPerSubmission) }}</strong>
-                </div>
-                <div class="summary-item">
-                    <span>Fee / submission (TIA)</span>
+                <div class="summary-item highlight">
+                    <span>Total yearly fee (TIA)</span>
                     <strong>{{
-                        formatNumber(totalFeePerSubmissionTIA, 6)
+                        formatNumber(totalRecurringFeePerYearTIA, 4)
                     }}</strong>
                 </div>
                 <div class="summary-item">
@@ -379,10 +375,12 @@
                     <strong>{{ formatNumber(feePerSecondTIA, 6) }}</strong>
                 </div>
                 <div class="summary-item">
-                    <span>Total yearly fee (TIA)</span>
-                    <strong>{{
-                        formatNumber(totalRecurringFeePerYearTIA, 4)
-                    }}</strong>
+                    <span>Header fee / year (TIA)</span>
+                    <strong>{{ formatNumber(headerFeePerYearTIA, 4) }}</strong>
+                </div>
+                <div class="summary-item">
+                    <span>Data fee / year (TIA)</span>
+                    <strong>{{ formatNumber(dataFeePerYearTIA, 4) }}</strong>
                 </div>
             </div>
 
@@ -490,29 +488,31 @@
                 </ul>
             </details>
 
-            <details open>
-                <summary>Baseline gas</summary>
+            <details>
+                <summary>Fixed costs (PFB base gas)</summary>
                 <ul class="breakdown">
                     <li>
-                        <span>PFB transactions / submission</span>
+                        <span>Header PFB base gas</span>
+                        <strong>{{ formatInteger(GAS_PARAMS.fixedCost) }} gas</strong>
+                    </li>
+                    <li>
+                        <span>Header fixed fee / year (TIA)</span>
                         <strong>{{
-                            formatInteger(totalTransactionsPerSubmission)
+                            formatNumber(headerFixedGasPerSubmission * headerSubmissionsPerYear * gasPriceTIA, 4)
                         }}</strong>
                     </li>
                     <li>
-                        <span>Base gas / submission</span>
+                        <span>Data blobs / submission</span>
+                        <strong>{{ formatInteger(dataBlobCount) }}</strong>
+                    </li>
+                    <li>
+                        <span>Data fixed fee / year (TIA)</span>
                         <strong>{{
-                            formatInteger(fixedGasPerSubmission)
+                            formatNumber(dataFixedGasPerSubmission * dataSubmissionsPerYear * gasPriceTIA, 4)
                         }}</strong>
                     </li>
                     <li>
-                        <span>Base fee / submission (TIA)</span>
-                        <strong>{{
-                            formatNumber(fixedFeePerSubmissionTIA, 6)
-                        }}</strong>
-                    </li>
-                    <li>
-                        <span>Base fee / year (TIA)</span>
+                        <span>Total fixed fee / year (TIA)</span>
                         <strong>{{
                             formatNumber(fixedFeePerYearTIA, 4)
                         }}</strong>
@@ -532,17 +532,19 @@
                         <strong>{{ formatNumber(txPerSecond, 4) }}</strong>
                     </li>
                     <li>
-                        <span>Transactions per month</span>
-                        <strong>{{ formatNumber(txPerMonth, 0) }}</strong>
-                    </li>
-                    <li>
                         <span>Transactions per year</span>
                         <strong>{{ formatNumber(txPerYear, 0) }}</strong>
                     </li>
                     <li>
-                        <span>Submissions per year</span>
+                        <span>Header submissions / year</span>
                         <strong>{{
-                            formatNumber(submissionsPerYear, 0)
+                            formatNumber(headerSubmissionsPerYear, 0)
+                        }}</strong>
+                    </li>
+                    <li>
+                        <span>Data submissions / year</span>
+                        <strong>{{
+                            formatNumber(dataSubmissionsPerYear, 0)
                         }}</strong>
                     </li>
                 </ul>
@@ -1042,27 +1044,6 @@ const dataFeePerYearTIA = computed(
 // ===== TOTALS =====
 const firstTxGas = computed(() => (firstTx.value ? FIRST_TX_SURCHARGE : 0));
 const firstTxFeeTIA = computed(() => firstTxGas.value * gasPriceTIA.value);
-
-// Combined totals (for display, assumes one combined "submission" event)
-const totalGasPerSubmission = computed(
-    () => headerGas.value + headerFixedGasPerSubmission.value +
-          dataRecurringGasPerSubmission.value + firstTxGas.value,
-);
-
-const totalFeePerSubmissionTIA = computed(
-    () => totalGasPerSubmission.value * gasPriceTIA.value,
-);
-
-// Backward compat aliases
-const fixedGasPerSubmission = computed(
-    () => headerFixedGasPerSubmission.value + dataFixedGasPerSubmission.value,
-);
-const fixedFeePerSubmissionTIA = computed(
-    () => fixedGasPerSubmission.value * gasPriceTIA.value,
-);
-const totalTransactionsPerSubmission = computed(
-    () => 1 + dataBlobCount.value, // 1 header PFB + N data PFBs
-);
 
 const fixedFeePerYearTIA = computed(
     () => (headerFixedGasPerSubmission.value * headerSubmissionsPerYear.value +
@@ -1583,6 +1564,16 @@ strong {
 
 .summary-item strong {
     font-size: 1.1rem;
+}
+
+.summary-item.highlight {
+    background: var(--vp-c-brand-soft);
+    border-color: var(--vp-c-brand-1);
+}
+
+.summary-item.highlight strong {
+    font-size: 1.25rem;
+    color: var(--vp-c-brand-1);
 }
 
 /* Details/summary elements */
