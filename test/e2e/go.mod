@@ -1,8 +1,6 @@
 module github.com/evstack/ev-node/test/e2e
 
-go 1.24.6
-
-toolchain go1.24.7
+go 1.25.0
 
 require (
 	cosmossdk.io/math v1.5.3

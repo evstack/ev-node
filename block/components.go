@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/evstack/ev-node/pkg/sync"
 	"github.com/rs/zerolog"
 
 	"github.com/evstack/ev-node/block/internal/cache"
@@ -20,6 +19,8 @@ import (
 	"github.com/evstack/ev-node/pkg/genesis"
 	"github.com/evstack/ev-node/pkg/signer"
 	"github.com/evstack/ev-node/pkg/store"
+	"github.com/evstack/ev-node/pkg/sync"
+	"github.com/evstack/ev-node/pkg/telemetry"
 )
 
 // Components represents the block-related components
@@ -203,6 +204,11 @@ func NewAggregatorComponents(
 
 	// error channel for critical failures
 	errorCh := make(chan error, 1)
+
+	// wrap sequencer with tracing if enabled
+	if config.Instrumentation.IsTracingEnabled() {
+		sequencer = telemetry.WithTracingSequencer(sequencer)
+	}
 
 	executor, err := executing.NewExecutor(
 		store,
