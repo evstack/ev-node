@@ -25,6 +25,8 @@ import (
 	"github.com/evstack/ev-node/types"
 )
 
+var _ BlockProducer = (*Executor)(nil)
+
 // Executor handles block production, transaction processing, and state management
 type Executor struct {
 	// Core components
@@ -60,6 +62,10 @@ type Executor struct {
 	ctx    context.Context
 	cancel context.CancelFunc
 	wg     sync.WaitGroup
+
+	// blockProducer is the interface used for block production operations.
+	// defaults to self, but can be wrapped with tracing.
+	blockProducer BlockProducer
 }
 
 // NewExecutor creates a new block executor.
@@ -101,7 +107,7 @@ func NewExecutor(
 		}
 	}
 
-	return &Executor{
+	e := &Executor{
 		store:             store,
 		exec:              exec,
 		sequencer:         sequencer,
@@ -117,7 +123,15 @@ func NewExecutor(
 		txNotifyCh:        make(chan struct{}, 1),
 		errorCh:           errorCh,
 		logger:            logger.With().Str("component", "executor").Logger(),
-	}, nil
+	}
+	e.blockProducer = e
+	return e, nil
+}
+
+// SetBlockProducer sets the block producer interface, allowing injection of
+// a tracing wrapper or other decorator.
+func (e *Executor) SetBlockProducer(bp BlockProducer) {
+	e.blockProducer = bp
 }
 
 // Start begins the execution component
@@ -213,6 +227,9 @@ func (e *Executor) initializeState() error {
 	if err := batch.SetHeight(state.LastBlockHeight); err != nil {
 		return fmt.Errorf("failed to set store height: %w", err)
 	}
+	if err := batch.UpdateState(state); err != nil {
+		return fmt.Errorf("failed to update state: %w", err)
+	}
 	if err := batch.Commit(); err != nil {
 		return fmt.Errorf("failed to commit batch: %w", err)
 	}
@@ -222,7 +239,8 @@ func (e *Executor) initializeState() error {
 
 	// Sync execution layer with store on startup
 	execReplayer := common.NewReplayer(e.store, e.exec, e.genesis, e.logger)
-	if err := execReplayer.SyncToHeight(e.ctx, state.LastBlockHeight); err != nil {
+	syncTargetHeight := state.LastBlockHeight
+	if err := execReplayer.SyncToHeight(e.ctx, syncTargetHeight); err != nil {
 		e.sendCriticalError(fmt.Errorf("failed to sync execution layer: %w", err))
 		return fmt.Errorf("failed to sync execution layer: %w", err)
 	}
@@ -267,7 +285,7 @@ func (e *Executor) executionLoop() {
 	}
 	txsAvailable := false
 
-	for {
+	for e.ctx.Err() == nil {
 		select {
 		case <-e.ctx.Done():
 			return
@@ -279,7 +297,7 @@ func (e *Executor) executionLoop() {
 				continue
 			}
 
-			if err := e.produceBlock(); err != nil {
+			if err := e.blockProducer.ProduceBlock(e.ctx); err != nil {
 				e.logger.Error().Err(err).Msg("failed to produce block")
 			}
 			txsAvailable = false
@@ -288,7 +306,7 @@ func (e *Executor) executionLoop() {
 
 		case <-lazyTimerCh:
 			e.logger.Debug().Msg("Lazy timer triggered block production")
-			if err := e.produceBlock(); err != nil {
+			if err := e.blockProducer.ProduceBlock(e.ctx); err != nil {
 				e.logger.Error().Err(err).Msg("failed to produce block from lazy timer")
 			}
 			// Reset lazy timer
@@ -300,8 +318,12 @@ func (e *Executor) executionLoop() {
 	}
 }
 
-// produceBlock creates, validates, and stores a new block
-func (e *Executor) produceBlock() error {
+// ProduceBlock creates, validates, and stores a new block.
+func (e *Executor) ProduceBlock(ctx context.Context) error {
+	if ctx.Err() != nil {
+		return ctx.Err()
+	}
+
 	start := time.Now()
 	defer func() {
 		if e.metrics.OperationDuration["block_production"] != nil {
@@ -338,7 +360,7 @@ func (e *Executor) produceBlock() error {
 
 	// Check if there's an already stored block at the newHeight
 	// If there is use that instead of creating a new block
-	pendingHeader, pendingData, err := e.store.GetBlockData(e.ctx, newHeight)
+	pendingHeader, pendingData, err := e.store.GetBlockData(ctx, newHeight)
 	if err == nil {
 		e.logger.Info().Uint64("height", newHeight).Msg("using pending block")
 		header = pendingHeader
@@ -347,7 +369,7 @@ func (e *Executor) produceBlock() error {
 		return fmt.Errorf("failed to get block data: %w", err)
 	} else {
 		// get batch from sequencer
-		batchData, err = e.retrieveBatch(e.ctx)
+		batchData, err = e.blockProducer.RetrieveBatch(ctx)
 		if errors.Is(err, common.ErrNoBatch) {
 			e.logger.Debug().Msg("no batch available")
 			return nil
@@ -357,13 +379,13 @@ func (e *Executor) produceBlock() error {
 			return fmt.Errorf("failed to retrieve batch: %w", err)
 		}
 
-		header, data, err = e.createBlock(e.ctx, newHeight, batchData)
+		header, data, err = e.blockProducer.CreateBlock(ctx, newHeight, batchData)
 		if err != nil {
 			return fmt.Errorf("failed to create block: %w", err)
 		}
 
 		// saved early for crash recovery, will be overwritten later with the final signature
-		batch, err := e.store.NewBatch(e.ctx)
+		batch, err := e.store.NewBatch(ctx)
 		if err != nil {
 			return fmt.Errorf("failed to create batch for early save: %w", err)
 		}
@@ -378,12 +400,12 @@ func (e *Executor) produceBlock() error {
 	// Pass force-included mask through context for execution optimization
 	// Force-included txs (from DA) MUST be validated as they're from untrusted sources
 	// Mempool txs can skip validation as they were validated when added to mempool
-	ctx := e.ctx
+	applyCtx := ctx
 	if batchData != nil && batchData.Batch != nil && batchData.ForceIncludedMask != nil {
-		ctx = coreexecutor.WithForceIncludedMask(ctx, batchData.ForceIncludedMask)
+		applyCtx = coreexecutor.WithForceIncludedMask(applyCtx, batchData.ForceIncludedMask)
 	}
 
-	newState, err := e.applyBlock(ctx, header.Header, data)
+	newState, err := e.blockProducer.ApplyBlock(applyCtx, header.Header, data)
 	if err != nil {
 		return fmt.Errorf("failed to apply block: %w", err)
 	}
@@ -400,13 +422,13 @@ func (e *Executor) produceBlock() error {
 	}
 	header.Signature = signature
 
-	if err := e.validateBlock(currentState, header, data); err != nil {
+	if err := e.blockProducer.ValidateBlock(ctx, currentState, header, data); err != nil {
 		e.sendCriticalError(fmt.Errorf("failed to validate block: %w", err))
 		e.logger.Error().Err(err).Msg("CRITICAL: Permanent block validation error - halting block production")
 		return fmt.Errorf("failed to validate block: %w", err)
 	}
 
-	batch, err := e.store.NewBatch(e.ctx)
+	batch, err := e.store.NewBatch(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to create batch: %w", err)
 	}
@@ -431,12 +453,12 @@ func (e *Executor) produceBlock() error {
 	e.setLastState(newState)
 
 	// broadcast header and data to P2P network
-	g, ctx := errgroup.WithContext(e.ctx)
+	g, broadcastCtx := errgroup.WithContext(e.ctx)
 	g.Go(func() error {
-		return e.headerBroadcaster.WriteToStoreAndBroadcast(ctx, &types.P2PSignedHeader{Message: header})
+		return e.headerBroadcaster.WriteToStoreAndBroadcast(broadcastCtx, &types.P2PSignedHeader{Message: header})
 	})
 	g.Go(func() error {
-		return e.dataBroadcaster.WriteToStoreAndBroadcast(ctx, &types.P2PData{Message: data})
+		return e.dataBroadcaster.WriteToStoreAndBroadcast(broadcastCtx, &types.P2PData{Message: data})
 	})
 	if err := g.Wait(); err != nil {
 		e.logger.Error().Err(err).Msg("failed to broadcast header and/data")
@@ -453,8 +475,8 @@ func (e *Executor) produceBlock() error {
 	return nil
 }
 
-// retrieveBatch gets the next batch of transactions from the sequencer
-func (e *Executor) retrieveBatch(ctx context.Context) (*BatchData, error) {
+// RetrieveBatch gets the next batch of transactions from the sequencer.
+func (e *Executor) RetrieveBatch(ctx context.Context) (*BatchData, error) {
 	req := coresequencer.GetNextBatchRequest{
 		Id:            []byte(e.genesis.ChainID),
 		MaxBytes:      common.DefaultMaxBlobSize,
@@ -485,8 +507,8 @@ func (e *Executor) retrieveBatch(ctx context.Context) (*BatchData, error) {
 	}, nil
 }
 
-// createBlock creates a new block from the given batch
-func (e *Executor) createBlock(ctx context.Context, height uint64, batchData *BatchData) (*types.SignedHeader, *types.Data, error) {
+// CreateBlock creates a new block from the given batch.
+func (e *Executor) CreateBlock(ctx context.Context, height uint64, batchData *BatchData) (*types.SignedHeader, *types.Data, error) {
 	currentState := e.getLastState()
 	headerTime := uint64(e.genesis.StartTime.UnixNano())
 
@@ -572,7 +594,7 @@ func (e *Executor) createBlock(ctx context.Context, height uint64, batchData *Ba
 	}
 
 	for i, tx := range batchData.Transactions {
-		data.Txs[i] = types.Tx(tx)
+		data.Txs[i] = tx
 	}
 
 	// Set data hash
@@ -585,8 +607,8 @@ func (e *Executor) createBlock(ctx context.Context, height uint64, batchData *Ba
 	return header, data, nil
 }
 
-// applyBlock applies the block to get the new state
-func (e *Executor) applyBlock(ctx context.Context, header types.Header, data *types.Data) (types.State, error) {
+// ApplyBlock applies the block to get the new state.
+func (e *Executor) ApplyBlock(ctx context.Context, header types.Header, data *types.Data) (types.State, error) {
 	currentState := e.getLastState()
 
 	// Prepare transactions
@@ -658,8 +680,8 @@ func (e *Executor) executeTxsWithRetry(ctx context.Context, rawTxs [][]byte, hea
 	return nil, nil
 }
 
-// validateBlock validates the created block
-func (e *Executor) validateBlock(lastState types.State, header *types.SignedHeader, data *types.Data) error {
+// ValidateBlock validates the created block.
+func (e *Executor) ValidateBlock(_ context.Context, lastState types.State, header *types.SignedHeader, data *types.Data) error {
 	// Set custom verifier for aggregator node signature
 	header.SetCustomVerifierForAggregator(e.options.AggregatorNodeSignatureBytesProvider)
 

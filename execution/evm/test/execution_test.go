@@ -74,6 +74,7 @@ func TestEngineExecution(t *testing.T) {
 			genesisHash,
 			common.Address{},
 			store,
+			false,
 		)
 		require.NoError(tt, err)
 
@@ -174,6 +175,7 @@ func TestEngineExecution(t *testing.T) {
 			genesisHash,
 			common.Address{},
 			store,
+			false,
 		)
 		require.NoError(tt, err)
 

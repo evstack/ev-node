@@ -2,6 +2,8 @@ package cache
 
 import (
 	"context"
+	"errors"
+	"fmt"
 
 	"github.com/rs/zerolog"
 
@@ -25,8 +27,17 @@ type PendingHeaders struct {
 	base *pendingBase[*types.SignedHeader]
 }
 
+var errInFlightHeader = errors.New("inflight header")
+
 func fetchSignedHeader(ctx context.Context, store storepkg.Store, height uint64) (*types.SignedHeader, error) {
 	header, err := store.GetHeader(ctx, height)
+	if err != nil {
+		return nil, err
+	}
+	// in the executor, WIP headers are temporary stored. skip them until the process is completed
+	if header.Height() == 0 {
+		return nil, errInFlightHeader
+	}
 	return header, err
 }
 
@@ -39,9 +50,42 @@ func NewPendingHeaders(store storepkg.Store, logger zerolog.Logger) (*PendingHea
 	return &PendingHeaders{base: base}, nil
 }
 
-// GetPendingHeaders returns a sorted slice of pending headers.
-func (ph *PendingHeaders) GetPendingHeaders(ctx context.Context) ([]*types.SignedHeader, error) {
-	return ph.base.getPending(ctx)
+// GetPendingHeaders returns a sorted slice of pending headers along with their marshalled bytes.
+// It uses an internal cache to avoid re-marshalling headers on subsequent calls.
+func (ph *PendingHeaders) GetPendingHeaders(ctx context.Context) ([]*types.SignedHeader, [][]byte, error) {
+	headers, err := ph.base.getPending(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	if len(headers) == 0 {
+		return nil, nil, nil
+	}
+
+	marshalled := make([][]byte, len(headers))
+	lastSubmitted := ph.base.lastHeight.Load()
+
+	for i, header := range headers {
+		height := lastSubmitted + uint64(i) + 1
+
+		// Try to get from cache first
+		if cached := ph.base.getMarshalledForHeight(height); cached != nil {
+			marshalled[i] = cached
+			continue
+		}
+
+		// Marshal if not in cache
+		data, err := header.MarshalBinary()
+		if err != nil {
+			return nil, nil, fmt.Errorf("failed to marshal header at height %d: %w", height, err)
+		}
+		marshalled[i] = data
+
+		// Store in cache
+		ph.base.setMarshalledForHeight(height, data)
+	}
+
+	return headers, marshalled, nil
 }
 
 func (ph *PendingHeaders) NumPendingHeaders() uint64 {

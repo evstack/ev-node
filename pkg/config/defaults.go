@@ -78,6 +78,10 @@ func DefaultConfig() Config {
 			Namespace:                randString(10),
 			DataNamespace:            "",
 			ForcedInclusionNamespace: "",
+			BatchingStrategy:         "time",
+			BatchSizeThreshold:       0.8,
+			BatchMaxDelay:            DurationWrapper{0}, // 0 means use DA BlockTime
+			BatchMinItems:            1,
 		},
 		Instrumentation: DefaultInstrumentationConfig(),
 		Log: LogConfig{

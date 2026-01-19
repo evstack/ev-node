@@ -1,16 +1,21 @@
 package cmd
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
+	"os"
 
-	"github.com/evstack/ev-node/types"
+	"github.com/ethereum/go-ethereum/common"
+	ds "github.com/ipfs/go-datastore"
 	"github.com/spf13/cobra"
 
 	goheaderstore "github.com/celestiaorg/go-header/store"
+	"github.com/evstack/ev-node/execution/evm"
 	rollcmd "github.com/evstack/ev-node/pkg/cmd"
 	"github.com/evstack/ev-node/pkg/store"
+	"github.com/evstack/ev-node/types"
 )
 
 // NewRollbackCmd creates a command to rollback ev-node state by one height.
@@ -42,7 +47,7 @@ func NewRollbackCmd() *cobra.Command {
 
 			defer func() {
 				if closeErr := rawEvolveDB.Close(); closeErr != nil {
-					fmt.Printf("Warning: failed to close evolve database: %v\n", closeErr)
+					cmd.Printf("Warning: failed to close evolve database: %v\n", closeErr)
 				}
 			}()
 
@@ -61,6 +66,17 @@ func NewRollbackCmd() *cobra.Command {
 			// rollback ev-node main state
 			if err := evolveStore.Rollback(goCtx, height, !syncNode); err != nil {
 				return fmt.Errorf("failed to rollback ev-node state: %w", err)
+			}
+
+			// rollback execution layer via EngineClient
+			engineClient, err := createRollbackEngineClient(cmd, rawEvolveDB)
+			if err != nil {
+				cmd.Printf("Warning: failed to create engine client, skipping EL rollback: %v\n", err)
+			} else {
+				if err := engineClient.Rollback(goCtx, height); err != nil {
+					return fmt.Errorf("failed to rollback execution layer: %w", err)
+				}
+				cmd.Printf("Rolled back execution layer to height %d\n", height)
 			}
 
 			// rollback ev-node goheader state
@@ -101,7 +117,7 @@ func NewRollbackCmd() *cobra.Command {
 				errs = errors.Join(errs, fmt.Errorf("failed to rollback data sync service state: %w", err))
 			}
 
-			fmt.Printf("Rolled back ev-node state to height %d\n", height)
+			cmd.Printf("Rolled back ev-node state to height %d\n", height)
 			if syncNode {
 				fmt.Println("Restart the node with the `--evnode.clear_cache` flag")
 			}
@@ -113,5 +129,42 @@ func NewRollbackCmd() *cobra.Command {
 	cmd.Flags().Uint64Var(&height, "height", 0, "rollback to a specific height")
 	cmd.Flags().BoolVar(&syncNode, "sync-node", false, "sync node (no aggregator)")
 
+	// EVM flags for execution layer rollback
+	cmd.Flags().String(evm.FlagEvmEthURL, "http://localhost:8545", "URL of the Ethereum JSON-RPC endpoint")
+	cmd.Flags().String(evm.FlagEvmEngineURL, "http://localhost:8551", "URL of the Engine API endpoint")
+	cmd.Flags().String(evm.FlagEvmJWTSecretFile, "", "Path to file containing the JWT secret for authentication")
+
 	return cmd
+}
+
+func createRollbackEngineClient(cmd *cobra.Command, db ds.Batching) (*evm.EngineClient, error) {
+	ethURL, err := cmd.Flags().GetString(evm.FlagEvmEthURL)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get '%s' flag: %w", evm.FlagEvmEthURL, err)
+	}
+	engineURL, err := cmd.Flags().GetString(evm.FlagEvmEngineURL)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get '%s' flag: %w", evm.FlagEvmEngineURL, err)
+	}
+
+	jwtSecretFile, err := cmd.Flags().GetString(evm.FlagEvmJWTSecretFile)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get '%s' flag: %w", evm.FlagEvmJWTSecretFile, err)
+	}
+
+	if jwtSecretFile == "" {
+		return nil, fmt.Errorf("JWT secret file must be provided via --evm.jwt-secret-file for EL rollback")
+	}
+
+	secretBytes, err := os.ReadFile(jwtSecretFile)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read JWT secret from file '%s': %w", jwtSecretFile, err)
+	}
+	jwtSecret := string(bytes.TrimSpace(secretBytes))
+
+	if jwtSecret == "" {
+		return nil, fmt.Errorf("JWT secret file '%s' is empty", jwtSecretFile)
+	}
+
+	return evm.NewEngineExecutionClient(ethURL, engineURL, jwtSecret, common.Hash{}, common.Address{}, db, false)
 }

@@ -30,6 +30,11 @@ packages:
           dir: ./test/mocks
           pkgname: mocks
           filename: store.go
+      Batch:
+        config:
+          dir: ./test/mocks
+          pkgname: mocks
+          filename: batch.go
   github.com/celestiaorg/go-header:
     interfaces:
       Store:
@@ -85,3 +90,10 @@ packages:
           dir: ./pkg/da/jsonrpc/mocks
           pkgname: mocks
           filename: header_module_mock.go
+  github.com/evstack/ev-node/block:
+    interfaces:
+      ForcedInclusionRetriever:
+        config:
+          dir: ./pkg/sequencers/common
+          pkgname: common
+          filename: forced_inclusion_retriever_mock.go

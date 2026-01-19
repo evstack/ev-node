@@ -170,12 +170,7 @@ func (s *DASubmitter) recordFailure(reason common.DASubmitterFailureReason) {
 }
 
 // SubmitHeaders submits pending headers to DA layer
-func (s *DASubmitter) SubmitHeaders(ctx context.Context, cache cache.Manager, signer signer.Signer) error {
-	headers, err := cache.GetPendingHeaders(ctx)
-	if err != nil {
-		return fmt.Errorf("failed to get pending headers: %w", err)
-	}
-
+func (s *DASubmitter) SubmitHeaders(ctx context.Context, headers []*types.SignedHeader, marshalledHeaders [][]byte, cache cache.Manager, signer signer.Signer) error {
 	if len(headers) == 0 {
 		return nil
 	}
@@ -184,26 +179,30 @@ func (s *DASubmitter) SubmitHeaders(ctx context.Context, cache cache.Manager, si
 		return fmt.Errorf("signer is nil")
 	}
 
+	if len(marshalledHeaders) != len(headers) {
+		return fmt.Errorf("marshalledHeaders length (%d) does not match headers length (%d)", len(marshalledHeaders), len(headers))
+	}
+
 	s.logger.Info().Int("count", len(headers)).Msg("submitting headers to DA")
 
-	return submitToDA(s, ctx, headers,
-		func(header *types.SignedHeader) ([]byte, error) {
-			// A. Marshal the inner SignedHeader content to bytes (canonical representation for signing)
-			// This effectively signs "Fields 1-3" of the intended DAHeaderEnvelope.
-			contentBytes, err := header.MarshalBinary()
-			if err != nil {
-				return nil, fmt.Errorf("failed to marshal signed header for envelope signing: %w", err)
-			}
+	// Create DA envelopes from pre-marshalled headers
+	envelopes := make([][]byte, len(headers))
+	for i, header := range headers {
+		// Sign the pre-marshalled header content
+		envelopeSignature, err := signer.Sign(marshalledHeaders[i])
+		if err != nil {
+			return fmt.Errorf("failed to sign envelope for header %d: %w", i, err)
+		}
 
-			// B. Sign the contentBytes with the envelope signer (aggregator)
-			envelopeSignature, err := signer.Sign(contentBytes)
-			if err != nil {
-				return nil, fmt.Errorf("failed to sign envelope: %w", err)
-			}
+		// Create the envelope and marshal it
+		envelope, err := header.MarshalDAEnvelope(envelopeSignature)
+		if err != nil {
+			return fmt.Errorf("failed to marshal DA envelope for header %d: %w", i, err)
+		}
+		envelopes[i] = envelope
+	}
 
-			// C. Create the envelope and marshal it
-			return header.MarshalDAEnvelope(envelopeSignature)
-		},
+	return submitToDA(s, ctx, headers, envelopes,
 		func(submitted []*types.SignedHeader, res *datypes.ResultSubmit) {
 			hashes := make([]types.Hash, len(submitted))
 			for i, header := range submitted {
@@ -228,20 +227,19 @@ func (s *DASubmitter) SubmitHeaders(ctx context.Context, cache cache.Manager, si
 }
 
 // SubmitData submits pending data to DA layer
-func (s *DASubmitter) SubmitData(ctx context.Context, cache cache.Manager, signer signer.Signer, genesis genesis.Genesis) error {
-	dataList, err := cache.GetPendingData(ctx)
-	if err != nil {
-		return fmt.Errorf("failed to get pending data: %w", err)
-	}
-
-	if len(dataList) == 0 {
+func (s *DASubmitter) SubmitData(ctx context.Context, unsignedDataList []*types.SignedData, marshalledData [][]byte, cache cache.Manager, signer signer.Signer, genesis genesis.Genesis) error {
+	if len(unsignedDataList) == 0 {
 		return nil
 	}
 
-	// Sign the data
-	signedDataList, err := s.createSignedData(dataList, signer, genesis)
+	if len(marshalledData) != len(unsignedDataList) {
+		return fmt.Errorf("marshalledData length (%d) does not match unsignedDataList length (%d)", len(marshalledData), len(unsignedDataList))
+	}
+
+	// Sign the data (cache returns unsigned SignedData structs)
+	signedDataList, signedDataListBz, err := s.signData(unsignedDataList, marshalledData, signer, genesis)
 	if err != nil {
-		return fmt.Errorf("failed to create signed data: %w", err)
+		return fmt.Errorf("failed to sign data: %w", err)
 	}
 
 	if len(signedDataList) == 0 {
@@ -250,10 +248,7 @@ func (s *DASubmitter) SubmitData(ctx context.Context, cache cache.Manager, signe
 
 	s.logger.Info().Int("count", len(signedDataList)).Msg("submitting data to DA")
 
-	return submitToDA(s, ctx, signedDataList,
-		func(signedData *types.SignedData) ([]byte, error) {
-			return signedData.MarshalBinary()
-		},
+	return submitToDA(s, ctx, signedDataList, signedDataListBz,
 		func(submitted []*types.SignedData, res *datypes.ResultSubmit) {
 			hashes := make([]types.Hash, len(submitted))
 			for i, sd := range submitted {
@@ -276,24 +271,24 @@ func (s *DASubmitter) SubmitData(ctx context.Context, cache cache.Manager, signe
 	)
 }
 
-// createSignedData creates signed data from raw data
-func (s *DASubmitter) createSignedData(dataList []*types.SignedData, signer signer.Signer, genesis genesis.Genesis) ([]*types.SignedData, error) {
+// signData signs unsigned SignedData structs returned from cache
+func (s *DASubmitter) signData(unsignedDataList []*types.SignedData, unsignedDataListBz [][]byte, signer signer.Signer, genesis genesis.Genesis) ([]*types.SignedData, [][]byte, error) {
 	if signer == nil {
-		return nil, fmt.Errorf("signer is nil")
+		return nil, nil, fmt.Errorf("signer is nil")
 	}
 
 	pubKey, err := signer.GetPublic()
 	if err != nil {
-		return nil, fmt.Errorf("failed to get public key: %w", err)
+		return nil, nil, fmt.Errorf("failed to get public key: %w", err)
 	}
 
 	addr, err := signer.GetAddress()
 	if err != nil {
-		return nil, fmt.Errorf("failed to get address: %w", err)
+		return nil, nil, fmt.Errorf("failed to get address: %w", err)
 	}
 
 	if len(genesis.ProposerAddress) > 0 && !bytes.Equal(addr, genesis.ProposerAddress) {
-		return nil, fmt.Errorf("signer address mismatch with genesis proposer")
+		return nil, nil, fmt.Errorf("signer address mismatch with genesis proposer")
 	}
 
 	signerInfo := types.Signer{
@@ -301,35 +296,37 @@ func (s *DASubmitter) createSignedData(dataList []*types.SignedData, signer sign
 		Address: addr,
 	}
 
-	signedDataList := make([]*types.SignedData, 0, len(dataList))
+	signedDataList := make([]*types.SignedData, 0, len(unsignedDataList))
+	signedDataListBz := make([][]byte, 0, len(unsignedDataListBz))
 
-	for _, data := range dataList {
+	for i, unsignedData := range unsignedDataList {
 		// Skip empty data
-		if len(data.Txs) == 0 {
+		if len(unsignedData.Txs) == 0 {
 			continue
 		}
 
-		// Sign the data
-		dataBytes, err := data.Data.MarshalBinary()
+		signature, err := signer.Sign(unsignedDataListBz[i])
 		if err != nil {
-			return nil, fmt.Errorf("failed to marshal data: %w", err)
-		}
-
-		signature, err := signer.Sign(dataBytes)
-		if err != nil {
-			return nil, fmt.Errorf("failed to sign data: %w", err)
+			return nil, nil, fmt.Errorf("failed to sign data: %w", err)
 		}
 
 		signedData := &types.SignedData{
-			Data:      data.Data,
-			Signature: signature,
+			Data:      unsignedData.Data,
 			Signer:    signerInfo,
+			Signature: signature,
 		}
 
 		signedDataList = append(signedDataList, signedData)
+
+		signedDataBz, err := signedData.MarshalBinary()
+		if err != nil {
+			return nil, nil, fmt.Errorf("failed to marshal signed data: %w", err)
+		}
+
+		signedDataListBz = append(signedDataListBz, signedDataBz)
 	}
 
-	return signedDataList, nil
+	return signedDataList, signedDataListBz, nil
 }
 
 // mergeSubmitOptions merges the base submit options with a signing address.
@@ -375,16 +372,15 @@ func submitToDA[T any](
 	s *DASubmitter,
 	ctx context.Context,
 	items []T,
-	marshalFn func(T) ([]byte, error),
+	marshaled [][]byte,
 	postSubmit func([]T, *datypes.ResultSubmit),
 	itemType string,
 	namespace []byte,
 	options []byte,
 	getTotalPendingFn func() uint64,
 ) error {
-	marshaled, err := marshalItems(ctx, items, marshalFn, itemType)
-	if err != nil {
-		return err
+	if len(items) != len(marshaled) {
+		return fmt.Errorf("items length (%d) does not match marshaled length (%d)", len(items), len(marshaled))
 	}
 
 	pol := defaultRetryPolicy(s.config.DA.MaxSubmitAttempts, s.config.DA.BlockTime.Duration)
@@ -544,55 +540,6 @@ func limitBatchBySize[T any](items []T, marshaled [][]byte, maxBytes int) ([]T, 
 		return nil, nil, fmt.Errorf("no items fit within %d bytes", maxBytes)
 	}
 	return items[:count], marshaled[:count], nil
-}
-
-func marshalItems[T any](
-	parentCtx context.Context,
-	items []T,
-	marshalFn func(T) ([]byte, error),
-	itemType string,
-) ([][]byte, error) {
-	if len(items) == 0 {
-		return nil, nil
-	}
-	marshaled := make([][]byte, len(items))
-	ctx, cancel := context.WithCancel(parentCtx)
-	defer cancel()
-
-	// Semaphore to limit concurrency to 32 workers
-	sem := make(chan struct{}, 32)
-
-	// Use a channel to collect results from goroutines
-	resultCh := make(chan error, len(items))
-
-	// Marshal items concurrently
-	for i, item := range items {
-		go func(idx int, itm T) {
-			sem <- struct{}{}
-			defer func() { <-sem }()
-
-			select {
-			case <-ctx.Done():
-				resultCh <- ctx.Err()
-			default:
-				bz, err := marshalFn(itm)
-				if err != nil {
-					resultCh <- fmt.Errorf("failed to marshal %s item at index %d: %w", itemType, idx, err)
-					return
-				}
-				marshaled[idx] = bz
-				resultCh <- nil
-			}
-		}(i, item)
-	}
-
-	// Wait for all goroutines to complete and check for errors
-	for i := 0; i < len(items); i++ {
-		if err := <-resultCh; err != nil {
-			return nil, err
-		}
-	}
-	return marshaled, nil
 }
 
 func waitForBackoffOrContext(ctx context.Context, backoff time.Duration) error {

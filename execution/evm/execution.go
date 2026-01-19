@@ -23,6 +23,7 @@ import (
 	"github.com/rs/zerolog"
 
 	"github.com/evstack/ev-node/core/execution"
+	"github.com/evstack/ev-node/pkg/telemetry"
 )
 
 const (
@@ -56,6 +57,12 @@ var (
 
 // Ensure EngineAPIExecutionClient implements the execution.Execute interface
 var _ execution.Executor = (*EngineClient)(nil)
+
+// Ensure EngineClient implements the execution.HeightProvider interface
+var _ execution.HeightProvider = (*EngineClient)(nil)
+
+// Ensure EngineClient implements the execution.Rollbackable interface
+var _ execution.Rollbackable = (*EngineClient)(nil)
 
 // validatePayloadStatus checks the payload status and returns appropriate errors.
 // It implements the Engine API specification's status handling:
@@ -129,13 +136,34 @@ func retryWithBackoffOnPayloadStatus(ctx context.Context, fn func() error, maxRe
 	return fmt.Errorf("max retries (%d) exceeded for %s", maxRetries, operation)
 }
 
+// EngineRPCClient abstracts Engine API RPC calls for tracing and testing.
+type EngineRPCClient interface {
+	// ForkchoiceUpdated updates the forkchoice state and optionally starts payload building.
+	ForkchoiceUpdated(ctx context.Context, state engine.ForkchoiceStateV1, args map[string]any) (*engine.ForkChoiceResponse, error)
+
+	// GetPayload retrieves a previously requested execution payload.
+	GetPayload(ctx context.Context, payloadID engine.PayloadID) (*engine.ExecutionPayloadEnvelope, error)
+
+	// NewPayload submits a new execution payload for validation.
+	NewPayload(ctx context.Context, payload *engine.ExecutableData, blobHashes []string, parentBeaconBlockRoot string, executionRequests [][]byte) (*engine.PayloadStatusV1, error)
+}
+
+// EthRPCClient abstracts Ethereum JSON-RPC calls for tracing and testing.
+type EthRPCClient interface {
+	// HeaderByNumber retrieves a block header by number (nil = latest).
+	HeaderByNumber(ctx context.Context, number *big.Int) (*types.Header, error)
+
+	// GetTxs retrieves pending transactions from the transaction pool.
+	GetTxs(ctx context.Context) ([]string, error)
+}
+
 // EngineClient represents a client that interacts with an Ethereum execution engine
 // through the Engine API. It manages connections to both the engine and standard Ethereum
 // APIs, and maintains state related to block processing.
 type EngineClient struct {
-	engineClient  *rpc.Client       // Client for Engine API calls
-	ethClient     *ethclient.Client // Client for standard Ethereum API calls
-	genesisHash   common.Hash       // Hash of the genesis block
+	engineClient  EngineRPCClient // Client for Engine API calls
+	ethClient     EthRPCClient    // Client for standard Ethereum API calls
+	genesisHash   common.Hash     // Hash of the genesis block
 	initialHeight uint64
 	feeRecipient  common.Address // Address to receive transaction fees
 
@@ -157,6 +185,8 @@ type EngineClient struct {
 // The db parameter is required for ExecMeta tracking which enables idempotent
 // execution and crash recovery. The db is wrapped with a prefix to isolate
 // EVM execution data from other ev-node data.
+// When tracingEnabled is true, the client will inject W3C trace context headers
+// and wrap Engine API and Eth API calls with OpenTelemetry spans.
 func NewEngineExecutionClient(
 	ethURL,
 	engineURL string,
@@ -164,35 +194,58 @@ func NewEngineExecutionClient(
 	genesisHash common.Hash,
 	feeRecipient common.Address,
 	db ds.Batching,
+	tracingEnabled bool,
 ) (*EngineClient, error) {
 	if db == nil {
 		return nil, errors.New("db is required for EVM execution client")
 	}
 
-	ethClient, err := ethclient.Dial(ethURL)
+	var rpcOpts []rpc.ClientOption
+	// If tracing enabled, add W3C header propagation to rpcOpts
+	if tracingEnabled {
+		rpcOpts = append(rpcOpts, rpc.WithHTTPClient(
+			telemetry.NewPropagatingHTTPClient(http.DefaultTransport)))
+	}
+
+	// Create ETH RPC client with HTTP options
+	ethRPC, err := rpc.DialOptions(context.Background(), ethURL, rpcOpts...)
 	if err != nil {
 		return nil, err
 	}
+	rawEthClient := ethclient.NewClient(ethRPC)
 
 	secret, err := decodeSecret(jwtSecret)
 	if err != nil {
 		return nil, err
 	}
 
-	engineClient, err := rpc.DialOptions(context.Background(), engineURL,
-		rpc.WithHTTPAuth(func(h http.Header) error {
-			authToken, err := getAuthToken(secret)
-			if err != nil {
-				return err
-			}
-
-			if authToken != "" {
-				h.Set("Authorization", "Bearer "+authToken)
-			}
-			return nil
-		}))
+	// Create Engine RPC with optional HTTP client and JWT auth
+	// Compose engine options: pass-through rpcOpts plus JWT auth
+	engineOptions := make([]rpc.ClientOption, len(rpcOpts))
+	copy(engineOptions, rpcOpts) // copy to avoid using same backing array from rpcOpts.
+	engineOptions = append(engineOptions, rpc.WithHTTPAuth(func(h http.Header) error {
+		authToken, err := getAuthToken(secret)
+		if err != nil {
+			return err
+		}
+		if authToken != "" {
+			h.Set("Authorization", "Bearer "+authToken)
+		}
+		return nil
+	}))
+	rawEngineClient, err := rpc.DialOptions(context.Background(), engineURL, engineOptions...)
 	if err != nil {
 		return nil, err
+	}
+
+	// wrap raw clients with interfaces
+	engineClient := NewEngineRPCClient(rawEngineClient)
+	ethClient := NewEthRPCClient(rawEthClient)
+
+	// if tracing enabled, wrap with traced decorators
+	if tracingEnabled {
+		engineClient = withTracingEngineRPCClient(engineClient)
+		ethClient = withTracingEthRPCClient(ethClient)
 	}
 
 	return &EngineClient{
@@ -222,8 +275,7 @@ func (c *EngineClient) InitChain(ctx context.Context, genesisTime time.Time, ini
 
 	// Acknowledge the genesis block with retry logic for SYNCING status
 	err := retryWithBackoffOnPayloadStatus(ctx, func() error {
-		var forkchoiceResult engine.ForkChoiceResponse
-		err := c.engineClient.CallContext(ctx, &forkchoiceResult, "engine_forkchoiceUpdatedV3",
+		forkchoiceResult, err := c.engineClient.ForkchoiceUpdated(ctx,
 			engine.ForkchoiceStateV1{
 				HeadBlockHash:      c.genesisHash,
 				SafeBlockHash:      c.genesisHash,
@@ -263,8 +315,7 @@ func (c *EngineClient) InitChain(ctx context.Context, genesisTime time.Time, ini
 
 // GetTxs retrieves transactions from the current execution payload
 func (c *EngineClient) GetTxs(ctx context.Context) ([][]byte, error) {
-	var result []string
-	err := c.ethClient.Client().CallContext(ctx, &result, "txpoolExt_getTxs")
+	result, err := c.ethClient.GetTxs(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get tx pool content: %w", err)
 	}
@@ -293,7 +344,7 @@ func (c *EngineClient) GetTxs(ctx context.Context) ([][]byte, error) {
 func (c *EngineClient) ExecuteTxs(ctx context.Context, txs [][]byte, blockHeight uint64, timestamp time.Time, prevStateRoot []byte) (updatedStateRoot []byte, maxBytes uint64, err error) {
 
 	// 1. Check for idempotent execution
-	stateRoot, payloadID, found, err := c.checkIdempotency(ctx, blockHeight, timestamp, txs)
+	stateRoot, payloadID, found, err := c.reconcileExecutionAtHeight(ctx, blockHeight, timestamp, txs)
 	if err != nil {
 		c.logger.Warn().Err(err).Uint64("height", blockHeight).Msg("ExecuteTxs: idempotency check failed")
 		// Continue execution on error, as it might be transient
@@ -356,8 +407,7 @@ func (c *EngineClient) ExecuteTxs(ctx context.Context, txs [][]byte, blockHeight
 	// 3. Call forkchoice update to get PayloadID
 	var newPayloadID *engine.PayloadID
 	err = retryWithBackoffOnPayloadStatus(ctx, func() error {
-		var forkchoiceResult engine.ForkChoiceResponse
-		err := c.engineClient.CallContext(ctx, &forkchoiceResult, "engine_forkchoiceUpdatedV3", args, evPayloadAttrs)
+		forkchoiceResult, err := c.engineClient.ForkchoiceUpdated(ctx, args, evPayloadAttrs)
 		if err != nil {
 			return fmt.Errorf("forkchoice update failed: %w", err)
 		}
@@ -504,10 +554,10 @@ func (c *EngineClient) setFinalWithHeight(ctx context.Context, blockHash common.
 
 // doForkchoiceUpdate performs the actual forkchoice update RPC call with retry logic.
 func (c *EngineClient) doForkchoiceUpdate(ctx context.Context, args engine.ForkchoiceStateV1, operation string) error {
+
 	// Call forkchoice update with retry logic for SYNCING status
 	err := retryWithBackoffOnPayloadStatus(ctx, func() error {
-		var forkchoiceResult engine.ForkChoiceResponse
-		err := c.engineClient.CallContext(ctx, &forkchoiceResult, "engine_forkchoiceUpdatedV3", args, nil)
+		forkchoiceResult, err := c.engineClient.ForkchoiceUpdated(ctx, args, nil)
 		if err != nil {
 			return fmt.Errorf("forkchoice update failed: %w", err)
 		}
@@ -647,35 +697,57 @@ func (c *EngineClient) ResumePayload(ctx context.Context, payloadIDBytes []byte)
 	return stateRoot, err
 }
 
-// checkIdempotency checks if the block at the given height and timestamp has already been executed.
+// reconcileExecutionAtHeight checks if the block at the given height and timestamp has already been executed.
 // It returns:
 // - stateRoot: non-nil if block is already promoted/finalized (idempotent success)
 // - payloadID: non-nil if block execution was started but not finished (resume needed)
 // - found: true if either of the above is true
 // - err: error during checks
-func (c *EngineClient) checkIdempotency(ctx context.Context, height uint64, timestamp time.Time, txs [][]byte) (stateRoot []byte, payloadID *engine.PayloadID, found bool, err error) {
+func (c *EngineClient) reconcileExecutionAtHeight(ctx context.Context, height uint64, timestamp time.Time, txs [][]byte) (stateRoot []byte, payloadID *engine.PayloadID, found bool, err error) {
 	// 1. Check ExecMeta from store
 	execMeta, err := c.store.GetExecMeta(ctx, height)
 	if err == nil && execMeta != nil {
-		// If we already have a promoted block at this height, return the stored StateRoot
+		// If we already have a promoted block at this height, verify timestamp matches
+		// to catch Dual-Store Conflicts where ExecMeta was saved for an old block
+		// that was later replaced via consensus.
 		if execMeta.Stage == ExecStagePromoted && len(execMeta.StateRoot) > 0 {
-			c.logger.Info().
+			if execMeta.Timestamp == timestamp.Unix() {
+				c.logger.Info().
+					Uint64("height", height).
+					Str("stage", execMeta.Stage).
+					Msg("ExecuteTxs: reusing already-promoted execution (idempotent)")
+				return execMeta.StateRoot, nil, true, nil
+			}
+			// Timestamp mismatch - ExecMeta is stale from an old block that was replaced.
+			// Ignore it and proceed to EL check which will handle rollback if needed.
+			c.logger.Warn().
 				Uint64("height", height).
-				Str("stage", execMeta.Stage).
-				Msg("ExecuteTxs: reusing already-promoted execution (idempotent)")
-			return execMeta.StateRoot, nil, true, nil
+				Int64("execmeta_timestamp", execMeta.Timestamp).
+				Int64("requested_timestamp", timestamp.Unix()).
+				Msg("ExecuteTxs: ExecMeta timestamp mismatch, ignoring stale promoted record")
 		}
 
-		// If we have a started execution with a payloadID, return it to resume
+		// If we have a started execution with a payloadID, validate it still exists before resuming.
+		// After node restart, the EL's payload cache is ephemeral and the payloadID may be stale.
 		if execMeta.Stage == ExecStageStarted && len(execMeta.PayloadID) == 8 {
-			c.logger.Info().
-				Uint64("height", height).
-				Str("stage", execMeta.Stage).
-				Msg("ExecuteTxs: found in-progress execution with payloadID, returning payloadID for resume")
-
 			var pid engine.PayloadID
 			copy(pid[:], execMeta.PayloadID)
-			return nil, &pid, true, nil
+
+			// Validate payload still exists by attempting to retrieve it
+			if _, err = c.engineClient.GetPayload(ctx, pid); err == nil {
+				c.logger.Info().
+					Uint64("height", height).
+					Str("stage", execMeta.Stage).
+					Msg("ExecuteTxs: found in-progress execution with payloadID, returning payloadID for resume")
+				return nil, &pid, true, nil
+			}
+			// Payload is stale (expired or node restarted) - proceed with fresh execution
+			c.logger.Warn().
+				Uint64("height", height).
+				Str("payloadID", pid.String()).
+				Err(err).
+				Msg("ExecuteTxs: stale ExecMeta payloadID no longer valid in EL, will re-execute")
+			// Don't return - fall through to fresh execution
 		}
 	}
 
@@ -701,12 +773,27 @@ func (c *EngineClient) checkIdempotency(ctx context.Context, height uint64, time
 
 			return existingStateRoot.Bytes(), nil, true, nil
 		}
-		// Timestamp mismatch - log warning but proceed
+		// We need to rollback the EL to height-1 so it can re-execute
 		c.logger.Warn().
 			Uint64("height", height).
 			Uint64("existingTimestamp", existingTimestamp).
 			Int64("requestedTimestamp", timestamp.Unix()).
-			Msg("ExecuteTxs: block exists at height but timestamp differs")
+			Msg("ExecuteTxs: block exists at height but timestamp differs - rolling back EL to re-sync")
+
+		// Rollback to height-1 to allow re-execution with correct timestamp
+		if height > 0 {
+			if err := c.Rollback(ctx, height-1); err != nil {
+				c.logger.Error().Err(err).
+					Uint64("height", height).
+					Uint64("rollback_target", height-1).
+					Msg("ExecuteTxs: failed to rollback EL for timestamp mismatch")
+				return nil, nil, false, fmt.Errorf("failed to rollback EL for timestamp mismatch at height %d: %w", height, err)
+			}
+			c.logger.Info().
+				Uint64("height", height).
+				Uint64("rollback_target", height-1).
+				Msg("ExecuteTxs: EL rolled back successfully, will re-execute with correct timestamp")
+		}
 	}
 
 	return nil, nil, false, nil
@@ -758,8 +845,7 @@ func (c *EngineClient) filterTransactions(ctx context.Context, txs [][]byte, blo
 // processPayload handles the common logic of getting, submitting, and finalizing a payload.
 func (c *EngineClient) processPayload(ctx context.Context, payloadID engine.PayloadID, txs [][]byte) ([]byte, uint64, error) {
 	// 1. Get Payload
-	var payloadResult engine.ExecutionPayloadEnvelope
-	err := c.engineClient.CallContext(ctx, &payloadResult, "engine_getPayloadV4", payloadID)
+	payloadResult, err := c.engineClient.GetPayload(ctx, payloadID)
 	if err != nil {
 		return nil, 0, fmt.Errorf("get payload failed: %w", err)
 	}
@@ -768,9 +854,8 @@ func (c *EngineClient) processPayload(ctx context.Context, payloadID engine.Payl
 	blockTimestamp := int64(payloadResult.ExecutionPayload.Timestamp)
 
 	// 2. Submit Payload (newPayload)
-	var newPayloadResult engine.PayloadStatusV1
 	err = retryWithBackoffOnPayloadStatus(ctx, func() error {
-		err := c.engineClient.CallContext(ctx, &newPayloadResult, "engine_newPayloadV4",
+		newPayloadResult, err := c.engineClient.NewPayload(ctx,
 			payloadResult.ExecutionPayload,
 			[]string{},          // No blob hashes
 			common.Hash{}.Hex(), // Use zero hash for parentBeaconBlockRoot
@@ -780,7 +865,7 @@ func (c *EngineClient) processPayload(ctx context.Context, payloadID engine.Payl
 			return fmt.Errorf("new payload submission failed: %w", err)
 		}
 
-		if err := validatePayloadStatus(newPayloadResult); err != nil {
+		if err := validatePayloadStatus(*newPayloadResult); err != nil {
 			c.logger.Warn().
 				Str("status", newPayloadResult.Status).
 				Str("latestValidHash", latestValidHashHex(newPayloadResult.LatestValidHash)).
@@ -864,6 +949,47 @@ func (c *EngineClient) GetLatestHeight(ctx context.Context) (uint64, error) {
 		return 0, fmt.Errorf("failed to get latest block: %w", err)
 	}
 	return header.Number.Uint64(), nil
+}
+
+// Rollback resets the execution layer head to the specified height using forkchoice update.
+// This is used for recovery when the EL is ahead of the consensus layer (e.g., during rolling restarts
+//
+// Implements the execution.Rollbackable interface.
+func (c *EngineClient) Rollback(ctx context.Context, targetHeight uint64) error {
+	// Get block hash at target height
+	blockHash, _, _, _, err := c.getBlockInfo(ctx, targetHeight)
+	if err != nil {
+		return fmt.Errorf("get block at height %d: %w", targetHeight, err)
+	}
+
+	c.logger.Info().
+		Uint64("target_height", targetHeight).
+		Str("block_hash", blockHash.Hex()).
+		Msg("rolling back execution layer via forkchoice update")
+
+	// Reset head, safe, and finalized to target block
+	// This forces the EL to reorg its canonical chain to the target height
+	c.mu.Lock()
+	c.currentHeadBlockHash = blockHash
+	c.currentHeadHeight = targetHeight
+	c.currentSafeBlockHash = blockHash
+	c.currentFinalizedBlockHash = blockHash
+	args := engine.ForkchoiceStateV1{
+		HeadBlockHash:      blockHash,
+		SafeBlockHash:      blockHash,
+		FinalizedBlockHash: blockHash,
+	}
+	c.mu.Unlock()
+
+	if err := c.doForkchoiceUpdate(ctx, args, "Rollback"); err != nil {
+		return fmt.Errorf("forkchoice update for rollback failed: %w", err)
+	}
+
+	c.logger.Info().
+		Uint64("target_height", targetHeight).
+		Msg("execution layer rollback completed")
+
+	return nil
 }
 
 // decodeSecret decodes a hex-encoded JWT secret string into a byte slice.

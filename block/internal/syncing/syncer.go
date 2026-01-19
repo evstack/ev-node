@@ -28,6 +28,8 @@ import (
 	"github.com/evstack/ev-node/types"
 )
 
+var _ BlockSyncer = (*Syncer)(nil)
+
 // forcedInclusionGracePeriodConfig contains internal configuration for forced inclusion grace periods.
 type forcedInclusionGracePeriodConfig struct {
 	// basePeriod is the base number of additional epochs allowed for including forced inclusion transactions
@@ -119,6 +121,10 @@ type Syncer struct {
 	// P2P wait coordination
 	p2pWaitState atomic.Value // stores p2pWaitState
 
+	// blockSyncer is the interface used for block sync operations.
+	// defaults to self, but can be wrapped with tracing.
+	blockSyncer BlockSyncer
+
 	// Async DA retriever
 	asyncDARetriever *AsyncDARetriever
 }
@@ -158,7 +164,7 @@ func NewSyncer(
 	blockFullnessEMA := &atomic.Pointer[float64]{}
 	blockFullnessEMA.Store(&initialFullness)
 
-	return &Syncer{
+	s := &Syncer{
 		store:                 store,
 		exec:                  exec,
 		cache:                 cache,
@@ -178,6 +184,14 @@ func NewSyncer(
 		blockFullnessEMA:      blockFullnessEMA,
 		gracePeriodConfig:     newForcedInclusionGracePeriodConfig(),
 	}
+	s.blockSyncer = s
+	return s
+}
+
+// SetBlockSyncer sets the block syncer interface, allowing injection of
+// a tracing wrapper or other decorator.
+func (s *Syncer) SetBlockSyncer(bs BlockSyncer) {
+	s.blockSyncer = bs
 }
 
 // Start begins the syncing component
@@ -192,8 +206,8 @@ func (s *Syncer) Start(ctx context.Context) error {
 	s.daRetriever = NewDARetriever(s.daClient, s.cache, s.genesis, s.logger)
 	s.asyncDARetriever = NewAsyncDARetriever(s.daRetriever, s.heightInCh, s.logger)
 	s.asyncDARetriever.Start(s.ctx)
-	s.fiRetriever = da.NewForcedInclusionRetriever(s.daClient, s.logger, s.genesis.DAStartHeight, s.genesis.DAEpochForcedInclusion)
-	s.p2pHandler = NewP2PHandler(s.headerStore, s.dataStore, s.cache, s.genesis, s.logger)
+	s.fiRetriever = da.NewForcedInclusionRetriever(s.daClient, s.logger, s.config, s.genesis.DAStartHeight, s.genesis.DAEpochForcedInclusion)
+	s.p2pHandler = NewP2PHandler(s.headerStore.Store(), s.dataStore.Store(), s.cache, s.genesis, s.logger)
 	if currentHeight, err := s.store.Height(s.ctx); err != nil {
 		s.logger.Error().Err(err).Msg("failed to set initial processed height for p2p handler")
 	} else {
@@ -220,12 +234,41 @@ func (s *Syncer) Start(ctx context.Context) error {
 
 // Stop shuts down the syncing component
 func (s *Syncer) Stop() error {
-	if s.cancel != nil {
-		s.cancel()
+	if s.cancel == nil {
+		return nil
 	}
+
+	s.cancel()
 	s.cancelP2PWait(0)
 	s.wg.Wait()
+
+	drainCtx, drainCancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer drainCancel()
+
+	drained := 0
+drainLoop:
+	for {
+		select {
+		case event, ok := <-s.heightInCh:
+			if !ok {
+				break drainLoop
+			}
+			s.processHeightEvent(drainCtx, &event)
+			drained++
+		case <-drainCtx.Done():
+			s.logger.Warn().Int("remaining", len(s.heightInCh)).Msg("timeout draining height events during shutdown")
+			break drainLoop
+		default:
+			break drainLoop
+		}
+	}
+	if drained > 0 {
+		s.logger.Info().Int("count", drained).Msg("drained pending height events during shutdown")
+	}
+
 	s.logger.Info().Msg("syncer stopped")
+	close(s.heightInCh)
+	s.cancel = nil
 	return nil
 }
 
@@ -273,6 +316,21 @@ func (s *Syncer) initializeState() error {
 	if state.DAHeight != 0 && state.DAHeight < s.genesis.DAStartHeight {
 		return fmt.Errorf("DA height (%d) is lower than DA start height (%d)", state.DAHeight, s.genesis.DAStartHeight)
 	}
+
+	// Persist the initialized state to the store
+	batch, err := s.store.NewBatch(s.ctx)
+	if err != nil {
+		return fmt.Errorf("failed to create batch: %w", err)
+	}
+	if err := batch.SetHeight(state.LastBlockHeight); err != nil {
+		return fmt.Errorf("failed to set store height: %w", err)
+	}
+	if err := batch.UpdateState(state); err != nil {
+		return fmt.Errorf("failed to update state: %w", err)
+	}
+	if err := batch.Commit(); err != nil {
+		return fmt.Errorf("failed to commit batch: %w", err)
+	}
 	s.SetLastState(state)
 
 	// Set DA height to the maximum of the genesis start height, the state's DA height, the cached DA height, and the highest stored included DA height.
@@ -303,8 +361,10 @@ func (s *Syncer) processLoop() {
 		select {
 		case <-s.ctx.Done():
 			return
-		case heightEvent := <-s.heightInCh:
-			s.processHeightEvent(&heightEvent)
+		case heightEvent, ok := <-s.heightInCh:
+			if ok {
+				s.processHeightEvent(s.ctx, &heightEvent)
+			}
 		}
 	}
 }
@@ -377,10 +437,8 @@ func (s *Syncer) fetchDAUntilCaughtUp() error {
 
 		// Process DA events
 		for _, event := range events {
-			select {
-			case s.heightInCh <- event:
-			default:
-				s.cache.SetPendingEvent(event.Header.Height(), &event)
+			if err := s.pipeEvent(s.ctx, event); err != nil {
+				return err
 			}
 		}
 
@@ -475,7 +533,20 @@ func (s *Syncer) waitForGenesis() bool {
 	return true
 }
 
-func (s *Syncer) processHeightEvent(event *common.DAHeightEvent) {
+func (s *Syncer) pipeEvent(ctx context.Context, event common.DAHeightEvent) error {
+	select {
+	case s.heightInCh <- event:
+		return nil
+	case <-ctx.Done():
+		s.cache.SetPendingEvent(event.Header.Height(), &event)
+		return ctx.Err()
+	default:
+		s.cache.SetPendingEvent(event.Header.Height(), &event)
+	}
+	return nil
+}
+
+func (s *Syncer) processHeightEvent(ctx context.Context, event *common.DAHeightEvent) {
 	height := event.Header.Height()
 	headerHash := event.Header.Hash().String()
 
@@ -485,7 +556,7 @@ func (s *Syncer) processHeightEvent(event *common.DAHeightEvent) {
 		Str("hash", headerHash).
 		Msg("processing height event")
 
-	currentHeight, err := s.store.Height(s.ctx)
+	currentHeight, err := s.store.Height(ctx)
 	if err != nil {
 		s.logger.Error().Err(err).Msg("failed to get current height")
 		return
@@ -550,7 +621,7 @@ func (s *Syncer) processHeightEvent(event *common.DAHeightEvent) {
 	// Last data must be got from store if the event comes from DA and the data hash is empty.
 	// When if the event comes from P2P, the sequencer and then all the full nodes contains the data.
 	if event.Source == common.SourceDA && bytes.Equal(event.Header.DataHash, common.DataHashForEmptyTxs) && currentHeight > 0 {
-		_, lastData, err := s.store.GetBlockData(s.ctx, currentHeight)
+		_, lastData, err := s.store.GetBlockData(ctx, currentHeight)
 		if err != nil {
 			s.logger.Error().Err(err).Msg("failed to get last data")
 			return
@@ -562,9 +633,12 @@ func (s *Syncer) processHeightEvent(event *common.DAHeightEvent) {
 	s.cancelP2PWait(height)
 
 	// Try to sync the next block
-	if err := s.trySyncNextBlock(event); err != nil {
-		s.logger.Error().Err(err).Msg("failed to sync next block")
-		// If the error is not due to an validation error, re-store the event as pending
+	if err := s.blockSyncer.TrySyncNextBlock(ctx, event); err != nil {
+		s.logger.Error().Err(err).
+			Uint64("event-height", event.Header.Height()).
+			Uint64("state-height", s.getLastState().LastBlockHeight).
+			Msg("failed to sync next block")
+		// If the error is not due to a validation error, re-store the event as pending
 		switch {
 		case errors.Is(err, errInvalidBlock):
 			// do not reschedule
@@ -582,7 +656,7 @@ func (s *Syncer) processHeightEvent(event *common.DAHeightEvent) {
 
 	// only save to p2p stores if the event came from DA
 	if event.Source == common.SourceDA { // TODO(@julienrbrt): To be reverted once DA Hints are merged (https://github.com/evstack/ev-node/pull/2891)
-		g, ctx := errgroup.WithContext(s.ctx)
+		g, ctx := errgroup.WithContext(ctx)
 		g.Go(func() error {
 			// broadcast header locally only — prevents spamming the p2p network with old height notifications,
 			// allowing the syncer to update its target and fill missing blocks
@@ -606,12 +680,12 @@ var (
 	errInvalidState = errors.New("invalid state")
 )
 
-// trySyncNextBlock attempts to sync the next available block
+// TrySyncNextBlock attempts to sync the next available block
 // the event is always the next block in sequence as processHeightEvent ensures it.
-func (s *Syncer) trySyncNextBlock(event *common.DAHeightEvent) error {
+func (s *Syncer) TrySyncNextBlock(ctx context.Context, event *common.DAHeightEvent) error {
 	select {
-	case <-s.ctx.Done():
-		return s.ctx.Err()
+	case <-ctx.Done():
+		return ctx.Err()
 	default:
 	}
 
@@ -626,7 +700,7 @@ func (s *Syncer) trySyncNextBlock(event *common.DAHeightEvent) error {
 	// Compared to the executor logic where the current block needs to be applied first,
 	// here only the previous block needs to be applied to proceed to the verification.
 	// The header validation must be done before applying the block to avoid executing gibberish
-	if err := s.validateBlock(currentState, data, header); err != nil {
+	if err := s.ValidateBlock(ctx, currentState, data, header); err != nil {
 		// remove header as da included (not per se needed, but keep cache clean)
 		s.cache.RemoveHeaderDAIncluded(headerHash)
 		if !errors.Is(err, errInvalidState) && !errors.Is(err, errInvalidBlock) {
@@ -637,7 +711,7 @@ func (s *Syncer) trySyncNextBlock(event *common.DAHeightEvent) error {
 
 	// Verify forced inclusion transactions if configured
 	if event.Source == common.SourceDA {
-		if err := s.verifyForcedInclusionTxs(currentState, data); err != nil {
+		if err := s.VerifyForcedInclusionTxs(ctx, currentState, data); err != nil {
 			s.logger.Error().Err(err).Uint64("height", nextHeight).Msg("forced inclusion verification failed")
 			if errors.Is(err, errMaliciousProposer) {
 				s.cache.RemoveHeaderDAIncluded(headerHash)
@@ -647,7 +721,7 @@ func (s *Syncer) trySyncNextBlock(event *common.DAHeightEvent) error {
 	}
 
 	// Apply block
-	newState, err := s.applyBlock(header.Header, data, currentState)
+	newState, err := s.ApplyBlock(ctx, header.Header, data, currentState)
 	if err != nil {
 		return fmt.Errorf("failed to apply block: %w", err)
 	}
@@ -659,7 +733,7 @@ func (s *Syncer) trySyncNextBlock(event *common.DAHeightEvent) error {
 		newState.DAHeight = event.DaHeight
 	}
 
-	batch, err := s.store.NewBatch(s.ctx)
+	batch, err := s.store.NewBatch(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to create batch: %w", err)
 	}
@@ -697,8 +771,8 @@ func (s *Syncer) trySyncNextBlock(event *common.DAHeightEvent) error {
 	return nil
 }
 
-// applyBlock applies a block to get the new state
-func (s *Syncer) applyBlock(header types.Header, data *types.Data, currentState types.State) (types.State, error) {
+// ApplyBlock applies a block to get the new state
+func (s *Syncer) ApplyBlock(ctx context.Context, header types.Header, data *types.Data, currentState types.State) (types.State, error) {
 	// Prepare transactions
 	rawTxs := make([][]byte, len(data.Txs))
 	for i, tx := range data.Txs {
@@ -706,7 +780,7 @@ func (s *Syncer) applyBlock(header types.Header, data *types.Data, currentState 
 	}
 
 	// Execute transactions
-	ctx := context.WithValue(s.ctx, types.HeaderContextKey, header)
+	ctx = context.WithValue(ctx, types.HeaderContextKey, header)
 	newAppHash, err := s.executeTxsWithRetry(ctx, rawTxs, header, currentState)
 	if err != nil {
 		s.sendCriticalError(fmt.Errorf("failed to execute transactions: %w", err))
@@ -741,8 +815,8 @@ func (s *Syncer) executeTxsWithRetry(ctx context.Context, rawTxs [][]byte, heade
 			select {
 			case <-time.After(common.MaxRetriesTimeout):
 				continue
-			case <-s.ctx.Done():
-				return nil, fmt.Errorf("context cancelled during retry: %w", s.ctx.Err())
+			case <-ctx.Done():
+				return nil, fmt.Errorf("context cancelled during retry: %w", ctx.Err())
 			}
 		}
 
@@ -752,11 +826,11 @@ func (s *Syncer) executeTxsWithRetry(ctx context.Context, rawTxs [][]byte, heade
 	return nil, nil
 }
 
-// validateBlock validates a synced block
+// ValidateBlock validates a synced block
 // NOTE: if the header was gibberish and somehow passed all validation prior but the data was correct
 // or if the data was gibberish and somehow passed all validation prior but the header was correct
 // we are still losing both in the pending event. This should never happen.
-func (s *Syncer) validateBlock(currState types.State, data *types.Data, header *types.SignedHeader) error {
+func (s *Syncer) ValidateBlock(_ context.Context, currState types.State, data *types.Data, header *types.SignedHeader) error {
 	// Set custom verifier for aggregator node signature
 	header.SetCustomVerifierForSyncNode(s.options.SyncNodeSignatureBytesProvider)
 
@@ -851,11 +925,11 @@ func (s *Syncer) getEffectiveGracePeriod() uint64 {
 	return uint64(max(effectivePeriod, minPeriod))
 }
 
-// verifyForcedInclusionTxs verifies that forced inclusion transactions from DA are properly handled.
+// VerifyForcedInclusionTxs verifies that forced inclusion transactions from DA are properly handled.
 // Note: Due to block size constraints (MaxBytes), sequencers may defer forced inclusion transactions
 // to future blocks (smoothing). This is legitimate behavior within an epoch.
 // However, ALL forced inclusion txs from an epoch MUST be included before the next epoch begins or grace boundary (whichever comes later).
-func (s *Syncer) verifyForcedInclusionTxs(currentState types.State, data *types.Data) error {
+func (s *Syncer) VerifyForcedInclusionTxs(ctx context.Context, currentState types.State, data *types.Data) error {
 	if s.fiRetriever == nil {
 		return nil
 	}
@@ -865,7 +939,7 @@ func (s *Syncer) verifyForcedInclusionTxs(currentState types.State, data *types.
 	s.updateDynamicGracePeriod(blockFullness)
 
 	// Retrieve forced inclusion transactions from DA for current epoch
-	forcedIncludedTxsEvent, err := s.fiRetriever.RetrieveForcedIncludedTxs(s.ctx, currentState.DAHeight)
+	forcedIncludedTxsEvent, err := s.fiRetriever.RetrieveForcedIncludedTxs(ctx, currentState.DAHeight)
 	if err != nil {
 		if errors.Is(err, da.ErrForceInclusionNotConfigured) {
 			s.logger.Debug().Msg("forced inclusion namespace not configured, skipping verification")

@@ -150,6 +150,10 @@ func NewSyncComponents(
 		errorCh,
 	)
 
+	if config.Instrumentation.IsTracingEnabled() {
+		syncer.SetBlockSyncer(syncing.WithTracingBlockSyncer(syncer))
+	}
+
 	// Create submitter for sync nodes (no signer, only DA inclusion processing)
 	daSubmitter := submitting.NewDASubmitter(daClient, config, genesis, blockOpts, metrics, logger, headerStore, dataStore)
 	submitter := submitting.NewSubmitter(
@@ -217,6 +221,10 @@ func NewAggregatorComponents(
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create executor: %w", err)
+	}
+
+	if config.Instrumentation.IsTracingEnabled() {
+		executor.SetBlockProducer(executing.WithTracingBlockProducer(executor))
 	}
 
 	reaper, err := reaping.NewReaper(

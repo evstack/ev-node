@@ -38,9 +38,6 @@ func newTestSubmitter(t *testing.T, mockClient *mocks.MockClient, override func(
 	return NewDASubmitter(mockClient, cfg, genesis.Genesis{} /*options=*/, common.BlockOptions{}, common.NopMetrics(), zerolog.Nop(), nil, nil)
 }
 
-// marshal helper for simple items
-func marshalString(s string) ([]byte, error) { return []byte(s), nil }
-
 func TestSubmitToDA_MempoolRetry_IncreasesGasAndSucceeds(t *testing.T) {
 	t.Parallel()
 
@@ -68,12 +65,17 @@ func TestSubmitToDA_MempoolRetry_IncreasesGasAndSucceeds(t *testing.T) {
 	s := newTestSubmitter(t, client, nil)
 
 	items := []string{"a", "b", "c"}
+	marshalledItems := make([][]byte, len(items))
+	for idx, item := range items {
+		marshalledItems[idx] = []byte(item)
+	}
+
 	ctx := context.Background()
 	err := submitToDA[string](
 		s,
 		ctx,
 		items,
-		marshalString,
+		marshalledItems,
 		func(_ []string, _ *datypes.ResultSubmit) {},
 		"item",
 		nsBz,
@@ -112,12 +114,17 @@ func TestSubmitToDA_UnknownError_RetriesSameGasThenSucceeds(t *testing.T) {
 	s := newTestSubmitter(t, client, nil)
 
 	items := []string{"x"}
+	marshalledItems := make([][]byte, len(items))
+	for idx, item := range items {
+		marshalledItems[idx] = []byte(item)
+	}
+
 	ctx := context.Background()
 	err := submitToDA[string](
 		s,
 		ctx,
 		items,
-		marshalString,
+		marshalledItems,
 		func(_ []string, _ *datypes.ResultSubmit) {},
 		"item",
 		nsBz,
@@ -158,12 +165,17 @@ func TestSubmitToDA_TooBig_HalvesBatch(t *testing.T) {
 	s := newTestSubmitter(t, client, nil)
 
 	items := []string{"a", "b", "c", "d"}
+	marshalledItems := make([][]byte, len(items))
+	for idx, item := range items {
+		marshalledItems[idx] = []byte(item)
+	}
+
 	ctx := context.Background()
 	err := submitToDA[string](
 		s,
 		ctx,
 		items,
-		marshalString,
+		marshalledItems,
 		func(_ []string, _ *datypes.ResultSubmit) {},
 		"item",
 		nsBz,
@@ -198,12 +210,17 @@ func TestSubmitToDA_SentinelNoGas_PreservesGasAcrossRetries(t *testing.T) {
 	s := newTestSubmitter(t, client, nil)
 
 	items := []string{"only"}
+	marshalledItems := make([][]byte, len(items))
+	for idx, item := range items {
+		marshalledItems[idx] = []byte(item)
+	}
+
 	ctx := context.Background()
 	err := submitToDA[string](
 		s,
 		ctx,
 		items,
-		marshalString,
+		marshalledItems,
 		func(_ []string, _ *datypes.ResultSubmit) {},
 		"item",
 		nsBz,
@@ -237,12 +254,17 @@ func TestSubmitToDA_PartialSuccess_AdvancesWindow(t *testing.T) {
 	s := newTestSubmitter(t, client, nil)
 
 	items := []string{"a", "b", "c"}
+	marshalledItems := make([][]byte, len(items))
+	for idx, item := range items {
+		marshalledItems[idx] = []byte(item)
+	}
+
 	ctx := context.Background()
 	err := submitToDA[string](
 		s,
 		ctx,
 		items,
-		marshalString,
+		marshalledItems,
 		func(submitted []string, _ *datypes.ResultSubmit) { totalSubmitted += len(submitted) },
 		"item",
 		nsBz,

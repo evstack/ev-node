@@ -48,7 +48,7 @@ func NewDAClient(
 	config config.Config,
 	logger zerolog.Logger,
 ) FullDAClient {
-	return da.NewClient(da.Config{
+	base := da.NewClient(da.Config{
 		DA:                       blobRPC,
 		Logger:                   logger,
 		Namespace:                config.DA.GetNamespace(),
@@ -56,6 +56,10 @@ func NewDAClient(
 		DataNamespace:            config.DA.GetDataNamespace(),
 		ForcedInclusionNamespace: config.DA.GetForcedInclusionNamespace(),
 	})
+	if config.Instrumentation.IsTracingEnabled() {
+		return da.WithTracingClient(base)
+	}
+	return base
 }
 
 // ErrForceInclusionNotConfigured is returned when force inclusion is not configured.
@@ -67,14 +71,17 @@ type ForcedInclusionEvent = da.ForcedInclusionEvent
 
 // ForcedInclusionRetriever defines the interface for retrieving forced inclusion transactions from DA
 type ForcedInclusionRetriever interface {
-	RetrieveForcedIncludedTxs(ctx context.Context, daHeight uint64) (*da.ForcedInclusionEvent, error)
+	RetrieveForcedIncludedTxs(ctx context.Context, daHeight uint64) (*ForcedInclusionEvent, error)
+	Stop()
 }
 
-// NewForcedInclusionRetriever creates a new forced inclusion retriever
+// NewForcedInclusionRetriever creates a new forced inclusion retriever.
+// It internally creates and manages an AsyncBlockRetriever for background prefetching.
 func NewForcedInclusionRetriever(
 	client DAClient,
+	cfg config.Config,
 	logger zerolog.Logger,
 	daStartHeight, daEpochSize uint64,
 ) ForcedInclusionRetriever {
-	return da.NewForcedInclusionRetriever(client, logger, daStartHeight, daEpochSize)
+	return da.NewForcedInclusionRetriever(client, logger, cfg, daStartHeight, daEpochSize)
 }

@@ -39,7 +39,7 @@ func TestPendingHeaders_BasicFlow(t *testing.T) {
 
 	// initially all three are pending
 	require.Equal(t, uint64(3), pendingHeaders.NumPendingHeaders())
-	headers, err := pendingHeaders.GetPendingHeaders(ctx)
+	headers, _, err := pendingHeaders.GetPendingHeaders(ctx)
 	require.NoError(t, err)
 	require.Len(t, headers, 3)
 	require.Equal(t, uint64(1), headers[0].Height())
@@ -53,7 +53,7 @@ func TestPendingHeaders_BasicFlow(t *testing.T) {
 	require.Equal(t, uint64(2), binary.LittleEndian.Uint64(metadataRaw))
 
 	require.Equal(t, uint64(1), pendingHeaders.NumPendingHeaders())
-	headers, err = pendingHeaders.GetPendingHeaders(ctx)
+	headers, _, err = pendingHeaders.GetPendingHeaders(ctx)
 	require.NoError(t, err)
 	require.Len(t, headers, 1)
 	require.Equal(t, uint64(3), headers[0].Height())
@@ -82,7 +82,7 @@ func TestPendingHeaders_EmptyWhenUpToDate(t *testing.T) {
 	// set last submitted to the current height, so nothing pending
 	pendingHeaders.SetLastSubmittedHeaderHeight(ctx, 1)
 	require.Equal(t, uint64(0), pendingHeaders.NumPendingHeaders())
-	headers, err := pendingHeaders.GetPendingHeaders(ctx)
+	headers, _, err := pendingHeaders.GetPendingHeaders(ctx)
 	require.NoError(t, err)
 	require.Empty(t, headers)
 }

@@ -378,9 +378,15 @@ func NewServiceHandler(
 	config config.Config,
 	bestKnown BestKnownHeightProvider,
 ) (http.Handler, error) {
-	storeServer := NewStoreServer(store, headerStore, dataStore, logger)
-	p2pServer := NewP2PServer(peerManager)
-	configServer := NewConfigServer(config, proposerAddress, logger)
+	var storeServer rpc.StoreServiceHandler = NewStoreServer(store, headerStore, dataStore, logger)
+	var p2pServer rpc.P2PServiceHandler = NewP2PServer(peerManager)
+	var configServer rpc.ConfigServiceHandler = NewConfigServer(config, proposerAddress, logger)
+
+	if config.Instrumentation.IsTracingEnabled() {
+		storeServer = WithTracingStoreServer(storeServer)
+		p2pServer = WithTracingP2PServer(p2pServer)
+		configServer = WithTracingConfigServer(configServer)
+	}
 
 	mux := http.NewServeMux()
 

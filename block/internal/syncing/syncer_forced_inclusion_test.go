@@ -14,7 +14,7 @@ import (
 
 	"github.com/evstack/ev-node/block/internal/cache"
 	"github.com/evstack/ev-node/block/internal/common"
-	da "github.com/evstack/ev-node/block/internal/da"
+	"github.com/evstack/ev-node/block/internal/da"
 	"github.com/evstack/ev-node/pkg/config"
 	datypes "github.com/evstack/ev-node/pkg/da/types"
 	"github.com/evstack/ev-node/pkg/genesis"
@@ -37,8 +37,8 @@ func TestCalculateBlockFullness_HalfFull(t *testing.T) {
 	}
 
 	fullness := s.calculateBlockFullness(data)
-	// Size fullness: 500000/2097152 ≈ 0.238
-	require.InDelta(t, 0.238, fullness, 0.05)
+	// Size fullness: 500000/8388608 ≈ 0.0596
+	require.InDelta(t, 0.0596, fullness, 0.05)
 }
 
 func TestCalculateBlockFullness_Full(t *testing.T) {
@@ -55,8 +55,8 @@ func TestCalculateBlockFullness_Full(t *testing.T) {
 	}
 
 	fullness := s.calculateBlockFullness(data)
-	// Both metrics at or near 1.0
-	require.Greater(t, fullness, 0.95)
+	// Size fullness: 2100000/8388608 ≈ 0.25
+	require.InDelta(t, 0.25, fullness, 0.05)
 }
 
 func TestCalculateBlockFullness_VerySmall(t *testing.T) {
@@ -370,7 +370,8 @@ func TestVerifyForcedInclusionTxs_AllTransactionsIncluded(t *testing.T) {
 	client.On("GetForcedInclusionNamespace").Return([]byte(cfg.DA.ForcedInclusionNamespace)).Maybe()
 	client.On("HasForcedInclusionNamespace").Return(true).Maybe()
 	daRetriever := NewDARetriever(client, cm, gen, zerolog.Nop())
-	fiRetriever := da.NewForcedInclusionRetriever(client, zerolog.Nop(), gen.DAStartHeight, gen.DAEpochForcedInclusion)
+	fiRetriever := da.NewForcedInclusionRetriever(client, zerolog.Nop(), config.DefaultConfig(), gen.DAStartHeight, gen.DAEpochForcedInclusion)
+	defer fiRetriever.Stop()
 
 	s := NewSyncer(
 		st,
@@ -409,7 +410,7 @@ func TestVerifyForcedInclusionTxs_AllTransactionsIncluded(t *testing.T) {
 	currentState.DAHeight = 0
 
 	// Verify - should pass since all forced txs are included
-	err = s.verifyForcedInclusionTxs(currentState, data)
+	err = s.VerifyForcedInclusionTxs(context.Background(), currentState, data)
 	require.NoError(t, err)
 }
 
@@ -443,7 +444,8 @@ func TestVerifyForcedInclusionTxs_MissingTransactions(t *testing.T) {
 	client.On("GetForcedInclusionNamespace").Return([]byte(cfg.DA.ForcedInclusionNamespace)).Maybe()
 	client.On("HasForcedInclusionNamespace").Return(true).Maybe()
 	daRetriever := NewDARetriever(client, cm, gen, zerolog.Nop())
-	fiRetriever := da.NewForcedInclusionRetriever(client, zerolog.Nop(), gen.DAStartHeight, gen.DAEpochForcedInclusion)
+	fiRetriever := da.NewForcedInclusionRetriever(client, zerolog.Nop(), config.DefaultConfig(), gen.DAStartHeight, gen.DAEpochForcedInclusion)
+	defer fiRetriever.Stop()
 
 	s := NewSyncer(
 		st,
@@ -484,7 +486,7 @@ func TestVerifyForcedInclusionTxs_MissingTransactions(t *testing.T) {
 	currentState.DAHeight = 0
 
 	// Verify - should pass since forced tx blob may be legitimately deferred within the epoch
-	err = s.verifyForcedInclusionTxs(currentState, data)
+	err = s.VerifyForcedInclusionTxs(context.Background(), currentState, data)
 	require.NoError(t, err)
 
 	// Mock DA for next epoch to return no forced inclusion transactions
@@ -497,7 +499,7 @@ func TestVerifyForcedInclusionTxs_MissingTransactions(t *testing.T) {
 	data2 := makeData(gen.ChainID, 2, 1)
 	data2.Txs[0] = []byte("regular_tx_3")
 
-	err = s.verifyForcedInclusionTxs(currentState, data2)
+	err = s.VerifyForcedInclusionTxs(context.Background(), currentState, data2)
 	require.NoError(t, err) // Should pass since DAHeight=1 equals grace boundary, not past it
 
 	// Mock DA for height 2 to return no forced inclusion transactions
@@ -510,7 +512,7 @@ func TestVerifyForcedInclusionTxs_MissingTransactions(t *testing.T) {
 	data3 := makeData(gen.ChainID, 3, 1)
 	data3.Txs[0] = types.Tx([]byte("regular_tx_4"))
 
-	err = s.verifyForcedInclusionTxs(currentState, data3)
+	err = s.VerifyForcedInclusionTxs(context.Background(), currentState, data3)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "sequencer is malicious")
 	require.Contains(t, err.Error(), "past grace boundary")
@@ -546,7 +548,8 @@ func TestVerifyForcedInclusionTxs_PartiallyIncluded(t *testing.T) {
 	client.On("GetForcedInclusionNamespace").Return([]byte(cfg.DA.ForcedInclusionNamespace)).Maybe()
 	client.On("HasForcedInclusionNamespace").Return(true).Maybe()
 	daRetriever := NewDARetriever(client, cm, gen, zerolog.Nop())
-	fiRetriever := da.NewForcedInclusionRetriever(client, zerolog.Nop(), gen.DAStartHeight, gen.DAEpochForcedInclusion)
+	fiRetriever := da.NewForcedInclusionRetriever(client, zerolog.Nop(), config.DefaultConfig(), gen.DAStartHeight, gen.DAEpochForcedInclusion)
+	defer fiRetriever.Stop()
 
 	s := NewSyncer(
 		st,
@@ -588,7 +591,7 @@ func TestVerifyForcedInclusionTxs_PartiallyIncluded(t *testing.T) {
 	currentState.DAHeight = 0
 
 	// Verify - should pass since dataBin2 may be legitimately deferred within the epoch
-	err = s.verifyForcedInclusionTxs(currentState, data)
+	err = s.VerifyForcedInclusionTxs(context.Background(), currentState, data)
 	require.NoError(t, err)
 
 	// Mock DA for next epoch to return no forced inclusion transactions
@@ -602,7 +605,7 @@ func TestVerifyForcedInclusionTxs_PartiallyIncluded(t *testing.T) {
 	data2.Txs[0] = types.Tx([]byte("regular_tx_3"))
 
 	// Verify - should pass since we're at the grace boundary, not past it
-	err = s.verifyForcedInclusionTxs(currentState, data2)
+	err = s.VerifyForcedInclusionTxs(context.Background(), currentState, data2)
 	require.NoError(t, err)
 
 	// Mock DA for height 2 (when we move to DAHeight 2)
@@ -617,7 +620,7 @@ func TestVerifyForcedInclusionTxs_PartiallyIncluded(t *testing.T) {
 	data3 := makeData(gen.ChainID, 3, 1)
 	data3.Txs[0] = types.Tx([]byte("regular_tx_4"))
 
-	err = s.verifyForcedInclusionTxs(currentState, data3)
+	err = s.VerifyForcedInclusionTxs(context.Background(), currentState, data3)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "sequencer is malicious")
 	require.Contains(t, err.Error(), "past grace boundary")
@@ -653,7 +656,8 @@ func TestVerifyForcedInclusionTxs_NoForcedTransactions(t *testing.T) {
 	client.On("GetForcedInclusionNamespace").Return([]byte(cfg.DA.ForcedInclusionNamespace)).Maybe()
 	client.On("HasForcedInclusionNamespace").Return(true).Maybe()
 	daRetriever := NewDARetriever(client, cm, gen, zerolog.Nop())
-	fiRetriever := da.NewForcedInclusionRetriever(client, zerolog.Nop(), gen.DAStartHeight, gen.DAEpochForcedInclusion)
+	fiRetriever := da.NewForcedInclusionRetriever(client, zerolog.Nop(), config.DefaultConfig(), gen.DAStartHeight, gen.DAEpochForcedInclusion)
+	defer fiRetriever.Stop()
 
 	s := NewSyncer(
 		st,
@@ -687,7 +691,7 @@ func TestVerifyForcedInclusionTxs_NoForcedTransactions(t *testing.T) {
 	currentState.DAHeight = 0
 
 	// Verify - should pass since no forced txs to verify
-	err = s.verifyForcedInclusionTxs(currentState, data)
+	err = s.VerifyForcedInclusionTxs(context.Background(), currentState, data)
 	require.NoError(t, err)
 }
 
@@ -718,8 +722,10 @@ func TestVerifyForcedInclusionTxs_NamespaceNotConfigured(t *testing.T) {
 	client.On("GetDataNamespace").Return([]byte(cfg.DA.DataNamespace)).Maybe()
 	client.On("GetForcedInclusionNamespace").Return([]byte(nil)).Maybe()
 	client.On("HasForcedInclusionNamespace").Return(false).Maybe()
+	client.On("GetForcedInclusionNamespace").Return([]byte(nil)).Maybe()
 	daRetriever := NewDARetriever(client, cm, gen, zerolog.Nop())
-	fiRetriever := da.NewForcedInclusionRetriever(client, zerolog.Nop(), gen.DAStartHeight, gen.DAEpochForcedInclusion)
+	fiRetriever := da.NewForcedInclusionRetriever(client, zerolog.Nop(), config.DefaultConfig(), gen.DAStartHeight, gen.DAEpochForcedInclusion)
+	defer fiRetriever.Stop()
 
 	s := NewSyncer(
 		st,
@@ -748,7 +754,7 @@ func TestVerifyForcedInclusionTxs_NamespaceNotConfigured(t *testing.T) {
 	currentState.DAHeight = 0
 
 	// Verify - should pass since namespace not configured
-	err = s.verifyForcedInclusionTxs(currentState, data)
+	err = s.VerifyForcedInclusionTxs(context.Background(), currentState, data)
 	require.NoError(t, err)
 }
 
@@ -784,7 +790,8 @@ func TestVerifyForcedInclusionTxs_DeferralWithinEpoch(t *testing.T) {
 	client.On("GetForcedInclusionNamespace").Return([]byte(cfg.DA.ForcedInclusionNamespace)).Maybe()
 	client.On("HasForcedInclusionNamespace").Return(true).Maybe()
 	daRetriever := NewDARetriever(client, cm, gen, zerolog.Nop())
-	fiRetriever := da.NewForcedInclusionRetriever(client, zerolog.Nop(), gen.DAStartHeight, gen.DAEpochForcedInclusion)
+	fiRetriever := da.NewForcedInclusionRetriever(client, zerolog.Nop(), config.DefaultConfig(), gen.DAStartHeight, gen.DAEpochForcedInclusion)
+	defer fiRetriever.Stop()
 
 	s := NewSyncer(
 		st,
@@ -834,7 +841,7 @@ func TestVerifyForcedInclusionTxs_DeferralWithinEpoch(t *testing.T) {
 	currentState.DAHeight = 104
 
 	// Verify - should pass since dataBin2 can be deferred within epoch
-	err = s.verifyForcedInclusionTxs(currentState, data1)
+	err = s.VerifyForcedInclusionTxs(context.Background(), currentState, data1)
 	require.NoError(t, err)
 
 	// Verify that dataBin2 is now tracked as pending
@@ -863,7 +870,7 @@ func TestVerifyForcedInclusionTxs_DeferralWithinEpoch(t *testing.T) {
 	data2.Txs[1] = types.Tx(dataBin2) // The deferred one we're waiting for
 
 	// Verify - should pass since dataBin2 is now included and clears pending
-	err = s.verifyForcedInclusionTxs(currentState, data2)
+	err = s.VerifyForcedInclusionTxs(context.Background(), currentState, data2)
 	require.NoError(t, err)
 
 	// Verify that pending queue is now empty (dataBin2 was included)
@@ -907,7 +914,8 @@ func TestVerifyForcedInclusionTxs_MaliciousAfterEpochEnd(t *testing.T) {
 	client.On("GetForcedInclusionNamespace").Return([]byte(cfg.DA.ForcedInclusionNamespace)).Maybe()
 	client.On("HasForcedInclusionNamespace").Return(true).Maybe()
 	daRetriever := NewDARetriever(client, cm, gen, zerolog.Nop())
-	fiRetriever := da.NewForcedInclusionRetriever(client, zerolog.Nop(), gen.DAStartHeight, gen.DAEpochForcedInclusion)
+	fiRetriever := da.NewForcedInclusionRetriever(client, zerolog.Nop(), config.DefaultConfig(), gen.DAStartHeight, gen.DAEpochForcedInclusion)
+	defer fiRetriever.Stop()
 
 	s := NewSyncer(
 		st,
@@ -957,7 +965,7 @@ func TestVerifyForcedInclusionTxs_MaliciousAfterEpochEnd(t *testing.T) {
 	currentState.DAHeight = 102
 
 	// Verify - should pass, tx can be deferred within epoch
-	err = s.verifyForcedInclusionTxs(currentState, data1)
+	err = s.VerifyForcedInclusionTxs(context.Background(), currentState, data1)
 	require.NoError(t, err)
 }
 
@@ -996,7 +1004,8 @@ func TestVerifyForcedInclusionTxs_SmoothingExceedsEpoch(t *testing.T) {
 	client.On("HasForcedInclusionNamespace").Return(true).Maybe()
 
 	daRetriever := NewDARetriever(client, cm, gen, zerolog.Nop())
-	fiRetriever := da.NewForcedInclusionRetriever(client, zerolog.Nop(), gen.DAStartHeight, gen.DAEpochForcedInclusion)
+	fiRetriever := da.NewForcedInclusionRetriever(client, zerolog.Nop(), config.DefaultConfig(), gen.DAStartHeight, gen.DAEpochForcedInclusion)
+	defer fiRetriever.Stop()
 
 	s := NewSyncer(
 		st,
@@ -1050,6 +1059,6 @@ func TestVerifyForcedInclusionTxs_SmoothingExceedsEpoch(t *testing.T) {
 	currentState := s.getLastState()
 	currentState.DAHeight = 102 // At epoch end
 
-	err = s.verifyForcedInclusionTxs(currentState, data1)
+	err = s.VerifyForcedInclusionTxs(context.Background(), currentState, data1)
 	require.NoError(t, err, "smoothing within epoch should be allowed")
 }
