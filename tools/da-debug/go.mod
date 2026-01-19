@@ -1,6 +1,6 @@
 module github.com/evstack/ev-node/tools/da-debug
 
-go 1.24.6
+go 1.25.0
 
 require (
 	github.com/celestiaorg/go-square/v3 v3.0.2
