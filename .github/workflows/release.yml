@@ -5,7 +5,80 @@ on:
       - '**/v*.*.*'  # Matches tags like evm/single/v0.2.0, testapp/v0.4.0, etc.
 
 permissions: {}
+
 jobs:
+  generate-changelog:
+    name: Generate Changelog and Create Release Branch
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    outputs:
+      changelog: ${{ steps.cliff.outputs.content }}
+      release-branch: ${{ steps.create-branch.outputs.branch-name }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0  # Full history needed for changelog generation
+
+      - name: Install git-cliff
+        uses: taiki-e/install-action@v2
+        with:
+          tool: git-cliff
+
+      - name: Generate changelog
+        id: cliff
+        run: |
+          # Generate changelog from CHANGELOG.md for this release
+          CHANGELOG_CONTENT=$(git cliff --unreleased --strip all)
+
+          # Save to file and output
+          echo "$CHANGELOG_CONTENT" > RELEASE_CHANGELOG.md
+          echo "Generated changelog:"
+          cat RELEASE_CHANGELOG.md
+
+          # Export for GitHub Release (escape for multiline output)
+          {
+            echo 'content<<EOF'
+            echo "$CHANGELOG_CONTENT"
+            echo EOF
+          } >> $GITHUB_OUTPUT
+
+      - name: Create release branch
+        id: create-branch
+        run: |
+          TAG="${{ github.ref_name }}"
+          BRANCH_NAME="release/$TAG"
+
+          echo "Creating release branch: $BRANCH_NAME"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          git checkout -b "$BRANCH_NAME"
+
+          # Update CHANGELOG.md with the generated content
+          if [ -f "CHANGELOG.md" ]; then
+            # Add generated changelog to CHANGELOG.md
+            cat RELEASE_CHANGELOG.md >> CHANGELOG_RELEASE_NOTES.md
+            echo "Changelog prepared for release: $TAG" >> CHANGELOG_RELEASE_NOTES.md
+          fi
+
+          # Commit the changelog
+          git add -A
+          if git diff --staged --quiet; then
+            echo "No changes to commit"
+          else
+            git commit -m "chore: prepare release $TAG" \
+              -m "Generated changelog for $TAG release." \
+              -m "This is an automated commit created by the release workflow."
+          fi
+
+          # Push the branch
+          git push origin "$BRANCH_NAME"
+
+          echo "branch-name=$BRANCH_NAME" >> $GITHUB_OUTPUT
+          echo "::notice::Created release branch: $BRANCH_NAME"
+
   parse-tag:
     name: Parse Release Tag
     runs-on: ubuntu-latest
@@ -85,3 +158,51 @@ jobs:
           tags: |
             ghcr.io/${{ github.repository_owner }}/${{ needs.parse-tag.outputs.image-name }}:${{ needs.parse-tag.outputs.version }}
             ghcr.io/${{ github.repository_owner }}/${{ needs.parse-tag.outputs.image-name }}:latest
+
+  create-github-release:
+    name: Create GitHub Release
+    needs: [generate-changelog, parse-tag, build-and-push]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          draft: true
+          name: ${{ github.ref_name }}
+          tag_name: ${{ github.ref_name }}
+          body: |
+            ## ${{ needs.parse-tag.outputs.image-name }} ${{ needs.parse-tag.outputs.version }}
+
+            **⚠️ This is a draft release. Please update the following before publishing:**
+
+            - [ ] Add **Upgrade Priority** (Critical/High/Medium/Low)
+            - [ ] Add **General Description** of the release
+            - [ ] Review and refine the **Changelog** below
+            - [ ] Document **Tested Upgrade Paths** (which versions were tested in E2E)
+            - [ ] Verify Docker images are available
+            - [ ] Publish announcements in Slack and Telegram after publishing
+
+            ---
+
+            ### Changelog
+
+            ${{ needs.generate-changelog.outputs.changelog }}
+
+            ---
+
+            ### Docker Images
+
+            ```bash
+            docker pull ghcr.io/${{ github.repository_owner }}/${{ needs.parse-tag.outputs.image-name }}:${{ needs.parse-tag.outputs.version }}
+            docker pull ghcr.io/${{ github.repository_owner }}/${{ needs.parse-tag.outputs.image-name }}:latest
+            ```
+
+            ### Release Branch
+
+            A release branch has been created for your review: `${{ needs.generate-changelog.outputs.release-branch }}`
+
+            You can checkout this branch to make edits to the changelog before merging.
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
