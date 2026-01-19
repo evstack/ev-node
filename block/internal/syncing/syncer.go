@@ -104,7 +104,7 @@ type Syncer struct {
 
 	// Handlers
 	daRetriever DARetriever
-	fiRetriever da.ForcedInclusionRetrieverAPI
+	fiRetriever da.ForcedInclusionRetriever
 	p2pHandler  p2pHandler
 
 	// Forced inclusion tracking

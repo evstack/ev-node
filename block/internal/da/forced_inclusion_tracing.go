@@ -9,20 +9,14 @@ import (
 	"go.opentelemetry.io/otel/trace"
 )
 
-// ForcedInclusionRetrieverAPI defines the interface for retrieving forced inclusion transactions from DA.
-type ForcedInclusionRetrieverAPI interface {
-	RetrieveForcedIncludedTxs(ctx context.Context, daHeight uint64) (*ForcedInclusionEvent, error)
-	Stop()
-}
-
-var _ ForcedInclusionRetrieverAPI = (*tracedForcedInclusionRetriever)(nil)
+var _ ForcedInclusionRetriever = (*tracedForcedInclusionRetriever)(nil)
 
 type tracedForcedInclusionRetriever struct {
-	inner  ForcedInclusionRetrieverAPI
+	inner  ForcedInclusionRetriever
 	tracer trace.Tracer
 }
 
-func withTracingForcedInclusionRetriever(inner ForcedInclusionRetrieverAPI) ForcedInclusionRetrieverAPI {
+func withTracingForcedInclusionRetriever(inner ForcedInclusionRetriever) ForcedInclusionRetriever {
 	return &tracedForcedInclusionRetriever{
 		inner:  inner,
 		tracer: otel.Tracer("ev-node/forced-inclusion"),
