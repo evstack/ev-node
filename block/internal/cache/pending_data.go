@@ -2,6 +2,8 @@ package cache
 
 import (
 	"context"
+	"errors"
+	"fmt"
 
 	"github.com/rs/zerolog"
 
@@ -28,8 +30,17 @@ type PendingData struct {
 	base *pendingBase[*types.Data]
 }
 
+var errInFlightData = errors.New("inflight data")
+
 func fetchData(ctx context.Context, store store.Store, height uint64) (*types.Data, error) {
 	_, data, err := store.GetBlockData(ctx, height)
+	if err != nil {
+		return nil, err
+	}
+	// in the executor, WIP data is temporary stored. skip them until the process is completed
+	if data.Height() == 0 {
+		return nil, errInFlightData
+	}
 	return data, err
 }
 
@@ -46,9 +57,42 @@ func (pd *PendingData) init() error {
 	return pd.base.init()
 }
 
-// GetPendingData returns a sorted slice of pending Data.
-func (pd *PendingData) GetPendingData(ctx context.Context) ([]*types.Data, error) {
-	return pd.base.getPending(ctx)
+// GetPendingData returns a sorted slice of pending Data along with their marshalled bytes.
+// It uses an internal cache to avoid re-marshalling data on subsequent calls.
+func (pd *PendingData) GetPendingData(ctx context.Context) ([]*types.Data, [][]byte, error) {
+	dataList, err := pd.base.getPending(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	if len(dataList) == 0 {
+		return nil, nil, nil
+	}
+
+	marshalled := make([][]byte, len(dataList))
+	lastSubmitted := pd.base.lastHeight.Load()
+
+	for i, data := range dataList {
+		height := lastSubmitted + uint64(i) + 1
+
+		// Try to get from cache first
+		if cached := pd.base.getMarshalledForHeight(height); cached != nil {
+			marshalled[i] = cached
+			continue
+		}
+
+		// Marshal if not in cache
+		dataBytes, err := data.MarshalBinary()
+		if err != nil {
+			return nil, nil, fmt.Errorf("failed to marshal data at height %d: %w", height, err)
+		}
+		marshalled[i] = dataBytes
+
+		// Store in cache
+		pd.base.setMarshalledForHeight(height, dataBytes)
+	}
+
+	return dataList, marshalled, nil
 }
 
 func (pd *PendingData) NumPendingData() uint64 {

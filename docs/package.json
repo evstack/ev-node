@@ -3,7 +3,9 @@
   "version": "1.0.0",
   "license": "MIT",
   "scripts": {
+    "predev": "[ -d node_modules ] || npm install",
     "dev": "vitepress dev",
+    "prebuild": "[ -d node_modules ] || npm install",
     "build": "vitepress build",
     "preview": "vitepress preview"
   },
