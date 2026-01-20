@@ -12,13 +12,29 @@ Interactive calculator to estimate Celestia DA costs based on your rollup's bloc
 
 ## How it works
 
-The calculator is organized into four sections:
+The calculator is organized into five sections:
 
-### 1. Header cadence
+### 1. Block production
 
-Configure your rollup's block production rate and header batching strategy. Set how many headers you batch per submission—the tool automatically calculates the submission interval. For example, 15 headers at 250 ms block time means one submission every 3.75 seconds.
+Configure your rollup's block production rate. Set your block time (e.g., 250ms, 1s) to establish the base cadence of block production.
 
-### 2. Data workload
+### 2. Batching strategy
+
+Select how blocks are batched before submission to the DA layer. Four strategies are available:
+
+- **Immediate**: Submits as soon as any blocks are available. Best for low-latency requirements where cost is not a concern.
+- **Size-based**: Waits until the batch reaches a size threshold (fraction of max blob size). Best for maximizing blob utilization and minimizing costs when latency is flexible.
+- **Time-based**: Waits for a time interval before submitting. Provides predictable submission timing aligned with DA block times.
+- **Adaptive** (Recommended): Balances between size and time constraints—submits when either the size threshold is reached OR the max delay expires.
+
+Configure strategy parameters:
+
+- **DA block time**: The block time of the DA chain (default: 6s for Celestia)
+- **Batch size threshold**: For size/adaptive strategies, the fraction of max blob size to fill before submitting (default: 80%)
+- **Batch max delay**: For time/adaptive strategies, the maximum wait time before submitting (default: DA block time)
+- **Batch minimum items**: Minimum number of blocks to accumulate before submission
+
+### 3. Data workload
 
 Model your transaction throughput and calldata usage:
 
@@ -29,7 +45,7 @@ The calculator translates your transaction rate and calldata into Celestia blob 
 
 For EVM workloads, data submissions are chunked into 500 KiB blobs (mirroring the batching logic in `da_submitter.go`). If a cadence produces more than 500 KiB of calldata in a window, the tool automatically simulates multiple blobs—and therefore multiple PayForBlobs transactions—so base gas and data gas scale accordingly.
 
-### 3. Gas parameters
+### 4. Gas parameters
 
 Review the Celestia mainnet gas parameters used for calculations:
 
@@ -42,7 +58,7 @@ Set your expected gas price and optionally account for the one-time 10,000 gas s
 
 > **Note**: Gas parameters are currently locked to Celestia mainnet defaults. Live parameter fetching and manual overrides will be added in a future update.
 
-### 4. Estimation
+### 5. Estimation
 
 View comprehensive cost breakdowns including:
 

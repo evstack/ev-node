@@ -98,9 +98,14 @@ func TestDASubmitter_SubmitHeadersAndData_MarksInclusionAndUpdatesLastSubmitted(
 		}).Twice()
 	daSubmitter := NewDASubmitter(client, cfg, gen, common.DefaultBlockOptions(), common.NopMetrics(), zerolog.Nop())
 
-	// Submit headers and data
-	require.NoError(t, daSubmitter.SubmitHeaders(context.Background(), cm, n))
-	require.NoError(t, daSubmitter.SubmitData(context.Background(), cm, n, gen))
+	// Submit headers and data - cache returns both items and marshalled bytes
+	headers, marshalledHeaders, err := cm.GetPendingHeaders(context.Background())
+	require.NoError(t, err)
+	require.NoError(t, daSubmitter.SubmitHeaders(context.Background(), headers, marshalledHeaders, cm, n))
+
+	dataList, marshalledData, err := cm.GetPendingData(context.Background())
+	require.NoError(t, err)
+	require.NoError(t, daSubmitter.SubmitData(context.Background(), dataList, marshalledData, cm, n, gen))
 
 	// After submission, inclusion markers should be set
 	_, ok := cm.GetHeaderDAIncluded(hdr1.Hash().String())

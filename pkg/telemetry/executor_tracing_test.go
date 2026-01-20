@@ -6,16 +6,15 @@ import (
 	"testing"
 	"time"
 
+	coreexec "github.com/evstack/ev-node/core/execution"
+	"github.com/evstack/ev-node/pkg/telemetry/testutil"
+	"github.com/evstack/ev-node/test/mocks"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/otel"
-	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/sdk/trace"
 	"go.opentelemetry.io/otel/sdk/trace/tracetest"
-
-	coreexec "github.com/evstack/ev-node/core/execution"
-	"github.com/evstack/ev-node/test/mocks"
 )
 
 // setupTestTracing creates a traced executor with an in-memory span recorder for testing
@@ -72,9 +71,9 @@ func TestWithTracingExecutor_InitChain_Success(t *testing.T) {
 	// verify attributes
 	attrs := span.Attributes()
 	require.Len(t, attrs, 3)
-	requireAttribute(t, attrs, "chain.id", chainID)
-	requireAttribute(t, attrs, "initial.height", int64(initialHeight))
-	requireAttribute(t, attrs, "genesis.time_unix", genesisTime.Unix())
+	testutil.RequireAttribute(t, attrs, "chain.id", chainID)
+	testutil.RequireAttribute(t, attrs, "initial.height", int64(initialHeight))
+	testutil.RequireAttribute(t, attrs, "genesis.time_unix", genesisTime.Unix())
 }
 
 func TestWithTracingExecutor_InitChain_Error(t *testing.T) {
@@ -137,7 +136,7 @@ func TestWithTracingExecutor_GetTxs_Success(t *testing.T) {
 
 	// verify tx.count attribute
 	attrs := span.Attributes()
-	requireAttribute(t, attrs, "tx.count", len(expectedTxs))
+	testutil.RequireAttribute(t, attrs, "tx.count", len(expectedTxs))
 }
 
 func TestWithTracingExecutor_GetTxs_Error(t *testing.T) {
@@ -202,9 +201,9 @@ func TestWithTracingExecutor_ExecuteTxs_Success(t *testing.T) {
 
 	// verify attributes
 	attrs := span.Attributes()
-	requireAttribute(t, attrs, "tx.count", len(txs))
-	requireAttribute(t, attrs, "block.height", int64(blockHeight))
-	requireAttribute(t, attrs, "timestamp", timestamp.Unix())
+	testutil.RequireAttribute(t, attrs, "tx.count", len(txs))
+	testutil.RequireAttribute(t, attrs, "block.height", int64(blockHeight))
+	testutil.RequireAttribute(t, attrs, "timestamp", timestamp.Unix())
 }
 
 func TestWithTracingExecutor_ExecuteTxs_Error(t *testing.T) {
@@ -260,7 +259,7 @@ func TestWithTracingExecutor_SetFinal_Success(t *testing.T) {
 	require.Equal(t, codes.Unset, span.Status().Code)
 
 	attrs := span.Attributes()
-	requireAttribute(t, attrs, "block.height", int64(blockHeight))
+	testutil.RequireAttribute(t, attrs, "block.height", int64(blockHeight))
 }
 
 func TestWithTracingExecutor_SetFinal_Error(t *testing.T) {
@@ -370,27 +369,4 @@ type mockExecutorWithHeight struct {
 
 func (m *mockExecutorWithHeight) GetLatestHeight(ctx context.Context) (uint64, error) {
 	return m.height, m.err
-}
-
-// requireAttribute is a helper to check span attributes
-func requireAttribute(t *testing.T, attrs []attribute.KeyValue, key string, expected interface{}) {
-	t.Helper()
-	found := false
-	for _, attr := range attrs {
-		if string(attr.Key) == key {
-			found = true
-			switch v := expected.(type) {
-			case string:
-				require.Equal(t, v, attr.Value.AsString())
-			case int64:
-				require.Equal(t, v, attr.Value.AsInt64())
-			case int:
-				require.Equal(t, int64(v), attr.Value.AsInt64())
-			default:
-				t.Fatalf("unsupported attribute type: %T", expected)
-			}
-			break
-		}
-	}
-	require.True(t, found, "attribute %s not found", key)
 }

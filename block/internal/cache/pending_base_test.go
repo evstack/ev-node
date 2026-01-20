@@ -35,7 +35,7 @@ func TestPendingBase_ErrorConditions(t *testing.T) {
 	// ensure store height stays lower (0)
 	ph, err := NewPendingHeaders(st, logger)
 	require.NoError(t, err)
-	pending, err := ph.GetPendingHeaders(ctx)
+	pending, _, err := ph.GetPendingHeaders(ctx)
 	assert.Error(t, err)
 	assert.Len(t, pending, 0)
 

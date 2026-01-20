@@ -19,8 +19,14 @@ import (
 // ErrForceInclusionNotConfigured is returned when the forced inclusion namespace is not configured.
 var ErrForceInclusionNotConfigured = errors.New("forced inclusion namespace not configured")
 
-// ForcedInclusionRetriever handles retrieval of forced inclusion transactions from DA.
-type ForcedInclusionRetriever struct {
+// ForcedInclusionRetriever defines the interface for retrieving forced inclusion transactions from DA.
+type ForcedInclusionRetriever interface {
+	RetrieveForcedIncludedTxs(ctx context.Context, daHeight uint64) (*ForcedInclusionEvent, error)
+	Stop()
+}
+
+// forcedInclusionRetriever handles retrieval of forced inclusion transactions from DA.
+type forcedInclusionRetriever struct {
 	client        Client
 	logger        zerolog.Logger
 	daEpochSize   uint64
@@ -55,7 +61,7 @@ func NewForcedInclusionRetriever(
 	logger zerolog.Logger,
 	cfg config.Config,
 	daStartHeight, daEpochSize uint64,
-) *ForcedInclusionRetriever {
+) ForcedInclusionRetriever {
 	retrieverLogger := logger.With().Str("component", "forced_inclusion_retriever").Logger()
 
 	// Create async block retriever for background prefetching
@@ -69,22 +75,26 @@ func NewForcedInclusionRetriever(
 	)
 	asyncFetcher.Start()
 
-	return &ForcedInclusionRetriever{
+	base := &forcedInclusionRetriever{
 		client:        client,
 		logger:        retrieverLogger,
 		daStartHeight: daStartHeight,
 		daEpochSize:   daEpochSize,
 		asyncFetcher:  asyncFetcher,
 	}
+	if cfg.Instrumentation.IsTracingEnabled() {
+		return withTracingForcedInclusionRetriever(base)
+	}
+	return base
 }
 
 // Stop stops the background prefetcher.
-func (r *ForcedInclusionRetriever) Stop() {
+func (r *forcedInclusionRetriever) Stop() {
 	r.asyncFetcher.Stop()
 }
 
 // HandleSubscriptionResponse caches forced inclusion blobs from subscription updates.
-func (r *ForcedInclusionRetriever) HandleSubscriptionResponse(resp *blobrpc.SubscriptionResponse) {
+func (r *forcedInclusionRetriever) HandleSubscriptionResponse(resp *blobrpc.SubscriptionResponse) {
 	if resp == nil {
 		return
 	}
@@ -105,7 +115,8 @@ func (r *ForcedInclusionRetriever) HandleSubscriptionResponse(resp *blobrpc.Subs
 // RetrieveForcedIncludedTxs retrieves forced inclusion transactions at the given DA height.
 // It respects epoch boundaries and only fetches at epoch end.
 // It tries to get blocks from the async fetcher cache first, then falls back to sync fetching.
-func (r *ForcedInclusionRetriever) RetrieveForcedIncludedTxs(ctx context.Context, daHeight uint64) (*ForcedInclusionEvent, error) {
+func (r *forcedInclusionRetriever) RetrieveForcedIncludedTxs(ctx context.Context, daHeight uint64) (*ForcedInclusionEvent, error) {
+	// when daStartHeight is not set or no namespace is configured, we retrieve nothing.
 	if !r.client.HasForcedInclusionNamespace() {
 		return nil, ErrForceInclusionNotConfigured
 	}
@@ -159,7 +170,7 @@ func (r *ForcedInclusionRetriever) RetrieveForcedIncludedTxs(ctx context.Context
 	return event, nil
 }
 
-func (r *ForcedInclusionRetriever) retrieveEpoch(ctx context.Context, epochStart, epochEnd uint64) (*ForcedInclusionEvent, error) {
+func (r *forcedInclusionRetriever) retrieveEpoch(ctx context.Context, epochStart, epochEnd uint64) (*ForcedInclusionEvent, error) {
 	epochSize := epochEnd - epochStart + 1
 	blocks := make(map[uint64]*BlockData, epochSize)
 	var missingHeights []uint64

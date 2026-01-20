@@ -39,7 +39,7 @@ func TestPendingData_BasicFlow(t *testing.T) {
 
 	// initially all 3 data items are pending, incl. empty
 	require.Equal(t, uint64(3), pendingData.NumPendingData())
-	pendingDataList, err := pendingData.GetPendingData(ctx)
+	pendingDataList, _, err := pendingData.GetPendingData(ctx)
 	require.NoError(t, err)
 	require.Len(t, pendingDataList, 3)
 	require.Equal(t, uint64(1), pendingDataList[0].Height())
@@ -53,7 +53,7 @@ func TestPendingData_BasicFlow(t *testing.T) {
 	require.Equal(t, uint64(1), binary.LittleEndian.Uint64(metadataRaw))
 
 	require.Equal(t, uint64(2), pendingData.NumPendingData())
-	pendingDataList, err = pendingData.GetPendingData(ctx)
+	pendingDataList, _, err = pendingData.GetPendingData(ctx)
 	require.NoError(t, err)
 	require.Len(t, pendingDataList, 2)
 	require.Equal(t, uint64(2), pendingDataList[0].Height())
@@ -97,7 +97,7 @@ func TestPendingData_GetPending_PropagatesFetchError(t *testing.T) {
 	require.NoError(t, err)
 
 	// fetching pending should propagate the not-found error from store
-	pending, err := pendingData.GetPendingData(ctx)
+	pending, _, err := pendingData.GetPendingData(ctx)
 	require.Error(t, err)
 	require.Empty(t, pending)
 }

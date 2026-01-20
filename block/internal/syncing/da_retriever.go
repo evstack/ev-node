@@ -350,38 +350,12 @@ func (r *daRetriever) tryDecodeData(bz []byte, daHeight uint64) *types.Data {
 
 // assertExpectedProposer validates the proposer address
 func (r *daRetriever) assertExpectedProposer(proposerAddr []byte) error {
-	if string(proposerAddr) != string(r.genesis.ProposerAddress) {
-		return fmt.Errorf("unexpected proposer: got %x, expected %x",
-			proposerAddr, r.genesis.ProposerAddress)
-	}
-	return nil
+	return assertExpectedProposer(r.genesis, proposerAddr)
 }
 
 // assertValidSignedData validates signed data using the configured signature provider
 func (r *daRetriever) assertValidSignedData(signedData *types.SignedData) error {
-	if signedData == nil || signedData.Txs == nil {
-		return errors.New("empty signed data")
-	}
-
-	if err := r.assertExpectedProposer(signedData.Signer.Address); err != nil {
-		return err
-	}
-
-	dataBytes, err := signedData.Data.MarshalBinary()
-	if err != nil {
-		return fmt.Errorf("failed to get signed data payload: %w", err)
-	}
-
-	valid, err := signedData.Signer.PubKey.Verify(dataBytes, signedData.Signature)
-	if err != nil {
-		return fmt.Errorf("failed to verify signature: %w", err)
-	}
-
-	if !valid {
-		return fmt.Errorf("invalid signature")
-	}
-
-	return nil
+	return assertValidSignedData(signedData, r.genesis)
 }
 
 // isEmptyDataExpected checks if empty data is expected for a header

@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"sync"
 	"sync/atomic"
 
 	ds "github.com/ipfs/go-datastore"
@@ -22,6 +23,9 @@ type pendingBase[T any] struct {
 	metaKey    string
 	fetch      func(ctx context.Context, store store.Store, height uint64) (T, error)
 	lastHeight atomic.Uint64
+
+	// Marshalling cache to avoid redundant marshalling
+	marshalledCache sync.Map // key: uint64 (height), value: []byte
 }
 
 // newPendingBase constructs a new pendingBase for a given type.
@@ -80,6 +84,9 @@ func (pb *pendingBase[T]) setLastSubmittedHeight(ctx context.Context, newLastSub
 		if err != nil {
 			pb.logger.Error().Err(err).Msg("failed to store height of latest item submitted to DA")
 		}
+
+		// Clear marshalled cache for submitted heights
+		pb.clearMarshalledCacheUpTo(newLastSubmittedHeight)
 	}
 }
 
@@ -100,4 +107,27 @@ func (pb *pendingBase[T]) init() error {
 	}
 	pb.lastHeight.CompareAndSwap(0, lsh)
 	return nil
+}
+
+// getMarshalledForHeight returns cached marshalled bytes for a height, or nil if not cached
+func (pb *pendingBase[T]) getMarshalledForHeight(height uint64) []byte {
+	if val, ok := pb.marshalledCache.Load(height); ok {
+		return val.([]byte)
+	}
+	return nil
+}
+
+// setMarshalledForHeight caches marshalled bytes for a height
+func (pb *pendingBase[T]) setMarshalledForHeight(height uint64, marshalled []byte) {
+	pb.marshalledCache.Store(height, marshalled)
+}
+
+// clearMarshalledCacheUpTo removes cached marshalled bytes up to and including the given height
+func (pb *pendingBase[T]) clearMarshalledCacheUpTo(height uint64) {
+	pb.marshalledCache.Range(func(key, _ any) bool {
+		if h := key.(uint64); h <= height {
+			pb.marshalledCache.Delete(h)
+		}
+		return true
+	})
 }
