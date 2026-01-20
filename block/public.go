@@ -77,6 +77,7 @@ type ForcedInclusionRetriever interface {
 
 // NewForcedInclusionRetriever creates a new forced inclusion retriever.
 // It internally creates and manages an AsyncBlockRetriever for background prefetching.
+// Tracing is automatically enabled when configured.
 func NewForcedInclusionRetriever(
 	client DAClient,
 	cfg config.Config,
