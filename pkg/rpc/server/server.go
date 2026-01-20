@@ -24,6 +24,7 @@ import (
 	"github.com/evstack/ev-node/pkg/config"
 	"github.com/evstack/ev-node/pkg/p2p"
 	"github.com/evstack/ev-node/pkg/store"
+	"github.com/evstack/ev-node/pkg/telemetry"
 	"github.com/evstack/ev-node/types"
 	pb "github.com/evstack/ev-node/types/pb/evnode/v1"
 	rpc "github.com/evstack/ev-node/types/pb/evnode/v1/v1connect"
@@ -413,8 +414,13 @@ func NewServiceHandler(
 	// Register custom HTTP endpoints
 	RegisterCustomHTTPEndpoints(mux, store, peerManager, config, bestKnown, logger)
 
+	var handler http.Handler = mux
+	if config.Instrumentation.IsTracingEnabled() {
+		handler = telemetry.ExtractTraceContext(mux)
+	}
+
 	// Use h2c to support HTTP/2 without TLS
-	return h2c.NewHandler(mux, &http2.Server{
+	return h2c.NewHandler(handler, &http2.Server{
 		IdleTimeout:          120 * time.Second,
 		MaxReadFrameSize:     1 << 24,
 		MaxConcurrentStreams: 100,
