@@ -239,13 +239,13 @@ type tracedBatch struct {
 	tracer trace.Tracer
 }
 
-func (b *tracedBatch) SaveBlockData(header *types.SignedHeader, data *types.Data, signature *types.Signature) error {
-	_, span := b.tracer.Start(context.Background(), "Batch.SaveBlockData",
+func (b *tracedBatch) SaveBlockData(ctx context.Context, header *types.SignedHeader, data *types.Data, signature *types.Signature) error {
+	ctx, span := b.tracer.Start(ctx, "Batch.SaveBlockData",
 		trace.WithAttributes(attribute.Int64("height", int64(header.Height()))),
 	)
 	defer span.End()
 
-	err := b.inner.SaveBlockData(header, data, signature)
+	err := b.inner.SaveBlockData(ctx, header, data, signature)
 	if err != nil {
 		span.RecordError(err)
 		span.SetStatus(codes.Error, err.Error())
@@ -255,13 +255,13 @@ func (b *tracedBatch) SaveBlockData(header *types.SignedHeader, data *types.Data
 	return nil
 }
 
-func (b *tracedBatch) SetHeight(height uint64) error {
-	_, span := b.tracer.Start(context.Background(), "Batch.SetHeight",
+func (b *tracedBatch) SetHeight(ctx context.Context, height uint64) error {
+	ctx, span := b.tracer.Start(ctx, "Batch.SetHeight",
 		trace.WithAttributes(attribute.Int64("height", int64(height))),
 	)
 	defer span.End()
 
-	err := b.inner.SetHeight(height)
+	err := b.inner.SetHeight(ctx, height)
 	if err != nil {
 		span.RecordError(err)
 		span.SetStatus(codes.Error, err.Error())
@@ -271,13 +271,13 @@ func (b *tracedBatch) SetHeight(height uint64) error {
 	return nil
 }
 
-func (b *tracedBatch) UpdateState(state types.State) error {
-	_, span := b.tracer.Start(context.Background(), "Batch.UpdateState",
+func (b *tracedBatch) UpdateState(ctx context.Context, state types.State) error {
+	ctx, span := b.tracer.Start(ctx, "Batch.UpdateState",
 		trace.WithAttributes(attribute.Int64("state.height", int64(state.LastBlockHeight))),
 	)
 	defer span.End()
 
-	err := b.inner.UpdateState(state)
+	err := b.inner.UpdateState(ctx, state)
 	if err != nil {
 		span.RecordError(err)
 		span.SetStatus(codes.Error, err.Error())
@@ -287,11 +287,11 @@ func (b *tracedBatch) UpdateState(state types.State) error {
 	return nil
 }
 
-func (b *tracedBatch) Commit() error {
-	_, span := b.tracer.Start(context.Background(), "Batch.Commit")
+func (b *tracedBatch) Commit(ctx context.Context) error {
+	ctx, span := b.tracer.Start(ctx, "Batch.Commit")
 	defer span.End()
 
-	err := b.inner.Commit()
+	err := b.inner.Commit(ctx)
 	if err != nil {
 		span.RecordError(err)
 		span.SetStatus(codes.Error, err.Error())
@@ -301,8 +301,8 @@ func (b *tracedBatch) Commit() error {
 	return nil
 }
 
-func (b *tracedBatch) Put(key ds.Key, value []byte) error {
-	_, span := b.tracer.Start(context.Background(), "Batch.Put",
+func (b *tracedBatch) Put(ctx context.Context, key ds.Key, value []byte) error {
+	ctx, span := b.tracer.Start(ctx, "Batch.Put",
 		trace.WithAttributes(
 			attribute.String("key", key.String()),
 			attribute.Int("value.size", len(value)),
@@ -310,7 +310,7 @@ func (b *tracedBatch) Put(key ds.Key, value []byte) error {
 	)
 	defer span.End()
 
-	err := b.inner.Put(key, value)
+	err := b.inner.Put(ctx, key, value)
 	if err != nil {
 		span.RecordError(err)
 		span.SetStatus(codes.Error, err.Error())
@@ -320,13 +320,13 @@ func (b *tracedBatch) Put(key ds.Key, value []byte) error {
 	return nil
 }
 
-func (b *tracedBatch) Delete(key ds.Key) error {
-	_, span := b.tracer.Start(context.Background(), "Batch.Delete",
+func (b *tracedBatch) Delete(ctx context.Context, key ds.Key) error {
+	ctx, span := b.tracer.Start(ctx, "Batch.Delete",
 		trace.WithAttributes(attribute.String("key", key.String())),
 	)
 	defer span.End()
 
-	err := b.inner.Delete(key)
+	err := b.inner.Delete(ctx, key)
 	if err != nil {
 		span.RecordError(err)
 		span.SetStatus(codes.Error, err.Error())

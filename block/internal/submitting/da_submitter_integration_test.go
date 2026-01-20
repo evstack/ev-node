@@ -71,18 +71,19 @@ func TestDASubmitter_SubmitHeadersAndData_MarksInclusionAndUpdatesLastSubmitted(
 	sig2t := types.Signature(sig2)
 
 	// Save block 1
-	batch1, err := st.NewBatch(context.Background())
+	ctx := context.Background()
+	batch1, err := st.NewBatch(ctx)
 	require.NoError(t, err)
-	require.NoError(t, batch1.SaveBlockData(hdr1, data1, &sig1t))
-	require.NoError(t, batch1.SetHeight(1))
-	require.NoError(t, batch1.Commit())
+	require.NoError(t, batch1.SaveBlockData(ctx, hdr1, data1, &sig1t))
+	require.NoError(t, batch1.SetHeight(ctx, 1))
+	require.NoError(t, batch1.Commit(ctx))
 
 	// Save block 2
-	batch2, err := st.NewBatch(context.Background())
+	batch2, err := st.NewBatch(ctx)
 	require.NoError(t, err)
-	require.NoError(t, batch2.SaveBlockData(hdr2, data2, &sig2t))
-	require.NoError(t, batch2.SetHeight(2))
-	require.NoError(t, batch2.Commit())
+	require.NoError(t, batch2.SaveBlockData(ctx, hdr2, data2, &sig2t))
+	require.NoError(t, batch2.SetHeight(ctx, 2))
+	require.NoError(t, batch2.Commit(ctx))
 
 	// Mock DA client
 	client := mocks.NewMockClient(t)

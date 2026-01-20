@@ -169,11 +169,11 @@ func TestPendingHeadersAndData_Flow(t *testing.T) {
 	}{{h1, d1}, {h2, d2}, {h3, d3}} {
 		batch, err := st.NewBatch(ctx)
 		require.NoError(t, err)
-		err = batch.SaveBlockData(pair.h, pair.d, &types.Signature{})
+		err = batch.SaveBlockData(ctx, pair.h, pair.d, &types.Signature{})
 		require.NoError(t, err)
-		err = batch.SetHeight(uint64(i + 1))
+		err = batch.SetHeight(ctx, uint64(i+1))
 		require.NoError(t, err)
-		err = batch.Commit()
+		err = batch.Commit(ctx)
 		require.NoError(t, err)
 	}
 

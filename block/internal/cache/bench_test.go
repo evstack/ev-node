@@ -40,13 +40,13 @@ func benchSetupStore(b *testing.B, n int, txsPer int, chainID string) store.Stor
 		if err != nil {
 			b.Fatal(err)
 		}
-		if err := batch.SaveBlockData(h, d, &types.Signature{}); err != nil {
+		if err := batch.SaveBlockData(ctx, h, d, &types.Signature{}); err != nil {
 			b.Fatal(err)
 		}
-		if err := batch.SetHeight(uint64(i)); err != nil {
+		if err := batch.SetHeight(ctx, uint64(i)); err != nil {
 			b.Fatal(err)
 		}
-		if err := batch.Commit(); err != nil {
+		if err := batch.Commit(ctx); err != nil {
 			b.Fatal(err)
 		}
 	}

@@ -120,52 +120,52 @@ func (m *tracingMockStore) NewBatch(ctx context.Context) (Batch, error) {
 }
 
 type tracingMockBatch struct {
-	saveBlockDataFn func(header *types.SignedHeader, data *types.Data, signature *types.Signature) error
-	setHeightFn     func(height uint64) error
-	updateStateFn   func(state types.State) error
-	commitFn        func() error
-	putFn           func(key ds.Key, value []byte) error
-	deleteFn        func(key ds.Key) error
+	saveBlockDataFn func(ctx context.Context, header *types.SignedHeader, data *types.Data, signature *types.Signature) error
+	setHeightFn     func(ctx context.Context, height uint64) error
+	updateStateFn   func(ctx context.Context, state types.State) error
+	commitFn        func(ctx context.Context) error
+	putFn           func(ctx context.Context, key ds.Key, value []byte) error
+	deleteFn        func(ctx context.Context, key ds.Key) error
 }
 
-func (b *tracingMockBatch) SaveBlockData(header *types.SignedHeader, data *types.Data, signature *types.Signature) error {
+func (b *tracingMockBatch) SaveBlockData(ctx context.Context, header *types.SignedHeader, data *types.Data, signature *types.Signature) error {
 	if b.saveBlockDataFn != nil {
-		return b.saveBlockDataFn(header, data, signature)
+		return b.saveBlockDataFn(ctx, header, data, signature)
 	}
 	return nil
 }
 
-func (b *tracingMockBatch) SetHeight(height uint64) error {
+func (b *tracingMockBatch) SetHeight(ctx context.Context, height uint64) error {
 	if b.setHeightFn != nil {
-		return b.setHeightFn(height)
+		return b.setHeightFn(ctx, height)
 	}
 	return nil
 }
 
-func (b *tracingMockBatch) UpdateState(state types.State) error {
+func (b *tracingMockBatch) UpdateState(ctx context.Context, state types.State) error {
 	if b.updateStateFn != nil {
-		return b.updateStateFn(state)
+		return b.updateStateFn(ctx, state)
 	}
 	return nil
 }
 
-func (b *tracingMockBatch) Commit() error {
+func (b *tracingMockBatch) Commit(ctx context.Context) error {
 	if b.commitFn != nil {
-		return b.commitFn()
+		return b.commitFn(ctx)
 	}
 	return nil
 }
 
-func (b *tracingMockBatch) Put(key ds.Key, value []byte) error {
+func (b *tracingMockBatch) Put(ctx context.Context, key ds.Key, value []byte) error {
 	if b.putFn != nil {
-		return b.putFn(key, value)
+		return b.putFn(ctx, key, value)
 	}
 	return nil
 }
 
-func (b *tracingMockBatch) Delete(key ds.Key) error {
+func (b *tracingMockBatch) Delete(ctx context.Context, key ds.Key) error {
 	if b.deleteFn != nil {
-		return b.deleteFn(key)
+		return b.deleteFn(ctx, key)
 	}
 	return nil
 }
@@ -323,7 +323,7 @@ func TestTracedBatch_Commit_Success(t *testing.T) {
 	batch, err := store.NewBatch(ctx)
 	require.NoError(t, err)
 
-	err = batch.Commit()
+	err = batch.Commit(ctx)
 	require.NoError(t, err)
 
 	spans := sr.Ended()
@@ -348,7 +348,7 @@ func TestTracedBatch_SaveBlockData_Success(t *testing.T) {
 	data := &types.Data{}
 	sig := &types.Signature{}
 
-	err = batch.SaveBlockData(header, data, sig)
+	err = batch.SaveBlockData(ctx, header, data, sig)
 	require.NoError(t, err)
 
 	spans := sr.Ended()

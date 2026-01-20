@@ -320,13 +320,13 @@ func (s *Syncer) initializeState() error {
 	if err != nil {
 		return fmt.Errorf("failed to create batch: %w", err)
 	}
-	if err := batch.SetHeight(state.LastBlockHeight); err != nil {
+	if err := batch.SetHeight(s.ctx, state.LastBlockHeight); err != nil {
 		return fmt.Errorf("failed to set store height: %w", err)
 	}
-	if err := batch.UpdateState(state); err != nil {
+	if err := batch.UpdateState(s.ctx, state); err != nil {
 		return fmt.Errorf("failed to update state: %w", err)
 	}
-	if err := batch.Commit(); err != nil {
+	if err := batch.Commit(s.ctx); err != nil {
 		return fmt.Errorf("failed to commit batch: %w", err)
 	}
 	s.SetLastState(state)
@@ -694,19 +694,19 @@ func (s *Syncer) TrySyncNextBlock(ctx context.Context, event *common.DAHeightEve
 		return fmt.Errorf("failed to create batch: %w", err)
 	}
 
-	if err := batch.SaveBlockData(header, data, &header.Signature); err != nil {
+	if err := batch.SaveBlockData(ctx, header, data, &header.Signature); err != nil {
 		return fmt.Errorf("failed to save block: %w", err)
 	}
 
-	if err := batch.SetHeight(nextHeight); err != nil {
+	if err := batch.SetHeight(ctx, nextHeight); err != nil {
 		return fmt.Errorf("failed to update height: %w", err)
 	}
 
-	if err := batch.UpdateState(newState); err != nil {
+	if err := batch.UpdateState(ctx, newState); err != nil {
 		return fmt.Errorf("failed to update state: %w", err)
 	}
 
-	if err := batch.Commit(); err != nil {
+	if err := batch.Commit(ctx); err != nil {
 		return fmt.Errorf("failed to commit batch: %w", err)
 	}
 
