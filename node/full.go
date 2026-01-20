@@ -81,6 +81,9 @@ func newFullNode(
 
 	mainKV := store.NewEvNodeKVStore(database)
 	evstore := store.New(mainKV)
+	if nodeConfig.Instrumentation.IsTracingEnabled() {
+		evstore = store.WithTracingStore(evstore)
+	}
 
 	headerSyncService, err := initHeaderSyncService(mainKV, evstore, nodeConfig, genesis, p2pClient, logger)
 	if err != nil {
