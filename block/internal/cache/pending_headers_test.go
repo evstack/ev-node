@@ -29,9 +29,9 @@ func TestPendingHeaders_BasicFlow(t *testing.T) {
 	}{{h1, d1}, {h2, d2}, {h3, d3}} {
 		batch, err := store.NewBatch(ctx)
 		require.NoError(t, err)
-		require.NoError(t, batch.SaveBlockData(ctx, p.h, p.d, &types.Signature{}))
-		require.NoError(t, batch.SetHeight(ctx, uint64(i+1)))
-		require.NoError(t, batch.Commit(ctx))
+		require.NoError(t, batch.SaveBlockData(p.h, p.d, &types.Signature{}))
+		require.NoError(t, batch.SetHeight(uint64(i+1)))
+		require.NoError(t, batch.Commit())
 	}
 
 	pendingHeaders, err := NewPendingHeaders(store, zerolog.Nop())
@@ -72,9 +72,9 @@ func TestPendingHeaders_EmptyWhenUpToDate(t *testing.T) {
 	h, d := types.GetRandomBlock(1, 1, "ph-up")
 	batch, err := store.NewBatch(ctx)
 	require.NoError(t, err)
-	require.NoError(t, batch.SaveBlockData(ctx, h, d, &types.Signature{}))
-	require.NoError(t, batch.SetHeight(ctx, 1))
-	require.NoError(t, batch.Commit(ctx))
+	require.NoError(t, batch.SaveBlockData(h, d, &types.Signature{}))
+	require.NoError(t, batch.SetHeight(1))
+	require.NoError(t, batch.Commit())
 
 	pendingHeaders, err := NewPendingHeaders(store, zerolog.Nop())
 	require.NoError(t, err)

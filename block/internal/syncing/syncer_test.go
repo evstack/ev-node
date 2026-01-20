@@ -288,8 +288,8 @@ func TestSyncer_processPendingEvents(t *testing.T) {
 	// current height 1
 	batch, err := st.NewBatch(t.Context())
 	require.NoError(t, err)
-	require.NoError(t, batch.SetHeight(t.Context(), 1))
-	require.NoError(t, batch.Commit(t.Context()))
+	require.NoError(t, batch.SetHeight(1))
+	require.NoError(t, batch.Commit())
 
 	s := &Syncer{
 		store:      st,
@@ -614,9 +614,9 @@ func TestSyncer_InitializeState_CallsReplayer(t *testing.T) {
 
 	// Mock batch operations
 	mockBatch := new(testmocks.MockBatch)
-	mockBatch.On("SetHeight", mock.Anything, storeHeight).Return(nil)
-	mockBatch.On("UpdateState", mock.Anything, mock.Anything).Return(nil)
-	mockBatch.On("Commit", mock.Anything).Return(nil)
+	mockBatch.On("SetHeight", storeHeight).Return(nil)
+	mockBatch.On("UpdateState", mock.Anything).Return(nil)
+	mockBatch.On("Commit").Return(nil)
 	mockStore.EXPECT().NewBatch(mock.Anything).Return(mockBatch, nil)
 
 	syncer := &Syncer{

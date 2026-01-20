@@ -201,16 +201,16 @@ func TestDASubmitter_SubmitHeaders_Success(t *testing.T) {
 	// Save block 1
 	batch1, err := st.NewBatch(ctx)
 	require.NoError(t, err)
-	require.NoError(t, batch1.SaveBlockData(ctx, header1, data1, &sig1))
-	require.NoError(t, batch1.SetHeight(ctx, 1))
-	require.NoError(t, batch1.Commit(ctx))
+	require.NoError(t, batch1.SaveBlockData(header1, data1, &sig1))
+	require.NoError(t, batch1.SetHeight(1))
+	require.NoError(t, batch1.Commit())
 
 	// Save block 2
 	batch2, err := st.NewBatch(ctx)
 	require.NoError(t, err)
-	require.NoError(t, batch2.SaveBlockData(ctx, header2, data2, &sig2))
-	require.NoError(t, batch2.SetHeight(ctx, 2))
-	require.NoError(t, batch2.Commit(ctx))
+	require.NoError(t, batch2.SaveBlockData(header2, data2, &sig2))
+	require.NoError(t, batch2.SetHeight(2))
+	require.NoError(t, batch2.Commit())
 
 	// Get headers from cache and submit
 	headers, marshalledHeaders, err := cm.GetPendingHeaders(ctx)
@@ -318,16 +318,16 @@ func TestDASubmitter_SubmitData_Success(t *testing.T) {
 	// Save block 1
 	batch1, err := st.NewBatch(ctx)
 	require.NoError(t, err)
-	require.NoError(t, batch1.SaveBlockData(ctx, header1, data1, &sig1))
-	require.NoError(t, batch1.SetHeight(ctx, 1))
-	require.NoError(t, batch1.Commit(ctx))
+	require.NoError(t, batch1.SaveBlockData(header1, data1, &sig1))
+	require.NoError(t, batch1.SetHeight(1))
+	require.NoError(t, batch1.Commit())
 
 	// Save block 2
 	batch2, err := st.NewBatch(ctx)
 	require.NoError(t, err)
-	require.NoError(t, batch2.SaveBlockData(ctx, header2, data2, &sig2))
-	require.NoError(t, batch2.SetHeight(ctx, 2))
-	require.NoError(t, batch2.Commit(ctx))
+	require.NoError(t, batch2.SaveBlockData(header2, data2, &sig2))
+	require.NoError(t, batch2.SetHeight(2))
+	require.NoError(t, batch2.Commit())
 
 	// Get data from cache and submit
 	signedDataList, marshalledData, err := cm.GetPendingData(ctx)
@@ -378,9 +378,9 @@ func TestDASubmitter_SubmitData_SkipsEmptyData(t *testing.T) {
 	sig := types.Signature([]byte("sig"))
 	batch, err := st.NewBatch(ctx)
 	require.NoError(t, err)
-	require.NoError(t, batch.SaveBlockData(ctx, header, emptyData, &sig))
-	require.NoError(t, batch.SetHeight(ctx, 1))
-	require.NoError(t, batch.Commit(ctx))
+	require.NoError(t, batch.SaveBlockData(header, emptyData, &sig))
+	require.NoError(t, batch.SetHeight(1))
+	require.NoError(t, batch.Commit())
 
 	// Get data from cache and submit - should succeed but skip empty data
 	// Get data from cache and submit
@@ -439,9 +439,9 @@ func TestDASubmitter_SubmitData_NilSigner(t *testing.T) {
 	sig := types.Signature([]byte("sig"))
 	batch, err := st.NewBatch(ctx)
 	require.NoError(t, err)
-	require.NoError(t, batch.SaveBlockData(ctx, header, data, &sig))
-	require.NoError(t, batch.SetHeight(ctx, 1))
-	require.NoError(t, batch.Commit(ctx))
+	require.NoError(t, batch.SaveBlockData(header, data, &sig))
+	require.NoError(t, batch.SetHeight(1))
+	require.NoError(t, batch.Commit())
 
 	// Get data from cache and submit with nil signer - should fail
 	signedDataList, marshalledData, err := cm.GetPendingData(ctx)

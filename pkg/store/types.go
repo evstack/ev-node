@@ -11,22 +11,22 @@ import (
 // Batch provides atomic operations for the store
 type Batch interface {
 	// SaveBlockData atomically saves the block header, data, and signature
-	SaveBlockData(ctx context.Context, header *types.SignedHeader, data *types.Data, signature *types.Signature) error
+	SaveBlockData(header *types.SignedHeader, data *types.Data, signature *types.Signature) error
 
 	// SetHeight sets the height in the batch
-	SetHeight(ctx context.Context, height uint64) error
+	SetHeight(height uint64) error
 
 	// UpdateState updates the state in the batch
-	UpdateState(ctx context.Context, state types.State) error
+	UpdateState(state types.State) error
 
 	// Commit commits all batch operations atomically
-	Commit(ctx context.Context) error
+	Commit() error
 
 	// Put adds a put operation to the batch (used internally for rollback)
-	Put(ctx context.Context, key ds.Key, value []byte) error
+	Put(key ds.Key, value []byte) error
 
 	// Delete adds a delete operation to the batch (used internally for rollback)
-	Delete(ctx context.Context, key ds.Key) error
+	Delete(key ds.Key) error
 }
 
 // Store is minimal interface for storing and retrieving blocks, commits and state.

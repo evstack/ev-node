@@ -5,8 +5,6 @@
 package mocks
 
 import (
-	"context"
-
 	"github.com/evstack/ev-node/types"
 	"github.com/ipfs/go-datastore"
 	mock "github.com/stretchr/testify/mock"
@@ -40,16 +38,16 @@ func (_m *MockBatch) EXPECT() *MockBatch_Expecter {
 }
 
 // Commit provides a mock function for the type MockBatch
-func (_mock *MockBatch) Commit(ctx context.Context) error {
-	ret := _mock.Called(ctx)
+func (_mock *MockBatch) Commit() error {
+	ret := _mock.Called()
 
 	if len(ret) == 0 {
 		panic("no return value specified for Commit")
 	}
 
 	var r0 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context) error); ok {
-		r0 = returnFunc(ctx)
+	if returnFunc, ok := ret.Get(0).(func() error); ok {
+		r0 = returnFunc()
 	} else {
 		r0 = ret.Error(0)
 	}
@@ -62,14 +60,13 @@ type MockBatch_Commit_Call struct {
 }
 
 // Commit is a helper method to define mock.On call
-//   - ctx context.Context
-func (_e *MockBatch_Expecter) Commit(ctx interface{}) *MockBatch_Commit_Call {
-	return &MockBatch_Commit_Call{Call: _e.mock.On("Commit", ctx)}
+func (_e *MockBatch_Expecter) Commit() *MockBatch_Commit_Call {
+	return &MockBatch_Commit_Call{Call: _e.mock.On("Commit")}
 }
 
-func (_c *MockBatch_Commit_Call) Run(run func(ctx context.Context)) *MockBatch_Commit_Call {
+func (_c *MockBatch_Commit_Call) Run(run func()) *MockBatch_Commit_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(context.Context))
+		run()
 	})
 	return _c
 }
@@ -79,22 +76,22 @@ func (_c *MockBatch_Commit_Call) Return(err error) *MockBatch_Commit_Call {
 	return _c
 }
 
-func (_c *MockBatch_Commit_Call) RunAndReturn(run func(context.Context) error) *MockBatch_Commit_Call {
+func (_c *MockBatch_Commit_Call) RunAndReturn(run func() error) *MockBatch_Commit_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
 // Delete provides a mock function for the type MockBatch
-func (_mock *MockBatch) Delete(ctx context.Context, key datastore.Key) error {
-	ret := _mock.Called(ctx, key)
+func (_mock *MockBatch) Delete(key datastore.Key) error {
+	ret := _mock.Called(key)
 
 	if len(ret) == 0 {
 		panic("no return value specified for Delete")
 	}
 
 	var r0 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, datastore.Key) error); ok {
-		r0 = returnFunc(ctx, key)
+	if returnFunc, ok := ret.Get(0).(func(datastore.Key) error); ok {
+		r0 = returnFunc(key)
 	} else {
 		r0 = ret.Error(0)
 	}
@@ -107,19 +104,20 @@ type MockBatch_Delete_Call struct {
 }
 
 // Delete is a helper method to define mock.On call
-//   - ctx context.Context
 //   - key datastore.Key
-func (_e *MockBatch_Expecter) Delete(ctx interface{}, key interface{}) *MockBatch_Delete_Call {
-	return &MockBatch_Delete_Call{Call: _e.mock.On("Delete", ctx, key)}
+func (_e *MockBatch_Expecter) Delete(key interface{}) *MockBatch_Delete_Call {
+	return &MockBatch_Delete_Call{Call: _e.mock.On("Delete", key)}
 }
 
-func (_c *MockBatch_Delete_Call) Run(run func(ctx context.Context, key datastore.Key)) *MockBatch_Delete_Call {
+func (_c *MockBatch_Delete_Call) Run(run func(key datastore.Key)) *MockBatch_Delete_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		var arg1 datastore.Key
-		if args[1] != nil {
-			arg1 = args[1].(datastore.Key)
+		var arg0 datastore.Key
+		if args[0] != nil {
+			arg0 = args[0].(datastore.Key)
 		}
-		run(args[0].(context.Context), arg1)
+		run(
+			arg0,
+		)
 	})
 	return _c
 }
@@ -129,22 +127,22 @@ func (_c *MockBatch_Delete_Call) Return(err error) *MockBatch_Delete_Call {
 	return _c
 }
 
-func (_c *MockBatch_Delete_Call) RunAndReturn(run func(context.Context, datastore.Key) error) *MockBatch_Delete_Call {
+func (_c *MockBatch_Delete_Call) RunAndReturn(run func(key datastore.Key) error) *MockBatch_Delete_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
 // Put provides a mock function for the type MockBatch
-func (_mock *MockBatch) Put(ctx context.Context, key datastore.Key, value []byte) error {
-	ret := _mock.Called(ctx, key, value)
+func (_mock *MockBatch) Put(key datastore.Key, value []byte) error {
+	ret := _mock.Called(key, value)
 
 	if len(ret) == 0 {
 		panic("no return value specified for Put")
 	}
 
 	var r0 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, datastore.Key, []byte) error); ok {
-		r0 = returnFunc(ctx, key, value)
+	if returnFunc, ok := ret.Get(0).(func(datastore.Key, []byte) error); ok {
+		r0 = returnFunc(key, value)
 	} else {
 		r0 = ret.Error(0)
 	}
@@ -157,24 +155,26 @@ type MockBatch_Put_Call struct {
 }
 
 // Put is a helper method to define mock.On call
-//   - ctx context.Context
 //   - key datastore.Key
 //   - value []byte
-func (_e *MockBatch_Expecter) Put(ctx interface{}, key interface{}, value interface{}) *MockBatch_Put_Call {
-	return &MockBatch_Put_Call{Call: _e.mock.On("Put", ctx, key, value)}
+func (_e *MockBatch_Expecter) Put(key interface{}, value interface{}) *MockBatch_Put_Call {
+	return &MockBatch_Put_Call{Call: _e.mock.On("Put", key, value)}
 }
 
-func (_c *MockBatch_Put_Call) Run(run func(ctx context.Context, key datastore.Key, value []byte)) *MockBatch_Put_Call {
+func (_c *MockBatch_Put_Call) Run(run func(key datastore.Key, value []byte)) *MockBatch_Put_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		var arg1 datastore.Key
+		var arg0 datastore.Key
+		if args[0] != nil {
+			arg0 = args[0].(datastore.Key)
+		}
+		var arg1 []byte
 		if args[1] != nil {
-			arg1 = args[1].(datastore.Key)
+			arg1 = args[1].([]byte)
 		}
-		var arg2 []byte
-		if args[2] != nil {
-			arg2 = args[2].([]byte)
-		}
-		run(args[0].(context.Context), arg1, arg2)
+		run(
+			arg0,
+			arg1,
+		)
 	})
 	return _c
 }
@@ -184,22 +184,22 @@ func (_c *MockBatch_Put_Call) Return(err error) *MockBatch_Put_Call {
 	return _c
 }
 
-func (_c *MockBatch_Put_Call) RunAndReturn(run func(context.Context, datastore.Key, []byte) error) *MockBatch_Put_Call {
+func (_c *MockBatch_Put_Call) RunAndReturn(run func(key datastore.Key, value []byte) error) *MockBatch_Put_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
 // SaveBlockData provides a mock function for the type MockBatch
-func (_mock *MockBatch) SaveBlockData(ctx context.Context, header *types.SignedHeader, data *types.Data, signature *types.Signature) error {
-	ret := _mock.Called(ctx, header, data, signature)
+func (_mock *MockBatch) SaveBlockData(header *types.SignedHeader, data *types.Data, signature *types.Signature) error {
+	ret := _mock.Called(header, data, signature)
 
 	if len(ret) == 0 {
 		panic("no return value specified for SaveBlockData")
 	}
 
 	var r0 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, *types.SignedHeader, *types.Data, *types.Signature) error); ok {
-		r0 = returnFunc(ctx, header, data, signature)
+	if returnFunc, ok := ret.Get(0).(func(*types.SignedHeader, *types.Data, *types.Signature) error); ok {
+		r0 = returnFunc(header, data, signature)
 	} else {
 		r0 = ret.Error(0)
 	}
@@ -212,29 +212,32 @@ type MockBatch_SaveBlockData_Call struct {
 }
 
 // SaveBlockData is a helper method to define mock.On call
-//   - ctx context.Context
 //   - header *types.SignedHeader
 //   - data *types.Data
 //   - signature *types.Signature
-func (_e *MockBatch_Expecter) SaveBlockData(ctx interface{}, header interface{}, data interface{}, signature interface{}) *MockBatch_SaveBlockData_Call {
-	return &MockBatch_SaveBlockData_Call{Call: _e.mock.On("SaveBlockData", ctx, header, data, signature)}
+func (_e *MockBatch_Expecter) SaveBlockData(header interface{}, data interface{}, signature interface{}) *MockBatch_SaveBlockData_Call {
+	return &MockBatch_SaveBlockData_Call{Call: _e.mock.On("SaveBlockData", header, data, signature)}
 }
 
-func (_c *MockBatch_SaveBlockData_Call) Run(run func(ctx context.Context, header *types.SignedHeader, data *types.Data, signature *types.Signature)) *MockBatch_SaveBlockData_Call {
+func (_c *MockBatch_SaveBlockData_Call) Run(run func(header *types.SignedHeader, data *types.Data, signature *types.Signature)) *MockBatch_SaveBlockData_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		var arg1 *types.SignedHeader
+		var arg0 *types.SignedHeader
+		if args[0] != nil {
+			arg0 = args[0].(*types.SignedHeader)
+		}
+		var arg1 *types.Data
 		if args[1] != nil {
-			arg1 = args[1].(*types.SignedHeader)
+			arg1 = args[1].(*types.Data)
 		}
-		var arg2 *types.Data
+		var arg2 *types.Signature
 		if args[2] != nil {
-			arg2 = args[2].(*types.Data)
+			arg2 = args[2].(*types.Signature)
 		}
-		var arg3 *types.Signature
-		if args[3] != nil {
-			arg3 = args[3].(*types.Signature)
-		}
-		run(args[0].(context.Context), arg1, arg2, arg3)
+		run(
+			arg0,
+			arg1,
+			arg2,
+		)
 	})
 	return _c
 }
@@ -244,22 +247,22 @@ func (_c *MockBatch_SaveBlockData_Call) Return(err error) *MockBatch_SaveBlockDa
 	return _c
 }
 
-func (_c *MockBatch_SaveBlockData_Call) RunAndReturn(run func(context.Context, *types.SignedHeader, *types.Data, *types.Signature) error) *MockBatch_SaveBlockData_Call {
+func (_c *MockBatch_SaveBlockData_Call) RunAndReturn(run func(header *types.SignedHeader, data *types.Data, signature *types.Signature) error) *MockBatch_SaveBlockData_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
 // SetHeight provides a mock function for the type MockBatch
-func (_mock *MockBatch) SetHeight(ctx context.Context, height uint64) error {
-	ret := _mock.Called(ctx, height)
+func (_mock *MockBatch) SetHeight(height uint64) error {
+	ret := _mock.Called(height)
 
 	if len(ret) == 0 {
 		panic("no return value specified for SetHeight")
 	}
 
 	var r0 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, uint64) error); ok {
-		r0 = returnFunc(ctx, height)
+	if returnFunc, ok := ret.Get(0).(func(uint64) error); ok {
+		r0 = returnFunc(height)
 	} else {
 		r0 = ret.Error(0)
 	}
@@ -272,19 +275,20 @@ type MockBatch_SetHeight_Call struct {
 }
 
 // SetHeight is a helper method to define mock.On call
-//   - ctx context.Context
 //   - height uint64
-func (_e *MockBatch_Expecter) SetHeight(ctx interface{}, height interface{}) *MockBatch_SetHeight_Call {
-	return &MockBatch_SetHeight_Call{Call: _e.mock.On("SetHeight", ctx, height)}
+func (_e *MockBatch_Expecter) SetHeight(height interface{}) *MockBatch_SetHeight_Call {
+	return &MockBatch_SetHeight_Call{Call: _e.mock.On("SetHeight", height)}
 }
 
-func (_c *MockBatch_SetHeight_Call) Run(run func(ctx context.Context, height uint64)) *MockBatch_SetHeight_Call {
+func (_c *MockBatch_SetHeight_Call) Run(run func(height uint64)) *MockBatch_SetHeight_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		var arg1 uint64
-		if args[1] != nil {
-			arg1 = args[1].(uint64)
+		var arg0 uint64
+		if args[0] != nil {
+			arg0 = args[0].(uint64)
 		}
-		run(args[0].(context.Context), arg1)
+		run(
+			arg0,
+		)
 	})
 	return _c
 }
@@ -294,22 +298,22 @@ func (_c *MockBatch_SetHeight_Call) Return(err error) *MockBatch_SetHeight_Call 
 	return _c
 }
 
-func (_c *MockBatch_SetHeight_Call) RunAndReturn(run func(context.Context, uint64) error) *MockBatch_SetHeight_Call {
+func (_c *MockBatch_SetHeight_Call) RunAndReturn(run func(height uint64) error) *MockBatch_SetHeight_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
 // UpdateState provides a mock function for the type MockBatch
-func (_mock *MockBatch) UpdateState(ctx context.Context, state types.State) error {
-	ret := _mock.Called(ctx, state)
+func (_mock *MockBatch) UpdateState(state types.State) error {
+	ret := _mock.Called(state)
 
 	if len(ret) == 0 {
 		panic("no return value specified for UpdateState")
 	}
 
 	var r0 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, types.State) error); ok {
-		r0 = returnFunc(ctx, state)
+	if returnFunc, ok := ret.Get(0).(func(types.State) error); ok {
+		r0 = returnFunc(state)
 	} else {
 		r0 = ret.Error(0)
 	}
@@ -322,19 +326,20 @@ type MockBatch_UpdateState_Call struct {
 }
 
 // UpdateState is a helper method to define mock.On call
-//   - ctx context.Context
 //   - state types.State
-func (_e *MockBatch_Expecter) UpdateState(ctx interface{}, state interface{}) *MockBatch_UpdateState_Call {
-	return &MockBatch_UpdateState_Call{Call: _e.mock.On("UpdateState", ctx, state)}
+func (_e *MockBatch_Expecter) UpdateState(state interface{}) *MockBatch_UpdateState_Call {
+	return &MockBatch_UpdateState_Call{Call: _e.mock.On("UpdateState", state)}
 }
 
-func (_c *MockBatch_UpdateState_Call) Run(run func(ctx context.Context, state types.State)) *MockBatch_UpdateState_Call {
+func (_c *MockBatch_UpdateState_Call) Run(run func(state types.State)) *MockBatch_UpdateState_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		var arg1 types.State
-		if args[1] != nil {
-			arg1 = args[1].(types.State)
+		var arg0 types.State
+		if args[0] != nil {
+			arg0 = args[0].(types.State)
 		}
-		run(args[0].(context.Context), arg1)
+		run(
+			arg0,
+		)
 	})
 	return _c
 }
@@ -344,7 +349,7 @@ func (_c *MockBatch_UpdateState_Call) Return(err error) *MockBatch_UpdateState_C
 	return _c
 }
 
-func (_c *MockBatch_UpdateState_Call) RunAndReturn(run func(context.Context, types.State) error) *MockBatch_UpdateState_Call {
+func (_c *MockBatch_UpdateState_Call) RunAndReturn(run func(state types.State) error) *MockBatch_UpdateState_Call {
 	_c.Call.Return(run)
 	return _c
 }

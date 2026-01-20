@@ -224,13 +224,13 @@ func (e *Executor) initializeState() error {
 	if err != nil {
 		return fmt.Errorf("failed to create batch: %w", err)
 	}
-	if err := batch.SetHeight(e.ctx, state.LastBlockHeight); err != nil {
+	if err := batch.SetHeight(state.LastBlockHeight); err != nil {
 		return fmt.Errorf("failed to set store height: %w", err)
 	}
-	if err := batch.UpdateState(e.ctx, state); err != nil {
+	if err := batch.UpdateState(state); err != nil {
 		return fmt.Errorf("failed to update state: %w", err)
 	}
-	if err := batch.Commit(e.ctx); err != nil {
+	if err := batch.Commit(); err != nil {
 		return fmt.Errorf("failed to commit batch: %w", err)
 	}
 
@@ -389,10 +389,10 @@ func (e *Executor) ProduceBlock(ctx context.Context) error {
 		if err != nil {
 			return fmt.Errorf("failed to create batch for early save: %w", err)
 		}
-		if err = batch.SaveBlockData(ctx, header, data, &types.Signature{}); err != nil {
+		if err = batch.SaveBlockData(header, data, &types.Signature{}); err != nil {
 			return fmt.Errorf("failed to save block data: %w", err)
 		}
-		if err = batch.Commit(ctx); err != nil {
+		if err = batch.Commit(); err != nil {
 			return fmt.Errorf("failed to commit early save batch: %w", err)
 		}
 	}
@@ -433,19 +433,19 @@ func (e *Executor) ProduceBlock(ctx context.Context) error {
 		return fmt.Errorf("failed to create batch: %w", err)
 	}
 
-	if err := batch.SaveBlockData(ctx, header, data, &signature); err != nil {
+	if err := batch.SaveBlockData(header, data, &signature); err != nil {
 		return fmt.Errorf("failed to save block: %w", err)
 	}
 
-	if err := batch.SetHeight(ctx, newHeight); err != nil {
+	if err := batch.SetHeight(newHeight); err != nil {
 		return fmt.Errorf("failed to update store height: %w", err)
 	}
 
-	if err := batch.UpdateState(ctx, newState); err != nil {
+	if err := batch.UpdateState(newState); err != nil {
 		return fmt.Errorf("failed to update state: %w", err)
 	}
 
-	if err := batch.Commit(ctx); err != nil {
+	if err := batch.Commit(); err != nil {
 		return fmt.Errorf("failed to commit batch: %w", err)
 	}
 

@@ -111,8 +111,8 @@ func TestSubmitter_IsHeightDAIncluded(t *testing.T) {
 	cm, st := newTestCacheAndStore(t)
 	batch, err := st.NewBatch(ctx)
 	require.NoError(t, err)
-	require.NoError(t, batch.SetHeight(ctx, 5))
-	require.NoError(t, batch.Commit(ctx))
+	require.NoError(t, batch.SetHeight(5))
+	require.NoError(t, batch.Commit())
 
 	s := &Submitter{store: st, cache: cm, logger: zerolog.Nop()}
 	s.ctx = ctx
@@ -265,16 +265,16 @@ func TestSubmitter_processDAInclusionLoop_advances(t *testing.T) {
 	// Save block 1
 	batch1, err := st.NewBatch(ctx)
 	require.NoError(t, err)
-	require.NoError(t, batch1.SaveBlockData(ctx, h1, d1, &sig))
-	require.NoError(t, batch1.SetHeight(ctx, 1))
-	require.NoError(t, batch1.Commit(ctx))
+	require.NoError(t, batch1.SaveBlockData(h1, d1, &sig))
+	require.NoError(t, batch1.SetHeight(1))
+	require.NoError(t, batch1.Commit())
 
 	// Save block 2
 	batch2, err := st.NewBatch(ctx)
 	require.NoError(t, err)
-	require.NoError(t, batch2.SaveBlockData(ctx, h2, d2, &sig))
-	require.NoError(t, batch2.SetHeight(ctx, 2))
-	require.NoError(t, batch2.Commit(ctx))
+	require.NoError(t, batch2.SaveBlockData(h2, d2, &sig))
+	require.NoError(t, batch2.SetHeight(2))
+	require.NoError(t, batch2.Commit())
 
 	cm.SetHeaderDAIncluded(h1.Hash().String(), 100, 1)
 	cm.SetDataDAIncluded(d1.DACommitment().String(), 100, 1)
@@ -380,10 +380,10 @@ func TestSubmitter_daSubmissionLoop(t *testing.T) {
 	// Store the blocks
 	batch, err := st.NewBatch(ctx)
 	require.NoError(t, err)
-	require.NoError(t, batch.SaveBlockData(ctx, h1, d1, &types.Signature{}))
-	require.NoError(t, batch.SaveBlockData(ctx, h2, d2, &types.Signature{}))
-	require.NoError(t, batch.SetHeight(ctx, 2))
-	require.NoError(t, batch.Commit(ctx))
+	require.NoError(t, batch.SaveBlockData(h1, d1, &types.Signature{}))
+	require.NoError(t, batch.SaveBlockData(h2, d2, &types.Signature{}))
+	require.NoError(t, batch.SetHeight(2))
+	require.NoError(t, batch.Commit())
 
 	// Start and wait for calls
 	require.NoError(t, s.Start(ctx))
@@ -481,9 +481,9 @@ func TestSubmitter_CacheClearedOnHeightInclusion(t *testing.T) {
 	for _, block := range blocks {
 		batch, err := st.NewBatch(ctx)
 		require.NoError(t, err)
-		require.NoError(t, batch.SaveBlockData(ctx, block.header, block.data, &sig))
-		require.NoError(t, batch.SetHeight(ctx, block.height))
-		require.NoError(t, batch.Commit(ctx))
+		require.NoError(t, batch.SaveBlockData(block.header, block.data, &sig))
+		require.NoError(t, batch.SetHeight(block.height))
+		require.NoError(t, batch.Commit())
 	}
 
 	// Set up cache with headers and data seen for all heights

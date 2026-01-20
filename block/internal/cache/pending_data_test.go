@@ -29,9 +29,9 @@ func TestPendingData_BasicFlow(t *testing.T) {
 	}{{h1, d1}, {h2, d2}, {h3, d3}} {
 		batch, err := store.NewBatch(ctx)
 		require.NoError(t, err)
-		require.NoError(t, batch.SaveBlockData(ctx, p.h, p.d, &types.Signature{}))
-		require.NoError(t, batch.SetHeight(ctx, uint64(i+1)))
-		require.NoError(t, batch.Commit(ctx))
+		require.NoError(t, batch.SaveBlockData(p.h, p.d, &types.Signature{}))
+		require.NoError(t, batch.SetHeight(uint64(i+1)))
+		require.NoError(t, batch.Commit())
 	}
 
 	pendingData, err := NewPendingData(store, zerolog.Nop())
@@ -74,8 +74,8 @@ func TestPendingData_InitFromMetadata(t *testing.T) {
 	// store height is 3
 	batch, err := store.NewBatch(ctx)
 	require.NoError(t, err)
-	require.NoError(t, batch.SetHeight(ctx, 3))
-	require.NoError(t, batch.Commit(ctx))
+	require.NoError(t, batch.SetHeight(3))
+	require.NoError(t, batch.Commit())
 
 	pendingData, err := NewPendingData(store, zerolog.Nop())
 	require.NoError(t, err)
@@ -90,8 +90,8 @@ func TestPendingData_GetPending_PropagatesFetchError(t *testing.T) {
 	// Set height to 1 but do not save any block data
 	batch, err := store.NewBatch(ctx)
 	require.NoError(t, err)
-	require.NoError(t, batch.SetHeight(ctx, 1))
-	require.NoError(t, batch.Commit(ctx))
+	require.NoError(t, batch.SetHeight(1))
+	require.NoError(t, batch.Commit())
 
 	pendingData, err := NewPendingData(store, zerolog.Nop())
 	require.NoError(t, err)
