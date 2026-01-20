@@ -71,7 +71,7 @@ type HeaderSyncService = SyncService[*types.SignedHeader]
 
 // NewDataSyncService returns a new DataSyncService.
 func NewDataSyncService(
-	dsStore ds.Batching,
+	batchingDataStore ds.Batching,
 	daStore store.Store,
 	conf config.Config,
 	genesis genesis.Genesis,
@@ -98,7 +98,7 @@ func NewDataSyncService(
 			})
 		}
 	}
-	return newSyncService[*types.Data](dsStore, getter, getterByHeight, rangeGetter, dataSync, conf, genesis, p2p, logger)
+	return newSyncService[*types.Data](batchingDataStore, getter, getterByHeight, rangeGetter, dataSync, conf, genesis, p2p, logger)
 }
 
 // NewHeaderSyncService returns a new HeaderSyncService.
