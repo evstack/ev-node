@@ -22,7 +22,7 @@ require (
 	connectrpc.com/grpcreflect v1.3.0 // indirect
 	github.com/benbjohnson/clock v1.3.5 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
-	github.com/celestiaorg/go-header v0.7.5-0.20260116211018-3f61d145c9d2 // indirect
+	github.com/celestiaorg/go-header v0.8.0 // indirect
 	github.com/celestiaorg/go-libp2p-messenger v0.2.2 // indirect
 	github.com/celestiaorg/go-square/merkle v0.0.0-20240627094109-7d01436067a3 // indirect
 	github.com/celestiaorg/go-square/v3 v3.0.2 // indirect
@@ -70,7 +70,7 @@ require (
 	github.com/libp2p/go-flow-metrics v0.3.0 // indirect
 	github.com/libp2p/go-libp2p v0.46.0 // indirect
 	github.com/libp2p/go-libp2p-asn-util v0.4.1 // indirect
-	github.com/libp2p/go-libp2p-kad-dht v0.36.0 // indirect
+	github.com/libp2p/go-libp2p-kad-dht v0.37.0 // indirect
 	github.com/libp2p/go-libp2p-kbucket v0.8.0 // indirect
 	github.com/libp2p/go-libp2p-pubsub v0.15.0 // indirect
 	github.com/libp2p/go-libp2p-record v0.3.1 // indirect
