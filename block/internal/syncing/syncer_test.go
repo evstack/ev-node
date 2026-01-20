@@ -726,63 +726,63 @@ func TestSyncMode_String(t *testing.T) {
 
 func TestSyncer_determineSyncMode(t *testing.T) {
 	tests := []struct {
-		name          string
-		localHead     uint64
-		localHeadErr  error
-		currentHeight uint64
-		expectedMode  SyncMode
+		name              string
+		daNodeHead        uint64
+		daNodeHeadErr     error
+		processedDAHeight uint64
+		expectedMode      SyncMode
 	}{
 		{
-			name:          "caught up - at head",
-			localHead:     100,
-			localHeadErr:  nil,
-			currentHeight: 100,
-			expectedMode:  SyncModeFollow,
+			name:              "caught up - at head",
+			daNodeHead:        100,
+			daNodeHeadErr:     nil,
+			processedDAHeight: 100,
+			expectedMode:      SyncModeFollow,
 		},
 		{
-			name:          "caught up - within threshold",
-			localHead:     100,
-			localHeadErr:  nil,
-			currentHeight: 99, // within catchupThreshold (2)
-			expectedMode:  SyncModeFollow,
+			name:              "caught up - within threshold",
+			daNodeHead:        100,
+			daNodeHeadErr:     nil,
+			processedDAHeight: 99, // within catchupThreshold (2)
+			expectedMode:      SyncModeFollow,
 		},
 		{
-			name:          "caught up - at threshold boundary",
-			localHead:     100,
-			localHeadErr:  nil,
-			currentHeight: 98, // exactly at threshold
-			expectedMode:  SyncModeFollow,
+			name:              "caught up - at threshold boundary",
+			daNodeHead:        100,
+			daNodeHeadErr:     nil,
+			processedDAHeight: 98, // exactly at threshold
+			expectedMode:      SyncModeFollow,
 		},
 		{
-			name:          "behind - just past threshold",
-			localHead:     100,
-			localHeadErr:  nil,
-			currentHeight: 97, // 3 behind, past threshold of 2
-			expectedMode:  SyncModeCatchup,
+			name:              "behind - just past threshold",
+			daNodeHead:        100,
+			daNodeHeadErr:     nil,
+			processedDAHeight: 97, // 3 behind, past threshold of 2
+			expectedMode:      SyncModeCatchup,
 		},
 		{
-			name:          "behind - significantly behind",
-			localHead:     100,
-			localHeadErr:  nil,
-			currentHeight: 50,
-			expectedMode:  SyncModeCatchup,
+			name:              "behind - significantly behind",
+			daNodeHead:        100,
+			daNodeHeadErr:     nil,
+			processedDAHeight: 50,
+			expectedMode:      SyncModeCatchup,
 		},
 		{
-			name:          "error getting local head - defaults to catchup",
-			localHead:     0,
-			localHeadErr:  errors.New("connection failed"),
-			currentHeight: 100,
-			expectedMode:  SyncModeCatchup,
+			name:              "error getting DA node head - defaults to catchup",
+			daNodeHead:        0,
+			daNodeHeadErr:     errors.New("connection failed"),
+			processedDAHeight: 100,
+			expectedMode:      SyncModeCatchup,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			mockDA := testmocks.NewMockClient(t)
-			if tt.localHeadErr != nil {
-				mockDA.EXPECT().LocalHead(mock.Anything).Return(uint64(0), tt.localHeadErr)
+			if tt.daNodeHeadErr != nil {
+				mockDA.EXPECT().LocalHead(mock.Anything).Return(uint64(0), tt.daNodeHeadErr)
 			} else {
-				mockDA.EXPECT().LocalHead(mock.Anything).Return(tt.localHead, nil)
+				mockDA.EXPECT().LocalHead(mock.Anything).Return(tt.daNodeHead, nil)
 			}
 
 			syncer := &Syncer{
@@ -791,7 +791,7 @@ func TestSyncer_determineSyncMode(t *testing.T) {
 				ctx:               context.Background(),
 				logger:            zerolog.Nop(),
 			}
-			syncer.daRetrieverHeight.Store(tt.currentHeight)
+			syncer.daRetrieverHeight.Store(tt.processedDAHeight)
 
 			mode := syncer.determineSyncMode()
 			assert.Equal(t, tt.expectedMode, mode)

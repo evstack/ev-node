@@ -455,17 +455,19 @@ func (s *Syncer) determineSyncMode() SyncMode {
 		return SyncModeCatchup
 	}
 
-	localHead, err := s.daClient.LocalHead(s.ctx)
+	// daNodeHead is the height the DA node (e.g., Celestia light node) has synced to
+	daNodeHead, err := s.daClient.LocalHead(s.ctx)
 	if err != nil {
 		// Default to catchup on error - safer to poll than assume we're caught up
-		s.logger.Debug().Err(err).Msg("failed to get local DA head, defaulting to catchup mode")
+		s.logger.Debug().Err(err).Msg("failed to get DA node head, defaulting to catchup mode")
 		return SyncModeCatchup
 	}
 
-	currentDAHeight := s.daRetrieverHeight.Load()
+	// processedDAHeight is the DA height ev-node has retrieved and processed
+	processedDAHeight := s.daRetrieverHeight.Load()
 
-	// Consider "caught up" if within catchupThreshold blocks of local head
-	if currentDAHeight+catchupThreshold >= localHead {
+	// Consider "caught up" if within catchupThreshold blocks of DA node head
+	if processedDAHeight+catchupThreshold >= daNodeHead {
 		return SyncModeFollow
 	}
 	return SyncModeCatchup

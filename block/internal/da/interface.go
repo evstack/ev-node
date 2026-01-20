@@ -29,8 +29,9 @@ type Client interface {
 	// Used for follow mode to receive real-time blob notifications.
 	Subscribe(ctx context.Context, namespace []byte) (<-chan *blobrpc.SubscriptionResponse, error)
 
-	// LocalHead returns the height of the locally synced DA head.
-	// Used to determine if the node is caught up with the DA layer.
+	// LocalHead returns the height the DA node (e.g., Celestia light node) has synced to.
+	// This is NOT the ev-node's processed height - it's the DA layer node's local head.
+	// Used to determine if ev-node is caught up with the DA layer.
 	LocalHead(ctx context.Context) (uint64, error)
 }
 
