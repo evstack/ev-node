@@ -3,12 +3,14 @@ package sync
 import (
 	"context"
 	cryptoRand "crypto/rand"
+	"errors"
 	"math/rand"
 	"path/filepath"
 	"sync/atomic"
 	"testing"
 	"time"
 
+	"github.com/celestiaorg/go-header"
 	"github.com/evstack/ev-node/pkg/config"
 	genesispkg "github.com/evstack/ev-node/pkg/genesis"
 	"github.com/evstack/ev-node/pkg/p2p"
@@ -247,6 +249,12 @@ func TestBackgroundRetryEventuallySucceeds(t *testing.T) {
 
 	// Verify the syncer hasn't started yet (no peers to get headers from)
 	require.False(t, svc.syncerStatus.isStarted(), "syncer should not be started without peers")
+
+	// Verify that querying the header store before syncer starts returns an empty store error
+	_, headErr := svc.Store().Head(ctx)
+	require.Error(t, headErr, "querying head before syncer starts should return an error")
+	require.True(t, errors.Is(headErr, header.ErrNotFound) || errors.Is(headErr, header.ErrEmptyStore),
+		"error should be ErrNotFound or ErrEmptyStore, got: %v", headErr)
 
 	// Create the genesis header that we'll add to the DA store
 	headerConfig := types.HeaderConfig{
