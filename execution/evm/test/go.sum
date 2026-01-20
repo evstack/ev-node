@@ -68,6 +68,8 @@ github.com/btcsuite/btcd/btcutil v1.1.6 h1:zFL2+c3Lb9gEgqKNzowKUPQNb8jV7v5Oaodi/
 github.com/btcsuite/btcd/btcutil v1.1.6/go.mod h1:9dFymx8HpuLqBnsPELrImQeTQfKBQqzqGbbV3jK55aE=
 github.com/celestiaorg/go-header v0.8.0 h1:j9/t/uhxif26WQ3fULDAh3I55Fh3lJk6qMXPFFuOy28=
 github.com/celestiaorg/go-header v0.8.0/go.mod h1:X00prITrMa2kxgEX15WQnbLf0uV6tlvTesDKC5KsDVQ=
+github.com/celestiaorg/go-square/merkle v0.0.0-20240627094109-7d01436067a3 h1:wP84mtwOCVNOTfS3zErICjxKLnh74Z1uf+tdrlSFjVM=
+github.com/celestiaorg/go-square/merkle v0.0.0-20240627094109-7d01436067a3/go.mod h1:86qIYnEhmn/hfW+xvw98NOI3zGaDEB3x8JGjYo2FqLs=
 github.com/celestiaorg/go-square/v3 v3.0.2 h1:eSQOgNII8inK9IhiBZ+6GADQeWbRq4HYY72BOgcduA4=
 github.com/celestiaorg/go-square/v3 v3.0.2/go.mod h1:oFReMLsSDMRs82ICFEeFQFCqNvwdsbIM1BzCcb0f7dM=
 github.com/celestiaorg/nmt v0.24.2 h1:LlpJSPOd6/Lw1Ig6HUhZuqiINHLka/ZSRTBzlNJpchg=
