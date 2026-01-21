@@ -794,14 +794,6 @@ func (c *EngineClient) GetExecutionInfo(ctx context.Context, height uint64) (exe
 func (c *EngineClient) FilterTxs(ctx context.Context, txs [][]byte, maxBytes, maxGas uint64, hasForceIncludedTransaction bool) ([]execution.FilterStatus, error) {
 	result := make([]execution.FilterStatus, len(txs))
 
-	// If no force-included txs, skip filtering entirely - mempool batch is already filtered
-	if !hasForceIncludedTransaction {
-		for i := range result {
-			result[i] = execution.FilterOK
-		}
-		return result, nil
-	}
-
 	var cumulativeGas uint64
 	var cumulativeBytes uint64
 	limitReached := false
@@ -813,27 +805,33 @@ func (c *EngineClient) FilterTxs(ctx context.Context, txs [][]byte, maxBytes, ma
 			continue
 		}
 
-		// Validate that the transaction can be parsed as an Ethereum transaction
-		var ethTx types.Transaction
-		if err := ethTx.UnmarshalBinary(tx); err != nil {
-			c.logger.Debug().
-				Int("tx_index", i).
-				Err(err).
-				Str("tx_hex", "0x"+hex.EncodeToString(tx)).
-				Msg("filtering out invalid transaction (gibberish)")
-			result[i] = execution.FilterRemove
-			continue
-		}
-
 		txBytes := uint64(len(tx))
-		txGas := ethTx.Gas()
+		var txGas uint64
 
-		// Skip tx that can never make it in a block (too big or too much gas)
-		if maxBytes > 0 && txBytes > maxBytes {
-			result[i] = execution.FilterRemove
-			continue
+		// Only validate and parse tx if force-included txs are present
+		// Mempool txs are already validated, so we can skip parsing when not needed
+		if hasForceIncludedTransaction {
+			var ethTx types.Transaction
+			if err := ethTx.UnmarshalBinary(tx); err != nil {
+				c.logger.Debug().
+					Int("tx_index", i).
+					Err(err).
+					Str("tx_hex", "0x"+hex.EncodeToString(tx)).
+					Msg("filtering out invalid transaction (gibberish)")
+				result[i] = execution.FilterRemove
+				continue
+			}
+			txGas = ethTx.Gas()
+
+			// Skip tx that can never make it in a block (too much gas)
+			if maxGas > 0 && txGas > maxGas {
+				result[i] = execution.FilterRemove
+				continue
+			}
 		}
-		if maxGas > 0 && txGas > maxGas {
+
+		// Skip tx that can never make it in a block (too big)
+		if maxBytes > 0 && txBytes > maxBytes {
 			result[i] = execution.FilterRemove
 			continue
 		}
@@ -856,8 +854,8 @@ func (c *EngineClient) FilterTxs(ctx context.Context, txs [][]byte, maxBytes, ma
 			continue
 		}
 
-		// Check gas limit
-		if maxGas > 0 && cumulativeGas+txGas > maxGas {
+		// Check gas limit (only when we have force-included txs and parsed the tx)
+		if hasForceIncludedTransaction && maxGas > 0 && cumulativeGas+txGas > maxGas {
 			limitReached = true
 			result[i] = execution.FilterPostpone
 			c.logger.Debug().
