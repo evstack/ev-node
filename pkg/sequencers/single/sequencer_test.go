@@ -517,9 +517,9 @@ func TestSequencer_GetNextBatch_ForcedInclusion_ExceedsMaxBytes(t *testing.T) {
 	assert.Equal(t, 1, len(resp.Batch.Transactions), "Should only include first forced tx")
 	assert.Equal(t, 100, len(resp.Batch.Transactions[0]))
 
-	// With new design, postponed txs replace the cache and TxIndex is reset to 0
-	assert.Equal(t, uint64(0), seq.checkpoint.TxIndex, "TxIndex should be 0 since cache was replaced with postponed txs")
-	assert.Equal(t, 1, len(seq.cachedForcedInclusionTxs), "Cache should contain only the postponed tx")
+	// TxIndex tracks consumed txs from the original epoch for crash recovery
+	assert.Equal(t, uint64(1), seq.checkpoint.TxIndex, "TxIndex should be 1 (consumed first forced tx)")
+	assert.Equal(t, 2, len(seq.cachedForcedInclusionTxs), "Cache should still contain all original txs")
 
 	// Second call - should get the pending forced tx
 	resp2, err := seq.GetNextBatch(ctx, getReq)
@@ -605,9 +605,9 @@ func TestSequencer_GetNextBatch_AlwaysCheckPendingForcedInclusion(t *testing.T) 
 	assert.Equal(t, 75, len(resp.Batch.Transactions[0])) // forced tx is 75 bytes
 	assert.Equal(t, 50, len(resp.Batch.Transactions[1])) // batch tx is 50 bytes
 
-	// With new design, postponed txs replace the cache and TxIndex is reset to 0
-	assert.Equal(t, uint64(0), seq.checkpoint.TxIndex, "TxIndex should be 0 since cache was replaced")
-	assert.Equal(t, 1, len(seq.cachedForcedInclusionTxs), "Remaining forced tx should be cached")
+	// TxIndex tracks consumed txs from the original epoch for crash recovery
+	assert.Equal(t, uint64(1), seq.checkpoint.TxIndex, "TxIndex should be 1 (consumed first forced tx)")
+	assert.Equal(t, 2, len(seq.cachedForcedInclusionTxs), "Cache should still contain all original txs")
 
 	// Second call with larger maxBytes = 200
 	// Should process pending forced tx first
@@ -1139,9 +1139,9 @@ func TestSequencer_GetNextBatch_WithGasFiltering(t *testing.T) {
 	// Should have 2 forced txs (the ones that fit within gas limit)
 	assert.Equal(t, 2, len(resp.Batch.Transactions))
 
-	// The remaining tx should be cached for next block
-	assert.Equal(t, 1, len(seq.cachedForcedInclusionTxs))
-	assert.Equal(t, uint64(0), seq.checkpoint.TxIndex) // Reset because we replaced the cache
+	// TxIndex tracks consumed txs, cache still contains all original txs
+	assert.Equal(t, 3, len(seq.cachedForcedInclusionTxs), "Cache should still contain all original txs")
+	assert.Equal(t, uint64(2), seq.checkpoint.TxIndex, "TxIndex should be 2 (consumed 2 txs)")
 
 	// Filter should have been called
 	assert.Equal(t, 1, filterCallCount)
@@ -1156,8 +1156,9 @@ func TestSequencer_GetNextBatch_WithGasFiltering(t *testing.T) {
 	// Should have the remaining forced tx
 	assert.Equal(t, 1, len(resp.Batch.Transactions))
 
-	// Cache should now be empty, DA height should advance
+	// All txs consumed, DA height should advance and cache cleared
 	assert.Nil(t, seq.cachedForcedInclusionTxs)
+	assert.Equal(t, uint64(0), seq.checkpoint.TxIndex, "TxIndex should be reset after advancing DA height")
 	assert.Equal(t, uint64(101), seq.checkpoint.DAHeight)
 }
 
@@ -1341,11 +1342,10 @@ func TestSequencer_GetNextBatch_GasFilteringPreservesUnprocessedTxs(t *testing.T
 	assert.True(t, txFound[string(tx3)], "tx3 should have been processed (must not be lost)")
 }
 
-// TestSequencer_GetNextBatch_RemainingTxsWithUnprocessedCache tests the specific scenario where:
 // TestSequencer_GetNextBatch_RemainingTxsWithUnprocessedCache tests that when FilterTxs
-// returns FilterPostpone for some txs, those txs are preserved for the next batch.
-// With the new FilterTxs design, ALL remaining txs are sent to FilterTxs at once,
-// so there's no concept of "unprocessed" txs - just "postponed" ones.
+// returns FilterPostpone for a tx, we stop processing at that point to maintain ordering.
+// The TxIndex tracks consumed txs for crash recovery, and remaining txs (from TxIndex onward)
+// are processed in the next batch.
 func TestSequencer_GetNextBatch_RemainingTxsWithUnprocessedCache(t *testing.T) {
 	db := ds.NewMapDatastore()
 	logger := zerolog.New(zerolog.NewTestWriter(t))
@@ -1435,20 +1435,20 @@ func TestSequencer_GetNextBatch_RemainingTxsWithUnprocessedCache(t *testing.T) {
 	t.Logf("Batch 1: %d txs, checkpoint: height=%d, index=%d, cache=%d",
 		len(resp1.Batch.Transactions), seq.checkpoint.DAHeight, seq.checkpoint.TxIndex, len(seq.cachedForcedInclusionTxs))
 
-	// After first batch, cache should contain only postponed txs
-	// With the new design, ALL txs are sent to FilterTxs at once
-	// The mock returns FilterPostpone for tx at index 1, so cache should have 1 tx
-	expectedCacheSize := 1 // Only the postponed tx
-	assert.Equal(t, expectedCacheSize, len(seq.cachedForcedInclusionTxs),
-		"cache should contain only postponed txs; got %d, want %d",
-		len(seq.cachedForcedInclusionTxs), expectedCacheSize)
+	// With sequential processing, we stop at the first Postpone (tx1)
+	// Only tx0 is consumed in the first batch
+	assert.Equal(t, 1, len(resp1.Batch.Transactions), "Should only process tx0 before hitting postpone")
+	assert.Equal(t, uint64(1), seq.checkpoint.TxIndex, "TxIndex should be 1 (consumed tx0)")
+	assert.Equal(t, 5, len(seq.cachedForcedInclusionTxs), "Cache should still contain all original txs")
 
-	// Second batch should process the remaining postponed tx
+	// Second batch should process remaining txs from TxIndex=1: [tx1, tx2, tx3, tx4]
+	// The mock returns all OK for the second call
 	resp2, err := seq.GetNextBatch(ctx, req)
 	require.NoError(t, err)
-	assert.Equal(t, 1, len(resp2.Batch.Transactions), "Should get the postponed tx")
+	assert.Equal(t, 4, len(resp2.Batch.Transactions), "Should get remaining 4 txs")
 
-	// After second batch, cache should be empty and checkpoint advanced
-	assert.Equal(t, 0, len(seq.cachedForcedInclusionTxs), "cache should be empty after consuming all txs")
+	// After second batch, all txs consumed, checkpoint advances
+	assert.Nil(t, seq.cachedForcedInclusionTxs, "cache should be nil after consuming all txs")
 	assert.Equal(t, uint64(101), seq.checkpoint.DAHeight, "checkpoint should advance to next DA height")
+	assert.Equal(t, uint64(0), seq.checkpoint.TxIndex, "TxIndex should be reset after advancing DA height")
 }

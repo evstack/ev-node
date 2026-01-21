@@ -236,10 +236,10 @@ func TestBasedSequencer_GetNextBatch_WithMaxBytes(t *testing.T) {
 	require.NotNil(t, resp.Batch)
 	// Should only get first 2 transactions (100 + 150 = 250 bytes)
 	assert.Equal(t, 2, len(resp.Batch.Transactions))
-	// With new design, postponed txs replace the cache and TxIndex is reset to 0
+	// TxIndex tracks consumed txs from the original epoch for crash recovery
 	assert.Equal(t, uint64(100), seq.checkpoint.DAHeight)
-	assert.Equal(t, uint64(0), seq.checkpoint.TxIndex)
-	assert.Equal(t, 1, len(seq.currentBatchTxs), "Cache should contain only the postponed tx")
+	assert.Equal(t, uint64(2), seq.checkpoint.TxIndex, "TxIndex should be 2 (consumed tx1 and tx2)")
+	assert.Equal(t, 3, len(seq.currentBatchTxs), "Cache should still contain all original txs")
 
 	// Second call should get the remaining transaction
 	req = coresequencer.GetNextBatchRequest{
@@ -540,6 +540,128 @@ func TestBasedSequencer_CheckpointPersistence(t *testing.T) {
 	// Checkpoint should be loaded from DB
 	assert.Equal(t, uint64(101), seq2.checkpoint.DAHeight)
 	assert.Equal(t, uint64(0), seq2.checkpoint.TxIndex)
+
+	mockRetriever.AssertExpectations(t)
+}
+
+func TestBasedSequencer_CrashRecoveryMidEpoch(t *testing.T) {
+	// This test simulates a crash mid-epoch where TxIndex > 0
+	// On restart, the epoch is re-fetched but we must NOT reset TxIndex
+	// and must resume from where we left off
+
+	testBlobs := [][]byte{[]byte("tx0"), []byte("tx1"), []byte("tx2"), []byte("tx3"), []byte("tx4")}
+
+	mockRetriever := common.NewMockForcedInclusionRetriever(t)
+	// The epoch will be fetched twice: once before crash, once after restart
+	mockRetriever.On("RetrieveForcedIncludedTxs", mock.Anything, uint64(100)).Return(&block.ForcedInclusionEvent{
+		Txs:           testBlobs,
+		StartDaHeight: 100,
+		EndDaHeight:   100,
+	}, nil).Times(2)
+
+	gen := genesis.Genesis{
+		ChainID:                "test-chain",
+		DAStartHeight:          100,
+		DAEpochForcedInclusion: 1,
+	}
+
+	// Create persistent datastore
+	db := syncds.MutexWrap(ds.NewMapDatastore())
+
+	// Create mock DA client
+	mockDAClient := &MockFullDAClient{
+		MockClient:   mocks.NewMockClient(t),
+		MockVerifier: mocks.NewMockVerifier(t),
+	} // On restart, the epoch is re-fetched but we must NOT reset TxIndex
+
+	mockDAClient.MockClient.On("GetForcedInclusionNamespace").Return([]byte("test-forced-inclusion-ns")).Maybe()
+	mockDAClient.MockClient.On("HasForcedInclusionNamespace").Return(true).Maybe()
+
+	// Create mock executor that postpones tx2 on first call
+	filterCallCount := 0
+	mockExec := mocks.NewMockExecutor(t)
+	mockExec.On("GetExecutionInfo", mock.Anything, mock.Anything).Return(execution.ExecutionInfo{MaxGas: 1000000}, nil).Maybe()
+	mockExec.On("FilterTxs", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(
+		func(ctx context.Context, txs [][]byte, maxBytes, maxGas uint64, hasForceIncludedTransaction bool) []execution.FilterStatus {
+			filterCallCount++
+			result := make([]execution.FilterStatus, len(txs))
+			if filterCallCount == 1 {
+				// First call: tx0, tx1 OK, tx2 postponed (simulating gas limit)
+				for i := range result {
+					if i < 2 {
+						result[i] = execution.FilterOK
+					} else {
+						result[i] = execution.FilterPostpone
+					}
+				}
+			} else {
+				// Subsequent calls: all OK
+				for i := range result {
+					result[i] = execution.FilterOK
+				}
+			}
+			return result
+		},
+		nil,
+	).Maybe()
+
+	// === FIRST RUN (before crash) ===
+	seq1, err := NewBasedSequencer(mockDAClient, config.DefaultConfig(), db, gen, zerolog.Nop(), mockExec)
+	require.NoError(t, err)
+	seq1.fiRetriever = mockRetriever
+
+	req := coresequencer.GetNextBatchRequest{
+		MaxBytes:      1000000,
+		LastBatchData: nil,
+	}
+
+	// First batch: should get tx0, tx1 (tx2 is postponed, stopping there)
+	resp1, err := seq1.GetNextBatch(context.Background(), req)
+	require.NoError(t, err)
+	require.NotNil(t, resp1)
+	assert.Equal(t, 2, len(resp1.Batch.Transactions), "Should get tx0 and tx1")
+	assert.Equal(t, []byte("tx0"), resp1.Batch.Transactions[0])
+	assert.Equal(t, []byte("tx1"), resp1.Batch.Transactions[1])
+
+	// Verify checkpoint state before "crash"
+	assert.Equal(t, uint64(100), seq1.checkpoint.DAHeight, "Should still be on DA height 100")
+	assert.Equal(t, uint64(2), seq1.checkpoint.TxIndex, "TxIndex should be 2 (consumed tx0, tx1)")
+
+	// === SIMULATE CRASH: Create new sequencer with same DB ===
+	// The in-memory cache is lost, but checkpoint is persisted
+
+	mockDAClient2 := &MockFullDAClient{
+		MockClient:   mocks.NewMockClient(t),
+		MockVerifier: mocks.NewMockVerifier(t),
+	}
+	mockDAClient2.MockClient.On("GetForcedInclusionNamespace").Return([]byte("test-forced-inclusion-ns")).Maybe()
+	mockDAClient2.MockClient.On("HasForcedInclusionNamespace").Return(true).Maybe()
+
+	seq2, err := NewBasedSequencer(mockDAClient2, config.DefaultConfig(), db, gen, zerolog.Nop(), mockExec)
+	require.NoError(t, err)
+	seq2.fiRetriever = mockRetriever
+
+	// Verify checkpoint was loaded correctly
+	assert.Equal(t, uint64(100), seq2.checkpoint.DAHeight, "DA height should be loaded from checkpoint")
+	assert.Equal(t, uint64(2), seq2.checkpoint.TxIndex, "TxIndex should be loaded from checkpoint")
+	assert.Nil(t, seq2.currentBatchTxs, "Cache should be empty after restart")
+
+	// === SECOND RUN (after restart) ===
+	// Should re-fetch epoch but resume from TxIndex=2
+
+	resp2, err := seq2.GetNextBatch(context.Background(), req)
+	require.NoError(t, err)
+	require.NotNil(t, resp2)
+
+	// Should get tx2, tx3, tx4 (NOT tx0, tx1 which were already processed)
+	assert.Equal(t, 3, len(resp2.Batch.Transactions), "Should get tx2, tx3, tx4")
+	assert.Equal(t, []byte("tx2"), resp2.Batch.Transactions[0], "First tx should be tx2, not tx0")
+	assert.Equal(t, []byte("tx3"), resp2.Batch.Transactions[1])
+	assert.Equal(t, []byte("tx4"), resp2.Batch.Transactions[2])
+
+	// Checkpoint should now advance to next DA height
+	assert.Equal(t, uint64(101), seq2.checkpoint.DAHeight, "Should advance to DA height 101")
+	assert.Equal(t, uint64(0), seq2.checkpoint.TxIndex, "TxIndex should reset after consuming all")
 
 	mockRetriever.AssertExpectations(t)
 }

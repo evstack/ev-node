@@ -100,7 +100,7 @@ func (s *BasedSequencer) SubmitBatchTxs(ctx context.Context, req coresequencer.S
 func (s *BasedSequencer) GetNextBatch(ctx context.Context, req coresequencer.GetNextBatchRequest) (*coresequencer.GetNextBatchResponse, error) {
 	daHeight := s.GetDAHeight()
 
-	// If we have no cached transactions or we've consumed all from the current DA block,
+	// If we have no cached transactions or we've consumed all from the current DA epoch,
 	// fetch the next DA epoch
 	if daHeight > 0 && (len(s.currentBatchTxs) == 0 || s.checkpoint.TxIndex >= uint64(len(s.currentBatchTxs))) {
 		daEndTime, daEndHeight, err := s.fetchNextDAEpoch(ctx, req.MaxBytes)
@@ -111,16 +111,18 @@ func (s *BasedSequencer) GetNextBatch(ctx context.Context, req coresequencer.Get
 		s.currentDAEndTime = daEndTime
 	}
 
-	// Get all remaining transactions from checkpoint position
-	// Size/gas filtering is now handled by FilterTxs
-	batchTxs := s.getRemainingTxs()
+	// Get remaining transactions from checkpoint position
+	// TxIndex tracks how many txs from the current epoch have been consumed (OK or Remove)
+	var batchTxs [][]byte
+	if len(s.currentBatchTxs) > 0 && s.checkpoint.TxIndex < uint64(len(s.currentBatchTxs)) {
+		batchTxs = s.currentBatchTxs[s.checkpoint.TxIndex:]
+	}
 
 	// Get gas limit and filter transactions
 	// All txs in based sequencer are force-included
 	maxGas := s.getMaxGas(ctx)
-	hasForceIncluded := len(batchTxs) > 0
 
-	filterStatuses, err := s.executor.FilterTxs(ctx, batchTxs, req.MaxBytes, maxGas, hasForceIncluded)
+	filterStatuses, err := s.executor.FilterTxs(ctx, batchTxs, req.MaxBytes, maxGas, true)
 	if err != nil {
 		s.logger.Warn().Err(err).Msg("failed to filter transactions, proceeding with unfiltered")
 		// Default: all OK
@@ -130,32 +132,32 @@ func (s *BasedSequencer) GetNextBatch(ctx context.Context, req coresequencer.Get
 		}
 	}
 
-	// Process filter results: collect valid txs and postponed txs
+	// Process filter results sequentially to maintain ordering for forced inclusion.
+	// TxIndex tracks consumed txs from the start of the epoch, so we must process in order.
 	var validTxs [][]byte
-	var postponedTxs [][]byte
+	var consumedCount uint64
 	for i, status := range filterStatuses {
 		switch status {
 		case execution.FilterOK:
 			validTxs = append(validTxs, batchTxs[i])
-		case execution.FilterPostpone:
-			postponedTxs = append(postponedTxs, batchTxs[i])
+			consumedCount++
 		case execution.FilterRemove:
-			// Skip removed transactions
+			// Skip removed transactions but count as consumed
+			consumedCount++
+		case execution.FilterPostpone:
+			// Stop processing at first postpone to maintain order
+			// Remaining txs (including this one) will be processed in next batch
+			goto doneProcessing
 		}
 	}
+doneProcessing:
 
 	// Update checkpoint based on consumed transactions
 	if daHeight > 0 || len(batchTxs) > 0 {
-		if len(postponedTxs) > 0 {
-			// Replace cache with only postponed txs
-			s.currentBatchTxs = postponedTxs
-			s.checkpoint.TxIndex = 0
+		s.checkpoint.TxIndex += consumedCount
 
-			s.logger.Debug().
-				Int("postponed_txs", len(postponedTxs)).
-				Msg("keeping postponed transactions for next block")
-		} else {
-			// All txs consumed, advance to next DA epoch
+		// If we've consumed all transactions from this DA epoch, move to next DA epoch
+		if s.checkpoint.TxIndex >= uint64(len(s.currentBatchTxs)) {
 			s.checkpoint.DAHeight = daHeight + 1
 			s.checkpoint.TxIndex = 0
 			s.currentBatchTxs = nil
@@ -163,14 +165,23 @@ func (s *BasedSequencer) GetNextBatch(ctx context.Context, req coresequencer.Get
 		}
 
 		if err := s.checkpointStore.Save(ctx, s.checkpoint); err != nil {
-			s.logger.Error().Err(err).Msg("failed to save checkpoint")
+			return nil, fmt.Errorf("failed to save checkpoint: %w", err)
 		}
+
+		s.logger.Debug().
+			Uint64("consumed_count", consumedCount).
+			Uint64("checkpoint_tx_index", s.checkpoint.TxIndex).
+			Uint64("checkpoint_da_height", s.checkpoint.DAHeight).
+			Msg("updated checkpoint after processing batch")
 	}
 
 	// Calculate timestamp based on remaining transactions after this batch
 	// timestamp corresponds to the last block time of a DA epoch, based on the remaining transactions to be executed
 	// this is done in order to handle the case where a DA epoch must fit in multiple blocks
-	remainingTxs := uint64(len(s.currentBatchTxs)) - s.checkpoint.TxIndex
+	var remainingTxs uint64
+	if len(s.currentBatchTxs) > 0 {
+		remainingTxs = uint64(len(s.currentBatchTxs)) - s.checkpoint.TxIndex
+	}
 	timestamp := s.currentDAEndTime.Add(-time.Duration(remainingTxs) * time.Millisecond)
 
 	return &coresequencer.GetNextBatchResponse{
@@ -243,16 +254,6 @@ func (s *BasedSequencer) fetchNextDAEpoch(ctx context.Context, maxBytes uint64) 
 	s.currentBatchTxs = validTxs
 
 	return forcedTxsEvent.Timestamp.UTC(), forcedTxsEvent.EndDaHeight, nil
-}
-
-// getRemainingTxs returns all remaining transactions from the checkpoint.
-// Size/gas filtering is handled by FilterTxs, so this just returns all remaining txs.
-func (s *BasedSequencer) getRemainingTxs() [][]byte {
-	if len(s.currentBatchTxs) == 0 || s.checkpoint.TxIndex >= uint64(len(s.currentBatchTxs)) {
-		return nil
-	}
-
-	return s.currentBatchTxs[s.checkpoint.TxIndex:]
 }
 
 // VerifyBatch verifies a batch of transactions
