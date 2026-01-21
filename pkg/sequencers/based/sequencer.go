@@ -100,37 +100,28 @@ func (s *BasedSequencer) SubmitBatchTxs(ctx context.Context, req coresequencer.S
 func (s *BasedSequencer) GetNextBatch(ctx context.Context, req coresequencer.GetNextBatchRequest) (*coresequencer.GetNextBatchResponse, error) {
 	daHeight := s.GetDAHeight()
 
-	// If we have no cached transactions or we've consumed all from the current DA block,
-	// fetch the next DA epoch
+	// Fetch next DA epoch if needed
 	if daHeight > 0 && (len(s.currentBatchTxs) == 0 || s.checkpoint.TxIndex >= uint64(len(s.currentBatchTxs))) {
 		daEndTime, daEndHeight, err := s.fetchNextDAEpoch(ctx, req.MaxBytes)
 		if err != nil {
 			return nil, err
 		}
-
 		daHeight = daEndHeight
 		s.currentDAEndTime = daEndTime
 	}
 
-	// Create batch from current position up to MaxBytes
+	// Get transactions from checkpoint position (respecting MaxBytes)
 	batchTxs := s.getTxsFromCheckpoint(req.MaxBytes)
 
-	// All txs in based sequencer are force-included (from DA)
+	// All txs in based sequencer are force-included
 	forceIncludedMask := make([]bool, len(batchTxs))
 	for i := range forceIncludedMask {
 		forceIncludedMask[i] = true
 	}
 
-	// Get current gas limit from execution layer
-	var maxGas uint64
-	info, err := s.executor.GetExecutionInfo(ctx, 0) // 0 = latest/next block
-	if err != nil {
-		s.logger.Warn().Err(err).Msg("failed to get execution info, proceeding without gas limit")
-	} else {
-		maxGas = info.MaxGas
-	}
+	// Get gas limit and filter transactions
+	maxGas := s.getMaxGas(ctx)
 
-	// Filter transactions - validates force-included txs and applies gas filtering
 	filterResult, err := s.executor.FilterTxs(ctx, batchTxs, forceIncludedMask, maxGas)
 	if err != nil {
 		s.logger.Warn().Err(err).Msg("failed to filter transactions, proceeding with unfiltered")
@@ -141,73 +132,66 @@ func (s *BasedSequencer) GetNextBatch(ctx context.Context, req coresequencer.Get
 		}
 	}
 
-	// FilterTxs returns valid txs that fit within gas, and remaining txs that didn't fit
-	filteredTxs := filterResult.ValidTxs
-	remainingGasFilteredTxs := filterResult.RemainingTxs
-
-	// Update checkpoint with how many transactions we consumed
+	// Update checkpoint based on consumed transactions
 	if daHeight > 0 || len(batchTxs) > 0 {
-		// Count how many txs we're actually consuming from the checkpoint
-		// This is: filteredTxs + (original batchTxs - filteredTxs - remainingGasFilteredTxs)
-		// The difference (original - filtered - remaining) represents gibberish that was filtered out
-		txsConsumed := uint64(len(batchTxs) - len(remainingGasFilteredTxs))
-
-		// If we have remaining gas-filtered txs, don't advance to next epoch yet
-		// These will be picked up in the next GetNextBatch call
-		if len(remainingGasFilteredTxs) > 0 {
-			// Calculate the index where unprocessed txs start in the original cache
-			// batchTxs was taken from s.checkpoint.TxIndex, so unprocessed start at:
-			unprocessedStartIdx := s.checkpoint.TxIndex + uint64(len(batchTxs))
-
-			// Collect any unprocessed txs that weren't even fetched due to maxBytes
-			var unprocessedTxs [][]byte
-			if unprocessedStartIdx < uint64(len(s.currentBatchTxs)) {
-				unprocessedTxs = s.currentBatchTxs[unprocessedStartIdx:]
-			}
-
-			// Update cached txs to contain: remaining gas-filtered txs + unprocessed txs
-			s.currentBatchTxs = append(remainingGasFilteredTxs, unprocessedTxs...)
-			s.checkpoint.TxIndex = 0 // Reset index since we're replacing the cache
-
-			s.logger.Debug().
-				Int("remaining_gas_filtered_txs", len(remainingGasFilteredTxs)).
-				Int("unprocessed_txs", len(unprocessedTxs)).
-				Int("new_cache_size", len(s.currentBatchTxs)).
-				Msg("keeping gas-filtered and unprocessed transactions for next block")
-		} else {
-			// No remaining gas-filtered txs, advance the checkpoint
-			s.checkpoint.TxIndex += txsConsumed
-
-			if s.checkpoint.TxIndex >= uint64(len(s.currentBatchTxs)) {
-				// If we've consumed all transactions from this DA epoch, move to next
-				s.checkpoint.DAHeight = daHeight + 1
-				s.checkpoint.TxIndex = 0
-				s.currentBatchTxs = nil
-
-				// Update the global DA height
-				s.SetDAHeight(s.checkpoint.DAHeight)
-			}
-		}
-
-		// Persist checkpoint
-		if err := s.checkpointStore.Save(ctx, s.checkpoint); err != nil {
-			return nil, fmt.Errorf("failed to save checkpoint: %w", err)
-		}
+		s.updateCheckpoint(ctx, daHeight, len(batchTxs), filterResult.RemainingTxs)
 	}
 
-	// Calculate timestamp based on remaining transactions after this batch
-	// timestamp corresponds to the last block time of a DA epoch, based on the remaining transactions to be executed
-	// this is done in order to handle the case where a DA epoch must fit in multiple blocks
+	// Calculate timestamp based on remaining transactions
 	remainingTxs := uint64(len(s.currentBatchTxs)) - s.checkpoint.TxIndex
 	timestamp := s.currentDAEndTime.Add(-time.Duration(remainingTxs) * time.Millisecond)
 
 	return &coresequencer.GetNextBatchResponse{
-		Batch: &coresequencer.Batch{
-			Transactions: filteredTxs,
-		},
+		Batch:     &coresequencer.Batch{Transactions: filterResult.ValidTxs},
 		Timestamp: timestamp,
 		BatchData: req.LastBatchData,
 	}, nil
+}
+
+// getMaxGas retrieves the gas limit from the execution layer.
+func (s *BasedSequencer) getMaxGas(ctx context.Context) uint64 {
+	info, err := s.executor.GetExecutionInfo(ctx, 0)
+	if err != nil {
+		s.logger.Warn().Err(err).Msg("failed to get execution info, proceeding without gas limit")
+		return 0
+	}
+	return info.MaxGas
+}
+
+// updateCheckpoint updates the checkpoint after processing transactions.
+func (s *BasedSequencer) updateCheckpoint(ctx context.Context, daHeight uint64, batchLen int, remainingTxs [][]byte) {
+	txsConsumed := uint64(batchLen - len(remainingTxs))
+
+	if len(remainingTxs) > 0 {
+		// Collect unprocessed txs that weren't fetched due to maxBytes
+		unprocessedStartIdx := s.checkpoint.TxIndex + uint64(batchLen)
+		var unprocessedTxs [][]byte
+		if unprocessedStartIdx < uint64(len(s.currentBatchTxs)) {
+			unprocessedTxs = s.currentBatchTxs[unprocessedStartIdx:]
+		}
+
+		// Replace cache with remaining + unprocessed
+		s.currentBatchTxs = append(remainingTxs, unprocessedTxs...)
+		s.checkpoint.TxIndex = 0
+
+		s.logger.Debug().
+			Int("remaining_txs", len(remainingTxs)).
+			Int("unprocessed_txs", len(unprocessedTxs)).
+			Msg("keeping transactions for next block")
+	} else {
+		s.checkpoint.TxIndex += txsConsumed
+
+		if s.checkpoint.TxIndex >= uint64(len(s.currentBatchTxs)) {
+			s.checkpoint.DAHeight = daHeight + 1
+			s.checkpoint.TxIndex = 0
+			s.currentBatchTxs = nil
+			s.SetDAHeight(s.checkpoint.DAHeight)
+		}
+	}
+
+	if err := s.checkpointStore.Save(ctx, s.checkpoint); err != nil {
+		s.logger.Error().Err(err).Msg("failed to save checkpoint")
+	}
 }
 
 // fetchNextDAEpoch fetches transactions from the next DA epoch

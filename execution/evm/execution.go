@@ -797,12 +797,13 @@ func (c *EngineClient) FilterTxs(ctx context.Context, txs [][]byte, forceInclude
 	validMask := make([]bool, 0, len(txs))
 	var remainingTxs [][]byte
 	var cumulativeGas uint64
+	gasLimitReached := false
 
 	for i, tx := range txs {
 		isForceIncluded := i < len(forceIncludedMask) && forceIncludedMask[i]
 
 		if isForceIncluded {
-			// Validate force-included transactions
+			// Skip empty transactions
 			if len(tx) == 0 {
 				continue
 			}
@@ -818,46 +819,23 @@ func (c *EngineClient) FilterTxs(ctx context.Context, txs [][]byte, forceInclude
 				continue
 			}
 
-			txGas := ethTx.Gas()
-
-			// Check gas limit for force-included transactions
-			if maxGas > 0 && cumulativeGas+txGas > maxGas {
-				// This tx and remaining force-included txs don't fit - add to remaining
+			// Once gas limit is reached, all remaining valid force-included txs go to remaining
+			if gasLimitReached {
 				remainingTxs = append(remainingTxs, tx)
-				// Continue to collect remaining valid force-included txs
-				for j := i + 1; j < len(txs); j++ {
-					if j < len(forceIncludedMask) && forceIncludedMask[j] {
-						if len(txs[j]) == 0 {
-							continue
-						}
-						var remainingEthTx types.Transaction
-						if err := remainingEthTx.UnmarshalBinary(txs[j]); err != nil {
-							c.logger.Debug().
-								Int("tx_index", j).
-								Err(err).
-								Msg("filtering out invalid force-included transaction in remaining (gibberish)")
-							continue
-						}
-						remainingTxs = append(remainingTxs, txs[j])
-					} else {
-						// Add remaining mempool txs to validTxs
-						validTxs = append(validTxs, txs[j])
-						validMask = append(validMask, false)
-					}
-				}
+				continue
+			}
 
+			// Check gas limit
+			txGas := ethTx.Gas()
+			if maxGas > 0 && cumulativeGas+txGas > maxGas {
+				gasLimitReached = true
+				remainingTxs = append(remainingTxs, tx)
 				c.logger.Debug().
-					Int("valid_txs", len(validTxs)).
-					Int("remaining_txs", len(remainingTxs)).
 					Uint64("cumulative_gas", cumulativeGas).
+					Uint64("tx_gas", txGas).
 					Uint64("max_gas", maxGas).
-					Msg("force-included transactions exceeded gas limit, splitting batch")
-
-				return &execution.FilterTxsResult{
-					ValidTxs:          validTxs,
-					ForceIncludedMask: validMask,
-					RemainingTxs:      remainingTxs,
-				}, nil
+					Msg("gas limit reached, moving remaining force-included txs to next block")
+				continue
 			}
 
 			cumulativeGas += txGas
@@ -873,7 +851,7 @@ func (c *EngineClient) FilterTxs(ctx context.Context, txs [][]byte, forceInclude
 	return &execution.FilterTxsResult{
 		ValidTxs:          validTxs,
 		ForceIncludedMask: validMask,
-		RemainingTxs:      nil,
+		RemainingTxs:      remainingTxs,
 	}, nil
 }
 

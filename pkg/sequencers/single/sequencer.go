@@ -245,56 +245,14 @@ func (c *Sequencer) GetNextBatch(ctx context.Context, req coresequencer.GetNextB
 		}
 	}
 
-	// RemainingTxs contains valid force included txs that didn't fit due to gas limit
+	// Separate forced txs and mempool txs from the filter result
+	validForcedTxs, validMempoolTxs := separateTxsByMask(filterResult.ValidTxs, filterResult.ForceIncludedMask)
+
+	// Trim mempool txs to fit within remaining size limit (after forced txs)
+	trimmedMempoolTxs := c.trimMempoolTxsForSize(ctx, validForcedTxs, validMempoolTxs, req.MaxBytes)
+
+	// RemainingTxs contains valid force-included txs that didn't fit due to gas limit
 	remainingDATxs := filterResult.RemainingTxs
-
-	// Separate forced txs and mempool txs from the result
-	var validForcedTxs [][]byte
-	var validMempoolTxs [][]byte
-
-	for i, tx := range filterResult.ValidTxs {
-		isForced := i < len(filterResult.ForceIncludedMask) && filterResult.ForceIncludedMask[i]
-		if isForced {
-			validForcedTxs = append(validForcedTxs, tx)
-		} else {
-			validMempoolTxs = append(validMempoolTxs, tx)
-		}
-	}
-
-	// Calculate size used by forced inclusion transactions
-	forcedTxsSize := 0
-	for _, tx := range validForcedTxs {
-		forcedTxsSize += len(tx)
-	}
-
-	// Calculate remaining bytes for mempool txs
-	remainingBytes := int(req.MaxBytes) - forcedTxsSize
-
-	// Trim mempool txs to fit within size limit
-	var trimmedMempoolTxs [][]byte
-	currentBatchSize := 0
-
-	for i, tx := range validMempoolTxs {
-		txSize := len(tx)
-
-		// Check size limit
-		if req.MaxBytes > 0 && currentBatchSize+txSize > remainingBytes {
-			// Return remaining mempool txs to the front of the queue
-			remainingMempoolTxs := validMempoolTxs[i:]
-			if len(remainingMempoolTxs) > 0 {
-				excludedBatch := coresequencer.Batch{Transactions: remainingMempoolTxs}
-				if err := c.queue.Prepend(ctx, excludedBatch); err != nil {
-					c.logger.Error().Err(err).
-						Int("excluded_count", len(remainingMempoolTxs)).
-						Msg("failed to prepend excluded transactions back to queue")
-				}
-			}
-			break
-		}
-
-		trimmedMempoolTxs = append(trimmedMempoolTxs, tx)
-		currentBatchSize += txSize
-	}
 
 	// Update checkpoint after consuming forced inclusion transactions
 	// Note: gibberish txs are permanently skipped, but gas-filtered valid DA txs stay for next block
@@ -351,13 +309,64 @@ func (c *Sequencer) GetNextBatch(ctx context.Context, req coresequencer.GetNextB
 			Msg("processed forced inclusion transactions and updated checkpoint")
 	}
 
+	// Build final batch: forced txs first, then mempool txs
+	batchTxs := make([][]byte, 0, len(validForcedTxs)+len(trimmedMempoolTxs))
+	batchTxs = append(batchTxs, validForcedTxs...)
+	batchTxs = append(batchTxs, trimmedMempoolTxs...)
+
 	return &coresequencer.GetNextBatchResponse{
 		Batch: &coresequencer.Batch{
-			Transactions: append(validForcedTxs, trimmedMempoolTxs...),
+			Transactions: batchTxs,
 		},
 		Timestamp: time.Now(),
 		BatchData: req.LastBatchData,
 	}, nil
+}
+
+// separateTxsByMask splits transactions into forced and mempool based on the mask.
+func separateTxsByMask(txs [][]byte, mask []bool) (forced, mempool [][]byte) {
+	for i, tx := range txs {
+		if i < len(mask) && mask[i] {
+			forced = append(forced, tx)
+		} else {
+			mempool = append(mempool, tx)
+		}
+	}
+	return forced, mempool
+}
+
+// trimMempoolTxsForSize trims mempool txs to fit within the remaining byte limit after forced txs.
+// Any excluded mempool txs are prepended back to the queue for the next batch.
+func (c *Sequencer) trimMempoolTxsForSize(ctx context.Context, forcedTxs, mempoolTxs [][]byte, maxBytes uint64) [][]byte {
+	if maxBytes == 0 {
+		return mempoolTxs // No size limit
+	}
+
+	// Calculate size used by forced txs
+	forcedSize := 0
+	for _, tx := range forcedTxs {
+		forcedSize += len(tx)
+	}
+	remainingBytes := int(maxBytes) - forcedSize
+
+	var trimmed [][]byte
+	currentSize := 0
+
+	for i, tx := range mempoolTxs {
+		if currentSize+len(tx) > remainingBytes {
+			// Return remaining mempool txs to the front of the queue
+			if remaining := mempoolTxs[i:]; len(remaining) > 0 {
+				if err := c.queue.Prepend(ctx, coresequencer.Batch{Transactions: remaining}); err != nil {
+					c.logger.Error().Err(err).Int("count", len(remaining)).Msg("failed to prepend excluded mempool txs")
+				}
+			}
+			break
+		}
+		trimmed = append(trimmed, tx)
+		currentSize += len(tx)
+	}
+
+	return trimmed
 }
 
 // VerifyBatch implements sequencing.Sequencer.

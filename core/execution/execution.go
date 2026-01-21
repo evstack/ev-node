@@ -5,30 +5,6 @@ import (
 	"time"
 )
 
-// FilterTxsResult contains the result of filtering transactions.
-type FilterTxsResult struct {
-	// ValidTxs contains transactions that passed validation and fit within gas limit.
-	// Force-included txs that are invalid are removed.
-	// Mempool txs are passed through unchanged (but may be trimmed for gas).
-	ValidTxs [][]byte
-
-	// ForceIncludedMask indicates which ValidTxs are force-included (true = force-included).
-	// Same length as ValidTxs.
-	ForceIncludedMask []bool
-
-	// RemainingTxs contains valid force-included transactions that didn't fit due to gas limit.
-	// These should be re-queued for the next block.
-	// Only force-included txs are returned here (mempool txs are handled by the sequencer).
-	RemainingTxs [][]byte
-}
-
-// ExecutionInfo contains execution layer parameters that may change per block.
-type ExecutionInfo struct {
-	// MaxGas is the maximum gas allowed for transactions in a block.
-	// For non-gas-based execution layers, this should be 0.
-	MaxGas uint64
-}
-
 // Executor defines the interface that execution clients must implement to be compatible with Evolve.
 // This interface enables the separation between consensus and execution layers, allowing for modular
 // and pluggable execution environments.
@@ -128,7 +104,7 @@ type Executor interface {
 	//
 	// The function filters out:
 	// - Invalid/unparseable force-included transactions (gibberish)
-	// - Transactions that would exceed the cumulative gas limit (for force-included txs)
+	// - Transactions that would exceed the cumulative gas limit
 	//
 	// For non-gas-based execution layers (maxGas=0), return all valid transactions.
 	//
@@ -142,6 +118,29 @@ type Executor interface {
 	// - result: Contains valid txs, updated mask, remaining txs, and gas used
 	// - err: Any errors during filtering (not validation errors, which result in filtering)
 	FilterTxs(ctx context.Context, txs [][]byte, forceIncludedMask []bool, maxGas uint64) (*FilterTxsResult, error)
+}
+
+// FilterTxsResult contains the result of filtering transactions.
+type FilterTxsResult struct {
+	// ValidTxs contains transactions that passed validation and fit within gas limit.
+	// Force-included txs that are invalid are removed.
+	// Mempool txs are passed through unchanged (but may be trimmed for gas).
+	ValidTxs [][]byte
+
+	// ForceIncludedMask indicates which ValidTxs are force-included (true = force-included).
+	// Same length as ValidTxs.
+	ForceIncludedMask []bool
+
+	// RemainingTxs contains valid transactions that didn't fit due to gas limit.
+	// These should be re-queued for the next block.
+	RemainingTxs [][]byte
+}
+
+// ExecutionInfo contains execution layer parameters that may change per block.
+type ExecutionInfo struct {
+	// MaxGas is the maximum gas allowed for transactions in a block.
+	// For non-gas-based execution layers, this should be 0.
+	MaxGas uint64
 }
 
 // HeightProvider is an optional interface that execution clients can implement
