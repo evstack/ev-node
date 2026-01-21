@@ -7,12 +7,12 @@ import (
 
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/otel"
-	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 
 	"github.com/evstack/ev-node/block/internal/common"
+	"github.com/evstack/ev-node/pkg/telemetry/testutil"
 	"github.com/evstack/ev-node/types"
 )
 
@@ -92,9 +92,9 @@ func TestTracedBlockSyncer_TrySyncNextBlock_Success(t *testing.T) {
 	require.Equal(t, codes.Unset, span.Status().Code)
 
 	attrs := span.Attributes()
-	requireAttribute(t, attrs, "block.height", int64(100))
-	requireAttribute(t, attrs, "da.height", int64(50))
-	requireAttribute(t, attrs, "source", string(common.SourceDA))
+	testutil.RequireAttribute(t, attrs, "block.height", int64(100))
+	testutil.RequireAttribute(t, attrs, "da.height", int64(50))
+	testutil.RequireAttribute(t, attrs, "source", string(common.SourceDA))
 }
 
 func TestTracedBlockSyncer_TrySyncNextBlock_Error(t *testing.T) {
@@ -159,9 +159,9 @@ func TestTracedBlockSyncer_ApplyBlock_Success(t *testing.T) {
 	require.Equal(t, codes.Unset, span.Status().Code)
 
 	attrs := span.Attributes()
-	requireAttribute(t, attrs, "block.height", int64(50))
-	requireAttribute(t, attrs, "tx.count", 2)
-	requireAttribute(t, attrs, "state_root", "deadbeef")
+	testutil.RequireAttribute(t, attrs, "block.height", int64(50))
+	testutil.RequireAttribute(t, attrs, "tx.count", 2)
+	testutil.RequireAttribute(t, attrs, "state_root", "deadbeef")
 }
 
 func TestTracedBlockSyncer_ApplyBlock_Error(t *testing.T) {
@@ -216,7 +216,7 @@ func TestTracedBlockSyncer_ValidateBlock_Success(t *testing.T) {
 	require.Equal(t, codes.Unset, span.Status().Code)
 
 	attrs := span.Attributes()
-	requireAttribute(t, attrs, "block.height", int64(75))
+	testutil.RequireAttribute(t, attrs, "block.height", int64(75))
 }
 
 func TestTracedBlockSyncer_ValidateBlock_Error(t *testing.T) {
@@ -274,8 +274,8 @@ func TestTracedBlockSyncer_VerifyForcedInclusionTxs_Success(t *testing.T) {
 	require.Equal(t, codes.Unset, span.Status().Code)
 
 	attrs := span.Attributes()
-	requireAttribute(t, attrs, "block.height", int64(100))
-	requireAttribute(t, attrs, "da.height", int64(50))
+	testutil.RequireAttribute(t, attrs, "block.height", int64(100))
+	testutil.RequireAttribute(t, attrs, "da.height", int64(50))
 }
 
 func TestTracedBlockSyncer_VerifyForcedInclusionTxs_Error(t *testing.T) {
@@ -304,26 +304,4 @@ func TestTracedBlockSyncer_VerifyForcedInclusionTxs_Error(t *testing.T) {
 	span := spans[0]
 	require.Equal(t, codes.Error, span.Status().Code)
 	require.Equal(t, "forced inclusion verification failed", span.Status().Description)
-}
-
-func requireAttribute(t *testing.T, attrs []attribute.KeyValue, key string, expected interface{}) {
-	t.Helper()
-	found := false
-	for _, attr := range attrs {
-		if string(attr.Key) == key {
-			found = true
-			switch v := expected.(type) {
-			case string:
-				require.Equal(t, v, attr.Value.AsString())
-			case int64:
-				require.Equal(t, v, attr.Value.AsInt64())
-			case int:
-				require.Equal(t, int64(v), attr.Value.AsInt64())
-			default:
-				t.Fatalf("unsupported attribute type: %T", expected)
-			}
-			break
-		}
-	}
-	require.True(t, found, "attribute %s not found", key)
 }

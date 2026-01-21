@@ -154,3 +154,15 @@ type HeightProvider interface {
 	// - error: Any errors during height retrieval
 	GetLatestHeight(ctx context.Context) (uint64, error)
 }
+
+// Rollbackable is an optional interface that execution clients can implement
+// to support automatic rollback when the execution layer is ahead of the target height.
+// This enables automatic recovery during rolling restarts when the EL has committed
+// blocks that were not replicated to the consensus layer.
+//
+// Requirements:
+// - Only execution layers supporting in-flight rollback should implement this.
+type Rollbackable interface {
+	// Rollback resets the execution layer head to the specified height.
+	Rollback(ctx context.Context, targetHeight uint64) error
+}

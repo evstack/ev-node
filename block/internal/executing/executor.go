@@ -227,6 +227,9 @@ func (e *Executor) initializeState() error {
 	if err := batch.SetHeight(state.LastBlockHeight); err != nil {
 		return fmt.Errorf("failed to set store height: %w", err)
 	}
+	if err := batch.UpdateState(state); err != nil {
+		return fmt.Errorf("failed to update state: %w", err)
+	}
 	if err := batch.Commit(); err != nil {
 		return fmt.Errorf("failed to commit batch: %w", err)
 	}
@@ -236,7 +239,8 @@ func (e *Executor) initializeState() error {
 
 	// Sync execution layer with store on startup
 	execReplayer := common.NewReplayer(e.store, e.exec, e.genesis, e.logger)
-	if err := execReplayer.SyncToHeight(e.ctx, state.LastBlockHeight); err != nil {
+	syncTargetHeight := state.LastBlockHeight
+	if err := execReplayer.SyncToHeight(e.ctx, syncTargetHeight); err != nil {
 		e.sendCriticalError(fmt.Errorf("failed to sync execution layer: %w", err))
 		return fmt.Errorf("failed to sync execution layer: %w", err)
 	}
@@ -281,7 +285,7 @@ func (e *Executor) executionLoop() {
 	}
 	txsAvailable := false
 
-	for {
+	for e.ctx.Err() == nil {
 		select {
 		case <-e.ctx.Done():
 			return
@@ -316,6 +320,10 @@ func (e *Executor) executionLoop() {
 
 // ProduceBlock creates, validates, and stores a new block.
 func (e *Executor) ProduceBlock(ctx context.Context) error {
+	if ctx.Err() != nil {
+		return ctx.Err()
+	}
+
 	start := time.Now()
 	defer func() {
 		if e.metrics.OperationDuration["block_production"] != nil {
@@ -574,7 +582,7 @@ func (e *Executor) CreateBlock(ctx context.Context, height uint64, batchData *Ba
 	}
 
 	for i, tx := range batchData.Transactions {
-		data.Txs[i] = types.Tx(tx)
+		data.Txs[i] = tx
 	}
 
 	// Set data hash

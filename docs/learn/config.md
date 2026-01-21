@@ -29,6 +29,11 @@ This document provides a comprehensive reference for all configuration options a
   - [DA Data Namespace](#da-data-namespace)
   - [DA Block Time](#da-block-time)
   - [DA Mempool TTL](#da-mempool-ttl)
+  - [DA Request Timeout](#da-request-timeout)
+  - [DA Batching Strategy](#da-batching-strategy)
+  - [DA Batch Size Threshold](#da-batch-size-threshold)
+  - [DA Batch Max Delay](#da-batch-max-delay)
+  - [DA Batch Min Items](#da-batch-min-items)
 - [P2P Configuration (`p2p`)](#p2p-configuration-p2p)
   - [P2P Listen Address](#p2p-listen-address)
   - [P2P Peers](#p2p-peers)
@@ -507,6 +512,89 @@ da:
 _Example:_ `--rollkit.da.request_timeout 45s`
 _Default:_ `"30s"`
 _Constant:_ `FlagDARequestTimeout`
+
+### DA Batching Strategy
+
+**Description:**
+Controls how blocks are batched before submission to the DA layer. Different strategies offer trade-offs between latency, cost efficiency, and throughput. All strategies pass through the DA submitter which performs additional size checks and may further split batches that exceed the DA layer's blob size limit.
+
+Available strategies:
+
+- **`immediate`**: Submits as soon as any items are available. Best for low-latency requirements where cost is not a concern.
+- **`size`**: Waits until the batch reaches a size threshold (fraction of max blob size). Best for maximizing blob utilization and minimizing costs when latency is flexible.
+- **`time`**: Waits for a time interval before submitting. Provides predictable submission timing aligned with DA block times.
+- **`adaptive`**: Balances between size and time constraints—submits when either the size threshold is reached OR the max delay expires. Recommended for most production deployments as it optimizes both cost and latency.
+
+**YAML:**
+
+```yaml
+da:
+  batching_strategy: "time"
+```
+
+**Command-line Flag:**
+`--rollkit.da.batching_strategy <string>`
+_Example:_ `--rollkit.da.batching_strategy adaptive`
+_Default:_ `"time"`
+_Constant:_ `FlagDABatchingStrategy`
+
+### DA Batch Size Threshold
+
+**Description:**
+The minimum blob size threshold (as a fraction of the maximum blob size, between 0.0 and 1.0) before submitting a batch. Only applies to the `size` and `adaptive` strategies. For example, a value of 0.8 means the batch will be submitted when it reaches 80% of the maximum blob size.
+
+Higher values maximize blob utilization and reduce costs but may increase latency. Lower values reduce latency but may result in less efficient blob usage.
+
+**YAML:**
+
+```yaml
+da:
+  batch_size_threshold: 0.8
+```
+
+**Command-line Flag:**
+`--rollkit.da.batch_size_threshold <float64>`
+_Example:_ `--rollkit.da.batch_size_threshold 0.9`
+_Default:_ `0.8` (80% of max blob size)
+_Constant:_ `FlagDABatchSizeThreshold`
+
+### DA Batch Max Delay
+
+**Description:**
+The maximum time to wait before submitting a batch regardless of size. Applies to the `time` and `adaptive` strategies. Lower values reduce latency but may increase costs due to smaller batches. This value is typically aligned with the DA chain's block time to ensure submissions land in consecutive blocks.
+
+When set to 0, defaults to the DA BlockTime value.
+
+**YAML:**
+
+```yaml
+da:
+  batch_max_delay: "6s"
+```
+
+**Command-line Flag:**
+`--rollkit.da.batch_max_delay <duration>`
+_Example:_ `--rollkit.da.batch_max_delay 12s`
+_Default:_ `0` (uses DA BlockTime)
+_Constant:_ `FlagDABatchMaxDelay`
+
+### DA Batch Min Items
+
+**Description:**
+The minimum number of items (headers or data) to accumulate before considering submission. This helps avoid submitting single items when more are expected soon, improving batching efficiency. All strategies respect this minimum.
+
+**YAML:**
+
+```yaml
+da:
+  batch_min_items: 1
+```
+
+**Command-line Flag:**
+`--rollkit.da.batch_min_items <uint64>`
+_Example:_ `--rollkit.da.batch_min_items 5`
+_Default:_ `1`
+_Constant:_ `FlagDABatchMinItems`
 
 ## P2P Configuration (`p2p`)
 
