@@ -1160,8 +1160,6 @@ func TestSequencer_GetNextBatch_WithGasFiltering(t *testing.T) {
 
 	// Should have 2 forced txs (the ones that fit within gas limit)
 	assert.Equal(t, 2, len(resp.Batch.Transactions))
-	assert.True(t, resp.Batch.ForceIncludedMask[0])
-	assert.True(t, resp.Batch.ForceIncludedMask[1])
 
 	// The remaining tx should be cached for next block
 	assert.Equal(t, 1, len(seq.cachedForcedInclusionTxs))
@@ -1187,7 +1185,6 @@ func TestSequencer_GetNextBatch_WithGasFiltering(t *testing.T) {
 
 	// Should have the remaining forced tx
 	assert.Equal(t, 1, len(resp.Batch.Transactions))
-	assert.True(t, resp.Batch.ForceIncludedMask[0])
 
 	// Cache should now be empty, DA height should advance
 	assert.Nil(t, seq.cachedForcedInclusionTxs)

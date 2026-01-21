@@ -179,9 +179,6 @@ func (s *BasedSequencer) GetNextBatch(ctx context.Context, req coresequencer.Get
 		}
 	}
 
-	// Build the batch with filtered transactions
-	batch := s.buildBatch(filteredTxs)
-
 	// Calculate timestamp based on remaining transactions after this batch
 	// timestamp corresponds to the last block time of a DA epoch, based on the remaining transactions to be executed
 	// this is done in order to handle the case where a DA epoch must fit in multiple blocks
@@ -189,7 +186,9 @@ func (s *BasedSequencer) GetNextBatch(ctx context.Context, req coresequencer.Get
 	timestamp := s.currentDAEndTime.Add(-time.Duration(remainingTxs) * time.Millisecond)
 
 	return &coresequencer.GetNextBatchResponse{
-		Batch:     batch,
+		Batch: &coresequencer.Batch{
+			Transactions: filteredTxs,
+		},
 		Timestamp: timestamp,
 		BatchData: req.LastBatchData,
 	}, nil
@@ -273,24 +272,6 @@ func (s *BasedSequencer) getTxsFromCheckpoint(maxBytes uint64) [][]byte {
 	}
 
 	return result
-}
-
-// buildBatch creates a batch from filtered transactions
-func (s *BasedSequencer) buildBatch(txs [][]byte) *coresequencer.Batch {
-	if len(txs) == 0 {
-		return &coresequencer.Batch{Transactions: nil}
-	}
-
-	// Mark all transactions as force-included since based sequencer only pulls from DA
-	forceIncludedMask := make([]bool, len(txs))
-	for i := range forceIncludedMask {
-		forceIncludedMask[i] = true
-	}
-
-	return &coresequencer.Batch{
-		Transactions:      txs,
-		ForceIncludedMask: forceIncludedMask,
-	}
 }
 
 // VerifyBatch verifies a batch of transactions
