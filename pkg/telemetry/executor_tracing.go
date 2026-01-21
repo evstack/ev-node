@@ -4,7 +4,7 @@ import (
 	"context"
 	"time"
 
-	coreexec "github.com/evstack/ev-node/core/execution"
+	"github.com/evstack/ev-node/core/execution"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
@@ -13,12 +13,12 @@ import (
 
 // tracedExecutor wraps a core execution.Executor and records spans for key operations.
 type tracedExecutor struct {
-	inner  coreexec.Executor
+	inner  execution.Executor
 	tracer trace.Tracer
 }
 
 // WithTracingExecutor decorates an Executor with OpenTelemetry spans.
-func WithTracingExecutor(inner coreexec.Executor) coreexec.Executor {
+func WithTracingExecutor(inner execution.Executor) execution.Executor {
 	return &tracedExecutor{
 		inner:  inner,
 		tracer: otel.Tracer("ev-node/execution"),
@@ -91,7 +91,7 @@ func (t *tracedExecutor) SetFinal(ctx context.Context, blockHeight uint64) error
 
 // If the underlying executor implements HeightProvider, forward it while tracing.
 func (t *tracedExecutor) GetLatestHeight(ctx context.Context) (uint64, error) {
-	hp, ok := t.inner.(coreexec.HeightProvider)
+	hp, ok := t.inner.(execution.HeightProvider)
 	if !ok {
 		return 0, nil
 	}
@@ -107,7 +107,7 @@ func (t *tracedExecutor) GetLatestHeight(ctx context.Context) (uint64, error) {
 }
 
 // GetExecutionInfo forwards to the inner executor with tracing.
-func (t *tracedExecutor) GetExecutionInfo(ctx context.Context, height uint64) (coreexec.ExecutionInfo, error) {
+func (t *tracedExecutor) GetExecutionInfo(ctx context.Context, height uint64) (execution.ExecutionInfo, error) {
 	ctx, span := t.tracer.Start(ctx, "Executor.GetExecutionInfo",
 		trace.WithAttributes(attribute.Int64("height", int64(height))),
 	)
@@ -123,25 +123,32 @@ func (t *tracedExecutor) GetExecutionInfo(ctx context.Context, height uint64) (c
 	return info, err
 }
 
-// FilterDATransactions forwards to the inner executor with tracing.
-func (t *tracedExecutor) FilterDATransactions(ctx context.Context, txs [][]byte, maxGas uint64) ([][]byte, [][]byte, error) {
-	ctx, span := t.tracer.Start(ctx, "Executor.FilterDATransactions",
+// FilterTxs forwards to the inner executor with tracing.
+func (t *tracedExecutor) FilterTxs(ctx context.Context, txs [][]byte, forceIncludedMask []bool) (*execution.FilterTxsResult, error) {
+	forceIncludedCount := 0
+	for _, m := range forceIncludedMask {
+		if m {
+			forceIncludedCount++
+		}
+	}
+
+	ctx, span := t.tracer.Start(ctx, "Executor.FilterTxs",
 		trace.WithAttributes(
 			attribute.Int("input_tx_count", len(txs)),
-			attribute.Int64("max_gas", int64(maxGas)),
+			attribute.Int("force_included_count", forceIncludedCount),
 		),
 	)
 	defer span.End()
 
-	validTxs, remainingTxs, err := t.inner.FilterDATransactions(ctx, txs, maxGas)
+	result, err := t.inner.FilterTxs(ctx, txs, forceIncludedMask)
 	if err != nil {
 		span.RecordError(err)
 		span.SetStatus(codes.Error, err.Error())
-	} else {
+	} else if result != nil {
 		span.SetAttributes(
-			attribute.Int("valid_tx_count", len(validTxs)),
-			attribute.Int("remaining_tx_count", len(remainingTxs)),
+			attribute.Int("valid_tx_count", len(result.ValidTxs)),
+			attribute.Int("gas_per_tx_count", len(result.GasPerTx)),
 		)
 	}
-	return validTxs, remainingTxs, err
+	return result, err
 }

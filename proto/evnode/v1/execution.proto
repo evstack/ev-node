@@ -22,8 +22,8 @@ service ExecutorService {
   // GetExecutionInfo returns current execution layer parameters
   rpc GetExecutionInfo(GetExecutionInfoRequest) returns (GetExecutionInfoResponse) {}
 
-  // FilterDATransactions validates and filters force-included transactions from DA
-  rpc FilterDATransactions(FilterDATransactionsRequest) returns (FilterDATransactionsResponse) {}
+  // FilterTxs validates force-included transactions and calculates gas for all transactions
+  rpc FilterTxs(FilterTxsRequest) returns (FilterTxsResponse) {}
 }
 
 // InitChainRequest contains the genesis parameters for chain initialization
@@ -106,20 +106,28 @@ message GetExecutionInfoResponse {
   uint64 max_gas = 1;
 }
 
-// FilterDATransactionsRequest contains transactions to validate and filter
-message FilterDATransactionsRequest {
-  // Raw transactions from DA to validate
+// FilterTxsRequest contains transactions to validate and filter
+message FilterTxsRequest {
+  // All transactions (force-included + mempool)
   repeated bytes txs = 1;
 
-  // Maximum cumulative gas allowed for these transactions
-  uint64 max_gas = 2;
+  // True for each tx that is force-included (needs validation)
+  // Same length as txs
+  repeated bool force_included_mask = 2;
 }
 
-// FilterDATransactionsResponse contains the filtered transactions
-message FilterDATransactionsResponse {
-  // Transactions that passed validation and fit within maxGas
+// FilterTxsResponse contains the filtered transactions
+message FilterTxsResponse {
+  // Transactions that passed validation
+  // Force-included txs that are invalid are removed
+  // Mempool txs are passed through unchanged
   repeated bytes valid_txs = 1;
 
-  // Valid transactions that didn't fit due to gas limit (for re-queuing)
-  repeated bytes remaining_txs = 2;
+  // Indicates which valid_txs are force-included (true = force-included)
+  // Same length as valid_txs
+  repeated bool force_included_mask = 2;
+
+  // Gas for each transaction in valid_txs
+  // For non-gas-based execution layers, this may be empty or all zeros
+  repeated uint64 gas_per_tx = 3;
 }

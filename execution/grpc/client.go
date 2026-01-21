@@ -132,21 +132,24 @@ func (c *Client) GetExecutionInfo(ctx context.Context, height uint64) (execution
 	}, nil
 }
 
-// FilterDATransactions validates and filters force-included transactions from DA.
+// FilterTxs validates force-included transactions and calculates gas for all transactions.
 //
-// This method sends DA transactions to the remote execution service for validation
-// and gas-based filtering. It returns transactions that are valid and fit within
-// the gas limit, plus any remaining valid transactions for re-queuing.
-func (c *Client) FilterDATransactions(ctx context.Context, txs [][]byte, maxGas uint64) ([][]byte, [][]byte, error) {
-	req := connect.NewRequest(&pb.FilterDATransactionsRequest{
-		Txs:    txs,
-		MaxGas: maxGas,
+// This method sends transactions to the remote execution service for validation.
+// Only force-included transactions are validated; mempool transactions pass through unchanged.
+func (c *Client) FilterTxs(ctx context.Context, txs [][]byte, forceIncludedMask []bool) (*execution.FilterTxsResult, error) {
+	req := connect.NewRequest(&pb.FilterTxsRequest{
+		Txs:               txs,
+		ForceIncludedMask: forceIncludedMask,
 	})
 
-	resp, err := c.client.FilterDATransactions(ctx, req)
+	resp, err := c.client.FilterTxs(ctx, req)
 	if err != nil {
-		return nil, nil, fmt.Errorf("grpc client: failed to filter DA transactions: %w", err)
+		return nil, fmt.Errorf("grpc client: failed to filter transactions: %w", err)
 	}
 
-	return resp.Msg.ValidTxs, resp.Msg.RemainingTxs, nil
+	return &execution.FilterTxsResult{
+		ValidTxs:          resp.Msg.ValidTxs,
+		ForceIncludedMask: resp.Msg.ForceIncludedMask,
+		GasPerTx:          resp.Msg.GasPerTx,
+	}, nil
 }

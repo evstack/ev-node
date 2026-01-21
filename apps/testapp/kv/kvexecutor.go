@@ -430,23 +430,36 @@ func (k *KVExecutor) GetExecutionInfo(ctx context.Context, height uint64) (execu
 	return execution.ExecutionInfo{MaxGas: 0}, nil
 }
 
-// FilterDATransactions validates and filters force-included transactions from DA.
-// For KVExecutor, all transactions are considered valid (no gas-based filtering).
-// Invalid transactions (not in key=value format) are filtered out.
-func (k *KVExecutor) FilterDATransactions(ctx context.Context, txs [][]byte, maxGas uint64) ([][]byte, [][]byte, error) {
-	// KVExecutor doesn't do gas filtering but does basic validation
+// FilterTxs validates force-included transactions and calculates gas for all transactions.
+// For KVExecutor, only force-included transactions are validated (key=value format).
+// Mempool transactions are passed through unchanged.
+// KVExecutor doesn't track gas, so GasPerTx is nil.
+func (k *KVExecutor) FilterTxs(ctx context.Context, txs [][]byte, forceIncludedMask []bool) (*execution.FilterTxsResult, error) {
 	validTxs := make([][]byte, 0, len(txs))
-	for _, tx := range txs {
-		if len(tx) == 0 {
-			continue // Skip empty transactions
+	validMask := make([]bool, 0, len(txs))
+
+	for i, tx := range txs {
+		isForceIncluded := i < len(forceIncludedMask) && forceIncludedMask[i]
+
+		if isForceIncluded {
+			// Validate force-included transactions
+			if len(tx) == 0 {
+				continue // Skip empty transactions
+			}
+			// Basic format validation: must be key=value
+			parts := strings.SplitN(string(tx), "=", 2)
+			if len(parts) != 2 || strings.TrimSpace(parts[0]) == "" {
+				continue // Filter out malformed transactions
+			}
 		}
-		// Basic format validation: must be key=value
-		parts := strings.SplitN(string(tx), "=", 2)
-		if len(parts) != 2 || strings.TrimSpace(parts[0]) == "" {
-			continue // Filter out malformed transactions
-		}
+		// Mempool transactions pass through unchanged
 		validTxs = append(validTxs, tx)
+		validMask = append(validMask, isForceIncluded)
 	}
-	// No gas-based filtering, so no remaining transactions
-	return validTxs, nil, nil
+
+	return &execution.FilterTxsResult{
+		ValidTxs:          validTxs,
+		ForceIncludedMask: validMask,
+		GasPerTx:          nil, // KVExecutor doesn't track gas
+	}, nil
 }

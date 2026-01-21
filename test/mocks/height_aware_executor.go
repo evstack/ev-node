@@ -66,15 +66,12 @@ func (m *MockHeightAwareExecutor) GetExecutionInfo(ctx context.Context, height u
 	return args.Get(0).(execution.ExecutionInfo), args.Error(1)
 }
 
-// FilterDATransactions implements the Executor interface.
-func (m *MockHeightAwareExecutor) FilterDATransactions(ctx context.Context, txs [][]byte, maxGas uint64) ([][]byte, [][]byte, error) {
-	args := m.Called(ctx, txs, maxGas)
-	var validTxs, remainingTxs [][]byte
+// FilterTxs implements the Executor interface.
+func (m *MockHeightAwareExecutor) FilterTxs(ctx context.Context, txs [][]byte, forceIncludedMask []bool) (*execution.FilterTxsResult, error) {
+	args := m.Called(ctx, txs, forceIncludedMask)
+	var result *execution.FilterTxsResult
 	if args.Get(0) != nil {
-		validTxs = args.Get(0).([][]byte)
+		result = args.Get(0).(*execution.FilterTxsResult)
 	}
-	if args.Get(1) != nil {
-		remainingTxs = args.Get(1).([][]byte)
-	}
-	return validTxs, remainingTxs, args.Error(2)
+	return result, args.Error(1)
 }

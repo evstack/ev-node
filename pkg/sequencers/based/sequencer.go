@@ -115,36 +115,87 @@ func (s *BasedSequencer) GetNextBatch(ctx context.Context, req coresequencer.Get
 	// Create batch from current position up to MaxBytes
 	batchTxs := s.getTxsFromCheckpoint(req.MaxBytes)
 
-	// Apply filtering to validate transactions and optionally limit by gas
-	// FilterDATransactions is always called to validate tx format/validity,
-	// even when MaxGas is 0 (which means no gas limit enforcement)
-	var filteredTxs [][]byte
-	var remainingGasFilteredTxs [][]byte
-	if len(batchTxs) > 0 {
-		// Get current gas limit from execution layer
-		info, err := s.executor.GetExecutionInfo(ctx, 0) // 0 = latest/next block
-		if err != nil {
-			s.logger.Warn().Err(err).Msg("failed to get execution info for filtering, proceeding without filter")
-			filteredTxs = batchTxs
-		} else {
-			// Always call FilterDATransactions for tx validity filtering
-			// MaxGas=0 means no gas limit, but validity checks still apply
-			filteredTxs, remainingGasFilteredTxs, err = s.executor.FilterDATransactions(ctx, batchTxs, info.MaxGas)
-			if err != nil {
-				s.logger.Warn().Err(err).Msg("failed to filter DA transactions, proceeding without filter")
-				filteredTxs = batchTxs
-			} else {
-				s.logger.Debug().
-					Int("input_txs", len(batchTxs)).
-					Int("filtered_txs", len(filteredTxs)).
-					Int("remaining_for_next_block", len(remainingGasFilteredTxs)).
-					Uint64("max_gas", info.MaxGas).
-					Msg("filtered DA transactions")
+	// If no txs, skip filtering but still update checkpoint and use proper timestamp
+	if len(batchTxs) == 0 {
+		// Update checkpoint - advance to next DA epoch since this one is empty
+		if daHeight > 0 {
+			s.checkpoint.DAHeight = daHeight + 1
+			s.checkpoint.TxIndex = 0
+			s.currentBatchTxs = nil
+			s.SetDAHeight(s.checkpoint.DAHeight)
+
+			// Persist checkpoint
+			if err := s.checkpointStore.Save(ctx, s.checkpoint); err != nil {
+				return nil, fmt.Errorf("failed to save checkpoint: %w", err)
 			}
 		}
-	} else {
-		filteredTxs = batchTxs
+
+		batch := s.buildBatch(nil)
+		// Calculate timestamp like we do at the end - when batch is empty, use currentDAEndTime
+		remainingTxs := uint64(len(s.currentBatchTxs)) - s.checkpoint.TxIndex
+		timestamp := s.currentDAEndTime.Add(-time.Duration(remainingTxs) * time.Millisecond)
+		return &coresequencer.GetNextBatchResponse{
+			Batch:     batch,
+			Timestamp: timestamp,
+			BatchData: req.LastBatchData,
+		}, nil
 	}
+
+	// All txs in based sequencer are force-included (from DA)
+	forceIncludedMask := make([]bool, len(batchTxs))
+	for i := range forceIncludedMask {
+		forceIncludedMask[i] = true
+	}
+
+	// Get current gas limit from execution layer
+	var maxGas uint64
+	info, err := s.executor.GetExecutionInfo(ctx, 0) // 0 = latest/next block
+	if err != nil {
+		s.logger.Warn().Err(err).Msg("failed to get execution info, proceeding without gas limit")
+	} else {
+		maxGas = info.MaxGas
+	}
+
+	// Filter transactions - validates force-included txs and returns gas per tx
+	filterResult, err := s.executor.FilterTxs(ctx, batchTxs, forceIncludedMask)
+	if err != nil {
+		s.logger.Warn().Err(err).Msg("failed to filter transactions, proceeding with unfiltered")
+		filterResult = &execution.FilterTxsResult{
+			ValidTxs:          batchTxs,
+			ForceIncludedMask: forceIncludedMask,
+			GasPerTx:          nil,
+		}
+	}
+
+	// Apply gas limits using the returned GasPerTx
+	var filteredTxs [][]byte
+	var remainingGasFilteredTxs [][]byte
+	var cumulativeGas uint64
+
+	for i, tx := range filterResult.ValidTxs {
+		txGas := uint64(0)
+		if filterResult.GasPerTx != nil && i < len(filterResult.GasPerTx) {
+			txGas = filterResult.GasPerTx[i]
+		}
+
+		// Check if this tx fits within gas limit
+		if maxGas > 0 && cumulativeGas+txGas > maxGas {
+			// This tx and remaining txs don't fit - save for next block
+			remainingGasFilteredTxs = append(remainingGasFilteredTxs, filterResult.ValidTxs[i:]...)
+			break
+		}
+
+		cumulativeGas += txGas
+		filteredTxs = append(filteredTxs, tx)
+	}
+
+	s.logger.Debug().
+		Int("input_txs", len(batchTxs)).
+		Int("filtered_txs", len(filteredTxs)).
+		Int("remaining_for_next_block", len(remainingGasFilteredTxs)).
+		Uint64("gas_used", cumulativeGas).
+		Uint64("max_gas", maxGas).
+		Msg("filtered DA transactions")
 
 	// Update checkpoint with how many transactions we consumed
 	if daHeight > 0 || len(batchTxs) > 0 {

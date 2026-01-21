@@ -389,15 +389,7 @@ func (e *Executor) ProduceBlock(ctx context.Context) error {
 		}
 	}
 
-	// Pass force-included mask through context for execution optimization
-	// Force-included txs (from DA) MUST be validated as they're from untrusted sources
-	// Mempool txs can skip validation as they were validated when added to mempool
-	applyCtx := ctx
-	if batchData != nil && batchData.Batch != nil && batchData.ForceIncludedMask != nil {
-		applyCtx = coreexecutor.WithForceIncludedMask(applyCtx, batchData.ForceIncludedMask)
-	}
-
-	newState, err := e.blockProducer.ApplyBlock(applyCtx, header.Header, data)
+	newState, err := e.blockProducer.ApplyBlock(ctx, header.Header, data)
 	if err != nil {
 		return fmt.Errorf("failed to apply block: %w", err)
 	}

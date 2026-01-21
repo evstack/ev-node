@@ -788,71 +788,62 @@ func (c *EngineClient) GetExecutionInfo(ctx context.Context, height uint64) (exe
 	return execution.ExecutionInfo{MaxGas: gasLimit}, nil
 }
 
-// FilterDATransactions validates and filters force-included transactions from DA.
-// It filters out:
-// - Invalid/unparseable transactions (gibberish)
-// - Transactions that would exceed the cumulative gas limit
-func (c *EngineClient) FilterDATransactions(ctx context.Context, txs [][]byte, maxGas uint64) ([][]byte, [][]byte, error) {
+// FilterTxs validates force-included transactions and calculates gas for all transactions.
+// Only transactions with forceIncludedMask[i]=true are validated for correctness.
+// Mempool transactions (forceIncludedMask[i]=false) are passed through unchanged.
+// Gas limiting is NOT performed by this function - the caller handles that using GasPerTx.
+func (c *EngineClient) FilterTxs(ctx context.Context, txs [][]byte, forceIncludedMask []bool) (*execution.FilterTxsResult, error) {
 	validTxs := make([][]byte, 0, len(txs))
-	var cumulativeGas uint64
+	validMask := make([]bool, 0, len(txs))
+	gasPerTx := make([]uint64, 0, len(txs))
 
 	for i, tx := range txs {
-		if len(tx) == 0 {
-			continue
-		}
+		isForceIncluded := i < len(forceIncludedMask) && forceIncludedMask[i]
 
-		// Validate that the transaction can be parsed as an Ethereum transaction
-		var ethTx types.Transaction
-		if err := ethTx.UnmarshalBinary(tx); err != nil {
-			c.logger.Debug().
-				Int("tx_index", i).
-				Err(err).
-				Str("tx_hex", "0x"+hex.EncodeToString(tx)).
-				Msg("filtering out invalid DA transaction (gibberish)")
-			continue
-		}
-
-		txGas := ethTx.Gas()
-
-		// Check if this transaction would exceed the gas limit
-		if cumulativeGas+txGas > maxGas {
-			// Return remaining valid transactions that didn't fit
-			remainingTxs := make([][]byte, 0)
-			// Add this tx to remaining
-			remainingTxs = append(remainingTxs, tx)
-			// Check remaining txs for validity and add to remaining
-			for j := i + 1; j < len(txs); j++ {
-				if len(txs[j]) == 0 {
-					continue
-				}
-				var remainingEthTx types.Transaction
-				if err := remainingEthTx.UnmarshalBinary(txs[j]); err != nil {
-					// Skip gibberish in remaining too
-					c.logger.Debug().
-						Int("tx_index", j).
-						Err(err).
-						Msg("filtering out invalid DA transaction in remaining (gibberish)")
-					continue
-				}
-				remainingTxs = append(remainingTxs, txs[j])
+		if isForceIncluded {
+			// Validate force-included transactions
+			if len(tx) == 0 {
+				continue
 			}
 
-			c.logger.Debug().
-				Int("valid_txs", len(validTxs)).
-				Int("remaining_txs", len(remainingTxs)).
-				Uint64("cumulative_gas", cumulativeGas).
-				Uint64("max_gas", maxGas).
-				Msg("DA transactions exceeded gas limit, splitting batch")
+			// Validate that the transaction can be parsed as an Ethereum transaction
+			var ethTx types.Transaction
+			if err := ethTx.UnmarshalBinary(tx); err != nil {
+				c.logger.Debug().
+					Int("tx_index", i).
+					Err(err).
+					Str("tx_hex", "0x"+hex.EncodeToString(tx)).
+					Msg("filtering out invalid force-included transaction (gibberish)")
+				continue
+			}
 
-			return validTxs, remainingTxs, nil
+			validTxs = append(validTxs, tx)
+			validMask = append(validMask, true)
+			gasPerTx = append(gasPerTx, ethTx.Gas())
+		} else {
+			// Mempool transactions pass through unchanged
+			// Still calculate gas for them
+			var txGas uint64
+			if len(tx) > 0 {
+				var ethTx types.Transaction
+				if err := ethTx.UnmarshalBinary(tx); err == nil {
+					txGas = ethTx.Gas()
+				}
+				// If parsing fails for mempool tx, we still include it with gas=0
+				// The execution layer will handle it during actual execution
+			}
+
+			validTxs = append(validTxs, tx)
+			validMask = append(validMask, false)
+			gasPerTx = append(gasPerTx, txGas)
 		}
-
-		cumulativeGas += txGas
-		validTxs = append(validTxs, tx)
 	}
 
-	// All transactions fit
-	return validTxs, nil, nil
+	return &execution.FilterTxsResult{
+		ValidTxs:          validTxs,
+		ForceIncludedMask: validMask,
+		GasPerTx:          gasPerTx,
+	}, nil
 }
 
 // processPayload handles the common logic of getting, submitting, and finalizing a payload.

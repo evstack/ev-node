@@ -11,12 +11,12 @@ import (
 
 // mockExecutor is a mock implementation of execution.Executor for testing
 type mockExecutor struct {
-	initChainFunc            func(ctx context.Context, genesisTime time.Time, initialHeight uint64, chainID string) ([]byte, error)
-	getTxsFunc               func(ctx context.Context) ([][]byte, error)
-	executeTxsFunc           func(ctx context.Context, txs [][]byte, blockHeight uint64, timestamp time.Time, prevStateRoot []byte) ([]byte, error)
-	setFinalFunc             func(ctx context.Context, blockHeight uint64) error
-	getExecutionInfoFunc     func(ctx context.Context, height uint64) (execution.ExecutionInfo, error)
-	filterDATransactionsFunc func(ctx context.Context, txs [][]byte, maxGas uint64) ([][]byte, [][]byte, error)
+	initChainFunc        func(ctx context.Context, genesisTime time.Time, initialHeight uint64, chainID string) ([]byte, error)
+	getTxsFunc           func(ctx context.Context) ([][]byte, error)
+	executeTxsFunc       func(ctx context.Context, txs [][]byte, blockHeight uint64, timestamp time.Time, prevStateRoot []byte) ([]byte, error)
+	setFinalFunc         func(ctx context.Context, blockHeight uint64) error
+	getExecutionInfoFunc func(ctx context.Context, height uint64) (execution.ExecutionInfo, error)
+	filterTxsFunc        func(ctx context.Context, txs [][]byte, forceIncludedMask []bool) (*execution.FilterTxsResult, error)
 }
 
 func (m *mockExecutor) InitChain(ctx context.Context, genesisTime time.Time, initialHeight uint64, chainID string) ([]byte, error) {
@@ -54,12 +54,16 @@ func (m *mockExecutor) GetExecutionInfo(ctx context.Context, height uint64) (exe
 	return execution.ExecutionInfo{MaxGas: 0}, nil
 }
 
-func (m *mockExecutor) FilterDATransactions(ctx context.Context, txs [][]byte, maxGas uint64) ([][]byte, [][]byte, error) {
-	if m.filterDATransactionsFunc != nil {
-		return m.filterDATransactionsFunc(ctx, txs, maxGas)
+func (m *mockExecutor) FilterTxs(ctx context.Context, txs [][]byte, forceIncludedMask []bool) (*execution.FilterTxsResult, error) {
+	if m.filterTxsFunc != nil {
+		return m.filterTxsFunc(ctx, txs, forceIncludedMask)
 	}
-	// Default: return all txs as valid
-	return txs, nil, nil
+	// Default: return all txs as valid, no gas info
+	return &execution.FilterTxsResult{
+		ValidTxs:          txs,
+		ForceIncludedMask: forceIncludedMask,
+		GasPerTx:          nil,
+	}, nil
 }
 
 func TestClient_InitChain(t *testing.T) {

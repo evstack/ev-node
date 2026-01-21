@@ -125,56 +125,48 @@ func (_c *MockExecutor_ExecuteTxs_Call) RunAndReturn(run func(ctx context.Contex
 	return _c
 }
 
-// FilterDATransactions provides a mock function for the type MockExecutor
-func (_mock *MockExecutor) FilterDATransactions(ctx context.Context, txs [][]byte, maxGas uint64) ([][]byte, [][]byte, error) {
-	ret := _mock.Called(ctx, txs, maxGas)
+// FilterTxs provides a mock function for the type MockExecutor
+func (_mock *MockExecutor) FilterTxs(ctx context.Context, txs [][]byte, forceIncludedMask []bool) (*execution.FilterTxsResult, error) {
+	ret := _mock.Called(ctx, txs, forceIncludedMask)
 
 	if len(ret) == 0 {
-		panic("no return value specified for FilterDATransactions")
+		panic("no return value specified for FilterTxs")
 	}
 
-	var r0 [][]byte
-	var r1 [][]byte
-	var r2 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, [][]byte, uint64) ([][]byte, [][]byte, error)); ok {
-		return returnFunc(ctx, txs, maxGas)
+	var r0 *execution.FilterTxsResult
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, [][]byte, []bool) (*execution.FilterTxsResult, error)); ok {
+		return returnFunc(ctx, txs, forceIncludedMask)
 	}
-	if returnFunc, ok := ret.Get(0).(func(context.Context, [][]byte, uint64) [][]byte); ok {
-		r0 = returnFunc(ctx, txs, maxGas)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, [][]byte, []bool) *execution.FilterTxsResult); ok {
+		r0 = returnFunc(ctx, txs, forceIncludedMask)
 	} else {
 		if ret.Get(0) != nil {
-			r0 = ret.Get(0).([][]byte)
+			r0 = ret.Get(0).(*execution.FilterTxsResult)
 		}
 	}
-	if returnFunc, ok := ret.Get(1).(func(context.Context, [][]byte, uint64) [][]byte); ok {
-		r1 = returnFunc(ctx, txs, maxGas)
+	if returnFunc, ok := ret.Get(1).(func(context.Context, [][]byte, []bool) error); ok {
+		r1 = returnFunc(ctx, txs, forceIncludedMask)
 	} else {
-		if ret.Get(1) != nil {
-			r1 = ret.Get(1).([][]byte)
-		}
+		r1 = ret.Error(1)
 	}
-	if returnFunc, ok := ret.Get(2).(func(context.Context, [][]byte, uint64) error); ok {
-		r2 = returnFunc(ctx, txs, maxGas)
-	} else {
-		r2 = ret.Error(2)
-	}
-	return r0, r1, r2
+	return r0, r1
 }
 
-// MockExecutor_FilterDATransactions_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'FilterDATransactions'
-type MockExecutor_FilterDATransactions_Call struct {
+// MockExecutor_FilterTxs_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'FilterTxs'
+type MockExecutor_FilterTxs_Call struct {
 	*mock.Call
 }
 
-// FilterDATransactions is a helper method to define mock.On call
+// FilterTxs is a helper method to define mock.On call
 //   - ctx context.Context
 //   - txs [][]byte
-//   - maxGas uint64
-func (_e *MockExecutor_Expecter) FilterDATransactions(ctx interface{}, txs interface{}, maxGas interface{}) *MockExecutor_FilterDATransactions_Call {
-	return &MockExecutor_FilterDATransactions_Call{Call: _e.mock.On("FilterDATransactions", ctx, txs, maxGas)}
+//   - forceIncludedMask []bool
+func (_e *MockExecutor_Expecter) FilterTxs(ctx interface{}, txs interface{}, forceIncludedMask interface{}) *MockExecutor_FilterTxs_Call {
+	return &MockExecutor_FilterTxs_Call{Call: _e.mock.On("FilterTxs", ctx, txs, forceIncludedMask)}
 }
 
-func (_c *MockExecutor_FilterDATransactions_Call) Run(run func(ctx context.Context, txs [][]byte, maxGas uint64)) *MockExecutor_FilterDATransactions_Call {
+func (_c *MockExecutor_FilterTxs_Call) Run(run func(ctx context.Context, txs [][]byte, forceIncludedMask []bool)) *MockExecutor_FilterTxs_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
@@ -184,9 +176,9 @@ func (_c *MockExecutor_FilterDATransactions_Call) Run(run func(ctx context.Conte
 		if args[1] != nil {
 			arg1 = args[1].([][]byte)
 		}
-		var arg2 uint64
+		var arg2 []bool
 		if args[2] != nil {
-			arg2 = args[2].(uint64)
+			arg2 = args[2].([]bool)
 		}
 		run(
 			arg0,
@@ -197,12 +189,12 @@ func (_c *MockExecutor_FilterDATransactions_Call) Run(run func(ctx context.Conte
 	return _c
 }
 
-func (_c *MockExecutor_FilterDATransactions_Call) Return(validTxs [][]byte, remainingTxs [][]byte, err error) *MockExecutor_FilterDATransactions_Call {
-	_c.Call.Return(validTxs, remainingTxs, err)
+func (_c *MockExecutor_FilterTxs_Call) Return(filterTxsResult *execution.FilterTxsResult, err error) *MockExecutor_FilterTxs_Call {
+	_c.Call.Return(filterTxsResult, err)
 	return _c
 }
 
-func (_c *MockExecutor_FilterDATransactions_Call) RunAndReturn(run func(ctx context.Context, txs [][]byte, maxGas uint64) ([][]byte, [][]byte, error)) *MockExecutor_FilterDATransactions_Call {
+func (_c *MockExecutor_FilterTxs_Call) RunAndReturn(run func(ctx context.Context, txs [][]byte, forceIncludedMask []bool) (*execution.FilterTxsResult, error)) *MockExecutor_FilterTxs_Call {
 	_c.Call.Return(run)
 	return _c
 }

@@ -5,6 +5,22 @@ import (
 	"time"
 )
 
+// FilterTxsResult contains the result of filtering transactions.
+type FilterTxsResult struct {
+	// ValidTxs contains transactions that passed validation.
+	// Force-included txs that are invalid are removed.
+	// Mempool txs are passed through unchanged.
+	ValidTxs [][]byte
+
+	// ForceIncludedMask indicates which ValidTxs are force-included (true = force-included).
+	// Same length as ValidTxs.
+	ForceIncludedMask []bool
+
+	// GasPerTx contains the gas for each transaction in ValidTxs.
+	// For non-gas-based execution layers, this may be nil or all zeros.
+	GasPerTx []uint64
+}
+
 // ExecutionInfo contains execution layer parameters that may change per block.
 type ExecutionInfo struct {
 	// MaxGas is the maximum gas allowed for transactions in a block.
@@ -105,26 +121,27 @@ type Executor interface {
 	// - error: Any errors during retrieval
 	GetExecutionInfo(ctx context.Context, height uint64) (ExecutionInfo, error)
 
-	// FilterDATransactions validates and filters force-included transactions from DA.
-	// It performs execution-layer specific validation (e.g., EVM tx parsing, gas checks)
-	// and returns transactions that are valid and fit within the gas limit.
+	// FilterTxs validates force-included transactions and calculates gas for all transactions.
+	// Only transactions with forceIncludedMask[i]=true are validated for correctness.
+	// Mempool transactions (forceIncludedMask[i]=false) are passed through unchanged.
 	//
 	// The function filters out:
-	// - Invalid/unparseable transactions (gibberish)
-	// - Transactions that would exceed the cumulative gas limit
+	// - Invalid/unparseable force-included transactions (gibberish)
 	//
-	// For non-gas-based execution layers, return all valid transactions with nil remainingTxs.
+	// Gas limiting is NOT performed by this function. The caller (sequencer) is responsible
+	// for using the returned GasPerTx values to enforce gas limits.
+	//
+	// For non-gas-based execution layers, GasPerTx may be nil or all zeros.
 	//
 	// Parameters:
 	// - ctx: Context for timeout/cancellation control
-	// - txs: Raw transactions from DA to validate
-	// - maxGas: Maximum cumulative gas allowed for these transactions
+	// - txs: All transactions (force-included + mempool)
+	// - forceIncludedMask: true for each tx that is force-included (needs validation)
 	//
 	// Returns:
-	// - validTxs: Transactions that passed validation and fit within maxGas
-	// - remainingTxs: Valid transactions that didn't fit due to gas limit (for re-queuing)
+	// - result: Contains valid txs, updated mask, and gas per tx
 	// - err: Any errors during filtering (not validation errors, which result in filtering)
-	FilterDATransactions(ctx context.Context, txs [][]byte, maxGas uint64) (validTxs [][]byte, remainingTxs [][]byte, err error)
+	FilterTxs(ctx context.Context, txs [][]byte, forceIncludedMask []bool) (*FilterTxsResult, error)
 }
 
 // HeightProvider is an optional interface that execution clients can implement

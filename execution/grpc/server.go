@@ -154,21 +154,22 @@ func (s *Server) GetExecutionInfo(
 	}), nil
 }
 
-// FilterDATransactions handles the FilterDATransactions RPC request.
+// FilterTxs handles the FilterTxs RPC request.
 //
-// It validates and filters force-included transactions from DA, returning
-// transactions that are valid and fit within the gas limit.
-func (s *Server) FilterDATransactions(
+// It validates force-included transactions and calculates gas for all transactions.
+// Only transactions with forceIncludedMask[i]=true are validated.
+func (s *Server) FilterTxs(
 	ctx context.Context,
-	req *connect.Request[pb.FilterDATransactionsRequest],
-) (*connect.Response[pb.FilterDATransactionsResponse], error) {
-	validTxs, remainingTxs, err := s.executor.FilterDATransactions(ctx, req.Msg.Txs, req.Msg.MaxGas)
+	req *connect.Request[pb.FilterTxsRequest],
+) (*connect.Response[pb.FilterTxsResponse], error) {
+	result, err := s.executor.FilterTxs(ctx, req.Msg.Txs, req.Msg.ForceIncludedMask)
 	if err != nil {
-		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to filter DA transactions: %w", err))
+		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to filter transactions: %w", err))
 	}
 
-	return connect.NewResponse(&pb.FilterDATransactionsResponse{
-		ValidTxs:     validTxs,
-		RemainingTxs: remainingTxs,
+	return connect.NewResponse(&pb.FilterTxsResponse{
+		ValidTxs:          result.ValidTxs,
+		ForceIncludedMask: result.ForceIncludedMask,
+		GasPerTx:          result.GasPerTx,
 	}), nil
 }
