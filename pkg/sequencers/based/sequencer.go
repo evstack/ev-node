@@ -115,32 +115,6 @@ func (s *BasedSequencer) GetNextBatch(ctx context.Context, req coresequencer.Get
 	// Create batch from current position up to MaxBytes
 	batchTxs := s.getTxsFromCheckpoint(req.MaxBytes)
 
-	// If no txs, skip filtering but still update checkpoint and use proper timestamp
-	if len(batchTxs) == 0 {
-		// Update checkpoint - advance to next DA epoch since this one is empty
-		if daHeight > 0 {
-			s.checkpoint.DAHeight = daHeight + 1
-			s.checkpoint.TxIndex = 0
-			s.currentBatchTxs = nil
-			s.SetDAHeight(s.checkpoint.DAHeight)
-
-			// Persist checkpoint
-			if err := s.checkpointStore.Save(ctx, s.checkpoint); err != nil {
-				return nil, fmt.Errorf("failed to save checkpoint: %w", err)
-			}
-		}
-
-		batch := s.buildBatch(nil)
-		// Calculate timestamp like we do at the end - when batch is empty, use currentDAEndTime
-		remainingTxs := uint64(len(s.currentBatchTxs)) - s.checkpoint.TxIndex
-		timestamp := s.currentDAEndTime.Add(-time.Duration(remainingTxs) * time.Millisecond)
-		return &coresequencer.GetNextBatchResponse{
-			Batch:     batch,
-			Timestamp: timestamp,
-			BatchData: req.LastBatchData,
-		}, nil
-	}
-
 	// All txs in based sequencer are force-included (from DA)
 	forceIncludedMask := make([]bool, len(batchTxs))
 	for i := range forceIncludedMask {
@@ -170,13 +144,6 @@ func (s *BasedSequencer) GetNextBatch(ctx context.Context, req coresequencer.Get
 	// FilterTxs returns valid txs that fit within gas, and remaining txs that didn't fit
 	filteredTxs := filterResult.ValidTxs
 	remainingGasFilteredTxs := filterResult.RemainingTxs
-
-	s.logger.Debug().
-		Int("input_txs", len(batchTxs)).
-		Int("filtered_txs", len(filteredTxs)).
-		Int("remaining_for_next_block", len(remainingGasFilteredTxs)).
-		Uint64("max_gas", maxGas).
-		Msg("filtered DA transactions")
 
 	// Update checkpoint with how many transactions we consumed
 	if daHeight > 0 || len(batchTxs) > 0 {
