@@ -430,36 +430,34 @@ func (k *KVExecutor) GetExecutionInfo(ctx context.Context, height uint64) (execu
 	return execution.ExecutionInfo{MaxGas: 0}, nil
 }
 
-// FilterTxs validates force-included transactions and applies gas filtering.
-// For KVExecutor, only force-included transactions are validated (key=value format).
-// Mempool transactions are passed through unchanged.
+// FilterTxs validates force-included transactions and applies gas and size filtering.
+// For KVExecutor, validates key=value format when force-included txs are present.
 // KVExecutor doesn't track gas, so maxGas is ignored.
-func (k *KVExecutor) FilterTxs(ctx context.Context, txs [][]byte, forceIncludedMask []bool, maxGas uint64) (*execution.FilterTxsResult, error) {
-	validTxs := make([][]byte, 0, len(txs))
-	validMask := make([]bool, 0, len(txs))
+func (k *KVExecutor) FilterTxs(ctx context.Context, txs [][]byte, maxBytes, maxGas uint64, hasForceIncludedTransaction bool) ([]execution.FilterStatus, error) {
+	result := make([]execution.FilterStatus, len(txs))
 
-	for i, tx := range txs {
-		isForceIncluded := i < len(forceIncludedMask) && forceIncludedMask[i]
-
-		if isForceIncluded {
-			// Validate force-included transactions
-			if len(tx) == 0 {
-				continue // Skip empty transactions
-			}
-			// Basic format validation: must be key=value
-			parts := strings.SplitN(string(tx), "=", 2)
-			if len(parts) != 2 || strings.TrimSpace(parts[0]) == "" {
-				continue // Filter out malformed transactions
-			}
+	// If no force-included txs, skip filtering entirely - mempool batch is already filtered
+	if !hasForceIncludedTransaction {
+		for i := range result {
+			result[i] = execution.FilterOK
 		}
-		// Mempool transactions pass through unchanged
-		validTxs = append(validTxs, tx)
-		validMask = append(validMask, isForceIncluded)
+		return result, nil
 	}
 
-	return &execution.FilterTxsResult{
-		ValidTxs:          validTxs,
-		ForceIncludedMask: validMask,
-		RemainingTxs:      nil, // KVExecutor doesn't track gas, so no gas-based filtering
-	}, nil
+	for i, tx := range txs {
+		// Validate transactions
+		if len(tx) == 0 {
+			result[i] = execution.FilterRemove
+			continue
+		}
+		// Basic format validation: must be key=value
+		parts := strings.SplitN(string(tx), "=", 2)
+		if len(parts) != 2 || strings.TrimSpace(parts[0]) == "" {
+			result[i] = execution.FilterRemove
+			continue
+		}
+		result[i] = execution.FilterOK
+	}
+
+	return result, nil
 }

@@ -67,11 +67,11 @@ func (m *MockHeightAwareExecutor) GetExecutionInfo(ctx context.Context, height u
 }
 
 // FilterTxs implements the Executor interface.
-func (m *MockHeightAwareExecutor) FilterTxs(ctx context.Context, txs [][]byte, forceIncludedMask []bool, maxGas uint64) (*execution.FilterTxsResult, error) {
-	args := m.Called(ctx, txs, forceIncludedMask, maxGas)
-	var result *execution.FilterTxsResult
+func (m *MockHeightAwareExecutor) FilterTxs(ctx context.Context, txs [][]byte, maxBytes, maxGas uint64, hasForceIncludedTransaction bool) ([]execution.FilterStatus, error) {
+	args := m.Called(ctx, txs, maxBytes, maxGas, hasForceIncludedTransaction)
+	var result []execution.FilterStatus
 	if args.Get(0) != nil {
-		result = args.Get(0).(*execution.FilterTxsResult)
+		result = args.Get(0).([]execution.FilterStatus)
 	}
 	return result, args.Error(1)
 }

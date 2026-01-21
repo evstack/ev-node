@@ -29,16 +29,28 @@ type MockFullDAClient struct {
 }
 
 // createDefaultMockExecutor creates a MockExecutor with default passthrough behavior for FilterTxs and GetExecutionInfo
+// It implements proper size filtering based on maxBytes parameter.
 func createDefaultMockExecutor(t *testing.T) *mocks.MockExecutor {
 	mockExec := mocks.NewMockExecutor(t)
 	mockExec.On("GetExecutionInfo", mock.Anything, mock.Anything).Return(execution.ExecutionInfo{MaxGas: 1000000}, nil).Maybe()
-	mockExec.On("FilterTxs", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(
-		func(ctx context.Context, txs [][]byte, forceIncludedMask []bool, maxGas uint64) *execution.FilterTxsResult {
-			return &execution.FilterTxsResult{
-				ValidTxs:          txs,
-				ForceIncludedMask: forceIncludedMask,
-				RemainingTxs:      nil,
+	mockExec.On("FilterTxs", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(
+		func(ctx context.Context, txs [][]byte, maxBytes, maxGas uint64, hasForceIncludedTransaction bool) []execution.FilterStatus {
+			result := make([]execution.FilterStatus, len(txs))
+			var cumulativeBytes uint64
+
+			for i, tx := range txs {
+				txBytes := uint64(len(tx))
+
+				// Check if tx would exceed size limit
+				if maxBytes > 0 && cumulativeBytes+txBytes > maxBytes {
+					result[i] = execution.FilterPostpone
+					continue
+				}
+
+				cumulativeBytes += txBytes
+				result[i] = execution.FilterOK
 			}
+			return result
 		},
 		nil,
 	).Maybe()
@@ -224,8 +236,10 @@ func TestBasedSequencer_GetNextBatch_WithMaxBytes(t *testing.T) {
 	require.NotNil(t, resp.Batch)
 	// Should only get first 2 transactions (100 + 150 = 250 bytes)
 	assert.Equal(t, 2, len(resp.Batch.Transactions))
+	// With new design, postponed txs replace the cache and TxIndex is reset to 0
 	assert.Equal(t, uint64(100), seq.checkpoint.DAHeight)
-	assert.Equal(t, uint64(2), seq.checkpoint.TxIndex)
+	assert.Equal(t, uint64(0), seq.checkpoint.TxIndex)
+	assert.Equal(t, 1, len(seq.currentBatchTxs), "Cache should contain only the postponed tx")
 
 	// Second call should get the remaining transaction
 	req = coresequencer.GetNextBatchRequest{
@@ -781,8 +795,8 @@ func TestBasedSequencer_GetNextBatch_GasFilteringPreservesUnprocessedTxs(t *test
 	gasFilterCallCount := 0
 	mockExec := mocks.NewMockExecutor(t)
 	mockExec.On("GetExecutionInfo", mock.Anything, mock.Anything).Return(execution.ExecutionInfo{MaxGas: 1000000}, nil).Maybe()
-	mockExec.On("FilterTxs", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(
-		func(ctx context.Context, txs [][]byte, forceIncludedMask []bool, maxGas uint64) *execution.FilterTxsResult {
+	mockExec.On("FilterTxs", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(
+		func(ctx context.Context, txs [][]byte, maxBytes, maxGas uint64, hasForceIncludedTransaction bool) []execution.FilterStatus {
 			gasFilterCallCount++
 			t.Logf("FilterTxs call #%d with %d txs", gasFilterCallCount, len(txs))
 			for i, tx := range txs {
@@ -796,20 +810,20 @@ func TestBasedSequencer_GetNextBatch_GasFilteringPreservesUnprocessedTxs(t *test
 				// tx2: valid but gas-limited
 				require.GreaterOrEqual(t, len(txs), 2, "expected at least 2 txs in first filter call")
 
-				return &execution.FilterTxsResult{
-					ValidTxs:          txs[:1],          // Only tx0 fits
-					ForceIncludedMask: []bool{true},     // All force-included
-					RemainingTxs:      txs[len(txs)-1:], // Last tx is gas-limited (tx2)
-				}
+				result := make([]execution.FilterStatus, len(txs))
+				result[0] = execution.FilterOK                // tx0 fits
+				result[1] = execution.FilterRemove            // tx1 gibberish
+				result[len(txs)-1] = execution.FilterPostpone // last tx is gas-limited
+				return result
 			}
 
 			// Subsequent calls: should receive the remaining txs (tx2, tx3, tx4)
 			// If bug exists, we'd only get tx2 and lose tx3, tx4
-			return &execution.FilterTxsResult{
-				ValidTxs:          txs,
-				ForceIncludedMask: make([]bool, len(txs)),
-				RemainingTxs:      nil,
+			result := make([]execution.FilterStatus, len(txs))
+			for i := range result {
+				result[i] = execution.FilterOK
 			}
+			return result
 		},
 		nil,
 	).Maybe()
@@ -901,30 +915,28 @@ func TestBasedSequencer_GetNextBatch_RemainingTxsIndexCorrelation(t *testing.T) 
 
 	mockExec := mocks.NewMockExecutor(t)
 	mockExec.On("GetExecutionInfo", mock.Anything, mock.Anything).Return(execution.ExecutionInfo{MaxGas: 1000000}, nil).Maybe()
-	mockExec.On("FilterTxs", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(
-		func(ctx context.Context, txs [][]byte, forceIncludedMask []bool, maxGas uint64) *execution.FilterTxsResult {
+	mockExec.On("FilterTxs", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(
+		func(ctx context.Context, txs [][]byte, maxBytes, maxGas uint64, hasForceIncludedTransaction bool) []execution.FilterStatus {
 			filterCallCount++
 			t.Logf("FilterTxs call #%d with %d txs", filterCallCount, len(txs))
 
 			if filterCallCount == 1 && len(txs) >= 2 {
 				// First call: tx0 valid+fits, tx1 valid but gas-limited
-				return &execution.FilterTxsResult{
-					ValidTxs:          txs[:1], // tx0 only
-					ForceIncludedMask: []bool{true},
-					RemainingTxs:      txs[1:2], // tx1 is remaining (gas-limited)
+				result := make([]execution.FilterStatus, len(txs))
+				result[0] = execution.FilterOK
+				result[1] = execution.FilterPostpone // tx1 is remaining (gas-limited)
+				for i := 2; i < len(txs); i++ {
+					result[i] = execution.FilterOK
 				}
+				return result
 			}
 
 			// Pass through all txs
-			mask := make([]bool, len(txs))
-			for i := range mask {
-				mask[i] = true
+			result := make([]execution.FilterStatus, len(txs))
+			for i := range result {
+				result[i] = execution.FilterOK
 			}
-			return &execution.FilterTxsResult{
-				ValidTxs:          txs,
-				ForceIncludedMask: mask,
-				RemainingTxs:      nil,
-			}
+			return result
 		},
 		nil,
 	).Maybe()

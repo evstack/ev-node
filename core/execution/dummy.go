@@ -109,13 +109,13 @@ func (e *DummyExecutor) GetExecutionInfo(ctx context.Context, height uint64) (Ex
 	return ExecutionInfo{MaxGas: 0}, nil
 }
 
-// FilterTxs validates force-included transactions and applies gas filtering.
+// FilterTxs validates force-included transactions and applies gas and size filtering.
 // For DummyExecutor, all transactions are considered valid (no parsing/gas checks).
-func (e *DummyExecutor) FilterTxs(ctx context.Context, txs [][]byte, forceIncludedMask []bool, maxGas uint64) (*FilterTxsResult, error) {
-	// DummyExecutor doesn't do any filtering - return all txs as valid
-	return &FilterTxsResult{
-		ValidTxs:          txs,
-		ForceIncludedMask: forceIncludedMask,
-		RemainingTxs:      nil,
-	}, nil
+func (e *DummyExecutor) FilterTxs(ctx context.Context, txs [][]byte, maxBytes, maxGas uint64, hasForceIncludedTransaction bool) ([]FilterStatus, error) {
+	// DummyExecutor doesn't do any filtering - return all txs as OK
+	result := make([]FilterStatus, len(txs))
+	for i := range result {
+		result[i] = FilterOK
+	}
+	return result, nil
 }

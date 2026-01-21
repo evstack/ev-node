@@ -126,27 +126,27 @@ func (_c *MockExecutor_ExecuteTxs_Call) RunAndReturn(run func(ctx context.Contex
 }
 
 // FilterTxs provides a mock function for the type MockExecutor
-func (_mock *MockExecutor) FilterTxs(ctx context.Context, txs [][]byte, forceIncludedMask []bool, maxGas uint64) (*execution.FilterTxsResult, error) {
-	ret := _mock.Called(ctx, txs, forceIncludedMask, maxGas)
+func (_mock *MockExecutor) FilterTxs(ctx context.Context, txs [][]byte, maxBytes uint64, maxGas uint64, hasForceIncludedTransaction bool) ([]execution.FilterStatus, error) {
+	ret := _mock.Called(ctx, txs, maxBytes, maxGas, hasForceIncludedTransaction)
 
 	if len(ret) == 0 {
 		panic("no return value specified for FilterTxs")
 	}
 
-	var r0 *execution.FilterTxsResult
+	var r0 []execution.FilterStatus
 	var r1 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, [][]byte, []bool, uint64) (*execution.FilterTxsResult, error)); ok {
-		return returnFunc(ctx, txs, forceIncludedMask, maxGas)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, [][]byte, uint64, uint64, bool) ([]execution.FilterStatus, error)); ok {
+		return returnFunc(ctx, txs, maxBytes, maxGas, hasForceIncludedTransaction)
 	}
-	if returnFunc, ok := ret.Get(0).(func(context.Context, [][]byte, []bool, uint64) *execution.FilterTxsResult); ok {
-		r0 = returnFunc(ctx, txs, forceIncludedMask, maxGas)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, [][]byte, uint64, uint64, bool) []execution.FilterStatus); ok {
+		r0 = returnFunc(ctx, txs, maxBytes, maxGas, hasForceIncludedTransaction)
 	} else {
 		if ret.Get(0) != nil {
-			r0 = ret.Get(0).(*execution.FilterTxsResult)
+			r0 = ret.Get(0).([]execution.FilterStatus)
 		}
 	}
-	if returnFunc, ok := ret.Get(1).(func(context.Context, [][]byte, []bool, uint64) error); ok {
-		r1 = returnFunc(ctx, txs, forceIncludedMask, maxGas)
+	if returnFunc, ok := ret.Get(1).(func(context.Context, [][]byte, uint64, uint64, bool) error); ok {
+		r1 = returnFunc(ctx, txs, maxBytes, maxGas, hasForceIncludedTransaction)
 	} else {
 		r1 = ret.Error(1)
 	}
@@ -161,13 +161,14 @@ type MockExecutor_FilterTxs_Call struct {
 // FilterTxs is a helper method to define mock.On call
 //   - ctx context.Context
 //   - txs [][]byte
-//   - forceIncludedMask []bool
+//   - maxBytes uint64
 //   - maxGas uint64
-func (_e *MockExecutor_Expecter) FilterTxs(ctx interface{}, txs interface{}, forceIncludedMask interface{}, maxGas interface{}) *MockExecutor_FilterTxs_Call {
-	return &MockExecutor_FilterTxs_Call{Call: _e.mock.On("FilterTxs", ctx, txs, forceIncludedMask, maxGas)}
+//   - hasForceIncludedTransaction bool
+func (_e *MockExecutor_Expecter) FilterTxs(ctx interface{}, txs interface{}, maxBytes interface{}, maxGas interface{}, hasForceIncludedTransaction interface{}) *MockExecutor_FilterTxs_Call {
+	return &MockExecutor_FilterTxs_Call{Call: _e.mock.On("FilterTxs", ctx, txs, maxBytes, maxGas, hasForceIncludedTransaction)}
 }
 
-func (_c *MockExecutor_FilterTxs_Call) Run(run func(ctx context.Context, txs [][]byte, forceIncludedMask []bool, maxGas uint64)) *MockExecutor_FilterTxs_Call {
+func (_c *MockExecutor_FilterTxs_Call) Run(run func(ctx context.Context, txs [][]byte, maxBytes uint64, maxGas uint64, hasForceIncludedTransaction bool)) *MockExecutor_FilterTxs_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
@@ -177,30 +178,35 @@ func (_c *MockExecutor_FilterTxs_Call) Run(run func(ctx context.Context, txs [][
 		if args[1] != nil {
 			arg1 = args[1].([][]byte)
 		}
-		var arg2 []bool
+		var arg2 uint64
 		if args[2] != nil {
-			arg2 = args[2].([]bool)
+			arg2 = args[2].(uint64)
 		}
 		var arg3 uint64
 		if args[3] != nil {
 			arg3 = args[3].(uint64)
+		}
+		var arg4 bool
+		if args[4] != nil {
+			arg4 = args[4].(bool)
 		}
 		run(
 			arg0,
 			arg1,
 			arg2,
 			arg3,
+			arg4,
 		)
 	})
 	return _c
 }
 
-func (_c *MockExecutor_FilterTxs_Call) Return(filterTxsResult *execution.FilterTxsResult, err error) *MockExecutor_FilterTxs_Call {
-	_c.Call.Return(filterTxsResult, err)
+func (_c *MockExecutor_FilterTxs_Call) Return(filterStatuss []execution.FilterStatus, err error) *MockExecutor_FilterTxs_Call {
+	_c.Call.Return(filterStatuss, err)
 	return _c
 }
 
-func (_c *MockExecutor_FilterTxs_Call) RunAndReturn(run func(ctx context.Context, txs [][]byte, forceIncludedMask []bool, maxGas uint64) (*execution.FilterTxsResult, error)) *MockExecutor_FilterTxs_Call {
+func (_c *MockExecutor_FilterTxs_Call) RunAndReturn(run func(ctx context.Context, txs [][]byte, maxBytes uint64, maxGas uint64, hasForceIncludedTransaction bool) ([]execution.FilterStatus, error)) *MockExecutor_FilterTxs_Call {
 	_c.Call.Return(run)
 	return _c
 }

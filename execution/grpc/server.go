@@ -156,20 +156,24 @@ func (s *Server) GetExecutionInfo(
 
 // FilterTxs handles the FilterTxs RPC request.
 //
-// It validates force-included transactions and applies gas filtering to all txs.
-// Only transactions with forceIncludedMask[i]=true are validated.
+// It validates force-included transactions and applies gas and size filtering.
+// Returns a slice of FilterStatus for each transaction.
 func (s *Server) FilterTxs(
 	ctx context.Context,
 	req *connect.Request[pb.FilterTxsRequest],
 ) (*connect.Response[pb.FilterTxsResponse], error) {
-	result, err := s.executor.FilterTxs(ctx, req.Msg.Txs, req.Msg.ForceIncludedMask, req.Msg.MaxGas)
+	result, err := s.executor.FilterTxs(ctx, req.Msg.Txs, req.Msg.MaxBytes, req.Msg.MaxGas, req.Msg.HasForceIncludedTransaction)
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to filter transactions: %w", err))
 	}
 
+	// Convert execution.FilterStatus to protobuf FilterStatus
+	statuses := make([]pb.FilterStatus, len(result))
+	for i, status := range result {
+		statuses[i] = pb.FilterStatus(status)
+	}
+
 	return connect.NewResponse(&pb.FilterTxsResponse{
-		ValidTxs:          result.ValidTxs,
-		ForceIncludedMask: result.ForceIncludedMask,
-		RemainingTxs:      result.RemainingTxs,
+		Statuses: statuses,
 	}), nil
 }

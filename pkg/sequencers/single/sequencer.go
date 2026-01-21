@@ -201,8 +201,9 @@ func (c *Sequencer) GetNextBatch(ctx context.Context, req coresequencer.GetNextB
 		daHeight = daEndHeight
 	}
 
-	// Process forced inclusion transactions from checkpoint position
-	forcedTxs := c.processForcedInclusionTxsFromCheckpoint(req.MaxBytes)
+	// Get all remaining forced inclusion transactions from checkpoint position
+	// Size/gas filtering is now handled by FilterTxs
+	forcedTxs := c.getRemainingForcedInclusionTxs()
 
 	// Get mempool transactions from queue
 	mempoolBatch, err := c.queue.Next(ctx)
@@ -210,18 +211,14 @@ func (c *Sequencer) GetNextBatch(ctx context.Context, req coresequencer.GetNextB
 		return nil, err
 	}
 
-	// Build combined tx list and mask for filtering
+	// Build combined tx list for filtering
 	allTxs := make([][]byte, 0, len(forcedTxs)+len(mempoolBatch.Transactions))
-	forceIncludedMask := make([]bool, 0, len(forcedTxs)+len(mempoolBatch.Transactions))
-
 	allTxs = append(allTxs, forcedTxs...)
-	for range forcedTxs {
-		forceIncludedMask = append(forceIncludedMask, true)
-	}
 	allTxs = append(allTxs, mempoolBatch.Transactions...)
-	for range mempoolBatch.Transactions {
-		forceIncludedMask = append(forceIncludedMask, false)
-	}
+
+	// Track where forced txs end and mempool txs begin
+	forcedTxCount := len(forcedTxs)
+	hasForceIncluded := forcedTxCount > 0
 
 	// Get current gas limit from execution layer
 	var maxGas uint64
@@ -234,67 +231,74 @@ func (c *Sequencer) GetNextBatch(ctx context.Context, req coresequencer.GetNextB
 
 	// Filter transactions - validates txs and applies gas filtering
 	// When there are no forced txs, this just passes through mempool txs unchanged
-	filterResult, err := c.executor.FilterTxs(ctx, allTxs, forceIncludedMask, maxGas)
+	filterStatuses, err := c.executor.FilterTxs(ctx, allTxs, req.MaxBytes, maxGas, hasForceIncluded)
 	if err != nil {
 		c.logger.Warn().Err(err).Msg("failed to filter transactions, proceeding with unfiltered")
-		// Fall back to using original txs without filtering
-		filterResult = &execution.FilterTxsResult{
-			ValidTxs:          allTxs,
-			ForceIncludedMask: forceIncludedMask,
-			RemainingTxs:      nil,
+		// Fall back to using all txs as OK
+		filterStatuses = make([]execution.FilterStatus, len(allTxs))
+		for i := range filterStatuses {
+			filterStatuses[i] = execution.FilterOK
 		}
 	}
 
-	// Separate forced txs and mempool txs from the filter result
-	validForcedTxs, validMempoolTxs := separateTxsByMask(filterResult.ValidTxs, filterResult.ForceIncludedMask)
+	// Process filter results: separate forced and mempool txs based on their status
+	var validForcedTxs [][]byte
+	var validMempoolTxs [][]byte
+	var postponedForcedTxs [][]byte
 
-	// Trim mempool txs to fit within remaining size limit (after forced txs)
-	trimmedMempoolTxs := c.trimMempoolTxsForSize(ctx, validForcedTxs, validMempoolTxs, req.MaxBytes)
+	for i, status := range filterStatuses {
+		isForcedTx := i < forcedTxCount
+		switch status {
+		case execution.FilterOK:
+			if isForcedTx {
+				validForcedTxs = append(validForcedTxs, allTxs[i])
+			} else {
+				validMempoolTxs = append(validMempoolTxs, allTxs[i])
+			}
+		case execution.FilterPostpone:
+			if isForcedTx {
+				postponedForcedTxs = append(postponedForcedTxs, allTxs[i])
+			}
+			// Mempool txs that are postponed are simply dropped (they'll be re-fetched)
+		case execution.FilterRemove:
+			// Skip removed transactions
+		}
+	}
 
-	// RemainingTxs contains valid force-included txs that didn't fit due to gas limit
-	remainingDATxs := filterResult.RemainingTxs
+	// Return any postponed mempool txs to the queue for the next batch
+	// (they were valid but didn't fit due to size/gas limits)
+	var postponedMempoolTxs [][]byte
+	for i, status := range filterStatuses {
+		if i >= forcedTxCount && status == execution.FilterPostpone {
+			postponedMempoolTxs = append(postponedMempoolTxs, allTxs[i])
+		}
+	}
+	if len(postponedMempoolTxs) > 0 {
+		if err := c.queue.Prepend(ctx, coresequencer.Batch{Transactions: postponedMempoolTxs}); err != nil {
+			c.logger.Error().Err(err).Int("count", len(postponedMempoolTxs)).Msg("failed to prepend postponed mempool txs")
+		}
+	}
 
 	// Update checkpoint after consuming forced inclusion transactions
-	// Note: gibberish txs are permanently skipped, but gas-filtered valid DA txs stay for next block
+	// Note: gibberish txs (FilterRemove) are permanently skipped
+	// Postponed txs (FilterPostpone) stay for next block
 	if daHeight > 0 || len(forcedTxs) > 0 {
-		// Count how many DA txs we're actually consuming from the checkpoint
-		// Original forcedTxs count minus remaining DA txs = consumed (including gibberish filtered out)
-		txsConsumed := uint64(len(forcedTxs) - len(remainingDATxs))
-
-		// If we have remaining DA txs, don't advance to next epoch yet
-		if len(remainingDATxs) > 0 {
-			// Calculate the index where unprocessed txs start in the original cache
-			// forcedTxs was taken from c.checkpoint.TxIndex, so unprocessed start at:
-			unprocessedStartIdx := c.checkpoint.TxIndex + uint64(len(forcedTxs))
-
-			// Collect any unprocessed txs that weren't even fetched due to maxBytes
-			var unprocessedTxs [][]byte
-			if unprocessedStartIdx < uint64(len(c.cachedForcedInclusionTxs)) {
-				unprocessedTxs = c.cachedForcedInclusionTxs[unprocessedStartIdx:]
-			}
-
-			// Update cached txs to contain: remaining gas-filtered txs + unprocessed txs
-			c.cachedForcedInclusionTxs = append(remainingDATxs, unprocessedTxs...)
+		// If we have postponed forced txs, update cache to only contain those
+		if len(postponedForcedTxs) > 0 {
+			c.cachedForcedInclusionTxs = postponedForcedTxs
 			c.checkpoint.TxIndex = 0 // Reset index since we're replacing the cache
 
 			c.logger.Debug().
-				Int("remaining_gas_filtered_txs", len(remainingDATxs)).
-				Int("unprocessed_txs", len(unprocessedTxs)).
-				Int("new_cache_size", len(c.cachedForcedInclusionTxs)).
-				Msg("keeping gas-filtered and unprocessed DA transactions for next block")
+				Int("postponed_forced_txs", len(postponedForcedTxs)).
+				Msg("keeping postponed DA transactions for next block")
 		} else {
-			// No remaining gas-filtered txs, advance the checkpoint
-			c.checkpoint.TxIndex += txsConsumed
+			// All forced txs were consumed (OK or Remove), move to next DA epoch
+			c.checkpoint.DAHeight = daHeight + 1
+			c.checkpoint.TxIndex = 0
+			c.cachedForcedInclusionTxs = nil
 
-			if c.checkpoint.TxIndex >= uint64(len(c.cachedForcedInclusionTxs)) {
-				// If we've consumed all transactions from this DA epoch, move to next
-				c.checkpoint.DAHeight = daHeight + 1
-				c.checkpoint.TxIndex = 0
-				c.cachedForcedInclusionTxs = nil
-
-				// Update the global DA height
-				c.SetDAHeight(c.checkpoint.DAHeight)
-			}
+			// Update the global DA height
+			c.SetDAHeight(c.checkpoint.DAHeight)
 		}
 
 		// Persist checkpoint
@@ -310,9 +314,9 @@ func (c *Sequencer) GetNextBatch(ctx context.Context, req coresequencer.GetNextB
 	}
 
 	// Build final batch: forced txs first, then mempool txs
-	batchTxs := make([][]byte, 0, len(validForcedTxs)+len(trimmedMempoolTxs))
+	batchTxs := make([][]byte, 0, len(validForcedTxs)+len(validMempoolTxs))
 	batchTxs = append(batchTxs, validForcedTxs...)
-	batchTxs = append(batchTxs, trimmedMempoolTxs...)
+	batchTxs = append(batchTxs, validMempoolTxs...)
 
 	return &coresequencer.GetNextBatchResponse{
 		Batch: &coresequencer.Batch{
@@ -321,52 +325,6 @@ func (c *Sequencer) GetNextBatch(ctx context.Context, req coresequencer.GetNextB
 		Timestamp: time.Now(),
 		BatchData: req.LastBatchData,
 	}, nil
-}
-
-// separateTxsByMask splits transactions into forced and mempool based on the mask.
-func separateTxsByMask(txs [][]byte, mask []bool) (forced, mempool [][]byte) {
-	for i, tx := range txs {
-		if i < len(mask) && mask[i] {
-			forced = append(forced, tx)
-		} else {
-			mempool = append(mempool, tx)
-		}
-	}
-	return forced, mempool
-}
-
-// trimMempoolTxsForSize trims mempool txs to fit within the remaining byte limit after forced txs.
-// Any excluded mempool txs are prepended back to the queue for the next batch.
-func (c *Sequencer) trimMempoolTxsForSize(ctx context.Context, forcedTxs, mempoolTxs [][]byte, maxBytes uint64) [][]byte {
-	if maxBytes == 0 {
-		return mempoolTxs // No size limit
-	}
-
-	// Calculate size used by forced txs
-	forcedSize := 0
-	for _, tx := range forcedTxs {
-		forcedSize += len(tx)
-	}
-	remainingBytes := int(maxBytes) - forcedSize
-
-	var trimmed [][]byte
-	currentSize := 0
-
-	for i, tx := range mempoolTxs {
-		if currentSize+len(tx) > remainingBytes {
-			// Return remaining mempool txs to the front of the queue
-			if remaining := mempoolTxs[i:]; len(remaining) > 0 {
-				if err := c.queue.Prepend(ctx, coresequencer.Batch{Transactions: remaining}); err != nil {
-					c.logger.Error().Err(err).Int("count", len(remaining)).Msg("failed to prepend excluded mempool txs")
-				}
-			}
-			break
-		}
-		trimmed = append(trimmed, tx)
-		currentSize += len(tx)
-	}
-
-	return trimmed
 }
 
 // VerifyBatch implements sequencing.Sequencer.
@@ -463,27 +421,12 @@ func (c *Sequencer) fetchNextDAEpoch(ctx context.Context, maxBytes uint64) (uint
 }
 
 // processForcedInclusionTxsFromCheckpoint processes forced inclusion transactions from checkpoint position
-func (c *Sequencer) processForcedInclusionTxsFromCheckpoint(maxBytes uint64) [][]byte {
+// getRemainingForcedInclusionTxs returns all remaining forced inclusion transactions from the checkpoint.
+// Size/gas filtering is handled by FilterTxs, so this just returns all remaining txs.
+func (c *Sequencer) getRemainingForcedInclusionTxs() [][]byte {
 	if len(c.cachedForcedInclusionTxs) == 0 || c.checkpoint.TxIndex >= uint64(len(c.cachedForcedInclusionTxs)) {
 		return [][]byte{}
 	}
 
-	var result [][]byte
-	var totalBytes uint64
-
-	// Start from the checkpoint index
-	for i := c.checkpoint.TxIndex; i < uint64(len(c.cachedForcedInclusionTxs)); i++ {
-		tx := c.cachedForcedInclusionTxs[i]
-		txSize := uint64(len(tx))
-
-		// maxBytes=0 means unlimited (no size limit)
-		if maxBytes > 0 && totalBytes+txSize > maxBytes {
-			break
-		}
-
-		result = append(result, tx)
-		totalBytes += txSize
-	}
-
-	return result
+	return c.cachedForcedInclusionTxs[c.checkpoint.TxIndex:]
 }

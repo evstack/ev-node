@@ -103,31 +103,33 @@ message GetExecutionInfoResponse {
   uint64 max_gas = 1;
 }
 
+// FilterStatus represents the result of filtering a transaction
+enum FilterStatus {
+  // Transaction will make it to the next batch
+  FILTER_OK = 0;
+  // Transaction will be filtered out because invalid (too big, malformed, etc.)
+  FILTER_REMOVE = 1;
+  // Transaction is valid but postponed for later processing due to size/gas constraint
+  FILTER_POSTPONE = 2;
+}
+
 // FilterTxsRequest contains transactions to validate and filter
 message FilterTxsRequest {
   // All transactions (force-included + mempool)
   repeated bytes txs = 1;
 
-  // True for each tx that is force-included (needs validation)
-  // Same length as txs
-  repeated bool force_included_mask = 2;
+  // Maximum cumulative size allowed (0 means no size limit)
+  uint64 max_bytes = 2;
 
   // Maximum cumulative gas allowed (0 means no gas limit)
   uint64 max_gas = 3;
+
+  // Whether force-included transactions are present
+  bool has_force_included_transaction = 4;
 }
 
-// FilterTxsResponse contains the filtered transactions
+// FilterTxsResponse contains the filter status for each transaction
 message FilterTxsResponse {
-  // Transactions that passed validation and fit within gas limit
-  // Force-included txs that are invalid are removed
-  // Mempool txs are passed through unchanged (but may be trimmed for gas)
-  repeated bytes valid_txs = 1;
-
-  // Indicates which valid_txs are force-included (true = force-included)
-  // Same length as valid_txs
-  repeated bool force_included_mask = 2;
-
-  // Valid force-included transactions that didn't fit due to gas limit
-  // These should be re-queued for the next block
-  repeated bytes remaining_txs = 3;
+  // Filter status for each transaction (same length as txs in request)
+  repeated FilterStatus statuses = 1;
 }

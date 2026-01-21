@@ -124,31 +124,38 @@ func (t *tracedExecutor) GetExecutionInfo(ctx context.Context, height uint64) (e
 }
 
 // FilterTxs forwards to the inner executor with tracing.
-func (t *tracedExecutor) FilterTxs(ctx context.Context, txs [][]byte, forceIncludedMask []bool, maxGas uint64) (*execution.FilterTxsResult, error) {
-	forceIncludedCount := 0
-	for _, m := range forceIncludedMask {
-		if m {
-			forceIncludedCount++
-		}
-	}
-
+func (t *tracedExecutor) FilterTxs(ctx context.Context, txs [][]byte, maxBytes, maxGas uint64, hasForceIncludedTransaction bool) ([]execution.FilterStatus, error) {
 	ctx, span := t.tracer.Start(ctx, "Executor.FilterTxs",
 		trace.WithAttributes(
 			attribute.Int("input_tx_count", len(txs)),
-			attribute.Int("force_included_count", forceIncludedCount),
+			attribute.Bool("has_force_included", hasForceIncludedTransaction),
+			attribute.Int64("max_bytes", int64(maxBytes)),
 			attribute.Int64("max_gas", int64(maxGas)),
 		),
 	)
 	defer span.End()
 
-	result, err := t.inner.FilterTxs(ctx, txs, forceIncludedMask, maxGas)
+	result, err := t.inner.FilterTxs(ctx, txs, maxBytes, maxGas, hasForceIncludedTransaction)
 	if err != nil {
 		span.RecordError(err)
 		span.SetStatus(codes.Error, err.Error())
 	} else if result != nil {
+		// Count statuses
+		okCount, removeCount, postponeCount := 0, 0, 0
+		for _, status := range result {
+			switch status {
+			case execution.FilterOK:
+				okCount++
+			case execution.FilterRemove:
+				removeCount++
+			case execution.FilterPostpone:
+				postponeCount++
+			}
+		}
 		span.SetAttributes(
-			attribute.Int("valid_tx_count", len(result.ValidTxs)),
-			attribute.Int("remaining_tx_count", len(result.RemainingTxs)),
+			attribute.Int("ok_count", okCount),
+			attribute.Int("remove_count", removeCount),
+			attribute.Int("postpone_count", postponeCount),
 		)
 	}
 	return result, err

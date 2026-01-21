@@ -132,16 +132,16 @@ func (c *Client) GetExecutionInfo(ctx context.Context, height uint64) (execution
 	}, nil
 }
 
-// FilterTxs validates force-included transactions and applies gas filtering.
+// FilterTxs validates force-included transactions and applies gas and size filtering.
 //
 // This method sends transactions to the remote execution service for validation.
-// Only force-included transactions are validated; mempool transactions pass through unchanged.
-// Gas checks is applied to all transactions.
-func (c *Client) FilterTxs(ctx context.Context, txs [][]byte, forceIncludedMask []bool, maxGas uint64) (*execution.FilterTxsResult, error) {
+// Returns a slice of FilterStatus for each transaction.
+func (c *Client) FilterTxs(ctx context.Context, txs [][]byte, maxBytes, maxGas uint64, hasForceIncludedTransaction bool) ([]execution.FilterStatus, error) {
 	req := connect.NewRequest(&pb.FilterTxsRequest{
-		Txs:               txs,
-		ForceIncludedMask: forceIncludedMask,
-		MaxGas:            maxGas,
+		Txs:                         txs,
+		MaxBytes:                    maxBytes,
+		MaxGas:                      maxGas,
+		HasForceIncludedTransaction: hasForceIncludedTransaction,
 	})
 
 	resp, err := c.client.FilterTxs(ctx, req)
@@ -149,9 +149,10 @@ func (c *Client) FilterTxs(ctx context.Context, txs [][]byte, forceIncludedMask 
 		return nil, fmt.Errorf("grpc client: failed to filter transactions: %w", err)
 	}
 
-	return &execution.FilterTxsResult{
-		ValidTxs:          resp.Msg.ValidTxs,
-		ForceIncludedMask: resp.Msg.ForceIncludedMask,
-		RemainingTxs:      resp.Msg.RemainingTxs,
-	}, nil
+	// Convert protobuf FilterStatus to execution.FilterStatus
+	result := make([]execution.FilterStatus, len(resp.Msg.Statuses))
+	for i, status := range resp.Msg.Statuses {
+		result[i] = execution.FilterStatus(status)
+	}
+	return result, nil
 }
