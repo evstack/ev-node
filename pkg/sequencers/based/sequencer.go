@@ -100,7 +100,8 @@ func (s *BasedSequencer) SubmitBatchTxs(ctx context.Context, req coresequencer.S
 func (s *BasedSequencer) GetNextBatch(ctx context.Context, req coresequencer.GetNextBatchRequest) (*coresequencer.GetNextBatchResponse, error) {
 	daHeight := s.GetDAHeight()
 
-	// Fetch next DA epoch if needed
+	// If we have no cached transactions or we've consumed all from the current DA block,
+	// fetch the next DA epoch
 	if daHeight > 0 && (len(s.currentBatchTxs) == 0 || s.checkpoint.TxIndex >= uint64(len(s.currentBatchTxs))) {
 		daEndTime, daEndHeight, err := s.fetchNextDAEpoch(ctx, req.MaxBytes)
 		if err != nil {
@@ -137,7 +138,9 @@ func (s *BasedSequencer) GetNextBatch(ctx context.Context, req coresequencer.Get
 		s.updateCheckpoint(ctx, daHeight, len(batchTxs), filterResult.RemainingTxs)
 	}
 
-	// Calculate timestamp based on remaining transactions
+	// Calculate timestamp based on remaining transactions after this batch
+	// timestamp corresponds to the last block time of a DA epoch, based on the remaining transactions to be executed
+	// this is done in order to handle the case where a DA epoch must fit in multiple blocks
 	remainingTxs := uint64(len(s.currentBatchTxs)) - s.checkpoint.TxIndex
 	timestamp := s.currentDAEndTime.Add(-time.Duration(remainingTxs) * time.Millisecond)
 

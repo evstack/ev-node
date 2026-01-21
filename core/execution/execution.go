@@ -98,13 +98,11 @@ type Executor interface {
 	// - error: Any errors during retrieval
 	GetExecutionInfo(ctx context.Context, height uint64) (ExecutionInfo, error)
 
-	// FilterTxs validates force-included transactions and applies gas filtering.
-	// Only transactions with forceIncludedMask[i]=true are validated for correctness.
-	// Mempool transactions (forceIncludedMask[i]=false) are passed through unchanged.
+	// FilterTxs validates force-included transactions and applies gas filtering for all passed txs.
 	//
 	// The function filters out:
 	// - Invalid/unparseable force-included transactions (gibberish)
-	// - Transactions that would exceed the cumulative gas limit
+	// - Any transactions that would exceed the cumulative gas limit
 	//
 	// For non-gas-based execution layers (maxGas=0), return all valid transactions.
 	//
