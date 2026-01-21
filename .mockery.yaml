@@ -37,11 +37,23 @@ packages:
           filename: batch.go
   github.com/celestiaorg/go-header:
     interfaces:
+      Exchange:
+        config:
+          dir: ./test/mocks
+          pkgname: mocks
+          filename: external/hexchange.go
       Store:
         config:
           dir: ./test/mocks
           pkgname: mocks
           filename: external/hstore.go
+  github.com/evstack/ev-node/pkg/sync:
+    interfaces:
+      P2PExchange:
+        config:
+          dir: ./test/mocks
+          pkgname: mocks
+          filename: external/p2pexchange.go
   github.com/evstack/ev-node/block/internal/syncing:
     interfaces:
       DARetriever:
