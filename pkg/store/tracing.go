@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"encoding/hex"
 
 	ds "github.com/ipfs/go-datastore"
 	"go.opentelemetry.io/otel"
@@ -60,7 +61,7 @@ func (t *tracedStore) GetBlockData(ctx context.Context, height uint64) (*types.S
 
 func (t *tracedStore) GetBlockByHash(ctx context.Context, hash []byte) (*types.SignedHeader, *types.Data, error) {
 	ctx, span := t.tracer.Start(ctx, "Store.GetBlockByHash",
-		trace.WithAttributes(attribute.String("hash", string(hash))),
+		trace.WithAttributes(attribute.String("hash", hex.EncodeToString(hash))),
 	)
 	defer span.End()
 
@@ -95,7 +96,7 @@ func (t *tracedStore) GetSignature(ctx context.Context, height uint64) (*types.S
 
 func (t *tracedStore) GetSignatureByHash(ctx context.Context, hash []byte) (*types.Signature, error) {
 	ctx, span := t.tracer.Start(ctx, "Store.GetSignatureByHash",
-		trace.WithAttributes(attribute.String("hash", string(hash))),
+		trace.WithAttributes(attribute.String("hash", hex.EncodeToString(hash))),
 	)
 	defer span.End()
 
@@ -229,6 +230,7 @@ func (t *tracedStore) NewBatch(ctx context.Context) (Batch, error) {
 	return &tracedBatch{
 		inner:  batch,
 		tracer: t.tracer,
+		ctx:    ctx,
 	}, nil
 }
 
@@ -237,10 +239,11 @@ var _ Batch = (*tracedBatch)(nil)
 type tracedBatch struct {
 	inner  Batch
 	tracer trace.Tracer
+	ctx    context.Context
 }
 
 func (b *tracedBatch) SaveBlockData(header *types.SignedHeader, data *types.Data, signature *types.Signature) error {
-	_, span := b.tracer.Start(context.Background(), "Batch.SaveBlockData",
+	_, span := b.tracer.Start(b.ctx, "Batch.SaveBlockData",
 		trace.WithAttributes(attribute.Int64("height", int64(header.Height()))),
 	)
 	defer span.End()
@@ -256,7 +259,7 @@ func (b *tracedBatch) SaveBlockData(header *types.SignedHeader, data *types.Data
 }
 
 func (b *tracedBatch) SetHeight(height uint64) error {
-	_, span := b.tracer.Start(context.Background(), "Batch.SetHeight",
+	_, span := b.tracer.Start(b.ctx, "Batch.SetHeight",
 		trace.WithAttributes(attribute.Int64("height", int64(height))),
 	)
 	defer span.End()
@@ -272,7 +275,7 @@ func (b *tracedBatch) SetHeight(height uint64) error {
 }
 
 func (b *tracedBatch) UpdateState(state types.State) error {
-	_, span := b.tracer.Start(context.Background(), "Batch.UpdateState",
+	_, span := b.tracer.Start(b.ctx, "Batch.UpdateState",
 		trace.WithAttributes(attribute.Int64("state.height", int64(state.LastBlockHeight))),
 	)
 	defer span.End()
@@ -288,7 +291,7 @@ func (b *tracedBatch) UpdateState(state types.State) error {
 }
 
 func (b *tracedBatch) Commit() error {
-	_, span := b.tracer.Start(context.Background(), "Batch.Commit")
+	_, span := b.tracer.Start(b.ctx, "Batch.Commit")
 	defer span.End()
 
 	err := b.inner.Commit()
@@ -302,7 +305,7 @@ func (b *tracedBatch) Commit() error {
 }
 
 func (b *tracedBatch) Put(key ds.Key, value []byte) error {
-	_, span := b.tracer.Start(context.Background(), "Batch.Put",
+	_, span := b.tracer.Start(b.ctx, "Batch.Put",
 		trace.WithAttributes(
 			attribute.String("key", key.String()),
 			attribute.Int("value.size", len(value)),
@@ -321,7 +324,7 @@ func (b *tracedBatch) Put(key ds.Key, value []byte) error {
 }
 
 func (b *tracedBatch) Delete(key ds.Key) error {
-	_, span := b.tracer.Start(context.Background(), "Batch.Delete",
+	_, span := b.tracer.Start(b.ctx, "Batch.Delete",
 		trace.WithAttributes(attribute.String("key", key.String())),
 	)
 	defer span.End()
