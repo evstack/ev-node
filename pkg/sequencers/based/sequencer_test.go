@@ -22,49 +22,27 @@ import (
 	"github.com/evstack/ev-node/test/mocks"
 )
 
-// mockExecutor implements execution.Executor for testing
-type mockExecutor struct {
-	maxGas     uint64
-	getInfoErr error
-	filterFunc func(ctx context.Context, txs [][]byte, forceIncludedMask []bool, maxGas uint64) (*execution.FilterTxsResult, error)
-}
-
-func (m *mockExecutor) InitChain(ctx context.Context, genesisTime time.Time, initialHeight uint64, chainID string) ([]byte, error) {
-	return []byte("state-root"), nil
-}
-
-func (m *mockExecutor) GetTxs(ctx context.Context) ([][]byte, error) {
-	return nil, nil
-}
-
-func (m *mockExecutor) ExecuteTxs(ctx context.Context, txs [][]byte, blockHeight uint64, timestamp time.Time, prevStateRoot []byte) ([]byte, error) {
-	return []byte("new-state-root"), nil
-}
-
-func (m *mockExecutor) SetFinal(ctx context.Context, blockHeight uint64) error {
-	return nil
-}
-
-func (m *mockExecutor) GetExecutionInfo(ctx context.Context, height uint64) (execution.ExecutionInfo, error) {
-	return execution.ExecutionInfo{MaxGas: m.maxGas}, m.getInfoErr
-}
-
-func (m *mockExecutor) FilterTxs(ctx context.Context, txs [][]byte, forceIncludedMask []bool, maxGas uint64) (*execution.FilterTxsResult, error) {
-	if m.filterFunc != nil {
-		return m.filterFunc(ctx, txs, forceIncludedMask, maxGas)
-	}
-	// Default: return all txs as valid, no remaining
-	return &execution.FilterTxsResult{
-		ValidTxs:          txs,
-		ForceIncludedMask: forceIncludedMask,
-		RemainingTxs:      nil,
-	}, nil
-}
-
 // MockFullDAClient combines MockClient and MockVerifier to implement FullDAClient
 type MockFullDAClient struct {
 	*mocks.MockClient
 	*mocks.MockVerifier
+}
+
+// createDefaultMockExecutor creates a MockExecutor with default passthrough behavior for FilterTxs and GetExecutionInfo
+func createDefaultMockExecutor(t *testing.T) *mocks.MockExecutor {
+	mockExec := mocks.NewMockExecutor(t)
+	mockExec.On("GetExecutionInfo", mock.Anything, mock.Anything).Return(execution.ExecutionInfo{MaxGas: 1000000}, nil).Maybe()
+	mockExec.On("FilterTxs", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(
+		func(ctx context.Context, txs [][]byte, forceIncludedMask []bool, maxGas uint64) *execution.FilterTxsResult {
+			return &execution.FilterTxsResult{
+				ValidTxs:          txs,
+				ForceIncludedMask: forceIncludedMask,
+				RemainingTxs:      nil,
+			}
+		},
+		nil,
+	).Maybe()
+	return mockExec
 }
 
 func createTestSequencer(t *testing.T, mockRetriever *common.MockForcedInclusionRetriever, gen genesis.Genesis) *BasedSequencer {
@@ -82,7 +60,9 @@ func createTestSequencer(t *testing.T, mockRetriever *common.MockForcedInclusion
 	mockDAClient.MockClient.On("GetForcedInclusionNamespace").Return([]byte("test-forced-inclusion-ns")).Maybe()
 	mockDAClient.MockClient.On("HasForcedInclusionNamespace").Return(true).Maybe()
 
-	seq, err := NewBasedSequencer(mockDAClient, config.DefaultConfig(), db, gen, zerolog.Nop(), &mockExecutor{})
+	mockExec := createDefaultMockExecutor(t)
+
+	seq, err := NewBasedSequencer(mockDAClient, config.DefaultConfig(), db, gen, zerolog.Nop(), mockExec)
 	require.NoError(t, err)
 
 	// Replace the fiRetriever with our mock so tests work as before
@@ -511,7 +491,8 @@ func TestBasedSequencer_CheckpointPersistence(t *testing.T) {
 	mockDAClient.MockClient.On("HasForcedInclusionNamespace").Return(true).Maybe()
 
 	// Create first sequencer
-	seq1, err := NewBasedSequencer(mockDAClient, config.DefaultConfig(), db, gen, zerolog.Nop(), &mockExecutor{})
+	mockExec1 := createDefaultMockExecutor(t)
+	seq1, err := NewBasedSequencer(mockDAClient, config.DefaultConfig(), db, gen, zerolog.Nop(), mockExec1)
 	require.NoError(t, err)
 
 	// Replace the fiRetriever with our mock so tests work as before
@@ -535,7 +516,8 @@ func TestBasedSequencer_CheckpointPersistence(t *testing.T) {
 	}
 	mockDAClient2.MockClient.On("GetForcedInclusionNamespace").Return([]byte("test-forced-inclusion-ns")).Maybe()
 	mockDAClient2.MockClient.On("HasForcedInclusionNamespace").Return(true).Maybe()
-	seq2, err := NewBasedSequencer(mockDAClient2, config.DefaultConfig(), db, gen, zerolog.Nop(), &mockExecutor{})
+	mockExec2 := createDefaultMockExecutor(t)
+	seq2, err := NewBasedSequencer(mockDAClient2, config.DefaultConfig(), db, gen, zerolog.Nop(), mockExec2)
 	require.NoError(t, err)
 
 	// Replace the fiRetriever with our mock so tests work as before
@@ -797,9 +779,10 @@ func TestBasedSequencer_GetNextBatch_GasFilteringPreservesUnprocessedTxs(t *test
 	// - tx1: gibberish/invalid (filtered out completely)
 	// - tx2: valid but doesn't fit due to gas limit (returned as remaining)
 	gasFilterCallCount := 0
-	mockExec := &mockExecutor{
-		maxGas: 1000000,
-		filterFunc: func(ctx context.Context, txs [][]byte, forceIncludedMask []bool, maxGas uint64) (*execution.FilterTxsResult, error) {
+	mockExec := mocks.NewMockExecutor(t)
+	mockExec.On("GetExecutionInfo", mock.Anything, mock.Anything).Return(execution.ExecutionInfo{MaxGas: 1000000}, nil).Maybe()
+	mockExec.On("FilterTxs", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(
+		func(ctx context.Context, txs [][]byte, forceIncludedMask []bool, maxGas uint64) *execution.FilterTxsResult {
 			gasFilterCallCount++
 			t.Logf("FilterTxs call #%d with %d txs", gasFilterCallCount, len(txs))
 			for i, tx := range txs {
@@ -817,7 +800,7 @@ func TestBasedSequencer_GetNextBatch_GasFilteringPreservesUnprocessedTxs(t *test
 					ValidTxs:          txs[:1],          // Only tx0 fits
 					ForceIncludedMask: []bool{true},     // All force-included
 					RemainingTxs:      txs[len(txs)-1:], // Last tx is gas-limited (tx2)
-				}, nil
+				}
 			}
 
 			// Subsequent calls: should receive the remaining txs (tx2, tx3, tx4)
@@ -826,9 +809,10 @@ func TestBasedSequencer_GetNextBatch_GasFilteringPreservesUnprocessedTxs(t *test
 				ValidTxs:          txs,
 				ForceIncludedMask: make([]bool, len(txs)),
 				RemainingTxs:      nil,
-			}, nil
+			}
 		},
-	}
+		nil,
+	).Maybe()
 
 	// Create sequencer with custom executor
 	db := syncds.MutexWrap(ds.NewMapDatastore())
@@ -915,9 +899,10 @@ func TestBasedSequencer_GetNextBatch_RemainingTxsIndexCorrelation(t *testing.T) 
 	allProcessedTxs := make([][]byte, 0)
 	filterCallCount := 0
 
-	mockExec := &mockExecutor{
-		maxGas: 1000000,
-		filterFunc: func(ctx context.Context, txs [][]byte, forceIncludedMask []bool, maxGas uint64) (*execution.FilterTxsResult, error) {
+	mockExec := mocks.NewMockExecutor(t)
+	mockExec.On("GetExecutionInfo", mock.Anything, mock.Anything).Return(execution.ExecutionInfo{MaxGas: 1000000}, nil).Maybe()
+	mockExec.On("FilterTxs", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(
+		func(ctx context.Context, txs [][]byte, forceIncludedMask []bool, maxGas uint64) *execution.FilterTxsResult {
 			filterCallCount++
 			t.Logf("FilterTxs call #%d with %d txs", filterCallCount, len(txs))
 
@@ -927,7 +912,7 @@ func TestBasedSequencer_GetNextBatch_RemainingTxsIndexCorrelation(t *testing.T) 
 					ValidTxs:          txs[:1], // tx0 only
 					ForceIncludedMask: []bool{true},
 					RemainingTxs:      txs[1:2], // tx1 is remaining (gas-limited)
-				}, nil
+				}
 			}
 
 			// Pass through all txs
@@ -939,9 +924,10 @@ func TestBasedSequencer_GetNextBatch_RemainingTxsIndexCorrelation(t *testing.T) 
 				ValidTxs:          txs,
 				ForceIncludedMask: mask,
 				RemainingTxs:      nil,
-			}, nil
+			}
 		},
-	}
+		nil,
+	).Maybe()
 
 	db := syncds.MutexWrap(ds.NewMapDatastore())
 	mockDAClient := &MockFullDAClient{
