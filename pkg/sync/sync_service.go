@@ -84,23 +84,53 @@ func NewDataSyncService(
 	p2p *p2p.Client,
 	logger zerolog.Logger,
 ) (*DataSyncService, error) {
-	var getter GetterFunc[*types.Data]
-	var getterByHeight GetterByHeightFunc[*types.Data]
-	var rangeGetter RangeGetterFunc[*types.Data]
+	var getter GetterFunc[*types.P2PData]
+	var getterByHeight GetterByHeightFunc[*types.P2PData]
+	var rangeGetter RangeGetterFunc[*types.P2PData]
 
 	if daStore != nil {
-		getter = func(ctx context.Context, hash header.Hash) (*types.Data, error) {
+		getter = func(ctx context.Context, hash header.Hash) (*types.P2PData, error) {
 			_, d, err := daStore.GetBlockByHash(ctx, hash)
-			return d, err
+			if err != nil {
+				return nil, err
+			}
+			state, err := daStore.GetStateAtHeight(ctx, d.Height())
+			if err != nil {
+				if !errors.Is(err, store.ErrNotFound) {
+					return nil, err
+				}
+				return &types.P2PData{Message: d, DAHeightHint: 0}, nil
+			}
+			return &types.P2PData{Message: d, DAHeightHint: state.DAHeight}, nil
 		}
-		getterByHeight = func(ctx context.Context, height uint64) (*types.Data, error) {
+		getterByHeight = func(ctx context.Context, height uint64) (*types.P2PData, error) {
 			_, d, err := daStore.GetBlockData(ctx, height)
-			return d, err
+			if err != nil {
+				return nil, err
+			}
+			state, err := daStore.GetStateAtHeight(ctx, d.Height())
+			if err != nil {
+				if !errors.Is(err, store.ErrNotFound) {
+					return nil, err
+				}
+				return &types.P2PData{Message: d, DAHeightHint: 0}, nil
+			}
+			return &types.P2PData{Message: d, DAHeightHint: state.DAHeight}, nil
 		}
-		rangeGetter = func(ctx context.Context, from, to uint64) ([]*types.Data, uint64, error) {
-			return getContiguousRange(ctx, from, to, func(ctx context.Context, h uint64) (*types.Data, error) {
+		rangeGetter = func(ctx context.Context, from, to uint64) ([]*types.P2PData, uint64, error) {
+			return getContiguousRange(ctx, from, to, func(ctx context.Context, h uint64) (*types.P2PData, error) {
 				_, d, err := daStore.GetBlockData(ctx, h)
-				return d, err
+				if err != nil {
+					return nil, err
+				}
+				state, err := daStore.GetStateAtHeight(ctx, d.Height())
+				if err != nil {
+					if !errors.Is(err, store.ErrNotFound) {
+						return nil, err
+					}
+					return &types.P2PData{Message: d, DAHeightHint: 0}, nil
+				}
+				return &types.P2PData{Message: d, DAHeightHint: state.DAHeight}, nil
 			})
 		}
 	}
@@ -116,20 +146,54 @@ func NewHeaderSyncService(
 	p2p *p2p.Client,
 	logger zerolog.Logger,
 ) (*HeaderSyncService, error) {
-	var getter GetterFunc[*types.SignedHeader]
-	var getterByHeight GetterByHeightFunc[*types.SignedHeader]
-	var rangeGetter RangeGetterFunc[*types.SignedHeader]
+	var getter GetterFunc[*types.P2PSignedHeader]
+	var getterByHeight GetterByHeightFunc[*types.P2PSignedHeader]
+	var rangeGetter RangeGetterFunc[*types.P2PSignedHeader]
 
 	if daStore != nil {
-		getter = func(ctx context.Context, hash header.Hash) (*types.SignedHeader, error) {
+		getter = func(ctx context.Context, hash header.Hash) (*types.P2PSignedHeader, error) {
 			h, _, err := daStore.GetBlockByHash(ctx, hash)
-			return h, err
+			if err != nil {
+				return nil, err
+			}
+			state, err := daStore.GetStateAtHeight(ctx, h.Height())
+			if err != nil {
+				if !errors.Is(err, store.ErrNotFound) {
+					return nil, err
+				}
+				return &types.P2PSignedHeader{Message: h, DAHeightHint: 0}, nil
+			}
+			return &types.P2PSignedHeader{Message: h, DAHeightHint: state.DAHeight}, nil
 		}
-		getterByHeight = func(ctx context.Context, height uint64) (*types.SignedHeader, error) {
-			return daStore.GetHeader(ctx, height)
+		getterByHeight = func(ctx context.Context, height uint64) (*types.P2PSignedHeader, error) {
+			h, err := daStore.GetHeader(ctx, height)
+			if err != nil {
+				return nil, err
+			}
+			state, err := daStore.GetStateAtHeight(ctx, h.Height())
+			if err != nil {
+				if !errors.Is(err, store.ErrNotFound) {
+					return nil, err
+				}
+				return &types.P2PSignedHeader{Message: h, DAHeightHint: 0}, nil
+			}
+			return &types.P2PSignedHeader{Message: h, DAHeightHint: state.DAHeight}, nil
 		}
-		rangeGetter = func(ctx context.Context, from, to uint64) ([]*types.SignedHeader, uint64, error) {
-			return getContiguousRange(ctx, from, to, daStore.GetHeader)
+		rangeGetter = func(ctx context.Context, from, to uint64) ([]*types.P2PSignedHeader, uint64, error) {
+			return getContiguousRange(ctx, from, to, func(ctx context.Context, h uint64) (*types.P2PSignedHeader, error) {
+				sh, err := daStore.GetHeader(ctx, h)
+				if err != nil {
+					return nil, err
+				}
+				state, err := daStore.GetStateAtHeight(ctx, sh.Height())
+				if err != nil {
+					if !errors.Is(err, store.ErrNotFound) {
+						return nil, err
+					}
+					return &types.P2PSignedHeader{Message: sh, DAHeightHint: 0}, nil
+				}
+				return &types.P2PSignedHeader{Message: sh, DAHeightHint: state.DAHeight}, nil
+			})
 		}
 	}
 	return newSyncService[*types.P2PSignedHeader](dsStore, getter, getterByHeight, rangeGetter, headerSync, conf, genesis, p2p, logger)
