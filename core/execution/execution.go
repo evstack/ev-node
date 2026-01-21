@@ -98,41 +98,39 @@ type Executor interface {
 	// - error: Any errors during retrieval
 	GetExecutionInfo(ctx context.Context, height uint64) (ExecutionInfo, error)
 
-	// FilterTxs validates force-included transactions and applies gas filtering for all passed txs.
+	// FilterTxs validates force-included transactions and applies gas and size filtering for all passed txs.
 	//
-	// The function filters out:
-	// - Invalid/unparseable force-included transactions (gibberish)
-	// - Any transactions that would exceed the cumulative gas limit
+	// The function marks transaction with a filter status. The sequencer knows how to proceed with it:
+	// - Transactions passing all filters constraints and that can be included (FilterOK)
+	// - Invalid/unparseable force-included transactions (gibberish) (FilterRemove)
+	// - Any transactions that would exceed the cumulative gas limit (FilterPostpone)
 	//
-	// For non-gas-based execution layers (maxGas=0), return all valid transactions.
+	// For non-gas-based execution layers (maxGas=0) should not filter by gas.
 	//
 	// Parameters:
 	// - ctx: Context for timeout/cancellation control
 	// - txs: All transactions (force-included + mempool)
-	// - forceIncludedMask: true for each tx that is force-included (needs validation)
+	// - maxBytes: Maximum cumulative size allowed (0 means no size limit)
 	// - maxGas: Maximum cumulative gas allowed (0 means no gas limit)
+	// - hasForceIncludedTransaction: Boolean wether force included txs are present
 	//
 	// Returns:
-	// - result: Contains valid txs, updated mask, remaining txs, and gas used
+	// - result: The filter status of all txs. The len(txs) == len(result).
 	// - err: Any errors during filtering (not validation errors, which result in filtering)
-	FilterTxs(ctx context.Context, txs [][]byte, forceIncludedMask []bool, maxGas uint64) (*FilterTxsResult, error)
+	FilterTxs(ctx context.Context, txs [][]byte, maxBytes, maxGas uint64, hasForceIncludedTransaction bool) ([]FilterStatus, error)
 }
 
-// FilterTxsResult contains the result of filtering transactions.
-type FilterTxsResult struct {
-	// ValidTxs contains transactions that passed validation and fit within gas limit.
-	// Force-included txs that are invalid are removed.
-	// Mempool txs are passed through unchanged (but may be trimmed for gas).
-	ValidTxs [][]byte
+// FilterStatus is the result of FilterTxs tx status.
+type FilterStatus int
 
-	// ForceIncludedMask indicates which ValidTxs are force-included (true = force-included).
-	// Same length as ValidTxs.
-	ForceIncludedMask []bool
-
-	// RemainingTxs contains valid transactions that didn't fit due to gas limit.
-	// These should be re-queued for the next block.
-	RemainingTxs [][]byte
-}
+const (
+	// FilterOK is the result of a transaction that will make it to the next batch
+	FilterOK FilterStatus = iota
+	// FilterRemove is the result of a transaction that will be filtered out because invalid (too big, malformed, etc.)
+	FilterRemove
+	// FilterPostpone is the result of a transaction that is valid but postponed for later processing due to size constraint
+	FilterPostpone
+)
 
 // ExecutionInfo contains execution layer parameters that may change per block.
 type ExecutionInfo struct {
