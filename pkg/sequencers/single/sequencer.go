@@ -232,7 +232,7 @@ func (c *Sequencer) GetNextBatch(ctx context.Context, req coresequencer.GetNextB
 		maxGas = info.MaxGas
 	}
 
-	// Filter transactions - validates `txs and applies gas filtering
+	// Filter transactions - validates txs and applies gas filtering
 	// When there are no forced txs, this just passes through mempool txs unchanged
 	filterResult, err := c.executor.FilterTxs(ctx, allTxs, forceIncludedMask, maxGas)
 	if err != nil {
