@@ -24,8 +24,8 @@ func NewMockHeightAwareExecutor(t interface {
 	return mockExec
 }
 
-// MockHeightAwareExecutor is a mock that implements Executor, HeightProvider, and DATransactionFilter interfaces.
-// This allows testing code that needs an executor with height awareness and DA transaction filtering capability.
+// MockHeightAwareExecutor is a mock that implements Executor and HeightProvider interfaces.
+// This allows testing code that needs an executor with height awareness capability.
 type MockHeightAwareExecutor struct {
 	mock.Mock
 }
@@ -66,7 +66,7 @@ func (m *MockHeightAwareExecutor) GetExecutionInfo(ctx context.Context, height u
 	return args.Get(0).(execution.ExecutionInfo), args.Error(1)
 }
 
-// FilterDATransactions implements the optional DATransactionFilter interface.
+// FilterDATransactions implements the Executor interface.
 func (m *MockHeightAwareExecutor) FilterDATransactions(ctx context.Context, txs [][]byte, maxGas uint64) ([][]byte, [][]byte, error) {
 	args := m.Called(ctx, txs, maxGas)
 	var validTxs, remainingTxs [][]byte

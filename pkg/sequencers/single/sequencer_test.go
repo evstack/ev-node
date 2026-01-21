@@ -57,6 +57,7 @@ func newTestSequencer(t *testing.T, db ds.Batching, daClient block.FullDAClient)
 		[]byte("test"),
 		0, // unlimited queue
 		gen,
+		&mockExecutor{},
 	)
 	require.NoError(t, err)
 	return seq
@@ -67,7 +68,7 @@ func TestSequencer_SubmitBatchTxs(t *testing.T) {
 	db := ds.NewMapDatastore()
 	Id := []byte("test1")
 	logger := zerolog.Nop()
-	seq, err := NewSequencer(logger, db, dummyDA, config.DefaultConfig(), Id, 1000, genesis.Genesis{})
+	seq, err := NewSequencer(logger, db, dummyDA, config.DefaultConfig(), Id, 1000, genesis.Genesis{}, &mockExecutor{})
 	if err != nil {
 		t.Fatalf("Failed to create sequencer: %v", err)
 	}
@@ -116,7 +117,7 @@ func TestSequencer_SubmitBatchTxs_EmptyBatch(t *testing.T) {
 	db := ds.NewMapDatastore()
 	Id := []byte("test1")
 	logger := zerolog.Nop()
-	seq, err := NewSequencer(logger, db, dummyDA, config.DefaultConfig(), Id, 1000, genesis.Genesis{})
+	seq, err := NewSequencer(logger, db, dummyDA, config.DefaultConfig(), Id, 1000, genesis.Genesis{}, &mockExecutor{})
 	require.NoError(t, err, "Failed to create sequencer")
 	defer func() {
 		err := db.Close()
@@ -171,6 +172,7 @@ func TestSequencer_GetNextBatch_NoLastBatch(t *testing.T) {
 		[]byte("test"),
 		0, // unlimited queue
 		gen,
+		&mockExecutor{},
 	)
 	require.NoError(t, err)
 
@@ -287,7 +289,8 @@ func TestSequencer_GetNextBatch_BeforeDASubmission(t *testing.T) {
 	dummyDA := newDummyDA(100_000_000)
 	db := ds.NewMapDatastore()
 	logger := zerolog.Nop()
-	seq, err := NewSequencer(logger, db, dummyDA, config.DefaultConfig(), []byte("test1"), 1000, genesis.Genesis{})
+	Id := []byte("test1")
+	seq, err := NewSequencer(logger, db, dummyDA, config.DefaultConfig(), Id, 1000, genesis.Genesis{}, &mockExecutor{})
 	if err != nil {
 		t.Fatalf("Failed to create sequencer: %v", err)
 	}
@@ -299,7 +302,6 @@ func TestSequencer_GetNextBatch_BeforeDASubmission(t *testing.T) {
 	}()
 
 	// Submit a batch
-	Id := []byte("test1")
 	tx := []byte("transaction1")
 	res, err := seq.SubmitBatchTxs(context.Background(), coresequencer.SubmitBatchTxsRequest{
 		Id:    Id,
@@ -367,8 +369,9 @@ func TestSequencer_GetNextBatch_ForcedInclusionAndBatch_MaxBytes(t *testing.T) {
 		mockDA,
 		config.DefaultConfig(),
 		[]byte("test-chain"),
-		100,
+		1000,
 		gen,
+		&mockExecutor{},
 	)
 	require.NoError(t, err)
 
@@ -460,8 +463,9 @@ func TestSequencer_GetNextBatch_ForcedInclusion_ExceedsMaxBytes(t *testing.T) {
 		mockDA,
 		config.DefaultConfig(),
 		[]byte("test-chain"),
-		100,
+		1000,
 		gen,
+		&mockExecutor{},
 	)
 	require.NoError(t, err)
 
@@ -535,8 +539,9 @@ func TestSequencer_GetNextBatch_AlwaysCheckPendingForcedInclusion(t *testing.T) 
 		mockDA,
 		config.DefaultConfig(),
 		[]byte("test-chain"),
-		100,
+		1000,
 		gen,
+		&mockExecutor{},
 	)
 	require.NoError(t, err)
 
@@ -611,6 +616,7 @@ func TestSequencer_QueueLimit_Integration(t *testing.T) {
 		[]byte("test"),
 		2, // Very small limit for testing
 		gen,
+		&mockExecutor{},
 	)
 	require.NoError(t, err)
 
@@ -726,6 +732,7 @@ func TestSequencer_DAFailureAndQueueThrottling_Integration(t *testing.T) {
 		[]byte("test-chain"),
 		queueSize,
 		genesis.Genesis{},
+		&mockExecutor{},
 	)
 	require.NoError(t, err)
 
@@ -871,6 +878,7 @@ func TestSequencer_CheckpointPersistence_CrashRecovery(t *testing.T) {
 		[]byte("test-chain"),
 		100,
 		gen,
+		&mockExecutor{},
 	)
 	require.NoError(t, err)
 
@@ -911,6 +919,7 @@ func TestSequencer_CheckpointPersistence_CrashRecovery(t *testing.T) {
 		[]byte("test-chain"),
 		100,
 		gen,
+		&mockExecutor{},
 	)
 	require.NoError(t, err)
 
@@ -972,6 +981,7 @@ func TestSequencer_GetNextBatch_EmptyDABatch_IncreasesDAHeight(t *testing.T) {
 		[]byte("test"),
 		1000,
 		gen,
+		&mockExecutor{},
 	)
 	require.NoError(t, err)
 
@@ -1010,8 +1020,7 @@ func TestSequencer_GetNextBatch_EmptyDABatch_IncreasesDAHeight(t *testing.T) {
 	assert.Equal(t, uint64(0), seq.checkpoint.TxIndex)
 }
 
-// mockExecutor is a mock implementation of execution.Executor and the optional
-// execution.DATransactionFilter interface for testing gas filtering
+// mockExecutor is a mock implementation of execution.Executor for testing gas filtering
 type mockExecutor struct {
 	maxGas          uint64
 	getInfoErr      error
@@ -1074,17 +1083,6 @@ func TestSequencer_GetNextBatch_WithGasFiltering(t *testing.T) {
 	mockDA.MockClient.On("GetForcedInclusionNamespace").Return([]byte("forced")).Maybe()
 	mockDA.MockClient.On("MaxBlobSize", mock.Anything).Return(uint64(1000000), nil).Maybe()
 
-	seq, err := NewSequencer(
-		logger,
-		db,
-		mockDA,
-		config.DefaultConfig(),
-		[]byte("test-gas-filter"),
-		1000,
-		gen,
-	)
-	require.NoError(t, err)
-
 	// Configure the executor mock
 	mockExec := &mockExecutor{
 		maxGas: 1000000, // 1M gas limit
@@ -1097,8 +1095,17 @@ func TestSequencer_GetNextBatch_WithGasFiltering(t *testing.T) {
 		},
 	}
 
-	// Set the executor
-	seq.SetExecutor(mockExec)
+	seq, err := NewSequencer(
+		logger,
+		db,
+		mockDA,
+		config.DefaultConfig(),
+		[]byte("test-gas-filter"),
+		1000,
+		gen,
+		mockExec,
+	)
+	require.NoError(t, err)
 
 	// Manually set up cached forced txs to simulate DA fetch
 	seq.cachedForcedInclusionTxs = forcedTxs
@@ -1165,17 +1172,6 @@ func TestSequencer_GetNextBatch_GasFilterError(t *testing.T) {
 	mockDA.MockClient.On("GetForcedInclusionNamespace").Return([]byte("forced")).Maybe()
 	mockDA.MockClient.On("MaxBlobSize", mock.Anything).Return(uint64(1000000), nil).Maybe()
 
-	seq, err := NewSequencer(
-		logger,
-		db,
-		mockDA,
-		config.DefaultConfig(),
-		[]byte("test-gas-error"),
-		1000,
-		gen,
-	)
-	require.NoError(t, err)
-
 	// Configure executor that returns filter error
 	mockExec := &mockExecutor{
 		maxGas: 1000000,
@@ -1184,7 +1180,17 @@ func TestSequencer_GetNextBatch_GasFilterError(t *testing.T) {
 		},
 	}
 
-	seq.SetExecutor(mockExec)
+	seq, err := NewSequencer(
+		logger,
+		db,
+		mockDA,
+		config.DefaultConfig(),
+		[]byte("test-gas-error"),
+		1000,
+		gen,
+		mockExec,
+	)
+	require.NoError(t, err)
 
 	// Set up cached txs
 	forcedTxs := [][]byte{[]byte("tx1"), []byte("tx2")}

@@ -789,7 +789,6 @@ func (c *EngineClient) GetExecutionInfo(ctx context.Context, height uint64) (exe
 }
 
 // FilterDATransactions validates and filters force-included transactions from DA.
-// Implements the DATransactionFilter interface.
 // It filters out:
 // - Invalid/unparseable transactions (gibberish)
 // - Transactions that would exceed the cumulative gas limit

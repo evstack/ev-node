@@ -168,7 +168,7 @@ func createSequencer(
 			return nil, fmt.Errorf("based sequencer mode requires aggregator mode to be enabled")
 		}
 
-		basedSeq, err := based.NewBasedSequencer(daClient, nodeConfig, datastore, genesis, logger)
+		basedSeq, err := based.NewBasedSequencer(daClient, nodeConfig, datastore, genesis, logger, executor)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create based sequencer: %w", err)
 		}
@@ -189,13 +189,11 @@ func createSequencer(
 		[]byte(genesis.ChainID),
 		1000,
 		genesis,
+		executor,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create single sequencer: %w", err)
 	}
-
-	// Configure executor for DA transaction gas-based filtering
-	sequencer.SetExecutor(executor)
 
 	logger.Info().
 		Str("forced_inclusion_namespace", nodeConfig.DA.GetForcedInclusionNamespace()).

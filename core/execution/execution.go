@@ -104,31 +104,7 @@ type Executor interface {
 	// - info: Current execution parameters
 	// - error: Any errors during retrieval
 	GetExecutionInfo(ctx context.Context, height uint64) (ExecutionInfo, error)
-}
 
-// HeightProvider is an optional interface that execution clients can implement
-// to support height synchronization checks between ev-node and the execution layer.
-type HeightProvider interface {
-	// GetLatestHeight returns the current block height of the execution layer.
-	// This is useful for detecting desynchronization between ev-node and the execution layer
-	// after crashes or restarts.
-	//
-	// Parameters:
-	// - ctx: Context for timeout/cancellation control
-	//
-	// Returns:
-	// - height: Current block height of the execution layer
-	// - error: Any errors during height retrieval
-	GetLatestHeight(ctx context.Context) (uint64, error)
-}
-
-// DATransactionFilter is an optional interface that execution clients can implement
-// to support gas-based filtering of force-included transactions from DA.
-//
-// When implemented, the sequencer will use this to filter DA transactions by gas limit
-// before including them in blocks. If not implemented, all DA transactions are included
-// without gas-based filtering.
-type DATransactionFilter interface {
 	// FilterDATransactions validates and filters force-included transactions from DA.
 	// It performs execution-layer specific validation (e.g., EVM tx parsing, gas checks)
 	// and returns transactions that are valid and fit within the gas limit.
@@ -149,4 +125,20 @@ type DATransactionFilter interface {
 	// - remainingTxs: Valid transactions that didn't fit due to gas limit (for re-queuing)
 	// - err: Any errors during filtering (not validation errors, which result in filtering)
 	FilterDATransactions(ctx context.Context, txs [][]byte, maxGas uint64) (validTxs [][]byte, remainingTxs [][]byte, err error)
+}
+
+// HeightProvider is an optional interface that execution clients can implement
+// to support height synchronization checks between ev-node and the execution layer.
+type HeightProvider interface {
+	// GetLatestHeight returns the current block height of the execution layer.
+	// This is useful for detecting desynchronization between ev-node and the execution layer
+	// after crashes or restarts.
+	//
+	// Parameters:
+	// - ctx: Context for timeout/cancellation control
+	//
+	// Returns:
+	// - height: Current block height of the execution layer
+	// - error: Any errors during height retrieval
+	GetLatestHeight(ctx context.Context) (uint64, error)
 }

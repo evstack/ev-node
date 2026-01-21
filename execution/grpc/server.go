@@ -158,17 +158,11 @@ func (s *Server) GetExecutionInfo(
 //
 // It validates and filters force-included transactions from DA, returning
 // transactions that are valid and fit within the gas limit.
-// Returns an error if the executor does not implement DATransactionFilter.
 func (s *Server) FilterDATransactions(
 	ctx context.Context,
 	req *connect.Request[pb.FilterDATransactionsRequest],
 ) (*connect.Response[pb.FilterDATransactionsResponse], error) {
-	filter, ok := s.executor.(execution.DATransactionFilter)
-	if !ok {
-		return nil, connect.NewError(connect.CodeUnimplemented, fmt.Errorf("executor does not support DA transaction filtering"))
-	}
-
-	validTxs, remainingTxs, err := filter.FilterDATransactions(ctx, req.Msg.Txs, req.Msg.MaxGas)
+	validTxs, remainingTxs, err := s.executor.FilterDATransactions(ctx, req.Msg.Txs, req.Msg.MaxGas)
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to filter DA transactions: %w", err))
 	}

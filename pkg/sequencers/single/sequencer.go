@@ -48,16 +48,10 @@ type Sequencer struct {
 	daStartHeight   atomic.Uint64
 	checkpointStore *seqcommon.CheckpointStore
 	checkpoint      *seqcommon.Checkpoint
+	executor        execution.Executor
 
 	// Cached forced inclusion transactions from the current epoch
 	cachedForcedInclusionTxs [][]byte
-
-	// Executor for DA transaction filtering (optional)
-	// When set, forced inclusion transactions are filtered by gas limit.
-	// GetExecutionInfo is called directly on the executor.
-	// FilterDATransactions is called via type assertion to DATransactionFilter.
-	executor execution.Executor
-	txFilter execution.DATransactionFilter // cached type assertion result
 }
 
 // NewSequencer creates a new Single Sequencer
@@ -69,6 +63,7 @@ func NewSequencer(
 	id []byte,
 	maxQueueSize int,
 	genesis genesis.Genesis,
+	executor execution.Executor,
 ) (*Sequencer, error) {
 	s := &Sequencer{
 		db:              db,
@@ -80,6 +75,7 @@ func NewSequencer(
 		queue:           NewBatchQueue(db, "batches", maxQueueSize),
 		checkpointStore: seqcommon.NewCheckpointStore(db, ds.NewKey("/single/checkpoint")),
 		genesis:         genesis,
+		executor:        executor,
 	}
 	s.SetDAHeight(genesis.DAStartHeight) // default value, will be overridden by executor or submitter
 	s.daStartHeight.Store(genesis.DAStartHeight)
@@ -122,20 +118,6 @@ func NewSequencer(
 	s.fiRetriever = block.NewForcedInclusionRetriever(daClient, cfg, logger, initialDAHeight, genesis.DAEpochForcedInclusion)
 
 	return s, nil
-}
-
-// SetExecutor sets the optional executor for DA transaction filtering.
-// When set, forced inclusion transactions will be filtered by gas limit before being included in batches.
-// This should be called after NewSequencer and before Start if filtering is desired.
-func (c *Sequencer) SetExecutor(executor execution.Executor) {
-	c.executor = executor
-	// Check if executor implements the optional DATransactionFilter interface
-	if filter, ok := executor.(execution.DATransactionFilter); ok {
-		c.txFilter = filter
-		c.logger.Info().Msg("Executor configured for DA transaction gas-based filtering")
-	} else {
-		c.logger.Info().Msg("Executor configured (no DA transaction filtering support)")
-	}
 }
 
 // getInitialDAStartHeight retrieves the DA height of the first included chain height from store.
@@ -223,20 +205,19 @@ func (c *Sequencer) GetNextBatch(ctx context.Context, req coresequencer.GetNextB
 	// Process forced inclusion transactions from checkpoint position
 	forcedTxs := c.processForcedInclusionTxsFromCheckpoint(req.MaxBytes)
 
-	// Apply gas-based filtering if executor and filter are configured
+	// Apply filtering to validate transactions and optionally limit by gas
 	var filteredForcedTxs [][]byte
 	var remainingGasFilteredTxs [][]byte
-	if c.executor != nil && c.txFilter != nil && len(forcedTxs) > 0 {
+	if len(forcedTxs) > 0 {
 		// Get current gas limit from execution layer
 		info, err := c.executor.GetExecutionInfo(ctx, 0) // 0 = latest/next block
 		if err != nil {
 			c.logger.Warn().Err(err).Msg("failed to get execution info for gas filtering, proceeding without gas filter")
 			filteredForcedTxs = forcedTxs
-		} else if info.MaxGas > 0 {
-			// Filter by gas limit using the DATransactionFilter interface
-			filteredForcedTxs, remainingGasFilteredTxs, err = c.txFilter.FilterDATransactions(ctx, forcedTxs, info.MaxGas)
+		} else {
+			filteredForcedTxs, remainingGasFilteredTxs, err = c.executor.FilterDATransactions(ctx, forcedTxs, info.MaxGas)
 			if err != nil {
-				c.logger.Warn().Err(err).Msg("failed to filter DA transactions by gas, proceeding without gas filter")
+				c.logger.Warn().Err(err).Msg("failed to filter DA transactions, proceeding without filter")
 				filteredForcedTxs = forcedTxs
 			} else {
 				c.logger.Debug().
@@ -244,11 +225,8 @@ func (c *Sequencer) GetNextBatch(ctx context.Context, req coresequencer.GetNextB
 					Int("filtered_forced_txs", len(filteredForcedTxs)).
 					Int("remaining_for_next_block", len(remainingGasFilteredTxs)).
 					Uint64("max_gas", info.MaxGas).
-					Msg("filtered forced inclusion transactions by gas limit")
+					Msg("filtered forced inclusion transactions")
 			}
-		} else {
-			// MaxGas is 0, no gas-based filtering
-			filteredForcedTxs = forcedTxs
 		}
 	} else {
 		filteredForcedTxs = forcedTxs

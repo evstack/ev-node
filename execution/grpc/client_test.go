@@ -11,11 +11,12 @@ import (
 
 // mockExecutor is a mock implementation of execution.Executor for testing
 type mockExecutor struct {
-	initChainFunc        func(ctx context.Context, genesisTime time.Time, initialHeight uint64, chainID string) ([]byte, error)
-	getTxsFunc           func(ctx context.Context) ([][]byte, error)
-	executeTxsFunc       func(ctx context.Context, txs [][]byte, blockHeight uint64, timestamp time.Time, prevStateRoot []byte) ([]byte, error)
-	setFinalFunc         func(ctx context.Context, blockHeight uint64) error
-	getExecutionInfoFunc func(ctx context.Context, height uint64) (execution.ExecutionInfo, error)
+	initChainFunc            func(ctx context.Context, genesisTime time.Time, initialHeight uint64, chainID string) ([]byte, error)
+	getTxsFunc               func(ctx context.Context) ([][]byte, error)
+	executeTxsFunc           func(ctx context.Context, txs [][]byte, blockHeight uint64, timestamp time.Time, prevStateRoot []byte) ([]byte, error)
+	setFinalFunc             func(ctx context.Context, blockHeight uint64) error
+	getExecutionInfoFunc     func(ctx context.Context, height uint64) (execution.ExecutionInfo, error)
+	filterDATransactionsFunc func(ctx context.Context, txs [][]byte, maxGas uint64) ([][]byte, [][]byte, error)
 }
 
 func (m *mockExecutor) InitChain(ctx context.Context, genesisTime time.Time, initialHeight uint64, chainID string) ([]byte, error) {
@@ -51,6 +52,14 @@ func (m *mockExecutor) GetExecutionInfo(ctx context.Context, height uint64) (exe
 		return m.getExecutionInfoFunc(ctx, height)
 	}
 	return execution.ExecutionInfo{MaxGas: 0}, nil
+}
+
+func (m *mockExecutor) FilterDATransactions(ctx context.Context, txs [][]byte, maxGas uint64) ([][]byte, [][]byte, error) {
+	if m.filterDATransactionsFunc != nil {
+		return m.filterDATransactionsFunc(ctx, txs, maxGas)
+	}
+	// Default: return all txs as valid
+	return txs, nil, nil
 }
 
 func TestClient_InitChain(t *testing.T) {

@@ -13,6 +13,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/evstack/ev-node/block"
+	"github.com/evstack/ev-node/core/execution"
 	coresequencer "github.com/evstack/ev-node/core/sequencer"
 	"github.com/evstack/ev-node/pkg/config"
 	datypes "github.com/evstack/ev-node/pkg/da/types"
@@ -20,6 +21,41 @@ import (
 	"github.com/evstack/ev-node/pkg/sequencers/common"
 	"github.com/evstack/ev-node/test/mocks"
 )
+
+// mockExecutor implements execution.Executor for testing
+type mockExecutor struct {
+	maxGas     uint64
+	getInfoErr error
+	filterFunc func(ctx context.Context, txs [][]byte, maxGas uint64) ([][]byte, [][]byte, error)
+}
+
+func (m *mockExecutor) InitChain(ctx context.Context, genesisTime time.Time, initialHeight uint64, chainID string) ([]byte, error) {
+	return []byte("state-root"), nil
+}
+
+func (m *mockExecutor) GetTxs(ctx context.Context) ([][]byte, error) {
+	return nil, nil
+}
+
+func (m *mockExecutor) ExecuteTxs(ctx context.Context, txs [][]byte, blockHeight uint64, timestamp time.Time, prevStateRoot []byte) ([]byte, error) {
+	return []byte("new-state-root"), nil
+}
+
+func (m *mockExecutor) SetFinal(ctx context.Context, blockHeight uint64) error {
+	return nil
+}
+
+func (m *mockExecutor) GetExecutionInfo(ctx context.Context, height uint64) (execution.ExecutionInfo, error) {
+	return execution.ExecutionInfo{MaxGas: m.maxGas}, m.getInfoErr
+}
+
+func (m *mockExecutor) FilterDATransactions(ctx context.Context, txs [][]byte, maxGas uint64) ([][]byte, [][]byte, error) {
+	if m.filterFunc != nil {
+		return m.filterFunc(ctx, txs, maxGas)
+	}
+	// Default: return all txs as valid
+	return txs, nil, nil
+}
 
 // MockFullDAClient combines MockClient and MockVerifier to implement FullDAClient
 type MockFullDAClient struct {
@@ -42,7 +78,7 @@ func createTestSequencer(t *testing.T, mockRetriever *common.MockForcedInclusion
 	mockDAClient.MockClient.On("GetForcedInclusionNamespace").Return([]byte("test-forced-inclusion-ns")).Maybe()
 	mockDAClient.MockClient.On("HasForcedInclusionNamespace").Return(true).Maybe()
 
-	seq, err := NewBasedSequencer(mockDAClient, config.DefaultConfig(), db, gen, zerolog.Nop())
+	seq, err := NewBasedSequencer(mockDAClient, config.DefaultConfig(), db, gen, zerolog.Nop(), &mockExecutor{})
 	require.NoError(t, err)
 
 	// Replace the fiRetriever with our mock so tests work as before
@@ -471,7 +507,7 @@ func TestBasedSequencer_CheckpointPersistence(t *testing.T) {
 	mockDAClient.MockClient.On("HasForcedInclusionNamespace").Return(true).Maybe()
 
 	// Create first sequencer
-	seq1, err := NewBasedSequencer(mockDAClient, config.DefaultConfig(), db, gen, zerolog.Nop())
+	seq1, err := NewBasedSequencer(mockDAClient, config.DefaultConfig(), db, gen, zerolog.Nop(), &mockExecutor{})
 	require.NoError(t, err)
 
 	// Replace the fiRetriever with our mock so tests work as before
@@ -495,7 +531,7 @@ func TestBasedSequencer_CheckpointPersistence(t *testing.T) {
 	}
 	mockDAClient2.MockClient.On("GetForcedInclusionNamespace").Return([]byte("test-forced-inclusion-ns")).Maybe()
 	mockDAClient2.MockClient.On("HasForcedInclusionNamespace").Return(true).Maybe()
-	seq2, err := NewBasedSequencer(mockDAClient2, config.DefaultConfig(), db, gen, zerolog.Nop())
+	seq2, err := NewBasedSequencer(mockDAClient2, config.DefaultConfig(), db, gen, zerolog.Nop(), &mockExecutor{})
 	require.NoError(t, err)
 
 	// Replace the fiRetriever with our mock so tests work as before
