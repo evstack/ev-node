@@ -109,13 +109,45 @@ func (e *DummyExecutor) GetExecutionInfo(ctx context.Context, height uint64) (Ex
 	return ExecutionInfo{MaxGas: 0}, nil
 }
 
-// FilterTxs validates force-included transactions and applies gas and size filtering.
-// For DummyExecutor, all transactions are considered valid (no parsing/gas checks).
+// FilterTxs validates force-included transactions and applies size filtering.
+// For DummyExecutor, no tx validation is done but size filtering is applied.
 func (e *DummyExecutor) FilterTxs(ctx context.Context, txs [][]byte, maxBytes, maxGas uint64, hasForceIncludedTransaction bool) ([]FilterStatus, error) {
-	// DummyExecutor doesn't do any filtering - return all txs as OK
 	result := make([]FilterStatus, len(txs))
-	for i := range result {
+
+	var cumulativeBytes uint64
+	limitReached := false
+
+	for i, tx := range txs {
+		// Skip empty transactions
+		if len(tx) == 0 {
+			result[i] = FilterRemove
+			continue
+		}
+
+		txBytes := uint64(len(tx))
+
+		// Skip tx that can never make it in a block (too big)
+		if maxBytes > 0 && txBytes > maxBytes {
+			result[i] = FilterRemove
+			continue
+		}
+
+		// Once limit is reached, postpone remaining txs
+		if limitReached {
+			result[i] = FilterPostpone
+			continue
+		}
+
+		// Check size limit
+		if maxBytes > 0 && cumulativeBytes+txBytes > maxBytes {
+			limitReached = true
+			result[i] = FilterPostpone
+			continue
+		}
+
+		cumulativeBytes += txBytes
 		result[i] = FilterOK
 	}
+
 	return result, nil
 }

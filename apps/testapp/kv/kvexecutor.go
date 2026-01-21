@@ -430,32 +430,55 @@ func (k *KVExecutor) GetExecutionInfo(ctx context.Context, height uint64) (execu
 	return execution.ExecutionInfo{MaxGas: 0}, nil
 }
 
-// FilterTxs validates force-included transactions and applies gas and size filtering.
+// FilterTxs validates force-included transactions and applies size filtering.
 // For KVExecutor, validates key=value format when force-included txs are present.
 // KVExecutor doesn't track gas, so maxGas is ignored.
 func (k *KVExecutor) FilterTxs(ctx context.Context, txs [][]byte, maxBytes, maxGas uint64, hasForceIncludedTransaction bool) ([]execution.FilterStatus, error) {
 	result := make([]execution.FilterStatus, len(txs))
 
-	// If no force-included txs, skip filtering entirely - mempool batch is already filtered
-	if !hasForceIncludedTransaction {
-		for i := range result {
-			result[i] = execution.FilterOK
-		}
-		return result, nil
-	}
+	var cumulativeBytes uint64
+	limitReached := false
 
 	for i, tx := range txs {
-		// Validate transactions
+		// Skip empty transactions
 		if len(tx) == 0 {
 			result[i] = execution.FilterRemove
 			continue
 		}
-		// Basic format validation: must be key=value
-		parts := strings.SplitN(string(tx), "=", 2)
-		if len(parts) != 2 || strings.TrimSpace(parts[0]) == "" {
+
+		txBytes := uint64(len(tx))
+
+		// Only validate tx format if force-included txs are present
+		// Mempool txs are already validated
+		if hasForceIncludedTransaction {
+			// Basic format validation: must be key=value
+			parts := strings.SplitN(string(tx), "=", 2)
+			if len(parts) != 2 || strings.TrimSpace(parts[0]) == "" {
+				result[i] = execution.FilterRemove
+				continue
+			}
+		}
+
+		// Skip tx that can never make it in a block (too big)
+		if maxBytes > 0 && txBytes > maxBytes {
 			result[i] = execution.FilterRemove
 			continue
 		}
+
+		// Once limit is reached, postpone remaining txs
+		if limitReached {
+			result[i] = execution.FilterPostpone
+			continue
+		}
+
+		// Check size limit
+		if maxBytes > 0 && cumulativeBytes+txBytes > maxBytes {
+			limitReached = true
+			result[i] = execution.FilterPostpone
+			continue
+		}
+
+		cumulativeBytes += txBytes
 		result[i] = execution.FilterOK
 	}
 
