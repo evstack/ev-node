@@ -90,9 +90,7 @@ func (x *InitChainRequest) GetChainId() string {
 type InitChainResponse struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// Hash representing initial state
-	StateRoot []byte `protobuf:"bytes,1,opt,name=state_root,json=stateRoot,proto3" json:"state_root,omitempty"`
-	// Maximum allowed bytes for transactions in a block
-	MaxBytes      uint64 `protobuf:"varint,2,opt,name=max_bytes,json=maxBytes,proto3" json:"max_bytes,omitempty"`
+	StateRoot     []byte `protobuf:"bytes,1,opt,name=state_root,json=stateRoot,proto3" json:"state_root,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -132,13 +130,6 @@ func (x *InitChainResponse) GetStateRoot() []byte {
 		return x.StateRoot
 	}
 	return nil
-}
-
-func (x *InitChainResponse) GetMaxBytes() uint64 {
-	if x != nil {
-		return x.MaxBytes
-	}
-	return 0
 }
 
 // GetTxsRequest is the request for fetching transactions
@@ -669,11 +660,10 @@ const file_evnode_v1_execution_proto_rawDesc = "" +
 	"\x10InitChainRequest\x12=\n" +
 	"\fgenesis_time\x18\x01 \x01(\v2\x1a.google.protobuf.TimestampR\vgenesisTime\x12%\n" +
 	"\x0einitial_height\x18\x02 \x01(\x04R\rinitialHeight\x12\x19\n" +
-	"\bchain_id\x18\x03 \x01(\tR\achainId\"O\n" +
+	"\bchain_id\x18\x03 \x01(\tR\achainId\"2\n" +
 	"\x11InitChainResponse\x12\x1d\n" +
 	"\n" +
-	"state_root\x18\x01 \x01(\fR\tstateRoot\x12\x1b\n" +
-	"\tmax_bytes\x18\x02 \x01(\x04R\bmaxBytes\"\x0f\n" +
+	"state_root\x18\x01 \x01(\fR\tstateRoot\"\x0f\n" +
 	"\rGetTxsRequest\"\"\n" +
 	"\x0eGetTxsResponse\x12\x10\n" +
 	"\x03txs\x18\x01 \x03(\fR\x03txs\"\xaa\x01\n" +

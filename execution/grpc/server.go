@@ -156,7 +156,7 @@ func (s *Server) GetExecutionInfo(
 
 // FilterTxs handles the FilterTxs RPC request.
 //
-// It validates force-included transactions and applies gas filtering.
+// It validates force-included transactions and applies gas filtering to all txs.
 // Only transactions with forceIncludedMask[i]=true are validated.
 func (s *Server) FilterTxs(
 	ctx context.Context,

@@ -42,9 +42,6 @@ message InitChainRequest {
 message InitChainResponse {
   // Hash representing initial state
   bytes state_root = 1;
-
-  // Maximum allowed bytes for transactions in a block
-  uint64 max_bytes = 2;
 }
 
 // GetTxsRequest is the request for fetching transactions

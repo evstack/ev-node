@@ -151,26 +151,42 @@ func (s *BasedSequencer) GetNextBatch(ctx context.Context, req coresequencer.Get
 		// This is: filteredTxs + (original batchTxs - filteredTxs - remainingGasFilteredTxs)
 		// The difference (original - filtered - remaining) represents gibberish that was filtered out
 		txsConsumed := uint64(len(batchTxs) - len(remainingGasFilteredTxs))
-		s.checkpoint.TxIndex += txsConsumed
 
 		// If we have remaining gas-filtered txs, don't advance to next epoch yet
 		// These will be picked up in the next GetNextBatch call
 		if len(remainingGasFilteredTxs) > 0 {
-			// Update cached txs to only contain the remaining ones
-			s.currentBatchTxs = remainingGasFilteredTxs
+			// Calculate the index where unprocessed txs start in the original cache
+			// batchTxs was taken from s.checkpoint.TxIndex, so unprocessed start at:
+			unprocessedStartIdx := s.checkpoint.TxIndex + uint64(len(batchTxs))
+
+			// Collect any unprocessed txs that weren't even fetched due to maxBytes
+			var unprocessedTxs [][]byte
+			if unprocessedStartIdx < uint64(len(s.currentBatchTxs)) {
+				unprocessedTxs = s.currentBatchTxs[unprocessedStartIdx:]
+			}
+
+			// Update cached txs to contain: remaining gas-filtered txs + unprocessed txs
+			s.currentBatchTxs = append(remainingGasFilteredTxs, unprocessedTxs...)
 			s.checkpoint.TxIndex = 0 // Reset index since we're replacing the cache
 
 			s.logger.Debug().
-				Int("remaining_txs", len(remainingGasFilteredTxs)).
-				Msg("keeping gas-filtered transactions for next block")
-		} else if s.checkpoint.TxIndex >= uint64(len(s.currentBatchTxs)) {
-			// If we've consumed all transactions from this DA epoch, move to next
-			s.checkpoint.DAHeight = daHeight + 1
-			s.checkpoint.TxIndex = 0
-			s.currentBatchTxs = nil
+				Int("remaining_gas_filtered_txs", len(remainingGasFilteredTxs)).
+				Int("unprocessed_txs", len(unprocessedTxs)).
+				Int("new_cache_size", len(s.currentBatchTxs)).
+				Msg("keeping gas-filtered and unprocessed transactions for next block")
+		} else {
+			// No remaining gas-filtered txs, advance the checkpoint
+			s.checkpoint.TxIndex += txsConsumed
 
-			// Update the global DA height
-			s.SetDAHeight(s.checkpoint.DAHeight)
+			if s.checkpoint.TxIndex >= uint64(len(s.currentBatchTxs)) {
+				// If we've consumed all transactions from this DA epoch, move to next
+				s.checkpoint.DAHeight = daHeight + 1
+				s.checkpoint.TxIndex = 0
+				s.currentBatchTxs = nil
+
+				// Update the global DA height
+				s.SetDAHeight(s.checkpoint.DAHeight)
+			}
 		}
 
 		// Persist checkpoint

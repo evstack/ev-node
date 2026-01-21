@@ -136,7 +136,7 @@ func (c *Client) GetExecutionInfo(ctx context.Context, height uint64) (execution
 //
 // This method sends transactions to the remote execution service for validation.
 // Only force-included transactions are validated; mempool transactions pass through unchanged.
-// Gas limiting is applied to force-included transactions.
+// Gas checks is applied to all transactions.
 func (c *Client) FilterTxs(ctx context.Context, txs [][]byte, forceIncludedMask []bool, maxGas uint64) (*execution.FilterTxsResult, error) {
 	req := connect.NewRequest(&pb.FilterTxsRequest{
 		Txs:               txs,

@@ -302,25 +302,41 @@ func (c *Sequencer) GetNextBatch(ctx context.Context, req coresequencer.GetNextB
 		// Count how many DA txs we're actually consuming from the checkpoint
 		// Original forcedTxs count minus remaining DA txs = consumed (including gibberish filtered out)
 		txsConsumed := uint64(len(forcedTxs) - len(remainingDATxs))
-		c.checkpoint.TxIndex += txsConsumed
 
 		// If we have remaining DA txs, don't advance to next epoch yet
 		if len(remainingDATxs) > 0 {
-			// Update cached txs to only contain the remaining ones
-			c.cachedForcedInclusionTxs = remainingDATxs
+			// Calculate the index where unprocessed txs start in the original cache
+			// forcedTxs was taken from c.checkpoint.TxIndex, so unprocessed start at:
+			unprocessedStartIdx := c.checkpoint.TxIndex + uint64(len(forcedTxs))
+
+			// Collect any unprocessed txs that weren't even fetched due to maxBytes
+			var unprocessedTxs [][]byte
+			if unprocessedStartIdx < uint64(len(c.cachedForcedInclusionTxs)) {
+				unprocessedTxs = c.cachedForcedInclusionTxs[unprocessedStartIdx:]
+			}
+
+			// Update cached txs to contain: remaining gas-filtered txs + unprocessed txs
+			c.cachedForcedInclusionTxs = append(remainingDATxs, unprocessedTxs...)
 			c.checkpoint.TxIndex = 0 // Reset index since we're replacing the cache
 
 			c.logger.Debug().
-				Int("remaining_da_txs", len(remainingDATxs)).
-				Msg("keeping gas-filtered DA transactions for next block")
-		} else if c.checkpoint.TxIndex >= uint64(len(c.cachedForcedInclusionTxs)) {
-			// If we've consumed all transactions from this DA epoch, move to next
-			c.checkpoint.DAHeight = daHeight + 1
-			c.checkpoint.TxIndex = 0
-			c.cachedForcedInclusionTxs = nil
+				Int("remaining_gas_filtered_txs", len(remainingDATxs)).
+				Int("unprocessed_txs", len(unprocessedTxs)).
+				Int("new_cache_size", len(c.cachedForcedInclusionTxs)).
+				Msg("keeping gas-filtered and unprocessed DA transactions for next block")
+		} else {
+			// No remaining gas-filtered txs, advance the checkpoint
+			c.checkpoint.TxIndex += txsConsumed
 
-			// Update the global DA height
-			c.SetDAHeight(c.checkpoint.DAHeight)
+			if c.checkpoint.TxIndex >= uint64(len(c.cachedForcedInclusionTxs)) {
+				// If we've consumed all transactions from this DA epoch, move to next
+				c.checkpoint.DAHeight = daHeight + 1
+				c.checkpoint.TxIndex = 0
+				c.cachedForcedInclusionTxs = nil
+
+				// Update the global DA height
+				c.SetDAHeight(c.checkpoint.DAHeight)
+			}
 		}
 
 		// Persist checkpoint

@@ -1247,3 +1247,253 @@ func TestSequencer_GetNextBatch_GasFilterError(t *testing.T) {
 	// Should have all txs (filter error means no filtering)
 	assert.Equal(t, 2, len(resp.Batch.Transactions))
 }
+
+// TestSequencer_GetNextBatch_GasFilteringPreservesUnprocessedTxs tests that when FilterTxs
+// returns RemainingTxs (valid DA txs that didn't fit due to gas limits), the sequencer correctly
+// preserves any transactions that weren't even processed yet due to maxBytes limits.
+//
+// This test uses maxBytes to limit how many txs are fetched, triggering the unprocessed txs scenario.
+func TestSequencer_GetNextBatch_GasFilteringPreservesUnprocessedTxs(t *testing.T) {
+	db := ds.NewMapDatastore()
+	logger := zerolog.New(zerolog.NewTestWriter(t))
+
+	gen := genesis.Genesis{
+		ChainID:                "test-gas-preserve",
+		DAStartHeight:          100,
+		DAEpochForcedInclusion: 1,
+	}
+
+	mockDA := newMockFullDAClient(t)
+	mockDA.MockClient.On("HasForcedInclusionNamespace").Return(true).Maybe()
+	mockDA.MockClient.On("GetForcedInclusionNamespace").Return([]byte("forced")).Maybe()
+	mockDA.MockClient.On("MaxBlobSize", mock.Anything).Return(uint64(1000000), nil).Maybe()
+
+	filterCallCount := 0
+	mockExec := &mockExecutor{
+		maxGas: 1000000,
+		filterFunc: func(ctx context.Context, txs [][]byte, forceIncludedMask []bool, maxGas uint64) (*execution.FilterTxsResult, error) {
+			filterCallCount++
+			t.Logf("FilterTxs call #%d with %d txs", filterCallCount, len(txs))
+
+			// Count force-included txs
+			forcedCount := 0
+			for _, m := range forceIncludedMask {
+				if m {
+					forcedCount++
+				}
+			}
+
+			if filterCallCount == 1 && forcedCount >= 2 {
+				// First call: simulate tx0 fits, tx1 is gas-limited (remaining)
+				// We only process the forced txs here
+				return &execution.FilterTxsResult{
+					ValidTxs:          txs[:1], // Only first forced tx fits
+					ForceIncludedMask: []bool{true},
+					RemainingTxs:      txs[1:2], // Second forced tx is gas-limited
+				}, nil
+			}
+
+			// Pass through all txs
+			mask := make([]bool, len(txs))
+			for i := range mask {
+				if i < len(forceIncludedMask) {
+					mask[i] = forceIncludedMask[i]
+				}
+			}
+			return &execution.FilterTxsResult{
+				ValidTxs:          txs,
+				ForceIncludedMask: mask,
+				RemainingTxs:      nil,
+			}, nil
+		},
+	}
+
+	seq, err := NewSequencer(
+		logger,
+		db,
+		mockDA,
+		config.DefaultConfig(),
+		[]byte("test-gas-preserve"),
+		1000,
+		gen,
+		mockExec,
+	)
+	require.NoError(t, err)
+
+	// Set up cached forced inclusion txs: 4 transactions of 50 bytes each
+	tx0 := make([]byte, 50)
+	tx1 := make([]byte, 50)
+	tx2 := make([]byte, 50)
+	tx3 := make([]byte, 50)
+	copy(tx0, "tx0-valid-fits")
+	copy(tx1, "tx1-valid-gas-limited")
+	copy(tx2, "tx2-should-not-be-lost")
+	copy(tx3, "tx3-should-not-be-lost")
+	seq.cachedForcedInclusionTxs = [][]byte{tx0, tx1, tx2, tx3}
+	seq.checkpoint.DAHeight = 100
+	seq.checkpoint.TxIndex = 0
+	seq.SetDAHeight(100)
+
+	ctx := context.Background()
+	allProcessedForcedTxs := make([][]byte, 0)
+
+	// Process multiple batches to consume all forced txs
+	// Use maxBytes=120 to fetch only 2 txs at a time (each is 50 bytes)
+	for i := 0; i < 5; i++ { // Max 5 iterations to prevent infinite loop
+		req := coresequencer.GetNextBatchRequest{
+			Id:       []byte("test-gas-preserve"),
+			MaxBytes: 120, // Limits to ~2 txs per batch
+		}
+
+		resp, err := seq.GetNextBatch(ctx, req)
+		require.NoError(t, err)
+
+		// Extract forced txs from response (they come first)
+		for _, tx := range resp.Batch.Transactions {
+			// Check if this is one of our original forced txs
+			if bytes.HasPrefix(tx, []byte("tx")) {
+				allProcessedForcedTxs = append(allProcessedForcedTxs, tx)
+			}
+		}
+
+		t.Logf("Batch %d: %d txs, checkpoint: height=%d, index=%d, cache size=%d",
+			i+1, len(resp.Batch.Transactions), seq.checkpoint.DAHeight, seq.checkpoint.TxIndex, len(seq.cachedForcedInclusionTxs))
+
+		if seq.checkpoint.DAHeight > 100 {
+			break // Moved to next DA epoch
+		}
+		if len(seq.cachedForcedInclusionTxs) == 0 {
+			break // Cache exhausted
+		}
+	}
+
+	// Verify all 4 original forced transactions were processed
+	assert.GreaterOrEqual(t, len(allProcessedForcedTxs), 4, "all 4 forced transactions should have been processed")
+
+	// Check that each original tx appears
+	txFound := make(map[string]bool)
+	for _, tx := range allProcessedForcedTxs {
+		txFound[string(tx)] = true
+	}
+
+	assert.True(t, txFound[string(tx0)], "tx0 should have been processed")
+	assert.True(t, txFound[string(tx1)], "tx1 should have been processed (was gas-limited, retried later)")
+	assert.True(t, txFound[string(tx2)], "tx2 should have been processed (must not be lost)")
+	assert.True(t, txFound[string(tx3)], "tx3 should have been processed (must not be lost)")
+}
+
+// TestSequencer_GetNextBatch_RemainingTxsWithUnprocessedCache tests the specific scenario where:
+// 1. Cache has [tx0, tx1, tx2, tx3, tx4]
+// 2. maxBytes limits processing to [tx0, tx1, tx2]
+// 3. FilterTxs returns tx2 as remaining (gas-limited)
+// 4. tx3, tx4 must NOT be lost
+func TestSequencer_GetNextBatch_RemainingTxsWithUnprocessedCache(t *testing.T) {
+	db := ds.NewMapDatastore()
+	logger := zerolog.New(zerolog.NewTestWriter(t))
+
+	gen := genesis.Genesis{
+		ChainID:                "test-unprocessed",
+		DAStartHeight:          100,
+		DAEpochForcedInclusion: 1,
+	}
+
+	mockDA := newMockFullDAClient(t)
+	mockDA.MockClient.On("HasForcedInclusionNamespace").Return(true).Maybe()
+	mockDA.MockClient.On("GetForcedInclusionNamespace").Return([]byte("forced")).Maybe()
+	mockDA.MockClient.On("MaxBlobSize", mock.Anything).Return(uint64(1000000), nil).Maybe()
+
+	filterCallCount := 0
+	mockExec := &mockExecutor{
+		maxGas: 1000000,
+		filterFunc: func(ctx context.Context, txs [][]byte, forceIncludedMask []bool, maxGas uint64) (*execution.FilterTxsResult, error) {
+			filterCallCount++
+			t.Logf("FilterTxs call #%d with %d forced txs", filterCallCount, len(txs))
+			for i, tx := range txs {
+				if i < len(forceIncludedMask) && forceIncludedMask[i] {
+					t.Logf("  forced tx[%d]: %s", i, string(tx[:min(10, len(tx))]))
+				}
+			}
+
+			// Count forced txs
+			forcedTxs := make([][]byte, 0)
+			mempoolTxs := make([][]byte, 0)
+			for i, tx := range txs {
+				if i < len(forceIncludedMask) && forceIncludedMask[i] {
+					forcedTxs = append(forcedTxs, tx)
+				} else {
+					mempoolTxs = append(mempoolTxs, tx)
+				}
+			}
+
+			if filterCallCount == 1 && len(forcedTxs) >= 2 {
+				// First call: tx0 fits, tx1 is gas-limited
+				validTxs := append([][]byte{forcedTxs[0]}, mempoolTxs...)
+				mask := make([]bool, len(validTxs))
+				mask[0] = true // first is forced
+
+				return &execution.FilterTxsResult{
+					ValidTxs:          validTxs,
+					ForceIncludedMask: mask,
+					RemainingTxs:      forcedTxs[1:2], // tx1 is gas-limited
+				}, nil
+			}
+
+			// Default: pass all through
+			return &execution.FilterTxsResult{
+				ValidTxs:          txs,
+				ForceIncludedMask: forceIncludedMask,
+				RemainingTxs:      nil,
+			}, nil
+		},
+	}
+
+	seq, err := NewSequencer(
+		logger,
+		db,
+		mockDA,
+		config.DefaultConfig(),
+		[]byte("test-unprocessed"),
+		1000,
+		gen,
+		mockExec,
+	)
+	require.NoError(t, err)
+
+	// Set up 5 forced inclusion txs of 100 bytes each
+	tx0 := make([]byte, 100)
+	tx1 := make([]byte, 100)
+	tx2 := make([]byte, 100)
+	tx3 := make([]byte, 100)
+	tx4 := make([]byte, 100)
+	copy(tx0, "tx0-data")
+	copy(tx1, "tx1-data")
+	copy(tx2, "tx2-data")
+	copy(tx3, "tx3-data")
+	copy(tx4, "tx4-data")
+
+	seq.cachedForcedInclusionTxs = [][]byte{tx0, tx1, tx2, tx3, tx4}
+	seq.checkpoint.DAHeight = 100
+	seq.checkpoint.TxIndex = 0
+	seq.SetDAHeight(100)
+
+	ctx := context.Background()
+
+	// First batch with maxBytes=250 (fits ~2 txs of 100 bytes each)
+	req := coresequencer.GetNextBatchRequest{
+		Id:       []byte("test-unprocessed"),
+		MaxBytes: 250,
+	}
+
+	resp1, err := seq.GetNextBatch(ctx, req)
+	require.NoError(t, err)
+	t.Logf("Batch 1: %d txs, checkpoint: height=%d, index=%d, cache=%d",
+		len(resp1.Batch.Transactions), seq.checkpoint.DAHeight, seq.checkpoint.TxIndex, len(seq.cachedForcedInclusionTxs))
+
+	// After first batch, cache should contain: remaining gas-filtered tx + unprocessed txs
+	// If bug exists: cache = [tx1] only (tx2, tx3, tx4 lost)
+	// If fixed: cache = [tx1, tx2, tx3, tx4]
+	expectedMinCacheSize := 2 // At least tx1 (gas-filtered) + some unprocessed
+	assert.GreaterOrEqual(t, len(seq.cachedForcedInclusionTxs), expectedMinCacheSize,
+		"cache should contain remaining gas-filtered tx plus unprocessed txs; got %d, want >= %d",
+		len(seq.cachedForcedInclusionTxs), expectedMinCacheSize)
+}
