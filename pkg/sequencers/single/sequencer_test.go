@@ -1024,7 +1024,7 @@ func TestSequencer_GetNextBatch_EmptyDABatch_IncreasesDAHeight(t *testing.T) {
 type mockExecutor struct {
 	maxGas          uint64
 	getInfoErr      error
-	filterFunc      func(ctx context.Context, txs [][]byte, forceIncludedMask []bool) (*execution.FilterTxsResult, error)
+	filterFunc      func(ctx context.Context, txs [][]byte, forceIncludedMask []bool, maxGas uint64) (*execution.FilterTxsResult, error)
 	filterCallCount int
 }
 
@@ -1048,16 +1048,16 @@ func (m *mockExecutor) GetExecutionInfo(ctx context.Context, height uint64) (exe
 	return execution.ExecutionInfo{MaxGas: m.maxGas}, m.getInfoErr
 }
 
-func (m *mockExecutor) FilterTxs(ctx context.Context, txs [][]byte, forceIncludedMask []bool) (*execution.FilterTxsResult, error) {
+func (m *mockExecutor) FilterTxs(ctx context.Context, txs [][]byte, forceIncludedMask []bool, maxGas uint64) (*execution.FilterTxsResult, error) {
 	m.filterCallCount++
 	if m.filterFunc != nil {
-		return m.filterFunc(ctx, txs, forceIncludedMask)
+		return m.filterFunc(ctx, txs, forceIncludedMask, maxGas)
 	}
-	// Default: return all txs as valid, no gas info
+	// Default: return all txs as valid, no remaining
 	return &execution.FilterTxsResult{
 		ValidTxs:          txs,
 		ForceIncludedMask: forceIncludedMask,
-		GasPerTx:          nil,
+		RemainingTxs:      nil,
 	}, nil
 }
 
@@ -1091,21 +1091,39 @@ func TestSequencer_GetNextBatch_WithGasFiltering(t *testing.T) {
 	// Configure the executor mock
 	mockExec := &mockExecutor{
 		maxGas: 1000000, // 1M gas limit
-		filterFunc: func(ctx context.Context, txs [][]byte, forceIncludedMask []bool) (*execution.FilterTxsResult, error) {
-			// Return all txs as valid with gas per tx
-			// First 2 txs use 250k gas each (total 500k), third uses 600k (would exceed 1M limit)
-			gasPerTx := make([]uint64, len(txs))
-			for i := range txs {
-				if i < 2 {
-					gasPerTx[i] = 250000
+		filterFunc: func(ctx context.Context, txs [][]byte, forceIncludedMask []bool, maxGas uint64) (*execution.FilterTxsResult, error) {
+			// Simulate gas filtering: first 2 txs fit, third one doesn't
+			// Separate force-included txs from mempool txs
+			var forcedTxs [][]byte
+			var mempoolTxs [][]byte
+			for i, tx := range txs {
+				if i < len(forceIncludedMask) && forceIncludedMask[i] {
+					forcedTxs = append(forcedTxs, tx)
 				} else {
-					gasPerTx[i] = 600000 // This one won't fit
+					mempoolTxs = append(mempoolTxs, tx)
 				}
 			}
+			// Simulate: first 2 forced txs fit, third doesn't
+			var validTxs [][]byte
+			var validMask []bool
+			var remainingTxs [][]byte
+			for i, tx := range forcedTxs {
+				if i < 2 {
+					validTxs = append(validTxs, tx)
+					validMask = append(validMask, true)
+				} else {
+					remainingTxs = append(remainingTxs, tx)
+				}
+			}
+			// Add mempool txs
+			for _, tx := range mempoolTxs {
+				validTxs = append(validTxs, tx)
+				validMask = append(validMask, false)
+			}
 			return &execution.FilterTxsResult{
-				ValidTxs:          txs,
-				ForceIncludedMask: forceIncludedMask,
-				GasPerTx:          gasPerTx,
+				ValidTxs:          validTxs,
+				ForceIncludedMask: validMask,
+				RemainingTxs:      remainingTxs,
 			}, nil
 		},
 	}
@@ -1153,16 +1171,12 @@ func TestSequencer_GetNextBatch_WithGasFiltering(t *testing.T) {
 	assert.Equal(t, 1, mockExec.filterCallCount)
 
 	// Second call should return the remaining tx
-	mockExec.filterFunc = func(ctx context.Context, txs [][]byte, forceIncludedMask []bool) (*execution.FilterTxsResult, error) {
-		// Now all remaining txs fit (return with gas that fits)
-		gasPerTx := make([]uint64, len(txs))
-		for i := range txs {
-			gasPerTx[i] = 100000 // Low gas, will fit
-		}
+	mockExec.filterFunc = func(ctx context.Context, txs [][]byte, forceIncludedMask []bool, maxGas uint64) (*execution.FilterTxsResult, error) {
+		// Now all remaining txs fit
 		return &execution.FilterTxsResult{
 			ValidTxs:          txs,
 			ForceIncludedMask: forceIncludedMask,
-			GasPerTx:          gasPerTx,
+			RemainingTxs:      nil,
 		}, nil
 	}
 
@@ -1198,7 +1212,7 @@ func TestSequencer_GetNextBatch_GasFilterError(t *testing.T) {
 	// Configure executor that returns filter error
 	mockExec := &mockExecutor{
 		maxGas: 1000000,
-		filterFunc: func(ctx context.Context, txs [][]byte, forceIncludedMask []bool) (*execution.FilterTxsResult, error) {
+		filterFunc: func(ctx context.Context, txs [][]byte, forceIncludedMask []bool, maxGas uint64) (*execution.FilterTxsResult, error) {
 			return nil, errors.New("filter error")
 		},
 	}

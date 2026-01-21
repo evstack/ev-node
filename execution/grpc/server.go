@@ -156,13 +156,13 @@ func (s *Server) GetExecutionInfo(
 
 // FilterTxs handles the FilterTxs RPC request.
 //
-// It validates force-included transactions and calculates gas for all transactions.
+// It validates force-included transactions and applies gas filtering.
 // Only transactions with forceIncludedMask[i]=true are validated.
 func (s *Server) FilterTxs(
 	ctx context.Context,
 	req *connect.Request[pb.FilterTxsRequest],
 ) (*connect.Response[pb.FilterTxsResponse], error) {
-	result, err := s.executor.FilterTxs(ctx, req.Msg.Txs, req.Msg.ForceIncludedMask)
+	result, err := s.executor.FilterTxs(ctx, req.Msg.Txs, req.Msg.ForceIncludedMask, req.Msg.MaxGas)
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to filter transactions: %w", err))
 	}
@@ -170,6 +170,6 @@ func (s *Server) FilterTxs(
 	return connect.NewResponse(&pb.FilterTxsResponse{
 		ValidTxs:          result.ValidTxs,
 		ForceIncludedMask: result.ForceIncludedMask,
-		GasPerTx:          result.GasPerTx,
+		RemainingTxs:      result.RemainingTxs,
 	}), nil
 }

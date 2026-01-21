@@ -536,8 +536,10 @@ type FilterTxsRequest struct {
 	// True for each tx that is force-included (needs validation)
 	// Same length as txs
 	ForceIncludedMask []bool `protobuf:"varint,2,rep,packed,name=force_included_mask,json=forceIncludedMask,proto3" json:"force_included_mask,omitempty"`
-	unknownFields     protoimpl.UnknownFields
-	sizeCache         protoimpl.SizeCache
+	// Maximum cumulative gas allowed (0 means no gas limit)
+	MaxGas        uint64 `protobuf:"varint,3,opt,name=max_gas,json=maxGas,proto3" json:"max_gas,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *FilterTxsRequest) Reset() {
@@ -584,19 +586,26 @@ func (x *FilterTxsRequest) GetForceIncludedMask() []bool {
 	return nil
 }
 
+func (x *FilterTxsRequest) GetMaxGas() uint64 {
+	if x != nil {
+		return x.MaxGas
+	}
+	return 0
+}
+
 // FilterTxsResponse contains the filtered transactions
 type FilterTxsResponse struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	// Transactions that passed validation
+	// Transactions that passed validation and fit within gas limit
 	// Force-included txs that are invalid are removed
-	// Mempool txs are passed through unchanged
+	// Mempool txs are passed through unchanged (but may be trimmed for gas)
 	ValidTxs [][]byte `protobuf:"bytes,1,rep,name=valid_txs,json=validTxs,proto3" json:"valid_txs,omitempty"`
 	// Indicates which valid_txs are force-included (true = force-included)
 	// Same length as valid_txs
 	ForceIncludedMask []bool `protobuf:"varint,2,rep,packed,name=force_included_mask,json=forceIncludedMask,proto3" json:"force_included_mask,omitempty"`
-	// Gas for each transaction in valid_txs
-	// For non-gas-based execution layers, this may be empty or all zeros
-	GasPerTx      []uint64 `protobuf:"varint,3,rep,packed,name=gas_per_tx,json=gasPerTx,proto3" json:"gas_per_tx,omitempty"`
+	// Valid force-included transactions that didn't fit due to gas limit
+	// These should be re-queued for the next block
+	RemainingTxs  [][]byte `protobuf:"bytes,3,rep,name=remaining_txs,json=remainingTxs,proto3" json:"remaining_txs,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -645,9 +654,9 @@ func (x *FilterTxsResponse) GetForceIncludedMask() []bool {
 	return nil
 }
 
-func (x *FilterTxsResponse) GetGasPerTx() []uint64 {
+func (x *FilterTxsResponse) GetRemainingTxs() [][]byte {
 	if x != nil {
-		return x.GasPerTx
+		return x.RemainingTxs
 	}
 	return nil
 }
@@ -682,15 +691,15 @@ const file_evnode_v1_execution_proto_rawDesc = "" +
 	"\x17GetExecutionInfoRequest\x12\x16\n" +
 	"\x06height\x18\x01 \x01(\x04R\x06height\"3\n" +
 	"\x18GetExecutionInfoResponse\x12\x17\n" +
-	"\amax_gas\x18\x01 \x01(\x04R\x06maxGas\"T\n" +
+	"\amax_gas\x18\x01 \x01(\x04R\x06maxGas\"m\n" +
 	"\x10FilterTxsRequest\x12\x10\n" +
 	"\x03txs\x18\x01 \x03(\fR\x03txs\x12.\n" +
-	"\x13force_included_mask\x18\x02 \x03(\bR\x11forceIncludedMask\"~\n" +
+	"\x13force_included_mask\x18\x02 \x03(\bR\x11forceIncludedMask\x12\x17\n" +
+	"\amax_gas\x18\x03 \x01(\x04R\x06maxGas\"\x85\x01\n" +
 	"\x11FilterTxsResponse\x12\x1b\n" +
 	"\tvalid_txs\x18\x01 \x03(\fR\bvalidTxs\x12.\n" +
-	"\x13force_included_mask\x18\x02 \x03(\bR\x11forceIncludedMask\x12\x1c\n" +
-	"\n" +
-	"gas_per_tx\x18\x03 \x03(\x04R\bgasPerTx2\xd9\x03\n" +
+	"\x13force_included_mask\x18\x02 \x03(\bR\x11forceIncludedMask\x12#\n" +
+	"\rremaining_txs\x18\x03 \x03(\fR\fremainingTxs2\xd9\x03\n" +
 	"\x0fExecutorService\x12H\n" +
 	"\tInitChain\x12\x1b.evnode.v1.InitChainRequest\x1a\x1c.evnode.v1.InitChainResponse\"\x00\x12?\n" +
 	"\x06GetTxs\x12\x18.evnode.v1.GetTxsRequest\x1a\x19.evnode.v1.GetTxsResponse\"\x00\x12K\n" +

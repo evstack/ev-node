@@ -156,44 +156,25 @@ func (s *BasedSequencer) GetNextBatch(ctx context.Context, req coresequencer.Get
 		maxGas = info.MaxGas
 	}
 
-	// Filter transactions - validates force-included txs and returns gas per tx
-	filterResult, err := s.executor.FilterTxs(ctx, batchTxs, forceIncludedMask)
+	// Filter transactions - validates force-included txs and applies gas filtering
+	filterResult, err := s.executor.FilterTxs(ctx, batchTxs, forceIncludedMask, maxGas)
 	if err != nil {
 		s.logger.Warn().Err(err).Msg("failed to filter transactions, proceeding with unfiltered")
 		filterResult = &execution.FilterTxsResult{
 			ValidTxs:          batchTxs,
 			ForceIncludedMask: forceIncludedMask,
-			GasPerTx:          nil,
+			RemainingTxs:      nil,
 		}
 	}
 
-	// Apply gas limits using the returned GasPerTx
-	var filteredTxs [][]byte
-	var remainingGasFilteredTxs [][]byte
-	var cumulativeGas uint64
-
-	for i, tx := range filterResult.ValidTxs {
-		txGas := uint64(0)
-		if filterResult.GasPerTx != nil && i < len(filterResult.GasPerTx) {
-			txGas = filterResult.GasPerTx[i]
-		}
-
-		// Check if this tx fits within gas limit
-		if maxGas > 0 && cumulativeGas+txGas > maxGas {
-			// This tx and remaining txs don't fit - save for next block
-			remainingGasFilteredTxs = append(remainingGasFilteredTxs, filterResult.ValidTxs[i:]...)
-			break
-		}
-
-		cumulativeGas += txGas
-		filteredTxs = append(filteredTxs, tx)
-	}
+	// FilterTxs returns valid txs that fit within gas, and remaining txs that didn't fit
+	filteredTxs := filterResult.ValidTxs
+	remainingGasFilteredTxs := filterResult.RemainingTxs
 
 	s.logger.Debug().
 		Int("input_txs", len(batchTxs)).
 		Int("filtered_txs", len(filteredTxs)).
 		Int("remaining_for_next_block", len(remainingGasFilteredTxs)).
-		Uint64("gas_used", cumulativeGas).
 		Uint64("max_gas", maxGas).
 		Msg("filtered DA transactions")
 

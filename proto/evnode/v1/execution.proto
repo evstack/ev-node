@@ -114,20 +114,23 @@ message FilterTxsRequest {
   // True for each tx that is force-included (needs validation)
   // Same length as txs
   repeated bool force_included_mask = 2;
+
+  // Maximum cumulative gas allowed (0 means no gas limit)
+  uint64 max_gas = 3;
 }
 
 // FilterTxsResponse contains the filtered transactions
 message FilterTxsResponse {
-  // Transactions that passed validation
+  // Transactions that passed validation and fit within gas limit
   // Force-included txs that are invalid are removed
-  // Mempool txs are passed through unchanged
+  // Mempool txs are passed through unchanged (but may be trimmed for gas)
   repeated bytes valid_txs = 1;
 
   // Indicates which valid_txs are force-included (true = force-included)
   // Same length as valid_txs
   repeated bool force_included_mask = 2;
 
-  // Gas for each transaction in valid_txs
-  // For non-gas-based execution layers, this may be empty or all zeros
-  repeated uint64 gas_per_tx = 3;
+  // Valid force-included transactions that didn't fit due to gas limit
+  // These should be re-queued for the next block
+  repeated bytes remaining_txs = 3;
 }

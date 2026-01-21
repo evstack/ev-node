@@ -26,7 +26,7 @@ import (
 type mockExecutor struct {
 	maxGas     uint64
 	getInfoErr error
-	filterFunc func(ctx context.Context, txs [][]byte, forceIncludedMask []bool) (*execution.FilterTxsResult, error)
+	filterFunc func(ctx context.Context, txs [][]byte, forceIncludedMask []bool, maxGas uint64) (*execution.FilterTxsResult, error)
 }
 
 func (m *mockExecutor) InitChain(ctx context.Context, genesisTime time.Time, initialHeight uint64, chainID string) ([]byte, error) {
@@ -49,15 +49,15 @@ func (m *mockExecutor) GetExecutionInfo(ctx context.Context, height uint64) (exe
 	return execution.ExecutionInfo{MaxGas: m.maxGas}, m.getInfoErr
 }
 
-func (m *mockExecutor) FilterTxs(ctx context.Context, txs [][]byte, forceIncludedMask []bool) (*execution.FilterTxsResult, error) {
+func (m *mockExecutor) FilterTxs(ctx context.Context, txs [][]byte, forceIncludedMask []bool, maxGas uint64) (*execution.FilterTxsResult, error) {
 	if m.filterFunc != nil {
-		return m.filterFunc(ctx, txs, forceIncludedMask)
+		return m.filterFunc(ctx, txs, forceIncludedMask, maxGas)
 	}
-	// Default: return all txs as valid, no gas info
+	// Default: return all txs as valid, no remaining
 	return &execution.FilterTxsResult{
 		ValidTxs:          txs,
 		ForceIncludedMask: forceIncludedMask,
-		GasPerTx:          nil,
+		RemainingTxs:      nil,
 	}, nil
 }
 

@@ -430,11 +430,11 @@ func (k *KVExecutor) GetExecutionInfo(ctx context.Context, height uint64) (execu
 	return execution.ExecutionInfo{MaxGas: 0}, nil
 }
 
-// FilterTxs validates force-included transactions and calculates gas for all transactions.
+// FilterTxs validates force-included transactions and applies gas filtering.
 // For KVExecutor, only force-included transactions are validated (key=value format).
 // Mempool transactions are passed through unchanged.
-// KVExecutor doesn't track gas, so GasPerTx is nil.
-func (k *KVExecutor) FilterTxs(ctx context.Context, txs [][]byte, forceIncludedMask []bool) (*execution.FilterTxsResult, error) {
+// KVExecutor doesn't track gas, so maxGas is ignored.
+func (k *KVExecutor) FilterTxs(ctx context.Context, txs [][]byte, forceIncludedMask []bool, maxGas uint64) (*execution.FilterTxsResult, error) {
 	validTxs := make([][]byte, 0, len(txs))
 	validMask := make([]bool, 0, len(txs))
 
@@ -460,6 +460,6 @@ func (k *KVExecutor) FilterTxs(ctx context.Context, txs [][]byte, forceIncludedM
 	return &execution.FilterTxsResult{
 		ValidTxs:          validTxs,
 		ForceIncludedMask: validMask,
-		GasPerTx:          nil, // KVExecutor doesn't track gas
+		RemainingTxs:      nil, // KVExecutor doesn't track gas, so no gas-based filtering
 	}, nil
 }

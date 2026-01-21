@@ -124,7 +124,7 @@ func (t *tracedExecutor) GetExecutionInfo(ctx context.Context, height uint64) (e
 }
 
 // FilterTxs forwards to the inner executor with tracing.
-func (t *tracedExecutor) FilterTxs(ctx context.Context, txs [][]byte, forceIncludedMask []bool) (*execution.FilterTxsResult, error) {
+func (t *tracedExecutor) FilterTxs(ctx context.Context, txs [][]byte, forceIncludedMask []bool, maxGas uint64) (*execution.FilterTxsResult, error) {
 	forceIncludedCount := 0
 	for _, m := range forceIncludedMask {
 		if m {
@@ -136,18 +136,19 @@ func (t *tracedExecutor) FilterTxs(ctx context.Context, txs [][]byte, forceInclu
 		trace.WithAttributes(
 			attribute.Int("input_tx_count", len(txs)),
 			attribute.Int("force_included_count", forceIncludedCount),
+			attribute.Int64("max_gas", int64(maxGas)),
 		),
 	)
 	defer span.End()
 
-	result, err := t.inner.FilterTxs(ctx, txs, forceIncludedMask)
+	result, err := t.inner.FilterTxs(ctx, txs, forceIncludedMask, maxGas)
 	if err != nil {
 		span.RecordError(err)
 		span.SetStatus(codes.Error, err.Error())
 	} else if result != nil {
 		span.SetAttributes(
 			attribute.Int("valid_tx_count", len(result.ValidTxs)),
-			attribute.Int("gas_per_tx_count", len(result.GasPerTx)),
+			attribute.Int("remaining_tx_count", len(result.RemainingTxs)),
 		)
 	}
 	return result, err

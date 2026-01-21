@@ -132,14 +132,16 @@ func (c *Client) GetExecutionInfo(ctx context.Context, height uint64) (execution
 	}, nil
 }
 
-// FilterTxs validates force-included transactions and calculates gas for all transactions.
+// FilterTxs validates force-included transactions and applies gas filtering.
 //
 // This method sends transactions to the remote execution service for validation.
 // Only force-included transactions are validated; mempool transactions pass through unchanged.
-func (c *Client) FilterTxs(ctx context.Context, txs [][]byte, forceIncludedMask []bool) (*execution.FilterTxsResult, error) {
+// Gas limiting is applied to force-included transactions.
+func (c *Client) FilterTxs(ctx context.Context, txs [][]byte, forceIncludedMask []bool, maxGas uint64) (*execution.FilterTxsResult, error) {
 	req := connect.NewRequest(&pb.FilterTxsRequest{
 		Txs:               txs,
 		ForceIncludedMask: forceIncludedMask,
+		MaxGas:            maxGas,
 	})
 
 	resp, err := c.client.FilterTxs(ctx, req)
@@ -150,6 +152,6 @@ func (c *Client) FilterTxs(ctx context.Context, txs [][]byte, forceIncludedMask 
 	return &execution.FilterTxsResult{
 		ValidTxs:          resp.Msg.ValidTxs,
 		ForceIncludedMask: resp.Msg.ForceIncludedMask,
-		GasPerTx:          resp.Msg.GasPerTx,
+		RemainingTxs:      resp.Msg.RemainingTxs,
 	}, nil
 }

@@ -788,14 +788,15 @@ func (c *EngineClient) GetExecutionInfo(ctx context.Context, height uint64) (exe
 	return execution.ExecutionInfo{MaxGas: gasLimit}, nil
 }
 
-// FilterTxs validates force-included transactions and calculates gas for all transactions.
+// FilterTxs validates force-included transactions and applies gas filtering.
 // Only transactions with forceIncludedMask[i]=true are validated for correctness.
 // Mempool transactions (forceIncludedMask[i]=false) are passed through unchanged.
-// Gas limiting is NOT performed by this function - the caller handles that using GasPerTx.
-func (c *EngineClient) FilterTxs(ctx context.Context, txs [][]byte, forceIncludedMask []bool) (*execution.FilterTxsResult, error) {
+// Gas limiting is applied to force-included transactions; remaining valid ones are returned in RemainingTxs.
+func (c *EngineClient) FilterTxs(ctx context.Context, txs [][]byte, forceIncludedMask []bool, maxGas uint64) (*execution.FilterTxsResult, error) {
 	validTxs := make([][]byte, 0, len(txs))
 	validMask := make([]bool, 0, len(txs))
-	gasPerTx := make([]uint64, 0, len(txs))
+	var remainingTxs [][]byte
+	var cumulativeGas uint64
 
 	for i, tx := range txs {
 		isForceIncluded := i < len(forceIncludedMask) && forceIncludedMask[i]
@@ -817,32 +818,62 @@ func (c *EngineClient) FilterTxs(ctx context.Context, txs [][]byte, forceInclude
 				continue
 			}
 
-			validTxs = append(validTxs, tx)
-			validMask = append(validMask, true)
-			gasPerTx = append(gasPerTx, ethTx.Gas())
-		} else {
-			// Mempool transactions pass through unchanged
-			// Still calculate gas for them
-			var txGas uint64
-			if len(tx) > 0 {
-				var ethTx types.Transaction
-				if err := ethTx.UnmarshalBinary(tx); err == nil {
-					txGas = ethTx.Gas()
+			txGas := ethTx.Gas()
+
+			// Check gas limit for force-included transactions
+			if maxGas > 0 && cumulativeGas+txGas > maxGas {
+				// This tx and remaining force-included txs don't fit - add to remaining
+				remainingTxs = append(remainingTxs, tx)
+				// Continue to collect remaining valid force-included txs
+				for j := i + 1; j < len(txs); j++ {
+					if j < len(forceIncludedMask) && forceIncludedMask[j] {
+						if len(txs[j]) == 0 {
+							continue
+						}
+						var remainingEthTx types.Transaction
+						if err := remainingEthTx.UnmarshalBinary(txs[j]); err != nil {
+							c.logger.Debug().
+								Int("tx_index", j).
+								Err(err).
+								Msg("filtering out invalid force-included transaction in remaining (gibberish)")
+							continue
+						}
+						remainingTxs = append(remainingTxs, txs[j])
+					} else {
+						// Add remaining mempool txs to validTxs
+						validTxs = append(validTxs, txs[j])
+						validMask = append(validMask, false)
+					}
 				}
-				// If parsing fails for mempool tx, we still include it with gas=0
-				// The execution layer will handle it during actual execution
+
+				c.logger.Debug().
+					Int("valid_txs", len(validTxs)).
+					Int("remaining_txs", len(remainingTxs)).
+					Uint64("cumulative_gas", cumulativeGas).
+					Uint64("max_gas", maxGas).
+					Msg("force-included transactions exceeded gas limit, splitting batch")
+
+				return &execution.FilterTxsResult{
+					ValidTxs:          validTxs,
+					ForceIncludedMask: validMask,
+					RemainingTxs:      remainingTxs,
+				}, nil
 			}
 
+			cumulativeGas += txGas
+			validTxs = append(validTxs, tx)
+			validMask = append(validMask, true)
+		} else {
+			// Mempool transactions pass through unchanged
 			validTxs = append(validTxs, tx)
 			validMask = append(validMask, false)
-			gasPerTx = append(gasPerTx, txGas)
 		}
 	}
 
 	return &execution.FilterTxsResult{
 		ValidTxs:          validTxs,
 		ForceIncludedMask: validMask,
-		GasPerTx:          gasPerTx,
+		RemainingTxs:      nil,
 	}, nil
 }
 
