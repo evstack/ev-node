@@ -9,6 +9,7 @@ on:
     branches: [main]
     paths:
       - "docs/**"
+  pull_request:
 
   # Allows you to run this workflow manually from the Actions tab
   workflow_dispatch:
@@ -46,6 +47,6 @@ jobs:
       - name: Deploy to GitHub Pages
         uses: peaceiris/actions-gh-pages@v4
         with:
-          github_token: ${{ secrets.DOCS_DEPLOY_TOKEN }}
+          github_token: ${{ secrets.PAT_DOCS }}
           publish_dir: ./docs/.vitepress/dist
           cname: ev.xyz
