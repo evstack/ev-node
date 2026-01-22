@@ -7,159 +7,207 @@ on:
 permissions: {}
 
 jobs:
-  generate-changelog:
-    name: Generate Changelog and Create Release Branch
+  create-release-branch:
+    name: Create Release Branch
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      pull-requests: write
     outputs:
-      changelog: ${{ steps.cliff.outputs.content }}
       release-branch: ${{ steps.create-branch.outputs.branch-name }}
+      app-path: ${{ steps.parse-tag.outputs.app-path }}
+      prev-tag: ${{ steps.get-prev-tag.outputs.prev-tag }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v6
         with:
           fetch-depth: 0 # Full history needed for changelog generation
 
+      - name: Parse tag
+        id: parse-tag
+        run: |
+          TAG="${{ github.ref_name }}"
+          # Extract app path from tag (e.g., test-evm from test-evm/v0.2.0)
+          APP_PATH="${TAG%/v*}"
+          echo "app-path=$APP_PATH" >> $GITHUB_OUTPUT
+          echo "::notice::Application: $APP_PATH"
+
       - name: Get previous tag
         id: get-prev-tag
         run: |
-          # Get the previous tag
+          # Get the previous tag from the same application
           CURRENT_TAG="${{ github.ref_name }}"
           if [[ ! "$CURRENT_TAG" =~ ^[a-zA-Z0-9/_.-]+$ ]]; then
             echo "::error::Invalid tag format: $CURRENT_TAG"
             exit 1
           fi
-          PREV_TAG=$(git tag --sort=-version:refname | grep -A1 "^${CURRENT_TAG}$" | tail -1)
+
+          # Extract application prefix (everything before the version)
+          # e.g., test-evm/v0.2.0 -> test-evm
+          APP_PREFIX="${CURRENT_TAG%/v*}"
+          echo "::notice::Application prefix: $APP_PREFIX"
+
+          # Filter by app prefix and sort by version
+          MATCHING_TAGS=$(git tag --sort=-version:refname | grep "^${APP_PREFIX}/v")
+
+          echo "::notice::Found tags for $APP_PREFIX:"
+          echo "$MATCHING_TAGS" | head -4
+
+          # Get the previous tag (the one right after the current tag in the sorted list)
+          PREV_TAG=$(echo "$MATCHING_TAGS" | grep -A1 "^${CURRENT_TAG}$" | tail -1)
 
           if [ -z "$PREV_TAG" ] || [ "$PREV_TAG" = "$CURRENT_TAG" ]; then
-            echo "No previous tag found, using initial commit"
+            echo "::notice::No previous tag found for $APP_PREFIX, using initial commit"
             PREV_TAG=$(git rev-list --max-parents=0 HEAD)
           fi
 
           echo "prev-tag=$PREV_TAG" >> $GITHUB_OUTPUT
           echo "::notice::Comparing $PREV_TAG to $CURRENT_TAG"
 
-      - name: Generate git diff
-        id: git-diff
-        run: |
-          PREV_TAG="${{ steps.get-prev-tag.outputs.prev-tag }}"
-          CURRENT_TAG="${{ github.ref_name }}"
-
-          # Generate detailed diff with file statistics
-          git diff --stat "$PREV_TAG"..HEAD > git-diff-stats.txt
-          git log --oneline "$PREV_TAG"..HEAD > git-commits.txt
-          git diff "$PREV_TAG"..HEAD > git-full-diff.txt
-
-          echo "Generated git diff from $PREV_TAG to HEAD"
-          echo "Commit summary:"
-          cat git-commits.txt
-
-          # Capture outputs for next step (truncate diff to fit GitHub limits)
-          {
-            echo 'commits<<EOF_COMMITS'
-            cat git-commits.txt
-            echo EOF_COMMITS
-          } >> $GITHUB_OUTPUT
-
-          {
-            echo 'stats<<EOF_STATS'
-            cat git-diff-stats.txt
-            echo EOF_STATS
-          } >> $GITHUB_OUTPUT
-
-          {
-            echo 'diff<<EOF_DIFF'
-            head -c 50000 git-full-diff.txt
-            echo EOF_DIFF
-          } >> $GITHUB_OUTPUT
-
-      - name: Generate changelog with Claude
-        id: claude
-        uses: anthropics/claude-code-action@v1
-        with:
-          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-          prompt: |
-            You are a technical writer creating release notes for a blockchain node software project called ev-node.
-            Analyze the provided git changes and generate a clear, comprehensive changelog in markdown format.
-
-            Follow these guidelines:
-            - Start with a brief summary of the release
-            - Group changes by category: Features, Bug Fixes, Performance, Documentation, etc.
-            - Use clear, concise bullet points
-            - Highlight breaking changes prominently if any
-            - Include technical details that would help developers understand the changes
-            - Format as clean markdown suitable for a GitHub release
-
-
-            Generate a changelog for this release based on the following git changes:
-
-            ## Commits:
-            ```
-            ${{ steps.git-diff.outputs.commits }}
-            ```
-
-            ## File Statistics:
-            ```
-            ${{ steps.git-diff.outputs.stats }}
-            ```
-
-            ## Full Diff (first 50000 chars):
-            ```diff
-            ${{ steps.git-diff.outputs.diff }}
-            ```
-
-            Please generate a well-formatted changelog in markdown that summarizes these changes for users and developers.
-
-      - name: Save changelog output
-        id: changelog-output
-        run: |
-          # Save Claude's response to file
-          echo "${{ steps.claude.outputs.content }}" > RELEASE_CHANGELOG.md
-          echo "Generated changelog with Claude AI:"
-          cat RELEASE_CHANGELOG.md
-
-          # Export for GitHub Release (escape for multiline output)
-          {
-            echo 'content<<EOF'
-            cat RELEASE_CHANGELOG.md
-            echo EOF
-          } >> $GITHUB_OUTPUT
-
       - name: Create release branch
         id: create-branch
         run: |
           TAG="${{ github.ref_name }}"
           BRANCH_NAME="release/$TAG"
+          APP_PATH="${{ steps.parse-tag.outputs.app-path }}"
+          PREV_TAG="${{ steps.get-prev-tag.outputs.prev-tag }}"
 
           echo "Creating release branch: $BRANCH_NAME"
+
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
           git checkout -b "$BRANCH_NAME"
 
-          # Update CHANGELOG.md with the generated content
-          if [ -f "CHANGELOG.md" ]; then
-            # Add generated changelog to CHANGELOG.md
-            cat RELEASE_CHANGELOG.md >> CHANGELOG_RELEASE_NOTES.md
-            echo "Changelog prepared for release: $TAG" >> CHANGELOG_RELEASE_NOTES.md
+          # Generate a structured changelog
+          APP_DIR="apps/$APP_PATH"
+          CHANGELOG_FILE="$APP_DIR/CHANGELOG.md"
+
+          mkdir -p "$APP_DIR"
+
+          # Start the changelog
+          echo "# Release $TAG" > "$CHANGELOG_FILE"
+          echo "" >> "$CHANGELOG_FILE"
+          echo "Released on $(date +%Y-%m-%d)" >> "$CHANGELOG_FILE"
+          echo "" >> "$CHANGELOG_FILE"
+
+          # Get commit statistics
+          COMMIT_COUNT=$(git rev-list --count "$PREV_TAG"..HEAD)
+          FILES_CHANGED=$(git diff --shortstat "$PREV_TAG"..HEAD | sed 's/^[[:space:]]*//')
+
+          echo "## Summary" >> "$CHANGELOG_FILE"
+          echo "" >> "$CHANGELOG_FILE"
+          echo "- **$COMMIT_COUNT commits** since $PREV_TAG" >> "$CHANGELOG_FILE"
+          if [ -n "$FILES_CHANGED" ]; then
+            echo "- $FILES_CHANGED" >> "$CHANGELOG_FILE"
+          fi
+          echo "" >> "$CHANGELOG_FILE"
+
+          # Group commits by conventional commit type
+          echo "## Changes" >> "$CHANGELOG_FILE"
+          echo "" >> "$CHANGELOG_FILE"
+
+          # Features
+          FEATURES=$(git log --oneline "$PREV_TAG"..HEAD | grep -i "^[a-f0-9]* feat" || true)
+          if [ -n "$FEATURES" ]; then
+            echo "### ✨ Features" >> "$CHANGELOG_FILE"
+            echo "" >> "$CHANGELOG_FILE"
+            echo "$FEATURES" | sed 's/^[a-f0-9]* feat[:(]*[^)]*[)]* /- /' >> "$CHANGELOG_FILE"
+            echo "" >> "$CHANGELOG_FILE"
           fi
 
-          # Commit the changelog
-          git add -A
-          if git diff --staged --quiet; then
-            echo "No changes to commit"
-          else
-            git commit -m "chore: prepare release $TAG" \
-              -m "Generated changelog for $TAG release." \
-              -m "This is an automated commit created by the release workflow."
+          # Fixes
+          FIXES=$(git log --oneline "$PREV_TAG"..HEAD | grep -i "^[a-f0-9]* fix" || true)
+          if [ -n "$FIXES" ]; then
+            echo "### 🐛 Bug Fixes" >> "$CHANGELOG_FILE"
+            echo "" >> "$CHANGELOG_FILE"
+            echo "$FIXES" | sed 's/^[a-f0-9]* fix[:(]*[^)]*[)]* /- /' >> "$CHANGELOG_FILE"
+            echo "" >> "$CHANGELOG_FILE"
           fi
+
+          # Chores
+          CHORES=$(git log --oneline "$PREV_TAG"..HEAD | grep -i "^[a-f0-9]* chore" || true)
+          if [ -n "$CHORES" ]; then
+            echo "### 🔧 Chores" >> "$CHANGELOG_FILE"
+            echo "" >> "$CHANGELOG_FILE"
+            echo "$CHORES" | sed 's/^[a-f0-9]* chore[:(]*[^)]*[)]* /- /' >> "$CHANGELOG_FILE"
+            echo "" >> "$CHANGELOG_FILE"
+          fi
+
+          # Other commits
+          OTHER=$(git log --oneline "$PREV_TAG"..HEAD | grep -iv "^[a-f0-9]* \(feat\|fix\|chore\)" || true)
+          if [ -n "$OTHER" ]; then
+            echo "### 📝 Other Changes" >> "$CHANGELOG_FILE"
+            echo "" >> "$CHANGELOG_FILE"
+            echo "$OTHER" | sed 's/^[a-f0-9]* /- /' >> "$CHANGELOG_FILE"
+            echo "" >> "$CHANGELOG_FILE"
+          fi
+
+          # Full commit list
+          echo "---" >> "$CHANGELOG_FILE"
+          echo "" >> "$CHANGELOG_FILE"
+          echo "### All Commits" >> "$CHANGELOG_FILE"
+          echo "" >> "$CHANGELOG_FILE"
+          git log --oneline "$PREV_TAG"..HEAD | sed 's/^/- /' >> "$CHANGELOG_FILE"
+          echo "" >> "$CHANGELOG_FILE"
+
+          # Prepend to existing changelog if it exists
+          if [ -f "$CHANGELOG_FILE.old" ]; then
+            cat "$CHANGELOG_FILE.old" >> "$CHANGELOG_FILE"
+            rm "$CHANGELOG_FILE.old"
+          fi
+
+          echo "Generated changelog:"
+          cat "$CHANGELOG_FILE"
+
+          # Commit the changelog
+          git add "$CHANGELOG_FILE"
+          git commit -m "chore: add changelog for $TAG" \
+            -m "Generated structured changelog for $TAG release."
 
           # Push the branch
           git push origin "$BRANCH_NAME"
 
           echo "branch-name=$BRANCH_NAME" >> $GITHUB_OUTPUT
-          echo "::notice::Created release branch: $BRANCH_NAME"
+          echo "::notice::Created release branch: $BRANCH_NAME with changelog"
+
+      - name: Create Pull Request
+        id: create-pr
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${{ github.ref_name }}"
+          BRANCH_NAME="${{ steps.create-branch.outputs.branch-name }}"
+          PREV_TAG="${{ steps.get-prev-tag.outputs.prev-tag }}"
+          APP_PATH="${{ steps.parse-tag.outputs.app-path }}"
+
+          # Create the PR using GitHub CLI
+          PR_URL=$(gh pr create \
+            --base main \
+            --head "$BRANCH_NAME" \
+            --title "Release: $TAG" \
+            --body "## Release $TAG
+
+          This PR was automatically created for the release of \`$TAG\`.
+
+          **Previous tag:** \`$PREV_TAG\`
+
+          ### Changelog
+
+          A structured changelog has been automatically generated and committed to \`apps/$APP_PATH/CHANGELOG.md\`.
+
+          The changelog includes:
+          - Summary of commits and file changes
+          - Changes grouped by type (Features, Bug Fixes, Chores, etc.)
+          - Full commit list
+
+          **To enhance the changelog with Claude AI:**
+          Check the draft release for a ready-to-use Claude prompt that you can copy and use in your IDE.
+
+          Please review the changes and changelog before merging.")
+
+          echo "pr-url=$PR_URL" >> $GITHUB_OUTPUT
+          echo "::notice::Created pull request: $PR_URL"
 
   parse-tag:
     name: Parse Release Tag
@@ -243,11 +291,66 @@ jobs:
 
   create-github-release:
     name: Create GitHub Release
-    needs: [generate-changelog, parse-tag, build-and-push]
+    needs: [create-release-branch, parse-tag, build-and-push]
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.create-release-branch.outputs.release-branch }}
+          fetch-depth: 0
+
+      - name: Generate changelog prompt
+        id: changelog-prompt
+        run: |
+          PREV_TAG="${{ needs.create-release-branch.outputs.prev-tag }}"
+          TAG="${{ github.ref_name }}"
+
+          # Generate git diff data
+          git diff --stat "$PREV_TAG"..HEAD > git-diff-stats.txt
+          git log --oneline "$PREV_TAG"..HEAD > git-commits.txt
+
+          # Create prompt file (plain text, no markdown code blocks)
+          cat > claude-prompt.txt << 'EOF_PROMPT'
+          You are a technical writer creating release notes for a blockchain node software project called ev-node.
+          Analyze the provided git changes and generate a clear, comprehensive changelog in markdown format.
+
+          Follow these guidelines:
+          - Start with a brief summary of the release
+          - Group changes by category: Features, Bug Fixes, Performance, Documentation, etc.
+          - Use clear, concise bullet points
+          - Highlight breaking changes prominently if any
+          - Include technical details that would help developers understand the changes
+          - Format as clean markdown suitable for a GitHub release
+
+          Generate a changelog for this release based on the following git changes:
+
+          Commits:
+          EOF_PROMPT
+
+          cat git-commits.txt >> claude-prompt.txt
+
+          cat >> claude-prompt.txt << 'EOF_PROMPT'
+
+          File Statistics:
+          EOF_PROMPT
+
+          cat git-diff-stats.txt >> claude-prompt.txt
+
+          cat >> claude-prompt.txt << 'EOF_PROMPT'
+
+          Please generate a well-formatted changelog in markdown that summarizes these changes for users and developers.
+          EOF_PROMPT
+
+          # Encode for GitHub (escape special characters)
+          {
+            echo 'prompt<<EOF_CLAUDE_PROMPT'
+            cat claude-prompt.txt
+            echo EOF_CLAUDE_PROMPT
+          } >> $GITHUB_OUTPUT
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
@@ -261,7 +364,7 @@ jobs:
 
             - [ ] Add **Upgrade Priority** (Critical/High/Medium/Low)
             - [ ] Add **General Description** of the release
-            - [ ] Review and refine the **Changelog** below
+            - [ ] Enhance the **Changelog** using Claude (see prompt below)
             - [ ] Document **Tested Upgrade Paths** (which versions were tested in E2E)
             - [ ] Verify Docker images are available
             - [ ] Publish announcements in Slack and Telegram after publishing
@@ -270,7 +373,22 @@ jobs:
 
             ### Changelog
 
-            ${{ needs.generate-changelog.outputs.changelog }}
+            A basic changelog is available in: `apps/${{ needs.create-release-branch.outputs.app-path }}/CHANGELOG.md`
+
+            **To enhance the changelog with Claude AI:**
+            1. Open your IDE with Claude integration
+            2. Copy the prompt below and send it to Claude
+            3. Replace the changelog in `apps/${{ needs.create-release-branch.outputs.app-path }}/CHANGELOG.md` with Claude's output
+            4. Commit and push the changes to the release branch: `${{ needs.create-release-branch.outputs.release-branch }}`
+
+            <details>
+            <summary><b>📋 Click to expand Claude Prompt</b></summary>
+
+            ```
+            ${{ steps.changelog-prompt.outputs.prompt }}
+            ```
+
+            </details>
 
             ---
 
@@ -283,8 +401,8 @@ jobs:
 
             ### Release Branch
 
-            A release branch has been created for your review: `${{ needs.generate-changelog.outputs.release-branch }}`
+            A release branch has been created for your review: `${{ needs.create-release-branch.outputs.release-branch }}`
 
-            You can checkout this branch to make edits to the changelog before merging.
+            You can checkout this branch to review and enhance the changelog before merging.
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
