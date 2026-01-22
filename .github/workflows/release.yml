@@ -2,7 +2,7 @@ name: Release
 on:
   push:
     tags:
-      - '**/v*.*.*'  # Matches tags like evm/single/v0.2.0, testapp/v0.4.0, etc.
+      - "**/v*.*.*" # Matches tags like evm/single/v0.2.0, testapp/v0.4.0, etc.
 
 permissions: {}
 
@@ -19,7 +19,7 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v6
         with:
-          fetch-depth: 0  # Full history needed for changelog generation
+          fetch-depth: 0 # Full history needed for changelog generation
 
       - name: Get previous tag
         id: get-prev-tag
