@@ -46,16 +46,19 @@ After the automated workflow completes:
 1. 📝 Review the Pull Request for `release/<tag-name>`
 2. 📝 (Optional) Enhance the changelog using Claude AI:
    - Copy the Claude prompt from the draft GitHub Release
-   - Use it in your IDE with Claude integration
-   - Update the changelog file with the enhanced output
+   - Use one of these methods:
+     - **IDE:** Claude extension in VSCode, or Cursor/Zed with built-in support
+     - **CLI:** Use `claude-code` command (requires installation)
+     - **Web:** Paste prompt at [claude.ai](https://claude.ai)
+   - Update the changelog file with Claude's enhanced output
    - Commit and push changes to the release branch
 3. 📝 Edit and refine the generated changelog as needed
 4. 📝 Add **recommended upgrade priority** (Critical/High/Medium/Low) to the GitHub Release
 5. 📝 Add **general description** of the release to the GitHub Release
 6. 📝 Ensure **tested upgrade paths** are documented (1-2 lines in changelog)
-7. ✅ Merge the Pull Request to bring changelog into `main`
-8. ✅ Update the draft GitHub Release with your refined changelog (if enhanced)
-9. ✅ Publish the GitHub Release (change from draft to published)
+7. ✅ Update the draft GitHub Release with your refined changelog (if enhanced)
+8. ✅ Publish the GitHub Release (change from draft to published)
+9. ✅ Merge the Pull Request to bring changelog into `main` (before or after publishing - see below)
 10. 📢 Publish announcement message in **public Slack channel**
 11. 📢 Publish announcement message in **public Telegram channel**
 
@@ -69,21 +72,33 @@ The `release/<tag-name>` branch is automatically created and should follow this 
 - Make any necessary edits to improve clarity
 - Add upgrade priority, general description, and tested upgrade paths
 
-**2. Update GitHub Release**
+**2. Update and Publish GitHub Release**
 
 - Copy the refined changelog to the draft GitHub Release
+- Add upgrade priority, general description, and tested upgrade paths
 - Verify all information is accurate
+- Publish the GitHub Release (change from draft to published)
 
-**3. Publish Release**
+**3. Choose When to Merge**
 
-- Publish the GitHub Release (change from draft)
+- Decide whether to merge the PR before or after publishing (see option 4 below)
+- Most teams prefer merging **after** publishing to ensure release notes are finalized
 
 **4. Merge Pull Request to Main**
 
-- **Always merge the Pull Request to bring the changelog into `main`**
-- This keeps the repository's changelog files in sync
-- Ensures the release notes are preserved in the repository
-- The workflow creates a PR automatically for easy review and merge
+⏰ **Timing:** You can merge the PR either before or after publishing the GitHub Release:
+
+- **Option A (Recommended):** Merge **after** publishing the release
+  - Ensures the release notes are finalized before committing to main
+  - Release branch serves as a staging area for refinement
+  - Prevents premature changelog in repository
+
+- **Option B:** Merge **before** publishing the release
+  - Changelog is immediately available in main
+  - Useful if you want the changelog visible before the release is public
+  - Allows for faster iteration
+
+The key is to **always merge eventually** to keep changelogs in sync with repository history.
 
 ```bash
 # Option 1: Merge via GitHub UI (recommended)
@@ -145,11 +160,22 @@ The release workflow automatically generates a basic structured changelog:
 
 **You can then:**
 
-- (Optional) Copy the Claude prompt and use it in your IDE to generate an enhanced changelog
+- (Optional) Enhance the changelog using Claude AI using one of these methods:
+  - **Option 1:** Use Claude in your IDE (VSCode with Claude extension, Cursor, Zed, or compatible IDE)
+  - **Option 2:** Use Claude Code CLI (`claude-code` command - requires installation)
+  - **Option 3:** Copy the prompt to [claude.ai](https://claude.ai) and paste results manually
+- Copy the prompt from the collapsible section in the draft release
+- Generate an enhanced changelog with Claude
 - Update the changelog file in the release branch with Claude's output
 - Review and edit the changelog as needed
 - Merge the Pull Request to bring changes into `main`
 - Update the GitHub Release with your final changelog
+
+**Claude AI Setup:**
+- **For IDE integration:** Install Claude extension for VSCode, or use Cursor/Zed which have built-in Claude support
+- **For CLI usage:** Install Claude Code from [Anthropic's CLI tools](https://docs.anthropic.com/claude/docs/cli)
+- **For web usage:** Simply visit [claude.ai](https://claude.ai) (requires Anthropic account)
+- Note: API keys or subscriptions may be required depending on your usage method
 
 ### Maintaining CHANGELOG.md
 
@@ -364,7 +390,8 @@ git push origin evm/v0.2.0
 
 # 6. (Optional) Enhance changelog with Claude AI
 # Copy prompt from draft GitHub Release
-# Use in IDE with Claude, then update changelog file
+# Options: Use Claude in IDE (VSCode/Cursor/Zed), CLI (claude-code), or web (claude.ai)
+# Update changelog file with enhanced output, commit and push
 
 # 7. Merge Pull Request
 # GitHub → Pull Requests → Merge PR (or use git commands)
@@ -552,7 +579,8 @@ git push origin evm/v0.2.0
 
 # Review Pull Request
 # Optionally enhance with Claude AI (prompt in draft release)
-# Merge PR
+# Options: IDE extension, CLI, or claude.ai
+# Merge PR (before or after publishing - see workflow overview)
 # Complete GitHub Release with priority and description
 # Publish and announce in Slack and Telegram
 ```
