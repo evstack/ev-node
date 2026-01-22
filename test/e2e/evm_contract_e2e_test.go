@@ -95,20 +95,12 @@ func TestEvmContractDeploymentAndInteraction(t *testing.T) {
 	globalNonce++
 
 	// Wait for store tx inclusion with debugging
+	var receipt *types.Receipt
 	require.Eventually(t, func() bool {
-		receipt, err := client.TransactionReceipt(ctx, storeTxHash)
-		if err != nil {
-			return false
-		}
-		if receipt != nil {
-			if receipt.Status == 1 {
-				return true
-			}
-			t.Logf("Store tx failed! Status: %d, GasUsed: %d", receipt.Status, receipt.GasUsed)
-			return false
-		}
-		return false
+		receipt, err = client.TransactionReceipt(ctx, storeTxHash)
+		return err == nil && receipt != nil
 	}, 15*time.Second, 500*time.Millisecond, "Store transaction should be included")
+	require.Equal(t, uint64(1), receipt.Status, "Store tx failed! GasUsed: %d", receipt.GasUsed)
 
 	t.Log("✅ Store transaction confirmed")
 
@@ -149,7 +141,6 @@ func TestEvmContractDeploymentAndInteraction(t *testing.T) {
 //	        );
 //	    }
 //	}
-//
 const (
 	EventContractBytecode = "6050600c60003960506000f360206000527fcafe0000000000000000000000000000000000000000000000000000000000006000527fdeadbeef0000000000000000000000000000000000000000000000000000000060206000a100"
 )
@@ -203,13 +194,11 @@ func TestEvmContractEvents(t *testing.T) {
 	// Wait for receipt
 	var triggerReceipt *types.Receipt
 	require.Eventually(t, func() bool {
-		receipt, err := client.TransactionReceipt(ctx, triggerTxHash)
-		if err == nil && receipt != nil && receipt.Status == 1 {
-			triggerReceipt = receipt
-			return true
-		}
-		return false
+		triggerReceipt, err = client.TransactionReceipt(ctx, triggerTxHash)
+		return err == nil && triggerReceipt != nil
 	}, 15*time.Second, 500*time.Millisecond, "Trigger transaction should be included")
+
+	require.Equal(t, uint64(1), triggerReceipt.Status, "Trigger tx failed! GasUsed: %d", triggerReceipt.GasUsed)
 
 	// 3. Verify Log in Receipt
 	t.Logf("Trigger Receipt: Status=%d, GasUsed=%d, Logs=%d", triggerReceipt.Status, triggerReceipt.GasUsed, len(triggerReceipt.Logs))
@@ -290,15 +279,11 @@ func deployContract(t *testing.T, ctx context.Context, client *ethclient.Client,
 	deployTxHash := signedTxDeploy.Hash()
 	t.Logf("Contract deployment tx submitted: %s", deployTxHash.Hex())
 
-	var contractAddress common.Address
+	var receipt *types.Receipt
 	require.Eventually(t, func() bool {
-		receipt, err := client.TransactionReceipt(ctx, deployTxHash)
-		if err == nil && receipt != nil && receipt.Status == 1 {
-			contractAddress = receipt.ContractAddress
-			return true
-		}
-		return false
+		receipt, err = client.TransactionReceipt(ctx, deployTxHash)
+		return err == nil && receipt != nil
 	}, 20*time.Second, 500*time.Millisecond, "Contract deployment should be included")
-
-	return contractAddress, nonce + 1
+	require.Equal(t, uint64(1), receipt.Status, "Contract deployment tx failed! GasUsed: %d", receipt.GasUsed)
+	return receipt.ContractAddress, nonce + 1
 }
