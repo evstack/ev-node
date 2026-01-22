@@ -29,8 +29,10 @@ type MockFullDAClient struct {
 }
 
 func newMockFullDAClient(t *testing.T) *MockFullDAClient {
+	mockClient := mocks.NewMockClient(t)
+	mockClient.On("LocalHead", mock.Anything).Return(^uint64(0), nil).Maybe()
 	return &MockFullDAClient{
-		MockClient:   mocks.NewMockClient(t),
+		MockClient:   mockClient,
 		MockVerifier: mocks.NewMockVerifier(t),
 	}
 }

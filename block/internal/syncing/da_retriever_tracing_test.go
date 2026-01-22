@@ -27,6 +27,10 @@ func (m *mockDARetriever) RetrieveFromDA(ctx context.Context, daHeight uint64) (
 	return nil, nil
 }
 
+func (m *mockDARetriever) ProcessBlobs(_ context.Context, _ [][]byte, _ uint64) []common.DAHeightEvent {
+	return nil
+}
+
 func setupDARetrieverTrace(t *testing.T, inner DARetriever) (DARetriever, *tracetest.SpanRecorder) {
 	t.Helper()
 	sr := tracetest.NewSpanRecorder()

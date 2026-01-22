@@ -15,6 +15,7 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	"github.com/evstack/ev-node/pkg/config"
+	blobrpc "github.com/evstack/ev-node/pkg/da/jsonrpc"
 	datypes "github.com/evstack/ev-node/pkg/da/types"
 	pb "github.com/evstack/ev-node/types/pb/evnode/v1"
 )
@@ -25,6 +26,7 @@ type AsyncBlockRetriever interface {
 	Stop()
 	GetCachedBlock(ctx context.Context, daHeight uint64) (*BlockData, error)
 	UpdateCurrentHeight(height uint64)
+	StartSubscription()
 }
 
 // BlockData contains data retrieved from a single DA height
@@ -35,7 +37,8 @@ type BlockData struct {
 }
 
 // asyncBlockRetriever handles background prefetching of individual DA blocks
-// from a specific namespace.
+// from a specific namespace. It can optionally subscribe to the namespace for
+// real-time updates instead of relying solely on polling.
 type asyncBlockRetriever struct {
 	client        Client
 	logger        zerolog.Logger
@@ -58,6 +61,9 @@ type asyncBlockRetriever struct {
 
 	// Polling interval for checking new DA heights
 	pollInterval time.Duration
+
+	// Subscription support
+	subscriptionStarted atomic.Bool
 }
 
 // NewAsyncBlockRetriever creates a new async block retriever with in-memory cache.
@@ -94,6 +100,7 @@ func NewAsyncBlockRetriever(
 func (f *asyncBlockRetriever) Start() {
 	f.wg.Add(1)
 	go f.backgroundFetchLoop()
+
 	f.logger.Debug().
 		Uint64("da_start_height", f.daStartHeight).
 		Uint64("prefetch_window", f.prefetchWindow).
@@ -123,6 +130,77 @@ func (f *asyncBlockRetriever) UpdateCurrentHeight(height uint64) {
 			return
 		}
 	}
+}
+
+// StartSubscription starts the subscription loop once; it is safe to call repeatedly.
+func (f *asyncBlockRetriever) StartSubscription() {
+	if len(f.namespace) == 0 {
+		return
+	}
+	if !f.subscriptionStarted.CompareAndSwap(false, true) {
+		return
+	}
+	f.wg.Add(1)
+	go f.subscriptionLoop()
+}
+
+// storeBlock caches a block's blobs, favoring existing data to avoid churn.
+// This is used internally by the subscription loop.
+func (f *asyncBlockRetriever) storeBlock(ctx context.Context, height uint64, blobs [][]byte, timestamp time.Time) {
+	if len(f.namespace) == 0 {
+		return
+	}
+	if height < f.daStartHeight {
+		return
+	}
+	if len(blobs) == 0 {
+		return
+	}
+
+	filtered := make([][]byte, 0, len(blobs))
+	for _, blob := range blobs {
+		if len(blob) > 0 {
+			filtered = append(filtered, blob)
+		}
+	}
+	if len(filtered) == 0 {
+		return
+	}
+
+	key := newBlockDataKey(height)
+	if existing, err := f.cache.Get(ctx, key); err == nil {
+		var pbBlock pb.BlockData
+		if err := proto.Unmarshal(existing, &pbBlock); err == nil && len(pbBlock.Blobs) > 0 {
+			return
+		}
+	}
+
+	pbBlock := &pb.BlockData{
+		Height:    height,
+		Timestamp: timestamp.Unix(),
+		Blobs:     filtered,
+	}
+	data, err := proto.Marshal(pbBlock)
+	if err != nil {
+		f.logger.Error().
+			Err(err).
+			Uint64("height", height).
+			Msg("failed to marshal block for caching")
+		return
+	}
+
+	if err := f.cache.Put(ctx, key, data); err != nil {
+		f.logger.Error().
+			Err(err).
+			Uint64("height", height).
+			Msg("failed to cache block")
+		return
+	}
+
+	f.logger.Debug().
+		Uint64("height", height).
+		Int("blob_count", len(filtered)).
+		Msg("cached block from subscription")
 }
 
 func newBlockDataKey(height uint64) ds.Key {
@@ -183,6 +261,82 @@ func (f *asyncBlockRetriever) backgroundFetchLoop() {
 		case <-ticker.C:
 			f.prefetchBlocks()
 		}
+	}
+}
+
+// subscriptionLoop subscribes to the namespace and caches incoming blobs.
+func (f *asyncBlockRetriever) subscriptionLoop() {
+	defer f.wg.Done()
+
+	for {
+		select {
+		case <-f.ctx.Done():
+			return
+		default:
+		}
+
+		if err := f.runSubscription(); err != nil {
+			if errors.Is(err, context.Canceled) {
+				return
+			}
+			f.logger.Warn().Err(err).Msg("subscription error, will retry")
+			// Backoff before retry
+			select {
+			case <-f.ctx.Done():
+				return
+			case <-time.After(f.pollInterval):
+			}
+		}
+	}
+}
+
+// runSubscription runs a single subscription session.
+func (f *asyncBlockRetriever) runSubscription() error {
+	ch, err := f.client.Subscribe(f.ctx, f.namespace)
+	if err != nil {
+		return fmt.Errorf("failed to subscribe: %w", err)
+	}
+
+	f.logger.Debug().Msg("subscribed to namespace for real-time updates")
+
+	for {
+		select {
+		case <-f.ctx.Done():
+			return f.ctx.Err()
+		case resp, ok := <-ch:
+			if !ok {
+				return errors.New("subscription channel closed")
+			}
+			f.handleSubscriptionResponse(resp)
+		}
+	}
+}
+
+// handleSubscriptionResponse processes a subscription response and caches the blobs.
+func (f *asyncBlockRetriever) handleSubscriptionResponse(resp *blobrpc.SubscriptionResponse) {
+	if resp == nil {
+		return
+	}
+
+	f.UpdateCurrentHeight(resp.Height)
+
+	if len(resp.Blobs) == 0 {
+		return
+	}
+
+	// Extract raw blob data
+	blobs := make([][]byte, 0, len(resp.Blobs))
+	for _, b := range resp.Blobs {
+		if b != nil && len(b.Data()) > 0 {
+			blobs = append(blobs, b.Data())
+		}
+	}
+
+	if len(blobs) > 0 {
+		// TODO: Use Celestia subscription timestamps once available:
+		// https://github.com/celestiaorg/celestia-node/pull/4752
+		// Subscription responses do not carry DA timestamps; keep zero to avoid lying.
+		f.storeBlock(f.ctx, resp.Height, blobs, time.Time{})
 	}
 }
 

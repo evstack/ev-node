@@ -55,3 +55,18 @@ func (t *tracedDARetriever) RetrieveFromDA(ctx context.Context, daHeight uint64)
 
 	return events, nil
 }
+
+func (t *tracedDARetriever) ProcessBlobs(ctx context.Context, blobs [][]byte, daHeight uint64) []common.DAHeightEvent {
+	ctx, span := t.tracer.Start(ctx, "DARetriever.ProcessBlobs",
+		trace.WithAttributes(
+			attribute.Int64("da.height", int64(daHeight)),
+			attribute.Int("blob.count", len(blobs)),
+		),
+	)
+	defer span.End()
+
+	events := t.inner.ProcessBlobs(ctx, blobs, daHeight)
+	span.SetAttributes(attribute.Int("event.count", len(events)))
+
+	return events
+}

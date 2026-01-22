@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/evstack/ev-node/pkg/config"
+	blobrpc "github.com/evstack/ev-node/pkg/da/jsonrpc"
 	da "github.com/evstack/ev-node/pkg/da/types"
 	"github.com/evstack/ev-node/pkg/genesis"
 	"github.com/rs/zerolog"
@@ -71,6 +72,14 @@ func (m *mockDA) GetForcedInclusionNamespace() []byte {
 
 func (m *mockDA) HasForcedInclusionNamespace() bool {
 	return true
+}
+
+func (m *mockDA) Subscribe(ctx context.Context, namespace []byte) (<-chan *blobrpc.SubscriptionResponse, error) {
+	return nil, nil
+}
+
+func (m *mockDA) LocalHead(ctx context.Context) (uint64, error) {
+	return 0, nil
 }
 
 func TestForceInclusionServer_handleSendRawTransaction_Success(t *testing.T) {

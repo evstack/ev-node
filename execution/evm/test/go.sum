@@ -68,8 +68,12 @@ github.com/btcsuite/btcd/btcutil v1.1.6 h1:zFL2+c3Lb9gEgqKNzowKUPQNb8jV7v5Oaodi/
 github.com/btcsuite/btcd/btcutil v1.1.6/go.mod h1:9dFymx8HpuLqBnsPELrImQeTQfKBQqzqGbbV3jK55aE=
 github.com/celestiaorg/go-header v0.8.0 h1:j9/t/uhxif26WQ3fULDAh3I55Fh3lJk6qMXPFFuOy28=
 github.com/celestiaorg/go-header v0.8.0/go.mod h1:X00prITrMa2kxgEX15WQnbLf0uV6tlvTesDKC5KsDVQ=
+github.com/celestiaorg/go-square/merkle v0.0.0-20240627094109-7d01436067a3 h1:wP84mtwOCVNOTfS3zErICjxKLnh74Z1uf+tdrlSFjVM=
+github.com/celestiaorg/go-square/merkle v0.0.0-20240627094109-7d01436067a3/go.mod h1:86qIYnEhmn/hfW+xvw98NOI3zGaDEB3x8JGjYo2FqLs=
 github.com/celestiaorg/go-square/v3 v3.0.2 h1:eSQOgNII8inK9IhiBZ+6GADQeWbRq4HYY72BOgcduA4=
 github.com/celestiaorg/go-square/v3 v3.0.2/go.mod h1:oFReMLsSDMRs82ICFEeFQFCqNvwdsbIM1BzCcb0f7dM=
+github.com/celestiaorg/nmt v0.24.2 h1:LlpJSPOd6/Lw1Ig6HUhZuqiINHLka/ZSRTBzlNJpchg=
+github.com/celestiaorg/nmt v0.24.2/go.mod h1:vgLBpWBi8F5KLxTdXSwb7AU4NhiIQ1AQRGa+PzdcLEA=
 github.com/celestiaorg/tastora v0.8.0 h1:+FWAIsP2onwwqPTGzBLIBtx8B1h9sImdx4msv2N4DsI=
 github.com/celestiaorg/tastora v0.8.0/go.mod h1:9b5GsL/+pKEw3HZG/nd3qhnGadUnNNoTBygy9HeGIyw=
 github.com/cenkalti/backoff v2.2.1+incompatible h1:tNowT99t7UNflLxfYYSlKYsBpXdEet03Pg2g16Swow4=
@@ -204,6 +208,8 @@ github.com/ferranbt/fastssz v0.1.4 h1:OCDB+dYDEQDvAgtAGnTSidK1Pe2tW3nFV40XyMkTeD
 github.com/ferranbt/fastssz v0.1.4/go.mod h1:Ea3+oeoRGGLGm5shYAeDgu6PGUlcvQhE2fILyD9+tGg=
 github.com/filecoin-project/go-clock v0.1.0 h1:SFbYIM75M8NnFm1yMHhN9Ahy3W5bEZV9gd6MPfXbKVU=
 github.com/filecoin-project/go-clock v0.1.0/go.mod h1:4uB/O4PvOjlx1VCMdZ9MyDZXRm//gkj1ELEbxfI1AZs=
+github.com/filecoin-project/go-jsonrpc v0.10.0 h1:gZc1thGVD5Khg5Gp1UJibRWZrnNBEP1iFrGOTn0w5TE=
+github.com/filecoin-project/go-jsonrpc v0.10.0/go.mod h1:OG7kVBVh/AbDFHIwx7Kw0l9ARmKOS6gGOr0LbdBpbLc=
 github.com/flynn/noise v1.1.0 h1:KjPQoQCEFdZDiP03phOvGi11+SVVhBG2wOWAorLsstg=
 github.com/flynn/noise v1.1.0/go.mod h1:xbMo+0i6+IGbYdJhF31t2eR1BIU0CYc12+BNAKwUTag=
 github.com/fortytw2/leaktest v1.3.0 h1:u8491cBMTQ8ft8aeV+adlcytMZylmA5nnwwkRZjI8vw=
@@ -869,6 +875,8 @@ golang.org/x/xerrors v0.0.0-20191011141410-1b5146add898/go.mod h1:I/5z698sn9Ka8T
 golang.org/x/xerrors v0.0.0-20191204190536-9bdfabe68543/go.mod h1:I/5z698sn9Ka8TeJc9MKroUUfqBBauWjQqLJ2OPfmY0=
 golang.org/x/xerrors v0.0.0-20200804184101-5ec99f83aff1/go.mod h1:I/5z698sn9Ka8TeJc9MKroUUfqBBauWjQqLJ2OPfmY0=
 golang.org/x/xerrors v0.0.0-20220517211312-f3a8303e98df/go.mod h1:K8+ghG5WaK9qNqU5K3HdILfMLy1f3aNYFI/wnl100a8=
+golang.org/x/xerrors v0.0.0-20240903120638-7835f813f4da h1:noIWHXmPHxILtqtCOPIhSt0ABwskkZKjD3bXGnZGpNY=
+golang.org/x/xerrors v0.0.0-20240903120638-7835f813f4da/go.mod h1:NDW/Ps6MPRej6fsCIbMTohpP40sJ/P/vI1MoTEGwX90=
 gonum.org/v1/gonum v0.16.0 h1:5+ul4Swaf3ESvrOnidPp4GZbzf0mxVQpDCYUQE7OJfk=
 gonum.org/v1/gonum v0.16.0/go.mod h1:fef3am4MQ93R2HHpKnLk4/Tbh/s0+wqD5nfa6Pnwy4E=
 google.golang.org/appengine v1.1.0/go.mod h1:EbEs0AVv82hx2wNQdGPgUI5lhzA/G0D9YwlJXL52JkM=

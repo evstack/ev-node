@@ -22,10 +22,43 @@ import (
 	"github.com/evstack/ev-node/block/internal/common"
 	"github.com/evstack/ev-node/block/internal/da"
 	"github.com/evstack/ev-node/pkg/config"
+	blobrpc "github.com/evstack/ev-node/pkg/da/jsonrpc"
 	datypes "github.com/evstack/ev-node/pkg/da/types"
 	"github.com/evstack/ev-node/pkg/genesis"
 	"github.com/evstack/ev-node/pkg/store"
 	"github.com/evstack/ev-node/types"
+)
+
+// SyncMode represents the current synchronization mode for the DA worker.
+type SyncMode int
+
+const (
+	// SyncModeCatchup indicates the node is behind the DA chain head and polling aggressively.
+	SyncModeCatchup SyncMode = iota
+	// SyncModeFollow indicates the node is caught up and using subscription for real-time updates.
+	SyncModeFollow
+)
+
+// String returns a human-readable representation of the sync mode.
+func (m SyncMode) String() string {
+	switch m {
+	case SyncModeCatchup:
+		return "catchup"
+	case SyncModeFollow:
+		return "follow"
+	default:
+		return "unknown"
+	}
+}
+
+const (
+	// catchupThreshold is the number of DA blocks behind local head
+	// before switching from follow to catchup mode.
+	catchupThreshold = 2
+
+	// followWatchdogMultiplier is the multiplier for BlockTime
+	// used as subscription watchdog timeout.
+	followWatchdogMultiplier = 3
 )
 
 var _ BlockSyncer = (*Syncer)(nil)
@@ -120,6 +153,9 @@ type Syncer struct {
 
 	// P2P wait coordination
 	p2pWaitState atomic.Value // stores p2pWaitState
+
+	// Sync mode tracking
+	currentSyncMode atomic.Int32 // stores SyncMode as int32
 
 	// blockSyncer is the interface used for block sync operations.
 	// defaults to self, but can be wrapped with tracing.
@@ -234,6 +270,9 @@ func (s *Syncer) Start(ctx context.Context) error {
 func (s *Syncer) Stop() error {
 	if s.cancel == nil {
 		return nil
+	}
+	if s.fiRetriever != nil {
+		s.fiRetriever.Stop()
 	}
 
 	s.cancel()
@@ -381,26 +420,212 @@ func (s *Syncer) daWorkerLoop() {
 	defer s.logger.Info().Msg("DA worker stopped")
 
 	for {
-		err := s.fetchDAUntilCaughtUp()
-
-		var backoff time.Duration
-		if err == nil {
-			// No error, means we are caught up.
-			backoff = s.config.DA.BlockTime.Duration
-		} else {
-			// Error, back off for a shorter duration.
-			backoff = s.config.DA.BlockTime.Duration
-			if backoff <= 0 {
-				backoff = 2 * time.Second
-			}
-		}
-
 		select {
 		case <-s.ctx.Done():
 			return
-		case <-time.After(backoff):
+		default:
+		}
+
+		mode := s.determineSyncMode()
+		previousMode := SyncMode(s.currentSyncMode.Load())
+
+		// Track mode switches
+		if mode != previousMode {
+			s.currentSyncMode.Store(int32(mode))
+			s.metrics.ModeSwitches.Add(1)
+			s.logger.Info().
+				Str("from", previousMode.String()).
+				Str("to", mode.String()).
+				Msg("sync mode changed")
+		}
+
+		switch mode {
+		case SyncModeCatchup:
+			s.runCatchupMode()
+		case SyncModeFollow:
+			s.runFollowMode()
 		}
 	}
+}
+
+// determineSyncMode checks the current DA sync status and returns the appropriate mode.
+func (s *Syncer) determineSyncMode() SyncMode {
+	// If DA client is nil (e.g., in tests), default to catchup mode
+	if s.daClient == nil {
+		return SyncModeCatchup
+	}
+
+	// daNodeHead is the height the DA node (e.g., Celestia light node) has synced to
+	daNodeHead, err := s.daClient.LocalHead(s.ctx)
+	if err != nil {
+		// Default to catchup on error - safer to poll than assume we're caught up
+		s.logger.Debug().Err(err).Msg("failed to get DA node head, defaulting to catchup mode")
+		return SyncModeCatchup
+	}
+
+	// processedDAHeight is the DA height ev-node has retrieved and processed
+	processedDAHeight := s.daRetrieverHeight.Load()
+
+	// Consider "caught up" if within catchupThreshold blocks of DA node head
+	if processedDAHeight+catchupThreshold >= daNodeHead {
+		return SyncModeFollow
+	}
+	return SyncModeCatchup
+}
+
+// runCatchupMode runs the catchup sync mode - aggressive polling until caught up.
+func (s *Syncer) runCatchupMode() {
+	s.logger.Debug().Msg("running catchup mode")
+	s.metrics.SyncMode.Set(float64(SyncModeCatchup))
+
+	err := s.fetchDAUntilCaughtUp()
+	if errors.Is(err, context.Canceled) {
+		return
+	}
+
+	// Back off before next iteration:
+	// - On error: wait before retrying to avoid hammering a failing DA layer
+	// - On success (caught up): wait for new DA blocks to appear
+	backoff := s.config.DA.BlockTime.Duration
+	if backoff <= 0 {
+		backoff = 2 * time.Second
+	}
+
+	if err != nil {
+		s.logger.Debug().Err(err).Msg("catchup failed, backing off before retry")
+	} else {
+		s.logger.Debug().Msg("caught up with DA, backing off before next check")
+	}
+
+	s.sleepOrDone(backoff)
+}
+
+// runFollowMode runs the follow sync mode - subscription-based real-time updates.
+func (s *Syncer) runFollowMode() {
+	s.logger.Debug().Msg("running follow mode")
+	s.metrics.SyncMode.Set(float64(SyncModeFollow))
+
+	err := s.subscribeAndFollow()
+	if err != nil && !errors.Is(err, context.Canceled) {
+		s.metrics.SubscribeErrors.Add(1)
+		s.logger.Warn().Err(err).Msg("subscribe failed, will retry via mode check")
+		// No explicit catchup call needed - daWorkerLoop will call determineSyncMode()
+		// which defaults to catchup on error or when behind
+	}
+}
+
+// subscribeAndFollow uses the DA subscription API to receive real-time blob notifications.
+// It subscribes to header, data, and forced inclusion namespaces and processes incoming blobs.
+// Returns when subscription fails, context is cancelled, or node falls behind.
+func (s *Syncer) subscribeAndFollow() error {
+	// Get namespaces
+	headerNS := s.daClient.GetHeaderNamespace()
+	dataNS := s.daClient.GetDataNamespace()
+
+	// Create subscription context with cancellation
+	subCtx, cancel := context.WithCancel(s.ctx)
+	defer cancel()
+
+	// Subscribe to header namespace
+	headerCh, err := s.daClient.Subscribe(subCtx, headerNS)
+	if err != nil {
+		return fmt.Errorf("failed to subscribe to header namespace: %w", err)
+	}
+
+	// Subscribe to data namespace (only if different from header namespace)
+	var dataCh <-chan *blobrpc.SubscriptionResponse
+	if !bytes.Equal(headerNS, dataNS) {
+		dataCh, err = s.daClient.Subscribe(subCtx, dataNS)
+		if err != nil {
+			return fmt.Errorf("failed to subscribe to data namespace: %w", err)
+		}
+	}
+
+	s.logger.Info().Msg("subscribed to DA namespaces for follow mode")
+
+	// Calculate watchdog timeout
+	watchdogTimeout := s.config.DA.BlockTime.Duration * followWatchdogMultiplier
+	if watchdogTimeout <= 0 {
+		watchdogTimeout = 30 * time.Second
+	}
+
+	// Process subscription events
+	// Note: Select on a nil channel blocks forever, so nil channels are effectively disabled
+	for {
+		select {
+		case <-s.ctx.Done():
+			return s.ctx.Err()
+
+		case resp, ok := <-headerCh:
+			if !ok {
+				return errors.New("header subscription closed")
+			}
+			if err := s.processSubscriptionResponse(resp); err != nil {
+				s.logger.Error().Err(err).Uint64("height", resp.Height).Msg("failed to process header subscription")
+			}
+
+		case resp, ok := <-dataCh:
+			// Note: if dataCh is nil (same namespace as header), this case never fires
+			if !ok {
+				return errors.New("data subscription closed")
+			}
+			if err := s.processSubscriptionResponse(resp); err != nil {
+				s.logger.Error().Err(err).Uint64("height", resp.Height).Msg("failed to process data subscription")
+			}
+
+		case <-time.After(watchdogTimeout):
+			// Watchdog: if no events for watchdogTimeout, recheck mode
+			// Might have fallen behind due to network issues
+			s.logger.Debug().Dur("timeout", watchdogTimeout).Msg("subscription watchdog triggered, checking sync mode")
+			if s.determineSyncMode() == SyncModeCatchup {
+				return errors.New("fell behind, switching to catchup")
+			}
+		}
+	}
+}
+
+// processSubscriptionResponse processes a subscription response and sends events to the processing channel.
+func (s *Syncer) processSubscriptionResponse(resp *blobrpc.SubscriptionResponse) error {
+	if resp == nil {
+		return nil
+	}
+
+	s.logger.Debug().
+		Uint64("da_height", resp.Height).
+		Int("blobs", len(resp.Blobs)).
+		Msg("processing subscription response")
+
+	// Convert blobs to raw byte slices for processing
+	blobs := common.BlobsFromSubscription(resp)
+	if len(blobs) == 0 {
+		return nil
+	}
+
+	// Process blobs using the DA retriever's ProcessBlobs method
+	events := s.daRetriever.ProcessBlobs(s.ctx, blobs, resp.Height)
+
+	// Send events to the processing channel
+	for _, event := range events {
+		select {
+		case s.heightInCh <- event:
+			s.logger.Debug().
+				Uint64("height", event.Header.Height()).
+				Uint64("da_height", event.DaHeight).
+				Msg("sent subscription event to processing")
+		default:
+			s.cache.SetPendingEvent(event.Header.Height(), &event)
+			s.logger.Debug().
+				Uint64("height", event.Header.Height()).
+				Msg("subscription event queued as pending")
+		}
+	}
+
+	// Update retriever height
+	if resp.Height >= s.daRetrieverHeight.Load() {
+		s.daRetrieverHeight.Store(resp.Height + 1)
+	}
+
+	return nil
 }
 
 func (s *Syncer) fetchDAUntilCaughtUp() error {
@@ -667,7 +892,11 @@ func (s *Syncer) TrySyncNextBlock(ctx context.Context, event *common.DAHeightEve
 
 	// Verify forced inclusion transactions if configured
 	if event.Source == common.SourceDA {
-		if err := s.VerifyForcedInclusionTxs(ctx, currentState, data); err != nil {
+		verifyState := currentState
+		if event.DaHeight > verifyState.DAHeight {
+			verifyState.DAHeight = event.DaHeight
+		}
+		if err := s.VerifyForcedInclusionTxs(ctx, verifyState, data); err != nil {
 			s.logger.Error().Err(err).Uint64("height", nextHeight).Msg("forced inclusion verification failed")
 			if errors.Is(err, errMaliciousProposer) {
 				s.cache.RemoveHeaderDAIncluded(headerHash)
@@ -809,25 +1038,15 @@ func hashTx(tx []byte) string {
 }
 
 // calculateBlockFullness returns a value between 0.0 and 1.0 indicating how full the block is.
-// It estimates fullness based on total data size.
+// It estimates fullness based on total data size relative to max blob size.
 // This is a heuristic - actual limits may vary by execution layer.
 func (s *Syncer) calculateBlockFullness(data *types.Data) float64 {
-	const maxDataSize = common.DefaultMaxBlobSize
-
-	var fullness float64
-	count := 0
-
-	// Check data size fullness
-	dataSize := uint64(0)
+	var dataSize uint64
 	for _, tx := range data.Txs {
 		dataSize += uint64(len(tx))
 	}
-	sizeFullness := float64(dataSize) / float64(maxDataSize)
-	fullness += min(sizeFullness, 1.0)
-	count++
-
-	// Return average fullness
-	return fullness / float64(count)
+	fullness := float64(dataSize) / float64(common.DefaultMaxBlobSize)
+	return min(fullness, 1.0)
 }
 
 // updateDynamicGracePeriod updates the grace period multiplier based on block fullness.
