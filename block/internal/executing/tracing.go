@@ -48,7 +48,7 @@ func (t *tracedBlockProducer) RetrieveBatch(ctx context.Context) (*BatchData, er
 	if err != nil {
 		span.RecordError(err)
 		span.SetStatus(codes.Error, err.Error())
-		return nil, err
+		return batchData, err
 	}
 
 	if batchData != nil && batchData.Batch != nil {
@@ -77,7 +77,7 @@ func (t *tracedBlockProducer) CreateBlock(ctx context.Context, height uint64, ba
 	if err != nil {
 		span.RecordError(err)
 		span.SetStatus(codes.Error, err.Error())
-		return nil, nil, err
+		return header, data, err
 	}
 	return header, data, nil
 }
@@ -95,7 +95,7 @@ func (t *tracedBlockProducer) ApplyBlock(ctx context.Context, header types.Heade
 	if err != nil {
 		span.RecordError(err)
 		span.SetStatus(codes.Error, err.Error())
-		return types.State{}, err
+		return state, err
 	}
 
 	span.SetAttributes(
