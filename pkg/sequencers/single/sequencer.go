@@ -224,7 +224,7 @@ func (c *Sequencer) GetNextBatch(ctx context.Context, req coresequencer.GetNextB
 
 	// Get current gas limit from execution layer
 	var maxGas uint64
-	info, err := c.executor.GetExecutionInfo(ctx, 0) // 0 = latest/next block
+	info, err := c.executor.GetExecutionInfo(ctx)
 	if err != nil {
 		c.logger.Warn().Err(err).Msg("failed to get execution info, proceeding without gas limit")
 	} else {

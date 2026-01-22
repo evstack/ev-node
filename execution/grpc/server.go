@@ -144,7 +144,7 @@ func (s *Server) GetExecutionInfo(
 	ctx context.Context,
 	req *connect.Request[pb.GetExecutionInfoRequest],
 ) (*connect.Response[pb.GetExecutionInfoResponse], error) {
-	info, err := s.executor.GetExecutionInfo(ctx, req.Msg.Height)
+	info, err := s.executor.GetExecutionInfo(ctx)
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to get execution info: %w", err))
 	}

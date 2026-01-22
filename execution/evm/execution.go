@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/ethereum/go-ethereum/beacon/engine"
@@ -177,6 +178,8 @@ type EngineClient struct {
 	currentSafeBlockHash      common.Hash            // Store last non-finalized SafeBlockHash
 	currentFinalizedBlockHash common.Hash            // Store last finalized block hash
 	blockHashCache            map[uint64]common.Hash // height -> hash cache for safe block lookups
+
+	cachedExecutionInfo atomic.Pointer[execution.ExecutionInfo] // Cached execution info (gas limit)
 
 	logger zerolog.Logger
 }
@@ -814,22 +817,20 @@ func (c *EngineClient) filterTransactions(txs [][]byte) []string {
 }
 
 // GetExecutionInfo returns current execution layer parameters.
-// Implements the ExecutionInfoProvider interface.
-func (c *EngineClient) GetExecutionInfo(ctx context.Context, height uint64) (execution.ExecutionInfo, error) {
-	// If height is 0, get the latest block's gas limit (for next block)
-	if height == 0 {
-		header, err := c.ethClient.HeaderByNumber(ctx, nil) // nil = latest
-		if err != nil {
-			return execution.ExecutionInfo{}, fmt.Errorf("failed to get latest block: %w", err)
-		}
-		return execution.ExecutionInfo{MaxGas: header.GasLimit}, nil
+func (c *EngineClient) GetExecutionInfo(ctx context.Context) (execution.ExecutionInfo, error) {
+	if cached := c.cachedExecutionInfo.Load(); cached != nil {
+		return *cached, nil
 	}
 
-	_, _, gasLimit, _, err := c.getBlockInfo(ctx, height)
+	header, err := c.ethClient.HeaderByNumber(ctx, nil) // nil = latest
 	if err != nil {
-		return execution.ExecutionInfo{}, fmt.Errorf("failed to get block info at height %d: %w", height, err)
+		return execution.ExecutionInfo{}, fmt.Errorf("failed to get latest block: %w", err)
 	}
-	return execution.ExecutionInfo{MaxGas: gasLimit}, nil
+
+	info := execution.ExecutionInfo{MaxGas: header.GasLimit}
+	c.cachedExecutionInfo.Store(&info)
+
+	return info, nil
 }
 
 // FilterTxs validates force-included transactions and applies gas and size filtering for all passed txs.

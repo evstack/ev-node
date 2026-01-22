@@ -84,19 +84,14 @@ type Executor interface {
 	SetFinal(ctx context.Context, blockHeight uint64) error
 
 	// GetExecutionInfo returns current execution layer parameters.
-	// The height parameter allows querying info for a specific block height.
-	// Use height=0 to get parameters for the next block (based on latest state).
-	//
-	// For non-gas-based execution layers, return ExecutionInfo{MaxGas: 0}.
 	//
 	// Parameters:
 	// - ctx: Context for timeout/cancellation control
-	// - height: Block height to query (0 for next block parameters)
 	//
 	// Returns:
 	// - info: Current execution parameters
 	// - error: Any errors during retrieval
-	GetExecutionInfo(ctx context.Context, height uint64) (ExecutionInfo, error)
+	GetExecutionInfo(ctx context.Context) (ExecutionInfo, error)
 
 	// FilterTxs validates force-included transactions and applies gas and size filtering for all passed txs.
 	//

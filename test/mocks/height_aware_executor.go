@@ -61,8 +61,8 @@ func (m *MockHeightAwareExecutor) GetLatestHeight(ctx context.Context) (uint64, 
 }
 
 // GetExecutionInfo implements the Executor interface.
-func (m *MockHeightAwareExecutor) GetExecutionInfo(ctx context.Context, height uint64) (execution.ExecutionInfo, error) {
-	args := m.Called(ctx, height)
+func (m *MockHeightAwareExecutor) GetExecutionInfo(ctx context.Context) (execution.ExecutionInfo, error) {
+	args := m.Called(ctx)
 	return args.Get(0).(execution.ExecutionInfo), args.Error(1)
 }
 

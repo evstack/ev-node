@@ -481,9 +481,7 @@ func (*SetFinalResponse) Descriptor() ([]byte, []int) {
 
 // GetExecutionInfoRequest requests execution layer parameters
 type GetExecutionInfoRequest struct {
-	state protoimpl.MessageState `protogen:"open.v1"`
-	// Block height to query (0 for next block parameters)
-	Height        uint64 `protobuf:"varint,1,opt,name=height,proto3" json:"height,omitempty"`
+	state         protoimpl.MessageState `protogen:"open.v1"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -516,13 +514,6 @@ func (x *GetExecutionInfoRequest) ProtoReflect() protoreflect.Message {
 // Deprecated: Use GetExecutionInfoRequest.ProtoReflect.Descriptor instead.
 func (*GetExecutionInfoRequest) Descriptor() ([]byte, []int) {
 	return file_evnode_v1_execution_proto_rawDescGZIP(), []int{8}
-}
-
-func (x *GetExecutionInfoRequest) GetHeight() uint64 {
-	if x != nil {
-		return x.Height
-	}
-	return 0
 }
 
 // GetExecutionInfoResponse contains execution layer parameters
@@ -716,9 +707,8 @@ const file_evnode_v1_execution_proto_rawDesc = "" +
 	"\tmax_bytes\x18\x02 \x01(\x04R\bmaxBytes\"4\n" +
 	"\x0fSetFinalRequest\x12!\n" +
 	"\fblock_height\x18\x01 \x01(\x04R\vblockHeight\"\x12\n" +
-	"\x10SetFinalResponse\"1\n" +
-	"\x17GetExecutionInfoRequest\x12\x16\n" +
-	"\x06height\x18\x01 \x01(\x04R\x06height\"3\n" +
+	"\x10SetFinalResponse\"\x19\n" +
+	"\x17GetExecutionInfoRequest\"3\n" +
 	"\x18GetExecutionInfoResponse\x12\x17\n" +
 	"\amax_gas\x18\x01 \x01(\x04R\x06maxGas\"\x9f\x01\n" +
 	"\x10FilterTxsRequest\x12\x10\n" +

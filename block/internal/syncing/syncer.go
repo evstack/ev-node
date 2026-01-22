@@ -905,12 +905,17 @@ func (s *Syncer) VerifyForcedInclusionTxs(ctx context.Context, currentState type
 		return fmt.Errorf("failed to retrieve forced included txs from DA: %w", err)
 	}
 
+	executionInfo, err := s.exec.GetExecutionInfo(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to get execution info: %w", err)
+	}
+
 	// Filter out invalid forced inclusion transactions using the executor's FilterTxs.
 	// This ensures we don't mark the sequencer as malicious for not including txs that
 	// were legitimately filtered (e.g., malformed, unparseable, or otherwise invalid).
 	validForcedTxs := forcedIncludedTxsEvent.Txs
 	if len(forcedIncludedTxsEvent.Txs) > 0 {
-		filterStatuses, filterErr := s.exec.FilterTxs(ctx, forcedIncludedTxsEvent.Txs, 0, 0, true)
+		filterStatuses, filterErr := s.exec.FilterTxs(ctx, forcedIncludedTxsEvent.Txs, executionInfo.MaxGas, common.DefaultMaxBlobSize, true)
 		if filterErr != nil {
 			s.logger.Warn().Err(filterErr).Msg("failed to filter forced inclusion txs, checking no txs")
 			validForcedTxs = [][]byte{}

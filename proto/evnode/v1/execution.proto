@@ -91,10 +91,7 @@ message SetFinalResponse {
 }
 
 // GetExecutionInfoRequest requests execution layer parameters
-message GetExecutionInfoRequest {
-  // Block height to query (0 for next block parameters)
-  uint64 height = 1;
-}
+message GetExecutionInfoRequest {}
 
 // GetExecutionInfoResponse contains execution layer parameters
 message GetExecutionInfoResponse {

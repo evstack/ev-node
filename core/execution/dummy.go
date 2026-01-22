@@ -105,7 +105,7 @@ func (e *DummyExecutor) GetStateRoot() []byte {
 
 // GetExecutionInfo returns execution layer parameters.
 // For DummyExecutor, returns MaxGas=0 indicating no gas-based filtering.
-func (e *DummyExecutor) GetExecutionInfo(ctx context.Context, height uint64) (ExecutionInfo, error) {
+func (e *DummyExecutor) GetExecutionInfo(ctx context.Context) (ExecutionInfo, error) {
 	return ExecutionInfo{MaxGas: 0}, nil
 }
 

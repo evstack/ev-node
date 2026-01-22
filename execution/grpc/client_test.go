@@ -15,7 +15,7 @@ type mockExecutor struct {
 	getTxsFunc           func(ctx context.Context) ([][]byte, error)
 	executeTxsFunc       func(ctx context.Context, txs [][]byte, blockHeight uint64, timestamp time.Time, prevStateRoot []byte) ([]byte, error)
 	setFinalFunc         func(ctx context.Context, blockHeight uint64) error
-	getExecutionInfoFunc func(ctx context.Context, height uint64) (execution.ExecutionInfo, error)
+	getExecutionInfoFunc func(ctx context.Context) (execution.ExecutionInfo, error)
 	filterTxsFunc        func(ctx context.Context, txs [][]byte, maxBytes, maxGas uint64, hasForceIncludedTransaction bool) ([]execution.FilterStatus, error)
 }
 
@@ -47,9 +47,9 @@ func (m *mockExecutor) SetFinal(ctx context.Context, blockHeight uint64) error {
 	return nil
 }
 
-func (m *mockExecutor) GetExecutionInfo(ctx context.Context, height uint64) (execution.ExecutionInfo, error) {
+func (m *mockExecutor) GetExecutionInfo(ctx context.Context) (execution.ExecutionInfo, error) {
 	if m.getExecutionInfoFunc != nil {
-		return m.getExecutionInfoFunc(ctx, height)
+		return m.getExecutionInfoFunc(ctx)
 	}
 	return execution.ExecutionInfo{MaxGas: 0}, nil
 }

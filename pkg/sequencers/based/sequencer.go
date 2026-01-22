@@ -193,7 +193,7 @@ doneProcessing:
 
 // getMaxGas retrieves the gas limit from the execution layer.
 func (s *BasedSequencer) getMaxGas(ctx context.Context) uint64 {
-	info, err := s.executor.GetExecutionInfo(ctx, 0)
+	info, err := s.executor.GetExecutionInfo(ctx)
 	if err != nil {
 		s.logger.Warn().Err(err).Msg("failed to get execution info, proceeding without gas limit")
 		return 0

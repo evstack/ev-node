@@ -426,7 +426,7 @@ func getTxKey(height uint64, txKey string) ds.Key {
 
 // GetExecutionInfo returns execution layer parameters.
 // For KVExecutor, returns MaxGas=0 indicating no gas-based filtering.
-func (k *KVExecutor) GetExecutionInfo(ctx context.Context, height uint64) (execution.ExecutionInfo, error) {
+func (k *KVExecutor) GetExecutionInfo(ctx context.Context) (execution.ExecutionInfo, error) {
 	return execution.ExecutionInfo{MaxGas: 0}, nil
 }
 

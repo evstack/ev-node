@@ -32,7 +32,7 @@ type MockFullDAClient struct {
 // It implements proper size filtering based on maxBytes parameter.
 func createDefaultMockExecutor(t *testing.T) *mocks.MockExecutor {
 	mockExec := mocks.NewMockExecutor(t)
-	mockExec.On("GetExecutionInfo", mock.Anything, mock.Anything).Return(execution.ExecutionInfo{MaxGas: 1000000}, nil).Maybe()
+	mockExec.On("GetExecutionInfo", mock.Anything).Return(execution.ExecutionInfo{MaxGas: 1000000}, nil).Maybe()
 	mockExec.On("FilterTxs", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(
 		func(ctx context.Context, txs [][]byte, maxBytes, maxGas uint64, hasForceIncludedTransaction bool) []execution.FilterStatus {
 			result := make([]execution.FilterStatus, len(txs))
@@ -545,7 +545,7 @@ func TestBasedSequencer_CrashRecoveryMidEpoch(t *testing.T) {
 	// Create mock executor that postpones tx2 on first call
 	filterCallCount := 0
 	mockExec := mocks.NewMockExecutor(t)
-	mockExec.On("GetExecutionInfo", mock.Anything, mock.Anything).Return(execution.ExecutionInfo{MaxGas: 1000000}, nil).Maybe()
+	mockExec.On("GetExecutionInfo", mock.Anything).Return(execution.ExecutionInfo{MaxGas: 1000000}, nil).Maybe()
 	mockExec.On("FilterTxs", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(
 		func(ctx context.Context, txs [][]byte, maxBytes, maxGas uint64, hasForceIncludedTransaction bool) []execution.FilterStatus {
 			filterCallCount++
@@ -881,7 +881,7 @@ func TestBasedSequencer_GetNextBatch_GasFilteringPreservesUnprocessedTxs(t *test
 	// - tx2: valid but doesn't fit due to gas limit (returned as remaining)
 	gasFilterCallCount := 0
 	mockExec := mocks.NewMockExecutor(t)
-	mockExec.On("GetExecutionInfo", mock.Anything, mock.Anything).Return(execution.ExecutionInfo{MaxGas: 1000000}, nil).Maybe()
+	mockExec.On("GetExecutionInfo", mock.Anything).Return(execution.ExecutionInfo{MaxGas: 1000000}, nil).Maybe()
 	mockExec.On("FilterTxs", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(
 		func(ctx context.Context, txs [][]byte, maxBytes, maxGas uint64, hasForceIncludedTransaction bool) []execution.FilterStatus {
 			gasFilterCallCount++

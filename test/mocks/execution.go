@@ -212,8 +212,8 @@ func (_c *MockExecutor_FilterTxs_Call) RunAndReturn(run func(ctx context.Context
 }
 
 // GetExecutionInfo provides a mock function for the type MockExecutor
-func (_mock *MockExecutor) GetExecutionInfo(ctx context.Context, height uint64) (execution.ExecutionInfo, error) {
-	ret := _mock.Called(ctx, height)
+func (_mock *MockExecutor) GetExecutionInfo(ctx context.Context) (execution.ExecutionInfo, error) {
+	ret := _mock.Called(ctx)
 
 	if len(ret) == 0 {
 		panic("no return value specified for GetExecutionInfo")
@@ -221,16 +221,16 @@ func (_mock *MockExecutor) GetExecutionInfo(ctx context.Context, height uint64) 
 
 	var r0 execution.ExecutionInfo
 	var r1 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, uint64) (execution.ExecutionInfo, error)); ok {
-		return returnFunc(ctx, height)
+	if returnFunc, ok := ret.Get(0).(func(context.Context) (execution.ExecutionInfo, error)); ok {
+		return returnFunc(ctx)
 	}
-	if returnFunc, ok := ret.Get(0).(func(context.Context, uint64) execution.ExecutionInfo); ok {
-		r0 = returnFunc(ctx, height)
+	if returnFunc, ok := ret.Get(0).(func(context.Context) execution.ExecutionInfo); ok {
+		r0 = returnFunc(ctx)
 	} else {
 		r0 = ret.Get(0).(execution.ExecutionInfo)
 	}
-	if returnFunc, ok := ret.Get(1).(func(context.Context, uint64) error); ok {
-		r1 = returnFunc(ctx, height)
+	if returnFunc, ok := ret.Get(1).(func(context.Context) error); ok {
+		r1 = returnFunc(ctx)
 	} else {
 		r1 = ret.Error(1)
 	}
@@ -244,24 +244,18 @@ type MockExecutor_GetExecutionInfo_Call struct {
 
 // GetExecutionInfo is a helper method to define mock.On call
 //   - ctx context.Context
-//   - height uint64
-func (_e *MockExecutor_Expecter) GetExecutionInfo(ctx interface{}, height interface{}) *MockExecutor_GetExecutionInfo_Call {
-	return &MockExecutor_GetExecutionInfo_Call{Call: _e.mock.On("GetExecutionInfo", ctx, height)}
+func (_e *MockExecutor_Expecter) GetExecutionInfo(ctx interface{}) *MockExecutor_GetExecutionInfo_Call {
+	return &MockExecutor_GetExecutionInfo_Call{Call: _e.mock.On("GetExecutionInfo", ctx)}
 }
 
-func (_c *MockExecutor_GetExecutionInfo_Call) Run(run func(ctx context.Context, height uint64)) *MockExecutor_GetExecutionInfo_Call {
+func (_c *MockExecutor_GetExecutionInfo_Call) Run(run func(ctx context.Context)) *MockExecutor_GetExecutionInfo_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
 			arg0 = args[0].(context.Context)
 		}
-		var arg1 uint64
-		if args[1] != nil {
-			arg1 = args[1].(uint64)
-		}
 		run(
 			arg0,
-			arg1,
 		)
 	})
 	return _c
@@ -272,7 +266,7 @@ func (_c *MockExecutor_GetExecutionInfo_Call) Return(executionInfo execution.Exe
 	return _c
 }
 
-func (_c *MockExecutor_GetExecutionInfo_Call) RunAndReturn(run func(ctx context.Context, height uint64) (execution.ExecutionInfo, error)) *MockExecutor_GetExecutionInfo_Call {
+func (_c *MockExecutor_GetExecutionInfo_Call) RunAndReturn(run func(ctx context.Context) (execution.ExecutionInfo, error)) *MockExecutor_GetExecutionInfo_Call {
 	_c.Call.Return(run)
 	return _c
 }

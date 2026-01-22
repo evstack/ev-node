@@ -107,13 +107,11 @@ func (t *tracedExecutor) GetLatestHeight(ctx context.Context) (uint64, error) {
 }
 
 // GetExecutionInfo forwards to the inner executor with tracing.
-func (t *tracedExecutor) GetExecutionInfo(ctx context.Context, height uint64) (execution.ExecutionInfo, error) {
-	ctx, span := t.tracer.Start(ctx, "Executor.GetExecutionInfo",
-		trace.WithAttributes(attribute.Int64("height", int64(height))),
-	)
+func (t *tracedExecutor) GetExecutionInfo(ctx context.Context) (execution.ExecutionInfo, error) {
+	ctx, span := t.tracer.Start(ctx, "Executor.GetExecutionInfo")
 	defer span.End()
 
-	info, err := t.inner.GetExecutionInfo(ctx, height)
+	info, err := t.inner.GetExecutionInfo(ctx)
 	if err != nil {
 		span.RecordError(err)
 		span.SetStatus(codes.Error, err.Error())

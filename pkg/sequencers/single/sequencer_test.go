@@ -44,7 +44,7 @@ func newDummyDA(maxBlobSize uint64) *testda.DummyDA {
 // It implements proper size filtering based on maxBytes parameter.
 func createDefaultMockExecutor(t *testing.T) *mocks.MockExecutor {
 	mockExec := mocks.NewMockExecutor(t)
-	mockExec.On("GetExecutionInfo", mock.Anything, mock.Anything).Return(execution.ExecutionInfo{MaxGas: 1000000}, nil).Maybe()
+	mockExec.On("GetExecutionInfo", mock.Anything).Return(execution.ExecutionInfo{MaxGas: 1000000}, nil).Maybe()
 	mockExec.On("FilterTxs", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(
 		func(ctx context.Context, txs [][]byte, maxBytes, maxGas uint64, hasForceIncludedTransaction bool) []execution.FilterStatus {
 			result := make([]execution.FilterStatus, len(txs))
@@ -1081,7 +1081,7 @@ func TestSequencer_GetNextBatch_WithGasFiltering(t *testing.T) {
 	// Configure the executor mock
 	filterCallCount := 0
 	mockExec := mocks.NewMockExecutor(t)
-	mockExec.On("GetExecutionInfo", mock.Anything, mock.Anything).Return(execution.ExecutionInfo{MaxGas: 1000000}, nil).Maybe()
+	mockExec.On("GetExecutionInfo", mock.Anything).Return(execution.ExecutionInfo{MaxGas: 1000000}, nil).Maybe()
 	mockExec.On("FilterTxs", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(
 		func(ctx context.Context, txs [][]byte, maxBytes, maxGas uint64, hasForceIncludedTransaction bool) []execution.FilterStatus {
 			filterCallCount++
@@ -1179,7 +1179,7 @@ func TestSequencer_GetNextBatch_GasFilterError(t *testing.T) {
 
 	// Configure executor that returns filter error
 	mockExec := mocks.NewMockExecutor(t)
-	mockExec.On("GetExecutionInfo", mock.Anything, mock.Anything).Return(execution.ExecutionInfo{MaxGas: 1000000}, nil).Maybe()
+	mockExec.On("GetExecutionInfo", mock.Anything).Return(execution.ExecutionInfo{MaxGas: 1000000}, nil).Maybe()
 	mockExec.On("FilterTxs", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(
 		([]execution.FilterStatus)(nil),
 		errors.New("filter error"),
@@ -1241,7 +1241,7 @@ func TestSequencer_GetNextBatch_GasFilteringPreservesUnprocessedTxs(t *testing.T
 
 	filterCallCount := 0
 	mockExec := mocks.NewMockExecutor(t)
-	mockExec.On("GetExecutionInfo", mock.Anything, mock.Anything).Return(execution.ExecutionInfo{MaxGas: 1000000}, nil).Maybe()
+	mockExec.On("GetExecutionInfo", mock.Anything).Return(execution.ExecutionInfo{MaxGas: 1000000}, nil).Maybe()
 	mockExec.On("FilterTxs", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(
 		func(ctx context.Context, txs [][]byte, maxBytes, maxGas uint64, hasForceIncludedTransaction bool) []execution.FilterStatus {
 			filterCallCount++

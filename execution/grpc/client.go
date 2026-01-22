@@ -117,10 +117,8 @@ func (c *Client) SetFinal(ctx context.Context, blockHeight uint64) error {
 //
 // This method retrieves execution parameters such as the block gas limit
 // from the remote execution service.
-func (c *Client) GetExecutionInfo(ctx context.Context, height uint64) (execution.ExecutionInfo, error) {
-	req := connect.NewRequest(&pb.GetExecutionInfoRequest{
-		Height: height,
-	})
+func (c *Client) GetExecutionInfo(ctx context.Context) (execution.ExecutionInfo, error) {
+	req := connect.NewRequest(&pb.GetExecutionInfoRequest{})
 
 	resp, err := c.client.GetExecutionInfo(ctx, req)
 	if err != nil {
