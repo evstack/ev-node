@@ -155,10 +155,6 @@ func createSequencer(
 		return nil, fmt.Errorf("failed to create single sequencer: %w", err)
 	}
 
-	logger.Info().
-		Str("forced_inclusion_namespace", nodeConfig.DA.GetForcedInclusionNamespace()).
-		Msg("single sequencer initialized")
-
 	return sequencer, nil
 }
 
