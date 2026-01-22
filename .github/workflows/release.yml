@@ -26,6 +26,10 @@ jobs:
         run: |
           # Get the previous tag
           CURRENT_TAG="${{ github.ref_name }}"
+          if [[ ! "$CURRENT_TAG" =~ ^[a-zA-Z0-9/_.-]+$ ]]; then
+            echo "::error::Invalid tag format: $CURRENT_TAG"
+            exit 1
+          fi
           PREV_TAG=$(git tag --sort=-version:refname | grep -A1 "^${CURRENT_TAG}$" | tail -1)
 
           if [ -z "$PREV_TAG" ] || [ "$PREV_TAG" = "$CURRENT_TAG" ]; then
