@@ -50,7 +50,7 @@ func (s *Server) InitChain(
 		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("chain_id is required"))
 	}
 
-	stateRoot, maxBytes, err := s.executor.InitChain(
+	stateRoot, err := s.executor.InitChain(
 		ctx,
 		req.Msg.GenesisTime.AsTime(),
 		req.Msg.InitialHeight,
@@ -62,7 +62,6 @@ func (s *Server) InitChain(
 
 	return connect.NewResponse(&pb.InitChainResponse{
 		StateRoot: stateRoot,
-		MaxBytes:  maxBytes,
 	}), nil
 }
 
@@ -103,7 +102,7 @@ func (s *Server) ExecuteTxs(
 		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("prev_state_root is required"))
 	}
 
-	updatedStateRoot, maxBytes, err := s.executor.ExecuteTxs(
+	updatedStateRoot, err := s.executor.ExecuteTxs(
 		ctx,
 		req.Msg.Txs,
 		req.Msg.BlockHeight,
@@ -116,7 +115,6 @@ func (s *Server) ExecuteTxs(
 
 	return connect.NewResponse(&pb.ExecuteTxsResponse{
 		UpdatedStateRoot: updatedStateRoot,
-		MaxBytes:         maxBytes,
 	}), nil
 }
 
@@ -137,4 +135,45 @@ func (s *Server) SetFinal(
 	}
 
 	return connect.NewResponse(&pb.SetFinalResponse{}), nil
+}
+
+// GetExecutionInfo handles the GetExecutionInfo RPC request.
+//
+// It returns current execution layer parameters such as the block gas limit.
+func (s *Server) GetExecutionInfo(
+	ctx context.Context,
+	req *connect.Request[pb.GetExecutionInfoRequest],
+) (*connect.Response[pb.GetExecutionInfoResponse], error) {
+	info, err := s.executor.GetExecutionInfo(ctx)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to get execution info: %w", err))
+	}
+
+	return connect.NewResponse(&pb.GetExecutionInfoResponse{
+		MaxGas: info.MaxGas,
+	}), nil
+}
+
+// FilterTxs handles the FilterTxs RPC request.
+//
+// It validates force-included transactions and applies gas and size filtering.
+// Returns a slice of FilterStatus for each transaction.
+func (s *Server) FilterTxs(
+	ctx context.Context,
+	req *connect.Request[pb.FilterTxsRequest],
+) (*connect.Response[pb.FilterTxsResponse], error) {
+	result, err := s.executor.FilterTxs(ctx, req.Msg.Txs, req.Msg.MaxBytes, req.Msg.MaxGas, req.Msg.HasForceIncludedTransaction)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to filter transactions: %w", err))
+	}
+
+	// Convert execution.FilterStatus to protobuf FilterStatus
+	statuses := make([]pb.FilterStatus, len(result))
+	for i, status := range result {
+		statuses[i] = pb.FilterStatus(status)
+	}
+
+	return connect.NewResponse(&pb.FilterTxsResponse{
+		Statuses: statuses,
+	}), nil
 }
