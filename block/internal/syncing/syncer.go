@@ -905,6 +905,26 @@ func (s *Syncer) VerifyForcedInclusionTxs(ctx context.Context, currentState type
 		return fmt.Errorf("failed to retrieve forced included txs from DA: %w", err)
 	}
 
+	// Filter out invalid forced inclusion transactions using the executor's FilterTxs.
+	// This ensures we don't mark the sequencer as malicious for not including txs that
+	// were legitimately filtered (e.g., malformed, unparseable, or otherwise invalid).
+	validForcedTxs := forcedIncludedTxsEvent.Txs
+	if len(forcedIncludedTxsEvent.Txs) > 0 {
+		filterStatuses, filterErr := s.exec.FilterTxs(ctx, forcedIncludedTxsEvent.Txs, 0, 0, true)
+		if filterErr != nil {
+			s.logger.Warn().Err(filterErr).Msg("failed to filter forced inclusion txs, checking no txs")
+			validForcedTxs = [][]byte{}
+		} else {
+			validForcedTxs = make([][]byte, 0, len(forcedIncludedTxsEvent.Txs))
+			for i, status := range filterStatuses {
+				if status != coreexecutor.FilterOK {
+					continue
+				}
+				validForcedTxs = append(validForcedTxs, forcedIncludedTxsEvent.Txs[i])
+			}
+		}
+	}
+
 	// Build map of transactions in current block
 	blockTxMap := make(map[string]struct{})
 	for _, tx := range data.Txs {
@@ -929,9 +949,9 @@ func (s *Syncer) VerifyForcedInclusionTxs(ctx context.Context, currentState type
 		return true
 	})
 
-	// Add new forced inclusion transactions from current epoch
+	// Add new forced inclusion transactions from current epoch (only valid ones)
 	var newPendingCount, includedCount int
-	for _, forcedTx := range forcedIncludedTxsEvent.Txs {
+	for _, forcedTx := range validForcedTxs {
 		txHash := hashTx(forcedTx)
 		if _, ok := blockTxMap[txHash]; ok {
 			// Transaction is included in this block
@@ -1005,7 +1025,7 @@ func (s *Syncer) VerifyForcedInclusionTxs(ctx context.Context, currentState type
 	}
 
 	// Log current state
-	if len(forcedIncludedTxsEvent.Txs) > 0 {
+	if len(validForcedTxs) > 0 {
 		if newPendingCount > 0 {
 			totalPending := 0
 			s.pendingForcedInclusionTxs.Range(func(key, value any) bool {
@@ -1021,11 +1041,13 @@ func (s *Syncer) VerifyForcedInclusionTxs(ctx context.Context, currentState type
 				Int("included_count", includedCount).
 				Int("deferred_count", newPendingCount).
 				Int("total_pending", totalPending).
+				Int("filtered_invalid", len(forcedIncludedTxsEvent.Txs)-len(validForcedTxs)).
 				Msg("forced inclusion transactions processed - some deferred due to block size constraints")
 		} else {
 			s.logger.Debug().
 				Uint64("height", data.Height()).
-				Int("forced_txs", len(forcedIncludedTxsEvent.Txs)).
+				Int("forced_txs", len(validForcedTxs)).
+				Int("filtered_invalid", len(forcedIncludedTxsEvent.Txs)-len(validForcedTxs)).
 				Msg("all forced inclusion transactions included in block")
 		}
 	}

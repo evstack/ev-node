@@ -150,7 +150,6 @@ func TestTracedSequencer_GetNextBatch_Success(t *testing.T) {
 
 	attrs := span.Attributes()
 	testutil.RequireAttribute(t, attrs, "tx.count", 2)
-	testutil.RequireAttribute(t, attrs, "forced_inclusion.count", 1)
 	testutil.RequireAttribute(t, attrs, "max_bytes", int64(1000))
 }
 

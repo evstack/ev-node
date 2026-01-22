@@ -15,6 +15,7 @@ import (
 	"github.com/evstack/ev-node/block/internal/cache"
 	"github.com/evstack/ev-node/block/internal/common"
 	"github.com/evstack/ev-node/block/internal/da"
+	"github.com/evstack/ev-node/core/execution"
 	"github.com/evstack/ev-node/pkg/config"
 	datypes "github.com/evstack/ev-node/pkg/da/types"
 	"github.com/evstack/ev-node/pkg/genesis"
@@ -22,6 +23,21 @@ import (
 	testmocks "github.com/evstack/ev-node/test/mocks"
 	"github.com/evstack/ev-node/types"
 )
+
+// setupFilterTxsMock sets up the FilterTxs mock to return FilterOK for all transactions.
+// This is the default behavior for tests that don't specifically test filtering.
+func setupFilterTxsMock(mockExec *testmocks.MockExecutor) {
+	mockExec.On("FilterTxs", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(
+		func(ctx context.Context, txs [][]byte, maxBytes, maxGas uint64, hasForceIncludedTransaction bool) []execution.FilterStatus {
+			result := make([]execution.FilterStatus, len(txs))
+			for i := range result {
+				result[i] = execution.FilterOK
+			}
+			return result
+		},
+		nil,
+	).Maybe()
+}
 
 func TestCalculateBlockFullness_HalfFull(t *testing.T) {
 	s := &Syncer{}
@@ -363,6 +379,7 @@ func TestVerifyForcedInclusionTxs_AllTransactionsIncluded(t *testing.T) {
 	mockExec := testmocks.NewMockExecutor(t)
 	mockExec.EXPECT().InitChain(mock.Anything, mock.Anything, uint64(1), "tchain").
 		Return([]byte("app0"), nil).Once()
+	setupFilterTxsMock(mockExec)
 
 	client := testmocks.NewMockClient(t)
 	client.On("GetHeaderNamespace").Return([]byte(cfg.DA.Namespace)).Maybe()
@@ -437,6 +454,7 @@ func TestVerifyForcedInclusionTxs_MissingTransactions(t *testing.T) {
 	mockExec := testmocks.NewMockExecutor(t)
 	mockExec.EXPECT().InitChain(mock.Anything, mock.Anything, uint64(1), "tchain").
 		Return([]byte("app0"), nil).Once()
+	setupFilterTxsMock(mockExec)
 
 	client := testmocks.NewMockClient(t)
 	client.On("GetHeaderNamespace").Return([]byte(cfg.DA.Namespace)).Maybe()
@@ -541,6 +559,7 @@ func TestVerifyForcedInclusionTxs_PartiallyIncluded(t *testing.T) {
 	mockExec := testmocks.NewMockExecutor(t)
 	mockExec.EXPECT().InitChain(mock.Anything, mock.Anything, uint64(1), "tchain").
 		Return([]byte("app0"), nil).Once()
+	setupFilterTxsMock(mockExec)
 
 	client := testmocks.NewMockClient(t)
 	client.On("GetHeaderNamespace").Return([]byte(cfg.DA.Namespace)).Maybe()
@@ -649,6 +668,7 @@ func TestVerifyForcedInclusionTxs_NoForcedTransactions(t *testing.T) {
 	mockExec := testmocks.NewMockExecutor(t)
 	mockExec.EXPECT().InitChain(mock.Anything, mock.Anything, uint64(1), "tchain").
 		Return([]byte("app0"), nil).Once()
+	setupFilterTxsMock(mockExec)
 
 	client := testmocks.NewMockClient(t)
 	client.On("GetHeaderNamespace").Return([]byte(cfg.DA.Namespace)).Maybe()
@@ -716,6 +736,7 @@ func TestVerifyForcedInclusionTxs_NamespaceNotConfigured(t *testing.T) {
 	mockExec := testmocks.NewMockExecutor(t)
 	mockExec.EXPECT().InitChain(mock.Anything, mock.Anything, uint64(1), "tchain").
 		Return([]byte("app0"), nil).Once()
+	setupFilterTxsMock(mockExec)
 
 	client := testmocks.NewMockClient(t)
 	client.On("GetHeaderNamespace").Return([]byte(cfg.DA.Namespace)).Maybe()
@@ -783,6 +804,7 @@ func TestVerifyForcedInclusionTxs_DeferralWithinEpoch(t *testing.T) {
 	mockExec := testmocks.NewMockExecutor(t)
 	mockExec.EXPECT().InitChain(mock.Anything, mock.Anything, uint64(1), "tchain").
 		Return([]byte("app0"), nil).Once()
+	setupFilterTxsMock(mockExec)
 
 	client := testmocks.NewMockClient(t)
 	client.On("GetHeaderNamespace").Return([]byte(cfg.DA.Namespace)).Maybe()
@@ -907,6 +929,7 @@ func TestVerifyForcedInclusionTxs_MaliciousAfterEpochEnd(t *testing.T) {
 	mockExec := testmocks.NewMockExecutor(t)
 	mockExec.EXPECT().InitChain(mock.Anything, mock.Anything, uint64(1), "tchain").
 		Return([]byte("app0"), nil).Once()
+	setupFilterTxsMock(mockExec)
 
 	client := testmocks.NewMockClient(t)
 	client.On("GetHeaderNamespace").Return([]byte(cfg.DA.Namespace)).Maybe()
@@ -996,6 +1019,7 @@ func TestVerifyForcedInclusionTxs_SmoothingExceedsEpoch(t *testing.T) {
 	mockExec := testmocks.NewMockExecutor(t)
 	mockExec.EXPECT().InitChain(mock.Anything, mock.Anything, uint64(1), "tchain").
 		Return([]byte("app0"), nil).Once()
+	setupFilterTxsMock(mockExec)
 
 	client := testmocks.NewMockClient(t)
 	client.On("GetHeaderNamespace").Return([]byte(cfg.DA.Namespace)).Maybe()
