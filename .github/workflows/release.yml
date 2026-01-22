@@ -21,26 +21,104 @@ jobs:
         with:
           fetch-depth: 0  # Full history needed for changelog generation
 
-      - name: Install git-cliff
-        uses: taiki-e/install-action@v2
-        with:
-          tool: git-cliff
-
-      - name: Generate changelog
-        id: cliff
+      - name: Get previous tag
+        id: get-prev-tag
         run: |
-          # Generate changelog from CHANGELOG.md for this release
-          CHANGELOG_CONTENT=$(git cliff --unreleased --strip all)
+          # Get the previous tag
+          CURRENT_TAG="${{ github.ref_name }}"
+          PREV_TAG=$(git tag --sort=-version:refname | grep -A1 "^${CURRENT_TAG}$" | tail -1)
 
-          # Save to file and output
-          echo "$CHANGELOG_CONTENT" > RELEASE_CHANGELOG.md
-          echo "Generated changelog:"
+          if [ -z "$PREV_TAG" ] || [ "$PREV_TAG" = "$CURRENT_TAG" ]; then
+            echo "No previous tag found, using initial commit"
+            PREV_TAG=$(git rev-list --max-parents=0 HEAD)
+          fi
+
+          echo "prev-tag=$PREV_TAG" >> $GITHUB_OUTPUT
+          echo "::notice::Comparing $PREV_TAG to $CURRENT_TAG"
+
+      - name: Generate git diff
+        id: git-diff
+        run: |
+          PREV_TAG="${{ steps.get-prev-tag.outputs.prev-tag }}"
+          CURRENT_TAG="${{ github.ref_name }}"
+
+          # Generate detailed diff with file statistics
+          git diff --stat "$PREV_TAG"..HEAD > git-diff-stats.txt
+          git log --oneline "$PREV_TAG"..HEAD > git-commits.txt
+          git diff "$PREV_TAG"..HEAD > git-full-diff.txt
+
+          echo "Generated git diff from $PREV_TAG to HEAD"
+          echo "Commit summary:"
+          cat git-commits.txt
+
+          # Capture outputs for next step (truncate diff to fit GitHub limits)
+          {
+            echo 'commits<<EOF_COMMITS'
+            cat git-commits.txt
+            echo EOF_COMMITS
+          } >> $GITHUB_OUTPUT
+
+          {
+            echo 'stats<<EOF_STATS'
+            cat git-diff-stats.txt
+            echo EOF_STATS
+          } >> $GITHUB_OUTPUT
+
+          {
+            echo 'diff<<EOF_DIFF'
+            head -c 50000 git-full-diff.txt
+            echo EOF_DIFF
+          } >> $GITHUB_OUTPUT
+
+      - name: Generate changelog with Claude
+        id: claude
+        uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          prompt: |
+            You are a technical writer creating release notes for a blockchain node software project called ev-node.
+            Analyze the provided git changes and generate a clear, comprehensive changelog in markdown format.
+
+            Follow these guidelines:
+            - Start with a brief summary of the release
+            - Group changes by category: Features, Bug Fixes, Performance, Documentation, etc.
+            - Use clear, concise bullet points
+            - Highlight breaking changes prominently if any
+            - Include technical details that would help developers understand the changes
+            - Format as clean markdown suitable for a GitHub release
+
+
+            Generate a changelog for this release based on the following git changes:
+
+            ## Commits:
+            ```
+            ${{ steps.git-diff.outputs.commits }}
+            ```
+
+            ## File Statistics:
+            ```
+            ${{ steps.git-diff.outputs.stats }}
+            ```
+
+            ## Full Diff (first 50000 chars):
+            ```diff
+            ${{ steps.git-diff.outputs.diff }}
+            ```
+
+            Please generate a well-formatted changelog in markdown that summarizes these changes for users and developers.
+
+      - name: Save changelog output
+        id: changelog-output
+        run: |
+          # Save Claude's response to file
+          echo "${{ steps.claude.outputs.content }}" > RELEASE_CHANGELOG.md
+          echo "Generated changelog with Claude AI:"
           cat RELEASE_CHANGELOG.md
 
           # Export for GitHub Release (escape for multiline output)
           {
             echo 'content<<EOF'
-            echo "$CHANGELOG_CONTENT"
+            cat RELEASE_CHANGELOG.md
             echo EOF
           } >> $GITHUB_OUTPUT
 
