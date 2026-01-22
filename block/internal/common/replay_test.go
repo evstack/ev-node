@@ -83,7 +83,7 @@ func TestReplayer_SyncToHeight_ExecutorBehind(t *testing.T) {
 
 	// Expect ExecuteTxs to be called for height 100
 	mockExec.On("ExecuteTxs", mock.Anything, mock.Anything, uint64(100), mock.Anything, []byte("app-hash-99")).
-		Return([]byte("app-hash-100"), uint64(1000), nil)
+		Return([]byte("app-hash-100"), nil)
 
 	// Execute sync
 	err := syncer.SyncToHeight(ctx, targetHeight)
@@ -272,7 +272,7 @@ func TestReplayer_SyncToHeight_MultipleBlocks(t *testing.T) {
 
 		// ExecuteTxs for current block
 		mockExec.On("ExecuteTxs", mock.Anything, mock.Anything, height, mock.Anything, mock.Anything).
-			Return([]byte("app-hash-"+string(rune('0'+height))), uint64(1000), nil).Once()
+			Return([]byte("app-hash-"+string(rune('0'+height))), nil).Once()
 	}
 
 	// Execute sync
@@ -321,7 +321,7 @@ func TestReplayer_ReplayBlock_FirstBlock(t *testing.T) {
 
 	// For first block, ExecuteTxs should be called with genesis app hash
 	mockExec.On("ExecuteTxs", mock.Anything, mock.Anything, uint64(1), mock.Anything, []byte("app-hash-1")).
-		Return([]byte("app-hash-1"), uint64(1000), nil)
+		Return([]byte("app-hash-1"), nil)
 
 	// Call replayBlock directly (this is a private method, so we test it through SyncToHeight)
 	mockExec.On("GetLatestHeight", mock.Anything).Return(uint64(0), nil)
@@ -398,7 +398,7 @@ func TestReplayer_AppHashMismatch(t *testing.T) {
 
 	// ExecuteTxs returns a different app hash than expected
 	mockExec.On("ExecuteTxs", mock.Anything, mock.Anything, uint64(100), mock.Anything, []byte("app-hash-99")).
-		Return([]byte("different-app-hash"), uint64(1000), nil)
+		Return([]byte("different-app-hash"), nil)
 
 	// Should fail with mismatch error
 	err := syncer.SyncToHeight(ctx, targetHeight)

@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/ethereum/go-ethereum/beacon/engine"
@@ -178,6 +179,8 @@ type EngineClient struct {
 	currentFinalizedBlockHash common.Hash            // Store last finalized block hash
 	blockHashCache            map[uint64]common.Hash // height -> hash cache for safe block lookups
 
+	cachedExecutionInfo atomic.Pointer[execution.ExecutionInfo] // Cached execution info (gas limit)
+
 	logger zerolog.Logger
 }
 
@@ -268,9 +271,9 @@ func (c *EngineClient) SetLogger(l zerolog.Logger) {
 }
 
 // InitChain initializes the blockchain with the given genesis parameters
-func (c *EngineClient) InitChain(ctx context.Context, genesisTime time.Time, initialHeight uint64, chainID string) ([]byte, uint64, error) {
+func (c *EngineClient) InitChain(ctx context.Context, genesisTime time.Time, initialHeight uint64, chainID string) ([]byte, error) {
 	if initialHeight != 1 {
-		return nil, 0, fmt.Errorf("initialHeight must be 1, got %d", initialHeight)
+		return nil, fmt.Errorf("initialHeight must be 1, got %d", initialHeight)
 	}
 
 	// Acknowledge the genesis block with retry logic for SYNCING status
@@ -300,17 +303,17 @@ func (c *EngineClient) InitChain(ctx context.Context, genesisTime time.Time, ini
 		return nil
 	}, MaxPayloadStatusRetries, InitialRetryBackoff, "InitChain")
 	if err != nil {
-		return nil, 0, err
+		return nil, err
 	}
 
-	_, stateRoot, gasLimit, _, err := c.getBlockInfo(ctx, 0)
+	_, stateRoot, _, _, err := c.getBlockInfo(ctx, 0)
 	if err != nil {
-		return nil, 0, fmt.Errorf("failed to get block info: %w", err)
+		return nil, fmt.Errorf("failed to get block info: %w", err)
 	}
 
 	c.initialHeight = initialHeight
 
-	return stateRoot[:], gasLimit, nil
+	return stateRoot[:], nil
 }
 
 // GetTxs retrieves transactions from the current execution payload
@@ -341,16 +344,16 @@ func (c *EngineClient) GetTxs(ctx context.Context) ([][]byte, error) {
 // - Checks for already-promoted blocks to enable idempotent execution
 // - Saves ExecMeta with payloadID after forkchoiceUpdatedV3 for crash recovery
 // - Updates ExecMeta to "promoted" after successful execution
-func (c *EngineClient) ExecuteTxs(ctx context.Context, txs [][]byte, blockHeight uint64, timestamp time.Time, prevStateRoot []byte) (updatedStateRoot []byte, maxBytes uint64, err error) {
+func (c *EngineClient) ExecuteTxs(ctx context.Context, txs [][]byte, blockHeight uint64, timestamp time.Time, prevStateRoot []byte) (updatedStateRoot []byte, err error) {
 
 	// 1. Check for idempotent execution
-	stateRoot, payloadID, found, err := c.reconcileExecutionAtHeight(ctx, blockHeight, timestamp, txs)
-	if err != nil {
-		c.logger.Warn().Err(err).Uint64("height", blockHeight).Msg("ExecuteTxs: idempotency check failed")
+	stateRoot, payloadID, found, idempotencyErr := c.reconcileExecutionAtHeight(ctx, blockHeight, timestamp, txs)
+	if idempotencyErr != nil {
+		c.logger.Warn().Err(idempotencyErr).Uint64("height", blockHeight).Msg("ExecuteTxs: idempotency check failed")
 		// Continue execution on error, as it might be transient
 	} else if found {
 		if stateRoot != nil {
-			return stateRoot, 0, nil
+			return stateRoot, nil
 		}
 		if payloadID != nil {
 			// Found in-progress execution, attempt to resume
@@ -360,16 +363,16 @@ func (c *EngineClient) ExecuteTxs(ctx context.Context, txs [][]byte, blockHeight
 
 	prevBlockHash, prevHeaderStateRoot, prevGasLimit, _, err := c.getBlockInfo(ctx, blockHeight-1)
 	if err != nil {
-		return nil, 0, fmt.Errorf("failed to get block info: %w", err)
+		return nil, fmt.Errorf("failed to get block info: %w", err)
 	}
 	// It's possible that the prev state root passed in is nil if this is the first block.
 	// If so, we can't do a comparison. Otherwise, we compare the roots.
 	if len(prevStateRoot) > 0 && !bytes.Equal(prevStateRoot, prevHeaderStateRoot.Bytes()) {
-		return nil, 0, fmt.Errorf("prevStateRoot mismatch at height %d: consensus=%x execution=%x", blockHeight-1, prevStateRoot, prevHeaderStateRoot.Bytes())
+		return nil, fmt.Errorf("prevStateRoot mismatch at height %d: consensus=%x execution=%x", blockHeight-1, prevStateRoot, prevHeaderStateRoot.Bytes())
 	}
 
 	// 2. Prepare payload attributes
-	txsPayload := c.filterTransactions(ctx, txs, blockHeight)
+	txsPayload := c.filterTransactions(txs)
 
 	// Cache parent block hash for safe-block lookups.
 	c.cacheBlockHash(blockHeight-1, prevBlockHash)
@@ -442,7 +445,7 @@ func (c *EngineClient) ExecuteTxs(ctx context.Context, txs [][]byte, blockHeight
 		return nil
 	}, MaxPayloadStatusRetries, InitialRetryBackoff, "ExecuteTxs forkchoice")
 	if err != nil {
-		return nil, 0, err
+		return nil, err
 	}
 
 	// Save ExecMeta with payloadID for crash recovery (Stage="started")
@@ -693,7 +696,7 @@ func (c *EngineClient) ResumePayload(ctx context.Context, payloadIDBytes []byte)
 		Str("payloadID", payloadID.String()).
 		Msg("ResumePayload: attempting to resume in-progress payload")
 
-	stateRoot, _, err = c.processPayload(ctx, payloadID, nil) // txs = nil for resume
+	stateRoot, err = c.processPayload(ctx, payloadID, nil) // txs = nil for resume
 	return stateRoot, err
 }
 
@@ -799,55 +802,129 @@ func (c *EngineClient) reconcileExecutionAtHeight(ctx context.Context, height ui
 	return nil, nil, false, nil
 }
 
-// filterTransactions filters out invalid transactions and formats them for the payload.
-func (c *EngineClient) filterTransactions(ctx context.Context, txs [][]byte, blockHeight uint64) []string {
-	forceIncludedMask := execution.GetForceIncludedMask(ctx)
-
+// filterTransactions formats transactions for the payload.
+// DA transactions should already be filtered via FilterTxs before reaching here.
+// Mempool transactions are already validated when added to mempool.
+func (c *EngineClient) filterTransactions(txs [][]byte) []string {
 	validTxs := make([]string, 0, len(txs))
-	for i, tx := range txs {
+	for _, tx := range txs {
 		if len(tx) == 0 {
 			continue
 		}
-
-		// Force-included transactions (from DA) MUST be validated as they come from untrusted sources
-		// Skip validation for mempool transactions (already validated when added to mempool)
-		if forceIncludedMask != nil && i < len(forceIncludedMask) && !forceIncludedMask[i] {
-			validTxs = append(validTxs, "0x"+hex.EncodeToString(tx))
-			continue
-		}
-
-		// Validate that the transaction can be parsed as an Ethereum transaction
-		var ethTx types.Transaction
-		if err := ethTx.UnmarshalBinary(tx); err != nil {
-			c.logger.Debug().
-				Int("tx_index", i).
-				Uint64("block_height", blockHeight).
-				Err(err).
-				Str("tx_hex", "0x"+hex.EncodeToString(tx)).
-				Msg("filtering out invalid transaction (gibberish)")
-			continue
-		}
-
 		validTxs = append(validTxs, "0x"+hex.EncodeToString(tx))
-	}
-
-	if len(validTxs) < len(txs) {
-		c.logger.Debug().
-			Int("total_txs", len(txs)).
-			Int("valid_txs", len(validTxs)).
-			Int("filtered_txs", len(txs)-len(validTxs)).
-			Uint64("block_height", blockHeight).
-			Msg("filtered out invalid transactions")
 	}
 	return validTxs
 }
 
+// GetExecutionInfo returns current execution layer parameters.
+func (c *EngineClient) GetExecutionInfo(ctx context.Context) (execution.ExecutionInfo, error) {
+	if cached := c.cachedExecutionInfo.Load(); cached != nil {
+		return *cached, nil
+	}
+
+	header, err := c.ethClient.HeaderByNumber(ctx, nil) // nil = latest
+	if err != nil {
+		return execution.ExecutionInfo{}, fmt.Errorf("failed to get latest block: %w", err)
+	}
+
+	info := execution.ExecutionInfo{MaxGas: header.GasLimit}
+	c.cachedExecutionInfo.Store(&info)
+
+	return info, nil
+}
+
+// FilterTxs validates force-included transactions and applies gas and size filtering for all passed txs.
+// If hasForceIncludedTransaction is false, skip filtering entirely - mempool batch is already filtered.
+// Returns a slice of FilterStatus for each transaction.
+func (c *EngineClient) FilterTxs(ctx context.Context, txs [][]byte, maxBytes, maxGas uint64, hasForceIncludedTransaction bool) ([]execution.FilterStatus, error) {
+	result := make([]execution.FilterStatus, len(txs))
+
+	var cumulativeGas uint64
+	var cumulativeBytes uint64
+	limitReached := false
+
+	for i, tx := range txs {
+		// Skip empty transactions
+		if len(tx) == 0 {
+			result[i] = execution.FilterRemove
+			continue
+		}
+
+		txBytes := uint64(len(tx))
+		var txGas uint64
+
+		// Only validate and parse tx if force-included txs are present
+		// Mempool txs are already validated, so we can skip parsing when not needed
+		if hasForceIncludedTransaction {
+			var ethTx types.Transaction
+			if err := ethTx.UnmarshalBinary(tx); err != nil {
+				c.logger.Debug().
+					Int("tx_index", i).
+					Err(err).
+					Str("tx_hex", "0x"+hex.EncodeToString(tx)).
+					Msg("filtering out invalid transaction (gibberish)")
+				result[i] = execution.FilterRemove
+				continue
+			}
+			txGas = ethTx.Gas()
+
+			// Skip tx that can never make it in a block (too much gas)
+			if maxGas > 0 && txGas > maxGas {
+				result[i] = execution.FilterRemove
+				continue
+			}
+		}
+
+		// Skip tx that can never make it in a block (too big)
+		if maxBytes > 0 && txBytes > maxBytes {
+			result[i] = execution.FilterRemove
+			continue
+		}
+
+		// Once limit is reached, postpone remaining txs
+		if limitReached {
+			result[i] = execution.FilterPostpone
+			continue
+		}
+
+		// Check size limit
+		if maxBytes > 0 && cumulativeBytes+txBytes > maxBytes {
+			limitReached = true
+			result[i] = execution.FilterPostpone
+			c.logger.Debug().
+				Uint64("cumulative_bytes", cumulativeBytes).
+				Uint64("tx_bytes", txBytes).
+				Uint64("max_bytes", maxBytes).
+				Msg("size limit reached, postponing remaining txs")
+			continue
+		}
+
+		// Check gas limit (only when we have force-included txs and parsed the tx)
+		if hasForceIncludedTransaction && maxGas > 0 && cumulativeGas+txGas > maxGas {
+			limitReached = true
+			result[i] = execution.FilterPostpone
+			c.logger.Debug().
+				Uint64("cumulative_gas", cumulativeGas).
+				Uint64("tx_gas", txGas).
+				Uint64("max_gas", maxGas).
+				Msg("gas limit reached, postponing remaining txs")
+			continue
+		}
+
+		cumulativeBytes += txBytes
+		cumulativeGas += txGas
+		result[i] = execution.FilterOK
+	}
+
+	return result, nil
+}
+
 // processPayload handles the common logic of getting, submitting, and finalizing a payload.
-func (c *EngineClient) processPayload(ctx context.Context, payloadID engine.PayloadID, txs [][]byte) ([]byte, uint64, error) {
+func (c *EngineClient) processPayload(ctx context.Context, payloadID engine.PayloadID, txs [][]byte) ([]byte, error) {
 	// 1. Get Payload
 	payloadResult, err := c.engineClient.GetPayload(ctx, payloadID)
 	if err != nil {
-		return nil, 0, fmt.Errorf("get payload failed: %w", err)
+		return nil, fmt.Errorf("get payload failed: %w", err)
 	}
 
 	blockHeight := payloadResult.ExecutionPayload.Number
@@ -877,7 +954,7 @@ func (c *EngineClient) processPayload(ctx context.Context, payloadID engine.Payl
 		return nil
 	}, MaxPayloadStatusRetries, InitialRetryBackoff, "processPayload newPayload")
 	if err != nil {
-		return nil, 0, err
+		return nil, err
 	}
 
 	// 3. Update Forkchoice
@@ -886,13 +963,13 @@ func (c *EngineClient) processPayload(ctx context.Context, payloadID engine.Payl
 
 	err = c.setFinalWithHeight(ctx, blockHash, blockHeight, false)
 	if err != nil {
-		return nil, 0, fmt.Errorf("forkchoice update failed: %w", err)
+		return nil, fmt.Errorf("forkchoice update failed: %w", err)
 	}
 
 	// 4. Save ExecMeta (Promoted)
 	c.saveExecMeta(ctx, blockHeight, blockTimestamp, payloadID[:], blockHash[:], payloadResult.ExecutionPayload.StateRoot.Bytes(), txs, ExecStagePromoted)
 
-	return payloadResult.ExecutionPayload.StateRoot.Bytes(), payloadResult.ExecutionPayload.GasUsed, nil
+	return payloadResult.ExecutionPayload.StateRoot.Bytes(), nil
 }
 
 func (c *EngineClient) derivePrevRandao(blockHeight uint64) common.Hash {

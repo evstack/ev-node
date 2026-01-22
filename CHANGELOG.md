@@ -18,6 +18,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Additionally, modified the core package to support marking transactions as forced included transactions.
   The execution client ought to perform basic validation on those transactions as they have skipped the execution client's mempool.
 - Add batching stategies (default stay time-based, unchanged with previous betas). Currently available strategies are `time`, `size`, `immediate` and `adaptive`.
+- Added `FilterTxs` method to the execution interface. This method is meant to filter txs by size and if the execution clients allows it, by gas. This is useful for force included transactions, as those aren't filtered by the sequencer's mempool.
+- Added `GetExecutionInfo` method to the execution interface. This method returns some execution information, such as the maximum gas per block.
 
 ### Changed
 
