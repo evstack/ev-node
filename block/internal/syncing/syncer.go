@@ -915,10 +915,9 @@ func (s *Syncer) VerifyForcedInclusionTxs(ctx context.Context, currentState type
 	// were legitimately filtered (e.g., malformed, unparseable, or otherwise invalid).
 	validForcedTxs := forcedIncludedTxsEvent.Txs
 	if len(forcedIncludedTxsEvent.Txs) > 0 {
-		filterStatuses, filterErr := s.exec.FilterTxs(ctx, forcedIncludedTxsEvent.Txs, executionInfo.MaxGas, common.DefaultMaxBlobSize, true)
+		filterStatuses, filterErr := s.exec.FilterTxs(ctx, forcedIncludedTxsEvent.Txs, common.DefaultMaxBlobSize, executionInfo.MaxGas, true)
 		if filterErr != nil {
-			s.logger.Warn().Err(filterErr).Msg("failed to filter forced inclusion txs, checking no txs")
-			validForcedTxs = [][]byte{}
+			return fmt.Errorf("failed to filter forced inclusion txs: %w", filterErr)
 		} else {
 			validForcedTxs = make([][]byte, 0, len(forcedIncludedTxsEvent.Txs))
 			for i, status := range filterStatuses {

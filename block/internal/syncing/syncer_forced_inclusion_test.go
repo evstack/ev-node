@@ -27,6 +27,7 @@ import (
 // setupFilterTxsMock sets up the FilterTxs mock to return FilterOK for all transactions.
 // This is the default behavior for tests that don't specifically test filtering.
 func setupFilterTxsMock(mockExec *testmocks.MockExecutor) {
+	mockExec.On("GetExecutionInfo", mock.Anything).Return(execution.ExecutionInfo{MaxGas: 1000000}, nil).Maybe()
 	mockExec.On("FilterTxs", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(
 		func(ctx context.Context, txs [][]byte, maxBytes, maxGas uint64, hasForceIncludedTransaction bool) []execution.FilterStatus {
 			result := make([]execution.FilterStatus, len(txs))
