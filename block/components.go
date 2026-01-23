@@ -20,6 +20,7 @@ import (
 	"github.com/evstack/ev-node/pkg/genesis"
 	"github.com/evstack/ev-node/pkg/signer"
 	"github.com/evstack/ev-node/pkg/store"
+	"github.com/evstack/ev-node/pkg/telemetry"
 	"github.com/evstack/ev-node/types"
 )
 
@@ -156,7 +157,10 @@ func NewSyncComponents(
 	}
 
 	// Create submitter for sync nodes (no signer, only DA inclusion processing)
-	daSubmitter := submitting.NewDASubmitter(daClient, config, genesis, blockOpts, metrics, logger)
+	var daSubmitter submitting.DASubmitterAPI = submitting.NewDASubmitter(daClient, config, genesis, blockOpts, metrics, logger)
+	if config.Instrumentation.IsTracingEnabled() {
+		daSubmitter = submitting.WithTracingDASubmitter(daSubmitter)
+	}
 	submitter := submitting.NewSubmitter(
 		store,
 		exec,
@@ -205,6 +209,11 @@ func NewAggregatorComponents(
 	// error channel for critical failures
 	errorCh := make(chan error, 1)
 
+	// wrap sequencer with tracing if enabled
+	if config.Instrumentation.IsTracingEnabled() {
+		sequencer = telemetry.WithTracingSequencer(sequencer)
+	}
+
 	executor, err := executing.NewExecutor(
 		store,
 		exec,
@@ -250,7 +259,10 @@ func NewAggregatorComponents(
 		}, nil
 	}
 
-	daSubmitter := submitting.NewDASubmitter(daClient, config, genesis, blockOpts, metrics, logger)
+	var daSubmitter submitting.DASubmitterAPI = submitting.NewDASubmitter(daClient, config, genesis, blockOpts, metrics, logger)
+	if config.Instrumentation.IsTracingEnabled() {
+		daSubmitter = submitting.WithTracingDASubmitter(daSubmitter)
+	}
 	submitter := submitting.NewSubmitter(
 		store,
 		exec,

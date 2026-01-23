@@ -7,12 +7,12 @@ import (
 
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/otel"
-	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 
 	coresequencer "github.com/evstack/ev-node/core/sequencer"
+	"github.com/evstack/ev-node/pkg/telemetry/testutil"
 	"github.com/evstack/ev-node/types"
 )
 
@@ -131,7 +131,7 @@ func TestTracedBlockProducer_RetrieveBatch_Success(t *testing.T) {
 	require.Equal(t, codes.Unset, span.Status().Code)
 
 	attrs := span.Attributes()
-	requireAttribute(t, attrs, "batch.tx_count", 2)
+	testutil.RequireAttribute(t, attrs, "batch.tx_count", 2)
 }
 
 func TestTracedBlockProducer_RetrieveBatch_Error(t *testing.T) {
@@ -180,8 +180,8 @@ func TestTracedBlockProducer_CreateBlock_Success(t *testing.T) {
 	require.Equal(t, codes.Unset, span.Status().Code)
 
 	attrs := span.Attributes()
-	requireAttribute(t, attrs, "block.height", int64(100))
-	requireAttribute(t, attrs, "tx.count", 3)
+	testutil.RequireAttribute(t, attrs, "block.height", int64(100))
+	testutil.RequireAttribute(t, attrs, "tx.count", 3)
 }
 
 func TestTracedBlockProducer_CreateBlock_Error(t *testing.T) {
@@ -234,9 +234,9 @@ func TestTracedBlockProducer_ApplyBlock_Success(t *testing.T) {
 	require.Equal(t, codes.Unset, span.Status().Code)
 
 	attrs := span.Attributes()
-	requireAttribute(t, attrs, "block.height", int64(50))
-	requireAttribute(t, attrs, "tx.count", 2)
-	requireAttribute(t, attrs, "state_root", "deadbeef")
+	testutil.RequireAttribute(t, attrs, "block.height", int64(50))
+	testutil.RequireAttribute(t, attrs, "tx.count", 2)
+	testutil.RequireAttribute(t, attrs, "state_root", "deadbeef")
 }
 
 func TestTracedBlockProducer_ApplyBlock_Error(t *testing.T) {
@@ -291,7 +291,7 @@ func TestTracedBlockProducer_ValidateBlock_Success(t *testing.T) {
 	require.Equal(t, codes.Unset, span.Status().Code)
 
 	attrs := span.Attributes()
-	requireAttribute(t, attrs, "block.height", int64(75))
+	testutil.RequireAttribute(t, attrs, "block.height", int64(75))
 }
 
 func TestTracedBlockProducer_ValidateBlock_Error(t *testing.T) {
@@ -321,24 +321,99 @@ func TestTracedBlockProducer_ValidateBlock_Error(t *testing.T) {
 	require.Equal(t, "validation failed", span.Status().Description)
 }
 
-func requireAttribute(t *testing.T, attrs []attribute.KeyValue, key string, expected interface{}) {
-	t.Helper()
-	found := false
-	for _, attr := range attrs {
-		if string(attr.Key) == key {
-			found = true
-			switch v := expected.(type) {
-			case string:
-				require.Equal(t, v, attr.Value.AsString())
-			case int64:
-				require.Equal(t, v, attr.Value.AsInt64())
-			case int:
-				require.Equal(t, int64(v), attr.Value.AsInt64())
-			default:
-				t.Fatalf("unsupported attribute type: %T", expected)
-			}
-			break
-		}
+// TestTracedBlockProducer_RetrieveBatch_ErrorWithValue verifies that when the inner
+// function returns both a value and an error, the value is passed through (not nil).
+// this is important for cases like ErrNoTransactionsInBatch where valid data accompanies the error.
+func TestTracedBlockProducer_RetrieveBatch_ErrorWithValue(t *testing.T) {
+	expectedBatch := &BatchData{
+		Batch: &coresequencer.Batch{
+			Transactions: [][]byte{},
+		},
 	}
-	require.True(t, found, "attribute %s not found", key)
+	mock := &mockBlockProducer{
+		retrieveBatchFn: func(ctx context.Context) (*BatchData, error) {
+			return expectedBatch, errors.New("no transactions in batch")
+		},
+	}
+	producer, sr := setupBlockProducerTrace(t, mock)
+	ctx := context.Background()
+
+	batch, err := producer.RetrieveBatch(ctx)
+	require.Error(t, err)
+	require.Equal(t, "no transactions in batch", err.Error())
+	require.NotNil(t, batch, "batch should not be nil when inner returns value with error")
+	require.Same(t, expectedBatch, batch, "batch should be the same instance returned by inner")
+
+	spans := sr.Ended()
+	require.Len(t, spans, 1)
+	span := spans[0]
+	require.Equal(t, codes.Error, span.Status().Code)
+}
+
+// TestTracedBlockProducer_CreateBlock_ErrorWithValue verifies that when the inner
+// function returns both values and an error, the values are passed through (not nil).
+func TestTracedBlockProducer_CreateBlock_ErrorWithValue(t *testing.T) {
+	expectedHeader := &types.SignedHeader{
+		Header: types.Header{
+			BaseHeader: types.BaseHeader{
+				Height: 100,
+			},
+		},
+	}
+	expectedData := &types.Data{
+		Txs: types.Txs{[]byte("tx1")},
+	}
+	mock := &mockBlockProducer{
+		createBlockFn: func(ctx context.Context, height uint64, batchData *BatchData) (*types.SignedHeader, *types.Data, error) {
+			return expectedHeader, expectedData, errors.New("partial failure")
+		},
+	}
+	producer, sr := setupBlockProducerTrace(t, mock)
+	ctx := context.Background()
+
+	header, data, err := producer.CreateBlock(ctx, 100, nil)
+	require.Error(t, err)
+	require.Equal(t, "partial failure", err.Error())
+	require.NotNil(t, header, "header should not be nil when inner returns value with error")
+	require.NotNil(t, data, "data should not be nil when inner returns value with error")
+	require.Same(t, expectedHeader, header, "header should be the same instance returned by inner")
+	require.Same(t, expectedData, data, "data should be the same instance returned by inner")
+
+	spans := sr.Ended()
+	require.Len(t, spans, 1)
+	span := spans[0]
+	require.Equal(t, codes.Error, span.Status().Code)
+}
+
+// TestTracedBlockProducer_ApplyBlock_ErrorWithValue verifies that when the inner
+// function returns both a state and an error, the state is passed through (not zero value).
+func TestTracedBlockProducer_ApplyBlock_ErrorWithValue(t *testing.T) {
+	expectedState := types.State{
+		AppHash:         []byte{0xde, 0xad, 0xbe, 0xef},
+		LastBlockHeight: 50,
+	}
+	mock := &mockBlockProducer{
+		applyBlockFn: func(ctx context.Context, header types.Header, data *types.Data) (types.State, error) {
+			return expectedState, errors.New("partial apply failure")
+		},
+	}
+	producer, sr := setupBlockProducerTrace(t, mock)
+	ctx := context.Background()
+
+	header := types.Header{
+		BaseHeader: types.BaseHeader{
+			Height: 50,
+		},
+	}
+
+	state, err := producer.ApplyBlock(ctx, header, &types.Data{})
+	require.Error(t, err)
+	require.Equal(t, "partial apply failure", err.Error())
+	require.Equal(t, expectedState.AppHash, state.AppHash, "state should preserve AppHash when inner returns value with error")
+	require.Equal(t, expectedState.LastBlockHeight, state.LastBlockHeight, "state should preserve LastBlockHeight when inner returns value with error")
+
+	spans := sr.Ended()
+	require.Len(t, spans, 1)
+	span := spans[0]
+	require.Equal(t, codes.Error, span.Status().Code)
 }

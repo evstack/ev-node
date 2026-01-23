@@ -82,10 +82,9 @@ func TestEngineExecution(t *testing.T) {
 
 		ctx, cancel := context.WithTimeout(context.Background(), 300*time.Second)
 		defer cancel()
-		stateRoot, gasLimit, err := executionClient.InitChain(ctx, genesisTime, initialHeight, CHAIN_ID)
+		stateRoot, err := executionClient.InitChain(ctx, genesisTime, initialHeight, CHAIN_ID)
 		require.NoError(t, err)
 		require.Equal(t, GenesisStateRoot, stateRoot)
-		require.NotZero(t, gasLimit)
 
 		prevStateRoot := GenesisStateRoot
 		lastHeight, lastHash, lastTxs := checkLatestBlock(tt, ctx, ethURL)
@@ -127,11 +126,8 @@ func TestEngineExecution(t *testing.T) {
 			allTimestamps = append(allTimestamps, blockTimestamp)
 
 			// Execute transactions and get the new state root
-			newStateRoot, maxBytes, err := executionClient.ExecuteTxs(ctx, payload, blockHeight, blockTimestamp, prevStateRoot)
+			newStateRoot, err := executionClient.ExecuteTxs(ctx, payload, blockHeight, blockTimestamp, prevStateRoot)
 			require.NoError(tt, err)
-			if nTxs > 0 {
-				require.NotZero(tt, maxBytes)
-			}
 
 			err = executionClient.SetFinal(ctx, blockHeight)
 			require.NoError(tt, err)
@@ -184,10 +180,9 @@ func TestEngineExecution(t *testing.T) {
 
 		ctx, cancel := context.WithTimeout(context.Background(), 300*time.Second)
 		defer cancel()
-		stateRoot, gasLimit, err := executionClient.InitChain(ctx, genesisTime, initialHeight, CHAIN_ID)
+		stateRoot, err := executionClient.InitChain(ctx, genesisTime, initialHeight, CHAIN_ID)
 		require.NoError(t, err)
 		require.Equal(t, GenesisStateRoot, stateRoot)
-		require.NotZero(t, gasLimit)
 
 		prevStateRoot := GenesisStateRoot
 		lastHeight, lastHash, lastTxs := checkLatestBlock(tt, ctx, ethURL)
@@ -203,11 +198,8 @@ func TestEngineExecution(t *testing.T) {
 
 			// Use timestamp from build phase for each block to ensure proper ordering
 			blockTimestamp := allTimestamps[blockHeight-1]
-			newStateRoot, maxBytes, err := executionClient.ExecuteTxs(ctx, payload, blockHeight, blockTimestamp, prevStateRoot)
+			newStateRoot, err := executionClient.ExecuteTxs(ctx, payload, blockHeight, blockTimestamp, prevStateRoot)
 			require.NoError(t, err)
-			if len(payload) > 0 {
-				require.NotZero(tt, maxBytes)
-			}
 			if len(payload) == 0 {
 				require.Equal(tt, prevStateRoot, newStateRoot)
 			} else {

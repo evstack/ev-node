@@ -76,7 +76,7 @@ The execution client must implement the Evolve execution gRPC interface.`,
 		}
 
 		// Create sequencer based on configuration
-		sequencer, err := createSequencer(cmd.Context(), logger, datastore, nodeConfig, genesis)
+		sequencer, err := createSequencer(cmd.Context(), logger, datastore, nodeConfig, genesis, executor)
 		if err != nil {
 			return err
 		}
@@ -113,6 +113,7 @@ func createSequencer(
 	datastore datastore.Batching,
 	nodeConfig config.Config,
 	genesis genesis.Genesis,
+	executor execution.Executor,
 ) (coresequencer.Sequencer, error) {
 	blobClient, err := blobrpc.NewClient(ctx, nodeConfig.DA.Address, nodeConfig.DA.AuthToken, "")
 	if err != nil {
@@ -127,7 +128,7 @@ func createSequencer(
 			return nil, fmt.Errorf("based sequencer mode requires aggregator mode to be enabled")
 		}
 
-		basedSeq, err := based.NewBasedSequencer(daClient, nodeConfig, datastore, genesis, logger)
+		basedSeq, err := based.NewBasedSequencer(daClient, nodeConfig, datastore, genesis, logger, executor)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create based sequencer: %w", err)
 		}
@@ -148,14 +149,11 @@ func createSequencer(
 		[]byte(genesis.ChainID),
 		1000,
 		genesis,
+		executor,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create single sequencer: %w", err)
 	}
-
-	logger.Info().
-		Str("forced_inclusion_namespace", nodeConfig.DA.GetForcedInclusionNamespace()).
-		Msg("single sequencer initialized")
 
 	return sequencer, nil
 }

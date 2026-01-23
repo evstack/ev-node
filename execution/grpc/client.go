@@ -44,8 +44,8 @@ func NewClient(url string, opts ...connect.ClientOption) *Client {
 // InitChain initializes a new blockchain instance with genesis parameters.
 //
 // This method sends an InitChain request to the remote execution service and
-// returns the initial state root and maximum bytes allowed for transactions.
-func (c *Client) InitChain(ctx context.Context, genesisTime time.Time, initialHeight uint64, chainID string) (stateRoot []byte, maxBytes uint64, err error) {
+// returns the initial state root.
+func (c *Client) InitChain(ctx context.Context, genesisTime time.Time, initialHeight uint64, chainID string) (stateRoot []byte, err error) {
 	req := connect.NewRequest(&pb.InitChainRequest{
 		GenesisTime:   timestamppb.New(genesisTime),
 		InitialHeight: initialHeight,
@@ -54,10 +54,10 @@ func (c *Client) InitChain(ctx context.Context, genesisTime time.Time, initialHe
 
 	resp, err := c.client.InitChain(ctx, req)
 	if err != nil {
-		return nil, 0, fmt.Errorf("grpc client: failed to init chain: %w", err)
+		return nil, fmt.Errorf("grpc client: failed to init chain: %w", err)
 	}
 
-	return resp.Msg.StateRoot, resp.Msg.MaxBytes, nil
+	return resp.Msg.StateRoot, nil
 }
 
 // GetTxs fetches available transactions from the execution layer's mempool.
@@ -80,7 +80,7 @@ func (c *Client) GetTxs(ctx context.Context) ([][]byte, error) {
 // This method sends transactions to the execution service for processing and
 // returns the updated state root after execution. The execution service ensures
 // deterministic execution and validates the state transition.
-func (c *Client) ExecuteTxs(ctx context.Context, txs [][]byte, blockHeight uint64, timestamp time.Time, prevStateRoot []byte) (updatedStateRoot []byte, maxBytes uint64, err error) {
+func (c *Client) ExecuteTxs(ctx context.Context, txs [][]byte, blockHeight uint64, timestamp time.Time, prevStateRoot []byte) (updatedStateRoot []byte, err error) {
 	req := connect.NewRequest(&pb.ExecuteTxsRequest{
 		Txs:           txs,
 		BlockHeight:   blockHeight,
@@ -90,10 +90,10 @@ func (c *Client) ExecuteTxs(ctx context.Context, txs [][]byte, blockHeight uint6
 
 	resp, err := c.client.ExecuteTxs(ctx, req)
 	if err != nil {
-		return nil, 0, fmt.Errorf("grpc client: failed to execute txs: %w", err)
+		return nil, fmt.Errorf("grpc client: failed to execute txs: %w", err)
 	}
 
-	return resp.Msg.UpdatedStateRoot, resp.Msg.MaxBytes, nil
+	return resp.Msg.UpdatedStateRoot, nil
 }
 
 // SetFinal marks a block as finalized at the specified height.
@@ -111,4 +111,46 @@ func (c *Client) SetFinal(ctx context.Context, blockHeight uint64) error {
 	}
 
 	return nil
+}
+
+// GetExecutionInfo returns current execution layer parameters.
+//
+// This method retrieves execution parameters such as the block gas limit
+// from the remote execution service.
+func (c *Client) GetExecutionInfo(ctx context.Context) (execution.ExecutionInfo, error) {
+	req := connect.NewRequest(&pb.GetExecutionInfoRequest{})
+
+	resp, err := c.client.GetExecutionInfo(ctx, req)
+	if err != nil {
+		return execution.ExecutionInfo{}, fmt.Errorf("grpc client: failed to get execution info: %w", err)
+	}
+
+	return execution.ExecutionInfo{
+		MaxGas: resp.Msg.MaxGas,
+	}, nil
+}
+
+// FilterTxs validates force-included transactions and applies gas and size filtering.
+//
+// This method sends transactions to the remote execution service for validation.
+// Returns a slice of FilterStatus for each transaction.
+func (c *Client) FilterTxs(ctx context.Context, txs [][]byte, maxBytes, maxGas uint64, hasForceIncludedTransaction bool) ([]execution.FilterStatus, error) {
+	req := connect.NewRequest(&pb.FilterTxsRequest{
+		Txs:                         txs,
+		MaxBytes:                    maxBytes,
+		MaxGas:                      maxGas,
+		HasForceIncludedTransaction: hasForceIncludedTransaction,
+	})
+
+	resp, err := c.client.FilterTxs(ctx, req)
+	if err != nil {
+		return nil, fmt.Errorf("grpc client: failed to filter transactions: %w", err)
+	}
+
+	// Convert protobuf FilterStatus to execution.FilterStatus
+	result := make([]execution.FilterStatus, len(resp.Msg.Statuses))
+	for i, status := range resp.Msg.Statuses {
+		result[i] = execution.FilterStatus(status)
+	}
+	return result, nil
 }
