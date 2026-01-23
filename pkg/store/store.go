@@ -391,6 +391,18 @@ func (s *DefaultStore) PruneBlocks(ctx context.Context, height uint64) error {
 			}
 		}
 
+		// Delete per-height DA metadata associated with this height, if any.
+		if err := batch.Delete(ctx, ds.NewKey(getMetaKey(GetHeightToDAHeightHeaderKey(h)))); err != nil {
+			if !errors.Is(err, ds.ErrNotFound) {
+				return fmt.Errorf("failed to delete header DA height metadata at height %d during pruning: %w", h, err)
+			}
+		}
+		if err := batch.Delete(ctx, ds.NewKey(getMetaKey(GetHeightToDAHeightDataKey(h)))); err != nil {
+			if !errors.Is(err, ds.ErrNotFound) {
+				return fmt.Errorf("failed to delete data DA height metadata at height %d during pruning: %w", h, err)
+			}
+		}
+
 		headerHash := sha256.Sum256(headerBlob)
 		if err := batch.Delete(ctx, ds.NewKey(getIndexKey(headerHash[:]))); err != nil {
 			if !errors.Is(err, ds.ErrNotFound) {
