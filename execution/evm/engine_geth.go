@@ -2,6 +2,7 @@ package evm
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/binary"
 	"errors"
 	"fmt"
@@ -16,15 +17,18 @@ import (
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/core/state"
+	"github.com/ethereum/go-ethereum/core/tracing"
 	"github.com/ethereum/go-ethereum/core/txpool"
 	"github.com/ethereum/go-ethereum/core/txpool/legacypool"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/core/vm"
+	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/ethdb"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/rpc"
 	"github.com/ethereum/go-ethereum/trie"
 	"github.com/ethereum/go-ethereum/triedb"
+	"github.com/holiman/uint256"
 	ds "github.com/ipfs/go-datastore"
 	"github.com/rs/zerolog"
 )
@@ -36,6 +40,12 @@ var (
 
 // baseFeeChangeDenominator is the EIP-1559 base fee change denominator.
 const baseFeeChangeDenominator = 8
+
+// payloadTTL is how long a payload can remain in the map before being cleaned up.
+const payloadTTL = 60 * time.Second
+
+// maxPayloads is the maximum number of payloads to keep in memory.
+const maxPayloads = 10
 
 // GethBackend holds the in-process geth components.
 type GethBackend struct {
@@ -67,8 +77,14 @@ type payloadBuildState struct {
 	transactions [][]byte
 	gasLimit     uint64
 
+	// createdAt tracks when this payload was created for TTL cleanup
+	createdAt time.Time
+
 	// built payload (populated after getPayload)
 	payload *engine.ExecutableData
+
+	// buildErr stores any error that occurred during payload build
+	buildErr error
 }
 
 // gethEngineClient implements EngineRPCClient using in-process geth.
@@ -302,10 +318,26 @@ func (g *gethEngineClient) ForkchoiceUpdated(ctx context.Context, fcState engine
 			return nil, fmt.Errorf("failed to parse payload attributes: %w", err)
 		}
 
-		// Generate payload ID deterministically from attributes
-		g.backend.nextPayloadID++
-		var payloadID engine.PayloadID
-		binary.BigEndian.PutUint64(payloadID[:], g.backend.nextPayloadID)
+		// Generate deterministic payload ID from attributes
+		payloadID := g.generatePayloadID(payloadState)
+
+		// Check if we already have this payload (idempotency)
+		if existing, ok := g.backend.payloads[payloadID]; ok {
+			// Reuse existing payload if it hasn't errored
+			if existing.buildErr == nil {
+				response.PayloadID = &payloadID
+				g.logger.Debug().
+					Str("payload_id", payloadID.String()).
+					Msg("reusing existing payload")
+				return response, nil
+			}
+			// Previous build failed, remove it and try again
+			delete(g.backend.payloads, payloadID)
+		}
+
+		// Clean up old payloads before adding new one
+		g.cleanupStalePayloads()
+
 		g.backend.payloads[payloadID] = payloadState
 		response.PayloadID = &payloadID
 
@@ -321,11 +353,73 @@ func (g *gethEngineClient) ForkchoiceUpdated(ctx context.Context, fcState engine
 	return response, nil
 }
 
+// generatePayloadID creates a deterministic payload ID from the payload attributes.
+// This ensures that the same attributes always produce the same ID for idempotency.
+func (g *gethEngineClient) generatePayloadID(ps *payloadBuildState) engine.PayloadID {
+	h := sha256.New()
+	h.Write(ps.parentHash[:])
+	binary.Write(h, binary.BigEndian, ps.timestamp)
+	h.Write(ps.prevRandao[:])
+	h.Write(ps.feeRecipient[:])
+	binary.Write(h, binary.BigEndian, ps.gasLimit)
+	// Include transaction count and first tx hash for uniqueness
+	binary.Write(h, binary.BigEndian, uint64(len(ps.transactions)))
+	for _, tx := range ps.transactions {
+		h.Write(tx)
+	}
+	sum := h.Sum(nil)
+	var id engine.PayloadID
+	copy(id[:], sum[:8])
+	return id
+}
+
+// cleanupStalePayloads removes payloads that have exceeded their TTL or when we have too many.
+func (g *gethEngineClient) cleanupStalePayloads() {
+	now := time.Now()
+	var staleIDs []engine.PayloadID
+
+	// Find stale payloads
+	for id, ps := range g.backend.payloads {
+		if now.Sub(ps.createdAt) > payloadTTL {
+			staleIDs = append(staleIDs, id)
+		}
+	}
+
+	// Remove stale payloads
+	for _, id := range staleIDs {
+		delete(g.backend.payloads, id)
+		g.logger.Debug().
+			Str("payload_id", id.String()).
+			Msg("cleaned up stale payload")
+	}
+
+	// If still too many payloads, remove oldest ones
+	for len(g.backend.payloads) >= maxPayloads {
+		var oldestID engine.PayloadID
+		var oldestTime time.Time
+		first := true
+		for id, ps := range g.backend.payloads {
+			if first || ps.createdAt.Before(oldestTime) {
+				oldestID = id
+				oldestTime = ps.createdAt
+				first = false
+			}
+		}
+		if !first {
+			delete(g.backend.payloads, oldestID)
+			g.logger.Debug().
+				Str("payload_id", oldestID.String()).
+				Msg("evicted oldest payload due to limit")
+		}
+	}
+}
+
 // parsePayloadAttributes extracts payload attributes from the map format.
 func (g *gethEngineClient) parsePayloadAttributes(parentHash common.Hash, attrs map[string]any) (*payloadBuildState, error) {
 	ps := &payloadBuildState{
 		parentHash:  parentHash,
 		withdrawals: []*types.Withdrawal{},
+		createdAt:   time.Now(),
 	}
 
 	// Parse timestamp (required)
@@ -439,11 +533,19 @@ func (g *gethEngineClient) GetPayload(ctx context.Context, payloadID engine.Payl
 		return nil, fmt.Errorf("unknown payload ID: %s", payloadID.String())
 	}
 
-	// Build the block if not already built
+	// Return cached error if previous build failed
+	if payloadState.buildErr != nil {
+		delete(g.backend.payloads, payloadID)
+		return nil, fmt.Errorf("payload build previously failed: %w", payloadState.buildErr)
+	}
+
+	// Build the payload if not already built
 	if payloadState.payload == nil {
-		startTime := time.Now()
+		buildStartTime := time.Now()
 		payload, err := g.buildPayload(ctx, payloadState)
 		if err != nil {
+			// Cache the error so we don't retry on the same payload
+			payloadState.buildErr = err
 			return nil, fmt.Errorf("failed to build payload: %w", err)
 		}
 		payloadState.payload = payload
@@ -454,11 +556,11 @@ func (g *gethEngineClient) GetPayload(ctx context.Context, payloadID engine.Payl
 			Str("block_hash", payload.BlockHash.Hex()).
 			Int("tx_count", len(payload.Transactions)).
 			Uint64("gas_used", payload.GasUsed).
-			Dur("build_time", time.Since(startTime)).
+			Dur("build_time", time.Since(buildStartTime)).
 			Msg("built payload")
 	}
 
-	// Remove the payload from pending after retrieval
+	// Remove the payload from pending after retrieval - caller has it now
 	delete(g.backend.payloads, payloadID)
 
 	return &engine.ExecutionPayloadEnvelope{
@@ -593,6 +695,21 @@ func (g *gethEngineClient) buildPayload(ctx context.Context, ps *payloadBuildSta
 			Msg("transaction execution summary")
 	}
 
+	// Process withdrawals (EIP-4895) - credit ETH to withdrawal recipients
+	// Withdrawals are processed after all transactions, crediting the specified
+	// amount (in Gwei) to each recipient address.
+	if len(ps.withdrawals) > 0 {
+		for _, withdrawal := range ps.withdrawals {
+			// Withdrawal amount is in Gwei, convert to Wei (multiply by 1e9)
+			amount := new(big.Int).SetUint64(withdrawal.Amount)
+			amount.Mul(amount, big.NewInt(params.GWei))
+			stateDB.AddBalance(withdrawal.Address, uint256.MustFromBig(amount), tracing.BalanceIncreaseWithdrawal)
+		}
+		g.logger.Debug().
+			Int("count", len(ps.withdrawals)).
+			Msg("processed withdrawals")
+	}
+
 	// Finalize state
 	header.GasUsed = gasUsed
 	header.Root = stateDB.IntermediateRoot(g.backend.chainConfig.IsEIP158(header.Number))
@@ -659,7 +776,7 @@ func (g *gethEngineClient) NewPayload(ctx context.Context, payload *engine.Execu
 	g.backend.mu.Lock()
 	defer g.backend.mu.Unlock()
 
-	startTime := time.Now()
+	validationStart := time.Now()
 
 	// Validate payload
 	if payload == nil {
@@ -803,7 +920,7 @@ func (g *gethEngineClient) NewPayload(ctx context.Context, payload *engine.Execu
 		Str("parent_hash", payload.ParentHash.Hex()).
 		Int("tx_count", len(txs)).
 		Uint64("gas_used", payload.GasUsed).
-		Dur("process_time", time.Since(startTime)).
+		Dur("process_time", time.Since(validationStart)).
 		Msg("new payload validated and inserted")
 
 	return &engine.PayloadStatusV1{
@@ -975,7 +1092,7 @@ func applyTransaction(
 
 	// Set contract address if this was a contract creation
 	if msg.To == nil {
-		receipt.ContractAddress = evmInstance.Origin
+		receipt.ContractAddress = crypto.CreateAddress(msg.From, tx.Nonce())
 	}
 
 	return receipt, nil

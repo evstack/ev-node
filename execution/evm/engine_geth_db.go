@@ -3,6 +3,7 @@ package evm
 import (
 	"bytes"
 	"context"
+	"sort"
 	"strings"
 	"sync"
 
@@ -11,6 +12,10 @@ import (
 	"github.com/ipfs/go-datastore/query"
 	"github.com/syndtr/goleveldb/leveldb"
 )
+
+// deleteRangeBatchSize is the number of keys to delete in a single batch
+// to avoid holding locks for too long.
+const deleteRangeBatchSize = 1000
 
 var _ ethdb.KeyValueStore = &wrapper{}
 
@@ -47,27 +52,87 @@ func (w *wrapper) Delete(key []byte) error {
 }
 
 // DeleteRange implements ethdb.KeyValueStore.
+// Optimized to use prefix-based querying when possible and batch deletions.
 func (w *wrapper) DeleteRange(start []byte, end []byte) error {
-	// Query all keys and delete those in range
-	q := query.Query{KeysOnly: true}
-	results, err := w.ds.Query(context.Background(), q)
+	ctx := context.Background()
+
+	// Find common prefix between start and end to narrow the query
+	prefix := commonPrefix(start, end)
+
+	q := query.Query{
+		KeysOnly: true,
+	}
+	if len(prefix) > 0 {
+		q.Prefix = "/" + string(prefix)
+	}
+
+	results, err := w.ds.Query(ctx, q)
 	if err != nil {
 		return err
 	}
 	defer results.Close()
 
+	// Collect keys to delete in batches
+	var keysToDelete []datastore.Key
 	for result := range results.Next() {
 		if result.Error != nil {
 			return result.Error
 		}
 		keyBytes := datastoreKeyToBytes(result.Entry.Key)
 		if bytes.Compare(keyBytes, start) >= 0 && bytes.Compare(keyBytes, end) < 0 {
-			if err := w.ds.Delete(context.Background(), datastore.NewKey(result.Entry.Key)); err != nil {
-				return err
+			keysToDelete = append(keysToDelete, datastore.NewKey(result.Entry.Key))
+
+			// Process in batches to avoid holding too many keys in memory
+			if len(keysToDelete) >= deleteRangeBatchSize {
+				if err := w.deleteBatch(ctx, keysToDelete); err != nil {
+					return err
+				}
+				keysToDelete = keysToDelete[:0]
 			}
 		}
 	}
+
+	// Delete remaining keys
+	if len(keysToDelete) > 0 {
+		return w.deleteBatch(ctx, keysToDelete)
+	}
 	return nil
+}
+
+// deleteBatch deletes a batch of keys using a batched operation.
+func (w *wrapper) deleteBatch(ctx context.Context, keys []datastore.Key) error {
+	batch, err := w.ds.Batch(ctx)
+	if err != nil {
+		// Fallback to individual deletes if batching not supported
+		for _, key := range keys {
+			if err := w.ds.Delete(ctx, key); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+
+	for _, key := range keys {
+		if err := batch.Delete(ctx, key); err != nil {
+			return err
+		}
+	}
+	return batch.Commit(ctx)
+}
+
+// commonPrefix returns the common prefix between two byte slices.
+func commonPrefix(a, b []byte) []byte {
+	minLen := len(a)
+	if len(b) < minLen {
+		minLen = len(b)
+	}
+	var i int
+	for i = 0; i < minLen; i++ {
+		if a[i] != b[i] {
+			break
+		}
+	}
+	return a[:i]
 }
 
 // Get implements ethdb.KeyValueStore.
@@ -104,7 +169,12 @@ func (w *wrapper) NewBatchWithSize(size int) ethdb.Batch {
 
 // NewIterator implements ethdb.KeyValueStore.
 func (w *wrapper) NewIterator(prefix []byte, start []byte) ethdb.Iterator {
-	return newIterator(w.ds, prefix, start)
+	return newIterator(w.ds, prefix, start, 0)
+}
+
+// NewIteratorWithSize creates an iterator with an estimated size hint for buffer allocation.
+func (w *wrapper) NewIteratorWithSize(prefix []byte, start []byte, sizeHint int) ethdb.Iterator {
+	return newIterator(w.ds, prefix, start, sizeHint)
 }
 
 // Put implements ethdb.KeyValueStore.
@@ -173,9 +243,17 @@ func (b *batchWrapper) Delete(key []byte) error {
 
 // DeleteRange implements ethdb.Batch.
 func (b *batchWrapper) DeleteRange(start []byte, end []byte) error {
-	// Query all keys and mark those in range for deletion
+	ctx := context.Background()
+
+	// Use common prefix to narrow query
+	prefix := commonPrefix(start, end)
+
 	q := query.Query{KeysOnly: true}
-	results, err := b.ds.Query(context.Background(), q)
+	if len(prefix) > 0 {
+		q.Prefix = "/" + string(prefix)
+	}
+
+	results, err := b.ds.Query(ctx, q)
 	if err != nil {
 		return err
 	}
@@ -261,20 +339,20 @@ func (b *batchWrapper) Replay(w ethdb.KeyValueWriter) error {
 }
 
 // iteratorWrapper implements ethdb.Iterator
+// It provides sorted iteration over keys with optional prefix and start position.
 type iteratorWrapper struct {
-	results query.Results
-	current query.Entry
+	entries []query.Entry // Pre-sorted entries for deterministic iteration
+	index   int
 	prefix  []byte
 	start   []byte
 	err     error
-	started bool
 	closed  bool
 	mu      sync.Mutex
 }
 
 var _ ethdb.Iterator = &iteratorWrapper{}
 
-func newIterator(ds datastore.Batching, prefix []byte, start []byte) *iteratorWrapper {
+func newIterator(ds datastore.Batching, prefix []byte, start []byte, sizeHint int) *iteratorWrapper {
 	q := query.Query{
 		KeysOnly: false,
 	}
@@ -284,13 +362,59 @@ func newIterator(ds datastore.Batching, prefix []byte, start []byte) *iteratorWr
 	}
 
 	results, err := ds.Query(context.Background(), q)
+	if err != nil {
+		return &iteratorWrapper{
+			err:    err,
+			closed: false,
+			index:  -1,
+		}
+	}
+
+	// Collect and sort all entries for deterministic ordering
+	// go-datastore doesn't guarantee order, but ethdb.Iterator expects sorted keys
+	var entries []query.Entry
+	if sizeHint > 0 {
+		entries = make([]query.Entry, 0, sizeHint)
+	}
+
+	for result := range results.Next() {
+		if result.Error != nil {
+			results.Close()
+			return &iteratorWrapper{
+				err:    result.Error,
+				closed: false,
+				index:  -1,
+			}
+		}
+
+		keyBytes := datastoreKeyToBytes(result.Entry.Key)
+
+		// Filter by prefix
+		if len(prefix) > 0 && !bytes.HasPrefix(keyBytes, prefix) {
+			continue
+		}
+
+		// Filter by start position
+		if len(start) > 0 && bytes.Compare(keyBytes, start) < 0 {
+			continue
+		}
+
+		entries = append(entries, result.Entry)
+	}
+	results.Close()
+
+	// Sort entries by key for deterministic iteration order
+	sort.Slice(entries, func(i, j int) bool {
+		keyI := datastoreKeyToBytes(entries[i].Key)
+		keyJ := datastoreKeyToBytes(entries[j].Key)
+		return bytes.Compare(keyI, keyJ) < 0
+	})
 
 	return &iteratorWrapper{
-		results: results,
+		entries: entries,
 		prefix:  prefix,
 		start:   start,
-		err:     err,
-		started: false,
+		index:   -1,
 		closed:  false,
 	}
 }
@@ -304,32 +428,8 @@ func (it *iteratorWrapper) Next() bool {
 		return false
 	}
 
-	for {
-		result, ok := it.results.NextSync()
-		if !ok {
-			return false
-		}
-		if result.Error != nil {
-			it.err = result.Error
-			return false
-		}
-
-		keyBytes := datastoreKeyToBytes(result.Entry.Key)
-
-		// Check if key matches prefix (if prefix is set)
-		if len(it.prefix) > 0 && !bytes.HasPrefix(keyBytes, it.prefix) {
-			continue
-		}
-
-		// Check if key is >= start (if start is set)
-		if len(it.start) > 0 && bytes.Compare(keyBytes, it.start) < 0 {
-			continue
-		}
-
-		it.current = result.Entry
-		it.started = true
-		return true
-	}
+	it.index++
+	return it.index < len(it.entries)
 }
 
 // Error implements ethdb.Iterator.
@@ -344,10 +444,10 @@ func (it *iteratorWrapper) Key() []byte {
 	it.mu.Lock()
 	defer it.mu.Unlock()
 
-	if !it.started || it.closed {
+	if it.closed || it.index < 0 || it.index >= len(it.entries) {
 		return nil
 	}
-	return datastoreKeyToBytes(it.current.Key)
+	return datastoreKeyToBytes(it.entries[it.index].Key)
 }
 
 // Value implements ethdb.Iterator.
@@ -355,10 +455,10 @@ func (it *iteratorWrapper) Value() []byte {
 	it.mu.Lock()
 	defer it.mu.Unlock()
 
-	if !it.started || it.closed {
+	if it.closed || it.index < 0 || it.index >= len(it.entries) {
 		return nil
 	}
-	return it.current.Value
+	return it.entries[it.index].Value
 }
 
 // Release implements ethdb.Iterator.
@@ -370,7 +470,6 @@ func (it *iteratorWrapper) Release() {
 		return
 	}
 	it.closed = true
-	if it.results != nil {
-		it.results.Close()
-	}
+	// Clear entries to allow GC
+	it.entries = nil
 }

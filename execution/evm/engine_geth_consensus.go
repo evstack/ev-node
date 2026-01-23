@@ -8,8 +8,21 @@ import (
 	"github.com/ethereum/go-ethereum/consensus"
 	"github.com/ethereum/go-ethereum/consensus/beacon"
 	"github.com/ethereum/go-ethereum/consensus/misc/eip1559"
+	"github.com/ethereum/go-ethereum/consensus/misc/eip4844"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/params"
+)
+
+const (
+	// maxExtraDataSize is the maximum allowed size for block extra data (32 bytes).
+	maxExtraDataSize = 32
+
+	// gasLimitBoundDivisor is the bound divisor for gas limit changes between blocks.
+	// Gas limit can only change by 1/1024 per block.
+	gasLimitBoundDivisor = 1024
+
+	// minGasLimit is the minimum gas limit allowed for blocks.
+	minGasLimit = 5000
 )
 
 // sovereignBeacon wraps the standard beacon consensus engine but allows
@@ -57,8 +70,27 @@ func (sb *sovereignBeacon) VerifyHeader(chain consensus.ChainHeaderReader, heade
 		return errors.New("invalid uncle hash: must be empty for PoS")
 	}
 
+	// Verify extra data size limit
+	if len(header.Extra) > maxExtraDataSize {
+		return fmt.Errorf("invalid extra data size: have %d, max %d", len(header.Extra), maxExtraDataSize)
+	}
+
+	// Verify gas limit bounds
 	if header.GasLimit > params.MaxGasLimit {
 		return fmt.Errorf("invalid gasLimit: have %v, max %v", header.GasLimit, params.MaxGasLimit)
+	}
+	if header.GasLimit < minGasLimit {
+		return fmt.Errorf("invalid gasLimit: have %v, min %v", header.GasLimit, minGasLimit)
+	}
+
+	// Verify gas limit change is within bounds (can only change by 1/1024 per block)
+	diff := int64(header.GasLimit) - int64(parent.GasLimit)
+	if diff < 0 {
+		diff = -diff
+	}
+	limit := parent.GasLimit / gasLimitBoundDivisor
+	if uint64(diff) >= limit {
+		return fmt.Errorf("invalid gas limit: have %d, want %d ± %d", header.GasLimit, parent.GasLimit, limit-1)
 	}
 
 	// Verify that the gasUsed is <= gasLimit
@@ -69,6 +101,14 @@ func (sb *sovereignBeacon) VerifyHeader(chain consensus.ChainHeaderReader, heade
 	// Verify the header's EIP-1559 attributes.
 	if err := eip1559.VerifyEIP1559Header(chain.Config(), parent, header); err != nil {
 		return err
+	}
+
+	// Verify EIP-4844 blob gas fields if Cancun is active
+	config := chain.Config()
+	if config.IsCancun(header.Number, header.Time) {
+		if err := eip4844.VerifyEIP4844Header(config, parent, header); err != nil {
+			return err
+		}
 	}
 
 	return nil
