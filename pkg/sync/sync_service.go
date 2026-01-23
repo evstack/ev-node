@@ -189,11 +189,21 @@ func (syncService *SyncService[H]) Start(ctx context.Context) error {
 	}
 
 	// create syncer, must be before initFromP2PWithRetry which calls startSyncer.
+	syncOpts := []goheadersync.Option{goheadersync.WithBlockTime(syncService.conf.Node.BlockTime.Duration)}
+	// Map ev-node pruning configuration to go-header's pruning window: we approximate
+	// "keep N recent heights" as "retain headers for N * blockTime".
+	if syncService.conf.Node.PruningEnabled && syncService.conf.Node.PruningKeepRecent > 0 {
+		pruningWindow := syncService.conf.Node.BlockTime.Duration * time.Duration(syncService.conf.Node.PruningKeepRecent)
+		// Only set a pruning window if the computed duration is positive.
+		if pruningWindow > 0 {
+			syncOpts = append(syncOpts, goheadersync.WithPruningWindow(pruningWindow))
+		}
+	}
 	if syncService.syncer, err = newSyncer(
 		syncService.ex,
 		syncService.store,
 		syncService.sub,
-		[]goheadersync.Option{goheadersync.WithBlockTime(syncService.conf.Node.BlockTime.Duration)},
+		syncOpts,
 	); err != nil {
 		return fmt.Errorf("failed to create syncer: %w", err)
 	}
@@ -467,7 +477,10 @@ func newSyncer[H header.Header[H]](
 
 	opts = append(opts,
 		goheadersync.WithMetrics(),
+<<<<<<< HEAD
 		goheadersync.WithPruningWindow(ninetyNineYears), // pruning window not relevant, because of the store wrapper.
+=======
+>>>>>>> 3b9a0f70 (wiring prunning config to go-header)
 		goheadersync.WithTrustingPeriod(ninetyNineYears),
 	)
 	return goheadersync.NewSyncer(ex, store, sub, opts...)
