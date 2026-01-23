@@ -91,11 +91,9 @@ func TestGethEngineClient_InitChain(t *testing.T) {
 	ctx := context.Background()
 	genesisTime := time.Now()
 
-	stateRoot, maxBytes, err := client.InitChain(ctx, genesisTime, 1, "1337")
+	stateRoot, err := client.InitChain(ctx, genesisTime, 1, "1337")
 	require.NoError(t, err)
 	assert.NotEmpty(t, stateRoot)
-	// maxBytes is the gas limit from the genesis block
-	assert.Greater(t, maxBytes, uint64(0))
 }
 
 func TestGethEngineClient_GetLatestHeight(t *testing.T) {
@@ -167,11 +165,11 @@ func TestGethEngineClient_ExecuteTxs_EmptyBlock(t *testing.T) {
 	genesisTime := time.Now()
 
 	// Initialize chain first
-	stateRoot, _, err := client.InitChain(ctx, genesisTime, 1, "1337")
+	stateRoot, err := client.InitChain(ctx, genesisTime, 1, "1337")
 	require.NoError(t, err)
 
 	// Execute empty block
-	newStateRoot, gasUsed, err := client.ExecuteTxs(
+	newStateRoot, err := client.ExecuteTxs(
 		ctx,
 		[][]byte{}, // empty transactions
 		1,
@@ -180,7 +178,6 @@ func TestGethEngineClient_ExecuteTxs_EmptyBlock(t *testing.T) {
 	)
 	require.NoError(t, err)
 	assert.NotEmpty(t, newStateRoot)
-	assert.Equal(t, uint64(0), gasUsed) // No transactions, no gas used
 }
 
 func TestGethEngineClient_ForkchoiceUpdated(t *testing.T) {

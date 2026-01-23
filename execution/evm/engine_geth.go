@@ -13,7 +13,6 @@ import (
 
 	"github.com/ethereum/go-ethereum/beacon/engine"
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/consensus/beacon"
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/core/state"
@@ -35,10 +34,8 @@ var (
 	_ EthRPCClient    = (*gethEthClient)(nil)
 )
 
-const (
-	// baseFeeChangeDenominator is the EIP-1559 base fee change denominator.
-	baseFeeChangeDenominator = 8
-)
+// baseFeeChangeDenominator is the EIP-1559 base fee change denominator.
+const baseFeeChangeDenominator = 8
 
 // GethBackend holds the in-process geth components.
 type GethBackend struct {
@@ -182,7 +179,8 @@ func newGethBackend(genesis *core.Genesis, db ds.Batching, logger zerolog.Logger
 
 	// Create blockchain config
 	bcConfig := core.DefaultConfig().WithStateScheme(rawdb.HashScheme)
-	consensusEngine := beacon.New(nil)
+	// Use sovereign beacon consensus that allows equal timestamps for subsecond block times
+	consensusEngine := newSovereignBeacon()
 
 	// Create the blockchain
 	blockchain, err := core.NewBlockChain(ethdb, genesis, consensusEngine, bcConfig)
@@ -488,9 +486,8 @@ func (g *gethEngineClient) buildPayload(ctx context.Context, ps *payloadBuildSta
 	// Validate block number continuity
 	expectedNumber := new(big.Int).Add(parent.Number(), big.NewInt(1))
 
-	// Validate timestamp allow equal time to allow sub seconds blocks
 	if ps.timestamp < parent.Time() {
-		return nil, fmt.Errorf("invalid timestamp: %d must be greater than parent timestamp %d", ps.timestamp, parent.Time())
+		return nil, fmt.Errorf("invalid timestamp: %d must be >= parent timestamp %d", ps.timestamp, parent.Time())
 	}
 
 	// Calculate base fee for the new block
@@ -517,7 +514,6 @@ func (g *gethEngineClient) buildPayload(ctx context.Context, ps *payloadBuildSta
 		GasLimit:         gasLimit,
 		GasUsed:          0,
 		Time:             ps.timestamp,
-		Extra:            []byte{},
 		MixDigest:        ps.prevRandao,
 		Nonce:            types.BlockNonce{},
 		BaseFee:          baseFee,
@@ -708,7 +704,7 @@ func (g *gethEngineClient) NewPayload(ctx context.Context, payload *engine.Execu
 		g.logger.Warn().
 			Uint64("payload_timestamp", payload.Timestamp).
 			Uint64("parent_timestamp", parent.Time()).
-			Msg("invalid timestamp")
+			Msg("invalid timestamp: must be >= parent timestamp")
 		parentHash := parent.Hash()
 		return &engine.PayloadStatusV1{
 			Status:          engine.INVALID,
