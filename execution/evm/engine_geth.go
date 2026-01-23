@@ -303,8 +303,9 @@ func (g *gethEngineClient) ForkchoiceUpdated(ctx context.Context, fcState engine
 		}
 
 		// Generate payload ID deterministically from attributes
-		payloadID := g.generatePayloadID(fcState.HeadBlockHash, payloadState)
-
+		g.backend.nextPayloadID++
+		var payloadID engine.PayloadID
+		binary.BigEndian.PutUint64(payloadID[:], g.backend.nextPayloadID)
 		g.backend.payloads[payloadID] = payloadState
 		response.PayloadID = &payloadID
 
@@ -318,14 +319,6 @@ func (g *gethEngineClient) ForkchoiceUpdated(ctx context.Context, fcState engine
 	}
 
 	return response, nil
-}
-
-// generatePayloadID creates a deterministic payload ID from the build parameters.
-func (g *gethEngineClient) generatePayloadID(parentHash common.Hash, ps *payloadBuildState) engine.PayloadID {
-	g.backend.nextPayloadID++
-	var payloadID engine.PayloadID
-	binary.BigEndian.PutUint64(payloadID[:], g.backend.nextPayloadID)
-	return payloadID
 }
 
 // parsePayloadAttributes extracts payload attributes from the map format.

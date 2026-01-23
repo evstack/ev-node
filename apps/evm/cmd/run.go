@@ -65,7 +65,6 @@ var RunCmd = &cobra.Command{
 			executor, err = createGethExecutionClient(
 				cmd,
 				datastore,
-				tracingEnabled,
 				logger.With().Str("module", "geth_client").Logger(),
 			)
 			if err != nil {
@@ -263,7 +262,7 @@ func createRethExecutionClient(cmd *cobra.Command, db datastore.Batching, tracin
 	return evm.NewEngineExecutionClient(ethURL, engineURL, jwtSecret, genesisHash, feeRecipient, db, tracingEnabled, logger)
 }
 
-func createGethExecutionClient(cmd *cobra.Command, db datastore.Batching, tracingEnabled bool, logger zerolog.Logger) (execution.Executor, error) {
+func createGethExecutionClient(cmd *cobra.Command, db datastore.Batching, logger zerolog.Logger) (execution.Executor, error) {
 	feeRecipientStr, err := cmd.Flags().GetString(evm.FlagEvmFeeRecipient)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get '%s' flag: %w", evm.FlagEvmFeeRecipient, err)
@@ -297,10 +296,12 @@ func addFlags(cmd *cobra.Command) {
 	cmd.Flags().String(evm.FlagEvmGenesisHash, "", "Hash of the genesis block")
 	cmd.Flags().String(evm.FlagEvmFeeRecipient, "", "Address that will receive transaction fees")
 	cmd.Flags().String(flagForceInclusionServer, "", "Address for force inclusion API server (e.g. 127.0.0.1:8547). If set, enables the server for direct DA submission")
-
 	cmd.Flags().Bool(evm.FlagEVMInProcessGeth, false, "Use in-process Geth for EVM execution instead of external execution client")
 	cmd.Flags().String(evm.FlagEVMGenesisPath, "", "EVM genesis path for Geth")
 	cmd.Flags().String(evm.FlagEVMRPCAddress, "", "Address for in-process Geth JSON-RPC server (e.g., 127.0.0.1:8545)")
 
-	cmd.MarkFlagsMutuallyExclusive(evm.FlagEVMInProcessGeth, evm.FlagEvmEthURL, evm.FlagEvmEngineURL, evm.FlagEvmJWTSecretFile, evm.FlagEvmGenesisHash)
+	cmd.MarkFlagsMutuallyExclusive(evm.FlagEVMInProcessGeth, evm.FlagEvmEthURL)
+	cmd.MarkFlagsMutuallyExclusive(evm.FlagEVMInProcessGeth, evm.FlagEvmEngineURL)
+	cmd.MarkFlagsMutuallyExclusive(evm.FlagEVMInProcessGeth, evm.FlagEvmJWTSecretFile)
+	cmd.MarkFlagsMutuallyExclusive(evm.FlagEVMInProcessGeth, evm.FlagEvmGenesisHash)
 }
