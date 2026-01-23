@@ -527,6 +527,14 @@ func (g *gethEngineClient) NewPayload(ctx context.Context, payload *engine.Execu
 		gasLimit = parent.GasLimit()
 	}
 
+	// Build the header from payload data
+	// NOTE: We must set TxHash and ReceiptHash from the payload, not recompute them,
+	// because types.NewBlock would overwrite them based on the passed transactions/receipts.
+	withdrawalsHash := types.EmptyWithdrawalsHash
+	if len(payload.Withdrawals) > 0 {
+		withdrawalsHash = types.DeriveSha(types.Withdrawals(payload.Withdrawals), trie.NewListHasher())
+	}
+
 	header := &types.Header{
 		ParentHash:       payload.ParentHash,
 		UncleHash:        types.EmptyUncleHash,
@@ -543,22 +551,18 @@ func (g *gethEngineClient) NewPayload(ctx context.Context, payload *engine.Execu
 		Extra:            payload.ExtraData,
 		MixDigest:        payload.Random,
 		BaseFee:          payload.BaseFeePerGas,
-		WithdrawalsHash:  &types.EmptyWithdrawalsHash,
+		WithdrawalsHash:  &withdrawalsHash,
 		BlobGasUsed:      payload.BlobGasUsed,
 		ExcessBlobGas:    payload.ExcessBlobGas,
 		ParentBeaconRoot: &common.Hash{},
 		RequestsHash:     &types.EmptyRequestsHash,
 	}
 
-	if len(payload.Withdrawals) > 0 {
-		wh := types.DeriveSha(types.Withdrawals(payload.Withdrawals), trie.NewListHasher())
-		header.WithdrawalsHash = &wh
-	}
-
-	block := types.NewBlock(header, &types.Body{
+	// Compute block hash directly from header - don't use types.NewBlock which overwrites hashes
+	block := types.NewBlockWithHeader(header).WithBody(types.Body{
 		Transactions: txs,
 		Withdrawals:  payload.Withdrawals,
-	}, nil, trie.NewListHasher())
+	})
 
 	if block.Hash() != payload.BlockHash {
 		g.logger.Warn().
