@@ -64,6 +64,8 @@ func TestBasicExecutionFlow(t *testing.T) {
 	finalizeExecution(t, mockExec, t.Context())
 
 	require.NotEmpty(newStateRoot)
+	cancel()
+	time.Sleep(100 * time.Millisecond) // grace period for node shutdown and cleanup
 }
 
 func waitForNodeInitialization(node *FullNode) error {
