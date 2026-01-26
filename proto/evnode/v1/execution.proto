@@ -18,6 +18,12 @@ service ExecutorService {
 
   // SetFinal marks a block as finalized at the specified height
   rpc SetFinal(SetFinalRequest) returns (SetFinalResponse) {}
+
+  // GetExecutionInfo returns current execution layer parameters
+  rpc GetExecutionInfo(GetExecutionInfoRequest) returns (GetExecutionInfoResponse) {}
+
+  // FilterTxs validates force-included transactions and calculates gas for all transactions
+  rpc FilterTxs(FilterTxsRequest) returns (FilterTxsResponse) {}
 }
 
 // InitChainRequest contains the genesis parameters for chain initialization
@@ -36,9 +42,6 @@ message InitChainRequest {
 message InitChainResponse {
   // Hash representing initial state
   bytes state_root = 1;
-
-  // Maximum allowed bytes for transactions in a block
-  uint64 max_bytes = 2;
 }
 
 // GetTxsRequest is the request for fetching transactions
@@ -85,4 +88,45 @@ message SetFinalRequest {
 // SetFinalResponse indicates whether finalization was successful
 message SetFinalResponse {
   // Empty response, errors are returned via gRPC status
+}
+
+// GetExecutionInfoRequest requests execution layer parameters
+message GetExecutionInfoRequest {}
+
+// GetExecutionInfoResponse contains execution layer parameters
+message GetExecutionInfoResponse {
+  // Maximum gas allowed for transactions in a block
+  // For non-gas-based execution layers, this should be 0
+  uint64 max_gas = 1;
+}
+
+// FilterStatus represents the result of filtering a transaction
+enum FilterStatus {
+  // Transaction will make it to the next batch
+  FILTER_OK = 0;
+  // Transaction will be filtered out because invalid (too big, malformed, etc.)
+  FILTER_REMOVE = 1;
+  // Transaction is valid but postponed for later processing due to size/gas constraint
+  FILTER_POSTPONE = 2;
+}
+
+// FilterTxsRequest contains transactions to validate and filter
+message FilterTxsRequest {
+  // All transactions (force-included + mempool)
+  repeated bytes txs = 1;
+
+  // Maximum cumulative size allowed (0 means no size limit)
+  uint64 max_bytes = 2;
+
+  // Maximum cumulative gas allowed (0 means no gas limit)
+  uint64 max_gas = 3;
+
+  // Whether force-included transactions are present
+  bool has_force_included_transaction = 4;
+}
+
+// FilterTxsResponse contains the filter status for each transaction
+message FilterTxsResponse {
+  // Filter status for each transaction (same length as txs in request)
+  repeated FilterStatus statuses = 1;
 }

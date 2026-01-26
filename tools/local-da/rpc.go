@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"slices"
 	"time"
 
 	libshare "github.com/celestiaorg/go-square/v3/share"
@@ -93,11 +94,8 @@ func (s *blobServer) GetAll(_ context.Context, height uint64, namespaces []libsh
 
 	out := make([]*jsonrpc.Blob, 0, len(blobs))
 	for _, b := range blobs {
-		for _, ns := range namespaces {
-			if b.Namespace().Equals(ns) {
-				out = append(out, b)
-				break
-			}
+		if b != nil && slices.ContainsFunc(namespaces, b.Namespace().Equals) {
+			out = append(out, b)
 		}
 	}
 

@@ -74,12 +74,6 @@ func (t *tracedSequencer) GetNextBatch(ctx context.Context, req coresequencer.Ge
 
 	if res.Batch != nil {
 		txCount := len(res.Batch.Transactions)
-		forcedCount := 0
-		for _, forced := range res.Batch.ForceIncludedMask {
-			if forced {
-				forcedCount++
-			}
-		}
 		totalBytes := 0
 		for _, tx := range res.Batch.Transactions {
 			totalBytes += len(tx)
@@ -87,7 +81,6 @@ func (t *tracedSequencer) GetNextBatch(ctx context.Context, req coresequencer.Ge
 
 		span.SetAttributes(
 			attribute.Int("tx.count", txCount),
-			attribute.Int("forced_inclusion.count", forcedCount),
 			attribute.Int("batch.size_bytes", totalBytes),
 			attribute.Int64("timestamp", res.Timestamp.Unix()),
 		)
