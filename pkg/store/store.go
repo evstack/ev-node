@@ -376,7 +376,9 @@ func (s *DefaultStore) PruneBlocks(ctx context.Context, height uint64) error {
 		}
 
 		if err := batch.Delete(ctx, ds.NewKey(getHeaderKey(h))); err != nil {
-			return fmt.Errorf("failed to delete header at height %d during pruning: %w", h, err)
+			if !errors.Is(err, ds.ErrNotFound) {
+				return fmt.Errorf("failed to delete header at height %d during pruning: %w", h, err)
+			}
 		}
 
 		if err := batch.Delete(ctx, ds.NewKey(getDataKey(h))); err != nil {
