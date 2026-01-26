@@ -478,6 +478,7 @@ func (e *Executor) ProduceBlock(ctx context.Context) error {
 	}
 
 	if e.raftNode != nil && !e.raftNode.HasQuorum() {
+		// The cluster may not be healthy or leadership was lost. Both processes run in parallel.
 		return errors.New("raft cluster does not have quorum")
 	}
 	newState, err := e.blockProducer.ApplyBlock(ctx, header.Header, data)

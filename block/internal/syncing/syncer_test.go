@@ -15,7 +15,6 @@ import (
 	"github.com/evstack/ev-node/pkg/genesis"
 	signerpkg "github.com/evstack/ev-node/pkg/signer"
 	"github.com/evstack/ev-node/pkg/signer/noop"
-	testmocks "github.com/evstack/ev-node/test/mocks"
 	"github.com/ipfs/go-datastore"
 	dssync "github.com/ipfs/go-datastore/sync"
 	"github.com/libp2p/go-libp2p/core/crypto"
@@ -28,6 +27,7 @@ import (
 	"github.com/evstack/ev-node/block/internal/common"
 	"github.com/evstack/ev-node/pkg/config"
 	"github.com/evstack/ev-node/pkg/store"
+	testmocks "github.com/evstack/ev-node/test/mocks"
 	extmocks "github.com/evstack/ev-node/test/mocks/external"
 	"github.com/evstack/ev-node/types"
 )
@@ -585,7 +585,7 @@ func TestSyncer_InitializeState_CallsReplayer(t *testing.T) {
 	cm, err := cache.NewManager(config.DefaultConfig(), st, zerolog.Nop())
 	require.NoError(t, err)
 
-	// Create mocks
+	// Create testmocks
 	mockStore := testmocks.NewMockStore(t)
 	mockExec := testmocks.NewMockHeightAwareExecutor(t)
 
@@ -615,7 +615,7 @@ func TestSyncer_InitializeState_CallsReplayer(t *testing.T) {
 	mockStore.EXPECT().GetMetadata(mock.Anything, store.DAIncludedHeightKey).Return(nil, datastore.ErrNotFound)
 
 	// Mock Batch operations
-	mockBatch := &MockBatch{}
+	mockBatch := testmocks.NewMockBatch(t)
 	mockBatch.Test(t)
 	mockStore.EXPECT().NewBatch(mock.Anything).Return(mockBatch, nil)
 	mockBatch.On("SetHeight", storeHeight).Return(nil)
@@ -711,39 +711,4 @@ func TestSyncer_getHighestStoredDAHeight(t *testing.T) {
 
 	highestDA = syncer.getHighestStoredDAHeight()
 	assert.Equal(t, uint64(200), highestDA, "should return highest DA height from most recent included height")
-}
-
-// MockBatch is a mock implementation of store.Batch
-type MockBatch struct {
-	mock.Mock
-}
-
-func (m *MockBatch) SaveBlockData(header *types.SignedHeader, data *types.Data, signature *types.Signature) error {
-	args := m.Called(header, data, signature)
-	return args.Error(0)
-}
-
-func (m *MockBatch) SetHeight(height uint64) error {
-	args := m.Called(height)
-	return args.Error(0)
-}
-
-func (m *MockBatch) UpdateState(state types.State) error {
-	args := m.Called(state)
-	return args.Error(0)
-}
-
-func (m *MockBatch) Commit() error {
-	args := m.Called()
-	return args.Error(0)
-}
-
-func (m *MockBatch) Put(key datastore.Key, value []byte) error {
-	args := m.Called(key, value)
-	return args.Error(0)
-}
-
-func (m *MockBatch) Delete(key datastore.Key) error {
-	args := m.Called(key)
-	return args.Error(0)
 }

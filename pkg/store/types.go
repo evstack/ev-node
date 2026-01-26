@@ -44,9 +44,6 @@ type Store interface {
 
 	// NewBatch creates a new batch for atomic operations.
 	NewBatch(ctx context.Context) (Batch, error)
-
-	// Sync flushes the store state to disk
-	Sync(ctx context.Context) error
 }
 
 type Reader interface {

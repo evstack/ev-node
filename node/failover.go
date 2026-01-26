@@ -68,6 +68,7 @@ func newSyncMode(
 	}
 	return setupFailoverState(nodeConfig, nodeKey, rootDB, daStore, genesis, logger, mainKV, rktStore, blockComponentsFn, raftNode)
 }
+
 func newAggregatorMode(
 	nodeConfig config.Config,
 	nodeKey *key.NodeKey,

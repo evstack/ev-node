@@ -193,10 +193,6 @@ func (t *tracedStore) SetMetadata(ctx context.Context, key string, value []byte)
 	return nil
 }
 
-func (t *tracedStore) Sync(ctx context.Context) error {
-	return t.inner.Sync(ctx)
-}
-
 func (t *tracedStore) Rollback(ctx context.Context, height uint64, aggregator bool) error {
 	ctx, span := t.tracer.Start(ctx, "Store.Rollback",
 		trace.WithAttributes(

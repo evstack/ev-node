@@ -13,16 +13,24 @@ import (
 	"github.com/rs/zerolog"
 )
 
+// eventProcessor handles DA height events. Used for syncing.
 type eventProcessor interface {
+	// handle processes a single DA height event.
 	handle(ctx context.Context, event common.DAHeightEvent) error
 }
+
+// eventProcessorFn adapts a function to an eventProcessor.
 type eventProcessorFn func(ctx context.Context, event common.DAHeightEvent) error
 
+// handle calls the wrapped function.
 func (e eventProcessorFn) handle(ctx context.Context, event common.DAHeightEvent) error {
 	return e(ctx, event)
 }
 
+// raftStatePreProcessor is called before processing a raft block state
 type raftStatePreProcessor func(ctx context.Context, state *raft.RaftBlockState) error
+
+// raftRetriever retrieves raft blocks and feeds them into the eventProcessor
 type raftRetriever struct {
 	raftNode              common.RaftNode
 	wg                    sync.WaitGroup
@@ -35,19 +43,20 @@ type raftRetriever struct {
 	cancel context.CancelFunc
 }
 
+// newRaftRetriever constructor
 func newRaftRetriever(
 	raftNode common.RaftNode,
 	genesis genesis.Genesis,
 	logger zerolog.Logger,
 	eventProcessor eventProcessor,
-	raftBlockPostProcessor raftStatePreProcessor,
+	raftBlockPreProcessor raftStatePreProcessor,
 ) *raftRetriever {
 	return &raftRetriever{
 		raftNode:              raftNode,
 		genesis:               genesis,
 		logger:                logger,
 		eventProcessor:        eventProcessor,
-		raftBlockPreProcessor: raftBlockPostProcessor,
+		raftBlockPreProcessor: raftBlockPreProcessor,
 	}
 }
 
