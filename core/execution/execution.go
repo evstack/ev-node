@@ -161,3 +161,16 @@ type Rollbackable interface {
 	// Rollback resets the execution layer head to the specified height.
 	Rollback(ctx context.Context, targetHeight uint64) error
 }
+
+// ExecMetaPruner is an optional interface that execution clients can implement
+// to support height-based pruning of their execution metadata. This is used by
+// EVM-based execution clients to keep ExecMeta consistent with ev-node's
+// pruning window while remaining a no-op for execution environments that
+// don't persist per-height metadata in ev-node's datastore.
+type ExecMetaPruner interface {
+	// PruneExecMeta should delete execution metadata for all heights up to and
+	// including the given height. Implementations should be idempotent and track
+	// their own progress so that repeated calls with the same or decreasing
+	// heights are cheap no-ops.
+	PruneExecMeta(ctx context.Context, height uint64) error
+}

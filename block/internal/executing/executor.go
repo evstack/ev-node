@@ -559,6 +559,17 @@ func (e *Executor) ProduceBlock(ctx context.Context) error {
 				if err := e.store.PruneBlocks(e.ctx, targetHeight); err != nil {
 					e.logger.Error().Err(err).Uint64("target_height", targetHeight).Msg("failed to prune old block data")
 				}
+
+				// If the execution client exposes execution-metadata pruning,
+				// prune ExecMeta using the same target height. This keeps EVM
+				// execution metadata aligned with ev-node's block store pruning
+				// while remaining a no-op for execution environments that don't
+				// implement ExecMetaPruner (e.g. ABCI-based executors).
+				if pruner, ok := e.exec.(coreexecutor.ExecMetaPruner); ok {
+					if err := pruner.PruneExecMeta(e.ctx, targetHeight); err != nil {
+						e.logger.Error().Err(err).Uint64("target_height", targetHeight).Msg("failed to prune execution metadata")
+					}
+				}
 			}
 		}
 	}

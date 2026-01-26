@@ -15,6 +15,11 @@ import (
 // Store prefix for execution/evm data - keeps it isolated from other ev-node data
 const evmStorePrefix = "evm/"
 
+// lastPrunedExecMetaKey is the datastore key used to track the highest
+// execution height for which ExecMeta has been pruned. All ExecMeta entries
+// for heights <= this value are considered pruned.
+const lastPrunedExecMetaKey = evmStorePrefix + "last-pruned-execmeta-height"
+
 // ExecMeta stages
 const (
 	ExecStageStarted   = "started"
@@ -135,6 +140,54 @@ func (s *EVMStore) SaveExecMeta(ctx context.Context, meta *ExecMeta) error {
 
 	if err := s.db.Put(ctx, key, data); err != nil {
 		return fmt.Errorf("failed to save exec meta: %w", err)
+	}
+
+	return nil
+}
+
+// PruneExecMeta removes ExecMeta entries up to and including the given height.
+// It is safe to call this multiple times with the same or increasing heights;
+// previously pruned ranges will be skipped based on the last-pruned marker.
+func (s *EVMStore) PruneExecMeta(ctx context.Context, height uint64) error {
+	// Load last pruned height, if any.
+	var lastPruned uint64
+	data, err := s.db.Get(ctx, ds.NewKey(lastPrunedExecMetaKey))
+	if err != nil {
+		if !errors.Is(err, ds.ErrNotFound) {
+			return fmt.Errorf("failed to get last pruned execmeta height: %w", err)
+		}
+	} else if len(data) == 8 {
+		lastPruned = binary.BigEndian.Uint64(data)
+	}
+
+	// Nothing new to prune.
+	if height <= lastPruned {
+		return nil
+	}
+
+	batch, err := s.db.Batch(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to create batch for execmeta pruning: %w", err)
+	}
+
+	for h := lastPruned + 1; h <= height; h++ {
+		key := execMetaKey(h)
+		if err := batch.Delete(ctx, key); err != nil {
+			if !errors.Is(err, ds.ErrNotFound) {
+				return fmt.Errorf("failed to delete exec meta at height %d: %w", h, err)
+			}
+		}
+	}
+
+	// Persist updated last pruned height.
+	buf := make([]byte, 8)
+	binary.BigEndian.PutUint64(buf, height)
+	if err := batch.Put(ctx, ds.NewKey(lastPrunedExecMetaKey), buf); err != nil {
+		return fmt.Errorf("failed to update last pruned execmeta height: %w", err)
+	}
+
+	if err := batch.Commit(ctx); err != nil {
+		return fmt.Errorf("failed to commit execmeta pruning batch: %w", err)
 	}
 
 	return nil
