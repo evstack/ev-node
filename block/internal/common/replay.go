@@ -179,7 +179,13 @@ func (s *Replayer) replayBlock(ctx context.Context, height uint64) error {
 		rawTxs[i] = []byte(tx)
 	}
 
-	newAppHash, _, err := s.exec.ExecuteTxs(ctx, rawTxs, height, header.Time(), prevState.AppHash)
+	// Execute transactions on the execution layer
+	s.logger.Debug().
+		Uint64("height", height).
+		Int("tx_count", len(rawTxs)).
+		Msg("executing transactions on execution layer")
+
+	newAppHash, err := s.exec.ExecuteTxs(ctx, rawTxs, height, header.Time(), prevState.AppHash)
 	if err != nil {
 		return fmt.Errorf("failed to execute transactions: %w", err)
 	}

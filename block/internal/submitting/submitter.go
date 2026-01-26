@@ -23,8 +23,8 @@ import (
 	"github.com/evstack/ev-node/types"
 )
 
-// daSubmitterAPI defines minimal methods needed by Submitter for DA submissions.
-type daSubmitterAPI interface {
+// DASubmitterAPI defines minimal methods needed by Submitter for DA submissions.
+type DASubmitterAPI interface {
 	SubmitHeaders(ctx context.Context, headers []*types.SignedHeader, marshalledHeaders [][]byte, cache cache.Manager, signer signer.Signer) error
 	SubmitData(ctx context.Context, signedDataList []*types.SignedData, marshalledData [][]byte, cache cache.Manager, signer signer.Signer, genesis genesis.Genesis) error
 }
@@ -43,7 +43,7 @@ type Submitter struct {
 	metrics *common.Metrics
 
 	// DA submitter
-	daSubmitter daSubmitterAPI
+	daSubmitter DASubmitterAPI
 
 	// Optional signer (only for aggregator nodes)
 	signer signer.Signer
@@ -80,7 +80,7 @@ func NewSubmitter(
 	metrics *common.Metrics,
 	config config.Config,
 	genesis genesis.Genesis,
-	daSubmitter daSubmitterAPI,
+	daSubmitter DASubmitterAPI,
 	sequencer coresequencer.Sequencer, // Can be nil for sync nodes
 	signer signer.Signer, // Can be nil for sync nodes
 	logger zerolog.Logger,

@@ -124,8 +124,7 @@ func TestTracedSequencer_GetNextBatch_Success(t *testing.T) {
 		getNextBatchFn: func(ctx context.Context, req coresequencer.GetNextBatchRequest) (*coresequencer.GetNextBatchResponse, error) {
 			return &coresequencer.GetNextBatchResponse{
 				Batch: &coresequencer.Batch{
-					Transactions:      [][]byte{[]byte("tx1"), []byte("forced-tx")},
-					ForceIncludedMask: []bool{false, true},
+					Transactions: [][]byte{[]byte("tx1"), []byte("forced-tx")},
 				},
 				Timestamp: time.Unix(1700000000, 0),
 			}, nil
@@ -151,7 +150,6 @@ func TestTracedSequencer_GetNextBatch_Success(t *testing.T) {
 
 	attrs := span.Attributes()
 	testutil.RequireAttribute(t, attrs, "tx.count", 2)
-	testutil.RequireAttribute(t, attrs, "forced_inclusion.count", 1)
 	testutil.RequireAttribute(t, attrs, "max_bytes", int64(1000))
 }
 

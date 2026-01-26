@@ -174,7 +174,10 @@ func NewSyncComponents(
 	}
 
 	// Create submitter for sync nodes (no signer, only DA inclusion processing)
-	daSubmitter := submitting.NewDASubmitter(daClient, config, genesis, blockOpts, metrics, logger)
+	var daSubmitter submitting.DASubmitterAPI = submitting.NewDASubmitter(daClient, config, genesis, blockOpts, metrics, logger)
+	if config.Instrumentation.IsTracingEnabled() {
+		daSubmitter = submitting.WithTracingDASubmitter(daSubmitter)
+	}
 	submitter := submitting.NewSubmitter(
 		store,
 		exec,
@@ -274,7 +277,10 @@ func NewAggregatorComponents(
 		}, nil
 	}
 
-	daSubmitter := submitting.NewDASubmitter(daClient, config, genesis, blockOpts, metrics, logger)
+	var daSubmitter submitting.DASubmitterAPI = submitting.NewDASubmitter(daClient, config, genesis, blockOpts, metrics, logger)
+	if config.Instrumentation.IsTracingEnabled() {
+		daSubmitter = submitting.WithTracingDASubmitter(daSubmitter)
+	}
 	submitter := submitting.NewSubmitter(
 		store,
 		exec,

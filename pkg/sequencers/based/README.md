@@ -106,43 +106,57 @@ Result: currentBatchTxs = [tx1, tx2, tx3, ..., txN] (from entire epoch)
 
 #### 3. Processing Transactions
 
-Transactions are processed incrementally, respecting `maxBytes`:
+Transactions are processed **sequentially** to maintain ordering and enable crash recovery. Processing stops at the first `FilterPostpone` to ensure we don't skip ahead:
 
 ```bash
-Batch 1: [tx1, tx2] (fits in maxBytes)
-Checkpoint: (DAHeight: 100, TxIndex: 2)
+Epoch txs: [tx0, tx1, tx2, tx3, tx4]
 
-Batch 2: [tx3, tx4, tx5]
-Checkpoint: (DAHeight: 100, TxIndex: 5)
+Batch 1: Filter returns [OK, Postpone, OK, OK, OK]
+         Processing stops at tx1 (Postpone)
+         Result: [tx0] consumed
+         Checkpoint: (DAHeight: 100, TxIndex: 1)
 
-... continue until all transactions from DA height 100 are consumed
-
-Checkpoint: (DAHeight: 101, TxIndex: 0)
-- Moved to next DA height within the same epoch
+Batch 2: Slice from TxIndex=1 → [tx1, tx2, tx3, tx4]
+         Filter returns [OK, OK, OK, OK]
+         Result: [tx1, tx2, tx3, tx4] consumed
+         Checkpoint: (DAHeight: 101, TxIndex: 0)
+         - Moved to next DA epoch
 ```
+
+**Why sequential processing?**
+
+- Maintains forced inclusion ordering guarantees
+- TxIndex accurately tracks consumed txs for crash recovery
+- On restart, we can safely skip already-processed txs by slicing from TxIndex
 
 #### 4. Checkpoint Persistence
 
 **Critical**: The checkpoint is persisted to disk **after every batch** of transactions is processed:
 
 ```go
-if txCount > 0 {
-    s.checkpoint.TxIndex += txCount
+// Advance TxIndex by the number of consumed transactions (OK + Remove)
+s.checkpoint.TxIndex += consumedCount
 
-    // Move to next DA height when current one is exhausted
-    if s.checkpoint.TxIndex >= uint64(len(s.currentBatchTxs)) {
-        s.checkpoint.DAHeight++
-        s.checkpoint.TxIndex = 0
-        s.currentBatchTxs = nil
-        s.SetDAHeight(s.checkpoint.DAHeight)
-    }
+// Check if we've consumed all transactions from the epoch
+if s.checkpoint.TxIndex >= uint64(len(s.currentBatchTxs)) {
+    // All txs consumed, advance to next DA epoch
+    s.checkpoint.DAHeight = daHeight + 1
+    s.checkpoint.TxIndex = 0
+    s.currentBatchTxs = nil
+    s.SetDAHeight(s.checkpoint.DAHeight)
+}
 
-    // Persist checkpoint to disk
-    if err := s.checkpointStore.Save(ctx, s.checkpoint); err != nil {
-        return nil, fmt.Errorf("failed to save checkpoint: %w", err)
-    }
+// Persist checkpoint to disk
+if err := s.checkpointStore.Save(ctx, s.checkpoint); err != nil {
+    return nil, fmt.Errorf("failed to save checkpoint: %w", err)
 }
 ```
+
+**Key points**:
+
+- `TxIndex` is incremented by consumed count (OK + Remove), not reset to 0
+- Original cache (`currentBatchTxs`) is preserved, not replaced
+- On next batch, we slice from `TxIndex` to get remaining txs
 
 ### Crash Recovery Behavior
 
@@ -150,21 +164,19 @@ if txCount > 0 {
 
 **Setup**:
 
-- Epoch 1 spans DA heights 100-109
-- At DA height 109, fetched all transactions from the epoch
-- Processed transactions up to DA height 105, TxIndex 3
-- **Crash occurs**
+- Epoch spans DA height 100
+- Fetched 5 transactions: [tx0, tx1, tx2, tx3, tx4]
+- Processed tx0, tx1, tx2 (TxIndex = 3)
+- **Crash occurs before processing tx3, tx4**
 
 **On Restart**:
 
-1. **Load Checkpoint**: `(DAHeight: 105, TxIndex: 3)`
+1. **Load Checkpoint**: `(DAHeight: 100, TxIndex: 3)`
 2. **Lost Cache**: `currentBatchTxs` is empty (in-memory only)
-3. **Attempt Fetch**: `RetrieveForcedIncludedTxs(105)`
-4. **Result**: Empty (105 is not an epoch end)
-5. **Continue**: Increment DA height, keep trying
-6. **Eventually**: Reach DA height 109 (epoch end)
-7. **Re-fetch**: Retrieve **entire epoch** again (DA heights 100-109)
-8. **Resume**: Use checkpoint to skip already-processed transactions
+3. **Fetch Epoch**: `RetrieveForcedIncludedTxs(100)`
+4. **Re-fetch**: Retrieve all 5 transactions again: [tx0, tx1, tx2, tx3, tx4]
+5. **Resume**: Slice from TxIndex=3 → [tx3, tx4]
+6. **Continue**: Process tx3, tx4 without re-executing tx0, tx1, tx2
 
 #### Important Implications
 

@@ -95,7 +95,7 @@ func TestProduceBlock_EmptyBatch_SetsEmptyDataHash(t *testing.T) {
 	// Expect InitChain to be called
 	initStateRoot := []byte("init_root")
 	mockExec.EXPECT().InitChain(mock.Anything, mock.AnythingOfType("time.Time"), gen.InitialHeight, gen.ChainID).
-		Return(initStateRoot, uint64(1024), nil).Once()
+		Return(initStateRoot, nil).Once()
 	mockSeq.EXPECT().SetDAHeight(uint64(0)).Return().Once()
 
 	// initialize state (creates genesis block in store and sets state)
@@ -113,7 +113,7 @@ func TestProduceBlock_EmptyBatch_SetsEmptyDataHash(t *testing.T) {
 
 	// executor ExecuteTxs called with empty txs and previous state root
 	mockExec.EXPECT().ExecuteTxs(mock.Anything, mock.Anything, uint64(1), mock.AnythingOfType("time.Time"), initStateRoot).
-		Return([]byte("new_root"), uint64(1024), nil).Once()
+		Return([]byte("new_root"), nil).Once()
 
 	mockSeq.EXPECT().GetDAHeight().Return(uint64(0)).Once()
 
@@ -184,7 +184,7 @@ func TestPendingLimit_SkipsProduction(t *testing.T) {
 	require.NoError(t, err)
 
 	mockExec.EXPECT().InitChain(mock.Anything, mock.AnythingOfType("time.Time"), gen.InitialHeight, gen.ChainID).
-		Return([]byte("i0"), uint64(1024), nil).Once()
+		Return([]byte("i0"), nil).Once()
 	mockSeq.EXPECT().SetDAHeight(uint64(0)).Return().Once()
 	require.NoError(t, exec.initializeState())
 
@@ -200,7 +200,7 @@ func TestPendingLimit_SkipsProduction(t *testing.T) {
 		}).Once()
 	// ExecuteTxs with empty
 	mockExec.EXPECT().ExecuteTxs(mock.Anything, mock.Anything, uint64(1), mock.AnythingOfType("time.Time"), []byte("i0")).
-		Return([]byte("i1"), uint64(1024), nil).Once()
+		Return([]byte("i1"), nil).Once()
 
 	mockSeq.EXPECT().GetDAHeight().Return(uint64(0)).Once()
 
@@ -231,7 +231,7 @@ func TestExecutor_executeTxsWithRetry(t *testing.T) {
 			name: "success on first attempt",
 			setupMock: func(exec *testmocks.MockExecutor) {
 				exec.On("ExecuteTxs", mock.Anything, mock.Anything, uint64(100), mock.Anything, mock.Anything).
-					Return([]byte("new-hash"), uint64(0), nil).Once()
+					Return([]byte("new-hash"), nil).Once()
 			},
 			expectSuccess: true,
 			expectHash:    []byte("new-hash"),
@@ -240,9 +240,9 @@ func TestExecutor_executeTxsWithRetry(t *testing.T) {
 			name: "success on second attempt",
 			setupMock: func(exec *testmocks.MockExecutor) {
 				exec.On("ExecuteTxs", mock.Anything, mock.Anything, uint64(100), mock.Anything, mock.Anything).
-					Return([]byte(nil), uint64(0), errors.New("temporary failure")).Once()
+					Return([]byte(nil), errors.New("temporary failure")).Once()
 				exec.On("ExecuteTxs", mock.Anything, mock.Anything, uint64(100), mock.Anything, mock.Anything).
-					Return([]byte("new-hash"), uint64(0), nil).Once()
+					Return([]byte("new-hash"), nil).Once()
 			},
 			expectSuccess: true,
 			expectHash:    []byte("new-hash"),
@@ -251,9 +251,9 @@ func TestExecutor_executeTxsWithRetry(t *testing.T) {
 			name: "success on third attempt",
 			setupMock: func(exec *testmocks.MockExecutor) {
 				exec.On("ExecuteTxs", mock.Anything, mock.Anything, uint64(100), mock.Anything, mock.Anything).
-					Return([]byte(nil), uint64(0), errors.New("temporary failure")).Times(2)
+					Return([]byte(nil), errors.New("temporary failure")).Times(2)
 				exec.On("ExecuteTxs", mock.Anything, mock.Anything, uint64(100), mock.Anything, mock.Anything).
-					Return([]byte("new-hash"), uint64(0), nil).Once()
+					Return([]byte("new-hash"), nil).Once()
 			},
 			expectSuccess: true,
 			expectHash:    []byte("new-hash"),
@@ -262,7 +262,7 @@ func TestExecutor_executeTxsWithRetry(t *testing.T) {
 			name: "failure after max retries",
 			setupMock: func(exec *testmocks.MockExecutor) {
 				exec.On("ExecuteTxs", mock.Anything, mock.Anything, uint64(100), mock.Anything, mock.Anything).
-					Return([]byte(nil), uint64(0), errors.New("persistent failure")).Times(common.MaxRetriesBeforeHalt)
+					Return([]byte(nil), errors.New("persistent failure")).Times(common.MaxRetriesBeforeHalt)
 			},
 			expectSuccess: false,
 			expectError:   "failed to execute transactions",
@@ -271,7 +271,7 @@ func TestExecutor_executeTxsWithRetry(t *testing.T) {
 			name: "context cancelled during retry",
 			setupMock: func(exec *testmocks.MockExecutor) {
 				exec.On("ExecuteTxs", mock.Anything, mock.Anything, uint64(100), mock.Anything, mock.Anything).
-					Return([]byte(nil), uint64(0), errors.New("temporary failure")).Once()
+					Return([]byte(nil), errors.New("temporary failure")).Once()
 			},
 			expectSuccess: false,
 			expectError:   "context cancelled during retry",

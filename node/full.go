@@ -83,6 +83,9 @@ func newFullNode(
 
 	mainKV := store.NewEvNodeKVStore(database)
 	evstore := store.New(mainKV)
+	if nodeConfig.Instrumentation.IsTracingEnabled() {
+		evstore = store.WithTracingStore(evstore)
+	}
 
 	var raftNode *raftpkg.Node
 	if nodeConfig.Node.Aggregator && nodeConfig.Raft.Enable {
@@ -96,12 +99,12 @@ func newFullNode(
 		logger.Info().Msg("Starting aggregator-MODE")
 		nodeConfig.Node.Aggregator = true
 		nodeConfig.P2P.Peers = "" // peers are not supported in aggregator mode
-		return newAggregatorMode(nodeConfig, nodeKey, signer, genesis, database, exec, sequencer, daClient, logger, evstore, mainKV, blockMetrics, nodeOpts, raftNode)
+		return newAggregatorMode(nodeConfig, nodeKey, signer, genesis, database, evstore, exec, sequencer, daClient, logger, evstore, mainKV, blockMetrics, nodeOpts, raftNode)
 	}
 	followerFactory := func() (raftpkg.Runnable, error) {
 		logger.Info().Msg("Starting sync-MODE")
 		nodeConfig.Node.Aggregator = false
-		return newSyncMode(nodeConfig, nodeKey, genesis, database, exec, daClient, logger, evstore, mainKV, blockMetrics, nodeOpts, raftNode)
+		return newSyncMode(nodeConfig, nodeKey, genesis, database, evstore, exec, daClient, logger, evstore, mainKV, blockMetrics, nodeOpts, raftNode)
 	}
 
 	// Initialize raft node if enabled (for both aggregator and sync nodes)

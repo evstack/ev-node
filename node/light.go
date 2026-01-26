@@ -49,12 +49,12 @@ func newLightNode(
 	}
 
 	componentLogger := logger.With().Str("component", "HeaderSyncService").Logger()
-	headerSyncService, err := sync.NewHeaderSyncService(database, conf, genesis, p2pClient, componentLogger)
+	store := store.New(database)
+
+	headerSyncService, err := sync.NewHeaderSyncService(database, store, conf, genesis, p2pClient, componentLogger)
 	if err != nil {
 		return nil, fmt.Errorf("error while initializing HeaderSyncService: %w", err)
 	}
-
-	store := store.New(database)
 
 	node := &LightNode{
 		P2P:          p2pClient,

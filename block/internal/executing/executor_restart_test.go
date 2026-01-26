@@ -74,7 +74,7 @@ func TestExecutor_RestartUsesPendingHeader(t *testing.T) {
 	// Initialize state for first executor
 	initStateRoot := []byte("init_root")
 	mockExec1.EXPECT().InitChain(mock.Anything, mock.AnythingOfType("time.Time"), gen.InitialHeight, gen.ChainID).
-		Return(initStateRoot, uint64(1024), nil).Once()
+		Return(initStateRoot, nil).Once()
 	mockSeq1.EXPECT().SetDAHeight(uint64(0)).Return().Once()
 	require.NoError(t, exec1.initializeState())
 
@@ -93,7 +93,7 @@ func TestExecutor_RestartUsesPendingHeader(t *testing.T) {
 		}).Once()
 
 	mockExec1.EXPECT().ExecuteTxs(mock.Anything, mock.Anything, uint64(1), mock.AnythingOfType("time.Time"), initStateRoot).
-		Return([]byte("new_root_1"), uint64(1024), nil).Once()
+		Return([]byte("new_root_1"), nil).Once()
 
 	mockSeq1.EXPECT().GetDAHeight().Return(uint64(0)).Once()
 
@@ -211,7 +211,7 @@ func TestExecutor_RestartUsesPendingHeader(t *testing.T) {
 	// The executor should be called to apply the pending block
 
 	mockExec2.EXPECT().ExecuteTxs(mock.Anything, mock.Anything, uint64(2), mock.AnythingOfType("time.Time"), currentState2.AppHash).
-		Return([]byte("new_root_2"), uint64(1024), nil).Once()
+		Return([]byte("new_root_2"), nil).Once()
 
 	mockSeq2.EXPECT().GetDAHeight().Return(uint64(0)).Once()
 
@@ -300,8 +300,9 @@ func TestExecutor_RestartNoPendingHeader(t *testing.T) {
 
 	initStateRoot := []byte("init_root")
 	mockExec1.EXPECT().InitChain(mock.Anything, mock.AnythingOfType("time.Time"), gen.InitialHeight, gen.ChainID).
-		Return(initStateRoot, uint64(1024), nil).Once()
-	mockSeq1.EXPECT().SetDAHeight(uint64(0)).Return().Once()
+		Return(initStateRoot, nil).Once()
+	mockSeq1.EXPECT().SetDAHeight(uint64(0)).Return().Maybe()
+	mockSeq1.EXPECT().GetDAHeight().Return(uint64(0)).Maybe()
 	require.NoError(t, exec1.initializeState())
 
 	exec1.ctx, exec1.cancel = context.WithCancel(t.Context())
@@ -317,13 +318,11 @@ func TestExecutor_RestartNoPendingHeader(t *testing.T) {
 			}, nil
 		}).Times(numBlocks)
 
-	mockSeq1.EXPECT().GetDAHeight().Return(uint64(0)).Times(numBlocks)
-
 	lastStateRoot := initStateRoot
 	for i := range numBlocks {
 		newStateRoot := []byte(fmt.Sprintf("new_root_%d", i+1))
 		mockExec1.EXPECT().ExecuteTxs(mock.Anything, mock.Anything, gen.InitialHeight+uint64(i), mock.AnythingOfType("time.Time"), lastStateRoot).
-			Return(newStateRoot, uint64(1024), nil).Once()
+			Return(newStateRoot, nil).Once()
 		lastStateRoot = newStateRoot
 
 		err = exec1.ProduceBlock(exec1.ctx)
@@ -381,7 +380,7 @@ func TestExecutor_RestartNoPendingHeader(t *testing.T) {
 		}).Once()
 
 	mockExec2.EXPECT().ExecuteTxs(mock.Anything, mock.Anything, uint64(numBlocks+1), mock.AnythingOfType("time.Time"), lastStateRoot).
-		Return([]byte("new_root_after_restart"), uint64(1024), nil).Once()
+		Return([]byte("new_root_after_restart"), nil).Once()
 
 	mockSeq2.EXPECT().GetDAHeight().Return(uint64(0)).Once()
 

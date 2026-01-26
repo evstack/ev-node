@@ -203,7 +203,7 @@ func TestExecutor_RealExecutionClientFailure_StopsNode(t *testing.T) {
 
 	// Mock InitChain to succeed initially
 	mockExec.On("InitChain", mock.Anything, mock.Anything, mock.Anything, mock.Anything).
-		Return([]byte("state-root"), uint64(1024), nil).Once()
+		Return([]byte("state-root"), nil).Once()
 
 	// Mock SetDAHeight to be called during initialization
 	mockSeq.On("SetDAHeight", uint64(0)).Return().Once()
@@ -222,7 +222,7 @@ func TestExecutor_RealExecutionClientFailure_StopsNode(t *testing.T) {
 	// Mock ExecuteTxs to fail with a critical error
 	criticalError := errors.New("execution client RPC connection failed")
 	mockExec.On("ExecuteTxs", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
-		Return(nil, uint64(0), criticalError).Maybe()
+		Return(nil, criticalError).Maybe()
 
 	// Create aggregator node
 	components, err := NewAggregatorComponents(

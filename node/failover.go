@@ -40,7 +40,8 @@ func newSyncMode(
 	nodeConfig config.Config,
 	nodeKey *key.NodeKey,
 	genesis genesispkg.Genesis,
-	database ds.Batching,
+	rootDB ds.Batching,
+	daStore store.Store,
 	exec coreexecutor.Executor,
 	da block.DAClient,
 	logger zerolog.Logger,
@@ -65,14 +66,15 @@ func newSyncMode(
 			raftNode,
 		)
 	}
-	return setupFailoverState(nodeConfig, nodeKey, database, genesis, logger, mainKV, rktStore, blockComponentsFn, raftNode)
+	return setupFailoverState(nodeConfig, nodeKey, rootDB, daStore, genesis, logger, mainKV, rktStore, blockComponentsFn, raftNode)
 }
 func newAggregatorMode(
 	nodeConfig config.Config,
 	nodeKey *key.NodeKey,
 	signer signer.Signer,
 	genesis genesispkg.Genesis,
-	database ds.Batching,
+	rootDB ds.Batching,
+	daStore store.Store,
 	exec coreexecutor.Executor,
 	sequencer coresequencer.Sequencer,
 	da block.DAClient,
@@ -102,13 +104,14 @@ func newAggregatorMode(
 		)
 	}
 
-	return setupFailoverState(nodeConfig, nodeKey, database, genesis, logger, mainKV, rktStore, blockComponentsFn, raftNode)
+	return setupFailoverState(nodeConfig, nodeKey, rootDB, daStore, genesis, logger, mainKV, rktStore, blockComponentsFn, raftNode)
 }
 
 func setupFailoverState(
 	nodeConfig config.Config,
 	nodeKey *key.NodeKey,
-	database ds.Batching,
+	rootDB ds.Batching,
+	daStore store.Store,
 	genesis genesispkg.Genesis,
 	logger zerolog.Logger,
 	mainKV ds.Batching,
@@ -116,17 +119,17 @@ func setupFailoverState(
 	buildComponentsFn func(headerSyncService *evsync.HeaderSyncService, dataSyncService *evsync.DataSyncService) (*block.Components, error),
 	raftNode *raft.Node,
 ) (*failoverState, error) {
-	p2pClient, err := p2p.NewClient(nodeConfig.P2P, nodeKey.PrivKey, database, genesis.ChainID, logger, nil)
+	p2pClient, err := p2p.NewClient(nodeConfig.P2P, nodeKey.PrivKey, rootDB, genesis.ChainID, logger, nil)
 	if err != nil {
 		return nil, err
 	}
 
-	headerSyncService, err := evsync.NewHeaderSyncService(mainKV, nodeConfig, genesis, p2pClient, logger.With().Str("component", "HeaderSyncService").Logger())
+	headerSyncService, err := evsync.NewHeaderSyncService(mainKV, daStore, nodeConfig, genesis, p2pClient, logger.With().Str("component", "HeaderSyncService").Logger())
 	if err != nil {
 		return nil, fmt.Errorf("error while initializing HeaderSyncService: %w", err)
 	}
 
-	dataSyncService, err := evsync.NewDataSyncService(mainKV, nodeConfig, genesis, p2pClient, logger.With().Str("component", "DataSyncService").Logger())
+	dataSyncService, err := evsync.NewDataSyncService(mainKV, daStore, nodeConfig, genesis, p2pClient, logger.With().Str("component", "DataSyncService").Logger())
 	if err != nil {
 		return nil, fmt.Errorf("error while initializing DataSyncService: %w", err)
 	}
