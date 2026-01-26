@@ -323,11 +323,11 @@ function sidebarHome() {
         },
       ],
     },
-    {
-      text: "Blog",
-      collapsed: true,
-      items: [{ text: "Overview", link: "/blog/overview" }],
-    },
+    // {
+    //   text: "Blog",
+    //   collapsed: true,
+    //   items: [{ text: "Overview", link: "/blog/overview" }],
+    // },
     {
       text: "API Documentation",
       collapsed: true,
