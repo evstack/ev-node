@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"html/template"
 	"net/http"
+	"slices"
 	"sync"
 	"time"
 
@@ -199,15 +200,12 @@ func (s *DAVisualizationServer) handleDABlobDetails(w http.ResponseWriter, r *ht
 	if !found {
 		s.mutex.RLock()
 		for _, submission := range s.submissions {
-			for _, subBlobID := range submission.BlobIDs {
-				if subBlobID == blobID {
-					if submission.Namespace != "" {
-						if ns, err := hex.DecodeString(submission.Namespace); err == nil {
-							namespace = ns
-							found = true
-						}
+			if slices.Contains(submission.BlobIDs, blobID) {
+				if submission.Namespace != "" {
+					if ns, err := hex.DecodeString(submission.Namespace); err == nil {
+						namespace = ns
+						found = true
 					}
-					break
 				}
 			}
 			if found {
