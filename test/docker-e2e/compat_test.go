@@ -211,11 +211,18 @@ func (s *EVMCompatTestSuite) waitForSync(ctx context.Context, targetHeight uint6
 
 func (s *EVMCompatTestSuite) verifyTransactionsOnFullNode(ctx context.Context, txHashes []common.Hash) {
 	for i, txHash := range txHashes {
-		receipt, err := s.fullNodeClient.TransactionReceipt(ctx, txHash)
+		seqReceipt, err := s.sequencerClient.TransactionReceipt(ctx, txHash)
+		s.Require().NoError(err, "failed to query tx %d on sequencer: %s", i, txHash.Hex())
+
+		fnReceipt, err := s.fullNodeClient.TransactionReceipt(ctx, txHash)
 		s.Require().NoError(err, "failed to query tx %d on full node: %s", i, txHash.Hex())
-		s.Require().Equal(uint64(1), receipt.Status)
+
+		s.Require().Equal(uint64(1), fnReceipt.Status, "tx %d should have successful status", i)
+		s.Require().Equal(seqReceipt.BlockNumber.Uint64(), fnReceipt.BlockNumber.Uint64(),
+			"tx %d block number mismatch: sequencer=%d, fullnode=%d",
+			i, seqReceipt.BlockNumber.Uint64(), fnReceipt.BlockNumber.Uint64())
 	}
-	s.T().Logf("Verified %d transactions on full node", len(txHashes))
+	s.T().Logf("Verified %d transactions on full node with matching block numbers", len(txHashes))
 }
 
 func getSequencerImage() container.Image {
