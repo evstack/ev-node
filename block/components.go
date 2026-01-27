@@ -36,17 +36,6 @@ type Components struct {
 	errorCh chan error
 }
 
-// GetLastState returns the current blockchain state
-func (bc *Components) GetLastState() types.State {
-	if bc.Executor != nil {
-		return bc.Executor.GetLastState()
-	}
-	if bc.Syncer != nil {
-		return bc.Syncer.GetLastState()
-	}
-	return types.State{}
-}
-
 // Start starts all components and monitors for critical errors.
 // It is blocking and returns when the context is cancelled or an error occurs
 func (bc *Components) Start(ctx context.Context) error {

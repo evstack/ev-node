@@ -289,27 +289,6 @@ drainLoop:
 	return nil
 }
 
-// isCatchingUpState returns true if the syncer has pending events or is behind the current raft height
-func (s *Syncer) isCatchingUpState() bool {
-	return len(s.heightInCh) != 0 || func() bool {
-		currentHeight, err := s.store.Height(s.ctx)
-		if err != nil {
-			s.logger.Error().Err(err).Msg("failed to get current height")
-			return false
-		}
-		return s.headerStore.Store().Height() > currentHeight ||
-			s.dataStore.Store().Height() > currentHeight ||
-			s.raftRetriever != nil && s.raftRetriever.Height() > currentHeight
-	}()
-}
-
-// GetLastState returns the current state.
-func (e *Syncer) GetLastState() types.State {
-	state := e.getLastState()
-	state.AppHash = bytes.Clone(state.AppHash)
-	return state
-}
-
 // getLastState returns the current state
 func (s *Syncer) getLastState() types.State {
 	state := s.lastState.Load()
@@ -1237,15 +1216,6 @@ func (s *Syncer) cancelP2PWait(height uint64) {
 		s.p2pWaitState.Store(p2pWaitState{})
 		state.cancel()
 	}
-}
-
-// IsSynced checks if the last block height in the stored state matches the expected height and returns true if they are equal.
-func (s *Syncer) IsSynced(expHeight uint64) bool {
-	state, err := s.store.GetState(s.ctx)
-	if err != nil {
-		return false
-	}
-	return state.LastBlockHeight == expHeight && !s.isCatchingUpState()
 }
 
 // IsSyncedWithRaft checks if the local state is synced with the given raft state, including hash check.
