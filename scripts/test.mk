@@ -66,6 +66,19 @@ test-docker-upgrade-e2e:
 	@echo "--> Running Docker Upgrade E2E tests"
 	@cd test/docker-e2e && go test -mod=readonly -failfast -v -tags='docker_e2e evm' -timeout=30m -run '^TestEVMSingleUpgradeSuite$$/^TestEVMSingleUpgrade$$' ./...
 
+## test-docker-compat: Running Docker E2E cross-version compatibility tests
+## Environment variables:
+##   SEQUENCER_EVM_IMAGE_REPO - Sequencer image repo (default: ghcr.io/evstack/ev-node-evm)
+##   SEQUENCER_EVM_IMAGE_TAG  - Sequencer image tag (default: main)
+##   FULLNODE_EVM_IMAGE_REPO  - Full node image repo (default: ghcr.io/evstack/ev-node-evm)
+##   FULLNODE_EVM_IMAGE_TAG   - Full node image tag (default: main)
+test-docker-compat:
+	@echo "--> Running Docker Compat E2E tests"
+	@echo "--> Sequencer: $${SEQUENCER_EVM_IMAGE_REPO:-ghcr.io/evstack/ev-node-evm}:$${SEQUENCER_EVM_IMAGE_TAG:-main}"
+	@echo "--> Full Node: $${FULLNODE_EVM_IMAGE_REPO:-ghcr.io/evstack/ev-node-evm}:$${FULLNODE_EVM_IMAGE_TAG:-main}"
+	@cd test/docker-e2e && go test -failfast -v -tags='docker_e2e evm' -timeout=30m -run '^TestEVMCompatSuite$$/^TestCrossVersionSync$$' ./...
+.PHONY: test-docker-compat
+
 ## docker-build-if-local: Build Docker image if using local repository
 docker-build-if-local:
 	@if [ -z "$(EV_NODE_IMAGE_REPO)" ] || [ "$(EV_NODE_IMAGE_REPO)" = "evstack" ]; then \
