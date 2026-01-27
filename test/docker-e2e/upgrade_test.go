@@ -32,12 +32,11 @@ const (
 type EVMSingleUpgradeTestSuite struct {
 	DockerTestSuite
 
-	reth           RethSetup
-	daAddress      string
-	evmSingleChain *evmsingle.Chain
-	evmSingleNode  *evmsingle.Node
-	ethClient      *ethclient.Client
-	txNonce        uint64
+	rethCfg   RethSetupConfig
+	evmCfg    EVMSingleSetupConfig
+	daAddress string
+	ethClient *ethclient.Client
+	txNonce   uint64
 }
 
 func TestEVMSingleUpgradeSuite(t *testing.T) {
@@ -60,7 +59,7 @@ func (s *EVMSingleUpgradeTestSuite) TestEVMSingleUpgrade() {
 	})
 
 	s.Run("setup_reth_node", func() {
-		s.reth = s.SetupRethNode(ctx)
+		s.rethCfg = s.SetupRethNode(ctx)
 		s.T().Log("Reth node started")
 	})
 
@@ -70,7 +69,7 @@ func (s *EVMSingleUpgradeTestSuite) TestEVMSingleUpgrade() {
 	})
 
 	s.Run("create_ethereum_client", func() {
-		s.ethClient = s.SetupEthClient(ctx, s.reth.EthURLExternal, evmChainID)
+		s.ethClient = s.SetupEthClient(ctx, s.rethCfg.EthURLExternal, evmChainID)
 		s.T().Log("Ethereum client connected to Reth")
 	})
 
@@ -101,10 +100,10 @@ func (s *EVMSingleUpgradeTestSuite) TestEVMSingleUpgrade() {
 // setupEVMSingle creates and starts an evm node with the specified version.
 func (s *EVMSingleUpgradeTestSuite) setupEVMSingle(ctx context.Context, image container.Image) {
 	nodeConfig := evmsingle.NewNodeConfigBuilder().
-		WithEVMEngineURL(s.reth.EngineURL).
-		WithEVMETHURL(s.reth.EthURL).
-		WithEVMJWTSecret(s.reth.JWTSecret).
-		WithEVMGenesisHash(s.reth.GenesisHash).
+		WithEVMEngineURL(s.rethCfg.EngineURL).
+		WithEVMETHURL(s.rethCfg.EthURL).
+		WithEVMJWTSecret(s.rethCfg.JWTSecret).
+		WithEVMGenesisHash(s.rethCfg.GenesisHash).
 		WithEVMBlockTime("1s").
 		WithEVMSignerPassphrase("secret").
 		WithDAAddress(s.daAddress).
@@ -115,23 +114,7 @@ func (s *EVMSingleUpgradeTestSuite) setupEVMSingle(ctx context.Context, image co
 		).
 		Build()
 
-	evmSingleChain, err := evmsingle.NewChainBuilder(s.T()).
-		WithDockerClient(s.dockerClient).
-		WithDockerNetworkID(s.dockerNetworkID).
-		WithImage(image).
-		WithBinary("evm").
-		WithNode(nodeConfig).
-		Build(ctx)
-
-	s.Require().NoError(err)
-	s.Require().Len(evmSingleChain.Nodes(), 1)
-
-	evmSingleNode := evmSingleChain.Nodes()[0]
-	s.Require().NoError(evmSingleNode.Start(ctx))
-	s.WaitForEVMHealthy(ctx, evmSingleNode)
-
-	s.evmSingleChain = evmSingleChain
-	s.evmSingleNode = evmSingleNode
+	s.evmCfg = s.SetupEVMSingle(ctx, image, nodeConfig)
 }
 
 // submitPreUpgradeTxs submits and verifies multiple transactions before upgrade.
@@ -152,21 +135,21 @@ func (s *EVMSingleUpgradeTestSuite) submitPreUpgradeTxs(ctx context.Context, txC
 
 // performUpgrade performs the upgrade by removing the container, updating the image, and restarting.
 func (s *EVMSingleUpgradeTestSuite) performUpgrade(ctx context.Context) {
-	err := s.evmSingleNode.Remove(ctx, tastoratypes.WithPreserveVolumes())
+	err := s.evmCfg.Node.Remove(ctx, tastoratypes.WithPreserveVolumes())
 	s.Require().NoError(err, "failed to remove container with volume preservation")
 	s.T().Log("Removed container with volume preservation")
 
 	newImage := getEVMSingleImage()
 
 	s.T().Logf("Upgrading to version: %s", newImage.Version)
-	s.evmSingleNode.Image = newImage
-	for _, node := range s.evmSingleChain.Nodes() {
+	s.evmCfg.Node.Image = newImage
+	for _, node := range s.evmCfg.Chain.Nodes() {
 		node.Image = newImage
 	}
 
-	err = s.evmSingleNode.Start(ctx)
+	err = s.evmCfg.Node.Start(ctx)
 	s.Require().NoError(err, "failed to start upgraded node")
-	s.WaitForEVMHealthy(ctx, s.evmSingleNode)
+	s.WaitForEVMHealthy(ctx, s.evmCfg.Node)
 
 	s.T().Logf("Upgraded node started successfully with version: %s", newImage.Version)
 }
