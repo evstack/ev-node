@@ -8,7 +8,7 @@ replace (
 )
 
 require (
-	github.com/celestiaorg/go-header v0.8.0
+	github.com/celestiaorg/go-header v0.8.1
 	github.com/evstack/ev-node v1.0.0-beta.10
 	github.com/evstack/ev-node/core v1.0.0-beta.5
 	github.com/ipfs/go-datastore v0.9.0

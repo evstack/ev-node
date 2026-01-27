@@ -54,7 +54,7 @@ require (
 	github.com/bytedance/gopkg v0.1.3 // indirect
 	github.com/bytedance/sonic v1.14.2 // indirect
 	github.com/bytedance/sonic/loader v0.4.0 // indirect
-	github.com/celestiaorg/go-header v0.8.0 // indirect
+	github.com/celestiaorg/go-header v0.8.1 // indirect
 	github.com/celestiaorg/go-square/merkle v0.0.0-20240627094109-7d01436067a3 // indirect
 	github.com/celestiaorg/nmt v0.24.2 // indirect
 	github.com/cenkalti/backoff/v4 v4.3.0 // indirect
