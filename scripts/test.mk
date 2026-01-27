@@ -76,7 +76,7 @@ test-docker-compat:
 	@echo "--> Running Docker Compat E2E tests"
 	@echo "--> Sequencer: $${SEQUENCER_EVM_IMAGE_REPO:-ghcr.io/evstack/ev-node-evm}:$${SEQUENCER_EVM_IMAGE_TAG:-main}"
 	@echo "--> Full Node: $${FULLNODE_EVM_IMAGE_REPO:-ghcr.io/evstack/ev-node-evm}:$${FULLNODE_EVM_IMAGE_TAG:-main}"
-	@cd test/docker-e2e && go test -failfast -v -tags='docker_e2e evm' -timeout=30m -run '^TestEVMCompatSuite$$/^TestCrossVersionSync$$' ./...
+	@cd test/docker-e2e && go test -mod=readonly -failfast -v -tags='docker_e2e evm' -timeout=30m -run '^TestEVMCompatSuite$$/^TestCrossVersionSync$$' ./...
 .PHONY: test-docker-compat
 
 ## docker-build-if-local: Build Docker image if using local repository

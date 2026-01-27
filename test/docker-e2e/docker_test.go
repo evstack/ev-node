@@ -38,6 +38,12 @@ const (
 	celestiaChainID = "test"
 	// celestiaAppVersion specifies the tag of the celestia-app image to deploy in tests.
 	celestiaAppVersion = "v5.0.2"
+
+	// EVM test constants shared across EVM-related tests.
+	evmTestChainID    = "1234"
+	evmTestPrivateKey = "cece4f25ac74deb1468965160c7185e07dff413f23fcadb611b05ca37ab0a52e"
+	evmTestToAddress  = "0x944fDcD1c868E3cC566C78023CcB38A32cDA836E"
+	evmTestGasLimit   = uint64(22000)
 )
 
 func init() {
@@ -262,8 +268,9 @@ type RethSetupConfig struct {
 }
 
 // SetupRethNode creates and starts a Reth node, waiting for it to be ready.
-func (s *DockerTestSuite) SetupRethNode(ctx context.Context) RethSetupConfig {
+func (s *DockerTestSuite) SetupRethNode(ctx context.Context, name string) RethSetupConfig {
 	rethNode, err := reth.NewNodeBuilder(s.T()).
+		WithName(name).
 		WithGenesis([]byte(reth.DefaultEvolveGenesisJSON())).
 		WithDockerClient(s.dockerClient).
 		WithDockerNetworkID(s.dockerNetworkID).

@@ -264,6 +264,7 @@ replace (
 	github.com/ChainSafe/go-schnorrkel => github.com/ChainSafe/go-schnorrkel v0.0.0-20200405005733-88cbf1b4c40d
 	github.com/ChainSafe/go-schnorrkel/1 => github.com/ChainSafe/go-schnorrkel v1.0.0
 	github.com/btcsuite/btcd/btcec/v2 => github.com/btcsuite/btcd/btcec/v2 v2.3.3
+	github.com/celestiaorg/tastora => /Users/chatton/checkouts/celestiaorg/tastora
 	github.com/cometbft/cometbft => github.com/celestiaorg/celestia-core v0.39.4
 	github.com/cosmos/cosmos-sdk => github.com/celestiaorg/cosmos-sdk v0.51.2
 	github.com/gogo/protobuf => github.com/gogo/protobuf v1.3.2

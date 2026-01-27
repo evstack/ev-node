@@ -21,23 +21,18 @@ import (
 	"github.com/stretchr/testify/suite"
 )
 
-const (
-	compatChainID    = "1234"
-	compatPrivateKey = "cece4f25ac74deb1468965160c7185e07dff413f23fcadb611b05ca37ab0a52e"
-	compatToAddress  = "0x944fDcD1c868E3cC566C78023CcB38A32cDA836E"
-	compatGasLimit   = uint64(22000)
-)
-
 // EVMCompatTestSuite tests cross-version compatibility between different ev-node-evm versions.
 type EVMCompatTestSuite struct {
 	DockerTestSuite
 
-	rethCfg       RethSetupConfig
-	daAddress     string
-	sequencerNode *evmsingle.Node
-	fullNodeNode  *evmsingle.Node
-	ethClient     *ethclient.Client
-	txNonce       uint64
+	sequencerRethCfg RethSetupConfig
+	fullNodeRethCfg  RethSetupConfig
+	daAddress        string
+	sequencerNode    *evmsingle.Node
+	fullNode         *evmsingle.Node
+	sequencerClient  *ethclient.Client
+	fullNodeClient   *ethclient.Client
+	txNonce          uint64
 }
 
 func TestEVMCompatSuite(t *testing.T) {
@@ -51,52 +46,59 @@ func (s *EVMCompatTestSuite) TestCrossVersionSync() {
 	ctx := context.Background()
 	s.setupDockerEnvironment()
 
-	s.Run("setup_infrastructure", func() {
+	s.Run("setup_celestia_and_da", func() {
 		s.daAddress = s.SetupCelestiaAndDABridge(ctx)
 		s.T().Log("Celestia and DA bridge started")
-
-		s.rethCfg = s.SetupRethNode(ctx)
-		s.T().Log("Reth node started")
 	})
 
 	s.Run("setup_sequencer", func() {
-		s.setupSequencer(ctx, getSequencerImage())
+		s.sequencerRethCfg = s.SetupRethNode(ctx, "seq-reth")
+		s.T().Log("Sequencer Reth node started")
+
+		s.setupSequencer(ctx, getSequencerImage(), s.sequencerRethCfg)
+		s.sequencerClient = s.SetupEthClient(ctx, s.sequencerRethCfg.EthURLExternal, evmTestChainID)
 	})
 
 	var preSyncTxHashes []common.Hash
 	s.Run("submit_transactions", func() {
-		s.ethClient = s.SetupEthClient(ctx, s.rethCfg.EthURLExternal, compatChainID)
-		preSyncTxHashes = s.submitTransactions(ctx, 10)
+		preSyncTxHashes = s.submitTransactions(ctx, 50)
 	})
 
-	sequencerHeight, err := s.ethClient.BlockNumber(ctx)
+	// wait for blocks to be posted to DA before starting full node
+	time.Sleep(5 * time.Second)
+
+	sequencerHeight, err := s.sequencerClient.BlockNumber(ctx)
 	s.Require().NoError(err)
 
 	s.Run("setup_fullnode_and_sync", func() {
-		s.setupFullNode(ctx, getFullNodeImage())
+		s.fullNodeRethCfg = s.SetupRethNode(ctx, "fn-reth")
+		s.T().Log("Full node Reth node started")
+
+		s.setupFullNode(ctx, getFullNodeImage(), s.fullNodeRethCfg)
+		s.fullNodeClient = s.SetupEthClient(ctx, s.fullNodeRethCfg.EthURLExternal, evmTestChainID)
 		s.waitForSync(ctx, sequencerHeight)
 	})
 
 	s.Run("verify_sync", func() {
-		s.verifyTransactions(ctx, preSyncTxHashes)
+		s.verifyTransactionsOnFullNode(ctx, preSyncTxHashes)
 
 		// submit more transactions and verify ongoing sync
 		postSyncTxHashes := s.submitTransactions(ctx, 5)
-		latestHeight, err := s.ethClient.BlockNumber(ctx)
+		latestHeight, err := s.sequencerClient.BlockNumber(ctx)
 		s.Require().NoError(err)
 		s.waitForSync(ctx, latestHeight)
-		s.verifyTransactions(ctx, postSyncTxHashes)
+		s.verifyTransactionsOnFullNode(ctx, postSyncTxHashes)
 	})
 }
 
-func (s *EVMCompatTestSuite) setupSequencer(ctx context.Context, image container.Image) {
+func (s *EVMCompatTestSuite) setupSequencer(ctx context.Context, image container.Image, rethCfg RethSetupConfig) {
 	s.T().Logf("Setting up sequencer: %s:%s", image.Repository, image.Version)
 
 	nodeConfig := evmsingle.NewNodeConfigBuilder().
-		WithEVMEngineURL(s.rethCfg.EngineURL).
-		WithEVMETHURL(s.rethCfg.EthURL).
-		WithEVMJWTSecret(s.rethCfg.JWTSecret).
-		WithEVMGenesisHash(s.rethCfg.GenesisHash).
+		WithEVMEngineURL(rethCfg.EngineURL).
+		WithEVMETHURL(rethCfg.EthURL).
+		WithEVMJWTSecret(rethCfg.JWTSecret).
+		WithEVMGenesisHash(rethCfg.GenesisHash).
 		WithEVMBlockTime("1s").
 		WithEVMSignerPassphrase("secret").
 		WithDAAddress(s.daAddress).
@@ -123,7 +125,7 @@ func (s *EVMCompatTestSuite) setupSequencer(ctx context.Context, image container
 	s.T().Log("Sequencer started")
 }
 
-func (s *EVMCompatTestSuite) setupFullNode(ctx context.Context, image container.Image) {
+func (s *EVMCompatTestSuite) setupFullNode(ctx context.Context, image container.Image, rethCfg RethSetupConfig) {
 	s.T().Logf("Setting up full node: %s:%s", image.Repository, image.Version)
 
 	sequencerP2PAddr := s.getSequencerP2PAddress(ctx)
@@ -132,10 +134,10 @@ func (s *EVMCompatTestSuite) setupFullNode(ctx context.Context, image container.
 	s.Require().NoError(err)
 
 	nodeConfig := evmsingle.NewNodeConfigBuilder().
-		WithEVMEngineURL(s.rethCfg.EngineURL).
-		WithEVMETHURL(s.rethCfg.EthURL).
-		WithEVMJWTSecret(s.rethCfg.JWTSecret).
-		WithEVMGenesisHash(s.rethCfg.GenesisHash).
+		WithEVMEngineURL(rethCfg.EngineURL).
+		WithEVMETHURL(rethCfg.EthURL).
+		WithEVMJWTSecret(rethCfg.JWTSecret).
+		WithEVMGenesisHash(rethCfg.GenesisHash).
 		WithDAAddress(s.daAddress).
 		WithDANamespace("compat-header").
 		WithAdditionalStartArgs(
@@ -155,10 +157,10 @@ func (s *EVMCompatTestSuite) setupFullNode(ctx context.Context, image container.
 		Build(ctx)
 	s.Require().NoError(err)
 
-	s.fullNodeNode = chain.Nodes()[0]
-	s.Require().NoError(s.fullNodeNode.WriteFile(ctx, "config/genesis.json", genesis))
-	s.Require().NoError(s.fullNodeNode.Start(ctx))
-	s.WaitForEVMHealthy(ctx, s.fullNodeNode)
+	s.fullNode = chain.Nodes()[0]
+	s.Require().NoError(s.fullNode.WriteFile(ctx, "config/genesis.json", genesis))
+	s.Require().NoError(s.fullNode.Start(ctx))
+	s.WaitForEVMHealthy(ctx, s.fullNode)
 	s.T().Log("Full node started")
 }
 
@@ -189,11 +191,11 @@ func (s *EVMCompatTestSuite) getSequencerP2PAddress(ctx context.Context) string 
 func (s *EVMCompatTestSuite) submitTransactions(ctx context.Context, count int) []common.Hash {
 	var txHashes []common.Hash
 	for i := range count {
-		tx := evm.GetRandomTransaction(s.T(), compatPrivateKey, compatToAddress, compatChainID, compatGasLimit, &s.txNonce)
-		s.Require().NoError(s.ethClient.SendTransaction(ctx, tx))
+		tx := evm.GetRandomTransaction(s.T(), evmTestPrivateKey, evmTestToAddress, evmTestChainID, evmTestGasLimit, &s.txNonce)
+		s.Require().NoError(s.sequencerClient.SendTransaction(ctx, tx))
 		txHashes = append(txHashes, tx.Hash())
 		s.T().Logf("Submitted tx %d: %s", i, tx.Hash().Hex())
-		s.WaitForTxIncluded(ctx, s.ethClient, tx.Hash())
+		s.WaitForTxIncluded(ctx, s.sequencerClient, tx.Hash())
 	}
 	s.T().Logf("Submitted %d transactions", len(txHashes))
 	return txHashes
@@ -201,19 +203,19 @@ func (s *EVMCompatTestSuite) submitTransactions(ctx context.Context, count int) 
 
 func (s *EVMCompatTestSuite) waitForSync(ctx context.Context, targetHeight uint64) {
 	s.Require().Eventually(func() bool {
-		height, err := s.ethClient.BlockNumber(ctx)
+		height, err := s.fullNodeClient.BlockNumber(ctx)
 		return err == nil && height >= targetHeight
 	}, 120*time.Second, 2*time.Second, "full node did not sync to height %d", targetHeight)
 	s.T().Logf("Full node synced to height %d", targetHeight)
 }
 
-func (s *EVMCompatTestSuite) verifyTransactions(ctx context.Context, txHashes []common.Hash) {
+func (s *EVMCompatTestSuite) verifyTransactionsOnFullNode(ctx context.Context, txHashes []common.Hash) {
 	for i, txHash := range txHashes {
-		receipt, err := s.ethClient.TransactionReceipt(ctx, txHash)
-		s.Require().NoError(err, "failed to query tx %d: %s", i, txHash.Hex())
+		receipt, err := s.fullNodeClient.TransactionReceipt(ctx, txHash)
+		s.Require().NoError(err, "failed to query tx %d on full node: %s", i, txHash.Hex())
 		s.Require().Equal(uint64(1), receipt.Status)
 	}
-	s.T().Logf("Verified %d transactions", len(txHashes))
+	s.T().Logf("Verified %d transactions on full node", len(txHashes))
 }
 
 func getSequencerImage() container.Image {

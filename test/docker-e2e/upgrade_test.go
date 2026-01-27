@@ -22,10 +22,6 @@ import (
 const (
 	// TODO: upgrade from previous released version instead of main
 	baseEVMSingleVersion = "main"
-	evmChainID           = "1234"
-	testPrivateKey       = "cece4f25ac74deb1468965160c7185e07dff413f23fcadb611b05ca37ab0a52e"
-	testToAddress        = "0x944fDcD1c868E3cC566C78023CcB38A32cDA836E"
-	testGasLimit         = uint64(22000)
 )
 
 // EVMSingleUpgradeTestSuite embeds DockerTestSuite to reuse infrastructure setup.
@@ -59,7 +55,7 @@ func (s *EVMSingleUpgradeTestSuite) TestEVMSingleUpgrade() {
 	})
 
 	s.Run("setup_reth_node", func() {
-		s.rethCfg = s.SetupRethNode(ctx)
+		s.rethCfg = s.SetupRethNode(ctx, "reth")
 		s.T().Log("Reth node started")
 	})
 
@@ -69,7 +65,7 @@ func (s *EVMSingleUpgradeTestSuite) TestEVMSingleUpgrade() {
 	})
 
 	s.Run("create_ethereum_client", func() {
-		s.ethClient = s.SetupEthClient(ctx, s.rethCfg.EthURLExternal, evmChainID)
+		s.ethClient = s.SetupEthClient(ctx, s.rethCfg.EthURLExternal, evmTestChainID)
 		s.T().Log("Ethereum client connected to Reth")
 	})
 
@@ -122,7 +118,7 @@ func (s *EVMSingleUpgradeTestSuite) submitPreUpgradeTxs(ctx context.Context, txC
 	var txHashes []common.Hash
 
 	for i := range txCount {
-		tx := evm.GetRandomTransaction(s.T(), testPrivateKey, testToAddress, evmChainID, testGasLimit, &s.txNonce)
+		tx := evm.GetRandomTransaction(s.T(), evmTestPrivateKey, evmTestToAddress, evmTestChainID, evmTestGasLimit, &s.txNonce)
 		err := s.ethClient.SendTransaction(ctx, tx)
 		s.Require().NoError(err)
 		txHashes = append(txHashes, tx.Hash())
@@ -168,7 +164,7 @@ func (s *EVMSingleUpgradeTestSuite) verifyOldTxsPersist(ctx context.Context, txH
 
 // submitAndVerifyPostUpgradeTx submits a new transaction after upgrade and verifies block production.
 func (s *EVMSingleUpgradeTestSuite) submitAndVerifyPostUpgradeTx(ctx context.Context) {
-	tx := evm.GetRandomTransaction(s.T(), testPrivateKey, testToAddress, evmChainID, testGasLimit, &s.txNonce)
+	tx := evm.GetRandomTransaction(s.T(), evmTestPrivateKey, evmTestToAddress, evmTestChainID, evmTestGasLimit, &s.txNonce)
 	err := s.ethClient.SendTransaction(ctx, tx)
 	s.Require().NoError(err)
 	s.T().Logf("Submitted post-upgrade tx: %s", tx.Hash().Hex())
@@ -199,7 +195,7 @@ func (s *EVMSingleUpgradeTestSuite) verifyAccountBalances(ctx context.Context) {
 	s.Require().True(balance.Cmp(big.NewInt(0)) > 0, "sender should have non-zero balance")
 	s.T().Logf("Sender balance after upgrade: %s wei", balance.String())
 
-	recipientAddr := common.HexToAddress(testToAddress)
+	recipientAddr := common.HexToAddress(evmTestToAddress)
 	recipientBalance, err := s.ethClient.BalanceAt(ctx, recipientAddr, nil)
 	s.Require().NoError(err)
 	s.T().Logf("Recipient balance after upgrade: %s wei", recipientBalance.String())
