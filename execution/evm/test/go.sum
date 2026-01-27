@@ -66,8 +66,8 @@ github.com/btcsuite/btcd/btcec/v2 v2.3.5 h1:dpAlnAwmT1yIBm3exhT1/8iUSD98RDJM5vqJ
 github.com/btcsuite/btcd/btcec/v2 v2.3.5/go.mod h1:m22FrOAiuxl/tht9wIqAoGHcbnCCaPWyauO8y2LGGtQ=
 github.com/btcsuite/btcd/btcutil v1.1.6 h1:zFL2+c3Lb9gEgqKNzowKUPQNb8jV7v5Oaodi/AYFd6c=
 github.com/btcsuite/btcd/btcutil v1.1.6/go.mod h1:9dFymx8HpuLqBnsPELrImQeTQfKBQqzqGbbV3jK55aE=
-github.com/celestiaorg/go-header v0.8.0 h1:j9/t/uhxif26WQ3fULDAh3I55Fh3lJk6qMXPFFuOy28=
-github.com/celestiaorg/go-header v0.8.0/go.mod h1:X00prITrMa2kxgEX15WQnbLf0uV6tlvTesDKC5KsDVQ=
+github.com/celestiaorg/go-header v0.8.1 h1:+DKM6y2zkY8rHMyyl1huUDi/5dy9KTUCnP+GKvdL5Jg=
+github.com/celestiaorg/go-header v0.8.1/go.mod h1:X00prITrMa2kxgEX15WQnbLf0uV6tlvTesDKC5KsDVQ=
 github.com/celestiaorg/go-square/v3 v3.0.2 h1:eSQOgNII8inK9IhiBZ+6GADQeWbRq4HYY72BOgcduA4=
 github.com/celestiaorg/go-square/v3 v3.0.2/go.mod h1:oFReMLsSDMRs82ICFEeFQFCqNvwdsbIM1BzCcb0f7dM=
 github.com/celestiaorg/tastora v0.8.0 h1:+FWAIsP2onwwqPTGzBLIBtx8B1h9sImdx4msv2N4DsI=
