@@ -135,8 +135,8 @@ github.com/bytedance/sonic v1.14.2/go.mod h1:T80iDELeHiHKSc0C9tubFygiuXoGzrkjKzX
 github.com/bytedance/sonic/loader v0.4.0 h1:olZ7lEqcxtZygCK9EKYKADnpQoYkRQxaeY2NYzevs+o=
 github.com/bytedance/sonic/loader v0.4.0/go.mod h1:AR4NYCk5DdzZizZ5djGqQ92eEhCCcdf5x77udYiSJRo=
 github.com/casbin/casbin/v2 v2.1.2/go.mod h1:YcPU1XXisHhLzuxH9coDNf2FbKpjGlbCg3n9yuLkIJQ=
-github.com/celestiaorg/go-header v0.8.0 h1:j9/t/uhxif26WQ3fULDAh3I55Fh3lJk6qMXPFFuOy28=
-github.com/celestiaorg/go-header v0.8.0/go.mod h1:X00prITrMa2kxgEX15WQnbLf0uV6tlvTesDKC5KsDVQ=
+github.com/celestiaorg/go-header v0.8.1 h1:+DKM6y2zkY8rHMyyl1huUDi/5dy9KTUCnP+GKvdL5Jg=
+github.com/celestiaorg/go-header v0.8.1/go.mod h1:X00prITrMa2kxgEX15WQnbLf0uV6tlvTesDKC5KsDVQ=
 github.com/celestiaorg/go-square/merkle v0.0.0-20240627094109-7d01436067a3 h1:wP84mtwOCVNOTfS3zErICjxKLnh74Z1uf+tdrlSFjVM=
 github.com/celestiaorg/go-square/merkle v0.0.0-20240627094109-7d01436067a3/go.mod h1:86qIYnEhmn/hfW+xvw98NOI3zGaDEB3x8JGjYo2FqLs=
 github.com/celestiaorg/go-square/v3 v3.0.2 h1:eSQOgNII8inK9IhiBZ+6GADQeWbRq4HYY72BOgcduA4=

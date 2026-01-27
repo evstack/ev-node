@@ -7,7 +7,7 @@ retract v0.12.0 // Published by accident
 require (
 	connectrpc.com/connect v1.19.1
 	connectrpc.com/grpcreflect v1.3.0
-	github.com/celestiaorg/go-header v0.8.0
+	github.com/celestiaorg/go-header v0.8.1
 	github.com/celestiaorg/go-square/merkle v0.0.0-20240627094109-7d01436067a3
 	github.com/celestiaorg/go-square/v3 v3.0.2
 	github.com/celestiaorg/nmt v0.24.2
