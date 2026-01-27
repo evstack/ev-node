@@ -221,7 +221,8 @@ func (s *FullNodeTestSuite) TestGenesisInitialization() {
 	require := require.New(s.T())
 
 	// Verify genesis state
-	state := castState(s.T(), s.node).bc.GetLastState()
+	state, err := s.node.Store.GetState(s.ctx)
+	require.NoError(err)
 	require.Equal(s.node.genesis.InitialHeight, state.InitialHeight)
 	require.Equal(s.node.genesis.ChainID, state.ChainID)
 }
