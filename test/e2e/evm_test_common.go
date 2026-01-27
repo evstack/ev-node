@@ -44,23 +44,23 @@ func init() {
 	flag.StringVar(&evmSingleBinaryPath, "evm-binary", "evm", "evm binary")
 }
 
-// getAvailablePort finds an available TCP port on localhost
-func getAvailablePort() (int, error) {
+// getAvailablePort finds an available TCP port on localhost and returns the listener.
+func getAvailablePort() (int, net.Listener, error) {
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
-		return 0, err
+		return 0, nil, err
 	}
-	defer listener.Close()
-
 	addr := listener.Addr().(*net.TCPAddr)
-	return addr.Port, nil
+	return addr.Port, listener, nil
 }
 
 // same as getAvailablePort but fails test if not successful
 func mustGetAvailablePort(t *testing.T) int {
 	t.Helper()
-	port, err := getAvailablePort()
+	port, listener, err := getAvailablePort()
 	require.NoError(t, err)
+	// Helper only: close immediately as race conditions are handled by caller if needed.
+	listener.Close()
 	return port
 }
 
@@ -132,33 +132,49 @@ func (te *TestEndpoints) GetFullNodeP2PAddress() string {
 	return "/ip4/127.0.0.1/tcp/" + te.FullNodeP2PPort
 }
 
-// generateTestEndpoints creates a set of unique ports for a test instance
-// Only generates ports for rollkit components; EVM engine ports will be set dynamically
+// generateTestEndpoints creates a set of unique ports for a test instance.
+// Holds listeners open until all ports are assigned to prevent OS reuse.
 func generateTestEndpoints() (*TestEndpoints, error) {
 	endpoints := &TestEndpoints{}
+	var listeners []net.Listener
+
+	defer func() {
+		for _, l := range listeners {
+			l.Close()
+		}
+	}()
+
+	getPort := func() (int, error) {
+		port, listener, err := getAvailablePort()
+		if err != nil {
+			return 0, err
+		}
+		listeners = append(listeners, listener)
+		return port, nil
+	}
 
 	// Generate unique ports for DA and rollkit components
-	daPort, err := getAvailablePort()
+	daPort, err := getPort()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get DA port: %w", err)
 	}
 
-	rollkitRPCPort, err := getAvailablePort()
+	rollkitRPCPort, err := getPort()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get rollkit RPC port: %w", err)
 	}
 
-	rollkitP2PPort, err := getAvailablePort()
+	rollkitP2PPort, err := getPort()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get rollkit P2P port: %w", err)
 	}
 
-	fullNodeP2PPort, err := getAvailablePort()
+	fullNodeP2PPort, err := getPort()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get full node P2P port: %w", err)
 	}
 
-	fullNodeRPCPort, err := getAvailablePort()
+	fullNodeRPCPort, err := getPort()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get full node RPC port: %w", err)
 	}
