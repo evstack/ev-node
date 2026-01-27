@@ -39,6 +39,14 @@ func (_m *MockStore) EXPECT() *MockStore_Expecter {
 	return &MockStore_Expecter{mock: &_m.Mock}
 }
 
+// PruneBlocks provides a mock implementation for the Store's pruning method.
+// Tests using MockStore currently do not exercise pruning behavior, so this
+// method simply satisfies the interface and can be extended with expectations
+// later if needed.
+func (_mock *MockStore) PruneBlocks(ctx context.Context, height uint64) error {
+	return nil
+}
+
 // Close provides a mock function for the type MockStore
 func (_mock *MockStore) Close() error {
 	ret := _mock.Called()
