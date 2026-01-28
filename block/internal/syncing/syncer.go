@@ -9,11 +9,14 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"reflect"
 	"sync"
 	"sync/atomic"
 	"time"
 
 	coreexecutor "github.com/evstack/ev-node/core/execution"
+	datypes "github.com/evstack/ev-node/pkg/da/types"
+	"github.com/evstack/ev-node/pkg/raft"
 	pubsub "github.com/libp2p/go-libp2p-pubsub"
 	"github.com/rs/zerolog"
 	"golang.org/x/sync/errgroup"
@@ -22,7 +25,6 @@ import (
 	"github.com/evstack/ev-node/block/internal/common"
 	"github.com/evstack/ev-node/block/internal/da"
 	"github.com/evstack/ev-node/pkg/config"
-	datypes "github.com/evstack/ev-node/pkg/da/types"
 	"github.com/evstack/ev-node/pkg/genesis"
 	"github.com/evstack/ev-node/pkg/store"
 	"github.com/evstack/ev-node/types"
@@ -103,9 +105,10 @@ type Syncer struct {
 	errorCh    chan<- error // Channel to report critical execution client failures
 
 	// Handlers
-	daRetriever DARetriever
-	fiRetriever da.ForcedInclusionRetriever
-	p2pHandler  p2pHandler
+	daRetriever   DARetriever
+	fiRetriever   da.ForcedInclusionRetriever
+	p2pHandler    p2pHandler
+	raftRetriever *raftRetriever
 
 	// Forced inclusion tracking
 	pendingForcedInclusionTxs sync.Map // map[string]pendingForcedInclusionTx
@@ -142,7 +145,7 @@ func NewSyncer(
 	store store.Store,
 	exec coreexecutor.Executor,
 	daClient da.Client,
-	cache cache.CacheManager,
+	cache cache.Manager,
 	metrics *common.Metrics,
 	config config.Config,
 	genesis genesis.Genesis,
@@ -151,6 +154,7 @@ func NewSyncer(
 	logger zerolog.Logger,
 	options common.BlockOptions,
 	errorCh chan<- error,
+	raftNode common.RaftNode,
 ) *Syncer {
 	daRetrieverHeight := &atomic.Uint64{}
 	daRetrieverHeight.Store(genesis.DAStartHeight)
@@ -185,6 +189,15 @@ func NewSyncer(
 		gracePeriodConfig:     newForcedInclusionGracePeriodConfig(),
 	}
 	s.blockSyncer = s
+	if raftNode != nil && !reflect.ValueOf(raftNode).IsNil() {
+		s.raftRetriever = newRaftRetriever(raftNode, genesis, logger, eventProcessorFn(s.pipeEvent),
+			func(ctx context.Context, state *raft.RaftBlockState) error {
+				s.logger.Debug().Uint64("header_height", state.LastSubmittedDaHeaderHeight).Uint64("data_height", state.LastSubmittedDaDataHeight).Msg("received raft block state")
+				cache.SetLastSubmittedHeaderHeight(ctx, state.LastSubmittedDaHeaderHeight)
+				cache.SetLastSubmittedDataHeight(ctx, state.LastSubmittedDaDataHeight)
+				return nil
+			})
+	}
 	return s
 }
 
@@ -215,6 +228,12 @@ func (s *Syncer) Start(ctx context.Context) error {
 		s.logger.Error().Err(err).Msg("failed to set initial processed height for p2p handler")
 	} else {
 		s.p2pHandler.SetProcessedHeight(currentHeight)
+	}
+
+	if s.raftRetriever != nil {
+		if err := s.raftRetriever.Start(s.ctx); err != nil {
+			return fmt.Errorf("start raft retriever: %w", err)
+		}
 	}
 
 	if !s.waitForGenesis() {
@@ -1244,4 +1263,94 @@ func (s *Syncer) cancelP2PWait(height uint64) {
 		s.p2pWaitState.Store(p2pWaitState{})
 		state.cancel()
 	}
+}
+
+// IsSyncedWithRaft checks if the local state is synced with the given raft state, including hash check.
+func (s *Syncer) IsSyncedWithRaft(raftState *raft.RaftBlockState) (int, error) {
+	state, err := s.store.GetState(s.ctx)
+	if err != nil {
+		return 0, err
+	}
+
+	diff := int64(state.LastBlockHeight) - int64(raftState.Height)
+	if diff != 0 {
+		return int(diff), nil
+	}
+
+	if raftState.Height == 0 { // initial
+		return 0, nil
+	}
+
+	header, err := s.store.GetHeader(s.ctx, raftState.Height)
+	if err != nil {
+		s.logger.Error().Err(err).Uint64("height", raftState.Height).Msg("failed to get header for sync check")
+		return 0, fmt.Errorf("get header for sync check at height %d: %w", raftState.Height, err)
+	}
+	if !bytes.Equal(header.Hash(), raftState.Hash) {
+		return 0, fmt.Errorf("header hash mismatch: %x vs %x", header.Hash(), raftState.Hash)
+	}
+
+	return 0, nil
+}
+
+// RecoverFromRaft attempts to recover the state from a raft block state
+func (s *Syncer) RecoverFromRaft(ctx context.Context, raftState *raft.RaftBlockState) error {
+	s.logger.Info().Uint64("height", raftState.Height).Msg("recovering state from raft")
+
+	var header types.SignedHeader
+	if err := header.UnmarshalBinary(raftState.Header); err != nil {
+		return fmt.Errorf("unmarshal header: %w", err)
+	}
+
+	var data types.Data
+	if err := data.UnmarshalBinary(raftState.Data); err != nil {
+		return fmt.Errorf("unmarshal data: %w", err)
+	}
+
+	currentState := s.getLastState()
+
+	// Defensive: if lastState is not yet initialized (e.g., RecoverFromRaft called before Start),
+	// load it from the store to ensure we have valid state for validation.
+	if currentState.ChainID == "" {
+		s.logger.Debug().Msg("lastState not initialized, loading from store for recovery")
+		var err error
+		currentState, err = s.store.GetState(ctx)
+		if err != nil {
+			// If store has no state either, initialize from genesis
+			s.logger.Debug().Err(err).Msg("no state in store, using genesis defaults for recovery")
+			currentState = types.State{
+				ChainID:         s.genesis.ChainID,
+				InitialHeight:   s.genesis.InitialHeight,
+				LastBlockHeight: s.genesis.InitialHeight - 1,
+				LastBlockTime:   s.genesis.StartTime,
+				DAHeight:        s.genesis.DAStartHeight,
+			}
+		}
+	}
+
+	if currentState.LastBlockHeight == raftState.Height {
+		if !bytes.Equal(currentState.LastHeaderHash, raftState.Hash) {
+			return fmt.Errorf("header hash mismatch: %x vs %x", currentState.LastHeaderHash, raftState.Hash)
+		}
+		s.logger.Debug().Msg("header hash matches")
+		return nil
+	} else if currentState.LastBlockHeight+1 == raftState.Height { // raft is 1 block ahead
+		// apply block
+		err := s.TrySyncNextBlock(ctx, &common.DAHeightEvent{
+			Header: &header,
+			Data:   &data,
+			Source: "",
+		})
+		if err != nil {
+			return err
+		}
+		s.logger.Info().Uint64("height", raftState.Height).Msg("recovered from raft state")
+		return nil
+	}
+
+	if currentState.LastBlockHeight > raftState.Height {
+		return fmt.Errorf("invalid block height: %d (expected %d)", raftState.Height, currentState.LastBlockHeight+1)
+	}
+
+	return nil
 }

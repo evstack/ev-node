@@ -5,9 +5,12 @@ package docker_e2e
 import (
 	"context"
 	"fmt"
+	"net"
+	"net/http"
 	"os"
 	"strings"
 	"testing"
+	"time"
 
 	"cosmossdk.io/math"
 	tastoradocker "github.com/celestiaorg/tastora/framework/docker"
@@ -15,6 +18,8 @@ import (
 	"github.com/celestiaorg/tastora/framework/docker/cosmos"
 	da "github.com/celestiaorg/tastora/framework/docker/dataavailability"
 	"github.com/celestiaorg/tastora/framework/docker/evstack"
+	"github.com/celestiaorg/tastora/framework/docker/evstack/evmsingle"
+	"github.com/celestiaorg/tastora/framework/docker/evstack/reth"
 	"github.com/celestiaorg/tastora/framework/testutil/sdkacc"
 	tastoratypes "github.com/celestiaorg/tastora/framework/types"
 	sdk "github.com/cosmos/cosmos-sdk/types"
@@ -22,6 +27,8 @@ import (
 	"github.com/cosmos/cosmos-sdk/x/auth"
 	"github.com/cosmos/cosmos-sdk/x/bank"
 	banktypes "github.com/cosmos/cosmos-sdk/x/bank/types"
+	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/stretchr/testify/suite"
 )
 
@@ -242,4 +249,114 @@ func getEvNodeImage() container.Image {
 	}
 
 	return container.NewImage(repo, tag, "10001:10001")
+}
+
+// RethSetup holds the configuration returned after setting up a Reth node.
+type RethSetup struct {
+	Node           *reth.Node
+	EngineURL      string // internal container-to-container URL
+	EthURL         string // internal container-to-container URL
+	EthURLExternal string // host-accessible URL
+	JWTSecret      string
+	GenesisHash    string
+}
+
+// SetupRethNode creates and starts a Reth node, waiting for it to be ready.
+func (s *DockerTestSuite) SetupRethNode(ctx context.Context) RethSetup {
+	rethNode, err := reth.NewNodeBuilder(s.T()).
+		WithGenesis([]byte(reth.DefaultEvolveGenesisJSON())).
+		WithDockerClient(s.dockerClient).
+		WithDockerNetworkID(s.dockerNetworkID).
+		Build(ctx)
+	s.Require().NoError(err)
+	s.Require().NoError(rethNode.Start(ctx))
+
+	var setup RethSetup
+	s.Require().Eventually(func() bool {
+		networkInfo, err := rethNode.GetNetworkInfo(ctx)
+		if err != nil {
+			return false
+		}
+		conn, err := net.DialTimeout("tcp", net.JoinHostPort("0.0.0.0", networkInfo.External.Ports.RPC), time.Second)
+		if err != nil {
+			return false
+		}
+		conn.Close()
+		setup.EngineURL = fmt.Sprintf("http://%s:%s", networkInfo.Internal.Hostname, networkInfo.Internal.Ports.Engine)
+		setup.EthURL = fmt.Sprintf("http://%s:%s", networkInfo.Internal.Hostname, networkInfo.Internal.Ports.RPC)
+		setup.EthURLExternal = fmt.Sprintf("http://0.0.0.0:%s", networkInfo.External.Ports.RPC)
+		return true
+	}, 60*time.Second, 2*time.Second, "reth did not start in time")
+
+	genesisHash, err := rethNode.GenesisHash(ctx)
+	s.Require().NoError(err)
+
+	setup.Node = rethNode
+	setup.JWTSecret = rethNode.JWTSecretHex()
+	setup.GenesisHash = genesisHash
+	return setup
+}
+
+// SetupCelestiaAndDABridge starts Celestia chain and DA bridge, returns the DA address.
+func (s *DockerTestSuite) SetupCelestiaAndDABridge(ctx context.Context) string {
+	s.celestia = s.CreateChain()
+	s.Require().NoError(s.celestia.Start(ctx))
+
+	s.daNetwork = s.CreateDANetwork()
+	bridgeNode := s.daNetwork.GetBridgeNodes()[0]
+
+	chainID := s.celestia.GetChainID()
+	genesisHash := s.getGenesisHash(ctx)
+	networkInfo, err := s.celestia.GetNodes()[0].GetNetworkInfo(ctx)
+	s.Require().NoError(err)
+
+	s.StartBridgeNode(ctx, bridgeNode, chainID, genesisHash, networkInfo.Internal.Hostname)
+
+	daWallet, err := bridgeNode.GetWallet()
+	s.Require().NoError(err)
+	s.FundWallet(ctx, daWallet, 100_000_000_00)
+
+	bridgeNetworkInfo, err := bridgeNode.GetNetworkInfo(ctx)
+	s.Require().NoError(err)
+	return fmt.Sprintf("http://%s:%s", bridgeNetworkInfo.Internal.IP, bridgeNetworkInfo.Internal.Ports.RPC)
+}
+
+// WaitForEVMHealthy waits for an evmsingle node to respond to health checks.
+func (s *DockerTestSuite) WaitForEVMHealthy(ctx context.Context, node *evmsingle.Node) {
+	networkInfo, err := node.GetNetworkInfo(ctx)
+	s.Require().NoError(err)
+
+	healthURL := fmt.Sprintf("http://0.0.0.0:%s/health/live", networkInfo.External.Ports.RPC)
+	s.Require().Eventually(func() bool {
+		req, _ := http.NewRequestWithContext(ctx, http.MethodGet, healthURL, nil)
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			return false
+		}
+		defer resp.Body.Close()
+		return resp.StatusCode == http.StatusOK
+	}, 120*time.Second, 2*time.Second, "evm node did not become healthy")
+}
+
+// SetupEthClient creates an Ethereum client and verifies connectivity.
+func (s *DockerTestSuite) SetupEthClient(ctx context.Context, url, expectedChainID string) *ethclient.Client {
+	ethClient, err := ethclient.Dial(url)
+	s.Require().NoError(err)
+
+	chainID, err := ethClient.ChainID(ctx)
+	s.Require().NoError(err)
+	s.Require().Equal(expectedChainID, chainID.String())
+
+	return ethClient
+}
+
+// WaitForTxIncluded waits for a transaction to be included in a block successfully.
+func (s *DockerTestSuite) WaitForTxIncluded(ctx context.Context, client *ethclient.Client, txHash common.Hash) {
+	s.Require().Eventually(func() bool {
+		receipt, err := client.TransactionReceipt(ctx, txHash)
+		if err != nil {
+			return false
+		}
+		return receipt.Status == 1
+	}, 30*time.Second, time.Second, "transaction %s was not included", txHash.Hex())
 }

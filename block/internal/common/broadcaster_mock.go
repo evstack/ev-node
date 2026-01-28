@@ -190,6 +190,96 @@ func (_c *MockBroadcaster_GetByHeight_Call[H]) RunAndReturn(run func(ctx context
 	return _c
 }
 
+// Height provides a mock function for the type MockBroadcaster
+func (_mock *MockBroadcaster[H]) Height() uint64 {
+	ret := _mock.Called()
+
+	if len(ret) == 0 {
+		panic("no return value specified for Height")
+	}
+
+	var r0 uint64
+	if returnFunc, ok := ret.Get(0).(func() uint64); ok {
+		r0 = returnFunc()
+	} else {
+		r0 = ret.Get(0).(uint64)
+	}
+	return r0
+}
+
+// MockBroadcaster_Height_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'Height'
+type MockBroadcaster_Height_Call[H header.Header[H]] struct {
+	*mock.Call
+}
+
+// Height is a helper method to define mock.On call
+func (_e *MockBroadcaster_Expecter[H]) Height() *MockBroadcaster_Height_Call[H] {
+	return &MockBroadcaster_Height_Call[H]{Call: _e.mock.On("Height")}
+}
+
+func (_c *MockBroadcaster_Height_Call[H]) Run(run func()) *MockBroadcaster_Height_Call[H] {
+	_c.Call.Run(func(args mock.Arguments) {
+		run()
+	})
+	return _c
+}
+
+func (_c *MockBroadcaster_Height_Call[H]) Return(v uint64) *MockBroadcaster_Height_Call[H] {
+	_c.Call.Return(v)
+	return _c
+}
+
+func (_c *MockBroadcaster_Height_Call[H]) RunAndReturn(run func() uint64) *MockBroadcaster_Height_Call[H] {
+	_c.Call.Return(run)
+	return _c
+}
+
+// Store provides a mock function for the type MockBroadcaster
+func (_mock *MockBroadcaster[H]) Store() header.Store[H] {
+	ret := _mock.Called()
+
+	if len(ret) == 0 {
+		panic("no return value specified for Store")
+	}
+
+	var r0 header.Store[H]
+	if returnFunc, ok := ret.Get(0).(func() header.Store[H]); ok {
+		r0 = returnFunc()
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(header.Store[H])
+		}
+	}
+	return r0
+}
+
+// MockBroadcaster_Store_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'Store'
+type MockBroadcaster_Store_Call[H header.Header[H]] struct {
+	*mock.Call
+}
+
+// Store is a helper method to define mock.On call
+func (_e *MockBroadcaster_Expecter[H]) Store() *MockBroadcaster_Store_Call[H] {
+	return &MockBroadcaster_Store_Call[H]{Call: _e.mock.On("Store")}
+}
+
+func (_c *MockBroadcaster_Store_Call[H]) Run(run func()) *MockBroadcaster_Store_Call[H] {
+	_c.Call.Run(func(args mock.Arguments) {
+		run()
+	})
+	return _c
+}
+
+func (_c *MockBroadcaster_Store_Call[H]) Return(store header.Store[H]) *MockBroadcaster_Store_Call[H] {
+	_c.Call.Return(store)
+	return _c
+}
+
+func (_c *MockBroadcaster_Store_Call[H]) RunAndReturn(run func() header.Store[H]) *MockBroadcaster_Store_Call[H] {
+	_c.Call.Return(run)
+	return _c
+}
+
 // WriteToStoreAndBroadcast provides a mock function for the type MockBroadcaster
 func (_mock *MockBroadcaster[H]) WriteToStoreAndBroadcast(ctx context.Context, payload H, opts ...pubsub.PubOpt) error {
 	// pubsub.PubOpt

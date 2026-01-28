@@ -261,7 +261,7 @@ func TestRegisterCustomHTTPEndpointsDAVisualization(t *testing.T) {
 	// Create mux and register endpoints
 	mux := http.NewServeMux()
 	nopLogger := zerolog.Nop()
-	RegisterCustomHTTPEndpoints(mux, nil, nil, config.DefaultConfig(), nil, nopLogger)
+	RegisterCustomHTTPEndpoints(mux, nil, nil, config.DefaultConfig(), nil, nopLogger, nil)
 
 	// Test /da endpoint
 	req, err := http.NewRequest("GET", "/da", nil)
@@ -299,7 +299,7 @@ func TestRegisterCustomHTTPEndpointsWithoutServer(t *testing.T) {
 
 	mux := http.NewServeMux()
 	logger := zerolog.Nop()
-	RegisterCustomHTTPEndpoints(mux, nil, nil, config.DefaultConfig(), nil, logger)
+	RegisterCustomHTTPEndpoints(mux, nil, nil, config.DefaultConfig(), nil, logger, nil)
 
 	// Test that endpoints return service unavailable when server is not set
 	endpoints := []string{"/da", "/da/submissions", "/da/blob"}

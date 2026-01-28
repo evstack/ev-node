@@ -2,7 +2,13 @@ name: Release
 on:
   push:
     tags:
-      - '**/v*.*.*'  # Matches tags like evm/single/v0.2.0, testapp/v0.4.0, etc.
+      - "**/v*.*.*" # Matches tags like apps/evm/single/v0.2.0, apps/testapp/v0.4.0, etc.
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag to release (e.g., apps/evm/single/v0.2.0, apps/testapp/v0.4.0) - Must match Go tag."
+        required: true
+        type: string
 
 permissions: {}
 jobs:
@@ -23,7 +29,12 @@ jobs:
       - name: Parse tag and validate app
         id: parse
         run: |
-          TAG="${{ github.ref_name }}"
+          # Use input tag for workflow_dispatch, otherwise use ref_name
+          if [ -n "${{ inputs.tag }}" ]; then
+            TAG="${{ inputs.tag }}"
+          else
+            TAG="${{ github.ref_name }}"
+          fi
           echo "Processing tag: $TAG"
 
           # Extract version (everything after the last /)
@@ -34,25 +45,26 @@ jobs:
           APP_PATH="${TAG%/*}"
           echo "app-path=$APP_PATH" >> $GITHUB_OUTPUT
 
-          # Check if the app directory exists in ./apps/
-          if [ ! -d "apps/$APP_PATH" ]; then
-            echo "::error::App directory 'apps/$APP_PATH' does not exist"
+          # Check if the app directory exists
+          if [ ! -d "$APP_PATH" ]; then
+            echo "::error::App directory '$APP_PATH' does not exist"
             exit 1
           fi
 
           # Check if Dockerfile exists
-          if [ ! -f "apps/$APP_PATH/Dockerfile" ]; then
-            echo "::error::Dockerfile not found in 'apps/$APP_PATH/'"
+          if [ ! -f "$APP_PATH/Dockerfile" ]; then
+            echo "::error::Dockerfile not found in '$APP_PATH/'"
             exit 1
           fi
 
-          echo "dockerfile=apps/$APP_PATH/Dockerfile" >> $GITHUB_OUTPUT
+          echo "dockerfile=$APP_PATH/Dockerfile" >> $GITHUB_OUTPUT
 
-          # Generate image name from app path (replace / with -)
-          IMAGE_NAME="ev-node-${APP_PATH//\//-}"
+          # Generate image name from app path (strip apps/ prefix, replace / with -)
+          IMAGE_PATH="${APP_PATH#apps/}"
+          IMAGE_NAME="ev-node-${IMAGE_PATH//\//-}"
           echo "image-name=$IMAGE_NAME" >> $GITHUB_OUTPUT
 
-          echo "::notice::Building $IMAGE_NAME version $VERSION from apps/$APP_PATH"
+          echo "::notice::Building $IMAGE_NAME version $VERSION from $APP_PATH"
 
   build-and-push:
     name: Build and Push Docker Image

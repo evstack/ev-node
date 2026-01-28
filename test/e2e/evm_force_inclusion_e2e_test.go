@@ -131,8 +131,10 @@ func TestEvmSequencerForceInclusionE2E(t *testing.T) {
 	sequencerHome := filepath.Join(workDir, "sequencer")
 
 	// Get a port for force inclusion server
-	fiPort, err := getAvailablePort()
+	fiPort, listener, err := getAvailablePort()
 	require.NoError(t, err)
+	// We only need the port number for the flag; custom server startup handles binding
+	listener.Close()
 	fiUrl := fmt.Sprintf("http://127.0.0.1:%d", fiPort)
 
 	// Setup sequencer with force inclusion enabled
@@ -185,8 +187,10 @@ func TestEvmFullNodeForceInclusionE2E(t *testing.T) {
 	fullNodeHome := filepath.Join(workDir, "fullnode")
 
 	// Get a port for force inclusion server
-	fiPort, err := getAvailablePort()
+	fiPort, listener, err := getAvailablePort()
 	require.NoError(t, err)
+	// We only need the port number for the flag; custom server startup handles binding
+	listener.Close()
 	fiUrl := fmt.Sprintf("http://127.0.0.1:%d", fiPort)
 
 	// --- Start Sequencer Setup ---

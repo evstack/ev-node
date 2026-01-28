@@ -19,4 +19,6 @@ type Broadcaster[H header.Header[H]] interface {
 	WriteToStoreAndBroadcast(ctx context.Context, payload H, opts ...pubsub.PubOpt) error
 	AppendDAHint(ctx context.Context, daHeight uint64, hashes ...types.Hash) error
 	GetByHeight(ctx context.Context, height uint64) (H, uint64, error)
+	Store() header.Store[H]
+	Height() uint64
 }
