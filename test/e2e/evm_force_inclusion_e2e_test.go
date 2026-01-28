@@ -466,7 +466,7 @@ func TestEvmSyncerMaliciousSequencerForceInclusionE2E(t *testing.T) {
 	)
 
 	// Submit transaction to DA on the forced inclusion namespace
-	result := daClient.Submit(ctx, [][]byte{txBytes}, -1, []byte("forced-inc"), nil)
+	result := daClient.Submit(ctx, [][]byte{txBytes}, -1, daClient.GetForcedInclusionNamespace(), nil)
 	require.Equal(t, da.StatusSuccess, result.Code, "Failed to submit to DA: %s", result.Message)
 	t.Logf("Forced inclusion transaction submitted to DA: %s", txForce.Hash().Hex())
 
