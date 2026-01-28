@@ -1,108 +1,120 @@
 # Sequencing
 
-Sequencing determines transaction ordering. The sequencer collects transactions, orders them, and produces blocks.
+Sequencing is the process of determining the order of transactions in a blockchain. In rollups, the sequencer is the entity responsible for collecting transactions from users, ordering them, and producing blocks that are eventually posted to the data availability (DA) layer.
 
-## Sequencer Interface
+Transaction ordering matters because it determines execution outcomes. Two transactions that touch the same state can produce different results depending on which executes first. The sequencer's ordering decisions directly impact users, particularly in DeFi where transaction order can mean the difference between a successful trade and a failed one.
 
-The [Sequencer interface](https://github.com/evstack/ev-node/blob/main/core/sequencer/sequencing.go) defines how ev-node communicates with sequencing implementations:
+## The Role of the Sequencer
 
-```go
-type Sequencer interface {
-    // Submit transactions to the sequencer
-    SubmitBatchTxs(ctx context.Context, req SubmitBatchTxsRequest) (*SubmitBatchTxsResponse, error)
+A sequencer performs three core functions:
 
-    // Get the next batch of ordered transactions
-    GetNextBatch(ctx context.Context, req GetNextBatchRequest) (*GetNextBatchResponse, error)
+1. **Transaction collection** — Accepting transactions from users and holding them in a mempool
+2. **Ordering** — Deciding which transactions to include and in what order
+3. **Block production** — Bundling ordered transactions into blocks and publishing them
 
-    // Verify a batch from another source
-    VerifyBatch(ctx context.Context, req VerifyBatchRequest) (*VerifyBatchResponse, error)
-}
-```
+In traditional L1 blockchains, these functions are distributed across validators through consensus. In rollups, sequencing can be handled differently depending on the design goals.
 
-## Sequencing Modes
+## Single Sequencer
 
-### Single Sequencer
-
-One node orders transactions and produces blocks.
+The simplest approach is a single sequencer: one designated node that orders all transactions.
 
 ```
-User → Mempool → Sequencer → Block → DA
+User → Sequencer → Block → DA Layer
 ```
 
-**Characteristics:**
-- Fast block times (~100ms possible)
-- Simple operation
-- Single point of ordering (with forced inclusion for censorship resistance)
+**Advantages:**
 
-**Configuration:**
-```yaml
-node:
-  aggregator: true
-  block-time: 100ms
+- **Low latency** — No consensus required means block times can be very fast (sub-second)
+- **Simple operation** — One node, one source of truth for ordering
+- **Predictable performance** — No coordination overhead
+
+**Disadvantages:**
+
+- **Centralization** — Single point of control over transaction ordering
+- **Censorship risk** — The sequencer can refuse to include specific transactions
+- **Liveness dependency** — If the sequencer goes down, the chain halts
+- **MEV extraction** — The sequencer has full visibility and can reorder for profit
+
+Most production rollups today use single sequencers because the performance benefits are significant and the trust assumptions are often acceptable for their use cases.
+
+## Based Sequencing
+
+Based sequencing (also called "based rollups") delegates transaction ordering to the underlying DA layer. Instead of a dedicated sequencer, users submit transactions directly to the DA layer, and all rollup nodes independently derive the same ordering from DA blocks.
+
+```
+User → DA Layer → All Nodes Derive Same Order
 ```
 
-See [Single Sequencer / Forced Inclusion](/guides/advanced/forced-inclusion) for details.
+**Advantages:**
 
-### Based Sequencer
+- **Decentralization** — No privileged sequencer role
+- **Censorship resistance** — Inherits the censorship resistance of the DA layer
+- **Liveness** — Chain stays live as long as the DA layer is live
+- **Shared security** — Ordering is secured by the DA layer's consensus
 
-Transaction ordering is determined by the DA layer. Every full node derives blocks independently.
+**Disadvantages:**
 
-```
-User → DA Layer → All Nodes Derive Same Blocks
-```
+- **Higher latency** — Block times are bounded by DA layer block times (e.g., ~12s for Ethereum)
+- **MEV leakage** — MEV flows to DA layer validators rather than the rollup
+- **Complexity** — Requires deterministic derivation rules that all nodes must follow
 
-**Characteristics:**
-- No single sequencer
-- Ordering from DA layer (slower blocks)
-- Maximum censorship resistance
+Based sequencing is compelling for applications that prioritize decentralization over speed.
 
-**Configuration:**
-```yaml
-node:
-  aggregator: true
-  based-sequencer: true
-```
+## Hybrid Approaches
 
-See [Based Sequencing](/guides/advanced/based-sequencing) for details.
+### Forced Inclusion
 
-## Choosing a Sequencing Mode
+Forced inclusion is a mechanism that combines the performance of single sequencing with censorship resistance guarantees. It works as follows:
 
-| Factor | Single Sequencer | Based Sequencer |
-|--------|-----------------|-----------------|
-| Block time | ~100ms | ~12s (DA block time) |
-| Censorship resistance | Forced inclusion | Native |
-| Complexity | Lower | Higher |
-| MEV | Sequencer controls | DA layer controls |
+1. Users normally submit transactions to the sequencer for fast inclusion
+2. If censored, users can submit transactions directly to the DA layer
+3. The sequencer must include DA-submitted transactions within a defined time window
+4. Failure to include triggers penalties or allows the chain to transition to based mode
 
-## Forced Inclusion
+This gives users an escape hatch while maintaining the benefits of centralized sequencing for the common case.
 
-Single sequencer mode includes forced inclusion for censorship resistance:
+### Shared Sequencing
 
-1. Users can submit transactions directly to DA
-2. Sequencer must include these within a grace period
-3. Failure to include marks sequencer as malicious
-4. Chain can transition to based mode
+Multiple rollups can share a sequencer or sequencer network. This enables:
 
-This provides a safety mechanism while maintaining fast block times.
+- **Atomic cross-rollup transactions** — Transactions that span multiple rollups can be ordered atomically
+- **Shared MEV** — Revenue from cross-rollup MEV can be distributed
+- **Reduced costs** — Infrastructure costs are amortized across chains
 
-## Transaction Flow
+Shared sequencing is an active area of research and development.
 
-```mermaid
-sequenceDiagram
-    participant User
-    participant Mempool
-    participant Sequencer
-    participant DA
+## MEV Considerations
 
-    User->>Mempool: Submit tx
-    Sequencer->>Mempool: GetTxs()
-    Mempool->>Sequencer: Pending txs
-    Sequencer->>Sequencer: Order & Execute
-    Sequencer->>DA: Submit block
-```
+Maximal Extractable Value (MEV) is the profit a sequencer can extract by reordering, inserting, or censoring transactions. Common MEV strategies include:
+
+- **Frontrunning** — Inserting a transaction before a target transaction
+- **Backrunning** — Inserting a transaction immediately after a target
+- **Sandwich attacks** — Combining frontrunning and backrunning around a target
+
+The sequencing design determines who captures MEV:
+
+| Design            | MEV Captured By          |
+|-------------------|--------------------------|
+| Single sequencer  | Sequencer operator       |
+| Based sequencing  | DA layer validators      |
+| Shared sequencing | Shared sequencer network |
+
+Some rollups implement MEV mitigation through encrypted mempools, fair ordering protocols, or MEV redistribution to users.
+
+## Choosing a Sequencing Model
+
+| Factor                 | Single Sequencer          | Based Sequencer     |
+|------------------------|---------------------------|---------------------|
+| Block time             | Sub-second possible       | DA layer block time |
+| Censorship resistance  | Requires forced inclusion | Native              |
+| Liveness               | Sequencer must be online  | DA layer liveness   |
+| MEV control            | Sequencer controlled      | DA layer controlled |
+| Operational complexity | Lower                     | Higher              |
+
+The right choice depends on your application's priorities. High-frequency trading applications might prefer single sequencing for speed. Applications handling high-value, censorship-sensitive transactions might prefer based sequencing for its guarantees.
 
 ## Learn More
 
-- [Single Sequencer / Forced Inclusion](/guides/advanced/forced-inclusion)
-- [Based Sequencing](/guides/advanced/based-sequencing)
-- [Sequencer Interface Reference](/reference/interfaces/sequencer)
+- [Forced Inclusion](/guides/advanced/forced-inclusion) — Implementing censorship resistance with single sequencing
+- [Based Sequencing](/guides/advanced/based-sequencing) — Running a based rollup
+- [Sequencer Interface](/reference/interfaces/sequencer) — Implementation reference
