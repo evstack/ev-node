@@ -37,13 +37,13 @@ ev-abci implements the Executor interface, translating ev-node's calls into ABCI
 
 ## Key Differences from CometBFT
 
-| Aspect | CometBFT | ev-abci |
-|--------|----------|---------|
-| Validators | Multiple validators with staking | Single sequencer |
-| Consensus | BFT consensus rounds | Sequencer produces blocks |
-| Finality | Instant (BFT) | Soft (P2P) → Hard (DA) |
-| Block time | ~6s typical | Configurable (100ms+) |
-| Vote extensions | Supported | Not supported |
+| Aspect          | CometBFT                         | ev-abci                   |
+|-----------------|----------------------------------|---------------------------|
+| Validators      | Multiple validators with staking | Single sequencer          |
+| Consensus       | BFT consensus rounds             | Sequencer produces blocks |
+| Finality        | Instant (BFT)                    | Soft (P2P) → Hard (DA)    |
+| Block time      | ~6s typical                      | Configurable (100ms+)     |
+| Vote extensions | Supported                        | Not supported             |
 
 ## Benefits
 

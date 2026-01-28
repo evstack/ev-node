@@ -1,153 +1,229 @@
-# Using Celestia as DA
+# Celestia
 
-<!-- markdownlint-disable MD033 -->
-<script setup>
-import constants from '../../.vitepress/constants/constants.js'
-</script>
+This guide covers connecting your Evolve chain to Celestia for production data availability.
 
-## 🌞 Introduction {#introduction}
+## Prerequisites
 
-This tutorial serves as a comprehensive guide for deploying your chain on Celestia's data availability (DA) network. From the Evolve perspective, there's no difference in posting blocks to Celestia's testnets or Mainnet Beta.
+- Completed an Evolve quickstart tutorial
+- Familiarity with running a Celestia light node
 
-Before proceeding, ensure that you have completed the [gm-world](../gm-world.md) tutorial, which covers installing the Testapp CLI and running a chain against a local DA network.
+## Running a Celestia Light Node
 
-## 🪶 Running a Celestia light node
+Before starting your Evolve chain, you need a Celestia light node running and synced.
 
-Before you can start your chain node, you need to initiate, sync, and fund a light node on one of Celestia's networks on a compatible version:
+### Version Compatibility
 
-Find more information on how to run a light node in the [Celestia documentation](https://celestia.org/run-a-light-node/#start-up-a-node).
+Ensure compatible versions between ev-node and celestia-node:
 
-::: code-group
+| Network | celestia-node |
+|---------|---------------|
+| Arabica | v0.20.x |
+| Mocha | v0.20.x |
+| Mainnet | v0.20.x |
 
-```sh-vue [Arabica]
-Evolve Version: {{constants.celestiaNodeArabicaEvolveTag}}
-Celestia Node Version: {{constants.celestiaNodeArabicaTag}}
+### Installation
+
+Follow the [Celestia documentation](https://docs.celestia.org/how-to-guides/light-node) to install and run a light node.
+
+**Quick start:**
+
+```bash
+# Install celestia-node
+curl -sL https://docs.celestia.org/install.sh | bash
+
+# Initialize (choose your network)
+celestia light init --p2p.network mocha
+
+# Start the node
+celestia light start --p2p.network mocha
 ```
 
-```sh-vue [Mocha]
-Evolve Version: {{constants.celestiaNodeMochaEvolveTag}}
-Celestia Node Version: {{constants.celestiaNodeMochaTag}}
-```
+### Network Options
 
-```sh-vue [Mainnet]
-Evolve Version: {{constants.celestiaNodeMainnetEvolveTag}}
-Celestia Node Version: {{constants.celestiaNodeMainnetTag}}
-```
+- [Arabica Devnet](https://docs.celestia.org/how-to-guides/arabica-devnet) - Development testing
+- [Mocha Testnet](https://docs.celestia.org/how-to-guides/mocha-testnet) - Pre-production testing
+- [Mainnet Beta](https://docs.celestia.org/how-to-guides/mainnet) - Production
 
-:::
+## Configuring Evolve for Celestia
 
-- [Arabica Devnet](https://docs.celestia.org/how-to-guides/arabica-devnet)
-- [Mocha Testnet](https://docs.celestia.org/how-to-guides/mocha-testnet)
-- [Mainnet Beta](https://docs.celestia.org/how-to-guides/mainnet)
+### Required Configuration
 
-The main difference lies in how you fund your wallet address: using testnet TIA or [TIA](https://docs.celestia.org/learn/tia#overview-of-tia) for Mainnet Beta.
+The following flags are required to connect to Celestia:
 
-After successfully starting a light node, it's time to start posting the batches of blocks of data that your chain generates to Celestia.
+| Flag | Description |
+|------|-------------|
+| `--evnode.da.address` | Celestia node RPC endpoint |
+| `--evnode.da.auth_token` | JWT authentication token |
+| `--evnode.da.header_namespace` | Namespace for block headers |
+| `--evnode.da.data_namespace` | Namespace for transaction data |
 
-## 🏗️ Prerequisites {#prerequisites}
+### Get DA Block Height
 
-- `gmd` CLI installed from the [gm-world](../gm-world.md) tutorial.
-
-## 🛠️ Configuring flags for DA
-
-Now that we are posting to the Celestia DA instead of the local DA, the `evolve start` command requires three DA configuration flags:
-
-- `--evnode.da.start_height`
-- `--evnode.da.auth_token`
-- `--evnode.da.namespace`
-
-:::tip
-Optionally, you could also set the `--evnode.da.block_time` flag. This should be set to the finality time of the DA layer, not its actual block time, as Evolve does not handle reorganization logic. The default value is 15 seconds.
-:::
-
-Let's determine which values to provide for each of them.
-
-First, let's query the DA layer start height using our light node.
+Query the current DA height to set as your starting point:
 
 ```bash
 DA_BLOCK_HEIGHT=$(celestia header network-head | jq -r '.result.header.height')
-echo -e "\n Your DA_BLOCK_HEIGHT is $DA_BLOCK_HEIGHT \n"
+echo "Your DA_BLOCK_HEIGHT is $DA_BLOCK_HEIGHT"
 ```
 
-The output of the command above will look similar to this:
+### Get Authentication Token
+
+Generate a write token for your light node:
+
+**Arabica:**
 
 ```bash
- Your DA_BLOCK_HEIGHT is 2127672
-```
-
-Now, let's obtain the authentication token of your light node using the following command:
-
-::: code-group
-
-```bash [Arabica Devnet]
 AUTH_TOKEN=$(celestia light auth write --p2p.network arabica)
-echo -e "\n Your DA AUTH_TOKEN is $AUTH_TOKEN \n"
 ```
 
-```bash [Mocha Testnet]
+**Mocha:**
+
+```bash
 AUTH_TOKEN=$(celestia light auth write --p2p.network mocha)
-echo -e "\n Your DA AUTH_TOKEN is $AUTH_TOKEN \n"
 ```
 
-```bash [Mainnet Beta]
+**Mainnet:**
+
+```bash
 AUTH_TOKEN=$(celestia light auth write)
-echo -e "\n Your DA AUTH_TOKEN is $AUTH_TOKEN \n"
 ```
 
-:::
+### Set Namespaces
 
-The output of the command above will look similar to this:
+Choose unique namespaces for your chain's headers and data:
 
 ```bash
- Your DA AUTH_TOKEN is eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJBbGxvdyI6WyJwdWJsaWMiLCJyZWFkIiwid3JpdGUiXX0.cSrJjpfUdTNFtzGho69V0D_8kyECn9Mzv8ghJSpKRDE
+DA_HEADER_NAMESPACE="my_chain_headers"
+DA_DATA_NAMESPACE="my_chain_data"
 ```
 
-Next, let's set up the namespace to be used for posting data on Celestia. Evolve supports separate namespaces for headers and data, but for simplicity, we'll use a single namespace for both:
+The namespace values are automatically encoded by ev-node for Celestia compatibility.
 
-```bash
-DA_NAMESPACE="fancy_namespace"
-```
+You can use the same namespace for both headers and data, or separate them for optimized syncing (light clients can sync headers only).
 
-**Advanced Configuration:** For production deployments, you can use separate namespaces for headers and data to optimize syncing:
+### Set DA Address
 
-- `--evnode.da.header_namespace` for block headers
-- `--evnode.da.data_namespace` for transaction data
-
-The namespace values are automatically encoded by the node to ensure compatibility with Celestia.
-
-[Learn more about namespaces](https://docs.celestia.org/tutorials/node-tutorial#namespaces).
-:::
-
-Lastly, set your DA address for your light node, which by default runs at
-port 26658:
+Default Celestia light node port is 26658:
 
 ```bash
 DA_ADDRESS=http://localhost:26658
 ```
 
-## 🔥 Running your chain connected to Celestia light node
+## Running Your Chain
 
-Finally, let's initiate the chain node with all the flags:
+Start your chain with Celestia configuration:
 
 ```bash
-gmd start \
+evnode start \
     --evnode.node.aggregator \
     --evnode.da.auth_token $AUTH_TOKEN \
-    --evnode.da.header_namespace $DA_NAMESPACE \
-    --evnode.da.data_namespace $DA_NAMESPACE \
+    --evnode.da.header_namespace $DA_HEADER_NAMESPACE \
+    --evnode.da.data_namespace $DA_DATA_NAMESPACE \
     --evnode.da.address $DA_ADDRESS
 ```
 
-Now, the chain is running and posting blocks (aggregated in batches) to Celestia. You can view your chain by using your namespace or account on one of Celestia's block explorers.
+For Cosmos SDK chains:
 
-For example, [here on Celenium for Arabica](https://arabica.celenium.io/).
+```bash
+appd start \
+    --evnode.node.aggregator \
+    --evnode.da.auth_token $AUTH_TOKEN \
+    --evnode.da.header_namespace $DA_HEADER_NAMESPACE \
+    --evnode.da.data_namespace $DA_DATA_NAMESPACE \
+    --evnode.da.address $DA_ADDRESS
+```
 
-Other explorers:
+## Viewing Your Chain Data
 
-- [Arabica testnet](https://docs.celestia.org/how-to-guides/arabica-devnet)
-- [Mocha testnet](https://docs.celestia.org/how-to-guides/mocha-testnet)
-- [Mainnet Beta](https://docs.celestia.org/how-to-guides/mainnet)
+Once running, you can view your chain's data on Celestia block explorers:
 
-## 🎉 Next steps
+- [Celenium (Arabica)](https://arabica.celenium.io/)
+- [Celenium (Mocha)](https://mocha.celenium.io/)
+- [Celenium (Mainnet)](https://celenium.io/)
 
-Congratulations! You've built a local chain that posts data to Celestia's DA layer. Well done! Now, go forth and build something great! Good luck!
+Search by your namespace or account address to see submitted blobs.
+
+## Configuration Options
+
+### Gas Price
+
+Set the gas price for DA submissions:
+
+```bash
+--evnode.da.gas_price 0.01
+```
+
+Higher gas prices result in faster inclusion during congestion.
+
+### Block Time
+
+Set the expected DA block time (affects retry timing):
+
+```bash
+--evnode.da.block_time 6s
+```
+
+Celestia's block time is approximately 6 seconds.
+
+### Multiple Signing Addresses
+
+For high-throughput chains, use multiple signing addresses to avoid nonce conflicts:
+
+```bash
+--evnode.da.signing_addresses celestia1abc...,celestia1def...,celestia1ghi...
+```
+
+All addresses must be funded and loaded in the Celestia node's keyring.
+
+## Funding Your Account
+
+### Testnet (Mocha/Arabica)
+
+Get testnet TIA from faucets:
+
+- [Mocha Faucet](https://faucet.celestia-mocha.com/)
+- [Arabica Faucet](https://faucet.celestia-arabica.com/)
+
+### Mainnet
+
+Purchase TIA and transfer to your Celestia light node address.
+
+Check your address:
+
+```bash
+celestia state account-address
+```
+
+## Troubleshooting
+
+### Out of Funds
+
+If you see `Code: 19` errors, your account is out of TIA:
+
+1. Fund your account
+2. Increase gas price to unstick pending transactions
+3. Restart your chain
+
+See [Troubleshooting Guide](/guides/operations/troubleshooting) for details.
+
+### Connection Refused
+
+Verify your Celestia node is running:
+
+```bash
+curl http://localhost:26658/header/sync_state
+```
+
+### Token Expired
+
+Regenerate your auth token:
+
+```bash
+celestia light auth write --p2p.network <network>
+```
+
+## See Also
+
+- [Local DA Guide](/guides/da-layers/local-da) - Development setup
+- [Troubleshooting](/guides/operations/troubleshooting) - Common issues
+- [Configuration Reference](/reference/configuration/ev-node-config) - All DA options
