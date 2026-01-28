@@ -16,6 +16,7 @@ openssl rand -hex 32 > jwt.hex
 ```
 
 Configure both sides:
+
 - ev-reth: `--authrpc.jwtsecret jwt.hex`
 - ev-node: `--evm.jwt-secret jwt.hex`
 
@@ -58,6 +59,7 @@ ev-node                                    ev-reth
 Update the fork choice and optionally start building a new block.
 
 **Request:**
+
 ```json
 {
   "method": "engine_forkchoiceUpdatedV3",
@@ -79,6 +81,7 @@ Update the fork choice and optionally start building a new block.
 ```
 
 **Response:**
+
 ```json
 {
   "payloadStatus": {
@@ -94,6 +97,7 @@ Update the fork choice and optionally start building a new block.
 Retrieve a built payload.
 
 **Request:**
+
 ```json
 {
   "method": "engine_getPayloadV3",
@@ -102,6 +106,7 @@ Retrieve a built payload.
 ```
 
 **Response:**
+
 ```json
 {
   "executionPayload": {
@@ -129,6 +134,7 @@ Retrieve a built payload.
 Validate and execute a payload.
 
 **Request:**
+
 ```json
 {
   "method": "engine_newPayloadV3",
@@ -141,6 +147,7 @@ Validate and execute a payload.
 ```
 
 **Response:**
+
 ```json
 {
   "status": "VALID",

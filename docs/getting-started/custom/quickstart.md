@@ -32,6 +32,7 @@ ls apps/testapp/
 ```
 
 Key files:
+
 - `executor.go` — Implements the Executor interface
 - `main.go` — Wires everything together
 

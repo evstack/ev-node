@@ -22,13 +22,16 @@ func (e *MyExecutor) InitChain(ctx context.Context, genesis Genesis) ([]byte, er
 ```
 
 **Parameters:**
+
 - `genesis` — Contains initial state, chain ID, and configuration
 
 **Returns:**
+
 - Initial state root (hash of genesis state)
 - Error if initialization fails
 
 **Responsibilities:**
+
 - Parse genesis data
 - Initialize state storage
 - Set up initial accounts/balances
@@ -63,10 +66,12 @@ func (e *MyExecutor) GetTxs(ctx context.Context) ([][]byte, error)
 ```
 
 **Returns:**
+
 - Slice of transaction bytes from your mempool
 - Error if retrieval fails
 
 **Responsibilities:**
+
 - Return transactions ready for inclusion
 - Optionally prioritize by fee, nonce, etc.
 - Remove invalid transactions
@@ -94,15 +99,18 @@ func (e *MyExecutor) ExecuteTxs(
 ```
 
 **Parameters:**
+
 - `txs` — Ordered transactions to execute
 - `height` — Block height
 - `timestamp` — Block timestamp
 
 **Returns:**
+
 - `ExecutionResult` containing new state root and gas used
 - Error only for system failures (not tx failures)
 
 **Responsibilities:**
+
 - Execute each transaction in order
 - Update state
 - Track gas usage
@@ -154,9 +162,11 @@ func (e *MyExecutor) SetFinal(ctx context.Context, height uint64) error
 ```
 
 **Parameters:**
+
 - `height` — The block height that is now DA-finalized
 
 **Responsibilities:**
+
 - Mark state as finalized
 - Prune old state if desired
 - Trigger any finality-dependent logic

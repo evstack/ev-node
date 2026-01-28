@@ -74,6 +74,7 @@ appd evolve-migrate
 ```
 
 This command:
+
 - Migrates blocks from CometBFT to Evolve format
 - Converts state to Evolve format
 - Creates `ev_genesis.json`

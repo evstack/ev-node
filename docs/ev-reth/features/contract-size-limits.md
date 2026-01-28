@@ -40,11 +40,13 @@ In your chainspec (`genesis.json`):
 ## Trade-offs
 
 **Pros:**
+
 - Deploy larger, more complex contracts
 - Avoid splitting logic across multiple contracts
 - Simpler contract architecture
 
 **Cons:**
+
 - Higher deployment gas costs
 - Longer deployment times
 - May impact block gas limits

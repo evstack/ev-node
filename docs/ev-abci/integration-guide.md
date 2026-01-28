@@ -70,6 +70,7 @@ Check for ev-abci flags:
 ```
 
 Expected flags:
+
 ```
 --evnode.node.aggregator     Run as block producer
 --evnode.da.address          DA layer address

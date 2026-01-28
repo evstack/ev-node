@@ -115,6 +115,7 @@ Default ports match CometBFT:
 | 26656 | P2P |
 
 Configure via flags:
+
 ```bash
 --evnode.rpc.address tcp://0.0.0.0:26657
 --evnode.p2p.listen /ip4/0.0.0.0/tcp/26656

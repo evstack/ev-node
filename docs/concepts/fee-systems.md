@@ -67,6 +67,7 @@ Both execution environments incur DA fees when blocks are posted to the DA layer
 ### Who Pays?
 
 The sequencer pays DA fees from their own funds. They recover costs through:
+
 - Priority fees from users
 - Base fee redirect (if configured)
 - External subsidy
@@ -134,11 +135,13 @@ User Transaction
 ### Execution Costs
 
 EVM:
+
 ```bash
 cast estimate --rpc-url http://localhost:8545 <CONTRACT> "transfer(address,uint256)" <TO> <AMOUNT>
 ```
 
 Cosmos:
+
 ```bash
 appd tx bank send <FROM> <TO> 1000stake --gas auto --gas-adjustment 1.3
 ```
@@ -146,6 +149,7 @@ appd tx bank send <FROM> <TO> 1000stake --gas auto --gas-adjustment 1.3
 ### DA Costs
 
 Depends on:
+
 - DA layer pricing (e.g., Celestia gas price)
 - Data size per block
 - Submission frequency

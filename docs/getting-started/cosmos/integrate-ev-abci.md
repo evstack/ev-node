@@ -75,6 +75,7 @@ Check that ev-abci flags are available:
 ```
 
 You should see flags like:
+
 ```
 --evnode.node.aggregator
 --evnode.da.address

@@ -6,7 +6,7 @@ Deploy smart contracts to your Evolve EVM chain using Foundry or Hardhat.
 
 | Setting | Local | Testnet (example) |
 |---------|-------|-------------------|
-| RPC URL | http://localhost:8545 | https://rpc.your-chain.com |
+| RPC URL | <http://localhost:8545> | <https://rpc.your-chain.com> |
 | Chain ID | 1337 | Your chain ID |
 | Currency | ETH | Your native token |
 

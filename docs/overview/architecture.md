@@ -163,6 +163,7 @@ Built on libp2p with:
 - **Topics**: `{chainID}-tx`, `{chainID}-header`, `{chainID}-data`
 
 Nodes discover peers through:
+
 1. Bootstrap/seed nodes
 2. DHT peer exchange
 3. PEX (peer exchange protocol)

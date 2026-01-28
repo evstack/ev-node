@@ -5,6 +5,7 @@ Data availability (DA) ensures that all transaction data required to verify the 
 ## Why DA Matters
 
 Without data availability guarantees:
+
 - Nodes can't verify state transitions
 - Users can't prove their balances
 - The chain's security model breaks down

@@ -16,6 +16,7 @@ local-da
 ```
 
 You should see:
+
 ```
 INF Listening on host=localhost port=7980
 ```
@@ -31,6 +32,7 @@ docker compose up -d
 ```
 
 This starts reth with Evolve's Engine API configuration. The default ports:
+
 - `8545` — JSON-RPC
 - `8551` — Engine API
 
@@ -56,6 +58,7 @@ Initialize and start:
 ```
 
 You should see blocks being produced:
+
 ```
 INF block marked as DA included blockHeight=1
 INF block marked as DA included blockHeight=2
@@ -68,7 +71,7 @@ Add the network to MetaMask:
 | Setting | Value |
 |---------|-------|
 | Network Name | Evolve Local |
-| RPC URL | http://localhost:8545 |
+| RPC URL | <http://localhost:8545> |
 | Chain ID | 1337 |
 | Currency | ETH |
 

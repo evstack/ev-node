@@ -32,6 +32,7 @@ ev-reth extends reth with:
 ```
 
 ev-node drives ev-reth through the Engine API:
+
 1. ev-node calls `engine_forkchoiceUpdated` with payload attributes
 2. ev-reth builds a block from pending transactions
 3. ev-node calls `engine_getPayload` to retrieve the block
