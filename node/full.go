@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/pprof"
+	"strings"
 	"time"
 
 	ds "github.com/ipfs/go-datastore"
@@ -21,12 +22,11 @@ import (
 	coresequencer "github.com/evstack/ev-node/core/sequencer"
 	"github.com/evstack/ev-node/pkg/config"
 	genesispkg "github.com/evstack/ev-node/pkg/genesis"
-	"github.com/evstack/ev-node/pkg/p2p"
-	rpcserver "github.com/evstack/ev-node/pkg/rpc/server"
+	"github.com/evstack/ev-node/pkg/p2p/key"
+	raftpkg "github.com/evstack/ev-node/pkg/raft"
 	"github.com/evstack/ev-node/pkg/service"
 	"github.com/evstack/ev-node/pkg/signer"
 	"github.com/evstack/ev-node/pkg/store"
-	evsync "github.com/evstack/ev-node/pkg/sync"
 )
 
 const (
@@ -36,6 +36,11 @@ const (
 )
 
 var _ Node = &FullNode{}
+
+type leaderElection interface {
+	Run(ctx context.Context) error
+	IsRunning() bool
+}
 
 // FullNode represents a client node in Rollkit network.
 // It connects all the components and orchestrates their work.
@@ -50,21 +55,18 @@ type FullNode struct {
 
 	daClient block.DAClient
 
-	p2pClient       *p2p.Client
-	hSyncService    *evsync.HeaderSyncService
-	dSyncService    *evsync.DataSyncService
-	Store           store.Store
-	blockComponents *block.Components
+	Store    store.Store
+	raftNode *raftpkg.Node
 
-	prometheusSrv *http.Server
-	pprofSrv      *http.Server
-	rpcServer     *http.Server
+	prometheusSrv  *http.Server
+	pprofSrv       *http.Server
+	leaderElection leaderElection
 }
 
 // newFullNode creates a new Rollkit full node.
 func newFullNode(
 	nodeConfig config.Config,
-	p2pClient *p2p.Client,
+	nodeKey *key.NodeKey,
 	signer signer.Signer,
 	genesis genesispkg.Genesis,
 	database ds.Batching,
@@ -85,59 +87,50 @@ func newFullNode(
 		evstore = store.WithTracingStore(evstore)
 	}
 
-	headerSyncService, err := initHeaderSyncService(mainKV, evstore, nodeConfig, genesis, p2pClient, logger)
-	if err != nil {
-		return nil, err
+	var raftNode *raftpkg.Node
+	if nodeConfig.Node.Aggregator && nodeConfig.Raft.Enable {
+		raftNode, err = initRaftNode(nodeConfig, logger)
+		if err != nil {
+			return nil, fmt.Errorf("failed to initialize raft node: %w", err)
+		}
 	}
 
-	dataSyncService, err := initDataSyncService(mainKV, evstore, nodeConfig, genesis, p2pClient, logger)
-	if err != nil {
-		return nil, err
+	leaderFactory := func() (raftpkg.Runnable, error) {
+		logger.Info().Msg("Starting aggregator-MODE")
+		nodeConfig.Node.Aggregator = true
+		nodeConfig.P2P.Peers = "" // peers are not supported in aggregator mode
+		return newAggregatorMode(nodeConfig, nodeKey, signer, genesis, database, evstore, exec, sequencer, daClient, logger, evstore, mainKV, blockMetrics, nodeOpts, raftNode)
+	}
+	followerFactory := func() (raftpkg.Runnable, error) {
+		logger.Info().Msg("Starting sync-MODE")
+		nodeConfig.Node.Aggregator = false
+		return newSyncMode(nodeConfig, nodeKey, genesis, database, evstore, exec, daClient, logger, evstore, mainKV, blockMetrics, nodeOpts, raftNode)
 	}
 
-	var blockComponents *block.Components
-	if nodeConfig.Node.Aggregator {
-		blockComponents, err = block.NewAggregatorComponents(
-			nodeConfig,
-			genesis,
-			evstore,
-			exec,
-			sequencer,
-			daClient,
-			signer,
-			headerSyncService,
-			dataSyncService,
-			logger,
-			blockMetrics,
-			nodeOpts.BlockOptions,
-		)
-	} else {
-		blockComponents, err = block.NewSyncComponents(
-			nodeConfig,
-			genesis,
-			evstore,
-			exec,
-			daClient,
-			headerSyncService,
-			dataSyncService,
-			logger,
-			blockMetrics,
-			nodeOpts.BlockOptions,
-		)
-	}
-	if err != nil {
-		return nil, err
+	// Initialize raft node if enabled (for both aggregator and sync nodes)
+	var leaderElection leaderElection
+	switch {
+	case nodeConfig.Node.Aggregator && nodeConfig.Raft.Enable:
+		leaderElection = raftpkg.NewDynamicLeaderElection(logger, leaderFactory, followerFactory, raftNode)
+	case nodeConfig.Node.Aggregator && !nodeConfig.Raft.Enable:
+		if leaderElection, err = newSingleRoleElector(leaderFactory); err != nil {
+			return nil, err
+		}
+	case !nodeConfig.Node.Aggregator && !nodeConfig.Raft.Enable:
+		if leaderElection, err = newSingleRoleElector(followerFactory); err != nil {
+			return nil, err
+		}
+	default:
+		return nil, fmt.Errorf("raft config must be used in sequencer setup only")
 	}
 
 	node := &FullNode{
-		genesis:         genesis,
-		nodeConfig:      nodeConfig,
-		p2pClient:       p2pClient,
-		blockComponents: blockComponents,
-		daClient:        daClient,
-		Store:           evstore,
-		hSyncService:    headerSyncService,
-		dSyncService:    dataSyncService,
+		genesis:        genesis,
+		nodeConfig:     nodeConfig,
+		daClient:       daClient,
+		Store:          evstore,
+		leaderElection: leaderElection,
+		raftNode:       raftNode,
 	}
 
 	node.BaseService = *service.NewBaseService(logger, "Node", node)
@@ -145,38 +138,33 @@ func newFullNode(
 	return node, nil
 }
 
-func initHeaderSyncService(
-	mainKV ds.Batching,
-	daStore store.Store,
-	nodeConfig config.Config,
-	genesis genesispkg.Genesis,
-	p2pClient *p2p.Client,
-	logger zerolog.Logger,
-) (*evsync.HeaderSyncService, error) {
-	componentLogger := logger.With().Str("component", "HeaderSyncService").Logger()
-
-	headerSyncService, err := evsync.NewHeaderSyncService(mainKV, daStore, nodeConfig, genesis, p2pClient, componentLogger)
-	if err != nil {
-		return nil, fmt.Errorf("error while initializing HeaderSyncService: %w", err)
+func initRaftNode(nodeConfig config.Config, logger zerolog.Logger) (*raftpkg.Node, error) {
+	raftCfg := &raftpkg.Config{
+		NodeID:             nodeConfig.Raft.NodeID,
+		RaftAddr:           nodeConfig.Raft.RaftAddr,
+		RaftDir:            nodeConfig.Raft.RaftDir,
+		Bootstrap:          nodeConfig.Raft.Bootstrap,
+		SnapCount:          nodeConfig.Raft.SnapCount,
+		SendTimeout:        nodeConfig.Raft.SendTimeout,
+		HeartbeatTimeout:   nodeConfig.Raft.HeartbeatTimeout,
+		LeaderLeaseTimeout: nodeConfig.Raft.LeaderLeaseTimeout,
 	}
-	return headerSyncService, nil
-}
 
-func initDataSyncService(
-	mainKV ds.Batching,
-	daStore store.Store,
-	nodeConfig config.Config,
-	genesis genesispkg.Genesis,
-	p2pClient *p2p.Client,
-	logger zerolog.Logger,
-) (*evsync.DataSyncService, error) {
-	componentLogger := logger.With().Str("component", "DataSyncService").Logger()
-
-	dataSyncService, err := evsync.NewDataSyncService(mainKV, daStore, nodeConfig, genesis, p2pClient, componentLogger)
-	if err != nil {
-		return nil, fmt.Errorf("error while initializing DataSyncService: %w", err)
+	if nodeConfig.Raft.Peers != "" {
+		raftCfg.Peers = strings.Split(nodeConfig.Raft.Peers, ",")
 	}
-	return dataSyncService, nil
+	raftNode, err := raftpkg.NewNode(raftCfg, logger)
+	if err != nil {
+		return nil, fmt.Errorf("create raft node: %w", err)
+	}
+
+	logger.Info().
+		Str("node_id", nodeConfig.Raft.NodeID).
+		Str("addr", nodeConfig.Raft.RaftAddr).
+		Bool("bootstrap", nodeConfig.Raft.Bootstrap).
+		Msg("initialized raft node")
+
+	return raftNode, nil
 }
 
 // initGenesisChunks creates a chunked format of the genesis document to make it easier to
@@ -283,65 +271,16 @@ func (n *FullNode) Run(parentCtx context.Context) error {
 		(n.nodeConfig.Instrumentation.IsPrometheusEnabled() || n.nodeConfig.Instrumentation.IsPprofEnabled()) {
 		n.prometheusSrv, n.pprofSrv = n.startInstrumentationServer()
 	}
-
-	// Start RPC server
-	bestKnownHeightProvider := func() uint64 {
-		hHeight := n.hSyncService.Store().Height()
-		dHeight := n.dSyncService.Store().Height()
-		return min(hHeight, dHeight)
-	}
-
-	handler, err := rpcserver.NewServiceHandler(
-		n.Store,
-		n.hSyncService.Store(),
-		n.dSyncService.Store(),
-		n.p2pClient,
-		n.genesis.ProposerAddress,
-		n.Logger,
-		n.nodeConfig,
-		bestKnownHeightProvider,
-	)
-	if err != nil {
-		return fmt.Errorf("error creating RPC handler: %w", err)
-	}
-
-	n.rpcServer = &http.Server{
-		Addr:         n.nodeConfig.RPC.Address,
-		Handler:      handler,
-		ReadTimeout:  10 * time.Second,
-		WriteTimeout: 10 * time.Second,
-		IdleTimeout:  120 * time.Second,
-	}
-
-	go func() {
-		n.Logger.Info().Str("addr", n.nodeConfig.RPC.Address).Msg("started RPC server")
-		if err := n.rpcServer.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			n.Logger.Error().Err(err).Msg("RPC server error")
+	// Start leader election
+	if n.raftNode != nil {
+		if err := n.raftNode.Start(ctx); err != nil {
+			return fmt.Errorf("error while starting leader election: %w", err)
 		}
-	}()
-
-	n.Logger.Info().Msg("starting P2P client")
-	err = n.p2pClient.Start(ctx)
-	if err != nil {
-		return fmt.Errorf("error while starting P2P client: %w", err)
-	}
-
-	if err = n.hSyncService.Start(ctx); err != nil {
-		return fmt.Errorf("error while starting header sync service: %w", err)
-	}
-
-	if err = n.dSyncService.Start(ctx); err != nil {
-		return fmt.Errorf("error while starting data sync service: %w", err)
 	}
 
 	var runtimeErr error
-	// Start the block components (blocking)
-	if err := n.blockComponents.Start(ctx); err != nil {
-		if !errors.Is(err, context.Canceled) {
-			runtimeErr = fmt.Errorf("running block components: %w", err)
-		} else {
-			n.Logger.Info().Msg("context canceled, stopping node")
-		}
+	if err := n.leaderElection.Run(ctx); err != nil && !errors.Is(err, context.Canceled) {
+		runtimeErr = err
 	}
 
 	// blocking components start exited, propagate shutdown to all other processes
@@ -354,45 +293,18 @@ func (n *FullNode) Run(parentCtx context.Context) error {
 
 	var shutdownMultiErr error // Variable to accumulate multiple errors
 
-	// Stop block components
-	if err := n.blockComponents.Stop(); err != nil {
-		n.Logger.Error().Err(err).Msg("error stopping block components")
-		shutdownMultiErr = errors.Join(shutdownMultiErr, fmt.Errorf("stopping block components: %w", err))
-	}
-
-	// Stop Header Sync Service
-	err = n.hSyncService.Stop(shutdownCtx)
-	if err != nil {
-		// Log context canceled errors at a lower level if desired, or handle specific non-cancel errors
-		if !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
-			n.Logger.Error().Err(err).Msg("error stopping header sync service")
-			shutdownMultiErr = errors.Join(shutdownMultiErr, fmt.Errorf("stopping header sync service: %w", err))
+	// Stop leader election
+	if n.raftNode != nil {
+		if err := n.raftNode.Stop(); err != nil && !errors.Is(err, context.Canceled) {
+			shutdownMultiErr = errors.Join(shutdownMultiErr, fmt.Errorf("stopping leader election: %w", err))
 		} else {
-			n.Logger.Debug().Err(err).Msg("header sync service stop context ended") // Log cancellation as debug
+			n.Logger.Debug().Msg("leader election stopped")
 		}
-	}
-
-	// Stop Data Sync Service
-	err = n.dSyncService.Stop(shutdownCtx)
-	if err != nil {
-		// Log context canceled errors at a lower level if desired, or handle specific non-cancel errors
-		if !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
-			n.Logger.Error().Err(err).Msg("error stopping data sync service")
-			shutdownMultiErr = errors.Join(shutdownMultiErr, fmt.Errorf("stopping data sync service: %w", err))
-		} else {
-			n.Logger.Debug().Err(err).Msg("data sync service stop context ended") // Log cancellation as debug
-		}
-	}
-
-	// Stop P2P Client
-	err = n.p2pClient.Close()
-	if err != nil {
-		shutdownMultiErr = errors.Join(shutdownMultiErr, fmt.Errorf("closing P2P client: %w", err))
 	}
 
 	// Shutdown Prometheus Server
 	if n.prometheusSrv != nil {
-		err = n.prometheusSrv.Shutdown(shutdownCtx)
+		err := n.prometheusSrv.Shutdown(shutdownCtx)
 		// http.ErrServerClosed is expected on graceful shutdown
 		if err != nil && !errors.Is(err, http.ErrServerClosed) {
 			shutdownMultiErr = errors.Join(shutdownMultiErr, fmt.Errorf("shutting down Prometheus server: %w", err))
@@ -403,7 +315,7 @@ func (n *FullNode) Run(parentCtx context.Context) error {
 
 	// Shutdown Pprof Server
 	if n.pprofSrv != nil {
-		err = n.pprofSrv.Shutdown(shutdownCtx)
+		err := n.pprofSrv.Shutdown(shutdownCtx)
 		if err != nil && !errors.Is(err, http.ErrServerClosed) {
 			shutdownMultiErr = errors.Join(shutdownMultiErr, fmt.Errorf("shutting down pprof server: %w", err))
 		} else {
@@ -411,30 +323,11 @@ func (n *FullNode) Run(parentCtx context.Context) error {
 		}
 	}
 
-	// Shutdown RPC Server
-	if n.rpcServer != nil {
-		err = n.rpcServer.Shutdown(shutdownCtx)
-		if err != nil && !errors.Is(err, http.ErrServerClosed) {
-			shutdownMultiErr = errors.Join(shutdownMultiErr, fmt.Errorf("shutting down RPC server: %w", err))
-		} else {
-			n.Logger.Debug().Err(err).Msg("RPC server shutdown context ended")
-		}
-	}
-
 	// Ensure Store.Close is called last to maximize chance of data flushing
-	if err = n.Store.Close(); err != nil {
+	if err := n.Store.Close(); err != nil {
 		shutdownMultiErr = errors.Join(shutdownMultiErr, fmt.Errorf("closing store: %w", err))
 	} else {
 		n.Logger.Debug().Msg("store closed")
-	}
-
-	// Save caches if needed
-	if n.blockComponents != nil && n.blockComponents.Cache != nil {
-		if err := n.blockComponents.Cache.SaveToDisk(); err != nil {
-			shutdownMultiErr = errors.Join(shutdownMultiErr, fmt.Errorf("saving caches: %w", err))
-		} else {
-			n.Logger.Debug().Msg("caches saved")
-		}
 	}
 
 	// Log final status
@@ -470,5 +363,5 @@ func (n *FullNode) GetGenesisChunks() ([]string, error) {
 
 // IsRunning returns true if the node is running.
 func (n *FullNode) IsRunning() bool {
-	return n.blockComponents != nil
+	return n.leaderElection.IsRunning()
 }

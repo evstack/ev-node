@@ -126,6 +126,16 @@ func (d *DummyDA) Submit(_ context.Context, data [][]byte, _ float64, namespace 
 
 // Retrieve returns blobs stored at the given height and namespace.
 func (d *DummyDA) Retrieve(_ context.Context, height uint64, namespace []byte) datypes.ResultRetrieve {
+	h := d.height.Load()
+	if height > h {
+		return datypes.ResultRetrieve{
+			BaseResult: datypes.BaseResult{
+				Code:    datypes.StatusHeightFromFuture,
+				Message: datypes.ErrHeightFromFuture.Error(),
+			},
+		}
+	}
+
 	d.mu.Lock()
 	byHeight := d.blobs[height]
 	var blobs [][]byte
@@ -208,17 +218,16 @@ func (d *DummyDA) SetHeight(h uint64) {
 	d.height.Store(h)
 }
 
-// StartHeightTicker starts a goroutine that increments height at the given interval.
-// Returns a stop function that should be called to stop the ticker.
+// StartHeightTicker starts a goroutine that increments the height every interval.
+// It returns a function to stop the ticker.
 func (d *DummyDA) StartHeightTicker(interval time.Duration) func() {
 	if interval == 0 {
 		return func() {}
 	}
-
 	d.tickerMu.Lock()
 	if d.tickerStop != nil {
 		d.tickerMu.Unlock()
-		return func() {} // already running
+		return func() {}
 	}
 	d.tickerStop = make(chan struct{})
 	stopCh := d.tickerStop

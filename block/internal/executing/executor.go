@@ -5,10 +5,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"reflect"
 	"sync"
 	"sync/atomic"
 	"time"
 
+	"github.com/evstack/ev-node/pkg/raft"
 	"github.com/ipfs/go-datastore"
 	"github.com/libp2p/go-libp2p/core/crypto"
 	"github.com/rs/zerolog"
@@ -47,6 +49,9 @@ type Executor struct {
 	config  config.Config
 	genesis genesis.Genesis
 	options common.BlockOptions
+
+	// Raft consensus
+	raftNode common.RaftNode
 
 	// State management
 	lastState *atomic.Pointer[types.State]
@@ -90,6 +95,7 @@ func NewExecutor(
 	logger zerolog.Logger,
 	options common.BlockOptions,
 	errorCh chan<- error,
+	raftNode common.RaftNode,
 ) (*Executor, error) {
 	// For based sequencer, signer is optional as blocks are not signed
 	if !config.Node.BasedSequencer {
@@ -106,6 +112,9 @@ func NewExecutor(
 			return nil, common.ErrNotProposer
 		}
 	}
+	if raftNode != nil && reflect.ValueOf(raftNode).IsNil() {
+		raftNode = nil
+	}
 
 	e := &Executor{
 		store:             store,
@@ -120,6 +129,7 @@ func NewExecutor(
 		dataBroadcaster:   dataBroadcaster,
 		options:           options,
 		lastState:         &atomic.Pointer[types.State]{},
+		raftNode:          raftNode,
 		txNotifyCh:        make(chan struct{}, 1),
 		errorCh:           errorCh,
 		logger:            logger.With().Str("component", "executor").Logger(),
@@ -216,6 +226,33 @@ func (e *Executor) initializeState() error {
 		}
 	}
 
+	if e.raftNode != nil {
+		// Ensure node is fully synced before producing any blocks
+		raftState := e.raftNode.GetState()
+		if raftState.Height != 0 {
+			// Node cannot be ahead of raft - that indicates divergence
+			if state.LastBlockHeight > raftState.Height {
+				return fmt.Errorf("invalid state: local height (%d) ahead of raft (%d)", state.LastBlockHeight, raftState.Height)
+			}
+			// Node behind raft is OK - the replayer will catch it up
+			if state.LastBlockHeight < raftState.Height {
+				e.logger.Warn().
+					Uint64("local", state.LastBlockHeight).
+					Uint64("raft", raftState.Height).
+					Msg("local state behind raft, will sync during startup")
+			}
+			// If heights match, verify hashes as well (to detect divergence)
+			if state.LastBlockHeight > 0 && state.LastBlockHeight == raftState.Height {
+				header, err := e.store.GetHeader(e.ctx, state.LastBlockHeight)
+				if err != nil {
+					return fmt.Errorf("failed to get header at %d for sync check: %w", state.LastBlockHeight, err)
+				}
+				if !bytes.Equal(header.Hash(), raftState.Hash) {
+					return fmt.Errorf("invalid state: block hash mismatch at height %d: raft=%x local=%x", state.LastBlockHeight, raftState.Hash, header.Hash())
+				}
+			}
+		}
+	}
 	e.setLastState(state)
 	e.sequencer.SetDAHeight(state.DAHeight)
 
@@ -237,12 +274,43 @@ func (e *Executor) initializeState() error {
 	e.logger.Info().Uint64("height", state.LastBlockHeight).
 		Str("chain_id", state.ChainID).Msg("initialized state")
 
-	// Sync execution layer with store on startup
-	execReplayer := common.NewReplayer(e.store, e.exec, e.genesis, e.logger)
+	// Determine sync target: use Raft height if node is behind Raft consensus
 	syncTargetHeight := state.LastBlockHeight
+	if e.raftNode != nil {
+		raftState := e.raftNode.GetState()
+		if raftState.Height > syncTargetHeight {
+			syncTargetHeight = raftState.Height
+			e.logger.Info().
+				Uint64("local_height", state.LastBlockHeight).
+				Uint64("raft_height", raftState.Height).
+				Msg("using raft height as sync target")
+		}
+	}
+
+	// Sync execution layer to the target height (Raft height if behind, local height otherwise)
+	execReplayer := common.NewReplayer(e.store, e.exec, e.genesis, e.logger)
 	if err := execReplayer.SyncToHeight(e.ctx, syncTargetHeight); err != nil {
 		e.sendCriticalError(fmt.Errorf("failed to sync execution layer: %w", err))
 		return fmt.Errorf("failed to sync execution layer: %w", err)
+	}
+
+	// Double-check state against Raft after replay
+	if e.raftNode != nil {
+		raftState := e.raftNode.GetState()
+		newState, err := e.store.GetState(e.ctx)
+		if err != nil {
+			return fmt.Errorf("get state after sync: %w", err)
+		}
+
+		if newState.LastBlockHeight > 0 && newState.LastBlockHeight == raftState.Height {
+			header, err := e.store.GetHeader(e.ctx, newState.LastBlockHeight)
+			if err != nil {
+				return fmt.Errorf("get header at %d: %w", newState.LastBlockHeight, err)
+			}
+			if !bytes.Equal(header.Hash(), raftState.Hash) {
+				return fmt.Errorf("CRITICAL: content mismatch after replay! local=%x raft=%x. This indicates a 'Dual-Store Conflict' where data diverged from Raft", header.Hash(), raftState.Hash)
+			}
+		}
 	}
 
 	return nil
@@ -332,6 +400,11 @@ func (e *Executor) ProduceBlock(ctx context.Context) error {
 		}
 	}()
 
+	// Check raft cluster health before producing block - ensures quorum is available
+	if e.raftNode != nil && !e.raftNode.HasQuorum() {
+		return errors.New("raft cluster does not have quorum")
+	}
+
 	currentState := e.getLastState()
 	newHeight := currentState.LastBlockHeight + 1
 
@@ -397,6 +470,10 @@ func (e *Executor) ProduceBlock(ctx context.Context) error {
 		}
 	}
 
+	if e.raftNode != nil && !e.raftNode.HasQuorum() {
+		// The cluster may not be healthy or leadership was lost. Both processes run in parallel.
+		return errors.New("raft cluster does not have quorum")
+	}
 	newState, err := e.blockProducer.ApplyBlock(ctx, header.Header, data)
 	if err != nil {
 		return fmt.Errorf("failed to apply block: %w", err)
@@ -437,6 +514,31 @@ func (e *Executor) ProduceBlock(ctx context.Context) error {
 		return fmt.Errorf("failed to update state: %w", err)
 	}
 
+	// Propose block to raft to share state in the cluster
+	if e.raftNode != nil {
+		headerBytes, err := header.MarshalBinary()
+		if err != nil {
+			return fmt.Errorf("failed to marshal header: %w", err)
+		}
+		dataBytes, err := data.MarshalBinary()
+		if err != nil {
+			return fmt.Errorf("failed to marshal data: %w", err)
+		}
+
+		raftState := &raft.RaftBlockState{
+			Height:                      newHeight,
+			Hash:                        header.Hash(),
+			Timestamp:                   header.BaseHeader.Time,
+			Header:                      headerBytes,
+			Data:                        dataBytes,
+			LastSubmittedDaHeaderHeight: e.cache.GetLastSubmittedHeaderHeight(),
+			LastSubmittedDaDataHeight:   e.cache.GetLastSubmittedDataHeight(),
+		}
+		if err := e.raftNode.Broadcast(e.ctx, raftState); err != nil {
+			return fmt.Errorf("failed to propose block to raft: %w", err)
+		}
+		e.logger.Debug().Uint64("height", newHeight).Msg("proposed block to raft")
+	}
 	if err := batch.Commit(); err != nil {
 		return fmt.Errorf("failed to commit batch: %w", err)
 	}
@@ -705,6 +807,43 @@ func (e *Executor) recordBlockMetrics(newState types.State, data *types.Data) {
 	e.metrics.TxsPerBlock.Observe(float64(len(data.Txs)))
 	e.metrics.BlockSizeBytes.Set(float64(data.Size()))
 	e.metrics.CommittedHeight.Set(float64(data.Metadata.Height))
+}
+
+// IsSynced checks if the last block height in the stored state matches the expected height and returns true if they are equal.
+func (e *Executor) IsSynced(expHeight uint64) bool {
+	state, err := e.store.GetState(e.ctx)
+	if err != nil {
+		return false
+	}
+	return state.LastBlockHeight == expHeight
+}
+
+// IsSyncedWithRaft checks if the local state is synced with the given raft state, including hash check.
+func (e *Executor) IsSyncedWithRaft(raftState *raft.RaftBlockState) (int, error) {
+	state, err := e.store.GetState(e.ctx)
+	if err != nil {
+		return 0, err
+	}
+
+	diff := int64(state.LastBlockHeight) - int64(raftState.Height)
+	if diff != 0 {
+		return int(diff), nil
+	}
+
+	if raftState.Height == 0 { // initial
+		return 0, nil
+	}
+	header, err := e.store.GetHeader(e.ctx, raftState.Height)
+	if err != nil {
+		e.logger.Error().Err(err).Uint64("height", raftState.Height).Msg("failed to get header for sync check")
+		return 0, fmt.Errorf("get header for sync check at height %d: %w", raftState.Height, err)
+	}
+
+	if !bytes.Equal(header.Hash(), raftState.Hash) {
+		return 0, fmt.Errorf("block hash mismatch: %s != %s", header.Hash(), raftState.Hash)
+	}
+
+	return 0, nil
 }
 
 // BatchData represents batch data from sequencer

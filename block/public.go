@@ -86,3 +86,6 @@ func NewForcedInclusionRetriever(
 ) ForcedInclusionRetriever {
 	return da.NewForcedInclusionRetriever(client, logger, cfg, daStartHeight, daEpochSize)
 }
+
+// Expose Raft types for consensus integration
+type RaftNode = common.RaftNode
