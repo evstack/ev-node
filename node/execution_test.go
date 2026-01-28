@@ -22,13 +22,20 @@ func TestBasicExecutionFlow(t *testing.T) {
 	node, cleanup := createNodeWithCleanup(t, getTestConfig(t, 1))
 	defer cleanup()
 
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	go func() {
+		_ = node.Run(ctx)
+	}()
+
 	// Wait for node initialization
 	err := waitForNodeInitialization(node)
 	require.NoError(err)
 
 	// Get the original executor to retrieve transactions
-	originalExecutor := getExecutorFromNode(t, node)
-	txs := getTransactions(t, originalExecutor, t.Context())
+	executor := getExecutorFromNode(t, node)
+	require.NotNil(executor, "Executor should not be nil")
+	txs := getTransactions(t, executor, t.Context())
 
 	// Use the generated mock executor for testing execution steps
 	mockExec := testmocks.NewMockExecutor(t)
@@ -57,10 +64,12 @@ func TestBasicExecutionFlow(t *testing.T) {
 	finalizeExecution(t, mockExec, t.Context())
 
 	require.NotEmpty(newStateRoot)
+	cancel()
+	time.Sleep(100 * time.Millisecond) // grace period for node shutdown and cleanup
 }
 
 func waitForNodeInitialization(node *FullNode) error {
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
 	ticker := time.NewTicker(100 * time.Millisecond)
@@ -69,7 +78,7 @@ func waitForNodeInitialization(node *FullNode) error {
 	for {
 		select {
 		case <-ticker.C:
-			if node.IsRunning() && node.blockComponents != nil {
+			if node.IsRunning() {
 				return nil
 			}
 		case <-ctx.Done():
@@ -79,13 +88,23 @@ func waitForNodeInitialization(node *FullNode) error {
 }
 
 func getExecutorFromNode(t *testing.T, node *FullNode) coreexecutor.Executor {
-	if node.blockComponents != nil && node.blockComponents.Executor != nil {
-		// Return the underlying core executor from the block executor
-		// This is a test-only access pattern
-		t.Skip("Direct executor access not available through block components")
-		return nil
+	le := node.leaderElection
+	sle, ok := le.(*singleRoleElector)
+	if !ok {
+		t.Fatal("Leader election is not singleRoleElector")
 	}
-	t.Skip("getExecutorFromNode needs block components with executor")
+	state := sle.state()
+	if state == nil {
+		t.Fatal("failoverState is nil")
+	}
+	bc := state.bc
+	if bc == nil {
+		t.Fatal("blockComponents is nil")
+	}
+	if bc.Executor != nil {
+		return bc.Executor.GetCoreExecutor()
+	}
+	t.Fatal("Executor not found in block components")
 	return nil
 }
 

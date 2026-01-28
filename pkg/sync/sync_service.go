@@ -389,6 +389,11 @@ func (syncService *SyncService[H]) startSubscriber(ctx context.Context) error {
 	return nil
 }
 
+// Height returns the current height stored
+func (s *SyncService[H]) Height() uint64 {
+	return s.store.Height()
+}
+
 // initFromP2PWithRetry initializes the syncer from P2P with a retry mechanism.
 // It inspects the local store to determine the first height to request:
 //   - when the store already contains items, it reuses the latest height as the starting point;

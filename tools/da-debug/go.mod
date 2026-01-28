@@ -4,14 +4,14 @@ go 1.25.0
 
 require (
 	github.com/celestiaorg/go-square/v3 v3.0.2
-	github.com/evstack/ev-node v1.0.0-beta.6
+	github.com/evstack/ev-node v1.0.0-rc.1
 	github.com/rs/zerolog v1.34.0
 	github.com/spf13/cobra v1.10.2
 	google.golang.org/protobuf v1.36.11
 )
 
 require (
-	github.com/celestiaorg/go-header v0.8.0 // indirect
+	github.com/celestiaorg/go-header v0.8.1 // indirect
 	github.com/celestiaorg/go-square/merkle v0.0.0-20240627094109-7d01436067a3 // indirect
 	github.com/celestiaorg/nmt v0.24.2 // indirect
 	github.com/decred/dcrd/dcrec/secp256k1/v4 v4.4.0 // indirect
@@ -54,5 +54,3 @@ require (
 	golang.org/x/xerrors v0.0.0-20240903120638-7835f813f4da // indirect
 	lukechampine.com/blake3 v1.4.1 // indirect
 )
-
-replace github.com/evstack/ev-node => ../..

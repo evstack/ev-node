@@ -4,10 +4,7 @@ package docker_e2e
 
 import (
 	"context"
-	"fmt"
 	"math/big"
-	"net"
-	"net/http"
 	"os"
 	"strings"
 	"testing"
@@ -15,7 +12,6 @@ import (
 
 	"github.com/celestiaorg/tastora/framework/docker/container"
 	"github.com/celestiaorg/tastora/framework/docker/evstack/evmsingle"
-	"github.com/celestiaorg/tastora/framework/docker/evstack/reth"
 	tastoratypes "github.com/celestiaorg/tastora/framework/types"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/ethclient"
@@ -35,17 +31,13 @@ const (
 // EVMSingleUpgradeTestSuite embeds DockerTestSuite to reuse infrastructure setup.
 type EVMSingleUpgradeTestSuite struct {
 	DockerTestSuite
-	rethNode          *reth.Node
-	evmSingleChain    *evmsingle.Chain
-	evmSingleNode     *evmsingle.Node
-	ethClient         *ethclient.Client
-	daAddress         string
-	evmEngineURL      string
-	evmEthURL         string
-	evmEthURLExternal string
-	jwtSecret         string
-	rethGenesisHash   string
-	txNonce           uint64
+
+	reth           RethSetup
+	daAddress      string
+	evmSingleChain *evmsingle.Chain
+	evmSingleNode  *evmsingle.Node
+	ethClient      *ethclient.Client
+	txNonce        uint64
 }
 
 func TestEVMSingleUpgradeSuite(t *testing.T) {
@@ -63,32 +55,12 @@ func (s *EVMSingleUpgradeTestSuite) TestEVMSingleUpgrade() {
 	s.setupDockerEnvironment()
 
 	s.Run("setup_celestia_and_DA_bridge", func() {
-		s.celestia = s.CreateChain()
-		s.Require().NoError(s.celestia.Start(ctx))
-		s.T().Log("Celestia chain started")
-
-		s.daNetwork = s.CreateDANetwork()
-		bridgeNode := s.daNetwork.GetBridgeNodes()[0]
-
-		chainID := s.celestia.GetChainID()
-		genesisHash := s.getGenesisHash(ctx)
-		networkInfo, err := s.celestia.GetNodes()[0].GetNetworkInfo(ctx)
-		s.Require().NoError(err)
-
-		s.StartBridgeNode(ctx, bridgeNode, chainID, genesisHash, networkInfo.Internal.Hostname)
-
-		daWallet, err := bridgeNode.GetWallet()
-		s.Require().NoError(err)
-		s.FundWallet(ctx, daWallet, 100_000_000_00)
-
-		bridgeNetworkInfo, err := bridgeNode.GetNetworkInfo(ctx)
-		s.Require().NoError(err)
-		s.daAddress = fmt.Sprintf("http://%s:%s", bridgeNetworkInfo.Internal.IP, bridgeNetworkInfo.Internal.Ports.RPC)
+		s.daAddress = s.SetupCelestiaAndDABridge(ctx)
 		s.T().Log("DA bridge node started and funded")
 	})
 
 	s.Run("setup_reth_node", func() {
-		s.setupRethNode(ctx)
+		s.reth = s.SetupRethNode(ctx)
 		s.T().Log("Reth node started")
 	})
 
@@ -98,7 +70,7 @@ func (s *EVMSingleUpgradeTestSuite) TestEVMSingleUpgrade() {
 	})
 
 	s.Run("create_ethereum_client", func() {
-		s.setupEthClient(ctx)
+		s.ethClient = s.SetupEthClient(ctx, s.reth.EthURLExternal, evmChainID)
 		s.T().Log("Ethereum client connected to Reth")
 	})
 
@@ -126,52 +98,13 @@ func (s *EVMSingleUpgradeTestSuite) TestEVMSingleUpgrade() {
 	})
 }
 
-// setupRethNode creates and starts a Reth node, waiting for it to be ready.
-func (s *EVMSingleUpgradeTestSuite) setupRethNode(ctx context.Context) {
-	rethNode, err := reth.NewNodeBuilder(s.T()).
-		WithGenesis([]byte(reth.DefaultEvolveGenesisJSON())).
-		WithDockerClient(s.dockerClient).
-		WithDockerNetworkID(s.dockerNetworkID).
-		Build(ctx)
-	s.Require().NoError(err)
-
-	s.Require().NoError(rethNode.Start(ctx))
-
-	// wait for reth to be ready
-	s.Require().Eventually(func() bool {
-		networkInfo, err := rethNode.GetNetworkInfo(ctx)
-		if err != nil {
-			return false
-		}
-		conn, err := net.DialTimeout("tcp", net.JoinHostPort("0.0.0.0", networkInfo.External.Ports.RPC), time.Second)
-		if err != nil {
-			return false
-		}
-		conn.Close()
-
-		// internal URLs for container-to-container communication (evm -> reth)
-		s.evmEngineURL = fmt.Sprintf("http://%s:%s", networkInfo.Internal.Hostname, networkInfo.Internal.Ports.Engine)
-		s.evmEthURL = fmt.Sprintf("http://%s:%s", networkInfo.Internal.Hostname, networkInfo.Internal.Ports.RPC)
-		// external URL for test code -> reth communication
-		s.evmEthURLExternal = fmt.Sprintf("http://0.0.0.0:%s", networkInfo.External.Ports.RPC)
-		return true
-	}, 60*time.Second, 2*time.Second, "reth did not start in time")
-
-	genesisHash, err := rethNode.GenesisHash(ctx)
-	s.Require().NoError(err)
-
-	s.rethNode = rethNode
-	s.jwtSecret = rethNode.JWTSecretHex()
-	s.rethGenesisHash = genesisHash
-}
-
 // setupEVMSingle creates and starts an evm node with the specified version.
 func (s *EVMSingleUpgradeTestSuite) setupEVMSingle(ctx context.Context, image container.Image) {
 	nodeConfig := evmsingle.NewNodeConfigBuilder().
-		WithEVMEngineURL(s.evmEngineURL).
-		WithEVMETHURL(s.evmEthURL).
-		WithEVMJWTSecret(s.jwtSecret).
-		WithEVMGenesisHash(s.rethGenesisHash).
+		WithEVMEngineURL(s.reth.EngineURL).
+		WithEVMETHURL(s.reth.EthURL).
+		WithEVMJWTSecret(s.reth.JWTSecret).
+		WithEVMGenesisHash(s.reth.GenesisHash).
 		WithEVMBlockTime("1s").
 		WithEVMSignerPassphrase("secret").
 		WithDAAddress(s.daAddress).
@@ -195,43 +128,10 @@ func (s *EVMSingleUpgradeTestSuite) setupEVMSingle(ctx context.Context, image co
 
 	evmSingleNode := evmSingleChain.Nodes()[0]
 	s.Require().NoError(evmSingleNode.Start(ctx))
-
-	// wait for evm to be healthy
-	s.waitForEVMSingleHealthy(ctx, evmSingleNode)
+	s.WaitForEVMHealthy(ctx, evmSingleNode)
 
 	s.evmSingleChain = evmSingleChain
 	s.evmSingleNode = evmSingleNode
-}
-
-// waitForEVMSingleHealthy waits for evm to respond to health checks.
-func (s *EVMSingleUpgradeTestSuite) waitForEVMSingleHealthy(ctx context.Context, node *evmsingle.Node) {
-	networkInfo, err := node.GetNetworkInfo(ctx)
-	s.Require().NoError(err)
-
-	healthURL := fmt.Sprintf("http://0.0.0.0:%s/health/live", networkInfo.External.Ports.RPC)
-	s.Require().Eventually(func() bool {
-		req, _ := http.NewRequestWithContext(ctx, http.MethodGet, healthURL, nil)
-		resp, err := http.DefaultClient.Do(req)
-		if err != nil {
-			return false
-		}
-		defer resp.Body.Close()
-		return resp.StatusCode == http.StatusOK
-	}, 60*time.Second, 2*time.Second, "evm did not become healthy")
-}
-
-// setupEthClient creates an Ethereum client and verifies connectivity.
-func (s *EVMSingleUpgradeTestSuite) setupEthClient(ctx context.Context) {
-	// use external URL since test code runs on host, not in docker network
-	ethClient, err := ethclient.Dial(s.evmEthURLExternal)
-	s.Require().NoError(err)
-
-	// verify connection by getting chain ID
-	chainID, err := ethClient.ChainID(ctx)
-	s.Require().NoError(err)
-	s.Require().Equal(evmChainID, chainID.String())
-
-	s.ethClient = ethClient
 }
 
 // submitPreUpgradeTxs submits and verifies multiple transactions before upgrade.
@@ -244,31 +144,18 @@ func (s *EVMSingleUpgradeTestSuite) submitPreUpgradeTxs(ctx context.Context, txC
 		s.Require().NoError(err)
 		txHashes = append(txHashes, tx.Hash())
 		s.T().Logf("Submitted pre-upgrade tx %d: %s", i, tx.Hash().Hex())
-		s.waitForTxIncluded(ctx, tx.Hash())
+		s.WaitForTxIncluded(ctx, s.ethClient, tx.Hash())
 	}
 
 	return txHashes
 }
 
-// waitForTxIncluded waits for a transaction to be included in a block successfully.
-func (s *EVMSingleUpgradeTestSuite) waitForTxIncluded(ctx context.Context, txHash common.Hash) {
-	s.Require().Eventually(func() bool {
-		receipt, err := s.ethClient.TransactionReceipt(ctx, txHash)
-		if err != nil {
-			return false
-		}
-		return receipt.Status == 1
-	}, 30*time.Second, time.Second, "transaction %s was not included", txHash.Hex())
-}
-
 // performUpgrade performs the upgrade by removing the container, updating the image, and restarting.
 func (s *EVMSingleUpgradeTestSuite) performUpgrade(ctx context.Context) {
-	// remove container but preserve volumes
 	err := s.evmSingleNode.Remove(ctx, tastoratypes.WithPreserveVolumes())
 	s.Require().NoError(err, "failed to remove container with volume preservation")
 	s.T().Log("Removed container with volume preservation")
 
-	// image to upgrade to will be passed via environment variables
 	newImage := getEVMSingleImage()
 
 	s.T().Logf("Upgrading to version: %s", newImage.Version)
@@ -277,12 +164,9 @@ func (s *EVMSingleUpgradeTestSuite) performUpgrade(ctx context.Context) {
 		node.Image = newImage
 	}
 
-	// start with new version on top of the same docker volume.
 	err = s.evmSingleNode.Start(ctx)
 	s.Require().NoError(err, "failed to start upgraded node")
-
-	// wait for health check
-	s.waitForEVMSingleHealthy(ctx, s.evmSingleNode)
+	s.WaitForEVMHealthy(ctx, s.evmSingleNode)
 
 	s.T().Logf("Upgraded node started successfully with version: %s", newImage.Version)
 }
@@ -306,15 +190,12 @@ func (s *EVMSingleUpgradeTestSuite) submitAndVerifyPostUpgradeTx(ctx context.Con
 	s.Require().NoError(err)
 	s.T().Logf("Submitted post-upgrade tx: %s", tx.Hash().Hex())
 
-	// wait for transaction to be included
-	s.waitForTxIncluded(ctx, tx.Hash())
+	s.WaitForTxIncluded(ctx, s.ethClient, tx.Hash())
 
-	// get final receipt to check block number
 	receipt, err := s.ethClient.TransactionReceipt(ctx, tx.Hash())
 	s.Require().NoError(err)
 	s.T().Logf("Post-upgrade tx included in block %d", receipt.BlockNumber.Uint64())
 
-	// verify block production is continuing
 	initialBlock, err := s.ethClient.BlockNumber(ctx)
 	s.Require().NoError(err)
 
@@ -354,6 +235,5 @@ func getEVMSingleImage() container.Image {
 		upgradeVersion = "local-dev"
 	}
 
-	// evm runs as root (no specific user in Dockerfile), so UIDGID is empty
 	return container.NewImage(repo, upgradeVersion, "")
 }

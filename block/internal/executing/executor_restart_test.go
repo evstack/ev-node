@@ -2,6 +2,7 @@ package executing
 
 import (
 	"context"
+	"fmt"
 	"testing"
 	"time"
 
@@ -66,6 +67,7 @@ func TestExecutor_RestartUsesPendingHeader(t *testing.T) {
 		zerolog.Nop(),
 		common.DefaultBlockOptions(),
 		make(chan error, 1),
+		nil,
 	)
 	require.NoError(t, err)
 
@@ -188,6 +190,7 @@ func TestExecutor_RestartUsesPendingHeader(t *testing.T) {
 		zerolog.Nop(),
 		common.DefaultBlockOptions(),
 		make(chan error, 1),
+		nil,
 	)
 	require.NoError(t, err)
 
@@ -260,6 +263,8 @@ func TestExecutor_RestartNoPendingHeader(t *testing.T) {
 	cfg.Node.BlockTime = config.DurationWrapper{Duration: 10 * time.Millisecond}
 	cfg.Node.MaxPendingHeadersAndData = 1000
 
+	const numBlocks = 5
+
 	gen := genesis.Genesis{
 		ChainID:         "test-chain",
 		InitialHeight:   1,
@@ -289,35 +294,41 @@ func TestExecutor_RestartNoPendingHeader(t *testing.T) {
 		zerolog.Nop(),
 		common.DefaultBlockOptions(),
 		make(chan error, 1),
+		nil,
 	)
 	require.NoError(t, err)
 
 	initStateRoot := []byte("init_root")
 	mockExec1.EXPECT().InitChain(mock.Anything, mock.AnythingOfType("time.Time"), gen.InitialHeight, gen.ChainID).
 		Return(initStateRoot, nil).Once()
-	mockSeq1.EXPECT().SetDAHeight(uint64(0)).Return().Once()
+	mockSeq1.EXPECT().SetDAHeight(uint64(0)).Return().Maybe()
+	mockSeq1.EXPECT().GetDAHeight().Return(uint64(0)).Maybe()
 	require.NoError(t, exec1.initializeState())
 
-	exec1.ctx, exec1.cancel = context.WithCancel(context.Background())
+	exec1.ctx, exec1.cancel = context.WithCancel(t.Context())
 
-	// Produce first block
+	// Produce n blocks
 	mockSeq1.EXPECT().GetNextBatch(mock.Anything, mock.AnythingOfType("sequencer.GetNextBatchRequest")).
 		RunAndReturn(func(ctx context.Context, req coreseq.GetNextBatchRequest) (*coreseq.GetNextBatchResponse, error) {
 			return &coreseq.GetNextBatchResponse{
 				Batch: &coreseq.Batch{
-					Transactions: [][]byte{[]byte("tx1")},
+					Transactions: [][]byte{[]byte("any_tx")},
 				},
 				Timestamp: time.Now(),
 			}, nil
-		}).Once()
+		}).Times(numBlocks)
 
-	mockExec1.EXPECT().ExecuteTxs(mock.Anything, mock.Anything, uint64(1), mock.AnythingOfType("time.Time"), initStateRoot).
-		Return([]byte("new_root_1"), nil).Once()
+	lastStateRoot := initStateRoot
+	for i := range numBlocks {
+		newStateRoot := []byte(fmt.Sprintf("new_root_%d", i+1))
+		mockExec1.EXPECT().ExecuteTxs(mock.Anything, mock.Anything, gen.InitialHeight+uint64(i), mock.AnythingOfType("time.Time"), lastStateRoot).
+			Return(newStateRoot, nil).Once()
+		lastStateRoot = newStateRoot
 
-	mockSeq1.EXPECT().GetDAHeight().Return(uint64(0)).Once()
-
-	err = exec1.ProduceBlock(exec1.ctx)
-	require.NoError(t, err)
+		err = exec1.ProduceBlock(exec1.ctx)
+		require.NoError(t, err)
+	}
+	require.Equal(t, uint64(numBlocks), exec1.getLastState().LastBlockHeight)
 
 	// Stop first executor
 	exec1.cancel()
@@ -344,17 +355,18 @@ func TestExecutor_RestartNoPendingHeader(t *testing.T) {
 		zerolog.Nop(),
 		common.DefaultBlockOptions(),
 		make(chan error, 1),
+		nil,
 	)
 	require.NoError(t, err)
 
 	mockSeq2.EXPECT().SetDAHeight(uint64(0)).Return().Once()
 	require.NoError(t, exec2.initializeState())
-	exec2.ctx, exec2.cancel = context.WithCancel(context.Background())
+	exec2.ctx, exec2.cancel = context.WithCancel(t.Context())
 	defer exec2.cancel()
 
 	// Verify state loaded correctly
 	state := exec2.getLastState()
-	assert.Equal(t, uint64(1), state.LastBlockHeight)
+	require.Equal(t, uint64(numBlocks), state.LastBlockHeight)
 
 	// Now produce next block - should go through normal sequencer flow since no pending block
 	mockSeq2.EXPECT().GetNextBatch(mock.Anything, mock.AnythingOfType("sequencer.GetNextBatchRequest")).
@@ -367,8 +379,8 @@ func TestExecutor_RestartNoPendingHeader(t *testing.T) {
 			}, nil
 		}).Once()
 
-	mockExec2.EXPECT().ExecuteTxs(mock.Anything, mock.Anything, uint64(2), mock.AnythingOfType("time.Time"), []byte("new_root_1")).
-		Return([]byte("new_root_2"), nil).Once()
+	mockExec2.EXPECT().ExecuteTxs(mock.Anything, mock.Anything, uint64(numBlocks+1), mock.AnythingOfType("time.Time"), lastStateRoot).
+		Return([]byte("new_root_after_restart"), nil).Once()
 
 	mockSeq2.EXPECT().GetDAHeight().Return(uint64(0)).Once()
 
@@ -378,7 +390,7 @@ func TestExecutor_RestartNoPendingHeader(t *testing.T) {
 	// Verify normal operation
 	h, err := memStore.Height(context.Background())
 	require.NoError(t, err)
-	assert.Equal(t, uint64(2), h)
+	assert.Equal(t, uint64(numBlocks+1), h)
 
 	// Verify sequencer was called (normal flow)
 	mockSeq2.AssertCalled(t, "GetNextBatch", mock.Anything, mock.AnythingOfType("sequencer.GetNextBatchRequest"))

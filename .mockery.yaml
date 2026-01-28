@@ -23,6 +23,13 @@ packages:
           dir: ./test/mocks
           pkgname: mocks
           filename: p2p.go
+  github.com/evstack/ev-node/pkg/raft:
+    interfaces:
+      sourceNode:
+        config:
+          dir: ./pkg/raft
+          pkgname: raft
+          filename: node_mock.go
   github.com/evstack/ev-node/pkg/store:
     interfaces:
       Store:
