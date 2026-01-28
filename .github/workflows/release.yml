@@ -2,7 +2,13 @@ name: Release
 on:
   push:
     tags:
-      - "**/v*.*.*" # Matches tags like evm/single/v0.2.0, testapp/v0.4.0, etc.
+      - "**/v*.*.*" # Matches tags like apps/evm/single/v0.2.0, apps/testapp/v0.4.0, etc.
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag to release (e.g., apps/evm/single/v0.2.0, apps/testapp/v0.4.0) - Must match Go tag."
+        required: true
+        type: string
 
 permissions: {}
 jobs:
@@ -23,7 +29,12 @@ jobs:
       - name: Parse tag and validate app
         id: parse
         run: |
-          TAG="${{ github.ref_name }}"
+          # Use input tag for workflow_dispatch, otherwise use ref_name
+          if [ -n "${{ inputs.tag }}" ]; then
+            TAG="${{ inputs.tag }}"
+          else
+            TAG="${{ github.ref_name }}"
+          fi
           echo "Processing tag: $TAG"
 
           # Extract version (everything after the last /)
