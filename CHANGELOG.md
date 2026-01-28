@@ -9,11 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## v1.0.0-rc.1
+
 ### Added
 
 - Implement forced inclusion and based sequencing ([#2797](https://github.com/evstack/ev-node/pull/2797))
-  This changes requires to add a `da_epoch_forced_inclusion` field in `genesis.json` file.
-  To enable this feature, set the force inclusion namespace in the `evnode.yaml`.
+  **This change requires to add a `da_epoch_forced_inclusion` field in node's `genesis.json` file.**
+  To enable this feature, set the force inclusion namespace in the `evnode.yaml` (enableable from rc.2).
 - Added `post-tx` command and force inclusion server to submit transaction directly to the DA layer. ([#2888](https://github.com/evstack/ev-node/pull/2888))
   Additionally, modified the core package to support marking transactions as forced included transactions.
   The execution client ought to perform basic validation on those transactions as they have skipped the execution client's mempool.
