@@ -4,7 +4,7 @@ go 1.25.6
 
 require (
 	github.com/celestiaorg/go-square/v3 v3.0.2
-	github.com/evstack/ev-node v1.0.0-beta.6
+	github.com/evstack/ev-node v1.0.0-rc.1
 	github.com/rs/zerolog v1.34.0
 	github.com/spf13/cobra v1.10.2
 	google.golang.org/protobuf v1.36.11
@@ -54,5 +54,3 @@ require (
 	golang.org/x/xerrors v0.0.0-20240903120638-7835f813f4da // indirect
 	lukechampine.com/blake3 v1.4.1 // indirect
 )
-
-replace github.com/evstack/ev-node => ../..
