@@ -2,11 +2,9 @@ module github.com/evstack/ev-node/apps/testapp
 
 go 1.25.0
 
-replace github.com/evstack/ev-node => ../../.
-
 require (
 	github.com/celestiaorg/go-header v0.8.1
-	github.com/evstack/ev-node v1.0.0-beta.10
+	github.com/evstack/ev-node v1.0.0-rc.1
 	github.com/evstack/ev-node/core v1.0.0-rc.1
 	github.com/ipfs/go-datastore v0.9.0
 	github.com/rs/zerolog v1.34.0
