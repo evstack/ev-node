@@ -59,8 +59,9 @@ jobs:
 
           echo "dockerfile=$APP_PATH/Dockerfile" >> $GITHUB_OUTPUT
 
-          # Generate image name from app path (replace / with -)
-          IMAGE_NAME="ev-node-${APP_PATH//\//-}"
+          # Generate image name from app path (strip apps/ prefix, replace / with -)
+          IMAGE_PATH="${APP_PATH#apps/}"
+          IMAGE_NAME="ev-node-${IMAGE_PATH//\//-}"
           echo "image-name=$IMAGE_NAME" >> $GITHUB_OUTPUT
 
           echo "::notice::Building $IMAGE_NAME version $VERSION from $APP_PATH"
