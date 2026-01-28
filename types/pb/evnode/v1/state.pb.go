@@ -123,6 +123,99 @@ func (x *State) GetLastHeaderHash() []byte {
 	return nil
 }
 
+// RaftBlockState represents a replicated block state
+type RaftBlockState struct {
+	state                       protoimpl.MessageState `protogen:"open.v1"`
+	Height                      uint64                 `protobuf:"varint,1,opt,name=height,proto3" json:"height,omitempty"`
+	LastSubmittedDaHeaderHeight uint64                 `protobuf:"varint,2,opt,name=last_submitted_da_header_height,json=lastSubmittedDaHeaderHeight,proto3" json:"last_submitted_da_header_height,omitempty"`
+	LastSubmittedDaDataHeight   uint64                 `protobuf:"varint,3,opt,name=last_submitted_da_data_height,json=lastSubmittedDaDataHeight,proto3" json:"last_submitted_da_data_height,omitempty"`
+	Hash                        []byte                 `protobuf:"bytes,4,opt,name=hash,proto3" json:"hash,omitempty"`
+	Timestamp                   uint64                 `protobuf:"varint,5,opt,name=timestamp,proto3" json:"timestamp,omitempty"`
+	Header                      []byte                 `protobuf:"bytes,6,opt,name=header,proto3" json:"header,omitempty"`
+	Data                        []byte                 `protobuf:"bytes,7,opt,name=data,proto3" json:"data,omitempty"`
+	unknownFields               protoimpl.UnknownFields
+	sizeCache                   protoimpl.SizeCache
+}
+
+func (x *RaftBlockState) Reset() {
+	*x = RaftBlockState{}
+	mi := &file_evnode_v1_state_proto_msgTypes[1]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RaftBlockState) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RaftBlockState) ProtoMessage() {}
+
+func (x *RaftBlockState) ProtoReflect() protoreflect.Message {
+	mi := &file_evnode_v1_state_proto_msgTypes[1]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RaftBlockState.ProtoReflect.Descriptor instead.
+func (*RaftBlockState) Descriptor() ([]byte, []int) {
+	return file_evnode_v1_state_proto_rawDescGZIP(), []int{1}
+}
+
+func (x *RaftBlockState) GetHeight() uint64 {
+	if x != nil {
+		return x.Height
+	}
+	return 0
+}
+
+func (x *RaftBlockState) GetLastSubmittedDaHeaderHeight() uint64 {
+	if x != nil {
+		return x.LastSubmittedDaHeaderHeight
+	}
+	return 0
+}
+
+func (x *RaftBlockState) GetLastSubmittedDaDataHeight() uint64 {
+	if x != nil {
+		return x.LastSubmittedDaDataHeight
+	}
+	return 0
+}
+
+func (x *RaftBlockState) GetHash() []byte {
+	if x != nil {
+		return x.Hash
+	}
+	return nil
+}
+
+func (x *RaftBlockState) GetTimestamp() uint64 {
+	if x != nil {
+		return x.Timestamp
+	}
+	return 0
+}
+
+func (x *RaftBlockState) GetHeader() []byte {
+	if x != nil {
+		return x.Header
+	}
+	return nil
+}
+
+func (x *RaftBlockState) GetData() []byte {
+	if x != nil {
+		return x.Data
+	}
+	return nil
+}
+
 // SequencerDACheckpoint tracks the position in the DA where transactions were last processed
 type SequencerDACheckpoint struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
@@ -136,7 +229,7 @@ type SequencerDACheckpoint struct {
 
 func (x *SequencerDACheckpoint) Reset() {
 	*x = SequencerDACheckpoint{}
-	mi := &file_evnode_v1_state_proto_msgTypes[1]
+	mi := &file_evnode_v1_state_proto_msgTypes[2]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -148,7 +241,7 @@ func (x *SequencerDACheckpoint) String() string {
 func (*SequencerDACheckpoint) ProtoMessage() {}
 
 func (x *SequencerDACheckpoint) ProtoReflect() protoreflect.Message {
-	mi := &file_evnode_v1_state_proto_msgTypes[1]
+	mi := &file_evnode_v1_state_proto_msgTypes[2]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -161,7 +254,7 @@ func (x *SequencerDACheckpoint) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SequencerDACheckpoint.ProtoReflect.Descriptor instead.
 func (*SequencerDACheckpoint) Descriptor() ([]byte, []int) {
-	return file_evnode_v1_state_proto_rawDescGZIP(), []int{1}
+	return file_evnode_v1_state_proto_rawDescGZIP(), []int{2}
 }
 
 func (x *SequencerDACheckpoint) GetDaHeight() uint64 {
@@ -191,7 +284,15 @@ const file_evnode_v1_state_proto_rawDesc = "" +
 	"\x0flast_block_time\x18\x05 \x01(\v2\x1a.google.protobuf.TimestampR\rlastBlockTime\x12\x1b\n" +
 	"\tda_height\x18\x06 \x01(\x04R\bdaHeight\x12\x19\n" +
 	"\bapp_hash\x18\b \x01(\fR\aappHash\x12(\n" +
-	"\x10last_header_hash\x18\t \x01(\fR\x0elastHeaderHashJ\x04\b\a\x10\b\"O\n" +
+	"\x10last_header_hash\x18\t \x01(\fR\x0elastHeaderHashJ\x04\b\a\x10\b\"\x8e\x02\n" +
+	"\x0eRaftBlockState\x12\x16\n" +
+	"\x06height\x18\x01 \x01(\x04R\x06height\x12D\n" +
+	"\x1flast_submitted_da_header_height\x18\x02 \x01(\x04R\x1blastSubmittedDaHeaderHeight\x12@\n" +
+	"\x1dlast_submitted_da_data_height\x18\x03 \x01(\x04R\x19lastSubmittedDaDataHeight\x12\x12\n" +
+	"\x04hash\x18\x04 \x01(\fR\x04hash\x12\x1c\n" +
+	"\ttimestamp\x18\x05 \x01(\x04R\ttimestamp\x12\x16\n" +
+	"\x06header\x18\x06 \x01(\fR\x06header\x12\x12\n" +
+	"\x04data\x18\a \x01(\fR\x04data\"O\n" +
 	"\x15SequencerDACheckpoint\x12\x1b\n" +
 	"\tda_height\x18\x01 \x01(\x04R\bdaHeight\x12\x19\n" +
 	"\btx_index\x18\x02 \x01(\x04R\atxIndexB/Z-github.com/evstack/ev-node/types/pb/evnode/v1b\x06proto3"
@@ -208,16 +309,17 @@ func file_evnode_v1_state_proto_rawDescGZIP() []byte {
 	return file_evnode_v1_state_proto_rawDescData
 }
 
-var file_evnode_v1_state_proto_msgTypes = make([]protoimpl.MessageInfo, 2)
+var file_evnode_v1_state_proto_msgTypes = make([]protoimpl.MessageInfo, 3)
 var file_evnode_v1_state_proto_goTypes = []any{
 	(*State)(nil),                 // 0: evnode.v1.State
-	(*SequencerDACheckpoint)(nil), // 1: evnode.v1.SequencerDACheckpoint
-	(*Version)(nil),               // 2: evnode.v1.Version
-	(*timestamppb.Timestamp)(nil), // 3: google.protobuf.Timestamp
+	(*RaftBlockState)(nil),        // 1: evnode.v1.RaftBlockState
+	(*SequencerDACheckpoint)(nil), // 2: evnode.v1.SequencerDACheckpoint
+	(*Version)(nil),               // 3: evnode.v1.Version
+	(*timestamppb.Timestamp)(nil), // 4: google.protobuf.Timestamp
 }
 var file_evnode_v1_state_proto_depIdxs = []int32{
-	2, // 0: evnode.v1.State.version:type_name -> evnode.v1.Version
-	3, // 1: evnode.v1.State.last_block_time:type_name -> google.protobuf.Timestamp
+	3, // 0: evnode.v1.State.version:type_name -> evnode.v1.Version
+	4, // 1: evnode.v1.State.last_block_time:type_name -> google.protobuf.Timestamp
 	2, // [2:2] is the sub-list for method output_type
 	2, // [2:2] is the sub-list for method input_type
 	2, // [2:2] is the sub-list for extension type_name
@@ -237,7 +339,7 @@ func file_evnode_v1_state_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_evnode_v1_state_proto_rawDesc), len(file_evnode_v1_state_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   2,
+			NumMessages:   3,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

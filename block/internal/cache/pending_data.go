@@ -102,3 +102,6 @@ func (pd *PendingData) NumPendingData() uint64 {
 func (pd *PendingData) SetLastSubmittedDataHeight(ctx context.Context, newLastSubmittedDataHeight uint64) {
 	pd.base.setLastSubmittedHeight(ctx, newLastSubmittedDataHeight)
 }
+func (pd *PendingData) GetLastSubmittedDataHeight() uint64 {
+	return pd.base.getLastSubmittedHeight()
+}

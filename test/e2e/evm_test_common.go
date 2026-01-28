@@ -44,16 +44,24 @@ func init() {
 	flag.StringVar(&evmSingleBinaryPath, "evm-binary", "evm", "evm binary")
 }
 
-// getAvailablePort finds an available TCP port on localhost
-func getAvailablePort() (int, error) {
+// getAvailablePort finds an available TCP port on localhost and returns the listener.
+func getAvailablePort() (int, net.Listener, error) {
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
-		return 0, err
+		return 0, nil, err
 	}
-	defer listener.Close()
-
 	addr := listener.Addr().(*net.TCPAddr)
-	return addr.Port, nil
+	return addr.Port, listener, nil
+}
+
+// same as getAvailablePort but fails test if not successful
+func mustGetAvailablePort(t *testing.T) int {
+	t.Helper()
+	port, listener, err := getAvailablePort()
+	require.NoError(t, err)
+	// Helper only: close immediately as race conditions are handled by caller if needed.
+	listener.Close()
+	return port
 }
 
 // TestEndpoints holds unique port numbers for each test instance
@@ -124,33 +132,49 @@ func (te *TestEndpoints) GetFullNodeP2PAddress() string {
 	return "/ip4/127.0.0.1/tcp/" + te.FullNodeP2PPort
 }
 
-// generateTestEndpoints creates a set of unique ports for a test instance
-// Only generates ports for rollkit components; EVM engine ports will be set dynamically
+// generateTestEndpoints creates a set of unique ports for a test instance.
+// Holds listeners open until all ports are assigned to prevent OS reuse.
 func generateTestEndpoints() (*TestEndpoints, error) {
 	endpoints := &TestEndpoints{}
+	var listeners []net.Listener
+
+	defer func() {
+		for _, l := range listeners {
+			l.Close()
+		}
+	}()
+
+	getPort := func() (int, error) {
+		port, listener, err := getAvailablePort()
+		if err != nil {
+			return 0, err
+		}
+		listeners = append(listeners, listener)
+		return port, nil
+	}
 
 	// Generate unique ports for DA and rollkit components
-	daPort, err := getAvailablePort()
+	daPort, err := getPort()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get DA port: %w", err)
 	}
 
-	rollkitRPCPort, err := getAvailablePort()
+	rollkitRPCPort, err := getPort()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get rollkit RPC port: %w", err)
 	}
 
-	rollkitP2PPort, err := getAvailablePort()
+	rollkitP2PPort, err := getPort()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get rollkit P2P port: %w", err)
 	}
 
-	fullNodeP2PPort, err := getAvailablePort()
+	fullNodeP2PPort, err := getPort()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get full node P2P port: %w", err)
 	}
 
-	fullNodeRPCPort, err := getAvailablePort()
+	fullNodeRPCPort, err := getPort()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get full node RPC port: %w", err)
 	}
@@ -174,7 +198,7 @@ const (
 	RollkitRPCAddress = "http://127.0.0.1:" + RollkitRPCPort
 
 	// Test configuration
-	DefaultBlockTime   = "150ms"
+	DefaultBlockTime   = "100ms"
 	DefaultDABlockTime = "1s"
 	DefaultTestTimeout = 20 * time.Second
 	DefaultDANamespace = "evm-e2e"
@@ -310,6 +334,7 @@ func setupSequencerNode(t *testing.T, sut *SystemUnderTest, sequencerHome, jwtSe
 	// Use helper methods to get complete URLs
 	args := []string{
 		"start",
+		"--evnode.log.format", "json",
 		"--evm.jwt-secret-file", jwtSecretFile,
 		"--evm.genesis-hash", genesisHash,
 		"--evnode.node.block_time", DefaultBlockTime,
@@ -353,6 +378,7 @@ func setupSequencerNodeLazy(t *testing.T, sut *SystemUnderTest, sequencerHome, j
 	// Use helper methods to get complete URLs
 	args := []string{
 		"start",
+		"--evnode.log.format", "json",
 		"--evm.jwt-secret-file", jwtSecretFile,
 		"--evm.genesis-hash", genesisHash,
 		"--evnode.node.block_time", DefaultBlockTime,
@@ -414,6 +440,7 @@ func setupFullNode(t *testing.T, sut *SystemUnderTest, fullNodeHome, sequencerHo
 	// Use helper methods to get complete URLs
 	args := []string{
 		"start",
+		"--evnode.log.format", "json",
 		"--home", fullNodeHome,
 		"--evm.jwt-secret-file", fullNodeJwtSecretFile,
 		"--evm.genesis-hash", genesisHash,
@@ -449,21 +476,25 @@ var globalNonce uint64 = 0
 //
 // This is used in full node sync tests to verify that both nodes
 // include the same transaction in the same block number.
-func submitTransactionAndGetBlockNumber(t *testing.T, sequencerClient *ethclient.Client) (common.Hash, uint64) {
+func submitTransactionAndGetBlockNumber(t *testing.T, sequencerClients ...*ethclient.Client) (common.Hash, uint64) {
 	t.Helper()
 
 	// Submit transaction to sequencer EVM with unique nonce
 	tx := evm.GetRandomTransaction(t, TestPrivateKey, TestToAddress, DefaultChainID, DefaultGasLimit, &globalNonce)
-	require.NoError(t, sequencerClient.SendTransaction(context.Background(), tx))
+	for _, c := range sequencerClients {
+		require.NoError(t, c.SendTransaction(context.Background(), tx))
+	}
 
 	// Wait for transaction to be included and get block number
 	ctx := context.Background()
 	var txBlockNumber uint64
 	require.Eventually(t, func() bool {
-		receipt, err := sequencerClient.TransactionReceipt(ctx, tx.Hash())
-		if err == nil && receipt != nil && receipt.Status == 1 {
-			txBlockNumber = receipt.BlockNumber.Uint64()
-			return true
+		for _, c := range sequencerClients {
+			receipt, err := c.TransactionReceipt(ctx, tx.Hash())
+			if err == nil && receipt != nil && receipt.Status == 1 {
+				txBlockNumber = receipt.BlockNumber.Uint64()
+				return true
+			}
 		}
 		return false
 	}, 8*time.Second, SlowPollingInterval)
@@ -620,6 +651,7 @@ func restartDAAndSequencer(t *testing.T, sut *SystemUnderTest, sequencerHome, jw
 	jwtSecretFile := filepath.Join(sequencerHome, "jwt-secret.hex")
 	sut.ExecCmd(evmSingleBinaryPath,
 		"start",
+		"--evnode.log.format", "json",
 		"--evm.jwt-secret-file", jwtSecretFile,
 		"--evm.genesis-hash", genesisHash,
 		"--evnode.node.block_time", DefaultBlockTime,
@@ -669,6 +701,7 @@ func restartDAAndSequencerLazy(t *testing.T, sut *SystemUnderTest, sequencerHome
 	jwtSecretFile := filepath.Join(sequencerHome, "jwt-secret.hex")
 	sut.ExecCmd(evmSingleBinaryPath,
 		"start",
+		"--evnode.log.format", "json",
 		"--evm.jwt-secret-file", jwtSecretFile,
 		"--evm.genesis-hash", genesisHash,
 		"--evnode.node.block_time", DefaultBlockTime,

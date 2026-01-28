@@ -25,7 +25,6 @@ import (
 	da "github.com/evstack/ev-node/pkg/da/types"
 	"github.com/evstack/ev-node/pkg/genesis"
 	genesispkg "github.com/evstack/ev-node/pkg/genesis"
-	"github.com/evstack/ev-node/pkg/p2p"
 	"github.com/evstack/ev-node/pkg/p2p/key"
 	"github.com/evstack/ev-node/pkg/sequencers/based"
 	"github.com/evstack/ev-node/pkg/sequencers/single"
@@ -99,11 +98,6 @@ var RunCmd = &cobra.Command{
 			return err
 		}
 
-		p2pClient, err := p2p.NewClient(nodeConfig.P2P, nodeKey.PrivKey, datastore, genesis.ChainID, logger, nil)
-		if err != nil {
-			return err
-		}
-
 		// Start force inclusion API server if address is provided
 		forceInclusionAddr, err := cmd.Flags().GetString(flagForceInclusionServer)
 		if err != nil {
@@ -142,7 +136,7 @@ var RunCmd = &cobra.Command{
 			}()
 		}
 
-		return rollcmd.StartNode(logger, cmd, executor, sequencer, p2pClient, datastore, nodeConfig, genesis, node.NodeOptions{})
+		return rollcmd.StartNode(logger, cmd, executor, sequencer, nodeKey, datastore, nodeConfig, genesis, node.NodeOptions{})
 	},
 }
 

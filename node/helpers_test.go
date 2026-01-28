@@ -16,15 +16,14 @@ import (
 	coresequencer "github.com/evstack/ev-node/core/sequencer"
 	"github.com/evstack/ev-node/test/testda"
 	"github.com/ipfs/go-datastore"
-	dssync "github.com/ipfs/go-datastore/sync"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/require"
 
 	evconfig "github.com/evstack/ev-node/pkg/config"
-	"github.com/evstack/ev-node/pkg/p2p"
 	"github.com/evstack/ev-node/pkg/p2p/key"
 	remote_signer "github.com/evstack/ev-node/pkg/signer/noop"
+	"github.com/evstack/ev-node/pkg/store"
 	"github.com/evstack/ev-node/types"
 )
 
@@ -68,7 +67,7 @@ func newDummyDAClient(maxBlobSize uint64) *testda.DummyDA {
 	return getSharedDummyDA(maxBlobSize)
 }
 
-func createTestComponents(t *testing.T, config evconfig.Config) (coreexecutor.Executor, coresequencer.Sequencer, block.DAClient, *p2p.Client, datastore.Batching, *key.NodeKey, func()) {
+func createTestComponents(t *testing.T, config evconfig.Config) (coreexecutor.Executor, coresequencer.Sequencer, block.DAClient, *key.NodeKey, datastore.Batching, func()) {
 	executor := coreexecutor.NewDummyExecutor()
 	sequencer := coresequencer.NewDummySequencer()
 	daClient := newDummyDAClient(0)
@@ -79,21 +78,19 @@ func createTestComponents(t *testing.T, config evconfig.Config) (coreexecutor.Ex
 		PrivKey: genesisValidatorKey,
 		PubKey:  genesisValidatorKey.GetPublic(),
 	}
-	logger := zerolog.Nop()
-	p2pClient, err := p2p.NewClient(config.P2P, p2pKey.PrivKey, dssync.MutexWrap(datastore.NewMapDatastore()), "test-chain", logger, p2p.NopMetrics())
+	ds, err := store.NewTestInMemoryKVStore()
 	require.NoError(t, err)
-	require.NotNil(t, p2pClient)
-	ds := dssync.MutexWrap(datastore.NewMapDatastore())
 
 	stop := daClient.StartHeightTicker(config.DA.BlockTime.Duration)
-	return executor, sequencer, daClient, p2pClient, ds, p2pKey, stop
+	return executor, sequencer, daClient, p2pKey, ds, stop
 }
 
 func getTestConfig(t *testing.T, n int) evconfig.Config {
 	// Use a higher base port to reduce chances of conflicts with system services
 	startPort := 40000 // Spread port ranges further apart
 	return evconfig.Config{
-		RootDir: t.TempDir(),
+		RootDir:    t.TempDir(),
+		ClearCache: true, // Clear cache between tests to avoid interference with other tests and slow shutdown on serialization
 		Node: evconfig.NodeConfig{
 			Aggregator:               true,
 			BlockTime:                evconfig.DurationWrapper{Duration: 100 * time.Millisecond},
@@ -124,7 +121,7 @@ func newTestNode(
 	executor coreexecutor.Executor,
 	sequencer coresequencer.Sequencer,
 	daClient block.DAClient,
-	p2pClient *p2p.Client,
+	nodeKey *key.NodeKey,
 	ds datastore.Batching,
 	stopDAHeightTicker func(),
 ) (*FullNode, func()) {
@@ -133,17 +130,21 @@ func newTestNode(
 	remoteSigner, err := remote_signer.NewNoopSigner(genesisValidatorKey)
 	require.NoError(t, err)
 
+	logger := zerolog.Nop()
+	if testing.Verbose() {
+		logger = zerolog.New(zerolog.NewTestWriter(t))
+	}
 	node, err := NewNode(
 		config,
 		executor,
 		sequencer,
 		daClient,
 		remoteSigner,
-		p2pClient,
+		nodeKey,
 		genesis,
 		ds,
 		DefaultMetricsProvider(evconfig.DefaultInstrumentationConfig()),
-		zerolog.Nop(),
+		logger,
 		NodeOptions{},
 	)
 	require.NoError(t, err)
@@ -159,8 +160,8 @@ func newTestNode(
 
 func createNodeWithCleanup(t *testing.T, config evconfig.Config) (*FullNode, func()) {
 	resetSharedDummyDA()
-	executor, sequencer, daClient, p2pClient, ds, _, stopDAHeightTicker := createTestComponents(t, config)
-	return newTestNode(t, config, executor, sequencer, daClient, p2pClient, ds, stopDAHeightTicker)
+	executor, sequencer, daClient, nodeKey, ds, stopDAHeightTicker := createTestComponents(t, config)
+	return newTestNode(t, config, executor, sequencer, daClient, nodeKey, ds, stopDAHeightTicker)
 }
 
 func createNodeWithCustomComponents(
@@ -169,11 +170,11 @@ func createNodeWithCustomComponents(
 	executor coreexecutor.Executor,
 	sequencer coresequencer.Sequencer,
 	daClient block.DAClient,
-	p2pClient *p2p.Client,
+	nodeKey *key.NodeKey,
 	ds datastore.Batching,
 	stopDAHeightTicker func(),
 ) (*FullNode, func()) {
-	return newTestNode(t, config, executor, sequencer, daClient, p2pClient, ds, stopDAHeightTicker)
+	return newTestNode(t, config, executor, sequencer, daClient, nodeKey, ds, stopDAHeightTicker)
 }
 
 // Creates the given number of nodes the given nodes using the given wait group to synchronize them
@@ -192,7 +193,10 @@ func createNodesWithCleanup(t *testing.T, num int, config evconfig.Config) ([]*F
 
 	aggListenAddress := config.P2P.ListenAddress
 	aggPeers := config.P2P.Peers
-	executor, sequencer, daClient, p2pClient, ds, aggP2PKey, stopDAHeightTicker := createTestComponents(t, config)
+	executor, sequencer, daClient, aggP2PKey, ds, stopDAHeightTicker := createTestComponents(t, config)
+	if d, ok := daClient.(*testda.DummyDA); ok {
+		d.Reset()
+	}
 	aggPeerID, err := peer.IDFromPrivateKey(aggP2PKey.PrivKey)
 	require.NoError(err)
 
@@ -206,7 +210,7 @@ func createNodesWithCleanup(t *testing.T, num int, config evconfig.Config) ([]*F
 		sequencer,
 		daClient,
 		remoteSigner,
-		p2pClient,
+		aggP2PKey,
 		genesis,
 		ds,
 		DefaultMetricsProvider(evconfig.DefaultInstrumentationConfig()),
@@ -233,24 +237,25 @@ func createNodesWithCleanup(t *testing.T, num int, config evconfig.Config) ([]*F
 		}
 		config.P2P.ListenAddress = fmt.Sprintf("/ip4/127.0.0.1/tcp/%d", 40001+i)
 		config.RPC.Address = fmt.Sprintf("127.0.0.1:%d", 8001+i)
-		executor, sequencer, daClient, p2pClient, _, nodeP2PKey, stopDAHeightTicker := createTestComponents(t, config)
+		executor, sequencer, daClient, nodeP2PKey, ds, stopDAHeightTicker := createTestComponents(t, config)
+		stopDAHeightTicker()
+
 		node, err := NewNode(
 			config,
 			executor,
 			sequencer,
 			daClient,
 			nil,
-			p2pClient,
+			nodeP2PKey,
 			genesis,
-			dssync.MutexWrap(datastore.NewMapDatastore()),
+			ds,
 			DefaultMetricsProvider(evconfig.DefaultInstrumentationConfig()),
 			logger,
 			NodeOptions{},
 		)
 		require.NoError(err)
-		// Update cleanup to cancel the context instead of calling Stop
 		cleanup := func() {
-			stopDAHeightTicker()
+			// No-op: ticker already stopped
 		}
 		nodes[i], cleanups[i] = node.(*FullNode), cleanup
 		nodePeerID, err := peer.IDFromPrivateKey(nodeP2PKey.PrivKey)
@@ -290,7 +295,7 @@ func startNodeInBackground(t *testing.T, nodes []*FullNode, ctxs []context.Conte
 }
 
 // Helper to cancel all contexts and wait for goroutines with timeout
-func shutdownAndWait(t *testing.T, cancels []context.CancelFunc, wg *sync.WaitGroup, timeout time.Duration) {
+func shutdownAndWait[T ~func()](t *testing.T, cancels []T, wg *sync.WaitGroup, timeout time.Duration) {
 	for _, cancel := range cancels {
 		cancel()
 	}

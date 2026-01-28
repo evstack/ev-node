@@ -70,8 +70,8 @@ func TestReplayer_SyncToHeight_ExecutorBehind(t *testing.T) {
 		nil,
 	)
 
-	// Setup state
-	mockStore.EXPECT().GetState(mock.Anything).Return(
+	// Setup state at height 99
+	mockStore.EXPECT().GetStateAtHeight(mock.Anything, uint64(99)).Return(
 		types.State{
 			ChainID:         gen.ChainID,
 			InitialHeight:   gen.InitialHeight,
@@ -84,6 +84,12 @@ func TestReplayer_SyncToHeight_ExecutorBehind(t *testing.T) {
 	// Expect ExecuteTxs to be called for height 100
 	mockExec.On("ExecuteTxs", mock.Anything, mock.Anything, uint64(100), mock.Anything, []byte("app-hash-99")).
 		Return([]byte("app-hash-100"), nil)
+
+	// Setup batch for state persistence
+	mockBatch := mocks.NewMockBatch(t)
+	mockStore.EXPECT().NewBatch(mock.Anything).Return(mockBatch, nil)
+	mockBatch.EXPECT().UpdateState(mock.Anything).Return(nil)
+	mockBatch.EXPECT().Commit().Return(nil)
 
 	// Execute sync
 	err := syncer.SyncToHeight(ctx, targetHeight)
@@ -221,11 +227,29 @@ func TestReplayer_SyncToHeight_MultipleBlocks(t *testing.T) {
 
 	now := uint64(time.Now().UnixNano())
 
+	// First, the sync checks that the target block exists in the store (line 100 in replay.go)
+	mockStore.EXPECT().GetBlockData(mock.Anything, targetHeight).Return(
+		&types.SignedHeader{
+			Header: types.Header{
+				BaseHeader: types.BaseHeader{
+					Height:  100,
+					Time:    now + (100 * 1000000000),
+					ChainID: "test-chain",
+				},
+				AppHash: []byte("app-hash-100"),
+			},
+		},
+		&types.Data{
+			Txs: []types.Tx{[]byte("tx-100")},
+		},
+		nil,
+	).Once()
+
 	// Setup mocks for blocks 98, 99, 100
 	for height := uint64(98); height <= 100; height++ {
 		prevHeight := height - 1
 
-		// Current block data
+		// Current block data (called in replayBlock)
 		mockStore.EXPECT().GetBlockData(mock.Anything, height).Return(
 			&types.SignedHeader{
 				Header: types.Header{
@@ -259,8 +283,8 @@ func TestReplayer_SyncToHeight_MultipleBlocks(t *testing.T) {
 			nil,
 		).Once()
 
-		// State (returns the state of previous block)
-		mockStore.EXPECT().GetState(mock.Anything).Return(
+		// State at previous height
+		mockStore.EXPECT().GetStateAtHeight(mock.Anything, prevHeight).Return(
 			types.State{
 				ChainID:         gen.ChainID,
 				InitialHeight:   gen.InitialHeight,
@@ -273,10 +297,17 @@ func TestReplayer_SyncToHeight_MultipleBlocks(t *testing.T) {
 		// ExecuteTxs for current block
 		mockExec.On("ExecuteTxs", mock.Anything, mock.Anything, height, mock.Anything, mock.Anything).
 			Return([]byte("app-hash-"+string(rune('0'+height))), nil).Once()
+
+		// Setup batch for state persistence
+		mockBatch := mocks.NewMockBatch(t)
+		mockStore.EXPECT().NewBatch(mock.Anything).Return(mockBatch, nil).Once()
+		mockBatch.EXPECT().UpdateState(mock.Anything).Return(nil).Once()
+		mockBatch.EXPECT().Commit().Return(nil).Once()
 	}
 
 	// Execute sync
 	err := syncer.SyncToHeight(ctx, targetHeight)
+
 	require.NoError(t, err)
 
 	// Verify ExecuteTxs was called 3 times (for blocks 98, 99, 100)
@@ -325,6 +356,12 @@ func TestReplayer_ReplayBlock_FirstBlock(t *testing.T) {
 
 	// Call replayBlock directly (this is a private method, so we test it through SyncToHeight)
 	mockExec.On("GetLatestHeight", mock.Anything).Return(uint64(0), nil)
+
+	// Setup batch for state persistence
+	mockBatch := mocks.NewMockBatch(t)
+	mockStore.EXPECT().NewBatch(mock.Anything).Return(mockBatch, nil)
+	mockBatch.EXPECT().UpdateState(mock.Anything).Return(nil)
+	mockBatch.EXPECT().Commit().Return(nil)
 
 	err := syncer.SyncToHeight(ctx, 1)
 	require.NoError(t, err)
@@ -386,7 +423,7 @@ func TestReplayer_AppHashMismatch(t *testing.T) {
 		nil,
 	)
 
-	mockStore.EXPECT().GetState(mock.Anything).Return(
+	mockStore.EXPECT().GetStateAtHeight(mock.Anything, uint64(99)).Return(
 		types.State{
 			ChainID:         gen.ChainID,
 			InitialHeight:   gen.InitialHeight,
