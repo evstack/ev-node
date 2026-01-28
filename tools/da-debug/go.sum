@@ -33,6 +33,8 @@ github.com/envoyproxy/go-control-plane v0.9.0/go.mod h1:YTl/9mNaCwkRvm6d1a2C3ymF
 github.com/envoyproxy/go-control-plane v0.9.1-0.20191026205805-5f8ba28d4473/go.mod h1:YTl/9mNaCwkRvm6d1a2C3ymFceY/DCBVvsKhRF0iEA4=
 github.com/envoyproxy/go-control-plane v0.9.4/go.mod h1:6rpuAdCZL397s3pYoYcLgu1mIlRU8Am5FuJP05cCM98=
 github.com/envoyproxy/protoc-gen-validate v0.1.0/go.mod h1:iSmxcyjqTsJpI2R4NaDN7+kN2VEUnK/pcBlmesArF7c=
+github.com/evstack/ev-node v1.0.0-rc.1 h1:MO7DT3y1X4WK7pTgl/867NroqhXJ/oe2NbmvMr3jqq8=
+github.com/evstack/ev-node v1.0.0-rc.1/go.mod h1:JtbvY2r6k6ZhGYMeDNZk7cx6ALj3d0f6dVyyJmJHBd4=
 github.com/filecoin-project/go-clock v0.1.0 h1:SFbYIM75M8NnFm1yMHhN9Ahy3W5bEZV9gd6MPfXbKVU=
 github.com/filecoin-project/go-clock v0.1.0/go.mod h1:4uB/O4PvOjlx1VCMdZ9MyDZXRm//gkj1ELEbxfI1AZs=
 github.com/filecoin-project/go-jsonrpc v0.10.0 h1:gZc1thGVD5Khg5Gp1UJibRWZrnNBEP1iFrGOTn0w5TE=
