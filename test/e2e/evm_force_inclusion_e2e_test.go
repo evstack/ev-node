@@ -284,7 +284,7 @@ func setupMaliciousSequencer(t *testing.T, sut *SystemUnderTest, nodeHome string
 	t.Helper()
 
 	// Use common setup with full node support
-	jwtSecret, _, genesisHash, endpoints := setupCommonEVMTest(t, sut, true)
+	jwtSecret, fullNodeJwtSecret, genesisHash, endpoints := setupCommonEVMTest(t, sut, true)
 
 	passphraseFile := createPassphraseFile(t, nodeHome)
 	jwtSecretFile := createJWTSecretFile(t, nodeHome, jwtSecret)
@@ -321,7 +321,7 @@ func setupMaliciousSequencer(t *testing.T, sut *SystemUnderTest, nodeHome string
 	sut.ExecCmd(evmSingleBinaryPath, seqArgs...)
 	sut.AwaitNodeUp(t, endpoints.GetRollkitRPCAddress(), NodeStartupTimeout)
 
-	return genesisHash, jwtSecret, endpoints
+	return genesisHash, fullNodeJwtSecret, endpoints
 }
 
 // setupFullNodeWithForceInclusionCheck sets up a full node that WILL verify forced inclusion txs
@@ -400,8 +400,6 @@ func setupFullNodeWithForceInclusionCheck(t *testing.T, sut *SystemUnderTest, fu
 // Note: This test simulates the scenario by having the sequencer configured to
 // listen to the wrong namespace, while we submit directly to the correct namespace.
 func TestEvmSyncerMaliciousSequencerForceInclusionE2E(t *testing.T) {
-	t.Skip()
-
 	sut := NewSystemUnderTest(t)
 	workDir := t.TempDir()
 	sequencerHome := filepath.Join(workDir, "sequencer")
