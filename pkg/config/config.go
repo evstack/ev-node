@@ -266,7 +266,7 @@ type NodeConfig struct {
 	// When enabled, the node will periodically prune old block data (headers, data,
 	// signatures, and hash index) from the local store while keeping recent history.
 	PruningEnabled    bool   `mapstructure:"pruning_enabled" yaml:"pruning_enabled" comment:"Enable height-based pruning of stored block data. When disabled, all blocks are kept (archive mode)."`
-	PruningKeepRecent uint64 `mapstructure:"pruning_keep_recent" yaml:"pruning_keep_recent" comment:"Number of most recent blocks to retain. Older blocks will have their header/data/signature removed from the local store. 0 means keep all blocks."`
+	PruningKeepRecent uint64 `mapstructure:"pruning_keep_recent" yaml:"pruning_keep_recent" comment:"Number of most recent blocks to retain when pruning is enabled. Must be > 0 when pruning is enabled; set pruning_enabled=false to keep all blocks (archive mode)."`
 	PruningInterval   uint64 `mapstructure:"pruning_interval" yaml:"pruning_interval" comment:"Run pruning every N blocks. Must be >= 1 when pruning is enabled."`
 }
 
@@ -460,7 +460,7 @@ func AddFlags(cmd *cobra.Command) {
 	cmd.Flags().Duration(FlagScrapeInterval, def.Node.ScrapeInterval.Duration, "interval at which the reaper polls the execution layer for new transactions")
 	// Pruning configuration flags
 	cmd.Flags().Bool(FlagPrefixEvnode+"node.pruning_enabled", def.Node.PruningEnabled, "enable height-based pruning of stored block data (headers, data, signatures, index)")
-	cmd.Flags().Uint64(FlagPrefixEvnode+"node.pruning_keep_recent", def.Node.PruningKeepRecent, "number of most recent blocks to retain when pruning is enabled (0 = keep all)")
+	cmd.Flags().Uint64(FlagPrefixEvnode+"node.pruning_keep_recent", def.Node.PruningKeepRecent, "number of most recent blocks to retain when pruning is enabled (must be > 0; disable pruning to keep all blocks)")
 	cmd.Flags().Uint64(FlagPrefixEvnode+"node.pruning_interval", def.Node.PruningInterval, "run pruning every N blocks (must be >= 1 when pruning is enabled)")
 
 	// Data Availability configuration flags
