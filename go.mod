@@ -12,7 +12,7 @@ require (
 	github.com/celestiaorg/go-square/v3 v3.0.2
 	github.com/celestiaorg/nmt v0.24.2
 	github.com/celestiaorg/utils v0.1.0
-	github.com/evstack/ev-node/core v1.0.0-beta.5
+	github.com/evstack/ev-node/core v1.0.0-rc.1
 	github.com/filecoin-project/go-jsonrpc v0.10.0
 	github.com/go-kit/kit v0.13.0
 	github.com/goccy/go-yaml v1.19.0
@@ -185,8 +185,6 @@ require (
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 	lukechampine.com/blake3 v1.4.1 // indirect
 )
-
-replace github.com/evstack/ev-node/core => ./core
 
 // pin google genproto to a single version to avoid ambiguous imports pulled by transitive deps
 replace (
