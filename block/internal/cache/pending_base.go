@@ -133,9 +133,10 @@ func (pb *pendingBase[T]) setLastSubmittedHeight(ctx context.Context, newLastSub
 		if err != nil {
 			pb.logger.Error().Err(err).Msg("failed to store height of latest item submitted to DA")
 		}
-		// Note: We don't explicitly clear the cache here. Instead, we use lazy invalidation
-		// by checking against lastHeight. This avoids O(N) iteration over the cache on every
-		// submission. The LRU will naturally evict old entries when capacity is reached.
+		// Note: We don't explicitly clear submitted entries from the cache here.
+		// Since getPending() only iterates from lastSubmitted+1, old entries are simply
+		// never accessed. The LRU will naturally evict them when capacity is reached.
+		// This avoids O(N) iteration over the cache on every submission.
 	}
 }
 
