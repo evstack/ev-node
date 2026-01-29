@@ -64,7 +64,7 @@ func (t *tracedEthRPCClient) HeaderByNumber(ctx context.Context, number *big.Int
 func (t *tracedEthRPCClient) GetTxs(ctx context.Context) ([]string, error) {
 	ctx, span := t.tracer.Start(ctx, "TxPool.GetTxs",
 		trace.WithAttributes(
-			attribute.String("method", "GetTxs"),
+			attribute.String("method", "txpoolExt_getTxs"),
 		),
 	)
 	defer span.End()
