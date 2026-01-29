@@ -546,6 +546,34 @@ func (e *Executor) ProduceBlock(ctx context.Context) error {
 	// Update in-memory state after successful commit
 	e.setLastState(newState)
 
+	// Run height-based pruning of stored block data if enabled. This is a
+	// best-effort background maintenance step and should not cause block
+	// production to fail, but it does run in the critical path and may add
+	// some latency when large ranges are pruned.
+	if e.config.Node.PruningEnabled && e.config.Node.PruningKeepRecent > 0 && e.config.Node.PruningInterval > 0 {
+		if newHeight%e.config.Node.PruningInterval == 0 {
+			// Compute the prune floor: all heights <= targetHeight are candidates
+			// for pruning of header/data/signature/index entries.
+			if newHeight > e.config.Node.PruningKeepRecent {
+				targetHeight := newHeight - e.config.Node.PruningKeepRecent
+				if err := e.store.PruneBlocks(e.ctx, targetHeight); err != nil {
+					e.logger.Error().Err(err).Uint64("target_height", targetHeight).Msg("failed to prune old block data")
+				}
+
+				// If the execution client exposes execution-metadata pruning,
+				// prune ExecMeta using the same target height. This keeps EVM
+				// execution metadata aligned with ev-node's block store pruning
+				// while remaining a no-op for execution environments that don't
+				// implement ExecMetaPruner (e.g. ABCI-based executors).
+				if pruner, ok := e.exec.(coreexecutor.ExecMetaPruner); ok {
+					if err := pruner.PruneExecMeta(e.ctx, targetHeight); err != nil {
+						e.logger.Error().Err(err).Uint64("target_height", targetHeight).Msg("failed to prune execution metadata")
+					}
+				}
+			}
+		}
+	}
+
 	// broadcast header and data to P2P network
 	g, broadcastCtx := errgroup.WithContext(ctx)
 	g.Go(func() error { return e.headerBroadcaster.WriteToStoreAndBroadcast(broadcastCtx, header) })
