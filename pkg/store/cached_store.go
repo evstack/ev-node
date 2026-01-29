@@ -171,7 +171,7 @@ func (cs *CachedStore) ClearCache() {
 
 // Rollback wraps the underlying store's Rollback and invalidates affected cache entries.
 func (cs *CachedStore) Rollback(ctx context.Context, height uint64, aggregator bool) error {
-	currentHeight, err := cs.Store.Height(ctx)
+	currentHeight, err := cs.Height(ctx)
 	if err != nil {
 		return err
 	}
