@@ -59,10 +59,12 @@ func (t *tracedEthRPCClient) HeaderByNumber(ctx context.Context, number *big.Int
 	return result, nil
 }
 
+// GetTxs works only on custom execution clients exposing txpoolExt_getTxs.
+// Standard Ethereum nodes do not support this RPC method.
 func (t *tracedEthRPCClient) GetTxs(ctx context.Context) ([]string, error) {
 	ctx, span := t.tracer.Start(ctx, "TxPool.GetTxs",
 		trace.WithAttributes(
-			attribute.String("method", "txpoolExt_getTxs"),
+			attribute.String("method", "GetTxs"),
 		),
 	)
 	defer span.End()
