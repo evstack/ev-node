@@ -91,7 +91,10 @@ func NewCacheWithConfig[T any](config CacheConfig) (*Cache[T], error) {
 		return nil, fmt.Errorf("failed to create daIncluded cache: %w", err)
 	}
 
-	hashByHeightCache, err := lru.New[uint64, string](config.ItemsCacheSize)
+	// hashByHeight must be at least as large as hashes cache to ensure proper pruning.
+	// If an entry is evicted from hashByHeight before hashes, the corresponding hash
+	// entry can no longer be pruned by height, causing a slow memory leak.
+	hashByHeightCache, err := lru.New[uint64, string](config.HashesCacheSize)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create hashByHeight cache: %w", err)
 	}
