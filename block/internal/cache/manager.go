@@ -288,7 +288,7 @@ func (m *implementation) CleanupOldTxs(olderThan time.Duration) int {
 
 		if timestamp.Before(cutoff) {
 			// Remove from both caches
-			m.txCache.hashes.Delete(hash)
+			m.txCache.removeSeen(hash)
 			m.txTimestamps.Delete(hash)
 			removed++
 		}
@@ -440,10 +440,8 @@ func (m *implementation) LoadFromDisk() error {
 	// After loading tx cache from disk, initialize timestamps for loaded transactions
 	// Set them to current time so they won't be immediately cleaned up
 	now := time.Now()
-	m.txCache.hashes.Range(func(key, value any) bool {
-		if hash, ok := key.(string); ok {
-			m.txTimestamps.Store(hash, now)
-		}
+	m.txCache.forEachHash(func(hash string) bool {
+		m.txTimestamps.Store(hash, now)
 		return true
 	})
 

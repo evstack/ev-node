@@ -8,10 +8,18 @@ import (
 	"sync"
 	"sync/atomic"
 
+	lru "github.com/hashicorp/golang-lru/v2"
 	ds "github.com/ipfs/go-datastore"
 	"github.com/rs/zerolog"
 
 	"github.com/evstack/ev-node/pkg/store"
+)
+
+const (
+	// DefaultMarshalledCacheSize is the default size for the marshalled bytes cache.
+	// This bounds memory usage while still providing good cache hit rates.
+	// Each marshalled header is ~1-2KB, so 1M entries ≈ 1-2GB max.
+	DefaultMarshalledCacheSize = 1_000_000
 )
 
 // pendingBase is a generic struct for tracking items (headers, data, etc.)
@@ -24,17 +32,24 @@ type pendingBase[T any] struct {
 	fetch      func(ctx context.Context, store store.Store, height uint64) (T, error)
 	lastHeight atomic.Uint64
 
-	// Marshalling cache to avoid redundant marshalling
-	marshalledCache sync.Map // key: uint64 (height), value: []byte
+	// Marshalling cache to avoid redundant marshalling - now bounded with LRU
+	marshalledCache   *lru.Cache[uint64, []byte]
+	marshalledCacheMu sync.RWMutex
 }
 
 // newPendingBase constructs a new pendingBase for a given type.
 func newPendingBase[T any](store store.Store, logger zerolog.Logger, metaKey string, fetch func(ctx context.Context, store store.Store, height uint64) (T, error)) (*pendingBase[T], error) {
+	cache, err := lru.New[uint64, []byte](DefaultMarshalledCacheSize)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create marshalled cache: %w", err)
+	}
+
 	pb := &pendingBase[T]{
-		store:   store,
-		logger:  logger,
-		metaKey: metaKey,
-		fetch:   fetch,
+		store:           store,
+		logger:          logger,
+		metaKey:         metaKey,
+		fetch:           fetch,
+		marshalledCache: cache,
 	}
 	if err := pb.init(); err != nil {
 		return nil, err
@@ -115,23 +130,34 @@ func (pb *pendingBase[T]) init() error {
 
 // getMarshalledForHeight returns cached marshalled bytes for a height, or nil if not cached
 func (pb *pendingBase[T]) getMarshalledForHeight(height uint64) []byte {
-	if val, ok := pb.marshalledCache.Load(height); ok {
-		return val.([]byte)
+	pb.marshalledCacheMu.RLock()
+	defer pb.marshalledCacheMu.RUnlock()
+
+	if val, ok := pb.marshalledCache.Get(height); ok {
+		return val
 	}
 	return nil
 }
 
 // setMarshalledForHeight caches marshalled bytes for a height
 func (pb *pendingBase[T]) setMarshalledForHeight(height uint64, marshalled []byte) {
-	pb.marshalledCache.Store(height, marshalled)
+	pb.marshalledCacheMu.Lock()
+	defer pb.marshalledCacheMu.Unlock()
+
+	pb.marshalledCache.Add(height, marshalled)
 }
 
-// clearMarshalledCacheUpTo removes cached marshalled bytes up to and including the given height
+// clearMarshalledCacheUpTo removes cached marshalled bytes up to and including the given height.
+// With LRU cache, we iterate through keys and remove those <= height.
 func (pb *pendingBase[T]) clearMarshalledCacheUpTo(height uint64) {
-	pb.marshalledCache.Range(func(key, _ any) bool {
-		if h := key.(uint64); h <= height {
-			pb.marshalledCache.Delete(h)
+	pb.marshalledCacheMu.Lock()
+	defer pb.marshalledCacheMu.Unlock()
+
+	// Get all keys and remove those that are <= height
+	keys := pb.marshalledCache.Keys()
+	for _, h := range keys {
+		if h <= height {
+			pb.marshalledCache.Remove(h)
 		}
-		return true
-	})
+	}
 }
