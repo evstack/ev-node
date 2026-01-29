@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"errors"
+	"math/rand/v2"
 	"net/http"
 	"slices"
 	"time"
@@ -102,6 +103,13 @@ func (s *blobServer) GetAll(_ context.Context, height uint64, namespaces []libsh
 	if len(out) == 0 {
 		return nil, datypes.ErrBlobNotFound
 	}
+
+	if s.da.shuffle {
+		rand.Shuffle(len(out), func(i, j int) {
+			out[i], out[j] = out[j], out[i]
+		})
+	}
+
 	return out, nil
 }
 

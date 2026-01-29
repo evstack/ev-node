@@ -34,6 +34,7 @@ type LocalDA struct {
 	height      uint64
 	privKey     ed25519.PrivateKey
 	pubKey      ed25519.PublicKey
+	shuffle     bool
 
 	logger zerolog.Logger
 }
@@ -277,6 +278,14 @@ func (d *LocalDA) getProof(id, blob []byte) []byte {
 func WithMaxBlobSize(maxBlobSize uint64) func(*LocalDA) *LocalDA {
 	return func(da *LocalDA) *LocalDA {
 		da.maxBlobSize = maxBlobSize
+		return da
+	}
+}
+
+// WithShuffle returns a function that sets the shuffle option of LocalDA
+func WithShuffle(shuffle bool) func(*LocalDA) *LocalDA {
+	return func(da *LocalDA) *LocalDA {
+		da.shuffle = shuffle
 		return da
 	}
 }

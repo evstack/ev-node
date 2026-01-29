@@ -23,11 +23,13 @@ func main() {
 		port        string
 		listenAll   bool
 		maxBlobSize uint64
+		shuffle     bool
 	)
 	flag.StringVar(&port, "port", defaultPort, "listening port")
 	flag.StringVar(&host, "host", defaultHost, "listening address")
 	flag.BoolVar(&listenAll, "listen-all", false, "listen on all network interfaces (0.0.0.0) instead of just localhost")
 	flag.Uint64Var(&maxBlobSize, "max-blob-size", DefaultMaxBlobSize, "maximum blob size in bytes")
+	flag.BoolVar(&shuffle, "shuffle", false, "shuffle returned blobs (unless order is specified by id params)")
 	flag.Parse()
 
 	if listenAll {
@@ -42,6 +44,9 @@ func main() {
 	var opts []func(*LocalDA) *LocalDA
 	if maxBlobSize != DefaultMaxBlobSize {
 		opts = append(opts, WithMaxBlobSize(maxBlobSize))
+	}
+	if shuffle {
+		opts = append(opts, WithShuffle(true))
 	}
 	da := NewLocalDA(logger, opts...)
 
