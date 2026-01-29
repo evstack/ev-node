@@ -103,9 +103,10 @@ func (pb *pendingBase[T]) setLastSubmittedHeight(ctx context.Context, newLastSub
 		if err != nil {
 			pb.logger.Error().Err(err).Msg("failed to store height of latest item submitted to DA")
 		}
-
-		// Clear marshalled cache for submitted heights
-		pb.clearMarshalledCacheUpTo(newLastSubmittedHeight)
+		// Note: We don't explicitly clear the cache here. Instead, we use lazy invalidation
+		// in getMarshalledForHeight by checking against lastHeight. This avoids O(N)
+		// iteration over the cache on every submission. The LRU will naturally evict
+		// old entries when capacity is reached.
 	}
 }
 
@@ -128,8 +129,14 @@ func (pb *pendingBase[T]) init() error {
 	return nil
 }
 
-// getMarshalledForHeight returns cached marshalled bytes for a height, or nil if not cached
+// getMarshalledForHeight returns cached marshalled bytes for a height, or nil if not cached.
+// Uses lazy invalidation: entries at or below lastHeight are considered invalid and ignored.
 func (pb *pendingBase[T]) getMarshalledForHeight(height uint64) []byte {
+	// Lazy invalidation: don't return cached data for already-submitted heights
+	if height <= pb.lastHeight.Load() {
+		return nil
+	}
+
 	pb.marshalledCacheMu.RLock()
 	defer pb.marshalledCacheMu.RUnlock()
 
@@ -139,25 +146,16 @@ func (pb *pendingBase[T]) getMarshalledForHeight(height uint64) []byte {
 	return nil
 }
 
-// setMarshalledForHeight caches marshalled bytes for a height
+// setMarshalledForHeight caches marshalled bytes for a height.
+// Does not cache heights that have already been submitted.
 func (pb *pendingBase[T]) setMarshalledForHeight(height uint64, marshalled []byte) {
+	// Don't cache already-submitted heights
+	if height <= pb.lastHeight.Load() {
+		return
+	}
+
 	pb.marshalledCacheMu.Lock()
 	defer pb.marshalledCacheMu.Unlock()
 
 	pb.marshalledCache.Add(height, marshalled)
-}
-
-// clearMarshalledCacheUpTo removes cached marshalled bytes up to and including the given height.
-// With LRU cache, we iterate through keys and remove those <= height.
-func (pb *pendingBase[T]) clearMarshalledCacheUpTo(height uint64) {
-	pb.marshalledCacheMu.Lock()
-	defer pb.marshalledCacheMu.Unlock()
-
-	// Get all keys and remove those that are <= height
-	keys := pb.marshalledCache.Keys()
-	for _, h := range keys {
-		if h <= height {
-			pb.marshalledCache.Remove(h)
-		}
-	}
 }

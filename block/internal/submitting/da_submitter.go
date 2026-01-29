@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"runtime"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	lru "github.com/hashicorp/golang-lru/v2"
@@ -118,6 +119,10 @@ type DASubmitter struct {
 	envelopeCache   *lru.Cache[uint64, []byte]
 	envelopeCacheMu sync.RWMutex
 
+	// lastSubmittedHeight tracks the last successfully submitted height for lazy cache invalidation.
+	// This avoids O(N) iteration over the cache on every submission.
+	lastSubmittedHeight atomic.Uint64
+
 	// signingWorkers is the number of parallel workers for signing
 	signingWorkers int
 }
@@ -223,8 +228,8 @@ func (s *DASubmitter) SubmitHeaders(ctx context.Context, headers []*types.Signed
 			if l := len(submitted); l > 0 {
 				lastHeight := submitted[l-1].Height()
 				cache.SetLastSubmittedHeaderHeight(ctx, lastHeight)
-				// Clear envelope cache for successfully submitted heights
-				s.clearEnvelopeCacheUpTo(lastHeight)
+				// Update last submitted height for lazy cache invalidation (O(1) instead of O(N))
+				s.lastSubmittedHeight.Store(lastHeight)
 			}
 		},
 		"header",
@@ -361,8 +366,13 @@ func (s *DASubmitter) signAndCacheEnvelope(header *types.SignedHeader, marshalle
 }
 
 // getCachedEnvelope retrieves a cached envelope for the given height.
+// Uses lazy invalidation: entries at or below lastSubmittedHeight are considered invalid.
 func (s *DASubmitter) getCachedEnvelope(height uint64) []byte {
 	if s.envelopeCache == nil {
+		return nil
+	}
+	// Lazy invalidation: don't return cached data for already-submitted heights
+	if height <= s.lastSubmittedHeight.Load() {
 		return nil
 	}
 	s.envelopeCacheMu.RLock()
@@ -375,30 +385,19 @@ func (s *DASubmitter) getCachedEnvelope(height uint64) []byte {
 }
 
 // setCachedEnvelope stores an envelope in the cache.
+// Does not cache heights that have already been submitted.
 func (s *DASubmitter) setCachedEnvelope(height uint64, envelope []byte) {
 	if s.envelopeCache == nil {
+		return
+	}
+	// Don't cache already-submitted heights
+	if height <= s.lastSubmittedHeight.Load() {
 		return
 	}
 	s.envelopeCacheMu.Lock()
 	defer s.envelopeCacheMu.Unlock()
 
 	s.envelopeCache.Add(height, envelope)
-}
-
-// clearEnvelopeCacheUpTo removes cached envelopes up to and including the given height.
-func (s *DASubmitter) clearEnvelopeCacheUpTo(height uint64) {
-	if s.envelopeCache == nil {
-		return
-	}
-	s.envelopeCacheMu.Lock()
-	defer s.envelopeCacheMu.Unlock()
-
-	keys := s.envelopeCache.Keys()
-	for _, h := range keys {
-		if h <= height {
-			s.envelopeCache.Remove(h)
-		}
-	}
 }
 
 // SubmitData submits pending data to DA layer
