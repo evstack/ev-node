@@ -17,16 +17,13 @@ import (
 
 const (
 	// DefaultItemsCacheSize is the default size for items cache.
-	// Each item (SignedHeader/Data) is ~1-2KB, so 2M entries ≈ 2-4GB max.
-	DefaultItemsCacheSize = 2_000_000
+	DefaultItemsCacheSize = 200_000
 
 	// DefaultHashesCacheSize is the default size for hash tracking.
-	// Each hash entry is ~64 bytes, so 4M entries ≈ 256MB max.
-	DefaultHashesCacheSize = 4_000_000
+	DefaultHashesCacheSize = 200_000
 
 	// DefaultDAIncludedCacheSize is the default size for DA inclusion tracking.
-	// Each entry is ~72 bytes, so 4M entries ≈ 288MB max.
-	DefaultDAIncludedCacheSize = 4_000_000
+	DefaultDAIncludedCacheSize = 200_000
 )
 
 // Cache is a generic cache that maintains items that are seen and hard confirmed.
