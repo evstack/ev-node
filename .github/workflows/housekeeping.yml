@@ -25,7 +25,7 @@ jobs:
     # ignore dependabot PRs
     if: ${{ github.event.pull_request && github.actor != 'dependabot[bot]' }}
     name: Assign PR to creator
-    runs-on: blacksmith-4vcpu-ubuntu-2404
+    runs-on: ubuntu-latest
     permissions:
       issues: write
       pull-requests: write
