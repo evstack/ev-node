@@ -9,25 +9,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changes
+
+- Improve cache handling when there is a significant backlog of pending headers and data. ([#3030](https://github.com/evstack/ev-node/pull/3030))
+- Decrease MaxBytesSize to `5MB` to increase compatibility with public nodes. ([#3030](https://github.com/evstack/ev-node/pull/3030))
+
 ## v1.0.0-rc.1
 
 ### Added
 
-- Implement forced inclusion and based sequencing ([#2797](https://github.com/evstack/ev-node/pull/2797))
-  **This change requires to add a `da_epoch_forced_inclusion` field in node's `genesis.json` file.**
-  To enable this feature, set the force inclusion namespace in the `evnode.yaml` (enableable from rc.2).
-- Added `post-tx` command and force inclusion server to submit transaction directly to the DA layer. ([#2888](https://github.com/evstack/ev-node/pull/2888))
+- **BREAKING:** Implement forced inclusion and batch sequencing ([#2797](https://github.com/evstack/ev-node/pull/2797))
+  **This change requires adding a `da_epoch_forced_inclusion` field to the node's `genesis.json` file.** The recommended value is `100`.
+  Full support for this feature will be available in a future release.
+- Added `post-tx` command and force inclusion server to submit transactions directly to the DA layer. ([#2888](https://github.com/evstack/ev-node/pull/2888))
   Additionally, modified the core package to support marking transactions as forced included transactions.
   The execution client ought to perform basic validation on those transactions as they have skipped the execution client's mempool.
-- Add batching stategies (default stay time-based, unchanged with previous betas). Currently available strategies are `time`, `size`, `immediate` and `adaptive`.
+- Added batching strategies (default stay time-based, unchanged from previous betas). Currently available strategies are `time`, `size`, `immediate` and `adaptive`. [Full documentation can be found here](https://github.com/evstack/ev-node/blob/122486de98d09ecd37d792b88814dcf07238f28a/docs/learn/config.md?plain=1#L521-L597).
 - Added `FilterTxs` method to the execution interface. This method is meant to filter txs by size and if the execution clients allows it, by gas. This is useful for force included transactions, as those aren't filtered by the sequencer's mempool.
 - Added `GetExecutionInfo` method to the execution interface. This method returns some execution information, such as the maximum gas per block.
 
 ### Changed
 
-- Rename `evm-single` to `evm` and `grpc-single` to `evgrpc` for clarity. [#2839](https://github.com/evstack/ev-node/pull/2839)
-- Split cache interface in `CacheManager` and `PendingManager` and create `da` client to easy DA handling. [#2878](https://github.com/evstack/ev-node/pull/2878)
-- Improve startup da retrieval height when cache cleared or empty. [#2880](https://github.com/evstack/ev-node/pull/2880)
+- **BREAKING:** Renamed `evm-single` to `evm` and `grpc-single` to `evgrpc` for clarity. [#2839](https://github.com/evstack/ev-node/pull/2839). You may need to manually modify your evnode.yaml `signer.signer_path` if your $HOME folder is changed.
+- Split cache interface into `CacheManager` and `PendingManager` and created `da` client to easy DA handling. [#2878](https://github.com/evstack/ev-node/pull/2878)
+- Improved startup DA retrieval height when cache is cleared or empty. [#2880](https://github.com/evstack/ev-node/pull/2880)
 
 ### Removed
 

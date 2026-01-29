@@ -22,7 +22,6 @@ import (
 // Worst case scenario is when headers were successfully submitted to DA, but confirmation was not received (e.g. node was
 // restarted, networking issue occurred). In this case headers are re-submitted to DA (it's extra cost).
 // evolve is able to skip duplicate headers so this shouldn't affect full nodes.
-// TODO(tzdybal): we shouldn't try to push all pending headers at once; this should depend on max blob size
 type PendingHeaders struct {
 	base *pendingBase[*types.SignedHeader]
 }
@@ -51,7 +50,6 @@ func NewPendingHeaders(store storepkg.Store, logger zerolog.Logger) (*PendingHea
 }
 
 // GetPendingHeaders returns a sorted slice of pending headers along with their marshalled bytes.
-// It uses an internal cache to avoid re-marshalling headers on subsequent calls.
 func (ph *PendingHeaders) GetPendingHeaders(ctx context.Context) ([]*types.SignedHeader, [][]byte, error) {
 	headers, err := ph.base.getPending(ctx)
 	if err != nil {
@@ -63,26 +61,12 @@ func (ph *PendingHeaders) GetPendingHeaders(ctx context.Context) ([]*types.Signe
 	}
 
 	marshalled := make([][]byte, len(headers))
-	lastSubmitted := ph.base.lastHeight.Load()
-
 	for i, header := range headers {
-		height := lastSubmitted + uint64(i) + 1
-
-		// Try to get from cache first
-		if cached := ph.base.getMarshalledForHeight(height); cached != nil {
-			marshalled[i] = cached
-			continue
-		}
-
-		// Marshal if not in cache
 		data, err := header.MarshalBinary()
 		if err != nil {
-			return nil, nil, fmt.Errorf("failed to marshal header at height %d: %w", height, err)
+			return nil, nil, fmt.Errorf("failed to marshal header at height %d: %w", header.Height(), err)
 		}
 		marshalled[i] = data
-
-		// Store in cache
-		ph.base.setMarshalledForHeight(height, data)
 	}
 
 	return headers, marshalled, nil
