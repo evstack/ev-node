@@ -82,9 +82,17 @@ func newFullNode(
 	blockMetrics, _ := metricsProvider(genesis.ChainID)
 
 	mainKV := store.NewEvNodeKVStore(database)
-	evstore := store.New(mainKV)
+	baseStore := store.New(mainKV)
+
+	// Wrap with cached store for LRU caching of headers and block data
+	cachedStore, err := store.NewCachedStore(baseStore)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create cached store: %w", err)
+	}
+
+	var evstore store.Store = cachedStore
 	if nodeConfig.Instrumentation.IsTracingEnabled() {
-		evstore = store.WithTracingStore(evstore)
+		evstore = store.WithTracingStore(cachedStore)
 	}
 
 	var raftNode *raftpkg.Node
