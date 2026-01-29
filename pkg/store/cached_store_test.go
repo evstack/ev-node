@@ -126,23 +126,29 @@ func TestCachedStore_CustomCacheSize(t *testing.T) {
 	cachedStore, err := NewCachedStore(store, WithHeaderCacheSize(3))
 	require.NoError(t, err)
 
-	// Load 5 headers - LRU should evict oldest entries
-	for h := uint64(1); h <= 5; h++ {
-		_, err = cachedStore.GetHeader(ctx, h)
+	// Load header for height 1 and store its pointer.
+	header1, err := cachedStore.GetHeader(ctx, 1)
+	require.NoError(t, err)
+	require.NotNil(t, header1)
+
+	// Load 4 more headers to ensure the first one is evicted from the cache of size 3.
+	for h := uint64(2); h <= 5; h++ {
+		_, err := cachedStore.GetHeader(ctx, h)
 		require.NoError(t, err)
 	}
 
-	// Height 5 should still be cached (most recent)
+	// Height 5 should be a cache hit.
 	header5a, err := cachedStore.GetHeader(ctx, 5)
 	require.NoError(t, err)
 	header5b, err := cachedStore.GetHeader(ctx, 5)
 	require.NoError(t, err)
 	assert.Same(t, header5a, header5b, "height 5 should be cached")
 
-	// Height 1 was evicted, so fetching it again will get a new object
+	// Height 1 was evicted, so fetching it again will get a new object from the underlying store.
 	header1a, err := cachedStore.GetHeader(ctx, 1)
 	require.NoError(t, err)
 	require.NotNil(t, header1a)
+	assert.NotSame(t, header1, header1a, "height 1 should have been evicted and refetched")
 }
 
 func TestCachedStore_Rollback_InvalidatesCache(t *testing.T) {
