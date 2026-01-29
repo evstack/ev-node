@@ -2,7 +2,6 @@ package store
 
 import (
 	"context"
-	"sync"
 
 	lru "github.com/hashicorp/golang-lru/v2"
 
@@ -20,15 +19,12 @@ const (
 )
 
 // CachedStore wraps a Store with LRU caching for frequently accessed data.
+// The underlying LRU cache is thread-safe, so no additional synchronization is needed.
 type CachedStore struct {
 	Store
 
-	headerCache   *lru.Cache[uint64, *types.SignedHeader]
-	headerCacheMu sync.RWMutex
-
-	// Optional: cache for block data (headers + data together)
-	blockDataCache   *lru.Cache[uint64, *blockDataEntry]
-	blockDataCacheMu sync.RWMutex
+	headerCache    *lru.Cache[uint64, *types.SignedHeader]
+	blockDataCache *lru.Cache[uint64, *blockDataEntry]
 }
 
 type blockDataEntry struct {
@@ -93,12 +89,9 @@ func NewCachedStore(store Store, opts ...CachedStoreOption) (*CachedStore, error
 // GetHeader returns the header at the given height, using the cache if available.
 func (cs *CachedStore) GetHeader(ctx context.Context, height uint64) (*types.SignedHeader, error) {
 	// Try cache first
-	cs.headerCacheMu.RLock()
 	if header, ok := cs.headerCache.Get(height); ok {
-		cs.headerCacheMu.RUnlock()
 		return header, nil
 	}
-	cs.headerCacheMu.RUnlock()
 
 	// Cache miss, fetch from underlying store
 	header, err := cs.Store.GetHeader(ctx, height)
@@ -107,9 +100,7 @@ func (cs *CachedStore) GetHeader(ctx context.Context, height uint64) (*types.Sig
 	}
 
 	// Add to cache
-	cs.headerCacheMu.Lock()
 	cs.headerCache.Add(height, header)
-	cs.headerCacheMu.Unlock()
 
 	return header, nil
 }
@@ -117,12 +108,9 @@ func (cs *CachedStore) GetHeader(ctx context.Context, height uint64) (*types.Sig
 // GetBlockData returns block header and data at given height, using cache if available.
 func (cs *CachedStore) GetBlockData(ctx context.Context, height uint64) (*types.SignedHeader, *types.Data, error) {
 	// Try cache first
-	cs.blockDataCacheMu.RLock()
 	if entry, ok := cs.blockDataCache.Get(height); ok {
-		cs.blockDataCacheMu.RUnlock()
 		return entry.header, entry.data, nil
 	}
-	cs.blockDataCacheMu.RUnlock()
 
 	// Cache miss, fetch from underlying store
 	header, data, err := cs.Store.GetBlockData(ctx, height)
@@ -131,42 +119,26 @@ func (cs *CachedStore) GetBlockData(ctx context.Context, height uint64) (*types.
 	}
 
 	// Add to cache
-	cs.blockDataCacheMu.Lock()
 	cs.blockDataCache.Add(height, &blockDataEntry{header: header, data: data})
-	cs.blockDataCacheMu.Unlock()
 
 	// Also add header to header cache
-	cs.headerCacheMu.Lock()
 	cs.headerCache.Add(height, header)
-	cs.headerCacheMu.Unlock()
 
 	return header, data, nil
 }
 
 // InvalidateRange removes headers in the given range from the cache.
 func (cs *CachedStore) InvalidateRange(fromHeight, toHeight uint64) {
-	cs.headerCacheMu.Lock()
 	for h := fromHeight; h <= toHeight; h++ {
 		cs.headerCache.Remove(h)
-	}
-	cs.headerCacheMu.Unlock()
-
-	cs.blockDataCacheMu.Lock()
-	for h := fromHeight; h <= toHeight; h++ {
 		cs.blockDataCache.Remove(h)
 	}
-	cs.blockDataCacheMu.Unlock()
 }
 
 // ClearCache clears all cached entries.
 func (cs *CachedStore) ClearCache() {
-	cs.headerCacheMu.Lock()
 	cs.headerCache.Purge()
-	cs.headerCacheMu.Unlock()
-
-	cs.blockDataCacheMu.Lock()
 	cs.blockDataCache.Purge()
-	cs.blockDataCacheMu.Unlock()
 }
 
 // Rollback wraps the underlying store's Rollback and invalidates affected cache entries.
