@@ -73,8 +73,16 @@ func (pb *pendingBase[T]) getPending(ctx context.Context) ([]T, error) {
 		return nil, fmt.Errorf("height of last submitted item (%d) is greater than height of last item (%d)", lastSubmitted, storeHeight)
 	}
 
+	// Limit the number of items to return based on cache capacity.
+	// This prevents the LRU from evicting entries we need, which would cause re-fetches.
+	pendingCount := storeHeight - lastSubmitted
+	endHeight := storeHeight
+	if pendingCount > DefaultPendingCacheSize {
+		endHeight = lastSubmitted + DefaultPendingCacheSize
+	}
+
 	// Fetch only items that are not already in cache
-	for h := lastSubmitted + 1; h <= storeHeight; h++ {
+	for h := lastSubmitted + 1; h <= endHeight; h++ {
 		if _, ok := pb.pendingCache.Peek(h); ok {
 			continue // Already cached, skip fetching
 		}
@@ -85,9 +93,9 @@ func (pb *pendingBase[T]) getPending(ctx context.Context) ([]T, error) {
 		pb.pendingCache.Add(h, item)
 	}
 
-	// Build the result slice from cache
-	pending := make([]T, 0, storeHeight-lastSubmitted)
-	for h := lastSubmitted + 1; h <= storeHeight; h++ {
+	// Build the result slice from cache (only up to endHeight)
+	pending := make([]T, 0, endHeight-lastSubmitted)
+	for h := lastSubmitted + 1; h <= endHeight; h++ {
 		if item, ok := pb.pendingCache.Get(h); ok {
 			pending = append(pending, item)
 		} else {
