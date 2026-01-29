@@ -1,18 +1,28 @@
 package cmd
 
 import (
-	"context"
+	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"strings"
 	"text/tabwriter"
 
 	"connectrpc.com/connect"
+	pb "github.com/evstack/ev-node/types/pb/evnode/v1"
 	"github.com/spf13/cobra"
 	"google.golang.org/protobuf/types/known/emptypb"
 
 	rpc "github.com/evstack/ev-node/types/pb/evnode/v1/v1connect"
 )
+
+const (
+	flagOutput = "output"
+)
+
+func init() {
+	NetInfoCmd.Flags().StringP(flagOutput, "o", "text", "Output format (text|json)")
+}
 
 // NetInfoCmd returns information about the running node via RPC
 var NetInfoCmd = &cobra.Command{
@@ -24,9 +34,8 @@ var NetInfoCmd = &cobra.Command{
 		if err != nil {
 			return fmt.Errorf("error parsing config: %w", err)
 		}
-
-		// Get RPC address from config
 		rpcAddress := nodeConfig.RPC.Address
+
 		if rpcAddress == "" {
 			return fmt.Errorf("RPC address not found in node configuration")
 		}
@@ -36,7 +45,10 @@ var NetInfoCmd = &cobra.Command{
 			Transport: http.DefaultTransport,
 		}
 
-		baseURL := fmt.Sprintf("http://%s", rpcAddress)
+		baseURL := rpcAddress
+		if !strings.HasPrefix(rpcAddress, "http://") && !strings.HasPrefix(rpcAddress, "https://") {
+			baseURL = "http://" + baseURL
+		}
 
 		// Create P2P client
 		p2pClient := rpc.NewP2PServiceClient(
@@ -46,16 +58,33 @@ var NetInfoCmd = &cobra.Command{
 
 		// Call GetNetInfo RPC
 		resp, err := p2pClient.GetNetInfo(
-			context.Background(),
+			cmd.Context(),
 			connect.NewRequest(&emptypb.Empty{}),
 		)
 		if err != nil {
-			return fmt.Errorf("error calling GetNetInfo RPC: %w", err)
+			return fmt.Errorf("GetNetInfo RPC: %w", err)
 		}
 
 		netInfo := resp.Msg.NetInfo
-		nodeID := netInfo.Id
 
+		peerResp, err := p2pClient.GetPeerInfo(
+			cmd.Context(),
+			connect.NewRequest(&emptypb.Empty{}),
+		)
+		if err != nil {
+			return fmt.Errorf("GetPeerInfo RPC: %w", err)
+		}
+
+		outputFormat, err := cmd.Flags().GetString(flagOutput)
+		if err != nil {
+			return err
+		}
+
+		if outputFormat == "json" {
+			return formatJson(cmd.OutOrStdout(), netInfo, peerResp)
+		}
+
+		nodeID := netInfo.Id
 		out := cmd.OutOrStdout()
 		w := tabwriter.NewWriter(out, 2, 0, 2, ' ', 0)
 
@@ -73,14 +102,6 @@ var NetInfoCmd = &cobra.Command{
 		}
 
 		fmt.Fprintf(w, "%s\n", strings.Repeat("-", 50))
-		// Also get peer information
-		peerResp, err := p2pClient.GetPeerInfo(
-			context.Background(),
-			connect.NewRequest(&emptypb.Empty{}),
-		)
-		if err != nil {
-			return fmt.Errorf("error calling GetPeerInfo RPC: %w", err)
-		}
 
 		// Print connected peers in a table-like format
 		peerCount := len(peerResp.Msg.Peers)
@@ -108,4 +129,33 @@ var NetInfoCmd = &cobra.Command{
 
 		return nil
 	},
+}
+
+func formatJson(w io.Writer, netInfo *pb.NetInfo, peerResp *connect.Response[pb.GetPeerInfoResponse]) error {
+	type peerJSON struct {
+		ID      string `json:"id"`
+		Address string `json:"address"`
+	}
+	type netInfoJSON struct {
+		NodeID          string     `json:"node_id"`
+		ListenAddresses []string   `json:"listen_addresses"`
+		Peers           []peerJSON `json:"peers"`
+	}
+
+	peers := make([]peerJSON, 0, len(peerResp.Msg.Peers))
+	for _, peer := range peerResp.Msg.Peers {
+		peers = append(peers, peerJSON{
+			ID:      peer.Id,
+			Address: peer.Address,
+		})
+	}
+
+	out := netInfoJSON{
+		NodeID:          netInfo.Id,
+		ListenAddresses: netInfo.ListenAddresses,
+		Peers:           peers,
+	}
+	enc := json.NewEncoder(w)
+	enc.SetIndent("", "  ")
+	return enc.Encode(out)
 }
