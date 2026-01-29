@@ -24,7 +24,7 @@ on:
 jobs:
   test:
     name: Test Rust Client
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     strategy:
       matrix:
         rust:
@@ -58,7 +58,7 @@ jobs:
 
   coverage:
     name: Code Coverage
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     if: github.event_name == 'pull_request'
     steps:
       - name: Checkout code

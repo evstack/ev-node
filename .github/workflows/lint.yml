@@ -10,7 +10,7 @@ permissions:
 jobs:
   golangci-lint:
     name: golangci-lint
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-go@v6
@@ -34,7 +34,7 @@ jobs:
         if: env.GIT_DIFF
 
   hadolint:
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     steps:
       - uses: actions/checkout@v6
       - uses: hadolint/hadolint-action@v3.3.0
@@ -43,7 +43,7 @@ jobs:
           failure-threshold: error
 
   yamllint:
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     steps:
       - uses: actions/checkout@v6
         with:
@@ -57,7 +57,7 @@ jobs:
         if: env.GIT_DIFF
 
   markdown-lint:
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     steps:
       - uses: actions/checkout@v6
         with:
@@ -71,7 +71,7 @@ jobs:
 
   # Checks that the .goreleaser.yaml file is valid
   goreleaser-check:
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     steps:
       - name: checkout
         uses: actions/checkout@v6
