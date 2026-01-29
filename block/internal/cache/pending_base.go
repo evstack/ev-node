@@ -15,12 +15,8 @@ import (
 	"github.com/evstack/ev-node/pkg/store"
 )
 
-const (
-	// DefaultMarshalledCacheSize is the default size for the marshalled bytes cache.
-	// This bounds memory usage while still providing good cache hit rates.
-	// Each marshalled header is ~1-2KB, so 1M entries ≈ 1-2GB max.
-	DefaultMarshalledCacheSize = 1_000_000
-)
+// DefaultPendingCacheSize is the default size for the pending items cache.
+const DefaultPendingCacheSize = 200_000
 
 // pendingBase is a generic struct for tracking items (headers, data, etc.)
 // that need to be published to the DA layer in order. It handles persistence
@@ -32,24 +28,29 @@ type pendingBase[T any] struct {
 	fetch      func(ctx context.Context, store store.Store, height uint64) (T, error)
 	lastHeight atomic.Uint64
 
-	// Marshalling cache to avoid redundant marshalling - now bounded with LRU
-	marshalledCache   *lru.Cache[uint64, []byte]
-	marshalledCacheMu sync.RWMutex
+	// Pending items cache to avoid re-fetching all items on every call.
+	// We cache the items themselves, keyed by height.
+	pendingCache *lru.Cache[uint64, T]
+
+	// Track the highest height we've fetched, so we only fetch new items.
+	lastFetchedHeight atomic.Uint64
+
+	mu sync.Mutex // Protects getPending logic
 }
 
 // newPendingBase constructs a new pendingBase for a given type.
 func newPendingBase[T any](store store.Store, logger zerolog.Logger, metaKey string, fetch func(ctx context.Context, store store.Store, height uint64) (T, error)) (*pendingBase[T], error) {
-	cache, err := lru.New[uint64, []byte](DefaultMarshalledCacheSize)
+	pendingCache, err := lru.New[uint64, T](DefaultPendingCacheSize)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create marshalled cache: %w", err)
+		return nil, fmt.Errorf("failed to create pending cache: %w", err)
 	}
 
 	pb := &pendingBase[T]{
-		store:           store,
-		logger:          logger,
-		metaKey:         metaKey,
-		fetch:           fetch,
-		marshalledCache: cache,
+		store:        store,
+		logger:       logger,
+		metaKey:      metaKey,
+		fetch:        fetch,
+		pendingCache: pendingCache,
 	}
 	if err := pb.init(); err != nil {
 		return nil, err
@@ -58,25 +59,61 @@ func newPendingBase[T any](store store.Store, logger zerolog.Logger, metaKey str
 }
 
 // getPending returns a sorted slice of pending items of type T.
+// It caches fetched items to avoid re-fetching on subsequent calls.
+// Only fetches new items since the last call.
 func (pb *pendingBase[T]) getPending(ctx context.Context) ([]T, error) {
+	pb.mu.Lock()
+	defer pb.mu.Unlock()
+
 	lastSubmitted := pb.lastHeight.Load()
-	height, err := pb.store.Height(ctx)
+	storeHeight, err := pb.store.Height(ctx)
 	if err != nil {
 		return nil, err
 	}
-	if lastSubmitted == height {
+	if lastSubmitted == storeHeight {
 		return nil, nil
 	}
-	if lastSubmitted > height {
-		return nil, fmt.Errorf("height of last submitted item (%d) is greater than height of last item (%d)", lastSubmitted, height)
+	if lastSubmitted > storeHeight {
+		return nil, fmt.Errorf("height of last submitted item (%d) is greater than height of last item (%d)", lastSubmitted, storeHeight)
 	}
-	pending := make([]T, 0, height-lastSubmitted)
-	for i := lastSubmitted + 1; i <= height; i++ {
-		item, err := pb.fetch(ctx, pb.store, i)
+
+	// Determine where to start fetching from.
+	// We only need to fetch items we haven't fetched yet.
+	lastFetched := pb.lastFetchedHeight.Load()
+	fetchFrom := lastSubmitted + 1
+	if lastFetched > lastSubmitted && lastFetched < storeHeight {
+		// We've already fetched up to lastFetched, start from the next one
+		fetchFrom = lastFetched + 1
+	}
+
+	// Fetch only new items
+	for h := fetchFrom; h <= storeHeight; h++ {
+		item, err := pb.fetch(ctx, pb.store, h)
 		if err != nil {
-			return pending, err
+			// Update lastFetchedHeight to where we got to
+			if h > fetchFrom {
+				pb.lastFetchedHeight.Store(h - 1)
+			}
+			return nil, err
 		}
-		pending = append(pending, item)
+		pb.pendingCache.Add(h, item)
+	}
+	pb.lastFetchedHeight.Store(storeHeight)
+
+	// Build the result slice from cache
+	pending := make([]T, 0, storeHeight-lastSubmitted)
+	for h := lastSubmitted + 1; h <= storeHeight; h++ {
+		if item, ok := pb.pendingCache.Get(h); ok {
+			pending = append(pending, item)
+		} else {
+			// This shouldn't happen, but fetch if missing
+			item, err := pb.fetch(ctx, pb.store, h)
+			if err != nil {
+				return pending, err
+			}
+			pb.pendingCache.Add(h, item)
+			pending = append(pending, item)
+		}
 	}
 	return pending, nil
 }
@@ -104,9 +141,8 @@ func (pb *pendingBase[T]) setLastSubmittedHeight(ctx context.Context, newLastSub
 			pb.logger.Error().Err(err).Msg("failed to store height of latest item submitted to DA")
 		}
 		// Note: We don't explicitly clear the cache here. Instead, we use lazy invalidation
-		// in getMarshalledForHeight by checking against lastHeight. This avoids O(N)
-		// iteration over the cache on every submission. The LRU will naturally evict
-		// old entries when capacity is reached.
+		// by checking against lastHeight. This avoids O(N) iteration over the cache on every
+		// submission. The LRU will naturally evict old entries when capacity is reached.
 	}
 }
 
@@ -127,35 +163,4 @@ func (pb *pendingBase[T]) init() error {
 	}
 	pb.lastHeight.CompareAndSwap(0, lsh)
 	return nil
-}
-
-// getMarshalledForHeight returns cached marshalled bytes for a height, or nil if not cached.
-// Uses lazy invalidation: entries at or below lastHeight are considered invalid and ignored.
-func (pb *pendingBase[T]) getMarshalledForHeight(height uint64) []byte {
-	// Lazy invalidation: don't return cached data for already-submitted heights
-	if height <= pb.lastHeight.Load() {
-		return nil
-	}
-
-	pb.marshalledCacheMu.RLock()
-	defer pb.marshalledCacheMu.RUnlock()
-
-	if val, ok := pb.marshalledCache.Get(height); ok {
-		return val
-	}
-	return nil
-}
-
-// setMarshalledForHeight caches marshalled bytes for a height.
-// Does not cache heights that have already been submitted.
-func (pb *pendingBase[T]) setMarshalledForHeight(height uint64, marshalled []byte) {
-	// Don't cache already-submitted heights
-	if height <= pb.lastHeight.Load() {
-		return
-	}
-
-	pb.marshalledCacheMu.Lock()
-	defer pb.marshalledCacheMu.Unlock()
-
-	pb.marshalledCache.Add(height, marshalled)
 }

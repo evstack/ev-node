@@ -10,12 +10,10 @@ import (
 
 const (
 	// DefaultHeaderCacheSize is the default number of headers to cache in memory.
-	// Each SignedHeader is roughly 1-2KB, so 2M headers ≈ 2-4GB of memory.
-	DefaultHeaderCacheSize = 2_000_000
+	DefaultHeaderCacheSize = 200_000
 
 	// DefaultBlockDataCacheSize is the default number of block data entries to cache.
-	// Block data entries are larger, so we cache fewer of them.
-	DefaultBlockDataCacheSize = 100_000
+	DefaultBlockDataCacheSize = 200_000
 )
 
 // CachedStore wraps a Store with LRU caching for frequently accessed data.
