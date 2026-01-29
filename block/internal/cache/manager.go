@@ -440,10 +440,9 @@ func (m *implementation) LoadFromDisk() error {
 	// After loading tx cache from disk, initialize timestamps for loaded transactions
 	// Set them to current time so they won't be immediately cleaned up
 	now := time.Now()
-	m.txCache.forEachHash(func(hash string) bool {
+	for _, hash := range m.txCache.hashes.Keys() {
 		m.txTimestamps.Store(hash, now)
-		return true
-	})
+	}
 
 	return nil
 }

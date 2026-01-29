@@ -27,9 +27,7 @@ const (
 )
 
 // Cache is a generic cache that maintains items that are seen and hard confirmed.
-// Uses bounded LRU caches to prevent unbounded memory growth.
-// The underlying LRU caches are thread-safe. Mutexes are only used where
-// compound operations require atomicity.
+// Uses bounded thread-safe LRU caches to prevent unbounded memory growth.
 type Cache[T any] struct {
 	// itemsByHeight stores items keyed by uint64 height.
 	// Mutex needed for atomic get-and-remove in getNextItem.
@@ -191,18 +189,6 @@ func (c *Cache[T]) daHeight() uint64 {
 // removeSeen removes a hash from the seen cache.
 func (c *Cache[T]) removeSeen(hash string) {
 	c.hashes.Remove(hash)
-}
-
-// forEachHash iterates over all hashes in the seen cache and calls the provided function.
-// If the function returns false, iteration stops.
-// Note: iteration is best-effort; concurrent modifications may not be reflected.
-func (c *Cache[T]) forEachHash(fn func(hash string) bool) {
-	keys := c.hashes.Keys()
-	for _, hash := range keys {
-		if !fn(hash) {
-			break
-		}
-	}
 }
 
 // deleteAllForHeight removes all items and their associated data from the cache at the given height.

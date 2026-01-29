@@ -32,9 +32,6 @@ type pendingBase[T any] struct {
 	// We cache the items themselves, keyed by height.
 	pendingCache *lru.Cache[uint64, T]
 
-	// Track the highest height we've fetched, so we only fetch new items.
-	lastFetchedHeight atomic.Uint64
-
 	mu sync.Mutex // Protects getPending logic
 }
 
@@ -60,7 +57,6 @@ func newPendingBase[T any](store store.Store, logger zerolog.Logger, metaKey str
 
 // getPending returns a sorted slice of pending items of type T.
 // It caches fetched items to avoid re-fetching on subsequent calls.
-// Only fetches new items since the last call.
 func (pb *pendingBase[T]) getPending(ctx context.Context) ([]T, error) {
 	pb.mu.Lock()
 	defer pb.mu.Unlock()
@@ -77,28 +73,17 @@ func (pb *pendingBase[T]) getPending(ctx context.Context) ([]T, error) {
 		return nil, fmt.Errorf("height of last submitted item (%d) is greater than height of last item (%d)", lastSubmitted, storeHeight)
 	}
 
-	// Determine where to start fetching from.
-	// We only need to fetch items we haven't fetched yet.
-	lastFetched := pb.lastFetchedHeight.Load()
-	fetchFrom := lastSubmitted + 1
-	if lastFetched > lastSubmitted && lastFetched < storeHeight {
-		// We've already fetched up to lastFetched, start from the next one
-		fetchFrom = lastFetched + 1
-	}
-
-	// Fetch only new items
-	for h := fetchFrom; h <= storeHeight; h++ {
+	// Fetch only items that are not already in cache
+	for h := lastSubmitted + 1; h <= storeHeight; h++ {
+		if _, ok := pb.pendingCache.Peek(h); ok {
+			continue // Already cached, skip fetching
+		}
 		item, err := pb.fetch(ctx, pb.store, h)
 		if err != nil {
-			// Update lastFetchedHeight to where we got to
-			if h > fetchFrom {
-				pb.lastFetchedHeight.Store(h - 1)
-			}
 			return nil, err
 		}
 		pb.pendingCache.Add(h, item)
 	}
-	pb.lastFetchedHeight.Store(storeHeight)
 
 	// Build the result slice from cache
 	pending := make([]T, 0, storeHeight-lastSubmitted)
