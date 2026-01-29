@@ -20,8 +20,8 @@ import (
 	"github.com/evstack/ev-node/pkg/genesis"
 	"github.com/evstack/ev-node/pkg/signer"
 	"github.com/evstack/ev-node/pkg/store"
+	"github.com/evstack/ev-node/pkg/sync"
 	"github.com/evstack/ev-node/pkg/telemetry"
-	"github.com/evstack/ev-node/types"
 )
 
 // Components represents the block-related components
@@ -127,8 +127,8 @@ func NewSyncComponents(
 	store store.Store,
 	exec coreexecutor.Executor,
 	daClient da.Client,
-	headerStore common.Broadcaster[*types.SignedHeader],
-	dataStore common.Broadcaster[*types.Data],
+	headerStore *sync.HeaderSyncService,
+	dataStore *sync.DataSyncService,
 	logger zerolog.Logger,
 	metrics *Metrics,
 	blockOpts BlockOptions,
@@ -163,7 +163,7 @@ func NewSyncComponents(
 	}
 
 	// Create submitter for sync nodes (no signer, only DA inclusion processing)
-	var daSubmitter submitting.DASubmitterAPI = submitting.NewDASubmitter(daClient, config, genesis, blockOpts, metrics, logger)
+	var daSubmitter submitting.DASubmitterAPI = submitting.NewDASubmitter(daClient, config, genesis, blockOpts, metrics, logger, headerStore, dataStore)
 	if config.Instrumentation.IsTracingEnabled() {
 		daSubmitter = submitting.WithTracingDASubmitter(daSubmitter)
 	}
@@ -200,8 +200,8 @@ func NewAggregatorComponents(
 	sequencer coresequencer.Sequencer,
 	daClient da.Client,
 	signer signer.Signer,
-	headerBroadcaster common.Broadcaster[*types.SignedHeader],
-	dataBroadcaster common.Broadcaster[*types.Data],
+	headerBroadcaster *sync.HeaderSyncService,
+	dataBroadcaster *sync.DataSyncService,
 	logger zerolog.Logger,
 	metrics *Metrics,
 	blockOpts BlockOptions,
@@ -266,7 +266,7 @@ func NewAggregatorComponents(
 		}, nil
 	}
 
-	var daSubmitter submitting.DASubmitterAPI = submitting.NewDASubmitter(daClient, config, genesis, blockOpts, metrics, logger)
+	var daSubmitter submitting.DASubmitterAPI = submitting.NewDASubmitter(daClient, config, genesis, blockOpts, metrics, logger, headerBroadcaster, dataBroadcaster)
 	if config.Instrumentation.IsTracingEnabled() {
 		daSubmitter = submitting.WithTracingDASubmitter(daSubmitter)
 	}

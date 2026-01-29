@@ -80,7 +80,7 @@ func NewRollbackCmd() *cobra.Command {
 			}
 
 			// rollback ev-node goheader state
-			headerStore, err := goheaderstore.NewStore[*types.SignedHeader](
+			headerStore, err := goheaderstore.NewStore[*types.P2PSignedHeader](
 				evolveDB,
 				goheaderstore.WithStorePrefix("headerSync"),
 				goheaderstore.WithMetrics(),
@@ -89,7 +89,7 @@ func NewRollbackCmd() *cobra.Command {
 				return err
 			}
 
-			dataStore, err := goheaderstore.NewStore[*types.Data](
+			dataStore, err := goheaderstore.NewStore[*types.P2PData](
 				evolveDB,
 				goheaderstore.WithStorePrefix("dataSync"),
 				goheaderstore.WithMetrics(),

@@ -2,10 +2,16 @@ package store
 
 import (
 	"context"
+	"errors"
 
 	ds "github.com/ipfs/go-datastore"
 
 	"github.com/evstack/ev-node/types"
+)
+
+var (
+	// ErrNotFound is returned when the entry is not found in the store.
+	ErrNotFound = errors.New("not found")
 )
 
 // Batch provides atomic operations for the store

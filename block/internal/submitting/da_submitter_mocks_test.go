@@ -35,7 +35,7 @@ func newTestSubmitter(t *testing.T, mockClient *mocks.MockClient, override func(
 	mockClient.On("GetDataNamespace").Return([]byte(cfg.DA.DataNamespace)).Maybe()
 	mockClient.On("GetForcedInclusionNamespace").Return([]byte(nil)).Maybe()
 	mockClient.On("HasForcedInclusionNamespace").Return(false).Maybe()
-	return NewDASubmitter(mockClient, cfg, genesis.Genesis{} /*options=*/, common.BlockOptions{}, common.NopMetrics(), zerolog.Nop())
+	return NewDASubmitter(mockClient, cfg, genesis.Genesis{} /*options=*/, common.BlockOptions{}, common.NopMetrics(), zerolog.Nop(), nil, nil)
 }
 
 func TestSubmitToDA_MempoolRetry_IncreasesGasAndSucceeds(t *testing.T) {

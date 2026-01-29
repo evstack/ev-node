@@ -152,7 +152,7 @@ func (s *DefaultStore) GetStateAtHeight(ctx context.Context, height uint64) (typ
 	blob, err := s.db.Get(ctx, ds.NewKey(getStateAtHeightKey(height)))
 	if err != nil {
 		if errors.Is(err, ds.ErrNotFound) {
-			return types.State{}, fmt.Errorf("no state found at height %d", height)
+			return types.State{}, fmt.Errorf("get state at height %d: %w", height, ErrNotFound)
 		}
 		return types.State{}, fmt.Errorf("failed to retrieve state at height %d: %w", height, err)
 	}

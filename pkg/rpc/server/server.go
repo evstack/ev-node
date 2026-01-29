@@ -35,16 +35,16 @@ var _ rpc.StoreServiceHandler = (*StoreServer)(nil)
 // StoreServer implements the StoreService defined in the proto file
 type StoreServer struct {
 	store       store.Store
-	headerStore goheader.Store[*types.SignedHeader]
-	dataStore   goheader.Store[*types.Data]
+	headerStore goheader.Store[*types.P2PSignedHeader]
+	dataStore   goheader.Store[*types.P2PData]
 	logger      zerolog.Logger
 }
 
 // NewStoreServer creates a new StoreServer instance
 func NewStoreServer(
 	store store.Store,
-	headerStore goheader.Store[*types.SignedHeader],
-	dataStore goheader.Store[*types.Data],
+	headerStore goheader.Store[*types.P2PSignedHeader],
+	dataStore goheader.Store[*types.P2PData],
 	logger zerolog.Logger,
 ) *StoreServer {
 	return &StoreServer{
@@ -376,8 +376,8 @@ type RaftNodeSource interface {
 // NewServiceHandler creates a new HTTP handler for Store, P2P and Config services
 func NewServiceHandler(
 	store store.Store,
-	headerStore goheader.Store[*types.SignedHeader],
-	dataStore goheader.Store[*types.Data],
+	headerStore goheader.Store[*types.P2PSignedHeader],
+	dataStore goheader.Store[*types.P2PData],
 	peerManager p2p.P2PRPC,
 	proposerAddress []byte,
 	logger zerolog.Logger,
