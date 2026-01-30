@@ -3,7 +3,6 @@ package cmd
 import (
 	"bytes"
 	"context"
-	"errors"
 	"fmt"
 	"os"
 
@@ -61,14 +60,12 @@ func NewRollbackCmd() *cobra.Command {
 				height = currentHeight - 1
 			}
 
-			var errs error
-
 			// rollback ev-node main state
 			// Note: With the unified store approach, the ev-node store is the single source of truth.
 			// The store adapters (HeaderStoreAdapter/DataStoreAdapter) read from this store,
 			// so rolling back the ev-node store automatically affects P2P sync operations.
 			if err := evolveStore.Rollback(goCtx, height, !syncNode); err != nil {
-				errs = errors.Join(errs, fmt.Errorf("failed to rollback ev-node state: %w", err))
+				return fmt.Errorf("failed to rollback ev-node state: %w", err)
 			}
 
 			// rollback execution layer via EngineClient
@@ -77,10 +74,9 @@ func NewRollbackCmd() *cobra.Command {
 				cmd.Printf("Warning: failed to create engine client, skipping EL rollback: %v\n", err)
 			} else {
 				if err := engineClient.Rollback(goCtx, height); err != nil {
-					errs = errors.Join(errs, fmt.Errorf("failed to rollback execution layer: %w", err))
-				} else {
-					cmd.Printf("Rolled back execution layer to height %d\n", height)
+					return fmt.Errorf("failed to rollback execution layer: %w", err)
 				}
+				cmd.Printf("Rolled back execution layer to height %d\n", height)
 			}
 
 			cmd.Printf("Rolled back ev-node state to height %d\n", height)
@@ -88,7 +84,7 @@ func NewRollbackCmd() *cobra.Command {
 				fmt.Println("Restart the node with the `--evnode.clear_cache` flag")
 			}
 
-			return errs
+			return nil
 		},
 	}
 

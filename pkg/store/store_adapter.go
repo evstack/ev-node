@@ -102,59 +102,48 @@ func (a *StoreAdapter[H]) Stop(ctx context.Context) error {
 	return nil
 }
 
+// pendingHead returns the highest item in the pending cache and its height.
+// Returns zero value and 0 if pending cache is empty.
+func (a *StoreAdapter[H]) pendingHead() (H, uint64) {
+	var maxHeight uint64
+	var head H
+	for _, h := range a.pending.Keys() {
+		if item, ok := a.pending.Peek(h); ok && h > maxHeight {
+			maxHeight = h
+			head = item
+		}
+	}
+	return head, maxHeight
+}
+
 // Head returns the highest item in the store.
 func (a *StoreAdapter[H]) Head(ctx context.Context, _ ...header.HeadOption[H]) (H, error) {
 	var zero H
 
-	// First check the store height
-	storeHeight, err := a.getter.Height(ctx)
-	if err != nil && storeHeight == 0 {
-		// Check pending items
-		if a.pending.Len() == 0 {
-			return zero, header.ErrNotFound
-		}
+	storeHeight, _ := a.getter.Height(ctx)
+	pendingHead, pendingHeight := a.pendingHead()
 
-		// Find the highest pending item
-		var maxHeight uint64
-		var head H
-		for _, h := range a.pending.Keys() {
-			if item, ok := a.pending.Peek(h); ok && h > maxHeight {
-				maxHeight = h
-				head = item
-			}
-		}
-		if maxHeight > 0 {
-			return head, nil
-		}
-		return zero, header.ErrNotFound
-	}
-
-	// Check if we have a higher pending item
-	var maxPending uint64
-	var pendingHead H
-	for _, h := range a.pending.Keys() {
-		if item, ok := a.pending.Peek(h); ok && h > maxPending {
-			maxPending = h
-			pendingHead = item
-		}
-	}
-
-	if maxPending > storeHeight && maxPending > 0 {
-		a.height.Store(maxPending)
+	// Prefer pending if it's higher than store
+	if pendingHeight > storeHeight {
+		a.height.Store(pendingHeight)
 		return pendingHead, nil
 	}
 
-	if storeHeight == 0 {
-		return zero, header.ErrNotFound
+	// Try to get from store
+	if storeHeight > 0 {
+		a.height.Store(storeHeight)
+		if item, err := a.getter.GetByHeight(ctx, storeHeight); err == nil {
+			return item, nil
+		}
 	}
 
-	a.height.Store(storeHeight)
-	item, err := a.getter.GetByHeight(ctx, storeHeight)
-	if err != nil {
-		return zero, header.ErrNotFound
+	// Fall back to pending if store failed
+	if pendingHeight > 0 {
+		a.height.Store(pendingHeight)
+		return pendingHead, nil
 	}
 
-	return item, nil
+	return zero, header.ErrNotFound
 }
 
 // Tail returns the lowest item in the store.

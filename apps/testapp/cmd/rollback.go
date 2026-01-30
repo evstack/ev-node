@@ -2,7 +2,6 @@ package cmd
 
 import (
 	"context"
-	"errors"
 	"fmt"
 
 	kvexecutor "github.com/evstack/ev-node/apps/testapp/kv"
@@ -62,19 +61,17 @@ func NewRollbackCmd() *cobra.Command {
 				return err
 			}
 
-			var errs error
-
 			// rollback ev-node main state
 			// Note: With the unified store approach, the ev-node store is the single source of truth.
 			// The store adapters (HeaderStoreAdapter/DataStoreAdapter) read from this store,
 			// so rolling back the ev-node store automatically affects P2P sync operations.
 			if err := evolveStore.Rollback(goCtx, height, !syncNode); err != nil {
-				errs = errors.Join(errs, fmt.Errorf("failed to rollback ev-node state: %w", err))
+				return fmt.Errorf("failed to rollback ev-node state: %w", err)
 			}
 
 			// rollback execution store
 			if err := executor.Rollback(goCtx, height); err != nil {
-				errs = errors.Join(errs, fmt.Errorf("rollback failed: %w", err))
+				return fmt.Errorf("failed to rollback executor state: %w", err)
 			}
 
 			fmt.Printf("Rolled back ev-node state to height %d\n", height)
@@ -82,7 +79,7 @@ func NewRollbackCmd() *cobra.Command {
 				fmt.Println("Restart the node with the `--evnode.clear_cache` flag")
 			}
 
-			return errs
+			return nil
 		},
 	}
 
