@@ -112,14 +112,10 @@ func (hs *heightSub) notifyUpTo(h uint64) {
 // are validated and persisted by the ev-node syncer. Once the ev-node syncer processes
 // a block, it writes to the underlying store, and subsequent reads will come from the store.
 type StoreAdapter[H header.Header[H]] struct {
-	getter        StoreGetter[H]
-	initialHeight uint64
+	getter               StoreGetter[H]
+	genesisInitialHeight uint64
 
-	// height caches the current height to avoid repeated context-based lookups.
-	// Updated on successful reads and writes.
-	height atomic.Uint64
-
-	// heightSub allows waiting for specific heights to be stored.
+	// heightSub tracks the current height and allows waiting for specific heights.
 	// This is required by go-header syncer for blocking GetByHeight.
 	heightSub *heightSub
 
@@ -141,22 +137,21 @@ func NewStoreAdapter[H header.Header[H]](getter StoreGetter[H], gen genesis.Gene
 	// Create LRU cache for pending items - ignore error as size is constant and valid
 	pendingCache, _ := lru.New[uint64, H](defaultPendingCacheSize)
 
-	// Get initial height from store
-	initialHeight := gen.InitialHeight
-	if h, err := getter.Height(context.Background()); err == nil && h > 0 {
-		initialHeight = h
+	// Get actual current height from store (0 if empty)
+	var storeHeight uint64
+	if h, err := getter.Height(context.Background()); err == nil {
+		storeHeight = h
 	}
 
 	adapter := &StoreAdapter[H]{
-		getter:        getter,
-		initialHeight: initialHeight,
-		pending:       pendingCache,
-		heightSub:     newHeightSub(initialHeight),
+		getter:               getter,
+		genesisInitialHeight: max(gen.InitialHeight, 1),
+		pending:              pendingCache,
+		heightSub:            newHeightSub(storeHeight),
 	}
 
-	// Initialize height from store
-	if initialHeight > 0 {
-		adapter.height.Store(initialHeight)
+	// Mark as initialized if we have data
+	if storeHeight > 0 {
 		adapter.initialized = true
 	}
 
@@ -175,7 +170,6 @@ func (a *StoreAdapter[H]) Start(ctx context.Context) error {
 	}
 
 	if h > 0 {
-		a.height.Store(h)
 		a.heightSub.SetHeight(h)
 		a.initialized = true
 	}
@@ -212,13 +206,13 @@ func (a *StoreAdapter[H]) Head(ctx context.Context, _ ...header.HeadOption[H]) (
 
 	// Prefer pending if it's higher than store
 	if pendingHeight > storeHeight {
-		a.height.Store(pendingHeight)
+		a.heightSub.SetHeight(pendingHeight)
 		return pendingHead, nil
 	}
 
 	// Try to get from store
 	if storeHeight > 0 {
-		a.height.Store(storeHeight)
+		a.heightSub.SetHeight(storeHeight)
 		if item, err := a.getter.GetByHeight(ctx, storeHeight); err == nil {
 			return item, nil
 		}
@@ -226,7 +220,7 @@ func (a *StoreAdapter[H]) Head(ctx context.Context, _ ...header.HeadOption[H]) (
 
 	// Fall back to pending if store failed
 	if pendingHeight > 0 {
-		a.height.Store(pendingHeight)
+		a.heightSub.SetHeight(pendingHeight)
 		return pendingHead, nil
 	}
 
@@ -240,7 +234,7 @@ func (a *StoreAdapter[H]) Head(ctx context.Context, _ ...header.HeadOption[H]) (
 func (a *StoreAdapter[H]) Tail(ctx context.Context) (H, error) {
 	var zero H
 
-	height := a.height.Load()
+	height := a.heightSub.Height()
 	if height == 0 {
 		// Check store
 		h, err := a.getter.Height(ctx)
@@ -250,19 +244,19 @@ func (a *StoreAdapter[H]) Tail(ctx context.Context) (H, error) {
 		height = h
 	}
 
-	// Try initialHeight first (most common case - no pruning)
-	item, err := a.getter.GetByHeight(ctx, a.initialHeight)
+	// Try genesisInitialHeight first (most common case - no pruning)
+	item, err := a.getter.GetByHeight(ctx, a.genesisInitialHeight)
 	if err == nil {
 		return item, nil
 	}
 
-	// Check pending for initialHeight
-	if pendingItem, ok := a.pending.Peek(a.initialHeight); ok {
+	// Check pending for genesisInitialHeight
+	if pendingItem, ok := a.pending.Peek(a.genesisInitialHeight); ok {
 		return pendingItem, nil
 	}
 
-	// Walk up from initialHeight to find the first available item (pruning case)
-	for h := a.initialHeight + 1; h <= height; h++ {
+	// Walk up from genesisInitialHeight to find the first available item (pruning case)
+	for h := a.genesisInitialHeight + 1; h <= height; h++ {
 		item, err = a.getter.GetByHeight(ctx, h)
 		if err == nil {
 			return item, nil
@@ -413,15 +407,15 @@ func (a *StoreAdapter[H]) Height() uint64 {
 		}
 
 		if maxPending > h {
-			a.height.Store(maxPending)
+			a.heightSub.SetHeight(maxPending)
 			return maxPending
 		}
-		a.height.Store(h)
+		a.heightSub.SetHeight(h)
 		return h
 	}
 
 	// Fall back to cached height or check pending
-	height := a.height.Load()
+	height := a.heightSub.Height()
 	if height > 0 {
 		return height
 	}
@@ -459,8 +453,7 @@ func (a *StoreAdapter[H]) Append(ctx context.Context, items ...H) error {
 		a.pending.Add(height, item)
 
 		// Update cached height and notify waiters
-		if height > a.height.Load() {
-			a.height.Store(height)
+		if height > a.heightSub.Height() {
 			a.heightSub.SetHeight(height)
 		}
 	}
@@ -484,7 +477,6 @@ func (a *StoreAdapter[H]) Init(ctx context.Context, item H) error {
 
 	// Add to pending cache (LRU will evict oldest if full)
 	a.pending.Add(item.Height(), item)
-	a.height.Store(item.Height())
 	a.heightSub.SetHeight(item.Height())
 	a.initialized = true
 
@@ -512,8 +504,8 @@ func (a *StoreAdapter[H]) DeleteRange(ctx context.Context, from, to uint64) erro
 	}
 
 	// Update cached height if necessary
-	if from <= a.height.Load() {
-		a.height.Store(from - 1)
+	if from <= a.heightSub.Height() {
+		a.heightSub.SetHeight(from - 1)
 	}
 
 	return nil
