@@ -1,6 +1,7 @@
 package store
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"sync"
@@ -187,7 +188,7 @@ func (a *DataStoreAdapter) Get(ctx context.Context, hash header.Hash) (*types.Da
 
 	// Check pending data - note: this checks data hash, not header hash
 	for _, h := range a.pendingData.Keys() {
-		if pendingData, ok := a.pendingData.Peek(h); ok && pendingData != nil && bytesEqual(pendingData.Hash(), hash) {
+		if pendingData, ok := a.pendingData.Peek(h); ok && pendingData != nil && bytes.Equal(pendingData.Hash(), hash) {
 			return pendingData, nil
 		}
 	}
@@ -259,7 +260,7 @@ func (a *DataStoreAdapter) Has(ctx context.Context, hash header.Hash) (bool, err
 
 	// Check pending data
 	for _, h := range a.pendingData.Keys() {
-		if pendingData, ok := a.pendingData.Peek(h); ok && pendingData != nil && bytesEqual(pendingData.Hash(), hash) {
+		if pendingData, ok := a.pendingData.Peek(h); ok && pendingData != nil && bytes.Equal(pendingData.Hash(), hash) {
 			return true, nil
 		}
 	}

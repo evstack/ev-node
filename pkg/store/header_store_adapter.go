@@ -1,6 +1,7 @@
 package store
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"sync"
@@ -190,7 +191,7 @@ func (a *HeaderStoreAdapter) Get(ctx context.Context, hash header.Hash) (*types.
 
 	// Check pending headers
 	for _, h := range a.pendingHeaders.Keys() {
-		if pendingHdr, ok := a.pendingHeaders.Peek(h); ok && pendingHdr != nil && bytesEqual(pendingHdr.Hash(), hash) {
+		if pendingHdr, ok := a.pendingHeaders.Peek(h); ok && pendingHdr != nil && bytes.Equal(pendingHdr.Hash(), hash) {
 			return pendingHdr, nil
 		}
 	}
@@ -262,7 +263,7 @@ func (a *HeaderStoreAdapter) Has(ctx context.Context, hash header.Hash) (bool, e
 
 	// Check pending headers
 	for _, h := range a.pendingHeaders.Keys() {
-		if pendingHdr, ok := a.pendingHeaders.Peek(h); ok && pendingHdr != nil && bytesEqual(pendingHdr.Hash(), hash) {
+		if pendingHdr, ok := a.pendingHeaders.Peek(h); ok && pendingHdr != nil && bytes.Equal(pendingHdr.Hash(), hash) {
 			return true, nil
 		}
 	}
@@ -402,17 +403,4 @@ func (a *HeaderStoreAdapter) DeleteRange(ctx context.Context, from, to uint64) e
 // OnDelete registers a callback to be invoked when headers are deleted.
 func (a *HeaderStoreAdapter) OnDelete(fn func(context.Context, uint64) error) {
 	a.onDeleteFn = fn
-}
-
-// bytesEqual compares two byte slices for equality.
-func bytesEqual(a, b []byte) bool {
-	if len(a) != len(b) {
-		return false
-	}
-	for i := range a {
-		if a[i] != b[i] {
-			return false
-		}
-	}
-	return true
 }
