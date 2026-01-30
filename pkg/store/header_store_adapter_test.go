@@ -472,7 +472,9 @@ func TestHeaderStoreAdapter_HeightRefreshFromStore(t *testing.T) {
 
 func TestHeaderStoreAdapter_GetByHeightNotFound(t *testing.T) {
 	t.Parallel()
-	ctx := context.Background()
+	// Use a short timeout since GetByHeight now blocks waiting for the height
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer cancel()
 
 	ds, err := NewTestInMemoryKVStore()
 	require.NoError(t, err)
@@ -480,7 +482,8 @@ func TestHeaderStoreAdapter_GetByHeightNotFound(t *testing.T) {
 	adapter := NewHeaderStoreAdapter(store, testGenesis())
 
 	_, err = adapter.GetByHeight(ctx, 999)
-	assert.ErrorIs(t, err, header.ErrNotFound)
+	// GetByHeight now blocks until the height is available or context is canceled
+	assert.ErrorIs(t, err, context.DeadlineExceeded)
 }
 
 func TestHeaderStoreAdapter_InitWithNil(t *testing.T) {

@@ -3,6 +3,7 @@ package store
 import (
 	"bytes"
 	"context"
+	"errors"
 	"sync"
 	"sync/atomic"
 
@@ -12,6 +13,9 @@ import (
 	"github.com/evstack/ev-node/pkg/genesis"
 	"github.com/evstack/ev-node/types"
 )
+
+// errElapsedHeight is returned when the requested height was already stored.
+var errElapsedHeight = errors.New("elapsed height")
 
 // defaultPendingCacheSize is the default size for the pending headers/data LRU cache.
 const defaultPendingCacheSize = 1000
@@ -28,6 +32,77 @@ type StoreGetter[H header.Header[H]] interface {
 	HasAt(ctx context.Context, height uint64) bool
 }
 
+// heightSub provides a mechanism for waiting on a specific height to be stored.
+// This is critical for go-header syncer which expects GetByHeight to block until
+// the requested height is available.
+type heightSub struct {
+	height    atomic.Uint64
+	heightMu  sync.Mutex
+	heightChs map[uint64][]chan struct{}
+}
+
+func newHeightSub(initialHeight uint64) *heightSub {
+	hs := &heightSub{
+		heightChs: make(map[uint64][]chan struct{}),
+	}
+	hs.height.Store(initialHeight)
+	return hs
+}
+
+// Height returns the current height.
+func (hs *heightSub) Height() uint64 {
+	return hs.height.Load()
+}
+
+// SetHeight updates the current height and notifies any waiters.
+func (hs *heightSub) SetHeight(h uint64) {
+	hs.height.Store(h)
+	hs.notifyUpTo(h)
+}
+
+// Wait blocks until the given height is reached or context is canceled.
+// Returns errElapsedHeight if the height was already reached.
+func (hs *heightSub) Wait(ctx context.Context, height uint64) error {
+	// Fast path: height already reached
+	if hs.height.Load() >= height {
+		return errElapsedHeight
+	}
+
+	hs.heightMu.Lock()
+	// Double-check after acquiring lock
+	if hs.height.Load() >= height {
+		hs.heightMu.Unlock()
+		return errElapsedHeight
+	}
+
+	// Create a channel to wait on
+	ch := make(chan struct{})
+	hs.heightChs[height] = append(hs.heightChs[height], ch)
+	hs.heightMu.Unlock()
+
+	select {
+	case <-ch:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+}
+
+// notifyUpTo notifies all waiters for heights <= h.
+func (hs *heightSub) notifyUpTo(h uint64) {
+	hs.heightMu.Lock()
+	defer hs.heightMu.Unlock()
+
+	for height, chs := range hs.heightChs {
+		if height <= h {
+			for _, ch := range chs {
+				close(ch)
+			}
+			delete(hs.heightChs, height)
+		}
+	}
+}
+
 // StoreAdapter is a generic adapter that wraps Store to implement header.Store[H].
 // This allows the ev-node store to be used directly by go-header's P2P infrastructure,
 // eliminating the need for a separate go-header store and reducing data duplication.
@@ -37,12 +112,16 @@ type StoreGetter[H header.Header[H]] interface {
 // are validated and persisted by the ev-node syncer. Once the ev-node syncer processes
 // a block, it writes to the underlying store, and subsequent reads will come from the store.
 type StoreAdapter[H header.Header[H]] struct {
-	getter  StoreGetter[H]
-	genesis genesis.Genesis
+	getter        StoreGetter[H]
+	initialHeight uint64
 
 	// height caches the current height to avoid repeated context-based lookups.
 	// Updated on successful reads and writes.
 	height atomic.Uint64
+
+	// heightSub allows waiting for specific heights to be stored.
+	// This is required by go-header syncer for blocking GetByHeight.
+	heightSub *heightSub
 
 	// mu protects initialization state
 	mu          sync.RWMutex
@@ -62,15 +141,22 @@ func NewStoreAdapter[H header.Header[H]](getter StoreGetter[H], gen genesis.Gene
 	// Create LRU cache for pending items - ignore error as size is constant and valid
 	pendingCache, _ := lru.New[uint64, H](defaultPendingCacheSize)
 
+	// Get initial height from store
+	initialHeight := gen.InitialHeight
+	if h, err := getter.Height(context.Background()); err == nil && h > 0 {
+		initialHeight = h
+	}
+
 	adapter := &StoreAdapter[H]{
-		getter:  getter,
-		genesis: gen,
-		pending: pendingCache,
+		getter:        getter,
+		initialHeight: initialHeight,
+		pending:       pendingCache,
+		heightSub:     newHeightSub(initialHeight),
 	}
 
 	// Initialize height from store
-	if h, err := getter.Height(context.Background()); err == nil && h > 0 {
-		adapter.height.Store(h)
+	if initialHeight > 0 {
+		adapter.height.Store(initialHeight)
 		adapter.initialized = true
 	}
 
@@ -90,6 +176,7 @@ func (a *StoreAdapter[H]) Start(ctx context.Context) error {
 
 	if h > 0 {
 		a.height.Store(h)
+		a.heightSub.SetHeight(h)
 		a.initialized = true
 	}
 
@@ -163,24 +250,19 @@ func (a *StoreAdapter[H]) Tail(ctx context.Context) (H, error) {
 		height = h
 	}
 
-	initialHeight := a.genesis.InitialHeight
-	if initialHeight == 0 {
-		initialHeight = 1
-	}
-
 	// Try initialHeight first (most common case - no pruning)
-	item, err := a.getter.GetByHeight(ctx, initialHeight)
+	item, err := a.getter.GetByHeight(ctx, a.initialHeight)
 	if err == nil {
 		return item, nil
 	}
 
 	// Check pending for initialHeight
-	if pendingItem, ok := a.pending.Peek(initialHeight); ok {
+	if pendingItem, ok := a.pending.Peek(a.initialHeight); ok {
 		return pendingItem, nil
 	}
 
 	// Walk up from initialHeight to find the first available item (pruning case)
-	for h := initialHeight + 1; h <= height; h++ {
+	for h := a.initialHeight + 1; h <= height; h++ {
 		item, err = a.getter.GetByHeight(ctx, h)
 		if err == nil {
 			return item, nil
@@ -214,7 +296,27 @@ func (a *StoreAdapter[H]) Get(ctx context.Context, hash header.Hash) (H, error) 
 }
 
 // GetByHeight returns an item at the given height.
+// If the height is not yet available, it blocks until it is or context is canceled.
 func (a *StoreAdapter[H]) GetByHeight(ctx context.Context, height uint64) (H, error) {
+	var zero H
+
+	// Try to get the item first
+	if item, err := a.getByHeightNoWait(ctx, height); err == nil {
+		return item, nil
+	}
+
+	// If not found, wait for the height to be stored
+	err := a.heightSub.Wait(ctx, height)
+	if err != nil && !errors.Is(err, errElapsedHeight) {
+		return zero, err
+	}
+
+	// Try again after waiting
+	return a.getByHeightNoWait(ctx, height)
+}
+
+// getByHeightNoWait returns an item at the given height without blocking.
+func (a *StoreAdapter[H]) getByHeightNoWait(ctx context.Context, height uint64) (H, error) {
 	var zero H
 
 	// First try the store
@@ -356,9 +458,10 @@ func (a *StoreAdapter[H]) Append(ctx context.Context, items ...H) error {
 		// Add to pending cache (LRU will evict oldest if full)
 		a.pending.Add(height, item)
 
-		// Update cached height
+		// Update cached height and notify waiters
 		if height > a.height.Load() {
 			a.height.Store(height)
+			a.heightSub.SetHeight(height)
 		}
 	}
 
@@ -382,6 +485,7 @@ func (a *StoreAdapter[H]) Init(ctx context.Context, item H) error {
 	// Add to pending cache (LRU will evict oldest if full)
 	a.pending.Add(item.Height(), item)
 	a.height.Store(item.Height())
+	a.heightSub.SetHeight(item.Height())
 	a.initialized = true
 
 	return nil

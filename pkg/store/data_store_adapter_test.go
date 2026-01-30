@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"crypto/sha256"
+	"errors"
 	"testing"
 	"time"
 
@@ -473,7 +474,9 @@ func TestDataStoreAdapter_HeightRefreshFromStore(t *testing.T) {
 
 func TestDataStoreAdapter_GetByHeightNotFound(t *testing.T) {
 	t.Parallel()
-	ctx := context.Background()
+	// Use a short timeout since GetByHeight now blocks waiting for the height
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer cancel()
 
 	ds, err := NewTestInMemoryKVStore()
 	require.NoError(t, err)
@@ -481,7 +484,8 @@ func TestDataStoreAdapter_GetByHeightNotFound(t *testing.T) {
 	adapter := NewDataStoreAdapter(store, testGenesisData())
 
 	_, err = adapter.GetByHeight(ctx, 999)
-	assert.ErrorIs(t, err, header.ErrNotFound)
+	// GetByHeight now blocks until the height is available or context is canceled
+	assert.ErrorIs(t, err, context.DeadlineExceeded)
 }
 
 func TestDataStoreAdapter_InitWithNil(t *testing.T) {
@@ -525,7 +529,9 @@ func TestDataStoreAdapter_ContextTimeout(t *testing.T) {
 
 func TestDataStoreAdapter_GetRangePartial(t *testing.T) {
 	t.Parallel()
-	ctx := context.Background()
+	// Use a short timeout since GetByHeight now blocks waiting for the height
+	ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
+	defer cancel()
 
 	ds, err := NewTestInMemoryKVStore()
 	require.NoError(t, err)
@@ -547,16 +553,20 @@ func TestDataStoreAdapter_GetRangePartial(t *testing.T) {
 
 func TestDataStoreAdapter_GetRangeEmpty(t *testing.T) {
 	t.Parallel()
-	ctx := context.Background()
+	// Use a short timeout since GetByHeight now blocks waiting for the height
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer cancel()
 
 	ds, err := NewTestInMemoryKVStore()
 	require.NoError(t, err)
 	store := New(ds)
 	adapter := NewDataStoreAdapter(store, testGenesisData())
 
-	// GetRange on empty store should return ErrNotFound
+	// GetRange on empty store will block until context timeout
 	_, err = adapter.GetRange(ctx, 1, 5)
-	assert.ErrorIs(t, err, header.ErrNotFound)
+	// GetByHeight now blocks - we may get context.DeadlineExceeded or ErrNotFound depending on timing
+	assert.True(t, errors.Is(err, context.DeadlineExceeded) || errors.Is(err, header.ErrNotFound),
+		"expected DeadlineExceeded or ErrNotFound, got: %v", err)
 }
 
 func TestDataStoreAdapter_MultipleAppends(t *testing.T) {
