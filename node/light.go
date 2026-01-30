@@ -57,7 +57,7 @@ func newLightNode(
 		return nil, fmt.Errorf("failed to create cached store: %w", err)
 	}
 
-	headerSyncService, err := sync.NewHeaderSyncService(database, cachedStore, conf, genesis, p2pClient, componentLogger)
+	headerSyncService, err := sync.NewHeaderSyncService(cachedStore, conf, genesis, p2pClient, componentLogger)
 	if err != nil {
 		return nil, fmt.Errorf("error while initializing HeaderSyncService: %w", err)
 	}
