@@ -379,53 +379,6 @@ func TestHeaderStoreAdapter_OnDelete(t *testing.T) {
 	assert.Equal(t, []uint64{1, 2}, deletedHeights)
 }
 
-func TestHeaderStoreAdapter_RefreshHeight(t *testing.T) {
-	t.Parallel()
-	ctx := context.Background()
-
-	ds, err := NewTestInMemoryKVStore()
-	require.NoError(t, err)
-	store := New(ds)
-	adapter := NewHeaderStoreAdapter(store)
-
-	// Save a block directly to the underlying store
-	h1, d1 := types.GetRandomBlock(1, 1, "test-chain")
-	batch, err := store.NewBatch(ctx)
-	require.NoError(t, err)
-	require.NoError(t, batch.SaveBlockData(h1, d1, &types.Signature{}))
-	require.NoError(t, batch.SetHeight(1))
-	require.NoError(t, batch.Commit())
-
-	// RefreshHeight should update from store and clean pending
-	err = adapter.RefreshHeight(ctx)
-	require.NoError(t, err)
-	assert.Equal(t, uint64(1), adapter.Height())
-}
-
-func TestHeaderStoreAdapter_SetHeight(t *testing.T) {
-	t.Parallel()
-	ctx := context.Background()
-
-	ds, err := NewTestInMemoryKVStore()
-	require.NoError(t, err)
-	store := New(ds)
-	adapter := NewHeaderStoreAdapter(store)
-
-	// Add some pending headers
-	h1, _ := types.GetRandomBlock(1, 1, "test-chain")
-	h2, _ := types.GetRandomBlock(2, 1, "test-chain")
-	require.NoError(t, adapter.Append(ctx, h1, h2))
-
-	// SetHeight should update height and clean pending at or below
-	adapter.SetHeight(1)
-	assert.Equal(t, uint64(1), adapter.Height())
-
-	// Height 1 should be cleaned from pending
-	// (but since we don't have store data, HasAt returns false now for pending)
-	// Height 2 should still be in pending
-	assert.True(t, adapter.HasAt(ctx, 2))
-}
-
 func TestHeaderStoreAdapter_AppendSkipsExisting(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()

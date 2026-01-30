@@ -400,35 +400,3 @@ func (a *DataStoreAdapter) DeleteRange(ctx context.Context, from, to uint64) err
 func (a *DataStoreAdapter) OnDelete(fn func(context.Context, uint64) error) {
 	a.onDeleteFn = fn
 }
-
-// RefreshHeight updates the cached height from the underlying store.
-// This should be called after the syncer processes a new block.
-func (a *DataStoreAdapter) RefreshHeight(ctx context.Context) error {
-	h, err := a.store.Height(ctx)
-	if err != nil {
-		return err
-	}
-	a.height.Store(h)
-
-	// Clean up pending data that is now in store
-	for _, height := range a.pendingData.Keys() {
-		if height <= h {
-			a.pendingData.Remove(height)
-		}
-	}
-
-	return nil
-}
-
-// SetHeight updates the cached height.
-// This is useful when the syncer knows the new height after processing a block.
-func (a *DataStoreAdapter) SetHeight(height uint64) {
-	a.height.Store(height)
-
-	// Clean up pending data at or below this height
-	for _, h := range a.pendingData.Keys() {
-		if h <= height {
-			a.pendingData.Remove(h)
-		}
-	}
-}

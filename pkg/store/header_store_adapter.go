@@ -12,11 +12,8 @@ import (
 	"github.com/evstack/ev-node/types"
 )
 
-const (
-	// defaultPendingCacheSize is the default size for the pending headers/data LRU cache.
-	// This should be large enough to handle P2P sync bursts but bounded to prevent memory issues.
-	defaultPendingCacheSize = 1000
-)
+// defaultPendingCacheSize is the default size for the pending headers/data LRU cache.
+const defaultPendingCacheSize = 1000
 
 // HeaderStoreAdapter wraps Store to implement header.Store[*types.SignedHeader].
 // This allows the ev-node store to be used directly by go-header's P2P infrastructure,
@@ -405,38 +402,6 @@ func (a *HeaderStoreAdapter) DeleteRange(ctx context.Context, from, to uint64) e
 // OnDelete registers a callback to be invoked when headers are deleted.
 func (a *HeaderStoreAdapter) OnDelete(fn func(context.Context, uint64) error) {
 	a.onDeleteFn = fn
-}
-
-// RefreshHeight updates the cached height from the underlying store.
-// This should be called after the syncer processes a new block.
-func (a *HeaderStoreAdapter) RefreshHeight(ctx context.Context) error {
-	h, err := a.store.Height(ctx)
-	if err != nil {
-		return err
-	}
-	a.height.Store(h)
-
-	// Clean up pending headers that are now in store
-	for _, height := range a.pendingHeaders.Keys() {
-		if height <= h {
-			a.pendingHeaders.Remove(height)
-		}
-	}
-
-	return nil
-}
-
-// SetHeight updates the cached height.
-// This is useful when the syncer knows the new height after processing a block.
-func (a *HeaderStoreAdapter) SetHeight(height uint64) {
-	a.height.Store(height)
-
-	// Clean up pending headers at or below this height
-	for _, h := range a.pendingHeaders.Keys() {
-		if h <= height {
-			a.pendingHeaders.Remove(h)
-		}
-	}
 }
 
 // bytesEqual compares two byte slices for equality.

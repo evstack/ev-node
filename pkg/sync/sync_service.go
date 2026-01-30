@@ -189,8 +189,6 @@ func (syncService *SyncService[H]) Store() header.Store[H] {
 }
 
 // WriteToStoreAndBroadcast broadcasts provided header or block to P2P network.
-// Note: With the store adapter approach, actual storage is handled by the syncer
-// writing to the ev-node store. This method primarily handles P2P broadcasting.
 func (syncService *SyncService[H]) WriteToStoreAndBroadcast(ctx context.Context, headerOrData H, opts ...pubsub.PubOpt) error {
 	if syncService.genesis.InitialHeight == 0 {
 		return fmt.Errorf("invalid initial height; cannot be zero")
