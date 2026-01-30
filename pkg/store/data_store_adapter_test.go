@@ -54,14 +54,14 @@ func TestDataStoreAdapter_AppendAndRetrieve(t *testing.T) {
 	_, d1 := types.GetRandomBlock(1, 2, "test-chain")
 	_, d2 := types.GetRandomBlock(2, 2, "test-chain")
 
-	// Append data
+	// Append data - these go to pending cache
 	err = adapter.Append(ctx, d1, d2)
 	require.NoError(t, err)
 
-	// Check height is updated
+	// Check height is updated (from pending)
 	assert.Equal(t, uint64(2), adapter.Height())
 
-	// Retrieve by height
+	// Retrieve by height (from pending)
 	retrieved, err := adapter.GetByHeight(ctx, 1)
 	require.NoError(t, err)
 	assert.Equal(t, d1.Height(), retrieved.Height())
@@ -70,13 +70,13 @@ func TestDataStoreAdapter_AppendAndRetrieve(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, d2.Height(), retrieved.Height())
 
-	// Head should return the latest
+	// Head should return the latest (from pending)
 	head, err := adapter.Head(ctx)
 	require.NoError(t, err)
 	assert.Equal(t, uint64(2), head.Height())
 }
 
-func TestDataStoreAdapter_Get(t *testing.T) {
+func TestDataStoreAdapter_GetFromStore(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 
@@ -147,7 +147,32 @@ func TestDataStoreAdapter_HasAt(t *testing.T) {
 	_, d1 := types.GetRandomBlock(1, 2, "test-chain")
 	require.NoError(t, adapter.Append(ctx, d1))
 
-	// HasAt should return true for existing height
+	// HasAt should return true for pending height
+	assert.True(t, adapter.HasAt(ctx, 1))
+
+	// HasAt should return false for non-existent height
+	assert.False(t, adapter.HasAt(ctx, 2))
+}
+
+func TestDataStoreAdapter_HasAtFromStore(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+
+	ds, err := NewTestInMemoryKVStore()
+	require.NoError(t, err)
+	store := New(ds)
+
+	// Save directly to store
+	h1, d1 := types.GetRandomBlock(1, 2, "test-chain")
+	batch, err := store.NewBatch(ctx)
+	require.NoError(t, err)
+	require.NoError(t, batch.SaveBlockData(h1, d1, &h1.Signature))
+	require.NoError(t, batch.SetHeight(1))
+	require.NoError(t, batch.Commit())
+
+	adapter := NewDataStoreAdapter(store)
+
+	// HasAt should return true for stored height
 	assert.True(t, adapter.HasAt(ctx, 1))
 
 	// HasAt should return false for non-existent height
@@ -163,7 +188,7 @@ func TestDataStoreAdapter_GetRange(t *testing.T) {
 	store := New(ds)
 	adapter := NewDataStoreAdapter(store)
 
-	// Create and append multiple data blocks
+	// Create and append multiple data blocks to pending
 	_, d1 := types.GetRandomBlock(1, 1, "test-chain")
 	_, d2 := types.GetRandomBlock(2, 1, "test-chain")
 	_, d3 := types.GetRandomBlock(3, 1, "test-chain")
@@ -215,11 +240,11 @@ func TestDataStoreAdapter_Init(t *testing.T) {
 
 	_, d1 := types.GetRandomBlock(1, 1, "test-chain")
 
-	// Init should save the data
+	// Init should add data to pending
 	err = adapter.Init(ctx, d1)
 	require.NoError(t, err)
 
-	// Verify it's stored
+	// Verify it's retrievable from pending
 	retrieved, err := adapter.GetByHeight(ctx, 1)
 	require.NoError(t, err)
 	assert.Equal(t, d1.Height(), retrieved.Height())
@@ -229,7 +254,7 @@ func TestDataStoreAdapter_Init(t *testing.T) {
 	err = adapter.Init(ctx, d2)
 	require.NoError(t, err)
 
-	// Height 2 should not be stored since Init was already done
+	// Height 2 should not be in pending since Init was already done
 	assert.False(t, adapter.HasAt(ctx, 2))
 }
 
@@ -250,7 +275,31 @@ func TestDataStoreAdapter_Tail(t *testing.T) {
 	_, d2 := types.GetRandomBlock(2, 1, "test-chain")
 	require.NoError(t, adapter.Append(ctx, d1, d2))
 
-	// Tail should return the first data
+	// Tail should return the first data from pending
+	tail, err := adapter.Tail(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, uint64(1), tail.Height())
+}
+
+func TestDataStoreAdapter_TailFromStore(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+
+	ds, err := NewTestInMemoryKVStore()
+	require.NoError(t, err)
+	store := New(ds)
+
+	// Save directly to store
+	h1, d1 := types.GetRandomBlock(1, 1, "test-chain")
+	batch, err := store.NewBatch(ctx)
+	require.NoError(t, err)
+	require.NoError(t, batch.SaveBlockData(h1, d1, &h1.Signature))
+	require.NoError(t, batch.SetHeight(1))
+	require.NoError(t, batch.Commit())
+
+	adapter := NewDataStoreAdapter(store)
+
+	// Tail should return the first data from store
 	tail, err := adapter.Tail(ctx)
 	require.NoError(t, err)
 	assert.Equal(t, uint64(1), tail.Height())
@@ -290,12 +339,19 @@ func TestDataStoreAdapter_DeleteRange(t *testing.T) {
 
 	assert.Equal(t, uint64(3), adapter.Height())
 
-	// DeleteRange should update cached height
+	// DeleteRange should update cached height and remove from pending
 	err = adapter.DeleteRange(ctx, 2, 4)
 	require.NoError(t, err)
 
 	// Cached height should be updated to 1
 	assert.Equal(t, uint64(1), adapter.Height())
+
+	// Heights 2 and 3 should no longer be available
+	assert.False(t, adapter.HasAt(ctx, 2))
+	assert.False(t, adapter.HasAt(ctx, 3))
+
+	// Height 1 should still be available
+	assert.True(t, adapter.HasAt(ctx, 1))
 }
 
 func TestDataStoreAdapter_OnDelete(t *testing.T) {
@@ -341,8 +397,7 @@ func TestDataStoreAdapter_RefreshHeight(t *testing.T) {
 	require.NoError(t, batch.SetHeight(1))
 	require.NoError(t, batch.Commit())
 
-	// Adapter height may be stale
-	// RefreshHeight should update it
+	// RefreshHeight should update from store and clean pending
 	err = adapter.RefreshHeight(ctx)
 	require.NoError(t, err)
 	assert.Equal(t, uint64(1), adapter.Height())
@@ -350,14 +405,24 @@ func TestDataStoreAdapter_RefreshHeight(t *testing.T) {
 
 func TestDataStoreAdapter_SetHeight(t *testing.T) {
 	t.Parallel()
+	ctx := context.Background()
 
 	ds, err := NewTestInMemoryKVStore()
 	require.NoError(t, err)
 	store := New(ds)
 	adapter := NewDataStoreAdapter(store)
 
-	adapter.SetHeight(42)
-	assert.Equal(t, uint64(42), adapter.Height())
+	// Add some pending data
+	_, d1 := types.GetRandomBlock(1, 1, "test-chain")
+	_, d2 := types.GetRandomBlock(2, 1, "test-chain")
+	require.NoError(t, adapter.Append(ctx, d1, d2))
+
+	// SetHeight should update height and clean pending at or below
+	adapter.SetHeight(1)
+	assert.Equal(t, uint64(1), adapter.Height())
+
+	// Height 2 should still be in pending
+	assert.True(t, adapter.HasAt(ctx, 2))
 }
 
 func TestDataStoreAdapter_AppendSkipsExisting(t *testing.T) {
@@ -367,12 +432,18 @@ func TestDataStoreAdapter_AppendSkipsExisting(t *testing.T) {
 	ds, err := NewTestInMemoryKVStore()
 	require.NoError(t, err)
 	store := New(ds)
+
+	// Save directly to store first
+	h1, d1 := types.GetRandomBlock(1, 2, "test-chain")
+	batch, err := store.NewBatch(ctx)
+	require.NoError(t, err)
+	require.NoError(t, batch.SaveBlockData(h1, d1, &h1.Signature))
+	require.NoError(t, batch.SetHeight(1))
+	require.NoError(t, batch.Commit())
+
 	adapter := NewDataStoreAdapter(store)
 
-	_, d1 := types.GetRandomBlock(1, 2, "test-chain")
-	require.NoError(t, adapter.Append(ctx, d1))
-
-	// Append the same data again should not error (skips existing)
+	// Append the same data again should not error (skips existing in store)
 	err = adapter.Append(ctx, d1)
 	require.NoError(t, err)
 
@@ -549,4 +620,84 @@ func TestDataStoreAdapter_MultipleAppends(t *testing.T) {
 	for h := uint64(1); h <= 3; h++ {
 		assert.True(t, adapter.HasAt(ctx, h))
 	}
+}
+
+func TestDataStoreAdapter_PendingAndStoreInteraction(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+
+	ds, err := NewTestInMemoryKVStore()
+	require.NoError(t, err)
+	store := New(ds)
+	adapter := NewDataStoreAdapter(store)
+
+	// Add data to pending
+	_, d1 := types.GetRandomBlock(1, 1, "test-chain")
+	require.NoError(t, adapter.Append(ctx, d1))
+
+	// Verify it's in pending
+	retrieved, err := adapter.GetByHeight(ctx, 1)
+	require.NoError(t, err)
+	assert.Equal(t, d1.Height(), retrieved.Height())
+
+	// Now save a different data at height 1 directly to store
+	h1Store, d1Store := types.GetRandomBlock(1, 2, "test-chain")
+	batch, err := store.NewBatch(ctx)
+	require.NoError(t, err)
+	require.NoError(t, batch.SaveBlockData(h1Store, d1Store, &h1Store.Signature))
+	require.NoError(t, batch.SetHeight(1))
+	require.NoError(t, batch.Commit())
+
+	// GetByHeight should now return from store (store takes precedence)
+	retrieved, err = adapter.GetByHeight(ctx, 1)
+	require.NoError(t, err)
+	// The store version should be returned
+	assert.Equal(t, d1Store.Height(), retrieved.Height())
+}
+
+func TestDataStoreAdapter_HeadPrefersPending(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+
+	ds, err := NewTestInMemoryKVStore()
+	require.NoError(t, err)
+	store := New(ds)
+
+	// Save height 1 to store
+	h1, d1 := types.GetRandomBlock(1, 1, "test-chain")
+	batch, err := store.NewBatch(ctx)
+	require.NoError(t, err)
+	require.NoError(t, batch.SaveBlockData(h1, d1, &h1.Signature))
+	require.NoError(t, batch.SetHeight(1))
+	require.NoError(t, batch.Commit())
+
+	adapter := NewDataStoreAdapter(store)
+
+	// Add height 2 to pending
+	_, d2 := types.GetRandomBlock(2, 1, "test-chain")
+	require.NoError(t, adapter.Append(ctx, d2))
+
+	// Head should return the pending data (higher height)
+	head, err := adapter.Head(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, uint64(2), head.Height())
+}
+
+func TestDataStoreAdapter_GetFromPendingByHash(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+
+	ds, err := NewTestInMemoryKVStore()
+	require.NoError(t, err)
+	store := New(ds)
+	adapter := NewDataStoreAdapter(store)
+
+	// Add data to pending
+	_, d1 := types.GetRandomBlock(1, 1, "test-chain")
+	require.NoError(t, adapter.Append(ctx, d1))
+
+	// Get by hash from pending (uses data's Hash() method)
+	retrieved, err := adapter.Get(ctx, d1.Hash())
+	require.NoError(t, err)
+	assert.Equal(t, d1.Height(), retrieved.Height())
 }

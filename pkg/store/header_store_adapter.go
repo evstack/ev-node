@@ -3,18 +3,29 @@ package store
 import (
 	"context"
 	"errors"
-	"fmt"
 	"sync"
 	"sync/atomic"
 
 	"github.com/celestiaorg/go-header"
+	lru "github.com/hashicorp/golang-lru/v2"
 
 	"github.com/evstack/ev-node/types"
+)
+
+const (
+	// defaultPendingCacheSize is the default size for the pending headers/data LRU cache.
+	// This should be large enough to handle P2P sync bursts but bounded to prevent memory issues.
+	defaultPendingCacheSize = 1000
 )
 
 // HeaderStoreAdapter wraps Store to implement header.Store[*types.SignedHeader].
 // This allows the ev-node store to be used directly by go-header's P2P infrastructure,
 // eliminating the need for a separate go-header store and reducing data duplication.
+//
+// The adapter maintains an in-memory cache for headers received via P2P (through Append).
+// This cache allows the go-header syncer and P2P handler to access headers before they
+// are validated and persisted by the ev-node syncer. Once the ev-node syncer processes
+// a block, it writes to the underlying store, and subsequent reads will come from the store.
 type HeaderStoreAdapter struct {
 	store Store
 
@@ -26,6 +37,10 @@ type HeaderStoreAdapter struct {
 	mu          sync.RWMutex
 	initialized bool
 
+	// pendingHeaders is an LRU cache for headers received via Append that haven't been
+	// written to the store yet. Keyed by height. Using LRU prevents unbounded growth.
+	pendingHeaders *lru.Cache[uint64, *types.SignedHeader]
+
 	// onDeleteFn is called when headers are deleted (for rollback scenarios)
 	onDeleteFn func(context.Context, uint64) error
 }
@@ -35,8 +50,12 @@ var _ header.Store[*types.SignedHeader] = (*HeaderStoreAdapter)(nil)
 
 // NewHeaderStoreAdapter creates a new HeaderStoreAdapter wrapping the given store.
 func NewHeaderStoreAdapter(store Store) *HeaderStoreAdapter {
+	// Create LRU cache for pending headers - ignore error as size is constant and valid
+	pendingCache, _ := lru.New[uint64, *types.SignedHeader](defaultPendingCacheSize)
+
 	adapter := &HeaderStoreAdapter{
-		store: store,
+		store:          store,
+		pendingHeaders: pendingCache,
 	}
 
 	// Initialize height from store
@@ -75,21 +94,50 @@ func (a *HeaderStoreAdapter) Stop(ctx context.Context) error {
 
 // Head returns the highest header in the store.
 func (a *HeaderStoreAdapter) Head(ctx context.Context, _ ...header.HeadOption[*types.SignedHeader]) (*types.SignedHeader, error) {
-	height := a.height.Load()
-	if height == 0 {
-		// Try to refresh from store
-		h, err := a.store.Height(ctx)
-		if err != nil {
+	// First check the store height
+	storeHeight, err := a.store.Height(ctx)
+	if err != nil && storeHeight == 0 {
+		// Check pending headers
+		if a.pendingHeaders.Len() == 0 {
 			return nil, header.ErrNotFound
 		}
-		if h == 0 {
-			return nil, header.ErrNotFound
+
+		// Find the highest pending header
+		var maxHeight uint64
+		var head *types.SignedHeader
+		for _, h := range a.pendingHeaders.Keys() {
+			if hdr, ok := a.pendingHeaders.Peek(h); ok && h > maxHeight {
+				maxHeight = h
+				head = hdr
+			}
 		}
-		a.height.Store(h)
-		height = h
+		if head != nil {
+			return head, nil
+		}
+		return nil, header.ErrNotFound
 	}
 
-	hdr, err := a.store.GetHeader(ctx, height)
+	// Check if we have a higher pending header
+	var maxPending uint64
+	var pendingHead *types.SignedHeader
+	for _, h := range a.pendingHeaders.Keys() {
+		if hdr, ok := a.pendingHeaders.Peek(h); ok && h > maxPending {
+			maxPending = h
+			pendingHead = hdr
+		}
+	}
+
+	if maxPending > storeHeight && pendingHead != nil {
+		a.height.Store(maxPending)
+		return pendingHead, nil
+	}
+
+	if storeHeight == 0 {
+		return nil, header.ErrNotFound
+	}
+
+	a.height.Store(storeHeight)
+	hdr, err := a.store.GetHeader(ctx, storeHeight)
 	if err != nil {
 		return nil, header.ErrNotFound
 	}
@@ -100,11 +148,14 @@ func (a *HeaderStoreAdapter) Head(ctx context.Context, _ ...header.HeadOption[*t
 // Tail returns the lowest header in the store.
 // For ev-node, this is typically the genesis/initial height.
 func (a *HeaderStoreAdapter) Tail(ctx context.Context) (*types.SignedHeader, error) {
-	// Start from height 1 and find the first available header
-	// This is a simple implementation; could be optimized with metadata
 	height := a.height.Load()
 	if height == 0 {
-		return nil, header.ErrNotFound
+		// Check store
+		h, err := a.store.Height(ctx)
+		if err != nil || h == 0 {
+			return nil, header.ErrNotFound
+		}
+		height = h
 	}
 
 	// Try height 1 first (most common case)
@@ -113,11 +164,19 @@ func (a *HeaderStoreAdapter) Tail(ctx context.Context) (*types.SignedHeader, err
 		return hdr, nil
 	}
 
+	// Check pending for height 1
+	if pendingHdr, ok := a.pendingHeaders.Peek(1); ok {
+		return pendingHdr, nil
+	}
+
 	// Linear scan from 1 to current height to find first header
 	for h := uint64(2); h <= height; h++ {
 		hdr, err = a.store.GetHeader(ctx, h)
 		if err == nil {
 			return hdr, nil
+		}
+		if pendingHdr, ok := a.pendingHeaders.Peek(h); ok {
+			return pendingHdr, nil
 		}
 	}
 
@@ -126,20 +185,36 @@ func (a *HeaderStoreAdapter) Tail(ctx context.Context) (*types.SignedHeader, err
 
 // Get returns a header by its hash.
 func (a *HeaderStoreAdapter) Get(ctx context.Context, hash header.Hash) (*types.SignedHeader, error) {
+	// First try the store
 	hdr, _, err := a.store.GetBlockByHash(ctx, hash)
-	if err != nil {
-		return nil, header.ErrNotFound
+	if err == nil {
+		return hdr, nil
 	}
-	return hdr, nil
+
+	// Check pending headers
+	for _, h := range a.pendingHeaders.Keys() {
+		if pendingHdr, ok := a.pendingHeaders.Peek(h); ok && pendingHdr != nil && bytesEqual(pendingHdr.Hash(), hash) {
+			return pendingHdr, nil
+		}
+	}
+
+	return nil, header.ErrNotFound
 }
 
 // GetByHeight returns a header at the given height.
 func (a *HeaderStoreAdapter) GetByHeight(ctx context.Context, height uint64) (*types.SignedHeader, error) {
+	// First try the store
 	hdr, err := a.store.GetHeader(ctx, height)
-	if err != nil {
-		return nil, header.ErrNotFound
+	if err == nil {
+		return hdr, nil
 	}
-	return hdr, nil
+
+	// Check pending headers
+	if pendingHdr, ok := a.pendingHeaders.Peek(height); ok {
+		return pendingHdr, nil
+	}
+
+	return nil, header.ErrNotFound
 }
 
 // GetRangeByHeight returns headers in the range [from.Height()+1, to).
@@ -166,7 +241,7 @@ func (a *HeaderStoreAdapter) GetRange(ctx context.Context, from, to uint64) ([]*
 
 	headers := make([]*types.SignedHeader, 0, to-from)
 	for height := from; height < to; height++ {
-		hdr, err := a.store.GetHeader(ctx, height)
+		hdr, err := a.GetByHeight(ctx, height)
 		if err != nil {
 			// Return what we have so far
 			if len(headers) > 0 {
@@ -182,35 +257,71 @@ func (a *HeaderStoreAdapter) GetRange(ctx context.Context, from, to uint64) ([]*
 
 // Has checks if a header with the given hash exists.
 func (a *HeaderStoreAdapter) Has(ctx context.Context, hash header.Hash) (bool, error) {
+	// Check store first
 	_, _, err := a.store.GetBlockByHash(ctx, hash)
-	if err != nil {
-		return false, nil
+	if err == nil {
+		return true, nil
 	}
-	return true, nil
+
+	// Check pending headers
+	for _, h := range a.pendingHeaders.Keys() {
+		if pendingHdr, ok := a.pendingHeaders.Peek(h); ok && pendingHdr != nil && bytesEqual(pendingHdr.Hash(), hash) {
+			return true, nil
+		}
+	}
+
+	return false, nil
 }
 
 // HasAt checks if a header exists at the given height.
 func (a *HeaderStoreAdapter) HasAt(ctx context.Context, height uint64) bool {
+	// Check store first
 	_, err := a.store.GetHeader(ctx, height)
-	return err == nil
+	if err == nil {
+		return true
+	}
+
+	// Check pending headers
+	return a.pendingHeaders.Contains(height)
 }
 
 // Height returns the current height of the store.
 func (a *HeaderStoreAdapter) Height() uint64 {
+	// Check store first
+	if h, err := a.store.Height(context.Background()); err == nil && h > 0 {
+		// Also check pending for higher heights
+		maxPending := uint64(0)
+		for _, height := range a.pendingHeaders.Keys() {
+			if height > maxPending {
+				maxPending = height
+			}
+		}
+
+		if maxPending > h {
+			a.height.Store(maxPending)
+			return maxPending
+		}
+		a.height.Store(h)
+		return h
+	}
+
+	// Fall back to cached height or check pending
 	height := a.height.Load()
-	if height == 0 {
-		// Try to refresh from store
-		if h, err := a.store.Height(context.Background()); err == nil {
-			a.height.Store(h)
-			return h
+	if height > 0 {
+		return height
+	}
+
+	for _, h := range a.pendingHeaders.Keys() {
+		if h > height {
+			height = h
 		}
 	}
 	return height
 }
 
-// Append stores headers in the store.
-// This method is called by go-header's P2P infrastructure when headers are received.
-// We save the headers to the ev-node store to ensure they're available for the syncer.
+// Append stores headers in the pending cache.
+// These headers are received via P2P and will be available for retrieval
+// until the ev-node syncer processes and persists them to the store.
 func (a *HeaderStoreAdapter) Append(ctx context.Context, headers ...*types.SignedHeader) error {
 	if len(headers) == 0 {
 		return nil
@@ -221,46 +332,20 @@ func (a *HeaderStoreAdapter) Append(ctx context.Context, headers ...*types.Signe
 			continue
 		}
 
-		// Check if we already have this header
-		if a.HasAt(ctx, hdr.Height()) {
+		height := hdr.Height()
+
+		// Check if already in store
+		if _, err := a.store.GetHeader(ctx, height); err == nil {
+			// Already persisted, skip
 			continue
 		}
 
-		// Create a batch and save the header
-		// Note: We create empty data since we only have the header at this point.
-		// The full block data will be saved by the syncer when processing from DA.
-		batch, err := a.store.NewBatch(ctx)
-		if err != nil {
-			return fmt.Errorf("failed to create batch for header at height %d: %w", hdr.Height(), err)
-		}
-
-		// Save header with empty data and signature
-		// The syncer will overwrite this with complete block data when it processes from DA
-		emptyData := &types.Data{
-			Metadata: &types.Metadata{
-				ChainID:      hdr.ChainID(),
-				Height:       hdr.Height(),
-				Time:         uint64(hdr.Time().UnixNano()),
-				LastDataHash: hdr.LastHeader(),
-			},
-			Txs: nil,
-		}
-
-		if err := batch.SaveBlockData(hdr, emptyData, &hdr.Signature); err != nil {
-			return fmt.Errorf("failed to save header at height %d: %w", hdr.Height(), err)
-		}
-
-		if err := batch.SetHeight(hdr.Height()); err != nil {
-			return fmt.Errorf("failed to set height for header at height %d: %w", hdr.Height(), err)
-		}
-
-		if err := batch.Commit(); err != nil {
-			return fmt.Errorf("failed to commit header at height %d: %w", hdr.Height(), err)
-		}
+		// Add to pending cache (LRU will evict oldest if full)
+		a.pendingHeaders.Add(height, hdr)
 
 		// Update cached height
-		if hdr.Height() > a.height.Load() {
-			a.height.Store(hdr.Height())
+		if height > a.height.Load() {
+			a.height.Store(height)
 		}
 	}
 
@@ -281,33 +366,28 @@ func (a *HeaderStoreAdapter) Init(ctx context.Context, h *types.SignedHeader) er
 		return nil
 	}
 
-	// Use Append to save the header
-	a.mu.Unlock() // Unlock before calling Append to avoid deadlock
-	err := a.Append(ctx, h)
-	a.mu.Lock() // Re-lock for the initialized flag update
-
-	if err != nil {
-		return err
-	}
-
+	// Add to pending cache (LRU will evict oldest if full)
+	a.pendingHeaders.Add(h.Height(), h)
+	a.height.Store(h.Height())
 	a.initialized = true
+
 	return nil
 }
 
 // Sync ensures all pending writes are flushed.
-// Delegates to the underlying store's sync if available.
+// No-op for the adapter as pending data is in-memory cache.
 func (a *HeaderStoreAdapter) Sync(ctx context.Context) error {
-	// The underlying store handles its own syncing
 	return nil
 }
 
 // DeleteRange deletes headers in the range [from, to).
 // This is used for rollback operations.
 func (a *HeaderStoreAdapter) DeleteRange(ctx context.Context, from, to uint64) error {
-	// Rollback is handled by the ev-node store's Rollback method
-	// This is called during store cleanup operations
-	if a.onDeleteFn != nil {
-		for height := from; height < to; height++ {
+	// Remove from pending cache
+	for height := from; height < to; height++ {
+		a.pendingHeaders.Remove(height)
+
+		if a.onDeleteFn != nil {
 			if err := a.onDeleteFn(ctx, height); err != nil {
 				return err
 			}
@@ -335,6 +415,14 @@ func (a *HeaderStoreAdapter) RefreshHeight(ctx context.Context) error {
 		return err
 	}
 	a.height.Store(h)
+
+	// Clean up pending headers that are now in store
+	for _, height := range a.pendingHeaders.Keys() {
+		if height <= h {
+			a.pendingHeaders.Remove(height)
+		}
+	}
+
 	return nil
 }
 
@@ -342,4 +430,24 @@ func (a *HeaderStoreAdapter) RefreshHeight(ctx context.Context) error {
 // This is useful when the syncer knows the new height after processing a block.
 func (a *HeaderStoreAdapter) SetHeight(height uint64) {
 	a.height.Store(height)
+
+	// Clean up pending headers at or below this height
+	for _, h := range a.pendingHeaders.Keys() {
+		if h <= height {
+			a.pendingHeaders.Remove(h)
+		}
+	}
+}
+
+// bytesEqual compares two byte slices for equality.
+func bytesEqual(a, b []byte) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
 }

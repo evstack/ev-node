@@ -3,11 +3,11 @@ package store
 import (
 	"context"
 	"errors"
-	"fmt"
 	"sync"
 	"sync/atomic"
 
 	"github.com/celestiaorg/go-header"
+	lru "github.com/hashicorp/golang-lru/v2"
 
 	"github.com/evstack/ev-node/types"
 )
@@ -15,6 +15,11 @@ import (
 // DataStoreAdapter wraps Store to implement header.Store[*types.Data].
 // This allows the ev-node store to be used directly by go-header's P2P infrastructure,
 // eliminating the need for a separate go-header store and reducing data duplication.
+//
+// The adapter maintains an in-memory cache for data received via P2P (through Append).
+// This cache allows the go-header syncer and P2P handler to access data before it
+// is validated and persisted by the ev-node syncer. Once the ev-node syncer processes
+// a block, it writes to the underlying store, and subsequent reads will come from the store.
 type DataStoreAdapter struct {
 	store Store
 
@@ -26,6 +31,10 @@ type DataStoreAdapter struct {
 	mu          sync.RWMutex
 	initialized bool
 
+	// pendingData is an LRU cache for data received via Append that hasn't been
+	// written to the store yet. Keyed by height. Using LRU prevents unbounded growth.
+	pendingData *lru.Cache[uint64, *types.Data]
+
 	// onDeleteFn is called when data is deleted (for rollback scenarios)
 	onDeleteFn func(context.Context, uint64) error
 }
@@ -35,8 +44,12 @@ var _ header.Store[*types.Data] = (*DataStoreAdapter)(nil)
 
 // NewDataStoreAdapter creates a new DataStoreAdapter wrapping the given store.
 func NewDataStoreAdapter(store Store) *DataStoreAdapter {
+	// Create LRU cache for pending data - ignore error as size is constant and valid
+	pendingCache, _ := lru.New[uint64, *types.Data](defaultPendingCacheSize)
+
 	adapter := &DataStoreAdapter{
-		store: store,
+		store:       store,
+		pendingData: pendingCache,
 	}
 
 	// Initialize height from store
@@ -75,21 +88,50 @@ func (a *DataStoreAdapter) Stop(ctx context.Context) error {
 
 // Head returns the data for the highest block in the store.
 func (a *DataStoreAdapter) Head(ctx context.Context, _ ...header.HeadOption[*types.Data]) (*types.Data, error) {
-	height := a.height.Load()
-	if height == 0 {
-		// Try to refresh from store
-		h, err := a.store.Height(ctx)
-		if err != nil {
+	// First check the store height
+	storeHeight, err := a.store.Height(ctx)
+	if err != nil && storeHeight == 0 {
+		// Check pending data
+		if a.pendingData.Len() == 0 {
 			return nil, header.ErrNotFound
 		}
-		if h == 0 {
-			return nil, header.ErrNotFound
+
+		// Find the highest pending data
+		var maxHeight uint64
+		var head *types.Data
+		for _, h := range a.pendingData.Keys() {
+			if d, ok := a.pendingData.Peek(h); ok && h > maxHeight {
+				maxHeight = h
+				head = d
+			}
 		}
-		a.height.Store(h)
-		height = h
+		if head != nil {
+			return head, nil
+		}
+		return nil, header.ErrNotFound
 	}
 
-	_, data, err := a.store.GetBlockData(ctx, height)
+	// Check if we have higher pending data
+	var maxPending uint64
+	var pendingHead *types.Data
+	for _, h := range a.pendingData.Keys() {
+		if d, ok := a.pendingData.Peek(h); ok && h > maxPending {
+			maxPending = h
+			pendingHead = d
+		}
+	}
+
+	if maxPending > storeHeight && pendingHead != nil {
+		a.height.Store(maxPending)
+		return pendingHead, nil
+	}
+
+	if storeHeight == 0 {
+		return nil, header.ErrNotFound
+	}
+
+	a.height.Store(storeHeight)
+	_, data, err := a.store.GetBlockData(ctx, storeHeight)
 	if err != nil {
 		return nil, header.ErrNotFound
 	}
@@ -102,7 +144,12 @@ func (a *DataStoreAdapter) Head(ctx context.Context, _ ...header.HeadOption[*typ
 func (a *DataStoreAdapter) Tail(ctx context.Context) (*types.Data, error) {
 	height := a.height.Load()
 	if height == 0 {
-		return nil, header.ErrNotFound
+		// Check store
+		h, err := a.store.Height(ctx)
+		if err != nil || h == 0 {
+			return nil, header.ErrNotFound
+		}
+		height = h
 	}
 
 	// Try height 1 first (most common case)
@@ -111,11 +158,19 @@ func (a *DataStoreAdapter) Tail(ctx context.Context) (*types.Data, error) {
 		return data, nil
 	}
 
+	// Check pending for height 1
+	if pendingData, ok := a.pendingData.Peek(1); ok {
+		return pendingData, nil
+	}
+
 	// Linear scan from 1 to current height to find first data
 	for h := uint64(2); h <= height; h++ {
 		_, data, err = a.store.GetBlockData(ctx, h)
 		if err == nil {
 			return data, nil
+		}
+		if pendingData, ok := a.pendingData.Peek(h); ok {
+			return pendingData, nil
 		}
 	}
 
@@ -124,20 +179,36 @@ func (a *DataStoreAdapter) Tail(ctx context.Context) (*types.Data, error) {
 
 // Get returns data by its hash.
 func (a *DataStoreAdapter) Get(ctx context.Context, hash header.Hash) (*types.Data, error) {
+	// First try the store
 	_, data, err := a.store.GetBlockByHash(ctx, hash)
-	if err != nil {
-		return nil, header.ErrNotFound
+	if err == nil {
+		return data, nil
 	}
-	return data, nil
+
+	// Check pending data - note: this checks data hash, not header hash
+	for _, h := range a.pendingData.Keys() {
+		if pendingData, ok := a.pendingData.Peek(h); ok && pendingData != nil && bytesEqual(pendingData.Hash(), hash) {
+			return pendingData, nil
+		}
+	}
+
+	return nil, header.ErrNotFound
 }
 
 // GetByHeight returns data at the given height.
 func (a *DataStoreAdapter) GetByHeight(ctx context.Context, height uint64) (*types.Data, error) {
+	// First try the store
 	_, data, err := a.store.GetBlockData(ctx, height)
-	if err != nil {
-		return nil, header.ErrNotFound
+	if err == nil {
+		return data, nil
 	}
-	return data, nil
+
+	// Check pending data
+	if pendingData, ok := a.pendingData.Peek(height); ok {
+		return pendingData, nil
+	}
+
+	return nil, header.ErrNotFound
 }
 
 // GetRangeByHeight returns data in the range [from.Height()+1, to).
@@ -164,7 +235,7 @@ func (a *DataStoreAdapter) GetRange(ctx context.Context, from, to uint64) ([]*ty
 
 	dataList := make([]*types.Data, 0, to-from)
 	for height := from; height < to; height++ {
-		_, data, err := a.store.GetBlockData(ctx, height)
+		data, err := a.GetByHeight(ctx, height)
 		if err != nil {
 			// Return what we have so far
 			if len(dataList) > 0 {
@@ -180,35 +251,71 @@ func (a *DataStoreAdapter) GetRange(ctx context.Context, from, to uint64) ([]*ty
 
 // Has checks if data with the given hash exists.
 func (a *DataStoreAdapter) Has(ctx context.Context, hash header.Hash) (bool, error) {
+	// Check store first
 	_, _, err := a.store.GetBlockByHash(ctx, hash)
-	if err != nil {
-		return false, nil
+	if err == nil {
+		return true, nil
 	}
-	return true, nil
+
+	// Check pending data
+	for _, h := range a.pendingData.Keys() {
+		if pendingData, ok := a.pendingData.Peek(h); ok && pendingData != nil && bytesEqual(pendingData.Hash(), hash) {
+			return true, nil
+		}
+	}
+
+	return false, nil
 }
 
 // HasAt checks if data exists at the given height.
 func (a *DataStoreAdapter) HasAt(ctx context.Context, height uint64) bool {
+	// Check store first
 	_, _, err := a.store.GetBlockData(ctx, height)
-	return err == nil
+	if err == nil {
+		return true
+	}
+
+	// Check pending data
+	return a.pendingData.Contains(height)
 }
 
 // Height returns the current height of the store.
 func (a *DataStoreAdapter) Height() uint64 {
+	// Check store first
+	if h, err := a.store.Height(context.Background()); err == nil && h > 0 {
+		// Also check pending for higher heights
+		maxPending := uint64(0)
+		for _, height := range a.pendingData.Keys() {
+			if height > maxPending {
+				maxPending = height
+			}
+		}
+
+		if maxPending > h {
+			a.height.Store(maxPending)
+			return maxPending
+		}
+		a.height.Store(h)
+		return h
+	}
+
+	// Fall back to cached height or check pending
 	height := a.height.Load()
-	if height == 0 {
-		// Try to refresh from store
-		if h, err := a.store.Height(context.Background()); err == nil {
-			a.height.Store(h)
-			return h
+	if height > 0 {
+		return height
+	}
+
+	for _, h := range a.pendingData.Keys() {
+		if h > height {
+			height = h
 		}
 	}
 	return height
 }
 
-// Append stores data in the store.
-// This method is called by go-header's P2P infrastructure when data is received.
-// We save the data to the ev-node store to ensure it's available for the syncer.
+// Append stores data in the pending cache.
+// This data is received via P2P and will be available for retrieval
+// until the ev-node syncer processes and persists it to the store.
 func (a *DataStoreAdapter) Append(ctx context.Context, dataList ...*types.Data) error {
 	if len(dataList) == 0 {
 		return nil
@@ -219,48 +326,20 @@ func (a *DataStoreAdapter) Append(ctx context.Context, dataList ...*types.Data) 
 			continue
 		}
 
-		// Check if we already have this data
-		if a.HasAt(ctx, data.Height()) {
+		height := data.Height()
+
+		// Check if already in store
+		if _, _, err := a.store.GetBlockData(ctx, height); err == nil {
+			// Already persisted, skip
 			continue
 		}
 
-		// Create a batch and save the data
-		// Note: We create a minimal header since we only have the data at this point.
-		// The full block will be saved by the syncer when processing from DA.
-		batch, err := a.store.NewBatch(ctx)
-		if err != nil {
-			return fmt.Errorf("failed to create batch for data at height %d: %w", data.Height(), err)
-		}
-
-		// Create a minimal header for the data
-		// The syncer will overwrite this with complete block data when it processes from DA
-		minimalHeader := &types.SignedHeader{
-			Header: types.Header{
-				BaseHeader: types.BaseHeader{
-					ChainID: data.ChainID(),
-					Height:  data.Height(),
-					Time:    uint64(data.Time().UnixNano()),
-				},
-				LastHeaderHash: data.LastHeader(),
-				DataHash:       data.DACommitment(),
-			},
-		}
-
-		if err := batch.SaveBlockData(minimalHeader, data, &types.Signature{}); err != nil {
-			return fmt.Errorf("failed to save data at height %d: %w", data.Height(), err)
-		}
-
-		if err := batch.SetHeight(data.Height()); err != nil {
-			return fmt.Errorf("failed to set height for data at height %d: %w", data.Height(), err)
-		}
-
-		if err := batch.Commit(); err != nil {
-			return fmt.Errorf("failed to commit data at height %d: %w", data.Height(), err)
-		}
+		// Add to pending cache (LRU will evict oldest if full)
+		a.pendingData.Add(height, data)
 
 		// Update cached height
-		if data.Height() > a.height.Load() {
-			a.height.Store(data.Height())
+		if height > a.height.Load() {
+			a.height.Store(height)
 		}
 	}
 
@@ -281,33 +360,28 @@ func (a *DataStoreAdapter) Init(ctx context.Context, d *types.Data) error {
 		return nil
 	}
 
-	// Use Append to save the data
-	a.mu.Unlock() // Unlock before calling Append to avoid deadlock
-	err := a.Append(ctx, d)
-	a.mu.Lock() // Re-lock for the initialized flag update
-
-	if err != nil {
-		return err
-	}
-
+	// Add to pending cache (LRU will evict oldest if full)
+	a.pendingData.Add(d.Height(), d)
+	a.height.Store(d.Height())
 	a.initialized = true
+
 	return nil
 }
 
 // Sync ensures all pending writes are flushed.
-// Delegates to the underlying store's sync if available.
+// No-op for the adapter as pending data is in-memory cache.
 func (a *DataStoreAdapter) Sync(ctx context.Context) error {
-	// The underlying store handles its own syncing
 	return nil
 }
 
 // DeleteRange deletes data in the range [from, to).
 // This is used for rollback operations.
 func (a *DataStoreAdapter) DeleteRange(ctx context.Context, from, to uint64) error {
-	// Rollback is handled by the ev-node store's Rollback method
-	// This is called during store cleanup operations
-	if a.onDeleteFn != nil {
-		for height := from; height < to; height++ {
+	// Remove from pending cache
+	for height := from; height < to; height++ {
+		a.pendingData.Remove(height)
+
+		if a.onDeleteFn != nil {
 			if err := a.onDeleteFn(ctx, height); err != nil {
 				return err
 			}
@@ -335,6 +409,14 @@ func (a *DataStoreAdapter) RefreshHeight(ctx context.Context) error {
 		return err
 	}
 	a.height.Store(h)
+
+	// Clean up pending data that is now in store
+	for _, height := range a.pendingData.Keys() {
+		if height <= h {
+			a.pendingData.Remove(height)
+		}
+	}
+
 	return nil
 }
 
@@ -342,4 +424,11 @@ func (a *DataStoreAdapter) RefreshHeight(ctx context.Context) error {
 // This is useful when the syncer knows the new height after processing a block.
 func (a *DataStoreAdapter) SetHeight(height uint64) {
 	a.height.Store(height)
+
+	// Clean up pending data at or below this height
+	for _, h := range a.pendingData.Keys() {
+		if h <= height {
+			a.pendingData.Remove(h)
+		}
+	}
 }
