@@ -10,8 +10,18 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/evstack/ev-node/pkg/genesis"
 	"github.com/evstack/ev-node/types"
 )
+
+// testGenesis returns a genesis with InitialHeight=1 for use in tests.
+func testGenesis() genesis.Genesis {
+	return genesis.Genesis{
+		ChainID:       "test-chain",
+		InitialHeight: 1,
+		StartTime:     time.Now(),
+	}
+}
 
 // computeHeaderIndexHash computes the hash used for indexing in the store.
 // The store indexes by sha256(signedHeader.MarshalBinary()), not signedHeader.Hash().
@@ -29,7 +39,7 @@ func TestHeaderStoreAdapter_NewHeaderStoreAdapter(t *testing.T) {
 	require.NoError(t, err)
 	store := New(ds)
 
-	adapter := NewHeaderStoreAdapter(store)
+	adapter := NewHeaderStoreAdapter(store, testGenesis())
 	require.NotNil(t, adapter)
 
 	// Initially, height should be 0
@@ -47,7 +57,7 @@ func TestHeaderStoreAdapter_AppendAndRetrieve(t *testing.T) {
 	ds, err := NewTestInMemoryKVStore()
 	require.NoError(t, err)
 	store := New(ds)
-	adapter := NewHeaderStoreAdapter(store)
+	adapter := NewHeaderStoreAdapter(store, testGenesis())
 
 	// Create test headers
 	h1, _ := types.GetRandomBlock(1, 2, "test-chain")
@@ -92,7 +102,7 @@ func TestHeaderStoreAdapter_GetFromStore(t *testing.T) {
 	require.NoError(t, batch.Commit())
 
 	// Create adapter after data is in store
-	adapter := NewHeaderStoreAdapter(store)
+	adapter := NewHeaderStoreAdapter(store, testGenesis())
 
 	// Get by hash - need to use the index hash (sha256 of marshaled SignedHeader)
 	hash := computeHeaderIndexHash(h1)
@@ -121,7 +131,7 @@ func TestHeaderStoreAdapter_Has(t *testing.T) {
 	require.NoError(t, batch.SetHeight(1))
 	require.NoError(t, batch.Commit())
 
-	adapter := NewHeaderStoreAdapter(store)
+	adapter := NewHeaderStoreAdapter(store, testGenesis())
 
 	// Has should return true for existing header - use index hash
 	has, err := adapter.Has(ctx, computeHeaderIndexHash(h1))
@@ -141,7 +151,7 @@ func TestHeaderStoreAdapter_HasAt(t *testing.T) {
 	ds, err := NewTestInMemoryKVStore()
 	require.NoError(t, err)
 	store := New(ds)
-	adapter := NewHeaderStoreAdapter(store)
+	adapter := NewHeaderStoreAdapter(store, testGenesis())
 
 	h1, _ := types.GetRandomBlock(1, 2, "test-chain")
 	require.NoError(t, adapter.Append(ctx, h1))
@@ -169,7 +179,7 @@ func TestHeaderStoreAdapter_HasAtFromStore(t *testing.T) {
 	require.NoError(t, batch.SetHeight(1))
 	require.NoError(t, batch.Commit())
 
-	adapter := NewHeaderStoreAdapter(store)
+	adapter := NewHeaderStoreAdapter(store, testGenesis())
 
 	// HasAt should return true for stored height
 	assert.True(t, adapter.HasAt(ctx, 1))
@@ -185,7 +195,7 @@ func TestHeaderStoreAdapter_GetRange(t *testing.T) {
 	ds, err := NewTestInMemoryKVStore()
 	require.NoError(t, err)
 	store := New(ds)
-	adapter := NewHeaderStoreAdapter(store)
+	adapter := NewHeaderStoreAdapter(store, testGenesis())
 
 	// Create and append multiple headers to pending
 	h1, _ := types.GetRandomBlock(1, 1, "test-chain")
@@ -213,7 +223,7 @@ func TestHeaderStoreAdapter_GetRangeByHeight(t *testing.T) {
 	ds, err := NewTestInMemoryKVStore()
 	require.NoError(t, err)
 	store := New(ds)
-	adapter := NewHeaderStoreAdapter(store)
+	adapter := NewHeaderStoreAdapter(store, testGenesis())
 
 	h1, _ := types.GetRandomBlock(1, 1, "test-chain")
 	h2, _ := types.GetRandomBlock(2, 1, "test-chain")
@@ -235,7 +245,7 @@ func TestHeaderStoreAdapter_Init(t *testing.T) {
 	ds, err := NewTestInMemoryKVStore()
 	require.NoError(t, err)
 	store := New(ds)
-	adapter := NewHeaderStoreAdapter(store)
+	adapter := NewHeaderStoreAdapter(store, testGenesis())
 
 	h1, _ := types.GetRandomBlock(1, 1, "test-chain")
 
@@ -264,7 +274,7 @@ func TestHeaderStoreAdapter_Tail(t *testing.T) {
 	ds, err := NewTestInMemoryKVStore()
 	require.NoError(t, err)
 	store := New(ds)
-	adapter := NewHeaderStoreAdapter(store)
+	adapter := NewHeaderStoreAdapter(store, testGenesis())
 
 	// Tail on empty store should return ErrNotFound
 	_, err = adapter.Tail(ctx)
@@ -296,7 +306,7 @@ func TestHeaderStoreAdapter_TailFromStore(t *testing.T) {
 	require.NoError(t, batch.SetHeight(1))
 	require.NoError(t, batch.Commit())
 
-	adapter := NewHeaderStoreAdapter(store)
+	adapter := NewHeaderStoreAdapter(store, testGenesis())
 
 	// Tail should return the first header from store
 	tail, err := adapter.Tail(ctx)
@@ -311,7 +321,7 @@ func TestHeaderStoreAdapter_StartStop(t *testing.T) {
 	ds, err := NewTestInMemoryKVStore()
 	require.NoError(t, err)
 	store := New(ds)
-	adapter := NewHeaderStoreAdapter(store)
+	adapter := NewHeaderStoreAdapter(store, testGenesis())
 
 	// Start should not error
 	err = adapter.Start(ctx)
@@ -329,7 +339,7 @@ func TestHeaderStoreAdapter_DeleteRange(t *testing.T) {
 	ds, err := NewTestInMemoryKVStore()
 	require.NoError(t, err)
 	store := New(ds)
-	adapter := NewHeaderStoreAdapter(store)
+	adapter := NewHeaderStoreAdapter(store, testGenesis())
 
 	h1, _ := types.GetRandomBlock(1, 1, "test-chain")
 	h2, _ := types.GetRandomBlock(2, 1, "test-chain")
@@ -360,7 +370,7 @@ func TestHeaderStoreAdapter_OnDelete(t *testing.T) {
 	ds, err := NewTestInMemoryKVStore()
 	require.NoError(t, err)
 	store := New(ds)
-	adapter := NewHeaderStoreAdapter(store)
+	adapter := NewHeaderStoreAdapter(store, testGenesis())
 
 	h1, _ := types.GetRandomBlock(1, 1, "test-chain")
 	h2, _ := types.GetRandomBlock(2, 1, "test-chain")
@@ -395,7 +405,7 @@ func TestHeaderStoreAdapter_AppendSkipsExisting(t *testing.T) {
 	require.NoError(t, batch.SetHeight(1))
 	require.NoError(t, batch.Commit())
 
-	adapter := NewHeaderStoreAdapter(store)
+	adapter := NewHeaderStoreAdapter(store, testGenesis())
 
 	// Append the same header again should not error (skips existing in store)
 	err = adapter.Append(ctx, h1)
@@ -412,7 +422,7 @@ func TestHeaderStoreAdapter_AppendNilHeaders(t *testing.T) {
 	ds, err := NewTestInMemoryKVStore()
 	require.NoError(t, err)
 	store := New(ds)
-	adapter := NewHeaderStoreAdapter(store)
+	adapter := NewHeaderStoreAdapter(store, testGenesis())
 
 	// Append with nil and empty should not error
 	err = adapter.Append(ctx)
@@ -432,7 +442,7 @@ func TestHeaderStoreAdapter_Sync(t *testing.T) {
 	ds, err := NewTestInMemoryKVStore()
 	require.NoError(t, err)
 	store := New(ds)
-	adapter := NewHeaderStoreAdapter(store)
+	adapter := NewHeaderStoreAdapter(store, testGenesis())
 
 	// Sync should not error
 	err = adapter.Sync(ctx)
@@ -456,7 +466,7 @@ func TestHeaderStoreAdapter_HeightRefreshFromStore(t *testing.T) {
 	require.NoError(t, batch.Commit())
 
 	// Create adapter - it should pick up the height from store
-	adapter := NewHeaderStoreAdapter(store)
+	adapter := NewHeaderStoreAdapter(store, testGenesis())
 	assert.Equal(t, uint64(1), adapter.Height())
 }
 
@@ -467,7 +477,7 @@ func TestHeaderStoreAdapter_GetByHeightNotFound(t *testing.T) {
 	ds, err := NewTestInMemoryKVStore()
 	require.NoError(t, err)
 	store := New(ds)
-	adapter := NewHeaderStoreAdapter(store)
+	adapter := NewHeaderStoreAdapter(store, testGenesis())
 
 	_, err = adapter.GetByHeight(ctx, 999)
 	assert.ErrorIs(t, err, header.ErrNotFound)
@@ -480,7 +490,7 @@ func TestHeaderStoreAdapter_InitWithNil(t *testing.T) {
 	ds, err := NewTestInMemoryKVStore()
 	require.NoError(t, err)
 	store := New(ds)
-	adapter := NewHeaderStoreAdapter(store)
+	adapter := NewHeaderStoreAdapter(store, testGenesis())
 
 	// Init with nil should not error but also not mark as initialized
 	err = adapter.Init(ctx, nil)
@@ -497,7 +507,7 @@ func TestHeaderStoreAdapter_ContextTimeout(t *testing.T) {
 	ds, err := NewTestInMemoryKVStore()
 	require.NoError(t, err)
 	store := New(ds)
-	adapter := NewHeaderStoreAdapter(store)
+	adapter := NewHeaderStoreAdapter(store, testGenesis())
 
 	// Create a context that's already canceled
 	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Nanosecond)
@@ -519,7 +529,7 @@ func TestHeaderStoreAdapter_PendingAndStoreInteraction(t *testing.T) {
 	ds, err := NewTestInMemoryKVStore()
 	require.NoError(t, err)
 	store := New(ds)
-	adapter := NewHeaderStoreAdapter(store)
+	adapter := NewHeaderStoreAdapter(store, testGenesis())
 
 	// Add header to pending
 	h1, _ := types.GetRandomBlock(1, 1, "test-chain")
@@ -561,7 +571,7 @@ func TestHeaderStoreAdapter_HeadPrefersPending(t *testing.T) {
 	require.NoError(t, batch.SetHeight(1))
 	require.NoError(t, batch.Commit())
 
-	adapter := NewHeaderStoreAdapter(store)
+	adapter := NewHeaderStoreAdapter(store, testGenesis())
 
 	// Add height 2 to pending
 	h2, _ := types.GetRandomBlock(2, 1, "test-chain")
@@ -580,7 +590,7 @@ func TestHeaderStoreAdapter_GetFromPendingByHash(t *testing.T) {
 	ds, err := NewTestInMemoryKVStore()
 	require.NoError(t, err)
 	store := New(ds)
-	adapter := NewHeaderStoreAdapter(store)
+	adapter := NewHeaderStoreAdapter(store, testGenesis())
 
 	// Add header to pending
 	h1, _ := types.GetRandomBlock(1, 1, "test-chain")

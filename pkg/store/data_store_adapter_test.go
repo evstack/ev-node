@@ -10,8 +10,18 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/evstack/ev-node/pkg/genesis"
 	"github.com/evstack/ev-node/types"
 )
+
+// testGenesisData returns a genesis with InitialHeight=1 for use in data adapter tests.
+func testGenesisData() genesis.Genesis {
+	return genesis.Genesis{
+		ChainID:       "test-chain",
+		InitialHeight: 1,
+		StartTime:     time.Now(),
+	}
+}
 
 // computeDataIndexHash computes the hash used for indexing in the store.
 // The store indexes by sha256(signedHeader.MarshalBinary()), so for data tests
@@ -30,7 +40,7 @@ func TestDataStoreAdapter_NewDataStoreAdapter(t *testing.T) {
 	require.NoError(t, err)
 	store := New(ds)
 
-	adapter := NewDataStoreAdapter(store)
+	adapter := NewDataStoreAdapter(store, testGenesisData())
 	require.NotNil(t, adapter)
 
 	// Initially, height should be 0
@@ -48,7 +58,7 @@ func TestDataStoreAdapter_AppendAndRetrieve(t *testing.T) {
 	ds, err := NewTestInMemoryKVStore()
 	require.NoError(t, err)
 	store := New(ds)
-	adapter := NewDataStoreAdapter(store)
+	adapter := NewDataStoreAdapter(store, testGenesisData())
 
 	// Create test data
 	_, d1 := types.GetRandomBlock(1, 2, "test-chain")
@@ -93,7 +103,7 @@ func TestDataStoreAdapter_GetFromStore(t *testing.T) {
 	require.NoError(t, batch.Commit())
 
 	// Create adapter after data is in store
-	adapter := NewDataStoreAdapter(store)
+	adapter := NewDataStoreAdapter(store, testGenesisData())
 
 	// Get by hash - need to use the index hash (sha256 of marshaled SignedHeader)
 	hash := computeDataIndexHash(h1)
@@ -122,7 +132,7 @@ func TestDataStoreAdapter_Has(t *testing.T) {
 	require.NoError(t, batch.Commit())
 
 	// Create adapter after data is in store
-	adapter := NewDataStoreAdapter(store)
+	adapter := NewDataStoreAdapter(store, testGenesisData())
 
 	// Has should return true for existing data - use index hash
 	has, err := adapter.Has(ctx, computeDataIndexHash(h1))
@@ -142,7 +152,7 @@ func TestDataStoreAdapter_HasAt(t *testing.T) {
 	ds, err := NewTestInMemoryKVStore()
 	require.NoError(t, err)
 	store := New(ds)
-	adapter := NewDataStoreAdapter(store)
+	adapter := NewDataStoreAdapter(store, testGenesisData())
 
 	_, d1 := types.GetRandomBlock(1, 2, "test-chain")
 	require.NoError(t, adapter.Append(ctx, d1))
@@ -170,7 +180,7 @@ func TestDataStoreAdapter_HasAtFromStore(t *testing.T) {
 	require.NoError(t, batch.SetHeight(1))
 	require.NoError(t, batch.Commit())
 
-	adapter := NewDataStoreAdapter(store)
+	adapter := NewDataStoreAdapter(store, testGenesisData())
 
 	// HasAt should return true for stored height
 	assert.True(t, adapter.HasAt(ctx, 1))
@@ -186,7 +196,7 @@ func TestDataStoreAdapter_GetRange(t *testing.T) {
 	ds, err := NewTestInMemoryKVStore()
 	require.NoError(t, err)
 	store := New(ds)
-	adapter := NewDataStoreAdapter(store)
+	adapter := NewDataStoreAdapter(store, testGenesisData())
 
 	// Create and append multiple data blocks to pending
 	_, d1 := types.GetRandomBlock(1, 1, "test-chain")
@@ -214,7 +224,7 @@ func TestDataStoreAdapter_GetRangeByHeight(t *testing.T) {
 	ds, err := NewTestInMemoryKVStore()
 	require.NoError(t, err)
 	store := New(ds)
-	adapter := NewDataStoreAdapter(store)
+	adapter := NewDataStoreAdapter(store, testGenesisData())
 
 	_, d1 := types.GetRandomBlock(1, 1, "test-chain")
 	_, d2 := types.GetRandomBlock(2, 1, "test-chain")
@@ -236,7 +246,7 @@ func TestDataStoreAdapter_Init(t *testing.T) {
 	ds, err := NewTestInMemoryKVStore()
 	require.NoError(t, err)
 	store := New(ds)
-	adapter := NewDataStoreAdapter(store)
+	adapter := NewDataStoreAdapter(store, testGenesisData())
 
 	_, d1 := types.GetRandomBlock(1, 1, "test-chain")
 
@@ -265,7 +275,7 @@ func TestDataStoreAdapter_Tail(t *testing.T) {
 	ds, err := NewTestInMemoryKVStore()
 	require.NoError(t, err)
 	store := New(ds)
-	adapter := NewDataStoreAdapter(store)
+	adapter := NewDataStoreAdapter(store, testGenesisData())
 
 	// Tail on empty store should return ErrNotFound
 	_, err = adapter.Tail(ctx)
@@ -297,7 +307,7 @@ func TestDataStoreAdapter_TailFromStore(t *testing.T) {
 	require.NoError(t, batch.SetHeight(1))
 	require.NoError(t, batch.Commit())
 
-	adapter := NewDataStoreAdapter(store)
+	adapter := NewDataStoreAdapter(store, testGenesisData())
 
 	// Tail should return the first data from store
 	tail, err := adapter.Tail(ctx)
@@ -312,7 +322,7 @@ func TestDataStoreAdapter_StartStop(t *testing.T) {
 	ds, err := NewTestInMemoryKVStore()
 	require.NoError(t, err)
 	store := New(ds)
-	adapter := NewDataStoreAdapter(store)
+	adapter := NewDataStoreAdapter(store, testGenesisData())
 
 	// Start should not error
 	err = adapter.Start(ctx)
@@ -330,7 +340,7 @@ func TestDataStoreAdapter_DeleteRange(t *testing.T) {
 	ds, err := NewTestInMemoryKVStore()
 	require.NoError(t, err)
 	store := New(ds)
-	adapter := NewDataStoreAdapter(store)
+	adapter := NewDataStoreAdapter(store, testGenesisData())
 
 	_, d1 := types.GetRandomBlock(1, 1, "test-chain")
 	_, d2 := types.GetRandomBlock(2, 1, "test-chain")
@@ -361,7 +371,7 @@ func TestDataStoreAdapter_OnDelete(t *testing.T) {
 	ds, err := NewTestInMemoryKVStore()
 	require.NoError(t, err)
 	store := New(ds)
-	adapter := NewDataStoreAdapter(store)
+	adapter := NewDataStoreAdapter(store, testGenesisData())
 
 	_, d1 := types.GetRandomBlock(1, 1, "test-chain")
 	_, d2 := types.GetRandomBlock(2, 1, "test-chain")
@@ -396,7 +406,7 @@ func TestDataStoreAdapter_AppendSkipsExisting(t *testing.T) {
 	require.NoError(t, batch.SetHeight(1))
 	require.NoError(t, batch.Commit())
 
-	adapter := NewDataStoreAdapter(store)
+	adapter := NewDataStoreAdapter(store, testGenesisData())
 
 	// Append the same data again should not error (skips existing in store)
 	err = adapter.Append(ctx, d1)
@@ -413,7 +423,7 @@ func TestDataStoreAdapter_AppendNilData(t *testing.T) {
 	ds, err := NewTestInMemoryKVStore()
 	require.NoError(t, err)
 	store := New(ds)
-	adapter := NewDataStoreAdapter(store)
+	adapter := NewDataStoreAdapter(store, testGenesisData())
 
 	// Append with nil and empty should not error
 	err = adapter.Append(ctx)
@@ -433,7 +443,7 @@ func TestDataStoreAdapter_Sync(t *testing.T) {
 	ds, err := NewTestInMemoryKVStore()
 	require.NoError(t, err)
 	store := New(ds)
-	adapter := NewDataStoreAdapter(store)
+	adapter := NewDataStoreAdapter(store, testGenesisData())
 
 	// Sync should not error
 	err = adapter.Sync(ctx)
@@ -457,7 +467,7 @@ func TestDataStoreAdapter_HeightRefreshFromStore(t *testing.T) {
 	require.NoError(t, batch.Commit())
 
 	// Create adapter - it should pick up the height from store
-	adapter := NewDataStoreAdapter(store)
+	adapter := NewDataStoreAdapter(store, testGenesisData())
 	assert.Equal(t, uint64(1), adapter.Height())
 }
 
@@ -468,7 +478,7 @@ func TestDataStoreAdapter_GetByHeightNotFound(t *testing.T) {
 	ds, err := NewTestInMemoryKVStore()
 	require.NoError(t, err)
 	store := New(ds)
-	adapter := NewDataStoreAdapter(store)
+	adapter := NewDataStoreAdapter(store, testGenesisData())
 
 	_, err = adapter.GetByHeight(ctx, 999)
 	assert.ErrorIs(t, err, header.ErrNotFound)
@@ -481,7 +491,7 @@ func TestDataStoreAdapter_InitWithNil(t *testing.T) {
 	ds, err := NewTestInMemoryKVStore()
 	require.NoError(t, err)
 	store := New(ds)
-	adapter := NewDataStoreAdapter(store)
+	adapter := NewDataStoreAdapter(store, testGenesisData())
 
 	// Init with nil should not error but also not mark as initialized
 	err = adapter.Init(ctx, nil)
@@ -498,7 +508,7 @@ func TestDataStoreAdapter_ContextTimeout(t *testing.T) {
 	ds, err := NewTestInMemoryKVStore()
 	require.NoError(t, err)
 	store := New(ds)
-	adapter := NewDataStoreAdapter(store)
+	adapter := NewDataStoreAdapter(store, testGenesisData())
 
 	// Create a context that's already canceled
 	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Nanosecond)
@@ -520,7 +530,7 @@ func TestDataStoreAdapter_GetRangePartial(t *testing.T) {
 	ds, err := NewTestInMemoryKVStore()
 	require.NoError(t, err)
 	store := New(ds)
-	adapter := NewDataStoreAdapter(store)
+	adapter := NewDataStoreAdapter(store, testGenesisData())
 
 	// Only append data for heights 1 and 2, not 3
 	_, d1 := types.GetRandomBlock(1, 1, "test-chain")
@@ -542,7 +552,7 @@ func TestDataStoreAdapter_GetRangeEmpty(t *testing.T) {
 	ds, err := NewTestInMemoryKVStore()
 	require.NoError(t, err)
 	store := New(ds)
-	adapter := NewDataStoreAdapter(store)
+	adapter := NewDataStoreAdapter(store, testGenesisData())
 
 	// GetRange on empty store should return ErrNotFound
 	_, err = adapter.GetRange(ctx, 1, 5)
@@ -556,7 +566,7 @@ func TestDataStoreAdapter_MultipleAppends(t *testing.T) {
 	ds, err := NewTestInMemoryKVStore()
 	require.NoError(t, err)
 	store := New(ds)
-	adapter := NewDataStoreAdapter(store)
+	adapter := NewDataStoreAdapter(store, testGenesisData())
 
 	// Append data in multiple batches
 	_, d1 := types.GetRandomBlock(1, 1, "test-chain")
@@ -584,7 +594,7 @@ func TestDataStoreAdapter_PendingAndStoreInteraction(t *testing.T) {
 	ds, err := NewTestInMemoryKVStore()
 	require.NoError(t, err)
 	store := New(ds)
-	adapter := NewDataStoreAdapter(store)
+	adapter := NewDataStoreAdapter(store, testGenesisData())
 
 	// Add data to pending
 	_, d1 := types.GetRandomBlock(1, 1, "test-chain")
@@ -626,7 +636,7 @@ func TestDataStoreAdapter_HeadPrefersPending(t *testing.T) {
 	require.NoError(t, batch.SetHeight(1))
 	require.NoError(t, batch.Commit())
 
-	adapter := NewDataStoreAdapter(store)
+	adapter := NewDataStoreAdapter(store, testGenesisData())
 
 	// Add height 2 to pending
 	_, d2 := types.GetRandomBlock(2, 1, "test-chain")
@@ -645,7 +655,7 @@ func TestDataStoreAdapter_GetFromPendingByHash(t *testing.T) {
 	ds, err := NewTestInMemoryKVStore()
 	require.NoError(t, err)
 	store := New(ds)
-	adapter := NewDataStoreAdapter(store)
+	adapter := NewDataStoreAdapter(store, testGenesisData())
 
 	// Add data to pending
 	_, d1 := types.GetRandomBlock(1, 1, "test-chain")

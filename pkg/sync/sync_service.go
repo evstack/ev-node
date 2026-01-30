@@ -72,7 +72,7 @@ func NewDataSyncService(
 	p2p *p2p.Client,
 	logger zerolog.Logger,
 ) (*DataSyncService, error) {
-	storeAdapter := store.NewDataStoreAdapter(evStore)
+	storeAdapter := store.NewDataStoreAdapter(evStore, genesis)
 	return newSyncService[*types.Data](storeAdapter, dataSync, conf, genesis, p2p, logger)
 }
 
@@ -85,7 +85,7 @@ func NewHeaderSyncService(
 	logger zerolog.Logger,
 ) (*HeaderSyncService, error) {
 
-	storeAdapter := store.NewHeaderStoreAdapter(evStore)
+	storeAdapter := store.NewHeaderStoreAdapter(evStore, genesis)
 	return newSyncService[*types.SignedHeader](storeAdapter, headerSync, conf, genesis, p2p, logger)
 }
 
