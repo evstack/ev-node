@@ -20,6 +20,8 @@ func (e *ethRPCClient) HeaderByNumber(ctx context.Context, number *big.Int) (*ty
 	return e.client.HeaderByNumber(ctx, number)
 }
 
+// GetTxs works only on custom execution clients exposing txpoolExt_getTxs.
+// Standard Ethereum nodes do not support this RPC method.
 func (e *ethRPCClient) GetTxs(ctx context.Context) ([]string, error) {
 	var result []string
 	err := e.client.Client().CallContext(ctx, &result, "txpoolExt_getTxs")
