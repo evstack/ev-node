@@ -1,0 +1,598 @@
+package store
+
+import (
+	"bytes"
+	"context"
+	"errors"
+	"sync"
+	"sync/atomic"
+
+	"github.com/celestiaorg/go-header"
+	lru "github.com/hashicorp/golang-lru/v2"
+
+	"github.com/evstack/ev-node/pkg/genesis"
+	"github.com/evstack/ev-node/types"
+)
+
+// errElapsedHeight is returned when the requested height was already stored.
+var errElapsedHeight = errors.New("elapsed height")
+
+// defaultPendingCacheSize is the default size for the pending headers/data LRU cache.
+const defaultPendingCacheSize = 1000
+
+// StoreGetter abstracts the store access methods for different types (headers vs data).
+type StoreGetter[H header.Header[H]] interface {
+	// GetByHeight retrieves an item by its height.
+	GetByHeight(ctx context.Context, height uint64) (H, error)
+	// GetByHash retrieves an item by its hash.
+	GetByHash(ctx context.Context, hash []byte) (H, error)
+	// Height returns the current height of the store.
+	Height(ctx context.Context) (uint64, error)
+	// HasAt checks if an item exists at the given height.
+	HasAt(ctx context.Context, height uint64) bool
+}
+
+// heightSub provides a mechanism for waiting on a specific height to be stored.
+// This is critical for go-header syncer which expects GetByHeight to block until
+// the requested height is available.
+type heightSub struct {
+	height    atomic.Uint64
+	heightMu  sync.Mutex
+	heightChs map[uint64][]chan struct{}
+}
+
+func newHeightSub(initialHeight uint64) *heightSub {
+	hs := &heightSub{
+		heightChs: make(map[uint64][]chan struct{}),
+	}
+	hs.height.Store(initialHeight)
+	return hs
+}
+
+// Height returns the current height.
+func (hs *heightSub) Height() uint64 {
+	return hs.height.Load()
+}
+
+// SetHeight updates the current height and notifies any waiters.
+func (hs *heightSub) SetHeight(h uint64) {
+	hs.height.Store(h)
+	hs.notifyUpTo(h)
+}
+
+// Wait blocks until the given height is reached or context is canceled.
+// Returns errElapsedHeight if the height was already reached.
+func (hs *heightSub) Wait(ctx context.Context, height uint64) error {
+	// Fast path: height already reached
+	if hs.height.Load() >= height {
+		return errElapsedHeight
+	}
+
+	hs.heightMu.Lock()
+	// Double-check after acquiring lock
+	if hs.height.Load() >= height {
+		hs.heightMu.Unlock()
+		return errElapsedHeight
+	}
+
+	// Create a channel to wait on
+	ch := make(chan struct{})
+	hs.heightChs[height] = append(hs.heightChs[height], ch)
+	hs.heightMu.Unlock()
+
+	select {
+	case <-ch:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+}
+
+// notifyUpTo notifies all waiters for heights <= h.
+func (hs *heightSub) notifyUpTo(h uint64) {
+	hs.heightMu.Lock()
+	defer hs.heightMu.Unlock()
+
+	for height, chs := range hs.heightChs {
+		if height <= h {
+			for _, ch := range chs {
+				close(ch)
+			}
+			delete(hs.heightChs, height)
+		}
+	}
+}
+
+// StoreAdapter is a generic adapter that wraps Store to implement header.Store[H].
+// This allows the ev-node store to be used directly by go-header's P2P infrastructure,
+// eliminating the need for a separate go-header store and reducing data duplication.
+//
+// The adapter maintains an in-memory cache for items received via P2P (through Append).
+// This cache allows the go-header syncer and P2P handler to access items before they
+// are validated and persisted by the ev-node syncer. Once the ev-node syncer processes
+// a block, it writes to the underlying store, and subsequent reads will come from the store.
+type StoreAdapter[H header.Header[H]] struct {
+	getter               StoreGetter[H]
+	genesisInitialHeight uint64
+
+	// heightSub tracks the current height and allows waiting for specific heights.
+	// This is required by go-header syncer for blocking GetByHeight.
+	heightSub *heightSub
+
+	// mu protects initialization state
+	mu          sync.RWMutex
+	initialized bool
+
+	// pending is an LRU cache for items received via Append that haven't been
+	// written to the store yet. Keyed by height. Using LRU prevents unbounded growth.
+	pending *lru.Cache[uint64, H]
+
+	// onDeleteFn is called when items are deleted (for rollback scenarios)
+	onDeleteFn func(context.Context, uint64) error
+}
+
+// NewStoreAdapter creates a new StoreAdapter wrapping the given store getter.
+// The genesis is used to determine the initial height for efficient Tail lookups.
+func NewStoreAdapter[H header.Header[H]](getter StoreGetter[H], gen genesis.Genesis) *StoreAdapter[H] {
+	// Create LRU cache for pending items - ignore error as size is constant and valid
+	pendingCache, _ := lru.New[uint64, H](defaultPendingCacheSize)
+
+	// Get actual current height from store (0 if empty)
+	var storeHeight uint64
+	if h, err := getter.Height(context.Background()); err == nil {
+		storeHeight = h
+	}
+
+	adapter := &StoreAdapter[H]{
+		getter:               getter,
+		genesisInitialHeight: max(gen.InitialHeight, 1),
+		pending:              pendingCache,
+		heightSub:            newHeightSub(storeHeight),
+	}
+
+	// Mark as initialized if we have data
+	if storeHeight > 0 {
+		adapter.initialized = true
+	}
+
+	return adapter
+}
+
+// Start implements header.Store. It initializes the adapter if needed.
+func (a *StoreAdapter[H]) Start(ctx context.Context) error {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+
+	// Refresh height from store
+	h, err := a.getter.Height(ctx)
+	if err != nil {
+		return err
+	}
+
+	if h > 0 {
+		a.heightSub.SetHeight(h)
+		a.initialized = true
+	}
+
+	return nil
+}
+
+// Stop implements header.Store. No-op since the underlying store lifecycle
+// is managed separately.
+func (a *StoreAdapter[H]) Stop(ctx context.Context) error {
+	return nil
+}
+
+// pendingHead returns the highest item in the pending cache and its height.
+// Returns zero value and 0 if pending cache is empty.
+func (a *StoreAdapter[H]) pendingHead() (H, uint64) {
+	var maxHeight uint64
+	var head H
+	for _, h := range a.pending.Keys() {
+		if item, ok := a.pending.Peek(h); ok && h > maxHeight {
+			maxHeight = h
+			head = item
+		}
+	}
+	return head, maxHeight
+}
+
+// Head returns the highest item in the store.
+func (a *StoreAdapter[H]) Head(ctx context.Context, _ ...header.HeadOption[H]) (H, error) {
+	var zero H
+
+	storeHeight, _ := a.getter.Height(ctx)
+	pendingHead, pendingHeight := a.pendingHead()
+
+	// Prefer pending if it's higher than store
+	if pendingHeight > storeHeight {
+		a.heightSub.SetHeight(pendingHeight)
+		return pendingHead, nil
+	}
+
+	// Try to get from store
+	if storeHeight > 0 {
+		a.heightSub.SetHeight(storeHeight)
+		if item, err := a.getter.GetByHeight(ctx, storeHeight); err == nil {
+			return item, nil
+		}
+	}
+
+	// Fall back to pending if store failed
+	if pendingHeight > 0 {
+		a.heightSub.SetHeight(pendingHeight)
+		return pendingHead, nil
+	}
+
+	return zero, header.ErrNotFound
+}
+
+// Tail returns the lowest item in the store.
+// For ev-node, this is typically the genesis/initial height.
+// If pruning has occurred, it walks up from initialHeight to find the first available item.
+// TODO(@julienrbrt): Optimize this when pruning is enabled.
+func (a *StoreAdapter[H]) Tail(ctx context.Context) (H, error) {
+	var zero H
+
+	height := a.heightSub.Height()
+	if height == 0 {
+		// Check store
+		h, err := a.getter.Height(ctx)
+		if err != nil || h == 0 {
+			return zero, header.ErrNotFound
+		}
+		height = h
+	}
+
+	// Try genesisInitialHeight first (most common case - no pruning)
+	item, err := a.getter.GetByHeight(ctx, a.genesisInitialHeight)
+	if err == nil {
+		return item, nil
+	}
+
+	// Check pending for genesisInitialHeight
+	if pendingItem, ok := a.pending.Peek(a.genesisInitialHeight); ok {
+		return pendingItem, nil
+	}
+
+	// Walk up from genesisInitialHeight to find the first available item (pruning case)
+	for h := a.genesisInitialHeight + 1; h <= height; h++ {
+		item, err = a.getter.GetByHeight(ctx, h)
+		if err == nil {
+			return item, nil
+		}
+		if pendingItem, ok := a.pending.Peek(h); ok {
+			return pendingItem, nil
+		}
+	}
+
+	return zero, header.ErrNotFound
+}
+
+// Get returns an item by its hash.
+func (a *StoreAdapter[H]) Get(ctx context.Context, hash header.Hash) (H, error) {
+	var zero H
+
+	// First try the store
+	item, err := a.getter.GetByHash(ctx, hash)
+	if err == nil {
+		return item, nil
+	}
+
+	// Check pending items
+	for _, h := range a.pending.Keys() {
+		if pendingItem, ok := a.pending.Peek(h); ok && !pendingItem.IsZero() && bytes.Equal(pendingItem.Hash(), hash) {
+			return pendingItem, nil
+		}
+	}
+
+	return zero, header.ErrNotFound
+}
+
+// GetByHeight returns an item at the given height.
+// If the height is not yet available, it blocks until it is or context is canceled.
+func (a *StoreAdapter[H]) GetByHeight(ctx context.Context, height uint64) (H, error) {
+	var zero H
+
+	// Try to get the item first
+	if item, err := a.getByHeightNoWait(ctx, height); err == nil {
+		return item, nil
+	}
+
+	// If not found, wait for the height to be stored
+	err := a.heightSub.Wait(ctx, height)
+	if err != nil && !errors.Is(err, errElapsedHeight) {
+		return zero, err
+	}
+
+	// Try again after waiting
+	return a.getByHeightNoWait(ctx, height)
+}
+
+// getByHeightNoWait returns an item at the given height without blocking.
+func (a *StoreAdapter[H]) getByHeightNoWait(ctx context.Context, height uint64) (H, error) {
+	var zero H
+
+	// First try the store
+	item, err := a.getter.GetByHeight(ctx, height)
+	if err == nil {
+		return item, nil
+	}
+
+	// Check pending items
+	if pendingItem, ok := a.pending.Peek(height); ok {
+		return pendingItem, nil
+	}
+
+	return zero, header.ErrNotFound
+}
+
+// GetRangeByHeight returns items in the range [from.Height()+1, to).
+// This follows go-header's convention where 'from' is the trusted item
+// and we return items starting from the next height.
+func (a *StoreAdapter[H]) GetRangeByHeight(ctx context.Context, from H, to uint64) ([]H, error) {
+	if from.IsZero() {
+		return nil, header.ErrNotFound
+	}
+
+	startHeight := from.Height() + 1
+	if startHeight >= to {
+		return nil, nil
+	}
+
+	return a.GetRange(ctx, startHeight, to)
+}
+
+// GetRange returns items in the range [from, to).
+func (a *StoreAdapter[H]) GetRange(ctx context.Context, from, to uint64) ([]H, error) {
+	if from >= to {
+		return nil, nil
+	}
+
+	items := make([]H, 0, to-from)
+	for height := from; height < to; height++ {
+		item, err := a.GetByHeight(ctx, height)
+		if err != nil {
+			// Return what we have so far
+			if len(items) > 0 {
+				return items, nil
+			}
+			return nil, header.ErrNotFound
+		}
+		items = append(items, item)
+	}
+
+	return items, nil
+}
+
+// Has checks if an item with the given hash exists.
+func (a *StoreAdapter[H]) Has(ctx context.Context, hash header.Hash) (bool, error) {
+	// Check store first
+	_, err := a.getter.GetByHash(ctx, hash)
+	if err == nil {
+		return true, nil
+	}
+
+	// Check pending items
+	for _, h := range a.pending.Keys() {
+		if pendingItem, ok := a.pending.Peek(h); ok && !pendingItem.IsZero() && bytes.Equal(pendingItem.Hash(), hash) {
+			return true, nil
+		}
+	}
+
+	return false, nil
+}
+
+// HasAt checks if an item exists at the given height.
+func (a *StoreAdapter[H]) HasAt(ctx context.Context, height uint64) bool {
+	// Check store first
+	if a.getter.HasAt(ctx, height) {
+		return true
+	}
+
+	// Check pending items
+	return a.pending.Contains(height)
+}
+
+// Height returns the current height of the store.
+func (a *StoreAdapter[H]) Height() uint64 {
+	// Check store first
+	if h, err := a.getter.Height(context.Background()); err == nil && h > 0 {
+		// Also check pending for higher heights
+		maxPending := uint64(0)
+		for _, height := range a.pending.Keys() {
+			if height > maxPending {
+				maxPending = height
+			}
+		}
+
+		if maxPending > h {
+			a.heightSub.SetHeight(maxPending)
+			return maxPending
+		}
+		a.heightSub.SetHeight(h)
+		return h
+	}
+
+	// Fall back to cached height or check pending
+	height := a.heightSub.Height()
+	if height > 0 {
+		return height
+	}
+
+	for _, h := range a.pending.Keys() {
+		if h > height {
+			height = h
+		}
+	}
+	return height
+}
+
+// Append stores items in the pending cache.
+// These items are received via P2P and will be available for retrieval
+// until the ev-node syncer processes and persists them to the store.
+func (a *StoreAdapter[H]) Append(ctx context.Context, items ...H) error {
+	if len(items) == 0 {
+		return nil
+	}
+
+	for _, item := range items {
+		if item.IsZero() {
+			continue
+		}
+
+		height := item.Height()
+
+		// Check if already in store
+		if a.getter.HasAt(ctx, height) {
+			// Already persisted, skip
+			continue
+		}
+
+		// Add to pending cache (LRU will evict oldest if full)
+		a.pending.Add(height, item)
+
+		// Update cached height and notify waiters
+		if height > a.heightSub.Height() {
+			a.heightSub.SetHeight(height)
+		}
+	}
+
+	return nil
+}
+
+// Init initializes the store with the first item.
+// This is called by go-header when bootstrapping the store with a trusted item.
+func (a *StoreAdapter[H]) Init(ctx context.Context, item H) error {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+
+	if a.initialized {
+		return nil
+	}
+
+	if item.IsZero() {
+		return nil
+	}
+
+	// Add to pending cache (LRU will evict oldest if full)
+	a.pending.Add(item.Height(), item)
+	a.heightSub.SetHeight(item.Height())
+	a.initialized = true
+
+	return nil
+}
+
+// Sync ensures all pending writes are flushed.
+// No-op for the adapter as pending data is in-memory cache.
+func (a *StoreAdapter[H]) Sync(ctx context.Context) error {
+	return nil
+}
+
+// DeleteRange deletes items in the range [from, to).
+// This is used for rollback operations.
+func (a *StoreAdapter[H]) DeleteRange(ctx context.Context, from, to uint64) error {
+	// Remove from pending cache
+	for height := from; height < to; height++ {
+		a.pending.Remove(height)
+
+		if a.onDeleteFn != nil {
+			if err := a.onDeleteFn(ctx, height); err != nil {
+				return err
+			}
+		}
+	}
+
+	// Update cached height if necessary
+	if from <= a.heightSub.Height() {
+		a.heightSub.SetHeight(from - 1)
+	}
+
+	return nil
+}
+
+// OnDelete registers a callback to be invoked when items are deleted.
+func (a *StoreAdapter[H]) OnDelete(fn func(context.Context, uint64) error) {
+	a.onDeleteFn = fn
+}
+
+// HeaderStoreGetter implements StoreGetter for *types.SignedHeader.
+type HeaderStoreGetter struct {
+	store Store
+}
+
+// NewHeaderStoreGetter creates a new HeaderStoreGetter.
+func NewHeaderStoreGetter(store Store) *HeaderStoreGetter {
+	return &HeaderStoreGetter{store: store}
+}
+
+// GetByHeight implements StoreGetter.
+func (g *HeaderStoreGetter) GetByHeight(ctx context.Context, height uint64) (*types.SignedHeader, error) {
+	return g.store.GetHeader(ctx, height)
+}
+
+// GetByHash implements StoreGetter.
+func (g *HeaderStoreGetter) GetByHash(ctx context.Context, hash []byte) (*types.SignedHeader, error) {
+	hdr, _, err := g.store.GetBlockByHash(ctx, hash)
+	return hdr, err
+}
+
+// Height implements StoreGetter.
+func (g *HeaderStoreGetter) Height(ctx context.Context) (uint64, error) {
+	return g.store.Height(ctx)
+}
+
+// HasAt implements StoreGetter.
+func (g *HeaderStoreGetter) HasAt(ctx context.Context, height uint64) bool {
+	_, err := g.store.GetHeader(ctx, height)
+	return err == nil
+}
+
+// DataStoreGetter implements StoreGetter for *types.Data.
+type DataStoreGetter struct {
+	store Store
+}
+
+// NewDataStoreGetter creates a new DataStoreGetter.
+func NewDataStoreGetter(store Store) *DataStoreGetter {
+	return &DataStoreGetter{store: store}
+}
+
+// GetByHeight implements StoreGetter.
+func (g *DataStoreGetter) GetByHeight(ctx context.Context, height uint64) (*types.Data, error) {
+	_, data, err := g.store.GetBlockData(ctx, height)
+	return data, err
+}
+
+// GetByHash implements StoreGetter.
+func (g *DataStoreGetter) GetByHash(ctx context.Context, hash []byte) (*types.Data, error) {
+	_, data, err := g.store.GetBlockByHash(ctx, hash)
+	return data, err
+}
+
+// Height implements StoreGetter.
+func (g *DataStoreGetter) Height(ctx context.Context) (uint64, error) {
+	return g.store.Height(ctx)
+}
+
+// HasAt implements StoreGetter.
+func (g *DataStoreGetter) HasAt(ctx context.Context, height uint64) bool {
+	_, _, err := g.store.GetBlockData(ctx, height)
+	return err == nil
+}
+
+// Type aliases for convenience
+type HeaderStoreAdapter = StoreAdapter[*types.SignedHeader]
+type DataStoreAdapter = StoreAdapter[*types.Data]
+
+// NewHeaderStoreAdapter creates a new StoreAdapter for headers.
+// The genesis is used to determine the initial height for efficient Tail lookups.
+func NewHeaderStoreAdapter(store Store, gen genesis.Genesis) *HeaderStoreAdapter {
+	return NewStoreAdapter[*types.SignedHeader](NewHeaderStoreGetter(store), gen)
+}
+
+// NewDataStoreAdapter creates a new StoreAdapter for data.
+// The genesis is used to determine the initial height for efficient Tail lookups.
+func NewDataStoreAdapter(store Store, gen genesis.Genesis) *DataStoreAdapter {
+	return NewStoreAdapter[*types.Data](NewDataStoreGetter(store), gen)
+}
