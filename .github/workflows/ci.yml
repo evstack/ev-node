@@ -8,6 +8,11 @@ name: CI
   merge_group:
 
 permissions: {}
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   determine-image-tag:
     name: Determine Image Tag
