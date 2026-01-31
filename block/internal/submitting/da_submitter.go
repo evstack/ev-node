@@ -235,7 +235,6 @@ func (s *DASubmitter) SubmitHeaders(ctx context.Context, headers []*types.Signed
 		"header",
 		s.client.GetHeaderNamespace(),
 		[]byte(s.config.DA.SubmitOptions),
-		func() uint64 { return cache.NumPendingHeaders() },
 	)
 }
 
@@ -435,7 +434,6 @@ func (s *DASubmitter) SubmitData(ctx context.Context, unsignedDataList []*types.
 		"data",
 		s.client.GetDataNamespace(),
 		[]byte(s.config.DA.SubmitOptions),
-		func() uint64 { return cache.NumPendingData() },
 	)
 }
 
@@ -545,7 +543,6 @@ func submitToDA[T any](
 	itemType string,
 	namespace []byte,
 	options []byte,
-	getTotalPendingFn func() uint64,
 ) error {
 	if len(items) != len(marshaled) {
 		return fmt.Errorf("items length (%d) does not match marshaled length (%d)", len(items), len(marshaled))
@@ -568,11 +565,6 @@ func submitToDA[T any](
 		}
 		items = batchItems
 		marshaled = batchMarshaled
-	}
-
-	// Update pending blobs metric to track total backlog
-	if getTotalPendingFn != nil {
-		s.metrics.DASubmitterPendingBlobs.Set(float64(getTotalPendingFn()))
 	}
 
 	// Start the retry loop
@@ -615,20 +607,12 @@ func submitToDA[T any](
 			s.logger.Info().Str("itemType", itemType).Uint64("count", res.SubmittedCount).Msg("successfully submitted items to DA layer")
 			if int(res.SubmittedCount) == len(items) {
 				rs.Next(reasonSuccess, pol)
-				// Update pending blobs metric to reflect total backlog
-				if getTotalPendingFn != nil {
-					s.metrics.DASubmitterPendingBlobs.Set(float64(getTotalPendingFn()))
-				}
 				return nil
 			}
 			// partial success: advance window
 			items = items[res.SubmittedCount:]
 			marshaled = marshaled[res.SubmittedCount:]
 			rs.Next(reasonSuccess, pol)
-			// Update pending blobs count to reflect total backlog
-			if getTotalPendingFn != nil {
-				s.metrics.DASubmitterPendingBlobs.Set(float64(getTotalPendingFn()))
-			}
 
 		case datypes.StatusTooBig:
 			// Record failure metric
@@ -649,10 +633,6 @@ func submitToDA[T any](
 			marshaled = marshaled[:half]
 			s.logger.Debug().Int("newBatchSize", half).Msg("batch too big; halving and retrying")
 			rs.Next(reasonTooBig, pol)
-			// Update pending blobs count to reflect total backlog
-			if getTotalPendingFn != nil {
-				s.metrics.DASubmitterPendingBlobs.Set(float64(getTotalPendingFn()))
-			}
 
 		case datypes.StatusNotIncludedInBlock:
 			// Record failure metric
