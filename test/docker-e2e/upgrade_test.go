@@ -22,22 +22,17 @@ import (
 const (
 	// TODO: upgrade from previous released version instead of main
 	baseEVMSingleVersion = "main"
-	evmChainID           = "1234"
-	testPrivateKey       = "cece4f25ac74deb1468965160c7185e07dff413f23fcadb611b05ca37ab0a52e"
-	testToAddress        = "0x944fDcD1c868E3cC566C78023CcB38A32cDA836E"
-	testGasLimit         = uint64(22000)
 )
 
 // EVMSingleUpgradeTestSuite embeds DockerTestSuite to reuse infrastructure setup.
 type EVMSingleUpgradeTestSuite struct {
 	DockerTestSuite
 
-	reth           RethSetup
-	daAddress      string
-	evmSingleChain *evmsingle.Chain
-	evmSingleNode  *evmsingle.Node
-	ethClient      *ethclient.Client
-	txNonce        uint64
+	rethCfg   RethSetupConfig
+	evmCfg    EVMSingleSetupConfig
+	daAddress string
+	ethClient *ethclient.Client
+	txNonce   uint64
 }
 
 func TestEVMSingleUpgradeSuite(t *testing.T) {
@@ -60,7 +55,7 @@ func (s *EVMSingleUpgradeTestSuite) TestEVMSingleUpgrade() {
 	})
 
 	s.Run("setup_reth_node", func() {
-		s.reth = s.SetupRethNode(ctx)
+		s.rethCfg = s.SetupRethNode(ctx, "reth")
 		s.T().Log("Reth node started")
 	})
 
@@ -70,7 +65,7 @@ func (s *EVMSingleUpgradeTestSuite) TestEVMSingleUpgrade() {
 	})
 
 	s.Run("create_ethereum_client", func() {
-		s.ethClient = s.SetupEthClient(ctx, s.reth.EthURLExternal, evmChainID)
+		s.ethClient = s.SetupEthClient(ctx, s.rethCfg.EthURLExternal, evmTestChainID)
 		s.T().Log("Ethereum client connected to Reth")
 	})
 
@@ -101,10 +96,10 @@ func (s *EVMSingleUpgradeTestSuite) TestEVMSingleUpgrade() {
 // setupEVMSingle creates and starts an evm node with the specified version.
 func (s *EVMSingleUpgradeTestSuite) setupEVMSingle(ctx context.Context, image container.Image) {
 	nodeConfig := evmsingle.NewNodeConfigBuilder().
-		WithEVMEngineURL(s.reth.EngineURL).
-		WithEVMETHURL(s.reth.EthURL).
-		WithEVMJWTSecret(s.reth.JWTSecret).
-		WithEVMGenesisHash(s.reth.GenesisHash).
+		WithEVMEngineURL(s.rethCfg.EngineURL).
+		WithEVMETHURL(s.rethCfg.EthURL).
+		WithEVMJWTSecret(s.rethCfg.JWTSecret).
+		WithEVMGenesisHash(s.rethCfg.GenesisHash).
 		WithEVMBlockTime("1s").
 		WithEVMSignerPassphrase("secret").
 		WithDAAddress(s.daAddress).
@@ -115,23 +110,7 @@ func (s *EVMSingleUpgradeTestSuite) setupEVMSingle(ctx context.Context, image co
 		).
 		Build()
 
-	evmSingleChain, err := evmsingle.NewChainBuilder(s.T()).
-		WithDockerClient(s.dockerClient).
-		WithDockerNetworkID(s.dockerNetworkID).
-		WithImage(image).
-		WithBinary("evm").
-		WithNode(nodeConfig).
-		Build(ctx)
-
-	s.Require().NoError(err)
-	s.Require().Len(evmSingleChain.Nodes(), 1)
-
-	evmSingleNode := evmSingleChain.Nodes()[0]
-	s.Require().NoError(evmSingleNode.Start(ctx))
-	s.WaitForEVMHealthy(ctx, evmSingleNode)
-
-	s.evmSingleChain = evmSingleChain
-	s.evmSingleNode = evmSingleNode
+	s.evmCfg = s.SetupEVMSingle(ctx, image, nodeConfig)
 }
 
 // submitPreUpgradeTxs submits and verifies multiple transactions before upgrade.
@@ -139,7 +118,7 @@ func (s *EVMSingleUpgradeTestSuite) submitPreUpgradeTxs(ctx context.Context, txC
 	var txHashes []common.Hash
 
 	for i := range txCount {
-		tx := evm.GetRandomTransaction(s.T(), testPrivateKey, testToAddress, evmChainID, testGasLimit, &s.txNonce)
+		tx := evm.GetRandomTransaction(s.T(), evmTestPrivateKey, evmTestToAddress, evmTestChainID, evmTestGasLimit, &s.txNonce)
 		err := s.ethClient.SendTransaction(ctx, tx)
 		s.Require().NoError(err)
 		txHashes = append(txHashes, tx.Hash())
@@ -152,21 +131,21 @@ func (s *EVMSingleUpgradeTestSuite) submitPreUpgradeTxs(ctx context.Context, txC
 
 // performUpgrade performs the upgrade by removing the container, updating the image, and restarting.
 func (s *EVMSingleUpgradeTestSuite) performUpgrade(ctx context.Context) {
-	err := s.evmSingleNode.Remove(ctx, tastoratypes.WithPreserveVolumes())
+	err := s.evmCfg.Node.Remove(ctx, tastoratypes.WithPreserveVolumes())
 	s.Require().NoError(err, "failed to remove container with volume preservation")
 	s.T().Log("Removed container with volume preservation")
 
 	newImage := getEVMSingleImage()
 
 	s.T().Logf("Upgrading to version: %s", newImage.Version)
-	s.evmSingleNode.Image = newImage
-	for _, node := range s.evmSingleChain.Nodes() {
+	s.evmCfg.Node.Image = newImage
+	for _, node := range s.evmCfg.Chain.Nodes() {
 		node.Image = newImage
 	}
 
-	err = s.evmSingleNode.Start(ctx)
+	err = s.evmCfg.Node.Start(ctx)
 	s.Require().NoError(err, "failed to start upgraded node")
-	s.WaitForEVMHealthy(ctx, s.evmSingleNode)
+	s.WaitForEVMHealthy(ctx, s.evmCfg.Node)
 
 	s.T().Logf("Upgraded node started successfully with version: %s", newImage.Version)
 }
@@ -185,7 +164,7 @@ func (s *EVMSingleUpgradeTestSuite) verifyOldTxsPersist(ctx context.Context, txH
 
 // submitAndVerifyPostUpgradeTx submits a new transaction after upgrade and verifies block production.
 func (s *EVMSingleUpgradeTestSuite) submitAndVerifyPostUpgradeTx(ctx context.Context) {
-	tx := evm.GetRandomTransaction(s.T(), testPrivateKey, testToAddress, evmChainID, testGasLimit, &s.txNonce)
+	tx := evm.GetRandomTransaction(s.T(), evmTestPrivateKey, evmTestToAddress, evmTestChainID, evmTestGasLimit, &s.txNonce)
 	err := s.ethClient.SendTransaction(ctx, tx)
 	s.Require().NoError(err)
 	s.T().Logf("Submitted post-upgrade tx: %s", tx.Hash().Hex())
@@ -216,7 +195,7 @@ func (s *EVMSingleUpgradeTestSuite) verifyAccountBalances(ctx context.Context) {
 	s.Require().True(balance.Cmp(big.NewInt(0)) > 0, "sender should have non-zero balance")
 	s.T().Logf("Sender balance after upgrade: %s wei", balance.String())
 
-	recipientAddr := common.HexToAddress(testToAddress)
+	recipientAddr := common.HexToAddress(evmTestToAddress)
 	recipientBalance, err := s.ethClient.BalanceAt(ctx, recipientAddr, nil)
 	s.Require().NoError(err)
 	s.T().Logf("Recipient balance after upgrade: %s wei", recipientBalance.String())

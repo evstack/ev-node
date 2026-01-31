@@ -1,6 +1,6 @@
 module github.com/evstack/ev-node/execution/evm
 
-go 1.25.0
+go 1.25.6
 
 require (
 	github.com/ethereum/go-ethereum v1.16.8

@@ -1,6 +1,6 @@
 module github.com/evstack/ev-node/execution/grpc
 
-go 1.25.0
+go 1.25.6
 
 require (
 	connectrpc.com/connect v1.19.1
