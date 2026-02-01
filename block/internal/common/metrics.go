@@ -63,8 +63,6 @@ type Metrics struct {
 	DARetrievalSuccesses    metrics.Counter
 	DARetrievalFailures     metrics.Counter
 	DAInclusionHeight       metrics.Gauge
-	PendingHeadersCount     metrics.Gauge
-	PendingDataCount        metrics.Gauge
 
 	// Forced inclusion metrics
 	ForcedInclusionTxsInGracePeriod metrics.Gauge   // Number of forced inclusion txs currently in grace period
@@ -172,20 +170,6 @@ func PrometheusMetrics(namespace string, labelsAndValues ...string) *Metrics {
 		Help:      "Height at which all blocks have been included in DA",
 	}, labels).With(labelsAndValues...)
 
-	m.PendingHeadersCount = prometheus.NewGaugeFrom(stdprometheus.GaugeOpts{
-		Namespace: namespace,
-		Subsystem: MetricsSubsystem,
-		Name:      "pending_headers_count",
-		Help:      "Number of headers pending DA submission",
-	}, labels).With(labelsAndValues...)
-
-	m.PendingDataCount = prometheus.NewGaugeFrom(stdprometheus.GaugeOpts{
-		Namespace: namespace,
-		Subsystem: MetricsSubsystem,
-		Name:      "pending_data_count",
-		Help:      "Number of data blocks pending DA submission",
-	}, labels).With(labelsAndValues...)
-
 	// Forced inclusion metrics
 	m.ForcedInclusionTxsInGracePeriod = prometheus.NewGaugeFrom(stdprometheus.GaugeOpts{
 		Namespace: namespace,
@@ -259,8 +243,6 @@ func NopMetrics() *Metrics {
 		DARetrievalSuccesses:    discard.NewCounter(),
 		DARetrievalFailures:     discard.NewCounter(),
 		DAInclusionHeight:       discard.NewGauge(),
-		PendingHeadersCount:     discard.NewGauge(),
-		PendingDataCount:        discard.NewGauge(),
 		DASubmitterFailures:     make(map[DASubmitterFailureReason]metrics.Counter),
 		DASubmitterLastFailure:  make(map[DASubmitterFailureReason]metrics.Gauge),
 		DASubmitterPendingBlobs: discard.NewGauge(),

@@ -30,8 +30,6 @@ func TestMetrics(t *testing.T) {
 		assert.NotNil(t, em.DARetrievalSuccesses)
 		assert.NotNil(t, em.DARetrievalFailures)
 		assert.NotNil(t, em.DAInclusionHeight)
-		assert.NotNil(t, em.PendingHeadersCount)
-		assert.NotNil(t, em.PendingDataCount)
 	})
 
 	t.Run("NopMetrics", func(t *testing.T) {
@@ -56,8 +54,6 @@ func TestMetrics(t *testing.T) {
 		assert.NotNil(t, em.DARetrievalSuccesses)
 		assert.NotNil(t, em.DARetrievalFailures)
 		assert.NotNil(t, em.DAInclusionHeight)
-		assert.NotNil(t, em.PendingHeadersCount)
-		assert.NotNil(t, em.PendingDataCount)
 
 		// Verify no-op metrics don't panic when used
 		em.Height.Set(100)
@@ -113,8 +109,6 @@ func TestMetricsIntegration(t *testing.T) {
 	em.DARetrievalSuccesses.Add(9)
 	em.DARetrievalFailures.Add(1)
 	em.DAInclusionHeight.Set(995)
-	em.PendingHeadersCount.Set(3)
-	em.PendingDataCount.Set(2)
 }
 
 func TestMetricsSubsystem(t *testing.T) {
