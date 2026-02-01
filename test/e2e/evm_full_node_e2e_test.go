@@ -1222,6 +1222,20 @@ func testSequencerFullNodeRestart(t *testing.T, initialLazyMode, restartLazyMode
 
 	t.Log("Phase 4: Verifying blockchain state preservation after restart...")
 
+	// After restart, the full node needs to re-fetch blocks via P2P from the sequencer.
+	// Wait for the full node to sync up to the pre-restart height before verifying state preservation.
+	t.Log("Waiting for full node to re-sync blocks via P2P after restart...")
+	require.Eventually(t, func() bool {
+		fnHeader, fnErr := fullNodeClient.HeaderByNumber(ctx, nil)
+		if fnErr != nil {
+			return false
+		}
+		fnHeight := fnHeader.Number.Uint64()
+		t.Logf("Full node re-sync progress: current=%d, target=%d", fnHeight, preRestartFnHeight)
+		return fnHeight >= preRestartFnHeight
+	}, 60*time.Second, 1*time.Second, "Full node should re-sync to pre-restart height via P2P")
+	t.Log("Full node re-synced to pre-restart height")
+
 	postRestartSeqHeader, err := sequencerClient.HeaderByNumber(ctx, nil)
 	require.NoError(t, err, "Should get sequencer header after restart")
 	postRestartFnHeader, err := fullNodeClient.HeaderByNumber(ctx, nil)
@@ -1270,6 +1284,31 @@ func testSequencerFullNodeRestart(t *testing.T, initialLazyMode, restartLazyMode
 
 	t.Log("Phase 5: Verifying post-restart functionality and P2P sync...")
 
+	// After restart, the full node needs to re-fetch blocks via P2P from the sequencer.
+	// Wait for the full node to fully sync with the sequencer before submitting new transactions.
+	t.Log("Waiting for full node to fully sync with sequencer after restart...")
+	require.Eventually(t, func() bool {
+		seqHeader, seqErr := sequencerClient.HeaderByNumber(ctx, nil)
+		fnHeader, fnErr := fullNodeClient.HeaderByNumber(ctx, nil)
+
+		if seqErr != nil || fnErr != nil {
+			return false
+		}
+
+		seqHeight := seqHeader.Number.Uint64()
+		fnHeight := fnHeader.Number.Uint64()
+
+		// Full node should be within 2 blocks of sequencer to be considered fully synced
+		heightDiff := int64(seqHeight) - int64(fnHeight)
+		if heightDiff < 0 {
+			heightDiff = -heightDiff
+		}
+
+		t.Logf("Sync progress: sequencer=%d, full_node=%d, diff=%d", seqHeight, fnHeight, heightDiff)
+		return heightDiff <= 2
+	}, 60*time.Second, 1*time.Second, "Full node should fully sync with sequencer after restart")
+	t.Log("Full node fully synced with sequencer")
+
 	// Submit new transactions after restart to verify functionality
 	const numPostRestartTxs = 3
 	var postRestartTxHashes []common.Hash
@@ -1283,6 +1322,7 @@ func testSequencerFullNodeRestart(t *testing.T, initialLazyMode, restartLazyMode
 		t.Logf("Post-restart transaction %d included in sequencer block %d", i+1, txBlockNumber)
 
 		// Verify transaction syncs to full node (testing P2P sync functionality)
+		// Use longer timeout after restart since P2P sync pipeline may need time to stabilize
 		verifyTransactionSync(t, sequencerClient, fullNodeClient, txHash, txBlockNumber)
 		t.Logf("✅ Post-restart transaction %d synced to full node via P2P", i+1)
 
