@@ -51,6 +51,7 @@ type Component interface {
 ```
 
 Startup order:
+
 1. Cache Manager (loads persisted state)
 2. Syncer (begins sync workers)
 3. Executor (begins production loop) - Aggregator only
@@ -475,10 +476,6 @@ var (
     DARetrievalSuccesses    = prometheus.NewCounter(...)
     DARetrievalFailures     = prometheus.NewCounter(...)
     DAInclusionHeight       = prometheus.NewGauge(...)
-
-    // Cache metrics
-    PendingHeadersCount = prometheus.NewGauge(...)
-    PendingDataCount    = prometheus.NewGauge(...)
 
     // Forced inclusion
     ForcedInclusionTxsInGracePeriod = prometheus.NewGauge(...)
