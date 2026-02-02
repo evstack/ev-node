@@ -38,8 +38,8 @@ func TestP2PEnvelope_MarshalUnmarshal(t *testing.T) {
 	assert.Equal(t, envelope.DAHeightHint, newEnvelope.DAHeightHint)
 	assert.Equal(t, envelope.Data.Height(), newEnvelope.Data.Height())
 	assert.Equal(t, envelope.Data.ChainID(), newEnvelope.Data.ChainID())
-	assert.Equal(t, envelope.Data.LastDataHash, newEnvelope.Data.LastDataHash)
-	assert.Equal(t, envelope.Data.Txs, newEnvelope.Data.Txs)
+	assert.Equal(t, envelope.LastDataHash, newEnvelope.LastDataHash)
+	assert.Equal(t, envelope.Txs, newEnvelope.Txs)
 }
 
 func TestP2PSignedHeader_MarshalUnmarshal(t *testing.T) {
@@ -85,7 +85,7 @@ func TestP2PSignedHeader_MarshalUnmarshal(t *testing.T) {
 	err = newEnvelope.UnmarshalBinary(bz)
 	require.NoError(t, err)
 	assert.Equal(t, envelope.DAHeightHint, newEnvelope.DAHeightHint)
-	assert.Equal(t, envelope.SignedHeader.Signer, newEnvelope.SignedHeader.Signer)
+	assert.Equal(t, envelope.Signer, newEnvelope.Signer)
 	assert.Equal(t, envelope, newEnvelope)
 }
 
@@ -99,9 +99,9 @@ func TestSignedHeaderBinaryCompatibility(t *testing.T) {
 	err = p2pHeader.UnmarshalBinary(bz)
 	require.NoError(t, err)
 
-	assert.Equal(t, signedHeader.Header, p2pHeader.SignedHeader.Header)
-	assert.Equal(t, signedHeader.Signature, p2pHeader.SignedHeader.Signature)
-	assert.Equal(t, signedHeader.Signer, p2pHeader.SignedHeader.Signer)
+	assert.Equal(t, signedHeader.Header, p2pHeader.Header)
+	assert.Equal(t, signedHeader.Signature, p2pHeader.Signature)
+	assert.Equal(t, signedHeader.Signer, p2pHeader.Signer)
 	assert.Zero(t, p2pHeader.DAHeightHint)
 
 	p2pHeader.DAHeightHint = 100
@@ -136,8 +136,8 @@ func TestDataBinaryCompatibility(t *testing.T) {
 	err = p2pData.UnmarshalBinary(bz)
 	require.NoError(t, err)
 
-	assert.Equal(t, data.Metadata, p2pData.Data.Metadata)
-	assert.Equal(t, data.Txs, p2pData.Data.Txs)
+	assert.Equal(t, data.Metadata, p2pData.Metadata)
+	assert.Equal(t, data.Txs, p2pData.Txs)
 	assert.Zero(t, p2pData.DAHeightHint)
 
 	p2pData.DAHeightHint = 200

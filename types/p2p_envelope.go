@@ -47,7 +47,7 @@ func (p *P2PSignedHeader) Verify(untrusted *P2PSignedHeader) error {
 
 // MarshalBinary marshals the header to binary using P2P protobuf format.
 func (p *P2PSignedHeader) MarshalBinary() ([]byte, error) {
-	psh, err := p.SignedHeader.ToProto()
+	psh, err := p.ToProto()
 	if err != nil {
 		return nil, err
 	}
@@ -74,7 +74,7 @@ func (p *P2PSignedHeader) UnmarshalBinary(data []byte) error {
 	if p.SignedHeader == nil {
 		p.SignedHeader = new(SignedHeader)
 	}
-	if err := p.SignedHeader.FromProto(psh); err != nil {
+	if err := p.FromProto(psh); err != nil {
 		return err
 	}
 	if msg.DaHeightHint != nil {
@@ -146,7 +146,7 @@ func (p *P2PData) Validate() error {
 
 // MarshalBinary marshals the data to binary using P2P protobuf format.
 func (p *P2PData) MarshalBinary() ([]byte, error) {
-	pData := p.Data.ToProto()
+	pData := p.ToProto()
 	msg := &pb.P2PData{
 		Metadata:     pData.Metadata,
 		Txs:          pData.Txs,
@@ -168,7 +168,7 @@ func (p *P2PData) UnmarshalBinary(data []byte) error {
 	if p.Data == nil {
 		p.Data = new(Data)
 	}
-	if err := p.Data.FromProto(pData); err != nil {
+	if err := p.FromProto(pData); err != nil {
 		return err
 	}
 	if msg.DaHeightHint != nil {
