@@ -1121,6 +1121,7 @@ func TestVerifyForcedInclusionTxs_P2PBlocks(t *testing.T) {
 		mockExec := testmocks.NewMockExecutor(t)
 		mockExec.EXPECT().InitChain(mock.Anything, mock.Anything, uint64(1), "tchain").
 			Return([]byte("app0"), nil).Once()
+		setupFilterTxsMock(mockExec)
 
 		client := testmocks.NewMockClient(t)
 		client.On("GetHeaderNamespace").Return([]byte(cfg.DA.Namespace)).Maybe()
@@ -1151,6 +1152,7 @@ func TestVerifyForcedInclusionTxs_P2PBlocks(t *testing.T) {
 		// Initialize DA retriever and forced inclusion retriever
 		s.daRetriever = NewDARetriever(client, cm, gen, zerolog.Nop())
 		s.fiRetriever = da.NewForcedInclusionRetriever(client, zerolog.Nop(), cfg, gen.DAStartHeight, gen.DAEpochForcedInclusion)
+		t.Cleanup(func() { s.fiRetriever.Stop() })
 
 		// Mock async DA retriever to avoid dealing with actual DA fetching in test
 		mockDARetriever := NewMockDARetriever(t)
@@ -1220,6 +1222,7 @@ func TestVerifyForcedInclusionTxs_P2PBlocks(t *testing.T) {
 		mockExec := testmocks.NewMockExecutor(t)
 		mockExec.EXPECT().InitChain(mock.Anything, mock.Anything, uint64(1), "tchain").
 			Return([]byte("app0"), nil).Once()
+		setupFilterTxsMock(mockExec)
 
 		client := testmocks.NewMockClient(t)
 		client.On("GetHeaderNamespace").Return([]byte(cfg.DA.Namespace)).Maybe()
@@ -1250,6 +1253,7 @@ func TestVerifyForcedInclusionTxs_P2PBlocks(t *testing.T) {
 		// Initialize DA retriever and forced inclusion retriever
 		s.daRetriever = NewDARetriever(client, cm, gen, zerolog.Nop())
 		s.fiRetriever = da.NewForcedInclusionRetriever(client, zerolog.Nop(), cfg, gen.DAStartHeight, gen.DAEpochForcedInclusion)
+		t.Cleanup(func() { s.fiRetriever.Stop() })
 
 		// Mock async DA retriever to avoid dealing with actual DA fetching in test
 		mockDARetriever := NewMockDARetriever(t)
