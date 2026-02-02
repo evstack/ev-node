@@ -10,9 +10,7 @@ import (
 
 	"github.com/celestiaorg/go-header"
 	goheaderp2p "github.com/celestiaorg/go-header/p2p"
-	goheaderstore "github.com/celestiaorg/go-header/store"
 	goheadersync "github.com/celestiaorg/go-header/sync"
-	ds "github.com/ipfs/go-datastore"
 	pubsub "github.com/libp2p/go-libp2p-pubsub"
 	"github.com/libp2p/go-libp2p/core/host"
 	"github.com/libp2p/go-libp2p/core/peer"
@@ -34,9 +32,6 @@ const (
 	dataSync   syncType = "dataSync"
 )
 
-// TODO: when we add pruning we can remove this
-const ninetyNineYears = 99 * 365 * 24 * time.Hour
-
 // SyncService is the P2P Sync Service for blocks and headers.
 //
 // Uses the go-header library for handling all P2P logic.
@@ -49,17 +44,14 @@ type SyncService[H header.Header[H]] struct {
 
 	p2p *p2p.Client
 
-	ex                *exchangeWrapper[H]
+	ex                *goheaderp2p.Exchange[H]
 	sub               *goheaderp2p.Subscriber[H]
 	p2pServer         *goheaderp2p.ExchangeServer[H]
-	store             *goheaderstore.Store[H]
+	store             header.Store[H]
 	syncer            *goheadersync.Syncer[H]
 	syncerStatus      *SyncerStatus
 	topicSubscription header.Subscription[H]
 
-	getter           GetterFunc[H]
-	getterByHeight   GetterByHeightFunc[H]
-	rangeGetter      RangeGetterFunc[H]
 	storeInitialized atomic.Bool
 }
 
@@ -71,69 +63,30 @@ type HeaderSyncService = SyncService[*types.SignedHeader]
 
 // NewDataSyncService returns a new DataSyncService.
 func NewDataSyncService(
-	batchingDataStore ds.Batching,
-	daStore store.Store,
+	evStore store.Store,
 	conf config.Config,
 	genesis genesis.Genesis,
 	p2p *p2p.Client,
 	logger zerolog.Logger,
 ) (*DataSyncService, error) {
-	var getter GetterFunc[*types.Data]
-	var getterByHeight GetterByHeightFunc[*types.Data]
-	var rangeGetter RangeGetterFunc[*types.Data]
-
-	if daStore != nil {
-		getter = func(ctx context.Context, hash header.Hash) (*types.Data, error) {
-			_, d, err := daStore.GetBlockByHash(ctx, hash)
-			return d, err
-		}
-		getterByHeight = func(ctx context.Context, height uint64) (*types.Data, error) {
-			_, d, err := daStore.GetBlockData(ctx, height)
-			return d, err
-		}
-		rangeGetter = func(ctx context.Context, from, to uint64) ([]*types.Data, uint64, error) {
-			return getContiguousRange(ctx, from, to, func(ctx context.Context, h uint64) (*types.Data, error) {
-				_, d, err := daStore.GetBlockData(ctx, h)
-				return d, err
-			})
-		}
-	}
-	return newSyncService[*types.Data](batchingDataStore, getter, getterByHeight, rangeGetter, dataSync, conf, genesis, p2p, logger)
+	storeAdapter := store.NewDataStoreAdapter(evStore, genesis)
+	return newSyncService(storeAdapter, dataSync, conf, genesis, p2p, logger)
 }
 
 // NewHeaderSyncService returns a new HeaderSyncService.
 func NewHeaderSyncService(
-	dsStore ds.Batching,
-	daStore store.Store,
+	evStore store.Store,
 	conf config.Config,
 	genesis genesis.Genesis,
 	p2p *p2p.Client,
 	logger zerolog.Logger,
 ) (*HeaderSyncService, error) {
-	var getter GetterFunc[*types.SignedHeader]
-	var getterByHeight GetterByHeightFunc[*types.SignedHeader]
-	var rangeGetter RangeGetterFunc[*types.SignedHeader]
-
-	if daStore != nil {
-		getter = func(ctx context.Context, hash header.Hash) (*types.SignedHeader, error) {
-			h, _, err := daStore.GetBlockByHash(ctx, hash)
-			return h, err
-		}
-		getterByHeight = func(ctx context.Context, height uint64) (*types.SignedHeader, error) {
-			return daStore.GetHeader(ctx, height)
-		}
-		rangeGetter = func(ctx context.Context, from, to uint64) ([]*types.SignedHeader, uint64, error) {
-			return getContiguousRange(ctx, from, to, daStore.GetHeader)
-		}
-	}
-	return newSyncService[*types.SignedHeader](dsStore, getter, getterByHeight, rangeGetter, headerSync, conf, genesis, p2p, logger)
+	storeAdapter := store.NewHeaderStoreAdapter(evStore, genesis)
+	return newSyncService(storeAdapter, headerSync, conf, genesis, p2p, logger)
 }
 
 func newSyncService[H header.Header[H]](
-	dsStore ds.Batching,
-	getter GetterFunc[H],
-	getterByHeight GetterByHeightFunc[H],
-	rangeGetter RangeGetterFunc[H],
+	storeAdapter header.Store[H],
 	syncType syncType,
 	conf config.Config,
 	genesis genesis.Genesis,
@@ -144,52 +97,17 @@ func newSyncService[H header.Header[H]](
 		return nil, errors.New("p2p client cannot be nil")
 	}
 
-	ss, err := goheaderstore.NewStore[H](
-		dsStore,
-		goheaderstore.WithStorePrefix(string(syncType)),
-		goheaderstore.WithMetrics(),
-	)
-	if err != nil {
-		return nil, fmt.Errorf("failed to initialize the %s store: %w", syncType, err)
-	}
-
 	svc := &SyncService[H]{
-		conf:           conf,
-		genesis:        genesis,
-		p2p:            p2p,
-		store:          ss,
-		getter:         getter,
-		getterByHeight: getterByHeight,
-		rangeGetter:    rangeGetter,
-		syncType:       syncType,
-		logger:         logger,
-		syncerStatus:   new(SyncerStatus),
+		conf:         conf,
+		genesis:      genesis,
+		p2p:          p2p,
+		store:        storeAdapter,
+		syncType:     syncType,
+		logger:       logger,
+		syncerStatus: new(SyncerStatus),
 	}
 
 	return svc, nil
-}
-
-// getContiguousRange fetches headers/data for the given range [from, to).
-// Returns the contiguous items found and the next height needed.
-func getContiguousRange[H header.Header[H]](
-	ctx context.Context,
-	from, to uint64,
-	getByHeight func(context.Context, uint64) (H, error),
-) ([]H, uint64, error) {
-	if from >= to {
-		return nil, from, nil
-	}
-
-	result := make([]H, 0, to-from)
-	for height := from; height < to; height++ {
-		h, err := getByHeight(ctx, height)
-		if err != nil || h.IsZero() {
-			// Gap found, return what we have so far
-			return result, height, nil
-		}
-		result = append(result, h)
-	}
-	return result, to, nil
 }
 
 // Store returns the store of the SyncService
@@ -197,8 +115,7 @@ func (syncService *SyncService[H]) Store() header.Store[H] {
 	return syncService.store
 }
 
-// WriteToStoreAndBroadcast initializes store if needed and broadcasts provided header or block.
-// Note: Only returns an error in case store can't be initialized. Logs error if there's one while broadcasting.
+// WriteToStoreAndBroadcast broadcasts provided header or block to P2P network.
 func (syncService *SyncService[H]) WriteToStoreAndBroadcast(ctx context.Context, headerOrData H, opts ...pubsub.PubOpt) error {
 	if syncService.genesis.InitialHeight == 0 {
 		return fmt.Errorf("invalid initial height; cannot be zero")
@@ -308,8 +225,11 @@ func (syncService *SyncService[H]) initStore(ctx context.Context, initial H) (bo
 			return false, err
 		}
 
-		if err := syncService.store.Sync(ctx); err != nil {
-			return false, err
+		// Sync is optional for adapters - they may not need explicit syncing
+		if syncer, ok := syncService.store.(interface{ Sync(context.Context) error }); ok {
+			if err := syncer.Sync(ctx); err != nil {
+				return false, err
+			}
 		}
 
 		return true, nil
@@ -342,8 +262,11 @@ func (syncService *SyncService[H]) setupP2PInfrastructure(ctx context.Context) (
 		return nil, err
 	}
 
-	if err := syncService.store.Start(ctx); err != nil {
-		return nil, fmt.Errorf("error while starting store: %w", err)
+	// Start the store adapter if it has a Start method
+	if starter, ok := syncService.store.(interface{ Start(context.Context) error }); ok {
+		if err := starter.Start(ctx); err != nil {
+			return nil, fmt.Errorf("error while starting store: %w", err)
+		}
 	}
 
 	if syncService.p2pServer, err = newP2PServer(syncService.p2p.Host(), syncService.store, networkID); err != nil {
@@ -355,18 +278,11 @@ func (syncService *SyncService[H]) setupP2PInfrastructure(ctx context.Context) (
 
 	peerIDs := syncService.getPeerIDs()
 
-	p2pExchange, err := newP2PExchange[H](syncService.p2p.Host(), peerIDs, networkID, syncService.genesis.ChainID, syncService.p2p.ConnectionGater())
+	syncService.ex, err = newP2PExchange[H](syncService.p2p.Host(), peerIDs, networkID, syncService.genesis.ChainID, syncService.p2p.ConnectionGater())
 	if err != nil {
 		return nil, fmt.Errorf("error while creating exchange: %w", err)
 	}
 
-	// Create exchange wrapper with DA store getters
-	syncService.ex = &exchangeWrapper[H]{
-		p2pExchange:    p2pExchange,
-		getter:         syncService.getter,
-		getterByHeight: syncService.getterByHeight,
-		rangeGetter:    syncService.rangeGetter,
-	}
 	if err := syncService.ex.Start(ctx); err != nil {
 		return nil, fmt.Errorf("error while starting exchange: %w", err)
 	}
@@ -486,14 +402,17 @@ func (syncService *SyncService[H]) Stop(ctx context.Context) error {
 	if syncService.syncerStatus.isStarted() {
 		err = errors.Join(err, syncService.syncer.Stop(ctx))
 	}
-	err = errors.Join(err, syncService.store.Stop(ctx))
+	// Stop the store adapter if it has a Stop method
+	if stopper, ok := syncService.store.(interface{ Stop(context.Context) error }); ok {
+		err = errors.Join(err, stopper.Stop(ctx))
+	}
 	return err
 }
 
 // newP2PServer constructs a new ExchangeServer using the given Network as a protocolID suffix.
 func newP2PServer[H header.Header[H]](
 	host host.Host,
-	store *goheaderstore.Store[H],
+	store header.Store[H],
 	network string,
 	opts ...goheaderp2p.Option[goheaderp2p.ServerParameters],
 ) (*goheaderp2p.ExchangeServer[H], error) {
@@ -526,9 +445,12 @@ func newSyncer[H header.Header[H]](
 	sub header.Subscriber[H],
 	opts []goheadersync.Option,
 ) (*goheadersync.Syncer[H], error) {
+	// using a very long duration for effectively disabling pruning and trusting period checks.
+	const ninetyNineYears = 99 * 365 * 24 * time.Hour
+
 	opts = append(opts,
 		goheadersync.WithMetrics(),
-		goheadersync.WithPruningWindow(ninetyNineYears),
+		goheadersync.WithPruningWindow(ninetyNineYears), // pruning window not relevant, because of the store wrapper.
 		goheadersync.WithTrustingPeriod(ninetyNineYears),
 	)
 	return goheadersync.NewSyncer(ex, store, sub, opts...)
