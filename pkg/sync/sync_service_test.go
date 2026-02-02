@@ -75,12 +75,12 @@ func TestHeaderSyncServiceRestart(t *testing.T) {
 	signedHeader, err := types.GetRandomSignedHeaderCustom(&headerConfig, genesisDoc.ChainID)
 	require.NoError(t, err)
 	require.NoError(t, signedHeader.Validate())
-	require.NoError(t, svc.WriteToStoreAndBroadcast(ctx, &types.P2PSignedHeader{Message: signedHeader}))
+	require.NoError(t, svc.WriteToStoreAndBroadcast(ctx, &types.P2PSignedHeader{SignedHeader: signedHeader}))
 
 	for i := genesisDoc.InitialHeight + 1; i < 2; i++ {
 		signedHeader = nextHeader(t, signedHeader, genesisDoc.ChainID, noopSigner)
 		t.Logf("signed header: %d", i)
-		require.NoError(t, svc.WriteToStoreAndBroadcast(ctx, &types.P2PSignedHeader{Message: signedHeader}))
+		require.NoError(t, svc.WriteToStoreAndBroadcast(ctx, &types.P2PSignedHeader{SignedHeader: signedHeader}))
 	}
 
 	// then stop and restart service
@@ -111,7 +111,7 @@ func TestHeaderSyncServiceRestart(t *testing.T) {
 	for i := signedHeader.Height() + 1; i < 2; i++ {
 		signedHeader = nextHeader(t, signedHeader, genesisDoc.ChainID, noopSigner)
 		t.Logf("signed header: %d", i)
-		require.NoError(t, svc.WriteToStoreAndBroadcast(ctx, &types.P2PSignedHeader{Message: signedHeader}))
+		require.NoError(t, svc.WriteToStoreAndBroadcast(ctx, &types.P2PSignedHeader{SignedHeader: signedHeader}))
 	}
 	cancel()
 }
@@ -167,7 +167,7 @@ func TestHeaderSyncServiceInitFromHigherHeight(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, signedHeader.Validate())
 
-	require.NoError(t, svc.WriteToStoreAndBroadcast(ctx, &types.P2PSignedHeader{Message: signedHeader}))
+	require.NoError(t, svc.WriteToStoreAndBroadcast(ctx, &types.P2PSignedHeader{SignedHeader: signedHeader}))
 }
 
 func TestDAHintStorageHeader(t *testing.T) {
@@ -219,15 +219,15 @@ func TestDAHintStorageHeader(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, signedHeader.Validate())
 
-	require.NoError(t, headerSvc.WriteToStoreAndBroadcast(ctx, &types.P2PSignedHeader{Message: signedHeader}))
+	require.NoError(t, headerSvc.WriteToStoreAndBroadcast(ctx, &types.P2PSignedHeader{SignedHeader: signedHeader}))
 
 	daHeight := uint64(100)
 	require.NoError(t, headerSvc.AppendDAHint(ctx, daHeight, signedHeader.Hash()))
 
-	h, hint, err := headerSvc.GetByHeight(ctx, signedHeader.Height())
+	h, err := headerSvc.Store().GetByHeight(ctx, signedHeader.Height())
 	require.NoError(t, err)
 	require.Equal(t, signedHeader.Hash(), h.Hash())
-	require.Equal(t, daHeight, hint)
+	require.Equal(t, daHeight, h.DAHint())
 
 	_ = p2pClient.Close()
 	_ = headerSvc.Stop(ctx)
@@ -249,10 +249,10 @@ func TestDAHintStorageHeader(t *testing.T) {
 	require.NoError(t, headerSvc.Start(ctx))
 	t.Cleanup(func() { _ = headerSvc.Stop(context.Background()) })
 
-	h, hint, err = headerSvc.GetByHeight(ctx, signedHeader.Height())
+	h, err = headerSvc.Store().GetByHeight(ctx, signedHeader.Height())
 	require.NoError(t, err)
 	require.Equal(t, signedHeader.Hash(), h.Hash())
-	require.Equal(t, daHeight, hint)
+	require.Equal(t, daHeight, h.DAHint())
 }
 
 func TestDAHintStorageData(t *testing.T) {
@@ -311,15 +311,15 @@ func TestDAHintStorageData(t *testing.T) {
 		},
 	}
 
-	require.NoError(t, dataSvc.WriteToStoreAndBroadcast(ctx, &types.P2PData{Message: &data}))
+	require.NoError(t, dataSvc.WriteToStoreAndBroadcast(ctx, &types.P2PData{Data: &data}))
 
 	daHeight := uint64(100)
 	require.NoError(t, dataSvc.AppendDAHint(ctx, daHeight, data.Hash()))
 
-	d, hint, err := dataSvc.GetByHeight(ctx, signedHeader.Height())
+	d, err := dataSvc.Store().GetByHeight(ctx, signedHeader.Height())
 	require.NoError(t, err)
 	require.Equal(t, data.Hash(), d.Hash())
-	require.Equal(t, daHeight, hint)
+	require.Equal(t, daHeight, d.DAHint())
 
 	_ = p2pClient.Close()
 	_ = dataSvc.Stop(ctx)
@@ -341,10 +341,10 @@ func TestDAHintStorageData(t *testing.T) {
 	require.NoError(t, dataSvc.Start(ctx))
 	t.Cleanup(func() { _ = dataSvc.Stop(context.Background()) })
 
-	d, hint, err = dataSvc.GetByHeight(ctx, signedHeader.Height())
+	d, err = dataSvc.Store().GetByHeight(ctx, signedHeader.Height())
 	require.NoError(t, err)
 	require.Equal(t, data.Hash(), d.Hash())
-	require.Equal(t, daHeight, hint)
+	require.Equal(t, daHeight, d.DAHint())
 }
 
 func nextHeader(t *testing.T, previousHeader *types.SignedHeader, chainID string, noopSigner signer.Signer) *types.SignedHeader {

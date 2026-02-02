@@ -37,7 +37,7 @@ func wrapHeader(h *types.SignedHeader) *types.P2PSignedHeader {
 		return nil
 	}
 	return &types.P2PSignedHeader{
-		Message:      h,
+		SignedHeader: h,
 		DAHeightHint: 0,
 	}
 }

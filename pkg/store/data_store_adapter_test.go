@@ -39,7 +39,7 @@ func wrapData(d *types.Data) *types.P2PData {
 		return nil
 	}
 	return &types.P2PData{
-		Message:      d,
+		Data:         d,
 		DAHeightHint: 0,
 	}
 }

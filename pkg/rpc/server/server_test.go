@@ -629,7 +629,7 @@ func TestHealthReadyEndpoint(t *testing.T) {
 
 func makeTestSignedHeader(height uint64, ts time.Time) *types.P2PSignedHeader {
 	return &types.P2PSignedHeader{
-		Message: &types.SignedHeader{
+		SignedHeader: &types.SignedHeader{
 			Header: types.Header{
 				BaseHeader: types.BaseHeader{
 					Height:  height,
@@ -646,7 +646,7 @@ func makeTestSignedHeader(height uint64, ts time.Time) *types.P2PSignedHeader {
 
 func makeTestData(height uint64, ts time.Time) *types.P2PData {
 	return &types.P2PData{
-		Message: &types.Data{
+		Data: &types.Data{
 			Metadata: &types.Metadata{
 				ChainID: "test-chain",
 				Height:  height,

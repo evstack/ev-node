@@ -589,7 +589,7 @@ func (g *HeaderStoreGetter) GetByHeight(ctx context.Context, height uint64) (*ty
 	daHint, _ := getDAHintFromStore(ctx, g.store, height)
 
 	return &types.P2PSignedHeader{
-		Message:      header,
+		SignedHeader: header,
 		DAHeightHint: daHint,
 	}, nil
 }
@@ -614,7 +614,7 @@ func (g *HeaderStoreGetter) GetByHash(ctx context.Context, hash []byte) (*types.
 	daHint, _ := getDAHintFromStore(ctx, g.store, hdr.Height())
 
 	return &types.P2PSignedHeader{
-		Message:      hdr,
+		SignedHeader: hdr,
 		DAHeightHint: daHint,
 	}, nil
 }
@@ -650,7 +650,7 @@ func (g *DataStoreGetter) GetByHeight(ctx context.Context, height uint64) (*type
 	daHint, _ := getDAHintFromStore(ctx, g.store, height)
 
 	return &types.P2PData{
-		Message:      data,
+		Data:         data,
 		DAHeightHint: daHint,
 	}, nil
 }
@@ -675,7 +675,7 @@ func (g *DataStoreGetter) GetByHash(ctx context.Context, hash []byte) (*types.P2
 	daHint, _ := getDAHintFromStore(ctx, g.store, data.Height())
 
 	return &types.P2PData{
-		Message:      data,
+		Data:         data,
 		DAHeightHint: daHint,
 	}, nil
 }

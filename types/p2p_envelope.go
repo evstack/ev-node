@@ -1,7 +1,6 @@
 package types
 
 import (
-	"fmt"
 	"time"
 
 	"github.com/celestiaorg/go-header"
@@ -10,144 +9,170 @@ import (
 	pb "github.com/evstack/ev-node/types/pb/evnode/v1"
 )
 
-type (
-	P2PSignedHeader = P2PEnvelope[*SignedHeader]
-	P2PData         = P2PEnvelope[*Data]
-)
-
 var (
 	_ header.Header[*P2PData]         = &P2PData{}
 	_ header.Header[*P2PSignedHeader] = &P2PSignedHeader{}
 )
 
-// P2PEnvelope is a generic envelope for P2P messages that includes a DA height hint.
-type P2PEnvelope[H header.Header[H]] struct {
-	Message      H
+// P2PSignedHeader wraps SignedHeader with an optional DA height hint for P2P sync optimization.
+type P2PSignedHeader struct {
+	*SignedHeader
 	DAHeightHint uint64
 }
 
-// New creates a new P2PEnvelope.
-func (e *P2PEnvelope[H]) New() *P2PEnvelope[H] {
-	var empty H
-	return &P2PEnvelope[H]{Message: empty.New()}
+// New creates a new P2PSignedHeader.
+func (p *P2PSignedHeader) New() *P2PSignedHeader {
+	return &P2PSignedHeader{SignedHeader: new(SignedHeader)}
 }
 
-// IsZero checks if the envelope or its message is zero.
-func (e *P2PEnvelope[H]) IsZero() bool {
-	return e == nil || e.Message.IsZero()
+// IsZero checks if the header is nil or zero.
+func (p *P2PSignedHeader) IsZero() bool {
+	return p == nil || p.SignedHeader == nil || p.SignedHeader.IsZero()
 }
 
 // SetDAHint sets the DA height hint.
-func (e *P2PEnvelope[H]) SetDAHint(daHeight uint64) {
-	e.DAHeightHint = daHeight
+func (p *P2PSignedHeader) SetDAHint(daHeight uint64) {
+	p.DAHeightHint = daHeight
 }
 
 // DAHint returns the DA height hint.
-func (e *P2PEnvelope[H]) DAHint() uint64 {
-	return e.DAHeightHint
+func (p *P2PSignedHeader) DAHint() uint64 {
+	return p.DAHeightHint
 }
 
-// Verify verifies the envelope message against an untrusted envelope.
-func (e *P2PEnvelope[H]) Verify(untrst *P2PEnvelope[H]) error {
-	return e.Message.Verify(untrst.Message)
+// Verify verifies against an untrusted header.
+func (p *P2PSignedHeader) Verify(untrusted *P2PSignedHeader) error {
+	return p.SignedHeader.Verify(untrusted.SignedHeader)
 }
 
-// ChainID returns the ChainID of the message.
-func (e *P2PEnvelope[H]) ChainID() string {
-	return e.Message.ChainID()
-}
-
-// Height returns the Height of the message.
-func (e *P2PEnvelope[H]) Height() uint64 {
-	return e.Message.Height()
-}
-
-// LastHeader returns the LastHeader hash of the message.
-func (e *P2PEnvelope[H]) LastHeader() Hash {
-	return e.Message.LastHeader()
-}
-
-// Time returns the Time of the message.
-func (e *P2PEnvelope[H]) Time() time.Time {
-	return e.Message.Time()
-}
-
-// Hash returns the hash of the message.
-func (e *P2PEnvelope[H]) Hash() Hash {
-	return e.Message.Hash()
-}
-
-// Validate performs basic validation on the message.
-func (e *P2PEnvelope[H]) Validate() error {
-	return e.Message.Validate()
-}
-
-// MarshalBinary marshals the envelope to binary.
-func (e *P2PEnvelope[H]) MarshalBinary() ([]byte, error) {
-	var mirrorPb proto.Message
-
-	switch msg := any(e.Message).(type) {
-	case *Data:
-		pData := msg.ToProto()
-		mirrorPb = &pb.P2PData{
-			Metadata:     pData.Metadata,
-			Txs:          pData.Txs,
-			DaHeightHint: &e.DAHeightHint,
-		}
-	case *SignedHeader:
-		psh, err := msg.ToProto()
-		if err != nil {
-			return nil, err
-		}
-		mirrorPb = &pb.P2PSignedHeader{
-			Header:       psh.Header,
-			Signature:    psh.Signature,
-			Signer:       psh.Signer,
-			DaHeightHint: &e.DAHeightHint,
-		}
-	default:
-		return nil, fmt.Errorf("unsupported type for toProto: %T", msg)
+// MarshalBinary marshals the header to binary using P2P protobuf format.
+func (p *P2PSignedHeader) MarshalBinary() ([]byte, error) {
+	psh, err := p.SignedHeader.ToProto()
+	if err != nil {
+		return nil, err
 	}
-	return proto.Marshal(mirrorPb)
+	msg := &pb.P2PSignedHeader{
+		Header:       psh.Header,
+		Signature:    psh.Signature,
+		Signer:       psh.Signer,
+		DaHeightHint: &p.DAHeightHint,
+	}
+	return proto.Marshal(msg)
 }
 
-// UnmarshalBinary unmarshals the envelope from binary.
-func (e *P2PEnvelope[H]) UnmarshalBinary(data []byte) error {
-	switch target := any(e.Message).(type) {
-	case *Data:
-		var pData pb.P2PData
-		if err := proto.Unmarshal(data, &pData); err != nil {
-			return err
-		}
-		mirrorData := &pb.Data{
-			Metadata: pData.Metadata,
-			Txs:      pData.Txs,
-		}
-		if err := target.FromProto(mirrorData); err != nil {
-			return err
-		}
-		if pData.DaHeightHint != nil {
-			e.DAHeightHint = *pData.DaHeightHint
-		}
-		return nil
-	case *SignedHeader:
-		var pHeader pb.P2PSignedHeader
-		if err := proto.Unmarshal(data, &pHeader); err != nil {
-			return err
-		}
-		psh := &pb.SignedHeader{
-			Header:    pHeader.Header,
-			Signature: pHeader.Signature,
-			Signer:    pHeader.Signer,
-		}
-		if err := target.FromProto(psh); err != nil {
-			return err
-		}
-		if pHeader.DaHeightHint != nil {
-			e.DAHeightHint = *pHeader.DaHeightHint
-		}
-		return nil
-	default:
-		return fmt.Errorf("unsupported type for UnmarshalBinary: %T", target)
+// UnmarshalBinary unmarshals the header from binary using P2P protobuf format.
+func (p *P2PSignedHeader) UnmarshalBinary(data []byte) error {
+	var msg pb.P2PSignedHeader
+	if err := proto.Unmarshal(data, &msg); err != nil {
+		return err
 	}
+	psh := &pb.SignedHeader{
+		Header:    msg.Header,
+		Signature: msg.Signature,
+		Signer:    msg.Signer,
+	}
+	if p.SignedHeader == nil {
+		p.SignedHeader = new(SignedHeader)
+	}
+	if err := p.SignedHeader.FromProto(psh); err != nil {
+		return err
+	}
+	if msg.DaHeightHint != nil {
+		p.DAHeightHint = *msg.DaHeightHint
+	}
+	return nil
+}
+
+// P2PData wraps Data with an optional DA height hint for P2P sync optimization.
+type P2PData struct {
+	*Data
+	DAHeightHint uint64
+}
+
+// New creates a new P2PData.
+func (p *P2PData) New() *P2PData {
+	return &P2PData{Data: new(Data)}
+}
+
+// IsZero checks if the data is nil or zero.
+func (p *P2PData) IsZero() bool {
+	return p == nil || p.Data == nil || p.Data.IsZero()
+}
+
+// SetDAHint sets the DA height hint.
+func (p *P2PData) SetDAHint(daHeight uint64) {
+	p.DAHeightHint = daHeight
+}
+
+// DAHint returns the DA height hint.
+func (p *P2PData) DAHint() uint64 {
+	return p.DAHeightHint
+}
+
+// Verify verifies against untrusted data.
+func (p *P2PData) Verify(untrusted *P2PData) error {
+	return p.Data.Verify(untrusted.Data)
+}
+
+// ChainID returns chain ID of the data.
+func (p *P2PData) ChainID() string {
+	return p.Data.ChainID()
+}
+
+// Height returns height of the data.
+func (p *P2PData) Height() uint64 {
+	return p.Data.Height()
+}
+
+// LastHeader returns last header hash of the data.
+func (p *P2PData) LastHeader() Hash {
+	return p.Data.LastHeader()
+}
+
+// Time returns time of the data.
+func (p *P2PData) Time() time.Time {
+	return p.Data.Time()
+}
+
+// Hash returns the hash of the data.
+func (p *P2PData) Hash() Hash {
+	return p.Data.Hash()
+}
+
+// Validate performs basic validation on the data.
+func (p *P2PData) Validate() error {
+	return p.Data.Validate()
+}
+
+// MarshalBinary marshals the data to binary using P2P protobuf format.
+func (p *P2PData) MarshalBinary() ([]byte, error) {
+	pData := p.Data.ToProto()
+	msg := &pb.P2PData{
+		Metadata:     pData.Metadata,
+		Txs:          pData.Txs,
+		DaHeightHint: &p.DAHeightHint,
+	}
+	return proto.Marshal(msg)
+}
+
+// UnmarshalBinary unmarshals the data from binary using P2P protobuf format.
+func (p *P2PData) UnmarshalBinary(data []byte) error {
+	var msg pb.P2PData
+	if err := proto.Unmarshal(data, &msg); err != nil {
+		return err
+	}
+	pData := &pb.Data{
+		Metadata: msg.Metadata,
+		Txs:      msg.Txs,
+	}
+	if p.Data == nil {
+		p.Data = new(Data)
+	}
+	if err := p.Data.FromProto(pData); err != nil {
+		return err
+	}
+	if msg.DaHeightHint != nil {
+		p.DAHeightHint = *msg.DaHeightHint
+	}
+	return nil
 }

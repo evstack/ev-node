@@ -14,16 +14,17 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/celestiaorg/go-header"
 	coreexecutor "github.com/evstack/ev-node/core/execution"
-	datypes "github.com/evstack/ev-node/pkg/da/types"
-	"github.com/evstack/ev-node/pkg/raft"
 	"github.com/rs/zerolog"
 
 	"github.com/evstack/ev-node/block/internal/cache"
 	"github.com/evstack/ev-node/block/internal/common"
 	"github.com/evstack/ev-node/block/internal/da"
 	"github.com/evstack/ev-node/pkg/config"
+	datypes "github.com/evstack/ev-node/pkg/da/types"
 	"github.com/evstack/ev-node/pkg/genesis"
+	"github.com/evstack/ev-node/pkg/raft"
 	"github.com/evstack/ev-node/pkg/store"
 	"github.com/evstack/ev-node/types"
 )
@@ -95,8 +96,8 @@ type Syncer struct {
 	daRetrieverHeight *atomic.Uint64
 
 	// P2P stores
-	headerStore common.HeaderP2PBroadcaster
-	dataStore   common.DataP2PBroadcaster
+	headerStore header.Store[*types.P2PSignedHeader]
+	dataStore   header.Store[*types.P2PData]
 
 	// Channels for coordination
 	heightInCh chan common.DAHeightEvent
@@ -147,8 +148,8 @@ func NewSyncer(
 	metrics *common.Metrics,
 	config config.Config,
 	genesis genesis.Genesis,
-	headerStore common.HeaderP2PBroadcaster,
-	dataStore common.DataP2PBroadcaster,
+	headerStore header.Store[*types.P2PSignedHeader],
+	dataStore header.Store[*types.P2PData],
 	logger zerolog.Logger,
 	options common.BlockOptions,
 	errorCh chan<- error,

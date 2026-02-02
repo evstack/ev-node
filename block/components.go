@@ -127,8 +127,8 @@ func NewSyncComponents(
 	store store.Store,
 	exec coreexecutor.Executor,
 	daClient da.Client,
-	headerStore *sync.HeaderSyncService,
-	dataStore *sync.DataSyncService,
+	headerSyncService *sync.HeaderSyncService,
+	dataSyncService *sync.DataSyncService,
 	logger zerolog.Logger,
 	metrics *Metrics,
 	blockOpts BlockOptions,
@@ -150,8 +150,8 @@ func NewSyncComponents(
 		metrics,
 		config,
 		genesis,
-		headerStore,
-		dataStore,
+		headerSyncService.Store(),
+		dataSyncService.Store(),
 		logger,
 		blockOpts,
 		errorCh,
@@ -163,7 +163,7 @@ func NewSyncComponents(
 	}
 
 	// Create submitter for sync nodes (no signer, only DA inclusion processing)
-	var daSubmitter submitting.DASubmitterAPI = submitting.NewDASubmitter(daClient, config, genesis, blockOpts, metrics, logger, headerStore, dataStore)
+	var daSubmitter submitting.DASubmitterAPI = submitting.NewDASubmitter(daClient, config, genesis, blockOpts, metrics, logger, headerSyncService, dataSyncService)
 	if config.Instrumentation.IsTracingEnabled() {
 		daSubmitter = submitting.WithTracingDASubmitter(daSubmitter)
 	}
@@ -200,8 +200,8 @@ func NewAggregatorComponents(
 	sequencer coresequencer.Sequencer,
 	daClient da.Client,
 	signer signer.Signer,
-	headerBroadcaster *sync.HeaderSyncService,
-	dataBroadcaster *sync.DataSyncService,
+	headerSyncService *sync.HeaderSyncService,
+	dataSyncService *sync.DataSyncService,
 	logger zerolog.Logger,
 	metrics *Metrics,
 	blockOpts BlockOptions,
@@ -229,8 +229,8 @@ func NewAggregatorComponents(
 		metrics,
 		config,
 		genesis,
-		headerBroadcaster,
-		dataBroadcaster,
+		headerSyncService,
+		dataSyncService,
 		logger,
 		blockOpts,
 		errorCh,
@@ -266,7 +266,7 @@ func NewAggregatorComponents(
 		}, nil
 	}
 
-	var daSubmitter submitting.DASubmitterAPI = submitting.NewDASubmitter(daClient, config, genesis, blockOpts, metrics, logger, headerBroadcaster, dataBroadcaster)
+	var daSubmitter submitting.DASubmitterAPI = submitting.NewDASubmitter(daClient, config, genesis, blockOpts, metrics, logger, headerSyncService, dataSyncService)
 	if config.Instrumentation.IsTracingEnabled() {
 		daSubmitter = submitting.WithTracingDASubmitter(daSubmitter)
 	}

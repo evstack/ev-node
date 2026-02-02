@@ -123,8 +123,8 @@ func TestSyncer_validateBlock_DataHashMismatch(t *testing.T) {
 		common.NopMetrics(),
 		cfg,
 		gen,
-		common.NewMockBroadcaster[*types.P2PSignedHeader](t),
-		common.NewMockBroadcaster[*types.P2PData](t),
+		extmocks.NewMockStore[*types.P2PSignedHeader](t),
+		extmocks.NewMockStore[*types.P2PData](t),
 		zerolog.Nop(),
 		common.DefaultBlockOptions(),
 		make(chan error, 1),
@@ -175,8 +175,8 @@ func TestProcessHeightEvent_SyncsAndUpdatesState(t *testing.T) {
 		common.NopMetrics(),
 		cfg,
 		gen,
-		common.NewMockBroadcaster[*types.P2PSignedHeader](t),
-		common.NewMockBroadcaster[*types.P2PData](t),
+		extmocks.NewMockStore[*types.P2PSignedHeader](t),
+		extmocks.NewMockStore[*types.P2PData](t),
 		zerolog.Nop(),
 		common.DefaultBlockOptions(),
 		errChan,
@@ -230,8 +230,8 @@ func TestSequentialBlockSync(t *testing.T) {
 		common.NopMetrics(),
 		cfg,
 		gen,
-		common.NewMockBroadcaster[*types.P2PSignedHeader](t),
-		common.NewMockBroadcaster[*types.P2PData](t),
+		extmocks.NewMockStore[*types.P2PSignedHeader](t),
+		extmocks.NewMockStore[*types.P2PData](t),
 		zerolog.Nop(),
 		common.DefaultBlockOptions(),
 		errChan,
@@ -349,8 +349,8 @@ func TestSyncLoopPersistState(t *testing.T) {
 	mockDataStore := extmocks.NewMockStore[*types.Data](t)
 	mockDataStore.EXPECT().Height().Return(uint64(0)).Maybe()
 
-	mockP2PHeaderStore := common.NewMockBroadcaster[*types.P2PSignedHeader](t)
-	mockP2PDataStore := common.NewMockBroadcaster[*types.P2PData](t)
+	mockP2PHeaderStore := extmocks.NewMockStore[*types.P2PSignedHeader](t)
+	mockP2PDataStore := extmocks.NewMockStore[*types.P2PData](t)
 
 	errorCh := make(chan error, 1)
 	syncerInst1 := NewSyncer(
@@ -731,8 +731,8 @@ func TestProcessHeightEvent_TriggersAsyncDARetrieval(t *testing.T) {
 		common.NopMetrics(),
 		cfg,
 		gen,
-		common.NewMockBroadcaster[*types.P2PSignedHeader](t),
-		common.NewMockBroadcaster[*types.P2PData](t),
+		extmocks.NewMockStore[*types.P2PSignedHeader](t),
+		extmocks.NewMockStore[*types.P2PData](t),
 		zerolog.Nop(),
 		common.DefaultBlockOptions(),
 		make(chan error, 1),

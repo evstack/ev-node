@@ -22,24 +22,24 @@ func TestP2PEnvelope_MarshalUnmarshal(t *testing.T) {
 		Txs: Txs{[]byte{0x1}, []byte{0x2}},
 	}
 	envelope := &P2PData{
-		Message:      data,
+		Data:         data,
 		DAHeightHint: 100,
 	}
 
 	// Marshaling
-	bytes, err := envelope.MarshalBinary()
+	bz, err := envelope.MarshalBinary()
 	require.NoError(t, err)
-	assert.NotEmpty(t, bytes)
+	assert.NotEmpty(t, bz)
 
 	// Unmarshaling
 	newEnvelope := (&P2PData{}).New()
-	err = newEnvelope.UnmarshalBinary(bytes)
+	err = newEnvelope.UnmarshalBinary(bz)
 	require.NoError(t, err)
 	assert.Equal(t, envelope.DAHeightHint, newEnvelope.DAHeightHint)
-	assert.Equal(t, envelope.Message.Height(), newEnvelope.Message.Height())
-	assert.Equal(t, envelope.Message.ChainID(), newEnvelope.Message.ChainID())
-	assert.Equal(t, envelope.Message.LastDataHash, newEnvelope.Message.LastDataHash)
-	assert.Equal(t, envelope.Message.Txs, newEnvelope.Message.Txs)
+	assert.Equal(t, envelope.Data.Height(), newEnvelope.Data.Height())
+	assert.Equal(t, envelope.Data.ChainID(), newEnvelope.Data.ChainID())
+	assert.Equal(t, envelope.Data.LastDataHash, newEnvelope.Data.LastDataHash)
+	assert.Equal(t, envelope.Data.Txs, newEnvelope.Data.Txs)
 }
 
 func TestP2PSignedHeader_MarshalUnmarshal(t *testing.T) {
@@ -71,7 +71,7 @@ func TestP2PSignedHeader_MarshalUnmarshal(t *testing.T) {
 	}
 
 	envelope := &P2PSignedHeader{
-		Message:      header,
+		SignedHeader: header,
 		DAHeightHint: 200,
 	}
 
@@ -85,23 +85,23 @@ func TestP2PSignedHeader_MarshalUnmarshal(t *testing.T) {
 	err = newEnvelope.UnmarshalBinary(bz)
 	require.NoError(t, err)
 	assert.Equal(t, envelope.DAHeightHint, newEnvelope.DAHeightHint)
-	assert.Equal(t, envelope.Message.Signer, newEnvelope.Message.Signer)
+	assert.Equal(t, envelope.SignedHeader.Signer, newEnvelope.SignedHeader.Signer)
 	assert.Equal(t, envelope, newEnvelope)
 }
 
 func TestSignedHeaderBinaryCompatibility(t *testing.T) {
 	signedHeader, _, err := GetRandomSignedHeader("chain-id")
 	require.NoError(t, err)
-	bytes, err := signedHeader.MarshalBinary()
+	bz, err := signedHeader.MarshalBinary()
 	require.NoError(t, err)
 
 	p2pHeader := (&P2PSignedHeader{}).New()
-	err = p2pHeader.UnmarshalBinary(bytes)
+	err = p2pHeader.UnmarshalBinary(bz)
 	require.NoError(t, err)
 
-	assert.Equal(t, signedHeader.Header, p2pHeader.Message.Header)
-	assert.Equal(t, signedHeader.Signature, p2pHeader.Message.Signature)
-	assert.Equal(t, signedHeader.Signer, p2pHeader.Message.Signer)
+	assert.Equal(t, signedHeader.Header, p2pHeader.SignedHeader.Header)
+	assert.Equal(t, signedHeader.Signature, p2pHeader.SignedHeader.Signature)
+	assert.Equal(t, signedHeader.Signer, p2pHeader.SignedHeader.Signer)
 	assert.Zero(t, p2pHeader.DAHeightHint)
 
 	p2pHeader.DAHeightHint = 100
@@ -129,15 +129,15 @@ func TestDataBinaryCompatibility(t *testing.T) {
 			[]byte("tx2"),
 		},
 	}
-	bytes, err := data.MarshalBinary()
+	bz, err := data.MarshalBinary()
 	require.NoError(t, err)
 
 	p2pData := (&P2PData{}).New()
-	err = p2pData.UnmarshalBinary(bytes)
+	err = p2pData.UnmarshalBinary(bz)
 	require.NoError(t, err)
 
-	assert.Equal(t, data.Metadata, p2pData.Message.Metadata)
-	assert.Equal(t, data.Txs, p2pData.Message.Txs)
+	assert.Equal(t, data.Metadata, p2pData.Data.Metadata)
+	assert.Equal(t, data.Txs, p2pData.Data.Txs)
 	assert.Zero(t, p2pData.DAHeightHint)
 
 	p2pData.DAHeightHint = 200

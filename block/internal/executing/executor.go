@@ -549,10 +549,10 @@ func (e *Executor) ProduceBlock(ctx context.Context) error {
 	// broadcast header and data to P2P network
 	g, broadcastCtx := errgroup.WithContext(e.ctx)
 	g.Go(func() error {
-		return e.headerBroadcaster.WriteToStoreAndBroadcast(broadcastCtx, &types.P2PSignedHeader{Message: header})
+		return e.headerBroadcaster.WriteToStoreAndBroadcast(broadcastCtx, &types.P2PSignedHeader{SignedHeader: header})
 	})
 	g.Go(func() error {
-		return e.dataBroadcaster.WriteToStoreAndBroadcast(broadcastCtx, &types.P2PData{Message: data})
+		return e.dataBroadcaster.WriteToStoreAndBroadcast(broadcastCtx, &types.P2PData{Data: data})
 	})
 	if err := g.Wait(); err != nil {
 		e.logger.Error().Err(err).Msg("failed to broadcast header and/data")

@@ -179,15 +179,6 @@ func (s *SyncService[H]) AppendDAHint(ctx context.Context, daHeight uint64, hash
 	return s.store.Append(ctx, entries...)
 }
 
-func (s *SyncService[H]) GetByHeight(ctx context.Context, height uint64) (H, uint64, error) {
-	c, err := s.store.GetByHeight(ctx, height)
-	if err != nil {
-		var zero H
-		return zero, 0, err
-	}
-	return c, c.DAHint(), nil
-}
-
 // Start is a part of Service interface.
 func (syncService *SyncService[H]) Start(ctx context.Context) error {
 	// setup P2P infrastructure, but don't start Subscriber yet.

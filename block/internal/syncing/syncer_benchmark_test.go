@@ -12,6 +12,7 @@ import (
 	"github.com/evstack/ev-node/pkg/genesis"
 	"github.com/evstack/ev-node/pkg/store"
 	testmocks "github.com/evstack/ev-node/test/mocks"
+	extmocks "github.com/evstack/ev-node/test/mocks/external"
 	"github.com/evstack/ev-node/types"
 	"github.com/ipfs/go-datastore"
 	dssync "github.com/ipfs/go-datastore/sync"
@@ -154,9 +155,9 @@ func newBenchFixture(b *testing.B, totalHeights uint64, shuffledTx bool, daDelay
 	mockP2P := newMockp2pHandler(b) // not used directly in this benchmark path
 	mockP2P.On("SetProcessedHeight", mock.Anything).Return().Maybe()
 	s.p2pHandler = mockP2P
-	headerP2PStore := common.NewMockBroadcaster[*types.P2PSignedHeader](b)
+	headerP2PStore := extmocks.NewMockStore[*types.P2PSignedHeader](b)
 	s.headerStore = headerP2PStore
-	dataP2PStore := common.NewMockBroadcaster[*types.P2PData](b)
+	dataP2PStore := extmocks.NewMockStore[*types.P2PData](b)
 	s.dataStore = dataP2PStore
 	return &benchFixture{s: s, st: st, cm: cm, cancel: cancel}
 }
