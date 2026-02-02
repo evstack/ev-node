@@ -586,7 +586,7 @@ func (g *HeaderStoreGetter) GetByHeight(ctx context.Context, height uint64) (*ty
 		return nil, err
 	}
 
-	daHint, _ := getDAHintFromStore(ctx, g.store, height)
+	daHint, _ := g.GetDAHint(ctx, height)
 
 	return &types.P2PSignedHeader{
 		SignedHeader: header,
@@ -596,12 +596,21 @@ func (g *HeaderStoreGetter) GetByHeight(ctx context.Context, height uint64) (*ty
 
 // GetDAHint implements StoreGetter.
 func (g *HeaderStoreGetter) GetDAHint(ctx context.Context, height uint64) (uint64, error) {
-	return getDAHintFromStore(ctx, g.store, height)
+	data, err := g.store.GetMetadata(ctx, GetHeightToDAHeightHeaderKey(height))
+	if err != nil {
+		return 0, err
+	}
+	if len(data) != 8 {
+		return 0, fmt.Errorf("invalid da hint data length: %d", len(data))
+	}
+	return binary.LittleEndian.Uint64(data), nil
 }
 
 // SetDAHint implements StoreGetter.
 func (g *HeaderStoreGetter) SetDAHint(ctx context.Context, height uint64, daHint uint64) error {
-	return setDAHintToStore(ctx, g.store, height, daHint)
+	data := make([]byte, 8)
+	binary.LittleEndian.PutUint64(data, daHint)
+	return g.store.SetMetadata(ctx, GetHeightToDAHeightHeaderKey(height), data)
 }
 
 // GetByHash implements StoreGetter.
@@ -611,7 +620,7 @@ func (g *HeaderStoreGetter) GetByHash(ctx context.Context, hash []byte) (*types.
 		return nil, err
 	}
 
-	daHint, _ := getDAHintFromStore(ctx, g.store, hdr.Height())
+	daHint, _ := g.GetDAHint(ctx, hdr.Height())
 
 	return &types.P2PSignedHeader{
 		SignedHeader: hdr,
@@ -647,7 +656,7 @@ func (g *DataStoreGetter) GetByHeight(ctx context.Context, height uint64) (*type
 		return nil, err
 	}
 
-	daHint, _ := getDAHintFromStore(ctx, g.store, height)
+	daHint, _ := g.GetDAHint(ctx, height)
 
 	return &types.P2PData{
 		Data:         data,
@@ -657,12 +666,21 @@ func (g *DataStoreGetter) GetByHeight(ctx context.Context, height uint64) (*type
 
 // GetDAHint implements StoreGetter.
 func (g *DataStoreGetter) GetDAHint(ctx context.Context, height uint64) (uint64, error) {
-	return getDAHintFromStore(ctx, g.store, height)
+	data, err := g.store.GetMetadata(ctx, GetHeightToDAHeightDataKey(height))
+	if err != nil {
+		return 0, err
+	}
+	if len(data) != 8 {
+		return 0, fmt.Errorf("invalid da hint data length: %d", len(data))
+	}
+	return binary.LittleEndian.Uint64(data), nil
 }
 
 // SetDAHint implements StoreGetter.
 func (g *DataStoreGetter) SetDAHint(ctx context.Context, height uint64, daHint uint64) error {
-	return setDAHintToStore(ctx, g.store, height, daHint)
+	data := make([]byte, 8)
+	binary.LittleEndian.PutUint64(data, daHint)
+	return g.store.SetMetadata(ctx, GetHeightToDAHeightDataKey(height), data)
 }
 
 // GetByHash implements StoreGetter.
@@ -672,7 +690,7 @@ func (g *DataStoreGetter) GetByHash(ctx context.Context, hash []byte) (*types.P2
 		return nil, err
 	}
 
-	daHint, _ := getDAHintFromStore(ctx, g.store, data.Height())
+	daHint, _ := g.GetDAHint(ctx, data.Height())
 
 	return &types.P2PData{
 		Data:         data,
@@ -705,29 +723,4 @@ func NewHeaderStoreAdapter(store Store, gen genesis.Genesis) *HeaderStoreAdapter
 // The genesis is used to determine the initial height for efficient Tail lookups.
 func NewDataStoreAdapter(store Store, gen genesis.Genesis) *DataStoreAdapter {
 	return NewStoreAdapter(NewDataStoreGetter(store), gen)
-}
-
-// DA hint persistence helpers
-
-const daHintKeyPrefix = "da_hint:"
-
-func daHintKey(height uint64) string {
-	return fmt.Sprintf("%s%d", daHintKeyPrefix, height)
-}
-
-func getDAHintFromStore(ctx context.Context, store Store, height uint64) (uint64, error) {
-	data, err := store.GetMetadata(ctx, daHintKey(height))
-	if err != nil {
-		return 0, err
-	}
-	if len(data) != 8 {
-		return 0, fmt.Errorf("invalid da hint data length: %d", len(data))
-	}
-	return binary.BigEndian.Uint64(data), nil
-}
-
-func setDAHintToStore(ctx context.Context, store Store, height uint64, daHint uint64) error {
-	data := make([]byte, 8)
-	binary.BigEndian.PutUint64(data, daHint)
-	return store.SetMetadata(ctx, daHintKey(height), data)
 }
