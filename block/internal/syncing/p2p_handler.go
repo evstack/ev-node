@@ -20,7 +20,7 @@ type p2pHandler interface {
 	SetProcessedHeight(height uint64)
 }
 
-// HeightStore is a subset of goheader.Store
+// HeightStore is a subset of the sync service.
 type HeightStore[H header.Header[H]] interface {
 	GetByHeight(ctx context.Context, height uint64) (H, uint64, error)
 }
