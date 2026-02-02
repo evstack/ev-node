@@ -124,8 +124,6 @@ func setupSequencerWithForceInclusion(t *testing.T, sut *SystemUnderTest, nodeHo
 }
 
 func TestEvmSequencerForceInclusionE2E(t *testing.T) {
-	t.Skip() // To re-enable after https://github.com/evstack/ev-node/issues/2965
-
 	sut := NewSystemUnderTest(t)
 	workDir := t.TempDir()
 	sequencerHome := filepath.Join(workDir, "sequencer")
@@ -179,8 +177,6 @@ func TestEvmSequencerForceInclusionE2E(t *testing.T) {
 }
 
 func TestEvmFullNodeForceInclusionE2E(t *testing.T) {
-	t.Skip() // To re-enable after https://github.com/evstack/ev-node/issues/2965
-
 	sut := NewSystemUnderTest(t)
 	workDir := t.TempDir()
 	sequencerHome := filepath.Join(workDir, "sequencer")
@@ -288,7 +284,7 @@ func setupMaliciousSequencer(t *testing.T, sut *SystemUnderTest, nodeHome string
 	t.Helper()
 
 	// Use common setup with full node support
-	jwtSecret, _, genesisHash, endpoints := setupCommonEVMTest(t, sut, true)
+	jwtSecret, fullNodeJwtSecret, genesisHash, endpoints := setupCommonEVMTest(t, sut, true)
 
 	passphraseFile := createPassphraseFile(t, nodeHome)
 	jwtSecretFile := createJWTSecretFile(t, nodeHome, jwtSecret)
@@ -325,7 +321,7 @@ func setupMaliciousSequencer(t *testing.T, sut *SystemUnderTest, nodeHome string
 	sut.ExecCmd(evmSingleBinaryPath, seqArgs...)
 	sut.AwaitNodeUp(t, endpoints.GetRollkitRPCAddress(), NodeStartupTimeout)
 
-	return genesisHash, jwtSecret, endpoints
+	return genesisHash, fullNodeJwtSecret, endpoints
 }
 
 // setupFullNodeWithForceInclusionCheck sets up a full node that WILL verify forced inclusion txs
@@ -347,24 +343,20 @@ func setupFullNodeWithForceInclusionCheck(t *testing.T, sut *SystemUnderTest, fu
 	// Create JWT secret file for full node
 	jwtSecretFile := createJWTSecretFile(t, fullNodeHome, jwtSecret)
 
-	// Get sequencer's peer ID for P2P connection
-	sequencerID := NodeID(t, sequencerHome)
-
 	// Start full node WITH forced_inclusion_namespace configured
 	// This allows it to retrieve forced txs from DA and detect when they're missing from blocks
 	fnArgs := []string{
 		"start",
 		"--evm.jwt-secret-file", jwtSecretFile,
 		"--evm.genesis-hash", genesisHash,
-		"--evnode.node.block_time", DefaultBlockTime,
 		"--home", fullNodeHome,
 		"--evnode.da.block_time", DefaultDABlockTime,
 		"--evnode.da.address", endpoints.GetDAAddress(),
 		"--evnode.da.namespace", DefaultDANamespace,
 		"--evnode.da.forced_inclusion_namespace", "forced-inc", // Enables forced inclusion verification
 		"--evnode.rpc.address", endpoints.GetFullNodeRPCListen(),
-		"--rollkit.p2p.listen_address", endpoints.GetFullNodeP2PAddress(),
-		"--rollkit.p2p.seeds", fmt.Sprintf("%s@%s", sequencerID, sequencerP2PAddr),
+		"--evnode.p2p.listen_address", endpoints.GetFullNodeP2PAddress(),
+		"--evnode.p2p.peers", sequencerP2PAddr,
 		"--evm.engine-url", endpoints.GetFullNodeEngineURL(),
 		"--evm.eth-url", endpoints.GetFullNodeEthURL(),
 	}
@@ -403,12 +395,12 @@ func setupFullNodeWithForceInclusionCheck(t *testing.T, sut *SystemUnderTest, fu
 // Expected Outcome:
 // - Forced tx appears in DA but NOT in sequencer's blocks
 // - Sync node stops advancing its block height
-// - In production: sync node logs "SEQUENCER IS MALICIOUS" and exits gracefully
+// - In production: sync node logs "SEQUENCER IS MALICIOUS" and exits.
 //
 // Note: This test simulates the scenario by having the sequencer configured to
 // listen to the wrong namespace, while we submit directly to the correct namespace.
 func TestEvmSyncerMaliciousSequencerForceInclusionE2E(t *testing.T) {
-	t.Skip() // To re-enable after https://github.com/evstack/ev-node/issues/2965
+	t.Skip() // Unskip once https://github.com/evstack/ev-node/pull/2963 is merged
 
 	sut := NewSystemUnderTest(t)
 	workDir := t.TempDir()
@@ -420,8 +412,11 @@ func TestEvmSyncerMaliciousSequencerForceInclusionE2E(t *testing.T) {
 	t.Log("Malicious sequencer started listening to WRONG forced inclusion namespace")
 	t.Log("NOTE: Sequencer listens to 'wrong-namespace', won't see txs on 'forced-inc'")
 
+	sequencerP2PAddress := getNodeP2PAddress(t, sut, sequencerHome, endpoints.RollkitRPCPort)
+	t.Logf("Sequencer P2P address: %s", sequencerP2PAddress)
+
 	// Setup full node that will sync from the sequencer and verify forced inclusion
-	setupFullNodeWithForceInclusionCheck(t, sut, fullNodeHome, sequencerHome, fullNodeJwtSecret, genesisHash, endpoints.GetRollkitP2PAddress(), endpoints)
+	setupFullNodeWithForceInclusionCheck(t, sut, fullNodeHome, sequencerHome, fullNodeJwtSecret, genesisHash, sequencerP2PAddress, endpoints)
 	t.Log("Full node (syncer) is up and will verify forced inclusion from DA")
 
 	// Connect to clients
@@ -473,7 +468,7 @@ func TestEvmSyncerMaliciousSequencerForceInclusionE2E(t *testing.T) {
 	)
 
 	// Submit transaction to DA on the forced inclusion namespace
-	result := daClient.Submit(ctx, [][]byte{txBytes}, -1, []byte("forced-inc"), nil)
+	result := daClient.Submit(ctx, [][]byte{txBytes}, -1, daClient.GetForcedInclusionNamespace(), nil)
 	require.Equal(t, da.StatusSuccess, result.Code, "Failed to submit to DA: %s", result.Message)
 	t.Logf("Forced inclusion transaction submitted to DA: %s", txForce.Hash().Hex())
 

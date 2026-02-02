@@ -8,11 +8,15 @@ import (
 	"sync"
 	"sync/atomic"
 
+	lru "github.com/hashicorp/golang-lru/v2"
 	ds "github.com/ipfs/go-datastore"
 	"github.com/rs/zerolog"
 
 	"github.com/evstack/ev-node/pkg/store"
 )
+
+// DefaultPendingCacheSize is the default size for the pending items cache.
+const DefaultPendingCacheSize = 200_000
 
 // pendingBase is a generic struct for tracking items (headers, data, etc.)
 // that need to be published to the DA layer in order. It handles persistence
@@ -24,17 +28,26 @@ type pendingBase[T any] struct {
 	fetch      func(ctx context.Context, store store.Store, height uint64) (T, error)
 	lastHeight atomic.Uint64
 
-	// Marshalling cache to avoid redundant marshalling
-	marshalledCache sync.Map // key: uint64 (height), value: []byte
+	// Pending items cache to avoid re-fetching all items on every call.
+	// We cache the items themselves, keyed by height.
+	pendingCache *lru.Cache[uint64, T]
+
+	mu sync.Mutex // Protects getPending logic
 }
 
 // newPendingBase constructs a new pendingBase for a given type.
 func newPendingBase[T any](store store.Store, logger zerolog.Logger, metaKey string, fetch func(ctx context.Context, store store.Store, height uint64) (T, error)) (*pendingBase[T], error) {
+	pendingCache, err := lru.New[uint64, T](DefaultPendingCacheSize)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create pending cache: %w", err)
+	}
+
 	pb := &pendingBase[T]{
-		store:   store,
-		logger:  logger,
-		metaKey: metaKey,
-		fetch:   fetch,
+		store:        store,
+		logger:       logger,
+		metaKey:      metaKey,
+		fetch:        fetch,
+		pendingCache: pendingCache,
 	}
 	if err := pb.init(); err != nil {
 		return nil, err
@@ -43,25 +56,57 @@ func newPendingBase[T any](store store.Store, logger zerolog.Logger, metaKey str
 }
 
 // getPending returns a sorted slice of pending items of type T.
+// It caches fetched items to avoid re-fetching on subsequent calls.
 func (pb *pendingBase[T]) getPending(ctx context.Context) ([]T, error) {
+	pb.mu.Lock()
+	defer pb.mu.Unlock()
+
 	lastSubmitted := pb.lastHeight.Load()
-	height, err := pb.store.Height(ctx)
+	storeHeight, err := pb.store.Height(ctx)
 	if err != nil {
 		return nil, err
 	}
-	if lastSubmitted == height {
+	if lastSubmitted == storeHeight {
 		return nil, nil
 	}
-	if lastSubmitted > height {
-		return nil, fmt.Errorf("height of last submitted item (%d) is greater than height of last item (%d)", lastSubmitted, height)
+	if lastSubmitted > storeHeight {
+		return nil, fmt.Errorf("height of last submitted item (%d) is greater than height of last item (%d)", lastSubmitted, storeHeight)
 	}
-	pending := make([]T, 0, height-lastSubmitted)
-	for i := lastSubmitted + 1; i <= height; i++ {
-		item, err := pb.fetch(ctx, pb.store, i)
-		if err != nil {
-			return pending, err
+
+	// Limit the number of items to return based on cache capacity.
+	// This prevents the LRU from evicting entries we need, which would cause re-fetches.
+	pendingCount := storeHeight - lastSubmitted
+	endHeight := storeHeight
+	if pendingCount > DefaultPendingCacheSize {
+		endHeight = lastSubmitted + DefaultPendingCacheSize
+	}
+
+	// Fetch only items that are not already in cache
+	for h := lastSubmitted + 1; h <= endHeight; h++ {
+		if _, ok := pb.pendingCache.Peek(h); ok {
+			continue // Already cached, skip fetching
 		}
-		pending = append(pending, item)
+		item, err := pb.fetch(ctx, pb.store, h)
+		if err != nil {
+			return nil, err
+		}
+		pb.pendingCache.Add(h, item)
+	}
+
+	// Build the result slice from cache (only up to endHeight)
+	pending := make([]T, 0, endHeight-lastSubmitted)
+	for h := lastSubmitted + 1; h <= endHeight; h++ {
+		if item, ok := pb.pendingCache.Get(h); ok {
+			pending = append(pending, item)
+		} else {
+			// This shouldn't happen, but fetch if missing
+			item, err := pb.fetch(ctx, pb.store, h)
+			if err != nil {
+				return pending, err
+			}
+			pb.pendingCache.Add(h, item)
+			pending = append(pending, item)
+		}
 	}
 	return pending, nil
 }
@@ -88,9 +133,10 @@ func (pb *pendingBase[T]) setLastSubmittedHeight(ctx context.Context, newLastSub
 		if err != nil {
 			pb.logger.Error().Err(err).Msg("failed to store height of latest item submitted to DA")
 		}
-
-		// Clear marshalled cache for submitted heights
-		pb.clearMarshalledCacheUpTo(newLastSubmittedHeight)
+		// Note: We don't explicitly clear submitted entries from the cache here.
+		// Since getPending() only iterates from lastSubmitted+1, old entries are simply
+		// never accessed. The LRU will naturally evict them when capacity is reached.
+		// This avoids O(N) iteration over the cache on every submission.
 	}
 }
 
@@ -111,27 +157,4 @@ func (pb *pendingBase[T]) init() error {
 	}
 	pb.lastHeight.CompareAndSwap(0, lsh)
 	return nil
-}
-
-// getMarshalledForHeight returns cached marshalled bytes for a height, or nil if not cached
-func (pb *pendingBase[T]) getMarshalledForHeight(height uint64) []byte {
-	if val, ok := pb.marshalledCache.Load(height); ok {
-		return val.([]byte)
-	}
-	return nil
-}
-
-// setMarshalledForHeight caches marshalled bytes for a height
-func (pb *pendingBase[T]) setMarshalledForHeight(height uint64, marshalled []byte) {
-	pb.marshalledCache.Store(height, marshalled)
-}
-
-// clearMarshalledCacheUpTo removes cached marshalled bytes up to and including the given height
-func (pb *pendingBase[T]) clearMarshalledCacheUpTo(height uint64) {
-	pb.marshalledCache.Range(func(key, _ any) bool {
-		if h := key.(uint64); h <= height {
-			pb.marshalledCache.Delete(h)
-		}
-		return true
-	})
 }

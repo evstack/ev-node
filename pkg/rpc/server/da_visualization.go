@@ -503,6 +503,8 @@ func (s *DAVisualizationServer) handleDAVisualizationHTML(w http.ResponseWriter,
 			switch v := items.(type) {
 			case []DASubmissionInfo:
 				return len(v)
+			case []string:
+				return len(v)
 			case struct {
 				Submissions  []DASubmissionInfo
 				LastUpdate   string
@@ -512,6 +514,15 @@ func (s *DAVisualizationServer) handleDAVisualizationHTML(w http.ResponseWriter,
 			default:
 				return 0
 			}
+		},
+		"subtract": func(a, b int) int {
+			return a - b
+		},
+		"lt": func(a, b int) bool {
+			return a < b
+		},
+		"le": func(a, b int) bool {
+			return a <= b
 		},
 	}).Parse(daVisualizationHTML)
 
