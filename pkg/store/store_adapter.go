@@ -527,14 +527,29 @@ func NewHeaderStoreGetter(store Store) *HeaderStoreGetter {
 }
 
 // GetByHeight implements StoreGetter.
-func (g *HeaderStoreGetter) GetByHeight(ctx context.Context, height uint64) (*types.SignedHeader, error) {
-	return g.store.GetHeader(ctx, height)
+func (g *HeaderStoreGetter) GetByHeight(ctx context.Context, height uint64) (*types.P2PSignedHeader, error) {
+	header, err := g.store.GetHeader(ctx, height)
+	if err != nil {
+		return nil, err
+	}
+
+	return &types.P2PSignedHeader{
+		Message:      header,
+		DAHeightHint: 0, // TODO: fetch DA hint.
+	}, nil
 }
 
 // GetByHash implements StoreGetter.
-func (g *HeaderStoreGetter) GetByHash(ctx context.Context, hash []byte) (*types.SignedHeader, error) {
+func (g *HeaderStoreGetter) GetByHash(ctx context.Context, hash []byte) (*types.P2PSignedHeader, error) {
 	hdr, _, err := g.store.GetBlockByHash(ctx, hash)
-	return hdr, err
+	if err != nil {
+		return nil, err
+	}
+
+	return &types.P2PSignedHeader{
+		Message:      hdr,
+		DAHeightHint: 0, // TODO: fetch DA hint.
+	}, nil
 }
 
 // Height implements StoreGetter.
@@ -559,15 +574,29 @@ func NewDataStoreGetter(store Store) *DataStoreGetter {
 }
 
 // GetByHeight implements StoreGetter.
-func (g *DataStoreGetter) GetByHeight(ctx context.Context, height uint64) (*types.Data, error) {
+func (g *DataStoreGetter) GetByHeight(ctx context.Context, height uint64) (*types.P2PData, error) {
 	_, data, err := g.store.GetBlockData(ctx, height)
-	return data, err
+	if err != nil {
+		return nil, err
+	}
+
+	return &types.P2PData{
+		Message:      data,
+		DAHeightHint: 0, // TODO: fetch DA hint.
+	}, nil
 }
 
 // GetByHash implements StoreGetter.
-func (g *DataStoreGetter) GetByHash(ctx context.Context, hash []byte) (*types.Data, error) {
+func (g *DataStoreGetter) GetByHash(ctx context.Context, hash []byte) (*types.P2PData, error) {
 	_, data, err := g.store.GetBlockByHash(ctx, hash)
-	return data, err
+	if err != nil {
+		return nil, err
+	}
+
+	return &types.P2PData{
+		Message:      data,
+		DAHeightHint: 0, // TODO: fetch DA hint.
+	}, nil
 }
 
 // Height implements StoreGetter.
@@ -582,17 +611,17 @@ func (g *DataStoreGetter) HasAt(ctx context.Context, height uint64) bool {
 }
 
 // Type aliases for convenience
-type HeaderStoreAdapter = StoreAdapter[*types.SignedHeader]
-type DataStoreAdapter = StoreAdapter[*types.Data]
+type HeaderStoreAdapter = StoreAdapter[*types.P2PSignedHeader]
+type DataStoreAdapter = StoreAdapter[*types.P2PData]
 
 // NewHeaderStoreAdapter creates a new StoreAdapter for headers.
 // The genesis is used to determine the initial height for efficient Tail lookups.
 func NewHeaderStoreAdapter(store Store, gen genesis.Genesis) *HeaderStoreAdapter {
-	return NewStoreAdapter[*types.SignedHeader](NewHeaderStoreGetter(store), gen)
+	return NewStoreAdapter(NewHeaderStoreGetter(store), gen)
 }
 
 // NewDataStoreAdapter creates a new StoreAdapter for data.
 // The genesis is used to determine the initial height for efficient Tail lookups.
 func NewDataStoreAdapter(store Store, gen genesis.Genesis) *DataStoreAdapter {
-	return NewStoreAdapter[*types.Data](NewDataStoreGetter(store), gen)
+	return NewStoreAdapter(NewDataStoreGetter(store), gen)
 }
