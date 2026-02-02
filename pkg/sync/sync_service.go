@@ -32,12 +32,6 @@ const (
 	dataSync   syncType = "dataSync"
 )
 
-type EntityWithDAHint[H any] interface {
-	header.Header[H]
-	SetDAHint(daHeight uint64)
-	DAHint() uint64
-}
-
 // HeaderSyncService is the P2P Sync Service for headers.
 type HeaderSyncService = SyncService[*types.P2PSignedHeader]
 
@@ -47,7 +41,7 @@ type DataSyncService = SyncService[*types.P2PData]
 // SyncService is the P2P Sync Service for blocks and headers.
 //
 // Uses the go-header library for handling all P2P logic.
-type SyncService[H EntityWithDAHint[H]] struct {
+type SyncService[H store.EntityWithDAHint[H]] struct {
 	conf     config.Config
 	logger   zerolog.Logger
 	syncType syncType
@@ -91,7 +85,7 @@ func NewHeaderSyncService(
 	return newSyncService(storeAdapter, headerSync, conf, genesis, p2p, logger)
 }
 
-func newSyncService[H EntityWithDAHint[H]](
+func newSyncService[H store.EntityWithDAHint[H]](
 	storeAdapter header.Store[H],
 	syncType syncType,
 	conf config.Config,

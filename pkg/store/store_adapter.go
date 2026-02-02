@@ -3,7 +3,9 @@ package store
 import (
 	"bytes"
 	"context"
+	"encoding/binary"
 	"errors"
+	"fmt"
 	"sync"
 	"sync/atomic"
 
@@ -30,6 +32,19 @@ type StoreGetter[H header.Header[H]] interface {
 	Height(ctx context.Context) (uint64, error)
 	// HasAt checks if an item exists at the given height.
 	HasAt(ctx context.Context, height uint64) bool
+	// GetDAHint retrieves the DA hint for a given height.
+	GetDAHint(ctx context.Context, height uint64) (uint64, error)
+	// SetDAHint stores the DA hint for a given height.
+	SetDAHint(ctx context.Context, height uint64, daHint uint64) error
+}
+
+// EntityWithDAHint extends header.Header with DA hint methods.
+// This interface is used by sync services and store adapters to track
+// which DA height contains the data for a given block.
+type EntityWithDAHint[H any] interface {
+	header.Header[H]
+	SetDAHint(daHeight uint64)
+	DAHint() uint64
 }
 
 // heightSub provides a mechanism for waiting on a specific height to be stored.
@@ -111,7 +126,7 @@ func (hs *heightSub) notifyUpTo(h uint64) {
 // This cache allows the go-header syncer and P2P handler to access items before they
 // are validated and persisted by the ev-node syncer. Once the ev-node syncer processes
 // a block, it writes to the underlying store, and subsequent reads will come from the store.
-type StoreAdapter[H header.Header[H]] struct {
+type StoreAdapter[H EntityWithDAHint[H]] struct {
 	getter               StoreGetter[H]
 	genesisInitialHeight uint64
 
@@ -127,15 +142,20 @@ type StoreAdapter[H header.Header[H]] struct {
 	// written to the store yet. Keyed by height. Using LRU prevents unbounded growth.
 	pending *lru.Cache[uint64, H]
 
+	// daHints caches DA height hints by block height for fast access.
+	// Hints are also persisted to disk via the getter.
+	daHints *lru.Cache[uint64, uint64]
+
 	// onDeleteFn is called when items are deleted (for rollback scenarios)
 	onDeleteFn func(context.Context, uint64) error
 }
 
 // NewStoreAdapter creates a new StoreAdapter wrapping the given store getter.
 // The genesis is used to determine the initial height for efficient Tail lookups.
-func NewStoreAdapter[H header.Header[H]](getter StoreGetter[H], gen genesis.Genesis) *StoreAdapter[H] {
+func NewStoreAdapter[H EntityWithDAHint[H]](getter StoreGetter[H], gen genesis.Genesis) *StoreAdapter[H] {
 	// Create LRU cache for pending items - ignore error as size is constant and valid
 	pendingCache, _ := lru.New[uint64, H](defaultPendingCacheSize)
+	daHintsCache, _ := lru.New[uint64, uint64](defaultPendingCacheSize)
 
 	// Get actual current height from store (0 if empty)
 	var storeHeight uint64
@@ -147,6 +167,7 @@ func NewStoreAdapter[H header.Header[H]](getter StoreGetter[H], gen genesis.Gene
 		getter:               getter,
 		genesisInitialHeight: max(gen.InitialHeight, 1),
 		pending:              pendingCache,
+		daHints:              daHintsCache,
 		heightSub:            newHeightSub(storeHeight),
 	}
 
@@ -276,6 +297,7 @@ func (a *StoreAdapter[H]) Get(ctx context.Context, hash header.Hash) (H, error) 
 	// First try the store
 	item, err := a.getter.GetByHash(ctx, hash)
 	if err == nil {
+		a.applyDAHint(item)
 		return item, nil
 	}
 
@@ -316,6 +338,7 @@ func (a *StoreAdapter[H]) getByHeightNoWait(ctx context.Context, height uint64) 
 	// First try the store
 	item, err := a.getter.GetByHeight(ctx, height)
 	if err == nil {
+		a.applyDAHint(item)
 		return item, nil
 	}
 
@@ -325,6 +348,27 @@ func (a *StoreAdapter[H]) getByHeightNoWait(ctx context.Context, height uint64) 
 	}
 
 	return zero, header.ErrNotFound
+}
+
+// applyDAHint sets the DA hint on the item from cache or disk.
+func (a *StoreAdapter[H]) applyDAHint(item H) {
+	if item.IsZero() {
+		return
+	}
+
+	height := item.Height()
+
+	// Check cache first
+	if hint, found := a.daHints.Get(height); found {
+		item.SetDAHint(hint)
+		return
+	}
+
+	// Try to load from disk
+	if hint, err := a.getter.GetDAHint(context.Background(), height); err == nil && hint > 0 {
+		a.daHints.Add(height, hint)
+		item.SetDAHint(hint)
+	}
 }
 
 // GetRangeByHeight returns items in the range [from.Height()+1, to).
@@ -431,6 +475,7 @@ func (a *StoreAdapter[H]) Height() uint64 {
 // Append stores items in the pending cache.
 // These items are received via P2P and will be available for retrieval
 // until the ev-node syncer processes and persists them to the store.
+// If items have a DA hint set, it will be cached for later retrieval.
 func (a *StoreAdapter[H]) Append(ctx context.Context, items ...H) error {
 	if len(items) == 0 {
 		return nil
@@ -443,9 +488,16 @@ func (a *StoreAdapter[H]) Append(ctx context.Context, items ...H) error {
 
 		height := item.Height()
 
+		// Cache and persist DA hint if present
+		if hint := item.DAHint(); hint > 0 {
+			a.daHints.Add(height, hint)
+			// Persist to disk
+			_ = a.getter.SetDAHint(ctx, height, hint)
+		}
+
 		// Check if already in store
 		if a.getter.HasAt(ctx, height) {
-			// Already persisted, skip
+			// Already persisted, skip adding to pending
 			continue
 		}
 
@@ -492,9 +544,10 @@ func (a *StoreAdapter[H]) Sync(ctx context.Context) error {
 // DeleteRange deletes items in the range [from, to).
 // This is used for rollback operations.
 func (a *StoreAdapter[H]) DeleteRange(ctx context.Context, from, to uint64) error {
-	// Remove from pending cache
+	// Remove from pending cache and DA hints cache
 	for height := from; height < to; height++ {
 		a.pending.Remove(height)
+		a.daHints.Remove(height)
 
 		if a.onDeleteFn != nil {
 			if err := a.onDeleteFn(ctx, height); err != nil {
@@ -533,10 +586,22 @@ func (g *HeaderStoreGetter) GetByHeight(ctx context.Context, height uint64) (*ty
 		return nil, err
 	}
 
+	daHint, _ := getDAHintFromStore(ctx, g.store, height)
+
 	return &types.P2PSignedHeader{
 		Message:      header,
-		DAHeightHint: 0, // TODO: fetch DA hint.
+		DAHeightHint: daHint,
 	}, nil
+}
+
+// GetDAHint implements StoreGetter.
+func (g *HeaderStoreGetter) GetDAHint(ctx context.Context, height uint64) (uint64, error) {
+	return getDAHintFromStore(ctx, g.store, height)
+}
+
+// SetDAHint implements StoreGetter.
+func (g *HeaderStoreGetter) SetDAHint(ctx context.Context, height uint64, daHint uint64) error {
+	return setDAHintToStore(ctx, g.store, height, daHint)
 }
 
 // GetByHash implements StoreGetter.
@@ -546,9 +611,11 @@ func (g *HeaderStoreGetter) GetByHash(ctx context.Context, hash []byte) (*types.
 		return nil, err
 	}
 
+	daHint, _ := getDAHintFromStore(ctx, g.store, hdr.Height())
+
 	return &types.P2PSignedHeader{
 		Message:      hdr,
-		DAHeightHint: 0, // TODO: fetch DA hint.
+		DAHeightHint: daHint,
 	}, nil
 }
 
@@ -580,10 +647,22 @@ func (g *DataStoreGetter) GetByHeight(ctx context.Context, height uint64) (*type
 		return nil, err
 	}
 
+	daHint, _ := getDAHintFromStore(ctx, g.store, height)
+
 	return &types.P2PData{
 		Message:      data,
-		DAHeightHint: 0, // TODO: fetch DA hint.
+		DAHeightHint: daHint,
 	}, nil
+}
+
+// GetDAHint implements StoreGetter.
+func (g *DataStoreGetter) GetDAHint(ctx context.Context, height uint64) (uint64, error) {
+	return getDAHintFromStore(ctx, g.store, height)
+}
+
+// SetDAHint implements StoreGetter.
+func (g *DataStoreGetter) SetDAHint(ctx context.Context, height uint64, daHint uint64) error {
+	return setDAHintToStore(ctx, g.store, height, daHint)
 }
 
 // GetByHash implements StoreGetter.
@@ -593,9 +672,11 @@ func (g *DataStoreGetter) GetByHash(ctx context.Context, hash []byte) (*types.P2
 		return nil, err
 	}
 
+	daHint, _ := getDAHintFromStore(ctx, g.store, data.Height())
+
 	return &types.P2PData{
 		Message:      data,
-		DAHeightHint: 0, // TODO: fetch DA hint.
+		DAHeightHint: daHint,
 	}, nil
 }
 
@@ -624,4 +705,29 @@ func NewHeaderStoreAdapter(store Store, gen genesis.Genesis) *HeaderStoreAdapter
 // The genesis is used to determine the initial height for efficient Tail lookups.
 func NewDataStoreAdapter(store Store, gen genesis.Genesis) *DataStoreAdapter {
 	return NewStoreAdapter(NewDataStoreGetter(store), gen)
+}
+
+// DA hint persistence helpers
+
+const daHintKeyPrefix = "da_hint:"
+
+func daHintKey(height uint64) string {
+	return fmt.Sprintf("%s%d", daHintKeyPrefix, height)
+}
+
+func getDAHintFromStore(ctx context.Context, store Store, height uint64) (uint64, error) {
+	data, err := store.GetMetadata(ctx, daHintKey(height))
+	if err != nil {
+		return 0, err
+	}
+	if len(data) != 8 {
+		return 0, fmt.Errorf("invalid da hint data length: %d", len(data))
+	}
+	return binary.BigEndian.Uint64(data), nil
+}
+
+func setDAHintToStore(ctx context.Context, store Store, height uint64, daHint uint64) error {
+	data := make([]byte, 8)
+	binary.BigEndian.PutUint64(data, daHint)
+	return store.SetMetadata(ctx, daHintKey(height), data)
 }
