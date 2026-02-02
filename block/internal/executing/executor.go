@@ -3,6 +3,7 @@ package executing
 import (
 	"bytes"
 	"context"
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"reflect"
@@ -551,23 +552,41 @@ func (e *Executor) ProduceBlock(ctx context.Context) error {
 	// production to fail, but it does run in the critical path and may add
 	// some latency when large ranges are pruned.
 	if e.config.Node.PruningEnabled && e.config.Node.PruningKeepRecent > 0 && e.config.Node.PruningInterval > 0 {
-		if newHeight%e.config.Node.PruningInterval == 0 {
-			// Compute the prune floor: all heights <= targetHeight are candidates
-			// for pruning of header/data/signature/index entries.
-			if newHeight > e.config.Node.PruningKeepRecent {
-				targetHeight := newHeight - e.config.Node.PruningKeepRecent
-				if err := e.store.PruneBlocks(e.ctx, targetHeight); err != nil {
-					e.logger.Error().Err(err).Uint64("target_height", targetHeight).Msg("failed to prune old block data")
+		interval := e.config.Node.PruningInterval
+		// Only attempt pruning when we're exactly at an interval boundary.
+		if newHeight%interval == 0 && newHeight > e.config.Node.PruningKeepRecent {
+			targetHeight := newHeight - e.config.Node.PruningKeepRecent
+
+			// Determine the DA-included floor for pruning, so we never prune
+			// beyond what has been confirmed in DA.
+			var daIncludedHeight uint64
+			meta, err := e.store.GetMetadata(e.ctx, store.DAIncludedHeightKey)
+			if err == nil && len(meta) == 8 {
+				daIncludedHeight = binary.LittleEndian.Uint64(meta)
+			}
+
+			// If nothing is known to be DA-included yet, skip pruning.
+			if daIncludedHeight == 0 {
+				// Nothing known to be DA-included yet; skip pruning.
+			} else {
+				if targetHeight > daIncludedHeight {
+					targetHeight = daIncludedHeight
 				}
 
-				// If the execution client exposes execution-metadata pruning,
-				// prune ExecMeta using the same target height. This keeps EVM
-				// execution metadata aligned with ev-node's block store pruning
-				// while remaining a no-op for execution environments that don't
-				// implement ExecMetaPruner (e.g. ABCI-based executors).
-				if pruner, ok := e.exec.(coreexecutor.ExecMetaPruner); ok {
-					if err := pruner.PruneExecMeta(e.ctx, targetHeight); err != nil {
-						e.logger.Error().Err(err).Uint64("target_height", targetHeight).Msg("failed to prune execution metadata")
+				if targetHeight > 0 {
+					if err := e.store.PruneBlocks(e.ctx, targetHeight); err != nil {
+						return fmt.Errorf("failed to prune old block data: %w", err)
+					}
+
+					// If the execution client exposes execution-metadata pruning,
+					// prune ExecMeta using the same target height. This keeps
+					// execution-layer metadata aligned with
+					// ev-node's block store pruning while remaining a no-op for
+					// execution environments that don't implement ExecMetaPruner yet.
+					if pruner, ok := e.exec.(coreexecutor.ExecMetaPruner); ok {
+						if err := pruner.PruneExecMeta(e.ctx, targetHeight); err != nil {
+							return fmt.Errorf("failed to prune execution metadata: %w", err)
+						}
 					}
 				}
 			}
