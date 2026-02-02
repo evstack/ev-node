@@ -183,8 +183,6 @@ require (
 
 // pin google genproto to a single version to avoid ambiguous imports pulled by transitive deps
 replace (
-	github.com/evstack/ev-node => ../../
-	github.com/evstack/ev-node/core => ../../core
 	google.golang.org/genproto => google.golang.org/genproto v0.0.0-20240213162025-012b6fc9bca9
 	google.golang.org/genproto/googleapis/api => google.golang.org/genproto/googleapis/api v0.0.0-20240213162025-012b6fc9bca9
 	google.golang.org/genproto/googleapis/rpc => google.golang.org/genproto/googleapis/rpc v0.0.0-20240213162025-012b6fc9bca9
