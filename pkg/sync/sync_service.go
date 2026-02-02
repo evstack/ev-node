@@ -477,10 +477,7 @@ func newSyncer[H header.Header[H]](
 
 	opts = append(opts,
 		goheadersync.WithMetrics(),
-<<<<<<< HEAD
 		goheadersync.WithPruningWindow(ninetyNineYears), // pruning window not relevant, because of the store wrapper.
-=======
->>>>>>> 3b9a0f70 (wiring prunning config to go-header)
 		goheadersync.WithTrustingPeriod(ninetyNineYears),
 	)
 	return goheadersync.NewSyncer(ex, store, sub, opts...)
