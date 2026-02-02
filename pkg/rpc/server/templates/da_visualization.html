@@ -27,6 +27,12 @@
         .method-post { background-color: #49cc90; color: white; }
         .example-link { color: #007cba; text-decoration: none; font-size: 13px; }
         .example-link:hover { text-decoration: underline; }
+        .blob-ids { margin-top: 5px; }
+        .blob-ids-preview { display: inline; }
+        .blob-ids-full { display: none; max-height: 200px; overflow-y: auto; margin-top: 5px; padding: 5px; background: #fafafa; border-radius: 3px; }
+        .blob-ids-full.expanded { display: block; }
+        .blob-toggle { background: none; border: 1px solid #007cba; color: #007cba; padding: 2px 8px; border-radius: 3px; cursor: pointer; font-size: 11px; margin-left: 5px; }
+        .blob-toggle:hover { background: #007cba; color: white; }
     </style>
 </head>
 <body>
@@ -177,12 +183,27 @@
             <td>
                 {{.NumBlobs}}
                 {{if .BlobIDs}}
+                {{$namespace := .Namespace}}
+                {{$numBlobs := len .BlobIDs}}
+                {{if le $numBlobs 5}}
                 <div class="blob-ids">
-                    {{$namespace := .Namespace}}
                     {{range .BlobIDs}}
                     <a href="/da/blob?id={{.}}&namespace={{$namespace}}" class="blob-link blob-id" title="Click to view blob details">{{slice . 0 8}}...</a>
                     {{end}}
                 </div>
+                {{else}}
+                <div class="blob-ids">
+                    <span class="blob-ids-preview">
+                        {{range $i, $id := .BlobIDs}}{{if lt $i 3}}<a href="/da/blob?id={{$id}}&namespace={{$namespace}}" class="blob-link blob-id" title="Click to view blob details">{{slice $id 0 8}}...</a>{{end}}{{end}}
+                    </span>
+                    <button class="blob-toggle" onclick="toggleBlobs(this)">+{{subtract $numBlobs 3}} more</button>
+                    <div class="blob-ids-full">
+                        {{range .BlobIDs}}
+                        <a href="/da/blob?id={{.}}&namespace={{$namespace}}" class="blob-link blob-id" title="Click to view blob details">{{slice . 0 8}}...</a>
+                        {{end}}
+                    </div>
+                </div>
+                {{end}}
                 {{end}}
             </td>
             <td>{{.BlobSize}}</td>
@@ -215,6 +236,25 @@
                 location.reload();
             }
         }, 1000);
+
+        // Toggle blob list expansion
+        function toggleBlobs(btn) {
+            const container = btn.parentElement;
+            const fullList = container.querySelector('.blob-ids-full');
+            const preview = container.querySelector('.blob-ids-preview');
+            const isExpanded = fullList.classList.contains('expanded');
+
+            if (isExpanded) {
+                fullList.classList.remove('expanded');
+                preview.style.display = 'inline';
+                btn.textContent = btn.dataset.expandText;
+            } else {
+                fullList.classList.add('expanded');
+                preview.style.display = 'none';
+                btn.dataset.expandText = btn.textContent;
+                btn.textContent = 'Show less';
+            }
+        }
     </script>
 </body>
 </html>

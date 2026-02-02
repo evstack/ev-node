@@ -54,8 +54,8 @@ func TestCalculateBlockFullness_HalfFull(t *testing.T) {
 	}
 
 	fullness := s.calculateBlockFullness(data)
-	// Size fullness: 500000/8388608 ≈ 0.0596
-	require.InDelta(t, 0.0596, fullness, 0.05)
+	// Size fullness: 500000/5242880 ≈ 0.095 (5MB max blob size)
+	require.InDelta(t, 0.095, fullness, 0.05)
 }
 
 func TestCalculateBlockFullness_Full(t *testing.T) {
@@ -72,8 +72,8 @@ func TestCalculateBlockFullness_Full(t *testing.T) {
 	}
 
 	fullness := s.calculateBlockFullness(data)
-	// Size fullness: 2100000/8388608 ≈ 0.25
-	require.InDelta(t, 0.25, fullness, 0.05)
+	// Size fullness: 2100000/5242880 ≈ 0.40 (5MB max blob size)
+	require.InDelta(t, 0.40, fullness, 0.05)
 }
 
 func TestCalculateBlockFullness_VerySmall(t *testing.T) {

@@ -326,7 +326,8 @@ func TestHeaderSyncServiceRestart(t *testing.T) {
 	defer cancel()
 	require.NoError(t, p2pClient.Start(ctx))
 
-	svc, err := NewHeaderSyncService(mainKV, nil, conf, genesisDoc, p2pClient, logger)
+	rktStore := store.New(mainKV)
+	svc, err := NewHeaderSyncService(rktStore, conf, genesisDoc, p2pClient, logger)
 	require.NoError(t, err)
 	err = svc.Start(ctx)
 	require.NoError(t, err)
@@ -366,7 +367,7 @@ func TestHeaderSyncServiceRestart(t *testing.T) {
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = p2pClient.Close() })
 
-	svc, err = NewHeaderSyncService(mainKV, nil, conf, genesisDoc, p2pClient, logger)
+	svc, err = NewHeaderSyncService(rktStore, conf, genesisDoc, p2pClient, logger)
 	require.NoError(t, err)
 	err = svc.Start(ctx)
 	require.NoError(t, err)
@@ -417,7 +418,8 @@ func TestHeaderSyncServiceInitFromHigherHeight(t *testing.T) {
 	require.NoError(t, p2pClient.Start(ctx))
 	t.Cleanup(func() { _ = p2pClient.Close() })
 
-	svc, err := NewHeaderSyncService(mainKV, nil, conf, genesisDoc, p2pClient, logger)
+	rktStore := store.New(mainKV)
+	svc, err := NewHeaderSyncService(rktStore, conf, genesisDoc, p2pClient, logger)
 	require.NoError(t, err)
 	require.NoError(t, svc.Start(ctx))
 	t.Cleanup(func() { _ = svc.Stop(context.Background()) })

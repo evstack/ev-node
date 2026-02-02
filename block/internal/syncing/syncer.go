@@ -17,9 +17,7 @@ import (
 	coreexecutor "github.com/evstack/ev-node/core/execution"
 	datypes "github.com/evstack/ev-node/pkg/da/types"
 	"github.com/evstack/ev-node/pkg/raft"
-	pubsub "github.com/libp2p/go-libp2p-pubsub"
 	"github.com/rs/zerolog"
-	"golang.org/x/sync/errgroup"
 
 	"github.com/evstack/ev-node/block/internal/cache"
 	"github.com/evstack/ev-node/block/internal/common"
@@ -674,24 +672,6 @@ func (s *Syncer) processHeightEvent(ctx context.Context, event *common.DAHeightE
 			s.cache.SetPendingEvent(height, event)
 		}
 		return
-	}
-
-	// only save to p2p stores if the event came from DA
-	if event.Source == common.SourceDA { // TODO(@julienrbrt): To be reverted once DA Hints are merged (https://github.com/evstack/ev-node/pull/2891)
-		g, ctx := errgroup.WithContext(ctx)
-		g.Go(func() error {
-			// broadcast header locally only — prevents spamming the p2p network with old height notifications,
-			// allowing the syncer to update its target and fill missing blocks
-			return s.headerStore.WriteToStoreAndBroadcast(ctx, &types.P2PSignedHeader{Message: event.Header}, pubsub.WithLocalPublication(true))
-		})
-		g.Go(func() error {
-			// broadcast data locally only — prevents spamming the p2p network with old height notifications,
-			// allowing the syncer to update its target and fill missing blocks
-			return s.dataStore.WriteToStoreAndBroadcast(ctx, &types.P2PData{Message: event.Data}, pubsub.WithLocalPublication(true))
-		})
-		if err := g.Wait(); err != nil {
-			s.logger.Error().Err(err).Msg("failed to append event header and/or data to p2p store")
-		}
 	}
 }
 

@@ -813,15 +813,6 @@ func (e *Executor) recordBlockMetrics(newState types.State, data *types.Data) {
 	e.metrics.CommittedHeight.Set(float64(data.Metadata.Height))
 }
 
-// IsSynced checks if the last block height in the stored state matches the expected height and returns true if they are equal.
-func (e *Executor) IsSynced(expHeight uint64) bool {
-	state, err := e.store.GetState(e.ctx)
-	if err != nil {
-		return false
-	}
-	return state.LastBlockHeight == expHeight
-}
-
 // IsSyncedWithRaft checks if the local state is synced with the given raft state, including hash check.
 func (e *Executor) IsSyncedWithRaft(raftState *raft.RaftBlockState) (int, error) {
 	state, err := e.store.GetState(e.ctx)

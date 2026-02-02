@@ -46,7 +46,6 @@ func newSyncMode(
 	da block.DAClient,
 	logger zerolog.Logger,
 	rktStore store.Store,
-	mainKV ds.Batching,
 	blockMetrics *block.Metrics,
 	nodeOpts NodeOptions,
 	raftNode *raft.Node,
@@ -66,7 +65,7 @@ func newSyncMode(
 			raftNode,
 		)
 	}
-	return setupFailoverState(nodeConfig, nodeKey, rootDB, daStore, genesis, logger, mainKV, rktStore, blockComponentsFn, raftNode)
+	return setupFailoverState(nodeConfig, nodeKey, rootDB, daStore, genesis, logger, rktStore, blockComponentsFn, raftNode)
 }
 
 func newAggregatorMode(
@@ -81,7 +80,6 @@ func newAggregatorMode(
 	da block.DAClient,
 	logger zerolog.Logger,
 	rktStore store.Store,
-	mainKV ds.Batching,
 	blockMetrics *block.Metrics,
 	nodeOpts NodeOptions,
 	raftNode *raft.Node,
@@ -105,7 +103,7 @@ func newAggregatorMode(
 		)
 	}
 
-	return setupFailoverState(nodeConfig, nodeKey, rootDB, daStore, genesis, logger, mainKV, rktStore, blockComponentsFn, raftNode)
+	return setupFailoverState(nodeConfig, nodeKey, rootDB, daStore, genesis, logger, rktStore, blockComponentsFn, raftNode)
 }
 
 func setupFailoverState(
@@ -115,7 +113,6 @@ func setupFailoverState(
 	daStore store.Store,
 	genesis genesispkg.Genesis,
 	logger zerolog.Logger,
-	mainKV ds.Batching,
 	rktStore store.Store,
 	buildComponentsFn func(headerSyncService *evsync.HeaderSyncService, dataSyncService *evsync.DataSyncService) (*block.Components, error),
 	raftNode *raft.Node,
@@ -125,12 +122,12 @@ func setupFailoverState(
 		return nil, err
 	}
 
-	headerSyncService, err := evsync.NewHeaderSyncService(mainKV, daStore, nodeConfig, genesis, p2pClient, logger.With().Str("component", "HeaderSyncService").Logger())
+	headerSyncService, err := evsync.NewHeaderSyncService(daStore, nodeConfig, genesis, p2pClient, logger.With().Str("component", "HeaderSyncService").Logger())
 	if err != nil {
 		return nil, fmt.Errorf("error while initializing HeaderSyncService: %w", err)
 	}
 
-	dataSyncService, err := evsync.NewDataSyncService(mainKV, daStore, nodeConfig, genesis, p2pClient, logger.With().Str("component", "DataSyncService").Logger())
+	dataSyncService, err := evsync.NewDataSyncService(daStore, nodeConfig, genesis, p2pClient, logger.With().Str("component", "DataSyncService").Logger())
 	if err != nil {
 		return nil, fmt.Errorf("error while initializing DataSyncService: %w", err)
 	}
