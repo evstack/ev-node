@@ -741,14 +741,14 @@ func TestProcessHeightEvent_TriggersAsyncDARetrieval(t *testing.T) {
 	require.NoError(t, s.initializeState())
 	s.ctx = context.Background()
 
-	// Mock AsyncDARetriever
+	// Mock DARetrievalWorkerPool
 	mockRetriever := NewMockDARetriever(t)
-	asyncRetriever := NewAsyncDARetriever(mockRetriever, s.heightInCh, zerolog.Nop())
-	// We don't start the async retriever to avoid race conditions in test,
+	workerPool := NewDARetrievalWorkerPool(mockRetriever, s.heightInCh, zerolog.Nop())
+	// We don't start the worker pool to avoid race conditions in test,
 	// we just want to verify RequestRetrieval queues the request.
 	// However, RequestRetrieval writes to a channel, so we need a consumer or a buffered channel.
 	// The workCh is buffered (100), so we are good.
-	s.asyncDARetriever = asyncRetriever
+	s.daRetrievalWorkerPool = workerPool
 
 	// Create event with DA height hint
 	evt := common.DAHeightEvent{
@@ -778,9 +778,9 @@ func TestProcessHeightEvent_TriggersAsyncDARetrieval(t *testing.T) {
 
 	s.processHeightEvent(t.Context(), &evt)
 
-	// Verify that the request was queued in the async retriever
+	// Verify that the request was queued in the worker pool
 	select {
-	case h := <-asyncRetriever.workCh:
+	case h := <-workerPool.workCh:
 		assert.Equal(t, uint64(100), h)
 	default:
 		t.Fatal("expected DA retrieval request to be queued")

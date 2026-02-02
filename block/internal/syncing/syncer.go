@@ -127,8 +127,8 @@ type Syncer struct {
 	// defaults to self, but can be wrapped with tracing.
 	blockSyncer BlockSyncer
 
-	// Async DA retriever
-	asyncDARetriever *AsyncDARetriever
+	// Worker pool for on-demand DA retrieval triggered by P2P hints
+	daRetrievalWorkerPool *DARetrievalWorkerPool
 }
 
 // pendingForcedInclusionTx represents a forced inclusion transaction that hasn't been included yet
@@ -216,8 +216,8 @@ func (s *Syncer) Start(ctx context.Context) error {
 
 	// Initialize handlers
 	s.daRetriever = NewDARetriever(s.daClient, s.cache, s.genesis, s.logger)
-	s.asyncDARetriever = NewAsyncDARetriever(s.daRetriever, s.heightInCh, s.logger)
-	s.asyncDARetriever.Start(s.ctx)
+	s.daRetrievalWorkerPool = NewDARetrievalWorkerPool(s.daRetriever, s.heightInCh, s.logger)
+	s.daRetrievalWorkerPool.Start(s.ctx)
 	if s.config.Instrumentation.IsTracingEnabled() {
 		s.daRetriever = WithTracingDARetriever(s.daRetriever)
 	}
@@ -634,7 +634,7 @@ func (s *Syncer) processHeightEvent(ctx context.Context, event *common.DAHeightE
 					Msg("P2P event with DA height hint, triggering targeted DA retrieval")
 
 				// Trigger targeted DA retrieval in background via worker pool
-				s.asyncDARetriever.RequestRetrieval(daHeightHint)
+				s.daRetrievalWorkerPool.RequestRetrieval(daHeightHint)
 			}
 		}
 	}

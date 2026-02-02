@@ -11,23 +11,23 @@ import (
 	"github.com/stretchr/testify/mock"
 )
 
-func TestAsyncDARetriever_RequestRetrieval(t *testing.T) {
+func TestDARetrievalWorkerPool_RequestRetrieval(t *testing.T) {
 	logger := zerolog.Nop()
 	mockRetriever := NewMockDARetriever(t)
 	resultCh := make(chan common.DAHeightEvent, 10)
 
-	asyncRetriever := NewAsyncDARetriever(mockRetriever, resultCh, logger)
+	workerPool := NewDARetrievalWorkerPool(mockRetriever, resultCh, logger)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	asyncRetriever.Start(ctx)
-	defer asyncRetriever.Stop()
+	workerPool.Start(ctx)
+	defer workerPool.Stop()
 
 	// 1. Test successful retrieval
 	height1 := uint64(100)
 	mockRetriever.EXPECT().RetrieveFromDA(mock.Anything, height1).Return([]common.DAHeightEvent{{DaHeight: height1}}, nil).Once()
 
-	asyncRetriever.RequestRetrieval(height1)
+	workerPool.RequestRetrieval(height1)
 
 	select {
 	case event := <-resultCh:
@@ -52,7 +52,7 @@ func TestAsyncDARetriever_RequestRetrieval(t *testing.T) {
 	}).Once() // Should be called only once despite multiple requests
 
 	// Send first request
-	asyncRetriever.RequestRetrieval(height2)
+	workerPool.RequestRetrieval(height2)
 
 	// Wait for the worker to pick it up
 	select {
@@ -62,8 +62,8 @@ func TestAsyncDARetriever_RequestRetrieval(t *testing.T) {
 	}
 
 	// Send duplicate requests while the first one is still in flight
-	asyncRetriever.RequestRetrieval(height2)
-	asyncRetriever.RequestRetrieval(height2)
+	workerPool.RequestRetrieval(height2)
+	workerPool.RequestRetrieval(height2)
 
 	// Unblock the worker
 	close(unblockCh)
@@ -84,17 +84,17 @@ func TestAsyncDARetriever_RequestRetrieval(t *testing.T) {
 	}
 }
 
-func TestAsyncDARetriever_WorkerPoolLimit(t *testing.T) {
+func TestDARetrievalWorkerPool_WorkerPoolLimit(t *testing.T) {
 	logger := zerolog.Nop()
 	mockRetriever := NewMockDARetriever(t)
 	resultCh := make(chan common.DAHeightEvent, 100)
 
-	asyncRetriever := NewAsyncDARetriever(mockRetriever, resultCh, logger)
+	workerPool := NewDARetrievalWorkerPool(mockRetriever, resultCh, logger)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	asyncRetriever.Start(ctx)
-	defer asyncRetriever.Stop()
+	workerPool.Start(ctx)
+	defer workerPool.Stop()
 
 	// We have 5 workers. We'll block them all.
 	unblockCh := make(chan struct{})
@@ -106,7 +106,7 @@ func TestAsyncDARetriever_WorkerPoolLimit(t *testing.T) {
 			<-unblockCh
 			return []common.DAHeightEvent{{DaHeight: h}}, nil
 		}).Once()
-		asyncRetriever.RequestRetrieval(h)
+		workerPool.RequestRetrieval(h)
 	}
 
 	// Give workers time to pick up tasks
@@ -120,7 +120,7 @@ func TestAsyncDARetriever_WorkerPoolLimit(t *testing.T) {
 		return []common.DAHeightEvent{{DaHeight: h}}, nil
 	}).Once()
 
-	asyncRetriever.RequestRetrieval(height6)
+	workerPool.RequestRetrieval(height6)
 
 	// Ensure 6th request is NOT processed yet
 	select {

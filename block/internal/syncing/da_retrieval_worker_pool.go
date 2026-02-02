@@ -8,8 +8,10 @@ import (
 	"github.com/rs/zerolog"
 )
 
-// AsyncDARetriever handles concurrent DA retrieval operations.
-type AsyncDARetriever struct {
+// DARetrievalWorkerPool handles concurrent on-demand DA retrieval operations
+// triggered by P2P hints. Unlike the background prefetcher (AsyncBlockRetriever),
+// this worker pool processes explicit retrieval requests for specific DA heights.
+type DARetrievalWorkerPool struct {
 	retriever DARetriever
 	resultCh  chan<- common.DAHeightEvent
 	workCh    chan uint64
@@ -21,44 +23,44 @@ type AsyncDARetriever struct {
 	cancel    context.CancelFunc
 }
 
-// NewAsyncDARetriever creates a new AsyncDARetriever.
-func NewAsyncDARetriever(
+// NewDARetrievalWorkerPool creates a new DARetrievalWorkerPool.
+func NewDARetrievalWorkerPool(
 	retriever DARetriever,
 	resultCh chan<- common.DAHeightEvent,
 	logger zerolog.Logger,
-) *AsyncDARetriever {
-	return &AsyncDARetriever{
+) *DARetrievalWorkerPool {
+	return &DARetrievalWorkerPool{
 		retriever: retriever,
 		resultCh:  resultCh,
 		workCh:    make(chan uint64, 100), // Buffer size 100
 		inFlight:  make(map[uint64]struct{}),
-		logger:    logger.With().Str("component", "async_da_retriever").Logger(),
+		logger:    logger.With().Str("component", "da_retrieval_worker_pool").Logger(),
 	}
 }
 
 // Start starts the worker pool.
-func (r *AsyncDARetriever) Start(ctx context.Context) {
+func (r *DARetrievalWorkerPool) Start(ctx context.Context) {
 	r.ctx, r.cancel = context.WithCancel(ctx)
 	// Start 5 workers
 	for i := 0; i < 5; i++ {
 		r.wg.Add(1)
 		go r.worker()
 	}
-	r.logger.Info().Msg("AsyncDARetriever started")
+	r.logger.Info().Msg("DARetrievalWorkerPool started")
 }
 
 // Stop stops the worker pool.
-func (r *AsyncDARetriever) Stop() {
+func (r *DARetrievalWorkerPool) Stop() {
 	if r.cancel != nil {
 		r.cancel()
 	}
 	r.wg.Wait()
-	r.logger.Info().Msg("AsyncDARetriever stopped")
+	r.logger.Info().Msg("DARetrievalWorkerPool stopped")
 }
 
 // RequestRetrieval requests a DA retrieval for the given height.
 // It is non-blocking and idempotent.
-func (r *AsyncDARetriever) RequestRetrieval(height uint64) {
+func (r *DARetrievalWorkerPool) RequestRetrieval(height uint64) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
@@ -75,7 +77,7 @@ func (r *AsyncDARetriever) RequestRetrieval(height uint64) {
 	}
 }
 
-func (r *AsyncDARetriever) worker() {
+func (r *DARetrievalWorkerPool) worker() {
 	defer r.wg.Done()
 
 	for {
@@ -88,7 +90,7 @@ func (r *AsyncDARetriever) worker() {
 	}
 }
 
-func (r *AsyncDARetriever) processRetrieval(height uint64) {
+func (r *DARetrievalWorkerPool) processRetrieval(height uint64) {
 	defer func() {
 		r.mu.Lock()
 		delete(r.inFlight, height)
@@ -97,7 +99,7 @@ func (r *AsyncDARetriever) processRetrieval(height uint64) {
 
 	events, err := r.retriever.RetrieveFromDA(r.ctx, height)
 	if err != nil {
-		r.logger.Debug().Err(err).Uint64("height", height).Msg("async DA retrieval failed")
+		r.logger.Debug().Err(err).Uint64("height", height).Msg("DA retrieval failed")
 		return
 	}
 
