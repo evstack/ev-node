@@ -229,6 +229,15 @@ func TestDAHintStorageHeader(t *testing.T) {
 	require.Equal(t, signedHeader.Hash(), h.Hash())
 	require.Equal(t, daHeight, h.DAHint())
 
+	// Persist header to underlying store so it survives restart
+	// (WriteToStoreAndBroadcast only writes to P2P pending cache)
+	data := &types.Data{Metadata: &types.Metadata{Height: signedHeader.Height()}}
+	batch, err := evStore.NewBatch(ctx)
+	require.NoError(t, err)
+	require.NoError(t, batch.SaveBlockData(signedHeader, data, &signedHeader.Signature))
+	require.NoError(t, batch.SetHeight(signedHeader.Height()))
+	require.NoError(t, batch.Commit())
+
 	_ = p2pClient.Close()
 	_ = headerSvc.Stop(ctx)
 	cancel()
@@ -320,6 +329,14 @@ func TestDAHintStorageData(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, data.Hash(), d.Hash())
 	require.Equal(t, daHeight, d.DAHint())
+
+	// Persist data to underlying store so it survives restart
+	// (WriteToStoreAndBroadcast only writes to P2P pending cache)
+	batch, err := evStore.NewBatch(ctx)
+	require.NoError(t, err)
+	require.NoError(t, batch.SaveBlockData(signedHeader, &data, &signedHeader.Signature))
+	require.NoError(t, batch.SetHeight(signedHeader.Height()))
+	require.NoError(t, batch.Commit())
 
 	_ = p2pClient.Close()
 	_ = dataSvc.Stop(ctx)
