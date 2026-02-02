@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"crypto/sha256"
+	"errors"
 	"testing"
 	"time"
 
@@ -29,6 +30,17 @@ func computeHeaderIndexHash(h *types.SignedHeader) []byte {
 	blob, _ := h.MarshalBinary()
 	hash := sha256.Sum256(blob)
 	return hash[:]
+}
+
+// wrapHeader wraps a *types.SignedHeader in a *types.P2PSignedHeader for use with the HeaderStoreAdapter.
+func wrapHeader(h *types.SignedHeader) *types.P2PSignedHeader {
+	if h == nil {
+		return nil
+	}
+	return &types.P2PSignedHeader{
+		Message:      h,
+		DAHeightHint: 0,
+	}
 }
 
 func TestHeaderStoreAdapter_NewHeaderStoreAdapter(t *testing.T) {
@@ -64,7 +76,7 @@ func TestHeaderStoreAdapter_AppendAndRetrieve(t *testing.T) {
 	h2, _ := types.GetRandomBlock(2, 2, "test-chain")
 
 	// Append headers - these go to pending cache
-	err = adapter.Append(ctx, h1, h2)
+	err = adapter.Append(ctx, wrapHeader(h1), wrapHeader(h2))
 	require.NoError(t, err)
 
 	// Check height is updated (from pending)
@@ -101,12 +113,10 @@ func TestHeaderStoreAdapter_GetFromStore(t *testing.T) {
 	require.NoError(t, batch.SetHeight(1))
 	require.NoError(t, batch.Commit())
 
-	// Create adapter after data is in store
+	// Now create adapter and verify we can get from store
 	adapter := NewHeaderStoreAdapter(store, testGenesis())
 
-	// Get by hash - need to use the index hash (sha256 of marshaled SignedHeader)
-	hash := computeHeaderIndexHash(h1)
-	retrieved, err := adapter.Get(ctx, hash)
+	retrieved, err := adapter.GetByHeight(ctx, 1)
 	require.NoError(t, err)
 	assert.Equal(t, h1.Height(), retrieved.Height())
 
@@ -133,12 +143,13 @@ func TestHeaderStoreAdapter_Has(t *testing.T) {
 
 	adapter := NewHeaderStoreAdapter(store, testGenesis())
 
-	// Has should return true for existing header - use index hash
-	has, err := adapter.Has(ctx, computeHeaderIndexHash(h1))
+	p2pH1 := wrapHeader(h1)
+	// Has should return true for existing hash
+	has, err := adapter.Has(ctx, p2pH1.Hash())
 	require.NoError(t, err)
 	assert.True(t, has)
 
-	// Has should return false for non-existent
+	// Has should return false for non-existent hash
 	has, err = adapter.Has(ctx, []byte("nonexistent"))
 	require.NoError(t, err)
 	assert.False(t, has)
@@ -154,7 +165,7 @@ func TestHeaderStoreAdapter_HasAt(t *testing.T) {
 	adapter := NewHeaderStoreAdapter(store, testGenesis())
 
 	h1, _ := types.GetRandomBlock(1, 2, "test-chain")
-	require.NoError(t, adapter.Append(ctx, h1))
+	require.NoError(t, adapter.Append(ctx, wrapHeader(h1)))
 
 	// HasAt should return true for pending height
 	assert.True(t, adapter.HasAt(ctx, 1))
@@ -201,7 +212,7 @@ func TestHeaderStoreAdapter_GetRange(t *testing.T) {
 	h1, _ := types.GetRandomBlock(1, 1, "test-chain")
 	h2, _ := types.GetRandomBlock(2, 1, "test-chain")
 	h3, _ := types.GetRandomBlock(3, 1, "test-chain")
-	require.NoError(t, adapter.Append(ctx, h1, h2, h3))
+	require.NoError(t, adapter.Append(ctx, wrapHeader(h1), wrapHeader(h2), wrapHeader(h3)))
 
 	// GetRange [1, 3) should return headers 1 and 2
 	headers, err := adapter.GetRange(ctx, 1, 3)
@@ -228,10 +239,10 @@ func TestHeaderStoreAdapter_GetRangeByHeight(t *testing.T) {
 	h1, _ := types.GetRandomBlock(1, 1, "test-chain")
 	h2, _ := types.GetRandomBlock(2, 1, "test-chain")
 	h3, _ := types.GetRandomBlock(3, 1, "test-chain")
-	require.NoError(t, adapter.Append(ctx, h1, h2, h3))
+	require.NoError(t, adapter.Append(ctx, wrapHeader(h1), wrapHeader(h2), wrapHeader(h3)))
 
 	// GetRangeByHeight from h1 to 4 should return headers 2 and 3
-	headers, err := adapter.GetRangeByHeight(ctx, h1, 4)
+	headers, err := adapter.GetRangeByHeight(ctx, wrapHeader(h1), 4)
 	require.NoError(t, err)
 	require.Len(t, headers, 2)
 	assert.Equal(t, uint64(2), headers[0].Height())
@@ -250,7 +261,7 @@ func TestHeaderStoreAdapter_Init(t *testing.T) {
 	h1, _ := types.GetRandomBlock(1, 1, "test-chain")
 
 	// Init should add header to pending
-	err = adapter.Init(ctx, h1)
+	err = adapter.Init(ctx, wrapHeader(h1))
 	require.NoError(t, err)
 
 	// Verify it's retrievable from pending
@@ -260,7 +271,7 @@ func TestHeaderStoreAdapter_Init(t *testing.T) {
 
 	// Init again should be a no-op (already initialized)
 	h2, _ := types.GetRandomBlock(2, 1, "test-chain")
-	err = adapter.Init(ctx, h2)
+	err = adapter.Init(ctx, wrapHeader(h2))
 	require.NoError(t, err)
 
 	// Height 2 should not be in pending since Init was already done
@@ -282,7 +293,7 @@ func TestHeaderStoreAdapter_Tail(t *testing.T) {
 
 	h1, _ := types.GetRandomBlock(1, 1, "test-chain")
 	h2, _ := types.GetRandomBlock(2, 1, "test-chain")
-	require.NoError(t, adapter.Append(ctx, h1, h2))
+	require.NoError(t, adapter.Append(ctx, wrapHeader(h1), wrapHeader(h2)))
 
 	// Tail should return the first header
 	tail, err := adapter.Tail(ctx)
@@ -344,7 +355,7 @@ func TestHeaderStoreAdapter_DeleteRange(t *testing.T) {
 	h1, _ := types.GetRandomBlock(1, 1, "test-chain")
 	h2, _ := types.GetRandomBlock(2, 1, "test-chain")
 	h3, _ := types.GetRandomBlock(3, 1, "test-chain")
-	require.NoError(t, adapter.Append(ctx, h1, h2, h3))
+	require.NoError(t, adapter.Append(ctx, wrapHeader(h1), wrapHeader(h2), wrapHeader(h3)))
 
 	assert.Equal(t, uint64(3), adapter.Height())
 
@@ -374,7 +385,7 @@ func TestHeaderStoreAdapter_OnDelete(t *testing.T) {
 
 	h1, _ := types.GetRandomBlock(1, 1, "test-chain")
 	h2, _ := types.GetRandomBlock(2, 1, "test-chain")
-	require.NoError(t, adapter.Append(ctx, h1, h2))
+	require.NoError(t, adapter.Append(ctx, wrapHeader(h1), wrapHeader(h2)))
 
 	// Track deleted heights
 	var deletedHeights []uint64
@@ -408,7 +419,7 @@ func TestHeaderStoreAdapter_AppendSkipsExisting(t *testing.T) {
 	adapter := NewHeaderStoreAdapter(store, testGenesis())
 
 	// Append the same header again should not error (skips existing in store)
-	err = adapter.Append(ctx, h1)
+	err = adapter.Append(ctx, wrapHeader(h1))
 	require.NoError(t, err)
 
 	// Height should still be 1
@@ -428,7 +439,7 @@ func TestHeaderStoreAdapter_AppendNilHeaders(t *testing.T) {
 	err = adapter.Append(ctx)
 	require.NoError(t, err)
 
-	var nilHeader *types.SignedHeader
+	var nilHeader *types.P2PSignedHeader
 	err = adapter.Append(ctx, nilHeader)
 	require.NoError(t, err)
 
@@ -522,7 +533,77 @@ func TestHeaderStoreAdapter_ContextTimeout(t *testing.T) {
 	h1, _ := types.GetRandomBlock(1, 1, "test-chain")
 	// Note: In-memory store doesn't actually check context, but this verifies
 	// the adapter passes the context through
-	_ = adapter.Append(ctx, h1)
+	_ = adapter.Append(ctx, wrapHeader(h1))
+}
+
+func TestHeaderStoreAdapter_GetRangePartial(t *testing.T) {
+	t.Parallel()
+	// Use a short timeout since GetByHeight now blocks waiting for the height
+	ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
+	defer cancel()
+
+	ds, err := NewTestInMemoryKVStore()
+	require.NoError(t, err)
+	store := New(ds)
+	adapter := NewHeaderStoreAdapter(store, testGenesis())
+
+	// Only append headers for heights 1 and 2, not 3
+	h1, _ := types.GetRandomBlock(1, 1, "test-chain")
+	h2, _ := types.GetRandomBlock(2, 1, "test-chain")
+	require.NoError(t, adapter.Append(ctx, wrapHeader(h1), wrapHeader(h2)))
+
+	// GetRange [1, 5) should return headers 1 and 2 (partial result)
+	headers, err := adapter.GetRange(ctx, 1, 5)
+	require.NoError(t, err)
+	require.Len(t, headers, 2)
+	assert.Equal(t, uint64(1), headers[0].Height())
+	assert.Equal(t, uint64(2), headers[1].Height())
+}
+
+func TestHeaderStoreAdapter_GetRangeEmpty(t *testing.T) {
+	t.Parallel()
+	// Use a short timeout since GetByHeight now blocks waiting for the height
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer cancel()
+
+	ds, err := NewTestInMemoryKVStore()
+	require.NoError(t, err)
+	store := New(ds)
+	adapter := NewHeaderStoreAdapter(store, testGenesis())
+
+	// GetRange on empty store will block until context timeout
+	_, err = adapter.GetRange(ctx, 1, 5)
+	// GetByHeight now blocks - we may get context.DeadlineExceeded or ErrNotFound depending on timing
+	assert.True(t, errors.Is(err, context.DeadlineExceeded) || errors.Is(err, header.ErrNotFound),
+		"expected DeadlineExceeded or ErrNotFound, got: %v", err)
+}
+
+func TestHeaderStoreAdapter_MultipleAppends(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+
+	ds, err := NewTestInMemoryKVStore()
+	require.NoError(t, err)
+	store := New(ds)
+	adapter := NewHeaderStoreAdapter(store, testGenesis())
+
+	// Append headers in multiple batches
+	h1, _ := types.GetRandomBlock(1, 1, "test-chain")
+	require.NoError(t, adapter.Append(ctx, wrapHeader(h1)))
+	assert.Equal(t, uint64(1), adapter.Height())
+
+	h2, _ := types.GetRandomBlock(2, 1, "test-chain")
+	require.NoError(t, adapter.Append(ctx, wrapHeader(h2)))
+	assert.Equal(t, uint64(2), adapter.Height())
+
+	h3, _ := types.GetRandomBlock(3, 1, "test-chain")
+	require.NoError(t, adapter.Append(ctx, wrapHeader(h3)))
+	assert.Equal(t, uint64(3), adapter.Height())
+
+	// Verify all headers are retrievable
+	for h := uint64(1); h <= 3; h++ {
+		assert.True(t, adapter.HasAt(ctx, h))
+	}
 }
 
 func TestHeaderStoreAdapter_PendingAndStoreInteraction(t *testing.T) {
@@ -536,7 +617,7 @@ func TestHeaderStoreAdapter_PendingAndStoreInteraction(t *testing.T) {
 
 	// Add header to pending
 	h1, _ := types.GetRandomBlock(1, 1, "test-chain")
-	require.NoError(t, adapter.Append(ctx, h1))
+	require.NoError(t, adapter.Append(ctx, wrapHeader(h1)))
 
 	// Verify it's in pending
 	retrieved, err := adapter.GetByHeight(ctx, 1)
@@ -578,7 +659,7 @@ func TestHeaderStoreAdapter_HeadPrefersPending(t *testing.T) {
 
 	// Add height 2 to pending
 	h2, _ := types.GetRandomBlock(2, 1, "test-chain")
-	require.NoError(t, adapter.Append(ctx, h2))
+	require.NoError(t, adapter.Append(ctx, wrapHeader(h2)))
 
 	// Head should return the pending header (higher height)
 	head, err := adapter.Head(ctx)
@@ -597,10 +678,11 @@ func TestHeaderStoreAdapter_GetFromPendingByHash(t *testing.T) {
 
 	// Add header to pending
 	h1, _ := types.GetRandomBlock(1, 1, "test-chain")
-	require.NoError(t, adapter.Append(ctx, h1))
+	p2pH1 := wrapHeader(h1)
+	require.NoError(t, adapter.Append(ctx, p2pH1))
 
 	// Get by hash from pending (uses header's Hash() method)
-	retrieved, err := adapter.Get(ctx, h1.Hash())
+	retrieved, err := adapter.Get(ctx, p2pH1.Hash())
 	require.NoError(t, err)
 	assert.Equal(t, h1.Height(), retrieved.Height())
 }

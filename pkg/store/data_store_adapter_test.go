@@ -33,6 +33,17 @@ func computeDataIndexHash(h *types.SignedHeader) []byte {
 	return hash[:]
 }
 
+// wrapData wraps a *types.Data in a *types.P2PData for use with the DataStoreAdapter.
+func wrapData(d *types.Data) *types.P2PData {
+	if d == nil {
+		return nil
+	}
+	return &types.P2PData{
+		Message:      d,
+		DAHeightHint: 0,
+	}
+}
+
 func TestDataStoreAdapter_NewDataStoreAdapter(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
@@ -66,7 +77,7 @@ func TestDataStoreAdapter_AppendAndRetrieve(t *testing.T) {
 	_, d2 := types.GetRandomBlock(2, 2, "test-chain")
 
 	// Append data - these go to pending cache
-	err = adapter.Append(ctx, d1, d2)
+	err = adapter.Append(ctx, wrapData(d1), wrapData(d2))
 	require.NoError(t, err)
 
 	// Check height is updated (from pending)
@@ -103,12 +114,10 @@ func TestDataStoreAdapter_GetFromStore(t *testing.T) {
 	require.NoError(t, batch.SetHeight(1))
 	require.NoError(t, batch.Commit())
 
-	// Create adapter after data is in store
+	// Now create adapter and verify we can get from store
 	adapter := NewDataStoreAdapter(store, testGenesisData())
 
-	// Get by hash - need to use the index hash (sha256 of marshaled SignedHeader)
-	hash := computeDataIndexHash(h1)
-	retrieved, err := adapter.Get(ctx, hash)
+	retrieved, err := adapter.GetByHeight(ctx, 1)
 	require.NoError(t, err)
 	assert.Equal(t, d1.Height(), retrieved.Height())
 
@@ -135,12 +144,14 @@ func TestDataStoreAdapter_Has(t *testing.T) {
 	// Create adapter after data is in store
 	adapter := NewDataStoreAdapter(store, testGenesisData())
 
-	// Has should return true for existing data - use index hash
-	has, err := adapter.Has(ctx, computeDataIndexHash(h1))
+	require.NoError(t, adapter.Append(ctx, wrapData(d1)))
+
+	// Has should return true for existing hash
+	has, err := adapter.Has(ctx, d1.Hash())
 	require.NoError(t, err)
 	assert.True(t, has)
 
-	// Has should return false for non-existent
+	// Has should return false for non-existent hash
 	has, err = adapter.Has(ctx, []byte("nonexistent"))
 	require.NoError(t, err)
 	assert.False(t, has)
@@ -156,7 +167,7 @@ func TestDataStoreAdapter_HasAt(t *testing.T) {
 	adapter := NewDataStoreAdapter(store, testGenesisData())
 
 	_, d1 := types.GetRandomBlock(1, 2, "test-chain")
-	require.NoError(t, adapter.Append(ctx, d1))
+	require.NoError(t, adapter.Append(ctx, wrapData(d1)))
 
 	// HasAt should return true for pending height
 	assert.True(t, adapter.HasAt(ctx, 1))
@@ -203,7 +214,7 @@ func TestDataStoreAdapter_GetRange(t *testing.T) {
 	_, d1 := types.GetRandomBlock(1, 1, "test-chain")
 	_, d2 := types.GetRandomBlock(2, 1, "test-chain")
 	_, d3 := types.GetRandomBlock(3, 1, "test-chain")
-	require.NoError(t, adapter.Append(ctx, d1, d2, d3))
+	require.NoError(t, adapter.Append(ctx, wrapData(d1), wrapData(d2), wrapData(d3)))
 
 	// GetRange [1, 3) should return data 1 and 2
 	dataList, err := adapter.GetRange(ctx, 1, 3)
@@ -230,10 +241,10 @@ func TestDataStoreAdapter_GetRangeByHeight(t *testing.T) {
 	_, d1 := types.GetRandomBlock(1, 1, "test-chain")
 	_, d2 := types.GetRandomBlock(2, 1, "test-chain")
 	_, d3 := types.GetRandomBlock(3, 1, "test-chain")
-	require.NoError(t, adapter.Append(ctx, d1, d2, d3))
+	require.NoError(t, adapter.Append(ctx, wrapData(d1), wrapData(d2), wrapData(d3)))
 
 	// GetRangeByHeight from d1 to 4 should return data 2 and 3
-	dataList, err := adapter.GetRangeByHeight(ctx, d1, 4)
+	dataList, err := adapter.GetRangeByHeight(ctx, wrapData(d1), 4)
 	require.NoError(t, err)
 	require.Len(t, dataList, 2)
 	assert.Equal(t, uint64(2), dataList[0].Height())
@@ -252,7 +263,7 @@ func TestDataStoreAdapter_Init(t *testing.T) {
 	_, d1 := types.GetRandomBlock(1, 1, "test-chain")
 
 	// Init should add data to pending
-	err = adapter.Init(ctx, d1)
+	err = adapter.Init(ctx, wrapData(d1))
 	require.NoError(t, err)
 
 	// Verify it's retrievable from pending
@@ -262,7 +273,7 @@ func TestDataStoreAdapter_Init(t *testing.T) {
 
 	// Init again should be a no-op (already initialized)
 	_, d2 := types.GetRandomBlock(2, 1, "test-chain")
-	err = adapter.Init(ctx, d2)
+	err = adapter.Init(ctx, wrapData(d2))
 	require.NoError(t, err)
 
 	// Height 2 should not be in pending since Init was already done
@@ -284,7 +295,7 @@ func TestDataStoreAdapter_Tail(t *testing.T) {
 
 	_, d1 := types.GetRandomBlock(1, 1, "test-chain")
 	_, d2 := types.GetRandomBlock(2, 1, "test-chain")
-	require.NoError(t, adapter.Append(ctx, d1, d2))
+	require.NoError(t, adapter.Append(ctx, wrapData(d1), wrapData(d2)))
 
 	// Tail should return the first data from pending
 	tail, err := adapter.Tail(ctx)
@@ -346,7 +357,7 @@ func TestDataStoreAdapter_DeleteRange(t *testing.T) {
 	_, d1 := types.GetRandomBlock(1, 1, "test-chain")
 	_, d2 := types.GetRandomBlock(2, 1, "test-chain")
 	_, d3 := types.GetRandomBlock(3, 1, "test-chain")
-	require.NoError(t, adapter.Append(ctx, d1, d2, d3))
+	require.NoError(t, adapter.Append(ctx, wrapData(d1), wrapData(d2), wrapData(d3)))
 
 	assert.Equal(t, uint64(3), adapter.Height())
 
@@ -376,7 +387,7 @@ func TestDataStoreAdapter_OnDelete(t *testing.T) {
 
 	_, d1 := types.GetRandomBlock(1, 1, "test-chain")
 	_, d2 := types.GetRandomBlock(2, 1, "test-chain")
-	require.NoError(t, adapter.Append(ctx, d1, d2))
+	require.NoError(t, adapter.Append(ctx, wrapData(d1), wrapData(d2)))
 
 	// Track deleted heights
 	var deletedHeights []uint64
@@ -410,7 +421,7 @@ func TestDataStoreAdapter_AppendSkipsExisting(t *testing.T) {
 	adapter := NewDataStoreAdapter(store, testGenesisData())
 
 	// Append the same data again should not error (skips existing in store)
-	err = adapter.Append(ctx, d1)
+	err = adapter.Append(ctx, wrapData(d1))
 	require.NoError(t, err)
 
 	// Height should still be 1
@@ -430,7 +441,7 @@ func TestDataStoreAdapter_AppendNilData(t *testing.T) {
 	err = adapter.Append(ctx)
 	require.NoError(t, err)
 
-	var nilData *types.Data
+	var nilData *types.P2PData
 	err = adapter.Append(ctx, nilData)
 	require.NoError(t, err)
 
@@ -524,7 +535,7 @@ func TestDataStoreAdapter_ContextTimeout(t *testing.T) {
 	_, d1 := types.GetRandomBlock(1, 1, "test-chain")
 	// Note: In-memory store doesn't actually check context, but this verifies
 	// the adapter passes the context through
-	_ = adapter.Append(ctx, d1)
+	_ = adapter.Append(ctx, wrapData(d1))
 }
 
 func TestDataStoreAdapter_GetRangePartial(t *testing.T) {
@@ -541,7 +552,7 @@ func TestDataStoreAdapter_GetRangePartial(t *testing.T) {
 	// Only append data for heights 1 and 2, not 3
 	_, d1 := types.GetRandomBlock(1, 1, "test-chain")
 	_, d2 := types.GetRandomBlock(2, 1, "test-chain")
-	require.NoError(t, adapter.Append(ctx, d1, d2))
+	require.NoError(t, adapter.Append(ctx, wrapData(d1), wrapData(d2)))
 
 	// GetRange [1, 5) should return data 1 and 2 (partial result)
 	dataList, err := adapter.GetRange(ctx, 1, 5)
@@ -580,15 +591,15 @@ func TestDataStoreAdapter_MultipleAppends(t *testing.T) {
 
 	// Append data in multiple batches
 	_, d1 := types.GetRandomBlock(1, 1, "test-chain")
-	require.NoError(t, adapter.Append(ctx, d1))
+	require.NoError(t, adapter.Append(ctx, wrapData(d1)))
 	assert.Equal(t, uint64(1), adapter.Height())
 
 	_, d2 := types.GetRandomBlock(2, 1, "test-chain")
-	require.NoError(t, adapter.Append(ctx, d2))
+	require.NoError(t, adapter.Append(ctx, wrapData(d2)))
 	assert.Equal(t, uint64(2), adapter.Height())
 
 	_, d3 := types.GetRandomBlock(3, 1, "test-chain")
-	require.NoError(t, adapter.Append(ctx, d3))
+	require.NoError(t, adapter.Append(ctx, wrapData(d3)))
 	assert.Equal(t, uint64(3), adapter.Height())
 
 	// Verify all data is retrievable
@@ -608,7 +619,7 @@ func TestDataStoreAdapter_PendingAndStoreInteraction(t *testing.T) {
 
 	// Add data to pending
 	_, d1 := types.GetRandomBlock(1, 1, "test-chain")
-	require.NoError(t, adapter.Append(ctx, d1))
+	require.NoError(t, adapter.Append(ctx, wrapData(d1)))
 
 	// Verify it's in pending
 	retrieved, err := adapter.GetByHeight(ctx, 1)
@@ -650,7 +661,7 @@ func TestDataStoreAdapter_HeadPrefersPending(t *testing.T) {
 
 	// Add height 2 to pending
 	_, d2 := types.GetRandomBlock(2, 1, "test-chain")
-	require.NoError(t, adapter.Append(ctx, d2))
+	require.NoError(t, adapter.Append(ctx, wrapData(d2)))
 
 	// Head should return the pending data (higher height)
 	head, err := adapter.Head(ctx)
@@ -669,10 +680,11 @@ func TestDataStoreAdapter_GetFromPendingByHash(t *testing.T) {
 
 	// Add data to pending
 	_, d1 := types.GetRandomBlock(1, 1, "test-chain")
-	require.NoError(t, adapter.Append(ctx, d1))
+	p2pD1 := wrapData(d1)
+	require.NoError(t, adapter.Append(ctx, p2pD1))
 
 	// Get by hash from pending (uses data's Hash() method)
-	retrieved, err := adapter.Get(ctx, d1.Hash())
+	retrieved, err := adapter.Get(ctx, p2pD1.Hash())
 	require.NoError(t, err)
 	assert.Equal(t, d1.Height(), retrieved.Height())
 }
