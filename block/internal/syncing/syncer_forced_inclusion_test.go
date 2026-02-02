@@ -430,7 +430,7 @@ func TestVerifyForcedInclusionTxs_AllTransactionsIncluded(t *testing.T) {
 	currentState.DAHeight = 0
 
 	// Verify - should pass since all forced txs are included
-	err = s.VerifyForcedInclusionTxs(t.Context(), currentState, data)
+	err = s.VerifyForcedInclusionTxs(t.Context(), currentState.DAHeight, data)
 	require.NoError(t, err)
 }
 
@@ -508,7 +508,7 @@ func TestVerifyForcedInclusionTxs_MissingTransactions(t *testing.T) {
 	currentState.DAHeight = 0
 
 	// Verify - should pass since forced tx blob may be legitimately deferred within the epoch
-	err = s.VerifyForcedInclusionTxs(t.Context(), currentState, data)
+	err = s.VerifyForcedInclusionTxs(t.Context(), currentState.DAHeight, data)
 	require.NoError(t, err)
 
 	// Mock DA for next epoch to return no forced inclusion transactions
@@ -521,7 +521,7 @@ func TestVerifyForcedInclusionTxs_MissingTransactions(t *testing.T) {
 	data2 := makeData(gen.ChainID, 2, 1)
 	data2.Txs[0] = []byte("regular_tx_3")
 
-	err = s.VerifyForcedInclusionTxs(t.Context(), currentState, data2)
+	err = s.VerifyForcedInclusionTxs(t.Context(), currentState.DAHeight, data2)
 	require.NoError(t, err) // Should pass since DAHeight=1 equals grace boundary, not past it
 
 	// Mock DA for height 2 to return no forced inclusion transactions
@@ -534,7 +534,7 @@ func TestVerifyForcedInclusionTxs_MissingTransactions(t *testing.T) {
 	data3 := makeData(gen.ChainID, 3, 1)
 	data3.Txs[0] = types.Tx([]byte("regular_tx_4"))
 
-	err = s.VerifyForcedInclusionTxs(t.Context(), currentState, data3)
+	err = s.VerifyForcedInclusionTxs(t.Context(), currentState.DAHeight, data3)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "sequencer is malicious")
 	require.Contains(t, err.Error(), "past grace boundary")
@@ -615,7 +615,7 @@ func TestVerifyForcedInclusionTxs_PartiallyIncluded(t *testing.T) {
 	currentState.DAHeight = 0
 
 	// Verify - should pass since dataBin2 may be legitimately deferred within the epoch
-	err = s.VerifyForcedInclusionTxs(t.Context(), currentState, data)
+	err = s.VerifyForcedInclusionTxs(t.Context(), currentState.DAHeight, data)
 	require.NoError(t, err)
 
 	// Mock DA for next epoch to return no forced inclusion transactions
@@ -629,7 +629,7 @@ func TestVerifyForcedInclusionTxs_PartiallyIncluded(t *testing.T) {
 	data2.Txs[0] = types.Tx([]byte("regular_tx_3"))
 
 	// Verify - should pass since we're at the grace boundary, not past it
-	err = s.VerifyForcedInclusionTxs(t.Context(), currentState, data2)
+	err = s.VerifyForcedInclusionTxs(t.Context(), currentState.DAHeight, data2)
 	require.NoError(t, err)
 
 	// Mock DA for height 2 (when we move to DAHeight 2)
@@ -644,7 +644,7 @@ func TestVerifyForcedInclusionTxs_PartiallyIncluded(t *testing.T) {
 	data3 := makeData(gen.ChainID, 3, 1)
 	data3.Txs[0] = types.Tx([]byte("regular_tx_4"))
 
-	err = s.VerifyForcedInclusionTxs(t.Context(), currentState, data3)
+	err = s.VerifyForcedInclusionTxs(t.Context(), currentState.DAHeight, data3)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "sequencer is malicious")
 	require.Contains(t, err.Error(), "past grace boundary")
@@ -717,7 +717,7 @@ func TestVerifyForcedInclusionTxs_NoForcedTransactions(t *testing.T) {
 	currentState.DAHeight = 0
 
 	// Verify - should pass since no forced txs to verify
-	err = s.VerifyForcedInclusionTxs(t.Context(), currentState, data)
+	err = s.VerifyForcedInclusionTxs(t.Context(), currentState.DAHeight, data)
 	require.NoError(t, err)
 }
 
@@ -782,7 +782,7 @@ func TestVerifyForcedInclusionTxs_NamespaceNotConfigured(t *testing.T) {
 	currentState.DAHeight = 0
 
 	// Verify - should pass since namespace not configured
-	err = s.VerifyForcedInclusionTxs(t.Context(), currentState, data)
+	err = s.VerifyForcedInclusionTxs(t.Context(), currentState.DAHeight, data)
 	require.NoError(t, err)
 }
 
@@ -871,7 +871,7 @@ func TestVerifyForcedInclusionTxs_DeferralWithinEpoch(t *testing.T) {
 	currentState.DAHeight = 104
 
 	// Verify - should pass since dataBin2 can be deferred within epoch
-	err = s.VerifyForcedInclusionTxs(t.Context(), currentState, data1)
+	err = s.VerifyForcedInclusionTxs(t.Context(), currentState.DAHeight, data1)
 	require.NoError(t, err)
 
 	// Verify that dataBin2 is now tracked as pending
@@ -900,7 +900,7 @@ func TestVerifyForcedInclusionTxs_DeferralWithinEpoch(t *testing.T) {
 	data2.Txs[1] = types.Tx(dataBin2) // The deferred one we're waiting for
 
 	// Verify - should pass since dataBin2 is now included and clears pending
-	err = s.VerifyForcedInclusionTxs(t.Context(), currentState, data2)
+	err = s.VerifyForcedInclusionTxs(t.Context(), currentState.DAHeight, data2)
 	require.NoError(t, err)
 
 	// Verify that pending queue is now empty (dataBin2 was included)
@@ -997,7 +997,7 @@ func TestVerifyForcedInclusionTxs_MaliciousAfterEpochEnd(t *testing.T) {
 	currentState.DAHeight = 102
 
 	// Verify - should pass, tx can be deferred within epoch
-	err = s.VerifyForcedInclusionTxs(t.Context(), currentState, data1)
+	err = s.VerifyForcedInclusionTxs(t.Context(), currentState.DAHeight, data1)
 	require.NoError(t, err)
 }
 
@@ -1093,6 +1093,240 @@ func TestVerifyForcedInclusionTxs_SmoothingExceedsEpoch(t *testing.T) {
 	currentState := s.getLastState()
 	currentState.DAHeight = 102 // At epoch end
 
-	err = s.VerifyForcedInclusionTxs(t.Context(), currentState, data1)
+	err = s.VerifyForcedInclusionTxs(t.Context(), currentState.DAHeight, data1)
 	require.NoError(t, err, "smoothing within epoch should be allowed")
+}
+
+func TestVerifyForcedInclusionTxs_P2PBlocks(t *testing.T) {
+	t.Run("P2P block with all forced txs included passes verification", func(t *testing.T) {
+		ds := dssync.MutexWrap(datastore.NewMapDatastore())
+		st := store.New(ds)
+
+		cm, err := cache.NewManager(config.DefaultConfig(), st, zerolog.Nop())
+		require.NoError(t, err)
+
+		addr, pub, signer := buildSyncTestSigner(t)
+		gen := genesis.Genesis{
+			ChainID:                "tchain",
+			InitialHeight:          1,
+			StartTime:              time.Now().Add(-time.Second),
+			ProposerAddress:        addr,
+			DAStartHeight:          0,
+			DAEpochForcedInclusion: 1,
+		}
+
+		cfg := config.DefaultConfig()
+		cfg.DA.ForcedInclusionNamespace = "nsForcedInclusion"
+
+		mockExec := testmocks.NewMockExecutor(t)
+		mockExec.EXPECT().InitChain(mock.Anything, mock.Anything, uint64(1), "tchain").
+			Return([]byte("app0"), nil).Once()
+
+		client := testmocks.NewMockClient(t)
+		client.On("GetHeaderNamespace").Return([]byte(cfg.DA.Namespace)).Maybe()
+		client.On("GetDataNamespace").Return([]byte(cfg.DA.DataNamespace)).Maybe()
+		client.On("GetForcedInclusionNamespace").Return([]byte(cfg.DA.ForcedInclusionNamespace)).Maybe()
+		client.On("HasForcedInclusionNamespace").Return(true).Maybe()
+
+		errChan := make(chan error, 1)
+		s := NewSyncer(
+			st,
+			mockExec,
+			client,
+			cm,
+			common.NopMetrics(),
+			cfg,
+			gen,
+			extmocks.NewMockStore[*types.P2PSignedHeader](t),
+			extmocks.NewMockStore[*types.P2PData](t),
+			zerolog.Nop(),
+			common.DefaultBlockOptions(),
+			errChan,
+			nil,
+		)
+
+		require.NoError(t, s.initializeState())
+		s.ctx = context.Background()
+
+		// Initialize DA retriever and forced inclusion retriever
+		s.daRetriever = NewDARetriever(client, cm, gen, zerolog.Nop())
+		s.fiRetriever = da.NewForcedInclusionRetriever(client, zerolog.Nop(), cfg, gen.DAStartHeight, gen.DAEpochForcedInclusion)
+
+		// Mock async DA retriever to avoid dealing with actual DA fetching in test
+		mockDARetriever := NewMockDARetriever(t)
+		s.daRetrievalWorkerPool = NewDARetrievalWorkerPool(mockDARetriever, s.heightInCh, zerolog.Nop())
+
+		// Mock DA to return forced inclusion transactions at epoch 0
+		forcedTxData, _ := makeSignedDataBytes(t, gen.ChainID, 10, addr, pub, signer, 2)
+		client.On("Retrieve", mock.Anything, uint64(0), []byte("nsForcedInclusion")).Return(datypes.ResultRetrieve{
+			BaseResult: datypes.BaseResult{Code: datypes.StatusSuccess, IDs: [][]byte{[]byte("fi1")}, Timestamp: time.Now()},
+			Data:       [][]byte{forcedTxData},
+		}).Once()
+
+		// Create block data that INCLUDES the forced transaction
+		lastState := s.getLastState()
+		data := makeData(gen.ChainID, 1, 1)
+		data.Txs[0] = types.Tx(forcedTxData)
+		_, hdr := makeSignedHeaderBytes(t, gen.ChainID, 1, addr, pub, signer, lastState.AppHash, data, nil)
+
+		// Mock ExecuteTxs for successful block execution
+		mockExec.EXPECT().ExecuteTxs(mock.Anything, mock.Anything, uint64(1), mock.Anything, lastState.AppHash).
+			Return([]byte("app1"), nil).Once()
+
+		// Create P2P event with DA height hint matching the epoch (DA height 0)
+		evt := common.DAHeightEvent{
+			Header:        hdr,
+			Data:          data,
+			Source:        common.SourceP2P,
+			DaHeightHints: [2]uint64{0, 0},
+		}
+
+		// Process the P2P block - should succeed with forced inclusion verification
+		s.processHeightEvent(context.Background(), &evt)
+
+		// Verify no errors occurred
+		select {
+		case err := <-errChan:
+			t.Fatalf("unexpected error: %v", err)
+		default:
+		}
+
+		// Verify block was processed
+		h, err := st.Height(context.Background())
+		require.NoError(t, err)
+		require.Equal(t, uint64(1), h, "block should have been synced")
+	})
+
+	t.Run("P2P block missing forced txs triggers malicious detection after grace period", func(t *testing.T) {
+		ds := dssync.MutexWrap(datastore.NewMapDatastore())
+		st := store.New(ds)
+
+		cm, err := cache.NewManager(config.DefaultConfig(), st, zerolog.Nop())
+		require.NoError(t, err)
+
+		addr, pub, signer := buildSyncTestSigner(t)
+		gen := genesis.Genesis{
+			ChainID:                "tchain",
+			InitialHeight:          1,
+			StartTime:              time.Now().Add(-time.Second),
+			ProposerAddress:        addr,
+			DAStartHeight:          0,
+			DAEpochForcedInclusion: 1,
+		}
+
+		cfg := config.DefaultConfig()
+		cfg.DA.ForcedInclusionNamespace = "nsForcedInclusion"
+
+		mockExec := testmocks.NewMockExecutor(t)
+		mockExec.EXPECT().InitChain(mock.Anything, mock.Anything, uint64(1), "tchain").
+			Return([]byte("app0"), nil).Once()
+
+		client := testmocks.NewMockClient(t)
+		client.On("GetHeaderNamespace").Return([]byte(cfg.DA.Namespace)).Maybe()
+		client.On("GetDataNamespace").Return([]byte(cfg.DA.DataNamespace)).Maybe()
+		client.On("GetForcedInclusionNamespace").Return([]byte(cfg.DA.ForcedInclusionNamespace)).Maybe()
+		client.On("HasForcedInclusionNamespace").Return(true).Maybe()
+
+		errChan := make(chan error, 1)
+		s := NewSyncer(
+			st,
+			mockExec,
+			client,
+			cm,
+			common.NopMetrics(),
+			cfg,
+			gen,
+			extmocks.NewMockStore[*types.P2PSignedHeader](t),
+			extmocks.NewMockStore[*types.P2PData](t),
+			zerolog.Nop(),
+			common.DefaultBlockOptions(),
+			errChan,
+			nil,
+		)
+
+		require.NoError(t, s.initializeState())
+		s.ctx = context.Background()
+
+		// Initialize DA retriever and forced inclusion retriever
+		s.daRetriever = NewDARetriever(client, cm, gen, zerolog.Nop())
+		s.fiRetriever = da.NewForcedInclusionRetriever(client, zerolog.Nop(), cfg, gen.DAStartHeight, gen.DAEpochForcedInclusion)
+
+		// Mock async DA retriever to avoid dealing with actual DA fetching in test
+		mockDARetriever := NewMockDARetriever(t)
+		s.daRetrievalWorkerPool = NewDARetrievalWorkerPool(mockDARetriever, s.heightInCh, zerolog.Nop())
+		// Don't start it to avoid async complications
+
+		// Process first block successfully (within grace period)
+		// Mock DA to return forced inclusion transactions at epoch 0
+		forcedTxData, _ := makeSignedDataBytes(t, gen.ChainID, 10, addr, pub, signer, 2)
+		client.On("Retrieve", mock.Anything, uint64(0), []byte("nsForcedInclusion")).Return(datypes.ResultRetrieve{
+			BaseResult: datypes.BaseResult{Code: datypes.StatusSuccess, IDs: [][]byte{[]byte("fi1")}, Timestamp: time.Now()},
+			Data:       [][]byte{forcedTxData},
+		}).Once()
+
+		lastState := s.getLastState()
+		data1 := makeData(gen.ChainID, 1, 1)
+		data1.Txs[0] = types.Tx([]byte("regular_tx"))
+		_, hdr1 := makeSignedHeaderBytes(t, gen.ChainID, 1, addr, pub, signer, lastState.AppHash, data1, nil)
+
+		mockExec.EXPECT().ExecuteTxs(mock.Anything, mock.Anything, uint64(1), mock.Anything, lastState.AppHash).
+			Return([]byte("app1"), nil).Once()
+
+		evt1 := common.DAHeightEvent{
+			Header:        hdr1,
+			Data:          data1,
+			Source:        common.SourceP2P,
+			DaHeightHints: [2]uint64{0, 0},
+		}
+
+		// First block processes fine (forced tx can be deferred within grace period)
+		s.processHeightEvent(context.Background(), &evt1)
+
+		select {
+		case err := <-errChan:
+			t.Fatalf("unexpected error on first block: %v", err)
+		default:
+		}
+
+		// Verify block was processed
+		h, err := st.Height(context.Background())
+		require.NoError(t, err)
+		require.Equal(t, uint64(1), h)
+
+		// Now process second block past grace boundary
+		// Mock DA for epoch 2 (past grace boundary)
+		client.On("Retrieve", mock.Anything, uint64(2), []byte("nsForcedInclusion")).Return(datypes.ResultRetrieve{
+			BaseResult: datypes.BaseResult{Code: datypes.StatusNotFound, Timestamp: time.Now()},
+		}).Once()
+
+		// Set the DA height hint to be past grace boundary (epoch 0 end + grace period of 1 epoch = boundary at 1, so 2 is past)
+		lastState = s.getLastState()
+		data2 := makeData(gen.ChainID, 2, 1)
+		data2.Txs[0] = types.Tx([]byte("regular_tx_2"))
+		_, hdr2 := makeSignedHeaderBytes(t, gen.ChainID, 2, addr, pub, signer, lastState.AppHash, data2, hdr1.Hash())
+
+		evt2 := common.DAHeightEvent{
+			Header:        hdr2,
+			Data:          data2,
+			Source:        common.SourceP2P,
+			DaHeightHints: [2]uint64{2, 2}, // DA height 2 is past grace boundary
+		}
+
+		// Second block should fail with malicious sequencer error
+		s.processHeightEvent(context.Background(), &evt2)
+
+		// Verify critical error was sent
+		select {
+		case err := <-errChan:
+			require.Error(t, err)
+			require.Contains(t, err.Error(), "sequencer malicious", "should detect malicious sequencer")
+		case <-time.After(100 * time.Millisecond):
+			t.Fatal("expected malicious sequencer error to be sent to error channel")
+		}
+
+		// Verify block 2 was NOT synced
+		h, err = st.Height(context.Background())
+		require.NoError(t, err)
+		require.Equal(t, uint64(1), h, "block 2 should not have been synced due to malicious sequencer")
+	})
 }

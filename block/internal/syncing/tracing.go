@@ -85,16 +85,16 @@ func (t *tracedBlockSyncer) ValidateBlock(ctx context.Context, currState types.S
 	return err
 }
 
-func (t *tracedBlockSyncer) VerifyForcedInclusionTxs(ctx context.Context, currentState types.State, data *types.Data) error {
+func (t *tracedBlockSyncer) VerifyForcedInclusionTxs(ctx context.Context, daHeight uint64, data *types.Data) error {
 	ctx, span := t.tracer.Start(ctx, "BlockSyncer.VerifyForcedInclusion",
 		trace.WithAttributes(
 			attribute.Int64("block.height", int64(data.Height())),
-			attribute.Int64("da.height", int64(currentState.DAHeight)),
+			attribute.Int64("da.height", int64(daHeight)),
 		),
 	)
 	defer span.End()
 
-	err := t.inner.VerifyForcedInclusionTxs(ctx, currentState, data)
+	err := t.inner.VerifyForcedInclusionTxs(ctx, daHeight, data)
 	if err != nil {
 		span.RecordError(err)
 		span.SetStatus(codes.Error, err.Error())

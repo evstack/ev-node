@@ -21,7 +21,7 @@ type mockBlockSyncer struct {
 	trySyncNextBlockFn      func(ctx context.Context, event *common.DAHeightEvent) error
 	applyBlockFn            func(ctx context.Context, header types.Header, data *types.Data, currentState types.State) (types.State, error)
 	validateBlockFn         func(ctx context.Context, currState types.State, data *types.Data, header *types.SignedHeader) error
-	verifyForcedInclusionFn func(ctx context.Context, currentState types.State, data *types.Data) error
+	verifyForcedInclusionFn func(ctx context.Context, daHeight uint64, data *types.Data) error
 }
 
 func (m *mockBlockSyncer) TrySyncNextBlock(ctx context.Context, event *common.DAHeightEvent) error {
@@ -45,9 +45,9 @@ func (m *mockBlockSyncer) ValidateBlock(ctx context.Context, currState types.Sta
 	return nil
 }
 
-func (m *mockBlockSyncer) VerifyForcedInclusionTxs(ctx context.Context, currentState types.State, data *types.Data) error {
+func (m *mockBlockSyncer) VerifyForcedInclusionTxs(ctx context.Context, daHeight uint64, data *types.Data) error {
 	if m.verifyForcedInclusionFn != nil {
-		return m.verifyForcedInclusionFn(ctx, currentState, data)
+		return m.verifyForcedInclusionFn(ctx, daHeight, data)
 	}
 	return nil
 }
@@ -248,7 +248,7 @@ func TestTracedBlockSyncer_ValidateBlock_Error(t *testing.T) {
 
 func TestTracedBlockSyncer_VerifyForcedInclusionTxs_Success(t *testing.T) {
 	mock := &mockBlockSyncer{
-		verifyForcedInclusionFn: func(ctx context.Context, currentState types.State, data *types.Data) error {
+		verifyForcedInclusionFn: func(ctx context.Context, daHeight uint64, data *types.Data) error {
 			return nil
 		},
 	}
@@ -260,11 +260,8 @@ func TestTracedBlockSyncer_VerifyForcedInclusionTxs_Success(t *testing.T) {
 			Height: 100,
 		},
 	}
-	state := types.State{
-		DAHeight: 50,
-	}
 
-	err := syncer.VerifyForcedInclusionTxs(ctx, state, data)
+	err := syncer.VerifyForcedInclusionTxs(ctx, 50, data)
 	require.NoError(t, err)
 
 	spans := sr.Ended()
@@ -280,7 +277,7 @@ func TestTracedBlockSyncer_VerifyForcedInclusionTxs_Success(t *testing.T) {
 
 func TestTracedBlockSyncer_VerifyForcedInclusionTxs_Error(t *testing.T) {
 	mock := &mockBlockSyncer{
-		verifyForcedInclusionFn: func(ctx context.Context, currentState types.State, data *types.Data) error {
+		verifyForcedInclusionFn: func(ctx context.Context, daHeight uint64, data *types.Data) error {
 			return errors.New("forced inclusion verification failed")
 		},
 	}
@@ -292,11 +289,8 @@ func TestTracedBlockSyncer_VerifyForcedInclusionTxs_Error(t *testing.T) {
 			Height: 100,
 		},
 	}
-	state := types.State{
-		DAHeight: 50,
-	}
 
-	err := syncer.VerifyForcedInclusionTxs(ctx, state, data)
+	err := syncer.VerifyForcedInclusionTxs(ctx, 50, data)
 	require.Error(t, err)
 
 	spans := sr.Ended()
