@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/celestiaorg/go-header"
 	"github.com/rs/zerolog"
 
 	"github.com/evstack/ev-node/block/internal/cache"
@@ -22,6 +23,7 @@ import (
 	"github.com/evstack/ev-node/pkg/store"
 	"github.com/evstack/ev-node/pkg/sync"
 	"github.com/evstack/ev-node/pkg/telemetry"
+	"github.com/evstack/ev-node/types"
 )
 
 // Components represents the block-related components
@@ -127,8 +129,10 @@ func NewSyncComponents(
 	store store.Store,
 	exec coreexecutor.Executor,
 	daClient da.Client,
-	headerSyncService *sync.HeaderSyncService,
-	dataSyncService *sync.DataSyncService,
+	headerStore header.Store[*types.P2PSignedHeader],
+	dataStore header.Store[*types.P2PData],
+	headerDAHintAppender submitting.DAHintAppender,
+	dataDAHintAppender submitting.DAHintAppender,
 	logger zerolog.Logger,
 	metrics *Metrics,
 	blockOpts BlockOptions,
@@ -150,8 +154,8 @@ func NewSyncComponents(
 		metrics,
 		config,
 		genesis,
-		headerSyncService.Store(),
-		dataSyncService.Store(),
+		headerStore,
+		dataStore,
 		logger,
 		blockOpts,
 		errorCh,
@@ -163,7 +167,7 @@ func NewSyncComponents(
 	}
 
 	// Create submitter for sync nodes (no signer, only DA inclusion processing)
-	var daSubmitter submitting.DASubmitterAPI = submitting.NewDASubmitter(daClient, config, genesis, blockOpts, metrics, logger, headerSyncService, dataSyncService)
+	var daSubmitter submitting.DASubmitterAPI = submitting.NewDASubmitter(daClient, config, genesis, blockOpts, metrics, logger, headerDAHintAppender, dataDAHintAppender)
 	if config.Instrumentation.IsTracingEnabled() {
 		daSubmitter = submitting.WithTracingDASubmitter(daSubmitter)
 	}
