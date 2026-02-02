@@ -32,9 +32,6 @@ const (
 	dataSync   syncType = "dataSync"
 )
 
-// TODO: when we add pruning we can remove this
-const ninetyNineYears = 99 * 365 * 24 * time.Hour
-
 // SyncService is the P2P Sync Service for blocks and headers.
 //
 // Uses the go-header library for handling all P2P logic.
@@ -448,9 +445,12 @@ func newSyncer[H header.Header[H]](
 	sub header.Subscriber[H],
 	opts []goheadersync.Option,
 ) (*goheadersync.Syncer[H], error) {
+	// using a very long duration for effectively disabling pruning and trusting period checks.
+	const ninetyNineYears = 99 * 365 * 24 * time.Hour
+
 	opts = append(opts,
 		goheadersync.WithMetrics(),
-		goheadersync.WithPruningWindow(ninetyNineYears),
+		goheadersync.WithPruningWindow(ninetyNineYears), // pruning window not relevant, because of the store wrapper.
 		goheadersync.WithTrustingPeriod(ninetyNineYears),
 	)
 	return goheadersync.NewSyncer(ex, store, sub, opts...)
