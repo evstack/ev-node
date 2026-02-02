@@ -355,11 +355,14 @@ func (syncService *SyncService[H]) initFromP2PWithRetry(ctx context.Context, pee
 		return true, nil
 	}
 
-	// block with exponential backoff until initialization succeeds or context is canceled.
+	// block with exponential backoff until initialization succeeds, context is canceled, or timeout.
+	// If timeout is reached, we return nil to allow startup to continue - DA sync will
+	// provide headers and WriteToStoreAndBroadcast will lazily initialize the store/syncer.
 	backoff := 1 * time.Second
 	maxBackoff := 10 * time.Second
 
-	timeoutTimer := time.NewTimer(time.Minute * 10)
+	p2pInitTimeout := 30 * time.Second
+	timeoutTimer := time.NewTimer(p2pInitTimeout)
 	defer timeoutTimer.Stop()
 
 	for {
@@ -374,7 +377,10 @@ func (syncService *SyncService[H]) initFromP2PWithRetry(ctx context.Context, pee
 		case <-ctx.Done():
 			return ctx.Err()
 		case <-timeoutTimer.C:
-			return fmt.Errorf("timeout reached while trying to initialize the store after 10 minutes: %w", err)
+			syncService.logger.Warn().
+				Dur("timeout", p2pInitTimeout).
+				Msg("P2P header sync initialization timed out, deferring to DA sync")
+			return nil
 		case <-time.After(backoff):
 		}
 
