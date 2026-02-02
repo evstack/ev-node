@@ -114,10 +114,12 @@ func TestDataStoreAdapter_GetFromStore(t *testing.T) {
 	require.NoError(t, batch.SetHeight(1))
 	require.NoError(t, batch.Commit())
 
-	// Now create adapter and verify we can get from store
+	// Create adapter after data is in store
 	adapter := NewDataStoreAdapter(store, testGenesisData())
 
-	retrieved, err := adapter.GetByHeight(ctx, 1)
+	// Get by hash - need to use the index hash (sha256 of marshaled SignedHeader)
+	hash := computeDataIndexHash(h1)
+	retrieved, err := adapter.Get(ctx, hash)
 	require.NoError(t, err)
 	assert.Equal(t, d1.Height(), retrieved.Height())
 
@@ -144,14 +146,12 @@ func TestDataStoreAdapter_Has(t *testing.T) {
 	// Create adapter after data is in store
 	adapter := NewDataStoreAdapter(store, testGenesisData())
 
-	require.NoError(t, adapter.Append(ctx, wrapData(d1)))
-
-	// Has should return true for existing hash
-	has, err := adapter.Has(ctx, d1.Hash())
+	// Has should return true for existing data - use index hash
+	has, err := adapter.Has(ctx, computeDataIndexHash(h1))
 	require.NoError(t, err)
 	assert.True(t, has)
 
-	// Has should return false for non-existent hash
+	// Has should return false for non-existent
 	has, err = adapter.Has(ctx, []byte("nonexistent"))
 	require.NoError(t, err)
 	assert.False(t, has)
@@ -680,11 +680,10 @@ func TestDataStoreAdapter_GetFromPendingByHash(t *testing.T) {
 
 	// Add data to pending
 	_, d1 := types.GetRandomBlock(1, 1, "test-chain")
-	p2pD1 := wrapData(d1)
-	require.NoError(t, adapter.Append(ctx, p2pD1))
+	require.NoError(t, adapter.Append(ctx, wrapData(d1)))
 
 	// Get by hash from pending (uses data's Hash() method)
-	retrieved, err := adapter.Get(ctx, p2pD1.Hash())
+	retrieved, err := adapter.Get(ctx, d1.Hash())
 	require.NoError(t, err)
 	assert.Equal(t, d1.Height(), retrieved.Height())
 }

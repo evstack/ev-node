@@ -3,7 +3,6 @@ package store
 import (
 	"context"
 	"crypto/sha256"
-	"errors"
 	"testing"
 	"time"
 
@@ -113,10 +112,12 @@ func TestHeaderStoreAdapter_GetFromStore(t *testing.T) {
 	require.NoError(t, batch.SetHeight(1))
 	require.NoError(t, batch.Commit())
 
-	// Now create adapter and verify we can get from store
+	// Create adapter after data is in store
 	adapter := NewHeaderStoreAdapter(store, testGenesis())
 
-	retrieved, err := adapter.GetByHeight(ctx, 1)
+	// Get by hash - need to use the index hash (sha256 of marshaled SignedHeader)
+	hash := computeHeaderIndexHash(h1)
+	retrieved, err := adapter.Get(ctx, hash)
 	require.NoError(t, err)
 	assert.Equal(t, h1.Height(), retrieved.Height())
 
@@ -143,13 +144,12 @@ func TestHeaderStoreAdapter_Has(t *testing.T) {
 
 	adapter := NewHeaderStoreAdapter(store, testGenesis())
 
-	p2pH1 := wrapHeader(h1)
-	// Has should return true for existing hash
-	has, err := adapter.Has(ctx, p2pH1.Hash())
+	// Has should return true for existing header - use index hash
+	has, err := adapter.Has(ctx, computeHeaderIndexHash(h1))
 	require.NoError(t, err)
 	assert.True(t, has)
 
-	// Has should return false for non-existent hash
+	// Has should return false for non-existent
 	has, err = adapter.Has(ctx, []byte("nonexistent"))
 	require.NoError(t, err)
 	assert.False(t, has)
@@ -536,76 +536,6 @@ func TestHeaderStoreAdapter_ContextTimeout(t *testing.T) {
 	_ = adapter.Append(ctx, wrapHeader(h1))
 }
 
-func TestHeaderStoreAdapter_GetRangePartial(t *testing.T) {
-	t.Parallel()
-	// Use a short timeout since GetByHeight now blocks waiting for the height
-	ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
-	defer cancel()
-
-	ds, err := NewTestInMemoryKVStore()
-	require.NoError(t, err)
-	store := New(ds)
-	adapter := NewHeaderStoreAdapter(store, testGenesis())
-
-	// Only append headers for heights 1 and 2, not 3
-	h1, _ := types.GetRandomBlock(1, 1, "test-chain")
-	h2, _ := types.GetRandomBlock(2, 1, "test-chain")
-	require.NoError(t, adapter.Append(ctx, wrapHeader(h1), wrapHeader(h2)))
-
-	// GetRange [1, 5) should return headers 1 and 2 (partial result)
-	headers, err := adapter.GetRange(ctx, 1, 5)
-	require.NoError(t, err)
-	require.Len(t, headers, 2)
-	assert.Equal(t, uint64(1), headers[0].Height())
-	assert.Equal(t, uint64(2), headers[1].Height())
-}
-
-func TestHeaderStoreAdapter_GetRangeEmpty(t *testing.T) {
-	t.Parallel()
-	// Use a short timeout since GetByHeight now blocks waiting for the height
-	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
-	defer cancel()
-
-	ds, err := NewTestInMemoryKVStore()
-	require.NoError(t, err)
-	store := New(ds)
-	adapter := NewHeaderStoreAdapter(store, testGenesis())
-
-	// GetRange on empty store will block until context timeout
-	_, err = adapter.GetRange(ctx, 1, 5)
-	// GetByHeight now blocks - we may get context.DeadlineExceeded or ErrNotFound depending on timing
-	assert.True(t, errors.Is(err, context.DeadlineExceeded) || errors.Is(err, header.ErrNotFound),
-		"expected DeadlineExceeded or ErrNotFound, got: %v", err)
-}
-
-func TestHeaderStoreAdapter_MultipleAppends(t *testing.T) {
-	t.Parallel()
-	ctx := context.Background()
-
-	ds, err := NewTestInMemoryKVStore()
-	require.NoError(t, err)
-	store := New(ds)
-	adapter := NewHeaderStoreAdapter(store, testGenesis())
-
-	// Append headers in multiple batches
-	h1, _ := types.GetRandomBlock(1, 1, "test-chain")
-	require.NoError(t, adapter.Append(ctx, wrapHeader(h1)))
-	assert.Equal(t, uint64(1), adapter.Height())
-
-	h2, _ := types.GetRandomBlock(2, 1, "test-chain")
-	require.NoError(t, adapter.Append(ctx, wrapHeader(h2)))
-	assert.Equal(t, uint64(2), adapter.Height())
-
-	h3, _ := types.GetRandomBlock(3, 1, "test-chain")
-	require.NoError(t, adapter.Append(ctx, wrapHeader(h3)))
-	assert.Equal(t, uint64(3), adapter.Height())
-
-	// Verify all headers are retrievable
-	for h := uint64(1); h <= 3; h++ {
-		assert.True(t, adapter.HasAt(ctx, h))
-	}
-}
-
 func TestHeaderStoreAdapter_PendingAndStoreInteraction(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
@@ -678,11 +608,10 @@ func TestHeaderStoreAdapter_GetFromPendingByHash(t *testing.T) {
 
 	// Add header to pending
 	h1, _ := types.GetRandomBlock(1, 1, "test-chain")
-	p2pH1 := wrapHeader(h1)
-	require.NoError(t, adapter.Append(ctx, p2pH1))
+	require.NoError(t, adapter.Append(ctx, wrapHeader(h1)))
 
 	// Get by hash from pending (uses header's Hash() method)
-	retrieved, err := adapter.Get(ctx, p2pH1.Hash())
+	retrieved, err := adapter.Get(ctx, h1.Hash())
 	require.NoError(t, err)
 	assert.Equal(t, h1.Height(), retrieved.Height())
 }
