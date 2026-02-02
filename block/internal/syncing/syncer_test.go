@@ -207,6 +207,77 @@ func TestProcessHeightEvent_SyncsAndUpdatesState(t *testing.T) {
 	assert.Equal(t, uint64(1), st1.LastBlockHeight)
 }
 
+func TestSyncer_PersistsDAHeightMapping_WhenSyncingFromDA(t *testing.T) {
+	ds := dssync.MutexWrap(datastore.NewMapDatastore())
+	st := store.New(ds)
+
+	cm, err := cache.NewManager(config.DefaultConfig(), st, zerolog.Nop())
+	require.NoError(t, err)
+
+	addr, pub, signer := buildSyncTestSigner(t)
+
+	cfg := config.DefaultConfig()
+	gen := genesis.Genesis{ChainID: "tchain", InitialHeight: 1, StartTime: time.Now().Add(-time.Second), ProposerAddress: addr}
+
+	mockExec := testmocks.NewMockExecutor(t)
+	mockExec.EXPECT().InitChain(mock.Anything, mock.Anything, uint64(1), "tchain").Return([]byte("app0"), nil).Once()
+
+	errChan := make(chan error, 1)
+	s := NewSyncer(
+		st,
+		mockExec,
+		nil,
+		cm,
+		common.NopMetrics(),
+		cfg,
+		gen,
+		extmocks.NewMockStore[*types.P2PSignedHeader](t),
+		extmocks.NewMockStore[*types.P2PData](t),
+		zerolog.Nop(),
+		common.DefaultBlockOptions(),
+		errChan,
+		nil,
+	)
+
+	require.NoError(t, s.initializeState())
+	s.ctx = t.Context()
+
+	// Create signed header & data for height 1
+	lastState := s.getLastState()
+	data := makeData(gen.ChainID, 1, 0)
+	_, hdr := makeSignedHeaderBytes(t, gen.ChainID, 1, addr, pub, signer, lastState.AppHash, data, nil)
+
+	// Expect ExecuteTxs call for height 1
+	mockExec.EXPECT().ExecuteTxs(mock.Anything, mock.Anything, uint64(1), mock.Anything, lastState.AppHash).
+		Return([]byte("app1"), nil).Once()
+
+	// Process event with DA source and a specific DA height
+	daHeight := uint64(42)
+	evt := common.DAHeightEvent{Header: hdr, Data: data, DaHeight: daHeight, Source: common.SourceDA}
+	s.processHeightEvent(t.Context(), &evt)
+
+	requireEmptyChan(t, errChan)
+
+	// Verify block was synced
+	h, err := st.Height(t.Context())
+	require.NoError(t, err)
+	assert.Equal(t, uint64(1), h)
+
+	// Verify DA height mapping was persisted for header
+	headerDABytes, err := st.GetMetadata(t.Context(), store.GetHeightToDAHeightHeaderKey(1))
+	require.NoError(t, err)
+	require.Len(t, headerDABytes, 8)
+	headerDAHeight := binary.LittleEndian.Uint64(headerDABytes)
+	assert.Equal(t, daHeight, headerDAHeight)
+
+	// Verify DA height mapping was persisted for data
+	dataDABytes, err := st.GetMetadata(t.Context(), store.GetHeightToDAHeightDataKey(1))
+	require.NoError(t, err)
+	require.Len(t, dataDABytes, 8)
+	dataDAHeight := binary.LittleEndian.Uint64(dataDABytes)
+	assert.Equal(t, daHeight, dataDAHeight)
+}
+
 func TestSequentialBlockSync(t *testing.T) {
 	ds := dssync.MutexWrap(datastore.NewMapDatastore())
 	st := store.New(ds)
