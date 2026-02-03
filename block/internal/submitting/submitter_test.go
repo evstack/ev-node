@@ -167,7 +167,7 @@ func TestSubmitter_setSequencerHeightToDAHeight(t *testing.T) {
 	daClient.On("GetDataNamespace").Return([]byte(cfg.DA.DataNamespace)).Maybe()
 	daClient.On("GetForcedInclusionNamespace").Return([]byte(nil)).Maybe()
 	daClient.On("HasForcedInclusionNamespace").Return(false).Maybe()
-	daSub := NewDASubmitter(daClient, cfg, genesis.Genesis{}, common.BlockOptions{}, metrics, zerolog.Nop())
+	daSub := NewDASubmitter(daClient, cfg, genesis.Genesis{}, common.BlockOptions{}, metrics, zerolog.Nop(), nil, nil)
 	s := NewSubmitter(mockStore, nil, cm, metrics, cfg, genesis.Genesis{}, daSub, nil, nil, zerolog.Nop(), nil)
 	s.ctx = ctx
 
@@ -191,10 +191,10 @@ func TestSubmitter_setSequencerHeightToDAHeight(t *testing.T) {
 	mockStore.On("SetMetadata", mock.Anything, dataKey, dBz).Return(nil).Once()
 	mockStore.On("SetMetadata", mock.Anything, store.GenesisDAHeightKey, gBz).Return(nil).Once()
 
-	require.NoError(t, s.setSequencerHeightToDAHeight(ctx, 1, h, d, true))
+	require.NoError(t, s.setNodeHeightToDAHeight(ctx, 1, h, d, true))
 }
 
-func TestSubmitter_setSequencerHeightToDAHeight_Errors(t *testing.T) {
+func TestSubmitter_setNodeHeightToDAHeight_Errors(t *testing.T) {
 	ctx := t.Context()
 	cm, st := newTestCacheAndStore(t)
 
@@ -205,11 +205,11 @@ func TestSubmitter_setSequencerHeightToDAHeight_Errors(t *testing.T) {
 	// No cache entries -> expect error on missing header
 	_, ok := cm.GetHeaderDAIncluded(h.Hash().String())
 	assert.False(t, ok)
-	assert.Error(t, s.setSequencerHeightToDAHeight(ctx, 1, h, d, false))
+	assert.Error(t, s.setNodeHeightToDAHeight(ctx, 1, h, d, false))
 
 	// Add header, missing data
 	cm.SetHeaderDAIncluded(h.Hash().String(), 10, 1)
-	assert.Error(t, s.setSequencerHeightToDAHeight(ctx, 1, h, d, false))
+	assert.Error(t, s.setNodeHeightToDAHeight(ctx, 1, h, d, false))
 }
 
 func TestSubmitter_initializeDAIncludedHeight(t *testing.T) {
@@ -251,7 +251,7 @@ func TestSubmitter_processDAInclusionLoop_advances(t *testing.T) {
 	daClient.On("GetDataNamespace").Return([]byte(cfg.DA.DataNamespace)).Maybe()
 	daClient.On("GetForcedInclusionNamespace").Return([]byte(nil)).Maybe()
 	daClient.On("HasForcedInclusionNamespace").Return(false).Maybe()
-	daSub := NewDASubmitter(daClient, cfg, genesis.Genesis{}, common.BlockOptions{}, metrics, zerolog.Nop())
+	daSub := NewDASubmitter(daClient, cfg, genesis.Genesis{}, common.BlockOptions{}, metrics, zerolog.Nop(), nil, nil)
 	s := NewSubmitter(st, exec, cm, metrics, cfg, genesis.Genesis{}, daSub, nil, nil, zerolog.Nop(), nil)
 
 	// prepare two consecutive blocks in store with DA included in cache
@@ -457,7 +457,7 @@ func TestSubmitter_CacheClearedOnHeightInclusion(t *testing.T) {
 	daClient.On("GetDataNamespace").Return([]byte(cfg.DA.DataNamespace)).Maybe()
 	daClient.On("GetForcedInclusionNamespace").Return([]byte(nil)).Maybe()
 	daClient.On("HasForcedInclusionNamespace").Return(false).Maybe()
-	daSub := NewDASubmitter(daClient, cfg, genesis.Genesis{}, common.BlockOptions{}, metrics, zerolog.Nop())
+	daSub := NewDASubmitter(daClient, cfg, genesis.Genesis{}, common.BlockOptions{}, metrics, zerolog.Nop(), nil, nil)
 	s := NewSubmitter(st, exec, cm, metrics, cfg, genesis.Genesis{}, daSub, nil, nil, zerolog.Nop(), nil)
 
 	// Create test blocks

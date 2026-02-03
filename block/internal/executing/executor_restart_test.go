@@ -48,9 +48,9 @@ func TestExecutor_RestartUsesPendingHeader(t *testing.T) {
 	// Create first executor instance
 	mockExec1 := testmocks.NewMockExecutor(t)
 	mockSeq1 := testmocks.NewMockSequencer(t)
-	hb1 := common.NewMockBroadcaster[*types.SignedHeader](t)
+	hb1 := common.NewMockBroadcaster[*types.P2PSignedHeader](t)
 	hb1.EXPECT().WriteToStoreAndBroadcast(mock.Anything, mock.Anything).Return(nil).Maybe()
-	db1 := common.NewMockBroadcaster[*types.Data](t)
+	db1 := common.NewMockBroadcaster[*types.P2PData](t)
 	db1.EXPECT().WriteToStoreAndBroadcast(mock.Anything, mock.Anything).Return(nil).Maybe()
 
 	exec1, err := NewExecutor(
@@ -171,9 +171,9 @@ func TestExecutor_RestartUsesPendingHeader(t *testing.T) {
 	// Create second executor instance (restart scenario)
 	mockExec2 := testmocks.NewMockExecutor(t)
 	mockSeq2 := testmocks.NewMockSequencer(t)
-	hb2 := common.NewMockBroadcaster[*types.SignedHeader](t)
+	hb2 := common.NewMockBroadcaster[*types.P2PSignedHeader](t)
 	hb2.EXPECT().WriteToStoreAndBroadcast(mock.Anything, mock.Anything).Return(nil).Maybe()
-	db2 := common.NewMockBroadcaster[*types.Data](t)
+	db2 := common.NewMockBroadcaster[*types.P2PData](t)
 	db2.EXPECT().WriteToStoreAndBroadcast(mock.Anything, mock.Anything).Return(nil).Maybe()
 
 	exec2, err := NewExecutor(
@@ -275,9 +275,9 @@ func TestExecutor_RestartNoPendingHeader(t *testing.T) {
 	// Create first executor and produce one block
 	mockExec1 := testmocks.NewMockExecutor(t)
 	mockSeq1 := testmocks.NewMockSequencer(t)
-	hb1 := common.NewMockBroadcaster[*types.SignedHeader](t)
+	hb1 := common.NewMockBroadcaster[*types.P2PSignedHeader](t)
 	hb1.EXPECT().WriteToStoreAndBroadcast(mock.Anything, mock.Anything).Return(nil).Maybe()
-	db1 := common.NewMockBroadcaster[*types.Data](t)
+	db1 := common.NewMockBroadcaster[*types.P2PData](t)
 	db1.EXPECT().WriteToStoreAndBroadcast(mock.Anything, mock.Anything).Return(nil).Maybe()
 
 	exec1, err := NewExecutor(
@@ -336,9 +336,9 @@ func TestExecutor_RestartNoPendingHeader(t *testing.T) {
 	// Create second executor (restart)
 	mockExec2 := testmocks.NewMockExecutor(t)
 	mockSeq2 := testmocks.NewMockSequencer(t)
-	hb2 := common.NewMockBroadcaster[*types.SignedHeader](t)
+	hb2 := common.NewMockBroadcaster[*types.P2PSignedHeader](t)
 	hb2.EXPECT().WriteToStoreAndBroadcast(mock.Anything, mock.Anything).Return(nil).Maybe()
-	db2 := common.NewMockBroadcaster[*types.Data](t)
+	db2 := common.NewMockBroadcaster[*types.P2PData](t)
 	db2.EXPECT().WriteToStoreAndBroadcast(mock.Anything, mock.Anything).Return(nil).Maybe()
 
 	exec2, err := NewExecutor(

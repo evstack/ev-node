@@ -42,8 +42,8 @@ type Executor struct {
 	metrics *common.Metrics
 
 	// Broadcasting
-	headerBroadcaster common.Broadcaster[*types.SignedHeader]
-	dataBroadcaster   common.Broadcaster[*types.Data]
+	headerBroadcaster common.HeaderP2PBroadcaster
+	dataBroadcaster   common.DataP2PBroadcaster
 
 	// Configuration
 	config  config.Config
@@ -90,8 +90,8 @@ func NewExecutor(
 	metrics *common.Metrics,
 	config config.Config,
 	genesis genesis.Genesis,
-	headerBroadcaster common.Broadcaster[*types.SignedHeader],
-	dataBroadcaster common.Broadcaster[*types.Data],
+	headerBroadcaster common.HeaderP2PBroadcaster,
+	dataBroadcaster common.DataP2PBroadcaster,
 	logger zerolog.Logger,
 	options common.BlockOptions,
 	errorCh chan<- error,
@@ -547,9 +547,13 @@ func (e *Executor) ProduceBlock(ctx context.Context) error {
 	e.setLastState(newState)
 
 	// broadcast header and data to P2P network
-	g, broadcastCtx := errgroup.WithContext(ctx)
-	g.Go(func() error { return e.headerBroadcaster.WriteToStoreAndBroadcast(broadcastCtx, header) })
-	g.Go(func() error { return e.dataBroadcaster.WriteToStoreAndBroadcast(broadcastCtx, data) })
+	g, broadcastCtx := errgroup.WithContext(e.ctx)
+	g.Go(func() error {
+		return e.headerBroadcaster.WriteToStoreAndBroadcast(broadcastCtx, &types.P2PSignedHeader{SignedHeader: header})
+	})
+	g.Go(func() error {
+		return e.dataBroadcaster.WriteToStoreAndBroadcast(broadcastCtx, &types.P2PData{Data: data})
+	})
 	if err := g.Wait(); err != nil {
 		e.logger.Error().Err(err).Msg("failed to broadcast header and/data")
 		// don't fail block production on broadcast error

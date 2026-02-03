@@ -57,6 +57,8 @@ func newSyncMode(
 			rktStore,
 			exec,
 			da,
+			headerSyncService.Store(),
+			dataSyncService.Store(),
 			headerSyncService,
 			dataSyncService,
 			logger,
