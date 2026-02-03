@@ -1,0 +1,186 @@
+name: Github Release
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag (e.g., v1.2.3)"
+        required: true
+        type: string
+
+permissions:
+  contents: write
+  id-token: write
+
+jobs:
+  create-draft-release:
+    name: Create Draft Release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate semver tag
+        run: |
+          TAG="${{ github.event.inputs.tag }}"
+
+          # Check if tag matches semver pattern (v followed by MAJOR.MINOR.PATCH with optional pre-release and build metadata)
+          # Supports: v1.2.3, v1.2.3-rc.4, v1.2.3-beta.1, v1.2.3-alpha.1+build.123
+          if ! echo "$TAG" | grep -qE '^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?(\+[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?$'; then
+            echo "::error::Invalid tag format: $TAG"
+            echo "::error::Tag must be in semver format: v<MAJOR>.<MINOR>.<PATCH>[-PRERELEASE][+BUILD]"
+            echo "::error::Examples: v1.2.3, v1.2.3-rc.4, v1.2.3-beta.1, v1.2.3-alpha.1+build.123"
+            exit 1
+          fi
+
+          echo "::notice::Tag validation passed: $TAG"
+
+      - name: Checkout code
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Extract version from tag
+        id: extract-version
+        run: |
+          TAG="${{ github.event.inputs.tag }}"
+          VERSION="${TAG#v}"
+          echo "tag=$TAG" >> $GITHUB_OUTPUT
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "::notice::Tag: $TAG"
+          echo "::notice::Version: $VERSION"
+
+      - name: Find previous tag
+        id: prev-tag
+        run: |
+          TAG="${{ steps.extract-version.outputs.tag }}"
+          PREV_TAG=$(git tag -l "v*.*.*" --sort=-version:refname | grep -v "^${TAG}$" | head -n1)
+
+          if [ -z "$PREV_TAG" ]; then
+            echo "::notice::No previous tag found, using initial commit"
+            PREV_TAG=$(git rev-list --max-parents=0 HEAD)
+          fi
+
+          echo "prev-tag=$PREV_TAG" >> $GITHUB_OUTPUT
+          echo "::notice::Previous tag: $PREV_TAG"
+
+      - name: Get list of Docker images
+        id: get-images
+        run: |
+          # Find all apps with Dockerfiles
+          IMAGES=""
+          for app_dir in apps/*/; do
+            if [ -f "${app_dir}Dockerfile" ]; then
+              APP_NAME=$(basename "$app_dir")
+              IMAGE_NAME="ev-node-${APP_NAME}"
+              IMAGES="${IMAGES}ghcr.io/${{ github.repository_owner }}/${IMAGE_NAME}:${{ steps.extract-version.outputs.tag }}\n"
+            fi
+          done
+
+          # Remove trailing newline
+          IMAGES=$(echo -e "$IMAGES" | sed '/^$/d')
+
+          # Escape for GitHub Actions output
+          IMAGES="${IMAGES//'%'/'%25'}"
+          IMAGES="${IMAGES//$'\n'/'%0A'}"
+          IMAGES="${IMAGES//$'\r'/'%0D'}"
+
+          echo "images=$IMAGES" >> $GITHUB_OUTPUT
+          echo "::notice::Found Docker images"
+
+      - name: Generate changelog prompt
+        id: changelog-prompt
+        run: |
+          PREV_TAG="${{ steps.prev-tag.outputs.prev-tag }}"
+          TAG="${{ steps.extract-version.outputs.tag }}"
+          VERSION="${{ steps.extract-version.outputs.version }}"
+
+          cat > claude-prompt.txt << 'EOF_PROMPT'
+          Read the file CHANGELOG.md and find the section for version $VERSION (tag $TAG).
+
+          Generate professional release notes for GitHub based on the changes listed for this specific version.
+
+          Create release notes with the following structure:
+
+          ev-node VERSION
+
+          ⚠️ This is a draft release. Please verify its content before publishing
+
+          [Brief summary paragraph about this release - what type of release it is (feature/bugfix/maintenance), upgrade recommendations]
+
+          **Tested upgrade paths**
+          - [List version upgrade paths that were tested, or state "TBD - to be tested before publishing"]
+
+          **Changelog**
+
+          **Added**
+          - BREAKING: [Feature description with context about what users need to do]
+          - [Other new features]
+
+          **Changed**
+          - BREAKING: [Change description with migration instructions]
+          - [Other changes]
+
+          **Removed**
+          - BREAKING: [Removed feature with alternatives or migration path]
+          - [Other removals]
+
+          **Fixed**
+          - [Bug fixes]
+
+          **Images**
+          EOF_PROMPT
+
+          # Replace placeholders with actual values
+          sed -i "s/\$VERSION/${VERSION}/g" claude-prompt.txt
+          sed -i "s/\$TAG/${TAG}/g" claude-prompt.txt
+
+          # Add the images list
+          echo "${{ steps.get-images.outputs.images }}" | while IFS= read -r image; do
+            echo "- $image" >> claude-prompt.txt
+          done
+
+          cat >> claude-prompt.txt << 'EOF_PROMPT'
+
+          Guidelines:
+          - Replace VERSION with the actual version number
+          - Replace YYYY-MM-DD with the actual release date
+          - Focus on BREAKING changes - clearly mark them and explain what users need to do
+          - For breaking changes, include specific migration steps or configuration changes needed
+          - Use clear, professional language
+          - Include technical details and PR numbers if available in the changelog
+          - Group related changes together
+          - Omit empty sections
+          - Format as clean markdown
+
+          Output the release notes as your response.
+          EOF_PROMPT
+
+          {
+            echo 'prompt<<EOF_CLAUDE_PROMPT'
+            cat claude-prompt.txt
+            echo EOF_CLAUDE_PROMPT
+          } >> $GITHUB_OUTPUT
+
+      - name: Generate release notes with Claude
+        id: claude-release
+        uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          prompt: ${{ steps.changelog-prompt.outputs.prompt }}
+          trusted_bots: "*"
+          allowed_tools: "Read(CHANGELOG.md)"
+          claude_args: |
+            --json-schema '{"type":"object","properties":{"release_notes":{"type":"string"},"release_date":{"type":"string","description":"Release date in YYYY-MM-DD format"}},"required":["release_notes","release_date"]}'
+
+      - name: Create Draft GitHub Release
+        id: create-release
+        uses: softprops/action-gh-release@v2
+        with:
+          draft: true
+          name: ${{ steps.extract-version.outputs.tag }} (${{ fromJSON(steps.claude-release.outputs.structured_output).release_date }})
+          tag_name: ${{ steps.extract-version.outputs.tag }}
+          body: ${{ fromJSON(steps.claude-release.outputs.structured_output).release_notes }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Output release URL
+        run: |
+          RELEASE_URL="https://github.com/${{ github.repository }}/releases/tag/${{ steps.extract-version.outputs.tag }}"
+          echo "::notice::Draft release created: $RELEASE_URL"
