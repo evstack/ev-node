@@ -758,7 +758,8 @@ func (s *Syncer) TrySyncNextBlock(ctx context.Context, event *common.DAHeightEve
 	// Persist DA height mapping for blocks synced from DA
 	// This ensures consistency with the sequencer's submitter which also persists this mapping
 	// Note: P2P hints are already persisted via store_adapter.Append when items have DAHint set
-	if event.Source == common.SourceDA && event.DaHeight > 0 {
+	// But DaHeight from events always take precedence as they are authoritative (comes from DA)
+	if event.DaHeight > 0 {
 		daHeightBytes := make([]byte, 8)
 		binary.LittleEndian.PutUint64(daHeightBytes, event.DaHeight)
 

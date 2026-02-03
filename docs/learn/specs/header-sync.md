@@ -4,13 +4,13 @@
 
 The nodes in the P2P network sync headers and data using separate sync services that implement the [go-header][go-header] interface. Evolve uses a header/data separation architecture where headers and transaction data are synchronized independently through parallel services. Each sync service consists of several components as listed below.
 
-|Component|Description|
-|---|---|
-|store| a prefixed [datastore][datastore] where synced items are stored (`headerSync` prefix for headers, `dataSync` prefix for data)|
-|subscriber| a [libp2p][libp2p] node pubsub subscriber for the specific data type|
-|P2P server| a server for handling requests between peers in the P2P network|
-|exchange| a client that enables sending in/out-bound requests from/to the P2P network|
-|syncer| a service for efficient synchronization. When a P2P node falls behind and wants to catch up to the latest network head via P2P network, it can use the syncer.|
+| Component  | Description                                                                                                                                                    |
+| ---------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| store      | a prefixed [datastore][datastore] where synced items are stored (`headerSync` prefix for headers, `dataSync` prefix for data)                                  |
+| subscriber | a [libp2p][libp2p] node pubsub subscriber for the specific data type                                                                                           |
+| P2P server | a server for handling requests between peers in the P2P network                                                                                                |
+| exchange   | a client that enables sending in/out-bound requests from/to the P2P network                                                                                    |
+| syncer     | a service for efficient synchronization. When a P2P node falls behind and wants to catch up to the latest network head via P2P network, it can use the syncer. |
 
 ## Details
 
@@ -22,7 +22,7 @@ Evolve implements two separate sync services:
 - Used by all node types (sequencer, full, and light)
 - Essential for maintaining the canonical view of the chain
 
-### Data Sync Service  
+### Data Sync Service
 
 - Synchronizes `Data` structures containing transaction data
 - Used only by full nodes and sequencers
@@ -89,6 +89,54 @@ The block components integrate with both services through:
 - The Syncer component's P2PHandler retrieves headers and data from P2P
 - The Executor component publishes headers and data through broadcast channels
 - Separate stores and channels manage header and data synchronization
+
+## DA Height Hints
+
+DA Height Hints (DAHint) provide an optimization for P2P synchronization by indicating which DA layer height contains a block's header or data. This allows syncing nodes to fetch missing DA data directly instead of performing sequential DA scanning.
+
+### Naming Considerations
+
+The naming convention follows this pattern:
+
+| Name              | Usage                                                      |
+| ----------------- | ---------------------------------------------------------- |
+| `DAHeightHint`    | Internal struct field storing the hint value               |
+| `DAHint()`        | Getter method returning the DA height hint                 |
+| `SetDAHint()`     | Setter method for the DA height hint                       |
+| `P2PSignedHeader` | Wrapper around `SignedHeader` that includes `DAHeightHint` |
+| `P2PData`         | Wrapper around `Data` that includes `DAHeightHint`         |
+
+The term "hint" is used deliberately because:
+
+1. **It's advisory, not authoritative**: The hint suggests where to find data on the DA layer, but the authoritative source is always the DA layer itself
+2. **It may be absent**: Hints are only populated during certain sync scenarios (see below)
+3. **It optimizes but doesn't replace**: Nodes can still function without hints by scanning the DA layer sequentially
+
+### When DAHints Are Populated
+
+DAHints are **only populated when a node catches up from P2P** and is not yet synced to the head. When a node is already synced to the head:
+
+- The executor broadcasts headers/data immediately after block creation
+- At this point, DA submission has not occurred yet (it happens later in the flow)
+- Therefore, the broadcasted P2P messages do not contain DA hints
+
+This means:
+
+- **Syncing nodes** (catching up): Receive headers/data with DA hints populated
+- **Synced nodes** (at head): Receive headers/data without DA hints
+
+The DA hints are set by the DA submitter after successful inclusion on the DA layer and stored for later P2P propagation to syncing peers.
+
+### Implementation Details
+
+The P2P wrapper types (`P2PSignedHeader` and `P2PData`) extend the base types with an optional `DAHeightHint`.
+
+The hint is:
+
+1. **Set by the DA Submitter** when headers/data are successfully included on the DA layer
+2. **Stored in the P2P store** alongside the header/data
+3. **Propagated via P2P** when syncing nodes request blocks
+4. **Used by the Syncer** to trigger targeted DA retrieval instead of sequential scanning
 
 ## References
 

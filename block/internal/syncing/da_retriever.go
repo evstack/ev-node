@@ -360,7 +360,7 @@ func isEmptyDataExpected(header *types.SignedHeader) bool {
 }
 
 // createEmptyDataForHeader creates empty data for a header
-func createEmptyDataForHeader(ctx context.Context, header *types.SignedHeader) *types.Data {
+func createEmptyDataForHeader(_ context.Context, header *types.SignedHeader) *types.Data {
 	return &types.Data{
 		Txs: make(types.Txs, 0),
 		Metadata: &types.Metadata{
