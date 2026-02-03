@@ -275,10 +275,6 @@ func NewEngineExecutionClient(
 // underlying EVMStore. It is safe to call this multiple times with the same
 // or increasing heights; the store tracks its own last-pruned height.
 func (c *EngineClient) PruneExecMeta(ctx context.Context, height uint64) error {
-	if c.store == nil {
-		return nil
-	}
-
 	return c.store.PruneExecMeta(ctx, height)
 }
 
