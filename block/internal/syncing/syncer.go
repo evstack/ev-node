@@ -777,22 +777,6 @@ func (s *Syncer) TrySyncNextBlock(ctx context.Context, event *common.DAHeightEve
 		return fmt.Errorf("failed to commit batch: %w", err)
 	}
 
-	// Persist DA height mapping for blocks synced from DA
-	// This ensures consistency with the sequencer's submitter which also persists this mapping
-	// Note: P2P hints are already persisted via store_adapter.Append when items have DAHint set
-	// But DaHeight from events always take precedence as they are authoritative (comes from DA)
-	if event.DaHeight > 0 {
-		daHeightBytes := make([]byte, 8)
-		binary.LittleEndian.PutUint64(daHeightBytes, event.DaHeight)
-
-		if err := s.store.SetMetadata(ctx, store.GetHeightToDAHeightHeaderKey(nextHeight), daHeightBytes); err != nil {
-			s.logger.Warn().Err(err).Uint64("height", nextHeight).Msg("failed to persist header DA height mapping")
-		}
-		if err := s.store.SetMetadata(ctx, store.GetHeightToDAHeightDataKey(nextHeight), daHeightBytes); err != nil {
-			s.logger.Warn().Err(err).Uint64("height", nextHeight).Msg("failed to persist data DA height mapping")
-		}
-	}
-
 	// Update in-memory state after successful commit
 	s.SetLastState(newState)
 	s.metrics.Height.Set(float64(newState.LastBlockHeight))
