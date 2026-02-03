@@ -331,7 +331,6 @@ func (s *Submitter) processDAInclusionLoop() {
 
 				// Check if this height is DA included
 				if included, err := s.IsHeightDAIncluded(nextHeight, header, data); err != nil || !included {
-					s.logger.Debug().Uint64("height", nextHeight).Msg("height not yet DA included")
 					break
 				}
 
