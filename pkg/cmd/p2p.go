@@ -96,9 +96,7 @@ var NetInfoCmd = &cobra.Command{
 		// Iterate through all listen addresses
 		fmt.Fprintf(w, "📡 Listen Addrs:")
 		for i, addr := range netInfo.ListenAddresses {
-			fullAddress := fmt.Sprintf("%s/p2p/%s", addr, nodeID)
 			fmt.Fprintf(w, "   [%d] Addr: \033[1;36m%s\033[0m\n", i+1, addr)
-			fmt.Fprintf(w, "       Full: \033[1;32m%s\033[0m\n", fullAddress)
 		}
 
 		fmt.Fprintf(w, "%s\n", strings.Repeat("-", 50))

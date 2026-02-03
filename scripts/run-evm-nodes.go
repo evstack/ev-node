@@ -608,7 +608,7 @@ func isProjectRoot(dir string) bool {
 	markers := []string{
 		"apps/evm",
 		"execution/evm",
-		"da",
+		"block",
 		"scripts",
 		"go.mod",
 	}
