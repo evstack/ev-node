@@ -141,15 +141,7 @@ func (c *Cache[T]) setDAIncluded(hash string, daHeight uint64, blockHeight uint6
 	}
 
 	// Update max DA height if necessary
-	for range 1_000 {
-		current := c.maxDAHeight.Load()
-		if daHeight <= current {
-			return
-		}
-		if c.maxDAHeight.CompareAndSwap(current, daHeight) {
-			return
-		}
-	}
+	c.setMaxDAHeight(daHeight)
 }
 
 // removeDAIncluded removes the DA-included status of the hash
@@ -161,6 +153,20 @@ func (c *Cache[T]) removeDAIncluded(hash string) {
 // Returns 0 if no items are DA-included.
 func (c *Cache[T]) daHeight() uint64 {
 	return c.maxDAHeight.Load()
+}
+
+// setMaxDAHeight sets the maximum DA height if the provided value is greater
+// than the current value.
+func (c *Cache[T]) setMaxDAHeight(daHeight uint64) {
+	for range 1_000 {
+		current := c.maxDAHeight.Load()
+		if daHeight <= current {
+			return
+		}
+		if c.maxDAHeight.CompareAndSwap(current, daHeight) {
+			return
+		}
+	}
 }
 
 // removeSeen removes a hash from the seen cache.

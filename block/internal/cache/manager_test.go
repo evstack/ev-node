@@ -2,6 +2,7 @@ package cache
 
 import (
 	"context"
+	"encoding/binary"
 	"testing"
 	"time"
 
@@ -447,21 +448,78 @@ func TestManager_DAInclusionPersistence(t *testing.T) {
 	assert.Equal(t, uint64(101), m2.DaHeight())
 }
 
-func TestCacheManager_Creation(t *testing.T) {
+func TestManager_DaHeightAfterCacheClear(t *testing.T) {
 	t.Parallel()
+
 	cfg := tempConfig(t)
 	st := memStore(t)
+	ctx := context.Background()
 
-	cm, err := NewManager(cfg, st, zerolog.Nop())
+	// Store a block first
+	h1, d1 := types.GetRandomBlock(1, 1, "test-chain")
+	batch, err := st.NewBatch(ctx)
 	require.NoError(t, err)
-	require.NotNil(t, cm)
+	require.NoError(t, batch.SaveBlockData(h1, d1, &types.Signature{}))
+	require.NoError(t, batch.SetHeight(1))
+	require.NoError(t, batch.Commit())
 
-	// Test basic operations
-	cm.SetHeaderSeen("h1", 1)
-	assert.True(t, cm.IsHeaderSeen("h1"))
+	// Set up the HeightToDAHeight metadata (simulating what submitter does)
+	headerDAHeightBytes := make([]byte, 8)
+	binary.LittleEndian.PutUint64(headerDAHeightBytes, 150)
+	require.NoError(t, st.SetMetadata(ctx, store.GetHeightToDAHeightHeaderKey(1), headerDAHeightBytes))
 
-	cm.SetHeaderDAIncluded("h1", 100, 1)
-	daHeight, ok := cm.GetHeaderDAIncluded("h1")
-	assert.True(t, ok)
-	assert.Equal(t, uint64(100), daHeight)
+	dataDAHeightBytes := make([]byte, 8)
+	binary.LittleEndian.PutUint64(dataDAHeightBytes, 155)
+	require.NoError(t, st.SetMetadata(ctx, store.GetHeightToDAHeightDataKey(1), dataDAHeightBytes))
+
+	// Set DAIncludedHeightKey to indicate height 1 was DA included
+	daIncludedBytes := make([]byte, 8)
+	binary.LittleEndian.PutUint64(daIncludedBytes, 1)
+	require.NoError(t, st.SetMetadata(ctx, store.DAIncludedHeightKey, daIncludedBytes))
+
+	// Create manager with ClearCache = true
+	cfg.ClearCache = true
+	m, err := NewManager(cfg, st, zerolog.Nop())
+	require.NoError(t, err)
+
+	// DaHeight should NOT be 0 - it should be initialized from store metadata
+	assert.Equal(t, uint64(155), m.DaHeight(), "DaHeight should be initialized from HeightToDAHeight metadata even after cache clear")
+}
+
+func TestManager_DaHeightFromStoreOnRestore(t *testing.T) {
+	t.Parallel()
+
+	cfg := tempConfig(t)
+	st := memStore(t)
+	ctx := context.Background()
+
+	// Store a block first
+	h1, d1 := types.GetRandomBlock(1, 1, "test-chain")
+	batch, err := st.NewBatch(ctx)
+	require.NoError(t, err)
+	require.NoError(t, batch.SaveBlockData(h1, d1, &types.Signature{}))
+	require.NoError(t, batch.SetHeight(1))
+	require.NoError(t, batch.Commit())
+
+	// Set up HeightToDAHeight metadata but NOT the cache entries
+	// This simulates a scenario where DA inclusion was processed but cache entries were lost
+	headerDAHeightBytes := make([]byte, 8)
+	binary.LittleEndian.PutUint64(headerDAHeightBytes, 200)
+	require.NoError(t, st.SetMetadata(ctx, store.GetHeightToDAHeightHeaderKey(1), headerDAHeightBytes))
+
+	dataDAHeightBytes := make([]byte, 8)
+	binary.LittleEndian.PutUint64(dataDAHeightBytes, 205)
+	require.NoError(t, st.SetMetadata(ctx, store.GetHeightToDAHeightDataKey(1), dataDAHeightBytes))
+
+	daIncludedBytes := make([]byte, 8)
+	binary.LittleEndian.PutUint64(daIncludedBytes, 1)
+	require.NoError(t, st.SetMetadata(ctx, store.DAIncludedHeightKey, daIncludedBytes))
+
+	// Create manager without ClearCache - should restore and init from metadata
+	cfg.ClearCache = false
+	m, err := NewManager(cfg, st, zerolog.Nop())
+	require.NoError(t, err)
+
+	// DaHeight should be the max from HeightToDAHeight metadata
+	assert.Equal(t, uint64(205), m.DaHeight(), "DaHeight should be initialized from HeightToDAHeight metadata on restore")
 }

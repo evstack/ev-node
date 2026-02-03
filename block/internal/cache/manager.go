@@ -2,6 +2,7 @@ package cache
 
 import (
 	"context"
+	"encoding/binary"
 	"fmt"
 	"sync"
 	"time"
@@ -383,9 +384,13 @@ func (m *implementation) RestoreFromStore() error {
 		return fmt.Errorf("failed to restore data cache from store: %w", err)
 	}
 
+	// Initialize DA height from store metadata to ensure DaHeight() is never 0.
+	m.initDAHeightFromStore(ctx)
+
 	m.logger.Info().
 		Int("header_hashes", len(headerHashes)).
 		Int("data_hashes", len(dataHashes)).
+		Uint64("da_height", m.DaHeight()).
 		Msg("restored DA inclusion cache from store")
 
 	return nil
@@ -412,5 +417,36 @@ func (m *implementation) ClearFromStore() error {
 	m.txCache = NewCache[struct{}](nil, "")
 	m.pendingEventsCache = NewCache[common.DAHeightEvent](nil, "")
 
+	// Initialize DA height from store metadata to ensure DaHeight() is never 0.
+	m.initDAHeightFromStore(ctx)
+
 	return nil
+}
+
+// initDAHeightFromStore initializes the maxDAHeight in both header and data caches
+// from the HeightToDAHeight store metadata (final da inclusion tracking).
+func (m *implementation) initDAHeightFromStore(ctx context.Context) {
+	// Get the DA included height from store (last processed block height)
+	daIncludedHeightBytes, err := m.store.GetMetadata(ctx, store.DAIncludedHeightKey)
+	if err != nil || len(daIncludedHeightBytes) != 8 {
+		return
+	}
+	daIncludedHeight := binary.LittleEndian.Uint64(daIncludedHeightBytes)
+	if daIncludedHeight == 0 {
+		return
+	}
+
+	// Get header DA height for the last included height
+	headerKey := store.GetHeightToDAHeightHeaderKey(daIncludedHeight)
+	if headerBytes, err := m.store.GetMetadata(ctx, headerKey); err == nil && len(headerBytes) == 8 {
+		headerDAHeight := binary.LittleEndian.Uint64(headerBytes)
+		m.headerCache.setMaxDAHeight(headerDAHeight)
+	}
+
+	// Get data DA height for the last included height
+	dataKey := store.GetHeightToDAHeightDataKey(daIncludedHeight)
+	if dataBytes, err := m.store.GetMetadata(ctx, dataKey); err == nil && len(dataBytes) == 8 {
+		dataDAHeight := binary.LittleEndian.Uint64(dataBytes)
+		m.dataCache.setMaxDAHeight(dataDAHeight)
+	}
 }
