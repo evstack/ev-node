@@ -318,7 +318,7 @@ func (s *Submitter) processDAInclusionLoop() {
 			return
 		case <-ticker.C:
 			currentDAIncluded := s.GetDAIncludedHeight()
-			s.metrics.DAInclusionHeight.Set(float64(s.GetDAIncludedHeight()))
+			s.metrics.DAInclusionHeight.Set(float64(currentDAIncluded))
 
 			for {
 				nextHeight := currentDAIncluded + 1
@@ -331,6 +331,7 @@ func (s *Submitter) processDAInclusionLoop() {
 
 				// Check if this height is DA included
 				if included, err := s.IsHeightDAIncluded(nextHeight, header, data); err != nil || !included {
+					s.logger.Debug().Uint64("height", nextHeight).Msg("height not yet DA included")
 					break
 				}
 
@@ -494,12 +495,10 @@ func (s *Submitter) IsHeightDAIncluded(height uint64, header *types.SignedHeader
 		return false, nil
 	}
 
-	headerHash := header.Hash().String()
 	dataCommitment := data.DACommitment()
-	dataHash := dataCommitment.String()
 
-	_, headerIncluded := s.cache.GetHeaderDAIncluded(headerHash)
-	_, dataIncluded := s.cache.GetDataDAIncluded(dataHash)
+	_, headerIncluded := s.cache.GetHeaderDAIncluded(header.Hash().String())
+	_, dataIncluded := s.cache.GetDataDAIncluded(dataCommitment.String())
 
 	dataIncluded = bytes.Equal(dataCommitment, common.DataHashForEmptyTxs) || dataIncluded
 

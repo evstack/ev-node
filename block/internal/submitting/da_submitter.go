@@ -234,8 +234,7 @@ func (s *DASubmitter) SubmitHeaders(ctx context.Context, headers []*types.Signed
 		func(submitted []*types.SignedHeader, res *datypes.ResultSubmit) {
 			heights := make([]uint64, len(submitted))
 			for i, header := range submitted {
-				headerHash := header.Hash()
-				cache.SetHeaderDAIncluded(headerHash.String(), res.Height, header.Height())
+				cache.SetHeaderDAIncluded(header.Hash().String(), res.Height, header.Height())
 				heights[i] = header.Height()
 			}
 			if err := s.headerDAHintAppender.AppendDAHint(ctx, res.Height, heights...); err != nil {
