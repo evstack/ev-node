@@ -10,9 +10,9 @@ import (
 
 	"github.com/ipfs/go-datastore"
 	libp2p "github.com/libp2p/go-libp2p"
-	"github.com/libp2p/go-libp2p/core/connmgr"
 	dht "github.com/libp2p/go-libp2p-kad-dht"
 	pubsub "github.com/libp2p/go-libp2p-pubsub"
+	"github.com/libp2p/go-libp2p/core/connmgr"
 	"github.com/libp2p/go-libp2p/core/crypto"
 	cdiscovery "github.com/libp2p/go-libp2p/core/discovery"
 	"github.com/libp2p/go-libp2p/core/host"
@@ -56,7 +56,7 @@ type Client struct {
 	gater *conngater.BasicConnectionGater
 	// hostGater controls libp2p connection gating for the host.
 	hostGater connmgr.ConnectionGater
-	ps    *pubsub.PubSub
+	ps        *pubsub.PubSub
 
 	metrics *Metrics
 }
