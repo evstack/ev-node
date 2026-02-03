@@ -9,7 +9,7 @@ require (
 	github.com/cosmos/cosmos-sdk v0.53.5
 	github.com/cosmos/ibc-go/v8 v8.8.0
 	github.com/ethereum/go-ethereum v1.16.8
-	github.com/evstack/ev-node v1.0.0-rc.1
+	github.com/evstack/ev-node v1.0.0-rc.2
 	github.com/evstack/ev-node/execution/evm v0.0.0-20250602130019-2a732cf903a5
 	github.com/evstack/ev-node/execution/evm/test v0.0.0-00010101000000-000000000000
 	github.com/libp2p/go-libp2p v0.47.0
