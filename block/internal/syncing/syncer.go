@@ -240,11 +240,7 @@ func (s *Syncer) Start(ctx context.Context) error {
 	}
 
 	// Start main processing loop
-	s.wg.Add(1)
-	go func() {
-		defer s.wg.Done()
-		s.processLoop()
-	}()
+	s.wg.Go(s.processLoop)
 
 	// Start dedicated workers for DA, and pending processing
 	s.startSyncWorkers()
@@ -258,6 +254,8 @@ func (s *Syncer) Stop() error {
 	if s.cancel == nil {
 		return nil
 	}
+
+	s.daRetrievalWorkerPool.Stop()
 
 	s.cancel()
 	s.cancelP2PWait(0)
