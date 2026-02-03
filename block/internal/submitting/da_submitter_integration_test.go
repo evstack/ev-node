@@ -121,6 +121,6 @@ func TestDASubmitter_SubmitHeadersAndData_MarksInclusionAndUpdatesLastSubmitted(
 
 type noopDAHintAppender struct{}
 
-func (n noopDAHintAppender) AppendDAHint(ctx context.Context, daHeight uint64, hash ...types.Hash) error {
+func (n noopDAHintAppender) AppendDAHint(ctx context.Context, daHeight uint64, heights ...uint64) error {
 	return nil
 }

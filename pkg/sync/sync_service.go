@@ -163,12 +163,13 @@ func (syncService *SyncService[H]) WriteToStoreAndBroadcast(ctx context.Context,
 	return nil
 }
 
-func (s *SyncService[H]) AppendDAHint(ctx context.Context, daHeight uint64, hashes ...types.Hash) error {
-	entries := make([]H, 0, len(hashes))
-	for _, h := range hashes {
-		v, err := s.store.Get(ctx, h)
+func (s *SyncService[H]) AppendDAHint(ctx context.Context, daHeight uint64, heights ...uint64) error {
+	entries := make([]H, 0, len(heights))
+	for _, height := range heights {
+		v, err := s.store.GetByHeight(ctx, height)
 		if err != nil {
 			if errors.Is(err, header.ErrNotFound) {
+				s.logger.Debug().Uint64("height", height).Msg("cannot append DA height hint; header/data not found in store")
 				continue
 			}
 			return err

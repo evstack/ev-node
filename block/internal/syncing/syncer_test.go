@@ -812,14 +812,8 @@ func TestProcessHeightEvent_TriggersAsyncDARetrieval(t *testing.T) {
 	require.NoError(t, s.initializeState())
 	s.ctx = context.Background()
 
-	// Mock DARetrievalWorkerPool
-	mockRetriever := NewMockDARetriever(t)
-	workerPool := NewDARetrievalWorkerPool(mockRetriever, s.heightInCh, zerolog.Nop())
-	// We don't start the worker pool to avoid race conditions in test,
-	// we just want to verify RequestRetrieval queues the request.
-	// However, RequestRetrieval writes to a channel, so we need a consumer or a buffered channel.
-	// The workCh is buffered (100), so we are good.
-	s.daRetrievalWorkerPool = workerPool
+	// Create a real daRetriever to test priority queue
+	s.daRetriever = NewDARetriever(nil, cm, gen, zerolog.Nop())
 
 	// Create event with DA height hint
 	evt := common.DAHeightEvent{
@@ -849,11 +843,85 @@ func TestProcessHeightEvent_TriggersAsyncDARetrieval(t *testing.T) {
 
 	s.processHeightEvent(t.Context(), &evt)
 
-	// Verify that the request was queued in the worker pool
-	select {
-	case h := <-workerPool.workCh:
-		assert.Equal(t, uint64(100), h)
-	default:
-		t.Fatal("expected DA retrieval request to be queued")
+	// Verify that the priority height was queued in the daRetriever
+	priorityHeight := s.daRetriever.PopPriorityHeight()
+	assert.Equal(t, uint64(100), priorityHeight)
+}
+
+func TestProcessHeightEvent_SkipsDAHintWhenAlreadyFetched(t *testing.T) {
+	ds := dssync.MutexWrap(datastore.NewMapDatastore())
+	st := store.New(ds)
+	cm, err := cache.NewManager(config.DefaultConfig(), st, zerolog.Nop())
+	require.NoError(t, err)
+
+	addr, _, _ := buildSyncTestSigner(t)
+	cfg := config.DefaultConfig()
+	gen := genesis.Genesis{ChainID: "tchain", InitialHeight: 1, StartTime: time.Now().Add(-time.Second), ProposerAddress: addr}
+
+	mockExec := testmocks.NewMockExecutor(t)
+	mockExec.EXPECT().InitChain(mock.Anything, mock.Anything, uint64(1), "tchain").Return([]byte("app0"), nil).Once()
+
+	s := NewSyncer(
+		st,
+		mockExec,
+		nil,
+		cm,
+		common.NopMetrics(),
+		cfg,
+		gen,
+		extmocks.NewMockStore[*types.P2PSignedHeader](t),
+		extmocks.NewMockStore[*types.P2PData](t),
+		zerolog.Nop(),
+		common.DefaultBlockOptions(),
+		make(chan error, 1),
+		nil,
+	)
+	require.NoError(t, s.initializeState())
+	s.ctx = context.Background()
+
+	// Create a real daRetriever to test priority queue
+	s.daRetriever = NewDARetriever(nil, cm, gen, zerolog.Nop())
+
+	// Set DA retriever height to 150 - simulating we've already fetched past height 100
+	s.daRetrieverHeight.Store(150)
+
+	// Set the store height to 1 so the event can be processed
+	batch, err := st.NewBatch(context.Background())
+	require.NoError(t, err)
+	require.NoError(t, batch.SetHeight(1))
+	require.NoError(t, batch.Commit())
+
+	// Create event with DA height hint that is BELOW the current daRetrieverHeight
+	evt := common.DAHeightEvent{
+		Header:        &types.SignedHeader{Header: types.Header{BaseHeader: types.BaseHeader{ChainID: "c", Height: 2}}},
+		Data:          &types.Data{Metadata: &types.Metadata{ChainID: "c", Height: 2}},
+		Source:        common.SourceP2P,
+		DaHeightHints: [2]uint64{100, 100}, // Both hints are below 150
 	}
+
+	s.processHeightEvent(t.Context(), &evt)
+
+	// Verify that no priority height was queued since we've already fetched past it
+	priorityHeight := s.daRetriever.PopPriorityHeight()
+	assert.Equal(t, uint64(0), priorityHeight, "should not queue DA hint that is below current daRetrieverHeight")
+
+	// Now test with a hint that is ABOVE the current daRetrieverHeight
+	evt2 := common.DAHeightEvent{
+		Header:        &types.SignedHeader{Header: types.Header{BaseHeader: types.BaseHeader{ChainID: "c", Height: 3}}},
+		Data:          &types.Data{Metadata: &types.Metadata{ChainID: "c", Height: 3}},
+		Source:        common.SourceP2P,
+		DaHeightHints: [2]uint64{200, 200}, // Both hints are above 150
+	}
+
+	// Set the store height to 2 so the event can be processed
+	batch, err = st.NewBatch(context.Background())
+	require.NoError(t, err)
+	require.NoError(t, batch.SetHeight(2))
+	require.NoError(t, batch.Commit())
+
+	s.processHeightEvent(t.Context(), &evt2)
+
+	// Verify that the priority height WAS queued since it's above daRetrieverHeight
+	priorityHeight = s.daRetriever.PopPriorityHeight()
+	assert.Equal(t, uint64(200), priorityHeight, "should queue DA hint that is above current daRetrieverHeight")
 }

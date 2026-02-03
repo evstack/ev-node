@@ -46,8 +46,9 @@ func TestNetInfoCmd_Success(t *testing.T) {
 	mockP2P := new(testmocks.MockP2PRPC)
 
 	mockNodeID := "12D3KooWExampleNodeID1234567890"
-	mockListenAddr1 := "/ip4/127.0.0.1/tcp/7676"
-	mockListenAddr2 := "/ip6/::1/tcp/7677"
+	// Listen addresses include peer ID (as returned by the P2P layer)
+	mockListenAddr1 := "/ip4/127.0.0.1/tcp/7676/p2p/" + mockNodeID
+	mockListenAddr2 := "/ip6/::1/tcp/7677/p2p/" + mockNodeID
 	mockPeerID1Str := "12D3KooWJHLDoXhmgYe6FEbujPzMQJvJ9JyGwRR2VjRM4f7Udvte"
 	mockPeerAddr1Str := "/ip4/192.168.1.100/tcp/7676"
 	mockPeerID2Str := "12D3KooWJHLDoXhmgYe6FEbujPzMQJvJ9JyGwRR2VjRM4f7Udvte"
@@ -114,9 +115,7 @@ func TestNetInfoCmd_Success(t *testing.T) {
 	assert.Contains(output, fmt.Sprintf("Node ID:      \033[1;36m%s\033[0m", mockNodeID))
 	assert.Contains(output, "Listen Addrs:")
 	assert.Contains(output, fmt.Sprintf("Addr: \033[1;36m%s\033[0m", mockListenAddr1))
-	assert.Contains(output, fmt.Sprintf("Full: \033[1;32m%s/p2p/%s\033[0m", mockListenAddr1, mockNodeID))
 	assert.Contains(output, fmt.Sprintf("Addr: \033[1;36m%s\033[0m", mockListenAddr2))
-	assert.Contains(output, fmt.Sprintf("Full: \033[1;32m%s/p2p/%s\033[0m", mockListenAddr2, mockNodeID))
 
 	assert.Contains(output, "CONNECTED PEERS: \033[1;33m2\033[0m")
 	assert.Contains(output, "PEER ID")
@@ -140,8 +139,9 @@ func TestNetInfoCmd_NoPeers(t *testing.T) {
 	mockP2P := new(testmocks.MockP2PRPC)
 
 	mockNodeID := "12D3KooWExampleNodeID1234567890"
-	mockListenAddr1 := "/ip4/127.0.0.1/tcp/7676"
-	mockListenAddr2 := "/ip6/::1/tcp/7677"
+	// Listen addresses include peer ID (as returned by the P2P layer)
+	mockListenAddr1 := "/ip4/127.0.0.1/tcp/7676/p2p/" + mockNodeID
+	mockListenAddr2 := "/ip6/::1/tcp/7677/p2p/" + mockNodeID
 
 	mockNetInfo := p2p.NetworkInfo{
 		ID:            mockNodeID,
@@ -192,9 +192,7 @@ func TestNetInfoCmd_NoPeers(t *testing.T) {
 	assert.Contains(output, fmt.Sprintf("Node ID:      \033[1;36m%s\033[0m", mockNodeID))
 	assert.Contains(output, "Listen Addrs:")
 	assert.Contains(output, fmt.Sprintf("Addr: \033[1;36m%s\033[0m", mockListenAddr1))
-	assert.Contains(output, fmt.Sprintf("Full: \033[1;32m%s/p2p/%s\033[0m", mockListenAddr1, mockNodeID))
 	assert.Contains(output, fmt.Sprintf("Addr: \033[1;36m%s\033[0m", mockListenAddr2))
-	assert.Contains(output, fmt.Sprintf("Full: \033[1;32m%s/p2p/%s\033[0m", mockListenAddr2, mockNodeID))
 
 	assert.Contains(output, "CONNECTED PEERS: \033[1;33m0\033[0m")
 	assert.Contains(output, "No peers connected")

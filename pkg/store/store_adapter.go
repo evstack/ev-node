@@ -304,6 +304,7 @@ func (a *StoreAdapter[H]) Get(ctx context.Context, hash header.Hash) (H, error) 
 	// Check pending items
 	for _, h := range a.pending.Keys() {
 		if pendingItem, ok := a.pending.Peek(h); ok && !pendingItem.IsZero() && bytes.Equal(pendingItem.Hash(), hash) {
+			a.applyDAHint(pendingItem)
 			return pendingItem, nil
 		}
 	}
@@ -344,6 +345,7 @@ func (a *StoreAdapter[H]) getByHeightNoWait(ctx context.Context, height uint64) 
 
 	// Check pending items
 	if pendingItem, ok := a.pending.Peek(height); ok {
+		a.applyDAHint(pendingItem)
 		return pendingItem, nil
 	}
 
