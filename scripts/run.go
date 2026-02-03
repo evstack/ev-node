@@ -12,6 +12,7 @@ import (
 	"os/exec"
 	"os/signal"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"syscall"
 	"time"
@@ -275,17 +276,14 @@ func main() {
 			lines := strings.Split(nodeInfoStr, "\n")
 
 			for _, line := range lines {
-				if strings.Contains(line, "Full:") {
-					// Extract the address part (after the color code)
-					parts := strings.Split(line, "Full:")
-					if len(parts) >= 2 {
-						// Clean up ANSI color codes and whitespace
-						cleanAddr := strings.TrimSpace(parts[1])
-						// Remove potential ANSI color codes
-						cleanAddr = strings.TrimPrefix(cleanAddr, "\033[1;32m")
-						cleanAddr = strings.TrimSuffix(cleanAddr, "\033[0m")
-						cleanAddr = strings.TrimSpace(cleanAddr)
-						aggregatorAddress = cleanAddr
+				if strings.Contains(line, "Addr:") && strings.Contains(line, "/p2p/") {
+					addrIdx := strings.Index(line, "Addr:")
+					if addrIdx == -1 {
+						continue
+					}
+					addrPart := strings.TrimSpace(line[addrIdx+5:])
+					if strings.Contains(addrPart, "/ip4/") && strings.Contains(addrPart, "/tcp/") {
+						aggregatorAddress = stripANSI(addrPart)
 						break
 					}
 				}
@@ -366,7 +364,7 @@ func findProjectRoot() (string, error) {
 func isProjectRoot(dir string) bool {
 	// Check for key directories/files that would indicate the project root
 	markers := []string{
-		"da",
+		"block",
 		"apps",
 		"scripts",
 		"go.mod",
@@ -378,4 +376,10 @@ func isProjectRoot(dir string) bool {
 		}
 	}
 	return true
+}
+
+// stripANSI removes ANSI escape sequences from a string.
+func stripANSI(str string) string {
+	ansiRegex := regexp.MustCompile(`\x1b\[[0-9;]*m`)
+	return ansiRegex.ReplaceAllString(str, "")
 }
