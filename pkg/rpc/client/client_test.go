@@ -28,10 +28,11 @@ import (
 func setupTestServer(
 	t *testing.T,
 	mockStore *mocks.MockStore,
-	headerStore goheader.Store[*types.SignedHeader],
-	dataStore goheader.Store[*types.Data],
+	headerStore goheader.Store[*types.P2PSignedHeader],
+	dataStore goheader.Store[*types.P2PData],
 	mockP2P *mocks.MockP2PRPC,
 ) (*httptest.Server, *Client) {
+	t.Helper()
 	mux := http.NewServeMux()
 
 	logger := zerolog.Nop()
@@ -105,8 +106,8 @@ func TestClientGetMetadata(t *testing.T) {
 func TestClientGetP2PStoreInfo(t *testing.T) {
 	mockStore := mocks.NewMockStore(t)
 	mockP2P := mocks.NewMockP2PRPC(t)
-	headerStore := headerstoremocks.NewMockStore[*types.SignedHeader](t)
-	dataStore := headerstoremocks.NewMockStore[*types.Data](t)
+	headerStore := headerstoremocks.NewMockStore[*types.P2PSignedHeader](t)
+	dataStore := headerstoremocks.NewMockStore[*types.P2PData](t)
 
 	now := time.Now().UTC()
 
@@ -250,27 +251,31 @@ func TestClientGetNamespace(t *testing.T) {
 	require.NotEmpty(t, namespaceResp.DataNamespace)
 }
 
-func testSignedHeader(height uint64, ts time.Time) *types.SignedHeader {
-	return &types.SignedHeader{
-		Header: types.Header{
-			BaseHeader: types.BaseHeader{
-				Height:  height,
-				Time:    uint64(ts.UnixNano()),
-				ChainID: "test-chain",
+func testSignedHeader(height uint64, ts time.Time) *types.P2PSignedHeader {
+	return &types.P2PSignedHeader{
+		SignedHeader: &types.SignedHeader{
+			Header: types.Header{
+				BaseHeader: types.BaseHeader{
+					Height:  height,
+					Time:    uint64(ts.UnixNano()),
+					ChainID: "test-chain",
+				},
+				ProposerAddress: []byte{0x01},
+				DataHash:        []byte{0x02},
+				AppHash:         []byte{0x03},
 			},
-			ProposerAddress: []byte{0x01},
-			DataHash:        []byte{0x02},
-			AppHash:         []byte{0x03},
 		},
 	}
 }
 
-func testData(height uint64, ts time.Time) *types.Data {
-	return &types.Data{
-		Metadata: &types.Metadata{
-			ChainID: "test-chain",
-			Height:  height,
-			Time:    uint64(ts.UnixNano()),
+func testData(height uint64, ts time.Time) *types.P2PData {
+	return &types.P2PData{
+		Data: &types.Data{
+			Metadata: &types.Metadata{
+				ChainID: "test-chain",
+				Height:  height,
+				Time:    uint64(ts.UnixNano()),
+			},
 		},
 	}
 }

@@ -1,7 +1,6 @@
 package executing
 
 import (
-	"context"
 	"testing"
 	"time"
 
@@ -40,8 +39,8 @@ func TestExecutor_BroadcasterIntegration(t *testing.T) {
 	}
 
 	// Create mock broadcasters
-	headerBroadcaster := common.NewMockBroadcaster[*types.SignedHeader](t)
-	dataBroadcaster := common.NewMockBroadcaster[*types.Data](t)
+	headerBroadcaster := common.NewMockBroadcaster[*types.P2PSignedHeader](t)
+	dataBroadcaster := common.NewMockBroadcaster[*types.P2PData](t)
 
 	// Create executor with broadcasters
 	executor, err := NewExecutor(
@@ -121,49 +120,4 @@ func TestExecutor_NilBroadcasters(t *testing.T) {
 	assert.Equal(t, memStore, executor.store)
 	assert.Equal(t, cacheManager, executor.cache)
 	assert.Equal(t, gen, executor.genesis)
-}
-
-func TestExecutor_BroadcastFlow(t *testing.T) {
-	// This test demonstrates how the broadcast flow works
-	// when an Executor produces a block
-
-	// Create mock broadcasters
-	headerBroadcaster := common.NewMockBroadcaster[*types.SignedHeader](t)
-	dataBroadcaster := common.NewMockBroadcaster[*types.Data](t)
-
-	// Create sample data that would be broadcast
-	sampleHeader := &types.SignedHeader{
-		Header: types.Header{
-			BaseHeader: types.BaseHeader{
-				ChainID: "test-chain",
-				Height:  1,
-				Time:    uint64(time.Now().UnixNano()),
-			},
-		},
-	}
-
-	sampleData := &types.Data{
-		Metadata: &types.Metadata{
-			ChainID: "test-chain",
-			Height:  1,
-			Time:    uint64(time.Now().UnixNano()),
-		},
-		Txs: []types.Tx{},
-	}
-
-	// Test broadcast calls
-	ctx := context.Background()
-
-	// Set up expectations
-	headerBroadcaster.EXPECT().WriteToStoreAndBroadcast(ctx, sampleHeader).Return(nil).Once()
-	dataBroadcaster.EXPECT().WriteToStoreAndBroadcast(ctx, sampleData).Return(nil).Once()
-
-	// Simulate what happens in produceBlock() after block creation
-	err := headerBroadcaster.WriteToStoreAndBroadcast(ctx, sampleHeader)
-	require.NoError(t, err)
-
-	err = dataBroadcaster.WriteToStoreAndBroadcast(ctx, sampleData)
-	require.NoError(t, err)
-
-	// Verify expectations were met (automatically checked by testify mock on cleanup)
 }

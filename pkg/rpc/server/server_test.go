@@ -325,8 +325,8 @@ func TestGetGenesisDaHeight_InvalidLength(t *testing.T) {
 func TestGetP2PStoreInfo(t *testing.T) {
 	t.Run("returns snapshots for configured stores", func(t *testing.T) {
 		mockStore := mocks.NewMockStore(t)
-		headerStore := headerstoremocks.NewMockStore[*types.SignedHeader](t)
-		dataStore := headerstoremocks.NewMockStore[*types.Data](t)
+		headerStore := headerstoremocks.NewMockStore[*types.P2PSignedHeader](t)
+		dataStore := headerstoremocks.NewMockStore[*types.P2PData](t)
 		logger := zerolog.Nop()
 		server := NewStoreServer(mockStore, headerStore, dataStore, logger)
 
@@ -354,10 +354,10 @@ func TestGetP2PStoreInfo(t *testing.T) {
 
 	t.Run("returns error when a store edge fails", func(t *testing.T) {
 		mockStore := mocks.NewMockStore(t)
-		headerStore := headerstoremocks.NewMockStore[*types.SignedHeader](t)
+		headerStore := headerstoremocks.NewMockStore[*types.P2PSignedHeader](t)
 		logger := zerolog.Nop()
 		headerStore.On("Height").Return(uint64(0))
-		headerStore.On("Head", mock.Anything).Return((*types.SignedHeader)(nil), fmt.Errorf("boom"))
+		headerStore.On("Head", mock.Anything).Return((*types.P2PSignedHeader)(nil), fmt.Errorf("boom"))
 
 		server := NewStoreServer(mockStore, headerStore, nil, logger)
 		resp, err := server.GetP2PStoreInfo(context.Background(), connect.NewRequest(&emptypb.Empty{}))
@@ -627,27 +627,31 @@ func TestHealthReadyEndpoint(t *testing.T) {
 	})
 }
 
-func makeTestSignedHeader(height uint64, ts time.Time) *types.SignedHeader {
-	return &types.SignedHeader{
-		Header: types.Header{
-			BaseHeader: types.BaseHeader{
-				Height:  height,
-				Time:    uint64(ts.UnixNano()),
-				ChainID: "test-chain",
+func makeTestSignedHeader(height uint64, ts time.Time) *types.P2PSignedHeader {
+	return &types.P2PSignedHeader{
+		SignedHeader: &types.SignedHeader{
+			Header: types.Header{
+				BaseHeader: types.BaseHeader{
+					Height:  height,
+					Time:    uint64(ts.UnixNano()),
+					ChainID: "test-chain",
+				},
+				ProposerAddress: []byte{0x01},
+				DataHash:        []byte{0x02},
+				AppHash:         []byte{0x03},
 			},
-			ProposerAddress: []byte{0x01},
-			DataHash:        []byte{0x02},
-			AppHash:         []byte{0x03},
 		},
 	}
 }
 
-func makeTestData(height uint64, ts time.Time) *types.Data {
-	return &types.Data{
-		Metadata: &types.Metadata{
-			ChainID: "test-chain",
-			Height:  height,
-			Time:    uint64(ts.UnixNano()),
+func makeTestData(height uint64, ts time.Time) *types.P2PData {
+	return &types.P2PData{
+		Data: &types.Data{
+			Metadata: &types.Metadata{
+				ChainID: "test-chain",
+				Height:  height,
+				Time:    uint64(ts.UnixNano()),
+			},
 		},
 	}
 }
