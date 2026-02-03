@@ -47,6 +47,12 @@ type EntityWithDAHint[H any] interface {
 	DAHint() uint64
 }
 
+// lastPrunedHeightGetter is an optional interface that store getters can
+// implement to expose the last pruned block height.
+type lastPrunedHeightGetter interface {
+	LastPrunedHeight(ctx context.Context) (uint64, bool)
+}
+
 // heightSub provides a mechanism for waiting on a specific height to be stored.
 // This is critical for go-header syncer which expects GetByHeight to block until
 // the requested height is available.
@@ -265,19 +271,30 @@ func (a *StoreAdapter[H]) Tail(ctx context.Context) (H, error) {
 		height = h
 	}
 
-	// Try genesisInitialHeight first (most common case - no pruning)
-	item, err := a.getter.GetByHeight(ctx, a.genesisInitialHeight)
+	// Determine the first candidate tail height. By default, this is the
+	// genesis initial height, but if pruning metadata is available we can
+	// skip directly past fully-pruned ranges.
+	startHeight := a.genesisInitialHeight
+	if getter, ok := any(a.getter).(lastPrunedHeightGetter); ok {
+		if lastPruned, ok := getter.LastPrunedHeight(ctx); ok {
+			if lastPruned < ^uint64(0) {
+				startHeight = lastPruned + 1
+			}
+		}
+	}
+
+	item, err := a.getter.GetByHeight(ctx, startHeight)
 	if err == nil {
 		return item, nil
 	}
 
-	// Check pending for genesisInitialHeight
-	if pendingItem, ok := a.pending.Peek(a.genesisInitialHeight); ok {
+	// Check pending for the start height
+	if pendingItem, ok := a.pending.Peek(startHeight); ok {
 		return pendingItem, nil
 	}
 
-	// Walk up from genesisInitialHeight to find the first available item (pruning case)
-	for h := a.genesisInitialHeight + 1; h <= height; h++ {
+	// Walk up from startHeight to find the first available item
+	for h := startHeight + 1; h <= height; h++ {
 		item, err = a.getter.GetByHeight(ctx, h)
 		if err == nil {
 			return item, nil
@@ -641,6 +658,22 @@ func (g *HeaderStoreGetter) HasAt(ctx context.Context, height uint64) bool {
 	return err == nil
 }
 
+// LastPrunedHeight implements lastPrunedHeightGetter for HeaderStoreGetter by
+// reading the pruning metadata from the underlying store.
+func (g *HeaderStoreGetter) LastPrunedHeight(ctx context.Context) (uint64, bool) {
+	meta, err := g.store.GetMetadata(ctx, LastPrunedBlockHeightKey)
+	if err != nil || len(meta) != heightLength {
+		return 0, false
+	}
+
+	height, err := decodeHeight(meta)
+	if err != nil {
+		return 0, false
+	}
+
+	return height, true
+}
+
 // DataStoreGetter implements StoreGetter for *types.Data.
 type DataStoreGetter struct {
 	store Store
@@ -709,6 +742,22 @@ func (g *DataStoreGetter) Height(ctx context.Context) (uint64, error) {
 func (g *DataStoreGetter) HasAt(ctx context.Context, height uint64) bool {
 	_, _, err := g.store.GetBlockData(ctx, height)
 	return err == nil
+}
+
+// LastPrunedHeight implements lastPrunedHeightGetter for DataStoreGetter by
+// reading the pruning metadata from the underlying store.
+func (g *DataStoreGetter) LastPrunedHeight(ctx context.Context) (uint64, bool) {
+	meta, err := g.store.GetMetadata(ctx, LastPrunedBlockHeightKey)
+	if err != nil || len(meta) != heightLength {
+		return 0, false
+	}
+
+	height, err := decodeHeight(meta)
+	if err != nil {
+		return 0, false
+	}
+
+	return height, true
 }
 
 // Type aliases for convenience
