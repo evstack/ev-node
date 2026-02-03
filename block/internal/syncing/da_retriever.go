@@ -79,14 +79,11 @@ func (r *daRetriever) QueuePriorityHeight(daHeight uint64) {
 	r.priorityMu.Lock()
 	defer r.priorityMu.Unlock()
 
-	// Skip if already queued
-	if slices.Contains(r.priorityHeights, daHeight) {
-		return
+	idx, found := slices.BinarySearch(r.priorityHeights, daHeight)
+	if found {
+		return // Already queued
 	}
-
-	r.priorityHeights = append(r.priorityHeights, daHeight)
-	// Keep sorted in ascending order so we process lower heights first
-	slices.Sort(r.priorityHeights)
+	r.priorityHeights = slices.Insert(r.priorityHeights, idx, daHeight)
 }
 
 // PopPriorityHeight returns the next priority height to fetch, or 0 if none.

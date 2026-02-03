@@ -8,7 +8,7 @@ replace (
 )
 
 require (
-	github.com/evstack/ev-node v1.0.0-rc.1
+	github.com/evstack/ev-node v1.0.0-rc.2
 	github.com/evstack/ev-node/core v1.0.0-rc.1
 	github.com/evstack/ev-node/execution/grpc v1.0.0-rc.1
 	github.com/ipfs/go-datastore v0.9.0
