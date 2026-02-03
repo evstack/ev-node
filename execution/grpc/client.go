@@ -2,11 +2,14 @@ package grpc
 
 import (
 	"context"
+	"crypto/tls"
 	"fmt"
+	"net"
 	"net/http"
 	"time"
 
 	"connectrpc.com/connect"
+	"golang.org/x/net/http2"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/evstack/ev-node/core/execution"
@@ -23,6 +26,20 @@ type Client struct {
 	client v1connect.ExecutorServiceClient
 }
 
+// newHTTP2Client creates an HTTP/2 client that supports cleartext (h2c) connections.
+// This is required to connect to native gRPC servers without TLS.
+func newHTTP2Client() *http.Client {
+	return &http.Client{
+		Transport: &http2.Transport{
+			AllowHTTP: true,
+			DialTLSContext: func(ctx context.Context, network, addr string, _ *tls.Config) (net.Conn, error) {
+				var d net.Dialer
+				return d.DialContext(ctx, network, addr)
+			},
+		},
+	}
+}
+
 // NewClient creates a new gRPC execution client.
 //
 // Parameters:
@@ -32,9 +49,11 @@ type Client struct {
 // Returns:
 // - *Client: The initialized gRPC client
 func NewClient(url string, opts ...connect.ClientOption) *Client {
+	// Prepend WithGRPC to use the native gRPC protocol (required for tonic/gRPC servers)
+	opts = append([]connect.ClientOption{connect.WithGRPC()}, opts...)
 	return &Client{
 		client: v1connect.NewExecutorServiceClient(
-			http.DefaultClient,
+			newHTTP2Client(),
 			url,
 			opts...,
 		),

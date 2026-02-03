@@ -22,7 +22,16 @@ import (
 	"github.com/evstack/ev-node/pkg/signer/noop"
 	"github.com/evstack/ev-node/pkg/store"
 	testmocks "github.com/evstack/ev-node/test/mocks"
+	extmocks "github.com/evstack/ev-node/test/mocks/external"
+	"github.com/evstack/ev-node/types"
 )
+
+// noopDAHintAppender is a no-op implementation of DAHintAppender for testing
+type noopDAHintAppender struct{}
+
+func (n noopDAHintAppender) AppendDAHint(ctx context.Context, daHeight uint64, heights ...uint64) error {
+	return nil
+}
 
 func TestBlockComponents_ExecutionClientFailure_StopsNode(t *testing.T) {
 	// Test the error channel mechanism works as intended
@@ -86,6 +95,14 @@ func TestNewSyncComponents_Creation(t *testing.T) {
 	daClient.On("GetForcedInclusionNamespace").Return([]byte(nil)).Maybe()
 	daClient.On("HasForcedInclusionNamespace").Return(false).Maybe()
 
+	// Create mock P2P stores
+	mockHeaderStore := extmocks.NewMockStore[*types.P2PSignedHeader](t)
+	mockDataStore := extmocks.NewMockStore[*types.P2PData](t)
+
+	// Create noop DAHintAppenders for testing
+	headerHintAppender := noopDAHintAppender{}
+	dataHintAppender := noopDAHintAppender{}
+
 	// Just test that the constructor doesn't panic - don't start the components
 	// to avoid P2P store dependencies
 	components, err := NewSyncComponents(
@@ -94,8 +111,10 @@ func TestNewSyncComponents_Creation(t *testing.T) {
 		memStore,
 		mockExec,
 		daClient,
-		nil,
-		nil,
+		mockHeaderStore,
+		mockDataStore,
+		headerHintAppender,
+		dataHintAppender,
 		zerolog.Nop(),
 		NopMetrics(),
 		DefaultBlockOptions(),

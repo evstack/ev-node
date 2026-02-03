@@ -21,6 +21,7 @@ import (
 	"github.com/evstack/ev-node/pkg/genesis"
 	"github.com/evstack/ev-node/pkg/store"
 	testmocks "github.com/evstack/ev-node/test/mocks"
+	extmocks "github.com/evstack/ev-node/test/mocks/external"
 	"github.com/evstack/ev-node/types"
 )
 
@@ -54,8 +55,8 @@ func TestCalculateBlockFullness_HalfFull(t *testing.T) {
 	}
 
 	fullness := s.calculateBlockFullness(data)
-	// Size fullness: 500000/8388608 ≈ 0.0596
-	require.InDelta(t, 0.0596, fullness, 0.05)
+	// Size fullness: 500000/5242880 ≈ 0.095 (5MB max blob size)
+	require.InDelta(t, 0.095, fullness, 0.05)
 }
 
 func TestCalculateBlockFullness_Full(t *testing.T) {
@@ -72,8 +73,8 @@ func TestCalculateBlockFullness_Full(t *testing.T) {
 	}
 
 	fullness := s.calculateBlockFullness(data)
-	// Size fullness: 2100000/8388608 ≈ 0.25
-	require.InDelta(t, 0.25, fullness, 0.05)
+	// Size fullness: 2100000/5242880 ≈ 0.40 (5MB max blob size)
+	require.InDelta(t, 0.40, fullness, 0.05)
 }
 
 func TestCalculateBlockFullness_VerySmall(t *testing.T) {
@@ -399,8 +400,8 @@ func TestVerifyForcedInclusionTxs_AllTransactionsIncluded(t *testing.T) {
 		common.NopMetrics(),
 		cfg,
 		gen,
-		common.NewMockBroadcaster[*types.SignedHeader](t),
-		common.NewMockBroadcaster[*types.Data](t),
+		extmocks.NewMockStore[*types.P2PSignedHeader](t),
+		extmocks.NewMockStore[*types.P2PData](t),
 		zerolog.Nop(),
 		common.DefaultBlockOptions(),
 		make(chan error, 1),
@@ -475,8 +476,8 @@ func TestVerifyForcedInclusionTxs_MissingTransactions(t *testing.T) {
 		common.NopMetrics(),
 		cfg,
 		gen,
-		common.NewMockBroadcaster[*types.SignedHeader](t),
-		common.NewMockBroadcaster[*types.Data](t),
+		extmocks.NewMockStore[*types.P2PSignedHeader](t),
+		extmocks.NewMockStore[*types.P2PData](t),
 		zerolog.Nop(),
 		common.DefaultBlockOptions(),
 		make(chan error, 1),
@@ -581,8 +582,8 @@ func TestVerifyForcedInclusionTxs_PartiallyIncluded(t *testing.T) {
 		common.NopMetrics(),
 		cfg,
 		gen,
-		common.NewMockBroadcaster[*types.SignedHeader](t),
-		common.NewMockBroadcaster[*types.Data](t),
+		extmocks.NewMockStore[*types.P2PSignedHeader](t),
+		extmocks.NewMockStore[*types.P2PData](t),
 		zerolog.Nop(),
 		common.DefaultBlockOptions(),
 		make(chan error, 1),
@@ -691,8 +692,8 @@ func TestVerifyForcedInclusionTxs_NoForcedTransactions(t *testing.T) {
 		common.NopMetrics(),
 		cfg,
 		gen,
-		common.NewMockBroadcaster[*types.SignedHeader](t),
-		common.NewMockBroadcaster[*types.Data](t),
+		extmocks.NewMockStore[*types.P2PSignedHeader](t),
+		extmocks.NewMockStore[*types.P2PData](t),
 		zerolog.Nop(),
 		common.DefaultBlockOptions(),
 		make(chan error, 1),
@@ -761,8 +762,8 @@ func TestVerifyForcedInclusionTxs_NamespaceNotConfigured(t *testing.T) {
 		common.NopMetrics(),
 		cfg,
 		gen,
-		common.NewMockBroadcaster[*types.SignedHeader](t),
-		common.NewMockBroadcaster[*types.Data](t),
+		extmocks.NewMockStore[*types.P2PSignedHeader](t),
+		extmocks.NewMockStore[*types.P2PData](t),
 		zerolog.Nop(),
 		common.DefaultBlockOptions(),
 		make(chan error, 1),
@@ -829,8 +830,8 @@ func TestVerifyForcedInclusionTxs_DeferralWithinEpoch(t *testing.T) {
 		common.NopMetrics(),
 		cfg,
 		gen,
-		common.NewMockBroadcaster[*types.SignedHeader](t),
-		common.NewMockBroadcaster[*types.Data](t),
+		extmocks.NewMockStore[*types.P2PSignedHeader](t),
+		extmocks.NewMockStore[*types.P2PData](t),
 		zerolog.Nop(),
 		common.DefaultBlockOptions(),
 		make(chan error, 1),
@@ -955,8 +956,8 @@ func TestVerifyForcedInclusionTxs_MaliciousAfterEpochEnd(t *testing.T) {
 		common.NopMetrics(),
 		cfg,
 		gen,
-		common.NewMockBroadcaster[*types.SignedHeader](t),
-		common.NewMockBroadcaster[*types.Data](t),
+		extmocks.NewMockStore[*types.P2PSignedHeader](t),
+		extmocks.NewMockStore[*types.P2PData](t),
 		zerolog.Nop(),
 		common.DefaultBlockOptions(),
 		make(chan error, 1),
@@ -1047,8 +1048,8 @@ func TestVerifyForcedInclusionTxs_SmoothingExceedsEpoch(t *testing.T) {
 		common.NopMetrics(),
 		cfg,
 		gen,
-		common.NewMockBroadcaster[*types.SignedHeader](t),
-		common.NewMockBroadcaster[*types.Data](t),
+		extmocks.NewMockStore[*types.P2PSignedHeader](t),
+		extmocks.NewMockStore[*types.P2PData](t),
 		zerolog.Nop(),
 		common.DefaultBlockOptions(),
 		make(chan error, 1),

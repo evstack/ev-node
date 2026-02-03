@@ -49,9 +49,15 @@ func newLightNode(
 	}
 
 	componentLogger := logger.With().Str("component", "HeaderSyncService").Logger()
-	store := store.New(database)
+	baseStore := store.New(database)
 
-	headerSyncService, err := sync.NewHeaderSyncService(database, store, conf, genesis, p2pClient, componentLogger)
+	// Wrap with cached store for LRU caching of headers
+	cachedStore, err := store.NewCachedStore(baseStore)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create cached store: %w", err)
+	}
+
+	headerSyncService, err := sync.NewHeaderSyncService(cachedStore, conf, genesis, p2pClient, componentLogger)
 	if err != nil {
 		return nil, fmt.Errorf("error while initializing HeaderSyncService: %w", err)
 	}
@@ -59,7 +65,7 @@ func newLightNode(
 	node := &LightNode{
 		P2P:          p2pClient,
 		hSyncService: headerSyncService,
-		Store:        store,
+		Store:        cachedStore,
 		nodeConfig:   conf,
 	}
 

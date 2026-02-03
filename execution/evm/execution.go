@@ -715,11 +715,33 @@ func (c *EngineClient) reconcileExecutionAtHeight(ctx context.Context, height ui
 		// that was later replaced via consensus.
 		if execMeta.Stage == ExecStagePromoted && len(execMeta.StateRoot) > 0 {
 			if execMeta.Timestamp == timestamp.Unix() {
-				c.logger.Info().
+				// Verify the block actually exists in the EL before trusting ExecMeta.
+				// ExecMeta could be stale if ev-reth crashed/restarted after we saved it
+				// but before the block was persisted on the EL side.
+				existingBlockHash, existingStateRoot, _, existingTimestamp, elErr := c.getBlockInfo(ctx, height)
+				if elErr == nil && existingBlockHash != (common.Hash{}) && existingTimestamp == uint64(timestamp.Unix()) {
+					// Block exists in EL with matching timestamp - safe to reuse
+					c.logger.Info().
+						Uint64("height", height).
+						Str("stage", execMeta.Stage).
+						Str("blockHash", existingBlockHash.Hex()).
+						Msg("ExecuteTxs: reusing already-promoted execution (idempotent)")
+
+					// Update head to point to this existing block
+					if err := c.setHead(ctx, existingBlockHash); err != nil {
+						c.logger.Warn().Err(err).Msg("ExecuteTxs: failed to update head to existing block")
+					}
+
+					return existingStateRoot.Bytes(), nil, true, nil
+				}
+				// ExecMeta says promoted but block doesn't exist in EL or timestamp mismatch
+				// This can happen if ev-reth crashed before persisting the block
+				c.logger.Warn().
 					Uint64("height", height).
-					Str("stage", execMeta.Stage).
-					Msg("ExecuteTxs: reusing already-promoted execution (idempotent)")
-				return execMeta.StateRoot, nil, true, nil
+					Bool("block_exists", existingBlockHash != common.Hash{}).
+					Err(elErr).
+					Msg("ExecuteTxs: ExecMeta shows promoted but block not found in EL, will re-execute")
+				// Fall through to fresh execution
 			}
 			// Timestamp mismatch - ExecMeta is stale from an old block that was replaced.
 			// Ignore it and proceed to EL check which will handle rollback if needed.

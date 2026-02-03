@@ -53,12 +53,7 @@ func NewPendingData(store store.Store, logger zerolog.Logger) (*PendingData, err
 	return &PendingData{base: base}, nil
 }
 
-func (pd *PendingData) init() error {
-	return pd.base.init()
-}
-
 // GetPendingData returns a sorted slice of pending Data along with their marshalled bytes.
-// It uses an internal cache to avoid re-marshalling data on subsequent calls.
 func (pd *PendingData) GetPendingData(ctx context.Context) ([]*types.Data, [][]byte, error) {
 	dataList, err := pd.base.getPending(ctx)
 	if err != nil {
@@ -70,38 +65,53 @@ func (pd *PendingData) GetPendingData(ctx context.Context) ([]*types.Data, [][]b
 	}
 
 	marshalled := make([][]byte, len(dataList))
-	lastSubmitted := pd.base.lastHeight.Load()
-
 	for i, data := range dataList {
-		height := lastSubmitted + uint64(i) + 1
-
-		// Try to get from cache first
-		if cached := pd.base.getMarshalledForHeight(height); cached != nil {
-			marshalled[i] = cached
-			continue
-		}
-
-		// Marshal if not in cache
 		dataBytes, err := data.MarshalBinary()
 		if err != nil {
-			return nil, nil, fmt.Errorf("failed to marshal data at height %d: %w", height, err)
+			return nil, nil, fmt.Errorf("failed to marshal data at height %d: %w", data.Height(), err)
 		}
 		marshalled[i] = dataBytes
-
-		// Store in cache
-		pd.base.setMarshalledForHeight(height, dataBytes)
 	}
 
 	return dataList, marshalled, nil
 }
 
 func (pd *PendingData) NumPendingData() uint64 {
+	pd.advancePastEmptyData(context.Background())
 	return pd.base.numPending()
 }
 
 func (pd *PendingData) SetLastSubmittedDataHeight(ctx context.Context, newLastSubmittedDataHeight uint64) {
 	pd.base.setLastSubmittedHeight(ctx, newLastSubmittedDataHeight)
 }
+
+// advancePastEmptyData advances lastSubmittedDataHeight past any consecutive empty data blocks.
+// This ensures that NumPendingData doesn't count empty data that won't be published to DA.
+func (pd *PendingData) advancePastEmptyData(ctx context.Context) {
+	storeHeight, err := pd.base.store.Height(ctx)
+	if err != nil {
+		return
+	}
+
+	currentHeight := pd.base.getLastSubmittedHeight()
+
+	for height := currentHeight + 1; height <= storeHeight; height++ {
+		data, err := fetchData(ctx, pd.base.store, height)
+		if err != nil {
+			// Can't fetch data (might be in-flight or error), stop advancing
+			return
+		}
+
+		if len(data.Txs) > 0 {
+			// Found non-empty data, stop advancing
+			return
+		}
+
+		// Empty data, advance past it
+		pd.base.setLastSubmittedHeight(ctx, height)
+	}
+}
+
 func (pd *PendingData) GetLastSubmittedDataHeight() uint64 {
 	return pd.base.getLastSubmittedHeight()
 }

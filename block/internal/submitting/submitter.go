@@ -129,19 +129,11 @@ func (s *Submitter) Start(ctx context.Context) error {
 	// Start DA submission loop if signer is available (aggregator nodes only)
 	if s.signer != nil {
 		s.logger.Info().Msg("starting DA submission loop")
-		s.wg.Add(1)
-		go func() {
-			defer s.wg.Done()
-			s.daSubmissionLoop()
-		}()
+		s.wg.Go(s.daSubmissionLoop)
 	}
 
 	// Start DA inclusion processing loop (both sync and aggregator nodes)
-	s.wg.Add(1)
-	go func() {
-		defer s.wg.Done()
-		s.processDAInclusionLoop()
-	}()
+	s.wg.Go(s.processDAInclusionLoop)
 
 	return nil
 }
@@ -305,6 +297,9 @@ func (s *Submitter) daSubmissionLoop() {
 					}()
 				}
 			}
+
+			// Update metrics with current pending counts
+			s.metrics.DASubmitterPendingBlobs.Set(float64(headersNb + dataNb))
 		}
 	}
 }
@@ -341,9 +336,9 @@ func (s *Submitter) processDAInclusionLoop() {
 
 				s.logger.Debug().Uint64("height", nextHeight).Msg("advancing DA included height")
 
-				// Set sequencer height to DA height mapping using already retrieved data
-				if err := s.setSequencerHeightToDAHeight(s.ctx, nextHeight, header, data, currentDAIncluded == 0); err != nil {
-					s.logger.Error().Err(err).Uint64("height", nextHeight).Msg("failed to set sequencer height to DA height mapping")
+				// Set node height to DA height mapping using already retrieved data
+				if err := s.setNodeHeightToDAHeight(s.ctx, nextHeight, header, data, currentDAIncluded == 0); err != nil {
+					s.logger.Error().Err(err).Uint64("height", nextHeight).Msg("failed to set node height to DA height mapping")
 					break
 				}
 
@@ -431,14 +426,14 @@ func (s *Submitter) sendCriticalError(err error) {
 	}
 }
 
-// setSequencerHeightToDAHeight stores the mapping from a ev-node block height to the corresponding
+// setNodeHeightToDAHeight stores the mapping from a ev-node block height to the corresponding
 // DA (Data Availability) layer heights where the block's header and data were included.
 // This mapping is persisted in the store metadata and is used to track which DA heights
 // contain the block components for a given ev-node height.
 //
 // For blocks with empty transactions, both header and data use the same DA height since
 // empty transaction data is not actually published to the DA layer.
-func (s *Submitter) setSequencerHeightToDAHeight(ctx context.Context, height uint64, header *types.SignedHeader, data *types.Data, genesisInclusion bool) error {
+func (s *Submitter) setNodeHeightToDAHeight(ctx context.Context, height uint64, header *types.SignedHeader, data *types.Data, genesisInclusion bool) error {
 	headerHash, dataHash := header.Hash(), data.DACommitment()
 
 	headerDaHeightBytes := make([]byte, 8)
