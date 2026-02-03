@@ -104,7 +104,7 @@ func clamp(v, min, max time.Duration) time.Duration {
 }
 
 type DAHintAppender interface {
-	AppendDAHint(ctx context.Context, daHeight uint64, hash ...types.Hash) error
+	AppendDAHint(ctx context.Context, daHeight uint64, heights ...uint64) error
 }
 
 // DASubmitter handles DA submission operations
@@ -232,13 +232,13 @@ func (s *DASubmitter) SubmitHeaders(ctx context.Context, headers []*types.Signed
 
 	return submitToDA(s, ctx, headers, envelopes,
 		func(submitted []*types.SignedHeader, res *datypes.ResultSubmit) {
-			hashes := make([]types.Hash, len(submitted))
+			heights := make([]uint64, len(submitted))
 			for i, header := range submitted {
 				headerHash := header.Hash()
 				cache.SetHeaderDAIncluded(headerHash.String(), res.Height, header.Height())
-				hashes[i] = headerHash
+				heights[i] = header.Height()
 			}
-			if err := s.headerDAHintAppender.AppendDAHint(ctx, res.Height, hashes...); err != nil {
+			if err := s.headerDAHintAppender.AppendDAHint(ctx, res.Height, heights...); err != nil {
 				s.logger.Error().Err(err).Msg("failed to append da height hint in header p2p store")
 				// ignoring error here, since we don't want to block the block submission'
 			}
@@ -440,12 +440,12 @@ func (s *DASubmitter) SubmitData(ctx context.Context, unsignedDataList []*types.
 
 	return submitToDA(s, ctx, signedDataList, signedDataListBz,
 		func(submitted []*types.SignedData, res *datypes.ResultSubmit) {
-			hashes := make([]types.Hash, len(submitted))
+			heights := make([]uint64, len(submitted))
 			for i, sd := range submitted {
 				cache.SetDataDAIncluded(sd.Data.DACommitment().String(), res.Height, sd.Height())
-				hashes[i] = sd.Hash()
+				heights[i] = sd.Height()
 			}
-			if err := s.dataDAHintAppender.AppendDAHint(ctx, res.Height, hashes...); err != nil {
+			if err := s.dataDAHintAppender.AppendDAHint(ctx, res.Height, heights...); err != nil {
 				s.logger.Error().Err(err).Msg("failed to append da height hint in data p2p store")
 				// ignoring error here, since we don't want to block the block submission'
 			}

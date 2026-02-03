@@ -29,7 +29,7 @@ import (
 // noopDAHintAppender is a no-op implementation of DAHintAppender for testing
 type noopDAHintAppender struct{}
 
-func (n noopDAHintAppender) AppendDAHint(ctx context.Context, daHeight uint64, hash ...types.Hash) error {
+func (n noopDAHintAppender) AppendDAHint(ctx context.Context, daHeight uint64, heights ...uint64) error {
 	return nil
 }
 
