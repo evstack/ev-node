@@ -487,10 +487,17 @@ func (s *Submitter) setNodeHeightToDAHeight(ctx context.Context, height uint64, 
 
 // IsHeightDAIncluded checks if a height is included in DA
 func (s *Submitter) IsHeightDAIncluded(height uint64, header *types.SignedHeader, data *types.Data) (bool, error) {
+	// If height is at or below the DA included height, it was already processed
+	// and cache entries were cleared. We know it's DA included.
+	if height <= s.GetDAIncludedHeight() {
+		return true, nil
+	}
+
 	currentHeight, err := s.store.Height(s.ctx)
 	if err != nil {
 		return false, err
 	}
+
 	if currentHeight < height {
 		return false, nil
 	}
