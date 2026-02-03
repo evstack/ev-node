@@ -2,10 +2,7 @@ package cache
 
 import (
 	"context"
-	"encoding/gob"
 	"fmt"
-	"os"
-	"path/filepath"
 	"sync"
 	"time"
 
@@ -17,29 +14,14 @@ import (
 	"github.com/evstack/ev-node/types"
 )
 
-var (
-	cacheDir              = "cache"
-	headerCacheDir        = filepath.Join(cacheDir, "header")
-	dataCacheDir          = filepath.Join(cacheDir, "data")
-	pendingEventsCacheDir = filepath.Join(cacheDir, "pending_da_events")
-	txCacheDir            = filepath.Join(cacheDir, "tx")
+const (
+	// Store key prefixes for different cache types
+	headerDAIncludedPrefix = "cache/header-da-included/"
+	dataDAIncludedPrefix   = "cache/data-da-included/"
 
 	// DefaultTxCacheRetention is the default time to keep transaction hashes in cache
 	DefaultTxCacheRetention = 24 * time.Hour
 )
-
-// gobRegisterOnce ensures gob type registration happens exactly once process-wide.
-var gobRegisterOnce sync.Once
-
-// registerGobTypes registers all concrete types that may be encoded/decoded by the cache.
-// Gob registration is global and must not be performed repeatedly to avoid conflicts.
-func registerGobTypes() {
-	gobRegisterOnce.Do(func() {
-		gob.Register(&types.SignedHeader{})
-		gob.Register(&types.Data{})
-		gob.Register(&common.DAHeightEvent{})
-	})
-}
 
 // CacheManager provides thread-safe cache operations for tracking seen blocks
 // and DA inclusion status during block execution and syncing.
@@ -67,10 +49,9 @@ type CacheManager interface {
 	GetNextPendingEvent(blockHeight uint64) *common.DAHeightEvent
 	SetPendingEvent(blockHeight uint64, event *common.DAHeightEvent)
 
-	// Disk operations
-	SaveToDisk() error
-	LoadFromDisk() error
-	ClearFromDisk() error
+	// Store operations
+	SaveToStore() error
+	RestoreFromStore() error
 
 	// Cleanup operations
 	DeleteHeight(blockHeight uint64)
@@ -105,6 +86,7 @@ type implementation struct {
 	pendingEventsCache *Cache[common.DAHeightEvent]
 	pendingHeaders     *PendingHeaders
 	pendingData        *PendingData
+	store              store.Store
 	config             config.Config
 	logger             zerolog.Logger
 }
@@ -129,59 +111,53 @@ func NewPendingManager(store store.Store, logger zerolog.Logger) (PendingManager
 }
 
 // NewCacheManager creates a new cache manager instance
-func NewCacheManager(cfg config.Config, logger zerolog.Logger) (CacheManager, error) {
-	// Initialize caches
-	headerCache := NewCache[types.SignedHeader]()
-	dataCache := NewCache[types.Data]()
-	txCache := NewCache[struct{}]()
-	pendingEventsCache := NewCache[common.DAHeightEvent]()
+func NewCacheManager(cfg config.Config, st store.Store, logger zerolog.Logger) (CacheManager, error) {
+	// Initialize caches with store-based persistence for DA inclusion data
+	headerCache := NewCache[types.SignedHeader](st, headerDAIncludedPrefix)
+	dataCache := NewCache[types.Data](st, dataDAIncludedPrefix)
+	// TX cache and pending events cache don't need store persistence
+	txCache := NewCache[struct{}](nil, "")
+	pendingEventsCache := NewCache[common.DAHeightEvent](nil, "")
 
-	registerGobTypes()
 	impl := &implementation{
 		headerCache:        headerCache,
 		dataCache:          dataCache,
 		txCache:            txCache,
 		txTimestamps:       new(sync.Map),
 		pendingEventsCache: pendingEventsCache,
+		store:              st,
 		config:             cfg,
 		logger:             logger,
 	}
 
-	if cfg.ClearCache {
-		// Clear the cache from disk
-		if err := impl.ClearFromDisk(); err != nil {
-			logger.Warn().Err(err).Msg("failed to clear cache from disk, starting with empty cache")
-		}
-	} else {
-		// Load existing cache from disk
-		if err := impl.LoadFromDisk(); err != nil {
-			logger.Warn().Err(err).Msg("failed to load cache from disk, starting with empty cache")
-		}
+	// Restore existing cache from store
+	if err := impl.RestoreFromStore(); err != nil {
+		logger.Warn().Err(err).Msg("failed to restore cache from store, starting with empty cache")
 	}
 
 	return impl, nil
 }
 
 // NewManager creates a new cache manager instance
-func NewManager(cfg config.Config, store store.Store, logger zerolog.Logger) (Manager, error) {
-	// Initialize caches
-	headerCache := NewCache[types.SignedHeader]()
-	dataCache := NewCache[types.Data]()
-	txCache := NewCache[struct{}]()
-	pendingEventsCache := NewCache[common.DAHeightEvent]()
+func NewManager(cfg config.Config, st store.Store, logger zerolog.Logger) (Manager, error) {
+	// Initialize caches with store-based persistence for DA inclusion data
+	headerCache := NewCache[types.SignedHeader](st, headerDAIncludedPrefix)
+	dataCache := NewCache[types.Data](st, dataDAIncludedPrefix)
+	// TX cache and pending events cache don't need store persistence
+	txCache := NewCache[struct{}](nil, "")
+	pendingEventsCache := NewCache[common.DAHeightEvent](nil, "")
 
 	// Initialize pending managers
-	pendingHeaders, err := NewPendingHeaders(store, logger)
+	pendingHeaders, err := NewPendingHeaders(st, logger)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create pending headers: %w", err)
 	}
 
-	pendingData, err := NewPendingData(store, logger)
+	pendingData, err := NewPendingData(st, logger)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create pending data: %w", err)
 	}
 
-	registerGobTypes()
 	impl := &implementation{
 		headerCache:        headerCache,
 		dataCache:          dataCache,
@@ -190,20 +166,14 @@ func NewManager(cfg config.Config, store store.Store, logger zerolog.Logger) (Ma
 		pendingEventsCache: pendingEventsCache,
 		pendingHeaders:     pendingHeaders,
 		pendingData:        pendingData,
+		store:              st,
 		config:             cfg,
 		logger:             logger,
 	}
 
-	if cfg.ClearCache {
-		// Clear the cache from disk
-		if err := impl.ClearFromDisk(); err != nil {
-			logger.Warn().Err(err).Msg("failed to clear cache from disk, starting with empty cache")
-		}
-	} else {
-		// Load existing cache from disk
-		if err := impl.LoadFromDisk(); err != nil {
-			logger.Warn().Err(err).Msg("failed to load cache from disk, starting with empty cache")
-		}
+	// Restore existing cache from store
+	if err := impl.RestoreFromStore(); err != nil {
+		logger.Warn().Err(err).Msg("failed to restore cache from store, starting with empty cache")
 	}
 
 	return impl, nil
@@ -386,71 +356,95 @@ func (m *implementation) GetNextPendingEvent(height uint64) *common.DAHeightEven
 	return m.pendingEventsCache.getNextItem(height)
 }
 
-func (m *implementation) SaveToDisk() error {
-	cfgDir := filepath.Join(m.config.RootDir, "data")
+// SaveToStore persists the DA inclusion cache to the store.
+// DA inclusion data is persisted on every SetHeaderDAIncluded/SetDataDAIncluded call,
+// so this method ensures any remaining data is flushed.
+func (m *implementation) SaveToStore() error {
+	ctx := context.Background()
 
-	// Ensure gob types are registered before encoding
-	registerGobTypes()
-
-	if err := m.headerCache.SaveToDisk(filepath.Join(cfgDir, headerCacheDir)); err != nil {
-		return fmt.Errorf("failed to save header cache to disk: %w", err)
+	if err := m.headerCache.SaveToStore(ctx); err != nil {
+		return fmt.Errorf("failed to save header cache to store: %w", err)
 	}
 
-	if err := m.dataCache.SaveToDisk(filepath.Join(cfgDir, dataCacheDir)); err != nil {
-		return fmt.Errorf("failed to save data cache to disk: %w", err)
+	if err := m.dataCache.SaveToStore(ctx); err != nil {
+		return fmt.Errorf("failed to save data cache to store: %w", err)
 	}
 
-	if err := m.txCache.SaveToDisk(filepath.Join(cfgDir, txCacheDir)); err != nil {
-		return fmt.Errorf("failed to save tx cache to disk: %w", err)
+	// TX cache and pending events are ephemeral - not persisted
+	return nil
+}
+
+// RestoreFromStore restores the DA inclusion cache from the store.
+// This iterates through blocks in the store and checks for persisted DA inclusion data.
+func (m *implementation) RestoreFromStore() error {
+	ctx := context.Background()
+
+	// Get current store height to know how many blocks to check
+	height, err := m.store.Height(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to get store height: %w", err)
 	}
 
-	if err := m.pendingEventsCache.SaveToDisk(filepath.Join(cfgDir, pendingEventsCacheDir)); err != nil {
-		return fmt.Errorf("failed to save pending events cache to disk: %w", err)
+	if height == 0 {
+		return nil // No blocks to restore
 	}
 
-	// Note: txTimestamps are not persisted to disk intentionally.
-	// On restart, all cached transactions will be treated as "new" for cleanup purposes,
-	// which is acceptable as they will be cleaned up on the next cleanup cycle if old enough.
+	// Collect hashes from stored blocks
+	var headerHashes []string
+	var dataHashes []string
+
+	for h := uint64(1); h <= height; h++ {
+		header, data, err := m.store.GetBlockData(ctx, h)
+		if err != nil {
+			m.logger.Warn().Uint64("height", h).Err(err).Msg("failed to get block data during cache restore")
+			continue
+		}
+
+		if header != nil {
+			headerHashes = append(headerHashes, header.Hash().String())
+		}
+		if data != nil {
+			dataHashes = append(dataHashes, data.DACommitment().String())
+		}
+	}
+
+	// Restore DA inclusion data from store
+	if err := m.headerCache.RestoreFromStore(ctx, headerHashes); err != nil {
+		return fmt.Errorf("failed to restore header cache from store: %w", err)
+	}
+
+	if err := m.dataCache.RestoreFromStore(ctx, dataHashes); err != nil {
+		return fmt.Errorf("failed to restore data cache from store: %w", err)
+	}
+
+	m.logger.Info().
+		Int("header_hashes", len(headerHashes)).
+		Int("data_hashes", len(dataHashes)).
+		Msg("restored DA inclusion cache from store")
 
 	return nil
 }
 
-func (m *implementation) LoadFromDisk() error {
-	// Ensure types are registered exactly once prior to decoding
-	registerGobTypes()
+// ClearFromStore clears in-memory caches and deletes DA inclusion entries from the store.
+func (m *implementation) ClearFromStore() error {
+	ctx := context.Background()
 
-	cfgDir := filepath.Join(m.config.RootDir, "data")
-
-	if err := m.headerCache.LoadFromDisk(filepath.Join(cfgDir, headerCacheDir)); err != nil {
-		return fmt.Errorf("failed to load header cache from disk: %w", err)
+	// Get hashes from current in-memory caches and delete from store
+	headerHashes := m.headerCache.daIncluded.Keys()
+	if err := m.headerCache.ClearFromStore(ctx, headerHashes); err != nil {
+		return fmt.Errorf("failed to clear header cache from store: %w", err)
 	}
 
-	if err := m.dataCache.LoadFromDisk(filepath.Join(cfgDir, dataCacheDir)); err != nil {
-		return fmt.Errorf("failed to load data cache from disk: %w", err)
+	dataHashes := m.dataCache.daIncluded.Keys()
+	if err := m.dataCache.ClearFromStore(ctx, dataHashes); err != nil {
+		return fmt.Errorf("failed to clear data cache from store: %w", err)
 	}
 
-	if err := m.txCache.LoadFromDisk(filepath.Join(cfgDir, txCacheDir)); err != nil {
-		return fmt.Errorf("failed to load tx cache from disk: %w", err)
-	}
+	// Clear in-memory caches by creating new ones
+	m.headerCache = NewCache[types.SignedHeader](m.store, headerDAIncludedPrefix)
+	m.dataCache = NewCache[types.Data](m.store, dataDAIncludedPrefix)
+	m.txCache = NewCache[struct{}](nil, "")
+	m.pendingEventsCache = NewCache[common.DAHeightEvent](nil, "")
 
-	if err := m.pendingEventsCache.LoadFromDisk(filepath.Join(cfgDir, pendingEventsCacheDir)); err != nil {
-		return fmt.Errorf("failed to load pending events cache from disk: %w", err)
-	}
-
-	// After loading tx cache from disk, initialize timestamps for loaded transactions
-	// Set them to current time so they won't be immediately cleaned up
-	now := time.Now()
-	for _, hash := range m.txCache.hashes.Keys() {
-		m.txTimestamps.Store(hash, now)
-	}
-
-	return nil
-}
-
-func (m *implementation) ClearFromDisk() error {
-	cachePath := filepath.Join(m.config.RootDir, "data", cacheDir)
-	if err := os.RemoveAll(cachePath); err != nil {
-		return fmt.Errorf("failed to clear cache from disk: %w", err)
-	}
 	return nil
 }

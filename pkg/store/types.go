@@ -39,6 +39,9 @@ type Store interface {
 	// This method enables evolve to safely persist any information.
 	SetMetadata(ctx context.Context, key string, value []byte) error
 
+	// DeleteMetadata removes a metadata key from the store.
+	DeleteMetadata(ctx context.Context, key string) error
+
 	// Close safely closes underlying data storage, to ensure that data is actually saved.
 	Close() error
 

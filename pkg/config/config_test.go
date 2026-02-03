@@ -51,7 +51,6 @@ func TestAddFlags(t *testing.T) {
 
 	// Test specific flags
 	assertFlagValue(t, flags, FlagDBPath, DefaultConfig().DBPath)
-	assertFlagValue(t, flags, FlagClearCache, DefaultConfig().ClearCache)
 
 	// Node flags
 	assertFlagValue(t, flags, FlagAggregator, DefaultConfig().Node.Aggregator)
@@ -112,7 +111,7 @@ func TestAddFlags(t *testing.T) {
 	assertFlagValue(t, flags, FlagRPCEnableDAVisualization, DefaultConfig().RPC.EnableDAVisualization)
 
 	// Count the number of flags we're explicitly checking
-	expectedFlagCount := 63 // Update this number if you add more flag checks above
+	expectedFlagCount := 62 // Update this number if you add more flag checks above
 
 	// Get the actual number of flags (both regular and persistent)
 	actualFlagCount := 0

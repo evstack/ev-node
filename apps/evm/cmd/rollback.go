@@ -80,9 +80,6 @@ func NewRollbackCmd() *cobra.Command {
 			}
 
 			cmd.Printf("Rolled back ev-node state to height %d\n", height)
-			if syncNode {
-				fmt.Println("Restart the node with the `--evnode.clear_cache` flag")
-			}
 
 			return nil
 		},

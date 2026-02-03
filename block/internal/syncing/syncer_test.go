@@ -285,7 +285,7 @@ func TestSyncer_processPendingEvents(t *testing.T) {
 	ds := dssync.MutexWrap(datastore.NewMapDatastore())
 	st := store.New(ds)
 
-	cm, err := cache.NewCacheManager(config.DefaultConfig(), zerolog.Nop())
+	cm, err := cache.NewCacheManager(config.DefaultConfig(), st, zerolog.Nop())
 	require.NoError(t, err)
 
 	// current height 1
@@ -329,7 +329,6 @@ func TestSyncLoopPersistState(t *testing.T) {
 	cfg := config.DefaultConfig()
 	t.Setenv("HOME", t.TempDir())
 	cfg.RootDir = t.TempDir()
-	cfg.ClearCache = true
 
 	cm, err := cache.NewManager(config.DefaultConfig(), st, zerolog.Nop())
 	require.NoError(t, err)
@@ -425,7 +424,7 @@ func TestSyncLoopPersistState(t *testing.T) {
 	require.Equal(t, myFutureDAHeight, syncerInst1.daRetrieverHeight.Load())
 
 	// wait for all events consumed
-	require.NoError(t, cm.SaveToDisk())
+	require.NoError(t, cm.SaveToStore())
 	t.Log("processLoop on instance1 completed")
 
 	// then
@@ -442,7 +441,7 @@ func TestSyncLoopPersistState(t *testing.T) {
 	// and when new instance is up on restart
 	cm, err = cache.NewManager(config.DefaultConfig(), st, zerolog.Nop())
 	require.NoError(t, err)
-	require.NoError(t, cm.LoadFromDisk())
+	require.NoError(t, cm.RestoreFromStore())
 
 	syncerInst2 := NewSyncer(
 		st,

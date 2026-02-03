@@ -2,8 +2,6 @@ package cache
 
 import (
 	"context"
-	"encoding/gob"
-	"path/filepath"
 	"testing"
 	"time"
 
@@ -87,54 +85,61 @@ func TestManager_PendingEventsCRUD(t *testing.T) {
 	assert.Nil(t, got1Again)
 }
 
-func TestManager_SaveAndLoadFromDisk(t *testing.T) {
+func TestManager_SaveAndRestoreFromStore(t *testing.T) {
 	t.Parallel()
 	cfg := tempConfig(t)
 	st := memStore(t)
+	ctx := context.Background()
 
-	// must register for gob before saving
-	gob.Register(&types.SignedHeader{})
-	gob.Register(&types.Data{})
-	gob.Register(&common.DAHeightEvent{})
+	// First, we need to save some block data to the store so RestoreFromStore can find the hashes
+	h1, d1 := types.GetRandomBlock(1, 1, "test-chain")
+	h2, d2 := types.GetRandomBlock(2, 1, "test-chain")
+
+	batch1, err := st.NewBatch(ctx)
+	require.NoError(t, err)
+	require.NoError(t, batch1.SaveBlockData(h1, d1, &types.Signature{}))
+	require.NoError(t, batch1.SetHeight(1))
+	require.NoError(t, batch1.Commit())
+
+	batch2, err := st.NewBatch(ctx)
+	require.NoError(t, err)
+	require.NoError(t, batch2.SaveBlockData(h2, d2, &types.Signature{}))
+	require.NoError(t, batch2.SetHeight(2))
+	require.NoError(t, batch2.Commit())
 
 	m1, err := NewManager(cfg, st, zerolog.Nop())
 	require.NoError(t, err)
 
-	// populate caches
-	hdr := &types.SignedHeader{Header: types.Header{BaseHeader: types.BaseHeader{ChainID: "c", Height: 2}}}
-	dat := &types.Data{Metadata: &types.Metadata{ChainID: "c", Height: 2}}
-	m1.SetHeaderSeen("H2", 2)
-	m1.SetDataSeen("D2", 2)
-	m1.SetHeaderDAIncluded("H2", 100, 2)
-	m1.SetDataDAIncluded("D2", 101, 2)
-	m1.SetPendingEvent(2, &common.DAHeightEvent{Header: hdr, Data: dat, DaHeight: 99})
+	// Set DA inclusion for the blocks
+	m1.SetHeaderDAIncluded(h1.Hash().String(), 100, 1)
+	m1.SetDataDAIncluded(d1.DACommitment().String(), 100, 1)
+	m1.SetHeaderDAIncluded(h2.Hash().String(), 101, 2)
+	m1.SetDataDAIncluded(d2.DACommitment().String(), 101, 2)
 
-	// persist
-	err = m1.SaveToDisk()
+	// Persist to store
+	err = m1.SaveToStore()
 	require.NoError(t, err)
 
-	// create a fresh manager on same root and verify load
+	// Create a fresh manager on same store and verify restore
 	m2, err := NewManager(cfg, st, zerolog.Nop())
 	require.NoError(t, err)
 
-	// check loaded items
-	assert.True(t, m2.IsHeaderSeen("H2"))
-	assert.True(t, m2.IsDataSeen("D2"))
-	_, ok := m2.GetHeaderDAIncluded("H2")
+	// Check DA inclusion was restored
+	daHeight, ok := m2.GetHeaderDAIncluded(h1.Hash().String())
 	assert.True(t, ok)
-	_, ok2 := m2.GetDataDAIncluded("D2")
-	assert.True(t, ok2)
+	assert.Equal(t, uint64(100), daHeight)
 
-	// Verify pending event was loaded
-	loadedEvent := m2.GetNextPendingEvent(2)
-	require.NotNil(t, loadedEvent)
-	assert.Equal(t, uint64(2), loadedEvent.Header.Height())
+	daHeight, ok = m2.GetDataDAIncluded(d1.DACommitment().String())
+	assert.True(t, ok)
+	assert.Equal(t, uint64(100), daHeight)
 
-	// directories exist under cfg.RootDir/data/cache/...
-	base := filepath.Join(cfg.RootDir, "data", "cache")
-	assert.DirExists(t, filepath.Join(base, "header"))
-	assert.DirExists(t, filepath.Join(base, "data"))
-	assert.DirExists(t, filepath.Join(base, "pending_da_events"))
+	daHeight, ok = m2.GetHeaderDAIncluded(h2.Hash().String())
+	assert.True(t, ok)
+	assert.Equal(t, uint64(101), daHeight)
+
+	daHeight, ok = m2.GetDataDAIncluded(d2.DACommitment().String())
+	assert.True(t, ok)
+	assert.Equal(t, uint64(101), daHeight)
 }
 
 func TestManager_GetNextPendingEvent_NonExistent(t *testing.T) {
@@ -340,7 +345,7 @@ func TestManager_CleanupOldTxs_NoTransactions(t *testing.T) {
 	assert.Equal(t, 0, removed)
 }
 
-func TestManager_TxCache_PersistAndLoad(t *testing.T) {
+func TestManager_TxCache_NotPersistedToStore(t *testing.T) {
 	t.Parallel()
 	cfg := tempConfig(t)
 	st := memStore(t)
@@ -355,20 +360,17 @@ func TestManager_TxCache_PersistAndLoad(t *testing.T) {
 	assert.True(t, m1.IsTxSeen("persistent-tx1"))
 	assert.True(t, m1.IsTxSeen("persistent-tx2"))
 
-	// Save to disk
-	err = m1.SaveToDisk()
+	// Save to store
+	err = m1.SaveToStore()
 	require.NoError(t, err)
 
-	// Create new manager and verify transactions are loaded
+	// Create new manager - tx cache should be empty (not persisted)
 	m2, err := NewManager(cfg, st, zerolog.Nop())
 	require.NoError(t, err)
 
-	assert.True(t, m2.IsTxSeen("persistent-tx1"))
-	assert.True(t, m2.IsTxSeen("persistent-tx2"))
-
-	// Verify tx cache directory exists
-	txCacheDir := filepath.Join(cfg.RootDir, "data", "cache", "tx")
-	assert.DirExists(t, txCacheDir)
+	// TX cache is ephemeral and not persisted
+	assert.False(t, m2.IsTxSeen("persistent-tx1"))
+	assert.False(t, m2.IsTxSeen("persistent-tx2"))
 }
 
 func TestManager_DeleteHeight_PreservesTxCache(t *testing.T) {
@@ -398,4 +400,68 @@ func TestManager_DeleteHeight_PreservesTxCache(t *testing.T) {
 
 	// Transaction should still be present (height-independent)
 	assert.True(t, m.IsTxSeen("tx-persistent"))
+}
+
+func TestManager_DAInclusionPersistence(t *testing.T) {
+	t.Parallel()
+	cfg := tempConfig(t)
+	st := memStore(t)
+	ctx := context.Background()
+
+	// Create blocks and save to store
+	h1, d1 := types.GetRandomBlock(1, 1, "test-chain")
+
+	batch, err := st.NewBatch(ctx)
+	require.NoError(t, err)
+	require.NoError(t, batch.SaveBlockData(h1, d1, &types.Signature{}))
+	require.NoError(t, batch.SetHeight(1))
+	require.NoError(t, batch.Commit())
+
+	// Create manager and set DA inclusion
+	m1, err := NewManager(cfg, st, zerolog.Nop())
+	require.NoError(t, err)
+
+	headerHash := h1.Hash().String()
+	dataHash := d1.DACommitment().String()
+
+	m1.SetHeaderDAIncluded(headerHash, 100, 1)
+	m1.SetDataDAIncluded(dataHash, 101, 1)
+
+	// Verify DA height is tracked
+	assert.Equal(t, uint64(101), m1.DaHeight())
+
+	// Create new manager - DA inclusion should be restored
+	m2, err := NewManager(cfg, st, zerolog.Nop())
+	require.NoError(t, err)
+
+	// DA inclusion should be restored from store
+	daHeight, ok := m2.GetHeaderDAIncluded(headerHash)
+	assert.True(t, ok)
+	assert.Equal(t, uint64(100), daHeight)
+
+	daHeight, ok = m2.GetDataDAIncluded(dataHash)
+	assert.True(t, ok)
+	assert.Equal(t, uint64(101), daHeight)
+
+	// Max DA height should also be restored
+	assert.Equal(t, uint64(101), m2.DaHeight())
+}
+
+func TestCacheManager_Creation(t *testing.T) {
+	t.Parallel()
+	cfg := tempConfig(t)
+	st := memStore(t)
+
+	cm, err := NewCacheManager(cfg, st, zerolog.Nop())
+	require.NoError(t, err)
+	require.NotNil(t, cm)
+
+	// Test basic operations
+	cm.SetHeaderSeen("h1", 1)
+	assert.True(t, cm.IsHeaderSeen("h1"))
+
+	cm.SetHeaderDAIncluded("h1", 100, 1)
+	daHeight, ok := cm.GetHeaderDAIncluded("h1")
+	assert.True(t, ok)
+	assert.Equal(t, uint64(100), daHeight)
 }
