@@ -87,7 +87,7 @@ func setupP2P(t *testing.T) *P2PTestData {
 	memDS := dssync.MutexWrap(ds.NewMapDatastore())
 	st := store.New(memDS)
 
-	cacheManager, err := cache.NewCacheManager(cfg, st, zerolog.Nop())
+	cacheManager, err := cache.NewManager(cfg, st, zerolog.Nop())
 	require.NoError(t, err, "failed to create cache manager")
 
 	handler := NewP2PHandler(headerStoreMock, dataStoreMock, cacheManager, gen, zerolog.Nop())

@@ -40,7 +40,7 @@ func newTestDARetriever(t *testing.T, mockClient *mocks.MockClient, cfg config.C
 	memDS := dssync.MutexWrap(ds.NewMapDatastore())
 	st := store.New(memDS)
 
-	cm, err := cache.NewCacheManager(cfg, st, zerolog.Nop())
+	cm, err := cache.NewManager(cfg, st, zerolog.Nop())
 	require.NoError(t, err)
 
 	if mockClient == nil {

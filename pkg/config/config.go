@@ -51,6 +51,8 @@ const (
 	FlagReadinessMaxBlocksBehind = FlagPrefixEvnode + "node.readiness_max_blocks_behind"
 	// FlagScrapeInterval is a flag for specifying the reaper scrape interval
 	FlagScrapeInterval = FlagPrefixEvnode + "node.scrape_interval"
+	// FlagClearCache is a flag for clearing the cache
+	FlagClearCache = FlagPrefixEvnode + "clear_cache"
 
 	// Data Availability configuration flags
 
@@ -172,7 +174,8 @@ const (
 
 // Config stores Rollkit configuration.
 type Config struct {
-	RootDir string `mapstructure:"-" yaml:"-" comment:"Root directory where rollkit files are located"`
+	RootDir    string `mapstructure:"-" yaml:"-" comment:"Root directory where rollkit files are located"`
+	ClearCache bool   `mapstructure:"-" yaml:"-" comment:"Clear the cache"`
 
 	// Base configuration
 	DBPath string `mapstructure:"db_path" yaml:"db_path" comment:"Path inside the root directory where the database is located"`
@@ -420,6 +423,7 @@ func AddFlags(cmd *cobra.Command) {
 
 	// Add base flags
 	cmd.Flags().String(FlagDBPath, def.DBPath, "path for the node database")
+	cmd.Flags().Bool(FlagClearCache, def.ClearCache, "clear the cache")
 
 	// Node configuration flags
 	cmd.Flags().Bool(FlagAggregator, def.Node.Aggregator, "run node as an aggregator")

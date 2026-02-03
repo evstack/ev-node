@@ -77,7 +77,7 @@ func newTestCache(t *testing.T) cache.CacheManager {
 	memDS := dssync.MutexWrap(ds.NewMapDatastore())
 	st := store.New(memDS)
 
-	cacheManager, err := cache.NewCacheManager(cfg, st, zerolog.Nop())
+	cacheManager, err := cache.NewManager(cfg, st, zerolog.Nop())
 	require.NoError(t, err)
 
 	return cacheManager

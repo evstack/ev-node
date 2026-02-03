@@ -452,7 +452,7 @@ func TestCacheManager_Creation(t *testing.T) {
 	cfg := tempConfig(t)
 	st := memStore(t)
 
-	cm, err := NewCacheManager(cfg, st, zerolog.Nop())
+	cm, err := NewManager(cfg, st, zerolog.Nop())
 	require.NoError(t, err)
 	require.NotNil(t, cm)
 

@@ -93,53 +93,6 @@ type implementation struct {
 	logger             zerolog.Logger
 }
 
-// NewPendingManager creates a new pending manager instance
-func NewPendingManager(store store.Store, logger zerolog.Logger) (PendingManager, error) {
-	pendingHeaders, err := NewPendingHeaders(store, logger)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create pending headers: %w", err)
-	}
-
-	pendingData, err := NewPendingData(store, logger)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create pending data: %w", err)
-	}
-
-	return &implementation{
-		pendingHeaders: pendingHeaders,
-		pendingData:    pendingData,
-		logger:         logger,
-	}, nil
-}
-
-// NewCacheManager creates a new cache manager instance
-func NewCacheManager(cfg config.Config, st store.Store, logger zerolog.Logger) (CacheManager, error) {
-	// Initialize caches with store-based persistence for DA inclusion data
-	headerCache := NewCache[types.SignedHeader](st, headerDAIncludedPrefix)
-	dataCache := NewCache[types.Data](st, dataDAIncludedPrefix)
-	// TX cache and pending events cache don't need store persistence
-	txCache := NewCache[struct{}](nil, "")
-	pendingEventsCache := NewCache[common.DAHeightEvent](nil, "")
-
-	impl := &implementation{
-		headerCache:        headerCache,
-		dataCache:          dataCache,
-		txCache:            txCache,
-		txTimestamps:       new(sync.Map),
-		pendingEventsCache: pendingEventsCache,
-		store:              st,
-		config:             cfg,
-		logger:             logger,
-	}
-
-	// Restore existing cache from store
-	if err := impl.RestoreFromStore(); err != nil {
-		logger.Warn().Err(err).Msg("failed to restore cache from store, starting with empty cache")
-	}
-
-	return impl, nil
-}
-
 // NewManager creates a new cache manager instance
 func NewManager(cfg config.Config, st store.Store, logger zerolog.Logger) (Manager, error) {
 	// Initialize caches with store-based persistence for DA inclusion data
@@ -173,9 +126,16 @@ func NewManager(cfg config.Config, st store.Store, logger zerolog.Logger) (Manag
 		logger:             logger,
 	}
 
-	// Restore existing cache from store
-	if err := impl.RestoreFromStore(); err != nil {
-		logger.Warn().Err(err).Msg("failed to restore cache from store, starting with empty cache")
+	if cfg.ClearCache {
+		// Clear the cache from disk
+		if err := impl.ClearFromStore(); err != nil {
+			logger.Warn().Err(err).Msg("failed to clear cache from disk, starting with empty cache")
+		}
+	} else {
+		// Restore existing cache from store
+		if err := impl.RestoreFromStore(); err != nil {
+			logger.Warn().Err(err).Msg("failed to load cache from disk, starting with empty cache")
+		}
 	}
 
 	return impl, nil
