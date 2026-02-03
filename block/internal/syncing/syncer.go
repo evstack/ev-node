@@ -724,8 +724,10 @@ func (s *Syncer) TrySyncNextBlock(ctx context.Context, event *common.DAHeightEve
 	// here only the previous block needs to be applied to proceed to the verification.
 	// The header validation must be done before applying the block to avoid executing gibberish
 	if err := s.ValidateBlock(ctx, currentState, data, header); err != nil {
-		// remove header as da included (not per se needed, but keep cache clean)
+		// remove header as da included from cache
 		s.cache.RemoveHeaderDAIncluded(headerHash)
+		s.cache.RemoveDataDAIncluded(data.DACommitment().String())
+
 		if !errors.Is(err, errInvalidState) && !errors.Is(err, errInvalidBlock) {
 			return errors.Join(errInvalidBlock, err)
 		}
@@ -737,7 +739,10 @@ func (s *Syncer) TrySyncNextBlock(ctx context.Context, event *common.DAHeightEve
 		if err := s.VerifyForcedInclusionTxs(ctx, currentState, data); err != nil {
 			s.logger.Error().Err(err).Uint64("height", nextHeight).Msg("forced inclusion verification failed")
 			if errors.Is(err, errMaliciousProposer) {
+				// remove header as da included from cache
 				s.cache.RemoveHeaderDAIncluded(headerHash)
+				s.cache.RemoveDataDAIncluded(data.DACommitment().String())
+
 				return err
 			}
 		}

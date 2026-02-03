@@ -26,19 +26,21 @@ const (
 // CacheManager provides thread-safe cache operations for tracking seen blocks
 // and DA inclusion status during block execution and syncing.
 type CacheManager interface {
+	DaHeight() uint64
+
 	// Header operations
 	IsHeaderSeen(hash string) bool
 	SetHeaderSeen(hash string, blockHeight uint64)
 	GetHeaderDAIncluded(hash string) (uint64, bool)
 	SetHeaderDAIncluded(hash string, daHeight uint64, blockHeight uint64)
 	RemoveHeaderDAIncluded(hash string)
-	DaHeight() uint64
 
 	// Data operations
 	IsDataSeen(hash string) bool
 	SetDataSeen(hash string, blockHeight uint64)
 	GetDataDAIncluded(hash string) (uint64, bool)
 	SetDataDAIncluded(hash string, daHeight uint64, blockHeight uint64)
+	RemoveDataDAIncluded(hash string)
 
 	// Transaction operations
 	IsTxSeen(hash string) bool
@@ -220,6 +222,10 @@ func (m *implementation) GetDataDAIncluded(hash string) (uint64, bool) {
 
 func (m *implementation) SetDataDAIncluded(hash string, daHeight uint64, blockHeight uint64) {
 	m.dataCache.setDAIncluded(hash, daHeight, blockHeight)
+}
+
+func (m *implementation) RemoveDataDAIncluded(hash string) {
+	m.dataCache.removeDAIncluded(hash)
 }
 
 // Transaction operations

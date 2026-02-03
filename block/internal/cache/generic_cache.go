@@ -48,8 +48,7 @@ type Cache[T any] struct {
 
 	// store is used for persisting DA inclusion data (optional, can be nil for ephemeral caches)
 	store store.Store
-
-	// storeKeyPrefix is the prefix used for store keys (allows different caches to use different namespaces)
+	// storeKeyPrefix is the prefix used for store keys
 	storeKeyPrefix string
 }
 

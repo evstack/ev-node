@@ -528,15 +528,15 @@ func TestSubmitter_CacheClearedOnHeightInclusion(t *testing.T) {
 	assert.False(t, cm.IsHeaderSeen(h2.Hash().String()), "height 2 header should be cleared from cache")
 	assert.False(t, cm.IsDataSeen(d2.DACommitment().String()), "height 2 data should be cleared from cache")
 
-	// Verify DA inclusion status remains for processed heights
+	// Verify DA inclusion status is removed for processed heights (cleaned up after finalization)
 	_, h1DAIncluded := cm.GetHeaderDAIncluded(h1.Hash().String())
 	_, d1DAIncluded := cm.GetDataDAIncluded(d1.DACommitment().String())
 	_, h2DAIncluded := cm.GetHeaderDAIncluded(h2.Hash().String())
 	_, d2DAIncluded := cm.GetDataDAIncluded(d2.DACommitment().String())
-	assert.True(t, h1DAIncluded, "height 1 header DA inclusion status should remain")
-	assert.True(t, d1DAIncluded, "height 1 data DA inclusion status should remain")
-	assert.True(t, h2DAIncluded, "height 2 header DA inclusion status should remain")
-	assert.True(t, d2DAIncluded, "height 2 data DA inclusion status should remain")
+	assert.False(t, h1DAIncluded, "height 1 header DA inclusion status should be removed after finalization")
+	assert.False(t, d1DAIncluded, "height 1 data DA inclusion status should be removed after finalization")
+	assert.False(t, h2DAIncluded, "height 2 header DA inclusion status should be removed after finalization")
+	assert.False(t, d2DAIncluded, "height 2 data DA inclusion status should be removed after finalization")
 
 	// Verify unprocessed height 3 cache remains intact
 	assert.True(t, cm.IsHeaderSeen(h3.Hash().String()), "height 3 header should remain in cache")
