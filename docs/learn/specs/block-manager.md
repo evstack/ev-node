@@ -682,6 +682,7 @@ The block components expose comprehensive metrics for monitoring through the sha
 
 ### DA Metrics (Submitter and Syncer Components)
 
+- `da_submitter_pending_blobs`: Total of Header/Data pending blobs
 - `da_submission_attempts_total`: Total DA submission attempts
 - `da_submission_success_total`: Successful DA submissions
 - `da_submission_failure_total`: Failed DA submissions
@@ -689,8 +690,6 @@ The block components expose comprehensive metrics for monitoring through the sha
 - `da_retrieval_success_total`: Successful DA retrievals
 - `da_retrieval_failure_total`: Failed DA retrievals
 - `da_height`: Current DA retrieval height
-- `pending_headers_count`: Number of headers pending DA submission
-- `pending_data_count`: Number of data blocks pending DA submission
 
 ### Sync Metrics (Syncer Component)
 

@@ -176,3 +176,7 @@ batch.Delete(ctx, key3)
 // Commit all operations atomically
 err = batch.Commit(ctx)
 ```
+
+## Store Adapters for P2P Integration
+
+The store package provides adapter implementations that wrap the ev-node store to satisfy the `header.Store[H]` interface from the `go-header` library. This enables the ev-node store to be used directly by go-header's P2P infrastructure, eliminating data duplication.

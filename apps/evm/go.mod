@@ -2,8 +2,12 @@ module github.com/evstack/ev-node/apps/evm
 
 go 1.25.0
 
+replace (
+	github.com/evstack/ev-node => ../../
+	github.com/evstack/ev-node/execution/evm => ../../execution/evm
+)
+
 require (
-	github.com/celestiaorg/go-header v0.8.1
 	github.com/ethereum/go-ethereum v1.16.8
 	github.com/evstack/ev-node v1.0.0-rc.1
 	github.com/evstack/ev-node/core v1.0.0-rc.1
@@ -25,6 +29,7 @@ require (
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/bits-and-blooms/bitset v1.20.0 // indirect
 	github.com/boltdb/bolt v1.3.1 // indirect
+	github.com/celestiaorg/go-header v0.8.1 // indirect
 	github.com/celestiaorg/go-libp2p-messenger v0.2.2 // indirect
 	github.com/celestiaorg/go-square/merkle v0.0.0-20240627094109-7d01436067a3 // indirect
 	github.com/celestiaorg/go-square/v3 v3.0.2 // indirect
