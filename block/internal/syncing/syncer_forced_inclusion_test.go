@@ -1154,10 +1154,6 @@ func TestVerifyForcedInclusionTxs_P2PBlocks(t *testing.T) {
 		s.fiRetriever = da.NewForcedInclusionRetriever(client, zerolog.Nop(), cfg, gen.DAStartHeight, gen.DAEpochForcedInclusion)
 		t.Cleanup(func() { s.fiRetriever.Stop() })
 
-		// Mock async DA retriever to avoid dealing with actual DA fetching in test
-		mockDARetriever := NewMockDARetriever(t)
-		s.daRetrievalWorkerPool = NewDARetrievalWorkerPool(mockDARetriever, s.heightInCh, zerolog.Nop())
-
 		// Mock DA to return forced inclusion transactions at epoch 0
 		forcedTxData, _ := makeSignedDataBytes(t, gen.ChainID, 10, addr, pub, signer, 2)
 		client.On("Retrieve", mock.Anything, uint64(0), []byte("nsForcedInclusion")).Return(datypes.ResultRetrieve{
@@ -1254,11 +1250,6 @@ func TestVerifyForcedInclusionTxs_P2PBlocks(t *testing.T) {
 		s.daRetriever = NewDARetriever(client, cm, gen, zerolog.Nop())
 		s.fiRetriever = da.NewForcedInclusionRetriever(client, zerolog.Nop(), cfg, gen.DAStartHeight, gen.DAEpochForcedInclusion)
 		t.Cleanup(func() { s.fiRetriever.Stop() })
-
-		// Mock async DA retriever to avoid dealing with actual DA fetching in test
-		mockDARetriever := NewMockDARetriever(t)
-		s.daRetrievalWorkerPool = NewDARetrievalWorkerPool(mockDARetriever, s.heightInCh, zerolog.Nop())
-		// Don't start it to avoid async complications
 
 		// Process first block successfully (within grace period)
 		// Mock DA to return forced inclusion transactions at epoch 0
