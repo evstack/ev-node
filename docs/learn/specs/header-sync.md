@@ -129,14 +129,30 @@ The DA hints are set by the DA submitter after successful inclusion on the DA la
 
 ### Implementation Details
 
-The P2P wrapper types (`P2PSignedHeader` and `P2PData`) extend the base types with an optional `DAHeightHint`.
+The P2P wrapper types (`P2PSignedHeader` and `P2PData`) extend the base types with an optional `DAHeightHint` field:
 
-The hint is:
+- Uses protobuf optional fields (`optional uint64 da_height_hint`) for backward compatibility
+- Old nodes can still unmarshal new messages (the hint field is simply ignored)
+- New nodes can unmarshal old messages (the hint field defaults to zero/absent)
+
+The hint flow:
 
 1. **Set by the DA Submitter** when headers/data are successfully included on the DA layer
 2. **Stored in the P2P store** alongside the header/data
 3. **Propagated via P2P** when syncing nodes request blocks
-4. **Used by the Syncer** to trigger targeted DA retrieval instead of sequential scanning
+4. **Queued as priority** by the Syncer's DA retriever when received via P2P
+5. **Fetched before sequential heights** - priority heights take precedence over normal DA scanning
+
+### Priority Queue Mechanism
+
+When a P2P event arrives with a DA height hint, the hint is queued as a priority height in the DA retriever. The `fetchDAUntilCaughtUp` loop checks for priority heights first:
+
+1. If priority heights are queued, pop and fetch the lowest one first
+2. If no priority heights, continue sequential DA fetching (form last known da height)
+3. Priority heights are sorted ascending to process lower heights first
+4. Already-processed priority heights are tracked to avoid duplicate fetches
+
+This ensures that when syncing from P2P, the node can immediately fetch the DA data for blocks it receives, rather than waiting for sequential scanning to reach that height.
 
 ## References
 

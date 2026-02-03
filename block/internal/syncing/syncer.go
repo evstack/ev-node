@@ -126,9 +126,6 @@ type Syncer struct {
 	// blockSyncer is the interface used for block sync operations.
 	// defaults to self, but can be wrapped with tracing.
 	blockSyncer BlockSyncer
-
-	// Worker pool for on-demand DA retrieval triggered by P2P hints
-	daRetrievalWorkerPool *DARetrievalWorkerPool
 }
 
 // pendingForcedInclusionTx represents a forced inclusion transaction that hasn't been included yet
@@ -216,11 +213,10 @@ func (s *Syncer) Start(ctx context.Context) error {
 
 	// Initialize handlers
 	s.daRetriever = NewDARetriever(s.daClient, s.cache, s.genesis, s.logger)
-	s.daRetrievalWorkerPool = NewDARetrievalWorkerPool(s.daRetriever, s.heightInCh, s.logger)
-	s.daRetrievalWorkerPool.Start(s.ctx)
 	if s.config.Instrumentation.IsTracingEnabled() {
 		s.daRetriever = WithTracingDARetriever(s.daRetriever)
 	}
+
 	s.fiRetriever = da.NewForcedInclusionRetriever(s.daClient, s.logger, s.config, s.genesis.DAStartHeight, s.genesis.DAEpochForcedInclusion)
 	s.p2pHandler = NewP2PHandler(s.headerStore, s.dataStore, s.cache, s.genesis, s.logger)
 	if currentHeight, err := s.store.Height(s.ctx); err != nil {
@@ -254,8 +250,6 @@ func (s *Syncer) Stop() error {
 	if s.cancel == nil {
 		return nil
 	}
-
-	s.daRetrievalWorkerPool.Stop()
 
 	s.cancel()
 	s.cancelP2PWait(0)
@@ -432,7 +426,19 @@ func (s *Syncer) fetchDAUntilCaughtUp() error {
 		default:
 		}
 
-		daHeight := max(s.daRetrieverHeight.Load(), s.cache.DaHeight())
+		// Check for priority heights from P2P hints first
+		var daHeight uint64
+		if priorityHeight := s.daRetriever.PopPriorityHeight(); priorityHeight > 0 {
+			// Skip if we've already fetched past this height
+			currentHeight := s.daRetrieverHeight.Load()
+			if priorityHeight < currentHeight {
+				continue
+			}
+			daHeight = priorityHeight
+			s.logger.Debug().Uint64("da_height", daHeight).Msg("fetching priority DA height from P2P hint")
+		} else {
+			daHeight = max(s.daRetrieverHeight.Load(), s.cache.DaHeight())
+		}
 
 		events, err := s.daRetriever.RetrieveFromDA(s.ctx, daHeight)
 		if err != nil {
@@ -461,8 +467,19 @@ func (s *Syncer) fetchDAUntilCaughtUp() error {
 			}
 		}
 
-		// increment DA retrieval height on successful retrieval
-		s.daRetrieverHeight.Store(daHeight + 1)
+		// Update DA retrieval height on successful retrieval
+		// For priority fetches, only update if the priority height is ahead of current
+		// For sequential fetches, always increment
+		newHeight := daHeight + 1
+		for {
+			current := s.daRetrieverHeight.Load()
+			if newHeight <= current {
+				break // Already at or past this height
+			}
+			if s.daRetrieverHeight.CompareAndSwap(current, newHeight) {
+				break
+			}
+		}
 	}
 }
 
@@ -626,13 +643,18 @@ func (s *Syncer) processHeightEvent(ctx context.Context, event *common.DAHeightE
 		}
 		if len(daHeightHints) > 0 {
 			for _, daHeightHint := range daHeightHints {
+				// Skip if we've already fetched past this height
+				if daHeightHint < s.daRetrieverHeight.Load() {
+					continue
+				}
+
 				s.logger.Debug().
 					Uint64("height", height).
 					Uint64("da_height_hint", daHeightHint).
-					Msg("P2P event with DA height hint, triggering targeted DA retrieval")
+					Msg("P2P event with DA height hint, queuing priority DA retrieval")
 
-				// Trigger targeted DA retrieval in background via worker pool
-				s.daRetrievalWorkerPool.RequestRetrieval(daHeightHint)
+				// Queue priority DA retrieval - will be processed in fetchDAUntilCaughtUp
+				s.daRetriever.QueuePriorityHeight(daHeightHint)
 			}
 		}
 	}
