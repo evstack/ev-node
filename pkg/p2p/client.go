@@ -10,6 +10,7 @@ import (
 
 	"github.com/ipfs/go-datastore"
 	libp2p "github.com/libp2p/go-libp2p"
+	"github.com/libp2p/go-libp2p/core/connmgr"
 	dht "github.com/libp2p/go-libp2p-kad-dht"
 	pubsub "github.com/libp2p/go-libp2p-pubsub"
 	"github.com/libp2p/go-libp2p/core/crypto"
@@ -53,6 +54,8 @@ type Client struct {
 	dht   *dht.IpfsDHT
 	disc  *discovery.RoutingDiscovery
 	gater *conngater.BasicConnectionGater
+	// hostGater controls libp2p connection gating for the host.
+	hostGater connmgr.ConnectionGater
 	ps    *pubsub.PubSub
 
 	metrics *Metrics
@@ -127,6 +130,7 @@ func (c *Client) Start(ctx context.Context) error {
 		return c.startWithHost(ctx, c.host)
 	}
 
+	c.configureHostGater()
 	h, err := c.listen()
 	if err != nil {
 		return err
@@ -245,7 +249,15 @@ func (c *Client) listen() (host.Host, error) {
 		return nil, err
 	}
 
-	return libp2p.New(libp2p.ListenAddrs(maddr), libp2p.Identity(c.privKey), libp2p.ConnectionGater(c.gater))
+	hostGater := c.hostGater
+	if hostGater == nil {
+		hostGater = c.gater
+	}
+	return libp2p.New(
+		libp2p.ListenAddrs(maddr),
+		libp2p.Identity(c.privKey),
+		libp2p.ConnectionGater(hostGater),
+	)
 }
 
 func (c *Client) setupDHT(ctx context.Context) error {
@@ -382,6 +394,28 @@ func (c *Client) parseAddrInfoList(addrInfoStr string) []peer.AddrInfo {
 		addrs = append(addrs, *addrInfo)
 	}
 	return addrs
+}
+
+func (c *Client) configureHostGater() {
+	allowed := c.allowedPeerIDs()
+	if len(allowed) == 0 {
+		c.hostGater = c.gater
+		return
+	}
+	c.hostGater = newAllowlistGater(c.gater, allowed)
+}
+
+func (c *Client) allowedPeerIDs() map[peer.ID]struct{} {
+	allowedAddrs := c.parseAddrInfoList(c.conf.AllowedPeers)
+	if len(allowedAddrs) == 0 {
+		return nil
+	}
+
+	allowed := make(map[peer.ID]struct{}, len(allowedAddrs))
+	for _, addr := range allowedAddrs {
+		allowed[addr.ID] = struct{}{}
+	}
+	return allowed
 }
 
 // getNamespace returns unique string identifying ORU network.
