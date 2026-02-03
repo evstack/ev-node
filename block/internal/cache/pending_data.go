@@ -53,10 +53,6 @@ func NewPendingData(store store.Store, logger zerolog.Logger) (*PendingData, err
 	return &PendingData{base: base}, nil
 }
 
-func (pd *PendingData) init() error {
-	return pd.base.init()
-}
-
 // GetPendingData returns a sorted slice of pending Data along with their marshalled bytes.
 func (pd *PendingData) GetPendingData(ctx context.Context) ([]*types.Data, [][]byte, error) {
 	dataList, err := pd.base.getPending(ctx)
@@ -81,12 +77,41 @@ func (pd *PendingData) GetPendingData(ctx context.Context) ([]*types.Data, [][]b
 }
 
 func (pd *PendingData) NumPendingData() uint64 {
+	pd.advancePastEmptyData(context.Background())
 	return pd.base.numPending()
 }
 
 func (pd *PendingData) SetLastSubmittedDataHeight(ctx context.Context, newLastSubmittedDataHeight uint64) {
 	pd.base.setLastSubmittedHeight(ctx, newLastSubmittedDataHeight)
 }
+
+// advancePastEmptyData advances lastSubmittedDataHeight past any consecutive empty data blocks.
+// This ensures that NumPendingData doesn't count empty data that won't be published to DA.
+func (pd *PendingData) advancePastEmptyData(ctx context.Context) {
+	storeHeight, err := pd.base.store.Height(ctx)
+	if err != nil {
+		return
+	}
+
+	currentHeight := pd.base.getLastSubmittedHeight()
+
+	for height := currentHeight + 1; height <= storeHeight; height++ {
+		data, err := fetchData(ctx, pd.base.store, height)
+		if err != nil {
+			// Can't fetch data (might be in-flight or error), stop advancing
+			return
+		}
+
+		if len(data.Txs) > 0 {
+			// Found non-empty data, stop advancing
+			return
+		}
+
+		// Empty data, advance past it
+		pd.base.setLastSubmittedHeight(ctx, height)
+	}
+}
+
 func (pd *PendingData) GetLastSubmittedDataHeight() uint64 {
 	return pd.base.getLastSubmittedHeight()
 }

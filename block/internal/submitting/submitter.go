@@ -177,7 +177,6 @@ func (s *Submitter) daSubmissionLoop() {
 		case <-ticker.C:
 			// Check if we should submit headers based on batching strategy
 			headersNb := s.cache.NumPendingHeaders()
-
 			if headersNb > 0 {
 				lastSubmitNanos := s.lastHeaderSubmit.Load()
 				timeSinceLastSubmit := time.Since(time.Unix(0, lastSubmitNanos))
