@@ -136,6 +136,7 @@ func newBenchFixture(b *testing.B, totalHeights uint64, shuffledTx bool, daDelay
 
 	// Mock DA retriever to emit exactly totalHeights events, then HFF and cancel
 	daR := NewMockDARetriever(b)
+	daR.On("PopPriorityHeight").Return(uint64(0)).Maybe()
 	for i := uint64(0); i < totalHeights; i++ {
 		daHeight := i + daHeightOffset
 		daR.On("RetrieveFromDA", mock.Anything, daHeight).
