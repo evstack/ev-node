@@ -107,22 +107,25 @@ jobs:
           **Tested upgrade paths**
           - [List version upgrade paths that were tested, or state "TBD - to be tested before publishing"]
 
-          **Changelog**
+          ## ⚠️ Breaking Changes
 
-          **Added**
-          - BREAKING: [Feature description with context about what users need to do]
-          - [Other new features]
+          [If there are breaking changes, list each one with clear operational steps. If no breaking changes, state "None"]
 
-          **Changed**
-          - BREAKING: [Change description with migration instructions]
-          - [Other changes]
+          ### [Breaking Change Title]
+          **What changed:** [Clear description of what was changed/added/removed]
 
-          **Removed**
-          - BREAKING: [Removed feature with alternatives or migration path]
-          - [Other removals]
+          **Action required:**
+          1. [Step-by-step instructions on what operators need to do]
+          2. [Include configuration changes, file modifications, etc.]
+          3. [Provide examples where helpful]
 
-          **Fixed**
-          - [Bug fixes]
+          **Reference:** [PR number if available]
+
+          ---
+
+          ## Full Changelog
+
+          For a complete list of all changes including new features, improvements, and bug fixes, see [CHANGELOG.md](https://github.com/${{ github.repository }}/blob/$TAG/CHANGELOG.md#$VERSION).
 
           **Images**
           EOF_PROMPT
@@ -141,12 +144,14 @@ jobs:
           Guidelines:
           - Replace VERSION with the actual version number
           - Replace YYYY-MM-DD with the actual release date
-          - Focus on BREAKING changes - clearly mark them and explain what users need to do
-          - For breaking changes, include specific migration steps or configuration changes needed
-          - Use clear, professional language
-          - Include technical details and PR numbers if available in the changelog
-          - Group related changes together
-          - Omit empty sections
+          - ONLY include BREAKING changes in the "Breaking Changes" section
+          - For each breaking change, provide clear operational steps that operators must follow
+          - Include specific configuration file changes, command modifications, or migration steps
+          - Use numbered lists for action steps to make them easy to follow
+          - Do NOT duplicate the full changelog content - just reference CHANGELOG.md
+          - If there are no breaking changes, clearly state "None" in that section
+          - Use clear, professional language focused on operational impact
+          - Include PR numbers for breaking changes when available
           - Format as clean markdown
 
           Output the release notes as your response.
