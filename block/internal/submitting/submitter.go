@@ -360,6 +360,39 @@ func (s *Submitter) processDAInclusionLoop() {
 					s.logger.Error().Err(err).Uint64("height", nextHeight).Msg("failed to persist DA included height")
 				}
 
+				// Run height-based pruning if enabled.
+				if s.config.Node.PruningEnabled && s.config.Node.PruningKeepRecent > 0 && s.config.Node.PruningInterval > 0 {
+					// Trigger pruning only when we reach the configured interval.
+					if currentDAIncluded%s.config.Node.PruningInterval == 0 {
+						// We must make sure not to prune blocks that have not yet been included in DA.
+						daIncludedHeight := s.GetDAIncludedHeight()
+
+						storeHeight, err := s.store.Height(s.ctx)
+						if err != nil {
+							s.logger.Error().Err(err).Msg("failed to get store height for pruning")
+							break
+						}
+
+						upperBound := min(storeHeight, daIncludedHeight)
+						if upperBound <= s.config.Node.PruningKeepRecent {
+							// Not enough fully included blocks to prune while respecting keep-recent.
+							break
+						}
+
+						targetHeight := upperBound - s.config.Node.PruningKeepRecent
+
+						if err := s.store.PruneBlocks(s.ctx, targetHeight); err != nil {
+							s.logger.Error().Err(err).Uint64("target_height", targetHeight).Msg("failed to prune old block data")
+						}
+
+						if pruner, ok := s.exec.(coreexecutor.ExecMetaPruner); ok {
+							if err := pruner.PruneExecMeta(s.ctx, targetHeight); err != nil {
+								s.logger.Error().Err(err).Uint64("target_height", targetHeight).Msg("failed to prune execution metadata")
+							}
+						}
+					}
+				}
+
 				// Delete height cache for that height
 				// This can only be performed after the height has been persisted to store
 				s.cache.DeleteHeight(nextHeight)
