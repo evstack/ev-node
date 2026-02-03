@@ -1,6 +1,6 @@
 module github.com/evstack/ev-node/apps/testapp
 
-go 1.25.0
+go 1.25.6
 
 require (
 	github.com/evstack/ev-node v1.0.0-rc.1

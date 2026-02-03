@@ -1,6 +1,6 @@
 module github.com/evstack/ev-node/execution/evm/test
 
-go 1.25.0
+go 1.25.6
 
 require (
 	github.com/celestiaorg/tastora v0.8.0

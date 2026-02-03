@@ -1,6 +1,6 @@
 module github.com/evstack/ev-node/apps/grpc
 
-go 1.25.0
+go 1.25.6
 
 replace (
 	github.com/evstack/ev-node => ../../
