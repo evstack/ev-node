@@ -364,10 +364,6 @@ func (s *Submitter) processDAInclusionLoop() {
 				// Delete height cache for that height
 				// This can only be performed after the height has been persisted to store
 				s.cache.DeleteHeight(nextHeight)
-
-				// Remove DA included status from cache since this height is now finalized
-				s.cache.RemoveHeaderDAIncluded(header.Hash().String())
-				s.cache.RemoveDataDAIncluded(data.DACommitment().String())
 			}
 		}
 	}
