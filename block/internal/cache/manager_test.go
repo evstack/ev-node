@@ -431,6 +431,9 @@ func TestManager_DAInclusionPersistence(t *testing.T) {
 	// Verify DA height is tracked
 	assert.Equal(t, uint64(101), m1.DaHeight())
 
+	err = m1.SaveToStore()
+	require.NoError(t, err)
+
 	// Create new manager - DA inclusion should be restored
 	m2, err := NewManager(cfg, st, zerolog.Nop())
 	require.NoError(t, err)

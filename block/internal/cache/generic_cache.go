@@ -131,15 +131,6 @@ func (c *Cache[T]) setDAIncluded(hash string, daHeight uint64, blockHeight uint6
 	c.daIncluded.Add(hash, daHeight)
 	c.hashByHeight.Add(blockHeight, hash)
 
-	// Persist to store if configured
-	if c.store != nil {
-		key := c.storeKeyPrefix + hash
-		value := make([]byte, 16) // 8 bytes for daHeight + 8 bytes for blockHeight
-		binary.LittleEndian.PutUint64(value[0:8], daHeight)
-		binary.LittleEndian.PutUint64(value[8:16], blockHeight)
-		_ = c.store.SetMetadata(context.Background(), key, value)
-	}
-
 	// Update max DA height if necessary
 	c.setMaxDAHeight(daHeight)
 }
