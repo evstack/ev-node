@@ -66,9 +66,7 @@ var _ execution.HeightProvider = (*EngineClient)(nil)
 var _ execution.Rollbackable = (*EngineClient)(nil)
 
 // Ensure EngineClient implements optional pruning interface when used with
-// ev-node's height-based pruning. This enables coordinated pruning of EVM
-// ExecMeta alongside ev-node's own block data pruning, while remaining a
-// no-op for non-EVM execution environments.
+// ev-node's height-based pruning.
 var _ execution.ExecPruner = (*EngineClient)(nil)
 
 // validatePayloadStatus checks the payload status and returns appropriate errors.
