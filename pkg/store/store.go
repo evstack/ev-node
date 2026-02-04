@@ -190,6 +190,15 @@ func (s *DefaultStore) GetMetadata(ctx context.Context, key string) ([]byte, err
 	return data, nil
 }
 
+// DeleteMetadata removes a metadata key from the store.
+func (s *DefaultStore) DeleteMetadata(ctx context.Context, key string) error {
+	err := s.db.Delete(ctx, ds.NewKey(getMetaKey(key)))
+	if err != nil {
+		return fmt.Errorf("failed to delete metadata for key '%s': %w", key, err)
+	}
+	return nil
+}
+
 // Sync flushes the store state to disk.
 // Returns nil if the database has been closed (common during shutdown).
 func (s *DefaultStore) Sync(ctx context.Context) (err error) {

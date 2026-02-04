@@ -193,6 +193,24 @@ func (t *tracedStore) SetMetadata(ctx context.Context, key string, value []byte)
 	return nil
 }
 
+func (t *tracedStore) DeleteMetadata(ctx context.Context, key string) error {
+	ctx, span := t.tracer.Start(ctx, "Store.DeleteMetadata",
+		trace.WithAttributes(
+			attribute.String("key", key),
+		),
+	)
+	defer span.End()
+
+	err := t.inner.DeleteMetadata(ctx, key)
+	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
+		return err
+	}
+
+	return nil
+}
+
 func (t *tracedStore) Rollback(ctx context.Context, height uint64, aggregator bool) error {
 	ctx, span := t.tracer.Start(ctx, "Store.Rollback",
 		trace.WithAttributes(

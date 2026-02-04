@@ -112,7 +112,7 @@ func (bc *Components) Stop() error {
 		}
 	}
 	if bc.Cache != nil {
-		if err := bc.Cache.SaveToDisk(); err != nil {
+		if err := bc.Cache.SaveToStore(); err != nil {
 			errs = errors.Join(errs, fmt.Errorf("failed to save caches: %w", err))
 		}
 	}

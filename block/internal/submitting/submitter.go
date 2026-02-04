@@ -318,7 +318,7 @@ func (s *Submitter) processDAInclusionLoop() {
 			return
 		case <-ticker.C:
 			currentDAIncluded := s.GetDAIncludedHeight()
-			s.metrics.DAInclusionHeight.Set(float64(s.GetDAIncludedHeight()))
+			s.metrics.DAInclusionHeight.Set(float64(currentDAIncluded))
 
 			for {
 				nextHeight := currentDAIncluded + 1
@@ -486,20 +486,25 @@ func (s *Submitter) setNodeHeightToDAHeight(ctx context.Context, height uint64, 
 
 // IsHeightDAIncluded checks if a height is included in DA
 func (s *Submitter) IsHeightDAIncluded(height uint64, header *types.SignedHeader, data *types.Data) (bool, error) {
+	// If height is at or below the DA included height, it was already processed
+	// and cache entries were cleared. We know it's DA included.
+	if height <= s.GetDAIncludedHeight() {
+		return true, nil
+	}
+
 	currentHeight, err := s.store.Height(s.ctx)
 	if err != nil {
 		return false, err
 	}
+
 	if currentHeight < height {
 		return false, nil
 	}
 
-	headerHash := header.Hash().String()
 	dataCommitment := data.DACommitment()
-	dataHash := dataCommitment.String()
 
-	_, headerIncluded := s.cache.GetHeaderDAIncluded(headerHash)
-	_, dataIncluded := s.cache.GetDataDAIncluded(dataHash)
+	_, headerIncluded := s.cache.GetHeaderDAIncluded(header.Hash().String())
+	_, dataIncluded := s.cache.GetDataDAIncluded(dataCommitment.String())
 
 	dataIncluded = bytes.Equal(dataCommitment, common.DataHashForEmptyTxs) || dataIncluded
 

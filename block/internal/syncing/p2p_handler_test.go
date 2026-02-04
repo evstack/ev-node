@@ -7,6 +7,8 @@ import (
 	"testing"
 	"time"
 
+	ds "github.com/ipfs/go-datastore"
+	dssync "github.com/ipfs/go-datastore/sync"
 	"github.com/libp2p/go-libp2p/core/crypto"
 	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/mock"
@@ -18,6 +20,7 @@ import (
 	"github.com/evstack/ev-node/pkg/genesis"
 	signerpkg "github.com/evstack/ev-node/pkg/signer"
 	"github.com/evstack/ev-node/pkg/signer/noop"
+	"github.com/evstack/ev-node/pkg/store"
 	extmocks "github.com/evstack/ev-node/test/mocks/external"
 	"github.com/evstack/ev-node/types"
 )
@@ -77,10 +80,14 @@ func setupP2P(t *testing.T) *P2PTestData {
 	dataStoreMock := extmocks.NewMockStore[*types.P2PData](t)
 
 	cfg := config.Config{
-		RootDir:    t.TempDir(),
-		ClearCache: true,
+		RootDir: t.TempDir(),
 	}
-	cacheManager, err := cache.NewCacheManager(cfg, zerolog.Nop())
+
+	// Create an in-memory store for the cache
+	memDS := dssync.MutexWrap(ds.NewMapDatastore())
+	st := store.New(memDS)
+
+	cacheManager, err := cache.NewManager(cfg, st, zerolog.Nop())
 	require.NoError(t, err, "failed to create cache manager")
 
 	handler := NewP2PHandler(headerStoreMock, dataStoreMock, cacheManager, gen, zerolog.Nop())

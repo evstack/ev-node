@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"crypto/sha256"
-	"encoding/binary"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -346,9 +345,9 @@ func (s *Syncer) initializeState() error {
 	}
 	s.SetLastState(state)
 
-	// Set DA height to the maximum of the genesis start height, the state's DA height, the cached DA height, and the highest stored included DA height.
-	// This ensures we resume from the highest known DA height, even if the cache is cleared on restart. If the DA height is too high because of a user error, reset it with --evnode.clear_cache. The DA height will be back to the last highest known executed DA height for a height.
-	s.daRetrieverHeight.Store(max(s.genesis.DAStartHeight, s.cache.DaHeight(), state.DAHeight, s.getHighestStoredDAHeight()))
+	// Set DA height to the maximum of the genesis start height, the state's DA height, and the cached DA height.
+	// The cache's DaHeight() is initialized from store metadata, so it's always correct even after cache clear.
+	s.daRetrieverHeight.Store(max(s.genesis.DAStartHeight, s.cache.DaHeight(), state.DAHeight))
 
 	s.logger.Info().
 		Uint64("height", state.LastBlockHeight).
@@ -724,8 +723,10 @@ func (s *Syncer) TrySyncNextBlock(ctx context.Context, event *common.DAHeightEve
 	// here only the previous block needs to be applied to proceed to the verification.
 	// The header validation must be done before applying the block to avoid executing gibberish
 	if err := s.ValidateBlock(ctx, currentState, data, header); err != nil {
-		// remove header as da included (not per se needed, but keep cache clean)
+		// remove header as da included from cache
 		s.cache.RemoveHeaderDAIncluded(headerHash)
+		s.cache.RemoveDataDAIncluded(data.DACommitment().String())
+
 		if !errors.Is(err, errInvalidState) && !errors.Is(err, errInvalidBlock) {
 			return errors.Join(errInvalidBlock, err)
 		}
@@ -737,7 +738,10 @@ func (s *Syncer) TrySyncNextBlock(ctx context.Context, event *common.DAHeightEve
 		if err := s.VerifyForcedInclusionTxs(ctx, currentState, data); err != nil {
 			s.logger.Error().Err(err).Uint64("height", nextHeight).Msg("forced inclusion verification failed")
 			if errors.Is(err, errMaliciousProposer) {
+				// remove header as da included from cache
 				s.cache.RemoveHeaderDAIncluded(headerHash)
+				s.cache.RemoveDataDAIncluded(data.DACommitment().String())
+
 				return err
 			}
 		}
@@ -1206,39 +1210,6 @@ func (s *Syncer) sleepOrDone(duration time.Duration) bool {
 	case <-timer.C:
 		return true
 	}
-}
-
-// getHighestStoredDAHeight retrieves the highest DA height from the store by checking
-// the DA heights stored for the last DA included height
-// this relies on the node syncing with DA and setting included heights.
-func (s *Syncer) getHighestStoredDAHeight() uint64 {
-	// Get the DA included height from store
-	daIncludedHeightBytes, err := s.store.GetMetadata(s.ctx, store.DAIncludedHeightKey)
-	if err != nil || len(daIncludedHeightBytes) != 8 {
-		return 0
-	}
-	daIncludedHeight := binary.LittleEndian.Uint64(daIncludedHeightBytes)
-	if daIncludedHeight == 0 {
-		return 0
-	}
-
-	var highestDAHeight uint64
-
-	// Get header DA height for the last included height
-	headerKey := store.GetHeightToDAHeightHeaderKey(daIncludedHeight)
-	if headerBytes, err := s.store.GetMetadata(s.ctx, headerKey); err == nil && len(headerBytes) == 8 {
-		headerDAHeight := binary.LittleEndian.Uint64(headerBytes)
-		highestDAHeight = max(highestDAHeight, headerDAHeight)
-	}
-
-	// Get data DA height for the last included height
-	dataKey := store.GetHeightToDAHeightDataKey(daIncludedHeight)
-	if dataBytes, err := s.store.GetMetadata(s.ctx, dataKey); err == nil && len(dataBytes) == 8 {
-		dataDAHeight := binary.LittleEndian.Uint64(dataBytes)
-		highestDAHeight = max(highestDAHeight, dataDAHeight)
-	}
-
-	return highestDAHeight
 }
 
 type p2pWaitState struct {

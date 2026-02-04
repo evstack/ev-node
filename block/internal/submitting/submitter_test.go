@@ -114,16 +114,21 @@ func TestSubmitter_IsHeightDAIncluded(t *testing.T) {
 	require.NoError(t, batch.SetHeight(5))
 	require.NoError(t, batch.Commit())
 
-	s := &Submitter{store: st, cache: cm, logger: zerolog.Nop()}
+	daIncludedHeight := &atomic.Uint64{}
+	daIncludedHeight.Store(2) // heights 1 and 2 are already DA included and cache cleared
+
+	s := &Submitter{store: st, cache: cm, logger: zerolog.Nop(), daIncludedHeight: daIncludedHeight}
 	s.ctx = ctx
 
 	h1, d1 := newHeaderAndData("chain", 3, true)
 	h2, d2 := newHeaderAndData("chain", 4, true)
+	h3, d3 := newHeaderAndData("chain", 2, true) // already DA included, cache was cleared
 
-	cm.SetHeaderDAIncluded(h1.Hash().String(), 100, 2)
-	cm.SetDataDAIncluded(d1.DACommitment().String(), 100, 2)
+	cm.SetHeaderDAIncluded(h1.Hash().String(), 100, 3)
+	cm.SetDataDAIncluded(d1.DACommitment().String(), 100, 3)
 	cm.SetHeaderDAIncluded(h2.Hash().String(), 101, 4)
 	// no data for h2
+	// no cache entries for h3/d3 - they were cleared after DA inclusion processing
 
 	specs := map[string]struct {
 		height uint64
@@ -132,9 +137,11 @@ func TestSubmitter_IsHeightDAIncluded(t *testing.T) {
 		exp    bool
 		expErr bool
 	}{
-		"below store height and cached": {height: 3, header: h1, data: d1, exp: true},
-		"above store height":            {height: 6, header: h2, data: d2, exp: false},
-		"data missing":                  {height: 4, header: h2, data: d2, exp: false},
+		"below store height and cached":          {height: 3, header: h1, data: d1, exp: true},
+		"above store height":                     {height: 6, header: h2, data: d2, exp: false},
+		"data missing":                           {height: 4, header: h2, data: d2, exp: false},
+		"at daIncludedHeight - cache cleared":    {height: 2, header: h3, data: d3, exp: true},
+		"below daIncludedHeight - cache cleared": {height: 1, header: h3, data: d3, exp: true},
 	}
 
 	for name, spec := range specs {
@@ -528,15 +535,15 @@ func TestSubmitter_CacheClearedOnHeightInclusion(t *testing.T) {
 	assert.False(t, cm.IsHeaderSeen(h2.Hash().String()), "height 2 header should be cleared from cache")
 	assert.False(t, cm.IsDataSeen(d2.DACommitment().String()), "height 2 data should be cleared from cache")
 
-	// Verify DA inclusion status remains for processed heights
+	// Verify DA inclusion status is removed for processed heights (cleaned up after finalization)
 	_, h1DAIncluded := cm.GetHeaderDAIncluded(h1.Hash().String())
 	_, d1DAIncluded := cm.GetDataDAIncluded(d1.DACommitment().String())
 	_, h2DAIncluded := cm.GetHeaderDAIncluded(h2.Hash().String())
 	_, d2DAIncluded := cm.GetDataDAIncluded(d2.DACommitment().String())
-	assert.True(t, h1DAIncluded, "height 1 header DA inclusion status should remain")
-	assert.True(t, d1DAIncluded, "height 1 data DA inclusion status should remain")
-	assert.True(t, h2DAIncluded, "height 2 header DA inclusion status should remain")
-	assert.True(t, d2DAIncluded, "height 2 data DA inclusion status should remain")
+	assert.False(t, h1DAIncluded, "height 1 header DA inclusion status should be removed after finalization")
+	assert.False(t, d1DAIncluded, "height 1 data DA inclusion status should be removed after finalization")
+	assert.False(t, h2DAIncluded, "height 2 header DA inclusion status should be removed after finalization")
+	assert.False(t, d2DAIncluded, "height 2 data DA inclusion status should be removed after finalization")
 
 	// Verify unprocessed height 3 cache remains intact
 	assert.True(t, cm.IsHeaderSeen(h3.Hash().String()), "height 3 header should remain in cache")
