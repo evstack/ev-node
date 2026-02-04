@@ -527,7 +527,7 @@ func TestTrustedHeightValidation(t *testing.T) {
 			trustedHeight: 100,
 			trustedHash:   "",
 			expectError:   true,
-			errorMsg:      "trusted_height (100) is set but trusted_header_hash is empty",
+			errorMsg:      "trusted_height (100) is set but trusted_header_hash or trusted_data_hash is empty",
 		},
 		{
 			name:          "trusted height with valid hash should pass",
@@ -555,6 +555,7 @@ func TestTrustedHeightValidation(t *testing.T) {
 			cfg.RootDir = t.TempDir()
 			cfg.P2P.TrustedHeight = tt.trustedHeight
 			cfg.P2P.TrustedHeaderHash = tt.trustedHash
+			cfg.P2P.TrustedDataHash = tt.trustedHash
 
 			err := cfg.Validate()
 

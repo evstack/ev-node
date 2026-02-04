@@ -281,7 +281,8 @@ type P2PConfig struct {
 	BlockedPeers      string `mapstructure:"blocked_peers" yaml:"blocked_peers" comment:"Comma-separated list of peer IDs to block from connecting"`
 	AllowedPeers      string `mapstructure:"allowed_peers" yaml:"allowed_peers" comment:"Comma-separated list of peer IDs to allow connections from"`
 	TrustedHeight     uint64 `mapstructure:"trusted_height" yaml:"trusted_height" comment:"Block height to trust for sync initialization. When set, sync starts from this height instead of genesis. Must be accompanied by trusted_header_hash for security."`
-	TrustedHeaderHash string `mapstructure:"trusted_header_hash" yaml:"trusted_header_hash" comment:"Hash of the trusted header for security verification. This should be the hex-encoded hash of the header at trusted_height. Prevents against history rewrites during sync."`
+	TrustedHeaderHash string `mapstructure:"trusted_header_hash" yaml:"trusted_header_hash" comment:"Hash of the trusted header for security verification."`
+	TrustedDataHash   string `mapstructure:"trusted_data_hash" yaml:"trusted_data_hash" comment:"Hash of the trusted data for security verification."`
 }
 
 // SignerConfig contains all signer configuration parameters
@@ -381,8 +382,8 @@ func (c *Config) Validate() error {
 	}
 
 	// Validate trusted height configuration
-	if c.P2P.TrustedHeight > 0 && c.P2P.TrustedHeaderHash == "" {
-		return fmt.Errorf("trusted_height (%d) is set but trusted_header_hash is empty. When using trusted_height, trusted_header_hash must also be provided for security verification",
+	if c.P2P.TrustedHeight > 0 && (c.P2P.TrustedHeaderHash == "" || c.P2P.TrustedDataHash == "") {
+		return fmt.Errorf("trusted_height (%d) is set but trusted_header_hash or trusted_data_hash is empty. When using trusted_height, both trusted_header_hash and trusted_data_hash must also be provided for security verification",
 			c.P2P.TrustedHeight)
 	}
 

@@ -62,8 +62,8 @@ type SyncService[H store.EntityWithDAHint[H]] struct {
 
 	// trustedHeight tracks the configured trusted height for sync initialization
 	trustedHeight uint64
-	// trustedHeaderHash is the expected hash of the trusted header
-	trustedHeaderHash string
+	// trustedHeaderHash, trustedDataHash is the expected hash of the trusted header
+	trustedHeaderHash, trustedDataHash string
 }
 
 // NewDataSyncService returns a new DataSyncService.
@@ -206,6 +206,7 @@ func (syncService *SyncService[H]) Start(ctx context.Context) error {
 	// Initialize trusted height configuration
 	syncService.trustedHeight = syncService.conf.P2P.TrustedHeight
 	syncService.trustedHeaderHash = syncService.conf.P2P.TrustedHeaderHash
+	syncService.trustedDataHash = syncService.conf.P2P.TrustedDataHash
 
 	// initialize stores from P2P (blocking until genesis is fetched for followers)
 	// Aggregators (no peers configured) return immediately and initialize on first produced block.
@@ -331,7 +332,7 @@ func (syncService *SyncService[H]) startSubscriber(ctx context.Context) error {
 	return nil
 }
 
-// Height returns the current height stored
+// Height returns the current height storeda
 func (s *SyncService[H]) Height() uint64 {
 	return s.store.Height()
 }
@@ -439,11 +440,10 @@ func (syncService *SyncService[H]) fetchAndVerifyTrustedHeader(ctx context.Conte
 	}
 
 	// Verify the hash matches
-	expectedHash := syncService.trustedHeaderHash
 	actualHash := trusted.Hash().String()
-	if actualHash != expectedHash {
-		return fmt.Errorf("trusted header hash mismatch at height %d: expected %s, got %s",
-			syncService.trustedHeight, expectedHash, actualHash)
+	if actualHash != syncService.trustedHeaderHash || actualHash != syncService.trustedDataHash {
+		return fmt.Errorf("trusted header hash mismatch at height %d: expected %s or %s, got %s",
+			syncService.trustedHeight, syncService.trustedHeaderHash, syncService.trustedDataHash, actualHash)
 	}
 
 	syncService.logger.Info().Uint64("height", syncService.trustedHeight).

@@ -30,33 +30,6 @@ import (
 
 var _ BlockSyncer = (*Syncer)(nil)
 
-// getTrustedHeader loads and verifies the trusted header from the store
-func (s *Syncer) getTrustedHeader(ctx context.Context) (*types.SignedHeader, error) {
-	if s.config.P2P.TrustedHeight == 0 {
-		return nil, fmt.Errorf("trusted_height is not configured")
-	}
-
-	// Load the signed header from the store
-	header, err := s.store.GetHeader(ctx, s.config.P2P.TrustedHeight)
-	if err != nil {
-		return nil, fmt.Errorf("failed to load trusted header at height %d: %w", s.config.P2P.TrustedHeight, err)
-	}
-
-	// Verify the header hash matches the trusted hash
-	expectedHash := s.config.P2P.TrustedHeaderHash
-	actualHash := header.Hash().String()
-	if actualHash != expectedHash {
-		return nil, fmt.Errorf("trusted header hash mismatch at height %d: expected %s, got %s",
-			s.config.P2P.TrustedHeight, expectedHash, actualHash)
-	}
-
-	s.logger.Info().Uint64("height", s.config.P2P.TrustedHeight).
-		Str("hash", actualHash).
-		Msg("trusted header loaded and verified")
-
-	return header, nil
-}
-
 // forcedInclusionGracePeriodConfig contains internal configuration for forced inclusion grace periods.
 type forcedInclusionGracePeriodConfig struct {
 	// basePeriod is the base number of additional epochs allowed for including forced inclusion transactions
@@ -337,9 +310,9 @@ func (s *Syncer) initializeState() error {
 			s.logger.Info().Uint64("trusted_height", s.config.P2P.TrustedHeight).Msg("initializing state from trusted height")
 
 			// Load and verify the trusted header
-			trustedHeader, err := s.getTrustedHeader(s.ctx)
+			trustedHeader, err := s.store.GetHeader(s.ctx, s.config.P2P.TrustedHeight)
 			if err != nil {
-				return fmt.Errorf("failed to load trusted header: %w", err)
+				return fmt.Errorf("failed to load trusted header at height %d: %w", s.config.P2P.TrustedHeight, err)
 			}
 
 			// Initialize new chain state from the trusted header
