@@ -163,10 +163,7 @@ type Rollbackable interface {
 }
 
 // ExecPruner is an optional interface that execution clients can implement
-// to support height-based pruning of their execution metadata. This is used by
-// EVM-based execution clients to keep ExecMeta consistent with ev-node's
-// pruning window while remaining a no-op for execution environments that
-// don't persist per-height metadata in ev-node's datastore.
+// to support height-based pruning of their execution metadata.
 type ExecPruner interface {
 	// PruneExec should delete execution metadata for all heights up to and
 	// including the given height. Implementations should be idempotent and track
