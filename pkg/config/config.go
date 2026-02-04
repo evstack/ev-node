@@ -101,6 +101,8 @@ const (
 	FlagTrustedHeight = FlagPrefixEvnode + "p2p.trusted_height"
 	// FlagTrustedHeaderHash is a flag for specifying the trusted header hash for verification
 	FlagTrustedHeaderHash = FlagPrefixEvnode + "p2p.trusted_header_hash"
+	// FlagTrustedDataHash is a flag for specifying the trusted data hash for verification
+	FlagTrustedDataHash = FlagPrefixEvnode + "p2p.trusted_data_hash"
 
 	// Instrumentation configuration flags
 
@@ -474,7 +476,8 @@ func AddFlags(cmd *cobra.Command) {
 	cmd.Flags().String(FlagP2PBlockedPeers, def.P2P.BlockedPeers, "Comma separated list of nodes to ignore")
 	cmd.Flags().String(FlagP2PAllowedPeers, def.P2P.AllowedPeers, "Comma separated list of nodes to whitelist")
 	cmd.Flags().Uint64(FlagTrustedHeight, def.P2P.TrustedHeight, "block height to trust for sync initialization (0 = start from genesis)")
-	cmd.Flags().String(FlagTrustedHeaderHash, def.P2P.TrustedHeaderHash, "hash of the trusted header for security verification (hex-encoded)")
+	cmd.Flags().String(FlagTrustedHeaderHash, def.P2P.TrustedHeaderHash, "hash of the trusted header for security verification")
+	cmd.Flags().String(FlagTrustedDataHash, def.P2P.TrustedDataHash, "hash of the trusted data for security verification")
 
 	// RPC configuration flags
 	cmd.Flags().String(FlagRPCAddress, def.RPC.Address, "RPC server address (host:port)")
