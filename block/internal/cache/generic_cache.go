@@ -73,6 +73,29 @@ func NewCache[T any](s store.Store, keyPrefix string) *Cache[T] {
 	}
 }
 
+// storeKey returns the store key for a given hash.
+func (c *Cache[T]) storeKey(hash string) string {
+	return c.storeKeyPrefix + hash
+}
+
+// encodeDAInclusion encodes daHeight and blockHeight into a 16-byte value.
+func encodeDAInclusion(daHeight, blockHeight uint64) []byte {
+	value := make([]byte, 16) // 8 bytes for daHeight + 8 bytes for blockHeight
+	binary.LittleEndian.PutUint64(value[0:8], daHeight)
+	binary.LittleEndian.PutUint64(value[8:16], blockHeight)
+	return value
+}
+
+// decodeDAInclusion decodes a 16-byte value into daHeight and blockHeight.
+func decodeDAInclusion(value []byte) (daHeight, blockHeight uint64, ok bool) {
+	if len(value) != 16 {
+		return 0, 0, false
+	}
+	daHeight = binary.LittleEndian.Uint64(value[0:8])
+	blockHeight = binary.LittleEndian.Uint64(value[8:16])
+	return daHeight, blockHeight, true
+}
+
 // getItem returns an item from the cache by height.
 // Returns nil if not found or type mismatch.
 func (c *Cache[T]) getItem(height uint64) *T {
@@ -131,13 +154,21 @@ func (c *Cache[T]) setDAIncluded(hash string, daHeight uint64, blockHeight uint6
 	c.daIncluded.Add(hash, daHeight)
 	c.hashByHeight.Add(blockHeight, hash)
 
+	// Persist to store if configured (for SIGKILL protection)
+	if c.store != nil {
+		_ = c.store.SetMetadata(context.Background(), c.storeKey(hash), encodeDAInclusion(daHeight, blockHeight))
+	}
+
 	// Update max DA height if necessary
 	c.setMaxDAHeight(daHeight)
 }
 
-// removeDAIncluded removes the DA-included status of the hash
+// removeDAIncluded removes the DA-included status of the hash from cache and store.
 func (c *Cache[T]) removeDAIncluded(hash string) {
 	c.daIncluded.Remove(hash)
+	if c.store != nil {
+		_ = c.store.DeleteMetadata(context.Background(), c.storeKey(hash))
+	}
 }
 
 // daHeight returns the maximum DA height from all DA-included items.
@@ -165,7 +196,7 @@ func (c *Cache[T]) removeSeen(hash string) {
 	c.hashes.Remove(hash)
 }
 
-// deleteAllForHeight removes all items and their associated data from the cache at the given height.
+// deleteAllForHeight removes all items and their associated data from the cache and store at the given height.
 func (c *Cache[T]) deleteAllForHeight(height uint64) {
 	c.itemsByHeight.Remove(height)
 
@@ -178,7 +209,7 @@ func (c *Cache[T]) deleteAllForHeight(height uint64) {
 
 	if ok {
 		c.hashes.Remove(hash)
-		c.daIncluded.Remove(hash)
+		c.removeDAIncluded(hash)
 	}
 }
 
@@ -191,18 +222,16 @@ func (c *Cache[T]) RestoreFromStore(ctx context.Context, hashes []string) error 
 	}
 
 	for _, hash := range hashes {
-		key := c.storeKeyPrefix + hash
-		value, err := c.store.GetMetadata(ctx, key)
+		value, err := c.store.GetMetadata(ctx, c.storeKey(hash))
 		if err != nil {
 			// Key not found is not an error - the hash may not have been DA included yet
 			continue
 		}
-		if len(value) != 16 {
+
+		daHeight, blockHeight, ok := decodeDAInclusion(value)
+		if !ok {
 			continue // Invalid data, skip
 		}
-
-		daHeight := binary.LittleEndian.Uint64(value[0:8])
-		blockHeight := binary.LittleEndian.Uint64(value[8:16])
 
 		c.daIncluded.Add(hash, daHeight)
 		c.hashByHeight.Add(blockHeight, hash)
@@ -242,12 +271,7 @@ func (c *Cache[T]) SaveToStore(ctx context.Context) error {
 			}
 		}
 
-		key := c.storeKeyPrefix + hash
-		value := make([]byte, 16)
-		binary.LittleEndian.PutUint64(value[0:8], daHeight)
-		binary.LittleEndian.PutUint64(value[8:16], blockHeight)
-
-		if err := c.store.SetMetadata(ctx, key, value); err != nil {
+		if err := c.store.SetMetadata(ctx, c.storeKey(hash), encodeDAInclusion(daHeight, blockHeight)); err != nil {
 			return fmt.Errorf("failed to save DA inclusion for hash %s: %w", hash, err)
 		}
 	}
@@ -262,8 +286,7 @@ func (c *Cache[T]) ClearFromStore(ctx context.Context, hashes []string) error {
 	}
 
 	for _, hash := range hashes {
-		key := c.storeKeyPrefix + hash
-		if err := c.store.DeleteMetadata(ctx, key); err != nil {
+		if err := c.store.DeleteMetadata(ctx, c.storeKey(hash)); err != nil {
 			return fmt.Errorf("failed to delete DA inclusion for hash %s: %w", hash, err)
 		}
 	}
