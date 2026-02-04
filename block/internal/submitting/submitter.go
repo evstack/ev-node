@@ -379,7 +379,7 @@ func (s *Submitter) processDAInclusionLoop() {
 					s.logger.Error().Err(err).Msg("failed to get store height for pruning")
 					continue
 				}
-				if storeHeight <= lastPruned+uint64(s.config.Node.PruningInterval) {
+				if storeHeight <= lastPruned+s.config.Node.PruningInterval {
 					continue
 				}
 

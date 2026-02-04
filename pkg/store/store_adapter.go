@@ -52,12 +52,6 @@ type EntityWithDAHint[H any] interface {
 	DAHint() uint64
 }
 
-// lastPrunedHeightGetter is an optional interface that store getters can
-// implement to expose the last pruned block height.
-type lastPrunedHeightGetter interface {
-	LastPrunedHeight(ctx context.Context) (uint64, bool)
-}
-
 // heightSub provides a mechanism for waiting on a specific height to be stored.
 // This is critical for go-header syncer which expects GetByHeight to block until
 // the requested height is available.
@@ -292,6 +286,7 @@ func (c *pendingCache[H]) recalcMaxHeight() {
 // a block, it writes to the underlying store, and subsequent reads will come from the store.
 type StoreAdapter[H EntityWithDAHint[H]] struct {
 	getter               StoreGetter[H]
+	store                Store
 	genesisInitialHeight uint64
 
 	// heightSub tracks the current height and allows waiting for specific heights.
@@ -410,10 +405,12 @@ func (a *StoreAdapter[H]) Tail(ctx context.Context) (H, error) {
 	// genesis initial height, but if pruning metadata is available we can
 	// skip directly past fully-pruned ranges.
 	startHeight := a.genesisInitialHeight
-	if getter, ok := a.getter.(lastPrunedHeightGetter); ok {
-		if lastPruned, ok := getter.LastPrunedHeight(ctx); ok {
-			if lastPruned < ^uint64(0) {
-				startHeight = lastPruned + 1
+	if a.store != nil {
+		if meta, err := a.store.GetMetadata(ctx, LastPrunedBlockHeightKey); err == nil && len(meta) == heightLength {
+			if lastPruned, err := decodeHeight(meta); err == nil {
+				if candidate := lastPruned + 1; candidate > startHeight {
+					startHeight = candidate
+				}
 			}
 		}
 	}
@@ -891,22 +888,6 @@ func (g *DataStoreGetter) HasAt(ctx context.Context, height uint64) bool {
 	return err == nil
 }
 
-// LastPrunedHeight implements lastPrunedHeightGetter for DataStoreGetter by
-// reading the pruning metadata from the underlying store.
-func (g *DataStoreGetter) LastPrunedHeight(ctx context.Context) (uint64, bool) {
-	meta, err := g.store.GetMetadata(ctx, LastPrunedBlockHeightKey)
-	if err != nil || len(meta) != heightLength {
-		return 0, false
-	}
-
-	height, err := decodeHeight(meta)
-	if err != nil {
-		return 0, false
-	}
-
-	return height, true
-}
-
 // Type aliases for convenience
 type HeaderStoreAdapter = StoreAdapter[*types.P2PSignedHeader]
 type DataStoreAdapter = StoreAdapter[*types.P2PData]
@@ -914,11 +895,15 @@ type DataStoreAdapter = StoreAdapter[*types.P2PData]
 // NewHeaderStoreAdapter creates a new StoreAdapter for headers.
 // The genesis is used to determine the initial height for efficient Tail lookups.
 func NewHeaderStoreAdapter(store Store, gen genesis.Genesis) *HeaderStoreAdapter {
-	return NewStoreAdapter(NewHeaderStoreGetter(store), gen)
+	adapter := NewStoreAdapter(NewHeaderStoreGetter(store), gen)
+	adapter.store = store
+	return adapter
 }
 
 // NewDataStoreAdapter creates a new StoreAdapter for data.
 // The genesis is used to determine the initial height for efficient Tail lookups.
 func NewDataStoreAdapter(store Store, gen genesis.Genesis) *DataStoreAdapter {
-	return NewStoreAdapter(NewDataStoreGetter(store), gen)
+	adapter := NewStoreAdapter(NewDataStoreGetter(store), gen)
+	adapter.store = store
+	return adapter
 }
